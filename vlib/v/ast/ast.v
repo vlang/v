@@ -288,11 +288,12 @@ pub mut:
 // const field in const declaration group
 pub struct ConstField {
 pub:
-	mod    string
-	name   string
-	expr   Expr // the value expr of field; everything after `=`
-	is_pub bool
-	pos    token.Position
+	mod         string
+	name        string
+	expr        Expr // the value expr of field; everything after `=`
+	is_pub      bool
+	is_markused bool // an explict `[markused]` tag; the const will NOT be removed by `-skip-unused`, no matter what
+	pos         token.Position
 pub mut:
 	typ      Type      // the type of the const field, it can be any type in V
 	comments []Comment // comments before current const field
@@ -306,6 +307,7 @@ pub struct ConstDecl {
 pub:
 	is_pub bool
 	pos    token.Position
+	attrs  []Attr // tags like `[markused]`, valid for all the consts in the list
 pub mut:
 	fields       []ConstField // all the const fields in the `const (...)` block
 	end_comments []Comment    // comments that after last const field
@@ -460,6 +462,7 @@ pub:
 	is_exported     bool           // true for `[export: 'exact_C_name']`
 	is_keep_alive   bool           // passed memory must not be freed (by GC) before function returns
 	is_unsafe       bool           // true, when [unsafe] is used on a fn
+	is_markused     bool           // true, when an explict `[markused]` tag was put on a fn; `-skip-unused` will not remove that fn
 	receiver        StructField    // TODO this is not a struct field
 	receiver_pos    token.Position // `(u User)` in `fn (u User) name()` position
 	is_method       bool
@@ -484,8 +487,8 @@ pub mut:
 	return_type       Type
 	return_type_pos   token.Position // `string` in `fn (u User) name() string` position
 	has_return        bool
-	should_be_skipped bool
-	has_await         bool           // 'true' if this function uses JS.await
+	should_be_skipped bool           // true, when -skip-unused could not find any usages of that function, starting from main + other known used functions
+	has_await         bool // 'true' if this function uses JS.await
 	//
 	comments      []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
 	next_comments []Comment // coments that are one line after the decl; used for InterfaceDecl
@@ -525,7 +528,7 @@ pub mut:
 	left_type          Type // type of `user`
 	receiver_type      Type // User
 	return_type        Type
-	should_be_skipped  bool
+	should_be_skipped  bool   // true for calls to `[if someflag?]` functions, when there is no `-d someflag`
 	concrete_types     []Type // concrete types, e.g. <int, string>
 	concrete_list_pos  token.Position
 	free_receiver      bool // true if the receiver expression needs to be freed
@@ -596,7 +599,7 @@ pub mut:
 	//   [11, 12, 13] <- cast order (smartcasts)
 	//        12 <- the current casted type (typ)
 	pos        token.Position
-	is_used    bool
+	is_used    bool // whether the local variable was used in other expressions
 	is_changed bool // to detect mutable vars that are never changed
 	//
 	// (for setting the position after the or block for autofree)
@@ -624,10 +627,11 @@ pub:
 
 pub struct GlobalField {
 pub:
-	name     string
-	has_expr bool
-	pos      token.Position
-	typ_pos  token.Position
+	name        string
+	has_expr    bool
+	pos         token.Position
+	typ_pos     token.Position
+	is_markused bool // an explict `[markused]` tag; the global will NOT be removed by `-skip-unused`
 pub mut:
 	expr     Expr
 	typ      Type
@@ -638,8 +642,8 @@ pub struct GlobalDecl {
 pub:
 	mod      string
 	pos      token.Position
-	is_block bool // __global() block
-	attrs    []Attr
+	is_block bool   // __global() block
+	attrs    []Attr // tags like `[markused]`, valid for all the globals in the list
 pub mut:
 	fields       []GlobalField
 	end_comments []Comment

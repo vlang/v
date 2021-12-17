@@ -26,7 +26,7 @@ const (
 	valid_comptime_if_cpu_features   = ['x64', 'x32', 'little_endian', 'big_endian']
 	valid_comptime_if_other          = ['js', 'debug', 'prod', 'test', 'glibc', 'prealloc',
 		'no_bounds_checking', 'freestanding', 'threads', 'js_node', 'js_browser', 'js_freestanding',
-		'interpreter']
+		'interpreter', 'es5']
 	valid_comptime_not_user_defined  = all_valid_comptime_idents()
 	array_builtin_methods            = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice',
 		'sort', 'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
@@ -1431,7 +1431,9 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 					}
 				}
 			} else if expr.obj is ast.ConstField && expr.name in c.const_names {
-				c.error('cannot modify constant `$expr.name`', expr.pos)
+				if !c.inside_unsafe {
+					c.error('cannot modify constant `$expr.name`', expr.pos)
+				}
 			}
 		}
 		ast.IndexExpr {
@@ -3592,24 +3594,30 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 
 			if enum_decl := c.table.enum_decls[to_type_sym.name] {
 				mut in_range := false
-				mut enum_val := 0
+				if enum_decl.is_flag {
+					// if a flag enum has 4 variants, the maximum possible value would have all 4 flags set (0b1111)
+					max_val := (1 << enum_decl.fields.len) - 1
+					in_range = node_val >= 0 && node_val <= max_val
+				} else {
+					mut enum_val := 0
 
-				for enum_field in enum_decl.fields {
-					// check if the field of the enum value is an integer literal
-					if enum_field.expr is ast.IntegerLiteral {
-						enum_val = enum_field.expr.val.int()
+					for enum_field in enum_decl.fields {
+						// check if the field of the enum value is an integer literal
+						if enum_field.expr is ast.IntegerLiteral {
+							enum_val = enum_field.expr.val.int()
+						}
+
+						if node_val == enum_val {
+							in_range = true
+							break
+						}
+
+						enum_val += 1
 					}
-
-					if node_val == enum_val {
-						in_range = true
-						break
-					}
-
-					enum_val += 1
 				}
 
 				if !in_range {
-					c.warn('$node_val does not represents a value of enum $enum_typ_name',
+					c.warn('$node_val does not represent a value of enum $enum_typ_name',
 						node.pos)
 				}
 			}
@@ -3812,9 +3820,13 @@ pub fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					}
 					mut typ := obj.typ
 					if typ == 0 {
+						old_c_mod := c.mod
+						c.mod = obj.mod
 						c.inside_const = true
 						typ = c.expr(obj.expr)
 						c.inside_const = false
+						c.mod = old_c_mod
+
 						if obj.expr is ast.CallExpr {
 							if obj.expr.or_block.kind != .absent {
 								typ = typ.clear_flag(.optional)
@@ -4587,8 +4599,8 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		info := c.table.get_type_symbol(node.typ).map_info()
 		c.ensure_type_exists(info.key_type, node.pos) or {}
 		c.ensure_type_exists(info.value_type, node.pos) or {}
-		node.key_type = c.unwrap_generic(info.key_type)
-		node.value_type = c.unwrap_generic(info.value_type)
+		node.key_type = info.key_type
+		node.value_type = info.value_type
 		return node.typ
 	}
 	if node.keys.len > 0 && node.vals.len > 0 {

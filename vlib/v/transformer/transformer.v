@@ -156,6 +156,9 @@ pub fn (mut t Transformer) transform(mut ast_file ast.File) {
 }
 
 pub fn (mut t Transformer) find_new_array_len(node ast.AssignStmt) {
+	if !t.pref.is_prod {
+		return
+	}
 	// looking for, array := []type{len:int}
 	mut right := node.right[0]
 	if mut right is ast.ArrayInit {
@@ -185,6 +188,9 @@ pub fn (mut t Transformer) find_new_array_len(node ast.AssignStmt) {
 }
 
 pub fn (mut t Transformer) find_new_range(node ast.AssignStmt) {
+	if !t.pref.is_prod {
+		return
+	}
 	// looking for, array := []type{len:int}
 	mut right := node.right[0]
 	if mut right is ast.IndexExpr {
@@ -214,10 +220,16 @@ pub fn (mut t Transformer) find_new_range(node ast.AssignStmt) {
 }
 
 pub fn (mut t Transformer) find_mut_self_assign(node ast.AssignStmt) {
+	if !t.pref.is_prod {
+		return
+	}
 	// even if mutable we can be sure than `a[1] = a[2] is safe
 }
 
 pub fn (mut t Transformer) find_assert_len(node ast.InfixExpr) {
+	if !t.pref.is_prod {
+		return
+	}
 	right := node.right
 	match right {
 		ast.IntegerLiteral {
@@ -265,6 +277,9 @@ pub fn (mut t Transformer) find_assert_len(node ast.InfixExpr) {
 }
 
 pub fn (mut t Transformer) check_safe_array(mut node ast.IndexExpr) {
+	if !t.pref.is_prod {
+		return
+	}
 	if !node.is_array {
 		return
 	}
@@ -272,7 +287,8 @@ pub fn (mut t Transformer) check_safe_array(mut node ast.IndexExpr) {
 	name := node.left
 	match index {
 		ast.IntegerLiteral {
-			node.is_direct = t.index.safe_access(name.str(), index.val.int())
+			is_direct := t.index.safe_access(name.str(), index.val.int())
+			node.is_direct = is_direct
 		}
 		ast.RangeExpr {
 			if index.has_high {

@@ -110,7 +110,10 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		'json.encode_u64',
 		'json.json_print',
 		'json.json_parse',
-		'main.cb_propagate_test_error',
+		'main.nasserts',
+		'main.vtest_init',
+		'main.vtest_new_metainfo',
+		'main.vtest_new_filemetainfo',
 		'os.getwd',
 		'os.init_os_args',
 		'os.init_os_args_wide',
@@ -260,6 +263,10 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		if isym.kind != .interface_ {
 			continue
 		}
+		if isym.info !is ast.Interface {
+			// Do not remove this check, isym.info could be &IError.
+			continue
+		}
 		interface_info := isym.info as ast.Interface
 		if interface_info.methods.len == 0 {
 			continue
@@ -332,6 +339,9 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		pref: pref
 	}
 	// println( all_fns.keys() )
+	walker.mark_markused_fns() // tagged with `[markused]`
+	walker.mark_markused_consts() // tagged with `[markused]`
+	walker.mark_markused_globals() // tagged with `[markused]`
 	walker.mark_exported_fns()
 	walker.mark_root_fns(all_fn_root_names)
 
@@ -375,6 +385,15 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 	$if trace_skip_unused_fn_names ? {
 		for key, _ in walker.used_fns {
 			println('> used fn key: $key')
+		}
+	}
+
+	for kcon, con in all_consts {
+		if pref.is_shared && con.is_pub {
+			walker.mark_const_as_used(kcon)
+		}
+		if !pref.is_shared && con.is_pub && con.name.starts_with('main.') {
+			walker.mark_const_as_used(kcon)
 		}
 	}
 

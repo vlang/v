@@ -197,6 +197,14 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 					break
 				}
 				p.check(.comma)
+				if p.pref.is_fmt {
+					if p.tok.kind == .lcbr {
+						break
+					}
+					for p.tok.kind == .comma {
+						p.next()
+					}
+				}
 			}
 			is_sum_type = true
 		} else {
@@ -226,7 +234,16 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 				if p.tok.kind != .comma {
 					break
 				}
+
 				p.check(.comma)
+				if p.pref.is_fmt {
+					if p.tok.kind == .lcbr {
+						break
+					}
+					for p.tok.kind == .comma {
+						p.next()
+					}
+				}
 			}
 		}
 		branch_last_pos := p.prev_tok.position()

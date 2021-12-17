@@ -9,7 +9,6 @@ import v.util
 import v.pkgconfig
 
 fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
-	sym := c.table.get_type_symbol(c.unwrap_generic(c.expr(node.left)))
 	node.left_type = c.expr(node.left)
 	if node.is_env {
 		env_value := util.resolve_env_value("\$env('$node.args_var')", false) or {
@@ -30,6 +29,7 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	}
 	if node.is_vweb {
 		// TODO assoc parser bug
+		save_cur_fn := c.table.cur_fn
 		pref_ := *c.pref
 		pref2 := &pref.Preferences{
 			...pref_
@@ -56,6 +56,8 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		c.nr_warnings += c2.nr_warnings
 		c.nr_errors += c2.nr_errors
 		c.nr_notices += c2.nr_notices
+
+		c.table.cur_fn = save_cur_fn
 	}
 	if node.method_name == 'html' {
 		rtyp := c.table.find_type_idx('vweb.Result')
@@ -91,11 +93,11 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	} else {
 		c.error('todo: not a string literal', node.method_pos)
 	}
-	f := sym.find_method(method_name) or {
+	left_sym := c.table.get_type_symbol(c.unwrap_generic(node.left_type))
+	f := left_sym.find_method(method_name) or {
 		c.error('could not find method `$method_name`', node.method_pos)
 		return ast.void_type
 	}
-	// println(f.name + ' ' + c.table.type_to_str(f.return_type))
 	node.result_type = f.return_type
 	return f.return_type
 }

@@ -72,6 +72,30 @@ pub fn (mut w Walker) mark_exported_fns() {
 	}
 }
 
+pub fn (mut w Walker) mark_markused_fns() {
+	for _, mut func in w.all_fns {
+		if func.is_markused {
+			w.fn_decl(mut func)
+		}
+	}
+}
+
+pub fn (mut w Walker) mark_markused_consts() {
+	for ckey, mut constfield in w.all_consts {
+		if constfield.is_markused {
+			w.mark_const_as_used(ckey)
+		}
+	}
+}
+
+pub fn (mut w Walker) mark_markused_globals() {
+	for gkey, mut globalfield in w.all_globals {
+		if globalfield.is_markused {
+			w.mark_global_as_used(gkey)
+		}
+	}
+}
+
 pub fn (mut w Walker) stmt(node ast.Stmt) {
 	match mut node {
 		ast.EmptyStmt {}

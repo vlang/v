@@ -105,6 +105,7 @@ fn main() {
 		eprintln('v bug: no v file listed to report')
 		exit(1)
 	}
+	os.unsetenv('VCOLORS')
 	// collect error information
 	// output from `v doctor`
 	vdoctor_output := get_vdoctor_output(is_verbose)

@@ -131,7 +131,12 @@ fn test_bin() {
 	x5 := byte(0b11111111)
 	assert x5 == 255
 	x6 := char(0b11111111)
-	assert int(x6) == -1
+	// C.char is unsigned on arm64, but signed on amd64, by default
+	$if arm64 {
+		assert int(x6) == 255
+	} $else {
+		assert int(x6) == -1
+	}
 	x7 := 0b0
 	assert x7 == 0
 	x8 := -0b0

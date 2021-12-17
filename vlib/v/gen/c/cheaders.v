@@ -58,6 +58,15 @@ static inline void __sort_ptr(uintptr_t a[], bool b[], int l) {
 }
 '
 
+fn arm_bytes(nargs int) string {
+	// start:
+	// ldr  x16, start-0x08
+	// ldr  x<REG>, start-0x10
+	// br  x16
+	bytes := '0xd0, 0xff, 0xff, 0x58, 0x6<REG>, 0xff, 0xff, 0x58, 0x00, 0x02, 0x1f, 0xd6'
+	return bytes.replace('<REG>', nargs.str())
+}
+
 // Heavily based on Chris Wellons's work
 // https://nullprogram.com/blog/2017/01/08/
 
@@ -65,7 +74,7 @@ fn c_closure_helpers(pref &pref.Preferences) string {
 	if pref.os == .windows {
 		verror('closures are not implemented on Windows yet')
 	}
-	if pref.arch != .amd64 {
+	if pref.arch !in [.amd64, .arm64] {
 		verror('closures are not implemented on this architecture yet: $pref.arch')
 	}
 	mut builder := strings.new_builder(2048)
@@ -93,6 +102,24 @@ static unsigned char __closure_thunk[6][13] = {
     }, {
         0x4C, 0x8b, 0x0d, 0xe9, 0xff, 0xff, 0xff,
         0xff, 0x25, 0xeb, 0xff, 0xff, 0xff
+    },
+};
+')
+	} else if pref.arch == .arm64 {
+		builder.write_string('
+static unsigned char __closure_thunk[6][12] = {
+    {
+        ${arm_bytes(0)}
+    }, {
+        ${arm_bytes(1)}
+    }, {
+        ${arm_bytes(2)}
+    }, {
+        ${arm_bytes(3)}
+    }, {
+        ${arm_bytes(4)}
+    }, {
+        ${arm_bytes(5)}
     },
 };
 ')

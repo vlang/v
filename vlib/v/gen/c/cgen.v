@@ -4795,10 +4795,12 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 }
 
 fn (mut g Gen) map_init(node ast.MapInit) {
-	key_typ_str := g.typ(node.key_type)
-	value_typ_str := g.typ(node.value_type)
-	value_typ := g.table.get_type_symbol(node.value_type)
-	key_typ := g.table.get_final_type_symbol(node.key_type)
+	unwrap_key_typ := g.unwrap_generic(node.key_type)
+	unwrap_val_typ := g.unwrap_generic(node.value_type)
+	key_typ_str := g.typ(unwrap_key_typ)
+	value_typ_str := g.typ(unwrap_val_typ)
+	value_typ := g.table.get_type_symbol(unwrap_val_typ)
+	key_typ := g.table.get_final_type_symbol(unwrap_key_typ)
 	hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_typ)
 	size := node.vals.len
 	mut shared_styp := '' // only needed for shared &[]{...}
@@ -5331,10 +5333,11 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 									is_auto_heap = v.is_auto_heap
 								}
 							}
+							left_var_name := c_name(branch.cond.var_name)
 							if is_auto_heap {
-								g.writeln('\t$base_type* $branch.cond.var_name = HEAP($base_type, *($base_type*)${var_name}.data);')
+								g.writeln('\t$base_type* $left_var_name = HEAP($base_type, *($base_type*)${var_name}.data);')
 							} else {
-								g.writeln('\t$base_type $branch.cond.var_name = *($base_type*)${var_name}.data;')
+								g.writeln('\t$base_type $left_var_name = *($base_type*)${var_name}.data;')
 							}
 						}
 					}
@@ -6808,11 +6811,25 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 						|| field_sym.kind in [.array, .map, .string, .bool, .alias, .i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .char, .voidptr, .byteptr, .charptr, .struct_] {
 						field_name := c_name(field.name)
 						if field.has_default_expr {
-							expr_str := g.expr_string_with_cast(field.default_expr, field.default_expr_typ,
-								field.typ)
+							mut expr_str := ''
+							if g.table.get_type_symbol(field.typ).kind in [.sum_type, .interface_] {
+								expr_str = g.expr_string_with_cast(field.default_expr,
+									field.default_expr_typ, field.typ)
+							} else {
+								expr_str = g.expr_string(field.default_expr)
+							}
 							init_str += '.$field_name = $expr_str,'
 						} else {
-							init_str += '.$field_name = ${g.type_default(field.typ)},'
+							mut zero_str := g.type_default(field.typ)
+							if zero_str == '{0}' {
+								if field_sym.info is ast.Struct && field_sym.language == .v {
+									if field_sym.info.fields.len == 0
+										&& field_sym.info.embeds.len == 0 {
+										zero_str = '{EMPTY_STRUCT_INITIALIZATION}'
+									}
+								}
+							}
+							init_str += '.$field_name = $zero_str,'
 						}
 						has_none_zero = true
 					}
@@ -7190,6 +7207,11 @@ fn (mut g Gen) interface_table() string {
 		if isym.kind != .interface_ {
 			continue
 		}
+		if isym.info !is ast.Interface {
+			// Do not remove this check, `isym.info` could be `&IError`.
+			// dump(isym)
+			continue
+		}
 		inter_info := isym.info as ast.Interface
 		if inter_info.is_generic {
 			continue
@@ -7320,7 +7342,12 @@ static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype
 			if st_sym.info is ast.Struct {
 				for embed in st_sym.info.embeds {
 					embed_sym := g.table.get_type_symbol(embed)
-					methods << embed_sym.methods
+					method_names := methods.map(it.name)
+					for embed_method in embed_sym.methods {
+						if embed_method.name !in method_names {
+							methods << embed_method
+						}
+					}
 				}
 			}
 			for method in methods {

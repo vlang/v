@@ -776,6 +776,7 @@ mut:
 }
 
 pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
+	f.attrs(node.attrs)
 	if node.is_pub {
 		f.write('pub ')
 	}
@@ -1237,6 +1238,7 @@ pub fn (mut f Fmt) alias_type_decl(node ast.AliasTypeDecl) {
 	f.write('type $node.name = $ptype')
 
 	f.comments(node.comments, has_nl: false)
+	f.mark_types_import_as_used(node.parent_type)
 }
 
 pub fn (mut f Fmt) fn_type_decl(node ast.FnTypeDecl) {
@@ -1253,6 +1255,7 @@ pub fn (mut f Fmt) fn_type_decl(node ast.FnTypeDecl) {
 			f.write(arg.typ.share().str() + ' ')
 		}
 		f.write(arg.name)
+		f.mark_types_import_as_used(arg.typ)
 		mut s := f.no_cur_mod(f.table.type_to_str_using_aliases(arg.typ, f.mod2alias))
 		if arg.is_mut {
 			if s.starts_with('&') {
@@ -1277,6 +1280,7 @@ pub fn (mut f Fmt) fn_type_decl(node ast.FnTypeDecl) {
 	}
 	f.write(')')
 	if fn_info.return_type.idx() != ast.void_type_idx {
+		f.mark_types_import_as_used(fn_info.return_type)
 		ret_str := f.no_cur_mod(f.table.type_to_str_using_aliases(fn_info.return_type,
 			f.mod2alias))
 		f.write(' $ret_str')
@@ -1297,8 +1301,11 @@ pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
 	f.write_generic_types(node.generic_types)
 	f.write(' = ')
 
-	mut sum_type_names := node.variants.map(f.table.type_to_str_using_aliases(it.typ,
-		f.mod2alias))
+	mut sum_type_names := []string{cap: node.variants.len}
+	for variant in node.variants {
+		sum_type_names << f.table.type_to_str_using_aliases(variant.typ, f.mod2alias)
+		f.mark_types_import_as_used(variant.typ)
+	}
 	sum_type_names.sort()
 
 	mut separator := ' | '

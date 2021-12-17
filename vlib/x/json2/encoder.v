@@ -69,10 +69,7 @@ pub fn (f Any) json_str() string {
 		string {
 			return json_string(f)
 		}
-		int {
-			return f.str()
-		}
-		u64, i64 {
+		bool, int, u64, i64 {
 			return f.str()
 		}
 		f32 {
@@ -88,9 +85,6 @@ pub fn (f Any) json_str() string {
 				return '${str_f64}0'
 			}
 			return str_f64
-		}
-		bool {
-			return f.str()
 		}
 		map[string]Any {
 			return f.str()

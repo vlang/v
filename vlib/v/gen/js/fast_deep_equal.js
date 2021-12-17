@@ -21,7 +21,7 @@ function vEq(a, b) {
 			return true;
 		}
 
-
+		
 		if ((a instanceof Map) && (b instanceof Map)) {
 			if (a.size !== b.size) return false;
 			for (i of a.entries())

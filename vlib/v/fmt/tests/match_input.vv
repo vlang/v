@@ -34,3 +34,15 @@ fn really_long_branch_exprs() {
 		}
 	}
 }
+
+fn match_branch_extra_comma() {
+	match x {
+		Foo, Bar, {}
+		int,,, string, {}
+	}
+	match n {
+		0...5, {}
+		2, 3, {}
+		else {}
+	}
+}

@@ -185,6 +185,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		// enable additional warnings:
 		'-Wno-unknown-warning' /* if a C compiler does not understand a certain flag, it should just ignore it */,
 		'-Wno-unknown-warning-option' /* clang equivalent of the above */,
+		'-Wno-excess-initializers' /* vlib/v/tests/struct_init_with_complex_fields_test.v fails without that on macos clang 13 */,
 		'-Wdate-time',
 		'-Wduplicated-branches',
 		'-Wduplicated-cond',

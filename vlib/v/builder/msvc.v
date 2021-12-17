@@ -481,6 +481,8 @@ pub fn msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 			real_libs << lib_lib
 		} else if flag.name == '-I' {
 			inc_paths << flag.format()
+		} else if flag.name == '-D' {
+			defines << '/D$flag.value'
 		} else if flag.name == '-L' {
 			lib_paths << flag.value
 			lib_paths << flag.value + os.path_separator + 'msvc'

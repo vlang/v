@@ -107,6 +107,7 @@ pub mut:
 	is_shared         bool   // an ordinary shared library, -shared, no matter if it is live or not
 	is_o              bool   // building an .o file
 	is_prof           bool   // benchmark every function
+	test_runner       string // can be 'simple' (fastest, but much less detailed), 'tap', 'normal'
 	profile_file      string // the profile results will be stored inside profile_file
 	profile_no_inline bool   // when true, [inline] functions would not be profiled
 	translated        bool   // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
@@ -154,6 +155,7 @@ pub mut:
 	custom_prelude   string // Contents of custom V prelude that will be prepended before code in resulting .c files
 	lookup_path      []string
 	output_cross_c   bool // true, when the user passed `-os cross`
+	output_es5       bool
 	prealloc         bool
 	vroot            string
 	out_name_c       string // full os.real_path to the generated .tmp.c file; set by builder.
@@ -464,6 +466,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-show-depgraph' {
 				res.show_depgraph = true
 			}
+			'-test-runner' {
+				res.test_runner = cmdline.option(current_args, arg, res.test_runner)
+				i++
+			}
 			'-dump-c-flags' {
 				res.dump_c_flags = cmdline.option(current_args, arg, '-')
 				i++
@@ -579,6 +585,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				}
 				res.backend = b
 				i++
+			}
+			'-es5' {
+				res.output_es5 = true
 			}
 			'-path' {
 				path := cmdline.option(current_args, '-path', '')

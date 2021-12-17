@@ -91,6 +91,7 @@ pub:
 	is_keep_alive   bool // passed memory must not be freed (by GC) before function returns
 	no_body         bool // a pure declaration like `fn abc(x int)`; used in .vh files, C./JS. fns.
 	mod             string
+	file            string
 	file_mode       Language
 	pos             token.Position
 	return_type_pos token.Position
