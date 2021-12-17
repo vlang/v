@@ -58,12 +58,21 @@ static inline void __sort_ptr(uintptr_t a[], bool b[], int l) {
 }
 '
 
-fn arm_bytes(nargs int) string {
+fn arm64_bytes(nargs int) string {
 	// start:
-	// ldr  x16, start-0x08
+	// ldr  x16,    start-0x08
 	// ldr  x<REG>, start-0x10
 	// br  x16
 	bytes := '0xd0, 0xff, 0xff, 0x58, 0x6<REG>, 0xff, 0xff, 0x58, 0x00, 0x02, 0x1f, 0xd6'
+	return bytes.replace('<REG>', nargs.str())
+}
+
+fn arm32_bytes(nargs int) string {
+	// start:
+	// ldr  r9,     start-0x4
+	// ldr  r<REG>, start-0x8
+	// bx   r9
+	bytes := '0x0c, 0x90, 0x1f, 0xe5, 0x14, 0x<REG>0, 0x1f, 0xe5, 0x19, 0xff, 0x2f, 0xe1'
 	return bytes.replace('<REG>', nargs.str())
 }
 
@@ -74,7 +83,7 @@ fn c_closure_helpers(pref &pref.Preferences) string {
 	if pref.os == .windows {
 		verror('closures are not implemented on Windows yet')
 	}
-	if pref.arch !in [.amd64, .arm64] {
+	if pref.arch !in [.amd64, .arm64, .arm32] {
 		verror('closures are not implemented on this architecture yet: $pref.arch')
 	}
 	mut builder := strings.new_builder(2048)
@@ -109,17 +118,35 @@ static unsigned char __closure_thunk[6][13] = {
 		builder.write_string('
 static unsigned char __closure_thunk[6][12] = {
     {
-        ${arm_bytes(0)}
+        ${arm64_bytes(0)}
     }, {
-        ${arm_bytes(1)}
+        ${arm64_bytes(1)}
     }, {
-        ${arm_bytes(2)}
+        ${arm64_bytes(2)}
     }, {
-        ${arm_bytes(3)}
+        ${arm64_bytes(3)}
     }, {
-        ${arm_bytes(4)}
+        ${arm64_bytes(4)}
     }, {
-        ${arm_bytes(5)}
+        ${arm64_bytes(5)}
+    },
+};
+')
+	} else if pref.arch == .arm32 {
+		builder.write_string('
+static unsigned char __closure_thunk[6][12] = {
+    {
+        ${arm32_bytes(0)}
+    }, {
+        ${arm32_bytes(1)}
+    }, {
+        ${arm32_bytes(2)}
+    }, {
+        ${arm32_bytes(3)}
+    }, {
+        ${arm32_bytes(4)}
+    }, {
+        ${arm32_bytes(5)}
     },
 };
 ')
