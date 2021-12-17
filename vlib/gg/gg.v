@@ -667,7 +667,7 @@ pub fn (ctx &Context) draw_empty_arc(x f32, y f32, inner_r f32, outer_r f32, sta
 		angle += step_length
 	}
 	sgl.end()
-	
+
 	// Inner circle
 	angle = 0
 	sgl.begin_line_strip()
@@ -680,16 +680,16 @@ pub fn (ctx &Context) draw_empty_arc(x f32, y f32, inner_r f32, outer_r f32, sta
 		angle += step_length
 	}
 	sgl.end()
-	
+
 	// First end
 	sgl.begin_line_strip()
-	sgl.c4b(c.r, c.g, c.b, c.a)	
+	sgl.c4b(c.r, c.g, c.b, c.a)
 	angle = 0
-	
+
 	sgl.v2f(x + f32(math.sin(angle)) * r1, y + f32(math.cos(angle) * r1))
 	sgl.v2f(x + f32(math.sin(angle)) * r2, y + f32(math.cos(angle) * r2))
 	sgl.end()
-	
+
 	// Second end
 	sgl.begin_line_strip()
 	sgl.c4b(c.r, c.g, c.b, c.a)
@@ -699,7 +699,6 @@ pub fn (ctx &Context) draw_empty_arc(x f32, y f32, inner_r f32, outer_r f32, sta
 
 	sgl.end()
 }
-
 
 // Draws a filled rounded rectangle
 pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, w f32, h f32, radius f32, c gx.Color) {
