@@ -70,6 +70,7 @@ const (
 	]
 	skip_on_musl                  = [
 		'vlib/v/tests/profile/profile_test.v',
+		'vlib/gg/draw_fns_api_test.v',
 	]
 	skip_on_ubuntu_musl           = [
 		//'vlib/v/gen/js/jsgen_test.v',
