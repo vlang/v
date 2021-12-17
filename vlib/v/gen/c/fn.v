@@ -725,9 +725,17 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		$if debug_interface_method_call ? {
 			eprintln('>>> interface typ_sym.name: $typ_sym.name | receiver_type_name: $receiver_type_name | pos: $node.pos')
 		}
+
+		left_is_shared := node.left_type.has_flag(.shared_f)
 		g.write('${c_name(receiver_type_name)}_name_table[')
 		g.expr(node.left)
-		dot := if node.left_type.is_ptr() { '->' } else { '.' }
+		dot := if left_is_shared {
+			'->val.'
+		} else if node.left_type.is_ptr() {
+			'->'
+		} else {
+			'.'
+		}
 		mname := c_name(node.name)
 		g.write('${dot}_typ]._method_${mname}(')
 		g.expr(node.left)

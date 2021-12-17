@@ -183,6 +183,7 @@ mut:
 	force_main_console  bool // true when [console] used on fn main()
 	as_cast_type_names  map[string]string // table for type name lookup in runtime (for __as_cast)
 	obf_table           map[string]string
+	referenced_fns      map[string]bool // functions that have been referenced
 	nr_closures         int
 	expected_cast_type  ast.Type // for match expr of sumtypes
 	anon_fn             bool
@@ -523,6 +524,7 @@ fn cgen_process_one_file_cb(p &pool.PoolProcessor, idx int, wid int) &Gen {
 		threaded_fns: global_g.threaded_fns
 		done_optionals: global_g.done_optionals
 		is_autofree: global_g.pref.autofree
+		referenced_fns: global_g.referenced_fns
 	}
 	g.gen_file()
 	return g
@@ -2353,8 +2355,16 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 				'f64' { 'float_literal' }
 				else { got_styp }
 			}
-			exp_styp := exp_sym.cname
-			mut fname := '/*$exp_sym*/I_${got_styp}_to_Interface_$exp_styp'
+			got_is_shared := got_type.has_flag(.shared_f)
+			exp_styp := if got_is_shared { '__shared__$exp_sym.cname' } else { exp_sym.cname }
+			// If it's shared, we need to use the other caster:
+			mut fname := if got_is_shared {
+				'I___shared__${got_styp}_to_shared_Interface_$exp_styp'
+			} else {
+				'I_${got_styp}_to_Interface_$exp_styp'
+			}
+			g.referenced_fns[fname] = true
+			fname = '/*$exp_sym*/$fname'
 			if exp_sym.info.is_generic {
 				fname = g.generic_fn_name(exp_sym.info.concrete_types, fname, false)
 			}
@@ -6497,6 +6507,10 @@ fn (g Gen) as_cast_name_table() string {
 	return name_ast.str()
 }
 
+fn (g Gen) has_been_referenced(fn_name string) bool {
+	return g.referenced_fns[fn_name]
+}
+
 // Generates interface table and interface indexes
 fn (mut g Gen) interface_table() string {
 	mut sb := strings.new_builder(100)
@@ -6607,6 +6621,25 @@ fn (mut g Gen) interface_table() string {
 static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype* x) {
 	return $cast_struct_str;
 }')
+
+				shared_fn_name := 'I___shared__${cctype}_to_shared_Interface___shared__$interface_name'
+				// Avoid undefined types errors by only generating the converters that are referenced:
+				if g.has_been_referenced(shared_fn_name) {
+					mut cast_shared_struct := strings.new_builder(100)
+					cast_shared_struct.writeln('(__shared__$interface_name) {')
+					cast_shared_struct.writeln('\t\t.mtx = {0},')
+					cast_shared_struct.writeln('\t\t.val = {')
+					cast_shared_struct.writeln('\t\t\t._$cctype = &x->val,')
+					cast_shared_struct.writeln('\t\t\t._typ = $interface_index_name,')
+					cast_shared_struct.writeln('\t\t}')
+					cast_shared_struct.write_string('\t}')
+					cast_shared_struct_str := cast_shared_struct.str()
+					cast_functions.writeln('
+// Casting functions for converting "__shared__$cctype" to interface "__shared__$interface_name"
+static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) {
+	return $cast_shared_struct_str;
+}')
+				}
 			}
 
 			if g.pref.build_mode != .build_module {
@@ -6685,7 +6718,13 @@ static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype
 						typ: st.set_nr_muls(1)
 					}
 					fargs, _, _ := g.fn_args(params, voidptr(0))
-					methods_wrapper.write_string(g.out.cut_last(g.out.len - params_start_pos))
+					mut parameter_name := g.out.cut_last(g.out.len - params_start_pos)
+
+					if st.is_ptr() {
+						parameter_name = parameter_name.trim_left('__shared__')
+					}
+
+					methods_wrapper.write_string(parameter_name)
 					methods_wrapper.writeln(') {')
 					methods_wrapper.write_string('\t')
 					if method.return_type != ast.void_type {
@@ -6704,7 +6743,11 @@ static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype
 						}
 						methods_wrapper.writeln('${fargs[1..].join(', ')});')
 					} else {
-						methods_wrapper.writeln('${method_call}(*${fargs.join(', ')});')
+						if parameter_name.starts_with('__shared__') { // I cringe at the hackiness of this patch
+							methods_wrapper.writeln('${method_call}(${fargs.join(', ')}->val);')
+						} else {
+							methods_wrapper.writeln('${method_call}(*${fargs.join(', ')});')
+						}
 					}
 					methods_wrapper.writeln('}')
 					// .speak = Cat_speak_Interface_Animal_method_wrapper
