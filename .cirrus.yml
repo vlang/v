@@ -83,6 +83,6 @@ arm64_task:
     ./v tutorials/building_a_simple_web_blog_with_vweb/code/blog
 
     # test the arm32 version of tcc
-    alias aqemu="qemu-arm -L /usr/arm-linux-gnueabihf"
-    ./v -arch arm32 -cc arm-linux-gnueabihf-gcc-10 -o av cmd/v &&  ./av -arch arm32 -cc arm-linux-gnueabihf-gcc-10 -o av2 cmd/v && aqemu ./av2 -arch arm32 -cc arm-linux-gnueabihf-gcc-10 -o av3 cmd/v && aqemu ./av3 -arch arm32 -cc arm-linux-gnueabihf-gcc-10 -o av4 cmd/v
-    ./v -arch arm32 -cc arm-linux-gnueabihf-gcc-10 -o closure_test x.v && aqemu ./closure_test
+    # TODO: support something like `V_EMULATOR=qemu-arm v run file.v` so that V automatically runs all binaries under qemu
+    ./v -arch arm32 -cc arm-linux-gnueabihf-gcc-10 -o av cmd/v && qemu-arm -L /usr/arm-linux-gnueabihf ./av -arch arm32 -cc arm-linux-gnueabihf-gcc-10 -o av2 cmd/v && qemu-arm -L /usr/arm-linux-gnueabihf ./av2 -arch arm32 -cc arm-linux-gnueabihf-gcc-10 -o av3 cmd/v && qemu-arm -L /usr/arm-linux-gnueabihf ./av3 -arch arm32 -cc arm-linux-gnueabihf-gcc-10 -o av4 cmd/v
+    ./v -arch arm32 -o closure_test.c vlib/v/tests/closure_test.v && arm-linux-gnueabihf-gcc-10 -o closure_test closure_test.c && qemu-arm -L /usr/arm-linux-gnueabihf ./closure_test
