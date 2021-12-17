@@ -350,7 +350,13 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 			g.write('->val')
 		}
 		g.write(', &($key_type_str[]){')
+		old_is_arraymap_set := g.is_arraymap_set
+		old_is_assign_lhs := g.is_assign_lhs
+		g.is_arraymap_set = false
+		g.is_assign_lhs = false
 		g.expr(node.index)
+		g.is_arraymap_set = old_is_arraymap_set
+		g.is_assign_lhs = old_is_assign_lhs
 		g.write('}')
 		if elem_typ.kind == .function {
 			g.write(', &(voidptr[]) { ')
