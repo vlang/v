@@ -19,7 +19,7 @@ arm64_task:
   name: Code CI / arm64-ubuntu-tcc
   arm_container:
     image: ubuntu:latest
-  install_script: apt-get update -y && apt-get install --quiet -y build-essential pkg-config wget git valgrind libsqlite3-dev libssl-dev libxi-dev libxcursor-dev libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base libmysqlclient-dev libpq-dev
+  install_script: apt-get update -y && apt-get install --quiet -y build-essential pkg-config wget git valgrind libsqlite3-dev libssl-dev libxi-dev libxcursor-dev libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base libmysqlclient-dev libpq-dev gcc-10-arm-linux-gnueabihf libc6-dev-armhf-cross qemu-user
   env:
     DEBIAN_FRONTEND: noninteractive
     VFLAGS: -cc tcc -no-retry-compilation
@@ -81,3 +81,8 @@ arm64_task:
     ./v run examples/v_script.vsh
     # - name: Test v tutorials
     ./v tutorials/building_a_simple_web_blog_with_vweb/code/blog
+
+    # test the arm32 version of tcc
+    alias aqemu="qemu-arm -L /usr/arm-linux-gnueabihf"
+    ./v -arch arm32 -cc arm-linux-gnueabihf-gcc-10 -o av cmd/v &&  ./av -arch arm32 -cc arm-linux-gnueabihf-gcc-10 -o av2 cmd/v && aqemu ./av2 -arch arm32 -cc arm-linux-gnueabihf-gcc-10 -o av3 cmd/v && aqemu ./av3 -arch arm32 -cc arm-linux-gnueabihf-gcc-10 -o av4 cmd/v
+    ./v -arch arm32 -cc arm-linux-gnueabihf-gcc-10 -o closure_test x.v && aqemu ./closure_test
