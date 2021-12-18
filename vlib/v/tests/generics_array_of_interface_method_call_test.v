@@ -32,4 +32,5 @@ fn test_generic_array_of_interface_method_call() {
 	mut a := Array<IObject>{[s]}
 	ret := a.contains(IObject(s))
 	println(ret)
+	assert ret
 }
