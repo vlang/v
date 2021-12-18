@@ -1557,6 +1557,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		g.checker_bug('ref_or_deref_arg expected_type is 0', arg.pos)
 	}
 	exp_sym := g.table.get_type_symbol(expected_type)
+	arg_typ := g.unwrap_generic(arg.typ)
 	mut needs_closing := false
 	if arg.is_mut && !arg_is_ptr {
 		g.write('&/*mut*/')
@@ -1578,10 +1579,10 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 			}
 		}
 		if !g.is_json_fn {
-			if arg.typ == 0 {
+			if arg_typ == 0 {
 				g.checker_bug('ref_or_deref_arg arg.typ is 0', arg.pos)
 			}
-			arg_typ_sym := g.table.get_type_symbol(arg.typ)
+			arg_typ_sym := g.table.get_type_symbol(arg_typ)
 			expected_deref_type := if expected_type.is_ptr() {
 				expected_type.deref()
 			} else {
@@ -1606,7 +1607,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 				}
 			}
 		}
-	} else if arg.typ.has_flag(.shared_f) && !expected_type.has_flag(.shared_f) {
+	} else if arg_typ.has_flag(.shared_f) && !expected_type.has_flag(.shared_f) {
 		if expected_type.is_ptr() {
 			g.write('&')
 		}
@@ -1614,7 +1615,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		g.write('->val')
 		return
 	}
-	g.expr_with_cast(arg.expr, arg.typ, expected_type)
+	g.expr_with_cast(arg.expr, arg_typ, expected_type)
 	if needs_closing {
 		g.write(')')
 	}
