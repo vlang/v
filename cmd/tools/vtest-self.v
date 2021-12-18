@@ -109,6 +109,7 @@ const (
 		'vlib/orm/orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/closure_test.v',
+		'vlib/v/tests/closure_generator_test.v',
 		'vlib/net/websocket/ws_test.v',
 		'vlib/net/unix/unix_test.v',
 		'vlib/net/websocket/websocket_test.v',
@@ -132,6 +133,7 @@ const (
 		'do_not_remove',
 	]
 	skip_on_arm64                 = [
+		'vlib/v/tests/closure_generator_test.v',
 		'do_not_remove',
 	]
 	skip_on_non_amd64_or_arm64    = [

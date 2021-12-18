@@ -452,8 +452,20 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 	// it may be possible to optimize `memdup` out if the closure never leaves current scope
 	ctx_struct := closure_ctx_struct(node.decl)
 	// TODO in case of an assignment, this should only call "__closure_set_data" and "__closure_set_function" (and free the former data)
-	g.write('__closure_create($node.decl.name, ${node.decl.params.len + 1}, ')
-	g.writeln('($ctx_struct*) memdup(&($ctx_struct){')
+
+	mut size_sb := strings.new_builder(node.decl.params.len * 50)
+	for param in node.decl.params {
+		size_sb.write_string('_REG_WIDTH(${g.typ(param.typ)}) + ')
+	}
+	size_sb.write_string('1')
+	args_size := size_sb.str()
+	g.writeln('')
+
+	// ensure that nargs maps to a known entry in the __closure_thunk array
+	// TODO make it a compile-time error (you can't call `sizeof()` inside preprocessor `#if`s)
+	// NB: this won't be necessary when (if) we have functions that return the machine code for
+	// an arbitrary number of arguments
+	g.write('__closure_create($node.decl.name, __closure_check_nargs($args_size), ($ctx_struct*) memdup(&($ctx_struct){')
 	g.indent++
 	for var in node.inherited_vars {
 		g.writeln('.$var.name = $var.name,')
