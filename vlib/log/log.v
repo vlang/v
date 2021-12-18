@@ -9,22 +9,25 @@ import term
 
 // Level defines possible log levels used by `Log`
 pub enum Level {
-	fatal = 1
+	disabled = 0
+	fatal
 	error
 	warn
 	info
 	debug
 }
 
+// LogTarget defines possible log targets
 pub enum LogTarget {
 	console
 	file
 	both
 }
 
-// tag returns the tag for log level `l` as a string.
+// tag_to_cli returns the tag for log level `l` as a colored string.
 fn tag_to_cli(l Level) string {
 	return match l {
+		.disabled { '' }
 		.fatal { term.red('FATAL') }
 		.error { term.red('ERROR') }
 		.warn { term.yellow('WARN ') }
@@ -33,9 +36,10 @@ fn tag_to_cli(l Level) string {
 	}
 }
 
-// tag returns the tag for log level `l` as a string.
+// tag_to_file returns the tag for log level `l` as a string.
 fn tag_to_file(l Level) string {
 	return match l {
+		.disabled { '     ' }
 		.fatal { 'FATAL' }
 		.error { 'ERROR' }
 		.warn { 'WARN ' }
@@ -44,7 +48,21 @@ fn tag_to_file(l Level) string {
 	}
 }
 
-interface Logger {
+// level_from_tag returns the log level from the given string if matches.
+pub fn level_from_tag(tag string) ?Level {
+	return match tag {
+		'DISABLED' { Level.disabled }
+		'FATAL' { Level.fatal }
+		'ERROR' { Level.error }
+		'WARN' { Level.warn }
+		'INFO' { Level.info }
+		'DEBUG' { Level.debug }
+		else { none }
+	}
+}
+
+// Logger is an interface that describes a generic Logger
+pub interface Logger {
 	fatal(s string)
 	error(s string)
 	warn(s string)
@@ -58,7 +76,7 @@ mut:
 	level         Level
 	output_label  string
 	ofile         os.File
-	output_target LogTarget // if true output to file else use stdout/stderr.
+	output_target LogTarget // output to console (stdout/stderr) or file or both.
 pub mut:
 	output_file_name string // log output to this file
 }
@@ -148,12 +166,12 @@ pub fn (mut l Log) send_output(s &string, level Level) {
 }
 
 // fatal logs line `s` via `send_output` if `Log.level` is greater than or equal to the `Level.fatal` category.
+// Note that this method performs a panic at the end, even if log level is not enabled.
 pub fn (mut l Log) fatal(s string) {
-	if int(l.level) < int(Level.fatal) {
-		return
+	if int(l.level) >= int(Level.fatal) {
+		l.send_output(s, .fatal)
+		l.ofile.close()
 	}
-	l.send_output(s, .fatal)
-	l.ofile.close()
 	panic('$l.output_label: $s')
 }
 
