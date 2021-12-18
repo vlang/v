@@ -64,7 +64,7 @@ fn test_closures_with_n_args() ? {
 	os.chdir(wrkdir) ?
 	os.write_file('closure_args_test.v', code) ?
 	vexe := os.getenv('VEXE')
-	res := os.execute('$vexe closure_args_test.v')
+	res := os.execute('"$vexe" closure_args_test.v')
 	if res.exit_code != 0 {
 		eprintln(res.output)
 		assert false

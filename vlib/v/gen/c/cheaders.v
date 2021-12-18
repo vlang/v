@@ -224,7 +224,7 @@ static void __closure_set_function(void *closure, void *f) {
 
 static inline int __closure_check_nargs(int nargs) {
 	if (nargs > (int)_ARR_LEN(__closure_thunk)) {
-		_v_panic(_SLIT("Closure too largs. Try reducing the number of parameters or pass the parameters by reference."));
+		_v_panic(_SLIT("Closure too large. Reduce the number of parameters, or pass the parameters by reference."));
 		VUNREACHABLE();
 	}
 	return nargs;
