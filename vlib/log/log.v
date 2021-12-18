@@ -48,15 +48,16 @@ fn tag_to_file(l Level) string {
 	}
 }
 
-// level_from_tag returns the log level from the given string or disabled if no match.
-pub fn level_from_tag(tag string) Level {
+// level_from_tag returns the log level from the given string if matches.
+pub fn level_from_tag(tag string) ?Level {
 	return match tag {
-		'FATAL' { .fatal }
-		'ERROR' { .error }
-		'WARN' { .warn }
-		'INFO'  { .info }
-		'DEBUG' { .debug }
-		else { .disabled }
+		'DISABLED' { Level.disabled }
+		'FATAL' { Level.fatal }
+		'ERROR' { Level.error }
+		'WARN' { Level.warn }
+		'INFO'  { Level.info }
+		'DEBUG' { Level.debug }
+		else { none }
 	}
 }
 
@@ -165,12 +166,12 @@ pub fn (mut l Log) send_output(s &string, level Level) {
 }
 
 // fatal logs line `s` via `send_output` if `Log.level` is greater than or equal to the `Level.fatal` category.
+// Note that this method performs a panic at the end, even if log level is not enabled.
 pub fn (mut l Log) fatal(s string) {
-	if int(l.level) < int(Level.fatal) {
-		return
+	if int(l.level) >= int(Level.fatal) {
+		l.send_output(s, .fatal)
+		l.ofile.close()
 	}
-	l.send_output(s, .fatal)
-	l.ofile.close()
 	panic('$l.output_label: $s')
 }
 
