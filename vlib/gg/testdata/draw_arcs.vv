@@ -20,4 +20,3 @@ fn frame(mut ctx gg.Context) {
 	ctx.draw_arc_empty(100, 100, 30, 50, 0, f32(math.radians(290)), 30, gx.white)
 	ctx.end()
 }
-
