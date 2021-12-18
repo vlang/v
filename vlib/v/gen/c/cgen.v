@@ -75,26 +75,28 @@ mut:
 	file                   &ast.File
 	fn_decl                &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	last_fn_c_name         string
-	tmp_count              int    // counter for unique tmp vars (_tmp1, _tmp2 etc); resets at the start of each fn.
-	tmp_count2             int    // a separate tmp var counter for autofree fn calls
-	tmp_count_declarations int    // counter for unique tmp names (_d1, _d2 etc); does NOT reset, used for C declarations
-	global_tmp_count       int    // like tmp_count but global and not resetted in each function
-	is_assign_lhs          bool   // inside left part of assign expr (for array_set(), etc)
-	discard_or_result      bool   // do not safe last ExprStmt of `or` block in tmp variable to defer ongoing expr usage
-	is_void_expr_stmt      bool   // ExprStmt whos result is discarded
-	is_arraymap_set        bool   // map or array set value state
-	is_amp                 bool   // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
-	is_sql                 bool   // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
-	is_shared              bool   // for initialization of hidden mutex in `[rw]shared` literals
-	is_vlines_enabled      bool   // is it safe to generate #line directives when -g is passed
-	inside_cast_in_heap    int    // inside cast to interface type in heap (resolve recursive calls)
-	arraymap_set_pos       int    // map or array set value position
+	tmp_count              int  // counter for unique tmp vars (_tmp1, _tmp2 etc); resets at the start of each fn.
+	tmp_count2             int  // a separate tmp var counter for autofree fn calls
+	tmp_count_declarations int  // counter for unique tmp names (_d1, _d2 etc); does NOT reset, used for C declarations
+	global_tmp_count       int  // like tmp_count but global and not resetted in each function
+	discard_or_result      bool // do not safe last ExprStmt of `or` block in tmp variable to defer ongoing expr usage
+	is_assign_lhs          bool // inside left part of assign expr (for array_set(), etc)
+	is_void_expr_stmt      bool // ExprStmt whos result is discarded
+	is_arraymap_set        bool // map or array set value state
+	is_amp                 bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
+	is_sql                 bool // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
+	is_shared              bool // for initialization of hidden mutex in `[rw]shared` literals
+	is_vlines_enabled      bool // is it safe to generate #line directives when -g is passed
+	is_autofree            bool // false, inside the bodies of fns marked with [manualfree], otherwise === g.pref.autofree
+	is_builtin_mod         bool
+	is_json_fn             bool // inside json.encode()
+	is_js_call             bool // for handling a special type arg #1 `json.decode(User, ...)`
+	is_fn_index_call       bool
 	vlines_path            string // set to the proper path for generating #line directives
 	optionals              map[string]string // to avoid duplicates
 	done_optionals         shared []string   // to avoid duplicates
 	chan_pop_optionals     map[string]string // types for `x := <-ch or {...}`
 	chan_push_optionals    map[string]string // types for `ch <- x or {...}`
-	cur_lock               ast.LockExpr
 	mtxs                   string // array of mutexes if the `lock` has multiple variables
 	labeled_loops          map[string]&ast.Stmt
 	inner_loop             &ast.Stmt
@@ -106,31 +108,42 @@ mut:
 	inside_opt_data        bool
 	inside_if_optional     bool
 	inside_match_optional  bool
+	inside_vweb_tmpl       bool
+	inside_return          bool
+	inside_or_block        bool
+	inside_call            bool
+	inside_cast_in_heap    int // inside cast to interface type in heap (resolve recursive calls)
+	inside_const           bool
+	inside_lambda          bool
 	loop_depth             int
 	ternary_names          map[string]string
 	ternary_level_names    map[string][]string
+	arraymap_set_pos       int   // map or array set value position
 	stmt_path_pos          []int // positions of each statement start, for inserting C statements before the current statement
 	skip_stmt_pos          bool  // for handling if expressions + autofree (since both prepend C statements)
 	right_is_opt           bool
-	is_autofree            bool // false, inside the bodies of fns marked with [manualfree], otherwise === g.pref.autofree
 	indent                 int
 	empty_line             bool
 	assign_op              token.Kind // *=, =, etc (for array_set)
 	defer_stmts            []ast.DeferStmt
 	defer_ifdef            string
 	defer_profile_code     string
+	defer_vars             []string
 	str_types              []StrType       // types that need automatic str() generation
 	generated_str_fns      []StrType       // types that already have a str() function
 	threaded_fns           shared []string // for generating unique wrapper types and fns for `go xxx()`
 	waiter_fns             []string        // functions that wait for `go xxx()` to finish
-	auto_fn_definitions    []string        // auto generated functions defination list
+	needed_equality_fns    []ast.Type
+	generated_eq_fns       []ast.Type
+	array_sort_fn          shared []string
+	array_contains_types   []ast.Type
+	array_index_types      []ast.Type
+	auto_fn_definitions    []string // auto generated functions defination list
 	sumtype_casting_fns    []SumtypeCastingFn
 	anon_fn_definitions    []string     // anon generated functions defination list
 	sumtype_definitions    map[int]bool // `_TypeA_to_sumtype_TypeB()` fns that have been generated
-	is_json_fn             bool       // inside json.encode()
-	json_types             []ast.Type // to avoid json gen duplicates
+	json_types             []ast.Type   // to avoid json gen duplicates
 	pcs                    []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
-	is_builtin_mod         bool
 	hotcode_fn_names       []string
 	embedded_files         []ast.EmbeddedFile
 	sql_i                  int
@@ -143,56 +156,43 @@ mut:
 	sql_fkey               string
 	sql_parent_id          string
 	sql_side               SqlExprSide // left or right, to distinguish idents in `name == name`
-	inside_vweb_tmpl       bool
-	inside_return          bool
-	inside_or_block        bool
-	strs_to_free0          []string // strings.Builder
+	strs_to_free0          []string    // strings.Builder
 	// strs_to_free          []string // strings.Builder
-	inside_call              bool
-	has_main                 bool
-	inside_const             bool
-	comptime_for_method      string // $for method in T.methods {}
-	comptime_for_field_var   string // $for field in T.fields {}; the variable name
-	comptime_for_field_value ast.StructField // value of the field variable
-	comptime_for_field_type  ast.Type        // type of the field variable inferred from `$if field.typ is T {}`
-	comptime_var_type_map    map[string]ast.Type
 	// tmp_arg_vars_to_free  []string
 	// autofree_pregen       map[string]string
 	// autofree_pregen_buf   strings.Builder
 	// autofree_tmp_vars     []string // to avoid redefining the same tmp vars in a single function
-	called_fn_name   string
-	cur_mod          ast.Module
-	is_js_call       bool // for handling a special type arg #1 `json.decode(User, ...)`
-	is_fn_index_call bool
 	// nr_vars_to_free       int
 	// doing_autofree_tmp    bool
-	inside_lambda                    bool
+	comptime_for_method              string // $for method in T.methods {}
+	comptime_for_field_var           string // $for field in T.fields {}; the variable name
+	comptime_for_field_value         ast.StructField // value of the field variable
+	comptime_for_field_type          ast.Type        // type of the field variable inferred from `$if field.typ is T {}`
+	comptime_var_type_map            map[string]ast.Type
 	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type
 	// used in match multi branch
 	// TypeOne, TypeTwo {}
 	// where an aggregate (at least two types) is generated
 	// sum type deref needs to know which index to deref because unions take care of the correct field
 	aggregate_type_idx  int
-	returned_var_name   string // to detect that a var doesn't need to be freed since it's being returned
 	branch_parent_pos   int    // used in BranchStmt (continue/break) for autofree stop position
+	returned_var_name   string // to detect that a var doesn't need to be freed since it's being returned
 	infix_left_var_name string // a && if expr
+	called_fn_name      string
 	timers              &util.Timers = util.get_timers()
 	force_main_console  bool // true when [console] used on fn main()
 	as_cast_type_names  map[string]string // table for type name lookup in runtime (for __as_cast)
 	obf_table           map[string]string
+	nr_closures         int
+	expected_cast_type  ast.Type // for match expr of sumtypes
+	anon_fn             bool
+	tests_inited        bool
+	has_main            bool
 	// main_fn_decl_node  ast.FnDecl
-	nr_closures          int
-	array_sort_fn        shared []string
-	expected_cast_type   ast.Type // for match expr of sumtypes
-	defer_vars           []string
-	anon_fn              bool
-	tests_inited         bool
-	cur_concrete_types   []ast.Type  // do not use table.cur_concrete_types because table is global, so should not be accessed by different threads
-	cur_fn               &ast.FnDecl = 0 // same here
-	needed_equality_fns  []ast.Type
-	generated_eq_fns     []ast.Type
-	array_contains_types []ast.Type
-	array_index_types    []ast.Type
+	cur_mod            ast.Module
+	cur_concrete_types []ast.Type  // do not use table.cur_concrete_types because table is global, so should not be accessed by different threads
+	cur_fn             &ast.FnDecl = 0 // same here
+	cur_lock           ast.LockExpr
 }
 
 pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
