@@ -207,6 +207,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	p.open_scope()
 	// C. || JS.
 	mut language := ast.Language.v
+	language_tok_pos := p.tok.position()
 	if p.tok.kind == .name && p.tok.lit == 'C' {
 		is_unsafe = !is_trusted
 		language = .c
@@ -224,12 +225,12 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	}
 	if is_keep_alive && language != .c {
 		p.error_with_pos('attribute [keep_args_alive] is only supported for C functions',
-			p.tok.position())
+			language_tok_pos)
 	}
 	if language != .v {
 		p.next()
 		p.check(.dot)
-		p.check_for_impure_v(language, p.tok.position())
+		p.check_for_impure_v(language, language_tok_pos)
 	}
 	// Receiver?
 	mut rec := ReceiverParsingInfo{
