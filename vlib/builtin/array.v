@@ -72,6 +72,21 @@ fn __new_array_with_array_default(mylen int, cap int, elm_size int, val array) a
 	return arr
 }
 
+fn __new_array_with_map_default(mylen int, cap int, elm_size int, val map) array {
+	cap_ := if cap < mylen { mylen } else { cap }
+	mut arr := array{
+		element_size: elm_size
+		data: unsafe { malloc(cap_ * elm_size) }
+		len: mylen
+		cap: cap_
+	}
+	for i in 0 .. arr.len {
+		val_clone := unsafe { val.clone() }
+		unsafe { arr.set_unsafe(i, &val_clone) }
+	}
+	return arr
+}
+
 // Private function, used by V (`nums := [1, 2, 3]`)
 fn new_array_from_c_array(len int, cap int, elm_size int, c_array voidptr) array {
 	cap_ := if cap < len { len } else { cap }

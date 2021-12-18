@@ -106,6 +106,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 	noscan := g.check_noscan(elem_type.typ)
 	if node.exprs.len == 0 {
 		is_default_array := elem_type.unaliased_sym.kind == .array && node.has_default
+		is_default_map := elem_type.unaliased_sym.kind == .map && node.has_default
 		if node.has_it { // []int{len: 6, init: it * it} when variable it is used in init expression
 			g.inside_lambda = true
 			tmp := g.new_tmp_var()
@@ -118,6 +119,8 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 			g.write('$ret_typ $tmp =')
 			if is_default_array {
 				g.write('__new_array_with_array_default${noscan}(')
+			} else if is_default_map {
+				g.write('__new_array_with_map_default${noscan}(')
 			} else {
 				g.write('__new_array_with_default${noscan}(')
 			}
@@ -182,6 +185,8 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 		}
 		if is_default_array {
 			g.write('__new_array_with_array_default${noscan}(')
+		} else if is_default_map {
+			g.write('__new_array_with_map_default${noscan}(')
 		} else {
 			g.write('__new_array_with_default${noscan}(')
 		}
@@ -202,7 +207,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 		} else {
 			g.write('sizeof($elem_styp), ')
 		}
-		if is_default_array {
+		if is_default_array || is_default_map {
 			g.write('($elem_styp[]){')
 			g.expr(node.default_expr)
 			g.write('}[0])')
