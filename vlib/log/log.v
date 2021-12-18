@@ -55,7 +55,7 @@ pub fn level_from_tag(tag string) ?Level {
 		'FATAL' { Level.fatal }
 		'ERROR' { Level.error }
 		'WARN' { Level.warn }
-		'INFO'  { Level.info }
+		'INFO' { Level.info }
 		'DEBUG' { Level.debug }
 		else { none }
 	}
