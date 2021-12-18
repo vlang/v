@@ -1,0 +1,22 @@
+module main
+
+import math
+import gg
+import gx
+
+fn main() {
+	mut context := gg.new_context(
+		width: 200
+		height: 200
+		window_title: 'Arcs'
+		frame_fn: frame
+	)
+	context.run()
+}
+
+fn frame(mut ctx gg.Context) {
+	ctx.begin()
+	ctx.draw_arc(100, 100, 35, 45, 0, f32(math.radians(290)), 30, gx.red)
+	ctx.draw_arc_empty(100, 100, 30, 50, 0, f32(math.radians(290)), 30, gx.white)
+	ctx.end()
+}
