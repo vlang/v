@@ -76,6 +76,49 @@ fn arm32_bytes(nargs int) string {
 	return bytes.replace('<REG>', nargs.str())
 }
 
+// gen_amd64_bytecode generates the amd64 bytecode a closure with `nargs` parameters.
+// NB: `nargs` includes the last `userdata` parameter that will be passed to the original
+// function, and as such nargs must always be > 0
+fn amd64_bytes(nargs int) string {
+	match nargs {
+		1 {
+			return '0x48, 0x8b, 0x3d, 0xe9, 0xff, 0xff, 0xff, 0xff, 0x25, 0xeb, 0xff, 0xff, 0xff'
+		}
+		2 {
+			return '0x48, 0x8b, 0x35, 0xe9, 0xff, 0xff, 0xff, 0xff, 0x25, 0xeb, 0xff, 0xff, 0xff'
+		}
+		3 {
+			return '0x48, 0x8b, 0x15, 0xe9, 0xff, 0xff, 0xff, 0xff, 0x25, 0xeb, 0xff, 0xff, 0xff'
+		}
+		4 {
+			return '0x48, 0x8b, 0x0d, 0xe9, 0xff, 0xff, 0xff, 0xff, 0x25, 0xeb, 0xff, 0xff, 0xff'
+		}
+		5 {
+			return '0x4C, 0x8b, 0x05, 0xe9, 0xff, 0xff, 0xff, 0xff, 0x25, 0xeb, 0xff, 0xff, 0xff'
+		}
+		6 {
+			return '0x4C, 0x8b, 0x0d, 0xe9, 0xff, 0xff, 0xff, 0xff, 0x25, 0xeb, 0xff, 0xff, 0xff'
+		}
+		else {
+			// see https://godbolt.org/z/64e5TEf5n for similar assembly
+			mut sb := strings.new_builder(256)
+			s := (((byte(nargs) & 1) + 1) << 3).hex()
+			sb.write_string('0x48, 0x83, 0xec, 0x$s, ') // sub rsp,0x8  <OR>  sub rsp,0x10
+			sb.write_string('0xff, 0x35, 0xe6, 0xff, 0xff, 0xff, ') // push QWORD PTR [rip+0xffffffffffffffe6]
+
+			rsp_offset := byte(0x18 + ((byte(nargs - 7) >> 1) << 4)).hex()
+			for _ in 0 .. nargs - 7 {
+				sb.write_string('0xff, 0xb4, 0x24, 0x$rsp_offset, 0x00, 0x00, 0x00, ') // push QWORD PTR [rsp+$rsp_offset]
+			}
+			sb.write_string('0xff, 0x15, 0x${byte(256 - sb.len / 6 - 6 - 8).hex()}, 0xff, 0xff, 0xff, ') // call   QWORD PTR [rip+OFFSET]
+			sb.write_string('0x48, 0x81, 0xc4, 0x$rsp_offset, 0x00, 0x00, 0x00, ') // add rsp,$rsp_offset
+			sb.write_string('0xc3') // ret
+
+			return sb.str()
+		}
+	}
+}
+
 // Heavily based on Chris Wellons's work
 // https://nullprogram.com/blog/2017/01/08/
 
@@ -90,33 +133,50 @@ fn c_closure_helpers(pref &pref.Preferences) string {
 	if pref.os != .windows {
 		builder.writeln('#include <sys/mman.h>')
 	}
+	// TODO: support additional arguments by pushing them onto the stack
+	// https://en.wikipedia.org/wiki/Calling_convention
 	if pref.arch == .amd64 {
+		// TODO: the `amd64_bytes()` function above should work for an arbitrary* number of arguments,
+		// so we should just remove the table and call the function directly at runtime
 		builder.write_string('
-static unsigned char __closure_thunk[6][13] = {
-    {
-        0x48, 0x8b, 0x3d, 0xe9, 0xff, 0xff, 0xff,
-        0xff, 0x25, 0xeb, 0xff, 0xff, 0xff
-    }, {
-        0x48, 0x8b, 0x35, 0xe9, 0xff, 0xff, 0xff,
-        0xff, 0x25, 0xeb, 0xff, 0xff, 0xff
-    }, {
-        0x48, 0x8b, 0x15, 0xe9, 0xff, 0xff, 0xff,
-        0xff, 0x25, 0xeb, 0xff, 0xff, 0xff
-    }, {
-        0x48, 0x8b, 0x0d, 0xe9, 0xff, 0xff, 0xff,
-        0xff, 0x25, 0xeb, 0xff, 0xff, 0xff
-    }, {
-        0x4C, 0x8b, 0x05, 0xe9, 0xff, 0xff, 0xff,
-        0xff, 0x25, 0xeb, 0xff, 0xff, 0xff
-    }, {
-        0x4C, 0x8b, 0x0d, 0xe9, 0xff, 0xff, 0xff,
-        0xff, 0x25, 0xeb, 0xff, 0xff, 0xff
-    },
+static unsigned char __closure_thunk[32][${amd64_bytes(31).len / 6 +
+			2}] = {
+	{ ${amd64_bytes(1)} },
+	{ ${amd64_bytes(2)} },
+	{ ${amd64_bytes(3)} },
+	{ ${amd64_bytes(4)} },
+	{ ${amd64_bytes(5)} },
+	{ ${amd64_bytes(6)} },
+	{ ${amd64_bytes(7)} },
+	{ ${amd64_bytes(8)} },
+	{ ${amd64_bytes(9)} },
+	{ ${amd64_bytes(10)} },
+	{ ${amd64_bytes(11)} },
+	{ ${amd64_bytes(12)} },
+	{ ${amd64_bytes(13)} },
+	{ ${amd64_bytes(14)} },
+	{ ${amd64_bytes(15)} },
+	{ ${amd64_bytes(16)} },
+	{ ${amd64_bytes(17)} },
+	{ ${amd64_bytes(18)} },
+	{ ${amd64_bytes(19)} },
+	{ ${amd64_bytes(20)} },
+	{ ${amd64_bytes(21)} },
+	{ ${amd64_bytes(22)} },
+	{ ${amd64_bytes(23)} },
+	{ ${amd64_bytes(24)} },
+	{ ${amd64_bytes(25)} },
+	{ ${amd64_bytes(26)} },
+	{ ${amd64_bytes(27)} },
+	{ ${amd64_bytes(28)} },
+	{ ${amd64_bytes(29)} },
+	{ ${amd64_bytes(30)} },
+	{ ${amd64_bytes(31)} },
 };
 ')
 	} else if pref.arch == .arm64 {
 		builder.write_string('
-static unsigned char __closure_thunk[6][12] = {
+static unsigned char __closure_thunk[8][12] = {
     {
         ${arm64_bytes(0)}
     }, {
@@ -129,12 +189,16 @@ static unsigned char __closure_thunk[6][12] = {
         ${arm64_bytes(4)}
     }, {
         ${arm64_bytes(5)}
+    }, {
+        ${arm64_bytes(6)}
+    }, {
+        ${arm64_bytes(7)}
     },
 };
 ')
 	} else if pref.arch == .arm32 {
 		builder.write_string('
-static unsigned char __closure_thunk[6][12] = {
+static unsigned char __closure_thunk[4][12] = {
     {
         ${arm32_bytes(0)}
     }, {
@@ -143,10 +207,6 @@ static unsigned char __closure_thunk[6][12] = {
         ${arm32_bytes(2)}
     }, {
         ${arm32_bytes(3)}
-    }, {
-        ${arm32_bytes(4)}
-    }, {
-        ${arm32_bytes(5)}
     },
 };
 ')
@@ -160,6 +220,14 @@ static void __closure_set_data(void *closure, void *data) {
 static void __closure_set_function(void *closure, void *f) {
     void **p = closure;
     p[-1] = f;
+}
+
+static inline int __closure_check_nargs(int nargs) {
+	if (nargs > (int)_ARR_LEN(__closure_thunk)) {
+		_v_panic(_SLIT("Closure too largs. Try reducing the number of parameters or pass the parameters by reference."));
+		VUNREACHABLE();
+	}
+	return nargs;
 }
 ')
 	if pref.os != .windows {
@@ -259,6 +327,9 @@ const c_common_macros = '
 #ifndef __offsetof
 	#define __offsetof(PTYPE,FIELDNAME) ((size_t)((char *)&((PTYPE *)0)->FIELDNAME - (char *)0))
 #endif
+
+// returns the number of CPU registers that TYPE takes up
+#define _REG_WIDTH(T) (((sizeof(T) + sizeof(void*) - 1) & ~(sizeof(void*) - 1)) / sizeof(void*))
 
 #define OPTION_CAST(x) (x)
 

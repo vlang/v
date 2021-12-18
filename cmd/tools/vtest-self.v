@@ -132,6 +132,7 @@ const (
 		'do_not_remove',
 	]
 	skip_on_arm64                 = [
+		'vlib/v/tests/closure_generator_test.v',
 		'do_not_remove',
 	]
 	skip_on_non_amd64_or_arm64    = [
