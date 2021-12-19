@@ -132,7 +132,7 @@ mut:
 	str_types              []StrType       // types that need automatic str() generation
 	generated_str_fns      []StrType       // types that already have a str() function
 	threaded_fns           shared []string // for generating unique wrapper types and fns for `go xxx()`
-	waiter_fns             []string        // functions that wait for `go xxx()` to finish
+	waiter_fns             shared []string // functions that wait for `go xxx()` to finish
 	needed_equality_fns    []ast.Type
 	generated_eq_fns       []ast.Type
 	array_sort_fn          shared []string
@@ -328,7 +328,6 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			global_g.nr_closures += g.nr_closures
 			global_g.has_main = global_g.has_main || g.has_main
 
-			global_g.waiter_fns << g.waiter_fns
 			global_g.auto_fn_definitions << g.auto_fn_definitions
 			global_g.anon_fn_definitions << g.anon_fn_definitions
 			global_g.needed_equality_fns << g.needed_equality_fns // duplicates are resolved later in gen_equality_fns
@@ -525,6 +524,7 @@ fn cgen_process_one_file_cb(p &pool.PoolProcessor, idx int, wid int) &Gen {
 		inner_loop: &ast.EmptyStmt{}
 		field_data_type: ast.Type(global_g.table.find_type_idx('FieldData'))
 		array_sort_fn: global_g.array_sort_fn
+		waiter_fns: global_g.waiter_fns
 		threaded_fns: global_g.threaded_fns
 		done_optionals: global_g.done_optionals
 		is_autofree: global_g.pref.autofree
@@ -961,20 +961,23 @@ fn (mut g Gen) write_shareds() {
 }
 
 fn (mut g Gen) register_thread_void_wait_call() {
-	if '__v_thread_wait' !in g.waiter_fns {
-		g.gowrappers.writeln('void __v_thread_wait(__v_thread thread) {')
-		if g.pref.os == .windows {
-			g.gowrappers.writeln('\tu32 stat = WaitForSingleObject(thread, INFINITE);')
-		} else {
-			g.gowrappers.writeln('\tint stat = pthread_join(thread, (void **)NULL);')
+	lock g.waiter_fns {
+		if '__v_thread_wait' in g.waiter_fns {
+			return
 		}
-		g.gowrappers.writeln('\tif (stat != 0) { _v_panic(_SLIT("unable to join thread")); }')
-		if g.pref.os == .windows {
-			g.gowrappers.writeln('\tCloseHandle(thread);')
-		}
-		g.gowrappers.writeln('}')
 		g.waiter_fns << '__v_thread_wait'
 	}
+	g.gowrappers.writeln('void __v_thread_wait(__v_thread thread) {')
+	if g.pref.os == .windows {
+		g.gowrappers.writeln('\tu32 stat = WaitForSingleObject(thread, INFINITE);')
+	} else {
+		g.gowrappers.writeln('\tint stat = pthread_join(thread, (void **)NULL);')
+	}
+	g.gowrappers.writeln('\tif (stat != 0) { _v_panic(_SLIT("unable to join thread")); }')
+	if g.pref.os == .windows {
+		g.gowrappers.writeln('\tCloseHandle(thread);')
+	}
+	g.gowrappers.writeln('}')
 }
 
 fn (mut g Gen) register_thread_array_wait_call(eltyp string) string {
@@ -983,8 +986,14 @@ fn (mut g Gen) register_thread_array_wait_call(eltyp string) string {
 	ret_typ := if is_void { 'void' } else { 'Array_$eltyp' }
 	thread_arr_typ := 'Array_$thread_typ'
 	fn_name := '${thread_arr_typ}_wait'
-	if fn_name !in g.waiter_fns {
-		g.waiter_fns << fn_name
+	mut should_register := false
+	lock g.waiter_fns {
+		if fn_name !in g.waiter_fns {
+			g.waiter_fns << fn_name
+			should_register = true
+		}
+	}
+	if should_register {
 		if is_void {
 			g.register_thread_void_wait_call()
 			g.gowrappers.writeln('
@@ -6991,7 +7000,14 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		handle = 'thread_$tmp'
 		// create wait handler for this return type if none exists
 		waiter_fn_name := gohandle_name + '_wait'
-		if waiter_fn_name !in g.waiter_fns {
+		mut should_register := false
+		lock g.waiter_fns {
+			if waiter_fn_name !in g.waiter_fns {
+				g.waiter_fns << waiter_fn_name
+				should_register = true
+			}
+		}
+		if should_register {
 			g.gowrappers.writeln('\n$s_ret_typ ${waiter_fn_name}($gohandle_name thread) {')
 			mut c_ret_ptr_ptr := 'NULL'
 			if node.call_expr.return_type != ast.void_type {
@@ -7022,7 +7038,6 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 				g.gowrappers.writeln('\treturn ret;')
 			}
 			g.gowrappers.writeln('}')
-			g.waiter_fns << waiter_fn_name
 		}
 	}
 	// Register the wrapper type and function
