@@ -119,7 +119,3 @@ fn convert_ctime(t C.tm, microsecond int) Time {
 		unix: make_unix_time(t)
 	}
 }
-
-pub const (
-	infinite = Duration(C.INT64_MAX)
-)
