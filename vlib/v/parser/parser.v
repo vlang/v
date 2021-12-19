@@ -2233,7 +2233,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			p.check(.rpar)
 			node = ast.CastExpr{
 				typ: to_typ
-				typname: p.table.type_symbol(to_typ).name
+				typname: p.table.sym(to_typ).name
 				expr: expr
 				arg: arg
 				has_arg: has_arg
@@ -3384,7 +3384,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		// function type: `type mycallback = fn(string, int)`
 		fn_name := p.prepend_mod(name)
 		fn_type := p.parse_fn_type(fn_name)
-		p.table.type_symbol(fn_type).is_public = is_pub
+		p.table.sym(fn_type).is_public = is_pub
 		type_pos = type_pos.extend(p.tok.position())
 		comments = p.eat_comments(same_line: true)
 		return ast.FnTypeDecl{
@@ -3459,7 +3459,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		return ast.AliasTypeDecl{}
 	}
 	parent_type := first_type
-	parent_sym := p.table.type_symbol(parent_type)
+	parent_sym := p.table.sym(parent_type)
 	pidx := parent_type.idx()
 	p.check_for_impure_v(parent_sym.language, decl_pos)
 	prepend_mod_name := p.prepend_mod(name)

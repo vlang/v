@@ -244,7 +244,7 @@ pub fn (mut f Fmt) short_module(name string) string {
 //=== Import-related methods ===//
 
 pub fn (mut f Fmt) mark_types_import_as_used(typ ast.Type) {
-	sym := f.table.type_symbol(typ)
+	sym := f.table.sym(typ)
 	if sym.info is ast.Map {
 		map_info := sym.map_info()
 		f.mark_types_import_as_used(map_info.key_type)
@@ -1184,7 +1184,7 @@ pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 }
 
 pub fn (mut f Fmt) sql_stmt_line(node ast.SqlStmtLine) {
-	table_name := util.strip_mod_name(f.table.type_symbol(node.table_expr.typ).name)
+	table_name := util.strip_mod_name(f.table.sym(node.table_expr.typ).name)
 	f.mark_types_import_as_used(node.table_expr.typ)
 	f.write('\t')
 	match node.kind {
@@ -1245,7 +1245,7 @@ pub fn (mut f Fmt) fn_type_decl(node ast.FnTypeDecl) {
 	if node.is_pub {
 		f.write('pub ')
 	}
-	typ_sym := f.table.type_symbol(node.typ)
+	typ_sym := f.table.sym(node.typ)
 	fn_typ_info := typ_sym.info as ast.FnType
 	fn_info := fn_typ_info.func
 	fn_name := f.no_cur_mod(node.name)
@@ -1621,7 +1621,7 @@ fn (mut f Fmt) write_generic_call_if_require(node ast.CallExpr) {
 		f.write('<')
 		for i, concrete_type in node.concrete_types {
 			mut name := f.table.type_to_str_using_aliases(concrete_type, f.mod2alias)
-			tsym := f.table.type_symbol(concrete_type)
+			tsym := f.table.sym(concrete_type)
 			if tsym.language != .js && !tsym.name.starts_with('JS.') {
 				name = f.short_module(name)
 			} else if tsym.language == .js && !tsym.name.starts_with('JS.') {
@@ -1675,7 +1675,7 @@ pub fn (mut f Fmt) cast_expr(node ast.CastExpr) {
 }
 
 pub fn (mut f Fmt) chan_init(mut node ast.ChanInit) {
-	info := f.table.type_symbol(node.typ).chan_info()
+	info := f.table.sym(node.typ).chan_info()
 	if node.elem_type == 0 && node.typ > 0 {
 		node.elem_type = info.elem_type
 	}
@@ -2081,7 +2081,7 @@ pub fn (mut f Fmt) lock_expr(node ast.LockExpr) {
 pub fn (mut f Fmt) map_init(node ast.MapInit) {
 	if node.keys.len == 0 {
 		if node.typ > ast.void_type {
-			sym := f.table.type_symbol(node.typ)
+			sym := f.table.sym(node.typ)
 			info := sym.info as ast.Map
 			f.mark_types_import_as_used(info.key_type)
 			f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
@@ -2353,7 +2353,7 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 	f.expr(node.db_expr)
 	f.writeln(' {')
 	f.write('\tselect ')
-	table_name := util.strip_mod_name(f.table.type_symbol(node.table_expr.typ).name)
+	table_name := util.strip_mod_name(f.table.sym(node.table_expr.typ).name)
 	if node.is_count {
 		f.write('count ')
 	} else {

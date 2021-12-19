@@ -263,7 +263,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 						}
 					}
 					else {
-						e.error('unknown cast: ${e.table.type_symbol(expr.expr_type).str()} to ${e.table.type_symbol(expr.typ).str()}')
+						e.error('unknown cast: ${e.table.sym(expr.expr_type).str()} to ${e.table.sym(expr.typ).str()}')
 					}
 				}
 			} else if expr.typ in ast.unsigned_integer_type_idxs {
@@ -306,7 +306,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 						}
 					}
 					else {
-						e.error('unknown cast: ${e.table.type_symbol(expr.expr_type).str()} to ${e.table.type_symbol(expr.typ).str()}')
+						e.error('unknown cast: ${e.table.sym(expr.expr_type).str()} to ${e.table.sym(expr.typ).str()}')
 					}
 				}
 			} else if expr.typ in ast.float_type_idxs {
@@ -336,7 +336,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 						}
 					}
 					else {
-						e.error('unknown cast: ${e.table.type_symbol(expr.expr_type).str()} to ${e.table.type_symbol(expr.typ).str()}')
+						e.error('unknown cast: ${e.table.sym(expr.expr_type).str()} to ${e.table.sym(expr.typ).str()}')
 					}
 				}
 			} else if expr.typ in ast.pointer_type_idxs {
@@ -351,7 +351,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 							}
 						}
 						else {
-							e.error('unknown cast: ${e.table.type_symbol(expr.expr_type).str()} to ${e.table.type_symbol(expr.typ).str()}')
+							e.error('unknown cast: ${e.table.sym(expr.expr_type).str()} to ${e.table.sym(expr.typ).str()}')
 						}
 					}
 				} else if expr.typ == ast.voidptr_type_idx {
@@ -362,7 +362,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 							}
 						}
 						else {
-							e.error('unknown cast: ${e.table.type_symbol(expr.expr_type).str()} to ${e.table.type_symbol(expr.typ).str()}')
+							e.error('unknown cast: ${e.table.sym(expr.expr_type).str()} to ${e.table.sym(expr.typ).str()}')
 						}
 					}
 				} else if expr.typ == ast.charptr_type_idx {
@@ -375,17 +375,17 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 							}
 						}
 						else {
-							e.error('unknown cast: ${e.table.type_symbol(expr.expr_type).str()} to ${e.table.type_symbol(expr.typ).str()}')
+							e.error('unknown cast: ${e.table.sym(expr.expr_type).str()} to ${e.table.sym(expr.typ).str()}')
 						}
 					}
 				}
-			} else if e.table.type_symbol(expr.typ).kind in [.interface_, .sum_type] {
+			} else if e.table.sym(expr.typ).kind in [.interface_, .sum_type] {
 				if e.pref.is_verbose {
 					eprintln(util.formatted_error('warning:', 'sumtype or interface casts return void currently',
 						e.cur_file, expr.pos))
 				}
 			} else {
-				e.error('unknown cast: ${e.table.type_symbol(expr.expr_type).str()} to ${e.table.type_symbol(expr.typ).str()}')
+				e.error('unknown cast: ${e.table.sym(expr.expr_type).str()} to ${e.table.sym(expr.typ).str()}')
 			}
 		}
 		ast.SelectorExpr {
@@ -540,7 +540,7 @@ fn (e Eval) type_to_size(typ ast.Type) u64 {
 			return u64(math.exp2(f64(typ - 8))) // this formula converts the type number to the bitsize
 		}
 		else {
-			e.error('type_to_size(): unknown type: ${e.table.type_symbol(typ).str()}')
+			e.error('type_to_size(): unknown type: ${e.table.sym(typ).str()}')
 			return -1
 		}
 	}

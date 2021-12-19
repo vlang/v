@@ -1089,7 +1089,7 @@ g.v_error('oops', node.pos)
 				// a += b
 			}
 			ast.StructInit {
-				sym := g.table.type_symbol(right.typ)
+				sym := g.table.sym(right.typ)
 				info := sym.info as ast.Struct
 				for field in info.fields {
 					field_name := name + '.' + field.name

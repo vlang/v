@@ -190,8 +190,7 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 		g.gen_expr_to_string(node.left, node.left_type)
 		return
 	}
-	is_async := node.name == 'wait'
-		&& g.table.type_symbol(node.receiver_type).name.starts_with('Promise<')
+	is_async := node.name == 'wait' && g.table.sym(node.receiver_type).name.starts_with('Promise<')
 	call_return_is_optional := it.return_type.has_flag(.optional)
 	if call_return_is_optional {
 		if is_async {
@@ -215,10 +214,10 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 	if g.fn_decl != 0 && g.fn_decl.generic_names.len > 0 { // in generic fn
 		unwrapped_rec_type = g.unwrap_generic(node.receiver_type)
 	} else { // in non-generic fn
-		sym := g.table.type_symbol(node.receiver_type)
+		sym := g.table.sym(node.receiver_type)
 		match sym.info {
 			ast.Struct, ast.Interface, ast.SumType {
-				generic_names := sym.info.generic_types.map(g.table.type_symbol(it).name)
+				generic_names := sym.info.generic_types.map(g.table.sym(it).name)
 				// see comment at top of vlib/v/gen/c/utils.v
 				mut muttable := unsafe { &ast.Table(g.table) }
 				if utyp := muttable.resolve_generic_to_concrete(node.receiver_type, generic_names,
@@ -231,13 +230,13 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 		}
 	}
 
-	mut typ_sym := g.table.type_symbol(unwrapped_rec_type)
+	mut typ_sym := g.table.sym(unwrapped_rec_type)
 	rec_cc_type := g.cc_type(unwrapped_rec_type, false)
 	mut receiver_type_name := util.no_dots(rec_cc_type)
 	// alias type that undefined this method (not include `str`) need to use parent type
 	if typ_sym.kind == .alias && node.name != 'str' && !typ_sym.has_method(node.name) {
 		unwrapped_rec_type = (typ_sym.info as ast.Alias).parent_type
-		typ_sym = g.table.type_symbol(unwrapped_rec_type)
+		typ_sym = g.table.sym(unwrapped_rec_type)
 	}
 
 	if typ_sym.kind == .interface_ && (typ_sym.info as ast.Interface).defines_method(node.name) {
@@ -254,8 +253,8 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 		return
 	}
 
-	left_sym := g.table.type_symbol(node.left_type)
-	final_left_sym := g.table.final_type_symbol(node.left_type)
+	left_sym := g.table.sym(node.left_type)
+	final_left_sym := g.table.final_sym(node.left_type)
 
 	if final_left_sym.kind == .array {
 		if final_left_sym.kind == .array && it.name in ['map', 'filter'] {
@@ -283,7 +282,7 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 						g.write(')')
 						return
 					} else if expr.kind == .variable {
-						v_sym := g.table.type_symbol(expr.var_info().typ)
+						v_sym := g.table.sym(expr.var_info().typ)
 						if v_sym.kind == .function {
 							g.write(g.js_name(expr.name))
 							g.write(')')
@@ -376,7 +375,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	if it.should_be_skipped {
 		return
 	}
-	if it.is_method && g.table.type_symbol(it.receiver_type).name.starts_with('JS.') {
+	if it.is_method && g.table.sym(it.receiver_type).name.starts_with('JS.') {
 		g.js_method_call(it)
 		return
 	} else if it.name.starts_with('JS.') {
@@ -396,7 +395,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 		name = 'builtin__$name'
 	}
 	print_method := name
-	ret_sym := g.table.type_symbol(it.return_type)
+	ret_sym := g.table.sym(it.return_type)
 	if it.language == .js && ret_sym.name in v_types && ret_sym.name != 'void' {
 		g.write('new ')
 		g.write(ret_sym.name)
@@ -479,9 +478,9 @@ enum FnGenType {
 }
 
 fn (g &JsGen) fn_gen_type(it &ast.FnDecl) FnGenType {
-	if it.is_method && g.table.type_symbol(it.params[0].typ).kind == .alias {
+	if it.is_method && g.table.sym(it.params[0].typ).kind == .alias {
 		return .alias_method
-	} else if it.is_method && g.table.type_symbol(it.params[0].typ).kind == .interface_ {
+	} else if it.is_method && g.table.sym(it.params[0].typ).kind == .interface_ {
 		return .iface_method
 	} else if it.is_method || it.no_body {
 		return .struct_method
@@ -572,7 +571,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 		// loop thru each generic type and generate a function
 		for concrete_types in g.table.fn_generic_types[node.name] {
 			if g.pref.is_verbose {
-				syms := concrete_types.map(g.table.type_symbol(it))
+				syms := concrete_types.map(g.table.sym(it))
 				the_type := syms.map(it.name).join(', ')
 				println('gen fn `$node.name` for type `$the_type`')
 			}
@@ -665,7 +664,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 		if is_varg {
 			g.writeln('$arg_name = new array(new array_buffer({arr: $arg_name,len: new int(${arg_name}.length),index_start: new int(0)}));')
 		} else {
-			asym := g.table.type_symbol(arg.typ)
+			asym := g.table.sym(arg.typ)
 			if asym.kind != .interface_ && asym.language != .js {
 				if arg.typ.is_ptr() || arg.is_mut {
 					g.writeln('$arg_name = new \$ref($arg_name)')
@@ -791,7 +790,7 @@ fn (mut g JsGen) gen_anon_fn(mut fun ast.AnonFn) {
 		if is_varg {
 			g.writeln('$arg_name = new array(new array_buffer({arr: $arg_name,len: new int(${arg_name}.length),index_start: new int(0)}));')
 		} else {
-			asym := g.table.type_symbol(arg.typ)
+			asym := g.table.sym(arg.typ)
 
 			if arg.typ.is_ptr() || (arg.is_mut && asym.kind != .interface_ && asym.language != .js) {
 				g.writeln('$arg_name = new \$ref($arg_name)')

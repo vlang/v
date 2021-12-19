@@ -158,7 +158,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		// loop thru each generic type and generate a function
 		for concrete_types in g.table.fn_generic_types[node.name] {
 			if g.pref.is_verbose {
-				syms := concrete_types.map(g.table.type_symbol(it))
+				syms := concrete_types.map(g.table.sym(it))
 				the_type := syms.map(it.name).join(', ')
 				println('gen fn `$node.name` for type `$the_type`')
 			}
@@ -203,12 +203,12 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		name = util.replace_op(name)
 	}
 	if node.is_method {
-		unwrapped_rec_sym := g.table.type_symbol(g.unwrap_generic(node.receiver.typ))
+		unwrapped_rec_sym := g.table.sym(g.unwrap_generic(node.receiver.typ))
 		if unwrapped_rec_sym.kind == .placeholder {
 			return
 		}
 		name = g.cc_type(node.receiver.typ, false) + '_' + name
-		// name = g.table.type_symbol(node.receiver.typ).name + '_' + name
+		// name = g.table.sym(node.receiver.typ).name + '_' + name
 	}
 	if node.language == .c {
 		name = util.no_dots(name)
@@ -241,7 +241,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		&& node.name != 'str' {
 		mut key := node.name
 		if node.is_method {
-			sym := g.table.type_symbol(node.receiver.typ)
+			sym := g.table.sym(node.receiver.typ)
 			key = sym.name + '.' + node.name
 		}
 		g.writeln('/* obf: $key */')
@@ -345,7 +345,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 						}
 					}
 					info := var.obj as ast.Var
-					if g.table.type_symbol(info.typ).kind != .function {
+					if g.table.sym(info.typ).kind != .function {
 						g.writeln('${g.typ(info.typ)}$deref $var.name;')
 					}
 				}
@@ -529,7 +529,7 @@ fn (mut g Gen) fn_args(args []ast.Param, scope &ast.Scope) ([]string, []string, 
 	for i, arg in args {
 		mut caname := if arg.name == '_' { g.new_tmp_declaration_name() } else { c_name(arg.name) }
 		typ := g.unwrap_generic(arg.typ)
-		arg_type_sym := g.table.type_symbol(typ)
+		arg_type_sym := g.table.sym(typ)
 		mut arg_type_name := g.typ(typ) // util.no_dots(arg_type_sym.name)
 		if arg_type_sym.kind == .function {
 			info := arg_type_sym.info as ast.FnType
@@ -622,7 +622,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	if node.is_method && !node.is_field {
 		if node.name == 'writeln' && g.pref.experimental && node.args.len > 0
 			&& node.args[0].expr is ast.StringInterLiteral
-			&& g.table.type_symbol(node.receiver_type).name == 'strings.Builder' {
+			&& g.table.sym(node.receiver_type).name == 'strings.Builder' {
 			g.string_inter_literal_sb_optimized(node)
 		} else {
 			g.method_call(node)
@@ -638,7 +638,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		unwrapped_styp := g.typ(unwrapped_typ)
 		if unwrapped_typ == ast.void_type {
 			g.write('\n $cur_line')
-		} else if g.table.type_symbol(node.return_type).kind == .multi_return {
+		} else if g.table.sym(node.return_type).kind == .multi_return {
 			g.write('\n $cur_line $tmp_opt /*U*/')
 		} else {
 			if !g.inside_const {
@@ -687,10 +687,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if g.cur_fn != 0 && g.cur_fn.generic_names.len > 0 { // in generic fn
 		unwrapped_rec_type = g.unwrap_generic(node.receiver_type)
 	} else { // in non-generic fn
-		sym := g.table.type_symbol(node.receiver_type)
+		sym := g.table.sym(node.receiver_type)
 		match sym.info {
 			ast.Struct, ast.Interface, ast.SumType {
-				generic_names := sym.info.generic_types.map(g.table.type_symbol(it).name)
+				generic_names := sym.info.generic_types.map(g.table.sym(it).name)
 				// see comment at top of vlib/v/gen/c/utils.v
 				mut muttable := unsafe { &ast.Table(g.table) }
 				if utyp := muttable.resolve_generic_to_concrete(node.receiver_type, generic_names,
@@ -702,11 +702,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			else {}
 		}
 	}
-	mut typ_sym := g.table.type_symbol(unwrapped_rec_type)
+	mut typ_sym := g.table.sym(unwrapped_rec_type)
 	// alias type that undefined this method (not include `str`) need to use parent type
 	if typ_sym.kind == .alias && node.name != 'str' && !typ_sym.has_method(node.name) {
 		unwrapped_rec_type = (typ_sym.info as ast.Alias).parent_type
-		typ_sym = g.table.type_symbol(unwrapped_rec_type)
+		typ_sym = g.table.sym(unwrapped_rec_type)
 	}
 	rec_cc_type := g.cc_type(unwrapped_rec_type, false)
 	mut receiver_type_name := util.no_dots(rec_cc_type)
@@ -729,8 +729,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.write(')')
 		return
 	}
-	left_sym := g.table.type_symbol(node.left_type)
-	final_left_sym := g.table.final_type_symbol(node.left_type)
+	left_sym := g.table.sym(node.left_type)
+	final_left_sym := g.table.final_sym(node.left_type)
 	if left_sym.kind == .array {
 		match node.name {
 			'filter' {
@@ -853,7 +853,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 					g.gen_expr_to_string(node.left, rec_type)
 					return
 				} else if node.left.obj.smartcasts.len > 0 {
-					cast_sym := g.table.type_symbol(node.left.obj.smartcasts.last())
+					cast_sym := g.table.sym(node.left.obj.smartcasts.last())
 					if cast_sym.info is ast.Aggregate {
 						rec_type = cast_sym.info.types[g.aggregate_type_idx]
 						g.gen_expr_to_string(node.left, rec_type)
@@ -912,7 +912,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__')
 		&& node.name != 'str' {
-		sym := g.table.type_symbol(node.receiver_type)
+		sym := g.table.sym(node.receiver_type)
 		key := sym.name + '.' + node.name
 		g.write('/* obf method call: $key */')
 		name = g.obf_table[key] or {
@@ -1011,7 +1011,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.expr(node.left)
 		}
 		for embed in node.from_embed_types {
-			embed_sym := g.table.type_symbol(embed)
+			embed_sym := g.table.sym(embed)
 			embed_name := embed_sym.embed_name()
 			if node.left_type.is_ptr() {
 				g.write('->')
@@ -1037,7 +1037,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if name.contains('subkeys') {
 	println('call_args $name $node.arg_types.len')
 	for t in node.arg_types {
-		sym := g.table.type_symbol(t)
+		sym := g.table.sym(t)
 		print('$sym.name ')
 	}
 	println('')
@@ -1059,7 +1059,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	mut is_interface_call := false
 	mut is_selector_call := false
 	if node.left_type != 0 {
-		left_sym := g.table.type_symbol(node.left_type)
+		left_sym := g.table.sym(node.left_type)
 		if left_sym.kind == .interface_ {
 			is_interface_call = true
 			g.write('(*')
@@ -1167,7 +1167,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 		if typ != ast.string_type || g.comptime_for_method.len > 0 {
 			expr := node.args[0].expr
-			typ_sym := g.table.type_symbol(typ)
+			typ_sym := g.table.sym(typ)
 			if typ_sym.kind == .interface_ && (typ_sym.info as ast.Interface).defines_method('str') {
 				g.write('${c_name(print_method)}(')
 				rec_type_name := util.no_dots(g.cc_type(typ, false))
@@ -1200,7 +1200,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 					if expr.obj is ast.Var {
 						typ = expr.obj.typ
 						if expr.obj.smartcasts.len > 0 {
-							cast_sym := g.table.type_symbol(expr.obj.smartcasts.last())
+							cast_sym := g.table.sym(expr.obj.smartcasts.last())
 							if cast_sym.info is ast.Aggregate {
 								typ = cast_sym.info.types[g.aggregate_type_idx]
 							}
@@ -1234,7 +1234,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 								g.write('(*')
 							}
 							for i, typ in obj.smartcasts {
-								cast_sym := g.table.type_symbol(g.unwrap_generic(typ))
+								cast_sym := g.table.sym(g.unwrap_generic(typ))
 								mut is_ptr := false
 								if i == 0 {
 									g.write(node.name)
@@ -1244,7 +1244,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 								}
 								dot := if is_ptr { '->' } else { '.' }
 								if mut cast_sym.info is ast.Aggregate {
-									sym := g.table.type_symbol(cast_sym.info.types[g.aggregate_type_idx])
+									sym := g.table.sym(cast_sym.info.types[g.aggregate_type_idx])
 									g.write('${dot}_$sym.cname')
 								} else {
 									g.write('${dot}_$cast_sym.cname')
@@ -1479,7 +1479,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 	if is_variadic {
 		varg_type := expected_types.last()
 		variadic_count := args.len - arg_nr
-		arr_sym := g.table.type_symbol(varg_type)
+		arr_sym := g.table.sym(varg_type)
 		mut arr_info := arr_sym.info as ast.Array
 		if varg_type.has_flag(.generic) {
 			if fn_def := g.table.find_fn(node.name) {
@@ -1530,7 +1530,7 @@ fn (mut g Gen) keep_alive_call_pregen(node ast.CallExpr) int {
 		// save all arguments in temp vars (not only pointers) to make sure the
 		// evaluation order is preserved
 		expected_type := node.expected_arg_types[i]
-		typ := g.table.type_symbol(expected_type).cname
+		typ := g.table.sym(expected_type).cname
 		g.write('$typ __tmp_arg_${tmp_cnt_save + i} = ')
 		// g.expr(arg.expr)
 		g.ref_or_deref_arg(arg, expected_type, node.language)
@@ -1556,7 +1556,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 	if expected_type == 0 {
 		g.checker_bug('ref_or_deref_arg expected_type is 0', arg.pos)
 	}
-	exp_sym := g.table.type_symbol(expected_type)
+	exp_sym := g.table.sym(expected_type)
 	arg_typ := g.unwrap_generic(arg.typ)
 	mut needs_closing := false
 	if arg.is_mut && !arg_is_ptr {
@@ -1582,13 +1582,13 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 			if arg_typ == 0 {
 				g.checker_bug('ref_or_deref_arg arg.typ is 0', arg.pos)
 			}
-			arg_typ_sym := g.table.type_symbol(arg_typ)
+			arg_typ_sym := g.table.sym(arg_typ)
 			expected_deref_type := if expected_type.is_ptr() {
 				expected_type.deref()
 			} else {
 				expected_type
 			}
-			deref_sym := g.table.type_symbol(expected_deref_type)
+			deref_sym := g.table.sym(expected_deref_type)
 			if !((arg_typ_sym.kind == .function)
 				|| deref_sym.kind in [.sum_type, .interface_]) && lang != .c {
 				if arg.expr.is_lvalue() {

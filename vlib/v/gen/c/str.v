@@ -52,7 +52,7 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 		typ := node.expr_types[i]
 		g.write(g.typ(typ))
 		g.write('_str(')
-		sym := g.table.type_symbol(typ)
+		sym := g.table.sym(typ)
 		if sym.kind != .function {
 			g.expr(node.exprs[i])
 		}
@@ -69,10 +69,10 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	if is_shared {
 		typ = typ.clear_flag(.shared_f).set_nr_muls(0)
 	}
-	mut sym := g.table.type_symbol(typ)
+	mut sym := g.table.sym(typ)
 	// when type is alias, print the aliased value
 	if mut sym.info is ast.Alias {
-		parent_sym := g.table.type_symbol(sym.info.parent_type)
+		parent_sym := g.table.sym(sym.info.parent_type)
 		if parent_sym.has_method('str') {
 			typ = sym.info.parent_type
 			sym = parent_sym

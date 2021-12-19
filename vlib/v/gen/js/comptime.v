@@ -96,11 +96,11 @@ fn (mut g JsGen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 					// Handle `$if x is Interface {`
 					// mut matches_interface := 'false'
 					if left is ast.TypeNode && cond.right is ast.TypeNode
-						&& g.table.type_symbol(got_type).kind == .interface_ {
+						&& g.table.sym(got_type).kind == .interface_ {
 						// `$if Foo is Interface {`
-						interface_sym := g.table.type_symbol(got_type)
+						interface_sym := g.table.sym(got_type)
 						if interface_sym.info is ast.Interface {
-							// q := g.table.type_symbol(interface_sym.info.types[0])
+							// q := g.table.sym(interface_sym.info.types[0])
 							checked_type := g.unwrap_generic(left.typ)
 							// TODO PERF this check is run twice (also in the checker)
 							// store the result in a field

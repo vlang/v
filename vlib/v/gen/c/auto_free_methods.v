@@ -7,11 +7,11 @@ import strings
 
 fn (mut g Gen) gen_free_method_for_type(typ ast.Type) string {
 	styp := g.typ(typ).replace('*', '')
-	mut sym := g.table.type_symbol(g.unwrap_generic(typ))
+	mut sym := g.table.sym(g.unwrap_generic(typ))
 	mut fn_name := styp_to_free_fn_name(styp)
 	if mut sym.info is ast.Alias {
 		if sym.info.is_import {
-			sym = g.table.type_symbol(sym.info.parent_type)
+			sym = g.table.sym(sym.info.parent_type)
 		}
 	}
 
@@ -44,7 +44,7 @@ fn (mut g Gen) gen_free_for_struct(info ast.Struct, styp string, fn_name string)
 	}
 	fn_builder.writeln('void ${fn_name}($styp* it) {')
 	for field in info.fields {
-		sym := g.table.type_symbol(g.unwrap_generic(field.typ))
+		sym := g.table.sym(g.unwrap_generic(field.typ))
 
 		if sym.kind !in [.string, .array, .map, .struct_] {
 			continue
@@ -68,7 +68,7 @@ fn (mut g Gen) gen_free_for_array(info ast.Array, styp string, fn_name string) {
 	}
 	fn_builder.writeln('void ${fn_name}($styp* it) {')
 
-	sym := g.table.type_symbol(g.unwrap_generic(info.elem_type))
+	sym := g.table.sym(g.unwrap_generic(info.elem_type))
 	if sym.kind in [.string, .array, .map, .struct_] {
 		fn_builder.writeln('\tfor (int i = 0; i < it->len; i++) {')
 

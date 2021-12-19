@@ -5,8 +5,8 @@ import v.ast
 
 fn (mut g JsGen) gen_plain_infix_expr(node ast.InfixExpr) {
 	it := node
-	l_sym := g.table.final_type_symbol(it.left_type)
-	r_sym := g.table.final_type_symbol(it.right_type)
+	l_sym := g.table.final_sym(it.left_type)
+	r_sym := g.table.final_sym(it.right_type)
 	greater_typ := g.greater_typ(it.left_type, it.right_type)
 	cast_ty := if greater_typ == it.left_type { l_sym.cname } else { r_sym.cname }
 	g.write('new ${g.js_name(cast_ty)}( ')
@@ -338,7 +338,7 @@ fn (mut g JsGen) infix_in_not_in_op(node ast.InfixExpr) {
 
 fn (mut g JsGen) infix_is_not_is_op(node ast.InfixExpr) {
 	g.expr(node.left)
-	rsym := g.table.type_symbol(g.unwrap(node.right_type).typ)
+	rsym := g.table.sym(g.unwrap(node.right_type).typ)
 
 	g.gen_deref_ptr(node.left_type)
 	g.write(' instanceof ')

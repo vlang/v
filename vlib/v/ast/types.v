@@ -78,7 +78,7 @@ pub fn pref_arch_to_table_language(pref_arch pref.Arch) Language {
 // * Table.type_to_str(typ) not TypeSymbol.name.
 // * Table.type_kind(typ) not TypeSymbol.kind.
 // Each TypeSymbol is entered into `Table.types`.
-// See also: Table.type_symbol.
+// See also: Table.sym.
 
 pub struct TypeSymbol {
 pub:
@@ -262,7 +262,7 @@ pub fn (t Type) str() string {
 }
 
 pub fn (t &Table) type_str(typ Type) string {
-	sym := t.type_symbol(typ)
+	sym := t.sym(typ)
 	return sym.name
 }
 
@@ -514,7 +514,7 @@ pub fn (t &Table) type_kind(typ Type) Kind {
 	if typ.nr_muls() > 0 || typ.has_flag(.optional) {
 		return Kind.placeholder
 	}
-	return t.type_symbol(typ).kind
+	return t.sym(typ).kind
 }
 
 pub enum Kind {
@@ -933,14 +933,14 @@ pub fn (t &Table) type_to_str(typ Type) string {
 // type name in code (for builtin)
 pub fn (mytable &Table) type_to_code(t Type) string {
 	match t {
-		ast.int_literal_type, ast.float_literal_type { return mytable.type_symbol(t).kind.str() }
+		ast.int_literal_type, ast.float_literal_type { return mytable.sym(t).kind.str() }
 		else { return mytable.type_to_str_using_aliases(t, map[string]string{}) }
 	}
 }
 
 // import_aliases is a map of imported symbol aliases 'module.Type' => 'Type'
 pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]string) string {
-	sym := t.type_symbol(typ)
+	sym := t.sym(typ)
 	mut res := sym.name
 	// Note, that the duplication of code in some of the match branches here
 	// is VERY deliberate. DO NOT be tempted to use `else {}` instead, because
@@ -1039,7 +1039,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 					Struct, Interface, SumType {
 						res += '<'
 						for i, gtyp in sym.info.generic_types {
-							res += t.type_symbol(gtyp).name
+							res += t.sym(gtyp).name
 							if i != sym.info.generic_types.len - 1 {
 								res += ', '
 							}
@@ -1214,12 +1214,12 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 	match t.info {
 		Struct, Interface, SumType {
 			if t.info.parent_type.has_flag(.generic) {
-				parent_sym := table.type_symbol(t.info.parent_type)
+				parent_sym := table.sym(t.info.parent_type)
 				if x := parent_sym.find_method(name) {
 					match parent_sym.info {
 						Struct, Interface, SumType {
 							mut method := x
-							generic_names := parent_sym.info.generic_types.map(table.type_symbol(it).name)
+							generic_names := parent_sym.info.generic_types.map(table.sym(it).name)
 							if rt := table.resolve_generic_to_concrete(method.return_type,
 								generic_names, t.info.concrete_types)
 							{
@@ -1262,7 +1262,7 @@ pub fn (t &TypeSymbol) is_js_compatible() bool {
 	match t.info {
 		SumType {
 			for variant in t.info.variants {
-				sym := table.final_type_symbol(variant)
+				sym := table.final_sym(variant)
 				if !sym.is_js_compatible() {
 					return false
 				}

@@ -9,7 +9,7 @@ import v.pref
 pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 	c.expected_type = c.table.cur_fn.return_type
 	mut expected_type := c.unwrap_generic(c.expected_type)
-	expected_type_sym := c.table.type_symbol(expected_type)
+	expected_type_sym := c.table.sym(expected_type)
 	if node.exprs.len > 0 && c.table.cur_fn.return_type == ast.void_type {
 		c.error('unexpected argument, current function does not return anything', node.exprs[0].position())
 		return
@@ -38,7 +38,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 			c.error('`$expr` used as value', node.pos)
 		}
 		// Unpack multi return types
-		sym := c.table.type_symbol(typ)
+		sym := c.table.sym(typ)
 		if sym.kind == .multi_return {
 			for t in sym.mr_info().types {
 				got_types << t
@@ -87,8 +87,8 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 				pos)
 		}
 		if !c.check_types(got_typ, exp_type) {
-			got_typ_sym := c.table.type_symbol(got_typ)
-			mut exp_typ_sym := c.table.type_symbol(exp_type)
+			got_typ_sym := c.table.sym(got_typ)
+			mut exp_typ_sym := c.table.sym(exp_type)
 			if exp_typ_sym.kind == .interface_ {
 				if c.type_implements(got_typ, exp_type, node.pos) {
 					if !got_typ.is_ptr() && !got_typ.is_pointer() && got_typ_sym.kind != .interface_
@@ -130,7 +130,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 						obj = c.fn_scope.find_var(r_expr.obj.name) or { obj }
 					}
 					if obj.is_stack_obj && !c.inside_unsafe {
-						type_sym := c.table.type_symbol(obj.typ.set_nr_muls(0))
+						type_sym := c.table.sym(obj.typ.set_nr_muls(0))
 						if !type_sym.is_heap() && !c.pref.translated {
 							suggestion := if type_sym.kind == .struct_ {
 								'declaring `$type_sym.name` as `[heap]`'

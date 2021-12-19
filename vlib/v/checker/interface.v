@@ -8,7 +8,7 @@ import v.token
 
 pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 	c.check_valid_pascal_case(node.name, 'interface name', node.pos)
-	mut decl_sym := c.table.type_symbol(node.typ)
+	mut decl_sym := c.table.sym(node.typ)
 	is_js := node.language == .js
 	if mut decl_sym.info is ast.Interface {
 		if node.ifaces.len > 0 {
@@ -31,7 +31,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 			}
 			//
 			for iface in all_ifaces {
-				isym := c.table.type_symbol(iface.typ)
+				isym := c.table.sym(iface.typ)
 				if isym.kind != .interface_ {
 					c.error('interface `$node.name` tries to embed `$isym.name`, but `$isym.name` is not an interface, but `$isym.kind`',
 						iface.pos)
@@ -105,7 +105,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 			}
 			c.ensure_type_exists(method.return_type, method.return_type_pos) or { return }
 			if is_js {
-				mtyp := c.table.type_symbol(method.return_type)
+				mtyp := c.table.sym(method.return_type)
 				if !mtyp.is_js_compatible() {
 					c.error('method $method.name returns non JS type', method.pos)
 				}
@@ -120,7 +120,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 						param.pos)
 				}
 				if is_js {
-					ptyp := c.table.type_symbol(param.typ)
+					ptyp := c.table.sym(param.typ)
 					if !ptyp.is_js_compatible() && !(j == method.params.len - 1
 						&& method.is_variadic) {
 						c.error('method `$method.name` accepts non JS type as parameter',
@@ -129,7 +129,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 				}
 			}
 			for field in node.fields {
-				field_sym := c.table.type_symbol(field.typ)
+				field_sym := c.table.sym(field.typ)
 				if field.name == method.name && field_sym.kind == .function {
 					c.error('type `$decl_sym.name` has both field and method named `$method.name`',
 						method.pos)
@@ -147,7 +147,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 			}
 			c.ensure_type_exists(field.typ, field.pos) or { return }
 			if is_js {
-				tsym := c.table.type_symbol(field.typ)
+				tsym := c.table.sym(field.typ)
 				if !tsym.is_js_compatible() {
 					c.error('field `$field.name` uses non JS type', field.pos)
 				}
@@ -167,8 +167,8 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 
 fn (mut c Checker) resolve_generic_interface(typ ast.Type, interface_type ast.Type, pos token.Position) ast.Type {
 	utyp := c.unwrap_generic(typ)
-	typ_sym := c.table.type_symbol(utyp)
-	mut inter_sym := c.table.type_symbol(interface_type)
+	typ_sym := c.table.sym(utyp)
+	mut inter_sym := c.table.sym(interface_type)
 
 	if mut inter_sym.info is ast.Interface {
 		if inter_sym.info.is_generic {
@@ -189,8 +189,8 @@ fn (mut c Checker) resolve_generic_interface(typ ast.Type, interface_type ast.Ty
 						typ_sym.find_method_with_generic_parent(imethod.name) or { ast.Fn{} }
 					}
 					if imethod.return_type.has_flag(.generic) {
-						imret_sym := c.table.type_symbol(imethod.return_type)
-						mret_sym := c.table.type_symbol(method.return_type)
+						imret_sym := c.table.sym(imethod.return_type)
+						mret_sym := c.table.sym(method.return_type)
 						if imret_sym.info is ast.MultiReturn && mret_sym.info is ast.MultiReturn {
 							for i, mr_typ in imret_sym.info.types {
 								if mr_typ.has_flag(.generic)

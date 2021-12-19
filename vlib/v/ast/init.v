@@ -1,7 +1,7 @@
 module ast
 
 pub fn resolve_init(node StructInit, typ Type, t &Table) Expr {
-	type_sym := t.type_symbol(typ)
+	type_sym := t.sym(typ)
 	if type_sym.kind == .array {
 		array_info := type_sym.info as Array
 		mut has_len := false

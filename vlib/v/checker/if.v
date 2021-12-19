@@ -57,7 +57,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						return 0
 					}
 					got_type := c.unwrap_generic((branch.cond.right as ast.TypeNode).typ)
-					sym := c.table.type_symbol(got_type)
+					sym := c.table.sym(got_type)
 					if sym.kind == .placeholder || got_type.has_flag(.generic) {
 						c.error('unknown type `$sym.name`', branch.cond.right.position())
 					}
@@ -187,7 +187,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							}
 						}
 					}
-					if node.is_expr && c.table.type_symbol(former_expected_type).kind == .sum_type {
+					if node.is_expr && c.table.sym(former_expected_type).kind == .sum_type {
 						continue
 					}
 					if is_noreturn_callexpr(last_expr.expr) {
@@ -263,8 +263,8 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 			}
 			right_type = c.unwrap_generic(right_type)
 			if right_type != ast.Type(0) {
-				left_sym := c.table.type_symbol(node.left_type)
-				right_sym := c.table.type_symbol(right_type)
+				left_sym := c.table.sym(node.left_type)
+				right_sym := c.table.sym(right_type)
 				expr_type := c.unwrap_generic(c.expr(node.left))
 				if left_sym.kind == .interface_ {
 					if right_sym.kind != .interface_ {

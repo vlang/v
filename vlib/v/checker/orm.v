@@ -10,7 +10,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	defer {
 		c.inside_sql = false
 	}
-	sym := c.table.type_symbol(node.table_expr.typ)
+	sym := c.table.sym(node.table_expr.typ)
 	c.ensure_type_exists(node.table_expr.typ, node.pos) or { return ast.void_type }
 	c.cur_orm_ts = *sym
 	if sym.info !is ast.Struct {
@@ -21,13 +21,13 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, sym.name)
 	mut sub_structs := map[int]ast.SqlExpr{}
 	for f in fields.filter((c.table.type_symbols[int(it.typ)].kind == .struct_
-		|| (c.table.type_symbol(it.typ).kind == .array
-		&& c.table.type_symbol(c.table.type_symbol(it.typ).array_info().elem_type).kind == .struct_))
+		|| (c.table.sym(it.typ).kind == .array
+		&& c.table.sym(c.table.sym(it.typ).array_info().elem_type).kind == .struct_))
 		&& c.table.get_type_name(it.typ) != 'time.Time') {
-		typ := if c.table.type_symbol(f.typ).kind == .struct_ {
+		typ := if c.table.sym(f.typ).kind == .struct_ {
 			f.typ
-		} else if c.table.type_symbol(f.typ).kind == .array {
-			c.table.type_symbol(f.typ).array_info().elem_type
+		} else if c.table.sym(f.typ).kind == .array {
+			c.table.sym(f.typ).array_info().elem_type
 		} else {
 			ast.Type(0)
 		}
@@ -113,7 +113,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 		c.inside_sql = false
 	}
 	c.ensure_type_exists(node.table_expr.typ, node.pos) or { return ast.void_type }
-	table_sym := c.table.type_symbol(node.table_expr.typ)
+	table_sym := c.table.sym(node.table_expr.typ)
 	c.cur_orm_ts = *table_sym
 	if table_sym.info !is ast.Struct {
 		c.error('unknown type `$table_sym.name`', node.pos)
@@ -123,13 +123,13 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, table_sym.name)
 	mut sub_structs := map[int]ast.SqlStmtLine{}
 	for f in fields.filter(((c.table.type_symbols[int(it.typ)].kind == .struct_)
-		|| (c.table.type_symbol(it.typ).kind == .array
-		&& c.table.type_symbol(c.table.type_symbol(it.typ).array_info().elem_type).kind == .struct_))
+		|| (c.table.sym(it.typ).kind == .array
+		&& c.table.sym(c.table.sym(it.typ).array_info().elem_type).kind == .struct_))
 		&& c.table.get_type_name(it.typ) != 'time.Time') {
-		typ := if c.table.type_symbol(f.typ).kind == .struct_ {
+		typ := if c.table.sym(f.typ).kind == .struct_ {
 			f.typ
-		} else if c.table.type_symbol(f.typ).kind == .array {
-			c.table.type_symbol(f.typ).array_info().elem_type
+		} else if c.table.sym(f.typ).kind == .array {
+			c.table.sym(f.typ).array_info().elem_type
 		} else {
 			ast.Type(0)
 		}
@@ -178,8 +178,8 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Positi
 	fields := info.fields.filter(
 		(it.typ in [ast.string_type, ast.bool_type] || int(it.typ) in ast.number_type_idxs
 		|| c.table.type_symbols[int(it.typ)].kind == .struct_
-		|| (c.table.type_symbol(it.typ).kind == .array
-		&& c.table.type_symbol(c.table.type_symbol(it.typ).array_info().elem_type).kind == .struct_))
+		|| (c.table.sym(it.typ).kind == .array
+		&& c.table.sym(c.table.sym(it.typ).array_info().elem_type).kind == .struct_))
 		&& !it.attrs.contains('skip'))
 	if fields.len == 0 {
 		c.error('V orm: select: empty fields in `$table_name`', pos)

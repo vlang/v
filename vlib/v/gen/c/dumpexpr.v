@@ -22,7 +22,7 @@ fn (mut g Gen) dump_expr_definitions() {
 	mut dump_typedefs := map[string]bool{}
 	mut dump_fns := strings.new_builder(100)
 	for dump_type, cname in g.table.dumps {
-		dump_sym := g.table.type_symbol(dump_type)
+		dump_sym := g.table.sym(dump_type)
 		_, str_method_expects_ptr, _ := dump_sym.str_method_info()
 		is_ptr := ast.Type(dump_type).is_ptr()
 		deref, _ := deref_kind(str_method_expects_ptr, is_ptr, dump_type)

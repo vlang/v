@@ -294,7 +294,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		typ_vweb_context := ast.Type(table.find_type_idx('vweb.Context')).set_nr_muls(1)
 		all_fn_root_names << '${int(typ_vweb_context)}.html'
 		for vgt in table.used_vweb_types {
-			sym_app := table.type_symbol(vgt)
+			sym_app := table.sym(vgt)
 			for m in sym_app.methods {
 				if m.return_type == typ_vweb_result {
 					pvgt := vgt.set_nr_muls(1)
