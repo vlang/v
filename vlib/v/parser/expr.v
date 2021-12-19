@@ -183,28 +183,6 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 				node = p.array_init()
 			}
 		}
-		.nilsbr {
-			if p.expecting_type {
-				// parse json.decode type (`json.decode([]User, s)`)
-				node = p.name_expr()
-			} else if p.is_amp && p.peek_tok.kind == .rsbr && p.peek_token(3).kind != .lcbr {
-				pos := p.tok.position()
-				typ := p.parse_type()
-				typname := p.table.get_type_symbol(typ).name
-				p.check(.lpar)
-				expr := p.expr(0)
-				p.check(.rpar)
-				node = ast.CastExpr{
-					typ: typ
-					typname: typname
-					expr: expr
-					pos: pos
-				}
-			} else {
-				node = p.array_init()
-			}
-		}
-		
 		.key_none {
 			pos := p.tok.position()
 			p.next()
@@ -383,24 +361,14 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 				return node
 			}
 			p.is_stmt_ident = is_stmt_ident
-		} else if p.tok.kind == .lsbr && (p.inside_fn || p.tok.line_nr == p.prev_tok.line_nr) {
-			node = p.index_expr(node)
-			p.is_stmt_ident = is_stmt_ident
-			if p.tok.kind == .lpar && p.tok.line_nr == p.prev_tok.line_nr && node is ast.IndexExpr {
-				p.next()
-				pos := p.tok.position()
-				args := p.call_args()
-				p.check(.rpar)
-				node = ast.CallExpr{
-					left: node
-					args: args
-					pos: pos
-					scope: p.scope
-				}
-				p.is_stmt_ident = is_stmt_ident
-			}
-		} else if p.tok.kind == .nilsbr && (p.inside_fn || p.tok.line_nr == p.prev_tok.line_nr) {
-			node = p.index_expr(node)
+		} else if p.tok.kind in [.lsbr, .nilsbr] && (p.inside_fn || p.tok.line_nr == p.prev_tok.line_nr) {
+			//node = p.index_expr(node)
+			if p.tok.kind == .nilsbr {
+				node = p.index_expr(node, true)
+			} else {
+				node = p.index_expr(node, false)
+			} 
+			
 			p.is_stmt_ident = is_stmt_ident
 			if p.tok.kind == .lpar && p.tok.line_nr == p.prev_tok.line_nr && node is ast.IndexExpr {
 				p.next()

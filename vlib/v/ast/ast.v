@@ -814,14 +814,15 @@ pub:
 	index   Expr // [0], RangeExpr [start..end] or map[key]
 	or_expr OrExpr
 pub mut:
-	left      Expr
-	left_type Type // array, map, fixed array
-	is_setter bool
-	is_map    bool
-	is_array  bool
-	is_farray bool
-	is_option bool // IfGuard
-	is_direct bool // Set if the underlying memory can be safely accessed
+	left        Expr
+	left_type   Type // array, map, fixed array
+	is_setter   bool
+	is_map      bool
+	is_array    bool
+	is_farray   bool
+	is_option   bool // IfGuard
+	is_direct   bool // Set if the underlying memory can be safely accessed
+	ni_allowed  bool // Negative index allowed
 }
 
 pub struct IfExpr {
