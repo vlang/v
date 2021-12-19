@@ -280,11 +280,12 @@ pub fn (mut v Builder) cc_msvc() {
 		a << env_cflags
 	}
 	// Default arguments
-	// volatile:ms enables atomic volatile (gcc _Atomic)
-	// -w: no warnings
-	// 2 unicode defines
-	// /Fo sets the object file name - needed so we can clean up after ourselves properly
-	a << ['-w', '/we4013', '/volatile:ms', '/Fo"$out_name_obj"']
+	// `-w` no warnings
+	// `/we4013` 2 unicode defines, see https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-3-c4013?redirectedfrom=MSDN&view=msvc-170
+	// `/volatile:ms` enables atomic volatile (gcc _Atomic)
+	// `/Fo` sets the object file name - needed so we can clean up after ourselves properly
+	// `/F 16777216` changes the stack size to 16MB, see https://docs.microsoft.com/en-us/cpp/build/reference/f-set-stack-size?view=msvc-170
+	a << ['-w', '/we4013', '/volatile:ms', '/Fo"$out_name_obj"', '/F 16777216']
 	if v.pref.is_prod {
 		a << '/O2'
 	}
