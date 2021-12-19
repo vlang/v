@@ -262,7 +262,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Uint {
@@ -277,7 +277,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Float {
@@ -292,7 +292,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						i64 {
@@ -307,7 +307,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						f64 {
@@ -322,7 +322,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						else {
@@ -344,7 +344,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Uint {
@@ -359,7 +359,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Float {
@@ -374,7 +374,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						i64 {
@@ -389,7 +389,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						f64 {
@@ -404,7 +404,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						else {
@@ -426,7 +426,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Uint {
@@ -441,7 +441,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Float {
@@ -456,7 +456,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						i64 {
@@ -471,7 +471,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						f64 {
@@ -486,7 +486,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						else {
@@ -508,7 +508,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Uint {
@@ -523,7 +523,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Float {
@@ -538,7 +538,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						i64 {
@@ -553,7 +553,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						f64 {
@@ -568,7 +568,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						else {
@@ -590,7 +590,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Uint {
@@ -605,7 +605,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Float {
@@ -620,7 +620,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						i64 {
@@ -635,7 +635,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						f64 {
@@ -650,7 +650,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						else {
@@ -679,7 +679,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) * f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Uint {
@@ -694,7 +694,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) * f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Float {
@@ -709,7 +709,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) * f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						i64 {
@@ -724,7 +724,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) * f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						f64 {
@@ -739,7 +739,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) * f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						else {
@@ -761,7 +761,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) * f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Uint {
@@ -776,7 +776,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) * f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Float {
@@ -791,7 +791,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) * f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						i64 {
@@ -806,7 +806,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) * f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						f64 {
@@ -821,7 +821,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) * f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						else {
@@ -843,7 +843,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) * f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Uint {
@@ -858,7 +858,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) * f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Float {
@@ -873,7 +873,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) * f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						i64 {
@@ -888,7 +888,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) * f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						f64 {
@@ -903,7 +903,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) * f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						else {
@@ -925,7 +925,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) * f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Uint {
@@ -940,7 +940,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) * f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Float {
@@ -955,7 +955,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) * f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						i64 {
@@ -970,7 +970,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) * f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						f64 {
@@ -985,7 +985,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) * f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						else {
@@ -1007,7 +1007,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) * f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Uint {
@@ -1022,7 +1022,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) * f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Float {
@@ -1037,7 +1037,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) * f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						i64 {
@@ -1052,7 +1052,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) * f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						f64 {
@@ -1067,7 +1067,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) * f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						else {
@@ -1096,7 +1096,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Uint {
@@ -1111,7 +1111,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Float {
@@ -1126,7 +1126,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						i64 {
@@ -1141,7 +1141,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						f64 {
@@ -1156,7 +1156,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						else {
@@ -1178,7 +1178,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Uint {
@@ -1193,7 +1193,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Float {
@@ -1208,7 +1208,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						i64 {
@@ -1223,7 +1223,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						f64 {
@@ -1238,7 +1238,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						else {
@@ -1260,7 +1260,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Uint {
@@ -1275,7 +1275,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Float {
@@ -1290,7 +1290,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						i64 {
@@ -1305,7 +1305,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						f64 {
@@ -1320,7 +1320,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						else {
@@ -1342,7 +1342,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Uint {
@@ -1357,7 +1357,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Float {
@@ -1372,7 +1372,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						i64 {
@@ -1387,7 +1387,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						f64 {
@@ -1402,7 +1402,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						else {
@@ -1424,7 +1424,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Uint {
@@ -1439,7 +1439,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Float {
@@ -1454,7 +1454,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						i64 {
@@ -1469,7 +1469,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						f64 {
@@ -1484,7 +1484,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						else {
@@ -1513,7 +1513,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Uint {
@@ -1528,7 +1528,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Float {
@@ -1543,7 +1543,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						i64 {
@@ -1558,7 +1558,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						f64 {
@@ -1573,7 +1573,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						else {
@@ -1595,7 +1595,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Uint {
@@ -1610,7 +1610,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Float {
@@ -1625,7 +1625,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						i64 {
@@ -1640,7 +1640,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						f64 {
@@ -1655,7 +1655,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						else {
@@ -1677,7 +1677,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Uint {
@@ -1692,7 +1692,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Float {
@@ -1707,7 +1707,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						i64 {
@@ -1722,7 +1722,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						f64 {
@@ -1737,7 +1737,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left.val) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						else {
@@ -1759,7 +1759,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Uint {
@@ -1774,7 +1774,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Float {
@@ -1789,7 +1789,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						i64 {
@@ -1804,7 +1804,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						f64 {
@@ -1819,7 +1819,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						else {
@@ -1841,7 +1841,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Uint {
@@ -1856,7 +1856,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Float {
@@ -1871,7 +1871,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right.val))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						i64 {
@@ -1886,7 +1886,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						f64 {
@@ -1901,7 +1901,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 							} else if expecting == ast.float_literal_type_idx {
 								return f64(f64(left) + f64(right))
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						else {
@@ -1928,7 +1928,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 									return i64(i64(left.val) >> i64(right.val))
 								}
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Uint {
@@ -1941,7 +1941,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 									return i64(i64(left.val) >> i64(right.val))
 								}
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						i64 {
@@ -1954,7 +1954,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 									return i64(i64(left.val) >> i64(right))
 								}
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						else {
@@ -1974,7 +1974,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 									return i64(i64(left.val) >> i64(right.val))
 								}
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Uint {
@@ -1987,7 +1987,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 									return i64(i64(left.val) >> i64(right.val))
 								}
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						i64 {
@@ -2000,7 +2000,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 									return i64(i64(left.val) >> i64(right))
 								}
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						else {
@@ -2020,7 +2020,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 									return i64(i64(left) >> i64(right.val))
 								}
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Uint {
@@ -2033,7 +2033,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 									return i64(i64(left) >> i64(right.val))
 								}
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						i64 {
@@ -2046,7 +2046,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 									return i64(i64(left) >> i64(right))
 								}
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						else {
@@ -2073,7 +2073,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 									return i64(i64(left.val) << i64(right.val))
 								}
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Uint {
@@ -2086,7 +2086,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 									return i64(i64(left.val) << i64(right.val))
 								}
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						i64 {
@@ -2099,7 +2099,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 									return i64(i64(left.val) << i64(right))
 								}
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						else {
@@ -2119,7 +2119,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 									return i64(i64(left.val) << i64(right.val))
 								}
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Uint {
@@ -2132,7 +2132,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 									return i64(i64(left.val) << i64(right.val))
 								}
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						i64 {
@@ -2145,7 +2145,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 									return i64(i64(left.val) << i64(right))
 								}
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						else {
@@ -2165,7 +2165,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 									return i64(i64(left) << i64(right.val))
 								}
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						Uint {
@@ -2178,7 +2178,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 									return i64(i64(left) << i64(right.val))
 								}
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						i64 {
@@ -2191,7 +2191,7 @@ fn (e Eval) infix_expr(left Object, right Object, op token.Kind, expecting ast.T
 									return i64(i64(left) << i64(right))
 								}
 							} else {
-								e.error('unknown infix expectation: ${e.table.get_type_symbol(expecting).str()}')
+								e.error('unknown infix expectation: ${e.table.type_symbol(expecting).str()}')
 							}
 						}
 						else {

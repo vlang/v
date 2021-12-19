@@ -179,7 +179,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 		f.is_struct_init = struct_init_save
 	}
 
-	type_sym := f.table.get_type_symbol(node.typ)
+	type_sym := f.table.type_symbol(node.typ)
 	// f.write('<old name: $type_sym.name>')
 	mut name := type_sym.name
 	if !name.starts_with('C.') && !name.starts_with('JS.') {

@@ -50,7 +50,7 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 fn (mut g Gen) sql_stmt_line(nd ast.SqlStmtLine, expr string) {
 	mut node := nd
 	table_name := g.get_table_name(node.table_expr)
-	g.sql_table_name = g.table.get_type_symbol(node.table_expr.typ).name
+	g.sql_table_name = g.table.type_symbol(node.table_expr.typ).name
 	res := g.new_tmp_var()
 	mut subs := false
 	mut dcheck := false
@@ -111,7 +111,7 @@ fn (mut g Gen) sql_create_table(node ast.SqlStmtLine, expr string, table_name st
 	if node.fields.len > 0 {
 		g.write(' _MOV((orm__TableField[$node.fields.len]){')
 		for field in node.fields {
-			sym := g.table.get_type_symbol(field.typ)
+			sym := g.table.type_symbol(field.typ)
 			g.write('(orm__TableField){')
 			g.write('.name = _SLIT("$field.name"),')
 			mut typ := int(field.typ)
@@ -154,7 +154,7 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 	mut field_names := []string{}
 
 	for f in node.fields {
-		sym := g.table.get_type_symbol(f.typ)
+		sym := g.table.type_symbol(f.typ)
 		if sym.kind == .struct_ && sym.name != 'time.Time' {
 			subs << node.sub_structs[int(f.typ)]
 		} else if sym.kind == .array {
@@ -178,7 +178,7 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 		}
 	}
 
-	fields := node.fields.filter(g.table.get_type_symbol(it.typ).kind != .array)
+	fields := node.fields.filter(g.table.type_symbol(it.typ).kind != .array)
 
 	for sub in subs {
 		g.sql_stmt_line(sub, expr)
@@ -209,7 +209,7 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 				g.write('$pid, ')
 				continue
 			}
-			mut sym := g.table.get_type_symbol(f.typ)
+			mut sym := g.table.type_symbol(f.typ)
 			mut typ := sym.cname
 			if sym.kind == .struct_ && typ != 'time__Time' {
 				g.write('(*(orm__Primitive*) array_get($last_ids_arr, $structs)),')
@@ -336,7 +336,7 @@ fn (mut g Gen) sql_expr_to_orm_primitive(expr ast.Expr) {
 }
 
 fn (mut g Gen) sql_write_orm_primitive(t ast.Type, expr ast.Expr) {
-	mut sym := g.table.get_type_symbol(t)
+	mut sym := g.table.type_symbol(t)
 	mut typ := sym.cname
 	if typ == 'orm__Primitive' {
 		g.expr(expr)
@@ -550,7 +550,7 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string) {
 
 	res := g.new_tmp_var()
 	table_name := g.get_table_name(node.table_expr)
-	g.sql_table_name = g.table.get_type_symbol(node.table_expr.typ).name
+	g.sql_table_name = g.table.type_symbol(node.table_expr.typ).name
 	g.write('Option_Array_Array_orm__Primitive _o$res = orm__Connection_name_table[${expr}._typ]._method_select(${expr}._object, ')
 	g.write('(orm__SelectConfig){')
 	g.write('.table = _SLIT("$table_name"),')
@@ -572,14 +572,14 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string) {
 	if prim != '' {
 		g.write('.primary = _SLIT("$prim"),')
 	}
-	select_fields := fields.filter(g.table.get_type_symbol(it.typ).kind != .array)
+	select_fields := fields.filter(g.table.type_symbol(it.typ).kind != .array)
 	g.write('.fields = new_array_from_c_array($select_fields.len, $select_fields.len, sizeof(string),')
 	mut types := []int{}
 	if select_fields.len > 0 {
 		g.write(' _MOV((string[$select_fields.len]){')
 		for field in select_fields {
 			g.write('_SLIT("${g.get_field_name(field)}"),')
-			sym := g.table.get_type_symbol(field.typ)
+			sym := g.table.type_symbol(field.typ)
 			if sym.name == 'time.Time' {
 				types << -2
 				continue
@@ -648,12 +648,12 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string) {
 		g.writeln('int $idx = 0;')
 		mut typ_str := ''
 		if node.is_array {
-			info := g.table.get_type_symbol(node.typ).array_info()
+			info := g.table.type_symbol(node.typ).array_info()
 			typ_str = g.typ(info.elem_type)
 			g.writeln('$styp ${tmp}_array = __new_array(0, ${res}.len, sizeof($typ_str));')
 			g.writeln('for (; $idx < ${res}.len; $idx++) {')
 			g.write('\t$typ_str $tmp = ($typ_str) {')
-			inf := g.table.get_type_symbol(info.elem_type).struct_info()
+			inf := g.table.type_symbol(info.elem_type).struct_info()
 			for i, field in inf.fields {
 				g.zero_struct_field(field)
 				if i != inf.fields.len - 1 {
@@ -663,7 +663,7 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string) {
 			g.writeln('};')
 		} else {
 			g.write('$styp $tmp = ($styp){')
-			info := g.table.get_type_symbol(node.typ).struct_info()
+			info := g.table.type_symbol(node.typ).struct_info()
 			for i, field in info.fields {
 				g.zero_struct_field(field)
 				if i != info.fields.len - 1 {
@@ -676,7 +676,7 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string) {
 		g.writeln('if (${res}.len > 0) {')
 		for i, field in fields {
 			sel := '(*(orm__Primitive*) array_get((*(Array_orm__Primitive*) array_get($res, $idx)), $i))'
-			sym := g.table.get_type_symbol(field.typ)
+			sym := g.table.type_symbol(field.typ)
 			if sym.kind == .struct_ && sym.name != 'time.Time' {
 				mut sub := node.sub_structs[int(field.typ)]
 				mut where_expr := sub.where_expr as ast.InfixExpr
@@ -801,8 +801,8 @@ fn (mut g Gen) parse_db_from_type_string(name string) SqlType {
 }
 
 fn (mut g Gen) get_table_name(table_expr ast.TypeNode) string {
-	info := g.table.get_type_symbol(table_expr.typ).struct_info()
-	mut tablename := util.strip_mod_name(g.table.get_type_symbol(table_expr.typ).name)
+	info := g.table.type_symbol(table_expr.typ).struct_info()
+	mut tablename := util.strip_mod_name(g.table.type_symbol(table_expr.typ).name)
 	for attr in info.attrs {
 		if attr.kind == .string && attr.name == 'table' && attr.arg != '' {
 			tablename = attr.arg
@@ -813,7 +813,7 @@ fn (mut g Gen) get_table_name(table_expr ast.TypeNode) string {
 }
 
 fn (mut g Gen) get_struct_field(name string) ast.StructField {
-	info := g.table.get_type_symbol(g.table.type_idxs[g.sql_table_name]).struct_info()
+	info := g.table.type_symbol(g.table.type_idxs[g.sql_table_name]).struct_info()
 	mut f := ast.StructField{}
 	for field in info.fields {
 		if field.name == name {
@@ -831,7 +831,7 @@ fn (mut g Gen) get_field_name(field ast.StructField) string {
 			break
 		}
 	}
-	sym := g.table.get_type_symbol(field.typ)
+	sym := g.table.type_symbol(field.typ)
 	if sym.kind == .struct_ && sym.name != 'time.Time' {
 		name = '${name}_id'
 	}

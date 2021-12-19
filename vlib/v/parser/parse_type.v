@@ -68,7 +68,7 @@ pub fn (mut p Parser) parse_array_type() ast.Type {
 		if fixed_size <= 0 {
 			p.error_with_pos('fixed size cannot be zero or negative', size_expr.position())
 		}
-		// sym := p.table.get_type_symbol(elem_type)
+		// sym := p.table.type_symbol(elem_type)
 		idx := p.table.find_or_register_array_fixed(elem_type, fixed_size, size_expr)
 		if elem_type.has_flag(.generic) {
 			return ast.new_type(idx).set_flag(.generic)
@@ -107,7 +107,7 @@ pub fn (mut p Parser) parse_map_type() ast.Type {
 	}
 	p.check(.lsbr)
 	key_type := p.parse_type()
-	key_sym := p.table.get_type_symbol(key_type)
+	key_sym := p.table.type_symbol(key_type)
 	is_alias := key_sym.kind == .alias
 	if key_type.idx() == 0 {
 		// error is reported in parse_type
@@ -551,7 +551,7 @@ pub fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 		if !gt.has_flag(.generic) {
 			is_instance = true
 		}
-		gts := p.table.get_type_symbol(gt)
+		gts := p.table.type_symbol(gt)
 		bs_name += gts.name
 		bs_cname += gts.cname
 		concrete_types << gt
@@ -577,7 +577,7 @@ pub fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 		if parent_idx == 0 {
 			parent_idx = p.table.add_placeholder_type(name, .v)
 		}
-		parent_sym := p.table.get_type_symbol(ast.new_type(parent_idx))
+		parent_sym := p.table.type_symbol(ast.new_type(parent_idx))
 		match parent_sym.info {
 			ast.Struct {
 				if parent_sym.info.generic_types.len == 0 {

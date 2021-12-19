@@ -10,10 +10,10 @@ fn (mut g JsGen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		typ = typ.clear_flag(.shared_f).set_nr_muls(0)
 	}
 
-	mut sym := g.table.get_type_symbol(typ)
+	mut sym := g.table.type_symbol(typ)
 	// when type is alias, print the aliased value
 	if mut sym.info is ast.Alias {
-		parent_sym := g.table.get_type_symbol(sym.info.parent_type)
+		parent_sym := g.table.type_symbol(sym.info.parent_type)
 		if parent_sym.has_method('str') {
 			typ = sym.info.parent_type
 			sym = parent_sym
@@ -81,10 +81,10 @@ fn (mut g JsGen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	if is_shared {
 		typ = typ.clear_flag(.shared_f).set_nr_muls(0)
 	}
-	mut sym := g.table.get_type_symbol(typ)
+	mut sym := g.table.type_symbol(typ)
 	// when type is alias, print the aliased value
 	if mut sym.info is ast.Alias {
-		parent_sym := g.table.get_type_symbol(sym.info.parent_type)
+		parent_sym := g.table.type_symbol(sym.info.parent_type)
 		if parent_sym.has_method('str') {
 			typ = sym.info.parent_type
 			sym = parent_sym

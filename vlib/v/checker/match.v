@@ -14,7 +14,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	node.cond_type = c.table.mktyp(cond_type)
 	c.ensure_type_exists(node.cond_type, node.pos) or { return ast.void_type }
 	c.check_expr_opt_call(node.cond, cond_type)
-	cond_type_sym := c.table.get_type_symbol(cond_type)
+	cond_type_sym := c.table.type_symbol(cond_type)
 	node.is_sum_type = cond_type_sym.kind in [.interface_, .sum_type]
 	c.match_exprs(mut node, cond_type_sym)
 	c.expected_type = cond_type
@@ -65,7 +65,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					} else if node.is_expr && ret_type.idx() != expr_type.idx() {
 						if !c.check_types(ret_type, expr_type)
 							&& !c.check_types(expr_type, ret_type) {
-							ret_sym := c.table.get_type_symbol(ret_type)
+							ret_sym := c.table.type_symbol(ret_type)
 							is_noreturn := is_noreturn_callexpr(stmt.expr)
 							if !(node.is_expr && ret_sym.kind == .sum_type) && !is_noreturn {
 								c.error('return type mismatch, it should be `$ret_sym.name`',
@@ -204,7 +204,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				// parser failed, stop checking
 				return
 			}
-			expr_type_sym := c.table.get_type_symbol(expr_type)
+			expr_type_sym := c.table.type_symbol(expr_type)
 			if cond_type_sym.kind == .interface_ {
 				// TODO
 				// This generates a memory issue with TCC

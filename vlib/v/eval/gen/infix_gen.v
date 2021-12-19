@@ -13,7 +13,7 @@ fn(e Eval)infix_expr(left Object,right Object,op token.Kind,expecting ast.Type)O
 	footer = "else{e.error('unknown infix expression: \$op')}}return empty // should e.error before this anyway
 }
 "
-	uk_expect_footer = "else{e.error('unknown infix expectation: \${e.table.get_type_symbol(expecting).str()}')}}"
+	uk_expect_footer = "else{e.error('unknown infix expectation: \${e.table.type_symbol(expecting).str()}')}}"
 	comparison       = {
 		'gt': '>'
 		'lt': '<'

@@ -22,11 +22,11 @@ fn (mut g JsGen) get_copy_fn(typ ast.Type) string {
 		unwrapped.set_flag(.optional)
 	}
 	styp := g.typ(unwrapped)
-	mut sym := g.table.get_type_symbol(unwrapped)
+	mut sym := g.table.type_symbol(unwrapped)
 	mut copy_fn_name := styp_to_copy_fn_name(styp)
 	if mut sym.info is ast.Alias {
 		if sym.info.is_import {
-			sym = g.table.get_type_symbol(sym.info.parent_type)
+			sym = g.table.type_symbol(sym.info.parent_type)
 			copy_fn_name = styp_to_copy_fn_name(sym.name)
 		}
 	}
@@ -55,7 +55,7 @@ fn (mut g JsGen) gen_copy_for_multi_return(info ast.MultiReturn, styp string, co
 	fn_builder.writeln('function ${copy_fn_name}(a) {')
 	fn_builder.writeln('\tlet arr = []')
 	for i, typ in info.types {
-		sym := g.table.get_type_symbol(typ)
+		sym := g.table.type_symbol(typ)
 		arg_copy_fn_name := g.get_copy_fn(typ)
 
 		if sym.kind in [.f32, .f64] {
@@ -108,7 +108,7 @@ fn (mut g JsGen) gen_copy_for_interface(info ast.Interface, styp string, copy_fn
 	fn_builder.writeln('function ${copy_fn_name}(x) { return x; }')
 	/*
 	for typ in info.types {
-		subtype := g.table.get_type_symbol(typ)
+		subtype := g.table.type_symbol(typ)
 		mut func_name := g.get_copy_fn(typ)
 		if typ == ast.string_type {
 
@@ -188,7 +188,7 @@ fn (mut g JsGen) final_gen_copy(typ StrType) {
 		return
 	}
 	g.generated_copy_fns << typ
-	sym := g.table.get_type_symbol(typ.typ)
+	sym := g.table.type_symbol(typ.typ)
 	if sym.has_method('\$copy') && !typ.typ.has_flag(.optional) {
 		return
 	}

@@ -142,11 +142,11 @@ fn (mut g Gen) get_str_fn(typ ast.Type) string {
 		unwrapped.set_flag(.optional)
 	}
 	styp := g.typ(unwrapped)
-	mut sym := g.table.get_type_symbol(unwrapped)
+	mut sym := g.table.type_symbol(unwrapped)
 	mut str_fn_name := styp_to_str_fn_name(styp)
 	if mut sym.info is ast.Alias {
 		if sym.info.is_import {
-			sym = g.table.get_type_symbol(sym.info.parent_type)
+			sym = g.table.type_symbol(sym.info.parent_type)
 			str_fn_name = styp_to_str_fn_name(sym.name)
 		}
 	}
@@ -168,7 +168,7 @@ fn (mut g Gen) final_gen_str(typ StrType) {
 		eprintln('> final_gen_str: $typ')
 	}
 	g.generated_str_fns << typ
-	sym := g.table.get_type_symbol(typ.typ)
+	sym := g.table.type_symbol(typ.typ)
 	if sym.has_method_with_generic_parent('str') && !typ.typ.has_flag(.optional) {
 		return
 	}
@@ -230,7 +230,7 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string)
 		eprintln('> gen_str_for_option: $typ.debug() | $styp | $str_fn_name')
 	}
 	parent_type := typ.clear_flag(.optional)
-	sym := g.table.get_type_symbol(parent_type)
+	sym := g.table.type_symbol(parent_type)
 	sym_has_str_method, _, _ := sym.str_method_info()
 	parent_str_fn_name := g.get_str_fn(parent_type)
 
@@ -291,7 +291,7 @@ fn (mut g Gen) gen_str_for_multi_return(info ast.MultiReturn, styp string, str_f
 	fn_builder.writeln('\tstrings__Builder sb = strings__new_builder($info.types.len * 10);')
 	fn_builder.writeln('\tstrings__Builder_write_string(&sb, _SLIT("("));')
 	for i, typ in info.types {
-		sym := g.table.get_type_symbol(typ)
+		sym := g.table.type_symbol(typ)
 		is_arg_ptr := typ.is_ptr()
 		sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
 		arg_str_fn_name := g.get_str_fn(typ)
@@ -384,7 +384,7 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, str_fn_nam
 	clean_interface_v_type_name = util.strip_main_name(clean_interface_v_type_name)
 	fn_builder.writeln('static string indent_${str_fn_name}($styp x, int indent_count) { /* gen_str_for_interface */')
 	for typ in info.types {
-		subtype := g.table.get_type_symbol(typ)
+		subtype := g.table.type_symbol(typ)
 		mut func_name := g.get_str_fn(typ)
 		sym_has_str_method, str_method_expects_ptr, _ := subtype.str_method_info()
 		if should_use_indent_func(subtype.kind) && !sym_has_str_method {
@@ -448,7 +448,7 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_
 	for typ in info.variants {
 		typ_str := g.typ(typ)
 		mut func_name := g.get_str_fn(typ)
-		sym := g.table.get_type_symbol(typ)
+		sym := g.table.type_symbol(typ)
 		sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
 		deref := if sym_has_str_method && str_method_expects_ptr { ' ' } else { '*' }
 		if should_use_indent_func(sym.kind) && !sym_has_str_method {
@@ -559,10 +559,10 @@ fn (mut g Gen) gen_str_for_array(info ast.Array, styp string, str_fn_name string
 		eprintln('> gen_str_for_array: $info.elem_type.debug() | $styp | $str_fn_name')
 	}
 	mut typ := info.elem_type
-	mut sym := g.table.get_type_symbol(info.elem_type)
+	mut sym := g.table.type_symbol(info.elem_type)
 	if mut sym.info is ast.Alias {
 		typ = sym.info.parent_type
-		sym = g.table.get_type_symbol(typ)
+		sym = g.table.type_symbol(typ)
 	}
 	field_styp := g.typ(typ)
 	is_elem_ptr := typ.is_ptr()
@@ -635,10 +635,10 @@ fn (mut g Gen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_fn_
 		eprintln('> gen_str_for_array_fixed: $info.elem_type.debug() | $styp | $str_fn_name')
 	}
 	mut typ := info.elem_type
-	mut sym := g.table.get_type_symbol(info.elem_type)
+	mut sym := g.table.type_symbol(info.elem_type)
 	if mut sym.info is ast.Alias {
 		typ = sym.info.parent_type
-		sym = g.table.get_type_symbol(typ)
+		sym = g.table.type_symbol(typ)
 	}
 	is_elem_ptr := typ.is_ptr()
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
@@ -698,10 +698,10 @@ fn (mut g Gen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 		eprintln('> gen_str_for_map: $info.key_type.debug() -> $info.value_type.debug() | $styp | $str_fn_name')
 	}
 	mut key_typ := info.key_type
-	mut key_sym := g.table.get_type_symbol(key_typ)
+	mut key_sym := g.table.type_symbol(key_typ)
 	if mut key_sym.info is ast.Alias {
 		key_typ = key_sym.info.parent_type
-		key_sym = g.table.get_type_symbol(key_typ)
+		key_sym = g.table.type_symbol(key_typ)
 	}
 	key_styp := g.typ(key_typ)
 	key_str_fn_name := key_styp.replace('*', '') + '_str'
@@ -710,10 +710,10 @@ fn (mut g Gen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 	}
 
 	mut val_typ := info.value_type
-	mut val_sym := g.table.get_type_symbol(val_typ)
+	mut val_sym := g.table.type_symbol(val_typ)
 	if mut val_sym.info is ast.Alias {
 		val_typ = val_sym.info.parent_type
-		val_sym = g.table.get_type_symbol(val_typ)
+		val_sym = g.table.type_symbol(val_typ)
 	}
 	val_styp := g.typ(val_typ)
 	elem_str_fn_name := val_styp.replace('*', '') + '_str'
@@ -790,7 +790,7 @@ fn (g &Gen) type_to_fmt(typ ast.Type) StrIntpType {
 		// return '%C\\000' // a C string
 		return .si_s
 	}
-	sym := g.table.get_type_symbol(typ)
+	sym := g.table.type_symbol(typ)
 	if typ.is_ptr() && (typ.is_int_valptr() || typ.is_float_valptr()) {
 		return .si_s
 	} else if sym.kind in [.struct_, .array, .array_fixed, .map, .bool, .enum_, .interface_,
@@ -866,7 +866,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 		// manage prefix and quote symbol for the filed
 		mut quote_str := ''
 		mut prefix := ''
-		sym := g.table.get_type_symbol(g.unwrap_generic(field.typ))
+		sym := g.table.type_symbol(g.unwrap_generic(field.typ))
 		if sym.kind == .string {
 			quote_str = "'"
 		} else if field.typ in ast.charptr_types {

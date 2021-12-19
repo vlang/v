@@ -72,7 +72,7 @@ fn (mut m Mapper) fn_name(fname string, receiver_type ast.Type, is_method bool) 
 	if !is_method {
 		return fname
 	}
-	rec_sym := m.table.get_type_symbol(receiver_type)
+	rec_sym := m.table.type_symbol(receiver_type)
 	return '${rec_sym.name}.$fname'
 }
 

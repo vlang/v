@@ -142,7 +142,7 @@ pub fn (mut w Walker) stmt(node ast.Stmt) {
 			}
 			if node.kind == .struct_ {
 				// the .next() method of the struct will be used for iteration:
-				cond_type_sym := w.table.get_type_symbol(node.cond_type)
+				cond_type_sym := w.table.type_symbol(node.cond_type)
 				if next_fn := cond_type_sym.find_method('next') {
 					w.fn_decl(mut &ast.FnDecl(next_fn.source_fn))
 				}
@@ -275,7 +275,7 @@ fn (mut w Walker) expr(node ast.Expr) {
 			w.expr(node.left)
 			w.expr(node.index)
 			w.or_block(node.or_expr)
-			sym := w.table.get_final_type_symbol(node.left_type)
+			sym := w.table.final_type_symbol(node.left_type)
 			if sym.kind == .map {
 				w.table.used_maps++
 			}
@@ -287,13 +287,13 @@ fn (mut w Walker) expr(node ast.Expr) {
 			if node.left_type == 0 {
 				return
 			}
-			sym := w.table.get_type_symbol(node.left_type)
+			sym := w.table.type_symbol(node.left_type)
 			if sym.kind == .struct_ {
 				if opmethod := sym.find_method(node.op.str()) {
 					w.fn_decl(mut &ast.FnDecl(opmethod.source_fn))
 				}
 			}
-			right_sym := w.table.get_type_symbol(node.right_type)
+			right_sym := w.table.type_symbol(node.right_type)
 			if node.op in [.not_in, .key_in] && right_sym.kind == .map {
 				w.table.used_maps++
 			}
@@ -375,14 +375,14 @@ fn (mut w Walker) expr(node ast.Expr) {
 			w.expr(node.where_expr)
 		}
 		ast.StructInit {
-			sym := w.table.get_type_symbol(node.typ)
+			sym := w.table.type_symbol(node.typ)
 			if sym.kind == .struct_ {
 				info := sym.info as ast.Struct
 				for ifield in info.fields {
 					if ifield.has_default_expr {
 						w.expr(ifield.default_expr)
 					}
-					fsym := w.table.get_type_symbol(ifield.typ)
+					fsym := w.table.type_symbol(ifield.typ)
 					if fsym.kind == .map {
 						w.table.used_maps++
 					}

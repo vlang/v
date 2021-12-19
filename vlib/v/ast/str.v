@@ -92,9 +92,9 @@ fn stringify_fn_after_name(node &FnDecl, mut f strings.Builder, t &Table, cur_mo
 	mut add_para_types := true
 	if node.generic_names.len > 0 {
 		if node.is_method {
-			sym := t.get_type_symbol(node.params[0].typ)
+			sym := t.type_symbol(node.params[0].typ)
 			if sym.info is Struct {
-				generic_names := sym.info.generic_types.map(t.get_type_symbol(it).name)
+				generic_names := sym.info.generic_types.map(t.type_symbol(it).name)
 				if generic_names == node.generic_names {
 					add_para_types = false
 				}
@@ -132,7 +132,7 @@ fn stringify_fn_after_name(node &FnDecl, mut f strings.Builder, t &Table, cur_mo
 		f.write_string(arg.name)
 		mut s := t.type_to_str(arg.typ.clear_flag(.shared_f))
 		if arg.is_mut {
-			arg_sym := t.get_type_symbol(arg.typ)
+			arg_sym := t.type_symbol(arg.typ)
 			if s.starts_with('&') && ((!arg_sym.is_number() && arg_sym.kind != .bool)
 				|| node.language != .v) {
 				s = s[1..]
@@ -452,7 +452,7 @@ pub fn (x Expr) str() string {
 			return x.var_name + ' := ' + x.expr.str()
 		}
 		StructInit {
-			sname := global_table.get_type_symbol(x.typ).name
+			sname := global_table.type_symbol(x.typ).name
 			return '$sname{....}'
 		}
 		ArrayDecompose {
