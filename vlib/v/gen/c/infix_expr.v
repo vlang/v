@@ -448,7 +448,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 // i.e. `a in [1,2,3]` => `a == 1 || a == 2 || a == 3`
 fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, right ast.ArrayInit) {
 	is_str := right.elem_type.idx() == ast.string_type_idx
-	elem_sym := g.table.get_type_symbol(right.elem_type)
+	elem_sym := g.table.sym(right.elem_type)
 	is_array := elem_sym.kind == .array
 	for i, array_expr in right.exprs {
 		if is_str {
@@ -475,8 +475,8 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, right ast.ArrayInit) {
 
 // infix_expr_is_op generates code for `is` and `!is`
 fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
-	sym := g.table.get_type_symbol(node.left_type)
-	right_sym := g.table.get_type_symbol(node.right_type)
+	sym := g.table.sym(node.left_type)
+	right_sym := g.table.sym(node.right_type)
 	if sym.kind == .interface_ && right_sym.kind == .interface_ {
 		g.gen_interface_is_op(node)
 		return
@@ -499,7 +499,7 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 			ast.None { g.table.type_idxs['None__'] }
 			else { ast.Type(0) }
 		}
-		sub_sym := g.table.get_type_symbol(sub_type)
+		sub_sym := g.table.sym(sub_type)
 		g.write('_${c_name(sym.name)}_${c_name(sub_sym.name)}_index')
 		return
 	} else if sym.kind == .sum_type {
@@ -509,8 +509,8 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 }
 
 fn (mut g Gen) gen_interface_is_op(node ast.InfixExpr) {
-	mut left_sym := g.table.get_type_symbol(node.left_type)
-	right_sym := g.table.get_type_symbol(node.right_type)
+	mut left_sym := g.table.sym(node.left_type)
+	right_sym := g.table.sym(node.right_type)
 
 	mut info := left_sym.info as ast.Interface
 
@@ -595,7 +595,7 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 		} else {
 			// push a single element
 			elem_type_str := g.typ(array_info.elem_type)
-			elem_sym := g.table.get_type_symbol(array_info.elem_type)
+			elem_sym := g.table.sym(array_info.elem_type)
 			g.write('array_push${noscan}((array*)')
 			if node.left_type.has_flag(.shared_f) && !node.left_type.deref().is_ptr() {
 			}
@@ -631,7 +631,7 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 fn (mut g Gen) need_tmp_var_in_array_call(node ast.Expr) bool {
 	match node {
 		ast.CallExpr {
-			if node.left_type != 0 && g.table.get_type_symbol(node.left_type).kind == .array
+			if node.left_type != 0 && g.table.sym(node.left_type).kind == .array
 				&& node.name in ['all', 'any', 'filter', 'map'] {
 				return true
 			}

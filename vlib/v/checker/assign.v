@@ -24,7 +24,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					c.check_expr_opt_call(right, right_type0),
 				]
 			}
-			right_type_sym := c.table.get_type_symbol(right_type)
+			right_type_sym := c.table.sym(right_type)
 			if right_type_sym.kind == .multi_return {
 				if node.right.len > 1 {
 					c.error('cannot use multi-value $right_type_sym.name in single-value context',
@@ -91,7 +91,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			c.expected_type = c.unwrap_generic(left_type)
 			// `map = {}`
 			if left_type != 0 {
-				sym := c.table.get_type_symbol(left_type)
+				sym := c.table.sym(left_type)
 				if sym.kind == .map {
 					if node.right.len <= i {
 						// `map_1, map_2, map_3 = f()`, where f returns (map[int]int, map[int]int, map[int]int)
@@ -124,7 +124,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		right := if i < node.right.len { node.right[i] } else { node.right[0] }
 		mut right_type := node.right_types[i]
 		if right is ast.Ident {
-			right_sym := c.table.get_type_symbol(right_type)
+			right_sym := c.table.sym(right_type)
 			if right_sym.info is ast.Struct {
 				if right_sym.info.generic_types.len > 0 {
 					if obj := right.scope.find(right.name) {
@@ -176,7 +176,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						obj = c.fn_scope.find_var(right.obj.name) or { obj }
 					}
 					if obj.is_stack_obj && !c.inside_unsafe {
-						type_sym := c.table.get_type_symbol(obj.typ.set_nr_muls(0))
+						type_sym := c.table.sym(obj.typ.set_nr_muls(0))
 						if !type_sym.is_heap() && !c.pref.translated {
 							suggestion := if type_sym.kind == .struct_ {
 								'declaring `$type_sym.name` as `[heap]`'
@@ -193,7 +193,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		// Do not allow `a := 0; b := 0; a = &b`
 		if !is_decl && left is ast.Ident && !is_blank_ident && !left_type.is_real_pointer()
 			&& right_type.is_real_pointer() {
-			left_sym := c.table.get_type_symbol(left_type)
+			left_sym := c.table.sym(left_type)
 			if left_sym.kind != .function {
 				c.warn(
 					'cannot assign a reference to a value (this will be an error soon) left=${c.table.type_str(left_type)} $left_type.is_ptr() ' +
@@ -246,7 +246,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 									left.obj.is_used = true
 								}
 								if !left_type.is_ptr() {
-									if c.table.get_type_symbol(left_type).is_heap() {
+									if c.table.sym(left_type).is_heap() {
 										left.obj.is_auto_heap = true
 									}
 								}
@@ -326,8 +326,8 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		if left_type_unwrapped == 0 {
 			continue
 		}
-		left_sym := c.table.get_type_symbol(left_type_unwrapped)
-		right_sym := c.table.get_type_symbol(right_type_unwrapped)
+		left_sym := c.table.sym(left_type_unwrapped)
+		right_sym := c.table.sym(right_type_unwrapped)
 		if left_sym.kind == .array && !c.inside_unsafe && node.op in [.assign, .decl_assign]
 			&& right_sym.kind == .array && (left is ast.Ident && !left.is_blank_ident())
 			&& right is ast.Ident {
@@ -398,13 +398,11 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				}
 			}
 			.mult_assign, .div_assign {
-				if !left_sym.is_number()
-					&& !c.table.get_final_type_symbol(left_type_unwrapped).is_int()
+				if !left_sym.is_number() && !c.table.final_sym(left_type_unwrapped).is_int()
 					&& left_sym.kind !in [.struct_, .alias] {
 					c.error('operator $node.op.str() not defined on left operand type `$left_sym.name`',
 						left.position())
-				} else if !right_sym.is_number()
-					&& !c.table.get_final_type_symbol(left_type_unwrapped).is_int()
+				} else if !right_sym.is_number() && !c.table.final_sym(left_type_unwrapped).is_int()
 					&& left_sym.kind !in [.struct_, .alias] {
 					c.error('operator $node.op.str() not defined on right operand type `$right_sym.name`',
 						right.position())
@@ -412,12 +410,10 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 			.and_assign, .or_assign, .xor_assign, .mod_assign, .left_shift_assign,
 			.right_shift_assign {
-				if !left_sym.is_int()
-					&& !c.table.get_final_type_symbol(left_type_unwrapped).is_int() {
+				if !left_sym.is_int() && !c.table.final_sym(left_type_unwrapped).is_int() {
 					c.error('operator $node.op.str() not defined on left operand type `$left_sym.name`',
 						left.position())
-				} else if !right_sym.is_int()
-					&& !c.table.get_final_type_symbol(right_type_unwrapped).is_int() {
+				} else if !right_sym.is_int() && !c.table.final_sym(right_type_unwrapped).is_int() {
 					c.error('operator $node.op.str() not defined on right operand type `$right_sym.name`',
 						right.position())
 				}
@@ -429,7 +425,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				}
 
 				modified_left_type := if !left_type.is_int() {
-					c.error('invalid operation: shift on type `${c.table.get_type_symbol(left_type).name}`',
+					c.error('invalid operation: shift on type `${c.table.sym(left_type).name}`',
 						node.pos)
 					ast.void_type_idx
 				} else if left_type.is_int_literal() {
@@ -483,7 +479,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			|| left_sym.kind == .alias) {
 			left_name := c.table.type_to_str(left_type_unwrapped)
 			right_name := c.table.type_to_str(right_type_unwrapped)
-			parent_sym := c.table.get_final_type_symbol(left_type_unwrapped)
+			parent_sym := c.table.final_sym(left_type_unwrapped)
 			if left_sym.kind == .alias && right_sym.kind != .alias {
 				c.error('mismatched types `$left_name` and `$right_name`', node.pos)
 			}
@@ -577,7 +573,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 			if right_node.op == .arrow {
 				if assigned_var.is_mut {
-					right_sym := c.table.get_type_symbol(right_type0)
+					right_sym := c.table.sym(right_type0)
 					if right_sym.kind == .chan {
 						chan_info := right_sym.chan_info()
 						if chan_info.elem_type.is_ptr() && !chan_info.is_mut {

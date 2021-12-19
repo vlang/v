@@ -279,8 +279,8 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	// println('filter s="$s"')
 	ret_typ := g.typ(node.return_type)
 	// inp_typ := g.typ(node.receiver_type)
-	ret_sym := g.table.get_type_symbol(node.return_type)
-	inp_sym := g.table.get_type_symbol(node.receiver_type)
+	ret_sym := g.table.sym(node.return_type)
+	inp_sym := g.table.sym(node.receiver_type)
 	ret_info := ret_sym.info as ast.Array
 	ret_elem_type := g.typ(ret_info.elem_type)
 	inp_info := inp_sym.info as ast.Array
@@ -321,7 +321,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 				g.write('${c_name(expr.name)}(it)')
 			} else if expr.kind == .variable {
 				var_info := expr.var_info()
-				sym := g.table.get_type_symbol(var_info.typ)
+				sym := g.table.sym(var_info.typ)
 				if sym.kind == .function {
 					g.write('${c_name(expr.name)}(it)')
 				} else {
@@ -367,7 +367,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 // `users.sort(a.age < b.age)`
 fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	// println('filter s="$s"')
-	rec_sym := g.table.get_type_symbol(node.receiver_type)
+	rec_sym := g.table.sym(node.receiver_type)
 	if rec_sym.kind != .array {
 		println(node.name)
 		println(g.typ(node.receiver_type))
@@ -479,7 +479,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	s_ends_with_ln := s.ends_with('\n')
 	s = s.trim_space()
 	// println('filter s="$s"')
-	sym := g.table.get_type_symbol(node.return_type)
+	sym := g.table.sym(node.return_type)
 	if sym.kind != .array {
 		verror('filter() requires an array')
 	}
@@ -519,7 +519,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 				g.write('${c_name(expr.name)}(it)')
 			} else if expr.kind == .variable {
 				var_info := expr.var_info()
-				sym_t := g.table.get_type_symbol(var_info.typ)
+				sym_t := g.table.sym(var_info.typ)
 				if sym_t.kind == .function {
 					g.write('${c_name(expr.name)}(it)')
 				} else {
@@ -564,10 +564,10 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 
 // `nums.insert(0, 2)` `nums.insert(0, [2,3,4])`
 fn (mut g Gen) gen_array_insert(node ast.CallExpr) {
-	left_sym := g.table.get_type_symbol(node.left_type)
+	left_sym := g.table.sym(node.left_type)
 	left_info := left_sym.info as ast.Array
 	elem_type_str := g.typ(left_info.elem_type)
-	arg2_sym := g.table.get_type_symbol(node.args[1].typ)
+	arg2_sym := g.table.sym(node.args[1].typ)
 	is_arg2_array := arg2_sym.kind == .array && node.args[1].typ == node.left_type
 	noscan := g.check_noscan(left_info.elem_type)
 	if is_arg2_array {
@@ -599,10 +599,10 @@ fn (mut g Gen) gen_array_insert(node ast.CallExpr) {
 
 // `nums.prepend(2)` `nums.prepend([2,3,4])`
 fn (mut g Gen) gen_array_prepend(node ast.CallExpr) {
-	left_sym := g.table.get_type_symbol(node.left_type)
+	left_sym := g.table.sym(node.left_type)
 	left_info := left_sym.info as ast.Array
 	elem_type_str := g.typ(left_info.elem_type)
-	arg_sym := g.table.get_type_symbol(node.args[0].typ)
+	arg_sym := g.table.sym(node.args[0].typ)
 	is_arg_array := arg_sym.kind == .array && node.args[0].typ == node.left_type
 	noscan := g.check_noscan(left_info.elem_type)
 	if is_arg_array {
@@ -625,7 +625,7 @@ fn (mut g Gen) gen_array_prepend(node ast.CallExpr) {
 }
 
 fn (mut g Gen) get_array_contains_method(typ ast.Type) string {
-	t := g.table.get_final_type_symbol(g.unwrap_generic(typ).set_nr_muls(0)).idx
+	t := g.table.final_sym(g.unwrap_generic(typ).set_nr_muls(0)).idx
 	g.array_contains_types << t
 	return g.typ(t) + '_contains'
 }
@@ -633,8 +633,8 @@ fn (mut g Gen) get_array_contains_method(typ ast.Type) string {
 fn (mut g Gen) gen_array_contains_methods() {
 	mut done := []ast.Type{}
 	for t in g.array_contains_types {
-		left_final_sym := g.table.get_final_type_symbol(t)
-		if left_final_sym.idx in done || g.table.get_type_symbol(t).has_method('contains') {
+		left_final_sym := g.table.final_sym(t)
+		if left_final_sym.idx in done || g.table.sym(t).has_method('contains') {
 			continue
 		}
 		done << t
@@ -642,7 +642,7 @@ fn (mut g Gen) gen_array_contains_methods() {
 		fn_name := '${left_type_str}_contains'
 		left_info := left_final_sym.info as ast.Array
 		mut elem_type_str := g.typ(left_info.elem_type)
-		elem_sym := g.table.get_type_symbol(left_info.elem_type)
+		elem_sym := g.table.sym(left_info.elem_type)
 		if elem_sym.kind == .function {
 			left_type_str = 'Array_voidptr'
 			elem_type_str = 'voidptr'
@@ -708,16 +708,16 @@ fn (mut g Gen) get_array_index_method(typ ast.Type) string {
 fn (mut g Gen) gen_array_index_methods() {
 	mut done := []ast.Type{}
 	for t in g.array_index_types {
-		if t in done || g.table.get_type_symbol(t).has_method('index') {
+		if t in done || g.table.sym(t).has_method('index') {
 			continue
 		}
 		done << t
-		final_left_sym := g.table.get_final_type_symbol(t)
+		final_left_sym := g.table.final_sym(t)
 		mut left_type_str := g.typ(t)
 		fn_name := '${left_type_str}_index'
 		info := final_left_sym.info as ast.Array
 		mut elem_type_str := g.typ(info.elem_type)
-		elem_sym := g.table.get_type_symbol(info.elem_type)
+		elem_sym := g.table.sym(info.elem_type)
 		if elem_sym.kind == .function {
 			left_type_str = 'Array_voidptr'
 			elem_type_str = 'voidptr'
@@ -775,11 +775,11 @@ fn (mut g Gen) gen_array_index(node ast.CallExpr) {
 }
 
 fn (mut g Gen) gen_array_wait(node ast.CallExpr) {
-	arr := g.table.get_type_symbol(node.receiver_type)
+	arr := g.table.sym(node.receiver_type)
 	thread_type := arr.array_info().elem_type
-	thread_sym := g.table.get_type_symbol(thread_type)
+	thread_sym := g.table.sym(thread_type)
 	thread_ret_type := thread_sym.thread_info().return_type
-	eltyp := g.table.get_type_symbol(thread_ret_type).cname
+	eltyp := g.table.sym(thread_ret_type).cname
 	fn_name := g.register_thread_array_wait_call(eltyp)
 	g.write('${fn_name}(')
 	g.expr(node.left)
@@ -791,7 +791,7 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 	mut s := g.go_before_stmt(0)
 	s_ends_with_ln := s.ends_with('\n')
 	s = s.trim_space()
-	sym := g.table.get_type_symbol(node.left_type)
+	sym := g.table.sym(node.left_type)
 	info := sym.info as ast.Array
 	// styp := g.typ(node.return_type)
 	elem_type_str := g.typ(info.elem_type)
@@ -826,7 +826,7 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 				g.write('${c_name(expr.name)}(it)')
 			} else if expr.kind == .variable {
 				var_info := expr.var_info()
-				sym_t := g.table.get_type_symbol(var_info.typ)
+				sym_t := g.table.sym(var_info.typ)
 				if sym_t.kind == .function {
 					g.write('${c_name(expr.name)}(it)')
 				} else {
@@ -875,7 +875,7 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 	mut s := g.go_before_stmt(0)
 	s_ends_with_ln := s.ends_with('\n')
 	s = s.trim_space()
-	sym := g.table.get_type_symbol(node.left_type)
+	sym := g.table.sym(node.left_type)
 	info := sym.info as ast.Array
 	// styp := g.typ(node.return_type)
 	elem_type_str := g.typ(info.elem_type)
@@ -911,7 +911,7 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 				g.write('${c_name(expr.name)}(it)')
 			} else if expr.kind == .variable {
 				var_info := expr.var_info()
-				sym_t := g.table.get_type_symbol(var_info.typ)
+				sym_t := g.table.sym(var_info.typ)
 				if sym_t.kind == .function {
 					g.write('${c_name(expr.name)}(it)')
 				} else {

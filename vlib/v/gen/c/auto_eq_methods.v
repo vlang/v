@@ -19,7 +19,7 @@ fn (mut g Gen) gen_equality_fns() {
 		if needed_typ in g.generated_eq_fns {
 			continue
 		}
-		sym := g.table.get_type_symbol(needed_typ)
+		sym := g.table.sym(needed_typ)
 		match sym.kind {
 			.sum_type {
 				g.gen_sumtype_equality_fn(needed_typ)
@@ -182,7 +182,7 @@ fn (mut g Gen) gen_alias_equality_fn(left_type ast.Type) string {
 
 	mut fn_builder := strings.new_builder(512)
 	fn_builder.writeln('static bool ${ptr_styp}_alias_eq($ptr_styp a, $ptr_styp b) {')
-	sym := g.table.get_type_symbol(info.parent_type)
+	sym := g.table.sym(info.parent_type)
 	if sym.kind == .string {
 		fn_builder.writeln('\treturn string__eq(a, b);')
 	} else if sym.kind == .sum_type && !left.typ.is_ptr() {
