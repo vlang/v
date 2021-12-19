@@ -305,6 +305,42 @@ pub fn (d Duration) hours() f64 {
 	return f64(hr) + f64(nsec) / (60 * 60 * 1e9)
 }
 
+// str pretty prints the duration.
+pub fn (d Duration) str() string {
+	if d == infinite {
+		return 'inf'
+	}
+	mut t := i64(d)
+	hr := t / time.hour
+	t -= hr * time.hour
+	min := t / time.minute
+	t -= min * time.minute
+	sec := t / time.second
+	t -= sec * time.second
+	ms := t / time.millisecond
+	t -= ms * time.millisecond
+	us := t / time.microsecond
+	t -= us * time.microsecond
+	ns := t
+
+	if hr > 0 {
+		return '$hr:${min:02}:${sec:02}'
+	}
+	if min > 0 {
+		return '$min:${sec:02}.${ms:03}'
+	}
+	if sec > 0 {
+		return '${sec}.${ms:03}s'
+	}
+	if ms > 0 {
+		return '${ms}.${us:03}ms'
+	}
+	if us > 0 {
+		return '${us}.${ns:03}us'
+	}
+	return '${ns}ns'
+}
+
 // offset returns time zone UTC offset in seconds.
 pub fn offset() int {
 	t := now()
