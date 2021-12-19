@@ -100,6 +100,98 @@ pub fn (mut p Parser) parse_array_type() ast.Type {
 	return ast.new_type(idx)
 }
 
+pub fn (mut p Parser) ni_parse_array_type() ast.Type {
+	p.check(.nilsbr)
+	// fixed array
+	if p.tok.kind in [.number, .name] {
+		mut fixed_size := 0
+		size_expr := p.expr(0)
+		if p.pref.is_fmt {
+			fixed_size = 987654321
+		} else {
+			match size_expr {
+				ast.IntegerLiteral {
+					fixed_size = size_expr.val.int()
+				}
+				ast.Ident {
+					mut show_non_const_error := false
+					if const_field := p.table.global_scope.find_const('${p.mod}.$size_expr.name') {
+						if const_field.expr is ast.IntegerLiteral {
+							fixed_size = const_field.expr.val.int()
+						} else {
+							if const_field.expr is ast.InfixExpr {
+								mut t := transformer.new_transformer(p.pref)
+								folded_expr := t.infix_expr(const_field.expr)
+
+								if folded_expr is ast.IntegerLiteral {
+									fixed_size = folded_expr.val.int()
+								} else {
+									show_non_const_error = true
+								}
+							} else {
+								show_non_const_error = true
+							}
+						}
+					} else {
+						if p.pref.is_fmt {
+							// for vfmt purposes, pretend the constant does exist
+							// it may have been defined in another .v file:
+							fixed_size = 1
+						} else {
+							show_non_const_error = true
+						}
+					}
+					if show_non_const_error {
+						p.error_with_pos('non-constant array bound `$size_expr.name`',
+							size_expr.pos)
+					}
+				}
+				else {
+					p.error('expecting `int` for fixed size')
+				}
+			}
+		}
+		p.check(.rsbr)
+		elem_type := p.parse_type()
+		if elem_type.idx() == 0 {
+			// error is handled by parse_type
+			return 0
+		}
+		if fixed_size <= 0 {
+			p.error_with_pos('fixed size cannot be zero or negative', size_expr.position())
+		}
+		// sym := p.table.get_type_symbol(elem_type)
+		idx := p.table.find_or_register_array_fixed(elem_type, fixed_size, size_expr)
+		if elem_type.has_flag(.generic) {
+			return ast.new_type(idx).set_flag(.generic)
+		}
+		return ast.new_type(idx)
+	}
+	// array
+	p.check(.rsbr)
+	elem_type := p.parse_type()
+	if elem_type.idx() == 0 {
+		// error is set in parse_type
+		return 0
+	}
+	if elem_type.idx() == ast.thread_type_idx {
+		p.register_auto_import('sync.threads')
+	}
+	mut nr_dims := 1
+	// detect attr
+	not_attr := p.peek_tok.kind != .name && p.peek_token(2).kind !in [.semicolon, .rsbr]
+	for p.tok.kind == .nilsbr && not_attr {
+		p.next()
+		p.check(.rsbr)
+		nr_dims++
+	}
+	idx := p.table.find_or_register_array_with_dims(elem_type, nr_dims)
+	if elem_type.has_flag(.generic) {
+		return ast.new_type(idx).set_flag(.generic)
+	}
+	return ast.new_type(idx)
+}
+
 pub fn (mut p Parser) parse_map_type() ast.Type {
 	p.next()
 	if p.tok.kind != .lsbr {
@@ -411,6 +503,10 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 		.lsbr {
 			// array
 			return p.parse_array_type()
+		}
+		.nilsbr {
+			// array
+			return p.ni_parse_array_type()
 		}
 		.lpar {
 			// multiple return

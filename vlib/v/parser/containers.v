@@ -222,3 +222,5 @@ fn (mut p Parser) scope_register_it_as_index() {
 		is_used: false
 	}
 }
+
+

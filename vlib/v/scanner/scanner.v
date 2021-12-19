@@ -913,6 +913,12 @@ fn (mut s Scanner) text_scan() token.Token {
 				return s.new_token(.dot, '', 1)
 			}
 			`#` {
+				//Dario
+				if nextc == `[` {
+					s.pos++
+					return s.new_token(.nilsbr, '', 2)
+				}
+				
 				start := s.pos + 1
 				s.ignore_line()
 				if nextc == `!` {
