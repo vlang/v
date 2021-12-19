@@ -49,9 +49,12 @@ mut:
 	cheaders               strings.Builder
 	includes               strings.Builder // all C #includes required by V modules
 	typedefs               strings.Builder
-	typedefs2              strings.Builder
-	type_definitions       strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
+	enum_typedefs          strings.Builder // enum types
 	definitions            strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
+	type_definitions       strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
+	hotcode_definitions    strings.Builder // -live declarations & functions
+	channel_definitions    strings.Builder // channel related code
+	comptime_definitions   strings.Builder // custom defines, given by -d/-define flags on the CLI
 	global_inits           map[string]strings.Builder // default initializers for globals (goes in _vinit())
 	global_init            strings.Builder // thread local of the above
 	inits                  map[string]strings.Builder // contents of `void _vinit/2{}`
@@ -61,22 +64,18 @@ mut:
 	gowrappers             strings.Builder // all go callsite wrappers
 	stringliterals         strings.Builder // all string literals (they depend on tos3() beeing defined
 	auto_str_funcs         strings.Builder // function bodies of all auto generated _str funcs
-	comptime_defines       strings.Builder // custom defines, given by -d/-define flags on the CLI
 	pcs_declarations       strings.Builder // -prof profile counter declarations for each function
-	hotcode_definitions    strings.Builder // -live declarations & functions
 	embedded_data          strings.Builder // data to embed in the executable/binary
 	shared_types           strings.Builder // shared/lock types
 	shared_functions       strings.Builder // shared constructors
-	channel_definitions    strings.Builder // channel related code
 	options                strings.Builder // `Option_xxxx` types
 	json_forward_decls     strings.Builder // json type forward decls
-	enum_typedefs          strings.Builder // enum types
 	sql_buf                strings.Builder // for writing exprs to args via `sqlite3_bind_int()` etc
 	file                   &ast.File
 	fn_decl                &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	last_fn_c_name         string
 	tmp_count              int  // counter for unique tmp vars (_tmp1, _tmp2 etc); resets at the start of each fn.
-	tmp_count2             int  // a separate tmp var counter for autofree fn calls
+	tmp_count_af           int  // a separate tmp var counter for autofree fn calls
 	tmp_count_declarations int  // counter for unique tmp names (_d1, _d2 etc); does NOT reset, used for C declarations
 	global_tmp_count       int  // like tmp_count but global and not resetted in each function
 	discard_or_result      bool // do not safe last ExprStmt of `or` block in tmp variable to defer ongoing expr usage
@@ -217,22 +216,21 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		cheaders: strings.new_builder(15000)
 		includes: strings.new_builder(100)
 		typedefs: strings.new_builder(100)
-		typedefs2: strings.new_builder(100)
+		enum_typedefs: strings.new_builder(100)
 		type_definitions: strings.new_builder(100)
+		hotcode_definitions: strings.new_builder(100)
+		channel_definitions: strings.new_builder(100)
+		comptime_definitions: strings.new_builder(100)
 		definitions: strings.new_builder(100)
 		gowrappers: strings.new_builder(100)
 		stringliterals: strings.new_builder(100)
 		auto_str_funcs: strings.new_builder(100)
-		comptime_defines: strings.new_builder(100)
 		pcs_declarations: strings.new_builder(100)
-		hotcode_definitions: strings.new_builder(100)
 		embedded_data: strings.new_builder(1000)
 		options: strings.new_builder(100)
 		shared_types: strings.new_builder(100)
 		shared_functions: strings.new_builder(100)
-		channel_definitions: strings.new_builder(100)
 		json_forward_decls: strings.new_builder(100)
-		enum_typedefs: strings.new_builder(100)
 		sql_buf: strings.new_builder(100)
 		table: table
 		pref: pref
@@ -273,13 +271,12 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			global_g.cheaders.write(g.cheaders) or { panic(err) }
 			global_g.includes.write(g.includes) or { panic(err) }
 			global_g.typedefs.write(g.typedefs) or { panic(err) }
-			global_g.typedefs2.write(g.typedefs2) or { panic(err) }
 			global_g.type_definitions.write(g.type_definitions) or { panic(err) }
 			global_g.definitions.write(g.definitions) or { panic(err) }
 			global_g.gowrappers.write(g.gowrappers) or { panic(err) }
 			global_g.stringliterals.write(g.stringliterals) or { panic(err) }
 			global_g.auto_str_funcs.write(g.auto_str_funcs) or { panic(err) }
-			global_g.comptime_defines.write(g.comptime_defines) or { panic(err) }
+			global_g.comptime_definitions.write(g.comptime_definitions) or { panic(err) }
 			global_g.pcs_declarations.write(g.pcs_declarations) or { panic(err) }
 			global_g.hotcode_definitions.write(g.hotcode_definitions) or { panic(err) }
 			global_g.embedded_data.write(g.embedded_data) or { panic(err) }
@@ -397,12 +394,10 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 
 	mut b := strings.new_builder(640000)
 	b.write_string(g.hashes())
-	b.writeln('\n// V comptime_defines:')
-	b.write_string(g.comptime_defines.str())
+	b.writeln('\n// V comptime_definitions:')
+	b.write_string(g.comptime_definitions.str())
 	b.writeln('\n// V typedefs:')
 	b.write_string(g.typedefs.str())
-	b.writeln('\n// V typedefs2:')
-	b.write_string(g.typedefs2.str())
 	b.writeln('\n// V cheaders:')
 	b.write_string(g.cheaders.str())
 	if g.pcs_declarations.len > 0 {
@@ -492,13 +487,12 @@ fn cgen_process_one_file_cb(p &pool.PoolProcessor, idx int, wid int) &Gen {
 		cheaders: strings.new_builder(15000)
 		includes: strings.new_builder(100)
 		typedefs: strings.new_builder(100)
-		typedefs2: strings.new_builder(100)
 		type_definitions: strings.new_builder(100)
 		definitions: strings.new_builder(100)
 		gowrappers: strings.new_builder(100)
 		stringliterals: strings.new_builder(100)
 		auto_str_funcs: strings.new_builder(100)
-		comptime_defines: strings.new_builder(100)
+		comptime_definitions: strings.new_builder(100)
 		pcs_declarations: strings.new_builder(100)
 		hotcode_definitions: strings.new_builder(100)
 		embedded_data: strings.new_builder(1000)
@@ -543,7 +537,6 @@ pub fn (mut g Gen) free_builders() {
 		g.cheaders.free()
 		g.includes.free()
 		g.typedefs.free()
-		g.typedefs2.free()
 		g.type_definitions.free()
 		g.definitions.free()
 		g.global_init.free()
@@ -552,7 +545,7 @@ pub fn (mut g Gen) free_builders() {
 		g.gowrappers.free()
 		g.stringliterals.free()
 		g.auto_str_funcs.free()
-		g.comptime_defines.free()
+		g.comptime_definitions.free()
 		g.pcs_declarations.free()
 		g.hotcode_definitions.free()
 		g.embedded_data.free()
@@ -648,37 +641,37 @@ pub fn (mut g Gen) init() {
 		}
 	}
 	if g.pref.compile_defines_all.len > 0 {
-		g.comptime_defines.writeln('// V compile time defines by -d or -define flags:')
-		g.comptime_defines.writeln('//     All custom defines      : ' +
+		g.comptime_definitions.writeln('// V compile time defines by -d or -define flags:')
+		g.comptime_definitions.writeln('//     All custom defines      : ' +
 			g.pref.compile_defines_all.join(','))
-		g.comptime_defines.writeln('//     Turned ON custom defines: ' +
+		g.comptime_definitions.writeln('//     Turned ON custom defines: ' +
 			g.pref.compile_defines.join(','))
 		for cdefine in g.pref.compile_defines {
-			g.comptime_defines.writeln('#define CUSTOM_DEFINE_$cdefine')
+			g.comptime_definitions.writeln('#define CUSTOM_DEFINE_$cdefine')
 		}
-		g.comptime_defines.writeln('')
+		g.comptime_definitions.writeln('')
 	}
 	if g.table.gostmts > 0 {
-		g.comptime_defines.writeln('#define __VTHREADS__ (1)')
+		g.comptime_definitions.writeln('#define __VTHREADS__ (1)')
 	}
 	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
-		g.comptime_defines.writeln('#define _VGCBOEHM (1)')
+		g.comptime_definitions.writeln('#define _VGCBOEHM (1)')
 	}
 	if g.pref.is_debug || 'debug' in g.pref.compile_defines {
-		g.comptime_defines.writeln('#define _VDEBUG (1)')
+		g.comptime_definitions.writeln('#define _VDEBUG (1)')
 	}
 	if g.pref.is_prod || 'prod' in g.pref.compile_defines {
-		g.comptime_defines.writeln('#define _VPROD (1)')
+		g.comptime_definitions.writeln('#define _VPROD (1)')
 	}
 	if g.pref.is_test || 'test' in g.pref.compile_defines {
-		g.comptime_defines.writeln('#define _VTEST (1)')
+		g.comptime_definitions.writeln('#define _VTEST (1)')
 	}
 	if g.pref.autofree {
-		g.comptime_defines.writeln('#define _VAUTOFREE (1)')
-		// g.comptime_defines.writeln('unsigned char* g_cur_str;')
+		g.comptime_definitions.writeln('#define _VAUTOFREE (1)')
+		// g.comptime_definitions.writeln('unsigned char* g_cur_str;')
 	}
 	if g.pref.prealloc {
-		g.comptime_defines.writeln('#define _VPREALLOC (1)')
+		g.comptime_definitions.writeln('#define _VPREALLOC (1)')
 	}
 	if g.pref.is_livemain || g.pref.is_liveshared {
 		g.generate_hotcode_reloading_declarations()
@@ -928,7 +921,7 @@ fn (mut g Gen) write_optionals() {
 			continue
 		}
 		done << base
-		g.typedefs2.writeln('typedef struct $styp $styp;')
+		g.typedefs.writeln('typedef struct $styp $styp;')
 		g.options.write_string(g.optional_type_text(styp, base) + ';\n\n')
 	}
 }
@@ -956,7 +949,7 @@ fn (mut g Gen) write_shareds() {
 		g.shared_functions.writeln('\tsync__RwMutex_init(&dest->mtx);')
 		g.shared_functions.writeln('\treturn dest;')
 		g.shared_functions.writeln('}')
-		g.typedefs2.writeln('typedef struct $sh_typ $sh_typ;')
+		g.typedefs.writeln('typedef struct $sh_typ $sh_typ;')
 	}
 }
 
@@ -1347,8 +1340,8 @@ pub fn (mut g Gen) current_tmp_var() string {
 
 /*
 pub fn (mut g Gen) new_tmp_var2() string {
-	g.tmp_count2++
-	return '_tt$g.tmp_count2'
+	g.tmp_count_af++
+	return '_tt$g.tmp_count_af'
 }
 */
 pub fn (mut g Gen) reset_tmp_count() {
@@ -6387,7 +6380,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 			g.type_definitions.writeln('struct none {')
 			g.type_definitions.writeln('\tEMPTY_STRUCT_DECLARATION;')
 			g.type_definitions.writeln('};')
-			g.typedefs2.writeln('typedef struct none none;')
+			g.typedefs.writeln('typedef struct none none;')
 		}
 		// sym := g.table.get_type_symbol(typ)
 		mut name := sym.cname
@@ -6439,7 +6432,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 									g.done_optionals << base
 									last_text := g.type_definitions.after(start_pos).clone()
 									g.type_definitions.go_back_to(start_pos)
-									g.typedefs2.writeln('typedef struct $styp $styp;')
+									g.typedefs.writeln('typedef struct $styp $styp;')
 									g.type_definitions.writeln('${g.optional_type_text(styp,
 										base)};')
 									g.type_definitions.write_string(last_text)

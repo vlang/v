@@ -1309,7 +1309,7 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 		return
 	}
 	free_tmp_arg_vars = false // set the flag to true only if we have at least one arg to free
-	g.tmp_count2++
+	g.tmp_count_af++
 	mut scope := g.file.scope.innermost(node.pos.pos)
 	// prepend the receiver for now (TODO turn the receiver into a CallArg everywhere?)
 	mut args := [
@@ -1333,7 +1333,7 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 		free_tmp_arg_vars = true
 		// t := g.new_tmp_var() + '_arg_expr_${name}_$i'
 		fn_name := node.name.replace('.', '_') // can't use name...
-		// t := '_tt${g.tmp_count2}_arg_expr_${fn_name}_$i'
+		// t := '_tt${g.tmp_count_af}_arg_expr_${fn_name}_$i'
 		t := '_arg_expr_${fn_name}_${i}_$node.pos.pos'
 		// g.called_fn_name = name
 		used := false // scope.known_var(t)
@@ -1453,7 +1453,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 					// g.write('_arg_expr_${g.called_fn_name}_$i')
 					// Use these variables here.
 					fn_name := node.name.replace('.', '_')
-					// name := '_tt${g.tmp_count2}_arg_expr_${fn_name}_$i'
+					// name := '_tt${g.tmp_count_af}_arg_expr_${fn_name}_$i'
 					name := '_arg_expr_${fn_name}_${i + 1}_$node.pos.pos'
 					g.write('/*af arg*/' + name)
 				}
@@ -1464,7 +1464,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			if use_tmp_var_autofree {
 				// TODO copypasta, move to an inline fn
 				fn_name := node.name.replace('.', '_')
-				// name := '_tt${g.tmp_count2}_arg_expr_${fn_name}_$i'
+				// name := '_tt${g.tmp_count_af}_arg_expr_${fn_name}_$i'
 				name := '_arg_expr_${fn_name}_${i + 1}_$node.pos.pos'
 				g.write('/*af arg2*/' + name)
 			} else {
