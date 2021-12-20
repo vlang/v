@@ -387,6 +387,7 @@ fn (a array) slice(start int, _end int) array {
 fn (a array) slice_ni(_start int, _end int) array {
 	mut end := _end
 	mut start := _start
+	
 	if start < 0 {
 		start = a.len + start
 		if start < 0 {

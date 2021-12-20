@@ -60,7 +60,11 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 fn (mut g Gen) range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 	sym := g.table.get_final_type_symbol(node.left_type)
 	if sym.kind == .string {
-		g.write('string_substr(')
+		if node.is_gated == false {
+			g.write('string_substr(')
+		} else {
+			g.write('string_substr_ni(')
+		}
 		g.expr(node.left)
 	} else if sym.kind == .array {
 		if node.is_gated == false {
@@ -76,7 +80,11 @@ fn (mut g Gen) range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 		// Convert a fixed array to V array when doing `fixed_arr[start..end]`
 		info := sym.info as ast.ArrayFixed
 		noscan := g.check_noscan(info.elem_type)
-		g.write('array_slice(new_array_from_c_array${noscan}(')
+		if node.is_gated == false {
+			g.write('array_slice(new_array_from_c_array${noscan}(')
+		} else {
+			g.write('array_slice_ni(new_array_from_c_array${noscan}(')
+		}
 		g.write('$info.size')
 		g.write(', $info.size')
 		g.write(', sizeof(')

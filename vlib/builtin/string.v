@@ -788,6 +788,63 @@ pub fn (s string) substr(start int, end int) string {
 	return res
 }
 
+// substr_ni returns the string between index positions `start` and `end` allowing negative indexes
+[direct_array_access]
+pub fn (s string) substr_ni(_start int, _end int) string {
+	mut start := _start
+	mut end := _end
+
+	// borders math
+	if start < 0 {
+		start = s.len + start
+		if start < 0 {
+			start = 0
+		}
+	}
+	
+	if end < 0 {
+		end = s.len + end
+		if end < 0 {
+			end = 0
+		}
+	}
+	if end >= s.len {
+		end = s.len
+	}
+
+	if start > s.len || end < start {
+		mut res := string{
+			str: unsafe { malloc_noscan(1) }
+			len: 1
+		}
+		unsafe {
+			res.str[0] = 0
+		}
+		return res
+	}
+
+	len := end - start
+
+	// string copy
+	mut res := string{
+		str: unsafe { malloc_noscan(len + 1) }
+		len: len
+	}
+	for i in 0 .. len {
+		unsafe {
+			res.str[i] = s.str[start + i]
+		}
+	}
+	unsafe {
+		res.str[len] = 0
+	}
+	return res
+
+
+
+
+}
+
 // index returns the position of the first character of the input string.
 // It will return `-1` if the input string can't be found.
 [direct_array_access]
