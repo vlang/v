@@ -826,13 +826,11 @@ jobs:
         run: make && sudo ./v symlink
 
       ## vls
-      - name: Clone VLS tree-sitter
-        run: git clone --depth 1 --no-single-branch https://github.com/vlang/vls
-      - name: Checkout branch tree-sitter
-        run: pushd vls; git checkout use-tree-sitter; popd
-      - name: Build VLS tree-sitter
+      - name: Clone VLS
+        run: git clone --depth 1 https://github.com/vlang/vls
+      - name: Build VLS
         run: pushd vls; v cmd/vls ; popd
-      - name: Build VLS tree-sitter with -prod
+      - name: Build VLS with -prod
         run: pushd vls; v -prod cmd/vls; popd
 
       ## vsl
