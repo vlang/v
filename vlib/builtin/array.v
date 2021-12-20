@@ -387,24 +387,14 @@ fn (a array) slice(start int, _end int) array {
 fn (a array) slice_ni(_start int, _end int) array {
 	mut end := _end
 	mut start := _start
-	
+
 	if start < 0 {
 		start = a.len + start
 		if start < 0 {
 			start = 0
 		}
 	}
-	if start >= a.len {
-		res := array{
-			element_size: a.element_size
-			data: a.data
-			offset: 0
-			len: 0
-			cap: 0
-		}
-		return res
-	}
-
+	
 	if end < 0 {
 		end = a.len + end
 		if end < 0 {
@@ -413,6 +403,17 @@ fn (a array) slice_ni(_start int, _end int) array {
 	}
 	if end >= a.len {
 		end = a.len
+	}
+
+	if start >= a.len || start > end {
+		res := array{
+			element_size: a.element_size
+			data: a.data
+			offset: 0
+			len: 0
+			cap: 0
+		}
+		return res
 	}
 
 	offset := start * a.element_size
