@@ -815,7 +815,7 @@ pub fn (s string) substr_ni(_start int, _end int) string {
 	if start > s.len || end < start {
 		mut res := string{
 			str: unsafe { malloc_noscan(1) }
-			len: 1
+			len: 0
 		}
 		unsafe {
 			res.str[0] = 0
