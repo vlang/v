@@ -41,6 +41,6 @@ pub fn (mut stack Stack<T>) pop() ?T {
 }
 
 // str returns a string representation of the stack
-pub fn (mut stack Stack<T>) str() string {
+pub fn (stack Stack<T>) str() string {
 	return stack.elements.str()
 }
