@@ -2338,7 +2338,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	return node
 }
 
-fn (mut p Parser) index_expr(left ast.Expr, ni_allowed bool) ast.IndexExpr {
+fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 	// left == `a` in `a[0]`
 	start_pos := p.tok.position()
 	p.next() // [
@@ -2363,8 +2363,9 @@ fn (mut p Parser) index_expr(left ast.Expr, ni_allowed bool) ast.IndexExpr {
 				high: high
 				has_high: has_high
 				pos: pos
+				is_gated: is_gated
 			}
-			ni_allowed: ni_allowed
+			is_gated: is_gated
 		}
 	}
 	expr := p.expr(0) // `[expr]` or  `[expr..`
@@ -2388,8 +2389,9 @@ fn (mut p Parser) index_expr(left ast.Expr, ni_allowed bool) ast.IndexExpr {
 				has_high: has_high
 				has_low: has_low
 				pos: pos
+				is_gated: is_gated
 			}
-			ni_allowed: ni_allowed
+			is_gated: is_gated
 		}
 	}
 	// [expr]
@@ -2419,7 +2421,7 @@ fn (mut p Parser) index_expr(left ast.Expr, ni_allowed bool) ast.IndexExpr {
 					stmts: or_stmts
 					pos: or_pos
 				}
-				ni_allowed: ni_allowed
+				is_gated: is_gated
 			}
 		}
 		// `a[i] ?`
@@ -2438,7 +2440,7 @@ fn (mut p Parser) index_expr(left ast.Expr, ni_allowed bool) ast.IndexExpr {
 			stmts: or_stmts
 			pos: or_pos
 		}
-		ni_allowed: ni_allowed
+		is_gated: is_gated
 	}
 }
 

@@ -384,6 +384,49 @@ fn (a array) slice(start int, _end int) array {
 	return res
 }
 
+fn (a array) slice_ni(_start int, _end int) array {
+	mut end := _end
+	mut start := _start
+	if start < 0 {
+		start = a.len + start
+		if start < 0 {
+			start = 0
+		}
+	}
+	if start >= a.len {
+		res := array{
+			element_size: a.element_size
+			data: a.data
+			offset: 0
+			len: 0
+			cap: 0
+		}
+		return res
+	}
+
+	if end < 0 {
+		end = a.len + end
+		if end < 0 {
+			end = 0
+		}
+	}
+	if end >= a.len {
+		end = a.len
+	}
+
+	offset := start * a.element_size
+	data := unsafe { &byte(a.data) + offset }
+	l := end - start
+	res := array{
+		element_size: a.element_size
+		data: data
+		offset: a.offset + offset
+		len: l
+		cap: l
+	}
+	return res
+}
+
 // used internally for [2..4]
 fn (a array) slice2(start int, _end int, end_max bool) array {
 	end := if end_max { a.len } else { _end }

@@ -4324,7 +4324,7 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 	return right_type
 }
 
-fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_type ast.Type, pos token.Position, range_index bool) {
+fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_type ast.Type, pos token.Position, range_index bool, is_gated bool) {
 	index_type_sym := c.table.get_type_symbol(index_type)
 	// println('index expr left=$typ_sym.name $node.pos.line_nr')
 	// if typ_sym.kind == .array && (!(ast.type_idx(index_type) in ast.number_type_idxs) &&
@@ -4338,7 +4338,7 @@ fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_ty
 			}
 			c.error('$type_str', pos)
 		}
-		if index is ast.IntegerLiteral {
+		if index is ast.IntegerLiteral && is_gated == false {
 			if index.val[0] == `-` {
 				c.error('negative index `$index.val`', index.pos)
 			} else if typ_sym.kind == .array_fixed {
@@ -4421,11 +4421,11 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 	if mut node.index is ast.RangeExpr { // [1..2]
 		if node.index.has_low {
 			index_type := c.expr(node.index.low)
-			c.check_index(typ_sym, node.index.low, index_type, node.pos, true)
+			c.check_index(typ_sym, node.index.low, index_type, node.pos, true, node.is_gated)
 		}
 		if node.index.has_high {
 			index_type := c.expr(node.index.high)
-			c.check_index(typ_sym, node.index.high, index_type, node.pos, true)
+			c.check_index(typ_sym, node.index.high, index_type, node.pos, true, node.is_gated)
 		}
 		// array[1..2] => array
 		// fixed_array[1..2] => array
@@ -4453,7 +4453,11 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			}
 		} else {
 			index_type := c.expr(node.index)
-			c.check_index(typ_sym, node.index, index_type, node.pos, false)
+			// for [1] case #[1] is not allowed!
+			if node.is_gated == true {
+				c.error('`#[]` allowed only for ranges', node.pos)
+			}
+			c.check_index(typ_sym, node.index, index_type, node.pos, false, false)
 		}
 		value_type := c.table.value_type(typ)
 		if value_type != ast.void_type {

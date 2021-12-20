@@ -63,7 +63,11 @@ fn (mut g Gen) range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 		g.write('string_substr(')
 		g.expr(node.left)
 	} else if sym.kind == .array {
-		g.write('array_slice(')
+		if node.is_gated == false {
+			g.write('array_slice(')
+		} else {
+			g.write('array_slice_ni(')
+		}
 		if node.left_type.is_ptr() {
 			g.write('*')
 		}
