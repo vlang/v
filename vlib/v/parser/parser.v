@@ -83,6 +83,7 @@ mut:
 	comptime_if_cond    bool
 	defer_vars          []ast.Ident
 	should_abort        bool // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the parser should stop
+	is_parsing_sum_type bool // to prevent parsing inline sum type again
 }
 
 // for tests
@@ -3399,12 +3400,20 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	sum_variants << p.parse_sum_type_variants()
 	// type SumType = A | B | c
 	if sum_variants.len > 1 {
-		typ := p.find_or_register_sum_type(
-			name: name
-			variants: sum_variants
-			is_pub: is_pub
-			generic_types: generic_types
-		)
+		variant_types := sum_variants.map(it.typ)
+		prepend_mod_name := p.prepend_mod(name)
+		typ := p.table.register_type_symbol(ast.TypeSymbol{
+			kind: .sum_type
+			name: prepend_mod_name
+			cname: util.no_dots(prepend_mod_name)
+			mod: p.mod
+			info: ast.SumType{
+				variants: variant_types
+				is_generic: generic_types.len > 0
+				generic_types: generic_types
+			}
+			is_public: is_pub
+		})
 		if typ == -1 {
 			p.error_with_pos('cannot register sum type `$name`, another type with this name exists',
 				name_pos)
@@ -3472,29 +3481,6 @@ struct RegisterSumTypeConfig {
 	is_pub        bool
 	name          string
 	generic_types []ast.Type
-}
-
-fn (mut p Parser) find_or_register_sum_type(cfg RegisterSumTypeConfig) ast.Type {
-	variant_types := cfg.variants.map(it.typ)
-	prepend_mod_name := p.prepend_mod(cfg.name)
-	mut idx := p.table.find_type_idx(prepend_mod_name)
-	if idx > 0 {
-		return ast.new_type(idx)
-	}
-	idx = p.table.register_type_symbol(ast.TypeSymbol{
-		kind: .sum_type
-		name: prepend_mod_name
-		cname: util.no_dots(prepend_mod_name)
-		mod: p.mod
-		info: ast.SumType{
-			is_anon: cfg.is_anon
-			variants: variant_types
-			is_generic: cfg.generic_types.len > 0
-			generic_types: cfg.generic_types
-		}
-		is_public: cfg.is_pub
-	})
-	return ast.new_type(idx)
 }
 
 fn (mut p Parser) assoc() ast.Assoc {

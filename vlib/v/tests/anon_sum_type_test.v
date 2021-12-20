@@ -43,5 +43,6 @@ fn returns_optional_inline_sumtype() ?(string | int) {
 
 fn test_optional_inline_sumtype() {
 	x := returns_optional_inline_sumtype() or { 100 }
-	assert x == 100
+	assert x is int
+	assert (x as int) == 100
 }

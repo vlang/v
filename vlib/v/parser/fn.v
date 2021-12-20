@@ -357,7 +357,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	same_line := p.tok.line_nr == p.prev_tok.line_nr
 	if (p.tok.kind.is_start_of_type() && (same_line || p.tok.kind != .lsbr))
 		|| (same_line && p.tok.kind == .key_fn) {
-		return_type = p.parse_type_inline()
+		return_type = p.parse_type()
 		return_type_pos = return_type_pos.extend(p.prev_tok.position())
 	}
 	mut type_sym_method_idx := 0
@@ -748,7 +748,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 				is_variadic = true
 			}
 			pos := p.tok.position()
-			mut arg_type := p.parse_type_inline()
+			mut arg_type := p.parse_type()
 			if arg_type == 0 {
 				// error is added in parse_type
 				return []ast.Param{}, false, false
@@ -851,7 +851,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 				is_variadic = true
 			}
 			pos := p.tok.position()
-			mut typ := p.parse_type_inline()
+			mut typ := p.parse_type()
 			if typ == 0 {
 				// error is added in parse_type
 				return []ast.Param{}, false, false

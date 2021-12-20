@@ -283,16 +283,31 @@ pub fn (mut p Parser) parse_language() ast.Language {
 	return language
 }
 
-// parse_type_inline parses the type and registers it in case the type is an anonymous sum type.
+// parse_inline_sum_type parses the type and registers it in case the type is an anonymous sum type.
 // It also takes care of inline sum types where parse_type only parses a standalone type.
-pub fn (mut p Parser) parse_type_inline() ast.Type {
+pub fn (mut p Parser) parse_inline_sum_type() ast.Type {
 	variants := p.parse_sum_type_variants()
 	if variants.len > 1 {
 		variant_names := variants.map(p.table.sym(it.typ).name)
 		// deterministic name
 		name := '_v_anon_sum_type_${variant_names.join('_')}'
-		typ := p.find_or_register_sum_type(variants: variants, name: name, is_anon: true)
-		return ast.Type(typ)
+		variant_types := variants.map(it.typ)
+		prepend_mod_name := p.prepend_mod(name)
+		mut idx := p.table.find_type_idx(prepend_mod_name)
+		if idx > 0 {
+			return ast.new_type(idx)
+		}
+		idx = p.table.register_type_symbol(ast.TypeSymbol{
+			kind: .sum_type
+			name: prepend_mod_name
+			cname: util.no_dots(prepend_mod_name)
+			mod: p.mod
+			info: ast.SumType{
+				is_anon: true
+				variants: variant_types
+			}
+		})
+		return ast.new_type(idx)
 	} else if variants.len == 1 {
 		return variants[0].typ
 	}
@@ -302,6 +317,10 @@ pub fn (mut p Parser) parse_type_inline() ast.Type {
 // parse_sum_type_variants parses several types separated with a pipe and returns them as a list with at least one node.
 // If there is less than one node, it will add an error to the error list.
 pub fn (mut p Parser) parse_sum_type_variants() []ast.TypeNode {
+	p.is_parsing_sum_type = true
+	defer {
+		p.is_parsing_sum_type = false
+	}
 	mut types := []ast.TypeNode{}
 	for {
 		type_start_pos := p.tok.position()
@@ -460,7 +479,9 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 			return p.parse_multi_return_type()
 		}
 		else {
-			// no p.next()
+			if ((p.peek_tok.kind == .dot && p.peek_token(3).kind == .pipe) || p.peek_tok.kind == .pipe) && !p.is_parsing_sum_type {
+				return p.parse_inline_sum_type()
+			}
 			if name == 'map' {
 				return p.parse_map_type()
 			}
