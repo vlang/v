@@ -219,7 +219,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 						break
 					}
 				}
-				typ = p.parse_type()
+				typ = p.parse_type_inline()
 				if typ.idx() == 0 {
 					// error is set in parse_type
 					return ast.StructDecl{}
@@ -567,7 +567,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			}
 			if p.tok.kind.is_start_of_type() && p.tok.line_nr == line_nr {
 				method.return_type_pos = p.tok.position()
-				method.return_type = p.parse_type()
+				method.return_type = p.parse_type_inline()
 				method.return_type_pos = method.return_type_pos.extend(p.tok.position())
 				method.pos = method.pos.extend(method.return_type_pos)
 			}
@@ -592,7 +592,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			field_pos := p.tok.position()
 			field_name := p.check_name()
 			mut type_pos := p.tok.position()
-			field_typ := p.parse_type()
+			field_typ := p.parse_type_inline()
 			type_pos = type_pos.extend(p.prev_tok.position())
 			mut comments := []ast.Comment{}
 			for p.tok.kind == .comment {

@@ -3396,47 +3396,15 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			comments: comments
 		}
 	}
-	first_type := p.parse_type() // need to parse the first type before we can check if it's `type A = X | Y`
-	type_alias_pos := p.tok.position()
-	if p.tok.kind == .pipe {
-		mut type_end_pos := p.prev_tok.position()
-		type_pos = type_pos.extend(type_end_pos)
-		p.next()
-		sum_variants << ast.TypeNode{
-			typ: first_type
-			pos: type_pos
-		}
-		// type SumType = A | B | c
-		for {
-			type_pos = p.tok.position()
-			variant_type := p.parse_type()
-			// TODO: needs to be its own var, otherwise TCC fails because of a known stack error
-			prev_tok := p.prev_tok
-			type_end_pos = prev_tok.position()
-			type_pos = type_pos.extend(type_end_pos)
-			sum_variants << ast.TypeNode{
-				typ: variant_type
-				pos: type_pos
-			}
-			if p.tok.kind != .pipe {
-				break
-			}
-			p.check(.pipe)
-		}
-		variant_types := sum_variants.map(it.typ)
-		prepend_mod_name := p.prepend_mod(name)
-		typ := p.table.register_type_symbol(ast.TypeSymbol{
-			kind: .sum_type
-			name: prepend_mod_name
-			cname: util.no_dots(prepend_mod_name)
-			mod: p.mod
-			info: ast.SumType{
-				variants: variant_types
-				is_generic: generic_types.len > 0
-				generic_types: generic_types
-			}
-			is_public: is_pub
-		})
+	sum_variants << p.parse_sum_type_variants()
+	// type SumType = A | B | c
+	if sum_variants.len > 1 {
+		typ := p.find_or_register_sum_type(
+			name: name
+			variants: sum_variants
+			is_pub: is_pub
+			generic_types: generic_types
+		)
 		if typ == -1 {
 			p.error_with_pos('cannot register sum type `$name`, another type with this name exists',
 				name_pos)
@@ -3458,7 +3426,8 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		p.error_with_pos('generic type aliases are not yet implemented', decl_pos_with_generics)
 		return ast.AliasTypeDecl{}
 	}
-	parent_type := first_type
+	// sum_variants will have only one element
+	parent_type := sum_variants[0].typ
 	parent_sym := p.table.sym(parent_type)
 	pidx := parent_type.idx()
 	p.check_for_impure_v(parent_sym.language, decl_pos)
@@ -3482,6 +3451,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		return ast.AliasTypeDecl{}
 	}
 	if idx == pidx {
+		type_alias_pos := sum_variants[0].pos
 		p.error_with_pos('a type alias can not refer to itself: $name', decl_pos.extend(type_alias_pos))
 		return ast.AliasTypeDecl{}
 	}
@@ -3494,6 +3464,37 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		pos: decl_pos
 		comments: comments
 	}
+}
+
+struct RegisterSumTypeConfig {
+	variants      []ast.TypeNode
+	is_anon       bool
+	is_pub        bool
+	name          string
+	generic_types []ast.Type
+}
+
+fn (mut p Parser) find_or_register_sum_type(cfg RegisterSumTypeConfig) ast.Type {
+	variant_types := cfg.variants.map(it.typ)
+	prepend_mod_name := p.prepend_mod(cfg.name)
+	mut idx := p.table.find_type_idx(prepend_mod_name)
+	if idx > 0 {
+		return ast.new_type(idx)
+	}
+	idx = p.table.register_type_symbol(ast.TypeSymbol{
+		kind: .sum_type
+		name: prepend_mod_name
+		cname: util.no_dots(prepend_mod_name)
+		mod: p.mod
+		info: ast.SumType{
+			is_anon: cfg.is_anon
+			variants: variant_types
+			is_generic: cfg.generic_types.len > 0
+			generic_types: cfg.generic_types
+		}
+		is_public: cfg.is_pub
+	})
+	return ast.new_type(idx)
 }
 
 fn (mut p Parser) assoc() ast.Assoc {

@@ -434,16 +434,22 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_
 	g.type_definitions.writeln('static string indent_${str_fn_name}($styp x, int indent_count); // auto')
 	mut fn_builder := strings.new_builder(512)
 	fn_builder.writeln('static string indent_${str_fn_name}($styp x, int indent_count) {')
-	mut clean_sum_type_v_type_name := styp.replace('__', '.')
-	if styp.ends_with('*') {
-		clean_sum_type_v_type_name = '&' + clean_sum_type_v_type_name.replace('*', '')
+	mut clean_sum_type_v_type_name := ''
+	if info.is_anon {
+		variant_names := info.variants.map(g.table.sym(it).name)
+		clean_sum_type_v_type_name = '(${variant_names.join(' | ')})'
+	} else {
+		clean_sum_type_v_type_name = styp.replace('__', '.')
+		if styp.ends_with('*') {
+			clean_sum_type_v_type_name = '&' + clean_sum_type_v_type_name.replace('*', '')
+		}
+		if clean_sum_type_v_type_name.contains('_T_') {
+			clean_sum_type_v_type_name =
+				clean_sum_type_v_type_name.replace('Array_', '[]').replace('_T_', '<').replace('_', ', ') +
+				'>'
+		}
+		clean_sum_type_v_type_name = util.strip_main_name(clean_sum_type_v_type_name)
 	}
-	if clean_sum_type_v_type_name.contains('_T_') {
-		clean_sum_type_v_type_name =
-			clean_sum_type_v_type_name.replace('Array_', '[]').replace('_T_', '<').replace('_', ', ') +
-			'>'
-	}
-	clean_sum_type_v_type_name = util.strip_main_name(clean_sum_type_v_type_name)
 	fn_builder.writeln('\tswitch(x._typ) {')
 	for typ in info.variants {
 		typ_str := g.typ(typ)

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/inline_sum_type_return_type_too_many_variants.vv:3:10: error: an inline sum type expects a maximum of three types (5 where given)
+    1 | import v.token
+    2 | 
+    3 | fn foo() int | string | token.Position | bool | u32 {
+      |          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    4 |     return 1
+    5 | }

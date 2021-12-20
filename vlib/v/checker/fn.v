@@ -95,6 +95,11 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					c.error('fixed array cannot be used in multi-return', node.return_type_pos)
 				}
 			}
+		} else if return_sym.info is ast.SumType {
+			variants := return_sym.info.variants
+			if return_sym.info.is_anon && variants.len > 3 {
+				c.error('an inline sum type expects a maximum of three types ($variants.len where given)', node.return_type_pos)
+			}
 		} else if return_sym.kind == .array_fixed {
 			c.error('fixed array cannot be returned by function', node.return_type_pos)
 		}

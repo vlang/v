@@ -283,6 +283,45 @@ pub fn (mut p Parser) parse_language() ast.Language {
 	return language
 }
 
+// parse_type_inline parses the type and registers it in case the type is an anonymous sum type.
+// It also takes care of inline sum types where parse_type only parses a standalone type.
+pub fn (mut p Parser) parse_type_inline() ast.Type {
+	variants := p.parse_sum_type_variants()
+	if variants.len > 1 {
+		variant_names := variants.map(p.table.sym(it.typ).name)
+		// deterministic name
+		name := '_v_anon_sum_type_${variant_names.join('_')}'
+		typ := p.find_or_register_sum_type(variants: variants, name: name, is_anon: true)
+		return ast.Type(typ)
+	} else if variants.len == 1 {
+		return variants[0].typ
+	}
+	return ast.Type(0)
+}
+
+// parse_sum_type_variants parses several types separated with a pipe and returns them as a list with at least one node.
+// If there is less than one node, it will add an error to the error list.
+pub fn (mut p Parser) parse_sum_type_variants() []ast.TypeNode {
+	mut types := []ast.TypeNode{}
+	for {
+		type_start_pos := p.tok.position()
+		typ := p.parse_type()
+		// TODO: needs to be its own var, otherwise TCC fails because of a known stack error
+		prev_tok := p.prev_tok
+		type_end_pos := prev_tok.position()
+		type_pos := type_start_pos.extend(type_end_pos)
+		types << ast.TypeNode{
+			typ: typ
+			pos: type_pos
+		}
+		if p.tok.kind != .pipe {
+			break
+		}
+		p.check(.pipe)
+	}
+	return types
+}
+
 pub fn (mut p Parser) parse_type() ast.Type {
 	// optional
 	mut is_optional := false
