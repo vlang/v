@@ -827,7 +827,14 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				}
 				// Do not allow empty uninitialized interfaces
 				sym := c.table.sym(field.typ)
-				if sym.kind == .interface_ {
+				mut has_noinit := false
+				for attr in field.attrs {
+					if attr.name == 'noinit' {
+						has_noinit = true
+						break
+					}
+				}
+				if sym.kind == .interface_ && (!has_noinit && sym.language != .js) {
 					// TODO: should be an error instead, but first `ui` needs updating.
 					c.note('interface field `${type_sym.name}.$field.name` must be initialized',
 						node.pos)
