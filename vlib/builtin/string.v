@@ -1753,3 +1753,112 @@ pub fn (s string) strip_margin_custom(del byte) string {
 		return ret.vstring_with_len(count)
 	}
 }
+
+// match_glob matches the string, with a Unix shell-style wildcard pattern.
+// NB: wildcard patterns are NOT the same as regular expressions.
+//   They are much simpler, and do not allow backtracking, captures, etc.
+//   The special characters used in shell-style wildcards are:
+// `*` - matches everything
+// `?` - matches any single character
+// `[seq]` - matches any of the characters in the sequence
+// `[^seq]` - matches any character that is NOT in the sequence
+//   Any other character in `pattern`, is matched 1:1 to the corresponding
+// character in `name`, including / and \.
+//   You can wrap the meta-characters in brackets too, i.e. `[?]` matches `?`
+// in the string, and `[*]` matches `*` in the string.
+// Example: assert 'ABCD'.match_glob('AB*')
+// Example: assert 'ABCD'.match_glob('*D')
+// Example: assert 'ABCD'.match_glob('*B*')
+// Example: assert !'ABCD'.match_glob('AB')
+[direct_array_access]
+pub fn (name string) match_glob(pattern string) bool {
+	// Initial port based on https://research.swtch.com/glob.go
+	// See also https://research.swtch.com/glob
+	mut px := 0
+	mut nx := 0
+	mut next_px := 0
+	mut next_nx := 0
+	plen := pattern.len
+	nlen := name.len
+	for px < plen || nx < nlen {
+		if px < plen {
+			c := pattern[px]
+			match c {
+				`?` {
+					// single-character wildcard
+					if nx < nlen {
+						px++
+						nx++
+						continue
+					}
+				}
+				`*` {
+					// zero-or-more-character wildcard
+					// Try to match at nx.
+					// If that doesn't work out, restart at nx+1 next.
+					next_px = px
+					next_nx = nx + 1
+					px++
+					continue
+				}
+				`[` {
+					if nx < nlen {
+						wanted_c := name[nx]
+						mut bstart := px
+						mut is_inverted := false
+						mut inner_match := false
+						mut inner_idx := bstart + 1
+						mut inner_c := 0
+						if inner_idx < plen {
+							inner_c = pattern[inner_idx]
+							if inner_c == `^` {
+								is_inverted = true
+								inner_idx++
+							}
+						}
+						for ; inner_idx < plen; inner_idx++ {
+							inner_c = pattern[inner_idx]
+							if inner_c == `]` {
+								break
+							}
+							if inner_c == wanted_c {
+								inner_match = true
+								for px < plen && pattern[px] != `]` {
+									px++
+								}
+								break
+							}
+						}
+						if is_inverted {
+							if inner_match {
+								return false
+							} else {
+								px = inner_idx
+							}
+						}
+					}
+					px++
+					nx++
+					continue
+				}
+				else {
+					// an ordinary character
+					if nx < nlen && name[nx] == c {
+						px++
+						nx++
+						continue
+					}
+				}
+			}
+		}
+		if 0 < next_nx && next_nx <= nlen {
+			// A mismatch, try restarting:
+			px = next_px
+			nx = next_nx
+			continue
+		}
+		return false
+	}
+	// Matched all of `pattern` to all of `name`
+	return true
+}
