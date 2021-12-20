@@ -3,7 +3,7 @@ module os
 $if js_node {
 	#global.$ENV = $process.env
 } $else {
-	#var global = $global;
+	#const global = $global;
 	#global.$ENV = {}
 }
 
