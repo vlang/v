@@ -789,6 +789,7 @@ pub fn (s string) substr(start int, end int) string {
 }
 
 // substr_ni returns the string between index positions `start` and `end` allowing negative indexes
+// This function always return a valid string.
 [direct_array_access]
 pub fn (s string) substr_ni(_start int, _end int) string {
 	mut start := _start
@@ -801,7 +802,7 @@ pub fn (s string) substr_ni(_start int, _end int) string {
 			start = 0
 		}
 	}
-	
+
 	if end < 0 {
 		end = s.len + end
 		if end < 0 {
@@ -839,10 +840,6 @@ pub fn (s string) substr_ni(_start int, _end int) string {
 		res.str[len] = 0
 	}
 	return res
-
-
-
-
 }
 
 // index returns the position of the first character of the input string.

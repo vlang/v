@@ -384,6 +384,12 @@ fn (a array) slice(start int, _end int) array {
 	return res
 }
 
+// slice_ni returns an array using the same buffer as original array
+// but starting from the `start` element and ending with the element before
+// the `end` element of the original array.
+// This function can use negative indexes `a.slice_ni(-3, a.len)`
+// that get the last 3 elements of the array otherwise it return an empty array.
+// This function always return a valid array.
 fn (a array) slice_ni(_start int, _end int) array {
 	mut end := _end
 	mut start := _start
@@ -394,7 +400,7 @@ fn (a array) slice_ni(_start int, _end int) array {
 			start = 0
 		}
 	}
-	
+
 	if end < 0 {
 		end = a.len + end
 		if end < 0 {
