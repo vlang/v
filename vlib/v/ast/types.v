@@ -1050,7 +1050,8 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 					else {}
 				}
 			} else if sym.info is SumType && (sym.info as SumType).is_anon {
-				variant_names := sym.info.variants.map(t.shorten_user_defined_typenames(t.sym(it).name, import_aliases))
+				variant_names := sym.info.variants.map(t.shorten_user_defined_typenames(t.sym(it).name,
+					import_aliases))
 				res = '${variant_names.join(' | ')}'
 			} else {
 				res = t.shorten_user_defined_typenames(res, import_aliases)

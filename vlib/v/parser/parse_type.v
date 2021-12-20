@@ -479,7 +479,8 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 			return p.parse_multi_return_type()
 		}
 		else {
-			if ((p.peek_tok.kind == .dot && p.peek_token(3).kind == .pipe) || p.peek_tok.kind == .pipe) && !p.is_parsing_sum_type {
+			if ((p.peek_tok.kind == .dot && p.peek_token(3).kind == .pipe)
+				|| p.peek_tok.kind == .pipe) && !p.is_parsing_sum_type {
 				return p.parse_inline_sum_type()
 			}
 			if name == 'map' {

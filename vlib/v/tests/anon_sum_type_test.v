@@ -12,7 +12,9 @@ struct Milk {
 }
 
 fn test_struct_with_inline_sumtype() {
-	m := Milk{egg: 1}
+	m := Milk{
+		egg: 1
+	}
 	assert m.egg is int
 }
 
@@ -23,7 +25,9 @@ interface IMilk {
 fn receive_imilk(milk IMilk) {}
 
 fn test_interface_with_inline_sumtype() {
-	m := Milk{egg: 1}
+	m := Milk{
+		egg: 1
+	}
 	receive_imilk(m)
 }
 
@@ -37,7 +41,7 @@ fn test_multireturn() {
 	assert '$y' == ''
 }
 
-fn returns_optional_inline_sumtype() ?(string | int) {
+fn returns_optional_inline_sumtype() ?string | int {
 	return none
 }
 
