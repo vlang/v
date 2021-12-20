@@ -451,7 +451,7 @@ pub interface JS.CanvasRenderingContext2D {
 	getLineDash() JS.Array
 	setLineDash(segments JS.Array)
 	clearRect(x JS.Number, y JS.Number, w JS.Number, h JS.Number)
-	fillRect(x JS.Number, y JS.Number, w JS.null, h JS.Number)
+	fillRect(x JS.Number, y JS.Number, w JS.Number, h JS.Number)
 	strokeRect(x JS.Number, y JS.Number, w JS.Number, h JS.Number)
 	getTransformt() JS.DOMMatrix
 	resetTransform()
