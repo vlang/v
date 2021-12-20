@@ -461,10 +461,11 @@ pub fn (mut g JsGen) init() {
 		g.definitions.writeln('const \$process = {')
 		g.definitions.writeln('  arch: "js",')
 		if g.pref.backend == .js_freestanding {
-			g.definitions.writeln('  platform: "freestanding"')
+			g.definitions.writeln('  platform: "freestanding",')
 		} else {
-			g.definitions.writeln('  platform: "browser"')
+			g.definitions.writeln('  platform: "browser",')
 		}
+		g.definitions.writeln('  cwd: function() { return "" }')
 		g.definitions.writeln('}')
 
 		g.definitions.writeln('const \$os = {')
@@ -3263,12 +3264,8 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 		g.writeln('return tmp')
 		g.dec_indent()
 		g.writeln('})()')
-	} else {
-		if type_sym.kind == .struct_ && type_sym.language == .js {
-			g.writeln('{')
-		} else {
-			g.writeln('new ${g.js_name(name)}({')
-		}
+	} else if type_sym.kind == .struct_ && type_sym.language == .js {
+		g.writeln('{')
 		g.inc_indent()
 		for i, field in it.fields {
 			if field.name.len != 0 {
@@ -3281,11 +3278,26 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 			g.writeln('')
 		}
 		g.dec_indent()
-		if type_sym.kind == .struct_ && type_sym.language == .js {
-			g.writeln('}')
-		} else {
-			g.writeln('})')
+
+		g.writeln('}')
+	} else {
+		g.writeln('(function() {')
+		g.inc_indent()
+		tmp := g.new_tmp_var()
+		g.writeln('let $tmp = new ${g.js_name(name)}({});')
+
+		for i, field in it.fields {
+			if field.name.len != 0 {
+				g.write('${tmp}.$field.name = ')
+				g.expr(field.expr)
+			}
+			g.write(';')
+
+			g.writeln('')
 		}
+		g.writeln('return $tmp;')
+		g.dec_indent()
+		g.writeln('})()')
 	}
 }
 
@@ -3382,6 +3394,18 @@ fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
 		g.write('${g.typ(it.typ)}(')
 		g.expr(it.expr)
 		g.write('.\$toJS())')
+		return
+	}
+
+	if (from_type_sym.name == 'Any' && from_type_sym.language == .js)
+		|| from_type_sym.name == 'JS.Any' {
+		if it.typ.is_ptr() {
+			g.write('new \$ref(')
+		}
+		g.expr(it.expr)
+		if it.typ.is_ptr() {
+			g.write(')')
+		}
 		return
 	}
 
