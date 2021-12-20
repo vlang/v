@@ -7,6 +7,15 @@ fn test_is_empty() {
 	assert stack.is_empty() == false
 }
 
+fn test_len() ? {
+	mut stack := Stack<int>{}
+	assert stack.len() == 0
+	stack.push(1)
+	assert stack.len() == 1
+	stack.pop() ?
+	assert stack.len() == 0
+}
+
 fn test_peek() ? {
 	mut stack := Stack<int>{}
 	stack.push(1)

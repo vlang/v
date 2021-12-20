@@ -6,5 +6,4 @@ great variety of applications.
 ## implementations
 
 - [x] Stack (LIFO)
-- [x] Queue (FIFO)
 - [ ] ...
