@@ -1,5 +1,6 @@
 module gg
 
+import gx
 import js.dom
 
 pub enum DOMEventType {
@@ -53,37 +54,6 @@ pub mut:
 	window_height      int
 	framebuffer_width  int
 	framebuffer_height int
-}
-
-pub struct Context {
-mut:
-	render_text   bool = true
-	image_cache   []Image
-	needs_refresh bool = true
-	ticks         int
-pub mut:
-	scale         f32 = 1.0
-	width         int
-	height        int
-	window        JS.Window
-	config        Config
-	user_data     voidptr
-	ui_mode       bool
-	frame         u64
-	mbtn_mask     byte
-	mouse_buttons MouseButtons
-	mouse_pos_x   int
-	mouse_pos_y   int
-	mouse_dx      int
-	mouse_dy      int
-	scroll_x      int
-	scroll_y      int
-	//
-	key_modifiers     Modifier // the current key modifiers
-	key_repeat        bool     // whether the pressed key was an autorepeated one
-	pressed_keys      [key_code_max]bool // an array representing all currently pressed keys
-	pressed_keys_edge [key_code_max]bool // true when the previous state of pressed_keys,
-	// *before* the current event was different
 }
 
 pub enum DOMMouseButton {
@@ -225,4 +195,95 @@ pub enum DOMKeyCode {
 	right_alt = 346
 	right_super = 347
 	menu = 348
+}
+
+pub struct Context {
+mut:
+	render_text   bool = true
+	image_cache   []Image
+	needs_refresh bool = true
+	ticks         int
+pub mut:
+	scale         f32 = 1.0
+	width         int
+	height        int
+	window        JS.Window    [noinit]
+	config        Config
+	user_data     voidptr
+	ui_mode       bool
+	frame         u64
+	mbtn_mask     byte
+	mouse_buttons MouseButtons
+	mouse_pos_x   int
+	mouse_pos_y   int
+	mouse_dx      int
+	mouse_dy      int
+	scroll_x      int
+	scroll_y      int
+	//
+	key_modifiers     Modifier // the current key modifiers
+	key_repeat        bool     // whether the pressed key was an autorepeated one
+	pressed_keys      [key_code_max]bool // an array representing all currently pressed keys
+	pressed_keys_edge [key_code_max]bool // true when the previous state of pressed_keys,
+	canvas            JS.CanvasRenderingContext2D [noinit]
+	// *before* the current event was different
+}
+
+pub fn new_context(cfg Config, canvas JS.CanvasRenderingContext2D) &Context {
+	mut g := &Context{}
+	g.user_data = cfg.user_data
+	g.width = cfg.width
+	g.height = cfg.height
+	g.ui_mode = cfg.ui_mode
+	g.canvas = canvas
+	g.config = cfg
+	if isnil(cfg.user_data) {
+		g.user_data = g
+	}
+	g.window = dom.window()
+
+	return g
+}
+
+pub fn (mut ctx Context) run() {
+	gg_animation_frame_fn(mut ctx)
+}
+
+pub fn (mut ctx Context) begin() {
+	// ctx.canvas.beginPath()
+}
+
+pub fn (mut ctx Context) end() {
+	// ctx.canvas.closePath()
+}
+
+pub fn (mut ctx Context) draw_line(x1 f32, y1 f32, x2 f32, y2 f32, c gx.Color) {
+	ctx.canvas.beginPath()
+	ctx.canvas.strokeStyle = c.to_css_string().str
+	ctx.canvas.moveTo(x1, y1)
+	ctx.canvas.lineTo(x2, y2)
+	ctx.canvas.stroke()
+	ctx.canvas.closePath()
+}
+
+pub fn (mut ctx Context) draw_rect(x f32, y f32, w f32, h f32, c gx.Color) {
+	ctx.canvas.beginPath()
+	ctx.canvas.fillStyle = c.to_css_string().str
+	ctx.canvas.fillRect(x, y, w, h)
+	ctx.canvas.closePath()
+}
+
+fn gg_animation_frame_fn(mut g Context) {
+	g.frame++
+	g.canvas.clearRect(0, 0, g.config.width, g.config.height)
+	// todo(playXE): handle events
+	if !isnil(g.config.frame_fn) {
+		f := g.config.frame_fn
+		f(g.user_data)
+		g.needs_refresh = false
+	}
+
+	g.window.requestAnimationFrame(fn [mut g] (time JS.Number) {
+		gg_animation_frame_fn(mut g)
+	})
 }
