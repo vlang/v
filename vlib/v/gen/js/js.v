@@ -3286,7 +3286,7 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 		tmp := g.new_tmp_var()
 		g.writeln('let $tmp = new ${g.js_name(name)}({});')
 
-		for i, field in it.fields {
+		for field in it.fields {
 			if field.name.len != 0 {
 				g.write('${tmp}.$field.name = ')
 				g.expr(field.expr)
