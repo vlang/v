@@ -9,7 +9,7 @@ fn parse_attrs(name string, attrs []string) ?([]http.Method, string) {
 		return [http.Method.get], '/$name'
 	}
 
-	mut x := attrs.clone()
+	mut x := attrs.clone().filter(it.to_lower() != 'use')
 	mut methods := []http.Method{}
 	mut path := ''
 
