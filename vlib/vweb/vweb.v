@@ -606,7 +606,7 @@ fn fire_middlewares<T>(mut app T, url_words []string, middlewares map[string]str
 		}
 	}
 
-	fire_those.sort(a.path_len > b.path_len)
+	fire_those.sort(a.path_len < b.path_len)
 
 	for f in fire_those {
 		fire_middleware(mut app, f.method, f.params)
