@@ -417,7 +417,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 	}
 }
 
-fn (mut g Gen) gen_multi_return_assign(node ast.AssignStmt, return_type ast.Type) {
+fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Type) {
 	// multi return
 	// TODO Handle in if_expr
 	is_opt := return_type.has_flag(.optional)
@@ -489,7 +489,7 @@ fn (mut g Gen) gen_multi_return_assign(node ast.AssignStmt, return_type ast.Type
 	}
 }
 
-fn (mut g Gen) gen_assign_autofree(node ast.AssignStmt) {
+fn (mut g Gen) gen_assign_autofree(node &ast.AssignStmt) {
 	// Free the old value assigned to this string var (only if it's `str = [new value]`
 	// or `x.str = [new value]` )
 	mut af := g.is_autofree && !g.is_builtin_mod && node.op == .assign && node.left_types.len == 1
@@ -569,7 +569,7 @@ fn (mut g Gen) gen_assign_autofree(node ast.AssignStmt) {
 	*/
 }
 
-fn (mut g Gen) gen_cross_var_assign(node ast.AssignStmt) {
+fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 	for i, left in node.left {
 		match left {
 			ast.Ident {
