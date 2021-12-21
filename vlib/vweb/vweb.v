@@ -385,18 +385,24 @@ pub fn run<T>(global_app &T, port int) {
 	mut routes := map[string]Route{}
 	mut middlewares := map[string]string{}
 	$for method in T.methods {
+		if middleware_path := parse_middleware(method.args, method.attrs) {
+			middlewares[method.name] = middleware_path
+		} else {
+			// There is no `use` attribute, so it returns `none`
+			if err.str() != 'none' {
+				eprintln('error parsing `app.$method.name` attributes: $err')
+				return
+			}
+		}
+
 		http_methods, route_path := parse_attrs(method.name, method.attrs) or {
 			eprintln('error parsing method attributes: $err')
 			return
 		}
 
-		if 'use' in method.attrs.filter(it.len == 3).map(it.to_lower()) {
-			middlewares[method.name] = route_path
-		} else {
-			routes[method.name] = Route{
-				methods: http_methods
-				path: route_path
-			}
+		routes[method.name] = Route{
+			methods: http_methods
+			path: route_path
 		}
 	}
 	println('[Vweb] Running app on http://localhost:$port')
