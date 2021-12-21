@@ -308,12 +308,22 @@ fn (mut g JsGen) gen_builtin_prototype(c BuiltinPrototypeConfig) {
 		g.writeln('$c.extras,')
 	}
 
-	g.writeln('valueOf() { return $c.value_of },')
-	g.writeln('toString() { return $c.to_string },')
-	// g.writeln('eq(other) { return $c.eq },')
-	g.writeln('\$toJS() { return $c.to_jsval }, ')
-	if c.has_strfn {
-		g.writeln('str() { return new string(this.toString()) }')
+	if g.pref.output_es5 {
+		g.writeln('valueOf: (function() { return $c.value_of }).bind(this),')
+		g.writeln('toString: (function() { return $c.to_string }).bind(this),')
+		g.writeln('\$toJS: (function() { return $c.to_jsval }).bind(this), ')
+		if c.has_strfn {
+			g.writeln('str: (function() { return new string(this.toString())).bind(this) }')
+		}
+		// g.writeln('eq: (function(other) { return $c.eq }).bind(this),')
+	} else {
+		g.writeln('valueOf() { return $c.value_of   },')
+		g.writeln('toString() { return $c.to_string },')
+		g.writeln('\$toJS() { return $c.to_jsval }, ')
+		if c.has_strfn {
+			g.writeln('str() { return new string(this.toString()) }')
+		}
+		// g.writeln('eq(other) { return $c.eq },')
 	}
 	g.dec_indent()
 	g.writeln('};\n')
