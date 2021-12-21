@@ -1551,7 +1551,6 @@ fn (mut p Parser) attributes() {
 	}
 }
 
-
 fn (mut p Parser) parse_attr() ast.Attr {
 	mut kind := ast.AttrKind.plain
 	apos := p.prev_tok.position()
