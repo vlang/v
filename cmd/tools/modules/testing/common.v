@@ -19,6 +19,10 @@ pub const hide_oks = os.getenv('VTEST_HIDE_OK') == '1'
 
 pub const fail_fast = os.getenv('VTEST_FAIL_FAST') == '1'
 
+pub const test_only = os.getenv('VTEST_ONLY').split_any(',')
+
+pub const test_only_fn = os.getenv('VTEST_ONLY_FN').split_any(',')
+
 pub const is_node_present = os.execute('node --version').exit_code == 0
 
 pub const all_processes = os.execute('ps ax').output.split_any('\r\n')
@@ -242,7 +246,11 @@ pub fn (mut ts TestSession) test() {
 	remaining_files = vtest.filter_vtest_only(remaining_files, fix_slashes: false)
 	ts.files = remaining_files
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
-	ts.benchmark.njobs = runtime.nr_jobs()
+	mut njobs := runtime.nr_jobs()
+	if remaining_files.len < njobs {
+		njobs = remaining_files.len
+	}
+	ts.benchmark.njobs = njobs
 	mut pool_of_test_runners := pool.new_pool_processor(callback: worker_trunner)
 	// for handling messages across threads
 	ts.nmessages = chan LogMessage{cap: 10000}

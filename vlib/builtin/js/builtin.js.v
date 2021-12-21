@@ -92,8 +92,10 @@ pub fn isnil(val voidptr) bool {
 	res := false
 	// This one is kinda weird. In C and native backend we can cast booleans and integers to pointers
 	// so we just check *for* all possible NULL-like values here.
-	#val = val.valueOf()
-	#res.val = val === null || val === undefined || val === false || val === 0 || val === BigInt(0)
+	#if (typeof val == 'function') { res.val = false; } else {
+	#val = val instanceof voidptr ? val.valueOf().val : val;
+	#res.val = val === null || val === undefined || val === false || val === 0 || val === BigInt(0) || (val instanceof int ? val.val == 0 : false)
+	#}
 
 	return res
 }

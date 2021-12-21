@@ -7,7 +7,7 @@ pub const (
 	// The unsigned zero year for internal calculations.
 	// Must be 1 mod 400, and times before it will not compute correctly,
 	// but otherwise can be changed at will.
-	absolute_zero_year = i64(-292277022399) // as i64
+	absolute_zero_year = i64(-292277022399)
 	seconds_per_minute = 60
 	seconds_per_hour   = 60 * seconds_per_minute
 	seconds_per_day    = 24 * seconds_per_hour
@@ -258,14 +258,19 @@ pub fn (t Time) debug() string {
 // A lot of these are taken from the Go library.
 pub type Duration = i64
 
-pub const (
-	nanosecond  = Duration(1)
-	microsecond = Duration(1000 * nanosecond)
-	millisecond = Duration(1000 * microsecond)
-	second      = Duration(1000 * millisecond)
-	minute      = Duration(60 * second)
-	hour        = Duration(60 * minute)
-)
+pub const nanosecond = Duration(1)
+
+pub const microsecond = Duration(1000 * nanosecond)
+
+pub const millisecond = Duration(1000 * microsecond)
+
+pub const second = Duration(1000 * millisecond)
+
+pub const minute = Duration(60 * second)
+
+pub const hour = Duration(60 * minute)
+
+pub const infinite = Duration(i64(9223372036854775807))
 
 // nanoseconds returns the duration as an integer number of nanoseconds.
 pub fn (d Duration) nanoseconds() i64 {
@@ -303,6 +308,42 @@ pub fn (d Duration) hours() f64 {
 	hr := d / time.hour
 	nsec := d % time.hour
 	return f64(hr) + f64(nsec) / (60 * 60 * 1e9)
+}
+
+// str pretty prints the duration.
+pub fn (d Duration) str() string {
+	if d == time.infinite {
+		return 'inf'
+	}
+	mut t := i64(d)
+	hr := t / time.hour
+	t -= hr * time.hour
+	min := t / time.minute
+	t -= min * time.minute
+	sec := t / time.second
+	t -= sec * time.second
+	ms := t / time.millisecond
+	t -= ms * time.millisecond
+	us := t / time.microsecond
+	t -= us * time.microsecond
+	ns := t
+
+	if hr > 0 {
+		return '$hr:${min:02}:${sec:02}'
+	}
+	if min > 0 {
+		return '$min:${sec:02}.${ms:03}'
+	}
+	if sec > 0 {
+		return '${sec}.${ms:03}s'
+	}
+	if ms > 0 {
+		return '${ms}.${us:03}ms'
+	}
+	if us > 0 {
+		return '${us}.${ns:03}us'
+	}
+	return '${ns}ns'
 }
 
 // offset returns time zone UTC offset in seconds.

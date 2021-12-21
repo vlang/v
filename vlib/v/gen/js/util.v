@@ -17,7 +17,7 @@ struct Type {
 // * alias unwrapped
 fn (mut g JsGen) unwrap(typ ast.Type) Type {
 	no_generic := g.unwrap_generic(typ)
-	no_generic_sym := g.table.get_type_symbol(no_generic)
+	no_generic_sym := g.table.sym(no_generic)
 	if no_generic_sym.kind != .alias {
 		return Type{
 			typ: no_generic
@@ -30,6 +30,6 @@ fn (mut g JsGen) unwrap(typ ast.Type) Type {
 		typ: no_generic
 		sym: no_generic_sym
 		unaliased: no_generic_sym.parent_idx
-		unaliased_sym: g.table.get_type_symbol(no_generic_sym.parent_idx)
+		unaliased_sym: g.table.sym(no_generic_sym.parent_idx)
 	}
 }

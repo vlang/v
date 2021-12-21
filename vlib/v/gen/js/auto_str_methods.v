@@ -26,11 +26,11 @@ fn (mut g JsGen) get_str_fn(typ ast.Type) string {
 		unwrapped.set_flag(.optional)
 	}
 	styp := g.typ(unwrapped)
-	mut sym := g.table.get_type_symbol(unwrapped)
+	mut sym := g.table.sym(unwrapped)
 	mut str_fn_name := styp_to_str_fn_name(styp)
 	if mut sym.info is ast.Alias {
 		if sym.info.is_import {
-			sym = g.table.get_type_symbol(sym.info.parent_type)
+			sym = g.table.sym(sym.info.parent_type)
 			str_fn_name = styp_to_str_fn_name(sym.name)
 		}
 	}
@@ -46,7 +46,7 @@ fn (mut g JsGen) final_gen_str(typ StrType) {
 		return
 	}
 	g.generated_str_fns << typ
-	sym := g.table.get_type_symbol(typ.typ)
+	sym := g.table.sym(typ.typ)
 	if sym.has_method('str') && !typ.typ.has_flag(.optional) {
 		return
 	}
@@ -218,7 +218,7 @@ fn (mut g JsGen) gen_str_default(sym ast.TypeSymbol, styp string, str_fn_name st
 
 fn (mut g JsGen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string) {
 	parent_type := typ.clear_flag(.optional)
-	sym := g.table.get_type_symbol(parent_type)
+	sym := g.table.sym(parent_type)
 	sym_has_str_method, _, _ := sym.str_method_info()
 	parent_str_fn_name := g.get_str_fn(parent_type)
 
@@ -262,7 +262,7 @@ fn (mut g JsGen) gen_str_for_multi_return(info ast.MultiReturn, styp string, str
 	fn_builder.writeln('\tlet sb = strings__new_builder($info.types.len * 10);')
 	fn_builder.writeln('\tstrings__Builder_write_string(sb, new string("("));')
 	for i, typ in info.types {
-		sym := g.table.get_type_symbol(typ)
+		sym := g.table.sym(typ)
 		is_arg_ptr := typ.is_ptr()
 		sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
 		arg_str_fn_name := g.get_str_fn(typ)
@@ -348,7 +348,7 @@ fn (mut g JsGen) gen_str_for_interface(info ast.Interface, styp string, str_fn_n
 	clean_interface_v_type_name = util.strip_main_name(clean_interface_v_type_name)
 	fn_builder.writeln('function indent_${str_fn_name}(x,indent_count) { /* gen_str_for_interface */')
 	for typ in info.types {
-		subtype := g.table.get_type_symbol(typ)
+		subtype := g.table.sym(typ)
 		mut func_name := g.get_str_fn(typ)
 		sym_has_str_method, str_method_expects_ptr, _ := subtype.str_method_info()
 		if should_use_indent_func(subtype.kind) && !sym_has_str_method {
@@ -383,7 +383,7 @@ fn (mut g JsGen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_f
 	for typ in info.variants {
 		typ_str := g.typ(typ)
 		mut func_name := g.get_str_fn(typ)
-		sym := g.table.get_type_symbol(typ)
+		sym := g.table.sym(typ)
 		sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
 		deref := if sym_has_str_method && str_method_expects_ptr {
 			' '
@@ -458,10 +458,10 @@ fn deref_kind(str_method_expects_ptr bool, is_elem_ptr bool, typ ast.Type) (stri
 
 fn (mut g JsGen) gen_str_for_array(info ast.Array, styp string, str_fn_name string) {
 	mut typ := info.elem_type
-	mut sym := g.table.get_type_symbol(info.elem_type)
+	mut sym := g.table.sym(info.elem_type)
 	if mut sym.info is ast.Alias {
 		typ = sym.info.parent_type
-		sym = g.table.get_type_symbol(typ)
+		sym = g.table.sym(typ)
 	}
 	is_elem_ptr := typ.is_ptr()
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
@@ -518,10 +518,10 @@ fn (mut g JsGen) gen_str_for_array(info ast.Array, styp string, str_fn_name stri
 
 fn (mut g JsGen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_fn_name string) {
 	mut typ := info.elem_type
-	mut sym := g.table.get_type_symbol(info.elem_type)
+	mut sym := g.table.sym(info.elem_type)
 	if mut sym.info is ast.Alias {
 		typ = sym.info.parent_type
-		sym = g.table.get_type_symbol(typ)
+		sym = g.table.sym(typ)
 	}
 	is_elem_ptr := typ.is_ptr()
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
@@ -572,10 +572,10 @@ fn (mut g JsGen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_f
 
 fn (mut g JsGen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 	mut key_typ := info.key_type
-	mut key_sym := g.table.get_type_symbol(key_typ)
+	mut key_sym := g.table.sym(key_typ)
 	if mut key_sym.info is ast.Alias {
 		key_typ = key_sym.info.parent_type
-		key_sym = g.table.get_type_symbol(key_typ)
+		key_sym = g.table.sym(key_typ)
 	}
 	key_styp := g.typ(key_typ)
 	key_str_fn_name := key_styp.replace('*', '') + '_str'
@@ -584,10 +584,10 @@ fn (mut g JsGen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) 
 	}
 
 	mut val_typ := info.value_type
-	mut val_sym := g.table.get_type_symbol(val_typ)
+	mut val_sym := g.table.sym(val_typ)
 	if mut val_sym.info is ast.Alias {
 		val_typ = val_sym.info.parent_type
-		val_sym = g.table.get_type_symbol(val_typ)
+		val_sym = g.table.sym(val_typ)
 	}
 	val_styp := g.typ(val_typ)
 	elem_str_fn_name := val_styp.replace('*', '') + '_str'
@@ -656,7 +656,7 @@ fn (g &JsGen) type_to_fmt(typ ast.Type) StrIntpType {
 		// return '%C\\000' // a C string
 		return .si_s
 	}
-	sym := g.table.get_type_symbol(typ)
+	sym := g.table.sym(typ)
 	if typ.is_ptr() && (typ.is_int_valptr() || typ.is_float_valptr()) {
 		return .si_s
 	} else if sym.kind in [.struct_, .array, .array_fixed, .map, .bool, .enum_, .interface_,
@@ -726,7 +726,7 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 		}
 		quote_str = quote_str
 		*/
-		sym := g.table.get_type_symbol(g.unwrap_generic(field.typ))
+		sym := g.table.sym(g.unwrap_generic(field.typ))
 		// first fields doesn't need \n
 		if i == 0 {
 			fn_builder.write_string('res.str += "    $field.name: $ptr_amp$prefix" + ')

@@ -169,7 +169,7 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 			} else if p.is_amp && p.peek_tok.kind == .rsbr && p.peek_token(3).kind != .lcbr {
 				pos := p.tok.position()
 				typ := p.parse_type()
-				typname := p.table.get_type_symbol(typ).name
+				typname := p.table.sym(typ).name
 				p.check(.lpar)
 				expr := p.expr(0)
 				p.check(.rpar)
@@ -632,6 +632,6 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 
 fn (mut p Parser) recast_as_pointer(mut cast_expr ast.CastExpr, pos token.Position) {
 	cast_expr.typ = cast_expr.typ.ref()
-	cast_expr.typname = p.table.get_type_symbol(cast_expr.typ).name
+	cast_expr.typname = p.table.sym(cast_expr.typ).name
 	cast_expr.pos = pos.extend(cast_expr.pos)
 }

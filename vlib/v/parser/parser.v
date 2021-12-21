@@ -83,6 +83,7 @@ mut:
 	comptime_if_cond    bool
 	defer_vars          []ast.Ident
 	should_abort        bool // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the parser should stop
+	codegen_text        string
 }
 
 // for tests
@@ -305,6 +306,13 @@ pub fn (mut p Parser) parse() &ast.File {
 		notices << p.scanner.notices
 	}
 
+	// codegen
+	if p.codegen_text.len > 0 && !p.pref.is_fmt {
+		ptext := 'module ' + p.mod.all_after('.') + p.codegen_text
+		codegen_file := parse_text(ptext, p.file_name, p.table, p.comments_mode, p.pref)
+		stmts << codegen_file.stmts
+	}
+
 	return &ast.File{
 		path: p.file_name
 		path_base: p.file_base
@@ -394,6 +402,15 @@ pub fn parse_files(paths []string, table &ast.Table, pref &pref.Preferences) []&
 		timers.show('parse_file $path')
 	}
 	return files
+}
+
+// codegen allows you to generate V code, so that it can be parsed,
+// checked, markused, cgen-ed etc further, just like user's V code.
+pub fn (mut p Parser) codegen(code string) {
+	$if debug_codegen ? {
+		eprintln('parser.codegen:\n $code')
+	}
+	p.codegen_text += '\n' + code
 }
 
 pub fn (mut p Parser) init_parse_fns() {
@@ -1627,24 +1644,46 @@ fn (mut p Parser) parse_attr() ast.Attr {
 	}
 }
 
+pub fn (mut p Parser) language_not_allowed_error(language ast.Language, pos token.Position) {
+	upcase_language := language.str().to_upper()
+	p.error_with_pos('$upcase_language code is not allowed in .${p.file_backend_mode}.v files, please move it to a .${language}.v file',
+		pos)
+}
+
+pub fn (mut p Parser) language_not_allowed_warning(language ast.Language, pos token.Position) {
+	upcase_language := language.str().to_upper()
+	p.warn_with_pos('$upcase_language code will not be allowed in pure .v files, please move it to a .${language}.v file instead',
+		pos)
+}
+
 pub fn (mut p Parser) check_for_impure_v(language ast.Language, pos token.Position) {
 	if language == .v {
 		// pure V code is always allowed everywhere
 		return
+	} else {
+		match p.file_backend_mode {
+			.c {
+				if language != .c {
+					p.language_not_allowed_error(language, pos)
+					return
+				}
+			}
+			.js {
+				if language != .js {
+					p.language_not_allowed_error(language, pos)
+					return
+				}
+			}
+			else {}
+		}
 	}
 	if !p.pref.warn_impure_v {
 		// the stricter mode is not ON yet => allow everything for now
 		return
 	}
 	if p.file_backend_mode != language {
-		upcase_language := language.str().to_upper()
 		if p.file_backend_mode == .v {
-			p.warn_with_pos('$upcase_language code will not be allowed in pure .v files, please move it to a .${language}.v file instead',
-				pos)
-			return
-		} else {
-			p.warn_with_pos('$upcase_language code is not allowed in .${p.file_backend_mode}.v files, please move it to a .${language}.v file',
-				pos)
+			p.language_not_allowed_warning(language, pos)
 			return
 		}
 	}
@@ -2211,7 +2250,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			p.check(.rpar)
 			node = ast.CastExpr{
 				typ: to_typ
-				typname: p.table.get_type_symbol(to_typ).name
+				typname: p.table.sym(to_typ).name
 				expr: expr
 				arg: arg
 				has_arg: has_arg
@@ -3287,7 +3326,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			}
 		}
 		pubfn := if p.mod == 'main' { 'fn' } else { 'pub fn' }
-		p.scanner.codegen('
+		p.codegen('
 //
 [inline] $pubfn (    e &$enum_name) is_empty() bool           { return  int(*e) == 0 }
 [inline] $pubfn (    e &$enum_name) has(flag $enum_name) bool { return  (int(*e) &  (int(flag))) != 0 }
@@ -3362,7 +3401,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		// function type: `type mycallback = fn(string, int)`
 		fn_name := p.prepend_mod(name)
 		fn_type := p.parse_fn_type(fn_name)
-		p.table.get_type_symbol(fn_type).is_public = is_pub
+		p.table.sym(fn_type).is_public = is_pub
 		type_pos = type_pos.extend(p.tok.position())
 		comments = p.eat_comments(same_line: true)
 		return ast.FnTypeDecl{
@@ -3437,7 +3476,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		return ast.AliasTypeDecl{}
 	}
 	parent_type := first_type
-	parent_sym := p.table.get_type_symbol(parent_type)
+	parent_sym := p.table.sym(parent_type)
 	pidx := parent_type.idx()
 	p.check_for_impure_v(parent_sym.language, decl_pos)
 	prepend_mod_name := p.prepend_mod(name)

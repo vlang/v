@@ -193,7 +193,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 						type_pos)
 					return ast.StructDecl{}
 				}
-				sym := p.table.get_type_symbol(typ)
+				sym := p.table.sym(typ)
 				if typ in embed_types {
 					p.error_with_pos('cannot embed `$sym.name` more than once', type_pos)
 					return ast.StructDecl{}
@@ -339,7 +339,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	first_pos := (if short_syntax && p.prev_tok.kind == .lcbr { p.prev_tok } else { p.tok }).position()
 	typ := if short_syntax { ast.void_type } else { p.parse_type() }
 	p.expr_mod = ''
-	// sym := p.table.get_type_symbol(typ)
+	// sym := p.table.sym(typ)
 	// p.warn('struct init typ=$sym.name')
 	if !short_syntax {
 		p.check(.lcbr)
@@ -486,7 +486,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		return ast.InterfaceDecl{}
 	}
 	typ := ast.new_type(reg_idx)
-	mut ts := p.table.get_type_symbol(typ)
+	mut ts := p.table.sym(typ)
 	mut info := ts.info as ast.Interface
 	// if methods were declared before, it's an error, ignore them
 	ts.methods = []ast.Fn{cap: 20}
@@ -502,7 +502,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			mut iface_name := p.tok.lit
 			iface_type := p.parse_type()
 			if iface_name == 'JS' {
-				iface_name = p.table.get_type_symbol(iface_type).name
+				iface_name = p.table.sym(iface_type).name
 			}
 			comments := p.eat_comments()
 			ifaces << ast.InterfaceEmbedding{

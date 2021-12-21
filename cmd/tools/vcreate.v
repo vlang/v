@@ -51,7 +51,7 @@ fn vmod_content(c Create) string {
 		'	dependencies: []',
 		'}',
 		'',
-	].join('\n')
+	].join_lines()
 }
 
 fn main_content() string {
@@ -61,7 +61,7 @@ fn main_content() string {
 		"	println('Hello World!')",
 		'}',
 		'',
-	].join('\n')
+	].join_lines()
 }
 
 fn gen_gitignore(name string) string {
@@ -76,17 +76,20 @@ fn gen_gitignore(name string) string {
 		'*.dll',
 		'vls.log',
 		'',
-	].join('\n')
+	].join_lines()
+}
+
+fn gitattributes_content() string {
+	return [
+		'*.v linguist-language=V text=auto eol=lf',
+		'*.vv linguist-language=V text=auto eol=lf',
+		'',
+	].join_lines()
 }
 
 fn (c &Create) write_vmod(new bool) {
 	vmod_path := if new { '$c.name/v.mod' } else { 'v.mod' }
-	mut vmod := os.create(vmod_path) or {
-		cerror(err.msg)
-		exit(1)
-	}
-	vmod.write_string(vmod_content(c)) or { panic(err) }
-	vmod.close()
+	os.write_file(vmod_path, vmod_content(c)) or { panic(err) }
 }
 
 fn (c &Create) write_main(new bool) {
@@ -94,12 +97,12 @@ fn (c &Create) write_main(new bool) {
 		return
 	}
 	main_path := if new { '$c.name/${c.name}.v' } else { '${c.name}.v' }
-	mut mainfile := os.create(main_path) or {
-		cerror(err.msg)
-		exit(2)
-	}
-	mainfile.write_string(main_content()) or { panic(err) }
-	mainfile.close()
+	os.write_file(main_path, main_content()) or { panic(err) }
+}
+
+fn (c &Create) write_gitattributes(new bool) {
+	gitattributes_path := if new { '$c.name/.gitattributes' } else { '.gitattributes' }
+	os.write_file(gitattributes_path, gitattributes_content()) or { panic(err) }
 }
 
 fn (c &Create) create_git_repo(dir string) {
@@ -111,13 +114,9 @@ fn (c &Create) create_git_repo(dir string) {
 			exit(4)
 		}
 	}
-	if !os.exists('$dir/.gitignore') {
-		mut fl := os.create('$dir/.gitignore') or {
-			// We don't really need a .gitignore, it's just a nice-to-have
-			return
-		}
-		fl.write_string(gen_gitignore(c.name)) or { panic(err) }
-		fl.close()
+	gitignore_path := '$dir/.gitignore'
+	if !os.exists(gitignore_path) {
+		os.write_file(gitignore_path, gen_gitignore(c.name)) or {}
 	}
 }
 
@@ -151,6 +150,7 @@ fn create(args []string) {
 	os.mkdir(c.name) or { panic(err) }
 	c.write_vmod(true)
 	c.write_main(true)
+	c.write_gitattributes(true)
 	c.create_git_repo(c.name)
 }
 
@@ -164,6 +164,7 @@ fn init_project() {
 	c.description = ''
 	c.write_vmod(false)
 	c.write_main(false)
+	c.write_gitattributes(false)
 	c.create_git_repo('.')
 
 	println('Change the description of your project in `v.mod`')

@@ -143,6 +143,9 @@ fn (mut game Game) showfps() {
 }
 
 fn frame(mut game Game) {
+	if game.gg.frame & 15 == 0 {
+		game.update_game_state()
+	}
 	ws := gg.window_size()
 	bs := remap(block_size, 0, win_height, 0, ws.height)
 	m := (f32(ws.width) - bs * field_width) * 0.5
@@ -175,7 +178,6 @@ fn main() {
 		font_path: fpath // wait_events: true
 	)
 	game.init_game()
-	go game.run() // Run the game loop in a new thread
 	game.gg.run() // Run the render loop in the main thread
 }
 
@@ -210,14 +212,10 @@ fn (mut g Game) parse_tetros() {
 	}
 }
 
-fn (mut g Game) run() {
-	for {
-		if g.state == .running {
-			g.move_tetro()
-			g.delete_completed_lines()
-		}
-		// glfw.post_empty_event() // force window redraw
-		time.sleep(timer_period * time.millisecond)
+fn (mut g Game) update_game_state() {
+	if g.state == .running {
+		g.move_tetro()
+		g.delete_completed_lines()
 	}
 }
 

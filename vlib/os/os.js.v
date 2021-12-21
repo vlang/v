@@ -1,8 +1,10 @@
 module os
 
-#const $fs = require('fs');
-#const $path = require('path');
-#const tty = require('tty')
+$if js_node {
+	#const $fs = require('fs');
+	#const $path = require('path');
+	#const tty = require('tty')
+}
 
 pub const (
 	path_delimiter = '/'

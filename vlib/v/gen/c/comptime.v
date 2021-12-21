@@ -76,7 +76,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		}
 		return
 	}
-	sym := g.table.get_type_symbol(g.unwrap_generic(node.left_type))
+	sym := g.table.sym(g.unwrap_generic(node.left_type))
 	g.trace_autofree('// \$method call. sym="$sym.name"')
 	if node.method_name == 'method' {
 		// `app.$method()`
@@ -335,11 +335,11 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 					// Handle `$if x is Interface {`
 					// mut matches_interface := 'false'
 					if left is ast.TypeNode && cond.right is ast.TypeNode
-						&& g.table.get_type_symbol(got_type).kind == .interface_ {
+						&& g.table.sym(got_type).kind == .interface_ {
 						// `$if Foo is Interface {`
-						interface_sym := g.table.get_type_symbol(got_type)
+						interface_sym := g.table.sym(got_type)
 						if interface_sym.info is ast.Interface {
-							// q := g.table.get_type_symbol(interface_sym.info.types[0])
+							// q := g.table.sym(interface_sym.info.types[0])
 							checked_type := g.unwrap_generic(left.typ)
 							// TODO PERF this check is run twice (also in the checker)
 							// store the result in a field
@@ -408,7 +408,7 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 }
 
 fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
-	sym := g.table.get_type_symbol(g.unwrap_generic(node.typ))
+	sym := g.table.sym(g.unwrap_generic(node.typ))
 	g.writeln('/* \$for $node.val_var in ${sym.name}($node.kind.str()) */ {')
 	g.indent++
 	// vweb_result_type := ast.new_type(g.table.find_type_idx('vweb.Result'))
@@ -509,7 +509,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 						'\t${node.val_var}.attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' +
 						attrs.join(', ') + '}));\n')
 				}
-				// field_sym := g.table.get_type_symbol(field.typ)
+				// field_sym := g.table.sym(field.typ)
 				// g.writeln('\t${node.val_var}.typ = _SLIT("$field_sym.name");')
 				styp := field.typ
 				g.writeln('\t${node.val_var}.typ = $styp;')

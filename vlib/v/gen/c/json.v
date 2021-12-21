@@ -20,7 +20,7 @@ import strings
 // Codegen json_decode/encode funcs
 fn (mut g Gen) gen_json_for_type(typ ast.Type) {
 	utyp := g.unwrap_generic(typ).set_nr_muls(0)
-	sym := g.table.get_type_symbol(utyp)
+	sym := g.table.sym(utyp)
 	if is_js_prim(sym.name) || sym.kind == .enum_ {
 		return
 	}
@@ -37,7 +37,7 @@ fn (mut g Gen) gen_jsons() {
 		done << utyp
 		mut dec := strings.new_builder(100)
 		mut enc := strings.new_builder(100)
-		sym := g.table.get_type_symbol(utyp)
+		sym := g.table.sym(utyp)
 		styp := g.typ(utyp)
 		g.register_optional(utyp)
 		// println('gen_json_for_type($sym.name)')
@@ -85,7 +85,7 @@ $enc_fn_dec {
 		} else if sym.kind == .alias {
 			a := sym.info as ast.Alias
 			parent_typ := a.parent_type
-			psym := g.table.get_type_symbol(parent_typ)
+			psym := g.table.sym(parent_typ)
 			if is_js_prim(g.typ(parent_typ)) {
 				g.gen_json_for_type(parent_typ)
 				continue
@@ -146,7 +146,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 	for variant in info.variants {
 		variant_typ := g.typ(variant)
 		variant_types << variant_typ
-		variant_sym := g.table.get_type_symbol(variant)
+		variant_sym := g.table.sym(variant)
 		variant_symbols << variant_sym
 		at_least_one_prim = at_least_one_prim || is_js_prim(variant_typ)
 			|| variant_sym.kind == .enum_ || variant_sym.name == 'time.Time'
@@ -323,7 +323,7 @@ fn (mut g Gen) gen_struct_enc_dec(type_info ast.TypeInfo, styp string, mut enc s
 			continue
 		}
 		field_type := g.typ(field.typ)
-		field_sym := g.table.get_type_symbol(field.typ)
+		field_sym := g.table.sym(field.typ)
 		// First generate decoding
 		if is_raw {
 			dec.writeln('\tres.${c_name(field.name)} = tos5(cJSON_PrintUnformatted(' +
@@ -470,7 +470,7 @@ fn (mut g Gen) encode_array(value_type ast.Type) string {
 fn (mut g Gen) decode_map(key_type ast.Type, value_type ast.Type) string {
 	styp := g.typ(key_type)
 	styp_v := g.typ(value_type)
-	key_type_symbol := g.table.get_type_symbol(key_type)
+	key_type_symbol := g.table.sym(key_type)
 	hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_type_symbol)
 	fn_name_v := js_dec_name(styp_v)
 	mut s := ''

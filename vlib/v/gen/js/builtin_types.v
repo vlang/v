@@ -22,7 +22,7 @@ fn (mut g JsGen) copy_val(t ast.Type, tmp string) string {
 }
 
 fn (mut g JsGen) to_js_typ_val(t ast.Type) string {
-	sym := g.table.get_type_symbol(t)
+	sym := g.table.sym(t)
 	mut styp := ''
 	mut prefix := 'new '
 	match sym.kind {
@@ -135,7 +135,7 @@ fn (mut g JsGen) base_type(_t ast.Type) string {
 }
 
 pub fn (mut g JsGen) typ(t ast.Type) string {
-	sym := g.table.get_final_type_symbol(t)
+	sym := g.table.final_sym(t)
 	if sym.kind == .voidptr {
 		return 'voidptr'
 	}
@@ -146,7 +146,7 @@ pub fn (mut g JsGen) typ(t ast.Type) string {
 
 // V type to JS type
 pub fn (mut g JsGen) doc_typ(t ast.Type) string {
-	sym := g.table.get_type_symbol(t)
+	sym := g.table.sym(t)
 	mut styp := ''
 	match sym.kind {
 		.placeholder {
@@ -214,7 +214,7 @@ pub fn (mut g JsGen) doc_typ(t ast.Type) string {
 			styp = 'union_sym_type'
 		}
 		.alias {
-			fsym := g.table.get_final_type_symbol(t)
+			fsym := g.table.final_sym(t)
 			name := g.js_name(fsym.name)
 			styp += '$name'
 		}
@@ -300,7 +300,7 @@ struct BuiltinPrototypeConfig {
 }
 
 fn (mut g JsGen) gen_builtin_prototype(c BuiltinPrototypeConfig) {
-	g.writeln('function ${c.typ_name}($c.val_name = $c.default_value) { $c.constructor }')
+	g.writeln('function ${c.typ_name}($c.val_name) { if ($c.val_name === undefined) { $c.val_name = $c.default_value; }$c.constructor }')
 	g.writeln('${c.typ_name}.prototype = {')
 	g.inc_indent()
 	g.writeln('$c.val_name: $c.default_value,')

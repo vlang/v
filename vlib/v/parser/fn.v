@@ -207,6 +207,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	p.open_scope()
 	// C. || JS.
 	mut language := ast.Language.v
+	language_tok_pos := p.tok.position()
 	if p.tok.kind == .name && p.tok.lit == 'C' {
 		is_unsafe = !is_trusted
 		language = .c
@@ -224,12 +225,12 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	}
 	if is_keep_alive && language != .c {
 		p.error_with_pos('attribute [keep_args_alive] is only supported for C functions',
-			p.tok.position())
+			language_tok_pos)
 	}
 	if language != .v {
 		p.next()
 		p.check(.dot)
-		p.check_for_impure_v(language, p.tok.position())
+		p.check_for_impure_v(language, language_tok_pos)
 	}
 	// Receiver?
 	mut rec := ReceiverParsingInfo{
@@ -261,7 +262,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				scope: 0
 			}
 		}
-		type_sym := p.table.get_type_symbol(rec.typ)
+		type_sym := p.table.sym(rec.typ)
 		if is_method {
 			mut is_duplicate := type_sym.has_method(name)
 			// make sure this is a normal method and not an interface method
@@ -312,9 +313,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	_, mut generic_names := p.parse_generic_types()
 	// generic names can be infer with receiver's generic names
 	if is_method && rec.typ.has_flag(.generic) {
-		sym := p.table.get_type_symbol(rec.typ)
+		sym := p.table.sym(rec.typ)
 		if sym.info is ast.Struct {
-			rec_generic_names := sym.info.generic_types.map(p.table.get_type_symbol(it).name)
+			rec_generic_names := sym.info.generic_types.map(p.table.sym(it).name)
 			for gname in rec_generic_names {
 				if gname !in generic_names {
 					generic_names << gname
@@ -371,14 +372,14 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	file_mode := p.file_backend_mode
 	// Register
 	if is_method {
-		mut type_sym := p.table.get_type_symbol(rec.typ)
+		mut type_sym := p.table.sym(rec.typ)
 		// Do not allow to modify / add methods to types from other modules
 		// arrays/maps dont belong to a module only their element types do
 		// we could also check if kind is .array,  .array_fixed, .map instead of mod.len
 		mut is_non_local := type_sym.mod.len > 0 && type_sym.mod != p.mod && type_sym.language == .v
 		// check maps & arrays, must be defined in same module as the elem type
 		if !is_non_local && !(p.builtin_mod && p.pref.is_fmt) && type_sym.kind in [.array, .map] {
-			elem_type_sym := p.table.get_type_symbol(p.table.value_type(rec.typ))
+			elem_type_sym := p.table.sym(p.table.value_type(rec.typ))
 			is_non_local = elem_type_sym.mod.len > 0 && elem_type_sym.mod != p.mod
 				&& elem_type_sym.language == .v
 		}
@@ -587,7 +588,7 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 		rec.typ = rec.typ.set_flag(.atomic_f)
 	}
 	// optimize method `automatic use fn (a &big_foo) instead of fn (a big_foo)`
-	type_sym := p.table.get_type_symbol(rec.typ)
+	type_sym := p.table.sym(rec.typ)
 	mut is_auto_rec := false
 	if type_sym.kind == .struct_ {
 		info := type_sym.info as ast.Struct
@@ -792,7 +793,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 				}
 				p.next()
 			}
-			alanguage := p.table.get_type_symbol(arg_type).language
+			alanguage := p.table.sym(arg_type).language
 			if alanguage != .v {
 				p.check_for_impure_v(alanguage, pos)
 			}
@@ -881,7 +882,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 				typ = ast.new_type(p.table.find_or_register_array(typ)).derive(typ).set_flag(.variadic)
 			}
 			for i, arg_name in arg_names {
-				alanguage := p.table.get_type_symbol(typ).language
+				alanguage := p.table.sym(typ).language
 				if alanguage != .v {
 					p.check_for_impure_v(alanguage, type_pos[i])
 				}
@@ -957,7 +958,7 @@ fn (mut p Parser) closure_vars() []ast.Param {
 }
 
 fn (mut p Parser) check_fn_mutable_arguments(typ ast.Type, pos token.Position) {
-	sym := p.table.get_type_symbol(typ)
+	sym := p.table.sym(typ)
 	if sym.kind in [.array, .array_fixed, .interface_, .map, .placeholder, .struct_, .generic_inst,
 		.sum_type] {
 		return
@@ -980,7 +981,7 @@ fn (mut p Parser) check_fn_mutable_arguments(typ ast.Type, pos token.Position) {
 }
 
 fn (mut p Parser) check_fn_shared_arguments(typ ast.Type, pos token.Position) {
-	sym := p.table.get_type_symbol(typ)
+	sym := p.table.sym(typ)
 	if sym.kind !in [.array, .struct_, .map, .placeholder] && !typ.is_ptr() {
 		p.error_with_pos('shared arguments are only allowed for arrays, maps, and structs\n',
 			pos)
@@ -988,7 +989,7 @@ fn (mut p Parser) check_fn_shared_arguments(typ ast.Type, pos token.Position) {
 }
 
 fn (mut p Parser) check_fn_atomic_arguments(typ ast.Type, pos token.Position) {
-	sym := p.table.get_type_symbol(typ)
+	sym := p.table.sym(typ)
 	if sym.kind !in [.u32, .int, .u64] {
 		p.error_with_pos('atomic arguments are only allowed for 32/64 bit integers\n' +
 			'use shared arguments instead: `fn foo(atomic n $sym.name) {` => `fn foo(shared n $sym.name) {`',

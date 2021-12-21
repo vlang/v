@@ -1,6 +1,8 @@
 module os
 
-#const $child_process = require('child_process')
+$if js_node {
+	#const $child_process = require('child_process')
+}
 
 // new_process - create a new process descriptor
 // NB: new does NOT start the new process.

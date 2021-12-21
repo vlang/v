@@ -451,7 +451,7 @@ pub interface JS.CanvasRenderingContext2D {
 	getLineDash() JS.Array
 	setLineDash(segments JS.Array)
 	clearRect(x JS.Number, y JS.Number, w JS.Number, h JS.Number)
-	fillRect(x JS.Number, y JS.Number, w JS.null, h JS.Number)
+	fillRect(x JS.Number, y JS.Number, w JS.Number, h JS.Number)
 	strokeRect(x JS.Number, y JS.Number, w JS.Number, h JS.Number)
 	getTransformt() JS.DOMMatrix
 	resetTransform()
@@ -899,6 +899,14 @@ pub interface JS.MouseEvent {
 	x JS.Number
 	y JS.Number
 	getModifierState(keyArg JS.String) JS.Boolean
+}
+
+pub interface JS.WheelEvent {
+	JS.MouseEvent
+	deltaX JS.Number
+	deltaY JS.Number
+	deltaZ JS.Number
+	deltaMode JS.Number
 }
 
 pub interface JS.PointerEvent {

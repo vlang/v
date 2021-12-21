@@ -19,7 +19,7 @@ fn (mut g Gen) gen_equality_fns() {
 		if needed_typ in g.generated_eq_fns {
 			continue
 		}
-		sym := g.table.get_type_symbol(needed_typ)
+		sym := g.table.sym(needed_typ)
 		match sym.kind {
 			.sum_type {
 				g.gen_sumtype_equality_fn(needed_typ)
@@ -182,7 +182,7 @@ fn (mut g Gen) gen_alias_equality_fn(left_type ast.Type) string {
 
 	mut fn_builder := strings.new_builder(512)
 	fn_builder.writeln('static bool ${ptr_styp}_alias_eq($ptr_styp a, $ptr_styp b) {')
-	sym := g.table.get_type_symbol(info.parent_type)
+	sym := g.table.sym(info.parent_type)
 	if sym.kind == .string {
 		fn_builder.writeln('\treturn string__eq(a, b);')
 	} else if sym.kind == .sum_type && !left.typ.is_ptr() {
@@ -191,6 +191,9 @@ fn (mut g Gen) gen_alias_equality_fn(left_type ast.Type) string {
 	} else if sym.kind == .struct_ && !left.typ.is_ptr() {
 		eq_fn := g.gen_struct_equality_fn(info.parent_type)
 		fn_builder.writeln('\treturn ${eq_fn}_struct_eq(a, b);')
+	} else if sym.kind == .interface_ && !left.typ.is_ptr() {
+		eq_fn := g.gen_interface_equality_fn(info.parent_type)
+		fn_builder.writeln('\treturn ${eq_fn}_interface_eq(a, b);')
 	} else if sym.kind == .array && !left.typ.is_ptr() {
 		eq_fn := g.gen_array_equality_fn(info.parent_type)
 		fn_builder.writeln('\treturn ${eq_fn}_arr_eq(a, b);')
@@ -236,6 +239,9 @@ fn (mut g Gen) gen_array_equality_fn(left_type ast.Type) string {
 	} else if elem.sym.kind == .struct_ && !elem.typ.is_ptr() {
 		eq_fn := g.gen_struct_equality_fn(elem.typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq((($ptr_elem_styp*)a.data)[i], (($ptr_elem_styp*)b.data)[i])) {')
+	} else if elem.sym.kind == .interface_ && !elem.typ.is_ptr() {
+		eq_fn := g.gen_interface_equality_fn(elem.typ)
+		fn_builder.writeln('\t\tif (!${eq_fn}_interface_eq((($ptr_elem_styp*)a.data)[i], (($ptr_elem_styp*)b.data)[i])) {')
 	} else if elem.sym.kind == .array && !elem.typ.is_ptr() {
 		eq_fn := g.gen_array_equality_fn(elem.typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_arr_eq((($ptr_elem_styp*)a.data)[i], (($ptr_elem_styp*)b.data)[i])) {')
@@ -286,6 +292,9 @@ fn (mut g Gen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 	} else if elem.sym.kind == .struct_ && !elem.typ.is_ptr() {
 		eq_fn := g.gen_struct_equality_fn(elem.typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq(a[i], b[i])) {')
+	} else if elem.sym.kind == .interface_ && !elem.typ.is_ptr() {
+		eq_fn := g.gen_interface_equality_fn(elem.typ)
+		fn_builder.writeln('\t\tif (!${eq_fn}_interface_eq(a[i], b[i])) {')
 	} else if elem.sym.kind == .array && !elem.typ.is_ptr() {
 		eq_fn := g.gen_array_equality_fn(elem.typ)
 		fn_builder.writeln('\t\tif (!${eq_fn}_arr_eq(a[i], b[i])) {')
@@ -360,6 +369,10 @@ fn (mut g Gen) gen_map_equality_fn(left_type ast.Type) string {
 		.struct_ {
 			eq_fn := g.gen_struct_equality_fn(value.typ)
 			fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq(*($ptr_value_styp*)map_get(&b, k, &($ptr_value_styp[]){ 0 }), v)) {')
+		}
+		.interface_ {
+			eq_fn := g.gen_interface_equality_fn(value.typ)
+			fn_builder.writeln('\t\tif (!${eq_fn}_interface_eq(*($ptr_value_styp*)map_get(&b, k, &($ptr_value_styp[]){ 0 }), v)) {')
 		}
 		.array {
 			eq_fn := g.gen_array_equality_fn(value.typ)
