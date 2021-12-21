@@ -26,8 +26,45 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		ast.IfExpr { return_type = right_expr.typ }
 		else {}
 	}
-	// gen assign autofree
-	g.gen_assign_autofree(node)
+	// Free the old value assigned to this string var (only if it's `str = [new value]`
+	// or `x.str = [new value]` )
+	mut af := g.is_autofree && !g.is_builtin_mod && node.op == .assign && node.left_types.len == 1
+		&& (node.left[0] is ast.Ident || node.left[0] is ast.SelectorExpr)
+	// node.left_types[0] in [ast.string_type, ast.array_type] &&
+	mut sref_name := ''
+	mut type_to_free := ''
+	if af {
+		first_left_type := node.left_types[0]
+		first_left_sym := g.table.sym(node.left_types[0])
+		if first_left_type == ast.string_type || first_left_sym.kind == .array {
+			type_to_free = if first_left_type == ast.string_type { 'string' } else { 'array' }
+			mut ok := true
+			left0 := node.left[0]
+			if left0 is ast.Ident {
+				if left0.name == '_' {
+					ok = false
+				}
+			}
+			if ok {
+				sref_name = '_sref$node.pos.pos'
+				g.write('$type_to_free $sref_name = (') // TODO we are copying the entire string here, optimize
+				// we can't just do `.str` since we need the extra data from the string struct
+				// doing `&string` is also not an option since the stack memory with the data will be overwritten
+				g.expr(left0) // node.left[0])
+				g.writeln('); // free $type_to_free on re-assignment2')
+				defer {
+					if af {
+						g.writeln('${type_to_free}_free(&$sref_name);')
+					}
+				}
+			} else {
+				af = false
+			}
+		} else {
+			af = false
+		}
+	}
+	g.gen_assign_vars_autofree(node)
 	// json_test failed w/o this check
 	if return_type != ast.void_type && return_type != 0 {
 		sym := g.table.sym(return_type)
@@ -489,45 +526,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 	}
 }
 
-fn (mut g Gen) gen_assign_autofree(node &ast.AssignStmt) {
-	// Free the old value assigned to this string var (only if it's `str = [new value]`
-	// or `x.str = [new value]` )
-	mut af := g.is_autofree && !g.is_builtin_mod && node.op == .assign && node.left_types.len == 1
-		&& (node.left[0] is ast.Ident || node.left[0] is ast.SelectorExpr)
-	// node.left_types[0] in [ast.string_type, ast.array_type] &&
-	mut sref_name := ''
-	mut type_to_free := ''
-	if af {
-		first_left_type := node.left_types[0]
-		first_left_sym := g.table.sym(node.left_types[0])
-		if first_left_type == ast.string_type || first_left_sym.kind == .array {
-			type_to_free = if first_left_type == ast.string_type { 'string' } else { 'array' }
-			mut ok := true
-			left0 := node.left[0]
-			if left0 is ast.Ident {
-				if left0.name == '_' {
-					ok = false
-				}
-			}
-			if ok {
-				sref_name = '_sref$node.pos.pos'
-				g.write('$type_to_free $sref_name = (') // TODO we are copying the entire string here, optimize
-				// we can't just do `.str` since we need the extra data from the string struct
-				// doing `&string` is also not an option since the stack memory with the data will be overwritten
-				g.expr(left0) // node.left[0])
-				g.writeln('); // free $type_to_free on re-assignment2')
-				defer {
-					if af {
-						g.writeln('${type_to_free}_free(&$sref_name);')
-					}
-				}
-			} else {
-				af = false
-			}
-		} else {
-			af = false
-		}
-	}
+fn (mut g Gen) gen_assign_vars_autofree(node &ast.AssignStmt) {
 	// Autofree tmp arg vars
 	// first_right := node.right[0]
 	// af := g.autofree && first_right is ast.CallExpr && !g.is_builtin_mod
