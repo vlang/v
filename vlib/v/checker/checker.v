@@ -4345,7 +4345,7 @@ fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_ty
 			}
 			c.error('$type_str', pos)
 		}
-		if index is ast.IntegerLiteral && is_gated == false {
+		if index is ast.IntegerLiteral && !is_gated {
 			if index.val[0] == `-` {
 				c.error('negative index `$index.val`', index.pos)
 			} else if typ_sym.kind == .array_fixed {
