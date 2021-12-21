@@ -1,5 +1,0 @@
-import v.token
-
-fn foo() int | string | token.Position | bool | u32 {
-	return 1
-}
