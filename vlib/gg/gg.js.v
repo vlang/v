@@ -40,7 +40,7 @@ pub mut:
 	char_code    u32
 	key_repeat   bool
 	modifiers    u32
-	mouse_button DOMMouseButton
+	mouse_button MouseButton
 	mouse_x      f32
 	mouse_y      f32
 	mouse_dx     f32
@@ -252,7 +252,7 @@ pub:
 	enable_dragndrop             bool // enable file dropping (drag'n'drop), default is false
 	max_dropped_files            int = 1 // max number of dropped files to process (default: 1)
 	max_dropped_file_path_length int = 2048 // max length in bytes of a dropped UTF-8 file path (default: 2048)
-	context                      JS.CanvasRenderingContext2D
+	canvas                       JS.HTMLCanvasElement
 }
 
 pub struct Context {
@@ -283,12 +283,13 @@ pub mut:
 	key_repeat        bool     // whether the pressed key was an autorepeated one
 	pressed_keys      [key_code_max]bool // an array representing all currently pressed keys
 	pressed_keys_edge [key_code_max]bool // true when the previous state of pressed_keys,
-	canvas            JS.CanvasRenderingContext2D [noinit]
+	context           JS.CanvasRenderingContext2D [noinit]
 	// *before* the current event was different
 }
 
 pub fn new_context(cfg Config) &Context {
 	mut g := &Context{}
+
 	g.user_data = cfg.user_data
 	g.width = cfg.width
 	g.height = cfg.height
@@ -298,8 +299,83 @@ pub fn new_context(cfg Config) &Context {
 		g.user_data = g
 	}
 	g.window = dom.window()
-	g.canvas = cfg.context
+	ctx := cfg.canvas.getContext('2d'.str, js_undefined()) or { panic('') }
+	match ctx {
+		JS.CanvasRenderingContext2D {
+			g.context = ctx
+		}
+		else {
+			panic('gg: cannot get 2D context')
+		}
+	}
+	mouse_down_event_handler := fn [mut g] (event JS.Event) {
+		match event {
+			JS.MouseEvent {
+				e := g.handle_mouse_event(event)
+				if !isnil(g.config.click_fn) {
+					f := g.config.click_fn
+					f(e.mouse_x, e.mouse_y, e.mouse_button, g.config.user_data)
+				}
+			}
+			else {}
+		}
+	}
 
+	mouse_up_event_handler := fn [mut g] (event JS.Event) {
+		match event {
+			JS.MouseEvent {
+				e := g.handle_mouse_event(event)
+				if !isnil(g.config.unclick_fn) {
+					f := g.config.unclick_fn
+					f(e.mouse_x, e.mouse_y, e.mouse_button, g.config.user_data)
+				}
+			}
+			else {}
+		}
+	}
+	mouse_move_event_handler := fn [mut g] (event JS.Event) {
+		match event {
+			JS.MouseEvent {
+				e := g.handle_mouse_event(event)
+				if !isnil(g.config.move_fn) {
+					f := g.config.move_fn
+					f(e.mouse_x, e.mouse_y, g.config.user_data)
+				}
+			}
+			else {}
+		}
+	}
+
+	mouse_leave_event_handler := fn [mut g] (event JS.Event) {
+		match event {
+			JS.MouseEvent {
+				e := g.handle_mouse_event(event)
+				if !isnil(g.config.leave_fn) {
+					f := g.config.leave_fn
+					f(e, g.config.user_data)
+				}
+			}
+			else {}
+		}
+	}
+
+	mouse_enter_event_handler := fn [mut g] (event JS.Event) {
+		match event {
+			JS.MouseEvent {
+				e := g.handle_mouse_event(event)
+				if !isnil(g.config.enter_fn) {
+					f := g.config.enter_fn
+					f(e, g.config.user_data)
+				}
+			}
+			else {}
+		}
+	}
+	cfg.canvas.addEventListener('mousedown'.str, mouse_down_event_handler, JS.EventListenerOptions{})
+	dom.window().addEventListener('mouseup'.str, mouse_up_event_handler, JS.EventListenerOptions{})
+	cfg.canvas.addEventListener('mousemove'.str, mouse_move_event_handler, JS.EventListenerOptions{})
+	cfg.canvas.addEventListener('mouseleave'.str, mouse_leave_event_handler, JS.EventListenerOptions{})
+	cfg.canvas.addEventListener('mouseenter'.str, mouse_enter_event_handler, JS.EventListenerOptions{})
 	return g
 }
 
@@ -308,33 +384,34 @@ pub fn (mut ctx Context) run() {
 }
 
 pub fn (mut ctx Context) begin() {
-	// ctx.canvas.beginPath()
+	// ctx.context.beginPath()
 }
 
 pub fn (mut ctx Context) end() {
-	// ctx.canvas.closePath()
+	// ctx.context.closePath()
 }
 
 pub fn (mut ctx Context) draw_line(x1 f32, y1 f32, x2 f32, y2 f32, c gx.Color) {
-	ctx.canvas.beginPath()
-	ctx.canvas.strokeStyle = c.to_css_string().str
-	ctx.canvas.moveTo(x1, y1)
-	ctx.canvas.lineTo(x2, y2)
-	ctx.canvas.stroke()
-	ctx.canvas.closePath()
+	ctx.context.beginPath()
+	ctx.context.strokeStyle = c.to_css_string().str
+	ctx.context.moveTo(x1, y1)
+	ctx.context.lineTo(x2, y2)
+	ctx.context.stroke()
+	ctx.context.closePath()
 }
 
 pub fn (mut ctx Context) draw_rect(x f32, y f32, w f32, h f32, c gx.Color) {
-	ctx.canvas.beginPath()
-	ctx.canvas.fillStyle = c.to_css_string().str
-	ctx.canvas.fillRect(x, y, w, h)
-	ctx.canvas.closePath()
+	ctx.context.beginPath()
+	ctx.context.fillStyle = c.to_css_string().str
+	ctx.context.fillRect(x, y, w, h)
+	ctx.context.closePath()
 }
 
 fn gg_animation_frame_fn(mut g Context) {
 	g.frame++
-	g.canvas.clearRect(0, 0, g.config.width, g.config.height)
+	g.context.clearRect(0, 0, g.config.width, g.config.height)
 	// todo(playXE): handle events
+
 	if !isnil(g.config.frame_fn) {
 		f := g.config.frame_fn
 		f(g.user_data)
@@ -344,4 +421,39 @@ fn gg_animation_frame_fn(mut g Context) {
 	g.window.requestAnimationFrame(fn [mut g] (time JS.Number) {
 		gg_animation_frame_fn(mut g)
 	})
+}
+
+fn (mut g Context) handle_mouse_event(event JS.MouseEvent) Event {
+	mut e := Event{}
+
+	e.typ = .mouse_down
+	e.frame_count = g.frame
+
+	match int(event.button) {
+		0 {
+			e.mouse_button = .left
+		}
+		1 {
+			e.mouse_button = .middle
+		}
+		2 {
+			e.mouse_button = .right
+		}
+		else {
+			e.mouse_button = .invalid
+		}
+	}
+	e.mouse_x = int(event.offsetX)
+	e.mouse_y = int(event.offsetY)
+	e.mouse_dx = int(event.movementX)
+	e.mouse_dy = int(event.movementY)
+	bitplace := int(event.button)
+	g.mbtn_mask |= byte(1 << bitplace)
+	// g.mouse_buttons = MouseButtons(g.mbtn_mask)
+
+	g.mouse_pos_x = int(event.offsetX)
+	g.mouse_pos_y = int(event.offsetY)
+	g.mouse_dx = int(event.movementX)
+	g.mouse_dy = int(event.movementY)
+	return e
 }
