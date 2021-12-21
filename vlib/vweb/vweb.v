@@ -558,8 +558,8 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T, routes map[string]Route, midd
 }
 
 struct Firable_middleware {
-	method string
-	params []string
+	method   string
+	params   []string
 	path_len int
 }
 

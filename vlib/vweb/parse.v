@@ -8,7 +8,7 @@ fn parse_middleware(args []MethodArgs, attrs []string) ?string {
 		for arg in args {
 			// ast.string_type_idx = 20
 			if arg.typ != 20 {
-				return error("middleware arguments should be string type, `$arg.name` does not meet that rule")
+				return error('middleware arguments should be string type, `$arg.name` does not meet that rule')
 			}
 		}
 
