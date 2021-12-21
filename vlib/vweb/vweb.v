@@ -383,15 +383,20 @@ pub fn run<T>(global_app &T, port int) {
 
 	// Parsing methods attributes
 	mut routes := map[string]Route{}
+	mut middlewares := map[string]string{}
 	$for method in T.methods {
 		http_methods, route_path := parse_attrs(method.name, method.attrs) or {
 			eprintln('error parsing method attributes: $err')
 			return
 		}
 
-		routes[method.name] = Route{
-			methods: http_methods
-			path: route_path
+		if 'use' in method.attrs.filter(it.len == 3).map(it.to_lower()) {
+			middlewares[method.name] = route_path
+		} else {
+			routes[method.name] = Route{
+				methods: http_methods
+				path: route_path
+			}
 		}
 	}
 	println('[Vweb] Running app on http://localhost:$port')
@@ -414,12 +419,12 @@ pub fn run<T>(global_app &T, port int) {
 			eprintln('accept() failed with error: $err.msg')
 			continue
 		}
-		go handle_conn<T>(mut conn, mut request_app, routes)
+		go handle_conn<T>(mut conn, mut request_app, routes, middlewares)
 	}
 }
 
 [manualfree]
-fn handle_conn<T>(mut conn net.TcpConn, mut app T, routes map[string]Route) {
+fn handle_conn<T>(mut conn net.TcpConn, mut app T, routes map[string]Route, middlewares map[string]string) {
 	conn.set_read_timeout(30 * time.second)
 	conn.set_write_timeout(30 * time.second)
 	defer {
