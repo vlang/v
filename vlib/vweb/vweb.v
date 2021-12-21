@@ -511,15 +511,25 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T, routes map[string]Route, midd
 						for param in method.args {
 							args << form[param.name]
 						}
-						app.$method(args)
+
+						fire_middlewares(mut app, url_words, middlewares)
+						if app.done == false {
+							app.$method(args)
+						}
 					} else {
-						app.$method()
+						fire_middlewares(mut app, url_words, middlewares)
+						if app.done == false {
+							app.$method()
+						}
 					}
 					return
 				}
 
 				if url_words.len == 0 && route_words == ['index'] && method.name == 'index' {
-					app.$method()
+					fire_middlewares(mut app, url_words, middlewares)
+					if app.done == false {
+						app.$method()
+					}
 					return
 				}
 
@@ -528,7 +538,10 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T, routes map[string]Route, midd
 					if method_args.len != method.args.len {
 						eprintln('warning: uneven parameters count ($method.args.len) in `$method.name`, compared to the vweb route `$method.attrs` ($method_args.len)')
 					}
-					app.$method(method_args)
+					fire_middlewares(mut app, url_words, middlewares)
+					if app.done == false {
+						app.$method(method_args)
+					}
 					return
 				}
 			}
@@ -536,6 +549,51 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T, routes map[string]Route, midd
 	}
 	// Route not found
 	conn.write(vweb.http_404.bytes()) or {}
+}
+
+struct Firable_middleware {
+	method string
+	params []string
+	path_len int
+}
+
+fn fire_middlewares<T>(mut app T, url_words []string, middlewares map[string]string) {
+	mut fire_those := []Firable_middleware{}
+	for m, path in middlewares {
+		path_words := path.split('/').filter(it != '')
+		ext_words := url_words[..path_words.len]
+
+		if (path_words.len == 0 && url_words.len == 0) || (!path.contains('/:') && path_words == ext_words) {
+			fire_those << Firable_middleware{
+				method: m
+				path_len: path_words.len
+			}
+		} else if params := route_matches(ext_words, path_words) {
+			fire_those << Firable_middleware{
+				method: m
+				params: params
+				path_len: path_words.len
+			}
+		}
+	}
+
+	fire_those.sort(a.path_len < b.path_len)
+
+	for f in fire_those {
+		fire_middleware(mut app, f.method, f.params)
+	}
+}
+
+fn fire_middleware<T>(mut app T, method_name string, params []string) {
+	$for method in T.methods {
+		if method_name == method.name {
+			if params.len != method.args.len {
+				app.$method(params)
+			} else {
+				app.$method()
+			}
+		}
+	}
 }
 
 fn route_matches(url_words []string, route_words []string) ?[]string {
