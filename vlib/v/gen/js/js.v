@@ -1841,7 +1841,7 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 		g.writeln('function ${js_name}($obj) {')
 		g.inc_indent()
 		g.writeln('if ($obj === undefined) { obj = {}; }')
-		for i, field in node.fields {
+		for field in node.fields {
 			mut keep := true
 			for attr in field.attrs {
 				if attr.name == 'noinit' {
