@@ -15,14 +15,48 @@ struct ReturnType {
 }
 
 const return_types = [
-	ReturnType{ name: '', init: '', assertion: '', no_assert_kw: true },
-	ReturnType{ name: 'int', init: '-123', assertion: ' == -123' },
-	ReturnType{ name: 'u64', init: '123', assertion: ' == 123' },
-	ReturnType{ name: 'voidptr', init: 'voidptr(123)', assertion: ' == voidptr(123)' },
-	ReturnType{ name: 'string', init: "'hello'", assertion: " == 'hello'" },
-	ReturnType{ name: '?', init: "error('an error')", assertion: " or { assert err.msg == 'an error' return }\npanic('got no error')", no_assert_kw: true },
-	ReturnType{ name: '?string', init: "'hello'", assertion: "? == 'hello'" },
-	ReturnType{ name: 'BigStruct', init: "BigStruct{ a3: 56, a27: 1234, a61: 5555 }", assertion: ' == BigStruct{ a3: 56, a27: 1234, a61: 5555 }' },
+	ReturnType{
+		name: ''
+		init: ''
+		assertion: ''
+		no_assert_kw: true
+	},
+	ReturnType{
+		name: 'int'
+		init: '-123'
+		assertion: ' == -123'
+	},
+	ReturnType{
+		name: 'u64'
+		init: '123'
+		assertion: ' == 123'
+	},
+	ReturnType{
+		name: 'voidptr'
+		init: 'voidptr(123)'
+		assertion: ' == voidptr(123)'
+	},
+	ReturnType{
+		name: 'string'
+		init: "'hello'"
+		assertion: " == 'hello'"
+	},
+	ReturnType{
+		name: '?'
+		init: "error('an error')"
+		assertion: " or { assert err.msg == 'an error' return }\npanic('got no error')"
+		no_assert_kw: true
+	},
+	ReturnType{
+		name: '?string'
+		init: "'hello'"
+		assertion: "? == 'hello'"
+	},
+	ReturnType{
+		name: 'BigStruct'
+		init: 'BigStruct{ a3: 56, a27: 1234, a61: 5555 }'
+		assertion: ' == BigStruct{ a3: 56, a27: 1234, a61: 5555 }'
+	},
 ]
 
 // test_closures_with_n_args generates a new V file containing closures of `i`
@@ -72,10 +106,10 @@ fn test_big_closure_${typ}_${i}() {
 	mut z := $init_val
 	c := fn [z] (${params.join(', ')}) $return_type {
 		mut sum := z")
-		for j in 0 .. i {
-			v_code.writeln('\t\tsum += ${return_type}(${param_names[j]})')
-		}
-		v_code.writeln("
+			for j in 0 .. i {
+				v_code.writeln('\t\tsum += ${return_type}(${param_names[j]})')
+			}
+			v_code.writeln("
 		return sum
 	}
 	assert c(${values.join(', ')}) == $expected_val
