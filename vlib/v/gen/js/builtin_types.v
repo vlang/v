@@ -300,7 +300,7 @@ struct BuiltinPrototypeConfig {
 }
 
 fn (mut g JsGen) gen_builtin_prototype(c BuiltinPrototypeConfig) {
-	g.writeln('function ${c.typ_name}($c.val_name = $c.default_value) { $c.constructor }')
+	g.writeln('function ${c.typ_name}($c.val_name) { if ($c.val_name === undefined) { $c.val_name = $c.default_value; }$c.constructor }')
 	g.writeln('${c.typ_name}.prototype = {')
 	g.inc_indent()
 	g.writeln('$c.val_name: $c.default_value,')
