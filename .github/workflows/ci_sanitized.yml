@@ -54,7 +54,7 @@ on:
       - 'vlib/v/embed_file/**.v'
 
 concurrency:
-  group: build-${{ github.event.pull_request.number || github.ref }}
+  group: build-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
