@@ -246,7 +246,11 @@ pub fn (mut ts TestSession) test() {
 	remaining_files = vtest.filter_vtest_only(remaining_files, fix_slashes: false)
 	ts.files = remaining_files
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
-	ts.benchmark.njobs = runtime.nr_jobs()
+	mut njobs := runtime.nr_jobs()
+	if remaining_files.len < njobs {
+		njobs = remaining_files.len
+	}
+	ts.benchmark.njobs = njobs
 	mut pool_of_test_runners := pool.new_pool_processor(callback: worker_trunner)
 	// for handling messages across threads
 	ts.nmessages = chan LogMessage{cap: 10000}
