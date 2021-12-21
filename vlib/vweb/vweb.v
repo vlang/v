@@ -567,23 +567,46 @@ fn fire_middlewares<T>(mut app T, url_words []string, middlewares map[string]str
 	mut fire_those := []Firable_middleware{}
 	for m, path in middlewares {
 		path_words := path.split('/').filter(it != '')
-		ext_words := url_words[..path_words.len]
 
-		if (path_words.len == 0 && url_words.len == 0) || (!path.contains('/:') && path_words == ext_words) {
+		if path_words.len == 0 {
 			fire_those << Firable_middleware{
 				method: m
 				path_len: path_words.len
 			}
-		} else if params := route_matches(ext_words, path_words) {
+			continue
+		}
+
+		if path_words.len > url_words.len {
+			continue
+		}
+
+		ext_words := url_words[..path_words.len]
+
+		if !path.contains('/:') && path_words == ext_words {
 			fire_those << Firable_middleware{
 				method: m
-				params: params
 				path_len: path_words.len
+			}
+		} else if path_words.last().starts_with(':') && path_words.last().ends_with('...') {
+			if params := route_matches(url_words, path_words) {
+				fire_those << Firable_middleware{
+					method: m
+					params: params
+					path_len: path_words.len
+				}
+			}
+		} else {
+			if params := route_matches(ext_words, path_words) {
+				fire_those << Firable_middleware{
+					method: m
+					params: params
+					path_len: path_words.len
+				}
 			}
 		}
 	}
 
-	fire_those.sort(a.path_len < b.path_len)
+	fire_those.sort(a.path_len > b.path_len)
 
 	for f in fire_those {
 		fire_middleware(mut app, f.method, f.params)
@@ -593,7 +616,7 @@ fn fire_middlewares<T>(mut app T, url_words []string, middlewares map[string]str
 fn fire_middleware<T>(mut app T, method_name string, params []string) {
 	$for method in T.methods {
 		if method_name == method.name {
-			if params.len != method.args.len {
+			if method.args.len > 0 && params.len == method.args.len {
 				app.$method(params)
 			} else {
 				app.$method()
