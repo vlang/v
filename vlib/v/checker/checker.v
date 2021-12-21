@@ -4332,7 +4332,7 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 }
 
 fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_type ast.Type, pos token.Position, range_index bool, is_gated bool) {
-	index_type_sym := c.table.get_type_symbol(index_type)
+	index_type_sym := c.table.sym(index_type)
 	// println('index expr left=$typ_sym.name $node.pos.line_nr')
 	// if typ_sym.kind == .array && (!(ast.type_idx(index_type) in ast.number_type_idxs) &&
 	// index_type_sym.kind != .enum_) {
