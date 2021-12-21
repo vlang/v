@@ -7383,11 +7383,12 @@ static inline $interface_name I_${cctype}_to_Interface_${interface_name}($cctype
 							false)
 					}
 				}
-				mut method_call := '${cctype}_$name'
+				styp := g.cc_type(method.params[0].typ, true)
+				mut method_call := '${styp}_$name'
 				if !method.params[0].typ.is_ptr() {
 					// inline void Cat_speak_Interface_Animal_method_wrapper(Cat c) { return Cat_speak(*c); }
 					iwpostfix := '_Interface_${interface_name}_method_wrapper'
-					methods_wrapper.write_string('static inline ${g.typ(method.return_type)} $method_call${iwpostfix}(')
+					methods_wrapper.write_string('static inline ${g.typ(method.return_type)} ${cctype}_$name${iwpostfix}(')
 					//
 					params_start_pos := g.out.len
 					mut params := method.params.clone()
