@@ -309,7 +309,7 @@ pub fn (mut p Parser) parse() &ast.File {
 	// codegen
 	if p.codegen_text.len > 0 && !p.pref.is_fmt {
 		ptext := 'module ' + p.mod.all_after('.') + p.codegen_text
-		codegen_file := parse_text(ptext, 'codegen_$p.file_name', p.table, p.comments_mode,
+		codegen_file := parse_text(ptext, p.file_name, p.table, p.comments_mode,
 			p.pref)
 		stmts << codegen_file.stmts
 	}
