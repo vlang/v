@@ -901,6 +901,14 @@ pub interface JS.MouseEvent {
 	getModifierState(keyArg JS.String) JS.Boolean
 }
 
+pub interface JS.WheelEvent {
+	JS.MouseEvent
+	deltaX JS.Number
+	deltaY JS.Number
+	deltaZ JS.Number
+	deltaMode JS.Number
+}
+
 pub interface JS.PointerEvent {
 	JS.MouseEvent
 	height JS.Number
