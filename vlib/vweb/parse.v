@@ -3,6 +3,32 @@ module vweb
 import net.urllib
 import net.http
 
+fn parse_middleware(args []MethodArgs, attrs []string) ?string {
+	if 'use' in attrs {
+		for arg in args {
+			// ast.string_type_idx = 20
+			if arg.typ != 20 {
+				return error("middleware arguments should be string type, `$arg.name` does not meet that rule")
+			}
+		}
+
+		for attr in attrs {
+			if attr.starts_with('/') {
+				params_len := attr.split('/').filter(it != '' && it.starts_with(':')).len
+				if params_len != args.len {
+					return error('number of middleware arguments does not meet with number of path params')
+				}
+
+				return attr
+			}
+		}
+
+		return error("please specify path as attribute for middleware, example: ['/admin']")
+	}
+
+	return none
+}
+
 // Parsing function attributes for methods and path.
 fn parse_attrs(name string, attrs []string) ?([]http.Method, string) {
 	if attrs.len == 0 {
