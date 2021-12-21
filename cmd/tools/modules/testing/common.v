@@ -19,6 +19,10 @@ pub const hide_oks = os.getenv('VTEST_HIDE_OK') == '1'
 
 pub const fail_fast = os.getenv('VTEST_FAIL_FAST') == '1'
 
+pub const test_only = os.getenv('VTEST_ONLY').split_any(',')
+
+pub const test_only_fn = os.getenv('VTEST_ONLY_FN').split_any(',')
+
 pub const is_node_present = os.execute('node --version').exit_code == 0
 
 pub const all_processes = os.execute('ps ax').output.split_any('\r\n')

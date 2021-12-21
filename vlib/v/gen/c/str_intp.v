@@ -16,7 +16,7 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 	mut base := 0 // numeric base
 	mut upper_case := false // set upercase for the result string
 	mut typ := g.unwrap_generic(node.expr_types[i])
-	sym := g.table.get_type_symbol(typ)
+	sym := g.table.sym(typ)
 	if sym.kind == .alias {
 		typ = (sym.info as ast.Alias).parent_type
 	}
@@ -125,7 +125,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int) {
 	expr := node.exprs[i]
 
 	typ := g.unwrap_generic(node.expr_types[i])
-	typ_sym := g.table.get_type_symbol(typ)
+	typ_sym := g.table.sym(typ)
 	if typ == ast.string_type && g.comptime_for_method.len == 0 {
 		if g.inside_vweb_tmpl {
 			g.write('vweb__filter(')
@@ -156,7 +156,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int) {
 				if g.comptime_var_type_map.len > 0 || g.comptime_for_method.len > 0 {
 					exp_typ = expr.obj.typ
 				} else if expr.obj.smartcasts.len > 0 {
-					cast_sym := g.table.get_type_symbol(expr.obj.smartcasts.last())
+					cast_sym := g.table.sym(expr.obj.smartcasts.last())
 					if cast_sym.info is ast.Aggregate {
 						exp_typ = cast_sym.info.types[g.aggregate_type_idx]
 					}

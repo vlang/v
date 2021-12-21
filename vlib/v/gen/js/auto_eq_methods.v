@@ -134,7 +134,7 @@ fn (mut g JsGen) gen_alias_equality_fn(left_type ast.Type) string {
 		g.definitions.writeln(fn_builder.str())
 	}
 	fn_builder.writeln('function ${ptr_styp}_alias_eq(a,b) {')
-	sym := g.table.get_type_symbol(info.parent_type)
+	sym := g.table.sym(info.parent_type)
 	if sym.kind == .string {
 		fn_builder.writeln('\treturn new bool(a.str == b.str);')
 	} else if sym.kind == .sum_type && !left.typ.is_ptr() {

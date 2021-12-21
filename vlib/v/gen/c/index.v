@@ -10,7 +10,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 	if node.index is ast.RangeExpr {
 		g.range_expr(node, node.index)
 	} else {
-		sym := g.table.get_final_type_symbol(node.left_type)
+		sym := g.table.final_sym(node.left_type)
 		if sym.kind == .array {
 			g.index_of_array(node, sym)
 		} else if sym.kind == .array_fixed {
@@ -58,7 +58,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 }
 
 fn (mut g Gen) range_expr(node ast.IndexExpr, range ast.RangeExpr) {
-	sym := g.table.get_final_type_symbol(node.left_type)
+	sym := g.table.final_sym(node.left_type)
 	if sym.kind == .string {
 		if node.is_gated == false {
 			g.write('string_substr(')
@@ -135,7 +135,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 	info := sym.info as ast.Array
 	elem_type_str := g.typ(info.elem_type)
 	elem_type := info.elem_type
-	elem_typ := g.table.get_type_symbol(elem_type)
+	elem_typ := g.table.sym(elem_type)
 	// `vals[i].field = x` is an exception and requires `array_get`:
 	// `(*(Val*)array_get(vals, i)).field = x;`
 	is_selector := node.left is ast.SelectorExpr
@@ -299,7 +299,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 	info := sym.info as ast.ArrayFixed
 	elem_type := info.elem_type
-	elem_sym := g.table.get_type_symbol(elem_type)
+	elem_sym := g.table.sym(elem_type)
 	is_fn_index_call := g.is_fn_index_call && elem_sym.info is ast.FnType
 
 	if is_fn_index_call {
@@ -335,7 +335,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 	key_type_str := g.typ(info.key_type)
 	elem_type := info.value_type
 	elem_type_str := g.typ(elem_type)
-	elem_typ := g.table.get_type_symbol(elem_type)
+	elem_typ := g.table.sym(elem_type)
 	get_and_set_types := elem_typ.kind in [.struct_, .map]
 	if g.is_assign_lhs && !g.is_arraymap_set && !get_and_set_types {
 		if g.assign_op == .assign || info.value_type == ast.string_type {
