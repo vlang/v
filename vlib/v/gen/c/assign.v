@@ -202,6 +202,8 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 				g.is_void_expr_stmt = true
 				g.expr(val)
 				g.is_void_expr_stmt = old_is_void_expr_stmt
+			} else if g.inside_for_c_stmt {
+				g.expr(val)
 			} else {
 				g.write('{$styp _ = ')
 				g.expr(val)
