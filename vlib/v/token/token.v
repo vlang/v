@@ -69,6 +69,7 @@ pub enum Kind {
 	lpar // (
 	rpar // )
 	lsbr // [
+	nilsbr // #[
 	rsbr // ]
 	eq // ==
 	ne // !=
@@ -243,6 +244,7 @@ fn build_token_str() []string {
 	s[Kind.lpar] = '('
 	s[Kind.rpar] = ')'
 	s[Kind.lsbr] = '['
+	s[Kind.nilsbr] = '#['
 	s[Kind.rsbr] = ']'
 	s[Kind.eq] = '=='
 	s[Kind.ne] = '!='
@@ -379,6 +381,7 @@ pub enum Precedence {
 pub fn build_precedences() []Precedence {
 	mut p := []Precedence{len: int(Kind._end_)}
 	p[Kind.lsbr] = .index
+	p[Kind.nilsbr] = .index
 	p[Kind.dot] = .call
 	// `++` | `--` | `?`
 	p[Kind.inc] = .postfix

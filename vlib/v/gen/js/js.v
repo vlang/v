@@ -1836,29 +1836,57 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	js_name := g.js_name(name)
 	g.gen_attrs(node.attrs)
 	g.doc.gen_fac_fn(node.fields)
-	g.write('function ${js_name}({ ')
-	for i, field in node.fields {
-		g.write('$field.name')
-		mut keep := true
-		for attr in field.attrs {
-			if attr.name == 'noinit' {
-				keep = false
+	if g.pref.output_es5 {
+		obj := g.new_tmp_var()
+		g.writeln('function ${js_name}($obj) {')
+		g.inc_indent()
+		g.writeln('if ($obj === undefined) { obj = {}; }')
+		for field in node.fields {
+			mut keep := true
+			for attr in field.attrs {
+				if attr.name == 'noinit' {
+					keep = false
+				}
 			}
+			if keep {
+				g.writeln('if (${obj}.$field.name === undefined) {')
+				g.write('${obj}.$field.name = ')
+				if field.has_default_expr {
+					g.expr(field.default_expr)
+				} else {
+					g.write('${g.to_js_typ_val(field.typ)}')
+				}
+				g.writeln('\n}')
+			}
+			g.writeln('var $field.name = ${obj}.$field.name;')
 		}
-		if keep {
-			g.write(' = ')
 
-			if field.has_default_expr {
-				g.expr(field.default_expr)
-			} else {
-				g.write('${g.to_js_typ_val(field.typ)}')
+		g.dec_indent()
+	} else {
+		g.write('function ${js_name}({ ')
+		for i, field in node.fields {
+			g.write('$field.name')
+			mut keep := true
+			for attr in field.attrs {
+				if attr.name == 'noinit' {
+					keep = false
+				}
+			}
+			if keep {
+				g.write(' = ')
+
+				if field.has_default_expr {
+					g.expr(field.default_expr)
+				} else {
+					g.write('${g.to_js_typ_val(field.typ)}')
+				}
+			}
+			if i < node.fields.len - 1 {
+				g.write(', ')
 			}
 		}
-		if i < node.fields.len - 1 {
-			g.write(', ')
-		}
+		g.writeln(' }) {')
 	}
-	g.writeln(' }) {')
 	g.inc_indent()
 	for field in node.fields {
 		g.writeln('this.$field.name = $field.name')
@@ -1886,7 +1914,11 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	// gen toString method
 	fn_names := fns.map(it.name)
 	if 'toString' !in fn_names {
-		g.writeln('toString() {')
+		if g.pref.output_es5 {
+			g.writeln('toString: (function() {')
+		} else {
+			g.writeln('toString() {')
+		}
 		g.inc_indent()
 		g.write('return `$js_name {')
 		for i, field in node.fields {
@@ -1902,7 +1934,11 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 		}
 		g.writeln('}`')
 		g.dec_indent()
-		g.writeln('},')
+		if g.pref.output_es5 {
+			g.writeln('}).bind(this),')
+		} else {
+			g.writeln('},')
+		}
 	}
 	for field in node.fields {
 		typ := g.typ(field.typ)
@@ -1918,8 +1954,11 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 			g.writeln(',')
 		}
 	}
-	g.writeln('\$toJS() { return this; }')
-
+	if g.pref.output_es5 {
+		g.writeln('\$toJS: (function() { return this; }).bind(this)')
+	} else {
+		g.writeln('\$toJS() { return this; }')
+	}
 	g.writeln('};\n')
 	g.dec_indent()
 
@@ -3398,7 +3437,7 @@ fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
 	}
 
 	if (from_type_sym.name == 'Any' && from_type_sym.language == .js)
-		|| from_type_sym.name == 'JS.Any' {
+		|| from_type_sym.name == 'JS.Any' || from_type_sym.name == 'voidptr' {
 		if it.typ.is_ptr() {
 			g.write('new \$ref(')
 		}

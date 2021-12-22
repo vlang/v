@@ -36,11 +36,11 @@ pub struct Event {
 pub mut:
 	frame_count  u64
 	typ          DOMEventType
-	key_code     DOMKeyCode
+	key_code     KeyCode
 	char_code    u32
 	key_repeat   bool
 	modifiers    u32
-	mouse_button DOMMouseButton
+	mouse_button MouseButton
 	mouse_x      f32
 	mouse_y      f32
 	mouse_dx     f32
@@ -252,7 +252,13 @@ pub:
 	enable_dragndrop             bool // enable file dropping (drag'n'drop), default is false
 	max_dropped_files            int = 1 // max number of dropped files to process (default: 1)
 	max_dropped_file_path_length int = 2048 // max length in bytes of a dropped UTF-8 file path (default: 2048)
-	context                      JS.CanvasRenderingContext2D
+	canvas                       string
+}
+
+const size = Size{0, 0}
+
+pub fn window_size() Size {
+	return gg.size
 }
 
 pub struct Context {
@@ -283,23 +289,166 @@ pub mut:
 	key_repeat        bool     // whether the pressed key was an autorepeated one
 	pressed_keys      [key_code_max]bool // an array representing all currently pressed keys
 	pressed_keys_edge [key_code_max]bool // true when the previous state of pressed_keys,
-	canvas            JS.CanvasRenderingContext2D [noinit]
+	context           JS.CanvasRenderingContext2D [noinit]
+	canvas            JS.HTMLCanvasElement        [noinit]
 	// *before* the current event was different
+}
+
+fn get_canvas(elem JS.HTMLElement) &JS.HTMLCanvasElement {
+	match elem {
+		JS.HTMLCanvasElement {
+			return elem
+		}
+		else {
+			panic('gg: element is not an HTMLCanvasElement')
+		}
+	}
+}
+
+fn get_context(canvas JS.HTMLCanvasElement) JS.CanvasRenderingContext2D {
+	ctx := canvas.getContext('2d'.str, js_undefined()) or { panic('cannot get context') }
+	match ctx {
+		JS.CanvasRenderingContext2D {
+			return ctx
+		}
+		else {
+			panic('failed to get 2D context')
+		}
+	}
 }
 
 pub fn new_context(cfg Config) &Context {
 	mut g := &Context{}
+
 	g.user_data = cfg.user_data
 	g.width = cfg.width
 	g.height = cfg.height
 	g.ui_mode = cfg.ui_mode
+	mut sz := gg.size
+	sz.height = g.height
+	sz.width = g.width
 	g.config = cfg
 	if isnil(cfg.user_data) {
 		g.user_data = g
 	}
 	g.window = dom.window()
-	g.canvas = cfg.context
+	document := dom.document
+	canvas_elem := document.getElementById(cfg.canvas.str) or {
+		panic('gg: cannot get canvas element')
+	}
+	canvas := get_canvas(canvas_elem)
+	g.canvas = canvas
+	g.context = get_context(g.canvas)
 
+	mouse_down_event_handler := fn [mut g] (event JS.Event) {
+		match event {
+			JS.MouseEvent {
+				e := g.handle_mouse_event(event, .mouse_down)
+				if !isnil(g.config.event_fn) {
+					f := g.config.event_fn
+					f(e, g.config.user_data)
+				}
+				if !isnil(g.config.click_fn) {
+					f := g.config.click_fn
+					f(e.mouse_x, e.mouse_y, e.mouse_button, g.config.user_data)
+				}
+			}
+			else {}
+		}
+	}
+
+	mouse_up_event_handler := fn [mut g] (event JS.Event) {
+		match event {
+			JS.MouseEvent {
+				e := g.handle_mouse_event(event, .mouse_up)
+				if !isnil(g.config.event_fn) {
+					f := g.config.event_fn
+					f(e, g.config.user_data)
+				}
+				if !isnil(g.config.unclick_fn) {
+					f := g.config.unclick_fn
+					f(e.mouse_x, e.mouse_y, e.mouse_button, g.config.user_data)
+				}
+			}
+			else {}
+		}
+	}
+	mouse_move_event_handler := fn [mut g] (event JS.Event) {
+		match event {
+			JS.MouseEvent {
+				e := g.handle_mouse_event(event, .mouse_move)
+				if !isnil(g.config.event_fn) {
+					f := g.config.event_fn
+					f(e, g.config.user_data)
+				}
+				if !isnil(g.config.move_fn) {
+					f := g.config.move_fn
+					f(e.mouse_x, e.mouse_y, g.config.user_data)
+				}
+			}
+			else {}
+		}
+	}
+
+	mouse_leave_event_handler := fn [mut g] (event JS.Event) {
+		match event {
+			JS.MouseEvent {
+				e := g.handle_mouse_event(event, .mouse_leave)
+				if !isnil(g.config.event_fn) {
+					f := g.config.event_fn
+					f(e, g.config.user_data)
+				}
+				if !isnil(g.config.leave_fn) {
+					f := g.config.leave_fn
+					f(e, g.config.user_data)
+				}
+			}
+			else {}
+		}
+	}
+
+	mouse_enter_event_handler := fn [mut g] (event JS.Event) {
+		match event {
+			JS.MouseEvent {
+				e := g.handle_mouse_event(event, .mouse_enter)
+				if !isnil(g.config.event_fn) {
+					f := g.config.event_fn
+					f(e, g.config.user_data)
+				}
+				if !isnil(g.config.enter_fn) {
+					f := g.config.enter_fn
+					f(e, g.config.user_data)
+				}
+			}
+			else {}
+		}
+	}
+
+	keydown_event_handler := fn [mut g] (event JS.Event) {
+		println('keyboard')
+		match event {
+			JS.KeyboardEvent {
+				e := g.handle_keyboard_event(event, .key_down)
+
+				if !isnil(g.config.event_fn) {
+					f := g.config.event_fn
+					f(e, g.config.user_data)
+				}
+				if !isnil(g.config.keydown_fn) {
+					f := g.config.keydown_fn
+					// todo: modifiers
+					f(e.key_code, .super, g.config.user_data)
+				}
+			}
+			else {}
+		}
+	}
+	g.canvas.addEventListener('mousedown'.str, mouse_down_event_handler, JS.EventListenerOptions{})
+	dom.window().addEventListener('mouseup'.str, mouse_up_event_handler, JS.EventListenerOptions{})
+	g.canvas.addEventListener('mousemove'.str, mouse_move_event_handler, JS.EventListenerOptions{})
+	g.canvas.addEventListener('mouseleave'.str, mouse_leave_event_handler, JS.EventListenerOptions{})
+	g.canvas.addEventListener('mouseenter'.str, mouse_enter_event_handler, JS.EventListenerOptions{})
+	dom.document.addEventListener('keydown'.str, keydown_event_handler, JS.EventListenerOptions{})
 	return g
 }
 
@@ -308,33 +457,37 @@ pub fn (mut ctx Context) run() {
 }
 
 pub fn (mut ctx Context) begin() {
-	// ctx.canvas.beginPath()
+	// ctx.context.beginPath()
 }
 
 pub fn (mut ctx Context) end() {
-	// ctx.canvas.closePath()
+	// ctx.context.closePath()
 }
 
 pub fn (mut ctx Context) draw_line(x1 f32, y1 f32, x2 f32, y2 f32, c gx.Color) {
-	ctx.canvas.beginPath()
-	ctx.canvas.strokeStyle = c.to_css_string().str
-	ctx.canvas.moveTo(x1, y1)
-	ctx.canvas.lineTo(x2, y2)
-	ctx.canvas.stroke()
-	ctx.canvas.closePath()
+	ctx.context.beginPath()
+	ctx.context.strokeStyle = c.to_css_string().str
+	ctx.context.moveTo(x1, y1)
+	ctx.context.lineTo(x2, y2)
+	ctx.context.stroke()
+	ctx.context.closePath()
+}
+
+pub fn (mut ctx Context) quit() {
 }
 
 pub fn (mut ctx Context) draw_rect(x f32, y f32, w f32, h f32, c gx.Color) {
-	ctx.canvas.beginPath()
-	ctx.canvas.fillStyle = c.to_css_string().str
-	ctx.canvas.fillRect(x, y, w, h)
-	ctx.canvas.closePath()
+	ctx.context.beginPath()
+	ctx.context.fillStyle = c.to_css_string().str
+	ctx.context.fillRect(x, y, w, h)
+	ctx.context.closePath()
 }
 
 fn gg_animation_frame_fn(mut g Context) {
 	g.frame++
-	g.canvas.clearRect(0, 0, g.config.width, g.config.height)
+	g.context.clearRect(0, 0, g.config.width, g.config.height)
 	// todo(playXE): handle events
+
 	if !isnil(g.config.frame_fn) {
 		f := g.config.frame_fn
 		f(g.user_data)
@@ -344,4 +497,269 @@ fn gg_animation_frame_fn(mut g Context) {
 	g.window.requestAnimationFrame(fn [mut g] (time JS.Number) {
 		gg_animation_frame_fn(mut g)
 	})
+}
+
+fn (mut g Context) handle_mouse_event(event JS.MouseEvent, typ DOMEventType) Event {
+	mut e := Event{}
+
+	e.typ = typ
+	e.frame_count = g.frame
+
+	match int(event.button) {
+		0 {
+			e.mouse_button = .left
+		}
+		1 {
+			e.mouse_button = .middle
+		}
+		2 {
+			e.mouse_button = .right
+		}
+		else {
+			e.mouse_button = .invalid
+		}
+	}
+	e.mouse_x = int(event.offsetX)
+	e.mouse_y = int(event.offsetY)
+	e.mouse_dx = int(event.movementX)
+	e.mouse_dy = int(event.movementY)
+	bitplace := int(event.button)
+	g.mbtn_mask |= byte(1 << bitplace)
+	// g.mouse_buttons = MouseButtons(g.mbtn_mask)
+
+	g.mouse_pos_x = int(event.offsetX)
+	g.mouse_pos_y = int(event.offsetY)
+	g.mouse_dx = int(event.movementX)
+	g.mouse_dy = int(event.movementY)
+	return e
+}
+
+fn (mut g Context) handle_keyboard_event(event JS.KeyboardEvent, typ DOMEventType) Event {
+	mut e := Event{}
+	e.typ = typ
+	e.frame_count = g.frame
+
+	match string(event.code) {
+		'Space' {
+			e.key_code = .space
+		}
+		'Minus' {
+			e.key_code = .minus
+		}
+		'Quote' {
+			e.key_code = .apostrophe
+		}
+		'Comma' {
+			e.key_code = .comma
+		}
+		'Period' {
+			e.key_code = .period
+		}
+		'Digit0' {
+			e.key_code = ._0
+		}
+		'Digit1' {
+			e.key_code = ._1
+		}
+		'Digit2' {
+			e.key_code = ._2
+		}
+		'Digit3' {
+			e.key_code = ._3
+		}
+		'Digit4' {
+			e.key_code = ._4
+		}
+		'Digit5' {
+			e.key_code = ._5
+		}
+		'Digit6' {
+			e.key_code = ._6
+		}
+		'Digit7' {
+			e.key_code = ._7
+		}
+		'Digit8' {
+			e.key_code = ._8
+		}
+		'Digit9' {
+			e.key_code = ._9
+		}
+		'Semicolon' {
+			e.key_code = .semicolon
+		}
+		'Equal' {
+			e.key_code = .equal
+		}
+		'KeyA' {
+			e.key_code = .a
+		}
+		'KeyB' {
+			e.key_code = .b
+		}
+		'KeyC' {
+			e.key_code = .c
+		}
+		'KeyD' {
+			e.key_code = .d
+		}
+		'KeyE' {
+			e.key_code = .e
+		}
+		'KeyF' {
+			e.key_code = .f
+		}
+		'KeyG' {
+			e.key_code = .g
+		}
+		'KeyH' {
+			e.key_code = .h
+		}
+		'KeyI' {
+			e.key_code = .i
+		}
+		'KeyJ' {
+			e.key_code = .j
+		}
+		'KeyK' {
+			e.key_code = .k
+		}
+		'KeyL' {
+			e.key_code = .l
+		}
+		'KeyM' {
+			e.key_code = .m
+		}
+		'KeyN' {
+			e.key_code = .n
+		}
+		'KeyO' {
+			e.key_code = .o
+		}
+		'KeyP' {
+			e.key_code = .p
+		}
+		'KeyQ' {
+			e.key_code = .q
+		}
+		'KeyR' {
+			e.key_code = .r
+		}
+		'KeyS' {
+			e.key_code = .s
+		}
+		'KeyT' {
+			e.key_code = .t
+		}
+		'KeyU' {
+			e.key_code = .u
+		}
+		'KeyV' {
+			e.key_code = .v
+		}
+		'KeyW' {
+			e.key_code = .w
+		}
+		'KeyX' {
+			e.key_code = .x
+		}
+		'KeyY' {
+			e.key_code = .y
+		}
+		'KeyZ' {
+			e.key_code = .z
+		}
+		'BracketLeft' {
+			e.key_code = .left_bracket
+		}
+		'BracketRight' {
+			e.key_code = .right_bracket
+		}
+		'Backslash' {
+			e.key_code = .backslash
+		}
+		'Backquote' {
+			e.key_code = .grave_accent
+		}
+		'Escape' {
+			e.key_code = .escape
+		}
+		'Enter' {
+			e.key_code = .enter
+		}
+		'Tab' {
+			e.key_code = .tab
+		}
+		'Backspace' {
+			e.key_code = .backspace
+		}
+		'Insert' {
+			e.key_code = .insert
+		}
+		'Delete' {
+			e.key_code = .delete
+		}
+		'ArrowRight' {
+			e.key_code = .right
+		}
+		'ArrowLeft' {
+			e.key_code = .left
+		}
+		'ArrowUp' {
+			e.key_code = .up
+		}
+		'ArrowDown' {
+			e.key_code = .down
+		}
+		'PageUp' {
+			e.key_code = .page_up
+		}
+		'PageDown' {
+			e.key_code = .page_down
+		}
+		'Home' {
+			e.key_code = .home
+		}
+		'End' {
+			e.key_code = .end
+		}
+		'CapsLock' {
+			e.key_code = .caps_lock
+		}
+		'ScrollLock' {
+			e.key_code = .scroll_lock
+		}
+		'NumLock' {
+			e.key_code = .num_lock
+		}
+		'PrintScreen' {
+			e.key_code = .print_screen
+		}
+		'Pause' {
+			e.key_code = .pause
+		}
+		'ShiftLeft' {
+			e.key_code = .left_shift
+		}
+		'ShiftRight' {
+			e.key_code = .right_shift
+		}
+		'AltLeft' {
+			e.key_code = .left_alt
+		}
+		'AltRight' {
+			e.key_code = .right_alt
+		}
+		'ControlLeft' {
+			e.key_code = .left_control
+		}
+		'ControlRight' {
+			e.key_code = .right_control
+		}
+		else {
+			panic('todo: more keycodes (${string(event.code)})')
+		}
+	}
+
+	return e
 }

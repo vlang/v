@@ -190,7 +190,8 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	g.writeln('\tmain__vtest_init();')
 	g.writeln('\t_vinit(___argc, (voidptr)___argv);')
 	//
-	all_tfuncs := g.get_all_test_function_names()
+	mut all_tfuncs := g.get_all_test_function_names()
+	all_tfuncs = g.filter_only_matching_fn_names(all_tfuncs)
 	g.writeln('\tstring v_test_file = ${ctoslit(g.pref.path)};')
 	if g.pref.is_stats {
 		g.writeln('\tmain__BenchedTests bt = main__start_testing($all_tfuncs.len, v_test_file);')
@@ -247,4 +248,29 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	if g.pref.printfn_list.len > 0 && 'main' in g.pref.printfn_list {
 		println(g.out.after(main_fn_start_pos))
 	}
+}
+
+pub fn (mut g Gen) filter_only_matching_fn_names(fnames []string) []string {
+	if g.pref.run_only.len == 0 {
+		return fnames
+	}
+	mut res := []string{}
+	for tname in fnames {
+		if tname.contains('testsuite_') {
+			res << tname
+			continue
+		}
+		mut is_matching := false
+		for fn_glob_pattern in g.pref.run_only {
+			if tname.match_glob(fn_glob_pattern) {
+				is_matching = true
+				break
+			}
+		}
+		if !is_matching {
+			continue
+		}
+		res << tname
+	}
+	return res
 }

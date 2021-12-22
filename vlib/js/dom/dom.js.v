@@ -462,6 +462,7 @@ pub interface JS.CanvasRenderingContext2D {
 	translate(x JS.Number, y JS.Number)
 	drawFocusIfNeeded(path JS.Path2D, element JS.Element)
 	stroke()
+	fillText(text JS.String, x JS.Number, y JS.Number)
 mut:
 	lineCap JS.String
 	lineDashOffset JS.Number
@@ -472,6 +473,7 @@ mut:
 	strokeStyle FillStyle
 	globalAlpha JS.Number
 	globalCompositeOperation JS.String
+	font JS.String
 }
 
 pub interface JS.CanvasGradient {
@@ -901,6 +903,14 @@ pub interface JS.MouseEvent {
 	getModifierState(keyArg JS.String) JS.Boolean
 }
 
+pub interface JS.WheelEvent {
+	JS.MouseEvent
+	deltaX JS.Number
+	deltaY JS.Number
+	deltaZ JS.Number
+	deltaMode JS.Number
+}
+
 pub interface JS.PointerEvent {
 	JS.MouseEvent
 	height JS.Number
@@ -981,4 +991,17 @@ pub interface JS.ProgressEvent {
 	loaded JS.Number
 	target JS.Any
 	total JS.Number
+}
+
+pub interface JS.KeyboardEvent {
+	JS.UIEvent
+	altKey JS.Boolean
+	code JS.String
+	ctrlKey JS.Boolean
+	isComposing JS.Boolean
+	key JS.String
+	location JS.Number
+	metaKey JS.Boolean
+	repeat JS.Boolean
+	shiftKey JS.Boolean
 }

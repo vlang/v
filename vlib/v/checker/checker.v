@@ -291,7 +291,7 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	c.timers.start('checker_post_process_generic_fns')
 	last_file := c.file
 	// post process generic functions. must be done after all files have been
-	// checked, to eunsure all generic calls are processed as this information
+	// checked, to ensure all generic calls are processed as this information
 	// is needed when the generic type is auto inferred from the call argument
 	// Check more times if there are more new registered fn concrete types
 	for {
@@ -4331,7 +4331,7 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 	return right_type
 }
 
-fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_type ast.Type, pos token.Position, range_index bool) {
+fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_type ast.Type, pos token.Position, range_index bool, is_gated bool) {
 	index_type_sym := c.table.sym(index_type)
 	// println('index expr left=$typ_sym.name $node.pos.line_nr')
 	// if typ_sym.kind == .array && (!(ast.type_idx(index_type) in ast.number_type_idxs) &&
@@ -4345,7 +4345,7 @@ fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_ty
 			}
 			c.error('$type_str', pos)
 		}
-		if index is ast.IntegerLiteral {
+		if index is ast.IntegerLiteral && !is_gated {
 			if index.val[0] == `-` {
 				c.error('negative index `$index.val`', index.pos)
 			} else if typ_sym.kind == .array_fixed {
@@ -4428,11 +4428,11 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 	if mut node.index is ast.RangeExpr { // [1..2]
 		if node.index.has_low {
 			index_type := c.expr(node.index.low)
-			c.check_index(typ_sym, node.index.low, index_type, node.pos, true)
+			c.check_index(typ_sym, node.index.low, index_type, node.pos, true, node.is_gated)
 		}
 		if node.index.has_high {
 			index_type := c.expr(node.index.high)
-			c.check_index(typ_sym, node.index.high, index_type, node.pos, true)
+			c.check_index(typ_sym, node.index.high, index_type, node.pos, true, node.is_gated)
 		}
 		// array[1..2] => array
 		// fixed_array[1..2] => array
@@ -4460,7 +4460,11 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			}
 		} else {
 			index_type := c.expr(node.index)
-			c.check_index(typ_sym, node.index, index_type, node.pos, false)
+			// for [1] case #[1] is not allowed!
+			if node.is_gated == true {
+				c.error('`#[]` allowed only for ranges', node.pos)
+			}
+			c.check_index(typ_sym, node.index, index_type, node.pos, false, false)
 		}
 		value_type := c.table.value_type(typ)
 		if value_type != ast.void_type {
@@ -4827,7 +4831,11 @@ fn (mut c Checker) post_process_generic_fns() {
 	for i in 0 .. c.file.generic_fns.len {
 		mut node := c.file.generic_fns[i]
 		c.mod = node.mod
-		for concrete_types in c.table.fn_generic_types[node.name] {
+		gtypes := c.table.fn_generic_types[node.name]
+		$if trace_post_process_generic_fns ? {
+			eprintln('> post_process_generic_fns $node.mod | $node.name | $gtypes')
+		}
+		for concrete_types in gtypes {
 			c.table.cur_concrete_types = concrete_types
 			c.fn_decl(mut node)
 			if node.name == 'vweb.run' {
@@ -4839,6 +4847,11 @@ fn (mut c Checker) post_process_generic_fns() {
 			}
 		}
 		c.table.cur_concrete_types = []
+		$if trace_post_process_generic_fns ? {
+			if node.generic_names.len > 0 {
+				eprintln('       > fn_decl node.name: $node.name | generic_names: $node.generic_names | ninstances: $node.ninstances')
+			}
+		}
 	}
 }
 
