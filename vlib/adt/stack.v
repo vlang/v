@@ -3,17 +3,16 @@ module adt
 pub struct Stack<T> {
 mut:
 	elements []T
-	len      int
 }
 
 // is_empty checks if the stack is empty
 pub fn (stack Stack<T>) is_empty() bool {
-	return stack.len <= 0
+	return stack.elements.len == 0
 }
 
 // len returns the length of the stack
 pub fn (stack Stack<T>) len() int {
-	return stack.len
+	return stack.elements.len
 }
 
 // peek returns the top of the stack
@@ -23,21 +22,12 @@ pub fn (stack Stack<T>) peek() ?T {
 
 // push adds an element to the top of the stack
 pub fn (mut stack Stack<T>) push(item T) {
-	if stack.elements.len > stack.len {
-		stack.elements[stack.len] = item
-	} else {
-		stack.elements << item
-	}
-	stack.len++
+	stack.elements << item
 }
 
 // pop removes the element at the top of the stack and returns it
 pub fn (mut stack Stack<T>) pop() ?T {
-	if !stack.is_empty() {
-		stack.len--
-		return stack.elements[stack.len]
-	}
-	return error('Stack is empty')
+	return if !stack.is_empty() { stack.elements.pop() } else { error('Stack is empty') }
 }
 
 // str returns a string representation of the stack
