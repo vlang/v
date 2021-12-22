@@ -38,7 +38,6 @@ jobs:
     - name: Build sdl examples
       run: |
         declare -a v_sdl_examples=('basic_window' 'tvintris')
-        export VEXE=./v
         for example in "${v_sdl_examples[@]}"; do
           ./v sdl/examples/$example
         done
