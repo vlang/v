@@ -1,0 +1,44 @@
+name: sdl CI
+
+on:
+  push:
+    paths-ignore:
+      - "**.md"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+
+jobs:
+  v-compiles-sdl-examples:
+    runs-on: ubuntu-18.04
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build V
+      run: make -j2 && ./v -cc gcc -o v cmd/v
+
+    - name: Clone sdl into .vmodules
+      run: |
+        git clone --depth 1 https://github.com/vlang/sdl
+        cd sdl
+        mkdir -p ~/.vmodules
+        ln -s $(pwd) ~/.vmodules/sdl
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+
+    - name: Run tests
+      run: ./v test sdl
+
+    - name: Build sdl shared
+      run: ./v -shared -g sdl
+
+    - name: Build sdl examples
+      run: |
+        declare -a v_sdl_examples=('basic_window' 'tvintris')
+        export VEXE=./v
+        for example in "${v_sdl_examples[@]}"; do
+          ./v sdl/examples/$example
+        done
