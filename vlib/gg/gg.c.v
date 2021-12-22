@@ -631,7 +631,7 @@ pub fn (ctx &Context) draw_square(x f32, y f32, s f32, c gx.Color) {
 
 [inline]
 pub fn (ctx &Context) draw_square_filled(x f32, y f32, s f32, c gx.Color) {
-	ctx.draw_rect(x, y, s, s, c)
+	ctx.draw_rect_filled(x, y, s, s, c)
 }
 
 // Draws the outline of a square
