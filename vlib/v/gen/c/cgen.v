@@ -4763,8 +4763,8 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.writeln('return $tmpvar;')
 			return
 		}
-		// typ_sym := g.table.sym(g.fn_decl.return_type)
-		// mr_info := typ_sym.info as ast.MultiReturn
+		typ_sym := g.table.sym(g.fn_decl.return_type)
+		mr_info := typ_sym.info as ast.MultiReturn
 		mut styp := ''
 		if fn_return_is_optional {
 			g.writeln('$ret_typ $tmpvar;')
@@ -4826,7 +4826,11 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			if expr.is_auto_deref_var() {
 				g.write('*')
 			}
-			g.expr(expr)
+			if g.table.sym(mr_info.types[i]).kind in [.sum_type, .interface_] {
+				g.expr_with_cast(expr, node.types[i], mr_info.types[i])
+			} else {
+				g.expr(expr)
+			}
 			arg_idx++
 			if i < node.exprs.len - 1 {
 				g.write(', ')
