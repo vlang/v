@@ -1,4 +1,4 @@
-import obj
+import v.fmt.tests.obj
 
 struct GenericStruct<A, B> {
 }
