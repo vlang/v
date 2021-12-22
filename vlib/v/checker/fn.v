@@ -14,8 +14,10 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		// have a chance to populate c.table.fn_generic_types with
 		// the correct concrete types.
 		c.file.generic_fns << node
+		c.need_recheck_generic_fns = true
 		return
 	}
+	node.ninstances++
 	// save all the state that fn_decl or inner  statements/expressions
 	// could potentially modify, since functions can be nested, due to
 	// anonymous function support, and ensure that it is restored, when

@@ -4855,6 +4855,10 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			has_semicolon = true
 		}
 	} else if node.exprs.len >= 1 {
+		if node.types.len == 0 {
+			g.checker_bug('node.exprs.len == $node.exprs.len && node.types.len == 0',
+				node.pos)
+		}
 		// normal return
 		return_sym := g.table.sym(node.types[0])
 		expr0 := node.exprs[0]

@@ -32,6 +32,12 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	if node.should_be_skipped {
 		return
 	}
+	if node.ninstances == 0 && node.generic_names.len > 0 {
+		$if trace_generics ? {
+			eprintln('skipping generic fn with no concrete instances: $node.mod $node.name')
+		}
+		return
+	}
 	if !g.is_used_by_main(node) {
 		return
 	}
@@ -82,7 +88,8 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	if node.is_main {
 		g.has_main = true
 	}
-	is_backtrace := node.name.starts_with('backtrace') // TODO PERF remove this from here
+	// TODO PERF remove this from here
+	is_backtrace := node.name.starts_with('backtrace')
 		&& node.name in ['backtrace_symbols', 'backtrace', 'backtrace_symbols_fd']
 	if is_backtrace {
 		g.write('\n#ifndef __cplusplus\n')

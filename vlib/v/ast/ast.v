@@ -488,6 +488,7 @@ pub mut:
 	return_type_pos   token.Position // `string` in `fn (u User) name() string` position
 	has_return        bool
 	should_be_skipped bool           // true, when -skip-unused could not find any usages of that function, starting from main + other known used functions
+	ninstances        int  // 0 for generic functions with no concrete instances
 	has_await         bool // 'true' if this function uses JS.await
 	//
 	comments      []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl

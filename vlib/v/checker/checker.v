@@ -291,7 +291,7 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	c.timers.start('checker_post_process_generic_fns')
 	last_file := c.file
 	// post process generic functions. must be done after all files have been
-	// checked, to eunsure all generic calls are processed as this information
+	// checked, to ensure all generic calls are processed as this information
 	// is needed when the generic type is auto inferred from the call argument
 	// Check more times if there are more new registered fn concrete types
 	for {
@@ -4831,7 +4831,11 @@ fn (mut c Checker) post_process_generic_fns() {
 	for i in 0 .. c.file.generic_fns.len {
 		mut node := c.file.generic_fns[i]
 		c.mod = node.mod
-		for concrete_types in c.table.fn_generic_types[node.name] {
+		gtypes := c.table.fn_generic_types[node.name]
+		$if trace_post_process_generic_fns ? {
+			eprintln('> post_process_generic_fns $node.mod | $node.name | $gtypes')
+		}
+		for concrete_types in gtypes {
 			c.table.cur_concrete_types = concrete_types
 			c.fn_decl(mut node)
 			if node.name == 'vweb.run' {
@@ -4843,6 +4847,11 @@ fn (mut c Checker) post_process_generic_fns() {
 			}
 		}
 		c.table.cur_concrete_types = []
+		$if trace_post_process_generic_fns ? {
+			if node.generic_names.len > 0 {
+				eprintln('       > fn_decl node.name: $node.name | generic_names: $node.generic_names | ninstances: $node.ninstances')
+			}
+		}
 	}
 }
 
