@@ -361,8 +361,15 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 				return node
 			}
 			p.is_stmt_ident = is_stmt_ident
-		} else if p.tok.kind == .lsbr && (p.inside_fn || p.tok.line_nr == p.prev_tok.line_nr) {
-			node = p.index_expr(node)
+		} else if p.tok.kind in [.lsbr, .nilsbr]
+			&& (p.inside_fn || p.tok.line_nr == p.prev_tok.line_nr) {
+			// node = p.index_expr(node)
+			if p.tok.kind == .nilsbr {
+				node = p.index_expr(node, true)
+			} else {
+				node = p.index_expr(node, false)
+			}
+
 			p.is_stmt_ident = is_stmt_ident
 			if p.tok.kind == .lpar && p.tok.line_nr == p.prev_tok.line_nr && node is ast.IndexExpr {
 				p.next()

@@ -822,6 +822,7 @@ pub mut:
 	is_farray bool
 	is_option bool // IfGuard
 	is_direct bool // Set if the underlying memory can be safely accessed
+	is_gated  bool // #[] gated array
 }
 
 pub struct IfExpr {
@@ -1207,6 +1208,7 @@ pub:
 	has_high bool
 	has_low  bool
 	pos      token.Position
+	is_gated bool // #[] gated array
 }
 
 pub struct CastExpr {
