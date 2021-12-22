@@ -1,0 +1,3 @@
+fn optional_inline_sum_type() ?(int | string) {
+	return 1
+}

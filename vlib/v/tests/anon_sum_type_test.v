@@ -31,18 +31,17 @@ fn test_interface_with_inline_sumtype() {
 	receive_imilk(m)
 }
 
-// Sum types does not work in multireturn currently
-// fn returns_sumtype_in_multireturn() (int | string, string) {
-// 	return 1, ''
-// }
+fn returns_sumtype_in_multireturn() (int | string, string) {
+	return 1, ''
+}
 
-// fn test_multireturn() {
-// 	x, y := returns_sumtype_in_multireturn()
-// 	assert '$x' == '(int | string)(1)'
-// 	assert '$y' == ''
-// }
+fn test_multireturn() {
+	x, y := returns_sumtype_in_multireturn()
+	assert '$x' == '(int | string)(1)'
+	assert '$y' == ''
+}
 
-fn returns_optional_inline_sumtype() ?string | int {
+fn returns_optional_inline_sumtype() ?(string | int) {
 	return none
 }
 

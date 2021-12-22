@@ -1,0 +1,5 @@
+vlib/v/parser/tests/option_sum_type_return_err.vv:1:22: warning: use `?(Type)` instead of `?Type`
+    1 | fn option_sumtype() ?string | int {
+      |                      ~~~~~~~~~~~~
+    2 |     return 0
+    3 | }

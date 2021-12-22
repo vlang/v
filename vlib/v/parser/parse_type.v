@@ -386,7 +386,12 @@ pub fn (mut p Parser) parse_type() ast.Type {
 	is_array := p.tok.kind == .lsbr
 	if p.tok.kind != .lcbr {
 		pos := p.tok.position()
+		mut inside_parens := p.tok.kind == .lpar
 		typ = p.parse_any_type(language, nr_muls > 0, true)
+		if inside_parens {
+			// second check
+			inside_parens = p.prev_tok.kind == .rpar
+		}
 		if typ.idx() == 0 {
 			// error is set in parse_type
 			return 0
@@ -394,6 +399,12 @@ pub fn (mut p Parser) parse_type() ast.Type {
 		if typ == ast.void_type {
 			p.error_with_pos('use `?` instead of `?void`', pos)
 			return 0
+		}
+		if is_optional && !inside_parens {
+			sym := p.table.sym(typ)
+			if sym.info is ast.SumType && (sym.info as ast.SumType).is_anon {
+				p.warn_with_pos('use `?(Type)` instead of `?Type`', pos.extend(p.prev_tok.position()))
+			}
 		}
 	}
 	if is_optional {
@@ -425,7 +436,6 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 		name = 'JS.$name'
 	} else if p.peek_tok.kind == .dot && check_dot {
 		// `module.Type`
-		// /if !(p.tok.lit in p.table.imports) {
 		mut mod := name
 		mut mod_pos := p.tok.position()
 		p.next()
@@ -464,7 +474,6 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 		// `Foo` in module `mod` means `mod.Foo`
 		name = p.mod + '.' + name
 	}
-	// p.warn('get type $name')
 	match p.tok.kind {
 		.key_fn {
 			// func
@@ -474,15 +483,15 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 			// array
 			return p.parse_array_type(p.tok.kind)
 		}
-		.lpar {
-			// multiple return
-			if is_ptr {
-				p.error('parse_type: unexpected `&` before multiple returns')
-				return 0
-			}
-			return p.parse_multi_return_type()
-		}
 		else {
+			if p.tok.kind == .lpar && !p.is_parsing_sum_type {
+				// multiple return
+				if is_ptr {
+					p.error('parse_type: unexpected `&` before multiple returns')
+					return 0
+				}
+				return p.parse_multi_return_type()
+			}
 			if ((p.peek_tok.kind == .dot && p.peek_token(3).kind == .pipe)
 				|| p.peek_tok.kind == .pipe) && !p.is_parsing_sum_type {
 				return p.parse_inline_sum_type()
