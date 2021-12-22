@@ -3426,7 +3426,7 @@ fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
 	}
 
 	if (from_type_sym.name == 'Any' && from_type_sym.language == .js)
-		|| from_type_sym.name == 'JS.Any' {
+		|| from_type_sym.name == 'JS.Any' || from_type_sym.name == 'voidptr' {
 		if it.typ.is_ptr() {
 			g.write('new \$ref(')
 		}
