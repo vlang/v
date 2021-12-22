@@ -30,7 +30,7 @@ pub struct PenConfig {
 }
 
 pub struct Size {
-pub:
+pub mut:
 	width  int
 	height int
 }

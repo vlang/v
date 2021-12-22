@@ -42,3 +42,10 @@ pub fn sleep(dur Duration) {
 	#let toWait = BigInt(dur.val) / BigInt(time__millisecond)
 	#while (new Date().getTime() < now + Number(toWait)) {}
 }
+
+pub fn ticks() i64 {
+	t := i64(0)
+	#t.val = BigInt(new Date().getTime())
+
+	return t
+}
