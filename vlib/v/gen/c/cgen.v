@@ -111,6 +111,7 @@ mut:
 	inside_return          bool
 	inside_or_block        bool
 	inside_call            bool
+	inside_for_c_stmt      bool
 	inside_cast_in_heap    int // inside cast to interface type in heap (resolve recursive calls)
 	inside_const           bool
 	inside_lambda          bool
@@ -1857,6 +1858,7 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 	g.loop_depth++
 	if node.is_multi {
 		g.is_vlines_enabled = false
+		g.inside_for_c_stmt = true
 		if node.label.len > 0 {
 			g.writeln('$node.label:')
 		}
@@ -1883,6 +1885,7 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 			g.writeln(')) break;')
 		}
 		g.is_vlines_enabled = true
+		g.inside_for_c_stmt = false
 		g.stmts(node.stmts)
 		if node.label.len > 0 {
 			g.writeln('${node.label}__continue: {}')
@@ -1895,6 +1898,7 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 		}
 	} else {
 		g.is_vlines_enabled = false
+		g.inside_for_c_stmt = true
 		if node.label.len > 0 {
 			g.writeln('$node.label:')
 		}
@@ -1919,6 +1923,7 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 		}
 		g.writeln(') {')
 		g.is_vlines_enabled = true
+		g.inside_for_c_stmt = false
 		g.stmts(node.stmts)
 		if node.label.len > 0 {
 			g.writeln('${node.label}__continue: {}')
