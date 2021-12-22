@@ -1100,11 +1100,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 		res = strings.repeat(`&`, nr_muls) + res
 	}
 	if typ.has_flag(.optional) {
-		res = '?' + if is_inline_sum_type {
-			'($res)'
-		} else {
-			res
-		}
+		res = '?' + if is_inline_sum_type { '($res)' } else { res }
 	}
 	return res
 }

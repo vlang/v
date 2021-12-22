@@ -290,7 +290,8 @@ pub fn (mut p Parser) parse_inline_sum_type() ast.Type {
 	if variants.len > 1 {
 		if variants.len > 3 {
 			pos := variants[0].pos.extend(variants[variants.len - 1].pos)
-			p.warn_with_pos('an inline sum type expects a maximum of three types ($variants.len were given)', pos)
+			p.warn_with_pos('an inline sum type expects a maximum of three types ($variants.len were given)',
+				pos)
 		}
 		variant_names := variants.map(p.table.sym(it.typ).name)
 		// deterministic name
