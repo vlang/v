@@ -1914,7 +1914,11 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	// gen toString method
 	fn_names := fns.map(it.name)
 	if 'toString' !in fn_names {
-		g.writeln('toString() {')
+		if g.pref.output_es5 {
+			g.writeln('toString: (function() {')
+		} else {
+			g.writeln('toString() {')
+		}
 		g.inc_indent()
 		g.write('return `$js_name {')
 		for i, field in node.fields {
@@ -1930,7 +1934,11 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 		}
 		g.writeln('}`')
 		g.dec_indent()
-		g.writeln('},')
+		if g.pref.output_es5 {
+			g.writeln('}).bind(this),')
+		} else {
+			g.writeln('},')
+		}
 	}
 	for field in node.fields {
 		typ := g.typ(field.typ)
@@ -1946,8 +1954,11 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 			g.writeln(',')
 		}
 	}
-	g.writeln('\$toJS() { return this; }')
-
+	if g.pref.output_es5 {
+		g.writeln('\$toJS: (function() { return this; }).bind(this)')
+	} else {
+		g.writeln('\$toJS() { return this; }')
+	}
 	g.writeln('};\n')
 	g.dec_indent()
 
