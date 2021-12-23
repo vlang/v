@@ -157,16 +157,16 @@ fn on_frame(mut app App) {
 	}
 	// drawing snake
 	for pos in app.snake {
-		app.gg.draw_rect(tile_size * pos.x, tile_size * pos.y + top_height, tile_size,
+		app.gg.draw_rect_filled(tile_size * pos.x, tile_size * pos.y + top_height, tile_size,
 			tile_size, gx.blue)
 	}
 
 	// drawing food
-	app.gg.draw_rect(tile_size * app.food.x, tile_size * app.food.y + top_height, tile_size,
-		tile_size, gx.red)
+	app.gg.draw_rect_filled(tile_size * app.food.x, tile_size * app.food.y + top_height,
+		tile_size, tile_size, gx.red)
 
 	// drawing top
-	app.gg.draw_rect(0, 0, canvas_size, top_height, gx.black)
+	app.gg.draw_rect_filled(0, 0, canvas_size, top_height, gx.black)
 	app.gg.draw_text(150, top_height / 2, 'Score: $app.score', gx.TextCfg{
 		color: gx.white
 		align: .center

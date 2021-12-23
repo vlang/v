@@ -354,7 +354,7 @@ fn (g &Game) draw_next_tetro() {
 }
 
 fn (g &Game) draw_block_color(i int, j int, color gx.Color) {
-	g.gg.draw_rect(f32((j - 1) * g.block_size) + g.margin, f32((i - 1) * g.block_size),
+	g.gg.draw_rect_filled(f32((j - 1) * g.block_size) + g.margin, f32((i - 1) * g.block_size),
 		f32(g.block_size - 1), f32(g.block_size - 1), color)
 }
 
@@ -380,11 +380,11 @@ fn (mut g Game) draw_ui() {
 	lines := g.lines.str()
 	g.gg.draw_text(ws.width - lines.len * textsize, 3, lines, text_cfg)
 	if g.state == .gameover {
-		g.gg.draw_rect(0, ws.height / 2 - textsize, ws.width, 5 * textsize, ui_color)
+		g.gg.draw_rect_filled(0, ws.height / 2 - textsize, ws.width, 5 * textsize, ui_color)
 		g.gg.draw_text(1, ws.height / 2 + 0 * textsize, 'Game Over', over_cfg)
 		g.gg.draw_text(1, ws.height / 2 + 2 * textsize, 'Space to restart', over_cfg)
 	} else if g.state == .paused {
-		g.gg.draw_rect(0, ws.height / 2 - textsize, ws.width, 5 * textsize, ui_color)
+		g.gg.draw_rect_filled(0, ws.height / 2 - textsize, ws.width, 5 * textsize, ui_color)
 		g.gg.draw_text(1, ws.height / 2 + 0 * textsize, 'Game Paused', text_cfg)
 		g.gg.draw_text(1, ws.height / 2 + 2 * textsize, 'SPACE to resume', text_cfg)
 	}
