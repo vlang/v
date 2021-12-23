@@ -781,7 +781,7 @@ pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c gx.Color) {
 			} else if height == 0 {
 				height = 1
 			}
-			ctx.draw_rect(x, y, f32(width), f32(height), c)
+			ctx.draw_rect_filled(x, y, f32(width), f32(height), c)
 			return
 		}
 	}
@@ -822,7 +822,7 @@ pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config
 	sgl.translate(-nx, -ny, 0)
 
 	if config.line_type == .solid {
-		ctx.draw_rect(x, y, length, config.thickness, config.color)
+		ctx.draw_rect_filled(x, y, length, config.thickness, config.color)
 	} else {
 		size := if config.line_type == .dotted { config.thickness } else { config.thickness * 3 }
 		space := if size == 1 { 2 } else { size }
@@ -832,7 +832,7 @@ pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config
 
 		for i := 0; available > 0; i++ {
 			if i % 2 == 0 {
-				ctx.draw_rect(start_x, y, size, config.thickness, config.color)
+				ctx.draw_rect_filled(start_x, y, size, config.thickness, config.color)
 				available -= size
 				start_x += size
 				continue
@@ -876,7 +876,7 @@ pub fn (ctx &Context) draw_arc_filled(x f32, y f32, inner_r f32, outer_r f32, st
 	}
 
 	if r1 <= 0.0 {
-		ctx.draw_slice(x, y, int(r2), a1, a2, segments, c)
+		ctx.draw_slice_filled(x, y, int(r2), a1, a2, segments, c)
 		return
 	}
 
@@ -928,7 +928,7 @@ pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_r f32, outer_r f32, sta
 	}
 
 	if r1 <= 0.0 {
-		ctx.draw_empty_slice(x, y, int(r2), a1, a2, segments, c)
+		ctx.draw_slice_empty(x, y, int(r2), a1, a2, segments, c)
 		return
 	}
 
