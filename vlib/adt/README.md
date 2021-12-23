@@ -6,4 +6,5 @@ great variety of applications.
 ## implementations
 
 - [x] Stack (LIFO)
+- [x] Linked list
 - [ ] ...
