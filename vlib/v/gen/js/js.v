@@ -1394,7 +1394,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 						g.write(' = ')
 					}
 					if (l_sym.name != 'f64' || l_sym.name != 'f32')
-						&& (l_sym.name != 'i64' && l_sym.name != 'u64') {
+						&& (l_sym.name != 'i64' && l_sym.name != 'u64') && l_sym.name != 'string' {
 						g.write('Math.floor(')
 						floor = true
 					}
