@@ -943,8 +943,6 @@ pub fn (mytable &Table) type_to_code(t Type) string {
 pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]string) string {
 	sym := t.sym(typ)
 	mut res := sym.name
-	// special handling when optional
-	mut is_inline_sum_type := false
 	// Note, that the duplication of code in some of the match branches here
 	// is VERY deliberate. DO NOT be tempted to use `else {}` instead, because
 	// that strongly reduces the usefullness of the exhaustive checking that
@@ -1037,10 +1035,6 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			res += ')'
 		}
 		.struct_, .interface_, .sum_type {
-			if sym.info is SumType && (sym.info as SumType).is_anon {
-				is_inline_sum_type = true
-				println(true)
-			}
 			if typ.has_flag(.generic) {
 				match sym.info {
 					Struct, Interface, SumType {
@@ -1100,7 +1094,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 		res = strings.repeat(`&`, nr_muls) + res
 	}
 	if typ.has_flag(.optional) {
-		res = '?' + if is_inline_sum_type { '($res)' } else { res }
+		res = '?$res'
 	}
 	return res
 }

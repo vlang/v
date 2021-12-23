@@ -1,3 +1,0 @@
-fn foo(bar string | int) string | int {
-	return 0
-}

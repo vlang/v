@@ -8,6 +8,10 @@ import v.ast
 import v.util
 import v.token
 
+const (
+	maximum_inline_sum_type_variants = 3
+)
+
 pub fn (mut p Parser) parse_array_type(expecting token.Kind) ast.Type {
 	p.check(expecting)
 	// fixed array
@@ -288,12 +292,13 @@ pub fn (mut p Parser) parse_language() ast.Language {
 pub fn (mut p Parser) parse_inline_sum_type() ast.Type {
 	variants := p.parse_sum_type_variants()
 	if variants.len > 1 {
-		if variants.len > 3 {
+		if variants.len > parser.maximum_inline_sum_type_variants {
 			pos := variants[0].pos.extend(variants[variants.len - 1].pos)
-			p.warn_with_pos('an inline sum type expects a maximum of three types ($variants.len were given)',
+			p.warn_with_pos('an inline sum type expects a maximum of $parser.maximum_inline_sum_type_variants types ($variants.len were given)',
 				pos)
 		}
-		variant_names := variants.map(p.table.sym(it.typ).name)
+		mut variant_names := variants.map(p.table.sym(it.typ).name)
+		variant_names.sort()
 		// deterministic name
 		name := '_v_anon_sum_type_${variant_names.join('_')}'
 		variant_types := variants.map(it.typ)
@@ -349,6 +354,7 @@ pub fn (mut p Parser) parse_sum_type_variants() []ast.TypeNode {
 pub fn (mut p Parser) parse_type() ast.Type {
 	// optional
 	mut is_optional := false
+	optional_pos := p.tok.position()
 	if p.tok.kind == .question {
 		line_nr := p.tok.line_nr
 		p.next()
@@ -387,12 +393,7 @@ pub fn (mut p Parser) parse_type() ast.Type {
 	is_array := p.tok.kind == .lsbr
 	if p.tok.kind != .lcbr {
 		pos := p.tok.position()
-		mut inside_parens := p.tok.kind == .lpar
 		typ = p.parse_any_type(language, nr_muls > 0, true)
-		if inside_parens {
-			// second check
-			inside_parens = p.prev_tok.kind == .rpar
-		}
 		if typ.idx() == 0 {
 			// error is set in parse_type
 			return 0
@@ -401,11 +402,9 @@ pub fn (mut p Parser) parse_type() ast.Type {
 			p.error_with_pos('use `?` instead of `?void`', pos)
 			return 0
 		}
-		if is_optional && !inside_parens {
-			sym := p.table.sym(typ)
-			if sym.info is ast.SumType && (sym.info as ast.SumType).is_anon {
-				p.warn_with_pos('use `?(Type)` instead of `?Type`', pos.extend(p.prev_tok.position()))
-			}
+		sym := p.table.sym(typ)
+		if is_optional && sym.info is ast.SumType && (sym.info as ast.SumType).is_anon {
+			p.error_with_pos('an inline sum type cannot be optional', optional_pos.extend(p.prev_tok.position()))
 		}
 	}
 	if is_optional {

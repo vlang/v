@@ -3423,6 +3423,14 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	sum_variants << p.parse_sum_type_variants()
 	// type SumType = A | B | c
 	if sum_variants.len > 1 {
+		for variant in sum_variants {
+			variant_sym := p.table.sym(variant.typ)
+			// TODO: implement this check for error too
+			if variant_sym.kind == .none_ {
+				p.error_with_pos('named sum type cannot have none as its variant', variant.pos)
+				return ast.AliasTypeDecl{}
+			}
+		}
 		variant_types := sum_variants.map(it.typ)
 		prepend_mod_name := p.prepend_mod(name)
 		typ := p.table.register_type_symbol(ast.TypeSymbol{
@@ -3496,14 +3504,6 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		pos: decl_pos
 		comments: comments
 	}
-}
-
-struct RegisterSumTypeConfig {
-	variants      []ast.TypeNode
-	is_anon       bool
-	is_pub        bool
-	name          string
-	generic_types []ast.Type
 }
 
 fn (mut p Parser) assoc() ast.Assoc {

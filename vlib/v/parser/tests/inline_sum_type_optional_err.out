@@ -1,0 +1,5 @@
+vlib/v/parser/tests/inline_sum_type_optional_err.vv:1:10: error: an inline sum type cannot be optional
+    1 | fn foo() ?string | int {
+      |          ~~~~~~~~~~~~~
+    2 |     return 0
+    3 | }
