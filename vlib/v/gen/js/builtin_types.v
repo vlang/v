@@ -342,7 +342,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					typ_name: typ_name
 					default_value: 'new Number(0)'
 					// mask <=32 bit numbers with 0xffffffff
-					constructor: 'this.val = Math.round(Number(val)) & 0xffffffff'
+					constructor: 'this.val = Math.floor(Number(val) & 0xffffffff) '
 					value_of: 'Number(this.val)'
 					to_string: 'this.valueOf().toString()'
 					eq: 'new bool(self.valueOf() === other.valueOf())'

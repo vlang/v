@@ -1327,7 +1327,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 				is_ptr = true
 				g.write('.val')
 			}
-
+			mut floor := false
 			if false && g.inside_map_set && op == .assign {
 				g.inside_map_set = false
 				g.write('] = ')
@@ -1338,6 +1338,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 			} else {
 				if is_assign && array_set {
 					g.write('new ${styp}(')
+
 					g.expr(left)
 					l_sym := g.table.sym(stmt.left_types[i])
 					if l_sym.kind == .string {
@@ -1391,6 +1392,11 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 
 					if !array_set {
 						g.write(' = ')
+					}
+					if (l_sym.name != 'f64' || l_sym.name != 'f32')
+						&& (l_sym.name != 'i64' && l_sym.name != 'u64') && l_sym.name != 'string' {
+						g.write('Math.floor(')
+						floor = true
 					}
 					g.expr(left)
 
@@ -1458,6 +1464,9 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 					g.cast_stack.delete_last()
 				}
 				if is_assign && array_set {
+					g.write(')')
+				}
+				if floor {
 					g.write(')')
 				}
 			}
