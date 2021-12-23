@@ -51,7 +51,7 @@ fn test_orm_select_gen() {
 		fields: get_select_fields()
 	}, "'", true, '?', 0, orm.QueryData{})
 
-	assert query == "SELECT 'id', 'test', 'abc' FROM 'test_table' ORDER BY 'id' ASC;"
+	assert query == "SELECT 'id', 'test', 'abc' FROM 'test_table';"
 }
 
 fn test_orm_select_gen_with_limit() {
@@ -61,7 +61,7 @@ fn test_orm_select_gen_with_limit() {
 		has_limit: true
 	}, "'", true, '?', 0, orm.QueryData{})
 
-	assert query == "SELECT 'id', 'test', 'abc' FROM 'test_table' ORDER BY 'id' ASC LIMIT ?0;"
+	assert query == "SELECT 'id', 'test', 'abc' FROM 'test_table' LIMIT ?0;"
 }
 
 fn test_orm_select_gen_with_where() {
@@ -75,7 +75,7 @@ fn test_orm_select_gen_with_where() {
 		is_and: [true]
 	})
 
-	assert query == "SELECT 'id', 'test', 'abc' FROM 'test_table' WHERE 'abc' = ?0 AND 'test' > ?1 ORDER BY 'id' ASC;"
+	assert query == "SELECT 'id', 'test', 'abc' FROM 'test_table' WHERE 'abc' = ?0 AND 'test' > ?1;"
 }
 
 fn test_orm_select_gen_with_order() {
@@ -96,7 +96,7 @@ fn test_orm_select_gen_with_offset() {
 		has_offset: true
 	}, "'", true, '?', 0, orm.QueryData{})
 
-	assert query == "SELECT 'id', 'test', 'abc' FROM 'test_table' ORDER BY 'id' ASC OFFSET ?0;"
+	assert query == "SELECT 'id', 'test', 'abc' FROM 'test_table' OFFSET ?0;"
 }
 
 fn test_orm_select_gen_with_all() {
