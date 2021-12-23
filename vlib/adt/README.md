@@ -5,6 +5,7 @@ great variety of applications.
 
 ## implementations
 
-- [x] Stack (LIFO)
 - [x] Linked list
+- [x] Stack (LIFO)
+- [x] Queue (FIFO)
 - [ ] ...
