@@ -127,7 +127,7 @@ fn test_iter() ? {
 	mut count := 0
 	for i, v in list {
 		count += 1
-		assert i * 10 == v
+		assert int(i * 10) == v
 	}
 	assert count == 10
 
@@ -135,7 +135,7 @@ fn test_iter() ? {
 	count = 0
 	for i, v in list {
 		count += 1
-		assert i * 10 == v
+		assert int(i * 10) == v
 	}
 	assert count == 10
 }
