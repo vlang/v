@@ -272,12 +272,11 @@ pub fn orm_select_gen(orm SelectConfig, para string, num bool, qm string, start_
 		}
 	}
 
-	str += ' ORDER BY '
+	// NB: do not order, if the user did not want it explicitly,
+	// ordering is *slow*, especially if there are no indexes!
 	if orm.has_order {
+		str += ' ORDER BY '
 		str += '$para$orm.order$para '
-		str += orm.order_type.to_str()
-	} else {
-		str += '$para$orm.primary$para '
 		str += orm.order_type.to_str()
 	}
 
