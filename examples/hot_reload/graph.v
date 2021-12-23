@@ -77,10 +77,10 @@ fn (ctx &Context) draw() {
 		// y = (x + 3) * (x + 3) / stime + stime*2.5
 		// y = math.sqrt(30.0 - x * x) * stime
 		// y -= (stime-0.5) + stime
-		// ctx.gg.draw_rect(f32((w/2) + x * scale), f32((h/2) - y * scale), 2, 2, blue)
-		ctx.gg.draw_rect(f32((w / 2) + x * scale), f32((h / 2) - y * scale), 2, (f32(y) * scale),
-			blue)
-		ctx.gg.draw_rect(f32((w / 2) + x * scale), f32((h / 2) + y * scale), 2, (f32(y) * scale) +
-			32, red)
+		// ctx.gg.draw_rect_filled(f32((w/2) + x * scale), f32((h/2) - y * scale), 2, 2, blue)
+		ctx.gg.draw_rect_filled(f32((w / 2) + x * scale), f32((h / 2) - y * scale), 2,
+			(f32(y) * scale), blue)
+		ctx.gg.draw_rect_filled(f32((w / 2) + x * scale), f32((h / 2) + y * scale), 2,
+			(f32(y) * scale) + 32, red)
 	}
 }

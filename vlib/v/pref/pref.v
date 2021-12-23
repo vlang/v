@@ -162,6 +162,8 @@ pub mut:
 	out_name         string
 	path             string // Path to file/folder to compile
 	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another ? { will NOT get here }`
+	run_only []string // VTEST_ONLY_FN and -run-only accept comma separated glob patterns.
+	// Only test_ functions that match these patterns will be run. -run-only is valid only for _test.v files.
 	compile_defines     []string    // just ['vfmt']
 	compile_defines_all []string    // contains both: ['vfmt','another']
 	run_args            []string    // `v run x.v 1 2 3` => `1 2 3`
@@ -207,6 +209,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	$if x64 {
 		res.m64 = true // follow V model by default
 	}
+	res.run_only = os.getenv('VTEST_ONLY_FN').split_any(',')
 	mut command := ''
 	mut command_pos := 0
 	// for i, arg in args {
@@ -465,6 +468,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-show-depgraph' {
 				res.show_depgraph = true
+			}
+			'-run-only' {
+				res.run_only = cmdline.option(current_args, arg, os.getenv('VTEST_ONLY_FN')).split_any(',')
+				i++
 			}
 			'-test-runner' {
 				res.test_runner = cmdline.option(current_args, arg, res.test_runner)

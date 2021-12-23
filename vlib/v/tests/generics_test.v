@@ -306,13 +306,13 @@ pub mut:
 // return Repo<T,Permission>{db: db}
 // }
 fn test_generic_struct() {
-	mut a := Repo<User,Permission>{
+	mut a := Repo<User, Permission>{
 		model: User{
 			name: 'joe'
 		}
 	}
 	assert a.model.name == 'joe'
-	mut b := Repo<Group,Permission>{
+	mut b := Repo<Group, Permission>{
 		permission: Permission{
 			name: 'superuser'
 		}
@@ -573,8 +573,8 @@ fn test_generic_detection() {
 	})
 
 	// this final case challenges your scanner :-)
-	assert boring_function<TandU<TandU<int, MultiLevel<Empty_>>, map[string][]int>>(TandU<TandU<int,MultiLevel<Empty_>>, map[string][]int>{
-		t: TandU<int,MultiLevel<Empty_>>{
+	assert boring_function<TandU<TandU<int, MultiLevel<Empty_>>, map[string][]int>>(TandU<TandU<int, MultiLevel<Empty_>>, map[string][]int>{
+		t: TandU<int, MultiLevel<Empty_>>{
 			t: 20
 			u: MultiLevel<Empty_>{
 				foo: Empty_{}
