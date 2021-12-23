@@ -8,8 +8,8 @@ import v.ast
 import v.util
 import v.token
 
-pub fn (mut p Parser) parse_array_type() ast.Type {
-	p.check(.lsbr)
+pub fn (mut p Parser) parse_array_type(expecting token.Kind) ast.Type {
+	p.check(expecting)
 	// fixed array
 	if p.tok.kind in [.number, .name] {
 		mut fixed_size := 0
@@ -88,7 +88,7 @@ pub fn (mut p Parser) parse_array_type() ast.Type {
 	mut nr_dims := 1
 	// detect attr
 	not_attr := p.peek_tok.kind != .name && p.peek_token(2).kind !in [.semicolon, .rsbr]
-	for p.tok.kind == .lsbr && not_attr {
+	for p.tok.kind == expecting && not_attr {
 		p.next()
 		p.check(.rsbr)
 		nr_dims++
@@ -408,9 +408,9 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 			// func
 			return p.parse_fn_type('')
 		}
-		.lsbr {
+		.lsbr, .nilsbr {
 			// array
-			return p.parse_array_type()
+			return p.parse_array_type(p.tok.kind)
 		}
 		.lpar {
 			// multiple return

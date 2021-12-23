@@ -213,7 +213,7 @@ pub fn (mut f Fmt) short_module(name string) string {
 		generic_levels := name.trim_suffix('>').split('<')
 		mut res := '${f.short_module(generic_levels[0])}'
 		for i in 1 .. generic_levels.len {
-			genshorts := generic_levels[i].split(',').map(f.short_module(it)).join(',')
+			genshorts := generic_levels[i].split(', ').map(f.short_module(it)).join(', ')
 			res += '<$genshorts'
 		}
 		res += '>'
@@ -1898,6 +1898,11 @@ pub fn (mut f Fmt) if_guard_expr(node ast.IfGuardExpr) {
 
 pub fn (mut f Fmt) index_expr(node ast.IndexExpr) {
 	f.expr(node.left)
+	if node.index is ast.RangeExpr {
+		if node.index.is_gated {
+			f.write('#')
+		}
+	}
 	f.write('[')
 	f.expr(node.index)
 	f.write(']')

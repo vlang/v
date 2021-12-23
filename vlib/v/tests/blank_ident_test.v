@@ -321,3 +321,10 @@ fn test_blank_multi_return() {
 	assert d == '3'
 	assert g == '3'
 }
+
+fn test_blank_in_for_c_init_stmt() {
+	a := []int{len: 2}
+	for _ := a[1]; a[1] != 0; {
+	}
+	assert true
+}

@@ -83,6 +83,7 @@ mut:
 	comptime_if_cond    bool
 	defer_vars          []ast.Ident
 	should_abort        bool // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the parser should stop
+	codegen_text        string
 }
 
 // for tests
@@ -305,6 +306,13 @@ pub fn (mut p Parser) parse() &ast.File {
 		notices << p.scanner.notices
 	}
 
+	// codegen
+	if p.codegen_text.len > 0 && !p.pref.is_fmt {
+		ptext := 'module ' + p.mod.all_after_last('.') + p.codegen_text
+		codegen_file := parse_text(ptext, p.file_name, p.table, p.comments_mode, p.pref)
+		stmts << codegen_file.stmts
+	}
+
 	return &ast.File{
 		path: p.file_name
 		path_base: p.file_base
@@ -394,6 +402,15 @@ pub fn parse_files(paths []string, table &ast.Table, pref &pref.Preferences) []&
 		timers.show('parse_file $path')
 	}
 	return files
+}
+
+// codegen allows you to generate V code, so that it can be parsed,
+// checked, markused, cgen-ed etc further, just like user's V code.
+pub fn (mut p Parser) codegen(code string) {
+	$if debug_codegen ? {
+		eprintln('parser.codegen:\n $code')
+	}
+	p.codegen_text += '\n' + code
 }
 
 pub fn (mut p Parser) init_parse_fns() {
@@ -2337,7 +2354,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	return node
 }
 
-fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
+fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 	// left == `a` in `a[0]`
 	start_pos := p.tok.position()
 	p.next() // [
@@ -2362,7 +2379,9 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 				high: high
 				has_high: has_high
 				pos: pos
+				is_gated: is_gated
 			}
+			is_gated: is_gated
 		}
 	}
 	expr := p.expr(0) // `[expr]` or  `[expr..`
@@ -2386,7 +2405,9 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 				has_high: has_high
 				has_low: has_low
 				pos: pos
+				is_gated: is_gated
 			}
+			is_gated: is_gated
 		}
 	}
 	// [expr]
@@ -2416,6 +2437,7 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 					stmts: or_stmts
 					pos: or_pos
 				}
+				is_gated: is_gated
 			}
 		}
 		// `a[i] ?`
@@ -2434,6 +2456,7 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 			stmts: or_stmts
 			pos: or_pos
 		}
+		is_gated: is_gated
 	}
 }
 
@@ -3309,7 +3332,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			}
 		}
 		pubfn := if p.mod == 'main' { 'fn' } else { 'pub fn' }
-		p.scanner.codegen('
+		p.codegen('
 //
 [inline] $pubfn (    e &$enum_name) is_empty() bool           { return  int(*e) == 0 }
 [inline] $pubfn (    e &$enum_name) has(flag $enum_name) bool { return  (int(*e) &  (int(flag))) != 0 }

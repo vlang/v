@@ -54,13 +54,13 @@ pub mut:
 	nr_errors        int
 	nr_warnings      int
 	nr_notices       int
-	should_abort     bool // when too many errors/warnings/notices are accumulated, .should_abort becomes true. It is checked in statement/expression loops, so the checker can return early, instead of wasting time.
 	errors           []errors.Error
 	warnings         []errors.Warning
 	notices          []errors.Notice
 	error_lines      []int // to avoid printing multiple errors for the same line
 	expected_type    ast.Type
 	expected_or_type ast.Type // fn() or { 'this type' } eg. string. expected or block type
+	mod              string   // current module name
 	const_decl       string
 	const_deps       []string
 	const_names      []string
@@ -69,20 +69,20 @@ pub mut:
 	rlocked_names    []string // vars that are currently read-locked
 	in_for_count     int      // if checker is currently in a for loop
 	// checked_ident  string // to avoid infinite checker loops
+	should_abort   bool // when too many errors/warnings/notices are accumulated, .should_abort becomes true. It is checked in statement/expression loops, so the checker can return early, instead of wasting time.
 	returns        bool
 	scope_returns  bool
-	mod            string // current module name
-	is_builtin_mod bool   // true inside the 'builtin', 'os' or 'strconv' modules; TODO: remove the need for special casing this
-	is_generated   bool   // true for `[generated] module xyz` .v files
-	inside_unsafe  bool   // true inside `unsafe {}` blocks
-	inside_const   bool   // true inside `const ( ... )` blocks
-	inside_anon_fn bool   // true inside `fn() { ... }()`
-	inside_ref_lit bool   // true inside `a := &something`
-	inside_defer   bool   // true inside `defer {}` blocks
-	inside_fn_arg  bool   // `a`, `b` in `a.f(b)`
-	inside_ct_attr bool   // true inside `[if expr]`
-	skip_flags     bool   // should `#flag` and `#include` be skipped
-	fn_level       int    // 0 for the top level, 1 for `fn abc() {}`, 2 for a nested fn, etc
+	is_builtin_mod bool // true inside the 'builtin', 'os' or 'strconv' modules; TODO: remove the need for special casing this
+	is_generated   bool // true for `[generated] module xyz` .v files
+	inside_unsafe  bool // true inside `unsafe {}` blocks
+	inside_const   bool // true inside `const ( ... )` blocks
+	inside_anon_fn bool // true inside `fn() { ... }()`
+	inside_ref_lit bool // true inside `a := &something`
+	inside_defer   bool // true inside `defer {}` blocks
+	inside_fn_arg  bool // `a`, `b` in `a.f(b)`
+	inside_ct_attr bool // true inside `[if expr]`
+	skip_flags     bool // should `#flag` and `#include` be skipped
+	fn_level       int  // 0 for the top level, 1 for `fn abc() {}`, 2 for a nested fn, etc
 	ct_cond_stack  []ast.Expr
 mut:
 	stmt_level int // the nesting level inside each stmts list;
@@ -90,29 +90,28 @@ mut:
 	// 1 for statements directly at each inner scope level;
 	// increases for `x := if cond { statement_list1} else {statement_list2}`;
 	// increases for `x := optfn() or { statement_list3 }`;
-	is_last_stmt                     bool
 	files                            []ast.File
-	expr_level                       int  // to avoid infinite recursion segfaults due to compiler bugs
-	inside_sql                       bool // to handle sql table fields pseudo variables
+	expr_level                       int // to avoid infinite recursion segfaults due to compiler bugs
 	cur_orm_ts                       ast.TypeSymbol
 	error_details                    []string
 	vmod_file_content                string     // needed for @VMOD_FILE, contents of the file, *NOT its path**
-	vweb_gen_types                   []ast.Type // vweb route checks
-	prevent_sum_type_unwrapping_once bool       // needed for assign new values to sum type, stopping unwrapping then
 	loop_label                       string     // set when inside a labelled for loop
+	vweb_gen_types                   []ast.Type // vweb route checks
 	timers                           &util.Timers = util.get_timers()
 	comptime_fields_default_type     ast.Type
 	comptime_fields_type             map[string]ast.Type
 	fn_scope                         &ast.Scope = voidptr(0)
 	main_fn_decl_node                ast.FnDecl
 	match_exhaustive_cutoff_limit    int = 10
-	// TODO: these are here temporarily and used for deprecations; remove soon
-	using_new_err_struct     bool
-	inside_selector_expr     bool
-	inside_println_arg       bool
-	inside_decl_rhs          bool
-	inside_if_guard          bool // true inside the guard condition of `if x := opt() {}`
-	need_recheck_generic_fns bool // need recheck generic fns because there are cascaded nested generic fn
+	is_last_stmt                     bool
+	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type, stopping unwrapping then
+	using_new_err_struct             bool
+	need_recheck_generic_fns         bool // need recheck generic fns because there are cascaded nested generic fn
+	inside_sql                       bool // to handle sql table fields pseudo variables
+	inside_selector_expr             bool
+	inside_println_arg               bool
+	inside_decl_rhs                  bool
+	inside_if_guard                  bool // true inside the guard condition of `if x := opt() {}`
 }
 
 pub fn new_checker(table &ast.Table, pref &pref.Preferences) &Checker {
@@ -291,7 +290,7 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	c.timers.start('checker_post_process_generic_fns')
 	last_file := c.file
 	// post process generic functions. must be done after all files have been
-	// checked, to eunsure all generic calls are processed as this information
+	// checked, to ensure all generic calls are processed as this information
 	// is needed when the generic type is auto inferred from the call argument
 	// Check more times if there are more new registered fn concrete types
 	for {
@@ -827,7 +826,14 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				}
 				// Do not allow empty uninitialized interfaces
 				sym := c.table.sym(field.typ)
-				if sym.kind == .interface_ {
+				mut has_noinit := false
+				for attr in field.attrs {
+					if attr.name == 'noinit' {
+						has_noinit = true
+						break
+					}
+				}
+				if sym.kind == .interface_ && (!has_noinit && sym.language != .js) {
 					// TODO: should be an error instead, but first `ui` needs updating.
 					c.note('interface field `${type_sym.name}.$field.name` must be initialized',
 						node.pos)
@@ -4324,7 +4330,7 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 	return right_type
 }
 
-fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_type ast.Type, pos token.Position, range_index bool) {
+fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_type ast.Type, pos token.Position, range_index bool, is_gated bool) {
 	index_type_sym := c.table.sym(index_type)
 	// println('index expr left=$typ_sym.name $node.pos.line_nr')
 	// if typ_sym.kind == .array && (!(ast.type_idx(index_type) in ast.number_type_idxs) &&
@@ -4338,7 +4344,7 @@ fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_ty
 			}
 			c.error('$type_str', pos)
 		}
-		if index is ast.IntegerLiteral {
+		if index is ast.IntegerLiteral && !is_gated {
 			if index.val[0] == `-` {
 				c.error('negative index `$index.val`', index.pos)
 			} else if typ_sym.kind == .array_fixed {
@@ -4421,11 +4427,11 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 	if mut node.index is ast.RangeExpr { // [1..2]
 		if node.index.has_low {
 			index_type := c.expr(node.index.low)
-			c.check_index(typ_sym, node.index.low, index_type, node.pos, true)
+			c.check_index(typ_sym, node.index.low, index_type, node.pos, true, node.is_gated)
 		}
 		if node.index.has_high {
 			index_type := c.expr(node.index.high)
-			c.check_index(typ_sym, node.index.high, index_type, node.pos, true)
+			c.check_index(typ_sym, node.index.high, index_type, node.pos, true, node.is_gated)
 		}
 		// array[1..2] => array
 		// fixed_array[1..2] => array
@@ -4453,7 +4459,11 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			}
 		} else {
 			index_type := c.expr(node.index)
-			c.check_index(typ_sym, node.index, index_type, node.pos, false)
+			// for [1] case #[1] is not allowed!
+			if node.is_gated == true {
+				c.error('`#[]` allowed only for ranges', node.pos)
+			}
+			c.check_index(typ_sym, node.index, index_type, node.pos, false, false)
 		}
 		value_type := c.table.value_type(typ)
 		if value_type != ast.void_type {
@@ -4820,7 +4830,11 @@ fn (mut c Checker) post_process_generic_fns() {
 	for i in 0 .. c.file.generic_fns.len {
 		mut node := c.file.generic_fns[i]
 		c.mod = node.mod
-		for concrete_types in c.table.fn_generic_types[node.name] {
+		gtypes := c.table.fn_generic_types[node.name]
+		$if trace_post_process_generic_fns ? {
+			eprintln('> post_process_generic_fns $node.mod | $node.name | $gtypes')
+		}
+		for concrete_types in gtypes {
 			c.table.cur_concrete_types = concrete_types
 			c.fn_decl(mut node)
 			if node.name == 'vweb.run' {
@@ -4832,6 +4846,11 @@ fn (mut c Checker) post_process_generic_fns() {
 			}
 		}
 		c.table.cur_concrete_types = []
+		$if trace_post_process_generic_fns ? {
+			if node.generic_names.len > 0 {
+				eprintln('       > fn_decl node.name: $node.name | generic_names: $node.generic_names | ninstances: $node.ninstances')
+			}
+		}
 	}
 }
 

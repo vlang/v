@@ -36,7 +36,7 @@ fn main() {
 	println(x.model)
 	println(x.permission)
 	//
-	mut a := Repo<User,Permission>{
+	mut a := Repo<User, Permission>{
 		model: User{
 			name: 'joe'
 		}

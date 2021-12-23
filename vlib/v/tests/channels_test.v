@@ -27,3 +27,21 @@ fn test_printing_of_channels() {
 	fch.close()
 	assert fch.str() == 'chan f64{cap: 100, closed: 1}'
 }
+
+struct Aa {}
+
+struct Ab {}
+
+type As = Aa | Ab
+
+fn func(ch chan As) {
+	ch <- Aa{}
+}
+
+fn test_chan_of_sumtype() {
+	a := chan As{}
+	go func(a)
+	ret := <-a
+	println(ret)
+	assert '$ret' == 'As(Aa{})'
+}

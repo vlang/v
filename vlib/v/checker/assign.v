@@ -300,6 +300,13 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					c.error('non-name on the left side of `:=`', left.pos)
 				}
 			}
+			ast.SelectorExpr {
+				if mut left.expr is ast.IndexExpr {
+					if left.expr.is_map {
+						left.expr.is_setter = true
+					}
+				}
+			}
 			else {
 				if mut left is ast.IndexExpr {
 					// eprintln('>>> left.is_setter: ${left.is_setter:10} | left.is_map: ${left.is_map:10} | left.is_array: ${left.is_array:10}')
