@@ -140,3 +140,14 @@ pub fn execvp(cmd string, args []string) ? {
 pub fn stdin_resume() {
 	#$process.stdin.resume();
 }
+
+pub fn is_readable(path string) bool {
+	$if js_node {
+		res := false
+		#try { res.val = $fs.accessSync(path.str,$fs.constants.R_OK); } catch { res.val = false; }
+
+		return res
+	} $else {
+		return false
+	}
+}

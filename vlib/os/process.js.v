@@ -26,7 +26,6 @@ fn (mut p Process) spawn_internal() {
 	#p.val.pid.on('error', function (err) { builtin.panic('Failed to start subprocess') })
 
 	p.status = .running
-	// todo(playX): stderr,stdin
 	if p.use_stdio_ctl {
 		#p.val.pid.stdout.pipe(process.stdout)
 		#p.val.pid.stdin.pipe(process.stdin)
@@ -120,4 +119,8 @@ fn (mut p Process) check_redirection_call(fn_name string) {
 	if p.status == .not_started {
 		panic('Call p.${fn_name}() after you have called p.run()')
 	}
+}
+
+pub fn (mut p Process) close() {
+	// no-op on JS backend
 }
