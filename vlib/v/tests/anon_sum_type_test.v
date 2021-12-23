@@ -2,7 +2,7 @@ fn returns_sumtype() int | string {
 	return 1
 }
 
-fn returns_sumtype_reverse() string | int {
+fn returns_sumtype_reverse() int | string {
 	return 1
 }
 
@@ -13,7 +13,7 @@ fn test_stringification() {
 }
 
 struct Milk {
-	egg string | int
+	egg int | string
 }
 
 fn test_struct_with_inline_sumtype() {
@@ -24,7 +24,7 @@ fn test_struct_with_inline_sumtype() {
 }
 
 interface IMilk {
-	egg string | int
+	egg int | string
 }
 
 fn receive_imilk(milk IMilk) {}
