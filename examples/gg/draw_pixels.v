@@ -41,13 +41,13 @@ fn main() {
 
 fn frame(mut app App) {
 	app.gg.begin()
-	
+
 	// Draw a blue pixel near each corner. (Find your magnifying glass)
 	app.gg.draw_pixel(2, 2, gx.blue)
 	app.gg.draw_pixel(app.gg.width - 2, 2, gx.blue)
 	app.gg.draw_pixel(app.gg.width - 2, app.gg.height - 2, gx.blue)
 	app.gg.draw_pixel(2, app.gg.height - 2, gx.blue)
-	
+
 	// Draw pixels in a grid-like pattern.
 	app.gg.draw_pixels(app.pixels, gx.red)
 	app.gg.end()
