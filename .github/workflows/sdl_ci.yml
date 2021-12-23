@@ -8,10 +8,6 @@ on:
     paths-ignore:
       - "**.md"
 
-concurrency:
-  group: build-${{ github.event.pull_request.number || github.sha }}
-  cancel-in-progress: true
-
 jobs:
   v-compiles-sdl-examples:
     runs-on: ubuntu-18.04
