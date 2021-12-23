@@ -4,6 +4,8 @@ Usage:
   Generate AST json file from v source file.
 
 Options:
+  -c
+    terse output, only with tree node names (AST structure), no details.
   -w
     generate ast json file, and watch for changes.
   -c
