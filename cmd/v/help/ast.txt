@@ -1,14 +1,20 @@
-Usage:
-  v ast [options] path_to_source.v
+Usage: v ast demo.v       generate demo.json file.
+   or: v ast -w demo.v    generate demo.json file, and watch for changes.
+   or: v ast -c demo.v    generate demo.json *and* a demo.c file, and watch for changes.
+   or: v ast -p demo.v    print the json output to stdout.
 
-  Generate AST json file from v source file.
+Description: Dump a JSON representation of the V AST for a given .v or .vsh file.
+By default, `v ast` will save the JSON to a .json file, named after the .v file.
+Pass -p to see it instead.
+
+The arguments should be at least 1 in number.
 
 Options:
-  -c
-    terse output, only with tree node names (AST structure), no details.
-  -w
-    generate ast json file, and watch for changes.
-  -c
-    generate ast json file and c file, and watch for changes.
-  -p
-    print the json string to stdout.
+  -w, --watch               watch a .v file for changes, rewrite the .json file, when a change is detected
+  -p, --print               print the AST to stdout
+  -c, --compile             watch the .v file for changes, rewrite the .json file, *AND* generate a .c file too on any change
+  -t, --terse               terse output, only with tree node names (AST structure), no details
+  --hide <multiple strings>
+                            hide the specified fields. You can give several, by separating them with `,`
+  -h, --help                display this help and exit
+  --version                 output version information and exit
