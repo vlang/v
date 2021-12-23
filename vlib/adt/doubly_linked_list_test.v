@@ -140,6 +140,17 @@ fn test_iter() ? {
 	assert count == 10
 }
 
+fn test_index() ? {
+	mut list := DoublyLinkedList<int>{}
+	for i := 0; i < 10; i++ {
+		list.push_back(i * 10)
+	}
+
+	for i := 0; i < 10; i++ {
+		assert list.index(i * 10) ? == i
+	}
+}
+
 fn test_str() ? {
 	mut list := DoublyLinkedList<int>{}
 	list.push_back(1)

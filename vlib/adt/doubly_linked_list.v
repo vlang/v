@@ -217,7 +217,9 @@ pub fn (list &DoublyLinkedList<T>) index(item T) ?int {
 			return t
 		}
 		h += 1
+		hn = hn.next
 		t -= 1
+		tn = tn.prev
 	}
 	return none
 }
