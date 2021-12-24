@@ -44,3 +44,25 @@ fn test_min_heap_custom() ? {
 		panic('expected none')
 	}
 }
+
+fn test_heap_len() ? {
+	mut heap := MinHeap<int>{}
+	heap.insert(2)
+	assert heap.len() == 1
+	heap.insert(0)
+	heap.insert(8)
+	heap.insert(4)
+	assert heap.len() == 4
+	heap.insert(1)
+
+	assert heap.len() == 5
+	heap.pop() ?
+	heap.pop() ?
+	heap.pop() ?
+	assert heap.len() == 2
+	heap.pop() ?
+	heap.pop() ?
+	assert heap.len() == 0
+	heap.pop() or {}
+	assert heap.len() == 0
+}

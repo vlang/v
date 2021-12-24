@@ -53,6 +53,11 @@ pub fn (heap MinHeap<T>) peek() ?T {
 	return heap.data[0]
 }
 
+// len returns the number of elements in the heap.
+pub fn (heap MinHeap<T>) len() int {
+	return heap.data.len
+}
+
 // left_child is a helper function that returns the index of the left
 // child given a parent idx, or none if there is no left child.
 fn (heap MinHeap<T>) left_child(idx int) ?int {
