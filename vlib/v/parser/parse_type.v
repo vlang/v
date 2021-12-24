@@ -327,9 +327,9 @@ pub fn (mut p Parser) parse_inline_sum_type() ast.Type {
 // parse_sum_type_variants parses several types separated with a pipe and returns them as a list with at least one node.
 // If there is less than one node, it will add an error to the error list.
 pub fn (mut p Parser) parse_sum_type_variants() []ast.TypeNode {
-	p.is_parsing_sum_type = true
+	p.inside_sum_type = true
 	defer {
-		p.is_parsing_sum_type = false
+		p.inside_sum_type = false
 	}
 	mut types := []ast.TypeNode{}
 	for {
@@ -466,7 +466,7 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 			p.error('imported types must start with a capital letter')
 			return 0
 		}
-	} else if p.expr_mod != '' && !p.in_generic_params { // p.expr_mod is from the struct and not from the generic parameter
+	} else if p.expr_mod != '' && !p.inside_generic_params { // p.expr_mod is from the struct and not from the generic parameter
 		name = p.expr_mod + '.' + name
 	} else if name in p.imported_symbols {
 		name = p.imported_symbols[name]
@@ -484,7 +484,7 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 			return p.parse_array_type(p.tok.kind)
 		}
 		else {
-			if p.tok.kind == .lpar && !p.is_parsing_sum_type {
+			if p.tok.kind == .lpar && !p.inside_sum_type {
 				// multiple return
 				if is_ptr {
 					p.error('parse_type: unexpected `&` before multiple returns')
@@ -493,7 +493,7 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 				return p.parse_multi_return_type()
 			}
 			if ((p.peek_tok.kind == .dot && p.peek_token(3).kind == .pipe)
-				|| p.peek_tok.kind == .pipe) && !p.is_parsing_sum_type {
+				|| p.peek_tok.kind == .pipe) && !p.inside_sum_type && !p.inside_receiver_param {
 				return p.parse_inline_sum_type()
 			}
 			if name == 'map' {
@@ -615,7 +615,7 @@ pub fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 	mut bs_cname := name
 	start_pos := p.tok.position()
 	p.next()
-	p.in_generic_params = true
+	p.inside_generic_params = true
 	bs_name += '<'
 	bs_cname += '_T_'
 	mut concrete_types := []ast.Type{}
@@ -638,7 +638,7 @@ pub fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 	}
 	concrete_types_pos := start_pos.extend(p.tok.position())
 	p.check(.gt)
-	p.in_generic_params = false
+	p.inside_generic_params = false
 	bs_name += '>'
 	// fmt operates on a per-file basis, so is_instance might be not set correctly. Thus it's ignored.
 	if (is_instance || p.pref.is_fmt) && concrete_types.len > 0 {
