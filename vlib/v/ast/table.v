@@ -671,7 +671,7 @@ pub fn (t &Table) unalias_num_type(typ Type) Type {
 	sym := t.sym(typ)
 	if sym.kind == .alias {
 		pt := (sym.info as Alias).parent_type
-		if pt <= f64_type && pt >= void_type {
+		if pt <= char_type && pt >= void_type {
 			return pt
 		}
 	}
