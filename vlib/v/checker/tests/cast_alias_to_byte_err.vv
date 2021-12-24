@@ -1,0 +1,7 @@
+type Foo = string
+
+fn main() {
+	a := Foo('hello')
+	b := byte(a)
+	println(b)
+}
