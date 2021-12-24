@@ -15,13 +15,17 @@ mut:
 	// of the list while iterating. TODO: use an option
 	// instead of a pointer to determine it is initialized.
 	iter &DoublyListIter<T> = 0
-pub mut:
 	len int
 }
 
 // is_empty checks if the linked list is empty
 pub fn (list DoublyLinkedList<T>) is_empty() bool {
 	return list.len == 0
+}
+
+// len returns the length of the linked list
+pub fn (list DoublyLinkedList<T>) len() int {
+	return list.len
 }
 
 // first returns the first element of the linked list

@@ -9,11 +9,11 @@ fn test_is_empty() {
 
 fn test_len() ? {
 	mut list := DoublyLinkedList<int>{}
-	assert list.len == 0
+	assert list.len() == 0
 	list.push_back(1)
-	assert list.len == 1
+	assert list.len() == 1
 	list.pop_back() ?
-	assert list.len == 0
+	assert list.len() == 0
 }
 
 fn test_first() ? {
@@ -109,13 +109,13 @@ fn test_delete() ? {
 	list.delete(1)
 	assert list.first() ? == 0
 	assert list.last() ? == 2
-	assert list.len == 2
+	assert list.len() == 2
 	list.delete(1)
 	assert list.first() ? == 0
 	assert list.last() ? == 0
-	assert list.len == 1
+	assert list.len() == 1
 	list.delete(0)
-	assert list.len == 0
+	assert list.len() == 0
 }
 
 fn test_iter() ? {
