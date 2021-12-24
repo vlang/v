@@ -3487,10 +3487,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			c.error('cannot convert type `$from_type_sym.name` to `$to_type_sym.name` (alias to `$to_type_sym_final.name`)',
 				node.pos)
 		}
-	} else if to_type_sym.kind == .byte && from_type != ast.voidptr_type
-		&& from_type_sym.kind != .enum_ && !from_type.is_int() && !from_type.is_float()
-		&& from_type != ast.bool_type && !from_type.is_ptr() && from_type_sym.kind == .alias
-		&& from_type_sym_final.name != 'byte' {
+	} else if to_type_sym.kind == .byte && from_type_sym.kind == .alias
+		&& from_type_sym_final.kind != .byte && !from_type.is_ptr() {
 		type_name := c.table.type_to_str(from_type)
 		c.error('cannot cast type `$type_name` to `byte`', node.pos)
 	} else if to_type_sym.kind == .struct_ && !to_type.is_ptr()
