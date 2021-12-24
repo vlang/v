@@ -3488,7 +3488,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 				node.pos)
 		}
 	} else if to_type_sym.kind == .byte && from_type_sym.kind == .alias
-		&& from_type_sym_final.name != 'byte' && !from_type.is_ptr() {
+		&& from_type_sym_final.kind != .byte && !from_type.is_ptr() {
 		type_name := c.table.type_to_str(from_type)
 		c.error('cannot cast type `$type_name` to `byte`', node.pos)
 	} else if to_type_sym.kind == .struct_ && !to_type.is_ptr()
