@@ -16,7 +16,7 @@ fn main() {
 		pass_action: gfx.create_clear_pass(0.1, 0.1, 0.1, 1.0)
 	}
 	title := 'Sokol Drawing Template'
-	desc := C.sapp_desc{
+	desc := sapp.Desc{
 		user_data: state
 		init_userdata_cb: init
 		frame_userdata_cb: frame

@@ -13,6 +13,8 @@ pub:
 	size usize
 }
 
+pub type Range = C.sapp_range
+
 pub struct C.sapp_image_desc {
 pub:
 	width  int
@@ -20,24 +22,28 @@ pub:
 	pixels C.spp_range
 }
 
+pub type ImageDesc = C.sapp_image_desc
+
 pub struct C.sapp_icon_desc {
 	sokol_default bool
-	images        [sapp_max_iconimages]C.sapp_image_desc
+	images        [sapp_max_iconimages]ImageDesc
 }
+
+pub type IconDesc = C.sapp_icon_desc
 
 pub struct C.sapp_desc {
 pub:
 	init_cb    fn () // these are the user-provided callbacks without user data
 	frame_cb   fn ()
 	cleanup_cb fn ()
-	event_cb   fn (&C.sapp_event) //&sapp_event)
+	event_cb   fn (&Event) //&sapp_event)
 	fail_cb    fn (&byte)
 
 	user_data           voidptr // these are the user-provided callbacks with user data
 	init_userdata_cb    fn (voidptr)
 	frame_userdata_cb   fn (voidptr)
 	cleanup_userdata_cb fn (voidptr)
-	event_userdata_cb   fn (&C.sapp_event, voidptr)
+	event_userdata_cb   fn (&Event, voidptr)
 	fail_userdata_cb    fn (&char, voidptr)
 
 	width                        int   // the preferred width of the window / canvas
@@ -54,7 +60,7 @@ pub:
 	enable_dragndrop             bool  // enable file dropping (drag'n'drop), default is false
 	max_dropped_files            int   // max number of dropped files to process (default: 1)
 	max_dropped_file_path_length int   // max length in bytes of a dropped UTF-8 file path (default: 2048)
-	icon                         C.sapp_icon_desc
+	icon                         IconDesc
 	// backend-specific options
 	gl_force_gles2                bool  // if true, setup GLES2/WebGL even if GLES3/WebGL2 is available
 	win32_console_utf8            bool  // if true, set the output console codepage to UTF-8
@@ -69,6 +75,8 @@ pub:
 	// V patches
 	__v_native_render bool // V patch to allow for native rendering
 }
+
+pub type Desc = C.sapp_desc
 
 pub struct Event {
 pub:
@@ -86,7 +94,7 @@ pub:
 	scroll_x           f32
 	scroll_y           f32
 	num_touches        int
-	touches            [sapp_max_touchpoints]C.sapp_touchpoint
+	touches            [sapp_max_touchpoints]TouchPoint
 	window_width       int
 	window_height      int
 	framebuffer_width  int
@@ -109,7 +117,7 @@ pub:
 	scroll_x           f32
 	scroll_y           f32
 	num_touches        int
-	touches            [sapp_max_touchpoints]C.sapp_touchpoint
+	touches            [sapp_max_touchpoints]TouchPoint
 	window_width       int
 	window_height      int
 	framebuffer_width  int
@@ -128,3 +136,5 @@ pub:
 	pos_y      f32
 	changed    bool
 }
+
+pub type TouchPoint = C.sapp_touchpoint

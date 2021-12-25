@@ -52,7 +52,7 @@ fn (mut a App) cleanup() {
 
 fn (mut a App) run() {
 	title := 'V Particle Example'
-	desc := C.sapp_desc{
+	desc := sapp.Desc{
 		width: a.width
 		height: a.height
 		user_data: a
@@ -117,7 +117,7 @@ fn frame(user_data voidptr) {
 	app.last = t
 }
 
-fn event(ev &C.sapp_event, mut app App) {
+fn event(ev &sapp.Event, mut app App) {
 	if ev.@type == .mouse_move {
 		app.ps.explode(ev.mouse_x, ev.mouse_y)
 	}

@@ -49,7 +49,7 @@ pub mut:
 	scroll_y     f32
 	// todo(playX): add touches API support in js.dom
 	// num_touches        int
-	// touches            [8]C.sapp_touchpoint
+	// touches            [8]TouchPoint
 	window_width       int
 	window_height      int
 	framebuffer_width  int
