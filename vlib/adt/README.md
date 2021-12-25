@@ -22,6 +22,8 @@ println(stack)
 ## Currently Implemented Datatypes:
 
 - [x] Linked list
+- [x] Doubly linked list
 - [x] Stack (LIFO)
 - [x] Queue (FIFO)
+- [x] Min heap (priority queue)
 - [ ] ...
