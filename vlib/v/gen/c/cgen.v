@@ -183,7 +183,7 @@ mut:
 	force_main_console  bool // true when [console] used on fn main()
 	as_cast_type_names  map[string]string // table for type name lookup in runtime (for __as_cast)
 	obf_table           map[string]string
-	referenced_fns      map[string]bool // functions that have been referenced
+	referenced_fns      shared map[string]bool // functions that have been referenced
 	nr_closures         int
 	expected_cast_type  ast.Type // for match expr of sumtypes
 	anon_fn             bool
@@ -2363,7 +2363,9 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			} else {
 				'I_${got_styp}_to_Interface_$exp_styp'
 			}
-			g.referenced_fns[fname] = true
+			lock g.referenced_fns {
+				g.referenced_fns[fname] = true
+			}
 			fname = '/*$exp_sym*/$fname'
 			if exp_sym.info.is_generic {
 				fname = g.generic_fn_name(exp_sym.info.concrete_types, fname, false)
@@ -6508,7 +6510,11 @@ fn (g Gen) as_cast_name_table() string {
 }
 
 fn (g Gen) has_been_referenced(fn_name string) bool {
-	return g.referenced_fns[fn_name]
+	mut referenced := false
+	lock g.referenced_fns {
+		referenced = g.referenced_fns[fn_name]
+	}
+	return referenced
 }
 
 // Generates interface table and interface indexes
