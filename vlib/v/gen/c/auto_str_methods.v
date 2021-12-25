@@ -436,7 +436,7 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_
 	fn_builder.writeln('static string indent_${str_fn_name}($styp x, int indent_count) {')
 	mut clean_sum_type_v_type_name := ''
 	if info.is_anon {
-		variant_names := info.variants.map(g.table.sym(it).name)
+		variant_names := info.variants.map(util.strip_main_name(g.table.sym(it).name))
 		clean_sum_type_v_type_name = '(${variant_names.join(' | ')})'
 	} else {
 		clean_sum_type_v_type_name = styp.replace('__', '.')
