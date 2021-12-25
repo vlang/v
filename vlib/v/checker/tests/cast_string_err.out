@@ -12,7 +12,7 @@ vlib/v/checker/tests/cast_string_err.vv:18:9: error: cannot cast sumtype `Sumtyp
       |            ~~~~~~~~~~
    19 |     println(sst)
    20 |     //
-vlib/v/checker/tests/cast_string_err.vv:22:10: error: cannot cast struct `Abc` to `string`, use `abc.str()` instead.
+vlib/v/checker/tests/cast_string_err.vv:22:10: error: cannot cast struct `Abc` to `string`
    20 |     //
    21 |     abc := Abc{}
    22 |     sabc := string(abc)

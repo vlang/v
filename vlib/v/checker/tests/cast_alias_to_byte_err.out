@@ -1,7 +1,0 @@
-vlib/v/checker/tests/cast_alias_to_byte_err.vv:5:7: error: cannot cast type `Foo` to `byte`
-    3 | fn main() {
-    4 |     a := Foo('hello')
-    5 |     b := byte(a)
-      |          ~~~~~~~
-    6 |     println(b)
-    7 | }
