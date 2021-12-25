@@ -3487,10 +3487,6 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			c.error('cannot convert type `$from_type_sym.name` to `$to_type_sym.name` (alias to `$to_type_sym_final.name`)',
 				node.pos)
 		}
-	} else if to_type_sym.kind == .byte && from_type_sym.kind == .alias
-		&& from_type_sym_final.kind != .byte && !from_type.is_ptr() {
-		type_name := c.table.type_to_str(from_type)
-		c.error('cannot cast type `$type_name` to `byte`', node.pos)
 	} else if to_type_sym.kind == .struct_ && !to_type.is_ptr()
 		&& !(to_type_sym.info as ast.Struct).is_typedef {
 		// For now we ignore C typedef because of `C.Window(C.None)` in vlib/clipboard
@@ -3523,10 +3519,13 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		if (to_type.is_ptr() || to_type_sym.kind !in [.sum_type, .interface_]) && !c.is_builtin_mod {
 			from_type_name := c.table.type_to_str(from_type)
 			type_name := c.table.type_to_str(to_type)
-			snexpr := node.expr.str()
-			c.error('cannot cast struct `$from_type_name` to `$type_name`, use `${snexpr}.str()` instead.',
-				node.pos)
+			c.error('cannot cast struct `$from_type_name` to `$type_name`', node.pos)
 		}
+	} else if to_type_sym.kind == .byte && !from_type_sym_final.is_number()
+		&& !from_type_sym_final.is_pointer() && !from_type.is_ptr()
+		&& from_type_sym_final.kind !in [.char, .enum_, .bool] {
+		type_name := c.table.type_to_str(from_type)
+		c.error('cannot cast type `$type_name` to `byte`', node.pos)
 	} else if from_type.has_flag(.optional) || from_type.has_flag(.variadic) {
 		// variadic case can happen when arrays are converted into variadic
 		msg := if from_type.has_flag(.optional) { 'an optional' } else { 'a variadic' }
