@@ -19,7 +19,7 @@ pub struct C.sapp_image_desc {
 pub:
 	width  int
 	height int
-	pixels C.spp_range
+	pixels Range
 }
 
 pub type ImageDesc = C.sapp_image_desc
