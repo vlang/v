@@ -1,0 +1,3 @@
+fn option_sumtype() ?string | int {
+	return 0
+}

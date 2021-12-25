@@ -1,0 +1,13 @@
+import v.token
+
+struct Foo {
+	bar string | int
+}
+
+interface Egg {
+	milk string | int
+}
+
+fn foo(bar string | int) int | string | token.Position {
+	return 1
+}

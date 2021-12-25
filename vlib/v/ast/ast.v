@@ -1083,7 +1083,7 @@ pub:
 	comments    []Comment
 }
 
-// New implementation of sum types
+// SumTypeDecl is the ast node for `type MySumType = string | int`
 pub struct SumTypeDecl {
 pub:
 	name          string

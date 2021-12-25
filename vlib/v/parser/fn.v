@@ -539,6 +539,10 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 }
 
 fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInfo) ? {
+	p.inside_receiver_param = true
+	defer {
+		p.inside_receiver_param = false
+	}
 	lpar_pos := p.tok.position()
 	p.next() // (
 	is_shared := p.tok.kind == .key_shared
