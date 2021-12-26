@@ -500,7 +500,7 @@ fn (mut game Game) key_down(key gg.KeyCode) {
 	}
 }
 
-fn (mut game Game) touch_event(touch_point C.sapp_touchpoint) {
+fn (mut game Game) touch_event(touch_point gg.TouchPoint) {
 	ws := gg.window_size()
 	tx := touch_point.pos_x
 	ty := touch_point.pos_y

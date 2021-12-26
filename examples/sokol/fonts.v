@@ -31,7 +31,7 @@ fn main() {
 		fons: voidptr(0) // &fontstash.Context(0)
 	}
 	title := 'V Metal/GL Text Rendering'
-	desc := C.sapp_desc{
+	desc := sapp.Desc{
 		user_data: state
 		init_userdata_cb: init
 		frame_userdata_cb: frame

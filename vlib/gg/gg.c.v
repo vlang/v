@@ -11,6 +11,8 @@ import sokol.sgl
 import sokol.gfx
 import math
 
+pub type TouchPoint = C.sapp_touchpoint
+
 pub struct Event {
 pub mut:
 	frame_count        u64
@@ -27,7 +29,7 @@ pub mut:
 	scroll_x           f32
 	scroll_y           f32
 	num_touches        int
-	touches            [8]C.sapp_touchpoint
+	touches            [8]TouchPoint
 	window_width       int
 	window_height      int
 	framebuffer_width  int
@@ -108,7 +110,7 @@ pub mut:
 	width       int
 	height      int
 	clear_pass  C.sg_pass_action
-	window      C.sapp_desc
+	window      sapp.Desc
 	timage_pip  C.sgl_pipeline
 	config      Config
 	user_data   voidptr
@@ -241,7 +243,7 @@ pub fn new_context(cfg Config) &Context {
 	}
 	g.set_bg_color(cfg.bg_color)
 	// C.printf('new_context() %p\n', cfg.user_data)
-	window := C.sapp_desc{
+	window := sapp.Desc{
 		user_data: g
 		init_userdata_cb: gg_init_sokol_window
 		frame_userdata_cb: gg_frame_fn

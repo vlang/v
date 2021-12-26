@@ -102,7 +102,7 @@ pub fn userdata() voidptr {
 
 // return a copy of the sapp_desc structure
 [inline]
-pub fn query_desc() C.sapp_desc {
+pub fn query_desc() Desc {
 	return C.sapp_query_desc()
 }
 
@@ -150,7 +150,7 @@ pub fn get_clipboard_string() &char {
 
 // special run-function for SOKOL_NO_ENTRY (in standard mode this is an empty stub)
 [inline]
-pub fn run(desc &C.sapp_desc) {
+pub fn run(desc &Desc) {
 	g_desc = *desc
 	C.sapp_run(desc)
 }
