@@ -1,2 +1,3 @@
 fn JS.Foo.bar() bool
+
 JS.Foo.bar(123)

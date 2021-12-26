@@ -1,4 +1,5 @@
-vlib/v/checker/tests/js_with_non_js_backend_too_many_arguments.vv:2:4: error: too many arguments in call to `JS.Foo.bar` (non-js backend: c)
+vlib/v/checker/tests/js_with_non_js_backend_too_many_arguments.vv:3:4: error: too many arguments in call to `JS.Foo.bar` (non-js backend: c)
     1 | fn JS.Foo.bar() bool
-    2 | JS.Foo.bar(123)
+    2 | 
+    3 | JS.Foo.bar(123)
       |    ~~~~~~~~~~~~
