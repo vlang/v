@@ -9,10 +9,10 @@ fn test_byte_pointer_casts() {
 		ppb := &&byte(2)
 		pppb := &&&byte(3)
 		ppppb := &&&&byte(4)
-		assert voidptr(pb).str() == '1'
-		assert voidptr(ppb).str() == '2'
-		assert voidptr(pppb).str() == '3'
-		assert voidptr(ppppb).str() == '4'
+		assert voidptr(pb).str() == '0x1'
+		assert voidptr(ppb).str() == '0x2'
+		assert voidptr(pppb).str() == '0x3'
+		assert voidptr(ppppb).str() == '0x4'
 	}
 }
 
@@ -22,10 +22,10 @@ fn test_char_pointer_casts() {
 		ppc := &&char(6)
 		pppc := &&&char(7)
 		ppppc := &&&&char(8)
-		assert voidptr(pc).str() == '5'
-		assert voidptr(ppc).str() == '6'
-		assert voidptr(pppc).str() == '7'
-		assert voidptr(ppppc).str() == '8'
+		assert voidptr(pc).str() == '0x5'
+		assert voidptr(ppc).str() == '0x6'
+		assert voidptr(pppc).str() == '0x7'
+		assert voidptr(ppppc).str() == '0x8'
 	}
 }
 
@@ -35,10 +35,10 @@ fn test_struct_pointer_casts() {
 		pps := &&Struct(10)
 		ppps := &&&Struct(11)
 		pppps := &&&&Struct(12)
-		assert voidptr(ps).str() == '9'
-		assert voidptr(pps).str() == 'a'
-		assert voidptr(ppps).str() == 'b'
-		assert voidptr(pppps).str() == 'c'
+		assert voidptr(ps).str() == '0x9'
+		assert voidptr(pps).str() == '0xa'
+		assert voidptr(ppps).str() == '0xb'
+		assert voidptr(pppps).str() == '0xc'
 	}
 }
 
