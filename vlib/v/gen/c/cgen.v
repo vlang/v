@@ -6749,7 +6749,7 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 						}
 						methods_wrapper.writeln('${fargs[1..].join(', ')});')
 					} else {
-						if parameter_name.starts_with('__shared__') { // I cringe at the hackiness of this patch
+						if parameter_name.starts_with('__shared__') {
 							methods_wrapper.writeln('${method_call}(${fargs.join(', ')}->val);')
 						} else {
 							methods_wrapper.writeln('${method_call}(*${fargs.join(', ')});')
