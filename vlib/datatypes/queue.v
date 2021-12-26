@@ -1,4 +1,4 @@
-module adt
+module datatypes
 
 pub struct Queue<T> {
 mut:

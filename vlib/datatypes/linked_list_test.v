@@ -1,4 +1,4 @@
-module adt
+module datatypes
 
 fn test_is_empty() {
 	mut list := LinkedList<int>{}

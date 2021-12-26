@@ -1,4 +1,4 @@
-module adt
+module datatypes
 
 // MinHeap is a binary minimum heap data structure.
 pub struct MinHeap<T> {

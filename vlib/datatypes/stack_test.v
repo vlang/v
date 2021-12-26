@@ -1,14 +1,14 @@
-import adt
+import datatypes as dt
 
 fn test_is_empty() {
-	mut stack := adt.Stack<int>{}
+	mut stack := dt.Stack<int>{}
 	assert stack.is_empty() == true
 	stack.push(1)
 	assert stack.is_empty() == false
 }
 
 fn test_len() ? {
-	mut stack := adt.Stack<int>{}
+	mut stack := dt.Stack<int>{}
 	assert stack.len() == 0
 	stack.push(1)
 	assert stack.len() == 1
@@ -17,18 +17,18 @@ fn test_len() ? {
 }
 
 fn test_peek() ? {
-	mut stack := adt.Stack<int>{}
+	mut stack := dt.Stack<int>{}
 	stack.push(1)
 	assert stack.peek() ? == 1
 	stack.push(2)
 	assert stack.peek() ? == 2
-	stack = adt.Stack<int>{}
+	stack = dt.Stack<int>{}
 	stack.peek() or { return }
 	assert false
 }
 
 fn test_push() ? {
-	mut stack := adt.Stack<int>{}
+	mut stack := dt.Stack<int>{}
 	stack.push(1)
 	assert stack.peek() ? == 1
 	stack.push(2)
@@ -38,7 +38,7 @@ fn test_push() ? {
 }
 
 fn test_pop() ? {
-	mut stack := adt.Stack<int>{}
+	mut stack := dt.Stack<int>{}
 	stack.push(1)
 	stack.push(2)
 	stack.push(3)
@@ -46,7 +46,7 @@ fn test_pop() ? {
 	stack.push(4)
 	assert stack.pop() ? == 4
 	assert stack.pop() ? == 2
-	stack = adt.Stack<int>{}
+	stack = dt.Stack<int>{}
 	stack.pop() or { return }
 	assert false
 }

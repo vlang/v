@@ -12,9 +12,9 @@ be more suitable for your specific application.
 It is implemented using generics, that you have to specialise for the type of
 your actual elements. For example:
 ```v
-import adt
+import datatypes
 
-mut stack := adt.Stack<int>{}
+mut stack := datatypes.Stack<int>{}
 stack.push(1)
 println(stack)
 ```

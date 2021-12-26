@@ -1,4 +1,4 @@
-module adt
+module datatypes
 
 struct DoublyListNode<T> {
 mut:
