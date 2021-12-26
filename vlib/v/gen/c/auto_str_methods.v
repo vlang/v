@@ -105,7 +105,7 @@ fn (mut g Gen) gen_str_default(sym ast.TypeSymbol, styp string, str_fn_name stri
 		convertor = 'bool'
 		typename_ = 'bool'
 	} else {
-		verror("could not generate string method for type `$styp`")
+		verror('could not generate string method for type `$styp`')
 	}
 	g.type_definitions.writeln('string ${str_fn_name}($styp it); // auto')
 	g.auto_str_funcs.writeln('string ${str_fn_name}($styp it) {')
@@ -220,7 +220,7 @@ fn (mut g Gen) final_gen_str(typ StrType) {
 			g.gen_str_for_thread(sym.info, styp, str_fn_name)
 		}
 		else {
-			verror("could not generate string method `$str_fn_name` for type `$styp`")
+			verror('could not generate string method `$str_fn_name` for type `$styp`')
 		}
 	}
 }
