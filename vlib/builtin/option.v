@@ -87,3 +87,7 @@ pub fn (e &Error) free() {
 pub fn (n &None__) free() {
 	unsafe { n.msg.free() }
 }
+
+pub fn (_ none) str() string {
+	return 'none'
+}
