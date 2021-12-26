@@ -654,7 +654,14 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			node.expected_arg_types << param.typ
 		}
 	}
+	if !c.pref.backend.is_js() && node.args.len > 0 && func.params.len == 0 {
+		c.error('too many arguments in call to `$func.name` (non-js backend: $c.pref.backend)',
+			node.pos)
+	}
 	for i, mut call_arg in node.args {
+		if func.params.len == 0 {
+			continue
+		}
 		param := if func.is_variadic && i >= func.params.len - 1 {
 			func.params[func.params.len - 1]
 		} else {
