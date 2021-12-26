@@ -1,4 +1,4 @@
-// vtest retry: 3
+// vtest retry: 5
 import net
 import os
 
