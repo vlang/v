@@ -654,15 +654,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			node.expected_arg_types << param.typ
 		}
 	}
-	is_js_backend := match c.pref.backend {
-		.js_node, .js_browser, .js_freestanding {
-			true
-		}
-		else {
-			false
-		}
-	}
-	if !is_js_backend && node.args.len > 0 && func.params.len == 0 {
+	if !c.pref.backend.is_js() && node.args.len > 0 && func.params.len == 0 {
 		c.error('too $c.pref.backend many arguments in call to `$func.name`', node.pos)
 	}
 	for i, mut call_arg in node.args {
