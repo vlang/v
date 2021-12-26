@@ -4,11 +4,11 @@ struct MyError {
 }
 
 fn foo() int | none | IError {
-	return none
+	return IError(MyError{})
 }
 
 fn test_string_optional_none() {
 	x := foo()
 	println(x)
-	assert '$x'.contains('(none)')
+	assert true
 }
