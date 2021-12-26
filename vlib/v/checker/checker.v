@@ -3483,7 +3483,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			c.error('cannot cast `$from_type_sym.name` to `$to_type_sym.name`', node.pos)
 		}
 	} else if mut to_type_sym.info is ast.Alias {
-		if !c.check_types(from_type, to_type_sym.info.parent_type) {
+		if !c.check_types(from_type, to_type_sym.info.parent_type) && !(to_type_sym_final.is_int()
+			&& from_type_sym_final.kind == .enum_) {
 			c.error('cannot convert type `$from_type_sym.name` to `$to_type_sym.name` (alias to `$to_type_sym_final.name`)',
 				node.pos)
 		}
