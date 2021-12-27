@@ -1600,85 +1600,6 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 	return to_lock, pos
 }
 
-pub fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
-	// First check everything that applies to both fns and methods
-	// TODO merge logic from method_call and fn_call
-	/*
-	for i, call_arg in node.args {
-		if call_arg.is_mut {
-			c.fail_if_immutable(call_arg.expr)
-			if !arg.is_mut {
-				tok := call_arg.share.str()
-				c.error('`$node.name` parameter `$arg.name` is not `$tok`, `$tok` is not needed`',
-					call_arg.expr.position())
-			} else if arg.typ.share() != call_arg.share {
-				c.error('wrong shared type', call_arg.expr.position())
-			}
-		} else {
-			if arg.is_mut && (!call_arg.is_mut || arg.typ.share() != call_arg.share) {
-				tok := call_arg.share.str()
-				c.error('`$node.name` parameter `$arg.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${i+1}`',
-					call_arg.expr.position())
-			}
-		}
-	}
-	*/
-	// Now call `method_call` or `fn_call` for specific checks.
-	old_inside_fn_arg := c.inside_fn_arg
-	c.inside_fn_arg = true
-	mut continue_check := true
-	typ := if node.is_method {
-		c.method_call(mut node)
-	} else {
-		c.fn_call(mut node, mut continue_check)
-	}
-	if !continue_check {
-		return ast.void_type
-	}
-	c.inside_fn_arg = old_inside_fn_arg
-	// autofree: mark args that have to be freed (after saving them in tmp exprs)
-	free_tmp_arg_vars := c.pref.autofree && !c.is_builtin_mod && node.args.len > 0
-		&& !node.args[0].typ.has_flag(.optional)
-	if free_tmp_arg_vars && !c.inside_const {
-		for i, arg in node.args {
-			if arg.typ != ast.string_type {
-				continue
-			}
-			if arg.expr in [ast.Ident, ast.StringLiteral, ast.SelectorExpr] {
-				// Simple expressions like variables, string literals, selector expressions
-				// (`x.field`) can't result in allocations and don't need to be assigned to
-				// temporary vars.
-				// Only expressions like `str + 'b'` need to be freed.
-				continue
-			}
-			node.args[i].is_tmp_autofree = true
-		}
-		// TODO copy pasta from above
-		if node.receiver_type == ast.string_type
-			&& node.left !in [ast.Ident, ast.StringLiteral, ast.SelectorExpr] {
-			node.free_receiver = true
-		}
-	}
-	c.expected_or_type = node.return_type.clear_flag(.optional)
-	c.stmts_ending_with_expression(node.or_block.stmts)
-	c.expected_or_type = ast.void_type
-	if node.or_block.kind == .propagate && !c.table.cur_fn.return_type.has_flag(.optional)
-		&& !c.inside_const {
-		if !c.table.cur_fn.is_main {
-			c.error('to propagate the optional call, `$c.table.cur_fn.name` must return an optional',
-				node.or_block.pos)
-		}
-	}
-	return typ
-}
-
-fn semicolonize(main string, details string) string {
-	if details == '' {
-		return main
-	}
-	return '$main; $details'
-}
-
 fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos token.Position) bool {
 	$if debug_interface_type_implements ? {
 		eprintln('> type_implements typ: $typ.debug() (`${c.table.type_to_str(typ)}`) | inter_typ: $interface_type.debug() (`${c.table.type_to_str(interface_type)}`)')
@@ -2595,19 +2516,6 @@ fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
 	c.stmts(node.stmts)
 	c.loop_label = prev_loop_label
 	c.in_for_count--
-}
-
-fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
-	typ := c.unwrap_generic(node.typ)
-	sym := c.table.sym(typ)
-	if sym.kind == .placeholder || typ.has_flag(.generic) {
-		c.error('unknown type `$sym.name`', node.typ_pos)
-	}
-	if node.kind == .fields {
-		c.comptime_fields_type[node.val_var] = node.typ
-		c.comptime_fields_default_type = node.typ
-	}
-	c.stmts(node.stmts)
 }
 
 fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
@@ -4820,36 +4728,6 @@ fn (mut c Checker) fetch_field_name(field ast.StructField) string {
 		name = '${name}_id'
 	}
 	return name
-}
-
-fn (mut c Checker) post_process_generic_fns() {
-	// Loop thru each generic function concrete type.
-	// Check each specific fn instantiation.
-	for i in 0 .. c.file.generic_fns.len {
-		mut node := c.file.generic_fns[i]
-		c.mod = node.mod
-		gtypes := c.table.fn_generic_types[node.name]
-		$if trace_post_process_generic_fns ? {
-			eprintln('> post_process_generic_fns $node.mod | $node.name | $gtypes')
-		}
-		for concrete_types in gtypes {
-			c.table.cur_concrete_types = concrete_types
-			c.fn_decl(mut node)
-			if node.name == 'vweb.run' {
-				for ct in concrete_types {
-					if ct !in c.vweb_gen_types {
-						c.vweb_gen_types << ct
-					}
-				}
-			}
-		}
-		c.table.cur_concrete_types = []
-		$if trace_post_process_generic_fns ? {
-			if node.generic_names.len > 0 {
-				eprintln('       > fn_decl node.name: $node.name | generic_names: $node.generic_names | ninstances: $node.ninstances')
-			}
-		}
-	}
 }
 
 fn (mut c Checker) trace(fbase string, message string) {
