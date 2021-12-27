@@ -333,7 +333,18 @@ fn (mut re RE) reset() {
 
 	// init groups array
 	if re.group_count > 0 {
-		re.groups = []int{len: re.group_count * 2, init: -1}
+		if re.groups.len == 0 {
+			// first run alloc memory
+			re.groups = []int{len: re.group_count * 2, init: -1}
+		} else {
+			// subsequent executions, only clean up the memory
+			i = 0
+			for i < re.groups.len {
+				re.groups[i] = -1
+				i++
+			}
+		}
+		
 	}
 
 	// reset group_csave
