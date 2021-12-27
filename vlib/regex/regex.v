@@ -1042,8 +1042,10 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 			re.prog[goto_pc].goto_pc = pc // start goto point to the end group pc
 			// re.prog[goto_pc].group_id = group_count         // id of this group, used for storing data
 
-			re.prog[pc].group_neg = re.prog[goto_pc].group_neg
-			re.prog[pc].rep_min = re.prog[goto_pc].rep_min
+			if re.prog[goto_pc].group_neg == true {
+				re.prog[pc].group_neg = re.prog[goto_pc].group_neg
+				re.prog[pc].rep_min = re.prog[goto_pc].rep_min
+			}
 
 			pc = pc + 1
 			i = i + char_len
@@ -1085,6 +1087,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 			if re.prog[pc - 1].group_neg == true && char_tmp in [`?`, `+`, `*`, `{` ]{
 				return regex.err_neg_group_quantifier, i
 			}
+			
 			match byte(char_tmp) {
 				`?` {
 					// println("q: ${char_tmp:c}")
@@ -1250,6 +1253,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 			dot_char_count++
 			mut pc2 := pc1 + 1
 			for pc2 < pc {
+				// consecutive dot chars is an error
 				if re.prog[pc2].ist == regex.ist_dot_char {
 					return regex.err_syntax_error, 0
 				}
@@ -1291,17 +1295,14 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 	mut last_bsls_char_pc := -1
 	for pc1 < pc {
 		if re.prog[pc1].ist == regex.ist_bsls_char {
-			// println("Dot_char pc: $pc1")
+			//println("bsls_char pc: $pc1")
 			last_bsls_char_pc = pc1
 			bsls_char_count++
 			mut pc2 := pc1 + 1
 			for pc2 < pc {
-				if re.prog[pc2].ist == regex.ist_bsls_char {
-					return regex.err_syntax_error, 0
-				}
 				if re.prog[pc2].ist !in [rune(regex.ist_prog_end), regex.ist_group_end,
 					regex.ist_group_start] {
-					// println("Next dot char check is PC: ${pc2}")
+					//println("Next bsls check is PC: ${pc2}")
 					re.prog[pc1].bsls_check_pc = pc2
 					break
 				}
@@ -2262,7 +2263,13 @@ pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int) (int, int) {
 				}
 
 				tmp_res := re.prog[state.pc].validator(byte(ch))
-				state.match_flag = tmp_res
+				if tmp_res == false {
+					m_state = .ist_quant_n
+					continue
+				}
+				//println("${ch} => ${tmp_res}")
+				
+				state.match_flag = true
 				l_ist = u32(regex.ist_dot_char)
 
 				if state.first_match < 0 {
