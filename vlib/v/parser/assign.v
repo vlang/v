@@ -18,7 +18,7 @@ fn (mut p Parser) assign_stmt() ast.Stmt {
 	return p.partial_assign_stmt(exprs, comments)
 }
 
-const max_expr_level = 2500
+const max_expr_level = 310
 
 fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) ? {
 	p.expr_level++
