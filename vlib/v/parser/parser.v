@@ -32,6 +32,7 @@ mut:
 	table                 &ast.Table
 	language              ast.Language
 	fn_language           ast.Language // .c for `fn C.abcd()` declarations
+	expr_level            int  // prevent too deep recursions for pathological programs
 	inside_vlib_file      bool // true for all vlib/ files
 	inside_test_file      bool // when inside _test.v or _test.vv file
 	inside_if             bool

@@ -18,7 +18,16 @@ fn (mut p Parser) assign_stmt() ast.Stmt {
 	return p.partial_assign_stmt(exprs, comments)
 }
 
+const max_expr_level = 2500
+
 fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) ? {
+	p.expr_level++
+	defer {
+		p.expr_level--
+	}
+	if p.expr_level > parser.max_expr_level {
+		return error('expr level > $parser.max_expr_level')
+	}
 	match val {
 		ast.Ident {
 			for expr in exprs {
@@ -138,9 +147,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 	if op == .decl_assign {
 		// a, b := a + 1, b
 		for r in right {
-			p.check_undefined_variables(left, r) or {
-				return p.error('check_undefined_variables failed')
-			}
+			p.check_undefined_variables(left, r) or { return p.error_with_pos(err.msg, pos) }
 		}
 	} else if left.len > 1 {
 		// a, b = b, a
