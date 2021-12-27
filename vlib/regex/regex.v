@@ -17,30 +17,30 @@ module regex
 import strings
 
 pub const (
-	v_regex_version        = '1.0 alpha' // regex module version
+	v_regex_version          = '1.0 alpha' // regex module version
 
-	max_code_len           = 256 // default small base code len for the regex programs
-	max_quantifier         = 1073741824 // default max repetitions allowed for the quantifiers = 2^30
+	max_code_len             = 256 // default small base code len for the regex programs
+	max_quantifier           = 1073741824 // default max repetitions allowed for the quantifiers = 2^30
 	// spaces chars (here only westerns!!) TODO: manage all the spaces from unicode
-	spaces                 = [` `, `\t`, `\n`, `\r`, `\v`, `\f`]
+	spaces                   = [` `, `\t`, `\n`, `\r`, `\v`, `\f`]
 	// new line chars for now only '\n'
-	new_line_list          = [`\n`, `\r`]
+	new_line_list            = [`\n`, `\r`]
 
 	// Results
-	no_match_found         = -1
+	no_match_found           = -1
 
 	// Errors
-	compile_ok             = 0 // the regex string compiled, all ok
-	err_char_unknown       = -2 // the char used is unknow to the system
-	err_undefined          = -3 // the compiler symbol is undefined
-	err_internal_error     = -4 // Bug in the regex system!!
-	err_cc_alloc_overflow  = -5 // memory for char class full!!
-	err_syntax_error       = -6 // syntax error in regex compiling
-	err_groups_overflow    = -7 // max number of groups reached
-	err_groups_max_nested  = -8 // max number of nested group reached
-	err_group_not_balanced = -9 // group not balanced
-	err_group_qm_notation  = -10 // group invalid notation
-	err_invalid_or_with_cc = -11 // invalid or on two consecutive char class
+	compile_ok               = 0 // the regex string compiled, all ok
+	err_char_unknown         = -2 // the char used is unknow to the system
+	err_undefined            = -3 // the compiler symbol is undefined
+	err_internal_error       = -4 // Bug in the regex system!!
+	err_cc_alloc_overflow    = -5 // memory for char class full!!
+	err_syntax_error         = -6 // syntax error in regex compiling
+	err_groups_overflow      = -7 // max number of groups reached
+	err_groups_max_nested    = -8 // max number of nested group reached
+	err_group_not_balanced   = -9 // group not balanced
+	err_group_qm_notation    = -10 // group invalid notation
+	err_invalid_or_with_cc   = -11 // invalid or on two consecutive char class
 	err_neg_group_quantifier = -12 // negation groups can not have quantifier
 )
 
@@ -199,7 +199,7 @@ pub fn (re RE) get_parse_error_string(err int) string {
 		regex.err_group_not_balanced { return 'err_group_not_balanced' }
 		regex.err_group_qm_notation { return 'err_group_qm_notation' }
 		regex.err_invalid_or_with_cc { return 'err_invalid_or_with_cc' }
-		regex.err_neg_group_quantifier { return 'err_neg_group_quantifier'}
+		regex.err_neg_group_quantifier { return 'err_neg_group_quantifier' }
 		else { return 'err_unknown' }
 	}
 }
@@ -249,7 +249,7 @@ mut:
 	validator FnValidator
 	// groups variables
 	group_neg bool // negation flag for the group, 0 => no negation > 0 => negataion
-	group_rep int // repetition of the group
+	group_rep int  // repetition of the group
 	group_id  int = -1 // id of the group
 	goto_pc   int = -1 // jump to this PC if is needed
 	// OR flag for the token
@@ -348,7 +348,6 @@ fn (mut re RE) reset() {
 				i++
 			}
 		}
-		
 	}
 
 	// reset group_csave
@@ -970,7 +969,8 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 				return regex.err_groups_max_nested, i + 1
 			}
 
-			tmp_res, cgroup_flag, negate_flag, cgroup_name, next_i := re.parse_groups(in_txt, i)
+			tmp_res, cgroup_flag, negate_flag, cgroup_name, next_i := re.parse_groups(in_txt,
+				i)
 
 			// manage question mark format error
 			if tmp_res < -1 {
@@ -1004,7 +1004,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 			re.prog[pc].ist = u32(0) | regex.ist_group_start
 			re.prog[pc].rep_min = 1
 			re.prog[pc].rep_max = 1
-			
+
 			// manage negation groups
 			if negate_flag == true {
 				re.prog[pc].group_neg = true
@@ -1082,12 +1082,12 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 				char_next, char_next_len = re.get_char(in_txt, i + char_len)
 			}
 			mut quant_flag := true
-			
+
 			// negation groups can not have quantifiers
-			if re.prog[pc - 1].group_neg == true && char_tmp in [`?`, `+`, `*`, `{` ]{
+			if re.prog[pc - 1].group_neg == true && char_tmp in [`?`, `+`, `*`, `{`] {
 				return regex.err_neg_group_quantifier, i
 			}
-			
+
 			match byte(char_tmp) {
 				`?` {
 					// println("q: ${char_tmp:c}")
@@ -1295,14 +1295,14 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 	mut last_bsls_char_pc := -1
 	for pc1 < pc {
 		if re.prog[pc1].ist == regex.ist_bsls_char {
-			//println("bsls_char pc: $pc1")
+			// println("bsls_char pc: $pc1")
 			last_bsls_char_pc = pc1
 			bsls_char_count++
 			mut pc2 := pc1 + 1
 			for pc2 < pc {
 				if re.prog[pc2].ist !in [rune(regex.ist_prog_end), regex.ist_group_end,
 					regex.ist_group_start] {
-					//println("Next bsls check is PC: ${pc2}")
+					// println("Next bsls check is PC: ${pc2}")
 					re.prog[pc1].bsls_check_pc = pc2
 					break
 				}
@@ -1488,16 +1488,16 @@ pub fn (re RE) get_query() string {
 		// GROUP start
 		if ch == regex.ist_group_start {
 			if re.debug > 0 {
-				res.write_string('#${tk.group_id}')
+				res.write_string('#$tk.group_id')
 			}
 			res.write_string('(')
-			
+
 			if tk.group_neg == true {
 				res.write_string('?!') // negation group
 			} else if tk.group_id == -1 {
 				res.write_string('?:') // non capturing group
 			}
-			
+
 			for x in re.group_map.keys() {
 				if re.group_map[x] == (tk.group_id + 1) {
 					res.write_string('?P<$x>')
@@ -2267,8 +2267,8 @@ pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int) (int, int) {
 					m_state = .ist_quant_n
 					continue
 				}
-				//println("${ch} => ${tmp_res}")
-				
+				// println("${ch} => ${tmp_res}")
+
 				state.match_flag = true
 				l_ist = u32(regex.ist_dot_char)
 
@@ -2282,7 +2282,6 @@ pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int) (int, int) {
 				m_state = .ist_quant_p
 				continue
 			}
-
 			// simple char IST
 			else if ist == regex.ist_simple_char {
 				// println("ist_simple_char")
@@ -2387,7 +2386,6 @@ pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int) (int, int) {
 		}
 		// ist_quant_pg => quantifier positive test on group
 		else if m_state == .ist_quant_pg {
-
 			// println(".ist_quant_pg")
 			mut tmp_pc := state.pc
 			if state.group_index >= 0 {
@@ -2395,11 +2393,11 @@ pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int) (int, int) {
 			}
 
 			if re.prog[tmp_pc].group_neg == true {
-				//println("***** Negation of the group")
+				// println("***** Negation of the group")
 				result = regex.no_match_found
 				m_state = .stop
 				continue
-			} 
+			}
 
 			rep := re.prog[tmp_pc].group_rep
 

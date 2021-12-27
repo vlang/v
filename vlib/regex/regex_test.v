@@ -760,3 +760,27 @@ fn test_long_query() {
     //println("$start, $end")
     assert start >= 0 && end == base_string.len
 }
+
+
+struct Test_negation_group {
+	src string
+	res bool 
+}
+const(
+	negation_groups = [
+        Test_negation_group{'automobile',false},
+        Test_negation_group{'botomobile',true},
+        Test_negation_group{'auto_caravan',false},
+        Test_negation_group{'moto_mobile',true},
+        Test_negation_group{'pippole',true},
+        Test_negation_group{'boring test',false},
+    ]
+)
+fn test_negation_groups() {
+	mut query := r"(?!auto)\w+le"
+    mut re := regex.regex_opt(query) or { panic(err) }
+	for test in negation_groups {
+        start, end := re.match_string(test.src)
+        assert (start >= 0) ==  test.res
+    }
+}
