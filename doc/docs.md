@@ -850,7 +850,6 @@ println(names.len) // "3"
 println('Alex' in names) // "false"
 ```
 
-
 #### Array methods
 
 All arrays can be easily printed with `println(arr)` and converted to a string
@@ -886,20 +885,6 @@ println(upper_fn) // ['HELLO', 'WORLD']
 ```
 
 `it` is a builtin variable which refers to element currently being processed in filter/map methods.
-
-You can concatenate the calls of array methods like `.filter()` and `.map()` and use
-the `it` builtin variable:
-
-```v
-fn main() {
-    // using filter, map and negatives array slices
-    a := ['pippo.jpg', '01.bmp', '_v.txt', 'img_02.jpg', 'img_01.JPG']
-    res := a.filter(it#[-4..].to_lower() == '.jpg').map(fn (w string) (string, int) {
-        return w.to_upper(), w.len
-    })
-    // [('PIPPO.JPG', 9), ('IMG_02.JPG', 10), ('IMG_01.JPG', 10)]
-}
-```
 
 Additionally, `.any()` and `.all()` can be used to conveniently test
 for elements that satisfy a condition.
@@ -1065,6 +1050,20 @@ println(a#[..-3]) // [0, 1, 2, 3, 4, 5, 6]
 println(a#[-20..-10]) // []
 println(a#[20..10]) // []
 println(a#[20..30]) // []
+```
+
+### Array methods concatenation
+You can concatenate the calls of array methods like `.filter()` and `.map()` and use
+the `it` built in variable to achieving a classic `map/filter` functional paradigm:
+
+```v
+// using filter, map and negatives array slices
+a := ['pippo.jpg', '01.bmp', '_v.txt', 'img_02.jpg', 'img_01.JPG']
+res := a.filter(it#[-4..].to_lower() == '.jpg').map(fn (w string) (string, int) {
+    return w.to_upper(), w.len
+})
+// [('PIPPO.JPG', 9), ('IMG_02.JPG', 10), ('IMG_01.JPG', 10)]
+
 ```
 
 ### Fixed size arrays
