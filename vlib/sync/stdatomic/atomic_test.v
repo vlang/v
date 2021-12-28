@@ -1,9 +1,7 @@
-import sync.atomic2
 import sync
+import sync.stdatomic
 
-const (
-	iterations_per_cycle = 100_000
-)
+const iterations_per_cycle = 100_000
 
 struct Counter {
 mut:
@@ -38,60 +36,60 @@ fn test_count_10_times_1_cycle_should_not_be_10_cycles_without_sync() {
 	eprintln('without synchronization the counter is: ${counter.counter:10} , expectedly != ${desired_iterations:10}')
 }
 
-fn test_count_plus_one_u64() {
+fn test_atomic_count_plus_one_u64() {
 	mut c := u64(0)
-	atomic2.add_u64(&c, 1)
-	assert atomic2.load_u64(&c) == 1
+	stdatomic.add_u64(&c, 1)
+	assert stdatomic.load_u64(&c) == 1
 }
 
-fn test_count_plus_one_i64() {
+fn test_atomic_count_plus_one_i64() {
 	mut c := i64(0)
-	atomic2.add_i64(&c, 1)
-	assert atomic2.load_i64(&c) == 1
+	stdatomic.add_i64(&c, 1)
+	assert stdatomic.load_i64(&c) == 1
 }
 
-fn test_count_plus_greater_than_one_u64() {
+fn test_atomic_count_plus_greater_than_one_u64() {
 	mut c := u64(0)
-	atomic2.add_u64(&c, 10)
-	assert atomic2.load_u64(&c) == 10
+	stdatomic.add_u64(&c, 10)
+	assert stdatomic.load_u64(&c) == 10
 }
 
-fn test_count_plus_greater_than_one_i64() {
+fn test_atomic_count_plus_greater_than_one_i64() {
 	mut c := i64(0)
-	atomic2.add_i64(&c, 10)
-	assert atomic2.load_i64(&c) == 10
+	stdatomic.add_i64(&c, 10)
+	assert stdatomic.load_i64(&c) == 10
 }
 
-fn test_count_minus_one_u64() {
+fn test_atomic_count_minus_one_u64() {
 	mut c := u64(1)
-	atomic2.sub_u64(&c, 1)
-	assert atomic2.load_u64(&c) == 0
+	stdatomic.sub_u64(&c, 1)
+	assert stdatomic.load_u64(&c) == 0
 }
 
-fn test_count_minus_one_i64() {
+fn test_atomic_count_minus_one_i64() {
 	mut c := i64(0)
-	atomic2.sub_i64(&c, 1)
-	assert atomic2.load_i64(&c) == -1
+	stdatomic.sub_i64(&c, 1)
+	assert stdatomic.load_i64(&c) == -1
 }
 
-fn test_count_minus_greater_than_one_u64() {
+fn test_atomic_count_minus_greater_than_one_u64() {
 	mut c := u64(0)
-	atomic2.store_u64(&c, 10)
-	atomic2.sub_u64(&c, 10)
-	assert atomic2.load_u64(&c) == 0
+	stdatomic.store_u64(&c, 10)
+	stdatomic.sub_u64(&c, 10)
+	assert stdatomic.load_u64(&c) == 0
 }
 
-fn test_count_minus_greater_than_one_i64() {
+fn test_atomic_count_minus_greater_than_one_i64() {
 	mut c := i64(0)
-	atomic2.store_i64(&c, 10)
-	atomic2.sub_i64(&c, 20)
-	assert atomic2.load_i64(&c) == -10
+	stdatomic.store_i64(&c, 10)
+	stdatomic.sub_i64(&c, 20)
+	assert stdatomic.load_i64(&c) == -10
 }
 
 // count_one_cycle counts the common counter iterations_per_cycle times in thread-safe way
 fn count_one_cycle(mut counter Counter, mut group sync.WaitGroup) {
 	for i := 0; i < iterations_per_cycle; i++ {
-		atomic2.add_u64(&counter.counter, 1)
+		stdatomic.add_u64(&counter.counter, 1)
 	}
 	group.done()
 }
