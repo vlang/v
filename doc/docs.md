@@ -1032,7 +1032,7 @@ println(b) // `[2, 3, 13]`
 
 ### Slices with negative indexes
 
-V supports array and strings slices with negative indexes.
+V supports array and string slices with negative indexes.
 Negative indexing starts from the end of the string towards the start,
 for example `-3` is equal to `array.len - 3`. 
 Negative slices have a different syntax from the normal ones, you need
