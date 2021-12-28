@@ -1030,6 +1030,42 @@ println(a) // `[2, 2, 2, 13, 2, 3, 4]`
 println(b) // `[2, 3, 13]`
 ```
 
+### Slices with negative indexes
+
+V supports array and string slices with negative indexes.
+Negative indexing starts from the end of the array towards the start,
+for example `-3` is equal to `array.len - 3`. 
+Negative slices have a different syntax from normal slices, i.e. you need
+to add a `gate` between the array name and the square bracket: `a#[..-3]`.
+The `gate` specifies that this is a different type of slice and remember that
+the result is "locked" inside the array.
+The returned slice is always a valid array, though it may be empty:
+```v
+a := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+println(a#[-3..]) // [7, 8, 9]
+println(a#[-20..]) // [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+println(a#[-20..-8]) // [0, 1]
+println(a#[..-3]) // [0, 1, 2, 3, 4, 5, 6]
+
+// empty arrays
+println(a#[-20..-10]) // []
+println(a#[20..10]) // []
+println(a#[20..30]) // []
+```
+
+### Array method chaining
+You can chain the calls of array methods like `.filter()` and `.map()` and use
+the `it` built-in variable to achieve a classic `map/filter` functional paradigm:
+
+```v
+// using filter, map and negatives array slices
+a := ['pippo.jpg', '01.bmp', '_v.txt', 'img_02.jpg', 'img_01.JPG']
+res := a.filter(it#[-4..].to_lower() == '.jpg').map(fn (w string) (string, int) {
+	return w.to_upper(), w.len
+})
+// [('PIPPO.JPG', 9), ('IMG_02.JPG', 10), ('IMG_01.JPG', 10)]
+```
+
 ### Fixed size arrays
 
 V also supports arrays with fixed size. Unlike ordinary arrays, their
