@@ -887,6 +887,18 @@ println(upper_fn) // ['HELLO', 'WORLD']
 
 `it` is a builtin variable which refers to element currently being processed in filter/map methods.
 
+You can concatenate the calls of array methods like `.filter()` and `.map()` and use
+the `it` builtin variable:
+
+```v
+// using filter, map and negatives array slices
+b := ['pippo.jpg', '01.bmp', '_v.txt', 'img_02.jpg', 'img_01.JPG']
+res := b.filter(it#[-4..].to_lower() == '.jpg').map(fn (w string) (string, int) {
+    return w.to_upper(), w.len
+})
+// [('PIPPO.JPG', 9), ('IMG_02.JPG', 10), ('IMG_01.JPG', 10)]
+```
+
 Additionally, `.any()` and `.all()` can be used to conveniently test
 for elements that satisfy a condition.
 
@@ -1028,6 +1040,29 @@ a << 4
 b[1] = 3 // no change in `a`
 println(a) // `[2, 2, 2, 13, 2, 3, 4]`
 println(b) // `[2, 3, 13]`
+```
+
+### Slices with negative indexes
+
+V support for array and strings slices with negative indexes.
+They act like if the index start point is from the length of the string
+towards the 0, for example `-3` is equal to `array.len - 3`.
+A negative slices has a different syntax from the normal ones, you need
+to add a `gate` between the array name and the square bracket: `a#[..-3]`.
+The `gate` specify that this is a different type of slices and remember that
+the result is "locked" inside the array.
+The retuned slices is always a valid array, at least it is empty:
+```v
+a := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+println(a#[-3..]) // [7, 8, 9]
+println(a#[-20..]) // [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+println(a#[-20..-8]) // [0, 1]
+println(a#[..-3]) // [0, 1, 2, 3, 4, 5, 6]
+
+// empty arrays
+println(a#[-20..-10]) // []
+println(a#[20..10]) // []
+println(a#[20..30]) // []
 ```
 
 ### Fixed size arrays
