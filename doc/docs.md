@@ -894,7 +894,7 @@ the `it` builtin variable:
 // using filter, map and negatives array slices
 b := ['pippo.jpg', '01.bmp', '_v.txt', 'img_02.jpg', 'img_01.JPG']
 res := b.filter(it#[-4..].to_lower() == '.jpg').map(fn (w string) (string, int) {
-    return w.to_upper(), w.len
+	return w.to_upper(), w.len
 })
 // [('PIPPO.JPG', 9), ('IMG_02.JPG', 10), ('IMG_01.JPG', 10)]
 ```
