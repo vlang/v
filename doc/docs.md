@@ -1039,7 +1039,7 @@ Negative slices have a different syntax from the normal ones, you need
 to add a `gate` between the array name and the square bracket: `a#[..-3]`.
 The `gate` specifies that this is a different type of slice and remember that
 the result is "locked" inside the array.
-The retuned slice is always a valid array, though it may be empty:
+The returned slice is always a valid array, though it may be empty:
 ```v
 a := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 println(a#[-3..]) // [7, 8, 9]
@@ -1053,7 +1053,7 @@ println(a#[20..10]) // []
 println(a#[20..30]) // []
 ```
 
-### Array methods concatenation
+### Array methods chaining
 You can concatenate the calls of array methods like `.filter()` and `.map()` and use
 the `it` built-in variable to achieve a classic `map/filter` functional paradigm:
 
