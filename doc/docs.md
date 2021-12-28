@@ -1053,8 +1053,8 @@ println(a#[20..10]) // []
 println(a#[20..30]) // []
 ```
 
-### Array methods chaining
-You can concatenate the calls of array methods like `.filter()` and `.map()` and use
+### Array method chaining
+You can chain the calls of array methods like `.filter()` and `.map()` and use
 the `it` built-in variable to achieve a classic `map/filter` functional paradigm:
 
 ```v
