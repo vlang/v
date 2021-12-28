@@ -222,8 +222,9 @@ fn (mut c Checker) resolve_generic_interface(typ ast.Type, interface_type ast.Ty
 			}
 			// add concrete types to method
 			for imethod in inter_sym.info.methods {
-				if inferred_types !in c.table.fn_generic_types[imethod.name] {
-					c.table.fn_generic_types[imethod.name] << inferred_types
+				im_fkey := imethod.fkey()
+				if inferred_types !in c.table.fn_generic_types[im_fkey] {
+					c.table.fn_generic_types[im_fkey] << inferred_types
 				}
 			}
 			inter_sym.info.concrete_types = inferred_types

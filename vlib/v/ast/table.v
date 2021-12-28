@@ -89,6 +89,7 @@ pub:
 	is_main         bool // `fn main(){}`
 	is_test         bool // `fn test_abc(){}`
 	is_keep_alive   bool // passed memory must not be freed (by GC) before function returns
+	is_method       bool // true for `fn (x T) name()`, and for interface declarations (which are also for methods)
 	no_body         bool // a pure declaration like `fn abc(x int)`; used in .vh files, C./JS. fns.
 	mod             string
 	file            string
@@ -97,6 +98,7 @@ pub:
 	return_type_pos token.Position
 pub mut:
 	return_type    Type
+	receiver_type  Type // != 0, when .is_method == true
 	name           string
 	params         []Param
 	source_fn      voidptr // set in the checker, while processing fn declarations
@@ -1608,7 +1610,7 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 				}
 				if final_concrete_types.len > 0 {
 					for method in ts.methods {
-						t.register_fn_concrete_types(method.name, final_concrete_types)
+						t.register_fn_concrete_types(method.fkey(), final_concrete_types)
 					}
 				}
 			}
@@ -1730,7 +1732,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 						parent_sym := t.sym(parent_info.parent_type)
 						for method in parent_sym.methods {
 							if method.generic_names.len == info.concrete_types.len {
-								t.register_fn_concrete_types(method.name, info.concrete_types)
+								t.register_fn_concrete_types(method.fkey(), info.concrete_types)
 							}
 						}
 					} else {

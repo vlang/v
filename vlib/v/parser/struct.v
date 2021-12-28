@@ -584,6 +584,8 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 				return_type: method.return_type
 				is_variadic: is_variadic
 				is_pub: true
+				is_method: true
+				receiver_type: typ
 			}
 			ts.register_method(tmethod)
 			info.methods << tmethod

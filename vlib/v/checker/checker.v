@@ -290,12 +290,20 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	c.timers.start('checker_post_process_generic_fns')
 	last_file := c.file
 	// post process generic functions. must be done after all files have been
-	// checked, to ensure all generic calls are processed as this information
-	// is needed when the generic type is auto inferred from the call argument
-	// Check more times if there are more new registered fn concrete types
+	// checked, to ensure all generic calls are processed, as this information
+	// is needed when the generic type is auto inferred from the call argument.
+	// we may have to loop several times, if there were more concrete types found.
+	mut post_process_generic_fns_iterations := 0
 	for {
+		$if trace_post_process_generic_fns_loop ? {
+			eprintln('>>>>>>>>> recheck_generic_fns loop iteration: $post_process_generic_fns_iterations')
+		}
 		for file in ast_files {
 			if file.generic_fns.len > 0 {
+				$if trace_post_process_generic_fns_loop ? {
+					eprintln('>> file.path: ${file.path:-40} | file.generic_fns:' +
+						file.generic_fns.map(it.name).str())
+				}
 				c.change_current_file(file)
 				c.post_process_generic_fns()
 			}
@@ -304,6 +312,10 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 			break
 		}
 		c.need_recheck_generic_fns = false
+		post_process_generic_fns_iterations++
+	}
+	$if trace_post_process_generic_fns_loop ? {
+		eprintln('>>>>>>>>> recheck_generic_fns loop done, iteration: $post_process_generic_fns_iterations')
 	}
 	// restore the original c.file && c.mod after post processing
 	c.change_current_file(last_file)

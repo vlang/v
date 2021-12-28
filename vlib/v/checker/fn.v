@@ -7,6 +7,11 @@ import v.util
 import v.token
 
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
+	$if trace_post_process_generic_fns_types ? {
+		if node.generic_names.len > 0 {
+			eprintln('>>> post processing node.name: ${node.name:-30} | $node.generic_names <=> $c.table.cur_concrete_types')
+		}
+	}
 	if node.generic_names.len > 0 && c.table.cur_concrete_types.len == 0 {
 		// Just remember the generic function for now.
 		// It will be processed later in c.post_process_generic_fns,
@@ -429,13 +434,14 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 	if concrete_types.len > 0 {
 		mut no_exists := true
 		if fn_name.contains('.') {
-			no_exists = c.table.register_fn_concrete_types(fn_name, concrete_types)
+			no_exists = c.table.register_fn_concrete_types(node.fkey(), concrete_types)
 		} else {
-			no_exists = c.table.register_fn_concrete_types(c.mod + '.' + fn_name, concrete_types)
+			no_exists = c.table.register_fn_concrete_types(c.mod + '.' + node.fkey(),
+				concrete_types)
 			// if the generic fn does not exist in the current fn calling module, continue
 			// to look in builtin module
 			if !no_exists {
-				no_exists = c.table.register_fn_concrete_types(fn_name, concrete_types)
+				no_exists = c.table.register_fn_concrete_types(node.fkey(), concrete_types)
 			}
 		}
 		if no_exists {
@@ -579,10 +585,12 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 	}
 	if !found && c.pref.is_vsh {
+		// TOOD: test this hack more extensively
 		os_name := 'os.$fn_name'
 		if f := c.table.find_fn(os_name) {
 			if f.generic_names.len == node.concrete_types.len {
-				c.table.fn_generic_types[os_name] = c.table.fn_generic_types['${node.mod}.$node.name']
+				node_alias_name := node.fkey()
+				c.table.fn_generic_types[os_name] = c.table.fn_generic_types[node_alias_name]
 			}
 			node.name = os_name
 			found = true
@@ -1009,7 +1017,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 	}
 	if concrete_types.len > 0 {
-		if c.table.register_fn_concrete_types(node.name, concrete_types) {
+		if c.table.register_fn_concrete_types(node.fkey(), concrete_types) {
 			c.need_recheck_generic_fns = true
 		}
 	}
@@ -1298,6 +1306,10 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			// no type arguments given in call, attempt implicit instantiation
 			c.infer_fn_generic_types(method, mut node)
 			concrete_types = node.concrete_types
+		} else {
+			if node.concrete_types.len > 0 && !node.concrete_types[0].has_flag(.generic) {
+				c.table.register_fn_concrete_types(method.fkey(), node.concrete_types)
+			}
 		}
 		// resolve return generics struct to concrete type
 		if method.generic_names.len > 0 && method.return_type.has_flag(.generic)
@@ -1431,9 +1443,10 @@ fn (mut c Checker) post_process_generic_fns() {
 	for i in 0 .. c.file.generic_fns.len {
 		mut node := c.file.generic_fns[i]
 		c.mod = node.mod
-		gtypes := c.table.fn_generic_types[node.name]
+		fkey := node.fkey()
+		gtypes := c.table.fn_generic_types[fkey]
 		$if trace_post_process_generic_fns ? {
-			eprintln('> post_process_generic_fns $node.mod | $node.name | $gtypes')
+			eprintln('> post_process_generic_fns $node.mod | $node.name | fkey: $fkey | gtypes: $gtypes')
 		}
 		for concrete_types in gtypes {
 			c.table.cur_concrete_types = concrete_types

@@ -404,6 +404,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_main: is_main
 			is_test: is_test
 			is_keep_alive: is_keep_alive
+			is_method: true
+			receiver_type: rec.typ
 			//
 			attrs: p.attrs
 			is_conditional: conditional_ctdefine_idx != -1
@@ -452,6 +454,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_main: is_main
 			is_test: is_test
 			is_keep_alive: is_keep_alive
+			is_method: false
 			//
 			attrs: p.attrs
 			is_conditional: conditional_ctdefine_idx != -1
@@ -531,7 +534,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		label_names: p.label_names
 	}
 	if generic_names.len > 0 {
-		p.table.register_fn_generic_types(name)
+		p.table.register_fn_generic_types(fn_decl.fkey())
 	}
 	p.label_names = []
 	p.close_scope()
@@ -679,6 +682,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		params: args
 		is_variadic: is_variadic
 		return_type: return_type
+		is_method: false
 	}
 	name := 'anon_fn_${p.unique_prefix}_${p.table.fn_type_signature(func)}_$p.tok.pos'
 	keep_fn_name := p.cur_fn_name

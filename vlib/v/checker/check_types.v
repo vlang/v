@@ -851,7 +851,7 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 		node.concrete_types << typ
 	}
 
-	if c.table.register_fn_concrete_types(func.name, inferred_types) {
+	if c.table.register_fn_concrete_types(func.fkey(), inferred_types) {
 		c.need_recheck_generic_fns = true
 	}
 }

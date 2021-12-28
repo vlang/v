@@ -252,6 +252,7 @@ pub fn (mut p Parser) parse_fn_type(name string) ast.Type {
 		is_variadic: is_variadic
 		return_type: return_type
 		return_type_pos: return_type_pos
+		is_method: false
 	}
 	// MapFooFn typedefs are manually added in cheaders.v
 	// because typedefs get generated after the map struct is generated

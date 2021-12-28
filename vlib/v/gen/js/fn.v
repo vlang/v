@@ -569,7 +569,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 	node := it
 	if node.generic_names.len > 0 && g.cur_concrete_types.len == 0 { // need the cur_concrete_type check to avoid inf. recursion
 		// loop thru each generic type and generate a function
-		for concrete_types in g.table.fn_generic_types[node.name] {
+		for concrete_types in g.table.fn_generic_types[node.fkey()] {
 			if g.pref.is_verbose {
 				syms := concrete_types.map(g.table.sym(it))
 				the_type := syms.map(it.name).join(', ')

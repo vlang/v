@@ -475,6 +475,12 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	b.writeln('\n// THE END.')
 	g.timers.show('cgen common')
 	res := b.str()
+	$if trace_all_generic_fn_keys ? {
+		gkeys := g.table.fn_generic_types.keys()
+		for gkey in gkeys {
+			eprintln('>> g.table.fn_generic_types key: $gkey')
+		}
+	}
 	unsafe { b.free() }
 	unsafe { g.free_builders() }
 	return res
