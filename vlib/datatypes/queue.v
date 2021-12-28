@@ -15,9 +15,14 @@ pub fn (queue Queue<T>) len() int {
 	return queue.elements.len()
 }
 
-// peek returns the head of the queue
+// peek returns the head of the queue (first element added)
 pub fn (queue Queue<T>) peek() ?T {
 	return if !queue.is_empty() { queue.elements.first() ? } else { error('Queue is empty') }
+}
+
+// last returns the tail of the queue (last element added)
+pub fn (queue Queue<T>) last() ?T {
+	return if !queue.is_empty() { queue.elements.last() ? } else { error('Queue is empty') }
 }
 
 // push adds an element to the tail of the queue

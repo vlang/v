@@ -27,6 +27,17 @@ fn test_peek() ? {
 	assert false
 }
 
+fn test_last() ? {
+	mut queue := Queue<int>{}
+	queue.push(1)
+	assert queue.last() ? == 1
+	queue.push(2)
+	assert queue.last() ? == 2
+	queue = Queue<int>{}
+	queue.last() or { return }
+	assert false
+}
+
 fn test_push() ? {
 	mut queue := Queue<int>{}
 	queue.push(1)
