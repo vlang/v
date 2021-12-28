@@ -3447,7 +3447,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	} else if from_type_sym.kind == .array_fixed && !from_type.is_ptr() {
 		c.warn('cannot cast a fixed array (use e.g. `&arr[0]` instead)', node.pos)
 	} else if from_type_sym_final.kind == .string && to_type_sym_final.is_number()
-		&& to_type_sym_final.kind !in [.rune, .bool] {
+		&& to_type_sym_final.kind != .rune {
 		snexpr := node.expr.str()
 		c.error('cannot cast string to `$to_type_sym.name`, use `${snexpr}.${to_type_sym_final.name}()` instead.',
 			node.pos)
