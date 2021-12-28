@@ -1032,13 +1032,13 @@ println(b) // `[2, 3, 13]`
 ### Slices with negative indexes
 
 V support for array and strings slices with negative indexes.
-They act like if the index start point is from the length of the string
-towards the 0, for example `-3` is equal to `array.len - 3`.
-A negative slices has a different syntax from the normal ones, you need
+They act, as if indexing starts from the end of the string
+towards the start, for example `-3` is equal to `array.len - 3`.
+Negative slices have a different syntax from the normal ones, you need
 to add a `gate` between the array name and the square bracket: `a#[..-3]`.
 The `gate` specify that this is a different type of slices and remember that
 the result is "locked" inside the array.
-The retuned slices is always a valid array, at least it is empty:
+The retuned slice is always a valid array, at least it is empty:
 ```v
 a := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 println(a#[-3..]) // [7, 8, 9]
