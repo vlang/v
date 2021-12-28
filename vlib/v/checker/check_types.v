@@ -16,12 +16,24 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 			return true
 		}
 		if expected.is_any_kind_of_pointer() { //&& !got.is_any_kind_of_pointer() {
-			// if true {
-			// return true
-			//}
-			deref := expected.deref()
+			// Allow `int` as `&i8` etc in C code.
+			// deref := expected.deref()
+			deref := expected.set_nr_muls(0)
 			got_sym := c.table.sym(got)
 			if deref.is_number() && (got_sym.is_number() || got_sym.kind == .enum_) {
+				return true
+			}
+		}
+		got_sym := c.table.sym(got)
+		expected_sym := c.table.sym(expected)
+		if got_sym.kind == .enum_ {
+			// Allow ints as enums
+			if expected_sym.is_number() {
+				return true
+			}
+		} else if got_sym.kind == .array_fixed {
+			// Allow fixed arrays as `&i8` etc
+			if expected_sym.is_number() {
 				return true
 			}
 		}

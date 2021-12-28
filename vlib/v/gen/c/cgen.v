@@ -3315,18 +3315,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.selector_expr(node)
 		}
 		ast.SizeOf {
-			typ := if node.typ == g.field_data_type {
-				g.comptime_for_field_value.typ
-			} else {
-				node.typ
-			}
-			node_typ := g.unwrap_generic(typ)
-			sym := g.table.sym(node_typ)
-			if sym.language == .v && sym.kind in [.placeholder, .any] {
-				g.error('unknown type `$sym.name`', node.pos)
-			}
-			styp := g.typ(node_typ)
-			g.write('sizeof(${util.no_dots(styp)})')
+			g.size_of(node)
 		}
 		ast.SqlExpr {
 			g.sql_select_expr(node)
@@ -6186,6 +6175,17 @@ fn (g &Gen) get_all_test_function_names() []string {
 		all_tfuncs << tsuite_end
 	}
 	return all_tfuncs
+}
+
+fn (mut g Gen) size_of(node ast.SizeOf) {
+	typ := if node.typ == g.field_data_type { g.comptime_for_field_value.typ } else { node.typ }
+	node_typ := g.unwrap_generic(typ)
+	sym := g.table.sym(node_typ)
+	if sym.language == .v && sym.kind in [.placeholder, .any] {
+		g.error('unknown type `$sym.name`', node.pos)
+	}
+	styp := g.typ(node_typ)
+	g.write('sizeof(${util.no_dots(styp)})')
 }
 
 fn (g &Gen) is_importing_os() bool {

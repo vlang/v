@@ -839,6 +839,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				continue
 			}
 			if c.pref.translated {
+				// TODO duplicated logic in check_types() (check_types.v)
 				// Allow enums to be used as ints and vice versa in translated code
 				if param.typ == ast.int_type && typ_sym.kind == .enum_ {
 					continue
@@ -866,6 +867,10 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				// Allow `[32]i8` as `&i8` etc
 				if (typ_sym.kind == .array_fixed && param_is_number)
 					|| (param_typ_sym.kind == .array_fixed && typ_is_number) {
+					continue
+				}
+				// Allow `int` as `&i8`
+				if param.typ.is_any_kind_of_pointer() && typ_is_number {
 					continue
 				}
 			}

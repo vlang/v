@@ -3603,6 +3603,9 @@ pub fn (mut p Parser) mark_var_as_used(varname string) bool {
 				obj.is_used = true
 				return true
 			}
+			// ast.ConstField {
+			// return true
+			//}
 			else {}
 		}
 	}

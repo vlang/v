@@ -196,7 +196,8 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 			p.check(.lpar)
 			pos := p.tok.position()
 			is_known_var := p.mark_var_as_used(p.tok.lit)
-			// assume mod. prefix leads to a type
+				|| p.table.global_scope.known_const(p.mod + '.' + p.tok.lit)
+			// assume `mod.` prefix leads to a type
 			if is_known_var || !(p.known_import(p.tok.lit) || p.tok.kind.is_start_of_type()) {
 				expr := p.expr(0)
 				if is_reftype {
@@ -355,7 +356,13 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 	}
 	// Infix
 	for precedence < p.tok.precedence() {
-		if p.tok.kind == .dot {
+		if p.tok.kind == .dot { //&& (p.tok.line_nr == p.prev_tok.line_nr
+			// TODO fix a bug with prev_tok.last_line
+			//|| p.prev_tok.position().last_line == p.tok.line_nr) {
+			// if p.fileis('vcache.v') {
+			// p.warn('tok.line_nr = $p.tok.line_nr; prev_tok.line_nr=$p.prev_tok.line_nr;
+			// prev_tok.last_line=$p.prev_tok.position().last_line')
+			//}
 			node = p.dot_expr(node)
 			if p.name_error {
 				return node

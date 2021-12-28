@@ -2409,6 +2409,7 @@ _SOKOL_PRIVATE void _sapp_call_cleanup(void) {
 }
 
 _SOKOL_PRIVATE bool _sapp_call_event(const sapp_event* e) {
+	//puts("_sapp_call_event start");
     if (!_sapp.cleanup_called) {
         if (_sapp.desc.event_cb) {
             _sapp.desc.event_cb(e);
@@ -2417,6 +2418,7 @@ _SOKOL_PRIVATE bool _sapp_call_event(const sapp_event* e) {
             _sapp.desc.event_userdata_cb(e, _sapp.desc.user_data);
         }
     }
+	//puts("_sapp_call_event end");
     if (_sapp.event_consumed) {
         _sapp.event_consumed = false;
         return true;
@@ -3654,6 +3656,8 @@ _SOKOL_PRIVATE void _sapp_macos_poll_input_events() {
     }
 }
 - (void)keyDown:(NSEvent*)event {
+	//puts("-keyDown()");
+	//NSLog(@"%@", event);
     if (_sapp_events_enabled()) {
         const uint32_t mods = _sapp_macos_mods(event);
         /* NOTE: macOS doesn't send keyUp events while the Cmd key is pressed,

@@ -103,6 +103,11 @@ pub fn (s &Scope) known_var(name string) bool {
 	return true
 }
 
+pub fn (s &Scope) known_const(name string) bool {
+	s.find_const(name) or { return false }
+	return true
+}
+
 pub fn (mut s Scope) update_var_type(name string, typ Type) {
 	mut obj := unsafe { s.objects[name] }
 	if mut obj is Var {
