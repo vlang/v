@@ -1,0 +1,7 @@
+vlib/v/checker/tests/assign_var_redefinition_err.vv:6:2: error: redefinition of `aaaa`
+    4 |
+    5 | fn test(aaaa string) string {
+    6 |     aaaa := 'bbbb' + aaaa
+      |     ~~~~
+    7 |     return aaaa
+    8 | }
