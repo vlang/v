@@ -5008,7 +5008,18 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				}
 			}
 			else {
-				if g.pref.build_mode != .build_module {
+				// NB: -usecache uses prebuilt modules, each compiled with:
+				// `v build-module vlib/module`
+				// combined with a top level program, that is compiled with:
+				// `v -usecache toplevel`
+				// For it to work, the consts optimisations should be identical, because
+				// only the top level program will have the const initialisation code for
+				// all the modules.
+				// TODO: encapsulate const initialisation for each module in a separate function,
+				// that is just called by the top level program in _vinit, instead of generating
+				// all the code inside _vinit for each module.
+				use_cache_mode := g.pref.build_mode == .build_module || g.pref.use_cache
+				if !use_cache_mode {
 					if ct_value := field.comptime_expr_value() {
 						if g.const_decl_precomputed(field.mod, name, ct_value, field.typ) {
 							continue

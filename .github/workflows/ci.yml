@@ -276,9 +276,9 @@ jobs:
       - name: usecache
         run: |
            ./v -usecache examples/hello_world.v && examples/hello_world
-#          ./v -o v2 -usecache cmd/v
-#          ./v2 -o v3 -usecache cmd/v
-#          ./v3 -usecache examples/tetris/tetris.v
+           ./v  -o v2 -usecache cmd/v
+           ./v2 -o v3 -usecache cmd/v
+           ./v3 -o tetris  -usecache examples/tetris/tetris.v
       - name: Test symlink
         run: ./v symlink
       #    - name: Set up pg database
