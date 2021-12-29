@@ -123,7 +123,7 @@ fn native_str_arr_len(arr []JS.String) int {
 }
 
 // Top level functions
-fn JS.eval(string) any
+fn JS.eval(JS.String) any
 fn JS.parseInt(string, f64) JS.Number
 fn JS.parseFloat(string) JS.Number
 fn JS.isNaN(f64) bool
