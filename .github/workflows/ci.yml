@@ -81,6 +81,7 @@ jobs:
           ./v doctor
       - name: Verify `v test` works
         run: |
+          echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Self tests
@@ -111,6 +112,7 @@ jobs:
         run: cd cmd/tools/fast && ../../../v fast.v && ./fast
       - name: V self compilation with -usecache
         run: |
+          unset VFLAGS
           ./v -usecache examples/hello_world.v && examples/hello_world
           ./v  -o v2 -usecache cmd/v
           ./v2 -o v3 -usecache cmd/v
@@ -296,6 +298,7 @@ jobs:
       ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
       - name: Verify `v test` works
         run: |
+          echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
 
@@ -377,13 +380,15 @@ jobs:
         run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
       - name: V self compilation with -usecache
         run: |
-             ./v -usecache examples/hello_world.v && examples/hello_world
-             ./v  -o v2     -usecache cmd/v
-             ./v2 -o v3     -usecache cmd/v
-             ./v3 version
-             ./v3 -o tetris -usecache examples/tetris/tetris.v
+          unset VFLAGS
+          ./v -usecache examples/hello_world.v && examples/hello_world
+          ./v  -o v2     -usecache cmd/v
+          ./v2 -o v3     -usecache cmd/v
+          ./v3 version
+          ./v3 -o tetris -usecache examples/tetris/tetris.v
       - name: Verify `v test` works
         run: |
+          echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Self tests
@@ -468,6 +473,7 @@ jobs:
         run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
       - name: v self compilation with -usecache
         run: |
+          unset VFLAGS
           ./v -usecache examples/hello_world.v && examples/hello_world
           ./v  -o v2     -usecache cmd/v
           ./v2 -o v3     -usecache cmd/v
@@ -475,6 +481,7 @@ jobs:
           ./v3 -o tetris -usecache examples/tetris/tetris.v
       - name: Verify `v test` works
         run: |
+          echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Self tests
@@ -551,6 +558,7 @@ jobs:
           echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
       - name: Verify `v test` works
         run: |
+          echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Test V fixed tests
@@ -607,6 +615,7 @@ jobs:
           ./v doctor
       - name: Verify `v test` works
         run: |
+          echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Self tests
@@ -649,6 +658,7 @@ jobs:
           ./v doctor
       - name: Verify `v test` works
         run: |
+          echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Self tests

@@ -390,7 +390,11 @@ fn (v &Builder) all_args(ccoptions CcompilerOptions) []string {
 	all << ccoptions.pre_args
 	all << ccoptions.source_args
 	all << ccoptions.post_args
-	all << ccoptions.linker_flags
+	// in `build-mode`, we do not need -lxyz flags, since we are
+	// building an (.o) object file, that will be linked later.
+	if v.pref.build_mode != .build_module {
+		all << ccoptions.linker_flags
+	}
 	all << ccoptions.env_ldflags
 	return all
 }
