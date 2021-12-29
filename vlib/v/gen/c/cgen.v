@@ -5,6 +5,7 @@ module c
 
 import os
 import strings
+import hash.fnv1a
 import v.ast
 import v.pref
 import v.token
@@ -72,6 +73,7 @@ mut:
 	json_forward_decls     strings.Builder // json type forward decls
 	sql_buf                strings.Builder // for writing exprs to args via `sqlite3_bind_int()` etc
 	file                   &ast.File
+	unique_file_path_hash  u64 // a hash of file.path, used for making auxilary fn generation unique (like `compare_xyz`)
 	fn_decl                &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	last_fn_c_name         string
 	tmp_count              int  // counter for unique tmp vars (_tmp1, _tmp2 etc); resets at the start of each fn.
@@ -579,7 +581,7 @@ pub fn (mut g Gen) free_builders() {
 
 pub fn (mut g Gen) gen_file() {
 	g.timers.start('cgen_file $g.file.path')
-
+	g.unique_file_path_hash = fnv1a.sum64_string(g.file.path)
 	if g.pref.is_vlines {
 		g.vlines_path = util.vlines_escape_path(g.file.path, g.pref.ccompiler)
 		g.is_vlines_enabled = true
