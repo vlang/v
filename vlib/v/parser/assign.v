@@ -144,24 +144,6 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 	comments << right_comments
 	end_comments := p.eat_comments(same_line: true)
 	mut has_cross_var := false
-	if op == .decl_assign {
-		// a, b := a + 1, b
-		for r in right {
-			p.check_undefined_variables(left, r) or { return p.error_with_pos(err.msg, pos) }
-		}
-	} else if left.len > 1 {
-		// a, b = b, a
-		for r in right {
-			has_cross_var = p.check_cross_variables(left, r)
-			if op !in [.assign, .decl_assign] {
-				return p.error_with_pos('unexpected $op.str(), expecting := or = or comma',
-					pos)
-			}
-			if has_cross_var {
-				break
-			}
-		}
-	}
 	mut is_static := false
 	mut is_volatile := false
 	for i, lx in left {
@@ -229,6 +211,24 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 			else {
 				// TODO: parexpr ( check vars)
 				// else { p.error_with_pos('unexpected `${typeof(lx)}`', lx.position()) }
+			}
+		}
+	}
+	if op == .decl_assign {
+		// a, b := a + 1, b
+		for r in right {
+			p.check_undefined_variables(left, r) or { return p.error_with_pos(err.msg, pos) }
+		}
+	} else if left.len > 1 {
+		// a, b = b, a
+		for r in right {
+			has_cross_var = p.check_cross_variables(left, r)
+			if op !in [.assign, .decl_assign] {
+				return p.error_with_pos('unexpected $op.str(), expecting := or = or comma',
+					pos)
+			}
+			if has_cross_var {
+				break
 			}
 		}
 	}
