@@ -29,12 +29,14 @@ fn test_str_methods() {
 	assert u32(-1).str() == '4294967295'
 	assert u64(1).str() == '1'
 	assert u64(-1).str() == '18446744073709551615'
-	assert voidptr(-1).str() == 'ffffffffffffffff'
-	assert voidptr(1).str() == '1'
+	assert voidptr(-1).str() == '0xffffffffffffffff'
+	assert voidptr(1).str() == '0x1'
 	assert (&byte(-1)).str() == 'ffffffffffffffff'
 	assert (&byte(1)).str() == '1'
-	assert byteptr(-1).str() == 'ffffffffffffffff'
-	assert byteptr(1).str() == '1'
+	assert byteptr(-1).str() == '0xffffffffffffffff'
+	assert byteptr(1).str() == '0x1'
+	assert charptr(-1).str() == '0xffffffffffffffff'
+	assert charptr(1).str() == '0x1'
 }
 
 fn test_and_precendence() {
