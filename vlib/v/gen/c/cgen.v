@@ -2163,9 +2163,15 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		g.expr(cond)
 		g.writeln('.len; ++$i) {')
 		if node.val_var != '_' {
-			g.write('\tbyte ${c_name(node.val_var)} = ')
-			g.expr(cond)
-			g.writeln('.str[$i];')
+			if node.val_is_mut {
+				g.write('\tbyte *${c_name(node.val_var)} = ')
+				g.expr(cond)
+				g.writeln('.str + $i;')
+			} else {
+				g.write('\tbyte ${c_name(node.val_var)} = ')
+				g.expr(cond)
+				g.writeln('.str[$i];')
+			}
 		}
 	} else if node.kind == .struct_ {
 		cond_type_sym := g.table.sym(node.cond_type)
