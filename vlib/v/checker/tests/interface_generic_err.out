@@ -4,7 +4,7 @@ vlib/v/checker/tests/interface_generic_err.vv:7:9: error: generic struct init mu
     7 | what := What{}
       |         ~~~~~~
     8 | why := Why(what)
-vlib/v/checker/tests/interface_generic_err.vv:8:8: error: could not infer generic type `T` in interface
+vlib/v/checker/tests/interface_generic_err.vv:8:8: error: could not infer generic type `T` in interface `Why`
     6 | // no segfault without generic
     7 | what := What{}
     8 | why := Why(what)

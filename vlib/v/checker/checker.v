@@ -3369,13 +3369,14 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	//        node.expr_type: `Inside`
 	//        node.typ: `Outside`
 	node.expr_type = c.expr(node.expr) // type to be casted
-	mut from_type := node.expr_type
-	to_type := node.typ
 
+	mut from_type := node.expr_type
 	from_sym := c.table.sym(from_type)
 	final_from_sym := c.table.final_sym(from_type)
-	to_sym := c.table.sym(to_type) // type to be used as cast
-	final_to_sym := c.table.final_sym(to_type)
+
+	mut to_type := node.typ
+	mut to_sym := c.table.sym(to_type) // type to be used as cast
+	mut final_to_sym := c.table.final_sym(to_type)
 
 	if (to_sym.is_number() && from_sym.name == 'JS.Number')
 		|| (to_sym.is_number() && from_sym.name == 'JS.BigInt')
@@ -3434,6 +3435,14 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			if !from_type.is_ptr() && !from_type.is_pointer() && from_sym.kind != .interface_
 				&& !c.inside_unsafe {
 				c.mark_as_referenced(mut &node.expr, true)
+			}
+			if (to_sym.info as ast.Interface).is_generic {
+				inferred_type := c.resolve_generic_interface(from_type, to_type, node.pos)
+				if inferred_type != 0 {
+					to_type = inferred_type
+					to_sym = c.table.sym(to_type)
+					final_to_sym = c.table.final_sym(to_type)
+				}
 			}
 		}
 	} else if to_type == ast.bool_type && from_type != ast.bool_type && !c.inside_unsafe {
