@@ -4428,12 +4428,13 @@ pub fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
 		typ = array_info.elem_type
 		typ_sym = c.table.sym(typ)
 	}
-	if typ_sym.kind != .enum_ && !c.pref.translated {
+	fsym := c.table.final_sym(typ)
+	if fsym.kind != .enum_ && !c.pref.translated {
 		// TODO in C int fields can be compared to enums, need to handle that in C2V
 		c.error('expected type is not an enum (`$typ_sym.name`)', node.pos)
 		return ast.void_type
 	}
-	if typ_sym.info !is ast.Enum {
+	if fsym.info !is ast.Enum {
 		c.error('not an enum', node.pos)
 		return ast.void_type
 	}

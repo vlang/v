@@ -3153,7 +3153,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.EnumVal {
 			// g.write('${it.mod}${it.enum_name}_$it.val')
 			// g.enum_expr(node)
-			styp := g.typ(node.typ)
+			styp := g.typ(g.table.unaliased_type(node.typ))
 			g.write('${styp}__$node.val')
 		}
 		ast.FloatLiteral {

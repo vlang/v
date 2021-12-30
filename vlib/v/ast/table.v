@@ -678,6 +678,16 @@ pub fn (t &Table) unalias_num_type(typ Type) Type {
 	return typ
 }
 
+[inline]
+pub fn (t &Table) unaliased_type(typ Type) Type {
+	sym := t.sym(typ)
+	if sym.kind == .alias {
+		pt := (sym.info as Alias).parent_type
+		return pt
+	}
+	return typ
+}
+
 fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx int) int {
 	existing_symbol := t.type_symbols[existing_idx]
 	if existing_symbol.kind == .placeholder {
