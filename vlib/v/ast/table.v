@@ -1,6 +1,7 @@
 // Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+[has_globals]
 module ast
 
 import v.cflag
@@ -186,13 +187,10 @@ pub fn new_table() &Table {
 	return t
 }
 
-const global_table = &Table(0)
+__global global_table = &Table(0)
 
 pub fn set_global_table(t &Table) {
-	unsafe {
-		mut pg := &ast.global_table
-		*pg = t
-	}
+	global_table = t
 }
 
 // used to compare fn's & for naming anon fn's
