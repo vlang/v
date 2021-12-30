@@ -1613,6 +1613,9 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 }
 
 fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos token.Position) bool {
+	if typ == interface_type {
+		return true
+	}
 	$if debug_interface_type_implements ? {
 		eprintln('> type_implements typ: $typ.debug() (`${c.table.type_to_str(typ)}`) | inter_typ: $interface_type.debug() (`${c.table.type_to_str(interface_type)}`)')
 	}
@@ -1642,6 +1645,10 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 			}
 		}
 		if inter_sym.info.is_generic {
+			if inferred_type == interface_type {
+				// terminate early, since otherwise we get an infinite recursion/segfault:
+				return false
+			}
 			return c.type_implements(typ, inferred_type, pos)
 		}
 	}

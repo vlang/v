@@ -1,0 +1,8 @@
+struct What<T> {}
+
+// with or without generic
+interface Why<T> {}
+
+// no segfault without generic
+what := What{}
+why := Why(what)
