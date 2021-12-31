@@ -637,10 +637,12 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 	// global fn?
 	if !found {
 		if obj := c.file.global_scope.find(fn_name) {
-			sym := c.table.sym(obj.typ)
-			if sym.kind == .function {
-				found = true
-				func = (sym.info as ast.FnType).func
+			if obj.typ != 0 {
+				sym := c.table.sym(obj.typ)
+				if sym.kind == .function {
+					found = true
+					func = (sym.info as ast.FnType).func
+				}
 			}
 		}
 	}
