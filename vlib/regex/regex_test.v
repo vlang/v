@@ -322,25 +322,26 @@ find_all_test_suite = [
 		[5, 45],
 		['url = https://github.com/dario/pig.html\n']
 	},
+
 	Test_find_all{
 		"#.#......##.#..#..##........##....###...##...######.......#.....#..#......#...#........###.#..#.",
 		r"#[.#]{4}##[.#]{4}##[.#]{4}###",
 		[29, 49],
 		['#....###...##...####']
 	},
-		Test_find_all{
+	Test_find_all{
 		"#.#......##.#..#..##........##....###...##...######.......#.....#..#......#...#........###.#..#.",
 		r".*#[.#]{4}##[.#]{4}##[.#]{4}###",
 		[0, 49],
 		['#.#......##.#..#..##........##....###...##...####']
 	},
-		Test_find_all{
+	Test_find_all{
 		"1234 Aa dddd Aaf 12334 Aa opopo Aaf",
 		r"Aa.+Aaf",
 		[5, 16, 23, 35],
 		['Aa dddd Aaf', 'Aa opopo Aaf']
 	},
-		Test_find_all{
+	Test_find_all{
 		"@for something @endfor @for something else @endfor altro testo @for body @endfor uno due @for senza dire più @endfor pippo",
 		r"@for.+@endfor",
 		[0, 22, 23, 50, 63, 80, 89, 117],

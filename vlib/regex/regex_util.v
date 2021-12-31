@@ -272,8 +272,14 @@ pub fn (mut re RE) find_all(in_txt string) []int {
 				i += e
 				continue
 			}
+			/*
+			if e > 0 {
+				i += e
+				continue
+			}
+			*/
+			i++
 		}
-		i++
 	}
 	// re.flag = old_flag
 	return res
