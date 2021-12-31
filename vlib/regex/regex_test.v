@@ -118,8 +118,8 @@ match_test_suite = [
 	
 	TestItem{"eth", r"(oth)|(eth)",0,3},
 	TestItem{"et", r"(oth)|(eth)",-1,0},
-	TestItem{"et", r".*(oth)|(eth)",-1,0},
-	TestItem{"peoth", r".*(ith)|(eth)",-1,0},
+	TestItem{"et", r".*(oth)|(eth)",-1,2},
+	TestItem{"peoth", r".*(ith)|(eth)",-1,5},
 
 	TestItem{"poth", r"(eth)|(oth)",1,4},
 	TestItem{"poth", r"(oth)|(eth)",1,4},
@@ -132,7 +132,7 @@ match_test_suite = [
 	TestItem{"accccb deer", r"^a(.*)b d(.+)r",0,11},
 	TestItem{"accccb deer", r"^a(.*)b d(.+)",0,11},
 	TestItem{"accccb deer", r"^(.*)$",0,11},
-	TestItem{"accccb deer", r"^a(.*)b d(.+)p",-1,0},
+	TestItem{"accccb deer", r"^a(.*)b d(.+)p",-1,11},
 	TestItem{"##.#....#.##.####...#.##", r".{18}[.#]",0,19},
 	TestItem{"#.#......##.#..#..##........##....###...##...######.......#.....#..#......#...#........###.#..#.", r'.*#[.#]{4}##[.#]{4}##[.#]{4}###',0,49},
 

@@ -1874,7 +1874,7 @@ pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int) (int, int) {
 			}
 
 			// print("No good exit!!")
-			return regex.no_match_found, 0
+			return regex.no_match_found, state.i
 		}
 
 		// starting and init
@@ -2542,14 +2542,14 @@ pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int) (int, int) {
 					return state.first_match, state.i
 				}
 				// println("Program not finished! ")
-				return regex.no_match_found, 0
+				return regex.no_match_found, state.i
 			}
 			if src_end {
 				// println("program end")
 				return state.first_match, state.i
 			}
 			// print("No match found!!")
-			return regex.no_match_found, 0
+			return regex.no_match_found, state.i
 		} else {
 			// println("Group match! OK")
 			// println("first_match: $state.first_match, i: $state.i")
@@ -2560,5 +2560,5 @@ pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int) (int, int) {
 		}
 	}
 	// println("no_match_found, natural end")
-	return regex.no_match_found, 0
+	return regex.no_match_found, state.i
 }
