@@ -16,13 +16,7 @@ fn test_for_in_mut_string() {
 }
 
 fn wrap_text(mut gv Grid) {
-	mut results := []byte{}
 	for mut ch in gv.header {
 		println(ch)
-		results << ch
 	}
-	println(results)
-	assert results.len == 2
-	assert results[0] == `y`
-	assert results[1] == `o`
 }
