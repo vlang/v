@@ -18,7 +18,7 @@ const(
 match_test_suite = [
 	// minus in CC
 	TestItem{"d.def",r"abc.\.[\w\-]{,100}",-1,0},
-	TestItem{"abc12345.asd",r"abc.\.[\w\-]{,100}",-1,0},
+	TestItem{"abc12345.asd",r"abc.\.[\w\-]{,100}",-1,4},
 	TestItem{"abca.exe",r"abc.\.[\w\-]{,100}",0,8},
 	TestItem{"abc2.exe-test_12",r"abc.\.[\w\-]{,100}",0,16},
 	TestItem{"abcdefGHK",r"[a-f]+\A+",0,9},
@@ -96,28 +96,28 @@ match_test_suite = [
 
 	// negative
 	TestItem{"zthis ciao",r"((t[hieo]+se?)\s*)+",-1,0},
-	TestItem{"this is a good.",r"thes",-1,0},
-	TestItem{"test1post.pip.com, pera",r"[\w]+@([\w]+\.)+\w+",-1,0},
+	TestItem{"this is a good.",r"thes",-1,2},
+	TestItem{"test1post.pip.com, pera",r"[\w]+@([\w]+\.)+\w+",-1,9},
 	TestItem{"this cpapaz adce",r"(c(pa)+z)(\s[\a]+){2}",-1,0},
 	TestItem{"this cpapaz adce aabe third",r"(c(pa)+z)(\s[\a]+){2}$",-1,0},
 	TestItem{"1234this cpapaz adce aabe ter",r"(c(pa)+z)(\s[\a]+){2}$",-1,0},
 	TestItem{"cpapaz ole. pipipo,",r"^.*c.+ol?e.*p([ip])+o$",-1,0},
-	TestItem{"/home/us_er/pippo/info-01.jpeg", r"(/?[-\w_]+)*\.txt$",-1,0}
+	TestItem{"/home/us_er/pippo/info-01.jpeg", r"(/?[-\w_]+)*\.txt$",-1,26}
 
 	// check unicode
 	TestItem{"this is a Ⅰ Ⅱ Ⅲ Ⅳ Ⅴ Ⅵ test",r".*a [Ⅰ-Ⅵ ]+",0,34},
 	TestItem{"123Ⅰ Ⅱ Ⅲ Ⅳ Ⅴ Ⅵ test",r"[Ⅰ-Ⅴ\s]+",3,23},
 
 	// new edge cases
-	TestItem{"12345678", r"[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]",-1,0},
+	TestItem{"12345678", r"[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]",-1,8},
 	TestItem{"12345678", r"[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]",0,8},
 	TestItem{"123456789", r"^[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]$",0,9}
 	TestItem{"12345678", r"^\d{8}$",0,8},
 	TestItem{"12345678", r"^\d{7}$",-1,0},
-	TestItem{"12345678", r"^\d{9}$",-1,0},
+	TestItem{"12345678", r"^\d{9}$",-1,8},
 	
 	TestItem{"eth", r"(oth)|(eth)",0,3},
-	TestItem{"et", r"(oth)|(eth)",-1,0},
+	TestItem{"et", r"(oth)|(eth)",-1,2},
 	TestItem{"et", r".*(oth)|(eth)",-1,2},
 	TestItem{"peoth", r".*(ith)|(eth)",-1,5},
 

@@ -1960,7 +1960,7 @@ pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int) (int, int) {
 			}
 
 			// exit on no match
-			return result, 0
+			return result, state.i
 		}
 		// ist_load
 		else if m_state == .ist_load {
@@ -2165,30 +2165,6 @@ pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int) (int, int) {
 				continue
 			}
 			// check bsls
-			/*
-			else if ist == regex.ist_bsls_char {
-				state.match_flag = false
-				tmp_res := re.prog[state.pc].validator(byte(ch))
-				// println("BSLS in_ch: ${ch:c} res: $tmp_res")
-				if tmp_res {
-					state.match_flag = true
-					l_ist = u32(regex.ist_bsls_char)
-
-					if state.first_match < 0 {
-						state.first_match = state.i
-					}
-
-					state.match_index = state.i
-
-					re.prog[state.pc].rep++ // increase repetitions
-					state.i += char_len // next char
-					m_state = .ist_quant_p
-					continue
-				}
-				m_state = .ist_quant_n
-				continue
-			}
-			*/
 			else if ist == regex.ist_bsls_char {
 				// println("ist_bsls_char rep: ${re.prog[state.pc].rep}")
 
