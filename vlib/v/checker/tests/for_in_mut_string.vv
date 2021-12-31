@@ -6,7 +6,7 @@ pub mut:
 	header string
 }
 
-fn test_for_in_mut_string() {
+fn main() {
 	h := 'yo'
 
 	mut grid := Grid{
