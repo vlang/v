@@ -205,53 +205,53 @@ pub fn (s string) hash() int {
 
 // int returns the value of the string as an integer `'1'.int() == 1`.
 pub fn (s string) int() int {
-	return int(JS.parseInt(s))
+	return int(JS.parseInt(s.str))
 }
 
 // i64 returns the value of the string as i64 `'1'.i64() == i64(1)`.
 pub fn (s string) i64() i64 {
-	return i64(JS.parseInt(s))
+	return i64(JS.parseInt(s.str))
 }
 
 // i8 returns the value of the string as i8 `'1'.i8() == i8(1)`.
 pub fn (s string) i8() i8 {
-	return i8(JS.parseInt(s))
+	return i8(JS.parseInt(s.str))
 }
 
 // i16 returns the value of the string as i16 `'1'.i16() == i16(1)`.
 pub fn (s string) i16() i16 {
-	return i16(JS.parseInt(s))
+	return i16(JS.parseInt(s.str))
 }
 
 // f32 returns the value of the string as f32 `'1.0'.f32() == f32(1)`.
 pub fn (s string) f32() f32 {
 	// return C.atof(&char(s.str))
-	return f32(JS.parseFloat(s))
+	return f32(JS.parseFloat(s.str))
 }
 
 // f64 returns the value of the string as f64 `'1.0'.f64() == f64(1)`.
 pub fn (s string) f64() f64 {
-	return f64(JS.parseFloat(s))
+	return f64(JS.parseFloat(s.str))
 }
 
 // u16 returns the value of the string as u16 `'1'.u16() == u16(1)`.
 pub fn (s string) u16() u16 {
-	return u16(JS.parseInt(s))
+	return u16(JS.parseInt(s.str))
 }
 
 // u32 returns the value of the string as u32 `'1'.u32() == u32(1)`.
 pub fn (s string) u32() u32 {
-	return u32(JS.parseInt(s))
+	return u32(JS.parseInt(s.str))
 }
 
 // u64 returns the value of the string as u64 `'1'.u64() == u64(1)`.
 pub fn (s string) u64() u64 {
-	return u64(JS.parseInt(s))
+	return u64(JS.parseInt(s.str))
 }
 
 pub fn (s string) byte() u64 {
 	res := byte(0)
-	#res.val = byte(JS.parseInt(s))
+	#res.val = byte(JS.parseInt(s.str))
 
 	return res
 }
