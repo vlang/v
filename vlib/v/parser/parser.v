@@ -3596,11 +3596,16 @@ fn (mut p Parser) rewind_scanner_to_current_token_in_new_mode() {
 	}
 }
 
+// returns true if `varname` is known
 pub fn (mut p Parser) mark_var_as_used(varname string) bool {
 	if obj := p.scope.find(varname) {
 		match mut obj {
 			ast.Var {
 				obj.is_used = true
+				return true
+			}
+			ast.GlobalField {
+				// obj.is_used = true
 				return true
 			}
 			// ast.ConstField {

@@ -15,10 +15,13 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		if expected == ast.byteptr_type {
 			return true
 		}
+		if expected == ast.voidptr_type {
+			return true
+		}
 		if expected.is_any_kind_of_pointer() { //&& !got.is_any_kind_of_pointer() {
 			// Allow `int` as `&i8` etc in C code.
-			// deref := expected.deref()
-			deref := expected.set_nr_muls(0)
+			deref := expected.deref()
+			// deref := expected.set_nr_muls(0)
 			got_sym := c.table.sym(got)
 			if deref.is_number() && (got_sym.is_number() || got_sym.kind == .enum_) {
 				return true
