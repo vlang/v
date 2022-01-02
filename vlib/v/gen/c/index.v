@@ -85,7 +85,7 @@ fn (mut g Gen) range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 		} else {
 			g.write('array_slice(')
 		}
-		g.write('new_array_from_c_array${noscan}(')
+		g.write('new_array_from_c_array_no_alloc${noscan}(')
 		g.write('$info.size')
 		g.write(', $info.size')
 		g.write(', sizeof(')
