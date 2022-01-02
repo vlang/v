@@ -8,6 +8,7 @@
 *
 * TODO:
 **********************************************************************/
+import sokol.gfx
 import szip
 
 fn (mut il Item_list) scan_zip(path string, in_index int) ? {
@@ -46,7 +47,7 @@ fn (mut il Item_list) scan_zip(path string, in_index int) ? {
 	zp.close()
 }
 
-fn (mut app App) load_texture_from_zip() ?(C.sg_image, int, int) {
+fn (mut app App) load_texture_from_zip() ?(gfx.Image, int, int) {
 	item := app.item_list.lst[app.item_list.item_index]
 	// println("Load from zip [${item.path}]")
 

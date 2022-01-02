@@ -24,7 +24,7 @@ fn main() {
 }
 
 struct App {
-	pass_action C.sg_pass_action
+	pass_action gfx.PassAction
 mut:
 	width     int
 	height    int
@@ -79,14 +79,14 @@ fn init(user_data voidptr) {
 		max_vertices: 50 * 65536
 	}
 	sgl.setup(&sgl_desc)
-	mut pipdesc := C.sg_pipeline_desc{}
+	mut pipdesc := gfx.PipelineDesc{}
 	unsafe { C.memset(&pipdesc, 0, sizeof(pipdesc)) }
 
-	color_state := C.sg_color_state{
-		blend: C.sg_blend_state{
+	color_state := gfx.ColorState{
+		blend: gfx.BlendState{
 			enabled: true
-			src_factor_rgb: gfx.BlendFactor(C.SG_BLENDFACTOR_SRC_ALPHA)
-			dst_factor_rgb: gfx.BlendFactor(C.SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA)
+			src_factor_rgb: .src_alpha
+			dst_factor_rgb: .one_minus_src_alpha
 		}
 	}
 	pipdesc.colors[0] = color_state

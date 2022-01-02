@@ -18,9 +18,9 @@ import stbi
 /******************************************************************************
 * Texture functions
 ******************************************************************************/
-pub fn create_texture(w int, h int, buf &byte) C.sg_image {
+pub fn create_texture(w int, h int, buf &byte) gfx.Image {
 	sz := w * h * 4
-	mut img_desc := C.sg_image_desc{
+	mut img_desc := gfx.ImageDesc{
 		width: w
 		height: h
 		num_mipmaps: 0
@@ -33,20 +33,20 @@ pub fn create_texture(w int, h int, buf &byte) C.sg_image {
 		d3d11_texture: 0
 	}
 	// comment if .dynamic is enabled
-	img_desc.data.subimage[0][0] = C.sg_range{
+	img_desc.data.subimage[0][0] = gfx.Range{
 		ptr: buf
 		size: usize(sz)
 	}
 
-	sg_img := C.sg_make_image(&img_desc)
+	sg_img := gfx.make_image(&img_desc)
 	return sg_img
 }
 
-pub fn destroy_texture(sg_img C.sg_image) {
-	C.sg_destroy_image(sg_img)
+pub fn destroy_texture(sg_img gfx.Image) {
+	gfx.destroy_image(sg_img)
 }
 
-pub fn load_texture(file_name string) C.sg_image {
+pub fn load_texture(file_name string) gfx.Image {
 	buffer := read_bytes_from_file(file_name)
 	stbi.set_flip_vertically_on_load(true)
 	img := stbi.load_from_memory(buffer.data, buffer.len) or {
@@ -61,20 +61,20 @@ pub fn load_texture(file_name string) C.sg_image {
 /******************************************************************************
 * Pipeline
 ******************************************************************************/
-pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader C.sg_shader, texture C.sg_image) Render_data {
+pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader gfx.Shader, texture gfx.Image) Render_data {
 	mut res := Render_data{}
 	obj_buf := obj_part.get_buffer(in_part)
 	res.n_vert = obj_buf.n_vertex
 	res.material = obj_part.part[in_part[0]].material
 
 	// vertex buffer
-	mut vert_buffer_desc := C.sg_buffer_desc{
+	mut vert_buffer_desc := gfx.BufferDesc{
 		label: 0
 	}
 	unsafe { C.memset(&vert_buffer_desc, 0, sizeof(vert_buffer_desc)) }
 
 	vert_buffer_desc.size = usize(obj_buf.vbuf.len * int(sizeof(Vertex_pnct)))
-	vert_buffer_desc.data = C.sg_range{
+	vert_buffer_desc.data = gfx.Range{
 		ptr: obj_buf.vbuf.data
 		size: usize(obj_buf.vbuf.len * int(sizeof(Vertex_pnct)))
 	}
@@ -84,13 +84,13 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader C.sg_shader,
 	vbuf := gfx.make_buffer(&vert_buffer_desc)
 
 	// index buffer
-	mut index_buffer_desc := C.sg_buffer_desc{
+	mut index_buffer_desc := gfx.BufferDesc{
 		label: 0
 	}
 	unsafe { C.memset(&index_buffer_desc, 0, sizeof(index_buffer_desc)) }
 
 	index_buffer_desc.size = usize(obj_buf.ibuf.len * int(sizeof(u32)))
-	index_buffer_desc.data = C.sg_range{
+	index_buffer_desc.data = gfx.Range{
 		ptr: obj_buf.ibuf.data
 		size: usize(obj_buf.ibuf.len * int(sizeof(u32)))
 	}
@@ -99,7 +99,7 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader C.sg_shader,
 	index_buffer_desc.label = 'indbuf_part_${in_part:03}'.str
 	ibuf := gfx.make_buffer(&index_buffer_desc)
 
-	mut pipdesc := C.sg_pipeline_desc{}
+	mut pipdesc := gfx.PipelineDesc{}
 	unsafe { C.memset(&pipdesc, 0, sizeof(pipdesc)) }
 	pipdesc.layout.buffers[0].stride = int(sizeof(Vertex_pnct))
 
@@ -111,18 +111,18 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader C.sg_shader,
 	// pipdesc.layout.attrs[C.ATTR_vs_a_Texcoord0].format  = .short2n  // u,v as u16
 	pipdesc.index_type = .uint32
 
-	color_state := C.sg_color_state{
-		blend: C.sg_blend_state{
+	color_state := gfx.ColorState{
+		blend: gfx.BlendState{
 			enabled: true
-			src_factor_rgb: gfx.BlendFactor(C.SG_BLENDFACTOR_SRC_ALPHA)
-			dst_factor_rgb: gfx.BlendFactor(C.SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA)
+			src_factor_rgb: .src_alpha
+			dst_factor_rgb: .one_minus_src_alpha
 		}
 	}
 	pipdesc.colors[0] = color_state
 
-	pipdesc.depth = C.sg_depth_state{
+	pipdesc.depth = gfx.DepthState{
 		write_enabled: true
-		compare: gfx.CompareFunc(C.SG_COMPAREFUNC_LESS_EQUAL)
+		compare: .less_equal
 	}
 	pipdesc.cull_mode = .front
 
@@ -144,7 +144,7 @@ pub fn (mut obj_part ObjPart) create_pipeline(in_part []int, shader C.sg_shader,
 * Render functions
 ******************************************************************************/
 // agregate all the part by materials
-pub fn (mut obj_part ObjPart) init_render_data(texture C.sg_image) {
+pub fn (mut obj_part ObjPart) init_render_data(texture gfx.Image) {
 	// create shader
 	// One shader for all the model
 	shader := gfx.make_shader(C.gouraud_shader_desc(gfx.query_backend()))
@@ -234,11 +234,11 @@ pub fn (obj_part ObjPart) bind_and_draw(rend_data_index int, in_data Shader_data
 	gfx.apply_pipeline(part_render_data.pipeline)
 	gfx.apply_bindings(part_render_data.bind)
 
-	vs_uniforms_range := C.sg_range{
+	vs_uniforms_range := gfx.Range{
 		ptr: in_data.vs_data
 		size: usize(in_data.vs_len)
 	}
-	fs_uniforms_range := C.sg_range{
+	fs_uniforms_range := gfx.Range{
 		ptr: unsafe { &tmp_fs_params }
 		size: usize(in_data.fs_len)
 	}

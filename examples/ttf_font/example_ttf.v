@@ -2,6 +2,7 @@ import gg
 import gx
 import sokol.sapp
 import sokol.sgl
+import sokol.gfx
 import x.ttf
 import os
 
@@ -20,7 +21,7 @@ const (
 struct App_data {
 pub mut:
 	gg              &gg.Context
-	sg_img          C.sg_image
+	sg_img          gfx.Image
 	init_flag       bool
 	frame_c         int
 	tf              []ttf.TTF_File

@@ -203,7 +203,7 @@ fn compile_shader(opt CompileOptions, shader_file string) ? {
 	}
 	if opt.verbose {
 		program_name := shader_program_name(shader_file)
-		eprintln('$tool_name usage example in V:\n\nimport sokol.gfx\n\n#include "$header_name"\n\nfn C.${program_name}_shader_desc(gfx.Backend) &C.sg_shader_desc\n')
+		eprintln('$tool_name usage example in V:\n\nimport sokol.gfx\n\n#include "$header_name"\n\nfn C.${program_name}_shader_desc(gfx.Backend) &gfx.ShaderDesc\n')
 	}
 }
 

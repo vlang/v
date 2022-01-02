@@ -35,7 +35,7 @@ import obj
 #flag -I @VMODROOT/.
 #include "gouraud.h" # Should be generated with `v shader .` (see the instructions at the top of this file)
 
-fn C.gouraud_shader_desc(gfx.Backend) &C.sg_shader_desc
+fn C.gouraud_shader_desc(gfx.Backend) &gfx.ShaderDesc
 
 const (
 	win_width  = 600
@@ -46,7 +46,7 @@ const (
 struct App {
 mut:
 	gg          &gg.Context
-	texture     C.sg_image
+	texture     gfx.Image
 	init_flag   bool
 	frame_count int
 
@@ -149,9 +149,9 @@ fn frame(mut app App) {
 	ws := gg.window_size_real_pixels()
 
 	// clear
-	mut color_action := C.sg_color_attachment_action{
-		action: gfx.Action(C.SG_ACTION_CLEAR)
-		value: C.sg_color{
+	mut color_action := gfx.ColorAttachmentAction{
+		action: .clear
+		value: gfx.Color{
 			r: 0.0
 			g: 0.0
 			b: 0.0
@@ -159,7 +159,7 @@ fn frame(mut app App) {
 		}
 	}
 
-	mut pass_action := C.sg_pass_action{}
+	mut pass_action := gfx.PassAction{}
 	pass_action.colors[0] = color_action
 	gfx.begin_default_pass(&pass_action, ws.width, ws.height)
 

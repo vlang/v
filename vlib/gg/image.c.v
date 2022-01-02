@@ -18,7 +18,7 @@ pub mut:
 	data        voidptr
 	ext         string
 	simg_ok     bool
-	simg        C.sg_image
+	simg        gfx.Image
 	path        string
 }
 
@@ -64,7 +64,7 @@ pub fn (mut ctx Context) create_image(file string) Image {
 
 pub fn (mut img Image) init_sokol_image() &Image {
 	// println('\n init sokol image $img.path ok=$img.simg_ok')
-	mut img_desc := C.sg_image_desc{
+	mut img_desc := gfx.ImageDesc{
 		width: img.width
 		height: img.height
 		num_mipmaps: 0
@@ -73,11 +73,11 @@ pub fn (mut img Image) init_sokol_image() &Image {
 		label: img.path.str
 		d3d11_texture: 0
 	}
-	img_desc.data.subimage[0][0] = C.sg_range{
+	img_desc.data.subimage[0][0] = gfx.Range{
 		ptr: img.data
 		size: usize(img.nr_channels * img.width * img.height)
 	}
-	img.simg = C.sg_make_image(&img_desc)
+	img.simg = gfx.make_image(&img_desc)
 	img.simg_ok = true
 	img.ok = true
 	return img
@@ -118,7 +118,7 @@ pub fn (mut ctx Context) new_streaming_image(w int, h int, channels int, sicfg S
 	img.width = w
 	img.height = h
 	img.nr_channels = channels // 4 bytes per pixel for .rgba8, see pixel_format
-	mut img_desc := C.sg_image_desc{
+	mut img_desc := gfx.ImageDesc{
 		width: img.width
 		height: img.height
 		pixel_format: sicfg.pixel_format
@@ -132,11 +132,11 @@ pub fn (mut ctx Context) new_streaming_image(w int, h int, channels int, sicfg S
 		label: img.path.str
 	}
 	// Sokol requires that streamed images have NO .ptr/.size initially:
-	img_desc.data.subimage[0][0] = C.sg_range{
+	img_desc.data.subimage[0][0] = gfx.Range{
 		ptr: 0
 		size: usize(0)
 	}
-	img.simg = C.sg_make_image(&img_desc)
+	img.simg = gfx.make_image(&img_desc)
 	img.simg_ok = true
 	img.ok = true
 	img_idx := ctx.cache_image(img)
@@ -151,7 +151,7 @@ pub fn (mut ctx Context) update_pixel_data(cached_image_idx int, buf &byte) {
 }
 
 pub fn (mut img Image) update_pixel_data(buf &byte) {
-	mut data := C.sg_image_data{}
+	mut data := gfx.ImageData{}
 	data.subimage[0][0].ptr = buf
 	data.subimage[0][0].size = usize(img.width * img.height * img.nr_channels)
 	gfx.update_image(img.simg, &data)
