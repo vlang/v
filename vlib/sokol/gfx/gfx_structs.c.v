@@ -380,9 +380,9 @@ pub mut:
 pub type BufferDesc = C.sg_buffer_desc
 
 struct C.sg_slot_info {
-    state ResourceState
-    res_id u32
-    ctx_id u32
+	state  ResourceState
+	res_id u32
+	ctx_id u32
 }
 
 pub type SlotInfo = C.sg_slot_info
@@ -443,9 +443,9 @@ pub type ImageDesc = C.sg_image_desc
 struct C.sg_image_info {
 pub mut:
 	slot            SlotInfo // resource pool slot info
-	upd_frame_index u32 // frame index of last sg_update_image()
-	num_slots       int // number of renaming-slots for dynamically updated images
-	active_slot     int // currently active write-slot for dynamically updated images
+	upd_frame_index u32      // frame index of last sg_update_image()
+	num_slots       int      // number of renaming-slots for dynamically updated images
+	active_slot     int      // currently active write-slot for dynamically updated images
 }
 
 pub type ImageInfo = C.sg_image_info

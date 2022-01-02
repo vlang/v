@@ -47,9 +47,9 @@ pub mut:
 	vt []m4.Vec4 // textures
 
 	name          string
-	part          []Part                // parts of the ObjPart
-	mat           []Material            // list of the materials of the ObjPart
-	mat_map       map[string]int        // maping material name to its material index
+	part          []Part               // parts of the ObjPart
+	mat           []Material           // list of the materials of the ObjPart
+	mat_map       map[string]int       // maping material name to its material index
 	texture       map[string]gfx.Image // GPU loaded texture map
 	material_file string // .mtl file name for the .obj
 
