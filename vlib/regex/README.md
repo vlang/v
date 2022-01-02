@@ -614,7 +614,6 @@ If it is needed to replace N instances of the found strings it is possible to us
 pub fn (mut re RE) replace_n(in_txt string, repl_str string, count int) string
 ```
 
-
 #### Custom replace function
 
 For complex find and replace operations, you can use `replace_by_fn` .
