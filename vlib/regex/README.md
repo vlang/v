@@ -606,7 +606,7 @@ pub fn (mut re RE) replace_simple(in_txt string, repl string) string
 
 If it is needed to replace N instances of the found strings it is possible to use:
 ```v ignore
-// replace_n return a string where the first N matches are replaced with the repl_str string,
+// replace_n return a string where the firts `count` matches are replaced with the repl_str string
 // `count` indicate the number of max replacements that will be done.
 // if count is > 0 the replace began from the start of the string toward the end
 // if count is < 0 the replace began from the end of the string toward the start

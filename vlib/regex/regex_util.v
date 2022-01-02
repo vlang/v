@@ -464,7 +464,7 @@ pub fn (mut re RE) replace(in_txt string, repl_str string) string {
 	return res.str()
 }
 
-// replace_n return a string where the matches are replaced count instances with the repl_str string,
+// replace_n return a string where the firts count matches are replaced with the repl_str string,
 // if count is > 0 the replace began from the start of the string toward the end
 // if count is < 0 the replace began from the end of the string toward the start
 // if count is 0 do nothing
