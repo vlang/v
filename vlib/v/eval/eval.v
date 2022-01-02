@@ -186,12 +186,12 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 					}
 				}
 				else {
-					e.error('unknown decleration expression statement $x.type_name()')
+					e.error('unknown declaration expression statement $x.type_name()')
 				}
 			}
 		}
 		else {
-			e.error('unhandled decleration statement $stmt.type_name()')
+			e.error('unhandled declaration statement $stmt.type_name()')
 		}
 	}
 }
