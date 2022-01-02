@@ -11,6 +11,7 @@
 module obj
 
 import gg.m4
+import sokol.gfx
 
 // part struct mantain the fae indexes list
 pub struct Part {
