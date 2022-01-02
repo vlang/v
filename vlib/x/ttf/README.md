@@ -218,6 +218,7 @@ import gg
 import gx
 import sokol.sapp
 import sokol.sgl
+import sokol.gfx
 import x.ttf
 import os
 
