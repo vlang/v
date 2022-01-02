@@ -15,7 +15,7 @@ fn abc() {
 }
 
 fn init(user_data voidptr) {
-	desc := gfx.Desc{
+	desc := C.sg_desc{
 		mtl_device: sapp.metal_get_device()
 		mtl_renderpass_descriptor_cb: sapp.metal_get_renderpass_descriptor
 		mtl_drawable_cb: sapp.metal_get_drawable
