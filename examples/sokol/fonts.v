@@ -16,7 +16,7 @@ mut:
 [console]
 fn main() {
 	mut color_action := gfx.ColorAttachmentAction{
-		action: gfx.Action(C.SG_ACTION_CLEAR)
+		action: .clear
 		value: gfx.Color{
 			r: 0.3
 			g: 0.3
