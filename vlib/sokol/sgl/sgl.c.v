@@ -39,7 +39,7 @@ pub fn deg(rad f32) f32 {
 
 // create and destroy pipeline objects
 [inline]
-pub fn make_pipeline(desc &C.sg_pipeline_desc) C.sgl_pipeline {
+pub fn make_pipeline(desc &gfx.PipelineDesc) C.sgl_pipeline {
 	return C.sgl_make_pipeline(desc)
 }
 
@@ -70,7 +70,7 @@ pub fn disable_texture() {
 }
 
 [inline]
-pub fn texture(img C.sg_image) {
+pub fn texture(img gfx.Image) {
 	C.sgl_texture(img)
 }
 

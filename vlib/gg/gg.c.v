@@ -109,7 +109,7 @@ pub mut:
 	// will get set to 2.0 for retina, will remain 1.0 for normal
 	width       int
 	height      int
-	clear_pass  C.sg_pass_action
+	clear_pass  gfx.PassAction
 	window      sapp.Desc
 	timage_pip  C.sgl_pipeline
 	config      Config
@@ -139,7 +139,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 	mut g := unsafe { &Context(user_data) }
 	desc := sapp.create_desc()
 	/*
-	desc := C.sg_desc{
+	desc := gfx.Desc{
 		mtl_device: sapp.metal_get_device()
 		mtl_renderpass_descriptor_cb: sapp.metal_get_renderpass_descriptor
 		mtl_drawable_cb: sapp.metal_get_drawable
@@ -196,16 +196,16 @@ fn gg_init_sokol_window(user_data voidptr) {
 		}
 	}
 	//
-	mut pipdesc := C.sg_pipeline_desc{
+	mut pipdesc := gfx.PipelineDesc{
 		label: c'alpha_image'
 	}
 	unsafe { vmemset(&pipdesc, 0, int(sizeof(pipdesc))) }
 
-	color_state := C.sg_color_state{
-		blend: C.sg_blend_state{
+	color_state := gfx.ColorState{
+		blend: gfx.BlendState{
 			enabled: true
-			src_factor_rgb: gfx.BlendFactor(C.SG_BLENDFACTOR_SRC_ALPHA)
-			dst_factor_rgb: gfx.BlendFactor(C.SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA)
+			src_factor_rgb: .src_alpha
+			dst_factor_rgb: .one_minus_src_alpha
 		}
 	}
 	pipdesc.colors[0] = color_state

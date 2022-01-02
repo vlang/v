@@ -4,7 +4,7 @@ import sokol.gfx
 import sokol.sgl
 
 struct AppState {
-	pass_action C.sg_pass_action
+	pass_action gfx.PassAction
 }
 
 const (
@@ -27,7 +27,7 @@ fn main() {
 }
 
 fn init(user_data voidptr) {
-	desc := sapp.create_desc() // C.sg_desc{
+	desc := sapp.create_desc() // gfx.Desc{
 	gfx.setup(&desc)
 	sgl_desc := C.sgl_desc_t{}
 	sgl.setup(&sgl_desc)

@@ -55,7 +55,7 @@ Let my heart be still a moment and this mystery explore;—
 
 struct AppState {
 mut:
-	pass_action C.sg_pass_action
+	pass_action gfx.PassAction
 	fons        &fontstash.Context
 	font_normal int
 	inited      bool
@@ -63,16 +63,16 @@ mut:
 
 [console]
 fn main() {
-	mut color_action := C.sg_color_attachment_action{
+	mut color_action := gfx.ColorAttachmentAction{
 		action: gfx.Action(C.SG_ACTION_CLEAR)
-		value: C.sg_color{
+		value: gfx.Color{
 			r: 1.0
 			g: 1.0
 			b: 1.0
 			a: 1.0
 		}
 	}
-	mut pass_action := C.sg_pass_action{}
+	mut pass_action := gfx.PassAction{}
 	pass_action.colors[0] = color_action
 	state := &AppState{
 		pass_action: pass_action

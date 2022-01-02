@@ -27,7 +27,7 @@ import time
 #flag -I @VMODROOT/.
 #include "rt_glsl.h" # Should be generated with `v shader .` (see the instructions at the top of this file)
 
-fn C.rt_shader_desc(gfx.Backend) &C.sg_shader_desc
+fn C.rt_shader_desc(gfx.Backend) &gfx.ShaderDesc
 
 const (
 	win_width  = 800
@@ -38,15 +38,15 @@ const (
 struct App {
 mut:
 	gg          &gg.Context
-	texture     C.sg_image
+	texture     gfx.Image
 	init_flag   bool
 	frame_count int
 
 	mouse_x int = -1
 	mouse_y int = -1
 	// glsl
-	cube_pip_glsl C.sg_pipeline
-	cube_bind     C.sg_bindings
+	cube_pip_glsl gfx.Pipeline
+	cube_bind     gfx.Bindings
 	// time
 	ticks i64
 }
@@ -54,9 +54,9 @@ mut:
 /******************************************************************************
 * Texture functions
 ******************************************************************************/
-fn create_texture(w int, h int, buf &byte) C.sg_image {
+fn create_texture(w int, h int, buf &byte) gfx.Image {
 	sz := w * h * 4
-	mut img_desc := C.sg_image_desc{
+	mut img_desc := gfx.ImageDesc{
 		width: w
 		height: h
 		num_mipmaps: 0
@@ -69,28 +69,28 @@ fn create_texture(w int, h int, buf &byte) C.sg_image {
 		d3d11_texture: 0
 	}
 	// comment if .dynamic is enabled
-	img_desc.data.subimage[0][0] = C.sg_range{
+	img_desc.data.subimage[0][0] = gfx.Range{
 		ptr: buf
 		size: usize(sz)
 	}
 
-	sg_img := C.sg_make_image(&img_desc)
+	sg_img := gfx.make_image(&img_desc)
 	return sg_img
 }
 
-fn destroy_texture(sg_img C.sg_image) {
-	C.sg_destroy_image(sg_img)
+fn destroy_texture(sg_img gfx.Image) {
+	gfx.destroy_image(sg_img)
 }
 
 // Use only if usage: .dynamic is enabled
-fn update_text_texture(sg_img C.sg_image, w int, h int, buf &byte) {
+fn update_text_texture(sg_img gfx.Image, w int, h int, buf &byte) {
 	sz := w * h * 4
-	mut tmp_sbc := C.sg_image_data{}
-	tmp_sbc.subimage[0][0] = C.sg_range{
+	mut tmp_sbc := gfx.ImageData{}
+	tmp_sbc.subimage[0][0] = gfx.Range{
 		ptr: buf
 		size: usize(sz)
 	}
-	C.sg_update_image(sg_img, &tmp_sbc)
+	gfx.update_image(sg_img, &tmp_sbc)
 }
 
 /******************************************************************************
@@ -155,11 +155,11 @@ fn init_cube_glsl(mut app App) {
 		Vertex_t{ 1.0,  1.0, -1.0, c,  0, d},
 	]
 
-	mut vert_buffer_desc := C.sg_buffer_desc{label: c'cube-vertices'}
+	mut vert_buffer_desc := gfx.BufferDesc{label: c'cube-vertices'}
 	unsafe { C.memset(&vert_buffer_desc, 0, sizeof(vert_buffer_desc)) }
 
 	vert_buffer_desc.size = usize(vertices.len * int(sizeof(Vertex_t)))
-	vert_buffer_desc.data = C.sg_range{
+	vert_buffer_desc.data = gfx.Range{
 		ptr: vertices.data
 		size: usize(vertices.len * int(sizeof(Vertex_t)))
 	}
@@ -177,11 +177,11 @@ fn init_cube_glsl(mut app App) {
 			22,	21,	20,		23,	22,	20,
 	]
 
-	mut index_buffer_desc := C.sg_buffer_desc{label: c'cube-indices'}
+	mut index_buffer_desc := gfx.BufferDesc{label: c'cube-indices'}
 	unsafe {C.memset(&index_buffer_desc, 0, sizeof(index_buffer_desc))}
 
 	index_buffer_desc.size = usize(indices.len * int(sizeof(u16)))
-	index_buffer_desc.data = C.sg_range{
+	index_buffer_desc.data = gfx.Range{
 		ptr: indices.data
 		size: usize(indices.len * int(sizeof(u16)))
 	}
@@ -192,7 +192,7 @@ fn init_cube_glsl(mut app App) {
 	// create shader
 	shader := gfx.make_shader(C.rt_shader_desc(C.sg_query_backend()))
 
-	mut pipdesc := C.sg_pipeline_desc{}
+	mut pipdesc := gfx.PipelineDesc{}
 	unsafe { C.memset(&pipdesc, 0, sizeof(pipdesc)) }
 	pipdesc.layout.buffers[0].stride = int(sizeof(Vertex_t))
 
@@ -205,9 +205,9 @@ fn init_cube_glsl(mut app App) {
 	pipdesc.shader = shader
 	pipdesc.index_type = .uint16
 
-	pipdesc.depth = C.sg_depth_state{
+	pipdesc.depth = gfx.DepthState{
 		write_enabled: true
-		compare: gfx.CompareFunc(C.SG_COMPAREFUNC_LESS_EQUAL)
+		compare: .less_equal
 	}
 	pipdesc.cull_mode = .back
 
@@ -264,7 +264,7 @@ fn draw_cube_glsl(app App) {
 	// *** vertex shadeer uniforms ***
 	// passing the view matrix as uniform
 	// res is a 4x4 matrix of f32 thus: 4*16 byte of size
-	vs_uniforms_range := C.sg_range{
+	vs_uniforms_range := gfx.Range{
 		ptr: &tr_matrix
 		size: usize(4 * 16)
 	}
@@ -282,7 +282,7 @@ fn draw_cube_glsl(app App) {
 		0,
 		0 // padding bytes , see "fs_params" struct paddings in rt_glsl.h
 	]!
-	fs_uniforms_range := C.sg_range{
+	fs_uniforms_range := gfx.Range{
 		ptr: unsafe { &tmp_fs_params }
 		size: usize(sizeof(tmp_fs_params))
 	}
@@ -298,9 +298,9 @@ fn frame(mut app App) {
 	ws := gg.window_size_real_pixels()
 
 	// clear
-	mut color_action := C.sg_color_attachment_action{
+	mut color_action := gfx.ColorAttachmentAction{
 		action: gfx.Action(C.SG_ACTION_CLEAR)
-		value: C.sg_color{
+		value: gfx.Color{
 			r: 0.0
 			g: 0.0
 			b: 0.0
@@ -308,7 +308,7 @@ fn frame(mut app App) {
 		}
 	}
 
-	mut pass_action := C.sg_pass_action{}
+	mut pass_action := gfx.PassAction{}
 	pass_action.colors[0] = color_action
 	gfx.begin_default_pass(&pass_action, ws.width, ws.height)
 

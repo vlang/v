@@ -233,7 +233,7 @@ const (
 struct App_data {
 pub mut:
 	gg        &gg.Context
-	sg_img    C.sg_image
+	sg_img    gfx.Image
 	init_flag bool
 	frame_c   int
 
