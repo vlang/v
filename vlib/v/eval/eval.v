@@ -140,6 +140,7 @@ pub fn (mut e Eval) register_symbol_stmts(stmts []ast.Stmt, mod string, file str
 
 pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 	match stmt {
+		ast.Module {}
 		ast.FnDecl {
 			// this mess because c error
 			x := ast.Stmt(stmt)

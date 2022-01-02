@@ -40,6 +40,13 @@ fn main() {
 	}
 }
 
+enum RunCommandKind {
+	system
+	execute
+}
+
+const expect_nothing = '<nothing>'
+
 struct Command {
 mut:
 	line   string
@@ -48,6 +55,9 @@ mut:
 	okmsg  string
 	errmsg string
 	rmfile string
+	runcmd RunCommandKind = .system
+	expect string = expect_nothing
+	output string
 }
 
 fn get_all_commands() []Command {
@@ -63,6 +73,18 @@ fn get_all_commands() []Command {
 		rmfile: 'hhww.c'
 	}
 	$if linux || macos {
+		res << Command{
+			line: '$vexe run examples/hello_world.v'
+			okmsg: 'V can run hello world.'
+			runcmd: .execute
+			expect: 'Hello, World!\n'
+		}
+		res << Command{
+			line: '$vexe interpret examples/hello_world.v'
+			okmsg: 'V can interpret hello world.'
+			runcmd: .execute
+			expect: 'Hello, World!\n'
+		}
 		res << Command{
 			line: '$vexe -o - examples/hello_world.v | grep "#define V_COMMIT_HASH" > /dev/null'
 			okmsg: 'V prints the generated source code to stdout with `-o -` .'
@@ -198,10 +220,36 @@ fn (mut cmd Command) run() {
 		println(term.header_left(cmd.label, '*'))
 	}
 	sw := time.new_stopwatch()
-	cmd.ecode = os.system(cmd.line)
+	if cmd.runcmd == .system {
+		cmd.ecode = os.system(cmd.line)
+		cmd.output = ''
+	}
+	if cmd.runcmd == .execute {
+		res := os.execute(cmd.line)
+		cmd.ecode = res.exit_code
+		cmd.output = res.output
+	}
 	spent := sw.elapsed().milliseconds()
-	println('> Running: "$cmd.line" took: $spent ms ... ' +
-		if cmd.ecode != 0 { term.failed('FAILED') } else { term_highlight('OK') })
+	//
+	mut is_failed := false
+	if cmd.ecode != 0 {
+		is_failed = true
+	}
+	if cmd.expect != expect_nothing {
+		if cmd.output != cmd.expect {
+			is_failed = true
+		}
+	}
+	//
+	run_label := if is_failed { term.failed('FAILED') } else { term_highlight('OK') }
+	println('> Running: "$cmd.line" took: $spent ms ... $run_label')
+	//
+	if is_failed && cmd.expect != expect_nothing {
+		if cmd.output != cmd.expect {
+			eprintln('> expected:\n$cmd.expect')
+			eprintln('>   output:\n$cmd.output')
+		}
+	}
 	if vtest_nocleanup {
 		return
 	}
