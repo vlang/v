@@ -563,7 +563,7 @@ pub fn (c Checker) check_comment(comment ast.Comment) ? {
 		if ch_byte == 0x0D {
 			st := s.state()
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
-				' carrige return character `$ch_byte.hex()` is not allowed ($st.line_nr,$st.col) "${byte(s.at()).ascii_str()}" near ...${s.excerpt(st.pos, 10)}...')
+				' carrige return character `$ch_byte.hex()` is not allowed in comments ($st.line_nr,$st.col).')
 		}
 		// Check for control characters (allow TAB)
 		if util.is_illegal_ascii_control_character(ch_byte) {

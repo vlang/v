@@ -3,23 +3,36 @@ import toml
 import toml.ast
 import x.json2
 
+const hide_oks = os.getenv('VTEST_HIDE_OK') == '1'
+
+// Can be set to `true` to process tests that stress test the parser
+// by having large data amounts - these pass - but slow down the test run
+const do_large_files = os.getenv('VTEST_TOML_DO_LARGE_FILES') == '1'
+
+// Can be set to `true` to process tests that triggers a slow conversion
+// process that uses `python` to convert from YAML to JSON.
+const do_yaml_conversion = os.getenv('VTEST_TOML_DO_YAML_CONVERSION') == '1'
+
 // Instructions for developers:
 // The actual tests and data can be obtained by doing:
 // `git clone --depth 1 https://github.com/iarna/toml-spec-tests.git vlib/toml/tests/testdata/iarna/toml-test`
 // See also the CI toml tests
 const (
-	// Can be set to `true` to skip tests that stress test the parser
-	// by having large data amounts - these pass - but slow down the test run
-	skip_large_files       = false
-	// Can be set to `true` to skip tests that triggers a slow conversion
-	// process that uses `python` to convert from YAML to JSON.
-	skip_yaml_conversion   = false
-
 	// Kept for easier handling of future updates to the tests
 	valid_exceptions       = []string{}
 	invalid_exceptions     = []string{}
 
-	valid_value_exceptions = []string{}
+	valid_value_exceptions = [
+		'values/spec-date-time-3.toml',
+		'values/spec-date-time-4.toml',
+		'values/spec-readme-example.toml',
+		'values/spec-date-time-6.toml',
+		'values/spec-date-time-5.toml',
+		'values/spec-date-time-1.toml',
+		'values/spec-date-time-2.toml',
+		'values/qa-table-inline-nested-1000.toml',
+		'values/qa-array-inline-nested-1000.toml',
+	]
 
 	yaml_value_exceptions  = [
 		'values/spec-float-5.toml', // YAML: "1e6", V: 1000000
@@ -56,7 +69,7 @@ fn run(args []string) ?string {
 }
 
 // test_iarna_toml_spec_tests run though 'testdata/iarna/toml-test/*' if found.
-fn test_iarna_toml_spec_tests() {
+fn test_iarna_toml_spec_tests() ? {
 	this_file := @FILE
 	test_root := os.join_path(os.dir(this_file), 'testdata', 'iarna', 'toml-test')
 	if os.is_dir(test_root) {
@@ -70,22 +83,26 @@ fn test_iarna_toml_spec_tests() {
 				relative = relative.replace('/', '\\')
 			}
 
-			if skip_large_files && valid_test_file.contains('qa-') {
+			if !do_large_files && valid_test_file.contains('qa-') {
 				e++
-				println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" EXCEPTION [$e/$valid_exceptions.len]...')
+				println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" LARGE FILE...')
 				continue
 			}
 
-			if relative !in valid_exceptions {
-				println('OK   [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
-				toml_doc := toml.parse_file(valid_test_file) or { panic(err) }
-				valid++
-			} else {
+			if relative in valid_exceptions {
 				e++
-				println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" EXCEPTION [$e/$valid_exceptions.len]...')
+				idx := valid_exceptions.index(relative)
+				println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" VALID EXCEPTION [$idx/$valid_exceptions.len]...')
+				continue
 			}
+
+			if !hide_oks {
+				println('OK   [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
+			}
+			toml_doc := toml.parse_file(valid_test_file) ?
+			valid++
 		}
-		println('$valid/$valid_test_files.len TOML files was parsed correctly')
+		println('$valid/$valid_test_files.len TOML files were parsed correctly')
 		if valid_exceptions.len > 0 {
 			println('TODO Skipped parsing of $e valid TOML files...')
 		}
@@ -95,12 +112,12 @@ fn test_iarna_toml_spec_tests() {
 			println('Testing value output of $valid_test_files.len valid TOML files using "$jq"...')
 
 			if os.exists(compare_work_dir_root) {
-				os.rmdir_all(compare_work_dir_root) or { panic(err) }
+				os.rmdir_all(compare_work_dir_root) ?
 			}
-			os.mkdir_all(compare_work_dir_root) or { panic(err) }
+			os.mkdir_all(compare_work_dir_root) ?
 
 			jq_normalize_path := os.join_path(compare_work_dir_root, 'normalize.jq')
-			os.write_file(jq_normalize_path, jq_normalize) or { panic(err) }
+			os.write_file(jq_normalize_path, jq_normalize) ?
 
 			valid = 0
 			e = 0
@@ -111,90 +128,101 @@ fn test_iarna_toml_spec_tests() {
 				}
 
 				// Skip the file if we know it can't be parsed or we know that the value retrieval needs work.
-				if relative !in valid_exceptions && relative !in valid_value_exceptions {
-					valid_test_file_name := os.file_name(valid_test_file).all_before_last('.')
-					uses_json_format := os.exists(valid_test_file.all_before_last('.') + '.json')
-
-					// Use python to convert the YAML files to json - it yields some inconsistencies
-					// so we skip some of them
-					mut converted_from_yaml := false
-					mut converted_json_path := ''
-					if !uses_json_format {
-						$if windows {
-							println('N/A  [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
-							continue
-						}
-						if python == '' {
-							println('N/A  [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
-							continue
-						}
-						if skip_yaml_conversion || relative in yaml_value_exceptions
-							|| valid_test_file.contains('qa-') {
-							e++
-							println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" EXCEPTION [$e/$valid_value_exceptions.len]...')
-							continue
-						}
-
-						iarna_yaml_path := valid_test_file.all_before_last('.') + '.yaml'
-						if os.exists(iarna_yaml_path) {
-							// python -c 'import sys, yaml, json; json.dump(yaml.load(sys.stdin), sys.stdout, indent=4)' < file.yaml > file.json
-
-							converted_json_path = os.join_path(compare_work_dir_root,
-								valid_test_file_name + '.yaml.json')
-
-							run([python, '-c',
-								"'import sys, yaml, json; json.dump(yaml.load(sys.stdin), sys.stdout, indent=4)'",
-								'<', iarna_yaml_path, '>', converted_json_path]) or {
-								contents := os.read_file(iarna_yaml_path) or { panic(err) }
-								// NOTE there's known errors with the python convertion method.
-								// For now we just ignore them as it's a broken tool - not a wrong test-case.
-								// Uncomment this print to see/check them.
-								// eprintln(err.msg + '\n$contents')
-								e++
-								println('ERR  [${i + 1}/$valid_test_files.len] "$valid_test_file" EXCEPTION [$e/$valid_value_exceptions.len]...')
-								continue
-							}
-							converted_from_yaml = true
-						}
-					}
-
-					println('OK   [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
-					toml_doc := toml.parse_file(valid_test_file) or { panic(err) }
-
-					v_toml_json_path := os.join_path(compare_work_dir_root, valid_test_file_name +
-						'.v.json')
-					iarna_toml_json_path := os.join_path(compare_work_dir_root,
-						valid_test_file_name + '.json')
-
-					os.write_file(v_toml_json_path, to_iarna(toml_doc.ast.table, converted_from_yaml)) or {
-						panic(err)
-					}
-
-					if converted_json_path == '' {
-						converted_json_path = valid_test_file.all_before_last('.') + '.json'
-					}
-					iarna_json := os.read_file(converted_json_path) or { panic(err) }
-					os.write_file(iarna_toml_json_path, iarna_json) or { panic(err) }
-
-					v_normalized_json := run([jq, '-S', '-f "$jq_normalize_path"', v_toml_json_path]) or {
-						contents := os.read_file(v_toml_json_path) or { panic(err) }
-						panic(err.msg + '\n$contents')
-					}
-					iarna_normalized_json := run([jq, '-S', '-f "$jq_normalize_path"',
-						iarna_toml_json_path]) or {
-						contents := os.read_file(v_toml_json_path) or { panic(err) }
-						panic(err.msg + '\n$contents')
-					}
-
-					assert iarna_normalized_json == v_normalized_json
-
-					valid++
-				} else {
+				if relative in valid_exceptions {
 					e++
-					println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" EXCEPTION [$e/$valid_value_exceptions.len]...')
+					idx := valid_exceptions.index(relative)
+					println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" VALID EXCEPTION [${
+						idx + 1}/$valid_exceptions.len]...')
+					continue
 				}
+
+				if relative in valid_value_exceptions {
+					e++
+					idx := valid_value_exceptions.index(relative)
+					println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" VALID VALUE EXCEPTION [${
+						idx + 1}/$valid_value_exceptions.len]...')
+					continue
+				}
+
+				valid_test_file_name := os.file_name(valid_test_file).all_before_last('.')
+				uses_json_format := os.exists(valid_test_file.all_before_last('.') + '.json')
+
+				// Use python to convert the YAML files to json - it yields some inconsistencies
+				// so we skip some of them
+				mut converted_from_yaml := false
+				mut converted_json_path := ''
+				if !uses_json_format {
+					$if windows {
+						println('N/A  [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
+						continue
+					}
+					if python == '' {
+						println('N/A  [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
+						continue
+					}
+					if !do_yaml_conversion || relative in yaml_value_exceptions {
+						e++
+						idx := yaml_value_exceptions.index(relative)
+						println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" YAML VALUE EXCEPTION [$idx/$valid_value_exceptions.len]...')
+						continue
+					}
+
+					if !do_large_files && valid_test_file.contains('qa-') {
+						e++
+						println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" LARGE FILE...')
+						continue
+					}
+
+					iarna_yaml_path := valid_test_file.all_before_last('.') + '.yaml'
+					if os.exists(iarna_yaml_path) {
+						converted_json_path = os.join_path(compare_work_dir_root, '${valid_test_file_name}.yaml.json')
+						run([python, '-c',
+							"'import sys, yaml, json; json.dump(yaml.load(sys.stdin, Loader=yaml.FullLoader), sys.stdout, indent=4)'",
+							'<', iarna_yaml_path, '>', converted_json_path]) or {
+							contents := os.read_file(iarna_yaml_path) ?
+							// NOTE there's known errors with the python convertion method.
+							// For now we just ignore them as it's a broken tool - not a wrong test-case.
+							// Uncomment this print to see/check them.
+							// eprintln(err.msg + '\n$contents')
+							e++
+							println('ERR  [${i + 1}/$valid_test_files.len] "$valid_test_file" EXCEPTION [$e/$valid_value_exceptions.len]...')
+							continue
+						}
+						converted_from_yaml = true
+					}
+				}
+
+				if !hide_oks {
+					println('OK   [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
+				}
+				toml_doc := toml.parse_file(valid_test_file) ?
+
+				v_toml_json_path := os.join_path(compare_work_dir_root, '${valid_test_file_name}.v.json')
+				iarna_toml_json_path := os.join_path(compare_work_dir_root, '${valid_test_file_name}.json')
+
+				os.write_file(v_toml_json_path, to_iarna(toml_doc.ast.table, converted_from_yaml)) ?
+
+				if converted_json_path == '' {
+					converted_json_path = valid_test_file.all_before_last('.') + '.json'
+				}
+				iarna_json := os.read_file(converted_json_path) ?
+				os.write_file(iarna_toml_json_path, iarna_json) ?
+
+				v_normalized_json := run([jq, '-S', '-f "$jq_normalize_path"', v_toml_json_path]) or {
+					contents := os.read_file(v_toml_json_path) ?
+					panic(err.msg + '\n$contents')
+				}
+				cmd := [jq, '-S', '-f "$jq_normalize_path"', iarna_toml_json_path]
+				iarna_normalized_json := run(cmd) or {
+					contents := os.read_file(v_toml_json_path) ?
+					panic(err.msg + '\n$contents\n\ncmd: ${cmd.join(' ')}')
+				}
+
+				assert iarna_normalized_json == v_normalized_json
+
+				valid++
 			}
-			println('$valid/$valid_test_files.len TOML files was parsed correctly and value checked')
+			println('$valid/$valid_test_files.len TOML files were parsed correctly and value checked')
 			if valid_value_exceptions.len > 0 {
 				println('TODO Skipped value checks of $e valid TOML files...')
 			}
@@ -209,25 +237,28 @@ fn test_iarna_toml_spec_tests() {
 			$if windows {
 				relative = relative.replace('/', '\\')
 			}
-			if relative !in invalid_exceptions {
-				println('OK   [${i + 1}/$invalid_test_files.len] "$invalid_test_file"...')
-				if toml_doc := toml.parse_file(invalid_test_file) {
-					content_that_should_have_failed := os.read_file(invalid_test_file) or {
-						panic(err)
-					}
-					println('     This TOML should have failed:\n${'-'.repeat(40)}\n$content_that_should_have_failed\n${'-'.repeat(40)}')
-					assert false
-				} else {
-					println('     $err.msg')
-					assert true
-				}
-				invalid++
-			} else {
+			if relative in invalid_exceptions {
 				e++
-				println('SKIP [${i + 1}/$invalid_test_files.len] "$invalid_test_file" EXCEPTION [$e/$invalid_exceptions.len]...')
+				idx := invalid_exceptions.index(relative)
+				println('SKIP [${i + 1}/$invalid_test_files.len] "$invalid_test_file" INVALID EXCEPTION [$idx/$invalid_exceptions.len]...')
+				continue
 			}
+			if !hide_oks {
+				println('OK   [${i + 1}/$invalid_test_files.len] "$invalid_test_file"...')
+			}
+			if toml_doc := toml.parse_file(invalid_test_file) {
+				content_that_should_have_failed := os.read_file(invalid_test_file) ?
+				println('     This TOML should have failed:\n${'-'.repeat(40)}\n$content_that_should_have_failed\n${'-'.repeat(40)}')
+				assert false
+			} else {
+				if !hide_oks {
+					println('     $err.msg')
+				}
+				assert true
+			}
+			invalid++
 		}
-		println('$invalid/$invalid_test_files.len TOML files was parsed correctly')
+		println('$invalid/$invalid_test_files.len TOML files were parsed correctly')
 		if invalid_exceptions.len > 0 {
 			println('TODO Skipped parsing of $invalid_exceptions.len invalid TOML files...')
 		}

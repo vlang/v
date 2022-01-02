@@ -345,7 +345,7 @@ fn (mut s Scanner) ignore_line() ?string {
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping "${byte(c).ascii_str()} / $c"')
 		if s.at_crlf() {
 			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'letting `\\r\\n` slip through')
-			return s.text[start..s.pos + 1]
+			break
 		}
 	}
 	return s.text[start..s.pos]

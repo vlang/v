@@ -3,6 +3,8 @@ import toml
 import toml.ast
 import x.json2
 
+const hide_oks = os.getenv('VTEST_HIDE_OK') == '1'
+
 // Instructions for developers:
 // The actual tests and data can be obtained by doing:
 // `git clone --depth 1 https://github.com/alexcrichton/toml-rs.git vlib/toml/tests/testdata/alexcrichton/toml-test`
@@ -18,7 +20,10 @@ const (
 
 	valid_value_exceptions = [
 		// These have correct values, and should've passed, but the format of arrays is *mixed* in the JSON ??
+		'valid/datetime-truncate.toml',
 		'valid/example2.toml',
+		'valid/example-v0.4.0.toml',
+		'valid/example-v0.3.0.toml',
 	]
 
 	// These have correct values, and should've passed as-is, but the format of arrays changes in the JSON ??
@@ -58,7 +63,7 @@ fn run(args []string) ?string {
 }
 
 // test_alexcrichton_toml_rs run though 'testdata/alexcrichton/toml-test/test-suite/tests/*' if found.
-fn test_alexcrichton_toml_rs() {
+fn test_alexcrichton_toml_rs() ? {
 	this_file := @FILE
 	test_root := os.join_path(os.dir(this_file), 'testdata', 'alexcrichton', 'toml-test')
 	if os.is_dir(test_root) {
@@ -74,15 +79,17 @@ fn test_alexcrichton_toml_rs() {
 			}
 
 			if relative !in valid_exceptions {
-				println('OK   [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
-				toml_doc := toml.parse_file(valid_test_file) or { panic(err) }
+				if !hide_oks {
+					println('OK   [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
+				}
+				toml_doc := toml.parse_file(valid_test_file) ?
 				valid++
 			} else {
 				e++
 				println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" EXCEPTION [$e/$valid_exceptions.len]...')
 			}
 		}
-		println('$valid/$valid_test_files.len TOML files was parsed correctly')
+		println('$valid/$valid_test_files.len TOML files were parsed correctly')
 		if valid_exceptions.len > 0 {
 			println('TODO Skipped parsing of $e valid TOML files...')
 		}
@@ -92,12 +99,12 @@ fn test_alexcrichton_toml_rs() {
 			println('Testing value output of $valid_test_files.len valid TOML files using "$jq"...')
 
 			if os.exists(compare_work_dir_root) {
-				os.rmdir_all(compare_work_dir_root) or { panic(err) }
+				os.rmdir_all(compare_work_dir_root) ?
 			}
-			os.mkdir_all(compare_work_dir_root) or { panic(err) }
+			os.mkdir_all(compare_work_dir_root) ?
 
 			jq_normalize_path := os.join_path(compare_work_dir_root, 'normalize.jq')
-			os.write_file(jq_normalize_path, jq_normalize) or { panic(err) }
+			os.write_file(jq_normalize_path, jq_normalize) ?
 
 			valid = 0
 			e = 0
@@ -112,8 +119,10 @@ fn test_alexcrichton_toml_rs() {
 				}
 				// Skip the file if we know it can't be parsed or we know that the value retrieval needs work.
 				if relative !in valid_exceptions && relative !in valid_value_exceptions {
-					println('OK   [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
-					toml_doc := toml.parse_file(valid_test_file) or { panic(err) }
+					if !hide_oks {
+						println('OK   [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
+					}
+					toml_doc := toml.parse_file(valid_test_file) ?
 
 					v_toml_json_path := os.join_path(compare_work_dir_root,
 						os.file_name(valid_test_file).all_before_last('.') + '.v.json')
@@ -126,20 +135,19 @@ fn test_alexcrichton_toml_rs() {
 					}
 
 					os.write_file(v_toml_json_path, to_alexcrichton(toml_doc.ast.table,
-						array_type)) or { panic(err) }
+						array_type)) ?
 
-					alexcrichton_json := os.read_file(valid_test_file.all_before_last('.') + '.json') or {
-						panic(err)
-					}
-					os.write_file(alexcrichton_toml_json_path, alexcrichton_json) or { panic(err) }
+					alexcrichton_json := os.read_file(valid_test_file.all_before_last('.') + '.json') ?
+					
+					os.write_file(alexcrichton_toml_json_path, alexcrichton_json) ?
 
 					v_normalized_json := run([jq, '-S', '-f "$jq_normalize_path"', v_toml_json_path]) or {
-						contents := os.read_file(v_toml_json_path) or { panic(err) }
+						contents := os.read_file(v_toml_json_path) ?
 						panic(err.msg + '\n$contents')
 					}
 					alexcrichton_normalized_json := run([jq, '-S', '-f "$jq_normalize_path"',
 						alexcrichton_toml_json_path]) or {
-						contents := os.read_file(v_toml_json_path) or { panic(err) }
+						contents := os.read_file(v_toml_json_path) ?
 						panic(err.msg + '\n$contents')
 					}
 
@@ -151,7 +159,7 @@ fn test_alexcrichton_toml_rs() {
 					println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" EXCEPTION [$e/$valid_value_exceptions.len]...')
 				}
 			}
-			println('$valid/$valid_test_files.len TOML files was parsed correctly and value checked')
+			println('$valid/$valid_test_files.len TOML files were parsed correctly and value checked')
 			if valid_value_exceptions.len > 0 {
 				println('TODO Skipped value checks of $e valid TOML files...')
 			}
@@ -168,15 +176,17 @@ fn test_alexcrichton_toml_rs() {
 				relative = relative.replace('/', '\\')
 			}
 			if relative !in invalid_exceptions {
-				println('OK   [${i + 1}/$invalid_test_files.len] "$invalid_test_file"...')
+				if !hide_oks {
+					println('OK   [${i + 1}/$invalid_test_files.len] "$invalid_test_file"...')
+				}
 				if toml_doc := toml.parse_file(invalid_test_file) {
-					content_that_should_have_failed := os.read_file(invalid_test_file) or {
-						panic(err)
-					}
+					content_that_should_have_failed := os.read_file(invalid_test_file) ?
 					println('     This TOML should have failed:\n${'-'.repeat(40)}\n$content_that_should_have_failed\n${'-'.repeat(40)}')
 					assert false
 				} else {
-					println('     $err.msg')
+					if !hide_oks {
+						println('     $err.msg')
+					}
 					assert true
 				}
 				invalid++
@@ -185,7 +195,7 @@ fn test_alexcrichton_toml_rs() {
 				println('SKIP [${i + 1}/$invalid_test_files.len] "$invalid_test_file" EXCEPTION [$e/$invalid_exceptions.len]...')
 			}
 		}
-		println('$invalid/$invalid_test_files.len TOML files was parsed correctly')
+		println('$invalid/$invalid_test_files.len TOML files were parsed correctly')
 		if invalid_exceptions.len > 0 {
 			println('TODO Skipped parsing of $invalid_exceptions.len invalid TOML files...')
 		}
