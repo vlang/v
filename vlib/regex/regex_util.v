@@ -464,25 +464,36 @@ pub fn (mut re RE) replace(in_txt string, repl_str string) string {
 	return res.str()
 }
 
+// replace return a string where the matches are replaced count instances with the repl_str string,
+// if count is > 0 the replace began from the start of the string toward the end
+// if count is < 0 the replace began from the end of the string toward the start
+// if count is 0 do nothing
 pub fn (mut re RE) replace_n(in_txt string, repl_str string, count int) string {
 	mut i := 0
 	mut index := 0
 	mut i_p := 0
-	mut n := count
 	mut res := strings.new_builder(in_txt.len)
-    lst := re.find_all(in_txt)
-    println("found: ${lst}")
-    for index < lst.len && n > 0 {
-    	i = lst[index]
-    	res.write_string(in_txt[i_p..i])
-    	res.write_string(repl_str)
-    	index ++
-    	i_p = lst[index]
-    	index++
-    	n--
-    }
-    i = i_p
-    res.write_string(in_txt[i..])
+	mut lst := re.find_all(in_txt)
 
-    return res.str()
+	if count < 0 { // start from the right of the string
+		lst = lst#[count * 2..] // limitate the number of substitions
+	} else if count > 0 { // start from the left of the string
+		lst = lst#[..count * 2] // limitate the number of substitions
+	} else if count == 0 { // no replace
+		return in_txt
+	}
+
+	// println("found: ${lst}")
+	for index < lst.len {
+		i = lst[index]
+		res.write_string(in_txt[i_p..i])
+		res.write_string(repl_str)
+		index++
+		i_p = lst[index]
+		index++
+	}
+	i = i_p
+	res.write_string(in_txt[i..])
+
+	return res.str()
 }
