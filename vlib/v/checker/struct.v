@@ -8,7 +8,7 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 	if node.language == .v && !c.is_builtin_mod {
 		c.check_valid_pascal_case(node.name, 'struct name', node.pos)
 	}
-	mut struct_sym := c.table.find_type(node.name) or { ast.invalid_type_symbol }
+	mut struct_sym, struct_typ_idx := c.table.find_sym_and_type_idx(node.name)
 	mut has_generic_types := false
 	if mut struct_sym.info is ast.Struct {
 		for embed in node.embeds {
@@ -46,6 +46,14 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			for j in 0 .. i {
 				if field.name == node.fields[j].name {
 					c.error('field name `$field.name` duplicate', field.pos)
+				}
+			}
+			if field.typ != 0 {
+				if !field.typ.is_ptr() {
+					if c.table.unaliased_type(field.typ) == struct_typ_idx {
+						c.error('Field `$field.name` is part of `$node.name`, they can not both have the same type',
+							field.type_pos)
+					}
 				}
 			}
 			if sym.kind == .struct_ {

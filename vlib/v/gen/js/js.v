@@ -175,7 +175,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	g.enter_namespace('main')
 	// generate JS methods for interface methods
 	for iface_name, iface_types in g.table.iface_types {
-		iface := g.table.find_type(iface_name) or { panic('unreachable: interface must exist') }
+		iface := g.table.find_sym(iface_name) or { panic('unreachable: interface must exist') }
 		for ty in iface_types {
 			sym := g.table.sym(ty)
 			for method in iface.methods {

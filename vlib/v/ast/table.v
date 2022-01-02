@@ -610,12 +610,21 @@ pub fn (t &Table) find_type_idx(name string) int {
 }
 
 [inline]
-pub fn (t &Table) find_type(name string) ?&TypeSymbol {
+pub fn (t &Table) find_sym(name string) ?&TypeSymbol {
 	idx := t.type_idxs[name]
 	if idx > 0 {
 		return t.type_symbols[idx]
 	}
 	return none
+}
+
+[inline]
+pub fn (t &Table) find_sym_and_type_idx(name string) (&TypeSymbol, int) {
+	idx := t.type_idxs[name]
+	if idx > 0 {
+		return t.type_symbols[idx], idx
+	}
+	return ast.invalid_type_symbol, idx
 }
 
 pub const invalid_type_symbol = &TypeSymbol{

@@ -2224,7 +2224,7 @@ fn (mut c Checker) import_stmt(node ast.Import) {
 	for sym in node.syms {
 		name := '${node.mod}.$sym.name'
 		if sym.name[0].is_capital() {
-			if type_sym := c.table.find_type(name) {
+			if type_sym := c.table.find_sym(name) {
 				if type_sym.kind != .placeholder {
 					if !type_sym.is_public {
 						c.error('module `$node.mod` type `$sym.name` is private', sym.pos)

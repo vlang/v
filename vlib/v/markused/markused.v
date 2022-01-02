@@ -249,7 +249,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 	if pref.is_test {
 		all_fn_root_names << 'main.cb_assertion_ok'
 		all_fn_root_names << 'main.cb_assertion_failed'
-		if benched_tests_sym := table.find_type('main.BenchedTests') {
+		if benched_tests_sym := table.find_sym('main.BenchedTests') {
 			bts_type := benched_tests_sym.methods[0].params[0].typ
 			all_fn_root_names << '${bts_type}.testing_step_start'
 			all_fn_root_names << '${bts_type}.testing_step_end'
