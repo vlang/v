@@ -3459,6 +3459,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			is_pub: is_pub
 			variants: sum_variants
 			generic_types: generic_types
+			attrs: p.attrs
 			pos: decl_pos
 			comments: comments
 		}

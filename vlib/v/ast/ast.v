@@ -1092,6 +1092,7 @@ pub:
 	comments      []Comment
 	typ           Type
 	generic_types []Type
+	attrs         []Attr // attributes of type declaration
 pub mut:
 	variants []TypeNode
 }
