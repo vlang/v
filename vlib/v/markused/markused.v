@@ -139,6 +139,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 			'__new_array_with_default_noscan',
 			'__new_array_with_array_default_noscan',
 			'new_array_from_c_array_noscan',
+			'new_array_from_c_array_no_alloc_noscan',
 			'22.clone_static_to_depth_noscan',
 			'22.clone_to_depth_noscan',
 			'22.reverse_noscan',
