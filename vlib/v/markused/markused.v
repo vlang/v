@@ -26,6 +26,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		'vcalloc',
 		'vcalloc_noscan',
 		'new_array_from_c_array',
+		'new_array_from_c_array_no_alloc',
 		'v_fixed_index',
 		'memdup',
 		'vstrlen',
