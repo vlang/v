@@ -4,15 +4,24 @@ module sgl
 fn C.sgl_setup(desc &C.sgl_desc_t)
 fn C.sgl_shutdown()
 fn C.sgl_error() C.sgl_error_t
-fn C.sgl_defaults()
+fn C.sgl_context_error(ctx C.sgl_context) C.sgl_error_t
 fn C.sgl_rad(deg f32) f32
 fn C.sgl_deg(rad f32) f32
 
+// context functions
+fn C.sgl_make_context(desc &C.sgl_context_desc_t) C.sgl_context
+fn C.sgl_destroy_context(ctx C.sgl_context)
+fn C.sgl_set_context(ctx C.sgl_context)
+fn C.sgl_get_context() C.sgl_context
+fn C.sgl_default_context() C.sgl_context
+
 // create and destroy pipeline objects
 fn C.sgl_make_pipeline(desc &C.sg_pipeline_desc) C.sgl_pipeline
+fn C.sgl_context_make_pipeline(ctx C.sgl_context, desc &C.sg_pipeline_desc) C.sgl_pipeline
 fn C.sgl_destroy_pipeline(pip C.sgl_pipeline)
 
 // render state functions
+fn C.sgl_defaults()
 fn C.sgl_viewport(x int, y int, w int, h int, origin_top_left bool)
 fn C.sgl_viewportf(x f32, y f32, w f32, h f32, origin_top_left bool)
 fn C.sgl_scissor_rect(x int, y int, w int, h int, origin_top_left bool)
@@ -87,5 +96,6 @@ fn C.sgl_v3f_t2f_c4b(x f32, y f32, z f32, u f32, v f32, r byte, g byte, b byte, 
 fn C.sgl_v3f_t2f_c1i(x f32, y f32, z f32, u f32, v f32, rgba u32)
 fn C.sgl_end()
 
-// render everything
+// render recorded commands
 fn C.sgl_draw()
+fn C.sgl_context_draw(ctx C.sgl_context)

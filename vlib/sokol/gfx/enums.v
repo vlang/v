@@ -11,6 +11,7 @@ pub enum Backend {
 	dummy
 }
 
+// PixelFormat is C.sg_pixel_format
 pub enum PixelFormat {
 	_default // value 0 reserved for default-init
 	@none
@@ -216,6 +217,7 @@ pub enum CullMode {
 	_num
 }
 
+// FaceWindin is C.sg_face_winding
 pub enum FaceWinding {
 	_facewinding_default // value 0 reserved for default-init
 	facewinding_ccw

@@ -325,7 +325,7 @@ fn my_init(mut app App) {
 	// for a large number of the same type of object it is better use the instances!!
 	desc := sapp.create_desc()
 	gfx.setup(&desc)
-	sgl_desc := C.sgl_desc_t{
+	sgl_desc := sgl.Desc{
 		max_vertices: 50 * 65536
 	}
 	sgl.setup(&sgl_desc)

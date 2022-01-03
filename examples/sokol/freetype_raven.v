@@ -96,7 +96,7 @@ fn init(user_data voidptr) {
 	mut state := &AppState(user_data)
 	desc := sapp.create_desc()
 	gfx.setup(&desc)
-	s := &C.sgl_desc_t{}
+	s := &sgl.Desc{}
 	C.sgl_setup(s)
 	state.fons = sfons.create(512, 512, 1)
 	// or use DroidSerif-Regular.ttf

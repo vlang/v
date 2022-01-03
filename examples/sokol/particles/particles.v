@@ -31,7 +31,7 @@ mut:
 	frame     i64
 	last      i64
 	ps        particle.System
-	alpha_pip C.sgl_pipeline
+	alpha_pip sgl.Pipeline
 }
 
 fn (mut a App) init() {
@@ -75,7 +75,7 @@ fn init(user_data voidptr) {
 	mut app := &App(user_data)
 	desc := sapp.create_desc()
 	gfx.setup(&desc)
-	sgl_desc := C.sgl_desc_t{
+	sgl_desc := sgl.Desc{
 		max_vertices: 50 * 65536
 	}
 	sgl.setup(&sgl_desc)

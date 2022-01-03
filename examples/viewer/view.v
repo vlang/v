@@ -61,7 +61,7 @@ enum Viewer_state {
 struct App {
 mut:
 	gg          &gg.Context
-	pip_viewer  C.sgl_pipeline
+	pip_viewer  sgl.Pipeline
 	texture     gfx.Image
 	init_flag   bool
 	frame_count int

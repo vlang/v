@@ -29,7 +29,7 @@ fn main() {
 fn init(user_data voidptr) {
 	desc := sapp.create_desc() // gfx.Desc{
 	gfx.setup(&desc)
-	sgl_desc := C.sgl_desc_t{}
+	sgl_desc := sgl.Desc{}
 	sgl.setup(&sgl_desc)
 }
 
