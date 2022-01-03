@@ -102,6 +102,10 @@ fn (b &Builder) exit_on_invalid_syntax() {
 }
 
 fn (mut b Builder) run_compiled_executable_and_exit() {
+	if b.pref.backend == .interpret {
+		// the interpreted code has already ran
+		return
+	}
 	if b.pref.skip_running {
 		return
 	}
