@@ -171,18 +171,25 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 					for i, branch in x.branches {
 						mut do_if := false
 						println('branch:$branch')
-						match (branch.cond as ast.Ident).name {
-							'windows' {
-								do_if = e.pref.os == .windows
+						match branch.cond {
+							ast.Ident {
+								match (branch.cond as ast.Ident).name {
+									'windows' {
+										do_if = e.pref.os == .windows
+									}
+									else {
+										e.error('unknown compile time if')
+									}
+								}
+								do_if = do_if || x.branches.len == i + 1
+								if do_if {
+									e.register_symbol_stmts(branch.stmts, mod, file)
+									break
+								}
 							}
 							else {
-								e.error('unknown compile time if')
+								eprintln('unsupported expression')
 							}
-						}
-						do_if = do_if || x.branches.len == i + 1
-						if do_if {
-							e.register_symbol_stmts(branch.stmts, mod, file)
-							break
 						}
 					}
 				}
