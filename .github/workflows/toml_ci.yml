@@ -67,7 +67,7 @@ jobs:
         run: |
           git clone https://github.com/alexcrichton/toml-rs.git $TOML_AC_TESTS_PATH
           ## TODO: update/remove this pinning once all our skip lists are empty:
-          git -C $TOML_ALEXCRICHTON_TESTS_PATH checkout $TOML_AC_TESTS_PINNED_COMMIT
+          git -C $TOML_AC_TESTS_PATH checkout $TOML_AC_TESTS_PINNED_COMMIT
 
       - name: Run alexcrichton TOML tests
         run: ./v vlib/toml/tests/alexcrichton.toml-rs-tests_test.v
