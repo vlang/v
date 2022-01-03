@@ -27,7 +27,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --quiet -y jq
+          sudo apt-get install --quiet -y jq libgc-dev
       - name: Build V
         run: make -j2 && ./v -cc gcc -o v cmd/v
 
