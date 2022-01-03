@@ -17,8 +17,8 @@ jobs:
       TOML_BS_TESTS_PINNED_COMMIT: eb989e5
       TOML_IARNA_TESTS_PATH: vlib/toml/tests/testdata/iarna/toml-test
       TOML_IARNA_TESTS_PINNED_COMMIT: 1880b1a
-      TOML_ALEXCRICHTON_TESTS_PATH: vlib/toml/tests/testdata/alexcrichton/toml-test
-      TOML_ALEXCRICHTON_TESTS_PINNED_COMMIT: 499e8c4
+      TOML_AC_TESTS_PATH: vlib/toml/tests/testdata/alexcrichton/toml-test
+      TOML_AC_TESTS_PINNED_COMMIT: 499e8c4
     steps:
 
       - uses: actions/checkout@v2
@@ -28,6 +28,9 @@ jobs:
           sudo apt-get install --quiet -y jq
       - name: Build V
         run: make -j2 && ./v -cc gcc -o v cmd/v
+
+      - name: Show JQ Version
+        run: jq --version
 
       - name: Run local TOML tests
         run: ./v test vlib/toml
@@ -62,9 +65,9 @@ jobs:
         # Tests found at https://github.com/alexcrichton/toml-rs
       - name: Clone alexcrichton/toml-rs
         run: |
-          git clone https://github.com/alexcrichton/toml-rs.git $TOML_ALEXCRICHTON_TESTS_PATH
+          git clone https://github.com/alexcrichton/toml-rs.git $TOML_AC_TESTS_PATH
           ## TODO: update/remove this pinning once all our skip lists are empty:
-          git -C $TOML_ALEXCRICHTON_TESTS_PATH checkout $TOML_ALEXCRICHTON_TESTS_PINNED_COMMIT
+          git -C $TOML_ALEXCRICHTON_TESTS_PATH checkout $TOML_AC_TESTS_PINNED_COMMIT
 
       - name: Run alexcrichton TOML tests
         run: ./v vlib/toml/tests/alexcrichton.toml-rs-tests_test.v
