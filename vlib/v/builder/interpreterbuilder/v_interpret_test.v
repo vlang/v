@@ -1,5 +1,8 @@
 import os
 import rand
+import term
+
+const vexe = @VEXE
 
 fn interpreter_wrap(a string) string {
 	return 'fn main() {$a}'
@@ -15,7 +18,7 @@ fn interp_test(expression string, expected string) ? {
 	tmpfile := os.join_path(tmpdir, 'input.v')
 	outfile := os.join_path(tmpdir, 'output.txt')
 	os.write_file(tmpfile, interpreter_wrap(expression)) ?
-	if os.system('v interpret $tmpfile > $outfile') != 0 {
+	if os.system('"$vexe" interpret $tmpfile > $outfile') != 0 {
 		eprintln('>>> Failed to interpret V expression: |$expression|')
 		return error('v interp')
 	}
@@ -28,6 +31,9 @@ fn interp_test(expression string, expected string) ? {
 		eprintln('     expected: |$expected|')
 		return error('test')
 	}
+	println('${term.colorize(term.green, 'OK')} ${term.colorize(term.bright_blue, expression.replace('\n',
+		' '))}')
+	println('   >> ${term.colorize(term.bright_yellow, output)}')
 }
 
 struct InterpTest {
