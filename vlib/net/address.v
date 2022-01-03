@@ -24,7 +24,7 @@ fn new_ip6(port u16, addr [16]byte) Addr {
 		}
 	}
 
-	copy(a.addr.Ip6.addr[0..], addr[0..])
+	copy(a.addr.Ip6.addr[..], addr[..])
 
 	return a
 }
@@ -39,7 +39,7 @@ fn new_ip(port u16, addr [4]byte) Addr {
 		}
 	}
 
-	copy(a.addr.Ip6.addr[0..], addr[0..])
+	copy(a.addr.Ip.addr[..], addr[..])
 
 	return a
 }
