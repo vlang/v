@@ -623,6 +623,25 @@ fn test_regex_func_replace(){
 	assert result == txt2
 }
 
+fn rest_regex_replace_n(){
+	s := "dario 1234 pepep 23454 pera"
+    query := r"\d+"
+
+    mut re := regex.regex_opt(query) or { panic(err) }
+
+    assert re.replace_n(s, "[repl]", 0) == "dario 1234 pepep 23454 pera"
+    assert re.replace_n(s, "[repl]", -1) == "dario 1234 pepep [repl] pera"
+    assert re.replace_n(s, "[repl]", 1) == "dario [repl] pepep 23454 pera"
+    assert re.replace_n(s, "[repl]", 2) == "dario [repl] pepep [repl] pera"
+    assert re.replace_n(s, "[repl]", -2) == "dario [repl] pepep [repl] pera"
+    assert re.replace_n(s, "[repl]", 3) == "dario [repl] pepep [repl] pera"
+    assert re.replace_n(s, "[repl]", -3) == "dario [repl] pepep [repl] pera"
+
+    //mut res := re.replace_n(s, "[repl]", -1)
+    //println("source: ${s}")
+    //println("res   : ${res}")
+}
+
 // test quantifier wrong sequences
 const(
 	test_quantifier_sequences_list = [
