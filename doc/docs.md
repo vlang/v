@@ -41,6 +41,10 @@ easy to install (V will download a prebuilt binary automatically).
 It is recommended to add this folder to the PATH of your environment variables.
 This can be done with the command `v.exe symlink`.
 
+NB: Some antivirus software (like Symantec) are paranoid about executables with 
+names with only 1 letter (like `v.exe`). A possible workaround in that situation
+is renaming `v.exe` to `vlang.exe`.
+
 ### Android
 Running V graphical apps on Android is also possible via [vab](https://github.com/vlang/vab).
 
