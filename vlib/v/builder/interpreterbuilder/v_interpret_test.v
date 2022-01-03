@@ -47,7 +47,7 @@ fn test_interpreter() ? {
 	tests << InterpTest{'println(3)', '3'}
 	tests << InterpTest{'println(3-4)', '-1'}
 	tests << InterpTest{'println(3*3)', '9'}
-	tests << InterpTest{'a:= 3\nprintln(a*3)', '9'}
+	tests << InterpTest{'a := 3\nprintln(a*3)', '9'}
 	for test in tests {
 		interp_test(test.input, test.output) ?
 		assert true
