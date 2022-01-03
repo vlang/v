@@ -15,10 +15,16 @@ fn interp_test(expression string, expected string) ? {
 	}
 	os.write_file(tmpfile, interpreter_wrap(expression)) ?
 	if os.system('v interpret $tmpfile > $outfile') != 0 {
+		eprintln('>>> Failed to interpret V expression: |$expression|')
 		return error('v interp')
 	}
 	res := os.read_file(outfile) ?
-	if res.trim_space() != expected {
+	output := res.trim_space()
+	if output != expected {
+		eprintln('>>> The output of the V expression, is not the same as the expected one')
+		eprintln(' V expression: $expression')
+		eprintln('       output: |$output|')
+		eprintln('     expected: |$expected|')
 		return error('test')
 	}
 }
@@ -37,5 +43,6 @@ fn test_interpreter() ? {
 	tests << InterpTest{'a:= 3\nprintln(a*3)', '9'}
 	for test in tests {
 		interp_test(test.input, test.output) ?
+		assert true
 	}
 }
