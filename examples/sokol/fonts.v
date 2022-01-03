@@ -44,7 +44,7 @@ fn main() {
 fn init(mut state AppState) {
 	desc := sapp.create_desc()
 	gfx.setup(&desc)
-	s := &C.sgl_desc_t{}
+	s := &sgl.Desc{}
 	C.sgl_setup(s)
 	state.fons = sfons.create(512, 512, 1)
 	// or use DroidSerif-Regular.ttf

@@ -111,7 +111,7 @@ pub mut:
 	height      int
 	clear_pass  gfx.PassAction
 	window      sapp.Desc
-	timage_pip  C.sgl_pipeline
+	timage_pip  sgl.Pipeline
 	config      Config
 	user_data   voidptr
 	ft          &FT
@@ -150,7 +150,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 	}
 	*/
 	gfx.setup(&desc)
-	sgl_desc := C.sgl_desc_t{}
+	sgl_desc := sgl.Desc{}
 	sgl.setup(&sgl_desc)
 	g.scale = dpi_scale()
 	// is_high_dpi := sapp.high_dpi()
