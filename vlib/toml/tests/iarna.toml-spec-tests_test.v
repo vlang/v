@@ -91,7 +91,7 @@ fn test_iarna_toml_spec_tests() ? {
 
 			if relative in valid_exceptions {
 				e++
-				idx := valid_exceptions.index(relative)
+				idx := valid_exceptions.index(relative) + 1
 				println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" VALID EXCEPTION [$idx/$valid_exceptions.len]...')
 				continue
 			}
@@ -130,17 +130,15 @@ fn test_iarna_toml_spec_tests() ? {
 				// Skip the file if we know it can't be parsed or we know that the value retrieval needs work.
 				if relative in valid_exceptions {
 					e++
-					idx := valid_exceptions.index(relative)
-					println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" VALID EXCEPTION [${
-						idx + 1}/$valid_exceptions.len]...')
+					idx := valid_exceptions.index(relative) + 1
+					println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" VALID EXCEPTION [$idx/$valid_exceptions.len]...')
 					continue
 				}
 
 				if relative in valid_value_exceptions {
 					e++
-					idx := valid_value_exceptions.index(relative)
-					println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" VALID VALUE EXCEPTION [${
-						idx + 1}/$valid_value_exceptions.len]...')
+					idx := valid_value_exceptions.index(relative) + 1
+					println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" VALID VALUE EXCEPTION [$idx/$valid_value_exceptions.len]...')
 					continue
 				}
 
@@ -162,7 +160,7 @@ fn test_iarna_toml_spec_tests() ? {
 					}
 					if !do_yaml_conversion || relative in yaml_value_exceptions {
 						e++
-						idx := yaml_value_exceptions.index(relative)
+						idx := yaml_value_exceptions.index(relative) + 1
 						println('SKIP [${i + 1}/$valid_test_files.len] "$valid_test_file" YAML VALUE EXCEPTION [$idx/$valid_value_exceptions.len]...')
 						continue
 					}
@@ -239,7 +237,7 @@ fn test_iarna_toml_spec_tests() ? {
 			}
 			if relative in invalid_exceptions {
 				e++
-				idx := invalid_exceptions.index(relative)
+				idx := invalid_exceptions.index(relative) + 1
 				println('SKIP [${i + 1}/$invalid_test_files.len] "$invalid_test_file" INVALID EXCEPTION [$idx/$invalid_exceptions.len]...')
 				continue
 			}
