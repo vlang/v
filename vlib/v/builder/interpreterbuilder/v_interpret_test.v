@@ -1,18 +1,19 @@
 import os
+import rand
 
 fn interpreter_wrap(a string) string {
 	return 'fn main() {$a}'
 }
 
 fn interp_test(expression string, expected string) ? {
-	tmpdir := os.temp_dir()
-	tmpfile := '$tmpdir/input.v'
-	outfile := '$tmpdir/output.txt'
+	tmpdir := os.join_path(os.temp_dir(), 'v_interpret_test_$rand.ulid()')
+	os.mkdir_all(tmpdir) or {}
 	defer {
-		os.rm(tmpfile) or {}
-		os.rm(outfile) or {}
 		os.rmdir_all(tmpdir) or {}
 	}
+	//
+	tmpfile := os.join_path(tmpdir, 'input.v')
+	outfile := os.join_path(tmpdir, 'output.txt')
 	os.write_file(tmpfile, interpreter_wrap(expression)) ?
 	if os.system('v interpret $tmpfile > $outfile') != 0 {
 		eprintln('>>> Failed to interpret V expression: |$expression|')
