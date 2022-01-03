@@ -98,15 +98,28 @@ fn test_sizes_unix() {
 }
 
 fn test_ip_str() {
-	ip := new_ip(1337, addr_ip_any).str()
-	expected := '0.0.0.0:1337'
-	assert ip.len == expected.len
-	assert ip == expected
+	ip1 := new_ip(1337, addr_ip_any).str()
+	expected1 := '0.0.0.0:1337'
+	assert ip1.len == expected1.len
+	assert ip1 == expected1
+
+	addr := [byte(2), 0, 2, 2]!
+	ip2 := new_ip(2202, addr).str()
+	expected2 := '2.0.2.2:2202'
+	assert ip2.len == expected2.len
+	assert ip2 == expected2
 }
 
 fn test_ip6_str() {
-	ip := new_ip6(1337, addr_ip6_any).str()
-	expected := '[::]:1337'
-	assert ip.len == expected.len
-	assert ip == expected
+	ip1 := new_ip6(1337, addr_ip6_any).str()
+	expected1 := '[::]:1337'
+	assert ip1.len == expected1.len
+	assert ip1 == expected1
+
+	addr := [byte(2), 0, 2, 2, 2, 0, 1, 1, 2, 3, 2, 1, 2, 3, 5, 2]!
+	ip2 := new_ip6(2022, addr).str()
+	println(ip2)
+	expected2 := '[200:202:200:101:203:201:203:502]:2022'
+	assert ip2.len == expected2.len
+	assert ip2 == expected2
 }
