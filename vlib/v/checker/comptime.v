@@ -547,7 +547,7 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Position) bool {
 					return false
 				}
 				// `$if some_var {}`, or `[if user_defined_tag] fn abc(){}`
-				typ := c.expr(cond)
+				typ := c.unwrap_generic(c.expr(cond))
 				if cond.obj !is ast.Var && cond.obj !is ast.ConstField
 					&& cond.obj !is ast.GlobalField {
 					if !c.inside_ct_attr {
