@@ -1,4 +1,4 @@
-# Quickstart
+## Description:
 
 `bitfield` is a module for
 manipulating arrays of bits, i.e. series of zeroes and ones spread across an
