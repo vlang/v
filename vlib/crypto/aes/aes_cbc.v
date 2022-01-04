@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 // Cipher block chaining (CBC) mode.
