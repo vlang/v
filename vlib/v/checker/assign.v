@@ -146,9 +146,9 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				}
 			}
 			if right.is_auto_deref_var() {
-				left_type = c.table.mktyp(right_type.deref())
+				left_type = ast.mktyp(right_type.deref())
 			} else {
-				left_type = c.table.mktyp(right_type)
+				left_type = ast.mktyp(right_type)
 			}
 			if left_type == ast.int_type {
 				if right is ast.IntegerLiteral {
