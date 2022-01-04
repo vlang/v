@@ -1707,6 +1707,10 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			else { arg_type }
 		}
 		node.return_type = c.table.find_or_register_array(c.unwrap_generic(ret_type))
+		ret_sym := c.table.sym(ret_type)
+		if ret_sym.kind == .multi_return {
+			c.error('returning multiple values is not supported in .map() calls', node.pos)
+		}
 	} else if method_name == 'filter' {
 		// check fn
 		c.check_map_and_filter(false, elem_typ, node)
