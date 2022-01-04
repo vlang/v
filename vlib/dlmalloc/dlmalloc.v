@@ -158,18 +158,18 @@ mut:
 }
 
 pub fn new(system_allocator Allocator) Dlmalloc {
-	return Dlmalloc {
+	return Dlmalloc{
 		smallmap: 0
 		treemap: 0
-		smallbins: [(n_small_bins + 1) * 2]&Chunk{}
-		treebins: [n_tree_bins]&TreeChunk{}
+		smallbins: [(dlmalloc.n_small_bins + 1) * 2]&Chunk{}
+		treebins: [dlmalloc.n_tree_bins]&TreeChunk{}
 		dvsize: 0
 		topsize: 0
 		dv: voidptr(0)
 		top: voidptr(0)
 		footprint: 0
 		max_footprint: 0
-		seg: Segment{voidptr(0),0,voidptr(0),0}
+		seg: Segment{voidptr(0), 0, voidptr(0), 0}
 		trim_check: 0
 		least_addr: voidptr(0)
 		release_checks: 0
@@ -673,15 +673,14 @@ fn (mut dl Dlmalloc) init_bins() {
 
 [unsafe]
 fn (mut dl Dlmalloc) init_top(ptr &Chunk, size_ usize) {
-	
 	offset := align_offset_usize(ptr.to_mem())
 	mut p := ptr.plus_offset(offset)
-	
+
 	size := size_ - offset
 	dl.top = p
 	dl.topsize = size
 	p.head = size | dlmalloc.pinuse
-	
+
 	p.plus_offset(size).head = dlmalloc.top_foot_size
 	dl.trim_check = dlmalloc.default_trim_threshold
 }
@@ -746,12 +745,12 @@ fn (mut dl Dlmalloc) sys_alloc(size usize) voidptr {
 		}
 
 		if size < dl.topsize {
-			dl.topsize -= size 
-			rsize := dl.topsize 
-			mut p := dl.top 
+			dl.topsize -= size
+			rsize := dl.topsize
+			mut p := dl.top
 			dl.top = p.plus_offset(size)
-			mut r := dl.top 
-			r.head = rsize | pinuse 
+			mut r := dl.top
+			r.head = rsize | dlmalloc.pinuse
 			p.set_size_and_pinuse_of_inuse_chunk(size)
 			return p.to_mem()
 		}
@@ -799,73 +798,68 @@ fn (mut dl Dlmalloc) prepend_alloc(newbase voidptr, oldbase voidptr, size usize)
 fn (mut dl Dlmalloc) add_segment(tbase voidptr, tsize usize, flags u32) {
 	// TODO: what in the world is this function doing????
 	unsafe {
-		old_top := dl.top 
+		old_top := dl.top
 		mut oldsp := dl.segment_holding(old_top)
 		old_end := oldsp.top()
 		ssize := pad_request(sizeof(Segment))
-		mut offset := ssize + sizeof(usize) * 4 + malloc_alignment - 1 
+		mut offset := ssize + sizeof(usize) * 4 + dlmalloc.malloc_alignment - 1
 		rawsp := voidptr(usize(old_end) - offset)
 		offset = align_offset_usize((&Chunk(rawsp)).to_mem())
 		asp := voidptr(usize(rawsp) + offset)
-		csp := if asp < voidptr(usize(old_top) + min_chunk_size) {
-			old_top 
-		} else {
-			asp 
-		}
+		csp := if asp < voidptr(usize(old_top) + dlmalloc.min_chunk_size) { old_top } else { asp }
 		mut sp := &Chunk(csp)
 		mut ss := &Segment(sp.to_mem())
 		mut tnext := sp.plus_offset(ssize)
-		mut p := tnext 
+		mut p := tnext
 		mut nfences := 0
 
-		size := tsize - top_foot_size
-		dl.init_top(&Chunk(tbase),size) 
+		size := tsize - dlmalloc.top_foot_size
+		dl.init_top(&Chunk(tbase), size)
 
 		sp.set_size_and_pinuse_of_inuse_chunk(ssize)
-		*ss = dl.seg 
-		dl.seg.base = tbase 
-		dl.seg.size = tsize 
+		*ss = dl.seg
+		dl.seg.base = tbase
+		dl.seg.size = tsize
 		dl.seg.flags = flags
-		dl.seg.next = ss 
+		dl.seg.next = ss
 
 		for {
 			nextp := p.plus_offset(sizeof(usize))
-			p.head = fencepost_head
+			p.head = dlmalloc.fencepost_head
 			nfences += 1
 			if nextp.head < old_end {
-				p = nextp 
+				p = nextp
 			} else {
-				break 
+				break
 			}
 		}
 		// TODO: why 2?
-		assert(nfences >= 2) 
+		assert nfences >= 2
 		if csp != old_top {
 			mut q := &Chunk(old_top)
 			psize := usize(csp) - usize(old_top)
 			tn := q.plus_offset(psize)
-			q.set_free_with_pinuse(psize,tn)
-			dl.insert_chunk(q,psize)
+			q.set_free_with_pinuse(psize, tn)
+			dl.insert_chunk(q, psize)
 		}
 	}
-	
 }
 
 [unsafe]
 fn (mut dl Dlmalloc) segment_holding(ptr voidptr) &Segment {
-	mut sp := &dl.seg 
+	mut sp := &dl.seg
 	for !isnil(sp) {
 		if sp.base <= ptr && ptr < sp.top() {
-			return sp 
+			return sp
 		}
-		sp = sp.next 
+		sp = sp.next
 	}
 	return &Segment(0)
 }
 
 fn C.munmap(ptr voidptr, size usize) int
-fn C.mremap(ptr voidptr, old usize,new usize, flags usize) voidptr
-fn C.mmap(base voidptr, len usize,prot int,flags int, fd int,offset i64) voidptr
+fn C.mremap(ptr voidptr, old usize, new usize, flags usize) voidptr
+fn C.mmap(base voidptr, len usize, prot int, flags int, fd int, offset i64) voidptr
 
 #include <sys/mman.h>
 #include <unistd.h>
@@ -890,6 +884,7 @@ pub enum Map_flags {
 	map_huge_shift = 26
 	map_huge_mask = 0x3f
 }
+
 enum MemProt {
 	prot_read = 0x1
 	prot_write = 0x2
@@ -911,32 +906,32 @@ enum MapFlags {
 	map_huge_mask = 0x3f
 }
 
-fn system_alloc(_ voidptr, size usize) (voidptr,usize,u32) {
+fn system_alloc(_ voidptr, size usize) (voidptr, usize, u32) {
 	unsafe {
 		mem_prot := MemProt(int(MemProt.prot_read) | int(MemProt.prot_write))
 		map_flags := MapFlags(int(MapFlags.map_private) | int(MapFlags.map_anonymous))
-		addr := C.mmap(voidptr(0),size,int(mem_prot), int(map_flags),-1,0)
-		
+		addr := C.mmap(voidptr(0), size, int(mem_prot), int(map_flags), -1, 0)
+
 		mut test := &u32(addr)
 		*test = 42
 		if addr == voidptr(-1) {
-			return voidptr(0),0,0
+			return voidptr(0), 0, 0
 		} else {
-			return addr,size,0
+			return addr, size, 0
 		}
 	}
 }
 
-fn system_remap(_ voidptr, ptr voidptr, oldsize usize,newsize usize, can_move bool) voidptr {
+fn system_remap(_ voidptr, ptr voidptr, oldsize usize, newsize usize, can_move bool) voidptr {
 	return voidptr(0)
 }
 
-fn system_free_part(_ voidptr, ptr voidptr, oldsize usize,newsize usize) bool {
+fn system_free_part(_ voidptr, ptr voidptr, oldsize usize, newsize usize) bool {
 	$if linux {
 		unsafe {
-			rc := C.mremap(ptr, oldsize,newsize,0)
+			rc := C.mremap(ptr, oldsize, newsize, 0)
 			if rc != voidptr(-1) {
-				return true 
+				return true
 			}
 			return C.munmap(voidptr(usize(ptr) + newsize), oldsize - newsize) == 0
 		}
@@ -950,28 +945,28 @@ fn system_free_part(_ voidptr, ptr voidptr, oldsize usize,newsize usize) bool {
 
 fn system_free(_ voidptr, ptr voidptr, size usize) bool {
 	unsafe {
-		return C.munmap(ptr,size) == 0 
+		return C.munmap(ptr, size) == 0
 	}
 }
 
-fn system_can_release_part(_ voidptr,_ u32) bool {
-	return true 
+fn system_can_release_part(_ voidptr, _ u32) bool {
+	return true
 }
 
 fn system_allocates_zeros(_ voidptr) bool {
-	return true 
+	return true
 }
 
 fn system_page_size(_ voidptr) usize {
-	return 4096 
+	return 4096
 }
 
 pub fn get_system_allocator() Allocator {
-	return Allocator {
-		alloc: system_alloc 
-		remap: system_remap 
+	return Allocator{
+		alloc: system_alloc
+		remap: system_remap
 		free_part: system_free_part
-		free: system_free 
+		free: system_free
 		can_release_part: system_can_release_part
 		allocates_zeros: system_allocates_zeros
 		page_size: system_page_size
