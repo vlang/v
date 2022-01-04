@@ -120,7 +120,7 @@ fn overhead_for(req usize) usize {
 	}
 }
 
-// In order for dlmalloc to efficently manage memory, it needs a way to communicate with the underlying paltform.
+// In order for dlmalloc to efficently manage memory, it needs a way to communicate with the underlying platform.
 // This `Allocator` type provides an interface for this communication.
 //
 //
