@@ -200,8 +200,13 @@ pub fn (t &Table) fn_type_signature(f &Fn) string {
 		// TODO: for now ignore mut/pts in sig for now
 		typ := arg.typ.set_nr_muls(0)
 		arg_type_sym := t.sym(typ)
-		sig += arg_type_sym.str().to_lower().replace_each(['.', '__', '&', '', '[', 'arr_', 'chan ',
-			'chan_', 'map[', 'map_of_', ']', '_to_', '<', '_T_', ',', '_', ' ', '', '>', ''])
+		if arg_type_sym.kind == .alias {
+			sig += arg_type_sym.cname
+		} else {
+			sig += arg_type_sym.str().to_lower().replace_each(['.', '__', '&', '', '[', 'arr_',
+				'chan ', 'chan_', 'map[', 'map_of_', ']', '_to_', '<', '_T_', ',', '_', ' ', '',
+				'>', ''])
+		}
 		if i < f.params.len - 1 {
 			sig += '_'
 		}
@@ -209,7 +214,11 @@ pub fn (t &Table) fn_type_signature(f &Fn) string {
 	if f.return_type != 0 && f.return_type != void_type {
 		sym := t.sym(f.return_type)
 		opt := if f.return_type.has_flag(.optional) { 'option_' } else { '' }
-		sig += '__$opt$sym.kind'
+		if sym.kind == .alias {
+			sig += '__$opt$sym.cname'
+		} else {
+			sig += '__$opt$sym.kind'
+		}
 	}
 	return sig
 }
