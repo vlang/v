@@ -1293,6 +1293,7 @@ pub fn (mut f Fmt) fn_type_decl(node ast.FnTypeDecl) {
 }
 
 pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
+	f.attrs(node.attrs)
 	start_pos := f.out.len
 	if node.is_pub {
 		f.write('pub ')
