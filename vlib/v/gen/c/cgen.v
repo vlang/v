@@ -1138,6 +1138,9 @@ pub fn (mut g Gen) write_typedef_types() {
 					if fixed.starts_with('C__') {
 						fixed = fixed[3..]
 					}
+					if fixed.contains('ptr') {
+						fixed = 'void*'
+					}
 					if elem_sym.info is ast.FnType {
 						pos := g.out.len
 						g.write_fn_ptr_decl(&elem_sym.info, '')
