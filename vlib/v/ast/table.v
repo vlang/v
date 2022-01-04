@@ -835,7 +835,7 @@ pub fn (t &Table) array_fixed_cname(elem_type Type, size int) string {
 	if elem_type.is_ptr() {
 		res = '_ptr$elem_type.nr_muls()'
 	}
-	return 'Array_fixed_${elem_type_sym.cname}_$size' + res
+	return 'Array_fixed_$elem_type_sym.cname${res}_$size'
 }
 
 [inline]
