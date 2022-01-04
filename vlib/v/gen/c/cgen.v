@@ -1132,15 +1132,8 @@ pub fn (mut g Gen) write_typedef_types() {
 					// .array_fixed {
 					styp := sym.cname
 					// array_fixed_char_300 => char x[300]
-					mut fixed := styp[12..]
 					len := styp.after('_')
-					fixed = fixed[..fixed.len - len.len - 1]
-					if fixed.starts_with('C__') {
-						fixed = fixed[3..]
-					}
-					if fixed.contains('ptr') {
-						fixed = 'void*'
-					}
+					mut fixed := g.typ(info.elem_type)
 					if elem_sym.info is ast.FnType {
 						pos := g.out.len
 						g.write_fn_ptr_decl(&elem_sym.info, '')
