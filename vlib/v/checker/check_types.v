@@ -215,7 +215,7 @@ pub fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 		return true
 	}
 	// sum type
-	if c.table.sumtype_has_variant(expected, c.table.mktyp(got), false) {
+	if c.table.sumtype_has_variant(expected, ast.mktyp(got), false) {
 		return true
 	}
 	// type alias
@@ -737,7 +737,7 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 			param_type_sym := c.table.sym(param.typ)
 
 			if param.typ.has_flag(.generic) && param_type_sym.name == gt_name {
-				to_set = c.table.mktyp(arg.typ)
+				to_set = ast.mktyp(arg.typ)
 				sym := c.table.sym(arg.typ)
 				if sym.info is ast.FnType {
 					mut func_ := sym.info.func
@@ -759,7 +759,7 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 			} else if param.typ.has_flag(.generic) {
 				arg_sym := c.table.sym(arg.typ)
 				if param.typ.has_flag(.variadic) {
-					to_set = c.table.mktyp(arg.typ)
+					to_set = ast.mktyp(arg.typ)
 				} else if arg_sym.kind == .array && param_type_sym.kind == .array {
 					mut arg_elem_info := arg_sym.info as ast.Array
 					mut param_elem_info := param_type_sym.info as ast.Array

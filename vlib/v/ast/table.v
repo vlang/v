@@ -1186,15 +1186,6 @@ pub fn (t &Table) value_type(typ Type) Type {
 	return void_type
 }
 
-[inline]
-pub fn (t &Table) mktyp(typ Type) Type {
-	match typ {
-		float_literal_type { return f64_type }
-		int_literal_type { return int_type }
-		else { return typ }
-	}
-}
-
 pub fn (mut t Table) register_fn_generic_types(fn_name string) {
 	t.fn_generic_types[fn_name] = [][]Type{}
 }

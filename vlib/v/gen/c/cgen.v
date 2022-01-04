@@ -1977,7 +1977,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 	if node.is_range {
 		// `for x in 1..10 {`
 		i := if node.val_var == '_' { g.new_tmp_var() } else { c_name(node.val_var) }
-		val_typ := g.table.mktyp(node.val_type)
+		val_typ := ast.mktyp(node.val_type)
 		g.write('for (${g.typ(val_typ)} $i = ')
 		g.expr(node.cond)
 		g.write('; $i < ')
@@ -2321,7 +2321,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr
 
 // use instead of expr() when you need to cast to a different type
 fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_type ast.Type) {
-	got_type := g.table.mktyp(got_type_raw)
+	got_type := ast.mktyp(got_type_raw)
 	exp_sym := g.table.sym(expected_type)
 	got_sym := g.table.sym(got_type)
 	expected_is_ptr := expected_type.is_ptr()
@@ -4188,7 +4188,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 						objs << ast.empty_expr()
 						tmp_obj := g.new_tmp_var()
 						tmp_objs << tmp_obj
-						el_stype := g.typ(g.table.mktyp(expr.right_type))
+						el_stype := g.typ(ast.mktyp(expr.right_type))
 						g.writeln('$el_stype $tmp_obj;')
 					}
 					is_push << true

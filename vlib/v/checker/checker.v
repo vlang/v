@@ -729,8 +729,8 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				} else {
 					right_type
 				}
-				left_name := c.table.type_to_str(c.table.mktyp(deref_left_type))
-				right_name := c.table.type_to_str(c.table.mktyp(deref_right_type))
+				left_name := c.table.type_to_str(ast.mktyp(deref_left_type))
+				right_name := c.table.type_to_str(ast.mktyp(deref_right_type))
 				if left_name != right_name {
 					c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
 				}
@@ -1656,7 +1656,7 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 				typ = ast.u64_type
 			}
 		}
-		node.fields[i].typ = c.table.mktyp(typ)
+		node.fields[i].typ = ast.mktyp(typ)
 		c.const_deps = []
 	}
 }
@@ -1960,7 +1960,7 @@ fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
 			mut v := c.file.global_scope.find_global(field.name) or {
 				panic('internal compiler error - could not find global in scope')
 			}
-			v.typ = c.table.mktyp(field.typ)
+			v.typ = ast.mktyp(field.typ)
 		}
 		c.global_names << field.name
 	}

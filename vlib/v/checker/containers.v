@@ -104,9 +104,9 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			// The first element's type
 			if i == 0 {
 				if expr.is_auto_deref_var() {
-					elem_type = c.table.mktyp(typ.deref())
+					elem_type = ast.mktyp(typ.deref())
 				} else {
-					elem_type = c.table.mktyp(typ)
+					elem_type = ast.mktyp(typ)
 				}
 				c.expected_type = elem_type
 				continue
@@ -235,11 +235,11 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			val0_type = c.unwrap_generic(info.value_type)
 		} else {
 			// `{'age': 20}`
-			key0_type = c.table.mktyp(c.expr(node.keys[0]))
+			key0_type = ast.mktyp(c.expr(node.keys[0]))
 			if node.keys[0].is_auto_deref_var() {
 				key0_type = key0_type.deref()
 			}
-			val0_type = c.table.mktyp(c.expr(node.vals[0]))
+			val0_type = ast.mktyp(c.expr(node.vals[0]))
 			if node.vals[0].is_auto_deref_var() {
 				val0_type = val0_type.deref()
 			}
@@ -255,13 +255,13 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			c.expected_type = val0_type
 			val_type := c.expr(val)
 			if !c.check_types(key_type, key0_type) || (i == 0 && key_type.is_number()
-				&& key0_type.is_number() && key0_type != c.table.mktyp(key_type)) {
+				&& key0_type.is_number() && key0_type != ast.mktyp(key_type)) {
 				msg := c.expected_msg(key_type, key0_type)
 				c.error('invalid map key: $msg', key.position())
 				same_key_type = false
 			}
 			if !c.check_types(val_type, val0_type) || (i == 0 && val_type.is_number()
-				&& val0_type.is_number() && val0_type != c.table.mktyp(val_type)) {
+				&& val0_type.is_number() && val0_type != ast.mktyp(val_type)) {
 				msg := c.expected_msg(val_type, val0_type)
 				c.error('invalid map value: $msg', val.position())
 			}
