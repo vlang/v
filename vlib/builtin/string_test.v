@@ -936,3 +936,19 @@ fn test_index_any() {
 	assert x.index_any('ef') == 4
 	assert x.index_any('fe') == 4
 }
+
+fn test_string_f64() {
+	assert ''.f64() == 0
+	assert '123'.f64() == 123
+	assert '-123'.f64() == -123
+	assert '-123.456'.f64() == -123.456
+}
+
+const f32_epsilon = 0.0000000001
+
+fn test_string_f32() {
+	assert ''.f32() - 0 <= f32_epsilon
+	assert '123'.f32() - 123 < f32_epsilon
+	assert '-123'.f32() - (-123) < f32_epsilon
+	assert '-123.456'.f32() - (-123.456) <= f32_epsilon
+}
