@@ -1,14 +1,3 @@
 ## Description:
 
-`builtin` is a module that...
-
-*TODO*
-
-## Examples:
-
-```v
-import builtin
-
-// TODO: CODE HERE
-
-```
+`builtin` is not really a module. It is built into the vlanguage interpreter itself.

@@ -1,14 +1,5 @@
 ## Description:
 
-`compress` is a module that...
+`compress` is a module that assists in the compression and decompression of binary data
 
-*TODO*
-
-## Examples:
-
-```v
-import compress
-
-// TODO: CODE HERE
-
-```
+Currently, only `zlib` compression is supported.

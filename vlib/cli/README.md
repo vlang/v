@@ -1,4 +1,8 @@
-Usage example:
+## Description:
+
+`cli` is a module that makes creating command line applications easy.
+
+## Example:
 
 ```v
 module main
