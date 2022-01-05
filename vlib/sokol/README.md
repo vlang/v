@@ -8,7 +8,7 @@ Each `.h` file in the sokol source code is well-documented as can be seen here:
 
 [sokol_audio.h](https://github.com/floooh/sokol/blob/master/sokol_audio.h)
 
-## Examples:
+## Example from `@VROOTDIR/examples/sokol/sounds/simple_sin_tones.v`:
 
 ```v
 import time
