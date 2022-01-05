@@ -107,7 +107,7 @@ pub fn get_system_allocator() Allocator {
 		alloc: system_alloc
 		remap: system_remap
 		free_part: system_free_part
-		free: system_free
+		free_: system_free
 		can_release_part: system_can_release_part
 		allocates_zeros: system_allocates_zeros
 		page_size: system_page_size

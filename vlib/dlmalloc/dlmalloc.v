@@ -129,7 +129,7 @@ pub struct Allocator {
 	alloc            fn (voidptr, usize) (voidptr, usize, u32)
 	remap            fn (voidptr, voidptr, usize, usize, bool) voidptr
 	free_part        fn (voidptr, voidptr, usize, usize) bool
-	free             fn (voidptr, voidptr, usize) bool
+	free_            fn (voidptr, voidptr, usize) bool
 	can_release_part fn (voidptr, u32) bool
 	allocates_zeros  fn (voidptr) bool
 	page_size        fn (voidptr) usize // not a constant field because some platforms might have different page sizes depending on configs
@@ -409,7 +409,7 @@ fn (mut dl Dlmalloc) unlink_large_chunk(chunk_ &TreeChunk) {
 		mut chunk := chunk_
 		mut xp := &TreeChunk(chunk.parent)
 		mut r := &TreeChunk(voidptr(0))
-		if chunk.next() != chunk {
+		if voidptr(chunk.next()) != voidptr(chunk) {
 			mut f := chunk.prev()
 			r = chunk.next()
 			f.chunk.next = r.chunk()
@@ -482,6 +482,196 @@ fn (mut dl Dlmalloc) unlink_first_small_chunk(head_ &Chunk, next_ &Chunk, idx u3
 		ptr.next = head
 		head.prev = ptr
 	}
+}
+
+[unsafe]
+pub fn (mut dl Dlmalloc) free_(mem voidptr) {
+	unsafe {
+		mut p := chunk_from_mem(mem)
+		mut psize := p.size()
+		next := p.plus_offset(psize)
+		if !p.pinuse() {
+			prevsize := p.prev_foot
+			if p.mmapped() {
+				psize += prevsize + dlmalloc.mmap_foot_pad
+				if dl.system_allocator.free_(dl.system_allocator.data, voidptr(usize(p) - prevsize),
+					psize)
+				{
+					dl.footprint -= psize
+				}
+				return
+			}
+
+			prev := p.minus_offset(prevsize)
+			psize += prevsize
+			p = prev
+			if voidptr(p) != voidptr(dl.dv) {
+				dl.unlink_chunk(p, prevsize)
+			} else if next.head & dlmalloc.inuse == dlmalloc.inuse {
+				dl.dvsize = psize
+				p.set_free_with_pinuse(psize, next)
+				return
+			}
+		}
+		// consolidate forward if we can
+		if !next.cinuse() {
+			if voidptr(next) == voidptr(dl.top) {
+				dl.topsize += psize
+				p.head = 0
+
+				tsize := dl.topsize
+				dl.top = p
+				p.head = tsize | dlmalloc.pinuse
+				if voidptr(p) == voidptr(dl.dv) {
+					dl.dv = voidptr(0)
+					dl.dvsize = 0
+				}
+
+				if dl.should_trim(tsize) {
+					dl.sys_trim(0)
+				}
+				return
+			} else if voidptr(next) == voidptr(dl.dv) {
+				dl.dvsize += psize
+				dsize := dl.dvsize
+				dl.dv = p
+				p.set_size_and_pinuse_of_free_chunk(dsize)
+				return
+			} else {
+				nsize := next.size()
+				psize += nsize
+				dl.unlink_chunk(next, nsize)
+				p.set_size_and_pinuse_of_free_chunk(psize)
+				if voidptr(p) == voidptr(dl.dv) {
+					dl.dvsize = psize
+					return
+				}
+			}
+		} else {
+			p.set_free_with_pinuse(psize, next)
+		}
+
+		if is_small(psize) {
+			dl.insert_small_chunk(p, psize)
+		} else {
+			dl.insert_large_chunk(&TreeChunk(p), psize)
+			dl.release_checks -= 1
+			if dl.release_checks == 0 {
+				dl.release_unused_segments()
+			}
+		}
+	}
+}
+
+fn (dl Dlmalloc) should_trim(size usize) bool {
+	return size > dl.trim_check
+}
+
+[unsafe]
+fn (mut dl Dlmalloc) sys_trim(pad_ usize) bool {
+	unsafe {
+		mut pad := pad_
+		mut released := usize(0)
+		if pad < dlmalloc.max_request && !isnil(dl.top) {
+			pad += dlmalloc.top_foot_size
+			if dl.topsize > pad {
+				unit := usize(dlmalloc.default_granularity)
+				extra := ((dl.topsize - pad + unit - 1) / unit - 1) * unit
+				mut sp := dl.segment_holding(dl.top)
+
+				if !sp.is_extern() {
+					if sp.can_release_part(&dl.system_allocator) {
+						if sp.size >= extra && !dl.has_segment_link(sp) {
+							newsize := sp.size - extra
+							if dl.system_allocator.free_part(dl.system_allocator.data,
+								sp.base, sp.size, newsize)
+							{
+								released = extra
+							}
+						}
+					}
+				}
+
+				if released != 0 {
+					sp.size -= released
+					dl.footprint -= released
+					top := dl.top
+					topsize := dl.topsize - released
+					dl.init_top(top, topsize)
+				}
+			}
+
+			released += dl.release_unused_segments()
+
+			if released == 0 && dl.topsize > dl.trim_check {
+				dl.trim_check = 1 << 31
+			}
+		}
+		return released != 0
+	}
+}
+
+[unsafe]
+fn (mut dl Dlmalloc) release_unused_segments() usize {
+	unsafe {
+		mut released := usize(0)
+		mut nsegs := usize(0)
+		mut pred := &dl.seg
+		mut sp := pred.next
+		for !isnil(sp) {
+			base := sp.base
+			size := sp.size
+			next := sp.next
+
+			nsegs += 1
+
+			if sp.can_release_part(&dl.system_allocator) && !sp.is_extern() {
+				mut p := align_as_chunk(base)
+				psize := p.size()
+				chunk_top := voidptr(usize(p) + psize)
+				top := voidptr(usize(base) + (size - dlmalloc.top_foot_size))
+				if !p.inuse() && chunk_top >= top {
+					mut tp := &TreeChunk(p)
+					if voidptr(p) == voidptr(dl.dv) {
+						dl.dv = voidptr(0)
+						dl.dvsize = 0
+					} else {
+						dl.unlink_large_chunk(tp)
+					}
+
+					if dl.system_allocator.free_(dl.system_allocator.data, base, size) {
+						released += size
+						dl.footprint -= size
+						sp = pred
+						sp.next = next
+					} else {
+						// back out if we can't unmap
+						dl.insert_large_chunk(tp, psize)
+					}
+				}
+			}
+			pred = sp
+			sp = next
+		}
+		dl.release_checks = if nsegs > dlmalloc.max_release_check_rate {
+			nsegs
+		} else {
+			dlmalloc.max_release_check_rate
+		}
+		return released
+	}
+}
+
+[unsafe]
+fn (dl &Dlmalloc) has_segment_link(ptr &Segment) bool {
+	mut sp := &dl.seg
+	for !isnil(sp) {
+		if ptr.holds(sp) {
+			return true
+		}
+		sp = sp.next
+	}
+	return false
 }
 
 [unsafe]
@@ -659,7 +849,13 @@ pub fn (mut dl Dlmalloc) malloc(size usize) voidptr {
 		} else if size >= dlmalloc.max_request {
 			return voidptr(0)
 		} else {
-			panic('todo: tlmalloc_large')
+			nb = pad_request(size)
+			if dl.treemap != 0 {
+				mem := dl.tmalloc_large(nb)
+				if !isnil(mem) {
+					return mem
+				}
+			}
 		}
 		// use the `dv` node if we can, splitting it if necessary or otherwise
 		// exhausting the entire chunk
@@ -748,7 +944,7 @@ fn (mut dl Dlmalloc) sys_alloc(size usize) voidptr {
 			dl.init_top(&Chunk(tbase), tsize_)
 		} else {
 			mut sp := &dl.seg
-			for !isnil(sp) && tbase != sp.top() {
+			for !isnil(sp) && voidptr(tbase) != voidptr(sp.top()) {
 				sp = sp.next
 			}
 
@@ -829,6 +1025,76 @@ fn (mut dl Dlmalloc) tmalloc_small(size usize) voidptr {
 }
 
 [unsafe]
+fn (mut dl Dlmalloc) tmalloc_large(size usize) voidptr {
+	unsafe {
+		mut v := &TreeChunk(voidptr(0))
+		mut rsize := ~size + 1
+		idx := dl.compute_tree_index(size)
+		mut t := *dl.treebin_at(idx)
+		if !isnil(t) {
+			mut sizebits := size << leftshift_for_tree_index(idx)
+			mut rst := voidptr(0)
+			for {
+				csize := t.chunk().size()
+				if csize >= size && csize - size < rsize {
+					v = t
+					rsize = csize - size
+					if rsize == 0 {
+						break
+					}
+				}
+
+				rt := t.child[1]
+				t = t.child[(sizebits >> (sizeof(usize) * 8 - 1)) & 1]
+				if !isnil(rt) && voidptr(rt) != voidptr(t) {
+					rst = rt
+				}
+				if isnil(t) {
+					t = rst
+					break
+				}
+				sizebits <<= 1
+			}
+		}
+
+		if isnil(t) && isnil(v) {
+			leftbits := left_bits(1 << idx) & dl.treemap
+			if leftbits != 0 {
+				leastbit := least_bit(leftbits)
+				i := bits.trailing_zeros_32(leastbit)
+				t = *dl.treebin_at(u32(i))
+			}
+		}
+		// Find the smallest of this tree or subtree
+		for !isnil(t) {
+			csize := t.chunk().size()
+			if csize >= size && csize - size < rsize {
+				rsize = csize - size
+				v = t
+			}
+			t = t.leftmost_child()
+		}
+
+		if isnil(v) || (dl.dvsize >= size && !(rsize < dl.dvsize - size)) {
+			return voidptr(0)
+		}
+
+		mut vc := v.chunk()
+		mut r := vc.plus_offset(size)
+		dl.unlink_large_chunk(v)
+		if rsize < dlmalloc.min_chunk_size {
+			vc.set_inuse_and_pinuse(rsize + size)
+		} else {
+			vc.set_size_and_pinuse_of_inuse_chunk(size)
+			r.set_size_and_pinuse_of_free_chunk(rsize)
+			dl.insert_chunk(r, rsize)
+		}
+
+		return vc.to_mem()
+	}
+}
+
+[unsafe]
 fn (mut dl Dlmalloc) prepend_alloc(newbase voidptr, oldbase voidptr, size usize) voidptr {
 	unsafe {
 		mut p := align_as_chunk(newbase)
@@ -838,12 +1104,12 @@ fn (mut dl Dlmalloc) prepend_alloc(newbase voidptr, oldbase voidptr, size usize)
 		mut qsize := psize - size
 		p.set_size_and_pinuse_of_inuse_chunk(size)
 
-		if oldfirst == dl.top {
+		if voidptr(oldfirst) == voidptr(dl.top) {
 			dl.topsize += qsize
 			tsize := dl.topsize
 			dl.top = q
 			q.head = tsize | dlmalloc.pinuse
-		} else if oldfirst == dl.dv {
+		} else if voidptr(oldfirst) == voidptr(dl.dv) {
 			dl.dvsize += qsize
 			dsize := dl.dvsize
 			dl.dv = q
@@ -905,7 +1171,7 @@ fn (mut dl Dlmalloc) add_segment(tbase voidptr, tsize usize, flags u32) {
 		}
 		// TODO: why 2?
 		assert nfences >= 2
-		if csp != old_top {
+		if voidptr(csp) != voidptr(old_top) {
 			mut q := &Chunk(old_top)
 			psize := usize(csp) - usize(old_top)
 			tn := q.plus_offset(psize)
