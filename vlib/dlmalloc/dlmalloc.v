@@ -282,7 +282,7 @@ fn (c &Chunk) set_foot(size usize) {
 }
 
 fn (c &Chunk) plus_offset(offset usize) &Chunk {
-	return &Chunk(usize(c) + offset)
+	return &Chunk((usize(c) + offset))
 }
 
 fn (c &Chunk) minus_offset(offset usize) &Chunk {
@@ -355,7 +355,9 @@ pub fn (dl &Dlmalloc) calloc_must_clear(ptr voidptr) bool {
 
 [unsafe]
 fn (mut dl Dlmalloc) smallbin_at(idx u32) &Chunk {
-	return &Chunk(&dl.smallbins[idx * 2])
+	unsafe {
+		return &Chunk(&dl.smallbins[idx * 2])
+	}
 }
 
 [unsafe]
@@ -648,7 +650,10 @@ pub fn (mut dl Dlmalloc) malloc(size usize) voidptr {
 					ret := p.to_mem()
 					return ret
 				} else if dl.treemap != 0 {
-					panic('todo: tmalloc_small')
+					mem := dl.tmalloc_small(nb)
+					if !isnil(mem) {
+						return mem
+					}
 				}
 			}
 		} else if size >= dlmalloc.max_request {
@@ -656,7 +661,37 @@ pub fn (mut dl Dlmalloc) malloc(size usize) voidptr {
 		} else {
 			panic('todo: tlmalloc_large')
 		}
-		return dl.sys_alloc(size)
+		// use the `dv` node if we can, splitting it if necessary or otherwise
+		// exhausting the entire chunk
+		if nb <= dl.dvsize {
+			rsize := dl.dvsize - nb
+			mut p := dl.dv
+			if rsize >= dlmalloc.min_chunk_size {
+				dl.dv = p.plus_offset(nb)
+				dl.dvsize = rsize
+				mut r := dl.dv
+				r.set_size_and_pinuse_of_free_chunk(rsize)
+				p.set_size_and_pinuse_of_inuse_chunk(nb)
+			} else {
+				dvs := dl.dvsize
+				dl.dvsize = 0
+				dl.dv = voidptr(0)
+				p.set_inuse_and_pinuse(dvs)
+			}
+			return p.to_mem()
+		}
+		// Split the top node if we can
+		if nb < dl.topsize {
+			dl.topsize -= nb
+			rsize := dl.topsize
+			mut p := dl.top
+			dl.top = p.plus_offset(nb)
+			mut r := dl.top
+			r.head = rsize | dlmalloc.pinuse
+			p.set_size_and_pinuse_of_inuse_chunk(nb)
+			return p.to_mem()
+		}
+		return dl.sys_alloc(nb)
 	}
 }
 
@@ -759,6 +794,41 @@ fn (mut dl Dlmalloc) sys_alloc(size usize) voidptr {
 }
 
 [unsafe]
+fn (mut dl Dlmalloc) tmalloc_small(size usize) voidptr {
+	unsafe {
+		leastbit := least_bit(dl.treemap)
+		i := bits.leading_zeros_32(leastbit)
+		mut v := *dl.treebin_at(u32(i))
+		mut t := v
+		mut rsize := t.chunk().size() - size
+		for {
+			t = t.leftmost_child()
+			if isnil(t) {
+				break
+			}
+
+			trem := t.chunk().size() - size
+			if trem < rsize {
+				rsize = trem
+				v = t
+			}
+		}
+
+		mut vc := v.chunk()
+		r := &TreeChunk(vc.plus_offset(size))
+		if rsize < dlmalloc.min_chunk_size {
+			vc.set_inuse_and_pinuse(rsize + size)
+		} else {
+			mut rc := r.chunk()
+			vc.set_size_and_pinuse_of_inuse_chunk(size)
+			rc.set_size_and_pinuse_of_free_chunk(rsize)
+			dl.replace_dv(rc, rsize)
+		}
+		return vc.to_mem()
+	}
+}
+
+[unsafe]
 fn (mut dl Dlmalloc) prepend_alloc(newbase voidptr, oldbase voidptr, size usize) voidptr {
 	unsafe {
 		mut p := align_as_chunk(newbase)
@@ -840,6 +910,7 @@ fn (mut dl Dlmalloc) add_segment(tbase voidptr, tsize usize, flags u32) {
 			psize := usize(csp) - usize(old_top)
 			tn := q.plus_offset(psize)
 			q.set_free_with_pinuse(psize, tn)
+
 			dl.insert_chunk(q, psize)
 		}
 	}
@@ -855,121 +926,4 @@ fn (mut dl Dlmalloc) segment_holding(ptr voidptr) &Segment {
 		sp = sp.next
 	}
 	return &Segment(0)
-}
-
-fn C.munmap(ptr voidptr, size usize) int
-fn C.mremap(ptr voidptr, old usize, new usize, flags usize) voidptr
-fn C.mmap(base voidptr, len usize, prot int, flags int, fd int, offset i64) voidptr
-
-#include <sys/mman.h>
-#include <unistd.h>
-
-pub enum Mm_prot {
-	prot_read = 0x1
-	prot_write = 0x2
-	prot_exec = 0x4
-	prot_none = 0x0
-	prot_growsdown = 0x01000000
-	prot_growsup = 0x02000000
-}
-
-pub enum Map_flags {
-	map_shared = 0x01
-	map_private = 0x02
-	map_shared_validate = 0x03
-	map_type = 0x0f
-	map_fixed = 0x10
-	map_file = 0x00
-	map_anonymous = 0x20
-	map_huge_shift = 26
-	map_huge_mask = 0x3f
-}
-
-enum MemProt {
-	prot_read = 0x1
-	prot_write = 0x2
-	prot_exec = 0x4
-	prot_none = 0x0
-	prot_growsdown = 0x01000000
-	prot_growsup = 0x02000000
-}
-
-enum MapFlags {
-	map_shared = 0x01
-	map_private = 0x02
-	map_shared_validate = 0x03
-	map_type = 0x0f
-	map_fixed = 0x10
-	map_file = 0x00
-	map_anonymous = 0x20
-	map_huge_shift = 26
-	map_huge_mask = 0x3f
-}
-
-fn system_alloc(_ voidptr, size usize) (voidptr, usize, u32) {
-	unsafe {
-		mem_prot := MemProt(int(MemProt.prot_read) | int(MemProt.prot_write))
-		map_flags := MapFlags(int(MapFlags.map_private) | int(MapFlags.map_anonymous))
-		addr := C.mmap(voidptr(0), size, int(mem_prot), int(map_flags), -1, 0)
-
-		mut test := &u32(addr)
-		*test = 42
-		if addr == voidptr(-1) {
-			return voidptr(0), 0, 0
-		} else {
-			return addr, size, 0
-		}
-	}
-}
-
-fn system_remap(_ voidptr, ptr voidptr, oldsize usize, newsize usize, can_move bool) voidptr {
-	return voidptr(0)
-}
-
-fn system_free_part(_ voidptr, ptr voidptr, oldsize usize, newsize usize) bool {
-	$if linux {
-		unsafe {
-			rc := C.mremap(ptr, oldsize, newsize, 0)
-			if rc != voidptr(-1) {
-				return true
-			}
-			return C.munmap(voidptr(usize(ptr) + newsize), oldsize - newsize) == 0
-		}
-	} $else $if macos {
-		unsafe {
-			return C.munmap(voidptr(usize(ptr) + newsize), oldsize - newsize) == 0
-		}
-	}
-	return false
-}
-
-fn system_free(_ voidptr, ptr voidptr, size usize) bool {
-	unsafe {
-		return C.munmap(ptr, size) == 0
-	}
-}
-
-fn system_can_release_part(_ voidptr, _ u32) bool {
-	return true
-}
-
-fn system_allocates_zeros(_ voidptr) bool {
-	return true
-}
-
-fn system_page_size(_ voidptr) usize {
-	return 4096
-}
-
-pub fn get_system_allocator() Allocator {
-	return Allocator{
-		alloc: system_alloc
-		remap: system_remap
-		free_part: system_free_part
-		free: system_free
-		can_release_part: system_can_release_part
-		allocates_zeros: system_allocates_zeros
-		page_size: system_page_size
-		data: voidptr(0)
-	}
 }
