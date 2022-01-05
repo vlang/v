@@ -13,6 +13,5 @@
 ```v
 import time
 
-// TODO: CODE HERE
-
+println(time.now())
 ```
