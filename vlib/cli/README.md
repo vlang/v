@@ -1,3 +1,7 @@
+## Description:
+
+`cli` is command line option parser.
+
 Usage example:
 
 ```v

@@ -1,14 +1,5 @@
 ## Description:
 
-`arrays` is a module that...
+`arrays` provides some generic functions that are useful for
+processing arrays.
 
-*TODO*
-
-## Examples:
-
-```v
-import arrays
-
-// TODO: CODE HERE
-
-```

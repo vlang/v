@@ -1,4 +1,10 @@
-Example usage of this module:
+## Description:
+
+`benchmark` provides an easy way to measure how fast a piece of code executed,
+and produce a readable report about it.
+
+## Example usage of this module:
+
 ```v
 import benchmark
 

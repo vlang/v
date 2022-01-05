@@ -1,14 +1,8 @@
 ## Description:
 
-`x` is a module that...
+`x` is not a module by itself, but a namespace for other modules.
+The modules here are considered experimental/subject to change. 
 
-*TODO*
-
-## Examples:
-
-```v
-import x
-
-// TODO: CODE HERE
-
-```
+In time, `x` modules will either become ordinary vlib modules,
+or they will be split to their own repositories, and distributed
+apart from V.
