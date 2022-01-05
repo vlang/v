@@ -3,11 +3,11 @@
 // that can be found in the LICENSE file.
 module fmt
 
-import math.mathutil
-import v.ast
 import strings
+import v.ast
 import v.util
 import v.pref
+import v.mathutil
 
 const (
 	bs      = '\\'

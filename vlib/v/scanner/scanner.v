@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 module scanner
 
-import math.mathutil
 import os
 import strconv
 import v.token
@@ -12,6 +11,7 @@ import v.util
 import v.vet
 import v.errors
 import v.ast
+import v.mathutil
 
 const (
 	single_quote = `'`
