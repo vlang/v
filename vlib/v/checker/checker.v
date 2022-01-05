@@ -475,7 +475,7 @@ pub fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 		} else if sym.kind == .struct_ && sym.language == .js {
 			c.error('sum type cannot hold an JS struct', variant.pos)
 		}
-		if sym.name.trim_prefix(sym.mod + '.') == node.name {
+		if sym.name.trim_string_left(sym.mod + '.') == node.name {
 			c.error('sum type cannot hold itself', variant.pos)
 		}
 		names_used << sym.name
