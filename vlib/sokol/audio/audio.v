@@ -12,7 +12,7 @@ $if linux {
 #flag darwin -framework AudioToolbox
 #flag windows -lole32
 
-// callback function for `stream_cb` in `C.saudio_desc` when calling `audio.setup()`
+// callback function for `stream_cb` in [[C.saudio_desc](#C.saudio_desc)] when calling [audio.setup()](#setup)
 //
 // sokol callback functions run in a separate thread
 //
@@ -20,8 +20,8 @@ $if linux {
 // the audio backend is expecting in its buffer.
 //
 // Terms:
-// - sample - a 32-bit floating point number from `-1.0` to `+1.0` representing the waveform amplitude at that instant
-// - frame - one sample for each channel at that instant
+// - *sample* - a 32-bit floating point number from `-1.0` to `+1.0` representing the waveform amplitude at that instant
+// - *frame* - one sample for each channel at that instant
 //
 // To determine the number of samples expected, do `num_frames * num_channels`.
 // Then, write up to that many `f32` samples into `buffer` using unsafe operations.
@@ -32,11 +32,11 @@ $if linux {
 // Example: unsafe { mut b := buffer; for i, sample in samples { b[i] = sample } }
 pub type FNStreamingCB = fn (buffer &f32, num_frames int, num_channels int)
 
-// callback function for `stream_userdata_cb` to use in `C.saudio_desc` when calling `audio.setup()`
+// callback function for `stream_userdata_cb` to use in `C.saudio_desc` when calling [audio.setup()](#setup)
 //
 // sokol callback functions run in a separate thread
 //
-// This function operates the same way as `FNStreamingCB` but it passes customizable `user_data` to the
+// This function operates the same way as [[FNStreamingCB](#FNStreamingCB)] but it passes customizable `user_data` to the
 // callback. This is the method to use if your audio data is stored in a struct or array. Identify the
 // `user_data` when you call `audio.setup()` and that object will be passed to the callback as the last arg.
 // Example: mut soundbuffer := []f32
@@ -55,12 +55,15 @@ pub fn (x FnStreamingCBWithUserData) str() string {
 
 // only one of `stream_cb` or `stream_userdata_cb` should be used
 //
-// Sokol Defaults:
-// - sample_rate: 44100 (higher sample rates take more memory but are higher quality)
-// - num_channels: 1 (for stereo sound, this should be 2)
-// - buffer_frames: 2048 (size of the sokol audio ringbuffer in frames, larger buffers increase latency, but smaller buffers can result in pops and clicks)
-// - packet_frames: 128 (for push model only, number of frames that will be pushed in each packet)
-// - num_packets: 64 (for push model only, number of packets in the backend ringbuffer)
+// default values (internal to sokol C library):
+//
+// | variable      | default  | note |
+// | :-----------  | -------: | :--------- |
+// | sample_rate   | 44100    | higher sample rates take more memory but are higher quality |
+// | num_channels  | 1        | for stereo sound, this should be 2 |
+// | buffer_frames | 2048     | buffer size in frames, larger is more latency, smaller means higher CPU |
+// | packet_frames | 128      | push model only, number of frames that will be pushed in each packet |
+// | num_packets   | 64       | for push model only, number of packets in the backend ringbuffer |
 pub struct C.saudio_desc {
 	sample_rate        int
 	num_channels       int
