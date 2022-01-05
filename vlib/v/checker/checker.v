@@ -623,7 +623,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					node.left_type = map_info.key_type
 				}
 				else {
-					c.error('`$node.op.str()` can only be used with an array/map/string',
+					c.error('`$node.op.str()` can only be used with arrays and maps',
 						node.pos)
 				}
 			}
