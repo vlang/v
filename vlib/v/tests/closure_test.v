@@ -168,3 +168,33 @@ fn test_closures_with_ifstmt() {
 	assert f(0) == 1
 	assert g() == 1
 }
+
+struct Command {
+	a int = 1234
+	b int = 2345
+	c int = 3456
+	d int = 4567
+	e int = 5678
+}
+
+struct App {}
+
+fn main() {
+	mut app := &App{}
+	eprintln('app ptr: ${u64(app)}')
+	f := fn [mut app] (cmd Command) u64 {
+		p := u64(app)
+		println('>>   p: $p')
+		println('>> cmd: $cmd')
+		assert cmd.a == 1234
+		assert cmd.b == 2345
+		assert cmd.c == 3456
+		assert cmd.d == 4567
+		assert cmd.e == 5678
+		return p
+	}
+	cmd := Command{}
+	res := f(cmd)
+	println('> res: $res | sizeof Command: ${sizeof(Command)}')
+	assert res == u64(app)
+}
