@@ -6742,7 +6742,7 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 					mut parameter_name := g.out.cut_last(g.out.len - params_start_pos)
 
 					if st.is_ptr() {
-						parameter_name = parameter_name.trim_left('__shared__')
+						parameter_name = parameter_name.trim_string_left('__shared__')
 					}
 
 					methods_wrapper.write_string(parameter_name)
