@@ -1,8 +1,7 @@
+[has_globals]
 module dlmalloc
 
-const (
-	global = new(get_system_allocator())
-)
+__global global = new(get_system_allocator())
 
 /// malloc allocates `size` bytes.
 ///
@@ -11,8 +10,7 @@ const (
 [unsafe]
 pub fn malloc(size usize) voidptr {
 	unsafe {
-		mut glob := &Dlmalloc(&dlmalloc.global)
-		return glob.malloc(size)
+		return global.malloc(size)
 	}
 }
 
@@ -20,8 +18,7 @@ pub fn malloc(size usize) voidptr {
 [unsafe]
 pub fn free(ptr voidptr) {
 	unsafe {
-		mut glob := &Dlmalloc(&dlmalloc.global)
-		glob.free_(ptr)
+		global.free_(ptr)
 	}
 }
 
@@ -30,8 +27,7 @@ pub fn free(ptr voidptr) {
 [unsafe]
 pub fn calloc(size usize) voidptr {
 	unsafe {
-		mut glob := &Dlmalloc(&dlmalloc.global)
-		return glob.calloc(size)
+		return global.calloc(size)
 	}
 }
 
@@ -46,8 +42,8 @@ pub fn calloc(size usize) voidptr {
 pub fn realloc(ptr voidptr, oldsize usize, newsize usize) voidptr {
 	unsafe {
 		_ := oldsize
-		mut glob := &Dlmalloc(&dlmalloc.global)
-		return glob.realloc(ptr, newsize)
+
+		return global.realloc(ptr, newsize)
 	}
 }
 
@@ -58,11 +54,10 @@ pub fn realloc(ptr voidptr, oldsize usize, newsize usize) voidptr {
 [unsafe]
 pub fn memalign(size usize, align usize) voidptr {
 	unsafe {
-		mut glob := &Dlmalloc(&dlmalloc.global)
 		if align <= malloc_alignment {
-			return glob.malloc(size)
+			return global.malloc(size)
 		} else {
-			return glob.memalign(align, size)
+			return global.memalign(align, size)
 		}
 	}
 }
