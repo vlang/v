@@ -1,3 +1,11 @@
+## Description:
+
+`cli` is a command line option parser, that supports
+declarative subcommands, each having separate set of options.
+
+See also the `flag` module, for a simpler command line option parser,
+that supports only options.
+
 Usage example:
 
 ```v
