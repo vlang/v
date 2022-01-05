@@ -351,7 +351,7 @@ pub fn upper_bound<T>(arr []T, val T) ?T {
 
 // binary search, requires `arr` to be sorted, returns index of found item or error.
 // Binary searches on sorted lists can be faster than other array searches because at maximum
-// the algorithm only has to traverse half the list.
+// the algorithm only has to traverse log N elements
 // Example: arrays.binary_search([1, 2, 3, 4], 4) ? => 3
 pub fn binary_search<T>(arr []T, target T) ?int {
 	mut left := 0
