@@ -56,6 +56,9 @@ fn C.sapp_consume_event()
 // get the current frame counter (for comparison with sapp_event.frame_count)
 fn C.sapp_frame_count() u64
 
+// get an averaged/smoothed frame duration in seconds
+fn C.sapp_frame_duration() f64
+
 // write string into clipboard
 fn C.sapp_set_clipboard_string(str &byte)
 
@@ -115,5 +118,3 @@ fn C.sapp_get_num_dropped_files() int
 
 // Get the file path of the droped file
 fn C.sapp_get_dropped_file_path(int) &byte
-
-fn C.sapp_resize_window(int, int)
