@@ -62,6 +62,7 @@ fn C.sgl_c4f(r f32, g f32, b f32, a f32)
 fn C.sgl_c3b(r byte, g byte, b byte)
 fn C.sgl_c4b(r byte, g byte, b byte, a byte)
 fn C.sgl_c1i(rgba u32)
+fn C.sgl_point_size(s f32)
 
 // define primitives, each begin/end is one draw command
 fn C.sgl_begin_points()

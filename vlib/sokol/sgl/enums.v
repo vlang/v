@@ -1,6 +1,6 @@
 module sgl
 
-// Error is C.sgl_error_t
+// SglError is C.sgl_error_t
 pub enum SglError {
 	no_error = C.SGL_NO_ERROR // 0
 	vertices_full = C.SGL_ERROR_VERTICES_FULL
