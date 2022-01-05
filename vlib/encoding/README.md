@@ -1,14 +1,4 @@
 ## Description:
 
-`encoding` is a module that...
-
-*TODO*
-
-## Examples:
-
-```v
-import encoding
-
-// TODO: CODE HERE
-
-```
+`encoding` is a namespace for different formats/protocols encoding/decoding,
+like `csv`, `utf8`, `base64` etc.

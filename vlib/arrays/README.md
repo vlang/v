@@ -1,5 +1,4 @@
 ## Description:
 
-`arrays` provides some generic functions that are useful for
-processing arrays.
+`arrays` provides some generic functions for processing arrays.
 

@@ -1,14 +1,5 @@
 ## Description:
 
-`crypto` is a module that...
+`crypto` is a namespace for multiple crypto algorithms.
 
-*TODO*
-
-## Examples:
-
-```v
-import crypto
-
-// TODO: CODE HERE
-
-```
+The implementations here are loosely based on [Go's crypto package](https://pkg.go.dev/crypto).

@@ -1,6 +1,6 @@
 ## Description:
 
-`benchmark` provides an easy way to measure how fast a piece of code executed,
+`benchmark` provides an easy way to measure how fast a piece of code is,
 and produce a readable report about it.
 
 ## Example usage of this module:

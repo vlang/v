@@ -1,14 +1,3 @@
 ## Description:
 
-`sync` is a module that...
-
-*TODO*
-
-## Examples:
-
-```v
-import sync
-
-// TODO: CODE HERE
-
-```
+`sync` provides cross platform handling of concurrency primitives.

@@ -1,4 +1,13 @@
+## Description:
+
+`sqlite` is a thin wrapper for [the SQLite library](https://sqlite.org/), which in turn is
+"a C-language library that implements a small, fast, self-contained,
+high-reliability, full-featured, SQL database engine."
+
 # Install SQLite Dependency
+
+Before you can use this module, you must first have the SQLite development
+library installed on your system.
 
 **Fedora 31**:
 

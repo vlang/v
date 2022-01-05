@@ -1,14 +1,4 @@
 ## Description:
 
-`js` is a module that...
-
-*TODO*
-
-## Examples:
-
-```v
-import js
-
-// TODO: CODE HERE
-
-```
+`js`  is frontend/browser specific module, that provides access to global JS functions.
+NB: it *only* works with the JS backend.

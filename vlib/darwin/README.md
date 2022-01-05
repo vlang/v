@@ -1,14 +1,4 @@
 ## Description:
 
-`darwin` is a module that...
-
-*TODO*
-
-## Examples:
-
-```v
-import darwin
-
-// TODO: CODE HERE
-
-```
+`darwin` is a deprecated module that will be removed soon.
+Do not rely on it.
