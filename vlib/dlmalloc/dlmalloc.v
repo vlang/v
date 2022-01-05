@@ -2,11 +2,21 @@
 // source at ftp://g.oswego.edu/pub/misc/malloc.c
 //
 // The original source was written by Doug Lea and released to the public domain
+//
+//
+// # Why dlmalloc?
+//
+// This library does not rely on C code. The primary purpose is for use in freestanding
+// build mode and for WASM target.
+//
+// dlmalloc is not the most performant allocator. It's main purpose is to be
+// easily portable and easy to learn. Here we have straight port of C and dlmalloc-rs
+// versions of dlmalloc.
 module dlmalloc
 
 import math.bits
 
-const (
+pub const (
 	n_small_bins           = 32
 	n_tree_bins            = 32
 	small_bin_shift        = 3
@@ -112,11 +122,11 @@ fn request_2_size(req usize) usize {
 	}
 }
 
-fn overhead_for(req usize) usize {
-	if req < dlmalloc.min_request {
-		return dlmalloc.min_chunk_size
+fn overhead_for(c &Chunk) usize {
+	if c.mmapped() {
+		return dlmalloc.mmap_chnk_overhead
 	} else {
-		return pad_request(req)
+		return dlmalloc.chunk_overhead
 	}
 }
 
@@ -484,6 +494,20 @@ fn (mut dl Dlmalloc) unlink_first_small_chunk(head_ &Chunk, next_ &Chunk, idx u3
 	}
 }
 
+// calloc is the same as `malloc`, except if the allocation succeeds it's guaranteed
+// to point to `size` bytes of zeros.
+[unsafe]
+pub fn (mut dl Dlmalloc) calloc(size usize) voidptr {
+	unsafe {
+		ptr := dl.malloc(size)
+		if !isnil(ptr) && dl.calloc_must_clear(ptr) {
+			vmemset(ptr, 0, int(size))
+		}
+		return ptr
+	}
+}
+
+// free_ behaves as libc free, but operates within the given space
 [unsafe]
 pub fn (mut dl Dlmalloc) free_(mem voidptr) {
 	unsafe {
@@ -797,6 +821,7 @@ fn (mut dl Dlmalloc) treemap_is_marked(idx u32) bool {
 	return dl.treemap & (1 << idx) != 0
 }
 
+/// malloc behaves as libc malloc, but operates within the given space
 [unsafe]
 pub fn (mut dl Dlmalloc) malloc(size usize) voidptr {
 	mut nb := usize(0)
@@ -1192,4 +1217,275 @@ fn (mut dl Dlmalloc) segment_holding(ptr voidptr) &Segment {
 		sp = sp.next
 	}
 	return &Segment(0)
+}
+
+// realloc behaves as libc realloc, but operates within the given space
+[unsafe]
+pub fn (mut dl Dlmalloc) realloc(oldmem voidptr, bytes usize) voidptr {
+	if bytes >= dlmalloc.max_request {
+		return voidptr(0)
+	}
+	unsafe {
+		nb := request_2_size(bytes)
+		mut oldp := chunk_from_mem(oldmem)
+		newp := dl.try_realloc_chunk(oldp, nb, true)
+		if !isnil(newp) {
+			return newp.to_mem()
+		}
+
+		ptr := dl.malloc(bytes)
+		if !isnil(ptr) {
+			oc := oldp.size() - overhead_for(oldp)
+			copy_bytes := if oc < bytes { oc } else { bytes }
+			vmemcpy(ptr, oldmem, int(copy_bytes))
+		}
+
+		return ptr
+	}
+}
+
+// memaligns allocates memory aligned to `alignment_`. Only call this with power-of-two alignment
+// and alignment > dlmalloc.malloc_alignment
+[unsafe]
+pub fn (mut dl Dlmalloc) memalign(alignment_ usize, bytes usize) voidptr {
+	mut alignment := alignment_
+	if alignment < dlmalloc.min_chunk_size {
+		alignment = dlmalloc.min_chunk_size
+	}
+
+	if bytes >= dlmalloc.max_request - alignment {
+		return voidptr(0)
+	}
+	unsafe {
+		nb := request_2_size(bytes)
+		req := nb + alignment + dlmalloc.min_chunk_size - dlmalloc.chunk_overhead
+		mem := dl.malloc(req)
+		if isnil(mem) {
+			return mem
+		}
+
+		mut p := chunk_from_mem(mem)
+		if usize(mem) & (alignment - 1) != 0 {
+			// Here we find an aligned sopt inside the chunk. Since we need to
+			// give back leading space in a chunk of at least `min_chunk_size`,
+			// if the first calculation places us at a spot with less than
+			// `min_chunk_size` leader we can move to the next aligned spot.
+			// we've allocated enough total room so that this is always possible
+			br_ := (usize(mem) + alignment - 1) & (~alignment + 1)
+			br := chunk_from_mem(voidptr(br_))
+			mut pos := voidptr(0)
+			if usize(br) - usize(p) > dlmalloc.min_chunk_size {
+				pos = voidptr(br)
+			} else {
+				pos = voidptr(usize(br) + alignment)
+			}
+
+			mut newp := &Chunk(pos)
+			leadsize := usize(pos) - usize(p)
+			newsize := p.size() - leadsize
+
+			if p.mmapped() {
+				newp.prev_foot = p.prev_foot + leadsize
+				newp.head = newsize
+			} else {
+				newp.set_inuse(newsize)
+				p.set_inuse(leadsize)
+				dl.dispose_chunk(p, leadsize)
+			}
+			p = newp
+		}
+
+		if !p.mmapped() {
+			size := p.size()
+			if size > nb + dlmalloc.min_chunk_size {
+				remainder_size := size - nb
+				mut remainder := p.plus_offset(nb)
+				p.set_inuse(nb)
+				remainder.set_inuse(remainder_size)
+				dl.dispose_chunk(remainder, remainder_size)
+			}
+		}
+		return p.to_mem()
+	}
+}
+
+[unsafe]
+fn (mut dl Dlmalloc) try_realloc_chunk(p_ &Chunk, nb usize, can_move bool) &Chunk {
+	unsafe {
+		mut p := p_
+		oldsize := p.size()
+		mut next := p.plus_offset(oldsize)
+		if p.mmapped() {
+			return dl.mmap_resize(p, nb, can_move)
+		} else if oldsize >= nb {
+			rsize := oldsize - nb
+			if rsize >= dlmalloc.min_chunk_size {
+				mut r := p.plus_offset(nb)
+				p.set_inuse(nb)
+				r.set_inuse(rsize)
+				dl.dispose_chunk(r, rsize)
+			}
+			return p
+		} else if voidptr(next) == voidptr(dl.top) {
+			if oldsize + dl.topsize <= nb {
+				return voidptr(0)
+			}
+
+			newsize := oldsize + dl.topsize
+			newtopsize := newsize - nb
+			mut newtop := p.plus_offset(nb)
+			p.set_inuse(nb)
+			newtop.head = newtopsize | dlmalloc.pinuse
+			dl.top = newtop
+			dl.topsize = newtopsize
+			return p
+		} else if voidptr(next) == voidptr(dl.dv) {
+			dvs := dl.dvsize
+			if oldsize + dvs < nb {
+				return voidptr(0)
+			}
+
+			dsize := oldsize + dvs - nb
+			if dsize >= dlmalloc.min_chunk_size {
+				mut r := p.plus_offset(nb)
+				mut n := r.plus_offset(dsize)
+				p.set_inuse(nb)
+				r.set_size_and_pinuse_of_free_chunk(dsize)
+				n.clear_pinuse()
+				dl.dvsize = dsize
+				dl.dv = r
+			} else {
+				newsize := oldsize + dvs
+				p.set_inuse(newsize)
+				dl.dvsize = 0
+				dl.dv = voidptr(0)
+			}
+			return p
+		} else if !next.cinuse() {
+			nextsize := next.size()
+			if oldsize + nextsize < nb {
+				return voidptr(0)
+			}
+			rsize := oldsize + nextsize - nb
+			dl.unlink_chunk(next, nextsize)
+			if rsize < dlmalloc.min_chunk_size {
+				newsize := oldsize + nextsize
+				p.set_inuse(newsize)
+			} else {
+				r := p.plus_offset(nb)
+				p.set_inuse(nb)
+				r.set_inuse(rsize)
+				dl.dispose_chunk(r, rsize)
+			}
+			return p
+		} else {
+			return voidptr(0)
+		}
+	}
+}
+
+[unsafe]
+fn (mut dl Dlmalloc) mmap_resize(oldp_ &Chunk, nb usize, can_move bool) &Chunk {
+	mut oldp := oldp_
+	oldsize := oldp.size()
+	if is_small(nb) {
+		return voidptr(0)
+	}
+	// Keep the old chunk if it's big enough but not too big
+	if oldsize >= nb + sizeof(usize) && (oldsize - nb) <= (dlmalloc.default_granularity << 1) {
+		return oldp
+	}
+
+	offset := oldp.prev_foot
+	oldmmsize := oldsize + offset + dlmalloc.mmap_foot_pad
+	newmmsize := dl.mmap_align(nb + 6 * sizeof(usize) + dlmalloc.malloc_alignment - 1)
+
+	ptr := dl.system_allocator.remap(dl.system_allocator.data, voidptr(usize(oldp) - offset),
+		oldmmsize, newmmsize, can_move)
+	if isnil(ptr) {
+		return voidptr(0)
+	}
+
+	mut newp := &Chunk(voidptr(usize(ptr) + offset))
+	psize := newmmsize - offset - dlmalloc.mmap_foot_pad
+	newp.head = psize
+	newp.plus_offset(psize).head = dlmalloc.fencepost_head
+	newp.plus_offset(psize + sizeof(usize)).head = 0
+	if ptr < dl.least_addr {
+		dl.least_addr = ptr
+	}
+	dl.footprint = dl.footprint + newmmsize - oldmmsize
+	if dl.footprint > dl.max_footprint {
+		dl.max_footprint = dl.footprint
+	}
+	return newp
+}
+
+fn (dl &Dlmalloc) mmap_align(a usize) usize {
+	return align_up(a, dl.system_allocator.page_size(dl.system_allocator.data))
+}
+
+[unsafe]
+fn (mut dl Dlmalloc) dispose_chunk(p_ &Chunk, psize_ usize) {
+	mut p := p_
+	mut psize := psize_
+	unsafe {
+		mut next := p.plus_offset(psize)
+		if !p.pinuse() {
+			prevsize := p.prev_foot
+			if p.mmapped() {
+				psize += prevsize + dlmalloc.mmap_foot_pad
+
+				if dl.system_allocator.free_(dl.system_allocator.data, voidptr(usize(p) - prevsize),
+					psize)
+				{
+					dl.footprint -= psize
+				}
+				return
+			}
+
+			prev := p.minus_offset(prevsize)
+			psize += prevsize
+			p = prev
+			if voidptr(p) != voidptr(dl.dv) {
+				dl.unlink_chunk(p, prevsize)
+			} else if next.head & dlmalloc.inuse == dlmalloc.inuse {
+				dl.dvsize = psize
+				p.set_free_with_pinuse(psize, next)
+				return
+			}
+		}
+
+		if !next.cinuse() {
+			if voidptr(next) == voidptr(dl.top) {
+				dl.topsize += psize
+				tsize := dl.topsize
+				dl.top = p
+				p.head = tsize | dlmalloc.pinuse
+				if voidptr(p) == voidptr(dl.dv) {
+					dl.dv = voidptr(0)
+					dl.dvsize = 0
+				}
+				return
+			} else if voidptr(next) == voidptr(dl.dv) {
+				dl.dvsize += psize
+				dvsize := dl.dvsize
+				dl.dv = p
+				p.set_size_and_pinuse_of_free_chunk(dvsize)
+				return
+			} else {
+				nsize := next.size()
+				psize += nsize
+				dl.unlink_chunk(next, nsize)
+				p.set_size_and_pinuse_of_free_chunk(psize)
+				if voidptr(p) == voidptr(dl.dv) {
+					dl.dvsize = psize
+					return
+				}
+			}
+		} else {
+			p.set_free_with_pinuse(psize, next)
+		}
+		dl.insert_chunk(p, psize)
+	}
 }
