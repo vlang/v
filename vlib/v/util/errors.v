@@ -3,11 +3,11 @@
 // that can be found in the LICENSE file.
 module util
 
-import math.mathutil as mu
 import os
 import strings
 import term
 import v.token
+import v.mathutil as mu
 
 // The filepath:line:col: format is the default C compiler error output format.
 // It allows editors and IDE's like emacs to quickly find the errors in the

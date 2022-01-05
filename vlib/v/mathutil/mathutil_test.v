@@ -1,4 +1,4 @@
-import math as mu
+import v.mathutil as mu
 
 fn test_min() {
 	assert mu.min(42, 13) == 13

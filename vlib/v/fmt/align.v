@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module fmt
 
-import math.mathutil
+import v.mathutil
 
 const struct_field_align_threshold = 8
 
