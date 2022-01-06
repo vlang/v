@@ -156,6 +156,9 @@ fn (vd VDoc) get_file_name(mod string, out Output) string {
 	} else if !cfg.is_multi && !os.is_dir(out.path) {
 		name = os.file_name(out.path)
 	}
+	if name == '' {
+		name = 'index'
+	}
 	name = name + match out.typ {
 		.html { '.html' }
 		.markdown { '.md' }
