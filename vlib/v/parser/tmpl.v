@@ -7,7 +7,6 @@ import v.token
 import v.errors
 import os
 import strings
-import regex
 
 enum State {
 	html
@@ -20,29 +19,41 @@ const tmpl_str_end = "')\n"
 
 // check HTML open tag `<name attr="x" >`
 fn is_html_open_tag(name string, s string) bool {
-	mut len := s.len
+	trimmed_line := s.trim_space()
+	mut len := trimmed_line.len
 
 	if len < name.len {
 		return false
 	}
 
-	return find_open_html_tag(name, s)
-}
-
-fn find_open_html_tag(tag_name string, line string) bool {
-	// This regex will check if a string is HTML open tag
-	// Will not found self-closing tag
-	// Will not found 'bad' tag (e.g. `<name <bad> >`)
-	// 06.01.2022. Artem Yurchenko
-	open_html_tag_regex := '\\s*<\\s*{0}[^</>]*>'
-	regex_query := open_html_tag_regex.replace(r'{0}', tag_name)
-
-	mut regex_executor := regex.regex_opt(regex_query) or {
-		panic('Something went wrong while creating regex to check if line is HTML open tag -> $err')
+	mut sub := trimmed_line[0..1]
+	if sub != '<' { // not start with '<'
+		return false
 	}
-
-	start_position, _ := regex_executor.find(line)
-	return start_position != -1
+	sub = trimmed_line[len - 1..len]
+	if sub != '>' { // not end with '<'
+		return false
+	}
+	sub = trimmed_line[len - 2..len - 1]
+	if sub == '/' { // self-closing
+		return false
+	}
+	sub = trimmed_line[1..len - 1]
+	if sub.contains_any('<>') { // `<name <bad> >`
+		return false
+	}
+	if sub == name { // `<name>`
+		return true
+	} else {
+		len = name.len
+		if sub.len <= len { // `<nam>` or `<meme>`
+			return false
+		}
+		if sub[..len + 1] != '$name ' { // not `<name ...>`
+			return false
+		}
+		return true
+	}
 }
 
 fn insert_template_code(fn_name string, tmpl_str_start string, line string) string {
