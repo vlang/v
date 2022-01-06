@@ -6,15 +6,27 @@ import stbi
 // v_sapp_gl_read_rgba_pixels reads pixles from the OpenGL buffer into `pixels`.
 fn C.v_sapp_gl_read_rgba_pixels(x int, y int, width int, height int, pixels charptr)
 
-// screenshot takes a screenshot of the current window.
+// screenshot takes a screenshot of the current window and
+// saves it to `path`. The format is inferred from the extension
+// of the file name in `path`.
+//
+// Supported formats are: `.png`, `.ppm`.
 pub fn screenshot(path string) ? {
-	if !path.ends_with('.ppm') {
-		return error(@MOD + '.' + @FN + ' currently only supports .ppm files.')
+	match os.file_ext(path) {
+		'.png' {
+			return screenshot_png(path)
+		}
+		'.ppm' {
+			return screenshot_ppm(path)
+		}
+		else {
+			return error(@MOD + '.' + @FN + ' currently only supports .png and .ppm files.')
+		}
 	}
-	return screenshot_ppm(path)
 }
 
-// screenshot_ppm takes a screenshot of the current window as a .ppm file
+// screenshot_ppm takes a screenshot of the current window and
+// saves it to `path` as a .ppm file.
 [manualfree]
 pub fn screenshot_ppm(path string) ? {
 	ss := screenshot_window()
@@ -22,7 +34,8 @@ pub fn screenshot_ppm(path string) ? {
 	unsafe { ss.destroy() }
 }
 
-// screenshot_png takes a screenshot of the current window as a .png file
+// screenshot_png takes a screenshot of the current window and
+// saves it to `path` as a .png file.
 [manualfree]
 pub fn screenshot_png(path string) ? {
 	ss := screenshot_window()
