@@ -1,9 +1,10 @@
 module sfons
 
 import fontstash
+import sokol.f
 
 // keep v from warning about unused imports
-const used_import = fontstash.used_import + 1
+const used_import = f.used_import + fontstash.used_import + 1
 
 [inline]
 pub fn create(width int, height int, flags int) &fontstash.Context {
