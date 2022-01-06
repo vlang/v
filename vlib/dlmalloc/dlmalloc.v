@@ -547,6 +547,7 @@ fn (mut dl Dlmalloc) unlink_large_chunk(chunk_ &TreeChunk) {
 fn (mut dl Dlmalloc) unlink_first_small_chunk(head_ &Chunk, next_ &Chunk, idx u32) {
 	mut next := next_
 	mut head := head_
+
 	mut ptr := next.prev
 	if head == ptr {
 		unsafe { dl.clear_smallmap(idx) }
@@ -574,10 +575,13 @@ pub fn (mut dl Dlmalloc) calloc(size usize) voidptr {
 pub fn (mut dl Dlmalloc) free_(mem voidptr) {
 	unsafe {
 		mut p := chunk_from_mem(mem)
+
 		mut psize := p.size()
 		next := p.plus_offset(psize)
+
 		if !p.pinuse() {
 			prevsize := p.prev_foot
+
 			if p.mmapped() {
 				psize += prevsize + mmap_foot_pad()
 				if dl.system_allocator.free_(dl.system_allocator.data, voidptr(usize(p) - prevsize),
@@ -593,7 +597,7 @@ pub fn (mut dl Dlmalloc) free_(mem voidptr) {
 			p = prev
 			if voidptr(p) != voidptr(dl.dv) {
 				dl.unlink_chunk(p, prevsize)
-			} else if next.head & dlmalloc.inuse == dlmalloc.inuse {
+			} else if (next.head & dlmalloc.inuse) == dlmalloc.inuse {
 				dl.dvsize = psize
 				p.set_free_with_pinuse(psize, next)
 				return
@@ -796,6 +800,9 @@ fn (mut dl Dlmalloc) insert_small_chunk(chunk_ &Chunk, size usize) {
 		} else {
 			f = head.prev
 		}
+
+		assert !isnil(f)
+		assert !isnil(head)
 		head.prev = chunk
 		f.next = chunk
 		chunk.prev = f
@@ -819,6 +826,7 @@ fn (mut dl Dlmalloc) insert_large_chunk(chunk_ &TreeChunk, size usize) {
 			dl.mark_treemap(idx)
 			*h = chunk
 			chunk.parent = voidptr(h)
+			assert !isnil(chunkc)
 			chunkc.prev = chunkc
 			chunkc.next = chunkc
 		} else {
@@ -842,6 +850,7 @@ fn (mut dl Dlmalloc) insert_large_chunk(chunk_ &TreeChunk, size usize) {
 					tc := t.chunk()
 					f := tc.prev
 					f.next = chunkc
+					assert !isnil(chunkc)
 					tc.prev = chunkc
 					chunkc.prev = f
 					chunkc.next = tc
@@ -1015,7 +1024,6 @@ fn (mut dl Dlmalloc) sys_alloc(size usize) voidptr {
 		tbase, mut tsize, flags := dl.system_allocator.alloc(dl.system_allocator.data,
 			asize)
 		if isnil(tbase) {
-			println('nil sys alloc')
 			return tbase
 		}
 

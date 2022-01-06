@@ -341,13 +341,7 @@ pub fn malloc_noscan(n int) &byte {
 			}
 		}
 	} $else $if freestanding {
-		mut e := Errno{}
-		res, e = mm_alloc(u64(n))
-		if e != .enoerror {
-			eprint('malloc_noscan($n) failed: ')
-			eprintln(e.str())
-			panic('malloc_noscan($n) failed')
-		}
+		res = unsafe { __malloc(usize(n)) }
 	} $else {
 		res = unsafe { C.malloc(n) }
 	}
