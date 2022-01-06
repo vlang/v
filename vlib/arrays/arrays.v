@@ -291,9 +291,10 @@ pub fn group_by<K, V>(list []V, grouping_op fn (v V) K) map[K][]V {
 
 // concatenate an array with an arbitrary number of additional values
 //
-// PROPOSED CHANGE: make the type of the second argument []T instead of ...T
+// NOTE: if you have two arrays, you should simply use the `<<` operator directly
 // Example: arrays.concat([1, 2, 3], 4, 5, 6) => [1, 2, 3, 4, 5, 6]
 // Example: arrays.concat([1, 2, 3], ...[4, 5, 6]) => [1, 2, 3, 4, 5, 6]
+// Example: arr << [4, 5, 6]
 pub fn concat<T>(a []T, b ...T) []T {
 	mut m := []T{cap: a.len + b.len}
 
