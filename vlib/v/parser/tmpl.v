@@ -16,6 +16,8 @@ enum State {
 	// span // span.{
 }
 
+const tmpl_str_end = "')\n"
+
 // check HTML open tag `<name attr="x" >`
 fn is_html_open_tag(name string, s string) bool {
 	mut len := s.len
@@ -42,7 +44,20 @@ fn find_open_html_tag(tag_name string, line string) bool {
 	start_position, _ := regex_executor.find(line)
 	return start_position != -1
 }
+
+fn insert_template_code(fn_name string, tmpl_str_start string, line string) string {
+	// HTML, may include `@var`
+	// escaped by cgen, unless it's a `vweb.RawHtml` string
+	trailing_bs := parser.tmpl_str_end + 'sb_${fn_name}.write_b(92)\n' + tmpl_str_start
+	round1 := ['\\', '\\\\', r"'", "\\'", r'@', r'$']
+	round2 := [r'$$', r'\@', r'.$', r'.@']
+	mut rline := line.replace_each(round1).replace_each(round2)
+
+	if rline.ends_with('\\') {
+		rline = rline[0..rline.len - 2] + trailing_bs
 	}
+
+	return rline
 }
 
 // compile_file compiles the content of a file by the given path as a template
@@ -54,7 +69,6 @@ pub fn (mut p Parser) compile_template_file(template_file string, fn_name string
 	basepath := os.dir(template_file)
 	lstartlength := lines.len * 30
 	tmpl_str_start := "sb_${fn_name}.write_string('"
-	tmpl_str_end := "')\n"
 	mut source := strings.new_builder(1000)
 	source.writeln('
 import strings
@@ -164,24 +178,24 @@ fn vweb_tmpl_${fn_name}() string {
 			source.write_string(line[pos + 6..line.len - 1])
 			source.writeln('" rel="stylesheet" type="text/css">')
 		} else if line.contains('@if ') {
-			source.writeln(tmpl_str_end)
+			source.writeln(parser.tmpl_str_end)
 			pos := line.index('@if') or { continue }
 			source.writeln('if ' + line[pos + 4..] + '{')
 			source.writeln(tmpl_str_start)
 		} else if line.contains('@end') {
 			// Remove new line byte
 			source.go_back(1)
-			source.writeln(tmpl_str_end)
+			source.writeln(parser.tmpl_str_end)
 			source.writeln('}')
 			source.writeln(tmpl_str_start)
 		} else if line.contains('@else') {
 			// Remove new line byte
 			source.go_back(1)
-			source.writeln(tmpl_str_end)
+			source.writeln(parser.tmpl_str_end)
 			source.writeln(' } else { ')
 			source.writeln(tmpl_str_start)
 		} else if line.contains('@for') {
-			source.writeln(tmpl_str_end)
+			source.writeln(parser.tmpl_str_end)
 			pos := line.index('@for') or { continue }
 			source.writeln('for ' + line[pos + 4..] + '{')
 			source.writeln(tmpl_str_start)
@@ -210,28 +224,21 @@ fn vweb_tmpl_${fn_name}() string {
 				source.writeln('</div>')
 			}
 		} else if state == .js {
-			// replace `$` to `\$` at first to escape JavaScript template literal syntax
-			source.writeln(line.replace(r'$', r'\$').replace(r'$$', r'@').replace(r'.$',
-				r'.@').replace(r"'", r"\'"))
+			if line.contains('//V_TEMPLATE') {
+				source.writeln(insert_template_code(fn_name, tmpl_str_start, line))
+			} else {
+				// replace `$` to `\$` at first to escape JavaScript template literal syntax
+				source.writeln(line.replace(r'$', r'\$').replace(r'$$', r'@').replace(r'.$', r'.@').replace(r"'", r"\'"))
+			}
 		} else if state == .css {
 			// disable template variable declaration in inline stylesheet
 			// because of  some CSS rules prefixed with `@`.
 			source.writeln(line.replace(r'.$', r'.@').replace(r"'", r"\'"))
 		} else {
-			// HTML, may include `@var`
-			// escaped by cgen, unless it's a `vweb.RawHtml` string
-			trailing_bs := tmpl_str_end + 'sb_${fn_name}.write_b(92)\n' + tmpl_str_start
-			round1 := ['\\', '\\\\', r"'", "\\'", r'@', r'$']
-			round2 := [r'$$', r'\@', r'.$', r'.@']
-			rline := line.replace_each(round1).replace_each(round2)
-			if rline.ends_with('\\') {
-				source.writeln(rline[0..rline.len - 2] + trailing_bs)
-			} else {
-				source.writeln(rline)
-			}
+			source.writeln(insert_template_code(fn_name, tmpl_str_start, line))
 		}
 	}
-	source.writeln(tmpl_str_end)
+	source.writeln(parser.tmpl_str_end)
 	source.writeln('_tmpl_res_$fn_name := sb_${fn_name}.str() ')
 	source.writeln('return _tmpl_res_$fn_name')
 	source.writeln('}')
