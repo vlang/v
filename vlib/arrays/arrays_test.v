@@ -195,6 +195,12 @@ fn test_concat_string() {
 	assert concat(a, ...b) == ['1', '2', '3', '3', '2', '1']
 }
 
+fn test_zip_int() {
+	mut a := [1, 3, 5, 7]
+	mut b := [2, 4, 6, 8, 10]
+	assert zip(a, b) == [1, 2, 3, 4, 5, 6, 7, 8, 10]
+}
+
 fn test_binary_search() ? {
 	a := [1, 3, 3, 4, 5, 6, 7, 8, 10]
 	assert binary_search(a, 3) ? == 1
