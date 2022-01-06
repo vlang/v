@@ -4,7 +4,6 @@
 which in turn is a library of "Simple STB-style cross-platform libraries
 for C and C++, written in C.", that provide access to graphics/audio/input
 processing.
-<<<<<<< HEAD
 
 Each `.h` file in the sokol source code is well-documented as can be seen here:
 
@@ -57,5 +56,3 @@ fn main() {
 }
 
 ```
-=======
->>>>>>> arrays_zip
