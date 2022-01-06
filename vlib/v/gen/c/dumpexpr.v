@@ -48,7 +48,12 @@ fn (mut g Gen) dump_expr_definitions() {
 		}
 		mut surrounder := util.new_surrounder(3)
 		surrounder.add('\tstring sline = int_str(line);', '\tstring_free(&sline);')
-		surrounder.add('\tstring value = ${to_string_fn_name}(${deref}dump_arg);', '\tstring_free(&value);')
+		if dump_sym.kind == .function {
+			surrounder.add('\tstring value = ${to_string_fn_name}();', '\tstring_free(&value);')
+		} else {
+			surrounder.add('\tstring value = ${to_string_fn_name}(${deref}dump_arg);',
+				'\tstring_free(&value);')
+		}
 		surrounder.add('
 	strings__Builder sb = strings__new_builder(256);
 ', '
