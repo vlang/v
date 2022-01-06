@@ -54,7 +54,7 @@ pub fn realloc(ptr voidptr, oldsize usize, newsize usize) voidptr {
 [unsafe]
 pub fn memalign(size usize, align usize) voidptr {
 	unsafe {
-		if align <= malloc_alignment {
+		if align <= malloc_alignment() {
 			return global.malloc(size)
 		} else {
 			return global.memalign(align, size)
