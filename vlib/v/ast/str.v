@@ -583,7 +583,7 @@ pub fn (node Stmt) str() string {
 }
 
 fn field_to_string(f ConstField) string {
-	x := f.name.trim_prefix(f.mod + '.')
+	x := f.name.trim_string_left(f.mod + '.')
 	return '$x = $f.expr'
 }
 

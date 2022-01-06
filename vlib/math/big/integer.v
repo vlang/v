@@ -1,6 +1,6 @@
 module big
 
-import math.util
+import math
 import math.bits
 import strings
 import strconv
@@ -37,7 +37,7 @@ pub fn integer_from_int(value int) Integer {
 		return zero_int
 	}
 	return Integer{
-		digits: [u32(util.iabs(value))]
+		digits: [u32(math.abs(value))]
 		signum: int_signum(value)
 	}
 }
@@ -295,7 +295,7 @@ pub fn (integer Integer) - (subtrahend Integer) Integer {
 fn (integer Integer) add(addend Integer) Integer {
 	a := integer.digits
 	b := addend.digits
-	mut storage := []u32{len: util.imax(a.len, b.len) + 1}
+	mut storage := []u32{len: math.max(a.len, b.len) + 1}
 	add_digit_array(a, b, mut storage)
 	return Integer{
 		...integer
@@ -468,7 +468,7 @@ fn check_sign(a Integer) {
 pub fn (a Integer) bitwise_or(b Integer) Integer {
 	check_sign(a)
 	check_sign(b)
-	mut result := []u32{len: util.imax(a.digits.len, b.digits.len), init: 0}
+	mut result := []u32{len: math.max(a.digits.len, b.digits.len), init: 0}
 	bitwise_or_digit_array(a.digits, b.digits, mut result)
 	return Integer{
 		digits: result
@@ -479,7 +479,7 @@ pub fn (a Integer) bitwise_or(b Integer) Integer {
 pub fn (a Integer) bitwise_and(b Integer) Integer {
 	check_sign(a)
 	check_sign(b)
-	mut result := []u32{len: util.imax(a.digits.len, b.digits.len), init: 0}
+	mut result := []u32{len: math.max(a.digits.len, b.digits.len), init: 0}
 	bitwise_and_digit_array(a.digits, b.digits, mut result)
 	return Integer{
 		digits: result
@@ -500,7 +500,7 @@ pub fn (a Integer) bitwise_not() Integer {
 pub fn (a Integer) bitwise_xor(b Integer) Integer {
 	check_sign(a)
 	check_sign(b)
-	mut result := []u32{len: util.imax(a.digits.len, b.digits.len), init: 0}
+	mut result := []u32{len: math.max(a.digits.len, b.digits.len), init: 0}
 	bitwise_xor_digit_array(a.digits, b.digits, mut result)
 	return Integer{
 		digits: result
@@ -817,7 +817,7 @@ pub fn (x Integer) gcd_binary(y Integer) Integer {
 
 	mut az := a.msb()
 	bz := b.msb()
-	shift := util.umin(az, bz)
+	shift := math.min(az, bz)
 	b = b.rshift(bz)
 
 	for a.signum != 0 {

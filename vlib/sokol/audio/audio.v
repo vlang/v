@@ -91,6 +91,8 @@ fn C.saudio_buffer_frames() int
 
 fn C.saudio_channels() int
 
+fn C.saudio_suspended() bool
+
 fn C.saudio_expect() int
 
 fn C.saudio_push(frames &f32, num_frames int) int
@@ -135,7 +137,17 @@ pub fn channels() int {
 	return C.saudio_channels()
 }
 
+<<<<<<< HEAD
 // audio.expect - get current number of frames to fill packet queue; use in combination with audio.push
+=======
+// suspended returns true if audio context is currently suspended
+// (only in WebAudio backend, all other backends return false)
+pub fn suspended() bool {
+	return C.saudio_suspended()
+}
+
+// audio.expect - get current number of frames to fill packet queue; use in combination with audio.push/2
+>>>>>>> arrays_zip
 pub fn expect() int {
 	return C.saudio_expect()
 }

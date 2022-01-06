@@ -37,7 +37,7 @@ fn (mut g Gen) gen_free_method_for_type(typ ast.Type) string {
 }
 
 fn (mut g Gen) gen_free_for_struct(info ast.Struct, styp string, fn_name string) {
-	g.type_definitions.writeln('void ${fn_name}($styp* it); // auto')
+	g.definitions.writeln('void ${fn_name}($styp* it); // auto')
 	mut fn_builder := strings.new_builder(128)
 	defer {
 		g.auto_fn_definitions << fn_builder.str()
@@ -61,7 +61,7 @@ fn (mut g Gen) gen_free_for_struct(info ast.Struct, styp string, fn_name string)
 }
 
 fn (mut g Gen) gen_free_for_array(info ast.Array, styp string, fn_name string) {
-	g.type_definitions.writeln('void ${fn_name}($styp* it); // auto')
+	g.definitions.writeln('void ${fn_name}($styp* it); // auto')
 	mut fn_builder := strings.new_builder(128)
 	defer {
 		g.auto_fn_definitions << fn_builder.str()
@@ -86,7 +86,7 @@ fn (mut g Gen) gen_free_for_array(info ast.Array, styp string, fn_name string) {
 }
 
 fn (mut g Gen) gen_free_for_map(info ast.Map, styp string, fn_name string) {
-	g.type_definitions.writeln('void ${fn_name}($styp* it); // auto')
+	g.definitions.writeln('void ${fn_name}($styp* it); // auto')
 	mut fn_builder := strings.new_builder(128)
 	defer {
 		g.auto_fn_definitions << fn_builder.str()

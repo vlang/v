@@ -1340,22 +1340,38 @@ pub fn (s string) trim_right(cutset string) string {
 	return s[..pos + 1]
 }
 
-// trim_prefix strips `str` from the start of the string.
-// Example: assert 'WorldHello V'.trim_prefix('World') == 'Hello V'
-pub fn (s string) trim_prefix(str string) string {
+// trim_string_left strips `str` from the start of the string.
+// Example: assert 'WorldHello V'.trim_string_left('World') == 'Hello V'
+pub fn (s string) trim_string_left(str string) string {
 	if s.starts_with(str) {
 		return s[str.len..]
 	}
 	return s.clone()
 }
 
-// trim_suffix strips `str` from the end of the string.
-// Example: assert 'Hello VWorld'.trim_suffix('World') == 'Hello V'
-pub fn (s string) trim_suffix(str string) string {
+// trim_string_right strips `str` from the end of the string.
+// Example: assert 'Hello VWorld'.trim_string_right('World') == 'Hello V'
+pub fn (s string) trim_string_right(str string) string {
 	if s.ends_with(str) {
 		return s[..s.len - str.len]
 	}
 	return s.clone()
+}
+
+// trim_prefix strips `str` from the start of the string.
+// Example: assert 'WorldHello V'.trim_prefix('World') == 'Hello V'
+[deprecated: 'use s.trim_string_left(x) instead']
+[deprecated_after: '2022-01-19']
+pub fn (s string) trim_prefix(str string) string {
+	return s.trim_string_left(str)
+}
+
+// trim_suffix strips `str` from the end of the string.
+// Example: assert 'Hello VWorld'.trim_suffix('World') == 'Hello V'
+[deprecated: 'use s.trim_string_right(x) instead']
+[deprecated_after: '2022-01-19']
+pub fn (s string) trim_suffix(str string) string {
+	return s.trim_string_right(str)
 }
 
 // compare_strings returns `-1` if `a < b`, `1` if `a > b` else `0`.

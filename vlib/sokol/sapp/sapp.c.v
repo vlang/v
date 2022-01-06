@@ -136,6 +136,12 @@ pub fn frame_count() u64 {
 	return C.sapp_frame_count()
 }
 
+// get an averaged/smoothed frame duration in seconds
+[inline]
+pub fn frame_duration() f64 {
+	return C.sapp_frame_duration()
+}
+
 // write string into clipboard
 [inline]
 pub fn set_clipboard_string(str &char) {

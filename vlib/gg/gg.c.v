@@ -768,7 +768,6 @@ pub fn (ctx &Context) draw_slice_empty(x f32, y f32, r f32, start_angle f32, arc
 pub fn (mut ctx Context) resize(width int, height int) {
 	ctx.width = width
 	ctx.height = height
-	// C.sapp_resize_window(width, height)
 }
 
 // Draws a line between the points provided

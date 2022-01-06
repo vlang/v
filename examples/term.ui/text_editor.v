@@ -3,8 +3,8 @@
 // Don't use this editor for any serious work.
 // A lot of funtionality is missing compared to your favourite editor :)
 import strings
-import math.mathutil as mu
 import os
+import math
 import term.ui as tui
 
 enum Movement {
@@ -330,11 +330,11 @@ fn (mut b Buffer) move_cursor(amount int, movement Movement) {
 			}
 		}
 		.page_up {
-			dlines := mu.min(b.cursor.pos_y, amount)
+			dlines := math.min(b.cursor.pos_y, amount)
 			b.move_updown(-dlines)
 		}
 		.page_down {
-			dlines := mu.min(b.lines.len - 1, b.cursor.pos_y + amount) - b.cursor.pos_y
+			dlines := math.min(b.lines.len - 1, b.cursor.pos_y + amount) - b.cursor.pos_y
 			b.move_updown(dlines)
 		}
 		.left {

@@ -1,6 +1,6 @@
 module big
 
-import math.util
+import math
 
 // Compares the magnitude of the two unsigned integers represented the given
 // digit arrays. Returns -1 if a < b, 0 if a == b and +1 if a > b. Here
@@ -40,8 +40,8 @@ fn add_digit_array(operand_a []u32, operand_b []u32, mut sum []u32) {
 	}
 
 	// First pass intersects with both operands
-	smaller_limit := util.imin(operand_a.len, operand_b.len)
-	larger_limit := util.imax(operand_a.len, operand_b.len)
+	smaller_limit := math.min(operand_a.len, operand_b.len)
+	larger_limit := math.max(operand_a.len, operand_b.len)
 	mut a, mut b := if operand_a.len >= operand_b.len {
 		operand_a, operand_b
 	} else {
@@ -316,7 +316,7 @@ fn bitwise_or_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
 }
 
 fn bitwise_and_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
-	lower := util.imin(operand_a.len, operand_b.len)
+	lower := math.min(operand_a.len, operand_b.len)
 	for index in 0 .. lower {
 		storage[index] = operand_a[index] & operand_b[index]
 	}

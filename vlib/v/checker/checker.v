@@ -475,7 +475,7 @@ pub fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 		} else if sym.kind == .struct_ && sym.language == .js {
 			c.error('sum type cannot hold an JS struct', variant.pos)
 		}
-		if sym.name.trim_prefix(sym.mod + '.') == node.name {
+		if sym.name.trim_string_left(sym.mod + '.') == node.name {
 			c.error('sum type cannot hold itself', variant.pos)
 		}
 		names_used << sym.name
@@ -623,7 +623,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					node.left_type = map_info.key_type
 				}
 				else {
-					c.error('`$node.op.str()` can only be used with an array/map/string',
+					c.error('`$node.op.str()` can only be used with arrays and maps',
 						node.pos)
 				}
 			}
@@ -2629,7 +2629,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	//        node.typ: `Outside`
 	node.expr_type = c.expr(node.expr) // type to be casted
 
-	mut from_type := node.expr_type
+	mut from_type := c.unwrap_generic(node.expr_type)
 	from_sym := c.table.sym(from_type)
 	final_from_sym := c.table.final_sym(from_type)
 
@@ -2669,7 +2669,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		}
 	} else if mut to_sym.info is ast.Alias {
 		if !c.check_types(from_type, to_sym.info.parent_type) && !(final_to_sym.is_int()
-			&& final_from_sym.kind == .enum_) {
+			&& final_from_sym.kind in [.enum_, .bool]) {
 			c.error('cannot convert type `$from_sym.name` to `$to_sym.name` (alias to `$final_to_sym.name`)',
 				node.pos)
 		}

@@ -254,6 +254,11 @@ pub fn c1i(rgba u32) {
 	C.sgl_c1i(rgba)
 }
 
+[inline]
+pub fn point_size(s f32) {
+	C.sgl_point_size(s)
+}
+
 // define primitives, each begin/end is one draw command
 [inline]
 pub fn begin_points() {

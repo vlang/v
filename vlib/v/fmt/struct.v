@@ -3,9 +3,9 @@
 // that can be found in the LICENSE file.
 module fmt
 
-import math.mathutil as mu
 import strings
 import v.ast
+import v.mathutil as mu
 
 pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	f.attrs(node.attrs)

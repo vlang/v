@@ -158,6 +158,12 @@ fn get_all_commands() []Command {
 			okmsg: 'V can compile with -freestanding on Linux with GCC.'
 			rmfile: 'bel'
 		}
+
+		res << Command{
+			line: '$vexe -cc gcc -keepc -freestanding -o str_array vlib/strconv/bare/str_array_example.v'
+			okmsg: 'V can compile & allocate memory with -freestanding on Linux with GCC.'
+			rmfile: 'str_array'
+		}
 	}
 	res << Command{
 		line: '$vexe $vargs -progress test-cleancode'

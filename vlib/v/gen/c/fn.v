@@ -467,7 +467,7 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 
 	mut size_sb := strings.new_builder(node.decl.params.len * 50)
 	for param in node.decl.params {
-		size_sb.write_string('_REG_WIDTH(${g.typ(param.typ)}) + ')
+		size_sb.write_string('_REG_WIDTH_BOUNDED(${g.typ(param.typ)}) + ')
 	}
 	if g.pref.arch == .amd64 && node.decl.return_type != ast.void_type {
 		size_sb.write_string('(_REG_WIDTH(${g.typ(node.decl.return_type)}) > 2) + ')

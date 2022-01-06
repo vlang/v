@@ -1,5 +1,5 @@
+import math
 import datatypes
-import math.mathutil
 
 struct Foo {
 	a int
@@ -26,7 +26,7 @@ fn test_datatypes_can_be_used_without_interfering_with_local_generic_structs() {
 
 fn test_generic_type_inference_on_generic_function_from_another_module_still_works() {
 	x := -123
-	a := mathutil.abs(x)
+	a := math.abs(x)
 	assert x == -123
 	assert a == 123
 }

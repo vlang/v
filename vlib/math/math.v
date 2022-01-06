@@ -61,24 +61,6 @@ pub fn digits(_n int, base int) []int {
 	return res
 }
 
-// max returns the maximum value of the two provided.
-[inline]
-pub fn max(a f64, b f64) f64 {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-// min returns the minimum value of the two provided.
-[inline]
-pub fn min(a f64, b f64) f64 {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 // minmax returns the minimum and maximum value of the two provided.
 pub fn minmax(a f64, b f64) (f64, f64) {
 	if a < b {

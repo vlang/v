@@ -957,7 +957,14 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			node.concrete_list_pos)
 	}
 	if func.generic_names.len > 0 {
-		return node.return_type
+		if has_generic {
+			return node.return_type
+		} else if typ := c.table.resolve_generic_to_concrete(func.return_type, func.generic_names,
+			concrete_types)
+		{
+			node.return_type = typ
+			return typ
+		}
 	}
 	return func.return_type
 }
@@ -1707,6 +1714,10 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			else { arg_type }
 		}
 		node.return_type = c.table.find_or_register_array(c.unwrap_generic(ret_type))
+		ret_sym := c.table.sym(ret_type)
+		if ret_sym.kind == .multi_return {
+			c.error('returning multiple values is not supported in .map() calls', node.pos)
+		}
 	} else if method_name == 'filter' {
 		// check fn
 		c.check_map_and_filter(false, elem_typ, node)

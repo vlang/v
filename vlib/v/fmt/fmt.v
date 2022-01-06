@@ -3,11 +3,11 @@
 // that can be found in the LICENSE file.
 module fmt
 
-import math.mathutil
-import v.ast
 import strings
+import v.ast
 import v.util
 import v.pref
+import v.mathutil
 
 const (
 	bs      = '\\'
@@ -184,7 +184,7 @@ fn (f Fmt) get_modname_prefix(mname string) (string, string) {
 	after_rbc := mname.all_after_last(']')
 	after_ref := mname.all_after_last('&')
 	modname := if after_rbc.len < after_ref.len { after_rbc } else { after_ref }
-	return modname, mname.trim_suffix(modname)
+	return modname, mname.trim_string_right(modname)
 }
 
 fn (mut f Fmt) is_external_name(name string) bool {
@@ -210,7 +210,7 @@ pub fn (mut f Fmt) short_module(name string) string {
 		return f.mod2alias[name]
 	}
 	if name.ends_with('>') {
-		generic_levels := name.trim_suffix('>').split('<')
+		generic_levels := name.trim_string_right('>').split('<')
 		mut res := '${f.short_module(generic_levels[0])}'
 		for i in 1 .. generic_levels.len {
 			genshorts := generic_levels[i].split(', ').map(f.short_module(it)).join(', ')

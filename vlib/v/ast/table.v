@@ -749,7 +749,7 @@ pub fn (mut t Table) register_type_symbol(sym TypeSymbol) int {
 		}
 	}
 	if sym.mod == 'main' {
-		existing_idx = t.type_idxs[sym.name.trim_prefix('main.')]
+		existing_idx = t.type_idxs[sym.name.trim_string_left('main.')]
 		if existing_idx > 0 {
 			idx = t.rewrite_already_registered_symbol(sym, existing_idx)
 			if idx != -2 {

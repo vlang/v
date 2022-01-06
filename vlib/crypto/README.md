@@ -11,7 +11,7 @@ This module is a work-in-progress. For example, the AES implementation currently
 to create a destination buffer of the correct size to receive the decrypted data, and the AesCipher
 `encrypt` and `decrypt` functions only operate on the first block of the `src`.
 
-This module is based on Go's crypto packages. That documentation is here: https://pkg.go.dev/crypto
+The implementations here are loosely based on [Go's crypto package](https://pkg.go.dev/crypto).
 
 ## Examples:
 

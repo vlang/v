@@ -61,6 +61,10 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			if !next_fn.return_type.has_flag(.optional) {
 				c.error('iterator method `next()` must return an optional', node.cond.position())
 			}
+			return_sym := c.table.sym(next_fn.return_type)
+			if return_sym.kind == .multi_return {
+				c.error('iterator method `next()` must not return multiple values', node.cond.position())
+			}
 			// the receiver
 			if next_fn.params.len != 1 {
 				c.error('iterator method `next()` must have 0 parameters', node.cond.position())

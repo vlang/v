@@ -1,6 +1,7 @@
 // Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+[has_globals]
 module parser
 
 import v.scanner
@@ -88,6 +89,8 @@ mut:
 	should_abort          bool // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the parser should stop
 	codegen_text          string
 }
+
+__global codegen_files = []&ast.File{}
 
 // for tests
 pub fn parse_stmt(text string, table &ast.Table, scope &ast.Scope) ast.Stmt {
@@ -312,8 +315,7 @@ pub fn (mut p Parser) parse() &ast.File {
 	// codegen
 	if p.codegen_text.len > 0 && !p.pref.is_fmt {
 		ptext := 'module ' + p.mod.all_after_last('.') + p.codegen_text
-		codegen_file := parse_text(ptext, p.file_name, p.table, p.comments_mode, p.pref)
-		stmts << codegen_file.stmts
+		codegen_files << parse_text(ptext, p.file_name, p.table, p.comments_mode, p.pref)
 	}
 
 	return &ast.File{
@@ -403,6 +405,10 @@ pub fn parse_files(paths []string, table &ast.Table, pref &pref.Preferences) []&
 		timers.start('parse_file $path')
 		files << parse_file(path, table, .skip_comments, pref)
 		timers.show('parse_file $path')
+	}
+	if codegen_files.len > 0 {
+		files << codegen_files
+		codegen_files.clear()
 	}
 	return files
 }
