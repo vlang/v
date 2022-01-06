@@ -1,8 +1,9 @@
 module dlmalloc
 
-#include <sys/mman.h>
-#include <unistd.h>
-
+$if !freestanding {
+	#include <sys/mman.h>
+	#include <unistd.h>
+}
 fn C.munmap(ptr voidptr, size usize) int
 fn C.mremap(ptr voidptr, old usize, new usize, flags usize) voidptr
 fn C.mmap(base voidptr, len usize, prot int, flags int, fd int, offset i64) voidptr
@@ -50,17 +51,22 @@ enum MapFlags {
 }
 
 fn system_alloc(_ voidptr, size usize) (voidptr, usize, u32) {
-	unsafe {
-		mem_prot := MemProt(int(MemProt.prot_read) | int(MemProt.prot_write))
-		map_flags := MapFlags(int(MapFlags.map_private) | int(MapFlags.map_anonymous))
-		addr := C.mmap(voidptr(0), size, int(mem_prot), int(map_flags), -1, 0)
+	$if !freestanding {
+		unsafe {
+			mem_prot := MemProt(int(MemProt.prot_read) | int(MemProt.prot_write))
+			map_flags := MapFlags(int(MapFlags.map_private) | int(MapFlags.map_anonymous))
+			addr := C.mmap(voidptr(0), size, int(mem_prot), int(map_flags), -1, 0)
 
-		if addr == voidptr(-1) {
-			return voidptr(0), 0, 0
-		} else {
-			return addr, size, 0
+			if addr == voidptr(-1) {
+				return voidptr(0), 0, 0
+			} else {
+				return addr, size, 0
+			}
 		}
+	} $else {
+		return voidptr(0), 0, 0
 	}
+	return voidptr(0), 0, 0
 }
 
 fn system_remap(_ voidptr, ptr voidptr, oldsize usize, newsize usize, can_move bool) voidptr {
@@ -68,7 +74,7 @@ fn system_remap(_ voidptr, ptr voidptr, oldsize usize, newsize usize, can_move b
 }
 
 fn system_free_part(_ voidptr, ptr voidptr, oldsize usize, newsize usize) bool {
-	$if linux {
+	$if linux && !freestanding {
 		unsafe {
 			rc := C.mremap(ptr, oldsize, newsize, 0)
 			if rc != voidptr(-1) {
@@ -76,7 +82,7 @@ fn system_free_part(_ voidptr, ptr voidptr, oldsize usize, newsize usize) bool {
 			}
 			return C.munmap(voidptr(usize(ptr) + newsize), oldsize - newsize) == 0
 		}
-	} $else $if macos {
+	} $else $if macos && !freestanding {
 		unsafe {
 			return C.munmap(voidptr(usize(ptr) + newsize), oldsize - newsize) == 0
 		}
@@ -85,8 +91,12 @@ fn system_free_part(_ voidptr, ptr voidptr, oldsize usize, newsize usize) bool {
 }
 
 fn system_free(_ voidptr, ptr voidptr, size usize) bool {
-	unsafe {
-		return C.munmap(ptr, size) == 0
+	$if !freestanding {
+		unsafe {
+			return C.munmap(ptr, size) == 0
+		}
+	} $else {
+		return false
 	}
 }
 

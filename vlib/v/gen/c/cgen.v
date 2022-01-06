@@ -1801,7 +1801,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.Module {
 			// g.is_builtin_mod = node.name == 'builtin'
-			g.is_builtin_mod = node.name in ['builtin', 'strconv', 'strings']
+			g.is_builtin_mod = node.name in ['builtin', 'strconv', 'strings', 'dlmalloc']
 			// g.cur_mod = node.name
 			g.cur_mod = node
 		}
@@ -5229,7 +5229,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 				g.definitions.writeln('$mod$styp $attributes $field.name = {0}; // global')
 			} else {
 				g.definitions.writeln('$mod$styp $attributes $field.name; // global')
-				if field.name !in ['as_cast_type_indexes', 'g_memory_block'] {
+				if field.name !in ['as_cast_type_indexes', 'g_memory_block', 'global_allocator'] {
 					g.global_init.writeln('\t$field.name = *($styp*)&(($styp[]){${g.type_default(field.typ)}}[0]); // global')
 				}
 			}
@@ -5592,6 +5592,10 @@ fn (mut g Gen) write_init_function() {
 		// 11 is SIGSEGV. It is hardcoded here, to avoid FreeBSD compilation errors for trivial examples.
 		g.writeln('#if __STDC_HOSTED__ == 1\n\tsignal(11, v_segmentation_fault_handler);\n#endif')
 	}
+	if g.pref.is_bare {
+		g.writeln('init_global_allocator();')
+	}
+
 	if g.pref.prealloc {
 		g.writeln('prealloc_vinit();')
 	}
