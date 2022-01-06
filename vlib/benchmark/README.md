@@ -1,7 +1,6 @@
 ## Description:
 
-`benchmark` provides an easy way to measure how fast a piece of code is and
-to produce a readable report about it.
+`benchmark` provides tools for measuring and reporting on the performance of code.
 
 ## Example 1:
 
