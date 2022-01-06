@@ -5,7 +5,6 @@ fn test_cast_to_alias() {
 	println(r1)
 	assert '$r1' == '1'
 
-
 	r2 := u8(byte(true))
 	println(r2)
 	assert '$r2' == '1'
