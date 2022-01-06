@@ -53,7 +53,7 @@ mut:
 	enum_typedefs          strings.Builder // enum types
 	definitions            strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
 	type_definitions       strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
-	alias_definitions      strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
+	alias_definitions      strings.Builder // alias fixed array of non-builtin
 	hotcode_definitions    strings.Builder // -live declarations & functions
 	channel_definitions    strings.Builder // channel related code
 	comptime_definitions   strings.Builder // custom defines, given by -d/-define flags on the CLI
@@ -570,6 +570,7 @@ pub fn (mut g Gen) free_builders() {
 		g.gowrappers.free()
 		g.stringliterals.free()
 		g.auto_str_funcs.free()
+		g.dump_funcs.free()
 		g.comptime_definitions.free()
 		g.pcs_declarations.free()
 		g.hotcode_definitions.free()
