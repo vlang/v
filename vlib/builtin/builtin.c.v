@@ -292,13 +292,9 @@ pub fn malloc(n int) &byte {
 			res = C.GC_MALLOC(n)
 		}
 	} $else $if freestanding {
-		mut e := Errno{}
-		res, e = mm_alloc(u64(n))
-		if e != .enoerror {
-			eprint('malloc($n) failed: ')
-			eprintln(e.str())
-			panic('malloc($n) failed')
-		}
+		// todo: is this safe to call malloc there? We export __malloc as malloc and it uses dlmalloc behind the scenes
+		// so theoretically it is safe
+		res = unsafe { __malloc(usize(n)) }
 	} $else {
 		res = unsafe { C.malloc(n) }
 	}
