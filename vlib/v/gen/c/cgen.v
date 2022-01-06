@@ -53,6 +53,7 @@ mut:
 	enum_typedefs          strings.Builder // enum types
 	definitions            strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
 	type_definitions       strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
+	alias_definitions      strings.Builder // alias fixed array of non-builtin
 	hotcode_definitions    strings.Builder // -live declarations & functions
 	channel_definitions    strings.Builder // channel related code
 	comptime_definitions   strings.Builder // custom defines, given by -d/-define flags on the CLI
@@ -65,6 +66,7 @@ mut:
 	gowrappers             strings.Builder // all go callsite wrappers
 	stringliterals         strings.Builder // all string literals (they depend on tos3() beeing defined
 	auto_str_funcs         strings.Builder // function bodies of all auto generated _str funcs
+	dump_funcs             strings.Builder // function bodies of all auto generated _str funcs
 	pcs_declarations       strings.Builder // -prof profile counter declarations for each function
 	embedded_data          strings.Builder // data to embed in the executable/binary
 	shared_types           strings.Builder // shared/lock types
@@ -222,6 +224,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		typedefs: strings.new_builder(100)
 		enum_typedefs: strings.new_builder(100)
 		type_definitions: strings.new_builder(100)
+		alias_definitions: strings.new_builder(100)
 		hotcode_definitions: strings.new_builder(100)
 		channel_definitions: strings.new_builder(100)
 		comptime_definitions: strings.new_builder(100)
@@ -229,6 +232,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		gowrappers: strings.new_builder(100)
 		stringliterals: strings.new_builder(100)
 		auto_str_funcs: strings.new_builder(100)
+		dump_funcs: strings.new_builder(100)
 		pcs_declarations: strings.new_builder(100)
 		embedded_data: strings.new_builder(1000)
 		options: strings.new_builder(100)
@@ -276,10 +280,12 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			global_g.includes.write(g.includes) or { panic(err) }
 			global_g.typedefs.write(g.typedefs) or { panic(err) }
 			global_g.type_definitions.write(g.type_definitions) or { panic(err) }
+			global_g.alias_definitions.write(g.alias_definitions) or { panic(err) }
 			global_g.definitions.write(g.definitions) or { panic(err) }
 			global_g.gowrappers.write(g.gowrappers) or { panic(err) }
 			global_g.stringliterals.write(g.stringliterals) or { panic(err) }
 			global_g.auto_str_funcs.write(g.auto_str_funcs) or { panic(err) }
+			global_g.dump_funcs.write(g.auto_str_funcs) or { panic(err) }
 			global_g.comptime_definitions.write(g.comptime_definitions) or { panic(err) }
 			global_g.pcs_declarations.write(g.pcs_declarations) or { panic(err) }
 			global_g.hotcode_definitions.write(g.hotcode_definitions) or { panic(err) }
@@ -414,6 +420,8 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	b.write_string(g.enum_typedefs.str())
 	b.writeln('\n// V type definitions:')
 	b.write_string(g.type_definitions.str())
+	b.writeln('\n// V alias definitions:')
+	b.write_string(g.alias_definitions.str())
 	b.writeln('\n// V shared types:')
 	b.write_string(g.shared_types.str())
 	b.writeln('\n// V Option_xxx definitions:')
@@ -458,6 +466,10 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		b.write_string(g.auto_str_funcs.str())
 		// }
 	}
+	if g.dump_funcs.len > 0 {
+		b.writeln('\n// V dump functions:')
+		b.write_string(g.dump_funcs.str())
+	}
 	if g.auto_fn_definitions.len > 0 {
 		for fn_def in g.auto_fn_definitions {
 			b.writeln(fn_def)
@@ -498,6 +510,7 @@ fn cgen_process_one_file_cb(p &pool.PoolProcessor, idx int, wid int) &Gen {
 		includes: strings.new_builder(100)
 		typedefs: strings.new_builder(100)
 		type_definitions: strings.new_builder(100)
+		alias_definitions: strings.new_builder(100)
 		definitions: strings.new_builder(100)
 		gowrappers: strings.new_builder(100)
 		stringliterals: strings.new_builder(100)
@@ -549,6 +562,7 @@ pub fn (mut g Gen) free_builders() {
 		g.includes.free()
 		g.typedefs.free()
 		g.type_definitions.free()
+		g.alias_definitions.free()
 		g.definitions.free()
 		g.global_init.free()
 		g.init.free()
@@ -556,6 +570,7 @@ pub fn (mut g Gen) free_builders() {
 		g.gowrappers.free()
 		g.stringliterals.free()
 		g.auto_str_funcs.free()
+		g.dump_funcs.free()
 		g.comptime_definitions.free()
 		g.pcs_declarations.free()
 		g.hotcode_definitions.free()
@@ -1202,6 +1217,7 @@ pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 	parent := g.table.type_symbols[sym.parent_idx]
 	is_c_parent := parent.name.len > 2 && parent.name[0] == `C` && parent.name[1] == `.`
 	mut is_typedef := false
+	mut is_fixed_array_of_non_builtin := false
 	if parent.info is ast.Struct {
 		is_typedef = parent.info.is_typedef
 	}
@@ -1215,13 +1231,24 @@ pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
 	} else {
 		if sym.info is ast.Alias {
 			parent_styp = g.typ(sym.info.parent_type)
+			parent_sym := g.table.sym(sym.info.parent_type)
+			if parent_sym.info is ast.ArrayFixed {
+				elem_sym := g.table.sym(parent_sym.info.elem_type)
+				if !elem_sym.is_builtin() {
+					is_fixed_array_of_non_builtin = true
+				}
+			}
 		}
 	}
 	if parent_styp == 'byte' && sym.cname == 'u8' {
 		// TODO: remove this check; it is here just to fix V rebuilding in -cstrict mode with clang-12
 		return
 	}
-	g.type_definitions.writeln('typedef $parent_styp $sym.cname;')
+	if is_fixed_array_of_non_builtin {
+		g.alias_definitions.writeln('typedef $parent_styp $sym.cname;')
+	} else {
+		g.type_definitions.writeln('typedef $parent_styp $sym.cname;')
+	}
 }
 
 pub fn (mut g Gen) write_interface_typedef(sym ast.TypeSymbol) {
