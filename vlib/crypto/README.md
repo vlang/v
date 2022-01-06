@@ -1,14 +1,76 @@
 ## Description:
 
-`crypto` is a module that...
+`crypto` is a module that exposes cryptographic algorithms to V programs.
 
-*TODO*
+Each submodule implements things differently, so be sure to consider the documentation
+of the specific algorithm you need, but in general, the method is to create a `cipher`
+struct using one of the module functions, and then to call the `encrypt` or `decrypt`
+method on that struct to actually encrypt or decrypt your data.
+
+This module is a work-in-progress. For example, the AES implementation currently requires you
+to create a destination buffer of the correct size to receive the decrypted data, and the AesCipher
+`encrypt` and `decrypt` functions only operate on the first block of the `src`.
+
+This module is based on Go's crypto packages. That documentation is here: https://pkg.go.dev/crypto
+
+The Go source code license is reprinted here:
+
+```Copyright (c) 2009 The Go Authors. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+   * Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+   * Redistributions in binary form must reproduce the above
+copyright notice, this list of conditions and the following disclaimer
+in the documentation and/or other materials provided with the
+distribution.
+   * Neither the name of Google Inc. nor the names of its
+contributors may be used to endorse or promote products derived from
+this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
 
 ## Examples:
 
 ```v
-import crypto
+import crypto.aes
+import crypto.rand
 
-// TODO: CODE HERE
+fn main() {
+	// remember to save this key somewhere if you ever want to decrypt your data
+	key := rand.read(32) ?
+	println('KEY: $key')
 
+	// this data is one block (16 bytes) big
+	mut data := 'THIS IS THE DATA'.bytes()
+
+	println('generating cipher')
+	cipher := aes.new_cipher(key)
+
+	println('performing encryption')
+	mut encrypted := []byte{len: aes.block_size}
+	cipher.encrypt(mut encrypted, mut data)
+	println(encrypted)
+
+	println('performing decryption')
+	mut decrypted := []byte{len: aes.block_size}
+	cipher.decrypt(mut decrypted, mut encrypted)
+	println(decrypted)
+
+	assert decrypted == data
+}
 ```
