@@ -281,13 +281,43 @@ pub fn group_by<K, V>(list []V, grouping_op fn (v V) K) map[K][]V {
 	return result
 }
 
-// concatenate two arrays
+// concatenate an array with an arbitrary number of additional values
+//
+// NOTE: if you have two arrays, you should simply use the `<<` operator directly
+// Example: arrays.concat([1, 2, 3], 4, 5, 6) == [1, 2, 3, 4, 5, 6] // => true
+// Example: arrays.concat([1, 2, 3], ...[4, 5, 6]) == [1, 2, 3, 4, 5, 6] // => true
+// Example: arr << [4, 5, 6] // does what you need if arr is mutable
+[deprecated]
 pub fn concat<T>(a []T, b ...T) []T {
 	mut m := []T{cap: a.len + b.len}
 
 	m << a
 	m << b
 
+	return m
+}
+
+// zip returns a new array by interleaving the source arrays.
+//
+// NOTE: The two arrays do not need to be equal sizes
+// Example: arrays.zip([1, 3, 5, 7], [2, 4, 6, 8, 10]) // => [1, 2, 3, 4, 5, 6, 7, 8, 10]
+pub fn zip<T>(a []T, b []T) []T {
+	mut m := []T{cap: a.len + b.len}
+	mut i := 0
+	for i < m.cap {
+		// short-circuit the rest of the loop as soon as we can
+		if i >= a.len {
+			m << b[i..]
+			break
+		}
+		if i >= b.len {
+			m << a[i..]
+			break
+		}
+		m << a[i]
+		m << b[i]
+		i++
+	}
 	return m
 }
 
