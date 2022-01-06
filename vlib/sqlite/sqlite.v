@@ -59,6 +59,8 @@ fn C.sqlite3_open(&char, &&C.sqlite3) int
 
 fn C.sqlite3_close(&C.sqlite3) int
 
+fn C.sqlite3_busy_timeout(db &C.sqlite3, ms int) int
+
 fn C.sqlite3_last_insert_rowid(&C.sqlite3) i64
 
 //
@@ -233,4 +235,9 @@ pub fn (db DB) exec_param(query string, param string) []Row {
 
 pub fn (db DB) create_table(table_name string, columns []string) {
 	db.exec('create table if not exists $table_name (' + columns.join(',\n') + ')')
+}
+
+// Set a busy timeout in milliseconds https://www.sqlite.org/c3ref/busy_timeout.html
+pub fn (db DB) busy_timeout(ms int) int {
+	return C.sqlite3_busy_timeout(db.conn, ms)
 }
