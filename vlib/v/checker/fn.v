@@ -957,7 +957,14 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			node.concrete_list_pos)
 	}
 	if func.generic_names.len > 0 {
-		return node.return_type
+		if has_generic {
+			return node.return_type
+		} else if typ := c.table.resolve_generic_to_concrete(func.return_type, func.generic_names,
+			concrete_types)
+		{
+			node.return_type = typ
+			return typ
+		}
 	}
 	return func.return_type
 }
