@@ -1,14 +1,3 @@
 ## Description:
 
-`strconv` is a module that...
-
-*TODO*
-
-## Examples:
-
-```v
-import strconv
-
-// TODO: CODE HERE
-
-```
+`strconv` provides functions for converting strings to numbers and numbers to strings.

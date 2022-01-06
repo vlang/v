@@ -1,14 +1,5 @@
 ## Description:
 
-`net` is a module that...
-
-*TODO*
-
-## Examples:
-
-```v
-import net
-
-// TODO: CODE HERE
-
-```
+`net` provides networking functions. It is mostly a wrapper to BSD sockets,
+so you can listen on a port, connect to remote TCP/UDP services, and
+communicate with them.

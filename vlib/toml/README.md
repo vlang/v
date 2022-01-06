@@ -1,4 +1,4 @@
-# TOML module
+## Description
 `toml` is a fully fledged [TOML v1.0.0](https://toml.io/en/v1.0.0) compatible parser written in pure V.
 The module is tested against the [official compliance tests](https://github.com/toml-lang/compliance).
 

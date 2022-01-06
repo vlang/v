@@ -1,11 +1,11 @@
-# Quickstart
+## Description
 
-The V `term` module is a module designed to provide the building blocks
-for building very simple TUI apps.
-For more complex apps, you should really look at the `term.input` module,
-as it includes terminal events, is easier to use and is much more performant for large draws.
+The `term` module is designed to provide the building blocks for building
+very simple TUI apps. For more complex apps, you should really look at the
+`term.input` module, as it includes terminal events, is easier to use and
+is much more performant for large draws.
 
-# Use
+## Usage
 
 You can use the `term` module to either color the output on a terminal
 or to decide on where to put the output in your terminal.
@@ -39,7 +39,7 @@ fn main() {
 
 This simple program covers many of the principal aspects of the `term ` module.
 
-# API
+## API
 
 Here are some functions you should be aware of in the `term `module:
 

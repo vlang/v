@@ -1,14 +1,6 @@
 ## Description:
 
-`dl` is a module that...
+`dl` can be used to Dynamically Load a library during runtime.
+It is a thin wrapper over `LoadLibrary` on Windows, and `dlopen` on Unix.
 
-*TODO*
-
-## Examples:
-
-```v
-import dl
-
-// TODO: CODE HERE
-
-```
+Using it, you can implement a plugin system for your application.

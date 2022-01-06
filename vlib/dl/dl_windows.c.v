@@ -1,9 +1,8 @@
 module dl
 
-pub const (
-	rtld_now  = 0
-	rtld_lazy = 0
-)
+pub const rtld_now = 0
+
+pub const rtld_lazy = 0
 
 fn C.LoadLibrary(libfilename &u16) voidptr
 

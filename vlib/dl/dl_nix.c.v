@@ -6,10 +6,9 @@ $if linux {
 	#flag -ldl
 }
 
-pub const (
-	rtld_now  = C.RTLD_NOW
-	rtld_lazy = C.RTLD_LAZY
-)
+pub const rtld_now = C.RTLD_NOW
+
+pub const rtld_lazy = C.RTLD_LAZY
 
 fn C.dlopen(filename &char, flags int) voidptr
 

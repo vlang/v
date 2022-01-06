@@ -1,14 +1,4 @@
 ## Description:
 
-`math` is a module that...
-
-*TODO*
-
-## Examples:
-
-```v
-import math
-
-// TODO: CODE HERE
-
-```
+`math` provides commonly used mathematical functions for
+trigonometry, logarithms, etc.

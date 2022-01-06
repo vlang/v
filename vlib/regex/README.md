@@ -1,4 +1,8 @@
-# V RegEx (Regular expression) 1.0 alpha
+# Description
+`regex` is a small but powerful regular expression library,
+written in pure V.
+
+NB: `regex` is *not* PCRE compatible.
 
 [TOC]
 
@@ -9,13 +13,13 @@ are valid for all the `regex` module features:
 
 1. The matching stops at the end of the string, *not* at newline characters.
 
-2. The basic atomic elements of this regex engine are the tokens. 
+2. The basic atomic elements of this regex engine are the tokens.
 In a query string a simple character is a token.
 
 
 ## Differences with PCRE:
 
-NB: We must point out that the **V-Regex module is not PCRE compliant** and thus 
+NB: We must point out that the **V-Regex module is not PCRE compliant** and thus
 some behaviour will be different. This difference is due to the V philosophy,
 to have one way and keep it simple.
 
@@ -24,13 +28,13 @@ The main differences can be summarized in the following points:
 - The basic element **is the token not the sequence of symbols**, and the most
 simple token, is a single character.
 
-- `|` **the OR operator acts on tokens,** for example `abc|ebc` is not 
+- `|` **the OR operator acts on tokens,** for example `abc|ebc` is not
 `abc` OR `ebc`. Instead it is evaluated like `ab`, followed by `c OR e`,
 followed by `bc`, because the **token is the base element**,
 not the sequence of symbols.
 Note: **Two char classes with an `OR` in the middle is a syntax error.**
 
-- The **match operation stops at the end of the string**. It does *NOT* stop 
+- The **match operation stops at the end of the string**. It does *NOT* stop
 at new line characters.
 
 
@@ -54,7 +58,7 @@ This token is a simple single character like `a` or `b` etc.
 
 ### Char class (cc)
 
-The character classes match all the chars specified inside. Use square 
+The character classes match all the chars specified inside. Use square
 brackets `[ ]` to enclose them.
 
 The sequence of the chars in the character class, is evaluated with an OR op.
@@ -65,7 +69,7 @@ but it doesn't match `C` or `z`.
 Inside a cc, it is possible to specify a "range" of characters, for example
 `[ad-h]` is equivalent to writing `[adefgh]`.
 
-A cc can have different ranges at the same time, for example `[a-zA-z0-9]` 
+A cc can have different ranges at the same time, for example `[a-zA-z0-9]`
 matches all the latin lowercase, uppercase and numeric characters.
 
 It is possible to negate the meaning of a cc, using the caret char at the
@@ -80,13 +84,13 @@ It is possible to mix all the properties of the char class together.
 NB: In order to match the `-` (minus) char, it must be preceded by
     a backslash in the cc, for example `[\-_\d\a]` will match:
       `-` minus,
-      `_` underscore, 
+      `_` underscore,
       `\d` numeric chars,
 	  `\a` lower case chars.
 
 ### Meta-chars
 
-A meta-char is specified by a backslash, before a character. 
+A meta-char is specified by a backslash, before a character.
 For example `\w` is the meta-char `w`.
 
 A meta-char can match different types of characters.
@@ -130,7 +134,7 @@ The dot is a particular meta-char, that matches "any char".
 
 It is simpler to explain it with an example:
 
-Suppose you have `abccc ddeef` as a source string, that you want to parse 
+Suppose you have `abccc ddeef` as a source string, that you want to parse
 with a regex. The following table show the query strings and the result of
 parsing source string.
 
@@ -151,14 +155,14 @@ The token `|`, means a logic OR operation between two consecutive tokens,
 i.e. `a|b` matches a character that is `a` or `b`.
 
 The OR token can work in a "chained way": `a|(b)|cd ` means test first `a`,
-if the char is not `a`, then test the group `(b)`, and if the group doesn't 
+if the char is not `a`, then test the group `(b)`, and if the group doesn't
 match too, finally test the token `c`.
 
-NB: ** unlike in PCRE, the OR operation works at token level!** 
+NB: ** unlike in PCRE, the OR operation works at token level!**
 It doesn't work at concatenation level!
 NB2: **Two char classes with an `OR` in the middle is a syntax error.**
 
-That also means, that a query string like `abc|bde` is not equal to 
+That also means, that a query string like `abc|bde` is not equal to
 `(abc)|(bde)`, but instead to `ab(c|b)de.
 The OR operation works only for `c|b`, not at char concatenation level.
 
@@ -177,7 +181,7 @@ outer round brackets `(...)+`. This group has a quantifier `+`, that say to
 match its content *at least one time*.
 
 Then we have a simple char token `c`, and a second group `#1`: `(pa)+`.
-This group also tries to match the sequence `pa`, *at least one time*, 
+This group also tries to match the sequence `pa`, *at least one time*,
 as specified by the `+` quantifier.
 
 Then, we have another simple token `z` and another simple token ` ?`,
@@ -190,7 +194,7 @@ can match `cpaz cpapaz cpapapaz` .
 In this implementation the groups are "capture groups". This means that the
 last temporal result for each group, can be retrieved from the `RE` struct.
 
-The "capture groups" are stored as indexes in the field `groups`, 
+The "capture groups" are stored as indexes in the field `groups`,
 that is an `[]int` inside the `RE` struct.
 
 **example:**
@@ -263,14 +267,14 @@ fn convert_html_rgb(in_col string) u32 {
 }
 ```
 
-Others utility functions are `get_group_by_id` and `get_group_bounds_by_id` 
+Others utility functions are `get_group_by_id` and `get_group_bounds_by_id`
 that get  directly the string of a group using its `id`:
 
 ```v ignore
 txt := "my used string...."
 for g_index := 0; g_index < re.group_count ; g_index++ {
 	println("#${g_index} [${re.get_group_by_id(txt, g_index)}] \
-    	bounds: ${re.get_group_bounds_by_id(g_index)}") 
+    	bounds: ${re.get_group_bounds_by_id(g_index)}")
 }
 ```
 
@@ -294,8 +298,8 @@ The `.group_csave` array will be filled then, following this logic:
 `re.group_csave[1+n*3]` - start index in the source string of the saved group
 `re.group_csave[1+n*3]` - end index in the source string of the saved group
 
-The regex will save groups, until it finishes, or finds that the array has no 
-more space. If the space ends, no error is raised, and further records will 
+The regex will save groups, until it finishes, or finds that the array has no
+more space. If the space ends, no error is raised, and further records will
 not be saved.
 
 ```v ignore
@@ -355,11 +359,11 @@ This regex module supports partially the question mark `?` PCRE syntax for group
 
 `(?:abcd)` **non capturing group**:  the content of the group will not be saved.
 
-`(?P<mygroup>abcdef)` **named group:** the group content is saved and labeled 
+`(?P<mygroup>abcdef)` **named group:** the group content is saved and labeled
 as `mygroup`.
 
-The label of the groups is saved in the `group_map` of the `RE` struct, 
-that is a map from `string` to `int`, where the value is the index in 
+The label of the groups is saved in the `group_map` of the `RE` struct,
+that is a map from `string` to `int`, where the value is the index in
 `group_csave` list of indexes.
 
 Here is an example for how to use them:
@@ -447,7 +451,7 @@ These functions are helpers to query the captured groups
 
 ```v ignore
 // get_group_bounds_by_name get a group boundaries by its name
-pub fn (re RE) get_group_bounds_by_name(group_name string) (int, int) 
+pub fn (re RE) get_group_bounds_by_name(group_name string) (int, int)
 
 // get_group_by_name get a group string by its name
 pub fn (re RE) get_group_by_name(group_name string) string
@@ -481,15 +485,15 @@ re.flag = regex.f_bin
 
 - `f_bin`: parse a string as bytes, utf-8 management disabled.
 
-- `f_efm`: exit on the first char matches in the query, used by the 
+- `f_efm`: exit on the first char matches in the query, used by the
            find function.
-	
+
 - `f_ms`:  matches only if the index of the start match is 0,
            same as `^` at the start of the query string.
-	
+
 - `f_me`:  matches only if the end index of the match is the last char
            of the input string, same as `$` end of query string.
-	
+
 - `f_nl`:  stop the matching if found a new line char `\n` or `\r`
 
 ## Functions
@@ -561,7 +565,7 @@ There are the following find  and replace functions:
 pub fn (re mut RE) find(in_txt string) (int,int)
 
 // find_all find all the "non overlapping" occurrences of the matching pattern
-// return a list of start end indexes like: [3,4,6,8] 
+// return a list of start end indexes like: [3,4,6,8]
 // the matches are [3,4] and [6,8]
 pub fn (re mut RE) find_all(in_txt string) []int
 
@@ -574,7 +578,7 @@ pub fn (mut re RE) find_all_str(in_txt string) []string
 #### Replace functions
 
 ```v ignore
-// replace return a string where the matches are replaced with the repl_str string, 
+// replace return a string where the matches are replaced with the repl_str string,
 // this function support groups in the replace string
 pub fn (re mut RE) replace(in_txt string, repl string) string
 ```
@@ -617,7 +621,7 @@ pub fn (mut re RE) replace_n(in_txt string, repl_str string, count int) string
 #### Custom replace function
 
 For complex find and replace operations, you can use `replace_by_fn` .
-The `replace_by_fn`, uses a custom replace callback function, thus 
+The `replace_by_fn`, uses a custom replace callback function, thus
 allowing customizations. The custom callback function is called for
 every non overlapped find.
 
@@ -629,7 +633,7 @@ The custom callback function must be of the type:
 // start   index of the start of the match in in_txt
 // end     index of the end   of the match in in_txt
 // --- the match is in in_txt[start..end] ---
-fn (re RE, in_txt string, start int, end int) string 
+fn (re RE, in_txt string, start int, end int) string
 ```
 
 The following example will clarify its usage:
@@ -642,7 +646,7 @@ fn my_repl(re regex.RE, in_txt string, start int, end int) string {
     g0 := re.get_group_by_id(in_txt, 0)
     g1 := re.get_group_by_id(in_txt, 1)
     g2 := re.get_group_by_id(in_txt, 2)
-    return "*$g0*$g1*$g2*"    
+    return "*$g0*$g1*$g2*"
 }
 
 fn main(){
@@ -650,7 +654,7 @@ fn main(){
     query := r"(.)(\A\w+)(.)"
 
     mut re := regex.regex_opt(query) or { panic(err) }
-   
+
     result := re.replace_by_fn(txt, my_repl)
     println(result)
 }
@@ -803,13 +807,13 @@ fn main(){
     query := r"(?P<format>https?)|(?P<format>ftps?)://(?P<token>[\w_]+.)+"
 
     mut re := regex.regex_opt(query) or { panic(err) }
-   
+
     start, end := re.match_string(txt)
     if start >= 0 {
         println("Match ($start, $end) => [${txt[start..end]}]")
         for g_index := 0; g_index < re.group_count ; g_index++ {
             println("#${g_index} [${re.get_group_by_id(txt, g_index)}] \
-            bounds: ${re.get_group_bounds_by_id(g_index)}")  
+            bounds: ${re.get_group_bounds_by_id(g_index)}")
         }
         for name in re.group_map.keys() {
             println("group:'$name' \t=> [${re.get_group_by_name(txt, name)}] \
@@ -831,17 +835,17 @@ fn main(){
     // init regex
     mut re := regex.RE{}
 	// max program length, can not be longer then the query
-    re.prog = []regex.Token    {len: query.len + 1} 
+    re.prog = []regex.Token    {len: query.len + 1}
 	// can not be more char class the the length of the query
-    re.cc   = []regex.CharClass{len: query.len}     
+    re.cc   = []regex.CharClass{len: query.len}
     re.prog = []regex.Token    {len: query.len+1}
 	// enable continuos group saving
-    re.group_csave_flag = true         
+    re.group_csave_flag = true
 	// set max 128 group nested
-    re.group_max_nested = 128          
-	// we can't have more groups than the half of the query legth 
-    re.group_max        = query.len>>1 
-    
+    re.group_max_nested = 128
+	// we can't have more groups than the half of the query legth
+    re.group_max        = query.len>>1
+
     // compile the query
     re.compile_opt(query) or { panic(err) }
 
@@ -870,7 +874,7 @@ fn main(){
         println("Match ($start, $end) => [${txt[start..end]}]")
         for g_index := 0; g_index < re.group_count ; g_index++ {
             println("#${g_index} [${re.get_group_by_id(txt, g_index)}] \
-            bounds: ${re.get_group_bounds_by_id(g_index)}")  
+            bounds: ${re.get_group_bounds_by_id(g_index)}")
         }
         for name in re.group_map.keys() {
             println("group:'$name' \t=> [${re.get_group_by_name(txt, name)}] \

@@ -1,14 +1,6 @@
 ## Description:
 
-`gx` is a module that...
+`gx` is a complementary module to `gg`, that just provides
+some predefined graphical color names/operations.
 
-*TODO*
-
-## Examples:
-
-```v
-import gx
-
-// TODO: CODE HERE
-
-```
+NB: `gx` is going to be merged with `gg` soon.

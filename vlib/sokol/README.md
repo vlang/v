@@ -1,8 +1,9 @@
 ## Description:
 
-`sokol` is a module that wraps the incredible cross-platform library `sokol` found here:
-
-[https://github.com/floooh/sokol](https://github.com/floooh/sokol)
+`sokol` is a thin wrapper around [sokol](https://github.com/floooh/sokol),
+which in turn is a library of "Simple STB-style cross-platform libraries
+for C and C++, written in C.", that provide access to graphics/audio/input
+processing.
 
 Each `.h` file in the sokol source code is well-documented as can be seen here:
 

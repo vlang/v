@@ -1,5 +1,4 @@
 ## Description:
 
-`compress` is a module that assists in the compression and decompression of binary data
-
-Currently, only `zlib` compression is supported.
+`compress` is a namespace for (multiple) compression algorithms supported by V.
+At the moment, only `compress.zlib` is implemented.

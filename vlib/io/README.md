@@ -1,14 +1,3 @@
 ## Description:
 
-`io` is a module that...
-
-*TODO*
-
-## Examples:
-
-```v
-import io
-
-// TODO: CODE HERE
-
-```
+`io` provides common interfaces for buffered reading/writing of data.

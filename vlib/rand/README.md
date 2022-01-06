@@ -1,4 +1,4 @@
-# Quickstart
+# Description
 
 The V `rand` module provides two main ways in which users can generate pseudorandom numbers:
 
@@ -29,27 +29,27 @@ For arrays, see `rand.util`.
 
 # General Background
 
-A PRNG is a Pseudo Random Number Generator. 
-Computers cannot generate truly random numbers without an external source of noise or entropy. 
-We can use algorithms to generate sequences of seemingly random numbers, 
-but their outputs will always be deterministic. 
+A PRNG is a Pseudo Random Number Generator.
+Computers cannot generate truly random numbers without an external source of noise or entropy.
+We can use algorithms to generate sequences of seemingly random numbers,
+but their outputs will always be deterministic.
 This is often useful for simulations that need the same starting seed.
 
-If you need truly random numbers that are going to be used for cryptography, 
+If you need truly random numbers that are going to be used for cryptography,
 use the `crypto.rand` module.
 
 # Guaranteed functions
 
-The following 21 functions are guaranteed to be supported by `rand` 
+The following 21 functions are guaranteed to be supported by `rand`
 as well as the individual PRNGs.
 
-- `seed(seed_data)` where `seed_data` is an array of `u32` values. 
-    Different generators require different number of bits as the initial seed. 
-    The smallest is 32-bits, required by `sys.SysRNG`. 
+- `seed(seed_data)` where `seed_data` is an array of `u32` values.
+    Different generators require different number of bits as the initial seed.
+    The smallest is 32-bits, required by `sys.SysRNG`.
     Most others require 64-bits or 2 `u32` values.
 - `u32()`, `u64()`, `int()`, `i64()`, `f32()`, `f64()`
 - `u32n(max)`, `u64n(max)`, `intn(max)`, `i64n(max)`, `f32n(max)`, `f64n(max)`
-- `u32_in_range(min, max)`, `u64_in_range(min, max)`, `int_in_range(min, max)`, 
+- `u32_in_range(min, max)`, `u64_in_range(min, max)`, `int_in_range(min, max)`,
     `i64_in_range(min, max)`, `f32_in_range(min, max)`, `f64_in_range(min, max)`
 - `int31()`, `int63()`
 
@@ -59,7 +59,7 @@ PRNG, you can can change the global RNG to do so.
 
 # Seeding Functions
 
-All the generators are time-seeded. 
+All the generators are time-seeded.
 The helper functions publicly available in `rand.seed` module are:
 
 1. `time_seed_array()` - returns a `[]u32` that can be directly plugged into the `seed()` functions.
@@ -69,8 +69,8 @@ The helper functions publicly available in `rand.seed` module are:
 # Caveats
 
 Note that the `sys.SysRNG` struct (in the C backend) uses `C.srand()` which sets the seed globally.
-Consequently, all instances of the RNG will be affected. 
-This problem does not arise for the other RNGs. 
+Consequently, all instances of the RNG will be affected.
+This problem does not arise for the other RNGs.
 A workaround (if you _must_ use the libc RNG) is to:
 
 1. Seed the first instance.
@@ -83,5 +83,5 @@ A workaround (if you _must_ use the libc RNG) is to:
 
 Please note that [math interval](https://en.wikipedia.org/wiki/Interval_(mathematics)#Including_or_excluding_endpoints) notation is used throughout
 the function documentation to denote what numbers ranges include.
-An example of `[0, max)` thus denotes a range with all posible values 
+An example of `[0, max)` thus denotes a range with all posible values
 between `0` and `max` **including** 0 but **excluding** `max`.

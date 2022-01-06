@@ -1,6 +1,6 @@
 ## Description:
 
-`benchmark` is a module to help you test the performance of your application.
+`benchmark` provides an easy way to measure how fast a piece of code is and to produce a readable report about it.
 
 ## Example 1:
 
