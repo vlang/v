@@ -54,5 +54,4 @@ fn main() {
 	time.sleep(2000 * time.millisecond)
 	audio.shutdown()
 }
-
 ```
