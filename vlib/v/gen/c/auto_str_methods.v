@@ -107,7 +107,7 @@ fn (mut g Gen) gen_str_default(sym ast.TypeSymbol, styp string, str_fn_name stri
 	} else {
 		verror('could not generate string method for type `$styp`')
 	}
-	g.type_definitions.writeln('string ${str_fn_name}($styp it); // auto')
+	g.definitions.writeln('string ${str_fn_name}($styp it); // auto')
 	g.auto_str_funcs.writeln('string ${str_fn_name}($styp it) {')
 	if convertor == 'bool' {
 		g.auto_str_funcs.writeln('\tstring tmp1 = string__plus(_SLIT("${styp}("), ($convertor)it ? _SLIT("true") : _SLIT("false"));')
@@ -234,9 +234,9 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string)
 	sym_has_str_method, _, _ := sym.str_method_info()
 	parent_str_fn_name := g.get_str_fn(parent_type)
 
-	g.type_definitions.writeln('string ${str_fn_name}($styp it); // auto')
+	g.definitions.writeln('string ${str_fn_name}($styp it); // auto')
 	g.auto_str_funcs.writeln('string ${str_fn_name}($styp it) { return indent_${str_fn_name}(it, 0); }')
-	g.type_definitions.writeln('string indent_${str_fn_name}($styp it, int indent_count); // auto')
+	g.definitions.writeln('string indent_${str_fn_name}($styp it, int indent_count); // auto')
 	g.auto_str_funcs.writeln('string indent_${str_fn_name}($styp it, int indent_count) {')
 	g.auto_str_funcs.writeln('\tstring res;')
 	g.auto_str_funcs.writeln('\tif (it.state == 0) {')
@@ -264,9 +264,9 @@ fn (mut g Gen) gen_str_for_alias(info ast.Alias, styp string, str_fn_name string
 		eprintln('> gen_str_for_alias: $parent_str_fn_name | $styp | $str_fn_name')
 	}
 	mut clean_type_v_type_name := util.strip_main_name(styp.replace('__', '.'))
-	g.type_definitions.writeln('static string ${str_fn_name}($styp it); // auto')
+	g.definitions.writeln('static string ${str_fn_name}($styp it); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp it) { return indent_${str_fn_name}(it, 0); }')
-	g.type_definitions.writeln('static string indent_${str_fn_name}($styp it, int indent_count); // auto')
+	g.definitions.writeln('static string indent_${str_fn_name}($styp it, int indent_count); // auto')
 	g.auto_str_funcs.writeln('static string indent_${str_fn_name}($styp it, int indent_count) {')
 	g.auto_str_funcs.writeln('\tstring indents = string_repeat(_SLIT("    "), indent_count);')
 	g.auto_str_funcs.writeln('\tstring tmp_ds = ${parent_str_fn_name}(it);')
@@ -285,7 +285,7 @@ fn (mut g Gen) gen_str_for_multi_return(info ast.MultiReturn, styp string, str_f
 	$if trace_autostr ? {
 		eprintln('> gen_str_for_multi_return: $info.types | $styp | $str_fn_name')
 	}
-	g.type_definitions.writeln('static string ${str_fn_name}($styp a); // auto')
+	g.definitions.writeln('static string ${str_fn_name}($styp a); // auto')
 	mut fn_builder := strings.new_builder(512)
 	fn_builder.writeln('static string ${str_fn_name}($styp a) {')
 	fn_builder.writeln('\tstrings__Builder sb = strings__new_builder($info.types.len * 10);')
@@ -333,7 +333,7 @@ fn (mut g Gen) gen_str_for_enum(info ast.Enum, styp string, str_fn_name string) 
 		eprintln('> gen_str_for_enum: $info | $styp | $str_fn_name')
 	}
 	s := util.no_dots(styp)
-	g.type_definitions.writeln('static string ${str_fn_name}($styp it); // auto')
+	g.definitions.writeln('static string ${str_fn_name}($styp it); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp it) { /* gen_str_for_enum */')
 	// Enums tagged with `[flag]` are special in that they can be a combination of enum values
 	if info.is_flag {
@@ -368,9 +368,9 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, str_fn_nam
 		eprintln('> gen_str_for_interface: $info.types | $styp | $str_fn_name')
 	}
 	// _str() functions should have a single argument, the indenting ones take 2:
-	g.type_definitions.writeln('static string ${str_fn_name}($styp x); // auto')
+	g.definitions.writeln('static string ${str_fn_name}($styp x); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp x) { return indent_${str_fn_name}(x, 0); }')
-	g.type_definitions.writeln('static string indent_${str_fn_name}($styp x, int indent_count); // auto')
+	g.definitions.writeln('static string indent_${str_fn_name}($styp x, int indent_count); // auto')
 	mut fn_builder := strings.new_builder(512)
 	mut clean_interface_v_type_name := styp.replace('__', '.')
 	if styp.ends_with('*') {
@@ -429,9 +429,9 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_
 		eprintln('> gen_str_for_union_sum_type: $info.variants | $styp | $str_fn_name')
 	}
 	// _str() functions should have a single argument, the indenting ones take 2:
-	g.type_definitions.writeln('static string ${str_fn_name}($styp x); // auto')
+	g.definitions.writeln('static string ${str_fn_name}($styp x); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp x) { return indent_${str_fn_name}(x, 0); }')
-	g.type_definitions.writeln('static string indent_${str_fn_name}($styp x, int indent_count); // auto')
+	g.definitions.writeln('static string indent_${str_fn_name}($styp x, int indent_count); // auto')
 	mut fn_builder := strings.new_builder(512)
 	fn_builder.writeln('static string indent_${str_fn_name}($styp x, int indent_count) {')
 	mut clean_sum_type_v_type_name := ''
@@ -521,7 +521,7 @@ fn (mut g Gen) gen_str_for_fn_type(info ast.FnType, styp string, str_fn_name str
 	$if trace_autostr ? {
 		eprintln('> gen_str_for_fn_type: $info.func.name | $styp | $str_fn_name')
 	}
-	g.type_definitions.writeln('static string ${str_fn_name}(); // auto')
+	g.definitions.writeln('static string ${str_fn_name}(); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}() { return _SLIT("${g.fn_decl_str(info)}");}')
 }
 
@@ -530,7 +530,7 @@ fn (mut g Gen) gen_str_for_chan(info ast.Chan, styp string, str_fn_name string) 
 		eprintln('> gen_str_for_chan: $info.elem_type.debug() | $styp | $str_fn_name')
 	}
 	elem_type_name := util.strip_main_name(g.table.get_type_name(g.unwrap_generic(info.elem_type)))
-	g.type_definitions.writeln('static string ${str_fn_name}($styp x); // auto')
+	g.definitions.writeln('static string ${str_fn_name}($styp x); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp x) { return sync__Channel_auto_str(x, _SLIT("$elem_type_name")); }')
 }
 
@@ -539,7 +539,7 @@ fn (mut g Gen) gen_str_for_thread(info ast.Thread, styp string, str_fn_name stri
 		eprintln('> gen_str_for_thread: $info.return_type.debug() | $styp | $str_fn_name')
 	}
 	ret_type_name := util.strip_main_name(g.table.get_type_name(info.return_type))
-	g.type_definitions.writeln('static string ${str_fn_name}($styp _); // auto}')
+	g.definitions.writeln('static string ${str_fn_name}($styp _); // auto}')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp _) { return _SLIT("thread($ret_type_name)");}')
 }
 
@@ -578,9 +578,9 @@ fn (mut g Gen) gen_str_for_array(info ast.Array, styp string, str_fn_name string
 		elem_str_fn_name = elem_str_fn_name + '_escaped'
 	}
 
-	g.type_definitions.writeln('static string ${str_fn_name}($styp a); // auto')
+	g.definitions.writeln('static string ${str_fn_name}($styp a); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp a) { return indent_${str_fn_name}(a, 0);}')
-	g.type_definitions.writeln('static string indent_${str_fn_name}($styp a, int indent_count); // auto')
+	g.definitions.writeln('static string indent_${str_fn_name}($styp a, int indent_count); // auto')
 	g.auto_str_funcs.writeln('static string indent_${str_fn_name}($styp a, int indent_count) {')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(a.len * 10);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _SLIT("["));')
@@ -650,9 +650,9 @@ fn (mut g Gen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_fn_
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
 	elem_str_fn_name := g.get_str_fn(typ)
 
-	g.type_definitions.writeln('static string ${str_fn_name}($styp a); // auto')
+	g.definitions.writeln('static string ${str_fn_name}($styp a); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp a) { return indent_${str_fn_name}(a, 0);}')
-	g.type_definitions.writeln('static string indent_${str_fn_name}($styp a, int indent_count); // auto')
+	g.definitions.writeln('static string indent_${str_fn_name}($styp a, int indent_count); // auto')
 	g.auto_str_funcs.writeln('static string indent_${str_fn_name}($styp a, int indent_count) {')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder($info.size * 10);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _SLIT("["));')
@@ -727,9 +727,9 @@ fn (mut g Gen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 		g.get_str_fn(val_typ)
 	}
 
-	g.type_definitions.writeln('static string ${str_fn_name}($styp m); // auto')
+	g.definitions.writeln('static string ${str_fn_name}($styp m); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp m) { return indent_${str_fn_name}(m, 0);}')
-	g.type_definitions.writeln('static string indent_${str_fn_name}($styp m, int indent_count); // auto')
+	g.definitions.writeln('static string indent_${str_fn_name}($styp m, int indent_count); // auto')
 	g.auto_str_funcs.writeln('static string indent_${str_fn_name}($styp m, int indent_count) { /* gen_str_for_map */')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(m.key_values.len*10);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write_string(&sb, _SLIT("{"));')
@@ -827,9 +827,9 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 		eprintln('> gen_str_for_struct: $info.parent_type.debug() | $styp | $str_fn_name')
 	}
 	// _str() functions should have a single argument, the indenting ones take 2:
-	g.type_definitions.writeln('static string ${str_fn_name}($styp it); // auto')
+	g.definitions.writeln('static string ${str_fn_name}($styp it); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp it) { return indent_${str_fn_name}(it, 0);}')
-	g.type_definitions.writeln('static string indent_${str_fn_name}($styp it, int indent_count); // auto')
+	g.definitions.writeln('static string indent_${str_fn_name}($styp it, int indent_count); // auto')
 	mut fn_builder := strings.new_builder(512)
 	defer {
 		g.auto_fn_definitions << fn_builder.str()
