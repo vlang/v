@@ -7,16 +7,11 @@ module cipher
 // or decrypt individual blocks. The mode implementations
 // extend that capability to streams of blocks.
 interface Block {
-	// block_size returns the cipher's block size.
-	block_size int
-
-	// Encrypt encrypts the first block in src into dst.
+	block_size int // block_size returns the cipher's block size.
+	encrypt(mut dst []byte, src []byte) // Encrypt encrypts the first block in src into dst.
 	// Dst and src must overlap entirely or not at all.
-	encrypt(mut dst []byte, src []byte)
-
-	// Decrypt decrypts the first block in src into dst.
+	decrypt(mut dst []byte, src []byte) // Decrypt decrypts the first block in src into dst.
 	// Dst and src must overlap entirely or not at all.
-	decrypt(mut dst []byte, src []byte)
 }
 
 // A Stream represents a stream cipher.
@@ -37,10 +32,8 @@ interface Stream {
 // A BlockMode represents a block cipher running in a block-based mode (CBC,
 // ECB etc).
 interface BlockMode {
-	// block_size returns the mode's block size.
-	block_size int
-
-	// crypt_blocks encrypts or decrypts a number of blocks. The length of
+	block_size int // block_size returns the mode's block size.
+	crypt_blocks(mut dst []byte, src []byte) // crypt_blocks encrypts or decrypts a number of blocks. The length of
 	// src must be a multiple of the block size. Dst and src must overlap
 	// entirely or not at all.
 	//
@@ -51,7 +44,6 @@ interface BlockMode {
 	// Multiple calls to crypt_blocks behave as if the concatenation of
 	// the src buffers was passed in a single run. That is, BlockMode
 	// maintains state and does not reset at each crypt_blocks call.
-	crypt_blocks(mut dst []byte, src []byte)
 }
 
 // Utility routines

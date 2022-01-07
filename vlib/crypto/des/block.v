@@ -4,7 +4,6 @@ module des
 
 import encoding.binary
 
-
 fn feistel(ll u32, rr u32, k0 u64, k1 u64) (u32, u32) {
 	mut l := ll
 	mut r := rr
@@ -23,7 +22,6 @@ fn feistel(ll u32, rr u32, k0 u64, k1 u64) (u32, u32) {
 
 	return l, r
 }
-
 
 fn crypt_block(subkeys []u64, mut dst []byte, src []byte, decrypt bool) {
 	mut b := binary.big_endian_u64(src)

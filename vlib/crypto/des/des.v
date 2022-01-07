@@ -1,6 +1,7 @@
 // The source code refers to the go standard library
 
 module des
+
 import crypto.cipher
 import crypto.internal.subtle
 import encoding.binary
@@ -9,7 +10,7 @@ const block_size = 8
 
 // A tripleDesCipher is an instance of TripleDES encryption.
 struct TripleDesCipher {
-	block_size int = block_size
+	block_size int = des.block_size
 mut:
 	cipher1 DesCipher
 	cipher2 DesCipher
@@ -18,7 +19,7 @@ mut:
 
 // DesCipher is an instance of DES encryption.
 struct DesCipher {
-	block_size int = block_size
+	block_size int = des.block_size
 mut:
 	subkeys [16]u64
 }
@@ -56,26 +57,26 @@ fn (mut c DesCipher) generate_subkeys(key_bytes []byte) {
 }
 
 pub fn (c &DesCipher) encrypt(mut dst []byte, src []byte) {
-	if src.len < block_size {
+	if src.len < des.block_size {
 		panic('crypto/des: input not full block')
 	}
-	if dst.len < block_size {
+	if dst.len < des.block_size {
 		panic('crypto/des: output not full block')
 	}
-	if subtle.inexact_overlap(dst[..block_size], src[..block_size]) {
+	if subtle.inexact_overlap(dst[..des.block_size], src[..des.block_size]) {
 		panic('crypto/des: invalid buffer overlap')
 	}
 	encrypt_block(c.subkeys[..], mut dst, src)
 }
 
 pub fn (c &DesCipher) decrypt(mut dst []byte, src []byte) {
-	if src.len < block_size {
+	if src.len < des.block_size {
 		panic('crypto/des: input not full block')
 	}
-	if dst.len < block_size {
+	if dst.len < des.block_size {
 		panic('crypto/des: output not full block')
 	}
-	if subtle.inexact_overlap(dst[..block_size], src[..block_size]) {
+	if subtle.inexact_overlap(dst[..des.block_size], src[..des.block_size]) {
 		panic('crypto/des: invalid buffer overlap')
 	}
 	decrypt_block(c.subkeys[..], mut dst, src)
@@ -94,13 +95,13 @@ pub fn new_triple_des_cipher(key []byte) cipher.Block {
 }
 
 pub fn (c &TripleDesCipher) encrypt(mut dst []byte, src []byte) {
-	if src.len < block_size {
+	if src.len < des.block_size {
 		panic('crypto/des: input not full block')
 	}
-	if dst.len < block_size {
+	if dst.len < des.block_size {
 		panic('crypto/des: output not full block')
 	}
-	if subtle.inexact_overlap(dst[..block_size], src[..block_size]) {
+	if subtle.inexact_overlap(dst[..des.block_size], src[..des.block_size]) {
 		panic('crypto/des: invalid buffer overlap')
 	}
 
@@ -130,13 +131,13 @@ pub fn (c &TripleDesCipher) encrypt(mut dst []byte, src []byte) {
 }
 
 pub fn (c &TripleDesCipher) decrypt(mut dst []byte, src []byte) {
-	if src.len < block_size {
+	if src.len < des.block_size {
 		panic('crypto/des: input not full block')
 	}
-	if dst.len < block_size {
+	if dst.len < des.block_size {
 		panic('crypto/des: output not full block')
 	}
-	if subtle.inexact_overlap(dst[..block_size], src[..block_size]) {
+	if subtle.inexact_overlap(dst[..des.block_size], src[..des.block_size]) {
 		panic('crypto/des: invalid buffer overlap')
 	}
 
