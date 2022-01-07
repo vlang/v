@@ -96,20 +96,21 @@ fn vweb_tmpl_${fn_name}() string {
 	mut tline_number := -1 // keep the original line numbers, even after insert/delete ops on lines; `i` changes
 	for i := 0; i < lines.len; i++ {
 		line := lines[i]
+		trimmed_line := line.trim_space()
 		tline_number++
 		start_of_line_pos = end_of_line_pos
 		end_of_line_pos += line.len + 1
-		$if trace_tmpl ? {
-			eprintln('>>> tfile: $template_file, spos: ${start_of_line_pos:6}, epos:${end_of_line_pos:6}, fi: ${tline_number:5}, i: ${i:5}, line: $line')
-		}
 		if is_html_open_tag('style', line) {
 			state = .css
-		} else if line == '</style>' {
+		} else if trimmed_line == '</style>' {
 			state = .html
 		} else if is_html_open_tag('script', line) {
 			state = .js
-		} else if line == '</script>' {
+		} else if trimmed_line == '</script>' {
 			state = .html
+		}
+		$if trace_tmpl ? {
+			eprintln('>>> tfile: $template_file, spos: ${start_of_line_pos:6}, epos:${end_of_line_pos:6}, fi: ${tline_number:5}, i: ${i:5}, state: ${state:10}, line: $line')
 		}
 		if line.contains('@header') {
 			position := line.index('@header') or { 0 }
