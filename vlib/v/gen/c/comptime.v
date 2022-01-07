@@ -150,7 +150,11 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 				}
 			}
 		}
-		g.write(' ); // vweb action call with args')
+		if g.inside_call {
+			g.write(')')
+		} else {
+			g.write(');')
+		}
 		return
 	}
 	mut j := 0
