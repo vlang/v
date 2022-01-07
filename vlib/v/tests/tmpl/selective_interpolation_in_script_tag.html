@@ -1,0 +1,11 @@
+// V won't parse that
+<script>
+   var non_interpolated_labels = @benchmark_plot_data.dates;
+   var non_interpolated_values = @benchmark_plot_data.numerical_result;
+</script>
+
+// V will parse that
+<script>
+   var real_labels = @benchmark_plot_data.dates; //V_TEMPLATE
+   var real_values = @benchmark_plot_data.numerical_result; //V_TEMPLATE
+</script>
