@@ -1,10 +1,10 @@
 module sapp
 
 const (
-	sapp_max_touchpoints  = 8
-	sapp_max_mousebuttons = 3
-	sapp_max_keycodes     = 512
-	sapp_max_iconimages   = 8
+	max_touchpoints  = 8
+	max_mousebuttons = 3
+	max_keycodes     = 512
+	max_iconimages   = 8
 )
 
 pub struct C.sapp_range {
@@ -26,7 +26,7 @@ pub type ImageDesc = C.sapp_image_desc
 
 pub struct C.sapp_icon_desc {
 	sokol_default bool
-	images        [sapp_max_iconimages]ImageDesc
+	images        [max_iconimages]ImageDesc
 }
 
 pub type IconDesc = C.sapp_icon_desc
@@ -94,7 +94,7 @@ pub:
 	scroll_x           f32
 	scroll_y           f32
 	num_touches        int
-	touches            [sapp_max_touchpoints]TouchPoint
+	touches            [max_touchpoints]TouchPoint
 	window_width       int
 	window_height      int
 	framebuffer_width  int
