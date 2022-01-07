@@ -38,7 +38,7 @@ fn system_alloc(_ voidptr, size usize) (voidptr, usize, u32) {
 	map_flags := MapFlags(int(MapFlags.map_private) | int(MapFlags.map_anonymous))
 	// END CONSTS
 
-	a, e := sys_mmap(&byte(0), u64(size + sizeof(u64)), mem_prot, map_flags, -1, 0)
+	a, e := sys_mmap(&byte(0), u64(size), mem_prot, map_flags, -1, 0)
 
 	if e == .enoerror {
 		return a, size, 0

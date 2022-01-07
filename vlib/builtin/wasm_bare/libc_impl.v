@@ -90,9 +90,7 @@ fn __calloc(nmemb usize, size usize) &C.void {
 }
 
 fn getchar() int {
-	x := byte(0)
-	sys_read(0, &x, 1)
-	return int(x)
+	return 0
 }
 
 fn memcmp(a &C.void, b &C.void, n usize) int {
@@ -124,22 +122,24 @@ fn vsnprintf(str &char, size usize, format &char, ap &byte) int {
 	panic('vsnprintf(): string interpolation is not supported in `-freestanding`')
 }
 
+enum Errno {
+	enoerror
+	eerror
+}
+
 // not really needed
 fn bare_read(buf &byte, count u64) (i64, Errno) {
-	return sys_read(0, buf, count)
+	return 0, Errno.eerror
 }
 
 pub fn bare_print(buf &byte, len u64) {
-	sys_write(1, buf, len)
 }
 
 fn bare_eprint(buf &byte, len u64) {
-	sys_write(2, buf, len)
 }
 
-pub fn write(fd i64, buf &byte, count u64) i64 {
-	x, _ := sys_write(fd, buf, count)
-	return x
+pub fn write(_fd i64, _buf &byte, _count u64) i64 {
+	return -1
 }
 
 [noreturn]
@@ -155,7 +155,12 @@ fn bare_backtrace() string {
 [export: 'exit']
 [noreturn]
 fn __exit(code int) {
-	sys_exit(code)
+	unsafe {
+		// the only way to abort process execution in WASM
+		mut x := &int(voidptr(0))
+		*x = code
+	}
+	for {}
 }
 
 [export: 'qsort']
@@ -164,5 +169,5 @@ fn __qsort(base voidptr, nmemb usize, size usize, sort_cb FnSortCB) {
 }
 
 fn init_global_allocator() {
-	global_allocator = dlmalloc.new(get_linux_allocator())
+	global_allocator = dlmalloc.new(get_wasm_allocator())
 }
