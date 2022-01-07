@@ -13,13 +13,16 @@ pub const (
 )
 
 // AesCipher represents an AES encryption using a particular key.
+// It follows the API of golang's `cipher.Block` and is designed to
+// handle only one block of data at a time. In most cases, you
+// probably want to encrypt and decrypt using [[AesCbc](#AesCbc)]
 struct AesCipher {
 mut:
 	enc []u32
 	dec []u32
 }
 
-// new_cipher creates and returns a new `AesCipher`.
+// new_cipher creates and returns a new [[AesCipher](#AesCipher)].
 // The key argument should be the AES key,
 // either 16, 24, or 32 bytes to select
 // AES-128, AES-192, or AES-256.
@@ -43,8 +46,10 @@ pub fn (c &AesCipher) block_size() int {
 	return aes.block_size
 }
 
-// encrypt encrypts the blocks in `src` to `dst`.
-// Please note: `dst` and `src` are both mutable for performance reasons.
+// encrypt encrypts the first block of data in `src` to `dst`.
+// NOTE: `dst` and `src` are both mutable for performance reasons.
+// NOTE: `dst` and `src` must both be pre-allocated to the correct length.
+// NOTE: `dst` and `src` may be the same (overlapping entirely).
 pub fn (c &AesCipher) encrypt(mut dst []byte, mut src []byte) {
 	if src.len < aes.block_size {
 		panic('crypto.aes: input not full block')
@@ -60,8 +65,10 @@ pub fn (c &AesCipher) encrypt(mut dst []byte, mut src []byte) {
 	encrypt_block_generic(c.enc, mut dst, src)
 }
 
-// decrypt decrypts the blocks in `src` to `dst`.
-// Please note: `dst` and `src` are both mutable for performance reasons.
+// decrypt decrypts the first block of data in `src` to `dst`.
+// NOTE: `dst` and `src` are both mutable for performance reasons.
+// NOTE: `dst` and `src` must both be pre-allocated to the correct length.
+// NOTE: `dst` and `src` may be the same (overlapping entirely).
 pub fn (c &AesCipher) decrypt(mut dst []byte, mut src []byte) {
 	if src.len < aes.block_size {
 		panic('crypto.aes: input not full block')

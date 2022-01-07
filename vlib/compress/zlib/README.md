@@ -1,6 +1,7 @@
 ## Description:
 
-`compress.zlib` implements zlib compression and decompression of binary data.
+`compress.zlib` is a module that assists in the compression and
+decompression of binary data using `zlib` compression
 
 ## Examples:
 
