@@ -30,7 +30,7 @@ fn system_alloc(_ voidptr, size usize) (voidptr, usize, u32) {
 	return voidptr(prev * page_size), pages * page_size, 0
 }
 
-fn system_remap(_ voidptr, _ voidptr, _ usize, _usize bool, _ bool) voidptr {
+fn system_remap(_ voidptr, _ voidptr, _ usize, _ usize, _ bool) voidptr {
 	return voidptr(0)
 }
 
@@ -48,6 +48,10 @@ fn system_allocates_zeros(_ voidptr) bool {
 
 fn system_page_size(_ voidptr) usize {
 	return page_size
+}
+
+fn system_can_release_part(_ voidptr, _ u32) bool {
+	return false
 }
 
 fn get_wasm_allocator() dlmalloc.Allocator {

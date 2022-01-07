@@ -122,17 +122,20 @@ fn vsnprintf(str &char, size usize, format &char, ap &byte) int {
 	panic('vsnprintf(): string interpolation is not supported in `-freestanding`')
 }
 
+enum Errno {
+	enoerror
+	eerror
+}
+
 // not really needed
 fn bare_read(buf &byte, count u64) (i64, Errno) {
-	return sys_read(0, buf, count)
+	return 0, Errno.eerror
 }
 
 pub fn bare_print(buf &byte, len u64) {
-	sys_write(1, buf, len)
 }
 
 fn bare_eprint(buf &byte, len u64) {
-	sys_write(2, buf, len)
 }
 
 pub fn write(_fd i64, _buf &byte, _count u64) i64 {
@@ -154,9 +157,10 @@ fn bare_backtrace() string {
 fn __exit(code int) {
 	unsafe {
 		// the only way to abort process execution in WASM
-		mut x := &u32(voidptr(0))
+		mut x := &int(voidptr(0))
 		*x = code
 	}
+	for {}
 }
 
 [export: 'qsort']
