@@ -243,8 +243,8 @@ pub fn (obj_part ObjPart) bind_and_draw(rend_data_index int, in_data Shader_data
 		size: usize(in_data.fs_len)
 	}
 
-	gfx.apply_uniforms(C.SG_SHADERSTAGE_VS, C.SLOT_vs_params, &vs_uniforms_range)
-	gfx.apply_uniforms(C.SG_SHADERSTAGE_FS, C.SLOT_fs_params, &fs_uniforms_range)
+	gfx.apply_uniforms(.vs, C.SLOT_vs_params, &vs_uniforms_range)
+	gfx.apply_uniforms(.fs, C.SLOT_fs_params, &fs_uniforms_range)
 	gfx.draw(0, int(part_render_data.n_vert), 1)
 	return part_render_data.n_vert
 }

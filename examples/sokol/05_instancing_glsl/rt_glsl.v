@@ -324,7 +324,7 @@ fn draw_cube_glsl_i(mut app App){
 		ptr: unsafe { &tr_matrix }
 		size: usize(4 * 16)
 	}
-	gfx.apply_uniforms(C.SG_SHADERSTAGE_VS, C.SLOT_vs_params_i, &vs_uniforms_range)
+	gfx.apply_uniforms(.vs, C.SLOT_vs_params_i, &vs_uniforms_range)
 
 /*
 	// *** fragment shader uniforms ***
@@ -342,7 +342,7 @@ fn draw_cube_glsl_i(mut app App){
 		ptr: unsafe { &tmp_fs_params }
 		size: usize(sizeof(tmp_fs_params))
 	}
-	gfx.apply_uniforms(C.SG_SHADERSTAGE_FS, C.SLOT_fs_params, &fs_uniforms_range)
+	gfx.apply_uniforms(.fs, C.SLOT_fs_params, &fs_uniforms_range)
 */
 	// 3 vertices for triangle * 2 triangles per face * 6 faces = 36 vertices to draw for num_inst times
 	gfx.draw(0, (3 * 2) * 6, num_inst)

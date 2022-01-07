@@ -370,7 +370,7 @@ fn draw_cube_glsl(app App) {
 		ptr: &tr_matrix
 		size: usize(4 * 16)
 	}
-	gfx.apply_uniforms(C.SG_SHADERSTAGE_VS, C.SLOT_vs_params, &vs_uniforms_range)
+	gfx.apply_uniforms(.vs, C.SLOT_vs_params, &vs_uniforms_range)
 
 	// fs uniforms
 	time_ticks := f32(time.ticks() - app.ticks) / 1000
@@ -384,7 +384,7 @@ fn draw_cube_glsl(app App) {
 		ptr: unsafe { &text_res }
 		size: usize(4 * 4)
 	}
-	gfx.apply_uniforms(C.SG_SHADERSTAGE_FS, C.SLOT_fs_params, &fs_uniforms_range)
+	gfx.apply_uniforms(.fs, C.SLOT_fs_params, &fs_uniforms_range)
 
 	gfx.draw(0, (3 * 2) * 6, 1)
 	gfx.end_pass()
