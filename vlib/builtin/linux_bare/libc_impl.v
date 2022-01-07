@@ -111,12 +111,6 @@ fn memcmp(a &C.void, b &C.void, n usize) int {
 [export: 'free']
 [unsafe]
 fn __free(ptr &C.void) {
-	/*
-	err := mm_free(ptr)
-	if err != .enoerror {
-		eprintln('free error:')
-		panic(err)
-	}*/
 	unsafe {
 		global_allocator.free_(ptr)
 	}

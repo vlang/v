@@ -152,11 +152,6 @@ fn small_index(size usize) u32 {
 }
 
 fn align_up(a usize, alignment usize) usize {
-	/*
-	x := (a + (alignment - 1))
-	y := ~(alignment - 1)
-	return x & y
-	*/
 	if a % alignment == 0 {
 		return a
 	} else {
