@@ -3,9 +3,11 @@
 // that can be found in the LICENSE file.
 module aes
 
+import crypto.cipher
+
 // new_cipher_generic creates and returns a new cipher.Block
 // this is the generiv v version, no arch optimisations
-fn new_cipher_generic(key []byte) AesCipher {
+fn new_cipher_generic(key []byte) cipher.Block {
 	n := key.len + 28
 	mut c := AesCipher{
 		enc: []u32{len: n}

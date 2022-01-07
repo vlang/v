@@ -5,6 +5,7 @@
 // Last commit: https://github.com/golang/go/commit/691a2d457ab1bf03bd46d4b69e0f93b8993c0055
 module aes
 
+import crypto.cipher
 import crypto.internal.subtle
 
 pub const (
@@ -17,6 +18,7 @@ pub const (
 // handle only one block of data at a time. In most cases, you
 // probably want to encrypt and decrypt using [[AesCbc](#AesCbc)]
 struct AesCipher {
+	block_size int = aes.block_size
 mut:
 	enc []u32
 	dec []u32
@@ -26,7 +28,7 @@ mut:
 // The key argument should be the AES key,
 // either 16, 24, or 32 bytes to select
 // AES-128, AES-192, or AES-256.
-pub fn new_cipher(key []byte) AesCipher {
+pub fn new_cipher(key []byte) cipher.Block {
 	k := key.len
 	match k {
 		16, 24, 32 {
@@ -50,7 +52,7 @@ pub fn (c &AesCipher) block_size() int {
 // NOTE: `dst` and `src` are both mutable for performance reasons.
 // NOTE: `dst` and `src` must both be pre-allocated to the correct length.
 // NOTE: `dst` and `src` may be the same (overlapping entirely).
-pub fn (c &AesCipher) encrypt(mut dst []byte, mut src []byte) {
+pub fn (c &AesCipher) encrypt(mut dst []byte, src []byte) {
 	if src.len < aes.block_size {
 		panic('crypto.aes: input not full block')
 	}
@@ -58,7 +60,7 @@ pub fn (c &AesCipher) encrypt(mut dst []byte, mut src []byte) {
 		panic('crypto.aes: output not full block')
 	}
 	// if subtle.inexact_overlap(dst[:block_size], src[:block_size]) {
-	if subtle.inexact_overlap((*dst)[..aes.block_size], (*src)[..aes.block_size]) {
+	if subtle.inexact_overlap(dst[..aes.block_size], src[..aes.block_size]) {
 		panic('crypto.aes: invalid buffer overlap')
 	}
 	// for now use generic version
@@ -69,14 +71,14 @@ pub fn (c &AesCipher) encrypt(mut dst []byte, mut src []byte) {
 // NOTE: `dst` and `src` are both mutable for performance reasons.
 // NOTE: `dst` and `src` must both be pre-allocated to the correct length.
 // NOTE: `dst` and `src` may be the same (overlapping entirely).
-pub fn (c &AesCipher) decrypt(mut dst []byte, mut src []byte) {
+pub fn (c &AesCipher) decrypt(mut dst []byte, src []byte) {
 	if src.len < aes.block_size {
 		panic('crypto.aes: input not full block')
 	}
 	if dst.len < aes.block_size {
 		panic('crypto.aes: output not full block')
 	}
-	if subtle.inexact_overlap((*dst)[..aes.block_size], (*src)[..aes.block_size]) {
+	if subtle.inexact_overlap(dst[..aes.block_size], src[..aes.block_size]) {
 		panic('crypto.aes: invalid buffer overlap')
 	}
 	// for now use generic version
