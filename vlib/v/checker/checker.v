@@ -2669,7 +2669,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		}
 	} else if mut to_sym.info is ast.Alias {
 		if !c.check_types(from_type, to_sym.info.parent_type) && !(final_to_sym.is_int()
-			&& final_from_sym.kind in [.enum_, .bool]) {
+			&& final_from_sym.kind in [.enum_, .bool, .i8, .char]) {
 			c.error('cannot convert type `$from_sym.name` to `$to_sym.name` (alias to `$final_to_sym.name`)',
 				node.pos)
 		}
