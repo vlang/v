@@ -528,6 +528,7 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Position) bool {
 				return false
 			} else if cname in valid_comptime_if_other {
 				match cname {
+					'apk' { return !c.pref.is_apk }
 					'js' { return !c.pref.backend.is_js() }
 					'debug' { return !c.pref.is_debug }
 					'prod' { return !c.pref.is_prod }
