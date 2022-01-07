@@ -65,6 +65,9 @@ fn (mut g Gen) range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 		} else {
 			g.write('string_substr(')
 		}
+		if node.left_type.is_ptr() {
+			g.write('*')
+		}
 		g.expr(node.left)
 	} else if sym.kind == .array {
 		if node.is_gated {
