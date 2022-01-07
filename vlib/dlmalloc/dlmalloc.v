@@ -16,6 +16,14 @@ module dlmalloc
 
 import math.bits
 
+$if debug ? {
+	#include "valgrind.h"
+}
+/*
+fn C.VALGRIND_MALLOCLIKE_BLOCK(addr voidptr, size usize, rzb usize,is_zeroed bool)
+fn C.VALGRIND_FREELIKE_BLOCK(addr voidptr, rzB usize)
+fn C.VALGRIND_MAKE_MEM_UNDEFINED(addr voidptr, size usize)
+*/
 pub const (
 	n_small_bins           = 32
 	n_tree_bins            = 32
@@ -144,7 +152,16 @@ fn small_index(size usize) u32 {
 }
 
 fn align_up(a usize, alignment usize) usize {
-	return (a + (alignment - 1)) & ~(alignment - 1)
+	/*
+	x := (a + (alignment - 1))
+	y := ~(alignment - 1)
+	return x & y
+	*/
+	if a % alignment == 0 {
+		return a
+	} else {
+		return a - (a % alignment) + alignment
+	}
 }
 
 fn left_bits(x u32) u32 {
@@ -467,7 +484,7 @@ fn (mut dl Dlmalloc) unlink_small_chunk(chunk_ &Chunk, size usize) {
 	mut b := chunk.next
 	idx := small_index(size)
 
-	if b == f {
+	if voidptr(b) == voidptr(f) {
 		unsafe { dl.clear_smallmap(idx) }
 	} else {
 		f.next = b
@@ -514,7 +531,7 @@ fn (mut dl Dlmalloc) unlink_large_chunk(chunk_ &TreeChunk) {
 		}
 
 		mut h := dl.treebin_at(chunk.index)
-		if chunk == *h {
+		if voidptr(chunk) == voidptr(*h) {
 			*h = r
 			if isnil(r) {
 				dl.clear_treemap(chunk.index)
@@ -549,7 +566,7 @@ fn (mut dl Dlmalloc) unlink_first_small_chunk(head_ &Chunk, next_ &Chunk, idx u3
 	mut head := head_
 
 	mut ptr := next.prev
-	if head == ptr {
+	if voidptr(head) == voidptr(ptr) {
 		unsafe { dl.clear_smallmap(idx) }
 	} else {
 		ptr.next = head
@@ -574,9 +591,11 @@ pub fn (mut dl Dlmalloc) calloc(size usize) voidptr {
 [unsafe]
 pub fn (mut dl Dlmalloc) free_(mem voidptr) {
 	unsafe {
+		// C.VALGRIND_FREELIKE_BLOCK(mem, 0)
 		mut p := chunk_from_mem(mem)
 
 		mut psize := p.size()
+
 		next := p.plus_offset(psize)
 
 		if !p.pinuse() {
@@ -589,6 +608,7 @@ pub fn (mut dl Dlmalloc) free_(mem voidptr) {
 				{
 					dl.footprint -= psize
 				}
+
 				return
 			}
 
@@ -600,6 +620,7 @@ pub fn (mut dl Dlmalloc) free_(mem voidptr) {
 			} else if (next.head & dlmalloc.inuse) == dlmalloc.inuse {
 				dl.dvsize = psize
 				p.set_free_with_pinuse(psize, next)
+
 				return
 			}
 		}
@@ -620,18 +641,21 @@ pub fn (mut dl Dlmalloc) free_(mem voidptr) {
 				if dl.should_trim(tsize) {
 					dl.sys_trim(0)
 				}
+
 				return
 			} else if voidptr(next) == voidptr(dl.dv) {
 				dl.dvsize += psize
 				dsize := dl.dvsize
 				dl.dv = p
 				p.set_size_and_pinuse_of_free_chunk(dsize)
+
 				return
 			} else {
 				nsize := next.size()
 				psize += nsize
 				dl.unlink_chunk(next, nsize)
 				p.set_size_and_pinuse_of_free_chunk(psize)
+
 				if voidptr(p) == voidptr(dl.dv) {
 					dl.dvsize = psize
 					return
@@ -892,11 +916,20 @@ fn (mut dl Dlmalloc) treemap_is_marked(idx u32) bool {
 	return dl.treemap & (1 << idx) != 0
 }
 
+pub fn (mut dl Dlmalloc) malloc(size usize) voidptr {
+	unsafe {
+		p := dl.malloc_real(size)
+		if !isnil(p) {
+			// C.VALGRIND_MALLOCLIKE_BLOCK(p, size, 0,false)
+		}
+		return p
+	}
+}
+
 /// malloc behaves as libc malloc, but operates within the given space
 [unsafe]
-pub fn (mut dl Dlmalloc) malloc(size usize) voidptr {
+fn (mut dl Dlmalloc) malloc_real(size usize) voidptr {
 	mut nb := usize(0)
-
 	unsafe {
 		if size <= max_small_request() {
 			nb = request_2_size(size)
@@ -907,10 +940,14 @@ pub fn (mut dl Dlmalloc) malloc(size usize) voidptr {
 
 				b := dl.smallbin_at(idx)
 				mut p := b.prev
-				dl.unlink_first_small_chunk(b, p, idx)
 				smallsize := small_index2size(idx)
+
+				dl.unlink_first_small_chunk(b, p, idx)
+
 				p.set_inuse_and_pinuse(smallsize)
+
 				ret := p.to_mem()
+
 				return ret
 			}
 
@@ -934,7 +971,9 @@ pub fn (mut dl Dlmalloc) malloc(size usize) voidptr {
 						r.set_size_and_pinuse_of_free_chunk(size)
 						dl.replace_dv(r, rsize)
 					}
+
 					ret := p.to_mem()
+
 					return ret
 				} else if dl.treemap != 0 {
 					mem := dl.tmalloc_small(nb)
@@ -972,8 +1011,9 @@ pub fn (mut dl Dlmalloc) malloc(size usize) voidptr {
 				dl.dv = voidptr(0)
 				p.set_inuse_and_pinuse(dvs)
 			}
+			ret := p.to_mem()
 
-			return p.to_mem()
+			return ret
 		}
 		// Split the top node if we can
 		if nb < dl.topsize {
@@ -984,8 +1024,9 @@ pub fn (mut dl Dlmalloc) malloc(size usize) voidptr {
 			mut r := dl.top
 			r.head = rsize | dlmalloc.pinuse
 			p.set_size_and_pinuse_of_inuse_chunk(nb)
+			ret := p.to_mem()
 
-			return p.to_mem()
+			return ret
 		}
 
 		return dl.sys_alloc(nb)
@@ -1011,18 +1052,22 @@ fn (mut dl Dlmalloc) init_top(ptr &Chunk, size_ usize) {
 	size := size_ - offset
 	dl.top = p
 	dl.topsize = size
+	// C.VALGRIND_MAKE_MEM_UNDEFINED(p.plus_offset(sizeof(usize)),sizeof(usize))
 	p.head = size | dlmalloc.pinuse
-
+	// C.VALGRIND_MAKE_MEM_UNDEFINED(p.plus_offset(size + sizeof(usize)),sizeof(usize))
 	p.plus_offset(size).head = top_foot_size()
 	dl.trim_check = u32(default_trim_threshold())
 }
 
 [unsafe]
 fn (mut dl Dlmalloc) sys_alloc(size usize) voidptr {
-	asize := align_up(size + top_foot_size() + malloc_alignment(), default_granularity())
+	page_size := dl.system_allocator.page_size(dl.system_allocator.data)
+	asize := align_up(align_up(size + top_foot_size() + malloc_alignment(), default_granularity()),
+		page_size)
 	unsafe {
-		tbase, mut tsize, flags := dl.system_allocator.alloc(dl.system_allocator.data,
-			asize)
+		alloc := dl.system_allocator.alloc
+		tbase, mut tsize, flags := alloc(dl.system_allocator.data, asize)
+
 		if isnil(tbase) {
 			return tbase
 		}
@@ -1085,7 +1130,9 @@ fn (mut dl Dlmalloc) sys_alloc(size usize) voidptr {
 			mut r := dl.top
 			r.head = rsize | dlmalloc.pinuse
 			p.set_size_and_pinuse_of_inuse_chunk(size)
-			return p.to_mem()
+			ret := p.to_mem()
+
+			return ret
 		}
 	}
 	return voidptr(0)
@@ -1122,6 +1169,7 @@ fn (mut dl Dlmalloc) tmalloc_small(size usize) voidptr {
 			rc.set_size_and_pinuse_of_free_chunk(rsize)
 			dl.replace_dv(rc, rsize)
 		}
+
 		return vc.to_mem()
 	}
 }
@@ -1382,6 +1430,8 @@ pub fn (mut dl Dlmalloc) memalign(alignment_ usize, bytes usize) voidptr {
 				dl.dispose_chunk(remainder, remainder_size)
 			}
 		}
+
+		// C.VALGRIND_MALLOCLIKE_BLOCK(p.to_mem(), bytes, 0, false)
 		return p.to_mem()
 	}
 }
