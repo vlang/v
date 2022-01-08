@@ -4,7 +4,6 @@
 import crypto.aes
 import crypto.cipher
 
-
 fn test_aes_cbc() {
 	key := '6368616e676520746869732070617373'.bytes()
 	iv := '1234567890123456'.bytes()
