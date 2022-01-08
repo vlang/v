@@ -6,7 +6,7 @@ module arrays
 // - merge - combine two sorted arrays and maintain sorted order
 // - chunk - chunk array to arrays with n elements
 // - window - get snapshots of the window of the given size sliding along array with the given step, where each snapshot is an array
-// - group - merge two arrays by interleaving e.g. arrays.gropu([1,3,5], [2,4,6]) => [[1,2],[3,4],[5,6]]
+// - group - merge two arrays by interleaving e.g. arrays.group([1,3,5], [2,4,6]) => [[1,2],[3,4],[5,6]]
 // - flatten - reduce dimensionality of array by one. e.g. arrays.flatten([[1,2],[3,4],[5,6]]) => [1,2,3,4,5,6]
 
 // min returns the minimum value in the array
