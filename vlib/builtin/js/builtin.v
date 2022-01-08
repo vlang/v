@@ -59,12 +59,13 @@ pub fn (o Option) str() string {
 	return 'Option{ error: "$o.err" }'
 }
 
+// trace_error prints to stderr a string and a backtrace of the error
 fn trace_error(x string) {
 	eprintln('> ${@FN} | $x')
 }
 
 // error returns a default error instance containing the error given in `message`.
-// Example: `if ouch { return error('an error occurred') }`
+// Example: if ouch { return error('an error occurred') }
 [inline]
 pub fn error(message string) IError {
 	// trace_error(message)
@@ -74,7 +75,7 @@ pub fn error(message string) IError {
 }
 
 // error_with_code returns a default error instance containing the given `message` and error `code`.
-// `if ouch { return error_with_code('an error occurred', 1) }`
+// Example: if ouch { return error_with_code('an error occurred', 1) }
 [inline]
 pub fn error_with_code(message string, code int) IError {
 	// trace_error('$message | code: $code')
@@ -84,7 +85,8 @@ pub fn error_with_code(message string, code int) IError {
 	}
 }
 
-// free allows for manually freeing memory allocated at the address `ptr`. no-op on JS backend
+// free allows for manually freeing memory allocated at the address `ptr`.
+// However, this is a no-op on JS backend
 [unsafe]
 pub fn free(ptr voidptr) {
 	_ := ptr

@@ -97,42 +97,42 @@ fn C.saudio_expect() int
 
 fn C.saudio_push(frames &f32, num_frames int) int
 
-// audio.setup - setup sokol-audio
+// setup - setup sokol-audio
 pub fn setup(desc C.saudio_desc) {
 	C.saudio_setup(&desc)
 }
 
-// audio.shutdown - shutdown sokol-audio
+// shutdown - shutdown sokol-audio
 pub fn shutdown() {
 	C.saudio_shutdown()
 }
 
-// audio.is_valid - true after setup if audio backend was successfully initialized
+// is_valid - true after setup if audio backend was successfully initialized
 pub fn is_valid() bool {
 	return C.saudio_isvalid()
 }
 
-// audio.userdata - return the saudio_desc.user_data pointer
+// userdata - return the saudio_desc.user_data pointer
 pub fn user_data() voidptr {
 	return C.saudio_userdata()
 }
 
-// audio.query - return a copy of the original saudio_desc struct
+// query - return a copy of the original saudio_desc struct
 pub fn query() C.saudio_desc {
 	return C.saudio_query_desc()
 }
 
-// audio.sample_rate - return the actual sample rate
+// sample_rate - return the actual sample rate
 pub fn sample_rate() int {
 	return C.saudio_sample_rate()
 }
 
-// audio.buffer_frames - return the actual backend buffer size in number of frames
+// buffer_frames - return the actual backend buffer size in number of frames
 pub fn buffer_frames() int {
 	return C.saudio_buffer_frames()
 }
 
-// audio.channels - return the actual number of channels
+// channels - return the actual number of channels
 pub fn channels() int {
 	return C.saudio_channels()
 }
@@ -143,17 +143,17 @@ pub fn suspended() bool {
 	return C.saudio_suspended()
 }
 
-// audio.expect - get current number of frames to fill packet queue; use in combination with audio.push
+// expect - get current number of frames to fill packet queue; use in combination with audio.push
 pub fn expect() int {
 	return C.saudio_expect()
 }
 
-// audio.push - push sample frames from main thread, returns number of frames actually pushed
+// push - push sample frames from main thread, returns number of frames actually pushed
 pub fn push(frames &f32, num_frames int) int {
 	return C.saudio_push(frames, num_frames)
 }
 
-// audio.fclamp - helper function to 'clamp' a number to a certain range
+// fclamp - helper function to 'clamp' a number to a certain range
 // Example: realsample := audio.fclamp(sample, -1.0, 1.0)
 [inline]
 pub fn fclamp(x f32, flo f32, fhi f32) f32 {
@@ -166,9 +166,9 @@ pub fn fclamp(x f32, flo f32, fhi f32) f32 {
 	return x
 }
 
-// audio.min - helper function to return the smaller of two numbers
+// min - helper function to return the smaller of two numbers
 //
-// math.min returns `f32` values, this returns `int` values
+// NOTE: math.min returns `f32` values, this returns `int` values
 // Example: smaller := audio.min(1, 5) // smaller == 1
 pub fn min(x int, y int) int {
 	if x < y {
@@ -177,9 +177,9 @@ pub fn min(x int, y int) int {
 	return y
 }
 
-// audio.max - helper function to return the larger of two numbers
+// max - helper function to return the larger of two numbers
 //
-// math.max returns `f32` values, this returns `int` values
+// NOTE: math.max returns `f32` values, this returns `int` values
 // Example: larger := audio.max(1, 5) // larger == 5
 pub fn max(x int, y int) int {
 	if x < y {
