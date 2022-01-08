@@ -290,11 +290,19 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 			ccoptions.args << '-fPIC' // -Wl,-z,defs'
 		}
 	}
-	if v.pref.is_bare {
+	if v.pref.is_bare && v.pref.os != .wasm32 {
 		ccoptions.args << '-fno-stack-protector'
 		ccoptions.args << '-ffreestanding'
 		ccoptions.linker_flags << '-static'
 		ccoptions.linker_flags << '-nostdlib'
+	} else if v.pref.os == .wasm32 {
+		ccoptions.args << '--no-standard-libraries'
+		ccoptions.args << '-target wasm32-unknown-unknown'
+		ccoptions.args << '-static'
+		ccoptions.args << '-nostdlib'
+		ccoptions.args << '-ffreestanding'
+		ccoptions.args << '-Wl,--export-all'
+		ccoptions.args << '-Wl,--no-entry'
 	}
 	if ccoptions.debug_mode && os.user_os() != 'windows' && v.pref.build_mode != .build_module {
 		ccoptions.linker_flags << '-rdynamic' // needed for nicer symbolic backtraces
@@ -525,6 +533,8 @@ pub fn (mut v Builder) cc() {
 				'-arch armv7 -arch armv7s -arch arm64'
 			}
 			ccompiler = 'xcrun --sdk iphoneos clang -isysroot $isysroot $arch'
+		} else if v.pref.os == .wasm32 {
+			ccompiler = 'clang-12'
 		}
 		v.setup_ccompiler_options(ccompiler)
 		v.build_thirdparty_obj_files()

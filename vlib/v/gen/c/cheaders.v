@@ -753,7 +753,7 @@ static inline void _wymum(uint64_t *A, uint64_t *B){
 	#else
 	*A=_wyrot(hl)^hh; *B=_wyrot(lh)^ll;
 	#endif
-#elif defined(__SIZEOF_INT128__)
+#elif defined(__SIZEOF_INT128__) && !defined(VWASM)
 	__uint128_t r=*A; r*=*B;
 	#if(WYHASH_CONDOM>1)
 	*A^=(uint64_t)r; *B^=(uint64_t)(r>>64);
