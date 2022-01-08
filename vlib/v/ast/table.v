@@ -1627,6 +1627,17 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 				}
 				if final_concrete_types.len > 0 {
 					for method in ts.methods {
+						for i in 1 .. method.params.len {
+							if method.params[i].typ.has_flag(.generic)
+								&& method.params[i].typ != method.params[0].typ {
+								t.unwrap_generic_type(method.params[i].typ, generic_names,
+									concrete_types)
+							}
+						}
+						if method.return_type.has_flag(.generic)
+							&& method.return_type != method.params[0].typ {
+							t.unwrap_generic_type(method.return_type, generic_names, concrete_types)
+						}
 						t.register_fn_concrete_types(method.fkey(), final_concrete_types)
 					}
 				}
