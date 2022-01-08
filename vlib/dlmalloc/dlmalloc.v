@@ -684,7 +684,7 @@ fn (mut dl Dlmalloc) sys_trim(pad_ usize) bool {
 		if pad < dl.max_request && !isnil(dl.top) {
 			pad += top_foot_size()
 			if dl.topsize > pad {
-				unit := usize(default_granularity)
+				unit := usize(default_granularity())
 				extra := ((dl.topsize - pad + unit - 1) / unit - 1) * unit
 				mut sp := dl.segment_holding(dl.top)
 
