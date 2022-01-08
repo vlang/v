@@ -129,7 +129,10 @@
 
     --- optionally update shader uniform data with:
 
-            sg_apply_uniforms(sg_shader_stage stage, int ub_index, const void* data, int num_bytes)
+            sg_apply_uniforms(sg_shader_stage stage, int ub_index, const sg_range* data)
+            
+        Read the section 'UNIFORM DATA LAYOUT' to learn about the expected memory layout
+        of the uniform data passed into sg_apply_uniforms().
 
     --- kick off a draw call with:
 
@@ -335,29 +338,128 @@
             with context information provided by sokol_app.h
 
     See the documention block of the sg_desc struct below for more information.
+    
+
+    UNIFORM DATA LAYOUT:
+    ====================
+    NOTE: if you use the sokol-shdc shader compiler tool, you don't need to worry
+    about the following details.
+
+    The data that's passed into the sg_apply_uniforms() function must adhere to
+    specific layout rules so that the GPU shader finds the uniform block
+    items at the right offset.
+
+    For the D3D11 and Metal backends, sokol-gfx only cares about the size of uniform
+    blocks, but not about the internal layout. The data will just be copied into
+    a uniform/constant buffer in a single operation and it's up you to arrange the
+    CPU-side layout so that it matches the GPU side layout. This also means that with
+    the D3D11 and Metal backends you are not limited to a 'cross-platform' subset
+    of uniform variable types.
+
+    If you ever only use one of the D3D11, Metal *or* WebGPU backend, you can stop reading here.
+
+    For the GL backends, the internal layout of uniform blocks matters though,
+    and you are limited to a small number of uniform variable types. This is
+    because sokol-gfx must be able to locate the uniform block members in order
+    to upload them to the GPU with glUniformXXX() calls.
+
+    To describe the uniform block layout to sokol-gfx, the following information
+    must be passed to the sg_make_shader() call in the sg_shader_desc struct:
+
+        - a hint about the used packing rule (either SG_UNIFORMLAYOUT_NATIVE or
+          SG_UNIFORMLAYOUT_STD140)
+        - a list of the uniform block members types in the correct order they
+          appear on the CPU side
+        
+    For example if the GLSL shader has the following uniform declarations:
+
+        uniform mat4 mvp;
+        uniform vec2 offset0;
+        uniform vec2 offset1;
+        uniform vec2 offset2;
+
+    ...and on the CPU side, there's a similar C struct:
+
+        typedef struct {
+            float mvp[16];
+            float offset0[2];
+            float offset1[2];
+            float offset2[2];
+        } params_t;
+
+    ...the uniform block description in the sg_shader_desc must look like this:
+
+        sg_shader_desc desc = {
+            .vs.uniform_blocks[0] = {
+                .size = sizeof(params_t),
+                .layout = SG_UNIFORMLAYOUT_NATIVE,  // this is the default and can be omitted
+                .uniforms = {
+                    // order must be the same as in 'params_t':
+                    [0] = { .name = "mvp", .type = SG_UNIFORMTYPE_MAT4 },
+                    [1] = { .name = "offset0", .type = SG_UNIFORMTYPE_VEC2 },
+                    [2] = { .name = "offset1", .type = SG_UNIFORMTYPE_VEC2 },
+                    [3] = { .name = "offset2", .type = SG_UNIFORMTYPE_VEC2 },
+                }
+            }
+        };
+
+    With this information sokol-gfx can now compute the correct offsets of the data items
+    within the uniform block struct.
+
+    The SG_UNIFORMLAYOUT_NATIVE packing rule works fine if only the GL backends are used,
+    but for proper D3D11/Metal/GL a subset of the std140 layout must be used which is
+    described in the next section:
+
+
+    CROSS-BACKEND COMMON UNIFORM DATA LAYOUT
+    ========================================
+    For cross-platform / cross-3D-backend code it is important that the same uniform block
+    layout on the CPU side can be used for all sokol-gfx backends. To achieve this, 
+    a common subset of the std140 layout must be used:
+
+    - The uniform block layout hint in sg_shader_desc must be explicitely set to
+      SG_UNIFORMLAYOUT_STD140.
+    - Only the following GLSL uniform types can be used (with their associated sokol-gfx enums):
+        - float => SG_UNIFORMTYPE_FLOAT
+        - vec2  => SG_UNIFORMTYPE_FLOAT2
+        - vec3  => SG_UNIFORMTYPE_FLOAT3
+        - vec4  => SG_UNIFORMTYPE_FLOAT4
+        - int   => SG_UNIFORMTYPE_INT
+        - ivec2 => SG_UNIFORMTYPE_INT2
+        - ivec3 => SG_UNIFORMTYPE_INT3
+        - ivec4 => SG_UNIFORMTYPE_INT4
+        - mat4  => SG_UNIFORMTYPE_MAT4
+    - Alignment for those types must be as follows (in bytes):
+        - float => 4
+        - vec2  => 8
+        - vec3  => 16
+        - vec4  => 16
+        - int   => 4
+        - ivec2 => 8
+        - ivec3 => 16
+        - ivec4 => 16
+        - mat4  => 16
+    - Arrays are only allowed for the following types: vec4, int4, mat4.
+          
+    Note that the HLSL cbuffer layout rules are slightly different from the
+    std140 layout rules, this means that the cbuffer declarations in HLSL code
+    must be tweaked so that the layout is compatible with std140.
+
+    The by far easiest way to tacke the common uniform block layout problem is
+    to use the sokol-shdc shader cross-compiler tool!
+
 
     BACKEND-SPECIFIC TOPICS:
     ========================
-    --- the GL backends need to know about the internal structure of uniform
-        blocks, and the texture sampler-name and -type:
-
-            typedef struct {
-                float mvp[16];      // model-view-projection matrix
-                float offset0[2];   // some 2D vectors
-                float offset1[2];
-                float offset2[2];
-            } params_t;
-
+    --- The GL backends need to know about the internal structure of uniform
+        blocks, and the texture sampler-name and -type. The uniform layout details
+        are  described in the UNIFORM DATA LAYOUT section above.
+        
             // uniform block structure and texture image definition in sg_shader_desc:
             sg_shader_desc desc = {
                 // uniform block description (size and internal structure)
                 .vs.uniform_blocks[0] = {
-                    .size = sizeof(params_t),
-                    .uniforms = {
-                        [0] = { .name="mvp", .type=SG_UNIFORMTYPE_MAT4 },
-                        [1] = { .name="offset0", .type=SG_UNIFORMTYPE_VEC2 },
-                        ...
-                    }
+                    ...
                 },
                 // one texture on the fragment-shader-stage, GLES2/WebGL needs name and image type
                 .fs.images[0] = { .name="tex", .type=SG_IMAGETYPE_ARRAY }
@@ -1208,11 +1310,57 @@ typedef enum sg_uniform_type {
     SG_UNIFORMTYPE_FLOAT2,
     SG_UNIFORMTYPE_FLOAT3,
     SG_UNIFORMTYPE_FLOAT4,
+    SG_UNIFORMTYPE_INT,
+    SG_UNIFORMTYPE_INT2,
+    SG_UNIFORMTYPE_INT3,
+    SG_UNIFORMTYPE_INT4,
     SG_UNIFORMTYPE_MAT4,
     _SG_UNIFORMTYPE_NUM,
     _SG_UNIFORMTYPE_FORCE_U32 = 0x7FFFFFFF
 } sg_uniform_type;
 
+/*
+    sg_uniform_layout
+    
+    A hint for the interior memory layout of uniform blocks. This is
+    only really relevant for the GL backend where the internal layout
+    of uniform blocks must be known to sokol-gfx. For all other backends the
+    internal memory layout of uniform blocks doesn't matter, sokol-gfx
+    will just pass uniform data as a single memory blob to the
+    3D backend.
+    
+    SG_UNIFORMLAYOUT_NATIVE (default)
+        Native layout means that a 'backend-native' memory layout
+        is used. For the GL backend this means that uniforms
+        are packed tightly in memory (e.g. there are no padding
+        bytes).
+        
+    SG_UNIFORMLAYOUT_STD140
+        The memory layout is a subset of std140. Arrays are only
+        allowed for the FLOAT4, INT4 and MAT4. Alignment is as
+        is as follows:
+        
+            FLOAT, INT:         4 byte alignment
+            FLOAT2, INT2:       8 byte alignment
+            FLOAT3, INT3:       16 byte alignment(!)
+            FLOAT4, INT4:       16 byte alignment
+            MAT4:               16 byte alignment
+            FLOAT4[], INT4[]:   16 byte alignment
+            
+        The overall size of the uniform block must be a multiple
+        of 16.
+        
+    For more information search for 'UNIFORM DATA LAYOUT' in the documentation block
+    at the start of the header.
+*/
+typedef enum sg_uniform_layout {
+    _SG_UNIFORMLAYOUT_DEFAULT,     /* value 0 reserved for default-init */
+    SG_UNIFORMLAYOUT_NATIVE,       /* default: layout depends on currently active backend */
+    SG_UNIFORMLAYOUT_STD140,       /* std140: memory layout according to std140 */
+    _SG_UNIFORMLAYOUT_NUM,
+    _SG_UNIFORMLAYOUT_FORCE_U32 = 0x7FFFFFFF
+} sg_uniform_layout;
+ 
 /*
     sg_cull_mode
 
@@ -1714,6 +1862,7 @@ typedef struct sg_image_desc {
           defaults are "vs_4_0" and "ps_4_0")
         - reflection info for each uniform block used by the shader stage:
             - the size of the uniform block in bytes
+            - a memory layout hint (native vs std140, only required for GL backends)
             - reflection info for each uniform block member (only required for GL backends):
                 - member name
                 - member type (SG_UNIFORMTYPE_xxx)
@@ -1746,6 +1895,7 @@ typedef struct sg_shader_uniform_desc {
 
 typedef struct sg_shader_uniform_block_desc {
     size_t size;
+    sg_uniform_layout layout;
     sg_shader_uniform_desc uniforms[SG_MAX_UB_MEMBERS];
 } sg_shader_uniform_block_desc;
 
@@ -3945,6 +4095,8 @@ typedef enum {
     _SG_VALIDATE_SHADERDESC_NO_UB_MEMBERS,
     _SG_VALIDATE_SHADERDESC_UB_MEMBER_NAME,
     _SG_VALIDATE_SHADERDESC_UB_SIZE_MISMATCH,
+    _SG_VALIDATE_SHADERDESC_UB_ARRAY_COUNT,
+    _SG_VALIDATE_SHADERDESC_UB_STD140_ARRAY_TYPE,
     _SG_VALIDATE_SHADERDESC_IMG_NAME,
     _SG_VALIDATE_SHADERDESC_ATTR_NAMES,
     _SG_VALIDATE_SHADERDESC_ATTR_SEMANTICS,
@@ -4090,6 +4242,11 @@ _SOKOL_PRIVATE void _sg_strcpy(_sg_str_t* dst, const char* src) {
     }
 }
 
+_SOKOL_PRIVATE uint32_t _sg_align_u32(uint32_t val, uint32_t align) {
+    SOKOL_ASSERT((align > 0) && ((align & (align - 1)) == 0));
+    return (val + (align - 1)) & ~(align - 1);
+}
+
 /* return byte size of a vertex format */
 _SOKOL_PRIVATE int _sg_vertexformat_bytesize(sg_vertex_format fmt) {
     switch (fmt) {
@@ -4115,18 +4272,78 @@ _SOKOL_PRIVATE int _sg_vertexformat_bytesize(sg_vertex_format fmt) {
     }
 }
 
-/* return the byte size of a shader uniform */
-_SOKOL_PRIVATE int _sg_uniform_size(sg_uniform_type type, int count) {
-    switch (type) {
-        case SG_UNIFORMTYPE_INVALID:    return 0;
-        case SG_UNIFORMTYPE_FLOAT:      return 4 * count;
-        case SG_UNIFORMTYPE_FLOAT2:     return 8 * count;
-        case SG_UNIFORMTYPE_FLOAT3:     return 12 * count; /* FIXME: std140??? */
-        case SG_UNIFORMTYPE_FLOAT4:     return 16 * count;
-        case SG_UNIFORMTYPE_MAT4:       return 64 * count;
-        default:
-            SOKOL_UNREACHABLE;
-            return -1;
+_SOKOL_PRIVATE uint32_t _sg_uniform_alignment(sg_uniform_type type, int array_count, sg_uniform_layout ub_layout) {
+    if (ub_layout == SG_UNIFORMLAYOUT_NATIVE) {
+        return 1;
+    }
+    else {
+        SOKOL_ASSERT(array_count > 0);
+        if (array_count == 1) {
+            switch (type) {
+                case SG_UNIFORMTYPE_FLOAT:
+                case SG_UNIFORMTYPE_INT:
+                    return 4;
+                case SG_UNIFORMTYPE_FLOAT2:
+                case SG_UNIFORMTYPE_INT2:
+                    return 8;
+                case SG_UNIFORMTYPE_FLOAT3:
+                case SG_UNIFORMTYPE_FLOAT4:
+                case SG_UNIFORMTYPE_INT3:
+                case SG_UNIFORMTYPE_INT4:
+                    return 16;
+                case SG_UNIFORMTYPE_MAT4:
+                    return 16;
+                default:
+                    SOKOL_UNREACHABLE;
+                    return 1;
+            }
+        }
+        else {
+            return 16;
+        }
+    }
+}
+
+_SOKOL_PRIVATE uint32_t _sg_uniform_size(sg_uniform_type type, int array_count) {
+    SOKOL_ASSERT(array_count > 0);
+    if (array_count == 1) {
+        switch (type) {
+            case SG_UNIFORMTYPE_FLOAT:
+            case SG_UNIFORMTYPE_INT:
+                return 4;
+            case SG_UNIFORMTYPE_FLOAT2:
+            case SG_UNIFORMTYPE_INT2:
+                return 8;
+            case SG_UNIFORMTYPE_FLOAT3:
+            case SG_UNIFORMTYPE_INT3:
+                return 12;
+            case SG_UNIFORMTYPE_FLOAT4:
+            case SG_UNIFORMTYPE_INT4:
+                return 16;
+            case SG_UNIFORMTYPE_MAT4:
+                return 64;
+            default:
+                SOKOL_UNREACHABLE;
+                return 0;
+        }
+    }
+    else {
+        switch (type) {
+            case SG_UNIFORMTYPE_FLOAT:
+            case SG_UNIFORMTYPE_FLOAT2:
+            case SG_UNIFORMTYPE_FLOAT3:
+            case SG_UNIFORMTYPE_FLOAT4:
+            case SG_UNIFORMTYPE_INT:
+            case SG_UNIFORMTYPE_INT2:
+            case SG_UNIFORMTYPE_INT3:
+            case SG_UNIFORMTYPE_INT4:
+                return 16 * (uint32_t)array_count;
+            case SG_UNIFORMTYPE_MAT4:
+                return 64 * (uint32_t)array_count;
+            default:
+                SOKOL_UNREACHABLE;
+                return 0;
+        }
     }
 }
 
@@ -4685,8 +4902,15 @@ _SOKOL_PRIVATE void _sg_dummy_update_image(_sg_image_t* img, const sg_image_data
     _SG_XMACRO(glClearBufferuiv,                  void, (GLenum buffer, GLint drawbuffer, const GLuint * value)) \
     _SG_XMACRO(glClearBufferiv,                   void, (GLenum buffer, GLint drawbuffer, const GLint * value)) \
     _SG_XMACRO(glDeleteRenderbuffers,             void, (GLsizei n, const GLuint * renderbuffers)) \
-    _SG_XMACRO(glUniform4fv,                      void, (GLint location, GLsizei count, const GLfloat * value)) \
+    _SG_XMACRO(glUniform1fv,                      void, (GLint location, GLsizei count, const GLfloat * value)) \
     _SG_XMACRO(glUniform2fv,                      void, (GLint location, GLsizei count, const GLfloat * value)) \
+    _SG_XMACRO(glUniform3fv,                      void, (GLint location, GLsizei count, const GLfloat * value)) \
+    _SG_XMACRO(glUniform4fv,                      void, (GLint location, GLsizei count, const GLfloat * value)) \
+    _SG_XMACRO(glUniform1iv,                      void, (GLint location, GLsizei count, const GLint * value)) \
+    _SG_XMACRO(glUniform2iv,                      void, (GLint location, GLsizei count, const GLint * value)) \
+    _SG_XMACRO(glUniform3iv,                      void, (GLint location, GLsizei count, const GLint * value)) \
+    _SG_XMACRO(glUniform4iv,                      void, (GLint location, GLsizei count, const GLint * value)) \
+    _SG_XMACRO(glUniformMatrix4fv,                void, (GLint location, GLsizei count, GLboolean transpose, const GLfloat * value)) \
     _SG_XMACRO(glUseProgram,                      void, (GLuint program)) \
     _SG_XMACRO(glShaderSource,                    void, (GLuint shader, GLsizei count, const GLchar *const* string, const GLint * length)) \
     _SG_XMACRO(glLinkProgram,                     void, (GLuint program)) \
@@ -4711,7 +4935,6 @@ _SOKOL_PRIVATE void _sg_dummy_update_image(_sg_image_t* img, const sg_image_data
     _SG_XMACRO(glCompressedTexImage3D,            void, (GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLsizei imageSize, const void * data)) \
     _SG_XMACRO(glActiveTexture,                   void, (GLenum texture)) \
     _SG_XMACRO(glTexSubImage3D,                   void, (GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, const void * pixels)) \
-    _SG_XMACRO(glUniformMatrix4fv,                void, (GLint location, GLsizei count, GLboolean transpose, const GLfloat * value)) \
     _SG_XMACRO(glRenderbufferStorage,             void, (GLenum target, GLenum internalformat, GLsizei width, GLsizei height)) \
     _SG_XMACRO(glGenTextures,                     void, (GLsizei n, GLuint * textures)) \
     _SG_XMACRO(glPolygonOffset,                   void, (GLfloat factor, GLfloat units)) \
@@ -4742,7 +4965,6 @@ _SOKOL_PRIVATE void _sg_dummy_update_image(_sg_image_t* img, const sg_image_data
     _SG_XMACRO(glDrawArraysInstanced,             void, (GLenum mode, GLint first, GLsizei count, GLsizei instancecount)) \
     _SG_XMACRO(glClearStencil,                    void, (GLint s)) \
     _SG_XMACRO(glScissor,                         void, (GLint x, GLint y, GLsizei width, GLsizei height)) \
-    _SG_XMACRO(glUniform3fv,                      void, (GLint location, GLsizei count, const GLfloat * value)) \
     _SG_XMACRO(glGenRenderbuffers,                void, (GLsizei n, GLuint * renderbuffers)) \
     _SG_XMACRO(glBufferData,                      void, (GLenum target, GLsizeiptr size, const void * data, GLenum usage)) \
     _SG_XMACRO(glBlendFuncSeparate,               void, (GLenum sfactorRGB, GLenum dfactorRGB, GLenum sfactorAlpha, GLenum dfactorAlpha)) \
@@ -4763,7 +4985,6 @@ _SOKOL_PRIVATE void _sg_dummy_update_image(_sg_image_t* img, const sg_image_data
     _SG_XMACRO(glStencilFunc,                     void, (GLenum func, GLint ref, GLuint mask)) \
     _SG_XMACRO(glEnableVertexAttribArray,         void, (GLuint index)) \
     _SG_XMACRO(glBlendFunc,                       void, (GLenum sfactor, GLenum dfactor)) \
-    _SG_XMACRO(glUniform1fv,                      void, (GLint location, GLsizei count, const GLfloat * value)) \
     _SG_XMACRO(glReadBuffer,                      void, (GLenum src)) \
     _SG_XMACRO(glReadPixels,                      void, (GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, void * data)) \
     _SG_XMACRO(glClear,                           void, (GLbitfield mask)) \
@@ -6490,17 +6711,20 @@ _SOKOL_PRIVATE sg_resource_state _sg_gl_create_shader(_sg_shader_t* shd, const s
             SOKOL_ASSERT(ub_desc->size > 0);
             _sg_gl_uniform_block_t* ub = &gl_stage->uniform_blocks[ub_index];
             SOKOL_ASSERT(ub->num_uniforms == 0);
-            int cur_uniform_offset = 0;
+            uint32_t cur_uniform_offset = 0;
             for (int u_index = 0; u_index < SG_MAX_UB_MEMBERS; u_index++) {
                 const sg_shader_uniform_desc* u_desc = &ub_desc->uniforms[u_index];
                 if (u_desc->type == SG_UNIFORMTYPE_INVALID) {
                     break;
                 }
+                const uint32_t u_align = _sg_uniform_alignment(u_desc->type, u_desc->array_count, ub_desc->layout);
+                const uint32_t u_size = _sg_uniform_size(u_desc->type, u_desc->array_count);
+                cur_uniform_offset = _sg_align_u32(cur_uniform_offset, u_align);
                 _sg_gl_uniform_t* u = &ub->uniforms[u_index];
                 u->type = u_desc->type;
                 u->count = (uint16_t) u_desc->array_count;
                 u->offset = (uint16_t) cur_uniform_offset;
-                cur_uniform_offset += _sg_uniform_size(u->type, u->count);
+                cur_uniform_offset += u_size;
                 if (u_desc->name) {
                     u->gl_loc = glGetUniformLocation(gl_prog, u_desc->name);
                 }
@@ -7331,24 +7555,37 @@ _SOKOL_PRIVATE void _sg_gl_apply_uniforms(sg_shader_stage stage_index, int ub_in
         if (u->gl_loc == -1) {
             continue;
         }
-        GLfloat* ptr = (GLfloat*) (((uint8_t*)data->ptr) + u->offset);
+        GLfloat* fptr = (GLfloat*) (((uint8_t*)data->ptr) + u->offset);
+        GLint* iptr = (GLint*) (((uint8_t*)data->ptr) + u->offset);
         switch (u->type) {
             case SG_UNIFORMTYPE_INVALID:
                 break;
             case SG_UNIFORMTYPE_FLOAT:
-                glUniform1fv(u->gl_loc, u->count, ptr);
+                glUniform1fv(u->gl_loc, u->count, fptr);
                 break;
             case SG_UNIFORMTYPE_FLOAT2:
-                glUniform2fv(u->gl_loc, u->count, ptr);
+                glUniform2fv(u->gl_loc, u->count, fptr);
                 break;
             case SG_UNIFORMTYPE_FLOAT3:
-                glUniform3fv(u->gl_loc, u->count, ptr);
+                glUniform3fv(u->gl_loc, u->count, fptr);
                 break;
             case SG_UNIFORMTYPE_FLOAT4:
-                glUniform4fv(u->gl_loc, u->count, ptr);
+                glUniform4fv(u->gl_loc, u->count, fptr);
+                break;
+            case SG_UNIFORMTYPE_INT:
+                glUniform1iv(u->gl_loc, u->count, iptr);
+                break;
+            case SG_UNIFORMTYPE_INT2:
+                glUniform2iv(u->gl_loc, u->count, iptr);
+                break;
+            case SG_UNIFORMTYPE_INT3:
+                glUniform3iv(u->gl_loc, u->count, iptr);
+                break;
+            case SG_UNIFORMTYPE_INT4:
+                glUniform4iv(u->gl_loc, u->count, iptr);
                 break;
             case SG_UNIFORMTYPE_MAT4:
-                glUniformMatrix4fv(u->gl_loc, u->count, GL_FALSE, ptr);
+                glUniformMatrix4fv(u->gl_loc, u->count, GL_FALSE, fptr);
                 break;
             default:
                 SOKOL_UNREACHABLE;
@@ -13671,6 +13908,9 @@ _SOKOL_PRIVATE const char* _sg_validate_string(_sg_validate_error_t err) {
         case _SG_VALIDATE_SHADERDESC_NO_UB_MEMBERS:         return "GL backend requires uniform block member declarations";
         case _SG_VALIDATE_SHADERDESC_UB_MEMBER_NAME:        return "uniform block member name missing";
         case _SG_VALIDATE_SHADERDESC_UB_SIZE_MISMATCH:      return "size of uniform block members doesn't match uniform block size";
+        case _SG_VALIDATE_SHADERDESC_UB_ARRAY_COUNT:        return "uniform array count must be >= 1";
+        case _SG_VALIDATE_SHADERDESC_UB_STD140_ARRAY_TYPE:  return "uniform arrays only allowed for FLOAT4, INT4, MAT4 in std140 layout";
+        
         case _SG_VALIDATE_SHADERDESC_NO_CONT_IMGS:          return "shader images must occupy continuous slots";
         case _SG_VALIDATE_SHADERDESC_IMG_NAME:              return "GL backend requires uniform block member names";
         case _SG_VALIDATE_SHADERDESC_ATTR_NAMES:            return "GLES2 backend requires vertex attribute names";
@@ -13960,8 +14200,9 @@ _SOKOL_PRIVATE bool _sg_validate_shader_desc(const sg_shader_desc* desc) {
                 const sg_shader_uniform_block_desc* ub_desc = &stage_desc->uniform_blocks[ub_index];
                 if (ub_desc->size > 0) {
                     SOKOL_VALIDATE(uniform_blocks_continuous, _SG_VALIDATE_SHADERDESC_NO_CONT_UBS);
+                    #if defined(_SOKOL_ANY_GL)
                     bool uniforms_continuous = true;
-                    int uniform_offset = 0;
+                    uint32_t uniform_offset = 0;
                     int num_uniforms = 0;
                     for (int u_index = 0; u_index < SG_MAX_UB_MEMBERS; u_index++) {
                         const sg_shader_uniform_desc* u_desc = &ub_desc->uniforms[u_index];
@@ -13971,19 +14212,28 @@ _SOKOL_PRIVATE bool _sg_validate_shader_desc(const sg_shader_desc* desc) {
                             SOKOL_VALIDATE(0 != u_desc->name, _SG_VALIDATE_SHADERDESC_UB_MEMBER_NAME);
                             #endif
                             const int array_count = u_desc->array_count;
-                            uniform_offset += _sg_uniform_size(u_desc->type, array_count);
+                            SOKOL_VALIDATE(array_count > 0, _SG_VALIDATE_SHADERDESC_UB_ARRAY_COUNT);
+                            const uint32_t u_align = _sg_uniform_alignment(u_desc->type, array_count, ub_desc->layout);
+                            const uint32_t u_size  = _sg_uniform_size(u_desc->type, array_count);
+                            uniform_offset = _sg_align_u32(uniform_offset, u_align);
+                            uniform_offset += u_size;
                             num_uniforms++;
+                            // with std140, arrays are only allowed for FLOAT4, INT4, MAT4
+                            if (ub_desc->layout == SG_UNIFORMLAYOUT_STD140) {
+                                if (array_count > 1) {
+                                    SOKOL_VALIDATE((u_desc->type == SG_UNIFORMTYPE_FLOAT4) || (u_desc->type == SG_UNIFORMTYPE_INT4) || (u_desc->type == SG_UNIFORMTYPE_MAT4), _SG_VALIDATE_SHADERDESC_UB_STD140_ARRAY_TYPE);
+                                }
+                            }
                         }
                         else {
                             uniforms_continuous = false;
                         }
                     }
-                    #if defined(SOKOL_GLCORE33) || defined(SOKOL_GLES2) || defined(SOKOL_GLES3)
+                    if (ub_desc->layout == SG_UNIFORMLAYOUT_STD140) {
+                        uniform_offset = _sg_align_u32(uniform_offset, 16);
+                    }
                     SOKOL_VALIDATE((size_t)uniform_offset == ub_desc->size, _SG_VALIDATE_SHADERDESC_UB_SIZE_MISMATCH);
                     SOKOL_VALIDATE(num_uniforms > 0, _SG_VALIDATE_SHADERDESC_NO_UB_MEMBERS);
-                    #else
-                    _SOKOL_UNUSED(uniform_offset);
-                    _SOKOL_UNUSED(num_uniforms);
                     #endif
                 }
                 else {
@@ -14425,6 +14675,7 @@ _SOKOL_PRIVATE sg_shader_desc _sg_shader_desc_defaults(const sg_shader_desc* des
             if (0 == ub_desc->size) {
                 break;
             }
+            ub_desc->layout = _sg_def(ub_desc->layout, SG_UNIFORMLAYOUT_NATIVE);
             for (int u_index = 0; u_index < SG_MAX_UB_MEMBERS; u_index++) {
                 sg_shader_uniform_desc* u_desc = &ub_desc->uniforms[u_index];
                 if (u_desc->type == SG_UNIFORMTYPE_INVALID) {

@@ -297,3 +297,10 @@ pub enum Action {
 	dontcare
 	_num
 }
+
+pub enum UniformLayout {
+	uniformlayout_default = 0 // value 0 reserved for default-init
+	uniformlayout_native // default: layout depends on currently active backend
+	uniformlayout_std140 // std140: memory layout according to std140
+	_num
+}
