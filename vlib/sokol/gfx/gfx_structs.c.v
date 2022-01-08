@@ -260,6 +260,7 @@ pub fn (mut desc ShaderStageDesc) set_image(index int, name string) ShaderStageD
 struct C.sg_shader_uniform_block_desc {
 pub mut:
 	size     usize
+	layout   UniformLayout
 	uniforms [16]ShaderUniformDesc
 }
 
