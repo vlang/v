@@ -20,11 +20,15 @@ mut:
 }
 
 pub fn dial_tcp(address string) ?&TcpConn {
-	addrs := resolve_addrs_fuzzy(address, .tcp) ?
+	addrs := resolve_addrs_fuzzy(address, .tcp) or {
+		return error('$err.msg; could not resolve address $address in dial_tcp')
+	}
 
 	// Very simple dialer
 	for addr in addrs {
-		mut s := new_tcp_socket(addr.family()) ?
+		mut s := new_tcp_socket(addr.family()) or {
+			return error('$err.msg; could not create new tcp socket in dial_tcp')
+		}
 		s.connect(addr) or {
 			// Connection failed
 			s.close() or { continue }
@@ -38,7 +42,7 @@ pub fn dial_tcp(address string) ?&TcpConn {
 		}
 	}
 	// failed
-	return error('dial_tcp failed')
+	return error('dial_tcp failed for address $address')
 }
 
 pub fn (mut c TcpConn) close() ? {
@@ -185,7 +189,7 @@ pub fn (c &TcpConn) peer_addr() ?Addr {
 		}
 	}
 	mut size := sizeof(Addr)
-	socket_error(C.getpeername(c.sock.handle, voidptr(&addr), &size)) ?
+	socket_error_message(C.getpeername(c.sock.handle, voidptr(&addr), &size), 'peer_addr failed') ?
 	return addr
 }
 
@@ -211,18 +215,19 @@ mut:
 }
 
 pub fn listen_tcp(family AddrFamily, saddr string) ?&TcpListener {
-	s := new_tcp_socket(family) ?
+	s := new_tcp_socket(family) or { return error('$err.msg; could not create new socket') }
 
-	addrs := resolve_addrs(saddr, family, .tcp) ?
+	addrs := resolve_addrs(saddr, family, .tcp) or {
+		return error('$err.msg; could not resolve address $saddr')
+	}
 
 	// TODO(logic to pick here)
 	addr := addrs[0]
 
 	// cast to the correct type
 	alen := addr.len()
-	bindres := C.bind(s.handle, voidptr(&addr), alen)
-	socket_error(bindres) ?
-	socket_error(C.listen(s.handle, 128)) ?
+	socket_error_message(C.bind(s.handle, voidptr(&addr), alen), 'binding to $saddr failed') ?
+	socket_error_message(C.listen(s.handle, 128), 'listening on $saddr failed') ?
 	return &TcpListener{
 		sock: s
 		accept_deadline: no_deadline
