@@ -6,7 +6,7 @@ module arrays
 // - merge - combine two sorted arrays and maintain sorted order
 // - chunk - chunk array to arrays with n elements
 // - window - get snapshots of the window of the given size sliding along array with the given step, where each snapshot is an array
-// - group - merge two arrays by interleaving e.g. arrays.zip([1,3,5], [2,4,6]) => [[1,2],[3,4],[5,6]]
+// - group - merge two arrays by interleaving e.g. arrays.gropu([1,3,5], [2,4,6]) => [[1,2],[3,4],[5,6]]
 // - flatten - reduce dimensionality of array by one. e.g. arrays.flatten([[1,2],[3,4],[5,6]]) => [1,2,3,4,5,6]
 
 // min returns the minimum value in the array
@@ -109,7 +109,7 @@ pub fn merge<T>(a []T, b []T) []T {
 
 // group n arrays into a single array of arrays with n elements
 //
-// This function is analagous to the "zip" function of other languages.
+// This function is analogous to the "zip" function of other languages.
 // To fully interleave two arrays, follow this function with a call to `flatten`.
 //
 // NOTE: An error will be generated if the type annotation is omitted.
@@ -127,12 +127,12 @@ pub fn group<T>(lists ...[]T) [][]T {
 		mut arr := [][]T{cap: length}
 		// append all combined arrays into the resultant array
 		for ndx in 0 .. length {
-			mut zipped := []T{cap: lists.len}
+			mut grouped := []T{cap: lists.len}
 			// combine each list item for the ndx position into one array
 			for list_ndx in 0 .. lists.len {
-				zipped << lists[list_ndx][ndx]
+				grouped << lists[list_ndx][ndx]
 			}
-			arr << zipped
+			arr << grouped
 		}
 		return arr
 	}
