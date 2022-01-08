@@ -1540,6 +1540,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concrete_types []Type) Type {
 	mut final_concrete_types := []Type{}
 	mut fields := []StructField{}
+	mut needs_unwrap_types := []Type{}
 	mut nrt := ''
 	mut c_nrt := ''
 	ts := t.sym(typ)
@@ -1630,8 +1631,15 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 						for i in 1 .. method.params.len {
 							if method.params[i].typ.has_flag(.generic)
 								&& method.params[i].typ != method.params[0].typ {
-								t.unwrap_generic_type(method.params[i].typ, generic_names,
-									concrete_types)
+								if method.params[i].typ !in needs_unwrap_types {
+									needs_unwrap_types << method.params[i].typ
+								}
+							}
+							if method.return_type.has_flag(.generic)
+								&& method.return_type != method.params[0].typ {
+								if method.return_type !in needs_unwrap_types {
+									needs_unwrap_types << method.return_type
+								}
 							}
 						}
 						t.register_fn_concrete_types(method.fkey(), final_concrete_types)
@@ -1655,6 +1663,9 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 				mod: ts.mod
 				info: info
 			)
+			for typ_ in needs_unwrap_types {
+				t.unwrap_generic_type(typ_, generic_names, concrete_types)
+			}
 			return new_type(new_idx).derive(typ).clear_flag(.generic)
 		}
 		Interface {
