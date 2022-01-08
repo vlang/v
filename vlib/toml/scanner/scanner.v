@@ -341,12 +341,12 @@ fn (mut s Scanner) ignore_line() ?string {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' ignoring until EOL...')
 	start := s.pos
 	for c := s.at(); c != scanner.end_of_text && c != `\n`; c = s.at() {
-		s.next()
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping "${byte(c).ascii_str()} / $c"')
 		if s.at_crlf() {
 			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'letting `\\r\\n` slip through')
 			break
 		}
+		s.next()
 	}
 	return s.text[start..s.pos]
 }
