@@ -44,6 +44,34 @@ import os
 const (
 	auto_complete_shells = ['bash', 'fish', 'zsh', 'powershell'] // list of supported shells
 	vexe                 = os.getenv('VEXE')
+	help_text            = "Usage:
+  v complete [options] [SUBCMD] QUERY...
+
+Description:
+  Tool for brigding auto completion between various shells and v
+
+Supported shells:
+  bash, fish, zsh, powershell
+
+Examples:
+  Echo auto-detected shell install script to STDOUT
+    v complete
+  Echo specific shell install script to STDOUT
+    v complete setup bash
+  Auto complete input `v tes`*USER PUSHES TAB* (in Bash compatible format).
+  This is not meant for manual invocation - it's called by the relevant
+  shell via the script installed with `v complete` or `v complete setup SHELL`.
+    v complete bash v tes
+
+Options:
+  -h, --help                Show this help text.
+
+SUBCMD:
+  setup     : setup [SHELL] - returns the code for completion setup for SHELL
+  bash      : [QUERY]       - returns Bash compatible completion code with completions computed from QUERY
+  fish      : [QUERY]       - returns Fish compatible completion code with completions computed from QUERY
+  zsh       : [QUERY]       - returns ZSH  compatible completion code with completions computed from QUERY
+  powershell: [QUERY]       - returns PowerShell compatible completion code with completions computed from QUERY"
 )
 
 // Snooped from cmd/v/v.v, vlib/v/pref/pref.v
@@ -288,6 +316,9 @@ fn auto_complete(args []string) {
 				lines << 'compadd -U -S' + '""' + ' -- ' + "'$entry';"
 			}
 			println(lines.join('\n'))
+		}
+		'-h', '--help' {
+			println(help_text)
 		}
 		else {}
 	}
