@@ -18,9 +18,10 @@ import flag
 import net.http
 
 const (
-	tool_name        = os.file_name(os.executable())
+	shdc_full_hash   = '33d2e4cc26088c6c28eaef5467990f8940d15aab'
 	tool_version     = '0.0.1'
 	tool_description = "Compile shaders in sokol's annotated GLSL format to C headers for use with sokol based apps"
+	tool_name        = os.file_name(os.executable())
 	cache_dir        = os.join_path(os.cache_dir(), 'v', tool_name)
 	runtime_os       = os.user_os()
 )
@@ -50,11 +51,11 @@ const (
 		'wgpu',
 	]
 
-	shdc_version     = '33d2e4cc'
+	shdc_version     = shdc_full_hash[0..8]
 	shdc_urls        = {
-		'windows': 'https://github.com/floooh/sokol-tools-bin/raw/33d2e4cc26088c6c28eaef5467990f8940d15aab/bin/win32/sokol-shdc.exe'
-		'macos':   'https://github.com/floooh/sokol-tools-bin/raw/33d2e4cc26088c6c28eaef5467990f8940d15aab/bin/osx/sokol-shdc'
-		'linux':   'https://github.com/floooh/sokol-tools-bin/raw/33d2e4cc26088c6c28eaef5467990f8940d15aab/bin/linux/sokol-shdc'
+		'windows': 'https://github.com/floooh/sokol-tools-bin/raw/$shdc_full_hash/bin/win32/sokol-shdc.exe'
+		'macos':   'https://github.com/floooh/sokol-tools-bin/raw/$shdc_full_hash/bin/osx/sokol-shdc'
+		'linux':   'https://github.com/floooh/sokol-tools-bin/raw/$shdc_full_hash/bin/linux/sokol-shdc'
 	}
 	shdc_version_file = os.join_path(cache_dir, 'sokol-shdc.version')
 	shdc              = shdc_exe()
