@@ -642,7 +642,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	// TODO generics
 	args, _, is_variadic := p.fn_args()
 	for arg in args {
-		if arg.name.len == 0 {
+		if arg.name.len == 0 && p.table.sym(arg.typ).kind != .placeholder {
 			p.error_with_pos('use `_` to name an unused parameter', arg.pos)
 		}
 		is_stack_obj := !arg.typ.has_flag(.shared_f) && (arg.is_mut || arg.typ.is_ptr())
@@ -811,6 +811,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 				name: ''
 				is_mut: is_mut
 				typ: arg_type
+				type_pos: pos
 			}
 			arg_no++
 			if arg_no > 1024 {
