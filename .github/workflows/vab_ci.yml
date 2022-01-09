@@ -43,8 +43,7 @@ jobs:
       run: vab --help
 
     - name: Run vab doctor
-      run: |
-        vab doctor
+      run: vab doctor
 
     - name: Build graphical V examples as APK
       run: |
