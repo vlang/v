@@ -61,8 +61,8 @@ enum Viewer_state {
 struct App {
 mut:
 	gg          &gg.Context
-	pip_viewer  C.sgl_pipeline
-	texture     C.sg_image
+	pip_viewer  sgl.Pipeline
+	texture     gfx.Image
 	init_flag   bool
 	frame_count int
 	mouse_x     int = -1
@@ -102,7 +102,7 @@ mut:
 	font_path string // path to the temp font file
 	// logo
 	logo_path    string // path of the temp font logo
-	logo_texture C.sg_image
+	logo_texture gfx.Image
 	logo_w       int
 	logo_h       int
 	logo_ratio   f32 = 1.0
@@ -115,9 +115,9 @@ mut:
 * Texture functions
 *
 ******************************************************************************/
-fn create_texture(w int, h int, buf &u8) C.sg_image {
+fn create_texture(w int, h int, buf &u8) gfx.Image {
 	sz := w * h * 4
-	mut img_desc := C.sg_image_desc{
+	mut img_desc := gfx.ImageDesc{
 		width: w
 		height: h
 		num_mipmaps: 0
@@ -130,28 +130,28 @@ fn create_texture(w int, h int, buf &u8) C.sg_image {
 		d3d11_texture: 0
 	}
 	// comment if .dynamic is enabled
-	img_desc.data.subimage[0][0] = C.sg_range{
+	img_desc.data.subimage[0][0] = gfx.Range{
 		ptr: buf
 		size: usize(sz)
 	}
 
-	sg_img := C.sg_make_image(&img_desc)
+	sg_img := gfx.make_image(&img_desc)
 	return sg_img
 }
 
-fn destroy_texture(sg_img C.sg_image) {
-	C.sg_destroy_image(sg_img)
+fn destroy_texture(sg_img gfx.Image) {
+	gfx.destroy_image(sg_img)
 }
 
 // Use only if: .dynamic is enabled
-fn update_text_texture(sg_img C.sg_image, w int, h int, buf &byte) {
+fn update_text_texture(sg_img gfx.Image, w int, h int, buf &byte) {
 	sz := w * h * 4
-	mut tmp_sbc := C.sg_image_data{}
-	tmp_sbc.subimage[0][0] = C.sg_range{
+	mut tmp_sbc := gfx.ImageData{}
+	tmp_sbc.subimage[0][0] = gfx.Range{
 		ptr: buf
 		size: usize(sz)
 	}
-	C.sg_update_image(sg_img, &tmp_sbc)
+	gfx.update_image(sg_img, &tmp_sbc)
 }
 
 /******************************************************************************
@@ -225,7 +225,7 @@ pub fn read_bytes_from_file(file_path string) []byte {
 	return buffer
 }
 
-fn (mut app App) load_texture_from_buffer(buf voidptr, buf_len int) (C.sg_image, int, int) {
+fn (mut app App) load_texture_from_buffer(buf voidptr, buf_len int) (gfx.Image, int, int) {
 	// load image
 	stbi.set_flip_vertically_on_load(true)
 	img := stbi.load_from_memory(buf, buf_len) or {
@@ -240,7 +240,7 @@ fn (mut app App) load_texture_from_buffer(buf voidptr, buf_len int) (C.sg_image,
 	return res, int(img.width), int(img.height)
 }
 
-pub fn (mut app App) load_texture_from_file(file_name string) (C.sg_image, int, int) {
+pub fn (mut app App) load_texture_from_file(file_name string) (gfx.Image, int, int) {
 	app.read_bytes(file_name)
 	return app.load_texture_from_buffer(app.mem_buf, app.mem_buf_size)
 }
@@ -315,21 +315,21 @@ fn app_init(mut app App) {
 	app.init_flag = true
 
 	// 3d pipeline
-	mut pipdesc := C.sg_pipeline_desc{}
+	mut pipdesc := gfx.PipelineDesc{}
 	unsafe { C.memset(&pipdesc, 0, sizeof(pipdesc)) }
 
-	color_state := C.sg_color_state{
-		blend: C.sg_blend_state{
+	color_state := gfx.ColorState{
+		blend: gfx.BlendState{
 			enabled: true
-			src_factor_rgb: gfx.BlendFactor(C.SG_BLENDFACTOR_SRC_ALPHA)
-			dst_factor_rgb: gfx.BlendFactor(C.SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA)
+			src_factor_rgb: .src_alpha
+			dst_factor_rgb: .one_minus_src_alpha
 		}
 	}
 	pipdesc.colors[0] = color_state
 
-	pipdesc.depth = C.sg_depth_state{
+	pipdesc.depth = gfx.DepthState{
 		write_enabled: true
-		compare: gfx.CompareFunc(C.SG_COMPAREFUNC_LESS_EQUAL)
+		compare: .less_equal
 	}
 	pipdesc.cull_mode = .back
 	app.pip_viewer = sgl.make_pipeline(&pipdesc)

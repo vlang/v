@@ -24,7 +24,7 @@ fn new_ip6(port u16, addr [16]byte) Addr {
 		}
 	}
 
-	copy(a.addr.Ip6.addr[0..], addr[0..])
+	unsafe { vmemcpy(&a.addr.Ip6.addr[0], &addr[0], 16) }
 
 	return a
 }
@@ -39,7 +39,7 @@ fn new_ip(port u16, addr [4]byte) Addr {
 		}
 	}
 
-	copy(a.addr.Ip6.addr[0..], addr[0..])
+	unsafe { vmemcpy(&a.addr.Ip.addr[0], &addr[0], 4) }
 
 	return a
 }
@@ -81,7 +81,7 @@ fn (a Ip) str() string {
 }
 
 fn (a Ip6) str() string {
-	buf := [net.max_ip_len]char{}
+	buf := [net.max_ip6_len]char{}
 
 	res := &char(C.inet_ntop(.ip6, &a.addr, &buf[0], buf.len))
 

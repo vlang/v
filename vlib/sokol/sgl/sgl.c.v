@@ -4,11 +4,12 @@ import sokol.gfx
 
 pub const (
 	version = gfx.version + 1
+	context = Context{0x00010001} // C.SGL_DEFAULT_CONTEXT = { 0x00010001 }
 )
 
 // setup/shutdown/misc
 [inline]
-pub fn setup(desc &C.sgl_desc_t) {
+pub fn setup(desc &Desc) {
 	C.sgl_setup(desc)
 }
 
@@ -18,13 +19,13 @@ pub fn shutdown() {
 }
 
 [inline]
-pub fn error() C.sgl_error_t {
-	return C.sgl_error()
+pub fn error() SglError {
+	return SglError(int(C.sgl_error()))
 }
 
 [inline]
-pub fn defaults() {
-	C.sgl_defaults()
+pub fn context_error(ctx Context) SglError {
+	return SglError(int(C.sgl_context_error(ctx)))
 }
 
 [inline]
@@ -37,18 +38,54 @@ pub fn deg(rad f32) f32 {
 	return C.sgl_deg(rad)
 }
 
+// context functions
+[inline]
+pub fn make_context(desc &ContextDesc) Context {
+	return C.sgl_make_context(desc)
+}
+
+[inline]
+pub fn destroy_context(ctx Context) {
+	C.sgl_destroy_context(ctx)
+}
+
+[inline]
+pub fn set_context(ctx Context) {
+	C.sgl_set_context(ctx)
+}
+
+[inline]
+pub fn get_context() Context {
+	return C.sgl_get_context()
+}
+
+[inline]
+pub fn default_context() Context {
+	return C.sgl_default_context()
+}
+
 // create and destroy pipeline objects
 [inline]
-pub fn make_pipeline(desc &C.sg_pipeline_desc) C.sgl_pipeline {
+pub fn make_pipeline(desc &gfx.PipelineDesc) Pipeline {
 	return C.sgl_make_pipeline(desc)
 }
 
 [inline]
-pub fn destroy_pipeline(pip C.sgl_pipeline) {
+pub fn context_make_pipeline(ctx Context, desc &gfx.PipelineDesc) Pipeline {
+	return C.sgl_context_make_pipeline(ctx, desc)
+}
+
+[inline]
+pub fn destroy_pipeline(pip Pipeline) {
 	C.sgl_destroy_pipeline(pip)
 }
 
 // render state functions
+[inline]
+pub fn defaults() {
+	C.sgl_defaults()
+}
+
 [inline]
 pub fn viewport(x int, y int, w int, h int, origin_top_left bool) {
 	C.sgl_viewport(x, y, w, h, origin_top_left)
@@ -70,7 +107,7 @@ pub fn disable_texture() {
 }
 
 [inline]
-pub fn texture(img C.sg_image) {
+pub fn texture(img gfx.Image) {
 	C.sgl_texture(img)
 }
 
@@ -86,7 +123,7 @@ pub fn default_pipeline() {
 }
 
 [inline]
-pub fn load_pipeline(pip C.sgl_pipeline) {
+pub fn load_pipeline(pip Pipeline) {
 	C.sgl_load_pipeline(pip)
 }
 
@@ -215,6 +252,11 @@ pub fn c4b(r byte, g byte, b byte, a byte) {
 [inline]
 pub fn c1i(rgba u32) {
 	C.sgl_c1i(rgba)
+}
+
+[inline]
+pub fn point_size(s f32) {
+	C.sgl_point_size(s)
 }
 
 // define primitives, each begin/end is one draw command
@@ -373,8 +415,13 @@ pub fn end() {
 	C.sgl_end()
 }
 
-// render everything
+// render recorded commands
 [inline]
 pub fn draw() {
 	C.sgl_draw()
+}
+
+[inline]
+pub fn context_draw(ctx Context) {
+	C.sgl_context_draw(ctx)
 }

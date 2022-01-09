@@ -330,6 +330,8 @@ const c_common_macros = '
 
 // returns the number of CPU registers that TYPE takes up
 #define _REG_WIDTH(T) (((sizeof(T) + sizeof(void*) - 1) & ~(sizeof(void*) - 1)) / sizeof(void*))
+// parameters of size <= 2 registers are spilled across those two registers; larger types are passed as one pointer to some stack location
+#define _REG_WIDTH_BOUNDED(T) (_REG_WIDTH(T) <= 2 ? _REG_WIDTH(T) : 1)
 
 #define OPTION_CAST(x) (x)
 
@@ -751,7 +753,7 @@ static inline void _wymum(uint64_t *A, uint64_t *B){
 	#else
 	*A=_wyrot(hl)^hh; *B=_wyrot(lh)^ll;
 	#endif
-#elif defined(__SIZEOF_INT128__)
+#elif defined(__SIZEOF_INT128__) && !defined(VWASM)
 	__uint128_t r=*A; r*=*B;
 	#if(WYHASH_CONDOM>1)
 	*A^=(uint64_t)r; *B^=(uint64_t)(r>>64);

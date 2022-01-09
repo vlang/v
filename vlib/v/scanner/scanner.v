@@ -1,9 +1,8 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module scanner
 
-import math.mathutil
 import os
 import strconv
 import v.token
@@ -12,6 +11,7 @@ import v.util
 import v.vet
 import v.errors
 import v.ast
+import v.mathutil
 
 const (
 	single_quote = `'`
@@ -54,6 +54,7 @@ pub mut:
 	tidx                        int
 	eofs                        int
 	pref                        &pref.Preferences
+	error_details               []string
 	errors                      []errors.Error
 	warnings                    []errors.Warning
 	notices                     []errors.Notice
@@ -482,7 +483,9 @@ fn (mut s Scanner) ident_dec_number() string {
 	if has_wrong_digit {
 		// error check: wrong digit
 		s.pos = first_wrong_digit_pos // adjust error position
-		s.error('this number has unsuitable digit `$first_wrong_digit.str()`')
+		if !s.pref.translated {
+			s.error('this number has unsuitable digit `$first_wrong_digit.str()`')
+		}
 	} else if s.text[s.pos - 1] in [`e`, `E`] {
 		// error check: 5e
 		s.pos-- // adjust error position
@@ -913,6 +916,12 @@ fn (mut s Scanner) text_scan() token.Token {
 				return s.new_token(.dot, '', 1)
 			}
 			`#` {
+				// manage gated arrays/strings
+				if nextc == `[` {
+					s.pos++
+					return s.new_token(.nilsbr, '', 2)
+				}
+
 				start := s.pos + 1
 				s.ignore_line()
 				if nextc == `!` {
@@ -1134,6 +1143,11 @@ fn (s &Scanner) count_symbol_before(p int, sym byte) int {
 
 [direct_array_access]
 fn (mut s Scanner) ident_string() string {
+	lspos := token.Position{
+		line_nr: s.line_nr
+		pos: s.pos
+		col: s.pos - s.last_nl_pos - 1
+	}
 	q := s.text[s.pos]
 	is_quote := q == scanner.single_quote || q == scanner.double_quote
 	is_raw := is_quote && s.pos > 0 && s.text[s.pos - 1] == `r` && !s.is_inside_string
@@ -1164,6 +1178,9 @@ fn (mut s Scanner) ident_string() string {
 	for {
 		s.pos++
 		if s.pos >= s.text.len {
+			if lspos.line_nr + 1 < s.line_nr {
+				s.add_error_detail_with_pos('literal started here', lspos)
+			}
 			s.error('unfinished string literal')
 			break
 		}
@@ -1388,6 +1405,25 @@ pub fn (mut s Scanner) note(msg string) {
 	}
 }
 
+// call this *before* calling error or warn
+pub fn (mut s Scanner) add_error_detail(msg string) {
+	s.error_details << msg
+}
+
+pub fn (mut s Scanner) add_error_detail_with_pos(msg string, pos token.Position) {
+	details := util.formatted_error('details:', msg, s.file_path, pos)
+	s.add_error_detail(details)
+}
+
+fn (mut s Scanner) eat_details() string {
+	mut details := ''
+	if s.error_details.len > 0 {
+		details = s.error_details.join('\n')
+		s.error_details = []
+	}
+	return details
+}
+
 pub fn (mut s Scanner) warn(msg string) {
 	if s.pref.warns_are_errors {
 		s.error(msg)
@@ -1398,8 +1434,12 @@ pub fn (mut s Scanner) warn(msg string) {
 		pos: s.pos
 		col: s.current_column() - 1
 	}
+	details := s.eat_details()
 	if s.pref.output_mode == .stdout && !s.pref.check_only {
 		eprintln(util.formatted_error('warning:', msg, s.file_path, pos))
+		if details.len > 0 {
+			eprintln(details)
+		}
 	} else {
 		if s.pref.message_limit >= 0 && s.warnings.len >= s.pref.message_limit {
 			s.should_abort = true
@@ -1410,6 +1450,7 @@ pub fn (mut s Scanner) warn(msg string) {
 			pos: pos
 			reporter: .scanner
 			message: msg
+			details: details
 		}
 	}
 }
@@ -1420,8 +1461,12 @@ pub fn (mut s Scanner) error(msg string) {
 		pos: s.pos
 		col: s.current_column() - 1
 	}
+	details := s.eat_details()
 	if s.pref.output_mode == .stdout && !s.pref.check_only {
 		eprintln(util.formatted_error('error:', msg, s.file_path, pos))
+		if details.len > 0 {
+			eprintln(details)
+		}
 		exit(1)
 	} else {
 		if s.pref.fatal_errors {
@@ -1436,6 +1481,7 @@ pub fn (mut s Scanner) error(msg string) {
 			pos: pos
 			reporter: .scanner
 			message: msg
+			details: details
 		}
 	}
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -30,6 +30,12 @@ fn (mut g Gen) is_used_by_main(node ast.FnDecl) bool {
 
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	if node.should_be_skipped {
+		return
+	}
+	if node.ninstances == 0 && node.generic_names.len > 0 {
+		$if trace_generics ? {
+			eprintln('skipping generic fn with no concrete instances: $node.mod $node.name')
+		}
 		return
 	}
 	if !g.is_used_by_main(node) {
@@ -82,7 +88,8 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	if node.is_main {
 		g.has_main = true
 	}
-	is_backtrace := node.name.starts_with('backtrace') // TODO PERF remove this from here
+	// TODO PERF remove this from here
+	is_backtrace := node.name.starts_with('backtrace')
 		&& node.name in ['backtrace_symbols', 'backtrace', 'backtrace_symbols_fd']
 	if is_backtrace {
 		g.write('\n#ifndef __cplusplus\n')
@@ -156,7 +163,12 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	// }
 	if node.generic_names.len > 0 && g.cur_concrete_types.len == 0 { // need the cur_concrete_type check to avoid inf. recursion
 		// loop thru each generic type and generate a function
-		for concrete_types in g.table.fn_generic_types[node.name] {
+		nkey := node.fkey()
+		generic_types_by_fn := g.table.fn_generic_types[nkey]
+		$if trace_post_process_generic_fns ? {
+			eprintln('>> gen_fn_decl, nkey: $nkey | generic_types_by_fn: $generic_types_by_fn')
+		}
+		for concrete_types in generic_types_by_fn {
 			if g.pref.is_verbose {
 				syms := concrete_types.map(g.table.sym(it))
 				the_type := syms.map(it.name).join(', ')
@@ -454,7 +466,10 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 
 	mut size_sb := strings.new_builder(node.decl.params.len * 50)
 	for param in node.decl.params {
-		size_sb.write_string('_REG_WIDTH(${g.typ(param.typ)}) + ')
+		size_sb.write_string('_REG_WIDTH_BOUNDED(${g.typ(param.typ)}) + ')
+	}
+	if g.pref.arch == .amd64 && node.decl.return_type != ast.void_type {
+		size_sb.write_string('(_REG_WIDTH(${g.typ(node.decl.return_type)}) > 2) + ')
 	}
 	size_sb.write_string('1')
 	args_size := size_sb.str()
@@ -714,9 +729,17 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		$if debug_interface_method_call ? {
 			eprintln('>>> interface typ_sym.name: $typ_sym.name | receiver_type_name: $receiver_type_name | pos: $node.pos')
 		}
+
+		left_is_shared := node.left_type.has_flag(.shared_f)
 		g.write('${c_name(receiver_type_name)}_name_table[')
 		g.expr(node.left)
-		dot := if node.left_type.is_ptr() { '->' } else { '.' }
+		dot := if left_is_shared {
+			'->val.'
+		} else if node.left_type.is_ptr() {
+			'->'
+		} else {
+			'.'
+		}
 		mname := c_name(node.name)
 		g.write('${dot}_typ]._method_${mname}(')
 		g.expr(node.left)

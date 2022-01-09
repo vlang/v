@@ -39,7 +39,7 @@ fn C.sapp_mouse_locked() bool
 fn C.sapp_userdata() voidptr
 
 // return a copy of the sapp_desc structure
-fn C.sapp_query_desc() C.sapp_desc
+fn C.sapp_query_desc() Desc
 
 // initiate a "soft quit" (sends SAPP_EVENTTYPE_QUIT_REQUESTED)
 fn C.sapp_request_quit()
@@ -56,6 +56,9 @@ fn C.sapp_consume_event()
 // get the current frame counter (for comparison with sapp_event.frame_count)
 fn C.sapp_frame_count() u64
 
+// get an averaged/smoothed frame duration in seconds
+fn C.sapp_frame_duration() f64
+
 // write string into clipboard
 fn C.sapp_set_clipboard_string(str &byte)
 
@@ -63,7 +66,7 @@ fn C.sapp_set_clipboard_string(str &byte)
 fn C.sapp_get_clipboard_string() &byte
 
 // special run-function for SOKOL_NO_ENTRY (in standard mode this is an empty stub)
-fn C.sapp_run(desc &C.sapp_desc) int
+fn C.sapp_run(desc &Desc) int
 
 // GL: return true when GLES2 fallback is active (to detect fallback from GLES3)
 fn C.sapp_gles2() bool
@@ -115,5 +118,3 @@ fn C.sapp_get_num_dropped_files() int
 
 // Get the file path of the droped file
 fn C.sapp_get_dropped_file_path(int) &byte
-
-fn C.sapp_resize_window(int, int)

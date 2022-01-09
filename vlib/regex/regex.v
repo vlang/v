@@ -1,7 +1,7 @@
 /*
 regex 1.0 alpha
 
-Copyright (c) 2019-2021 Dario Deledda. All rights reserved.
+Copyright (c) 2019-2022 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
 that can be found in the LICENSE file.
 
@@ -17,30 +17,32 @@ module regex
 import strings
 
 pub const (
-	v_regex_version        = '1.0 alpha' // regex module version
+	v_regex_version          = '1.0 alpha' // regex module version
 
-	max_code_len           = 256 // default small base code len for the regex programs
-	max_quantifier         = 1073741824 // default max repetitions allowed for the quantifiers = 2^30
+	max_code_len             = 256 // default small base code len for the regex programs
+	max_quantifier           = 1073741824 // default max repetitions allowed for the quantifiers = 2^30
 	// spaces chars (here only westerns!!) TODO: manage all the spaces from unicode
-	spaces                 = [` `, `\t`, `\n`, `\r`, `\v`, `\f`]
+	spaces                   = [` `, `\t`, `\n`, `\r`, `\v`, `\f`]
 	// new line chars for now only '\n'
-	new_line_list          = [`\n`, `\r`]
+	new_line_list            = [`\n`, `\r`]
 
 	// Results
-	no_match_found         = -1
+	no_match_found           = -1
 
 	// Errors
-	compile_ok             = 0 // the regex string compiled, all ok
-	err_char_unknown       = -2 // the char used is unknow to the system
-	err_undefined          = -3 // the compiler symbol is undefined
-	err_internal_error     = -4 // Bug in the regex system!!
-	err_cc_alloc_overflow  = -5 // memory for char class full!!
-	err_syntax_error       = -6 // syntax error in regex compiling
-	err_groups_overflow    = -7 // max number of groups reached
-	err_groups_max_nested  = -8 // max number of nested group reached
-	err_group_not_balanced = -9 // group not balanced
-	err_group_qm_notation  = -10 // group invalid notation
-	err_invalid_or_with_cc = -11 // invalid or on two consecutive char class
+	compile_ok               = 0 // the regex string compiled, all ok
+	err_char_unknown         = -2 // the char used is unknow to the system
+	err_undefined            = -3 // the compiler symbol is undefined
+	err_internal_error       = -4 // Bug in the regex system!!
+	err_cc_alloc_overflow    = -5 // memory for char class full!!
+	err_syntax_error         = -6 // syntax error in regex compiling
+	err_groups_overflow      = -7 // max number of groups reached
+	err_groups_max_nested    = -8 // max number of nested group reached
+	err_group_not_balanced   = -9 // group not balanced
+	err_group_qm_notation    = -10 // group invalid notation
+	err_invalid_or_with_cc   = -11 // invalid or on two consecutive char class
+	err_neg_group_quantifier = -12 // negation groups can not have quantifier
+	err_consecutive_dots     = -13 // two consecutive dots is an error
 )
 
 const (
@@ -198,6 +200,8 @@ pub fn (re RE) get_parse_error_string(err int) string {
 		regex.err_group_not_balanced { return 'err_group_not_balanced' }
 		regex.err_group_qm_notation { return 'err_group_qm_notation' }
 		regex.err_invalid_or_with_cc { return 'err_invalid_or_with_cc' }
+		regex.err_neg_group_quantifier { return 'err_neg_group_quantifier' }
+		regex.err_consecutive_dots { return 'err_consecutive_dots' }
 		else { return 'err_unknown' }
 	}
 }
@@ -246,13 +250,15 @@ mut:
 	// validator function pointer
 	validator FnValidator
 	// groups variables
-	group_rep int // repetition of the group
+	group_neg bool // negation flag for the group, 0 => no negation > 0 => negataion
+	group_rep int  // repetition of the group
 	group_id  int = -1 // id of the group
 	goto_pc   int = -1 // jump to this PC if is needed
 	// OR flag for the token
 	next_is_or bool // true if the next token is an OR
 	// dot_char token variables
-	dot_check_pc  int = -1 // pc of the next token to check
+	dot_check_pc  int = -1 // pc of the next token to check for dots
+	bsls_check_pc int = -1 // pc of the next token to check for bsls
 	last_dot_flag bool // if true indicate that is the last dot_char in the regex
 	// debug fields
 	source_index int
@@ -279,14 +285,7 @@ pub const (
 	f_src = 0x00020000 // search mode enabled
 )
 
-struct StateDotObj {
-mut:
-	i                 int = -1 // char index in the input buffer
-	pc                int = -1 // program counter saved
-	mi                int = -1 // match_index saved
-	group_stack_index int = -1 // continuous save on capturing groups
-}
-
+// Log function prototype
 pub type FnLog = fn (string)
 
 pub struct RE {
@@ -333,7 +332,17 @@ fn (mut re RE) reset() {
 
 	// init groups array
 	if re.group_count > 0 {
-		re.groups = []int{len: re.group_count * 2, init: -1}
+		if re.groups.len == 0 {
+			// first run alloc memory
+			re.groups = []int{len: re.group_count * 2, init: -1}
+		} else {
+			// subsequent executions, only clean up the memory
+			i = 0
+			for i < re.groups.len {
+				re.groups[i] = -1
+				i++
+			}
+		}
 	}
 
 	// reset group_csave
@@ -811,8 +820,8 @@ enum Group_parse_state {
 	finish
 }
 
-// parse_groups parse a group for ? (question mark) syntax, if found, return (error, capture_flag, name_of_the_group, next_index)
-fn (re RE) parse_groups(in_txt string, in_i int) (int, bool, string, int) {
+// parse_groups parse a group for ? (question mark) syntax, if found, return (error, capture_flag, negate_flag, name_of_the_group, next_index)
+fn (re RE) parse_groups(in_txt string, in_i int) (int, bool, bool, string, int) {
 	mut status := Group_parse_state.start
 	mut i := in_i
 	mut name := ''
@@ -836,10 +845,16 @@ fn (re RE) parse_groups(in_txt string, in_i int) (int, bool, string, int) {
 			continue
 		}
 
+		// negate group
+		if status == .q_mark1 && ch == `!` {
+			i += char_len
+			return 0, false, true, name, i
+		}
+
 		// non capturing group
 		if status == .q_mark1 && ch == `:` {
 			i += char_len
-			return 0, false, name, i
+			return 0, false, false, name, i
 		}
 
 		// enter in P section
@@ -852,7 +867,7 @@ fn (re RE) parse_groups(in_txt string, in_i int) (int, bool, string, int) {
 		// not a valid q mark found
 		if status == .q_mark1 {
 			// println("NO VALID Q MARK")
-			return -2, true, name, i
+			return -2, true, false, name, i
 		}
 
 		if status == .p_status && ch == `<` {
@@ -878,20 +893,20 @@ fn (re RE) parse_groups(in_txt string, in_i int) (int, bool, string, int) {
 		// end name
 		if status == .p_in_name && ch == `>` {
 			i += char_len
-			return 0, true, name, i
+			return 0, true, false, name, i
 		}
 
 		// error on name group
 		if status == .p_in_name {
-			return -2, true, name, i
+			return -2, true, false, name, i
 		}
 
 		// normal group, nothig to do, exit
-		return 0, true, name, i
+		return 0, true, false, name, i
 	}
 	// UNREACHABLE
 	// println("ERROR!! NOT MEANT TO BE HERE!!1")
-	return -2, true, name, i
+	return -2, true, false, name, i
 }
 
 const (
@@ -949,7 +964,8 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 				return regex.err_groups_max_nested, i + 1
 			}
 
-			tmp_res, cgroup_flag, cgroup_name, next_i := re.parse_groups(in_txt, i)
+			tmp_res, cgroup_flag, negate_flag, cgroup_name, next_i := re.parse_groups(in_txt,
+				i)
 
 			// manage question mark format error
 			if tmp_res < -1 {
@@ -984,6 +1000,12 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 			re.prog[pc].rep_min = 1
 			re.prog[pc].rep_max = 1
 
+			// manage negation groups
+			if negate_flag == true {
+				re.prog[pc].group_neg = true
+				re.prog[pc].rep_min = 0 // may be not catched, but it is ok
+			}
+
 			// set the group id
 			if cgroup_flag == false {
 				// println("NO CAPTURE GROUP")
@@ -1015,6 +1037,12 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 			re.prog[goto_pc].goto_pc = pc // start goto point to the end group pc
 			// re.prog[goto_pc].group_id = group_count         // id of this group, used for storing data
 
+			// duplicate the negation group info and settings
+			if re.prog[goto_pc].group_neg == true {
+				re.prog[pc].group_neg = re.prog[goto_pc].group_neg
+				re.prog[pc].rep_min = re.prog[goto_pc].rep_min
+			}
+
 			pc = pc + 1
 			i = i + char_len
 			continue
@@ -1022,6 +1050,11 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 
 		// ist_dot_char match any char except the following token
 		if char_len == 1 && pc >= 0 && byte(char_tmp) == `.` {
+			// consecutive ist_dot_char is a syntax error
+			if pc > 0 && re.prog[pc - 1].ist == regex.ist_dot_char {
+				return regex.err_consecutive_dots, i
+			}
+
 			re.prog[pc].ist = u32(0) | regex.ist_dot_char
 			re.prog[pc].rep_min = 1
 			re.prog[pc].rep_max = 1
@@ -1050,6 +1083,12 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 				char_next, char_next_len = re.get_char(in_txt, i + char_len)
 			}
 			mut quant_flag := true
+
+			// negation groups can not have quantifiers
+			if re.prog[pc - 1].group_neg == true && char_tmp in [`?`, `+`, `*`, `{`] {
+				return regex.err_neg_group_quantifier, i
+			}
+
 			match byte(char_tmp) {
 				`?` {
 					// println("q: ${char_tmp:c}")
@@ -1190,7 +1229,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 
 	// check for OR at the end of the program
 	if pc > 0 && re.prog[pc - 1].ist == regex.ist_or_branch {
-		return regex.err_syntax_error, in_txt.len
+		return regex.err_syntax_error, in_txt.len - 1
 	}
 
 	// store the number of groups in the query
@@ -1215,6 +1254,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 			dot_char_count++
 			mut pc2 := pc1 + 1
 			for pc2 < pc {
+				// consecutive dot chars is an error
 				if re.prog[pc2].ist == regex.ist_dot_char {
 					return regex.err_syntax_error, 0
 				}
@@ -1243,6 +1283,49 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 		}
 		if is_last_dot {
 			re.prog[last_dot_char_pc].last_dot_flag = true
+		}
+	}
+
+	//
+	// manage bsls_char
+	//
+
+	// find the checks for bsls, if any...
+	pc1 = 0
+	mut bsls_char_count := 0
+	mut last_bsls_char_pc := -1
+	for pc1 < pc {
+		if re.prog[pc1].ist == regex.ist_bsls_char {
+			// println("bsls_char pc: $pc1")
+			last_bsls_char_pc = pc1
+			bsls_char_count++
+			mut pc2 := pc1 + 1
+			for pc2 < pc {
+				if re.prog[pc2].ist !in [rune(regex.ist_prog_end), regex.ist_group_end,
+					regex.ist_group_start] {
+					// println("Next bsls check is PC: ${pc2}")
+					re.prog[pc1].bsls_check_pc = pc2
+					break
+				}
+				pc2++
+			}
+		}
+		pc1++
+	}
+
+	// println("last_bsls_char_pc: $last_bsls_char_pc")
+	if last_bsls_char_pc >= 0 {
+		pc1 = last_bsls_char_pc + 1
+		mut is_last_bsls := true
+		for pc1 < pc {
+			if re.prog[pc1].ist !in [rune(regex.ist_prog_end), regex.ist_group_end] {
+				is_last_bsls = false
+				break
+			}
+			pc1++
+		}
+		if is_last_bsls {
+			re.prog[last_bsls_char_pc].last_dot_flag = true
 		}
 	}
 
@@ -1405,14 +1488,15 @@ pub fn (re RE) get_query() string {
 
 		// GROUP start
 		if ch == regex.ist_group_start {
-			if re.debug == 0 {
-				res.write_string('(')
-			} else {
-				if tk.group_id == -1 {
-					res.write_string('(?:') // non capturing group
-				} else {
-					res.write_string('#${tk.group_id}(')
-				}
+			if re.debug > 0 {
+				res.write_string('#$tk.group_id')
+			}
+			res.write_string('(')
+
+			if tk.group_neg == true {
+				res.write_string('?!') // negation group
+			} else if tk.group_id == -1 {
+				res.write_string('?:') // non capturing group
 			}
 
 			for x in re.group_map.keys() {
@@ -1470,7 +1554,7 @@ pub fn (re RE) get_query() string {
 		}
 
 		// quantifier
-		if !(tk.rep_min == 1 && tk.rep_max == 1) {
+		if !(tk.rep_min == 1 && tk.rep_max == 1) && tk.group_neg == false {
 			if tk.rep_min == 0 && tk.rep_max == 1 {
 				res.write_string('?')
 			} else if tk.rep_min == 1 && tk.rep_max == regex.max_quantifier {
@@ -1790,7 +1874,7 @@ pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int) (int, int) {
 			}
 
 			// print("No good exit!!")
-			return regex.no_match_found, 0
+			return regex.no_match_found, state.i
 		}
 
 		// starting and init
@@ -1876,7 +1960,7 @@ pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int) (int, int) {
 			}
 
 			// exit on no match
-			return result, 0
+			return result, state.i
 		}
 		// ist_load
 		else if m_state == .ist_load {
@@ -2082,25 +2166,97 @@ pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int) (int, int) {
 			}
 			// check bsls
 			else if ist == regex.ist_bsls_char {
-				state.match_flag = false
-				tmp_res := re.prog[state.pc].validator(byte(ch))
-				// println("BSLS in_ch: ${ch:c} res: $tmp_res")
-				if tmp_res {
-					state.match_flag = true
-					l_ist = u32(regex.ist_bsls_char)
+				// println("ist_bsls_char rep: ${re.prog[state.pc].rep}")
 
-					if state.first_match < 0 {
-						state.first_match = state.i
-					}
+				// check next token to be false
+				mut next_check_flag := false
 
-					state.match_index = state.i
-
-					re.prog[state.pc].rep++ // increase repetitions
-					state.i += char_len // next char
-					m_state = .ist_quant_p
+				// if we are done with max go on dot char are dedicated case!!
+				if re.prog[state.pc].rep >= re.prog[state.pc].rep_max {
+					re.state_list.pop()
+					m_state = .ist_next
 					continue
 				}
-				m_state = .ist_quant_n
+
+				if re.prog[state.pc].bsls_check_pc >= 0
+					&& re.prog[state.pc].rep >= re.prog[state.pc].rep_min {
+					// load the char
+					// ch_t, _ := re.get_charb(in_txt, state.i+char_len)
+					ch_t := ch
+					chk_pc := re.prog[state.pc].bsls_check_pc
+
+					// simple char
+					if re.prog[chk_pc].ist == regex.ist_simple_char {
+						if re.prog[chk_pc].ch == ch_t {
+							next_check_flag = true
+						}
+						// println("Check [ist_simple_char] [${re.prog[chk_pc].ch}]==[${ch_t:c}] => $next_check_flag")
+					}
+					// char char_class
+					else if re.prog[chk_pc].ist == regex.ist_char_class_pos
+						|| re.prog[chk_pc].ist == regex.ist_char_class_neg {
+						mut cc_neg := false
+						if re.prog[chk_pc].ist == regex.ist_char_class_neg {
+							cc_neg = true
+						}
+						mut cc_res := re.check_char_class(chk_pc, ch_t)
+
+						if cc_neg {
+							cc_res = !cc_res
+						}
+						next_check_flag = cc_res
+						// println("Check [ist_char_class] => $next_check_flag")
+					}
+					// check bsls
+					else if re.prog[chk_pc].ist == regex.ist_bsls_char {
+						next_check_flag = re.prog[chk_pc].validator(byte(ch_t))
+						// println("Check [ist_bsls_char] => $next_check_flag")
+					}
+				}
+
+				// check if we must continue or pass to the next IST
+				if next_check_flag == true && re.prog[state.pc + 1].ist != regex.ist_prog_end {
+					// println("save the state!!")
+					mut dot_state := StateObj{
+						group_index: state.group_index
+						match_flag: state.match_flag
+						match_index: state.match_index
+						first_match: state.first_match
+						pc: state.pc
+						i: state.i + char_len
+						char_len: char_len
+						last_dot_pc: state.pc
+					}
+					// if we are mananging a .* stay on the same char on return
+					if re.prog[state.pc].rep_min == 0 {
+						dot_state.i -= char_len
+					}
+
+					re.state_list << dot_state
+
+					m_state = .ist_quant_n
+					// println("dot_char stack len: ${re.state_list.len}")
+					continue
+				}
+
+				tmp_res := re.prog[state.pc].validator(byte(ch))
+				if tmp_res == false {
+					m_state = .ist_quant_n
+					continue
+				}
+				// println("${ch} => ${tmp_res}")
+
+				state.match_flag = true
+				l_ist = u32(regex.ist_dot_char)
+
+				if state.first_match < 0 {
+					state.first_match = state.i
+				}
+				state.match_index = state.i
+				re.prog[state.pc].rep++ // increase repetitions
+
+				state.i += char_len
+				m_state = .ist_quant_p
 				continue
 			}
 			// simple char IST
@@ -2211,6 +2367,13 @@ pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int) (int, int) {
 			mut tmp_pc := state.pc
 			if state.group_index >= 0 {
 				tmp_pc = re.group_data[state.group_index]
+			}
+
+			if re.prog[tmp_pc].group_neg == true {
+				// println("***** Negation of the group")
+				result = regex.no_match_found
+				m_state = .stop
+				continue
 			}
 
 			rep := re.prog[tmp_pc].group_rep
@@ -2355,14 +2518,14 @@ pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int) (int, int) {
 					return state.first_match, state.i
 				}
 				// println("Program not finished! ")
-				return regex.no_match_found, 0
+				return regex.no_match_found, state.i
 			}
 			if src_end {
 				// println("program end")
 				return state.first_match, state.i
 			}
 			// print("No match found!!")
-			return regex.no_match_found, 0
+			return regex.no_match_found, state.i
 		} else {
 			// println("Group match! OK")
 			// println("first_match: $state.first_match, i: $state.i")
@@ -2373,5 +2536,5 @@ pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int) (int, int) {
 		}
 	}
 	// println("no_match_found, natural end")
-	return regex.no_match_found, 0
+	return regex.no_match_found, state.i
 }

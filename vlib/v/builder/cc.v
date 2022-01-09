@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builder
@@ -290,11 +290,19 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 			ccoptions.args << '-fPIC' // -Wl,-z,defs'
 		}
 	}
-	if v.pref.is_bare {
+	if v.pref.is_bare && v.pref.os != .wasm32 {
 		ccoptions.args << '-fno-stack-protector'
 		ccoptions.args << '-ffreestanding'
 		ccoptions.linker_flags << '-static'
 		ccoptions.linker_flags << '-nostdlib'
+	} else if v.pref.os == .wasm32 {
+		ccoptions.args << '--no-standard-libraries'
+		ccoptions.args << '-target wasm32-unknown-unknown'
+		ccoptions.args << '-static'
+		ccoptions.args << '-nostdlib'
+		ccoptions.args << '-ffreestanding'
+		ccoptions.args << '-Wl,--export-all'
+		ccoptions.args << '-Wl,--no-entry'
 	}
 	if ccoptions.debug_mode && os.user_os() != 'windows' && v.pref.build_mode != .build_module {
 		ccoptions.linker_flags << '-rdynamic' // needed for nicer symbolic backtraces
@@ -341,7 +349,12 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		ccoptions.post_args << '-municode'
 	}
 	cflags := v.get_os_cflags()
-	ccoptions.o_args << cflags.c_options_only_object_files()
+
+	if v.pref.build_mode != .build_module {
+		only_o_files := cflags.c_options_only_object_files()
+		ccoptions.o_args << only_o_files
+	}
+
 	defines, others, libs := cflags.defines_others_libs()
 	ccoptions.pre_args << defines
 	ccoptions.pre_args << others
@@ -390,7 +403,11 @@ fn (v &Builder) all_args(ccoptions CcompilerOptions) []string {
 	all << ccoptions.pre_args
 	all << ccoptions.source_args
 	all << ccoptions.post_args
-	all << ccoptions.linker_flags
+	// in `build-mode`, we do not need -lxyz flags, since we are
+	// building an (.o) object file, that will be linked later.
+	if v.pref.build_mode != .build_module {
+		all << ccoptions.linker_flags
+	}
 	all << ccoptions.env_ldflags
 	return all
 }
@@ -516,6 +533,8 @@ pub fn (mut v Builder) cc() {
 				'-arch armv7 -arch armv7s -arch arm64'
 			}
 			ccompiler = 'xcrun --sdk iphoneos clang -isysroot $isysroot $arch'
+		} else if v.pref.os == .wasm32 {
+			ccompiler = 'clang-12'
 		}
 		v.setup_ccompiler_options(ccompiler)
 		v.build_thirdparty_obj_files()
@@ -932,12 +951,12 @@ fn missing_compiler_info() string {
 
 fn error_context_lines(text string, keyword string, before int, after int) []string {
 	khighlight := if term.can_show_color_on_stdout() { term.red(keyword) } else { keyword }
-	mut eline_idx := 0
+	mut eline_idx := -1
 	mut lines := text.split_into_lines()
 	for idx, eline in lines {
 		if eline.contains(keyword) {
 			lines[idx] = lines[idx].replace(keyword, khighlight)
-			if eline_idx == 0 {
+			if eline_idx == -1 {
 				eline_idx = idx
 			}
 		}

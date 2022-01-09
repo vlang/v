@@ -9,7 +9,7 @@ pub const (
 
 // setup and misc functions
 [inline]
-pub fn setup(desc &C.sg_desc) {
+pub fn setup(desc &Desc) {
 	C.sg_setup(desc)
 }
 
@@ -30,83 +30,83 @@ pub fn reset_state_cache() {
 
 // resource creation, destruction and updating
 [inline]
-pub fn make_buffer(desc &C.sg_buffer_desc) C.sg_buffer {
+pub fn make_buffer(desc &BufferDesc) Buffer {
 	return C.sg_make_buffer(desc)
 }
 
 [inline]
-pub fn make_image(desc &C.sg_image_desc) C.sg_image {
+pub fn make_image(desc &ImageDesc) Image {
 	return C.sg_make_image(desc)
 }
 
 [inline]
-pub fn make_shader(desc &C.sg_shader_desc) C.sg_shader {
+pub fn make_shader(desc &ShaderDesc) Shader {
 	return C.sg_make_shader(desc)
 }
 
 [inline]
-pub fn make_pipeline(desc &C.sg_pipeline_desc) C.sg_pipeline {
+pub fn make_pipeline(desc &PipelineDesc) Pipeline {
 	return C.sg_make_pipeline(desc)
 }
 
 [inline]
-pub fn make_pass(desc &C.sg_pass_desc) C.sg_pass {
+pub fn make_pass(desc &PassDesc) Pass {
 	return C.sg_make_pass(desc)
 }
 
 [inline]
-pub fn destroy_buffer(buf C.sg_buffer) {
+pub fn destroy_buffer(buf Buffer) {
 	C.sg_destroy_buffer(buf)
 }
 
 [inline]
-pub fn destroy_image(img C.sg_image) {
+pub fn destroy_image(img Image) {
 	C.sg_destroy_image(img)
 }
 
 [inline]
-pub fn destroy_shader(shd C.sg_shader) {
+pub fn destroy_shader(shd Shader) {
 	C.sg_destroy_shader(shd)
 }
 
 [inline]
-pub fn destroy_pipeline(pip C.sg_pipeline) {
+pub fn destroy_pipeline(pip Pipeline) {
 	C.sg_destroy_pipeline(pip)
 }
 
 [inline]
-pub fn destroy_pass(pass C.sg_pass) {
+pub fn destroy_pass(pass Pass) {
 	C.sg_destroy_pass(pass)
 }
 
 [inline]
-pub fn update_buffer(buf C.sg_buffer, data &C.sg_range) {
+pub fn update_buffer(buf Buffer, data &Range) {
 	C.sg_update_buffer(buf, data)
 }
 
 [inline]
-pub fn update_image(img C.sg_image, data &C.sg_image_data) {
+pub fn update_image(img Image, data &ImageData) {
 	C.sg_update_image(img, data)
 }
 
 [inline]
-pub fn append_buffer(buf C.sg_buffer, data &C.sg_range) int {
+pub fn append_buffer(buf Buffer, data &Range) int {
 	return C.sg_append_buffer(buf, data)
 }
 
 [inline]
-pub fn query_buffer_overflow(buf C.sg_buffer) bool {
+pub fn query_buffer_overflow(buf Buffer) bool {
 	return C.sg_query_buffer_overflow(buf)
 }
 
 // rendering functions
 [inline]
-pub fn begin_default_pass(actions &C.sg_pass_action, width int, height int) {
+pub fn begin_default_pass(actions &PassAction, width int, height int) {
 	C.sg_begin_default_pass(actions, width, height)
 }
 
 [inline]
-pub fn begin_pass(pass C.sg_pass, actions &C.sg_pass_action) {
+pub fn begin_pass(pass Pass, actions &PassAction) {
 	C.sg_begin_pass(pass, actions)
 }
 
@@ -121,18 +121,18 @@ pub fn apply_scissor_rect(x int, y int, width int, height int, origin_top_left b
 }
 
 [inline]
-pub fn apply_pipeline(pip C.sg_pipeline) {
+pub fn apply_pipeline(pip Pipeline) {
 	C.sg_apply_pipeline(pip)
 }
 
 [inline]
-pub fn apply_bindings(bindings &C.sg_bindings) {
+pub fn apply_bindings(bindings &Bindings) {
 	C.sg_apply_bindings(bindings)
 }
 
 [inline]
-pub fn apply_uniforms(stage int, ub_index int, data &C.sg_range) {
-	C.sg_apply_uniforms(stage, ub_index, data)
+pub fn apply_uniforms(stage ShaderStage, ub_index int, data &Range) {
+	C.sg_apply_uniforms(int(stage), ub_index, data)
 }
 
 [inline]
@@ -152,120 +152,120 @@ pub fn commit() {
 
 // getting information
 [inline]
-pub fn query_desc() C.sg_desc {
+pub fn query_desc() Desc {
 	return C.sg_query_desc()
 }
 
 [inline]
 pub fn query_backend() Backend {
-	return Backend(C.sg_query_backend())
+	return C.sg_query_backend()
 }
 
 [inline]
-pub fn query_features() C.sg_features {
+pub fn query_features() Features {
 	return C.sg_query_features()
 }
 
 [inline]
-pub fn query_limits() C.sg_limits {
+pub fn query_limits() Limits {
 	return C.sg_query_limits()
 }
 
 [inline]
-pub fn query_pixelformat(fmt PixelFormat) C.sg_pixelformat_info {
+pub fn query_pixelformat(fmt PixelFormat) PixelFormatInfo {
 	return C.sg_query_pixelformat(fmt)
 }
 
 // get current state of a resource (INITIAL, ALLOC, VALID, FAILED, INVALID)
 [inline]
-pub fn query_buffer_state(buf C.sg_buffer) C.sg_resource_state {
-	return C.sg_query_buffer_state(buf)
+pub fn query_buffer_state(buf Buffer) ResourceState {
+	return ResourceState(C.sg_query_buffer_state(buf))
 }
 
 [inline]
-pub fn query_image_state(img C.sg_image) C.sg_resource_state {
-	return C.sg_query_image_state(img)
+pub fn query_image_state(img Image) ResourceState {
+	return ResourceState(C.sg_query_image_state(img))
 }
 
 [inline]
-pub fn query_shader_state(shd C.sg_shader) C.sg_resource_state {
-	return C.sg_query_shader_state(shd)
+pub fn query_shader_state(shd Shader) ResourceState {
+	return ResourceState(C.sg_query_shader_state(shd))
 }
 
 [inline]
-pub fn query_pipeline_state(pip C.sg_pipeline) C.sg_resource_state {
-	return C.sg_query_pipeline_state(pip)
+pub fn query_pipeline_state(pip Pipeline) ResourceState {
+	return ResourceState(C.sg_query_pipeline_state(pip))
 }
 
 [inline]
-pub fn query_pass_state(pass C.sg_pass) C.sg_resource_state {
-	return C.sg_query_pass_state(pass)
+pub fn query_pass_state(pass Pass) ResourceState {
+	return ResourceState(C.sg_query_pass_state(pass))
 }
 
 // get runtime information about a resource
 [inline]
-pub fn query_buffer_info(buf C.sg_buffer) C.sg_buffer_info {
+pub fn query_buffer_info(buf Buffer) BufferInfo {
 	return C.sg_query_buffer_info(buf)
 }
 
 [inline]
-pub fn query_image_info(img C.sg_image) C.sg_image_info {
+pub fn query_image_info(img Image) ImageInfo {
 	return C.sg_query_image_info(img)
 }
 
 [inline]
-pub fn query_shader_info(shd C.sg_shader) C.sg_shader_info {
+pub fn query_shader_info(shd Shader) ShaderInfo {
 	return C.sg_query_shader_info(shd)
 }
 
 [inline]
-pub fn query_pipeline_info(pip C.sg_pipeline) C.sg_pipeline_info {
+pub fn query_pipeline_info(pip Pipeline) PipelineInfo {
 	return C.sg_query_pipeline_info(pip)
 }
 
 [inline]
-pub fn query_pass_info(pass C.sg_pass) C.sg_pass_info {
+pub fn query_pass_info(pass Pass) PassInfo {
 	return C.sg_query_pass_info(pass)
 }
 
 // get resource creation desc struct with their default values replaced
 [inline]
-pub fn query_buffer_defaults(desc &C.sg_buffer) C.sg_buffer_desc {
-	return C.sg_query_buffer_defaults(unsafe { &C.sg_buffer_desc(desc) })
+pub fn query_buffer_defaults(desc &Buffer) BufferDesc {
+	return C.sg_query_buffer_defaults(unsafe { &BufferDesc(voidptr(desc)) })
 }
 
 [inline]
-pub fn query_image_defaults(desc &C.sg_image) C.sg_image_desc {
-	return C.sg_query_image_defaults(unsafe { &C.sg_image_desc(desc) })
+pub fn query_image_defaults(desc &Image) ImageDesc {
+	return C.sg_query_image_defaults(unsafe { &ImageDesc(voidptr(desc)) })
 }
 
 [inline]
-pub fn query_shader_defaults(desc &C.sg_shader) C.sg_shader_desc {
-	return C.sg_query_shader_defaults(unsafe { &C.sg_shader_desc(desc) })
+pub fn query_shader_defaults(desc &Shader) ShaderDesc {
+	return C.sg_query_shader_defaults(unsafe { &ShaderDesc(voidptr(desc)) })
 }
 
 [inline]
-pub fn query_pipeline_defaults(desc &C.sg_pipeline) C.sg_pipeline_desc {
-	return C.sg_query_pipeline_defaults(unsafe { &C.sg_pipeline_desc(desc) })
+pub fn query_pipeline_defaults(desc &Pipeline) PipelineDesc {
+	return C.sg_query_pipeline_defaults(unsafe { &PipelineDesc(voidptr(desc)) })
 }
 
 [inline]
-pub fn query_pass_defaults(desc &C.sg_pass) C.sg_pass_desc {
-	return C.sg_query_pass_defaults(unsafe { &C.sg_pass_desc(desc) })
+pub fn query_pass_defaults(desc &Pass) PassDesc {
+	return C.sg_query_pass_defaults(unsafe { &PassDesc(voidptr(desc)) })
 }
 
 // rendering contexts (optional)
 [inline]
-pub fn setup_context() C.sg_context {
+pub fn setup_context() Context {
 	return C.sg_setup_context()
 }
 
 [inline]
-pub fn activate_context(ctx_id C.sg_context) {
+pub fn activate_context(ctx_id Context) {
 	C.sg_activate_context(ctx_id)
 }
 
 [inline]
-pub fn discard_context(ctx_id C.sg_context) {
+pub fn discard_context(ctx_id Context) {
 	C.sg_discard_context(ctx_id)
 }

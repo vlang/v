@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module pref
@@ -536,6 +536,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					}
 					eprintln('unknown operating system target `$target_os`')
 					exit(1)
+				}
+				if target_os_kind == .wasm32 {
+					res.is_bare = true
 				}
 				res.os = target_os_kind
 				res.build_options << '$arg $target_os'

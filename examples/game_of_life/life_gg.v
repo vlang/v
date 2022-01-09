@@ -17,7 +17,7 @@ fn print_automaton(app &App) {
 		for x := 1; x < app.a.field.maxx; x++ {
 			cell := app.a.field.get(x, y)
 			if cell == 1 {
-				app.gg.draw_rect(f32(square_size * x), f32(square_size * y), f32(square_size),
+				app.gg.draw_rect_filled(f32(square_size * x), f32(square_size * y), f32(square_size),
 					f32(square_size), filled_color)
 			}
 		}

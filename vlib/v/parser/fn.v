@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -399,10 +399,13 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			generic_names: generic_names
 			is_pub: is_pub
 			is_deprecated: is_deprecated
+			is_noreturn: is_noreturn
 			is_unsafe: is_unsafe
 			is_main: is_main
 			is_test: is_test
 			is_keep_alive: is_keep_alive
+			is_method: true
+			receiver_type: rec.typ
 			//
 			attrs: p.attrs
 			is_conditional: conditional_ctdefine_idx != -1
@@ -451,6 +454,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_main: is_main
 			is_test: is_test
 			is_keep_alive: is_keep_alive
+			is_method: false
 			//
 			attrs: p.attrs
 			is_conditional: conditional_ctdefine_idx != -1
@@ -530,7 +534,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		label_names: p.label_names
 	}
 	if generic_names.len > 0 {
-		p.table.register_fn_generic_types(name)
+		p.table.register_fn_generic_types(fn_decl.fkey())
 	}
 	p.label_names = []
 	p.close_scope()
@@ -538,6 +542,10 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 }
 
 fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInfo) ? {
+	p.inside_receiver_param = true
+	defer {
+		p.inside_receiver_param = false
+	}
 	lpar_pos := p.tok.position()
 	p.next() // (
 	is_shared := p.tok.kind == .key_shared
@@ -674,6 +682,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		params: args
 		is_variadic: is_variadic
 		return_type: return_type
+		is_method: false
 	}
 	name := 'anon_fn_${p.unique_prefix}_${p.table.fn_type_signature(func)}_$p.tok.pos'
 	keep_fn_name := p.cur_fn_name

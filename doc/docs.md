@@ -41,6 +41,11 @@ easy to install (V will download a prebuilt binary automatically).
 It is recommended to add this folder to the PATH of your environment variables.
 This can be done with the command `v.exe symlink`.
 
+NB: Some antivirus programs (like Symantec) are paranoid about executables with
+1 letter names (like `v.exe`). One possible workaround in that situation is
+copying `v.exe` to `vlang.exe` (so that the copy is newer), or whitelisting the
+V folder in your antivirus program.
+
 ### Android
 Running V graphical apps on Android is also possible via [vab](https://github.com/vlang/vab).
 
@@ -1028,6 +1033,42 @@ a << 4
 b[1] = 3 // no change in `a`
 println(a) // `[2, 2, 2, 13, 2, 3, 4]`
 println(b) // `[2, 3, 13]`
+```
+
+### Slices with negative indexes
+
+V supports array and string slices with negative indexes.
+Negative indexing starts from the end of the array towards the start,
+for example `-3` is equal to `array.len - 3`. 
+Negative slices have a different syntax from normal slices, i.e. you need
+to add a `gate` between the array name and the square bracket: `a#[..-3]`.
+The `gate` specifies that this is a different type of slice and remember that
+the result is "locked" inside the array.
+The returned slice is always a valid array, though it may be empty:
+```v
+a := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+println(a#[-3..]) // [7, 8, 9]
+println(a#[-20..]) // [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+println(a#[-20..-8]) // [0, 1]
+println(a#[..-3]) // [0, 1, 2, 3, 4, 5, 6]
+
+// empty arrays
+println(a#[-20..-10]) // []
+println(a#[20..10]) // []
+println(a#[20..30]) // []
+```
+
+### Array method chaining
+You can chain the calls of array methods like `.filter()` and `.map()` and use
+the `it` built-in variable to achieve a classic `map/filter` functional paradigm:
+
+```v
+// using filter, map and negatives array slices
+a := ['pippo.jpg', '01.bmp', '_v.txt', 'img_02.jpg', 'img_01.JPG']
+res := a.filter(it#[-4..].to_lower() == '.jpg').map(fn (w string) string {
+	return w.to_upper()
+})
+// ['PIPPO.JPG', 'IMG_02.JPG', 'IMG_01.JPG']
 ```
 
 ### Fixed size arrays

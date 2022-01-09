@@ -262,6 +262,13 @@ fn sys_munmap(addr voidptr, len u64) Errno {
 	return Errno(-sys_call2(11, u64(addr), len))
 }
 
+// 25 sys_mremap
+fn sys_mremap(old_addr voidptr, old_len u64, new_len u64, flags u64) (&byte, Errno) {
+	rc := sys_call4(25, u64(old_addr), old_len, new_len, flags)
+	a, e := split_int_errno(rc)
+	return &byte(a), e
+}
+
 // 22  sys_pipe
 fn sys_pipe(filedes &int) Errno {
 	return Errno(sys_call1(22, u64(filedes)))

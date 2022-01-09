@@ -19,3 +19,17 @@ pub:
 	mono           bool
 	italic         bool
 }
+
+pub fn (cfg TextCfg) to_css_string() string {
+	mut font_style := ''
+	if cfg.bold {
+		font_style += 'bold '
+	}
+	if cfg.mono {
+		font_style += 'mono '
+	}
+	if cfg.italic {
+		font_style += 'italic '
+	}
+	return '$font_style ${cfg.size}px $cfg.family'
+}

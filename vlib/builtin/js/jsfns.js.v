@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -123,26 +123,26 @@ fn native_str_arr_len(arr []JS.String) int {
 }
 
 // Top level functions
-fn JS.eval(string) any
-fn JS.parseInt(string, f64) JS.Number
-fn JS.parseFloat(string) JS.Number
+fn JS.eval(JS.String) JS.Any
+fn JS.parseInt(JS.String, f64) JS.Number
+fn JS.parseFloat(JS.String) JS.Number
 fn JS.isNaN(f64) bool
 fn JS.isFinite(f64) bool
-fn JS.decodeURI(string) string
-fn JS.decodeURIComponent(string) string
-fn JS.encodeURI(string) string
+fn JS.decodeURI(JS.String) JS.String
+fn JS.decodeURIComponent(JS.String) JS.String
+fn JS.encodeURI(JS.String) JS.String
 
-type EncodeURIComponentArg = bool | f64 | string
+type EncodeURIComponentArg = JS.String | bool | f64
 
-fn JS.encodeURIComponent(EncodeURIComponentArg) string
-fn JS.escape(string) string
-fn JS.unescape(string) string
+fn JS.encodeURIComponent(EncodeURIComponentArg) JS.String
+fn JS.escape(JS.String) JS.String
+fn JS.unescape(JS.String) JS.String
 
 // console
 fn JS.console.assert(bool, ...any)
 fn JS.console.clear()
-fn JS.console.count(string)
-fn JS.console.countReset(string)
+fn JS.console.count(JS.String)
+fn JS.console.countReset(JS.String)
 fn JS.console.debug(...any)
 fn JS.console.dir(any, any)
 fn JS.console.dirxml(...any)
@@ -154,8 +154,8 @@ fn JS.console.groupEnd()
 fn JS.console.info(...any)
 fn JS.console.log(...any)
 fn JS.console.table(any, []string)
-fn JS.console.time(string)
-fn JS.console.timeEnd(string)
+fn JS.console.time(JS.String)
+fn JS.console.timeEnd(JS.String)
 fn JS.console.timeLog(string, ...any)
 fn JS.console.timeStamp(string)
 fn JS.console.trace(...any)
@@ -182,5 +182,5 @@ fn JS.Math.sqrt(f64) f64
 fn JS.Math.tan(f64) f64
 
 // JSON
-fn JS.JSON.stringify(any) string
+fn JS.JSON.stringify(any) JS.String
 fn JS.JSON.parse(string) any

@@ -81,6 +81,7 @@ jobs:
           ./v doctor
       - name: Verify `v test` works
         run: |
+          echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Self tests
@@ -109,6 +110,14 @@ jobs:
         run: ./v tutorials/building_a_simple_web_blog_with_vweb/code/blog
       - name: Build cmd/tools/fast
         run: cd cmd/tools/fast && ../../../v fast.v && ./fast
+      - name: V self compilation with -usecache
+        run: |
+          unset VFLAGS
+          ./v -usecache examples/hello_world.v && examples/hello_world
+          ./v  -o v2 -usecache cmd/v
+          ./v2 -o v3 -usecache cmd/v
+          ./v3 version
+          ./v3 -o tetris  -usecache examples/tetris/tetris.v
 
   ubuntu-tcc-boehm-gc:
     runs-on: ubuntu-20.04
@@ -150,17 +159,17 @@ jobs:
         run: ./v -gc boehm -silent test-self
       - name: Test leak detector
         run: |
-          ./v -gc boehm_leak -o testcase_leak vlib/v/tests/testcase_leak.v
+          ./v -gc boehm_leak -o testcase_leak vlib/v/tests/testcase_leak.vv
           ./testcase_leak 2>leaks.txt
           grep "Found 1 leaked object" leaks.txt && grep ", sz=1000," leaks.txt
       - name: Test leak detector not being active for `-gc boehm`
         run: |
-          ./v -gc boehm -o testcase_leak vlib/v/tests/testcase_leak.v
+          ./v -gc boehm -o testcase_leak vlib/v/tests/testcase_leak.vv
           ./testcase_leak 2>leaks.txt
           [ "$(stat -c %s leaks.txt)" = "0" ]
       - name: Test leak detector not being active for normal compile
         run: |
-          ./v -o testcase_leak vlib/v/tests/testcase_leak.v
+          ./v -o testcase_leak vlib/v/tests/testcase_leak.vv
           ./testcase_leak 2>leaks.txt
           [ "$(stat -c %s leaks.txt)" = "0" ]
 
@@ -187,7 +196,7 @@ jobs:
 
       - name: Shader examples can be build
         run: |
-          wget https://github.com/floooh/sokol-tools-bin/raw/master/bin/linux/sokol-shdc
+          wget https://github.com/floooh/sokol-tools-bin/raw/33d2e4cc26088c6c28eaef5467990f8940d15aab/bin/linux/sokol-shdc
           chmod +x ./sokol-shdc
           for f in examples/sokol/02_cubes_glsl/cube_glsl \
               examples/sokol/03_march_tracing_glsl/rt_glsl \
@@ -273,12 +282,6 @@ jobs:
           UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
       - name: Build V using V
         run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v
-      - name: usecache
-        run: |
-           ./v -usecache examples/hello_world.v && examples/hello_world
-#          ./v -o v2 -usecache cmd/v
-#          ./v2 -o v3 -usecache cmd/v
-#          ./v3 -usecache examples/tetris/tetris.v
       - name: Test symlink
         run: ./v symlink
       #    - name: Set up pg database
@@ -295,6 +298,7 @@ jobs:
       ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
       - name: Verify `v test` works
         run: |
+          echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
 
@@ -372,16 +376,19 @@ jobs:
       #      run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . && cd ..
       - name: Freestanding
         run: ./v -freestanding run vlib/os/bare/bare_example_linux.v
-      - name: v self compilation
+      - name: V self compilation
         run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
-      # QTODO
-      #      - name: v self compilation with -usecache
-      #        run: |
-      #          ./v -o v2 -usecache cmd/v
-      #          ./v2 -o v3 -usecache cmd/v
-      #          ./v3 -usecache examples/tetris/tetris.v
+      - name: V self compilation with -usecache
+        run: |
+          unset VFLAGS
+          ./v -usecache examples/hello_world.v && examples/hello_world
+          ./v  -o v2     -usecache cmd/v
+          ./v2 -o v3     -usecache cmd/v
+          ./v3 version
+          ./v3 -o tetris -usecache examples/tetris/tetris.v
       - name: Verify `v test` works
         run: |
+          echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Self tests
@@ -464,14 +471,17 @@ jobs:
           ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v5 -o v.c cmd/v
       - name: v self compilation
         run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
-      # QTODO
-      #      - name: v self compilation with -usecache
-      #        run: |
-      #          ./v -o v2 -usecache cmd/v
-      #          ./v2 -o v3 -usecache cmd/v
-      #          ./v3 -usecache examples/tetris/tetris.v
+      - name: v self compilation with -usecache
+        run: |
+          unset VFLAGS
+          ./v -usecache examples/hello_world.v && examples/hello_world
+          ./v  -o v2     -usecache cmd/v
+          ./v2 -o v3     -usecache cmd/v
+          ./v3 version
+          ./v3 -o tetris -usecache examples/tetris/tetris.v
       - name: Verify `v test` works
         run: |
+          echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Self tests
@@ -548,6 +558,7 @@ jobs:
           echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
       - name: Verify `v test` works
         run: |
+          echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Test V fixed tests
@@ -604,6 +615,7 @@ jobs:
           ./v doctor
       - name: Verify `v test` works
         run: |
+          echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Self tests
@@ -646,6 +658,7 @@ jobs:
           ./v doctor
       - name: Verify `v test` works
         run: |
+          echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Self tests

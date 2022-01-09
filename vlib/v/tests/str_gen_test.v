@@ -321,7 +321,7 @@ struct MultiGenericStruct<T, X> {
 }
 
 fn test_multi_generic_struct() {
-	x := MultiGenericStruct<TestStruct,TestStruct>{}
+	x := MultiGenericStruct<TestStruct, TestStruct>{}
 	assert '$x' == 'MultiGenericStruct<TestStruct, TestStruct>{\n    t: TestStruct{\n        x: 0\n    }\n    x: TestStruct{\n        x: 0\n    }\n}'
 	assert x.str() == 'MultiGenericStruct<TestStruct, TestStruct>{\n    t: TestStruct{\n        x: 0\n    }\n    x: TestStruct{\n        x: 0\n    }\n}'
 }

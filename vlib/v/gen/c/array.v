@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module c
 
@@ -382,7 +382,7 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	// `users.sort(a.age > b.age)`
 	// Generate a comparison function for a custom type
 	elem_stype := g.typ(info.elem_type)
-	mut compare_fn := 'compare_${elem_stype.replace('*', '_ptr')}'
+	mut compare_fn := 'compare_${g.unique_file_path_hash}_${elem_stype.replace('*', '_ptr')}'
 	mut comparison_type := g.unwrap(ast.void_type)
 	mut left_expr, mut right_expr := '', ''
 	// the only argument can only be an infix expression like `a < b` or `b.field > a.field`
@@ -443,7 +443,7 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	}
 
 	stype_arg := g.typ(info.elem_type)
-	g.definitions.writeln('int ${compare_fn}($stype_arg* a, $stype_arg* b) {')
+	g.definitions.writeln('VV_LOCAL_SYMBOL int ${compare_fn}($stype_arg* a, $stype_arg* b) {')
 	c_condition := if comparison_type.sym.has_method('<') {
 		'${g.typ(comparison_type.typ)}__lt($left_expr, $right_expr)'
 	} else if comparison_type.unaliased_sym.has_method('<') {

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
@@ -146,9 +146,9 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				}
 			}
 			if right.is_auto_deref_var() {
-				left_type = c.table.mktyp(right_type.deref())
+				left_type = ast.mktyp(right_type.deref())
 			} else {
-				left_type = c.table.mktyp(right_type)
+				left_type = ast.mktyp(right_type)
 			}
 			if left_type == ast.int_type {
 				if right is ast.IntegerLiteral {

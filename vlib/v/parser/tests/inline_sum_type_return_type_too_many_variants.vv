@@ -1,0 +1,9 @@
+import v.token
+
+struct Foo {
+	bar int | string | token.Position | bool | u32
+}
+
+fn foo(arg int | string | token.Position | bool | u32) int | string | token.Position | bool | u32 {
+	return 1
+}

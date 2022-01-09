@@ -26,8 +26,8 @@ const (
 struct App {
 mut:
 	gg          &gg.Context
-	pip_3d      C.sgl_pipeline
-	texture     C.sg_image
+	pip_3d      sgl.Pipeline
+	texture     gfx.Image
 	init_flag   bool
 	frame_count int
 	mouse_x     int = -1
@@ -39,9 +39,9 @@ mut:
 * Texture functions
 *
 ******************************************************************************/
-fn create_texture(w int, h int, buf &u8) C.sg_image {
+fn create_texture(w int, h int, buf &u8) gfx.Image {
 	sz := w * h * 4
-	mut img_desc := C.sg_image_desc{
+	mut img_desc := gfx.ImageDesc{
 		width: w
 		height: h
 		num_mipmaps: 0
@@ -54,28 +54,28 @@ fn create_texture(w int, h int, buf &u8) C.sg_image {
 		d3d11_texture: 0
 	}
 	// commen if .dynamic is enabled
-	img_desc.data.subimage[0][0] = C.sg_range{
+	img_desc.data.subimage[0][0] = gfx.Range{
 		ptr: buf
 		size: usize(sz)
 	}
 
-	sg_img := C.sg_make_image(&img_desc)
+	sg_img := gfx.make_image(&img_desc)
 	return sg_img
 }
 
-fn destroy_texture(sg_img C.sg_image) {
-	C.sg_destroy_image(sg_img)
+fn destroy_texture(sg_img gfx.Image) {
+	gfx.destroy_image(sg_img)
 }
 
 // Use only if usage: .dynamic is enabled
-fn update_text_texture(sg_img C.sg_image, w int, h int, buf &byte) {
+fn update_text_texture(sg_img gfx.Image, w int, h int, buf &byte) {
 	sz := w * h * 4
-	mut tmp_sbc := C.sg_image_data{}
-	tmp_sbc.subimage[0][0] = C.sg_range{
+	mut tmp_sbc := gfx.ImageData{}
+	tmp_sbc.subimage[0][0] = gfx.Range{
 		ptr: buf
 		size: usize(sz)
 	}
-	C.sg_update_image(sg_img, &tmp_sbc)
+	gfx.update_image(sg_img, &tmp_sbc)
 }
 
 /******************************************************************************
@@ -315,27 +315,27 @@ fn my_init(mut app App) {
 	// for a large number of the same type of object it is better use the instances!!
 	desc := sapp.create_desc()
 	gfx.setup(&desc)
-	sgl_desc := C.sgl_desc_t{
+	sgl_desc := sgl.Desc{
 		max_vertices: 50 * 65536
 	}
 	sgl.setup(&sgl_desc)
 
 	// 3d pipeline
-	mut pipdesc := C.sg_pipeline_desc{}
+	mut pipdesc := gfx.PipelineDesc{}
 	unsafe { C.memset(&pipdesc, 0, sizeof(pipdesc)) }
 
-	color_state := C.sg_color_state{
-		blend: C.sg_blend_state{
+	color_state := gfx.ColorState{
+		blend: gfx.BlendState{
 			enabled: true
-			src_factor_rgb: gfx.BlendFactor(C.SG_BLENDFACTOR_SRC_ALPHA)
-			dst_factor_rgb: gfx.BlendFactor(C.SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA)
+			src_factor_rgb: .src_alpha
+			dst_factor_rgb: .one_minus_src_alpha
 		}
 	}
 	pipdesc.colors[0] = color_state
 
-	pipdesc.depth = C.sg_depth_state{
+	pipdesc.depth = gfx.DepthState{
 		write_enabled: true
-		compare: gfx.CompareFunc(C.SG_COMPAREFUNC_LESS_EQUAL)
+		compare: .less_equal
 	}
 	pipdesc.cull_mode = .back
 	app.pip_3d = sgl.make_pipeline(&pipdesc)

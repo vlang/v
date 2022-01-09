@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module main
@@ -28,6 +28,10 @@ const (
 	supported_vcs_outdated_steps = {
 		'git': ['git fetch', 'git rev-parse @', 'git rev-parse @{u}']
 		'hg':  ['hg incoming']
+	}
+	supported_vcs_version_cmds = {
+		'git': 'git version'
+		'hg':  'hg version'
 	}
 )
 
@@ -193,7 +197,11 @@ fn vpm_install_from_vpm(module_names []string) {
 			println('Skipping module "$name", since it uses an unsupported VCS {$vcs} .')
 			continue
 		}
-
+		if !ensure_vcs_is_installed(vcs) {
+			errors++
+			println('VPM needs `$vcs` to be installed.')
+			continue
+		}
 		mod_name_as_path := mod.name.replace('.', os.path_separator).replace('-', '_').to_lower()
 		final_module_path := os.real_path(os.join_path(settings.vmodules_path, mod_name_as_path))
 		if os.exists(final_module_path) {
@@ -208,8 +216,7 @@ fn vpm_install_from_vpm(module_names []string) {
 		if cmdres.exit_code != 0 {
 			errors++
 			println('Failed installing module "$name" to "$final_module_path" .')
-			verbose_println('Failed command: $cmd')
-			verbose_println('Failed command output:\n$cmdres.output')
+			print_failed_cmd(cmd, cmdres)
 			continue
 		}
 		resolve_dependencies(name, final_module_path, module_names)
@@ -217,6 +224,22 @@ fn vpm_install_from_vpm(module_names []string) {
 	if errors > 0 {
 		exit(1)
 	}
+}
+
+fn print_failed_cmd(cmd string, cmdres os.Result) {
+	verbose_println('Failed command: $cmd')
+	verbose_println('Failed command output:\n$cmdres.output')
+}
+
+fn ensure_vcs_is_installed(vcs string) bool {
+	mut res := true
+	cmd := supported_vcs_version_cmds[vcs]
+	cmdres := os.execute(cmd)
+	if cmdres.exit_code != 0 {
+		print_failed_cmd(cmd, cmdres)
+		res = false
+	}
+	return res
 }
 
 fn vpm_install_from_vcs(module_names []string, vcs_key string) {
@@ -248,6 +271,11 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 			vpm_update([name.replace('-', '_')])
 			continue
 		}
+		if !ensure_vcs_is_installed(vcs_key) {
+			errors++
+			println('VPM needs `$vcs_key` to be installed.')
+			continue
+		}
 		println('Installing module "$name" from $url to $final_module_path ...')
 		vcs_install_cmd := supported_vcs_install_cmds[vcs_key]
 		cmd := '$vcs_install_cmd "$url" "$final_module_path"'
@@ -256,8 +284,7 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 		if cmdres.exit_code != 0 {
 			errors++
 			println('Failed installing module "$name" to "$final_module_path" .')
-			verbose_println('Failed command: $cmd')
-			verbose_println('Failed command output:\n$cmdres.output')
+			print_failed_cmd(cmd, cmdres)
 			continue
 		}
 		vmod_path := os.join_path(final_module_path, 'v.mod')
@@ -337,14 +364,18 @@ fn vpm_update(m []string) {
 		println('Updating module "$name"...')
 		verbose_println('  work folder: $final_module_path')
 		vcs := vcs_used_in_dir(final_module_path) or { continue }
+		if !ensure_vcs_is_installed(vcs[0]) {
+			errors++
+			println('VPM needs `$vcs` to be installed.')
+			continue
+		}
 		vcs_cmd := supported_vcs_update_cmds[vcs[0]]
 		verbose_println('    command: $vcs_cmd')
 		vcs_res := os.execute('$vcs_cmd')
 		if vcs_res.exit_code != 0 {
 			errors++
 			println('Failed updating module "$name".')
-			verbose_println('Failed command: $vcs_cmd')
-			verbose_println('Failed details:\n$vcs_res.output')
+			print_failed_cmd(vcs_cmd, vcs_res)
 			continue
 		} else {
 			verbose_println('    $vcs_res.output.trim_space()')

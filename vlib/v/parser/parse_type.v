@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -8,8 +8,12 @@ import v.ast
 import v.util
 import v.token
 
-pub fn (mut p Parser) parse_array_type() ast.Type {
-	p.check(.lsbr)
+const (
+	maximum_inline_sum_type_variants = 3
+)
+
+pub fn (mut p Parser) parse_array_type(expecting token.Kind) ast.Type {
+	p.check(expecting)
 	// fixed array
 	if p.tok.kind in [.number, .name] {
 		mut fixed_size := 0
@@ -88,7 +92,7 @@ pub fn (mut p Parser) parse_array_type() ast.Type {
 	mut nr_dims := 1
 	// detect attr
 	not_attr := p.peek_tok.kind != .name && p.peek_token(2).kind !in [.semicolon, .rsbr]
-	for p.tok.kind == .lsbr && not_attr {
+	for p.tok.kind == expecting && not_attr {
 		p.next()
 		p.check(.rsbr)
 		nr_dims++
@@ -248,6 +252,7 @@ pub fn (mut p Parser) parse_fn_type(name string) ast.Type {
 		is_variadic: is_variadic
 		return_type: return_type
 		return_type_pos: return_type_pos
+		is_method: false
 	}
 	// MapFooFn typedefs are manually added in cheaders.v
 	// because typedefs get generated after the map struct is generated
@@ -283,9 +288,74 @@ pub fn (mut p Parser) parse_language() ast.Language {
 	return language
 }
 
+// parse_inline_sum_type parses the type and registers it in case the type is an anonymous sum type.
+// It also takes care of inline sum types where parse_type only parses a standalone type.
+pub fn (mut p Parser) parse_inline_sum_type() ast.Type {
+	variants := p.parse_sum_type_variants()
+	if variants.len > 1 {
+		if variants.len > parser.maximum_inline_sum_type_variants {
+			pos := variants[0].pos.extend(variants[variants.len - 1].pos)
+			p.warn_with_pos('an inline sum type expects a maximum of $parser.maximum_inline_sum_type_variants types ($variants.len were given)',
+				pos)
+		}
+		mut variant_names := variants.map(p.table.sym(it.typ).name)
+		variant_names.sort()
+		// deterministic name
+		name := '_v_anon_sum_type_${variant_names.join('_')}'
+		variant_types := variants.map(it.typ)
+		prepend_mod_name := p.prepend_mod(name)
+		mut idx := p.table.find_type_idx(prepend_mod_name)
+		if idx > 0 {
+			return ast.new_type(idx)
+		}
+		idx = p.table.register_type_symbol(ast.TypeSymbol{
+			kind: .sum_type
+			name: prepend_mod_name
+			cname: util.no_dots(prepend_mod_name)
+			mod: p.mod
+			info: ast.SumType{
+				is_anon: true
+				variants: variant_types
+			}
+		})
+		return ast.new_type(idx)
+	} else if variants.len == 1 {
+		return variants[0].typ
+	}
+	return ast.Type(0)
+}
+
+// parse_sum_type_variants parses several types separated with a pipe and returns them as a list with at least one node.
+// If there is less than one node, it will add an error to the error list.
+pub fn (mut p Parser) parse_sum_type_variants() []ast.TypeNode {
+	p.inside_sum_type = true
+	defer {
+		p.inside_sum_type = false
+	}
+	mut types := []ast.TypeNode{}
+	for {
+		type_start_pos := p.tok.position()
+		typ := p.parse_type()
+		// TODO: needs to be its own var, otherwise TCC fails because of a known stack error
+		prev_tok := p.prev_tok
+		type_end_pos := prev_tok.position()
+		type_pos := type_start_pos.extend(type_end_pos)
+		types << ast.TypeNode{
+			typ: typ
+			pos: type_pos
+		}
+		if p.tok.kind != .pipe {
+			break
+		}
+		p.check(.pipe)
+	}
+	return types
+}
+
 pub fn (mut p Parser) parse_type() ast.Type {
 	// optional
 	mut is_optional := false
+	optional_pos := p.tok.position()
 	if p.tok.kind == .question {
 		line_nr := p.tok.line_nr
 		p.next()
@@ -333,6 +403,10 @@ pub fn (mut p Parser) parse_type() ast.Type {
 			p.error_with_pos('use `?` instead of `?void`', pos)
 			return 0
 		}
+		sym := p.table.sym(typ)
+		if is_optional && sym.info is ast.SumType && (sym.info as ast.SumType).is_anon {
+			p.error_with_pos('an inline sum type cannot be optional', optional_pos.extend(p.prev_tok.position()))
+		}
 	}
 	if is_optional {
 		typ = typ.set_flag(.optional)
@@ -363,7 +437,6 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 		name = 'JS.$name'
 	} else if p.peek_tok.kind == .dot && check_dot {
 		// `module.Type`
-		// /if !(p.tok.lit in p.table.imports) {
 		mut mod := name
 		mut mod_pos := p.tok.position()
 		p.next()
@@ -394,7 +467,7 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 			p.error('imported types must start with a capital letter')
 			return 0
 		}
-	} else if p.expr_mod != '' && !p.in_generic_params { // p.expr_mod is from the struct and not from the generic parameter
+	} else if p.expr_mod != '' && !p.inside_generic_params { // p.expr_mod is from the struct and not from the generic parameter
 		name = p.expr_mod + '.' + name
 	} else if name in p.imported_symbols {
 		name = p.imported_symbols[name]
@@ -402,26 +475,28 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 		// `Foo` in module `mod` means `mod.Foo`
 		name = p.mod + '.' + name
 	}
-	// p.warn('get type $name')
 	match p.tok.kind {
 		.key_fn {
 			// func
 			return p.parse_fn_type('')
 		}
-		.lsbr {
+		.lsbr, .nilsbr {
 			// array
-			return p.parse_array_type()
-		}
-		.lpar {
-			// multiple return
-			if is_ptr {
-				p.error('parse_type: unexpected `&` before multiple returns')
-				return 0
-			}
-			return p.parse_multi_return_type()
+			return p.parse_array_type(p.tok.kind)
 		}
 		else {
-			// no p.next()
+			if p.tok.kind == .lpar && !p.inside_sum_type {
+				// multiple return
+				if is_ptr {
+					p.error('parse_type: unexpected `&` before multiple returns')
+					return 0
+				}
+				return p.parse_multi_return_type()
+			}
+			if ((p.peek_tok.kind == .dot && p.peek_token(3).kind == .pipe)
+				|| p.peek_tok.kind == .pipe) && !p.inside_sum_type && !p.inside_receiver_param {
+				return p.parse_inline_sum_type()
+			}
 			if name == 'map' {
 				return p.parse_map_type()
 			}
@@ -541,7 +616,7 @@ pub fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 	mut bs_cname := name
 	start_pos := p.tok.position()
 	p.next()
-	p.in_generic_params = true
+	p.inside_generic_params = true
 	bs_name += '<'
 	bs_cname += '_T_'
 	mut concrete_types := []ast.Type{}
@@ -564,7 +639,7 @@ pub fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 	}
 	concrete_types_pos := start_pos.extend(p.tok.position())
 	p.check(.gt)
-	p.in_generic_params = false
+	p.inside_generic_params = false
 	bs_name += '>'
 	// fmt operates on a per-file basis, so is_instance might be not set correctly. Thus it's ignored.
 	if (is_instance || p.pref.is_fmt) && concrete_types.len > 0 {

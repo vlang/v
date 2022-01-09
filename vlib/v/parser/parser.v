@@ -1,6 +1,7 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+[has_globals]
 module parser
 
 import v.scanner
@@ -26,65 +27,70 @@ mut:
 	scanner           &scanner.Scanner
 	comments_mode     scanner.CommentsMode = .skip_comments
 	// see comment in parse_file
-	tok                 token.Token
-	prev_tok            token.Token
-	peek_tok            token.Token
-	table               &ast.Table
-	language            ast.Language
-	fn_language         ast.Language // .c for `fn C.abcd()` declarations
-	inside_vlib_file    bool // true for all vlib/ files
-	inside_test_file    bool // when inside _test.v or _test.vv file
-	inside_if           bool
-	inside_if_expr      bool
-	inside_ct_if_expr   bool
-	inside_or_expr      bool
-	inside_for          bool
-	inside_fn           bool // true even with implicit main
-	inside_unsafe_fn    bool
-	inside_str_interp   bool
-	inside_array_lit    bool
-	inside_in_array     bool
-	or_is_handled       bool       // ignore `or` in this expression
-	builtin_mod         bool       // are we in the `builtin` module?
-	mod                 string     // current module name
-	is_manualfree       bool       // true when `[manualfree] module abc`, makes *all* fns in the current .v file, opt out of autofree
-	has_globals         bool       // `[has_globals] module abc` - allow globals declarations, even without -enable-globals, in that single .v file __only__
-	is_generated        bool       // `[generated] module abc` - turn off compiler notices for that single .v file __only__.
-	attrs               []ast.Attr // attributes before next decl stmt
-	expr_mod            string     // for constructing full type names in parse_type()
-	scope               &ast.Scope
-	imports             map[string]string // alias => mod_name
-	ast_imports         []ast.Import      // mod_names
-	used_imports        []string // alias
-	auto_imports        []string // imports, the user does not need to specify
-	imported_symbols    map[string]string
-	is_amp              bool // for generating the right code for `&Foo{}`
-	returns             bool
-	inside_match        bool // to separate `match A { }` from `Struct{}`
-	inside_select       bool // to allow `ch <- Struct{} {` inside `select`
-	inside_match_case   bool // to separate `match_expr { }` from `Struct{}`
-	inside_match_body   bool // to fix eval not used TODO
-	inside_unsafe       bool
-	is_stmt_ident       bool // true while the beginning of a statement is an ident/selector
-	expecting_type      bool // `is Type`, expecting type
-	errors              []errors.Error
-	warnings            []errors.Warning
-	notices             []errors.Notice
-	vet_errors          []vet.Error
-	cur_fn_name         string
-	label_names         []string
-	in_generic_params   bool // indicates if parsing between `<` and `>` of a method/function
-	name_error          bool // indicates if the token is not a name or the name is on another line
-	n_asm               int  // controls assembly labels
-	inside_asm_template bool
-	inside_asm          bool
-	global_labels       []string
-	inside_defer        bool
-	comptime_if_cond    bool
-	defer_vars          []ast.Ident
-	should_abort        bool // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the parser should stop
-	codegen_text        string
+	tok                   token.Token
+	prev_tok              token.Token
+	peek_tok              token.Token
+	table                 &ast.Table
+	language              ast.Language
+	fn_language           ast.Language // .c for `fn C.abcd()` declarations
+	expr_level            int  // prevent too deep recursions for pathological programs
+	inside_vlib_file      bool // true for all vlib/ files
+	inside_test_file      bool // when inside _test.v or _test.vv file
+	inside_if             bool
+	inside_if_expr        bool
+	inside_ct_if_expr     bool
+	inside_or_expr        bool
+	inside_for            bool
+	inside_fn             bool // true even with implicit main
+	inside_unsafe_fn      bool
+	inside_str_interp     bool
+	inside_array_lit      bool
+	inside_in_array       bool
+	inside_match          bool // to separate `match A { }` from `Struct{}`
+	inside_select         bool // to allow `ch <- Struct{} {` inside `select`
+	inside_match_case     bool // to separate `match_expr { }` from `Struct{}`
+	inside_match_body     bool // to fix eval not used TODO
+	inside_unsafe         bool
+	inside_sum_type       bool // to prevent parsing inline sum type again
+	inside_asm_template   bool
+	inside_asm            bool
+	inside_defer          bool
+	inside_generic_params bool       // indicates if parsing between `<` and `>` of a method/function
+	inside_receiver_param bool       // indicates if parsing the receiver parameter inside the first `(` and `)` of a method
+	or_is_handled         bool       // ignore `or` in this expression
+	builtin_mod           bool       // are we in the `builtin` module?
+	mod                   string     // current module name
+	is_manualfree         bool       // true when `[manualfree] module abc`, makes *all* fns in the current .v file, opt out of autofree
+	has_globals           bool       // `[has_globals] module abc` - allow globals declarations, even without -enable-globals, in that single .v file __only__
+	is_generated          bool       // `[generated] module abc` - turn off compiler notices for that single .v file __only__.
+	attrs                 []ast.Attr // attributes before next decl stmt
+	expr_mod              string     // for constructing full type names in parse_type()
+	scope                 &ast.Scope
+	imports               map[string]string // alias => mod_name
+	ast_imports           []ast.Import      // mod_names
+	used_imports          []string // alias
+	auto_imports          []string // imports, the user does not need to specify
+	imported_symbols      map[string]string
+	is_amp                bool // for generating the right code for `&Foo{}`
+	returns               bool
+	is_stmt_ident         bool // true while the beginning of a statement is an ident/selector
+	expecting_type        bool // `is Type`, expecting type
+	errors                []errors.Error
+	warnings              []errors.Warning
+	notices               []errors.Notice
+	vet_errors            []vet.Error
+	cur_fn_name           string
+	label_names           []string
+	name_error            bool // indicates if the token is not a name or the name is on another line
+	n_asm                 int  // controls assembly labels
+	global_labels         []string
+	comptime_if_cond      bool
+	defer_vars            []ast.Ident
+	should_abort          bool // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the parser should stop
+	codegen_text          string
 }
+
+__global codegen_files = []&ast.File{}
 
 // for tests
 pub fn parse_stmt(text string, table &ast.Table, scope &ast.Scope) ast.Stmt {
@@ -308,9 +314,8 @@ pub fn (mut p Parser) parse() &ast.File {
 
 	// codegen
 	if p.codegen_text.len > 0 && !p.pref.is_fmt {
-		ptext := 'module ' + p.mod.all_after('.') + p.codegen_text
-		codegen_file := parse_text(ptext, p.file_name, p.table, p.comments_mode, p.pref)
-		stmts << codegen_file.stmts
+		ptext := 'module ' + p.mod.all_after_last('.') + p.codegen_text
+		codegen_files << parse_text(ptext, p.file_name, p.table, p.comments_mode, p.pref)
 	}
 
 	return &ast.File{
@@ -400,6 +405,10 @@ pub fn parse_files(paths []string, table &ast.Table, pref &pref.Preferences) []&
 		timers.start('parse_file $path')
 		files << parse_file(path, table, .skip_comments, pref)
 		timers.show('parse_file $path')
+	}
+	if codegen_files.len > 0 {
+		files << codegen_files
+		codegen_files.clear()
 	}
 	return files
 }
@@ -2354,7 +2363,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	return node
 }
 
-fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
+fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 	// left == `a` in `a[0]`
 	start_pos := p.tok.position()
 	p.next() // [
@@ -2379,7 +2388,9 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 				high: high
 				has_high: has_high
 				pos: pos
+				is_gated: is_gated
 			}
+			is_gated: is_gated
 		}
 	}
 	expr := p.expr(0) // `[expr]` or  `[expr..`
@@ -2403,7 +2414,9 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 				has_high: has_high
 				has_low: has_low
 				pos: pos
+				is_gated: is_gated
 			}
+			is_gated: is_gated
 		}
 	}
 	// [expr]
@@ -2433,6 +2446,7 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 					stmts: or_stmts
 					pos: or_pos
 				}
+				is_gated: is_gated
 			}
 		}
 		// `a[i] ?`
@@ -2451,6 +2465,7 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 			stmts: or_stmts
 			pos: or_pos
 		}
+		is_gated: is_gated
 	}
 }
 
@@ -3413,32 +3428,16 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			comments: comments
 		}
 	}
-	first_type := p.parse_type() // need to parse the first type before we can check if it's `type A = X | Y`
-	type_alias_pos := p.tok.position()
-	if p.tok.kind == .pipe {
-		mut type_end_pos := p.prev_tok.position()
-		type_pos = type_pos.extend(type_end_pos)
-		p.next()
-		sum_variants << ast.TypeNode{
-			typ: first_type
-			pos: type_pos
-		}
-		// type SumType = A | B | c
-		for {
-			type_pos = p.tok.position()
-			variant_type := p.parse_type()
-			// TODO: needs to be its own var, otherwise TCC fails because of a known stack error
-			prev_tok := p.prev_tok
-			type_end_pos = prev_tok.position()
-			type_pos = type_pos.extend(type_end_pos)
-			sum_variants << ast.TypeNode{
-				typ: variant_type
-				pos: type_pos
+	sum_variants << p.parse_sum_type_variants()
+	// type SumType = A | B | c
+	if sum_variants.len > 1 {
+		for variant in sum_variants {
+			variant_sym := p.table.sym(variant.typ)
+			// TODO: implement this check for error too
+			if variant_sym.kind == .none_ {
+				p.error_with_pos('named sum type cannot have none as its variant', variant.pos)
+				return ast.AliasTypeDecl{}
 			}
-			if p.tok.kind != .pipe {
-				break
-			}
-			p.check(.pipe)
 		}
 		variant_types := sum_variants.map(it.typ)
 		prepend_mod_name := p.prepend_mod(name)
@@ -3466,6 +3465,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			is_pub: is_pub
 			variants: sum_variants
 			generic_types: generic_types
+			attrs: p.attrs
 			pos: decl_pos
 			comments: comments
 		}
@@ -3475,7 +3475,8 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		p.error_with_pos('generic type aliases are not yet implemented', decl_pos_with_generics)
 		return ast.AliasTypeDecl{}
 	}
-	parent_type := first_type
+	// sum_variants will have only one element
+	parent_type := sum_variants[0].typ
 	parent_sym := p.table.sym(parent_type)
 	pidx := parent_type.idx()
 	p.check_for_impure_v(parent_sym.language, decl_pos)
@@ -3499,6 +3500,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		return ast.AliasTypeDecl{}
 	}
 	if idx == pidx {
+		type_alias_pos := sum_variants[0].pos
 		p.error_with_pos('a type alias can not refer to itself: $name', decl_pos.extend(type_alias_pos))
 		return ast.AliasTypeDecl{}
 	}
@@ -3601,6 +3603,7 @@ fn (mut p Parser) rewind_scanner_to_current_token_in_new_mode() {
 	}
 }
 
+// returns true if `varname` is known
 pub fn (mut p Parser) mark_var_as_used(varname string) bool {
 	if obj := p.scope.find(varname) {
 		match mut obj {
@@ -3608,6 +3611,13 @@ pub fn (mut p Parser) mark_var_as_used(varname string) bool {
 				obj.is_used = true
 				return true
 			}
+			ast.GlobalField {
+				// obj.is_used = true
+				return true
+			}
+			// ast.ConstField {
+			// return true
+			//}
 			else {}
 		}
 	}

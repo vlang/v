@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module math
@@ -59,24 +59,6 @@ pub fn digits(_n int, base int) []int {
 		n /= base
 	}
 	return res
-}
-
-// max returns the maximum value of the two provided.
-[inline]
-pub fn max(a f64, b f64) f64 {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-// min returns the minimum value of the two provided.
-[inline]
-pub fn min(a f64, b f64) f64 {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 // minmax returns the minimum and maximum value of the two provided.

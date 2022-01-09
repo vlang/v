@@ -175,7 +175,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	g.enter_namespace('main')
 	// generate JS methods for interface methods
 	for iface_name, iface_types in g.table.iface_types {
-		iface := g.table.find_type(iface_name) or { panic('unreachable: interface must exist') }
+		iface := g.table.find_sym(iface_name) or { panic('unreachable: interface must exist') }
 		for ty in iface_types {
 			sym := g.table.sym(ty)
 			for method in iface.methods {
@@ -1327,7 +1327,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 				is_ptr = true
 				g.write('.val')
 			}
-
+			mut floor := false
 			if false && g.inside_map_set && op == .assign {
 				g.inside_map_set = false
 				g.write('] = ')
@@ -1338,6 +1338,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 			} else {
 				if is_assign && array_set {
 					g.write('new ${styp}(')
+
 					g.expr(left)
 					l_sym := g.table.sym(stmt.left_types[i])
 					if l_sym.kind == .string {
@@ -1391,6 +1392,11 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 
 					if !array_set {
 						g.write(' = ')
+					}
+					if (l_sym.name != 'f64' || l_sym.name != 'f32')
+						&& (l_sym.name != 'i64' && l_sym.name != 'u64') && l_sym.name != 'string' {
+						g.write('Math.floor(')
+						floor = true
 					}
 					g.expr(left)
 
@@ -1458,6 +1464,9 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt, semicolon bool) {
 					g.cast_stack.delete_last()
 				}
 				if is_assign && array_set {
+					g.write(')')
+				}
+				if floor {
 					g.write(')')
 				}
 			}
@@ -1914,7 +1923,11 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	// gen toString method
 	fn_names := fns.map(it.name)
 	if 'toString' !in fn_names {
-		g.writeln('toString() {')
+		if g.pref.output_es5 {
+			g.writeln('toString: (function() {')
+		} else {
+			g.writeln('toString() {')
+		}
 		g.inc_indent()
 		g.write('return `$js_name {')
 		for i, field in node.fields {
@@ -1930,7 +1943,11 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 		}
 		g.writeln('}`')
 		g.dec_indent()
-		g.writeln('},')
+		if g.pref.output_es5 {
+			g.writeln('}).bind(this),')
+		} else {
+			g.writeln('},')
+		}
 	}
 	for field in node.fields {
 		typ := g.typ(field.typ)
@@ -1946,8 +1963,11 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 			g.writeln(',')
 		}
 	}
-	g.writeln('\$toJS() { return this; }')
-
+	if g.pref.output_es5 {
+		g.writeln('\$toJS: (function() { return this; }).bind(this)')
+	} else {
+		g.writeln('\$toJS() { return this; }')
+	}
 	g.writeln('};\n')
 	g.dec_indent()
 
@@ -3426,7 +3446,7 @@ fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
 	}
 
 	if (from_type_sym.name == 'Any' && from_type_sym.language == .js)
-		|| from_type_sym.name == 'JS.Any' {
+		|| from_type_sym.name == 'JS.Any' || from_type_sym.name == 'voidptr' {
 		if it.typ.is_ptr() {
 			g.write('new \$ref(')
 		}

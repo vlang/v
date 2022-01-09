@@ -37,6 +37,7 @@ NB: the build flags are shared with the run command too:
       Specify the backend to use while building the executable.
       Current list of supported backends:
       * `c` (default)       - V outputs C source code which is passed to a C compiler to be compiled.
+      * `interpret`         - Same as `v interpret` to run the V program
       * `js`                - V outputs JS source code which can be passed to NodeJS to be ran.
       * `js_browser`        - V outputs JS source code ready for the browser.
       * `js_node`           - V outputs JS source code to run with nodejs.

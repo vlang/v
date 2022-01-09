@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -584,6 +584,8 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 				return_type: method.return_type
 				is_variadic: is_variadic
 				is_pub: true
+				is_method: true
+				receiver_type: typ
 			}
 			ts.register_method(tmethod)
 			info.methods << tmethod

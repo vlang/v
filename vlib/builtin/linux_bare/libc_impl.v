@@ -1,5 +1,9 @@
 module builtin
 
+import dlmalloc
+
+__global global_allocator dlmalloc.Dlmalloc
+
 [unsafe]
 pub fn memcpy(dest &C.void, src &C.void, n usize) &C.void {
 	dest_ := unsafe { &byte(dest) }
@@ -15,7 +19,7 @@ pub fn memcpy(dest &C.void, src &C.void, n usize) &C.void {
 [export: 'malloc']
 [unsafe]
 fn __malloc(n usize) &C.void {
-	return unsafe { malloc(int(n)) }
+	return unsafe { global_allocator.malloc(n) }
 }
 
 [unsafe]
@@ -107,10 +111,8 @@ fn memcmp(a &C.void, b &C.void, n usize) int {
 [export: 'free']
 [unsafe]
 fn __free(ptr &C.void) {
-	err := mm_free(ptr)
-	if err != .enoerror {
-		eprintln('free error:')
-		panic(err)
+	unsafe {
+		global_allocator.free_(ptr)
 	}
 }
 
@@ -127,7 +129,7 @@ fn bare_read(buf &byte, count u64) (i64, Errno) {
 	return sys_read(0, buf, count)
 }
 
-fn bare_print(buf &byte, len u64) {
+pub fn bare_print(buf &byte, len u64) {
 	sys_write(1, buf, len)
 }
 
@@ -159,4 +161,8 @@ fn __exit(code int) {
 [export: 'qsort']
 fn __qsort(base voidptr, nmemb usize, size usize, sort_cb FnSortCB) {
 	panic('qsort() is not yet implemented in `-freestanding`')
+}
+
+fn init_global_allocator() {
+	global_allocator = dlmalloc.new(get_linux_allocator())
 }

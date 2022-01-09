@@ -24,14 +24,14 @@ fn main() {
 }
 
 struct App {
-	pass_action C.sg_pass_action
+	pass_action gfx.PassAction
 mut:
 	width     int
 	height    int
 	frame     i64
 	last      i64
 	ps        particle.System
-	alpha_pip C.sgl_pipeline
+	alpha_pip sgl.Pipeline
 }
 
 fn (mut a App) init() {
@@ -52,7 +52,7 @@ fn (mut a App) cleanup() {
 
 fn (mut a App) run() {
 	title := 'V Particle Example'
-	desc := C.sapp_desc{
+	desc := sapp.Desc{
 		width: a.width
 		height: a.height
 		user_data: a
@@ -75,18 +75,18 @@ fn init(user_data voidptr) {
 	mut app := &App(user_data)
 	desc := sapp.create_desc()
 	gfx.setup(&desc)
-	sgl_desc := C.sgl_desc_t{
+	sgl_desc := sgl.Desc{
 		max_vertices: 50 * 65536
 	}
 	sgl.setup(&sgl_desc)
-	mut pipdesc := C.sg_pipeline_desc{}
+	mut pipdesc := gfx.PipelineDesc{}
 	unsafe { C.memset(&pipdesc, 0, sizeof(pipdesc)) }
 
-	color_state := C.sg_color_state{
-		blend: C.sg_blend_state{
+	color_state := gfx.ColorState{
+		blend: gfx.BlendState{
 			enabled: true
-			src_factor_rgb: gfx.BlendFactor(C.SG_BLENDFACTOR_SRC_ALPHA)
-			dst_factor_rgb: gfx.BlendFactor(C.SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA)
+			src_factor_rgb: .src_alpha
+			dst_factor_rgb: .one_minus_src_alpha
 		}
 	}
 	pipdesc.colors[0] = color_state
@@ -117,7 +117,7 @@ fn frame(user_data voidptr) {
 	app.last = t
 }
 
-fn event(ev &C.sapp_event, mut app App) {
+fn event(ev &sapp.Event, mut app App) {
 	if ev.@type == .mouse_move {
 		app.ps.explode(ev.mouse_x, ev.mouse_y)
 	}

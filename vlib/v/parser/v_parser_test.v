@@ -133,7 +133,7 @@ fn test_parse_expr() {
 	mut e := []ast.Stmt{}
 	table := ast.new_table()
 	vpref := &pref.Preferences{}
-	mut checker := checker.new_checker(table, vpref)
+	mut chk := checker.new_checker(table, vpref)
 	scope := &ast.Scope{
 		start_pos: 0
 		parent: 0
@@ -147,7 +147,7 @@ fn test_parse_expr() {
 		scope: scope
 		global_scope: scope
 	}
-	checker.check(program)
+	chk.check(program)
 	res := c.gen([program], table, vpref).after('#endif')
 	println('========')
 	println(res)

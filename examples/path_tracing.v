@@ -1,7 +1,7 @@
 /**********************************************************************
 * path tracing demo
 *
-* Copyright (c) 2019-2021 Dario Deledda. All rights reserved.
+* Copyright (c) 2019-2022 Dario Deledda. All rights reserved.
 * Use of this source code is governed by an MIT license
 * that can be found in the LICENSE file.
 *
@@ -532,8 +532,10 @@ fn ray_trace(w int, h int, samps int, file_name string, scene_id int) Image {
 
 	// OpenMP injection point! #pragma omp parallel for schedule(dynamic, 1) shared(c)
 	for y := 0; y < h; y++ {
-		term.cursor_up(1)
-		eprintln('Rendering (${samps * 4} spp) ${(100.0 * f64(y)) / (f64(h) - 1.0):5.2f}%')
+		if y & 7 == 0 || y + 1 == h {
+			term.cursor_up(1)
+			eprintln('Rendering (${samps * 4} spp) ${(100.0 * f64(y)) / (f64(h) - 1.0):5.2f}%')
+		}
 		for x in 0 .. w {
 			i := (h - y - 1) * w + x
 			mut ivec := unsafe { &image.data[i] }

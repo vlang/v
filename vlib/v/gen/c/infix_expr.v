@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -70,7 +70,11 @@ fn (mut g Gen) infix_expr_arrow_op(node ast.InfixExpr) {
 	}
 	g.expr(node.left)
 	g.write(', ')
-	g.expr(node.right)
+	if g.table.sym(elem_type).kind in [.sum_type, .interface_] {
+		g.expr_with_cast(node.right, node.right_type, elem_type)
+	} else {
+		g.expr(node.right)
+	}
 	g.write(')')
 	if gen_or {
 		g.or_block(tmp_opt, node.or_block, ast.void_type)

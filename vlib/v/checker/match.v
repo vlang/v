@@ -11,7 +11,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	cond_type := c.expr(node.cond)
 	// we setting this here rather than at the end of the method
 	// since it is used in c.match_exprs() it saves checking twice
-	node.cond_type = c.table.mktyp(cond_type)
+	node.cond_type = ast.mktyp(cond_type)
 	c.ensure_type_exists(node.cond_type, node.pos) or { return ast.void_type }
 	c.check_expr_opt_call(node.cond, cond_type)
 	cond_type_sym := c.table.sym(cond_type)

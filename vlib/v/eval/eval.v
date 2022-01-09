@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module eval
@@ -140,6 +140,7 @@ pub fn (mut e Eval) register_symbol_stmts(stmts []ast.Stmt, mod string, file str
 
 pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 	match stmt {
+		ast.Module {}
 		ast.FnDecl {
 			// this mess because c error
 			x := ast.Stmt(stmt)
@@ -170,28 +171,35 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 					for i, branch in x.branches {
 						mut do_if := false
 						println('branch:$branch')
-						match (branch.cond as ast.Ident).name {
-							'windows' {
-								do_if = e.pref.os == .windows
+						match branch.cond {
+							ast.Ident {
+								match (branch.cond as ast.Ident).name {
+									'windows' {
+										do_if = e.pref.os == .windows
+									}
+									else {
+										e.error('unknown compile time if')
+									}
+								}
+								do_if = do_if || x.branches.len == i + 1
+								if do_if {
+									e.register_symbol_stmts(branch.stmts, mod, file)
+									break
+								}
 							}
 							else {
-								e.error('unknown compile time if')
+								eprintln('unsupported expression')
 							}
-						}
-						do_if = do_if || x.branches.len == i + 1
-						if do_if {
-							e.register_symbol_stmts(branch.stmts, mod, file)
-							break
 						}
 					}
 				}
 				else {
-					e.error('unknown decleration expression statement $x.type_name()')
+					e.error('unknown declaration expression statement $x.type_name()')
 				}
 			}
 		}
 		else {
-			e.error('unhandled decleration statement $stmt.type_name()')
+			e.error('unhandled declaration statement $stmt.type_name()')
 		}
 	}
 }

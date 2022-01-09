@@ -263,7 +263,7 @@ pub fn (mut ts TestSession) test() {
 	ts.append_message(.sentinel, '') // send the sentinel
 	_ := <-ts.nprint_ended // wait for the stop of the printing thread
 	eprintln(term.h_divider('-'))
-	// cleanup generated .tmp.c files after successfull tests:
+	// cleanup generated .tmp.c files after successful tests:
 	if ts.benchmark.nfail == 0 {
 		if ts.rm_binaries {
 			os.rmdir_all(ts.vtmp_dir) or {}

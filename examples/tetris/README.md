@@ -7,3 +7,11 @@ sudo apt install libxi-dev
 sudo apt install libxcursor-dev
 sudo apt install libgl-dev
 ```
+
+## Compiling to JS
+
+```sh
+v -b js_browser examples/tetris/tetris.js.v
+```
+
+And then open `index.html` with your favourite web browser.

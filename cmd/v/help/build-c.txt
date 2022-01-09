@@ -81,7 +81,7 @@ see also `v help build`.
          __exit(code int)
             Exit with code code. code is allowed to be ignored.
 
-         The module decleration should be `builtin`. The default Linux
+         The module declaration should be `builtin`. The default Linux
          implementation can be found in `vlib/builtin/linux_bare`.
 
    -os <os>, -target-os <os>

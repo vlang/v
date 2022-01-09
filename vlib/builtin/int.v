@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builtin
@@ -391,14 +391,18 @@ pub fn (nn int_literal) hex() string {
 // hex returns the value of the `voidptr` as a hexadecimal `string`.
 // Note that the output is ***not*** zero padded.
 pub fn (nn voidptr) str() string {
-	return u64(nn).hex()
+	return '0x' + u64(nn).hex()
 }
 
 // hex returns the value of the `byteptr` as a hexadecimal `string`.
 // Note that the output is ***not*** zero padded.
 // pub fn (nn byteptr) str() string {
 pub fn (nn byteptr) str() string {
-	return u64(nn).hex()
+	return '0x' + u64(nn).hex()
+}
+
+pub fn (nn charptr) str() string {
+	return '0x' + u64(nn).hex()
 }
 
 pub fn (nn byte) hex_full() string {

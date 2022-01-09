@@ -1,6 +1,7 @@
-builtin/bare
 builtin/js
+builtin/bare
 builtin/linux_bare
+builtin/wasm_bare
 dl/example
 oldgg/
 os/bare

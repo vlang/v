@@ -1,6 +1,7 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+[has_globals]
 module ast
 
 import v.cflag
@@ -89,6 +90,7 @@ pub:
 	is_main         bool // `fn main(){}`
 	is_test         bool // `fn test_abc(){}`
 	is_keep_alive   bool // passed memory must not be freed (by GC) before function returns
+	is_method       bool // true for `fn (x T) name()`, and for interface declarations (which are also for methods)
 	no_body         bool // a pure declaration like `fn abc(x int)`; used in .vh files, C./JS. fns.
 	mod             string
 	file            string
@@ -97,6 +99,7 @@ pub:
 	return_type_pos token.Position
 pub mut:
 	return_type    Type
+	receiver_type  Type // != 0, when .is_method == true
 	name           string
 	params         []Param
 	source_fn      voidptr // set in the checker, while processing fn declarations
@@ -184,13 +187,10 @@ pub fn new_table() &Table {
 	return t
 }
 
-const global_table = &Table(0)
+__global global_table = &Table(0)
 
 pub fn set_global_table(t &Table) {
-	unsafe {
-		mut pg := &ast.global_table
-		*pg = t
-	}
+	global_table = t
 }
 
 // used to compare fn's & for naming anon fn's
@@ -200,8 +200,13 @@ pub fn (t &Table) fn_type_signature(f &Fn) string {
 		// TODO: for now ignore mut/pts in sig for now
 		typ := arg.typ.set_nr_muls(0)
 		arg_type_sym := t.sym(typ)
-		sig += arg_type_sym.str().to_lower().replace_each(['.', '__', '&', '', '[', 'arr_', 'chan ',
-			'chan_', 'map[', 'map_of_', ']', '_to_', '<', '_T_', ',', '_', ' ', '', '>', ''])
+		if arg_type_sym.kind == .alias {
+			sig += arg_type_sym.cname
+		} else {
+			sig += arg_type_sym.str().to_lower().replace_each(['.', '__', '&', '', '[', 'arr_',
+				'chan ', 'chan_', 'map[', 'map_of_', ']', '_to_', '<', '_T_', ',', '_', ' ', '',
+				'>', ''])
+		}
 		if i < f.params.len - 1 {
 			sig += '_'
 		}
@@ -209,7 +214,11 @@ pub fn (t &Table) fn_type_signature(f &Fn) string {
 	if f.return_type != 0 && f.return_type != void_type {
 		sym := t.sym(f.return_type)
 		opt := if f.return_type.has_flag(.optional) { 'option_' } else { '' }
-		sig += '__$opt$sym.kind'
+		if sym.kind == .alias {
+			sig += '__$opt$sym.cname'
+		} else {
+			sig += '__$opt$sym.kind'
+		}
 	}
 	return sig
 }
@@ -610,12 +619,21 @@ pub fn (t &Table) find_type_idx(name string) int {
 }
 
 [inline]
-pub fn (t &Table) find_type(name string) ?&TypeSymbol {
+pub fn (t &Table) find_sym(name string) ?&TypeSymbol {
 	idx := t.type_idxs[name]
 	if idx > 0 {
 		return t.type_symbols[idx]
 	}
 	return none
+}
+
+[inline]
+pub fn (t &Table) find_sym_and_type_idx(name string) (&TypeSymbol, int) {
+	idx := t.type_idxs[name]
+	if idx > 0 {
+		return t.type_symbols[idx], idx
+	}
+	return ast.invalid_type_symbol, idx
 }
 
 pub const invalid_type_symbol = &TypeSymbol{
@@ -671,9 +689,19 @@ pub fn (t &Table) unalias_num_type(typ Type) Type {
 	sym := t.sym(typ)
 	if sym.kind == .alias {
 		pt := (sym.info as Alias).parent_type
-		if pt <= f64_type && pt >= void_type {
+		if pt <= char_type && pt >= void_type {
 			return pt
 		}
+	}
+	return typ
+}
+
+[inline]
+pub fn (t &Table) unaliased_type(typ Type) Type {
+	sym := t.sym(typ)
+	if sym.kind == .alias {
+		pt := (sym.info as Alias).parent_type
+		return pt
 	}
 	return typ
 }
@@ -721,7 +749,7 @@ pub fn (mut t Table) register_type_symbol(sym TypeSymbol) int {
 		}
 	}
 	if sym.mod == 'main' {
-		existing_idx = t.type_idxs[sym.name.trim_prefix('main.')]
+		existing_idx = t.type_idxs[sym.name.trim_string_left('main.')]
 		if existing_idx > 0 {
 			idx = t.rewrite_already_registered_symbol(sym, existing_idx)
 			if idx != -2 {
@@ -816,7 +844,7 @@ pub fn (t &Table) array_fixed_cname(elem_type Type, size int) string {
 	if elem_type.is_ptr() {
 		res = '_ptr$elem_type.nr_muls()'
 	}
-	return 'Array_fixed_${elem_type_sym.cname}_$size' + res
+	return 'Array_fixed_$elem_type_sym.cname${res}_$size'
 }
 
 [inline]
@@ -1056,8 +1084,9 @@ pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
 	mut cname := 'multi_return'
 	for i, mr_typ in mr_typs {
 		mr_type_sym := t.sym(mr_typ)
-		name += mr_type_sym.name
-		cname += '_$mr_type_sym.cname'
+		ref, cref := if mr_typ.is_ptr() { '&', 'ref_' } else { '', '' }
+		name += '$ref$mr_type_sym.name'
+		cname += '_$cref$mr_type_sym.cname'
 		if i < mr_typs.len - 1 {
 			name += ', '
 		}
@@ -1155,15 +1184,6 @@ pub fn (t &Table) value_type(typ Type) Type {
 		return typ.deref()
 	}
 	return void_type
-}
-
-[inline]
-pub fn (t &Table) mktyp(typ Type) Type {
-	match typ {
-		float_literal_type { return f64_type }
-		int_literal_type { return int_type }
-		else { return typ }
-	}
 }
 
 pub fn (mut t Table) register_fn_generic_types(fn_name string) {
@@ -1520,6 +1540,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concrete_types []Type) Type {
 	mut final_concrete_types := []Type{}
 	mut fields := []StructField{}
+	mut needs_unwrap_types := []Type{}
 	mut nrt := ''
 	mut c_nrt := ''
 	ts := t.sym(typ)
@@ -1607,7 +1628,21 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 				}
 				if final_concrete_types.len > 0 {
 					for method in ts.methods {
-						t.register_fn_concrete_types(method.name, final_concrete_types)
+						for i in 1 .. method.params.len {
+							if method.params[i].typ.has_flag(.generic)
+								&& method.params[i].typ != method.params[0].typ {
+								if method.params[i].typ !in needs_unwrap_types {
+									needs_unwrap_types << method.params[i].typ
+								}
+							}
+							if method.return_type.has_flag(.generic)
+								&& method.return_type != method.params[0].typ {
+								if method.return_type !in needs_unwrap_types {
+									needs_unwrap_types << method.return_type
+								}
+							}
+						}
+						t.register_fn_concrete_types(method.fkey(), final_concrete_types)
 					}
 				}
 			}
@@ -1628,6 +1663,9 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 				mod: ts.mod
 				info: info
 			)
+			for typ_ in needs_unwrap_types {
+				t.unwrap_generic_type(typ_, generic_names, concrete_types)
+			}
 			return new_type(new_idx).derive(typ).clear_flag(.generic)
 		}
 		Interface {
@@ -1729,7 +1767,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 						parent_sym := t.sym(parent_info.parent_type)
 						for method in parent_sym.methods {
 							if method.generic_names.len == info.concrete_types.len {
-								t.register_fn_concrete_types(method.name, info.concrete_types)
+								t.register_fn_concrete_types(method.fkey(), info.concrete_types)
 							}
 						}
 					} else {

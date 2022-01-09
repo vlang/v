@@ -1,13 +1,13 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module fmt
 
-import math.mathutil
-import v.ast
 import strings
+import v.ast
 import v.util
 import v.pref
+import v.mathutil
 
 const (
 	bs      = '\\'
@@ -184,7 +184,7 @@ fn (f Fmt) get_modname_prefix(mname string) (string, string) {
 	after_rbc := mname.all_after_last(']')
 	after_ref := mname.all_after_last('&')
 	modname := if after_rbc.len < after_ref.len { after_rbc } else { after_ref }
-	return modname, mname.trim_suffix(modname)
+	return modname, mname.trim_string_right(modname)
 }
 
 fn (mut f Fmt) is_external_name(name string) bool {
@@ -210,10 +210,10 @@ pub fn (mut f Fmt) short_module(name string) string {
 		return f.mod2alias[name]
 	}
 	if name.ends_with('>') {
-		generic_levels := name.trim_suffix('>').split('<')
+		generic_levels := name.trim_string_right('>').split('<')
 		mut res := '${f.short_module(generic_levels[0])}'
 		for i in 1 .. generic_levels.len {
-			genshorts := generic_levels[i].split(',').map(f.short_module(it)).join(',')
+			genshorts := generic_levels[i].split(', ').map(f.short_module(it)).join(', ')
 			res += '<$genshorts'
 		}
 		res += '>'
@@ -1293,6 +1293,7 @@ pub fn (mut f Fmt) fn_type_decl(node ast.FnTypeDecl) {
 }
 
 pub fn (mut f Fmt) sum_type_decl(node ast.SumTypeDecl) {
+	f.attrs(node.attrs)
 	start_pos := f.out.len
 	if node.is_pub {
 		f.write('pub ')
@@ -1898,6 +1899,11 @@ pub fn (mut f Fmt) if_guard_expr(node ast.IfGuardExpr) {
 
 pub fn (mut f Fmt) index_expr(node ast.IndexExpr) {
 	f.expr(node.left)
+	if node.index is ast.RangeExpr {
+		if node.index.is_gated {
+			f.write('#')
+		}
+	}
 	f.write('[')
 	f.expr(node.index)
 	f.write(']')

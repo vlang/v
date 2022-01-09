@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -196,8 +196,12 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 			p.check(.lpar)
 			pos := p.tok.position()
 			is_known_var := p.mark_var_as_used(p.tok.lit)
-			// assume mod. prefix leads to a type
-			if is_known_var || !(p.known_import(p.tok.lit) || p.tok.kind.is_start_of_type()) {
+				|| p.table.global_scope.known_const(p.mod + '.' + p.tok.lit)
+			//|| p.table.known_fn(p.mod + '.' + p.tok.lit)
+			// assume `mod.` prefix leads to a type
+			is_type := p.known_import(p.tok.lit) || p.tok.kind.is_start_of_type()
+				|| (p.tok.lit.len > 0 && p.tok.lit[0].is_capital())
+			if is_known_var || !is_type {
 				expr := p.expr(0)
 				if is_reftype {
 					node = ast.IsRefType{
@@ -355,14 +359,27 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 	}
 	// Infix
 	for precedence < p.tok.precedence() {
-		if p.tok.kind == .dot {
+		if p.tok.kind == .dot { //&& (p.tok.line_nr == p.prev_tok.line_nr
+			// TODO fix a bug with prev_tok.last_line
+			//|| p.prev_tok.position().last_line == p.tok.line_nr) {
+			// if p.fileis('vcache.v') {
+			// p.warn('tok.line_nr = $p.tok.line_nr; prev_tok.line_nr=$p.prev_tok.line_nr;
+			// prev_tok.last_line=$p.prev_tok.position().last_line')
+			//}
 			node = p.dot_expr(node)
 			if p.name_error {
 				return node
 			}
 			p.is_stmt_ident = is_stmt_ident
-		} else if p.tok.kind == .lsbr && (p.inside_fn || p.tok.line_nr == p.prev_tok.line_nr) {
-			node = p.index_expr(node)
+		} else if p.tok.kind in [.lsbr, .nilsbr]
+			&& (p.inside_fn || p.tok.line_nr == p.prev_tok.line_nr) {
+			// node = p.index_expr(node)
+			if p.tok.kind == .nilsbr {
+				node = p.index_expr(node, true)
+			} else {
+				node = p.index_expr(node, false)
+			}
+
 			p.is_stmt_ident = is_stmt_ident
 			if p.tok.kind == .lpar && p.tok.line_nr == p.prev_tok.line_nr && node is ast.IndexExpr {
 				p.next()

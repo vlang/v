@@ -55,7 +55,7 @@ Let my heart be still a moment and this mystery explore;—
 
 struct AppState {
 mut:
-	pass_action C.sg_pass_action
+	pass_action gfx.PassAction
 	fons        &fontstash.Context
 	font_normal int
 	inited      bool
@@ -63,23 +63,23 @@ mut:
 
 [console]
 fn main() {
-	mut color_action := C.sg_color_attachment_action{
-		action: gfx.Action(C.SG_ACTION_CLEAR)
-		value: C.sg_color{
+	mut color_action := gfx.ColorAttachmentAction{
+		action: .clear
+		value: gfx.Color{
 			r: 1.0
 			g: 1.0
 			b: 1.0
 			a: 1.0
 		}
 	}
-	mut pass_action := C.sg_pass_action{}
+	mut pass_action := gfx.PassAction{}
 	pass_action.colors[0] = color_action
 	state := &AppState{
 		pass_action: pass_action
 		fons: voidptr(0) // &fontstash.Context(0)
 	}
 	title := 'V Metal/GL Text Rendering'
-	desc := C.sapp_desc{
+	desc := sapp.Desc{
 		user_data: state
 		init_userdata_cb: init
 		frame_userdata_cb: frame
@@ -96,7 +96,7 @@ fn init(user_data voidptr) {
 	mut state := &AppState(user_data)
 	desc := sapp.create_desc()
 	gfx.setup(&desc)
-	s := &C.sgl_desc_t{}
+	s := &sgl.Desc{}
 	C.sgl_setup(s)
 	state.fons = sfons.create(512, 512, 1)
 	// or use DroidSerif-Regular.ttf

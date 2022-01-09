@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
@@ -100,6 +100,19 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	}
 	node.result_type = f.return_type
 	return f.return_type
+}
+
+fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
+	typ := c.unwrap_generic(node.typ)
+	sym := c.table.sym(typ)
+	if sym.kind == .placeholder || typ.has_flag(.generic) {
+		c.error('unknown type `$sym.name`', node.typ_pos)
+	}
+	if node.kind == .fields {
+		c.comptime_fields_type[node.val_var] = node.typ
+		c.comptime_fields_default_type = node.typ
+	}
+	c.stmts(node.stmts)
 }
 
 // comptime const eval
@@ -515,6 +528,7 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Position) bool {
 				return false
 			} else if cname in valid_comptime_if_other {
 				match cname {
+					'apk' { return !c.pref.is_apk }
 					'js' { return !c.pref.backend.is_js() }
 					'debug' { return !c.pref.is_debug }
 					'prod' { return !c.pref.is_prod }
@@ -534,7 +548,7 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Position) bool {
 					return false
 				}
 				// `$if some_var {}`, or `[if user_defined_tag] fn abc(){}`
-				typ := c.expr(cond)
+				typ := c.unwrap_generic(c.expr(cond))
 				if cond.obj !is ast.Var && cond.obj !is ast.ConstField
 					&& cond.obj !is ast.GlobalField {
 					if !c.inside_ct_attr {
@@ -569,260 +583,4 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Position) bool {
 		}
 	}
 	return false
-}
-
-fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast.CallExpr) {
-	if node.args.len != 1 {
-		c.error('expected 1 argument, but got $node.args.len', node.pos)
-		// Finish early so that it doesn't fail later
-		return
-	}
-	elem_sym := c.table.sym(elem_typ)
-	arg_expr := node.args[0].expr
-	match arg_expr {
-		ast.AnonFn {
-			if arg_expr.decl.params.len > 1 {
-				c.error('function needs exactly 1 argument', arg_expr.decl.pos)
-			} else if is_map && (arg_expr.decl.return_type == ast.void_type
-				|| arg_expr.decl.params[0].typ != elem_typ) {
-				c.error('type mismatch, should use `fn(a $elem_sym.name) T {...}`', arg_expr.decl.pos)
-			} else if !is_map && (arg_expr.decl.return_type != ast.bool_type
-				|| arg_expr.decl.params[0].typ != elem_typ) {
-				c.error('type mismatch, should use `fn(a $elem_sym.name) bool {...}`',
-					arg_expr.decl.pos)
-			}
-		}
-		ast.Ident {
-			if arg_expr.kind == .function {
-				func := c.table.find_fn(arg_expr.name) or {
-					c.error('$arg_expr.name does not exist', arg_expr.pos)
-					return
-				}
-				if func.params.len > 1 {
-					c.error('function needs exactly 1 argument', node.pos)
-				} else if is_map
-					&& (func.return_type == ast.void_type || func.params[0].typ != elem_typ) {
-					c.error('type mismatch, should use `fn(a $elem_sym.name) T {...}`',
-						arg_expr.pos)
-				} else if !is_map
-					&& (func.return_type != ast.bool_type || func.params[0].typ != elem_typ) {
-					c.error('type mismatch, should use `fn(a $elem_sym.name) bool {...}`',
-						arg_expr.pos)
-				}
-			} else if arg_expr.kind == .variable {
-				if arg_expr.obj is ast.Var {
-					expr := arg_expr.obj.expr
-					if expr is ast.AnonFn {
-						// copied from above
-						if expr.decl.params.len > 1 {
-							c.error('function needs exactly 1 argument', expr.decl.pos)
-						} else if is_map && (expr.decl.return_type == ast.void_type
-							|| expr.decl.params[0].typ != elem_typ) {
-							c.error('type mismatch, should use `fn(a $elem_sym.name) T {...}`',
-								expr.decl.pos)
-						} else if !is_map && (expr.decl.return_type != ast.bool_type
-							|| expr.decl.params[0].typ != elem_typ) {
-							c.error('type mismatch, should use `fn(a $elem_sym.name) bool {...}`',
-								expr.decl.pos)
-						}
-						return
-					}
-				}
-				// NOTE: bug accessing typ field on sumtype variant (not cast properly).
-				// leaving this here as the resulting issue is notoriously hard to debug.
-				// if !is_map && arg_expr.info.typ != ast.bool_type {
-				if !is_map && arg_expr.var_info().typ != ast.bool_type {
-					c.error('type mismatch, should be bool', arg_expr.pos)
-				}
-			}
-		}
-		ast.CallExpr {
-			if is_map && arg_expr.return_type in [ast.void_type, 0] {
-				c.error('type mismatch, `$arg_expr.name` does not return anything', arg_expr.pos)
-			} else if !is_map && arg_expr.return_type != ast.bool_type {
-				c.error('type mismatch, `$arg_expr.name` must return a bool', arg_expr.pos)
-			}
-		}
-		else {}
-	}
-}
-
-fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type ast.Type, left_sym ast.TypeSymbol) ast.Type {
-	method_name := node.name
-	mut ret_type := ast.void_type
-	match method_name {
-		'clone', 'move' {
-			if method_name[0] == `m` {
-				c.fail_if_immutable(node.left)
-			}
-			if node.left.is_auto_deref_var() {
-				ret_type = left_type.deref()
-			} else {
-				ret_type = left_type
-			}
-		}
-		'keys' {
-			info := left_sym.info as ast.Map
-			typ := c.table.find_or_register_array(info.key_type)
-			ret_type = ast.Type(typ)
-		}
-		'delete' {
-			c.fail_if_immutable(node.left)
-			if node.args.len != 1 {
-				c.error('expected 1 argument, but got $node.args.len', node.pos)
-			}
-			info := left_sym.info as ast.Map
-			arg_type := c.expr(node.args[0].expr)
-			c.check_expected_call_arg(arg_type, info.key_type, node.language, node.args[0]) or {
-				c.error('$err.msg in argument 1 to `Map.delete`', node.args[0].pos)
-			}
-		}
-		else {}
-	}
-	node.receiver_type = left_type.ref()
-	node.return_type = ret_type
-	return node.return_type
-}
-
-fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type ast.Type, left_sym ast.TypeSymbol) ast.Type {
-	method_name := node.name
-	mut elem_typ := ast.void_type
-	if method_name == 'slice' && !c.is_builtin_mod {
-		c.error('.slice() is a private method, use `x[start..end]` instead', node.pos)
-	}
-	array_info := left_sym.info as ast.Array
-	elem_typ = array_info.elem_type
-	if method_name in ['filter', 'map', 'any', 'all'] {
-		// position of `it` doesn't matter
-		scope_register_it(mut node.scope, node.pos, elem_typ)
-	} else if method_name == 'sort' {
-		if node.left is ast.CallExpr {
-			c.error('the `sort()` method can be called only on mutable receivers, but `$node.left` is a call expression',
-				node.pos)
-		}
-		c.fail_if_immutable(node.left)
-		// position of `a` and `b` doesn't matter, they're the same
-		scope_register_a_b(mut node.scope, node.pos, elem_typ)
-
-		if node.args.len > 1 {
-			c.error('expected 0 or 1 argument, but got $node.args.len', node.pos)
-		} else if node.args.len == 1 {
-			if node.args[0].expr is ast.InfixExpr {
-				if node.args[0].expr.op !in [.gt, .lt] {
-					c.error('`.sort()` can only use `<` or `>` comparison', node.pos)
-				}
-				left_name := '${node.args[0].expr.left}'[0]
-				right_name := '${node.args[0].expr.right}'[0]
-				if left_name !in [`a`, `b`] || right_name !in [`a`, `b`] {
-					c.error('`.sort()` can only use `a` or `b` as argument, e.g. `arr.sort(a < b)`',
-						node.pos)
-				} else if left_name == right_name {
-					c.error('`.sort()` cannot use same argument', node.pos)
-				}
-				if (node.args[0].expr.left !is ast.Ident
-					&& node.args[0].expr.left !is ast.SelectorExpr
-					&& node.args[0].expr.left !is ast.IndexExpr)
-					|| (node.args[0].expr.right !is ast.Ident
-					&& node.args[0].expr.right !is ast.SelectorExpr
-					&& node.args[0].expr.right !is ast.IndexExpr) {
-					c.error('`.sort()` can only use ident, index or selector as argument, \ne.g. `arr.sort(a < b)`, `arr.sort(a.id < b.id)`, `arr.sort(a[0] < b[0])`',
-						node.pos)
-				}
-			} else {
-				c.error(
-					'`.sort()` requires a `<` or `>` comparison as the first and only argument' +
-					'\ne.g. `users.sort(a.id < b.id)`', node.pos)
-			}
-		} else if !(c.table.sym(elem_typ).has_method('<')
-			|| c.table.unalias_num_type(elem_typ) in [ast.int_type, ast.int_type.ref(), ast.string_type, ast.string_type.ref(), ast.i8_type, ast.i16_type, ast.i64_type, ast.byte_type, ast.rune_type, ast.u16_type, ast.u32_type, ast.u64_type, ast.f32_type, ast.f64_type, ast.char_type, ast.bool_type, ast.float_literal_type, ast.int_literal_type]) {
-			c.error('custom sorting condition must be supplied for type `${c.table.type_to_str(elem_typ)}`',
-				node.pos)
-		}
-	} else if method_name == 'wait' {
-		elem_sym := c.table.sym(elem_typ)
-		if elem_sym.kind == .thread {
-			if node.args.len != 0 {
-				c.error('`.wait()` does not have any arguments', node.args[0].pos)
-			}
-			thread_ret_type := elem_sym.thread_info().return_type
-			if thread_ret_type.has_flag(.optional) {
-				c.error('`.wait()` cannot be called for an array when thread functions return optionals. Iterate over the arrays elements instead and handle each returned optional with `or`.',
-					node.pos)
-			}
-			node.return_type = c.table.find_or_register_array(thread_ret_type)
-		} else {
-			c.error('`$left_sym.name` has no method `wait()` (only thread handles and arrays of them have)',
-				node.left.position())
-		}
-	}
-	// map/filter are supposed to have 1 arg only
-	mut arg_type := left_type
-	for arg in node.args {
-		arg_type = c.check_expr_opt_call(arg.expr, c.expr(arg.expr))
-	}
-	if method_name == 'map' {
-		// check fn
-		c.check_map_and_filter(true, elem_typ, node)
-		arg_sym := c.table.sym(arg_type)
-		ret_type := match arg_sym.info {
-			ast.FnType { arg_sym.info.func.return_type }
-			else { arg_type }
-		}
-		node.return_type = c.table.find_or_register_array(c.unwrap_generic(ret_type))
-	} else if method_name == 'filter' {
-		// check fn
-		c.check_map_and_filter(false, elem_typ, node)
-	} else if method_name in ['any', 'all'] {
-		c.check_map_and_filter(false, elem_typ, node)
-		node.return_type = ast.bool_type
-	} else if method_name == 'clone' {
-		// need to return `array_xxx` instead of `array`
-		// in ['clone', 'str'] {
-		node.receiver_type = left_type.ref()
-		if node.left.is_auto_deref_var() {
-			node.return_type = left_type.deref()
-		} else {
-			node.return_type = node.receiver_type.set_nr_muls(0)
-		}
-	} else if method_name == 'sort' {
-		node.return_type = ast.void_type
-	} else if method_name == 'contains' {
-		// c.warn('use `value in arr` instead of `arr.contains(value)`', node.pos)
-		node.return_type = ast.bool_type
-	} else if method_name == 'index' {
-		node.return_type = ast.int_type
-	} else if method_name in ['first', 'last', 'pop'] {
-		node.return_type = array_info.elem_type
-		if method_name == 'pop' {
-			c.fail_if_immutable(node.left)
-			node.receiver_type = left_type.ref()
-		} else {
-			node.receiver_type = left_type
-		}
-	}
-	return node.return_type
-}
-
-fn scope_register_it(mut s ast.Scope, pos token.Position, typ ast.Type) {
-	s.register(ast.Var{
-		name: 'it'
-		pos: pos
-		typ: typ
-		is_used: true
-	})
-}
-
-fn scope_register_a_b(mut s ast.Scope, pos token.Position, typ ast.Type) {
-	s.register(ast.Var{
-		name: 'a'
-		pos: pos
-		typ: typ.ref()
-		is_used: true
-	})
-	s.register(ast.Var{
-		name: 'b'
-		pos: pos
-		typ: typ.ref()
-		is_used: true
-	})
 }

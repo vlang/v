@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
@@ -39,7 +39,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			} else {
 				// check condition type is boolean
 				c.expected_type = ast.bool_type
-				cond_typ := c.expr(branch.cond)
+				cond_typ := c.unwrap_generic(c.expr(branch.cond))
 				if (cond_typ.idx() != ast.bool_type_idx || cond_typ.has_flag(.optional))
 					&& !c.pref.translated {
 					c.error('non-bool type `${c.table.type_to_str(cond_typ)}` used as if condition',

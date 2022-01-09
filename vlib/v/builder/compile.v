@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builder
@@ -102,6 +102,10 @@ fn (b &Builder) exit_on_invalid_syntax() {
 }
 
 fn (mut b Builder) run_compiled_executable_and_exit() {
+	if b.pref.backend == .interpret {
+		// the interpreted code has already ran
+		return
+	}
 	if b.pref.skip_running {
 		return
 	}

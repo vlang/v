@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module checker
@@ -15,13 +15,28 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		if expected == ast.byteptr_type {
 			return true
 		}
+		if expected == ast.voidptr_type {
+			return true
+		}
 		if expected.is_any_kind_of_pointer() { //&& !got.is_any_kind_of_pointer() {
-			// if true {
-			// return true
-			//}
+			// Allow `int` as `&i8` etc in C code.
 			deref := expected.deref()
+			// deref := expected.set_nr_muls(0)
 			got_sym := c.table.sym(got)
 			if deref.is_number() && (got_sym.is_number() || got_sym.kind == .enum_) {
+				return true
+			}
+		}
+		got_sym := c.table.sym(got)
+		expected_sym := c.table.sym(expected)
+		if got_sym.kind == .enum_ {
+			// Allow ints as enums
+			if expected_sym.is_number() {
+				return true
+			}
+		} else if got_sym.kind == .array_fixed {
+			// Allow fixed arrays as `&i8` etc
+			if expected_sym.is_number() {
 				return true
 			}
 		}
@@ -200,7 +215,7 @@ pub fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 		return true
 	}
 	// sum type
-	if c.table.sumtype_has_variant(expected, c.table.mktyp(got), false) {
+	if c.table.sumtype_has_variant(expected, ast.mktyp(got), false) {
 		return true
 	}
 	// type alias
@@ -722,7 +737,7 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 			param_type_sym := c.table.sym(param.typ)
 
 			if param.typ.has_flag(.generic) && param_type_sym.name == gt_name {
-				to_set = c.table.mktyp(arg.typ)
+				to_set = ast.mktyp(arg.typ)
 				sym := c.table.sym(arg.typ)
 				if sym.info is ast.FnType {
 					mut func_ := sym.info.func
@@ -744,7 +759,7 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 			} else if param.typ.has_flag(.generic) {
 				arg_sym := c.table.sym(arg.typ)
 				if param.typ.has_flag(.variadic) {
-					to_set = c.table.mktyp(arg.typ)
+					to_set = ast.mktyp(arg.typ)
 				} else if arg_sym.kind == .array && param_type_sym.kind == .array {
 					mut arg_elem_info := arg_sym.info as ast.Array
 					mut param_elem_info := param_type_sym.info as ast.Array
@@ -839,7 +854,7 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 		node.concrete_types << typ
 	}
 
-	if c.table.register_fn_concrete_types(func.name, inferred_types) {
+	if c.table.register_fn_concrete_types(func.fkey(), inferred_types) {
 		c.need_recheck_generic_fns = true
 	}
 }

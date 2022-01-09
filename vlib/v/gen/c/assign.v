@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -197,17 +197,19 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 			if val is ast.IndexExpr {
 				g.assign_op = .decl_assign
 			}
+			g.is_assign_lhs = false
 			if is_call {
 				old_is_void_expr_stmt := g.is_void_expr_stmt
 				g.is_void_expr_stmt = true
 				g.expr(val)
 				g.is_void_expr_stmt = old_is_void_expr_stmt
+			} else if g.inside_for_c_stmt {
+				g.expr(val)
 			} else {
 				g.write('{$styp _ = ')
 				g.expr(val)
 				g.writeln(';}')
 			}
-			g.is_assign_lhs = false
 		} else if node.op == .assign
 			&& (is_fixed_array_init || (right_sym.kind == .array_fixed && val is ast.Ident)) {
 			mut v_var := ''

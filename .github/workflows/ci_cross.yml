@@ -41,6 +41,11 @@ jobs:
           ./v -os windows cmd/v
           ./v -os windows examples/2048/2048.v
 
+      - name: Compile to raw Android (non-graphic) compatible
+        run: |
+          # Test that V can compile non-graphic app to Android compatible code *without* using the -apk flag
+          ./v -os android examples/toml.v
+
   linux-cross:
     runs-on: ubuntu-20.04
     timeout-minutes: 15
@@ -87,6 +92,12 @@ jobs:
         run: |
           ./v -os windows examples/2048/2048.v
           ls -lart examples/2048/2048.exe
+
+      - name: toml.v can be compiled to raw Android C
+        run: |
+          # Test that V can compile non-graphic app to Android compatible code *without* using the -apk flag
+          ./v -os android examples/toml.v
+
 
   windows-cross:
     runs-on: windows-2019

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module ast
@@ -100,6 +100,11 @@ pub fn (s &Scope) find_const(name string) ?&ConstField {
 
 pub fn (s &Scope) known_var(name string) bool {
 	s.find_var(name) or { return false }
+	return true
+}
+
+pub fn (s &Scope) known_const(name string) bool {
+	s.find_const(name) or { return false }
 	return true
 }
 

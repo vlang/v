@@ -21,6 +21,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 fn (mut g Gen) dump_expr_definitions() {
 	mut dump_typedefs := map[string]bool{}
 	mut dump_fns := strings.new_builder(100)
+	mut dump_fn_defs := strings.new_builder(100)
 	for dump_type, cname in g.table.dumps {
 		dump_sym := g.table.sym(dump_type)
 		_, str_method_expects_ptr, _ := dump_sym.str_method_info()
@@ -39,6 +40,7 @@ fn (mut g Gen) dump_expr_definitions() {
 			dump_typedefs['typedef $str_tdef;'] = true
 		}
 		dump_fn_name := '_v_dump_expr_$cname' + (if is_ptr { '_ptr' } else { '' })
+		dump_fn_defs.writeln('$str_dumparg_type ${dump_fn_name}(string fpath, int line, string sexpr, $str_dumparg_type dump_arg);')
 		if g.writeln_fn_header('$str_dumparg_type ${dump_fn_name}(string fpath, int line, string sexpr, $str_dumparg_type dump_arg)', mut
 			dump_fns)
 		{
@@ -46,7 +48,12 @@ fn (mut g Gen) dump_expr_definitions() {
 		}
 		mut surrounder := util.new_surrounder(3)
 		surrounder.add('\tstring sline = int_str(line);', '\tstring_free(&sline);')
-		surrounder.add('\tstring value = ${to_string_fn_name}(${deref}dump_arg);', '\tstring_free(&value);')
+		if dump_sym.kind == .function {
+			surrounder.add('\tstring value = ${to_string_fn_name}();', '\tstring_free(&value);')
+		} else {
+			surrounder.add('\tstring value = ${to_string_fn_name}(${deref}dump_arg);',
+				'\tstring_free(&value);')
+		}
 		surrounder.add('
 	strings__Builder sb = strings__new_builder(256);
 ', '
@@ -78,8 +85,8 @@ fn (mut g Gen) dump_expr_definitions() {
 	for tdef, _ in dump_typedefs {
 		g.definitions.writeln(tdef)
 	}
-	defs := dump_fns.str()
-	g.definitions.writeln(defs)
+	g.definitions.writeln(dump_fn_defs.str())
+	g.dump_funcs.writeln(dump_fns.str())
 }
 
 fn (mut g Gen) writeln_fn_header(s string, mut sb strings.Builder) bool {

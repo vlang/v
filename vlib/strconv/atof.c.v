@@ -3,7 +3,7 @@ module strconv
 /*
 atof util
 
-Copyright (c) 2019-2021 Dario Deledda. All rights reserved.
+Copyright (c) 2019-2022 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
 that can be found in the LICENSE file.
 
@@ -78,9 +78,7 @@ fn sub96(s2 u32, s1 u32, s0 u32, d2 u32, d1 u32, d0 u32) (u32, u32, u32) {
 	return r2, r1, r0
 }
 
-/*
-Constants
-*/
+// Constants
 
 pub const (
 	//
@@ -118,9 +116,7 @@ pub const (
 	c_ten                 = u32(10)
 )
 
-/*
-Utility
-*/
+// Utility functions
 
 // NOTE: Modify these if working with non-ASCII encoding
 fn is_digit(x byte) bool {
@@ -134,10 +130,6 @@ fn is_space(x byte) bool {
 fn is_exp(x byte) bool {
 	return (x == `E` || x == `e`) == true
 }
-
-/*
-Support struct
-*/
 
 /*
 String parser
@@ -408,12 +400,13 @@ fn converter(mut pn PrepNumber) u64 {
 	return result
 }
 
-/*
-Public functions
-*/
+// Public functions
 
 // atof64 return a f64 from a string doing a parsing operation
 pub fn atof64(s string) f64 {
+	if s.len == 0 {
+		return 0
+	}
 	mut pn := PrepNumber{}
 	mut res_parsing := 0
 	mut res := Float64u{}

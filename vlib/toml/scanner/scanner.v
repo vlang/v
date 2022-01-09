@@ -4,7 +4,7 @@
 module scanner
 
 import os
-import math.mathutil
+import math
 import toml.input
 import toml.token
 import toml.util
@@ -328,7 +328,7 @@ fn (mut s Scanner) new_token(kind token.Kind, lit string, len int) token.Token {
 	return token.Token{
 		kind: kind
 		lit: lit
-		col: mathutil.max(1, col)
+		col: math.max(1, col)
 		line_nr: s.line_nr + 1
 		pos: s.pos - s.header_len - len + 1
 		len: len
@@ -341,12 +341,12 @@ fn (mut s Scanner) ignore_line() ?string {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' ignoring until EOL...')
 	start := s.pos
 	for c := s.at(); c != scanner.end_of_text && c != `\n`; c = s.at() {
-		s.next()
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'skipping "${byte(c).ascii_str()} / $c"')
 		if s.at_crlf() {
 			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'letting `\\r\\n` slip through')
-			return s.text[start..s.pos + 1]
+			break
 		}
+		s.next()
 	}
 	return s.text[start..s.pos]
 }

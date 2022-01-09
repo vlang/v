@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -150,7 +150,11 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 				}
 			}
 		}
-		g.write(' ); // vweb action call with args')
+		if g.inside_call {
+			g.write(')')
+		} else {
+			g.write(');')
+		}
 		return
 	}
 	mut j := 0

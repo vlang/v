@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
@@ -497,6 +497,14 @@ pub fn merge_types(params ...[]Type) []Type {
 	return res
 }
 
+pub fn mktyp(typ Type) Type {
+	match typ {
+		ast.float_literal_type { return ast.f64_type }
+		ast.int_literal_type { return ast.int_type }
+		else { return typ }
+	}
+}
+
 pub struct MultiReturn {
 pub mut:
 	types []Type
@@ -564,76 +572,135 @@ pub fn (t TypeSymbol) str() string {
 	return t.name
 }
 
+[noreturn]
+fn (t &TypeSymbol) no_info_panic(fname string) {
+	panic('$fname: no info for type: $t.name')
+}
+
 [inline]
 pub fn (t &TypeSymbol) enum_info() Enum {
-	match mut t.info {
-		Enum { return t.info }
-		else { panic('TypeSymbol.enum_info(): no enum info for type: $t.name') }
+	if t.info is Enum {
+		return t.info
 	}
+	if t.info is Alias {
+		fsym := global_table.final_sym(t.info.parent_type)
+		if fsym.info is Enum {
+			return fsym.info
+		}
+	}
+	t.no_info_panic(@METHOD)
 }
 
 [inline]
 pub fn (t &TypeSymbol) mr_info() MultiReturn {
-	match mut t.info {
-		MultiReturn { return t.info }
-		else { panic('TypeSymbol.mr_info(): no multi return info for type: $t.name') }
+	if t.info is MultiReturn {
+		return t.info
 	}
+	if t.info is Alias {
+		fsym := global_table.final_sym(t.info.parent_type)
+		if fsym.info is MultiReturn {
+			return fsym.info
+		}
+	}
+	t.no_info_panic(@METHOD)
 }
 
 [inline]
 pub fn (t &TypeSymbol) array_info() Array {
-	match mut t.info {
-		Array { return t.info }
-		else { panic('TypeSymbol.array_info(): no array info for type: $t.name') }
+	if t.info is Array {
+		return t.info
 	}
+	if t.info is Alias {
+		fsym := global_table.final_sym(t.info.parent_type)
+		if fsym.info is Array {
+			return fsym.info
+		}
+	}
+	t.no_info_panic(@METHOD)
 }
 
 [inline]
 pub fn (t &TypeSymbol) array_fixed_info() ArrayFixed {
-	match mut t.info {
-		ArrayFixed { return t.info }
-		else { panic('TypeSymbol.array_fixed(): no array fixed info for type: $t.name') }
+	if t.info is ArrayFixed {
+		return t.info
 	}
+	if t.info is Alias {
+		fsym := global_table.final_sym(t.info.parent_type)
+		if fsym.info is ArrayFixed {
+			return fsym.info
+		}
+	}
+	t.no_info_panic(@METHOD)
 }
 
 [inline]
 pub fn (t &TypeSymbol) chan_info() Chan {
-	match mut t.info {
-		Chan { return t.info }
-		else { panic('TypeSymbol.chan_info(): no chan info for type: $t.name') }
+	if t.info is Chan {
+		return t.info
 	}
+	if t.info is Alias {
+		fsym := global_table.final_sym(t.info.parent_type)
+		if fsym.info is Chan {
+			return fsym.info
+		}
+	}
+	t.no_info_panic(@METHOD)
 }
 
 [inline]
 pub fn (t &TypeSymbol) thread_info() Thread {
-	match mut t.info {
-		Thread { return t.info }
-		else { panic('TypeSymbol.thread_info(): no thread info for type: $t.name') }
+	if t.info is Thread {
+		return t.info
 	}
+	if t.info is Alias {
+		fsym := global_table.final_sym(t.info.parent_type)
+		if fsym.info is Thread {
+			return fsym.info
+		}
+	}
+	t.no_info_panic(@METHOD)
 }
 
 [inline]
 pub fn (t &TypeSymbol) map_info() Map {
-	match mut t.info {
-		Map { return t.info }
-		else { panic('TypeSymbol.map_info(): no map info for type: $t.name') }
+	if t.info is Map {
+		return t.info
 	}
+	if t.info is Alias {
+		fsym := global_table.final_sym(t.info.parent_type)
+		if fsym.info is Map {
+			return fsym.info
+		}
+	}
+	t.no_info_panic(@METHOD)
 }
 
 [inline]
 pub fn (t &TypeSymbol) struct_info() Struct {
-	match mut t.info {
-		Struct { return t.info }
-		else { panic('TypeSymbol.struct_info(): no struct info for type: $t.name') }
+	if t.info is Struct {
+		return t.info
 	}
+	if t.info is Alias {
+		fsym := global_table.final_sym(t.info.parent_type)
+		if fsym.info is Struct {
+			return fsym.info
+		}
+	}
+	t.no_info_panic(@METHOD)
 }
 
 [inline]
 pub fn (t &TypeSymbol) sumtype_info() SumType {
-	match mut t.info {
-		SumType { return t.info }
-		else { panic('TypeSymbol.sumtype_info(): no sumtype info for type: $t.name') }
+	if t.info is SumType {
+		return t.info
 	}
+	if t.info is SumType {
+		fsym := global_table.final_sym(t.info.parent_type)
+		if fsym.info is SumType {
+			return fsym.info
+		}
+	}
+	t.no_info_panic(@METHOD)
 }
 
 pub fn (t &TypeSymbol) is_heap() bool {
@@ -918,6 +985,7 @@ pub:
 pub mut:
 	fields       []StructField
 	found_fields bool
+	is_anon      bool
 	// generic sumtype support
 	is_generic     bool
 	generic_types  []Type
@@ -1048,6 +1116,10 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 					}
 					else {}
 				}
+			} else if sym.info is SumType && (sym.info as SumType).is_anon {
+				variant_names := sym.info.variants.map(t.shorten_user_defined_typenames(t.sym(it).name,
+					import_aliases))
+				res = '${variant_names.join(' | ')}'
 			} else {
 				res = t.shorten_user_defined_typenames(res, import_aliases)
 			}
@@ -1089,7 +1161,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 		res = strings.repeat(`&`, nr_muls) + res
 	}
 	if typ.has_flag(.optional) {
-		res = '?' + res
+		res = '?$res'
 	}
 	return res
 }

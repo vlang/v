@@ -1,6 +1,6 @@
 module sync
 
-import sync.atomic2
+import sync.stdatomic
 
 pub struct Once {
 mut:
@@ -18,7 +18,7 @@ pub fn new_once() &Once {
 
 // do execute the function only once.
 pub fn (mut o Once) do(f fn ()) {
-	if atomic2.load_u64(&o.count) < 1 {
+	if stdatomic.load_u64(&o.count) < 1 {
 		o.do_slow(f)
 	}
 }
@@ -26,7 +26,7 @@ pub fn (mut o Once) do(f fn ()) {
 fn (mut o Once) do_slow(f fn ()) {
 	o.m.@lock()
 	if o.count < 1 {
-		atomic2.store_u64(&o.count, 1)
+		stdatomic.store_u64(&o.count, 1)
 		f()
 	}
 	o.m.unlock()

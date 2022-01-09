@@ -1,7 +1,7 @@
 /*
 regex 1.0 alpha
 
-Copyright (c) 2019-2021 Dario Deledda. All rights reserved.
+Copyright (c) 2019-2022 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
 that can be found in the LICENSE file.
 */
@@ -272,8 +272,14 @@ pub fn (mut re RE) find_all(in_txt string) []int {
 				i += e
 				continue
 			}
+			/*
+			if e > 0 {
+				i += e
+				continue
+			}
+			*/
+			i++
 		}
-		i++
 	}
 	// re.flag = old_flag
 	return res
@@ -306,6 +312,12 @@ pub fn (mut re RE) find_all_str(in_txt string) []string {
 				continue
 			}
 		}
+		/*
+		if e > 0 {
+			i += e
+			continue
+		}
+		*/
 		i++
 	}
 	// re.flag = old_flag
@@ -449,5 +461,39 @@ pub fn (mut re RE) replace(in_txt string, repl_str string) string {
 	if last_end >= 0 && last_end < in_txt.len {
 		res.write_string(in_txt[last_end..])
 	}
+	return res.str()
+}
+
+// replace_n return a string where the firts count matches are replaced with the repl_str string,
+// if count is > 0 the replace began from the start of the string toward the end
+// if count is < 0 the replace began from the end of the string toward the start
+// if count is 0 do nothing
+pub fn (mut re RE) replace_n(in_txt string, repl_str string, count int) string {
+	mut i := 0
+	mut index := 0
+	mut i_p := 0
+	mut res := strings.new_builder(in_txt.len)
+	mut lst := re.find_all(in_txt)
+
+	if count < 0 { // start from the right of the string
+		lst = lst#[count * 2..] // limitate the number of substitions
+	} else if count > 0 { // start from the left of the string
+		lst = lst#[..count * 2] // limitate the number of substitions
+	} else if count == 0 { // no replace
+		return in_txt
+	}
+
+	// println("found: ${lst}")
+	for index < lst.len {
+		i = lst[index]
+		res.write_string(in_txt[i_p..i])
+		res.write_string(repl_str)
+		index++
+		i_p = lst[index]
+		index++
+	}
+	i = i_p
+	res.write_string(in_txt[i..])
+
 	return res.str()
 }

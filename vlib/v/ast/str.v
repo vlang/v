@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module ast
@@ -22,6 +22,13 @@ pub fn (node &FnDecl) modname() string {
 pub fn (node &FnDecl) fkey() string {
 	if node.is_method {
 		return '${int(node.receiver.typ)}.$node.name'
+	}
+	return node.name
+}
+
+pub fn (node &Fn) fkey() string {
+	if node.is_method {
+		return '${int(node.receiver_type)}.$node.name'
 	}
 	return node.name
 }
@@ -576,7 +583,7 @@ pub fn (node Stmt) str() string {
 }
 
 fn field_to_string(f ConstField) string {
-	x := f.name.trim_prefix(f.mod + '.')
+	x := f.name.trim_string_left(f.mod + '.')
 	return '$x = $f.expr'
 }
 

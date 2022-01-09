@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module checker
@@ -186,11 +186,27 @@ fn (mut c Checker) resolve_generic_interface(typ ast.Type, interface_type ast.Ty
 				}
 				for imethod in inter_sym.info.methods {
 					method := typ_sym.find_method(imethod.name) or {
-						typ_sym.find_method_with_generic_parent(imethod.name) or { ast.Fn{} }
+						typ_sym.find_method_with_generic_parent(imethod.name) or {
+							c.error('can not find method `$imethod.name` on `$typ_sym.name`, needed for interface: `$inter_sym.name`',
+								pos)
+							return 0
+						}
 					}
 					if imethod.return_type.has_flag(.generic) {
 						imret_sym := c.table.sym(imethod.return_type)
 						mret_sym := c.table.sym(method.return_type)
+						if method.return_type == ast.void_type
+							&& imethod.return_type != method.return_type {
+							c.error('interface method `$imethod.name` returns `$imret_sym.name`, but implementation method `$method.name` returns no value',
+								pos)
+							return 0
+						}
+						if imethod.return_type == ast.void_type
+							&& imethod.return_type != method.return_type {
+							c.error('interface method `$imethod.name` returns no value, but implementation method `$method.name` returns `$mret_sym.name`',
+								pos)
+							return 0
+						}
 						if imret_sym.info is ast.MultiReturn && mret_sym.info is ast.MultiReturn {
 							for i, mr_typ in imret_sym.info.types {
 								if mr_typ.has_flag(.generic)
@@ -215,15 +231,17 @@ fn (mut c Checker) resolve_generic_interface(typ ast.Type, interface_type ast.Ty
 					}
 				}
 				if inferred_type == ast.void_type {
-					c.error('could not infer generic type `$gt_name` in interface', pos)
+					c.error('could not infer generic type `$gt_name` in interface `$inter_sym.name`',
+						pos)
 					return interface_type
 				}
 				inferred_types << inferred_type
 			}
 			// add concrete types to method
 			for imethod in inter_sym.info.methods {
-				if inferred_types !in c.table.fn_generic_types[imethod.name] {
-					c.table.fn_generic_types[imethod.name] << inferred_types
+				im_fkey := imethod.fkey()
+				if inferred_types !in c.table.fn_generic_types[im_fkey] {
+					c.table.fn_generic_types[im_fkey] << inferred_types
 				}
 			}
 			inter_sym.info.concrete_types = inferred_types

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 
 module gg
@@ -10,6 +10,8 @@ import sokol.sapp
 import sokol.sgl
 import sokol.gfx
 import math
+
+pub type TouchPoint = C.sapp_touchpoint
 
 pub struct Event {
 pub mut:
@@ -27,7 +29,7 @@ pub mut:
 	scroll_x           f32
 	scroll_y           f32
 	num_touches        int
-	touches            [8]C.sapp_touchpoint
+	touches            [8]TouchPoint
 	window_width       int
 	window_height      int
 	framebuffer_width  int
@@ -107,9 +109,9 @@ pub mut:
 	// will get set to 2.0 for retina, will remain 1.0 for normal
 	width       int
 	height      int
-	clear_pass  C.sg_pass_action
-	window      C.sapp_desc
-	timage_pip  C.sgl_pipeline
+	clear_pass  gfx.PassAction
+	window      sapp.Desc
+	timage_pip  sgl.Pipeline
 	config      Config
 	user_data   voidptr
 	ft          &FT
@@ -137,7 +139,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 	mut g := unsafe { &Context(user_data) }
 	desc := sapp.create_desc()
 	/*
-	desc := C.sg_desc{
+	desc := gfx.Desc{
 		mtl_device: sapp.metal_get_device()
 		mtl_renderpass_descriptor_cb: sapp.metal_get_renderpass_descriptor
 		mtl_drawable_cb: sapp.metal_get_drawable
@@ -148,7 +150,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 	}
 	*/
 	gfx.setup(&desc)
-	sgl_desc := C.sgl_desc_t{}
+	sgl_desc := sgl.Desc{}
 	sgl.setup(&sgl_desc)
 	g.scale = dpi_scale()
 	// is_high_dpi := sapp.high_dpi()
@@ -194,16 +196,16 @@ fn gg_init_sokol_window(user_data voidptr) {
 		}
 	}
 	//
-	mut pipdesc := C.sg_pipeline_desc{
+	mut pipdesc := gfx.PipelineDesc{
 		label: c'alpha_image'
 	}
 	unsafe { vmemset(&pipdesc, 0, int(sizeof(pipdesc))) }
 
-	color_state := C.sg_color_state{
-		blend: C.sg_blend_state{
+	color_state := gfx.ColorState{
+		blend: gfx.BlendState{
 			enabled: true
-			src_factor_rgb: gfx.BlendFactor(C.SG_BLENDFACTOR_SRC_ALPHA)
-			dst_factor_rgb: gfx.BlendFactor(C.SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA)
+			src_factor_rgb: .src_alpha
+			dst_factor_rgb: .one_minus_src_alpha
 		}
 	}
 	pipdesc.colors[0] = color_state
@@ -241,7 +243,7 @@ pub fn new_context(cfg Config) &Context {
 	}
 	g.set_bg_color(cfg.bg_color)
 	// C.printf('new_context() %p\n', cfg.user_data)
-	window := C.sapp_desc{
+	window := sapp.Desc{
 		user_data: g
 		init_userdata_cb: gg_init_sokol_window
 		frame_userdata_cb: gg_frame_fn
@@ -325,7 +327,12 @@ pub fn wait_events() {
 */
 
 // TODO: Fix alpha
+[deprecated: 'use draw_rect_filled() instead']
 pub fn (ctx &Context) draw_rect(x f32, y f32, w f32, h f32, c gx.Color) {
+	ctx.draw_rect_filled(x, y, w, h, c)
+}
+
+pub fn (ctx &Context) draw_rect_filled(x f32, y f32, w f32, h f32, c gx.Color) {
 	$if macos {
 		if ctx.native_rendering {
 			C.darwin_draw_rect(x, ctx.height - (y + h), w, h, c)
@@ -539,8 +546,13 @@ pub fn (mut ctx Context) set_bg_color(c gx.Color) {
 }
 
 // Sets a pixel
-[inline]
+[deprecated: 'use draw_pixel() instead']
 pub fn (ctx &Context) set_pixel(x f32, y f32, c gx.Color) {
+	ctx.draw_pixel(x, y, c)
+}
+
+[inline]
+pub fn (ctx &Context) draw_pixel(x f32, y f32, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -551,9 +563,14 @@ pub fn (ctx &Context) set_pixel(x f32, y f32, c gx.Color) {
 	sgl.end()
 }
 
+[deprecated: 'use draw_pixels() instead']
+pub fn (ctx &Context) set_pixels(points []f32, c gx.Color) {
+	ctx.draw_pixels(points, c)
+}
+
 // Sets pixels from an array of points [x, y, x2, y2, etc...]
 [direct_array_access; inline]
-pub fn (ctx &Context) set_pixels(points []f32, c gx.Color) {
+pub fn (ctx &Context) draw_pixels(points []f32, c gx.Color) {
 	assert points.len % 2 == 0
 	len := points.len / 2
 
@@ -571,7 +588,12 @@ pub fn (ctx &Context) set_pixels(points []f32, c gx.Color) {
 }
 
 // Draws a filled triangle
+[deprecated: 'use draw_triangle_filled() instead']
 pub fn (ctx &Context) draw_triangle(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32, c gx.Color) {
+	ctx.draw_triangle_filled(x, y, x2, y2, x3, y3, c)
+}
+
+pub fn (ctx &Context) draw_triangle_filled(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -584,7 +606,12 @@ pub fn (ctx &Context) draw_triangle(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32
 }
 
 // Draws the outline of a triangle
+[deprecated: 'use draw_triangle_empty() instead']
 pub fn (ctx &Context) draw_empty_triangle(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32, c gx.Color) {
+	ctx.draw_triangle_empty(x, y, x2, y2, x3, y3, c)
+}
+
+pub fn (ctx &Context) draw_triangle_empty(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -599,19 +626,34 @@ pub fn (ctx &Context) draw_empty_triangle(x f32, y f32, x2 f32, y2 f32, x3 f32, 
 }
 
 // Draws a filled square
-[inline]
+[deprecated: 'use draw_square_filled() instead']
 pub fn (ctx &Context) draw_square(x f32, y f32, s f32, c gx.Color) {
-	ctx.draw_rect(x, y, s, s, c)
+	ctx.draw_square_filled(x, y, s, c)
+}
+
+[inline]
+pub fn (ctx &Context) draw_square_filled(x f32, y f32, s f32, c gx.Color) {
+	ctx.draw_rect_filled(x, y, s, s, c)
 }
 
 // Draws the outline of a square
-[inline]
+[deprecated: 'use draw_square_empty() instead']
 pub fn (ctx &Context) draw_empty_square(x f32, y f32, s f32, c gx.Color) {
-	ctx.draw_empty_rect(x, y, s, s, c)
+	ctx.draw_square_empty(x, y, s, c)
+}
+
+[inline]
+pub fn (ctx &Context) draw_square_empty(x f32, y f32, s f32, c gx.Color) {
+	ctx.draw_rect_empty(x, y, s, s, c)
 }
 
 // Draws the outline of a rectangle
+[deprecated: 'use draw_rect_empty() instead']
 pub fn (ctx &Context) draw_empty_rect(x f32, y f32, w f32, h f32, c gx.Color) {
+	ctx.draw_rect_empty(x, y, w, h, c)
+}
+
+pub fn (ctx &Context) draw_rect_empty(x f32, y f32, w f32, h f32, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -625,8 +667,13 @@ pub fn (ctx &Context) draw_empty_rect(x f32, y f32, w f32, h f32, c gx.Color) {
 	sgl.end()
 }
 
-// Draws a circle
+// Draws a filled circle
+[deprecated: 'use draw_circle_filled() instead']
 pub fn (ctx &Context) draw_circle(x f32, y f32, r f32, c gx.Color) {
+	ctx.draw_circle_filled(x, y, r, c)
+}
+
+pub fn (ctx &Context) draw_circle_filled(x f32, y f32, r f32, c gx.Color) {
 	ctx.draw_circle_with_segments(x, y, r, 10, c)
 }
 
@@ -653,8 +700,13 @@ pub fn (ctx &Context) draw_circle_with_segments(x f32, y f32, r f32, segments in
 	sgl.end()
 }
 
-// Draws a circle slice/pie.
+// Draws a filled circle slice/pie.
+[deprecated: 'use draw_slice_filled() instead']
 pub fn (ctx &Context) draw_slice(x f32, y f32, r f32, start_angle f32, arc_angle f32, segments int, c gx.Color) {
+	ctx.draw_slice_filled(x, y, r, start_angle, arc_angle, segments, c)
+}
+
+pub fn (ctx &Context) draw_slice_filled(x f32, y f32, r f32, start_angle f32, arc_angle f32, segments int, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -681,7 +733,13 @@ pub fn (ctx &Context) draw_slice(x f32, y f32, r f32, start_angle f32, arc_angle
 }
 
 // Draws the outline of a circle slice/pie.
+[deprecated: 'use draw_slice_empty() instead']
 pub fn (ctx &Context) draw_empty_slice(x f32, y f32, r f32, start_angle f32, arc_angle f32, segments int, c gx.Color) {
+	ctx.draw_slice_empty(x, y, r, start_angle, arc_angle, segments, c)
+}
+
+// TODO: Add inner angle to empty shape
+pub fn (ctx &Context) draw_slice_empty(x f32, y f32, r f32, start_angle f32, arc_angle f32, segments int, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -710,7 +768,6 @@ pub fn (ctx &Context) draw_empty_slice(x f32, y f32, r f32, start_angle f32, arc
 pub fn (mut ctx Context) resize(width int, height int) {
 	ctx.width = width
 	ctx.height = height
-	// C.sapp_resize_window(width, height)
 }
 
 // Draws a line between the points provided
@@ -725,7 +782,7 @@ pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c gx.Color) {
 			} else if height == 0 {
 				height = 1
 			}
-			ctx.draw_rect(x, y, f32(width), f32(height), c)
+			ctx.draw_rect_filled(x, y, f32(width), f32(height), c)
 			return
 		}
 	}
@@ -766,7 +823,7 @@ pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config
 	sgl.translate(-nx, -ny, 0)
 
 	if config.line_type == .solid {
-		ctx.draw_rect(x, y, length, config.thickness, config.color)
+		ctx.draw_rect_filled(x, y, length, config.thickness, config.color)
 	} else {
 		size := if config.line_type == .dotted { config.thickness } else { config.thickness * 3 }
 		space := if size == 1 { 2 } else { size }
@@ -776,7 +833,7 @@ pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config
 
 		for i := 0; available > 0; i++ {
 			if i % 2 == 0 {
-				ctx.draw_rect(start_x, y, size, config.thickness, config.color)
+				ctx.draw_rect_filled(start_x, y, size, config.thickness, config.color)
 				available -= size
 				start_x += size
 				continue
@@ -790,8 +847,13 @@ pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config
 	sgl.pop_matrix()
 }
 
-// Draws an arc
+// Draws a filled arc
+[deprecated: 'use draw_arc_filled() instead']
 pub fn (ctx &Context) draw_arc(x f32, y f32, inner_r f32, outer_r f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+	ctx.draw_arc_filled(x, y, inner_r, outer_r, start_angle, end_angle, segments, c)
+}
+
+pub fn (ctx &Context) draw_arc_filled(x f32, y f32, inner_r f32, outer_r f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
 	if start_angle == end_angle || outer_r <= 0.0 {
 		return
 	}
@@ -815,7 +877,7 @@ pub fn (ctx &Context) draw_arc(x f32, y f32, inner_r f32, outer_r f32, start_ang
 	}
 
 	if r1 <= 0.0 {
-		ctx.draw_slice(x, y, int(r2), a1, a2, segments, c)
+		ctx.draw_slice_filled(x, y, int(r2), a1, a2, segments, c)
 		return
 	}
 
@@ -839,6 +901,11 @@ pub fn (ctx &Context) draw_arc(x f32, y f32, inner_r f32, outer_r f32, start_ang
 }
 
 // Draws the outline of an arc
+[deprecated: 'use draw_arc_empty() instead']
+pub fn (ctx &Context) draw_empty_arc(x f32, y f32, inner_r f32, outer_r f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+	ctx.draw_arc_empty(x, y, inner_r, outer_r, start_angle, end_angle, segments, c)
+}
+
 pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_r f32, outer_r f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
 	if start_angle == end_angle || outer_r <= 0.0 {
 		return
@@ -862,7 +929,7 @@ pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_r f32, outer_r f32, sta
 	}
 
 	if r1 <= 0.0 {
-		ctx.draw_empty_slice(x, y, int(r2), a1, a2, segments, c)
+		ctx.draw_slice_empty(x, y, int(r2), a1, a2, segments, c)
 		return
 	}
 
@@ -897,7 +964,12 @@ pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_r f32, outer_r f32, sta
 }
 
 // Draws a filled rounded rectangle
+[deprecated: 'use draw_rounded_rect_filled()']
 pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, w f32, h f32, radius f32, c gx.Color) {
+	ctx.draw_rounded_rect_filled(x, y, w, h, radius, c)
+}
+
+pub fn (ctx &Context) draw_rounded_rect_filled(x f32, y f32, w f32, h f32, radius f32, c gx.Color) {
 	sgl.c4b(c.r, c.g, c.b, c.a)
 	sgl.begin_triangle_strip()
 	mut theta := f32(0)
@@ -966,7 +1038,12 @@ pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, w f32, h f32, radius f32, 
 }
 
 // Draws the outline of a rounded rectangle
+[deprecated: 'use draw_rounded_rect_empty()']
 pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, w f32, h f32, radius f32, c gx.Color) {
+	ctx.draw_rounded_rect_empty(x, y, w, h, radius, c)
+}
+
+pub fn (ctx &Context) draw_rounded_rect_empty(x f32, y f32, w f32, h f32, radius f32, c gx.Color) {
 	mut theta := f32(0)
 	mut xx := f32(0)
 	mut yy := f32(0)
@@ -1052,7 +1129,12 @@ pub fn (ctx &Context) draw_convex_poly(points []f32, c gx.Color) {
 
 // draw_empty_poly - draws the borders of a polygon, given an array of points, and a color.
 // Note that the points must be given in clockwise order.
+[deprecated: 'use draw_poly_empty() instead']
 pub fn (ctx &Context) draw_empty_poly(points []f32, c gx.Color) {
+	ctx.draw_poly_empty(points, c)
+}
+
+pub fn (ctx &Context) draw_poly_empty(points []f32, c gx.Color) {
 	assert points.len % 2 == 0
 	len := points.len / 2
 	assert len >= 3
@@ -1145,6 +1227,11 @@ pub fn dpi_scale() f32 {
 	return s
 }
 
+[deprecated: 'use draw_ellipse_filled() instead']
+pub fn (ctx &Context) draw_ellipse(x f32, y f32, r_horizontal f32, r_vertical f32, c gx.Color) {
+	ctx.draw_ellipse_filled(x, y, r_horizontal, r_vertical, c)
+}
+
 // draw_ellipse_filled draws an opaque elipse, with a center at x,y , filled with the color `c`
 pub fn (ctx &Context) draw_ellipse_filled(x f32, y f32, r_horizontal f32, r_vertical f32, c gx.Color) {
 	if c.a != 255 {
@@ -1161,6 +1248,11 @@ pub fn (ctx &Context) draw_ellipse_filled(x f32, y f32, r_horizontal f32, r_vert
 			math.cosf(f32(math.radians(i + 10))) * r_vertical)
 	}
 	sgl.end()
+}
+
+[deprecated: 'use draw_ellipse_empty() instead']
+pub fn (ctx &Context) draw_empty_ellipse(x f32, y f32, r_horizontal f32, r_vertical f32, c gx.Color) {
+	ctx.draw_ellipse_empty(x, y, r_horizontal, r_vertical, c)
 }
 
 // draw_ellipse_empty draws the outline of an ellipse, with a center at x,y

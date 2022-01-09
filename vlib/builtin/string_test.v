@@ -1,6 +1,6 @@
 import strings
 
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -705,34 +705,34 @@ fn test_starts_with_capital() {
 	assert ' No'.starts_with_capital() == false
 }
 
-fn test_trim_prefix() {
+fn test_trim_string_left() {
 	s := 'V Programming Language'
-	assert s.trim_prefix('V ') == 'Programming Language'
-	assert s.trim_prefix('V Programming ') == 'Language'
-	assert s.trim_prefix('Language') == s
+	assert s.trim_string_left('V ') == 'Programming Language'
+	assert s.trim_string_left('V Programming ') == 'Language'
+	assert s.trim_string_left('Language') == s
 
 	s2 := 'TestTestTest'
-	assert s2.trim_prefix('Test') == 'TestTest'
-	assert s2.trim_prefix('TestTest') == 'Test'
+	assert s2.trim_string_left('Test') == 'TestTest'
+	assert s2.trim_string_left('TestTest') == 'Test'
 
 	s3 := '123Test123Test'
-	assert s3.trim_prefix('123') == 'Test123Test'
-	assert s3.trim_prefix('123Test') == '123Test'
+	assert s3.trim_string_left('123') == 'Test123Test'
+	assert s3.trim_string_left('123Test') == '123Test'
 }
 
-fn test_trim_suffix() {
+fn test_trim_string_right() {
 	s := 'V Programming Language'
-	assert s.trim_suffix(' Language') == 'V Programming'
-	assert s.trim_suffix(' Programming Language') == 'V'
-	assert s.trim_suffix('V') == s
+	assert s.trim_string_right(' Language') == 'V Programming'
+	assert s.trim_string_right(' Programming Language') == 'V'
+	assert s.trim_string_right('V') == s
 
 	s2 := 'TestTestTest'
-	assert s2.trim_suffix('Test') == 'TestTest'
-	assert s2.trim_suffix('TestTest') == 'Test'
+	assert s2.trim_string_right('Test') == 'TestTest'
+	assert s2.trim_string_right('TestTest') == 'Test'
 
 	s3 := '123Test123Test'
-	assert s3.trim_suffix('123') == s3
-	assert s3.trim_suffix('123Test') == '123Test'
+	assert s3.trim_string_right('123') == s3
+	assert s3.trim_string_right('123Test') == '123Test'
 }
 
 fn test_raw() {
@@ -935,4 +935,20 @@ fn test_index_any() {
 	x := 'abcdefghij'
 	assert x.index_any('ef') == 4
 	assert x.index_any('fe') == 4
+}
+
+fn test_string_f64() {
+	assert ''.f64() == 0
+	assert '123'.f64() == 123
+	assert '-123'.f64() == -123
+	assert '-123.456'.f64() == -123.456
+}
+
+const f32_epsilon = 0.0000000001
+
+fn test_string_f32() {
+	assert ''.f32() - 0 <= f32_epsilon
+	assert '123'.f32() - 123 < f32_epsilon
+	assert '-123'.f32() - (-123) < f32_epsilon
+	assert '-123.456'.f32() - (-123.456) <= f32_epsilon
 }

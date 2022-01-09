@@ -1,6 +1,6 @@
 module sync
 
-import sync.atomic2
+import sync.stdatomic
 
 pub struct ManyTimes {
 mut:
@@ -21,7 +21,7 @@ pub fn new_many_times(times u64) &ManyTimes {
 
 // do execute the function only setting times.
 pub fn (mut m ManyTimes) do(f fn ()) {
-	if atomic2.load_u64(&m.count) < m.times {
+	if stdatomic.load_u64(&m.count) < m.times {
 		m.do_slow(f)
 	}
 }
@@ -29,7 +29,7 @@ pub fn (mut m ManyTimes) do(f fn ()) {
 fn (mut m ManyTimes) do_slow(f fn ()) {
 	m.m.@lock()
 	if m.count < m.times {
-		atomic2.store_u64(&m.count, m.count + 1)
+		stdatomic.store_u64(&m.count, m.count + 1)
 		f()
 	}
 	m.m.unlock()

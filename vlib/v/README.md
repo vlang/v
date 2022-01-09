@@ -1,3 +1,12 @@
+## Description
+
+`v` is a namespace for all of the V compiler modules.
+
+The V compiler modules can be used by V programs that want to
+process V source code in different ways, in fact, that is how
+various V tools are implemented: `v fmt`, `v doc`, `v ast`, `vls`,
+as well as the V compiler itself.
+
 # Compiler pipeline
 A simple high level explanation
 how the compiler pipeline (`parser` -> `checker` -> `generator`) works.

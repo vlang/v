@@ -11,6 +11,7 @@
 module obj
 
 import gg.m4
+import sokol.gfx
 
 // part struct mantain the fae indexes list
 pub struct Part {
@@ -32,8 +33,8 @@ pub mut:
 // render data used for the rendering
 pub struct Render_data {
 pub mut:
-	pipeline C.sg_pipeline
-	bind     C.sg_bindings
+	pipeline gfx.Pipeline
+	bind     gfx.Bindings
 	n_vert   u32
 	material string
 }
@@ -47,10 +48,10 @@ pub mut:
 	vt []m4.Vec4 // textures
 
 	name          string
-	part          []Part                // parts of the ObjPart
-	mat           []Material            // list of the materials of the ObjPart
-	mat_map       map[string]int        // maping material name to its material index
-	texture       map[string]C.sg_image // GPU loaded texture map
+	part          []Part               // parts of the ObjPart
+	mat           []Material           // list of the materials of the ObjPart
+	mat_map       map[string]int       // maping material name to its material index
+	texture       map[string]gfx.Image // GPU loaded texture map
 	material_file string // .mtl file name for the .obj
 
 	rend_data []Render_data // render data used for the rendering
