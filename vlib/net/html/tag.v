@@ -66,3 +66,39 @@ pub fn (tag &Tag) str() string {
 	}
 	return html_str.str()
 }
+
+// get_tags retrieves all the child tags recursively in the tag that has the given tag name.
+pub fn (tag &Tag) get_tags(name string) []&Tag {
+	mut res := []&Tag{}
+	for child in tag.children {
+		if child.name == name {
+			res << child
+		}
+		res << child.get_tags(name)
+	}
+	return res
+}
+
+// get_tags_by_attribute retrieves all the child tags recursively in the tag that has the given attribute name.
+pub fn (tag &Tag) get_tags_by_attribute(name string) []&Tag {
+	mut res := []&Tag{}
+	for child in tag.children {
+		if child.attributes[name] != '' {
+			res << child
+		}
+		res << child.get_tags_by_attribute(name)
+	}
+	return res
+}
+
+// get_tags_by_attribute_value retrieves all the child tags recursively in the tag that has the given attribute name and value.
+pub fn (tag &Tag) get_tags_by_attribute_value(name string, value string) []&Tag {
+	mut res := []&Tag{}
+	for child in tag.children {
+		if child.attributes[name] == value {
+			res << child
+		}
+		res << child.get_tags_by_attribute_value(name, value)
+	}
+	return res
+}
