@@ -80,7 +80,7 @@ fn init(user_data voidptr) {
 	}
 	sgl.setup(&sgl_desc)
 	mut pipdesc := gfx.PipelineDesc{}
-	unsafe { C.memset(&pipdesc, 0, sizeof(pipdesc)) }
+	unsafe { vmemset(&pipdesc, 0, int(sizeof(pipdesc))) }
 
 	color_state := gfx.ColorState{
 		blend: gfx.BlendState{
