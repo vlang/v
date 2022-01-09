@@ -48,7 +48,7 @@ const (
   v complete [options] [SUBCMD] QUERY...
 
 Description:
-  Tool for brigding auto completion between various shells and v
+  Tool for bridging auto completion between various shells and v
 
 Supported shells:
   bash, fish, zsh, powershell
