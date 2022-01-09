@@ -85,6 +85,9 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		// }
 		for i, mut expr in node.exprs {
 			typ := c.check_expr_opt_call(expr, c.expr(expr))
+			if typ == ast.void_type {
+				c.error('invalid void array element type', expr.position())
+			}
 			node.expr_types << typ
 			// The first element's type
 			if expecting_interface_array {
