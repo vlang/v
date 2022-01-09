@@ -316,7 +316,7 @@ fn app_init(mut app App) {
 
 	// 3d pipeline
 	mut pipdesc := gfx.PipelineDesc{}
-	unsafe { C.memset(&pipdesc, 0, sizeof(pipdesc)) }
+	unsafe { vmemset(&pipdesc, 0, int(sizeof(pipdesc))) }
 
 	color_state := gfx.ColorState{
 		blend: gfx.BlendState{
