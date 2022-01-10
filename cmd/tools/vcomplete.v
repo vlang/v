@@ -481,11 +481,6 @@ fn auto_complete_request(args []string) []string {
 					}
 				}
 			}
-			// If only one possible file - send full path to completion system.
-			// Please note that this might be bash specific - needs more testing.
-			if list.len == 1 {
-				list = [list[0]]
-			}
 		}
 	}
 	if do_home_expand {
