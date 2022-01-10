@@ -1351,6 +1351,12 @@ fn trim_slash_line_break(s string) string {
 ///   escaped multibyte runes like `\xe29885' => (★)
 ///   escaped unicode literals like `\u2605`
 fn (mut s Scanner) ident_char() string {
+	lspos := token.Position{
+		line_nr: s.line_nr
+		pos: s.pos
+		col: s.pos - s.last_nl_pos - 1
+	}
+
 	start := s.pos // the string position of the first backtick char
 	slash := `\\`
 	mut len := 0
@@ -1436,9 +1442,9 @@ fn (mut s Scanner) ident_char() string {
 			if escaped_hex || escaped_unicode {
 				s.error('invalid character literal (escape sequence did not refer to a singular rune)')
 			} else {
-				s.error('invalid character literal (more than one character)')
 				s.add_error_detail_with_pos('use quotes for strings, backticks for characters',
-					start)
+					lspos)
+				s.error('invalid character literal (more than one character)')
 			}
 		}
 	}
