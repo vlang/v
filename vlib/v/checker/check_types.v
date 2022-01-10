@@ -617,8 +617,9 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Typ
 	return ast.string_type
 }
 
-const hex_lit_overflow_message = 'hex character literal overflows string'
+const hex_lit_overflow_message = 'hex character exceeds max allowed value of 0x10ffff, consider using a unicode literal (\\u####)'
 
+// TODO: justification is needed here... why are hex character literals limited to a maximum value of 0x10ffff?
 pub fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
 	mut idx := 0
 	for idx < node.val.len {

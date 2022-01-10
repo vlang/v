@@ -19,6 +19,19 @@ fn scan_kinds(text string) []token.Kind {
 	return token_kinds
 }
 
+fn scan_tokens(text string) []token.Token {
+	mut scanner := new_scanner(text, .parse_comments, &pref.Preferences{})
+	mut tokens := []token.Token{}
+	for {
+		tok := scanner.scan()
+		if tok.kind == .eof {
+			break
+		}
+		tokens << tok
+	}
+	return tokens
+}
+
 fn test_scan() {
 	token_kinds := scan_kinds('println(2 + 3)')
 	assert token_kinds.len == 6
@@ -138,6 +151,88 @@ fn test_ref_ref_array_ref_ref_foo() {
 }
 
 fn test_escape_string() {
-	assert '\x61' == 'a'
-	assert '\x62' == 'b'
+	// these assertions aren't helpful...
+	// they test the vlib built-in to the compiler,
+	// but we want to test this module before compilation
+	// assert '\x61' == 'a'
+	// assert '\x62' == 'b'
+	// assert `\x61` == `a`
+
+	// SINGLE CHAR ESCAPES
+	// SINGLE CHAR APOSTROPHE
+	mut result := scan_tokens(r"`'`")
+	assert result[0].kind == .chartoken
+	assert result[0].lit == r"\'"
+
+	// SINGLE CHAR BACKTICK
+	result = scan_tokens(r'`\``')
+	assert result[0].kind == .chartoken
+	assert result[0].lit == r'\`'
+
+	// SINGLE CHAR SLASH
+	result = scan_tokens(r'`\\`')
+	assert result[0].kind == .chartoken
+	assert result[0].lit == r'\\'
+
+	// SINGLE CHAR UNICODE ESCAPE
+	result = scan_tokens(r'`\u2605`')
+	assert result[0].kind == .chartoken
+	assert result[0].lit == r'★'
+
+	// SINGLE CHAR ESCAPED ASCII
+	result = scan_tokens(r'`\x61`')
+	assert result[0].kind == .chartoken
+	assert result[0].lit == r'a'
+
+	// SINGLE CHAR INCORRECT ESCAPE
+	// result = scan_tokens(r'`\x61\x61`') // should always result in an error
+
+	// SINGLE CHAR MULTI-BYTE UTF-8
+	// Compilation blocked by vlib/v/check_types, but works in the repl
+	// result = scan_tokens(r'`\xe29885`')
+	// assert result[0].lit == r'★'
+
+	// STRING ESCAPES
+	// STRING APOSTROPHE
+	result = scan_tokens(r"'\''")
+	assert result[0].kind == .string
+	assert result[0].lit == r"\'"
+
+	// STRING BACKTICK
+	result = scan_tokens(r"'\`'")
+	assert result[0].kind == .string
+	assert result[0].lit == r'\`'
+
+	// STRING SLASH
+	result = scan_tokens(r"'\\'")
+	assert result[0].kind == .string
+	assert result[0].lit == r'\\'
+
+	// STRING UNICODE ESCAPE
+	result = scan_tokens(r"'\u2605'")
+	assert result[0].kind == .string
+	assert result[0].lit == r'★'
+
+	// STRING ESCAPED ASCII
+	// when the scanner handles strings, it leaves the hex processing alone... I wonder why
+	result = scan_tokens(r"'\x61'")
+	assert result[0].kind == .string
+	assert result[0].lit == r'\x61'
+
+	// SINGLE CHAR INCORRECT ESCAPE
+	// result = scan_tokens(r'`\x61\x61`') // should always result in an error
+
+	// SINGLE CHAR MULTI-BYTE UTF-8
+	// Compilation blocked by vlib/v/check_types, but will work in the repl
+	// result = scan_tokens(r'`\xe29885`')
+	// assert result[0].lit == r'★'
+}
+
+fn test_comment_string() {
+	mut result := scan_tokens('// single line comment will get an \\x01 prepended')
+	assert result[0].kind == .comment
+	assert result[0].lit[0] == byte(1) // \x01
+	// result = scan_tokens('/// doc comment will keep third / at beginning')
+	// result = scan_tokens('/* block comment will be stripped of whitespace */')
+	// result = scan_tokens('a := 0 // line end comment also gets \\x01 prepended')
 }
