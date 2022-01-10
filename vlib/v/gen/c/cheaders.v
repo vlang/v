@@ -656,10 +656,19 @@ typedef uint8_t byte;
 typedef uint32_t rune;
 typedef size_t usize;
 typedef ptrdiff_t isize;
+#ifndef VNOFLOAT 
 typedef float f32;
 typedef double f64;
+#else
+typedef int32_t f32;
+typedef int64_t f64;
+#endif
 typedef int64_t int_literal;
+#ifndef VNOFLOAT
 typedef double float_literal;
+#else
+typedef int64_t float_literal;
+#endif
 typedef unsigned char* byteptr;
 typedef void* voidptr;
 typedef char* charptr;

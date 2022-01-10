@@ -645,6 +645,9 @@ pub fn (mut g Gen) init() {
 				g.cheaders.writeln(get_guarded_include_text('<stddef.h>', 'The C compiler can not find <stddef.h>. Please install build-essentials')) // size_t, ptrdiff_t
 			}
 		}
+		if g.pref.nofloat {
+			g.cheaders.writeln('#define VNOFLOAT 1')
+		}
 		g.cheaders.writeln(c_builtin_types)
 		if g.pref.is_bare {
 			g.cheaders.writeln(c_bare_headers)
