@@ -226,7 +226,7 @@ fn test_escape_string() {
 	// SHOULD RESULT IN ERRORS
 	// result = scan_tokens(r'`\x61\x61`') // should always result in an error
 	// result = scan_tokens(r"'\x'") // should always result in an error
-	result = scan_tokens(r'`hello`') // should always result in an error
+	// result = scan_tokens(r'`hello`') // should always result in an error
 }
 
 fn test_comment_string() {

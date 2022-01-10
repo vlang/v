@@ -1,5 +1,5 @@
 vlib/v/checker/tests/minus_op_wrong_type_err.vv:10:10: error: mismatched types `Aaa` and `int literal`
-    8 |
+    8 | 
     9 | fn main() {
    10 |     println(Aaa{} - 10)
       |             ~~~~~~~~~~
