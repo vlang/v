@@ -106,8 +106,10 @@ fn (mut p Parser) decode_value() ?Any {
 			kind := p.tok.kind
 			p.next_with_err() ?
 			if p.convert_type {
-				if kind == .float {
-					return Any(tl.f64())
+				$if !nofloat ? {
+					if kind == .float {
+						return Any(tl.f64())
+					}
 				}
 				return Any(tl.i64())
 			}
