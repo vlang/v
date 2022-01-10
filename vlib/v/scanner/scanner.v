@@ -1436,8 +1436,9 @@ fn (mut s Scanner) ident_char() string {
 			if escaped_hex || escaped_unicode {
 				s.error('invalid character literal (escape sequence did not refer to a singular rune)')
 			} else {
-				s.error('invalid character literal (more than one character)\n' +
-					'use quotes for strings, backticks for characters')
+				s.error('invalid character literal (more than one character)')
+				s.add_error_detail_with_pos('use quotes for strings, backticks for characters',
+					start)
 			}
 		}
 	}
