@@ -472,12 +472,8 @@ fn auto_complete_request(args []string) []string {
 				}
 			} else {
 				for entry in entries {
-					if collect_all {
+					if collect_all || entry.starts_with(last) {
 						list << append_separator_if_dir(entry)
-					} else {
-						if entry.starts_with(last) {
-							list << append_separator_if_dir(entry)
-						}
 					}
 				}
 			}
