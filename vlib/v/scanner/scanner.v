@@ -1363,7 +1363,7 @@ fn (mut s Scanner) ident_char() string {
 	for {
 		s.pos++
 		if s.pos >= s.text.len {
-			break // we've reached the limit of the available text
+			break
 		}
 		if s.text[s.pos] != slash {
 			len++

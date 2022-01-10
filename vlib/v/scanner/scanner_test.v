@@ -214,13 +214,11 @@ fn test_escape_string() {
 	assert result[0].lit == r'★'
 
 	// STRING ESCAPED ASCII
-	// when the scanner handles strings, it leaves the hex processing alone... I wonder why
 	result = scan_tokens(r"'\x61'")
 	assert result[0].kind == .string
 	assert result[0].lit == r'a'
 
 	// STRING MULTI-BYTE UTF-8
-	// Compilation blocked by vlib/v/checker/check_types.v, but will work in the repl
 	result = scan_tokens(r"'\xe29885'")
 	assert result[0].kind == .string
 	assert result[0].lit == r'â9885'
