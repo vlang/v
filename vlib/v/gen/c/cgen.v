@@ -4907,7 +4907,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				expr0.return_type.has_flag(.optional) && expr0.or_block.kind == .absent
 			}
 			else {
-				node.types[0].has_flag(.optional)
+				expr0 !is ast.MapInit && node.types[0].has_flag(.optional)
 			}
 		}
 		if fn_return_is_optional && !expr_type_is_opt && return_sym.name != 'Option' {
