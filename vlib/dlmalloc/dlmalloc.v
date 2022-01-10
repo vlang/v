@@ -16,14 +16,16 @@ module dlmalloc
 
 import math.bits
 
+/*
 $if debug ? {
 	#include "valgrind.h"
 }
-/*
-fn C.VALGRIND_MALLOCLIKE_BLOCK(addr voidptr, size usize, rzb usize,is_zeroed bool)
-fn C.VALGRIND_FREELIKE_BLOCK(addr voidptr, rzB usize)
-fn C.VALGRIND_MAKE_MEM_UNDEFINED(addr voidptr, size usize)
+
+fn //C.VALGRIND_MALLOCLIKE_BLOCK(addr voidptr, size usize, rzb usize,is_zeroed bool)
+fn //C.VALGRIND_FREELIKE_BLOCK(addr voidptr, rzB usize)
+fn //C.VALGRIND_MAKE_MEM_UNDEFINED(addr voidptr, size usize)
 */
+
 pub const (
 	n_small_bins           = 32
 	n_tree_bins            = 32
@@ -395,6 +397,10 @@ fn (tree &TreeChunk) chunk() &Chunk {
 	return &tree.chunk
 }
 
+fn (tree &TreeChunk) size(treemap u32) usize {
+	return tree.chunk.head & ~dlmalloc.flag_bits
+}
+
 [unsafe]
 fn (tree &TreeChunk) next() &TreeChunk {
 	unsafe {
@@ -559,7 +565,7 @@ fn (mut dl Dlmalloc) unlink_large_chunk(chunk_ &TreeChunk) {
 fn (mut dl Dlmalloc) unlink_first_small_chunk(head_ &Chunk, next_ &Chunk, idx u32) {
 	mut next := next_
 	mut head := head_
-
+	println('Unlink first small')
 	mut ptr := next.prev
 	if voidptr(head) == voidptr(ptr) {
 		unsafe { dl.clear_smallmap(idx) }
@@ -893,7 +899,7 @@ fn (mut dl Dlmalloc) mark_smallmap(idx u32) {
 
 [unsafe]
 fn (mut dl Dlmalloc) smallmap_is_marked(idx u32) bool {
-	return dl.smallmap & (1 << idx) != 0
+	return (dl.smallmap & (1 << idx)) != 0
 }
 
 [unsafe]
@@ -949,7 +955,11 @@ fn (mut dl Dlmalloc) malloc_real(size usize) voidptr {
 			if nb > dl.dvsize {
 				// if there's some other bin with some memory, then we just use
 				// the next smallest bin
-				if smallbits != 0 {
+
+				// todo(playXE): Find out why in the world this part of code does not work in
+				// some programs (esp. x.json2). Theoretically disabling this path just
+				// makes fragmentation a little worser but nothing really bad should happen
+				if false && smallbits != 0 {
 					leftbits := (smallbits << idx) & left_bits(1 << idx)
 					leastbit := least_bit(leftbits)
 					i := u32(bits.trailing_zeros_32(leastbit))
@@ -1137,10 +1147,10 @@ fn (mut dl Dlmalloc) sys_alloc(size usize) voidptr {
 fn (mut dl Dlmalloc) tmalloc_small(size usize) voidptr {
 	unsafe {
 		leastbit := least_bit(dl.treemap)
-		i := bits.leading_zeros_32(leastbit)
+		i := bits.trailing_zeros_32(leastbit)
 		mut v := *dl.treebin_at(u32(i))
 		mut t := v
-		mut rsize := t.chunk().size() - size
+		mut rsize := t.size(dl.treemap)
 		for {
 			t = t.leftmost_child()
 			if isnil(t) {
@@ -1156,6 +1166,7 @@ fn (mut dl Dlmalloc) tmalloc_small(size usize) voidptr {
 
 		mut vc := v.chunk()
 		r := &TreeChunk(vc.plus_offset(size))
+		dl.unlink_large_chunk(v)
 		if rsize < min_chunk_size() {
 			vc.set_inuse_and_pinuse(rsize + size)
 		} else {
@@ -1247,7 +1258,15 @@ fn (mut dl Dlmalloc) prepend_alloc(newbase voidptr, oldbase voidptr, size usize)
 		psize := usize(oldfirst) - usize(p)
 		mut q := p.plus_offset(size)
 		mut qsize := psize - size
+		// C.VALGRIND_MAKE_MEM_UNDEFINED(p.plus_offset(sizeof(usize)),size)
 		p.set_size_and_pinuse_of_inuse_chunk(size)
+
+		if qsize >= sizeof(TreeChunk) {
+			// C.VALGRIND_MAKE_MEM_UNDEFINED(q, sizeof(TreeChunk))
+		} else {
+			// C.VALGRIND_MAKE_MEM_UNDEFINED(q,sizeof(Chunk))
+		}
+		// C.VALGRIND_MAKE_MEM_UNDEFINED(q.plus_offset(qsize),sizeof(usize))
 
 		if voidptr(oldfirst) == voidptr(dl.top) {
 			dl.topsize += qsize

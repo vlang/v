@@ -43,10 +43,14 @@ pub fn tabs(n int) string {
 //
 pub fn set_vroot_folder(vroot_path string) {
 	// Preparation for the compiler module:
-	// VEXE env variable is needed so that compiler.vexe_path()
-	// can return it later to whoever needs it:
-	vname := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
-	os.setenv('VEXE', os.real_path(os.join_path_single(vroot_path, vname)), true)
+	// VEXE env variable is needed so that compiler.vexe_path() can return it
+	// later to whoever needs it. NB: guessing is a heuristic, so only try to
+	// guess the V executable name, if VEXE has not been set already.
+	vexe := os.getenv('VEXE')
+	if vexe == '' {
+		vname := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
+		os.setenv('VEXE', os.real_path(os.join_path_single(vroot_path, vname)), true)
+	}
 	os.setenv('VCHILD', 'true', true)
 }
 
@@ -133,7 +137,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		tool_source = tool_basename + '.v'
 	}
 	if is_verbose {
-		println('launch_tool vexe        : $vroot')
+		println('launch_tool vexe        : $vexe')
 		println('launch_tool vroot       : $vroot')
 		println('launch_tool tool_source : $tool_source')
 		println('launch_tool tool_exe    : $tool_exe')
