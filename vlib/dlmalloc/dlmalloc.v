@@ -965,7 +965,6 @@ fn (mut dl Dlmalloc) malloc_real(size usize) voidptr {
 					i := u32(bits.trailing_zeros_32(leastbit))
 					mut b := dl.smallbin_at(i)
 					mut p := b.prev
-					sz := small_index2size(i)
 					dl.unlink_first_small_chunk(b, p, i)
 					smallsize := small_index2size(i)
 					rsize := smallsize - nb
