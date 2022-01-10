@@ -154,9 +154,9 @@ fn test_escape_string() {
 	// these assertions aren't helpful...
 	// they test the vlib built-in to the compiler,
 	// but we want to test this module before compilation
-	// assert '\x61' == 'a'
-	// assert '\x62' == 'b'
-	// assert `\x61` == `a`
+	assert '\x61' == 'a'
+	assert '\x62' == 'b'
+	assert `\x61` == `a`
 
 	// SINGLE CHAR ESCAPES
 	// SINGLE CHAR APOSTROPHE
@@ -188,9 +188,9 @@ fn test_escape_string() {
 	// result = scan_tokens(r'`\x61\x61`') // should always result in an error
 
 	// SINGLE CHAR MULTI-BYTE UTF-8
-	// Compilation blocked by vlib/v/check_types, but works in the repl
-	// result = scan_tokens(r'`\xe29885`')
-	// assert result[0].lit == r'★'
+	// Compilation blocked by vlib/v/checker/check_types.v, but works in the repl
+	result = scan_tokens(r'`\xe29885`')
+	assert result[0].lit == r'★'
 
 	// STRING ESCAPES
 	// STRING APOSTROPHE
@@ -217,15 +217,17 @@ fn test_escape_string() {
 	// when the scanner handles strings, it leaves the hex processing alone... I wonder why
 	result = scan_tokens(r"'\x61'")
 	assert result[0].kind == .string
-	assert result[0].lit == r'\x61'
+	assert result[0].lit == r'a'
 
-	// SINGLE CHAR INCORRECT ESCAPE
+	// STRING MULTI-BYTE UTF-8
+	// Compilation blocked by vlib/v/checker/check_types.v, but will work in the repl
+	result = scan_tokens(r"'\xe29885'")
+	assert result[0].kind == .string
+	assert result[0].lit == r'â9885'
+
+	// SHOULD RESULT IN ERRORS
 	// result = scan_tokens(r'`\x61\x61`') // should always result in an error
-
-	// SINGLE CHAR MULTI-BYTE UTF-8
-	// Compilation blocked by vlib/v/check_types, but will work in the repl
-	// result = scan_tokens(r'`\xe29885`')
-	// assert result[0].lit == r'★'
+	// result = scan_tokens(r"'\x'") // should always result in an error
 }
 
 fn test_comment_string() {

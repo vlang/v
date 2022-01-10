@@ -1174,6 +1174,7 @@ fn (mut s Scanner) ident_string() string {
 	}
 	s.is_inside_string = false
 	mut u_escapes_pos := []int{} // pos list of \uXXXX
+	mut h_escapes_pos := []int{} // pos list of \xXX
 	mut backslash_count := if start_char == scanner.backslash { 1 } else { 0 }
 	for {
 		s.pos++
@@ -1221,8 +1222,12 @@ fn (mut s Scanner) ident_string() string {
 		// Escape `\x` `\u`
 		if backslash_count % 2 == 1 && !is_raw && !is_cstr {
 			// Escape `\x`
-			if c == `x` && (s.text[s.pos + 1] == s.quote || !s.text[s.pos + 1].is_hex_digit()) {
-				s.error(r'`\x` used with no following hex digits')
+			if c == `x` {
+				if s.text[s.pos + 1] == s.quote || !(s.text[s.pos + 1].is_hex_digit()
+					&& s.text[s.pos + 2].is_hex_digit()) {
+					s.error(r'`\x` used without two following hex digits')
+				}
+				h_escapes_pos << s.pos - 1
 			}
 			// Escape `\u`
 			if c == `u` {
@@ -1266,6 +1271,9 @@ fn (mut s Scanner) ident_string() string {
 		if !s.is_fmt && u_escapes_pos.len > 0 {
 			string_so_far = decode_u_escapes(string_so_far, start, u_escapes_pos)
 		}
+		if !s.is_fmt && h_escapes_pos.len > 0 {
+			string_so_far = decode_h_escapes(string_so_far, start, h_escapes_pos)
+		}
 		if n_cr_chars > 0 {
 			string_so_far = string_so_far.replace('\r', '')
 		}
@@ -1276,6 +1284,26 @@ fn (mut s Scanner) ident_string() string {
 		}
 	}
 	return lit
+}
+
+// only handle single-byte inline escapes
+fn decode_h_escapes(s string, start int, escapes_pos []int) string {
+	if escapes_pos.len == 0 {
+		return s
+	}
+	mut ss := []string{cap: escapes_pos.len * 2 + 1}
+	ss << s[..escapes_pos.first() - start]
+	for i, pos in escapes_pos {
+		idx := pos - start
+		end_idx := idx + 4 // "\xXX".len == 4
+		ss << utf32_to_str(u32(strconv.parse_uint(s[idx + 2..end_idx], 16, 8) or { 0 }))
+		if i + 1 < escapes_pos.len {
+			ss << s[end_idx..escapes_pos[i + 1] - start]
+		} else {
+			ss << s[end_idx..]
+		}
+	}
+	return ss.join('')
 }
 
 fn decode_u_escapes(s string, start int, escapes_pos []int) string {
@@ -1320,8 +1348,8 @@ fn trim_slash_line_break(s string) string {
 ///   single chars like `a`, `b` => 'a', 'b'
 ///   escaped single chars like `\\`, `\``, `\n` => '\\', '`', '\n'
 ///   escaped hex bytes like `\x01`, `\x61` => '\x01', 'a'
-///   escaped utf-8 runes like `\xe29885' => (★) NOT SUPPORTED
-///   escaped utf-16 runes like `\u2605`
+///   escaped multibyte runes like `\xe29885' => (★)
+///   escaped unicode literals like `\u2605`
 fn (mut s Scanner) ident_char() string {
 	start := s.pos // the string position of the first backtick char
 	slash := `\\`

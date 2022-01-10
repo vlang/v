@@ -617,9 +617,10 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Typ
 	return ast.string_type
 }
 
-const hex_lit_overflow_message = 'hex character exceeds max allowed value of 0x10ffff, consider using a unicode literal (\\u####)'
+const unicode_lit_overflow_message = 'unicode character exceeds max allowed value of 0x10ffff, consider using a unicode literal (\\u####)'
 
-// TODO: justification is needed here... why are hex character literals limited to a maximum value of 0x10ffff?
+// unicode character literals are limited to a maximum value of 0x10ffff
+// https://stackoverflow.com/questions/52203351/why-unicode-is-restricted-to-0x10ffff
 pub fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
 	mut idx := 0
 	for idx < node.val.len {
@@ -632,7 +633,7 @@ pub fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
 				start_idx := idx
 				idx++
 				next_ch := node.val[idx] or { return ast.string_type }
-				if next_ch == `x` {
+				if next_ch == `u` {
 					idx++
 					mut ch := node.val[idx] or { return ast.string_type }
 					mut hex_char_count := 0
@@ -648,13 +649,13 @@ pub fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
 								first_digit := node.val[idx - 5] - 48
 								second_digit := node.val[idx - 4] - 48
 								if first_digit > 1 {
-									c.error(checker.hex_lit_overflow_message, end_pos)
+									c.error(checker.unicode_lit_overflow_message, end_pos)
 								} else if first_digit == 1 && second_digit > 0 {
-									c.error(checker.hex_lit_overflow_message, end_pos)
+									c.error(checker.unicode_lit_overflow_message, end_pos)
 								}
 							}
 							else {
-								c.error(checker.hex_lit_overflow_message, end_pos)
+								c.error(checker.unicode_lit_overflow_message, end_pos)
 							}
 						}
 						idx++
