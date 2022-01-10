@@ -35,3 +35,8 @@ fn test_length_in_bytes() {
 	//
 	assert rune(0x110000).length_in_bytes() == -1
 }
+
+fn test_bytes() {
+	r1 := `★`
+	assert r1.bytes() == [byte(0xe2), 0x98, 0x85]
+}
