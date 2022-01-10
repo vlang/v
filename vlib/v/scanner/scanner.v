@@ -1348,7 +1348,7 @@ fn trim_slash_line_break(s string) string {
 ///   single chars like `a`, `b` => 'a', 'b'
 ///   escaped single chars like `\\`, `\``, `\n` => '\\', '`', '\n'
 ///   escaped hex bytes like `\x01`, `\x61` => '\x01', 'a'
-///   escaped multibyte runes like `\xe29885' => (★)
+///   escaped multibyte runes like `\xe29885` => (★)
 ///   escaped unicode literals like `\u2605`
 fn (mut s Scanner) ident_char() string {
 	lspos := token.Position{
