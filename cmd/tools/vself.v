@@ -8,9 +8,13 @@ import v.util.recompilation
 const is_debug = os.args.contains('-debug')
 
 fn main() {
+	// support a renamed `v` executable too:
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
-	recompilation.must_be_enabled(vroot, 'Please install V from source, to use `v self` .')
+	vexe_name := os.file_name(vexe)
+	short_v_name := vexe_name.all_before('.')
+	//
+	recompilation.must_be_enabled(vroot, 'Please install V from source, to use `$vexe_name self` .')
 	os.chdir(vroot) ?
 	os.setenv('VCOLORS', 'always', true)
 	args := os.args[1..].filter(it != 'self')
@@ -26,8 +30,8 @@ fn main() {
 		// The user just wants an independent copy of v, and so we are done.
 		return
 	}
-	backup_old_version_and_rename_newer() or { panic(err.msg) }
-	println('V built successfully!')
+	backup_old_version_and_rename_newer(short_v_name) or { panic(err.msg) }
+	println('V built successfully as executable "$vexe_name".')
 }
 
 fn compile(vroot string, cmd string) {
@@ -41,7 +45,7 @@ fn compile(vroot string, cmd string) {
 	}
 }
 
-fn list_folder(bmessage string, message string) {
+fn list_folder(short_v_name string, bmessage string, message string) {
 	if !is_debug {
 		return
 	}
@@ -49,37 +53,37 @@ fn list_folder(bmessage string, message string) {
 		println(bmessage)
 	}
 	if os.user_os() == 'windows' {
-		os.system('dir v*.exe')
+		os.system('dir $short_v_name*.exe')
 	} else {
-		os.system('ls -lartd v*')
+		os.system('ls -lartd $short_v_name*')
 	}
 	println(message)
 }
 
-fn backup_old_version_and_rename_newer() ?bool {
+fn backup_old_version_and_rename_newer(short_v_name string) ?bool {
 	mut errors := []string{}
-	short_v_file := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
+	short_v_file := if os.user_os() == 'windows' { '${short_v_name}.exe' } else { '$short_v_name' }
 	short_v2_file := if os.user_os() == 'windows' { 'v2.exe' } else { 'v2' }
 	short_bak_file := if os.user_os() == 'windows' { 'v_old.exe' } else { 'v_old' }
 	v_file := os.real_path(short_v_file)
 	v2_file := os.real_path(short_v2_file)
 	bak_file := os.real_path(short_bak_file)
 
-	list_folder('before:', 'removing $bak_file ...')
+	list_folder(short_v_name, 'before:', 'removing $bak_file ...')
 	if os.exists(bak_file) {
 		os.rm(bak_file) or { errors << 'failed removing $bak_file: $err.msg' }
 	}
 
-	list_folder('', 'moving $v_file to $bak_file ...')
+	list_folder(short_v_name, '', 'moving $v_file to $bak_file ...')
 	os.mv(v_file, bak_file) or { errors << err.msg }
 
-	list_folder('', 'removing $v_file ...')
+	list_folder(short_v_name, '', 'removing $v_file ...')
 	os.rm(v_file) or {}
 
-	list_folder('', 'moving $v2_file to $v_file ...')
+	list_folder(short_v_name, '', 'moving $v2_file to $v_file ...')
 	os.mv_by_cp(v2_file, v_file) or { panic(err.msg) }
 
-	list_folder('after:', '')
+	list_folder(short_v_name, 'after:', '')
 
 	if errors.len > 0 {
 		eprintln('backup errors:\n  >>  ' + errors.join('\n  >>  '))
