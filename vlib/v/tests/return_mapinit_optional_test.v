@@ -8,6 +8,6 @@ fn b() ?map[string]string {
 }
 
 fn test_all() ? {
-	assert a()? == {}
-	assert b()? == {}
+	assert a() ? == {}
+	assert b() ? == {}
 }
