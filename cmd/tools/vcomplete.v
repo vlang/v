@@ -458,9 +458,7 @@ fn auto_complete_request(args []string) []string {
 				path_complete = true
 			}
 
-			entries := os.ls(ls_path) or {
-				return ['"vcomplete ERROR while completing $args"']
-			}
+			entries := os.ls(ls_path) or { return list }
 			mut last := part.all_after_last(os.path_separator)
 			if is_abs_path && os.is_dir(part) {
 				last = ''
