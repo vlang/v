@@ -334,12 +334,26 @@ fn append_separator_if_dir(path string) string {
 	return path
 }
 
+// nearest_path_or_root returns the nearest valid path searching
+// backwards from `path`.
+fn nearest_path_or_root(path string) string {
+	mut fixed_path := path
+	if !os.is_dir(fixed_path) {
+		fixed_path = path.all_before_last(os.path_separator)
+		if fixed_path == '' {
+			fixed_path = '/'
+		}
+	}
+	return fixed_path
+}
+
 // auto_complete_request retuns a list of completions resolved from a full argument list.
 fn auto_complete_request(args []string) []string {
 	// Using space will ensure a uniform input in cases where the shell
 	// returns the completion input as a string (['v','run'] vs. ['v run']).
 	split_by := ' '
 	request := args.join(split_by)
+	mut do_home_expand := false
 	mut list := []string{}
 	// new_part := request.ends_with('\n\n')
 	mut parts := request.trim_right(' ').split(split_by)
@@ -348,7 +362,7 @@ fn auto_complete_request(args []string) []string {
 			list << command
 		}
 	} else {
-		part := parts.last().trim(' ')
+		mut part := parts.last().trim(' ')
 		mut parent_command := ''
 		for i := parts.len - 1; i >= 0; i-- {
 			if parts[i].starts_with('-') {
@@ -421,17 +435,34 @@ fn auto_complete_request(args []string) []string {
 			mut ls_path := '.'
 			mut collect_all := part in auto_complete_commands
 			mut path_complete := false
+			do_home_expand = part.starts_with('~')
+			if do_home_expand {
+				add_sep := if part == '~' { os.path_separator } else { '' }
+				part = part.replace_once('~', os.home_dir().trim_right(os.path_separator)) + add_sep
+			}
+			is_abs_path := part.starts_with(os.path_separator) // TODO Windows support for drive prefixes
 			if part.ends_with(os.path_separator) || part == '.' || part == '..' {
 				// 'v <command>(.*/$|.|..)<tab>' -> output full directory list
 				ls_path = '.' + os.path_separator + part
+				if is_abs_path {
+					ls_path = nearest_path_or_root(part)
+				}
 				collect_all = true
 			} else if !collect_all && part.contains(os.path_separator) && os.is_dir(os.dir(part)) {
 				// 'v <command>(.*/.* && os.is_dir)<tab>'  -> output completion friendly directory list
-				ls_path = os.dir(part)
+				if is_abs_path {
+					ls_path = nearest_path_or_root(part)
+				} else {
+					ls_path = os.dir(part)
+				}
 				path_complete = true
 			}
+
 			entries := os.ls(ls_path) or { return list }
-			last := part.all_after_last(os.path_separator)
+			mut last := part.all_after_last(os.path_separator)
+			if is_abs_path && os.is_dir(part) {
+				last = ''
+			}
 			if path_complete {
 				path := part.all_before_last(os.path_separator)
 				for entry in entries {
@@ -439,23 +470,17 @@ fn auto_complete_request(args []string) []string {
 						list << append_separator_if_dir(os.join_path(path, entry))
 					}
 				}
-				// If only one possible file - send full path to completion system.
-				// Please note that this might be bash specific - needs more testing.
-				if list.len == 1 {
-					list = [list[0]]
-				}
 			} else {
 				for entry in entries {
-					if collect_all {
+					if collect_all || entry.starts_with(last) {
 						list << append_separator_if_dir(entry)
-					} else {
-						if entry.starts_with(last) {
-							list << append_separator_if_dir(entry)
-						}
 					}
 				}
 			}
 		}
+	}
+	if do_home_expand {
+		return list.map(it.replace_once(os.home_dir().trim_right(os.path_separator), '~'))
 	}
 	return list
 }
