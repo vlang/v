@@ -1418,6 +1418,7 @@ pub mut:
 pub struct IfGuardExpr {
 pub:
 	var_name string
+	is_mut   bool
 	pos      token.Position
 pub mut:
 	expr      Expr
