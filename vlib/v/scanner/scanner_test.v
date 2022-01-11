@@ -192,7 +192,7 @@ fn test_escape_string() {
 	result = scan_tokens(r'`\xe29885`')
 	assert result[0].lit == r'★'
 
-	// STRING ESCAPES
+	// STRING ESCAPES =================
 	// STRING APOSTROPHE
 	result = scan_tokens(r"'\''")
 	assert result[0].kind == .string
@@ -218,10 +218,11 @@ fn test_escape_string() {
 	assert result[0].kind == .string
 	assert result[0].lit == r'a'
 
-	// STRING MULTI-BYTE UTF-8
+	// STRING ESCAPED EXTENDED ASCII
+	// (should not be converted to unicode)
 	result = scan_tokens(r"'\xe29885'")
 	assert result[0].kind == .string
-	assert result[0].lit == r'â9885'
+	assert result[0].lit.bytes() == [byte(0xe2), `9`, `8`, `8`, `5`]
 
 	// SHOULD RESULT IN ERRORS
 	// result = scan_tokens(r'`\x61\x61`') // should always result in an error

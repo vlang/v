@@ -1286,7 +1286,7 @@ fn (mut s Scanner) ident_string() string {
 	return lit
 }
 
-// only handle single-byte inline escapes
+// only handle single-byte inline escapes like '\xc0'
 fn decode_h_escapes(s string, start int, escapes_pos []int) string {
 	if escapes_pos.len == 0 {
 		return s
@@ -1296,7 +1296,8 @@ fn decode_h_escapes(s string, start int, escapes_pos []int) string {
 	for i, pos in escapes_pos {
 		idx := pos - start
 		end_idx := idx + 4 // "\xXX".len == 4
-		ss << utf32_to_str(u32(strconv.parse_uint(s[idx + 2..end_idx], 16, 8) or { 0 }))
+		// notice this function doesn't do any decoding... it just replaces '\xc0' with the byte 0xc0
+		ss << [byte(strconv.parse_uint(s[idx + 2..end_idx], 16, 8) or { 0 })].bytestr()
 		if i + 1 < escapes_pos.len {
 			ss << s[end_idx..escapes_pos[i + 1] - start]
 		} else {
