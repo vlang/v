@@ -24,26 +24,35 @@ pub fn utf32_to_str(code u32) string {
 [manualfree; unsafe]
 pub fn utf32_to_str_no_malloc(code u32, buf &byte) string {
 	unsafe {
+		len := utf32_decode_to_buffer(code, buf)
+		if len == 0 {
+			return ''
+		}
+		buf[len] = 0
+		return tos(buf, len)
+	}
+}
+
+[manualfree; unsafe]
+pub fn utf32_decode_to_buffer(code u32, buf &byte) int {
+	unsafe {
 		icode := int(code) // Prevents doing casts everywhere
 		mut buffer := &byte(buf)
 		if icode <= 127 {
 			// 0x7F
 			buffer[0] = byte(icode)
-			buffer[1] = 0
-			return tos(buffer, 1)
+			return 1
 		} else if icode <= 2047 {
 			// 0x7FF
 			buffer[0] = 192 | byte(icode >> 6) // 0xC0 - 110xxxxx
 			buffer[1] = 128 | byte(icode & 63) // 0x80 - 0x3F - 10xxxxxx
-			buffer[2] = 0
-			return tos(buffer, 2)
+			return 2
 		} else if icode <= 65535 {
 			// 0xFFFF
 			buffer[0] = 224 | byte(icode >> 12) // 0xE0 - 1110xxxx
 			buffer[1] = 128 | (byte(icode >> 6) & 63) // 0x80 - 0x3F - 10xxxxxx
 			buffer[2] = 128 | byte(icode & 63) // 0x80 - 0x3F - 10xxxxxx
-			buffer[3] = 0
-			return tos(buffer, 3)
+			return 3
 		}
 		// 0x10FFFF
 		else if icode <= 1114111 {
@@ -51,11 +60,10 @@ pub fn utf32_to_str_no_malloc(code u32, buf &byte) string {
 			buffer[1] = 128 | (byte(icode >> 12) & 63) // 0x80 - 0x3F - 10xxxxxx
 			buffer[2] = 128 | (byte(icode >> 6) & 63) // 0x80 - 0x3F - 10xxxxxx
 			buffer[3] = 128 | byte(icode & 63) // 0x80 - 0x3F - 10xxxxxx
-			buffer[4] = 0
-			return tos(buffer, 4)
+			return 4
 		}
 	}
-	return ''
+	return 0
 }
 
 // Convert utf8 to utf32

@@ -54,8 +54,11 @@ pub fn (c rune) repeat(count int) string {
 	return res.repeat(count)
 }
 
+[manualfree]
 pub fn (c rune) bytes() []byte {
-	return c.str().bytes()
+	mut res := []byte{cap: 5}
+	res.len = unsafe { utf32_decode_to_buffer(u32(c), &byte(res.data)) }
+	return res
 }
 
 pub fn (c rune) length_in_bytes() int {
