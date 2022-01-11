@@ -1174,6 +1174,7 @@ fn (mut s Scanner) ident_string() string {
 	}
 	s.is_inside_string = false
 	mut u_escapes_pos := []int{} // pos list of \uXXXX
+	mut h_escapes_pos := []int{} // pos list of \xXX
 	mut backslash_count := if start_char == scanner.backslash { 1 } else { 0 }
 	for {
 		s.pos++
@@ -1221,8 +1222,12 @@ fn (mut s Scanner) ident_string() string {
 		// Escape `\x` `\u`
 		if backslash_count % 2 == 1 && !is_raw && !is_cstr {
 			// Escape `\x`
-			if c == `x` && (s.text[s.pos + 1] == s.quote || !s.text[s.pos + 1].is_hex_digit()) {
-				s.error(r'`\x` used with no following hex digits')
+			if c == `x` {
+				if s.text[s.pos + 1] == s.quote || !(s.text[s.pos + 1].is_hex_digit()
+					&& s.text[s.pos + 2].is_hex_digit()) {
+					s.error(r'`\x` used without two following hex digits')
+				}
+				h_escapes_pos << s.pos - 1
 			}
 			// Escape `\u`
 			if c == `u` {
@@ -1266,6 +1271,9 @@ fn (mut s Scanner) ident_string() string {
 		if !s.is_fmt && u_escapes_pos.len > 0 {
 			string_so_far = decode_u_escapes(string_so_far, start, u_escapes_pos)
 		}
+		if !s.is_fmt && h_escapes_pos.len > 0 {
+			string_so_far = decode_h_escapes(string_so_far, start, h_escapes_pos)
+		}
 		if n_cr_chars > 0 {
 			string_so_far = string_so_far.replace('\r', '')
 		}
@@ -1276,6 +1284,27 @@ fn (mut s Scanner) ident_string() string {
 		}
 	}
 	return lit
+}
+
+// only handle single-byte inline escapes like '\xc0'
+fn decode_h_escapes(s string, start int, escapes_pos []int) string {
+	if escapes_pos.len == 0 {
+		return s
+	}
+	mut ss := []string{cap: escapes_pos.len * 2 + 1}
+	ss << s[..escapes_pos.first() - start]
+	for i, pos in escapes_pos {
+		idx := pos - start
+		end_idx := idx + 4 // "\xXX".len == 4
+		// notice this function doesn't do any decoding... it just replaces '\xc0' with the byte 0xc0
+		ss << [byte(strconv.parse_uint(s[idx + 2..end_idx], 16, 8) or { 0 })].bytestr()
+		if i + 1 < escapes_pos.len {
+			ss << s[end_idx..escapes_pos[i + 1] - start]
+		} else {
+			ss << s[end_idx..]
+		}
+	}
+	return ss.join('')
 }
 
 fn decode_u_escapes(s string, start int, escapes_pos []int) string {
@@ -1312,10 +1341,32 @@ fn trim_slash_line_break(s string) string {
 	return ret_str
 }
 
+/// ident_char is called when a backtick "single-char" is parsed from the code
+/// it is needed because some runes (chars) are written with escape sequences
+/// the string it returns should be a standardized, simplified version of the character
+/// as it would appear in source code
+/// possibilities:
+///   single chars like `a`, `b` => 'a', 'b'
+///   escaped single chars like `\\`, `\``, `\n` => '\\', '`', '\n'
+///   escaped hex bytes like `\x01`, `\x61` => '\x01', 'a'
+///   escaped multibyte runes like `\xe29885` => (★)
+///   escaped unicode literals like `\u2605`
 fn (mut s Scanner) ident_char() string {
-	start := s.pos
+	lspos := token.Position{
+		line_nr: s.line_nr
+		pos: s.pos
+		col: s.pos - s.last_nl_pos - 1
+	}
+
+	start := s.pos // the string position of the first backtick char
 	slash := `\\`
 	mut len := 0
+
+	// set flags for advanced escapes first
+	escaped_hex := s.expect('\\x', start + 1)
+	escaped_unicode := s.expect('\\u', start + 1)
+
+	// walk the string to get characters up to the next backtick
 	for {
 		s.pos++
 		if s.pos >= s.text.len {
@@ -1334,12 +1385,68 @@ fn (mut s Scanner) ident_char() string {
 		}
 	}
 	len--
-	c := s.text[start + 1..s.pos]
+	mut c := s.text[start + 1..s.pos]
 	if len != 1 {
+		// if the content expresses an escape code, it will have an even number of characters
+		// e.g. \x61 or \u2605
+		if (c.len % 2 == 0) && (escaped_hex || escaped_unicode) {
+			if escaped_unicode {
+				c = decode_u_escapes(c, 0, [0])
+			} else {
+				// we have to handle hex ourselves
+				ascii_0 := byte(0x30)
+				ascii_a := byte(0x61)
+				mut accumulated := []byte{}
+				val := c[2..c.len].to_lower() // 0A -> 0a
+				mut offset := 0
+				// take two characters at a time, parse as hex and add to bytes
+				for {
+					if offset >= val.len - 1 {
+						break
+					}
+					mut byteval := byte(0)
+					big := val[offset]
+					little := val[offset + 1]
+					if !big.is_hex_digit() {
+						accumulated.clear()
+						break
+					}
+					if !little.is_hex_digit() {
+						accumulated.clear()
+						break
+					}
+
+					if big.is_digit() {
+						byteval |= (big - ascii_0) << 4
+					} else {
+						byteval |= (big - ascii_a + 10) << 4
+					}
+					if little.is_digit() {
+						byteval |= (little - ascii_0)
+					} else {
+						byteval |= (little - ascii_a + 10)
+					}
+
+					accumulated << byteval
+					offset += 2
+				}
+				if accumulated.len > 0 {
+					c = accumulated.bytestr()
+				}
+			}
+		}
+
+		// the string inside the backticks is longer than one character
+		// but we might only have one rune, say in the case
 		u := c.runes()
 		if u.len != 1 {
-			s.error('invalid character literal (more than one character)\n' +
-				'use quotes for strings, backticks for characters')
+			if escaped_hex || escaped_unicode {
+				s.error('invalid character literal (escape sequence did not refer to a singular rune)')
+			} else {
+				s.add_error_detail_with_pos('use quotes for strings, backticks for characters',
+					lspos)
+				s.error('invalid character literal (more than one character)')
+			}
 		}
 	}
 	// Escapes a `'` character
