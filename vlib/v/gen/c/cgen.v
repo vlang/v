@@ -2510,6 +2510,19 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	g.expr(expr)
 }
 
+fn cescape_nonascii(original string) string {
+	mut b := strings.new_builder(original.len)
+	for c in original {
+		if c < 32 || c > 126 {
+			b.write_string('\\${c:03o}')
+			continue
+		}
+		b.write_b(c)
+	}
+	res := b.str()
+	return res
+}
+
 // cestring returns a V string, properly escaped for embeddeding in a C string literal.
 fn cestring(s string) string {
 	return s.replace('\\', '\\\\').replace('"', "'")
@@ -2517,7 +2530,7 @@ fn cestring(s string) string {
 
 // ctoslit returns a '_SLIT("$s")' call, where s is properly escaped.
 fn ctoslit(s string) string {
-	return '_SLIT("' + cestring(s) + '")'
+	return '_SLIT("' + cescape_nonascii(cestring(s)) + '")'
 }
 
 fn (mut g Gen) gen_attrs(attrs []ast.Attr) {
