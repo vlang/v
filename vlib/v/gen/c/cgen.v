@@ -4437,10 +4437,6 @@ fn (mut g Gen) ident(node ast.Ident) {
 }
 
 fn (mut g Gen) cast_expr(node ast.CastExpr) {
-	if node.typname.starts_with('&') {
-		// &Foo(0) => ((Foo*)0)
-		g.out.go_back(1)
-	}
 	sym := g.table.sym(node.typ)
 	if sym.kind in [.sum_type, .interface_] {
 		g.expr_with_cast(node.expr, node.expr_type, node.typ)
