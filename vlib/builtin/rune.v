@@ -54,6 +54,10 @@ pub fn (c rune) repeat(count int) string {
 	return res.repeat(count)
 }
 
+pub fn (c rune) bytes() []byte {
+	return c.str().bytes()
+}
+
 pub fn (c rune) length_in_bytes() int {
 	code := u32(c)
 	if code <= 0x7F {
