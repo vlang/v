@@ -1,7 +1,7 @@
 // Copyright (c) 2020 Lars Pontoppidan. All rights reserved.
 // Use of this source code is governed by the MIT license distributed with this software.
 // Don't use this editor for any serious work.
-// A lot of funtionality is missing compared to your favourite editor :)
+// A lot of functionality is missing compared to your favourite editor :)
 import strings
 import os
 import math
