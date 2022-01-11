@@ -81,10 +81,17 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		comments << p.eat_comments()
 		mut cond := ast.empty_expr()
 		mut is_guard := false
+
 		// `if x := opt() {`
-		if !is_comptime && p.peek_tok.kind == .decl_assign {
+		if !is_comptime && (p.peek_tok.kind == .decl_assign
+			|| (p.tok.kind == .key_mut && p.peek_token(2).kind == .decl_assign)) {
 			p.open_scope()
 			is_guard = true
+			mut is_mut := false
+			if p.tok.kind == .key_mut {
+				is_mut = true
+				p.check(.key_mut)
+			}
 			var_pos := p.tok.position()
 			var_name := p.check_name()
 			if p.scope.known_var(var_name) {
@@ -96,10 +103,12 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			expr := p.expr(0)
 			cond = ast.IfGuardExpr{
 				var_name: var_name
+				is_mut: is_mut
 				expr: expr
 			}
 			p.scope.register(ast.Var{
 				name: var_name
+				is_mut: is_mut
 				expr: cond
 				pos: var_pos
 			})
