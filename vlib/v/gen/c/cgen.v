@@ -2514,7 +2514,7 @@ fn cescape_nonascii(original string) string {
 	mut b := strings.new_builder(original.len)
 	for c in original {
 		if c < 32 || c > 126 {
-			b.write_string('\\${c:03o}')
+			b.write([byte(92), 48 + (c >> 6), 48 + (c >> 3) & 7, 48 + c & 7]) or { b.write_b(0) }
 			continue
 		}
 		b.write_b(c)
