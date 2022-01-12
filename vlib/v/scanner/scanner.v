@@ -1413,6 +1413,7 @@ fn (mut s Scanner) ident_char() string {
 	if s.is_fmt {
 		return c
 	}
+	orig := c
 	if len != 1 {
 		// if the content expresses an escape code, it will have an even number of characters
 		// e.g. \141 \x61 or \u2605
