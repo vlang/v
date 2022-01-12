@@ -5,6 +5,7 @@ module font
 
 import os
 
+// Variant enumerates the different variants a font can have.
 pub enum Variant {
 	normal = 0
 	bold
@@ -17,6 +18,10 @@ fn debug_font_println(s string) {
 	println(s)
 }
 
+// system_path returns an absolute path the default system TTF font.
+// If the env variable `VUI_FONT` is set this is used instead.
+// NOTE that, in some cases, the function calls out to external OS programs
+// so running this in a hot loop is not advised.
 pub fn system_path() string {
 	env_font := os.getenv('VUI_FONT')
 	if env_font != '' && os.exists(env_font) {
@@ -78,6 +83,8 @@ pub fn system_path() string {
 	panic('failed to init the font')
 }
 
+// get_path_variant returns the `font_path` file name replaced with the
+// file name of the font's `variant` version if it exists.
 pub fn get_path_variant(font_path string, variant Variant) string {
 	// TODO: find some way to make this shorter and more eye-pleasant
 	// NotoSans, LiberationSans, DejaVuSans, Arial and SFNS should work
