@@ -2514,7 +2514,13 @@ fn cescape_nonascii(original string) string {
 	mut b := strings.new_builder(original.len)
 	for c in original {
 		if c < 32 || c > 126 {
-			b.write([byte(92), 48 + (c >> 6), 48 + (c >> 3) & 7, 48 + c & 7]) or { b.write_b(0) }
+			// Encode with a 3 digit octal escape code, which has the
+			// advantage to be limited/non dependant on what character
+			// will follow next, unlike hex escapes:
+			b.write_b(92) // \
+			b.write_b(48 + (c >> 6)) // oct digit 2
+			b.write_b(48 + (c >> 3) & 7) // oct digit 1
+			b.write_b(48 + c & 7) // oct digit 0
 			continue
 		}
 		b.write_b(c)
