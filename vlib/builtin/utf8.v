@@ -67,27 +67,48 @@ pub fn utf32_decode_to_buffer(code u32, buf &byte) int {
 }
 
 // Convert utf8 to utf32
-pub fn (_rune string) utf32_code() int {
+// the original implementation did not check for
+// valid utf8 in the string, and could result in
+// values greater than the utf32 spec
+// it has been replaced by `utf8_to_utf32` which
+// has an optional return type.
+//
+// this function is left for backward compatibility
+// it is used in vlib/builtin/string.v,
+// and also in vlib/v/gen/c/cgen.v
+pub fn (_rune string) utf32_code() rune {
+	return _rune.bytes().utf8_to_utf32() or {
+		// error('more than one utf-8 rune found in this string')
+		rune(0)
+	}
+}
+
+// convert array of utf8 bytes to single utf32 value
+// will error if more than 4 bytes are submitted
+pub fn (_rune []byte) utf8_to_utf32() ?rune {
 	if _rune.len == 0 {
 		return 0
 	}
-	// save ASC symbol as is
+	// return ASCII unchanged
 	if _rune.len == 1 {
-		return int(_rune[0])
+		return rune(_rune[0])
 	}
+	if _rune.len > 4 {
+		return error('attempted to decode too many bytes, utf-8 is limited to four bytes maximum')
+	}
+
 	mut b := byte(int(_rune[0]))
-	// TODO should be
-	// res := int( rune[0] << rune.len)
+
 	b = b << _rune.len
-	mut res := u32(b)
+	mut res := rune(b) // remember rune is an alias of u32
 	mut shift := 6 - _rune.len
 	for i := 1; i < _rune.len; i++ {
-		c := u32(_rune[i])
-		res = u32(res) << shift
+		c := rune(_rune[i])
+		res = rune(res) << shift
 		res |= c & 63 // 0x3f
 		shift = 6
 	}
-	return int(res)
+	return res
 }
 
 // Calculate length to read from the first byte
