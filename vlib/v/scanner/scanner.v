@@ -1386,6 +1386,9 @@ fn (mut s Scanner) ident_char() string {
 	}
 	len--
 	mut c := s.text[start + 1..s.pos]
+	if s.is_fmt {
+		return c
+	}
 	if len != 1 {
 		// if the content expresses an escape code, it will have an even number of characters
 		// e.g. \x61 or \u2605

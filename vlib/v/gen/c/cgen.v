@@ -2510,6 +2510,13 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	g.expr(expr)
 }
 
+fn write_octal_escape(mut b strings.Builder, c byte) {
+	b << 92 // \
+	b << 48 + (c >> 6) // oct digit 2
+	b << 48 + (c >> 3) & 7 // oct digit 1
+	b << 48 + c & 7 // oct digit 0
+}
+
 fn cescape_nonascii(original string) string {
 	mut b := strings.new_builder(original.len)
 	for c in original {
@@ -2517,10 +2524,7 @@ fn cescape_nonascii(original string) string {
 			// Encode with a 3 digit octal escape code, which has the
 			// advantage to be limited/non dependant on what character
 			// will follow next, unlike hex escapes:
-			b.write_b(92) // \
-			b.write_b(48 + (c >> 6)) // oct digit 2
-			b.write_b(48 + (c >> 3) & 7) // oct digit 1
-			b.write_b(48 + c & 7) // oct digit 0
+			write_octal_escape(mut b, c)
 			continue
 		}
 		b.write_b(c)
@@ -3174,16 +3178,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write('))')
 		}
 		ast.CharLiteral {
-			if node.val == r'\`' {
-				g.write("'`'")
-			} else {
-				// TODO: optimize use L-char instead of u32 when possible
-				if utf8_str_len(node.val) < node.val.len {
-					g.write('((rune)0x$node.val.utf32_code().hex() /* `$node.val` */)')
-				} else {
-					g.write("'$node.val'")
-				}
-			}
+			g.char_literal(node)
 		}
 		ast.Comment {}
 		ast.ComptimeCall {
@@ -3413,6 +3408,28 @@ fn (mut g Gen) expr(node ast.Expr) {
 	}
 	g.discard_or_result = old_discard_or_result
 	g.is_void_expr_stmt = old_is_void_expr_stmt
+}
+
+fn (mut g Gen) char_literal(node ast.CharLiteral) {
+	if node.val == r'\`' {
+		g.write("'`'")
+		return
+	}
+	// TODO: optimize use L-char instead of u32 when possible
+	if utf8_str_len(node.val) < node.val.len {
+		g.write('((rune)0x$node.val.utf32_code().hex() /* `$node.val` */)')
+		return
+	}
+	if node.val.len == 1 {
+		clit := node.val[0]
+		if clit < 32 || clit == 92 || clit > 126 {
+			g.write("'")
+			write_octal_escape(mut g.out, clit)
+			g.write("'")
+			return
+		}
+	}
+	g.write("'$node.val'")
 }
 
 // T.name, typeof(expr).name
