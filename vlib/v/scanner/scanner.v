@@ -1414,6 +1414,7 @@ fn (mut s Scanner) ident_char() string {
 		return c
 	}
 	if len != 1 {
+		orig := c
 		// if the content expresses an escape code, it will have an even number of characters
 		// e.g. \141 \x61 or \u2605
 		if (c.len % 2 == 0) && (escaped_hex || escaped_unicode || escaped_octal) {
