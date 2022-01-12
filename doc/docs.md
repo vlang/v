@@ -4299,8 +4299,7 @@ sql db {
 }
 ```
 
-For more examples and the docs, see
-<a href='https://github.com/vlang/v/tree/master/vlib/orm'>vlib/orm</a>.
+For more examples and the docs, see [vlib/orm](https://github.com/vlang/v/tree/master/vlib/orm).
 
 ## Writing Documentation
 
