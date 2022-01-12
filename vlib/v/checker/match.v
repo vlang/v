@@ -8,6 +8,10 @@ import strings
 pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	node.is_expr = c.expected_type != ast.void_type
 	node.expected_type = c.expected_type
+	if node.cond is ast.ParExpr {
+		c.error('unnecessary `()` in `match` condition, use `match expr {` instead of `match (expr) {`.',
+			node.cond.pos)
+	}
 	cond_type := c.expr(node.cond)
 	// we setting this here rather than at the end of the method
 	// since it is used in c.match_exprs() it saves checking twice

@@ -73,18 +73,25 @@ pub fn (f Any) json_str() string {
 			return f.str()
 		}
 		f32 {
-			str_f32 := f.str()
-			if str_f32.ends_with('.') {
-				return '${str_f32}0'
+			$if !nofloat ? {
+				str_f32 := f.str()
+				if str_f32.ends_with('.') {
+					return '${str_f32}0'
+				}
+				return str_f32
 			}
-			return str_f32
+
+			return '0'
 		}
 		f64 {
-			str_f64 := f.str()
-			if str_f64.ends_with('.') {
-				return '${str_f64}0'
+			$if !nofloat ? {
+				str_f64 := f.str()
+				if str_f64.ends_with('.') {
+					return '${str_f64}0'
+				}
+				return str_f64
 			}
-			return str_f64
+			return '0'
 		}
 		map[string]Any {
 			return f.str()

@@ -868,6 +868,15 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 					return
 				}
 			}
+		} else if node.left is ast.ComptimeCall {
+			if node.left.method_name == 'method' {
+				sym := g.table.sym(g.unwrap_generic(node.left.left_type))
+				if m := sym.find_method(g.comptime_for_method) {
+					rec_type = m.return_type
+					g.gen_expr_to_string(node.left, rec_type)
+					return
+				}
+			}
 		} else if node.left is ast.Ident {
 			if node.left.obj is ast.Var {
 				if g.comptime_var_type_map.len > 0 {
@@ -1217,6 +1226,13 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 						if expr.field_expr.expr is ast.Ident {
 							key_str := '${expr.field_expr.expr.name}.typ'
 							typ = g.comptime_var_type_map[key_str] or { typ }
+						}
+					}
+				} else if expr is ast.ComptimeCall {
+					if expr.method_name == 'method' {
+						sym := g.table.sym(g.unwrap_generic(expr.left_type))
+						if m := sym.find_method(g.comptime_for_method) {
+							typ = m.return_type
 						}
 					}
 				} else if expr is ast.Ident {

@@ -6,7 +6,7 @@ import v.ast
 import v.util
 
 fn (mut g Gen) string_literal(node ast.StringLiteral) {
-	escaped_val := util.smart_quote(node.val, node.is_raw)
+	escaped_val := cescape_nonascii(util.smart_quote(node.val, node.is_raw))
 	if node.language == .c {
 		g.write('"$escaped_val"')
 	} else {
@@ -25,7 +25,7 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 	is_nl := call_expr.name == 'writeln'
 	// println('optimize sb $call_expr.name')
 	for i, val in node.vals {
-		escaped_val := util.smart_quote(val, false)
+		escaped_val := cescape_nonascii(util.smart_quote(val, false))
 		// if val == '' {
 		// break
 		// continue

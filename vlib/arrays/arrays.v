@@ -6,7 +6,8 @@ module arrays
 // - merge - combine two sorted arrays and maintain sorted order
 // - chunk - chunk array to arrays with n elements
 // - window - get snapshots of the window of the given size sliding along array with the given step, where each snapshot is an array
-// - TODO: zip - merge two arrays by interleaving e.g. arrays.zip([1,3,5], [2,4,6]) => [1,2,3,4,5,6]
+// - group - merge two arrays by interleaving e.g. arrays.group([1,3,5], [2,4,6]) => [[1,2],[3,4],[5,6]]
+// - flatten - reduce dimensionality of array by one. e.g. arrays.flatten([[1,2],[3,4],[5,6]]) => [1,2,3,4,5,6]
 
 // min returns the minimum value in the array
 // Example: arrays.min([1,2,3,0,9]) // => 0
@@ -107,7 +108,11 @@ pub fn merge<T>(a []T, b []T) []T {
 }
 
 // group n arrays into a single array of arrays with n elements
-// (an error will be generated if the type annotation is omitted)
+//
+// This function is analogous to the "zip" function of other languages.
+// To fully interleave two arrays, follow this function with a call to `flatten`.
+//
+// NOTE: An error will be generated if the type annotation is omitted.
 // Example: arrays.group<int>([1,2,3],[4,5,6]) // => [[1, 4], [2, 5], [3, 6]]
 pub fn group<T>(lists ...[]T) [][]T {
 	mut length := if lists.len > 0 { lists[0].len } else { 0 }
@@ -122,12 +127,12 @@ pub fn group<T>(lists ...[]T) [][]T {
 		mut arr := [][]T{cap: length}
 		// append all combined arrays into the resultant array
 		for ndx in 0 .. length {
-			mut zipped := []T{cap: lists.len}
+			mut grouped := []T{cap: lists.len}
 			// combine each list item for the ndx position into one array
 			for list_ndx in 0 .. lists.len {
-				zipped << lists[list_ndx][ndx]
+				grouped << lists[list_ndx][ndx]
 			}
-			arr << zipped
+			arr << grouped
 		}
 		return arr
 	}
@@ -302,30 +307,6 @@ pub fn concat<T>(a []T, b ...T) []T {
 	m << a
 	m << b
 
-	return m
-}
-
-// zip returns a new array by interleaving the source arrays.
-//
-// NOTE: The two arrays do not need to be equal sizes
-// Example: arrays.zip([1, 3, 5, 7], [2, 4, 6, 8, 10]) // => [1, 2, 3, 4, 5, 6, 7, 8, 10]
-pub fn zip<T>(a []T, b []T) []T {
-	mut m := []T{cap: a.len + b.len}
-	mut i := 0
-	for i < m.cap {
-		// short-circuit the rest of the loop as soon as we can
-		if i >= a.len {
-			m << b[i..]
-			break
-		}
-		if i >= b.len {
-			m << a[i..]
-			break
-		}
-		m << a[i]
-		m << b[i]
-		i++
-	}
 	return m
 }
 

@@ -29,6 +29,9 @@ $if static_boehm ? {
 			#flag -I@VEXEROOT/thirdparty/libgc/include
 			#flag -L@VEXEROOT/thirdparty/libgc
 			#flag -lgc
+		} $else $if msvc {
+			#flag -DGC_BUILTIN_ATOMIC=1
+			#flag -I@VEXEROOT/thirdparty/libgc/include
 		} $else {
 			#flag -DGC_BUILTIN_ATOMIC=1
 			#flag -I@VEXEROOT/thirdparty/libgc
@@ -49,6 +52,9 @@ $if static_boehm ? {
 			#flag -I@VEXEROOT/thirdparty/libgc/include
 			#flag -L@VEXEROOT/thirdparty/libgc
 			#flag -lgc
+		} $else $if msvc {
+			#flag -DGC_BUILTIN_ATOMIC=1
+			#flag -I@VEXEROOT/thirdparty/libgc/include
 		} $else {
 			#flag -DGC_BUILTIN_ATOMIC=1
 			#flag -I@VEXEROOT/thirdparty/libgc

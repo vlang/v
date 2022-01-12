@@ -645,6 +645,9 @@ pub fn (mut g Gen) init() {
 				g.cheaders.writeln(get_guarded_include_text('<stddef.h>', 'The C compiler can not find <stddef.h>. Please install build-essentials')) // size_t, ptrdiff_t
 			}
 		}
+		if g.pref.nofloat {
+			g.cheaders.writeln('#define VNOFLOAT 1')
+		}
 		g.cheaders.writeln(c_builtin_types)
 		if g.pref.is_bare {
 			g.cheaders.writeln(c_bare_headers)
@@ -2508,6 +2511,19 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	g.expr(expr)
 }
 
+fn cescape_nonascii(original string) string {
+	mut b := strings.new_builder(original.len)
+	for c in original {
+		if c < 32 || c > 126 {
+			b.write_string('\\${c:03o}')
+			continue
+		}
+		b.write_b(c)
+	}
+	res := b.str()
+	return res
+}
+
 // cestring returns a V string, properly escaped for embeddeding in a C string literal.
 fn cestring(s string) string {
 	return s.replace('\\', '\\\\').replace('"', "'")
@@ -2515,7 +2531,7 @@ fn cestring(s string) string {
 
 // ctoslit returns a '_SLIT("$s")' call, where s is properly escaped.
 fn ctoslit(s string) string {
-	return '_SLIT("' + cestring(s) + '")'
+	return '_SLIT("' + cescape_nonascii(cestring(s)) + '")'
 }
 
 fn (mut g Gen) gen_attrs(attrs []ast.Attr) {
@@ -4435,11 +4451,6 @@ fn (mut g Gen) ident(node ast.Ident) {
 }
 
 fn (mut g Gen) cast_expr(node ast.CastExpr) {
-	if g.is_amp {
-		// &Foo(0) => ((Foo*)0)
-		g.out.go_back(1)
-	}
-	g.is_amp = false
 	sym := g.table.sym(node.typ)
 	if sym.kind in [.sum_type, .interface_] {
 		g.expr_with_cast(node.expr, node.expr_type, node.typ)

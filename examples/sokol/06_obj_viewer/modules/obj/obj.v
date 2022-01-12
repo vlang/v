@@ -396,15 +396,15 @@ fn (mut obj_part ObjPart) load_materials() {
 // vertex data struct
 pub struct Vertex_pnct {
 pub mut:
-	x     f32 // poistion
-	y     f32
-	z     f32
-	nx    f32 // normal
-	ny    f32
-	nz    f32
-	color u32 = 0xFFFFFFFF // color
-	u     f32 // uv
-	v     f32
+	x  f32 // poistion
+	y  f32
+	z  f32
+	nx f32 // normal
+	ny f32
+	nz f32
+	// color u32 = 0xFFFFFFFF // color
+	u f32 // uv
+	v f32
 	// u u16   // for compatibility with D3D11
 	// v u16   // for compatibility with D3D11
 }

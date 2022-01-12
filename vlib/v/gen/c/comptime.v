@@ -99,12 +99,17 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		}
 		// check argument length and types
 		if m.params.len - 1 != node.args.len && !expand_strs {
-			// do not generate anything if the argument lengths don't match
-			g.writeln('/* skipping ${sym.name}.$m.name due to mismatched arguments list */')
-			// g.writeln('println(_SLIT("skipping ${node.sym.name}.$m.name due to mismatched arguments list"));')
-			// eprintln('info: skipping ${node.sym.name}.$m.name due to mismatched arguments list\n' +
-			//'method.params: $m.params, args: $node.args\n\n')
-			// verror('expected ${m.params.len-1} arguments to method ${node.sym.name}.$m.name, but got $node.args.len')
+			if g.inside_call {
+				g.error('expected ${m.params.len - 1} arguments to method ${sym.name}.$m.name, but got $node.args.len',
+					node.pos)
+			} else {
+				// do not generate anything if the argument lengths don't match
+				g.writeln('/* skipping ${sym.name}.$m.name due to mismatched arguments list */')
+				// g.writeln('println(_SLIT("skipping ${node.sym.name}.$m.name due to mismatched arguments list"));')
+				// eprintln('info: skipping ${node.sym.name}.$m.name due to mismatched arguments list\n' +
+				//'method.params: $m.params, args: $node.args\n\n')
+				// verror('expected ${m.params.len-1} arguments to method ${node.sym.name}.$m.name, but got $node.args.len')
+			}
 			return
 		}
 		// TODO: check argument types
@@ -370,7 +375,11 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 						}
 					} else if left is ast.SelectorExpr {
 						name = '${left.expr}.$left.field_name'
-						exp_type = g.comptime_var_type_map[name]
+						if left.gkind_field == .typ {
+							exp_type = g.unwrap_generic(left.name_type)
+						} else {
+							exp_type = g.comptime_var_type_map[name]
+						}
 					} else if left is ast.TypeNode {
 						// this is only allowed for generics currently, otherwise blocked by checker
 						exp_type = g.unwrap_generic(left.typ)
