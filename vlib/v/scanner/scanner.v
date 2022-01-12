@@ -1414,9 +1414,12 @@ fn (mut s Scanner) ident_char() string {
 		return c
 	}
 	if len != 1 {
-		orig := c
+		// the string inside the backticks is longer than one character
+		// but we might only have one rune... attempt to decode escapes
 		// if the content expresses an escape code, it will have an even number of characters
-		// e.g. \141 \x61 or \u2605
+		// e.g. (octal) \141 (hex) \x61 or (unicode) \u2605
+		// we don't handle binary escape codes in rune literals
+		orig := c
 		if (c.len % 2 == 0) && (escaped_hex || escaped_unicode || escaped_octal) {
 			if escaped_unicode {
 				// there can only be one, so attempt to decode it now
@@ -1437,8 +1440,6 @@ fn (mut s Scanner) ident_char() string {
 			}
 		}
 
-		// the string inside the backticks is longer than one character
-		// but we might only have one rune, say in the case
 		u := c.runes()
 		if u.len != 1 {
 			if escaped_hex || escaped_unicode {
