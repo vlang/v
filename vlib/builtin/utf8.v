@@ -100,7 +100,7 @@ pub fn (_rune []byte) utf8_to_utf32() ?rune {
 	mut b := byte(int(_rune[0]))
 
 	b = b << _rune.len
-	mut res := rune(b) // remember rune is an alias of u32
+	mut res := rune(b)
 	mut shift := 6 - _rune.len
 	for i := 1; i < _rune.len; i++ {
 		c := rune(_rune[i])
