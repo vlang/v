@@ -76,11 +76,11 @@ pub fn utf32_decode_to_buffer(code u32, buf &byte) int {
 // this function is left for backward compatibility
 // it is used in vlib/builtin/string.v,
 // and also in vlib/v/gen/c/cgen.v
-pub fn (_rune string) utf32_code() rune {
-	return _rune.bytes().utf8_to_utf32() or {
+pub fn (_rune string) utf32_code() int {
+	return int(_rune.bytes().utf8_to_utf32() or {
 		// error('more than one utf-8 rune found in this string')
 		rune(0)
-	}
+	})
 }
 
 // convert array of utf8 bytes to single utf32 value
