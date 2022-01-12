@@ -16,7 +16,7 @@ indent_size = 2
 
 [*.md]
 trim_trailing_whitespace = false
-max_line_length = 85
+max_line_length = 120 # specified in cmd/tools/vcheck-md.v
 
 [*.{txt,out}]
 insert_final_newline = false
