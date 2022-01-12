@@ -16,7 +16,11 @@ indent_size = 2
 
 [*.md]
 trim_trailing_whitespace = false
-max_line_length = 110 # lines of 120+ will trigger an error cmd/tools/vcheck-md.v
+# lines that are too long will trigger an error in cmd/tools/vcheck-md.v
+# run v check-md [folder/file] to test markdown files
+# the longest normal line is specified with this constant:
+# `too_long_line_length_other     = 100`
+max_line_length = 100
 
 [*.{txt,out}]
 insert_final_newline = false
