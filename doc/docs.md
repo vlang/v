@@ -500,7 +500,7 @@ windows_newline := '\r\n'      // escape special characters like in C
 assert windows_newline.len == 2
 
 // arbitrary bytes can be directly specified using `\x##` notation where `#` is
-a hex digit aardvark_str := '\x61ardvark' assert aardvark_str == 'aardvark'
+// a hex digit aardvark_str := '\x61ardvark' assert aardvark_str == 'aardvark'
 assert '\xc0'[0] == byte(0xc0)
 
 // or using octal escape `\###` notation where `#` is an octal digit
@@ -554,18 +554,19 @@ single quote character.
 For raw strings, prepend `r`. Escape handling is not done for raw strings:
 
 ```v
-s := r'hello\nworld'         // the `\n` will be preserved as two characters
+s := r'hello\nworld' // the `\n` will be preserved as two characters
 println(s) // "hello\nworld"
 ```
 
 Strings can be easily converted to integers:
 
 ```v
-a := '42'
-b := s.int() // 42
+s := '42'
+n := s.int() // 42
 
-// all int literals are supported, parsed as unsigned ints
+// all int literals are supported
 assert '0xc3'.int() == 195
+assert '0o10'.int() == 8
 assert '0b1111_0000_1010'.int() == 3850
 assert '-0b1111_0000_1010'.int() == -3850
 ```
@@ -639,7 +640,7 @@ x := 123.4567
 println('[${x:.2}]') // round to two decimal places => [123.46]
 println('[${x:10}]') // right-align with spaces on the left => [   123.457]
 println('[${int(x):-10}]') // left-align with spaces on the right => [123       ]
-println('[${int(x):010}]')  // pad with zeros on the left => [0000000123]
+println('[${int(x):010}]') // pad with zeros on the left => [0000000123]
 println('[${int(x):b}]') // output as binary => [1111011]
 println('[${int(x):o}]') // output as octal => [173]
 println('[${int(x):X}]') // output as uppercase hex => [7B]
@@ -698,14 +699,16 @@ assert rocket.str() == '🚀'
 
 A `rune` can be converted to UTF-8 bytes by using the `.bytes()` method.
 
-```v
+```v failcompile
 rocket := `🚀`
 assert rocket.bytes() == [0xf0, 0x9f, 0x9a, 0x80]
 ```
 
+_example will fail to compile until next release_
+
 Hex, Unicode, and Octal escape sequences also work in a `rune` literal:
 
-```v
+```v failcompile
 assert `\x61` == `a`
 assert `\141` == `a`
 assert `\u0061` == `a`
@@ -716,6 +719,8 @@ assert `\u2605`.bytes() == [0xe2, 0x98, 0x85]
 assert `\xe2\x98\x85`.bytes() == [0xe2, 0x98, 0x85]
 assert `\342\230\205`.bytes() == [0xe2, 0x98, 0x85]
 ```
+
+_example will fail to compile until next release_
 
 Note that `rune` literals use the same escape syntax as strings, but they can
 only hold one unicode character. Therefore, if your code does not specify a
