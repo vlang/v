@@ -440,7 +440,8 @@ rune // represents a Unicode code point
 
 f32 f64
 
-isize, usize // platform-dependent, the size is how many bytes it takes to reference any location in memory
+isize, usize // platform-dependent, the size is how many bytes it takes to
+reference any location in memory
 
 voidptr // this one is mostly used for C interoperability
 
@@ -498,9 +499,8 @@ assert name[1..3] == 'ob'  // slicing gives a string 'ob'
 windows_newline := '\r\n'      // escape special characters like in C
 assert windows_newline.len == 2
 
-// arbitrary bytes can be directly specified using `\x##` notation where `#` is a hex digit
-aardvark_str := '\x61ardvark'
-assert aardvark_str == 'aardvark'
+// arbitrary bytes can be directly specified using `\x##` notation where `#` is
+a hex digit aardvark_str := '\x61ardvark' assert aardvark_str == 'aardvark'
 assert '\xc0'[0] == byte(0xc0)
 
 // or using octal escape `\###` notation where `#` is an octal digit
@@ -514,7 +514,8 @@ assert star_str == '★'
 assert star_str == '\xe2\x98\x85' // UTF-8 can be specified this way too.
 ```
 
-In V, a string is a read-only array of bytes. All Unicode characters are encoded using UTF-8:
+In V, a string is a read-only array of bytes. All Unicode characters are encoded
+using UTF-8:
 
 ```v
 s := 'hello 🌎' // emoji takes 4 bytes
@@ -547,7 +548,8 @@ println(country[0].ascii_str()) // Output: N
 ```
 
 Both single and double quotes can be used to denote strings. For consistency,
-`vfmt` converts double quotes to single quotes unless the string contains a single quote character.
+`vfmt` converts double quotes to single quotes unless the string contains a
+single quote character.
 
 For raw strings, prepend `r`. Escape handling is not done for raw strings:
 
@@ -568,7 +570,8 @@ assert '0b1111_0000_1010'.int() == 3850
 assert '-0b1111_0000_1010'.int() == -3850
 ```
 
-For more advanced `string` processing and conversions, refer to the [vlib/strconv](https://modules.vlang.io/strconv.html) module.
+For more advanced `string` processing and conversions, refer to the
+[vlib/strconv](https://modules.vlang.io/strconv.html) module.
 
 ### String interpolation
 
@@ -591,32 +594,44 @@ To use a format specifier, follow this pattern:
 
 `${varname:[flags][width][.precision][type]}`
 
-- flags: may be zero or more of the following: `-` to left-align output within the field, `0`
-  to use `0` as the padding character instead of the default `space` character. (Note: V does not currently support
-  the use of `'` or `#` as format flags, and V supports but doesn't need `+` to right-align since that's the default.)
+- flags: may be zero or more of the following: `-` to left-align output within
+  the field, `0` to use `0` as the padding character instead of the default
+  `space` character. (Note: V does not currently support the use of `'` or `#`
+  as format flags, and V supports but doesn't need `+` to right-align since
+  that's the default.)
 - width: may be an integer value describing the minimum width of total field to output.
-- precision: an integer value preceeded by a `.` will guarantee that many digits after the decimal point, if the
-  input variable is a float. Ignored if variable is an integer.
+- precision: an integer value preceeded by a `.` will guarantee that many digits
+  after the decimal point, if the input variable is a float. Ignored if variable
+  is an integer.
 - type: `f` and `F` specify the input is a float and should be rendered as such,
-  `e` and `E` specify the input is a float and should be rendered as an exponent (partially broken), `g` and `G` specify
-  the input is a float--the renderer will use floating point notation for small values and exponent notation for large values,
-  `d` specifies the input is an integer and should be rendered in base-10 digits, `x` and `X` require an integer and
-  will render it as hexadecimal digits, `o` requires an integer and will render it as octal digits, `b` requires
-  an integer and will render it as binary digits, `s` requires a string (almost never used).
+  `e` and `E` specify the input is a float and should be rendered as an exponent
+  (partially broken), `g` and `G` specify the input is a float--the renderer
+  will use floating point notation for small values and exponent notation for
+  large values, `d` specifies the input is an integer and should be rendered in
+  base-10 digits, `x` and `X` require an integer and will render it as
+  hexadecimal digits, `o` requires an integer and will render it as octal
+  digits, `b` requires an integer and will render it as binary digits, `s`
+  requires a string (almost never used).
 
-Note: when a numeric type can render alphabetic characters, such as hex strings or special values like `infinity`,
-the lowercase version of the type forces lowercase alphabetics and the uppercase version forces uppercase alphabetics.
+Note: when a numeric type can render alphabetic characters, such as hex strings
+or special values like `infinity`, the lowercase version of the type forces
+lowercase alphabetics and the uppercase version forces uppercase alphabetics.
 
-Also note: in most cases, it's best to leave the format type empty. Floats will be rendered by default as `g`, integers will
-be rendered by default as `d`, and `s` is almost always redundant. There are only three cases where specifying a type
-is recommended:
+Also note: in most cases, it's best to leave the format type empty. Floats will
+be rendered by default as `g`, integers will be rendered by default as `d`, and
+`s` is almost always redundant. There are only three cases where specifying a
+type is recommended:
 
-- format strings are parsed at compile time, so specifing a type can help detect errors then
-- format strings default to using lowercase letters for hex digits and the `e` in exponents. Use a uppercase type to
-  force the use of uppercase hex digits and an uppercase `E` in exponents.
-- format strings are the most convenient way to get hex, binary or octal strings from an integer.
+- format strings are parsed at compile time, so specifing a type can help detect
+  errors then
+- format strings default to using lowercase letters for hex digits and the `e`
+  in exponents. Use a uppercase type to force the use of uppercase hex digits
+  and an uppercase `E` in exponents.
+- format strings are the most convenient way to get hex, binary or octal strings
+  from an integer.
 
-See [Format Placeholder Specification](https://en.wikipedia.org/wiki/Printf_format_string#Format_placeholder_specification)
+See
+[Format Placeholder Specification](https://en.wikipedia.org/wiki/Printf_format_string#Format_placeholder_specification)
 for more information.
 
 ```v
@@ -667,7 +682,8 @@ println('age = $age')
 
 ### Runes
 
-A `rune` represents a single Unicode character and is an alias for `u32`. To denote them, use ` (backticks) :
+A `rune` represents a single Unicode character and is an alias for `u32`. To
+denote them, use ` (backticks) :
 
 ```v
 rocket := `🚀`
@@ -701,9 +717,9 @@ assert `\xe2\x98\x85`.bytes() == [0xe2, 0x98, 0x85]
 assert `\342\230\205`.bytes() == [0xe2, 0x98, 0x85]
 ```
 
-Note that `rune` literals use the same escape syntax as strings, but they can only hold
-one unicode character. Therefore, if your code does not specify a single Unicode character,
-you will receive an error at compile time.
+Note that `rune` literals use the same escape syntax as strings, but they can
+only hold one unicode character. Therefore, if your code does not specify a
+single Unicode character, you will receive an error at compile time.
 
 Also remember that strings are indexed as bytes, not runes, so beware:
 
