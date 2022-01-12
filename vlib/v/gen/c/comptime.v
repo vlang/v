@@ -300,10 +300,8 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 	g.writeln('#endif')
 }
 
-/*
-// returning `false` means the statements inside the $if can be skipped
-*/
 // returns the value of the bool comptime expression
+// returning `false` means the statements inside the $if can be skipped
 fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 	match cond {
 		ast.BoolLiteral {
@@ -374,10 +372,10 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 							//}
 						}
 					} else if left is ast.SelectorExpr {
-						name = '${left.expr}.$left.field_name'
 						if left.gkind_field == .typ {
 							exp_type = g.unwrap_generic(left.name_type)
 						} else {
+							name = '${left.expr}.$left.field_name'
 							exp_type = g.comptime_var_type_map[name]
 						}
 					} else if left is ast.TypeNode {
