@@ -63,7 +63,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 ## Table of Contents
 
 <table>
-    <tr><td style="width:33%; vertical-align:top;">
+    <tr><td width=33% valign=top>
 
 * [Hello world](#hello-world)
 * [Running a project folder](#running-a-project-folder-with-several-files)
@@ -94,7 +94,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Methods](#methods)
 * [Unions](#unions)
 
-</td><td style="width:33%; vertical-align:top;">
+</td><td width=33% valign=top>
 
 * [Functions 2](#functions-2)
     * [Pure functions by default](#pure-functions-by-default)
@@ -124,7 +124,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Stack and Heap](#stack-and-heap)
 * [ORM](#orm)
 
-</td><td style="vertical-align:top;">
+</td><td valign=top>
 
 * [Writing documentation](#writing-documentation)
 * [Tools](#tools)
