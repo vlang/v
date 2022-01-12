@@ -8,7 +8,6 @@ import gg
 import gx
 import math
 import time
-import os.font
 
 const (
 	win_width   = 600
@@ -37,7 +36,6 @@ fn main() {
 		bg_color: bg_color
 		frame_fn: frame
 		init_fn: init
-		font_path: font.system_path()
 	)
 	app.gg.run()
 }

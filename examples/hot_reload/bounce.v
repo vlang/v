@@ -5,7 +5,6 @@ module main
 import gx
 import gg
 import time
-import os.font
 
 struct Game {
 mut:
@@ -43,7 +42,6 @@ fn main() {
 		create_window: true
 		frame_fn: frame
 		bg_color: gx.white
-		font_path: font.system_path()
 	)
 	// window.onkeydown(key_down)
 	println('Starting the game loop...')
