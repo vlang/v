@@ -85,25 +85,25 @@ pub fn (_rune string) utf32_code() int {
 
 // convert array of utf8 bytes to single utf32 value
 // will error if more than 4 bytes are submitted
-pub fn (_rune []byte) utf8_to_utf32() ?rune {
-	if _rune.len == 0 {
+pub fn (_bytes []byte) utf8_to_utf32() ?rune {
+	if _bytes.len == 0 {
 		return 0
 	}
 	// return ASCII unchanged
-	if _rune.len == 1 {
-		return rune(_rune[0])
+	if _bytes.len == 1 {
+		return rune(_bytes[0])
 	}
-	if _rune.len > 4 {
+	if _bytes.len > 4 {
 		return error('attempted to decode too many bytes, utf-8 is limited to four bytes maximum')
 	}
 
-	mut b := byte(int(_rune[0]))
+	mut b := byte(int(_bytes[0]))
 
-	b = b << _rune.len
+	b = b << _bytes.len
 	mut res := rune(b)
-	mut shift := 6 - _rune.len
-	for i := 1; i < _rune.len; i++ {
-		c := rune(_rune[i])
+	mut shift := 6 - _bytes.len
+	for i := 1; i < _bytes.len; i++ {
+		c := rune(_bytes[i])
 		res = rune(res) << shift
 		res |= c & 63 // 0x3f
 		shift = 6
