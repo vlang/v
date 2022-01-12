@@ -172,30 +172,30 @@ fn (mut f MDFile) check() CheckResult {
 		// f.progress('line: $j')
 		if f.state == .vexample {
 			if line.len > too_long_line_length_example {
-				wprintln(wline(f.path, j, line.len, 'long V example line'))
+				wprintln(wline(f.path, j, line.len, 'example lines must be less than $too_long_line_length_example characters'))
 				wprintln(line)
 				res.warnings++
 			}
 		} else if f.state == .codeblock {
 			if line.len > too_long_line_length_codeblock {
-				wprintln(wline(f.path, j, line.len, 'long code block line'))
+				wprintln(wline(f.path, j, line.len, 'code lines must be less than $too_long_line_length_codeblock characters'))
 				wprintln(line)
 				res.warnings++
 			}
 		} else if line.starts_with('|') {
 			if line.len > too_long_line_length_table {
-				wprintln(wline(f.path, j, line.len, 'long table'))
+				wprintln(wline(f.path, j, line.len, 'table lines must be less than $too_long_line_length_table characters'))
 				wprintln(line)
 				res.warnings++
 			}
 		} else if line.contains('http') {
 			if line.all_after('https').len > too_long_line_length_link {
-				wprintln(wline(f.path, j, line.len, 'long link'))
+				wprintln(wline(f.path, j, line.len, 'link lines must be less than $too_long_line_length_link characters'))
 				wprintln(line)
 				res.warnings++
 			}
 		} else if line.len > too_long_line_length_other {
-			eprintln(eline(f.path, j, line.len, 'line too long'))
+			eprintln(eline(f.path, j, line.len, 'must be less than $too_long_line_length_other characters'))
 			eprintln(line)
 			res.errors++
 		}
