@@ -4,6 +4,7 @@ import gx
 import gg
 import time
 import math
+import os.font
 
 const (
 	size  = 700
@@ -29,7 +30,7 @@ fn main() {
 		frame_fn: frame
 		resizable: true
 		bg_color: gx.white
-		font_path: gg.system_font_path()
+		font_path: font.system_path()
 	)
 	context.gg.run()
 }

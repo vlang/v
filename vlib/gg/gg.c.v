@@ -4,6 +4,7 @@
 module gg
 
 import os
+import os.font
 import gx
 import sokol
 import sokol.sapp
@@ -182,7 +183,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 			) or { panic(err) }
 			g.font_inited = true
 		} else {
-			sfont := system_font_path()
+			sfont := font.system_path()
 			if g.config.font_path != '' {
 				eprintln('font file "$g.config.font_path" does not exist, the system font ($sfont) was used instead.')
 			}
