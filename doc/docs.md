@@ -690,9 +690,9 @@ assert `\u0061` == `a`
 
 // multibyte literals work too
 assert `\u2605` == `★`
-assert `\u2605`.bytes() == [0xe2, 0x98, 0x85]
-assert `\xe2\x98\x85`.bytes() == [0xe2, 0x98, 0x85]
-assert `\342\230\205`.bytes() == [0xe2, 0x98, 0x85]
+assert `\u2605`.bytes() == [byte(0xe2), 0x98, 0x85]
+assert `\xe2\x98\x85`.bytes() == [byte(0xe2), 0x98, 0x85]
+assert `\342\230\205`.bytes() == [byte(0xe2), 0x98, 0x85]
 ```
 
 _example will fail to compile until next release_
