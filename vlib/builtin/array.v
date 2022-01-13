@@ -137,7 +137,7 @@ fn (mut a array) ensure_cap(required int) {
 	a.cap = cap
 }
 
-// repeat returns a new array with the given array elements repeated given times.
+// `repeat` returns a new array with the given array elements repeated given times.
 // `cgen` will replace this with an apropriate call to `repeat_to_depth()`
 
 // This is a dummy placeholder that will be overridden by `cgen` with an appropriate
@@ -146,8 +146,10 @@ pub fn (a array) repeat(count int) array {
 	return unsafe { a.repeat_to_depth(count, 0) }
 }
 
-// version of `repeat()` that handles multi dimensional arrays
-// `unsafe` to call directly because `depth` is not checked
+// `repeat_to_depth` is an unsafe version of `repeat()` that handles
+// multi-dimensional arrays.
+//
+// It is `unsafe` to call directly because `depth` is not checked
 [unsafe]
 pub fn (a array) repeat_to_depth(count int, depth int) array {
 	if count < 0 {
@@ -176,16 +178,8 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 	return arr
 }
 
-// sort_with_compare sorts array in-place using given `compare` function as comparator.
-pub fn (mut a array) sort_with_compare(callback fn (voidptr, voidptr) int) {
-	$if freestanding {
-		panic('sort does not work with -freestanding')
-	} $else {
-		unsafe { vqsort(a.data, usize(a.len), usize(a.element_size), callback) }
-	}
-}
-
-// insert inserts a value in the array at index `i`
+// `insert` inserts a value in the array at index `i` and increases
+// the index of subsequent elements by 1.
 pub fn (mut a array) insert(i int, val voidptr) {
 	$if !no_bounds_checking ? {
 		if i < 0 || i > a.len {
@@ -200,7 +194,7 @@ pub fn (mut a array) insert(i int, val voidptr) {
 	a.len++
 }
 
-// insert_many inserts many values into the array from index `i`.
+// `insert_many` inserts many values into the array from index `i`.
 [unsafe]
 pub fn (mut a array) insert_many(i int, val voidptr, size int) {
 	$if !no_bounds_checking ? {
@@ -218,23 +212,23 @@ pub fn (mut a array) insert_many(i int, val voidptr, size int) {
 	a.len += size
 }
 
-// prepend prepends one value to the array.
+// `prepend` prepends one value to the array.
 pub fn (mut a array) prepend(val voidptr) {
 	a.insert(0, val)
 }
 
-// prepend_many prepends another array to this array.
+// `prepend_many` prepends another array to this array.
 [unsafe]
 pub fn (mut a array) prepend_many(val voidptr, size int) {
 	unsafe { a.insert_many(0, val, size) }
 }
 
-// delete deletes array element at index `i`.
+// `delete` deletes array element at index `i`.
 pub fn (mut a array) delete(i int) {
 	a.delete_many(i, 1)
 }
 
-// delete_many deletes `size` elements beginning with index `i`
+// `delete_many` deletes `size` elements beginning with index `i`
 pub fn (mut a array) delete_many(i int, size int) {
 	$if !no_bounds_checking ? {
 		if i < 0 || i + size > a.len {
@@ -262,12 +256,12 @@ pub fn (mut a array) delete_many(i int, size int) {
 	a.cap = new_cap
 }
 
-// clear clears the array without deallocating the allocated data.
+// `clear` clears the array without deallocating the allocated data.
 pub fn (mut a array) clear() {
 	a.len = 0
 }
 
-// trim trims the array length to "index" without modifying the allocated data. If "index" is greater
+// `trim` trims the array length to "index" without modifying the allocated data. If "index" is greater
 // than len nothing will be changed.
 pub fn (mut a array) trim(index int) {
 	if index < a.len {
@@ -305,7 +299,7 @@ fn (a array) get_with_check(i int) voidptr {
 	}
 }
 
-// first returns the first element of the array.
+// `first` returns the first element of the array.
 pub fn (a array) first() voidptr {
 	$if !no_bounds_checking ? {
 		if a.len == 0 {
@@ -315,7 +309,7 @@ pub fn (a array) first() voidptr {
 	return a.data
 }
 
-// last returns the last element of the array.
+// `last` returns the last element of the array.
 pub fn (a array) last() voidptr {
 	$if !no_bounds_checking ? {
 		if a.len == 0 {
@@ -327,7 +321,7 @@ pub fn (a array) last() voidptr {
 	}
 }
 
-// pop returns the last element of the array, and removes it.
+// `pop` returns the last element of the array, and removes it.
 pub fn (mut a array) pop() voidptr {
 	// in a sense, this is the opposite of `a << x`
 	$if !no_bounds_checking ? {
@@ -343,7 +337,7 @@ pub fn (mut a array) pop() voidptr {
 	return unsafe { memdup(last_elem, a.element_size) }
 }
 
-// delete_last efficiently deletes the last element of the array.
+// `delete_last` efficiently deletes the last element of the array.
 pub fn (mut a array) delete_last() {
 	// copy pasting code for performance
 	$if !no_bounds_checking ? {
@@ -354,7 +348,7 @@ pub fn (mut a array) delete_last() {
 	a.len--
 }
 
-// slice returns an array using the same buffer as original array
+// `slice` returns an array using the same buffer as original array
 // but starting from the `start` element and ending with the element before
 // the `end` element of the original array with the length and capacity
 // set to the number of the elements in the slice.
@@ -384,7 +378,7 @@ fn (a array) slice(start int, _end int) array {
 	return res
 }
 
-// slice_ni returns an array using the same buffer as original array
+// `slice_ni` returns an array using the same buffer as original array
 // but starting from the `start` element and ending with the element before
 // the `end` element of the original array.
 // This function can use negative indexes `a.slice_ni(-3, a.len)`
@@ -448,7 +442,7 @@ fn (a array) clone_static_to_depth(depth int) array {
 	return unsafe { a.clone_to_depth(depth) }
 }
 
-// clone returns an independent copy of a given array.
+// `clone` returns an independent copy of a given array.
 // this will be overwritten by `cgen` with an apropriate call to `.clone_to_depth()`
 // However the `checker` needs it here.
 pub fn (a &array) clone() array {
@@ -507,7 +501,7 @@ fn (mut a array) push(val voidptr) {
 	a.len++
 }
 
-// push_many implements the functionality for pushing another array.
+// `push_many` implements the functionality for pushing another array.
 // `val` is array.data and user facing usage is `a << [1,2,3]`
 [unsafe]
 pub fn (mut a3 array) push_many(val voidptr, size int) {
@@ -528,7 +522,7 @@ pub fn (mut a3 array) push_many(val voidptr, size int) {
 	a3.len += size
 }
 
-// reverse_in_place reverses existing array data, modifying original array.
+// `reverse_in_place` reverses existing array data, modifying original array.
 pub fn (mut a array) reverse_in_place() {
 	if a.len < 2 {
 		return
@@ -545,7 +539,7 @@ pub fn (mut a array) reverse_in_place() {
 	}
 }
 
-// reverse returns a new array with the elements of the original array in reverse order.
+// `reverse` returns a new array with the elements of the original array in reverse order.
 pub fn (a array) reverse() array {
 	if a.len < 2 {
 		return a
@@ -563,7 +557,7 @@ pub fn (a array) reverse() array {
 }
 
 // pub fn (a []int) free() {
-// free frees all memory occupied by the array.
+// `free` frees all memory occupied by the array.
 [unsafe]
 pub fn (a &array) free() {
 	$if prealloc {
@@ -576,29 +570,95 @@ pub fn (a &array) free() {
 	unsafe { free(mblock_ptr) }
 }
 
-// filter creates a new array with all elements that pass the test implemented by the provided function
+// `filter` creates a new array with all elements that pass the test.
+// Ignore the function signature. `filter` does not take an actual callback. Rather, it
+// takes an `it` expression.
+// Example: array.filter(it % 2 == 1) // will yield a new array of only odd elements
 pub fn (a array) filter(predicate fn (voidptr) bool) array
 
-// any tests whether at least one element in the array passes the test implemented by the
-// provided function. It returns true if, in the array, it finds an element for which the provided
-// function returns true; otherwise it returns false. It doesn't modify the array
+// `any` tests whether at least one element in the array passes the test.
+// Ignore the function signature. `any` does not take an actual callback. Rather, it
+// takes an `it` expression.
+// It returns `true` if it finds an element passing the test. Otherwise,
+// it returns `false`. It doesn't modify the array.
+//
+// Example: array.any(it % 2 == 1) // will return true if any element is odd
 pub fn (a array) any(predicate fn (voidptr) bool) bool
 
-// all tests whether all elements in the array pass the test implemented by the provided function
+// `all` tests whether all elements in the array pass the test
+// Ignore the function signature. `all` does not take an actual callback. Rather, it
+// takes an `it` expression.
+// It returns `false` if any element fails the test. Otherwise,
+// it returns `true`. It doesn't modify the array.
+//
+// Example: array.all(it % 2 == 1) // will return true if every element is odd
 pub fn (a array) all(predicate fn (voidptr) bool) bool
 
-// map creates a new array populated with the results of calling a provided function
+// `map` creates a new array populated with the results of calling a provided function
 // on every element in the calling array
 pub fn (a array) map(callback fn (voidptr) voidptr) array
 
-// sort sorts an array in place in ascending order.
+// `sort` sorts an array in place.
+// Ignore the function signature. Passing a callback to `.sort` is not supported
+// for now. Consider using the `.sort_with_compare` method if you need it.
+//
+// Instead, a very simple syntax is available to you for custom sorting and more.
+//
+// Certain array functions (`filter` `any` `all` and `sort`) support a simplified
+// domain-specific-language by the backend compiler to make these operations
+// more idiomatic to V. These functions are described here, but their implementation
+// is compiler specific.
+//
+// Each function takes a boolean test expression as its single argument.
+// These test expressions may use certain 'magic' variables depending on their context:
+// - `sort` may use `a` and `b` as pointers to two elements
+//   giving you direct access to those objects
+// - `filter`, `any`, and `all` may use `it` as a pointer to a single element at a time.
+//
+// Example: array.sort() // will sort the array in ascending order
+// Example: array.sort(b < a) // will sort the array in decending order
+// Example: array.sort(b.name < a.name) // will sort descending by the .name field
+// Example: array.filter(it % 2 == 1) // will yield a new array of only odd elements
+// Example: array.any(it.name == 'Bob') // will yield `true` if any element has `.name == 'Bob'`
 pub fn (mut a array) sort(callback fn (voidptr, voidptr) int)
 
-// contains determines whether an array includes a certain value among its entries
+// `sort_with_compare` sorts array in-place using the results of the
+// given function to determine sort order.
+//
+// The function should return one of three values:
+// - `-1` when `a` should come before `b` ( `a < b` )
+// - `1`  when `b` should come before `a` ( `b < a` )
+// - `0`  when the order cannot be determined ( `a == b` )
+//
+// ### Example:
+// ```v
+// fn main() {
+// 	mut a := ['hi', '1', '5', '3']
+// 	a.sort_with_compare(fn (a &string, b &string) int {
+// 		if a < b {
+// 			return -1
+// 		}
+// 		if a > b {
+// 			return 1
+// 		}
+// 		return 0
+// 	})
+// 	assert a == ['1', '3', '5', 'hi']
+// }
+// ```
+pub fn (mut a array) sort_with_compare(callback fn (voidptr, voidptr) int) {
+	$if freestanding {
+		panic('sort does not work with -freestanding')
+	} $else {
+		unsafe { vqsort(a.data, usize(a.len), usize(a.element_size), callback) }
+	}
+}
+
+// `contains` determines whether an array includes a certain value among its elements
 pub fn (a array) contains(val voidptr) bool
 
-// index returns the first index at which a given element can be found in the array
-// or -1 if the value is not found.
+// `index` returns the first index at which a given element can be found in the array
+// or `-1` if the value is not found.
 pub fn (a array) index(value voidptr) int
 
 [unsafe]
@@ -612,7 +672,7 @@ pub fn (mut a []string) free() {
 	unsafe { (&array(&a)).free() }
 }
 
-// str returns a string representation of the array of strings
+// `str` returns a string representation of the array of strings
 // => '["a", "b", "c"]'.
 [manualfree]
 pub fn (a []string) str() string {
@@ -640,7 +700,7 @@ pub fn (a []string) str() string {
 	return res
 }
 
-// hex returns a string with the hexadecimal representation
+// `hex` returns a string with the hexadecimal representation
 // of the byte elements of the array.
 pub fn (b []byte) hex() string {
 	mut hex := unsafe { malloc(b.len * 2 + 1) }
@@ -663,7 +723,7 @@ pub fn (b []byte) hex() string {
 	}
 }
 
-// copy copies the `src` byte array elements to the `dst` byte array.
+// `copy` copies the `src` byte array elements to the `dst` byte array.
 // The number of the elements copied is the minimum of the length of both arrays.
 // Returns the number of elements copied.
 // TODO: implement for all types
@@ -675,7 +735,7 @@ pub fn copy(dst []byte, src []byte) int {
 	return min
 }
 
-// reduce executes a given reducer function on each element of the array,
+// `reduce` executes a given reducer function on each element of the array,
 // resulting in a single output value.
 pub fn (a []int) reduce(iter fn (int, int) int, accum_start int) int {
 	mut accum_ := accum_start
@@ -685,19 +745,19 @@ pub fn (a []int) reduce(iter fn (int, int) int, accum_start int) int {
 	return accum_
 }
 
-// grow_cap grows the array's capacity by `amount` elements.
+// `grow_cap` grows the array's capacity by `amount` elements.
 pub fn (mut a array) grow_cap(amount int) {
 	a.ensure_cap(a.cap + amount)
 }
 
-// grow_len ensures that an array has a.len + amount of length
+// `grow_len` ensures that an array has a.len + amount of length
 [unsafe]
 pub fn (mut a array) grow_len(amount int) {
 	a.ensure_cap(a.len + amount)
 	a.len += amount
 }
 
-// pointers returns a new array, where each element
+// `pointers` returns a new array, where each element
 // is the address of the corresponding element in the array.
 [unsafe]
 pub fn (a array) pointers() []voidptr {
@@ -708,7 +768,7 @@ pub fn (a array) pointers() []voidptr {
 	return res
 }
 
-// voidptr.vbytes() - makes a V []byte structure from a C style memory buffer. NB: the data is reused, NOT copied!
+// `voidptr.vbytes()` - makes a V []byte structure from a C style memory buffer. NB: the data is reused, NOT copied!
 [unsafe]
 pub fn (data voidptr) vbytes(len int) []byte {
 	res := array{
@@ -720,7 +780,7 @@ pub fn (data voidptr) vbytes(len int) []byte {
 	return res
 }
 
-// byteptr.vbytes() - makes a V []byte structure from a C style memory buffer. NB: the data is reused, NOT copied!
+// `byteptr.vbytes()` - makes a V []byte structure from a C style memory buffer. NB: the data is reused, NOT copied!
 [unsafe]
 pub fn (data &byte) vbytes(len int) []byte {
 	return unsafe { voidptr(data).vbytes(len) }
