@@ -4211,7 +4211,7 @@ sql db {
 }
 ```
 
-For more examples and the docs, see [vlib/orm](https://github.com/vlang/v/tree/master/vlib/orm).
+For more examples and the docs, see <a href='https://github.com/vlang/v/tree/master/vlib/orm'>vlib/orm</a>.
 
 ## Writing Documentation
 
@@ -5511,7 +5511,7 @@ before their definition.
 Right now it's not possible to modify types while the program is running.
 
 More examples, including a graphical application:
-[github.com/vlang/v/tree/master/examples/hot_reload](https://github.com/vlang/v/tree/master/examples/hot_reload).
+[github.com/vlang/v/tree/master/examples/hot_code_reload](https://github.com/vlang/v/tree/master/examples/hot_reload).
 
 ## Cross compilation
 
