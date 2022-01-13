@@ -18,11 +18,11 @@ fn debug_font_println(s string) {
 	println(s)
 }
 
-// system_path returns an absolute path the default system TTF font.
+// default returns an absolute path the default system TTF font.
 // If the env variable `VUI_FONT` is set this is used instead.
 // NOTE that, in some cases, the function calls out to external OS programs
 // so running this in a hot loop is not advised.
-pub fn system_path() string {
+pub fn default() string {
 	env_font := os.getenv('VUI_FONT')
 	if env_font != '' && os.exists(env_font) {
 		return env_font
