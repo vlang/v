@@ -67,27 +67,48 @@ pub fn utf32_decode_to_buffer(code u32, buf &byte) int {
 }
 
 // Convert utf8 to utf32
+// the original implementation did not check for
+// valid utf8 in the string, and could result in
+// values greater than the utf32 spec
+// it has been replaced by `utf8_to_utf32` which
+// has an optional return type.
+//
+// this function is left for backward compatibility
+// it is used in vlib/builtin/string.v,
+// and also in vlib/v/gen/c/cgen.v
 pub fn (_rune string) utf32_code() int {
-	if _rune.len == 0 {
+	return int(_rune.bytes().utf8_to_utf32() or {
+		// error('more than one utf-8 rune found in this string')
+		rune(0)
+	})
+}
+
+// convert array of utf8 bytes to single utf32 value
+// will error if more than 4 bytes are submitted
+pub fn (_bytes []byte) utf8_to_utf32() ?rune {
+	if _bytes.len == 0 {
 		return 0
 	}
-	// save ASC symbol as is
-	if _rune.len == 1 {
-		return int(_rune[0])
+	// return ASCII unchanged
+	if _bytes.len == 1 {
+		return rune(_bytes[0])
 	}
-	mut b := byte(int(_rune[0]))
-	// TODO should be
-	// res := int( rune[0] << rune.len)
-	b = b << _rune.len
-	mut res := u32(b)
-	mut shift := 6 - _rune.len
-	for i := 1; i < _rune.len; i++ {
-		c := u32(_rune[i])
-		res = u32(res) << shift
+	if _bytes.len > 4 {
+		return error('attempted to decode too many bytes, utf-8 is limited to four bytes maximum')
+	}
+
+	mut b := byte(int(_bytes[0]))
+
+	b = b << _bytes.len
+	mut res := rune(b)
+	mut shift := 6 - _bytes.len
+	for i := 1; i < _bytes.len; i++ {
+		c := rune(_bytes[i])
+		res = rune(res) << shift
 		res |= c & 63 // 0x3f
 		shift = 6
 	}
-	return int(res)
+	return res
 }
 
 // Calculate length to read from the first byte
