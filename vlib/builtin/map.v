@@ -531,7 +531,7 @@ fn (m &map) get_check(key voidptr) voidptr {
 }
 
 // Checks whether a particular key exists in the map.
-fn (m &map) exists(key voidptr) bool {
+pub fn (m &map) exists(key voidptr) bool {
 	mut index, mut meta := m.key_to_index(key)
 	for {
 		if meta == unsafe { m.metas[index] } {

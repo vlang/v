@@ -943,3 +943,33 @@ fn test_map_set_fixed_array_variable() {
 	println(m2)
 	assert '$m2' == "{'A': [1.1, 2.2]}"
 }
+
+fn test_map_exists() {
+	m1 := {11: '11', 22: '22'}
+
+	assert m1.exists(11)
+	k11 := 11
+	assert m1.exists(k11)
+
+	assert m1.exists(22)
+	k12 := 22
+	assert m1.exists(k12)
+
+	assert !m1.exists(33)
+	k13 := 33
+	assert !m1.exists(k13)
+
+	m2 := {'11': 11, '22': 22}
+
+	assert m2.exists('11')
+	k21 := '11'
+	assert m2.exists(k21)
+
+	assert m2.exists('22')
+	k22 := '22'
+	assert m2.exists(k22)
+
+	assert !m2.exists('33')
+	k23 := '33'
+	assert !m2.exists(k23)
+}
