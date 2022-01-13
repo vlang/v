@@ -683,7 +683,7 @@ assert rocket.bytes() == [byte(0xf0), 0x9f, 0x9a, 0x80]
 
 Hex, Unicode, and Octal escape sequences also work in a `rune` literal:
 
-```v failcompile
+```v
 assert `\x61` == `a`
 assert `\141` == `a`
 assert `\u0061` == `a`
@@ -694,8 +694,6 @@ assert `\u2605`.bytes() == [byte(0xe2), 0x98, 0x85]
 assert `\xe2\x98\x85`.bytes() == [byte(0xe2), 0x98, 0x85]
 assert `\342\230\205`.bytes() == [byte(0xe2), 0x98, 0x85]
 ```
-
-_example will fail to compile until next release_
 
 Note that `rune` literals use the same escape syntax as strings, but they can only hold one unicode
 character. Therefore, if your code does not specify a single Unicode character, you will receive an
