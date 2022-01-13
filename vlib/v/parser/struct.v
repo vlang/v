@@ -335,7 +335,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	}
 }
 
-fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
+fn (mut p Parser) struct_init(typ_str string, short_syntax bool) ast.StructInit {
 	first_pos := (if short_syntax && p.prev_tok.kind == .lcbr { p.prev_tok } else { p.tok }).position()
 	typ := if short_syntax { ast.void_type } else { p.parse_type() }
 	p.expr_mod = ''
@@ -416,6 +416,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	p.is_amp = saved_is_amp
 	return ast.StructInit{
 		unresolved: typ.has_flag(.generic)
+		typ_str: typ_str
 		typ: typ
 		fields: fields
 		update_expr: update_expr
