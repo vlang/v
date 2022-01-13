@@ -42,7 +42,6 @@ fn main() {
 		create_window: true
 		frame_fn: frame
 		bg_color: gx.white
-		font_path: gg.system_font_path()
 	)
 	// window.onkeydown(key_down)
 	println('Starting the game loop...')

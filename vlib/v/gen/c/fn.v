@@ -1602,6 +1602,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		g.write('&/*mut*/')
 	} else if arg_is_ptr && !expr_is_ptr {
 		if arg.is_mut {
+			arg_sym := g.table.sym(arg_typ)
 			if exp_sym.kind == .array {
 				if (arg.expr is ast.Ident && (arg.expr as ast.Ident).kind == .variable)
 					|| arg.expr is ast.SelectorExpr {
@@ -1614,6 +1615,11 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 					g.expr(arg.expr)
 					g.write('}[0]')
 				}
+				return
+			} else if arg_sym.kind == .sum_type && exp_sym.kind == .sum_type
+				&& arg.expr is ast.Ident {
+				g.write('&')
+				g.expr(arg.expr)
 				return
 			}
 		}

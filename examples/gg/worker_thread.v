@@ -36,7 +36,6 @@ fn main() {
 		bg_color: bg_color
 		frame_fn: frame
 		init_fn: init
-		font_path: gg.system_font_path()
 	)
 	app.gg.run()
 }

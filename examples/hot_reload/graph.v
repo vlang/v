@@ -29,7 +29,6 @@ fn main() {
 		frame_fn: frame
 		resizable: true
 		bg_color: gx.white
-		font_path: gg.system_font_path()
 	)
 	context.gg.run()
 }
