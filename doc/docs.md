@@ -676,12 +676,10 @@ assert rocket.str() == '🚀'
 
 A `rune` can be converted to UTF-8 bytes by using the `.bytes()` method.
 
-```v failcompile
+```v
 rocket := `🚀`
-assert rocket.bytes() == [0xf0, 0x9f, 0x9a, 0x80]
+assert rocket.bytes() == [byte(0xf0), 0x9f, 0x9a, 0x80]
 ```
-
-_example will fail to compile until next release_
 
 Hex, Unicode, and Octal escape sequences also work in a `rune` literal:
 
