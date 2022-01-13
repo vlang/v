@@ -1158,9 +1158,6 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 		if method.params[0].is_mut {
 			to_lock, pos := c.fail_if_immutable(node.left)
-			if !node.left.is_lvalue() {
-				c.error('cannot pass expression as `mut`', node.left.position())
-			}
 			// node.is_mut = true
 			if to_lock != '' && rec_share != .shared_t {
 				c.error('$to_lock is `shared` and must be `lock`ed to be passed as `mut`',
