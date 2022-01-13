@@ -7,6 +7,7 @@ import sokol.sfons
 import sokol.sgl
 import gx
 import os
+import os.font
 
 struct FT {
 pub:
@@ -83,20 +84,20 @@ fn new_ft(c FTConfig) ?&FT {
 	mut bold_path := if c.custom_bold_font_path != '' {
 		c.custom_bold_font_path
 	} else {
-		get_font_path_variant(c.font_path, .bold)
+		font.get_path_variant(c.font_path, .bold)
 	}
 	bytes_bold := os.read_bytes(bold_path) or {
 		debug_font_println('failed to load font "$bold_path"')
 		bold_path = c.font_path
 		bytes
 	}
-	mut mono_path := get_font_path_variant(c.font_path, .mono)
+	mut mono_path := font.get_path_variant(c.font_path, .mono)
 	bytes_mono := os.read_bytes(mono_path) or {
 		debug_font_println('failed to load font "$mono_path"')
 		mono_path = c.font_path
 		bytes
 	}
-	mut italic_path := get_font_path_variant(c.font_path, .italic)
+	mut italic_path := font.get_path_variant(c.font_path, .italic)
 	bytes_italic := os.read_bytes(italic_path) or {
 		debug_font_println('failed to load font "$italic_path"')
 		italic_path = c.font_path
@@ -227,114 +228,4 @@ pub fn (ctx &Context) text_size(s string) (int, int) {
 	mut buf := [4]f32{}
 	ctx.ft.fons.text_bounds(0, 0, s, &buf[0])
 	return int((buf[2] - buf[0]) / ctx.scale), int((buf[3] - buf[1]) / ctx.scale)
-}
-
-pub fn system_font_path() string {
-	env_font := os.getenv('VUI_FONT')
-	if env_font != '' && os.exists(env_font) {
-		return env_font
-	}
-	$if windows {
-		debug_font_println('Using font "C:\\Windows\\Fonts\\arial.ttf"')
-		return 'C:\\Windows\\Fonts\\arial.ttf'
-	}
-	$if macos {
-		fonts := ['/System/Library/Fonts/SFNS.ttf', '/System/Library/Fonts/SFNSText.ttf',
-			'/Library/Fonts/Arial.ttf']
-		for font in fonts {
-			if os.is_file(font) {
-				debug_font_println('Using font "$font"')
-				return font
-			}
-		}
-	}
-	$if android {
-		xml_files := ['/system/etc/system_fonts.xml', '/system/etc/fonts.xml',
-			'/etc/system_fonts.xml', '/etc/fonts.xml', '/data/fonts/fonts.xml',
-			'/etc/fallback_fonts.xml']
-		font_locations := ['/system/fonts', '/data/fonts']
-		for xml_file in xml_files {
-			if os.is_file(xml_file) && os.is_readable(xml_file) {
-				xml := os.read_file(xml_file) or { continue }
-				lines := xml.split('\n')
-				mut candidate_font := ''
-				for line in lines {
-					if line.contains('<font') {
-						candidate_font = line.all_after('>').all_before('<').trim(' \n\t\r')
-						if candidate_font.contains('.ttf') {
-							for location in font_locations {
-								candidate_path := os.join_path(location, candidate_font)
-								if os.is_file(candidate_path) && os.is_readable(candidate_path) {
-									debug_font_println('Using font "$candidate_path"')
-									return candidate_path
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-	mut fm := os.execute("fc-match --format='%{file}\n' -s")
-	if fm.exit_code == 0 {
-		lines := fm.output.split('\n')
-		for l in lines {
-			if !l.contains('.ttc') {
-				debug_font_println('Using font "$l"')
-				return l
-			}
-		}
-	} else {
-		panic('fc-match failed to fetch system font')
-	}
-	panic('failed to init the font')
-}
-
-fn get_font_path_variant(font_path string, variant FontVariant) string {
-	// TODO: find some way to make this shorter and more eye-pleasant
-	// NotoSans, LiberationSans, DejaVuSans, Arial and SFNS should work
-	mut file := os.file_name(font_path)
-	mut fpath := font_path.replace(file, '')
-	file = file.replace('.ttf', '')
-
-	match variant {
-		.normal {}
-		.bold {
-			if fpath.ends_with('-Regular') {
-				file = file.replace('-Regular', '-Bold')
-			} else if file.starts_with('DejaVuSans') {
-				file += '-Bold'
-			} else if file.to_lower().starts_with('arial') {
-				file += 'bd'
-			} else {
-				file += '-bold'
-			}
-			$if macos {
-				if os.exists('SFNS-bold') {
-					file = 'SFNS-bold'
-				}
-			}
-		}
-		.italic {
-			if file.ends_with('-Regular') {
-				file = file.replace('-Regular', '-Italic')
-			} else if file.starts_with('DejaVuSans') {
-				file += '-Oblique'
-			} else if file.to_lower().starts_with('arial') {
-				file += 'i'
-			} else {
-				file += 'Italic'
-			}
-		}
-		.mono {
-			if !file.ends_with('Mono-Regular') && file.ends_with('-Regular') {
-				file = file.replace('-Regular', 'Mono-Regular')
-			} else if file.to_lower().starts_with('arial') {
-				// Arial has no mono variant
-			} else {
-				file += 'Mono'
-			}
-		}
-	}
-	return fpath + file + '.ttf'
 }
