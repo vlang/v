@@ -54,6 +54,7 @@ mut:
 	file                   &ast.File
 	tmp_count              int
 	inside_ternary         bool
+	inside_or              bool
 	inside_loop            bool
 	inside_map_set         bool // map.set(key, value)
 	inside_builtin         bool
@@ -478,6 +479,9 @@ pub fn (mut g JsGen) init() {
 	g.definitions.writeln('function checkDefine(key) {')
 	g.definitions.writeln('\tif (globalThis.hasOwnProperty(key)) { return !!globalThis[key]; } return false;')
 	g.definitions.writeln('}')
+
+	g.definitions.writeln('function BreakException() {}')
+	g.definitions.writeln('function ContinueException() {}')
 }
 
 pub fn (g JsGen) hashes() string {
@@ -1500,6 +1504,20 @@ fn (mut g JsGen) gen_block(it ast.Block) {
 
 fn (mut g JsGen) gen_branch_stmt(it ast.BranchStmt) {
 	// continue or break
+	if g.inside_or {
+		match it.kind {
+			.key_break {
+				g.writeln('throw new BreakException();')
+			}
+			.key_continue {
+				g.writeln('throw new ContinueException();')
+			}
+			else {
+				verror('unexpected branch stmt: $it.kind')
+			}
+		}
+		return
+	}
 	g.write(it.kind.str())
 	g.writeln(';')
 }
@@ -1606,7 +1624,12 @@ fn (mut g JsGen) gen_for_c_stmt(it ast.ForCStmt) {
 		g.stmt_no_semi(it.inc)
 	}
 	g.writeln(') {')
+	g.writeln('try { ')
 	g.stmts(it.stmts)
+	g.writeln('} catch (e) {')
+	g.writeln(' if (e instanceof BreakException) { break; }')
+	g.writeln(' else if (e instanceof ContinueException) { continue; }')
+	g.writeln(' else { throw e; } }')
 	g.writeln('}')
 	g.inside_loop = false
 }
@@ -1625,7 +1648,12 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 		g.expr(it.high)
 		g.writeln('; $i = new int($i + 1)) {')
 		g.inside_loop = false
+		g.writeln('try { ')
 		g.stmts(it.stmts)
+		g.writeln('} catch (e) {')
+		g.writeln(' if (e instanceof BreakException) { break; }')
+		g.writeln(' else if (e instanceof ContinueException) { continue; }')
+		g.writeln(' else { throw e; } }')
 		g.writeln('}')
 	} else if it.kind in [.array, .string] || it.cond_type.has_flag(.variadic) {
 		// `for num in nums {`
@@ -1670,7 +1698,12 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 			}
 		}
 		g.writeln(') {')
+		g.writeln('try { ')
 		g.stmts(it.stmts)
+		g.writeln('} catch (e) {')
+		g.writeln(' if (e instanceof BreakException) { break; }')
+		g.writeln(' else if (e instanceof ContinueException) { continue; }')
+		g.writeln(' else { throw e; } }')
 		g.writeln('}')
 	} else if it.kind == .map {
 		// `for key, val in map[string]int {`
@@ -1695,7 +1728,12 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 			g.writeln('\tlet $key = $tmp[$tmp3];')
 			g.writeln('\tlet $val = ${tmp2}.map[$tmp[$tmp3]];')
 			g.inc_indent()
+			g.writeln('try { ')
 			g.stmts(it.stmts)
+			g.writeln('} catch (e) {')
+			g.writeln(' if (e instanceof BreakException) { break; }')
+			g.writeln(' else if (e instanceof ContinueException) { continue; }')
+			g.writeln(' else { throw e; } }')
 			g.dec_indent()
 			g.writeln('}')
 		} else {
@@ -1710,7 +1748,12 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 			g.inc_indent()
 			g.writeln('let $val = ${tmp}.map[$tmp2];')
 			g.writeln('let $key = $tmp2;')
+			g.writeln('try { ')
 			g.stmts(it.stmts)
+			g.writeln('} catch (e) {')
+			g.writeln(' if (e instanceof BreakException) { break; }')
+			g.writeln(' else if (e instanceof ContinueException) { continue; }')
+			g.writeln(' else { throw e; } } ')
 			g.dec_indent()
 			g.writeln('}')
 		}
@@ -1726,7 +1769,12 @@ fn (mut g JsGen) gen_for_stmt(it ast.ForStmt) {
 		g.expr(it.cond)
 	}
 	g.writeln(') {')
+	g.writeln('try { ')
 	g.stmts(it.stmts)
+	g.writeln('} catch (e) {')
+	g.writeln(' if (e instanceof BreakException) { break; }')
+	g.writeln(' else if (e instanceof ContinueException) { continue; }')
+	g.writeln(' else { throw e; } }')
 	g.writeln('}')
 }
 

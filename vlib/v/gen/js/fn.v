@@ -97,6 +97,11 @@ fn (mut g JsGen) js_call(node ast.CallExpr) {
 	}
 	if call_return_is_optional {
 		g.write(';\n')
+		prev_inside_or := g.inside_or
+		g.inside_or = true
+		defer {
+			g.inside_or = prev_inside_or
+		}
 		g.writeln('if (tmp === null) throw "none";')
 		g.writeln('return tmp;')
 		g.writeln('} catch(err) {')
@@ -151,6 +156,11 @@ fn (mut g JsGen) js_method_call(node ast.CallExpr) {
 	// end method call
 	g.write(')')
 	if call_return_is_optional {
+		prev_inside_or := g.inside_or
+		g.inside_or = true
+		defer {
+			g.inside_or = prev_inside_or
+		}
 		g.write(';\n')
 		g.writeln('if (tmp === null) throw "none";')
 		g.writeln('return tmp;')
@@ -339,6 +349,11 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 		// end unwrap
 		g.writeln(')')
 		g.dec_indent()
+		prev_inside_or := g.inside_or
+		g.inside_or = true
+		defer {
+			g.inside_or = prev_inside_or
+		}
 		// begin catch block
 		g.writeln('} catch(err) {')
 		g.inc_indent()
@@ -432,6 +447,11 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	g.write(')')
 	if call_return_is_optional {
 		// end unwrap
+		prev_inside_or := g.inside_or
+		g.inside_or = true
+		defer {
+			g.inside_or = prev_inside_or
+		}
 		g.writeln(')')
 		g.dec_indent()
 		// begin catch block
