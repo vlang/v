@@ -843,6 +843,20 @@ fn test_sort() {
 	assert users[2].name == 'Peter'
 }
 
+fn test_sort_with_compare() {
+	mut a := ['hi', '1', '5', '3']
+	a.sort_with_compare(fn (a &string, b &string) int {
+		if a < b {
+			return -1
+		}
+		if a > b {
+			return 1
+		}
+		return 0
+	})
+	assert a == ['1', '3', '5', 'hi']
+}
+
 fn test_rune_sort() {
 	mut bs := [`f`, `e`, `d`, `b`, `c`, `a`]
 	bs.sort()
