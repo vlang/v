@@ -348,8 +348,9 @@ fn (a array) get_with_check(i int) voidptr {
 }
 
 // first returns the first element of the `array`.
-// If the `array` is empty, this will return an error
-// the same as `a[0]` does
+// If the `array` is empty, this will panic.
+// However, `a[0]` returns an error object
+// so it can be handled with an `or` block.
 pub fn (a array) first() voidptr {
 	$if !no_bounds_checking ? {
 		if a.len == 0 {
@@ -360,7 +361,7 @@ pub fn (a array) first() voidptr {
 }
 
 // last returns the last element of the `array`.
-// If the `array` is empty, this will return an error.
+// If the `array` is empty, this will panic.
 pub fn (a array) last() voidptr {
 	$if !no_bounds_checking ? {
 		if a.len == 0 {
@@ -373,7 +374,7 @@ pub fn (a array) last() voidptr {
 }
 
 // pop returns the last element of the array, and removes it.
-// If the `array` is empty, this will return an error.
+// If the `array` is empty, this will panic.
 // NOTE: this function reduces the length of the given array,
 // but arrays sliced from this one will not change. They still
 // retain their "view" of the underlying memory.
@@ -502,7 +503,7 @@ fn (a array) slice_ni(_start int, _end int) array {
 }
 
 // used internally for [2..4]
-fn (a array) slice2(start int, _end int, end_max bool) ?array {
+fn (a array) slice2(start int, _end int, end_max bool) array {
 	end := if end_max { a.len } else { _end }
 	return a.slice(start, end)
 }
