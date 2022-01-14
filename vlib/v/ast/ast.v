@@ -405,6 +405,7 @@ pub:
 pub mut:
 	unresolved           bool
 	pre_comments         []Comment
+	typ_str              string
 	typ                  Type
 	update_expr          Expr
 	update_expr_type     Type

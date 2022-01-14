@@ -1,5 +1,5 @@
 vlib/v/checker/tests/fn_type_mismatch.vv:11:15: error: invalid array element: expected `fn (int, int) f32`, not `fn (f32, f32) f32`
-    9 |
+    9 | 
    10 | fn main() {
    11 |     fns := [add, div]
       |                  ~~~
