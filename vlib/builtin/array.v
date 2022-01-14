@@ -212,11 +212,10 @@ pub fn (mut a array) insert(i int, val voidptr) {
 	a.len++
 }
 
-// insert_many inserts many values into the array beginning at `i`.
-// NOTE: `array.insert()` already handles inserting multiple values
-// use that unless you know you need to use this.
+// insert_many is used internally to implement inserting many values
+// into an the array beginning at `i`.
 [unsafe]
-pub fn (mut a array) insert_many(i int, val voidptr, size int) {
+fn (mut a array) insert_many(i int, val voidptr, size int) {
 	$if !no_bounds_checking ? {
 		if i < 0 || i > a.len {
 			panic('array.insert_many: index out of range (i == $i, a.len == $a.len)')
@@ -233,16 +232,7 @@ pub fn (mut a array) insert_many(i int, val voidptr, size int) {
 }
 
 // prepend prepends one or more elements to an array.
-// Just like `.insert`, `.prepend` can take a single element
-// or an array of elements of the same type as the original list.
-//
-// Example:
-// ```v
-// mut a := []int{}
-// a.prepend(1)       // a == [1]
-// mut b := [3, 4]
-// b.prepend([1, 2])  // b == [1, 2, 3, 4]
-//
+// It is shorthand for `.insert(0, val)`
 pub fn (mut a array) prepend(val voidptr) {
 	a.insert(0, val)
 }
@@ -251,7 +241,7 @@ pub fn (mut a array) prepend(val voidptr) {
 // NOTE: `.prepend` is probably all you need.
 // NOTE: This code is never called in all of vlib
 [unsafe]
-pub fn (mut a array) prepend_many(val voidptr, size int) {
+fn (mut a array) prepend_many(val voidptr, size int) {
 	unsafe { a.insert_many(0, val, size) }
 }
 
