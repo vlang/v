@@ -31,7 +31,7 @@ fn main() {
 	println('Hello from V.js!')
 	println(JS.Math.atan2(1, 0))
 	non := JS.eval("console.log('Hello!')".str)
-	if isnil (non) {
+	if isnil(non) {
 		println('non=nil')
 	}
 	ren := int(JS.eval('3'.str))
