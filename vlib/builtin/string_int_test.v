@@ -278,7 +278,7 @@ fn test_interpolation_of_negative_numbers_padding_and_width() {
 	assert '-1001101' == '${a:08b}'
 	assert '-000004d' == '${a:08x}'
 
-	//	
+	//
 	assert ' -77' == '${a:4}'
 	assert ' -77' == '${a:4d}'
 	assert '-1001101' == '${a:4b}'
@@ -310,4 +310,26 @@ fn test_interpolation_of_negative_numbers_padding_and_width() {
 	//
 	assert '-0000110' == '${-6:08b}'
 	assert '    -110' == '${-6:8b}'
+}
+
+fn test_parse() {
+	assert i64(1) == '1'.parse_int(0, 8) or { 0 }
+	assert i64(1) == '0b01'.parse_int(0, 8) or { 0 }
+	assert i64(1) == '01'.parse_int(0, 8) or { 0 }
+	assert i64(1) == '0o01'.parse_int(0, 8) or { 0 }
+	assert i64(1) == '0x01'.parse_int(0, 8) or { 0 }
+	assert i64(1) == '1'.parse_int(2, 8) or { 0 }
+	assert i64(1) == '1'.parse_int(8, 8) or { 0 }
+	assert i64(1) == '1'.parse_int(10, 8) or { 0 }
+	assert i64(1) == '1'.parse_int(16, 8) or { 0 }
+
+	assert u64(1) == '1'.parse_uint(0, 8) or { 0 }
+	assert u64(1) == '0b01'.parse_uint(0, 8) or { 0 }
+	assert u64(1) == '01'.parse_uint(0, 8) or { 0 }
+	assert u64(1) == '0o01'.parse_uint(0, 8) or { 0 }
+	assert u64(1) == '0x01'.parse_uint(0, 8) or { 0 }
+	assert u64(1) == '1'.parse_uint(2, 8) or { 0 }
+	assert u64(1) == '1'.parse_uint(8, 8) or { 0 }
+	assert u64(1) == '1'.parse_uint(10, 8) or { 0 }
+	assert u64(1) == '1'.parse_uint(16, 8) or { 0 }
 }
