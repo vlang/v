@@ -539,7 +539,7 @@ pub fn (s string) u64() u64 {
 	return strconv.common_parse_uint(s, 0, 64, false, false) or { 0 }
 }
 
-// `parse_int` interprets a string s in the given base (0, 2 to 36) and
+// parse_int interprets a string s in the given base (0, 2 to 36) and
 // bit size (0 to 64) and returns the corresponding value i.
 //
 // If the base argument is 0, the true base is implied by the string's
@@ -560,7 +560,7 @@ pub fn (s string) parse_uint(_base int, _bit_size int) ?u64 {
 	return strconv.parse_uint(s, _base, _bit_size)
 }
 
-// `parse_uint` is like `parse_int` but for unsigned numbers
+// parse_uint is like `parse_int` but for unsigned numbers
 //
 // This method directly exposes the `parse_int` function from `strconv`
 // as a method on `string`. For more advanced features,
