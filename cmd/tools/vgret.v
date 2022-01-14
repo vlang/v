@@ -241,14 +241,18 @@ fn compare_screenshots(opt Options, output_path string, target_path string) ? {
 				diff_file := os.join_path(os.temp_dir(), os.file_name(src).all_before_last('.') +
 					'.diff.tif')
 				flags := app_config.compare.flags.join(' ')
-				diff_cmd := '$idiff_exe $flags -od -o "$diff_file" -abs "$src" "$target"'
-				result := os.execute(diff_cmd)
-				if opt.verbose && result.exit_code == 0 {
+				diff_cmd := '$idiff_exe $flags -abs -od -o "$diff_file" -abs "$src" "$target"'
+				if opt.verbose {
 					eprintln('Running: $diff_cmd')
-					eprintln('$result.output')
+				}
+
+				result := os.execute(diff_cmd)
+
+				if opt.verbose && result.exit_code == 0 {
+					eprintln('OUTPUT: \n$result.output')
 				}
 				if result.exit_code != 0 {
-					eprintln('$result.output')
+					eprintln('OUTPUT: \n$result.output')
 					if result.exit_code == 1 {
 						warns[src] = target
 					} else {
