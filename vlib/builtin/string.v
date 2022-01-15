@@ -539,6 +539,36 @@ pub fn (s string) u64() u64 {
 	return strconv.common_parse_uint(s, 0, 64, false, false) or { 0 }
 }
 
+// parse_int interprets a string s in the given base (0, 2 to 36) and
+// bit size (0 to 64) and returns the corresponding value i.
+//
+// If the base argument is 0, the true base is implied by the string's
+// prefix: 2 for "0b", 8 for "0" or "0o", 16 for "0x", and 10 otherwise.
+// Also, for argument base 0 only, underscore characters are permitted
+// as defined by the Go syntax for integer literals.
+//
+// The bitSize argument specifies the integer type
+// that the result must fit into. Bit sizes 0, 8, 16, 32, and 64
+// correspond to int, int8, int16, int32, and int64.
+// If bitSize is below 0 or above 64, an error is returned.
+//
+// This method directly exposes the `parse_uint` function from `strconv`
+// as a method on `string`. For more advanced features,
+// consider calling `strconv.common_parse_uint` directly.
+// Example:
+pub fn (s string) parse_uint(_base int, _bit_size int) ?u64 {
+	return strconv.parse_uint(s, _base, _bit_size)
+}
+
+// parse_uint is like `parse_int` but for unsigned numbers
+//
+// This method directly exposes the `parse_int` function from `strconv`
+// as a method on `string`. For more advanced features,
+// consider calling `strconv.common_parse_int` directly.
+pub fn (s string) parse_int(_base int, _bit_size int) ?i64 {
+	return strconv.parse_int(s, _base, _bit_size)
+}
+
 [direct_array_access]
 fn (s string) == (a string) bool {
 	if s.str == 0 {

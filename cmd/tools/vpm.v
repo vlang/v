@@ -6,6 +6,7 @@ module main
 import os
 import os.cmdline
 import net.http
+import net.urllib
 import json
 import vhelp
 import v.vmod
@@ -139,7 +140,6 @@ fn vpm_search(keywords []string) {
 	joined := search_keys.join(', ')
 	mut index := 0
 	for mod in modules {
-		// TODO for some reason .filter results in substr error, so do it manually
 		for k in search_keys {
 			if !mod.contains(k) {
 				continue
@@ -208,7 +208,7 @@ fn vpm_install_from_vpm(module_names []string) {
 			vpm_update([name])
 			continue
 		}
-		println('Installing module "$name" from $mod.url to $final_module_path ...')
+		println('Installing module "$name" from "$mod.url" to "$final_module_path" ...')
 		vcs_install_cmd := supported_vcs_install_cmds[vcs]
 		cmd := '$vcs_install_cmd "$mod.url" "$final_module_path"'
 		verbose_println('      command: $cmd')
@@ -249,7 +249,7 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 
 		first_cut_pos := url.last_index('/') or {
 			errors++
-			println('Errors while retrieving name for module $url:')
+			println('Errors while retrieving name for module "$url" :')
 			println(err)
 			continue
 		}
@@ -258,7 +258,7 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 
 		second_cut_pos := url.substr(0, first_cut_pos).last_index('/') or {
 			errors++
-			println('Errors while retrieving name for module $url:')
+			println('Errors while retrieving name for module "$url" :')
 			println(err)
 			continue
 		}
@@ -276,7 +276,7 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 			println('VPM needs `$vcs_key` to be installed.')
 			continue
 		}
-		println('Installing module "$name" from $url to $final_module_path ...')
+		println('Installing module "$name" from "$url" to "$final_module_path" ...')
 		vcs_install_cmd := supported_vcs_install_cmds[vcs_key]
 		cmd := '$vcs_install_cmd "$url" "$final_module_path"'
 		verbose_println('      command: $cmd')
@@ -293,7 +293,7 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 			vmod := parse_vmod(data)
 			mod_path := os.real_path(os.join_path(settings.vmodules_path, vmod.name.replace('.',
 				os.path_separator)))
-			println('Relocating module from "$name" to "$vmod.name" ( $mod_path ) ...')
+			println('Relocating module from "$name" to "$vmod.name" ( "$mod_path" ) ...')
 			if os.exists(mod_path) {
 				println('Warning module "$mod_path" already exsits!')
 				println('Removing module "$mod_path" ...')
@@ -358,11 +358,14 @@ fn vpm_update(m []string) {
 		module_names = get_installed_modules()
 	}
 	mut errors := 0
-	for name in module_names {
-		final_module_path := valid_final_path_of_existing_module(name) or { continue }
+	for modulename in module_names {
+		mut zname := modulename
+		if mod := get_mod_by_url(modulename) {
+			zname = mod.name
+		}
+		final_module_path := valid_final_path_of_existing_module(modulename) or { continue }
 		os.chdir(final_module_path) or {}
-		println('Updating module "$name"...')
-		verbose_println('  work folder: $final_module_path')
+		println('Updating module "$zname" in "$final_module_path" ...')
 		vcs := vcs_used_in_dir(final_module_path) or { continue }
 		if !ensure_vcs_is_installed(vcs[0]) {
 			errors++
@@ -374,13 +377,13 @@ fn vpm_update(m []string) {
 		vcs_res := os.execute('$vcs_cmd')
 		if vcs_res.exit_code != 0 {
 			errors++
-			println('Failed updating module "$name".')
+			println('Failed updating module "$zname" in "$final_module_path" .')
 			print_failed_cmd(vcs_cmd, vcs_res)
 			continue
 		} else {
 			verbose_println('    $vcs_res.output.trim_space()')
 		}
-		resolve_dependencies(name, final_module_path, module_names)
+		resolve_dependencies(modulename, final_module_path, module_names)
 	}
 	if errors > 0 {
 		exit(1)
@@ -401,7 +404,7 @@ fn get_outdated() ?[]string {
 			if res.exit_code < 0 {
 				verbose_println('Error command: $step')
 				verbose_println('Error details:\n$res.output')
-				return error('Error while checking latest commits for "$name".')
+				return error('Error while checking latest commits for "$name" .')
 			}
 			if vcs[0] == 'hg' {
 				if res.exit_code == 1 {
@@ -462,7 +465,7 @@ fn vpm_remove(module_names []string) {
 	}
 	for name in module_names {
 		final_module_path := valid_final_path_of_existing_module(name) or { continue }
-		println('Removing module "$name"...')
+		println('Removing module "$name" ...')
 		verbose_println('removing folder $final_module_path')
 		os.rmdir_all(final_module_path) or {
 			verbose_println('error while removing "$final_module_path": $err.msg')
@@ -482,7 +485,11 @@ fn vpm_remove(module_names []string) {
 	}
 }
 
-fn valid_final_path_of_existing_module(name string) ?string {
+fn valid_final_path_of_existing_module(modulename string) ?string {
+	mut name := modulename
+	if mod := get_mod_by_url(name) {
+		name = mod.name
+	}
 	mod_name_as_path := name.replace('.', os.path_separator).replace('-', '_').to_lower()
 	name_of_vmodules_folder := os.join_path(settings.vmodules_path, mod_name_as_path)
 	final_module_path := os.real_path(name_of_vmodules_folder)
@@ -503,7 +510,7 @@ fn valid_final_path_of_existing_module(name string) ?string {
 
 fn ensure_vmodules_dir_exist() {
 	if !os.is_dir(settings.vmodules_path) {
-		println('Creating $settings.vmodules_path/ ...')
+		println('Creating "$settings.vmodules_path/" ...')
 		os.mkdir(settings.vmodules_path) or { panic(err) }
 	}
 }
@@ -600,7 +607,7 @@ fn resolve_dependencies(name string, module_path string, module_names []string) 
 		}
 	}
 	if deps.len > 0 {
-		println('Resolving $deps.len dependencies for module "$name"...')
+		println('Resolving $deps.len dependencies for module "$name" ...')
 		verbose_println('Found dependencies: $deps')
 		vpm_install(deps, Source.vpm)
 	}
@@ -662,28 +669,44 @@ fn verbose_println(s string) {
 	}
 }
 
+fn get_mod_by_url(name string) ?Mod {
+	if purl := urllib.parse(name) {
+		verbose_println('purl: $purl')
+		mod := Mod{
+			name: purl.path.trim_left('/').trim_right('/').replace('/', '.')
+			url: name
+		}
+		verbose_println(mod.str())
+		return mod
+	}
+	return error('invalid url: $name')
+}
+
 fn get_module_meta_info(name string) ?Mod {
+	if mod := get_mod_by_url(name) {
+		return mod
+	}
 	mut errors := []string{}
 	for server_url in default_vpm_server_urls {
 		modurl := server_url + '/jsmod/$name'
-		verbose_println('Retrieving module metadata from: $modurl ...')
+		verbose_println('Retrieving module metadata from: "$modurl" ...')
 		r := http.get(modurl) or {
-			errors << 'Http server did not respond to our request for ${modurl}.'
+			errors << 'Http server did not respond to our request for "$modurl" .'
 			errors << 'Error details: $err'
 			continue
 		}
 		if r.status_code == 404 || r.text.trim_space() == '404' {
-			errors << 'Skipping module "$name", since $server_url reported that "$name" does not exist.'
+			errors << 'Skipping module "$name", since "$server_url" reported that "$name" does not exist.'
 			continue
 		}
 		if r.status_code != 200 {
-			errors << 'Skipping module "$name", since $server_url responded with $r.status_code http status code. Please try again later.'
+			errors << 'Skipping module "$name", since "$server_url" responded with $r.status_code http status code. Please try again later.'
 			continue
 		}
 		s := r.text
 		if s.len > 0 && s[0] != `{` {
 			errors << 'Invalid json data'
-			errors << s.trim_space().limit(100) + '...'
+			errors << s.trim_space().limit(100) + ' ...'
 			continue
 		}
 		mod := json.decode(Mod, s) or {

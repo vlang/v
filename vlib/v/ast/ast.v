@@ -405,6 +405,7 @@ pub:
 pub mut:
 	unresolved           bool
 	pre_comments         []Comment
+	typ_str              string
 	typ                  Type
 	update_expr          Expr
 	update_expr_type     Type
@@ -1165,9 +1166,10 @@ pub:
 	has_default   bool
 	has_it        bool // true if temp variable it is used
 pub mut:
-	expr_types []Type // [Dog, Cat] // also used for interface_types
-	elem_type  Type   // element type
-	typ        Type   // array type
+	expr_types   []Type // [Dog, Cat] // also used for interface_types
+	elem_type    Type   // element type
+	default_type Type   // default value type
+	typ          Type   // array type
 }
 
 pub struct ArrayDecompose {

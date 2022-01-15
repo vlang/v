@@ -20,6 +20,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		if node.has_default {
 			default_expr := node.default_expr
 			default_typ := c.check_expr_opt_call(default_expr, c.expr(default_expr))
+			node.default_type = default_typ
 			c.check_expected(default_typ, node.elem_type) or {
 				c.error(err.msg, default_expr.position())
 			}

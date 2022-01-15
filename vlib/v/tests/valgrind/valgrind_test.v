@@ -44,10 +44,18 @@ fn test_all() {
 		eprintln('You can still do it by setting FORCE_VALGRIND_TEST=1 .')
 		exit(0)
 	}
+
 	if os.getenv('V_CI_UBUNTU_MUSL').len > 0 {
 		eprintln('This test is disabled for musl.')
 		exit(0)
 	}
+
+	res_valgrind := os.execute('valgrind --version')
+	if res_valgrind.exit_code != 0 {
+		eprintln('This test needs `valgrind` to be installed.')
+		exit(0)
+	}
+
 	bench_message := 'memory leak checking with valgrind'
 	mut bench := benchmark.new_benchmark()
 	eprintln(term.header(bench_message, '-'))
@@ -74,9 +82,10 @@ fn test_all() {
 			}
 		}
 		//
-		exe_filename := '$wrkdir/x'
+		base_filename := os.file_name(test).replace('.v', '')
+		exe_filename := '$wrkdir/$base_filename'
 		full_path_to_source_file := os.join_path(vroot, test)
-		compile_cmd := '$vexe -o $exe_filename -cg -cflags "-w" -experimental -autofree "$full_path_to_source_file"'
+		compile_cmd := '"$vexe" -o "$exe_filename" -cg -cflags "-w" -experimental -autofree "$full_path_to_source_file"'
 		vprintln('compile cmd: ${bold(compile_cmd)}')
 		res := os.execute(compile_cmd)
 		if res.exit_code != 0 {
@@ -93,7 +102,7 @@ fn test_all() {
 				continue
 			}
 		}
-		valgrind_cmd := 'valgrind --error-exitcode=1 --leak-check=full $exe_filename'
+		valgrind_cmd := 'valgrind --error-exitcode=1 --leak-check=full "$exe_filename"'
 		vprintln('valgrind cmd: ${bold(valgrind_cmd)}')
 		valgrind_res := os.execute(valgrind_cmd)
 		if valgrind_res.exit_code != 0 {

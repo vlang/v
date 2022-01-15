@@ -325,8 +325,17 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				}
 			}
 			// Check uninitialized refs/sum types
-			for field in info.fields {
-				if field.has_default_expr || field.name in inited_fields {
+			for i, field in info.fields {
+				if field.name in inited_fields {
+					continue
+				}
+				if field.has_default_expr {
+					if field.default_expr is ast.StructInit && field.default_expr_typ == 0 {
+						idx := c.table.find_type_idx(field.default_expr.typ_str)
+						if idx != 0 {
+							info.fields[i].default_expr_typ = ast.new_type(idx)
+						}
+					}
 					continue
 				}
 				if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !node.has_update_expr

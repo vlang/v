@@ -190,7 +190,11 @@ see also `v help build`.
       this loop is very short usually.
 
    -compress
-      Strip the compiled executable to compress it.
+      Compress the compiled executable with UPX.
+	  Note: `upx` should be installed beforehand.
+	  In most Linux distros it is in a package named `upx-ucl`.
+	  On macOS, you can install it with `brew install upx`.
+	  On Windows, you can download it from https://upx.github.io/ .
 
    -live
       Build the executable with live capabilities (`[live]`).

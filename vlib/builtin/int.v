@@ -546,6 +546,15 @@ pub fn (b []byte) bytestr() string {
 	}
 }
 
+// byterune attempts to decode a sequence of bytes
+// from utf8 to utf32 and return the result as a rune
+// it will produce an error if there are more than
+// four bytes in the array.
+pub fn (b []byte) byterune() ?rune {
+	r := b.utf8_to_utf32() ?
+	return rune(r)
+}
+
 // repeat returns a new string with `count` number of copies of the byte it was called on.
 pub fn (b byte) repeat(count int) string {
 	if count < 0 {
