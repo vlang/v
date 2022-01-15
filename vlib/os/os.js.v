@@ -1,16 +1,32 @@
 module os
 
 $if js_node {
-	#const $fs = require('fs');
-	#const $path = require('path');
-	#const tty = require('tty')
+	#var $fs = require('fs');
+	#var $path = require('path');
+	#var tty = require('tty')
 }
 
 pub const (
-	path_delimiter = '/'
-	path_separator = '/'
+	path_delimiter = get_path_delimiter()
+	path_separator = get_path_separator()
 	args           = []string{}
 )
+
+fn get_path_delimiter() string {
+	delimiter := ':'
+	$if js_node {
+		#delimiter.str = $path.delimiter
+	}
+	return delimiter
+}
+
+fn get_path_separator() string {
+	separator := '/'
+	$if js_node {
+		#separator.str = $path.sep
+	}
+	return separator
+}
 
 fn init() {
 	$if js_node {
