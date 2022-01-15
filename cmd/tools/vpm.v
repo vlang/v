@@ -489,7 +489,7 @@ fn valid_final_path_of_existing_module(modulename string) ?string {
 	mut name := modulename
 	if mod := get_mod_by_url(name) {
 		name = mod.name
-	}	
+	}
 	mod_name_as_path := name.replace('.', os.path_separator).replace('-', '_').to_lower()
 	name_of_vmodules_folder := os.join_path(settings.vmodules_path, mod_name_as_path)
 	final_module_path := os.real_path(name_of_vmodules_folder)
@@ -691,7 +691,7 @@ fn get_module_meta_info(name string) ?Mod {
 		modurl := server_url + '/jsmod/$name'
 		verbose_println('Retrieving module metadata from: "$modurl" ...')
 		r := http.get(modurl) or {
-			errors << 'Http server did not respond to our request for "${modurl}" .'
+			errors << 'Http server did not respond to our request for "$modurl" .'
 			errors << 'Error details: $err'
 			continue
 		}
