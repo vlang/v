@@ -213,7 +213,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 			g.write('}[0])')
 		} else if node.has_default {
 			g.write('&($elem_styp[]){')
-			g.expr(node.default_expr)
+			g.expr_with_cast(node.default_expr, node.default_type, node.elem_type)
 			g.write('})')
 		} else if node.has_len && node.elem_type == ast.string_type {
 			g.write('&($elem_styp[]){')
