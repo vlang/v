@@ -323,6 +323,11 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 		c.table.cur_fn = keep_fn
 		c.inside_anon_fn = keep_inside_anon
 	}
+	for param in node.decl.params {
+		if param.name.len == 0 {
+			c.error('use `_` to name an unused parameter', param.pos)
+		}
+	}
 	c.table.cur_fn = unsafe { &node.decl }
 	c.inside_anon_fn = true
 	for mut var in node.inherited_vars {
