@@ -692,7 +692,16 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 			}
 		}
 	}
+	g.inc_indent()
+	g.writeln('try {')
+	g.inc_indent()
 	g.stmts(it.stmts)
+	g.dec_indent()
+	g.writeln('} catch (e) { ')
+	g.writeln('\tif (e instanceof ReturnException) { return e.val; } ')
+	g.writeln('\tthrow e;')
+	g.writeln('}')
+	g.dec_indent()
 	g.writeln('}')
 
 	if is_main {
