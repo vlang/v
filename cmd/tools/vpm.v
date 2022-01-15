@@ -6,6 +6,7 @@ module main
 import os
 import os.cmdline
 import net.http
+import net.urllib
 import json
 import vhelp
 import v.vmod
@@ -664,6 +665,17 @@ fn verbose_println(s string) {
 
 fn get_module_meta_info(name string) ?Mod {
 	mut errors := []string{}
+
+	if purl := urllib.parse(name) {
+		verbose_println('purl: $purl')
+		mod := Mod{
+			name: purl.path.trim_left('/').trim_right('/')
+			url: name
+		}
+		verbose_println(mod.str())
+		return mod
+	}
+
 	for server_url in default_vpm_server_urls {
 		modurl := server_url + '/jsmod/$name'
 		verbose_println('Retrieving module metadata from: $modurl ...')
