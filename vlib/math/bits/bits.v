@@ -429,30 +429,51 @@ pub fn div_64(hi u64, lo u64, y1 u64) (u64, u64) {
 	y <<= s
 	yn1 := y >> 32
 	yn0 := y & bits.mask32
-	un32 := (hi << s) | (lo >> (64 - s))
+	ss1 := (hi << s)
+	xxx := 64 - s
+	mut ss2 := lo >> xxx
+	if xxx == 64 {
+		// in Go, shifting right a u64 number, 64 times produces 0 *always*.
+		// See https://go.dev/ref/spec
+		// > The shift operators implement arithmetic shifts if the left operand
+		// > is a signed integer and logical shifts if it is an unsigned integer.
+		// > There is no upper limit on the shift count.
+		// > Shifts behave as if the left operand is shifted n times by 1 for a shift count of n.
+		// > As a result, x << 1 is the same as x*2 and x >> 1 is the same as x/2
+		// > but truncated towards negative infinity.
+		//
+		// In V, that is currently left to whatever C is doing, which is apparently a NOP.
+		// This function was a direct port of https://cs.opensource.google/go/go/+/refs/tags/go1.17.6:src/math/bits/bits.go;l=512,
+		// so we have to use the Go behaviour.
+		// TODO: reconsider whether we need to adopt it for our shift ops, or just use function wrappers that do it.
+		ss2 = 0
+	}
+	un32 := ss1 | ss2
 	un10 := lo << s
 	un1 := un10 >> 32
 	un0 := un10 & bits.mask32
 	mut q1 := un32 / yn1
-	mut rhat := un32 - q1 * yn1
-	for q1 >= bits.two32 || q1 * yn0 > bits.two32 * rhat + un1 {
+	mut rhat := un32 - (q1 * yn1)
+	for (q1 >= bits.two32) || (q1 * yn0) > ((bits.two32 * rhat) + un1) {
 		q1--
 		rhat += yn1
 		if rhat >= bits.two32 {
 			break
 		}
 	}
-	un21 := un32 * bits.two32 + un1 - q1 * y
+	un21 := (un32 * bits.two32) + (un1 - (q1 * y))
 	mut q0 := un21 / yn1
 	rhat = un21 - q0 * yn1
-	for q0 >= bits.two32 || q0 * yn0 > bits.two32 * rhat + un0 {
+	for (q0 >= bits.two32) || (q0 * yn0) > ((bits.two32 * rhat) + un0) {
 		q0--
 		rhat += yn1
 		if rhat >= bits.two32 {
 			break
 		}
 	}
-	return q1 * bits.two32 + q0, (un21 * bits.two32 + un0 - q0 * y) >> s
+	qq := ((q1 * bits.two32) + q0)
+	rr := ((un21 * bits.two32) + un0 - (q0 * y)) >> s
+	return qq, rr
 }
 
 // rem_32 returns the remainder of (hi, lo) divided by y. Rem32 panics
