@@ -40,6 +40,25 @@ pub fn (list LinkedList<T>) last() ?T {
 	}
 }
 
+// index returns the element at the given index of the linked list
+pub fn (list LinkedList<T>) index(idx int) ?T {
+	if list.head == 0 {
+		return error('Linked list is empty')
+	} else {
+		mut node := list.head
+		mut iterations := 0
+		for node.next != 0 && iterations < idx {
+			node = node.next
+			iterations++
+		}
+		if iterations == idx {
+			return node.data
+		} else {
+			return error('Index out of bounds')
+		}
+	}
+}
+
 // push adds an element to the end of the linked list
 pub fn (mut list LinkedList<T>) push(item T) {
 	new_node := &ListNode{
