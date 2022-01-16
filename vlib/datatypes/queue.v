@@ -25,6 +25,11 @@ pub fn (queue Queue<T>) last() ?T {
 	return if !queue.is_empty() { queue.elements.last() ? } else { error('Queue is empty') }
 }
 
+// index returns the element at the given index of the queue
+pub fn (queue Queue<T>) index(idx int) ?T {
+	return if !queue.is_empty() { queue.elements.index(idx) ? } else { error('Queue is empty') }
+}
+
 // push adds an element to the tail of the queue
 pub fn (mut queue Queue<T>) push(item T) {
 	queue.elements.push(item)
