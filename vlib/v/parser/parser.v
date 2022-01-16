@@ -2378,43 +2378,140 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 			high = p.expr(0)
 			has_high = true
 		}
-		pos := start_pos.extend(p.tok.position())
+
+		pos_high := start_pos.extend(p.tok.position())
 		p.check(.rsbr)
+		mut or_kind_high := ast.OrKind.absent
+		mut or_stmts_high := []ast.Stmt{}
+		mut or_pos_high := token.Position{}
+
+		if !p.or_is_handled {
+			// a[..end] or {...}
+			if p.tok.kind == .key_orelse {
+				was_inside_or_expr := p.inside_or_expr
+				p.inside_or_expr = true
+				or_pos_high = p.tok.position()
+				p.next()
+				p.open_scope()
+				or_stmts_high = p.parse_block_no_scope(false)
+				or_pos_high = or_pos_high.extend(p.prev_tok.position())
+				p.close_scope()
+				p.inside_or_expr = was_inside_or_expr
+				return ast.IndexExpr{
+					left: left
+					pos: pos_high
+					index: ast.RangeExpr{
+						low: ast.empty_expr()
+						high: high
+						has_high: has_high
+						pos: pos_high
+						is_gated: is_gated
+					}
+					or_expr: ast.OrExpr{
+						kind: .block
+						stmts: or_stmts_high
+						pos: or_pos_high
+					}
+					is_gated: is_gated
+				}
+			}
+			// `a[start..end] ?`
+			if p.tok.kind == .question {
+				or_pos_high = p.tok.position()
+				or_kind_high = .propagate
+				p.next()
+			}
+		}
+
 		return ast.IndexExpr{
 			left: left
-			pos: pos
+			pos: pos_high
 			index: ast.RangeExpr{
 				low: ast.empty_expr()
 				high: high
 				has_high: has_high
-				pos: pos
+				pos: pos_high
 				is_gated: is_gated
+			}
+			or_expr: ast.OrExpr{
+				kind: or_kind_high
+				stmts: or_stmts_high
+				pos: or_pos_high
 			}
 			is_gated: is_gated
 		}
 	}
 	expr := p.expr(0) // `[expr]` or  `[expr..`
 	mut has_high := false
+
 	if p.tok.kind == .dotdot {
-		// [start..end] or [start..]
+		// either [start..end] or [start..]
 		p.next()
 		mut high := ast.empty_expr()
 		if p.tok.kind != .rsbr {
 			has_high = true
 			high = p.expr(0)
 		}
-		pos := start_pos.extend(p.tok.position())
+		pos_low := start_pos.extend(p.tok.position())
 		p.check(.rsbr)
+		mut or_kind_low := ast.OrKind.absent
+		mut or_stmts_low := []ast.Stmt{}
+		mut or_pos_low := token.Position{}
+
+		if !p.or_is_handled {
+			// a[start..end] or {...}
+			if p.tok.kind == .key_orelse {
+				was_inside_or_expr := p.inside_or_expr
+				p.inside_or_expr = true
+				or_pos_low = p.tok.position()
+				p.next()
+				p.open_scope()
+				or_stmts_low = p.parse_block_no_scope(false)
+				or_pos_low = or_pos_low.extend(p.prev_tok.position())
+				p.close_scope()
+				p.inside_or_expr = was_inside_or_expr
+				return ast.IndexExpr{
+					left: left
+					pos: pos_low
+					index: ast.RangeExpr{
+						low: expr
+						high: high
+						has_high: has_high
+						has_low: has_low
+						pos: pos_low
+						is_gated: is_gated
+					}
+					or_expr: ast.OrExpr{
+						kind: .block
+						stmts: or_stmts_low
+						pos: or_pos_low
+					}
+					is_gated: is_gated
+				}
+			}
+			// `a[start..end] ?`
+			if p.tok.kind == .question {
+				or_pos_low = p.tok.position()
+				or_kind_low = .propagate
+				p.next()
+			}
+		}
+
 		return ast.IndexExpr{
 			left: left
-			pos: pos
+			pos: pos_low
 			index: ast.RangeExpr{
 				low: expr
 				high: high
 				has_high: has_high
 				has_low: has_low
-				pos: pos
+				pos: pos_low
 				is_gated: is_gated
+			}
+			or_expr: ast.OrExpr{
+				kind: or_kind_low
+				stmts: or_stmts_low
+				pos: or_pos_low
 			}
 			is_gated: is_gated
 		}

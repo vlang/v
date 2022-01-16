@@ -59,11 +59,23 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 
 fn (mut g Gen) range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 	sym := g.table.final_sym(node.left_type)
+	mut tmp_opt := ''
+	mut cur_line := ''
+	mut gen_or := node.or_expr.kind != .absent || node.is_option
+
 	if sym.kind == .string {
 		if node.is_gated {
 			g.write('string_substr_ni(')
 		} else {
-			g.write('string_substr(')
+			if gen_or {
+				tmp_opt = g.new_tmp_var()
+				cur_line = g.go_before_stmt(0)
+				g.out.write_string(util.tabs(g.indent))
+				opt_elem_type := g.typ(ast.string_type.set_flag(.optional))
+				g.write('$opt_elem_type $tmp_opt = string_substr_with_check(')
+			} else {
+				g.write('string_substr(')
+			}
 		}
 		if node.left_type.is_ptr() {
 			g.write('*')
@@ -131,6 +143,14 @@ fn (mut g Gen) range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 		g.write('.len')
 	}
 	g.write(')')
+
+	if gen_or {
+		if !node.is_option {
+			g.or_block(tmp_opt, node.or_expr, ast.string_type)
+		}
+
+		g.write('\n$cur_line*(string*)&${tmp_opt}.data')
+	}
 }
 
 fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
