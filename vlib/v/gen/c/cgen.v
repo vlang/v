@@ -2421,9 +2421,9 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	got_styp := g.typ(got_type)
 	if expected_type != ast.void_type {
 		unwrapped_expected_type := g.unwrap_generic(expected_type)
-		unwrapped_got_type := g.unwrap_generic(got_type)
 		unwrapped_exp_sym := g.table.sym(unwrapped_expected_type)
-		unwrapped_got_sym := g.table.sym(unwrapped_got_type)
+		mut unwrapped_got_type := g.unwrap_generic(got_type)
+		mut unwrapped_got_sym := g.table.sym(unwrapped_got_type)
 
 		expected_deref_type := if expected_is_ptr {
 			unwrapped_expected_type.deref()
@@ -2445,11 +2445,15 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 					is_already_sum_type = true
 				}
 			}
-			if is_already_sum_type {
+			if is_already_sum_type && !g.inside_return {
 				// Don't create a new sum type wrapper if there is already one
 				g.prevent_sum_type_unwrapping_once = true
 				g.expr(expr)
 			} else {
+				if mut unwrapped_got_sym.info is ast.Aggregate {
+					unwrapped_got_type = unwrapped_got_sym.info.types[g.aggregate_type_idx]
+					unwrapped_got_sym = g.table.sym(unwrapped_got_type)
+				}
 				g.get_sumtype_casting_fn(unwrapped_got_type, unwrapped_expected_type)
 				fname := '${unwrapped_got_sym.cname}_to_sumtype_$unwrapped_exp_sym.cname'
 				g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, unwrapped_exp_sym.cname,
