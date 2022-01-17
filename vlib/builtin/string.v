@@ -818,6 +818,32 @@ pub fn (s string) substr(start int, end int) string {
 	return res
 }
 
+// version of `substr()` that is used in `a[start..end] or {`
+// return an error when the index is out of range
+[direct_array_access]
+pub fn (s string) substr_with_check(start int, end int) ?string {
+	if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
+		return error('substr($start, $end) out of bounds (len=$s.len)')
+	}
+	len := end - start
+	if len == s.len {
+		return s.clone()
+	}
+	mut res := string{
+		str: unsafe { malloc_noscan(len + 1) }
+		len: len
+	}
+	for i in 0 .. len {
+		unsafe {
+			res.str[i] = s.str[start + i]
+		}
+	}
+	unsafe {
+		res.str[len] = 0
+	}
+	return res
+}
+
 // substr_ni returns the string between index positions `start` and `end` allowing negative indexes
 // This function always return a valid string.
 [direct_array_access]

@@ -3569,6 +3569,10 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			}
 			.array {
 				node.is_array = true
+				if node.or_expr.kind != .absent && node.index is ast.RangeExpr {
+					c.error('custom error handling on range expressions for arrays is not supported yet.',
+						node.or_expr.pos)
+				}
 				break
 			}
 			.array_fixed {
