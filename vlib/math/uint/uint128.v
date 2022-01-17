@@ -101,6 +101,81 @@ pub fn (u Uint128) add(v Uint128) Uint128 {
 	return Uint128{lo, hi}
 }
 
+pub fn add_128(x Uint128, y Uint128, carry u64) (Uint128, u64) {
+	mut sum := Uint128{}
+	mut carry_out := u64(0)
+	sum.lo, carry_out = bits.add_64(x.lo, y.lo, carry)
+	sum.hi, carry_out = bits.add_64(x.hi, y.hi, carry_out)
+	return sum, carry_out
+}
+
+pub fn sub_128(x Uint128, y Uint128, borrow u64) (Uint128, u64) {
+	mut diff := Uint128{}
+	mut borrow_out := u64(0)
+	diff.lo, borrow_out = bits.sub_64(x.lo, y.lo, borrow)
+	diff.hi, borrow_out = bits.sub_64(x.hi, y.hi, borrow_out)
+	return diff, borrow_out
+}
+
+pub fn mul_128(x Uint128, y Uint128) (Uint128, Uint128) {
+	mut lo := Uint128{}
+	mut hi := Uint128{}
+	lo.hi, lo.lo = bits.mul_64(x.lo, y.lo)
+	hi.hi, hi.lo = bits.mul_64(x.hi, y.hi)
+	t0, t1 := bits.mul_64(x.lo, y.hi)
+	t2, t3 := bits.mul_64(x.hi, y.lo)
+
+	mut c0 := u64(0)
+	mut c1 := u64(0)
+	lo.hi, c0 = bits.add_64(lo.hi, t1, 0)
+	lo.hi, c1 = bits.add_64(lo.hi, t3, 0)
+	hi.lo, c0 = bits.add_64(hi.lo, t0, c0)
+	hi.lo, c1 = bits.add_64(hi.lo, t2, c1)
+	hi.hi += c0 + c1
+	return hi, lo
+}
+
+pub fn div_128(hi Uint128, lo Uint128, y_ Uint128) (Uint128, Uint128) {
+	mut y := y_
+	if y.is_zero() {
+		panic('integer divide by zero')
+	}
+
+	if y.cmp(hi) <= 0 {
+		panic('integer overflow')
+	}
+
+	s := u32(y.leading_zeros())
+	y = y.lsh(s)
+
+	un32 := hi.lsh(s).or_(lo.rsh(128 - s))
+	un10 := lo.lsh(s)
+	mut q1, rhat := un32.quo_rem_64(y.hi)
+	mut r1 := uint128_from_64(rhat)
+	tmp := Uint128{r1.lo, un10.hi}
+	for q1.hi != 0 || q1.mul_64(y.lo).cmp(tmp) > 0 {
+		q1 = q1.sub_64(1)
+		r1 = r1.add_64(y.hi)
+		if r1.hi != 0 {
+			break
+		}
+	}
+
+	un21 := Uint128{un32.lo, un10.hi}.sub(q1.mul(y))
+	mut q0, rhat2 := un21.quo_rem_64(y.hi)
+	mut r0 := uint128_from_64(rhat2)
+	tmp2 := Uint128{r0.lo, un10.lo}
+	for q0.hi != 0 || q0.mul_64(y.lo).cmp(tmp2) > 0 {
+		q0 = q0.sub_64(1)
+		r0 = r0.add_64(y.hi)
+		if r0.hi != 0 {
+			break
+		}
+	}
+
+	return Uint128{q1.lo, q0.lo}, Uint128{un21.lo, un10.lo}.sub(q0.mul(y)).rsh(s)
+}
+
 // add_64 returns u + v with wraparound semantics
 pub fn (u Uint128) add_64(v u64) Uint128 {
 	lo, carry := bits.add_64(u.lo, v, 0)
@@ -289,6 +364,10 @@ pub fn (u Uint128) reverse() Uint128 {
 // reverse_bytes returns the value of u with its bytes in reversed order.
 pub fn (u Uint128) reverse_bytes() Uint128 {
 	return Uint128{bits.reverse_bytes_64(u.hi), bits.reverse_bytes_64(u.lo)}
+}
+
+pub fn (u Uint128) not() Uint128 {
+	return Uint128{~u.lo, ~u.hi}
 }
 
 // len returns the minimum number of bits required to represent u; the result is
