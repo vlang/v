@@ -1243,10 +1243,14 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				continue
 			}
 			if exp_arg_typ.has_flag(.generic) {
-				if utyp := c.table.resolve_generic_to_concrete(exp_arg_typ, method.generic_names,
-					concrete_types)
-				{
-					exp_arg_typ = utyp
+				if concrete_types.len > 0 {
+					if utyp := c.table.resolve_generic_to_concrete(exp_arg_typ, method.generic_names,
+						concrete_types)
+					{
+						exp_arg_typ = utyp
+					} else {
+						continue
+					}
 				} else {
 					continue
 				}
