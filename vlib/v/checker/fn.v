@@ -1243,10 +1243,15 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				continue
 			}
 			if exp_arg_typ.has_flag(.generic) {
-				continue
+				if utyp := c.table.resolve_generic_to_concrete(exp_arg_typ, method.generic_names,
+					concrete_types)
+				{
+					exp_arg_typ = utyp
+				} else {
+					continue
+				}
 			}
-			c.check_expected_call_arg(got_arg_typ, c.unwrap_generic(exp_arg_typ), node.language,
-				arg) or {
+			c.check_expected_call_arg(got_arg_typ, exp_arg_typ, node.language, arg) or {
 				// str method, allow type with str method if fn arg is string
 				// Passing an int or a string array produces a c error here
 				// Deleting this condition results in propper V error messages
