@@ -1,4 +1,4 @@
-module uint
+module unsigned
 
 import math.bits
 
@@ -340,7 +340,7 @@ pub fn (u_ Uint256) str() string {
 }
 
 pub fn uint256_from_dec_str(value string) ?Uint256 {
-	mut res := uint.uint256_zero
+	mut res := unsigned.uint256_zero
 	for b_ in value.bytes() {
 		b := b_ - '0'.bytes()[0]
 		if b > 9 {

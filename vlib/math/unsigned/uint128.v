@@ -1,4 +1,4 @@
-module uint
+module unsigned
 
 import math.bits
 import encoding.binary
@@ -418,7 +418,7 @@ pub fn uint128_new(lo u64, hi u64) Uint128 {
 }
 
 pub fn uint128_from_dec_str(value string) ?Uint128 {
-	mut res := uint.uint128_zero
+	mut res := unsigned.uint128_zero
 	for b_ in value.bytes() {
 		b := b_ - '0'.bytes()[0]
 		if b > 9 {
