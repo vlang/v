@@ -1255,12 +1255,14 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					continue
 				}
 
-				if got_utyp := c.table.resolve_generic_to_concrete(got_arg_typ, method.generic_names,
-					concrete_types)
-				{
-					got_arg_typ = got_utyp
-				} else {
-					continue
+				if got_arg_typ.has_flag(.generic) {
+					if got_utyp := c.table.resolve_generic_to_concrete(got_arg_typ, method.generic_names,
+						concrete_types)
+					{
+						got_arg_typ = got_utyp
+					} else {
+						continue
+					}
 				}
 			}
 			c.check_expected_call_arg(got_arg_typ, exp_arg_typ, node.language, arg) or {
