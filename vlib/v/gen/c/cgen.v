@@ -3776,8 +3776,6 @@ fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 }
 
 fn (mut g Gen) match_expr(node ast.MatchExpr) {
-	// println('match expr typ=$it.expr_type')
-	// TODO
 	if node.cond_type == 0 {
 		g.writeln('// match 0')
 		return
