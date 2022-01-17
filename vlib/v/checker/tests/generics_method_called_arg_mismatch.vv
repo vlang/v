@@ -1,0 +1,14 @@
+fn main() {
+	mut obj := Obj{}
+	obj.set<Bar>(Foo{})
+}
+
+struct Foo {}
+
+struct Bar {
+	Foo
+}
+
+struct Obj {}
+
+fn (mut o Obj) set<T>(val T) {}
