@@ -822,6 +822,9 @@ jobs:
       - name: Build V
         run: make && sudo ./v symlink
 
+      - name: Install dependencies
+        run: sudo apt-get install --quiet -y libgc-dev
+
       ## vls
       - name: Clone VLS
         run: git clone --depth 1 https://github.com/vlang/vls
