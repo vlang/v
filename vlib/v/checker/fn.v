@@ -1212,7 +1212,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			}
 			exp_arg_sym := c.table.sym(exp_arg_typ)
 			c.expected_type = exp_arg_typ
-			got_arg_typ := c.check_expr_opt_call(arg.expr, c.expr(arg.expr))
+			mut got_arg_typ := c.check_expr_opt_call(arg.expr, c.expr(arg.expr))
 			node.args[i].typ = got_arg_typ
 			if no_type_promotion {
 				if got_arg_typ != exp_arg_typ {
@@ -1243,14 +1243,22 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				continue
 			}
 			if exp_arg_typ.has_flag(.generic) {
-				if concrete_types.len > 0 {
-					if utyp := c.table.resolve_generic_to_concrete(exp_arg_typ, method.generic_names,
-						concrete_types)
-					{
-						exp_arg_typ = utyp
-					} else {
-						continue
-					}
+				if concrete_types.len == 0 {
+					continue
+				}
+
+				if exp_utyp := c.table.resolve_generic_to_concrete(exp_arg_typ, method.generic_names,
+					concrete_types)
+				{
+					exp_arg_typ = exp_utyp
+				} else {
+					continue
+				}
+
+				if got_utyp := c.table.resolve_generic_to_concrete(got_arg_typ, method.generic_names,
+					concrete_types)
+				{
+					got_arg_typ = got_utyp
 				} else {
 					continue
 				}
