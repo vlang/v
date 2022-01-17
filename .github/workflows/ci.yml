@@ -829,6 +829,8 @@ jobs:
         run: pushd vls; v cmd/vls ; popd
       - name: Build VLS with -prod
         run: pushd vls; v -prod cmd/vls; popd
+      - name: Build VLS with -gc boehm -skip-unused
+        run: pushd vls; v -gc boehm -skip-unused cmd/vls; popd
 
       ## vsl
       - name: Clone VSL
@@ -863,6 +865,8 @@ jobs:
         run: git clone --depth 1 https://github.com/vlang/vab
       - name: Build vab
         run: cd vab; ../v ./vab.v ; cd ..
+      - name: Build vab with -gc boehm -skip-unused
+        run: cd vab; ../v -gc boehm -skip-unused ./vab.v ; cd ..
 
       ## gitly
       - name: Install markdown
@@ -885,6 +889,8 @@ jobs:
         run: mkdir -p ~/.vmodules/nedpals; git clone https://github.com/nedpals/vex ~/.vmodules/nedpals/vex
       - name: Compile the simple Vex example
         run: ./v ~/.vmodules/nedpals/vex/examples/simple_example.v
+      - name: Compile the simple Vex example with -gc boehm -skip-unused
+        run: ./v -gc boehm -skip-unused ~/.vmodules/nedpals/vex/examples/simple_example.v
       - name: Run Vex Tests
         run: ./v test ~/.vmodules/nedpals/vex
 

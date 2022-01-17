@@ -131,33 +131,16 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		]
 	}
 
-	if pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
-		all_fn_root_names << [
-			'memdup_noscan',
-			'__new_array_noscan',
-			'__new_array_with_default_noscan',
-			'__new_array_with_array_default_noscan',
-			'new_array_from_c_array_noscan',
-			'22.clone_static_to_depth_noscan',
-			'22.clone_to_depth_noscan',
-			'22.reverse_noscan',
-			'22.repeat_to_depth_noscan',
-			'65558.pop_noscan',
-			'65558.push_noscan',
-			'65558.push_many_noscan',
-			'65558.insert_noscan',
-			'65558.insert_many_noscan',
-			'65558.prepend_noscan',
-			'65558.prepend_many_noscan',
-			'65558.reverse_noscan',
-			'65558.grow_cap_noscan',
-			'65558.grow_len_noscan',
-		]
-	}
+	is_noscan_whitelisted := pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt]
 
 	for k, mut mfn in all_fns {
 		$if trace_skip_unused_all_fns ? {
 			println('k: $k | mfn: $mfn.name')
+		}
+		// _noscan functions/methods are selected when the `-gc boehm` is on:
+		if is_noscan_whitelisted && mfn.name.ends_with('_noscan') {
+			all_fn_root_names << k
+			continue
 		}
 		mut method_receiver_typename := ''
 		if mfn.is_method {
