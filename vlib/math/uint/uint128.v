@@ -1,9 +1,10 @@
 module uint
 
 import math.bits
+import encoding.binary
 
 pub struct Uint128 {
-mut:
+pub mut:
 	lo u64
 	hi u64
 }
@@ -133,6 +134,21 @@ pub fn (u Uint128) mul_64(v u64) Uint128 {
 	mut hi, lo := bits.mul_64(u.lo, v)
 	hi += u.hi * v
 	return Uint128{lo, hi}
+}
+
+pub fn (u Uint128) overflowing_mul_64(v u64) (Uint128, bool) {
+	hi, lo := bits.mul_64(u.lo, v)
+	p0, p1 := bits.mul_64(u.hi, v)
+	hi2, c0 := bits.add_64(hi, p1, 0)
+
+	return Uint128{lo, hi2}, p0 != 0 || c0 != 0
+}
+
+pub fn (u Uint128) overflowing_add_64(v u64) (Uint128, u64) {
+	lo, carry := bits.add_64(u.lo, v, 0)
+	hi, carry2 := bits.add_64(u.hi, 0, carry)
+
+	return Uint128{lo, hi}, carry2
 }
 
 // div returns u / v
@@ -307,8 +323,43 @@ pub fn (u_ Uint128) str() string {
 	return ''
 }
 
+// put_bytes stores u in b in little-endian order
+pub fn (u Uint128) put_bytes(mut b []byte) {
+	binary.little_endian_put_u64(mut b, u.lo)
+	binary.little_endian_put_u64(mut b, u.hi)
+}
+
+// uint128_from_64 converts v to a Uint128 value
+pub fn uint128_from_64(v u64) Uint128 {
+	return uint128_new(v, 0)
+}
+
 pub fn uint128_new(lo u64, hi u64) Uint128 {
 	return Uint128{lo, hi}
+}
+
+pub fn uint128_from_dec_str(value string) ?Uint128 {
+	mut res := uint.uint128_zero
+	for b_ in value.bytes() {
+		b := b_ - '0'.bytes()[0]
+		if b > 9 {
+			return error('invalid character "$b"')
+		}
+
+		r, overflow := res.overflowing_mul_64(10)
+
+		if overflow {
+			return error('invalid length')
+		}
+		r2, overflow2 := r.overflowing_add_64(u64(b))
+
+		if overflow2 > 0 {
+			return error('invalid length')
+		}
+
+		res = r2
+	}
+	return res
 }
 
 pub fn (u Uint128) / (v Uint128) Uint128 {
