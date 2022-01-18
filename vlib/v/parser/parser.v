@@ -2317,6 +2317,10 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				scope: p.scope
 			}
 		}
+		if p.peek_token(2).kind == .name && p.peek_token(3).kind == .lpar && !known_var {
+			p.error_with_pos('the receiver of the method call must be an instantiated object, e.g. `foo.bar()`',
+				p.tok.position())
+		}
 		// `Color.green`
 		mut enum_name := p.check_name()
 		enum_name_pos := p.prev_tok.position()
