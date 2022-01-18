@@ -676,12 +676,12 @@ println(nums[1]) // `2`
 nums[1] = 5
 println(nums) // `[1, 5, 3]`
 ```
-#### Array Properties
-There are two properties that control the "size" of an array:
+#### Array Fields
+There are two fields that control the "size" of an array:
 * `len`: *length* - the number of pre-allocated and initialized elements in the array
 * `cap`: *capacity* - the amount of memory space which has been reserved for elements,
 but not initialized or counted as elements. The array can grow up to this size without
-being reallocated. Usually, V takes care of this property automatically but there are
+being reallocated. Usually, V takes care of this field automatically but there are
 cases where the user may want to do manual optimizations (see [below](#array-initialization)).
 
 ```v
@@ -692,7 +692,7 @@ nums = [] // The array is now empty
 println(nums.len) // "0"
 ```
 
-Note that the properties are read-only fields and can't be modified by the user.
+Note that fields are read-only and can't be modified by the user.
 
 #### Array Initialization
 The basic initialization syntax is as described [above](#basic-array-concepts).
@@ -1990,8 +1990,7 @@ fn main() {
 }
 ```
 
-This means that defining public readonly fields is very easy in V,
-no need in getters/setters or properties.
+This means that defining public readonly fields is very easy in V.
 
 ## Methods
 
@@ -3361,7 +3360,7 @@ those in Go. You can push objects into a channel on one end and pop objects from
 Channels can be buffered or unbuffered and it is possible to `select` from multiple channels.
 
 #### Syntax and Usage
-Channels have the type `chan objtype`. An optional buffer length can specified as the `cap` property
+Channels have the type `chan objtype`. An optional buffer length can specified as the `cap` field
 in the declaration:
 
 ```v
@@ -3370,7 +3369,7 @@ ch2 := chan f64{cap: 100} // buffer length 100
 ```
 
 Channels do not have to be declared as `mut`. The buffer length is not part of the type but
-a property of the individual channel object. Channels can be passed to coroutines like normal
+a field of the individual channel object. Channels can be passed to coroutines like normal
 variables:
 
 ```v
@@ -3491,7 +3490,7 @@ if select {
 
 #### Special Channel Features
 
-For special purposes there are some builtin properties and methods:
+For special purposes there are some builtin fields and methods:
 ```v
 struct Abc {
 	x int
@@ -3514,7 +3513,7 @@ res2 := ch2.try_pop(mut b) // try to perform `b = <-ch2`
 The `try_push/pop()` methods will return immediately with one of the results
 `.success`, `.not_ready` or `.closed` - dependent on whether the object has been transferred or
 the reason why not.
-Usage of these methods and properties in production is not recommended -
+Usage of these methods and fields in production is not recommended -
 algorithms based on them are often subject to race conditions. Especially `.len` and
 `.closed` should not be used to make decisions.
 Use `or` branches, error propagation or `select` instead (see [Syntax and Usage](#syntax-and-usage)
