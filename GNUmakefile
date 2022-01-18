@@ -76,7 +76,7 @@ endif
 endif
 endif
 
-.PHONY: all clean fresh_vc fresh_tcc
+.PHONY: all clean fresh_vc fresh_tcc check_for_working_tcc
 
 ifdef prod
 VFLAGS+=-prod
@@ -95,6 +95,7 @@ else
 	./v2.exe -o $(V) $(VFLAGS) cmd/v
 	rm -rf v1.exe v2.exe
 endif
+	@$(V) run cmd/tools/detect_tcc.v
 	@echo "V has been successfully built"
 	@$(V) -version
 
@@ -110,16 +111,21 @@ latest_vc:
 	@echo "Using local vc"
 endif
 
+check_for_working_tcc:
+	@$(TMPTCC)/tcc.exe --version > /dev/null 2> /dev/null || echo "The executable '$(TMPTCC)/tcc.exe' does not work."
+	
 fresh_vc:
 	rm -rf $(VC)
 	$(GITFASTCLONE) $(VCREPO) $(VC)
 
 ifndef local
 latest_tcc: $(TMPTCC)/.git/config
-	cd $(TMPTCC) && $(GITCLEANPULL)
+	@pushd . > /dev/null && cd $(TMPTCC) && $(GITCLEANPULL) && popd > /dev/null
+	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null
 else
 latest_tcc:
 	@echo "Using local tcc"
+	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null
 endif
 
 fresh_tcc:
@@ -128,12 +134,15 @@ ifndef local
 # Check wether a TCC branch exists for the user's system configuration.
 ifneq (,$(findstring thirdparty-$(TCCOS)-$(TCCARCH), $(shell git ls-remote --heads $(TCCREPO) | sed 's/^[a-z0-9]*\trefs.heads.//')))
 	$(GITFASTCLONE) --branch thirdparty-$(TCCOS)-$(TCCARCH) $(TCCREPO) $(TMPTCC)
+	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null
 else
 	@echo 'Pre-built TCC not available for thirdparty-$(TCCOS)-$(TCCARCH) at $(TCCREPO), will use the system compiler: $(CC)'
 	$(GITFASTCLONE) --branch thirdparty-unknown-unknown $(TCCREPO) $(TMPTCC)
+	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null
 endif
 else
 	@echo "Using local tccbin"
+	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null
 endif
 
 $(TMPTCC)/.git/config:

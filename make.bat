@@ -240,6 +240,7 @@ echo ERROR: please follow the instructions in https://github.com/vlang/v/wiki/In
 exit /b 1
 
 :success
+.\v.exe run cmd\tools\detect_tcc.v
 echo  ^> V built successfully!
 echo  ^> To add V to your PATH, run `.\v.exe symlink`.
 

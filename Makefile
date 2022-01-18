@@ -9,3 +9,4 @@ all:
 	./v2 -o v $(VFLAGS) cmd/v
 	rm -rf v1 v2 vc/
 	@echo "V has been successfully built"
+	./v run ./cmd/tools/detect_tcc.v
