@@ -120,7 +120,7 @@ fresh_vc:
 
 ifndef local
 latest_tcc: $(TMPTCC)/.git/config
-	@pushd . > /dev/null && cd $(TMPTCC) && $(GITCLEANPULL) && popd > /dev/null
+	cd $(TMPTCC) && $(GITCLEANPULL)
 	@$(MAKE) --quiet check_for_working_tcc 2> /dev/null
 else
 latest_tcc:
