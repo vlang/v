@@ -9,10 +9,27 @@ import os
 import strings
 
 enum State {
-	html
+	simple // default - no special interpretation of tags, *at all*!
+	// That is suitable for the general case of text template interpolation,
+	// for example for interpolating arbitrary source code (even V source) templates.
+	//
+	html // default, only when the template extension is .html
 	css // <style>
 	js // <script>
 	// span // span.{
+}
+
+fn (mut state State) update(line string) {
+	trimmed_line := line.trim_space()
+	if is_html_open_tag('style', line) {
+		state = .css
+	} else if trimmed_line == '</style>' {
+		state = .html
+	} else if is_html_open_tag('script', line) {
+		state = .js
+	} else if trimmed_line == '</script>' {
+		state = .html
+	}
 }
 
 const tmpl_str_end = "')\n"
@@ -79,7 +96,7 @@ pub fn (mut p Parser) compile_template_file(template_file string, fn_name string
 	}
 	basepath := os.dir(template_file)
 	lstartlength := lines.len * 30
-	tmpl_str_start := "sb_${fn_name}.write_string('"
+	tmpl_str_start := "\tsb_${fn_name}.write_string('"
 	mut source := strings.new_builder(1000)
 	source.writeln('
 import strings
@@ -89,25 +106,24 @@ fn vweb_tmpl_${fn_name}() string {
 
 ')
 	source.write_string(tmpl_str_start)
-	mut state := State.html
+	//
+	mut state := State.simple
+	template_ext := os.file_ext(template_file)
+	if template_ext.to_lower() == '.html' {
+		state = .html
+	}
+	//
 	mut in_span := false
 	mut end_of_line_pos := 0
 	mut start_of_line_pos := 0
 	mut tline_number := -1 // keep the original line numbers, even after insert/delete ops on lines; `i` changes
 	for i := 0; i < lines.len; i++ {
 		line := lines[i]
-		trimmed_line := line.trim_space()
 		tline_number++
 		start_of_line_pos = end_of_line_pos
 		end_of_line_pos += line.len + 1
-		if is_html_open_tag('style', line) {
-			state = .css
-		} else if trimmed_line == '</style>' {
-			state = .html
-		} else if is_html_open_tag('script', line) {
-			state = .js
-		} else if trimmed_line == '</script>' {
-			state = .html
+		if state != .simple {
+			state.update(line)
 		}
 		$if trace_tmpl ? {
 			eprintln('>>> tfile: $template_file, spos: ${start_of_line_pos:6}, epos:${end_of_line_pos:6}, fi: ${tline_number:5}, i: ${i:5}, state: ${state:10}, line: $line')
@@ -125,7 +141,9 @@ fn vweb_tmpl_${fn_name}() string {
 				}
 				reporter: .parser
 			})
-		} else if line.contains('@footer') {
+			continue
+		}
+		if line.contains('@footer') {
 			position := line.index('@footer') or { 0 }
 			p.error_with_error(errors.Error{
 				message: "Please use @include 'footer' instead of @footer (deprecated)"
@@ -138,6 +156,7 @@ fn vweb_tmpl_${fn_name}() string {
 				}
 				reporter: .parser
 			})
+			continue
 		}
 		if line.contains('@include ') {
 			lines.delete(i)
@@ -179,83 +198,131 @@ fn vweb_tmpl_${fn_name}() string {
 				lines.insert(i, f)
 			}
 			i--
-		} else if line.contains('@js ') {
-			pos := line.index('@js') or { continue }
-			source.write_string('<script src="')
-			source.write_string(line[pos + 5..line.len - 1])
-			source.writeln('"></script>')
-		} else if line.contains('@css ') {
-			pos := line.index('@css') or { continue }
-			source.write_string('<link href="')
-			source.write_string(line[pos + 6..line.len - 1])
-			source.writeln('" rel="stylesheet" type="text/css">')
-		} else if line.contains('@if ') {
+			continue
+		}
+		if line.contains('@if ') {
 			source.writeln(parser.tmpl_str_end)
 			pos := line.index('@if') or { continue }
 			source.writeln('if ' + line[pos + 4..] + '{')
 			source.writeln(tmpl_str_start)
-		} else if line.contains('@end') {
+			continue
+		}
+		if line.contains('@end') {
 			// Remove new line byte
 			source.go_back(1)
 			source.writeln(parser.tmpl_str_end)
 			source.writeln('}')
 			source.writeln(tmpl_str_start)
-		} else if line.contains('@else') {
+			continue
+		}
+		if line.contains('@else') {
 			// Remove new line byte
 			source.go_back(1)
 			source.writeln(parser.tmpl_str_end)
 			source.writeln(' } else { ')
 			source.writeln(tmpl_str_start)
-		} else if line.contains('@for') {
+			continue
+		}
+		if line.contains('@for') {
 			source.writeln(parser.tmpl_str_end)
 			pos := line.index('@for') or { continue }
 			source.writeln('for ' + line[pos + 4..] + '{')
 			source.writeln(tmpl_str_start)
-		} else if state == .html && line.starts_with('span.') && line.ends_with('{') {
-			// `span.header {` => `<span class='header'>`
-			class := line.find_between('span.', '{').trim_space()
-			source.writeln('<span class="$class">')
-			in_span = true
-		} else if state == .html && line.trim_space().starts_with('.') && line.ends_with('{') {
-			// `.header {` => `<div class='header'>`
-			class := line.find_between('.', '{').trim_space()
-			trimmed := line.trim_space()
-			source.write_string(strings.repeat(`\t`, line.len - trimmed.len)) // add the necessary indent to keep <div><div><div> code clean
-			source.writeln('<div class="$class">')
-		} else if state == .html && line.starts_with('#') && line.ends_with('{') {
-			// `#header {` => `<div id='header'>`
-			class := line.find_between('#', '{').trim_space()
-			source.writeln('<div id="$class">')
-		} else if state == .html && line.trim_space() == '}' {
-			trimmed := line.trim_space()
-			source.write_string(strings.repeat(`\t`, line.len - trimmed.len)) // add the necessary indent to keep <div><div><div> code clean
-			if in_span {
-				source.writeln('</span>')
-				in_span = false
-			} else {
-				source.writeln('</div>')
-			}
-		} else if state == .js {
-			if line.contains('//V_TEMPLATE') {
-				source.writeln(insert_template_code(fn_name, tmpl_str_start, line))
-			} else {
-				// replace `$` to `\$` at first to escape JavaScript template literal syntax
-				source.writeln(line.replace(r'$', r'\$').replace(r'$$', r'@').replace(r'.$',
-					r'.@').replace(r"'", r"\'"))
-			}
-		} else if state == .css {
-			// disable template variable declaration in inline stylesheet
-			// because of  some CSS rules prefixed with `@`.
-			source.writeln(line.replace(r'.$', r'.@').replace(r"'", r"\'"))
-		} else {
-			source.writeln(insert_template_code(fn_name, tmpl_str_start, line))
+			continue
 		}
+		if state == .simple {
+			// by default, just copy 1:1
+			source.writeln(insert_template_code(fn_name, tmpl_str_start, line))
+			continue
+		}
+		// The .simple mode ends here. The rest handles .html/.css/.js state transitions.
+
+		if state != .simple {
+			if line.contains('@js ') {
+				pos := line.index('@js') or { continue }
+				source.write_string('<script src="')
+				source.write_string(line[pos + 5..line.len - 1])
+				source.writeln('"></script>')
+				continue
+			}
+			if line.contains('@css ') {
+				pos := line.index('@css') or { continue }
+				source.write_string('<link href="')
+				source.write_string(line[pos + 6..line.len - 1])
+				source.writeln('" rel="stylesheet" type="text/css">')
+				continue
+			}
+		}
+
+		match state {
+			.html {
+				if line.starts_with('span.') && line.ends_with('{') {
+					// `span.header {` => `<span class='header'>`
+					class := line.find_between('span.', '{').trim_space()
+					source.writeln('<span class="$class">')
+					in_span = true
+					continue
+				}
+				if line.trim_space().starts_with('.') && line.ends_with('{') {
+					// `.header {` => `<div class='header'>`
+					class := line.find_between('.', '{').trim_space()
+					trimmed := line.trim_space()
+					source.write_string(strings.repeat(`\t`, line.len - trimmed.len)) // add the necessary indent to keep <div><div><div> code clean
+					source.writeln('<div class="$class">')
+					continue
+				}
+				if line.starts_with('#') && line.ends_with('{') {
+					// `#header {` => `<div id='header'>`
+					class := line.find_between('#', '{').trim_space()
+					source.writeln('<div id="$class">')
+					continue
+				}
+				if line.trim_space() == '}' {
+					trimmed := line.trim_space()
+					source.write_string(strings.repeat(`\t`, line.len - trimmed.len)) // add the necessary indent to keep <div><div><div> code clean
+					if in_span {
+						source.writeln('</span>')
+						in_span = false
+					} else {
+						source.writeln('</div>')
+					}
+					continue
+				}
+			}
+			.js {
+				if line.contains('//V_TEMPLATE') {
+					source.writeln(insert_template_code(fn_name, tmpl_str_start, line))
+				} else {
+					// replace `$` to `\$` at first to escape JavaScript template literal syntax
+					source.writeln(line.replace(r'$', r'\$').replace(r'$$', r'@').replace(r'.$',
+						r'.@').replace(r"'", r"\'"))
+				}
+				continue
+			}
+			.css {
+				// disable template variable declaration in inline stylesheet
+				// because of  some CSS rules prefixed with `@`.
+				source.writeln(line.replace(r'.$', r'.@').replace(r"'", r"\'"))
+				continue
+			}
+			else {}
+		}
+		// by default, just copy 1:1
+		source.writeln(insert_template_code(fn_name, tmpl_str_start, line))
 	}
+
 	source.writeln(parser.tmpl_str_end)
-	source.writeln('_tmpl_res_$fn_name := sb_${fn_name}.str() ')
-	source.writeln('return _tmpl_res_$fn_name')
+	source.writeln('\t_tmpl_res_$fn_name := sb_${fn_name}.str() ')
+	source.writeln('\treturn _tmpl_res_$fn_name')
 	source.writeln('}')
-	source.writeln('// === end of vweb html template ===')
+	source.writeln('// === end of vweb html template_file: $template_file ===')
+
 	result := source.str()
+	$if trace_tmpl_expansion ? {
+		eprintln('>>>>>>> template expanded to:')
+		eprintln(result)
+		eprintln('-----------------------------')
+	}
+
 	return result
 }
