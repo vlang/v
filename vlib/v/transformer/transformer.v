@@ -724,8 +724,9 @@ pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 			ast.IntegerLiteral {
 				match mut node.right {
 					ast.IntegerLiteral {
-						left_val := node.left.val.int()
-						right_val := node.right.val.int()
+						left_val := node.left.val.i64()
+						right_val := node.right.val.i64()
+
 						match node.op {
 							.eq {
 								return ast.BoolLiteral{
@@ -770,6 +771,11 @@ pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 								}
 							}
 							.minus {
+								// HACK: prevent folding of `min_i64` values in `math` module
+								if left_val == -9223372036854775807 && right_val == 1 {
+									return node
+								}
+
 								return ast.IntegerLiteral{
 									val: (left_val - right_val).str()
 									pos: pos
