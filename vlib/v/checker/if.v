@@ -28,7 +28,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	mut is_comptime_type_is_expr := false // if `$if T is string`
 	for i in 0 .. node.branches.len {
 		mut branch := node.branches[i]
-		if branch.cond is ast.ParExpr {
+		if branch.cond is ast.ParExpr && !c.pref.translated {
 			c.error('unnecessary `()` in `$if_kind` condition, use `$if_kind expr {` instead of `$if_kind (expr) {`.',
 				branch.pos)
 		}

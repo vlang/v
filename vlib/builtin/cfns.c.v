@@ -172,6 +172,9 @@ fn C.tolower(c int) int
 fn C.toupper(c int) int
 
 [trusted]
+fn C.strchr(s &char, c int) &char
+
+[trusted]
 fn C.getchar() int
 
 [trusted]
