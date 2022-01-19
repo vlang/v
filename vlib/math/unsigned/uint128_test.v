@@ -20,4 +20,10 @@ fn test_ops() {
 	assert (unsigned.uint128_from_dec_str('170141183460469231713240559642174554112') or {
 		panic('')
 	} - unsigned.uint128_from_64(2)).str() == '170141183460469231713240559642174554110'
+
+	assert x == y
+	assert unsigned.uint128_from_dec_str('340282366920938463426481119284349108225') or {
+		assert false
+		panic('')
+	} > y
 }

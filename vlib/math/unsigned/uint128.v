@@ -307,7 +307,7 @@ pub fn (u Uint128) lsh(n u32) Uint128 {
 	return s
 }
 
-// lsh returns u >> n
+// rsh returns u >> n
 pub fn (u Uint128) rsh(n u32) Uint128 {
 	mut s := Uint128{}
 	if n > 64 {
@@ -459,4 +459,8 @@ pub fn (u Uint128) - (v Uint128) Uint128 {
 
 pub fn (u Uint128) * (v Uint128) Uint128 {
 	return u.mul(v)
+}
+
+pub fn (u Uint128) < (v Uint128) bool {
+	return u.cmp(v) == -1
 }
