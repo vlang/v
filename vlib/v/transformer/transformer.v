@@ -661,7 +661,9 @@ pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 	pos.extend(node.pos)
 	pos.extend(node.right.position())
 
-	$if prod { // only do constant folding in production mode
+	if t.pref.is_debug {
+		return node
+	} else {
 		match mut node.left {
 			ast.BoolLiteral {
 				match mut node.right {
@@ -895,9 +897,8 @@ pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 			}
 			else {}
 		}
+		return node
 	}
-
-	return node
 }
 
 pub fn (mut t Transformer) if_expr(mut node ast.IfExpr) ast.Expr {
@@ -997,7 +998,6 @@ pub fn (mut t Transformer) sql_expr(mut node ast.SqlExpr) ast.Expr {
 	}
 	for _, mut sub_struct in node.sub_structs {
 		sub_struct = t.expr(mut sub_struct) as ast.SqlExpr
-
 	}
 	return node
 }
