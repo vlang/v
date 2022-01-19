@@ -35,7 +35,7 @@ fn frame(mut ctx gg.Context) {
 	ctx.remove_cached_image_by_idx(id)
 	ctx.end()
 	gfx.destroy_image(img.simg)
-	unsafe{
+	unsafe {
 		free(&bytes[0])
 	}
 }
