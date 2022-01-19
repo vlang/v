@@ -308,7 +308,7 @@ pub fn (mut p Parser) parse_inline_sum_type() ast.Type {
 		if idx > 0 {
 			return ast.new_type(idx)
 		}
-		idx = p.table.register_type_symbol(ast.TypeSymbol{
+		idx = p.table.register_sym(ast.TypeSymbol{
 			kind: .sum_type
 			name: prepend_mod_name
 			cname: util.no_dots(prepend_mod_name)
@@ -601,7 +601,7 @@ pub fn (mut p Parser) parse_generic_type(name string) ast.Type {
 	if idx > 0 {
 		return ast.new_type(idx).set_flag(.generic)
 	}
-	idx = p.table.register_type_symbol(ast.TypeSymbol{
+	idx = p.table.register_sym(ast.TypeSymbol{
 		name: name
 		cname: util.no_dots(name)
 		mod: p.mod
@@ -684,7 +684,7 @@ pub fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 			else {}
 		}
 
-		idx := p.table.register_type_symbol(ast.TypeSymbol{
+		idx := p.table.register_sym(ast.TypeSymbol{
 			kind: .generic_inst
 			name: bs_name
 			cname: util.no_dots(bs_cname)
