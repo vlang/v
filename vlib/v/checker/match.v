@@ -264,7 +264,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					if existing_idx > 0 {
 						expr_type = existing_idx
 					} else {
-						expr_type = c.table.register_type_symbol(ast.TypeSymbol{
+						expr_type = c.table.register_sym(ast.TypeSymbol{
 							name: name
 							cname: agg_cname.str()
 							kind: .aggregate

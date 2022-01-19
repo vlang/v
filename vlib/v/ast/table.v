@@ -739,7 +739,7 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 }
 
 [inline]
-pub fn (mut t Table) register_type_symbol(sym TypeSymbol) int {
+pub fn (mut t Table) register_sym(sym TypeSymbol) int {
 	mut idx := -2
 	mut existing_idx := t.type_idxs[sym.name]
 	if existing_idx > 0 {
@@ -958,7 +958,7 @@ pub fn (mut t Table) find_or_register_chan(elem_type Type, is_mut bool) int {
 			is_mut: is_mut
 		}
 	}
-	return t.register_type_symbol(chan_typ)
+	return t.register_sym(chan_typ)
 }
 
 pub fn (mut t Table) find_or_register_map(key_type Type, value_type Type) int {
@@ -980,7 +980,7 @@ pub fn (mut t Table) find_or_register_map(key_type Type, value_type Type) int {
 			value_type: value_type
 		}
 	}
-	return t.register_type_symbol(map_typ)
+	return t.register_sym(map_typ)
 }
 
 pub fn (mut t Table) find_or_register_thread(return_type Type) int {
@@ -1001,7 +1001,7 @@ pub fn (mut t Table) find_or_register_thread(return_type Type) int {
 			return_type: return_type
 		}
 	}
-	return t.register_type_symbol(thread_typ)
+	return t.register_sym(thread_typ)
 }
 
 pub fn (mut t Table) find_or_register_promise(return_type Type) int {
@@ -1025,7 +1025,7 @@ pub fn (mut t Table) find_or_register_promise(return_type Type) int {
 	}
 
 	// register
-	return t.register_type_symbol(promise_type)
+	return t.register_sym(promise_type)
 }
 
 pub fn (mut t Table) find_or_register_array(elem_type Type) int {
@@ -1047,7 +1047,7 @@ pub fn (mut t Table) find_or_register_array(elem_type Type) int {
 			elem_type: elem_type
 		}
 	}
-	return t.register_type_symbol(array_type_)
+	return t.register_sym(array_type_)
 }
 
 pub fn (mut t Table) find_or_register_array_with_dims(elem_type Type, nr_dims int) int {
@@ -1076,7 +1076,7 @@ pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size int, size
 			size_expr: size_expr
 		}
 	}
-	return t.register_type_symbol(array_fixed_type)
+	return t.register_sym(array_fixed_type)
 }
 
 pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
@@ -1106,7 +1106,7 @@ pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
 			types: mr_typs
 		}
 	}
-	return t.register_type_symbol(mr_type)
+	return t.register_sym(mr_type)
 }
 
 pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon bool, has_decl bool) int {
@@ -1121,7 +1121,7 @@ pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon bool, ha
 	if existing_idx > 0 && t.type_symbols[existing_idx].kind != .placeholder {
 		return existing_idx
 	}
-	return t.register_type_symbol(
+	return t.register_sym(
 		kind: .function
 		name: name
 		cname: cname
@@ -1146,7 +1146,7 @@ pub fn (mut t Table) add_placeholder_type(name string, language Language) int {
 		language: language
 		mod: modname
 	}
-	return t.register_type_symbol(ph_type)
+	return t.register_sym(ph_type)
 }
 
 [inline]
@@ -1656,7 +1656,7 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 			info.concrete_types = final_concrete_types
 			info.parent_type = typ
 			info.fields = fields
-			new_idx := t.register_type_symbol(
+			new_idx := t.register_sym(
 				kind: .struct_
 				name: nrt
 				cname: util.no_dots(c_nrt)
@@ -1699,7 +1699,7 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 			info.parent_type = typ
 			info.fields = fields
 			info.methods = imethods
-			new_idx := t.register_type_symbol(
+			new_idx := t.register_sym(
 				kind: .interface_
 				name: nrt
 				cname: util.no_dots(c_nrt)
