@@ -5004,6 +5004,8 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			if g.fn_decl.return_type.is_ptr() {
 				var_str := g.expr_string(expr0)
 				g.write(var_str.trim('&'))
+			} else if g.table.sym(g.fn_decl.return_type).kind in [.sum_type, .interface_] {
+				g.expr_with_cast(expr0, node.types[0], g.fn_decl.return_type)
 			} else {
 				g.write('*')
 				g.expr(expr0)
