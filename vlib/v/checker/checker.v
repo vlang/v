@@ -1821,7 +1821,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			node.typ = c.expr(node.expr)
 			c.expected_type = ast.void_type
 			mut or_typ := ast.void_type
-			match node.expr {
+			match mut node.expr {
 				ast.IndexExpr {
 					if node.expr.or_expr.kind != .absent {
 						node.is_expr = true
@@ -1837,7 +1837,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				else {}
 			}
 			if !c.pref.is_repl && (c.stmt_level == 1 || (c.stmt_level > 1 && !c.is_last_stmt)) {
-				if node.expr is ast.InfixExpr {
+				if mut node.expr is ast.InfixExpr {
 					if node.expr.op == .left_shift {
 						left_sym := c.table.final_sym(node.expr.left_type)
 						if left_sym.kind != .array {
@@ -2422,7 +2422,7 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 				c.error('expected `string` instead of `$expr_sym.name` (e.g. `field.name`)',
 					node.field_expr.position())
 			}
-			if node.field_expr is ast.SelectorExpr {
+			if mut node.field_expr is ast.SelectorExpr {
 				left_pos := node.field_expr.expr.position()
 				if c.comptime_fields_type.len == 0 {
 					c.error('compile time field access can only be used when iterating over `T.fields`',
@@ -3025,7 +3025,7 @@ pub fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 						c.inside_const = false
 						c.mod = old_c_mod
 
-						if obj.expr is ast.CallExpr {
+						if mut obj.expr is ast.CallExpr {
 							if obj.expr.or_block.kind != .absent {
 								typ = typ.clear_flag(.optional)
 							}
