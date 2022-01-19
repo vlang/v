@@ -27,3 +27,73 @@ fn test_ops() {
 		panic('')
 	} > y
 }
+
+struct LeadingZeros {
+	l     unsigned.Uint128
+	r     unsigned.Uint128
+	zeros int
+}
+
+fn new(x u64, y u64) unsigned.Uint128 {
+	return unsigned.Uint128{x, y}
+}
+
+fn test_leading_zeros() {
+	tcs := [
+		LeadingZeros{
+			l: new(0x00, 0xf000000000000000)
+			r: new(0x00, 0x8000000000000000)
+			zeros: 1
+		},
+		LeadingZeros{
+			l: new(0x00, 0xf000000000000000)
+			r: new(0x00, 0xc000000000000000)
+			zeros: 2
+		},
+		LeadingZeros{
+			l: new(0x00, 0xf000000000000000)
+			r: new(0x00, 0xe000000000000000)
+			zeros: 3
+		},
+		LeadingZeros{
+			l: new(0x00, 0xffff000000000000)
+			r: new(0x00, 0xff00000000000000)
+			zeros: 8
+		},
+		LeadingZeros{
+			l: new(0x00, 0x000000000000ffff)
+			r: new(0x00, 0x000000000000ff00)
+			zeros: 56
+		},
+		LeadingZeros{
+			l: new(0xf000000000000000, 0x01)
+			r: new(0x4000000000000000, 0x00)
+			zeros: 63
+		},
+		LeadingZeros{
+			l: new(0xf000000000000000, 0x00)
+			r: new(0x4000000000000000, 0x00)
+			zeros: 64
+		},
+		LeadingZeros{
+			l: new(0xf000000000000000, 0x00)
+			r: new(0x8000000000000000, 0x00)
+			zeros: 65
+		},
+		LeadingZeros{
+			l: new(0x00, 0x00)
+			r: new(0x00, 0x00)
+			zeros: 128
+		},
+		LeadingZeros{
+			l: new(0x01, 0x00)
+			r: new(0x00, 0x00)
+			zeros: 127
+		},
+	]
+
+	for tc in tcs {
+		zeros := tc.l.xor(tc.r).leading_zeros()
+		assert zeros == tc.zeros
+	}
+}
