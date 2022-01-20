@@ -42,64 +42,55 @@ fn check_name(name string) string {
 }
 
 fn vmod_content(c Create) string {
-	return [
-		'Module {',
-		"	name: '$c.name'",
-		"	description: '$c.description'",
-		"	version: '$c.version'",
-		"	license: '$c.license'",
-		'	dependencies: []',
-		'}',
-		'',
-	].join_lines()
+	return "Module {
+	name: '$c.name'
+	description: '$c.description'
+	version: '$c.version'
+	license: '$c.license'
+	dependencies: []
+}
+"
 }
 
 fn main_content() string {
-	return [
-		'module main\n',
-		'fn main() {',
-		"	println('Hello World!')",
-		'}',
-		'',
-	].join_lines()
+	return "module main
+
+fn main() {
+	println('Hello World!')
+}
+"
 }
 
 fn gen_gitignore(name string) string {
-	return [
-		'# Binaries for programs and plugins',
-		'main',
-		'$name',
-		'*.exe',
-		'*.exe~',
-		'*.so',
-		'*.dylib',
-		'*.dll',
-		'vls.log',
-		'',
-	].join_lines()
+	return '# Binaries for programs and plugins
+main
+$name
+*.exe
+*.exe~
+*.so
+*.dylib
+*.dll
+vls.log
+'
 }
 
 fn gitattributes_content() string {
-	return [
-		'*.v linguist-language=V text=auto eol=lf',
-		'*.vv linguist-language=V text=auto eol=lf',
-		'',
-	].join_lines()
+	return '*.v linguist-language=V text=auto eol=lf
+*.vv linguist-language=V text=auto eol=lf
+'
 }
 
 fn editorconfig_content() string {
-	return [
-		'[*]',
-		'charset = utf-8',
-		'end_of_line = lf',
-		'insert_final_newline = true',
-		'trim_trailing_whitespace = true',
-		'',
-		'[*.v]',
-		'indent_style = tab',
-		'indent_size = 4',
-		'',
-	].join_lines()
+	return '[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.v]
+indent_style = tab
+indent_size = 4
+'
 }
 
 fn (c &Create) write_vmod(new bool) {
