@@ -314,8 +314,8 @@ pub fn screen_size() Size {
 	}
 	$if windows {
 		return Size{
-			width : int(C.GetSystemMetrics(C.SM_CXSCREEN))
-  			height := int(C.GetSystemMetrics(C.SM_CYSCREEN))
+			width: int(C.GetSystemMetrics(C.SM_CXSCREEN))
+  			height: int(C.GetSystemMetrics(C.SM_CYSCREEN))
 		}
 	}
 	// TODO linux, etc
