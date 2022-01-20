@@ -163,7 +163,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				}
 			}
 			else {
-				c.error('expecting `int` for fixed size', node.pos)
+				c.error('fixed array size cannot use non-constant value', init_expr.position())
 			}
 		}
 		if fixed_size <= 0 {
