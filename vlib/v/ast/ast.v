@@ -275,15 +275,13 @@ pub mut:
 	typ              Type
 }
 
-/*
-pub struct Field {
-pub:
-	name string
-	pos  token.Position
-pub mut:
-	typ Type
+pub fn (f &StructField) equals(o &StructField) bool {
+	// TODO: f.is_mut == o.is_mut was removed here to allow read only access
+	// to (mut/not mut), but otherwise equal fields; some other new checks are needed:
+	// - if node is declared mut, and we mutate node.stmts, all stmts fields must be mutable
+	// - same goes for pub and global, if we call the field from another module
+	return f.name == o.name && f.typ == o.typ && f.is_pub == o.is_pub && f.is_global == o.is_global
 }
-*/
 
 // const field in const declaration group
 pub struct ConstField {
