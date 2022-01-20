@@ -113,6 +113,7 @@ mut:
 	inside_match_optional  bool
 	inside_vweb_tmpl       bool
 	inside_return          bool
+	inside_struct_init     bool
 	inside_or_block        bool
 	inside_call            bool
 	inside_for_c_stmt      bool
@@ -3390,7 +3391,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.expr(ast.resolve_init(node, g.unwrap_generic(node.typ), g.table))
 			} else {
 				// `user := User{name: 'Bob'}`
+				g.inside_struct_init = true
 				g.struct_init(node)
+				g.inside_struct_init = false
 			}
 		}
 		ast.TypeNode {
