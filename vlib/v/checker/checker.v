@@ -679,31 +679,25 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 			}
 			if left_sym.kind in [.array, .array_fixed, .map, .struct_] {
-				if left_sym.has_method(node.op.str()) {
-					if method := left_sym.find_method(node.op.str()) {
+				if left_sym.has_method_with_generic_parent(node.op.str()) {
+					if method := left_sym.find_method_with_generic_parent(node.op.str()) {
 						return_type = method.return_type
 					} else {
 						return_type = left_type
 					}
 				} else {
-					if left_sym.kind == .struct_
-						&& (left_sym.info as ast.Struct).generic_types.len > 0 {
-						return_type = left_type
+					left_name := c.table.type_to_str(left_type)
+					right_name := c.table.type_to_str(right_type)
+					if left_name == right_name {
+						c.error('undefined operation `$left_name` $node.op.str() `$right_name`',
+							left_right_pos)
 					} else {
-						left_name := c.table.type_to_str(left_type)
-						right_name := c.table.type_to_str(right_type)
-						if left_name == right_name {
-							c.error('undefined operation `$left_name` $node.op.str() `$right_name`',
-								left_right_pos)
-						} else {
-							c.error('mismatched types `$left_name` and `$right_name`',
-								left_right_pos)
-						}
+						c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
 					}
 				}
 			} else if right_sym.kind in [.array, .array_fixed, .map, .struct_] {
-				if right_sym.has_method(node.op.str()) {
-					if method := right_sym.find_method(node.op.str()) {
+				if right_sym.has_method_with_generic_parent(node.op.str()) {
+					if method := right_sym.find_method_with_generic_parent(node.op.str()) {
 						return_type = method.return_type
 					} else {
 						return_type = right_type
