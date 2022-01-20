@@ -151,10 +151,10 @@ pub:
 // Stand-alone expression in a statement list.
 pub struct ExprStmt {
 pub:
-	expr     Expr
 	pos      token.Position
 	comments []Comment
 pub mut:
+	expr    Expr
 	is_expr bool
 	typ     Type
 }
@@ -290,11 +290,11 @@ pub struct ConstField {
 pub:
 	mod         string
 	name        string
-	expr        Expr // the value expr of field; everything after `=`
 	is_pub      bool
 	is_markused bool // an explict `[markused]` tag; the const will NOT be removed by `-skip-unused`, no matter what
 	pos         token.Position
 pub mut:
+	expr     Expr      // the value expr of field; everything after `=`
 	typ      Type      // the type of the const field, it can be any type in V
 	comments []Comment // comments before current const field
 	// the comptime_expr_value field is filled by the checker, when it has enough
@@ -387,11 +387,11 @@ pub mut:
 
 pub struct StructInitEmbed {
 pub:
-	expr          Expr
 	pos           token.Position
 	comments      []Comment
 	next_comments []Comment
 pub mut:
+	expr          Expr
 	name          string
 	typ           Type
 	expected_type Type
@@ -791,10 +791,10 @@ pub mut:
 // ++, --
 pub struct PostfixExpr {
 pub:
-	op   token.Kind
-	expr Expr
-	pos  token.Position
+	op  token.Kind
+	pos token.Position
 pub mut:
+	expr        Expr
 	auto_locked string
 }
 
@@ -812,10 +812,10 @@ pub mut:
 
 pub struct IndexExpr {
 pub:
-	pos     token.Position
-	index   Expr // [0], RangeExpr [start..end] or map[key]
-	or_expr OrExpr
+	pos token.Position
 pub mut:
+	index     Expr // [0], RangeExpr [start..end] or map[key]
+	or_expr   OrExpr
 	left      Expr
 	left_type Type // array, map, fixed array
 	is_setter bool
@@ -831,10 +831,10 @@ pub struct IfExpr {
 pub:
 	is_comptime   bool
 	tok_kind      token.Kind
-	left          Expr // `a` in `a := if ...`
 	pos           token.Position
 	post_comments []Comment
 pub mut:
+	left     Expr       // `a` in `a := if ...`
 	branches []IfBranch // includes all `else if` branches
 	is_expr  bool
 	typ      Type
@@ -844,11 +844,11 @@ pub mut:
 
 pub struct IfBranch {
 pub:
-	cond     Expr
 	pos      token.Position
 	body_pos token.Position
 	comments []Comment
 pub mut:
+	cond      Expr
 	pkg_exist bool
 	stmts     []Stmt
 	scope     &Scope
@@ -856,16 +856,17 @@ pub mut:
 
 pub struct UnsafeExpr {
 pub:
+	pos token.Position
+pub mut:
 	expr Expr
-	pos  token.Position
 }
 
 pub struct LockExpr {
 pub:
-	stmts    []Stmt
 	is_rlock []bool
 	pos      token.Position
 pub mut:
+	stmts    []Stmt
 	lockeds  []Expr // `x`, `y.z` in `lock x, y.z {`
 	comments []Comment
 	is_expr  bool
@@ -876,11 +877,11 @@ pub mut:
 pub struct MatchExpr {
 pub:
 	tok_kind token.Kind
-	cond     Expr
-	branches []MatchBranch
 	pos      token.Position
 	comments []Comment // comments before the first branch
 pub mut:
+	cond          Expr
+	branches      []MatchBranch
 	is_expr       bool // returns a value
 	return_type   Type
 	cond_type     Type // type of `x` in `match x {`
@@ -913,13 +914,14 @@ pub mut:
 
 pub struct SelectBranch {
 pub:
-	stmt          Stmt   // `a := <-ch` or `ch <- a`
-	stmts         []Stmt // right side
 	pos           token.Position
 	comment       Comment // comment above `select {`
 	is_else       bool
 	is_timeout    bool
 	post_comments []Comment
+pub mut:
+	stmt  Stmt   // `a := <-ch` or `ch <- a`
+	stmts []Stmt // right side
 }
 
 pub enum ComptimeForKind {
@@ -942,11 +944,11 @@ pub mut:
 
 pub struct ForStmt {
 pub:
-	cond   Expr
-	stmts  []Stmt
 	is_inf bool // `for {}`
 	pos    token.Position
 pub mut:
+	cond  Expr
+	stmts []Stmt
 	label string // `label: for {`
 	scope &Scope
 }
@@ -974,16 +976,16 @@ pub mut:
 
 pub struct ForCStmt {
 pub:
-	init     Stmt // i := 0;
 	has_init bool
-	cond     Expr // i < 10;
 	has_cond bool
-	inc      Stmt // i++; i += 2
 	has_inc  bool
 	is_multi bool // for a,b := 0,1; a < 10; a,b = a+b, a {...}
-	stmts    []Stmt
 	pos      token.Position
 pub mut:
+	init  Stmt // i := 0;
+	cond  Expr // i < 10;
+	inc   Stmt // i++; i += 2
+	stmts []Stmt
 	label string // `label: for {`
 	scope &Scope
 }
@@ -1031,10 +1033,10 @@ pub mut:
 // `expr as Ident`
 pub struct AsCast {
 pub:
-	expr Expr // from expr: `expr` in `expr as Ident`
-	typ  Type // to type
-	pos  token.Position
+	typ Type // to type
+	pos token.Position
 pub mut:
+	expr      Expr // from expr: `expr` in `expr as Ident`
 	expr_type Type // from type
 }
 
@@ -1124,8 +1126,9 @@ pub mut:
 // `(3+4)`
 pub struct ParExpr {
 pub:
+	pos token.Position
+pub mut:
 	expr Expr
-	pos  token.Position
 }
 
 pub struct GoExpr {
@@ -1152,20 +1155,20 @@ pub struct ArrayInit {
 pub:
 	pos           token.Position // `[]` in []Type{} position
 	elem_type_pos token.Position // `Type` in []Type{} position
-	exprs         []Expr      // `[expr, expr]` or `[expr]Type{}` for fixed array
-	ecmnts        [][]Comment // optional iembed comments after each expr
+	ecmnts        [][]Comment    // optional iembed comments after each expr
 	pre_cmnts     []Comment
 	is_fixed      bool
 	has_val       bool // fixed size literal `[expr, expr]!`
 	mod           string
-	len_expr      Expr // len: expr
-	cap_expr      Expr // cap: expr
-	default_expr  Expr // init: expr
 	has_len       bool
 	has_cap       bool
 	has_default   bool
 	has_it        bool // true if temp variable it is used
 pub mut:
+	exprs        []Expr // `[expr, expr]` or `[expr]Type{}` for fixed array
+	len_expr     Expr   // len: expr
+	cap_expr     Expr   // cap: expr
+	default_expr Expr   // init: expr
 	expr_types   []Type // [Dog, Cat] // also used for interface_types
 	elem_type    Type   // element type
 	default_type Type   // default value type
@@ -1174,19 +1177,19 @@ pub mut:
 
 pub struct ArrayDecompose {
 pub:
-	expr Expr
-	pos  token.Position
+	pos token.Position
 pub mut:
+	expr      Expr
 	expr_type Type
 	arg_type  Type
 }
 
 pub struct ChanInit {
 pub:
-	pos      token.Position
-	cap_expr Expr
-	has_cap  bool
+	pos     token.Position
+	has_cap bool
 pub mut:
+	cap_expr  Expr
 	typ       Type
 	elem_type Type
 }
@@ -1194,11 +1197,11 @@ pub mut:
 pub struct MapInit {
 pub:
 	pos       token.Position
-	keys      []Expr
-	vals      []Expr
 	comments  [][]Comment // comments after key-value pairs
 	pre_cmnts []Comment   // comments before the first key-value pair
 pub mut:
+	keys       []Expr
+	vals       []Expr
 	typ        Type
 	key_type   Type
 	value_type Type
@@ -1207,18 +1210,18 @@ pub mut:
 // s[10..20]
 pub struct RangeExpr {
 pub:
-	low      Expr
-	high     Expr
 	has_high bool
 	has_low  bool
 	pos      token.Position
 	is_gated bool // #[] gated array
+pub mut:
+	low  Expr
+	high Expr
 }
 
 pub struct CastExpr {
-pub:
-	arg Expr // `n` in `string(buf, n)`
 pub mut:
+	arg       Expr   // `n` in `string(buf, n)`
 	typ       Type   // `string`
 	expr      Expr   // `buf` in `string(buf, n)` and `&Type(buf)`
 	typname   string // `&Type` in `&Type(buf)`
@@ -1457,9 +1460,9 @@ pub struct Assoc {
 pub:
 	var_name string
 	fields   []string
-	exprs    []Expr
 	pos      token.Position
 pub mut:
+	exprs []Expr
 	typ   Type
 	scope &Scope
 }
@@ -1467,19 +1470,19 @@ pub mut:
 pub struct SizeOf {
 pub:
 	is_type bool
-	expr    Expr // checker uses this to set typ
 	pos     token.Position
 pub mut:
-	typ Type
+	expr Expr // checker uses this to set typ
+	typ  Type
 }
 
 pub struct IsRefType {
 pub:
 	is_type bool
-	expr    Expr // checker uses this to set typ
 	pos     token.Position
 pub mut:
-	typ Type
+	expr Expr // checker uses this to set typ
+	typ  Type
 }
 
 pub struct OffsetOf {
@@ -1491,24 +1494,25 @@ pub:
 
 pub struct Likely {
 pub:
-	expr      Expr
 	pos       token.Position
 	is_likely bool // false for _unlikely_
+pub mut:
+	expr Expr
 }
 
 pub struct TypeOf {
 pub:
-	expr Expr
-	pos  token.Position
+	pos token.Position
 pub mut:
+	expr      Expr
 	expr_type Type
 }
 
 pub struct DumpExpr {
 pub:
-	expr Expr
-	pos  token.Position
+	pos token.Position
 pub mut:
+	expr      Expr
 	expr_type Type
 	cname     string // filled in the checker
 }
@@ -1542,12 +1546,12 @@ pub mut:
 pub struct ComptimeSelector {
 pub:
 	has_parens bool // if $() is used, for vfmt
-	left       Expr
-	field_expr Expr
 	pos        token.Position
 pub mut:
-	left_type Type
-	typ       Type
+	left       Expr
+	left_type  Type
+	field_expr Expr
+	typ        Type
 }
 
 pub struct ComptimeCall {
@@ -1614,21 +1618,21 @@ pub mut:
 
 pub struct SqlExpr {
 pub:
-	typ         Type
-	is_count    bool
-	db_expr     Expr // `db` in `sql db {`
-	has_where   bool
-	has_offset  bool
-	offset_expr Expr
-	has_order   bool
-	order_expr  Expr
-	has_desc    bool
-	is_array    bool
-	pos         token.Position
-	has_limit   bool
-	limit_expr  Expr
+	typ        Type
+	is_count   bool
+	has_where  bool
+	has_order  bool
+	has_limit  bool
+	has_offset bool
+	has_desc   bool
+	is_array   bool
+	pos        token.Position
 pub mut:
+	db_expr     Expr // `db` in `sql db {`
 	where_expr  Expr
+	order_expr  Expr
+	limit_expr  Expr
+	offset_expr Expr
 	table_expr  TypeNode
 	fields      []StructField
 	sub_structs map[int]SqlExpr
@@ -1780,9 +1784,10 @@ pub fn (stmt Stmt) check_c_expr() ? {
 pub struct CTempVar {
 pub:
 	name   string // the name of the C temporary variable; used by g.expr(x)
-	orig   Expr   // the original expression, which produced the C temp variable; used by x.str()
 	typ    Type   // the type of the original expression
 	is_ptr bool   // whether the type is a pointer
+pub mut:
+	orig Expr // the original expression, which produced the C temp variable; used by x.str()
 }
 
 pub fn (node Node) position() token.Position {

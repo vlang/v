@@ -147,10 +147,10 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 	if !node.is_inf && typ.idx() != ast.bool_type_idx && !c.pref.translated {
 		c.error('non-bool used as for condition', node.pos)
 	}
-	if node.cond is ast.InfixExpr {
+	if mut node.cond is ast.InfixExpr {
 		infix := node.cond
 		if infix.op == .key_is {
-			if infix.left in [ast.Ident, ast.SelectorExpr] && infix.right is ast.TypeNode {
+			if infix.right is ast.TypeNode && infix.left in [ast.Ident, ast.SelectorExpr] {
 				is_variable := if mut infix.left is ast.Ident {
 					infix.left.kind == .variable
 				} else {
