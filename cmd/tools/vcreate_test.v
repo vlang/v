@@ -43,6 +43,19 @@ fn init_and_check() ? {
 		'*.vv linguist-language=V text=auto eol=lf',
 		'',
 	].join_lines()
+
+	assert os.read_file('.editorconfig') ? == [
+		'[*]',
+		'charset = utf-8',
+		'end_of_line = lf',
+		'insert_final_newline = true',
+		'trim_trailing_whitespace = true',
+		'',
+		'[*.v]',
+		'indent_style = tab',
+		'indent_size = 4',
+		'',
+	].join_lines()
 }
 
 fn test_v_init() ? {
@@ -83,4 +96,34 @@ fn test_v_init_no_overwrite_gitignore() ? {
 	os.execute_or_exit('$vexe init')
 
 	assert os.read_file('.gitignore') ? == 'blah'
+}
+
+fn test_v_init_no_overwrite_gitattributes_and_editorconfig() ? {
+	git_attributes_content := '*.v linguist-language=V text=auto eol=lf'
+	editor_config_content := '[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.v]
+indent_style = tab
+indent_size = 4
+'
+
+	dir := os.join_path(os.temp_dir(), test_path)
+	os.rmdir_all(dir) or {}
+	os.mkdir(dir) or {}
+	os.write_file('$dir/.gitattributes', git_attributes_content) ?
+	os.write_file('$dir/.editorconfig', editor_config_content) ?
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	os.chdir(dir) ?
+
+	vexe := @VEXE
+	os.execute_or_exit('$vexe init')
+
+	assert os.read_file('.gitattributes') ? == git_attributes_content
+	assert os.read_file('.editorconfig') ? == editor_config_content
 }
