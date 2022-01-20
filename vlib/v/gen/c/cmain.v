@@ -96,6 +96,9 @@ fn (mut g Gen) gen_c_main_header() {
 	if g.pref.is_livemain {
 		g.generate_hotcode_reloading_main_caller()
 	}
+	if 'no_profile_startup' in g.pref.compile_defines {
+		g.writeln('vreset_profile_stats();')
+	}
 }
 
 pub fn (mut g Gen) gen_c_main_footer() {

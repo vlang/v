@@ -703,6 +703,9 @@ pub fn (mut g Gen) init() {
 	if g.pref.is_test || 'test' in g.pref.compile_defines {
 		g.comptime_definitions.writeln('#define _VTEST (1)')
 	}
+	if g.pref.is_prof || 'profile' in g.pref.compile_defines {
+		g.comptime_definitions.writeln('#define _VPROFILE (1)')
+	}
 	if g.pref.autofree {
 		g.comptime_definitions.writeln('#define _VAUTOFREE (1)')
 		// g.comptime_definitions.writeln('unsigned char* g_cur_str;')

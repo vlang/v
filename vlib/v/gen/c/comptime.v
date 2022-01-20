@@ -650,6 +650,9 @@ fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_optional bool) ?str
 		'prod' {
 			return '_VPROD'
 		}
+		'profile' {
+			return '_VPROFILE'
+		}
 		'test' {
 			return '_VTEST'
 		}

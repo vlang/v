@@ -84,7 +84,15 @@ NB: the build flags are shared with the run command too:
          b) how much *nanoseconds in total* it took
          c) an average for each function (i.e. (b) / (a) )
          d) the function name
+         
       NB: if you want to output the profile info to stdout, use `-profile -`.
+
+      NB: you can use `import v.profile`, and then calls to `profile.on(false)`
+           and `profile.on(true)` to temporarily turn it off and on again.
+
+      NB: if you do NOT want the profile to contain information from before your
+           program's `fn main()` starts, pass `-d no_profile_startup` too.
+           (V constants, and module init() functions are evaluated before `main()` is called)
 
    -message-limit <limit>
       The maximum amount of warnings / errors / notices, that will be accumulated (defaults to 100).
