@@ -87,6 +87,21 @@ fn gitattributes_content() string {
 	].join_lines()
 }
 
+fn editorconfig_content() string {
+	return [
+		'[*]',
+		'charset = utf-8',
+		'end_of_line = lf',
+		'insert_final_newline = true',
+		'trim_trailing_whitespace = true',
+		'',
+		'[*.v]',
+		'indent_style = tab',
+		'indent_size = 4',
+		'',
+	].join_lines()
+}
+
 fn (c &Create) write_vmod(new bool) {
 	vmod_path := if new { '$c.name/v.mod' } else { 'v.mod' }
 	os.write_file(vmod_path, vmod_content(c)) or { panic(err) }
@@ -102,7 +117,18 @@ fn (c &Create) write_main(new bool) {
 
 fn (c &Create) write_gitattributes(new bool) {
 	gitattributes_path := if new { '$c.name/.gitattributes' } else { '.gitattributes' }
+	if !new && os.exists(gitattributes_path) {
+		return
+	}
 	os.write_file(gitattributes_path, gitattributes_content()) or { panic(err) }
+}
+
+fn (c &Create) write_editorconfig(new bool) {
+	editorconfig_path := if new { '$c.name/.editorconfig' } else { '.editorconfig' }
+	if !new && os.exists(editorconfig_path) {
+		return
+	}
+	os.write_file(editorconfig_path, editorconfig_content()) or { panic(err) }
 }
 
 fn (c &Create) create_git_repo(dir string) {
@@ -151,23 +177,22 @@ fn create(args []string) {
 	c.write_vmod(true)
 	c.write_main(true)
 	c.write_gitattributes(true)
+	c.write_editorconfig(true)
 	c.create_git_repo(c.name)
 }
 
 fn init_project() {
-	if os.exists('v.mod') {
-		cerror('`v init` cannot be run on existing v modules')
-		exit(3)
-	}
 	mut c := Create{}
 	c.name = check_name(os.file_name(os.getwd()))
-	c.description = ''
-	c.write_vmod(false)
+	if !os.exists('v.mod') {
+		c.description = ''
+		c.write_vmod(false)
+		println('Change the description of your project in `v.mod`')
+	}
 	c.write_main(false)
 	c.write_gitattributes(false)
+	c.write_editorconfig(false)
 	c.create_git_repo('.')
-
-	println('Change the description of your project in `v.mod`')
 }
 
 fn main() {
