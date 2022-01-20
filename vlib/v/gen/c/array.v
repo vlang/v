@@ -78,6 +78,16 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 			g.inside_lambda = false
 			return
 		}
+		need_tmp_var := g.inside_call && !g.inside_struct_init
+		mut stmt_str := ''
+		mut tmp_var := ''
+		if need_tmp_var {
+			tmp_var = g.new_tmp_var()
+			stmt_str = g.go_before_stmt(0)
+			ret_typ := g.typ(node.typ)
+			g.empty_line = true
+			g.write('$ret_typ $tmp_var = ')
+		}
 		g.write('{')
 		if node.has_val {
 			for i, expr in node.exprs {
@@ -100,6 +110,11 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 			g.write('0')
 		}
 		g.write('}')
+		if need_tmp_var {
+			g.writeln(';')
+			g.write(stmt_str)
+			g.write(tmp_var)
+		}
 		return
 	}
 	elem_styp := g.typ(elem_type.typ)
