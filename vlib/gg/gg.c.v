@@ -3,11 +3,6 @@
 
 module gg
 
-$if windows {
-	#flag -lgdi32
-	#include "windows.h"
-}
-
 import os
 import os.font
 import gx
@@ -16,6 +11,11 @@ import sokol.sapp
 import sokol.sgl
 import sokol.gfx
 import math
+
+$if windows {
+	#flag -lgdi32
+	#include "windows.h"
+}
 
 pub type TouchPoint = C.sapp_touchpoint
 
@@ -312,7 +312,7 @@ pub fn screen_size() Size {
 	$if macos {
 		return C.gg_get_screen_size()
 	}
-	$if wondows {
+	$if windows {
 		return Size{
 			width : int(C.GetSystemMetrics(C.SM_CXSCREEN))
   			height := int(C.GetSystemMetrics(C.SM_CYSCREEN))
