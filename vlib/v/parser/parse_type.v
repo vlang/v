@@ -59,7 +59,8 @@ pub fn (mut p Parser) parse_array_type(expecting token.Kind) ast.Type {
 					}
 				}
 				else {
-					p.error('expecting `int` for fixed size')
+					p.error_with_pos('fixed array size cannot use non-constant value',
+						size_expr.position())
 				}
 			}
 		}
