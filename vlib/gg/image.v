@@ -38,6 +38,10 @@ pub fn (mut ctx Context) get_cached_image_by_idx(image_idx int) &Image {
 	return &ctx.image_cache[image_idx]
 }
 
+pub fn (mut ctx Context) remove_cached_image_by_idx(image_idx int) {
+	ctx.image_cache.delete(image_idx)
+}
+
 // Draw part of an image using uv coordinates
 // img_rect is the size and position (in pixels on screen) of the displayed rectangle (ie the draw_image args)
 // part_rect is the size and position (in absolute pixels in the image) of the wanted part
