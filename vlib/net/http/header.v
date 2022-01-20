@@ -8,7 +8,7 @@ import strings
 // Header represents the key-value pairs in an HTTP header
 [noinit]
 pub struct Header {
-mut:
+pub mut:
 	data map[string][]string
 	// map of lowercase header keys to their original keys
 	// in order of appearance
