@@ -3,6 +3,11 @@
 
 module gg
 
+$if windows {
+	#flag -lgdi32
+	#include "windows.h"
+}
+
 import os
 import os.font
 import gx
@@ -300,11 +305,20 @@ pub fn high_dpi() bool {
 	return C.sapp_high_dpi()
 }
 
+// call Windows API to get screen size
+fn C.GetSystemMetrics(int) int
+
 pub fn screen_size() Size {
 	$if macos {
 		return C.gg_get_screen_size()
 	}
-	// TODO windows, linux, etc
+	$if wondows {
+		return Size{
+			width : int(C.GetSystemMetrics(C.SM_CXSCREEN))
+  			height := int(C.GetSystemMetrics(C.SM_CYSCREEN))
+		}
+	}
+	// TODO linux, etc
 	return Size{}
 }
 
