@@ -29,7 +29,7 @@ pub fn (mut t Transformer) transform_files(ast_files []&ast.File) {
 
 pub fn (mut t Transformer) transform(mut ast_file ast.File) {
 	for mut stmt in ast_file.stmts {
-		t.stmt(mut stmt)
+		stmt = t.stmt(mut stmt)
 	}
 }
 
@@ -354,7 +354,7 @@ pub fn (mut t Transformer) expr_stmt_if_expr(mut node ast.IfExpr) ast.Expr {
 		}
 		t.index.indent(false)
 		for mut stmt in branch.stmts {
-			t.stmt(mut stmt)
+			stmt = t.stmt(mut stmt)
 		}
 		t.index.unindent()
 	}
@@ -386,7 +386,7 @@ pub fn (mut t Transformer) expr_stmt_match_expr(mut node ast.MatchExpr) ast.Expr
 		if branch.is_else {
 			t.index.indent(false)
 			for mut stmt in branch.stmts {
-				t.stmt(mut stmt)
+				stmt = t.stmt(mut stmt)
 			}
 			t.index.unindent()
 			continue
@@ -595,7 +595,7 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 		}
 		ast.OrExpr {
 			for mut stmt in node.stmts {
-				t.stmt(mut stmt)
+				stmt = t.stmt(mut stmt)
 			}
 		}
 		ast.ParExpr {
