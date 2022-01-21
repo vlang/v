@@ -21,7 +21,7 @@ jobs:
         run: |
           ! grep -r --exclude="*.yml" "a GPL license" .
 
-  code-formatting-perf-regressions:
+  code-formatting:
     runs-on: ubuntu-20.04
     timeout-minutes: 15
     env:
@@ -37,8 +37,18 @@ jobs:
       - name: v test-fmt
         run: ./v -silent test-fmt
 
-      ## Performance regressions
-      - name: Clone & Build vmaster/v
+  performance-regressions:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 15
+    env:
+      VFLAGS: -cc gcc
+    steps:
+      - uses: actions/checkout@v2
+      - name: Environment info
+        run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
+      - name: Build local v
+        run: make -j4
+      - name: Clone & Build previous vmaster/v
         run: |
           git clone --depth=1 https://github.com/vlang/v vmaster/
           (cd vmaster; make -j4)
