@@ -532,6 +532,7 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Position) bool {
 					'js' { return !c.pref.backend.is_js() }
 					'debug' { return !c.pref.is_debug }
 					'prod' { return !c.pref.is_prod }
+					'profile' { return !c.pref.is_prof }
 					'test' { return !c.pref.is_test }
 					'glibc' { return false } // TODO
 					'threads' { return c.table.gostmts == 0 }
