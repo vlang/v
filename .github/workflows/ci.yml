@@ -13,6 +13,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  no-gpl-by-accident:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+      - name: No GPL licensed code, should be added accidentally
+        run: |
+          ! grep -r --exclude="*.yml" "a GPL license" .
+
   code-formatting-perf-regressions:
     runs-on: ubuntu-20.04
     timeout-minutes: 15
