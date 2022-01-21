@@ -1668,6 +1668,41 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 			}
 			return new_type(new_idx).derive(typ).clear_flag(.generic)
 		}
+		SumType {
+			mut variants := ts.info.variants.clone()
+			for i in 0 .. variants.len {
+				if variants[i].has_flag(.generic) {
+					sym := t.sym(variants[i])
+					if sym.kind in [.struct_, .sum_type, .interface_] {
+						variants[i] = t.unwrap_generic_type(variants[i], generic_names,
+							concrete_types)
+					} else {
+						if t_typ := t.resolve_generic_to_concrete(variants[i], generic_names,
+							concrete_types)
+						{
+							variants[i] = t_typ
+						}
+					}
+				}
+			}
+			mut info := ts.info
+			info.is_generic = false
+			info.concrete_types = final_concrete_types
+			info.parent_type = typ
+			info.fields = fields
+			info.variants = variants
+			new_idx := t.register_sym(
+				kind: .sum_type
+				name: nrt
+				cname: util.no_dots(c_nrt)
+				mod: ts.mod
+				info: info
+			)
+			for typ_ in needs_unwrap_types {
+				t.unwrap_generic_type(typ_, generic_names, concrete_types)
+			}
+			return new_type(new_idx).derive(typ).clear_flag(.generic)
+		}
 		Interface {
 			// resolve generic types inside methods
 			mut imethods := ts.info.methods.clone()

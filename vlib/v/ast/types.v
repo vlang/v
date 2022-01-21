@@ -980,14 +980,13 @@ pub mut:
 }
 
 pub struct SumType {
-pub:
-	variants []Type
 pub mut:
 	fields       []StructField
 	found_fields bool
 	is_anon      bool
 	// generic sumtype support
 	is_generic     bool
+	variants       []Type
 	generic_types  []Type
 	concrete_types []Type
 	parent_type    Type
