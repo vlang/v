@@ -33,6 +33,41 @@ pub fn (a Any) string() string {
 	}
 }
 
+// to_toml returns `Any` as a TOML encoded value.
+pub fn (a Any) to_toml() string {
+	match a {
+		map[string]Any {
+			// TODO more format control?
+			return a.to_inline_toml()
+		}
+		[]Any {
+			return a.to_toml()
+		}
+		bool, f32, f64, i64, int, u64 {
+			return a.str().clone()
+		}
+		// NOTE if `.clone()` is not used here:
+		// string { return a as string }
+		// ... certain call-patterns to this function will cause a memory corruption.
+		// See `tests/toml_memory_corruption_test.v` for a matching regression test.
+		string {
+			return '"' + (a as string).clone() + '"'
+		}
+		DateTime {
+			return a.str().clone()
+		}
+		Date {
+			return a.str().clone()
+		}
+		Time {
+			return a.str().clone()
+		}
+		else {
+			return a.str().clone()
+		}
+	}
+}
+
 // int returns `Any` as an 32-bit integer.
 pub fn (a Any) int() int {
 	match a {
@@ -181,6 +216,35 @@ pub fn (m map[string]Any) as_strings() map[string]string {
 	return result
 }
 
+// to_toml returns the contents of the map
+// as a TOML encoded `string`.
+pub fn (m map[string]Any) to_toml() string {
+	mut toml_text := ''
+	for k, v in m {
+		mut key := k
+		if key.contains(' ') {
+			key = '"$key"'
+		}
+		toml_text += '$key = ' + v.to_toml() + '\n'
+	}
+	toml_text = toml_text.trim_right('\n')
+	return toml_text
+}
+
+// to_inline_toml returns the contents of the map
+// as an inline table encoded TOML `string`.
+pub fn (m map[string]Any) to_inline_toml() string {
+	mut toml_text := '{'
+	for k, v in m {
+		mut key := k
+		if key.contains(' ') {
+			key = '"$key"'
+		}
+		toml_text += ' $key = ' + v.to_toml() + ','
+	}
+	return toml_text + ' }'
+}
+
 // value queries a value from the array.
 // `key` supports a small query syntax scheme:
 // The array can be queried with `[0].b[1].[2]`.
@@ -198,6 +262,17 @@ pub fn (a []Any) as_strings() []string {
 		sa << any.string()
 	}
 	return sa
+}
+
+// to_toml returns the contents of the array
+// as a TOML encoded `string`.
+pub fn (a []Any) to_toml() string {
+	mut toml_text := '[\n'
+	for any in a {
+		toml_text += '  ' + any.to_toml() + ',\n'
+	}
+	toml_text = toml_text.trim_right(',\n')
+	return toml_text + '\n]'
 }
 
 // value queries a value from the `Any` type.
