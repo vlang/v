@@ -51,7 +51,7 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			if field.typ != 0 {
 				if !field.typ.is_ptr() {
 					if c.table.unaliased_type(field.typ) == struct_typ_idx {
-						c.error('Field `$field.name` is part of `$node.name`, they can not both have the same type',
+						c.error('field `$field.name` is part of `$node.name`, they can not both have the same type',
 							field.type_pos)
 					}
 				}
