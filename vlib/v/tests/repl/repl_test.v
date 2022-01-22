@@ -33,6 +33,14 @@ mut:
 }
 
 fn test_all_v_repl_files() {
+	if os.user_os() == 'windows' {
+		if os.getenv('VTEST_ENABLE_REPL') == '' {
+			println('This test is disabled on windows temporarily')
+			println('set VTEST_ENABLE_REPL=1')
+			println('if you do want to run it anyway.')
+			exit(0)
+		}
+	}
 	mut session := &Session{
 		options: runner.new_options()
 		bmark: benchmark.new_benchmark()
