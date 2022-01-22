@@ -20,6 +20,9 @@ fn vrun_ok(options string, path string) string {
 }
 
 fn test_projects_should_run() {
+	$if windows {
+		return
+	}
 	res := vrun_ok('run', vroot_path('vlib/v/tests/testdata/enum_in_builtin') + os.path_separator)
 	assert res.trim_space() == 'v0'
 }
