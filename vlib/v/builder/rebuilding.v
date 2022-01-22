@@ -166,7 +166,7 @@ fn (mut b Builder) v_build_module(vexe string, imp_path string) {
 	vroot := os.dir(vexe)
 	os.chdir(vroot) or {}
 	boptions := b.pref.build_options.join(' ')
-	rebuild_cmd := '$vexe $boptions build-module $imp_path'
+	rebuild_cmd := '${os.quoted_path(vexe)} $boptions build-module ${os.quoted_path(imp_path)}'
 	vcache.dlog('| Builder.' + @FN, 'vexe: $vexe | imp_path: $imp_path | rebuild_cmd: $rebuild_cmd')
 	$if trace_v_build_module ? {
 		eprintln('> Builder.v_build_module: $rebuild_cmd')

@@ -241,8 +241,12 @@ fn (mut a App) report_tcc_version(tccfolder string) {
 		a.line(tccfolder, 'N/A')
 		return
 	}
-	tcc_branch_name := a.cmd(command: 'git -C $tccfolder rev-parse --abbrev-ref HEAD')
-	tcc_commit := a.cmd(command: 'git -C $tccfolder describe --abbrev=8 --dirty --always --tags')
+	tcc_branch_name := a.cmd(
+		command: 'git -C ${os.quoted_path(tccfolder)} rev-parse --abbrev-ref HEAD'
+	)
+	tcc_commit := a.cmd(
+		command: 'git -C ${os.quoted_path(tccfolder)} describe --abbrev=8 --dirty --always --tags'
+	)
 	a.line('$tccfolder status', '$tcc_branch_name $tcc_commit')
 }
 

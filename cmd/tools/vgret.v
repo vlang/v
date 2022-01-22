@@ -187,7 +187,7 @@ fn generate_screenshots(mut opt Options, output_path string) ? {
 		if opt.verbose {
 			eprintln('Compiling shaders (if needed) for `$file`')
 		}
-		sh_result := os.execute('$v_exe shader "$app_path"')
+		sh_result := os.execute('${os.quoted_path(v_exe)} shader ${os.quoted_path(app_path)}')
 		if sh_result.exit_code != 0 {
 			if opt.verbose {
 				eprintln('Skipping shader compile for `$file` v shader failed with:\n$sh_result.output')
@@ -241,7 +241,7 @@ fn compare_screenshots(opt Options, output_path string, target_path string) ? {
 				diff_file := os.join_path(os.temp_dir(), os.file_name(src).all_before_last('.') +
 					'.diff.tif')
 				flags := app_config.compare.flags.join(' ')
-				diff_cmd := '$idiff_exe $flags -abs -od -o "$diff_file" -abs "$src" "$target"'
+				diff_cmd := '${os.quoted_path(idiff_exe)} $flags -abs -od -o ${os.quoted_path(diff_file)} -abs ${os.quoted_path(src)} ${os.quoted_path(target)}'
 				if opt.verbose {
 					eprintln('Running: $diff_cmd')
 				}
@@ -309,7 +309,7 @@ fn take_screenshots(opt Options, app AppConfig) ?[]string {
 			}
 
 			mut flags := app.capture.flags.join(' ')
-			v_cmd := '$v_exe $flags -d gg_record run "$app.abs_path"'
+			v_cmd := '${os.quoted_path(v_exe)} $flags -d gg_record run ${os.quoted_path(app.abs_path)}'
 			if opt.verbose {
 				eprintln('Running `$v_cmd`')
 			}

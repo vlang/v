@@ -193,7 +193,9 @@ fn compile_shader(opt CompileOptions, shader_file string) ? {
 		eprintln('$tool_name generating shader code for $slangs in header "$header_name" in "$path" from $shader_file')
 	}
 
-	cmd := '$shdc --input "$shader_file" --output "$out_file" --slang "' + slangs.join(':') + '"'
+	cmd :=
+		'${os.quoted_path(shdc)} --input ${os.quoted_path(shader_file)} --output ${os.quoted_path(out_file)} --slang ' +
+		os.quoted_path(slangs.join(':'))
 	if opt.verbose {
 		eprintln('$tool_name executing:\n$cmd')
 	}

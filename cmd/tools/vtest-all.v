@@ -4,9 +4,11 @@ import os
 import term
 import time
 
-const vexe = os.getenv('VEXE')
+const vexe_path = os.getenv('VEXE')
 
-const vroot = os.dir(vexe)
+const vroot = os.dir(vexe_path)
+
+const vexe = os.quoted_path(vexe_path)
 
 const args_string = os.args[1..].join(' ')
 

@@ -330,9 +330,9 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 
 	if !ts.vargs.contains('fmt') {
-		cmd_options << ' -o "$generated_binary_fpath"'
+		cmd_options << ' -o ${os.quoted_path(generated_binary_fpath)}'
 	}
-	cmd := '"$ts.vexe" ' + cmd_options.join(' ') + ' "$file"'
+	cmd := '${os.quoted_path(ts.vexe)} ' + cmd_options.join(' ') + ' ${os.quoted_path(file)}'
 	ts.benchmark.step()
 	tls_bench.step()
 	if relative_file.replace('\\', '/') in ts.skip_files {
