@@ -3,8 +3,7 @@ import os
 const test_path = 'vcreate_test'
 
 fn init_and_check() ? {
-	vexe := @VEXE
-	os.execute_or_exit('$vexe init')
+	os.execute_or_exit('${os.quoted_path(@VEXE)} init')
 
 	assert os.read_file('vcreate_test.v') ? == [
 		'module main\n',
@@ -92,8 +91,7 @@ fn test_v_init_no_overwrite_gitignore() ? {
 	}
 	os.chdir(dir) ?
 
-	vexe := @VEXE
-	os.execute_or_exit('$vexe init')
+	os.execute_or_exit('${os.quoted_path(@VEXE)} init')
 
 	assert os.read_file('.gitignore') ? == 'blah'
 }
@@ -121,8 +119,7 @@ indent_size = 4
 	}
 	os.chdir(dir) ?
 
-	vexe := @VEXE
-	os.execute_or_exit('$vexe init')
+	os.execute_or_exit('${os.quoted_path(@VEXE)} init')
 
 	assert os.read_file('.gitattributes') ? == git_attributes_content
 	assert os.read_file('.editorconfig') ? == editor_config_content

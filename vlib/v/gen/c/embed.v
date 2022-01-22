@@ -31,7 +31,7 @@ fn (mut g Gen) gen_embed_file_init(mut node ast.ComptimeCall) {
 			cache_path := os.join_path(cache_dir, cache_key)
 
 			vexe := pref.vexe_path()
-			result := os.execute('"$vexe" compress $node.embed_file.compression_type "$node.embed_file.apath" "$cache_path"')
+			result := os.execute('${os.quoted_path(vexe)} compress $node.embed_file.compression_type ${os.quoted_path(node.embed_file.apath)} ${os.quoted_path(cache_path)}')
 			if result.exit_code != 0 {
 				eprintln('unable to compress file "$node.embed_file.rpath": $result.output')
 				node.embed_file.bytes = file_bytes

@@ -12,7 +12,7 @@ fn test_vexe_exists() {
 fn test_v_profile_works() {
 	os.chdir(vroot) or {}
 	program_source := os.join_path(vroot, 'vlib/v/tests/profile/profile_test_1.v')
-	res := os.execute('"$vexe" -profile - run $program_source')
+	res := os.execute('${os.quoted_path(vexe)} -profile - run ${os.quoted_path(program_source)}')
 	// eprintln('res: $res')
 	assert res.exit_code == 0
 	assert res.output.len > 0
@@ -25,7 +25,7 @@ fn test_v_profile_works() {
 fn test_v_profile_on_off_api_works() {
 	os.chdir(vroot) or {}
 	program_source := os.join_path(vroot, 'vlib/v/tests/profile/profile_test_2.v')
-	res := os.execute('"$vexe" -profile - run $program_source')
+	res := os.execute('${os.quoted_path(vexe)} -profile - run ${os.quoted_path(program_source)}')
 	// eprintln('res: $res')
 	assert res.exit_code == 0
 	assert res.output.len > 0
@@ -37,7 +37,7 @@ fn test_v_profile_on_off_api_works() {
 	assert abc_count == 1
 
 	// test that `-d no_profile_startup` *also* works:
-	res2 := os.execute('"$vexe" -d no_profile_startup -profile - run $program_source')
+	res2 := os.execute('${os.quoted_path(vexe)} -d no_profile_startup -profile - run ${os.quoted_path(program_source)}')
 	assert res2.exit_code == 0
 	assert res2.output.len > 0
 	assert !res2.output.contains(' builtin_init')

@@ -745,3 +745,12 @@ pub fn execute_or_exit(cmd string) Result {
 	}
 	return res
 }
+
+// quoted path - return a quoted version of the path, depending on the platform.
+pub fn quoted_path(path string) string {
+	$if windows {
+		return '"$path"'
+	} $else {
+		return "'$path'"
+	}
+}

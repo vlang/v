@@ -35,7 +35,7 @@ fn check_path(vexe string, dir string, tests []string) int {
 	for path in paths {
 		program := path
 		print(path + ' ')
-		res := os.execute('$vexe doc $program')
+		res := os.execute('${os.quoted_path(vexe)} doc ${os.quoted_path(program)}')
 		if res.exit_code < 0 {
 			panic(res.output)
 		}
@@ -46,7 +46,7 @@ fn check_path(vexe string, dir string, tests []string) int {
 			print_compare(expected, found)
 		}
 
-		res_comments := os.execute('$vexe doc -comments $program')
+		res_comments := os.execute('${os.quoted_path(vexe)} doc -comments ${os.quoted_path(program)}')
 		if res_comments.exit_code < 0 {
 			panic(res_comments.output)
 		}

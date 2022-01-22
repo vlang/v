@@ -18,7 +18,7 @@ fn interp_test(expression string, expected string) ? {
 	tmpfile := os.join_path(tmpdir, 'input.v')
 	outfile := os.join_path(tmpdir, 'output.txt')
 	os.write_file(tmpfile, interpreter_wrap(expression)) ?
-	if os.system('"$vexe" interpret $tmpfile > $outfile') != 0 {
+	if os.system('${os.quoted_path(vexe)} interpret ${os.quoted_path(tmpfile)} > ${os.quoted_path(outfile)}') != 0 {
 		eprintln('>>> Failed to interpret V expression: |$expression|')
 		return error('v interp')
 	}

@@ -13,5 +13,5 @@ fn main() {
 	args_str := args.join(' ')
 	options := if args.len > 0 { '($args_str)' } else { '' }
 	println('Compiling a `tracev` executable ${options}...')
-	os.system('"$vexe" -cg -d trace_parser -d trace_checker -d trace_gen -o tracev $args_str cmd/v')
+	os.system('${os.quoted_path(vexe)} -cg -d trace_parser -d trace_checker -d trace_gen -o tracev $args_str cmd/v')
 }

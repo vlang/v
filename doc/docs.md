@@ -3803,7 +3803,7 @@ file, can easily run *other* test files like this:
 import os
 
 fn test_subtest() {
-	res := os.execute('${@VEXE} other_test.v')
+	res := os.execute('${os.quoted_path(@VEXE)} other_test.v')
 	assert res.exit_code == 1
 	assert res.output.contains('other_test.v does not exist')
 }
