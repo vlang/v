@@ -51,14 +51,19 @@ pub fn run_repl_file(wd string, vexec string, file string) ?string {
 	os.write_file(os.real_path(os.join_path(wd, 'original.txt')), fcontent) or { panic(err) }
 	rcmd := '${os.quoted_path(vexec)} repl -replfolder ${os.quoted_path(wd)} -replprefix "${fname}." < ${os.quoted_path(input_temporary_filename)}'
 	r := os.execute(rcmd)
-	if r.exit_code < 0 {
+	if r.exit_code != 0 {
 		os.rm(input_temporary_filename) ?
 		return error('Could not execute: $rcmd')
 	}
-	os.rm(input_temporary_filename) ?
 	result := r.output.replace('\r', '').replace('>>> ', '').replace('>>>', '').replace('... ',
 		'').replace(wd + os.path_separator, '').replace(vexec_folder, '').replace('\\',
 		'/').trim_right('\n\r')
+	$if windows {
+		dump(rcmd)
+		dump(r.output)
+		dump(result)
+	}
+	os.rm(input_temporary_filename) ?
 	if result != output {
 		file_result := '${file}.result.txt'
 		file_expected := '${file}.expected.txt'
