@@ -20,7 +20,7 @@ pub fn decode<T>(toml_txt string) ?T {
 	return typ
 }
 
-// encode encodes the type `T` into a JSON string.
+// encode encodes the type `T` into a TOML string.
 // Currently encode expects the method `.to_toml()` exists on `T`.
 pub fn encode<T>(typ T) string {
 	return typ.to_toml()
