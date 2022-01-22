@@ -295,7 +295,7 @@ fn (mut task TaskDescription) execute() {
 		return
 	}
 	program := task.path
-	cli_cmd := '$task.vexe $task.voptions $program'
+	cli_cmd := '${os.quoted_path(task.vexe)} $task.voptions ${os.quoted_path(program)}'
 	res := os.execute(cli_cmd)
 	expected_out_path := program.replace('.vv', '') + task.result_extension
 	task.expected_out_path = expected_out_path

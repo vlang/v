@@ -49,7 +49,7 @@ pub fn run_repl_file(wd string, vexec string, file string) ?string {
 	input_temporary_filename := os.real_path(os.join_path(wd, 'input_temporary_filename.txt'))
 	os.write_file(input_temporary_filename, input) or { panic(err) }
 	os.write_file(os.real_path(os.join_path(wd, 'original.txt')), fcontent) or { panic(err) }
-	rcmd := '"$vexec" repl -replfolder "$wd" -replprefix "${fname}." < $input_temporary_filename'
+	rcmd := '${os.quoted_path(vexec)} repl -replfolder ${os.quoted_path(wd)} -replprefix "${fname}." < ${os.quoted_path(input_temporary_filename)}'
 	r := os.execute(rcmd)
 	if r.exit_code < 0 {
 		os.rm(input_temporary_filename) ?
@@ -84,7 +84,7 @@ pub fn run_prod_file(wd string, vexec string, file string) ?string {
 		return error('Could not read expected prod file $file_expected')
 	}
 	expected_content := f_expected_content.replace('\r', '')
-	cmd := '"$vexec" -prod run "$file"'
+	cmd := '${os.quoted_path(vexec)} -prod run ${os.quoted_path(file)}'
 	r := os.execute(cmd)
 	if r.exit_code < 0 {
 		return error('Could not execute: $cmd')

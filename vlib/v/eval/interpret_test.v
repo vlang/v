@@ -24,7 +24,7 @@ fn test_interpret() ? {
 		full_test_path := os.real_path(os.join_path(dir, test))
 		test_file_name := os.file_name(test)
 		relative_test_path := full_test_path.replace(vroot + '/', '')
-		cmd := '"$vexe" interpret "$full_test_path"'
+		cmd := '${os.quoted_path(vexe)} interpret ${os.quoted_path(full_test_path)}'
 		if is_verbose {
 			println(cmd)
 		}

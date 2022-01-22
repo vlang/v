@@ -11,11 +11,11 @@ fn test_the_v_compiler_can_be_invoked() {
 	vexec := runner.full_path_to_v(5)
 	println('vexecutable: $vexec')
 	assert vexec != ''
-	vcmd := '"$vexec" -version'
+	vcmd := '${os.quoted_path(vexec)} -version'
 	r := os.execute_or_exit(vcmd)
 	assert r.exit_code == 0
 	// println('"$vcmd" exit_code: $r.exit_code | output: $r.output')
-	vcmd_error := '"$vexec" nonexisting.v'
+	vcmd_error := '${os.quoted_path(vexec)} nonexisting.v'
 	r_error := os.execute(vcmd_error)
 	if r_error.exit_code < 0 {
 		panic(r_error.output)

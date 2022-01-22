@@ -688,7 +688,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			mut output_option := ''
 			if tmp_exe_file_path == '' {
 				tmp_exe_file_path = '${tmp_file_path}.exe'
-				output_option = '-o "$tmp_exe_file_path"'
+				output_option = '-o ${os.quoted_path(tmp_exe_file_path)} '
 			}
 			tmp_v_file_path := '${tmp_file_path}.v'
 			contents := os.get_raw_lines_joined()
@@ -698,7 +698,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			run_options := cmdline.options_before(args, ['run']).join(' ')
 			command_options := cmdline.options_after(args, ['run'])[1..].join(' ')
 			vexe := vexe_path()
-			tmp_cmd := '"$vexe" $output_option $run_options run "$tmp_v_file_path" $command_options'
+			tmp_cmd := '${os.quoted_path(vexe)} $output_option $run_options run ${os.quoted_path(tmp_v_file_path)} $command_options'
 			//
 			res.vrun_elog('tmp_cmd: $tmp_cmd')
 			tmp_result := os.system(tmp_cmd)

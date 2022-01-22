@@ -178,7 +178,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		exit(os.system('${os.quoted_path(tool_exe)} $tool_args'))
 	} $else $if js {
 		// no way to implement os.execvp in JS backend
-		exit(os.system('${os.quote_path(tool_exe)} $tool_args'))
+		exit(os.system('$tool_exe $tool_args'))
 	} $else {
 		os.execvp(tool_exe, args) or { panic(err) }
 	}

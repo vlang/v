@@ -6,7 +6,7 @@ fn test_all_samples_can_be_compiled() {
 	samples := os.walk_ext('$vroot/vlib/gg/testdata', '.vv')
 	mut fails := []string{}
 	for program_source in samples {
-		compile_cmd := '"$vexe" "$program_source"'
+		compile_cmd := '${os.quoted_path(vexe)} ${os.quoted_path(program_source)}'
 		res := os.execute(compile_cmd)
 		if res.exit_code != 0 {
 			eprintln('>>> FAIL $compile_cmd')
