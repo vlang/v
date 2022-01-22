@@ -21,8 +21,8 @@ struct AppState {
 mut:
 	gg      &gg.Context = 0
 	iidx    int
-	pixels  [pheight][pwidth]u32
-	npixels [pheight][pwidth]u32 // all drawing happens here, results are copied with vmemcpy to pixels at the end
+	pixels  []u32    = []u32{len: pwidth * pheight}
+	npixels []u32    = []u32{len: pwidth * pheight} // all drawing happens here, results are copied at the end
 	view    ViewRect = ViewRect{-2.7610033817025625, 1.1788897130338223, -1.824584023871934, 2.1153096311072788}
 	ntasks  int      = runtime.nr_jobs()
 }
@@ -46,7 +46,7 @@ fn (mut state AppState) update() {
 			threads << go state.recalc_lines(cview, start, start + sheight)
 		}
 		threads.wait()
-		unsafe { vmemcpy(&state.pixels[0], &state.npixels[0], int(sizeof(state.pixels))) }
+		state.pixels = state.npixels
 		println('$state.ntasks threads; $sw.elapsed().milliseconds() ms / frame')
 		oview = cview
 	}
@@ -65,14 +65,14 @@ fn (mut state AppState) recalc_lines(cview ViewRect, ymin f64, ymax f64) {
 					break
 				}
 			}
-			state.npixels[int(y_pixel)][int(x_pixel)] = u32(colors[iter % 8].abgr8())
+			state.npixels[int(y_pixel) * pwidth + int(x_pixel)] = u32(colors[iter % 8].abgr8())
 		}
 	}
 }
 
 fn (mut state AppState) draw() {
 	mut istream_image := state.gg.get_cached_image_by_idx(state.iidx)
-	istream_image.update_pixel_data(&state.pixels)
+	istream_image.update_pixel_data(&state.pixels[0])
 	size := gg.window_size()
 	state.gg.draw_image(0, 0, size.width, size.height, istream_image)
 }
@@ -169,6 +169,7 @@ fn graphics_keydown(code gg.KeyCode, mod gg.Modifier, mut state AppState) {
 	}
 }
 
+[console]
 fn main() {
 	mut state := &AppState{}
 	state.gg = gg.new_context(
