@@ -117,8 +117,9 @@ if not [!compiler!] == [] goto :!compiler!_strap
 REM By default, use tcc, since we have it prebuilt:
 :tcc_strap
 :tcc32_strap
-echo  ^> Attempting to build v_win.c with TCC
-"!tcc_exe!" -Ithirdparty\stdatomic\win -bt10 -g -w -o v.exe vc\v_win.c -ladvapi32
+echo  ^> Attempting to build v_win.c with "!tcc_exe!"
+"!tcc_exe!" --version
+"!tcc_exe!" -Ithirdparty/stdatomic/win -bt10 -g -w -o v.exe vc\v_win.c -ladvapi32
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 
 echo  ^> Compiling with .\v.exe self
