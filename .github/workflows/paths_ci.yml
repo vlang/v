@@ -69,6 +69,7 @@ jobs:
     timeout-minutes: 30
     env:
       MY_V_PATH: '你好 my $path, @с интервали'
+	  VFLAGS: -cc gcc
     steps:
       - uses: actions/checkout@v2
         with:
@@ -79,7 +80,7 @@ jobs:
           dir
           cd '${{env.MY_V_PATH}}'
           dir
-          .\make.bat -tcc
+          .\make.bat -gcc
       - name: v doctor
         run: |
           cd '${{env.MY_V_PATH}}'
