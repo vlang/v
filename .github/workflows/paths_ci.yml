@@ -69,6 +69,16 @@ jobs:
     timeout-minutes: 30
     env:
       MY_V_PATH: 'path with some $punctuation, and some spaces'
+
+      ## NB: the following paths do not work for now:
+      ##### MY_V_PATH: '你好 my $path, @с интервали'
+      ##### MY_V_PATH: 'path with some $punctuation, and some spaces '
+      ## tcc has a problem interpreting paths with non latin letters in them,
+      ## by default, but that can be solved with passing -Bthirdparty/tcc
+      ## but after that V fails self building with:
+      ####### builder error: cannot write to folder D:\a\v\v\你好 my $path, @с интервали: No such file or directory
+      ## and that happens even for gcc builds, not just tcc ones
+
     steps:
       - uses: actions/checkout@v2
         with:

@@ -1,4 +1,4 @@
-@echo on
+@echo off
 setlocal EnableDelayedExpansion EnableExtensions
 
 REM Option flags
@@ -118,21 +118,13 @@ REM By default, use tcc, since we have it prebuilt:
 :tcc_strap
 :tcc32_strap
 echo  ^> Attempting to build v_win.c with "!tcc_exe!"
-"!tcc_exe!" -vv
-"!tcc_exe!" --version
 "!tcc_exe!" -Bthirdparty/tcc -Ithirdparty/stdatomic/win -bt10 -g -w -o v.exe vc\v_win.c -ladvapi32
 if %ERRORLEVEL% NEQ 0 goto :compile_error
-
-v.exe version
 echo  ^> Compiling .\v.exe with itself
-v.exe -o local_v.c cmd/v
-"!tcc_exe!" -Bthirdparty/tcc -Ithirdparty/stdatomic/win -bt10 -g -w -o v.exe local_v.c -ladvapi32
-v.exe version
 v.exe -keepc -g -showcc -cc "!tcc_exe!" -cflags -Bthirdparty/tcc -o v2.exe cmd/v
 if %ERRORLEVEL% NEQ 0 goto :clang_strap
 del v.exe
 move v2.exe v.exe
-v.exe version
 goto :success
 
 :clang_strap
