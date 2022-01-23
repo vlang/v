@@ -260,16 +260,16 @@ jobs:
       - name: Build V
         run: |
           ls -la
-          echo "${{env.MY_V_PATH}}"
-          cd "${{env.MY_V_PATH}}"
+          echo '${{env.MY_V_PATH}}'
+          cd '${{env.MY_V_PATH}}'
           make
       - name: v doctor
         run: |
-          cd "${{env.MY_V_PATH}}"
+          cd '${{env.MY_V_PATH}}'
           ./v doctor
       - name: v test-self
         run: |
-          cd "${{env.MY_V_PATH}}"
+          cd '${{env.MY_V_PATH}}'
           ./v test-self
 
 
@@ -285,14 +285,14 @@ jobs:
       - name: Build V
         run: |
           dir
-          echo "${{env.MY_V_PATH}}"
-          cd "${{env.MY_V_PATH}}"
+          echo '${{env.MY_V_PATH}}'
+          cd '${{env.MY_V_PATH}}'
           .\make.bat -tcc
       - name: v doctor
         run: |
-          cd "${{env.MY_V_PATH}}"
+          cd '${{env.MY_V_PATH}}'
           ./v doctor
       - name: v test-self
         run: |
-          cd "${{env.MY_V_PATH}}"
+          cd '${{env.MY_V_PATH}}'
           ./v test-self
