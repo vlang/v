@@ -68,7 +68,7 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 30
     env:
-      MY_V_PATH: 'path with some spaces'
+      MY_V_PATH: 'path with some $punctuation, and some spaces '
     steps:
       - uses: actions/checkout@v2
         with:
