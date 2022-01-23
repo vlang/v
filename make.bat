@@ -12,8 +12,8 @@ set target=build
 
 REM TCC variables
 set "tcc_url=https://github.com/vlang/tccbin"
-set "tcc_dir=%~dp0thirdparty\tcc"
-set "tcc_exe=%~dp0thirdparty\tcc\tcc.exe"
+set "tcc_dir=thirdparty\tcc"
+set "tcc_exe=thirdparty\tcc\tcc.exe"
 if "%PROCESSOR_ARCHITECTURE%" == "x86" ( set "tcc_branch=thirdparty-windows-i386" ) else ( set "tcc_branch=thirdparty-windows-amd64" )
 if "%~1" == "-tcc32" set "tcc_branch=thirdparty-windows-i386"
 
@@ -117,16 +117,15 @@ if not [!compiler!] == [] goto :!compiler!_strap
 REM By default, use tcc, since we have it prebuilt:
 :tcc_strap
 :tcc32_strap
-echo  ^> Attempting to build v_win.c with TCC
-"!tcc_exe!" -Ithirdparty/stdatomic/win -bt10 -g -w -o v.exe vc\v_win.c -ladvapi32
+echo  ^> Attempting to build v_win.c with "!tcc_exe!"
+"!tcc_exe!" -Bthirdparty/tcc -Ithirdparty/stdatomic/win -bt10 -g -w -o v.exe vc\v_win.c -ladvapi32
 if %ERRORLEVEL% NEQ 0 goto :compile_error
-
-echo  ^> Compiling with .\v.exe self
-v.exe -keepc -g -showcc -cc "!tcc_exe!" self
+echo  ^> Compiling .\v.exe with itself
+v.exe -keepc -g -showcc -cc "!tcc_exe!" -cflags -Bthirdparty/tcc -o v2.exe cmd/v
 if %ERRORLEVEL% NEQ 0 goto :clang_strap
+del v.exe
+move v2.exe v.exe
 goto :success
-
-
 
 :clang_strap
 where /q clang
@@ -144,9 +143,11 @@ if %ERRORLEVEL% NEQ 0 (
 	goto :compile_error
 )
 
-echo  ^> Compiling with .\v.exe self
-v.exe -keepc -g -showcc -cc clang self
+echo  ^> Compiling .\v.exe with itself
+v.exe -keepc -g -showcc -cc clang -o v2.exe cmd/v
 if %ERRORLEVEL% NEQ 0 goto :compile_error
+del v.exe
+move v2.exe v.exe
 goto :success
 
 :gcc_strap
@@ -165,9 +166,11 @@ if %ERRORLEVEL% NEQ 0 (
 	goto :compile_error
 )
 
-echo  ^> Compiling with .\v.exe self
-v.exe -keepc -g -showcc -cc gcc self
+echo  ^> Compiling .\v.exe with itself
+v.exe -keepc -g -showcc -cc gcc -o v2.exe cmd/v
 if %ERRORLEVEL% NEQ 0 goto :compile_error
+del v.exe
+move v2.exe v.exe
 goto :success
 
 :msvc_strap
@@ -205,10 +208,12 @@ if %ERRORLEVEL% NEQ 0 (
     goto :compile_error
 )
 
-echo  ^> Compiling with .\v.exe self
-v.exe -keepc -g -showcc -cc msvc self
+echo  ^> Compiling .\v.exe with itself
+v.exe -keepc -g -showcc -cc msvc -o v2.exe cmd/v
 del %ObjFile%
 if %ERRORLEVEL% NEQ 0 goto :compile_error
+del v.exe
+move v2.exe v.exe
 goto :success
 
 :download_tcc
@@ -219,11 +224,6 @@ pushd %tcc_dir% && (
     popd
 ) || call :bootstrap_tcc
 
-for /f "usebackq delims=" %%i in (`dir "%tcc_dir%" /b /a /s tcc.exe`) do (
-    set "attrib=%%~ai"
-    set "dattrib=%attrib:~0,1%"
-    if /I not "%dattrib%" == "d" set "tcc_exe=%%~sfi"
-)
 if [!tcc_exe!] == [] echo  ^> TCC not found, even after cloning& goto :error
 echo.
 exit /b 0
@@ -318,7 +318,7 @@ exit /b 0
 :cloning_vc
 echo Cloning vc...
 echo  ^> Cloning from remote !vc_url!
-git clone --depth 1 --quiet %vc_url%
+git clone --depth 1 --quiet "%vc_url%"
 exit /b 0
 
 :eof
