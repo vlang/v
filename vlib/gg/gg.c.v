@@ -712,7 +712,6 @@ pub fn (ctx &Context) draw_circle_empty(x f32, y f32, r f32, c gx.Color) {
 		xx = nr * math.cosf(theta)
 		yy = nr * math.sinf(theta)
 		sgl.v2f(xx + nx, yy + ny)
-		//sgl.v2f(nx, ny)
 	}
 	sgl.end()
 }
@@ -889,36 +888,24 @@ pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config
 
 // Draws a filled arc
 [deprecated: 'use draw_arc_filled() instead']
-pub fn (ctx &Context) draw_arc(x f32, y f32, inner_r f32, outer_r f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
-	ctx.draw_arc_filled(x, y, inner_r, outer_r, start_angle, end_angle, segments, c)
+pub fn (ctx &Context) draw_arc(x f32, y f32, radius f32, thickness f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+	ctx.draw_arc_filled(x, y, radius, thickness, start_angle, end_angle, segments, c)
 }
 
-pub fn (ctx &Context) draw_arc_filled(x f32, y f32, inner_r f32, outer_r f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
-	if start_angle == end_angle || outer_r <= 0.0 {
+pub fn (ctx &Context) draw_arc_filled(x f32, y f32, radius f32, thickness f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+	if start_angle == end_angle || radius <= 0.0 {
 		return
 	}
 
-	mut r1 := inner_r
-	mut r2 := outer_r
 	mut a1 := start_angle
 	mut a2 := end_angle
-
-	// TODO: Maybe this does not make since inner_r and outer_r is actually integers?
-	if outer_r < inner_r {
-		r1, r2 = r2, r1
-
-		if r2 <= 0.0 {
-			r2 = 0.1
-		}
-	}
 
 	if a2 < a1 {
 		a1, a2 = a2, a1
 	}
 
-	if r1 <= 0.0 {
-		ctx.draw_slice_filled(x, y, int(r2), a1, a2, segments, c)
-		return
+	if radius <= 0.0 {
+		ctx.draw_slice_filled(x, y, int(thickness), a1, a2, segments, c)
 	}
 
 	mut step_length := (a2 - a1) / f32(segments)
@@ -927,13 +914,13 @@ pub fn (ctx &Context) draw_arc_filled(x f32, y f32, inner_r f32, outer_r f32, st
 	sgl.begin_quads()
 	sgl.c4b(c.r, c.g, c.b, c.a)
 	for _ in 0 .. segments {
-		sgl.v2f(x + f32(math.sin(angle)) * r1, y + f32(math.cos(angle) * r1))
-		sgl.v2f(x + f32(math.sin(angle)) * r2, y + f32(math.cos(angle) * r2))
+		sgl.v2f(x + f32(math.sin(angle)) * radius, y + f32(math.cos(angle) * radius))
+		sgl.v2f(x + f32(math.sin(angle)) * (radius + thickness), y + f32(math.cos(angle) * (radius + thickness)))
 
-		sgl.v2f(x + f32(math.sin(angle + step_length)) * r2, y + f32(math.cos(angle +
-			step_length) * r2))
-		sgl.v2f(x + f32(math.sin(angle + step_length)) * r1, y + f32(math.cos(angle +
-			step_length) * r1))
+		sgl.v2f(x + f32(math.sin(angle + step_length)) * (radius + thickness), y + f32(math.cos(angle +
+			step_length) * (radius + thickness)))
+		sgl.v2f(x + f32(math.sin(angle + step_length)) * radius, y + f32(math.cos(angle +
+			step_length) * radius))
 
 		angle += step_length
 	}
@@ -942,34 +929,24 @@ pub fn (ctx &Context) draw_arc_filled(x f32, y f32, inner_r f32, outer_r f32, st
 
 // Draws the outline of an arc
 [deprecated: 'use draw_arc_empty() instead']
-pub fn (ctx &Context) draw_empty_arc(x f32, y f32, inner_r f32, outer_r f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
-	ctx.draw_arc_empty(x, y, inner_r, outer_r, start_angle, end_angle, segments, c)
+pub fn (ctx &Context) draw_empty_arc(x f32, y f32, radius f32, thickness f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+	ctx.draw_arc_empty(x, y, radius, thickness, start_angle, end_angle, segments, c)
 }
 
-pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_r f32, outer_r f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
-	if start_angle == end_angle || outer_r <= 0.0 {
+pub fn (ctx &Context) draw_arc_empty(x f32, y f32, radius f32, thickness f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+	if start_angle == end_angle || radius <= 0.0 {
 		return
 	}
 
-	mut r1 := inner_r
-	mut r2 := outer_r
 	mut a1 := start_angle
 	mut a2 := end_angle
-
-	if outer_r < inner_r {
-		r1, r2 = r2, r1
-
-		if r2 <= 0.0 {
-			r2 = 0.1
-		}
-	}
 
 	if a2 < a1 {
 		a1, a2 = a2, a1
 	}
 
-	if r1 <= 0.0 {
-		ctx.draw_slice_empty(x, y, int(r2), a1, a2, segments, c)
+	if radius <= 0.0 {
+		ctx.draw_slice_empty(x, y, int(thickness), a1, a2, segments, c)
 		return
 	}
 
@@ -981,25 +958,25 @@ pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_r f32, outer_r f32, sta
 
 	// Outer circle
 	for _ in 0 .. segments {
-		sgl.v2f(x + f32(math.sin(angle)) * r2, y + f32(math.cos(angle) * r2))
-		sgl.v2f(x + f32(math.sin(angle + step_length)) * r2, y + f32(math.cos(angle +
-			step_length) * r2))
+		sgl.v2f(x + f32(math.sin(angle)) * (radius + thickness), y + f32(math.cos(angle) * (radius + thickness)))
+		sgl.v2f(x + f32(math.sin(angle + step_length)) * (radius + thickness), y + f32(math.cos(angle +
+			step_length) * (radius + thickness)))
 
 		angle += step_length
 	}
 
 	// Inner circle
 	for _ in 0 .. segments {
-		sgl.v2f(x + f32(math.sin(angle)) * r1, y + f32(math.cos(angle) * r1))
-		sgl.v2f(x + f32(math.sin(angle - step_length)) * r1, y +
-			f32(math.cos(angle - step_length) * r1))
+		sgl.v2f(x + f32(math.sin(angle)) * radius, y + f32(math.cos(angle) * radius))
+		sgl.v2f(x + f32(math.sin(angle - step_length)) * radius, y +
+			f32(math.cos(angle - step_length) * radius))
 
 		angle -= step_length
 	}
 
 	// Closing end
-	sgl.v2f(x + f32(math.sin(angle)) * r1, y + f32(math.cos(angle) * r1))
-	sgl.v2f(x + f32(math.sin(angle)) * r2, y + f32(math.cos(angle) * r2))
+	sgl.v2f(x + f32(math.sin(angle)) * radius, y + f32(math.cos(angle) * radius))
+	sgl.v2f(x + f32(math.sin(angle)) * (radius + thickness), y + f32(math.cos(angle) * (radius + thickness)))
 	sgl.end()
 }
 
