@@ -248,48 +248,51 @@ jobs:
         run: ./v test ~/.vmodules/libsodium
 
 
-  space-paths-windows:
-    runs-on: windows-2022
-    timeout-minutes: 30
-    env:
-      MY_V_PATH: '"你好 my $path, @с интервали"'
-    steps:
-      - uses: actions/checkout@v2
-        with:
-          path: $MY_V_PATH
-      - name: Build V
-        run: |
-          dir
-          echo %MY_V_PATH%
-          cd %MY_V_PATH%
-          .\make.bat -tcc
-      - name: v doctor
-        run: |
-          cd %MY_V_PATH%
-          ./v doctor
-      - name: v test-self
-        run: |
-          cd %MY_V_PATH%
-          ./v test-self
-
   space-paths-linux:
     runs-on: ubuntu-20.04
     timeout-minutes: 30
     env:
-      MY_V_PATH: '"你好 my $path, @с интервали"'
+      MY_V_PATH: '你好 my $path, @с интервали'
     steps:
       - uses: actions/checkout@v2
         with:
-          path: $MY_V_PATH
+          path: ${{env.MY_V_PATH}}
       - name: Build V
         run: |
-          cd $MY_V_PATH
+          ls -la
+          echo "${{env.MY_V_PATH}}"
+          cd "${{env.MY_V_PATH}}"
           make
       - name: v doctor
         run: |
-          cd $MY_V_PATH
+          cd "${{env.MY_V_PATH}}"
           ./v doctor
       - name: v test-self
         run: |
-          cd $MY_V_PATH
+          cd "${{env.MY_V_PATH}}"
+          ./v test-self
+
+
+  space-paths-windows:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    env:
+      MY_V_PATH: '你好 my $path, @с интервали'
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          path: ${{env.MY_V_PATH}}
+      - name: Build V
+        run: |
+          dir
+          echo "${{env.MY_V_PATH}}"
+          cd "${{env.MY_V_PATH}}"
+          .\make.bat -tcc
+      - name: v doctor
+        run: |
+          cd "${{env.MY_V_PATH}}"
+          ./v doctor
+      - name: v test-self
+        run: |
+          cd "${{env.MY_V_PATH}}"
           ./v test-self
