@@ -1,0 +1,295 @@
+name: Other CI
+
+on:
+  push:
+    paths-ignore:
+      - "**.md"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+
+concurrency:
+  group: build-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  no-gpl-by-accident:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v2
+      - name: No GPL licensed code, should be added accidentally
+        run: |
+          ! grep -r --exclude="*.yml" "a GPL license" .
+
+  code-formatting:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 15
+    env:
+      VFLAGS: -cc gcc
+    steps:
+      - uses: actions/checkout@v2
+      - name: Environment info
+        run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
+      - name: Build local v
+        run: make -j4
+      - name: v test-cleancode
+        run: ./v -silent test-cleancode
+      - name: v test-fmt
+        run: ./v -silent test-fmt
+
+  performance-regressions:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 15
+    env:
+      VFLAGS: -cc gcc
+    steps:
+      - uses: actions/checkout@v2
+      - name: Environment info
+        run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
+      - name: Build local v
+        run: make -j4
+      - name: Clone & Build previous vmaster/v
+        run: |
+          git clone --depth=1 https://github.com/vlang/v vmaster/
+          (cd vmaster; make -j4)
+      - name: V versions
+        run: ./v version && ./vmaster/v version
+      - name: Build the repeat tool
+        run: ./v cmd/tools/repeat.v
+      - name: Repeat -o hw.c examples/hello_world.v
+        run: cmd/tools/repeat --max_time 251 --series 3 --count 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o hw.c examples/hello_world.v' . ./vmaster
+      - name: Repeat -o v.c cmd/v
+        run: cmd/tools/repeat --max_time 1501 --series 3 --count 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o v.c cmd/v' . ./vmaster
+
+  misc-tooling:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 121
+    env:
+      VFLAGS: -cc tcc -no-retry-compilation
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 10
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
+          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
+          sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
+      - name: Build v
+        run: make
+
+      - name: Ensure V can be compiled with -autofree
+        run: ./v -autofree -o v2 cmd/v  ## NB: this does not mean it runs, but at least keeps it from regressing
+
+      - name: Shader examples can be build
+        run: |
+          wget https://github.com/floooh/sokol-tools-bin/raw/33d2e4cc26088c6c28eaef5467990f8940d15aab/bin/linux/sokol-shdc
+          chmod +x ./sokol-shdc
+          for f in examples/sokol/02_cubes_glsl/cube_glsl \
+              examples/sokol/03_march_tracing_glsl/rt_glsl \
+              examples/sokol/04_multi_shader_glsl/rt_glsl_puppy \
+              examples/sokol/04_multi_shader_glsl/rt_glsl_march \
+              examples/sokol/05_instancing_glsl/rt_glsl_instancing \
+              examples/sokol/06_obj_viewer/gouraud \
+              ; do \
+                 echo "compiling shader $f.glsl ..."; \
+                 ./sokol-shdc --input $f.glsl --output $f.h --slang glsl330 ; \
+          done
+          for vfile in examples/sokol/0?*/*.v; do echo "compiling $vfile ..."; ./v $vfile ; done
+
+      - name: Install C++ dependencies
+        run: |
+          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev
+          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
+          sudo apt-get install --quiet -y valgrind g++-9
+      - name: Build V
+        run: make -j4
+      - name: g++ version
+        run: g++-9 --version
+      - name: V self compilation with g++
+        run: ./v -cc g++-9 -no-std -cflags -std=c++11 -o v2 cmd/v && ./v2 -cc g++-9 -no-std -cflags -std=c++11 -o v3 cmd/v
+  ##    - name: Running tests with g++
+  ##      run: ./v -cc g++-9 -silent test-self
+
+
+  parser-silent:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 121
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install zzuf
+        run: sudo apt install -qq zzuf
+      - name: Build local v
+        run: |
+          make -j4
+          ./v -g cmd/tools/vtest-parser.v
+      - name: Run test-parser
+        run: |
+          ./v test-parser -S examples/hello_world.v
+          ./v test-parser -S examples/hanoi.v
+          ./v test-parser -S examples/fibonacci.v
+          ./v test-parser -S examples/cli.v
+          ./v test-parser -S examples/json.v
+          ./v test-parser -S examples/vmod.v
+          ./v test-parser -S examples/regex/regex_example.v
+          ./v test-parser -S examples/2048/2048.v
+
+      - name: Run test-parser over fuzzed files
+        run: |
+          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/hello_world.v > examples/hello_world_fuzz.v
+          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/hanoi.v > examples/hanoi_fuzz.v
+          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/fibonacci.v > examples/fibonacci_fuzz.v
+          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/cli.v > examples/cli_fuzz.v
+          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/json.v > examples/json_fuzz.v
+          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/vmod.v > examples/vmod_fuzz.v
+          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/regex/regex_example.v > examples/regex_example_fuzz.v
+          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/2048/2048.v > examples/2048/2048_fuzz.v
+          ./v test-parser -S examples/hello_world_fuzz.v
+          ./v test-parser -S examples/hanoi_fuzz.v
+          ./v test-parser -S examples/cli_fuzz.v
+          ./v test-parser -S examples/regex_example_fuzz.v
+          ./v test-parser -S examples/2048/2048_fuzz.v
+
+  v-apps-compile:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 121
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build V
+        run: make && sudo ./v symlink
+
+      - name: Install dependencies
+        run: sudo apt-get install --quiet -y libgc-dev
+
+      ## vls
+      - name: Clone VLS
+        run: git clone --depth 1 https://github.com/vlang/vls
+      - name: Build VLS
+        run: pushd vls; v cmd/vls ; popd
+      - name: Build VLS with -prod
+        run: pushd vls; v -prod cmd/vls; popd
+      - name: Build VLS with -gc boehm -skip-unused
+        run: pushd vls; v -gc boehm -skip-unused cmd/vls; popd
+
+      ## vsl
+      - name: Clone VSL
+        run: git clone --depth 1 https://github.com/vlang/vsl ~/.vmodules/vsl
+      - name: Install dependencies
+        run: sudo apt-get install --quiet -y --no-install-recommends gfortran liblapacke-dev libopenblas-dev libgc-dev
+      - name: Execute Tests using Pure V Backend
+        run: ~/.vmodules/vsl/bin/test
+      - name: Execute Tests using Pure V Backend with Pure V Math
+        run: ~/.vmodules/vsl/bin/test --use-cblas
+      - name: Execute Tests using Pure V Backend and Garbage Collection enabled
+        run: ~/.vmodules/vsl/bin/test --use-gc boehm
+      - name: Execute Tests using Pure V Backend with Pure V Math and Garbage Collection enabled
+        run: ~/.vmodules/vsl/bin/test --use-cblas --use-gc boehm
+
+      ## vtl
+      - name: Clone VTL
+        run: git clone --depth 1 https://github.com/vlang/vtl ~/.vmodules/vtl
+      - name: Install dependencies
+        run: sudo apt-get install --quiet -y --no-install-recommends gfortran liblapacke-dev libopenblas-dev libgc-dev
+      - name: Execute Tests using Pure V Backend
+        run: ~/.vmodules/vtl/bin/test
+      - name: Execute Tests using Pure V Backend with Pure V Math
+        run: ~/.vmodules/vtl/bin/test --use-cblas
+      - name: Execute Tests using Pure V Backend and Garbage Collection enabled
+        run: ~/.vmodules/vtl/bin/test --use-gc boehm
+      - name: Execute Tests using Pure V Backend with Pure V Math and Garbage Collection enabled
+        run: ~/.vmodules/vtl/bin/test --use-cblas --use-gc boehm
+
+      ## vab
+      - name: Clone vab
+        run: git clone --depth 1 https://github.com/vlang/vab
+      - name: Build vab
+        run: cd vab; ../v ./vab.v ; cd ..
+      - name: Build vab with -gc boehm -skip-unused
+        run: cd vab; ../v -gc boehm -skip-unused ./vab.v ; cd ..
+
+      ## gitly
+      - name: Install markdown
+        run: ./v install markdown
+      - name: Build Gitly
+        run: |
+          git clone --depth 1 https://github.com/vlang/gitly
+          cd gitly
+          ../v .
+          # ./gitly -ci_run
+          ../v -autofree .
+          ../v -o x tests/first_run.v
+          ./x
+          cd ..
+
+      ## vex
+      - name: Install Vex dependencies
+        run: sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev
+      - name: Install Vex
+        run: mkdir -p ~/.vmodules/nedpals; git clone https://github.com/nedpals/vex ~/.vmodules/nedpals/vex
+      - name: Compile the simple Vex example
+        run: ./v ~/.vmodules/nedpals/vex/examples/simple_example.v
+      - name: Compile the simple Vex example with -gc boehm -skip-unused
+        run: ./v -gc boehm -skip-unused ~/.vmodules/nedpals/vex/examples/simple_example.v
+      - name: Run Vex Tests
+        run: ./v test ~/.vmodules/nedpals/vex
+
+      ## vpm modules
+      - name: Install UI through VPM
+        run: ./v install ui
+
+      ## libsodium
+      - name: Install libsodium-dev package
+        run: sudo apt-get install --quiet -y libsodium-dev
+      - name: Installl the libsodium wrapper through VPM
+        run: ./v install libsodium
+      - name: Test libsodium
+        run: ./v test ~/.vmodules/libsodium
+
+
+  space-paths-windows:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    env:
+      MY_V_PATH: '"你好 my $path, @с интервали"'
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          path: $MY_V_PATH
+      - name: Build V
+        run: |
+          dir
+          echo %MY_V_PATH%
+          cd %MY_V_PATH%
+          .\make.bat -tcc
+      - name: v doctor
+        run: |
+          cd %MY_V_PATH%
+          ./v doctor
+      - name: v test-self
+        run: |
+          cd %MY_V_PATH%
+          ./v test-self
+
+  space-paths-linux:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 30
+    env:
+      MY_V_PATH: '"你好 my $path, @с интервали"'
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          path: $MY_V_PATH
+      - name: Build V
+        run: |
+          cd $MY_V_PATH
+          make
+      - name: v doctor
+        run: |
+          cd $MY_V_PATH
+          ./v doctor
+      - name: v test-self
+        run: |
+          cd $MY_V_PATH
+          ./v test-self
