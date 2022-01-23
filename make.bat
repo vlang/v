@@ -12,8 +12,8 @@ set target=build
 
 REM TCC variables
 set "tcc_url=https://github.com/vlang/tccbin"
-set "tcc_dir=%~dp0thirdparty\tcc"
-set "tcc_exe=%~dp0thirdparty\tcc\tcc.exe"
+set "tcc_dir=thirdparty\tcc"
+set "tcc_exe=thirdparty\tcc\tcc.exe"
 if "%PROCESSOR_ARCHITECTURE%" == "x86" ( set "tcc_branch=thirdparty-windows-i386" ) else ( set "tcc_branch=thirdparty-windows-amd64" )
 if "%~1" == "-tcc32" set "tcc_branch=thirdparty-windows-i386"
 
@@ -118,7 +118,7 @@ REM By default, use tcc, since we have it prebuilt:
 :tcc_strap
 :tcc32_strap
 echo  ^> Attempting to build v_win.c with TCC
-"!tcc_exe!" -Ithirdparty/stdatomic/win -bt10 -g -w -o v.exe vc\v_win.c -ladvapi32
+"!tcc_exe!" -Ithirdparty\stdatomic\win -bt10 -g -w -o v.exe vc\v_win.c -ladvapi32
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 
 echo  ^> Compiling with .\v.exe self
@@ -219,11 +219,6 @@ pushd %tcc_dir% && (
     popd
 ) || call :bootstrap_tcc
 
-for /f "usebackq delims=" %%i in (`dir "%tcc_dir%" /b /a /s tcc.exe`) do (
-    set "attrib=%%~ai"
-    set "dattrib=%attrib:~0,1%"
-    if /I not "%dattrib%" == "d" set "tcc_exe=%%~sfi"
-)
 if [!tcc_exe!] == [] echo  ^> TCC not found, even after cloning& goto :error
 echo.
 exit /b 0
