@@ -285,16 +285,16 @@ jobs:
           path: ${{env.MY_V_PATH}}
       - name: Build V
         run: |
-          echo "${{env.MY_V_PATH}}"
+          echo '${{env.MY_V_PATH}}'
           dir
-          cd "${{env.MY_V_PATH}}"
+          cd '${{env.MY_V_PATH}}'
           dir
           .\make.bat -tcc
       - name: v doctor
         run: |
-          cd "${{env.MY_V_PATH}}"
+          cd '${{env.MY_V_PATH}}'
           ./v doctor
       - name: v test-self
         run: |
-          cd "${{env.MY_V_PATH}}"
+          cd '${{env.MY_V_PATH}}'
           ./v test-self
