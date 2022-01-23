@@ -1146,6 +1146,52 @@ pub fn (ctx &Context) draw_convex_poly(points []f32, c gx.Color) {
 	sgl.end()
 }
 
+
+[deprecated: 'use draw_ellipse_filled() instead']
+pub fn (ctx &Context) draw_ellipse(x f32, y f32, rw f32, rh f32, c gx.Color) {
+	ctx.draw_ellipse_filled(x, y, rw, rh, c)
+}
+
+// draw_ellipse_filled draws an opaque elipse, with a center at x,y , filled with the color `c`
+pub fn (ctx &Context) draw_ellipse_filled(x f32, y f32, rw f32, rh f32, c gx.Color) {
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
+
+	sgl.c4b(c.r, c.g, c.b, c.a)
+	sgl.begin_triangle_strip()
+	for i := 0; i < 360; i += 10 {
+		sgl.v2f(x, y)
+		sgl.v2f(x + math.sinf(f32(math.radians(i))) * rw, y +
+			math.cosf(f32(math.radians(i))) * rh)
+		sgl.v2f(x + math.sinf(f32(math.radians(i + 10))) * rw, y +
+			math.cosf(f32(math.radians(i + 10))) * rh)
+	}
+	sgl.end()
+}
+
+[deprecated: 'use draw_ellipse_empty() instead']
+pub fn (ctx &Context) draw_empty_ellipse(x f32, y f32, rw f32, rh f32, c gx.Color) {
+	ctx.draw_ellipse_empty(x, y, rw, rh, c)
+}
+
+// draw_ellipse_empty draws the outline of an ellipse, with a center at x,y
+pub fn (ctx &Context) draw_ellipse_empty(x f32, y f32, rw f32, rh f32, c gx.Color) {
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
+
+	sgl.c4b(c.r, c.g, c.b, c.a)
+	sgl.begin_line_strip()
+	for i := 0; i < 360; i += 10 {
+		sgl.v2f(x + math.sinf(f32(math.radians(i))) * rw, y +
+			math.cosf(f32(math.radians(i))) * rh)
+		sgl.v2f(x + math.sinf(f32(math.radians(i + 10))) * rw, y +
+			math.cosf(f32(math.radians(i + 10))) * rh)
+	}
+	sgl.end()
+}
+
 // draw_empty_poly - draws the borders of a polygon, given an array of points, and a color.
 // Note that the points must be given in clockwise order.
 [deprecated: 'use draw_poly_empty() instead']
@@ -1246,47 +1292,3 @@ pub fn dpi_scale() f32 {
 	return s
 }
 
-[deprecated: 'use draw_ellipse_filled() instead']
-pub fn (ctx &Context) draw_ellipse(x f32, y f32, rw f32, rh f32, c gx.Color) {
-	ctx.draw_ellipse_filled(x, y, rw, rh, c)
-}
-
-// draw_ellipse_filled draws an opaque elipse, with a center at x,y , filled with the color `c`
-pub fn (ctx &Context) draw_ellipse_filled(x f32, y f32, rw f32, rh f32, c gx.Color) {
-	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
-	}
-
-	sgl.c4b(c.r, c.g, c.b, c.a)
-	sgl.begin_triangle_strip()
-	for i := 0; i < 360; i += 10 {
-		sgl.v2f(x, y)
-		sgl.v2f(x + math.sinf(f32(math.radians(i))) * rw, y +
-			math.cosf(f32(math.radians(i))) * rh)
-		sgl.v2f(x + math.sinf(f32(math.radians(i + 10))) * rw, y +
-			math.cosf(f32(math.radians(i + 10))) * rh)
-	}
-	sgl.end()
-}
-
-[deprecated: 'use draw_ellipse_empty() instead']
-pub fn (ctx &Context) draw_empty_ellipse(x f32, y f32, rw f32, rh f32, c gx.Color) {
-	ctx.draw_ellipse_empty(x, y, rw, rh, c)
-}
-
-// draw_ellipse_empty draws the outline of an ellipse, with a center at x,y
-pub fn (ctx &Context) draw_ellipse_empty(x f32, y f32, rw f32, rh f32, c gx.Color) {
-	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
-	}
-
-	sgl.c4b(c.r, c.g, c.b, c.a)
-	sgl.begin_line_strip()
-	for i := 0; i < 360; i += 10 {
-		sgl.v2f(x + math.sinf(f32(math.radians(i))) * rw, y +
-			math.cosf(f32(math.radians(i))) * rh)
-		sgl.v2f(x + math.sinf(f32(math.radians(i + 10))) * rw, y +
-			math.cosf(f32(math.radians(i + 10))) * rh)
-	}
-	sgl.end()
-}
