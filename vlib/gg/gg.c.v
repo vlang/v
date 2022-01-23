@@ -741,18 +741,18 @@ pub fn (ctx &Context) draw_circle_with_segments(x f32, y f32, r f32, segments in
 
 // Draws a filled circle slice/pie.
 [deprecated: 'use draw_slice_filled() instead']
-pub fn (ctx &Context) draw_slice(x f32, y f32, r f32, start_angle f32, arc_angle f32, segments int, c gx.Color) {
-	ctx.draw_slice_filled(x, y, r, start_angle, arc_angle, segments, c)
+pub fn (ctx &Context) draw_slice(x f32, y f32, r f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+	ctx.draw_slice_filled(x, y, r, start_angle, end_angle, segments, c)
 }
 
-pub fn (ctx &Context) draw_slice_filled(x f32, y f32, r f32, start_angle f32, arc_angle f32, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_slice_filled(x f32, y f32, r f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 	nx := x * ctx.scale
 	ny := y * ctx.scale
-	theta := f32(arc_angle / f32(segments))
+	theta := f32(end_angle / f32(segments))
 	tan_factor := math.tanf(theta)
 	rad_factor := math.cosf(theta)
 	mut xx := r * math.cosf(start_angle)
@@ -773,17 +773,17 @@ pub fn (ctx &Context) draw_slice_filled(x f32, y f32, r f32, start_angle f32, ar
 
 // Draws the outline of a circle slice/pie.
 [deprecated: 'use draw_slice_empty() instead']
-pub fn (ctx &Context) draw_empty_slice(x f32, y f32, r f32, start_angle f32, arc_angle f32, segments int, c gx.Color) {
-	ctx.draw_slice_empty(x, y, r, start_angle, arc_angle, segments, c)
+pub fn (ctx &Context) draw_empty_slice(x f32, y f32, r f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+	ctx.draw_slice_empty(x, y, r, start_angle, end_angle, segments, c)
 }
 
 // TODO: Add inner angle to empty shape
-pub fn (ctx &Context) draw_slice_empty(x f32, y f32, r f32, start_angle f32, arc_angle f32, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_slice_empty(x f32, y f32, r f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
-	theta := f32(arc_angle / f32(segments))
+	theta := f32(end_angle / f32(segments))
 	tan_factor := math.tanf(theta)
 	rad_factor := math.cosf(theta)
 	nx := x * ctx.scale
