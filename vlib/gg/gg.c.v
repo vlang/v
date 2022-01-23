@@ -692,6 +692,31 @@ pub fn (ctx &Context) draw_circle_filled(x f32, y f32, r f32, c gx.Color) {
 	ctx.draw_circle_with_segments(x, y, r, 10, c)
 }
 
+pub fn (ctx &Context) draw_circle_empty(x f32, y f32, r f32, c gx.Color) {
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
+	nx := x * ctx.scale
+	ny := y * ctx.scale
+	nr := r * ctx.scale
+	mut theta := f32(0)
+	mut xx := f32(0)
+	mut yy := f32(0)
+	
+	segments := 30
+	
+	sgl.c4b(c.r, c.g, c.b, c.a)
+	sgl.begin_line_strip()
+	for i := 0; i < segments + 1; i++ {
+		theta = 2.0 * f32(math.pi) * f32(i) / f32(segments)
+		xx = nr * math.cosf(theta)
+		yy = nr * math.sinf(theta)
+		sgl.v2f(xx + nx, yy + ny)
+		//sgl.v2f(nx, ny)
+	}
+	sgl.end()
+}
+
 // Draws a circle with a specific number of segments (affects how smooth/round the circle is)
 pub fn (ctx &Context) draw_circle_with_segments(x f32, y f32, r f32, segments int, c gx.Color) {
 	if c.a != 255 {
