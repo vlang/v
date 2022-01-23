@@ -702,9 +702,9 @@ pub fn (ctx &Context) draw_circle_empty(x f32, y f32, r f32, c gx.Color) {
 	mut theta := f32(0)
 	mut xx := f32(0)
 	mut yy := f32(0)
-	
+
 	segments := 30
-	
+
 	sgl.c4b(c.r, c.g, c.b, c.a)
 	sgl.begin_line_strip()
 	for i := 0; i < segments + 1; i++ {
@@ -917,10 +917,11 @@ pub fn (ctx &Context) draw_arc_filled(x f32, y f32, radius f32, thickness f32, s
 	sgl.c4b(c.r, c.g, c.b, c.a)
 	for _ in 0 .. segments {
 		sgl.v2f(x + f32(math.sin(angle)) * radius, y + f32(math.cos(angle) * radius))
-		sgl.v2f(x + f32(math.sin(angle)) * (radius + thickness), y + f32(math.cos(angle) * (radius + thickness)))
+		sgl.v2f(x + f32(math.sin(angle)) * (radius + thickness), y + f32(math.cos(angle) * (radius +
+			thickness)))
 
-		sgl.v2f(x + f32(math.sin(angle + step_length)) * (radius + thickness), y + f32(math.cos(angle +
-			step_length) * (radius + thickness)))
+		sgl.v2f(x + f32(math.sin(angle + step_length)) * (radius + thickness), y +
+			f32(math.cos(angle + step_length) * (radius + thickness)))
 		sgl.v2f(x + f32(math.sin(angle + step_length)) * radius, y + f32(math.cos(angle +
 			step_length) * radius))
 
@@ -960,9 +961,10 @@ pub fn (ctx &Context) draw_arc_empty(x f32, y f32, radius f32, thickness f32, st
 
 	// Outer circle
 	for _ in 0 .. segments {
-		sgl.v2f(x + f32(math.sin(angle)) * (radius + thickness), y + f32(math.cos(angle) * (radius + thickness)))
-		sgl.v2f(x + f32(math.sin(angle + step_length)) * (radius + thickness), y + f32(math.cos(angle +
-			step_length) * (radius + thickness)))
+		sgl.v2f(x + f32(math.sin(angle)) * (radius + thickness), y + f32(math.cos(angle) * (radius +
+			thickness)))
+		sgl.v2f(x + f32(math.sin(angle + step_length)) * (radius + thickness), y +
+			f32(math.cos(angle + step_length) * (radius + thickness)))
 
 		angle += step_length
 	}
@@ -978,7 +980,8 @@ pub fn (ctx &Context) draw_arc_empty(x f32, y f32, radius f32, thickness f32, st
 
 	// Closing end
 	sgl.v2f(x + f32(math.sin(angle)) * radius, y + f32(math.cos(angle) * radius))
-	sgl.v2f(x + f32(math.sin(angle)) * (radius + thickness), y + f32(math.cos(angle) * (radius + thickness)))
+	sgl.v2f(x + f32(math.sin(angle)) * (radius + thickness), y + f32(math.cos(angle) * (radius +
+		thickness)))
 	sgl.end()
 }
 
@@ -1146,7 +1149,6 @@ pub fn (ctx &Context) draw_convex_poly(points []f32, c gx.Color) {
 	sgl.end()
 }
 
-
 [deprecated: 'use draw_ellipse_filled() instead']
 pub fn (ctx &Context) draw_ellipse(x f32, y f32, rw f32, rh f32, c gx.Color) {
 	ctx.draw_ellipse_filled(x, y, rw, rh, c)
@@ -1162,10 +1164,9 @@ pub fn (ctx &Context) draw_ellipse_filled(x f32, y f32, rw f32, rh f32, c gx.Col
 	sgl.begin_triangle_strip()
 	for i := 0; i < 360; i += 10 {
 		sgl.v2f(x, y)
-		sgl.v2f(x + math.sinf(f32(math.radians(i))) * rw, y +
-			math.cosf(f32(math.radians(i))) * rh)
-		sgl.v2f(x + math.sinf(f32(math.radians(i + 10))) * rw, y +
-			math.cosf(f32(math.radians(i + 10))) * rh)
+		sgl.v2f(x + math.sinf(f32(math.radians(i))) * rw, y + math.cosf(f32(math.radians(i))) * rh)
+		sgl.v2f(x + math.sinf(f32(math.radians(i + 10))) * rw, y + math.cosf(f32(math.radians(i +
+			10))) * rh)
 	}
 	sgl.end()
 }
@@ -1184,10 +1185,9 @@ pub fn (ctx &Context) draw_ellipse_empty(x f32, y f32, rw f32, rh f32, c gx.Colo
 	sgl.c4b(c.r, c.g, c.b, c.a)
 	sgl.begin_line_strip()
 	for i := 0; i < 360; i += 10 {
-		sgl.v2f(x + math.sinf(f32(math.radians(i))) * rw, y +
-			math.cosf(f32(math.radians(i))) * rh)
-		sgl.v2f(x + math.sinf(f32(math.radians(i + 10))) * rw, y +
-			math.cosf(f32(math.radians(i + 10))) * rh)
+		sgl.v2f(x + math.sinf(f32(math.radians(i))) * rw, y + math.cosf(f32(math.radians(i))) * rh)
+		sgl.v2f(x + math.sinf(f32(math.radians(i + 10))) * rw, y + math.cosf(f32(math.radians(i +
+			10))) * rh)
 	}
 	sgl.end()
 }
@@ -1291,4 +1291,3 @@ pub fn dpi_scale() f32 {
 	}
 	return s
 }
-
