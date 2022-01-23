@@ -69,7 +69,7 @@ jobs:
     timeout-minutes: 30
     env:
       MY_V_PATH: '你好 my $path, @с интервали'
-	  VFLAGS: -cc gcc
+      VFLAGS: -cc gcc
     steps:
       - uses: actions/checkout@v2
         with:
