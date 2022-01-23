@@ -791,6 +791,7 @@ pub fn (ctx &Context) draw_slice_empty(x f32, y f32, r f32, start_angle f32, end
 	mut xx := r * math.cosf(start_angle)
 	mut yy := r * math.sinf(start_angle)
 	sgl.begin_line_strip()
+	sgl.v2f(nx, ny)
 	for i := 0; i < segments + 1; i++ {
 		sgl.v2f(xx + nx, yy + ny)
 		tx := -yy
@@ -800,6 +801,7 @@ pub fn (ctx &Context) draw_slice_empty(x f32, y f32, r f32, start_angle f32, end
 		xx *= rad_factor
 		yy *= rad_factor
 	}
+	sgl.v2f(nx, ny)
 	sgl.end()
 }
 
