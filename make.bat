@@ -1,4 +1,4 @@
-@echo off
+@echo on
 setlocal EnableDelayedExpansion EnableExtensions
 
 REM Option flags
@@ -318,7 +318,7 @@ exit /b 0
 :cloning_vc
 echo Cloning vc...
 echo  ^> Cloning from remote !vc_url!
-git clone --depth 1 --quiet %vc_url%
+git clone --depth 1 --quiet "%vc_url%"
 exit /b 0
 
 :eof
