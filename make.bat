@@ -120,7 +120,7 @@ REM By default, use tcc, since we have it prebuilt:
 echo  ^> Attempting to build v_win.c with "!tcc_exe!"
 "!tcc_exe!" -vv
 "!tcc_exe!" --version
-"!tcc_exe!" -Ithirdparty/tcc/include -Ithirdparty/tcc/include/winapi -Ithirdparty/stdatomic/win -bt10 -g -w -o v.exe vc\v_win.c -ladvapi32
+"!tcc_exe!" -Bthirdparty/tcc -Ithirdparty/stdatomic/win -bt10 -g -w -o v.exe vc\v_win.c -ladvapi32
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 
 echo  ^> Compiling with .\v.exe self
