@@ -330,10 +330,16 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 					continue
 				}
 				if field.has_default_expr {
-					if field.default_expr is ast.StructInit && field.default_expr_typ == 0 {
-						idx := c.table.find_type_idx(field.default_expr.typ_str)
-						if idx != 0 {
-							info.fields[i].default_expr_typ = ast.new_type(idx)
+					if field.default_expr_typ == 0 {
+						if field.default_expr is ast.StructInit {
+							idx := c.table.find_type_idx(field.default_expr.typ_str)
+							if idx != 0 {
+								info.fields[i].default_expr_typ = ast.new_type(idx)
+							}
+						} else {
+							if const_field := c.table.global_scope.find_const('$field.default_expr') {
+								info.fields[i].default_expr_typ = const_field.typ
+							}
 						}
 					}
 					continue
