@@ -1,0 +1,65 @@
+name: Path Testing CI
+
+on:
+  push:
+    paths-ignore:
+      - "**.md"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+
+concurrency:
+  group: build-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+
+  space-paths-linux:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 30
+    env:
+      MY_V_PATH: '你好 my $path, @с интервали'
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          path: ${{env.MY_V_PATH}}
+      - name: Build V
+        run: |
+          echo '${{env.MY_V_PATH}}'
+          ls -la
+          cd '${{env.MY_V_PATH}}'
+          ls -la
+          make
+      - name: v doctor
+        run: |
+          cd '${{env.MY_V_PATH}}'
+          ./v doctor
+      - name: v tests
+        run: |
+          cd '${{env.MY_V_PATH}}'
+          ./v test vlib/builtin vlib/os
+
+  space-paths-windows:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    env:
+      MY_V_PATH: '你好 my $path, @с интервали'
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          path: ${{env.MY_V_PATH}}
+      - name: Build V
+        run: |
+          echo '${{env.MY_V_PATH}}'
+          dir
+          cd '${{env.MY_V_PATH}}'
+          dir
+          .\make.bat -tcc
+      - name: v doctor
+        run: |
+          cd '${{env.MY_V_PATH}}'
+          ./v doctor
+      - name: v tests
+        run: |
+          cd '${{env.MY_V_PATH}}'
+          ./v test vlib/builtin vlib/os
