@@ -123,12 +123,14 @@ echo  ^> Attempting to build v_win.c with "!tcc_exe!"
 "!tcc_exe!" -Bthirdparty/tcc -Ithirdparty/stdatomic/win -bt10 -g -w -o v.exe vc\v_win.c -ladvapi32
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 
-echo  ^> Compiling with .\v.exe self
-v.exe -keepc -g -showcc -cc "!tcc_exe!" self
+v.exe version
+echo  ^> Compiling .\v.exe with itself
+v.exe -keepc -g -showcc -cc "!tcc_exe!" -cflags -Bthirdparty/tcc -o v2.exe cmd/v
 if %ERRORLEVEL% NEQ 0 goto :clang_strap
+del v.exe
+move v2.exe v.exe
+v.exe version
 goto :success
-
-
 
 :clang_strap
 where /q clang
@@ -146,9 +148,11 @@ if %ERRORLEVEL% NEQ 0 (
 	goto :compile_error
 )
 
-echo  ^> Compiling with .\v.exe self
-v.exe -keepc -g -showcc -cc clang self
+echo  ^> Compiling .\v.exe with itself
+v.exe -keepc -g -showcc -cc clang -o v2.exe cmd/v
 if %ERRORLEVEL% NEQ 0 goto :compile_error
+del v.exe
+move v2.exe v.exe
 goto :success
 
 :gcc_strap
@@ -167,9 +171,11 @@ if %ERRORLEVEL% NEQ 0 (
 	goto :compile_error
 )
 
-echo  ^> Compiling with .\v.exe self
-v.exe -keepc -g -showcc -cc gcc self
+echo  ^> Compiling .\v.exe with itself
+v.exe -keepc -g -showcc -cc gcc -o v2.exe cmd/v
 if %ERRORLEVEL% NEQ 0 goto :compile_error
+del v.exe
+move v2.exe v.exe
 goto :success
 
 :msvc_strap
@@ -207,10 +213,12 @@ if %ERRORLEVEL% NEQ 0 (
     goto :compile_error
 )
 
-echo  ^> Compiling with .\v.exe self
-v.exe -keepc -g -showcc -cc msvc self
+echo  ^> Compiling .\v.exe with itself
+v.exe -keepc -g -showcc -cc msvc -o v2.exe cmd/v
 del %ObjFile%
 if %ERRORLEVEL% NEQ 0 goto :compile_error
+del v.exe
+move v2.exe v.exe
 goto :success
 
 :download_tcc
