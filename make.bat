@@ -125,6 +125,9 @@ if %ERRORLEVEL% NEQ 0 goto :compile_error
 
 v.exe version
 echo  ^> Compiling .\v.exe with itself
+v.exe -o local_v.c cmd/v
+"!tcc_exe!" -Bthirdparty/tcc -Ithirdparty/stdatomic/win -bt10 -g -w -o v.exe local_v.c -ladvapi32
+v.exe version
 v.exe -keepc -g -showcc -cc "!tcc_exe!" -cflags -Bthirdparty/tcc -o v2.exe cmd/v
 if %ERRORLEVEL% NEQ 0 goto :clang_strap
 del v.exe
