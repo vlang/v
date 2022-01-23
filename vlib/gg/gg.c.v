@@ -914,20 +914,22 @@ pub fn (ctx &Context) draw_arc_filled(x f32, y f32, inner_radius f32, thickness 
 		ctx.draw_slice_filled(x, y, int(thickness), a1, a2, segments, c)
 	}
 
+	outer_radius := inner_radius + thickness
 	mut step_length := (a2 - a1) / f32(segments)
 	mut angle := a1
 
 	sgl.begin_quads()
 	sgl.c4b(c.r, c.g, c.b, c.a)
 	for _ in 0 .. segments {
-		sgl.v2f(x + f32(math.sin(angle)) * inner_radius, y + f32(math.cos(angle) * inner_radius))
-		sgl.v2f(x + f32(math.sin(angle)) * (inner_radius + thickness), y +
-			f32(math.cos(angle) * (inner_radius + thickness)))
+		msa := f32(math.sin(angle))
+		mca := f32(math.cos(angle))
+		sgl.v2f(x + msa * inner_radius, y + mca * inner_radius)
+		sgl.v2f(x + msa * outer_radius, y + mca * outer_radius)
 
-		sgl.v2f(x + f32(math.sin(angle + step_length)) * (inner_radius + thickness), y +
-			f32(math.cos(angle + step_length) * (inner_radius + thickness)))
-		sgl.v2f(x + f32(math.sin(angle + step_length)) * inner_radius, y + f32(math.cos(angle +
-			step_length) * inner_radius))
+		ms := f32(math.sin(angle + step_length))
+		mc := f32(math.cos(angle + step_length))
+		sgl.v2f(x + ms * outer_radius, y + mc * outer_radius)
+		sgl.v2f(x + ms * inner_radius, y + mc * inner_radius)
 
 		angle += step_length
 	}
@@ -958,6 +960,7 @@ pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_radius f32, thickness f
 		return
 	}
 
+	outer_radius := inner_radius + thickness
 	mut step_length := (a2 - a1) / f32(segments)
 	mut angle := a1
 
@@ -966,27 +969,32 @@ pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_radius f32, thickness f
 
 	// Outer circle
 	for _ in 0 .. segments {
-		sgl.v2f(x + f32(math.sin(angle)) * (inner_radius + thickness), y +
-			f32(math.cos(angle) * (inner_radius + thickness)))
-		sgl.v2f(x + f32(math.sin(angle + step_length)) * (inner_radius + thickness), y +
-			f32(math.cos(angle + step_length) * (inner_radius + thickness)))
-
+		msa := f32(math.sin(angle))
+		mca := f32(math.cos(angle))
+		ms := f32(math.sin(angle + step_length))
+		mc := f32(math.cos(angle + step_length))
+		sgl.v2f(x + msa * outer_radius, y + mca * outer_radius)
+		sgl.v2f(x + ms * outer_radius, y + mc * outer_radius)
 		angle += step_length
 	}
 
 	// Inner circle
 	for _ in 0 .. segments {
-		sgl.v2f(x + f32(math.sin(angle)) * inner_radius, y + f32(math.cos(angle) * inner_radius))
-		sgl.v2f(x + f32(math.sin(angle - step_length)) * inner_radius, y +
-			f32(math.cos(angle - step_length) * inner_radius))
+		msa := f32(math.sin(angle))
+		mca := f32(math.cos(angle))
+		msb := f32(math.sin(angle - step_length))
+		mcb := f32(math.cos(angle - step_length))
+		sgl.v2f(x + msa * inner_radius, y + mca * inner_radius)
+		sgl.v2f(x + msb * inner_radius, y + mcb * inner_radius)
 
 		angle -= step_length
 	}
 
 	// Closing end
-	sgl.v2f(x + f32(math.sin(angle)) * inner_radius, y + f32(math.cos(angle) * inner_radius))
-	sgl.v2f(x + f32(math.sin(angle)) * (inner_radius + thickness), y +
-		f32(math.cos(angle) * (inner_radius + thickness)))
+	msa := f32(math.sin(angle))
+	mca := f32(math.cos(angle))
+	sgl.v2f(x + msa * inner_radius, y + mca * inner_radius)
+	sgl.v2f(x + msa * outer_radius, y + mca * outer_radius)
 	sgl.end()
 }
 
@@ -1090,8 +1098,9 @@ pub fn (ctx &Context) draw_rounded_rect_empty(x f32, y f32, w f32, h f32, radius
 	// left top
 	lx := nx + r
 	ly := ny + r
+	theta_coeff := 2 * f32(math.pi) / segments
 	for i in lt .. rt {
-		theta = 2 * f32(math.pi) * f32(i) / segments
+		theta = theta_coeff * f32(i)
 		xx = r * math.cosf(theta)
 		yy = r * math.sinf(theta)
 		sgl.v2f(xx + lx, yy + ly)
@@ -1100,7 +1109,7 @@ pub fn (ctx &Context) draw_rounded_rect_empty(x f32, y f32, w f32, h f32, radius
 	mut rx := nx + width - r
 	mut ry := ny + r
 	for i in rt .. int(segments) {
-		theta = 2 * f32(math.pi) * f32(i) / segments
+		theta = theta_coeff * f32(i)
 		xx = r * math.cosf(theta)
 		yy = r * math.sinf(theta)
 		sgl.v2f(xx + rx, yy + ry)
@@ -1109,7 +1118,7 @@ pub fn (ctx &Context) draw_rounded_rect_empty(x f32, y f32, w f32, h f32, radius
 	mut rbx := rx
 	mut rby := ny + height - r
 	for i in rb .. lb {
-		theta = 2 * f32(math.pi) * f32(i) / segments
+		theta = theta_coeff * f32(i)
 		xx = r * math.cosf(theta)
 		yy = r * math.sinf(theta)
 		sgl.v2f(xx + rbx, yy + rby)
@@ -1118,7 +1127,7 @@ pub fn (ctx &Context) draw_rounded_rect_empty(x f32, y f32, w f32, h f32, radius
 	mut lbx := lx
 	mut lby := ny + height - r
 	for i in lb .. lt {
-		theta = 2 * f32(math.pi) * f32(i) / segments
+		theta = theta_coeff * f32(i)
 		xx = r * math.cosf(theta)
 		yy = r * math.sinf(theta)
 		sgl.v2f(xx + lbx, yy + lby)
