@@ -178,6 +178,15 @@ fn C.strchr(s &char, c int) &char
 fn C.getchar() int
 
 [trusted]
+fn C.strdup(s &char) &char
+
+[trusted]
+fn C.strncasecmp(s &char, s2 &char, n int) int
+
+[trusted]
+fn C.strcasecmp(s &char, s2 &char) int
+
+[trusted]
 fn C.strerror(int) &char
 
 fn C.snprintf(str &char, size usize, format &char, opt ...voidptr) int
