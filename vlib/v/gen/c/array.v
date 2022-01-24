@@ -710,6 +710,9 @@ fn (mut g Gen) gen_array_contains(typ ast.Type, left ast.Expr, right ast.Expr) {
 		g.write('->val')
 	}
 	g.write(', ')
+	if right.is_auto_deref_var() {
+		g.write('*')
+	}
 	g.expr(right)
 	g.write(')')
 }
