@@ -20,7 +20,7 @@ fn (mut g Gen) gen_jsons2() {
 fn gen_js2_get(styp string, tmp string, name string, mut dec strings.Builder, is_required bool) {
 	dec.writeln('\tOption_x__json2__Any jsonroot_$tmp = x__json2__Any_get(root,_SLIT("$name"));')
 	if is_required {
-		dec.writeln('\tif(jsonroot_$tmp.state != 0) {')
+		dec.writeln('\tif(jsonroot_${tmp}.state != 0) {')
 		dec.writeln('\t\treturn (Option_$styp){ .state = 2, .err = _v_error(_SLIT("expected field \'$name\' is missing")), .data = {0} };')
 		dec.writeln('\t}')
 	}
