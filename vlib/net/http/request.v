@@ -33,7 +33,7 @@ pub mut:
 	cert                   string
 	cert_key               string
 	in_memory_verification bool // if true, verify, cert, and cert_key are read from memory, not from a file
-	allow_redirect bool = true //whether to allow redirect
+	allow_redirect         bool = true // whether to allow redirect
 }
 
 fn (mut req Request) free() {
