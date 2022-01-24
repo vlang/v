@@ -2734,7 +2734,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 
 	if to_sym.kind == .rune && from_sym.is_string() {
 		snexpr := node.expr.str()
-		c.error('cannot cast `$from_sym.name` to rune, use `${snexpr}.runes()` instead.', node.pos)
+		c.error('cannot cast `$from_sym.name` to rune, use `${snexpr}.runes()` instead.',
+			node.pos)
 	}
 
 	if to_type == ast.string_type {
