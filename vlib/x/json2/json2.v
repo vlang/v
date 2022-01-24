@@ -24,6 +24,10 @@ pub fn fast_raw_decode(src string) ?Any {
 	return p.decode()
 }
 
+pub fn raw_encode(src Any) string {
+	return src.json_str()
+}
+
 // decode is a generic function that decodes a JSON string into the target type.
 pub fn decode<T>(src string) ?T {
 	res := raw_decode(src) ?
@@ -119,4 +123,190 @@ pub fn (f Any) bool() bool {
 		string { return f.bool() }
 		else { return false }
 	}
+}
+
+pub fn (f Any) get(name string) ?Any {
+	match f {
+		map[string]Any {
+			return f[name] or { return none }
+		}
+		[]Any {
+			for i in 0 .. f.len {
+				if i.str() == name {
+					return f[i]
+				}
+			}
+			return none
+		}
+		else {
+			if name == '0' {
+				return f
+			}
+			return none
+		}
+	}
+}
+
+fn decode_int(root Any) int {
+	if root is Null {
+		return 0
+	}
+	return root.int()
+}
+
+fn decode_i8(root Any) i8 {
+	if root is Null {
+		return i8(0)
+	}
+	return i8(root.int())
+}
+
+fn decode_i16(root Any) i16 {
+	if root is Null {
+		return i16(0)
+	}
+	return i16(root.int())
+}
+
+fn decode_i64(root Any) i64 {
+	if root is Null {
+		return i64(0)
+	}
+	return i64(root.f64()) // i64 is double in C
+}
+
+fn decode_byte(root Any) byte {
+	if root is Null {
+		return byte(0)
+	}
+	return byte(root.int())
+}
+
+fn decode_u8(root Any) u8 {
+	if root is Null {
+		return byte(0)
+	}
+	return byte(root.int())
+}
+
+fn decode_u16(root Any) u16 {
+	if root is Null {
+		return u16(0)
+	}
+	return u16(root.int())
+}
+
+fn decode_u32(root Any) u32 {
+	if root is Null {
+		return u32(0)
+	}
+	return u32(root.int())
+}
+
+fn decode_u64(root Any) u64 {
+	if root is Null {
+		return u64(0)
+	}
+	return u64(root.f64())
+}
+
+fn decode_f32(root Any) f32 {
+	if root is Null {
+		return f32(0)
+	}
+	return f32(root.f64())
+}
+
+fn decode_f64(root Any) f64 {
+	if root is Null {
+		return f64(0)
+	}
+	return root.f64()
+}
+
+fn decode_rune(root Any) rune {
+	if root is Null {
+		return rune(0)
+	}
+	if root !is string {
+		return rune(0)
+	}
+
+	return root.str().runes().first()
+}
+
+fn decode_string(root Any) string {
+	if root is Null {
+		return ''
+	}
+	if root !is string {
+		return ''
+	}
+	// println('decode string valuestring="$root.valuestring"')
+	// return tos(root.valuestring, _strlen(root.valuestring))
+	return root.str()
+}
+
+fn decode_bool(root Any) bool {
+	if root is Null {
+		return false
+	}
+	return root.bool()
+}
+
+// ///////////////////
+fn encode_int(val int) Any {
+	return Any(val)
+}
+
+fn encode_i8(val i8) Any {
+	return Any(int(val))
+}
+
+fn encode_i16(val i16) Any {
+	return Any(int(val))
+}
+
+fn encode_i64(val i64) Any {
+	return Any(val)
+}
+
+fn encode_byte(val byte) Any {
+	return Any(int(val))
+}
+
+fn encode_u8(val u8) Any {
+	return Any(int(val))
+}
+
+fn encode_u16(val u16) Any {
+	return Any(int(val))
+}
+
+fn encode_u32(val u32) Any {
+	return Any(u64(val))
+}
+
+fn encode_u64(val u64) Any {
+	return Any(val)
+}
+
+fn encode_f32(val f32) Any {
+	return Any(val)
+}
+
+fn encode_f64(val f64) Any {
+	return Any(val)
+}
+
+fn encode_bool(val bool) Any {
+	return Any(val)
+}
+
+fn encode_rune(val rune) Any {
+	return Any(val.str())
+}
+
+fn encode_string(val string) Any {
+	return Any(val)
 }
