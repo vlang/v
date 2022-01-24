@@ -1369,6 +1369,13 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				node.concrete_list_pos)
 		}
 		if method.generic_names.len > 0 {
+			if !left_type.has_flag(.generic) {
+				if left_sym.info is ast.Struct {
+					if method.generic_names.len == left_sym.info.concrete_types.len {
+						node.concrete_types = left_sym.info.concrete_types
+					}
+				}
+			}
 			return node.return_type
 		}
 		return method.return_type
