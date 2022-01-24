@@ -33,6 +33,7 @@ pub mut:
 	cert                   string
 	cert_key               string
 	in_memory_verification bool // if true, verify, cert, and cert_key are read from memory, not from a file
+	allow_redirect bool = true //whether to allow redirect
 }
 
 fn (mut req Request) free() {
@@ -63,6 +64,9 @@ pub fn (req &Request) do() ?Response {
 		}
 		qresp := req.method_and_url_to_response(req.method, rurl) ?
 		resp = qresp
+		if !req.allow_redirect {
+			break
+		}
 		if resp.status() !in [.moved_permanently, .found, .see_other, .temporary_redirect,
 			.permanent_redirect] {
 			break
