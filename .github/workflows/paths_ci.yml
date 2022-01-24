@@ -9,7 +9,7 @@ on:
       - "**.md"
 
 concurrency:
-  group: build-${{ github.event.pull_request.number || github.sha }}
+  group: build-paths-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -76,7 +76,8 @@ jobs:
       ## tcc has a problem interpreting paths with non latin letters in them,
       ## by default, but that can be solved with passing -Bthirdparty/tcc
       ## but after that V fails self building with:
-      ####### builder error: cannot write to folder D:\a\v\v\你好 my $path, @с интервали: No such file or directory
+      ####### builder error: cannot write to folder
+      ####### D:\a\v\v\你好 my $path, @с интервали: No such file or directory
       ## and that happens even for gcc builds, not just tcc ones
 
     steps:
