@@ -65,7 +65,7 @@ fn (mut g Gen) gen_embed_file_init(mut node ast.ComptimeCall) {
 		node.embed_file.len = file_bytes.len
 	}
 	ef_idx := node.embed_file.hash()
-	g.write('_v_embed_file_metadata($ef_idx)')
+	g.write('_v_embed_file_metadata( ${ef_idx}U )')
 	g.file.embedded_files << node.embed_file
 	$if trace_embed_file ? {
 		eprintln('> gen_embed_file_init => _v_embed_file_metadata(${ef_idx:-25}) | ${node.embed_file.apath:-50} | compression: $node.embed_file.compression_type | len: $node.embed_file.len')
@@ -82,7 +82,7 @@ fn (mut g Gen) gen_embedded_metadata() {
 	g.embedded_data.writeln('\tswitch(ef_hash) {')
 	for emfile in g.embedded_files {
 		ef_idx := emfile.hash()
-		g.embedded_data.writeln('\t\tcase $ef_idx: {')
+		g.embedded_data.writeln('\t\tcase ${ef_idx}U: {')
 		g.embedded_data.writeln('\t\t\tres.path = ${ctoslit(emfile.rpath)};')
 		if g.embed_file_is_prod_mode() {
 			// apath is not needed in production and may leak information
