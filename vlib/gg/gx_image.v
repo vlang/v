@@ -1,4 +1,4 @@
-module gx
+module gg
 
 pub struct Image {
 mut:

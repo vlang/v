@@ -1,4 +1,4 @@
-module gx
+module gg
 
 // TODO: remove these, and use the enum everywhere
 pub const (
