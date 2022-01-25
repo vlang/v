@@ -28,7 +28,7 @@ fn help_cmd() Command {
 	}
 }
 
-fn print_help_for_command(help_cmd Command) ? {
+pub fn print_help_for_command(help_cmd Command) ? {
 	if help_cmd.args.len > 0 {
 		mut cmd := help_cmd.parent
 		for arg in help_cmd.args {
@@ -54,7 +54,7 @@ fn print_help_for_command(help_cmd Command) ? {
 	}
 }
 
-fn (cmd Command) help_message() string {
+pub fn (cmd Command) help_message() string {
 	mut help := ''
 	help += 'Usage: $cmd.full_name()'
 	if cmd.flags.len > 0 {
