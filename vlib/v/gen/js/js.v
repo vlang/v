@@ -2833,18 +2833,18 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 						g.expr(branch.cond.expr)
 						g.writeln(', ${var_name}.state == 0) {')
 					}
-					if short_opt || branch.cond.var_name != '_' {
+					if short_opt || branch.cond.vars[0].name != '_' {
 						if short_opt {
-							cond_var_name := if branch.cond.var_name == '_' {
+							cond_var_name := if branch.cond.vars[0].name == '_' {
 								'_dummy_${g.tmp_count + 1}'
 							} else {
-								branch.cond.var_name
+								branch.cond.vars[0].name
 							}
 							g.write('\tlet $cond_var_name = ')
 							g.expr(branch.cond.expr)
 							g.writeln(';')
 						} else {
-							g.writeln('\tlet $branch.cond.var_name = ${var_name}.data;')
+							g.writeln('\tlet $branch.cond.vars[0].name = ${var_name}.data;')
 						}
 					}
 				}

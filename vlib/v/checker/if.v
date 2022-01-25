@@ -206,6 +206,20 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				st.check_c_expr() or { c.error('`if` expression branch has $err.msg', st.pos) }
 			}
 		}
+		if mut branch.cond is ast.IfGuardExpr {
+			sym := c.table.sym(branch.cond.expr_type)
+			if sym.kind == .multi_return {
+				mr_info := sym.info as ast.MultiReturn
+				if branch.cond.vars.len != mr_info.types.len {
+					c.error('if guard expects $mr_info.types.len variables, but got $branch.cond.vars.len',
+						branch.pos)
+				} else {
+					for vi, var in branch.cond.vars {
+						branch.scope.update_var_type(var.name, mr_info.types[vi])
+					}
+				}
+			}
+		}
 		// Also check for returns inside a comp.if's statements, even if its contents aren't parsed
 		if has_return := c.has_return(branch.stmts) {
 			if has_return {

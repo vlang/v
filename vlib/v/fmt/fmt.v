@@ -1889,10 +1889,16 @@ fn branch_is_single_line(b ast.IfBranch) bool {
 }
 
 pub fn (mut f Fmt) if_guard_expr(node ast.IfGuardExpr) {
-	if node.is_mut {
-		f.write('mut ')
+	for i, var in node.vars {
+		if var.is_mut {
+			f.write('mut ')
+		}
+		f.write(var.name)
+		if i != node.vars.len - 1 {
+			f.write(', ')
+		}
 	}
-	f.write(node.var_name + ' := ')
+	f.write(' := ')
 	f.expr(node.expr)
 }
 

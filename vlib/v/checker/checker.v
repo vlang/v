@@ -2962,7 +2962,19 @@ pub fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 						if mut obj.expr is ast.IfGuardExpr {
 							// new variable from if guard shouldn't have the optional flag for further use
 							// a temp variable will be generated which unwraps it
-							typ = obj.expr.expr_type.clear_flag(.optional)
+							sym := c.table.sym(obj.expr.expr_type)
+							if sym.kind == .multi_return {
+								mr_info := sym.info as ast.MultiReturn
+								if mr_info.types.len == obj.expr.vars.len {
+									for vi, var in obj.expr.vars {
+										if var.name == node.name {
+											typ = mr_info.types[vi]
+										}
+									}
+								}
+							} else {
+								typ = obj.expr.expr_type.clear_flag(.optional)
+							}
 						} else {
 							typ = c.expr(obj.expr)
 						}

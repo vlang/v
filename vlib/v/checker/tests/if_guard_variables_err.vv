@@ -1,0 +1,16 @@
+fn create() ?(int, string, bool) {
+	return 5, 'aa', true
+}
+
+fn main() {
+	if r1 := create() {
+		println(r1)
+	}
+
+	if r1, r2, r3, r4 := create() {
+		println(r1)
+		println(r2)
+		println(r3)
+		println(r4)
+	}
+}

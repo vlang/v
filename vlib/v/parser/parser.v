@@ -438,6 +438,27 @@ pub fn (p &Parser) peek_token(n int) token.Token {
 	return p.scanner.peek_token(n - 2)
 }
 
+// peek token in if guard `if x,y := opt()` after var_list `x,y`
+pub fn (p &Parser) peek_token_after_var_list() token.Token {
+	mut n := 0
+	mut tok := p.tok
+	for {
+		if tok.kind == .key_mut {
+			n += 2
+		} else {
+			n++
+		}
+		tok = p.scanner.peek_token(n - 2)
+		if tok.kind != .comma {
+			break
+		} else {
+			n++
+			tok = p.scanner.peek_token(n - 2)
+		}
+	}
+	return tok
+}
+
 pub fn (mut p Parser) open_scope() {
 	p.scope = &ast.Scope{
 		parent: p.scope
