@@ -174,22 +174,17 @@ fn C.toupper(c int) int
 [trusted]
 fn C.isspace(c int) int
 
-[trusted]
 fn C.strchr(s &char, c int) &char
 
 [trusted]
 fn C.getchar() int
 
-[trusted]
 fn C.strdup(s &char) &char
 
-[trusted]
 fn C.strncasecmp(s &char, s2 &char, n int) int
 
-[trusted]
 fn C.strcasecmp(s &char, s2 &char) int
 
-[trusted]
 fn C.strncmp(s &char, s2 &char, n int) int
 
 [trusted]
@@ -359,6 +354,7 @@ fn C.Sleep(dwMilliseconds u32)
 
 fn C.WSAStartup(u16, &voidptr) int
 
+[trusted]
 fn C.WSAGetLastError() int
 
 fn C.closesocket(int) int
@@ -371,6 +367,7 @@ fn C.vschannel_cleanup(&C.TlsContext)
 
 fn C.URLDownloadToFile(int, &u16, &u16, int, int)
 
+[trusted]
 fn C.GetLastError() u32
 
 fn C.CreateDirectory(&byte, int) bool
@@ -455,12 +452,14 @@ fn C.sem_timedwait(voidptr, voidptr) int
 fn C.sem_destroy(voidptr) int
 
 // MacOS semaphore functions
+[trusted]
 fn C.dispatch_semaphore_create(i64) voidptr
 
 fn C.dispatch_semaphore_signal(voidptr) i64
 
 fn C.dispatch_semaphore_wait(voidptr, u64) i64
 
+[trusted]
 fn C.dispatch_time(u64, i64) u64
 
 fn C.dispatch_release(voidptr)
