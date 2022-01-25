@@ -172,6 +172,9 @@ fn C.tolower(c int) int
 fn C.toupper(c int) int
 
 [trusted]
+fn C.isspace(c int) int
+
+[trusted]
 fn C.strchr(s &char, c int) &char
 
 [trusted]
@@ -185,6 +188,9 @@ fn C.strncasecmp(s &char, s2 &char, n int) int
 
 [trusted]
 fn C.strcasecmp(s &char, s2 &char) int
+
+[trusted]
+fn C.strncmp(s &char, s2 &char, n int) int
 
 [trusted]
 fn C.strerror(int) &char

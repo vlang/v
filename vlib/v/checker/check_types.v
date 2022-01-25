@@ -11,6 +11,8 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	if got == expected {
 		return true
 	}
+	got_is_ptr := got.is_ptr()
+	exp_is_ptr := expected.is_ptr()
 	if c.pref.translated {
 		if expected == ast.byteptr_type {
 			return true
@@ -40,9 +42,18 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 				return true
 			}
 		}
+		if expected_sym.kind == .enum_ && got_sym.is_number() {
+			// Allow enums as numbers
+			return true
+		}
+		if got_is_ptr && exp_is_ptr {
+			// deref_sym := c.table.sym(expected.deref()) // set_nr_muls(0))
+			if expected_sym.is_number() && got_sym.is_number() {
+				// Allow `&&u8` used as `&&int` etc
+				return true
+			}
+		}
 	}
-	got_is_ptr := got.is_ptr()
-	exp_is_ptr := expected.is_ptr()
 	if got_is_ptr && exp_is_ptr {
 		if got.nr_muls() != expected.nr_muls() {
 			return false
