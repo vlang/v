@@ -1613,9 +1613,17 @@ fn (t Tree) par_expr(node ast.ParExpr) &Node {
 fn (t Tree) if_guard_expr(node ast.IfGuardExpr) &Node {
 	mut obj := new_object()
 	obj.add_terse('ast_type', t.string_node('IfGuardExpr'))
-	obj.add_terse('var_name', t.string_node(node.var_name))
+	obj.add_terse('vars', t.array_node_if_guard_var(node.vars))
 	obj.add_terse('expr', t.expr(node.expr))
 	obj.add_terse('expr_type', t.type_node(node.expr_type))
+	return obj
+}
+
+fn (t Tree) if_guard_var(node ast.IfGuardVar) &Node {
+	mut obj := new_object()
+	obj.add_terse('ast_type', t.string_node('IfGuardVar'))
+	obj.add_terse('name', t.string_node(node.name))
+	obj.add_terse('is_mut', t.bool_node(node.is_mut))
 	obj.add('pos', t.position(node.pos))
 	return obj
 }
@@ -2220,6 +2228,14 @@ fn (t Tree) array_node_struct_init_field(nodes []ast.StructInitField) &Node {
 	mut arr := new_array()
 	for node in nodes {
 		arr.add_item(t.struct_init_field(node))
+	}
+	return arr
+}
+
+fn (t Tree) array_node_if_guard_var(nodes []ast.IfGuardVar) &Node {
+	mut arr := new_array()
+	for node in nodes {
+		arr.add_item(t.if_guard_var(node))
 	}
 	return arr
 }

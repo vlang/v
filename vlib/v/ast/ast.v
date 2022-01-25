@@ -1417,12 +1417,17 @@ pub mut:
 	is_used bool // asserts are used in _test.v files, as well as in non -prod builds of all files
 }
 
-// `if [x := opt()] {`
+pub struct IfGuardVar {
+pub mut:
+	name   string
+	is_mut bool
+	pos    token.Position
+}
+
+// `if x := opt() {`
 pub struct IfGuardExpr {
 pub:
-	var_name string
-	is_mut   bool
-	pos      token.Position
+	vars []IfGuardVar
 pub mut:
 	expr      Expr
 	expr_type Type

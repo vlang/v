@@ -82,36 +82,48 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		mut cond := ast.empty_expr()
 		mut is_guard := false
 
-		// `if x := opt() {`
-		if !is_comptime && (p.peek_tok.kind == .decl_assign
-			|| (p.tok.kind == .key_mut && p.peek_token(2).kind == .decl_assign)) {
+		// if guard `if x,y := opt() {`
+		if !is_comptime && p.peek_token_after_var_list().kind == .decl_assign {
 			p.open_scope()
 			is_guard = true
-			mut is_mut := false
-			if p.tok.kind == .key_mut {
-				is_mut = true
-				p.check(.key_mut)
-			}
-			var_pos := p.tok.position()
-			var_name := p.check_name()
-			if p.scope.known_var(var_name) {
-				p.error_with_pos('redefinition of `$var_name`', var_pos)
+			mut vars := []ast.IfGuardVar{}
+			for {
+				mut var := ast.IfGuardVar{}
+				mut is_mut := false
+				if p.tok.kind == .key_mut {
+					is_mut = true
+					p.next()
+				}
+				var.is_mut = is_mut
+				var.pos = p.tok.position()
+				var.name = p.check_name()
+
+				if p.scope.known_var(var.name) {
+					p.error_with_pos('redefinition of `$var.name`', var.pos)
+				}
+				vars << var
+				if p.tok.kind != .comma {
+					break
+				}
+				p.next()
 			}
 			comments << p.eat_comments()
 			p.check(.decl_assign)
 			comments << p.eat_comments()
 			expr := p.expr(0)
+
 			cond = ast.IfGuardExpr{
-				var_name: var_name
-				is_mut: is_mut
+				vars: vars
 				expr: expr
 			}
-			p.scope.register(ast.Var{
-				name: var_name
-				is_mut: is_mut
-				expr: cond
-				pos: var_pos
-			})
+			for var in vars {
+				p.scope.register(ast.Var{
+					name: var.name
+					is_mut: var.is_mut
+					expr: cond
+					pos: var.pos
+				})
+			}
 			prev_guard = true
 		} else {
 			prev_guard = false
