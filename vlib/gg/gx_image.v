@@ -1,14 +1,14 @@
 module gg
 
-pub struct Image {
-mut:
-	obj voidptr
-pub:
-	id     int
-	width  int
-	height int
-}
+// pub struct Image {
+// mut:
+// 	obj voidptr
+// pub:
+// 	id     int
+// 	width  int
+// 	height int
+// }
 
-pub fn (i Image) is_empty() bool {
-	return isnil(i.obj)
-}
+// pub fn (i Image) is_empty() bool {
+// 	return isnil(i.obj)
+// }
