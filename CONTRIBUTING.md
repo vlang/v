@@ -199,3 +199,4 @@ to create a copy of the compiler rather than replacing it with `v self`.
 | `trace_parser` | Prints details about parsed statements and expressions |
 | `trace_thirdparty_obj_files` | Prints details about built thirdparty obj files |
 | `trace_usecache` | Prints details when -usecache is used |
+| `trace_embed_file` | Prints details when $embed_file is used |
