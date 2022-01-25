@@ -34,6 +34,13 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		g.gen_embed_file_init(mut node)
 		return
 	}
+	if node.is_include {
+		// $include_str('/path/to/file')
+		val := os.read_file(node.embed_file.apath) or { panic(err) }
+		escaped_val := cescape_nonascii(util.smart_quote(val, true))
+		g.write('_SLIT("$escaped_val")')
+		return
+	}
 	if node.method_name == 'env' {
 		// $env('ENV_VAR_NAME')
 		val := util.cescaped_path(os.getenv(node.args_var))

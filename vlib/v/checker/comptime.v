@@ -18,6 +18,9 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 		node.env_value = env_value
 		return ast.string_type
 	}
+	if node.is_include {
+		return ast.string_type
+	}
 	if node.is_embed {
 		// c.file.embedded_files << node.embed_file
 		if node.embed_file.compression_type !in valid_comptime_compression_types {

@@ -9,7 +9,7 @@ import v.pref
 import v.token
 
 const (
-	supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig']
+	supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'include_str']
 )
 
 // // #include, #flag, #v
@@ -45,7 +45,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	}
 	p.check(.dollar)
 	start_pos := p.prev_tok.position()
-	error_msg := 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()` and `\$vweb.html()` comptime functions are supported right now'
+	error_msg := 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()`, `\$vweb.html()` and `\$include_str()` comptime functions are supported right now'
 	if p.peek_tok.kind == .dot {
 		name := p.check_name() // skip `vweb.html()` TODO
 		if name != 'vweb' {
@@ -104,6 +104,48 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		}
 	}
 	p.check(.rpar)
+	// $include_str('/path/to/file')
+	if method_name == 'include_str' {
+		mut epath := path_of_literal_string_param
+		// Validate that the epath exists, and that it is actually a file.
+		if epath == '' {
+			p.error_with_pos('supply a valid relative or absolute file path to the file to include as str',
+				spos)
+			return err_node
+		}
+		if !p.pref.is_fmt {
+			abs_path := os.real_path(epath)
+			// check absolute path first
+			if !os.exists(abs_path) {
+				// ... look relative to the source file:
+				epath = os.real_path(os.join_path_single(os.dir(p.file_name), epath))
+				if !os.exists(epath) {
+					p.error_with_pos('"$epath" does not exist so it cannot be included as str',
+						spos)
+					return err_node
+				}
+				if !os.is_file(epath) {
+					p.error_with_pos('"$epath" is not a file so it cannot be included as str',
+						spos)
+					return err_node
+				}
+			} else {
+				epath = abs_path
+			}
+		}
+		return ast.ComptimeCall{
+			scope: 0
+			method_name: method_name
+			args_var: literal_string_param
+			embed_file: ast.EmbeddedFile{
+				rpath: literal_string_param
+				apath: epath
+				compression_type: embed_compression_type
+			}
+			is_include: true
+			pos: start_pos.extend(p.prev_tok.position())
+		}
+	}
 	// $embed_file('/path/to/file')
 	if is_embed_file {
 		mut epath := path_of_literal_string_param

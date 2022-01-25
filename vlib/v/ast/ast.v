@@ -1565,7 +1565,8 @@ pub:
 	is_vweb   bool
 	vweb_tmpl File
 	//
-	is_embed bool
+	is_embed   bool
+	is_include bool
 	//
 	is_env  bool
 	env_pos token.Position

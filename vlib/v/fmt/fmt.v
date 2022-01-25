@@ -1709,6 +1709,8 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 			} else {
 				f.write("\$embed_file('$node.embed_file.rpath', .$node.embed_file.compression_type)")
 			}
+		} else if node.is_include {
+			f.write("\$include_str('$node.args_var')")
 		} else if node.is_env {
 			f.write("\$env('$node.args_var')")
 		} else if node.is_pkgconfig {
