@@ -6,6 +6,9 @@ module ui
 struct ExtraContext {
 mut:
 	read_buf []byte
+	// read_all_bytes causes all the raw bytes to be read as one event unit.
+	// This is cruicial for UTF-8 support since Unicode codepoints can span several bytes.
+	read_all_bytes bool = true
 }
 
 const ctx_ptr = &Context(0)
