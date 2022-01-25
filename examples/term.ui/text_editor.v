@@ -579,29 +579,7 @@ fn event(e &tui.Event, x voidptr) {
 					}
 				}
 
-				match e.ascii {
-					166 {
-						buffer.put('æ')
-					}
-					134 {
-						buffer.put('Æ')
-					}
-					184 {
-						buffer.put('ø')
-					}
-					152 {
-						buffer.put('Ø')
-					}
-					165 {
-						buffer.put('å')
-					}
-					133 {
-						buffer.put('Å')
-					}
-					else {
-						// buffer.put(e.utf8) <- TODO this results in double output of the matching character above?!?
-					}
-				}
+				buffer.put(e.utf8)
 			}
 		}
 	} else if e.typ == .mouse_scroll {
