@@ -12,7 +12,7 @@ import v.util.recompilation
 // math.bits is needed by strconv.ftoa
 pub const (
 	builtin_module_parts = ['math.bits', 'strconv', 'dlmalloc', 'strconv.ftoa', 'strings', 'builtin']
-	bundle_modules       = ['clipboard', 'fontstash', 'gg', 'gx', 'sokol', 'szip', 'ui']
+	bundle_modules       = ['clipboard', 'fontstash', 'gg', 'sokol', 'szip', 'ui']
 )
 
 pub const (

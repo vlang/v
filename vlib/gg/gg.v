@@ -22,7 +22,7 @@ pub type FNUnClick = fn (x f32, y f32, button MouseButton, data voidptr)
 pub type FNChar = fn (c u32, data voidptr)
 
 pub struct PenConfig {
-	color     gx.Color
+	color     Color
 	line_type PenLineType = .solid
 	thickness int = 1
 }

@@ -2,7 +2,6 @@ module main
 
 import os
 import gg
-import gx
 import rand
 import sokol.sgl
 
@@ -50,7 +49,7 @@ fn main() {
 		v_letters: []VLetter{len: max_v_letters}
 	}
 	app.gg = gg.new_context(
-		bg_color: gx.black
+		bg_color: gg.black
 		width: win_width
 		height: win_height
 		create_window: true

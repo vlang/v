@@ -1,13 +1,12 @@
 module main
 
 import gg
-import gx
 import automaton
 
 const (
 	screen_width  = 800
 	screen_height = 600
-	filled_color  = gx.blue
+	filled_color  = gg.blue
 )
 
 [live]
@@ -43,7 +42,7 @@ fn main() {
 		a: automaton.gun()
 	}
 	app.gg = gg.new_context(
-		bg_color: gx.white
+		bg_color: gg.white
 		frame_fn: frame
 		user_data: &app
 		width: screen_width

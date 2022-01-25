@@ -11,7 +11,6 @@
 * - add an exampel with shaders
 **********************************************************************/
 import gg
-import gx
 import math
 import sokol.sapp
 import sokol.gfx
@@ -20,7 +19,7 @@ import sokol.sgl
 const (
 	win_width  = 800
 	win_height = 800
-	bg_color   = gx.white
+	bg_color   = gg.white
 )
 
 struct App {

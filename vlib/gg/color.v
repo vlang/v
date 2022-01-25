@@ -230,7 +230,7 @@ const (
 )
 
 pub fn color_from_string(s string) Color {
-	return gx.string_colors[s]
+	return string_colors[s]
 }
 
 pub fn (c Color) to_css_string() string {

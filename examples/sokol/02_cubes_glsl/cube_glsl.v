@@ -14,7 +14,6 @@
 * - add instancing
 **********************************************************************/
 import gg
-import gx
 // import math
 import sokol.sapp
 import sokol.gfx
@@ -31,7 +30,7 @@ fn C.cube_shader_desc(gfx.Backend) &gfx.ShaderDesc
 const (
 	win_width  = 800
 	win_height = 800
-	bg_color   = gx.white
+	bg_color   = gg.white
 )
 
 struct App {

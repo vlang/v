@@ -1,6 +1,5 @@
 import os
 import gg
-import gx
 // import sokol.sapp
 import time
 import rand
@@ -158,23 +157,23 @@ fn on_frame(mut app App) {
 	// drawing snake
 	for pos in app.snake {
 		app.gg.draw_rect_filled(tile_size * pos.x, tile_size * pos.y + top_height, tile_size,
-			tile_size, gx.blue)
+			tile_size, gg.blue)
 	}
 
 	// drawing food
 	app.gg.draw_rect_filled(tile_size * app.food.x, tile_size * app.food.y + top_height,
-		tile_size, tile_size, gx.red)
+		tile_size, tile_size, gg.red)
 
 	// drawing top
-	app.gg.draw_rect_filled(0, 0, canvas_size, top_height, gx.black)
-	app.gg.draw_text(150, top_height / 2, 'Score: $app.score', gx.TextCfg{
-		color: gx.white
+	app.gg.draw_rect_filled(0, 0, canvas_size, top_height, gg.black)
+	app.gg.draw_text(150, top_height / 2, 'Score: $app.score', gg.TextCfg{
+		color: gg.white
 		align: .center
 		vertical_align: .middle
 		size: 65
 	})
-	app.gg.draw_text(canvas_size - 150, top_height / 2, 'Best: $app.best', gx.TextCfg{
-		color: gx.white
+	app.gg.draw_text(canvas_size - 150, top_height / 2, 'Best: $app.best', gg.TextCfg{
+		color: gg.white
 		align: .center
 		vertical_align: .middle
 		size: 65
@@ -209,7 +208,7 @@ fn main() {
 	}
 
 	app.gg = gg.new_context(
-		bg_color: gx.white
+		bg_color: gg.white
 		frame_fn: on_frame
 		keydown_fn: on_keydown
 		user_data: &app

@@ -21,7 +21,6 @@
 **********************************************************************/
 import gg
 import gg.m4
-import gx
 import math
 import sokol.sapp
 import sokol.gfx
@@ -40,7 +39,7 @@ fn C.gouraud_shader_desc(gfx.Backend) &gfx.ShaderDesc
 const (
 	win_width  = 600
 	win_height = 600
-	bg_color   = gx.white
+	bg_color   = gg.white
 )
 
 struct App {

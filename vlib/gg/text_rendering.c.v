@@ -5,7 +5,6 @@ module gg
 import fontstash
 import sokol.sfons
 import sokol.sgl
-import gx
 import os
 import os.font
 

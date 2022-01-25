@@ -215,7 +215,6 @@ Each single text rendered need its own reder to be declared, after you can modif
 Here a simple example of the usage:
 ```v oksyntax
 import gg
-import gx
 import sokol.sapp
 import sokol.sgl
 import sokol.gfx
@@ -225,7 +224,7 @@ import os
 const (
 	win_width  = 600
 	win_height = 700
-	bg_color   = gx.white
+	bg_color   = gg.white
 	font_paths = [
 		'arial.ttf',
 	]

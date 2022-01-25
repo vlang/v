@@ -1,5 +1,4 @@
 import gg
-import gx
 import runtime
 import time
 
@@ -27,8 +26,8 @@ mut:
 	ntasks  int      = runtime.nr_jobs()
 }
 
-const colors = [gx.black, gx.blue, gx.red, gx.green, gx.yellow, gx.orange, gx.purple, gx.white,
-	gx.indigo, gx.violet, gx.black]
+const colors = [gg.black, gg.blue, gg.red, gg.green, gg.yellow, gg.orange, gg.purple, gg.white,
+	gg.indigo, gg.violet, gg.black]
 
 fn (mut state AppState) update() {
 	mut sw := time.new_stopwatch()

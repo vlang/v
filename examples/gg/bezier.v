@@ -1,7 +1,6 @@
 module main
 
 import gg
-import gx
 
 const (
 	points = [f32(200.0), 200.0, 200.0, 100.0, 400.0, 100.0, 400.0, 300.0]
@@ -17,7 +16,7 @@ fn main() {
 		gg: 0
 	}
 	app.gg = gg.new_context(
-		bg_color: gx.rgb(174, 198, 255)
+		bg_color: gg.rgb(174, 198, 255)
 		width: 600
 		height: 400
 		window_title: 'Cubic Bézier curve'
@@ -29,6 +28,6 @@ fn main() {
 
 fn frame(mut app App) {
 	app.gg.begin()
-	app.gg.draw_cubic_bezier(points, gx.blue)
+	app.gg.draw_cubic_bezier(points, gg.blue)
 	app.gg.end()
 }
