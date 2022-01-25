@@ -188,10 +188,10 @@ fn find_vs_by_reg(vswhere_dir string, host_arch string, target_arch string) ?VsI
 		version2 := version // TODO remove. cgen option bug if expr
 		// println('version: $version')
 		v := if version.ends_with('\n') { version2[..version.len - 2] } else { version2 }
-		lib_path := '$res.output\\VC\\Tools\\MSVC\\$v\\lib\\$target_arch'
-		include_path := '$res.output\\VC\\Tools\\MSVC\\$v\\include'
+		lib_path := '$res_output\\VC\\Tools\\MSVC\\$v\\lib\\$target_arch'
+		include_path := '$res_output\\VC\\Tools\\MSVC\\$v\\include'
 		if os.exists('$lib_path\\vcruntime.lib') {
-			p := '$res.output\\VC\\Tools\\MSVC\\$v\\bin\\Host$host_arch\\$target_arch'
+			p := '$res_output\\VC\\Tools\\MSVC\\$v\\bin\\Host$host_arch\\$target_arch'
 			// println('$lib_path $include_path')
 			return VsInstallation{
 				exe_path: p
