@@ -133,7 +133,7 @@ fn vweb_tmpl_${fn_name}() string {
 			p.error_with_error(errors.Error{
 				message: "Please use @include 'header' instead of @header (deprecated)"
 				file_path: template_file
-				pos: token.Position{
+				pos: token.Pos{
 					len: '@header'.len
 					line_nr: tline_number
 					pos: start_of_line_pos + position
@@ -148,7 +148,7 @@ fn vweb_tmpl_${fn_name}() string {
 			p.error_with_error(errors.Error{
 				message: "Please use @include 'footer' instead of @footer (deprecated)"
 				file_path: template_file
-				pos: token.Position{
+				pos: token.Pos{
 					len: '@footer'.len
 					line_nr: tline_number
 					pos: start_of_line_pos + position
@@ -182,7 +182,7 @@ fn vweb_tmpl_${fn_name}() string {
 					message: 'Reading file $file_name from path: $file_path failed'
 					details: "Failed to @include '$file_name'"
 					file_path: template_file
-					pos: token.Position{
+					pos: token.Pos{
 						len: '@include '.len + file_name.len
 						line_nr: tline_number
 						pos: start_of_line_pos + position

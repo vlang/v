@@ -8,7 +8,7 @@ import v.token
 import v.util
 
 pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
-	first_pos := p.tok.position()
+	first_pos := p.tok.pos()
 	mut fn_name := if language == .c {
 		'C.$p.check_name()'
 	} else if language == .js {
@@ -34,16 +34,16 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 	p.expr_mod = ''
 
 	mut concrete_types := []ast.Type{}
-	mut concrete_list_pos := p.tok.position()
+	mut concrete_list_pos := p.tok.pos()
 	if p.tok.kind == .lt {
 		// `foo<int>(10)`
 		p.expr_mod = ''
 		concrete_types = p.parse_concrete_types()
-		concrete_list_pos = concrete_list_pos.extend(p.prev_tok.position())
+		concrete_list_pos = concrete_list_pos.extend(p.prev_tok.pos())
 	}
 	p.check(.lpar)
 	args := p.call_args()
-	last_pos := p.tok.position()
+	last_pos := p.tok.pos()
 	p.check(.rpar)
 	// ! in mutable methods
 	if p.tok.kind == .not {
@@ -51,7 +51,7 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 	}
 	mut pos := first_pos.extend(last_pos)
 	mut or_stmts := []ast.Stmt{} // TODO remove unnecessary allocations by just using .absent
-	mut or_pos := p.tok.position()
+	mut or_pos := p.tok.pos()
 	if p.tok.kind == .key_orelse {
 		// `foo() or {}``
 		was_inside_or_expr := p.inside_or_expr
@@ -61,12 +61,12 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 		p.scope.register(ast.Var{
 			name: 'err'
 			typ: ast.error_type
-			pos: p.tok.position()
+			pos: p.tok.pos()
 			is_used: true
 		})
 		or_kind = .block
 		or_stmts = p.parse_block_no_scope(false)
-		or_pos = or_pos.extend(p.prev_tok.position())
+		or_pos = or_pos.extend(p.prev_tok.pos())
 		p.close_scope()
 		p.inside_or_expr = was_inside_or_expr
 	}
@@ -74,7 +74,7 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 		// `foo()?`
 		p.next()
 		if p.inside_defer {
-			p.error_with_pos('error propagation not allowed inside `defer` blocks', p.prev_tok.position())
+			p.error_with_pos('error propagation not allowed inside `defer` blocks', p.prev_tok.pos())
 		}
 		or_kind = .propagate
 	}
@@ -104,7 +104,7 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 
 pub fn (mut p Parser) call_args() []ast.CallArg {
 	mut args := []ast.CallArg{}
-	start_pos := p.tok.position()
+	start_pos := p.tok.pos()
 	for p.tok.kind != .rpar {
 		if p.tok.kind == .eof {
 			p.error_with_pos('unexpected eof reached, while parsing call argument', start_pos)
@@ -117,7 +117,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 			p.next()
 		}
 		mut comments := p.eat_comments()
-		arg_start_pos := p.tok.position()
+		arg_start_pos := p.tok.pos()
 		mut array_decompose := false
 		if p.tok.kind == .ellipsis {
 			p.next()
@@ -133,14 +133,14 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 		if array_decompose {
 			expr = ast.ArrayDecompose{
 				expr: expr
-				pos: p.tok.position()
+				pos: p.tok.pos()
 			}
 		}
 		if mut expr is ast.StructInit {
 			expr.pre_comments << comments
 			comments = []ast.Comment{}
 		}
-		pos := arg_start_pos.extend(p.prev_tok.position())
+		pos := arg_start_pos.extend(p.prev_tok.pos())
 		comments << p.eat_comments()
 		args << ast.CallArg{
 			is_mut: is_mut
@@ -159,16 +159,16 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 struct ReceiverParsingInfo {
 mut:
 	name     string
-	pos      token.Position
+	pos      token.Pos
 	typ      ast.Type
-	type_pos token.Position
+	type_pos token.Pos
 	is_mut   bool
 	language ast.Language
 }
 
 fn (mut p Parser) fn_decl() ast.FnDecl {
 	p.top_level_statement_start()
-	start_pos := p.tok.position()
+	start_pos := p.tok.pos()
 
 	mut is_manualfree := p.is_manualfree
 	mut is_deprecated := false
@@ -207,7 +207,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	p.open_scope()
 	// C. || JS.
 	mut language := ast.Language.v
-	language_tok_pos := p.tok.position()
+	language_tok_pos := p.tok.pos()
 	if p.tok.kind == .name && p.tok.lit == 'C' {
 		is_unsafe = !is_trusted
 		language = .c
@@ -251,7 +251,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		p.fn_language = language
 	}
 	mut name := ''
-	name_pos := p.tok.position()
+	name_pos := p.tok.pos()
 	if p.tok.kind == .name {
 		// TODO high order fn
 		name = if language == .js { p.check_js_name() } else { p.check_name() }
@@ -297,14 +297,14 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		name = p.tok.kind.str() // op_to_fn_name()
 		if rec.typ == ast.void_type {
 			p.error_with_pos('cannot use operator overloading with normal functions',
-				p.tok.position())
+				p.tok.pos())
 		}
 		p.next()
 	} else if p.tok.kind in [.ne, .gt, .ge, .le] && p.peek_tok.kind == .lpar {
 		p.error_with_pos('cannot overload `!=`, `>`, `<=` and `>=` as they are auto generated from `==` and`<`',
-			p.tok.position())
+			p.tok.pos())
 	} else {
-		p.error_with_pos('expecting method name', p.tok.position())
+		p.error_with_pos('expecting method name', p.tok.pos())
 		return ast.FnDecl{
 			scope: 0
 		}
@@ -351,18 +351,18 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		}
 	}
 	// Return type
-	mut return_type_pos := p.tok.position()
+	mut return_type_pos := p.tok.pos()
 	mut return_type := ast.void_type
 	// don't confuse token on the next line: fn decl, [attribute]
 	same_line := p.tok.line_nr == p.prev_tok.line_nr
 	if (p.tok.kind.is_start_of_type() && (same_line || p.tok.kind != .lsbr))
 		|| (same_line && p.tok.kind == .key_fn) {
 		return_type = p.parse_type()
-		return_type_pos = return_type_pos.extend(p.prev_tok.position())
+		return_type_pos = return_type_pos.extend(p.prev_tok.pos())
 	}
 	mut type_sym_method_idx := 0
 	no_body := p.tok.kind != .lcbr
-	end_pos := p.prev_tok.position()
+	end_pos := p.prev_tok.pos()
 	short_fn_name := name
 	is_main := short_fn_name == 'main' && p.mod == 'main'
 	mut is_test := (short_fn_name.starts_with('test_') || short_fn_name.starts_with('testsuite_'))
@@ -470,10 +470,10 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	// Body
 	p.cur_fn_name = name
 	mut stmts := []ast.Stmt{}
-	body_start_pos := p.peek_tok.position()
+	body_start_pos := p.peek_tok.pos()
 	if p.tok.kind == .lcbr {
 		if language != .v && language != .js {
-			p.error_with_pos('interop functions cannot have a body', p.tok.position())
+			p.error_with_pos('interop functions cannot have a body', p.tok.pos())
 		}
 		p.inside_fn = true
 		p.inside_unsafe_fn = is_unsafe
@@ -546,7 +546,7 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 	defer {
 		p.inside_receiver_param = false
 	}
-	lpar_pos := p.tok.position()
+	lpar_pos := p.tok.pos()
 	p.next() // (
 	is_shared := p.tok.kind == .key_shared
 	is_atomic := p.tok.kind == .key_atomic
@@ -554,20 +554,20 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 	if rec.is_mut {
 		p.next() // `mut`
 	}
-	rec_start_pos := p.tok.position()
+	rec_start_pos := p.tok.pos()
 	rec.name = p.check_name()
 	if !rec.is_mut {
 		rec.is_mut = p.tok.kind == .key_mut
 		if rec.is_mut {
-			ptoken2 := p.peek_token(2) // needed to prevent codegen bug, where .position() expects &Token
-			p.warn_with_pos('use `(mut f Foo)` instead of `(f mut Foo)`', lpar_pos.extend(ptoken2.position()))
+			ptoken2 := p.peek_token(2) // needed to prevent codegen bug, where .pos() expects &Token
+			p.warn_with_pos('use `(mut f Foo)` instead of `(f mut Foo)`', lpar_pos.extend(ptoken2.pos()))
 		}
 	}
 	if p.tok.kind == .key_shared {
-		ptoken2 := p.peek_token(2) // needed to prevent codegen bug, where .position() expects &Token
-		p.error_with_pos('use `(shared f Foo)` instead of `(f shared Foo)`', lpar_pos.extend(ptoken2.position()))
+		ptoken2 := p.peek_token(2) // needed to prevent codegen bug, where .pos() expects &Token
+		p.error_with_pos('use `(shared f Foo)` instead of `(f shared Foo)`', lpar_pos.extend(ptoken2.pos()))
 	}
-	rec.pos = rec_start_pos.extend(p.tok.position())
+	rec.pos = rec_start_pos.extend(p.tok.pos())
 	is_amp := p.tok.kind == .amp
 	if p.tok.kind == .name && p.tok.lit == 'JS' {
 		rec.language = ast.Language.js
@@ -577,16 +577,16 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 	// }
 	// TODO: talk to alex, should mut be parsed with the type like this?
 	// or should it be a property of the arg, like this ptr/mut becomes indistinguishable
-	rec.type_pos = p.tok.position()
+	rec.type_pos = p.tok.pos()
 	rec.typ = p.parse_type_with_mut(rec.is_mut)
 	if rec.typ.idx() == 0 {
 		// error is set in parse_type
 		return error('void receiver type')
 	}
-	rec.type_pos = rec.type_pos.extend(p.prev_tok.position())
+	rec.type_pos = rec.type_pos.extend(p.prev_tok.pos())
 	if is_amp && rec.is_mut {
 		p.error_with_pos('use `(mut f Foo)` or `(f &Foo)` instead of `(mut f &Foo)`',
-			lpar_pos.extend(p.tok.position()))
+			lpar_pos.extend(p.tok.pos()))
 		return error('invalid `mut f &Foo`')
 	}
 	if is_shared {
@@ -624,11 +624,11 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 }
 
 fn (mut p Parser) anon_fn() ast.AnonFn {
-	pos := p.tok.position()
+	pos := p.tok.pos()
 	p.check(.key_fn)
 	if p.pref.is_script && p.tok.kind == .name {
 		p.error_with_pos('function declarations in script mode should be before all script statements',
-			p.tok.position())
+			p.tok.pos())
 		return ast.AnonFn{}
 	}
 	old_inside_defer := p.inside_defer
@@ -658,16 +658,16 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	}
 	mut same_line := p.tok.line_nr == p.prev_tok.line_nr
 	mut return_type := ast.void_type
-	mut return_type_pos := p.tok.position()
+	mut return_type_pos := p.tok.pos()
 	// lpar: multiple return types
 	if same_line {
 		if (p.tok.kind.is_start_of_type() && (same_line || p.tok.kind != .lsbr))
 			|| (same_line && p.tok.kind == .key_fn) {
 			return_type = p.parse_type()
-			return_type_pos = return_type_pos.extend(p.tok.position())
+			return_type_pos = return_type_pos.extend(p.tok.pos())
 		} else if p.tok.kind != .lcbr {
 			p.error_with_pos('expected return type, not $p.tok for anonymous function',
-				p.tok.position())
+				p.tok.pos())
 		}
 	}
 	mut stmts := []ast.Stmt{}
@@ -675,7 +675,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	same_line = p.tok.line_nr == p.prev_tok.line_nr
 	if no_body && same_line {
 		p.error_with_pos('unexpected $p.tok after anonymous function signature, expecting `{`',
-			p.tok.position())
+			p.tok.pos())
 	}
 	mut label_names := []string{}
 	mut func := ast.Fn{
@@ -712,7 +712,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			is_method: false
 			is_anon: true
 			no_body: no_body
-			pos: pos.extend(p.prev_tok.position())
+			pos: pos.extend(p.prev_tok.pos())
 			file: p.file_name
 			scope: p.scope
 			label_names: label_names
@@ -743,7 +743,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 		mut arg_no := 1
 		for p.tok.kind != .rpar {
 			if p.tok.kind == .eof {
-				p.error_with_pos('expecting `)`', p.tok.position())
+				p.error_with_pos('expecting `)`', p.tok.pos())
 				return []ast.Param{}, false, false
 			}
 			is_shared := p.tok.kind == .key_shared
@@ -756,7 +756,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 				p.next()
 				is_variadic = true
 			}
-			pos := p.tok.position()
+			pos := p.tok.pos()
 			mut arg_type := p.parse_type()
 			if arg_type == 0 {
 				// error is added in parse_type
@@ -791,7 +791,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 				arg_type = ast.new_type(p.table.find_or_register_array(arg_type)).set_flag(.variadic)
 			}
 			if p.tok.kind == .eof {
-				p.error_with_pos('expecting `)`', p.prev_tok.position())
+				p.error_with_pos('expecting `)`', p.prev_tok.pos())
 				return []ast.Param{}, false, false
 			}
 			if p.tok.kind == .comma {
@@ -822,7 +822,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 	} else {
 		for p.tok.kind != .rpar {
 			if p.tok.kind == .eof {
-				p.error_with_pos('expecting `)`', p.tok.position())
+				p.error_with_pos('expecting `)`', p.tok.pos())
 				return []ast.Param{}, false, false
 			}
 			is_shared := p.tok.kind == .key_shared
@@ -831,9 +831,9 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 			if is_mut {
 				p.next()
 			}
-			mut arg_pos := [p.tok.position()]
+			mut arg_pos := [p.tok.pos()]
 			mut arg_names := [p.check_name()]
-			mut type_pos := [p.tok.position()]
+			mut type_pos := [p.tok.pos()]
 			// `a, b, c int`
 			for p.tok.kind == .comma {
 				if !p.pref.is_fmt {
@@ -842,25 +842,25 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 						'Use `fn f(x Type, y Type)` instead. You can run `v fmt -w "$p.scanner.file_path"` to automatically fix your code.')
 				}
 				p.next()
-				arg_pos << p.tok.position()
+				arg_pos << p.tok.pos()
 				arg_names << p.check_name()
-				type_pos << p.tok.position()
+				type_pos << p.tok.pos()
 			}
 			if p.tok.kind == .key_mut {
 				// TODO remove old syntax
 				if !p.pref.is_fmt {
-					p.warn_with_pos('use `mut f Foo` instead of `f mut Foo`', p.tok.position())
+					p.warn_with_pos('use `mut f Foo` instead of `f mut Foo`', p.tok.pos())
 				}
 				is_mut = true
 			}
 			if p.tok.kind == .key_shared {
-				p.error_with_pos('use `shared f Foo` instead of `f shared Foo`', p.tok.position())
+				p.error_with_pos('use `shared f Foo` instead of `f shared Foo`', p.tok.pos())
 			}
 			if p.tok.kind == .ellipsis {
 				p.next()
 				is_variadic = true
 			}
-			pos := p.tok.position()
+			pos := p.tok.pos()
 			mut typ := p.parse_type()
 			if typ == 0 {
 				// error is added in parse_type
@@ -911,7 +911,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 				}
 			}
 			if p.tok.kind == .eof {
-				p.error_with_pos('expecting `)`', p.prev_tok.position())
+				p.error_with_pos('expecting `)`', p.prev_tok.pos())
 				return []ast.Param{}, false, false
 			}
 			if p.tok.kind != .rpar {
@@ -934,11 +934,11 @@ fn (mut p Parser) closure_vars() []ast.Param {
 		if is_mut {
 			p.next()
 		}
-		var_pos := p.tok.position()
+		var_pos := p.tok.pos()
 		p.check(.name)
 		var_name := p.prev_tok.lit
 		mut var := p.scope.parent.find_var(var_name) or {
-			p.error_with_pos('undefined ident: `$var_name`', p.prev_tok.position())
+			p.error_with_pos('undefined ident: `$var_name`', p.prev_tok.pos())
 			continue
 		}
 		var.is_used = true
@@ -967,7 +967,7 @@ fn (mut p Parser) closure_vars() []ast.Param {
 	return vars
 }
 
-fn (mut p Parser) check_fn_mutable_arguments(typ ast.Type, pos token.Position) {
+fn (mut p Parser) check_fn_mutable_arguments(typ ast.Type, pos token.Pos) {
 	sym := p.table.sym(typ)
 	if sym.kind in [.array, .array_fixed, .interface_, .map, .placeholder, .struct_, .generic_inst,
 		.sum_type] {
@@ -990,7 +990,7 @@ fn (mut p Parser) check_fn_mutable_arguments(typ ast.Type, pos token.Position) {
 		pos)
 }
 
-fn (mut p Parser) check_fn_shared_arguments(typ ast.Type, pos token.Position) {
+fn (mut p Parser) check_fn_shared_arguments(typ ast.Type, pos token.Pos) {
 	sym := p.table.sym(typ)
 	if sym.kind !in [.array, .struct_, .map, .placeholder] && !typ.is_ptr() {
 		p.error_with_pos('shared arguments are only allowed for arrays, maps, and structs\n',
@@ -998,7 +998,7 @@ fn (mut p Parser) check_fn_shared_arguments(typ ast.Type, pos token.Position) {
 	}
 }
 
-fn (mut p Parser) check_fn_atomic_arguments(typ ast.Type, pos token.Position) {
+fn (mut p Parser) check_fn_atomic_arguments(typ ast.Type, pos token.Pos) {
 	sym := p.table.sym(typ)
 	if sym.kind !in [.u32, .int, .u64] {
 		p.error_with_pos('atomic arguments are only allowed for 32/64 bit integers\n' +

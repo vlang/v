@@ -657,9 +657,9 @@ pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 	node.left = t.expr(mut node.left)
 	node.right = t.expr(mut node.right)
 
-	mut pos := node.left.position()
+	mut pos := node.left.pos()
 	pos.extend(node.pos)
-	pos.extend(node.right.position())
+	pos.extend(node.right.pos())
 
 	if t.pref.is_debug {
 		return node

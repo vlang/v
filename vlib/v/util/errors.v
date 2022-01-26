@@ -69,7 +69,7 @@ fn color(kind string, msg string) string {
 }
 
 // formatted_error - `kind` may be 'error' or 'warn'
-pub fn formatted_error(kind string, omsg string, filepath string, pos token.Position) string {
+pub fn formatted_error(kind string, omsg string, filepath string, pos token.Pos) string {
 	emsg := omsg.replace('main.', '')
 	mut path := filepath
 	verror_paths_override := os.getenv('VERROR_PATHS')
@@ -120,7 +120,7 @@ pub fn cached_file2sourcelines(path string) []string {
 	return res
 }
 
-pub fn source_file_context(kind string, filepath string, pos token.Position) []string {
+pub fn source_file_context(kind string, filepath string, pos token.Pos) []string {
 	mut clines := []string{}
 	source_lines := unsafe { cached_file2sourcelines(filepath) }
 	if source_lines.len == 0 {

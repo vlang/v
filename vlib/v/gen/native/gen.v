@@ -762,7 +762,7 @@ pub fn (mut g Gen) n_error(s string) {
 	util.verror('native error', s)
 }
 
-pub fn (mut g Gen) warning(s string, pos token.Position) {
+pub fn (mut g Gen) warning(s string, pos token.Pos) {
 	if g.pref.output_mode == .stdout {
 		werror := util.formatted_error('warning', s, g.pref.path, pos)
 		eprintln(werror)
@@ -776,7 +776,7 @@ pub fn (mut g Gen) warning(s string, pos token.Position) {
 	}
 }
 
-pub fn (mut g Gen) v_error(s string, pos token.Position) {
+pub fn (mut g Gen) v_error(s string, pos token.Pos) {
 	// TODO: store a file index in the Position too,
 	// so that the file path can be retrieved from the pos, instead
 	// of guessed from the pref.path ...

@@ -15,7 +15,7 @@ pub:
 	message   string
 	details   string
 	file_path string
-	pos       token.Position
+	pos       token.Pos
 	backtrace string
 	reporter  Reporter
 }
@@ -25,7 +25,7 @@ pub:
 	message   string
 	details   string
 	file_path string
-	pos       token.Position
+	pos       token.Pos
 	reporter  Reporter
 }
 
@@ -34,6 +34,6 @@ pub:
 	message   string
 	details   string
 	file_path string
-	pos       token.Position
+	pos       token.Pos
 	reporter  Reporter
 }

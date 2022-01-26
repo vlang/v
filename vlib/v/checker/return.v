@@ -11,7 +11,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 	mut expected_type := c.unwrap_generic(c.expected_type)
 	expected_type_sym := c.table.sym(expected_type)
 	if node.exprs.len > 0 && c.table.cur_fn.return_type == ast.void_type {
-		c.error('unexpected argument, current function does not return anything', node.exprs[0].position())
+		c.error('unexpected argument, current function does not return anything', node.exprs[0].pos())
 		return
 	} else if node.exprs.len == 0 && !(c.expected_type == ast.void_type
 		|| expected_type_sym.kind == .void) {
@@ -82,7 +82,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 		got_typ := c.unwrap_generic(got_types[i])
 		if got_typ.has_flag(.optional) && (!exp_type.has_flag(.optional)
 			|| c.table.type_to_str(got_typ) != c.table.type_to_str(exp_type)) {
-			pos := node.exprs[i].position()
+			pos := node.exprs[i].pos()
 			c.error('cannot use `${c.table.type_to_str(got_typ)}` as type `${c.table.type_to_str(exp_type)}` in return argument',
 				pos)
 		}
@@ -98,13 +98,13 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 				}
 				continue
 			}
-			pos := node.exprs[i].position()
+			pos := node.exprs[i].pos()
 			c.error('cannot use `$got_typ_sym.name` as type `${c.table.type_to_str(exp_type)}` in return argument',
 				pos)
 		}
 		if (got_typ.is_ptr() || got_typ.is_pointer())
 			&& (!exp_type.is_ptr() && !exp_type.is_pointer()) {
-			pos := node.exprs[i].position()
+			pos := node.exprs[i].pos()
 			if node.exprs[i].is_auto_deref_var() {
 				continue
 			}
@@ -114,7 +114,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 		if (exp_type.is_ptr() || exp_type.is_pointer())
 			&& (!got_typ.is_ptr() && !got_typ.is_pointer()) && got_typ != ast.int_literal_type
 			&& !c.pref.translated {
-			pos := node.exprs[i].position()
+			pos := node.exprs[i].pos()
 			if node.exprs[i].is_auto_deref_var() {
 				continue
 			}

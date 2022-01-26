@@ -16,7 +16,7 @@ mut:
 }
 
 fn (mut n NodeByOffset) visit(node &ast.Node) ? {
-	node_pos := node.position()
+	node_pos := node.pos()
 	if n.pos >= node_pos.pos && n.pos <= node_pos.pos + node_pos.len && node !is ast.File {
 		n.node = node
 		return error('')
