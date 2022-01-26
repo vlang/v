@@ -10,7 +10,7 @@ pub struct DocComment {
 pub mut:
 	text     string // Raw text content of the comment, excluding the comment token chars ('//, /*, */')
 	is_multi bool   // Is a block / multi-line comment
-	pos      token.Position
+	pos      token.Pos
 }
 
 // is_example returns true if the contents of this comment is a doc example.

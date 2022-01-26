@@ -53,7 +53,7 @@ fn (c Checker) visit(value &ast.Value) ? {
 }
 
 // excerpt returns a string of the token's surroundings
-fn (c Checker) excerpt(tp token.Position) string {
+fn (c Checker) excerpt(tp token.Pos) string {
 	return c.scanner.excerpt(tp.pos, 10)
 }
 
@@ -301,7 +301,7 @@ fn (c Checker) check_date_time(dt ast.DateTime) ? {
 		// Re-use date and time validation code for detailed testing of each part
 		c.check_date(ast.Date{
 			text: split[0]
-			pos: token.Position{
+			pos: token.Pos{
 				len: split[0].len
 				line_nr: dt.pos.line_nr
 				pos: dt.pos.pos
@@ -310,7 +310,7 @@ fn (c Checker) check_date_time(dt ast.DateTime) ? {
 		}) ?
 		c.check_time(ast.Time{
 			text: split[1]
-			pos: token.Position{
+			pos: token.Pos{
 				len: split[1].len
 				line_nr: dt.pos.line_nr
 				pos: dt.pos.pos + split[0].len

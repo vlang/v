@@ -355,15 +355,15 @@ pub fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 			if !arg.is_mut {
 				tok := call_arg.share.str()
 				c.error('`$node.name` parameter `$arg.name` is not `$tok`, `$tok` is not needed`',
-					call_arg.expr.position())
+					call_arg.expr.pos())
 			} else if arg.typ.share() != call_arg.share {
-				c.error('wrong shared type', call_arg.expr.position())
+				c.error('wrong shared type', call_arg.expr.pos())
 			}
 		} else {
 			if arg.is_mut && (!call_arg.is_mut || arg.typ.share() != call_arg.share) {
 				tok := call_arg.share.str()
 				c.error('`$node.name` parameter `$arg.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${i+1}`',
-					call_arg.expr.position())
+					call_arg.expr.pos())
 			}
 		}
 	}
@@ -787,15 +787,15 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		if call_arg.is_mut {
 			to_lock, pos := c.fail_if_immutable(call_arg.expr)
 			if !call_arg.expr.is_lvalue() {
-				c.error('cannot pass expression as `mut`', call_arg.expr.position())
+				c.error('cannot pass expression as `mut`', call_arg.expr.pos())
 			}
 			if !param.is_mut {
 				tok := call_arg.share.str()
 				c.error('`$node.name` parameter `$param.name` is not `$tok`, `$tok` is not needed`',
-					call_arg.expr.position())
+					call_arg.expr.pos())
 			} else {
 				if param.typ.share() != call_arg.share {
-					c.error('wrong shared type', call_arg.expr.position())
+					c.error('wrong shared type', call_arg.expr.pos())
 				}
 				if to_lock != '' && !param.typ.has_flag(.shared_f) {
 					c.error('$to_lock is `shared` and must be `lock`ed to be passed as `mut`',
@@ -806,7 +806,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			if param.is_mut {
 				tok := call_arg.share.str()
 				c.error('`$node.name` parameter `$param.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${
-					i + 1}`', call_arg.expr.position())
+					i + 1}`', call_arg.expr.pos())
 			} else {
 				c.fail_if_unreadable(call_arg.expr, typ, 'argument')
 			}
@@ -828,11 +828,11 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			&& (param.typ == ast.voidptr_type || final_param_sym.idx == ast.voidptr_type_idx)
 			&& !call_arg.typ.is_any_kind_of_pointer() && func.language == .v
 			&& !call_arg.expr.is_lvalue() && func.name != 'json.encode' && !c.pref.translated {
-			c.error('expression cannot be passed as `voidptr`', call_arg.expr.position())
+			c.error('expression cannot be passed as `voidptr`', call_arg.expr.pos())
 		}
 		// Handle expected interface
 		if final_param_sym.kind == .interface_ {
-			if c.type_implements(typ, final_param_typ, call_arg.expr.position()) {
+			if c.type_implements(typ, final_param_typ, call_arg.expr.pos()) {
 				if !typ.is_ptr() && !typ.is_pointer() && !c.inside_unsafe
 					&& typ_sym.kind != .interface_ {
 					c.mark_as_referenced(mut &call_arg.expr, true)
@@ -922,7 +922,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 					utyp := c.unwrap_generic(typ)
 					unwrap_sym := c.table.sym(unwrap_typ)
 					if unwrap_sym.kind == .interface_ {
-						if c.type_implements(utyp, unwrap_typ, call_arg.expr.position()) {
+						if c.type_implements(utyp, unwrap_typ, call_arg.expr.pos()) {
 							if !utyp.is_ptr() && !utyp.is_pointer() && !c.inside_unsafe
 								&& c.table.sym(utyp).kind != .interface_ {
 								c.mark_as_referenced(mut &call_arg.expr, true)
@@ -1005,7 +1005,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		'unknown method or field: `${left_sym.name}.$method_name`'
 	}
 	if left_type.has_flag(.optional) {
-		c.error('optional type cannot be called directly', node.left.position())
+		c.error('optional type cannot be called directly', node.left.pos())
 		return ast.void_type
 	}
 	if left_sym.kind in [.sum_type, .interface_] {
@@ -1019,7 +1019,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	if left_type == ast.void_type {
 		// No need to print this error, since this means that the variable is unknown,
 		// and there already was an error before.
-		// c.error('`void` type has no methods', node.left.position())
+		// c.error('`void` type has no methods', node.left.pos())
 		return ast.void_type
 	}
 	mut concrete_types := []ast.Type{}
@@ -1057,7 +1057,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				arg_type := c.expr(node.args[0].expr)
 				if arg_type !in [ast.int_type, ast.int_literal_type] {
 					c.error('the first argument of `array.insert()` should be integer',
-						node.args[0].expr.position())
+						node.args[0].expr.pos())
 					return ast.void_type
 				}
 			}
@@ -1073,7 +1073,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		arg_type := c.expr(arg_expr)
 		arg_sym := c.table.sym(arg_type)
 		if !c.check_types(arg_type, info.elem_type) && !c.check_types(left_type, arg_type) {
-			c.error('cannot $method_name `$arg_sym.name` to `$left_sym.name`', arg_expr.position())
+			c.error('cannot $method_name `$arg_sym.name` to `$left_sym.name`', arg_expr.pos())
 		}
 	} else if final_left_sym.kind == .array && method_name in ['first', 'last', 'pop'] {
 		if final_left_sym.info is ast.Array {
@@ -1099,7 +1099,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		return info.return_type
 	} else if left_sym.kind == .char && left_type.nr_muls() == 0 && method_name == 'str' {
 		c.error('calling `.str()` on type `char` is not allowed, use its address or cast it to an integer instead',
-			node.left.position().extend(node.pos))
+			node.left.pos().extend(node.pos))
 		return ast.void_type
 	}
 	mut method := ast.Fn{}
@@ -1164,7 +1164,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		if method.params[0].is_mut {
 			to_lock, pos := c.fail_if_immutable(node.left)
 			if !node.left.is_lvalue() {
-				c.error('cannot pass expression as `mut`', node.left.position())
+				c.error('cannot pass expression as `mut`', node.left.pos())
 			}
 			// node.is_mut = true
 			if to_lock != '' && rec_share != .shared_t {
@@ -1232,7 +1232,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			}
 			// Handle expected interface
 			if final_arg_sym.kind == .interface_ {
-				if c.type_implements(got_arg_typ, final_arg_typ, arg.expr.position()) {
+				if c.type_implements(got_arg_typ, final_arg_typ, arg.expr.pos()) {
 					if !got_arg_typ.is_ptr() && !got_arg_typ.is_pointer() && !c.inside_unsafe {
 						got_arg_typ_sym := c.table.sym(got_arg_typ)
 						if got_arg_typ_sym.kind != .interface_ {
@@ -1293,10 +1293,10 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				if !param_is_mut {
 					tok := arg.share.str()
 					c.error('`$node.name` parameter `$param.name` is not `$tok`, `$tok` is not needed`',
-						arg.expr.position())
+						arg.expr.pos())
 				} else {
 					if param_share != arg.share {
-						c.error('wrong shared type', arg.expr.position())
+						c.error('wrong shared type', arg.expr.pos())
 					}
 					if to_lock != '' && param_share != .shared_t {
 						c.error('$to_lock is `shared` and must be `lock`ed to be passed as `mut`',
@@ -1307,7 +1307,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				if param_is_mut {
 					tok := arg.share.str()
 					c.error('`$node.name` parameter `$param.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${
-						i + 1}`', arg.expr.position())
+						i + 1}`', arg.expr.pos())
 				} else {
 					c.fail_if_unreadable(arg.expr, got_arg_typ, 'argument')
 				}
@@ -1728,7 +1728,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			node.return_type = c.table.find_or_register_array(thread_ret_type)
 		} else {
 			c.error('`$left_sym.name` has no method `wait()` (only thread handles and arrays of them have)',
-				node.left.position())
+				node.left.pos())
 		}
 	}
 	// map/filter are supposed to have 1 arg only
@@ -1783,7 +1783,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 	return node.return_type
 }
 
-fn scope_register_it(mut s ast.Scope, pos token.Position, typ ast.Type) {
+fn scope_register_it(mut s ast.Scope, pos token.Pos, typ ast.Type) {
 	s.register(ast.Var{
 		name: 'it'
 		pos: pos
@@ -1792,7 +1792,7 @@ fn scope_register_it(mut s ast.Scope, pos token.Position, typ ast.Type) {
 	})
 }
 
-fn scope_register_a_b(mut s ast.Scope, pos token.Position, typ ast.Type) {
+fn scope_register_a_b(mut s ast.Scope, pos token.Pos, typ ast.Type) {
 	s.register(ast.Var{
 		name: 'a'
 		pos: pos

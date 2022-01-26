@@ -95,8 +95,8 @@ pub:
 	mod             string
 	file            string
 	file_mode       Language
-	pos             token.Position
-	return_type_pos token.Position
+	pos             token.Pos
+	return_type_pos token.Pos
 pub mut:
 	return_type    Type
 	receiver_type  Type // != 0, when .is_method == true
@@ -119,11 +119,11 @@ fn (f &Fn) method_equals(o &Fn) bool {
 
 pub struct Param {
 pub:
-	pos         token.Position
+	pos         token.Pos
 	name        string
 	is_mut      bool
 	is_auto_rec bool
-	type_pos    token.Position
+	type_pos    token.Pos
 	is_hidden   bool // interface first arg
 pub mut:
 	typ Type

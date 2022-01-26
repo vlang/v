@@ -331,7 +331,7 @@ fn (f Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node) 
 	if f.out.last_n(2) == '\n\n' {
 		return false
 	}
-	prev_line_nr := prev_node.position().last_line
+	prev_line_nr := prev_node.pos().last_line
 	// The nodes are Stmts
 	if node is ast.Stmt && prev_node is ast.Stmt {
 		stmt := node
@@ -372,7 +372,7 @@ fn (f Fmt) should_insert_newline_before_node(node ast.Node, prev_node ast.Node) 
 		}
 	}
 	// The node shouldn't have a newline before
-	if node.position().line_nr - prev_line_nr <= 1 {
+	if node.pos().line_nr - prev_line_nr <= 1 {
 		return false
 	}
 	return true
@@ -507,7 +507,7 @@ fn stmt_is_single_line(stmt ast.Stmt) bool {
 
 pub fn (mut f Fmt) expr(node ast.Expr) {
 	if f.is_debug {
-		eprintln('expr: ${node.position():-42} | node: ${node.type_name():-20} | $node.str()')
+		eprintln('expr: ${node.pos():-42} | node: ${node.type_name():-20} | $node.str()')
 	}
 	match mut node {
 		ast.NodeError {}
@@ -1382,7 +1382,7 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 			}
 		} else {
 			next_line := if node.exprs.len > 0 {
-				node.exprs[0].position().line_nr
+				node.exprs[0].pos().line_nr
 			} else {
 				node.pos.last_line
 			}
@@ -1402,11 +1402,11 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 	}
 	mut set_comma := false
 	for i, expr in node.exprs {
-		pos := expr.position()
+		pos := expr.pos()
 		if i == 0 {
 			if f.array_init_depth > f.array_init_break.len {
 				f.array_init_break << pos.line_nr > last_line_nr
-					|| f.line_len + expr.position().len > fmt.max_len[3]
+					|| f.line_len + expr.pos().len > fmt.max_len[3]
 			}
 		}
 		line_break := f.array_init_break[f.array_init_depth - 1]
@@ -1449,7 +1449,7 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		mut last_comment_was_inline := false
 		mut has_comments := node.ecmnts[i].len > 0
 		if i < node.ecmnts.len && has_comments {
-			expr_pos := expr.position()
+			expr_pos := expr.pos()
 			for icmt, cmt in node.ecmnts[i] {
 				if !set_comma && cmt.pos.pos > expr_pos.pos + expr_pos.len + 2 {
 					if icmt > 0 {
@@ -1464,7 +1464,7 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 				}
 				mut next_pos := expr_pos
 				if i + 1 < node.exprs.len {
-					next_pos = node.exprs[i + 1].position()
+					next_pos = node.exprs[i + 1].pos()
 				}
 				if cmt.pos.line_nr > expr_pos.last_line {
 					embed := i + 1 < node.exprs.len && next_pos.line_nr == cmt.pos.last_line
@@ -2114,7 +2114,7 @@ pub fn (mut f Fmt) map_init(node ast.MapInit) {
 		f.write(': ')
 		f.write(strings.repeat(` `, max_field_len - key.str().len))
 		f.expr(node.vals[i])
-		f.comments(node.comments[i], prev_line: node.vals[i].position().last_line, has_nl: false)
+		f.comments(node.comments[i], prev_line: node.vals[i].pos().last_line, has_nl: false)
 		f.writeln('')
 	}
 	f.indent--

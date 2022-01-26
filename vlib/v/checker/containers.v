@@ -22,7 +22,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			default_typ := c.check_expr_opt_call(default_expr, c.expr(default_expr))
 			node.default_type = default_typ
 			c.check_expected(default_typ, node.elem_type) or {
-				c.error(err.msg, default_expr.position())
+				c.error(err.msg, default_expr.pos())
 			}
 		}
 		if node.has_len {
@@ -30,7 +30,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				elem_type_sym := c.table.sym(node.elem_type)
 				if elem_type_sym.kind == .interface_ {
 					c.error('cannot instantiate an array of interfaces without also giving a default `init:` value',
-						node.len_expr.position())
+						node.len_expr.pos())
 				}
 			}
 			c.ensure_sumtype_array_has_default_value(node)
@@ -87,7 +87,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		for i, mut expr in node.exprs {
 			typ := c.check_expr_opt_call(expr, c.expr(expr))
 			if typ == ast.void_type {
-				c.error('invalid void array element type', expr.position())
+				c.error('invalid void array element type', expr.pos())
 			}
 			node.expr_types << typ
 			// The first element's type
@@ -95,7 +95,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				if i == 0 {
 					elem_type = expected_value_type
 					c.expected_type = elem_type
-					c.type_implements(typ, elem_type, expr.position())
+					c.type_implements(typ, elem_type, expr.pos())
 				}
 				if !typ.is_ptr() && !typ.is_pointer() && !c.inside_unsafe {
 					typ_sym := c.table.sym(typ)
@@ -117,7 +117,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			}
 			if expr !is ast.TypeNode {
 				c.check_expected(typ, elem_type) or {
-					c.error('invalid array element: $err.msg', expr.position())
+					c.error('invalid array element: $err.msg', expr.pos())
 				}
 			}
 		}
@@ -163,12 +163,12 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				}
 			}
 			else {
-				c.error('fixed array size cannot use non-constant value', init_expr.position())
+				c.error('fixed array size cannot use non-constant value', init_expr.pos())
 			}
 		}
 		if fixed_size <= 0 {
 			c.error('fixed size cannot be zero or negative (fixed_size: $fixed_size)',
-				init_expr.position())
+				init_expr.pos())
 		}
 		idx := c.table.find_or_register_array_fixed(node.elem_type, int(fixed_size), init_expr)
 		if node.elem_type.has_flag(.generic) {
@@ -183,7 +183,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	return node.typ
 }
 
-fn (mut c Checker) check_array_init_para_type(para string, expr ast.Expr, pos token.Position) {
+fn (mut c Checker) check_array_init_para_type(para string, expr ast.Expr, pos token.Pos) {
 	sym := c.table.sym(c.expr(expr))
 	if sym.kind !in [.int, .int_literal] {
 		c.error('array $para needs to be an int', pos)
@@ -261,13 +261,13 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			if !c.check_types(key_type, key0_type) || (i == 0 && key_type.is_number()
 				&& key0_type.is_number() && key0_type != ast.mktyp(key_type)) {
 				msg := c.expected_msg(key_type, key0_type)
-				c.error('invalid map key: $msg', key.position())
+				c.error('invalid map key: $msg', key.pos())
 				same_key_type = false
 			}
 			if !c.check_types(val_type, val0_type) || (i == 0 && val_type.is_number()
 				&& val0_type.is_number() && val0_type != ast.mktyp(val_type)) {
 				msg := c.expected_msg(val_type, val0_type)
-				c.error('invalid map value: $msg', val.position())
+				c.error('invalid map value: $msg', val.pos())
 			}
 		}
 		if same_key_type {

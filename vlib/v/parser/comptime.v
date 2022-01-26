@@ -14,7 +14,7 @@ const (
 
 // // #include, #flag, #v
 fn (mut p Parser) hash() ast.HashStmt {
-	pos := p.tok.position()
+	pos := p.tok.pos()
 	val := p.tok.lit
 	kind := val.all_before(' ')
 	p.next()
@@ -44,7 +44,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		scope: 0
 	}
 	p.check(.dollar)
-	start_pos := p.prev_tok.position()
+	start_pos := p.prev_tok.pos()
 	error_msg := 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()` and `\$vweb.html()` comptime functions are supported right now'
 	if p.peek_tok.kind == .dot {
 		name := p.check_name() // skip `vweb.html()` TODO
@@ -63,7 +63,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	is_html := method_name == 'html'
 	// $env('ENV_VAR_NAME')
 	p.check(.lpar)
-	spos := p.tok.position()
+	spos := p.tok.pos()
 	if method_name == 'env' {
 		s := p.tok.lit
 		p.check(.string)
@@ -74,7 +74,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			args_var: s
 			is_env: true
 			env_pos: spos
-			pos: spos.extend(p.prev_tok.position())
+			pos: spos.extend(p.prev_tok.pos())
 		}
 	}
 	if method_name == 'pkgconfig' {
@@ -87,7 +87,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			args_var: s
 			is_pkgconfig: true
 			env_pos: spos
-			pos: spos.extend(p.prev_tok.position())
+			pos: spos.extend(p.prev_tok.pos())
 		}
 	}
 	literal_string_param := if is_html { '' } else { p.tok.lit }
@@ -146,7 +146,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 				apath: epath
 				compression_type: embed_compression_type
 			}
-			pos: start_pos.extend(p.prev_tok.position())
+			pos: start_pos.extend(p.prev_tok.pos())
 		}
 	}
 	// Compile vweb html template to V code, parse that V code and embed the resulting V function
@@ -180,7 +180,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 					is_vweb: true
 					method_name: method_name
 					args_var: literal_string_param
-					pos: start_pos.extend(p.prev_tok.position())
+					pos: start_pos.extend(p.prev_tok.pos())
 				}
 			}
 			if is_html {
@@ -245,7 +245,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		vweb_tmpl: file
 		method_name: method_name
 		args_var: literal_string_param
-		pos: start_pos.extend(p.prev_tok.position())
+		pos: start_pos.extend(p.prev_tok.pos())
 	}
 }
 
@@ -255,13 +255,13 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 	// $for field in App(fields) {
 	p.next()
 	p.check(.key_for)
-	var_pos := p.tok.position()
+	var_pos := p.tok.pos()
 	val_var := p.check_name()
 	p.check(.key_in)
-	mut typ_pos := p.tok.position()
+	mut typ_pos := p.tok.pos()
 	lang := p.parse_language()
 	typ := p.parse_any_type(lang, false, false)
-	typ_pos = typ_pos.extend(p.prev_tok.position())
+	typ_pos = typ_pos.extend(p.prev_tok.pos())
 	p.check(.dot)
 	for_val := p.check_name()
 	mut kind := ast.ComptimeForKind.methods
@@ -288,10 +288,10 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 		kind = .attributes
 	} else {
 		p.error_with_pos('unknown kind `$for_val`, available are: `methods`, `fields` or `attributes`',
-			p.prev_tok.position())
+			p.prev_tok.pos())
 		return ast.ComptimeFor{}
 	}
-	spos := p.tok.position()
+	spos := p.tok.pos()
 	stmts := p.parse_block()
 	p.close_scope()
 	return ast.ComptimeFor{
@@ -300,7 +300,7 @@ fn (mut p Parser) comptime_for() ast.ComptimeFor {
 		kind: kind
 		typ: typ
 		typ_pos: typ_pos
-		pos: spos.extend(p.tok.position())
+		pos: spos.extend(p.tok.pos())
 	}
 }
 
@@ -326,16 +326,16 @@ fn (mut p Parser) at() ast.AtExpr {
 	p.next()
 	return ast.AtExpr{
 		name: name
-		pos: p.tok.position()
+		pos: p.tok.pos()
 		kind: kind
 	}
 }
 
 fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 	p.check(.dollar)
-	start_pos := p.prev_tok.position()
+	start_pos := p.prev_tok.pos()
 	if p.peek_tok.kind == .lpar {
-		method_pos := p.tok.position()
+		method_pos := p.tok.pos()
 		method_name := p.check_name()
 		p.mark_var_as_used(method_name)
 		// `app.$action()` (`action` is a string)
@@ -353,7 +353,7 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 			scope: p.scope
 			args_var: ''
 			args: args
-			pos: start_pos.extend(p.prev_tok.position())
+			pos: start_pos.extend(p.prev_tok.pos())
 		}
 	}
 	mut has_parens := false
@@ -361,7 +361,7 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 		p.check(.lpar)
 		has_parens = true
 	} else {
-		p.warn_with_pos('use brackets instead e.g. `s.$(field.name)` - run vfmt', p.tok.position())
+		p.warn_with_pos('use brackets instead e.g. `s.$(field.name)` - run vfmt', p.tok.pos())
 	}
 	expr := p.expr(0)
 	if has_parens {
@@ -371,6 +371,6 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 		has_parens: has_parens
 		left: left
 		field_expr: expr
-		pos: start_pos.extend(p.prev_tok.position())
+		pos: start_pos.extend(p.prev_tok.pos())
 	}
 }

@@ -577,7 +577,7 @@ struct FunctionRedefinition {
 	f       ast.FnDecl
 }
 
-pub fn (b &Builder) error_with_pos(s string, fpath string, pos token.Position) errors.Error {
+pub fn (b &Builder) error_with_pos(s string, fpath string, pos token.Pos) errors.Error {
 	if !b.pref.check_only {
 		ferror := util.formatted_error('builder error:', s, fpath, pos)
 		eprintln(ferror)

@@ -1143,7 +1143,7 @@ fn (s &Scanner) count_symbol_before(p int, sym byte) int {
 
 [direct_array_access]
 fn (mut s Scanner) ident_string() string {
-	lspos := token.Position{
+	lspos := token.Pos{
 		line_nr: s.line_nr
 		pos: s.pos
 		col: s.pos - s.last_nl_pos - 1
@@ -1375,7 +1375,7 @@ fn trim_slash_line_break(s string) string {
 ///   escaped utf8 runes in hex like `\xe2\x98\x85` => (★)
 ///   escaped utf8 runes in octal like `\342\230\205` => (★)
 fn (mut s Scanner) ident_char() string {
-	lspos := token.Position{
+	lspos := token.Pos{
 		line_nr: s.line_nr
 		pos: s.pos
 		col: s.pos - s.last_nl_pos - 1
@@ -1498,7 +1498,7 @@ fn (mut s Scanner) inc_line_number() {
 }
 
 pub fn (mut s Scanner) note(msg string) {
-	pos := token.Position{
+	pos := token.Pos{
 		line_nr: s.line_nr
 		pos: s.pos
 	}
@@ -1519,7 +1519,7 @@ pub fn (mut s Scanner) add_error_detail(msg string) {
 	s.error_details << msg
 }
 
-pub fn (mut s Scanner) add_error_detail_with_pos(msg string, pos token.Position) {
+pub fn (mut s Scanner) add_error_detail_with_pos(msg string, pos token.Pos) {
 	details := util.formatted_error('details:', msg, s.file_path, pos)
 	s.add_error_detail(details)
 }
@@ -1538,7 +1538,7 @@ pub fn (mut s Scanner) warn(msg string) {
 		s.error(msg)
 		return
 	}
-	pos := token.Position{
+	pos := token.Pos{
 		line_nr: s.line_nr
 		pos: s.pos
 		col: s.current_column() - 1
@@ -1565,7 +1565,7 @@ pub fn (mut s Scanner) warn(msg string) {
 }
 
 pub fn (mut s Scanner) error(msg string) {
-	pos := token.Position{
+	pos := token.Pos{
 		line_nr: s.line_nr
 		pos: s.pos
 		col: s.current_column() - 1
@@ -1599,7 +1599,7 @@ fn (mut s Scanner) vet_error(msg string, fix vet.FixKind) {
 	ve := vet.Error{
 		message: msg
 		file_path: s.file_path
-		pos: token.Position{
+		pos: token.Pos{
 			line_nr: s.line_nr
 			col: s.current_column() - 1
 		}

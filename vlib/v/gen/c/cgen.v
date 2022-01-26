@@ -1502,7 +1502,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 				if stmt is ast.ExprStmt {
 					// For some reason ExprStmt.pos is 0 when ExprStmt.expr is comp if expr
 					// Extract the pos. TODO figure out why and fix.
-					stmt_pos = stmt.expr.position()
+					stmt_pos = stmt.expr.pos()
 				}
 				if stmt_pos.pos == 0 {
 					$if trace_autofree ? {
@@ -1517,7 +1517,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 }
 
 [inline]
-fn (mut g Gen) write_v_source_line_info(pos token.Position) {
+fn (mut g Gen) write_v_source_line_info(pos token.Pos) {
 	if g.inside_ternary == 0 && g.pref.is_vlines && g.is_vlines_enabled {
 		nline := pos.line_nr + 1
 		lineinfo := '\n#line $nline "$g.vlines_path"'
@@ -1876,7 +1876,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	if g.is_autofree {
 		// if node is ast.ExprStmt {&& node.expr is ast.CallExpr {
 		if node !is ast.FnDecl {
-			// p := node.position()
+			// p := node.pos()
 			// g.autofree_call_postgen(p.pos)
 		}
 	}
@@ -2440,7 +2440,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		got_deref_type := if got_is_ptr { unwrapped_got_type.deref() } else { unwrapped_got_type }
 		if g.table.sumtype_has_variant(expected_deref_type, got_deref_type, false) {
 			mut is_already_sum_type := false
-			scope := g.file.scope.innermost(expr.position().pos)
+			scope := g.file.scope.innermost(expr.pos().pos)
 			if expr is ast.Ident {
 				if v := scope.find_var(expr.name) {
 					if v.smartcasts.len > 0 {
@@ -2477,7 +2477,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	if to_shared {
 		shared_styp := exp_styp[0..exp_styp.len - 1] // `shared` implies ptr, so eat one `*`
 		if got_type_raw.is_ptr() {
-			g.error('cannot convert reference to `shared`', expr.position())
+			g.error('cannot convert reference to `shared`', expr.pos())
 		}
 		if exp_sym.kind == .array {
 			g.writeln('($shared_styp*)__dup_shared_array(&($shared_styp){.mtx = {0}, .val =')
@@ -3091,7 +3091,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 	// NB: please keep the type names in the match here in alphabetical order:
 	match mut node {
 		ast.EmptyExpr {
-			g.error('g.expr(): unhandled EmptyExpr', token.Position{})
+			g.error('g.expr(): unhandled EmptyExpr', token.Pos{})
 		}
 		ast.AnonFn {
 			g.gen_anon_fn(mut node)
@@ -4691,7 +4691,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 						} else {
 							mut is_auto_heap := false
 							if branch.stmts.len > 0 {
-								scope := g.file.scope.innermost(ast.Node(branch.stmts[branch.stmts.len - 1]).position().pos)
+								scope := g.file.scope.innermost(ast.Node(branch.stmts[branch.stmts.len - 1]).pos().pos)
 								if v := scope.find_var(branch.cond.vars[0].name) {
 									is_auto_heap = v.is_auto_heap
 								}
@@ -5634,13 +5634,13 @@ fn verror(s string) {
 }
 
 [noreturn]
-fn (g &Gen) error(s string, pos token.Position) {
+fn (g &Gen) error(s string, pos token.Pos) {
 	ferror := util.formatted_error('cgen error:', s, g.file.path, pos)
 	eprintln(ferror)
 	exit(1)
 }
 
-fn (g &Gen) checker_bug(s string, pos token.Position) {
+fn (g &Gen) checker_bug(s string, pos token.Pos) {
 	g.error('checker bug; $s', pos)
 }
 
@@ -6943,7 +6943,7 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 	return sb.str()
 }
 
-fn (mut g Gen) panic_debug_info(pos token.Position) (int, string, string, string) {
+fn (mut g Gen) panic_debug_info(pos token.Pos) (int, string, string, string) {
 	paline := pos.line_nr + 1
 	if isnil(g.fn_decl) {
 		return paline, '', 'main', 'C._vinit'

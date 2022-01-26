@@ -160,7 +160,7 @@ fn test_embed_method_generic() {
 
 type Piece = King | Queen
 
-struct Position {
+struct Pos {
 	x byte
 	y byte
 }
@@ -171,11 +171,11 @@ enum TeamEnum {
 }
 
 struct PieceCommonFields {
-	pos  Position
+	pos  Pos
 	team TeamEnum
 }
 
-fn (p PieceCommonFields) get_pos() Position {
+fn (p PieceCommonFields) get_pos() Pos {
 	return p.pos
 }
 
@@ -187,16 +187,16 @@ struct Queen {
 	PieceCommonFields
 }
 
-fn (piece Piece) position() Position {
-	mut pos := Position{}
+fn (piece Piece) pos() Pos {
+	mut pos := Pos{}
 	match piece {
 		King, Queen { pos = piece.pos }
 	}
 	return pos
 }
 
-fn (piece Piece) get_position() Position {
-	mut pos := Position{}
+fn (piece Piece) get_pos() Pos {
+	mut pos := Pos{}
 	match piece {
 		King, Queen { pos = piece.get_pos() }
 	}
@@ -205,20 +205,20 @@ fn (piece Piece) get_position() Position {
 
 fn test_match_aggregate_field() {
 	piece := Piece(King{
-		pos: Position{1, 8}
+		pos: Pos{1, 8}
 		team: .black
 	})
-	pos := piece.position()
+	pos := piece.pos()
 	assert pos.x == 1
 	assert pos.y == 8
 }
 
 fn test_match_aggregate_method() {
 	piece := Piece(King{
-		pos: Position{1, 8}
+		pos: Pos{1, 8}
 		team: .black
 	})
-	pos := piece.get_position()
+	pos := piece.get_pos()
 	assert pos.x == 1
 	assert pos.y == 8
 }

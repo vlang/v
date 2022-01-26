@@ -28,7 +28,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			if right_type_sym.kind == .multi_return {
 				if node.right.len > 1 {
 					c.error('cannot use multi-value $right_type_sym.name in single-value context',
-						right.position())
+						right.pos())
 				}
 				node.right_types = right_type_sym.mr_info().types
 				right_len = node.right_types.len
@@ -99,7 +99,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					} else {
 						if node.right[i] is ast.StructInit {
 							c.warn('assigning a struct literal to a map is deprecated - use `map{}` instead',
-								node.right[i].position())
+								node.right[i].pos())
 							node.right[i] = ast.MapInit{}
 						}
 					}
@@ -315,7 +315,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					}
 				}
 				if is_decl {
-					c.error('non-name `$left` on left side of `:=`', left.position())
+					c.error('non-name `$left` on left side of `:=`', left.pos())
 				}
 			}
 		}
@@ -357,7 +357,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			|| !right_type.is_ptr()) && !left.is_blank_ident() && right.is_lvalue() {
 			// Do not allow `a = b`
 			c.error('cannot copy map: call `move` or `clone` method (or use a reference)',
-				right.position())
+				right.pos())
 		}
 		left_is_ptr := left_type.is_ptr() || left_sym.is_pointer()
 		if left_is_ptr && !left.is_auto_deref_var() {
@@ -368,7 +368,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			right_is_ptr := right_type.is_ptr() || right_sym.is_pointer()
 			if !right_is_ptr && node.op == .assign && right_type_unwrapped.is_number() {
 				c.error('cannot assign to `$left`: ' +
-					c.expected_msg(right_type_unwrapped, left_type_unwrapped), right.position())
+					c.expected_msg(right_type_unwrapped, left_type_unwrapped), right.pos())
 			}
 			if (right is ast.StructInit || !right_is_ptr) && !(right_sym.is_number()
 				|| left_type.has_flag(.shared_f)) {
@@ -388,41 +388,41 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				if left_type == ast.string_type {
 					if node.op != .plus_assign {
 						c.error('operator `$node.op` not defined on left operand type `$left_sym.name`',
-							left.position())
+							left.pos())
 					}
 					if right_type != ast.string_type {
 						c.error('invalid right operand: $left_sym.name $node.op $right_sym.name',
-							right.position())
+							right.pos())
 					}
 				} else if !left_sym.is_number()
 					&& left_sym.kind !in [.byteptr, .charptr, .struct_, .alias] {
 					c.error('operator `$node.op` not defined on left operand type `$left_sym.name`',
-						left.position())
+						left.pos())
 				} else if !right_sym.is_number()
 					&& left_sym.kind !in [.byteptr, .charptr, .struct_, .alias] {
 					c.error('invalid right operand: $left_sym.name $node.op $right_sym.name',
-						right.position())
+						right.pos())
 				}
 			}
 			.mult_assign, .div_assign {
 				if !left_sym.is_number() && !c.table.final_sym(left_type_unwrapped).is_int()
 					&& left_sym.kind !in [.struct_, .alias] {
 					c.error('operator $node.op.str() not defined on left operand type `$left_sym.name`',
-						left.position())
+						left.pos())
 				} else if !right_sym.is_number() && !c.table.final_sym(left_type_unwrapped).is_int()
 					&& left_sym.kind !in [.struct_, .alias] {
 					c.error('operator $node.op.str() not defined on right operand type `$right_sym.name`',
-						right.position())
+						right.pos())
 				}
 			}
 			.and_assign, .or_assign, .xor_assign, .mod_assign, .left_shift_assign,
 			.right_shift_assign {
 				if !left_sym.is_int() && !c.table.final_sym(left_type_unwrapped).is_int() {
 					c.error('operator $node.op.str() not defined on left operand type `$left_sym.name`',
-						left.position())
+						left.pos())
 				} else if !right_sym.is_int() && !c.table.final_sym(right_type_unwrapped).is_int() {
 					c.error('operator $node.op.str() not defined on right operand type `$right_sym.name`',
-						right.position())
+						right.pos())
 				}
 			}
 			.unsigned_right_shift_assign {
@@ -532,12 +532,12 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							node.pos)
 					}
 				} else {
-					c.error('cannot assign to `$left`: $err.msg', right.position())
+					c.error('cannot assign to `$left`: $err.msg', right.pos())
 				}
 			}
 		}
 		if left_sym.kind == .interface_ {
-			if c.type_implements(right_type, left_type, right.position()) {
+			if c.type_implements(right_type, left_type, right.pos()) {
 				if !right_type.is_ptr() && !right_type.is_pointer() && right_sym.kind != .interface_
 					&& !c.inside_unsafe {
 					c.mark_as_referenced(mut &node.right[i], true)

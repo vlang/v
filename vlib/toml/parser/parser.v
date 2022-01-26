@@ -1160,7 +1160,7 @@ pub fn (mut p Parser) comment() ast.Comment {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed hash comment "#$p.tok.lit"')
 	return ast.Comment{
 		text: p.tok.lit
-		pos: p.tok.position()
+		pos: p.tok.pos()
 	}
 }
 
@@ -1173,7 +1173,7 @@ pub fn (mut p Parser) key() ?ast.Key {
 	if p.tok.kind == .number {
 		if p.peek_tok.kind == .minus {
 			mut lits := p.tok.lit
-			pos := p.tok.position()
+			pos := p.tok.pos()
 			for p.peek_tok.kind != .assign && p.peek_tok.kind != .period && p.peek_tok.kind != .rsbr {
 				p.next() ?
 				if p.tok.kind !in parser.space_formatting {
@@ -1337,7 +1337,7 @@ pub fn (mut p Parser) number_or_date() ?ast.Value {
 // bare parse and returns an `ast.Bare` type.
 pub fn (mut p Parser) bare() ?ast.Bare {
 	mut lits := p.tok.lit
-	pos := p.tok.position()
+	pos := p.tok.pos()
 	for p.peek_tok.kind != .assign && p.peek_tok.kind != .period && p.peek_tok.kind != .rsbr
 		&& p.peek_tok.kind !in parser.space_formatting {
 		p.next() ?
@@ -1373,7 +1373,7 @@ pub fn (mut p Parser) quoted() ast.Quoted {
 	}
 	return ast.Quoted{
 		text: lit
-		pos: p.tok.position()
+		pos: p.tok.pos()
 		quote: quote
 		is_multiline: is_multiline
 	}
@@ -1387,7 +1387,7 @@ pub fn (mut p Parser) boolean() ?ast.Bool {
 	}
 	return ast.Bool{
 		text: p.tok.lit
-		pos: p.tok.position()
+		pos: p.tok.pos()
 	}
 }
 
@@ -1395,7 +1395,7 @@ pub fn (mut p Parser) boolean() ?ast.Bool {
 pub fn (mut p Parser) number() ast.Number {
 	return ast.Number{
 		text: p.tok.lit
-		pos: p.tok.position()
+		pos: p.tok.pos()
 	}
 }
 
@@ -1404,7 +1404,7 @@ pub fn (mut p Parser) number() ast.Number {
 pub fn (mut p Parser) date_time() ?ast.DateTimeType {
 	// Date and/or Time
 	mut lit := ''
-	pos := p.tok.position()
+	pos := p.tok.pos()
 	mut date := ast.Date{}
 	mut time := ast.Time{}
 
@@ -1447,7 +1447,7 @@ pub fn (mut p Parser) date_time() ?ast.DateTimeType {
 pub fn (mut p Parser) date() ?ast.Date {
 	// Date
 	mut lit := p.tok.lit
-	pos := p.tok.position()
+	pos := p.tok.pos()
 
 	p.check(.number) ?
 	lit += p.tok.lit
@@ -1470,7 +1470,7 @@ pub fn (mut p Parser) date() ?ast.Date {
 pub fn (mut p Parser) time() ?ast.Time {
 	// Time
 	mut lit := p.tok.lit
-	pos := p.tok.position()
+	pos := p.tok.pos()
 
 	if p.is_at(.bare) && (lit.starts_with('T') || lit.starts_with('t')) {
 		if p.tok.lit.starts_with('T') {
@@ -1530,6 +1530,6 @@ pub fn (mut p Parser) time() ?ast.Time {
 // eof returns an `ast.EOF` type.
 pub fn (mut p Parser) eof() ast.EOF {
 	return ast.EOF{
-		pos: p.tok.position()
+		pos: p.tok.pos()
 	}
 }

@@ -60,7 +60,7 @@ pub fn (mut p Parser) parse_array_type(expecting token.Kind) ast.Type {
 				}
 				else {
 					p.error_with_pos('fixed array size cannot use non-constant value',
-						size_expr.position())
+						size_expr.pos())
 				}
 			}
 		}
@@ -71,7 +71,7 @@ pub fn (mut p Parser) parse_array_type(expecting token.Kind) ast.Type {
 			return 0
 		}
 		if fixed_size <= 0 {
-			p.error_with_pos('fixed size cannot be zero or negative', size_expr.position())
+			p.error_with_pos('fixed size cannot be zero or negative', size_expr.pos())
 		}
 		// sym := p.table.sym(elem_type)
 		idx := p.table.find_or_register_array_fixed(elem_type, fixed_size, size_expr)
@@ -128,7 +128,7 @@ pub fn (mut p Parser) parse_map_type() ast.Type {
 		}
 		s := p.table.type_to_str(key_type)
 		p.error_with_pos('maps only support string, integer, float, rune, enum or voidptr keys for now (not `$s`)',
-			p.tok.position())
+			p.tok.pos())
 		return 0
 	}
 	p.check(.rsbr)
@@ -138,7 +138,7 @@ pub fn (mut p Parser) parse_map_type() ast.Type {
 		return 0
 	}
 	if value_type.idx() == ast.void_type_idx {
-		p.error_with_pos('map value type cannot be void', p.tok.position())
+		p.error_with_pos('map value type cannot be void', p.tok.pos())
 		return 0
 	}
 	idx := p.table.find_or_register_map(key_type, value_type)
@@ -238,14 +238,14 @@ pub fn (mut p Parser) parse_fn_type(name string) ast.Type {
 		}
 	}
 	mut return_type := ast.void_type
-	mut return_type_pos := token.Position{}
+	mut return_type_pos := token.Pos{}
 	if p.tok.line_nr == line_nr && p.tok.kind.is_start_of_type() && !p.is_attributes() {
-		return_type_pos = p.tok.position()
+		return_type_pos = p.tok.pos()
 		return_type = p.parse_type()
 		if return_type.has_flag(.generic) {
 			has_generic = true
 		}
-		return_type_pos = return_type_pos.extend(p.prev_tok.position())
+		return_type_pos = return_type_pos.extend(p.prev_tok.pos())
 	}
 	func := ast.Fn{
 		name: name
@@ -335,11 +335,11 @@ pub fn (mut p Parser) parse_sum_type_variants() []ast.TypeNode {
 	}
 	mut types := []ast.TypeNode{}
 	for {
-		type_start_pos := p.tok.position()
+		type_start_pos := p.tok.pos()
 		typ := p.parse_type()
 		// TODO: needs to be its own var, otherwise TCC fails because of a known stack error
 		prev_tok := p.prev_tok
-		type_end_pos := prev_tok.position()
+		type_end_pos := prev_tok.pos()
 		type_pos := type_start_pos.extend(type_end_pos)
 		types << ast.TypeNode{
 			typ: typ
@@ -356,7 +356,7 @@ pub fn (mut p Parser) parse_sum_type_variants() []ast.TypeNode {
 pub fn (mut p Parser) parse_type() ast.Type {
 	// optional
 	mut is_optional := false
-	optional_pos := p.tok.position()
+	optional_pos := p.tok.pos()
 	if p.tok.kind == .question {
 		line_nr := p.tok.line_nr
 		p.next()
@@ -394,7 +394,7 @@ pub fn (mut p Parser) parse_type() ast.Type {
 	mut typ := ast.void_type
 	is_array := p.tok.kind == .lsbr
 	if p.tok.kind != .lcbr {
-		pos := p.tok.position()
+		pos := p.tok.pos()
 		typ = p.parse_any_type(language, nr_muls > 0, true)
 		if typ.idx() == 0 {
 			// error is set in parse_type
@@ -406,7 +406,7 @@ pub fn (mut p Parser) parse_type() ast.Type {
 		}
 		sym := p.table.sym(typ)
 		if is_optional && sym.info is ast.SumType && (sym.info as ast.SumType).is_anon {
-			p.error_with_pos('an inline sum type cannot be optional', optional_pos.extend(p.prev_tok.position()))
+			p.error_with_pos('an inline sum type cannot be optional', optional_pos.extend(p.prev_tok.pos()))
 		}
 	}
 	if is_optional {
@@ -439,12 +439,12 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 	} else if p.peek_tok.kind == .dot && check_dot {
 		// `module.Type`
 		mut mod := name
-		mut mod_pos := p.tok.position()
+		mut mod_pos := p.tok.pos()
 		p.next()
 		p.check(.dot)
 		mut mod_last_part := mod
 		for p.peek_tok.kind == .dot {
-			mod_pos = mod_pos.extend(p.tok.position())
+			mod_pos = mod_pos.extend(p.tok.pos())
 			mod_last_part = p.tok.lit
 			mod += '.$mod_last_part'
 			p.next()
@@ -615,7 +615,7 @@ pub fn (mut p Parser) parse_generic_type(name string) ast.Type {
 pub fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 	mut bs_name := name
 	mut bs_cname := name
-	start_pos := p.tok.position()
+	start_pos := p.tok.pos()
 	p.next()
 	p.inside_generic_params = true
 	bs_name += '<'
@@ -638,7 +638,7 @@ pub fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 		bs_name += ', '
 		bs_cname += '_'
 	}
-	concrete_types_pos := start_pos.extend(p.tok.position())
+	concrete_types_pos := start_pos.extend(p.tok.pos())
 	p.check(.gt)
 	p.inside_generic_params = false
 	bs_name += '>'

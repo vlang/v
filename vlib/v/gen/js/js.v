@@ -580,7 +580,7 @@ fn (mut g JsGen) stmts(stmts []ast.Stmt) {
 }
 
 [inline]
-fn (mut g JsGen) write_v_source_line_info(pos token.Position) {
+fn (mut g JsGen) write_v_source_line_info(pos token.Pos) {
 	// g.inside_ternary == 0 &&
 	if g.pref.sourcemap {
 		g.ns.sourcemap_helper << SourcemapHelper{

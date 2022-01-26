@@ -43,7 +43,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				if (cond_typ.idx() != ast.bool_type_idx || cond_typ.has_flag(.optional))
 					&& !c.pref.translated {
 					c.error('non-bool type `${c.table.type_to_str(cond_typ)}` used as if condition',
-						branch.cond.position())
+						branch.cond.pos())
 				}
 			}
 		}
@@ -53,13 +53,13 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			if mut branch.cond is ast.InfixExpr {
 				if branch.cond.op == .key_is {
 					if branch.cond.right !is ast.TypeNode {
-						c.error('invalid `\$if` condition: expected a type', branch.cond.right.position())
+						c.error('invalid `\$if` condition: expected a type', branch.cond.right.pos())
 						return 0
 					}
 					got_type := c.unwrap_generic((branch.cond.right as ast.TypeNode).typ)
 					sym := c.table.sym(got_type)
 					if sym.kind == .placeholder || got_type.has_flag(.generic) {
-						c.error('unknown type `$sym.name`', branch.cond.right.position())
+						c.error('unknown type `$sym.name`', branch.cond.right.pos())
 					}
 					left := branch.cond.left
 					if left is ast.SelectorExpr {
@@ -271,7 +271,7 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 					ast.none_type_idx
 				}
 				else {
-					c.error('invalid type `$right_expr`', right_expr.position())
+					c.error('invalid type `$right_expr`', right_expr.pos())
 					ast.Type(0)
 				}
 			}

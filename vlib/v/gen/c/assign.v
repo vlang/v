@@ -691,7 +691,7 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 			for lx in left {
 				if val_.str() == lx.str() {
 					g.write('_var_')
-					g.write(lx.position().pos.str())
+					g.write(lx.pos().pos.str())
 					has_var = true
 					break
 				}
@@ -731,7 +731,7 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 			for lx in left {
 				if val_.str() == lx.str() {
 					g.write('_var_')
-					g.write(lx.position().pos.str())
+					g.write(lx.pos().pos.str())
 					has_var = true
 					break
 				}
