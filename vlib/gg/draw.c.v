@@ -1,6 +1,5 @@
 // Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
-
 module gg
 
 import gx
@@ -374,21 +373,35 @@ pub fn (ctx &Context) draw_square_filled(x f32, y f32, s f32, c gx.Color) {
 
 //---- circle
 
-const circle_segment_size = 8.35
+// The table here is derived by looking at the result of vlib/gg/testdata/tweak_circles.vv
+// and then choosing the most circle-ish drawing with the minimum number of segments.
+const small_circle_segments = [0, 2, 4, 6, 6, 8, 8, 13, 10, 18, 12, 12, 10, 13, 16, 15, 16]!
+
+[direct_array_access]
+fn radius_to_segments(r f32) int {
+	if r < 30.0 {
+		ir := int(math.ceil(r))
+		if ir > 0 && ir < gg.small_circle_segments.len {
+			return gg.small_circle_segments[ir]
+		}
+		return ir
+	}
+	return int(math.ceil(2 * math.pi * r / 8))
+}
 
 // draw_circle_empty draws an empty circle
-pub fn (ctx &Context) draw_circle_empty(x f32, y f32, r f32, c gx.Color) {
+pub fn (ctx &Context) draw_circle_empty(x f32, y f32, radius f32, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
 	nx := x * ctx.scale
 	ny := y * ctx.scale
-	nr := r * ctx.scale
+	nr := radius * ctx.scale
 	mut theta := f32(0)
 	mut xx := f32(0)
 	mut yy := f32(0)
 
-	segments := math.ceil(2 * math.pi * r / gg.circle_segment_size)
+	segments := radius_to_segments(radius)
 
 	sgl.c4b(c.r, c.g, c.b, c.a)
 	sgl.begin_line_strip()
@@ -402,20 +415,19 @@ pub fn (ctx &Context) draw_circle_empty(x f32, y f32, r f32, c gx.Color) {
 }
 
 // draw_circle_filled draws a filled circle
-pub fn (ctx &Context) draw_circle_filled(x f32, y f32, r f32, c gx.Color) {
-	segments := int(math.ceil(2 * math.pi * r / gg.circle_segment_size))
-	ctx.draw_circle_with_segments(x, y, r, segments, c)
+pub fn (ctx &Context) draw_circle_filled(x f32, y f32, radius f32, c gx.Color) {
+	ctx.draw_circle_with_segments(x, y, radius, radius_to_segments(radius), c)
 }
 
 // draw_circle_with_segments draws a circle with a specific number of segments (affects how smooth/round the circle is)
-pub fn (ctx &Context) draw_circle_with_segments(x f32, y f32, r f32, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_circle_with_segments(x f32, y f32, radius f32, segments int, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 	nx := x * ctx.scale
 	ny := y * ctx.scale
-	nr := r * ctx.scale
+	nr := radius * ctx.scale
 	mut theta := f32(0)
 	mut xx := f32(0)
 	mut yy := f32(0)
@@ -433,7 +445,7 @@ pub fn (ctx &Context) draw_circle_with_segments(x f32, y f32, r f32, segments in
 pub fn (ctx &Context) draw_circle_line(x f32, y f32, r int, segments int, c gx.Color) {
 	$if macos {
 		if ctx.native_rendering {
-			C.darwin_draw_circle(x - r + 1, ctx.height - (y + r + 3), r, c)
+			C.darwin_draw_circle(x - r + 1, ctx.height - (y + r + 3), radius, c)
 			return
 		}
 	}
@@ -488,7 +500,7 @@ pub fn (ctx &Context) draw_slice_empty(x f32, y f32, outer_radius f32, start_ang
 }
 
 // draw_slice_filled draws a filled circle slice/pie
-pub fn (ctx &Context) draw_slice_filled(x f32, y f32, r f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_slice_filled(x f32, y f32, radius f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -498,8 +510,8 @@ pub fn (ctx &Context) draw_slice_filled(x f32, y f32, r f32, start_angle f32, en
 	theta := f32(end_angle / f32(segments))
 	tan_factor := math.tanf(theta)
 	rad_factor := math.cosf(theta)
-	mut xx := r * math.cosf(start_angle)
-	mut yy := r * math.sinf(start_angle)
+	mut xx := radius * math.cosf(start_angle)
+	mut yy := radius * math.sinf(start_angle)
 	sgl.begin_triangle_strip()
 	for i := 0; i < segments + 1; i++ {
 		sgl.v2f(xx + nx, yy + ny)
@@ -764,18 +776,18 @@ pub fn (ctx &Context) draw_square(x f32, y f32, s f32, c gx.Color) {
 }
 
 [deprecated: 'use draw_circle_filled() instead']
-pub fn (ctx &Context) draw_circle(x f32, y f32, r f32, c gx.Color) {
-	ctx.draw_circle_filled(x, y, r, c)
+pub fn (ctx &Context) draw_circle(x f32, y f32, radius f32, c gx.Color) {
+	ctx.draw_circle_filled(x, y, radius, c)
 }
 
 [deprecated: 'use draw_slice_empty() instead']
-pub fn (ctx &Context) draw_empty_slice(x f32, y f32, r f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
-	ctx.draw_slice_empty(x, y, r, start_angle, end_angle, segments, c)
+pub fn (ctx &Context) draw_empty_slice(x f32, y f32, radius f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+	ctx.draw_slice_empty(x, y, radius, start_angle, end_angle, segments, c)
 }
 
 [deprecated: 'use draw_slice_filled() instead']
-pub fn (ctx &Context) draw_slice(x f32, y f32, r f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
-	ctx.draw_slice_filled(x, y, r, start_angle, end_angle, segments, c)
+pub fn (ctx &Context) draw_slice(x f32, y f32, radius f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+	ctx.draw_slice_filled(x, y, radius, start_angle, end_angle, segments, c)
 }
 
 [deprecated: 'use draw_arc_empty() instead']
