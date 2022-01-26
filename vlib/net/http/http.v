@@ -28,6 +28,7 @@ pub mut:
 	cert                   string // the path to a cert.pem file, containing client certificate(s) for the request
 	cert_key               string // the path to a key.pem file, containing private keys for the client certificate(s)
 	in_memory_verification bool   // if true, verify, cert, and cert_key are read from memory, not from a file
+	allow_redirect         bool = true // whether to allow redirect
 }
 
 pub fn new_request(method Method, url_ string, data string) ?Request {
@@ -151,6 +152,7 @@ pub fn fetch(config FetchConfig) ?Response {
 		cert: config.cert
 		cert_key: config.cert_key
 		in_memory_verification: config.in_memory_verification
+		allow_redirect: config.allow_redirect
 	}
 	res := req.do() ?
 	return res
