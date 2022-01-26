@@ -210,44 +210,8 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		eprintln('INFO: compile with `v -live $g.pref.path `, if you want to use the [live] function $node.name .')
 	}
 	//
-	mut name := node.name
-	if name in ['+', '-', '*', '/', '%', '<', '=='] {
-		name = util.replace_op(name)
-	}
-	if node.is_method {
-		unwrapped_rec_sym := g.table.sym(g.unwrap_generic(node.receiver.typ))
-		if unwrapped_rec_sym.kind == .placeholder {
-			return
-		}
-		name = g.cc_type(node.receiver.typ, false) + '_' + name
-		// name = g.table.sym(node.receiver.typ).name + '_' + name
-	}
-	if node.language == .c {
-		name = util.no_dots(name)
-	} else {
-		name = c_name(name)
-	}
+	mut name := g.c_fn_name(node) or { return }
 	mut type_name := g.typ(node.return_type)
-
-	if node.generic_names.len > 0 {
-		name = g.generic_fn_name(g.cur_concrete_types, name, true)
-	}
-
-	if g.pref.translated && node.attrs.contains('c') {
-		// This fixes unknown symbols errors when building separate .c => .v files
-		// into .o files
-		//
-		// example:
-		// [c: 'P_TryMove']
-		// fn p_trymove(thing &Mobj_t, x int, y int) bool
-		//
-		// =>
-		//
-		// bool P_TryMove(main__Mobj_t* thing, int x, int y);
-		//
-		// In fn_call every time `p_trymove` is called, `P_TryMove` will be generated instead.
-		name = node.attrs[0].arg
-	}
 
 	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') && !node.is_main
 		&& node.name != 'str' {
@@ -447,6 +411,47 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 			g.writeln('}')
 		}
 	}
+}
+
+fn (mut g Gen) c_fn_name(node &ast.FnDecl) ?string {
+	mut name := node.name
+	if name in ['+', '-', '*', '/', '%', '<', '=='] {
+		name = util.replace_op(name)
+	}
+	if node.is_method {
+		unwrapped_rec_sym := g.table.sym(g.unwrap_generic(node.receiver.typ))
+		if unwrapped_rec_sym.kind == .placeholder {
+			return none
+		}
+		name = g.cc_type(node.receiver.typ, false) + '_' + name
+		// name = g.table.sym(node.receiver.typ).name + '_' + name
+	}
+	if node.language == .c {
+		name = util.no_dots(name)
+	} else {
+		name = c_name(name)
+	}
+
+	if node.generic_names.len > 0 {
+		name = g.generic_fn_name(g.cur_concrete_types, name, true)
+	}
+
+	if g.pref.translated && node.attrs.contains('c') {
+		// This fixes unknown symbols errors when building separate .c => .v files
+		// into .o files
+		//
+		// example:
+		// [c: 'P_TryMove']
+		// fn p_trymove(thing &Mobj_t, x int, y int) bool
+		//
+		// =>
+		//
+		// bool P_TryMove(main__Mobj_t* thing, int x, int y);
+		//
+		// In fn_call every time `p_trymove` is called, `P_TryMove` will be generated instead.
+		name = node.attrs[0].arg
+	}
+	return name
 }
 
 const closure_ctx = '_V_closure_ctx'

@@ -99,20 +99,21 @@ pub mut:
 	// verbosity           VerboseLevel
 	is_verbose bool
 	// nofmt            bool   // disable vfmt
-	is_test           bool   // `v test string_test.v`
-	is_script         bool   // single file mode (`v program.v`), main function can be skipped
-	is_vsh            bool   // v script (`file.vsh`) file, the `os` module should be made global
-	is_livemain       bool   // main program that contains live/hot code
-	is_liveshared     bool   // a shared library, that will be used in a -live main program
-	is_shared         bool   // an ordinary shared library, -shared, no matter if it is live or not
-	is_o              bool   // building an .o file
-	is_prof           bool   // benchmark every function
-	test_runner       string // can be 'simple' (fastest, but much less detailed), 'tap', 'normal'
-	profile_file      string // the profile results will be stored inside profile_file
-	profile_no_inline bool   // when true, [inline] functions would not be profiled
-	translated        bool   // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
-	is_prod           bool   // use "-O2"
-	obfuscate         bool   // `v -obf program.v`, renames functions to "f_XXX"
+	is_test           bool     // `v test string_test.v`
+	is_script         bool     // single file mode (`v program.v`), main function can be skipped
+	is_vsh            bool     // v script (`file.vsh`) file, the `os` module should be made global
+	is_livemain       bool     // main program that contains live/hot code
+	is_liveshared     bool     // a shared library, that will be used in a -live main program
+	is_shared         bool     // an ordinary shared library, -shared, no matter if it is live or not
+	is_o              bool     // building an .o file
+	is_prof           bool     // benchmark every function
+	test_runner       string   // can be 'simple' (fastest, but much less detailed), 'tap', 'normal'
+	profile_file      string   // the profile results will be stored inside profile_file
+	profile_no_inline bool     // when true, [inline] functions would not be profiled
+	profile_fns       []string // when set, profiling will be off by default, but inside these functions (and what they call) it will be on.	
+	translated        bool     // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
+	is_prod           bool     // use "-O2"
+	obfuscate         bool     // `v -obf program.v`, renames functions to "f_XXX"
 	is_repl           bool
 	is_run            bool
 	is_debug          bool // turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
@@ -422,6 +423,13 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.profile_file = cmdline.option(current_args, arg, '-')
 				res.is_prof = true
 				res.build_options << '$arg $res.profile_file'
+				i++
+			}
+			'-profile-fns' {
+				profile_fns := cmdline.option(current_args, arg, '').split(',')
+				if profile_fns.len > 0 {
+					res.profile_fns << profile_fns
+				}
 				i++
 			}
 			'-profile-no-inline' {
