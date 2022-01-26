@@ -445,7 +445,7 @@ pub fn (ctx &Context) draw_circle_with_segments(x f32, y f32, radius f32, segmen
 pub fn (ctx &Context) draw_circle_line(x f32, y f32, r int, segments int, c gx.Color) {
 	$if macos {
 		if ctx.native_rendering {
-			C.darwin_draw_circle(x - r + 1, ctx.height - (y + r + 3), radius, c)
+			C.darwin_draw_circle(x - r + 1, ctx.height - (y + r + 3), r, c)
 			return
 		}
 	}
