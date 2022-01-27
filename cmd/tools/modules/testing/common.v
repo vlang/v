@@ -358,6 +358,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 						goto test_passed_system
 					}
 				}
+				time.sleep(500 * time.millisecond)
 			}
 			ts.failed = true
 			ts.benchmark.fail()
