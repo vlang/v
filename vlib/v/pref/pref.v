@@ -776,11 +776,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 }
 
 fn normalise_path(path string) string {
-	$if windows {
+	if os.user_os() == 'windows' {
 		return path.replace('/', '\\')
-	} $else {
-		return path.replace('\\', '/')
 	}
+	return path.replace('\\', '/')
 }
 
 pub fn eprintln_cond(condition bool, s string) {
