@@ -11,6 +11,15 @@ fn C.sapp_widthf() f32
 fn C.sapp_height() int
 fn C.sapp_heightf() f32
 
+// get default framebuffer color pixel format
+fn C.sapp_color_format() int
+
+// get default framebuffer depth pixel format
+fn C.sapp_depth_format() int
+
+// get default framebuffer sample count
+fn C.sapp_sample_count() int
+
 // returns true when high_dpi was requested and actually running in a high-dpi scenario
 fn C.sapp_high_dpi() bool
 
