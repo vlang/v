@@ -1589,6 +1589,7 @@ fn (t Tree) map_init(node ast.MapInit) &Node {
 	obj.add_terse('value_type', t.type_node(node.value_type))
 	obj.add_terse('keys', t.array_node_expr(node.keys))
 	obj.add_terse('vals', t.array_node_expr(node.vals))
+	obj.add_terse('val_types', t.array_node_type(node.val_types))
 	obj.add('comments', t.two_dimension_comment(node.comments))
 	obj.add('pre_cmnts', t.array_node_comment(node.pre_cmnts))
 	obj.add('pos', t.pos(node.pos))

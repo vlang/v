@@ -247,6 +247,7 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			if node.vals[0].is_auto_deref_var() {
 				val0_type = val0_type.deref()
 			}
+			node.val_types << val0_type
 		}
 		mut same_key_type := true
 		for i, key in node.keys {
@@ -258,6 +259,7 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			key_type := c.expr(key)
 			c.expected_type = val0_type
 			val_type := c.expr(val)
+			node.val_types << val_type
 			if !c.check_types(key_type, key0_type) || (i == 0 && key_type.is_number()
 				&& key0_type.is_number() && key0_type != ast.mktyp(key_type)) {
 				msg := c.expected_msg(key_type, key0_type)
