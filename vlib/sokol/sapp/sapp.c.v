@@ -20,6 +20,7 @@ pub fn create_desc() gfx.Desc {
 		render_target_view_cb: d3d11_get_render_target_view
 		depth_stencil_view_cb: d3d11_get_depth_stencil_view
 	}
+
 	return gfx.Desc{
 		context: gfx.ContextDesc{
 			metal: metal_desc
@@ -46,6 +47,24 @@ pub fn width() int {
 [inline]
 pub fn height() int {
 	return C.sapp_height()
+}
+
+// color_format gets default framebuffer color pixel format
+[inline]
+pub fn color_format() int {
+	return C.sapp_color_format()
+}
+
+// depth_format gets default framebuffer depth pixel format
+[inline]
+pub fn depth_format() int {
+	return C.sapp_depth_format()
+}
+
+// sample_count gets default framebuffer sample count
+[inline]
+pub fn sample_count() int {
+	return C.sapp_sample_count()
 }
 
 // returns true when high_dpi was requested and actually running in a high-dpi scenario

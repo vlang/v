@@ -167,6 +167,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		if testing.github_job != 'sokol-shaders-can-be-compiled' {
 			// These examples need .h files that are produced from the supplied .glsl files,
 			// using by the shader compiler tools in https://github.com/floooh/sokol-tools-bin/archive/pre-feb2021-api-changes.tar.gz
+			skip_files << 'examples/sokol/simple_shader_glsl/simple_shader.v'
 			skip_files << 'examples/sokol/02_cubes_glsl/cube_glsl.v'
 			skip_files << 'examples/sokol/03_march_tracing_glsl/rt_glsl.v'
 			skip_files << 'examples/sokol/04_multi_shader_glsl/rt_glsl.v'
