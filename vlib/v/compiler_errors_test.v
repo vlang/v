@@ -213,6 +213,9 @@ fn (mut tasks Tasks) run() {
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_1.vv'
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv'
 	}
+	$if windows {
+		m_skip_files << 'vlib/v/checker/tests/modules/deprecated_module'
+	}
 	for i in 0 .. tasks.all.len {
 		if tasks.all[i].path in m_skip_files {
 			tasks.all[i].is_skipped = true
