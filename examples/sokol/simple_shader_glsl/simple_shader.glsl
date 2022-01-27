@@ -24,7 +24,7 @@ void main() {
 @end
 
 // The value after `@program` decide the name of the function you
-// need to define in V the value is suffixed `_shader_desc`.
+// need to define in V. The value is suffixed `_shader_desc`.
 // Thus the name for this becomes: `simple_shader_desc` and it's signature in V is:
 // `fn C.simple_shader_desc(gfx.Backend) &gfx.ShaderDesc`.
 // Running `v shader -v .` in this dir will also show you this information.
