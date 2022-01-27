@@ -23,9 +23,12 @@ void main() {
 }
 @end
 
-// The value after `@program` decide the name of the function you
-// need to define in V. The value is suffixed `_shader_desc`.
-// Thus the name for this becomes: `simple_shader_desc` and it's signature in V is:
-// `fn C.simple_shader_desc(gfx.Backend) &gfx.ShaderDesc`.
-// Running `v shader -v .` in this dir will also show you this information.
+// The value after `@program` and before `vs fs` decide a part of the name
+// of the C function you need to define in V. The value entered is suffixed `_shader_desc`
+// in the generated C code. Thus the name for this becomes: `simple_shader_desc`.
+// In V it's signature then need to be defined as:
+// `fn C.simple_shader_desc(gfx.Backend) &gfx.ShaderDesc`. See `simple_shader.v` for the define.
+//
+// Running `v shader -v .` in this dir will also show you brief information
+// about how to use the compiled shader.
 @program simple vs fs
