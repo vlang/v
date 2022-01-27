@@ -125,6 +125,9 @@ fn init(user_data voidptr) {
 	// in vec4 position;
 	// in vec4 color0;
 	// ```
+	// Also note the naming of the C.ATTR_* used as indicies.
+	// They are the prefixed versions of the names of the input variables in the shader code.
+	// If they change in the shader code they will also change here.
 	pipeline_desc.layout.attrs[C.ATTR_vs_position].format = .float3 // x,y,z as f32
 	pipeline_desc.layout.attrs[C.ATTR_vs_color0].format = .float4 // r, g, b, a as f32
 	// The .label is optional but can aid debugging sokol shader related issues
