@@ -120,7 +120,7 @@ fn init(user_data voidptr) {
 
 	// Populate the essential struct fields
 	pipeline_desc.shader = shader
-	// The vertex shader () takes 2 inputs:
+	// The vertex shader (`simple_shader.glsl`) takes 2 inputs:
 	// ```glsl
 	// in vec4 position;
 	// in vec4 color0;
