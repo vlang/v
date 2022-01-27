@@ -771,7 +771,16 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	res.build_options = m.keys()
 	// eprintln('>> res.build_options: $res.build_options')
 	res.fill_with_defaults()
+	res.path = normalise_path(res.path)
 	return res, command
+}
+
+fn normalise_path(path string) string {
+	$if windows {
+		return path.replace('/', '\\')
+	} $else {
+		return path.replace('\\', '/')
+	}
 }
 
 pub fn eprintln_cond(condition bool, s string) {
