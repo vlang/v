@@ -4167,9 +4167,9 @@ fn (mut g Gen) map_init(node ast.MapInit) {
 	unwrap_val_typ := g.unwrap_generic(node.value_type)
 	key_typ_str := g.typ(unwrap_key_typ)
 	value_typ_str := g.typ(unwrap_val_typ)
-	value_typ := g.table.sym(unwrap_val_typ)
-	key_typ := g.table.final_sym(unwrap_key_typ)
-	hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_typ)
+	value_sym := g.table.sym(unwrap_val_typ)
+	key_sym := g.table.final_sym(unwrap_key_typ)
+	hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_sym)
 	size := node.vals.len
 	mut shared_styp := '' // only needed for shared &[]{...}
 	mut styp := ''
@@ -4198,7 +4198,7 @@ fn (mut g Gen) map_init(node ast.MapInit) {
 		}
 	}
 	if size > 0 {
-		if value_typ.kind == .function {
+		if value_sym.kind == .function {
 			g.write('new_map_init${noscan}($hash_fn, $key_eq_fn, $clone_fn, $free_fn, $size, sizeof($key_typ_str), sizeof(voidptr), _MOV(($key_typ_str[$size]){')
 		} else {
 			g.write('new_map_init${noscan}($hash_fn, $key_eq_fn, $clone_fn, $free_fn, $size, sizeof($key_typ_str), sizeof($value_typ_str), _MOV(($key_typ_str[$size]){')
@@ -4207,16 +4207,20 @@ fn (mut g Gen) map_init(node ast.MapInit) {
 			g.expr(expr)
 			g.write(', ')
 		}
-		if value_typ.kind == .function {
+		if value_sym.kind == .function {
 			g.write('}), _MOV((voidptr[$size]){')
 		} else {
 			g.write('}), _MOV(($value_typ_str[$size]){')
 		}
-		for expr in node.vals {
+		for i, expr in node.vals {
 			if expr.is_auto_deref_var() {
 				g.write('*')
 			}
-			g.expr(expr)
+			if value_sym.kind == .sum_type {
+				g.expr_with_cast(expr, node.val_types[i], unwrap_val_typ)
+			} else {
+				g.expr(expr)
+			}
 			g.write(', ')
 		}
 		g.write('}))')

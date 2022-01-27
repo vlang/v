@@ -1200,6 +1200,7 @@ pub:
 pub mut:
 	keys       []Expr
 	vals       []Expr
+	val_types  []Type
 	typ        Type
 	key_type   Type
 	value_type Type
