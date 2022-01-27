@@ -4,6 +4,7 @@
 [has_globals]
 module ast
 
+import time
 import v.cflag
 import v.token
 import v.util
@@ -36,8 +37,10 @@ pub mut:
 	cur_fn             &FnDecl = 0 // previously stored in Checker.cur_fn and Gen.cur_fn
 	cur_concrete_types []Type  // current concrete types, e.g. <int, string>
 	gostmts            int     // how many `go` statements there were in the parsed files.
-	enum_decls         map[string]EnumDecl
 	// When table.gostmts > 0, __VTHREADS__ is defined, which can be checked with `$if threads {`
+	enum_decls        map[string]EnumDecl
+	mdeprecated_msg   map[string]string    // module deprecation message
+	mdeprecated_after map[string]time.Time // module deprecation date
 }
 
 // used by vls to avoid leaks
@@ -299,6 +302,15 @@ pub fn (t &Table) find_fn(name string) ?Fn {
 pub fn (t &Table) known_fn(name string) bool {
 	t.find_fn(name) or { return false }
 	return true
+}
+
+pub fn (mut t Table) mark_module_as_deprecated(mname string, message string) {
+	t.mdeprecated_msg[mname] = message
+	t.mdeprecated_after[mname] = time.now()
+}
+
+pub fn (mut t Table) mark_module_as_deprecated_after(mname string, after_date string) {
+	t.mdeprecated_after[mname] = time.parse_iso8601(after_date) or { time.now() }
 }
 
 pub fn (mut t Table) register_fn(new_fn Fn) {

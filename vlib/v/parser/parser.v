@@ -2967,16 +2967,19 @@ fn (mut p Parser) parse_number_literal() ast.Expr {
 fn (mut p Parser) module_decl() ast.Module {
 	mut module_attrs := []ast.Attr{}
 	mut attrs_pos := p.tok.pos()
-	if p.tok.kind == .lsbr {
+	for p.tok.kind == .lsbr {
 		p.attributes()
-		module_attrs = p.attrs
 	}
+	module_attrs << p.attrs
 	mut name := 'main'
-	is_skipped := p.tok.kind != .key_module
 	mut module_pos := token.Pos{}
 	mut name_pos := token.Pos{}
 	mut mod_node := ast.Module{}
-	if !is_skipped {
+	is_skipped := p.tok.kind != .key_module
+	if is_skipped {
+		// the attributes were for something else != module, like a struct/fn/type etc.
+		module_attrs = []
+	} else {
 		p.attrs = []
 		module_pos = p.tok.pos()
 		p.next()
@@ -3020,6 +3023,14 @@ fn (mut p Parser) module_decl() ast.Module {
 	if !is_skipped {
 		for ma in module_attrs {
 			match ma.name {
+				'deprecated' {
+					// [deprecated: 'use a replacement']
+					p.table.mark_module_as_deprecated(p.mod, ma.arg)
+				}
+				'deprecated_after' {
+					// [deprecated_after: '2027-12-30']
+					p.table.mark_module_as_deprecated_after(p.mod, ma.arg)
+				}
 				'manualfree' {
 					p.is_manualfree = true
 				}

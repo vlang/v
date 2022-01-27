@@ -478,7 +478,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.interface_decl(node)
 		}
 		ast.Module {
-			f.mod(node)
+			f.module_stmt(node)
 		}
 		ast.Return {
 			f.return_stmt(node)
@@ -1135,7 +1135,7 @@ pub fn (mut f Fmt) interface_method(method ast.FnDecl) {
 	f.mark_types_import_as_used(method.return_type)
 }
 
-pub fn (mut f Fmt) mod(mod ast.Module) {
+pub fn (mut f Fmt) module_stmt(mod ast.Module) {
 	f.set_current_module_name(mod.name)
 	if mod.is_skipped {
 		return

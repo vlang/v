@@ -3,6 +3,7 @@
 module checker
 
 import os
+import time
 import v.ast
 import v.vmod
 import v.token
@@ -2239,6 +2240,11 @@ fn (mut c Checker) import_stmt(node ast.Import) {
 			continue
 		}
 		c.error('module `$node.mod` has no constant or function `$sym.name`', sym.pos)
+	}
+	if after_time := c.table.mdeprecated_after[node.mod] {
+		now := time.now()
+		deprecation_message := c.table.mdeprecated_msg[node.mod]
+		c.deprecate('module', node.mod, deprecation_message, now, after_time, node.pos)
 	}
 }
 

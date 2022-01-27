@@ -1439,7 +1439,6 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 }
 
 fn (mut c Checker) deprecate_fnmethod(kind string, name string, the_fn ast.Fn, node ast.CallExpr) {
-	start_message := '$kind `$name`'
 	mut deprecation_message := ''
 	now := time.now()
 	mut after_time := now
@@ -1454,19 +1453,24 @@ fn (mut c Checker) deprecate_fnmethod(kind string, name string, the_fn ast.Fn, n
 			}
 		}
 	}
+	c.deprecate(kind, name, deprecation_message, now, after_time, node.pos)
+}
+
+fn (mut c Checker) deprecate(kind string, name string, deprecation_message string, now time.Time, after_time time.Time, pos token.Pos) {
+	start_message := '$kind `$name`'
 	error_time := after_time.add_days(180)
 	if error_time < now {
 		c.error(semicolonize('$start_message has been deprecated since $after_time.ymmdd()',
-			deprecation_message), node.pos)
+			deprecation_message), pos)
 	} else if after_time < now {
 		c.warn(semicolonize('$start_message has been deprecated since $after_time.ymmdd(), it will be an error after $error_time.ymmdd()',
-			deprecation_message), node.pos)
+			deprecation_message), pos)
 	} else if after_time == now {
 		c.warn(semicolonize('$start_message has been deprecated', deprecation_message),
-			node.pos)
+			pos)
 	} else {
 		c.note(semicolonize('$start_message will be deprecated after $after_time.ymmdd(), and will become an error after $error_time.ymmdd()',
-			deprecation_message), node.pos)
+			deprecation_message), pos)
 	}
 }
 
