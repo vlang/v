@@ -1,12 +1,12 @@
 module missing_enum
 
-pub enum ColorList{
-    red
-    blue
-    green
-    black
+pub enum ColorList {
+	red
+	blue
+	green
+	black
 }
 
-pub struct Color{
-    color ColorList
+pub struct Color {
+	color ColorList
 }
