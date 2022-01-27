@@ -1047,10 +1047,15 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		} else {
 			g.expr(node.left)
 		}
-		for embed in node.from_embed_types {
+		for i, embed in node.from_embed_types {
 			embed_sym := g.table.sym(embed)
 			embed_name := embed_sym.embed_name()
-			if node.left_type.is_ptr() {
+			is_left_ptr := if i == 0 {
+				node.left_type.is_ptr()
+			} else {
+				node.from_embed_types[i - 1].is_ptr()
+			}
+			if is_left_ptr {
 				g.write('->')
 			} else {
 				g.write('.')
