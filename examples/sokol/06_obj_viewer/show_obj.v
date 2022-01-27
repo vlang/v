@@ -233,7 +233,6 @@ fn my_init(mut app App) {
 }
 
 fn cleanup(mut app App) {
-	gfx.shutdown()
 	/*
 	for _, mat in app.obj_part.texture {
 		obj.destroy_texture(mat)
