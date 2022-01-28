@@ -173,6 +173,7 @@ fn rw_callback(loop &C.picoev_loop, fd int, events int, context voidptr) {
 
 		// Callback (should call .end() itself)
 		p.cb(mut p.user_data, req, mut &res)
+		close_conn(loop, fd)
 	}
 }
 
