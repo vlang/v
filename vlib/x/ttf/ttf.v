@@ -552,10 +552,10 @@ fn (mut tf TTF_File) get_unicode_string(length int) string {
 		c_len := ((0xe5000000 >> ((c >> 3) & 0x1e)) & 3) + 1
 		real_len += c_len
 		if c_len == 1 {
-			tmp_txt.write_b(byte(c & 0xff))
+			tmp_txt.write_byte(byte(c & 0xff))
 		} else {
-			tmp_txt.write_b(byte((c >> 8) & 0xff))
-			tmp_txt.write_b(byte(c & 0xff))
+			tmp_txt.write_byte(byte((c >> 8) & 0xff))
+			tmp_txt.write_byte(byte(c & 0xff))
 		}
 		// dprintln("c: ${c:c}|${ byte(c &0xff) :c} c_len: ${c_len} str_len: ${real_len} in_len: ${length}")
 	}

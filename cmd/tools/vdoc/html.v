@@ -421,7 +421,7 @@ fn html_highlight(code string, tb &ast.Table) string {
 				break
 			}
 		} else {
-			buf.write_b(code[i])
+			buf.write_byte(code[i])
 			i++
 		}
 	}

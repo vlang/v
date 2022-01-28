@@ -769,17 +769,17 @@ pub fn (a []string) str() string {
 	}
 	sb_len += 2 // 1x[ + 1x]
 	mut sb := strings.new_builder(sb_len)
-	sb.write_b(`[`)
+	sb.write_byte(`[`)
 	for i in 0 .. a.len {
 		val := a[i]
-		sb.write_b(`'`)
+		sb.write_byte(`'`)
 		sb.write_string(val)
-		sb.write_b(`'`)
+		sb.write_byte(`'`)
 		if i < a.len - 1 {
 			sb.write_string(', ')
 		}
 	}
-	sb.write_b(`]`)
+	sb.write_byte(`]`)
 	res := sb.str()
 	unsafe { sb.free() }
 	return res

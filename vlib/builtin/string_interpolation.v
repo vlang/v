@@ -268,7 +268,7 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 					tmp.free()
 				}
 				if write_minus {
-					sb.write_b(`-`)
+					sb.write_byte(`-`)
 					bf.len0-- // compensate for the `-` above
 				}
 				if width == 0 {
