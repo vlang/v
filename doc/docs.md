@@ -3888,6 +3888,11 @@ memory manually. (See [attributes](#attributes)).
 _Note: right now autofree is hidden behind the -autofree flag. It will be enabled by
 default in V 0.3. If autofree is not used, V programs will leak memory._
 
+Note 2: Autofree is still WIP. Until it stabilises and becomes the default, please 
+compile your long running processes with `-gc boehm`, which will use the 
+Boehm-Demers-Weiser conservative garbage collector, to free the memory, that your
+programs leak, at runtime.
+
 ### Examples
 
 ```v
