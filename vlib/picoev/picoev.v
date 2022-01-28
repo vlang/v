@@ -10,7 +10,6 @@ import picohttpparser
 #include <netinet/tcp.h>
 #include <signal.h>
 #flag -I @VEXEROOT/thirdparty/picoev
-#flag -L @VEXEROOT/thirdparty/picoev
 #flag @VEXEROOT/thirdparty/picoev/picoev.o
 #include "src/picoev.h"
 
