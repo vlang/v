@@ -3503,7 +3503,7 @@ fn main() {
 ```
 
 ### Channels
-Channels are the preferred way to communicate between coroutines. V's channels work basically like
+Channels are the preferred way to communicate between threads. V's channels work basically like
 those in Go. You can push objects into a channel on one end and pop objects from the other end.
 Channels can be buffered or unbuffered and it is possible to `select` from multiple channels.
 
@@ -3517,7 +3517,7 @@ ch2 := chan f64{cap: 100} // buffer length 100
 ```
 
 Channels do not have to be declared as `mut`. The buffer length is not part of the type but
-a field of the individual channel object. Channels can be passed to coroutines like normal
+a field of the individual channel object. Channels can be passed to threads like normal
 variables:
 
 ```v
@@ -3669,8 +3669,8 @@ and [Channel Select](#channel-select) above).
 
 ### Shared Objects
 
-Data can be exchanged between a coroutine and the calling thread via a shared variable.
-Such variables should be created as `shared` and passed to the coroutine as such, too.
+Data can be exchanged between a thread and the calling thread via a shared variable.
+Such variables should be created as `shared` and passed to the thread as such, too.
 The underlying `struct` contains a hidden *mutex* that allows locking concurrent access
 using `rlock` for read-only and `lock` for read/write access.
 
