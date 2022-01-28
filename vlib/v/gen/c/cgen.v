@@ -2538,7 +2538,7 @@ fn cescape_nonascii(original string) string {
 			write_octal_escape(mut b, c)
 			continue
 		}
-		b.write_b(c)
+		b.write_byte(c)
 	}
 	res := b.str()
 	return res

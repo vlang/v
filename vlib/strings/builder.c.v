@@ -49,7 +49,13 @@ pub fn (mut b Builder) write_runes(runes []rune) {
 }
 
 // write_b appends a single `data` byte to the accumulated buffer
+[deprecated: "Use write_byte() instead"]
 pub fn (mut b Builder) write_b(data byte) {
+	b << data
+}
+
+// write_byte appends a single `data` byte to the accumulated buffer
+pub fn (mut b Builder) write_byte(data byte) {
 	b << data
 }
 

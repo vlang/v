@@ -103,13 +103,13 @@ pub fn format_str(s string, p BF_param) string {
 	}
 	if p.allign == .right {
 		for i1 := 0; i1 < dif; i1++ {
-			res.write_b(p.pad_ch)
+			res.write_byte(p.pad_ch)
 		}
 	}
 	res.write_string(s)
 	if p.allign == .left {
 		for i1 := 0; i1 < dif; i1++ {
-			res.write_b(p.pad_ch)
+			res.write_byte(p.pad_ch)
 		}
 	}
 	return res.str()

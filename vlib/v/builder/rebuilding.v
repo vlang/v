@@ -37,9 +37,9 @@ pub fn (mut b Builder) rebuild_modules() {
 		chash := hash.sum64_string(ccontent, 7).hex_full()
 		new_hashes[cpath] = chash
 		sb_new_hashes.write_string(chash)
-		sb_new_hashes.write_b(` `)
+		sb_new_hashes.write_byte(` `)
 		sb_new_hashes.write_string(cpath)
-		sb_new_hashes.write_b(`\n`)
+		sb_new_hashes.write_byte(`\n`)
 	}
 	snew_hashes := sb_new_hashes.str()
 	// eprintln('new_hashes: $new_hashes')

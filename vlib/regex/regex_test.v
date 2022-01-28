@@ -748,9 +748,9 @@ fn test_long_query() {
     base_string := rand.string(test_len)
 
     for c in base_string {
-        buf.write_b(`(`)
-        buf.write_b(c)
-        buf.write_b(`)`)
+        buf.write_byte(`(`)
+        buf.write_byte(c)
+        buf.write_byte(`)`)
     }
 
     mut query := buf.str()
@@ -767,11 +767,11 @@ fn test_long_query() {
     // test 2
     buf.clear()
     for c in base_string {
-        buf.write_b(`(`)
-        buf.write_b(c)
+        buf.write_byte(`(`)
+        buf.write_byte(c)
     }
     for _ in 0..base_string.len {
-        buf.write_b(`)`)
+        buf.write_byte(`)`)
     }
     query = buf.str()
     re = regex.regex_opt(query) or { panic(err) }

@@ -65,8 +65,8 @@ pub fn smart_quote(str string, raw bool) string {
 		}
 		if current == util.double_quote {
 			current = 0
-			result.write_b(util.backslash)
-			result.write_b(util.double_quote)
+			result.write_byte(util.backslash)
+			result.write_byte(util.double_quote)
 			continue
 		}
 		if current == util.backslash {
@@ -88,26 +88,26 @@ pub fn smart_quote(str string, raw bool) string {
 				}
 				if next in util.invalid_escapes {
 					skip_next = true
-					result.write_b(next)
+					result.write_byte(next)
 					continue
 				}
 				// keep all valid escape sequences
 				skip_next = true
-				result.write_b(current)
-				result.write_b(next)
+				result.write_byte(current)
+				result.write_byte(next)
 				continue
 			}
 		}
 		if current == util.backslash_n {
 			// keep newlines in string
 			current = 0
-			result.write_b(util.backslash)
-			result.write_b(`n`)
+			result.write_byte(util.backslash)
+			result.write_byte(`n`)
 			continue
 		}
 		if current == util.backslash_r && next == util.backslash_n {
-			result.write_b(current)
-			result.write_b(next)
+			result.write_byte(current)
+			result.write_byte(next)
 			current = 0
 			skip_next = true
 			continue
@@ -115,20 +115,20 @@ pub fn smart_quote(str string, raw bool) string {
 		if !raw {
 			if current == `$` {
 				if last == util.backslash {
-					result.write_b(last)
-					result.write_b(current)
+					result.write_byte(last)
+					result.write_byte(current)
 					continue
 				}
 			}
 			if current == util.backslash_r && next == util.backslash_n {
 				// Windows style new line \r\n
 				skip_next = true
-				result.write_b(util.backslash)
-				result.write_b(`n`)
+				result.write_byte(util.backslash)
+				result.write_byte(`n`)
 				continue
 			}
 		}
-		result.write_b(current)
+		result.write_byte(current)
 	}
 	return result.str()
 }
