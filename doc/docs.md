@@ -3887,6 +3887,7 @@ memory manually. (See [attributes](#attributes)).
 
 _Note: right now autofree is hidden behind the -autofree flag. It will be enabled by
 default in V 0.3. If autofree is not used, V programs will leak memory._
+_And since autofree is WIP, there is an option to use GC._
 
 ### Examples
 
