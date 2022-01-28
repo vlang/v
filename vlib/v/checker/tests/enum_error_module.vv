@@ -1,0 +1,8 @@
+import missing_enum as me
+
+fn main() {
+	mut c := me.Color{
+		color: me.ColoList.black
+	}
+	println(c)
+}
