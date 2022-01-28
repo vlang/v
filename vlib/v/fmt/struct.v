@@ -91,7 +91,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 				before_last_line = mu.max(before_last_line, node.fields[i - 1].comments.last().pos.last_line)
 			}
 			if node.fields[i - 1].has_default_expr {
-				before_last_line = mu.max(before_last_line, node.fields[i - 1].default_expr.position().last_line)
+				before_last_line = mu.max(before_last_line, node.fields[i - 1].default_expr.pos().last_line)
 			}
 
 			mut next_first_line := field.pos.line_nr

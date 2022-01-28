@@ -715,45 +715,45 @@ pub fn (t &TypeSymbol) is_heap() bool {
 pub fn (mut t Table) register_builtin_type_symbols() {
 	// reserve index 0 so nothing can go there
 	// save index check, 0 will mean not found
-	t.register_type_symbol(kind: .placeholder, name: 'reserved_0')
-	t.register_type_symbol(kind: .void, name: 'void', cname: 'void', mod: 'builtin')
-	t.register_type_symbol(kind: .voidptr, name: 'voidptr', cname: 'voidptr', mod: 'builtin')
-	t.register_type_symbol(kind: .byteptr, name: 'byteptr', cname: 'byteptr', mod: 'builtin')
-	t.register_type_symbol(kind: .charptr, name: 'charptr', cname: 'charptr', mod: 'builtin')
-	t.register_type_symbol(kind: .i8, name: 'i8', cname: 'i8', mod: 'builtin')
-	t.register_type_symbol(kind: .i16, name: 'i16', cname: 'i16', mod: 'builtin')
-	t.register_type_symbol(kind: .int, name: 'int', cname: 'int', mod: 'builtin')
-	t.register_type_symbol(kind: .i64, name: 'i64', cname: 'i64', mod: 'builtin')
-	t.register_type_symbol(kind: .isize, name: 'isize', cname: 'isize', mod: 'builtin')
-	t.register_type_symbol(kind: .byte, name: 'byte', cname: 'byte', mod: 'builtin')
-	t.register_type_symbol(kind: .u16, name: 'u16', cname: 'u16', mod: 'builtin')
-	t.register_type_symbol(kind: .u32, name: 'u32', cname: 'u32', mod: 'builtin')
-	t.register_type_symbol(kind: .u64, name: 'u64', cname: 'u64', mod: 'builtin')
-	t.register_type_symbol(kind: .usize, name: 'usize', cname: 'usize', mod: 'builtin')
-	t.register_type_symbol(kind: .f32, name: 'f32', cname: 'f32', mod: 'builtin')
-	t.register_type_symbol(kind: .f64, name: 'f64', cname: 'f64', mod: 'builtin')
-	t.register_type_symbol(kind: .char, name: 'char', cname: 'char', mod: 'builtin')
-	t.register_type_symbol(kind: .bool, name: 'bool', cname: 'bool', mod: 'builtin')
-	t.register_type_symbol(kind: .none_, name: 'none', cname: 'none', mod: 'builtin')
-	t.register_type_symbol(kind: .string, name: 'string', cname: 'string', mod: 'builtin')
-	t.register_type_symbol(kind: .rune, name: 'rune', cname: 'rune', mod: 'builtin')
-	t.register_type_symbol(kind: .array, name: 'array', cname: 'array', mod: 'builtin')
-	t.register_type_symbol(kind: .map, name: 'map', cname: 'map', mod: 'builtin')
-	t.register_type_symbol(kind: .chan, name: 'chan', cname: 'chan', mod: 'builtin')
-	t.register_type_symbol(kind: .any, name: 'any', cname: 'any', mod: 'builtin')
-	t.register_type_symbol(
+	t.register_sym(kind: .placeholder, name: 'reserved_0')
+	t.register_sym(kind: .void, name: 'void', cname: 'void', mod: 'builtin')
+	t.register_sym(kind: .voidptr, name: 'voidptr', cname: 'voidptr', mod: 'builtin')
+	t.register_sym(kind: .byteptr, name: 'byteptr', cname: 'byteptr', mod: 'builtin')
+	t.register_sym(kind: .charptr, name: 'charptr', cname: 'charptr', mod: 'builtin')
+	t.register_sym(kind: .i8, name: 'i8', cname: 'i8', mod: 'builtin')
+	t.register_sym(kind: .i16, name: 'i16', cname: 'i16', mod: 'builtin')
+	t.register_sym(kind: .int, name: 'int', cname: 'int', mod: 'builtin')
+	t.register_sym(kind: .i64, name: 'i64', cname: 'i64', mod: 'builtin')
+	t.register_sym(kind: .isize, name: 'isize', cname: 'isize', mod: 'builtin')
+	t.register_sym(kind: .byte, name: 'byte', cname: 'byte', mod: 'builtin')
+	t.register_sym(kind: .u16, name: 'u16', cname: 'u16', mod: 'builtin')
+	t.register_sym(kind: .u32, name: 'u32', cname: 'u32', mod: 'builtin')
+	t.register_sym(kind: .u64, name: 'u64', cname: 'u64', mod: 'builtin')
+	t.register_sym(kind: .usize, name: 'usize', cname: 'usize', mod: 'builtin')
+	t.register_sym(kind: .f32, name: 'f32', cname: 'f32', mod: 'builtin')
+	t.register_sym(kind: .f64, name: 'f64', cname: 'f64', mod: 'builtin')
+	t.register_sym(kind: .char, name: 'char', cname: 'char', mod: 'builtin')
+	t.register_sym(kind: .bool, name: 'bool', cname: 'bool', mod: 'builtin')
+	t.register_sym(kind: .none_, name: 'none', cname: 'none', mod: 'builtin')
+	t.register_sym(kind: .string, name: 'string', cname: 'string', mod: 'builtin')
+	t.register_sym(kind: .rune, name: 'rune', cname: 'rune', mod: 'builtin')
+	t.register_sym(kind: .array, name: 'array', cname: 'array', mod: 'builtin')
+	t.register_sym(kind: .map, name: 'map', cname: 'map', mod: 'builtin')
+	t.register_sym(kind: .chan, name: 'chan', cname: 'chan', mod: 'builtin')
+	t.register_sym(kind: .any, name: 'any', cname: 'any', mod: 'builtin')
+	t.register_sym(
 		kind: .float_literal
 		name: 'float literal'
 		cname: 'float_literal'
 		mod: 'builtin'
 	)
-	t.register_type_symbol(
+	t.register_sym(
 		kind: .int_literal
 		name: 'int literal'
 		cname: 'int_literal'
 		mod: 'builtin'
 	)
-	t.register_type_symbol(
+	t.register_sym(
 		kind: .thread
 		name: 'thread'
 		cname: '__v_thread'
@@ -762,8 +762,8 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 			return_type: ast.void_type
 		}
 	)
-	t.register_type_symbol(kind: .interface_, name: 'IError', cname: 'IError', mod: 'builtin')
-	t.register_type_symbol(kind: .u8, name: 'zu8', cname: 'zu8', mod: 'builtin')
+	t.register_sym(kind: .interface_, name: 'IError', cname: 'IError', mod: 'builtin')
+	t.register_sym(kind: .u8, name: 'zu8', cname: 'zu8', mod: 'builtin')
 }
 
 [inline]
@@ -922,31 +922,6 @@ pub:
 	types []Type
 }
 
-/*
-pub struct Field {
-pub:
-	name string
-pub mut:
-	typ              Type
-	default_expr     Expr
-	has_default_expr bool
-	default_expr_typ Type
-	default_val      string
-	attrs            []Attr
-	is_pub           bool
-	is_mut           bool
-	is_global        bool
-}
-*/
-
-pub fn (f &StructField) equals(o &StructField) bool {
-	// TODO: f.is_mut == o.is_mut was removed here to allow read only access
-	// to (mut/not mut), but otherwise equal fields; some other new checks are needed:
-	// - if node is declared mut, and we mutate node.stmts, all stmts fields must be mutable
-	// - same goes for pub and global, if we call the field from another module
-	return f.name == o.name && f.typ == o.typ && f.is_pub == o.is_pub && f.is_global == o.is_global
-}
-
 pub struct Array {
 pub:
 	nr_dims int
@@ -980,14 +955,13 @@ pub mut:
 }
 
 pub struct SumType {
-pub:
-	variants []Type
 pub mut:
 	fields       []StructField
 	found_fields bool
 	is_anon      bool
 	// generic sumtype support
 	is_generic     bool
+	variants       []Type
 	generic_types  []Type
 	concrete_types []Type
 	parent_type    Type

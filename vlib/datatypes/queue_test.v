@@ -38,6 +38,17 @@ fn test_last() ? {
 	assert false
 }
 
+fn test_index() ? {
+	mut queue := Queue<int>{}
+	queue.push(1)
+	assert queue.index(0) ? == 1
+	queue.push(2)
+	assert queue.index(1) ? == 2
+	queue.pop() ?
+	queue.index(1) or { return }
+	assert false
+}
+
 fn test_push() ? {
 	mut queue := Queue<int>{}
 	queue.push(1)

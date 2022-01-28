@@ -209,6 +209,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	if is_livefn && !is_livemode {
 		eprintln('INFO: compile with `v -live $g.pref.path `, if you want to use the [live] function $node.name .')
 	}
+<<<<<<< HEAD
 
 	mut name := node.name
 	if name in ['+', '-', '*', '/', '%', '<', '=='] {
@@ -249,6 +250,12 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		name = node.attrs[0].arg
 	}
 	// TODO: add function order randomizer with misc semi funcs callings inside each other
+=======
+	//
+	mut name := g.c_fn_name(node) or { return }
+	mut type_name := g.typ(node.return_type)
+
+>>>>>>> a4fb5d2cfdee2585b3411e659699e9f368ee415c
 	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') && !node.is_main
 		&& node.name != 'str' {
 		mut key := node.name
@@ -446,6 +453,47 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 			g.writeln('}')
 		}
 	}
+}
+
+fn (mut g Gen) c_fn_name(node &ast.FnDecl) ?string {
+	mut name := node.name
+	if name in ['+', '-', '*', '/', '%', '<', '=='] {
+		name = util.replace_op(name)
+	}
+	if node.is_method {
+		unwrapped_rec_sym := g.table.sym(g.unwrap_generic(node.receiver.typ))
+		if unwrapped_rec_sym.kind == .placeholder {
+			return none
+		}
+		name = g.cc_type(node.receiver.typ, false) + '_' + name
+		// name = g.table.sym(node.receiver.typ).name + '_' + name
+	}
+	if node.language == .c {
+		name = util.no_dots(name)
+	} else {
+		name = c_name(name)
+	}
+
+	if node.generic_names.len > 0 {
+		name = g.generic_fn_name(g.cur_concrete_types, name, true)
+	}
+
+	if g.pref.translated && node.attrs.contains('c') {
+		// This fixes unknown symbols errors when building separate .c => .v files
+		// into .o files
+		//
+		// example:
+		// [c: 'P_TryMove']
+		// fn p_trymove(thing &Mobj_t, x int, y int) bool
+		//
+		// =>
+		//
+		// bool P_TryMove(main__Mobj_t* thing, int x, int y);
+		//
+		// In fn_call every time `p_trymove` is called, `P_TryMove` will be generated instead.
+		name = node.attrs[0].arg
+	}
+	return name
 }
 
 const closure_ctx = '_V_closure_ctx'
@@ -1042,10 +1090,15 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		} else {
 			g.expr(node.left)
 		}
-		for embed in node.from_embed_types {
+		for i, embed in node.from_embed_types {
 			embed_sym := g.table.sym(embed)
 			embed_name := embed_sym.embed_name()
-			if node.left_type.is_ptr() {
+			is_left_ptr := if i == 0 {
+				node.left_type.is_ptr()
+			} else {
+				node.from_embed_types[i - 1].is_ptr()
+			}
+			if is_left_ptr {
 				g.write('->')
 			} else {
 				g.write('.')
@@ -1471,7 +1524,37 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 	} else {
 		node.args
 	}
-	expected_types := node.expected_arg_types
+	mut expected_types := node.expected_arg_types
+	// unwrap generics fn/method arguments to concretes
+	if node.concrete_types.len > 0 && node.concrete_types.all(!it.has_flag(.generic)) {
+		if node.is_method {
+			if func := g.table.find_method(g.table.sym(node.left_type), node.name) {
+				if func.generic_names.len > 0 {
+					for i in 0 .. expected_types.len {
+						mut muttable := unsafe { &ast.Table(g.table) }
+						if utyp := muttable.resolve_generic_to_concrete(node.expected_arg_types[i],
+							func.generic_names, node.concrete_types)
+						{
+							expected_types[i] = utyp
+						}
+					}
+				}
+			}
+		} else {
+			if func := g.table.find_fn(node.name) {
+				if func.generic_names.len > 0 {
+					for i in 0 .. expected_types.len {
+						mut muttable := unsafe { &ast.Table(g.table) }
+						if utyp := muttable.resolve_generic_to_concrete(node.expected_arg_types[i],
+							func.generic_names, node.concrete_types)
+						{
+							expected_types[i] = utyp
+						}
+					}
+				}
+			}
+		}
+	}
 	// only v variadic, C variadic args will be appeneded like normal args
 	is_variadic := expected_types.len > 0 && expected_types.last().has_flag(.variadic)
 		&& node.language == .v
@@ -1602,6 +1685,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		g.write('&/*mut*/')
 	} else if arg_is_ptr && !expr_is_ptr {
 		if arg.is_mut {
+			arg_sym := g.table.sym(arg_typ)
 			if exp_sym.kind == .array {
 				if (arg.expr is ast.Ident && (arg.expr as ast.Ident).kind == .variable)
 					|| arg.expr is ast.SelectorExpr {
@@ -1614,6 +1698,11 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 					g.expr(arg.expr)
 					g.write('}[0]')
 				}
+				return
+			} else if arg_sym.kind == .sum_type && exp_sym.kind == .sum_type
+				&& (arg.expr is ast.Ident || arg.expr is ast.SelectorExpr) {
+				g.write('&/*sum*/')
+				g.expr(arg.expr)
 				return
 			}
 		}

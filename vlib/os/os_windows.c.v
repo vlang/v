@@ -366,7 +366,7 @@ pub fn execute(cmd string) Result {
 			break
 		}
 	}
-	soutput := read_data.str().trim_space()
+	soutput := read_data.str()
 	unsafe { read_data.free() }
 	exit_code := u32(0)
 	C.WaitForSingleObject(proc_info.h_process, C.INFINITE)
@@ -505,10 +505,7 @@ pub fn is_writable_folder(folder string) ?bool {
 	}
 	tmp_folder_name := 'tmp_perm_check_pid_' + getpid().str()
 	tmp_perm_check := join_path_single(folder, tmp_folder_name)
-	mut f := open_file(tmp_perm_check, 'w+', 0o700) or {
-		return error('cannot write to folder $folder: $err')
-	}
-	f.close()
+	write_file(tmp_perm_check, 'test') or { return error('cannot write to folder "$folder": $err') }
 	rm(tmp_perm_check) ?
 	return true
 }

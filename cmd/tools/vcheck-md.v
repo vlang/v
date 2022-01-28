@@ -172,30 +172,30 @@ fn (mut f MDFile) check() CheckResult {
 		// f.progress('line: $j')
 		if f.state == .vexample {
 			if line.len > too_long_line_length_example {
-				wprintln(wline(f.path, j, line.len, 'long V example line'))
+				wprintln(wline(f.path, j, line.len, 'example lines must be less than $too_long_line_length_example characters'))
 				wprintln(line)
 				res.warnings++
 			}
 		} else if f.state == .codeblock {
 			if line.len > too_long_line_length_codeblock {
-				wprintln(wline(f.path, j, line.len, 'long code block line'))
+				wprintln(wline(f.path, j, line.len, 'code lines must be less than $too_long_line_length_codeblock characters'))
 				wprintln(line)
 				res.warnings++
 			}
 		} else if line.starts_with('|') {
 			if line.len > too_long_line_length_table {
-				wprintln(wline(f.path, j, line.len, 'long table'))
+				wprintln(wline(f.path, j, line.len, 'table lines must be less than $too_long_line_length_table characters'))
 				wprintln(line)
 				res.warnings++
 			}
 		} else if line.contains('http') {
 			if line.all_after('https').len > too_long_line_length_link {
-				wprintln(wline(f.path, j, line.len, 'long link'))
+				wprintln(wline(f.path, j, line.len, 'link lines must be less than $too_long_line_length_link characters'))
 				wprintln(line)
 				res.warnings++
 			}
 		} else if line.len > too_long_line_length_other {
-			eprintln(eline(f.path, j, line.len, 'line too long'))
+			eprintln(eline(f.path, j, line.len, 'must be less than $too_long_line_length_other characters'))
 			eprintln(line)
 			res.errors++
 		}
@@ -410,7 +410,7 @@ fn silent_cmdexecute(cmd string) int {
 }
 
 fn get_fmt_exit_code(vfile string, vexe string) int {
-	return silent_cmdexecute('"$vexe" fmt -verify $vfile')
+	return silent_cmdexecute('${os.quoted_path(vexe)} fmt -verify ${os.quoted_path(vfile)}')
 }
 
 fn (mut f MDFile) check_examples() CheckResult {
@@ -438,7 +438,7 @@ fn (mut f MDFile) check_examples() CheckResult {
 			fmt_res := if nofmt { 0 } else { get_fmt_exit_code(vfile, vexe) }
 			match command {
 				'compile' {
-					res := cmdexecute('"$vexe" -w -Wfatal-errors -o x.c $vfile')
+					res := cmdexecute('${os.quoted_path(vexe)} -w -Wfatal-errors -o x.c ${os.quoted_path(vfile)}')
 					os.rm('x.c') or {}
 					if res != 0 || fmt_res != 0 {
 						if res != 0 {
@@ -455,7 +455,7 @@ fn (mut f MDFile) check_examples() CheckResult {
 					oks++
 				}
 				'globals' {
-					res := cmdexecute('"$vexe" -w -Wfatal-errors -enable-globals -o x.c $vfile')
+					res := cmdexecute('${os.quoted_path(vexe)} -w -Wfatal-errors -enable-globals -o x.c ${os.quoted_path(vfile)}')
 					os.rm('x.c') or {}
 					if res != 0 || fmt_res != 0 {
 						if res != 0 {
@@ -472,7 +472,7 @@ fn (mut f MDFile) check_examples() CheckResult {
 					oks++
 				}
 				'live' {
-					res := cmdexecute('"$vexe" -w -Wfatal-errors -live -o x.c $vfile')
+					res := cmdexecute('${os.quoted_path(vexe)} -w -Wfatal-errors -live -o x.c ${os.quoted_path(vfile)}')
 					if res != 0 || fmt_res != 0 {
 						if res != 0 {
 							eprintln(eline(f.path, e.sline, 0, 'example failed to compile with -live'))
@@ -488,7 +488,7 @@ fn (mut f MDFile) check_examples() CheckResult {
 					oks++
 				}
 				'failcompile' {
-					res := silent_cmdexecute('"$vexe" -w -Wfatal-errors -o x.c $vfile')
+					res := silent_cmdexecute('${os.quoted_path(vexe)} -w -Wfatal-errors -o x.c ${os.quoted_path(vfile)}')
 					os.rm('x.c') or {}
 					if res == 0 || fmt_res != 0 {
 						if res == 0 {
@@ -505,7 +505,7 @@ fn (mut f MDFile) check_examples() CheckResult {
 					oks++
 				}
 				'oksyntax' {
-					res := cmdexecute('"$vexe" -w -Wfatal-errors -check-syntax $vfile')
+					res := cmdexecute('${os.quoted_path(vexe)} -w -Wfatal-errors -check-syntax ${os.quoted_path(vfile)}')
 					if res != 0 || fmt_res != 0 {
 						if res != 0 {
 							eprintln(eline(f.path, e.sline, 0, '`oksyntax` example with invalid syntax'))
@@ -521,7 +521,7 @@ fn (mut f MDFile) check_examples() CheckResult {
 					oks++
 				}
 				'badsyntax' {
-					res := silent_cmdexecute('"$vexe" -w -Wfatal-errors -check-syntax $vfile')
+					res := silent_cmdexecute('${os.quoted_path(vexe)} -w -Wfatal-errors -check-syntax ${os.quoted_path(vfile)}')
 					if res == 0 {
 						eprintln(eline(f.path, e.sline, 0, '`badsyntax` example can be parsed fine'))
 						eprintln(vcontent)

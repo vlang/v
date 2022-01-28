@@ -17,7 +17,14 @@ pub fn (_str string) to_wide() &u16 {
 			return wstr
 		}
 	} $else {
-		return 0
+		srunes := _str.runes()
+		unsafe {
+			mut result := &u16(vcalloc_noscan((srunes.len + 1) * 2))
+			for i, r in srunes {
+				result[i] = u16(r)
+			}
+			return result
+		}
 	}
 }
 

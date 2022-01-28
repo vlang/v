@@ -4,6 +4,7 @@
 [has_globals]
 module ast
 
+import time
 import v.cflag
 import v.token
 import v.util
@@ -36,8 +37,10 @@ pub mut:
 	cur_fn             &FnDecl = 0 // previously stored in Checker.cur_fn and Gen.cur_fn
 	cur_concrete_types []Type  // current concrete types, e.g. <int, string>
 	gostmts            int     // how many `go` statements there were in the parsed files.
-	enum_decls         map[string]EnumDecl
 	// When table.gostmts > 0, __VTHREADS__ is defined, which can be checked with `$if threads {`
+	enum_decls        map[string]EnumDecl
+	mdeprecated_msg   map[string]string    // module deprecation message
+	mdeprecated_after map[string]time.Time // module deprecation date
 }
 
 // used by vls to avoid leaks
@@ -95,8 +98,8 @@ pub:
 	mod             string
 	file            string
 	file_mode       Language
-	pos             token.Position
-	return_type_pos token.Position
+	pos             token.Pos
+	return_type_pos token.Pos
 pub mut:
 	return_type    Type
 	receiver_type  Type // != 0, when .is_method == true
@@ -119,11 +122,11 @@ fn (f &Fn) method_equals(o &Fn) bool {
 
 pub struct Param {
 pub:
-	pos         token.Position
+	pos         token.Pos
 	name        string
 	is_mut      bool
 	is_auto_rec bool
-	type_pos    token.Position
+	type_pos    token.Pos
 	is_hidden   bool // interface first arg
 pub mut:
 	typ Type
@@ -299,6 +302,15 @@ pub fn (t &Table) find_fn(name string) ?Fn {
 pub fn (t &Table) known_fn(name string) bool {
 	t.find_fn(name) or { return false }
 	return true
+}
+
+pub fn (mut t Table) mark_module_as_deprecated(mname string, message string) {
+	t.mdeprecated_msg[mname] = message
+	t.mdeprecated_after[mname] = time.now()
+}
+
+pub fn (mut t Table) mark_module_as_deprecated_after(mname string, after_date string) {
+	t.mdeprecated_after[mname] = time.parse_iso8601(after_date) or { time.now() }
 }
 
 pub fn (mut t Table) register_fn(new_fn Fn) {
@@ -739,7 +751,7 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 }
 
 [inline]
-pub fn (mut t Table) register_type_symbol(sym TypeSymbol) int {
+pub fn (mut t Table) register_sym(sym TypeSymbol) int {
 	mut idx := -2
 	mut existing_idx := t.type_idxs[sym.name]
 	if existing_idx > 0 {
@@ -958,7 +970,7 @@ pub fn (mut t Table) find_or_register_chan(elem_type Type, is_mut bool) int {
 			is_mut: is_mut
 		}
 	}
-	return t.register_type_symbol(chan_typ)
+	return t.register_sym(chan_typ)
 }
 
 pub fn (mut t Table) find_or_register_map(key_type Type, value_type Type) int {
@@ -980,7 +992,7 @@ pub fn (mut t Table) find_or_register_map(key_type Type, value_type Type) int {
 			value_type: value_type
 		}
 	}
-	return t.register_type_symbol(map_typ)
+	return t.register_sym(map_typ)
 }
 
 pub fn (mut t Table) find_or_register_thread(return_type Type) int {
@@ -1001,7 +1013,7 @@ pub fn (mut t Table) find_or_register_thread(return_type Type) int {
 			return_type: return_type
 		}
 	}
-	return t.register_type_symbol(thread_typ)
+	return t.register_sym(thread_typ)
 }
 
 pub fn (mut t Table) find_or_register_promise(return_type Type) int {
@@ -1025,7 +1037,7 @@ pub fn (mut t Table) find_or_register_promise(return_type Type) int {
 	}
 
 	// register
-	return t.register_type_symbol(promise_type)
+	return t.register_sym(promise_type)
 }
 
 pub fn (mut t Table) find_or_register_array(elem_type Type) int {
@@ -1047,7 +1059,7 @@ pub fn (mut t Table) find_or_register_array(elem_type Type) int {
 			elem_type: elem_type
 		}
 	}
-	return t.register_type_symbol(array_type_)
+	return t.register_sym(array_type_)
 }
 
 pub fn (mut t Table) find_or_register_array_with_dims(elem_type Type, nr_dims int) int {
@@ -1076,7 +1088,7 @@ pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size int, size
 			size_expr: size_expr
 		}
 	}
-	return t.register_type_symbol(array_fixed_type)
+	return t.register_sym(array_fixed_type)
 }
 
 pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
@@ -1106,7 +1118,7 @@ pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
 			types: mr_typs
 		}
 	}
-	return t.register_type_symbol(mr_type)
+	return t.register_sym(mr_type)
 }
 
 pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon bool, has_decl bool) int {
@@ -1121,7 +1133,7 @@ pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon bool, ha
 	if existing_idx > 0 && t.type_symbols[existing_idx].kind != .placeholder {
 		return existing_idx
 	}
-	return t.register_type_symbol(
+	return t.register_sym(
 		kind: .function
 		name: name
 		cname: cname
@@ -1146,7 +1158,7 @@ pub fn (mut t Table) add_placeholder_type(name string, language Language) int {
 		language: language
 		mod: modname
 	}
-	return t.register_type_symbol(ph_type)
+	return t.register_sym(ph_type)
 }
 
 [inline]
@@ -1656,8 +1668,43 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 			info.concrete_types = final_concrete_types
 			info.parent_type = typ
 			info.fields = fields
-			new_idx := t.register_type_symbol(
+			new_idx := t.register_sym(
 				kind: .struct_
+				name: nrt
+				cname: util.no_dots(c_nrt)
+				mod: ts.mod
+				info: info
+			)
+			for typ_ in needs_unwrap_types {
+				t.unwrap_generic_type(typ_, generic_names, concrete_types)
+			}
+			return new_type(new_idx).derive(typ).clear_flag(.generic)
+		}
+		SumType {
+			mut variants := ts.info.variants.clone()
+			for i in 0 .. variants.len {
+				if variants[i].has_flag(.generic) {
+					sym := t.sym(variants[i])
+					if sym.kind in [.struct_, .sum_type, .interface_] {
+						variants[i] = t.unwrap_generic_type(variants[i], generic_names,
+							concrete_types)
+					} else {
+						if t_typ := t.resolve_generic_to_concrete(variants[i], generic_names,
+							concrete_types)
+						{
+							variants[i] = t_typ
+						}
+					}
+				}
+			}
+			mut info := ts.info
+			info.is_generic = false
+			info.concrete_types = final_concrete_types
+			info.parent_type = typ
+			info.fields = fields
+			info.variants = variants
+			new_idx := t.register_sym(
+				kind: .sum_type
 				name: nrt
 				cname: util.no_dots(c_nrt)
 				mod: ts.mod
@@ -1699,7 +1746,7 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 			info.parent_type = typ
 			info.fields = fields
 			info.methods = imethods
-			new_idx := t.register_type_symbol(
+			new_idx := t.register_sym(
 				kind: .interface_
 				name: nrt
 				cname: util.no_dots(c_nrt)

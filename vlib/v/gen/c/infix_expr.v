@@ -585,15 +585,25 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 			// push an array => PUSH_MANY, but not if pushing an array to 2d array (`[][]int << []int`)
 			g.write('_PUSH_MANY${noscan}(')
 			mut expected_push_many_atype := left.typ
+			is_shared := expected_push_many_atype.has_flag(.shared_f)
 			if !expected_push_many_atype.is_ptr() {
 				// fn f(mut a []int) { a << [1,2,3] } -> type of `a` is `array_int*` -> no need for &
 				g.write('&')
 			} else {
 				expected_push_many_atype = expected_push_many_atype.deref()
 			}
+			if is_shared {
+				g.write('&')
+			}
+			if is_shared {
+				expected_push_many_atype = expected_push_many_atype.clear_flag(.shared_f)
+			}
 			g.expr(node.left)
+			if node.left_type.has_flag(.shared_f) {
+				g.write('->val')
+			}
 			g.write(', (')
-			g.expr_with_cast(node.right, node.right_type, left.unaliased)
+			g.expr_with_cast(node.right, node.right_type, left.unaliased.clear_flag(.shared_f))
 			styp := g.typ(expected_push_many_atype)
 			g.write('), $tmp_var, $styp)')
 		} else {

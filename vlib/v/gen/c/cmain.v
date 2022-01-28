@@ -96,6 +96,16 @@ fn (mut g Gen) gen_c_main_header() {
 	if g.pref.is_livemain {
 		g.generate_hotcode_reloading_main_caller()
 	}
+	if g.pref.profile_file != '' {
+		if 'no_profile_startup' in g.pref.compile_defines {
+			g.writeln('vreset_profile_stats();')
+		}
+		if g.pref.profile_fns.len > 0 {
+			g.writeln('vreset_profile_stats();')
+			// v__profile_enabled will be set true *inside* the fns in g.pref.profile_fns:
+			g.writeln('v__profile_enabled = false;')
+		}
+	}
 }
 
 pub fn (mut g Gen) gen_c_main_footer() {

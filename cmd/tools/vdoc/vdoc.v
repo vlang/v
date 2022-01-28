@@ -505,7 +505,7 @@ fn parse_arguments(args []string) Config {
 fn main() {
 	if os.args.len < 2 || '-h' in os.args || '-help' in os.args || '--help' in os.args
 		|| os.args[1..] == ['doc', 'help'] {
-		os.system('$vexe help doc')
+		os.system('${os.quoted_path(vexe)} help doc')
 		exit(0)
 	}
 	args := os.args[2..].clone()

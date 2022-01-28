@@ -12,6 +12,20 @@ import toml.parser
 pub struct Null {
 }
 
+// decode decodes a TOML `string` into the target type `T`.
+pub fn decode<T>(toml_txt string) ?T {
+	doc := parse_text(toml_txt) ?
+	mut typ := T{}
+	typ.from_toml(doc.to_any())
+	return typ
+}
+
+// encode encodes the type `T` into a TOML string.
+// Currently encode expects the method `.to_toml()` exists on `T`.
+pub fn encode<T>(typ T) string {
+	return typ.to_toml()
+}
+
 // DateTime is the representation of an RFC 3339 datetime string.
 pub struct DateTime {
 	datetime string

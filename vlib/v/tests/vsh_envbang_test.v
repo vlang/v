@@ -21,7 +21,7 @@ println('hello')
 println(os.args)
 ") ?
 	os.chmod(rnd_vsh_script_path, 0o700) ?
-	res := os.execute('"$rnd_vsh_script_path" abc 123 -option')
+	res := os.execute('${os.quoted_path(rnd_vsh_script_path)} abc 123 -option')
 	assert res.exit_code == 0
 	lines := res.output.split_into_lines()
 	assert lines[0] == 'hello'

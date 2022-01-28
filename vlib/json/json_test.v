@@ -430,3 +430,27 @@ fn test_omit_empty() {
 	// println('omitempty:')
 	// println(json.encode_pretty(foo))
 }
+
+struct Asdasd {
+	data GamePacketData
+}
+
+type GamePacketData = GPEquipItem | GPScale
+
+struct GPScale {
+	value f32
+}
+
+struct GPEquipItem {
+	name string
+}
+
+fn create_game_packet(data &GamePacketData) string {
+	return json.encode(data)
+}
+
+fn test_encode_sumtype_defined_ahead() {
+	ret := create_game_packet(&GamePacketData(GPScale{}))
+	println(ret)
+	assert ret == '{"value":0,"_type":"GPScale"}'
+}

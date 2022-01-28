@@ -1143,7 +1143,7 @@ fn (s &Scanner) count_symbol_before(p int, sym byte) int {
 
 [direct_array_access]
 fn (mut s Scanner) ident_string() string {
-	lspos := token.Position{
+	lspos := token.Pos{
 		line_nr: s.line_nr
 		pos: s.pos
 		col: s.pos - s.last_nl_pos - 1
@@ -1307,6 +1307,28 @@ fn decode_h_escapes(s string, start int, escapes_pos []int) string {
 	return ss.join('')
 }
 
+// handle single-byte inline octal escapes like '\###'
+fn decode_o_escapes(s string, start int, escapes_pos []int) string {
+	if escapes_pos.len == 0 {
+		return s
+	}
+	mut ss := []string{cap: escapes_pos.len}
+	ss << s[..escapes_pos.first() - start] // everything before the first escape code position
+	for i, pos in escapes_pos {
+		idx := pos - start
+		end_idx := idx + 4 // "\XXX".len == 4
+		// notice this function doesn't do any decoding... it just replaces '\141' with the byte 0o141
+		ss << [byte(strconv.parse_uint(s[idx + 1..end_idx], 8, 8) or { 0 })].bytestr()
+		if i + 1 < escapes_pos.len {
+			ss << s[end_idx..escapes_pos[i + 1] - start]
+		} else {
+			ss << s[end_idx..]
+		}
+	}
+	return ss.join('')
+}
+
+// decode the flagged unicode escape sequences into their utf-8 bytes
 fn decode_u_escapes(s string, start int, escapes_pos []int) string {
 	if escapes_pos.len == 0 {
 		return s
@@ -1348,11 +1370,12 @@ fn trim_slash_line_break(s string) string {
 /// possibilities:
 ///   single chars like `a`, `b` => 'a', 'b'
 ///   escaped single chars like `\\`, `\``, `\n` => '\\', '`', '\n'
-///   escaped hex bytes like `\x01`, `\x61` => '\x01', 'a'
-///   escaped multibyte runes like `\xe29885` => (★)
+///   escaped single hex bytes like `\x01`, `\x61` => '\x01', 'a'
 ///   escaped unicode literals like `\u2605`
+///   escaped utf8 runes in hex like `\xe2\x98\x85` => (★)
+///   escaped utf8 runes in octal like `\342\230\205` => (★)
 fn (mut s Scanner) ident_char() string {
-	lspos := token.Position{
+	lspos := token.Pos{
 		line_nr: s.line_nr
 		pos: s.pos
 		col: s.pos - s.last_nl_pos - 1
@@ -1365,6 +1388,7 @@ fn (mut s Scanner) ident_char() string {
 	// set flags for advanced escapes first
 	escaped_hex := s.expect('\\x', start + 1)
 	escaped_unicode := s.expect('\\u', start + 1)
+	escaped_octal := !escaped_hex && !escaped_unicode && s.expect('\\', start + 1)
 
 	// walk the string to get characters up to the next backtick
 	for {
@@ -1386,66 +1410,44 @@ fn (mut s Scanner) ident_char() string {
 	}
 	len--
 	mut c := s.text[start + 1..s.pos]
+	if s.is_fmt {
+		return c
+	}
 	if len != 1 {
+		// the string inside the backticks is longer than one character
+		// but we might only have one rune... attempt to decode escapes
 		// if the content expresses an escape code, it will have an even number of characters
-		// e.g. \x61 or \u2605
-		if (c.len % 2 == 0) && (escaped_hex || escaped_unicode) {
+		// e.g. (octal) \141 (hex) \x61 or (unicode) \u2605
+		// we don't handle binary escape codes in rune literals
+		orig := c
+		if (c.len % 2 == 0) && (escaped_hex || escaped_unicode || escaped_octal) {
 			if escaped_unicode {
+				// there can only be one, so attempt to decode it now
 				c = decode_u_escapes(c, 0, [0])
 			} else {
-				// we have to handle hex ourselves
-				ascii_0 := byte(0x30)
-				ascii_a := byte(0x61)
-				mut accumulated := []byte{}
-				val := c[2..c.len].to_lower() // 0A -> 0a
-				mut offset := 0
-				// take two characters at a time, parse as hex and add to bytes
-				for {
-					if offset >= val.len - 1 {
-						break
+				// find escape sequence start positions
+				mut escapes_pos := []int{}
+				for i, v in c {
+					if v == `\\` {
+						escapes_pos << i
 					}
-					mut byteval := byte(0)
-					big := val[offset]
-					little := val[offset + 1]
-					if !big.is_hex_digit() {
-						accumulated.clear()
-						break
-					}
-					if !little.is_hex_digit() {
-						accumulated.clear()
-						break
-					}
-
-					if big.is_digit() {
-						byteval |= (big - ascii_0) << 4
-					} else {
-						byteval |= (big - ascii_a + 10) << 4
-					}
-					if little.is_digit() {
-						byteval |= (little - ascii_0)
-					} else {
-						byteval |= (little - ascii_a + 10)
-					}
-
-					accumulated << byteval
-					offset += 2
 				}
-				if accumulated.len > 0 {
-					c = accumulated.bytestr()
+				if escaped_hex {
+					c = decode_h_escapes(c, 0, escapes_pos)
+				} else {
+					c = decode_o_escapes(c, 0, escapes_pos)
 				}
 			}
 		}
 
-		// the string inside the backticks is longer than one character
-		// but we might only have one rune, say in the case
 		u := c.runes()
 		if u.len != 1 {
 			if escaped_hex || escaped_unicode {
-				s.error('invalid character literal (escape sequence did not refer to a singular rune)')
+				s.error('invalid character literal `$orig` => `$c` ($u) (escape sequence did not refer to a singular rune)')
 			} else {
 				s.add_error_detail_with_pos('use quotes for strings, backticks for characters',
 					lspos)
-				s.error('invalid character literal (more than one character)')
+				s.error('invalid character literal `$orig` => `$c` ($u) (more than one character)')
 			}
 		}
 	}
@@ -1496,7 +1498,7 @@ fn (mut s Scanner) inc_line_number() {
 }
 
 pub fn (mut s Scanner) note(msg string) {
-	pos := token.Position{
+	pos := token.Pos{
 		line_nr: s.line_nr
 		pos: s.pos
 	}
@@ -1517,7 +1519,7 @@ pub fn (mut s Scanner) add_error_detail(msg string) {
 	s.error_details << msg
 }
 
-pub fn (mut s Scanner) add_error_detail_with_pos(msg string, pos token.Position) {
+pub fn (mut s Scanner) add_error_detail_with_pos(msg string, pos token.Pos) {
 	details := util.formatted_error('details:', msg, s.file_path, pos)
 	s.add_error_detail(details)
 }
@@ -1536,7 +1538,7 @@ pub fn (mut s Scanner) warn(msg string) {
 		s.error(msg)
 		return
 	}
-	pos := token.Position{
+	pos := token.Pos{
 		line_nr: s.line_nr
 		pos: s.pos
 		col: s.current_column() - 1
@@ -1563,7 +1565,7 @@ pub fn (mut s Scanner) warn(msg string) {
 }
 
 pub fn (mut s Scanner) error(msg string) {
-	pos := token.Position{
+	pos := token.Pos{
 		line_nr: s.line_nr
 		pos: s.pos
 		col: s.current_column() - 1
@@ -1597,7 +1599,7 @@ fn (mut s Scanner) vet_error(msg string, fix vet.FixKind) {
 	ve := vet.Error{
 		message: msg
 		file_path: s.file_path
-		pos: token.Position{
+		pos: token.Pos{
 			line_nr: s.line_nr
 			col: s.current_column() - 1
 		}

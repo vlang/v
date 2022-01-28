@@ -553,10 +553,6 @@ fn my_init(mut app App) {
 	app.init_flag = true
 }
 
-fn cleanup(mut app App) {
-	gfx.shutdown()
-}
-
 /******************************************************************************
 *
 * event
@@ -601,7 +597,6 @@ fn main() {
 		bg_color: bg_color
 		frame_fn: frame
 		init_fn: my_init
-		cleanup_fn: cleanup
 		event_fn: my_event_manager
 	)
 

@@ -8,7 +8,7 @@ import strings
 pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	node.is_expr = c.expected_type != ast.void_type
 	node.expected_type = c.expected_type
-	if node.cond is ast.ParExpr {
+	if mut node.cond is ast.ParExpr && !c.pref.translated {
 		c.error('unnecessary `()` in `match` condition, use `match expr {` instead of `match (expr) {`.',
 			node.cond.pos)
 	}
@@ -73,7 +73,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 							is_noreturn := is_noreturn_callexpr(stmt.expr)
 							if !(node.is_expr && ret_sym.kind == .sum_type) && !is_noreturn {
 								c.error('return type mismatch, it should be `$ret_sym.name`',
-									stmt.expr.position())
+									stmt.expr.pos())
 							}
 						}
 					}
@@ -213,9 +213,9 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				// TODO
 				// This generates a memory issue with TCC
 				// Needs to be checked later when TCC errors are fixed
-				// Current solution is to move expr.position() to its own statement
-				// c.type_implements(expr_type, c.expected_type, expr.position())
-				expr_pos := expr.position()
+				// Current solution is to move expr.pos() to its own statement
+				// c.type_implements(expr_type, c.expected_type, expr.pos())
+				expr_pos := expr.pos()
 				if c.type_implements(expr_type, c.expected_type, expr_pos) {
 					if !expr_type.is_ptr() && !expr_type.is_pointer() && !c.inside_unsafe {
 						if expr_type_sym.kind != .interface_ {
@@ -227,16 +227,16 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				if expr_type !in cond_type_sym.info.variants {
 					expr_str := c.table.type_to_str(expr_type)
 					expect_str := c.table.type_to_str(node.cond_type)
-					c.error('`$expect_str` has no variant `$expr_str`', expr.position())
+					c.error('`$expect_str` has no variant `$expr_str`', expr.pos())
 				}
 			} else if cond_type_sym.info is ast.Alias && expr_type_sym.info is ast.Struct {
 				expr_str := c.table.type_to_str(expr_type)
 				expect_str := c.table.type_to_str(node.cond_type)
-				c.error('cannot match alias type `$expect_str` with `$expr_str`', expr.position())
+				c.error('cannot match alias type `$expect_str` with `$expr_str`', expr.pos())
 			} else if !c.check_types(expr_type, node.cond_type) {
 				expr_str := c.table.type_to_str(expr_type)
 				expect_str := c.table.type_to_str(node.cond_type)
-				c.error('cannot match `$expect_str` with `$expr_str`', expr.position())
+				c.error('cannot match `$expect_str` with `$expr_str`', expr.pos())
 			}
 			branch_exprs[key] = val + 1
 		}
@@ -264,7 +264,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					if existing_idx > 0 {
 						expr_type = existing_idx
 					} else {
-						expr_type = c.table.register_type_symbol(ast.TypeSymbol{
+						expr_type = c.table.register_sym(ast.TypeSymbol{
 							name: name
 							cname: agg_cname.str()
 							kind: .aggregate

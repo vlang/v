@@ -1,6 +1,6 @@
 module ast
 
-pub fn (stmt Stmt) position() Position {
+pub fn (stmt Stmt) pos() Pos {
 	match stmt {
 		AssertStmt { return stmt.pos }
 		AssignStmt { return stmt.pos }
@@ -52,6 +52,6 @@ pub fn (stmt Stmt) position() Position {
 		// }
 		*/
 		//
-		else { return Position{} }
+		else { return Pos{} }
 	}
 }

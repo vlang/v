@@ -25,6 +25,7 @@ const (
 		'examples/sokol/04_multi_shader_glsl/rt_glsl.v',
 		'examples/sokol/05_instancing_glsl/rt_glsl.v',
 		'examples/sokol/06_obj_viewer/show_obj.v',
+		'vlib/v/checker/tests/modules/deprecated_module/main.v' /* adds deprecated_module. module prefix to imports, even though the folder has v.mod */,
 		'vlib/gg/m4/graphic.v',
 		'vlib/gg/m4/m4_test.v',
 		'vlib/gg/m4/matrix.v',
@@ -75,9 +76,14 @@ fn tsession(vargs string, tool_source string, tool_cmd string, tool_args string,
 
 fn v_test_vetting(vargs string) {
 	expanded_vet_list := util.find_all_v_files(vet_folders) or { return }
-	vet_session := tsession(vargs, 'vvet', 'v vet', 'vet', expanded_vet_list, vet_known_failing_exceptions)
+	vet_session := tsession(vargs, 'vvet', '${os.quoted_path(vexe)} vet', 'vet', expanded_vet_list,
+		vet_known_failing_exceptions)
 	//
-	fmt_cmd, fmt_args := if is_fix { 'v fmt -w', 'fmt -w' } else { 'v fmt -verify', 'fmt -verify' }
+	fmt_cmd, fmt_args := if is_fix {
+		'${os.quoted_path(vexe)} fmt -w', 'fmt -w'
+	} else {
+		'${os.quoted_path(vexe)} fmt -verify', 'fmt -verify'
+	}
 	vfmt_list := util.find_all_v_files(vfmt_verify_list) or { return }
 	exceptions := util.find_all_v_files(vfmt_known_failing_exceptions) or { return }
 	verify_session := tsession(vargs, 'vfmt.v', fmt_cmd, fmt_args, vfmt_list, exceptions)

@@ -8,6 +8,6 @@ interface Egg {
 	milk string | int
 }
 
-fn foo(bar string | int) int | string | token.Position {
+fn foo(bar string | int) int | string | token.Pos {
 	return 1
 }

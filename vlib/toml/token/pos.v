@@ -4,7 +4,7 @@
 module token
 
 // Position represents a position in a TOML document.
-pub struct Position {
+pub struct Pos {
 pub:
 	len     int // length of the literal in the source
 	line_nr int // the line number in the source where the token occured

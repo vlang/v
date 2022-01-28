@@ -8,7 +8,7 @@ const vroot = @VMODROOT
 fn get_vdoctor_output(is_verbose bool) string {
 	vexe := os.getenv('VEXE')
 	verbose_flag := if is_verbose { '-v' } else { '' }
-	result := os.execute('$vexe $verbose_flag doctor')
+	result := os.execute('${os.quoted_path(vexe)} $verbose_flag doctor')
 	if result.exit_code != 0 {
 		eprintln('unable to get `v doctor` output: $result.output')
 		return ''
@@ -24,7 +24,7 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string) string {
 	os.chdir(vroot) or {}
 	verbose_flag := if is_verbose { '-v' } else { '' }
 	vdbg_path := $if windows { '$vroot/vdbg.exe' } $else { '$vroot/vdbg' }
-	vdbg_compilation_cmd := '"$vexe" $verbose_flag -g -o "$vdbg_path" cmd/v'
+	vdbg_compilation_cmd := '${os.quoted_path(vexe)} $verbose_flag -g -o ${os.quoted_path(vdbg_path)} cmd/v'
 	vdbg_result := os.execute(vdbg_compilation_cmd)
 	os.chdir(wd) or {}
 	if vdbg_result.exit_code == 0 {
@@ -33,7 +33,7 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string) string {
 		eprintln('unable to compile V in debug mode: $vdbg_result.output\ncommand: $vdbg_compilation_cmd\n')
 	}
 	//
-	mut result := os.execute('"$vexe" $verbose_flag "$file_path"')
+	mut result := os.execute('${os.quoted_path(vexe)} $verbose_flag ${os.quoted_path(file_path)}')
 	defer {
 		os.rm(vdbg_path) or {
 			if is_verbose {
@@ -56,7 +56,7 @@ fn get_v_build_output(is_verbose bool, is_yes bool, file_path string) string {
 		run := is_yes
 			|| ask('It looks like the compilation went well, do you want to run the file?')
 		if run {
-			result = os.execute('"$vexe" $verbose_flag run "$file_path"')
+			result = os.execute('${os.quoted_path(vexe)} $verbose_flag run ${os.quoted_path(file_path)}')
 			if result.exit_code == 0 && !is_yes {
 				confirm_or_exit('It looks like the file ran correctly as well, are you sure you want to continue?')
 			}

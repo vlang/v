@@ -4,128 +4,6 @@ import v.pref
 import v.ast
 import v.util
 
-struct KeyVal {
-	key   string
-	value int
-}
-
-[if debug_bounds_checking ?]
-fn debug_bounds_checking(str string) {
-	println(str)
-}
-
-// IndexState is used to track the index analysis performed when parsing the code
-// `IndexExpr` nodes are annotated with `is_direct`, indicating that the array index can be safely directly accessed.
-
-// The c_gen code check will handle this annotation and perform this direct memory access. The following cases are considered valid for this optimisation:
-// 1. the array size is known and has a `len` larger than the index requested
-// 2. the array was previously accessed with a higher value which would have reported the issue already
-// 3. the array was created from a range expression a := range[10..13] and the offset'ed indexes are safe
-
-// Current limitations:
-//  * any function using break/continue or goto/label stopped from being optimised as soon as the relevant AST nodes are found as the code can not be ensured to be sequential
-//  * `enum` and `const` indexes are not optimised (they could probably be looked up)
-//  * for loops with multiple var in their init and/or inc are not analysed
-//  * mut array are not analysed as their size can be reduced, but self-assignment in a single line
-
-pub struct IndexState {
-mut:
-	// max_index has the biggest array index accessed for then named array
-	// so if a[2] was set or read, it will be 2
-	// A new array with no .len will recorded as -1 (accessing a[0] would be invalid)
-	// the value -2 is used to indicate that the array should not be analysed
-	// this is used for a mut array
-	max_index map[string]int
-	// We need to snapshot when entering `if` and `for` blocks and restore on exit
-	// as the statements may not be run. This is managed by indent() & unindent().
-	saved_disabled []bool
-	saved_key_vals [][]KeyVal
-pub mut:
-	// on encountering goto/break/continue statements we stop any analysis
-	// for the current function (as the code is not linear anymore)
-	disabled bool
-	level    int
-}
-
-// we are remembering the last array accessed and checking if the value is safe
-// the node is updated with this information which can then be used by the code generators
-fn (mut i IndexState) safe_access(key string, new int) bool {
-	$if no_bounds_checking {
-		return false
-	}
-	if i.disabled {
-		return false
-	}
-	old := i.max_index[key] or {
-		debug_bounds_checking('$i.level ${key}.len = $new')
-		i.max_index[key] = new
-		return false
-	}
-	if new > old {
-		if old < -1 {
-			debug_bounds_checking('$i.level $key[$new] unsafe (mut array)')
-			return false
-		}
-		debug_bounds_checking('$i.level $key[$new] unsafe (index was $old)')
-		i.max_index[key] = new
-		return false
-	}
-	debug_bounds_checking('$i.level $key[$new] safe (index is $old)')
-	return true
-}
-
-// safe_offset returns for a previvous array what was the highest
-// offset we ever accessed for that identifier
-fn (mut i IndexState) safe_offset(key string) int {
-	$if no_bounds_checking {
-		return -2
-	}
-	if i.disabled {
-		return -2
-	}
-	return i.max_index[key] or { -1 }
-}
-
-// indent is used for when encountering new code blocks (if, for and functions)
-// The code analysis needs to take into consideration blocks of code which
-// may not run at runtime (if/for) and therefore even if a new maximum for an
-// index access is found on an if branch it can not be used within the parent
-// code. The same is true with for blocks. indent() snapshot the current state,
-// to allow restoration with unindent()
-// Also within a function, analysis must be `disabled` when goto or break are
-// encountered as the code flow is then not lineear, and only restart when a
-// new function analysis is started.
-[if !no_bounds_checking]
-fn (mut i IndexState) indent(is_function bool) {
-	mut kvs := []KeyVal{cap: i.max_index.len}
-	for k, v in i.max_index {
-		kvs << KeyVal{k, v}
-	}
-	i.saved_disabled << i.disabled
-	i.saved_key_vals << kvs
-	if is_function {
-		i.disabled = false
-	}
-	i.level += 1
-}
-
-// restoring the data as it was before the if/for/unsafe block
-[if !no_bounds_checking]
-fn (mut i IndexState) unindent() {
-	i.level -= 1
-	mut keys := []string{cap: i.max_index.len}
-	for k, _ in i.max_index {
-		keys << k
-	}
-	for k in keys {
-		i.max_index.delete(k)
-	}
-	for saved in i.saved_key_vals.pop() {
-		i.max_index[saved.key] = saved.value
-	}
-	i.disabled = i.saved_disabled.pop()
-}
-
 pub struct Transformer {
 	pref &pref.Preferences
 pub mut:
@@ -151,7 +29,7 @@ pub fn (mut t Transformer) transform_files(ast_files []&ast.File) {
 
 pub fn (mut t Transformer) transform(mut ast_file ast.File) {
 	for mut stmt in ast_file.stmts {
-		t.stmt(mut stmt)
+		stmt = t.stmt(mut stmt)
 	}
 }
 
@@ -226,14 +104,14 @@ pub fn (mut t Transformer) find_mut_self_assign(node ast.AssignStmt) {
 	// even if mutable we can be sure than `a[1] = a[2] is safe
 }
 
-pub fn (mut t Transformer) find_assert_len(node ast.InfixExpr) {
+pub fn (mut t Transformer) find_assert_len(mut node ast.InfixExpr) ast.Expr {
 	if !t.pref.is_prod {
-		return
+		return node
 	}
-	right := node.right
+	right := t.expr(mut node.right)
 	match right {
 		ast.IntegerLiteral {
-			left := node.left
+			left := t.expr(mut node.left)
 			if left is ast.SelectorExpr {
 				len := right.val.int()
 				if left.field_name == 'len' {
@@ -253,7 +131,7 @@ pub fn (mut t Transformer) find_assert_len(node ast.InfixExpr) {
 			}
 		}
 		ast.SelectorExpr {
-			left := node.left
+			left := t.expr(mut node.left)
 			if left is ast.IntegerLiteral {
 				len := left.val.int()
 				if right.field_name == 'len' {
@@ -274,6 +152,7 @@ pub fn (mut t Transformer) find_assert_len(node ast.InfixExpr) {
 		}
 		else {}
 	}
+	return node
 }
 
 pub fn (mut t Transformer) check_safe_array(mut node ast.IndexExpr) {
@@ -327,19 +206,18 @@ pub fn (mut t Transformer) check_safe_array(mut node ast.IndexExpr) {
 	}
 }
 
-pub fn (mut t Transformer) stmt(mut node ast.Stmt) {
+pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 	match mut node {
 		ast.EmptyStmt {}
 		ast.NodeError {}
 		ast.AsmStmt {}
 		ast.AssertStmt {
-			expr := node.expr
-			match expr {
+			match mut node.expr {
 				ast.InfixExpr {
-					t.find_assert_len(expr)
+					node.expr = t.find_assert_len(mut node.expr)
 				}
 				else {
-					t.expr(expr)
+					node.expr = t.expr(mut node.expr)
 				}
 			}
 		}
@@ -348,16 +226,16 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) {
 			t.find_new_range(node)
 			t.find_mut_self_assign(node)
 			for mut right in node.right {
-				right = t.expr(right)
+				right = t.expr(mut right)
 			}
-			for left in node.left {
-				t.expr(left)
+			for mut left in node.left {
+				left = t.expr(mut left)
 			}
 		}
 		ast.Block {
 			t.index.indent(false)
 			for mut stmt in node.stmts {
-				t.stmt(mut stmt)
+				stmt = t.stmt(mut stmt)
 			}
 			t.index.unindent()
 		}
@@ -366,252 +244,102 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) {
 			// we can not rely on sequential scanning and need to cancel all index optimisation
 			t.index.disabled = true
 		}
-		ast.ComptimeFor {}
-		ast.ConstDecl {
-			for mut field in node.fields {
-				expr := t.expr(field.expr)
-				field = ast.ConstField{
-					...(*field)
-					expr: expr
-				}
+		ast.ComptimeFor {
+			for mut stmt in node.stmts {
+				stmt = t.stmt(mut stmt)
 			}
 		}
-		ast.DeferStmt {}
+		ast.ConstDecl {
+			for mut field in node.fields {
+				field.expr = t.expr(mut field.expr)
+			}
+		}
+		ast.DeferStmt {
+			for mut stmt in node.stmts {
+				stmt = t.stmt(mut stmt)
+			}
+		}
 		ast.EnumDecl {}
 		ast.ExprStmt {
-			expr := node.expr
-			node = &ast.ExprStmt{
-				...node
-				expr: match mut expr {
-					ast.IfExpr {
-						t.if_expr(mut expr)
-					}
-					ast.MatchExpr {
-						t.match_expr(mut expr)
-					}
-					else {
-						t.expr(expr)
-					}
+			// TODO: check if this can be handled in `t.expr`
+			node.expr = match mut node.expr {
+				ast.IfExpr {
+					t.expr_stmt_if_expr(mut node.expr)
+				}
+				ast.MatchExpr {
+					t.expr_stmt_match_expr(mut node.expr)
+				}
+				else {
+					t.expr(mut node.expr)
 				}
 			}
 		}
 		ast.FnDecl {
 			t.index.indent(true)
 			for mut stmt in node.stmts {
-				t.stmt(mut stmt)
+				stmt = t.stmt(mut stmt)
 			}
 			t.index.unindent()
 		}
 		ast.ForCStmt {
-			// TODO we do not optimise array access for multi init
-			// for a,b := 0,1; a < 10; a,b = a+b, a {...}
-
-			// https://github.com/vlang/v/issues/12782
-			// if node.has_init && !node.is_multi {
-			// 	mut init := node.init
-			// 	t.stmt(mut init)
-			// }
-
-			if node.has_cond {
-				t.expr(node.cond)
-			}
-
-			t.index.indent(false)
-			for mut stmt in node.stmts {
-				t.stmt(mut stmt)
-			}
-			t.index.unindent()
-
-			// https://github.com/vlang/v/issues/12782
-			// if node.has_inc && !node.is_multi {
-			// 	mut inc := node.inc
-			// 	t.stmt(mut inc)
-			// }
+			return t.for_c_stmt(mut node)
 		}
 		ast.ForInStmt {
 			// indexes access within the for itself are not optimised (yet)
 			t.index.indent(false)
 			for mut stmt in node.stmts {
-				t.stmt(mut stmt)
+				stmt = t.stmt(mut stmt)
 			}
 			t.index.unindent()
 		}
 		ast.ForStmt {
-			cond_expr := t.expr(node.cond)
-
-			node = &ast.ForStmt{
-				...node
-				cond: cond_expr
-			}
-			match node.cond {
-				ast.BoolLiteral {
-					if !(node.cond as ast.BoolLiteral).val { // for false { ... } should be eleminated
-						node = &ast.EmptyStmt{}
-					}
-				}
-				else {
-					if !node.is_inf {
-						t.index.indent(false)
-						for mut stmt in node.stmts {
-							t.stmt(mut stmt)
-						}
-						t.index.unindent()
-					}
-				}
+			return t.for_stmt(mut node)
+		}
+		ast.GlobalDecl {
+			for mut field in node.fields {
+				field.expr = t.expr(mut field.expr)
 			}
 		}
-		ast.GlobalDecl {}
 		ast.GotoLabel {}
 		ast.GotoStmt {
 			// we can not rely on sequential scanning and need to cancel all index optimisation
 			t.index.disabled = true
 		}
-		ast.HashStmt {}
+		ast.HashStmt {
+			for mut cond in node.ct_conds {
+				cond = t.expr(mut cond)
+			}
+		}
 		ast.Import {}
-		ast.InterfaceDecl {}
+		ast.InterfaceDecl {
+			for mut field in node.fields {
+				field.default_expr = t.expr(mut field.default_expr)
+			}
+		}
 		ast.Module {}
 		ast.Return {
 			for mut expr in node.exprs {
-				expr = t.expr(expr)
+				expr = t.expr(mut expr)
 			}
 		}
 		ast.SqlStmt {}
-		ast.StructDecl {}
+		ast.StructDecl {
+			for mut field in node.fields {
+				field.default_expr = t.expr(mut field.default_expr)
+			}
+		}
 		ast.TypeDecl {}
 	}
+	return node
 }
 
-pub fn (mut t Transformer) expr(node ast.Expr) ast.Expr {
-	match mut node {
-		ast.CallExpr {
-			for arg in node.args {
-				t.expr(arg.expr)
-			}
-			return node
-		}
-		ast.InfixExpr {
-			return t.infix_expr(node)
-		}
-		ast.OrExpr {
-			for mut stmt in node.stmts {
-				t.stmt(mut stmt)
-			}
-			return node
-		}
-		ast.IndexExpr {
-			t.check_safe_array(mut node)
-			mut index := ast.IndexExpr{
-				...node
-				index: t.expr(node.index)
-			}
-			return index
-		}
-		ast.IfExpr {
-			for mut branch in node.branches {
-				branch = ast.IfBranch{
-					...(*branch)
-					cond: t.expr(branch.cond)
-				}
-				t.index.indent(false)
-				for i, mut stmt in branch.stmts {
-					t.stmt(mut stmt)
-
-					if i == branch.stmts.len - 1 {
-						if stmt is ast.ExprStmt {
-							expr := (stmt as ast.ExprStmt).expr
-
-							match expr {
-								ast.IfExpr {
-									if expr.branches.len == 1 {
-										branch.stmts.pop()
-										branch.stmts << expr.branches[0].stmts
-										break
-									}
-								}
-								ast.MatchExpr {
-									if expr.branches.len == 1 {
-										branch.stmts.pop()
-										branch.stmts << expr.branches[0].stmts
-										break
-									}
-								}
-								else {}
-							}
-						}
-					}
-				}
-				t.index.unindent()
-			}
-			// where we place the result of the if when a := if ...
-			t.expr(node.left)
-			return node
-		}
-		ast.MatchExpr {
-			node = ast.MatchExpr{
-				...node
-				cond: t.expr(node.cond)
-			}
-			for mut branch in node.branches {
-				for mut expr in branch.exprs {
-					expr = t.expr(expr)
-				}
-				t.index.indent(false)
-				for i, mut stmt in branch.stmts {
-					t.stmt(mut stmt)
-
-					if i == branch.stmts.len - 1 {
-						if stmt is ast.ExprStmt {
-							expr := (stmt as ast.ExprStmt).expr
-
-							match expr {
-								ast.IfExpr {
-									if expr.branches.len == 1 {
-										branch.stmts.pop()
-										branch.stmts << expr.branches[0].stmts
-										break
-									}
-								}
-								ast.MatchExpr {
-									if expr.branches.len == 1 {
-										branch.stmts.pop()
-										branch.stmts << expr.branches[0].stmts
-										break
-									}
-								}
-								else {}
-							}
-						}
-					}
-				}
-				t.index.unindent()
-			}
-			return node
-		}
-		ast.AnonFn {
-			return node
-		}
-		ast.PostfixExpr {
-			return node
-		}
-		ast.PrefixExpr {
-			return node
-		}
-		ast.Likely {
-			return node
-		}
-		else {
-			return node
-		}
+pub fn (mut t Transformer) expr_stmt_if_expr(mut node ast.IfExpr) ast.Expr {
+	mut stop_index, mut unreachable_branches := -1, []int{cap: node.branches.len}
+	if node.is_comptime {
+		return node
 	}
-}
-
-pub fn (mut t Transformer) if_expr(mut original ast.IfExpr) ast.Expr {
-	mut stop_index, mut unreachable_branches := -1, []int{cap: original.branches.len}
-	if original.is_comptime {
-		return *original
-	}
-	for i, mut branch in original.branches {
-		cond := t.expr(branch.cond)
+	for i, mut branch in node.branches {
+		cond := t.expr(mut branch.cond)
 		branch = ast.IfBranch{
 			...(*branch)
 			cond: cond
@@ -626,59 +354,53 @@ pub fn (mut t Transformer) if_expr(mut original ast.IfExpr) ast.Expr {
 		}
 		t.index.indent(false)
 		for mut stmt in branch.stmts {
-			t.stmt(mut stmt)
+			stmt = t.stmt(mut stmt)
 		}
 		t.index.unindent()
 	}
 	if stop_index != -1 {
 		unreachable_branches = unreachable_branches.filter(it < stop_index)
-		original.branches = original.branches[..stop_index + 1]
+		node.branches = node.branches[..stop_index + 1]
 	}
 	for unreachable_branches.len != 0 {
-		original.branches.delete(unreachable_branches.pop())
+		node.branches.delete(unreachable_branches.pop())
 	}
+	/*
+	FIXME: optimization causes cgen error `g.expr(): unhandled EmptyExpr`
 	if original.branches.len == 0 { // no remain branches to walk through
 		return ast.EmptyExpr{}
-	}
-	if original.branches.len == 1 && original.branches[0].cond.type_name() == 'unknown v.ast.Expr' {
-		original.branches[0] = &ast.IfBranch{
-			...original.branches[0]
-			cond: ast.BoolLiteral{
-				val: true
-			}
+	}*/
+	if node.branches.len == 1 && node.branches[0].cond.type_name() == 'unknown v.ast.Expr' {
+		node.branches[0].cond = ast.BoolLiteral{
+			val: true
 		}
 	}
-	return *original
+	return node
 }
 
-pub fn (mut t Transformer) match_expr(mut original ast.MatchExpr) ast.Expr {
-	cond, mut terminate := t.expr(original.cond), false
-	original = ast.MatchExpr{
-		...(*original)
-		cond: cond
-	}
-	for mut branch in original.branches {
+pub fn (mut t Transformer) expr_stmt_match_expr(mut node ast.MatchExpr) ast.Expr {
+	mut terminate := false
+	cond := t.expr(mut node.cond)
+	node.cond = cond
+	for mut branch in node.branches {
 		if branch.is_else {
 			t.index.indent(false)
 			for mut stmt in branch.stmts {
-				t.stmt(mut stmt)
+				stmt = t.stmt(mut stmt)
 			}
 			t.index.unindent()
 			continue
 		}
 
 		for mut expr in branch.exprs {
-			expr = t.expr(expr)
+			expr = t.expr(mut expr)
 
-			match cond {
+			match mut cond {
 				ast.BoolLiteral {
 					if expr is ast.BoolLiteral {
 						if cond.val == (expr as ast.BoolLiteral).val {
 							branch.exprs = [expr]
-							original = ast.MatchExpr{
-								...(*original)
-								branches: [branch]
-							}
+							node.branches = [branch]
 							terminate = true
 						}
 					}
@@ -687,10 +409,7 @@ pub fn (mut t Transformer) match_expr(mut original ast.MatchExpr) ast.Expr {
 					if expr is ast.IntegerLiteral {
 						if cond.val.int() == (expr as ast.IntegerLiteral).val.int() {
 							branch.exprs = [expr]
-							original = ast.MatchExpr{
-								...(*original)
-								branches: [branch]
-							}
+							node.branches = [branch]
 							terminate = true
 						}
 					}
@@ -699,10 +418,7 @@ pub fn (mut t Transformer) match_expr(mut original ast.MatchExpr) ast.Expr {
 					if expr is ast.FloatLiteral {
 						if cond.val.f32() == (expr as ast.FloatLiteral).val.f32() {
 							branch.exprs = [expr]
-							original = ast.MatchExpr{
-								...(*original)
-								branches: [branch]
-							}
+							node.branches = [branch]
 							terminate = true
 						}
 					}
@@ -711,10 +427,7 @@ pub fn (mut t Transformer) match_expr(mut original ast.MatchExpr) ast.Expr {
 					if expr is ast.StringLiteral {
 						if cond.val == (expr as ast.StringLiteral).val {
 							branch.exprs = [expr]
-							original = ast.MatchExpr{
-								...(*original)
-								branches: [branch]
-							}
+							node.branches = [branch]
 							terminate = true
 						}
 					}
@@ -725,7 +438,7 @@ pub fn (mut t Transformer) match_expr(mut original ast.MatchExpr) ast.Expr {
 
 		t.index.indent(false)
 		for mut stmt in branch.stmts {
-			t.stmt(mut stmt)
+			stmt = t.stmt(mut stmt)
 		}
 		t.index.unindent()
 
@@ -733,267 +446,564 @@ pub fn (mut t Transformer) match_expr(mut original ast.MatchExpr) ast.Expr {
 			break
 		}
 	}
-	return *original
+	return node
 }
 
-pub fn (mut t Transformer) infix_expr(original ast.InfixExpr) ast.Expr {
-	mut node := original
-	node.left = t.expr(node.left)
-	node.right = t.expr(node.right)
-	mut pos := node.left.position()
-	pos.extend(node.pos)
-	pos.extend(node.right.position())
-	left_node := node.left
-	right_node := node.right
-	match left_node {
+pub fn (mut t Transformer) for_c_stmt(mut node ast.ForCStmt) ast.Stmt {
+	// TODO we do not optimise array access for multi init
+	// for a,b := 0,1; a < 10; a,b = a+b, a {...}
+
+	if node.has_init && !node.is_multi {
+		node.init = t.stmt(mut node.init)
+	}
+
+	if node.has_cond {
+		node.cond = t.expr(mut node.cond)
+	}
+
+	t.index.indent(false)
+	for mut stmt in node.stmts {
+		stmt = t.stmt(mut stmt)
+	}
+	t.index.unindent()
+
+	if node.has_inc && !node.is_multi {
+		node.inc = t.stmt(mut node.inc)
+	}
+	return node
+}
+
+pub fn (mut t Transformer) for_stmt(mut node ast.ForStmt) ast.Stmt {
+	node.cond = t.expr(mut node.cond)
+	match node.cond {
 		ast.BoolLiteral {
-			match right_node {
-				ast.BoolLiteral {
-					match node.op {
-						.eq {
-							return ast.BoolLiteral{
-								val: left_node.val == right_node.val
-							}
-						}
-						.ne {
-							return ast.BoolLiteral{
-								val: left_node.val != right_node.val
-							}
-						}
-						.and {
-							return ast.BoolLiteral{
-								val: left_node.val && right_node.val
-							}
-						}
-						.logical_or {
-							return ast.BoolLiteral{
-								val: left_node.val || right_node.val
-							}
-						}
-						else {
-							return node
-						}
-					}
-				}
-				else {
-					return node
-				}
-			}
-		}
-		ast.StringLiteral {
-			match right_node {
-				ast.StringLiteral {
-					match node.op {
-						.eq {
-							return ast.BoolLiteral{
-								val: left_node.val == right_node.val
-							}
-						}
-						.ne {
-							return ast.BoolLiteral{
-								val: left_node.val != right_node.val
-							}
-						}
-						.plus {
-							return if t.pref.backend == .c { ast.Expr(ast.StringLiteral{
-									val: util.smart_quote(left_node.val, left_node.is_raw) + util.smart_quote(right_node.val, right_node.is_raw)
-									pos: pos
-								}) } else { ast.Expr(node) }
-						}
-						else {
-							return node
-						}
-					}
-				}
-				else {
-					return node
-				}
-			}
-		}
-		ast.IntegerLiteral {
-			match right_node {
-				ast.IntegerLiteral {
-					left_val := left_node.val.int()
-					right_val := right_node.val.int()
-					match node.op {
-						.eq {
-							return ast.BoolLiteral{
-								val: left_node.val == right_node.val
-							}
-						}
-						.ne {
-							return ast.BoolLiteral{
-								val: left_node.val != right_node.val
-							}
-						}
-						.gt {
-							return ast.BoolLiteral{
-								val: left_node.val > right_node.val
-							}
-						}
-						.ge {
-							return ast.BoolLiteral{
-								val: left_node.val >= right_node.val
-							}
-						}
-						.lt {
-							return ast.BoolLiteral{
-								val: left_node.val < right_node.val
-							}
-						}
-						.le {
-							return ast.BoolLiteral{
-								val: left_node.val <= right_node.val
-							}
-						}
-						.plus {
-							return ast.IntegerLiteral{
-								val: (left_val + right_val).str()
-								pos: pos
-							}
-						}
-						.mul {
-							return ast.IntegerLiteral{
-								val: (left_val * right_val).str()
-								pos: pos
-							}
-						}
-						.minus {
-							return ast.IntegerLiteral{
-								val: (left_val - right_val).str()
-								pos: pos
-							}
-						}
-						.div {
-							return ast.IntegerLiteral{
-								val: (left_val / right_val).str()
-								pos: pos
-							}
-						}
-						.mod {
-							return ast.IntegerLiteral{
-								val: (left_val % right_val).str()
-								pos: pos
-							}
-						}
-						.xor {
-							return ast.IntegerLiteral{
-								val: (left_val ^ right_val).str()
-								pos: pos
-							}
-						}
-						.pipe {
-							return ast.IntegerLiteral{
-								val: (left_val | right_val).str()
-								pos: pos
-							}
-						}
-						.amp {
-							return ast.IntegerLiteral{
-								val: (left_val & right_val).str()
-								pos: pos
-							}
-						}
-						.left_shift {
-							return ast.IntegerLiteral{
-								val: (u32(left_val) << right_val).str()
-								pos: pos
-							}
-						}
-						.right_shift {
-							return ast.IntegerLiteral{
-								val: (left_val >> right_val).str()
-								pos: pos
-							}
-						}
-						.unsigned_right_shift {
-							return ast.IntegerLiteral{
-								val: (left_val >>> right_val).str()
-								pos: pos
-							}
-						}
-						else {
-							return node
-						}
-					}
-				}
-				else {
-					return node
-				}
-			}
-		}
-		ast.FloatLiteral {
-			match right_node {
-				ast.FloatLiteral {
-					left_val := left_node.val.f32()
-					right_val := right_node.val.f32()
-					match node.op {
-						.eq {
-							return ast.BoolLiteral{
-								val: left_node.val == right_node.val
-							}
-						}
-						.ne {
-							return ast.BoolLiteral{
-								val: left_node.val != right_node.val
-							}
-						}
-						.gt {
-							return ast.BoolLiteral{
-								val: left_node.val > right_node.val
-							}
-						}
-						.ge {
-							return ast.BoolLiteral{
-								val: left_node.val >= right_node.val
-							}
-						}
-						.lt {
-							return ast.BoolLiteral{
-								val: left_node.val < right_node.val
-							}
-						}
-						.le {
-							return ast.BoolLiteral{
-								val: left_node.val <= right_node.val
-							}
-						}
-						.plus {
-							return ast.FloatLiteral{
-								val: (left_val + right_val).str()
-								pos: pos
-							}
-						}
-						.mul {
-							return ast.FloatLiteral{
-								val: (left_val * right_val).str()
-								pos: pos
-							}
-						}
-						.minus {
-							return ast.FloatLiteral{
-								val: (left_val - right_val).str()
-								pos: pos
-							}
-						}
-						.div {
-							return ast.FloatLiteral{
-								val: (left_val / right_val).str()
-								pos: pos
-							}
-						}
-						else {
-							return node
-						}
-					}
-				}
-				else {
-					return node
-				}
+			if !(node.cond as ast.BoolLiteral).val { // for false { ... } should be eleminated
+				return ast.EmptyStmt{}
 			}
 		}
 		else {
-			return node
+			if !node.is_inf {
+				t.index.indent(false)
+				for mut stmt in node.stmts {
+					stmt = t.stmt(mut stmt)
+				}
+				t.index.unindent()
+			}
 		}
 	}
+	for mut stmt in node.stmts {
+		stmt = t.stmt(mut stmt)
+	}
+	return node
+}
+
+pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
+	match mut node {
+		ast.AnonFn {
+			node.decl = t.stmt(mut node.decl) as ast.FnDecl
+		}
+		ast.ArrayDecompose {
+			node.expr = t.expr(mut node.expr)
+		}
+		ast.ArrayInit {
+			for mut expr in node.exprs {
+				expr = t.expr(mut expr)
+			}
+			node.len_expr = t.expr(mut node.len_expr)
+			node.cap_expr = t.expr(mut node.cap_expr)
+			node.default_expr = t.expr(mut node.default_expr)
+		}
+		ast.AsCast {
+			node.expr = t.expr(mut node.expr)
+		}
+		ast.CTempVar {
+			node.orig = t.expr(mut node.orig)
+		}
+		ast.CallExpr {
+			node.left = t.expr(mut node.left)
+			for mut arg in node.args {
+				arg.expr = t.expr(mut arg.expr)
+			}
+			node.or_block = t.expr(mut node.or_block) as ast.OrExpr
+		}
+		ast.CastExpr {
+			node.arg = t.expr(mut node.arg)
+			node.expr = t.expr(mut node.expr)
+		}
+		ast.ChanInit {
+			node.cap_expr = t.expr(mut node.cap_expr)
+		}
+		ast.ComptimeCall {
+			for mut arg in node.args {
+				arg.expr = t.expr(mut arg.expr)
+			}
+		}
+		ast.ComptimeSelector {
+			node.left = t.expr(mut node.left)
+			node.field_expr = t.expr(mut node.field_expr)
+		}
+		ast.ConcatExpr {
+			for mut val in node.vals {
+				val = t.expr(mut val)
+			}
+		}
+		ast.DumpExpr {
+			node.expr = t.expr(mut node.expr)
+		}
+		ast.GoExpr {
+			node.call_expr = t.expr(mut node.call_expr) as ast.CallExpr
+		}
+		ast.IfExpr {
+			return t.if_expr(mut node)
+		}
+		ast.IfGuardExpr {
+			node.expr = t.expr(mut node.expr)
+		}
+		ast.IndexExpr {
+			t.check_safe_array(mut node)
+			node.left = t.expr(mut node.left)
+			node.index = t.expr(mut node.index)
+			node.or_expr = t.expr(mut node.or_expr) as ast.OrExpr
+		}
+		ast.InfixExpr {
+			return t.infix_expr(mut node)
+		}
+		ast.IsRefType {
+			node.expr = t.expr(mut node.expr)
+		}
+		ast.Likely {
+			node.expr = t.expr(mut node.expr)
+		}
+		ast.LockExpr {
+			for mut stmt in node.stmts {
+				stmt = t.stmt(mut stmt)
+			}
+			for mut locked in node.lockeds {
+				locked = t.expr(mut locked)
+			}
+		}
+		ast.MapInit {
+			for mut key in node.keys {
+				key = t.expr(mut key)
+			}
+			for mut val in node.vals {
+				val = t.expr(mut val)
+			}
+		}
+		ast.MatchExpr {
+			return t.match_expr(mut node)
+		}
+		ast.OrExpr {
+			for mut stmt in node.stmts {
+				stmt = t.stmt(mut stmt)
+			}
+		}
+		ast.ParExpr {
+			node.expr = t.expr(mut node.expr)
+		}
+		ast.PostfixExpr {
+			node.expr = t.expr(mut node.expr)
+		}
+		ast.PrefixExpr {
+			node.right = t.expr(mut node.right)
+			node.or_block = t.expr(mut node.or_block) as ast.OrExpr
+		}
+		ast.RangeExpr {
+			node.low = t.expr(mut node.low)
+			node.high = t.expr(mut node.high)
+		}
+		ast.SelectExpr {
+			for mut branch in node.branches {
+				branch.stmt = t.stmt(mut branch.stmt)
+				for mut stmt in branch.stmts {
+					stmt = t.stmt(mut stmt)
+				}
+			}
+		}
+		ast.SelectorExpr {
+			node.expr = t.expr(mut node.expr)
+		}
+		ast.SizeOf {
+			node.expr = t.expr(mut node.expr)
+		}
+		ast.SqlExpr {
+			return t.sql_expr(mut node)
+		}
+		ast.StructInit {
+			node.update_expr = t.expr(mut node.update_expr)
+			for mut field in node.fields {
+				field.expr = t.expr(mut field.expr)
+			}
+			for mut embed in node.embeds {
+				embed.expr = t.expr(mut embed.expr)
+			}
+		}
+		ast.UnsafeExpr {
+			node.expr = t.expr(mut node.expr)
+		}
+		else {}
+	}
+	return node
+}
+
+pub fn (mut t Transformer) call_expr(mut node ast.CallExpr) ast.Expr {
+	for mut arg in node.args {
+		arg.expr = t.expr(mut arg.expr)
+	}
+	return node
+}
+
+pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
+	node.left = t.expr(mut node.left)
+	node.right = t.expr(mut node.right)
+
+	mut pos := node.left.pos()
+	pos.extend(node.pos)
+	pos.extend(node.right.pos())
+
+	if t.pref.is_debug {
+		return node
+	} else {
+		match mut node.left {
+			ast.BoolLiteral {
+				match mut node.right {
+					ast.BoolLiteral {
+						match node.op {
+							.eq {
+								return ast.BoolLiteral{
+									val: node.left.val == node.right.val
+								}
+							}
+							.ne {
+								return ast.BoolLiteral{
+									val: node.left.val != node.right.val
+								}
+							}
+							.and {
+								return ast.BoolLiteral{
+									val: node.left.val && node.right.val
+								}
+							}
+							.logical_or {
+								return ast.BoolLiteral{
+									val: node.left.val || node.right.val
+								}
+							}
+							else {}
+						}
+					}
+					else {}
+				}
+			}
+			ast.StringLiteral {
+				match mut node.right {
+					ast.StringLiteral {
+						match node.op {
+							.eq {
+								return ast.BoolLiteral{
+									val: node.left.val == node.right.val
+								}
+							}
+							.ne {
+								return ast.BoolLiteral{
+									val: node.left.val != node.right.val
+								}
+							}
+							.plus {
+								return if t.pref.backend == .c { ast.Expr(ast.StringLiteral{
+										val: util.smart_quote(node.left.val, node.left.is_raw) + util.smart_quote(node.right.val, node.right.is_raw)
+										pos: pos
+									}) } else { ast.Expr(node) }
+							}
+							else {}
+						}
+					}
+					else {}
+				}
+			}
+			ast.IntegerLiteral {
+				match mut node.right {
+					ast.IntegerLiteral {
+						left_val := node.left.val.i64()
+						right_val := node.right.val.i64()
+
+						match node.op {
+							.eq {
+								return ast.BoolLiteral{
+									val: left_val == right_val
+								}
+							}
+							.ne {
+								return ast.BoolLiteral{
+									val: left_val != right_val
+								}
+							}
+							.gt {
+								return ast.BoolLiteral{
+									val: left_val > right_val
+								}
+							}
+							.ge {
+								return ast.BoolLiteral{
+									val: left_val >= right_val
+								}
+							}
+							.lt {
+								return ast.BoolLiteral{
+									val: left_val < right_val
+								}
+							}
+							.le {
+								return ast.BoolLiteral{
+									val: left_val <= right_val
+								}
+							}
+							.plus {
+								return ast.IntegerLiteral{
+									val: (left_val + right_val).str()
+									pos: pos
+								}
+							}
+							.mul {
+								return ast.IntegerLiteral{
+									val: (left_val * right_val).str()
+									pos: pos
+								}
+							}
+							.minus {
+								// HACK: prevent folding of `min_i64` values in `math` module
+								if left_val == -9223372036854775807 && right_val == 1 {
+									return node
+								}
+
+								return ast.IntegerLiteral{
+									val: (left_val - right_val).str()
+									pos: pos
+								}
+							}
+							.div {
+								return ast.IntegerLiteral{
+									val: (left_val / right_val).str()
+									pos: pos
+								}
+							}
+							.mod {
+								return ast.IntegerLiteral{
+									val: (left_val % right_val).str()
+									pos: pos
+								}
+							}
+							.xor {
+								return ast.IntegerLiteral{
+									val: (left_val ^ right_val).str()
+									pos: pos
+								}
+							}
+							.pipe {
+								return ast.IntegerLiteral{
+									val: (left_val | right_val).str()
+									pos: pos
+								}
+							}
+							.amp {
+								return ast.IntegerLiteral{
+									val: (left_val & right_val).str()
+									pos: pos
+								}
+							}
+							.left_shift {
+								return ast.IntegerLiteral{
+									val: (u32(left_val) << right_val).str()
+									pos: pos
+								}
+							}
+							.right_shift {
+								return ast.IntegerLiteral{
+									val: (left_val >> right_val).str()
+									pos: pos
+								}
+							}
+							.unsigned_right_shift {
+								return ast.IntegerLiteral{
+									val: (left_val >>> right_val).str()
+									pos: pos
+								}
+							}
+							else {}
+						}
+					}
+					else {}
+				}
+			}
+			ast.FloatLiteral {
+				match mut node.right {
+					ast.FloatLiteral {
+						left_val := node.left.val.f32()
+						right_val := node.right.val.f32()
+						match node.op {
+							.eq {
+								return ast.BoolLiteral{
+									val: left_val == right_val
+								}
+							}
+							.ne {
+								return ast.BoolLiteral{
+									val: left_val != right_val
+								}
+							}
+							.gt {
+								return ast.BoolLiteral{
+									val: left_val > right_val
+								}
+							}
+							.ge {
+								return ast.BoolLiteral{
+									val: left_val >= right_val
+								}
+							}
+							.lt {
+								return ast.BoolLiteral{
+									val: left_val < right_val
+								}
+							}
+							.le {
+								return ast.BoolLiteral{
+									val: left_val <= right_val
+								}
+							}
+							.plus {
+								return ast.FloatLiteral{
+									val: (left_val + right_val).str()
+									pos: pos
+								}
+							}
+							.mul {
+								return ast.FloatLiteral{
+									val: (left_val * right_val).str()
+									pos: pos
+								}
+							}
+							.minus {
+								return ast.FloatLiteral{
+									val: (left_val - right_val).str()
+									pos: pos
+								}
+							}
+							.div {
+								return ast.FloatLiteral{
+									val: (left_val / right_val).str()
+									pos: pos
+								}
+							}
+							else {}
+						}
+					}
+					else {}
+				}
+			}
+			else {}
+		}
+		return node
+	}
+}
+
+pub fn (mut t Transformer) if_expr(mut node ast.IfExpr) ast.Expr {
+	for mut branch in node.branches {
+		branch.cond = t.expr(mut branch.cond)
+
+		t.index.indent(false)
+		for i, mut stmt in branch.stmts {
+			stmt = t.stmt(mut stmt)
+
+			if i == branch.stmts.len - 1 {
+				if stmt is ast.ExprStmt {
+					expr := (stmt as ast.ExprStmt).expr
+
+					match expr {
+						ast.IfExpr {
+							if expr.branches.len == 1 {
+								branch.stmts.pop()
+								branch.stmts << expr.branches[0].stmts
+								break
+							}
+						}
+						ast.MatchExpr {
+							if expr.branches.len == 1 {
+								branch.stmts.pop()
+								branch.stmts << expr.branches[0].stmts
+								break
+							}
+						}
+						else {}
+					}
+				}
+			}
+		}
+		t.index.unindent()
+	}
+	// where we place the result of the if when a := if ...
+	node.left = t.expr(mut node.left)
+	return node
+}
+
+pub fn (mut t Transformer) match_expr(mut node ast.MatchExpr) ast.Expr {
+	node.cond = t.expr(mut node.cond)
+	for mut branch in node.branches {
+		for mut expr in branch.exprs {
+			expr = t.expr(mut expr)
+		}
+		t.index.indent(false)
+		for i, mut stmt in branch.stmts {
+			stmt = t.stmt(mut stmt)
+
+			if i == branch.stmts.len - 1 {
+				if stmt is ast.ExprStmt {
+					expr := (stmt as ast.ExprStmt).expr
+
+					match expr {
+						ast.IfExpr {
+							if expr.branches.len == 1 {
+								branch.stmts.pop()
+								branch.stmts << expr.branches[0].stmts
+								break
+							}
+						}
+						ast.MatchExpr {
+							if expr.branches.len == 1 {
+								branch.stmts.pop()
+								branch.stmts << expr.branches[0].stmts
+								break
+							}
+						}
+						else {}
+					}
+				}
+			}
+		}
+		t.index.unindent()
+	}
+	return node
+}
+
+pub fn (mut t Transformer) sql_expr(mut node ast.SqlExpr) ast.Expr {
+	node.db_expr = t.expr(mut node.db_expr)
+	if node.has_where {
+		node.where_expr = t.expr(mut node.where_expr)
+	}
+	if node.has_order {
+		node.order_expr = t.expr(mut node.order_expr)
+	}
+	if node.has_limit {
+		node.limit_expr = t.expr(mut node.limit_expr)
+	}
+	if node.has_offset {
+		node.offset_expr = t.expr(mut node.offset_expr)
+	}
+	for mut field in node.fields {
+		field.default_expr = t.expr(mut field.default_expr)
+	}
+	for _, mut sub_struct in node.sub_structs {
+		sub_struct = t.expr(mut sub_struct) as ast.SqlExpr
+	}
+	return node
 }

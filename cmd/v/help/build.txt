@@ -77,14 +77,39 @@ NB: the build flags are shared with the run command too:
       to fix them first.
 
    -prof, -profile <file.txt>
-      Compile the executable with all functions profiled.
+      Compile the executable with all functions profiled.	  
       The profile results will be stored in `file.txt`.
       The format is 4 fields, separated by a space, for each v function:
          a) how many times it was called
          b) how much *nanoseconds in total* it took
          c) an average for each function (i.e. (b) / (a) )
          d) the function name
+         
+      NB: the profiler is *NOT* currently thread safe, so look at the profile results of
+           multithreaded programs very sceptically !
+
       NB: if you want to output the profile info to stdout, use `-profile -`.
+
+      NB: you can use `import v.profile`, and then calls to `profile.on(false)`
+           and `profile.on(true)` to temporarily turn it off and on again.
+
+      NB: if you do NOT want the profile to contain information from before your
+           program's `fn main()` starts, pass `-d no_profile_startup` too.
+           (V constants, and module init() functions are evaluated before `main()` is called)
+
+      NB: You can also select specific functions for profiling. For example:
+           v -profile-fns println,i64_str -profile - run examples/hanoi.v
+           In this case, the profile counters will be updated only for them, *and* for the functions that they call.
+           The profile result (after the program finishes), will look similar to this:
+             127          0.721ms           5680ns println
+             127          0.693ms           5456ns _writeln_to_fd 
+             127          0.565ms           4449ns _write_buf_to_fd 
+             127          0.045ms            353ns _v_malloc 
+             127          0.017ms            131ns malloc_noscan 
+             127          0.017ms            133ns _v_free 
+             127          0.014ms            113ns vmemmove
+             127          0.110ms            866ns i64_str 
+             127          0.016ms            127ns tos 
 
    -message-limit <limit>
       The maximum amount of warnings / errors / notices, that will be accumulated (defaults to 100).

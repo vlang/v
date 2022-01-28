@@ -133,7 +133,7 @@ fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
 fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comment) ast.Stmt {
 	p.is_stmt_ident = false
 	op := p.tok.kind
-	mut pos := p.tok.position()
+	mut pos := p.tok.pos()
 	p.next()
 	mut comments := []ast.Comment{cap: 2 * left_comments.len + 1}
 	comments << left_comments
@@ -210,7 +210,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 			}
 			else {
 				// TODO: parexpr ( check vars)
-				// else { p.error_with_pos('unexpected `${typeof(lx)}`', lx.position()) }
+				// else { p.error_with_pos('unexpected `${typeof(lx)}`', lx.pos()) }
 			}
 		}
 	}

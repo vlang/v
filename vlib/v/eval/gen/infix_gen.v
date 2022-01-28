@@ -134,7 +134,7 @@ fn main() {
 
 	path := @FILE.all_before(@FILE.all_after_last('/')) + '../infix.v'
 	os.write_file(path, b.str()) or { panic(err) }
-	res := os.execute(@VEXE + ' fmt -w ' + path)
+	res := os.execute(os.quoted_path(@VEXE) + ' fmt -w ' + os.quoted_path(path))
 	if res.exit_code != 0 {
 		eprintln('v fmt failed!')
 		panic(res.output)

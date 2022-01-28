@@ -70,7 +70,7 @@ pub fn (dtt DateTimeType) str() string {
 pub struct Comment {
 pub:
 	text string
-	pos  token.Position
+	pos  token.Pos
 }
 
 // str returns the `string` representation of the `Comment` type.
@@ -86,7 +86,7 @@ pub fn (c Comment) str() string {
 pub struct Null {
 pub:
 	text string
-	pos  token.Position
+	pos  token.Pos
 }
 
 // str returns the `string` representation of the `Null` type
@@ -100,7 +100,7 @@ pub struct Quoted {
 pub mut:
 	text string
 pub:
-	pos          token.Position
+	pos          token.Pos
 	is_multiline bool
 	quote        byte
 }
@@ -122,7 +122,7 @@ pub fn (q Quoted) str() string {
 pub struct Bare {
 pub:
 	text string
-	pos  token.Position
+	pos  token.Pos
 }
 
 // str returns the `string` representation of the `Bare` type.
@@ -140,7 +140,7 @@ pub fn (b Bare) str() string {
 pub struct Bool {
 pub:
 	text string
-	pos  token.Position
+	pos  token.Pos
 }
 
 // str returns the `string` representation of the `Bool` type.
@@ -157,7 +157,7 @@ pub fn (b Bool) str() string {
 // Number can be integers, floats, infinite, NaN - they can have exponents (`5e2`) and be sign prefixed (`+2`).
 pub struct Number {
 pub:
-	pos token.Position
+	pos token.Pos
 pub mut:
 	text string
 }
@@ -197,7 +197,7 @@ pub fn (n Number) f64() f64 {
 pub struct Date {
 pub:
 	text string
-	pos  token.Position
+	pos  token.Pos
 }
 
 // str returns the `string` representation of the `Date` type.
@@ -215,7 +215,7 @@ pub struct Time {
 pub:
 	text   string
 	offset int
-	pos    token.Position
+	pos    token.Pos
 }
 
 // str returns the `string` representation of the `Time` type.
@@ -234,7 +234,7 @@ pub struct DateTime {
 pub mut:
 	text string
 pub:
-	pos  token.Position
+	pos  token.Pos
 	date Date
 	time Time
 }
@@ -253,7 +253,7 @@ pub fn (dt DateTime) str() string {
 // EOF is the data representation of the end of the TOML document.
 pub struct EOF {
 pub:
-	pos token.Position
+	pos token.Pos
 }
 
 // str returns the `string` representation of the `EOF` type.

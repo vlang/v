@@ -35,13 +35,13 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		high_type := c.expr(node.high)
 		high_type_idx := high_type.idx()
 		if typ_idx in ast.integer_type_idxs && high_type_idx !in ast.integer_type_idxs {
-			c.error('range types do not match', node.cond.position())
+			c.error('range types do not match', node.cond.pos())
 		} else if typ_idx in ast.float_type_idxs || high_type_idx in ast.float_type_idxs {
-			c.error('range type can not be float', node.cond.position())
+			c.error('range type can not be float', node.cond.pos())
 		} else if typ_idx == ast.bool_type_idx || high_type_idx == ast.bool_type_idx {
-			c.error('range type can not be bool', node.cond.position())
+			c.error('range type can not be bool', node.cond.pos())
 		} else if typ_idx == ast.string_type_idx || high_type_idx == ast.string_type_idx {
-			c.error('range type can not be string', node.cond.position())
+			c.error('range type can not be string', node.cond.pos())
 		}
 		if high_type in [ast.int_type, ast.int_literal_type] {
 			node.val_type = typ
@@ -55,19 +55,19 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		if sym.kind == .struct_ {
 			// iterators
 			next_fn := sym.find_method_with_generic_parent('next') or {
-				c.error('a struct must have a `next()` method to be an iterator', node.cond.position())
+				c.error('a struct must have a `next()` method to be an iterator', node.cond.pos())
 				return
 			}
 			if !next_fn.return_type.has_flag(.optional) {
-				c.error('iterator method `next()` must return an optional', node.cond.position())
+				c.error('iterator method `next()` must return an optional', node.cond.pos())
 			}
 			return_sym := c.table.sym(next_fn.return_type)
 			if return_sym.kind == .multi_return {
-				c.error('iterator method `next()` must not return multiple values', node.cond.position())
+				c.error('iterator method `next()` must not return multiple values', node.cond.pos())
 			}
 			// the receiver
 			if next_fn.params.len != 1 {
-				c.error('iterator method `next()` must have 0 parameters', node.cond.position())
+				c.error('iterator method `next()` must have 0 parameters', node.cond.pos())
 			}
 			mut val_type := next_fn.return_type.clear_flag(.optional)
 			if node.val_is_mut {
@@ -96,7 +96,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			mut value_type := c.table.value_type(typ)
 			if value_type == ast.void_type || typ.has_flag(.optional) {
 				if typ != ast.void_type {
-					c.error('for in: cannot index `${c.table.type_to_str(typ)}`', node.cond.position())
+					c.error('for in: cannot index `${c.table.type_to_str(typ)}`', node.cond.pos())
 				}
 			}
 			if node.val_is_mut {
@@ -147,10 +147,10 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 	if !node.is_inf && typ.idx() != ast.bool_type_idx && !c.pref.translated {
 		c.error('non-bool used as for condition', node.pos)
 	}
-	if node.cond is ast.InfixExpr {
+	if mut node.cond is ast.InfixExpr {
 		infix := node.cond
 		if infix.op == .key_is {
-			if infix.left in [ast.Ident, ast.SelectorExpr] && infix.right is ast.TypeNode {
+			if infix.right is ast.TypeNode && infix.left in [ast.Ident, ast.SelectorExpr] {
 				is_variable := if mut infix.left is ast.Ident {
 					infix.left.kind == .variable
 				} else {

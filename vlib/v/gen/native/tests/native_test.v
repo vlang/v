@@ -36,7 +36,7 @@ fn test_native() {
 		relative_test_path := full_test_path.replace(vroot + '/', '')
 		work_test_path := '$wrkdir/$test_file_name'
 		exe_test_path := '$wrkdir/${test_file_name}.exe'
-		cmd := '"$vexe" -o "$exe_test_path" -b native "$full_test_path"'
+		cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(exe_test_path)} -b native ${os.quoted_path(full_test_path)}'
 		if is_verbose {
 			println(cmd)
 		}
@@ -47,7 +47,7 @@ fn test_native() {
 			continue
 		}
 		tmperrfile := '$dir/${test}.tmperr'
-		res := os.execute('$exe_test_path 2> $tmperrfile')
+		res := os.execute('${os.quoted_path(exe_test_path)} 2> ${os.quoted_path(tmperrfile)}')
 		if res.exit_code != 0 {
 			bench.fail()
 			eprintln(bench.step_message_fail('$full_test_path failed to run'))

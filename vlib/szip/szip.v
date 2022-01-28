@@ -88,7 +88,7 @@ pub fn open(name string, level CompressionLevel, mode OpenMode) ?&Zip {
 	if name.len == 0 {
 		return error('szip: name of file empty')
 	}
-	p_zip := &Zip(C.zip_open(&char(name.str), int(level), char(mode.to_byte())))
+	p_zip := unsafe { &Zip(C.zip_open(&char(name.str), int(level), char(mode.to_byte()))) }
 	if isnil(p_zip) {
 		return error('szip: cannot open/create/append new zip archive')
 	}

@@ -15,7 +15,7 @@ fn (ng NestedGeneric) nested_test<T>(mut app T) {
 
 fn method_test<T>(mut app T) int {
 	ng := NestedGeneric{}
-	ng.nested_test<T>(app)
+	ng.nested_test<T>(mut app)
 	return 22
 }
 

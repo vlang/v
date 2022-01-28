@@ -43,7 +43,7 @@ pub fn (mut v Builder) find_win_cc() ? {
 	$if !windows {
 		return
 	}
-	ccompiler_version_res := os.execute('$v.pref.ccompiler -v')
+	ccompiler_version_res := os.execute('${os.quoted_path(v.pref.ccompiler)} -v')
 	if ccompiler_version_res.exit_code != 0 {
 		if v.pref.is_verbose {
 			println('$v.pref.ccompiler not found, looking for msvc...')
@@ -54,7 +54,7 @@ pub fn (mut v Builder) find_win_cc() ? {
 			}
 			vpath := os.dir(pref.vexe_path())
 			thirdparty_tcc := os.join_path(vpath, 'thirdparty', 'tcc', 'tcc.exe')
-			tcc_version_res := os.execute('$thirdparty_tcc -v')
+			tcc_version_res := os.execute('${os.quoted_path(thirdparty_tcc)} -v')
 			if tcc_version_res.exit_code != 0 {
 				if v.pref.is_verbose {
 					println('tcc not found')
@@ -207,7 +207,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	ccoptions.guessed_compiler = v.pref.ccompiler
 	if ccoptions.guessed_compiler == 'cc' && v.pref.is_prod {
 		// deliberately guessing only for -prod builds for performance reasons
-		ccversion := os.execute('cc --version')
+		ccversion := os.execute('${os.quoted_path('cc')} --version')
 		if ccversion.exit_code == 0 {
 			if ccversion.output.contains('This is free software;')
 				&& ccversion.output.contains('Free Software Foundation, Inc.') {
@@ -548,7 +548,8 @@ pub fn (mut v Builder) cc() {
 						$if trace_stdatomic_gen ? {
 							eprintln('> creating $cpp_atomic_h_path ...')
 						}
-						os.execute('$vexe run ${@VEXEROOT}/thirdparty/stdatomic/nix/cpp/gen.v $ccompiler')
+						cppgenv := '${@VEXEROOT}/thirdparty/stdatomic/nix/cpp/gen.v'
+						os.execute('${os.quoted_path(vexe)} run ${os.quoted_path(cppgenv)} ${os.quoted_path(ccompiler)}')
 						break
 					}
 				}
@@ -566,13 +567,14 @@ pub fn (mut v Builder) cc() {
 		all_args := v.all_args(v.ccoptions)
 		v.dump_c_options(all_args)
 		str_args := all_args.join(' ')
-		mut cmd := '$ccompiler $str_args'
+		mut cmd := '${os.quoted_path(ccompiler)} $str_args'
 		mut response_file := ''
 		mut response_file_content := str_args
 		if !v.pref.no_rsp {
 			response_file = '${v.out_name_c}.rsp'
 			response_file_content = str_args.replace('\\', '\\\\')
-			cmd = '$ccompiler "@$response_file"'
+			rspexpr := '@$response_file'
+			cmd = '${os.quoted_path(ccompiler)} ${os.quoted_path(rspexpr)}'
 			os.write_file(response_file, response_file_content) or {
 				verror('Unable to write to C response file "$response_file"')
 			}
@@ -729,7 +731,7 @@ fn (mut b Builder) cc_linux_cross() {
 	cc_args << '-c "$b.out_name_c"'
 	cc_args << libs
 	b.dump_c_options(cc_args)
-	cc_cmd := 'cc ' + cc_args.join(' ')
+	cc_cmd := '${os.quoted_path('cc')} ' + cc_args.join(' ')
 	if b.pref.show_cc {
 		println(cc_cmd)
 	}
@@ -747,7 +749,8 @@ fn (mut b Builder) cc_linux_cross() {
 	linker_args << cflags.c_options_only_object_files()
 	// -ldl
 	b.dump_c_options(linker_args)
-	linker_cmd := '$sysroot/ld.lld ' + linker_args.join(' ')
+	ldlld := '$sysroot/ld.lld'
+	linker_cmd := '${os.quoted_path(ldlld)} ' + linker_args.join(' ')
 	// s = s.replace('SYSROOT', sysroot) // TODO $ inter bug
 	// s = s.replace('-o hi', '-o ' + c.pref.out_name)
 	if b.pref.show_cc {
@@ -914,10 +917,11 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 	mut all_options := []string{}
 	all_options << v.pref.third_party_option
 	all_options << moduleflags.c_options_before_target()
-	all_options << '-o "$opath"'
-	all_options << '-c "$cfile"'
+	all_options << '-o ${os.quoted_path(opath)}'
+	all_options << '-c ${os.quoted_path(cfile)}'
 	cc_options := v.thirdparty_object_args(v.ccoptions, all_options).join(' ')
-	cmd := '$v.pref.ccompiler $cc_options'
+
+	cmd := '${os.quoted_path(v.pref.ccompiler)} $cc_options'
 	$if trace_thirdparty_obj_files ? {
 		println('>>> build_thirdparty_obj_files cmd: $cmd')
 	}

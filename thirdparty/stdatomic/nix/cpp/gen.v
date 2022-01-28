@@ -6,7 +6,7 @@ fn main() {
 		exit(1)
 	}
 	cc := os.args[1]
-	if os.execute('$cc -v').exit_code != 0 {
+	if os.execute('${os.quoted_path(cc)} -v').exit_code != 0 {
 		eprintln('please specify a valid C++ compiler')
 		exit(1)
 	}
@@ -54,7 +54,7 @@ fn get_cc_info(cc string) (string, string, string) {
 		'none'
 	}
 
-	lines := os.execute('$cc -v').output.split('\n')
+	lines := os.execute('${os.quoted_path(cc)} -v').output.split('\n')
 
 	// gcc and clang both have the same way way to say what version they have and what the host target triple is
 	cc_version := lines.filter(it.contains('$cc_type version '))[0].all_after('$cc_type version ').all_before('.')
@@ -69,7 +69,7 @@ fn get_cc_info(cc string) (string, string, string) {
 }
 
 fn get_search_paths(cc string) []string {
-	result := os.execute('$cc -v -x c++ /dev/null').output
+	result := os.execute('${os.quoted_path(cc)} -v -x c++ /dev/null').output
 	lines := result.split('\n')
 	search_path := lines[lines.index('#include <...> search starts here:') + 1..lines.index('End of search list.')]
 	return search_path.map(os.real_path(it.all_before('(').trim_space()))

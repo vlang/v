@@ -19,7 +19,7 @@ pub fn ast_comment_to_doc_comment(ast_node ast.Comment) DocComment {
 	return DocComment{
 		text: text
 		is_multi: ast_node.is_multi
-		pos: token.Position{
+		pos: token.Pos{
 			line_nr: ast_node.pos.line_nr
 			col: 0 // ast_node.pos.pos - ast_node.text.len
 			len: text.len

@@ -15,21 +15,21 @@ fn write_value(v Any, i int, len int, mut wr strings.Builder) {
 	if i >= len - 1 {
 		return
 	}
-	wr.write_b(`,`)
+	wr.write_byte(`,`)
 }
 
 // str returns the string representation of the `map[string]Any`.
 [manualfree]
 pub fn (flds map[string]Any) str() string {
 	mut wr := strings.new_builder(200)
-	wr.write_b(`{`)
+	wr.write_byte(`{`)
 	mut i := 0
 	for k, v in flds {
 		wr.write_string('"$k":')
 		write_value(v, i, flds.len, mut wr)
 		i++
 	}
-	wr.write_b(`}`)
+	wr.write_byte(`}`)
 	defer {
 		unsafe { wr.free() }
 	}
@@ -41,11 +41,11 @@ pub fn (flds map[string]Any) str() string {
 [manualfree]
 pub fn (flds []Any) str() string {
 	mut wr := strings.new_builder(200)
-	wr.write_b(`[`)
+	wr.write_byte(`[`)
 	for i, v in flds {
 		write_value(v, i, flds.len, mut wr)
 	}
-	wr.write_b(`]`)
+	wr.write_byte(`]`)
 	defer {
 		unsafe { wr.free() }
 	}
@@ -157,7 +157,7 @@ fn json_string(s string) string {
 				hex_code := chr.hex()
 				sb.write_string('\\u00$hex_code')
 			} else {
-				sb.write_b(chr)
+				sb.write_byte(chr)
 			}
 		} else {
 			slice := s[i..i + char_len]
@@ -170,7 +170,7 @@ fn json_string(s string) string {
 			} else {
 				// TODO: still figuring out what
 				// to do with more than 4 chars
-				sb.write_b(` `)
+				sb.write_byte(` `)
 			}
 			unsafe {
 				slice.free()

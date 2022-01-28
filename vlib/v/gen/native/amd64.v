@@ -1176,7 +1176,7 @@ g.v_error('oops', node.pos)
 			}
 			else {
 				// dump(node)
-				g.v_error('unhandled assign_stmt expression: $right.type_name()', right.position())
+				g.v_error('unhandled assign_stmt expression: $right.type_name()', right.pos())
 			}
 		}
 		// }

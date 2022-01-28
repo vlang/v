@@ -13,7 +13,6 @@ mut:
 }
 
 fn event(e &tui.Event, x voidptr) {
-	mut app := &App(x)
 	println(e)
 	if e.typ == .key_down && e.code == .escape {
 		exit(0)
@@ -33,14 +32,16 @@ fn frame(x voidptr) {
 	app.tui.flush()
 }
 
-mut app := &App{}
-app.tui = tui.init(
-	user_data: app
-	event_fn: event
-	frame_fn: frame
-	hide_cursor: true
-)
-app.tui.run() ?
+fn main() {
+	mut app := &App{}
+	app.tui = tui.init(
+		user_data: app
+		event_fn: event
+		frame_fn: frame
+		hide_cursor: true
+	)
+	app.tui.run() ?
+}
 ```
 
 See the `/examples/term.ui/` folder for more usage examples.

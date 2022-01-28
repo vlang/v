@@ -1,0 +1,14 @@
+struct V2d<T> {
+mut:
+	x T
+	y T
+}
+
+fn main() {
+	v1 := V2d<int>{2, 2}
+	v2 := V2d<int>{2, 3}
+	v3 := V2d<int>{4, 6}
+
+	if v1 * v2 == v3 {
+	}
+}

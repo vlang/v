@@ -4,7 +4,6 @@
 module picohttpparser
 
 #flag -I @VEXEROOT/thirdparty/picohttpparser
-#flag -L @VEXEROOT/thirdparty/picohttpparser
 #flag @VEXEROOT/thirdparty/picohttpparser/picohttpparser.o
 
 #include "picohttpparser.h"

@@ -25,9 +25,9 @@ fn testsuite_begin() {
 }
 
 fn test_a_simple_vweb_app_can_be_compiled() {
-	// did_server_compile := os.system('$vexe -g -o $serverexe vlib/vweb/tests/vweb_test_server.v')
+	// did_server_compile := os.system('${os.quoted_path(vexe)} -g -o ${os.quoted_path(serverexe)} vlib/vweb/tests/vweb_test_server.v')
 	// TODO: find out why it does not compile with -usecache and -g
-	did_server_compile := os.system('$vexe -o $serverexe vlib/vweb/tests/vweb_test_server.v')
+	did_server_compile := os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(serverexe)} vlib/vweb/tests/vweb_test_server.v')
 	assert did_server_compile == 0
 	assert os.exists(serverexe)
 }
@@ -38,9 +38,9 @@ fn test_a_simple_vweb_app_runs_in_the_background() {
 		suffix = ' > /dev/null &'
 	}
 	if vweb_logfile != '' {
-		suffix = ' 2>> $vweb_logfile >> $vweb_logfile &'
+		suffix = ' 2>> ${os.quoted_path(vweb_logfile)} >> ${os.quoted_path(vweb_logfile)} &'
 	}
-	server_exec_cmd := '$serverexe $sport $exit_after_time $suffix'
+	server_exec_cmd := '${os.quoted_path(serverexe)} $sport $exit_after_time $suffix'
 	$if debug_net_socket_client ? {
 		eprintln('running:\n$server_exec_cmd')
 	}

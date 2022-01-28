@@ -174,7 +174,7 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	return ast.void_type
 }
 
-fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Position, table_name string) []ast.StructField {
+fn (mut c Checker) fetch_and_verify_orm_fields(info ast.Struct, pos token.Pos, table_name string) []ast.StructField {
 	fields := info.fields.filter(
 		(it.typ in [ast.string_type, ast.bool_type] || int(it.typ) in ast.number_type_idxs
 		|| c.table.type_symbols[int(it.typ)].kind == .struct_

@@ -17,12 +17,17 @@ pub fn (queue Queue<T>) len() int {
 
 // peek returns the head of the queue (first element added)
 pub fn (queue Queue<T>) peek() ?T {
-	return if !queue.is_empty() { queue.elements.first() ? } else { error('Queue is empty') }
+	return queue.elements.first()
 }
 
 // last returns the tail of the queue (last element added)
 pub fn (queue Queue<T>) last() ?T {
-	return if !queue.is_empty() { queue.elements.last() ? } else { error('Queue is empty') }
+	return queue.elements.last()
+}
+
+// index returns the element at the given index of the queue
+pub fn (queue Queue<T>) index(idx int) ?T {
+	return queue.elements.index(idx)
 }
 
 // push adds an element to the tail of the queue
@@ -32,7 +37,7 @@ pub fn (mut queue Queue<T>) push(item T) {
 
 // pop removes the element at the head of the queue and returns it
 pub fn (mut queue Queue<T>) pop() ?T {
-	return if !queue.is_empty() { queue.elements.shift() ? } else { error('Queue is empty') }
+	return queue.elements.shift()
 }
 
 // str returns a string representation of the queue

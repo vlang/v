@@ -9,8 +9,8 @@ const value_range = [0x00, 0x5f, 0x87, 0xaf, 0xd7, 0xff]!
 pub const color_table = init_color_table()
 
 [direct_array_access]
-fn init_color_table() []int {
-	mut color_table_ := []int{len: 256}
+fn init_color_table() []u32 {
+	mut color_table_ := []u32{len: 256}
 	// ansi colors
 	color_table_[0] = 0x000000
 	color_table_[1] = 0x800000
@@ -33,12 +33,14 @@ fn init_color_table() []int {
 		r := ui.value_range[(i / 36) % 6]
 		g := ui.value_range[(i / 6) % 6]
 		b := ui.value_range[i % 6]
-		color_table_[i + 16] = ((r << 16) & 0xffffff) + ((g << 8) & 0xffff) + (b & 0xff)
+		color_table_[i + 16] = ((u32(r) << 16) & 0xffffff) + ((u32(g) << 8) & 0xffff) +
+			(u32(b) & 0xff)
 	}
 	// grayscale
 	for i in 0 .. 24 {
 		r := 8 + (i * 10)
-		color_table_[i + 232] = ((r << 16) & 0xffffff) + ((r << 8) & 0xffff) + (r & 0xff)
+		color_table_[i + 232] = ((u32(r) << 16) & 0xffffff) + ((u32(r) << 8) & 0xffff) +
+			(u32(r) & 0xff)
 	}
 	return color_table_
 }
@@ -66,7 +68,7 @@ fn approximate_rgb(r int, g int, b int) int {
 }
 
 fn lookup_rgb(r int, g int, b int) int {
-	color := (r << 16) + (g << 8) + b
+	color := (u32(r) << 16) + (u32(g) << 8) + u32(b)
 	// lookup extended colors only, coz non-extended can be changed by users.
 	for i in 16 .. 256 {
 		if ui.color_table[i] == color {

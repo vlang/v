@@ -123,6 +123,8 @@ fn fname_without_platform_postfix(file string) string {
 		'_',
 		'freebsd.c.v',
 		'_',
+		'openbsd.c.v',
+		'_',
 		'netbsd.c.v',
 		'_',
 		'dragonfly.c.v',

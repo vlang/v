@@ -162,7 +162,7 @@ fn test_closure_return_${styp}_${i}() ? {
 	os.chdir(wrkdir) ?
 	os.write_file('closure_return_test.v', code) ?
 	vexe := os.getenv('VEXE')
-	res := os.execute('"$vexe" -keepc -cg -showcc closure_return_test.v')
+	res := os.execute('${os.quoted_path(vexe)} -keepc -cg -showcc closure_return_test.v')
 	if res.exit_code != 0 {
 		eprintln(res.output)
 		assert false

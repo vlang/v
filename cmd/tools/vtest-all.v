@@ -4,9 +4,11 @@ import os
 import term
 import time
 
-const vexe = os.getenv('VEXE')
+const vexe_path = os.getenv('VEXE')
 
-const vroot = os.dir(vexe)
+const vroot = os.dir(vexe_path)
+
+const vexe = os.quoted_path(vexe_path)
 
 const args_string = os.args[1..].join(' ')
 
@@ -208,8 +210,9 @@ fn get_all_commands() []Command {
 		rmfile: 'examples/tetris/tetris'
 	}
 	$if macos || linux {
+		ipath := '$vroot/thirdparty/stdatomic/nix'
 		res << Command{
-			line: '$vexe -o v.c cmd/v && cc -Werror -I "$vroot/thirdparty/stdatomic/nix" v.c -lpthread -lm && rm -rf a.out'
+			line: '$vexe -o v.c cmd/v && cc -Werror -I ${os.quoted_path(ipath)} v.c -lpthread -lm && rm -rf a.out'
 			label: 'v.c should be buildable with no warnings...'
 			okmsg: 'v.c can be compiled without warnings. This is good :)'
 			rmfile: 'v.c'

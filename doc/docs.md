@@ -476,16 +476,33 @@ d := b + x     // d is of type `f64` - automatic promotion of `x`'s value
 
 ### Strings
 
-```v
+```v nofmt
 name := 'Bob'
-println(name.len)
-println(name[0]) // indexing gives a byte B
-println(name[1..3]) // slicing gives a string 'ob'
-windows_newline := '\r\n' // escape special characters like in C
+assert name.len == 3       // will print 3
+assert name[0] == byte(66) // indexing gives a byte, byte(66) == `B`
+assert name[1..3] == 'ob'  // slicing gives a string 'ob'
+
+// escape codes
+windows_newline := '\r\n'      // escape special characters like in C
 assert windows_newline.len == 2
+
+// arbitrary bytes can be directly specified using `\x##` notation where `#` is
+// a hex digit aardvark_str := '\x61ardvark' assert aardvark_str == 'aardvark'
+assert '\xc0'[0] == byte(0xc0)
+
+// or using octal escape `\###` notation where `#` is an octal digit
+aardvark_str2 := '\141ardvark'
+assert aardvark_str2 == 'aardvark'
+
+// Unicode can be specified directly as `\u####` where # is a hex digit
+// and will be converted internally to its UTF-8 representation
+star_str := '\u2605' // ★
+assert star_str == '★'
+assert star_str == '\xe2\x98\x85' // UTF-8 can be specified this way too.
 ```
 
-In V, a string is a read-only array of bytes. String data is encoded using UTF-8:
+In V, a string is a read-only array of bytes. All Unicode characters are encoded using UTF-8:
+
 ```v
 s := 'hello 🌎' // emoji takes 4 bytes
 assert s.len == 10
@@ -503,11 +520,12 @@ String values are immutable. You cannot mutate elements:
 mut s := 'hello 🌎'
 s[0] = `H` // not allowed
 ```
+
 > error: cannot assign to `s[i]` since V strings are immutable
 
-Note that indexing a string will produce a `byte`, not a `rune` nor another `string`.
-Indexes correspond to bytes in the string, not Unicode code points. If you want to
-convert the `byte` to a `string`, use the `ascii_str()` method:
+Note that indexing a string will produce a `byte`, not a `rune` nor another `string`. Indexes
+correspond to _bytes_ in the string, not Unicode code points. If you want to convert the `byte` to a
+`string`, use the `.ascii_str()` method on the `byte`:
 
 ```v
 country := 'Netherlands'
@@ -515,20 +533,13 @@ println(country[0]) // Output: 78
 println(country[0].ascii_str()) // Output: N
 ```
 
-Character literals have type `rune`. To denote them, use `
+Both single and double quotes can be used to denote strings. For consistency, `vfmt` converts double
+quotes to single quotes unless the string contains a single quote character.
+
+For raw strings, prepend `r`. Escape handling is not done for raw strings:
 
 ```v
-rocket := `🚀`
-assert 'aloha!'[0] == `a`
-```
-
-Both single and double quotes can be used to denote strings. For consistency,
-`vfmt` converts double quotes to single quotes unless the string contains a single quote character.
-
-For raw strings, prepend `r`. Raw strings are not escaped:
-
-```v
-s := r'hello\nworld'
+s := r'hello\nworld' // the `\n` will be preserved as two characters
 println(s) // "hello\nworld"
 ```
 
@@ -537,41 +548,79 @@ Strings can be easily converted to integers:
 ```v
 s := '42'
 n := s.int() // 42
+
+// all int literals are supported
+assert '0xc3'.int() == 195
+assert '0o10'.int() == 8
+assert '0b1111_0000_1010'.int() == 3850
+assert '-0b1111_0000_1010'.int() == -3850
 ```
 
-### Runes
-A `rune` represents a unicode character and is an alias for `u32`. Runes can be created like this:
-```v
-x := `🚀`
-```
-
-A string can be converted to runes by the `.runes()` method.
-```v
-hello := 'Hello World 👋'
-hello_runes := hello.runes() // [`H`, `e`, `l`, `l`, `o`, ` `, `W`, `o`, `r`, `l`, `d`, ` `, `👋`]
-```
+For more advanced `string` processing and conversions, refer to the
+[vlib/strconv](https://modules.vlang.io/strconv.html) module.
 
 ### String interpolation
 
-Basic interpolation syntax is pretty simple - use `$` before a variable name.
-The variable will be converted to a string and embedded into the literal:
+Basic interpolation syntax is pretty simple - use `$` before a variable name. The variable will be
+converted to a string and embedded into the literal:
+
 ```v
 name := 'Bob'
 println('Hello, $name!') // Hello, Bob!
 ```
-It also works with fields: `'age = $user.age'`.
-If you need more complex expressions, use `${}`: `'can register = ${user.age > 13}'`.
 
-Format specifiers similar to those in C's `printf()` are also supported.
-`f`, `g`, `x`, etc. are optional and specify the output format.
-The compiler takes care of the storage size, so there is no `hd` or `llu`.
+It also works with fields: `'age = $user.age'`. If you need more complex expressions, use `${}`:
+`'can register = ${user.age > 13}'`.
+
+Format specifiers similar to those in C's `printf()` are also supported. `f`, `g`, `x`, `o`, `b`,
+etc. are optional and specify the output format. The compiler takes care of the storage size, so
+there is no `hd` or `llu`.
+
+To use a format specifier, follow this pattern:
+
+`${varname:[flags][width][.precision][type]}`
+
+- flags: may be zero or more of the following: `-` to left-align output within the field, `0` to use
+  `0` as the padding character instead of the default `space` character. (Note: V does not currently
+  support the use of `'` or `#` as format flags, and V supports but doesn't need `+` to right-align
+  since that's the default.)
+- width: may be an integer value describing the minimum width of total field to output.
+- precision: an integer value preceeded by a `.` will guarantee that many digits after the decimal
+  point, if the input variable is a float. Ignored if variable is an integer.
+- type: `f` and `F` specify the input is a float and should be rendered as such, `e` and `E` specify
+  the input is a float and should be rendered as an exponent (partially broken), `g` and `G` specify
+  the input is a float--the renderer will use floating point notation for small values and exponent
+  notation for large values, `d` specifies the input is an integer and should be rendered in base-10
+  digits, `x` and `X` require an integer and will render it as hexadecimal digits, `o` requires an
+  integer and will render it as octal digits, `b` requires an integer and will render it as binary
+  digits, `s` requires a string (almost never used).
+
+Note: when a numeric type can render alphabetic characters, such as hex strings or special values
+like `infinity`, the lowercase version of the type forces lowercase alphabetics and the uppercase
+version forces uppercase alphabetics.
+
+Also note: in most cases, it's best to leave the format type empty. Floats will be rendered by
+default as `g`, integers will be rendered by default as `d`, and `s` is almost always redundant.
+There are only three cases where specifying a type is recommended:
+
+- format strings are parsed at compile time, so specifing a type can help detect errors then
+- format strings default to using lowercase letters for hex digits and the `e` in exponents. Use a
+  uppercase type to force the use of uppercase hex digits and an uppercase `E` in exponents.
+- format strings are the most convenient way to get hex, binary or octal strings from an integer.
+
+See
+[Format Placeholder Specification](https://en.wikipedia.org/wiki/Printf_format_string#Format_placeholder_specification)
+for more information.
 
 ```v
 x := 123.4567
-println('x = ${x:4.2f}')
-println('[${x:10}]') // pad with spaces on the left => [   123.457]
-println('[${int(x):-10}]') // pad with spaces on the right => [123       ]
+println('[${x:.2}]') // round to two decimal places => [123.46]
+println('[${x:10}]') // right-align with spaces on the left => [   123.457]
+println('[${int(x):-10}]') // left-align with spaces on the right => [123       ]
 println('[${int(x):010}]') // pad with zeros on the left => [0000000123]
+println('[${int(x):b}]') // output as binary => [1111011]
+println('[${int(x):o}]') // output as octal => [173]
+println('[${int(x):X}]') // output as uppercase hex => [7B]
 ```
 
 ### String operators
@@ -585,13 +634,14 @@ s += 'world' // `+=` is used to append to a string
 println(s) // "hello world"
 ```
 
-All operators in V must have values of the same type on both sides.
-You cannot concatenate an integer to a string:
+All operators in V must have values of the same type on both sides. You cannot concatenate an
+integer to a string:
 
 ```v failcompile
 age := 10
 println('age = ' + age) // not allowed
 ```
+
 > error: infix expr: cannot use `int` (right expression) as `string`
 
 We have to either convert `age` to a `string`:
@@ -606,6 +656,62 @@ or use string interpolation (preferred):
 ```v
 age := 12
 println('age = $age')
+```
+
+### Runes
+
+A `rune` represents a single Unicode character and is an alias for `u32`. To denote them, use `
+(backticks) :
+
+```v
+rocket := `🚀`
+```
+
+A `rune` can be converted to a UTF-8 string by using the `.str()` method.
+
+```v
+rocket := `🚀`
+assert rocket.str() == '🚀'
+```
+
+A `rune` can be converted to UTF-8 bytes by using the `.bytes()` method.
+
+```v
+rocket := `🚀`
+assert rocket.bytes() == [byte(0xf0), 0x9f, 0x9a, 0x80]
+```
+
+Hex, Unicode, and Octal escape sequences also work in a `rune` literal:
+
+```v
+assert `\x61` == `a`
+assert `\141` == `a`
+assert `\u0061` == `a`
+
+// multibyte literals work too
+assert `\u2605` == `★`
+assert `\u2605`.bytes() == [byte(0xe2), 0x98, 0x85]
+assert `\xe2\x98\x85`.bytes() == [byte(0xe2), 0x98, 0x85]
+assert `\342\230\205`.bytes() == [byte(0xe2), 0x98, 0x85]
+```
+
+Note that `rune` literals use the same escape syntax as strings, but they can only hold one unicode
+character. Therefore, if your code does not specify a single Unicode character, you will receive an
+error at compile time.
+
+Also remember that strings are indexed as bytes, not runes, so beware:
+
+```v
+rocket_string := '🚀'
+assert rocket_string[0] != `🚀`
+assert 'aloha!'[0] == `a`
+```
+
+A string can be converted to runes by the `.runes()` method.
+
+```v
+hello := 'Hello World 👋'
+hello_runes := hello.runes() // [`H`, `e`, `l`, `l`, `o`, ` `, `W`, `o`, `r`, `l`, `d`, ` `, `👋`]
 ```
 
 ### Numbers
@@ -676,12 +782,12 @@ println(nums[1]) // `2`
 nums[1] = 5
 println(nums) // `[1, 5, 3]`
 ```
-#### Array Properties
-There are two properties that control the "size" of an array:
+#### Array Fields
+There are two fields that control the "size" of an array:
 * `len`: *length* - the number of pre-allocated and initialized elements in the array
 * `cap`: *capacity* - the amount of memory space which has been reserved for elements,
 but not initialized or counted as elements. The array can grow up to this size without
-being reallocated. Usually, V takes care of this property automatically but there are
+being reallocated. Usually, V takes care of this field automatically but there are
 cases where the user may want to do manual optimizations (see [below](#array-initialization)).
 
 ```v
@@ -692,7 +798,7 @@ nums = [] // The array is now empty
 println(nums.len) // "0"
 ```
 
-Note that the properties are read-only fields and can't be modified by the user.
+Note that fields are read-only and can't be modified by the user.
 
 #### Array Initialization
 The basic initialization syntax is as described [above](#basic-array-concepts).
@@ -1990,8 +2096,7 @@ fn main() {
 }
 ```
 
-This means that defining public readonly fields is very easy in V,
-no need in getters/setters or properties.
+This means that defining public readonly fields is very easy in V.
 
 ## Methods
 
@@ -2638,6 +2743,48 @@ fn announce(s Something) {
 	}
 }
 ```
+
+```v
+interface IFoo {
+	foo()
+}
+
+interface IBar {
+	bar()
+}
+
+// implements only IFoo
+struct SFoo {}
+
+fn (sf SFoo) foo() {}
+
+// implements both IFoo and IBar
+struct SFooBar {}
+
+fn (sfb SFooBar) foo() {}
+
+fn (sfb SFooBar) bar() {
+	dump('This implements IBar')
+}
+
+fn main() {
+	mut arr := []IFoo{}
+	arr << SFoo{}
+	arr << SFooBar{}
+
+	for a in arr {
+		dump(a)
+		// In order to execute instances that implements IBar.
+		if a is IBar {
+			// a.bar() // Error.
+			b := a as IBar
+			dump(b)
+			b.bar()
+		}
+	}
+}
+```
+
 For more information, see [Dynamic casts](#dynamic-casts).
 
 #### Interface method definitions
@@ -3356,12 +3503,12 @@ fn main() {
 ```
 
 ### Channels
-Channels are the preferred way to communicate between coroutines. V's channels work basically like
+Channels are the preferred way to communicate between threads. V's channels work basically like
 those in Go. You can push objects into a channel on one end and pop objects from the other end.
 Channels can be buffered or unbuffered and it is possible to `select` from multiple channels.
 
 #### Syntax and Usage
-Channels have the type `chan objtype`. An optional buffer length can specified as the `cap` property
+Channels have the type `chan objtype`. An optional buffer length can specified as the `cap` field
 in the declaration:
 
 ```v
@@ -3370,7 +3517,7 @@ ch2 := chan f64{cap: 100} // buffer length 100
 ```
 
 Channels do not have to be declared as `mut`. The buffer length is not part of the type but
-a property of the individual channel object. Channels can be passed to coroutines like normal
+a field of the individual channel object. Channels can be passed to threads like normal
 variables:
 
 ```v
@@ -3491,7 +3638,7 @@ if select {
 
 #### Special Channel Features
 
-For special purposes there are some builtin properties and methods:
+For special purposes there are some builtin fields and methods:
 ```v
 struct Abc {
 	x int
@@ -3514,7 +3661,7 @@ res2 := ch2.try_pop(mut b) // try to perform `b = <-ch2`
 The `try_push/pop()` methods will return immediately with one of the results
 `.success`, `.not_ready` or `.closed` - dependent on whether the object has been transferred or
 the reason why not.
-Usage of these methods and properties in production is not recommended -
+Usage of these methods and fields in production is not recommended -
 algorithms based on them are often subject to race conditions. Especially `.len` and
 `.closed` should not be used to make decisions.
 Use `or` branches, error propagation or `select` instead (see [Syntax and Usage](#syntax-and-usage)
@@ -3522,8 +3669,8 @@ and [Channel Select](#channel-select) above).
 
 ### Shared Objects
 
-Data can be exchanged between a coroutine and the calling thread via a shared variable.
-Such variables should be created as `shared` and passed to the coroutine as such, too.
+Data can be exchanged between a thread and the calling thread via a shared variable.
+Such variables should be created as `shared` and passed to the thread as such, too.
 The underlying `struct` contains a hidden *mutex* that allows locking concurrent access
 using `rlock` for read-only and `lock` for read/write access.
 
@@ -3698,7 +3845,7 @@ file, can easily run *other* test files like this:
 import os
 
 fn test_subtest() {
-	res := os.execute('${@VEXE} other_test.v')
+	res := os.execute('${os.quoted_path(@VEXE)} other_test.v')
 	assert res.exit_code == 1
 	assert res.output.contains('other_test.v does not exist')
 }
@@ -3740,6 +3887,11 @@ memory manually. (See [attributes](#attributes)).
 
 _Note: right now autofree is hidden behind the -autofree flag. It will be enabled by
 default in V 0.3. If autofree is not used, V programs will leak memory._
+
+Note 2: Autofree is still WIP. Until it stabilises and becomes the default, please 
+compile your long running processes with `-gc boehm`, which will use the 
+Boehm-Demers-Weiser conservative garbage collector, to free the memory, that your
+programs leak, at runtime.
 
 ### Examples
 

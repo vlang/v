@@ -28,7 +28,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	mut is_comptime_type_is_expr := false // if `$if T is string`
 	for i in 0 .. node.branches.len {
 		mut branch := node.branches[i]
-		if branch.cond is ast.ParExpr {
+		if branch.cond is ast.ParExpr && !c.pref.translated {
 			c.error('unnecessary `()` in `$if_kind` condition, use `$if_kind expr {` instead of `$if_kind (expr) {`.',
 				branch.pos)
 		}
@@ -43,23 +43,23 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				if (cond_typ.idx() != ast.bool_type_idx || cond_typ.has_flag(.optional))
 					&& !c.pref.translated {
 					c.error('non-bool type `${c.table.type_to_str(cond_typ)}` used as if condition',
-						branch.cond.position())
+						branch.cond.pos())
 				}
 			}
 		}
 		if node.is_comptime { // Skip checking if needed
 			// smartcast field type on comptime if
 			mut comptime_field_name := ''
-			if branch.cond is ast.InfixExpr {
+			if mut branch.cond is ast.InfixExpr {
 				if branch.cond.op == .key_is {
 					if branch.cond.right !is ast.TypeNode {
-						c.error('invalid `\$if` condition: expected a type', branch.cond.right.position())
+						c.error('invalid `\$if` condition: expected a type', branch.cond.right.pos())
 						return 0
 					}
 					got_type := c.unwrap_generic((branch.cond.right as ast.TypeNode).typ)
 					sym := c.table.sym(got_type)
 					if sym.kind == .placeholder || got_type.has_flag(.generic) {
-						c.error('unknown type `$sym.name`', branch.cond.right.position())
+						c.error('unknown type `$sym.name`', branch.cond.right.pos())
 					}
 					left := branch.cond.left
 					if left is ast.SelectorExpr {
@@ -106,7 +106,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				}
 			} else if c.pref.output_cross_c {
 				mut is_freestanding_block := false
-				if branch.cond is ast.Ident {
+				if mut branch.cond is ast.Ident {
 					if branch.cond.name == 'freestanding' {
 						is_freestanding_block = true
 					}
@@ -206,6 +206,20 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				st.check_c_expr() or { c.error('`if` expression branch has $err.msg', st.pos) }
 			}
 		}
+		if mut branch.cond is ast.IfGuardExpr {
+			sym := c.table.sym(branch.cond.expr_type)
+			if sym.kind == .multi_return {
+				mr_info := sym.info as ast.MultiReturn
+				if branch.cond.vars.len != mr_info.types.len {
+					c.error('if guard expects $mr_info.types.len variables, but got $branch.cond.vars.len',
+						branch.pos)
+				} else {
+					for vi, var in branch.cond.vars {
+						branch.scope.update_var_type(var.name, mr_info.types[vi])
+					}
+				}
+			}
+		}
 		// Also check for returns inside a comp.if's statements, even if its contents aren't parsed
 		if has_return := c.has_return(branch.stmts) {
 			if has_return {
@@ -257,7 +271,7 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 					ast.none_type_idx
 				}
 				else {
-					c.error('invalid type `$right_expr`', right_expr.position())
+					c.error('invalid type `$right_expr`', right_expr.pos())
 					ast.Type(0)
 				}
 			}

@@ -14,6 +14,9 @@ fn (mut g Gen) embed_file_is_prod_mode() bool {
 
 // gen_embed_file_struct generates C code for `$embed_file('...')` calls.
 fn (mut g Gen) gen_embed_file_init(mut node ast.ComptimeCall) {
+	$if trace_embed_file ? {
+		eprintln('> gen_embed_file_init $node.embed_file.apath')
+	}
 	if g.embed_file_is_prod_mode() {
 		file_bytes := os.read_bytes(node.embed_file.apath) or {
 			panic('unable to read file: "$node.embed_file.rpath')
@@ -31,7 +34,11 @@ fn (mut g Gen) gen_embed_file_init(mut node ast.ComptimeCall) {
 			cache_path := os.join_path(cache_dir, cache_key)
 
 			vexe := pref.vexe_path()
-			result := os.execute('"$vexe" compress $node.embed_file.compression_type "$node.embed_file.apath" "$cache_path"')
+			compress_cmd := '${os.quoted_path(vexe)} compress $node.embed_file.compression_type ${os.quoted_path(node.embed_file.apath)} ${os.quoted_path(cache_path)}'
+			$if trace_embed_file ? {
+				eprintln('> gen_embed_file_init, compress_cmd: $compress_cmd')
+			}
+			result := os.execute(compress_cmd)
 			if result.exit_code != 0 {
 				eprintln('unable to compress file "$node.embed_file.rpath": $result.output')
 				node.embed_file.bytes = file_bytes
@@ -57,41 +64,62 @@ fn (mut g Gen) gen_embed_file_init(mut node ast.ComptimeCall) {
 		}
 		node.embed_file.len = file_bytes.len
 	}
-
-	g.writeln('(v__embed_file__EmbedFileData){')
-	g.writeln('\t\t.path = ${ctoslit(node.embed_file.rpath)},')
-	if g.embed_file_is_prod_mode() {
-		// apath is not needed in production and may leak information
-		g.writeln('\t\t.apath = ${ctoslit('')},')
-	} else {
-		g.writeln('\t\t.apath = ${ctoslit(node.embed_file.apath)},')
-	}
-	if g.embed_file_is_prod_mode() {
-		// use function generated in Gen.gen_embedded_data()
-		if node.embed_file.is_compressed {
-			g.writeln('\t\t.compression_type = ${ctoslit(node.embed_file.compression_type)},')
-			g.writeln('\t\t.compressed = v__embed_file__find_index_entry_by_path((voidptr)_v_embed_file_index, ${ctoslit(node.embed_file.rpath)}, ${ctoslit(node.embed_file.compression_type)})->data,')
-			g.writeln('\t\t.uncompressed = NULL,')
-		} else {
-			g.writeln('\t\t.uncompressed = v__embed_file__find_index_entry_by_path((voidptr)_v_embed_file_index, ${ctoslit(node.embed_file.rpath)}, ${ctoslit(node.embed_file.compression_type)})->data,')
-		}
-	} else {
-		g.writeln('\t\t.uncompressed = NULL,')
-	}
-	g.writeln('\t\t.free_compressed = 0,')
-	g.writeln('\t\t.free_uncompressed = 0,')
-	if g.embed_file_is_prod_mode() {
-		g.writeln('\t\t.len = $node.embed_file.len')
-	} else {
-		file_size := os.file_size(node.embed_file.apath)
-		if file_size > 5242880 {
-			eprintln('Warning: embedding of files >= ~5MB is currently not supported')
-		}
-		g.writeln('\t\t.len = $file_size')
-	}
-	g.writeln('} // \$embed_file("$node.embed_file.apath")')
-
+	ef_idx := node.embed_file.hash()
+	g.write('_v_embed_file_metadata( ${ef_idx}U )')
 	g.file.embedded_files << node.embed_file
+	$if trace_embed_file ? {
+		eprintln('> gen_embed_file_init => _v_embed_file_metadata(${ef_idx:-25}) | ${node.embed_file.apath:-50} | compression: $node.embed_file.compression_type | len: $node.embed_file.len')
+	}
+}
+
+// gen_embedded_metadata embeds all of the deduplicated metadata in g.embedded_files, into the V target executable,
+// into a single generated function _v_embed_file_metadata, that accepts a hash of the absolute path of the embedded
+// files.
+fn (mut g Gen) gen_embedded_metadata() {
+	g.embedded_data.writeln('v__embed_file__EmbedFileData _v_embed_file_metadata(u64 ef_hash) {')
+	g.embedded_data.writeln('\tv__embed_file__EmbedFileData res;')
+	g.embedded_data.writeln('\tmemset(&res, 0, sizeof(res));')
+	g.embedded_data.writeln('\tswitch(ef_hash) {')
+	for emfile in g.embedded_files {
+		ef_idx := emfile.hash()
+		g.embedded_data.writeln('\t\tcase ${ef_idx}U: {')
+		g.embedded_data.writeln('\t\t\tres.path = ${ctoslit(emfile.rpath)};')
+		if g.embed_file_is_prod_mode() {
+			// apath is not needed in production and may leak information
+			g.embedded_data.writeln('\t\t\tres.apath = ${ctoslit('')};')
+		} else {
+			g.embedded_data.writeln('\t\t\tres.apath = ${ctoslit(emfile.apath)};')
+		}
+		if g.embed_file_is_prod_mode() {
+			// use function generated in Gen.gen_embedded_data()
+			if emfile.is_compressed {
+				g.embedded_data.writeln('\t\t\tres.compression_type = ${ctoslit(emfile.compression_type)};')
+				g.embedded_data.writeln('\t\t\tres.compressed = v__embed_file__find_index_entry_by_path((voidptr)_v_embed_file_index, ${ctoslit(emfile.rpath)}, ${ctoslit(emfile.compression_type)})->data;')
+				g.embedded_data.writeln('\t\t\tres.uncompressed = NULL;')
+			} else {
+				g.embedded_data.writeln('\t\t\tres.uncompressed = v__embed_file__find_index_entry_by_path((voidptr)_v_embed_file_index, ${ctoslit(emfile.rpath)}, ${ctoslit(emfile.compression_type)})->data;')
+			}
+		} else {
+			g.embedded_data.writeln('\t\t\tres.uncompressed = NULL;')
+		}
+		g.embedded_data.writeln('\t\t\tres.free_compressed = 0;')
+		g.embedded_data.writeln('\t\t\tres.free_uncompressed = 0;')
+		if g.embed_file_is_prod_mode() {
+			g.embedded_data.writeln('\t\t\tres.len = $emfile.len;')
+		} else {
+			file_size := os.file_size(emfile.apath)
+			if file_size > 5242880 {
+				eprintln('Warning: embedding of files >= ~5MB is currently not supported')
+			}
+			g.embedded_data.writeln('\t\t\tres.len = $file_size;')
+		}
+		g.embedded_data.writeln('\t\t\tbreak;')
+		g.embedded_data.writeln('\t\t} // case $ef_idx')
+	}
+	g.embedded_data.writeln('\t\tdefault: _v_panic(_SLIT("unknown embed file"));')
+	g.embedded_data.writeln('\t} // switch')
+	g.embedded_data.writeln('\treturn res;')
+	g.embedded_data.writeln('}')
 }
 
 // gen_embedded_data embeds data into the V target executable.

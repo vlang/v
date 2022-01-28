@@ -11,6 +11,8 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	if got == expected {
 		return true
 	}
+	got_is_ptr := got.is_ptr()
+	exp_is_ptr := expected.is_ptr()
 	if c.pref.translated {
 		if expected == ast.byteptr_type {
 			return true
@@ -40,9 +42,18 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 				return true
 			}
 		}
+		if expected_sym.kind == .enum_ && got_sym.is_number() {
+			// Allow enums as numbers
+			return true
+		}
+		if got_is_ptr && exp_is_ptr {
+			// deref_sym := c.table.sym(expected.deref()) // set_nr_muls(0))
+			if expected_sym.is_number() && got_sym.is_number() {
+				// Allow `&&u8` used as `&&int` etc
+				return true
+			}
+		}
 	}
-	got_is_ptr := got.is_ptr()
-	exp_is_ptr := expected.is_ptr()
 	if got_is_ptr && exp_is_ptr {
 		if got.nr_muls() != expected.nr_muls() {
 			return false
@@ -285,14 +296,14 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type ast.Type, right
 			// allow `bool << 2` in translated C code
 			return ast.int_type
 		}
-		c.error('invalid operation: shift on type `$left_sym.name`', node.left.position())
+		c.error('invalid operation: shift on type `$left_sym.name`', node.left.pos())
 		return ast.void_type
 	}
 	if !right_type.is_int() && !c.pref.translated {
 		left_sym := c.table.sym(left_type)
 		right_sym := c.table.sym(right_type)
 		c.error('cannot shift non-integer type `$right_sym.name` into type `$left_sym.name`',
-			node.right.position())
+			node.right.pos())
 		return ast.void_type
 	}
 	// At this point, it is guaranteed that we have a `number1 << number2`, or `number1 >> number2`, or `number1 >>> number2`:
@@ -335,13 +346,13 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type ast.Type, right
 			if node.op == .left_shift && left_type_final.is_signed() && !(c.inside_unsafe
 				&& c.is_generated) {
 				c.note('shifting a value from a signed type `$left_sym_final.name` can change the sign',
-					node.left.position())
+					node.left.pos())
 			}
 			if node.ct_right_value_evaled {
 				if node.ct_right_value !is ast.EmptyExpr {
 					ival := node.ct_right_value.i64() or { -999 }
 					if ival < 0 {
-						c.error('invalid negative shift count', node.right.position())
+						c.error('invalid negative shift count', node.right.pos())
 						return left_type
 					}
 					moffset := match left_type_final {
@@ -360,13 +371,13 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type ast.Type, right
 					}
 					if ival > moffset && !c.pref.translated {
 						c.error('shift count for type `$left_sym_final.name` too large (maximum: $moffset bits)',
-							node.right.position())
+							node.right.pos())
 						return left_type
 					}
 					if node.ct_left_value_evaled {
 						if lval := node.ct_left_value.i64() {
 							if lval < 0 {
-								c.error('invalid bitshift of a negative number', node.left.position())
+								c.error('invalid bitshift of a negative number', node.left.pos())
 								return left_type
 							}
 						}
@@ -516,7 +527,7 @@ pub fn (mut c Checker) get_default_fmt(ftyp ast.Type, typ ast.Type) byte {
 }
 
 pub fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what string) {
-	mut pos := token.Position{}
+	mut pos := token.Pos{}
 	match expr {
 		ast.Ident {
 			if typ.has_flag(.shared_f) {
@@ -543,11 +554,11 @@ pub fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what stri
 			}
 		}
 		ast.IndexExpr {
-			pos = expr.left.position().extend(expr.pos)
+			pos = expr.left.pos().extend(expr.pos)
 			c.fail_if_unreadable(expr.left, expr.left_type, what)
 		}
 		else {
-			pos = expr.position()
+			pos = expr.pos()
 		}
 	}
 	if typ.has_flag(.shared_f) {
@@ -562,10 +573,10 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Typ
 	for i, expr in node.exprs {
 		ftyp := c.expr(expr)
 		if ftyp == ast.void_type {
-			c.error('expression does not return a value', expr.position())
+			c.error('expression does not return a value', expr.pos())
 		} else if ftyp == ast.char_type && ftyp.nr_muls() == 0 {
 			c.error('expression returning type `char` cannot be used in string interpolation directly, print its address or cast it to an integer instead',
-				expr.position())
+				expr.pos())
 		}
 		c.fail_if_unreadable(expr, ftyp, 'interpolation object')
 		node.expr_types << ftyp
@@ -610,7 +621,7 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Typ
 		// check recursive str
 		if c.table.cur_fn.is_method && c.table.cur_fn.name == 'str'
 			&& c.table.cur_fn.receiver.name == expr.str() {
-			c.error('cannot call `str()` method recursively', expr.position())
+			c.error('cannot call `str()` method recursively', expr.pos())
 		}
 	}
 	c.inside_println_arg = inside_println_arg_save
@@ -626,7 +637,7 @@ pub fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
 	for idx < node.val.len {
 		match node.val[idx] {
 			`\\` {
-				mut start_pos := token.Position{
+				mut start_pos := token.Pos{
 					...node.pos
 					col: node.pos.col + 1 + idx
 				}
@@ -639,7 +650,7 @@ pub fn (mut c Checker) string_lit(mut node ast.StringLiteral) ast.Type {
 					mut hex_char_count := 0
 					for ch.is_hex_digit() {
 						hex_char_count++
-						end_pos := token.Position{
+						end_pos := token.Pos{
 							...start_pos
 							len: idx + 1 - start_idx
 						}

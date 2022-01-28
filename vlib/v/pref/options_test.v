@@ -40,7 +40,7 @@ fn custom_compile(fname string, cflags_options string) Results {
 	mut res := Results{}
 	res.exe = os.join_path(os.temp_dir(), fname)
 	res.sw = time.new_stopwatch()
-	res.compilation = os.execute('"$vexe" -cflags "$cflags_options" -o "$res.exe" examples/hello_world.v')
+	res.compilation = os.execute('${os.quoted_path(vexe)} -cflags "$cflags_options" -o ${os.quoted_path(res.exe)} examples/hello_world.v')
 	res.delta = res.sw.elapsed().microseconds()
 	res.file_size = os.file_size(res.exe)
 	println('> $fname build took: $res.delta ms with "$cflags_options", file size: $res.file_size')

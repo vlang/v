@@ -155,7 +155,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		for emodule in emodules {
 			check_module_is_installed(emodule, is_verbose) or { panic(err) }
 		}
-		mut compilation_command := '"$vexe" -skip-unused '
+		mut compilation_command := '${os.quoted_path(vexe)} -skip-unused '
 		if tool_name in ['vself', 'vup', 'vdoctor', 'vsymlink'] {
 			// These tools will be called by users in cases where there
 			// is high chance of there being a problem somewhere. Thus
@@ -164,7 +164,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 			// .v line numbers, to ease diagnostic in #bugs and issues.
 			compilation_command += ' -g '
 		}
-		compilation_command += '"$tool_source"'
+		compilation_command += os.quoted_path(tool_source)
 		if is_verbose {
 			println('Compiling $tool_name with: "$compilation_command"')
 		}
@@ -175,7 +175,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		}
 	}
 	$if windows {
-		exit(os.system('"$tool_exe" $tool_args'))
+		exit(os.system('${os.quoted_path(tool_exe)} $tool_args'))
 	} $else $if js {
 		// no way to implement os.execvp in JS backend
 		exit(os.system('$tool_exe $tool_args'))
@@ -251,14 +251,7 @@ fn tool_source2name_and_exe(tool_source string) (string, string) {
 }
 
 pub fn quote_path(s string) string {
-	mut qs := s
-	if qs.contains('&') {
-		qs = qs.replace('&', '\\&')
-	}
-	if qs.contains(' ') {
-		return '"$qs"'
-	}
-	return qs
+	return os.quoted_path(s)
 }
 
 pub fn args_quote_paths(args []string) string {
@@ -355,7 +348,7 @@ pub fn check_module_is_installed(modulename string, is_verbose bool) ?bool {
 	}
 	if os.exists(mod_v_file) {
 		vexe := pref.vexe_path()
-		update_cmd := '"$vexe" update "$modulename"'
+		update_cmd := "${os.quoted_path(vexe)} update '$modulename'"
 		if is_verbose {
 			eprintln('check_module_is_installed: updating with $update_cmd ...')
 		}
@@ -455,7 +448,7 @@ pub fn prepare_tool_when_needed(source_name string) {
 }
 
 pub fn recompile_file(vexe string, file string) {
-	cmd := '$vexe $file'
+	cmd := '${os.quoted_path(vexe)} ${os.quoted_path(file)}'
 	$if trace_recompilation ? {
 		println('recompilation command: $cmd')
 	}

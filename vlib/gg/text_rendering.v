@@ -4,13 +4,6 @@ module gg
 
 import gx
 
-enum FontVariant {
-	normal = 0
-	bold
-	mono
-	italic
-}
-
 struct FTConfig {
 	font_path             string
 	custom_bold_font_path string

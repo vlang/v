@@ -6,8 +6,8 @@ module parser
 import v.ast
 
 fn (mut p Parser) array_init() ast.ArrayInit {
-	first_pos := p.tok.position()
-	mut last_pos := p.tok.position()
+	first_pos := p.tok.pos()
+	mut last_pos := p.tok.pos()
 	p.check(.lsbr)
 	// p.warn('array_init() exp=$p.expected_type')
 	mut array_type := ast.void_type
@@ -23,13 +23,13 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	mut has_it := false
 	mut default_expr := ast.empty_expr()
 	if p.tok.kind == .rsbr {
-		last_pos = p.tok.position()
+		last_pos = p.tok.pos()
 		// []typ => `[]` and `typ` must be on the same line
 		line_nr := p.tok.line_nr
 		p.next()
 		// []string
 		if p.tok.kind in [.name, .amp, .lsbr, .key_shared] && p.tok.line_nr == line_nr {
-			elem_type_pos = p.tok.position()
+			elem_type_pos = p.tok.pos()
 			elem_type = p.parse_type()
 			// this is set here because it's a known type, others could be the
 			// result of expr so we do those in checker
@@ -41,7 +41,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 			}
 			has_type = true
 		}
-		last_pos = p.tok.position()
+		last_pos = p.tok.pos()
 	} else {
 		// [1,2,3] or [const]byte
 		old_inside_array_lit := p.inside_array_lit
@@ -63,17 +63,17 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 			tcc_stack_bug := 12345
 			_ = tcc_stack_bug
 		}
-		last_pos = p.tok.position()
+		last_pos = p.tok.pos()
 		p.check(.rsbr)
 		if exprs.len == 1 && p.tok.kind in [.name, .amp, .lsbr] && p.tok.line_nr == line_nr {
 			// [100]byte
 			elem_type = p.parse_type()
-			last_pos = p.tok.position()
+			last_pos = p.tok.pos()
 			is_fixed = true
 			if p.tok.kind == .lcbr {
 				p.next()
 				if p.tok.kind != .rcbr {
-					pos := p.tok.position()
+					pos := p.tok.pos()
 					n := p.check_name()
 					if n != 'init' {
 						p.error_with_pos('expected `init:`, not `$n`', pos)
@@ -94,7 +94,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 					}
 					p.close_scope()
 				}
-				last_pos = p.tok.position()
+				last_pos = p.tok.pos()
 				p.check(.rcbr)
 			} else {
 				p.warn_with_pos('use e.g. `x := [1]Type{}` instead of `x := [1]Type`',
@@ -102,13 +102,13 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 			}
 		} else {
 			if p.tok.kind == .not { // && p.tok.line_nr == p.prev_tok.line_nr {
-				last_pos = p.tok.position()
+				last_pos = p.tok.pos()
 				is_fixed = true
 				has_val = true
 				p.next()
 			}
 			if p.tok.kind == .not && p.tok.line_nr == p.prev_tok.line_nr {
-				last_pos = p.tok.position()
+				last_pos = p.tok.pos()
 				p.error_with_pos('use e.g. `[1, 2, 3]!` instead of `[1, 2, 3]!!`', last_pos)
 				p.next()
 			}
@@ -188,7 +188,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 
 // parse tokens between braces
 fn (mut p Parser) map_init() ast.MapInit {
-	first_pos := p.prev_tok.position()
+	first_pos := p.prev_tok.pos()
 	mut keys := []ast.Expr{}
 	mut vals := []ast.Expr{}
 	mut comments := [][]ast.Comment{}
@@ -207,7 +207,7 @@ fn (mut p Parser) map_init() ast.MapInit {
 	return ast.MapInit{
 		keys: keys
 		vals: vals
-		pos: first_pos.extend_with_last_line(p.tok.position(), p.tok.line_nr)
+		pos: first_pos.extend_with_last_line(p.tok.pos(), p.tok.line_nr)
 		comments: comments
 		pre_cmnts: pre_cmnts
 	}
@@ -216,7 +216,7 @@ fn (mut p Parser) map_init() ast.MapInit {
 fn (mut p Parser) scope_register_it_as_index() {
 	p.scope.objects['it'] = ast.Var{ // override it variable if it already exist, else create it variable
 		name: 'it'
-		pos: p.tok.position()
+		pos: p.tok.pos()
 		typ: ast.int_type
 		is_mut: false
 		is_used: false

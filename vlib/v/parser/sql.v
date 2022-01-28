@@ -7,11 +7,11 @@ import v.ast
 
 fn (mut p Parser) sql_expr() ast.Expr {
 	// `sql db {`
-	pos := p.tok.position()
+	pos := p.tok.pos()
 	p.check_name()
 	db_expr := p.check_expr(0) or {
 		p.error_with_pos('invalid expression: unexpected $p.tok, expecting database',
-			p.tok.position())
+			p.tok.pos())
 	}
 	p.check(.lcbr)
 	p.check(.key_select)
@@ -22,7 +22,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		p.check_name() // from
 		typ = ast.int_type
 	}
-	table_pos := p.tok.position()
+	table_pos := p.tok.pos()
 	table_type := p.parse_type() // `User`
 	mut where_expr := ast.empty_expr()
 	has_where := p.tok.kind == .name && p.tok.lit == 'where'
@@ -49,7 +49,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	mut has_desc := false
 	if p.tok.kind == .name && p.tok.lit == 'order' {
 		p.check_name() // `order`
-		order_pos := p.tok.position()
+		order_pos := p.tok.pos()
 		if p.tok.kind == .name && p.tok.lit == 'by' {
 			p.check_name() // `by`
 		} else {
@@ -100,7 +100,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		order_expr: order_expr
 		has_desc: has_desc
 		is_array: !query_one
-		pos: pos.extend(p.prev_tok.position())
+		pos: pos.extend(p.prev_tok.pos())
 		table_expr: ast.TypeNode{
 			typ: table_type
 			pos: table_pos
@@ -111,7 +111,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 // insert user into User
 // update User set nr_oders=nr_orders+1 where id == user_id
 fn (mut p Parser) sql_stmt() ast.SqlStmt {
-	mut pos := p.tok.position()
+	mut pos := p.tok.pos()
 	p.inside_match = true
 	defer {
 		p.inside_match = false
@@ -120,7 +120,7 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	p.check_name()
 	db_expr := p.check_expr(0) or {
 		p.error_with_pos('invalid expression: unexpected $p.tok, expecting database',
-			p.tok.position())
+			p.tok.pos())
 	}
 	// println(typeof(db_expr))
 	p.check(.lcbr)
@@ -134,7 +134,7 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	p.next()
 	pos.last_line = p.prev_tok.line_nr
 	return ast.SqlStmt{
-		pos: pos.extend(p.prev_tok.position())
+		pos: pos.extend(p.prev_tok.pos())
 		db_expr: db_expr
 		lines: lines
 	}
@@ -142,7 +142,7 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 
 fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 	mut n := p.check_name() // insert
-	pos := p.tok.position()
+	pos := p.tok.pos()
 	mut kind := ast.SqlStmtKind.insert
 	if n == 'delete' {
 		kind = .delete
@@ -156,10 +156,10 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 			return ast.SqlStmtLine{}
 		}
 		typ := p.parse_type()
-		typ_pos := p.tok.position()
+		typ_pos := p.tok.pos()
 		return ast.SqlStmtLine{
 			kind: kind
-			pos: pos.extend(p.prev_tok.position())
+			pos: pos.extend(p.prev_tok.pos())
 			table_expr: ast.TypeNode{
 				typ: typ
 				pos: typ_pos
@@ -173,10 +173,10 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 			return ast.SqlStmtLine{}
 		}
 		typ := p.parse_type()
-		typ_pos := p.tok.position()
+		typ_pos := p.tok.pos()
 		return ast.SqlStmtLine{
 			kind: kind
-			pos: pos.extend(p.prev_tok.position())
+			pos: pos.extend(p.prev_tok.pos())
 			table_expr: ast.TypeNode{
 				typ: typ
 				pos: typ_pos
@@ -225,16 +225,16 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 		return ast.SqlStmtLine{}
 	}
 
-	mut table_pos := p.tok.position()
+	mut table_pos := p.tok.pos()
 	mut where_expr := ast.empty_expr()
 	if kind == .insert {
-		table_pos = p.tok.position()
+		table_pos = p.tok.pos()
 		table_type = p.parse_type()
 	} else if kind == .update {
 		p.check_sql_keyword('where') or { return ast.SqlStmtLine{} }
 		where_expr = p.expr(0)
 	} else if kind == .delete {
-		table_pos = p.tok.position()
+		table_pos = p.tok.pos()
 		table_type = p.parse_type()
 		p.check_sql_keyword('where') or { return ast.SqlStmtLine{} }
 		where_expr = p.expr(0)

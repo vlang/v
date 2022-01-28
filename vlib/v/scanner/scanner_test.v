@@ -150,13 +150,19 @@ fn test_ref_ref_array_ref_ref_foo() {
 	assert result[6] == .name
 }
 
-fn test_escape_string() {
-	// these assertions aren't helpful...
-	// they test the vlib built-in to the compiler,
-	// but we want to test this module before compilation
-	assert '\x61' == 'a'
-	assert '\x62' == 'b'
-	// assert `\x61` == `a` // will work after pull request goes through
+fn test_escape_rune() {
+	// these lines work if the v compiler is working
+	// will not work until v compiler on github is updated
+	// assert `\x61` == `a`
+	// assert `\u0061` == `a`
+
+	// will not work until PR is accepted
+	// assert `\141` == `a`
+	// assert `\xe2\x98\x85` == `★`
+	// assert `\342\230\205` == `★`
+
+	// the following lines test the scanner module
+	// even before it is compiled into the v executable
 
 	// SINGLE CHAR ESCAPES
 	// SINGLE CHAR APOSTROPHE
@@ -187,14 +193,30 @@ fn test_escape_string() {
 	// SINGLE CHAR INCORRECT ESCAPE
 	// result = scan_tokens(r'`\x61\x61`') // should always result in an error
 
-	// SINGLE CHAR MULTI-BYTE UTF-8
-	// Compilation blocked by vlib/v/checker/check_types.v, but works in the repl
-	result = scan_tokens(r'`\xe29885`')
+	// SINGLE CHAR MULTI-BYTE UTF-8 (hex)
+	result = scan_tokens(r'`\xe2\x98\x85`')
 	assert result[0].lit == r'★'
+
+	// SINGLE CHAR MULTI-BYTE UTF-8 (octal)
+	result = scan_tokens(r'`\342\230\205`')
+	assert result[0].lit == r'★'
+}
+
+fn test_escape_string() {
+	// these lines work if the v compiler is working
+	assert '\x61' == 'a'
+	assert '\x62' == 'b'
+	assert '\u0061' == 'a'
+	assert '\141' == 'a'
+	assert '\xe2\x98\x85' == '★'
+	assert '\342\230\205' == '★'
+
+	// the following lines test the scanner module
+	// even before it is compiled into the v executable
 
 	// STRING ESCAPES =================
 	// STRING APOSTROPHE
-	result = scan_tokens(r"'\''")
+	mut result := scan_tokens(r"'\''")
 	assert result[0].kind == .string
 	assert result[0].lit == r"\'"
 

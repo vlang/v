@@ -21,7 +21,7 @@ fn main() {
 	jargs := args.join(' ')
 	obinary := cmdline.option(args, '-o', '')
 	sargs := if obinary != '' { jargs } else { '$jargs -o v2' }
-	cmd := '$vexe $sargs cmd/v'
+	cmd := '${os.quoted_path(vexe)} $sargs ${os.quoted_path('cmd/v')}'
 	options := if args.len > 0 { '($sargs)' } else { '' }
 	println('V self compiling ${options}...')
 	compile(vroot, cmd)

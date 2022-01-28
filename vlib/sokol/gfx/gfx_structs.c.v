@@ -1,6 +1,7 @@
 module gfx
 
 struct C.sg_desc {
+pub mut:
 	_start_canary      u32
 	buffer_pool_size   int
 	image_pool_size    int
@@ -30,18 +31,14 @@ struct C.sg_desc {
 pub type Desc = C.sg_desc
 
 struct C.sg_context_desc {
-	/*
-	sg_pixel_format color_format;
-    sg_pixel_format depth_format;
-    int sample_count;
-    sg_wgpu_context_desc wgpu;
-	*/
+pub mut:
+	color_format PixelFormat
+	depth_format PixelFormat
 	sample_count int
 	gl           GLContextDesc
 	metal        MetalContextDesc
 	d3d11        D3D11ContextDesc
-	color_format PixelFormat
-	depth_format PixelFormat
+	// TODO C.sg_wgpu_context_desc wgpu;
 }
 
 pub type ContextDesc = C.sg_context_desc

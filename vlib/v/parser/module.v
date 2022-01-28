@@ -36,7 +36,7 @@ fn (mut p Parser) register_auto_import(alias string) {
 		p.imports[alias] = alias
 		p.table.imports << alias
 		node := ast.Import{
-			pos: p.tok.position()
+			pos: p.tok.pos()
 			mod: alias
 			alias: alias
 		}

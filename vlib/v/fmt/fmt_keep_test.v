@@ -101,7 +101,7 @@ fn write_bin2v_keep_content() ? {
 	img0 := os.join_path('vlib', 'v', 'embed_file', 'tests', 'v.png')
 	img1 := os.join_path('tutorials', 'building_a_simple_web_blog_with_vweb', 'img', 'time.png')
 	os.rm(b2v_keep_path) ?
-	res := os.execute('$vexe bin2v -w $b2v_keep_path $img0 $img1')
+	res := os.execute('${os.quoted_path(vexe)} bin2v -w ${os.quoted_path(b2v_keep_path)} ${os.quoted_path(img0)} ${os.quoted_path(img1)}')
 	if res.exit_code != 0 {
 		restore_bin2v_placeholder() or {}
 		return error_with_code(res.output.trim_space(), res.exit_code)

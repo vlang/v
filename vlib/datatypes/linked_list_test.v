@@ -38,6 +38,17 @@ fn test_last() ? {
 	assert false
 }
 
+fn test_index() ? {
+	mut list := LinkedList<int>{}
+	list.push(1)
+	assert list.index(0) ? == 1
+	list.push(2)
+	assert list.index(1) ? == 2
+	list.pop() ?
+	list.index(1) or { return }
+	assert false
+}
+
 fn test_push() ? {
 	mut list := LinkedList<int>{}
 	list.push(1)

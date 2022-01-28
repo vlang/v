@@ -144,7 +144,7 @@ pub fn (c Color) + (c2 Color) Color {
 		r: c.r + c2.r
 		g: c.g + c2.g
 		b: c.b + c2.b
-		a: c.b + c2.a
+		a: c.a + c2.a
 	}
 }
 
@@ -153,7 +153,7 @@ pub fn (c Color) - (c2 Color) Color {
 		r: c.r - c2.r
 		g: c.g - c2.g
 		b: c.b - c2.b
-		a: c.b - c2.a
+		a: c.a - c2.a
 	}
 }
 
@@ -162,7 +162,7 @@ pub fn (c Color) * (c2 Color) Color {
 		r: c.r * c2.r
 		g: c.g * c2.g
 		b: c.b * c2.b
-		a: c.b * c2.a
+		a: c.a * c2.a
 	}
 }
 
@@ -171,7 +171,7 @@ pub fn (c Color) / (c2 Color) Color {
 		r: c.r / c2.r
 		g: c.g / c2.g
 		b: c.b / c2.b
-		a: c.b / c2.a
+		a: c.a / c2.a
 	}
 }
 

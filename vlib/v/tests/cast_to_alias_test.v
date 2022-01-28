@@ -34,3 +34,20 @@ fn test_cast_to_alias() {
 	println(ret_str)
 	assert ret_str == '1'
 }
+
+struct Foo {
+	x int
+	y string
+}
+
+type Alias = Foo
+
+fn test_cast_to_alias_of_ref_struct() {
+	foo := &Foo(0)
+	println(typeof(foo).name)
+	assert typeof(foo).name == '&Foo'
+
+	bar := &Alias(0)
+	println(typeof(bar).name)
+	assert typeof(bar).name == '&Alias'
+}

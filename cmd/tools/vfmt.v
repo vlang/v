@@ -92,7 +92,11 @@ fn main() {
 		exit(0)
 	}
 	mut cli_args_no_files := []string{}
-	for a in os.args {
+	for idx, a in os.args {
+		if idx == 0 {
+			cli_args_no_files << os.quoted_path(a)
+			continue
+		}
 		if a !in files {
 			cli_args_no_files << a
 		}

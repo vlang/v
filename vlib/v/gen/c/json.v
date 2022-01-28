@@ -46,9 +46,30 @@ fn (mut g Gen) gen_jsons() {
 		// Code gen decoder
 		dec_fn_name := js_dec_name(styp)
 		dec_fn_dec := 'Option_$styp ${dec_fn_name}(cJSON* root)'
+
+		mut init_styp := '$styp res'
+		if sym.kind == .struct_ {
+			mut skips := 0
+			info := sym.info as ast.Struct
+			for field in info.fields {
+				for attr in field.attrs {
+					if attr.name == 'skip' {
+						skips++
+					}
+				}
+			}
+			if skips > 0 {
+				init_styp += ' = '
+				init_styp += g.expr_string(ast.Expr(ast.StructInit{
+					typ: utyp
+					typ_str: styp
+				}))
+			}
+		}
+
 		dec.writeln('
 $dec_fn_dec {
-	$styp res;
+	$init_styp;
 	if (!root) {
 		const char *error_ptr = cJSON_GetErrorPtr();
 		if (error_ptr != NULL)	{
@@ -128,7 +149,7 @@ $enc_fn_dec {
 fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, mut dec strings.Builder) {
 	info := sym.info as ast.SumType
 	type_var := g.new_tmp_var()
-	typ := sym.idx
+	typ := g.table.type_idxs[sym.name]
 
 	// DECODING (inline)
 	$if !json_no_inline_sumtypes ? {

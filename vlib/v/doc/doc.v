@@ -126,7 +126,7 @@ pub mut:
 	name        string
 	content     string
 	comments    []DocComment
-	pos         token.Position
+	pos         token.Pos
 	file_path   string
 	kind        SymbolKind
 	tags        []string

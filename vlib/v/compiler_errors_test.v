@@ -28,6 +28,7 @@ const github_job = os.getenv('GITHUB_JOB')
 
 struct TaskDescription {
 	vexe             string
+	evars            string
 	dir              string
 	voptions         string
 	result_extension string
@@ -115,9 +116,9 @@ fn test_all() {
 		cte_dir := '$checker_dir/comptime_env'
 		files := get_tests_in_dir(cte_dir, false)
 		cte_tasks.add('', cte_dir, '-no-retry-compilation run', '.run.out', files, false)
-		cte_tasks.add('VAR=/usr/include $vexe', cte_dir, '-no-retry-compilation run',
+		cte_tasks.add_evars('VAR=/usr/include', '', cte_dir, '-no-retry-compilation run',
 			'.var.run.out', ['using_comptime_env.vv'], false)
-		cte_tasks.add('VAR=/opt/invalid/path $vexe', cte_dir, '-no-retry-compilation run',
+		cte_tasks.add_evars('VAR=/opt/invalid/path', '', cte_dir, '-no-retry-compilation run',
 			'.var_invalid.run.out', ['using_comptime_env.vv'], false)
 		cte_tasks.run()
 	}
@@ -157,6 +158,10 @@ fn (mut tasks Tasks) add_checked_run(voptions string, result_extension string, t
 }
 
 fn (mut tasks Tasks) add(custom_vexe string, dir string, voptions string, result_extension string, tests []string, is_module bool) {
+	tasks.add_evars('', custom_vexe, dir, voptions, result_extension, tests, is_module)
+}
+
+fn (mut tasks Tasks) add_evars(evars string, custom_vexe string, dir string, voptions string, result_extension string, tests []string, is_module bool) {
 	mut vexe := tasks.vexe
 	if custom_vexe != '' {
 		vexe = custom_vexe
@@ -164,6 +169,7 @@ fn (mut tasks Tasks) add(custom_vexe string, dir string, voptions string, result
 	paths := vtest.filter_vtest_only(tests, basepath: dir)
 	for path in paths {
 		tasks.all << TaskDescription{
+			evars: evars
 			vexe: vexe
 			dir: dir
 			voptions: voptions
@@ -206,6 +212,9 @@ fn (mut tasks Tasks) run() {
 		// TODO: investigate why MSVC regressed
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_1.vv'
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv'
+	}
+	$if windows {
+		m_skip_files << 'vlib/v/checker/tests/modules/deprecated_module'
 	}
 	for i in 0 .. tasks.all.len {
 		if tasks.all[i].path in m_skip_files {
@@ -295,7 +304,8 @@ fn (mut task TaskDescription) execute() {
 		return
 	}
 	program := task.path
-	cli_cmd := '$task.vexe $task.voptions $program'
+	cmd_prefix := if task.evars.len > 0 { '$task.evars ' } else { '' }
+	cli_cmd := '$cmd_prefix${os.quoted_path(task.vexe)} $task.voptions ${os.quoted_path(program)}'
 	res := os.execute(cli_cmd)
 	expected_out_path := program.replace('.vv', '') + task.result_extension
 	task.expected_out_path = expected_out_path

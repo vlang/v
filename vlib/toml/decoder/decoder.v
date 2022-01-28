@@ -43,7 +43,7 @@ fn (d Decoder) modify(mut value ast.Value) ? {
 }
 
 // excerpt returns a string of the token's surroundings
-fn (d Decoder) excerpt(tp token.Position) string {
+fn (d Decoder) excerpt(tp token.Pos) string {
 	return d.scanner.excerpt(tp.pos, 10)
 }
 

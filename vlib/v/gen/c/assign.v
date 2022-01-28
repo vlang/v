@@ -435,7 +435,12 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 						if op_overloaded {
 							g.op_arg(val, op_expected_right, val_type)
 						} else {
-							g.expr_with_cast(val, val_type, var_type)
+							exp_type := if left.is_auto_deref_var() {
+								var_type.deref()
+							} else {
+								var_type
+							}
+							g.expr_with_cast(val, val_type, exp_type)
 						}
 					}
 				}
@@ -686,7 +691,7 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 			for lx in left {
 				if val_.str() == lx.str() {
 					g.write('_var_')
-					g.write(lx.position().pos.str())
+					g.write(lx.pos().pos.str())
 					has_var = true
 					break
 				}
@@ -726,7 +731,7 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 			for lx in left {
 				if val_.str() == lx.str() {
 					g.write('_var_')
-					g.write(lx.position().pos.str())
+					g.write(lx.pos().pos.str())
 					has_var = true
 					break
 				}

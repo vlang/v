@@ -414,7 +414,7 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut node ast.Attr) bool {
 
 // comptime_if_branch checks the condition of a compile-time `if` branch. It returns `true`
 // if that branch's contents should be skipped (targets a different os for example)
-fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Position) bool {
+fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) bool {
 	// TODO: better error messages here
 	match cond {
 		ast.BoolLiteral {
@@ -456,7 +456,7 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Position) bool {
 						sym := c.table.sym(cond.right.typ)
 						if sym.kind != .interface_ {
 							c.expr(cond.left)
-							// c.error('`$sym.name` is not an interface', cond.right.position())
+							// c.error('`$sym.name` is not an interface', cond.right.pos())
 						}
 						return false
 					} else if cond.left in [ast.SelectorExpr, ast.TypeNode] {
@@ -465,7 +465,7 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Position) bool {
 						return false
 					} else {
 						c.error('invalid `\$if` condition: expected a type or a selector expression or an interface check',
-							cond.left.position())
+							cond.left.pos())
 					}
 				}
 				.eq, .ne {
@@ -532,6 +532,7 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Position) bool {
 					'js' { return !c.pref.backend.is_js() }
 					'debug' { return !c.pref.is_debug }
 					'prod' { return !c.pref.is_prod }
+					'profile' { return !c.pref.is_prof }
 					'test' { return !c.pref.is_test }
 					'glibc' { return false } // TODO
 					'threads' { return c.table.gostmts == 0 }

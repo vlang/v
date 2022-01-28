@@ -120,6 +120,34 @@ fn test_sort_reverse() {
 	assert vals[3] == 'arr'
 }
 
+fn test_ranges() {
+	s := 'test'
+	s1 := s[0..20] or { 'both' }
+	s2 := s[..20] or { 'last' }
+	s3 := s[10..] or { 'first' }
+	s4 := ranges_propagate_both(s) or { 'both' }
+	s5 := ranges_propagate_last(s) or { 'last' }
+	s6 := ranges_propagate_first(s) or { 'first' }
+	assert s1 == 'both'
+	assert s2 == 'last'
+	assert s3 == 'first'
+	assert s4 == 'both'
+	assert s5 == 'last'
+	assert s6 == 'first'
+}
+
+fn ranges_propagate_first(s string) ?string {
+	return s[10..] ?
+}
+
+fn ranges_propagate_last(s string) ?string {
+	return s[..20] ?
+}
+
+fn ranges_propagate_both(s string) ?string {
+	return s[1..20] ?
+}
+
 fn test_split_nth() {
 	a := '1,2,3'
 	assert a.split(',').len == 3

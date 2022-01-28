@@ -23,13 +23,13 @@ pub fn format_str_sb(s string, p BF_param, mut sb strings.Builder) {
 
 	if p.allign == .right {
 		for i1 := 0; i1 < dif; i1++ {
-			sb.write_b(p.pad_ch)
+			sb.write_byte(p.pad_ch)
 		}
 	}
 	sb.write_string(s)
 	if p.allign == .left {
 		for i1 := 0; i1 < dif; i1++ {
-			sb.write_b(p.pad_ch)
+			sb.write_byte(p.pad_ch)
 		}
 	}
 }
@@ -53,17 +53,17 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 		if p.pad_ch == `0` {
 			if p.positive {
 				if p.sign_flag {
-					res.write_b(`+`)
+					res.write_byte(`+`)
 					sign_written = true
 				}
 			} else {
-				res.write_b(`-`)
+				res.write_byte(`-`)
 				sign_written = true
 			}
 		}
 		// write the pad chars
 		for i1 := 0; i1 < dif; i1++ {
-			res.write_b(p.pad_ch)
+			res.write_byte(p.pad_ch)
 		}
 	}
 
@@ -71,10 +71,10 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 		// no pad char, write the sign before the number
 		if p.positive {
 			if p.sign_flag {
-				res.write_b(`+`)
+				res.write_byte(`+`)
 			}
 		} else {
-			res.write_b(`-`)
+			res.write_byte(`-`)
 		}
 	}
 
@@ -123,13 +123,13 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 		unsafe { res.write_ptr(&buf[i], n_char) }
 	} else {
 		// we have a zero no need of more code!
-		res.write_b(`0`)
+		res.write_byte(`0`)
 	}
 	//===========================================
 
 	if p.allign == .left {
 		for i1 := 0; i1 < dif; i1++ {
-			res.write_b(p.pad_ch)
+			res.write_byte(p.pad_ch)
 		}
 	}
 	return

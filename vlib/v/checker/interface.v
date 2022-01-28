@@ -165,7 +165,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 	}
 }
 
-fn (mut c Checker) resolve_generic_interface(typ ast.Type, interface_type ast.Type, pos token.Position) ast.Type {
+fn (mut c Checker) resolve_generic_interface(typ ast.Type, interface_type ast.Type, pos token.Pos) ast.Type {
 	utyp := c.unwrap_generic(typ)
 	typ_sym := c.table.sym(utyp)
 	mut inter_sym := c.table.sym(interface_type)
