@@ -26,3 +26,31 @@ fn test_utf8_wide_char() {
 		assert val[2].hex() == '94'
 	}
 }
+
+fn test_to_wide_latin() {
+	s := 'abc 123'
+	w := s.to_wide()
+	unsafe {
+		assert w[0] == 97
+		assert w[1] == 98
+		assert w[2] == 99
+		assert w[3] == 32
+		assert w[4] == 49
+		assert w[5] == 50
+		assert w[6] == 51
+		assert w[7] == 0
+	}
+}
+
+fn test_to_wide_cyrillic() {
+	s := 'Проба'
+	w := s.to_wide()
+	unsafe {
+		assert w[0] == 1055
+		assert w[1] == 1088
+		assert w[2] == 1086
+		assert w[3] == 1073
+		assert w[4] == 1072
+		assert w[5] == 0
+	}
+}
