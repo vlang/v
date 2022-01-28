@@ -90,6 +90,8 @@ pub mut:
 	args_description        string
 	allow_unknown_args      bool     // whether passing undescribed arguments is allowed
 	footers                 []string // when set, --help will display all the collected footers at the bottom.
+	disable_version         bool
+	disable_help            bool
 }
 
 // free frees the resources allocated for the given FlagParser instance.
@@ -589,10 +591,14 @@ fn (mut fs FlagParser) handle_builtin_options() {
 	mut show_version := false
 	mut show_help := false
 	fs.find_existing_flag('help') or {
-		show_help = fs.bool('help', `h`, false, fs.default_help_label)
+		if ! fs.disable_help{
+			show_help = fs.bool('help', `h`, false, fs.default_help_label)
+		}
 	}
 	fs.find_existing_flag('version') or {
-		show_version = fs.bool('version', 0, false, fs.default_version_label)
+		if ! fs.disable_version{
+			show_version = fs.bool('version', 0, false, fs.default_version_label)
+		}
 	}
 	if show_help {
 		println(fs.usage())
