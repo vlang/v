@@ -2743,6 +2743,48 @@ fn announce(s Something) {
 	}
 }
 ```
+
+```v
+interface IFoo {
+	foo()
+}
+
+interface IBar {
+	bar()
+}
+
+// implements only IFoo
+struct SFoo {}
+
+fn (sf SFoo) foo() {}
+
+// implements both IFoo and IBar
+struct SFooBar {}
+
+fn (sfb SFooBar) foo() {}
+
+fn (sfb SFooBar) bar() {
+	dump('This implements IBar')
+}
+
+fn main() {
+	mut arr := []IFoo{}
+	arr << SFoo{}
+	arr << SFooBar{}
+
+	for a in arr {
+		dump(a)
+		// In order to execute instances that implements IBar.
+		if a is IBar {
+			// a.bar() // Error.
+			b := a as IBar
+			dump(b)
+			b.bar()
+		}
+	}
+}
+```
+
 For more information, see [Dynamic casts](#dynamic-casts).
 
 #### Interface method definitions
