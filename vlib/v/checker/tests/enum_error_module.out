@@ -1,7 +1,6 @@
-vlib/v/checker/tests/enum_error_module.vv:5:13: error: unknown enum `missing_enum.ColoList` (type_idx=0)
+vlib/v/checker/tests/enum_error_module.vv:4:12: error: unknown enum `time.NonExistingEnum` (type_idx=0)
+    2 | 
     3 | fn main() {
-    4 |     mut c := me.Color{
-    5 |         color: me.ColoList.black
-      |                   ~~~~~~~~~~~~~~
-    6 |     }
-    7 |     println(c)
+    4 |     _ := time.NonExistingEnum.black
+      |               ~~~~~~~~~~~~~~~~~~~~~
+    5 | }

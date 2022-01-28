@@ -3708,8 +3708,9 @@ pub fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
 				c.error('unknown enum `$node.enum_name` (type_idx=0)', node.pos)
 				return ast.void_type
 			}
-		} else {
-			// if module prefix specified enum name given
+		}
+		if typ_idx == 0 {
+			// the actual type is still unknown, produce an error, instead of panic:
 			c.error('unknown enum `$node.enum_name` (type_idx=0)', node.pos)
 			return ast.void_type
 		}

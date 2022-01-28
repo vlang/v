@@ -1,8 +1,5 @@
-import missing_enum as me
+import time
 
 fn main() {
-	mut c := me.Color{
-		color: me.ColoList.black
-	}
-	println(c)
+	_ := time.NonExistingEnum.black
 }
