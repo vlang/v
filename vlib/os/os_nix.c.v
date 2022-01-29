@@ -368,7 +368,8 @@ pub struct Command {
 mut:
 	f voidptr
 pub mut:
-	eof bool
+	eof       bool
+	exit_code int
 pub:
 	path            string
 	redirect_stdout bool
@@ -412,9 +413,9 @@ pub fn (mut c Command) read_line() string {
 	return final
 }
 
-pub fn (c &Command) close() ? {
-	exit_code := vpclose(c.f)
-	if exit_code == 127 {
+pub fn (mut c Command) close() ? {
+	c.exit_code = vpclose(c.f)
+	if c.exit_code == 127 {
 		return error_with_code('error', 127)
 	}
 }

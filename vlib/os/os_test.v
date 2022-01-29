@@ -861,3 +861,30 @@ fn test_execute() ? {
 	assert hexresult.starts_with('7374617274004d4944444c450066696e697368')
 	assert hexresult.ends_with('0a7878')
 }
+
+fn test_command() {
+	mut cmd := os.Command{
+		path:'ls'
+	}
+
+	cmd.start() or { panic(err) }
+	for !cmd.eof {
+		cmd.read_line()
+	}
+
+	cmd.close() or { panic(err) }
+	assert cmd.exit_code == 0
+
+	// This will return a non 0 code
+	mut cmd_to_fail := os.Command{
+		path:'ls -M'
+	}
+
+	cmd_to_fail.start() or { panic(err) }
+	for !cmd_to_fail.eof {
+		cmd_to_fail.read_line()
+	}
+
+	cmd_to_fail.close() or { panic(err) }
+	assert cmd_to_fail.exit_code == 2
+}
