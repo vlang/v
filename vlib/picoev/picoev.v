@@ -104,12 +104,13 @@ fn req_read(fd int, b &byte, max_len int, idx int) int {
 fn rw_callback(loop &C.picoev_loop, fd int, events int, context voidptr) {
 	mut p := unsafe { &Picoev(context) }
 	defer {
+		close_conn(loop, fd)
 		p.idx[fd] = 0
 	}
 	if (events & int(Event.timeout)) != 0 {
-		close_conn(loop, fd)
 		return
-	} else if (events & int(Event.read)) != 0 {
+	}
+	if (events & int(Event.read)) != 0 {
 		C.picoev_set_timeout(voidptr(loop), fd, p.timeout_secs)
 
 		// Request init
@@ -136,7 +137,6 @@ fn rw_callback(loop &C.picoev_loop, fd int, events int, context voidptr) {
 			r := req_read(fd, buf, picoev.max_read, p.idx[fd]) // Get data from socket
 			if r == 0 {
 				// connection closed by peer
-				close_conn(loop, fd)
 				return
 			} else if r == -1 {
 				// error
@@ -149,7 +149,6 @@ fn rw_callback(loop &C.picoev_loop, fd int, events int, context voidptr) {
 					return
 				}
 				// fatal error
-				close_conn(loop, fd)
 				return
 			}
 			p.idx[fd] += r
@@ -173,7 +172,6 @@ fn rw_callback(loop &C.picoev_loop, fd int, events int, context voidptr) {
 
 		// Callback (should call .end() itself)
 		p.cb(mut p.user_data, req, mut &res)
-		close_conn(loop, fd)
 	}
 }
 
