@@ -864,7 +864,7 @@ fn test_execute() ? {
 
 fn test_command() {
 	mut cmd := os.Command{
-		path:'ls'
+		path: 'ls'
 	}
 
 	cmd.start() or { panic(err) }
@@ -877,7 +877,7 @@ fn test_command() {
 
 	// This will return a non 0 code
 	mut cmd_to_fail := os.Command{
-		path:'ls -M'
+		path: 'ls -M'
 	}
 
 	cmd_to_fail.start() or { panic(err) }
