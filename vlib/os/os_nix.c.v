@@ -364,17 +364,6 @@ pub fn execute(cmd string) Result {
 	}
 }
 
-pub struct Command {
-mut:
-	f voidptr
-pub mut:
-	eof       bool
-	exit_code int
-pub:
-	path            string
-	redirect_stdout bool
-}
-
 [manualfree]
 pub fn (mut c Command) start() ? {
 	pcmd := c.path + ' 2>&1'

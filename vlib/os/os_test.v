@@ -863,6 +863,10 @@ fn test_execute() ? {
 }
 
 fn test_command() {
+	if os.user_os() == 'windows' {
+		eprintln('>>> os.Command is not implemented fully on Windows yet')
+		return
+	}
 	mut cmd := os.Command{
 		path: 'ls'
 	}
@@ -873,6 +877,7 @@ fn test_command() {
 	}
 
 	cmd.close() or { panic(err) }
+	// dump( cmd )
 	assert cmd.exit_code == 0
 
 	// This will return a non 0 code
@@ -886,5 +891,6 @@ fn test_command() {
 	}
 
 	cmd_to_fail.close() or { panic(err) }
-	assert cmd_to_fail.exit_code == 2
+	// dump( cmd_to_fail )
+	assert cmd_to_fail.exit_code != 0 // 2 on linux, 1 on macos
 }
