@@ -24,6 +24,17 @@ pub:
 	// stderr string // TODO
 }
 
+pub struct Command {
+mut:
+	f voidptr
+pub mut:
+	eof       bool
+	exit_code int
+pub:
+	path            string
+	redirect_stdout bool
+}
+
 [unsafe]
 pub fn (mut result Result) free() {
 	unsafe { result.output.free() }

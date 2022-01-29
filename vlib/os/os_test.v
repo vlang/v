@@ -861,3 +861,36 @@ fn test_execute() ? {
 	assert hexresult.starts_with('7374617274004d4944444c450066696e697368')
 	assert hexresult.ends_with('0a7878')
 }
+
+fn test_command() {
+	if os.user_os() == 'windows' {
+		eprintln('>>> os.Command is not implemented fully on Windows yet')
+		return
+	}
+	mut cmd := os.Command{
+		path: 'ls'
+	}
+
+	cmd.start() or { panic(err) }
+	for !cmd.eof {
+		cmd.read_line()
+	}
+
+	cmd.close() or { panic(err) }
+	// dump( cmd )
+	assert cmd.exit_code == 0
+
+	// This will return a non 0 code
+	mut cmd_to_fail := os.Command{
+		path: 'ls -M'
+	}
+
+	cmd_to_fail.start() or { panic(err) }
+	for !cmd_to_fail.eof {
+		cmd_to_fail.read_line()
+	}
+
+	cmd_to_fail.close() or { panic(err) }
+	// dump( cmd_to_fail )
+	assert cmd_to_fail.exit_code != 0 // 2 on linux, 1 on macos
+}
