@@ -55,6 +55,9 @@ jobs:
           cd '${{env.MY_V_PATH}}'
           ls -la
           make
+          ## prebuild cmd/tools/builders/js_builder, to minimise the
+          ## chances of a sporadic "Killed" when running the tests later
+          ./v -b js run examples/hello_world.v
       - name: v doctor
         run: |
           cd '${{env.MY_V_PATH}}'
