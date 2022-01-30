@@ -21,6 +21,8 @@ trim_trailing_whitespace = false
 # the longest normal line is specified with this constant:
 # `too_long_line_length_other     = 100`
 max_line_length = 100
+indent_style = space
+indent_size = 4
 
 [*.{txt,out}]
 insert_final_newline = false
