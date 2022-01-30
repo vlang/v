@@ -113,6 +113,7 @@ fn mod_path_to_full_name(pref &pref.Preferences, mod string, path string) ?strin
 			break
 		}
 	}
+	// start_info := '> in_vmod_path: ${in_vmod_path:-6} | mod: ${mod:-21} | path: ${path:-58}'
 	path_parts := path.split(os.path_separator)
 	mod_path := mod.replace('.', os.path_separator)
 	// go back through each parent in path_parts and join with `mod_path` to see the dir exists
@@ -128,6 +129,7 @@ fn mod_path_to_full_name(pref &pref.Preferences, mod string, path string) ?strin
 					// we reached a vmod folder
 					if path_part in vmod_folders {
 						mod_full_name := try_path.split(os.path_separator)[j + 1..].join('.')
+						// eprintln('$start_info  >>>> mod_full_name 1: $mod_full_name , in vmod_folders')
 						return mod_full_name
 					}
 				}
@@ -139,12 +141,30 @@ fn mod_path_to_full_name(pref &pref.Preferences, mod string, path string) ?strin
 				mut last_v_mod := -1
 				for j := try_path_parts.len; j > 0; j-- {
 					parent := try_path_parts[0..j].join(os.path_separator)
+					// eprintln('    >>> i: $i | try_path: $try_path | trying parent $j: $parent')
 					if ls := os.ls(parent) {
+						mut found_stop := false
+						for x in ls {
+							if x in ['.git', '.hg', '.svn', '.v.mod.stop'] {
+								found_stop = true
+								break
+							}
+						}
 						// currently CI clones some modules into the v repo to test, the condition
 						// after `'v.mod' in ls` can be removed once a proper solution is added
 						if 'v.mod' in ls
 							&& (try_path_parts.len > i && try_path_parts[i] != 'v' && 'vlib' !in ls) {
+							// eprintln('>>> v.mod found')
 							last_v_mod = j
+						}
+						if found_stop {
+							if last_v_mod > -1 {
+								mod_full_name := try_path_parts[last_v_mod..].join('.')
+								// eprintln('$start_info  >>>> mod_full_name 2: $mod_full_name , .v.mod.stop reached in folder: $parent, last_v_mod: $last_v_mod')
+								return mod_full_name
+							}
+							mod_full_name := try_path_parts[j..].join('.')
+							return mod_full_name
 						}
 						continue
 					}
@@ -152,6 +172,7 @@ fn mod_path_to_full_name(pref &pref.Preferences, mod string, path string) ?strin
 				}
 				if last_v_mod > -1 {
 					mod_full_name := try_path_parts[last_v_mod..].join('.')
+					// eprintln('$start_info  >>>> mod_full_name 3: $mod_full_name , last_v_mod was $last_v_mod')
 					return mod_full_name
 				}
 			}
@@ -161,9 +182,11 @@ fn mod_path_to_full_name(pref &pref.Preferences, mod string, path string) ?strin
 		rel_mod_path := path.replace(pref.path.all_before_last(os.path_separator) +
 			os.path_separator, '')
 		if rel_mod_path != path {
-			full_mod_name := rel_mod_path.replace(os.path_separator, '.')
-			return full_mod_name
+			mod_full_name := rel_mod_path.replace(os.path_separator, '.')
+			// eprintln('$start_info  >>>> mod_full_name 4: $mod_full_name, abs_path: $pref.path')
+			return mod_full_name
 		}
 	}
+	// eprintln('$start_info  >>>> error module not found')
 	return error('module not found')
 }
