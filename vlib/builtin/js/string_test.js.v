@@ -1,4 +1,4 @@
-import strings
+// import strings
 
 // Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
@@ -636,6 +636,7 @@ fn test_for_loop_two() {
 
 fn test_quote() {
 	a := `'`
+	println(a)
 	println('testing double quotes')
 	b := 'hi'
 	assert b == 'hi'
@@ -727,6 +728,7 @@ fn test_raw() {
 
 fn test_raw_with_quotes() {
 	raw := r"some'" + r'"thing' // " should be escaped in the generated C code
+	println(raw)
 	// assert raw[0] == `s`
 	// assert raw[5] == `"`
 	// assert raw[6] == `t`
