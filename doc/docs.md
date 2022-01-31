@@ -163,7 +163,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 
 <!--
 NB: there are several special keywords, which you can put after the code fences for v:
-compile, live, ignore, failcompile, oksyntax, badsyntax, wip, nofmt
+compile, cgen, live, ignore, failcompile, oksyntax, badsyntax, wip, nofmt
 For more details, do: `v check-md`
 -->
 
@@ -1393,7 +1393,7 @@ println(s)
 You can check the current type of a sum type using `is` and its negated form `!is`.
 
 You can do it either in an `if`:
-```v
+```v cgen
 struct Abc {
 	val string
 }
@@ -5102,40 +5102,42 @@ For all supported options check the latest help:
 
 #### `$if` condition
 ```v
-// Support for multiple conditions in one branch
-$if ios || android {
-	println('Running on a mobile device!')
-}
-$if linux && x64 {
-	println('64-bit Linux.')
-}
-// Usage as expression
-os := $if windows { 'Windows' } $else { 'UNIX' }
-println('Using $os')
-// $else-$if branches
-$if tinyc {
-	println('tinyc')
-} $else $if clang {
-	println('clang')
-} $else $if gcc {
-	println('gcc')
-} $else {
-	println('different compiler')
-}
-$if test {
-	println('testing')
-}
-// v -cg ...
-$if debug {
-	println('debugging')
-}
-// v -prod ...
-$if prod {
-	println('production build')
-}
-// v -d option ...
-$if option ? {
-	println('custom option')
+fn main() {
+	// Support for multiple conditions in one branch
+	$if ios || android {
+		println('Running on a mobile device!')
+	}
+	$if linux && x64 {
+		println('64-bit Linux.')
+	}
+	// Usage as expression
+	os := $if windows { 'Windows' } $else { 'UNIX' }
+	println('Using $os')
+	// $else-$if branches
+	$if tinyc {
+		println('tinyc')
+	} $else $if clang {
+		println('clang')
+	} $else $if gcc {
+		println('gcc')
+	} $else {
+		println('different compiler')
+	}
+	$if test {
+		println('testing')
+	}
+	// v -cg ...
+	$if debug {
+		println('debugging')
+	}
+	// v -prod ...
+	$if prod {
+		println('production build')
+	}
+	// v -d option ...
+	$if option ? {
+		println('custom option')
+	}
 }
 ```
 
