@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module main
 
-import cmd.v.help
+import help
 import os
 import term
 import v.pref
