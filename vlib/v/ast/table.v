@@ -1428,7 +1428,11 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 		if typ == 0 {
 			return none
 		}
-		return typ.derive_add_muls(generic_type).clear_flag(.generic)
+		if typ.has_flag(.generic) {
+			return typ.derive_add_muls(generic_type).set_flag(.generic)
+		} else {
+			return typ.derive_add_muls(generic_type).clear_flag(.generic)
+		}
 	}
 	match mut sym.info {
 		Array {
@@ -1443,7 +1447,11 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 			}
 			if typ := t.resolve_generic_to_concrete(elem_type, generic_names, concrete_types) {
 				idx := t.find_or_register_array_with_dims(typ, dims)
-				return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
+				if typ.has_flag(.generic) {
+					return new_type(idx).derive_add_muls(generic_type).set_flag(.generic)
+				} else {
+					return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
+				}
 			}
 		}
 		ArrayFixed {
@@ -1451,7 +1459,11 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 				concrete_types)
 			{
 				idx := t.find_or_register_array_fixed(typ, sym.info.size, None{})
-				return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
+				if typ.has_flag(.generic) {
+					return new_type(idx).derive_add_muls(generic_type).set_flag(.generic)
+				} else {
+					return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
+				}
 			}
 		}
 		Chan {
@@ -1459,16 +1471,24 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 				concrete_types)
 			{
 				idx := t.find_or_register_chan(typ, typ.nr_muls() > 0)
-				return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
+				if typ.has_flag(.generic) {
+					return new_type(idx).derive_add_muls(generic_type).set_flag(.generic)
+				} else {
+					return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
+				}
 			}
 		}
 		FnType {
 			mut func := sym.info.func
+			mut has_generic := false
 			if func.return_type.has_flag(.generic) {
 				if typ := t.resolve_generic_to_concrete(func.return_type, generic_names,
 					concrete_types)
 				{
 					func.return_type = typ
+					if typ.has_flag(.generic) {
+						has_generic = true
+					}
 				}
 			}
 			func.params = func.params.clone()
@@ -1478,12 +1498,19 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 						concrete_types)
 					{
 						param.typ = typ
+						if typ.has_flag(.generic) {
+							has_generic = true
+						}
 					}
 				}
 			}
 			func.name = ''
 			idx := t.find_or_register_fn_type('', func, true, false)
-			return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
+			if has_generic {
+				return new_type(idx).derive_add_muls(generic_type).set_flag(.generic)
+			} else {
+				return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
+			}
 		}
 		MultiReturn {
 			mut types := []Type{}
@@ -1498,7 +1525,11 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 			}
 			if type_changed {
 				idx := t.find_or_register_multi_return(types)
-				return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
+				if types.any(it.has_flag(.generic)) {
+					return new_type(idx).derive_add_muls(generic_type).set_flag(.generic)
+				} else {
+					return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
+				}
 			}
 		}
 		Map {
@@ -1519,7 +1550,11 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 			}
 			if type_changed {
 				idx := t.find_or_register_map(unwrapped_key_type, unwrapped_value_type)
-				return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
+				if unwrapped_key_type.has_flag(.generic) || unwrapped_value_type.has_flag(.generic) {
+					return new_type(idx).derive_add_muls(generic_type).set_flag(.generic)
+				} else {
+					return new_type(idx).derive_add_muls(generic_type).clear_flag(.generic)
+				}
 			}
 		}
 		Struct, Interface, SumType {
