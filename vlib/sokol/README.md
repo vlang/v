@@ -11,7 +11,7 @@ Each `.h` file in the sokol source code is well-documented as can be seen here:
 
 ## Example from `@VROOTDIR/examples/sokol/sounds/simple_sin_tones.v`:
 
-```v
+```v cgen
 import time
 import math
 import sokol.audio
