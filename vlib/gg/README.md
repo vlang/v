@@ -7,7 +7,7 @@ user's keyboard/mouse input.
 
 ## Example:
 
-```v
+```v cgen
 module main
 
 import gg
