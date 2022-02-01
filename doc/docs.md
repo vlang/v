@@ -2789,38 +2789,52 @@ For more information, see [Dynamic casts](#dynamic-casts).
 
 #### Interface method definitions
 
-Also unlike Go, an interface may implement a method.
-These methods are not implemented by structs which implement that interface.
+Also unlike Go, an interface can have it's own methods, similar to how
+structs can have their methods. These 'interface methods' do not have
+to be implemented, by structs which implement that interface.
+They are just a convenient way to write `i.some_function()` instead of
+`some_function(i)`, similar to how struct methods can be looked at, as
+a convenience for writing `s.xyz()` instead of `xyz(s)`.
 
-When a struct is wrapped in an interface that has implemented a method
-with the same name as one implemented by this struct, only the method
-implemented on the interface is called.
+N.B. This feature is NOT a "default implementation" like in C#.
+
+For example, if a struct `cat` is wrapped in an interface `a`, that has
+implemented a method with the same name `speak`, as a method implemented by 
+the struct, and you do `a.speak()`, *only* the interface method is called:
 
 ```v
-struct Cat {}
-
-fn (c Cat) speak() string {
-	return 'meow!'
-}
-
 interface Adoptable {}
 
 fn (a Adoptable) speak() string {
 	return 'adopt me!'
 }
 
-fn new_adoptable() Adoptable {
-	return Cat{}
+struct Cat {}
+
+fn (c Cat) speak() string {
+	return 'meow!'
 }
+
+struct Dog {}
 
 fn main() {
 	cat := Cat{}
-	assert cat.speak() == 'meow!'
-	a := new_adoptable()
-	assert a.speak() == 'adopt me!'
+	assert dump(cat.speak()) == 'meow!'
+	//
+	a := Adoptable(cat)
+	assert dump(a.speak()) == 'adopt me!' // call Adoptable's `speak`
 	if a is Cat {
-		println(a.speak()) // meow!
+		// Inside this `if` however, V knows that `a` is not just any
+		// kind of Adoptable, but actually a Cat, so it will use the
+		// Cat `speak`, NOT the Adoptable `speak`:
+		dump(a.speak()) // meow!
 	}
+	//
+	b := Adoptable(Dog{})
+	assert dump(b.speak()) == 'adopt me!' // call Adoptable's `speak`
+	// if b is Dog {
+	// 	dump(b.speak()) // error: unknown method or field: Dog.speak
+	// }
 }
 ```
 
