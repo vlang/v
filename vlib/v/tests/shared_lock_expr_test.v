@@ -121,3 +121,14 @@ fn test_shared_lock_chan_rec_expr() {
 		}
 	}
 }
+
+fn test_shared_array_clone() {
+	shared a := []string{}
+	lock a {
+		a << "test"
+	}
+	b := rlock a {
+		a.clone()
+	}
+	assert b[0] == "test"
+}

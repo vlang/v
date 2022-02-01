@@ -404,7 +404,9 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	if node.args.len == 0 {
 		comparison_type = g.unwrap(info.elem_type.set_nr_muls(0))
 		shared a := g.array_sort_fn
-		array_sort_fn := a.clone()
+		array_sort_fn := rlock a {
+			a.clone()
+		}
 		if compare_fn in array_sort_fn {
 			g.gen_array_sort_call(node, compare_fn)
 			return
@@ -425,7 +427,9 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 			compare_fn += '_reverse'
 		}
 		shared a := g.array_sort_fn
-		array_sort_fn := a.clone()
+		array_sort_fn := rlock a {
+			a.clone()
+		}
 		if compare_fn in array_sort_fn {
 			g.gen_array_sort_call(node, compare_fn)
 			return

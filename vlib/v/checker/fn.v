@@ -1045,9 +1045,13 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
 	if left_sym.kind == .array && method_name in array_builtin_methods {
+		// check if shared variable is locked
+		c.fail_if_unreadable(node.left, left_type, 'receiver')
 		return c.array_builtin_method_call(mut node, left_type, c.table.sym(left_type))
 	} else if (left_sym.kind == .map || final_left_sym.kind == .map)
 		&& method_name in ['clone', 'keys', 'move', 'delete'] {
+		// check if shared variable is locked
+		c.fail_if_unreadable(node.left, left_type, 'receiver')
 		if left_sym.kind == .map {
 			return c.map_builtin_method_call(mut node, left_type, left_sym)
 		} else {
@@ -1055,6 +1059,8 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			return c.map_builtin_method_call(mut node, parent_type, final_left_sym)
 		}
 	} else if left_sym.kind == .array && method_name in ['insert', 'prepend'] {
+		// check if shared variable is locked
+		c.fail_if_unreadable(node.left, left_type, 'receiver')
 		if method_name == 'insert' {
 			if node.args.len != 2 {
 				c.error('`array.insert()` should have 2 arguments, e.g. `insert(1, val)`',
@@ -1083,6 +1089,8 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			c.error('cannot $method_name `$arg_sym.name` to `$left_sym.name`', arg_expr.pos())
 		}
 	} else if final_left_sym.kind == .array && method_name in ['first', 'last', 'pop'] {
+		// check if shared variable is locked
+		c.fail_if_unreadable(node.left, left_type, 'receiver')
 		if final_left_sym.info is ast.Array {
 			node.return_type = final_left_sym.info.elem_type
 			return node.return_type
@@ -1647,6 +1655,7 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type ast.
 			} else {
 				ret_type = left_type
 			}
+			ret_type = ret_type.clear_flag(.shared_f)
 		}
 		'keys' {
 			info := left_sym.info as ast.Map
@@ -1667,6 +1676,10 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type ast.
 		else {}
 	}
 	node.receiver_type = left_type.ref()
+
+	// all methods does not take a lock inside them.
+	node.receiver_type = node.receiver_type.clear_flag(.shared_f)
+
 	node.return_type = ret_type
 	return node.return_type
 }
@@ -1775,6 +1788,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		} else {
 			node.return_type = node.receiver_type.set_nr_muls(0)
 		}
+		node.return_type = node.return_type.clear_flag(.shared_f)
 	} else if method_name == 'sort' {
 		node.return_type = ast.void_type
 	} else if method_name == 'contains' {
@@ -1791,6 +1805,10 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			node.receiver_type = left_type
 		}
 	}
+
+	// all methods does not take a lock inside them.
+	node.receiver_type = node.receiver_type.clear_flag(.shared_f)
+
 	return node.return_type
 }
 
