@@ -6797,16 +6797,13 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 				}
 				else {}
 			}
-			if st_sym.info is ast.Struct {
-				for embed in st_sym.info.embeds {
-					embed_sym := g.table.sym(embed)
-					for embed_method in embed_sym.methods {
-						if embed_method.name !in method_names {
-							methods << embed_method
-						}
-					}
+			t_methods := g.table.get_methods_with_embeds(st_sym)
+			for t_method in t_methods {
+				if t_method.name !in method_names {
+					methods << t_method
 				}
 			}
+
 			for method in methods {
 				mut name := method.name
 				if inter_info.parent_type.has_flag(.generic) {
