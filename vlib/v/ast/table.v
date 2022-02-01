@@ -446,13 +446,13 @@ pub fn (t &Table) find_method_with_embeds(sym &TypeSymbol, method_name string) ?
 	}
 }
 
-pub fn (t &Table) get_methods_with_embeds(sym &TypeSymbol) []Fn {
+pub fn (t &Table) get_embed_methods(sym &TypeSymbol) []Fn {
 	mut methods := []Fn{}
 	if sym.info is Struct {
 		for embed in sym.info.embeds {
 			embed_sym := t.sym(embed)
 			methods << embed_sym.methods
-			methods << t.get_methods_with_embeds(embed_sym)
+			methods << t.get_embed_methods(embed_sym)
 		}
 	}
 	return methods
