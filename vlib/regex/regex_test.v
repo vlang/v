@@ -596,6 +596,21 @@ fn test_regex_func(){
 	}
 }
 
+fn my_repl_1(re regex.RE, in_txt string, start int, end int) string {
+	s0 := re.get_group_by_id(in_txt,0)
+	println("[$start, $end] => ${s0}")
+	return "a" + s0.to_upper()
+}
+
+fn test_regex_func_replace1(){
+	txt := "abbabbbabbbbaabba"
+	query := r"a(b+)"
+	mut re := regex.regex_opt(query) or { panic(err) }
+	result := re.replace_by_fn(txt, my_repl_1)
+
+	assert result == "aBBaBBBaBBBBaaBBa"
+}
+
 fn my_repl(re regex.RE, in_txt string, start int, end int) string {
 	s0 := re.get_group_by_id(in_txt,0)[0..1] + "X"
 	s1 := re.get_group_by_id(in_txt,1)[0..1] + "X"
@@ -603,9 +618,11 @@ fn my_repl(re regex.RE, in_txt string, start int, end int) string {
 	return "${s0}${s1}${s2}"
 }
 
-
 // test regex replace function
 fn test_regex_func_replace(){
+	if debug {
+		eprintln("test_regex_func_replace")
+	}
 	filler := "E il primo dei tre regni dell'Oltretomba cristiano visitato da Dante nel corso del viaggio, con la guida di Virgilio."
 	txt    := r'"content": "They dont necessarily flag "you will be buying these shares on margin!"", "channel_id"'
 	query := r'"(content":\s+")(.*)(, "channel_id")'
@@ -626,6 +643,7 @@ fn test_regex_func_replace(){
 		eprintln(txt2)
 	}
 	assert result == txt2
+	eprintln("test_regex_func_replace DONE!")
 }
 
 fn rest_regex_replace_n(){
