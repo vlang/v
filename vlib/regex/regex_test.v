@@ -160,6 +160,10 @@ match_test_suite = [
     TestItem{"a", r"\S+",0,1},
     TestItem{"aaaa", r"\S+",0,4},
     TestItem{"aaaa ", r"\S+",0,4},
+
+    // multiple dot char
+    TestItem{"aba", r"a*(b*)*a",0,3},
+    TestItem{"/*x*/", r"/\**(.*)\**/",0,5},
 ]
 )
 
