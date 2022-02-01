@@ -164,6 +164,7 @@ match_test_suite = [
     // multiple dot char
     TestItem{"aba", r"a*(b*)*a",0,3},
     TestItem{"/*x*/", r"/\**(.*)\**/",0,5},
+    TestItem{"/*x*/", r"/*(.*)*/",0,5},
 ]
 )
 
