@@ -20,12 +20,30 @@ pub:
 	execute bool
 }
 
+pub fn (p FilePermission) bitmask() u32 {
+	mut mask := u32(0)
+	if p.read {
+		mask |= 4
+	}
+	if p.write {
+		mask |= 2
+	}
+	if p.execute {
+		mask |= 1
+	}
+	return mask
+}
+
 struct FileMode {
 pub:
 	typ    FileType
 	owner  FilePermission
 	group  FilePermission
 	others FilePermission
+}
+
+pub fn (m FileMode) bitmask() u32 {
+	return m.owner.bitmask() << 6 | m.group.bitmask() << 3 | m.others.bitmask()
 }
 
 // inode returns the mode of the file/inode containing inode type and permission information
