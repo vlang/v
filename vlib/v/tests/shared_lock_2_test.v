@@ -50,3 +50,27 @@ fn test_shared_receiver_lock() {
 		assert x.a == 7 && y.a == 5
 	}
 }
+
+struct St2 {
+mut:
+	a map[string]int
+}
+
+fn (shared x St2) f() {
+	lock x {
+		x.a["a"] = 123
+	}
+}
+
+fn test_shared_receiver_lock_2() {
+	shared x := St2 {
+		a: map[string]int
+	}
+
+	x.f()
+
+	rlock x {
+		assert x.a["a"] == 123
+	}
+}
+

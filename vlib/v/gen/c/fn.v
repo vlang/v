@@ -1006,7 +1006,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			if !node.left.is_lvalue() {
 				g.write('ADDR($rec_cc_type, ')
 				has_cast = true
-			} else {
+				// if receiver has shared_f, the struct ptr itself is passed directly.
+			} else if !node.receiver_type.has_flag(.shared_f) {
 				g.write('&')
 			}
 		}
@@ -1062,7 +1063,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 			g.write(embed_name)
 		}
-		if node.left_type.has_flag(.shared_f) {
+		// if receiver has shared_f, the struct ptr itself is passed directly.
+		if node.left_type.has_flag(.shared_f) && !node.receiver_type.has_flag(.shared_f) {
 			g.write('->val')
 		}
 	}
