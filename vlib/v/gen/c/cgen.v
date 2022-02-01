@@ -6862,9 +6862,13 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 						embed_sym := g.table.sym(embed_types.last())
 						method_name := '${embed_sym.cname}_$method.name'
 						methods_wrapper.write_string('${method_name}(${fargs[0]}')
-						for embed in embed_types {
+						for idx_embed, embed in embed_types {
 							esym := g.table.sym(embed)
-							methods_wrapper.write_string('->$esym.embed_name()')
+							if idx_embed == 0 || embed_types[idx_embed - 1].is_any_kind_of_pointer() {
+								methods_wrapper.write_string('->$esym.embed_name()')
+							} else {
+								methods_wrapper.write_string('.$esym.embed_name()')
+							}
 						}
 						methods_wrapper.writeln('${fargs[1..].join(', ')});')
 					} else {
