@@ -43,6 +43,10 @@ fn test_inode_file_owner_permission() {
 }
 
 fn test_inode_file_permissions_bitmask() {
+	if user_os() == 'windows' {
+		println('> skipping ${@FN} on windows')
+		return
+	}
 	filename := './test3.txt'
 	mut file := open_file(filename, 'w', 0o641) or { return }
 	file.close()
