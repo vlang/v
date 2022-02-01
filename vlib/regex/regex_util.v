@@ -361,7 +361,7 @@ pub fn (mut re RE) replace_simple(in_txt string, repl string) string {
 pub type FnReplace = fn (re RE, in_txt string, start int, end int) string
 
 // replace_by_fn return a string where the matches are replaced with the string from the repl_fn callback function
-pub fn (mut re RE) replace_by_fn1(in_txt string, repl_fn FnReplace) string {
+pub fn (mut re RE) replace_by_fn(in_txt string, repl_fn FnReplace) string {
 	mut i := 0
 	mut res := strings.new_builder(in_txt.len)
 	mut last_end := 0
@@ -400,32 +400,6 @@ pub fn (mut re RE) replace_by_fn1(in_txt string, repl_fn FnReplace) string {
 	}
 	return res.str()
 }
-
-pub fn (mut re RE) replace_by_fn(in_txt string, repl_fn FnReplace) string {
-	mut res := strings.new_builder(in_txt.len)
-	find_index_list := re.find_all(in_txt)
-	println("Find indexes: ${find_index_list}")
-	mut i := 0
-	mut i1 := 0
-	mut i2 := 0
-	mut i3 := 0
-	for i < find_index_list.len {
-		i2 = find_index_list[i]
-		i++	
-		i3 = find_index_list[i]
-		i++
-
-		res.write_string(in_txt#[i1..i2])
-		repl := repl_fn(re, in_txt, i2, i3)
-		res.write_string(repl)
-		i1 = i3
-	}
-
-
-	res.write_string(in_txt[i3..])
-	return res.str()
-}
-
 
 fn (re RE) parsed_replace_string(in_txt string, repl string) string {
 	str_lst := repl.split('\\')
