@@ -163,7 +163,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 
 <!--
 NB: there are several special keywords, which you can put after the code fences for v:
-compile, live, ignore, failcompile, oksyntax, badsyntax, wip, nofmt
+compile, cgen, live, ignore, failcompile, oksyntax, badsyntax, wip, nofmt
 For more details, do: `v check-md`
 -->
 
@@ -1393,7 +1393,7 @@ println(s)
 You can check the current type of a sum type using `is` and its negated form `!is`.
 
 You can do it either in an `if`:
-```v
+```v cgen
 struct Abc {
 	val string
 }
@@ -2789,38 +2789,52 @@ For more information, see [Dynamic casts](#dynamic-casts).
 
 #### Interface method definitions
 
-Also unlike Go, an interface may implement a method.
-These methods are not implemented by structs which implement that interface.
+Also unlike Go, an interface can have it's own methods, similar to how
+structs can have their methods. These 'interface methods' do not have
+to be implemented, by structs which implement that interface.
+They are just a convenient way to write `i.some_function()` instead of
+`some_function(i)`, similar to how struct methods can be looked at, as
+a convenience for writing `s.xyz()` instead of `xyz(s)`.
 
-When a struct is wrapped in an interface that has implemented a method
-with the same name as one implemented by this struct, only the method
-implemented on the interface is called.
+N.B. This feature is NOT a "default implementation" like in C#.
+
+For example, if a struct `cat` is wrapped in an interface `a`, that has
+implemented a method with the same name `speak`, as a method implemented by 
+the struct, and you do `a.speak()`, *only* the interface method is called:
 
 ```v
-struct Cat {}
-
-fn (c Cat) speak() string {
-	return 'meow!'
-}
-
 interface Adoptable {}
 
 fn (a Adoptable) speak() string {
 	return 'adopt me!'
 }
 
-fn new_adoptable() Adoptable {
-	return Cat{}
+struct Cat {}
+
+fn (c Cat) speak() string {
+	return 'meow!'
 }
+
+struct Dog {}
 
 fn main() {
 	cat := Cat{}
-	assert cat.speak() == 'meow!'
-	a := new_adoptable()
-	assert a.speak() == 'adopt me!'
+	assert dump(cat.speak()) == 'meow!'
+	//
+	a := Adoptable(cat)
+	assert dump(a.speak()) == 'adopt me!' // call Adoptable's `speak`
 	if a is Cat {
-		println(a.speak()) // meow!
+		// Inside this `if` however, V knows that `a` is not just any
+		// kind of Adoptable, but actually a Cat, so it will use the
+		// Cat `speak`, NOT the Adoptable `speak`:
+		dump(a.speak()) // meow!
 	}
+	//
+	b := Adoptable(Dog{})
+	assert dump(b.speak()) == 'adopt me!' // call Adoptable's `speak`
+	// if b is Dog {
+	// 	dump(b.speak()) // error: unknown method or field: Dog.speak
+	// }
 }
 ```
 
@@ -5102,40 +5116,42 @@ For all supported options check the latest help:
 
 #### `$if` condition
 ```v
-// Support for multiple conditions in one branch
-$if ios || android {
-	println('Running on a mobile device!')
-}
-$if linux && x64 {
-	println('64-bit Linux.')
-}
-// Usage as expression
-os := $if windows { 'Windows' } $else { 'UNIX' }
-println('Using $os')
-// $else-$if branches
-$if tinyc {
-	println('tinyc')
-} $else $if clang {
-	println('clang')
-} $else $if gcc {
-	println('gcc')
-} $else {
-	println('different compiler')
-}
-$if test {
-	println('testing')
-}
-// v -cg ...
-$if debug {
-	println('debugging')
-}
-// v -prod ...
-$if prod {
-	println('production build')
-}
-// v -d option ...
-$if option ? {
-	println('custom option')
+fn main() {
+	// Support for multiple conditions in one branch
+	$if ios || android {
+		println('Running on a mobile device!')
+	}
+	$if linux && x64 {
+		println('64-bit Linux.')
+	}
+	// Usage as expression
+	os := $if windows { 'Windows' } $else { 'UNIX' }
+	println('Using $os')
+	// $else-$if branches
+	$if tinyc {
+		println('tinyc')
+	} $else $if clang {
+		println('clang')
+	} $else $if gcc {
+		println('gcc')
+	} $else {
+		println('different compiler')
+	}
+	$if test {
+		println('testing')
+	}
+	// v -cg ...
+	$if debug {
+		println('debugging')
+	}
+	// v -prod ...
+	$if prod {
+		println('production build')
+	}
+	// v -d option ...
+	$if option ? {
+		println('custom option')
+	}
 }
 ```
 

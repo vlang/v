@@ -13,6 +13,7 @@ Flags:
 NB: There are several special keywords, which you can put after the code fences for v.
 These are:
 	compile      - Default, can be omitted. The example will be compiled and formatting is verified.
+	cgen         - The example produces C code, which may not be compilable (when external libs are not installed). Formatting is verified.
 	live         - Compile hot reload examples with the ´-live´ flag set and verify formatting.
 	ignore       - Ignore the example, useful for examples that just use the syntax highlighting
 	failcompile  - Known failing compilation. Useful for examples demonstrating compiler errors.

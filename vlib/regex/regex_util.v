@@ -212,7 +212,7 @@ pub fn (mut re RE) find(in_txt string) (int, int) {
 [direct_array_access]
 pub fn (mut re RE) find_from(in_txt string, start int) (int, int) {
 	old_flag := re.flag
-	re.flag |= f_src // enable search mode
+	// re.flag |= f_src // enable search mode
 
 	mut i := start
 	if i < 0 {

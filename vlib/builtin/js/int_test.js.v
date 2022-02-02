@@ -99,6 +99,7 @@ fn test_hex() {
 	b := 1234
 	assert b.hex() == '4d2'
 	b1 := -1
+	println(b1)
 	// assert b1.hex() == 'ffffffff'
 	// unsigned tests
 	// assert u8(12).hex() == '0c'

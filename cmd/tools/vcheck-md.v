@@ -21,6 +21,7 @@ const (
 	hide_warnings                  = '-hide-warnings' in os.args || '-w' in os.args
 	show_progress                  = os.getenv('GITHUB_JOB') == '' && '-silent' !in os.args
 	non_option_args                = cmdline.only_non_options(os.args[2..])
+	is_verbose                     = os.getenv('VERBOSE') != ''
 )
 
 struct CheckResult {
@@ -75,7 +76,7 @@ fn main() {
 		res += mdfile.check()
 	}
 	if res.errors == 0 && show_progress {
-		term.clear_previous_line()
+		clear_previous_line()
 	}
 	if res.warnings > 0 || res.errors > 0 || res.oks > 0 {
 		println('\nWarnings: $res.warnings | Errors: $res.errors | OKs: $res.oks')
@@ -131,9 +132,7 @@ fn eline(file_path string, lnumber int, column int, message string) string {
 	return btext('$file_path:${lnumber + 1}:${column + 1}:') + btext(rtext(' error: $message'))
 }
 
-const (
-	default_command = 'compile'
-)
+const default_command = 'compile'
 
 struct VCodeExample {
 mut:
@@ -160,7 +159,7 @@ mut:
 
 fn (mut f MDFile) progress(message string) {
 	if show_progress {
-		term.clear_previous_line()
+		clear_previous_line()
 		println('File: ${f.path:-30s}, Lines: ${f.lines.len:5}, $message')
 	}
 }
@@ -394,6 +393,7 @@ fn (mut f MDFile) debug() {
 }
 
 fn cmdexecute(cmd string) int {
+	verbose_println(cmd)
 	res := os.execute(cmd)
 	if res.exit_code < 0 {
 		return 1
@@ -405,6 +405,7 @@ fn cmdexecute(cmd string) int {
 }
 
 fn silent_cmdexecute(cmd string) int {
+	verbose_println(cmd)
 	res := os.execute(cmd)
 	return res.exit_code
 }
@@ -426,6 +427,7 @@ fn (mut f MDFile) check_examples() CheckResult {
 		}
 		fname := os.base(f.path).replace('.md', '_md')
 		uid := rand.ulid()
+		cfile := os.join_path(os.temp_dir(), '${uid}.c')
 		vfile := os.join_path(os.temp_dir(), 'check_${fname}_example_${e.sline}__${e.eline}__${uid}.v')
 		mut should_cleanup_vfile := true
 		// eprintln('>>> checking example $vfile ...')
@@ -438,8 +440,7 @@ fn (mut f MDFile) check_examples() CheckResult {
 			fmt_res := if nofmt { 0 } else { get_fmt_exit_code(vfile, vexe) }
 			match command {
 				'compile' {
-					res := cmdexecute('${os.quoted_path(vexe)} -w -Wfatal-errors -o x.c ${os.quoted_path(vfile)}')
-					os.rm('x.c') or {}
+					res := cmdexecute('${os.quoted_path(vexe)} -w -Wfatal-errors ${os.quoted_path(vfile)}')
 					if res != 0 || fmt_res != 0 {
 						if res != 0 {
 							eprintln(eline(f.path, e.sline, 0, 'example failed to compile'))
@@ -454,9 +455,26 @@ fn (mut f MDFile) check_examples() CheckResult {
 					}
 					oks++
 				}
+				'cgen' {
+					res := cmdexecute('${os.quoted_path(vexe)} -w -Wfatal-errors -o ${os.quoted_path(cfile)} ${os.quoted_path(vfile)}')
+					os.rm(cfile) or {}
+					if res != 0 || fmt_res != 0 {
+						if res != 0 {
+							eprintln(eline(f.path, e.sline, 0, 'example failed to generate C code'))
+						}
+						if fmt_res != 0 {
+							eprintln(eline(f.path, e.sline, 0, 'example is not formatted'))
+						}
+						eprintln(vcontent)
+						should_cleanup_vfile = false
+						errors++
+						continue
+					}
+					oks++
+				}
 				'globals' {
-					res := cmdexecute('${os.quoted_path(vexe)} -w -Wfatal-errors -enable-globals -o x.c ${os.quoted_path(vfile)}')
-					os.rm('x.c') or {}
+					res := cmdexecute('${os.quoted_path(vexe)} -w -Wfatal-errors -enable-globals -o ${os.quoted_path(cfile)} ${os.quoted_path(vfile)}')
+					os.rm(cfile) or {}
 					if res != 0 || fmt_res != 0 {
 						if res != 0 {
 							eprintln(eline(f.path, e.sline, 0, '`example failed to compile with -enable-globals'))
@@ -472,7 +490,8 @@ fn (mut f MDFile) check_examples() CheckResult {
 					oks++
 				}
 				'live' {
-					res := cmdexecute('${os.quoted_path(vexe)} -w -Wfatal-errors -live -o x.c ${os.quoted_path(vfile)}')
+					res := cmdexecute('${os.quoted_path(vexe)} -w -Wfatal-errors -live -o ${os.quoted_path(cfile)} ${os.quoted_path(vfile)}')
+					os.rm(cfile) or {}
 					if res != 0 || fmt_res != 0 {
 						if res != 0 {
 							eprintln(eline(f.path, e.sline, 0, 'example failed to compile with -live'))
@@ -488,8 +507,8 @@ fn (mut f MDFile) check_examples() CheckResult {
 					oks++
 				}
 				'failcompile' {
-					res := silent_cmdexecute('${os.quoted_path(vexe)} -w -Wfatal-errors -o x.c ${os.quoted_path(vfile)}')
-					os.rm('x.c') or {}
+					res := silent_cmdexecute('${os.quoted_path(vexe)} -w -Wfatal-errors -o ${os.quoted_path(cfile)} ${os.quoted_path(vfile)}')
+					os.rm(cfile) or {}
 					if res == 0 || fmt_res != 0 {
 						if res == 0 {
 							eprintln(eline(f.path, e.sline, 0, '`failcompile` example compiled'))
@@ -533,7 +552,7 @@ fn (mut f MDFile) check_examples() CheckResult {
 				}
 				'nofmt' {}
 				else {
-					eprintln(eline(f.path, e.sline, 0, 'unrecognized command: "$command", use one of: wip/ignore/compile/failcompile/oksyntax/badsyntax'))
+					eprintln(eline(f.path, e.sline, 0, 'unrecognized command: "$command", use one of: wip/ignore/compile/cgen/failcompile/oksyntax/badsyntax/nofmt'))
 					should_cleanup_vfile = false
 					errors++
 				}
@@ -547,4 +566,17 @@ fn (mut f MDFile) check_examples() CheckResult {
 		errors: errors
 		oks: oks
 	}
+}
+
+fn verbose_println(message string) {
+	if is_verbose {
+		println(message)
+	}
+}
+
+fn clear_previous_line() {
+	if is_verbose {
+		return
+	}
+	term.clear_previous_line()
 }

@@ -7,6 +7,7 @@ import io
 
 const (
 	sport           = 12380
+	localserver     = 'localhost:$sport'
 	exit_after_time = 12000 // milliseconds
 	vexe            = os.getenv('VEXE')
 	vweb_logfile    = os.getenv('VWEB_LOGFILE')
@@ -116,7 +117,7 @@ fn assert_common_http_headers(x http.Response) ? {
 }
 
 fn test_http_client_index() ? {
-	x := http.get('http://127.0.0.1:$sport/') or { panic(err) }
+	x := http.get('http://$localserver/') or { panic(err) }
 	assert_common_http_headers(x) ?
 	assert x.header.get(.content_type) ? == 'text/plain'
 	assert x.text == 'Welcome to VWeb'
@@ -124,9 +125,9 @@ fn test_http_client_index() ? {
 
 fn test_http_client_404() ? {
 	url_404_list := [
-		'http://127.0.0.1:$sport/zxcnbnm',
-		'http://127.0.0.1:$sport/JHKAJA',
-		'http://127.0.0.1:$sport/unknown',
+		'http://$localserver/zxcnbnm',
+		'http://$localserver/JHKAJA',
+		'http://$localserver/unknown',
 	]
 	for url in url_404_list {
 		res := http.get(url) or { panic(err) }
@@ -135,39 +136,39 @@ fn test_http_client_404() ? {
 }
 
 fn test_http_client_simple() ? {
-	x := http.get('http://127.0.0.1:$sport/simple') or { panic(err) }
+	x := http.get('http://$localserver/simple') or { panic(err) }
 	assert_common_http_headers(x) ?
 	assert x.header.get(.content_type) ? == 'text/plain'
 	assert x.text == 'A simple result'
 }
 
 fn test_http_client_html_page() ? {
-	x := http.get('http://127.0.0.1:$sport/html_page') or { panic(err) }
+	x := http.get('http://$localserver/html_page') or { panic(err) }
 	assert_common_http_headers(x) ?
 	assert x.header.get(.content_type) ? == 'text/html'
 	assert x.text == '<h1>ok</h1>'
 }
 
 fn test_http_client_settings_page() ? {
-	x := http.get('http://127.0.0.1:$sport/bilbo/settings') or { panic(err) }
+	x := http.get('http://$localserver/bilbo/settings') or { panic(err) }
 	assert_common_http_headers(x) ?
 	assert x.text == 'username: bilbo'
 	//
-	y := http.get('http://127.0.0.1:$sport/kent/settings') or { panic(err) }
+	y := http.get('http://$localserver/kent/settings') or { panic(err) }
 	assert_common_http_headers(y) ?
 	assert y.text == 'username: kent'
 }
 
 fn test_http_client_user_repo_settings_page() ? {
-	x := http.get('http://127.0.0.1:$sport/bilbo/gostamp/settings') or { panic(err) }
+	x := http.get('http://$localserver/bilbo/gostamp/settings') or { panic(err) }
 	assert_common_http_headers(x) ?
 	assert x.text == 'username: bilbo | repository: gostamp'
 	//
-	y := http.get('http://127.0.0.1:$sport/kent/golang/settings') or { panic(err) }
+	y := http.get('http://$localserver/kent/golang/settings') or { panic(err) }
 	assert_common_http_headers(y) ?
 	assert y.text == 'username: kent | repository: golang'
 	//
-	z := http.get('http://127.0.0.1:$sport/missing/golang/settings') or { panic(err) }
+	z := http.get('http://$localserver/missing/golang/settings') or { panic(err) }
 	assert z.status() == .not_found
 }
 
@@ -182,7 +183,7 @@ fn test_http_client_json_post() ? {
 		age: 123
 	}
 	json_for_ouser := json.encode(ouser)
-	mut x := http.post_json('http://127.0.0.1:$sport/json_echo', json_for_ouser) or { panic(err) }
+	mut x := http.post_json('http://$localserver/json_echo', json_for_ouser) or { panic(err) }
 	$if debug_net_socket_client ? {
 		eprintln('/json_echo endpoint response: $x')
 	}
@@ -191,7 +192,7 @@ fn test_http_client_json_post() ? {
 	nuser := json.decode(User, x.text) or { User{} }
 	assert '$ouser' == '$nuser'
 	//
-	x = http.post_json('http://127.0.0.1:$sport/json', json_for_ouser) or { panic(err) }
+	x = http.post_json('http://$localserver/json', json_for_ouser) or { panic(err) }
 	$if debug_net_socket_client ? {
 		eprintln('/json endpoint response: $x')
 	}
@@ -213,7 +214,7 @@ $contents\r
 --$boundary--\r
 '
 	mut x := http.fetch(
-		url: 'http://127.0.0.1:$sport/form_echo'
+		url: 'http://$localserver/form_echo'
 		method: .post
 		header: http.new_header(
 			key: .content_type
@@ -228,7 +229,7 @@ $contents\r
 }
 
 fn test_http_client_shutdown_does_not_work_without_a_cookie() {
-	x := http.get('http://127.0.0.1:$sport/shutdown') or {
+	x := http.get('http://$localserver/shutdown') or {
 		assert err.msg == ''
 		return
 	}
@@ -240,7 +241,7 @@ fn testsuite_end() {
 	// This test is guaranteed to be called last.
 	// It sends a request to the server to shutdown.
 	x := http.fetch(
-		url: 'http://127.0.0.1:$sport/shutdown'
+		url: 'http://$localserver/shutdown'
 		method: .get
 		cookies: {
 			'skey': 'superman'
@@ -268,7 +269,7 @@ fn simple_tcp_client(config SimpleTcpClientConfig) ?string {
 	mut tries := 0
 	for tries < config.retries {
 		tries++
-		client = net.dial_tcp('127.0.0.1:$sport') or {
+		client = net.dial_tcp(localserver) or {
 			if tries > config.retries {
 				return err
 			}

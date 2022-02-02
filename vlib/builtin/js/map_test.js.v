@@ -372,6 +372,9 @@ fn test_map_assign() {
 		'r': u16(6)
 		's': 5
 	}}
+	println(a)
+	println(b)
+	println(c)
 }
 
 fn test_postfix_op_directly() {

@@ -963,6 +963,13 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 	}
 	if func.generic_names.len > 0 {
 		if has_generic {
+			if typ := c.table.resolve_generic_to_concrete(func.return_type, func.generic_names,
+				node.concrete_types)
+			{
+				if typ.has_flag(.generic) {
+					node.return_type = typ
+				}
+			}
 			return node.return_type
 		} else if typ := c.table.resolve_generic_to_concrete(func.return_type, func.generic_names,
 			concrete_types)

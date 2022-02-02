@@ -2024,6 +2024,11 @@ pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int) (int, int) {
 
 					re.prog[state.pc].group_rep++ // increase repetitions
 					// println("GROUP $group_index END ${re.prog[state.pc].group_rep}")
+					if re.prog[state.pc].group_rep > in_txt_len - 1 {
+						m_state = .ist_quant_ng
+						continue
+					}
+
 					m_state = .ist_quant_pg
 					continue
 				}

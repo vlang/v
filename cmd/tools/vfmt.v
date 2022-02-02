@@ -259,7 +259,15 @@ fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path 
 				file_bak := '${file}.bak'
 				os.cp(file, file_bak) or {}
 			}
+			mut perms_to_restore := u32(0)
+			$if !windows {
+				fm := os.inode(file)
+				perms_to_restore = fm.bitmask()
+			}
 			os.mv_by_cp(formatted_file_path, file) or { panic(err) }
+			$if !windows {
+				os.chmod(file, int(perms_to_restore)) or { panic(err) }
+			}
 			eprintln('Reformatted file: $file')
 		} else {
 			eprintln('Already formatted file: $file')

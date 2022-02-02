@@ -2471,10 +2471,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	}
 	// Generic dereferencing logic
 	neither_void := ast.voidptr_type !in [got_type, expected_type]
-	to_shared := expected_type.has_flag(.shared_f) && !got_type_raw.has_flag(.shared_f)
-		&& !expected_type.has_flag(.optional)
-	// from_shared := got_type_raw.has_flag(.shared_f) && !expected_type.has_flag(.shared_f)
-	if to_shared {
+	if expected_type.has_flag(.shared_f) && !got_type_raw.has_flag(.shared_f)
+		&& !expected_type.has_flag(.optional) {
 		shared_styp := exp_styp[0..exp_styp.len - 1] // `shared` implies ptr, so eat one `*`
 		if got_type_raw.is_ptr() {
 			g.error('cannot convert reference to `shared`', expr.pos())
@@ -2491,6 +2489,13 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		g.expr(expr)
 		g.is_shared = old_is_shared
 		g.writeln('}, sizeof($shared_styp))')
+		return
+	} else if got_type_raw.has_flag(.shared_f) && !expected_type.has_flag(.shared_f) {
+		if expected_type.is_ptr() {
+			g.write('&')
+		}
+		g.expr(expr)
+		g.write('->val')
 		return
 	}
 	if got_is_ptr && !expected_is_ptr && neither_void && exp_sym.kind != .placeholder
@@ -3604,10 +3609,15 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	// struct embedding
 	if sym.info in [ast.Struct, ast.Aggregate] {
-		for embed in node.from_embed_types {
+		for i, embed in node.from_embed_types {
 			embed_sym := g.table.sym(embed)
 			embed_name := embed_sym.embed_name()
-			if node.expr_type.is_ptr() {
+			is_left_ptr := if i == 0 {
+				node.expr_type.is_ptr()
+			} else {
+				node.from_embed_types[i - 1].is_ptr()
+			}
+			if is_left_ptr {
 				g.write('->')
 			} else {
 				g.write('.')
@@ -6310,10 +6320,6 @@ fn (mut g Gen) size_of(node ast.SizeOf) {
 	g.write('sizeof(${util.no_dots(styp)})')
 }
 
-fn (g &Gen) is_importing_os() bool {
-	return 'os' in g.table.imports
-}
-
 fn (mut g Gen) go_expr(node ast.GoExpr) {
 	line := g.go_before_stmt(0)
 	mut handle := ''
@@ -6797,16 +6803,13 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 				}
 				else {}
 			}
-			if st_sym.info is ast.Struct {
-				for embed in st_sym.info.embeds {
-					embed_sym := g.table.sym(embed)
-					for embed_method in embed_sym.methods {
-						if embed_method.name !in method_names {
-							methods << embed_method
-						}
-					}
+			t_methods := g.table.get_embed_methods(st_sym)
+			for t_method in t_methods {
+				if t_method.name !in method_names {
+					methods << t_method
 				}
 			}
+
 			for method in methods {
 				mut name := method.name
 				if inter_info.parent_type.has_flag(.generic) {
@@ -6834,6 +6837,7 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 				styp := g.cc_type(method.params[0].typ, true)
 				mut method_call := '${styp}_$name'
 				if !method.params[0].typ.is_ptr() {
+					method_call = '${cctype}_$name'
 					// inline void Cat_speak_Interface_Animal_method_wrapper(Cat c) { return Cat_speak(*c); }
 					iwpostfix := '_Interface_${interface_name}_method_wrapper'
 					methods_wrapper.write_string('static inline ${g.typ(method.return_type)} ${cctype}_$name${iwpostfix}(')
@@ -6865,9 +6869,13 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 						embed_sym := g.table.sym(embed_types.last())
 						method_name := '${embed_sym.cname}_$method.name'
 						methods_wrapper.write_string('${method_name}(${fargs[0]}')
-						for embed in embed_types {
+						for idx_embed, embed in embed_types {
 							esym := g.table.sym(embed)
-							methods_wrapper.write_string('->$esym.embed_name()')
+							if idx_embed == 0 || embed_types[idx_embed - 1].is_any_kind_of_pointer() {
+								methods_wrapper.write_string('->$esym.embed_name()')
+							} else {
+								methods_wrapper.write_string('.$esym.embed_name()')
+							}
 						}
 						methods_wrapper.writeln('${fargs[1..].join(', ')});')
 					} else {
