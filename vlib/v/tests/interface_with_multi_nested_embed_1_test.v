@@ -1,4 +1,4 @@
-fn test_interface_struct_with_multi_nested_embed() {
+fn test_interface_with_multi_nested_embed() {
 	mut win := &Window{}
 	mut ll := &LinearLayout{}
 	mut lbl := &Label{
