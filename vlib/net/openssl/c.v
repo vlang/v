@@ -46,7 +46,6 @@ pub struct SSL_METHOD {
 pub struct OPENSSL_INIT_SETTINGS {
 }
 
-
 [typedef]
 struct C.RSA {
 	engine voidptr
@@ -139,7 +138,7 @@ fn C.TLSv1_2_method() voidptr
 
 fn C.OPENSSL_init_ssl(opts u64, settings &OPENSSL_INIT_SETTINGS) int
 
-/* RSA */
+// RSA
 fn C.RSA_generate_key_ex(&C.RSA, int, &C.BIGNUM, voidptr) int
 fn C.RSA_generate_key(int, u64, voidptr, voidptr) &C.RSA
 fn C.RSA_new() &C.RSA
