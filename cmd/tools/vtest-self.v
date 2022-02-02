@@ -45,7 +45,7 @@ const (
 		'vlib/sqlite/sqlite_orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
-		'vlib/v/tests/sql_statement_inside_fn_call_test.v'
+		'vlib/v/tests/sql_statement_inside_fn_call_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/vweb/request_test.v',
 		'vlib/net/http/request_test.v',
@@ -84,7 +84,7 @@ const (
 		'vlib/orm/orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
-		'vlib/v/tests/sql_statement_inside_fn_call_test.v'
+		'vlib/v/tests/sql_statement_inside_fn_call_test.v',
 		'vlib/clipboard/clipboard_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/vweb/request_test.v',
