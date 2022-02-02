@@ -3604,10 +3604,15 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	// struct embedding
 	if sym.info in [ast.Struct, ast.Aggregate] {
-		for embed in node.from_embed_types {
+		for i, embed in node.from_embed_types {
 			embed_sym := g.table.sym(embed)
 			embed_name := embed_sym.embed_name()
-			if node.expr_type.is_ptr() {
+			is_left_ptr := if i == 0 {
+				node.expr_type.is_ptr()
+			} else {
+				node.from_embed_types[i - 1].is_ptr()
+			}
+			if is_left_ptr {
 				g.write('->')
 			} else {
 				g.write('.')
@@ -6831,6 +6836,7 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 				styp := g.cc_type(method.params[0].typ, true)
 				mut method_call := '${styp}_$name'
 				if !method.params[0].typ.is_ptr() {
+					method_call = '${cctype}_$name'
 					// inline void Cat_speak_Interface_Animal_method_wrapper(Cat c) { return Cat_speak(*c); }
 					iwpostfix := '_Interface_${interface_name}_method_wrapper'
 					methods_wrapper.write_string('static inline ${g.typ(method.return_type)} ${cctype}_$name${iwpostfix}(')
