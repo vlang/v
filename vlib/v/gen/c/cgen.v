@@ -2471,10 +2471,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	}
 	// Generic dereferencing logic
 	neither_void := ast.voidptr_type !in [got_type, expected_type]
-	to_shared := expected_type.has_flag(.shared_f) && !got_type_raw.has_flag(.shared_f)
-		&& !expected_type.has_flag(.optional)
-	// from_shared := got_type_raw.has_flag(.shared_f) && !expected_type.has_flag(.shared_f)
-	if to_shared {
+	if expected_type.has_flag(.shared_f) && !got_type_raw.has_flag(.shared_f)
+		&& !expected_type.has_flag(.optional) {
 		shared_styp := exp_styp[0..exp_styp.len - 1] // `shared` implies ptr, so eat one `*`
 		if got_type_raw.is_ptr() {
 			g.error('cannot convert reference to `shared`', expr.pos())
@@ -2491,6 +2489,13 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		g.expr(expr)
 		g.is_shared = old_is_shared
 		g.writeln('}, sizeof($shared_styp))')
+		return
+	} else if got_type_raw.has_flag(.shared_f) && !expected_type.has_flag(.shared_f) {
+		if expected_type.is_ptr() {
+			g.write('&')
+		}
+		g.expr(expr)
+		g.write('->val')
 		return
 	}
 	if got_is_ptr && !expected_is_ptr && neither_void && exp_sym.kind != .placeholder
@@ -6313,10 +6318,6 @@ fn (mut g Gen) size_of(node ast.SizeOf) {
 	}
 	styp := g.typ(node_typ)
 	g.write('sizeof(${util.no_dots(styp)})')
-}
-
-fn (g &Gen) is_importing_os() bool {
-	return 'os' in g.table.imports
 }
 
 fn (mut g Gen) go_expr(node ast.GoExpr) {
