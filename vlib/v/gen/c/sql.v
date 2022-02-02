@@ -759,7 +759,9 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string) {
 		if node.is_array {
 			g.write('_array')
 		}
-		g.writeln(';')
+		if !g.inside_call {
+			g.writeln(';')
+		}
 	}
 }
 
