@@ -452,8 +452,10 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 								info.fields[i].default_expr_typ = ast.new_type(idx)
 							}
 						} else {
-							if const_field := c.table.global_scope.find_const('$field.default_expr') {
-								info.fields[i].default_expr_typ = const_field.typ
+							rlock c.table.global_scope {
+								if const_field := c.table.global_scope.find_const('$field.default_expr') {
+									info.fields[i].default_expr_typ = const_field.typ
+								}
 							}
 						}
 					}

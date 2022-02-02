@@ -202,8 +202,9 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 			p.next() // sizeof
 			p.check(.lpar)
 			pos := p.tok.pos()
-			mut is_known_var := p.mark_var_as_used(p.tok.lit)
-				|| p.table.global_scope.known_const(p.mod + '.' + p.tok.lit)
+			mut is_known_var := p.mark_var_as_used(p.tok.lit) || rlock p.table.global_scope {
+				p.table.global_scope.known_const(p.mod + '.' + p.tok.lit)
+			}
 			//|| p.table.known_fn(p.mod + '.' + p.tok.lit)
 			// assume `mod.` prefix leads to a type
 			mut is_type := p.known_import(p.tok.lit) || p.tok.kind.is_start_of_type()

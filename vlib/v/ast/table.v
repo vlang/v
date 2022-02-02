@@ -14,36 +14,37 @@ pub struct Table {
 mut:
 	parsing_type string // name of the type to enable recursive type parsing
 pub mut:
-	type_symbols       []&TypeSymbol
-	type_idxs          map[string]int
-	fns                map[string]Fn
-	iface_types        map[string][]Type
-	dumps              map[int]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
-	imports            []string       // List of all imports
-	modules            []string       // Topologically sorted list of all modules registered by the application
-	global_scope       &Scope
-	cflags             []cflag.CFlag
-	redefined_fns      []string
-	fn_generic_types   map[string][][]Type // for generic functions
-	interfaces         map[int]InterfaceDecl
-	cmod_prefix        string // needed for ast.type_to_str(Type) while vfmt; contains `os.`
-	is_fmt             bool
-	used_fns           map[string]bool // filled in by the checker, when pref.skip_unused = true;
-	used_consts        map[string]bool // filled in by the checker, when pref.skip_unused = true;
-	used_globals       map[string]bool // filled in by the checker, when pref.skip_unused = true;
-	used_vweb_types    []Type // vweb context types, filled in by checker, when pref.skip_unused = true;
-	used_maps          int    // how many times maps were used, filled in by checker, when pref.skip_unused = true;
-	panic_handler      FnPanicHandler = default_table_panic_handler
-	panic_userdata     voidptr        = voidptr(0) // can be used to pass arbitrary data to panic_handler;
-	panic_npanics      int
-	cur_fn             &FnDecl = 0 // previously stored in Checker.cur_fn and Gen.cur_fn
-	cur_concrete_types []Type  // current concrete types, e.g. <int, string>
-	gostmts            int     // how many `go` statements there were in the parsed files.
+	type_symbols       shared []&TypeSymbol // >> shared
+	type_idxs          map[string]int       // >> merge
+	fns                map[string]Fn        // >> merge
+	iface_types        map[string][]Type    // >> not in parser
+	dumps              map[int]string       // needed for efficiently generating all _v_dump_expr_TNAME() functions >> not in parser
+	imports            []string              // List of all imports >> merged
+	modules            []string              // Topologically sorted list of all modules registered by the application >> not in parser
+	global_scope       shared Scope          // >> shared
+	cflags             []cflag.CFlag         // >> merge
+	redefined_fns      []string              // >> merge
+	fn_generic_types   map[string][][]Type   // for generic functions >> merge
+	interfaces         map[int]InterfaceDecl // >> merge
+	cmod_prefix        string // needed for ast.type_to_str(Type) while vfmt; contains `os.` // >> not in parser
+	is_fmt             bool   // >> not in parser
+	used_fns           map[string]bool // filled in by the checker, when pref.skip_unused = true; // >> not in parser
+	used_consts        map[string]bool // filled in by the checker, when pref.skip_unused = true; // >> not in parser
+	used_globals       map[string]bool // filled in by the checker, when pref.skip_unused = true; // >> not in parser
+	used_vweb_types    []Type // vweb context types, filled in by markused, when pref.skip_unused = true; // >> not in parser
+	used_maps          int    // how many times maps were used, filled in by checker, when pref.skip_unused = true; // >> not in parser
+	panic_handler      FnPanicHandler = default_table_panic_handler // >> not in parser
+	panic_userdata     voidptr        = voidptr(0) // can be used to pass arbitrary data to panic_handler; // >> not in parser
+	panic_npanics      int            // >> not in parser
+	cur_fn             &FnDecl = 0 // previously stored in Checker.cur_fn and Gen.cur_fn // >> local to parser
+	cur_concrete_types []Type  // current concrete types, e.g. <int, string> // >> not in parser & prob local
+	gostmts            int     // how many `go` statements there were in the parsed files. >> merge
 	// When table.gostmts > 0, __VTHREADS__ is defined, which can be checked with `$if threads {`
-	enum_decls        map[string]EnumDecl
-	mdeprecated_msg   map[string]string    // module deprecation message
-	mdeprecated_after map[string]time.Time // module deprecation date
-	builtin_pub_fns   map[string]bool
+	codegen_files     []&File // >> local to parser
+	enum_decls        map[string]EnumDecl  // >> merge
+	mdeprecated_msg   map[string]string    // module deprecation messages // >> merge
+	mdeprecated_after map[string]time.Time // module deprecation dates // >> merge
+	builtin_pub_fns   map[string]bool      // >> merge
 	pointer_size      int
 	// cache for type_to_str_using_aliases
 	cached_type_to_str map[u64]string
@@ -57,7 +58,9 @@ pub fn (mut t Table) free() {
 		for s in t.type_symbols {
 			s.free()
 		}
-		t.type_symbols.free()
+		lock t.type_symbols {
+			t.type_symbols.free()
+		}
 		t.type_idxs.free()
 		t.fns.free()
 		t.dumps.free()
@@ -86,6 +89,11 @@ pub fn (t &Table) panic(message string) {
 	mut mt := unsafe { &Table(t) }
 	mt.panic_npanics++
 	t.panic_handler(t, message)
+}
+
+fn (mut g Table) merge_tables(tables []&Table) {
+	for _ in tables {
+	}
 }
 
 [minify]
@@ -190,7 +198,7 @@ fn (p []Param) equals(o []Param) bool {
 
 pub fn new_table() &Table {
 	mut t := &Table{
-		global_scope: &Scope{
+		global_scope: Scope{
 			parent: 0
 		}
 		cur_fn: 0
@@ -775,10 +783,12 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 	}
 	if existing_symbol.kind == .placeholder {
 		// override placeholder
-		t.type_symbols[existing_idx] = &TypeSymbol{
-			...typ
-			methods: existing_symbol.methods
-			idx: existing_idx
+		lock t.type_symbols {
+			t.type_symbols[existing_idx] = &TypeSymbol{
+				...typ
+				methods: existing_symbol.methods
+				idx: existing_idx
+			}
 		}
 		return existing_idx
 	}
@@ -796,9 +806,11 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 				}
 			}
 		} else {
-			t.type_symbols[existing_idx] = &TypeSymbol{
-				...typ
-				idx: existing_idx
+			lock t.type_symbols {
+				t.type_symbols[existing_idx] = &TypeSymbol{
+					...typ
+					idx: existing_idx
+				}
 			}
 		}
 		return existing_idx
@@ -830,11 +842,13 @@ pub fn (mut t Table) register_sym(sym TypeSymbol) int {
 			}
 		}
 	}
-	idx = t.type_symbols.len
-	t.type_symbols << &TypeSymbol{
-		...sym
+	lock t.type_symbols {
+		idx = t.type_symbols.len
+		t.type_symbols << &TypeSymbol{
+			...sym
+		}
+		t.type_symbols[idx].idx = idx
 	}
-	t.type_symbols[idx].idx = idx
 	t.type_idxs[sym.name] = idx
 	return idx
 }

@@ -99,8 +99,6 @@ pub mut:
 	vet_errors []vet.Error
 }
 
-__global codegen_files = []&ast.File{}
-
 // for tests
 pub fn parse_stmt(text string, table &ast.Table, scope &ast.Scope) ast.Stmt {
 	$if trace_parse_stmt ? {
@@ -339,7 +337,8 @@ pub fn (mut p Parser) parse() &ast.File {
 	// codegen
 	if p.codegen_text.len > 0 && !p.pref.is_fmt {
 		ptext := 'module ' + p.mod.all_after_last('.') + p.codegen_text
-		codegen_files << parse_text(ptext, p.file_name, p.table, p.comments_mode, p.pref)
+		p.table.codegen_files << parse_text(ptext, p.file_name, p.table, p.comments_mode,
+			p.pref)
 	}
 
 	return &ast.File{
@@ -431,9 +430,10 @@ pub fn parse_files(paths []string, table &ast.Table, pref &pref.Preferences) []&
 		files << parse_file(path, table, .skip_comments, pref)
 		timers.show('parse_file $path')
 	}
-	if codegen_files.len > 0 {
-		files << codegen_files
-		codegen_files.clear()
+	if table.codegen_files.len > 0 {
+		files << table.codegen_files
+		mut muttable := unsafe { &ast.Table(table) }
+		muttable.codegen_files = []
 	}
 	return files
 }
@@ -3379,7 +3379,9 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			is_markused: is_markused
 		}
 		fields << field
-		p.table.global_scope.register(field)
+		lock p.table.global_scope {
+			p.table.global_scope.register(field)
+		}
 		comments = []
 		if !is_block {
 			break
@@ -3516,7 +3518,9 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 			is_volatile: is_volatile
 		}
 		fields << field
-		p.table.global_scope.register(field)
+		lock p.table.global_scope {
+			p.table.global_scope.register(field)
+		}
 		comments = []
 		if !is_block {
 			break
