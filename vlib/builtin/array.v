@@ -204,7 +204,9 @@ pub fn (mut a array) insert(i int, val voidptr) {
 			panic('array.insert: index out of range (i == $i, a.len == $a.len)')
 		}
 	}
-	a.ensure_cap(a.len + 1)
+	if a.len >= a.cap {
+		a.ensure_cap(a.len + 1)
+	}
 	unsafe {
 		vmemmove(a.get_unsafe(i + 1), a.get_unsafe(i), (a.len - i) * a.element_size)
 		a.set_unsafe(i, val)
@@ -569,7 +571,9 @@ fn (mut a array) set(i int, val voidptr) {
 }
 
 fn (mut a array) push(val voidptr) {
-	a.ensure_cap(a.len + 1)
+	if a.len >= a.cap {
+		a.ensure_cap(a.len + 1)
+	}
 	unsafe { vmemmove(&byte(a.data) + a.element_size * a.len, val, a.element_size) }
 	a.len++
 }
@@ -578,16 +582,15 @@ fn (mut a array) push(val voidptr) {
 // `val` is array.data and user facing usage is `a << [1,2,3]`
 [unsafe]
 pub fn (mut a3 array) push_many(val voidptr, size int) {
+	a3.ensure_cap(a3.len + size)
 	if a3.data == val && !isnil(a3.data) {
 		// handle `arr << arr`
 		copy := a3.clone()
-		a3.ensure_cap(a3.len + size)
 		unsafe {
 			// vmemcpy(a.data, copy.data, copy.element_size * copy.len)
 			vmemcpy(a3.get_unsafe(a3.len), copy.data, a3.element_size * size)
 		}
 	} else {
-		a3.ensure_cap(a3.len + size)
 		if !isnil(a3.data) && !isnil(val) {
 			unsafe { vmemcpy(a3.get_unsafe(a3.len), val, a3.element_size * size) }
 		}
