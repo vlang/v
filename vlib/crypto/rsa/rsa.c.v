@@ -1,12 +1,6 @@
 module rsa
 
-import crypto.rand
-
-#pkgconfig openssl
-
-#include <openssl/rsa.h>
-#include <openssl/pem.h>
-#include <openssl/err.h>
+import net.openssl
 
 pub struct RSAInstance {
 	pair &C.RSA
@@ -15,51 +9,8 @@ pub:
 	private_key []byte
 }
 
-[typedef]
-struct C.RSA {
-	engine voidptr
-	n      &C.BIGNUM
-	e      &C.BIGNUM
-	d      &C.BIGNUM
-	p      &C.BIGNUM
-	q      &C.BIGNUM
-}
-
-[typedef]
-struct C.BIGNUM {}
-
-[typedef]
-struct C.BIO {}
-
-fn C.RSA_generate_key_ex(&C.RSA, int, &C.BIGNUM, voidptr) int
-fn C.RSA_generate_key(int, u64, voidptr, voidptr) &C.RSA
-fn C.RSA_new() &C.RSA
-fn C.RSA_size(&C.RSA) int
-
-fn C.RSA_public_encrypt(int, voidptr, voidptr, &C.RSA, int) int
-fn C.RSA_private_decrypt(int, voidptr, voidptr, &C.RSA, int) int
-
-fn C.BN_new() &C.BIGNUM
-fn C.BN_free(&C.BIGNUM)
-fn C.BN_set_word(&C.BIGNUM, int)
-
-fn C.BIO_new(voidptr) &C.BIO
-fn C.BIO_s_mem()
-fn C.BIO_pending(&C.BIO) int
-fn C.BIO_read(&C.BIO, byteptr, int)
-
-fn C.ENGINE_set_default(voidptr, u32)
-
-fn C.RAND_seed(voidptr, int)
-fn C.RAND_status() int
-
-fn C.ERR_get_error() u64
-fn C.ERR_error_string(u64, charptr) charptr
-
-fn C.PEM_write_bio_RSAPrivateKey(&C.BIO, &C.RSA, voidptr, voidptr, int, voidptr, voidptr)
-fn C.PEM_write_bio_RSAPublicKey(&C.BIO, &C.RSA)
-
 pub fn gen_key_pair(len int, exp int) ?RSAInstance {
+	assert openssl.is_used == 1
 	rsa := C.RSA_new()
 	bn := C.BN_new()
 
