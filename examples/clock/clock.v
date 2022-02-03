@@ -4,7 +4,6 @@
 // See LICENSE for license information.
 import os
 import gg
-import gx
 import math
 import time
 
@@ -21,13 +20,13 @@ const (
 	// Padding of tic-mark to window border
 	tp          = 10
 
-	tic_color   = gx.Color{
+	tic_color   = gg.Color{
 		r: 50
 		g: 50
 		b: 50
 	}
-	hand_color        = gx.black
-	second_hand_color = gx.red
+	hand_color        = gg.black
+	second_hand_color = gg.red
 )
 
 struct App {
@@ -89,7 +88,7 @@ fn on_frame(mut app App) {
 
 // Rotate a polygon round the centerpoint
 [manualfree]
-fn draw_convex_poly_rotate(mut ctx gg.Context, dpi_scale f32, points []f32, c gx.Color, angle f32) {
+fn draw_convex_poly_rotate(mut ctx gg.Context, dpi_scale f32, points []f32, c gg.Color, angle f32) {
 	sa := math.sin(math.pi * angle / 180.0)
 	ca := math.cos(math.pi * angle / 180.0)
 
@@ -163,7 +162,7 @@ fn main() {
 		width: design_size
 		height: design_size
 		window_title: 'Clock!'
-		bg_color: gx.white
+		bg_color: gg.white
 		user_data: app
 		frame_fn: on_frame
 		event_fn: on_event

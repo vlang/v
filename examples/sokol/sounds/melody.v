@@ -1,5 +1,4 @@
 import gg
-import gx
 import sokol.audio
 
 const credits = 'Based on the ByteBeat formula from: https://www.youtube.com/watch?v=V4GfkFbDojc \n "Techno" by Gabriel Miceli'
@@ -41,7 +40,7 @@ fn main() {
 		user_data: state
 	)
 	state.gg = gg.new_context(
-		bg_color: gx.rgb(50, 50, 50)
+		bg_color: gg.rgb(50, 50, 50)
 		width: 1024
 		height: 400
 		create_window: true
@@ -69,7 +68,7 @@ fn (mut state AppState) draw() {
 	// first, reset and setup ortho projection
 	for x in 0 .. 1024 {
 		mut y := 100 * (state.frames[2 * x] + state.frames[2 * x + 1])
-		state.gg.draw_line(x, 200, x, 200 + y, gx.rgba(state.bsample(x), state.bsample(x + 300),
+		state.gg.draw_line(x, 200, x, 200 + y, gg.rgba(state.bsample(x), state.bsample(x + 300),
 			state.bsample(x + 700), 255))
 	}
 }

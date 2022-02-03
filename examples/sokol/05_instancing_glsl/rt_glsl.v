@@ -15,7 +15,6 @@
 **********************************************************************/
 import gg
 import gg.m4
-import gx
 import math
 
 import sokol.gfx
@@ -26,7 +25,7 @@ import time
 const (
 	win_width  = 800
 	win_height = 800
-	bg_color   = gx.white
+	bg_color   = gg.white
 	num_inst   = 16384
 )
 

@@ -1,12 +1,11 @@
 module objects
 
 import gg
-import gx
 import rand
 
 pub struct Rocket {
 pub mut:
-	color     gx.Color
+	color     gg.Color
 	pos       Vector
 	vel       Vector
 	accel     Vector

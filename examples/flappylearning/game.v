@@ -1,7 +1,6 @@
 module main
 
 import gg
-import gx
 import os
 import time
 import math
@@ -182,7 +181,7 @@ fn main() {
 		font_path = 'fonts/RobotoMono-Regular.ttf'
 	}
 	app.gg = gg.new_context(
-		bg_color: gx.white
+		bg_color: gg.white
 		width: win_width
 		height: win_height
 		create_window: true

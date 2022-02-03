@@ -11,7 +11,6 @@
 **********************************************************************/
 import os
 import gg
-import gx
 import sokol.gfx
 import sokol.sgl
 import sokol.sapp
@@ -42,7 +41,7 @@ const (
 const (
 	win_width       = 800
 	win_height      = 800
-	bg_color        = gx.black
+	bg_color        = gg.black
 	pi_2            = 3.14159265359 / 2.0
 	uv              = [f32(0), 0, 1, 0, 1, 1, 0, 1]! // used for zoom icon during rotations
 
@@ -563,13 +562,13 @@ fn draw_text(mut app App, in_txt string, in_x int, in_y int, fnt_sz f32) {
 	scale := app.gg.scale
 	font_size := int(fnt_sz * scale)
 
-	mut txt_conf_c0 := gx.TextCfg{
-		color: gx.white // gx.rgb( (c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff)
+	mut txt_conf_c0 := gg.TextCfg{
+		color: gg.white // gg.rgb( (c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff)
 		align: .left
 		size: font_size
 	}
-	mut txt_conf_c1 := gx.TextCfg{
-		color: gx.black // gx.rgb( (c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff)
+	mut txt_conf_c1 := gg.TextCfg{
+		color: gg.black // gg.rgb( (c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff)
 		align: .left
 		size: font_size
 	}

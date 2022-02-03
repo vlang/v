@@ -1,7 +1,6 @@
 module main
 
 import gg
-import gx
 
 struct App {
 mut:
@@ -29,7 +28,7 @@ fn main() {
 		pixels: pixels
 	}
 	app.gg = gg.new_context(
-		bg_color: gx.rgb(174, 198, 255)
+		bg_color: gg.rgb(174, 198, 255)
 		width: 100
 		height: 100
 		window_title: 'Set Pixels'
@@ -43,12 +42,12 @@ fn frame(mut app App) {
 	app.gg.begin()
 
 	// Draw a blue pixel near each corner. (Find your magnifying glass)
-	app.gg.draw_pixel(2, 2, gx.blue)
-	app.gg.draw_pixel(app.gg.width - 2, 2, gx.blue)
-	app.gg.draw_pixel(app.gg.width - 2, app.gg.height - 2, gx.blue)
-	app.gg.draw_pixel(2, app.gg.height - 2, gx.blue)
+	app.gg.draw_pixel(2, 2, gg.blue)
+	app.gg.draw_pixel(app.gg.width - 2, 2, gg.blue)
+	app.gg.draw_pixel(app.gg.width - 2, app.gg.height - 2, gg.blue)
+	app.gg.draw_pixel(2, app.gg.height - 2, gg.blue)
 
 	// Draw pixels in a grid-like pattern.
-	app.gg.draw_pixels(app.pixels, gx.red)
+	app.gg.draw_pixels(app.pixels, gg.red)
 	app.gg.end()
 }

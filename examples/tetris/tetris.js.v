@@ -5,7 +5,6 @@ module main
 
 import rand
 import time
-import gx
 import gg
 // import sokol.sapp
 
@@ -22,15 +21,15 @@ const (
 )
 
 const (
-	text_cfg = gx.TextCfg{
+	text_cfg = gg.TextCfg{
 		align: .left
 		size: text_size
-		color: gx.rgb(0, 0, 0)
+		color: gg.rgb(0, 0, 0)
 	}
-	over_cfg = gx.TextCfg{
+	over_cfg = gg.TextCfg{
 		align: .left
 		size: text_size
-		color: gx.white
+		color: gg.white
 	}
 )
 
@@ -52,18 +51,18 @@ const (
 	]
 	// Each tetro has its unique color
 	colors           = [
-		gx.rgb(0, 0, 0), /* unused ? */
-		gx.rgb(255, 242, 0), /* yellow quad */
-		gx.rgb(174, 0, 255), /* purple triple */
-		gx.rgb(60, 255, 0), /* green short topright */
-		gx.rgb(255, 0, 0), /* red short topleft */
-		gx.rgb(255, 180, 31), /* orange long topleft */
-		gx.rgb(33, 66, 255), /* blue long topright */
-		gx.rgb(74, 198, 255), /* lightblue longest */
-		gx.rgb(0, 170, 170),
+		gg.rgb(0, 0, 0), /* unused ? */
+		gg.rgb(255, 242, 0), /* yellow quad */
+		gg.rgb(174, 0, 255), /* purple triple */
+		gg.rgb(60, 255, 0), /* green short topright */
+		gg.rgb(255, 0, 0), /* red short topleft */
+		gg.rgb(255, 180, 31), /* orange long topleft */
+		gg.rgb(33, 66, 255), /* blue long topright */
+		gg.rgb(74, 198, 255), /* lightblue longest */
+		gg.rgb(0, 170, 170),
 	]
-	background_color = gx.white
-	ui_color         = gx.rgba(255, 0, 0, 210)
+	background_color = gg.white
+	ui_color         = gg.rgba(255, 0, 0, 210)
 )
 
 // TODO: type Tetro [tetro_size]struct{ x, y int }
@@ -163,7 +162,7 @@ fn main() {
 	}
 
 	game.gg = gg.new_context(
-		bg_color: gx.white
+		bg_color: gg.white
 		width: win_width
 		height: win_height
 		create_window: true
@@ -220,7 +219,7 @@ fn (mut g Game) draw_ghost() {
 		pos_y := g.move_ghost()
 		for i in 0 .. tetro_size {
 			tetro := g.tetro[i]
-			g.draw_block_color(pos_y + tetro.y, g.pos_x + tetro.x, gx.rgba(125, 125, 225,
+			g.draw_block_color(pos_y + tetro.y, g.pos_x + tetro.x, gg.rgba(125, 125, 225,
 				40))
 		}
 	}
@@ -349,18 +348,18 @@ fn (mut g Game) draw_next_tetro() {
 		pos_x := field_width / 2 - tetro_size / 2
 		for i in 0 .. tetro_size {
 			block := next_tetro[i]
-			g.draw_block_color(pos_y + block.y, pos_x + block.x, gx.rgb(220, 220, 220))
+			g.draw_block_color(pos_y + block.y, pos_x + block.x, gg.rgb(220, 220, 220))
 		}
 	}
 }
 
-fn (mut g Game) draw_block_color(i int, j int, color gx.Color) {
+fn (mut g Game) draw_block_color(i int, j int, color gg.Color) {
 	g.gg.draw_rect(f32((j - 1) * g.block_size) + g.margin, f32((i - 1) * g.block_size),
 		f32(g.block_size - 1), f32(g.block_size - 1), color)
 }
 
 fn (mut g Game) draw_block(i int, j int, color_idx int) {
-	color := if g.state == .gameover { gx.gray } else { colors[color_idx] }
+	color := if g.state == .gameover { gg.gray } else { colors[color_idx] }
 	g.draw_block_color(i, j, color)
 }
 

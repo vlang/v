@@ -1,14 +1,13 @@
 module main
 
 import gg
-import gx
 import os
 import math
 
 const (
 	win_width  = 600
 	win_height = 700
-	bg_color   = gx.white
+	bg_color   = gg.white
 )
 
 const (
@@ -92,7 +91,7 @@ fn frame(mut app App) {
 	if scale_factor <= 0 {
 		scale_factor = 1
 	}
-	text_cfg := gx.TextCfg{
+	text_cfg := gg.TextCfg{
 		size: 16 * int(scale_factor)
 	}
 	mut y := 10

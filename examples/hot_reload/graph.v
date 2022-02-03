@@ -1,6 +1,5 @@
 module main
 
-import gx
 import gg
 import time
 import math
@@ -28,7 +27,7 @@ fn main() {
 		create_window: true
 		frame_fn: frame
 		resizable: true
-		bg_color: gx.white
+		bg_color: gg.white
 	)
 	context.gg.run()
 }
@@ -48,17 +47,17 @@ fn (ctx &Context) draw() {
 		w /= 2
 		h /= 2
 	}
-	ctx.gg.draw_line(0, h / 2, w, h / 2, gx.gray) // x axis
-	ctx.gg.draw_line(w / 2, 0, w / 2, h, gx.gray) // y axis
+	ctx.gg.draw_line(0, h / 2, w, h / 2, gg.gray) // x axis
+	ctx.gg.draw_line(w / 2, 0, w / 2, h, gg.gray) // y axis
 	atime := f64(time.ticks() / 10)
 	stime := math.sin(2.0 * math.pi * f64(time.ticks() % 6000) / 6000)
 	mut y := 0.0
-	blue := gx.Color{
+	blue := gg.Color{
 		r: 100
 		g: 100
 		b: 200
 	}
-	red := gx.Color{
+	red := gg.Color{
 		r: 200
 		g: 100
 		b: 100
