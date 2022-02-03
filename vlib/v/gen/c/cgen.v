@@ -25,11 +25,19 @@ const (
 		'sizeof', 'static', 'string', 'struct', 'switch', 'typedef', 'typename', 'union', 'unix',
 		'unsigned', 'void', 'volatile', 'while', 'template', 'small', 'stdout', 'stdin', 'stderr']
 	c_reserved_map = string_array_to_map(c_reserved)
-	// same order as in token.Kind
-	cmp_str        = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
-	// when operands are switched
-	cmp_rev        = ['eq', 'ne', 'lt', 'gt', 'le', 'ge']
 )
+
+const cmp_str = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
+
+// same order as in token.Kind
+
+const cmp_rev = ['eq', 'ne', 'lt', 'gt', 'le', 'ge']
+
+// when operands are switched
+
+const builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'IError', 'Option']
+
+const skip_struct_init = ['struct stat', 'struct addrinfo']
 
 fn string_array_to_map(a []string) map[string]bool {
 	mut res := map[string]bool{}
@@ -5333,10 +5341,6 @@ fn (mut g Gen) go_back_out(n int) {
 	g.out.go_back(n)
 }
 
-const (
-	skip_struct_init = ['struct stat', 'struct addrinfo']
-)
-
 fn (mut g Gen) struct_init(node ast.StructInit) {
 	styp := g.typ(node.typ)
 	mut shared_styp := '' // only needed for shared x := St{...
@@ -5755,10 +5759,6 @@ fn (mut g Gen) write_init_function() {
 	}
 }
 
-const (
-	builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'IError', 'Option']
-)
-
 fn (mut g Gen) write_builtin_types() {
 	if g.pref.no_builtin {
 		return
@@ -5791,9 +5791,9 @@ fn (mut g Gen) write_sorted_types() {
 	// sort structs
 	sorted_symbols := g.sort_structs(symbols)
 	// Generate C code
-	g.type_definitions.writeln('// builtin types:')
-	g.type_definitions.writeln('//------------------ #endbuiltin')
+	g.type_definitions.writeln('// type_definitions:')
 	g.write_types(sorted_symbols)
+	g.type_definitions.writeln('// end of type_definitions')
 }
 
 fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
