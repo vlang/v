@@ -1,5 +1,5 @@
-vlib/v/checker/tests/cannot_cast_to_alias.vv:6:7: error: cannot convert type `int literal` to `MyType` (alias to `string`)
-    4 |
+vlib/v/checker/tests/cannot_cast_to_alias.vv:6:7: error: cannot cast `int literal` to `MyType` (alias to `string`)
+    4 | 
     5 | fn main() {
     6 |     _ := MyType(5)
       |          ~~~~~~~~~
