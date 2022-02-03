@@ -712,6 +712,7 @@ A string can be converted to runes by the `.runes()` method.
 ```v
 hello := 'Hello World 👋'
 hello_runes := hello.runes() // [`H`, `e`, `l`, `l`, `o`, ` `, `W`, `o`, `r`, `l`, `d`, ` `, `👋`]
+assert hello_runes.string() == hello
 ```
 
 ### Numbers
