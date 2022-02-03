@@ -1,4 +1,5 @@
 import gx
+// DEPRECATED
 
 fn test_hex() {
 	// valid colors

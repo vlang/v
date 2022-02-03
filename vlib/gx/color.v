@@ -1,5 +1,6 @@
 module gx
 
+// DEPRECATED
 import gg
 
 pub const (
