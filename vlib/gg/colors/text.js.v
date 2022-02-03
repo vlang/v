@@ -1,4 +1,4 @@
-module gx
+module colors
 
 pub enum HorizontalAlign {
 	left

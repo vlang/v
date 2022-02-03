@@ -1,4 +1,4 @@
-module gx
+module colors
 
 pub const (
 	black = Color{
@@ -292,7 +292,7 @@ const (
 )
 
 pub fn color_from_string(s string) Color {
-	return gx.string_colors[s]
+	return colors.string_colors[s]
 }
 
 pub fn (c Color) to_css_string() string {

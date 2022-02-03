@@ -1,4 +1,4 @@
-module gx
+module colors
 
 import fontstash
 
