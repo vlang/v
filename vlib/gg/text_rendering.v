@@ -2,8 +2,6 @@
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module gg
 
-import gx
-
 struct FTConfig {
 	font_path             string
 	custom_bold_font_path string
@@ -19,7 +17,7 @@ struct StringToRender {
 	x    int
 	y    int
 	text string
-	cfg  gx.TextCfg
+	cfg  TextCfg
 }
 
 [if debug_font ?]

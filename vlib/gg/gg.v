@@ -3,8 +3,6 @@
 
 module gg
 
-import gx
-
 pub type FNCb = fn (data voidptr)
 
 pub type FNEvent = fn (e &Event, data voidptr)

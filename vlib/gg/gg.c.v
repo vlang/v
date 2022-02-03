@@ -5,7 +5,6 @@ module gg
 
 import os
 import os.font
-import gx
 import sokol
 import sokol.sapp
 import sokol.sgl

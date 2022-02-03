@@ -1,6 +1,5 @@
 module gg
 
-import gx
 import js.dom
 
 pub enum DOMEventType {
