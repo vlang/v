@@ -125,8 +125,11 @@ NB: the build flags are shared with the run command too:
    -skip-unused
       Skip generating C/JS code for functions, that are provably not used by your project.
       This speeds up compilation, and reduces the generated output size.
-      It is still experimental, due to historical reasons, but please do try it,
-      and report issues, if compilation breaks with that option for your program.
+      Turned on by default since 2022/02/03. Please report issues, if compilation breaks
+      for your program, but is successfull with `-no-skip-unused`.
+	  
+   -no-skip-unused
+      Turn off skipping of unused C/JS code. Used for diagnosing problems with the skip unused mode.
 
    -stats
       Enable more detailed statistics reporting, while compiling test files.

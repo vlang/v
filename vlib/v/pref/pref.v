@@ -184,7 +184,7 @@ pub mut:
 	only_check_syntax   bool // when true, just parse the files, then stop, before running checker
 	check_only          bool // same as only_check_syntax, but also runs the checker
 	experimental        bool // enable experimental features
-	skip_unused         bool // skip generating C code for functions, that are not used
+	skip_unused         bool = true // skip generating C code for functions, that are not used
 	show_timings        bool // show how much time each compiler stage took
 	is_ios_simulator    bool
 	is_apk              bool     // build as Android .apk format
@@ -400,6 +400,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-skip-unused' {
 				res.skip_unused = true
+			}
+			'-no-skip-unused' {
+				res.skip_unused = false
 			}
 			'-compress' {
 				res.compress = true
