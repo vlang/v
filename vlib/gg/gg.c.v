@@ -60,7 +60,7 @@ pub:
 	window_title      string
 	borderless_window bool
 	always_on_top     bool
-	bg_color          gx.Color
+	bg_color          Color
 	init_fn           FNCb   = voidptr(0)
 	frame_fn          FNCb   = voidptr(0)
 	native_frame_fn   FNCb   = voidptr(0)
@@ -439,7 +439,7 @@ pub fn (ctx &Context) quit() {
 	sapp.request_quit() // does not require ctx right now, but sokol multi-window might in the future
 }
 
-pub fn (mut ctx Context) set_bg_color(c gx.Color) {
+pub fn (mut ctx Context) set_bg_color(c Color) {
 	ctx.clear_pass = gfx.create_clear_pass(f32(c.r) / 255.0, f32(c.g) / 255.0, f32(c.b) / 255.0,
 		f32(c.a) / 255.0)
 }

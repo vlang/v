@@ -10,7 +10,7 @@ import math
 //---- pixel
 
 [inline]
-pub fn (ctx &Context) draw_pixel(x f32, y f32, c gx.Color) {
+pub fn (ctx &Context) draw_pixel(x f32, y f32, c Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -23,7 +23,7 @@ pub fn (ctx &Context) draw_pixel(x f32, y f32, c gx.Color) {
 
 // Sets pixels from an array of points [x, y, x2, y2, etc...]
 [direct_array_access; inline]
-pub fn (ctx &Context) draw_pixels(points []f32, c gx.Color) {
+pub fn (ctx &Context) draw_pixels(points []f32, c Color) {
 	assert points.len % 2 == 0
 	len := points.len / 2
 
@@ -43,7 +43,7 @@ pub fn (ctx &Context) draw_pixels(points []f32, c gx.Color) {
 //---- line
 
 // Draws a line between the points provided
-pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c gx.Color) {
+pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c Color) {
 	$if macos {
 		if ctx.native_rendering {
 			// Make the line more clear on hi dpi screens: draw a rectangle
@@ -123,7 +123,7 @@ pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config
 
 // draw_empty_poly draws the borders of a polygon, given an array of points, and a color.
 // Note that the points must be given in clockwise order.
-pub fn (ctx &Context) draw_poly_empty(points []f32, c gx.Color) {
+pub fn (ctx &Context) draw_poly_empty(points []f32, c Color) {
 	assert points.len % 2 == 0
 	len := points.len / 2
 	assert len >= 3
@@ -143,7 +143,7 @@ pub fn (ctx &Context) draw_poly_empty(points []f32, c gx.Color) {
 
 // draw_convex_poly draws a convex polygon, given an array of points, and a color.
 // Note that the points must be given in clockwise order.
-pub fn (ctx &Context) draw_convex_poly(points []f32, c gx.Color) {
+pub fn (ctx &Context) draw_convex_poly(points []f32, c Color) {
 	assert points.len % 2 == 0
 	len := points.len / 2
 	assert len >= 3
@@ -170,7 +170,7 @@ pub fn (ctx &Context) draw_convex_poly(points []f32, c gx.Color) {
 
 //---- rectangle
 
-pub fn (ctx &Context) draw_rect_empty(x f32, y f32, w f32, h f32, c gx.Color) {
+pub fn (ctx &Context) draw_rect_empty(x f32, y f32, w f32, h f32, c Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -184,7 +184,7 @@ pub fn (ctx &Context) draw_rect_empty(x f32, y f32, w f32, h f32, c gx.Color) {
 	sgl.end()
 }
 
-pub fn (ctx &Context) draw_rect_filled(x f32, y f32, w f32, h f32, c gx.Color) {
+pub fn (ctx &Context) draw_rect_filled(x f32, y f32, w f32, h f32, c Color) {
 	$if macos {
 		if ctx.native_rendering {
 			C.darwin_draw_rect(x, ctx.height - (y + h), w, h, c)
@@ -204,7 +204,7 @@ pub fn (ctx &Context) draw_rect_filled(x f32, y f32, w f32, h f32, c gx.Color) {
 }
 
 // draw_rounded_rect_empty draws the outline of a rounded rectangle
-pub fn (ctx &Context) draw_rounded_rect_empty(x f32, y f32, w f32, h f32, radius f32, c gx.Color) {
+pub fn (ctx &Context) draw_rounded_rect_empty(x f32, y f32, w f32, h f32, radius f32, c Color) {
 	mut theta := f32(0)
 	mut xx := f32(0)
 	mut yy := f32(0)
@@ -263,7 +263,7 @@ pub fn (ctx &Context) draw_rounded_rect_empty(x f32, y f32, w f32, h f32, radius
 }
 
 // draw_rounded_rect_filled draws a filled rounded rectangle
-pub fn (ctx &Context) draw_rounded_rect_filled(x f32, y f32, w f32, h f32, radius f32, c gx.Color) {
+pub fn (ctx &Context) draw_rounded_rect_filled(x f32, y f32, w f32, h f32, radius f32, c Color) {
 	sgl.c4b(c.r, c.g, c.b, c.a)
 	sgl.begin_triangle_strip()
 	mut theta := f32(0)
@@ -333,7 +333,7 @@ pub fn (ctx &Context) draw_rounded_rect_filled(x f32, y f32, w f32, h f32, radiu
 
 //---- triangle
 
-pub fn (ctx &Context) draw_triangle_empty(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32, c gx.Color) {
+pub fn (ctx &Context) draw_triangle_empty(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32, c Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -347,7 +347,7 @@ pub fn (ctx &Context) draw_triangle_empty(x f32, y f32, x2 f32, y2 f32, x3 f32, 
 	sgl.end()
 }
 
-pub fn (ctx &Context) draw_triangle_filled(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32, c gx.Color) {
+pub fn (ctx &Context) draw_triangle_filled(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32, c Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -362,12 +362,12 @@ pub fn (ctx &Context) draw_triangle_filled(x f32, y f32, x2 f32, y2 f32, x3 f32,
 //---- square
 
 [inline]
-pub fn (ctx &Context) draw_square_empty(x f32, y f32, s f32, c gx.Color) {
+pub fn (ctx &Context) draw_square_empty(x f32, y f32, s f32, c Color) {
 	ctx.draw_rect_empty(x, y, s, s, c)
 }
 
 [inline]
-pub fn (ctx &Context) draw_square_filled(x f32, y f32, s f32, c gx.Color) {
+pub fn (ctx &Context) draw_square_filled(x f32, y f32, s f32, c Color) {
 	ctx.draw_rect_filled(x, y, s, s, c)
 }
 
@@ -390,7 +390,7 @@ fn radius_to_segments(r f32) int {
 }
 
 // draw_circle_empty draws an empty circle
-pub fn (ctx &Context) draw_circle_empty(x f32, y f32, radius f32, c gx.Color) {
+pub fn (ctx &Context) draw_circle_empty(x f32, y f32, radius f32, c Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -415,12 +415,12 @@ pub fn (ctx &Context) draw_circle_empty(x f32, y f32, radius f32, c gx.Color) {
 }
 
 // draw_circle_filled draws a filled circle
-pub fn (ctx &Context) draw_circle_filled(x f32, y f32, radius f32, c gx.Color) {
+pub fn (ctx &Context) draw_circle_filled(x f32, y f32, radius f32, c Color) {
 	ctx.draw_circle_with_segments(x, y, radius, radius_to_segments(radius), c)
 }
 
 // draw_circle_with_segments draws a circle with a specific number of segments (affects how smooth/round the circle is)
-pub fn (ctx &Context) draw_circle_with_segments(x f32, y f32, radius f32, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_circle_with_segments(x f32, y f32, radius f32, segments int, c Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -442,7 +442,7 @@ pub fn (ctx &Context) draw_circle_with_segments(x f32, y f32, radius f32, segmen
 	sgl.end()
 }
 
-pub fn (ctx &Context) draw_circle_line(x f32, y f32, r int, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_circle_line(x f32, y f32, r int, segments int, c Color) {
 	$if macos {
 		if ctx.native_rendering {
 			C.darwin_draw_circle(x - r + 1, ctx.height - (y + r + 3), r, c)
@@ -472,7 +472,7 @@ pub fn (ctx &Context) draw_circle_line(x f32, y f32, r int, segments int, c gx.C
 //---- slice
 
 // draw_slice_empty draws the outline of a circle slice/pie
-pub fn (ctx &Context) draw_slice_empty(x f32, y f32, outer_radius f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_slice_empty(x f32, y f32, outer_radius f32, start_angle f32, end_angle f32, segments int, c Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -500,7 +500,7 @@ pub fn (ctx &Context) draw_slice_empty(x f32, y f32, outer_radius f32, start_ang
 }
 
 // draw_slice_filled draws a filled circle slice/pie
-pub fn (ctx &Context) draw_slice_filled(x f32, y f32, radius f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_slice_filled(x f32, y f32, radius f32, start_angle f32, end_angle f32, segments int, c Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -529,7 +529,7 @@ pub fn (ctx &Context) draw_slice_filled(x f32, y f32, radius f32, start_angle f3
 //---- arc
 
 // draw_arc_empty draws the outline of an arc
-pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_radius f32, thickness f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_radius f32, thickness f32, start_angle f32, end_angle f32, segments int, c Color) {
 	if start_angle == end_angle || inner_radius <= 0.0 {
 		return
 	}
@@ -585,7 +585,7 @@ pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_radius f32, thickness f
 }
 
 // draw_arc_filled draws a filled arc
-pub fn (ctx &Context) draw_arc_filled(x f32, y f32, inner_radius f32, thickness f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_arc_filled(x f32, y f32, inner_radius f32, thickness f32, start_angle f32, end_angle f32, segments int, c Color) {
 	if start_angle == end_angle || inner_radius <= 0.0 {
 		return
 	}
@@ -626,7 +626,7 @@ pub fn (ctx &Context) draw_arc_filled(x f32, y f32, inner_radius f32, thickness 
 //---- ellipse
 
 // draw_ellipse_empty draws the outline of an ellipse, with a center at x,y
-pub fn (ctx &Context) draw_ellipse_empty(x f32, y f32, rw f32, rh f32, c gx.Color) {
+pub fn (ctx &Context) draw_ellipse_empty(x f32, y f32, rw f32, rh f32, c Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -642,7 +642,7 @@ pub fn (ctx &Context) draw_ellipse_empty(x f32, y f32, rw f32, rh f32, c gx.Colo
 }
 
 // draw_ellipse_filled - draws an opaque elipse, with a center at x,y , filled with the color `c`
-pub fn (ctx &Context) draw_ellipse_filled(x f32, y f32, rw f32, rh f32, c gx.Color) {
+pub fn (ctx &Context) draw_ellipse_filled(x f32, y f32, rw f32, rh f32, c Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -664,7 +664,7 @@ pub fn (ctx &Context) draw_ellipse_filled(x f32, y f32, rw f32, rh f32, c gx.Col
 // The four points is provided as one `points` array which contains a stream of point pairs (x and y coordinates).
 // Thus a cubic Bézier could be declared as: `points := [x1, y1, control_x1, control_y1, control_x2, control_y2, x2, y2]`.
 // Please see `draw_cubic_bezier_in_steps` to control the amount of steps (segments) used to draw the curve.
-pub fn (ctx &Context) draw_cubic_bezier(points []f32, c gx.Color) {
+pub fn (ctx &Context) draw_cubic_bezier(points []f32, c Color) {
 	ctx.draw_cubic_bezier_in_steps(points, u32(30 * ctx.scale), c)
 }
 
@@ -673,7 +673,7 @@ pub fn (ctx &Context) draw_cubic_bezier(points []f32, c gx.Color) {
 // taken to draw the curve.
 // The four points is provided as one `points` array which contains a stream of point pairs (x and y coordinates).
 // Thus a cubic Bézier could be declared as: `points := [x1, y1, control_x1, control_y1, control_x2, control_y2, x2, y2]`.
-pub fn (ctx &Context) draw_cubic_bezier_in_steps(points []f32, steps u32, c gx.Color) {
+pub fn (ctx &Context) draw_cubic_bezier_in_steps(points []f32, steps u32, c Color) {
 	assert steps > 0
 	assert points.len == 8
 
@@ -715,99 +715,99 @@ pub fn (ctx &Context) draw_cubic_bezier_in_steps(points []f32, steps u32, c gx.C
 
 // Sets a pixel
 [deprecated: 'use draw_pixel() instead']
-pub fn (ctx &Context) set_pixel(x f32, y f32, c gx.Color) {
+pub fn (ctx &Context) set_pixel(x f32, y f32, c Color) {
 	ctx.draw_pixel(x, y, c)
 }
 
 [deprecated: 'use draw_pixels() instead']
-pub fn (ctx &Context) set_pixels(points []f32, c gx.Color) {
+pub fn (ctx &Context) set_pixels(points []f32, c Color) {
 	ctx.draw_pixels(points, c)
 }
 
 [deprecated: 'use draw_poly_empty() instead']
-pub fn (ctx &Context) draw_empty_poly(points []f32, c gx.Color) {
+pub fn (ctx &Context) draw_empty_poly(points []f32, c Color) {
 	ctx.draw_poly_empty(points, c)
 }
 
 // TODO: Fix alpha
 [deprecated: 'use draw_rect_filled() instead']
-pub fn (ctx &Context) draw_rect(x f32, y f32, w f32, h f32, c gx.Color) {
+pub fn (ctx &Context) draw_rect(x f32, y f32, w f32, h f32, c Color) {
 	ctx.draw_rect_filled(x, y, w, h, c)
 }
 
 // Draws the outline of a rectangle
 [deprecated: 'use draw_rect_empty() instead']
-pub fn (ctx &Context) draw_empty_rect(x f32, y f32, w f32, h f32, c gx.Color) {
+pub fn (ctx &Context) draw_empty_rect(x f32, y f32, w f32, h f32, c Color) {
 	ctx.draw_rect_empty(x, y, w, h, c)
 }
 
 [deprecated: 'use draw_rounded_rect_empty()']
-pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, w f32, h f32, radius f32, c gx.Color) {
+pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, w f32, h f32, radius f32, c Color) {
 	ctx.draw_rounded_rect_empty(x, y, w, h, radius, c)
 }
 
 [deprecated: 'use draw_rounded_rect_filled()']
-pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, w f32, h f32, radius f32, c gx.Color) {
+pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, w f32, h f32, radius f32, c Color) {
 	ctx.draw_rounded_rect_filled(x, y, w, h, radius, c)
 }
 
 // Draws the outline of a triangle
 [deprecated: 'use draw_triangle_empty() instead']
-pub fn (ctx &Context) draw_empty_triangle(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32, c gx.Color) {
+pub fn (ctx &Context) draw_empty_triangle(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32, c Color) {
 	ctx.draw_triangle_empty(x, y, x2, y2, x3, y3, c)
 }
 
 // Draws a filled triangle
 [deprecated: 'use draw_triangle_filled() instead']
-pub fn (ctx &Context) draw_triangle(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32, c gx.Color) {
+pub fn (ctx &Context) draw_triangle(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32, c Color) {
 	ctx.draw_triangle_filled(x, y, x2, y2, x3, y3, c)
 }
 
 // Draws the outline of a square
 [deprecated: 'use draw_square_empty() instead']
-pub fn (ctx &Context) draw_empty_square(x f32, y f32, s f32, c gx.Color) {
+pub fn (ctx &Context) draw_empty_square(x f32, y f32, s f32, c Color) {
 	ctx.draw_square_empty(x, y, s, c)
 }
 
 // Draws a filled square
 [deprecated: 'use draw_square_filled() instead']
-pub fn (ctx &Context) draw_square(x f32, y f32, s f32, c gx.Color) {
+pub fn (ctx &Context) draw_square(x f32, y f32, s f32, c Color) {
 	ctx.draw_square_filled(x, y, s, c)
 }
 
 [deprecated: 'use draw_circle_filled() instead']
-pub fn (ctx &Context) draw_circle(x f32, y f32, radius f32, c gx.Color) {
+pub fn (ctx &Context) draw_circle(x f32, y f32, radius f32, c Color) {
 	ctx.draw_circle_filled(x, y, radius, c)
 }
 
 [deprecated: 'use draw_slice_empty() instead']
-pub fn (ctx &Context) draw_empty_slice(x f32, y f32, radius f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_empty_slice(x f32, y f32, radius f32, start_angle f32, end_angle f32, segments int, c Color) {
 	ctx.draw_slice_empty(x, y, radius, start_angle, end_angle, segments, c)
 }
 
 [deprecated: 'use draw_slice_filled() instead']
-pub fn (ctx &Context) draw_slice(x f32, y f32, radius f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_slice(x f32, y f32, radius f32, start_angle f32, end_angle f32, segments int, c Color) {
 	ctx.draw_slice_filled(x, y, radius, start_angle, end_angle, segments, c)
 }
 
 [deprecated: 'use draw_arc_empty() instead']
-pub fn (ctx &Context) draw_empty_arc(x f32, y f32, inner_radius f32, thickness f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_empty_arc(x f32, y f32, inner_radius f32, thickness f32, start_angle f32, end_angle f32, segments int, c Color) {
 	ctx.draw_arc_empty(x, y, inner_radius, thickness, start_angle, end_angle, segments,
 		c)
 }
 
 [deprecated: 'use draw_arc_filled() instead']
-pub fn (ctx &Context) draw_arc(x f32, y f32, inner_radius f32, thickness f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_arc(x f32, y f32, inner_radius f32, thickness f32, start_angle f32, end_angle f32, segments int, c Color) {
 	ctx.draw_arc_filled(x, y, inner_radius, thickness, start_angle, end_angle, segments,
 		c)
 }
 
 [deprecated: 'use draw_ellipse_empty() instead']
-pub fn (ctx &Context) draw_empty_ellipse(x f32, y f32, rw f32, rh f32, c gx.Color) {
+pub fn (ctx &Context) draw_empty_ellipse(x f32, y f32, rw f32, rh f32, c Color) {
 	ctx.draw_ellipse_empty(x, y, rw, rh, c)
 }
 
 [deprecated: 'use draw_ellipse_filled() instead']
-pub fn (ctx &Context) draw_ellipse(x f32, y f32, rw f32, rh f32, c gx.Color) {
+pub fn (ctx &Context) draw_ellipse(x f32, y f32, rw f32, rh f32, c Color) {
 	ctx.draw_ellipse_filled(x, y, rw, rh, c)
 }
