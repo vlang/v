@@ -541,10 +541,10 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	defer {
 		c.expected_type = former_expected_type
 	}
-	left_type := c.expr(node.left)
+	mut left_type := c.expr(node.left)
 	node.left_type = left_type
 	c.expected_type = left_type
-	right_type := c.expr(node.right)
+	mut right_type := c.expr(node.right)
 	node.right_type = right_type
 	if left_type.is_number() && !left_type.is_ptr()
 		&& right_type in [ast.int_literal_type, ast.float_literal_type] {
@@ -794,6 +794,18 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					c.error('cannot use `$node.op` as `<` operator method is not defined',
 						left_right_pos)
 				} else if !left_sym.has_method('<') && node.op == .gt {
+					c.error('cannot use `>` as `<=` operator method is not defined', left_right_pos)
+				}
+			} else if left_type.has_flag(.generic) && right_type.has_flag(.generic) {
+				// Try to unwrap the generic type to make sure that
+				// the below check works as expected
+				left_gen_type := c.unwrap_generic(left_type)
+				gen_sym := c.table.sym(left_gen_type)
+				need_overload := gen_sym.kind in [.struct_, .interface_]
+				if need_overload && !gen_sym.has_method('<') && node.op in [.ge, .le] {
+					c.error('cannot use `$node.op` as `<` operator method is not defined',
+						left_right_pos)
+				} else if need_overload && !gen_sym.has_method('<') && node.op == .gt {
 					c.error('cannot use `>` as `<=` operator method is not defined', left_right_pos)
 				}
 			}

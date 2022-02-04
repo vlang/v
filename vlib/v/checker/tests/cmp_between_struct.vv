@@ -7,6 +7,7 @@ struct Item {
 }
 
 // Issue https://github.com/vlang/v/issues/13318
+
 /*
 fn (a Item) < (b Item) bool {
 	return a.priority < b.priority
