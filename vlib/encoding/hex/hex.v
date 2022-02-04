@@ -42,7 +42,7 @@ pub fn decode(s string) ?[]byte {
 // output will always be a string with length a multiple of 2.
 [manualfree]
 pub fn encode(bytes []byte) string {
-	mut sb := strings.new_builder(bytes.len << 1)
+	mut sb := strings.new_builder(bytes.len * 2)
 	for b in bytes {
 		sb.write_string(b.hex())
 	}
