@@ -638,6 +638,9 @@ pub fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 		bs_name += ', '
 		bs_cname += '_'
 	}
+	if !is_instance {
+		p.struct_init_generic_types = concrete_types
+	}
 	concrete_types_pos := start_pos.extend(p.tok.pos())
 	p.check(.gt)
 	p.inside_generic_params = false
