@@ -68,6 +68,8 @@ fn color(kind string, msg string) string {
 	return term.magenta(msg)
 }
 
+const normalised_workdir = os.wd_at_startup.replace('\\', '/') + '/'
+
 // formatted_error - `kind` may be 'error' or 'warn'
 pub fn formatted_error(kind string, omsg string, filepath string, pos token.Pos) string {
 	emsg := omsg.replace('main.', '')
@@ -76,10 +78,11 @@ pub fn formatted_error(kind string, omsg string, filepath string, pos token.Pos)
 	if verror_paths_override == 'absolute' {
 		path = os.real_path(path)
 	} else {
-		// Get relative path
-		workdir := os.getwd() + os.path_separator
-		if path.starts_with(workdir) {
-			path = path.replace(workdir, '')
+		// always use `/` in the error paths, to ensure the compiler output does not vary in the tests:
+		path = path.replace('\\', '/')
+		if path.starts_with(util.normalised_workdir) {
+			// Get a relative path to the compiler's workdir, when possible:
+			path = path.replace_once(util.normalised_workdir, '')
 		}
 	}
 	//
