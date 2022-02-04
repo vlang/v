@@ -27,67 +27,68 @@ mut:
 	scanner           &scanner.Scanner
 	comments_mode     scanner.CommentsMode = .skip_comments
 	// see comment in parse_file
-	tok                   token.Token
-	prev_tok              token.Token
-	peek_tok              token.Token
-	table                 &ast.Table
-	language              ast.Language
-	fn_language           ast.Language // .c for `fn C.abcd()` declarations
-	expr_level            int  // prevent too deep recursions for pathological programs
-	inside_vlib_file      bool // true for all vlib/ files
-	inside_test_file      bool // when inside _test.v or _test.vv file
-	inside_if             bool
-	inside_if_expr        bool
-	inside_ct_if_expr     bool
-	inside_or_expr        bool
-	inside_for            bool
-	inside_fn             bool // true even with implicit main
-	inside_unsafe_fn      bool
-	inside_str_interp     bool
-	inside_array_lit      bool
-	inside_in_array       bool
-	inside_match          bool // to separate `match A { }` from `Struct{}`
-	inside_select         bool // to allow `ch <- Struct{} {` inside `select`
-	inside_match_case     bool // to separate `match_expr { }` from `Struct{}`
-	inside_match_body     bool // to fix eval not used TODO
-	inside_unsafe         bool
-	inside_sum_type       bool // to prevent parsing inline sum type again
-	inside_asm_template   bool
-	inside_asm            bool
-	inside_defer          bool
-	inside_generic_params bool       // indicates if parsing between `<` and `>` of a method/function
-	inside_receiver_param bool       // indicates if parsing the receiver parameter inside the first `(` and `)` of a method
-	or_is_handled         bool       // ignore `or` in this expression
-	builtin_mod           bool       // are we in the `builtin` module?
-	mod                   string     // current module name
-	is_manualfree         bool       // true when `[manualfree] module abc`, makes *all* fns in the current .v file, opt out of autofree
-	has_globals           bool       // `[has_globals] module abc` - allow globals declarations, even without -enable-globals, in that single .v file __only__
-	is_generated          bool       // `[generated] module abc` - turn off compiler notices for that single .v file __only__.
-	attrs                 []ast.Attr // attributes before next decl stmt
-	expr_mod              string     // for constructing full type names in parse_type()
-	scope                 &ast.Scope
-	imports               map[string]string // alias => mod_name
-	ast_imports           []ast.Import      // mod_names
-	used_imports          []string // alias
-	auto_imports          []string // imports, the user does not need to specify
-	imported_symbols      map[string]string
-	is_amp                bool // for generating the right code for `&Foo{}`
-	returns               bool
-	is_stmt_ident         bool // true while the beginning of a statement is an ident/selector
-	expecting_type        bool // `is Type`, expecting type
-	errors                []errors.Error
-	warnings              []errors.Warning
-	notices               []errors.Notice
-	vet_errors            []vet.Error
-	cur_fn_name           string
-	label_names           []string
-	name_error            bool // indicates if the token is not a name or the name is on another line
-	n_asm                 int  // controls assembly labels
-	global_labels         []string
-	comptime_if_cond      bool
-	defer_vars            []ast.Ident
-	should_abort          bool // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the parser should stop
-	codegen_text          string
+	tok                       token.Token
+	prev_tok                  token.Token
+	peek_tok                  token.Token
+	table                     &ast.Table
+	language                  ast.Language
+	fn_language               ast.Language // .c for `fn C.abcd()` declarations
+	expr_level                int  // prevent too deep recursions for pathological programs
+	inside_vlib_file          bool // true for all vlib/ files
+	inside_test_file          bool // when inside _test.v or _test.vv file
+	inside_if                 bool
+	inside_if_expr            bool
+	inside_ct_if_expr         bool
+	inside_or_expr            bool
+	inside_for                bool
+	inside_fn                 bool // true even with implicit main
+	inside_unsafe_fn          bool
+	inside_str_interp         bool
+	inside_array_lit          bool
+	inside_in_array           bool
+	inside_match              bool // to separate `match A { }` from `Struct{}`
+	inside_select             bool // to allow `ch <- Struct{} {` inside `select`
+	inside_match_case         bool // to separate `match_expr { }` from `Struct{}`
+	inside_match_body         bool // to fix eval not used TODO
+	inside_unsafe             bool
+	inside_sum_type           bool // to prevent parsing inline sum type again
+	inside_asm_template       bool
+	inside_asm                bool
+	inside_defer              bool
+	inside_generic_params     bool       // indicates if parsing between `<` and `>` of a method/function
+	inside_receiver_param     bool       // indicates if parsing the receiver parameter inside the first `(` and `)` of a method
+	or_is_handled             bool       // ignore `or` in this expression
+	builtin_mod               bool       // are we in the `builtin` module?
+	mod                       string     // current module name
+	is_manualfree             bool       // true when `[manualfree] module abc`, makes *all* fns in the current .v file, opt out of autofree
+	has_globals               bool       // `[has_globals] module abc` - allow globals declarations, even without -enable-globals, in that single .v file __only__
+	is_generated              bool       // `[generated] module abc` - turn off compiler notices for that single .v file __only__.
+	attrs                     []ast.Attr // attributes before next decl stmt
+	expr_mod                  string     // for constructing full type names in parse_type()
+	scope                     &ast.Scope
+	imports                   map[string]string // alias => mod_name
+	ast_imports               []ast.Import      // mod_names
+	used_imports              []string // alias
+	auto_imports              []string // imports, the user does not need to specify
+	imported_symbols          map[string]string
+	is_amp                    bool // for generating the right code for `&Foo{}`
+	returns                   bool
+	is_stmt_ident             bool // true while the beginning of a statement is an ident/selector
+	expecting_type            bool // `is Type`, expecting type
+	errors                    []errors.Error
+	warnings                  []errors.Warning
+	notices                   []errors.Notice
+	vet_errors                []vet.Error
+	cur_fn_name               string
+	label_names               []string
+	name_error                bool // indicates if the token is not a name or the name is on another line
+	n_asm                     int  // controls assembly labels
+	global_labels             []string
+	comptime_if_cond          bool
+	defer_vars                []ast.Ident
+	should_abort              bool // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the parser should stop
+	codegen_text              string
+	struct_init_generic_types []ast.Type
 }
 
 __global codegen_files = []&ast.File{}

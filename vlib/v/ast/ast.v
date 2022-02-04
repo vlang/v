@@ -411,6 +411,7 @@ pub mut:
 	has_update_expr      bool
 	fields               []StructInitField
 	embeds               []StructInitEmbed
+	generic_types        []Type
 }
 
 // import statement
