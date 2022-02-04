@@ -17,4 +17,5 @@ vlib/datatypes/heap.v:39:23: error: cannot use `<=` as `<` operator method is no
    38 |         // choose min for min heap
    39 |         swap := if heap.data[left] <= heap.data[right] { left } else { right }
       |                             ~~~~~~~~~~~~~~~~~~~~~~~~~~
-   40 |         heap.data[parent
+   40 |         heap.data[parent], heap.data[swap] = heap.data[swap], heap.data[parent]
+   41 |         parent = swap
