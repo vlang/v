@@ -7,7 +7,6 @@ import os
 import term
 import rand
 import readline
-import regex
 import os.cmdline
 import v.util.version
 

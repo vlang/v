@@ -105,4 +105,3 @@ thirdparty/stdatomic/nix/cpp/*.h
 
 # ignore VLS log
 vls.log
-
