@@ -33,12 +33,16 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		// `id == x` means that a single object is returned
 		if !is_count && where_expr is ast.InfixExpr {
 			e := where_expr as ast.InfixExpr
-			p.check_undefined_variables([e.left], e.right) or {
-				return p.error_with_pos(err.msg, e.right.pos())
-			}
 			if e.op == .eq && e.left is ast.Ident {
 				if e.left.name == 'id' {
 					query_one = true
+				}
+			}
+			if e.right is ast.Ident {
+				if !p.scope.known_var(e.right.name) {
+					p.check_undefined_variables([e.left], e.right) or {
+						return p.error_with_pos(err.msg, e.right.pos)
+					}
 				}
 			}
 		}
