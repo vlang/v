@@ -916,7 +916,8 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 			funcprefix += 'isnil(it.${c_name(field.name)})'
 			funcprefix += ' ? _SLIT("nil") : '
 			// struct, floats and ints have a special case through the _str function
-			if sym.kind != .struct_ && !field.typ.is_int_valptr() && !field.typ.is_float_valptr() {
+			if sym.kind !in [.struct_, .alias] && !field.typ.is_int_valptr()
+				&& !field.typ.is_float_valptr() {
 				funcprefix += '*'
 			}
 		}
