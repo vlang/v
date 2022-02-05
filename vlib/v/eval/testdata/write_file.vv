@@ -1,0 +1,1 @@
+os.write_file('hi','hi')?
