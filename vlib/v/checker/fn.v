@@ -207,7 +207,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					}
 				}
 			}
-			if c.pref.translated && node.is_variadic && node.params.len == 1 && param.typ.is_ptr() {
+			if (c.pref.translated || c.file.is_translated) && node.is_variadic
+				&& node.params.len == 1 && param.typ.is_ptr() {
 				// TODO c2v hack to fix `(const char *s, ...)`
 				param.typ = ast.int_type.ref()
 			}
@@ -679,7 +680,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 	}
 	node.is_keep_alive = func.is_keep_alive
 	if func.mod != 'builtin' && func.language == .v && func.no_body && !c.pref.translated
-		&& !func.is_unsafe {
+		&& !c.file.is_translated && !func.is_unsafe {
 		c.error('cannot call a function that does not have a body', node.pos)
 	}
 	for concrete_type in node.concrete_types {
@@ -827,7 +828,8 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		if call_arg.typ != param.typ
 			&& (param.typ == ast.voidptr_type || final_param_sym.idx == ast.voidptr_type_idx)
 			&& !call_arg.typ.is_any_kind_of_pointer() && func.language == .v
-			&& !call_arg.expr.is_lvalue() && func.name != 'json.encode' && !c.pref.translated {
+			&& !call_arg.expr.is_lvalue() && func.name != 'json.encode' && !c.pref.translated
+			&& !c.file.is_translated {
 			c.error('expression cannot be passed as `voidptr`', call_arg.expr.pos())
 		}
 		// Handle expected interface
@@ -853,7 +855,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			if param.typ.has_flag(.generic) {
 				continue
 			}
-			if c.pref.translated {
+			if c.pref.translated || c.file.is_translated {
 				// TODO duplicated logic in check_types() (check_types.v)
 				// Allow enums to be used as ints and vice versa in translated code
 				if param.typ == ast.int_type && typ_sym.kind == .enum_ {

@@ -63,6 +63,7 @@ mut:
 	is_manualfree             bool       // true when `[manualfree] module abc`, makes *all* fns in the current .v file, opt out of autofree
 	has_globals               bool       // `[has_globals] module abc` - allow globals declarations, even without -enable-globals, in that single .v file __only__
 	is_generated              bool       // `[generated] module abc` - turn off compiler notices for that single .v file __only__.
+	is_translated             bool       // `[translated] module abc` - mark a file as translated, to relax some compiler checks for translated code.
 	attrs                     []ast.Attr // attributes before next decl stmt
 	expr_mod                  string     // for constructing full type names in parse_type()
 	scope                     &ast.Scope
@@ -324,6 +325,7 @@ pub fn (mut p Parser) parse() &ast.File {
 		path_base: p.file_base
 		is_test: p.inside_test_file
 		is_generated: p.is_generated
+		is_translated: p.is_translated
 		nr_lines: p.scanner.line_nr
 		nr_bytes: p.scanner.text.len
 		mod: module_decl
@@ -1886,7 +1888,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	// TODO remove translated
 	if p.tok.kind in [.assign, .decl_assign] || p.tok.kind.is_assign() {
 		return p.partial_assign_stmt(left, left_comments)
-	} else if !p.pref.translated && !p.pref.is_fmt
+	} else if !p.pref.translated && !p.is_translated && !p.pref.is_fmt
 		&& tok.kind !in [.key_if, .key_match, .key_lock, .key_rlock, .key_select] {
 		for node in left {
 			if (is_top_level || p.tok.kind != .rcbr) && node !is ast.CallExpr
@@ -3046,6 +3048,9 @@ fn (mut p Parser) module_decl() ast.Module {
 							ma.pos)
 					}
 				}
+				'translated' {
+					p.is_translated = true
+				}
 				else {
 					p.error_with_pos('unknown module attribute `[$ma.name]`', ma.pos)
 					return mod_node
@@ -3315,7 +3320,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	}
 
 	if !p.has_globals && !p.pref.enable_globals && !p.pref.is_fmt && !p.pref.translated
-		&& !p.pref.is_livemain && !p.pref.building_v && !p.builtin_mod {
+		&& !p.is_translated && !p.pref.is_livemain && !p.pref.building_v && !p.builtin_mod {
 		p.error('use `v -enable-globals ...` to enable globals')
 		return ast.GlobalDecl{}
 	}

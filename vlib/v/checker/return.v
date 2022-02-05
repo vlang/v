@@ -113,7 +113,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 		}
 		if (exp_type.is_ptr() || exp_type.is_pointer())
 			&& (!got_typ.is_ptr() && !got_typ.is_pointer()) && got_typ != ast.int_literal_type
-			&& !c.pref.translated {
+			&& !c.pref.translated && !c.file.is_translated {
 			pos := node.exprs[i].pos()
 			if node.exprs[i].is_auto_deref_var() {
 				continue
@@ -131,7 +131,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 					}
 					if obj.is_stack_obj && !c.inside_unsafe {
 						type_sym := c.table.sym(obj.typ.set_nr_muls(0))
-						if !type_sym.is_heap() && !c.pref.translated {
+						if !type_sym.is_heap() && !c.pref.translated && !c.file.is_translated {
 							suggestion := if type_sym.kind == .struct_ {
 								'declaring `$type_sym.name` as `[heap]`'
 							} else {

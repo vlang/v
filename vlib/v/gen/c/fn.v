@@ -436,7 +436,7 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) ?string {
 		name = g.generic_fn_name(g.cur_concrete_types, name, true)
 	}
 
-	if g.pref.translated && node.attrs.contains('c') {
+	if (g.pref.translated || g.file.is_translated) && node.attrs.contains('c') {
 		// This fixes unknown symbols errors when building separate .c => .v files
 		// into .o files
 		//
@@ -1176,7 +1176,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	} else {
 		name = c_name(name)
 	}
-	if g.pref.translated {
+	if g.pref.translated || g.file.is_translated {
 		// For `[c: 'P_TryMove'] fn p_trymove( ... `
 		// every time `p_trymove` is called, `P_TryMove` must be generated instead.
 		if f := g.table.find_fn(node.name) {
@@ -1573,7 +1573,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			}
 		}
 		elem_type := g.typ(arr_info.elem_type)
-		if g.pref.translated && args.len == 1 {
+		if (g.pref.translated || g.file.is_translated) && args.len == 1 {
 			// Handle `foo(c'str')` for `fn foo(args ...&u8)`
 			// TODOC2V handle this in a better place
 			// println(g.table.type_to_str(args[0].typ))
