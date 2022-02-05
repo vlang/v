@@ -100,7 +100,8 @@ fn (r &Repl) function_call(line string) (bool, FnType) {
 		is_function_definition := line.replace(' ', '').starts_with('$function:=')
 		if line.starts_with(function) && !is_function_definition {
 			// TODO(vincenzopalazzo) store the type of the function here
-			return true, FnType.fn_type
+			fntype := r.check_fn_type_kind(line)
+			return true, fntype
 		}
 	}
 
@@ -123,18 +124,6 @@ fn (r &Repl) function_call(line string) (bool, FnType) {
 fn (r &Repl) is_function_call(line string) bool {
 	return !line.starts_with('[') && line.contains('.') && line.contains('(')
 		&& (line.ends_with(')') || line.ends_with('?'))
-}
-
-fn (r &Repl) prepare_source_code_with_println_of_the_last_line(line string) string {
-	mut all_lines := ''
-	for mod in r.modules {
-		all_lines += endline_if_missed('import $mod')
-	}
-	for ln in r.eval_func_lines {
-		all_lines += endline_if_missed(ln)
-	}
-	all_lines += endline_if_missed('println($line)')
-	return all_lines
 }
 
 fn (r &Repl) current_source_code(should_add_temp_lines bool, not_add_print bool) string {
@@ -165,8 +154,7 @@ fn (r &Repl) current_source_code(should_add_temp_lines bool, not_add_print bool)
 // do not return anything, while others return results.
 // This function checks which one we have:
 fn (r &Repl) check_fn_type_kind(new_line string) FnType {
-	source_code := r.prepare_source_code_with_println_of_the_last_line(new_line)
-	//
+	source_code := r.current_source_code(true, false) + '\nprintln($new_line)'
 	check_file := os.join_path(os.temp_dir(), '${rand.ulid()}.vrepl.check.v')
 	os.write_file(check_file, source_code) or { panic(err) }
 	defer {
@@ -175,7 +163,6 @@ fn (r &Repl) check_fn_type_kind(new_line string) FnType {
 	// -w suppresses the unused import warnings
 	// -check just does syntax and checker analysis without generating/running code
 	os_response := os.execute('${os.quoted_path(vexe)} -w -check ${os.quoted_path(check_file)}')
-	//
 	str_response := convert_output(os_response)
 	if os_response.exit_code != 0 && str_response.contains('can not print void expressions') {
 		return FnType.void
