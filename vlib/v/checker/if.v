@@ -28,7 +28,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	mut is_comptime_type_is_expr := false // if `$if T is string`
 	for i in 0 .. node.branches.len {
 		mut branch := node.branches[i]
-		if branch.cond is ast.ParExpr && !c.pref.translated {
+		if branch.cond is ast.ParExpr && !c.pref.translated && !c.file.is_translated {
 			c.error('unnecessary `()` in `$if_kind` condition, use `$if_kind expr {` instead of `$if_kind (expr) {`.',
 				branch.pos)
 		}
@@ -41,7 +41,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				c.expected_type = ast.bool_type
 				cond_typ := c.unwrap_generic(c.expr(branch.cond))
 				if (cond_typ.idx() != ast.bool_type_idx || cond_typ.has_flag(.optional))
-					&& !c.pref.translated {
+					&& !c.pref.translated && !c.file.is_translated {
 					c.error('non-bool type `${c.table.type_to_str(cond_typ)}` used as if condition',
 						branch.cond.pos())
 				}

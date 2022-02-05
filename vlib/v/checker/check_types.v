@@ -369,7 +369,7 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type ast.Type, right
 						ast.u64_type { 63 }
 						else { 64 }
 					}
-					if ival > moffset && !c.pref.translated {
+					if ival > moffset && !c.pref.translated && !c.file.is_translated {
 						c.error('shift count for type `$left_sym_final.name` too large (maximum: $moffset bits)',
 							node.right.pos())
 						return left_type

@@ -144,7 +144,7 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 	prev_loop_label := c.loop_label
 	c.expected_type = ast.bool_type
 	typ := c.expr(node.cond)
-	if !node.is_inf && typ.idx() != ast.bool_type_idx && !c.pref.translated {
+	if !node.is_inf && typ.idx() != ast.bool_type_idx && !c.pref.translated && !c.file.is_translated {
 		c.error('non-bool used as for condition', node.pos)
 	}
 	if mut node.cond is ast.InfixExpr {

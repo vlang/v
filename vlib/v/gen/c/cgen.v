@@ -4474,7 +4474,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 			}
 		}
 	} else if node_info is ast.IdentFn {
-		if g.pref.translated {
+		if g.pref.translated || g.file.is_translated {
 			// `p_mobjthinker` => `P_MobjThinker`
 			if f := g.table.find_fn(node.name) {
 				// TODO PERF fn lookup for each fn call in translated mode
@@ -4511,7 +4511,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		g.expr(node.expr)
 	} else {
 		styp := g.typ(node.typ)
-		if g.pref.translated && sym.kind == .function {
+		if (g.pref.translated || g.file.is_translated) && sym.kind == .function {
 			// TODO handle the type in fn casts, not just exprs
 			/*
 			info := sym.info as ast.FnType

@@ -313,7 +313,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 							}
 							if obj.is_stack_obj && !c.inside_unsafe {
 								sym := c.table.sym(obj.typ.set_nr_muls(0))
-								if !sym.is_heap() && !c.pref.translated {
+								if !sym.is_heap() && !c.pref.translated && !c.file.is_translated {
 									suggestion := if sym.kind == .struct_ {
 										'declaring `$sym.name` as `[heap]`'
 									} else {
@@ -348,7 +348,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 					continue
 				}
 				if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !node.has_update_expr
-					&& !c.pref.translated {
+					&& !c.pref.translated && !c.file.is_translated {
 					c.error('reference field `${type_sym.name}.$field.name` must be initialized',
 						node.pos)
 				}

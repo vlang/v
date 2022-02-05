@@ -668,12 +668,13 @@ pub mut:
 [heap]
 pub struct File {
 pub:
-	nr_lines     int    // number of source code lines in the file (including newlines and comments)
-	nr_bytes     int    // number of processed source code bytes
-	mod          Module // the module of the source file (from `module xyz` at the top)
-	global_scope &Scope
-	is_test      bool // true for _test.v files
-	is_generated bool // true for `[generated] module xyz` files; turn off notices
+	nr_lines      int    // number of source code lines in the file (including newlines and comments)
+	nr_bytes      int    // number of processed source code bytes
+	mod           Module // the module of the source file (from `module xyz` at the top)
+	global_scope  &Scope
+	is_test       bool // true for _test.v files
+	is_generated  bool // true for `[generated] module xyz` files; turn off notices
+	is_translated bool // true for `[translated] module xyz` files; turn off some checks
 pub mut:
 	path             string // absolute path of the source file - '/projects/v/file.v'
 	path_base        string // file name - 'file.v' (useful for tracing)

@@ -390,11 +390,13 @@ fn (mut c Checker) file_has_main_fn(file &ast.File) bool {
 }
 
 fn (mut c Checker) check_valid_snake_case(name string, identifier string, pos token.Pos) {
-	if !c.pref.is_vweb && !c.pref.translated && name.len > 0
-		&& (name[0] == `_` || name.contains('._')) {
+	if c.pref.translated || c.file.is_translated {
+		return
+	}
+	if !c.pref.is_vweb && name.len > 0 && (name[0] == `_` || name.contains('._')) {
 		c.error('$identifier `$name` cannot start with `_`', pos)
 	}
-	if !c.pref.experimental && !c.pref.translated && util.contains_capital(name) {
+	if !c.pref.experimental && util.contains_capital(name) {
 		c.error('$identifier `$name` cannot contain uppercase letters, use snake_case instead',
 			pos)
 	}
@@ -407,7 +409,7 @@ fn stripped_name(name string) string {
 
 fn (mut c Checker) check_valid_pascal_case(name string, identifier string, pos token.Pos) {
 	sname := stripped_name(name)
-	if sname.len > 0 && !sname[0].is_capital() && !c.pref.translated {
+	if sname.len > 0 && !sname[0].is_capital() && !c.pref.translated && !c.file.is_translated {
 		c.error('$identifier `$name` must begin with capital letter', pos)
 	}
 }
@@ -952,7 +954,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			return ast.void_type
 		}
 		.and, .logical_or {
-			if !c.pref.translated {
+			if !c.pref.translated && !c.file.is_translated {
 				if node.left_type != ast.bool_type_idx {
 					c.error('left operand for `$node.op` is not a boolean', node.left.pos())
 				}
@@ -987,7 +989,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				c.error('only `==`, `!=`, `|` and `&` are defined on `[flag]` tagged `enum`, use an explicit cast to `int` if needed',
 					node.pos)
 			}
-		} else if !c.pref.translated {
+		} else if !c.pref.translated && !c.file.is_translated {
 			// Regular enums
 			c.error('only `==` and `!=` are defined on `enum`, use an explicit cast to `int` if needed',
 				node.pos)
@@ -1008,7 +1010,8 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	}
 	// Dual sides check (compatibility check)
 	if !(c.symmetric_check(left_type, right_type) && c.symmetric_check(right_type, left_type))
-		&& !c.pref.translated && !node.left.is_auto_deref_var() && !node.right.is_auto_deref_var() {
+		&& !c.pref.translated && !c.file.is_translated && !node.left.is_auto_deref_var()
+		&& !node.right.is_auto_deref_var() {
 		// for type-unresolved consts
 		if left_type == ast.void_type || right_type == ast.void_type {
 			return ast.void_type
@@ -1047,7 +1050,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Pos) {
 		ast.Ident {
 			if expr.obj is ast.Var {
 				mut v := expr.obj as ast.Var
-				if !v.is_mut && !c.pref.translated && !c.inside_unsafe {
+				if !v.is_mut && !c.pref.translated && !c.file.is_translated && !c.inside_unsafe {
 					c.error('`$expr.name` is immutable, declare it with `mut` to make it mutable',
 						expr.pos)
 				}
@@ -1137,7 +1140,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Pos) {
 							pos = expr.pos
 						}
 					} else {
-						if !field_info.is_mut && !c.pref.translated {
+						if !field_info.is_mut && !c.pref.translated && !c.file.is_translated {
 							type_str := c.table.type_to_str(expr.expr_type)
 							c.error('field `$expr.field_name` of struct `$type_str` is immutable',
 								expr.pos)
@@ -1696,7 +1699,8 @@ pub fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 					val := field.expr.val.i64()
 					if val < checker.int_min || val > checker.int_max {
 						c.error('enum value `$val` overflows int', field.expr.pos)
-					} else if !c.pref.translated && !node.is_multi_allowed && i64(val) in seen {
+					} else if !c.pref.translated && !c.file.is_translated && !node.is_multi_allowed
+						&& i64(val) in seen {
 						c.error('enum value `$val` already exists', field.expr.pos)
 					}
 					seen << i64(val)
@@ -1728,7 +1732,8 @@ pub fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 				last := seen[seen.len - 1]
 				if last == checker.int_max {
 					c.error('enum value overflows', field.pos)
-				} else if !c.pref.translated && !node.is_multi_allowed && last + 1 in seen {
+				} else if !c.pref.translated && !c.file.is_translated && !node.is_multi_allowed
+					&& last + 1 in seen {
 					c.error('enum value `${last + 1}` already exists', field.pos)
 				}
 				seen << last + 1
@@ -2720,7 +2725,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			}
 		}
 	} else if to_type == ast.bool_type && from_type != ast.bool_type && !c.inside_unsafe
-		&& !c.pref.translated {
+		&& !c.pref.translated && !c.file.is_translated {
 		c.error('cannot cast to bool - use e.g. `some_int != 0` instead', node.pos)
 	} else if from_type == ast.none_type && !to_type.has_flag(.optional) {
 		type_name := c.table.type_to_str(to_type)
@@ -3404,21 +3409,16 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) 
 					obj = c.fn_scope.find_var(node.obj.name) or { obj }
 				}
 				type_sym := c.table.sym(obj.typ.set_nr_muls(0))
-				if obj.is_stack_obj && !type_sym.is_heap() && !c.pref.translated {
+				if obj.is_stack_obj && !type_sym.is_heap() && !c.pref.translated
+					&& !c.file.is_translated {
 					suggestion := if type_sym.kind == .struct_ {
 						'declaring `$type_sym.name` as `[heap]`'
 					} else {
 						'wrapping the `$type_sym.name` object in a `struct` declared as `[heap]`'
 					}
-					if !c.pref.translated {
-						mischief := if as_interface {
-							'used as interface object'
-						} else {
-							'referenced'
-						}
-						c.error('`$node.name` cannot be $mischief outside `unsafe` blocks as it might be stored on stack. Consider ${suggestion}.',
-							node.pos)
-					}
+					mischief := if as_interface { 'used as interface object' } else { 'referenced' }
+					c.error('`$node.name` cannot be $mischief outside `unsafe` blocks as it might be stored on stack. Consider ${suggestion}.',
+						node.pos)
 				} else if type_sym.kind == .array_fixed {
 					c.error('cannot reference fixed array `$node.name` outside `unsafe` blocks as it is supposed to be stored on stack',
 						node.pos)
@@ -3532,15 +3532,16 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 		if right_type.is_ptr() {
 			return right_type.deref()
 		}
-		if !right_type.is_pointer() && !c.pref.translated {
+		if !right_type.is_pointer() && !c.pref.translated && !c.file.is_translated {
 			s := c.table.type_to_str(right_type)
 			c.error('invalid indirect of `$s`', node.pos)
 		}
 	}
-	if node.op == .bit_not && !right_type.is_int() && !c.pref.translated {
+	if node.op == .bit_not && !right_type.is_int() && !c.pref.translated && !c.file.is_translated {
 		c.error('operator ~ only defined on int types', node.pos)
 	}
-	if node.op == .not && right_type != ast.bool_type_idx && !c.pref.translated {
+	if node.op == .not && right_type != ast.bool_type_idx && !c.pref.translated
+		&& !c.file.is_translated {
 		c.error('! operator can only be used with bool types', node.pos)
 	}
 	// FIXME
@@ -3654,7 +3655,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 				is_ok = v.is_mut && v.is_arg && !typ.deref().is_ptr()
 			}
 		}
-		if !is_ok && !c.pref.translated {
+		if !is_ok && !c.pref.translated && !c.file.is_translated {
 			c.warn('pointer indexing is only allowed in `unsafe` blocks', node.pos)
 		}
 	}
@@ -3736,7 +3737,7 @@ pub fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
 		}
 	}
 	mut typ := ast.new_type(typ_idx)
-	if c.pref.translated {
+	if c.pref.translated || c.file.is_translated {
 		// TODO make more strict
 		node.typ = typ
 		return typ
@@ -3752,7 +3753,7 @@ pub fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
 		typ_sym = c.table.sym(typ)
 	}
 	fsym := c.table.final_sym(typ)
-	if fsym.kind != .enum_ && !c.pref.translated {
+	if fsym.kind != .enum_ && !c.pref.translated && !c.file.is_translated {
 		// TODO in C int fields can be compared to enums, need to handle that in C2V
 		c.error('expected type is not an enum (`$typ_sym.name`)', node.pos)
 		return ast.void_type
@@ -3839,7 +3840,7 @@ pub fn (mut c Checker) error(message string, pos token.Pos) {
 		print_backtrace()
 		exit(1)
 	}
-	if c.pref.translated && message.starts_with('mismatched types') {
+	if (c.pref.translated || c.file.is_translated) && message.starts_with('mismatched types') {
 		// TODO move this
 		return
 	}
