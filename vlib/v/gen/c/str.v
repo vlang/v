@@ -85,6 +85,9 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		g.expr(expr)
 		g.write(')')
 	} else if typ == ast.string_type {
+		if etype.is_ptr() {
+			g.write('*')
+		}
 		g.expr(expr)
 	} else if typ == ast.bool_type {
 		g.expr(expr)

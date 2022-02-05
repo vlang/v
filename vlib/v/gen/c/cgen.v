@@ -5519,6 +5519,9 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 							|| sfield.typ.is_pointer()) && !sfield.typ.is_number() {
 							g.write('/* autoref */&')
 						}
+						if sfield.typ.is_ptr() && field_type_sym.kind == .alias {
+							g.write('&')
+						}
 						g.expr_with_cast(sfield.expr, sfield.typ, sfield.expected_type)
 					}
 				}
