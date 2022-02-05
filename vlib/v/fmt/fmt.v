@@ -2097,7 +2097,13 @@ pub fn (mut f Fmt) map_init(node ast.MapInit) {
 			f.mark_types_import_as_used(info.key_type)
 			f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias))
 		}
-		f.write('{}')
+		if node.pos.line_nr == node.pos.last_line {
+			f.write('{}')
+		} else {
+			f.writeln('{')
+			f.comments(node.pre_cmnts, level: .indent)
+			f.write('}')
+		}
 		return
 	}
 	f.writeln('{')
