@@ -63,6 +63,7 @@ pub fn level_from_tag(tag string) ?Level {
 
 // Logger is an interface that describes a generic Logger
 pub interface Logger {
+mut:
 	fatal(s string)
 	error(s string)
 	warn(s string)
