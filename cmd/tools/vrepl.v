@@ -104,10 +104,16 @@ fn (r &Repl) function_call(line string) (bool, FnType) {
 		}
 	}
 
+	if line.contains(':=') {
+		// an assignment to a variable:
+		// `z := abc()`
+		return false, FnType.@none
+	}
+
 	// Check if it is a Vlib call
 	// TODO(vincenzopalazzo): auto import the module?
 	if r.is_function_call(line) {
-		fntype := r.run_tmp_file(line, 'error: `println` can not print void expressions')
+		fntype := r.check_fn_type_kind(line)
 		return true, fntype
 	}
 	return false, FnType.@none
@@ -119,16 +125,15 @@ fn (r &Repl) is_function_call(line string) bool {
 		&& (line.ends_with(')') || line.ends_with('?'))
 }
 
-// TODO choose a better name
-fn (r &Repl) debug_source_code(line string) string {
+fn (r &Repl) prepare_source_code_with_println_of_the_last_line(line string) string {
 	mut all_lines := ''
 	for mod in r.modules {
 		all_lines += endline_if_missed('import $mod')
 	}
 	for ln in r.eval_func_lines {
 		all_lines += endline_if_missed(ln)
-		all_lines += endline_if_missed('println($line)')
 	}
+	all_lines += endline_if_missed('println($line)')
 	return all_lines
 }
 
@@ -156,19 +161,26 @@ fn (r &Repl) current_source_code(should_add_temp_lines bool, not_add_print bool)
 	return all_lines.join('\n')
 }
 
-// Function used to check if the pattern function is contained
-// inside the v program provided as content.
-fn (r &Repl) run_tmp_file(new_line string, pattern string) FnType {
-	debub_file := os.join_path(os.temp_dir(), '.vrepl_temp.v')
-	source_code := r.debug_source_code(new_line)
-	os.write_file(debub_file, source_code) or { panic(err) }
-	os_response := repl_run_vfile(debub_file) or { panic(err) }
+// the new_line is probably a function call, but some function calls
+// do not return anything, while others return results.
+// This function checks which one we have:
+fn (r &Repl) check_fn_type_kind(new_line string) FnType {
+	source_code := r.prepare_source_code_with_println_of_the_last_line(new_line)
+	//
+	check_file := os.join_path(os.temp_dir(), '${rand.ulid()}.vrepl.check.v')
+	os.write_file(check_file, source_code) or { panic(err) }
+	defer {
+		os.rm(check_file) or {}
+	}
+	// -w suppresses the unused import warnings
+	// -check just does syntax and checker analysis without generating/running code
+	os_response := os.execute('${os.quoted_path(vexe)} -w -check ${os.quoted_path(check_file)}')
+	//
 	str_response := convert_output(os_response)
-	if str_response.contains(pattern) {
-		return FnType.fn_type
-	} else {
+	if os_response.exit_code != 0 && str_response.contains('can not print void expressions') {
 		return FnType.void
 	}
+	return FnType.fn_type
 }
 
 fn run_repl(workdir string, vrepl_prefix string) {
