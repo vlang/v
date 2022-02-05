@@ -644,7 +644,7 @@ pub fn (mut ctx Context) mount_static_folder_at(directory_path string, mount_pat
 		return false
 	}
 	dir_path := directory_path.trim_right('/')
-	
+
 	trim_mount_path := mount_path.trim_left('/').trim_right('/')
 	ctx.scan_static_directory(dir_path, '/' + trim_mount_path)
 	return true
