@@ -585,7 +585,7 @@ To use a format specifier, follow this pattern:
   support the use of `'` or `#` as format flags, and V supports but doesn't need `+` to right-align
   since that's the default.)
 - width: may be an integer value describing the minimum width of total field to output.
-- precision: an integer value preceeded by a `.` will guarantee that many digits after the decimal
+- precision: an integer value preceded by a `.` will guarantee that many digits after the decimal
   point, if the input variable is a float. Ignored if variable is an integer.
 - type: `f` and `F` specify the input is a float and should be rendered as such, `e` and `E` specify
   the input is a float and should be rendered as an exponent (partially broken), `g` and `G` specify
