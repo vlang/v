@@ -39,8 +39,8 @@ jobs:
           count_old=$(cat /tmp/o_v.txt | wc -l)
           if [[ ${count_new} -gt ${count_old} ]]; then
             echo "The following $((count_new-count_old)) function(s) is introduced with no documentation:"
-            sed -n 's/^.*\/vlib\///p' /tmp/n_v.txt > /tmp/tn_v.txt
-            sed -n 's/^.*\/vlib\///p' /tmp/o_v.txt > /tmp/to_v.txt
-            sort /tmp/tn_v.txt /tmp/to_v.txt | uniq -u
+            sed -n 's/^.*\/vlib\///p' /tmp/n_v.txt | sort > /tmp/tn_v.txt
+            sed -n 's/^.*\/vlib\///p' /tmp/o_v.txt | sort > /tmp/to_v.txt
+            diff /tmp/tn_v.txt /tmp/to_v.txt
             exit 1
           fi
