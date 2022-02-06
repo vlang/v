@@ -1,7 +1,9 @@
-import interface_from_another_module.mod
+module main
+
+import mod
 
 interface IBar {
-	mod
+	mod.IFo
 }
 
 struct Abc {}
