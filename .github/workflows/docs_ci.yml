@@ -33,8 +33,8 @@ jobs:
 
       - name: Check against parent commit
         run: |
-          ./v               run cmd/tools/missdoc.v vlib/ | sort > /tmp/n_v.txt
-          cd pv/ && ../v run ../cmd/tools/missdoc.v vlib/ | sort > /tmp/o_v.txt
+          ./v run cmd/tools/missdoc.v vlib/    | sed 's@^.*/vlib/@@p' | sort > /tmp/n_v.txt
+          ./v run cmd/tools/missdoc.v pv/vlib/ | sed 's@^.*/vlib/@@p' | sort > /tmp/o_v.txt
           count_new=$(cat /tmp/n_v.txt | wc -l)
           count_old=$(cat /tmp/o_v.txt | wc -l)
           echo "new pubs: $count_new | old pubs: $count_old"
