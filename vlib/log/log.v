@@ -208,5 +208,6 @@ pub fn (mut l Log) debug(s string) {
 	l.send_output(s, .debug)
 }
 
+// test_undoc_alarm tests the CI alarm
 pub fn test_undoc_alarm() {
 }
