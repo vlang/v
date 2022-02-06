@@ -517,7 +517,6 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			if p.tok.kind == .rcbr {
 				break
 			}
-
 			continue
 		}
 
