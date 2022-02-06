@@ -6,7 +6,7 @@ import flag
 
 const (
 	tool_name        = os.file_name(os.executable())
-	tool_version     = '0.0.2'
+	tool_version     = '0.0.3'
 	tool_description = 'Prints all V functions in .v files under PATH/, that do not yet have documentation comments.'
 )
 
@@ -20,6 +20,8 @@ struct Options {
 	show_help    bool
 	collect_tags bool
 	deprecated   bool
+	private      bool
+	js           bool
 }
 
 fn collect(path string, mut l []string, f fn (string, mut []string)) {
@@ -50,6 +52,9 @@ fn report_undocumented_functions_in_path(opt Options, path string) {
 		if file.ends_with('_test.v') {
 			continue
 		}
+		if !opt.js && file.ends_with('.js.v') {
+			continue
+		}
 		report_undocumented_functions_in_file(opt, file)
 	}
 }
@@ -59,8 +64,8 @@ fn report_undocumented_functions_in_file(opt Options, file string) {
 	lines := contents.split('\n')
 	mut info := []UndocumentedFN{}
 	for i, line in lines {
-		if line.starts_with('pub fn') || (line.starts_with('fn ') && !(line.starts_with('fn C.')
-			|| line.starts_with('fn main'))) {
+		if line.starts_with('pub fn') || (opt.private && (line.starts_with('fn ')
+			&& !(line.starts_with('fn C.') || line.starts_with('fn main')))) {
 			// println('Match: $line')
 			if i > 0 && lines.len > 0 {
 				mut line_above := lines[i - 1]
@@ -125,6 +130,8 @@ fn main() {
 	opt := Options{
 		show_help: fp.bool('help', `h`, false, 'Show this help text.')
 		deprecated: fp.bool('deprecated', `d`, false, 'Include deprecated functions in output.')
+		private: fp.bool('private', `p`, false, 'Include private functions in output.')
+		js: fp.bool('js', 0, false, 'Include JavaScript functions in output.')
 		collect_tags: fp.bool('tags', `t`, false, 'Also print function tags if any is found.')
 	}
 	if opt.show_help {
