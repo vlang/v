@@ -207,3 +207,6 @@ pub fn (mut l Log) debug(s string) {
 	}
 	l.send_output(s, .debug)
 }
+
+pub fn test_undoc_alarm() {
+}
