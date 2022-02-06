@@ -519,6 +519,32 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			}
 			continue
 		}
+
+		// Check embedded interface from external module
+		if p.tok.kind == .name && p.peek_tok.kind == .dot {
+			if p.tok.lit !in p.imports {
+				p.error_with_pos('mod `$p.tok.lit` not imported', p.tok.pos())
+				break
+			}
+			mod_name := p.tok.lit
+			from_mod_typ := p.parse_type()
+			from_mod_name := '${mod_name}.$p.prev_tok.lit'
+			if from_mod_name.is_lower() {
+				p.error_with_pos('The interface name need to have the pascal case', p.prev_tok.pos())
+				break
+			}
+			comments := p.eat_comments()
+			ifaces << ast.InterfaceEmbedding{
+				name: from_mod_name
+				typ: from_mod_typ
+				pos: p.prev_tok.pos()
+				comments: comments
+			}
+			if p.tok.kind == .rcbr {
+				break
+			}
+		}
+
 		if p.tok.kind == .key_mut {
 			if is_mut {
 				p.error_with_pos('redefinition of `mut` section', p.tok.pos())
