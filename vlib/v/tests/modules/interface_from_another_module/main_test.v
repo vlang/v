@@ -1,6 +1,6 @@
 module main
 
-import mod
+import interface_from_another_module.mod
 
 interface IBar {
 	mod.IFoo
