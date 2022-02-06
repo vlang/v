@@ -4,7 +4,7 @@ import os
 const (
 	test_out_zip = 'v_test_zip.zip'
 	test_path    = 'zip files'
-	test_path2   = '.zip files folder'
+	test_path2   = '.zip folder'
 	fname1       = 'file_1.txt'
 	fpath1       = os.join_path(test_path, fname1)
 	fname2       = 'file_2.txt'
@@ -58,9 +58,7 @@ fn test_extract_zipped_files() ? {
 	assert (os.read_file(fpath1) ?) == 'file one'
 	assert (os.read_file(fpath2) ?) == 'file two'
 	assert (os.read_file(fpath3) ?) == 'file three'
-	os.rmdir_all(test_path) ?
-	os.rmdir_all(test_path2) ?
-	os.rm(test_out_zip) or {}
+	cleanup()
 }
 
 fn test_reading_zipping_files() ? {
@@ -70,8 +68,6 @@ fn test_reading_zipping_files() ? {
 		file_name_list << 'file_${i:02}.txt'
 	}
 
-	os.chdir(os.temp_dir()) or {}
-	os.rmdir_all(test_path) or {}
 	os.mkdir(test_path) ?
 	for c, f_name in file_name_list {
 		tmp_path := os.join_path(test_path, f_name)
