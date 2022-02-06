@@ -429,7 +429,7 @@ pub fn (mut d Doc) generate() ? {
 	// parse files
 	mut comments_mode := scanner.CommentsMode.skip_comments
 	if d.with_comments {
-		comments_mode = .toplevel_comments
+		comments_mode = .parse_comments
 	}
 	mut file_asts := []ast.File{}
 	for i, file_path in v_files {
