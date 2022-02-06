@@ -254,7 +254,8 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 		write_toc(cn, mut symbols_toc)
 	} // write head
 	// write css
-	version := if vd.manifest.version.len != 0 { vd.manifest.version } else { '' }
+	mut version := if vd.manifest.version.len != 0 { vd.manifest.version } else { '' }
+	version = [version, @VHASH].join(' ')
 	header_name := if cfg.is_multi && vd.docs.len > 1 {
 		os.file_name(os.real_path(cfg.input_path))
 	} else {
