@@ -65,3 +65,10 @@ pub fn ulid_at_millisecond(unix_time_milli u64) string {
 
 	return res
 }
+
+// read fills in `buf` a maximum of `buf.len` random bytes
+pub fn read(mut buf []byte) {
+	for i in 0 .. buf.len {
+		buf[i] = byte(default_rng.u32())
+	}
+}

@@ -174,6 +174,16 @@ pub fn f64_in_range(min f64, max f64) f64 {
 	return default_rng.f64_in_range(min, max)
 }
 
+// bytes returns a buffer of `bytes_needed` random bytes
+pub fn bytes(bytes_needed int) ?[]byte {
+	if bytes_needed < 0 {
+		return error('can not read < 0 random bytes')
+	}
+	mut res := []byte{len: bytes_needed}
+	read(mut res)
+	return res
+}
+
 const (
 	english_letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
 	hex_chars       = 'abcdef0123456789'

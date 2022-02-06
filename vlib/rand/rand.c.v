@@ -138,3 +138,17 @@ fn init() {
 	default_rng = new_default()
 	C.atexit(deinit)
 }
+
+// read fills in `buf` a maximum of `buf.len` random bytes
+pub fn read(mut buf []byte) {
+	p64 := unsafe { &u64(buf.data) }
+	u64s := buf.len / 8
+	for i in 0 .. u64s {
+		unsafe {
+			*(p64 + i) = default_rng.u64()
+		}
+	}
+	for i in u64s * 8 .. buf.len {
+		buf[i] = byte(default_rng.u32())
+	}
+}
