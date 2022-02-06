@@ -4530,6 +4530,12 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			g.gen_optional_error(node.typ, node.expr)
 		} else {
 			g.write('(${cast_label}(')
+			if sym.kind == .alias && g.table.final_sym(node.typ).kind == .string {
+				ptr_cnt := node.typ.nr_muls() - node.expr_type.nr_muls()
+				if ptr_cnt > 0 {
+					g.write('&'.repeat(ptr_cnt))
+				}
+			}
 			g.expr(node.expr)
 			if node.expr is ast.IntegerLiteral {
 				if node.typ in [ast.u64_type, ast.u32_type, ast.u16_type] {
