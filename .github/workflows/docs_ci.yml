@@ -16,3 +16,31 @@ jobs:
         run: ./v check-md -hide-warnings .
       ## NB: -hide-warnings is used here, so that the output is less noisy,
       ## thus real errors are easier to spot.
+
+  report-missing-fn-doc:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build V
+        run: make
+
+      - name: Checkout previous v
+        uses: actions/checkout@v2
+        with:
+          repository: vlang/v
+          path: pv
+
+      - name: Check against parent commit
+        run: |
+          ./v run cmd/tools/missdoc.v ./vlib/ > /tmp/n_v.txt
+          ./v run cmd/tools/missdoc.v ./pv/vlib/ > /tmp/o_v.txt
+          count_new=$(cat /tmp/n_v.txt | wc -l)
+          count_old=$(cat /tmp/o_v.txt | wc -l)
+          if [[ ${count_new} -gt ${count_old} ]]; then
+            echo "The following $((count_new-count_old)) function(s) is introduced with no documentation:"
+            sed -n 's/^.*\/vlib\///p' /tmp/n_v.txt > /tmp/tn_v.txt
+            sed -n 's/^.*\/vlib\///p' /tmp/o_v.txt > /tmp/to_v.txt
+            sort /tmp/tn_v.txt /tmp/to_v.txt | uniq -u
+            exit 1
+          fi
