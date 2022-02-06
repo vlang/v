@@ -68,7 +68,10 @@ fn test_reading_zipping_files() ? {
 		file_name_list << 'file_${i:02}.txt'
 	}
 
+	cleanup()
 	os.mkdir(test_path) ?
+	os.mkdir(test_path2) ?
+	os.write_file(fpath3, 'file three') ?
 	for c, f_name in file_name_list {
 		tmp_path := os.join_path(test_path, f_name)
 		os.write_file(tmp_path, 'file ${c:02}') ?
