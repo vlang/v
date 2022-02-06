@@ -3,7 +3,7 @@ module main
 import mod
 
 interface IBar {
-	mod.IFo
+	mod.IFoo
 }
 
 struct Abc {}
