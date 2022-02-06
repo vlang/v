@@ -426,7 +426,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		} else {
 			name = p.prepend_mod(name)
 		}
-		if !p.pref.translated && language == .v {
+		if language == .v {
 			if existing := p.table.fns[name] {
 				if existing.name != '' {
 					if file_mode == .v && existing.file_mode != .v {
