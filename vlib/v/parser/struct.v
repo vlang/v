@@ -500,7 +500,8 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	mut mut_pos := -1
 	mut ifaces := []ast.InterfaceEmbedding{}
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
-		if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital() {
+		if p.tok.kind == .name && p.tok.lit.len > 0
+			&& (p.peek_tok.kind == .dot || p.tok.lit[0].is_capital()) {
 			iface_pos := p.tok.pos()
 			mut iface_name := p.tok.lit
 			iface_type := p.parse_type()
@@ -517,8 +518,10 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			if p.tok.kind == .rcbr {
 				break
 			}
+
 			continue
 		}
+
 		if p.tok.kind == .key_mut {
 			if is_mut {
 				p.error_with_pos('redefinition of `mut` section', p.tok.pos())
