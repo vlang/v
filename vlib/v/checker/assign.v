@@ -47,6 +47,9 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				c.error('unexpected `mut` on right-hand side of assignment', right.mut_pos)
 			}
 		}
+		if right is ast.None {
+			c.error('you can not assign a `none` value to a variable', right.pos)
+		}
 	}
 	if node.left.len != right_len {
 		if right_first is ast.CallExpr {
