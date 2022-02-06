@@ -33,14 +33,14 @@ jobs:
 
       - name: Check against parent commit
         run: |
-          ./v run cmd/tools/missdoc.v ./vlib/ > /tmp/n_v.txt
-          ./v run cmd/tools/missdoc.v ./pv/vlib/ > /tmp/o_v.txt
+          ./v               run cmd/tools/missdoc.v vlib/ | sort > /tmp/n_v.txt
+          cd pv/ && ../v run ../cmd/tools/missdoc.v vlib/ | sort > /tmp/o_v.txt
           count_new=$(cat /tmp/n_v.txt | wc -l)
           count_old=$(cat /tmp/o_v.txt | wc -l)
+          echo "new pubs: $count_new | old pubs: $count_old"
+          echo "new head: $(head -n1 /tmp/n_v.txt)"
+          echo "old head: $(head -n1 /tmp/o_v.txt)"
           if [[ ${count_new} -gt ${count_old} ]]; then
             echo "The following $((count_new-count_old)) function(s) is introduced with no documentation:"
-            sed -n 's/^.*\/vlib\///p' /tmp/n_v.txt | sort > /tmp/tn_v.txt
-            sed -n 's/^.*\/vlib\///p' /tmp/o_v.txt | sort > /tmp/to_v.txt
-            diff /tmp/tn_v.txt /tmp/to_v.txt
-            exit 1
+            diff /tmp/n_v.txt /tmp/o_v.txt ## diff does exit(1) when files are different
           fi
