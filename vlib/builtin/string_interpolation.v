@@ -11,9 +11,9 @@ that can be found in the LICENSE file.
 This file contains string interpolation V functions
 =============================================================================*/
 
-//=============================================================================
-// Enum format types max 0x1F => 32 types
-//=============================================================================
+/*============================================================================
+Enum format types max 0x1F => 32 types
+=============================================================================*/
 pub enum StrIntpType {
 	si_no_str = 0 // no parameter to print only fix string
 	si_c
@@ -60,9 +60,7 @@ pub fn (x StrIntpType) str() string {
 	}
 }
 
-//=============================================================================
-// Union data
-//=============================================================================
+// Union data used by StrIntpData
 pub union StrIntpMem {
 pub mut:
 	d_c   u32
@@ -96,10 +94,7 @@ fn abs64(x i64) u64 {
 	return if x < 0 { u64(-x) } else { u64(x) }
 }
 
-//=========================================
-//
 //  u32/u64 bit compact format
-//
 //___     32      24      16       8
 //___      |       |       |       |
 //_3333333333222222222211111111110000000000
@@ -116,7 +111,7 @@ fn abs64(x i64) u64 {
 // P pad char 1/8 bit  padding char (in u32 format reduced to 1 bit as flag for `0` padding)
 //     --------------
 //     TOTAL:  39/32 bit
-//=========================================
+//---------------------------------------
 
 // convert from data format to compact u64
 pub fn get_str_intp_u64_format(fmt_type StrIntpType, in_width int, in_precision int, in_tail_zeros bool, in_sign bool, in_pad_ch byte, in_base int, in_upper_case bool) u64 {
@@ -639,7 +634,7 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 	}
 }
 
-//====================================================================================
+//--------------------------------------------------
 
 // storing struct used by cgen
 pub struct StrIntpCgenData {
@@ -680,15 +675,11 @@ pub fn str_intp(data_len int, in_data voidptr) string {
 	return ret
 }
 
-//====================================================================================
-// Utility for the compiler "auto_str_methods.v"
-//====================================================================================
-
-// substitute old _STR calls
-
+// The consts here are utilities for the compiler's "auto_str_methods.v".
+// They are used to substitute old _STR calls.
+// FIXME: this const is not released from memory => use a precalculated string const for now.
+// si_s_code = "0x" + int(StrIntpType.si_s).hex() // code for a simple string.
 pub const (
-	// BUG: this const is not released from the memory! use a const for now
-	// si_s_code = "0x" + int(StrIntpType.si_s).hex() // code for a simple string
 	si_s_code   = '0xfe10'
 	si_g32_code = '0xfe0e'
 	si_g64_code = '0xfe0f'
