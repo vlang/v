@@ -995,7 +995,9 @@ int zip_entry_open(struct zip_t *zip, const char *entryname) {
   local_dir_header_ofs += num_alignment_padding_bytes;
 
   zip->entry.m_time = time(NULL);
+#ifndef MINIZ_NO_TIME
   mz_zip_time_t_to_dos_time(zip->entry.m_time, &dos_time, &dos_date);
+#endif
 
   // ZIP64 header with NULL sizes (sizes will be in the data descriptor, just
   // after file data)
