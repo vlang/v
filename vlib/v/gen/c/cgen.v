@@ -6849,7 +6849,7 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 						...params[0]
 						typ: st.set_nr_muls(1)
 					}
-					fargs, _, _ := g.fn_args(params, voidptr(0))
+					fargs, _, _ := g.fn_decl_params(params, voidptr(0), false)
 					mut parameter_name := g.out.cut_last(g.out.len - params_start_pos)
 
 					if st.is_ptr() {

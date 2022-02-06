@@ -274,7 +274,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		g.write(fn_header)
 	}
 	arg_start_pos := g.out.len
-	fargs, fargtypes, heap_promoted := g.fn_args(node.params, node.scope)
+	fargs, fargtypes, heap_promoted := g.fn_decl_params(node.params, node.scope, node.is_variadic)
 	if is_closure {
 		mut s := '$cur_closure_ctx *$c.closure_ctx'
 		if node.params.len > 0 {
@@ -537,16 +537,15 @@ fn (mut g Gen) write_defer_stmts_when_needed() {
 	}
 }
 
-// fn decl args
-fn (mut g Gen) fn_args(args []ast.Param, scope &ast.Scope) ([]string, []string, []bool) {
+fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic bool) ([]string, []string, []bool) {
 	mut fargs := []string{}
 	mut fargtypes := []string{}
 	mut heap_promoted := []bool{}
-	if args.len == 0 {
+	if params.len == 0 {
 		// in C, `()` is untyped, unlike `(void)`
 		g.write('void')
 	}
-	for i, arg in args {
+	for i, arg in params {
 		mut caname := if arg.name == '_' { g.new_tmp_declaration_name() } else { c_name(arg.name) }
 		typ := g.unwrap_generic(arg.typ)
 		arg_type_sym := g.table.sym(typ)
@@ -556,7 +555,7 @@ fn (mut g Gen) fn_args(args []ast.Param, scope &ast.Scope) ([]string, []string, 
 			func := info.func
 			g.write('${g.typ(func.return_type)} (*$caname)(')
 			g.definitions.write_string('${g.typ(func.return_type)} (*$caname)(')
-			g.fn_args(func.params, voidptr(0))
+			g.fn_decl_params(func.params, voidptr(0), func.is_variadic)
 			g.write(')')
 			g.definitions.write_string(')')
 			fargs << caname
@@ -586,10 +585,14 @@ fn (mut g Gen) fn_args(args []ast.Param, scope &ast.Scope) ([]string, []string, 
 			fargtypes << arg_type_name
 			heap_promoted << heap_prom
 		}
-		if i < args.len - 1 {
+		if i < params.len - 1 {
 			g.write(', ')
 			g.definitions.write_string(', ')
 		}
+	}
+	if g.pref.translated && is_variadic {
+		g.write(', ...')
+		g.definitions.write_string(', ...')
 	}
 	return fargs, fargtypes, heap_promoted
 }
