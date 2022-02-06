@@ -17,13 +17,14 @@ mut:
 	in_func  bool   // are we inside a new custom user function
 	line     string // the current line entered by the user
 	//
-	modules        []string // all the import modules
-	includes       []string // all the #include statements
-	functions      []string // all the user function declarations
-	functions_name []string // all the user function names
-	lines          []string // all the other lines/statements
-	temp_lines     []string // all the temporary expressions/printlns
-	vstartup_lines []string // lines in the `VSTARTUP` file
+	modules         []string // all the import modules
+	includes        []string // all the #include statements
+	functions       []string // all the user function declarations
+	functions_name  []string // all the user function names
+	lines           []string // all the other lines/statements
+	temp_lines      []string // all the temporary expressions/printlns
+	vstartup_lines  []string // lines in the `VSTARTUP` file
+	eval_func_lines []string // same line of the `VSTARTUP` file, but used to test fn type
 }
 
 const is_stdin_a_pipe = (os.is_atty(0) == 0)
@@ -32,12 +33,39 @@ const vexe = os.getenv('VEXE')
 
 const vstartup = os.getenv('VSTARTUP')
 
+enum FnType {
+	@none
+	void
+	fn_type
+}
+
 fn new_repl() Repl {
 	return Repl{
 		readline: readline.Readline{}
 		modules: ['os', 'time', 'math']
 		vstartup_lines: os.read_file(vstartup) or { '' }.trim_right('\n\r').split_into_lines()
+		// Test file used to check if a function as a void return or a
+		// value return.
+		eval_func_lines: os.read_file(vstartup) or { '' }.trim_right('\n\r').split_into_lines()
 	}
+}
+
+fn endline_if_missed(line string) string {
+	if line.ends_with('\n') {
+		return line
+	}
+	return line + '\n'
+}
+
+fn repl_help() {
+	println(version.full_v_version(false))
+	println('
+	|help                   Displays this information.
+	|list                   Show the program so far.
+	|reset                  Clears the accumulated program, so you can start a fresh.
+	|Ctrl-C, Ctrl-D, exit   Exits the REPL.
+	|clear                  Clears the screen.
+'.strip_margin())
 }
 
 fn (mut r Repl) checks() bool {
@@ -67,20 +95,41 @@ fn (mut r Repl) checks() bool {
 	return r.in_func || (was_indent && r.indent <= 0) || r.indent > 0
 }
 
-fn (r &Repl) function_call(line string) bool {
+fn (r &Repl) function_call(line string) (bool, FnType) {
 	for function in r.functions_name {
 		is_function_definition := line.replace(' ', '').starts_with('$function:=')
 		if line.starts_with(function) && !is_function_definition {
-			return true
+			// TODO(vincenzopalazzo) store the type of the function here
+			fntype := r.check_fn_type_kind(line)
+			return true, fntype
 		}
 	}
-	return false
+
+	if line.contains(':=') {
+		// an assignment to a variable:
+		// `z := abc()`
+		return false, FnType.@none
+	}
+
+	// Check if it is a Vlib call
+	// TODO(vincenzopalazzo): auto import the module?
+	if r.is_function_call(line) {
+		fntype := r.check_fn_type_kind(line)
+		return true, fntype
+	}
+	return false, FnType.@none
+}
+
+// TODO(vincenzopalazzo) Remove this fancy check and add a regex
+fn (r &Repl) is_function_call(line string) bool {
+	return !line.starts_with('[') && line.contains('.') && line.contains('(')
+		&& (line.ends_with(')') || line.ends_with('?'))
 }
 
 fn (r &Repl) current_source_code(should_add_temp_lines bool, not_add_print bool) string {
 	mut all_lines := []string{}
 	for mod in r.modules {
-		all_lines << 'import $mod\n'
+		all_lines << endline_if_missed('import $mod')
 	}
 	if vstartup != '' {
 		mut lines := []string{}
@@ -101,15 +150,24 @@ fn (r &Repl) current_source_code(should_add_temp_lines bool, not_add_print bool)
 	return all_lines.join('\n')
 }
 
-fn repl_help() {
-	println(version.full_v_version(false))
-	println('
-	|help                   Displays this information.
-	|list                   Show the program so far.
-	|reset                  Clears the accumulated program, so you can start a fresh.
-	|Ctrl-C, Ctrl-D, exit   Exits the REPL.
-	|clear                  Clears the screen.
-'.strip_margin())
+// the new_line is probably a function call, but some function calls
+// do not return anything, while others return results.
+// This function checks which one we have:
+fn (r &Repl) check_fn_type_kind(new_line string) FnType {
+	source_code := r.current_source_code(true, false) + '\nprintln($new_line)'
+	check_file := os.join_path(os.temp_dir(), '${rand.ulid()}.vrepl.check.v')
+	os.write_file(check_file, source_code) or { panic(err) }
+	defer {
+		os.rm(check_file) or {}
+	}
+	// -w suppresses the unused import warnings
+	// -check just does syntax and checker analysis without generating/running code
+	os_response := os.execute('${os.quoted_path(vexe)} -w -check ${os.quoted_path(check_file)}')
+	str_response := convert_output(os_response)
+	if os_response.exit_code != 0 && str_response.contains('can not print void expressions') {
+		return FnType.void
+	}
+	return FnType.fn_type
 }
 
 fn run_repl(workdir string, vrepl_prefix string) {
@@ -215,7 +273,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 		} else {
 			mut temp_line := r.line
 			mut temp_flag := false
-			func_call := r.function_call(r.line)
+			func_call, fntype := r.function_call(r.line)
 			filter_line := r.line.replace(r.line.find_between("'", "'"), '').replace(r.line.find_between('"',
 				'"'), '')
 			possible_statement_patterns := [
@@ -257,7 +315,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 			if oline.starts_with('  ') {
 				is_statement = true
 			}
-			if !is_statement && !func_call && r.line != '' {
+			if !is_statement && (!func_call || fntype == FnType.fn_type) && r.line != '' {
 				temp_line = 'println($r.line)'
 				temp_flag = true
 			}
@@ -307,26 +365,33 @@ fn run_repl(workdir string, vrepl_prefix string) {
 	}
 }
 
-fn print_output(s os.Result) {
-	lines := s.output.trim_right('\n\r').split_into_lines()
+fn convert_output(os_result os.Result) string {
+	lines := os_result.output.trim_right('\n\r').split_into_lines()
+	mut content := ''
 	for line in lines {
 		if line.contains('.vrepl_temp.v:') {
 			// Hide the temporary file name
 			sline := line.all_after('.vrepl_temp.v:')
 			idx := sline.index(' ') or {
-				println(sline)
-				return
+				content += endline_if_missed(sline)
+				return content
 			}
-			println(sline[idx + 1..])
+			content += endline_if_missed(sline[idx + 1..])
 		} else if line.contains('.vrepl.v:') {
 			// Ensure that .vrepl.v: is at the start, ignore the path
 			// This is needed to have stable .repl tests.
-			idx := line.index('.vrepl.v:') or { return }
-			println(line[idx..])
+			idx := line.index('.vrepl.v:') or { panic(err) }
+			content += endline_if_missed(line[idx..])
 		} else {
-			println(line)
+			content += endline_if_missed(line)
 		}
 	}
+	return content
+}
+
+fn print_output(os_result os.Result) {
+	content := convert_output(os_result)
+	print(content)
 }
 
 fn main() {

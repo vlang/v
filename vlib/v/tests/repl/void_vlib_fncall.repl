@@ -1,0 +1,3 @@
+os.write_file('hi','hi')?
+os.rm('hi')?
+===output===
