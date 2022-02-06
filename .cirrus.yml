@@ -56,7 +56,7 @@ arm64_task:
     ./cmd/tools/test_if_v_test_system_works
 
     # - name: Self tests
-    ./v -silent test-self
+    ./v test-self
 
     ## - name: Self tests (-cstrict)
     ## ./v -cstrict test-self
