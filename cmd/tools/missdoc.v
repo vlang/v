@@ -17,11 +17,12 @@ struct UndocumentedFN {
 }
 
 struct Options {
-	show_help    bool
-	collect_tags bool
-	deprecated   bool
-	private      bool
-	js           bool
+	show_help       bool
+	collect_tags    bool
+	deprecated      bool
+	private         bool
+	js              bool
+	no_line_numbers bool
 }
 
 fn collect(path string, mut l []string, f fn (string, mut []string)) {
@@ -94,16 +95,20 @@ fn report_undocumented_functions_in_file(opt Options, file string) {
 	}
 	if info.len > 0 {
 		for undocumented_fn in info {
+			mut line_numbers := '$undocumented_fn.line:0:'
+			if opt.no_line_numbers {
+				line_numbers = ''
+			}
 			tags_str := if opt.collect_tags && undocumented_fn.tags.len > 0 {
 				'$undocumented_fn.tags'
 			} else {
 				''
 			}
 			if opt.deprecated {
-				println('$file:$undocumented_fn.line:0:$undocumented_fn.signature $tags_str')
+				println('$file:$line_numbers$undocumented_fn.signature $tags_str')
 			} else {
 				if 'deprecated' !in undocumented_fn.tags {
-					println('$file:$undocumented_fn.line:0:$undocumented_fn.signature $tags_str')
+					println('$file:$line_numbers$undocumented_fn.signature $tags_str')
 				}
 			}
 		}
@@ -132,6 +137,7 @@ fn main() {
 		deprecated: fp.bool('deprecated', `d`, false, 'Include deprecated functions in output.')
 		private: fp.bool('private', `p`, false, 'Include private functions in output.')
 		js: fp.bool('js', 0, false, 'Include JavaScript functions in output.')
+		no_line_numbers: fp.bool('no-line-numbers', 0, false, 'Exclude line numbers in output.')
 		collect_tags: fp.bool('tags', `t`, false, 'Also print function tags if any is found.')
 	}
 	if opt.show_help {
