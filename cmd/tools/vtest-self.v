@@ -61,6 +61,8 @@ const (
 		'do_not_remove',
 	]
 	skip_with_werror              = [
+		'vlib/gx/color_test.v', // uses gg/sokol
+		'vlib/gg/color_test.v', // uses gg/sokol
 		'do_not_remove',
 	]
 	skip_with_asan_compiler       = [
@@ -71,7 +73,9 @@ const (
 	]
 	skip_on_musl                  = [
 		'vlib/v/tests/profile/profile_test.v',
-		'vlib/gg/draw_fns_api_test.v',
+		'vlib/gx/color_test.v', // uses gg/sokol
+		'vlib/gg/color_test.v', // uses gg/sokol
+		'vlib/gg/draw_fns_api_test.v', // uses gg/sokol
 	]
 	skip_on_ubuntu_musl           = [
 		//'vlib/v/gen/js/jsgen_test.v',
