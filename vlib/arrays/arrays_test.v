@@ -218,3 +218,15 @@ fn test_upper_bound() ? {
 	assert (upper_bound(b, 4) or { -1 }) == -1
 	assert upper_bound(c, 2) ? == 2
 }
+
+fn test_rotate_right() {
+	mut x := [1, 2, 3, 4, 5, 6]
+	rotate_right(mut x, 2)
+	assert x == [5, 6, 1, 2, 3, 4]
+}
+
+fn test_rotate_left() {
+	mut x := [1, 2, 3, 4, 5, 6]
+	rotate_left(mut x, 2)
+	assert x == [3, 4, 5, 6, 1, 2]
+}

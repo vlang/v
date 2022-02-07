@@ -377,3 +377,118 @@ pub fn binary_search<T>(arr []T, target T) ?int {
 	}
 	return error('')
 }
+
+// rotate_left rotates the array in-place such that the first `mid` elements of the array move to the end
+// while the last `arr.len - mid` elements move to the front. After calling `rotate_left`, the element
+// previously at index `mid` will become the first element in the array.
+// Example:
+// ```v
+// mut x := [1,2,3,4,5,6]
+// arrays.rotate_left(mut x,2)
+// println(x) // [3, 4, 5, 6, 1, 2]
+// ```
+pub fn rotate_left<T>(mut arr []T, mid int) {
+	assert mid <= arr.len && mid >= 0
+	k := arr.len - mid
+	p := &T(arr.data)
+	unsafe {
+		ptr_rotate<T>(mid, p + mid, k)
+	}
+}
+
+// rotate_right rotates the array in-place such that the first `arr.len - k` elements of the array move to the end
+// while the last `k` elements move to the front. After calling `rotate_right`, the element previously at index `arr.len - k`
+// will become the first element in the array.
+// Example:
+// ```v
+// mut x := [1,2,3,4,5,6]
+// arrays.rotate_right(mut x, 2)
+// println(x) // [5, 6, 1, 2, 3, 4]
+// ```
+pub fn rotate_right<T>(mut arr []T, k int) {
+	assert k <= arr.len && k >= 0
+	mid := arr.len - k
+	p := &T(arr.data)
+	unsafe {
+		ptr_rotate<T>(mid, p + mid, k)
+	}
+}
+
+[unsafe]
+fn ptr_rotate<T>(left_ int, mid &T, right_ int) {
+	mut left := left_
+	mut right := right_
+	for {
+		delta := if left < right { left } else { right }
+		if delta <= 1 {
+			break
+		}
+		unsafe {
+			swap_nonoverlapping<T>(mid - left, mid + (right - delta), delta)
+		}
+		if left <= right {
+			right -= delta
+		} else {
+			left -= delta
+		}
+	}
+}
+
+struct Block {
+mut:
+	x u64
+	y u64
+	z u64
+	w u64
+}
+
+struct UnalignedBlock {
+mut:
+	x u64
+	y u64
+	z u64
+	w u64
+}
+
+[unsafe]
+fn memswap(x voidptr, y voidptr, len usize) {
+	block_size := sizeof(Block)
+
+	mut i := usize(0)
+	for i + block_size <= len {
+		mut t_ := Block{}
+		t := voidptr(&t_)
+
+		xi := usize(x) + i
+		yi := usize(y) + i
+		unsafe {
+			C.memcpy(t, voidptr(xi), block_size)
+			C.memcpy(voidptr(xi), voidptr(yi), block_size)
+			C.memcpy(t, voidptr(yi), block_size)
+		}
+		i += block_size
+	}
+	if i < len {
+		mut t_ := UnalignedBlock{}
+		t := voidptr(&t_)
+		rem := len - i
+		xi := usize(x) + i
+		yi := usize(y) + i
+		unsafe {
+			C.memcpy(t, voidptr(xi), rem)
+			C.memcpy(voidptr(xi), voidptr(yi), rem)
+			C.memcpy(voidptr(yi), t, rem)
+		}
+	}
+}
+
+[unsafe]
+fn swap_nonoverlapping<T>(x_ &T, y_ &T, count int) {
+	x := voidptr(x_)
+	y := voidptr(y_)
+
+	len := usize(sizeof(T)) * usize(count)
+	unsafe {
+		memswap(x, y, len)
+	}
+}
