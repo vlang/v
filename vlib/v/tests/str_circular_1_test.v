@@ -9,7 +9,7 @@ mut:
 	a &Aa
 }
 
-fn test_circular() {
+fn test_circular_1() {
 	mut b := Bb{
 		a: &Aa{
 			bs: []Bb{cap: 1}
@@ -17,5 +17,7 @@ fn test_circular() {
 	}
 	b.a.bs << b
 	s := b.str()
-	assert s.len < 3500
+
+	dump(b)
+	assert s.len < 100
 }

@@ -179,21 +179,22 @@ mut:
 	// TypeOne, TypeTwo {}
 	// where an aggregate (at least two types) is generated
 	// sum type deref needs to know which index to deref because unions take care of the correct field
-	aggregate_type_idx  int
-	branch_parent_pos   int    // used in BranchStmt (continue/break) for autofree stop position
-	returned_var_name   string // to detect that a var doesn't need to be freed since it's being returned
-	infix_left_var_name string // a && if expr
-	called_fn_name      string
-	timers              &util.Timers = util.get_timers()
-	force_main_console  bool // true when [console] used on fn main()
-	as_cast_type_names  map[string]string // table for type name lookup in runtime (for __as_cast)
-	obf_table           map[string]string
-	referenced_fns      shared map[string]bool // functions that have been referenced
-	nr_closures         int
-	expected_cast_type  ast.Type // for match expr of sumtypes
-	anon_fn             bool
-	tests_inited        bool
-	has_main            bool
+	aggregate_type_idx   int
+	branch_parent_pos    int    // used in BranchStmt (continue/break) for autofree stop position
+	returned_var_name    string // to detect that a var doesn't need to be freed since it's being returned
+	infix_left_var_name  string // a && if expr
+	called_fn_name       string
+	struct_circular_styp string
+	timers               &util.Timers = util.get_timers()
+	force_main_console   bool // true when [console] used on fn main()
+	as_cast_type_names   map[string]string // table for type name lookup in runtime (for __as_cast)
+	obf_table            map[string]string
+	referenced_fns       shared map[string]bool // functions that have been referenced
+	nr_closures          int
+	expected_cast_type   ast.Type // for match expr of sumtypes
+	anon_fn              bool
+	tests_inited         bool
+	has_main             bool
 	// main_fn_decl_node  ast.FnDecl
 	cur_mod            ast.Module
 	cur_concrete_types []ast.Type  // do not use table.cur_concrete_types because table is global, so should not be accessed by different threads
