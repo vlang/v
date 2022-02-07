@@ -414,8 +414,6 @@ pub fn rotate_right<T>(mut arr []T, k int) {
 	}
 }
 
-fn C.alloca(size usize) voidptr
-
 [unsafe]
 fn ptr_rotate<T>(left_ int, mid &T, right_ int) {
 	mut left := usize(left_)
