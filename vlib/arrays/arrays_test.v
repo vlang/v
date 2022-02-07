@@ -218,3 +218,49 @@ fn test_upper_bound() ? {
 	assert (upper_bound(b, 4) or { -1 }) == -1
 	assert upper_bound(c, 2) ? == 2
 }
+
+fn test_rotate_right() {
+	mut x := [1, 2, 3, 4, 5, 6]
+	rotate_right(mut x, 2)
+	assert x == [5, 6, 1, 2, 3, 4]
+}
+
+fn test_rotate_left() {
+	mut x := [1, 2, 3, 4, 5, 6]
+	rotate_left(mut x, 2)
+	assert x == [3, 4, 5, 6, 1, 2]
+}
+
+struct Abc {
+	x u64 = 1
+	y u64 = 2
+	z u64 = 3
+}
+
+fn test_rotate_right_struct() {
+	mut x := [Abc{1, 0, 1}, Abc{2, 0, 1}, Abc{3, 0, 1}, Abc{4, 0, 1},
+		Abc{5, 0, 1}, Abc{6, 0, 1}]
+	rotate_right(mut x, 2)
+	assert x == [Abc{5, 0, 1}, Abc{6, 0, 1}, Abc{1, 0, 1}, Abc{2, 0, 1},
+		Abc{3, 0, 1}, Abc{4, 0, 1}]
+}
+
+fn test_rotate_left_struct() {
+	mut x := [Abc{1, 0, 1}, Abc{2, 0, 1}, Abc{3, 0, 1}, Abc{4, 0, 1},
+		Abc{5, 0, 1}, Abc{6, 0, 1}]
+	rotate_left(mut x, 2)
+	assert x == [Abc{3, 0, 1}, Abc{4, 0, 1}, Abc{5, 0, 1}, Abc{6, 0, 1},
+		Abc{1, 0, 1}, Abc{2, 0, 1}]
+}
+
+fn test_rotate_right_string() {
+	mut x := ['x1', 'x2', 'x3', 'x4', 'x5', 'x6']
+	rotate_right(mut x, 2)
+	assert x == ['x5', 'x6', 'x1', 'x2', 'x3', 'x4']
+}
+
+fn test_rotate_left_string() {
+	mut x := ['x1', 'x2', 'x3', 'x4', 'x5', 'x6']
+	rotate_left(mut x, 2)
+	assert x == ['x3', 'x4', 'x5', 'x6', 'x1', 'x2']
+}
