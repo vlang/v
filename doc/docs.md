@@ -118,7 +118,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Spawning Concurrent Tasks](#spawning-concurrent-tasks)
     * [Channels](#channels)
     * [Shared Objects](#shared-objects)
-* [Decoding JSON](#decoding-json)
+* [Decoding-Encoding JSON](#decoding-encoding-json)
 * [Testing](#testing)
 * [Memory management](#memory-management)
     * [Stack and Heap](#stack-and-heap)
@@ -3714,7 +3714,7 @@ fn main() {
 ```
 Shared variables must be structs, arrays or maps.
 
-## Decoding JSON
+## Decoding-Encoding JSON
 
 ```v
 import json
@@ -3750,6 +3750,9 @@ sfoos := '[{"x":123},{"x":456}]'
 foos := json.decode([]Foo, sfoos) ?
 println(foos[0].x)
 println(foos[1].x)
+// enconding 
+println(typeof(json.encode(user)).name) // string
+println(json.encode(user)) // '{"name":"Frodo","age":25,"lastName":"Baggins"}'
 ```
 
 Because of the ubiquitous nature of JSON, support for it is built directly into V.
