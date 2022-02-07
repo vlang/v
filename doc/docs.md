@@ -3750,7 +3750,7 @@ sfoos := '[{"x":123},{"x":456}]'
 foos := json.decode([]Foo, sfoos) ?
 println(foos[0].x)
 println(foos[1].x)
-// enconding 
+// encoding 
 println(typeof(json.encode(user)).name) // string
 println(json.encode(user)) // '{"name":"Frodo","age":25,"lastName":"Baggins"}'
 ```
