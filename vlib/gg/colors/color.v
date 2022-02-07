@@ -122,7 +122,6 @@ pub const (
 	}
 )
 
-
 // hex takes in a 32 bit integer and splits it into 4 byte values
 pub fn hex(color int) Color {
 	return Color{
