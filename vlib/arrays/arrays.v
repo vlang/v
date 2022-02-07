@@ -392,7 +392,7 @@ pub fn rotate_left<T>(mut arr []T, mid int) {
 	k := arr.len - mid
 	p := &T(arr.data)
 	unsafe {
-		ptr_rotate<T>(mid, p + mid, k)
+		ptr_rotate<T>(mid, &T(usize(voidptr(p)) + usize(sizeof(T)) * usize(mid)), k)
 	}
 }
 
@@ -410,27 +410,47 @@ pub fn rotate_right<T>(mut arr []T, k int) {
 	mid := arr.len - k
 	p := &T(arr.data)
 	unsafe {
-		ptr_rotate<T>(mid, p + mid, k)
+		ptr_rotate<T>(mid, &T(usize(voidptr(p)) + usize(sizeof(T)) * usize(mid)), k)
 	}
 }
 
+fn C.alloca(size usize) voidptr
+
 [unsafe]
 fn ptr_rotate<T>(left_ int, mid &T, right_ int) {
-	mut left := left_
-	mut right := right_
+	mut left := usize(left_)
+	mut right := usize(right_)
 	for {
 		delta := if left < right { left } else { right }
-		if delta <= 1 {
+
+		if delta <= raw_array_cap<T>() {
 			break
 		}
 		unsafe {
-			swap_nonoverlapping<T>(mid - left, mid + (right - delta), delta)
+			swap_nonoverlapping<T>(&T(usize(voidptr(mid)) - left * usize(sizeof(T))),
+				&T(usize(voidptr(mid)) + usize(right - delta) * usize(sizeof(T))), int(delta))
 		}
 		if left <= right {
 			right -= delta
 		} else {
 			left -= delta
 		}
+	}
+
+	unsafe {
+		sz := usize(sizeof(T))
+		rawarray := C.malloc(raw_array_malloc_size<T>())
+		dim := &T(usize(voidptr(mid)) - left * sz + right * sz)
+		if left <= right {
+			C.memcpy(rawarray, voidptr(usize(voidptr(mid)) - left * sz), left * sz)
+			C.memmove(voidptr(usize(voidptr(mid)) - left * sz), voidptr(mid), right * sz)
+			C.memcpy(voidptr(dim), rawarray, left * sz)
+		} else {
+			C.memcpy(rawarray, voidptr(mid), right * sz)
+			C.memmove(voidptr(dim), voidptr(usize(voidptr(mid)) - left * sz), left * sz)
+			C.memcpy(voidptr(usize(voidptr(mid)) - left * sz), rawarray, right * sz)
+		}
+		C.free(rawarray)
 	}
 }
 
@@ -448,6 +468,26 @@ mut:
 	y u64
 	z u64
 	w u64
+}
+
+const (
+	extra_size = 32 * sizeof(usize)
+)
+
+fn raw_array_cap<T>() usize {
+	if sizeof(T) > arrays.extra_size {
+		return 1
+	} else {
+		return arrays.extra_size / sizeof(T)
+	}
+}
+
+fn raw_array_malloc_size<T>() usize {
+	if sizeof(T) > arrays.extra_size {
+		return usize(sizeof(T)) * 2
+	} else {
+		return 32 * usize(sizeof(usize))
+	}
 }
 
 [unsafe]
