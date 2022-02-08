@@ -184,7 +184,7 @@ mut:
 	returned_var_name    string // to detect that a var doesn't need to be freed since it's being returned
 	infix_left_var_name  string // a && if expr
 	called_fn_name       string
-	struct_circular_styp string
+	struct_circular_styp [][2]string
 	timers               &util.Timers = util.get_timers()
 	force_main_console   bool // true when [console] used on fn main()
 	as_cast_type_names   map[string]string // table for type name lookup in runtime (for __as_cast)

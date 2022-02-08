@@ -826,8 +826,16 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 	$if trace_autostr ? {
 		eprintln('> gen_str_for_struct: $info.parent_type.debug() | $styp | $str_fn_name')
 	}
-	if g.struct_circular_styp == '' && g.struct_has_circular_field(info, styp, styp) {
-		g.struct_circular_styp = styp
+	is_circular, fstyp := g.struct_has_circular_field(info, styp, styp)
+	if is_circular {
+		g.struct_circular_styp << [styp, fstyp]!
+	}
+	mut circular_styp := styp
+	for styps in g.struct_circular_styp {
+		if styps[1] == styp {
+			circular_styp = styps[0]
+			break
+		}
 	}
 	// _str() functions should have a single argument, the indenting ones take 2:
 	g.definitions.writeln('static string ${str_fn_name}($styp it); // auto')
@@ -932,8 +940,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 			field_styp = g.typ(elem_typ).replace('*', '')
 		}
 		// handle circular ref type of struct to the struct itself
-		if field_styp == g.struct_circular_styp {
-			g.struct_circular_styp = ''
+		if field_styp == circular_styp {
 			fn_body.write_string('${funcprefix}_SLIT("<circular>")')
 		} else {
 			// manage C charptr
@@ -957,14 +964,11 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 
 		fn_body.writeln('}}, {_SLIT("$quote_str"), 0, {.d_c=0}},')
 	}
-	if !g.struct_has_circular_field(info, styp, styp) {
-		g.struct_circular_styp = ''
-	}
 	fn_body.writeln('\t\t{_SLIT("\\n"), $c.si_s_code, {.d_s=indents}}, {_SLIT("}"), 0, {.d_c=0}},')
 	fn_body.writeln('\t}));')
 }
 
-fn (mut g Gen) struct_has_circular_field(info ast.Struct, styp string, fstyp string) bool {
+fn (mut g Gen) struct_has_circular_field(info ast.Struct, styp string, fstyp string) (bool, string) {
 	for field in info.fields {
 		mut sym := g.table.sym(g.unwrap_generic(field.typ))
 		mut field_styp := ''
@@ -980,16 +984,17 @@ fn (mut g Gen) struct_has_circular_field(info ast.Struct, styp string, fstyp str
 			field_styp = g.typ(field.typ).replace('*', '')
 		}
 		if styp == field_styp {
-			return true
+			return true, styp
 		}
 		if sym.kind == .struct_ && field_styp != fstyp {
 			field_info := sym.info as ast.Struct
-			if g.struct_has_circular_field(field_info, styp, field_styp) {
-				return true
+			exists, _ := g.struct_has_circular_field(field_info, styp, field_styp)
+			if exists {
+				return true, field_styp
 			}
 		}
 	}
-	return false
+	return false, ''
 }
 
 fn struct_auto_str_func(sym &ast.TypeSymbol, field_type ast.Type, fn_name string, field_name string, has_custom_str bool, expects_ptr bool) (string, bool) {
