@@ -158,7 +158,6 @@ fn main() {
 		exclude: fp.string_multi('exclude', `e`, '')
 		relative_paths: fp.bool('relative-paths', `r`, false, 'Use relative paths in output.')
 	}
-	dump(opt)
 	if opt.show_help {
 		println(fp.usage())
 		exit(0)
