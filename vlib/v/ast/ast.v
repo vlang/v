@@ -397,9 +397,10 @@ pub mut:
 
 pub struct StructInit {
 pub:
-	pos      token.Pos
-	name_pos token.Pos
-	is_short bool
+	pos             token.Pos
+	name_pos        token.Pos
+	is_short        bool
+	is_short_syntax bool
 pub mut:
 	unresolved           bool
 	pre_comments         []Comment

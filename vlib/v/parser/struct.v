@@ -426,6 +426,7 @@ fn (mut p Parser) struct_init(typ_str string, short_syntax bool) ast.StructInit 
 		name_pos: first_pos
 		pos: first_pos.extend(if short_syntax { p.tok.pos() } else { p.prev_tok.pos() })
 		is_short: no_keys
+		is_short_syntax: short_syntax
 		pre_comments: pre_comments
 		generic_types: p.struct_init_generic_types
 	}

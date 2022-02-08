@@ -46,7 +46,7 @@ pub fn (list DoublyLinkedList<T>) last() ?T {
 
 // push_back adds an element to the end of the linked list
 pub fn (mut list DoublyLinkedList<T>) push_back(item T) {
-	mut new_node := &DoublyListNode{
+	mut new_node := &DoublyListNode<T>{
 		data: item
 	}
 	if list.is_empty() {
@@ -63,7 +63,7 @@ pub fn (mut list DoublyLinkedList<T>) push_back(item T) {
 
 // push_front adds an element to the beginning of the linked list
 pub fn (mut list DoublyLinkedList<T>) push_front(item T) {
-	mut new_node := &DoublyListNode{
+	mut new_node := &DoublyListNode<T>{
 		data: item
 	}
 	if list.is_empty() {
@@ -149,7 +149,7 @@ fn (mut list DoublyLinkedList<T>) insert_back(idx int, item T) {
 	//  |next|---->|next|
 	//  |prev|<----|prev|
 	//  ------     ------
-	new := &DoublyListNode{
+	new := &DoublyListNode<T>{
 		data: item
 		next: node
 		prev: prev
@@ -176,7 +176,7 @@ fn (mut list DoublyLinkedList<T>) insert_front(idx int, item T) {
 	//  |next|---->|next|
 	//  |prev|<----|prev|
 	//  ------     ------
-	new := &DoublyListNode{
+	new := &DoublyListNode<T>{
 		data: item
 		next: next
 		prev: node
