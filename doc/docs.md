@@ -118,7 +118,9 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Spawning Concurrent Tasks](#spawning-concurrent-tasks)
     * [Channels](#channels)
     * [Shared Objects](#shared-objects)
-* [Decoding JSON](#decoding-json)
+* [JSON](#json)
+	* [Decoding JSON](#decoding-json)
+	* [Encoding JSON](#encoding-json)
 * [Testing](#testing)
 * [Memory management](#memory-management)
     * [Stack and Heap](#stack-and-heap)
@@ -3714,7 +3716,14 @@ fn main() {
 ```
 Shared variables must be structs, arrays or maps.
 
-## Decoding JSON
+## JSON
+
+Because of the ubiquitous nature of JSON, support for it is built directly into V.
+
+V generates code for JSON encoding and decoding.
+No runtime reflection is used. This results in much better performance.
+
+### Decoding JSON
 
 ```v
 import json
@@ -3752,14 +3761,29 @@ println(foos[0].x)
 println(foos[1].x)
 ```
 
-Because of the ubiquitous nature of JSON, support for it is built directly into V.
-
 The `json.decode` function takes two arguments:
 the first is the type into which the JSON value should be decoded and
 the second is a string containing the JSON data.
 
-V generates code for JSON encoding and decoding.
-No runtime reflection is used. This results in much better performance.
+### Encoding JSON
+
+```v
+import json
+
+struct User {
+	name  string
+	score i64
+}
+
+mut data := map[string]int{}
+user := &User{name: "Pierre", score: 1024}
+
+data["x"] = 42
+data["y"] = 360
+
+println(json.encode(data))
+println(json.encode(user))
+```
 
 ## Testing
 
