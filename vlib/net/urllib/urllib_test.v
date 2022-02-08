@@ -40,8 +40,14 @@ fn test_parse_query() ? {
 	q2 := urllib.parse_query('format="%l:+%c+%t"') ?
 	// dump(q1)
 	// dump(q2)
-	assert q1.data['format'].data == ['"%l: %c %t"']
-	assert q2.data['format'].data == ['"%l: %c %t"']
+	assert q1.get('format') == '"%l: %c %t"'
+	assert q2.get('format') == '"%l: %c %t"'
+}
+
+fn test_parse_query_orders() ? {
+	query_one := urllib.parse_query('https://someapi.com/endpoint?gamma=zalibaba&tau=1&alpha=alibaba&signature=alibaba123') ?
+	values := query_one.values()
+	assert values == ['zalibaba', '1', 'alibaba', 'alibaba123']
 }
 
 fn test_parse_missing_host() ? {

@@ -230,6 +230,9 @@ fn parse_request_line(s string) ?(Method, urllib.URL, Version) {
 }
 
 // Parse URL encoded key=value&key=value forms
+// FIXME: Some server can require the order parameters
+// that in this case we don't have. So, we need to update
+// this logic and use two list instead
 pub fn parse_form(body string) map[string]string {
 	words := body.split('&')
 	mut form := map[string]string{}
