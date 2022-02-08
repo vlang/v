@@ -8,18 +8,45 @@ $if windows {
 		#flag -luser32
 	}
 }
+
 fn main() {
 	C.atexit(cleanup_vtmp_folder)
+
+	if os.args.len > 3 {
+		print('usage: v symlink [OPTIONS]')
+		exit(1)
+	}
+
+	ci_mode := '-githubci' in os.args
+
 	vexe := os.real_path(pref.vexe_path())
-	$if windows {
-		setup_symlink_windows(vexe)
-	} $else {
-		setup_symlink_unix(vexe)
+	if ci_mode {
+		setup_symlink_github()
+	} else {
+		$if windows {
+			setup_symlink_windows(vexe)
+		} $else {
+			setup_symlink_unix(vexe)
+		}
 	}
 }
 
 fn cleanup_vtmp_folder() {
 	os.rmdir_all(util.get_vtmp_folder()) or {}
+}
+
+fn setup_symlink_github() {
+	// We append V's install location (which should
+	// be the current directory) to the PATH environment variable.
+
+	// Resources:
+	// 1. https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#environment-files
+	// 2. https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#setting-an-environment-variable
+	mut content := os.read_file(os.getenv('GITHUB_PATH')) or {
+		panic('Failed to read GITHUB_PATH.')
+	}
+	content += '\n$os.getwd()\n'
+	os.write_file(os.getenv('GITHUB_PATH'), content) or { panic('Failed to write to GITHUB_PATH.') }
 }
 
 fn setup_symlink_unix(vexe string) {
