@@ -3776,13 +3776,16 @@ struct User {
 }
 
 mut data := map[string]int{}
-user := &User{name: "Pierre", score: 1024}
+user := &User{
+	name: 'Pierre'
+	score: 1024
+}
 
-data["x"] = 42
-data["y"] = 360
+data['x'] = 42
+data['y'] = 360
 
-println(json.encode(data))
-println(json.encode(user))
+println(json.encode(data)) // {"x":42,"y":360}
+println(json.encode(user)) // {"name":"Pierre","score":1024}
 ```
 
 ## Testing
