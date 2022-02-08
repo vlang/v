@@ -9,8 +9,6 @@ $if windows {
 	}
 }
 
-const supported_flags = ['-githubci']
-
 fn main() {
 	C.atexit(cleanup_vtmp_folder)
 
@@ -19,27 +17,17 @@ fn main() {
 		exit(1)
 	}
 
-	ci_mode := if os.args.len == 3 {
-		if os.args[2] in supported_flags {
-			true
-		} else {
-			print('Unsupported flag: ' + os.args[2])
-			exit(1)
-			false
-		}
-	} else {
-		false
-	}
+	ci_mode := '-githubci' in os.args
 
 	vexe := os.real_path(pref.vexe_path())
-	$if windows {
-		if ci_mode {
-			setup_symlink_windows_github()
-		} else {
+	if ci_mode {
+		setup_symlink_github()
+	} else {
+		$if windows {
 			setup_symlink_windows(vexe)
+		} $else {
+			setup_symlink_unix(vexe)
 		}
-	} $else {
-		setup_symlink_unix(vexe)
 	}
 }
 
@@ -47,18 +35,18 @@ fn cleanup_vtmp_folder() {
 	os.rmdir_all(util.get_vtmp_folder()) or {}
 }
 
-fn setup_symlink_windows_github() {
-	$if windows {
-		// PowerShell Core and Chocolatey come pre-installed on the latest
-		// Windows Runners. So we append V's install location (which should
-		// be the current directory) to the PATH environment variable. Then
-		// we invoke refreshenv to make the updated PATH usable for the
-		// next steps.
+fn setup_symlink_github() {
+	// We append V's install location (which should
+	// be the current directory) to the PATH environment variable.
 
-		// See: https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#environment-files
-		os.execute_or_panic('pwsh -c "echo \$pwd | Out-File -FilePath \$env:GITHUB_PATH -Append"')
-		os.execute_or_panic('pwsh -c "refreshenv"')
+	// Resources:
+	// 1. https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#environment-files
+	// 2. https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#setting-an-environment-variable
+	mut content := os.read_file(os.getenv('GITHUB_PATH')) or {
+		panic('Failed to read GITHUB_PATH.')
 	}
+	content += '\n$os.getwd()\n'
+	os.write_file(os.getenv('GITHUB_PATH'), content) or { panic('Failed to write to GITHUB_PATH.') }
 }
 
 fn setup_symlink_unix(vexe string) {
