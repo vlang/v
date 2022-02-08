@@ -21,10 +21,11 @@ fn main() {
 
 	ci_mode := if os.args.len == 3 {
 		if os.args[2] in supported_flags {
-			return true
+			true
 		} else {
 			print('Unsupported flag: ' + os.args[2])
 			exit(1)
+			false
 		}
 	} else {
 		false
