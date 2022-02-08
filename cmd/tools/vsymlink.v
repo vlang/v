@@ -57,7 +57,7 @@ fn setup_symlink_windows_github() {
 
 		// See: https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#environment-files
 		os.execute_or_panic('pwsh -c "echo \$pwd | Out-File -FilePath \$env:GITHUB_PATH -Append"')
-		os.execute_or_panic('refreshenv')
+		os.execute_or_panic('pwsh -c "refreshenv"')
 	}
 }
 
