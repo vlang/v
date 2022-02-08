@@ -8,11 +8,35 @@ $if windows {
 		#flag -luser32
 	}
 }
+
+const supported_flags = ['-githubci']
+
 fn main() {
 	C.atexit(cleanup_vtmp_folder)
+
+	if os.args.len > 3 {
+		print('usage: v symlink [OPTIONS]')
+		exit(1)
+	}
+
+	ci_mode := if os.args.len == 3 {
+		if os.args[2] in supported_flags {
+			return true
+		} else {
+			print('Unsupported flag: ' + os.args[2])
+			exit(1)
+		}
+	} else {
+		false
+	}
+
 	vexe := os.real_path(pref.vexe_path())
 	$if windows {
-		setup_symlink_windows(vexe)
+		if ci_mode {
+			setup_symlink_windows_github()
+		} else {
+			setup_symlink_windows(vexe)
+		}
 	} $else {
 		setup_symlink_unix(vexe)
 	}
@@ -20,6 +44,20 @@ fn main() {
 
 fn cleanup_vtmp_folder() {
 	os.rmdir_all(util.get_vtmp_folder()) or {}
+}
+
+fn setup_symlink_windows_github() {
+	$if windows {
+		// PowerShell Core and Chocolatey come pre-installed on the latest
+		// Windows Runners. So we append V's install location (which should
+		// be the current directory) to the PATH environment variable. Then
+		// we invoke refreshenv to make the updated PATH usable for the
+		// next steps.
+
+		// See: https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#environment-files
+		os.execute_or_panic('pwsh -c "echo \$pwd | Out-File -FilePath \$env:GITHUB_PATH -Append"')
+		os.execute_or_panic('refreshenv')
+	}
 }
 
 fn setup_symlink_unix(vexe string) {
