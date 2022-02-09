@@ -584,6 +584,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			args << args2
 			mut method := ast.FnDecl{
 				name: name
+				short_name: name
 				mod: p.mod
 				params: args
 				file: p.file_name

@@ -2,8 +2,9 @@ module js
 
 import v.ast
 import v.util
-import v.parser
 import strings
+
+pub const builtin_functions = ['print', 'println', 'eprint', 'eprintln', 'isnil', 'panic', 'exit']
 
 fn (mut g JsGen) js_mname(name_ string) string {
 	mut is_js := false
@@ -406,7 +407,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	mut name := g.js_name(it.name)
 
 	is_print := name in ['print', 'println', 'eprint', 'eprintln', 'panic']
-	if name in parser.builtin_functions {
+	if name in js.builtin_functions {
 		name = 'builtin__$name'
 	}
 	print_method := name
@@ -623,7 +624,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 	name = g.js_name(name)
 
 	name = g.generic_fn_name(g.cur_concrete_types, name, true)
-	if name in parser.builtin_functions {
+	if name in js.builtin_functions {
 		name = 'builtin__$name'
 	}
 	if it.is_pub && !it.is_method {
@@ -797,7 +798,7 @@ fn (mut g JsGen) gen_anon_fn(mut fun ast.AnonFn) {
 	name = g.js_name(name)
 
 	name = g.generic_fn_name(g.table.cur_concrete_types, name, true)
-	if name in parser.builtin_functions {
+	if name in js.builtin_functions {
 		name = 'builtin__$name'
 	}
 	if it.is_pub && !it.is_method {

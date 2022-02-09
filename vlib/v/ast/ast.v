@@ -449,8 +449,9 @@ pub mut:
 // function or method declaration
 pub struct FnDecl {
 pub:
-	name            string
-	mod             string
+	name            string // 'math.bits.normalize'
+	short_name      string // 'normalize'
+	mod             string // 'math.bits'
 	is_deprecated   bool
 	is_pub          bool
 	is_variadic     bool
