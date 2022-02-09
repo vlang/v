@@ -35,14 +35,14 @@ git clone https://github.com/vlang/v
 cd v
 make.bat -tcc
 ```
-Нотатка: Ви також можете передати один із `-gcc`, `-msvc`, `-clang` на `make.bat` замість цього,
+Примітка: Ви також можете передати один із `-gcc`, `-msvc`, `-clang` на `make.bat` замість цього,
 якщо ви віддаєте перевагу використовувати інший компілятор C, але -tcc невеликий, швидкий і
 легко встановити (V автоматично завантажить попередньо вбудований двійковий файл).
 
 Рекомендується додати цю папку до PATH ваших змінних середовища.
 Це можна зробити за допомогою команди `v.exe symlink`.
 
-Нотатка: Деякі антивірусні програми (наприклад, Symantec) параноїчно сприймають виконувані файли
+Примітка: Деякі антивірусні програми (наприклад, Symantec) параноїчно сприймають виконувані файли
 Назви з 1 літери (наприклад, `v.exe`). Одним з можливих обхідних шляхів у цій ситуації є
 копіювання `v.exe` у `vlang.exe` (щоб копія була новішою) або додавання в білий список
 V у вашій антивірусній програмі.
@@ -87,13 +87,13 @@ V Залежності для Android: **V**, **Java JDK** >= 8, Android **SDK +
     * [цикл for](#цикл-for)
     * [Match](#match)
     * [Defer](#defer)
-* [Structs](#structs)
-    * [Embedded structs](#embedded-structs)
-    * [Default field values](#default-field-values)
-    * [Short struct literal syntax](#short-struct-literal-syntax)
-    * [Access modifiers](#access-modifiers)
-    * [Methods](#methods)
-* [Unions](#unions)
+* [Конструкції](#конструкціїts)
+    * [Вбудовані структури](#вбудовані-структури)
+    * [Значення полів за замовчуванням](#значення-полів-за-замовчуванням)
+    * [Синтаксис короткого структурного літералу](#синтаксис-короткого-структурного-літералу)
+    * [Модифікатори доступу](#модифікатори-доступу)
+    * [Методи](#методи)
+* [Союзи](#союзи)
 
 </td><td width=33% valign=top>
 
@@ -175,85 +175,85 @@ For more details, do: `v check-md`
 
 ```v
 fn main() {
-	println('Привіт Світ')
+	println('привіт світ')
 }
 ```
 
 Збережіть цей фрагмент у файлі з назвою `hello.v`, і виконайте: `v run hello.v`.
 
-> That is assuming you have symlinked your V with `v symlink`, as described
-[here](https://github.com/vlang/v/blob/master/README.md#symlinking).
-If you haven't yet, you have to type the path to V manually.
+> Це припускає, що у вас є символьне посилання на V, як описано 
+[тут](https://github.com/vlang/v/blob/master/README.md#symlinking).
+Якщо ви ще цього не зробили, вам доведеться ввести шлях до V вручну.
 
-Congratulations - you just wrote and executed your first V program!
+Вітаємо - ви щойно написали та виконали свою першу програму V!
 
-You can compile a program without execution with `v hello.v`.
-See `v help` for all supported commands.
+Ви можете зібрати програму без виконання за допомогою `v hello.v`.
+Перегляньте `v help` для всіх підтримуваних команд.
 
-From the example above, you can see that functions are declared with the `fn` keyword.
-The return type is specified after the function name.
-In this case `main` doesn't return anything, so there is no return type.
+З наведеного вище прикладу ви можете побачити, що функції оголошуються за допомогою ключового слова `fn`.
+Тип повернення вказується після імені функції.
+У цьому випадку `main` нічого не повертає, тому типу повернення немає.
 
-As in many other languages (such as C, Go, and Rust), `main` is the entry point of your program.
+Як і в багатьох інших мовах (наприклад, C, Go і Rust), `main` є точкою входу вашої програми.
 
-`println` is one of the few built-in functions.
-It prints the value passed to it to standard output.
+`println` є однією з небагатьох вбудованих функцій.
+Вона друкує передане їй значення.
 
-`fn main()` declaration can be skipped in one file programs.
-This is useful when writing small programs, "scripts", or just learning the language.
-For brevity, `fn main()` will be skipped in this tutorial.
+Оголошення `fn main()` можна пропустити в програмах з одним файлом.
+Це корисно під час написання невеликих програм, «скриптів» або просто вивчення мови.
+Для стислості `fn main()` буде пропущено в цьому підручнику.
 
-This means that a "hello world" program in V is as simple as
+Це означає, що програма "привіт світ" у V настільки ж проста, як
 
 ```v
-println('hello world')
+println('привіт світ')
 ```
 
-## Running a project folder with several files
+## Запуск папки проекту з кількома файлами
 
-Suppose you have a folder with several .v files in it, where one of them
-contains your `main()` function, and the other files have other helper
-functions. They may be organized by topic, but still *not yet* structured
-enough to be their own separate reusable modules, and you want to compile
-them all into one program.
+Припустимо, у вас є папка з кількома файлами .v, де один з них
+містить вашу функцію `main()`, а інші файли мають інший
+функції. Вони можуть бути організовані за темами, але вони все *ще* не досить структуровані
+щчоб бути окремими модулями для багаторазового використання, і ви хочете скомпілювати
+їх усі в одну програму.
 
-In other languages, you would have to use includes or a build system
-to enumerate all files, compile them separately to object files,
-then link them into one final executable.
+В інших мовах вам доведеться використовувати включення або систему збірки
+щоб перерахувати всі файли, скомпілювати їх окремо в об'єктні файли,
+потім об'єднати їх в один кінцевий виконуваний файл.
 
-In V however, you can compile and run the whole folder of .v files together,
-using just `v run .`. Passing parameters also works, so you can
-do: `v run . --yourparam some_other_stuff`
+Однак у V ви можете зібрати та запустити всю папку файлів .v разом,
+використовуючи просто `v run .` Передача параметрів також працює, так що ви можете
+зробити: `v run . --ваші параметри деякі інші речі`
 
-The above will first compile your files into a single program (named
-after your folder/project), and then it will execute the program with
-`--yourparam some_other_stuff` passed to it as CLI parameters.
+Наведене вище спершу компілює ваші файли в одну програму (з ім’ям
+вашої папки/проекта), а потім він виконає програму з
+`--ваші параметри деякі інші речі` передається йому як параметри CLI.
 
-Your program can then use the CLI parameters like this:
+Тоді ваша програма може використовувати такі параметри CLI:
 ```v
 import os
 
 println(os.args)
 ```
-NB: after a successful run, V will delete the generated executable.
-If you want to keep it, use `v -keepc run .` instead, or just compile
-manually with `v .` .
+Примітка: після успішного запуску V видалить згенерований виконуваний файл.
+Якщо ви хочете зберегти його, замість цього використовуйте `v -keepc run .` або просто скомпілюйте
+вручну за допомогою `v .`
 
-NB: any V compiler flags should be passed *before* the `run` command.
-Everything after the source file/folder, will be passed to the program
-as is - it will not be processed by V.
+Примітка: будь-які прапори компілятора V повинні передаватися *перед* командою `run`.
+Все після вихідного файлу/папки буде передано програмі
+яку компілює (це не буде оброблено V).
 
-## Comments
+## Коментарі
 
 ```v
-// This is a single line comment.
+// Це однорядковий коментар.
 /*
-This is a multiline comment.
-   /* It can be nested. */
+Це багаторядковий коментар.
+   /* Він може бути вкладеним. */
 */
 ```
 
-## Functions
+## Функції
 
 ```v
 fn main() {
@@ -270,19 +270,19 @@ fn sub(x int, y int) int {
 }
 ```
 
-Again, the type comes after the argument's name.
+Знову ж таки, тип йде після імені аргументу.
 
-Just like in Go and C, functions cannot be overloaded.
-This simplifies the code and improves maintainability and readability.
+Як і в Go і C, функції не можуть бути перевантажені.
+Це спрощує код і покращує ремонтопридатність і читабельність.
 
-### Hoistings
+### Підйомники
 
-Functions can be used before their declaration:
-`add` and `sub` are declared after `main`, but can still be called from `main`.
-This is true for all declarations in V and eliminates the need for header files
-or thinking about the order of files and declarations.
+Функції можна використовувати перед їх оголошенням:
+`add` і `sub` оголошуються після `main`, але можуть бути викликані з `main`.
+Це справедливо для всіх декларацій у V і усуває необхідність у файлах заголовків
+або розмірковування про порядок файлів і декларацій.
 
-### Returning multiple values
+### Повернення кількох значень
 
 ```v
 fn foo() (int, int) {
@@ -292,7 +292,7 @@ fn foo() (int, int) {
 a, b := foo()
 println(a) // 2
 println(b) // 3
-c, _ := foo() // ignore values using `_`
+c, _ := foo() // ігноруйте значення за допомогою `_`
 ```
 
 ## Видимість символу
@@ -305,17 +305,17 @@ fn private_function() {
 }
 ```
 
-Functions are private (not exported) by default.
-To allow other modules to use them, prepend `pub`. The same applies
-to constants and types.
+За замовчуванням функції є приватними (не експортуються).
+Щоб дозволити іншим модулям використовувати їх, додайте до `pub`. Те саме стосується
+до констант і типів.
 
-Note: `pub` can only be used from a named module.
-For information about creating a module, see [Modules](#modules).
+Нотатка: `pub` можна використовувати лише з іменованого модуля.
+Інформацію про створення модуля див. у розділі [Модулі](#modules).
 
 ## Змінні
 
 ```v
-name := 'Bob'
+name := 'Олег'
 age := 20
 large_number := i64(9999999999)
 println(name)
@@ -323,23 +323,23 @@ println(age)
 println(large_number)
 ```
 
-Змінні are declared and initialized with `:=`. This is the only
-way to declare Змінні in V. This means that Змінні always have an initial
-value.
+Змінні оголошуються та ініціалізуються `:=`. Це єдине
+спосіб оголошувати Змінні в V. Це означає, що Змінні завжди мають початкове
+значення.
 
-The variable's type is inferred from the value on the right hand side.
-To choose a different type, use type conversion:
-the expression `T(v)` converts the value `v` to the
-type `T`.
+Тип змінної визначається із значення праворуч.
+Щоб вибрати інший тип, скористайтеся перетворенням типів:
+вираз `T(v)` перетворює значення `v` у
+тип `T`.
 
-Unlike most other languages, V only allows defining Змінні in functions.
-Global (module level) Змінні are not allowed. There's no global state in V
-(see [Pure functions by default](#pure-functions-by-default) for details).
+На відміну від більшості інших мов, V дозволяє визначати Змінні лише у функціях.
+Глобальні (рівеня модуля) Змінні не допускаються
+(докладніше див. у розділі [Функції Pure за замовчуванням](#pure-functions-by-default)).
 
-For consistency across different code bases, all variable and function names
-must use the `snake_case` style, as opposed to type names, which must use `PascalCase`.
+Для узгодженості в різних базах коду всі імена змінних і функцій
+має використовувати стиль `snake_case`, на відміну від імен типів, які мають використовувати `PascalCase`.
 
-### Mutable Змінні
+### Змінні змінні
 
 ```v
 mut age := 20
@@ -348,16 +348,16 @@ age = 21
 println(age)
 ```
 
-To change the value of the variable use `=`. In V, Змінні are
-immutable by default.
-To be able to change the value of the variable, you have to declare it with `mut`.
+Щоб змінити значення змінної, використовуйте `=`. У V, змінні є
+незмінними за замовчуванням.
+Щоб мати можливість змінити значення змінної, ви повинні оголосити її за допомогою `mut`.
 
-Try compiling the program above after removing `mut` from the first line.
+Спробуйте скомпілювати програму вище, видаливши `mut` з першого рядка.
 
-### Initialization vs assignment
+### Ініціалізація проти призначення
 
-Note the (important) difference between `:=` and `=`.
-`:=` is used for declaring and initializing, `=` is used for assigning.
+Зверніть увагу на (важливу) різницю між `:=` та `=`.
+`:=` використовується для оголошення та ініціалізації, `=` використовується для призначення.
 
 ```v failcompile
 fn main() {
@@ -365,8 +365,8 @@ fn main() {
 }
 ```
 
-This code will not compile, because the variable `age` is not declared.
-All Змінні need to be declared in V.
+Цей код не буде компілюватися, оскільки змінна `age` не оголошена.
+Усі змінні потрібно декларувати в V.
 
 ```v
 fn main() {
@@ -374,8 +374,7 @@ fn main() {
 }
 ```
 
-The values of multiple Змінні can be changed in one line.
-In this way, their values can be swapped without an intermediary variable.
+Значення кількох змінних можна змінити в одному рядку. Таким чином, їх значення можна поміняти місцями без проміжної змінної.
 
 ```v
 mut a := 0
@@ -385,27 +384,27 @@ a, b = b, a
 println('$a, $b') // 1, 0
 ```
 
-### Declaration errors
+### Помилки в декларації
 
-In development mode the compiler will warn you that you haven't used the variable
-(you'll get an "unused variable" warning).
-In production mode (enabled by passing the `-prod` flag to v – `v -prod foo.v`)
-it will not compile at all (like in Go).
+У режимі розробки компілятор попередить вас, що ви не використовували змінну
+(ви отримаєте попередження про "невикористану змінну").
+У виробничому режимі (увімкнено шляхом передачі прапора `-prod` до v – `v -prod foo.v`)
+він взагалі не компілюється (як Go).
 
 ```v failcompile nofmt
 fn main() {
 	a := 10
 	if true {
-		a := 20 // error: redefinition of `a`
+		a := 20 // помилка: перевизначення `a`
 	}
-	// warning: unused variable `a`
+	// попередження: невикористана змінна `a`
 }
 ```
 
-Unlike most languages, variable shadowing is not allowed. Declaring a variable with a name
-that is already used in a parent scope will cause a compilation error.
+На відміну від більшості мов, тіньова змінна не дозволяється. Оголошення змінної з іменем
+що вже використовується в батьківській області, призведе до помилки компіляції.
 
-You can shadow imported modules though, as it is very useful in some situations:
+Однак ви можете затінити імпортовані модулі, оскільки це дуже корисно в деяких ситуаціях:
 ```v ignore
 import ui
 import gg
@@ -416,9 +415,9 @@ fn draw(ctx &gg.Context) {
 }
 ```
 
-## V Types
+## V Типи
 
-### Primitive types
+### Примітивні типи
 
 ```v ignore
 bool
@@ -428,24 +427,24 @@ string
 i8    i16  int  i64      i128 (soon)
 byte  u16  u32  u64      u128 (soon)
 
-rune // represents a Unicode code point
+rune // представляє кодову точку Unicode
 
 f32 f64
 
-isize, usize // platform-dependent, the size is how many bytes it takes to reference any location in memory
+isize, usize // залежно від платформи, розмір — це кількість байтів, необхідна для посилання на будь-яке місце в пам’яті
 
-voidptr // this one is mostly used for C interoperability
+voidptr // цей здебільшого використовується для взаємодії з C
 
-any // similar to C's void* and Go's interface{}
+any // схожий на C void* та Go interface{}		
 ```
 
-Please note that unlike C and Go, `int` is always a 32 bit integer.
+Зверніть увагу, що на відміну від C і Go, `int` завжди є 32-бітовим цілим числом.
 
-There is an exception to the rule that all operators
-in V must have values of the same type on both sides. A small primitive type
-on one side can be automatically promoted if it fits
-completely into the data range of the type on the other side.
-These are the allowed possibilities:
+З правил є виняток, що всі оператори
+у V повинні мати значення одного типу з обох сторін. Невеликий примітивний тип
+з одного боку можна автоматично трансформувати, якщо він повністю підходить
+в діапазон даних типу з іншого боку.
+Це дозволені можливості:
 
 ```v ignore
    i8 → i16 → int → i64
@@ -456,25 +455,25 @@ These are the allowed possibilities:
       ↘     ↘     ↘      ptr
    i8 → i16 → int → i64 ⬏
 ```
-An `int` value for example can be automatically promoted to `f64`
-or `i64` but not to `u32`. (`u32` would mean loss of the sign for
-negative values).
-Promotion from `int` to `f32`, however, is currently done automatically
-(but can lead to precision loss for large values).
+Наприклад, значення int може бути автоматично підвищено до f64
+або `i64`, але не `u32`. ("u32" означає втрату знака для
+від'ємних значень).
+Проте підвищення з `int` на `f32` наразі здійснюється автоматично
+(але може призвести до втрати точності для великих значень).
 
-Literals like `123` or `4.56` are treated in a special way. They do
-not lead to type promotions, however they default to `int` and `f64`
-respectively, when their type has to be decided:
+Літерали, такі як "123" або "4,56", обробляються особливим чином. Вони
+не призводять до просування(трансформації) типу, однак за замовчуванням вони мають значення "int" і "f64".
+відповідно, коли необхідно визначити їх тип:
 
 ```v nofmt
 u := u16(12)
-v := 13 + u    // v is of type `u16` - no promotion
+v := 13 + u    // v має тип "u16" - без підвищення
 x := f32(45.6)
-y := x + 3.14  // x is of type `f32` - no promotion
-a := 75        // a is of type `int` - default for int literal
-b := 14.7      // b is of type `f64` - default for float literal
-c := u + a     // c is of type `int` - automatic promotion of `u`'s value
-d := b + x     // d is of type `f64` - automatic promotion of `x`'s value
+y := x + 3.14  // x має тип `f32` - без підвищення
+a := 75        // a має тип `int` - за замовчуванням для літералу int
+b := 14.7      // b має тип `f64` - за замовчуванням для літералу з плаваючою чисельністю
+c := u + a     // c має тип `int` - автоматичне просування значення `u`
+d := b + x     // d має тип `f64` - автоматичне просування значення `x`
 ```
 
 ### Strings
