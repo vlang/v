@@ -116,7 +116,7 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 
 pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 	if node.typ == ast.void_type {
-		// Short syntax `({foo: bar})`
+		// short syntax `foo(key:val, key2:val2)`
 		if c.expected_type == ast.void_type {
 			c.error('unexpected short struct syntax', node.pos)
 			return ast.void_type
