@@ -12,10 +12,4 @@ vlib/v/checker/tests/generic_fn_decl_without_generic_names_err.vv:32:1: error: g
       | ~~~~~~~~~~~~~~
    33 |     println("hi")
    34 | }
-vlib/v/checker/tests/generic_fn_decl_without_generic_names_err.vv:23:9: error: cannot use `Generic` as type `Generic<Concrete>` in return argument
-   21 |     go g_worker(g)
-   22 |
-   23 |     return g
-      |            ^
-   24 | }
-   25 |
+

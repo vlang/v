@@ -12,3 +12,45 @@ vlib/v/checker/tests/generics_struct_init_err.vv:67:8: error: generic struct ini
       |           ~~~~~~~~~~~~~~
    68 |     assert ret == -6
    69 | }
+vlib/v/checker/tests/generics_struct_init_err.vv:22:7: error: generic struct init must specify type parameter, e.g. Foo<T>
+   20 |
+   21 | fn holder_call_1<T>(func T, a int) int {
+   22 |     h := FnHolder1{func}
+      |          ~~~~~~~~~~~~~~~
+   23 |     return h.call(a)
+   24 | }
+vlib/v/checker/tests/generics_struct_init_err.vv:27:7: error: generic struct init must specify type parameter, e.g. Foo<T>
+   25 |
+   26 | fn holder_call_2<T>(func T, a int) int {
+   27 |     h := FnHolder2{func}
+      |          ~~~~~~~~~~~~~~~
+   28 |     return h.call(a)
+   29 | }
+vlib/v/checker/tests/generics_struct_init_err.vv:33:7: error: generic struct init must specify type parameter, e.g. Foo<T>
+   31 | fn holder_call_11<T>(func T, a int) int {
+   32 |     f := func
+   33 |     h := FnHolder1{f}
+      |          ~~~~~~~~~~~~
+   34 |     return h.call(a)
+   35 | }
+vlib/v/checker/tests/generics_struct_init_err.vv:39:7: error: generic struct init must specify type parameter, e.g. Foo<T>
+   37 | fn holder_call_21<T>(func T, a int) int {
+   38 |     f := func
+   39 |     h := FnHolder2{f}
+      |          ~~~~~~~~~~~~
+   40 |     return h.call(a)
+   41 | }
+vlib/v/checker/tests/generics_struct_init_err.vv:44:9: error: generic struct init must specify type parameter, e.g. Foo<T>
+   42 |
+   43 | fn holder_call_12<T>(func T, a int) int {
+   44 |     return FnHolder1{func}.call(a)
+      |            ~~~~~~~~~~~~~~~
+   45 | }
+   46 |
+vlib/v/checker/tests/generics_struct_init_err.vv:48:9: error: generic struct init must specify type parameter, e.g. Foo<T>
+   46 |
+   47 | fn holder_call_22<T>(func T, a int) int {
+   48 |     return FnHolder2{func}.call(a)
+      |            ~~~~~~~~~~~~~~~
+   49 | }
+   50 |

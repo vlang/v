@@ -61,7 +61,7 @@ pub fn (list LinkedList<T>) index(idx int) ?T {
 
 // push adds an element to the end of the linked list
 pub fn (mut list LinkedList<T>) push(item T) {
-	new_node := &ListNode{
+	new_node := &ListNode<T>{
 		data: item
 	}
 	if list.head == 0 {
@@ -124,7 +124,7 @@ pub fn (mut list LinkedList<T>) insert(idx int, item T) ? {
 
 		if idx == 0 {
 			// first node case
-			list.head = &ListNode{
+			list.head = &ListNode<T>{
 				data: item
 				next: node
 			}
@@ -132,7 +132,7 @@ pub fn (mut list LinkedList<T>) insert(idx int, item T) ? {
 			for i := 0; i < idx - 1; i++ {
 				node = node.next
 			}
-			node.next = &ListNode{
+			node.next = &ListNode<T>{
 				data: item
 				next: node.next
 			}

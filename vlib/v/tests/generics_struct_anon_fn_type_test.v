@@ -19,33 +19,33 @@ fn (self FnHolder2<T>) call(a int) int {
 }
 
 fn holder_call_1<T>(func T, a int) int {
-	h := FnHolder1{func}
+	h := FnHolder1<T>{func}
 	return h.call(a)
 }
 
 fn holder_call_2<T>(func T, a int) int {
-	h := FnHolder2{func}
+	h := FnHolder2<T>{func}
 	return h.call(a)
 }
 
 fn holder_call_11<T>(func T, a int) int {
 	f := func
-	h := FnHolder1{f}
+	h := FnHolder1<T>{f}
 	return h.call(a)
 }
 
 fn holder_call_21<T>(func T, a int) int {
 	f := func
-	h := FnHolder2{f}
+	h := FnHolder2<T>{f}
 	return h.call(a)
 }
 
 fn holder_call_12<T>(func T, a int) int {
-	return FnHolder1{func}.call(a)
+	return FnHolder1<T>{func}.call(a)
 }
 
 fn holder_call_22<T>(func T, a int) int {
-	return FnHolder2{func}.call(a)
+	return FnHolder2<T>{func}.call(a)
 }
 
 fn test_generic_struct_with_anon_fn_parameter() {
