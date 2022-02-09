@@ -118,7 +118,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 	if node.typ == ast.void_type {
 		// short syntax `foo(key:val, key2:val2)`
 		if c.expected_type == ast.void_type {
-			c.error('the expected type of short struct syntax is invalid', node.pos)
+			c.error('unexpected short struct syntax', node.pos)
 			return ast.void_type
 		}
 		sym := c.table.sym(c.expected_type)
