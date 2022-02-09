@@ -10016,6 +10016,8 @@ const char *mz_zip_get_error_string(mz_zip_error mz_err) {
     return "validation failed";
   case MZ_ZIP_WRITE_CALLBACK_FAILED:
     return "write calledback failed";
+  case MZ_ZIP_TOTAL_ERRORS:
+    return "total errors";
   default:
     break;
   }
