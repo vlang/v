@@ -476,126 +476,125 @@ c := u + a     // c має тип `int` - автоматичне просува�
 d := b + x     // d має тип `f64` - автоматичне просування значення `x`
 ```
 
-### Strings
+### Рядки
 
 ```v nofmt
 name := 'Bob'
-assert name.len == 3       // will print 3
-assert name[0] == byte(66) // indexing gives a byte, byte(66) == `B`
-assert name[1..3] == 'ob'  // slicing gives a string 'ob'
+assert name.len == 3       // надрукує 3
+assert name[0] == byte(66) // індексація дає байт, byte(66) == `B`
+assert name[1..3] == 'ob'  // нарізання дає рядок 'ob'
 
 // escape codes
-windows_newline := '\r\n'      // escape special characters like in C
+windows_newline := '\r\n'      // уникнути спеціальних символів, як у C
 assert windows_newline.len == 2
 
-// arbitrary bytes can be directly specified using `\x##` notation where `#` is
-// a hex digit aardvark_str := '\x61ardvark' assert aardvark_str == 'aardvark'
+// довільні байти можна безпосередньо вказати, використовуючи нотацію `\x##`, де `#`
+// шістнадцятковий розряд aardvark_str := '\x61ardvark' assert aardvark_str == 'aardvark'
 assert '\xc0'[0] == byte(0xc0)
 
-// or using octal escape `\###` notation where `#` is an octal digit
+// або за допомогою вісімкової escape-нотації, де `#` є вісімковою цифрою
 aardvark_str2 := '\141ardvark'
 assert aardvark_str2 == 'aardvark'
 
-// Unicode can be specified directly as `\u####` where # is a hex digit
-// and will be converted internally to its UTF-8 representation
+// Юнікод можна вказати безпосередньо як `\u####`, де # - це шістнадцяткова цифра
+// і буде внутрішньо перетворено в його подання UTF-8
 star_str := '\u2605' // ★
 assert star_str == '★'
-assert star_str == '\xe2\x98\x85' // UTF-8 can be specified this way too.
+assert star_str == '\xe2\x98\x85' // UTF-8 також можна вказати таким чином.
 ```
 
-In V, a string is a read-only array of bytes. All Unicode characters are encoded using UTF-8:
+У V рядок є масивом байтів лише для читання. Усі символи Unicode кодуються за допомогою UTF-8:
 
 ```v
-s := 'hello 🌎' // emoji takes 4 bytes
+s := 'hello 🌎' //emoji займає 4 байти
 assert s.len == 10
 
-arr := s.bytes() // convert `string` to `[]byte`
+arr := s.bytes() // перетворити `string` на `[]byte`
 assert arr.len == 10
 
-s2 := arr.bytestr() // convert `[]byte` to `string`
+s2 := arr.bytestr() // перетворити `[]byte` на `string`
 assert s2 == s
 ```
 
-String values are immutable. You cannot mutate elements:
+Рядкові значення є незмінними. Ви не можете мутувати(змінювати) елементи:
 
 ```v failcompile
 mut s := 'hello 🌎'
-s[0] = `H` // not allowed
+s[0] = `H` // не дозволено
 ```
 
-> error: cannot assign to `s[i]` since V strings are immutable
+> помилка: не можна призначити `s[i]`, оскільки V рядки є незмінними
 
-Note that indexing a string will produce a `byte`, not a `rune` nor another `string`. Indexes
-correspond to _bytes_ in the string, not Unicode code points. If you want to convert the `byte` to a
-`string`, use the `.ascii_str()` method on the `byte`:
+Зауважте, що індексація рядка призведе до створення `byte`, а не `rune` чи іншого `string`. Індекси
+відповідають _байтам_ у рядку, а не кодовим точкам Unicode. Якщо ви хочете перетворити `byte` в
+`string`, використовуйте метод `.ascii_str()` для `byte`:
 
 ```v
 country := 'Netherlands'
-println(country[0]) // Output: 78
-println(country[0].ascii_str()) // Output: N
+println(country[0]) // Вихід: 78
+println(country[0].ascii_str()) // Вихід: N
 ```
 
-Both single and double quotes can be used to denote strings. For consistency, `vfmt` converts double
-quotes to single quotes unless the string contains a single quote character.
+Для позначення рядків можна використовувати як одинарні, так і подвійні лапки. Для узгодженості `vfmt` перетворює подвійне
+лапки в одинарні лапки, якщо рядок не містить одинарних лапок.
 
-For raw strings, prepend `r`. Escape handling is not done for raw strings:
+Для необроблених рядків спереду додайте `r`. Escape-обробка не виконується для необроблених рядків:
 
 ```v
-s := r'hello\nworld' // the `\n` will be preserved as two characters
+s := r'hello\nworld' // `\n` буде збережено як два символи
 println(s) // "hello\nworld"
 ```
 
-Strings can be easily converted to integers:
+Рядки можна легко перетворити на цілі числа:
 
 ```v
 s := '42'
 n := s.int() // 42
 
-// all int literals are supported
+// підтримуються всі літерали int
 assert '0xc3'.int() == 195
 assert '0o10'.int() == 8
 assert '0b1111_0000_1010'.int() == 3850
 assert '-0b1111_0000_1010'.int() == -3850
 ```
 
-For more advanced `string` processing and conversions, refer to the
-[vlib/strconv](https://modules.vlang.io/strconv.html) module.
+Для більш розширеної обробки та перетворення `string` див
+[vlib/strconv](https://modules.vlang.io/strconv.html) модуль.
 
-### String interpolation
+### Інтерполяція рядка
 
-Basic interpolation syntax is pretty simple - use `$` before a variable name. The variable will be
-converted to a string and embedded into the literal:
+Основний синтаксис інтерполяції досить простий - використовуйте `$` перед ім'ям змінної. Змінна буде перетворюється на рядок і вбудовується в літерал:
 
 ```v
 name := 'Bob'
 println('Hello, $name!') // Hello, Bob!
 ```
 
-It also works with fields: `'age = $user.age'`. If you need more complex expressions, use `${}`:
-`'can register = ${user.age > 13}'`.
+Він також працює з полями: `'age = $user.age'`. Якщо вам потрібні більш складні вирази, використовуйте `${}`:
+`'можна зареєструватися = ${user.age > 13}'`.
 
-Format specifiers similar to those in C's `printf()` are also supported. `f`, `g`, `x`, `o`, `b`,
-etc. are optional and specify the output format. The compiler takes care of the storage size, so
-there is no `hd` or `llu`.
+Також підтримуються специфікатори формату, подібні до тих, що містяться в `printf()` в C f, `g`, `x`, `o`, `b`,
+тощо є необов'язковими та вказують вихідний формат. Компілятор піклується про розмір сховища, тому
+немає `hd` або `llu`.
 
-To use a format specifier, follow this pattern:
+Щоб використовувати специфікатор формату, дотримуйтесь цього шаблону:
 
-`${varname:[flags][width][.precision][type]}`
+`${ім'я змінной:[прапори][ширина][.точність][тип]}`
 
-- flags: may be zero or more of the following: `-` to left-align output within the field, `0` to use
-  `0` as the padding character instead of the default `space` character. (Note: V does not currently
-  support the use of `'` or `#` as format flags, and V supports but doesn't need `+` to right-align
-  since that's the default.)
-- width: may be an integer value describing the minimum width of total field to output.
-- precision: an integer value preceded by a `.` will guarantee that many digits after the decimal
-  point, if the input variable is a float. Ignored if variable is an integer.
-- type: `f` and `F` specify the input is a float and should be rendered as such, `e` and `E` specify
-  the input is a float and should be rendered as an exponent (partially broken), `g` and `G` specify
-  the input is a float--the renderer will use floating point notation for small values and exponent
-  notation for large values, `d` specifies the input is an integer and should be rendered in base-10
-  digits, `x` and `X` require an integer and will render it as hexadecimal digits, `o` requires an
-  integer and will render it as octal digits, `b` requires an integer and will render it as binary
-  digits, `s` requires a string (almost never used).
+- прапори: можуть бути нульовими або одними з наступних: `-` для вирівнювання за лівим краєм у полі, `0` для використання
+   `0` як символ заповнення замість символу `пробіл` за замовчуванням. (Примітка: V наразі не так
+   підтримують використання `'` або `#` як прапорів формату, V підтримує, але не потребує `+` для вирівнювання за правим краєм
+   оскільки це за замовчуванням.)
+- ширина: може бути цілим значенням, що описує мінімальну ширину загального поля для виведення.
+- точність: цифра після `.` - кількість знаків після коми.
+Якщо вхідна змінна є цілим числом ігнорують.
+- тип: `f` і `F` вказують, що вхід є float і має відображатися, `e` і `E` вказують що
+   вхідні дані є float і мають відображатися як експонента (частково порушена), `g` і `G` вказують що
+   вхідні дані є float - рендерер використовуватиме позначення з плаваючою комою для малих значень і показника
+   позначення для великих значень, `d` вказує, що вхідні дані є цілим числом і мають відображатися в базі 10
+   цифри, `x` і `X` вимагають ціле число і відображатимуть його як шістнадцяткові цифри, `o` вимагає
+   ціле число і відобразить його як вісімкові цифри, `b` вимагає ціле число і відобразить його як двійковий
+   цифри, `s` вимагає рядка (майже ніколи не використовується).
 
 Note: when a numeric type can render alphabetic characters, such as hex strings or special values
 like `infinity`, the lowercase version of the type forces lowercase alphabetics and the uppercase
