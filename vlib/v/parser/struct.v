@@ -340,8 +340,6 @@ fn (mut p Parser) struct_init(typ_str string, short_syntax bool) ast.StructInit 
 	p.struct_init_generic_types = []ast.Type{}
 	typ := if short_syntax { ast.void_type } else { p.parse_type() }
 	p.expr_mod = ''
-	// sym := p.table.sym(typ)
-	// p.warn('struct init typ=$sym.name')
 	if !short_syntax {
 		p.check(.lcbr)
 	}
