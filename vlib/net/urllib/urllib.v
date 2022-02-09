@@ -836,6 +836,15 @@ fn parse_query_values(mut m Values, query string) ?bool {
 
 // encode encodes the values into ``URL encoded'' form
 // ('bar=baz&foo=quux').
+// The syntx of the query string is specified in the
+// RFC173 https://datatracker.ietf.org/doc/html/rfc1738
+//
+// HTTP grammar
+//
+// httpurl        = "http://" hostport [ "/" hpath [ "?" search ]]
+// hpath          = hsegment *[ "/" hsegment ]
+// hsegment       = *[ uchar | ";" | ":" | "@" | "&" | "=" ]
+// search         = *[ uchar | ";" | ":" | "@" | "&" | "=" ]
 pub fn (v Values) encode() string {
 	if v.len == 0 {
 		return ''
@@ -847,6 +856,9 @@ pub fn (v Values) encode() string {
 			buf.write_string('&')
 		}
 		buf.write_string(key_kscaped)
+		if qvalue.value == '' {
+			continue
+		}
 		buf.write_string('=')
 		buf.write_string(query_escape(qvalue.value))
 	}

@@ -87,11 +87,28 @@ pub fn (mut v Values) del(key string) {
 	v.len = v.data.len
 }
 
-// return the list of values
+// return the list of values in the query string
 pub fn (v Values) values() []string {
 	mut values := []string{}
 	for qvalue in v.data {
-		values << qvalue.value
+		if qvalue.value != '' {
+			values << qvalue.value
+		}
 	}
 	return values
+}
+
+// return a map <key []value> of the query string
+pub fn (v Values) to_map() map[string][]string {
+	mut result := map[string][]string{}
+
+	for qvalue in v.data {
+		if qvalue.key in result {
+			result[qvalue.key] << qvalue.value
+		} else {
+			result[qvalue.key] = [qvalue.value]
+		}
+	}
+
+	return result
 }
