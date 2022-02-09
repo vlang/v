@@ -49,8 +49,8 @@ fn parse_attrs(name string, attrs []string) ?([]http.Method, string) {
 
 fn parse_query_from_url(url urllib.URL) map[string]string {
 	mut query := map[string]string{}
-	for k, v in url.query().data {
-		query[k] = v.data[0]
+	for qvalue in url.query().data {
+		query[qvalue.key] = qvalue.value
 	}
 	return query
 }

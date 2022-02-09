@@ -835,28 +835,32 @@ fn parse_query_values(mut m Values, query string) ?bool {
 }
 
 // encode encodes the values into ``URL encoded'' form
-// ('bar=baz&foo=quux') sorted by key.
+// ('bar=baz&foo=quux').
+// The syntx of the query string is specified in the
+// RFC173 https://datatracker.ietf.org/doc/html/rfc1738
+//
+// HTTP grammar
+//
+// httpurl        = "http://" hostport [ "/" hpath [ "?" search ]]
+// hpath          = hsegment *[ "/" hsegment ]
+// hsegment       = *[ uchar | ";" | ":" | "@" | "&" | "=" ]
+// search         = *[ uchar | ";" | ":" | "@" | "&" | "=" ]
 pub fn (v Values) encode() string {
 	if v.len == 0 {
 		return ''
 	}
 	mut buf := strings.new_builder(200)
-	mut keys := []string{}
-	for k, _ in v.data {
-		keys << k
-	}
-	keys.sort()
-	for k in keys {
-		vs := v.data[k]
-		key_kscaped := query_escape(k)
-		for _, val in vs.data {
-			if buf.len > 0 {
-				buf.write_string('&')
-			}
-			buf.write_string(key_kscaped)
-			buf.write_string('=')
-			buf.write_string(query_escape(val))
+	for qvalue in v.data {
+		key_kscaped := query_escape(qvalue.key)
+		if buf.len > 0 {
+			buf.write_string('&')
 		}
+		buf.write_string(key_kscaped)
+		if qvalue.value == '' {
+			continue
+		}
+		buf.write_string('=')
+		buf.write_string(query_escape(qvalue.value))
 	}
 	return buf.str()
 }
