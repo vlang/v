@@ -1634,8 +1634,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		if varg_type.has_flag(.generic) {
 			if node.is_method {
 				left_sym := g.table.sym(node.left_type)
-				if fn_def := left_sym.find_method_with_generic_parent(node.name) {
-					mut muttable := unsafe { &ast.Table(g.table) }
+				mut muttable := unsafe { &ast.Table(g.table) }
+				if fn_def := muttable.find_method_with_generic_parent(left_sym, node.name) {
 					if utyp := muttable.resolve_generic_to_concrete(arr_info.elem_type,
 						fn_def.generic_names, node.concrete_types)
 					{

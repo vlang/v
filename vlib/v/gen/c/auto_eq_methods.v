@@ -58,7 +58,7 @@ fn (mut g Gen) gen_sumtype_equality_fn(left_type ast.Type) string {
 	}
 	g.generated_eq_fns << left_type
 
-	info := left.sym.sumtype_info()
+	info := g.table.sumtype_info(left.sym)
 	g.definitions.writeln('static bool ${ptr_styp}_sumtype_eq($ptr_styp a, $ptr_styp b); // auto')
 
 	mut fn_builder := strings.new_builder(512)
@@ -109,7 +109,7 @@ fn (mut g Gen) gen_struct_equality_fn(left_type ast.Type) string {
 		return fn_name
 	}
 	g.generated_eq_fns << left_type
-	info := left.sym.struct_info()
+	info := g.table.struct_info(left.sym)
 	g.definitions.writeln('static bool ${fn_name}_struct_eq($ptr_styp a, $ptr_styp b); // auto')
 
 	mut fn_builder := strings.new_builder(512)
@@ -220,7 +220,7 @@ fn (mut g Gen) gen_array_equality_fn(left_type ast.Type) string {
 		return ptr_styp
 	}
 	g.generated_eq_fns << left_type
-	elem := g.unwrap(left.sym.array_info().elem_type)
+	elem := g.unwrap(g.table.array_info(left.sym).elem_type)
 	ptr_elem_styp := g.typ(elem.typ)
 	g.definitions.writeln('static bool ${ptr_styp}_arr_eq($ptr_styp a, $ptr_styp b); // auto')
 
@@ -275,7 +275,7 @@ fn (mut g Gen) gen_fixed_array_equality_fn(left_type ast.Type) string {
 		return ptr_styp
 	}
 	g.generated_eq_fns << left_type
-	elem_info := left.sym.array_fixed_info()
+	elem_info := g.table.array_fixed_info(left.sym)
 	elem := g.unwrap(elem_info.elem_type)
 	size := elem_info.size
 	g.definitions.writeln('static bool ${ptr_styp}_arr_eq($ptr_styp a, $ptr_styp b); // auto')
@@ -328,7 +328,7 @@ fn (mut g Gen) gen_map_equality_fn(left_type ast.Type) string {
 		return ptr_styp
 	}
 	g.generated_eq_fns << left_type
-	value := g.unwrap(left.sym.map_info().value_type)
+	value := g.unwrap(g.table.map_info(left.sym).value_type)
 	ptr_value_styp := g.typ(value.typ)
 	g.definitions.writeln('static bool ${ptr_styp}_map_eq($ptr_styp a, $ptr_styp b); // auto')
 

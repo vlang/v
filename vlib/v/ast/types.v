@@ -624,12 +624,12 @@ fn (t &TypeSymbol) no_info_panic(fname string) {
 }
 
 [inline]
-pub fn (t &TypeSymbol) enum_info() Enum {
+pub fn (table &Table) enum_info(t &TypeSymbol) Enum {
 	if t.info is Enum {
 		return t.info
 	}
 	if t.info is Alias {
-		fsym := global_table.final_sym(t.info.parent_type)
+		fsym := table.final_sym(t.info.parent_type)
 		if fsym.info is Enum {
 			return fsym.info
 		}
@@ -638,12 +638,12 @@ pub fn (t &TypeSymbol) enum_info() Enum {
 }
 
 [inline]
-pub fn (t &TypeSymbol) mr_info() MultiReturn {
+pub fn (table &Table) mr_info(t &TypeSymbol) MultiReturn {
 	if t.info is MultiReturn {
 		return t.info
 	}
 	if t.info is Alias {
-		fsym := global_table.final_sym(t.info.parent_type)
+		fsym := table.final_sym(t.info.parent_type)
 		if fsym.info is MultiReturn {
 			return fsym.info
 		}
@@ -652,12 +652,12 @@ pub fn (t &TypeSymbol) mr_info() MultiReturn {
 }
 
 [inline]
-pub fn (t &TypeSymbol) array_info() Array {
+pub fn (table &Table) array_info(t &TypeSymbol) Array {
 	if t.info is Array {
 		return t.info
 	}
 	if t.info is Alias {
-		fsym := global_table.final_sym(t.info.parent_type)
+		fsym := table.final_sym(t.info.parent_type)
 		if fsym.info is Array {
 			return fsym.info
 		}
@@ -666,12 +666,12 @@ pub fn (t &TypeSymbol) array_info() Array {
 }
 
 [inline]
-pub fn (t &TypeSymbol) array_fixed_info() ArrayFixed {
+pub fn (table &Table) array_fixed_info(t &TypeSymbol) ArrayFixed {
 	if t.info is ArrayFixed {
 		return t.info
 	}
 	if t.info is Alias {
-		fsym := global_table.final_sym(t.info.parent_type)
+		fsym := table.final_sym(t.info.parent_type)
 		if fsym.info is ArrayFixed {
 			return fsym.info
 		}
@@ -680,12 +680,12 @@ pub fn (t &TypeSymbol) array_fixed_info() ArrayFixed {
 }
 
 [inline]
-pub fn (t &TypeSymbol) chan_info() Chan {
+pub fn (table &Table) chan_info(t &TypeSymbol) Chan {
 	if t.info is Chan {
 		return t.info
 	}
 	if t.info is Alias {
-		fsym := global_table.final_sym(t.info.parent_type)
+		fsym := table.final_sym(t.info.parent_type)
 		if fsym.info is Chan {
 			return fsym.info
 		}
@@ -694,12 +694,12 @@ pub fn (t &TypeSymbol) chan_info() Chan {
 }
 
 [inline]
-pub fn (t &TypeSymbol) thread_info() Thread {
+pub fn (table &Table) thread_info(t &TypeSymbol) Thread {
 	if t.info is Thread {
 		return t.info
 	}
 	if t.info is Alias {
-		fsym := global_table.final_sym(t.info.parent_type)
+		fsym := table.final_sym(t.info.parent_type)
 		if fsym.info is Thread {
 			return fsym.info
 		}
@@ -708,12 +708,12 @@ pub fn (t &TypeSymbol) thread_info() Thread {
 }
 
 [inline]
-pub fn (t &TypeSymbol) map_info() Map {
+pub fn (table &Table) map_info(t &TypeSymbol) Map {
 	if t.info is Map {
 		return t.info
 	}
 	if t.info is Alias {
-		fsym := global_table.final_sym(t.info.parent_type)
+		fsym := table.final_sym(t.info.parent_type)
 		if fsym.info is Map {
 			return fsym.info
 		}
@@ -722,12 +722,12 @@ pub fn (t &TypeSymbol) map_info() Map {
 }
 
 [inline]
-pub fn (t &TypeSymbol) struct_info() Struct {
+pub fn (table &Table) struct_info(t &TypeSymbol) Struct {
 	if t.info is Struct {
 		return t.info
 	}
 	if t.info is Alias {
-		fsym := global_table.final_sym(t.info.parent_type)
+		fsym := table.final_sym(t.info.parent_type)
 		if fsym.info is Struct {
 			return fsym.info
 		}
@@ -736,12 +736,12 @@ pub fn (t &TypeSymbol) struct_info() Struct {
 }
 
 [inline]
-pub fn (t &TypeSymbol) sumtype_info() SumType {
+pub fn (table &Table) sumtype_info(t &TypeSymbol) SumType {
 	if t.info is SumType {
 		return t.info
 	}
 	if t.info is SumType {
-		fsym := global_table.final_sym(t.info.parent_type)
+		fsym := table.final_sym(t.info.parent_type)
 		if fsym.info is SumType {
 			return fsym.info
 		}
@@ -1295,7 +1295,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			return res
 		}
 		.thread {
-			rtype := sym.thread_info().return_type
+			rtype := t.thread_info(sym).return_type
 			if rtype != 1 {
 				res = 'thread ' + t.type_to_str_using_aliases(rtype, import_aliases)
 			}
@@ -1333,7 +1333,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 	return res
 }
 
-fn (t Table) shorten_user_defined_typenames(originalname string, import_aliases map[string]string) string {
+fn (t &Table) shorten_user_defined_typenames(originalname string, import_aliases map[string]string) string {
 	mut res := originalname
 	if t.cmod_prefix.len > 0 && res.starts_with(t.cmod_prefix) {
 		// cur_mod.Type => Type
@@ -1455,8 +1455,8 @@ pub fn (t &TypeSymbol) has_method(name string) bool {
 	return false
 }
 
-pub fn (t &TypeSymbol) has_method_with_generic_parent(name string) bool {
-	t.find_method_with_generic_parent(name) or { return false }
+pub fn (mut table Table) has_method_with_generic_parent(t &TypeSymbol, name string) bool {
+	table.find_method_with_generic_parent(t, name) or { return false }
 	return true
 }
 
@@ -1469,11 +1469,10 @@ pub fn (t &TypeSymbol) find_method(name string) ?Fn {
 	return none
 }
 
-pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
+pub fn (mut table Table) find_method_with_generic_parent(t &TypeSymbol, name string) ?Fn {
 	if m := t.find_method(name) {
 		return m
 	}
-	mut table := global_table
 	match t.info {
 		Struct, Interface, SumType {
 			if t.info.parent_type.has_flag(.generic) {
@@ -1515,8 +1514,7 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 }
 
 // is_js_compatible returns true if type can be converted to JS type and from JS type back to V type
-pub fn (t &TypeSymbol) is_js_compatible() bool {
-	mut table := global_table
+pub fn (mut table Table) is_js_compatible(t &TypeSymbol) bool {
 	if t.kind == .void {
 		return true
 	}
@@ -1530,7 +1528,7 @@ pub fn (t &TypeSymbol) is_js_compatible() bool {
 		SumType {
 			for variant in t.info.variants {
 				sym := table.final_sym(variant)
-				if !sym.is_js_compatible() {
+				if !table.is_js_compatible(sym) {
 					return false
 				}
 			}
@@ -1542,11 +1540,12 @@ pub fn (t &TypeSymbol) is_js_compatible() bool {
 	}
 }
 
-pub fn (t &TypeSymbol) str_method_info() (bool, bool, int) {
+pub fn (table &Table) str_method_info(t &TypeSymbol) (bool, bool, int) {
 	mut has_str_method := false
 	mut expects_ptr := false
 	mut nr_args := 0
-	if sym_str_method := t.find_method_with_generic_parent('str') {
+	mut muttable := unsafe { &Table(table) }
+	if sym_str_method := muttable.find_method_with_generic_parent(t, 'str') {
 		has_str_method = true
 		nr_args = sym_str_method.params.len
 		if nr_args > 0 {

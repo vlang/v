@@ -1253,7 +1253,7 @@ pub fn (mut g Gen) write_typedef_types() {
 			.chan {
 				if sym.name != 'chan' {
 					g.type_definitions.writeln('typedef chan $sym.cname;')
-					chan_inf := sym.chan_info()
+					chan_inf := g.table.chan_info(sym)
 					chan_elem_type := chan_inf.elem_type
 					if !chan_elem_type.has_flag(.generic) {
 						el_stype := g.typ(chan_elem_type)
@@ -1429,7 +1429,7 @@ pub fn (mut g Gen) write_multi_return_types() {
 		if sym.kind != .multi_return {
 			continue
 		}
-		info := sym.mr_info()
+		info := g.table.mr_info(sym)
 		if info.types.filter(it.has_flag(.generic)).len > 0 {
 			continue
 		}
@@ -4189,7 +4189,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					expr_styp := g.base_type(c.return_type)
 					tmp = ('/*opt*/(*($expr_styp*)${tmp}.data)')
 				}
-				expr_types := expr_sym.mr_info().types
+				expr_types := g.table.mr_info(expr_sym).types
 				for j, _ in expr_types {
 					g.write('.arg$arg_idx=${tmp}.arg$j')
 					if j < expr_types.len || i < node.exprs.len - 1 {
@@ -4606,7 +4606,8 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 	if g.is_autofree {
 		sym := g.table.sym(typ)
 		if styp.starts_with('Array_') {
-			if sym.has_method_with_generic_parent('free') {
+			mut muttable := unsafe { &ast.Table(g.table) }
+			if muttable.has_method_with_generic_parent(sym, 'free') {
 				g.cleanup.writeln('\t${styp}_free(&$cname);')
 			} else {
 				g.cleanup.writeln('\tarray_free(&$cname);')
@@ -5382,13 +5383,13 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 			return g.type_default((sym.info as ast.Alias).parent_type)
 		}
 		.chan {
-			elem_type := sym.chan_info().elem_type
+			elem_type := g.table.chan_info(sym).elem_type
 			elemtypstr := g.typ(elem_type)
 			noscan := g.check_noscan(elem_type)
 			return 'sync__new_channel_st${noscan}(0, sizeof($elemtypstr))'
 		}
 		.array {
-			elem_typ := sym.array_info().elem_type
+			elem_typ := g.table.array_info(sym).elem_type
 			elem_sym := g.typ(elem_typ)
 			mut elem_type_str := util.no_dots(elem_sym)
 			if elem_type_str.starts_with('C__') {
@@ -5404,7 +5405,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 			}
 		}
 		.map {
-			info := sym.map_info()
+			info := g.table.map_info(sym)
 			key_typ := g.table.sym(info.key_type)
 			hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_typ)
 			noscan_key := g.check_noscan(info.key_type)
@@ -5715,7 +5716,7 @@ fn (mut g Gen) interface_table() string {
 							cast_struct.write_string('/*.... ast.voidptr_type */')
 						} else {
 							if st_sym.kind == .struct_ {
-								for embed_type in st_sym.struct_info().embeds {
+								for embed_type in g.table.struct_info(st_sym).embeds {
 									embed_sym := g.table.sym(embed_type)
 									if _ := embed_sym.find_field(field.name) {
 										cast_struct.write_string(' + __offsetof_ptr(x, $cctype, $embed_sym.embed_name()) + __offsetof_ptr(x, $embed_sym.cname, $cname)')
@@ -5772,11 +5773,11 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 				ast.Struct, ast.Interface, ast.SumType {
 					if st_sym.info.parent_type.has_flag(.generic) {
 						parent_sym := g.table.sym(st_sym.info.parent_type)
+						mut muttable := unsafe { &ast.Table(g.table) }
 						for method in parent_sym.methods {
 							if method.name in methodidx {
-								methods << st_sym.find_method_with_generic_parent(method.name) or {
-									continue
-								}
+								methods << muttable.find_method_with_generic_parent(st_sym,
+									method.name) or { continue }
 							}
 						}
 					}

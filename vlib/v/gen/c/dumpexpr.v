@@ -24,7 +24,7 @@ fn (mut g Gen) dump_expr_definitions() {
 	mut dump_fn_defs := strings.new_builder(100)
 	for dump_type, cname in g.table.dumps {
 		dump_sym := g.table.sym(dump_type)
-		_, str_method_expects_ptr, _ := dump_sym.str_method_info()
+		_, str_method_expects_ptr, _ := g.table.str_method_info(dump_sym)
 		is_ptr := ast.Type(dump_type).is_ptr()
 		deref, _ := deref_kind(str_method_expects_ptr, is_ptr, dump_type)
 		to_string_fn_name := g.get_str_fn(dump_type)

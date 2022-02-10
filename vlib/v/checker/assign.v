@@ -36,7 +36,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					c.error('cannot use multi-value $right_type_sym.name in single-value context',
 						right.pos())
 				}
-				node.right_types = right_type_sym.mr_info().types
+				node.right_types = c.table.mr_info(right_type_sym).types
 				right_len = node.right_types.len
 			} else if right_type == ast.void_type {
 				right_len = 0
@@ -582,7 +582,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				if assigned_var.is_mut {
 					right_sym := c.table.sym(right_type0)
 					if right_sym.kind == .chan {
-						chan_info := right_sym.chan_info()
+						chan_info := c.table.chan_info(right_sym)
 						if chan_info.elem_type.is_ptr() && !chan_info.is_mut {
 							c.error('cannot have a mutable reference to object from `$right_sym.name`',
 								right_node.pos)

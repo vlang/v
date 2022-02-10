@@ -396,7 +396,7 @@ fn (mut q Queue) run() {
 	}
 }
 */
-pub fn parse_files(paths []string, table &ast.Table, pref &pref.Preferences) []&ast.File {
+pub fn parse_files(paths []string, mut table ast.Table, pref &pref.Preferences) []&ast.File {
 	mut timers := util.new_timers(should_print: false, label: 'parse_files: $paths')
 	$if time_parsing ? {
 		timers.should_print = true
@@ -425,15 +425,20 @@ pub fn parse_files(paths []string, table &ast.Table, pref &pref.Preferences) []&
 		*/
 	}
 	mut files := []&ast.File{cap: paths.len}
-	for path in paths {
+	local_tables := []&ast.Table{len: paths.len, init: &ast.Table{
+		global_scope: table.global_scope
+		type_symbols: table.type_symbols
+		type_idxs: table.type_idxs.clone()
+	}}
+	for i, path in paths {
 		timers.start('parse_file $path')
-		files << parse_file(path, table, .skip_comments, pref)
+		files << parse_file(path, local_tables[i], .skip_comments, pref)
 		timers.show('parse_file $path')
 	}
+	table.merge_tables(local_tables)
 	if table.codegen_files.len > 0 {
 		files << table.codegen_files
-		mut muttable := unsafe { &ast.Table(table) }
-		muttable.codegen_files = []
+		table.codegen_files = []
 	}
 	return files
 }

@@ -325,7 +325,8 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		}
 	} else if node.kind == .struct_ {
 		cond_type_sym := g.table.sym(node.cond_type)
-		next_fn := cond_type_sym.find_method_with_generic_parent('next') or {
+		mut muttable := unsafe { &ast.Table(g.table) }
+		next_fn := muttable.find_method_with_generic_parent(cond_type_sym, 'next') or {
 			verror('`next` method not found')
 			return
 		}

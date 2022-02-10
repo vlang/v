@@ -168,7 +168,7 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 				verror('An field which holds an array, needs a fkey defined')
 			}
 			fkeys << f_key
-			info := sym.array_info()
+			info := g.table.array_info(sym)
 			if info.nr_dims == 1 {
 				arrs << node.sub_structs[int(info.elem_type)]
 				field_names << f.name
@@ -648,12 +648,12 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string) {
 		g.writeln('int $idx = 0;')
 		mut typ_str := ''
 		if node.is_array {
-			info := g.table.sym(node.typ).array_info()
+			info := g.table.array_info(g.table.sym(node.typ))
 			typ_str = g.typ(info.elem_type)
 			g.writeln('$styp ${tmp}_array = __new_array(0, ${res}.len, sizeof($typ_str));')
 			g.writeln('for (; $idx < ${res}.len; $idx++) {')
 			g.write('\t$typ_str $tmp = ($typ_str) {')
-			inf := g.table.sym(info.elem_type).struct_info()
+			inf := g.table.struct_info(g.table.sym(info.elem_type))
 			for i, field in inf.fields {
 				g.zero_struct_field(field)
 				if i != inf.fields.len - 1 {
@@ -663,7 +663,7 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string) {
 			g.writeln('};')
 		} else {
 			g.write('$styp $tmp = ($styp){')
-			info := g.table.sym(node.typ).struct_info()
+			info := g.table.struct_info(g.table.sym(node.typ))
 			for i, field in info.fields {
 				g.zero_struct_field(field)
 				if i != info.fields.len - 1 {
@@ -703,7 +703,7 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string) {
 				if fkey == '' {
 					verror('An field which holds an array, needs a fkey defined')
 				}
-				info := sym.array_info()
+				info := g.table.array_info(sym)
 				arr_typ := info.elem_type
 				sub := node.sub_structs[int(arr_typ)]
 				mut where_expr := sub.where_expr as ast.InfixExpr
@@ -801,7 +801,7 @@ fn (mut g Gen) parse_db_from_type_string(name string) SqlType {
 }
 
 fn (mut g Gen) get_table_name(table_expr ast.TypeNode) string {
-	info := g.table.sym(table_expr.typ).struct_info()
+	info := g.table.struct_info(g.table.sym(table_expr.typ))
 	mut tablename := util.strip_mod_name(g.table.sym(table_expr.typ).name)
 	for attr in info.attrs {
 		if attr.kind == .string && attr.name == 'table' && attr.arg != '' {
@@ -813,7 +813,7 @@ fn (mut g Gen) get_table_name(table_expr ast.TypeNode) string {
 }
 
 fn (mut g Gen) get_struct_field(name string) ast.StructField {
-	info := g.table.sym(g.table.type_idxs[g.sql_table_name]).struct_info()
+	info := g.table.struct_info(g.table.sym(g.table.type_idxs[g.sql_table_name]))
 	mut f := ast.StructField{}
 	for field in info.fields {
 		if field.name == name {

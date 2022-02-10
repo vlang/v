@@ -105,7 +105,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 			c.ensure_type_exists(method.return_type, method.return_type_pos) or { return }
 			if is_js {
 				mtyp := c.table.sym(method.return_type)
-				if !mtyp.is_js_compatible() {
+				if !c.table.is_js_compatible(mtyp) {
 					c.error('method $method.name returns non JS type', method.pos)
 				}
 			}
@@ -120,7 +120,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 				}
 				if is_js {
 					ptyp := c.table.sym(param.typ)
-					if !ptyp.is_js_compatible() && !(j == method.params.len - 1
+					if !c.table.is_js_compatible(ptyp) && !(j == method.params.len - 1
 						&& method.is_variadic) {
 						c.error('method `$method.name` accepts non JS type as parameter',
 							method.pos)
@@ -147,7 +147,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 			c.ensure_type_exists(field.typ, field.pos) or { return }
 			if is_js {
 				tsym := c.table.sym(field.typ)
-				if !tsym.is_js_compatible() {
+				if !c.table.is_js_compatible(tsym) {
 					c.error('field `$field.name` uses non JS type', field.pos)
 				}
 			}
@@ -185,7 +185,7 @@ fn (mut c Checker) resolve_generic_interface(typ ast.Type, interface_type ast.Ty
 				}
 				for imethod in inter_sym.info.methods {
 					method := typ_sym.find_method(imethod.name) or {
-						typ_sym.find_method_with_generic_parent(imethod.name) or {
+						c.table.find_method_with_generic_parent(typ_sym, imethod.name) or {
 							c.error('can not find method `$imethod.name` on `$typ_sym.name`, needed for interface: `$inter_sym.name`',
 								pos)
 							return 0

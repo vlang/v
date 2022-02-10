@@ -45,7 +45,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 		// Unpack multi return types
 		sym := c.table.sym(typ)
 		if sym.kind == .multi_return {
-			for t in sym.mr_info().types {
+			for t in c.table.mr_info(sym).types {
 				got_types << t
 				expr_idxs << i
 			}

@@ -91,7 +91,7 @@ pub fn (t &Table) panic(message string) {
 	t.panic_handler(t, message)
 }
 
-fn (mut g Table) merge_tables(tables []&Table) {
+pub fn (mut g Table) merge_tables(tables []&Table) {
 	for _ in tables {
 	}
 }
@@ -205,14 +205,7 @@ pub fn new_table() &Table {
 	}
 	t.register_builtin_type_symbols()
 	t.is_fmt = true
-	set_global_table(t)
 	return t
-}
-
-__global global_table = &Table(0)
-
-pub fn set_global_table(t &Table) {
-	global_table = t
 }
 
 // used to compare fn's & for naming anon fn's
@@ -1455,7 +1448,7 @@ pub fn (mut t Table) bitsize_to_type(bit_size int) Type {
 	}
 }
 
-pub fn (t Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
+pub fn (t &Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 	if typ.idx() == inter_typ.idx() {
 		// same type -> already casted to the interface
 		return true

@@ -840,7 +840,7 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 				}
 				// <<
 
-				typ_sym.find_method_with_generic_parent(imethod.name) or {
+				c.table.find_method_with_generic_parent(typ_sym, imethod.name) or {
 					c.error("`$styp` doesn't implement method `$imethod.name` of interface `$inter_sym.name`",
 						pos)
 					continue
@@ -3291,7 +3291,7 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 	if node.op == .arrow {
 		if right_sym.kind == .chan {
 			c.stmts_ending_with_expression(node.or_block.stmts)
-			return right_sym.chan_info().elem_type
+			return c.table.chan_info(right_sym).elem_type
 		}
 		c.error('<- operator can only be used with `chan` types', node.pos)
 	}
@@ -3501,7 +3501,7 @@ pub fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
 	if !(typ_sym.is_pub || typ_sym.mod == c.mod) {
 		c.error('enum `$typ_sym.name` is private', node.pos)
 	}
-	info := typ_sym.enum_info()
+	info := c.table.enum_info(typ_sym)
 	if node.val !in info.vals {
 		suggestion := util.new_suggestion(node.val, info.vals)
 		c.error(suggestion.say('enum `$typ_sym.name` does not have a value `$node.val`'),
@@ -3513,7 +3513,7 @@ pub fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
 
 pub fn (mut c Checker) chan_init(mut node ast.ChanInit) ast.Type {
 	if node.typ != 0 {
-		info := c.table.sym(node.typ).chan_info()
+		info := c.table.chan_info(c.table.sym(node.typ))
 		node.elem_type = info.elem_type
 		if node.has_cap {
 			c.check_array_init_para_type('cap', node.cap_expr, node.pos)

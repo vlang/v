@@ -14,11 +14,7 @@ fn (mut g Gen) get_free_method(typ ast.Type) string {
 		}
 	}
 	styp := g.typ(typ).replace('*', '')
-	fn_name := styp_to_free_fn_name(styp)
-	if sym.has_method_with_generic_parent('free') {
-		return fn_name
-	}
-	return fn_name
+	return styp_to_free_fn_name(styp)
 }
 
 fn (mut g Gen) gen_free_methods() {
@@ -42,7 +38,9 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 			sym = g.table.sym(sym.info.parent_type)
 		}
 	}
-	if sym.has_method_with_generic_parent('free') {
+
+	mut muttable := unsafe { &ast.Table(g.table) }
+	if muttable.has_method_with_generic_parent(sym, 'free') {
 		return fn_name
 	}
 

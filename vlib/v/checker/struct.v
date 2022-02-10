@@ -26,8 +26,11 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			}
 		}
 		if struct_sym.info.is_minify {
-			node.fields.sort_with_compare(minify_sort_fn)
-			struct_sym.info.fields.sort_with_compare(minify_sort_fn)
+			compare := fn [c] (a &ast.StructField, b &ast.StructField) int {
+				return c.minify_sort_fn(a, b)
+			}
+			node.fields.sort_with_compare(compare)
+			struct_sym.info.fields.sort_with_compare(compare)
 		}
 		for attr in node.attrs {
 			if attr.name == 'typedef' && node.language != .c {
@@ -128,7 +131,7 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 	}
 }
 
-fn minify_sort_fn(a &ast.StructField, b &ast.StructField) int {
+fn (c Checker) minify_sort_fn(a &ast.StructField, b &ast.StructField) int {
 	if a.typ == b.typ {
 		return 0
 	}
@@ -142,9 +145,8 @@ fn minify_sort_fn(a &ast.StructField, b &ast.StructField) int {
 		return -1
 	}
 
-	mut t := global_table
-	a_sym := t.sym(a.typ)
-	b_sym := t.sym(b.typ)
+	a_sym := c.table.sym(a.typ)
+	b_sym := c.table.sym(b.typ)
 
 	// push all non-flag enums to the end too, just before the bool fields
 	// TODO: support enums with custom field values as well
@@ -169,8 +171,8 @@ fn minify_sort_fn(a &ast.StructField, b &ast.StructField) int {
 		}
 	}
 
-	a_size, a_align := t.type_size(a.typ)
-	b_size, b_align := t.type_size(b.typ)
+	a_size, a_align := c.table.type_size(a.typ)
+	b_size, b_align := c.table.type_size(b.typ)
 	return if a_align > b_align {
 		-1
 	} else if a_align < b_align {

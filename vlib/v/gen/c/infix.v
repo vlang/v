@@ -417,7 +417,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 				// avoids an allocation
 				g.write('(')
 				if elem_sym.kind == .sum_type && left.sym.kind != .sum_type {
-					if node.left_type in elem_sym.sumtype_info().variants {
+					if node.left_type in g.table.sumtype_info(elem_sym).variants {
 						new_node_left := ast.CastExpr{
 							arg: ast.EmptyExpr{}
 							typ: elem_type
@@ -437,7 +437,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 			elem_type := right.sym.info.elem_type
 			elem_type_ := g.unwrap(elem_type)
 			if elem_type_.sym.kind == .sum_type {
-				if node.left_type in elem_type_.sym.sumtype_info().variants {
+				if node.left_type in g.table.sumtype_info(elem_type_.sym).variants {
 					new_node_left := ast.CastExpr{
 						arg: ast.EmptyExpr{}
 						typ: elem_type
@@ -507,7 +507,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 			elem_type := right.sym.info.elem_type
 			elem_type_ := g.unwrap(elem_type)
 			if elem_type_.sym.kind == .sum_type {
-				if node.left_type in elem_type_.sym.sumtype_info().variants {
+				if node.left_type in g.table.sumtype_info(elem_type_.sym).variants {
 					new_node_left := ast.CastExpr{
 						arg: ast.EmptyExpr{}
 						typ: elem_type

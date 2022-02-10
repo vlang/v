@@ -72,7 +72,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		sym := c.table.final_sym(typ)
 		if sym.kind == .struct_ {
 			// iterators
-			next_fn := sym.find_method_with_generic_parent('next') or {
+			next_fn := c.table.find_method_with_generic_parent(sym, 'next') or {
 				c.error('a struct must have a `next()` method to be an iterator', node.cond.pos())
 				return
 			}
@@ -105,7 +105,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			}
 			if node.key_var.len > 0 {
 				key_type := match sym.kind {
-					.map { sym.map_info().key_type }
+					.map { c.table.map_info(sym).key_type }
 					else { ast.int_type }
 				}
 				node.key_type = key_type

@@ -76,7 +76,8 @@ fn (mut g Gen) get_str_fn(typ ast.Type) string {
 			str_fn_name = styp_to_str_fn_name(sym.name)
 		}
 	}
-	if sym.has_method_with_generic_parent('str') && mut sym.info is ast.Struct {
+	mut muttable := unsafe { &ast.Table(g.table) }
+	if muttable.has_method_with_generic_parent(sym, 'str') && mut sym.info is ast.Struct {
 		str_fn_name = g.generic_fn_name(sym.info.concrete_types, str_fn_name, false)
 	}
 	g.str_types << StrType{
@@ -95,7 +96,8 @@ fn (mut g Gen) final_gen_str(typ StrType) {
 	}
 	g.generated_str_fns << typ
 	sym := g.table.sym(typ.typ)
-	if sym.has_method_with_generic_parent('str') && !(typ.typ.has_flag(.optional)
+	mut muttable := unsafe { &ast.Table(g.table) }
+	if muttable.has_method_with_generic_parent(sym, 'str') && !(typ.typ.has_flag(.optional)
 		|| typ.typ.has_flag(.result)) {
 		return
 	}
@@ -162,7 +164,7 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string)
 	}
 	parent_type := typ.clear_flag(.optional)
 	sym := g.table.sym(parent_type)
-	sym_has_str_method, _, _ := sym.str_method_info()
+	sym_has_str_method, _, _ := g.table.str_method_info(sym)
 	parent_str_fn_name := g.get_str_fn(parent_type)
 
 	g.definitions.writeln('string ${str_fn_name}($styp it); // auto')
@@ -195,7 +197,7 @@ fn (mut g Gen) gen_str_for_result(typ ast.Type, styp string, str_fn_name string)
 	}
 	parent_type := typ.clear_flag(.result)
 	sym := g.table.sym(parent_type)
-	sym_has_str_method, _, _ := sym.str_method_info()
+	sym_has_str_method, _, _ := g.table.str_method_info(sym)
 	parent_str_fn_name := g.get_str_fn(parent_type)
 
 	g.definitions.writeln('string ${str_fn_name}($styp it); // auto')
@@ -257,7 +259,7 @@ fn (mut g Gen) gen_str_for_multi_return(info ast.MultiReturn, styp string, str_f
 	for i, typ in info.types {
 		sym := g.table.sym(typ)
 		is_arg_ptr := typ.is_ptr()
-		sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
+		sym_has_str_method, str_method_expects_ptr, _ := g.table.str_method_info(sym)
 		arg_str_fn_name := g.get_str_fn(typ)
 
 		if should_use_indent_func(sym.kind) && !sym_has_str_method {
@@ -350,7 +352,7 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, str_fn_nam
 	for typ in info.types {
 		sub_sym := g.table.sym(ast.mktyp(typ))
 		mut func_name := g.get_str_fn(typ)
-		sym_has_str_method, str_method_expects_ptr, _ := sub_sym.str_method_info()
+		sym_has_str_method, str_method_expects_ptr, _ := g.table.str_method_info(sub_sym)
 		if should_use_indent_func(sub_sym.kind) && !sym_has_str_method {
 			func_name = 'indent_$func_name'
 		}
@@ -419,7 +421,7 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_
 		typ_str := g.typ(typ)
 		mut func_name := g.get_str_fn(typ)
 		sym := g.table.sym(typ)
-		sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
+		sym_has_str_method, str_method_expects_ptr, _ := g.table.str_method_info(sym)
 		deref := if sym_has_str_method && str_method_expects_ptr { ' ' } else { '*' }
 		if should_use_indent_func(sym.kind) && !sym_has_str_method {
 			func_name = 'indent_$func_name'
@@ -538,7 +540,7 @@ fn (mut g Gen) gen_str_for_array(info ast.Array, styp string, str_fn_name string
 	}
 	field_styp := g.typ(typ)
 	is_elem_ptr := typ.is_ptr()
-	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
+	sym_has_str_method, str_method_expects_ptr, _ := g.table.str_method_info(sym)
 	mut elem_str_fn_name := g.get_str_fn(typ)
 	if sym.kind == .u8 {
 		elem_str_fn_name = elem_str_fn_name + '_escaped'
@@ -617,7 +619,7 @@ fn (mut g Gen) gen_str_for_array_fixed(info ast.ArrayFixed, styp string, str_fn_
 		sym = g.table.sym(typ)
 	}
 	is_elem_ptr := typ.is_ptr()
-	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
+	sym_has_str_method, str_method_expects_ptr, _ := g.table.str_method_info(sym)
 	elem_str_fn_name := g.get_str_fn(typ)
 
 	g.definitions.writeln('static string ${str_fn_name}($styp a); // auto')
@@ -867,7 +869,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 		}
 
 		// custom methods management
-		sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
+		sym_has_str_method, str_method_expects_ptr, _ := g.table.str_method_info(sym)
 		sftyp := g.typ(ftyp_noshared)
 		mut field_styp := sftyp.replace('*', '')
 		field_styp_fn_name := if sym_has_str_method {

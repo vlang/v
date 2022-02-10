@@ -78,7 +78,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			sym = parent_sym
 		}
 	}
-	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
+	sym_has_str_method, str_method_expects_ptr, _ := g.table.str_method_info(sym)
 	if typ.has_flag(.variadic) {
 		str_fn_name := g.get_str_fn(typ)
 		g.write('${str_fn_name}(')

@@ -287,7 +287,8 @@ pub fn (x Expr) str() string {
 			}
 		}
 		AsCast {
-			return '$x.expr.str() as ${global_table.type_to_str(x.typ)}'
+			// return '$x.expr.str() as ${global_table.type_to_str(x.typ)}'
+			return '$x.expr.str() as $x.typ'
 		}
 		AtExpr {
 			return '$x.val'
@@ -417,12 +418,14 @@ pub fn (x Expr) str() string {
 		}
 		SizeOf {
 			if x.is_type {
-				return 'sizeof(${global_table.type_to_str(x.typ)})'
+				//	return 'sizeof(${global_table.type_to_str(x.typ)})'
+				return 'sizeof($x.typ)'
 			}
 			return 'sizeof($x.expr)'
 		}
 		OffsetOf {
-			return '__offsetof(${global_table.type_to_str(x.struct_type)}, $x.field)'
+			// return '__offsetof(${global_table.type_to_str(x.struct_type)}, $x.field)'
+			return '__offsetof($x.struct_type, $x.field)'
 		}
 		StringInterLiteral {
 			mut res := strings.new_builder(50)
@@ -466,7 +469,8 @@ pub fn (x Expr) str() string {
 		}
 		IsRefType {
 			return 'isreftype(' + if x.is_type {
-				global_table.type_to_str(x.typ)
+				// global_table.type_to_str(x.typ)
+				x.typ.str()
 			} else {
 				x.expr.str()
 			} + ')'
@@ -482,7 +486,8 @@ pub fn (x Expr) str() string {
 			return s + ' := ' + x.expr.str()
 		}
 		StructInit {
-			sname := global_table.sym(x.typ).name
+			// sname := global_table.sym(x.typ).name
+			sname := x.typ
 			return '$sname{....}'
 		}
 		ArrayDecompose {

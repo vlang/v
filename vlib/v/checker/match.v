@@ -88,8 +88,8 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 							&& !is_noreturn {
 							expr_sym := c.table.sym(expr_type)
 							if expr_sym.kind == .multi_return && ret_sym.kind == .multi_return {
-								ret_types := ret_sym.mr_info().types
-								expr_types := expr_sym.mr_info().types.map(ast.mktyp(it))
+								ret_types := c.table.mr_info(ret_sym).types
+								expr_types := c.table.mr_info(expr_sym).types.map(ast.mktyp(it))
 								if expr_types == ret_types {
 									continue
 								}

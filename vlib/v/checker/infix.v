@@ -119,7 +119,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			match right_final.kind {
 				.array {
 					if left_sym.kind !in [.sum_type, .interface_] {
-						elem_type := right_final.array_info().elem_type
+						elem_type := c.table.array_info(right_final).elem_type
 						c.check_expected(left_type, elem_type) or {
 							c.error('left operand to `$node.op` does not match the array element type: $err.msg()',
 								left_right_pos)
@@ -127,7 +127,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 				}
 				.map {
-					map_info := right_final.map_info()
+					map_info := c.table.map_info(right_final)
 					c.check_expected(left_type, map_info.key_type) or {
 						c.error('left operand to `$node.op` does not match the map key type: $err.msg()',
 							left_right_pos)
@@ -136,7 +136,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 				.array_fixed {
 					if left_sym.kind !in [.sum_type, .interface_] {
-						elem_type := right_final.array_fixed_info().elem_type
+						elem_type := c.table.array_fixed_info(right_final).elem_type
 						c.check_expected(left_type, elem_type) or {
 							c.error('left operand to `$node.op` does not match the fixed array element type: $err.msg()',
 								left_right_pos)
@@ -205,8 +205,8 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			}
 
 			if !c.pref.translated && left_sym.kind in [.array, .array_fixed, .map, .struct_] {
-				if left_sym.has_method_with_generic_parent(node.op.str()) {
-					if method := left_sym.find_method_with_generic_parent(node.op.str()) {
+				if c.table.has_method_with_generic_parent(left_sym, node.op.str()) {
+					if method := c.table.find_method_with_generic_parent(left_sym, node.op.str()) {
 						return_type = method.return_type
 					} else {
 						return_type = left_type
@@ -222,8 +222,8 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 				}
 			} else if !c.pref.translated && right_sym.kind in [.array, .array_fixed, .map, .struct_] {
-				if right_sym.has_method_with_generic_parent(node.op.str()) {
-					if method := right_sym.find_method_with_generic_parent(node.op.str()) {
+				if c.table.has_method_with_generic_parent(right_sym, node.op.str()) {
+					if method := c.table.find_method_with_generic_parent(right_sym, node.op.str()) {
 						return_type = method.return_type
 					} else {
 						return_type = right_type
@@ -332,11 +332,11 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				left_gen_type := c.unwrap_generic(left_type)
 				gen_sym := c.table.sym(left_gen_type)
 				need_overload := gen_sym.kind in [.struct_, .interface_]
-				if need_overload && !gen_sym.has_method_with_generic_parent('<')
+				if need_overload && !c.table.has_method_with_generic_parent(gen_sym, '<')
 					&& node.op in [.ge, .le] {
 					c.error('cannot use `$node.op` as `<` operator method is not defined',
 						left_right_pos)
-				} else if need_overload && !gen_sym.has_method_with_generic_parent('<')
+				} else if need_overload && !c.table.has_method_with_generic_parent(gen_sym, '<')
 					&& node.op == .gt {
 					c.error('cannot use `>` as `<=` operator method is not defined', left_right_pos)
 				}
@@ -508,7 +508,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		}
 		.arrow { // `chan <- elem`
 			if left_sym.kind == .chan {
-				chan_info := left_sym.chan_info()
+				chan_info := c.table.chan_info(left_sym)
 				elem_type := chan_info.elem_type
 				if !c.check_types(right_type, elem_type) {
 					c.error('cannot push `$right_sym.name` on `$left_sym.name`', right_pos)

@@ -69,7 +69,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			c.expected_type = c.expected_or_type
 		}
 		mut type_sym := c.table.sym(c.expected_type)
-		if type_sym.kind != .array || type_sym.array_info().elem_type == ast.void_type {
+		if type_sym.kind != .array || c.table.array_info(type_sym).elem_type == ast.void_type {
 			c.error('array_init: no type specified (maybe: `[]Type{}` instead of `[]`)',
 				node.pos)
 			return ast.void_type
@@ -79,7 +79,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		// c.error('array_init: use `[]Type{}` instead of `[]`', node.pos)
 		// return ast.void_type
 		// }
-		array_info := type_sym.array_info()
+		array_info := c.table.array_info(type_sym)
 		node.elem_type = array_info.elem_type
 		// clear optional flag incase of: `fn opt_arr() ?[]int { return [] }`
 		return if c.expected_type.has_flag(.shared_f) {
@@ -246,7 +246,7 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 	if node.keys.len == 0 && node.vals.len == 0 && node.typ == 0 {
 		sym := c.table.sym(c.expected_type)
 		if sym.kind == .map {
-			info := sym.map_info()
+			info := c.table.map_info(sym)
 			node.typ = c.expected_type.clear_flag(.optional)
 			node.key_type = info.key_type
 			node.value_type = info.value_type
@@ -264,7 +264,7 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 	}
 	// `x := map[string]string` - set in parser
 	if node.typ != 0 {
-		info := c.table.sym(node.typ).map_info()
+		info := c.table.map_info(c.table.sym(node.typ))
 		if info.value_type != 0 {
 			val_sym := c.table.sym(info.value_type)
 			if val_sym.kind == .struct_ {
@@ -294,7 +294,7 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			&& c.table.sym(c.expected_type).kind == .map
 		if use_expected_type {
 			sym := c.table.sym(c.expected_type)
-			info := sym.map_info()
+			info := c.table.map_info(sym)
 			key0_type = c.unwrap_generic(info.key_type)
 			val0_type = c.unwrap_generic(info.value_type)
 		} else {
