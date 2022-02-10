@@ -69,14 +69,6 @@ pub struct Option {
 	err   IError = none__
 }
 
-pub fn (err IError) str() string {
-	return match err {
-		None__ { 'none' }
-		Error { err.msg }
-		else { 'Error: $err.msg' }
-	}
-}
-
 pub fn (o Option) str() string {
 	if o.state == 0 {
 		return 'Option{ ok }'

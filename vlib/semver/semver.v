@@ -20,13 +20,20 @@ pub enum Increment {
 }
 
 struct EmptyInputError {
-	msg  string = 'Empty input'
-	code int
+	Error
+}
+
+pub fn (err EmptyInputError) msg() string {
+	return 'Empty input'
 }
 
 struct InvalidVersionFormatError {
-	msg  string
-	code int
+	Error
+	input string
+}
+
+pub fn (err InvalidVersionFormatError) msg() string {
+	return 'Invalid version format for input "$err.input"'
 }
 
 // * Constructor.
@@ -38,7 +45,7 @@ pub fn from(input string) ?Version {
 	raw_version := parse(input)
 	version := raw_version.validate() or {
 		return IError(&InvalidVersionFormatError{
-			msg: 'Invalid version format for input "$input"'
+			input: input
 		})
 	}
 	return version

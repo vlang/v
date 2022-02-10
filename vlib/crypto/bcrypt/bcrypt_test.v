@@ -6,6 +6,6 @@ fn test_crypto_bcrypt() {
 	bcrypt.compare_hash_and_password('password'.bytes(), hash.bytes()) or { panic(err) }
 
 	bcrypt.compare_hash_and_password('password2'.bytes(), hash.bytes()) or {
-		assert err == error('mismatched hash and password')
+		assert err.msg() == 'mismatched hash and password'
 	}
 }

@@ -535,7 +535,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							node.pos)
 					}
 				} else {
-					c.error('cannot assign to `$left`: $err.msg', right.pos())
+					c.error('cannot assign to `$left`: $err.msg()', right.pos())
 				}
 			}
 		}

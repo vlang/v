@@ -11,23 +11,28 @@ pub:
 }
 
 struct UnkownFlagError {
-	msg  string
-	code int
+	Error
+	flag string
 }
 
-struct MinimumArgsCountError {
-	msg  string
-	code int
+fn (err UnkownFlagError) msg() string {
+	return 'Unknown flag `$err.flag`'
 }
 
-struct MaximumArgsCountError {
-	msg  string
-	code int
+struct ArgsCountError {
+	Error
+	got  int
+	want int
 }
 
-struct NoArgsExpectedError {
-	msg  string
-	code int
+fn (err ArgsCountError) msg() string {
+	if err.want == 0 {
+		return 'Expected no arguments, but got $err.got'
+	} else if err.got > err.want {
+		return 'Expected at most $err.want arguments, but got $err.got'
+	} else {
+		return 'Expected at least $err.want arguments, but got $err.got'
+	}
 }
 
 // free frees the resources associated with a given Flag
@@ -616,24 +621,27 @@ pub fn (mut fs FlagParser) finalize() ?[]string {
 		for a in remaining {
 			if (a.len >= 2 && a[..2] == '--') || (a.len == 2 && a[0] == `-`) {
 				return IError(&UnkownFlagError{
-					msg: 'Unknown flag `$a`'
+					flag: a
 				})
 			}
 		}
 	}
 	if remaining.len < fs.min_free_args && fs.min_free_args > 0 {
-		return IError(&MinimumArgsCountError{
-			msg: 'Expected at least $fs.min_free_args arguments, but given $remaining.len'
+		return IError(&ArgsCountError{
+			want: fs.min_free_args
+			got: remaining.len
 		})
 	}
 	if remaining.len > fs.max_free_args && fs.max_free_args > 0 {
-		return IError(&MaximumArgsCountError{
-			msg: 'Expected at most $fs.max_free_args arguments, but given $remaining.len'
+		return IError(&ArgsCountError{
+			want: fs.max_free_args
+			got: remaining.len
 		})
 	}
 	if remaining.len > 0 && fs.max_free_args == 0 && fs.min_free_args == 0 {
-		return IError(&NoArgsExpectedError{
-			msg: 'Expected no arguments, but given $remaining.len'
+		return IError(&ArgsCountError{
+			want: 0
+			got: remaining.len
 		})
 	}
 	remaining << fs.all_after_dashdash
@@ -647,7 +655,7 @@ pub fn (mut fs FlagParser) finalize() ?[]string {
 // you want more control over the error handling.
 pub fn (mut fs FlagParser) remaining_parameters() []string {
 	return fs.finalize() or {
-		eprintln(err.msg)
+		eprintln(err.msg())
 		println(fs.usage())
 		exit(1)
 	}

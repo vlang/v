@@ -894,7 +894,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 					continue
 				}
 			}
-			c.error('$err.msg in argument ${i + 1} to `$fn_name`', call_arg.pos)
+			c.error('$err.msg() in argument ${i + 1} to `$fn_name`', call_arg.pos)
 		}
 		// Warn about automatic (de)referencing, which will be removed soon.
 		if func.language != .c && !c.inside_unsafe && typ.nr_muls() != param.typ.nr_muls()
@@ -936,7 +936,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 						continue
 					}
 					c.check_expected_call_arg(utyp, unwrap_typ, node.language, call_arg) or {
-						c.error('$err.msg in argument ${i + 1} to `$fn_name`', call_arg.pos)
+						c.error('$err.msg() in argument ${i + 1} to `$fn_name`', call_arg.pos)
 					}
 				}
 			}
@@ -1143,8 +1143,8 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			has_method = true
 			mut embed_types := []ast.Type{}
 			method, embed_types = c.table.find_method_from_embeds(left_sym, method_name) or {
-				if err.msg != '' {
-					c.error(err.msg, node.pos)
+				if err.msg() != '' {
+					c.error(err.msg(), node.pos)
 				}
 				has_method = false
 				ast.Fn{}, []ast.Type{}
@@ -1156,7 +1156,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 		if left_sym.kind == .aggregate {
 			// the error message contains the problematic type
-			unknown_method_msg = err.msg
+			unknown_method_msg = err.msg()
 		}
 	}
 	if has_method {
@@ -1285,7 +1285,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				// continue
 				// }
 				if got_arg_typ != ast.void_type {
-					c.error('$err.msg in argument ${i + 1} to `${left_sym.name}.$method_name`',
+					c.error('$err.msg() in argument ${i + 1} to `${left_sym.name}.$method_name`',
 						arg.pos)
 				}
 			}
@@ -1432,7 +1432,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					c.check_expected_call_arg(targ, c.unwrap_generic(exp_arg_typ), node.language,
 						arg) or {
 						if targ != ast.void_type {
-							c.error('$err.msg in argument ${i + 1} to `${left_sym.name}.$method_name`',
+							c.error('$err.msg() in argument ${i + 1} to `${left_sym.name}.$method_name`',
 								arg.pos)
 						}
 					}
@@ -1666,7 +1666,7 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type ast.
 			info := left_sym.info as ast.Map
 			arg_type := c.expr(node.args[0].expr)
 			c.check_expected_call_arg(arg_type, info.key_type, node.language, node.args[0]) or {
-				c.error('$err.msg in argument 1 to `Map.delete`', node.args[0].pos)
+				c.error('$err.msg() in argument 1 to `Map.delete`', node.args[0].pos)
 			}
 		}
 		else {}

@@ -612,7 +612,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					if left_sym.kind !in [.sum_type, .interface_] {
 						elem_type := right_final.array_info().elem_type
 						c.check_expected(left_type, elem_type) or {
-							c.error('left operand to `$node.op` does not match the array element type: $err.msg',
+							c.error('left operand to `$node.op` does not match the array element type: $err.msg()',
 								left_right_pos)
 						}
 					}
@@ -620,7 +620,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				.map {
 					map_info := right_final.map_info()
 					c.check_expected(left_type, map_info.key_type) or {
-						c.error('left operand to `$node.op` does not match the map key type: $err.msg',
+						c.error('left operand to `$node.op` does not match the map key type: $err.msg()',
 							left_right_pos)
 					}
 					node.left_type = map_info.key_type
@@ -1571,15 +1571,15 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			has_field = true
 			mut embed_types := []ast.Type{}
 			field, embed_types = c.table.find_field_from_embeds(sym, field_name) or {
-				if err.msg != '' {
-					c.error(err.msg, node.pos)
+				if err.msg() != '' {
+					c.error(err.msg(), node.pos)
 				}
 				has_field = false
 				ast.StructField{}, []ast.Type{}
 			}
 			node.from_embed_types = embed_types
 			if sym.kind in [.aggregate, .sum_type] {
-				unknown_field_msg = err.msg
+				unknown_field_msg = err.msg()
 			}
 		}
 		if !c.inside_unsafe {
@@ -1600,8 +1600,8 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 				has_field = true
 				mut embed_types := []ast.Type{}
 				field, embed_types = c.table.find_field_from_embeds(gs, field_name) or {
-					if err.msg != '' {
-						c.error(err.msg, node.pos)
+					if err.msg() != '' {
+						c.error(err.msg(), node.pos)
 					}
 					has_field = false
 					ast.StructField{}, []ast.Type{}
@@ -2128,7 +2128,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			if flag.contains('@VROOT') {
 				// c.note(checker.vroot_is_deprecated_message, node.pos)
 				vroot := util.resolve_vmodroot(flag.replace('@VROOT', '@VMODROOT'), c.file.path) or {
-					c.error(err.msg, node.pos)
+					c.error(err.msg(), node.pos)
 					return
 				}
 				node.val = 'include $vroot'
@@ -2143,7 +2143,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			}
 			if flag.contains('@VMODROOT') {
 				vroot := util.resolve_vmodroot(flag, c.file.path) or {
-					c.error(err.msg, node.pos)
+					c.error(err.msg(), node.pos)
 					return
 				}
 				node.val = 'include $vroot'
@@ -2152,7 +2152,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			}
 			if flag.contains('\$env(') {
 				env := util.resolve_env_value(flag, true) or {
-					c.error(err.msg, node.pos)
+					c.error(err.msg(), node.pos)
 					return
 				}
 				node.main = env
@@ -2171,15 +2171,15 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 				'--cflags --libs $node.main'.split(' ')
 			}
 			mut m := pkgconfig.main(args) or {
-				c.error(err.msg, node.pos)
+				c.error(err.msg(), node.pos)
 				return
 			}
 			cflags := m.run() or {
-				c.error(err.msg, node.pos)
+				c.error(err.msg(), node.pos)
 				return
 			}
 			c.table.parse_cflag(cflags, c.mod, c.pref.compile_defines_all) or {
-				c.error(err.msg, node.pos)
+				c.error(err.msg(), node.pos)
 				return
 			}
 		}
@@ -2189,7 +2189,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			if flag.contains('@VROOT') {
 				// c.note(checker.vroot_is_deprecated_message, node.pos)
 				flag = util.resolve_vmodroot(flag.replace('@VROOT', '@VMODROOT'), c.file.path) or {
-					c.error(err.msg, node.pos)
+					c.error(err.msg(), node.pos)
 					return
 				}
 			}
@@ -2199,13 +2199,13 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			}
 			if flag.contains('@VMODROOT') {
 				flag = util.resolve_vmodroot(flag, c.file.path) or {
-					c.error(err.msg, node.pos)
+					c.error(err.msg(), node.pos)
 					return
 				}
 			}
 			if flag.contains('\$env(') {
 				flag = util.resolve_env_value(flag, true) or {
-					c.error(err.msg, node.pos)
+					c.error(err.msg(), node.pos)
 					return
 				}
 			}
@@ -2219,7 +2219,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			}
 			// println('adding flag "$flag"')
 			c.table.parse_cflag(flag, c.mod, c.pref.compile_defines_all) or {
-				c.error(err.msg, node.pos)
+				c.error(err.msg(), node.pos)
 			}
 		}
 		else {
