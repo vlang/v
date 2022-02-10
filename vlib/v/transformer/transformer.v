@@ -8,6 +8,7 @@ pub struct Transformer {
 	pref &pref.Preferences
 pub mut:
 	index &IndexState
+	table &ast.Table = 0
 mut:
 	is_assert bool
 }
@@ -20,6 +21,12 @@ pub fn new_transformer(pref &pref.Preferences) &Transformer {
 			saved_disabled: []bool{cap: 1000}
 		}
 	}
+}
+
+pub fn new_transformer_with_table(table &ast.Table, pref &pref.Preferences) &Transformer {
+	mut transformer := new_transformer(pref)
+	transformer.table = table
+	return transformer
 }
 
 pub fn (mut t Transformer) transform_files(ast_files []&ast.File) {
@@ -256,9 +263,7 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 		}
 		ast.Import {}
 		ast.InterfaceDecl {
-			for mut field in node.fields {
-				field.default_expr = t.expr(mut field.default_expr)
-			}
+			return t.interface_decl(mut node)
 		}
 		ast.Module {}
 		ast.Return {
@@ -495,6 +500,45 @@ pub fn (mut t Transformer) for_stmt(mut node ast.ForStmt) ast.Stmt {
 	for mut stmt in node.stmts {
 		stmt = t.stmt(mut stmt)
 	}
+	return node
+}
+
+pub fn (mut t Transformer) interface_decl(mut node ast.InterfaceDecl) ast.Stmt {
+	for mut field in node.fields {
+		field.default_expr = t.expr(mut field.default_expr)
+	}
+
+	/* 
+	// >> Hack to allow old style custom error implementations
+	// TODO: remove once deprecation period for `IError` methods has ended
+	if node.name == 'IError' && t.table != 0 {
+		fields := [
+			ast.StructField {
+				name: 'msg'
+				typ: 20
+				pos: node.pos
+				type_pos: node.pos
+				is_pub: true
+			},
+			ast.StructField {
+				name: 'code'
+				typ: 7
+				pos: node.pos
+				type_pos: node.pos
+				is_pub: true
+			}
+		]
+
+		// readd `msg` and `code` fields to the node + type symbol
+		node.fields << fields
+		mut sym := t.table.sym(node.typ)
+		if mut sym.info is ast.Interface {
+			sym.info.fields << fields
+		}
+	}
+	// <<<
+	*/
+
 	return node
 }
 

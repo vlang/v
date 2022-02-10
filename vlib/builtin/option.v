@@ -5,6 +5,11 @@ module builtin
 
 // IError holds information about an error instance
 pub interface IError {
+	// >> Hack to allow old style custom error implementations
+	// TODO: remove once deprecation period for `IError` methods has ended
+	msg string
+	code int
+	// <<
 	msg() string
 	code() int
 }
@@ -14,12 +19,27 @@ pub fn (err IError) str() string {
 		None__ { 'none' }
 		Error { err.msg() }
 		MessageError { err.msg() }
-		else { '$err.type_name(): $err.msg()' }
+		else { 
+			// >> Hack to allow old style custom error implementations
+			// TODO: can be removed once the checker 'hacks' are merged (so `vc` has them included)
+			if !isnil(err.msg) {
+				'$err.type_name(): $err.msg' 
+			} else {
+			// <<
+				'$err.type_name(): $err.msg()'
+			}
+		}
 	}
 }
 
 // Error is the empty default implementation of `IError`.
-pub struct Error {}
+pub struct Error {
+	// >> Hack to allow old style custom error implementations
+	// TODO: can be removed once the checker 'hacks' are merged (so `vc` has them included)
+	msg string
+	code int
+	/// <<
+}
 
 pub fn (err Error) msg() string {
 	return ''
@@ -100,4 +120,8 @@ fn opt_ok(data voidptr, mut option Option, size int) {
 		// use err to get the end of OptionBase and then memcpy into it
 		vmemcpy(&byte(&option.err) + sizeof(IError), data, size)
 	}
+}
+
+pub fn (_ none) str() string {
+	return 'none'
 }
