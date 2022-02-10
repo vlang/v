@@ -14,8 +14,6 @@ import v.errors
 import os
 import hash.fnv1a
 
-pub const builtin_functions = ['print', 'println', 'eprint', 'eprintln', 'isnil', 'panic', 'exit']
-
 pub struct Parser {
 	pref &pref.Preferences
 mut:
@@ -654,6 +652,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 					p.close_scope()
 					return ast.FnDecl{
 						name: 'main.main'
+						short_name: 'main'
 						mod: 'main'
 						is_main: true
 						stmts: stmts

@@ -1,0 +1,12 @@
+vlib/v/checker/tests/redefining_builtin_pub_functions.vv:1:1: error: cannot redefine builtin public function `exit`
+    1 | fn exit(x string) {
+      | ~~~~~~~~~~~~~~~~~
+    2 |     println('my exit: $x')
+    3 | }
+vlib/v/checker/tests/redefining_builtin_pub_functions.vv:5:1: error: cannot redefine builtin public function `print_backtrace`
+    3 | }
+    4 | 
+    5 | fn print_backtrace() {
+      | ~~~~~~~~~~~~~~~~~~~~
+    6 |     println('hello')
+    7 | }

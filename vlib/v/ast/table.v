@@ -41,6 +41,7 @@ pub mut:
 	enum_decls        map[string]EnumDecl
 	mdeprecated_msg   map[string]string    // module deprecation message
 	mdeprecated_after map[string]time.Time // module deprecation date
+	builtin_pub_fns   map[string]bool
 }
 
 // used by vls to avoid leaks
@@ -315,6 +316,9 @@ pub fn (mut t Table) mark_module_as_deprecated_after(mname string, after_date st
 
 pub fn (mut t Table) register_fn(new_fn Fn) {
 	t.fns[new_fn.name] = new_fn
+	if new_fn.is_pub && new_fn.mod == 'builtin' {
+		t.builtin_pub_fns[new_fn.name] = true
+	}
 }
 
 pub fn (mut t Table) register_interface(idecl InterfaceDecl) {
