@@ -206,6 +206,17 @@ fn (mut r Repl) parse_import(line string) {
 	}
 }
 
+fn print_welcome_screen(enable bool) {
+	println(r'
+		____    ____
+		\   \  /   /
+		 \   \/   /
+		  \      /
+		   \    /
+		    \__/
+	')
+}
+
 fn run_repl(workdir string, vrepl_prefix string) {
 	if !is_stdin_a_pipe {
 		println(version.full_v_version(false))
@@ -221,14 +232,9 @@ fn run_repl(workdir string, vrepl_prefix string) {
 		print('\n')
 		print_output(result)
 	}
-	println(r'
-		____    ____
-		\   \  /   /
-		 \   \/   /
-		  \      /
-		   \    /
-		    \__/
-	')
+	// FIXME: This will be cool, but required to update
+	// all the test and it is bad for the moment.
+	print_welcome_screen(false)
 	file := os.join_path(workdir, '.${vrepl_prefix}vrepl.v')
 	temp_file := os.join_path(workdir, '.${vrepl_prefix}vrepl_temp.v')
 	mut prompt := '>>> '
