@@ -511,12 +511,15 @@ pub fn (s string) i16() i16 {
 
 // f32 returns the value of the string as f32 `'1.0'.f32() == f32(1)`.
 pub fn (s string) f32() f32 {
-	return f32(strconv.atof64(s))
+	value := strconv.atof64(s) or {
+		return f32(0)
+	}
+	return f32(value)
 }
 
 // f64 returns the value of the string as f64 `'1.0'.f64() == f64(1)`.
 pub fn (s string) f64() f64 {
-	return strconv.atof64(s)
+	return strconv.atof64(s) or {return f64(0)}
 }
 
 // u8 returns the value of the string as u8 `'1'.u8() == u8(1)`.

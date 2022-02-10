@@ -36,9 +36,7 @@ fn test_atof() {
 	// check conversion case 1 string <=> string
 	for c, x in src_num {
 		// slow atof
-		val := strconv.atof64(src_num_str[c]) ? or {
-			panic(err)
-		}
+		val := strconv.atof64(src_num_str[c]) or { panic(err) }
 		assert val.strlong() == x.strlong()
 
 		// quick atof
@@ -59,9 +57,7 @@ fn test_atof() {
 	// we don't test atof_quick beacuse we already know the rounding error
 	for c, x in src_num_str {
 		b := src_num[c].strlong()
-		value := strconv.atof64(x) ? {
-			panic(err)
-		}
+		value := strconv.atof64(x) or { panic(err) }
 		a1 := value.strlong()
 		assert a1 == b
 	}
