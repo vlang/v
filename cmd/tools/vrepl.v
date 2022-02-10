@@ -60,14 +60,6 @@ fn endline_if_missed(line string) string {
 
 fn repl_help() {
 	println(version.full_v_version(false))
-	println(r'
-		____    ____
-		\   \  /   /
-		 \   \/   /
-		  \      /
-		   \    /
-		    \__/
-	')
 	println('
 	|help                   Displays this information.
 	|list                   Show the program so far.
@@ -135,8 +127,8 @@ fn (r &Repl) is_function_call(line string) bool {
 		&& (line.ends_with(')') || line.ends_with('?'))
 }
 
-// Convert the moduled that we parsered to a sequence
-// of line that raprenset V source code
+// Convert the list of modules that we parsed already,
+// to a sequence of V source code lines
 fn (r &Repl) import_to_source_code() []string {
 	mut imports_line := []string{}
 	for mod in r.modules {
@@ -192,10 +184,11 @@ fn (r &Repl) check_fn_type_kind(new_line string) FnType {
 	return FnType.fn_type
 }
 
-// parse the import statment in case and feel the correct maps
+// parse the import statement in `line`, updating the Repl alias maps
 fn (mut r Repl) parse_import(line string) {
 	if !line.contains('import') {
-		panic("the line dosen't contains the import keyword")
+		eprintln("the line doesn't contain an `import` keyword")
+		return
 	}
 	tokens := r.line.fields()
 	// module name
@@ -228,7 +221,14 @@ fn run_repl(workdir string, vrepl_prefix string) {
 		print('\n')
 		print_output(result)
 	}
-
+	println(r'
+		____    ____
+		\   \  /   /
+		 \   \/   /
+		  \      /
+		   \    /
+		    \__/
+	')
 	file := os.join_path(workdir, '.${vrepl_prefix}vrepl.v')
 	temp_file := os.join_path(workdir, '.${vrepl_prefix}vrepl_temp.v')
 	mut prompt := '>>> '
