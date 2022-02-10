@@ -255,7 +255,7 @@ pub fn (mut ctx Context) json_pretty<T>(j T) Result {
 pub fn (mut ctx Context) file(f_path string) Result {
 	ext := os.file_ext(f_path)
 	data := os.read_file(f_path) or {
-		eprint(err.msg)
+		eprint(err.msg())
 		ctx.server_error(500)
 		return Result{}
 	}
@@ -417,7 +417,7 @@ pub fn run_at<T>(global_app &T, host string, port int) {
 		request_app.Context = global_app.Context // copy the context ref that contains static files map etc
 		mut conn := l.accept() or {
 			// failures should not panic
-			eprintln('accept() failed with error: $err.msg')
+			eprintln('accept() failed with error: $err.msg()')
 			continue
 		}
 		go handle_conn<T>(mut conn, mut request_app, routes)

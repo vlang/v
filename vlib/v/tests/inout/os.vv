@@ -3,7 +3,7 @@ import os
 fn main() {
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
-	mut files := os.ls(vroot) or { panic(err.msg) }
+	mut files := os.ls(vroot) or { panic(err) }
 	files.sort()
 	for file in files {
 		if file.ends_with('.md') {

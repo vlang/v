@@ -14,7 +14,7 @@ fn do_rec_calc_send(chs []chan i64, mut sem sync.Semaphore) {
 	mut msg := ''
 	for {
 		mut s := get_val_from_chan(chs[0]) or {
-			msg = err.msg
+			msg = err.msg()
 			break
 		}
 		s++

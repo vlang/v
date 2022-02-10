@@ -508,7 +508,7 @@ pub fn (mut t Transformer) interface_decl(mut node ast.InterfaceDecl) ast.Stmt {
 		field.default_expr = t.expr(mut field.default_expr)
 	}
 
-	/* 
+	/*
 	// >> Hack to allow old style custom error implementations
 	// TODO: remove once deprecation period for `IError` methods has ended
 	if node.name == 'IError' && t.table != 0 {

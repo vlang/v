@@ -83,7 +83,7 @@ fn worker_repl(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		session.bmark.fail()
 		tls_bench.fail()
 		os.rmdir_all(tfolder) or { panic(err) }
-		eprintln(tls_bench.step_message_fail(err.msg))
+		eprintln(tls_bench.step_message_fail(err.msg()))
 		assert false
 		return pool.no_result
 	}

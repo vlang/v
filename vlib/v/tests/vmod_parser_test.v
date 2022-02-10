@@ -38,7 +38,7 @@ fn test_decode() {
 	assert data.dependencies[0] == 'hello'
 	assert data.unknown['test'][0] == 'foo'
 	vmod.decode('') or {
-		assert err.msg == 'vmod: no content.'
+		assert err.msg() == 'vmod: no content.'
 		exit(0)
 	}
 }

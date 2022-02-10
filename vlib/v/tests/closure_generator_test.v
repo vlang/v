@@ -44,7 +44,7 @@ const return_types = [
 	ReturnType{
 		name: '?'
 		init: "error('an error')"
-		assertion: " or { assert err.msg == 'an error' return }\npanic('got no error')"
+		assertion: " or { assert err.msg() == 'an error' return }\npanic('got no error')"
 		no_assert_kw: true
 	},
 	ReturnType{

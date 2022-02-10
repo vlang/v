@@ -20,8 +20,7 @@ pub enum ConnectionFlag {
 }
 
 struct SQLError {
-	msg  string
-	code int
+	MessageError
 }
 
 // TODO: Documentation

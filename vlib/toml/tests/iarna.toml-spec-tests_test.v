@@ -181,7 +181,7 @@ fn test_iarna_toml_spec_tests() ? {
 							// NOTE there's known errors with the python convertion method.
 							// For now we just ignore them as it's a broken tool - not a wrong test-case.
 							// Uncomment this print to see/check them.
-							// eprintln(err.msg + '\n$contents')
+							// eprintln(err.msg() + '\n$contents')
 							e++
 							println('ERR  [${i + 1}/$valid_test_files.len] "$valid_test_file" EXCEPTION [$e/$valid_value_exceptions.len]...')
 							continue
@@ -208,12 +208,12 @@ fn test_iarna_toml_spec_tests() ? {
 
 				v_normalized_json := run([jq, '-S', '-f "$jq_normalize_path"', v_toml_json_path]) or {
 					contents := os.read_file(v_toml_json_path) ?
-					panic(err.msg + '\n$contents')
+					panic(err.msg() + '\n$contents')
 				}
 				cmd := [jq, '-S', '-f "$jq_normalize_path"', iarna_toml_json_path]
 				iarna_normalized_json := run(cmd) or {
 					contents := os.read_file(v_toml_json_path) ?
-					panic(err.msg + '\n$contents\n\ncmd: ${cmd.join(' ')}')
+					panic(err.msg() + '\n$contents\n\ncmd: ${cmd.join(' ')}')
 				}
 
 				assert iarna_normalized_json == v_normalized_json
@@ -250,7 +250,7 @@ fn test_iarna_toml_spec_tests() ? {
 				assert false
 			} else {
 				if !hide_oks {
-					println('     $err.msg')
+					println('     $err.msg()')
 				}
 				assert true
 			}

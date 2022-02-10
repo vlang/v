@@ -7,11 +7,11 @@ fn test_err_with_code() {
 		assert false
 		_ := w
 	} else {
-		assert err.msg == 'hi'
+		assert err.msg() == 'hi'
 		assert err.code == 137
 	}
 	v := opt_err_with_code() or {
-		assert err.msg == 'hi'
+		assert err.msg() == 'hi'
 		assert err.code == 137
 		return
 	}
@@ -25,7 +25,7 @@ fn opt_err() ?string {
 
 fn test_err() {
 	v := opt_err() or {
-		assert err.msg == 'hi'
+		assert err.msg() == 'hi'
 		return
 	}
 	assert false
@@ -74,7 +74,7 @@ fn test_if_else_opt() {
 	if _ := err_call(false) {
 		assert false
 	} else {
-		assert err.msg.len != 0
+		assert err.msg().len != 0
 	}
 }
 
@@ -151,12 +151,12 @@ fn test_or_return() {
 	if _ := or_return_error() {
 		assert false
 	} else {
-		assert err.msg.len != 0
+		assert err.msg().len != 0
 	}
 	if _ := or_return_none() {
 		assert false
 	} else {
-		assert err.msg.len == 0
+		assert err.msg().len == 0
 	}
 }
 
@@ -283,7 +283,7 @@ fn test_optional_void_return_types_of_anon_fn() {
 	}
 
 	f(0) or {
-		assert err.msg == '0'
+		assert err.msg() == '0'
 		return
 	}
 }
@@ -304,7 +304,7 @@ fn test_option_void_return_types_of_anon_fn_in_struct() {
 	}
 
 	foo.f(0) or {
-		assert err.msg == '0'
+		assert err.msg() == '0'
 		return
 	}
 }

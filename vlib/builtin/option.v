@@ -8,24 +8,29 @@ pub interface IError {
 	// >> Hack to allow old style custom error implementations
 	// TODO: remove once deprecation period for `IError` methods has ended
 	msg string
-	code int
-	// <<
+	code int // <<
 	msg() string
 	code() int
 }
 
 pub fn (err IError) str() string {
 	return match err {
-		None__ { 'none' }
-		Error { err.msg() }
-		MessageError { err.msg() }
-		else { 
+		None__ {
+			'none'
+		}
+		Error {
+			err.msg()
+		}
+		MessageError {
+			err.msg()
+		}
+		else {
 			// >> Hack to allow old style custom error implementations
 			// TODO: can be removed once the checker 'hacks' are merged (so `vc` has them included)
 			if !isnil(err.msg) {
-				'$err.type_name(): $err.msg' 
+				'$err.type_name(): $err.msg'
 			} else {
-			// <<
+				// <<
 				'$err.type_name(): $err.msg()'
 			}
 		}
@@ -36,7 +41,7 @@ pub fn (err IError) str() string {
 pub struct Error {
 	// >> Hack to allow old style custom error implementations
 	// TODO: can be removed once the checker 'hacks' are merged (so `vc` has them included)
-	msg string
+	msg  string
 	code int
 	/// <<
 }
@@ -52,7 +57,7 @@ pub fn (err Error) code() int {
 // MessageError is the default implementation of the `IError` interface that is returned by the `error()` function
 struct MessageError {
 pub:
-	msg string
+	msg  string
 	code int
 }
 

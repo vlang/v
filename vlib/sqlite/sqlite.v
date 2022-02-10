@@ -33,8 +33,7 @@ struct Stmt {
 }
 
 struct SQLError {
-	msg  string
-	code int
+	MessageError
 }
 
 //
