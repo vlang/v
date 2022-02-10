@@ -403,9 +403,9 @@ fn converter(mut pn PrepNumber) u64 {
 // Public functions
 
 // atof64 return a f64 from a string doing a parsing operation
-pub fn atof64(s string) f64 {
+pub fn atof64(s string) ?f64 {
 	if s.len == 0 {
-		return 0
+		return error('expected a number found an empity string')
 	}
 	mut pn := PrepNumber{}
 	mut res_parsing := 0
@@ -428,7 +428,9 @@ pub fn atof64(s string) f64 {
 		strconv.parser_minf {
 			res.u = strconv.double_minus_infinity
 		}
-		else {}
+		else {
+			return error('conversion from string $s to f64 not possible, %s is not a number')
+		}
 	}
 	return unsafe { res.f }
 }
