@@ -1,0 +1,16 @@
+struct Response<U> {
+	result U
+}
+
+pub fn send<A, B>(res A, b B) string {
+	msg := Response<U>{
+		result: res
+	}
+	println(b)
+	return '$msg'
+}
+
+fn main() {
+	mut ret := send(123, 22.2)
+	println(ret)
+}

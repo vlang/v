@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generics_struct_init_type_parameter_count_err.vv:6:9: error: generic struct init expects 1 generic parameter, but got 2
+    4 |
+    5 | pub fn send<A, B>(res A, b B) string {
+    6 |     msg := Response<A, B>{
+      |            ~~~~~~~~~~~~~~~
+    7 |         result: res
+    8 |     }
