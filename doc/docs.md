@@ -2647,18 +2647,18 @@ particularly useful for initializing a C library.
 ## Type Declarations
 
 ### Interfaces
-
 ```v
+// interface-example.1
 struct Dog {
-	breed string
-}
-
-struct Cat {
 	breed string
 }
 
 fn (d Dog) speak() string {
 	return 'woof'
+}
+
+struct Cat {
+	breed string
 }
 
 fn (c Cat) speak() string {
@@ -2671,14 +2671,16 @@ interface Speaker {
 	speak() string
 }
 
-dog := Dog{'Leonberger'}
-cat := Cat{'Siamese'}
+fn main() {
+	dog := Dog{'Leonberger'}
+	cat := Cat{'Siamese'}
 
-mut arr := []Speaker{}
-arr << dog
-arr << cat
-for item in arr {
-	println('a $item.breed says: $item.speak()')
+	mut arr := []Speaker{}
+	arr << dog
+	arr << cat
+	for item in arr {
+		println('a $item.breed says: $item.speak()')
+	}
 }
 ```
 
@@ -2691,6 +2693,7 @@ An interface can have a `mut:` section. Implementing types will need
 to have a `mut` receiver, for methods declared in the `mut:` section
 of an interface.
 ```v
+// interface-example.2
 module main
 
 pub interface Foo {
@@ -2734,20 +2737,29 @@ fn fn1(s Foo) {
 
 We can test the underlying type of an interface using dynamic cast operators:
 ```v oksyntax
+// interface-exmaple.3 (continued from interface-exampe.1)
 interface Something {}
 
 fn announce(s Something) {
 	if s is Dog {
 		println('a $s.breed dog') // `s` is automatically cast to `Dog` (smart cast)
 	} else if s is Cat {
-		println('a $s.breed cat')
+		println('a cat speaks $s.speak()')
 	} else {
 		println('something else')
 	}
 }
+
+fn main() {
+	dog := Dog{'Leonberger'}
+	cat := Cat{'Siamese'}
+	announce(dog)
+	announce(cat)
+}
 ```
 
 ```v
+// interface-example.4
 interface IFoo {
 	foo()
 }
