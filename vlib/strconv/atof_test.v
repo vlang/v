@@ -75,3 +75,18 @@ fn test_atof() {
 	assert *ptr == u64(0x8000000000000000)
 	println('DONE!')
 }
+
+fn test_atof_errors() {
+	if x := strconv.atof64('') {
+		eprintln('> x: $x')
+		assert false // strconv.atof64 should have failed
+	} else {
+		assert err.str() == 'expected a number found an empty string'
+	}
+	if x := strconv.atof64('####') {
+		eprintln('> x: $x')
+		assert false // strconv.atof64 should have failed
+	} else {
+		assert err.str() == 'not a number'
+	}
+}

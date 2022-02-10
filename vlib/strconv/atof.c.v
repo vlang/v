@@ -104,6 +104,7 @@ pub const (
 	parser_mzero          = 2 // number is negative, module smaller
 	parser_pinf           = 3 // number is higher than +HUGE_VAL
 	parser_minf           = 4 // number is lower than -HUGE_VAL
+	parser_invalid_number = 5 // invalid number, used for '#@%^' for example
 	//
 	// char constants
 	// Note: Modify these if working with non-ASCII encoding
@@ -231,6 +232,9 @@ fn parser(s string) (int, PrepNumber) {
 		} else {
 			result = strconv.parser_pzero
 		}
+	}
+	if i == 0 && s.len > 0 {
+		return strconv.parser_invalid_number, pn
 	}
 	return result, pn
 }
