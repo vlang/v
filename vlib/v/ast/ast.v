@@ -183,7 +183,6 @@ pub:
 pub struct StringInterLiteral {
 pub:
 	vals       []string
-	exprs      []Expr
 	fwidths    []int
 	precisions []int
 	pluss      []bool
@@ -191,6 +190,7 @@ pub:
 	fmt_poss   []token.Pos
 	pos        token.Pos
 pub mut:
+	exprs      []Expr
 	expr_types []Type
 	fmts       []byte
 	need_fmts  []bool // an explicit non-default fmt required, e.g. `x`
