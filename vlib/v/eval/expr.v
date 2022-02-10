@@ -191,7 +191,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 			}) // TODO: numbers larger than 2^63 (for u64)
 		}
 		ast.FloatLiteral {
-			return f64(strconv.atof64(expr.val))
+			return f64(strconv.atof64(expr.val) or { e.error(err.str()) })
 		}
 		ast.BoolLiteral {
 			return expr.val

@@ -104,6 +104,7 @@ pub const (
 	parser_mzero          = 2 // number is negative, module smaller
 	parser_pinf           = 3 // number is higher than +HUGE_VAL
 	parser_minf           = 4 // number is lower than -HUGE_VAL
+	parser_invalid_number = 5 // invalid number, used for '#@%^' for example
 	//
 	// char constants
 	// Note: Modify these if working with non-ASCII encoding
@@ -231,6 +232,9 @@ fn parser(s string) (int, PrepNumber) {
 		} else {
 			result = strconv.parser_pzero
 		}
+	}
+	if i == 0 && s.len > 0 {
+		return strconv.parser_invalid_number, pn
 	}
 	return result, pn
 }
@@ -403,9 +407,9 @@ fn converter(mut pn PrepNumber) u64 {
 // Public functions
 
 // atof64 return a f64 from a string doing a parsing operation
-pub fn atof64(s string) f64 {
+pub fn atof64(s string) ?f64 {
 	if s.len == 0 {
-		return 0
+		return error('expected a number found an empty string')
 	}
 	mut pn := PrepNumber{}
 	mut res_parsing := 0
@@ -428,7 +432,9 @@ pub fn atof64(s string) f64 {
 		strconv.parser_minf {
 			res.u = strconv.double_minus_infinity
 		}
-		else {}
+		else {
+			return error('not a number')
+		}
 	}
 	return unsafe { res.f }
 }

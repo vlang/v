@@ -36,7 +36,8 @@ fn test_atof() {
 	// check conversion case 1 string <=> string
 	for c, x in src_num {
 		// slow atof
-		assert strconv.atof64(src_num_str[c]).strlong() == x.strlong()
+		val := strconv.atof64(src_num_str[c]) or { panic(err) }
+		assert val.strlong() == x.strlong()
 
 		// quick atof
 		mut s1 := (strconv.atof_quick(src_num_str[c]).str())
@@ -56,7 +57,8 @@ fn test_atof() {
 	// we don't test atof_quick beacuse we already know the rounding error
 	for c, x in src_num_str {
 		b := src_num[c].strlong()
-		a1 := strconv.atof64(x).strlong()
+		value := strconv.atof64(x) or { panic(err) }
+		a1 := value.strlong()
 		assert a1 == b
 	}
 
@@ -72,4 +74,19 @@ fn test_atof() {
 	f1 = -0.0
 	assert *ptr == u64(0x8000000000000000)
 	println('DONE!')
+}
+
+fn test_atof_errors() {
+	if x := strconv.atof64('') {
+		eprintln('> x: $x')
+		assert false // strconv.atof64 should have failed
+	} else {
+		assert err.str() == 'expected a number found an empty string'
+	}
+	if x := strconv.atof64('####') {
+		eprintln('> x: $x')
+		assert false // strconv.atof64 should have failed
+	} else {
+		assert err.str() == 'not a number'
+	}
 }
