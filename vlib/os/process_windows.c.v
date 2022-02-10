@@ -200,7 +200,7 @@ fn (mut p Process) win_read_string(idx int, maxbytes int) (string, int) {
 	}
 
 	mut bytes_read := int(0)
-	buf := []byte{ len: bytes_avail + 300 }
+	buf := []byte{len: bytes_avail + 300}
 	unsafe {
 		C.ReadFile(rhandle, &buf[0], buf.cap, voidptr(&bytes_read), 0)
 	}
