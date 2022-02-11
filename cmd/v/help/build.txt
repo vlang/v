@@ -85,6 +85,9 @@ NB: the build flags are shared with the run command too:
          c) an average for each function (i.e. (b) / (a) )
          d) the function name
          
+      NB: you can also combine this command with `run` command. 
+           For example - `v -prof prof.txt run main.v`
+         
       NB: the profiler is *NOT* currently thread safe, so look at the profile results of
            multithreaded programs very sceptically !
 
