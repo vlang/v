@@ -67,7 +67,7 @@ fn test_fmt() {
 				continue
 			}
 			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_$ifilename')
-			os.write_file(vfmt_result_file, result_ocontent) or { panic(err.msg) }
+			os.write_file(vfmt_result_file, result_ocontent) or { panic(err) }
 			eprintln(diff.color_compare_files(diff_cmd, opath, vfmt_result_file))
 			continue
 		}
@@ -75,7 +75,7 @@ fn test_fmt() {
 		eprintln(fmt_bench.step_message_ok(vrelpath))
 	}
 	restore_bin2v_placeholder() or {
-		eprintln('failed restoring vbin2v_keep.vv placeholder: $err.msg')
+		eprintln('failed restoring vbin2v_keep.vv placeholder: $err.msg()')
 	}
 	fmt_bench.stop()
 	eprintln(term.h_divider('-'))
@@ -90,7 +90,7 @@ fn prepare_bin2v_file(mut fmt_bench benchmark.Benchmark) {
 	fmt_bench.step()
 	write_bin2v_keep_content() or {
 		fmt_bench.fail()
-		eprintln(fmt_bench.step_message_fail('Failed preparing bin2v_keep.vv: $err.msg'))
+		eprintln(fmt_bench.step_message_fail('Failed preparing bin2v_keep.vv: $err.msg()'))
 		return
 	}
 	fmt_bench.ok()

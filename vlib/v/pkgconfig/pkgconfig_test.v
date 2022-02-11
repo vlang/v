@@ -21,7 +21,9 @@ fn test_dependency_resolution_fails_correctly() {
 	mut errors := []string{}
 	for pc in pc_files {
 		pcname := os.file_name(pc).replace('.pc', '')
-		pkgconfig.load(pcname, use_default_paths: false, path: samples_dir) or { errors << err.msg }
+		pkgconfig.load(pcname, use_default_paths: false, path: samples_dir) or {
+			errors << err.msg()
+		}
 	}
 	assert errors.len < pc_files.len
 	assert errors == ['could not resolve dependency xyz-unknown-package']

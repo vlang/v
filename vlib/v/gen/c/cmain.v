@@ -166,19 +166,21 @@ pub fn (mut g Gen) write_tests_definitions() {
 
 pub fn (mut g Gen) gen_failing_error_propagation_for_test_fn(or_block ast.OrExpr, cvar_name string) {
 	// in test_() functions, an `opt()?` call is sugar for
-	// `or { cb_propagate_test_error(@LINE, @FILE, @MOD, @FN, err.msg) }`
+	// `or { cb_propagate_test_error(@LINE, @FILE, @MOD, @FN, err.msg() ) }`
 	// and the test is considered failed
 	paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
-	g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_fn_error(test_runner._object, $paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), *(${cvar_name}.err.msg) );')
+	err_msg := 'IError_name_table[${cvar_name}.err._typ]._method_msg(${cvar_name}.err._object)'
+	g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_fn_error(test_runner._object, $paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), $err_msg );')
 	g.writeln('\tlongjmp(g_jump_buffer, 1);')
 }
 
 pub fn (mut g Gen) gen_failing_return_error_for_test_fn(return_stmt ast.Return, cvar_name string) {
 	// in test_() functions, a `return error('something')` is sugar for
-	// `or { err := error('something') cb_propagate_test_error(@LINE, @FILE, @MOD, @FN, err.msg) return err }`
+	// `or { err := error('something') cb_propagate_test_error(@LINE, @FILE, @MOD, @FN, err.msg() ) return err }`
 	// and the test is considered failed
 	paline, pafile, pamod, pafn := g.panic_debug_info(return_stmt.pos)
-	g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_fn_error(test_runner._object, $paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), *(${cvar_name}.err.msg) );')
+	err_msg := 'IError_name_table[${cvar_name}.err._typ]._method_msg(${cvar_name}.err._object)'
+	g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_fn_error(test_runner._object, $paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), $err_msg );')
 	g.writeln('\tlongjmp(g_jump_buffer, 1);')
 }
 

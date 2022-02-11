@@ -273,7 +273,7 @@ fn test_write_raw_at_negative_pos() ? {
 	if _ := f.write_raw_at(another_point, -1) {
 		assert false
 	}
-	f.write_raw_at(another_point, -234) or { assert err.msg == 'Invalid argument' }
+	f.write_raw_at(another_point, -234) or { assert err.msg() == 'Invalid argument' }
 	f.close()
 }
 
@@ -328,7 +328,7 @@ fn test_read_raw_at_negative_pos() ? {
 	if _ := f.read_raw_at<Point>(-1) {
 		assert false
 	}
-	f.read_raw_at<Point>(-234) or { assert err.msg == 'Invalid argument' }
+	f.read_raw_at<Point>(-234) or { assert err.msg() == 'Invalid argument' }
 	f.close()
 }
 

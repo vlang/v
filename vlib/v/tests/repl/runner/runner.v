@@ -35,7 +35,7 @@ pub fn full_path_to_v(dirs_in int) string {
 }
 
 fn diff_files(file_result string, file_expected string) string {
-	diffcmd := diff.find_working_diff_command() or { return err.msg }
+	diffcmd := diff.find_working_diff_command() or { return err.msg() }
 	return diff.color_compare_files(diffcmd, file_result, file_expected)
 }
 

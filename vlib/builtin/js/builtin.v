@@ -14,39 +14,83 @@ pub fn panic(s string) {
 
 // IError holds information about an error instance
 pub interface IError {
+	// >> Hack to allow old style custom error implementations
+	// TODO: remove once deprecation period for `IError` methods has ended
 	msg string
-	code int
+	code int // <<
+	msg() string
+	code() int
 }
 
-// Error is the default implementation of IError, that is returned by e.g. `error()`
+pub fn (err IError) str() string {
+	return match err {
+		None__ {
+			'none'
+		}
+		Error {
+			err.msg()
+		}
+		MessageError {
+			err.msg()
+		}
+		else {
+			// >> Hack to allow old style custom error implementations
+			// TODO: can be removed once the checker 'hacks' are merged (so `vc` has them included)
+			if !isnil(err.msg) {
+				'$err.type_name(): $err.msg'
+			} else {
+				// <<
+				'$err.type_name(): $err.msg()'
+			}
+		}
+	}
+}
+
+// Error is the empty default implementation of `IError`.
 pub struct Error {
+	// >> Hack to allow old style custom error implementations
+	// TODO: can be removed once the checker 'hacks' are merged (so `vc` has them included)
+	msg  string
+	code int
+	/// <<
+}
+
+pub fn (err Error) msg() string {
+	return ''
+}
+
+pub fn (err Error) code() int {
+	return 0
+}
+
+// MessageError is the default implementation of the `IError` interface that is returned by the `error()` function
+struct MessageError {
 pub:
 	msg  string
 	code int
 }
 
+pub fn (err MessageError) msg() string {
+	return err.msg
+}
+
+pub fn (err MessageError) code() int {
+	return err.code
+}
+
+pub const none__ = IError(&None__{})
+
 struct None__ {
-	msg  string
-	code int
+	Error
 }
 
 fn (_ None__) str() string {
 	return 'none'
 }
 
-pub const none__ = IError(None__{'', 0})
-
 pub struct Option {
 	state byte
 	err   IError = none__
-}
-
-pub fn (err IError) str() string {
-	return match err {
-		None__ { 'none' }
-		Error { err.msg }
-		else { 'Error: $err.msg' }
-	}
 }
 
 pub fn (o Option) str() string {
@@ -69,7 +113,7 @@ fn trace_error(x string) {
 [inline]
 pub fn error(message string) IError {
 	// trace_error(message)
-	return &Error{
+	return &MessageError{
 		msg: message
 	}
 }
@@ -79,7 +123,7 @@ pub fn error(message string) IError {
 [inline]
 pub fn error_with_code(message string, code int) IError {
 	// trace_error('$message | code: $code')
-	return &Error{
+	return &MessageError{
 		msg: message
 		code: code
 	}

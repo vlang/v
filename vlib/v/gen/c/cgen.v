@@ -6122,11 +6122,12 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 	} else if or_block.kind == .propagate {
 		if g.file.mod.name == 'main' && (isnil(g.fn_decl) || g.fn_decl.is_main) {
 			// In main(), an `opt()?` call is sugar for `opt() or { panic(err) }`
+			err_msg := 'IError_name_table[${cvar_name}.err._typ]._method_msg(${cvar_name}.err._object)'
 			if g.pref.is_debug {
 				paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
-				g.writeln('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), *${cvar_name}.err.msg );')
+				g.writeln('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), $err_msg );')
 			} else {
-				g.writeln('\tpanic_optional_not_set(*${cvar_name}.err.msg);')
+				g.writeln('\tpanic_optional_not_set( $err_msg );')
 			}
 		} else if !isnil(g.fn_decl) && g.fn_decl.is_test {
 			g.gen_failing_error_propagation_for_test_fn(or_block, cvar_name)
@@ -6899,6 +6900,16 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 					methods_struct.writeln('\t\t._method_${c_name(method.name)} = (void*) $method_call,')
 				}
 			}
+
+			// >> Hack to allow old style custom error implementations
+			// TODO: remove once deprecation period for `IError` methods has ended
+			// fix MSVC not handling empty struct inits
+			if methods.len == 0 && interface_name == 'IError' {
+				methods_struct.writeln('\t\t._method_msg = NULL,')
+				methods_struct.writeln('\t\t._method_code = NULL,')
+			}
+			// <<
+
 			if g.pref.build_mode != .build_module {
 				methods_struct.writeln('\t},')
 			}

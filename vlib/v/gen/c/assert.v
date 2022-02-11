@@ -51,8 +51,7 @@ fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
 }
 
 struct UnsupportedAssertCtempTransform {
-	msg  string
-	code int
+	Error
 }
 
 const unsupported_ctemp_assert_transform = IError(UnsupportedAssertCtempTransform{})

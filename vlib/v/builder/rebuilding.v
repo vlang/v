@@ -181,7 +181,7 @@ fn (mut b Builder) rebuild_cached_module(vexe string, imp_path string) string {
 		}
 		b.v_build_module(vexe, imp_path)
 		rebuilded_o := b.pref.cache_manager.exists('.o', imp_path) or {
-			panic('could not rebuild cache module for $imp_path, error: $err.msg')
+			panic('could not rebuild cache module for $imp_path, error: $err.msg()')
 		}
 		return rebuilded_o
 	}

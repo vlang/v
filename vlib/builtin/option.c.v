@@ -8,7 +8,6 @@ struct C.IError {
 [unsafe]
 pub fn (ie &IError) free() {
 	unsafe {
-		ie.msg.free()
 		cie := &C.IError(ie)
 		free(cie._object)
 	}

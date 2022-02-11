@@ -320,7 +320,7 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 		}
 		ast.PostfixExpr {
 			ifdef := g.comptime_if_to_ifdef((cond.expr as ast.Ident).name, true) or {
-				verror(err.msg)
+				verror(err.msg())
 				return false
 			}
 			g.write('defined($ifdef)')

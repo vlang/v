@@ -155,12 +155,12 @@ fn test_alexcrichton_toml_rs() ? {
 
 				v_normalized_json := run([jq, '-S', '-f "$jq_normalize_path"', v_toml_json_path]) or {
 					contents := os.read_file(v_toml_json_path) ?
-					panic(err.msg + '\n$contents')
+					panic(err.msg() + '\n$contents')
 				}
 				alexcrichton_normalized_json := run([jq, '-S', '-f "$jq_normalize_path"',
 					alexcrichton_toml_json_path]) or {
 					contents := os.read_file(v_toml_json_path) ?
-					panic(err.msg + '\n$contents')
+					panic(err.msg() + '\n$contents')
 				}
 
 				assert alexcrichton_normalized_json == v_normalized_json
@@ -199,7 +199,7 @@ fn test_alexcrichton_toml_rs() ? {
 				assert false
 			} else {
 				if !hide_oks {
-					println('     $err.msg')
+					println('     $err.msg()')
 				}
 				assert true
 			}

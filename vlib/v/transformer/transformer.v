@@ -8,6 +8,9 @@ pub struct Transformer {
 	pref &pref.Preferences
 pub mut:
 	index &IndexState
+	table &ast.Table = 0
+mut:
+	is_assert bool
 }
 
 pub fn new_transformer(pref &pref.Preferences) &Transformer {
@@ -18,6 +21,12 @@ pub fn new_transformer(pref &pref.Preferences) &Transformer {
 			saved_disabled: []bool{cap: 1000}
 		}
 	}
+}
+
+pub fn new_transformer_with_table(table &ast.Table, pref &pref.Preferences) &Transformer {
+	mut transformer := new_transformer(pref)
+	transformer.table = table
+	return transformer
 }
 
 pub fn (mut t Transformer) transform_files(ast_files []&ast.File) {
@@ -104,57 +113,6 @@ pub fn (mut t Transformer) find_mut_self_assign(node ast.AssignStmt) {
 	// even if mutable we can be sure than `a[1] = a[2] is safe
 }
 
-pub fn (mut t Transformer) find_assert_len(mut node ast.InfixExpr) ast.Expr {
-	if !t.pref.is_prod {
-		return node
-	}
-	right := t.expr(mut node.right)
-	match right {
-		ast.IntegerLiteral {
-			left := t.expr(mut node.left)
-			if left is ast.SelectorExpr {
-				len := right.val.int()
-				if left.field_name == 'len' {
-					match node.op {
-						.eq { // ==
-							t.index.safe_access(left.expr.str(), len - 1)
-						}
-						.ge { // >=
-							t.index.safe_access(left.expr.str(), len - 1)
-						}
-						.gt { // >
-							t.index.safe_access(left.expr.str(), len)
-						}
-						else {}
-					}
-				}
-			}
-		}
-		ast.SelectorExpr {
-			left := t.expr(mut node.left)
-			if left is ast.IntegerLiteral {
-				len := left.val.int()
-				if right.field_name == 'len' {
-					match node.op {
-						.eq { // ==
-							t.index.safe_access(right.expr.str(), len - 1)
-						}
-						.le { // <=
-							t.index.safe_access(right.expr.str(), len - 1)
-						}
-						.lt { // <
-							t.index.safe_access(right.expr.str(), len)
-						}
-						else {}
-					}
-				}
-			}
-		}
-		else {}
-	}
-	return node
-}
-
 pub fn (mut t Transformer) check_safe_array(mut node ast.IndexExpr) {
 	if !t.pref.is_prod {
 		return
@@ -212,14 +170,7 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 		ast.NodeError {}
 		ast.AsmStmt {}
 		ast.AssertStmt {
-			match mut node.expr {
-				ast.InfixExpr {
-					node.expr = t.find_assert_len(mut node.expr)
-				}
-				else {
-					node.expr = t.expr(mut node.expr)
-				}
-			}
+			return t.assert_stmt(mut node)
 		}
 		ast.AssignStmt {
 			t.find_new_array_len(node)
@@ -312,9 +263,7 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 		}
 		ast.Import {}
 		ast.InterfaceDecl {
-			for mut field in node.fields {
-				field.default_expr = t.expr(mut field.default_expr)
-			}
+			return t.interface_decl(mut node)
 		}
 		ast.Module {}
 		ast.Return {
@@ -330,6 +279,63 @@ pub fn (mut t Transformer) stmt(mut node ast.Stmt) ast.Stmt {
 		}
 		ast.TypeDecl {}
 	}
+	return node
+}
+
+pub fn (mut t Transformer) assert_stmt(mut node ast.AssertStmt) ast.Stmt {
+	t.is_assert = true
+	node.expr = t.expr(mut node.expr)
+	if !t.pref.is_prod {
+		return node
+	}
+	if mut node.expr is ast.InfixExpr {
+		right := node.expr.right
+		match right {
+			ast.IntegerLiteral {
+				left := node.expr.left
+				if left is ast.SelectorExpr {
+					len := right.val.int()
+					if left.field_name == 'len' {
+						match node.expr.op {
+							.eq { // ==
+								t.index.safe_access(left.expr.str(), len - 1)
+							}
+							.ge { // >=
+								t.index.safe_access(left.expr.str(), len - 1)
+							}
+							.gt { // >
+								t.index.safe_access(left.expr.str(), len)
+							}
+							else {}
+						}
+					}
+				}
+			}
+			ast.SelectorExpr {
+				left := node.expr.left
+				if left is ast.IntegerLiteral {
+					len := left.val.int()
+					if right.field_name == 'len' {
+						match node.expr.op {
+							.eq { // ==
+								t.index.safe_access(right.expr.str(), len - 1)
+							}
+							.le { // <=
+								t.index.safe_access(right.expr.str(), len - 1)
+							}
+							.lt { // <
+								t.index.safe_access(right.expr.str(), len)
+							}
+							else {}
+						}
+					}
+				}
+			}
+			else {}
+		}
+	}
+
+	t.is_assert = false
 	return node
 }
 
@@ -497,6 +503,14 @@ pub fn (mut t Transformer) for_stmt(mut node ast.ForStmt) ast.Stmt {
 	return node
 }
 
+pub fn (mut t Transformer) interface_decl(mut node ast.InterfaceDecl) ast.Stmt {
+	for mut field in node.fields {
+		field.default_expr = t.expr(mut field.default_expr)
+	}
+
+	return node
+}
+
 pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 	match mut node {
 		ast.AnonFn {
@@ -629,6 +643,11 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 		ast.SqlExpr {
 			return t.sql_expr(mut node)
 		}
+		ast.StringInterLiteral {
+			for mut expr in node.exprs {
+				expr = t.expr(mut expr)
+			}
+		}
 		ast.StructInit {
 			node.update_expr = t.expr(mut node.update_expr)
 			for mut field in node.fields {
@@ -661,7 +680,7 @@ pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 	pos.extend(node.pos)
 	pos.extend(node.right.pos())
 
-	if t.pref.is_debug {
+	if t.pref.is_debug || t.is_assert { // never optimize assert statements
 		return node
 	} else {
 		match mut node.left {

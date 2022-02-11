@@ -68,7 +68,7 @@ fn assert_common_headers(received string) {
 
 fn test_a_simple_tcp_client_can_connect_to_the_vweb_server() {
 	received := simple_tcp_client(path: '/') or {
-		assert err.msg == ''
+		assert err.msg() == ''
 		return
 	}
 	assert_common_headers(received)
@@ -79,7 +79,7 @@ fn test_a_simple_tcp_client_can_connect_to_the_vweb_server() {
 
 fn test_a_simple_tcp_client_simple_route() {
 	received := simple_tcp_client(path: '/simple') or {
-		assert err.msg == ''
+		assert err.msg() == ''
 		return
 	}
 	assert_common_headers(received)
@@ -92,7 +92,7 @@ fn test_a_simple_tcp_client_zero_content_length() {
 	// tests that sending a content-length header of 0 doesn't hang on a read timeout
 	watch := time.new_stopwatch(auto_start: true)
 	simple_tcp_client(path: '/', headers: 'Content-Length: 0\r\n\r\n') or {
-		assert err.msg == ''
+		assert err.msg() == ''
 		return
 	}
 	assert watch.elapsed() < 1 * time.second
@@ -100,7 +100,7 @@ fn test_a_simple_tcp_client_zero_content_length() {
 
 fn test_a_simple_tcp_client_html_page() {
 	received := simple_tcp_client(path: '/html_page') or {
-		assert err.msg == ''
+		assert err.msg() == ''
 		return
 	}
 	assert_common_headers(received)
@@ -230,7 +230,7 @@ $contents\r
 
 fn test_http_client_shutdown_does_not_work_without_a_cookie() {
 	x := http.get('http://$localserver/shutdown') or {
-		assert err.msg == ''
+		assert err.msg() == ''
 		return
 	}
 	assert x.status() == .not_found
@@ -247,7 +247,7 @@ fn testsuite_end() {
 			'skey': 'superman'
 		}
 	) or {
-		assert err.msg == ''
+		assert err.msg() == ''
 		return
 	}
 	assert x.status() == .ok

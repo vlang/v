@@ -22,7 +22,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			default_typ := c.check_expr_opt_call(default_expr, c.expr(default_expr))
 			node.default_type = default_typ
 			c.check_expected(default_typ, node.elem_type) or {
-				c.error(err.msg, default_expr.pos())
+				c.error(err.msg(), default_expr.pos())
 			}
 		}
 		if node.has_len {
@@ -117,7 +117,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			}
 			if expr !is ast.TypeNode {
 				c.check_expected(typ, elem_type) or {
-					c.error('invalid array element: $err.msg', expr.pos())
+					c.error('invalid array element: $err.msg()', expr.pos())
 				}
 			}
 		}

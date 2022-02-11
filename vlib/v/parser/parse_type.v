@@ -32,6 +32,7 @@ pub fn (mut p Parser) parse_array_type(expecting token.Kind) ast.Type {
 							fixed_size = const_field.expr.val.int()
 						} else {
 							if mut const_field.expr is ast.InfixExpr {
+								// QUESTION: this should most likely no be done in the parser, right?
 								mut t := transformer.new_transformer(p.pref)
 								folded_expr := t.infix_expr(mut const_field.expr)
 

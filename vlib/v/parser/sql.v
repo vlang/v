@@ -41,7 +41,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 			if e.right is ast.Ident {
 				if !p.scope.known_var(e.right.name) {
 					p.check_undefined_variables([e.left], e.right) or {
-						return p.error_with_pos(err.msg, e.right.pos)
+						return p.error_with_pos(err.msg(), e.right.pos)
 					}
 				}
 			}

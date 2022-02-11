@@ -141,11 +141,11 @@ fn test_burnt_sushi_tomltest() ? {
 
 			v_normalized_json := run([jq, '-S', '-f "$jq_normalize_path"', v_toml_json_path]) or {
 				contents := os.read_file(v_toml_json_path) ?
-				panic(err.msg + '\n$contents')
+				panic(err.msg() + '\n$contents')
 			}
 			bs_normalized_json := run([jq, '-S', '-f "$jq_normalize_path"', bs_toml_json_path]) or {
 				contents := os.read_file(v_toml_json_path) ?
-				panic(err.msg + '\n$contents')
+				panic(err.msg() + '\n$contents')
 			}
 
 			assert bs_normalized_json == v_normalized_json
@@ -182,7 +182,7 @@ fn test_burnt_sushi_tomltest() ? {
 			assert false
 		} else {
 			if !hide_oks {
-				println('     $err.msg')
+				println('     $err.msg()')
 			}
 			assert true
 		}

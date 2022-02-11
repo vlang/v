@@ -22,7 +22,7 @@ pub fn compile(command string, pref &pref.Preferences, backend_cb FnBackend) {
 	}
 	os.is_writable_folder(output_folder) or {
 		// An early error here, is better than an unclear C error later:
-		verror(err.msg)
+		verror(err.msg())
 	}
 	// Construct the V object from command line arguments
 	mut b := new_builder(pref)

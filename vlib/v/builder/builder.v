@@ -69,7 +69,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 		pref: pref
 		table: table
 		checker: checker.new_checker(table, pref)
-		transformer: transformer.new_transformer(pref)
+		transformer: transformer.new_transformer_with_table(table, pref)
 		compiled_dir: compiled_dir
 		cached_msvc: msvc
 	}

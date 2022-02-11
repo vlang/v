@@ -34,7 +34,7 @@ fn parse_attrs(name string, attrs []string) ?([]http.Method, string) {
 	}
 	if x.len > 0 {
 		return IError(http.UnexpectedExtraAttributeError{
-			msg: 'Encountered unexpected extra attributes: $x'
+			attributes: x
 		})
 	}
 	if methods.len == 0 {

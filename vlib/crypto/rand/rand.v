@@ -5,6 +5,9 @@
 module rand
 
 struct ReadError {
-	msg  string = 'crypto.rand.read() error reading random bytes'
-	code int
+	Error
+}
+
+pub fn (err ReadError) msg() string {
+	return 'crypto.rand.read() error reading random bytes'
 }

@@ -21,7 +21,7 @@ pub const (
 )
 
 pub fn socket_error_message(potential_code int, s string) ?int {
-	return socket_error(potential_code) or { return error('$err.msg; $s') }
+	return socket_error(potential_code) or { return error('$err.msg(); $s') }
 }
 
 pub fn socket_error(potential_code int) ?int {

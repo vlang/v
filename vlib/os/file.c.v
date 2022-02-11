@@ -478,22 +478,28 @@ pub fn (mut f File) flush() {
 	C.fflush(f.cfile)
 }
 
-pub struct ErrFileNotOpened {
-	msg  string = 'os: file not opened'
-	code int
+pub struct FileNotOpenedError {
+	Error
 }
 
-pub struct ErrSizeOfTypeIs0 {
-	msg  string = 'os: size of type is 0'
-	code int
+pub fn (err FileNotOpenedError) msg() string {
+	return 'os: file not opened'
+}
+
+pub struct SizeOfTypeIs0Error {
+	Error
+}
+
+pub fn (err SizeOfTypeIs0Error) msg() string {
+	return 'os: size of type is 0'
 }
 
 fn error_file_not_opened() IError {
-	return IError(&ErrFileNotOpened{})
+	return IError(&FileNotOpenedError{})
 }
 
 fn error_size_of_type_0() IError {
-	return IError(&ErrSizeOfTypeIs0{})
+	return IError(&SizeOfTypeIs0Error{})
 }
 
 // read_struct reads a single struct of type `T`

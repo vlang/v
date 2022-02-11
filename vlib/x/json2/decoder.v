@@ -22,13 +22,11 @@ mut:
 }
 
 struct InvalidTokenError {
-	msg  string
-	code int
+	MessageError
 }
 
 struct UnknownTokenError {
-	msg  string
-	code int
+	MessageError
 }
 
 fn (mut p Parser) next() {
