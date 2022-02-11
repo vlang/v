@@ -6,6 +6,7 @@ fn C.GenerateConsoleCtrlEvent(event u32, pgid u32) bool
 fn C.GetModuleHandleA(name &char) HMODULE
 fn C.GetProcAddress(handle voidptr, procname &byte) voidptr
 fn C.TerminateProcess(process HANDLE, exit_code u32) bool
+fn C.PeekNamedPipe(hNamedPipe voidptr, lpBuffer voidptr, nBufferSize int, lpBytesRead voidptr, lpTotalBytesAvail voidptr, lpBytesLeftThisMessage voidptr) bool
 
 type FN_NTSuspendResume = fn (voidptr)
 
@@ -174,8 +175,36 @@ fn (mut p Process) win_write_string(idx int, s string) {
 }
 
 fn (mut p Process) win_read_string(idx int, maxbytes int) (string, int) {
-	panic('WProcess.read_string $idx is not implemented yet')
-	return '', 0
+	mut wdata := &WProcess(p.wdata)
+	if wdata == 0 {
+		return '', 0
+	}
+	mut rhandle := &u32(0)
+	if idx == 1 {
+		rhandle = wdata.child_stdout_read
+	}
+	if idx == 2 {
+		rhandle = wdata.child_stderr_read
+	}
+	if rhandle == 0 {
+		return '', 0
+	}
+	mut bytes_avail := int(0)
+	unsafe {
+		if C.PeekNamedPipe(rhandle, voidptr(0), int(0), voidptr(0), &bytes_avail, voidptr(0)) == false {
+			return '', 0
+		}
+	}
+	if bytes_avail == 0 {
+		return '', 0
+	}
+
+	mut bytes_read := int(0)
+	buf := []byte{len: bytes_avail + 300}
+	unsafe {
+		C.ReadFile(rhandle, &buf[0], buf.cap, voidptr(&bytes_read), 0)
+	}
+	return buf[..bytes_read].bytestr(), bytes_read
 }
 
 fn (mut p Process) win_slurp(idx int) string {
