@@ -112,7 +112,7 @@ fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 		if sym.kind == .struct_ {
 			sym_info := sym.info as ast.Struct
 			for field in sym_info.fields {
-				c.comptime_fields_type[node.val_var] = field.typ
+				c.comptime_fields_type[node.val_var] = node.typ
 				c.comptime_fields_default_type = field.typ
 				c.stmts(node.stmts)
 			}
