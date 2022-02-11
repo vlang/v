@@ -18,6 +18,7 @@ mut:
 	line     string // the current line entered by the user
 	//
 	modules         []string // all the import modules
+	alias           map[string]string // all the alias used in the import
 	includes        []string // all the #include statements
 	functions       []string // all the user function declarations
 	functions_name  []string // all the user function names
@@ -126,11 +127,24 @@ fn (r &Repl) is_function_call(line string) bool {
 		&& (line.ends_with(')') || line.ends_with('?'))
 }
 
+// Convert the list of modules that we parsed already,
+// to a sequence of V source code lines
+fn (r &Repl) import_to_source_code() []string {
+	mut imports_line := []string{}
+	for mod in r.modules {
+		mut import_str := 'import $mod'
+		if mod in r.alias {
+			import_str += ' as ${r.alias[mod]}'
+		}
+		imports_line << endline_if_missed(import_str)
+	}
+	return imports_line
+}
+
 fn (r &Repl) current_source_code(should_add_temp_lines bool, not_add_print bool) string {
 	mut all_lines := []string{}
-	for mod in r.modules {
-		all_lines << endline_if_missed('import $mod')
-	}
+	all_lines.insert(0, r.import_to_source_code())
+
 	if vstartup != '' {
 		mut lines := []string{}
 		if !not_add_print {
@@ -170,10 +184,44 @@ fn (r &Repl) check_fn_type_kind(new_line string) FnType {
 	return FnType.fn_type
 }
 
+// parse the import statement in `line`, updating the Repl alias maps
+fn (mut r Repl) parse_import(line string) {
+	if !line.contains('import') {
+		eprintln("the line doesn't contain an `import` keyword")
+		return
+	}
+	tokens := r.line.fields()
+	// module name
+	mod := tokens[1]
+	if mod !in r.modules {
+		r.modules << mod
+	}
+	// Check if the import contains an alias
+	// import mod_name as alias_mod
+	if line.contains('as ') && tokens.len >= 4 {
+		alias := tokens[3]
+		if mod !in r.alias {
+			r.alias[mod] = alias
+		}
+	}
+}
+
+fn print_welcome_screen() {
+	println(version.full_v_version(false))
+	println('Use Ctrl-C or ${term.highlight_command('exit')} to exit, or ${term.highlight_command('help')} to see other available commands')
+	println(r'
+		____    ____
+		\   \  /   /
+		 \   \/   /
+		  \      /
+		   \    /
+		    \__/
+	')
+}
+
 fn run_repl(workdir string, vrepl_prefix string) {
 	if !is_stdin_a_pipe {
-		println(version.full_v_version(false))
-		println('Use Ctrl-C or ${term.highlight_command('exit')} to exit, or ${term.highlight_command('help')} to see other available commands')
+		print_welcome_screen()
 	}
 
 	if vstartup != '' {
@@ -185,7 +233,6 @@ fn run_repl(workdir string, vrepl_prefix string) {
 		print('\n')
 		print_output(result)
 	}
-
 	file := os.join_path(workdir, '.${vrepl_prefix}vrepl.v')
 	temp_file := os.join_path(workdir, '.${vrepl_prefix}vrepl_temp.v')
 	mut prompt := '>>> '
@@ -299,6 +346,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 				'sort',
 				'clear',
 				'trim',
+				'as',
 			]
 			mut is_statement := false
 			if filter_line.count('=') % 2 == 1 {
@@ -346,10 +394,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 					r.temp_lines.delete(0)
 				}
 				if r.line.starts_with('import ') {
-					mod := r.line.fields()[1]
-					if mod !in r.modules {
-						r.modules << mod
-					}
+					r.parse_import(r.line)
 				} else if r.line.starts_with('#include ') {
 					r.includes << r.line
 				} else {
