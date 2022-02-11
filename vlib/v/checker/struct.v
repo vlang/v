@@ -138,6 +138,20 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 			} else if node.generic_types.len == 0 {
 				c.error('generic struct init must specify type parameter, e.g. Foo<T>',
 					node.pos)
+			} else if node.generic_types.len > 0
+				&& node.generic_types.len != struct_sym.info.generic_types.len {
+				c.error('generic struct init expects $struct_sym.info.generic_types.len generic parameter, but got $node.generic_types.len',
+					node.pos)
+			} else if node.generic_types.len > 0 {
+				for gtyp in node.generic_types {
+					gtyp_name := c.table.sym(gtyp).name
+					if gtyp_name !in c.table.cur_fn.generic_names {
+						cur_generic_names := '(' + c.table.cur_fn.generic_names.join(',') + ')'
+						c.error('generic struct init type parameter `$gtyp_name` must be within the parameters `$cur_generic_names` of the current generic function',
+							node.pos)
+						break
+					}
+				}
 			}
 		}
 		if node.generic_types.len > 0 && struct_sym.info.generic_types != node.generic_types {
