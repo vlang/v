@@ -1,6 +1,6 @@
-import deprecated_module.bbb.ccc
-import deprecated_module.www.ttt
-import deprecated_module.xxx.yyy
+import bbb.ccc
+import www.ttt
+import xxx.yyy
 
 // NB: www.ttt has been deprecated.
 // => compiling this should produce an error,
