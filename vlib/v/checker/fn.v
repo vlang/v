@@ -778,9 +778,11 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 
 		typ := c.check_expr_opt_call(call_arg.expr, c.expr(call_arg.expr))
 		node.args[i].typ = typ
-		if mut call_arg.expr is ast.Ident {
-			if mut call_arg.expr.obj is ast.Var {
-				node.args[i].typ = call_arg.expr.obj.typ
+		if c.inside_comptime_for_field {
+			if mut call_arg.expr is ast.Ident {
+				if mut call_arg.expr.obj is ast.Var {
+					node.args[i].typ = call_arg.expr.obj.typ
+				}
 			}
 		}
 		typ_sym := c.table.sym(typ)
