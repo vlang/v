@@ -430,9 +430,12 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 			g.expr(node.left)
 		}
 		g.write(', ')
-		if !right.typ.is_ptr() {
+		if !right.typ.is_ptr() || right.typ.has_flag(.shared_f) {
 			g.write('ADDR(map, ')
 			g.expr(node.right)
+			if right.typ.has_flag(.shared_f) {
+				g.write('->val')
+			}
 			g.write(')')
 		} else {
 			g.expr(node.right)

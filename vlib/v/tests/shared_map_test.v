@@ -155,3 +155,17 @@ fn test_shared_map_iteration() {
 	assert n1 == 1
 	assert n2 == 1
 }
+
+fn test_shared_map_in() {
+	shared m := {
+		'qwe': 12.75
+		'rtz': -0.125
+		'k':   17
+	}
+	rlock m {
+		assert 'qwe' in m
+		assert 'rtz' in m
+		assert 'k' in m
+		assert 'zxc' !in m
+	}
+}
