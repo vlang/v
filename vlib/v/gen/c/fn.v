@@ -1120,6 +1120,16 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 		is_selector_call = true
 	}
+	if g.inside_comptime_for_field {
+		mut node_ := unsafe { node }
+		for i, mut call_arg in node_.args {
+			if mut call_arg.expr is ast.Ident {
+				if mut call_arg.expr.obj is ast.Var {
+					node_.args[i].typ = call_arg.expr.obj.typ
+				}
+			}
+		}
+	}
 	mut name := node.name
 	is_print := name in ['print', 'println', 'eprint', 'eprintln', 'panic']
 	print_method := name
@@ -1201,14 +1211,22 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 	}
 	if !is_selector_call {
-		name = g.generic_fn_name(node.concrete_types, name, false)
+		if func := g.table.find_fn(node.name) {
+			if func.generic_names.len > 0 {
+				if g.comptime_for_field_type != 0 && g.inside_comptime_for_field {
+					name = g.generic_fn_name([g.comptime_for_field_type], name, false)
+				} else {
+					name = g.generic_fn_name(node.concrete_types, name, false)
+				}
+			}
+		}
 	}
 	// TODO2
 	// cgen shouldn't modify ast nodes, this should be moved
 	// g.generate_tmp_autofree_arg_vars(node, name)
 	// Handle `print(x)`
 	mut print_auto_str := false
-	if is_print && (node.args[0].typ != ast.string_type || g.comptime_for_method.len > 0) { // && !free_tmp_arg_vars {
+	if is_print && (node.args[0].typ != ast.string_type || g.comptime_for_method.len > 0) {
 		mut typ := node.args[0].typ
 		if typ == 0 {
 			g.checker_bug('print arg.typ is 0', node.pos)

@@ -109,10 +109,17 @@ fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 		c.error('unknown type `$sym.name`', node.typ_pos)
 	}
 	if node.kind == .fields {
-		c.comptime_fields_type[node.val_var] = node.typ
-		c.comptime_fields_default_type = node.typ
+		if sym.kind == .struct_ {
+			sym_info := sym.info as ast.Struct
+			for field in sym_info.fields {
+				c.comptime_fields_type[node.val_var] = field.typ
+				c.comptime_fields_default_type = field.typ
+				c.stmts(node.stmts)
+			}
+		}
+	} else {
+		c.stmts(node.stmts)
 	}
-	c.stmts(node.stmts)
 }
 
 // comptime const eval

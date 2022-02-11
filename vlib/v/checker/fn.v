@@ -428,6 +428,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 	}
 	mut has_generic := false // foo<T>() instead of foo<int>()
 	mut concrete_types := []ast.Type{}
+	node.concrete_types = node.raw_concrete_types
 	for concrete_type in node.concrete_types {
 		if concrete_type.has_flag(.generic) {
 			has_generic = true
@@ -777,6 +778,11 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 
 		typ := c.check_expr_opt_call(call_arg.expr, c.expr(call_arg.expr))
 		node.args[i].typ = typ
+		if mut call_arg.expr is ast.Ident {
+			if mut call_arg.expr.obj is ast.Var {
+				node.args[i].typ = call_arg.expr.obj.typ
+			}
+		}
 		typ_sym := c.table.sym(typ)
 		param_typ_sym := c.table.sym(param.typ)
 		if func.is_variadic && typ.has_flag(.variadic) && node.args.len - 1 > i {
@@ -936,6 +942,9 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 						continue
 					}
 					c.check_expected_call_arg(utyp, unwrap_typ, node.language, call_arg) or {
+						if c.comptime_fields_type.len > 0 {
+							continue
+						}
 						c.error('$err.msg() in argument ${i + 1} to `$fn_name`', call_arg.pos)
 					}
 				}

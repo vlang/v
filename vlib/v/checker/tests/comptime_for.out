@@ -18,20 +18,6 @@ vlib/v/checker/tests/comptime_for.vv:4:12: error: unknown type `T`
       |               ^
     5 |         $if f.typ is Huh {}
     6 |         $if f.typ is T {}
-vlib/v/checker/tests/comptime_for.vv:5:16: error: unknown type `Huh`
-    3 |     $for f in Huh.fields {}
-    4 |     $for f in T.fields {
-    5 |         $if f.typ is Huh {}
-      |                      ~~~
-    6 |         $if f.typ is T {}
-    7 |     }
-vlib/v/checker/tests/comptime_for.vv:6:16: error: unknown type `T`
-    4 |     $for f in T.fields {
-    5 |         $if f.typ is Huh {}
-    6 |         $if f.typ is T {}
-      |                      ^
-    7 |     }
-    8 |     _ = m
 vlib/v/checker/tests/comptime_for.vv:8:6: error: undefined ident: `m`
     6 |         $if f.typ is T {}
     7 |     }
