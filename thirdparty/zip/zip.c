@@ -1155,6 +1155,9 @@ int zip_entry_close(struct zip_t *zip) {
   mz_uint8 *pExtra_data = NULL;
   mz_uint32 extra_size = 0;
   mz_uint8 extra_data[MZ_ZIP64_MAX_CENTRAL_EXTRA_FIELD_SIZE];
+  //
+  mz_uint8 local_dir_footer[MZ_ZIP_DATA_DESCRIPTER_SIZE64];
+  mz_uint32 local_dir_footer_size = MZ_ZIP_DATA_DESCRIPTER_SIZE32;
 
   if (!zip) {
     // zip_t handler is not initialized
@@ -1184,9 +1187,6 @@ int zip_entry_close(struct zip_t *zip) {
 #ifndef MINIZ_NO_TIME
   mz_zip_time_t_to_dos_time(zip->entry.m_time, &dos_time, &dos_date);
 #endif
-
-  mz_uint8 local_dir_footer[MZ_ZIP_DATA_DESCRIPTER_SIZE64];
-  mz_uint32 local_dir_footer_size = MZ_ZIP_DATA_DESCRIPTER_SIZE32;
 
   MZ_WRITE_LE32(local_dir_footer + 0, MZ_ZIP_DATA_DESCRIPTOR_ID);
   MZ_WRITE_LE32(local_dir_footer + 4, zip->entry.uncomp_crc32);
