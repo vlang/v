@@ -1309,7 +1309,7 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 				// >> Hack to allow old style custom error implementations
 				// TODO: remove once deprecation period for `IError` methods has ended
 				if inter_sym.name == 'IError' && (imethod.name == 'msg' || imethod.name == 'code') {
-					c.warn("`$styp` doesn't implement method `$imethod.name` of interface `$inter_sym.name`\nThe usage of fields is being deprecated in favor of methods.",
+					c.note("`$styp` doesn't implement method `$imethod.name` of interface `$inter_sym.name`. The usage of fields is being deprecated in favor of methods.",
 						pos)
 					continue
 				}
@@ -1660,7 +1660,7 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 				c.error('invalid `IError` interface implementation: $err', node.pos)
 				return ast.void_type
 			}
-			c.warn('the `.$field_name` field on `IError` is deprecated, use `.${field_name}()` instead.',
+			c.note('the `.$field_name` field on `IError` is deprecated, use `.${field_name}()` instead.',
 				node.pos)
 			return method.return_type
 		}
@@ -3046,14 +3046,6 @@ pub fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 						typ: typ
 						is_optional: is_optional
 					}
-					// if typ == ast.error_type && c.expected_type == ast.string_type
-					// 	&& !c.using_new_err_struct && !c.inside_selector_expr
-					// 	&& !c.inside_println_arg && !c.file.mod.name.contains('v.')
-					// 	&& !c.is_builtin_mod {
-					// 	//                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ <- TODO: remove; this prevents a failure in the `performance-regressions` CI job
-					// 	c.warn('string errors are deprecated; use `err.msg` instead',
-					// 		node.pos)
-					// }
 					// if typ == ast.t_type {
 					// sym := c.table.sym(c.cur_generic_type)
 					// println('IDENT T unresolved $node.name typ=$sym.name')

@@ -508,37 +508,6 @@ pub fn (mut t Transformer) interface_decl(mut node ast.InterfaceDecl) ast.Stmt {
 		field.default_expr = t.expr(mut field.default_expr)
 	}
 
-	/*
-	// >> Hack to allow old style custom error implementations
-	// TODO: remove once deprecation period for `IError` methods has ended
-	if node.name == 'IError' && t.table != 0 {
-		fields := [
-			ast.StructField {
-				name: 'msg'
-				typ: 20
-				pos: node.pos
-				type_pos: node.pos
-				is_pub: true
-			},
-			ast.StructField {
-				name: 'code'
-				typ: 7
-				pos: node.pos
-				type_pos: node.pos
-				is_pub: true
-			}
-		]
-
-		// readd `msg` and `code` fields to the node + type symbol
-		node.fields << fields
-		mut sym := t.table.sym(node.typ)
-		if mut sym.info is ast.Interface {
-			sym.info.fields << fields
-		}
-	}
-	// <<<
-	*/
-
 	return node
 }
 
