@@ -1,6 +1,14 @@
 struct MyError {
-	code int
 	msg  string
+	code int
+}
+
+fn (err MyError) msg() string {
+	return err.msg
+}
+
+fn (err MyError) code() int {
+	return err.code
 }
 
 fn foo() int | none | IError {
