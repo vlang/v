@@ -206,7 +206,9 @@ fn (mut r Repl) parse_import(line string) {
 	}
 }
 
-fn print_welcome_screen(enable bool) {
+fn print_welcome_screen() {
+	println(version.full_v_version(false))
+	println('Use Ctrl-C or ${term.highlight_command('exit')} to exit, or ${term.highlight_command('help')} to see other available commands')
 	println(r'
 		____    ____
 		\   \  /   /
@@ -219,8 +221,7 @@ fn print_welcome_screen(enable bool) {
 
 fn run_repl(workdir string, vrepl_prefix string) {
 	if !is_stdin_a_pipe {
-		println(version.full_v_version(false))
-		println('Use Ctrl-C or ${term.highlight_command('exit')} to exit, or ${term.highlight_command('help')} to see other available commands')
+		print_welcome_screen()
 	}
 
 	if vstartup != '' {
@@ -232,9 +233,6 @@ fn run_repl(workdir string, vrepl_prefix string) {
 		print('\n')
 		print_output(result)
 	}
-	// FIXME: This will be cool, but required to update
-	// all the test and it is bad for the moment.
-	print_welcome_screen(false)
 	file := os.join_path(workdir, '.${vrepl_prefix}vrepl.v')
 	temp_file := os.join_path(workdir, '.${vrepl_prefix}vrepl_temp.v')
 	mut prompt := '>>> '
