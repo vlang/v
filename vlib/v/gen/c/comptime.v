@@ -503,13 +503,16 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 		}
 	} else if node.kind == .fields {
 		// TODO add fields
-		if sym.info is ast.Struct {
-			if sym.info.fields.len > 0 {
+		if sym.kind == .struct_ {
+			sym_info := sym.info as ast.Struct
+			if sym_info.fields.len > 0 {
 				g.writeln('\tFieldData $node.val_var = {0};')
 			}
-			for field in sym.info.fields {
+			g.inside_comptime_for_field = true
+			for field in sym_info.fields {
 				g.comptime_for_field_var = node.val_var
 				g.comptime_for_field_value = field
+				g.comptime_for_field_type = field.typ
 				g.writeln('/* field $i */ {')
 				g.writeln('\t${node.val_var}.name = _SLIT("$field.name");')
 				if field.attrs.len == 0 {
@@ -531,7 +534,9 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.stmts(node.stmts)
 				i++
 				g.writeln('}')
+				g.comptime_for_field_type = 0
 			}
+			g.inside_comptime_for_field = false
 			g.comptime_var_type_map.delete(node.val_var)
 		}
 	} else if node.kind == .attributes {

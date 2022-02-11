@@ -70,21 +70,22 @@ pub mut:
 	rlocked_names    []string // vars that are currently read-locked
 	in_for_count     int      // if checker is currently in a for loop
 	// checked_ident  string // to avoid infinite checker loops
-	should_abort   bool // when too many errors/warnings/notices are accumulated, .should_abort becomes true. It is checked in statement/expression loops, so the checker can return early, instead of wasting time.
-	returns        bool
-	scope_returns  bool
-	is_builtin_mod bool // true inside the 'builtin', 'os' or 'strconv' modules; TODO: remove the need for special casing this
-	is_generated   bool // true for `[generated] module xyz` .v files
-	inside_unsafe  bool // true inside `unsafe {}` blocks
-	inside_const   bool // true inside `const ( ... )` blocks
-	inside_anon_fn bool // true inside `fn() { ... }()`
-	inside_ref_lit bool // true inside `a := &something`
-	inside_defer   bool // true inside `defer {}` blocks
-	inside_fn_arg  bool // `a`, `b` in `a.f(b)`
-	inside_ct_attr bool // true inside `[if expr]`
-	skip_flags     bool // should `#flag` and `#include` be skipped
-	fn_level       int  // 0 for the top level, 1 for `fn abc() {}`, 2 for a nested fn, etc
-	ct_cond_stack  []ast.Expr
+	should_abort              bool // when too many errors/warnings/notices are accumulated, .should_abort becomes true. It is checked in statement/expression loops, so the checker can return early, instead of wasting time.
+	returns                   bool
+	scope_returns             bool
+	is_builtin_mod            bool // true inside the 'builtin', 'os' or 'strconv' modules; TODO: remove the need for special casing this
+	is_generated              bool // true for `[generated] module xyz` .v files
+	inside_unsafe             bool // true inside `unsafe {}` blocks
+	inside_const              bool // true inside `const ( ... )` blocks
+	inside_anon_fn            bool // true inside `fn() { ... }()`
+	inside_ref_lit            bool // true inside `a := &something`
+	inside_defer              bool // true inside `defer {}` blocks
+	inside_fn_arg             bool // `a`, `b` in `a.f(b)`
+	inside_ct_attr            bool // true inside `[if expr]`
+	inside_comptime_for_field bool
+	skip_flags                bool // should `#flag` and `#include` be skipped
+	fn_level                  int  // 0 for the top level, 1 for `fn abc() {}`, 2 for a nested fn, etc
+	ct_cond_stack             []ast.Expr
 mut:
 	stmt_level int // the nesting level inside each stmts list;
 	// .stmt_level is used to check for `evaluated but not used` ExprStmts like `1 << 1`

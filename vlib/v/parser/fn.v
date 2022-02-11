@@ -92,6 +92,7 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 		language: language
 		concrete_types: concrete_types
 		concrete_list_pos: concrete_list_pos
+		raw_concrete_types: concrete_types
 		or_block: ast.OrExpr{
 			stmts: or_stmts
 			kind: or_kind

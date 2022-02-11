@@ -39,7 +39,7 @@ fn decode2<T>() T {
 			x.$(field.name) = byte(-1)
 		} $else $if field.typ is int {
 			x.$(field.name) = int(-1)
-		} $else {
+		} $else $if field.typ is string {
 			x.$(field.name) = 'hi'
 		}
 	}

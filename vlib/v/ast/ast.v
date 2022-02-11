@@ -534,6 +534,7 @@ pub mut:
 	should_be_skipped  bool   // true for calls to `[if someflag?]` functions, when there is no `-d someflag`
 	concrete_types     []Type // concrete types, e.g. <int, string>
 	concrete_list_pos  token.Pos
+	raw_concrete_types []Type
 	free_receiver      bool // true if the receiver expression needs to be freed
 	scope              &Scope
 	from_embed_types   []Type // holds the type of the embed that the method is called from
