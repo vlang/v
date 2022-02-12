@@ -6,24 +6,36 @@ module csv
 // Once interfaces are further along the idea would be to have something similar to
 // go's io.reader & bufio.reader rather than reading the whole file into string, this
 // would then satisfy that interface. I designed it this way to be easily adapted.
-struct ErrCommentIsDelimiter {
-	msg  string = 'encoding.csv: comment cannot be the same as delimiter'
-	code int
+struct CommentIsDelimiterError {
+	Error
 }
 
-struct ErrInvalidDelimiter {
-	msg  string = 'encoding.csv: invalid delimiter'
-	code int
+fn (err CommentIsDelimiterError) msg() string {
+	return 'encoding.csv: comment cannot be the same as delimiter'
 }
 
-struct ErrEndOfFile {
-	msg  string = 'encoding.csv: end of file'
-	code int
+struct InvalidDelimiterError {
+	Error
 }
 
-struct ErrInvalidLineEnding {
-	msg  string = 'encoding.csv: could not find any valid line endings'
-	code int
+fn (err InvalidDelimiterError) msg() string {
+	return 'encoding.csv: invalid delimiter'
+}
+
+struct EndOfFileError {
+	Error
+}
+
+fn (err EndOfFileError) msg() string {
+	return 'encoding.csv: end of file'
+}
+
+struct InvalidLineEndingError {
+	Error
+}
+
+fn (err InvalidLineEndingError) msg() string {
+	return 'encoding.csv: could not find any valid line endings'
 }
 
 struct Reader {
@@ -72,7 +84,7 @@ pub fn (mut r Reader) read() ?[]string {
 fn (mut r Reader) read_line() ?string {
 	// last record
 	if r.row_pos == r.data.len {
-		return IError(&ErrEndOfFile{})
+		return IError(&EndOfFileError{})
 	}
 	le := if r.is_mac_pre_osx_le { '\r' } else { '\n' }
 	mut i := r.data.index_after(le, r.row_pos)
@@ -84,7 +96,7 @@ fn (mut r Reader) read_line() ?string {
 				r.is_mac_pre_osx_le = true
 			} else {
 				// no valid line endings found
-				return IError(&ErrInvalidLineEnding{})
+				return IError(&InvalidLineEndingError{})
 			}
 		} else {
 			// No line ending on file
@@ -102,10 +114,10 @@ fn (mut r Reader) read_line() ?string {
 
 fn (mut r Reader) read_record() ?[]string {
 	if r.delimiter == r.comment {
-		return IError(&ErrCommentIsDelimiter{})
+		return IError(&CommentIsDelimiterError{})
 	}
 	if !valid_delim(r.delimiter) {
-		return IError(&ErrInvalidDelimiter{})
+		return IError(&InvalidDelimiterError{})
 	}
 	mut need_read := true
 	mut keep_raw := false
@@ -185,7 +197,7 @@ fn (mut r Reader) read_record() ?[]string {
 			}
 		}
 		if i <= -1 && fields.len == 0 {
-			return IError(&ErrInvalidDelimiter{})
+			return IError(&InvalidDelimiterError{})
 		}
 	}
 	return fields

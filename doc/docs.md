@@ -113,6 +113,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Sum types](#sum-types)
     * [Type aliases](#type-aliases)
     * [Option/Result types & error handling](#optionresult-types-and-error-handling)
+* [Custom error types](#custom-error-types)
 * [Generics](#generics)
 * [Concurrency](#concurrency)
     * [Spawning Concurrent Tasks](#spawning-concurrent-tasks)
@@ -3350,6 +3351,39 @@ if resp := http.get('https://google.com') {
 ```
 Above, `http.get` returns a `?http.Response`. `resp` is only in scope for the first
 `if` branch. `err` is only in scope for the `else` branch.
+
+
+## Custom error types
+
+V gives you the ability to define custom error types through the `IError` interface. 
+The interface requires two methods: `msg() string` and `code() int`. Every type that 
+implements these methods can be used as an error. 
+
+When defining a custom error type it is recommended to embed the builtin `Error` default 
+implementation. This provides an empty default implementation for both required methods, 
+so you only have to implement what you really need, and may provide additional utility 
+functions in the future.
+
+```v
+struct PathError {
+	Error
+	path string
+}
+
+fn (err PathError) msg() string {
+	return 'Failed to open path: $err.path'
+}
+
+fn try_open(path string) ? {
+	return IError(PathError{
+		path: path
+	})
+}
+
+fn main() {
+	try_open('/tmp') or { panic(err) }
+}
+```
 
 ## Generics
 

@@ -26,8 +26,9 @@ pub fn (err IError) str() string {
 		}
 		else {
 			// >> Hack to allow old style custom error implementations
-			// TODO: can be removed once the checker 'hacks' are merged (so `vc` has them included)
-			if !isnil(err.msg) {
+			// TODO: remove once deprecation period for `IError` methods has ended
+			old_error_style := unsafe { voidptr(&err.msg) != voidptr(&err.code) } // if fields are not defined (new style) they don't have an offset between
+			if old_error_style {
 				'$err.type_name(): $err.msg'
 			} else {
 				// <<
@@ -38,13 +39,7 @@ pub fn (err IError) str() string {
 }
 
 // Error is the empty default implementation of `IError`.
-pub struct Error {
-	// >> Hack to allow old style custom error implementations
-	// TODO: can be removed once the checker 'hacks' are merged (so `vc` has them included)
-	msg  string
-	code int
-	/// <<
-}
+pub struct Error {}
 
 pub fn (err Error) msg() string {
 	return ''
