@@ -1118,6 +1118,16 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		} else {
 			g.write('.')
 		}
+		for embed in node.from_embed_types {
+			embed_sym := g.table.sym(embed)
+			embed_name := embed_sym.embed_name()
+			g.write(embed_name)
+			if embed.is_ptr() {
+				g.write('->')
+			} else {
+				g.write('.')
+			}
+		}
 		is_selector_call = true
 	}
 	if g.inside_comptime_for_field {
