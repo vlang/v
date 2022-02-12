@@ -42,7 +42,9 @@ enum FnType {
 
 fn new_repl() Repl {
 	return Repl{
-		readline: readline.Readline{}
+		readline: readline.Readline{
+			remove_empty: true
+		}
 		modules: ['os', 'time', 'math']
 		vstartup_lines: os.read_file(vstartup) or { '' }.trim_right('\n\r').split_into_lines()
 		// Test file used to check if a function as a void return or a
@@ -264,7 +266,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 		if line == '' && oline.ends_with('\n') {
 			continue
 		}
-		if line.len <= -1 || line == '' || line == 'exit' {
+		if line.len <= -1 || line == 'exit' {
 			break
 		}
 		r.line = line

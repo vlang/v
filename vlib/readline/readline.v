@@ -28,6 +28,7 @@ mut:
 	prompt            string
 	prompt_offset     int
 	previous_lines    [][]rune
+	remove_empty      bool // remove empity from the previous line
 	search_index      int
 	is_tty            bool
 }
