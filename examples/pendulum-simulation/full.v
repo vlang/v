@@ -11,8 +11,6 @@ fn main() {
 
 	img_settings := img.image_settings_from_grid(args.grid)
 
-	result_chan := chan &sim.SimResult{cap: args.workers}
-
 	mut writer := img.ppm_writer_for_fname(args.filename, img_settings) ?
 
 	mut app := anim.new_app(args)
