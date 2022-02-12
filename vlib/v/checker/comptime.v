@@ -346,7 +346,7 @@ fn (mut c Checker) verify_vweb_params_for_method(node ast.Fn) (bool, int, int) {
 	mut route_attributes := 0
 	for a in node.attrs {
 		if a.name.starts_with('/') {
-			route_attributes += a.name.count(':')
+			route_attributes += int(a.name.count(':'))
 		}
 	}
 	return route_attributes == margs, route_attributes, margs

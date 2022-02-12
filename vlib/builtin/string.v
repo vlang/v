@@ -1052,7 +1052,7 @@ pub fn (s string) index_byte(c byte) i64 {
 // last_index_byte returns the index of the last occurence of byte `c` if found in the string.
 // last_index_byte returns -1 if the byte is not found.
 [direct_array_access]
-pub fn (s string) last_index_byte(c byte) i64 {
+pub fn (s string) last_index_byte(c byte) int {
 	for i := s.len - 1; i >= 0; i-- {
 		if unsafe { s.str[i] == c } {
 			return i

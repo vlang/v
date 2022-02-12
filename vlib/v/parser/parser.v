@@ -688,7 +688,7 @@ pub fn (mut p Parser) check_comment() ast.Comment {
 pub fn (mut p Parser) comment() ast.Comment {
 	mut pos := p.tok.pos()
 	text := p.tok.lit
-	num_newlines := text.count('\n')
+	num_newlines := int(text.count('\n'))
 	is_multi := num_newlines > 0
 	is_inline := text.len + 4 == p.tok.len // 4: `/` `*` `*` `/`
 	pos.last_line = pos.line_nr + num_newlines
@@ -2840,7 +2840,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 	mut node := ast.empty_expr()
 	val := p.tok.lit
 	mut pos := p.tok.pos()
-	pos.last_line = pos.line_nr + val.count('\n')
+	pos.last_line = pos.line_nr + int(val.count('\n'))
 	if p.peek_tok.kind != .str_dollar {
 		p.next()
 		p.filter_string_vet_errors(pos)

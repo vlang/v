@@ -55,7 +55,7 @@ pub fn build_c(mut b builder.Builder, v_files []string, out_file string) {
 	output2 := gen_c(mut b, v_files)
 	os.write_file(out_file, output2) or { panic(err) }
 	if b.pref.is_stats {
-		b.stats_lines = output2.count('\n') + 1
+		b.stats_lines = int(output2.count('\n')) + 1
 		b.stats_bytes = output2.len
 	}
 }
