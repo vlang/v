@@ -1,4 +1,4 @@
-// vtest retry: 8
+// vtest retry: 15
 
 // This test case runs concurrent 3 instances of `do_select` that
 // communicate with 6 other threads doing send and receive operations.
