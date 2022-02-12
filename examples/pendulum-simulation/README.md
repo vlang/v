@@ -41,7 +41,7 @@ $ v -gc boehm -prod parallel.v
 $ ./parallel # execute ./parallel -h for more info
 ```
 
-![image](https://user-images.githubusercontent.com/17727170/153699093-5fd5c8bb-fa7f-4a34-b579-72a38edcde0e.png)
+![image](https://user-images.githubusercontent.com/17727170/153718774-1c93b158-aee3-4be1-bb47-fe601fed7336.png)
 
 ### Parallel Simulation with Image Worker
 
@@ -50,7 +50,7 @@ $ v -gc boehm -prod parallel_with_iw.v
 $ ./parallel_with_iw # execute ./parallel_with_iw -h for more info
 ```
 
-![image](https://user-images.githubusercontent.com/17727170/153699055-efa7dcab-6abe-4a16-b551-b466dfb05146.png)
+![image](https://user-images.githubusercontent.com/17727170/153718769-eabb334d-454f-469f-a51a-14ffe67507de.png)
 
 ### Parallel Simulation with Graphic User Interface
 
