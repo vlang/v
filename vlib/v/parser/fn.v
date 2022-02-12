@@ -361,10 +361,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	end_pos := p.prev_tok.pos()
 	short_fn_name := name
 	is_main := short_fn_name == 'main' && p.mod == 'main'
-	mut is_test := (short_fn_name.starts_with('test_') || short_fn_name.starts_with('testsuite_'))
-		&& (p.file_base.ends_with('_test.v')
-		|| p.file_base.all_before_last('.v').all_before_last('.').ends_with('_test'))
-
+	is_test := (!is_method && params.len == 0) && p.inside_test_file
+		&& (short_fn_name.starts_with('test_') || short_fn_name.starts_with('testsuite_'))
 	file_mode := p.file_backend_mode
 	// Register
 	if is_method {

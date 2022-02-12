@@ -383,6 +383,9 @@ fn (g &JsGen) get_all_test_function_names() []string {
 	mut tsuite_begin := ''
 	mut tsuite_end := ''
 	for _, f in g.table.fns {
+		if !f.is_test {
+			continue
+		}
 		if f.name.ends_with('.testsuite_begin') {
 			tsuite_begin = f.name
 			continue

@@ -270,7 +270,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	// TODO c.pref.is_vet
-	if node.language == .v && !node.is_method && node.is_test {
+	if c.file.is_test && (!node.is_method && (node.short_name.starts_with('test_')
+		|| node.short_name.starts_with('testsuite_'))) {
 		if !c.pref.is_test {
 			// simple heuristic
 			for st in node.stmts {
@@ -285,6 +286,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		if node.params.len != 0 {
 			c.error('test functions should take 0 parameters', node.pos)
 		}
+
 		if node.return_type != ast.void_type_idx
 			&& node.return_type.clear_flag(.optional) != ast.void_type_idx {
 			c.error('test functions should either return nothing at all, or be marked to return `?`',

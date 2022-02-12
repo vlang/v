@@ -162,19 +162,18 @@ pub fn (mut p Parser) set_path(path string) {
 	p.file_name = path
 	p.file_base = os.base(path)
 	p.file_name_dir = os.dir(path)
-	if p.file_name_dir.contains('vlib') {
-		p.inside_vlib_file = true
-	}
+	p.inside_vlib_file = p.file_name_dir.contains('vlib')
+	p.inside_test_file = p.file_base.ends_with('_test.v') || p.file_base.ends_with('_test.vv')
+		|| p.file_base.all_before_last('.v').all_before_last('.').ends_with('_test')
+
 	hash := fnv1a.sum64_string(path)
 	p.unique_prefix = hash.hex_full()
-	if p.file_base.ends_with('_test.v') || p.file_base.ends_with('_test.vv') {
-		p.inside_test_file = true
-	}
+
+	p.file_backend_mode = .v
 	before_dot_v := path.all_before_last('.v') // also works for .vv and .vsh
 	language := before_dot_v.all_after_last('.')
 	language_with_underscore := before_dot_v.all_after_last('_')
 	if language == before_dot_v && language_with_underscore == before_dot_v {
-		p.file_backend_mode = .v
 		return
 	}
 	actual_language := if language == before_dot_v { language_with_underscore } else { language }
