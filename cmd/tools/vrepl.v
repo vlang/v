@@ -209,14 +209,9 @@ fn (mut r Repl) parse_import(line string) {
 fn print_welcome_screen() {
 	println(version.full_v_version(false))
 	println('Use Ctrl-C or ${term.highlight_command('exit')} to exit, or ${term.highlight_command('help')} to see other available commands')
-	println(r'
-		____    ____
-		\   \  /   /
-		 \   \/   /
-		  \      /
-		   \    /
-		    \__/
-	')
+	println(r'╦  ╦
+╚╗╔╝
+ ╚╝ ')
 }
 
 fn run_repl(workdir string, vrepl_prefix string) {
