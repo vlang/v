@@ -76,8 +76,8 @@ $ v test .
 
 ## Benchmark
 
-Check the original repository for tools to run benchmark tests. In there you can execute the following command
-to execute benchmark tests to get a full comparison between implementations:
+Check the original repository for tools to run benchmark tests. In there you can execute
+the following command to execute benchmark tests to get a full comparison between implementations:
 
 ```sh
 $ ./bin/run-benchmark-test --help
