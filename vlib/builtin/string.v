@@ -1040,7 +1040,7 @@ pub fn (s string) index_after(p string, start int) int {
 // index_byte returns the index of byte `c` if found in the string.
 // index_byte returns -1 if the byte can not be found.
 [direct_array_access]
-pub fn (s string) index_byte(c byte) int {
+pub fn (s string) index_byte(c byte) i64 {
 	for i in 0 .. s.len {
 		if unsafe { s.str[i] } == c {
 			return i
@@ -1052,7 +1052,7 @@ pub fn (s string) index_byte(c byte) int {
 // last_index_byte returns the index of the last occurence of byte `c` if found in the string.
 // last_index_byte returns -1 if the byte is not found.
 [direct_array_access]
-pub fn (s string) last_index_byte(c byte) int {
+pub fn (s string) last_index_byte(c byte) i64 {
 	for i := s.len - 1; i >= 0; i-- {
 		if unsafe { s.str[i] == c } {
 			return i
@@ -1064,7 +1064,7 @@ pub fn (s string) last_index_byte(c byte) int {
 // count returns the number of occurrences of `substr` in the string.
 // count returns -1 if no `substr` could be found.
 [direct_array_access]
-pub fn (s string) count(substr string) int {
+pub fn (s string) count(substr string) i64 {
 	if s.len == 0 || substr.len == 0 {
 		return 0
 	}
@@ -1072,7 +1072,7 @@ pub fn (s string) count(substr string) int {
 		return 0
 	}
 
-	mut n := 0
+	mut n := i64(0)
 
 	if substr.len == 1 {
 		target := substr[0]
