@@ -409,6 +409,7 @@ pub mut:
 	update_expr          Expr
 	update_expr_type     Type
 	update_expr_comments []Comment
+	is_update_embed      bool
 	has_update_expr      bool
 	fields               []StructInitField
 	embeds               []StructInitEmbed

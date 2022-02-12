@@ -5456,6 +5456,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 					default_init := ast.StructInit{
 						...node
 						typ: embed
+						is_update_embed: true
 						fields: init_fields_to_embed
 					}
 					inside_cast_in_heap := g.inside_cast_in_heap
@@ -5556,6 +5557,16 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 					g.write('->')
 				} else {
 					g.write('.')
+				}
+				if node.is_update_embed {
+					embed_sym := g.table.sym(node.typ)
+					embed_name := embed_sym.embed_name()
+					g.write(embed_name)
+					if node.typ.is_ptr() {
+						g.write('->')
+					} else {
+						g.write('.')
+					}
 				}
 				g.write(field.name)
 			} else {
