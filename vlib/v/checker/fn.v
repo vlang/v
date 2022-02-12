@@ -1422,7 +1422,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	}
 	// call struct field fn type
 	// TODO: can we use SelectorExpr for all? this dosent really belong here
-	if field := c.table.find_field(left_sym, method_name) {
+	if field := c.table.find_field_with_embeds(left_sym, method_name) {
 		field_sym := c.table.sym(c.unwrap_generic(field.typ))
 		if field_sym.kind == .function {
 			node.is_method = false
@@ -1451,6 +1451,9 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			}
 			node.expected_arg_types = earg_types
 			node.is_method = true
+			_, node.from_embed_types = c.table.find_field_from_embeds(left_sym, method_name) or {
+				return info.func.return_type
+			}
 			return info.func.return_type
 		}
 	}
