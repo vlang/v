@@ -312,10 +312,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 		if r.line == 'list' {
 			source_code := r.current_source_code(true, true)
 			width, _ := term.get_terminal_size() // get the size of the terminal
-			mut p := ''
-			for _ in 0 .. width {
-				p += '-'
-			}
+			p := '-'.repeat(width)
 			println(p)
 			println(source_code)
 			println(p)
