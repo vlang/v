@@ -552,10 +552,7 @@ fn (mut r Readline) history_previous() {
 	}
 	r.search_index++
 	prev_line := r.previous_lines[r.search_index]
-	// In case the reader is configure to skip
-	// the empity line, we make a recursive all
-	// after increate the search_index
-	if r.remove_empty && prev_line == [] {
+	if r.skip_empty && prev_line == [] {
 		r.history_previous()
 	} else {
 		r.current = prev_line
