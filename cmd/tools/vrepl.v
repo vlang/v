@@ -314,7 +314,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 			width, _ := term.get_terminal_size() // get the size of the terminal
 			mut p := ''
 			for _ in 0 .. width {
-				p += '/'
+				p += '-'
 			}
 			println(p)
 			println(source_code)
