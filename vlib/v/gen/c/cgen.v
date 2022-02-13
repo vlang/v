@@ -4875,7 +4875,9 @@ fn (mut g Gen) write_builtin_types() {
 	// builtin types need to be on top
 	// everything except builtin will get sorted
 	for builtin_name in c.builtins {
-		sym := g.table.sym_by_idx(g.table.type_idxs[builtin_name])
+		sym := rlock g.table.type_idxs {
+			g.table.sym_by_idx(g.table.type_idxs[builtin_name])
+		}
 		if sym.kind == .interface_ {
 			g.write_interface_typedef(sym)
 			g.write_interface_typesymbol_declaration(sym)
@@ -5185,8 +5187,10 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 	}
 	// sort types
 	mut sorted_symbols := []&ast.TypeSymbol{cap: dep_graph_sorted.nodes.len}
-	for node in dep_graph_sorted.nodes {
-		sorted_symbols << g.table.sym_by_idx(g.table.type_idxs[node.name])
+	rlock g.table.type_idxs {
+		for node in dep_graph_sorted.nodes {
+			sorted_symbols << g.table.sym_by_idx(g.table.type_idxs[node.name])
+		}
 	}
 	return sorted_symbols
 }

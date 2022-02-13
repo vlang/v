@@ -337,8 +337,7 @@ pub fn (mut p Parser) parse() &ast.File {
 	// codegen
 	if p.codegen_text.len > 0 && !p.pref.is_fmt {
 		ptext := 'module ' + p.mod.all_after_last('.') + p.codegen_text
-		p.table.codegen_files << parse_text(ptext, p.file_name, p.table, p.comments_mode,
-			p.pref)
+		p.table.codegen_files << parse_text(ptext, '<>', p.table, p.comments_mode, p.pref)
 	}
 
 	return &ast.File{
@@ -425,11 +424,14 @@ pub fn parse_files(paths []string, mut table ast.Table, pref &pref.Preferences) 
 		*/
 	}
 	mut files := []&ast.File{cap: paths.len}
-	local_tables := []&ast.Table{len: paths.len, init: &ast.Table{
-		global_scope: table.global_scope
-		type_symbols: table.type_symbols
-		type_idxs: table.type_idxs.clone()
-	}}
+	mut local_tables := []&ast.Table{len: paths.len}
+	for i in 0 .. paths.len {
+		local_tables[i] = &ast.Table{
+			global_scope: table.global_scope
+			type_symbols: table.type_symbols
+			type_idxs: table.type_idxs
+		}
+	}
 	for i, path in paths {
 		timers.start('parse_file $path')
 		files << parse_file(path, local_tables[i], .skip_comments, pref)
@@ -437,7 +439,7 @@ pub fn parse_files(paths []string, mut table ast.Table, pref &pref.Preferences) 
 	}
 	table.merge_tables(local_tables)
 	if table.codegen_files.len > 0 {
-		files << table.codegen_files
+		files << table.codegen_files.clone()
 		table.codegen_files = []
 	}
 	return files
@@ -2363,8 +2365,11 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		name_w_mod := p.prepend_mod(name)
 		// type cast. TODO: finish
 		// if name in ast.builtin_type_names_to_idx {
-		if (!known_var && (name in p.table.type_idxs || name_w_mod in p.table.type_idxs)
-			&& name !in ['C.stat', 'C.sigaction']) || is_mod_cast || is_generic_cast
+		if (!known_var && (rlock p.table.type_idxs {
+			name in p.table.type_idxs
+			|| name_w_mod in p.table.type_idxs
+		}) && name !in ['C.stat', 'C.sigaction'])
+			|| is_mod_cast || is_generic_cast
 			|| (language == .v && name.len > 0 && name[0].is_capital()) {
 			// MainLetter(x) is *always* a cast, as long as it is not `C.`
 			// TODO handle C.stat()

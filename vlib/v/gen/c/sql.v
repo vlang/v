@@ -813,7 +813,9 @@ fn (mut g Gen) get_table_name(table_expr ast.TypeNode) string {
 }
 
 fn (mut g Gen) get_struct_field(name string) ast.StructField {
-	info := g.table.struct_info(g.table.sym(g.table.type_idxs[g.sql_table_name]))
+	info := g.table.struct_info(g.table.sym(rlock g.table.type_idxs {
+		g.table.type_idxs[g.sql_table_name]
+	}))
 	mut f := ast.StructField{}
 	for field in info.fields {
 		if field.name == name {

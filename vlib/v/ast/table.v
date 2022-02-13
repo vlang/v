@@ -14,11 +14,11 @@ pub struct Table {
 mut:
 	parsing_type string // name of the type to enable recursive type parsing
 pub mut:
-	type_symbols       shared []&TypeSymbol // >> shared
-	type_idxs          map[string]int       // >> merge
-	fns                map[string]Fn        // >> merge
-	iface_types        map[string][]Type    // >> not in parser
-	dumps              map[int]string       // needed for efficiently generating all _v_dump_expr_TNAME() functions >> not in parser
+	type_symbols       shared []&TypeSymbol  // >> shared
+	type_idxs          shared map[string]int // >> shared
+	fns                map[string]Fn     // >> merge
+	iface_types        map[string][]Type // >> not in parser
+	dumps              map[int]string    // needed for efficiently generating all _v_dump_expr_TNAME() functions >> not in parser
 	imports            []string              // List of all imports >> merged
 	modules            []string              // Topologically sorted list of all modules registered by the application >> not in parser
 	global_scope       shared Scope          // >> shared
@@ -40,8 +40,8 @@ pub mut:
 	cur_concrete_types []Type  // current concrete types, e.g. <int, string> // >> not in parser & prob local
 	gostmts            int     // how many `go` statements there were in the parsed files. >> merge
 	// When table.gostmts > 0, __VTHREADS__ is defined, which can be checked with `$if threads {`
-	codegen_files     []&File // >> local to parser
-	enum_decls        map[string]EnumDecl  // >> merge
+	enum_decls        map[string]EnumDecl // >> merge
+	codegen_files     []&File // >> merge
 	mdeprecated_msg   map[string]string    // module deprecation messages // >> merge
 	mdeprecated_after map[string]time.Time // module deprecation dates // >> merge
 	builtin_pub_fns   map[string]bool      // >> merge
@@ -58,10 +58,10 @@ pub fn (mut t Table) free() {
 		for s in t.type_symbols {
 			s.free()
 		}
-		lock t.type_symbols {
+		lock t.type_symbols, t.type_idxs {
 			t.type_symbols.free()
+			t.type_idxs.free()
 		}
-		t.type_idxs.free()
 		t.fns.free()
 		t.dumps.free()
 		t.imports.free()
@@ -92,7 +92,33 @@ pub fn (t &Table) panic(message string) {
 }
 
 pub fn (mut g Table) merge_tables(tables []&Table) {
-	for _ in tables {
+	for t in tables {
+		for k, v in t.fns {
+			g.fns[k] = v
+		}
+		g.imports << t.imports
+		g.cflags << t.cflags
+		g.redefined_fns << t.redefined_fns
+		for k, v in t.fn_generic_types {
+			g.fn_generic_types[k] = v
+		}
+		for k, v in t.interfaces {
+			g.interfaces[k] = v
+		}
+		g.gostmts += t.gostmts
+		for k, v in t.enum_decls {
+			g.enum_decls[k] = v
+		}
+		g.codegen_files << t.codegen_files
+		for k, v in t.mdeprecated_msg {
+			g.mdeprecated_msg[k] = v
+		}
+		for k, v in t.mdeprecated_after {
+			g.mdeprecated_after[k] = v
+		}
+		for k, v in t.builtin_pub_fns {
+			g.builtin_pub_fns[k] = v
+		}
 	}
 }
 
@@ -842,7 +868,9 @@ pub fn (mut t Table) register_sym(sym TypeSymbol) int {
 		}
 		t.type_symbols[idx].idx = idx
 	}
-	t.type_idxs[sym.name] = idx
+	lock t.type_idxs {
+		t.type_idxs[sym.name] = idx
+	}
 	return idx
 }
 
