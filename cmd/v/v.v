@@ -65,15 +65,7 @@ fn main() {
 	if args.len == 0 || args[0] in ['-', 'repl'] {
 		if args.len == 0 {
 			// Running `./v` without args launches repl
-			if os.is_atty(0) != 0 {
-				cmd_exit := term.highlight_command('exit')
-				cmd_help := term.highlight_command('v help')
-				file_main := term.highlight_command('main.v')
-				cmd_run := term.highlight_command('v run main.v')
-				println('Welcome to the V REPL (for help with V itself, type $cmd_exit, then run $cmd_help).')
-				eprintln('  NB: the REPL is highly experimental. For best V experience, use a text editor,')
-				eprintln('  save your code in a $file_main file and execute: $cmd_run')
-			} else {
+			if os.is_atty(0) == 0 {
 				mut args_and_flags := util.join_env_vflags_and_os_args()[1..].clone()
 				args_and_flags << ['run', '-']
 				pref.parse_args_and_show_errors(external_tools, args_and_flags, true)
