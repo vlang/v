@@ -42,7 +42,9 @@ enum FnType {
 
 fn new_repl() Repl {
 	return Repl{
-		readline: readline.Readline{}
+		readline: readline.Readline{
+			skip_empty: true
+		}
 		modules: ['os', 'time', 'math']
 		vstartup_lines: os.read_file(vstartup) or { '' }.trim_right('\n\r').split_into_lines()
 		// Test file used to check if a function as a void return or a

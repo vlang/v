@@ -28,6 +28,7 @@ mut:
 	prompt            string
 	prompt_offset     int
 	previous_lines    [][]rune
+	skip_empty        bool // skip the empty lines when calling .history_previous()
 	search_index      int
 	is_tty            bool
 }

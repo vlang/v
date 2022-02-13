@@ -551,9 +551,14 @@ fn (mut r Readline) history_previous() {
 		r.previous_lines[0] = r.current
 	}
 	r.search_index++
-	r.current = r.previous_lines[r.search_index]
-	r.cursor = r.current.len
-	r.refresh_line()
+	prev_line := r.previous_lines[r.search_index]
+	if r.skip_empty && prev_line == [] {
+		r.history_previous()
+	} else {
+		r.current = prev_line
+		r.cursor = r.current.len
+		r.refresh_line()
+	}
 }
 
 // history_next sets current line to the content of the next line in the history buffer.
