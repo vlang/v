@@ -5,28 +5,28 @@ module urllib
 
 fn test_add_key_val() {
 	mut values := Values{}
-	values.add('value', 'key')
-	val := values.get('value')
-	assert val == 'key'
+	values.add('key', 'value')
+	val := values.get('key')
+	assert val == 'value'
 }
 
 fn test_get_all_with_key() {
 	mut values := Values{}
-	values.add('value', 'key1')
-	values.add('value', 'key2')
-	key_values := values.get_all('value')
-	assert key_values == ['key1', 'key2']
+	values.add('key', 'value1')
+	values.add('key', 'value2')
+	key_values := values.get_all('key')
+	assert key_values == ['value1', 'value2']
 }
 
 fn test_set_with_key() {
 	mut values := Values{}
-	values.add('value', 'key1')
-	values.add('value', 'key2')
-	values.add('value1', 'key2')
-	values.set('value1', 'vlang')
-	key_values := values.get_all('value')
-	key2_values := values.get_all('value1')
-	assert key_values == ['key1', 'key2']
+	values.add('key', 'value1')
+	values.add('key', 'value2')
+	values.add('key1', 'value2')
+	values.set('key1', 'vlang')
+	key_values := values.get_all('key')
+	key2_values := values.get_all('key1')
+	assert key_values == ['value1', 'value2']
 	assert key2_values == ['vlang']
 }
 
