@@ -90,7 +90,7 @@ pub fn new224() &Digest {
 }
 
 // write writes the contents of `p_` to the internal hash representation.
-fn (mut d Digest) write(p_ []byte) ?int {
+pub fn (mut d Digest) write(p_ []byte) ?int {
 	unsafe {
 		mut p := p_
 		nn := p.len
