@@ -266,7 +266,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 		if line == '' && oline.ends_with('\n') {
 			continue
 		}
-		if line.len <= -1 || line == 'exit' {
+		if line.len <= -1 || line == '' || line == 'exit' {
 			break
 		}
 		r.line = line
