@@ -615,11 +615,9 @@ pub fn cache_dir() string {
 	// $XDG_CACHE_HOME defines the base directory relative to which user specific
 	// non-essential data files should be stored. If $XDG_CACHE_HOME is either not set
 	// or empty, a default equal to $HOME/.cache should be used.
-	$if !windows {
-		xdg_cache_home := getenv('XDG_CACHE_HOME')
-		if xdg_cache_home != '' {
-			return xdg_cache_home
-		}
+	xdg_cache_home := getenv('XDG_CACHE_HOME')
+	if xdg_cache_home != '' {
+		return xdg_cache_home
 	}
 	cdir := join_path_single(home_dir(), '.cache')
 	if !is_dir(cdir) && !is_link(cdir) {
