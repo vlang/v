@@ -214,13 +214,13 @@ fn print_welcome_screen() {
 	vbar := term.bright_green('|')
 	width, _ := term.get_terminal_size() // get the size of the terminal
 	vlogo := [
-			term.bright_blue(r' ____    ____ '),
-			term.bright_blue(r' \   \  /   / '),
-			term.bright_blue(r'  \   \/   /  '),
-			term.bright_blue(r'   \      /   '),
-			term.bright_blue(r'    \    /    '),
-			term.bright_blue(r'     \__/     '),
-		]
+		term.bright_blue(r' ____    ____ '),
+		term.bright_blue(r' \   \  /   / '),
+		term.bright_blue(r'  \   \/   /  '),
+		term.bright_blue(r'   \      /   '),
+		term.bright_blue(r'    \    /    '),
+		term.bright_blue(r'     \__/     '),
+	]
 	help_text := [
 		'Welcome to the V REPL (for help with V itself, type $cmd_exit, then run $cmd_help).',
 		'NB: the REPL is highly experimental. For best V experience, use a text editor, ',
