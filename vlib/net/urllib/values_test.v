@@ -29,3 +29,10 @@ fn test_set_with_key() {
 	assert key_values == ['key1', 'key2']
 	assert key2_values == ['vlang']
 }
+
+fn test_set_missing_key() {
+	mut values := Values{}
+	values.set('err', 'err1')
+	vals := values.get_all('err')
+	assert vals == ['err1']
+}

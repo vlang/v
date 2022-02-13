@@ -62,10 +62,16 @@ pub fn (mut v Values) set(key string, value string) {
 	// A query string can contains several
 	// duplicate, so we need to make sure that we
 	// cover all the edge case.
+	mut found := false
 	for mut qvalue in v.data {
 		if qvalue.key == key {
+			found = true
 			qvalue.value = value
 		}
+	}
+
+	if !found {
+		v.add(key, value)
 	}
 }
 
