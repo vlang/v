@@ -1,14 +1,28 @@
 vlib/v/checker/tests/generics_struct_init_type_parameter_err.vv:6:9: error: generic struct init type parameter `U` must be within the parameters `(A,B)` of the current generic function
     4 |
-    5 | pub fn send<A, B>(res A, b B) string {
+    5 | fn send_1<A, B>(res A, b B) string {
     6 |     msg := Response<U>{
       |            ~~~~~~~~~~~~
     7 |         result: res
     8 |     }
 vlib/v/checker/tests/generics_struct_init_type_parameter_err.vv:7:3: error: cannot assign to field `result`: expected `U`, not `int`
-    5 | pub fn send<A, B>(res A, b B) string {
+    5 | fn send_1<A, B>(res A, b B) string {
     6 |     msg := Response<U>{
     7 |         result: res
       |         ~~~~~~~~~~~
     8 |     }
     9 |     println(b)
+vlib/v/checker/tests/generics_struct_init_type_parameter_err.vv:14:9: error: generic struct init expects 1 generic parameter, but got 2
+   12 |
+   13 | fn send_2<A, B>(res A, b B) string {
+   14 |     msg := Response<A, B>{
+      |            ~~~~~~~~~~~~~~~
+   15 |         result: res
+   16 |     }
+vlib/v/checker/tests/generics_struct_init_type_parameter_err.vv:15:3: error: cannot assign to field `result`: expected `U`, not `int`
+   13 | fn send_2<A, B>(res A, b B) string {
+   14 |     msg := Response<A, B>{
+   15 |         result: res
+      |         ~~~~~~~~~~~
+   16 |     }
+   17 |     println(b)
