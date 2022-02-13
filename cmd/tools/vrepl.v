@@ -221,7 +221,7 @@ fn print_welcome_screen() {
 			term.bright_blue(r'    \    /    '),
 			term.bright_blue(r'     \__/     '),
 		]
-	if width >= 97 {
+	if width >= 97 || width < 14 {
 		eprintln('${vlogo[0]}')
 		eprintln('${vlogo[1]} $vbar  Welcome to the V REPL (for help with V itself, type $cmd_exit, then run $cmd_help).')
 		eprintln('${vlogo[2]} $vbar  NB: the REPL is highly experimental. For best V experience, use a text editor,')
