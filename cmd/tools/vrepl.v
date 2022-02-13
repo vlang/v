@@ -311,9 +311,14 @@ fn run_repl(workdir string, vrepl_prefix string) {
 		}
 		if r.line == 'list' {
 			source_code := r.current_source_code(true, true)
-			println('//////////////////////////////////////////////////////////////////////////////////////')
+			width, _ := term.get_terminal_size() // get the size of the terminal
+			mut p := ''
+			for _ in 0 .. width {
+				p += '/'
+			}
+			println(p)
 			println(source_code)
-			println('//////////////////////////////////////////////////////////////////////////////////////')
+			println(p)
 			continue
 		}
 		// Save the source only if the user is printing something,
