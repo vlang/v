@@ -19,7 +19,7 @@ pub fn ast_comment_to_doc_comment(ast_node ast.Comment) DocComment {
 	return DocComment{
 		text: text
 		is_multi: ast_node.is_multi
-		pos: token.Position{
+		pos: token.Pos{
 			line_nr: ast_node.pos.line_nr
 			col: 0 // ast_node.pos.pos - ast_node.text.len
 			len: text.len
@@ -43,43 +43,70 @@ pub fn merge_doc_comments(comments []DocComment) string {
 	if comments.len == 0 {
 		return ''
 	}
-	mut comment := ''
+	mut commentlines := []string{}
 	mut last_comment_line_nr := 0
 	for i := comments.len - 1; i >= 0; i-- {
 		cmt := comments[i]
-		if last_comment_line_nr != 0 && cmt.pos.line_nr + 1 < last_comment_line_nr - 1 {
+		if (!cmt.is_multi && last_comment_line_nr != 0
+			&& cmt.pos.line_nr + 1 < last_comment_line_nr - 1) || (cmt.is_multi
+			&& cmt.pos.line_nr + cmt.text.count('\n') + 1 < last_comment_line_nr - 1) {
 			// skip comments that are not part of a continuous block,
 			// located right above the top level statement.
-			// break
+			break
 		}
 		mut cmt_content := cmt.text.trim_left('\x01')
 		if cmt.is_multi {
-			// ignore /* */ style comments for now
+			// /**/ comments are deliberately NOT supported as vdoc comments,
+			// so just ignore them:
 			continue
-			// if cmt_content.len == 0 {
-			// continue
-			// }
-			// mut new_cmt_content := ''
-			// mut is_codeblock := false
-			// // println(cmt_content)
-			// lines := cmt_content.split_into_lines()
-			// for j, line in lines {
-			// trimmed := line.trim_space().trim_left(cmt_prefix)
-			// if trimmed.starts_with('- ') || (trimmed.len >= 2 && trimmed[0].is_digit() && trimmed[1] == `.`) || is_codeblock {
-			// new_cmt_content += line + '\n'
-			// } else if line.starts_with('```') {
-			// is_codeblock = !is_codeblock
-			// new_cmt_content += line + '\n'
-			// } else {
-			// new_cmt_content += trimmed + '\n'
-			// }
-			// }
-			// return new_cmt_content
+		} else {
+			if cmt_content.starts_with(' ') {
+				cmt_content = cmt_content[1..]
+			}
+			commentlines << cmt_content
 		}
-		// eprintln('cmt: $cmt')
-		cseparator := if cmt_content.starts_with('```') { '\n' } else { ' ' }
-		comment = cmt_content + cseparator + comment
 		last_comment_line_nr = cmt.pos.line_nr + 1
+	}
+	commentlines = commentlines.reverse()
+	mut is_codeblock := false
+	mut previously_newline := true
+	mut comment := ''
+	for line in commentlines {
+		if line.starts_with('```') {
+			is_codeblock = !is_codeblock
+			comment = comment + '\n' + line
+			continue
+		} else if is_codeblock {
+			comment = comment + '\n' + line
+			continue
+		}
+
+		line_trimmed := line.trim(' ')
+
+		mut is_horizontalrule := false
+		line_no_spaces := line_trimmed.replace(' ', '')
+		for char in ['-', '=', '*', '_', '~'] {
+			if line_no_spaces.starts_with(char.repeat(3))
+				&& line_no_spaces.count(char) == line_no_spaces.len {
+				is_horizontalrule = true
+				break
+			}
+		}
+
+		if line_trimmed == '' || is_horizontalrule
+			|| (line.starts_with('#') && line.before(' ').count('#') == line.before(' ').len)
+			|| (line_trimmed.starts_with('|') && line_trimmed.ends_with('|'))
+			|| line_trimmed.starts_with('- ') {
+			comment = comment + '\n' + line
+			previously_newline = true
+		} else if line.ends_with('.') {
+			comment = comment + '\n' + line + '  '
+			previously_newline = true
+		} else {
+			sep := if previously_newline { '\n' } else { ' ' }
+			comment = comment + sep + line
+			previously_newline = false
+		}
 	}
 	return comment
 }

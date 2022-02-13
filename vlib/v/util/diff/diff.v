@@ -61,7 +61,7 @@ fn opendiff_exists() bool {
 
 pub fn color_compare_files(diff_cmd string, file1 string, file2 string) string {
 	if diff_cmd != '' {
-		full_cmd := '$diff_cmd --minimal --text --unified=2  --show-function-line="fn " "$file1" "$file2" '
+		full_cmd := '$diff_cmd --minimal --text --unified=2  --show-function-line="fn " ${os.quoted_path(file1)} ${os.quoted_path(file2)} '
 		x := os.execute(full_cmd)
 		if x.exit_code < 0 {
 			return 'comparison command: `$full_cmd` not found'
@@ -72,11 +72,11 @@ pub fn color_compare_files(diff_cmd string, file1 string, file2 string) string {
 }
 
 pub fn color_compare_strings(diff_cmd string, unique_prefix string, expected string, found string) string {
-	cdir := os.join_path(os.cache_dir(), unique_prefix)
+	cdir := os.join_path_single(os.cache_dir(), unique_prefix)
 	os.mkdir(cdir) or {}
 	ctime := time.sys_mono_now()
-	e_file := os.join_path(cdir, '${ctime}.expected.txt')
-	f_file := os.join_path(cdir, '${ctime}.found.txt')
+	e_file := os.join_path_single(cdir, '${ctime}.expected.txt')
+	f_file := os.join_path_single(cdir, '${ctime}.found.txt')
 	os.write_file(e_file, expected) or { panic(err) }
 	os.write_file(f_file, found) or { panic(err) }
 	res := color_compare_files(diff_cmd, e_file, f_file)

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module ast
@@ -9,6 +9,7 @@ pub enum AttrKind {
 	plain // [name]
 	string // ['name']
 	number // [123]
+	bool // [true] || [false]
 	comptime_define // [if name]
 }
 
@@ -21,7 +22,7 @@ pub:
 	kind    AttrKind
 	ct_expr Expr // .kind == comptime_define, for [if !name]
 	ct_opt  bool // true for [if user_defined_name?]
-	pos     token.Position
+	pos     token.Pos
 pub mut:
 	ct_evaled bool // whether ct_skip has been evaluated already
 	ct_skip   bool // is the comptime expr *false*, filled by checker
@@ -41,7 +42,7 @@ pub fn (a Attr) str() string {
 		a.name
 	}
 	s += match a.kind {
-		.plain, .number { arg }
+		.plain, .number, .bool { arg }
 		.string { "'$arg'" }
 		.comptime_define { 'if $arg' }
 	}

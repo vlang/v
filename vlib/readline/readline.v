@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
@@ -6,18 +6,6 @@
 // based on the work of https://github.com/AmokHuginnsson/replxx
 //
 module readline
-
-// Termios stores the terminal options on Linux.
-struct C.termios {}
-
-struct Termios {
-mut:
-	c_iflag int
-	c_oflag int
-	c_cflag int
-	c_lflag int
-	c_cc    [12]int // NCCS == 12. Can't use the defined value here
-}
 
 // Winsize stores the screen information on Linux.
 struct Winsize {

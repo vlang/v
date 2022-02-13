@@ -15,11 +15,12 @@
 - [x] iOS/Android support
 - [ ] parallel parser
 - [ ] parallel checker
-- [ ] parallel cgen
+- [x] parallel cgen
+- [ ] parallel C compilation
 - [ ] `recover()` from panics
 - [x] IO streams
 - [x] struct embedding
-- [ ] interface embedding
+- [x] interface embedding
 - [x] interfaces: allow struct fields (not just methods)
 - [ ] vfmt: fix common errors automatically (make vars mutable and vice versa, add missing imports)
 - [ ] method expressions with an explicit receiver as the first argument
@@ -30,3 +31,4 @@
 - [ ] VLS for autocomplete, refactoring, go to definition etc
 - [ ] Recursive structs via optionals: `struct Node { next ?Node }`
 - [ ] Remove `foo = 0` for `&Foo`
+- [ ] Handle function pointers safely, remove `if function == 0 {`

@@ -3,10 +3,12 @@ module builder
 import os
 import v.token
 import v.pref
+import v.errors
 import v.util
 import v.ast
 import v.vmod
 import v.checker
+import v.transformer
 import v.parser
 import v.markused
 import v.depgraph
@@ -17,20 +19,27 @@ pub struct Builder {
 pub:
 	compiled_dir string // contains os.real_path() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
 	module_path  string
-mut:
-	pref          &pref.Preferences
-	checker       &checker.Checker
-	out_name_c    string
-	out_name_js   string
-	max_nr_errors int = 100
-	stats_lines   int // size of backend generated source code in lines
-	stats_bytes   int // size of backend generated source code in bytes
 pub mut:
+	checker             &checker.Checker
+	transformer         &transformer.Transformer
+	out_name_c          string
+	out_name_js         string
+	stats_lines         int // size of backend generated source code in lines
+	stats_bytes         int // size of backend generated source code in bytes
+	nr_errors           int // accumulated error count of scanner, parser, checker, and builder
+	nr_warnings         int // accumulated warning count of scanner, parser, checker, and builder
+	nr_notices          int // accumulated notice count of scanner, parser, checker, and builder
+	pref                &pref.Preferences
 	module_search_paths []string
 	parsed_files        []&ast.File
 	cached_msvc         MsvcResult
 	table               &ast.Table
 	ccoptions           CcompilerOptions
+	//
+	// NB: changes in mod `builtin` force invalidation of every other .v file
+	mod_invalidates_paths map[string][]string // changes in mod `os`, invalidate only .v files, that do `import os`
+	mod_invalidates_mods  map[string][]string // changes in mod `os`, force invalidation of mods, that do `import os`
+	path_invalidates_mods map[string][]string // changes in a .v file from `os`, invalidates `os`
 }
 
 pub fn new_builder(pref &pref.Preferences) Builder {
@@ -60,32 +69,49 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 		pref: pref
 		table: table
 		checker: checker.new_checker(table, pref)
+		transformer: transformer.new_transformer_with_table(table, pref)
 		compiled_dir: compiled_dir
-		max_nr_errors: if pref.error_limit > 0 { pref.error_limit } else { 100 }
 		cached_msvc: msvc
 	}
-	// max_nr_errors: pref.error_limit ?? 100 TODO potential syntax?
 }
 
 pub fn (mut b Builder) front_stages(v_files []string) ? {
-	util.timing_start('PARSE')
-	b.parsed_files = parser.parse_files(v_files, b.table, b.pref)
-	b.parse_imports()
 	mut timers := util.get_timers()
+	util.timing_start('PARSE')
+
+	util.timing_start('Builder.front_stages.parse_files')
+	b.parsed_files = parser.parse_files(v_files, b.table, b.pref)
+	timers.show('Builder.front_stages.parse_files')
+
+	b.parse_imports()
+
 	timers.show('SCAN')
 	timers.show('PARSE')
 	timers.show_if_exists('PARSE stmt')
 	if b.pref.only_check_syntax {
-		return error('stop_after_parser')
+		return error_with_code('stop_after_parser', 9999)
 	}
 }
 
 pub fn (mut b Builder) middle_stages() ? {
 	util.timing_start('CHECK')
-	b.checker.generic_insts_to_concrete()
+
+	util.timing_start('Checker.generic_insts_to_concrete')
+	b.table.generic_insts_to_concrete()
+	util.timing_measure('Checker.generic_insts_to_concrete')
+
 	b.checker.check_files(b.parsed_files)
 	util.timing_measure('CHECK')
 	b.print_warnings_and_errors()
+	if b.checker.should_abort {
+		return error('too many errors/warnings/notices')
+	}
+	if b.pref.check_only {
+		return error_with_code('stop_after_checker', 9999)
+	}
+	util.timing_start('TRANSFORM')
+	b.transformer.transform_files(b.parsed_files)
+	util.timing_measure('TRANSFORM')
 	//
 	b.table.complete_interface_check()
 	if b.pref.skip_unused {
@@ -103,6 +129,10 @@ pub fn (mut b Builder) front_and_middle_stages(v_files []string) ? {
 
 // parse all deps from already parsed files
 pub fn (mut b Builder) parse_imports() {
+	util.timing_start(@METHOD)
+	defer {
+		util.timing_measure(@METHOD)
+	}
 	mut done_imports := []string{}
 	if b.pref.is_vsh {
 		done_imports << 'os'
@@ -127,10 +157,18 @@ pub fn (mut b Builder) parse_imports() {
 	// so we can not use the shorter `for in` form.
 	for i := 0; i < b.parsed_files.len; i++ {
 		ast_file := b.parsed_files[i]
+		b.path_invalidates_mods[ast_file.path] << ast_file.mod.name
+		if ast_file.mod.name != 'builtin' {
+			b.mod_invalidates_paths['builtin'] << ast_file.path
+			b.mod_invalidates_mods['builtin'] << ast_file.mod.name
+		}
 		for imp in ast_file.imports {
 			mod := imp.mod
+			b.mod_invalidates_paths[mod] << ast_file.path
+			b.mod_invalidates_mods[mod] << ast_file.mod.name
 			if mod == 'builtin' {
-				error_with_pos('cannot import module "builtin"', ast_file.path, imp.pos)
+				b.parsed_files[i].errors << b.error_with_pos('cannot import module "builtin"',
+					ast_file.path, imp.pos)
 				break
 			}
 			if mod in done_imports {
@@ -139,16 +177,18 @@ pub fn (mut b Builder) parse_imports() {
 			import_path := b.find_module_path(mod, ast_file.path) or {
 				// v.parsers[i].error_with_token_index('cannot import module "$mod" (not found)', v.parsers[i].import_ast.get_import_tok_idx(mod))
 				// break
-				error_with_pos('cannot import module "$mod" (not found)', ast_file.path,
-					imp.pos)
+				b.parsed_files[i].errors << b.error_with_pos('cannot import module "$mod" (not found)',
+					ast_file.path, imp.pos)
 				break
 			}
 			v_files := b.v_files_from_dir(import_path)
 			if v_files.len == 0 {
 				// v.parsers[i].error_with_token_index('cannot import module "$mod" (no .v files in "$import_path")', v.parsers[i].import_ast.get_import_tok_idx(mod))
-				error_with_pos('cannot import module "$mod" (no .v files in "$import_path")',
+				b.parsed_files[i].errors << b.error_with_pos('cannot import module "$mod" (no .v files in "$import_path")',
 					ast_file.path, imp.pos)
+				continue
 			}
+			// eprintln('>> ast_file.path: $ast_file.path , done: $done_imports, `import $mod` => $v_files')
 			// Add all imports referenced by these libs
 			parsed_files := parser.parse_files(v_files, b.table, b.pref)
 			for file in parsed_files {
@@ -156,10 +196,11 @@ pub fn (mut b Builder) parse_imports() {
 				if name == '' {
 					name = file.mod.short_name
 				}
-				if name != mod {
-					// v.parsers[pidx].error_with_token_index('bad module definition: ${v.parsers[pidx].file_path} imports module "$mod" but $file is defined as module `$p_mod`', 1
-					error_with_pos('bad module definition: $ast_file.path imports module "$mod" but $file.path is defined as module `$name`',
-						ast_file.path, imp.pos)
+				sname := name.all_after_last('.')
+				smod := mod.all_after_last('.')
+				if sname != smod {
+					msg := 'bad module definition: $ast_file.path imports module "$mod" but $file.path is defined as module `$name`'
+					b.parsed_files[i].errors << b.error_with_pos(msg, ast_file.path, imp.pos)
 				}
 			}
 			b.parsed_files << parsed_files
@@ -167,16 +208,20 @@ pub fn (mut b Builder) parse_imports() {
 		}
 	}
 	b.resolve_deps()
-	//
 	if b.pref.print_v_files {
 		for p in b.parsed_files {
 			println(p.path)
 		}
 		exit(0)
 	}
+	b.rebuild_modules()
 }
 
 pub fn (mut b Builder) resolve_deps() {
+	util.timing_start(@METHOD)
+	defer {
+		util.timing_measure(@METHOD)
+	}
 	graph := b.import_graph()
 	deps_resolved := graph.resolve()
 	if b.pref.is_verbose {
@@ -224,7 +269,7 @@ pub fn (b &Builder) import_graph() &depgraph.DepGraph {
 			deps << 'builtin'
 			if b.pref.backend == .c {
 				// TODO JavaScript backend doesn't handle os for now
-				if b.pref.is_vsh && p.mod.name != 'os' {
+				if b.pref.is_vsh && p.mod.name !in ['os', 'dl'] {
 					deps << 'os'
 				}
 			}
@@ -273,7 +318,7 @@ pub fn (b Builder) info(s string) {
 }
 
 [inline]
-fn module_path(mod string) string {
+pub fn module_path(mod string) string {
 	// submodule support
 	return mod.replace('.', os.path_separator)
 }
@@ -331,28 +376,108 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) ?string {
 	return error('module "$mod" not found in:\n$smodule_lookup_paths')
 }
 
-fn (b &Builder) show_total_warns_and_errors_stats() {
-	if b.checker.nr_errors == 0 && b.checker.nr_warnings == 0 && b.checker.nr_notices == 0 {
+pub fn (b &Builder) show_total_warns_and_errors_stats() {
+	if b.nr_errors == 0 && b.nr_warnings == 0 && b.nr_notices == 0 {
 		return
 	}
 	if b.pref.is_stats {
-		estring := util.bold(b.checker.nr_errors.str())
-		wstring := util.bold(b.checker.nr_warnings.str())
-		nstring := util.bold(b.checker.nr_notices.str())
-		println('checker summary: $estring V errors, $wstring V warnings, $nstring V notices')
+		mut nr_errors := b.checker.errors.len
+		mut nr_warnings := b.checker.warnings.len
+		mut nr_notices := b.checker.notices.len
+
+		if b.pref.check_only {
+			nr_errors = b.nr_errors
+			nr_warnings = b.nr_warnings
+			nr_notices = b.nr_notices
+		}
+
+		estring := util.bold(nr_errors.str())
+		wstring := util.bold(nr_warnings.str())
+		nstring := util.bold(nr_notices.str())
+
+		if b.pref.check_only {
+			println('summary: $estring V errors, $wstring V warnings, $nstring V notices')
+		} else {
+			println('checker summary: $estring V errors, $wstring V warnings, $nstring V notices')
+		}
 	}
 }
 
-fn (b &Builder) print_warnings_and_errors() {
+pub fn (mut b Builder) print_warnings_and_errors() {
 	defer {
 		b.show_total_warns_and_errors_stats()
 	}
+
+	for file in b.parsed_files {
+		b.nr_errors += file.errors.len
+		b.nr_warnings += file.warnings.len
+		b.nr_notices += file.notices.len
+	}
+
 	if b.pref.output_mode == .silent {
-		if b.checker.nr_errors > 0 {
+		if b.nr_errors > 0 {
 			exit(1)
 		}
 		return
 	}
+
+	if b.pref.check_only {
+		for file in b.parsed_files {
+			if !b.pref.skip_warnings {
+				for err in file.notices {
+					kind := if b.pref.is_verbose {
+						'$err.reporter notice #$b.nr_notices:'
+					} else {
+						'notice:'
+					}
+					ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
+					eprintln(ferror)
+					if err.details.len > 0 {
+						eprintln('Details: $err.details')
+					}
+				}
+			}
+		}
+
+		for file in b.parsed_files {
+			for err in file.errors {
+				kind := if b.pref.is_verbose {
+					'$err.reporter error #$b.nr_errors:'
+				} else {
+					'error:'
+				}
+				ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
+				eprintln(ferror)
+				if err.details.len > 0 {
+					eprintln('Details: $err.details')
+				}
+			}
+		}
+
+		for file in b.parsed_files {
+			if !b.pref.skip_warnings {
+				for err in file.warnings {
+					kind := if b.pref.is_verbose {
+						'$err.reporter warning #$b.nr_warnings:'
+					} else {
+						'warning:'
+					}
+					ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
+					eprintln(ferror)
+					if err.details.len > 0 {
+						eprintln('Details: $err.details')
+					}
+				}
+			}
+		}
+
+		b.show_total_warns_and_errors_stats()
+		if b.nr_errors > 0 {
+			exit(1)
+		}
+		exit(0)
+	}
+
 	if b.pref.is_verbose && b.checker.nr_warnings > 1 {
 		println('$b.checker.nr_warnings warnings')
 	}
@@ -360,7 +485,7 @@ fn (b &Builder) print_warnings_and_errors() {
 		println('$b.checker.nr_notices notices')
 	}
 	if b.checker.nr_notices > 0 && !b.pref.skip_warnings {
-		for i, err in b.checker.notices {
+		for err in b.checker.notices {
 			kind := if b.pref.is_verbose {
 				'$err.reporter notice #$b.checker.nr_notices:'
 			} else {
@@ -371,13 +496,10 @@ fn (b &Builder) print_warnings_and_errors() {
 			if err.details.len > 0 {
 				eprintln('Details: $err.details')
 			}
-			if i > b.max_nr_errors {
-				return
-			}
 		}
 	}
 	if b.checker.nr_warnings > 0 && !b.pref.skip_warnings {
-		for i, err in b.checker.warnings {
+		for err in b.checker.warnings {
 			kind := if b.pref.is_verbose {
 				'$err.reporter warning #$b.checker.nr_warnings:'
 			} else {
@@ -388,10 +510,6 @@ fn (b &Builder) print_warnings_and_errors() {
 			if err.details.len > 0 {
 				eprintln('Details: $err.details')
 			}
-			// eprintln('')
-			if i > b.max_nr_errors {
-				return
-			}
 		}
 	}
 	//
@@ -399,7 +517,7 @@ fn (b &Builder) print_warnings_and_errors() {
 		println('$b.checker.nr_errors errors')
 	}
 	if b.checker.nr_errors > 0 {
-		for i, err in b.checker.errors {
+		for err in b.checker.errors {
 			kind := if b.pref.is_verbose {
 				'$err.reporter error #$b.checker.nr_errors:'
 			} else {
@@ -409,10 +527,6 @@ fn (b &Builder) print_warnings_and_errors() {
 			eprintln(ferror)
 			if err.details.len > 0 {
 				eprintln('Details: $err.details')
-			}
-			// eprintln('')
-			if i > b.max_nr_errors {
-				return
 			}
 		}
 		b.show_total_warns_and_errors_stats()
@@ -463,13 +577,22 @@ struct FunctionRedefinition {
 	f       ast.FnDecl
 }
 
-fn error_with_pos(s string, fpath string, pos token.Position) {
-	ferror := util.formatted_error('builder error:', s, fpath, pos)
-	eprintln(ferror)
-	exit(1)
+pub fn (b &Builder) error_with_pos(s string, fpath string, pos token.Pos) errors.Error {
+	if !b.pref.check_only {
+		ferror := util.formatted_error('builder error:', s, fpath, pos)
+		eprintln(ferror)
+		exit(1)
+	}
+
+	return errors.Error{
+		file_path: fpath
+		pos: pos
+		reporter: .builder
+		message: s
+	}
 }
 
 [noreturn]
-fn verror(s string) {
+pub fn verror(s string) {
 	util.verror('builder error', s)
 }

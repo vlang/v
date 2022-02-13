@@ -78,7 +78,7 @@ pub fn (mut r Response) json() &Response {
 pub fn (mut r Response) body(body string) {
 	r.write_string('Content-Length: ')
 	unsafe {
-		r.buf += C.u64toa(r.buf, body.len)
+		r.buf += C.u64toa(&char(r.buf), body.len)
 	}
 	r.write_string('\r\n\r\n')
 	r.write_string(body)
@@ -106,7 +106,7 @@ pub fn (mut r Response) raw(response string) {
 
 [inline]
 pub fn (mut r Response) end() int {
-	n := int(r.buf) - int(r.buf_start)
+	n := int(i64(r.buf) - i64(r.buf_start))
 	if C.write(r.fd, r.buf_start, n) != n {
 		return -1
 	}

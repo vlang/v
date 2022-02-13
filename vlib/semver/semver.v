@@ -20,13 +20,20 @@ pub enum Increment {
 }
 
 struct EmptyInputError {
-	msg  string = 'Empty input'
-	code int
+	Error
+}
+
+pub fn (err EmptyInputError) msg() string {
+	return 'Empty input'
 }
 
 struct InvalidVersionFormatError {
-	msg  string
-	code int
+	Error
+	input string
+}
+
+pub fn (err InvalidVersionFormatError) msg() string {
+	return 'Invalid version format for input "$err.input"'
 }
 
 // * Constructor.
@@ -38,7 +45,7 @@ pub fn from(input string) ?Version {
 	raw_version := parse(input)
 	version := raw_version.validate() or {
 		return IError(&InvalidVersionFormatError{
-			msg: 'Invalid version format for input "$input"'
+			input: input
 		})
 	}
 	return version
@@ -88,6 +95,16 @@ pub fn (v1 Version) ge(v2 Version) bool {
 // le returns `true` if `v1` is less than or equal to `v2`.
 pub fn (v1 Version) le(v2 Version) bool {
 	return compare_le(v1, v2)
+}
+
+// str returns the `string` representation of the `Version`.
+pub fn (ver Version) str() string {
+	common_string := '${ver.major}.${ver.minor}.$ver.patch'
+
+	prerelease_string := if ver.prerelease.len > 0 { '-$ver.prerelease' } else { '' }
+	metadata_string := if ver.metadata.len > 0 { '+$ver.metadata' } else { '' }
+
+	return '$common_string$prerelease_string$metadata_string'
 }
 
 // * Utilites.

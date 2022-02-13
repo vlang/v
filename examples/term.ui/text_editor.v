@@ -1,11 +1,42 @@
 // Copyright (c) 2020 Lars Pontoppidan. All rights reserved.
 // Use of this source code is governed by the MIT license distributed with this software.
 // Don't use this editor for any serious work.
-// A lot of funtionality is missing compared to your favourite editor :)
+// A lot of functionality is missing compared to your favourite editor :)
 import strings
-import math.mathutil as mu
 import os
+import math
 import term.ui as tui
+import encoding.utf8
+import encoding.utf8.east_asian
+
+const (
+	rune_digits        = [`0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`]
+
+	zero_width_unicode = [
+		`\u034f`, // U+034F COMBINING GRAPHEME JOINER
+		`\u061c`, // U+061C ARABIC LETTER MARK
+		`\u17b4`, // U+17B4 KHMER VOWEL INHERENT AQ
+		`\u17b5`, // U+17B5 KHMER VOWEL INHERENT AA
+		`\u200a`, // U+200A HAIR SPACE
+		`\u200b`, // U+200B ZERO WIDTH SPACE
+		`\u200c`, // U+200C ZERO WIDTH NON-JOINER
+		`\u200d`, // U+200D ZERO WIDTH JOINER
+		`\u200e`, // U+200E LEFT-TO-RIGHT MARK
+		`\u200f`, // U+200F RIGHT-TO-LEFT MARK
+		`\u2060`, // U+2060 WORD JOINER
+		`\u2061`, // U+2061 FUNCTION APPLICATION
+		`\u2062`, // U+2062 INVISIBLE TIMES
+		`\u2063`, // U+2063 INVISIBLE SEPARATOR
+		`\u2064`, // U+2064 INVISIBLE PLUS
+		`\u206a`, // U+206A INHIBIT SYMMETRIC SWAPPING
+		`\u206b`, // U+206B ACTIVATE SYMMETRIC SWAPPING
+		`\u206c`, // U+206C INHIBIT ARABIC FORM SHAPING
+		`\u206d`, // U+206D ACTIVATE ARABIC FORM SHAPING
+		`\u206e`, // U+206E NATIONAL DIGIT SHAPES
+		`\u206f`, // U+206F NOMINAL DIGIT SHAPES
+		`\ufeff`, // U+FEFF ZERO WIDTH NO-BREAK SPACE
+	]
+)
 
 enum Movement {
 	up
@@ -131,7 +162,7 @@ fn (b Buffer) raw() string {
 }
 
 fn (b Buffer) view(from int, to int) View {
-	l := b.cur_line()
+	l := b.cur_line().runes()
 	mut x := 0
 	for i := 0; i < b.cursor.pos_x && i < l.len; i++ {
 		if l[i] == `\t` {
@@ -167,6 +198,14 @@ fn (b Buffer) cur_line() string {
 	return b.line(b.cursor.pos_y)
 }
 
+fn (b Buffer) cur_slice() string {
+	line := b.line(b.cursor.pos_y).runes()
+	if b.cursor.pos_x == 0 || b.cursor.pos_x > line.len {
+		return ''
+	}
+	return line[..b.cursor.pos_x].string()
+}
+
 fn (b Buffer) cursor_index() int {
 	mut i := 0
 	for y, line in b.lines {
@@ -174,7 +213,7 @@ fn (b Buffer) cursor_index() int {
 			i += b.cursor.pos_x
 			break
 		}
-		i += line.len + 1
+		i += line.runes().len + 1
 	}
 	return i
 }
@@ -185,22 +224,22 @@ fn (mut b Buffer) put(s string) {
 	if b.lines.len == 0 {
 		b.lines.prepend('')
 	}
-	line := b.lines[y]
-	l, r := line[..x], line[x..]
+	line := b.lines[y].runes()
+	l, r := line[..x].string(), line[x..].string()
 	if has_line_ending {
 		mut lines := s.split('\n')
 		lines[0] = l + lines[0]
 		lines[lines.len - 1] += r
 		b.lines.delete(y)
 		b.lines.insert(y, lines)
-		last := lines[lines.len - 1]
+		last := lines[lines.len - 1].runes()
 		b.cursor.set(last.len, y + lines.len - 1)
 		if s == '\n' {
 			b.cursor.set(0, b.cursor.pos_y)
 		}
 	} else {
 		b.lines[y] = l + s + r
-		b.cursor.set(x + s.len, y)
+		b.cursor.set(x + s.runes().len, y)
 	}
 	$if debug {
 		flat := s.replace('\n', r'\n')
@@ -217,24 +256,35 @@ fn (mut b Buffer) del(amount int) string {
 		if x == 0 && y == 0 {
 			return ''
 		}
-	} else if x >= b.cur_line().len && y >= b.lines.len - 1 {
+	} else if x >= b.cur_line().runes().len && y >= b.lines.len - 1 {
 		return ''
 	}
 	mut removed := ''
 	if amount < 0 { // backspace (backward)
 		i := b.cursor_index()
-		removed = b.raw()[i + amount..i]
+		raw_runes := b.raw().runes()
+		removed = raw_runes[i + amount..i].string()
 		mut left := amount * -1
 		for li := y; li >= 0 && left > 0; li-- {
-			ln := b.lines[li]
-			if left > ln.len {
+			ln := b.lines[li].runes()
+			if left == ln.len + 1 { // All of the line + 1 - since we're going backwards the "+1" is the line break delimiter.
+				b.lines.delete(li)
+				left = 0
+				if y == 0 {
+					return ''
+				}
+				line_above := b.lines[li - 1].runes()
+				b.cursor.pos_x = line_above.len
+				b.cursor.pos_y--
+				break
+			} else if left > ln.len {
 				b.lines.delete(li)
 				if ln.len == 0 { // line break delimiter
 					left--
 					if y == 0 {
 						return ''
 					}
-					line_above := b.lines[li - 1]
+					line_above := b.lines[li - 1].runes()
 					b.cursor.pos_x = line_above.len
 				} else {
 					left -= ln.len
@@ -245,22 +295,23 @@ fn (mut b Buffer) del(amount int) string {
 					if y == 0 {
 						return ''
 					}
-					line_above := b.lines[li - 1]
+					line_above := b.lines[li - 1].runes()
 					if ln.len == 0 { // at line break
 						b.lines.delete(li)
 						b.cursor.pos_y--
 						b.cursor.pos_x = line_above.len
 					} else {
-						b.lines[li - 1] = line_above + ln
+						b.lines[li - 1] = line_above.string() + ln.string()
 						b.lines.delete(li)
 						b.cursor.pos_y--
 						b.cursor.pos_x = line_above.len
 					}
 				} else if x == 1 {
-					b.lines[li] = b.lines[li][left..]
+					runes := b.lines[li].runes()
+					b.lines[li] = runes[left..].string()
 					b.cursor.pos_x = 0
 				} else {
-					b.lines[li] = ln[..x - left] + ln[x..]
+					b.lines[li] = ln[..x - left].string() + ln[x..].string()
 					b.cursor.pos_x -= left
 				}
 				left = 0
@@ -269,13 +320,20 @@ fn (mut b Buffer) del(amount int) string {
 		}
 	} else { // delete (forward)
 		i := b.cursor_index() + 1
-		removed = b.raw()[i - amount..i]
+		raw_buffer := b.raw().runes()
+		from_i := i
+		mut to_i := i + amount
+
+		if to_i > raw_buffer.len {
+			to_i = raw_buffer.len
+		}
+		removed = raw_buffer[from_i..to_i].string()
 		mut left := amount
 		for li := y; li >= 0 && left > 0; li++ {
-			ln := b.lines[li]
+			ln := b.lines[li].runes()
 			if x == ln.len { // at line end
 				if y + 1 <= b.lines.len {
-					b.lines[li] = ln + b.lines[y + 1]
+					b.lines[li] = ln.string() + b.lines[y + 1]
 					b.lines.delete(y + 1)
 					left--
 					b.del(left)
@@ -284,7 +342,7 @@ fn (mut b Buffer) del(amount int) string {
 				b.lines.delete(li)
 				left -= ln.len
 			} else {
-				b.lines[li] = ln[..x] + ln[x + left..]
+				b.lines[li] = ln[..x].string() + ln[x + left..].string()
 				left = 0
 			}
 		}
@@ -309,7 +367,7 @@ fn (mut b Buffer) free() {
 fn (mut b Buffer) move_updown(amount int) {
 	b.cursor.move(0, amount)
 	// Check the move
-	line := b.cur_line()
+	line := b.cur_line().runes()
 	if b.cursor.pos_x > line.len {
 		b.cursor.set(line.len, b.cursor.pos_y)
 	}
@@ -317,7 +375,7 @@ fn (mut b Buffer) move_updown(amount int) {
 
 // move_cursor will navigate the cursor within the buffer bounds
 fn (mut b Buffer) move_cursor(amount int, movement Movement) {
-	cur_line := b.cur_line()
+	cur_line := b.cur_line().runes()
 	match movement {
 		.up {
 			if b.cursor.pos_y - amount >= 0 {
@@ -330,18 +388,18 @@ fn (mut b Buffer) move_cursor(amount int, movement Movement) {
 			}
 		}
 		.page_up {
-			dlines := mu.min(b.cursor.pos_y, amount)
+			dlines := math.min(b.cursor.pos_y, amount)
 			b.move_updown(-dlines)
 		}
 		.page_down {
-			dlines := mu.min(b.lines.len - 1, b.cursor.pos_y + amount) - b.cursor.pos_y
+			dlines := math.min(b.lines.len - 1, b.cursor.pos_y + amount) - b.cursor.pos_y
 			b.move_updown(dlines)
 		}
 		.left {
 			if b.cursor.pos_x - amount >= 0 {
 				b.cursor.move(-amount, 0)
 			} else if b.cursor.pos_y > 0 {
-				b.cursor.set(b.line(b.cursor.pos_y - 1).len, b.cursor.pos_y - 1)
+				b.cursor.set(b.line(b.cursor.pos_y - 1).runes().len, b.cursor.pos_y - 1)
 			}
 		}
 		.right {
@@ -362,25 +420,26 @@ fn (mut b Buffer) move_cursor(amount int, movement Movement) {
 
 fn (mut b Buffer) move_to_word(movement Movement) {
 	a := if movement == .left { -1 } else { 1 }
-	mut line := b.cur_line()
+
+	mut line := b.cur_line().runes()
 	mut x, mut y := b.cursor.pos_x, b.cursor.pos_y
 	if x + a < 0 && y > 0 {
 		y--
-		line = b.line(b.cursor.pos_y - 1)
+		line = b.line(b.cursor.pos_y - 1).runes()
 		x = line.len
 	} else if x + a >= line.len && y + 1 < b.lines.len {
 		y++
-		line = b.line(b.cursor.pos_y + 1)
+		line = b.line(b.cursor.pos_y + 1).runes()
 		x = 0
 	}
 	// first, move past all non-`a-zA-Z0-9_` characters
-	for x + a >= 0 && x + a < line.len && !(line[x + a].is_letter()
-		|| line[x + a].is_digit() || line[x + a] == `_`) {
+	for x + a >= 0 && x + a < line.len && !(utf8.is_letter(line[x + a])
+		|| line[x + a] in rune_digits || line[x + a] == `_`) {
 		x += a
 	}
 	// then, move past all the letters and numbers
-	for x + a >= 0 && x + a < line.len && (line[x + a].is_letter()
-		|| line[x + a].is_digit() || line[x + a] == `_`) {
+	for x + a >= 0 && x + a < line.len && (utf8.is_letter(line[x + a])
+		|| line[x + a] in rune_digits || line[x + a] == `_`) {
 		x += a
 	}
 	// if the cursor is out of bounds, move it to the next/previous line
@@ -457,7 +516,7 @@ fn (a &App) view_height() int {
 fn (mut a App) magnet_cursor_x() {
 	mut buffer := a.ed
 	if buffer.cursor.pos_x < a.magnet_x {
-		if a.magnet_x < buffer.cur_line().len {
+		if a.magnet_x < buffer.cur_line().runes().len {
 			move_x := a.magnet_x - buffer.cursor.pos_x
 			buffer.move_cursor(move_x, .right)
 		}
@@ -478,7 +537,17 @@ fn frame(x voidptr) {
 	view := ed.view(a.viewport, scroll_limit + a.viewport)
 	a.tui.draw_text(0, 0, view.raw)
 	a.footer()
-	a.tui.set_cursor_position(view.cursor.pos_x + 1, ed.cursor.pos_y + 1 - a.viewport)
+
+	// Unicode: Handle correct mapping of cursor X position in terminal.
+	mut ch_x := view.cursor.pos_x
+	mut sl := ed.cur_slice().replace('\t', ' '.repeat(ed.tab_width))
+	if sl.len > 0 {
+		// Strip out any zero-width codepoints.
+		sl = sl.runes().filter(it !in zero_width_unicode).string()
+		ch_x = east_asian.display_width(sl, 1)
+	}
+
+	a.tui.set_cursor_position(ch_x + 1, ed.cursor.pos_y + 1 - a.viewport)
 	a.tui.flush()
 }
 
@@ -555,7 +624,8 @@ fn event(e &tui.Event, x voidptr) {
 						return
 					}
 				}
-				buffer.put(e.utf8.bytes().bytestr())
+
+				buffer.put(e.utf8)
 			}
 		}
 	} else if e.typ == .mouse_scroll {

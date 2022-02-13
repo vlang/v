@@ -6,6 +6,38 @@ const (
 	max_read = 400
 )
 
+// get_blocking returns whether the connection is in a blocking state,
+// that is calls to .read_line, C.recv etc will block till there is new
+// data arrived, instead of returning immediately.
+pub fn (mut con TcpConn) get_blocking() bool {
+	// flags := C.fcntl(con.sock.handle, C.F_GETFL, 0)
+	// return 0 == flags & C.O_NONBLOCK
+	return con.is_blocking
+}
+
+// set_blocking will change the state of the connection to either blocking,
+// when state is true, or non blocking (false).
+// The default for `net` tcp connections is the non blocking mode.
+// Calling .read_line will set the connection to blocking mode.
+pub fn (mut con TcpConn) set_blocking(state bool) ? {
+	con.is_blocking = state
+	$if windows {
+		mut t := u32(0)
+		if !con.is_blocking {
+			t = 1
+		}
+		socket_error(C.ioctlsocket(con.sock.handle, fionbio, &t)) ?
+	} $else {
+		mut flags := C.fcntl(con.sock.handle, C.F_GETFL, 0)
+		if state {
+			flags &= ~C.O_NONBLOCK
+		} else {
+			flags |= C.O_NONBLOCK
+		}
+		socket_error(C.fcntl(con.sock.handle, C.F_SETFL, flags)) ?
+	}
+}
+
 // read_line is a *simple*, *non customizable*, blocking line reader.
 // It will *always* return a line, ending with CRLF, or just '', on EOF.
 // NB: if you want more control over the buffer, please use a buffered IO
@@ -13,6 +45,9 @@ const (
 pub fn (mut con TcpConn) read_line() string {
 	mut buf := [net.max_read]byte{} // where C.recv will store the network data
 	mut res := '' // The final result, including the ending \n.
+	if !con.is_blocking {
+		con.set_blocking(true) or {}
+	}
 	for {
 		mut line := '' // The current line. Can be a partial without \n in it.
 		n := C.recv(con.sock.handle, &buf[0], net.max_read - 1, net.msg_peek | msg_nosignal)

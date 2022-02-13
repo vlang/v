@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -12,27 +12,25 @@ fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
 	mut node := original_assert_statement
 	g.writeln('// assert')
 	if mut node.expr is ast.InfixExpr {
-		if mut node.expr.left is ast.CallExpr {
-			node.expr.left = g.new_ctemp_var_then_gen(node.expr.left, node.expr.left_type)
+		if subst_expr := g.assert_subexpression_to_ctemp(node.expr.left, node.expr.left_type) {
+			node.expr.left = subst_expr
 		}
-		if mut node.expr.right is ast.CallExpr {
-			node.expr.right = g.new_ctemp_var_then_gen(node.expr.right, node.expr.right_type)
+		if subst_expr := g.assert_subexpression_to_ctemp(node.expr.right, node.expr.right_type) {
+			node.expr.right = subst_expr
 		}
 	}
 	g.inside_ternary++
-	if g.is_test {
+	if g.pref.is_test {
 		g.write('if (')
 		g.expr(node.expr)
 		g.write(')')
 		g.decrement_inside_ternary()
 		g.writeln(' {')
-		g.writeln('\tg_test_oks++;')
 		metaname_ok := g.gen_assert_metainfo(node)
-		g.writeln('\tmain__cb_assertion_ok(&$metaname_ok);')
+		g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_assert_pass(test_runner._object, &$metaname_ok);')
 		g.writeln('} else {')
-		g.writeln('\tg_test_fails++;')
 		metaname_fail := g.gen_assert_metainfo(node)
-		g.writeln('\tmain__cb_assertion_failed(&$metaname_fail);')
+		g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_assert_fail(test_runner._object, &$metaname_fail);')
 		g.gen_assert_postfailure_mode(node)
 		g.writeln('\tlongjmp(g_jump_buffer, 1);')
 		g.writeln('\t// TODO')
@@ -50,6 +48,38 @@ fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
 		g.writeln('\t_v_panic(_SLIT("Assertion failed..."));')
 		g.writeln('}')
 	}
+}
+
+struct UnsupportedAssertCtempTransform {
+	Error
+}
+
+const unsupported_ctemp_assert_transform = IError(UnsupportedAssertCtempTransform{})
+
+fn (mut g Gen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) ?ast.Expr {
+	match expr {
+		ast.CallExpr {
+			return g.new_ctemp_var_then_gen(expr, expr_type)
+		}
+		ast.ParExpr {
+			if expr.expr is ast.CallExpr {
+				return g.new_ctemp_var_then_gen(expr.expr, expr_type)
+			}
+		}
+		ast.SelectorExpr {
+			if expr.expr is ast.CallExpr {
+				sym := g.table.final_sym(g.unwrap_generic(expr.expr.return_type))
+				if sym.kind == .struct_ {
+					if (sym.info as ast.Struct).is_union {
+						return c.unsupported_ctemp_assert_transform
+					}
+				}
+				return g.new_ctemp_var_then_gen(expr, expr_type)
+			}
+		}
+		else {}
+	}
+	return c.unsupported_ctemp_assert_transform
 }
 
 fn (mut g Gen) gen_assert_postfailure_mode(node ast.AssertStmt) {
@@ -101,9 +131,10 @@ fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt) string {
 }
 
 fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
+	// eprintln('> gen_assert_single_expr typ: $typ | expr: $expr | typeof(expr): ${typeof(expr)}')
 	unknown_value := '*unknown value*'
 	match expr {
-		ast.CastExpr, ast.IndexExpr, ast.MatchExpr {
+		ast.CastExpr, ast.IfExpr, ast.IndexExpr, ast.MatchExpr {
 			g.write(ctoslit(unknown_value))
 		}
 		ast.PrefixExpr {
@@ -117,11 +148,33 @@ fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 			}
 		}
 		ast.TypeNode {
-			sym := g.table.get_type_symbol(g.unwrap_generic(typ))
+			sym := g.table.sym(g.unwrap_generic(typ))
 			g.write(ctoslit('$sym.name'))
 		}
 		else {
+			mut should_clone := true
+			if typ == ast.string_type && expr is ast.StringLiteral {
+				should_clone = false
+			}
+			if expr is ast.CTempVar {
+				if expr.orig is ast.CallExpr {
+					should_clone = false
+					if expr.orig.or_block.kind == .propagate {
+						should_clone = true
+					}
+					if expr.orig.is_method && expr.orig.args.len == 0
+						&& expr.orig.name == 'type_name' {
+						should_clone = true
+					}
+				}
+			}
+			if should_clone {
+				g.write('string_clone(')
+			}
 			g.gen_expr_to_string(expr, typ)
+			if should_clone {
+				g.write(')')
+			}
 		}
 	}
 	g.write(' /* typeof: ' + expr.type_name() + ' type: ' + typ.str() + ' */ ')

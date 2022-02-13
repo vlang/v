@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module main
@@ -26,6 +26,7 @@ struct FormatOptions {
 	is_noerror bool
 	is_verify  bool // exit(1) if the file is not vfmt'ed
 	is_worker  bool // true *only* in the worker processes. NB: workers can crash.
+	is_backup  bool // make a `file.v.bak` copy *before* overwriting a `file.v` in place with `-w`
 }
 
 const (
@@ -53,6 +54,7 @@ fn main() {
 		is_debug: '-debug' in args
 		is_noerror: '-noerror' in args
 		is_verify: '-verify' in args
+		is_backup: '-backup' in args
 	}
 	if term_colors {
 		os.setenv('VCOLORS', 'always', true)
@@ -90,7 +92,11 @@ fn main() {
 		exit(0)
 	}
 	mut cli_args_no_files := []string{}
-	for a in os.args {
+	for idx, a in os.args {
+		if idx == 0 {
+			cli_args_no_files << os.quoted_path(a)
+			continue
+		}
 		if a !in files {
 			cli_args_no_files << a
 		}
@@ -249,7 +255,19 @@ fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path 
 	}
 	if foptions.is_w {
 		if is_formatted_different {
+			if foptions.is_backup {
+				file_bak := '${file}.bak'
+				os.cp(file, file_bak) or {}
+			}
+			mut perms_to_restore := u32(0)
+			$if !windows {
+				fm := os.inode(file)
+				perms_to_restore = fm.bitmask()
+			}
 			os.mv_by_cp(formatted_file_path, file) or { panic(err) }
+			$if !windows {
+				os.chmod(file, int(perms_to_restore)) or { panic(err) }
+			}
 			eprintln('Reformatted file: $file')
 		} else {
 			eprintln('Already formatted file: $file')

@@ -37,7 +37,7 @@ fn test_node_exists() {
 
 fn test_running_programs_compiled_with_the_js_backend() ? {
 	os.setenv('VCOLORS', 'never', true)
-	os.chdir(vroot)
+	os.chdir(vroot) or {}
 	test_dir := 'vlib/v/gen/js/tests/testdata'
 	main_files := get_main_files_in_dir(test_dir)
 	fails := check_path(test_dir, main_files) ?
@@ -60,7 +60,7 @@ fn check_path(dir string, tests []string) ?int {
 			os.write_file(program_out, '') ?
 		}
 		print(program + ' ')
-		res := os.execute('$vexe -b js_node run $program')
+		res := os.execute('${os.quoted_path(vexe)} -b js_node run ${os.quoted_path(program)}')
 		if res.exit_code < 0 {
 			panic(res.output)
 		}

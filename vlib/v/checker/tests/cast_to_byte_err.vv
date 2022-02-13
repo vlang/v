@@ -1,0 +1,23 @@
+type SAlias = string
+
+type CAlias = char
+type IAlias = int
+type UAlias = u32
+type FAlias = f32
+
+fn main() {
+	// should be errors:
+	_ := byte('hello')
+	_ := byte(SAlias('hello'))
+
+	// should be allowed:
+	_ := byte(char(1))
+	_ := byte(int(1))
+	_ := byte(u32(1))
+	_ := byte(f32(1.0))
+
+	_ := byte(CAlias(1))
+	_ := byte(IAlias(1))
+	_ := byte(UAlias(1))
+	_ := byte(FAlias(1))
+}

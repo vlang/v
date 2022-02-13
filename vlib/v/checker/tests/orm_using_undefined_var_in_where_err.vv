@@ -1,0 +1,26 @@
+import time
+import sqlite
+
+struct User {
+	id         int       [primary; sql: serial]
+	created_at time.Time
+	updated_at time.Time
+	email      string
+	password   string
+	name       string
+}
+
+fn main() {
+	db := sqlite.connect(':memory:') ?
+	sql db {
+		create table User
+	}
+	m := User{}
+	sql db {
+		insert m into User
+	}
+
+	_ := sql db {
+		select from User where email == email
+	}
+}

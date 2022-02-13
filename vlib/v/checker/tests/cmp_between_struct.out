@@ -1,0 +1,21 @@
+vlib/datatypes/heap.v:16:15: error: cannot use `>` as `<=` operator method is not defined
+   14 |     mut child := heap.data.len - 1
+   15 |     mut parent := heap.parent(child)
+   16 |     for heap.data[parent] > heap.data[child] {
+      |                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   17 |         heap.data[parent], heap.data[child] = heap.data[child], heap.data[parent]
+   18 |         child = parent
+vlib/datatypes/heap.v:37:15: error: cannot use `>` as `<=` operator method is not defined
+   35 |     mut left := heap.left_child(parent) or { return item }
+   36 |     mut right := heap.right_child(parent) or { left }
+   37 |     for heap.data[parent] > heap.data[left] || heap.data[parent] > heap.data[right] {
+      |                  ~~~~~~~~~~~~~~~~~~~~~~~~~~
+   38 |         // choose min for min heap
+   39 |         swap := if heap.data[left] <= heap.data[right] { left } else { right }
+vlib/datatypes/heap.v:39:23: error: cannot use `<=` as `<` operator method is not defined
+   37 |     for heap.data[parent] > heap.data[left] || heap.data[parent] > heap.data[right] {
+   38 |         // choose min for min heap
+   39 |         swap := if heap.data[left] <= heap.data[right] { left } else { right }
+      |                             ~~~~~~~~~~~~~~~~~~~~~~~~~~
+   40 |         heap.data[parent], heap.data[swap] = heap.data[swap], heap.data[parent]
+   41 |         parent = swap

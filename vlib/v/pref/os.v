@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module pref
@@ -21,6 +21,9 @@ pub enum OS {
 	serenity
 	vinix
 	haiku
+	wasm32
+	wasm32_emscripten
+	wasm32_wasi
 	raw
 	all
 }
@@ -46,6 +49,9 @@ pub fn os_from_string(os_str string) ?OS {
 		'haiku' { return .haiku }
 		'raw' { return .raw }
 		'nix' { return .linux }
+		'wasm32' { return .wasm32 }
+		'wasm32-wasi' { return .wasm32_wasi }
+		'wasm32-emscripten' { return .wasm32_emscripten }
 		'' { return ._auto }
 		else { return error('bad OS $os_str') }
 	}
@@ -70,6 +76,9 @@ pub fn (o OS) str() string {
 		.serenity { return 'SerenityOS' }
 		.vinix { return 'Vinix' }
 		.haiku { return 'Haiku' }
+		.wasm32 { return 'WebAssembly' }
+		.wasm32_emscripten { return 'WebAssembly(Emscripten)' }
+		.wasm32_wasi { return 'WebAssembly(WASI)' }
 		.raw { return 'Raw' }
 		.all { return 'all' }
 	}
@@ -112,5 +121,18 @@ pub fn get_host_os() OS {
 	$if haiku {
 		return .haiku
 	}
+	$if js_node {
+		return .js_node
+	}
+	$if js_freestanding {
+		return .js_freestanding
+	}
+	$if js_browser {
+		return .js_browser
+	}
+	$if js {
+		return .js_node
+	}
 	panic('unknown host OS')
+	return ._auto
 }

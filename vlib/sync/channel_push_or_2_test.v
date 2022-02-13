@@ -1,7 +1,7 @@
 const n = 1000
 
 fn f(ch chan f64) {
-	mut s := 0.
+	mut s := 0.0
 	for _ in 0 .. n {
 		s += <-ch
 	}

@@ -85,7 +85,7 @@ html {
 }
 body {
   margin: 0;
-  font-family: Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica,
+  font-family: Jost, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica,
     Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
   background-color: #fff;
   background-color: var(--background-color);
@@ -127,7 +127,7 @@ body {
   scrollbar-width: thin;
   scrollbar-color: #a0aec0 transparent;
   scrollbar-color: var(--menu-scrollbar-color) transparent;
-  font-family: "Work Sans", sans-serif;
+  font-family: Jost, sans-serif;
 }
 *::-webkit-scrollbar {
   width: 4px;
@@ -325,7 +325,7 @@ body {
   font-weight: 500;
 }
 .doc-nav > .search .result > .link > .description {
-  font-family: Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica,
+  font-family: Jost, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica,
     Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
   font-size: 0.75rem;
   overflow: hidden;
@@ -365,11 +365,16 @@ body {
   max-width: 100%;
 }
 .doc-content p {
-  line-height: 1.4;
+  font-size: 1rem;
+  line-height: 1.6;
+  letter-spacing: 0.025em;
 }
 .doc-content a {
   color: #2779bd;
   color: var(--link-color);
+}
+.doc-content p code {
+  font-size: 0.85rem;
 }
 .doc-content > .doc-node {
   padding: 5rem 0 2rem 0;
@@ -394,7 +399,7 @@ body {
 }
 .doc-content > .doc-node > .title {
   display: flex;
-  font-family: "Work Sans", sans-serif;
+  font-family: Jost, sans-serif;
   font-weight: 500;
   padding: 0.3rem;
   align-items: center;
@@ -495,7 +500,7 @@ body {
   box-sizing: border-box;
   -ms-overflow-style: none;
   scrollbar-width: none;
-  font-family: "Work Sans", sans-serif;
+  font-family: Jost, sans-serif;
 }
 .doc-toc::-webkit-scrollbar {
   display: none;
@@ -542,7 +547,7 @@ pre code {
   color: var(--code-default-text-color);
   font-size: 0.948em;
   text-shadow: none;
-  font-family: monospace;
+  font-family: "Jetbrains Mono", monospace;
   background-color: #edf2f7;
   background-color: var(--code-background-color);
   border-radius: 0.25rem;
@@ -566,8 +571,7 @@ pre code {
   padding: 1rem;
 }
 code {
-  padding: 0.2rem;
-  vertical-align: middle;
+  padding: 0 0.2rem;
 }
 pre {
   overflow: auto;
@@ -612,6 +616,9 @@ pre {
 .token.function {
   color: #319795;
   color: var(--code-function-text-color);
+}
+.examples > h4 {
+  margin: 0 0 0.4rem 0;
 }
 
 /* Medium screen and up */
@@ -722,4 +729,20 @@ pre {
   .doc-toc {
     top: 0;
   }
+}
+
+#skip-to-content-link {
+  height: 30px;
+  left: 50%;
+  padding: 8px;
+  position: absolute;
+  transform: translateY(-100%);
+  transition: transform 0.3s;
+  background: var(--links);
+  color: var(--warn-text);
+  border-radius: 1px;
+}
+#skip-to-content-link:focus {
+  transform: translateY(0%);
+  z-index: 1000;
 }

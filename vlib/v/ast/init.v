@@ -1,7 +1,7 @@
 module ast
 
 pub fn resolve_init(node StructInit, typ Type, t &Table) Expr {
-	type_sym := t.get_type_symbol(typ)
+	type_sym := t.sym(typ)
 	if type_sym.kind == .array {
 		array_info := type_sym.info as Array
 		mut has_len := false
@@ -19,11 +19,11 @@ pub fn resolve_init(node StructInit, typ Type, t &Table) Expr {
 				}
 				'cap' {
 					has_cap = true
-					len_expr = field.expr
+					cap_expr = field.expr
 				}
-				'default' {
+				'init' {
 					has_default = true
-					len_expr = field.expr
+					default_expr = field.expr
 				}
 				else {
 					exprs << field.expr

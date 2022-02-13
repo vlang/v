@@ -3,7 +3,7 @@ module net
 $if windows {
 	// This is mainly here for tcc on windows
 	// which apparently doesnt have this definition
-	#include "@VROOT/vlib/net/ipv6_v6only.h"
+	#include "@VMODROOT/vlib/net/ipv6_v6only.h"
 }
 
 // Select represents a select operation
@@ -33,9 +33,11 @@ fn C.socket(domain AddrFamily, typ SocketType, protocol int) int
 // fn C.setsockopt(sockfd int, level int, optname int, optval voidptr, optlen C.socklen_t) int
 fn C.setsockopt(sockfd int, level int, optname int, optval voidptr, optlen u32) int
 
-fn C.htonl(hostlong u32) int
+fn C.htonl(host u32) u32
+fn C.htons(host u16) u16
 
-fn C.htons(netshort u16) int
+fn C.ntohl(net u32) u32
+fn C.ntohs(net u16) u16
 
 // fn C.bind(sockfd int, addr &C.sockaddr, addrlen C.socklen_t) int
 // use voidptr for arg 2 becasue sockaddr is a generic descriptor for any kind of socket operation,
@@ -54,21 +56,19 @@ fn C.freeaddrinfo(info &C.addrinfo)
 // fn C.connect(sockfd int, addr &C.sockaddr, addrlen C.socklen_t) int
 fn C.connect(sockfd int, addr &Addr, addrlen u32) int
 
-// fn C.send(sockfd int, buf voidptr, len size_t, flags int) size_t
-fn C.send(sockfd int, buf voidptr, len size_t, flags int) int
+// fn C.send(sockfd int, buf voidptr, len usize, flags int) usize
+fn C.send(sockfd int, buf voidptr, len usize, flags int) int
 
-// fn C.sendto(sockfd int, buf voidptr, len size_t, flags int, dest_add &C.sockaddr, addrlen C.socklen_t) size_t
-fn C.sendto(sockfd int, buf voidptr, len size_t, flags int, dest_add &Addr, addrlen u32) int
+// fn C.sendto(sockfd int, buf voidptr, len usize, flags int, dest_add &C.sockaddr, addrlen C.socklen_t) usize
+fn C.sendto(sockfd int, buf voidptr, len usize, flags int, dest_add &Addr, addrlen u32) int
 
-// fn C.recv(sockfd int, buf voidptr, len size_t, flags int) size_t
-fn C.recv(sockfd int, buf voidptr, len size_t, flags int) int
+// fn C.recv(sockfd int, buf voidptr, len usize, flags int) usize
+fn C.recv(sockfd int, buf voidptr, len usize, flags int) int
 
-// fn C.recvfrom(sockfd int, buf voidptr, len size_t, flags int, src_addr &C.sockaddr, addrlen &C.socklen_t) size_t
-fn C.recvfrom(sockfd int, buf voidptr, len size_t, flags int, src_addr &Addr, addrlen &u32) int
+// fn C.recvfrom(sockfd int, buf voidptr, len usize, flags int, src_addr &C.sockaddr, addrlen &C.socklen_t) usize
+fn C.recvfrom(sockfd int, buf voidptr, len usize, flags int, src_addr &Addr, addrlen &u32) int
 
 fn C.shutdown(socket int, how int) int
-
-fn C.ntohs(netshort u16) int
 
 // fn C.getpeername(sockfd int, addr &C.sockaddr, addlen &C.socklen_t) int
 fn C.getpeername(sockfd int, addr &Addr, addlen &u32) int

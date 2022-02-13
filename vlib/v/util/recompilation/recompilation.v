@@ -9,7 +9,7 @@ import os
 // V from source.
 pub fn disabling_file(vroot string) string {
 	tools_folder := os.join_path(vroot, 'cmd', 'tools')
-	res := os.join_path(tools_folder, '.disable_autorecompilation')
+	res := os.join_path_single(tools_folder, '.disable_autorecompilation')
 	return res
 }
 

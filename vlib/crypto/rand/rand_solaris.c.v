@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -6,7 +6,7 @@ module rand
 
 #include <sys/random.h>
 
-fn C.getrandom(p &byte, n size_t, flags u32) int
+fn C.getrandom(p &byte, n usize, flags u32) int
 
 const (
 	read_batch_size = 256

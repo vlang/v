@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 import os
@@ -33,7 +33,7 @@ fn test_vlib_fmt() {
 	tmpfolder := os.temp_dir()
 	diff_cmd := diff.find_working_diff_command() or { '' }
 	mut fmt_bench := benchmark.new_benchmark()
-	os.chdir(vroot)
+	os.chdir(vroot) or {}
 	input_files := os.walk_ext('vlib/v/', '.v').filter(!it.contains('/tests/'))
 	fmt_bench.set_total_expected_steps(input_files.len)
 	for istep, ipath in input_files {

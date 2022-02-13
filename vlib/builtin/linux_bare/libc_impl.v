@@ -1,7 +1,11 @@
 module builtin
 
+import dlmalloc
+
+__global global_allocator dlmalloc.Dlmalloc
+
 [unsafe]
-pub fn memcpy(dest &C.void, src &C.void, n size_t) &C.void {
+pub fn memcpy(dest &C.void, src &C.void, n usize) &C.void {
 	dest_ := unsafe { &byte(dest) }
 	src_ := unsafe { &byte(src) }
 	unsafe {
@@ -14,24 +18,24 @@ pub fn memcpy(dest &C.void, src &C.void, n size_t) &C.void {
 
 [export: 'malloc']
 [unsafe]
-fn __malloc(n size_t) &C.void {
-	return unsafe { malloc(int(n)) }
+fn __malloc(n usize) &C.void {
+	return unsafe { global_allocator.malloc(n) }
 }
 
 [unsafe]
-fn strlen(_s &C.void) size_t {
+fn strlen(_s &C.void) usize {
 	s := unsafe { &byte(_s) }
 	mut i := 0
 	for ; unsafe { s[i] } != 0; i++ {}
-	return size_t(i)
+	return usize(i)
 }
 
 [unsafe]
-fn realloc(old_area &C.void, new_size size_t) &C.void {
+fn realloc(old_area &C.void, new_size usize) &C.void {
 	if old_area == 0 {
 		return unsafe { malloc(int(new_size)) }
 	}
-	if new_size == size_t(0) {
+	if new_size == usize(0) {
 		unsafe { free(old_area) }
 		return 0
 	}
@@ -40,14 +44,14 @@ fn realloc(old_area &C.void, new_size size_t) &C.void {
 		return unsafe { old_area }
 	} else {
 		new_area := unsafe { malloc(int(new_size)) }
-		unsafe { memmove(new_area, old_area, size_t(old_size)) }
+		unsafe { memmove(new_area, old_area, usize(old_size)) }
 		unsafe { free(old_area) }
 		return new_area
 	}
 }
 
 [unsafe]
-fn memset(s &C.void, c int, n size_t) &C.void {
+fn memset(s &C.void, c int, n usize) &C.void {
 	mut s_ := unsafe { &char(s) }
 	for i in 0 .. int(n) {
 		unsafe {
@@ -58,7 +62,7 @@ fn memset(s &C.void, c int, n size_t) &C.void {
 }
 
 [unsafe]
-fn memmove(dest &C.void, src &C.void, n size_t) &C.void {
+fn memmove(dest &C.void, src &C.void, n usize) &C.void {
 	dest_ := unsafe { &byte(dest) }
 	src_ := unsafe { &byte(src) }
 	mut temp_buf := unsafe { malloc(int(n)) }
@@ -79,7 +83,7 @@ fn memmove(dest &C.void, src &C.void, n size_t) &C.void {
 
 [export: 'calloc']
 [unsafe]
-fn __calloc(nmemb size_t, size size_t) &C.void {
+fn __calloc(nmemb usize, size usize) &C.void {
 	new_area := unsafe { malloc(int(nmemb) * int(size)) }
 	unsafe { memset(new_area, 0, nmemb * size) }
 	return new_area
@@ -91,7 +95,7 @@ fn getchar() int {
 	return int(x)
 }
 
-fn memcmp(a &C.void, b &C.void, n size_t) int {
+fn memcmp(a &C.void, b &C.void, n usize) int {
 	a_ := unsafe { &byte(a) }
 	b_ := unsafe { &byte(b) }
 	for i in 0 .. int(n) {
@@ -107,10 +111,8 @@ fn memcmp(a &C.void, b &C.void, n size_t) int {
 [export: 'free']
 [unsafe]
 fn __free(ptr &C.void) {
-	err := mm_free(ptr)
-	if err != .enoerror {
-		eprintln('free error:')
-		panic(err)
+	unsafe {
+		global_allocator.free_(ptr)
 	}
 }
 
@@ -118,7 +120,7 @@ fn vsprintf(str &char, format &char, ap &byte) int {
 	panic('vsprintf(): string interpolation is not supported in `-freestanding`')
 }
 
-fn vsnprintf(str &char, size size_t, format &char, ap &byte) int {
+fn vsnprintf(str &char, size usize, format &char, ap &byte) int {
 	panic('vsnprintf(): string interpolation is not supported in `-freestanding`')
 }
 
@@ -127,7 +129,7 @@ fn bare_read(buf &byte, count u64) (i64, Errno) {
 	return sys_read(0, buf, count)
 }
 
-fn bare_print(buf &byte, len u64) {
+pub fn bare_print(buf &byte, len u64) {
 	sys_write(1, buf, len)
 }
 
@@ -154,4 +156,13 @@ fn bare_backtrace() string {
 [noreturn]
 fn __exit(code int) {
 	sys_exit(code)
+}
+
+[export: 'qsort']
+fn __qsort(base voidptr, nmemb usize, size usize, sort_cb FnSortCB) {
+	panic('qsort() is not yet implemented in `-freestanding`')
+}
+
+fn init_global_allocator() {
+	global_allocator = dlmalloc.new(get_linux_allocator())
 }

@@ -106,7 +106,7 @@ fn (am AssetManager) combine(asset_type string, to_file bool) string {
 
 fn (am AssetManager) get_cache_key(asset_type string) string {
 	mut files_salt := ''
-	mut latest_modified := u64(0)
+	mut latest_modified := i64(0)
 	for asset in am.get_assets(asset_type) {
 		files_salt += asset.file_path
 		if asset.last_modified.unix > latest_modified {
@@ -151,7 +151,7 @@ fn (mut am AssetManager) add(asset_type string, file string) bool {
 	asset := Asset{
 		file_path: file
 		last_modified: time.Time{
-			unix: u64(os.file_last_mod_unix(file))
+			unix: os.file_last_mod_unix(file)
 		}
 	}
 	if asset_type == 'css' {

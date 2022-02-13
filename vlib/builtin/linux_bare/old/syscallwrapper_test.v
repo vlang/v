@@ -12,7 +12,7 @@ fn test_syscallwrappers() {
 				dot_checks := vdir + '/.checks'
 				assert os.is_dir(dot_checks)
 
-				os.chdir(dot_checks)
+				os.chdir(dot_checks) or {}
 				checks_v := 'checks.v'
 				assert os.exists(checks_v)
 				rc := os.execute_or_exit('v run $checks_v')

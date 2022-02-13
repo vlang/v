@@ -66,7 +66,7 @@ fn compile_and_reload_shared_lib(mut r live.LiveReloadInfo) ?bool {
 
 fn compile_lib(mut r live.LiveReloadInfo) ?string {
 	new_lib_path, new_lib_path_with_extension := current_shared_library_path(mut r)
-	cmd := '$r.vexe $r.vopts -o $new_lib_path $r.original'
+	cmd := '${os.quoted_path(r.vexe)} $r.vopts -o ${os.quoted_path(new_lib_path)} ${os.quoted_path(r.original)}'
 	elog(r, '>       compilation cmd: $cmd')
 	cwatch := time.new_stopwatch()
 	recompilation_result := os.execute(cmd)

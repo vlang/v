@@ -28,6 +28,7 @@ pub mut:
 	flags           []Flag
 	required_args   int
 	args            []string
+	posix_mode      bool
 }
 
 // str returns the `string` representation of the `Command`.
@@ -103,6 +104,7 @@ pub fn (mut cmd Command) add_command(command Command) {
 pub fn (mut cmd Command) setup() {
 	for mut subcmd in cmd.commands {
 		subcmd.parent = unsafe { cmd }
+		subcmd.posix_mode = cmd.posix_mode
 		subcmd.setup()
 	}
 }
@@ -146,11 +148,11 @@ pub fn (mut cmd Command) parse(args []string) {
 // `-v`/`--version` flags to the `Command`.
 fn (mut cmd Command) add_default_flags() {
 	if !cmd.disable_help && !cmd.flags.contains('help') {
-		use_help_abbrev := !cmd.flags.contains('h') && cmd.flags.have_abbrev()
+		use_help_abbrev := !cmd.flags.contains('h') && cmd.posix_mode
 		cmd.add_flag(help_flag(use_help_abbrev))
 	}
 	if !cmd.disable_version && cmd.version != '' && !cmd.flags.contains('version') {
-		use_version_abbrev := !cmd.flags.contains('v') && cmd.flags.have_abbrev()
+		use_version_abbrev := !cmd.flags.contains('v') && cmd.posix_mode
 		cmd.add_flag(version_flag(use_version_abbrev))
 	}
 }
@@ -175,10 +177,10 @@ fn (mut cmd Command) parse_flags() {
 		for i in 0 .. cmd.flags.len {
 			unsafe {
 				mut flag := &cmd.flags[i]
-				if flag.matches(cmd.args, cmd.flags.have_abbrev()) {
+				if flag.matches(cmd.args, cmd.posix_mode) {
 					found = true
 					flag.found = true
-					cmd.args = flag.parse(cmd.args, cmd.flags.have_abbrev()) or {
+					cmd.args = flag.parse(cmd.args, cmd.posix_mode) or {
 						println('Failed to parse flag `${cmd.args[0]}`: $err')
 						exit(1)
 					}

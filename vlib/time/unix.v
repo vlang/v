@@ -1,10 +1,10 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module time
 
 // unix returns a time struct from Unix time.
-pub fn unix(abs int) Time {
+pub fn unix(abs i64) Time {
 	// Split into day and time
 	mut day_offset := abs / seconds_per_day
 	if abs % seconds_per_day < 0 {
@@ -20,7 +20,7 @@ pub fn unix(abs int) Time {
 		hour: hr
 		minute: min
 		second: sec
-		unix: u64(abs)
+		unix: abs
 	}
 }
 
@@ -42,7 +42,7 @@ pub fn unix2(abs i64, microsecond int) Time {
 		minute: min
 		second: sec
 		microsecond: microsecond
-		unix: u64(abs)
+		unix: abs
 	}
 }
 

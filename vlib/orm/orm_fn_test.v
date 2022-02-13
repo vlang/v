@@ -1,4 +1,5 @@
 import orm
+import v.ast
 
 fn test_orm_stmt_gen_update() {
 	query := orm.orm_stmt_gen('Test', "'", .update, true, '?', 0, orm.QueryData{
@@ -50,7 +51,7 @@ fn test_orm_select_gen() {
 		fields: get_select_fields()
 	}, "'", true, '?', 0, orm.QueryData{})
 
-	assert query == "SELECT 'id', 'test', 'abc' FROM 'test_table' ORDER BY 'id' ASC;"
+	assert query == "SELECT 'id', 'test', 'abc' FROM 'test_table';"
 }
 
 fn test_orm_select_gen_with_limit() {
@@ -60,7 +61,7 @@ fn test_orm_select_gen_with_limit() {
 		has_limit: true
 	}, "'", true, '?', 0, orm.QueryData{})
 
-	assert query == "SELECT 'id', 'test', 'abc' FROM 'test_table' ORDER BY 'id' ASC LIMIT ?0;"
+	assert query == "SELECT 'id', 'test', 'abc' FROM 'test_table' LIMIT ?0;"
 }
 
 fn test_orm_select_gen_with_where() {
@@ -74,7 +75,7 @@ fn test_orm_select_gen_with_where() {
 		is_and: [true]
 	})
 
-	assert query == "SELECT 'id', 'test', 'abc' FROM 'test_table' WHERE 'abc' = ?0 AND 'test' > ?1 ORDER BY 'id' ASC;"
+	assert query == "SELECT 'id', 'test', 'abc' FROM 'test_table' WHERE 'abc' = ?0 AND 'test' > ?1;"
 }
 
 fn test_orm_select_gen_with_order() {
@@ -95,7 +96,7 @@ fn test_orm_select_gen_with_offset() {
 		has_offset: true
 	}, "'", true, '?', 0, orm.QueryData{})
 
-	assert query == "SELECT 'id', 'test', 'abc' FROM 'test_table' ORDER BY 'id' ASC OFFSET ?0;"
+	assert query == "SELECT 'id', 'test', 'abc' FROM 'test_table' OFFSET ?0;"
 }
 
 fn test_orm_select_gen_with_all() {
@@ -120,7 +121,7 @@ fn test_orm_table_gen() {
 	query := orm.orm_table_gen('test_table', "'", true, 0, [
 		orm.TableField{
 			name: 'id'
-			typ: 7
+			typ: ast.int_type_idx
 			default_val: '10'
 			attrs: [
 				StructAttribute{
@@ -136,11 +137,11 @@ fn test_orm_table_gen() {
 		},
 		orm.TableField{
 			name: 'test'
-			typ: 18
+			typ: ast.string_type_idx
 		},
 		orm.TableField{
 			name: 'abc'
-			typ: 8
+			typ: ast.i64_type_idx
 			default_val: '6754'
 		},
 	], sql_type_from_v, false) or { panic(err) }
@@ -149,7 +150,7 @@ fn test_orm_table_gen() {
 	alt_query := orm.orm_table_gen('test_table', "'", true, 0, [
 		orm.TableField{
 			name: 'id'
-			typ: 7
+			typ: ast.int_type_idx
 			default_val: '10'
 			attrs: [
 				StructAttribute{
@@ -165,15 +166,94 @@ fn test_orm_table_gen() {
 		},
 		orm.TableField{
 			name: 'test'
-			typ: 18
+			typ: ast.string_type_idx
 		},
 		orm.TableField{
 			name: 'abc'
-			typ: 8
+			typ: ast.i64_type_idx
 			default_val: '6754'
 		},
 	], sql_type_from_v, true) or { panic(err) }
 	assert alt_query == "IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='test_table' and xtype='U') CREATE TABLE 'test_table' ('id' SERIAL DEFAULT 10, 'test' TEXT, 'abc' INT64 DEFAULT 6754, PRIMARY KEY('id'));"
+
+	unique_query := orm.orm_table_gen('test_table', "'", true, 0, [
+		orm.TableField{
+			name: 'id'
+			typ: ast.int_type_idx
+			default_val: '10'
+			attrs: [
+				StructAttribute{
+					name: 'primary'
+				},
+				StructAttribute{
+					name: 'sql'
+					has_arg: true
+					arg: 'serial'
+					kind: .plain
+				},
+			]
+		},
+		orm.TableField{
+			name: 'test'
+			typ: ast.string_type_idx
+			attrs: [
+				StructAttribute{
+					name: 'unique'
+				},
+			]
+		},
+		orm.TableField{
+			name: 'abc'
+			typ: ast.i64_type_idx
+			default_val: '6754'
+		},
+	], sql_type_from_v, false) or { panic(err) }
+	assert unique_query == "CREATE TABLE IF NOT EXISTS 'test_table' ('id' SERIAL DEFAULT 10, 'test' TEXT, 'abc' INT64 DEFAULT 6754, PRIMARY KEY('id'), UNIQUE('test'));"
+
+	mult_unique_query := orm.orm_table_gen('test_table', "'", true, 0, [
+		orm.TableField{
+			name: 'id'
+			typ: ast.int_type_idx
+			default_val: '10'
+			attrs: [
+				StructAttribute{
+					name: 'primary'
+				},
+				StructAttribute{
+					name: 'sql'
+					has_arg: true
+					arg: 'serial'
+					kind: .plain
+				},
+			]
+		},
+		orm.TableField{
+			name: 'test'
+			typ: ast.string_type_idx
+			attrs: [
+				StructAttribute{
+					name: 'unique'
+					has_arg: true
+					arg: 'test'
+					kind: .string
+				},
+			]
+		},
+		orm.TableField{
+			name: 'abc'
+			typ: ast.i64_type_idx
+			default_val: '6754'
+			attrs: [
+				StructAttribute{
+					name: 'unique'
+					has_arg: true
+					arg: 'test'
+					kind: .string
+				},
+			]
+		},
+	], sql_type_from_v, false) or { panic(err) }
+	assert mult_unique_query == "CREATE TABLE IF NOT EXISTS 'test_table' ('id' SERIAL DEFAULT 10, 'test' TEXT, 'abc' INT64 DEFAULT 6754, /* test */UNIQUE('test', 'abc'), PRIMARY KEY('id'));"
 }
 
 fn sql_type_from_v(typ int) ?string {

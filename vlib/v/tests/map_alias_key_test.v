@@ -2,7 +2,7 @@ type Type = int
 type RType = rune
 
 fn test_map_key_alias() {
-	mut m_int := map{
+	mut m_int := {
 		12: '12'
 		2:  '2'
 	}
@@ -10,7 +10,7 @@ fn test_map_key_alias() {
 	m_int[Type(15)] = '15'
 	assert m_int.str() == "{12: '12', 2: '2', 14: '14', 15: '15'}"
 	//// /// ///// //
-	mut m_rune := map{
+	mut m_rune := {
 		`a`: '12'
 		`l`: '14'
 	}
@@ -20,13 +20,13 @@ fn test_map_key_alias() {
 }
 
 fn test_map_alias_key_init() {
-	m_int := map{
+	m_int := {
 		Type(12): '12'
 		Type(2):  '2'
 	}
 	assert m_int.str() == "{12: '12', 2: '2'}"
 	//// // ///// //
-	m_rune := map{
+	m_rune := {
 		RType(`a`): '12'
 		RType(`l`): '14'
 	}

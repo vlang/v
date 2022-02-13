@@ -14,7 +14,7 @@ vlib/v/checker/tests/for_in_mut_val_type.vv:7:15: error: `a2` is immutable, it c
     9 |     }
 vlib/v/checker/tests/for_in_mut_val_type.vv:11:18: error: `m` is immutable, it cannot be changed
     9 |     }
-   10 |     m := map{'aa': 1, 'bb': 2}
+   10 |     m := {'aa': 1, 'bb': 2}
    11 |     for _, mut j in m {
       |                     ^
    12 |         j *= 2
@@ -33,10 +33,17 @@ vlib/v/checker/tests/for_in_mut_val_type.vv:17:15: error: array literal is immut
       |                  ~~~~~~~~~~
    18 |         j *= 2
    19 |     }
-vlib/v/checker/tests/for_in_mut_val_type.vv:20:21: error: map literal is immutable, it cannot be changed
+vlib/v/checker/tests/for_in_mut_val_type.vv:20:18: error: map literal is immutable, it cannot be changed
    18 |         j *= 2
    19 |     }
-   20 |     for _, mut j in map{'aa': 1, 'bb': 2} {
-      |                        ~~~~~~~~~~~~~~~~~~
+   20 |     for _, mut j in {'aa': 1, 'bb': 2} {
+      |                     ~~~~~~~~~~~~~~~~~~
    21 |         j *= 2
    22 |     }
+vlib/v/checker/tests/for_in_mut_val_type.vv:30:17: error: field `a` is immutable, it cannot be changed
+   28 |
+   29 | fn foo(t Test) {
+   30 |     for mut e in t.a {
+      |                    ^
+   31 |         e = 0
+   32 |     }

@@ -60,7 +60,6 @@ struct ReservedKeywords {
 	typedef  int
 	unsigned int
 	void     int
-	volatile int
 	while    int
 }
 
@@ -120,18 +119,16 @@ fn test_at() {
 
 fn test_reserved_keywords() {
 	// Make sure we can initialize them correctly using full syntax.
-	rk_holder := ReservedKeywords{0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3}
+	rk_holder := ReservedKeywords{0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3}
 	// Test a few as it'll take too long to test all. If it's initialized
 	// correctly, other fields are also probably valid.
 	assert rk_holder.unix == 5
 	assert rk_holder.while == 3
 	rk_holder2 := ReservedKeywords{
 		inline: 9
-		volatile: 11
 	}
 	// Make sure partial initialization works too.
 	assert rk_holder2.inline == 9
-	assert rk_holder2.volatile == 11
 	assert rk_holder2.while == 0 // Zero value as not specified.
 }
 
@@ -170,7 +167,7 @@ fn test_assoc_with_vars() {
 	}
 	assert merged.a == 42
 	assert merged.b == 7
-	merged = {
+	merged = Def{
 		...def2
 		b: 9
 	}
@@ -247,6 +244,7 @@ fn test_fixed_field() {
 	//}
 }
 */
+[params]
 struct Config {
 mut:
 	n   int
@@ -278,8 +276,8 @@ fn test_struct_literal_args() {
 	foo_config(10, n: 40)
 	foo_config(40, n: 30, def: 40)
 
-	bar_config({}, 10)
-	bar_config({ def: 4 }, 4)
+	bar_config(Config{}, 10)
+	bar_config(Config{ def: 4 }, 4)
 
 	mut c_ := Config{
 		def: 10
@@ -307,7 +305,7 @@ struct Country {
 fn test_levels() {
 	_ := Country{
 		name: 'UK'
-		capital: {
+		capital: City{
 			name: 'London'
 			population: 10
 		}
@@ -376,7 +374,7 @@ fn test_fields_anon_fn_with_optional_void_return_type() {
 		}
 	}
 
-	foo.f() or { assert err.msg == 'oops' }
+	foo.f() or { assert err.msg() == 'oops' }
 
 	foo.g() or { assert false }
 }

@@ -24,7 +24,7 @@ fn new_ip6(port u16, addr [16]byte) Addr {
 		}
 	}
 
-	copy(a.addr.Ip6.addr[0..], addr[0..])
+	unsafe { vmemcpy(&a.addr.Ip6.addr[0], &addr[0], 16) }
 
 	return a
 }
@@ -39,7 +39,7 @@ fn new_ip(port u16, addr [4]byte) Addr {
 		}
 	}
 
-	copy(a.addr.Ip6.addr[0..], addr[0..])
+	unsafe { vmemcpy(&a.addr.Ip.addr[0], &addr[0], 4) }
 
 	return a
 }
@@ -66,30 +66,30 @@ const (
 )
 
 fn (a Ip) str() string {
-	buf := []byte{len: net.max_ip_len, init: 0}
+	buf := [net.max_ip_len]char{}
 
-	res := &char(C.inet_ntop(.ip, &a.addr, buf.data, buf.len))
+	res := &char(C.inet_ntop(.ip, &a.addr, &buf[0], buf.len))
 
 	if res == 0 {
 		return '<Unknown>'
 	}
 
-	saddr := buf.bytestr()
+	saddr := unsafe { cstring_to_vstring(&buf[0]) }
 	port := C.ntohs(a.port)
 
 	return '$saddr:$port'
 }
 
 fn (a Ip6) str() string {
-	buf := []byte{len: net.max_ip6_len, init: 0}
+	buf := [net.max_ip6_len]char{}
 
-	res := &char(C.inet_ntop(.ip6, &a.addr, buf.data, buf.len))
+	res := &char(C.inet_ntop(.ip6, &a.addr, &buf[0], buf.len))
 
 	if res == 0 {
 		return '<Unknown>'
 	}
 
-	saddr := buf.bytestr()
+	saddr := unsafe { cstring_to_vstring(&buf[0]) }
 	port := C.ntohs(a.port)
 
 	return '[$saddr]:$port'
@@ -131,12 +131,14 @@ pub fn resolve_addrs(addr string, family AddrFamily, @type SocketType) ?[]Addr {
 				C.memcpy(&resolved.path, addr.str, addr.len)
 			}
 
-			return [Addr{
-				f: u16(AddrFamily.unix)
-				addr: AddrData{
-					Unix: resolved
-				}
-			}]
+			return [
+				Addr{
+					f: u16(AddrFamily.unix)
+					addr: AddrData{
+						Unix: resolved
+					}
+				},
+			]
 		}
 	}
 }
@@ -162,8 +164,15 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
 	address, port := split_address(addr) ?
 
 	if addr[0] == `:` {
-		// Use in6addr_any
-		return [new_ip6(port, net.addr_ip6_any)]
+		match family {
+			.ip6 {
+				return [new_ip6(port, net.addr_ip6_any)]
+			}
+			.ip, .unspec {
+				return [new_ip(port, net.addr_ip_any)]
+			}
+			else {}
+		}
 	}
 
 	mut hints := C.addrinfo{
@@ -171,14 +180,11 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
 		// ai_socktype: int(typ)
 		// ai_flags: C.AI_PASSIVE
 	}
+	unsafe { vmemset(&hints, 0, int(sizeof(hints))) }
 	hints.ai_family = int(family)
 	hints.ai_socktype = int(typ)
 	hints.ai_flags = C.AI_PASSIVE
-	hints.ai_protocol = 0
-	hints.ai_addrlen = 0
-	hints.ai_addr = voidptr(0)
-	hints.ai_canonname = voidptr(0)
-	hints.ai_next = voidptr(0)
+
 	results := &C.addrinfo(0)
 
 	sport := '$port'
@@ -201,7 +207,18 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
 
 	for result := results; !isnil(result); result = result.ai_next {
 		match AddrFamily(result.ai_family) {
-			.ip, .ip6 {
+			.ip {
+				new_addr := Addr{
+					addr: AddrData{
+						Ip: Ip{}
+					}
+				}
+				unsafe {
+					C.memcpy(&new_addr, result.ai_addr, result.ai_addrlen)
+				}
+				addresses << new_addr
+			}
+			.ip6 {
 				new_addr := Addr{
 					addr: AddrData{
 						Ip6: Ip6{}

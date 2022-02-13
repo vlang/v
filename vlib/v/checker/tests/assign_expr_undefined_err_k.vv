@@ -1,4 +1,4 @@
 fn main() {
-	mut a := map{'one': a}
+	mut a := {'one': a}
 	println(a)
 }

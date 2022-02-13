@@ -2,6 +2,7 @@ import gg
 import gx
 import sokol.sapp
 import sokol.sgl
+import sokol.gfx
 import x.ttf
 import os
 
@@ -11,8 +12,8 @@ const (
 	win_height = 700
 	bg_color   = gx.white
 	font_paths = [
-		os.resource_abs_path('Imprima-Regular.ttf'),
-		os.resource_abs_path('Graduate-Regular.ttf'),
+		os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'Imprima-Regular.ttf')),
+		os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'Graduate-Regular.ttf')),
 	]
 )
 
@@ -20,7 +21,7 @@ const (
 struct App_data {
 pub mut:
 	gg              &gg.Context
-	sg_img          C.sg_image
+	sg_img          gfx.Image
 	init_flag       bool
 	frame_c         int
 	tf              []ttf.TTF_File
@@ -99,7 +100,7 @@ But Vwill prevail for sure, V is the way!!
 			txt1.create_texture()
 			r := app.mouse_x % 255
 			g := app.mouse_y % 255
-			color := u32(r << 24) | u32(g << 16) | 0xFF
+			color := u32(r) << 24 | u32(g) << 16 | 0xFF
 			txt1.bmp.color = color
 			txt1.draw_text_bmp(app.gg, app.mouse_x, app.mouse_y)
 		}

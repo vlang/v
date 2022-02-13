@@ -1,4 +1,4 @@
-vlib/v/checker/tests/generics_method_receiver_type_err.vv:6:11: error: receiver must specify the generic type names, e.g. Foo<T>
+vlib/v/checker/tests/generics_method_receiver_type_err.vv:6:11: error: generic struct in fn declaration must specify the generic type names, e.g. Foo<T>
     4 | }
     5 |
     6 | pub fn (x Node) str() string {

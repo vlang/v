@@ -9,10 +9,10 @@ for _ in 0 .. 3 {
 }
 
 println('\nMaking dir "v_script_dir".')
-mkdir('v_script_dir')
+mkdir('v_script_dir') ?
 
 println("\nEntering into v_script_dir and listing it's files.")
-chdir('v_script_dir')
+chdir('v_script_dir') ?
 files := ls('.') or { panic(err.msg) }
 println(files)
 
@@ -24,9 +24,9 @@ again_ls := ls('.') or { panic(err.msg) }
 println(again_ls)
 
 println('\nRemoving foo.txt and v_script_dir')
-rm('foo.txt')
-chdir('../')
-rmdir('v_script_dir')
+rm('foo.txt') ?
+chdir('../') ?
+rmdir('v_script_dir') ?
 
 print('\nDoes v_script_dir still exist? ')
 println(exists('v_script_dir'))

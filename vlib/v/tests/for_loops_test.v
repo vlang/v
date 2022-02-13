@@ -4,16 +4,16 @@ const (
 
 fn test_for_char_in() {
 	mut sum := 0
-	for char in nums {
-		sum += char
+	for ch in nums {
+		sum += ch
 	}
 	assert sum == 6
 }
 
 fn test_for_char_in_range() {
 	mut sum := 0
-	for char in 0 .. nums.len {
-		sum += nums[char]
+	for ch in 0 .. nums.len {
+		sum += nums[ch]
 	}
 	assert sum == 6
 }
@@ -28,8 +28,8 @@ fn test_for_blank_in_range() {
 
 fn test_for_char_complex() {
 	mut sum := 0
-	for char := 0; char < nums.len; char++ {
-		sum += nums[char]
+	for ch := 0; ch < nums.len; ch++ {
+		sum += nums[ch]
 	}
 	assert sum == 6
 }
@@ -37,14 +37,14 @@ fn test_for_char_complex() {
 fn test_for_char_in_string() {
 	s := 'abcd'
 	mut sum := 0
-	for char in s {
-		sum += char
+	for ch in s {
+		sum += ch
 	}
 	assert sum == 394 // ascii codes of `a` + `b` + `c` + `d`
 }
 
 fn test_for_string_in_map() {
-	m := map{
+	m := {
 		'a': 'b'
 		'c': 'd'
 	}
@@ -54,7 +54,7 @@ fn test_for_string_in_map() {
 	}
 	assert acc == 'a: b, c: d, '
 
-	mut m2 := map{
+	mut m2 := {
 		'a': 3
 		'b': 4
 		'c': 5

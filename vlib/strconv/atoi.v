@@ -1,6 +1,6 @@
 module strconv
 
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 // TODO: use optionals, or some way to return default with error.
@@ -86,6 +86,7 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 	for i in start_index .. s.len {
 		c := s[i]
 		cl := byte_to_lower(c)
+
 		mut d := byte(0)
 		if c == `_` && base0 {
 			// underscore_ok already called

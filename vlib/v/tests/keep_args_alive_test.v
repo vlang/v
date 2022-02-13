@@ -1,3 +1,4 @@
+// vtest retry: 4
 /*
 * To verify the effect of "[keep_args_alive]", this attribute may be commented out.
 * However it is not guaranteed that then this test will fail.

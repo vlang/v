@@ -23,14 +23,12 @@ fn main() {
 	vweb.run(&App{}, port)
 }
 
-pub fn (mut app App) init_server() {
-	app.handle_static('.', false)
-}
-
 ['/users/:user']
 pub fn (mut app App) user_endpoint(user string) vweb.Result {
 	id := rand.intn(100)
-	return app.json('{"$user": $id}')
+	return app.json({
+		user: id
+	})
 }
 
 pub fn (mut app App) index() vweb.Result {

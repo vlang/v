@@ -11,6 +11,7 @@ pub enum Backend {
 	dummy
 }
 
+// PixelFormat is C.sg_pixel_format
 pub enum PixelFormat {
 	_default // value 0 reserved for default-init
 	@none
@@ -216,6 +217,7 @@ pub enum CullMode {
 	_num
 }
 
+// FaceWindin is C.sg_face_winding
 pub enum FaceWinding {
 	_facewinding_default // value 0 reserved for default-init
 	facewinding_ccw
@@ -293,5 +295,12 @@ pub enum Action {
 	clear
 	load
 	dontcare
+	_num
+}
+
+pub enum UniformLayout {
+	uniformlayout_default = 0 // value 0 reserved for default-init
+	uniformlayout_native // default: layout depends on currently active backend
+	uniformlayout_std140 // std140: memory layout according to std140
 	_num
 }

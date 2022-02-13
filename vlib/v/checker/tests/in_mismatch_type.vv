@@ -3,7 +3,7 @@ type Int = int
 fn main() {
 	a_i := [1, 2, 3]
 	a_s := ['1', '2', '3']
-	m := map{
+	m := {
 		'test': 1
 	}
 	s := 'abcd'

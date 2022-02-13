@@ -29,14 +29,8 @@ struct Range {
 	comparator_sets []ComparatorSet
 }
 
-struct InvalidComparatorCountError {
-	msg  string
-	code int
-}
-
 struct InvalidComparatorFormatError {
-	msg  string
-	code int
+	MessageError
 }
 
 fn (r Range) satisfies(ver Version) bool {

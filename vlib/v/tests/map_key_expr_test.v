@@ -1,7 +1,7 @@
 const (
 	alpha = 'a'
 	beta  = 'b'
-	m     = map{
+	m     = {
 		alpha: 'Alpha'
 		beta:  'Beta'
 	}
@@ -18,7 +18,7 @@ enum Enum {
 }
 
 const (
-	m2 = map{
+	m2 = {
 		Enum.a.str(): 'first'
 		Enum.b.str(): 'second'
 	}

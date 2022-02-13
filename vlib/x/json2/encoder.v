@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module json2
@@ -15,20 +15,21 @@ fn write_value(v Any, i int, len int, mut wr strings.Builder) {
 	if i >= len - 1 {
 		return
 	}
-	wr.write_b(`,`)
+	wr.write_byte(`,`)
 }
 
 // str returns the string representation of the `map[string]Any`.
+[manualfree]
 pub fn (flds map[string]Any) str() string {
 	mut wr := strings.new_builder(200)
-	wr.write_b(`{`)
+	wr.write_byte(`{`)
 	mut i := 0
 	for k, v in flds {
 		wr.write_string('"$k":')
 		write_value(v, i, flds.len, mut wr)
 		i++
 	}
-	wr.write_b(`}`)
+	wr.write_byte(`}`)
 	defer {
 		unsafe { wr.free() }
 	}
@@ -37,13 +38,14 @@ pub fn (flds map[string]Any) str() string {
 }
 
 // str returns the string representation of the `[]Any`.
+[manualfree]
 pub fn (flds []Any) str() string {
 	mut wr := strings.new_builder(200)
-	wr.write_b(`[`)
+	wr.write_byte(`[`)
 	for i, v in flds {
 		write_value(v, i, flds.len, mut wr)
 	}
-	wr.write_b(`]`)
+	wr.write_byte(`]`)
 	defer {
 		unsafe { wr.free() }
 	}
@@ -67,28 +69,29 @@ pub fn (f Any) json_str() string {
 		string {
 			return json_string(f)
 		}
-		int {
-			return f.str()
-		}
-		u64, i64 {
+		bool, int, u64, i64 {
 			return f.str()
 		}
 		f32 {
-			str_f32 := f.str()
-			if str_f32.ends_with('.') {
-				return '${str_f32}0'
+			$if !nofloat ? {
+				str_f32 := f.str()
+				if str_f32.ends_with('.') {
+					return '${str_f32}0'
+				}
+				return str_f32
 			}
-			return str_f32
+
+			return '0'
 		}
 		f64 {
-			str_f64 := f.str()
-			if str_f64.ends_with('.') {
-				return '${str_f64}0'
+			$if !nofloat ? {
+				str_f64 := f.str()
+				if str_f64.ends_with('.') {
+					return '${str_f64}0'
+				}
+				return str_f64
 			}
-			return str_f64
-		}
-		bool {
-			return f.str()
+			return '0'
 		}
 		map[string]Any {
 			return f.str()
@@ -150,8 +153,11 @@ fn json_string(s string) string {
 				}
 			} else if chr == `"` || chr == `/` || chr == `\\` {
 				sb.write_string('\\' + chr.ascii_str())
+			} else if int(chr) < 0x20 {
+				hex_code := chr.hex()
+				sb.write_string('\\u00$hex_code')
 			} else {
-				sb.write_b(chr)
+				sb.write_byte(chr)
 			}
 		} else {
 			slice := s[i..i + char_len]
@@ -164,7 +170,7 @@ fn json_string(s string) string {
 			} else {
 				// TODO: still figuring out what
 				// to do with more than 4 chars
-				sb.write_b(` `)
+				sb.write_byte(` `)
 			}
 			unsafe {
 				slice.free()

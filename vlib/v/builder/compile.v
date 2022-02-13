@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builder
@@ -8,18 +8,11 @@ import os
 import rand
 import v.pref
 import v.util
+import v.checker
 
-fn (mut b Builder) get_vtmp_filename(base_file_name string, postfix string) string {
-	vtmp := util.get_vtmp_folder()
-	mut uniq := ''
-	if !b.pref.reuse_tmpc {
-		uniq = '.$rand.u64()'
-	}
-	fname := os.file_name(os.real_path(base_file_name)) + '$uniq$postfix'
-	return os.real_path(os.join_path(vtmp, fname))
-}
+pub type FnBackend = fn (mut b Builder)
 
-pub fn compile(command string, pref &pref.Preferences) {
+pub fn compile(command string, pref &pref.Preferences, backend_cb FnBackend) {
 	odir := os.dir(pref.out_name)
 	// When pref.out_name is just the name of an executable, i.e. `./v -o executable main.v`
 	// without a folder component, just use the current folder instead:
@@ -29,7 +22,7 @@ pub fn compile(command string, pref &pref.Preferences) {
 	}
 	os.is_writable_folder(output_folder) or {
 		// An early error here, is better than an unclear C error later:
-		verror(err.msg)
+		verror(err.msg())
 	}
 	// Construct the V object from command line arguments
 	mut b := new_builder(pref)
@@ -38,11 +31,7 @@ pub fn compile(command string, pref &pref.Preferences) {
 		// println(pref)
 	}
 	mut sw := time.new_stopwatch()
-	match pref.backend {
-		.c { b.compile_c() }
-		.js_node, .js_freestanding, .js_browser { b.compile_js() }
-		.native { b.compile_native() }
-	}
+	backend_cb(mut b)
 	mut timers := util.get_timers()
 	timers.show_remaining()
 	if pref.is_stats {
@@ -77,15 +66,27 @@ pub fn compile(command string, pref &pref.Preferences) {
 	}
 }
 
+pub fn (mut b Builder) get_vtmp_filename(base_file_name string, postfix string) string {
+	vtmp := util.get_vtmp_folder()
+	mut uniq := ''
+	if !b.pref.reuse_tmpc {
+		uniq = '.$rand.u64()'
+	}
+	fname := os.file_name(os.real_path(base_file_name)) + '$uniq$postfix'
+	return os.real_path(os.join_path(vtmp, fname))
+}
+
 // Temporary, will be done by -autofree
 [unsafe]
 fn (mut b Builder) myfree() {
 	// for file in b.parsed_files {
 	// }
 	unsafe { b.parsed_files.free() }
+	util.free_caches()
 }
 
 fn (b &Builder) exit_on_invalid_syntax() {
+	util.free_caches()
 	// V should exit with an exit code of 1, when there are errors,
 	// even when -silent is passed in combination to -check-syntax:
 	if b.pref.only_check_syntax {
@@ -101,44 +102,72 @@ fn (b &Builder) exit_on_invalid_syntax() {
 }
 
 fn (mut b Builder) run_compiled_executable_and_exit() {
+	if b.pref.backend == .interpret {
+		// the interpreted code has already ran
+		return
+	}
 	if b.pref.skip_running {
 		return
 	}
-	if b.pref.only_check_syntax {
+	if b.pref.only_check_syntax || b.pref.check_only {
 		return
 	}
-	if b.pref.out_name.ends_with('/-') {
+	if b.pref.should_output_to_stdout() {
 		return
 	}
 	if b.pref.os == .ios {
 		panic('Running iOS apps is not supported yet.')
 	}
 	if b.pref.is_verbose {
-		println('============ running $b.pref.out_name ============')
-	}
-	mut exefile := os.real_path(b.pref.out_name)
-	mut cmd := '"$exefile"'
-	if b.pref.backend.is_js() {
-		exefile = os.real_path('${b.pref.out_name}.js')
-		cmd = 'node "$exefile"'
-	}
-	for arg in b.pref.run_args {
-		// Determine if there are spaces in the parameters
-		if arg.index_byte(` `) > 0 {
-			cmd += ' "' + arg + '"'
-		} else {
-			cmd += ' ' + arg
-		}
-	}
-	if b.pref.is_verbose {
-		println('command to run executable: $cmd')
 	}
 	if b.pref.is_test || b.pref.is_run {
-		ret := os.system(cmd)
-		b.cleanup_run_executable_after_exit(exefile)
+		compiled_file := os.real_path(b.pref.out_name)
+		run_file := if b.pref.backend.is_js() {
+			node_basename := $if windows { 'node.exe' } $else { 'node' }
+			os.find_abs_path_of_executable(node_basename) or {
+				panic('Could not find `node` in system path. Do you have Node.js installed?')
+			}
+		} else {
+			compiled_file
+		}
+		mut run_args := []string{cap: b.pref.run_args.len + 1}
+		if b.pref.backend.is_js() {
+			run_args << compiled_file
+		}
+		run_args << b.pref.run_args
+		mut run_process := os.new_process(run_file)
+		run_process.set_args(run_args)
+		if b.pref.is_verbose {
+			println('running $run_process.filename with arguments $run_process.args')
+		}
+		// Ignore sigint and sigquit while running the compiled file,
+		// so ^C doesn't prevent v from deleting the compiled file.
+		// See also https://git.musl-libc.org/cgit/musl/tree/src/process/system.c
+		prev_int_handler := os.signal_opt(.int, eshcb) or { serror('set .int', err) }
+		mut prev_quit_handler := os.SignalHandler(eshcb)
+		$if !windows { // There's no sigquit on windows
+			prev_quit_handler = os.signal_opt(.quit, eshcb) or { serror('set .quit', err) }
+		}
+		run_process.wait()
+		os.signal_opt(.int, prev_int_handler) or { serror('restore .int', err) }
+		$if !windows {
+			os.signal_opt(.quit, prev_quit_handler) or { serror('restore .quit', err) }
+		}
+		ret := run_process.code
+		run_process.close()
+		b.cleanup_run_executable_after_exit(compiled_file)
 		exit(ret)
 	}
 	exit(0)
+}
+
+fn eshcb(_ os.Signal) {
+}
+
+[noreturn]
+fn serror(reason string, e IError) {
+	eprintln('could not $reason handler')
+	panic(e)
 }
 
 fn (mut v Builder) cleanup_run_executable_after_exit(exefile string) {
@@ -147,13 +176,13 @@ fn (mut v Builder) cleanup_run_executable_after_exit(exefile string) {
 		return
 	}
 	v.pref.vrun_elog('remove run executable: $exefile')
-	os.rm(exefile) or { panic(err) }
+	os.rm(exefile) or {}
 }
 
 // 'strings' => 'VROOT/vlib/strings'
 // 'installed_mod' => '~/.vmodules/installed_mod'
 // 'local_mod' => '/path/to/current/dir/local_mod'
-fn (mut v Builder) set_module_lookup_paths() {
+pub fn (mut v Builder) set_module_lookup_paths() {
 	// Module search order:
 	// 0) V test files are very commonly located right inside the folder of the
 	// module, which they test. Adding the parent folder of the module folder
@@ -184,16 +213,10 @@ fn (mut v Builder) set_module_lookup_paths() {
 }
 
 pub fn (v Builder) get_builtin_files() []string {
-	/*
-	// if v.pref.build_mode == .build_module && v.pref.path == 'vlib/builtin' { // .contains('builtin/' +  location {
-	if v.pref.build_mode == .build_module && v.pref.path == 'vlib/strconv' { // .contains('builtin/' +  location {
-		// We are already building builtin.o, no need to import them again
-		if v.pref.is_verbose {
-			println('skipping builtin modules for builtin.o')
-		}
+	if v.pref.no_builtin {
+		v.log('v.pref.no_builtin is true, get_builtin_files == []')
 		return []
 	}
-	*/
 	v.log('v.pref.lookup_path: $v.pref.lookup_path')
 	// Lookup for built-in folder in lookup path.
 	// Assumption: `builtin/` folder implies usable implementation of builtin
@@ -223,7 +246,8 @@ pub fn (v Builder) get_builtin_files() []string {
 }
 
 pub fn (v &Builder) get_user_files() []string {
-	if v.pref.path in ['vlib/builtin', 'vlib/strconv', 'vlib/strings', 'vlib/hash'] {
+	if v.pref.path in ['vlib/builtin', 'vlib/strconv', 'vlib/strings', 'vlib/hash']
+		|| v.pref.path.ends_with('vlib/builtin') {
 		// This means we are building a builtin module with `v build-module vlib/strings` etc
 		// get_builtin_files() has already added the files in this module,
 		// do nothing here to avoid duplicate definition errors.
@@ -251,10 +275,30 @@ pub fn (v &Builder) get_user_files() []string {
 		user_files << os.join_path(preludes_path, 'live_shared.v')
 	}
 	if v.pref.is_test {
-		user_files << os.join_path(preludes_path, 'tests_assertions.v')
+		user_files << os.join_path(preludes_path, 'test_runner.v')
+		//
+		mut v_test_runner_prelude := os.getenv('VTEST_RUNNER')
+		if v.pref.test_runner != '' {
+			v_test_runner_prelude = v.pref.test_runner
+		}
+		if v_test_runner_prelude == '' {
+			v_test_runner_prelude = 'normal'
+		}
+		if !v_test_runner_prelude.contains('/') && !v_test_runner_prelude.contains('\\')
+			&& !v_test_runner_prelude.ends_with('.v') {
+			v_test_runner_prelude = os.join_path(preludes_path, 'test_runner_${v_test_runner_prelude}.v')
+		}
+		if !os.is_file(v_test_runner_prelude) || !os.is_readable(v_test_runner_prelude) {
+			eprintln('test runner error: File $v_test_runner_prelude should be readable.')
+			verror('supported test runners are: tap, json, simple, normal')
+		}
+		user_files << v_test_runner_prelude
 	}
 	if v.pref.is_test && v.pref.is_stats {
 		user_files << os.join_path(preludes_path, 'tests_with_stats.v')
+	}
+	if v.pref.backend.is_js() && v.pref.is_stats && v.pref.is_test {
+		user_files << os.join_path(preludes_path, 'stats_import.js.v')
 	}
 	if v.pref.is_prof {
 		user_files << os.join_path(preludes_path, 'profiled_program.v')
@@ -262,8 +306,8 @@ pub fn (v &Builder) get_user_files() []string {
 	is_test := v.pref.is_test
 	mut is_internal_module_test := false
 	if is_test {
-		tcontent := os.read_file(dir) or { verror('$dir does not exist') }
-		slines := tcontent.trim_space().split_into_lines()
+		tcontent := util.read_file(dir) or { verror('$dir does not exist') }
+		slines := tcontent.split_into_lines()
 		for sline in slines {
 			line := sline.trim_space()
 			if line.len > 2 {

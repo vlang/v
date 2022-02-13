@@ -6,9 +6,18 @@ import os {
 	user_os,
 }
 import mod {
+	AliasTarget,
 	Enum,
+	FnAliasParam,
+	FnAliasRet,
 	FnArg,
+	FnArgGeneric,
+	FnArgTypeParam1,
+	FnArgTypeParam2,
 	FnRet,
+	FnRetGeneric,
+	FnRetTypeParam1,
+	FnRetTypeParam2,
 	InterfaceField,
 	InterfaceMethodArg,
 	InterfaceMethodRet,
@@ -16,19 +25,34 @@ import mod {
 	RightOfIs,
 	StructEmbed,
 	StructField,
+	StructMapFieldKey,
+	StructMapFieldValue,
 	StructMethodArg,
+	StructMethodArgGeneric,
 	StructMethodRet,
+	StructMethodRetGeneric,
 	StructRefField,
+	SumVariant1,
+	SumVariant2,
 }
+
+type Alias = AliasTarget
+type SumType = SumVariant1 | SumVariant2
+type Fn = fn (FnAliasParam) FnAliasRet
 
 struct Struct {
 	StructEmbed
 	v   StructField
 	ref &StructRefField
+	map map[StructMapFieldKey]StructMapFieldValue
 }
 
 fn (s Struct) method(v StructMethodArg) StructMethodRet {
-	return {}
+	return StructMethodRet{}
+}
+
+fn (s Struct) method_generic<T>(v StructMethodArgGeneric<T>) StructMethodRetGeneric<T> {
+	return StructMethodRet<T>{}
 }
 
 interface Interface {
@@ -43,7 +67,13 @@ fn f(v FnArg) FnRet {
 
 	println(Enum.val)
 
-	return {}
+	return FnRet{}
+}
+
+fn f2(v Generic<FnArgTypeParam1, FnArgTypeParam2>) Generic<FnRetTypeParam1, FnRetTypeParam2> {}
+
+fn f_generic<T>(v FnArgGeneric<T>) FnRetGeneric<T> {
+	return FnRetGeneric<T>{}
 }
 
 struct App {

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/array_pop_immutable_err.vv:5:2: error: `a` is immutable, declare it with `mut` to make it mutable
+    3 |     dump(a)
+    4 |
+    5 |     a.pop()
+      |     ^
+    6 |     dump(a)
+    7 | }

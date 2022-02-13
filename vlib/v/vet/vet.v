@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module vet
 
@@ -27,10 +27,10 @@ pub mut:
 	kind ErrorKind [required]
 pub:
 	// General message
-	message   string         [required]
-	details   string // Details about how to resolve or fix the situation
-	file_path string // file where the error have origin
-	pos       token.Position // position in the file
-	fix       FixKind        [required]
-	typ       ErrorType      [required]
+	message   string    [required]
+	details   string    // Details about how to resolve or fix the situation
+	file_path string    // file where the error have origin
+	pos       token.Pos // position in the file
+	fix       FixKind   [required]
+	typ       ErrorType [required]
 }

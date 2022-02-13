@@ -21,14 +21,14 @@ fn test_vexe() {
 }
 
 fn test_can_compile_library() {
-	os.chdir(cfolder)
+	os.chdir(cfolder) or {}
 	os.rm(library_file_name) or {}
 	v_compile('-d no_backtrace -o library -shared modules/library/library.v')
 	assert os.is_file(library_file_name)
 }
 
 fn test_can_compile_main_program() {
-	os.chdir(cfolder)
+	os.chdir(cfolder) or {}
 	assert os.is_file(library_file_name)
 	result := v_compile('run use.v')
 	// dump(result)
@@ -37,7 +37,7 @@ fn test_can_compile_main_program() {
 }
 
 fn test_can_compile_and_use_library_with_skip_unused() {
-	os.chdir(cfolder)
+	os.chdir(cfolder) or {}
 	os.rm(library_file_name) or {}
 	v_compile('-skip-unused -d no_backtrace -o library -shared modules/library/library.v')
 	assert os.is_file(library_file_name)
@@ -47,7 +47,7 @@ fn test_can_compile_and_use_library_with_skip_unused() {
 }
 
 fn v_compile(vopts string) os.Result {
-	cmd := '"$vexe" -showcc $vopts'
+	cmd := '${os.quoted_path(vexe)} -showcc $vopts'
 	// dump(cmd)
 	res := os.execute_or_exit(cmd)
 	// dump(res)

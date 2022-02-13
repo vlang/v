@@ -4,9 +4,11 @@ import os
 import term
 import time
 
-const vexe = os.getenv('VEXE')
+const vexe_path = os.getenv('VEXE')
 
-const vroot = os.dir(vexe)
+const vroot = os.dir(vexe_path)
+
+const vexe = os.quoted_path(vexe_path)
 
 const args_string = os.args[1..].join(' ')
 
@@ -40,6 +42,13 @@ fn main() {
 	}
 }
 
+enum RunCommandKind {
+	system
+	execute
+}
+
+const expect_nothing = '<nothing>'
+
 struct Command {
 mut:
 	line   string
@@ -48,6 +57,9 @@ mut:
 	okmsg  string
 	errmsg string
 	rmfile string
+	runcmd RunCommandKind = .system
+	expect string = expect_nothing
+	output string
 }
 
 fn get_all_commands() []Command {
@@ -64,8 +76,57 @@ fn get_all_commands() []Command {
 	}
 	$if linux || macos {
 		res << Command{
+			line: '$vexe run examples/hello_world.v'
+			okmsg: 'V can run hello world.'
+			runcmd: .execute
+			expect: 'Hello, World!\n'
+		}
+		res << Command{
+			line: '$vexe interpret examples/hello_world.v'
+			okmsg: 'V can interpret hello world.'
+			runcmd: .execute
+			expect: 'Hello, World!\n'
+		}
+		res << Command{
 			line: '$vexe -o - examples/hello_world.v | grep "#define V_COMMIT_HASH" > /dev/null'
 			okmsg: 'V prints the generated source code to stdout with `-o -` .'
+		}
+		res << Command{
+			line: '$vexe run examples/v_script.vsh > /dev/null'
+			okmsg: 'V can run the .VSH script file examples/v_script.vsh'
+		}
+		$if linux {
+			res << Command{
+				line: '$vexe -b native run examples/native/hello_world.v > /dev/null'
+				okmsg: 'V compiles and runs examples/native/hello_world.v on the native backend for linux'
+			}
+		}
+		// only compilation:
+		res << Command{
+			line: '$vexe -os linux -b native -o hw.linux examples/hello_world.v'
+			okmsg: 'V compiles hello_world.v on the native backend for linux'
+			rmfile: 'hw.linux'
+		}
+		res << Command{
+			line: '$vexe -os macos -b native -o hw.macos examples/hello_world.v'
+			okmsg: 'V compiles hello_world.v on the native backend for macos'
+			rmfile: 'hw.macos'
+		}
+		res << Command{
+			line: '$vexe -os windows -b native -o hw.exe examples/hello_world.v'
+			okmsg: 'V compiles hello_world.v on the native backend for windows'
+			rmfile: 'hw.exe'
+		}
+		//
+		res << Command{
+			line: '$vexe -b js -o hw.js examples/hello_world.v'
+			okmsg: 'V compiles hello_world.v on the JS backend'
+			rmfile: 'hw.js'
+		}
+		res << Command{
+			line: '$vexe -skip-unused -b js -o hw_skip_unused.js examples/hello_world.v'
+			okmsg: 'V compiles hello_world.v on the JS backend, with -skip-unused'
+			rmfile: 'hw_skip_unused.js'
 		}
 	}
 	res << Command{
@@ -99,6 +160,12 @@ fn get_all_commands() []Command {
 			okmsg: 'V can compile with -freestanding on Linux with GCC.'
 			rmfile: 'bel'
 		}
+
+		res << Command{
+			line: '$vexe -cc gcc -keepc -freestanding -o str_array vlib/strconv/bare/str_array_example.v'
+			okmsg: 'V can compile & allocate memory with -freestanding on Linux with GCC.'
+			rmfile: 'str_array'
+		}
 	}
 	res << Command{
 		line: '$vexe $vargs -progress test-cleancode'
@@ -129,6 +196,11 @@ fn get_all_commands() []Command {
 		line: '$vexe install nedpals.args'
 		okmsg: '`v install` works.'
 	}
+	res << Command{
+		line: '$vexe -usecache -cg examples/hello_world.v'
+		okmsg: '`v -usecache -cg` works.'
+		rmfile: 'examples/hello_world'
+	}
 	// NB: test that a program that depends on thirdparty libraries with its
 	// own #flags (tetris depends on gg, which uses sokol) can be compiled
 	// with -usecache:
@@ -138,8 +210,9 @@ fn get_all_commands() []Command {
 		rmfile: 'examples/tetris/tetris'
 	}
 	$if macos || linux {
+		ipath := '$vroot/thirdparty/stdatomic/nix'
 		res << Command{
-			line: '$vexe -o v.c cmd/v && cc -Werror v.c && rm -rf a.out'
+			line: '$vexe -o v.c cmd/v && cc -Werror -I ${os.quoted_path(ipath)} v.c -lpthread -lm && rm -rf a.out'
 			label: 'v.c should be buildable with no warnings...'
 			okmsg: 'v.c can be compiled without warnings. This is good :)'
 			rmfile: 'v.c'
@@ -151,15 +224,41 @@ fn get_all_commands() []Command {
 fn (mut cmd Command) run() {
 	// Changing the current directory is needed for some of the compiler tests,
 	// vlib/v/tests/local_test.v and vlib/v/tests/repl/repl_test.v
-	os.chdir(vroot)
+	os.chdir(vroot) or {}
 	if cmd.label != '' {
 		println(term.header_left(cmd.label, '*'))
 	}
 	sw := time.new_stopwatch()
-	cmd.ecode = os.system(cmd.line)
+	if cmd.runcmd == .system {
+		cmd.ecode = os.system(cmd.line)
+		cmd.output = ''
+	}
+	if cmd.runcmd == .execute {
+		res := os.execute(cmd.line)
+		cmd.ecode = res.exit_code
+		cmd.output = res.output
+	}
 	spent := sw.elapsed().milliseconds()
-	println('> Running: "$cmd.line" took: $spent ms ... ' +
-		if cmd.ecode != 0 { term.failed('FAILED') } else { term_highlight('OK') })
+	//
+	mut is_failed := false
+	if cmd.ecode != 0 {
+		is_failed = true
+	}
+	if cmd.expect != expect_nothing {
+		if cmd.output != cmd.expect {
+			is_failed = true
+		}
+	}
+	//
+	run_label := if is_failed { term.failed('FAILED') } else { term_highlight('OK') }
+	println('> Running: "$cmd.line" took: $spent ms ... $run_label')
+	//
+	if is_failed && cmd.expect != expect_nothing {
+		if cmd.output != cmd.expect {
+			eprintln('> expected:\n$cmd.expect')
+			eprintln('>   output:\n$cmd.output')
+		}
+	}
 	if vtest_nocleanup {
 		return
 	}

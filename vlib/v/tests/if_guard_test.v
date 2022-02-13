@@ -26,7 +26,7 @@ fn test_fn_return_empty() {
 }
 
 fn test_map_get() {
-	mut m := map{
+	mut m := {
 		'xy': 5
 		'zu': 7
 	}
@@ -42,7 +42,7 @@ fn test_map_get() {
 }
 
 fn test_map_get_empty() {
-	mut m := map{
+	mut m := {
 		'xy': 5
 		'zu': 7
 	}
@@ -106,21 +106,28 @@ fn test_chan_pop_empty() {
 }
 
 struct Thing {
-	name string
+mut:
+	value int
 }
 
-fn test_return_if_guard() {
-	ret := option_check('zoo')
-	println(ret)
-	assert ret == 'zs'
+fn maybe_a_thing() ?Thing {
+	return Thing{
+		value: 1
+	}
 }
 
-fn option_check(name string) string {
-	return if thing := find_thing_by_name(name) { thing.name } else { 'safename' }
-}
+fn test_if_guard() {
+	if val := maybe_a_thing() {
+		assert val.value == 1
+	} else {
+		assert false
+	}
 
-fn find_thing_by_name(name string) ?&Thing {
-	return &Thing{
-		name: 'zs'
+	if mut val := maybe_a_thing() {
+		assert val.value == 1
+		val.value = 2
+		assert val.value == 2
+	} else {
+		assert false
 	}
 }

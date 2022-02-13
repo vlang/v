@@ -105,7 +105,7 @@ pub fn (db Connection) delete(table string, where orm.QueryData) ? {
 }
 
 pub fn (db Connection) last_id() orm.Primitive {
-	query := 'SELECT last_insert_rowid();'
+	query := 'SELECT last_insert_id();'
 	id := db.query(query) or {
 		Result{
 			result: 0
@@ -256,7 +256,7 @@ fn mysql_type_from_v(typ int) ?string {
 		6, 10 {
 			'SMALLINT'
 		}
-		7, 11 {
+		7, 11, orm.time {
 			'INT'
 		}
 		8, 12 {

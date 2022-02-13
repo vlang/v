@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module fmt
@@ -57,6 +57,10 @@ fn (mut f Fmt) asm_arg(arg ast.AsmArg) {
 			f.write(arg)
 		}
 		ast.AsmAddressing {
+			if arg.segment != '' {
+				f.write(arg.segment)
+				f.write(':')
+			}
 			f.write('[')
 			base := arg.base
 			index := arg.index

@@ -1,51 +1,126 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module strings
 
+/*
 pub struct Builder {
 mut:
 	buf []byte
 pub mut:
 	len          int
 	initial_size int = 1
-}
+}*/
+
+pub type Builder = []byte
 
 pub fn new_builder(initial_size int) Builder {
-	return Builder{
-		buf: make(0, initial_size, sizeof(byte))
-		initial_size: initial_size
+	return []byte{cap: initial_size}
+}
+
+[deprecated: 'Use write_byte() instead']
+pub fn (mut b Builder) write_b(data byte) {
+	b << data
+}
+
+pub fn (mut b Builder) write_byte(data byte) {
+	b << data
+}
+
+pub fn (mut b Builder) write(data []byte) ?int {
+	if data.len == 0 {
+		return 0
+	}
+	b << data
+	return data.len
+}
+
+pub fn (b &Builder) byte_at(n int) byte {
+	unsafe {
+		return b[n]
 	}
 }
 
-pub fn (mut b Builder) write_b(data byte) {
-	b.buf << data
-	b.len++
-}
-
 pub fn (mut b Builder) write_string(s string) {
-	b.buf.push_many(s.str, s.len)
-	// b.buf << []byte(s)  // TODO
-	b.len += s.len
+	if s.len == 0 {
+		return
+	}
+
+	for c in s {
+		b << c
+	}
 }
 
 pub fn (mut b Builder) writeln(s string) {
-	b.buf.push_many(s.str, s.len)
-	// b.buf << []byte(s)  // TODO
-	b.buf << `\n`
-	b.len += s.len + 1
+	if s.len > 0 {
+		b.write_string(s)
+	}
+
+	b << 10
 }
 
-pub fn (b Builder) str() string {
-	x := &byte(b.buf.data)
-	return unsafe { x.vstring_with_len(b.len) }
+pub fn (mut b Builder) str() string {
+	s := ''
+
+	#for (const c of b.val.arr.arr)
+	#s.str += String.fromCharCode(+c)
+	b.trim(0)
+	return s
 }
 
-pub fn (mut b Builder) cut(n int) {
-	b.len -= n
+pub fn (mut b Builder) cut_last(n int) string {
+	cut_pos := b.len - n
+	x := b[cut_pos..]
+	res := x.bytestr()
+	b.trim(cut_pos)
+	return res
 }
 
-pub fn (mut b Builder) free() {
-	b.buf = make(0, b.initial_size, 1)
-	b.len = 0
+pub fn (mut b Builder) go_back_to(pos int) {
+	b.trim(pos)
+}
+
+// go_back discards the last `n` bytes from the buffer
+pub fn (mut b Builder) go_back(n int) {
+	b.trim(b.len - n)
+}
+
+// cut_to cuts the string after `pos` and returns it.
+// if `pos` is superior to builder length, returns an empty string
+// and cancel further operations
+pub fn (mut b Builder) cut_to(pos int) string {
+	if pos > b.len {
+		return ''
+	}
+	return b.cut_last(b.len - pos)
+}
+
+pub fn (mut b Builder) write_runes(runes []rune) {
+	for r in runes {
+		res := r.str()
+		#res.str = String.fromCharCode(r.val)
+		b << res.bytes()
+	}
+}
+
+// after(6) returns 'world'
+// buf == 'hello world'
+pub fn (mut b Builder) after(n int) string {
+	if n >= b.len {
+		return ''
+	}
+
+	x := b.slice(n, b.len)
+	return x.bytestr()
+}
+
+// last_n(5) returns 'world'
+// buf == 'hello world'
+pub fn (b &Builder) last_n(n int) string {
+	if n >= b.len {
+		return ''
+	}
+
+	x := b.slice(b.len - n, b.len)
+	return x.bytestr()
 }

@@ -1,0 +1,104 @@
+name: Path Testing CI
+
+on:
+  push:
+    paths-ignore:
+      - "**.md"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+
+concurrency:
+  group: build-paths-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+
+  space-paths-linux:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 30
+    env:
+      MY_V_PATH: '你好 my $path, @с интервали'
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          path: ${{env.MY_V_PATH}}
+      - name: Build V
+        run: |
+          echo '${{env.MY_V_PATH}}'
+          ls -la
+          cd '${{env.MY_V_PATH}}'
+          ls -la
+          make
+      - name: v doctor
+        run: |
+          cd '${{env.MY_V_PATH}}'
+          ./v doctor
+      - name: v tests
+        run: |
+          cd '${{env.MY_V_PATH}}'
+          ./v test vlib/builtin vlib/os
+
+  space-paths-macos:
+    runs-on: macOS-latest
+    timeout-minutes: 30
+    env:
+      MY_V_PATH: '你好 my $path, @с интервали'
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          path: ${{env.MY_V_PATH}}
+      - name: Build V
+        run: |
+          echo '${{env.MY_V_PATH}}'
+          ls -la
+          cd '${{env.MY_V_PATH}}'
+          ls -la
+          make
+          ## prebuild cmd/tools/builders/js_builder, to minimise the
+          ## chances of a sporadic "Killed" when running the tests later
+          ./v -b js run examples/hello_world.v
+      - name: v doctor
+        run: |
+          cd '${{env.MY_V_PATH}}'
+          ./v doctor
+      - name: v tests
+        run: |
+          cd '${{env.MY_V_PATH}}'
+          ./v test vlib/builtin vlib/os
+
+  space-paths-windows:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    env:
+      MY_V_PATH: 'path with some $punctuation, and some spaces'
+
+      ## NB: the following paths do not work for now:
+      ##### MY_V_PATH: '你好 my $path, @с интервали'
+      ##### MY_V_PATH: 'path with some $punctuation, and some spaces '
+      ## tcc has a problem interpreting paths with non latin letters in them,
+      ## by default, but that can be solved with passing -Bthirdparty/tcc
+      ## but after that V fails self building with:
+      ####### builder error: cannot write to folder
+      ####### D:\a\v\v\你好 my $path, @с интервали: No such file or directory
+      ## and that happens even for gcc builds, not just tcc ones
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          path: ${{env.MY_V_PATH}}
+      - name: Build V
+        run: |
+          echo '${{env.MY_V_PATH}}'
+          dir
+          cd '${{env.MY_V_PATH}}'
+          dir
+          .\make.bat -tcc
+      - name: v doctor
+        run: |
+          cd '${{env.MY_V_PATH}}'
+          ./v doctor
+      - name: v tests
+        run: |
+          cd '${{env.MY_V_PATH}}'
+          ./v test vlib/builtin vlib/os

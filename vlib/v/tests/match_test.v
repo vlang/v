@@ -193,7 +193,9 @@ fn (a Alfa) letter() rune {
 struct Bravo {
 	// A field so that Alfa and Bravo structures aren't the same
 	dummy_field int
-	char        rune = `b`
+pub mut:
+	// NB: the `char` field is not `pub` or `mut` in all sumtype variants, but using it in aggregates should still work
+	char rune = `b`
 }
 
 fn (b Bravo) letter() rune {
@@ -284,4 +286,18 @@ fn test_match_expression_add() {
 		false { 2 }
 	} + 3
 	assert a == 4
+}
+
+type LeType = int | string
+
+fn test_noreturn() {
+	t := LeType(3)
+	_ := match t {
+		int {
+			'test'
+		}
+		string {
+			exit(0)
+		}
+	}
 }

@@ -1,7 +1,6 @@
 import gg
 import gx
 import math
-import math.mathutil as mu
 import os
 import rand
 import time
@@ -563,7 +562,7 @@ fn (mut app App) resize() {
 	window_size := gg.window_size()
 	w := window_size.width
 	h := window_size.height
-	m := f32(mu.min(w, h))
+	m := f32(math.min(w, h))
 	app.ui.dpi_scale = s
 	app.ui.window_width = w
 	app.ui.window_height = h
@@ -587,13 +586,13 @@ fn (app &App) draw() {
 	xpad, ypad := app.ui.x_padding, app.ui.y_padding
 	ww := app.ui.window_width
 	wh := app.ui.window_height
-	m := mu.min(ww, wh)
+	m := math.min(ww, wh)
 	labelx := xpad + app.ui.border_size
 	labely := ypad + app.ui.border_size / 2
 	app.draw_tiles()
 	// TODO: Make transparency work in `gg`
 	if app.state == .over {
-		app.gg.draw_rect(0, 0, ww, wh, gx.rgba(10, 0, 0, 180))
+		app.gg.draw_rect_filled(0, 0, ww, wh, gx.rgba(10, 0, 0, 180))
 		app.gg.draw_text(ww / 2, (m * 4 / 10) + ypad, 'Game Over', app.label_format(.game_over))
 		f := app.label_format(.tile)
 		msg := $if android { 'Tap to restart' } $else { 'Press `r` to restart' }
@@ -604,7 +603,7 @@ fn (app &App) draw() {
 		})
 	}
 	if app.state == .victory {
-		app.gg.draw_rect(0, 0, ww, wh, gx.rgba(0, 10, 0, 180))
+		app.gg.draw_rect_filled(0, 0, ww, wh, gx.rgba(0, 10, 0, 180))
 		app.gg.draw_text(ww / 2, (m * 4 / 10) + ypad, 'Victory!', app.label_format(.victory))
 		// f := app.label_format(.tile)
 		msg1 := $if android { 'Tap to continue' } $else { 'Press `space` to continue' }
@@ -621,9 +620,9 @@ fn (app &App) draw_tiles() {
 	xstart := app.ui.x_padding + app.ui.border_size
 	ystart := app.ui.y_padding + app.ui.border_size + app.ui.header_size
 	toffset := app.ui.tile_size + app.ui.padding_size
-	tiles_size := mu.min(app.ui.window_width, app.ui.window_height) - app.ui.border_size * 2
+	tiles_size := math.min(app.ui.window_width, app.ui.window_height) - app.ui.border_size * 2
 	// Draw the padding around the tiles
-	app.gg.draw_rounded_rect(xstart, ystart, tiles_size, tiles_size, tiles_size / 24,
+	app.gg.draw_rounded_rect_filled(xstart, ystart, tiles_size, tiles_size, tiles_size / 24,
 		app.theme.padding_color)
 	// Draw the actual tiles
 	for y in 0 .. 4 {
@@ -640,7 +639,7 @@ fn (app &App) draw_tiles() {
 			th := tw // square tiles, w == h
 			xoffset := xstart + app.ui.padding_size + x * toffset + (app.ui.tile_size - tw) / 2
 			yoffset := ystart + app.ui.padding_size + y * toffset + (app.ui.tile_size - th) / 2
-			app.gg.draw_rounded_rect(xoffset, yoffset, tw, th, tw / 8, tile_color)
+			app.gg.draw_rounded_rect_filled(xoffset, yoffset, tw, th, tw / 8, tile_color)
 			if tidx != 0 { // 0 == blank spot
 				xpos := xoffset + tw / 2
 				ypos := yoffset + th / 2
@@ -683,8 +682,8 @@ fn (app &App) draw_tiles() {
 
 fn (mut app App) handle_touches() {
 	s, e := app.touch.start, app.touch.end
-	adx, ady := mu.abs(e.pos.x - s.pos.x), mu.abs(e.pos.y - s.pos.y)
-	if mu.max(adx, ady) < 10 {
+	adx, ady := math.abs(e.pos.x - s.pos.x), math.abs(e.pos.y - s.pos.y)
+	if math.max(adx, ady) < 10 {
 		app.handle_tap()
 	} else {
 		app.handle_swipe()
@@ -694,7 +693,7 @@ fn (mut app App) handle_touches() {
 fn (mut app App) handle_tap() {
 	_, ypad := app.ui.x_padding, app.ui.y_padding
 	w, h := app.ui.window_width, app.ui.window_height
-	m := mu.min(w, h)
+	m := math.min(w, h)
 	s, e := app.touch.start, app.touch.end
 	avgx, avgy := avg(s.pos.x, e.pos.x), avg(s.pos.y, e.pos.y)
 	// TODO: Replace "touch spots" with actual buttons
@@ -732,12 +731,12 @@ fn (mut app App) handle_swipe() {
 	s, e := app.touch.start, app.touch.end
 	w, h := app.ui.window_width, app.ui.window_height
 	dx, dy := e.pos.x - s.pos.x, e.pos.y - s.pos.y
-	adx, ady := mu.abs(dx), mu.abs(dy)
-	dmin := if mu.min(adx, ady) > 0 { mu.min(adx, ady) } else { 1 }
-	dmax := if mu.max(adx, ady) > 0 { mu.max(adx, ady) } else { 1 }
+	adx, ady := math.abs(dx), math.abs(dy)
+	dmin := if math.min(adx, ady) > 0 { math.min(adx, ady) } else { 1 }
+	dmax := if math.max(adx, ady) > 0 { math.max(adx, ady) } else { 1 }
 	tdiff := int(e.time.unix_time_milli() - s.time.unix_time_milli())
 	// TODO: make this calculation more accurate (don't use arbitrary numbers)
-	min_swipe_distance := int(math.sqrt(mu.min(w, h) * tdiff / 100)) + 20
+	min_swipe_distance := int(math.sqrt(math.min(w, h) * tdiff / 100)) + 20
 	if dmax < min_swipe_distance {
 		return
 	}
@@ -788,7 +787,7 @@ fn (mut app App) on_key_down(key gg.KeyCode) {
 	// these keys are independent from the game state:
 	match key {
 		.a { app.is_ai_mode = !app.is_ai_mode }
-		.escape { exit(0) }
+		.escape { app.gg.quit() }
 		.n, .r { app.new_game() }
 		.backspace { app.undo() }
 		.enter { app.next_tile_format() }
@@ -910,7 +909,7 @@ fn (mut app App) showfps() {
 fn main() {
 	mut app := &App{}
 	app.new_game()
-	mut font_path := os.resource_abs_path(os.join_path('../assets/fonts/', 'RobotoMono-Regular.ttf'))
+	mut font_path := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))
 	$if android {
 		font_path = 'fonts/RobotoMono-Regular.ttf'
 	}

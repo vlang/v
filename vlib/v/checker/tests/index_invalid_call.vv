@@ -1,0 +1,7 @@
+// fixes https://github.com/vlang/v/issues/11539 , copied example map test code from https://github.com/spytheman
+fn main() {
+	m := map[string]string
+	eprintln(m['abc']())
+	array := ["", "1"]
+	array[0]()
+}

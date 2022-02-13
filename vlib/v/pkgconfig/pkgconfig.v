@@ -10,12 +10,14 @@ const (
 		'/usr/local/lib/pkgconfig',
 		'/usr/local/share/pkgconfig',
 		'/usr/lib/x86_64-linux-gnu/pkgconfig',
+		'/usr/lib/aarch64-linux-gnu/pkgconfig',
 		'/usr/lib64/pkgconfig',
 		'/usr/lib/pkgconfig',
 		'/usr/share/pkgconfig',
-		'/opt/homebrew/lib/pkgconfig',
+		'/opt/homebrew/lib/pkgconfig', // Brew on macOS
+		'/usr/local/libdata/pkgconfig', // FreeBSD
 	]
-	version       = '0.3.1'
+	version       = '0.3.2'
 )
 
 pub struct Options {

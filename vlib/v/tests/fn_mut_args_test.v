@@ -12,7 +12,7 @@ fn test_fn_mut_args_of_array() {
 }
 
 fn init_map(mut n map[string]int) {
-	n = map{
+	n = {
 		'one': 1
 	}
 }
@@ -21,7 +21,7 @@ fn test_fn_mut_args_of_map() {
 	mut m := map[string]int{}
 	init_map(mut m)
 	println(m)
-	assert m == map{
+	assert m == {
 		'one': 1
 	}
 }
@@ -66,4 +66,24 @@ fn test_fn_mut_args_of_interface() {
 	x.add(mut Child{ data: 123 })
 	println(x.children[0].data)
 	assert x.children[0].data == 123
+}
+
+struct LinuxFile {
+}
+
+interface File {
+}
+
+fn b(parent File) {
+	println(parent)
+	assert '$parent' == 'File(LinuxFile{})'
+}
+
+fn a(mut parent File) {
+	b(parent)
+}
+
+fn test_fn_mut_args_of_interface2() {
+	mut file := LinuxFile{}
+	a(mut file)
 }

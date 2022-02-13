@@ -13,7 +13,7 @@ fn test_all() {
 	mut total_errors := 0
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
-	os.chdir(vroot)
+	os.chdir(vroot) or {}
 	diff_cmd := diff.find_working_diff_command() or { '' }
 	dir := 'vlib/v/tests/inout'
 	files := os.ls(dir) or { panic(err) }
@@ -26,26 +26,27 @@ fn test_all() {
 	for path in paths {
 		print(path + ' ')
 		program := path
-		compilation := os.execute('$vexe -o test -cflags "-w" -cg $program')
+		tname := rand.ulid()
+		compilation := os.execute('${os.quoted_path(vexe)} -o $tname -cflags "-w" -cg ${os.quoted_path(program)}')
 		if compilation.exit_code < 0 {
 			panic(compilation.output)
 		}
 		if compilation.exit_code != 0 {
 			panic('compilation failed: $compilation.output')
 		}
-		res := os.execute('./test')
+		res := os.execute('./$tname')
 		if res.exit_code < 0 {
 			println('nope')
 			panic(res.output)
 		}
 		$if windows {
-			os.rm('./test.exe') or {}
+			os.rm('./${tname}.exe') or {}
 			$if msvc {
-				os.rm('./test.ilk') or {}
-				os.rm('./test.pdb') or {}
+				os.rm('./${tname}.ilk') or {}
+				os.rm('./${tname}.pdb') or {}
 			}
 		} $else {
-			os.rm('./test') or {}
+			os.rm('./$tname') or {}
 		}
 		// println('============')
 		// println(res.output)

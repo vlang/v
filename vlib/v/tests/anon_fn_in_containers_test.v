@@ -1,5 +1,5 @@
 fn test_anon_fn_in_map() {
-	mut woop := map{
+	mut woop := {
 		'what': fn () string {
 			return 'whoopity whoop'
 		}

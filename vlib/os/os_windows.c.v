@@ -95,9 +95,9 @@ struct C._utimbuf {
 fn C._utime(&char, voidptr) int
 
 fn init_os_args_wide(argc int, argv &&byte) []string {
-	mut args_ := []string{}
+	mut args_ := []string{len: argc}
 	for i in 0 .. argc {
-		args_ << unsafe { string_from_wide(&u16(argv[i])) }
+		args_[i] = unsafe { string_from_wide(&u16(argv[i])) }
 	}
 	return args_
 }
@@ -153,6 +153,9 @@ pub fn utime(path string, actime int, modtime int) ? {
 }
 
 pub fn ls(path string) ?[]string {
+	if path.len == 0 {
+		return error('ls() expects a folder, not an empty string')
+	}
 	mut find_file_data := Win32finddata{}
 	mut dir_files := []string{}
 	// We can also check if the handle is valid. but using is_dir instead
@@ -363,7 +366,7 @@ pub fn execute(cmd string) Result {
 			break
 		}
 	}
-	soutput := read_data.str().trim_space()
+	soutput := read_data.str()
 	unsafe { read_data.free() }
 	exit_code := u32(0)
 	C.WaitForSingleObject(proc_info.h_process, C.INFINITE)
@@ -500,11 +503,9 @@ pub fn is_writable_folder(folder string) ?bool {
 	if !is_dir(folder) {
 		return error('`folder` is not a folder')
 	}
-	tmp_perm_check := join_path(folder, 'tmp_perm_check_pid_' + getpid().str())
-	mut f := open_file(tmp_perm_check, 'w+', 0o700) or {
-		return error('cannot write to folder $folder: $err')
-	}
-	f.close()
+	tmp_folder_name := 'tmp_perm_check_pid_' + getpid().str()
+	tmp_perm_check := join_path_single(folder, tmp_folder_name)
+	write_file(tmp_perm_check, 'test') or { return error('cannot write to folder "$folder": $err') }
 	rm(tmp_perm_check) ?
 	return true
 }
@@ -541,4 +542,18 @@ pub fn getegid() int {
 
 pub fn posix_set_permission_bit(path_s string, mode u32, enable bool) {
 	// windows has no concept of a permission mask, so do nothing
+}
+
+//
+
+pub fn (mut c Command) start() ? {
+	panic('not implemented')
+}
+
+pub fn (mut c Command) read_line() string {
+	panic('not implemented')
+}
+
+pub fn (mut c Command) close() ? {
+	panic('not implemented')
 }

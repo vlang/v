@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module musl
@@ -238,4 +238,10 @@ pub fn (mut rng MuslRNG) f64_in_range(min f64, max f64) f64 {
 		exit(1)
 	}
 	return min + rng.f64n(max - min)
+}
+
+// free should be called when the generator is no longer needed
+[unsafe]
+pub fn (mut rng MuslRNG) free() {
+	unsafe { free(rng) }
 }

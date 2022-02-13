@@ -35,7 +35,7 @@ see also `v help build`.
       Supported only on `linux` targets currently.
 
    -bare-builtin-dir <bare-builtin-dir>
-      Use with `-freestanding`. This specifies the directory to the 
+      Use with `-freestanding`. This specifies the directory to the
       implementation of some basic builtin functions. The list is as follows:
          bare_print(buf &byte, len u64)
             Print len charecters from the buffer pointed to by buf to stdout.
@@ -44,27 +44,27 @@ see also `v help build`.
          bare_panic(msg string)
             Print "V panic: " + msg, along with an optional backtrace and/or the V commit hash, and then exit.
          [export: 'malloc']
-         __malloc(n size_t) &C.void
+         __malloc(n usize) &C.void
             Allocates n bytes of memory and returns the pointer to the first byte
          [export: 'free']
          __free(ptr &C.void)
             Free the block of memory ptr allocated by malloc.
-         realloc(old_area &C.void, new_size size_t) &C.void
-            Allocates a new area of size new_size, copies old_area 
+         realloc(old_area &C.void, new_size usize) &C.void
+            Allocates a new area of size new_size, copies old_area
             to the new area, and returns a pointer to the new area.
          [export: 'calloc']
-         __calloc(nmemb size_t, size size_t) &C.void
+         __calloc(nmemb usize, size usize) &C.void
             Like malloc, but sets all the bytes to `0` first.
-         memcpy(dest &C.void, src &C.void, n size_t) &C.void
+         memcpy(dest &C.void, src &C.void, n usize) &C.void
             Moves n bytes from dest to src, and returns dest
-         memmove(dest &C.void, src &C.void, n size_t) &C.void
+         memmove(dest &C.void, src &C.void, n usize) &C.void
             Like memcpy, but guaranteed to work if dest and src overlap.
-         memcmp(a &C.void, b &C.void, n size_t) int
+         memcmp(a &C.void, b &C.void, n usize) int
             Compare two buffers of length n. If a and b are equal, return 0.
             Otherwise, return the difference between the first different letter.
-         strlen(s &C.void) size_t
+         strlen(s &C.void) usize
             Returns the amount of bytes until the first `0`, starting at s
-         memset(s &C.void, c int, n size_t) &C.void
+         memset(s &C.void, c int, n usize) &C.void
             Sets n bytes starting at s to c (c is casted to a char)
             and returns s.
          getchar() int
@@ -72,23 +72,23 @@ see also `v help build`.
             Print "V Panic" + msg, along with an optional backtrace, and then exit.
          vsprintf(str &char, format &char, ap va_list) int
             See `man vsprintf`.
-         vsnprintf(str &char, size size_t, format &char, ap va_list) int
+         vsnprintf(str &char, size usize, format &char, ap va_list) int
             See `man vsnprintf`.
          bare_backtrace() string
-            Return a backtrace that can be printed. If backtraces are not 
+            Return a backtrace that can be printed. If backtraces are not
             supported, return a message stating that backtraces do not work.
          [export: 'exit']
          __exit(code int)
             Exit with code code. code is allowed to be ignored.
 
-         The module decleration should be `builtin`. The default Linux 
+         The module declaration should be `builtin`. The default Linux
          implementation can be found in `vlib/builtin/linux_bare`.
 
    -os <os>, -target-os <os>
       Change the target OS that V tries to compile for.
       By default, the target OS is the host system.
       When OS is `cross`, V will attempt to output cross-platform C code.
-	  
+
       Here is a list of the operating systems, supported by V:
       (CI tests runs on every commit/PR for each of these):
             `windows`, `linux`, `macos`
@@ -119,7 +119,12 @@ see also `v help build`.
       explicitly supported platforms without source changes.
 
    -m32, -m64
-      Specify whether 32-bit or 64-bit machine code is generated.
+      Whether 32-bit or 64-bit machine code will be generated.
+      NB: if you need to produce 32-bit code, *and* you are cross compiling
+      to another OS, you may need to also set the environment variable
+      VCROSS_COMPILER_NAME, in order to override the default cross compiler,
+      that V will use (`x86_64-w64-mingw32-gcc` for targeting Windows, and
+      `clang` for targeting Linux from other operating systems).
 
    -sanitize
       Pass flags related to sanitization to the C compiler.
@@ -137,7 +142,7 @@ see also `v help build`.
       and unsafe{free(x)} calls manually in this mode).
       Some short lived applications, like compilers and other CLI tools are
       more performant without autofree.
-      
+
    -gc <mode>
       Use and link an optional garbage collector. Only the Boehm–Demers–Weiser
       garbage collector is supported currently with the following sub-options:
@@ -152,12 +157,15 @@ see also `v help build`.
       You need to install a `libgc-dev` package first, or install it manually from:
 
           https://github.com/ivmai/bdwgc
-          
+
+      On Mac OS, it can be installed using homebrew (https://homebrew.sh/) with
+      `brew install libgc`.
+
       Note, `-gc boehm` is complementary to -autofree. The Boehm garbage
       collector is conservative, and it may make your program significantly
       slower if it does many small allocations in a loop. This option
       is intended *mainly* for reducing the memory usage of programs, that
-      process large amounts of text in *batch mode* on low/limited memory 
+      process large amounts of text in *batch mode* on low/limited memory
       environments like small VPSes, and for which a few ms of garbage
       collection pauses from time to time *do not matter much*.
 
@@ -182,7 +190,11 @@ see also `v help build`.
       this loop is very short usually.
 
    -compress
-      Strip the compiled executable to compress it.
+      Compress the compiled executable with UPX.
+	  Note: `upx` should be installed beforehand.
+	  In most Linux distros it is in a package named `upx-ucl`.
+	  On macOS, you can install it with `brew install upx`.
+	  On Windows, you can download it from https://upx.github.io/ .
 
    -live
       Build the executable with live capabilities (`[live]`).
@@ -228,12 +240,28 @@ see also `v help build`.
       Write all C flags into `file.txt`, one flag per line.
       If `file.txt` is `-`, then write the flags to stdout, one flag per line.
 
-   -assert aborts
+   -no-rsp
+      By default, V passes all C compiler options to the backend C compiler
+      in so called "response files" (https://gcc.gnu.org/wiki/Response_Files).
+      This works in most cases, since it works around command line length
+      limitations on older systems (and windows), but some C compilers
+      (older versions of tcc for example) do not support them at all. When
+      you use -no-rsp, V will pass the C compiler options directly to the C
+      compiler, on the command line, without writing an .rsp file first.
+
+   -no-std
+      By default, V passes -std=gnu99(linux)/-std=c99 to the C backend, but some compilers do
+      not support that, even though they may be able to compile the produced
+      code, or have other options that can be tuned to allow it.
+      Passing -no-std will remove that flag, and you can then use -cflags ''
+      to pass the other options for your specific C compiler.
+
+-assert aborts
       Call abort() after an assertion failure. Debuggers usually
       install signal handlers for SIGABRT, so your program will stop and you
       will get a backtrace. If you are running your program outside of a
       debugger, you will most likely get a core dump file.
-      
+
    -assert backtraces
       Call print_backtrace() after an assertion failure. Note that
       backtraces are not implemented yet on all combinations of

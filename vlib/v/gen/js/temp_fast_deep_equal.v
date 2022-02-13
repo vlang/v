@@ -9,8 +9,13 @@ function vEq(a, b) {
 
 	if (a && b && typeof a == 'object' && typeof b == 'object') {
 		if (a.constructor !== b.constructor) return false;
-		a = a.valueOf();
-		b = b.valueOf();
+		// we want to convert all V types to JS for comparison.
+		if ('\$toJS' in a)
+			a = a.\$toJS();
+
+		if ('\$toJS' in b)
+			b = b.\$toJS();
+
 		var length, i, keys;
 		if (Array.isArray(a)) {
 			length = a.length;
@@ -20,33 +25,36 @@ function vEq(a, b) {
 			return true;
 		}
 
+		if (typeof Map != 'undefined') {
+			if ((a instanceof Map) && (b instanceof Map)) {
+				if (a.size !== b.size) return false;
+				for (i of a.entries())
+					if (!b.has(i[0])) return false;
+				for (i of a.entries())
+					if (!vEq(i[1], b.get(i[0]))) return false;
+				return true;
+			}
 
-		if ((a instanceof Map) && (b instanceof Map)) {
-			if (a.size !== b.size) return false;
-			for (i of a.entries())
-				if (!b.has(i[0])) return false;
-			for (i of a.entries())
-				if (!vEq(i[1], b.get(i[0]))) return false;
-			return true;
+			if ((a instanceof Set) && (b instanceof Set)) {
+				if (a.size !== b.size) return false;
+				for (i of a.entries())
+					if (!b.has(i[0])) return false;
+				return true;
+			}
+		}
+		if (typeof ArrayBuffer != 'undefined') {
+			if (ArrayBuffer.isView(a) && ArrayBuffer.isView(b)) {
+				length = a.length;
+				if (length != b.length) return false;
+				for (i = length; i-- !== 0;)
+					if (a[i] !== b[i]) return false;
+				return true;
+			}
 		}
 
-		if ((a instanceof Set) && (b instanceof Set)) {
-			if (a.size !== b.size) return false;
-			for (i of a.entries())
-				if (!b.has(i[0])) return false;
-			return true;
+		if (typeof RegExp != 'undefined') {
+			if (a.constructor === RegExp) return a.source === b.source && a.flags === b.flags;
 		}
-
-		if (ArrayBuffer.isView(a) && ArrayBuffer.isView(b)) {
-			length = a.length;
-			if (length != b.length) return false;
-			for (i = length; i-- !== 0;)
-				if (a[i] !== b[i]) return false;
-			return true;
-		}
-
-
-		if (a.constructor === RegExp) return a.source === b.source && a.flags === b.flags;
 		if (a.valueOf !== Object.prototype.valueOf) return a.valueOf() === b.valueOf();
 		if (a.toString !== Object.prototype.toString) return a.toString() === b.toString();
 
@@ -69,5 +77,16 @@ function vEq(a, b) {
 	// true if both NaN, false otherwise
 	return a!==a && b!==b;
 };
+
+function \$sortComparator(a, b)
+{
+a = a.\$toJS();
+b = b.\$toJS();
+if (a > b) return 1;
+if (a < b) return -1;
+return 0;
+
+
+}
 "
 )

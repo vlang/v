@@ -5,11 +5,11 @@ fn workaround() {
 
 fn main() {
 	mut ams := []map[string]string{}
-	ams << map{
+	ams << {
 		'a': 'b'
 		'c': 'd'
 	}
-	ams << map{
+	ams << {
 		'e': 'f'
 		'g': 'h'
 	}

@@ -1,5 +1,6 @@
 import orm
 import sqlite
+import v.ast
 
 fn test_sqlite_orm() {
 	sdb := sqlite.connect(':memory:') or { panic(err) }
@@ -7,7 +8,7 @@ fn test_sqlite_orm() {
 	db.create('Test', [
 		orm.TableField{
 			name: 'id'
-			typ: 7
+			typ: ast.int_type_idx
 			attrs: [
 				StructAttribute{
 					name: 'primary'
@@ -22,12 +23,12 @@ fn test_sqlite_orm() {
 		},
 		orm.TableField{
 			name: 'name'
-			typ: 18
+			typ: ast.string_type_idx
 			attrs: []
 		},
 		orm.TableField{
 			name: 'age'
-			typ: 8
+			typ: ast.i64_type_idx
 		},
 	]) or { panic(err) }
 
@@ -40,11 +41,11 @@ fn test_sqlite_orm() {
 		table: 'Test'
 		has_where: true
 		fields: ['id', 'name', 'age']
-		types: [7, 18, 8]
+		types: [ast.int_type_idx, ast.string_type_idx, ast.i64_type_idx]
 	}, orm.QueryData{}, orm.QueryData{
 		fields: ['name', 'age']
 		data: [orm.Primitive('Louis'), i64(100)]
-		types: [18, 8]
+		types: [ast.string_type_idx, ast.i64_type_idx]
 		is_and: [true, true]
 		kinds: [.eq, .eq]
 	}) or { panic(err) }

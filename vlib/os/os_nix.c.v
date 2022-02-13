@@ -43,20 +43,6 @@ pub const (
 	s_ixoth = 0o0001 // Execute by others
 )
 
-struct C.utsname {
-mut:
-	sysname  &char
-	nodename &char
-	release  &char
-	version  &char
-	machine  &char
-}
-
-struct C.utimbuf {
-	actime  int
-	modtime int
-}
-
 fn C.utime(&char, voidptr) int
 
 fn C.uname(name voidptr) int
@@ -257,18 +243,18 @@ pub fn loginname() string {
 }
 
 fn init_os_args(argc int, argv &&byte) []string {
-	mut args_ := []string{}
-	// mut args := []string(make(0, argc, sizeof(string)))
-	// mut args := []string{len:argc}
+	mut args_ := []string{len: argc}
 	for i in 0 .. argc {
-		// args [i] = argv[i].vstring()
-		unsafe { args_ << (&byte(argv[i])).vstring_literal() }
+		args_[i] = unsafe { tos_clone(argv[i]) }
 	}
 	return args_
 }
 
 pub fn ls(path string) ?[]string {
-	mut res := []string{}
+	if path.len == 0 {
+		return error('ls() expects a folder, not an empty string')
+	}
+	mut res := []string{cap: 50}
 	dir := unsafe { C.opendir(&char(path.str)) }
 	if isnil(dir) {
 		return error('ls() couldnt open dir "$path"')
@@ -346,7 +332,7 @@ pub fn execute(cmd string) Result {
 	// if cmd.contains(';') || cmd.contains('&&') || cmd.contains('||') || cmd.contains('\n') {
 	// return Result{ exit_code: -1, output: ';, &&, || and \\n are not allowed in shell commands' }
 	// }
-	pcmd := '$cmd 2>&1'
+	pcmd := if cmd.contains('2>') { cmd } else { '$cmd 2>&1' }
 	f := vpopen(pcmd)
 	if isnil(f) {
 		return Result{
@@ -354,35 +340,28 @@ pub fn execute(cmd string) Result {
 			output: 'exec("$cmd") failed'
 		}
 	}
-	buf := unsafe { malloc_noscan(4096) }
+	fd := fileno(f)
 	mut res := strings.new_builder(1024)
 	defer {
 		unsafe { res.free() }
 	}
+	buf := [4096]byte{}
 	unsafe {
-		bufbp := buf
-		for C.fgets(&char(bufbp), 4096, f) != 0 {
-			buflen := vstrlen(bufbp)
-			res.write_ptr(bufbp, buflen)
+		pbuf := &buf[0]
+		for {
+			len := C.read(fd, pbuf, 4096)
+			if len == 0 {
+				break
+			}
+			res.write_ptr(pbuf, len)
 		}
 	}
 	soutput := res.str()
 	exit_code := vpclose(f)
-	unsafe { free(buf) }
 	return Result{
 		exit_code: exit_code
 		output: soutput
 	}
-}
-
-pub struct Command {
-mut:
-	f voidptr
-pub mut:
-	eof bool
-pub:
-	path            string
-	redirect_stdout bool
 }
 
 [manualfree]
@@ -423,9 +402,9 @@ pub fn (mut c Command) read_line() string {
 	return final
 }
 
-pub fn (c &Command) close() ? {
-	exit_code := vpclose(c.f)
-	if exit_code == 127 {
+pub fn (mut c Command) close() ? {
+	c.exit_code = vpclose(c.f)
+	if c.exit_code == 127 {
 		return error_with_code('error', 127)
 	}
 }
@@ -483,6 +462,7 @@ pub fn debugger_present() bool {
 fn C.mkstemp(stemplate &byte) int
 
 // `is_writable_folder` - `folder` exists and is writable to the process
+[manualfree]
 pub fn is_writable_folder(folder string) ?bool {
 	if !exists(folder) {
 		return error('`$folder` does not exist')
@@ -490,7 +470,10 @@ pub fn is_writable_folder(folder string) ?bool {
 	if !is_dir(folder) {
 		return error('`folder` is not a folder')
 	}
-	tmp_perm_check := join_path(folder, 'XXXXXX')
+	tmp_perm_check := join_path_single(folder, 'XXXXXX')
+	defer {
+		unsafe { tmp_perm_check.free() }
+	}
 	unsafe {
 		x := C.mkstemp(&char(tmp_perm_check.str))
 		if -1 == x {

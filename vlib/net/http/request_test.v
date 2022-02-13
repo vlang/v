@@ -71,27 +71,27 @@ fn test_parse_request_line() {
 }
 
 fn test_parse_form() {
-	assert parse_form('foo=bar&bar=baz') == map{
+	assert parse_form('foo=bar&bar=baz') == {
 		'foo': 'bar'
 		'bar': 'baz'
 	}
-	assert parse_form('foo=bar=&bar=baz') == map{
+	assert parse_form('foo=bar=&bar=baz') == {
 		'foo': 'bar='
 		'bar': 'baz'
 	}
-	assert parse_form('foo=bar%3D&bar=baz') == map{
+	assert parse_form('foo=bar%3D&bar=baz') == {
 		'foo': 'bar='
 		'bar': 'baz'
 	}
-	assert parse_form('foo=b%26ar&bar=baz') == map{
+	assert parse_form('foo=b%26ar&bar=baz') == {
 		'foo': 'b&ar'
 		'bar': 'baz'
 	}
-	assert parse_form('a=b& c=d') == map{
+	assert parse_form('a=b& c=d') == {
 		'a':  'b'
 		' c': 'd'
 	}
-	assert parse_form('a=b&c= d ') == map{
+	assert parse_form('a=b&c= d ') == {
 		'a': 'b'
 		'c': ' d '
 	}
@@ -103,29 +103,51 @@ fn test_parse_multipart_form() {
 	file := 'bar.v'
 	ct := 'application/octet-stream'
 	contents := ['baz', 'buzz']
-	data := "--------------------------$boundary
-Content-Disposition: form-data; name=\"${names[0]}\"; filename=\"$file\"
-Content-Type: $ct
-
-${contents[0]}
---------------------------$boundary
-Content-Disposition: form-data; name=\"${names[1]}\"
-
-${contents[1]}
---------------------------$boundary--
+	data := "--$boundary
+Content-Disposition: form-data; name=\"${names[0]}\"; filename=\"$file\"\r
+Content-Type: $ct\r
+\r
+${contents[0]}\r
+--$boundary\r
+Content-Disposition: form-data; name=\"${names[1]}\"\r
+\r
+${contents[1]}\r
+--$boundary--\r
 "
 	form, files := parse_multipart_form(data, boundary)
-	assert files == map{
-		names[0]: [FileData{
-			filename: file
-			content_type: ct
-			data: contents[0]
-		}]
+	assert files == {
+		names[0]: [
+			FileData{
+				filename: file
+				content_type: ct
+				data: contents[0]
+			},
+		]
 	}
 
-	assert form == map{
+	assert form == {
 		names[1]: contents[1]
 	}
+}
+
+fn test_multipart_form_body() {
+	files := {
+		'foo': [
+			FileData{
+				filename: 'bar.v'
+				content_type: 'application/octet-stream'
+				data: 'baz'
+			},
+		]
+	}
+	form := {
+		'fooz': 'buzz'
+	}
+
+	body, boundary := multipart_form_body(form, files)
+	parsed_form, parsed_files := parse_multipart_form(body, boundary)
+	assert parsed_files == files
+	assert parsed_form == form
 }
 
 fn test_parse_large_body() ? {

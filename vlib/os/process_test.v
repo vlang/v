@@ -1,3 +1,4 @@
+// vtest retry: 3
 import os
 import time
 
@@ -17,7 +18,7 @@ fn testsuite_begin() ? {
 		//   WINE_TEST_OS_PROCESS_EXE=x.exe ./v -os windows vlib/os/process_test.v
 		os.cp(os.getenv('WINE_TEST_OS_PROCESS_EXE'), test_os_process) ?
 	} else {
-		os.system('$vexe -o $test_os_process $test_os_process_source')
+		os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(test_os_process)} ${os.quoted_path(test_os_process_source)}')
 	}
 	assert os.exists(test_os_process)
 }

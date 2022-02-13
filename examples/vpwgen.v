@@ -13,7 +13,7 @@ fn main() {
 			x := rand.read(blocksize) ?
 			for c in x {
 				if c >= `0` && c <= `~` {
-					sb.write_b(c)
+					sb.write_byte(c)
 				}
 			}
 			if sb.len > size {

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module seed
@@ -12,7 +12,6 @@ fn nr_next(prev u32) u32 {
 }
 
 // time_seed_array returns the required number of u32s generated from system time.
-[inline]
 pub fn time_seed_array(count int) []u32 {
 	ctime := time.sys_mono_now()
 	mut seed := u32(ctime >> 32 ^ (ctime & 0x0000_0000_FFFF_FFFF))
@@ -25,16 +24,21 @@ pub fn time_seed_array(count int) []u32 {
 }
 
 // time_seed_32 returns a 32-bit seed generated from system time.
-[inline]
+[manualfree]
 pub fn time_seed_32() u32 {
-	return time_seed_array(1)[0]
+	sa := time_seed_array(1)
+	res := sa[0]
+	unsafe { sa.free() }
+	return res
 }
 
 // time_seed_64 returns a 64-bit seed generated from system time.
-[inline]
+[manualfree]
 pub fn time_seed_64() u64 {
 	seed_data := time_seed_array(2)
 	lower := u64(seed_data[0])
 	upper := u64(seed_data[1])
-	return lower | (upper << 32)
+	unsafe { seed_data.free() }
+	res := lower | (upper << 32)
+	return res
 }

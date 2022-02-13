@@ -1,4 +1,9 @@
-Example usage of this module:
+## Description:
+
+`benchmark` provides tools for measuring and reporting on the performance of code.
+
+## Example 1:
+
 ```v
 import benchmark
 
@@ -19,12 +24,13 @@ bmark.stop()
 println(bmark.total_message('remarks about the benchmark'))
 ```
 
-benchmark.start() and b.measure() are convenience methods,
+`.start()` and `.measure()` are convenience methods,
 intended to be used in combination. Their goal is to make
-benchmarking of small snippets of code as *short*, easy to
-write, and then to read and analyze the results, as possible.
+benchmarking of small snippets of code as _short_, easy to
+write, and easy to read and analyze as possible.
 
-Example:
+## Example 2:
+
 ```v
 import time
 import benchmark
@@ -39,6 +45,7 @@ b.measure('code_2')
 ```
 
 ... which will produce on stdout something like this:
+
 ```text
 SPENT 1500.063 ms in code_1
 SPENT  500.061 ms in code_2

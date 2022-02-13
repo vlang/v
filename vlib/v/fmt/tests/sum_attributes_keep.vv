@@ -1,0 +1,14 @@
+[derive: 'DeserBincode,SerBincode']
+type OneOf = ItemA | ItemB
+
+[derive: 'DeserBincode,SerBincode']
+struct ItemA {
+	a string
+}
+
+[derive: 'DeserBincode,SerBincode']
+struct ItemB {
+	b   int
+	bb  u64
+	bbb string
+}

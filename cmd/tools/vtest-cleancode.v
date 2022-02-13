@@ -25,15 +25,12 @@ const (
 		'examples/sokol/04_multi_shader_glsl/rt_glsl.v',
 		'examples/sokol/05_instancing_glsl/rt_glsl.v',
 		'examples/sokol/06_obj_viewer/show_obj.v',
+		'vlib/v/checker/tests/modules/deprecated_module/main.v' /* adds deprecated_module. module prefix to imports, even though the folder has v.mod */,
 		'vlib/gg/m4/graphic.v',
 		'vlib/gg/m4/m4_test.v',
 		'vlib/gg/m4/matrix.v',
-		'vlib/sqlite/orm.v' /* mut c &int -> mut c int */,
 		'vlib/builtin/int_test.v' /* special number formatting that should be tested */,
 		// TODOs and unfixed vfmt bugs
-		'vlib/builtin/int.v' /* TODO byteptr: vfmt converts `pub fn (nn byteptr) str() string {` to `nn &byte` and that conflicts with `nn byte` */,
-		'vlib/builtin/string_charptr_byteptr_helpers.v' /* TODO byteptr: a temporary shim to ease the byteptr=>&byte transition */,
-		'vlib/v/tests/interop_test.v', /* bad comment formatting */
 		'vlib/v/gen/js/tests/js.v', /* local `hello` fn, gets replaced with module `hello` aliased as `hl` */
 	]
 	vfmt_verify_list                = [
@@ -44,9 +41,6 @@ const (
 	]
 	vfmt_known_failing_exceptions   = arrays.merge(verify_known_failing_exceptions, [
 		'vlib/regex/regex_test.v' /* contains meaningfull formatting of the test case data */,
-		'vlib/readline/readline_test.v' /* vfmt eats `{ Readline }` from `import readline { Readline }` */,
-		'vlib/glm/glm.v' /* `mut res &f32` => `mut res f32`, which then fails to compile */,
-		'vlib/fontstash/fontstash_structs.v' /* eats fn arg names for inline callback types in struct field declarations */,
 		'vlib/crypto/sha512/sha512block_generic.v' /* formatting of large constant arrays wraps to too many lines */,
 		'vlib/crypto/aes/const.v' /* formatting of large constant arrays wraps to too many lines */,
 	])
@@ -65,7 +59,7 @@ fn main() {
 }
 
 fn tsession(vargs string, tool_source string, tool_cmd string, tool_args string, flist []string, slist []string) testing.TestSession {
-	os.chdir(vroot)
+	os.chdir(vroot) or {}
 	title_message := 'running $tool_cmd over most .v files'
 	testing.eheader(title_message)
 	mut test_session := testing.new_test_session('$vargs $tool_args', false)
@@ -82,9 +76,14 @@ fn tsession(vargs string, tool_source string, tool_cmd string, tool_args string,
 
 fn v_test_vetting(vargs string) {
 	expanded_vet_list := util.find_all_v_files(vet_folders) or { return }
-	vet_session := tsession(vargs, 'vvet', 'v vet', 'vet', expanded_vet_list, vet_known_failing_exceptions)
+	vet_session := tsession(vargs, 'vvet', '${os.quoted_path(vexe)} vet', 'vet', expanded_vet_list,
+		vet_known_failing_exceptions)
 	//
-	fmt_cmd, fmt_args := if is_fix { 'v fmt -w', 'fmt -w' } else { 'v fmt -verify', 'fmt -verify' }
+	fmt_cmd, fmt_args := if is_fix {
+		'${os.quoted_path(vexe)} fmt -w', 'fmt -w'
+	} else {
+		'${os.quoted_path(vexe)} fmt -verify', 'fmt -verify'
+	}
 	vfmt_list := util.find_all_v_files(vfmt_verify_list) or { return }
 	exceptions := util.find_all_v_files(vfmt_known_failing_exceptions) or { return }
 	verify_session := tsession(vargs, 'vfmt.v', fmt_cmd, fmt_args, vfmt_list, exceptions)

@@ -16,7 +16,7 @@ fn main() {
 }
 
 pub fn new_channel_struct<T>() GenericChannelStruct<T> {
-	d := GenericChannelStruct{
+	d := GenericChannelStruct<T>{
 		ch: chan T{}
 	}
 

@@ -1,11 +1,11 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module fmt
 
-import math.mathutil as mu
 import strings
 import v.ast
+import v.mathutil as mu
 
 pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	f.attrs(node.attrs)
@@ -57,11 +57,16 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	for embed in node.embeds {
 		f.mark_types_import_as_used(embed.typ)
 		styp := f.table.type_to_str_using_aliases(embed.typ, f.mod2alias)
-		if embed.comments.len == 0 {
+
+		pre_comments := embed.comments.filter(it.pos.pos < embed.pos.pos)
+		comments := embed.comments[pre_comments.len..]
+
+		f.comments_before_field(pre_comments)
+		if comments.len == 0 {
 			f.writeln('\t$styp')
 		} else {
 			f.write('\t$styp')
-			f.comments(embed.comments, level: .indent)
+			f.comments(comments, level: .indent)
 		}
 	}
 	mut field_align_i := 0
@@ -86,7 +91,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 				before_last_line = mu.max(before_last_line, node.fields[i - 1].comments.last().pos.last_line)
 			}
 			if node.fields[i - 1].has_default_expr {
-				before_last_line = mu.max(before_last_line, node.fields[i - 1].default_expr.position().last_line)
+				before_last_line = mu.max(before_last_line, node.fields[i - 1].default_expr.pos().last_line)
 			}
 
 			mut next_first_line := field.pos.line_nr
@@ -103,7 +108,8 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		after_type_comments := field.comments[(before_comments.len + between_comments.len)..]
 		// Handle comments before the field
 		f.comments_before_field(before_comments)
-		f.write('\t$field.name ')
+		volatile_prefix := if field.is_volatile { 'volatile ' } else { '' }
+		f.write('\t$volatile_prefix$field.name ')
 		// Handle comments between field name and type
 		before_len := f.line_len
 		f.comments(between_comments, iembed: true, has_nl: false)
@@ -135,7 +141,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 				f.indent++
 				inc_indent = true
 			}
-			f.prefix_expr_cast_expr(field.default_expr)
+			f.expr(field.default_expr)
 			if inc_indent {
 				f.indent--
 				inc_indent = false
@@ -173,7 +179,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 		f.is_struct_init = struct_init_save
 	}
 
-	type_sym := f.table.get_type_symbol(node.typ)
+	type_sym := f.table.sym(node.typ)
 	// f.write('<old name: $type_sym.name>')
 	mut name := type_sym.name
 	if !name.starts_with('C.') && !name.starts_with('JS.') {
@@ -202,7 +208,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 			f.write(', ')
 		}
 		for i, field in node.fields {
-			f.prefix_expr_cast_expr(field.expr)
+			f.expr(field.expr)
 			if i < node.fields.len - 1 {
 				f.write(', ')
 			}
@@ -252,7 +258,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 			}
 			for i, field in node.fields {
 				f.write('$field.name: ')
-				f.prefix_expr_cast_expr(field.expr)
+				f.expr(field.expr)
 				f.comments(field.comments, inline: true, has_nl: false, level: .indent)
 				if single_line_fields {
 					if i < node.fields.len - 1 {

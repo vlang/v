@@ -4,16 +4,16 @@ import strconv
 import strings
 
 /*=============================================================================
-Copyright (c) 2019-2021 Dario Deledda. All rights reserved.
+Copyright (c) 2019-2022 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
 that can be found in the LICENSE file.
 
 This file contains string interpolation V functions
 =============================================================================*/
 
-//=============================================================================
-// Enum format types max 0x1F => 32 types
-//=============================================================================
+/*============================================================================
+Enum format types max 0x1F => 32 types
+=============================================================================*/
 pub enum StrIntpType {
 	si_no_str = 0 // no parameter to print only fix string
 	si_c
@@ -60,9 +60,7 @@ pub fn (x StrIntpType) str() string {
 	}
 }
 
-//=============================================================================
-// Union data
-//=============================================================================
+// Union data used by StrIntpData
 pub union StrIntpMem {
 pub mut:
 	d_c   u32
@@ -96,10 +94,7 @@ fn abs64(x i64) u64 {
 	return if x < 0 { u64(-x) } else { u64(x) }
 }
 
-//=========================================
-//
 //  u32/u64 bit compact format
-//
 //___     32      24      16       8
 //___      |       |       |       |
 //_3333333333222222222211111111110000000000
@@ -116,7 +111,7 @@ fn abs64(x i64) u64 {
 // P pad char 1/8 bit  padding char (in u32 format reduced to 1 bit as flag for `0` padding)
 //     --------------
 //     TOTAL:  39/32 bit
-//=========================================
+//---------------------------------------
 
 // convert from data format to compact u64
 pub fn get_str_intp_u64_format(fmt_type StrIntpType, in_width int, in_precision int, in_tail_zeros bool, in_sign bool, in_pad_ch byte, in_base int, in_upper_case bool) u64 {
@@ -130,7 +125,7 @@ pub fn get_str_intp_u64_format(fmt_type StrIntpType, in_width int, in_precision 
 		u64(0x7F) << 9
 	}
 	tail_zeros := if in_tail_zeros { u32(1) << 16 } else { u32(0) }
-	base := u64((in_base & 0xf) << 27)
+	base := u64(u32(in_base & 0xf) << 27)
 	res := u64((u64(fmt_type) & 0x1F) | allign | upper_case | sign | precision | tail_zeros | (u64(width & 0x3FF) << 17) | base | (u64(in_pad_ch) << 31))
 	return res
 }
@@ -147,21 +142,21 @@ pub fn get_str_intp_u32_format(fmt_type StrIntpType, in_width int, in_precision 
 		u32(0x7F) << 9
 	}
 	tail_zeros := if in_tail_zeros { u32(1) << 16 } else { u32(0) }
-	base := u32((in_base & 0xf) << 27)
+	base := u32(u32(in_base & 0xf) << 27)
 	res := u32((u32(fmt_type) & 0x1F) | allign | upper_case | sign | precision | tail_zeros | (u32(width & 0x3FF) << 17) | base | (u32(in_pad_ch & 1) << 31))
 	return res
 }
 
 // convert from struct to formated string
 [manualfree]
-fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
+fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 	x := data.fmt
 	typ := StrIntpType(x & 0x1F)
 	allign := int((x >> 5) & 0x01)
-	upper_case := if ((x >> 7) & 0x01) > 0 { true } else { false }
+	upper_case := ((x >> 7) & 0x01) > 0
 	sign := int((x >> 8) & 0x01)
 	precision := int((x >> 9) & 0x7F)
-	tail_zeros := if ((x >> 16) & 0x01) > 0 { true } else { false }
+	tail_zeros := ((x >> 16) & 0x01) > 0
 	width := int(i16((x >> 17) & 0x3FF))
 	mut base := int(x >> 27) & 0xF
 	fmt_pad_ch := byte((x >> 31) & 0xFF)
@@ -187,7 +182,7 @@ fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
 
 	len0_set := if width > 0 { width } else { -1 }
 	len1_set := if precision == 0x7F { -1 } else { precision }
-	sign_set := if sign == 1 { true } else { false }
+	sign_set := sign == 1
 
 	mut bf := strconv.BF_param{
 		pad_ch: pad_ch // padding char
@@ -252,11 +247,24 @@ fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
 				}
 				strconv.format_dec_sb(abs64(d), bf, mut sb)
 			} else {
-				mut hx := strconv.format_int(d, base)
+				// binary, we use 3 for binary
+				if base == 3 {
+					base = 2
+				}
+				mut absd, mut write_minus := d, false
+				if d < 0 && pad_ch != ` ` {
+					absd = -d
+					write_minus = true
+				}
+				mut hx := strconv.format_int(absd, base)
 				if upper_case {
 					tmp := hx
 					hx = hx.to_upper()
 					tmp.free()
+				}
+				if write_minus {
+					sb.write_byte(`-`)
+					bf.len0-- // compensate for the `-` above
 				}
 				if width == 0 {
 					sb.write_string(hx)
@@ -287,6 +295,10 @@ fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
 				}
 				strconv.format_dec_sb(d, bf, mut sb)
 			} else {
+				// binary, we use 3 for binary
+				if base == 3 {
+					base = 2
+				}
 				mut hx := strconv.format_uint(d, base)
 				if upper_case {
 					tmp := hx
@@ -345,75 +357,81 @@ fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
 		match typ {
 			// floating point
 			.si_f32 {
-				// println("HERE: f32")
-				if use_default_str {
-					mut f := data.d.d_f32.str()
-					if upper_case {
-						tmp := f
-						f = f.to_upper()
-						tmp.free()
+				$if !nofloat ? {
+					// println("HERE: f32")
+					if use_default_str {
+						mut f := data.d.d_f32.str()
+						if upper_case {
+							tmp := f
+							f = f.to_upper()
+							tmp.free()
+						}
+						sb.write_string(f)
+						f.free()
+					} else {
+						// println("HERE: f32 format")
+						// println(data.d.d_f32)
+						if data.d.d_f32 < 0 {
+							bf.positive = false
+						}
+						mut f := strconv.format_fl(data.d.d_f32, bf)
+						if upper_case {
+							tmp := f
+							f = f.to_upper()
+							tmp.free()
+						}
+						sb.write_string(f)
+						f.free()
 					}
-					sb.write_string(f)
-					f.free()
-				} else {
-					// println("HERE: f32 format")
-					// println(data.d.d_f32)
-					if data.d.d_f32 < 0 {
-						bf.positive = false
-					}
-					mut f := strconv.format_fl(data.d.d_f32, bf)
-					if upper_case {
-						tmp := f
-						f = f.to_upper()
-						tmp.free()
-					}
-					sb.write_string(f)
-					f.free()
 				}
 			}
 			.si_f64 {
-				// println("HERE: f64")
-				if use_default_str {
-					mut f := data.d.d_f64.str()
-					if upper_case {
-						tmp := f
-						f = f.to_upper()
-						tmp.free()
-					}
-					sb.write_string(f)
-					f.free()
-				} else {
-					if data.d.d_f64 < 0 {
-						bf.positive = false
-					}
-					f_union := strconv.Float64u{
-						f: data.d.d_f64
-					}
-					if f_union.u == strconv.double_minus_zero {
-						bf.positive = false
-					}
+				$if !nofloat ? {
+					// println("HERE: f64")
+					if use_default_str {
+						mut f := data.d.d_f64.str()
+						if upper_case {
+							tmp := f
+							f = f.to_upper()
+							tmp.free()
+						}
+						sb.write_string(f)
+						f.free()
+					} else {
+						if data.d.d_f64 < 0 {
+							bf.positive = false
+						}
+						f_union := strconv.Float64u{
+							f: data.d.d_f64
+						}
+						if f_union.u == strconv.double_minus_zero {
+							bf.positive = false
+						}
 
-					mut f := strconv.format_fl(data.d.d_f64, bf)
-					if upper_case {
-						tmp := f
-						f = f.to_upper()
-						tmp.free()
+						mut f := strconv.format_fl(data.d.d_f64, bf)
+						if upper_case {
+							tmp := f
+							f = f.to_upper()
+							tmp.free()
+						}
+						sb.write_string(f)
+						f.free()
 					}
-					sb.write_string(f)
-					f.free()
 				}
 			}
 			.si_g32 {
 				// println("HERE: g32")
 				if use_default_str {
-					mut f := data.d.d_f32.strg()
-					if upper_case {
-						tmp := f
-						f = f.to_upper()
-						tmp.free()
+					$if !nofloat ? {
+						mut f := data.d.d_f32.strg()
+						if upper_case {
+							tmp := f
+							f = f.to_upper()
+							tmp.free()
+						}
+						sb.write_string(f)
+						f.free()
 					}
-					sb.write_string(f)
-					f.free()
 				} else {
 					// Manage +/-0
 					if data.d.d_f32 == strconv.single_plus_zero {
@@ -474,14 +492,16 @@ fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
 			.si_g64 {
 				// println("HERE: g64")
 				if use_default_str {
-					mut f := data.d.d_f64.strg()
-					if upper_case {
-						tmp := f
-						f = f.to_upper()
-						tmp.free()
+					$if !nofloat ? {
+						mut f := data.d.d_f64.strg()
+						if upper_case {
+							tmp := f
+							f = f.to_upper()
+							tmp.free()
+						}
+						sb.write_string(f)
+						f.free()
 					}
-					sb.write_string(f)
-					f.free()
 				} else {
 					// Manage +/-0
 					if data.d.d_f64 == strconv.double_plus_zero {
@@ -540,55 +560,59 @@ fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
 				}
 			}
 			.si_e32 {
-				// println("HERE: e32")
-				bf.len1 = 6
-				if use_default_str {
-					mut f := data.d.d_f32.str()
-					if upper_case {
-						tmp := f
-						f = f.to_upper()
-						tmp.free()
+				$if !nofloat ? {
+					// println("HERE: e32")
+					bf.len1 = 6
+					if use_default_str {
+						mut f := data.d.d_f32.str()
+						if upper_case {
+							tmp := f
+							f = f.to_upper()
+							tmp.free()
+						}
+						sb.write_string(f)
+						f.free()
+					} else {
+						if data.d.d_f32 < 0 {
+							bf.positive = false
+						}
+						mut f := strconv.format_es(data.d.d_f32, bf)
+						if upper_case {
+							tmp := f
+							f = f.to_upper()
+							tmp.free()
+						}
+						sb.write_string(f)
+						f.free()
 					}
-					sb.write_string(f)
-					f.free()
-				} else {
-					if data.d.d_f32 < 0 {
-						bf.positive = false
-					}
-					mut f := strconv.format_es(data.d.d_f32, bf)
-					if upper_case {
-						tmp := f
-						f = f.to_upper()
-						tmp.free()
-					}
-					sb.write_string(f)
-					f.free()
 				}
 			}
 			.si_e64 {
-				// println("HERE: e64")
-				bf.len1 = 6
-				if use_default_str {
-					mut f := data.d.d_f64.str()
-					if upper_case {
-						tmp := f
-						f = f.to_upper()
-						tmp.free()
+				$if !nofloat ? {
+					// println("HERE: e64")
+					bf.len1 = 6
+					if use_default_str {
+						mut f := data.d.d_f64.str()
+						if upper_case {
+							tmp := f
+							f = f.to_upper()
+							tmp.free()
+						}
+						sb.write_string(f)
+						f.free()
+					} else {
+						if data.d.d_f64 < 0 {
+							bf.positive = false
+						}
+						mut f := strconv.format_es(data.d.d_f64, bf)
+						if upper_case {
+							tmp := f
+							f = f.to_upper()
+							tmp.free()
+						}
+						sb.write_string(f)
+						f.free()
 					}
-					sb.write_string(f)
-					f.free()
-				} else {
-					if data.d.d_f64 < 0 {
-						bf.positive = false
-					}
-					mut f := strconv.format_es(data.d.d_f64, bf)
-					if upper_case {
-						tmp := f
-						f = f.to_upper()
-						tmp.free()
-					}
-					sb.write_string(f)
-					f.free()
 				}
 			}
 			// runes
@@ -610,7 +634,7 @@ fn (data StrIntpData) get_fmt_format(mut sb strings.Builder) {
 	}
 }
 
-//====================================================================================
+//--------------------------------------------------
 
 // storing struct used by cgen
 pub struct StrIntpCgenData {
@@ -631,22 +655,19 @@ pub:
 }
 
 // interpolation function
-[manualfree]
+[direct_array_access; manualfree]
 pub fn str_intp(data_len int, in_data voidptr) string {
 	mut res := strings.new_builder(256)
-	unsafe {
-		mut i := 0
-		for i < data_len {
-			data := &StrIntpData(&byte(in_data) + (int(sizeof(StrIntpData)) * i))
-			// avoid empty strings
-			if data.str.len != 0 {
-				res.write_string(data.str)
-			}
-			// skip empty data
-			if data.fmt != 0 {
-				data.get_fmt_format(mut &res)
-			}
-			i++
+	input_base := &StrIntpData(in_data)
+	for i := 0; i < data_len; i++ {
+		data := unsafe { &(input_base[i]) }
+		// avoid empty strings
+		if data.str.len != 0 {
+			res.write_string(data.str)
+		}
+		// skip empty data
+		if data.fmt != 0 {
+			data.process_str_intp_data(mut res)
 		}
 	}
 	ret := res.str()
@@ -654,15 +675,11 @@ pub fn str_intp(data_len int, in_data voidptr) string {
 	return ret
 }
 
-//====================================================================================
-// Utility for the compiler "auto_str_methods.v"
-//====================================================================================
-
-// substitute old _STR calls
-
+// The consts here are utilities for the compiler's "auto_str_methods.v".
+// They are used to substitute old _STR calls.
+// FIXME: this const is not released from memory => use a precalculated string const for now.
+// si_s_code = "0x" + int(StrIntpType.si_s).hex() // code for a simple string.
 pub const (
-	// BUG: this const is not released from the memory! use a const for now
-	// si_s_code = "0x" + int(StrIntpType.si_s).hex() // code for a simple string
 	si_s_code   = '0xfe10'
 	si_g32_code = '0xfe0e'
 	si_g64_code = '0xfe0f'

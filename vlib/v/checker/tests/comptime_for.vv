@@ -20,4 +20,6 @@ struct S1 {
 	i int
 }
 
-gf<S1>()
+fn main() {
+	gf<S1>()
+}

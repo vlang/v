@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module pref
@@ -110,15 +110,16 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	}
 	// Prepare the cache manager. All options that can affect the generated cached .c files
 	// should go into res.cache_manager.vopts, which is used as a salt for the cache hash.
+	vhash := @VHASH
 	p.cache_manager = vcache.new_cache_manager([
-		@VHASH,
+		vhash,
 		// ensure that different v versions use separate build artefacts
 		'$p.backend | $p.os | $p.ccompiler | $p.is_prod | $p.sanitize',
 		p.cflags.trim_space(),
 		p.third_party_option.trim_space(),
-		'$p.compile_defines_all',
-		'$p.compile_defines',
-		'$p.lookup_path',
+		p.compile_defines_all.str(),
+		p.compile_defines.str(),
+		p.lookup_path.str(),
 	])
 	// eprintln('prefs.cache_manager: $p')
 	// disable use_cache for specific cases:
@@ -133,22 +134,41 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		// eprintln('-usecache and -shared flags are not compatible')
 		p.use_cache = false
 	}
-	if p.bare_builtin_dir == '' {
+	if p.bare_builtin_dir == '' && p.os == .wasm32 {
+		p.bare_builtin_dir = os.join_path(p.vroot, 'vlib', 'builtin', 'wasm_bare')
+	} else if p.bare_builtin_dir == '' {
 		p.bare_builtin_dir = os.join_path(p.vroot, 'vlib', 'builtin', 'linux_bare')
 	}
+
+	$if prealloc {
+		if !p.no_parallel {
+			eprintln('disabling parallel cgen, since V was built with -prealloc')
+		}
+		p.no_parallel = true
+	}
 }
+
+pub const cc_to_windows = 'x86_64-w64-mingw32-gcc'
+
+pub const cc_to_linux = 'clang'
 
 fn (mut p Preferences) find_cc_if_cross_compiling() {
 	if p.os == .windows {
 		$if !windows {
-			// Cross compiling to Windows
-			p.ccompiler = 'x86_64-w64-mingw32-gcc'
+			// Allow for explicit overrides like `v -showcc -cc msvc -os windows file.v`,
+			// so that the flag passing can be debugged on other OSes too, not only
+			// on windows (building will stop later, when -showcc already could display all
+			// options).
+			if p.ccompiler != 'msvc' {
+				// Cross compiling to Windows
+				p.ccompiler = vcross_compiler_name(pref.cc_to_windows)
+			}
 		}
 	}
 	if p.os == .linux {
 		$if !linux {
 			// Cross compiling to Linux
-			p.ccompiler = 'clang'
+			p.ccompiler = vcross_compiler_name(pref.cc_to_linux)
 		}
 	}
 }
@@ -200,7 +220,27 @@ pub fn vexe_path() string {
 	if vexe != '' {
 		return vexe
 	}
-	real_vexe_path := os.real_path(os.executable())
+	myexe := os.executable()
+	mut real_vexe_path := myexe
+	for {
+		$if tinyc {
+			$if x32 {
+				// TODO: investigate why exactly tcc32 segfaults on os.real_path here,
+				// and remove this cludge.
+				break
+			}
+		}
+		real_vexe_path = os.real_path(real_vexe_path)
+		break
+	}
 	os.setenv('VEXE', real_vexe_path, true)
 	return real_vexe_path
+}
+
+pub fn vcross_compiler_name(vccname_default string) string {
+	vccname := os.getenv('VCROSS_COMPILER_NAME')
+	if vccname != '' {
+		return vccname
+	}
+	return vccname_default
 }

@@ -215,13 +215,13 @@ pub fn (mut f File) writeln(s string) ?int {
 	if x < 0 {
 		return error('could not add newline')
 	}
-	return (written + 1)
+	return written + 1
 }
 
 // write_string writes the string `s` into the file
 // It returns how many bytes were actually written.
 pub fn (mut f File) write_string(s string) ?int {
-	unsafe { f.write_full_buffer(s.str, size_t(s.len)) ? }
+	unsafe { f.write_full_buffer(s.str, usize(s.len)) ? }
 	return s.len
 }
 
@@ -274,8 +274,8 @@ pub fn (mut f File) write_ptr(data voidptr, size int) int {
 // write_full_buffer writes a whole buffer of data to the file, starting from the
 // address in `buffer`, no matter how many tries/partial writes it would take.
 [unsafe]
-pub fn (mut f File) write_full_buffer(buffer voidptr, buffer_len size_t) ? {
-	if buffer_len <= size_t(0) {
+pub fn (mut f File) write_full_buffer(buffer voidptr, buffer_len usize) ? {
+	if buffer_len <= usize(0) {
 		return
 	}
 	if !f.is_opened {
@@ -370,7 +370,7 @@ pub fn (f &File) read_bytes_at(size int, pos u64) []byte {
 // A read call is either stopped, if the buffer is full, a newline was read or EOF.
 pub fn (f &File) read_bytes_into_newline(mut buf []byte) ?int {
 	if buf.len == 0 {
-		panic(@FN + ': `buf.len` == 0')
+		return error(@FN + ': `buf.len` == 0')
 	}
 	newline := 10
 	mut c := 0
@@ -409,7 +409,7 @@ pub fn (f &File) read_bytes_into_newline(mut buf []byte) ?int {
 // Returns the number of read bytes, or an error.
 pub fn (f &File) read_bytes_into(pos u64, mut buf []byte) ?int {
 	if buf.len == 0 {
-		panic(@FN + ': `buf.len` == 0')
+		return error(@FN + ': `buf.len` == 0')
 	}
 	$if x64 {
 		$if windows {
@@ -463,6 +463,12 @@ pub fn (f &File) read_from(pos u64, mut buf []byte) ?int {
 	return error('Could not read file')
 }
 
+// read_into_ptr reads at most max_size bytes from the file and writes it into ptr.
+// Returns the amount of bytes read or an error.
+pub fn (f &File) read_into_ptr(ptr &byte, max_size int) ?int {
+	return fread(ptr, 1, max_size, f.cfile)
+}
+
 // **************************** Utility  ops ***********************
 // flush writes any buffered unwritten data left in the file stream.
 pub fn (mut f File) flush() {
@@ -472,22 +478,28 @@ pub fn (mut f File) flush() {
 	C.fflush(f.cfile)
 }
 
-pub struct ErrFileNotOpened {
-	msg  string = 'os: file not opened'
-	code int
+pub struct FileNotOpenedError {
+	Error
 }
 
-pub struct ErrSizeOfTypeIs0 {
-	msg  string = 'os: size of type is 0'
-	code int
+pub fn (err FileNotOpenedError) msg() string {
+	return 'os: file not opened'
+}
+
+pub struct SizeOfTypeIs0Error {
+	Error
+}
+
+pub fn (err SizeOfTypeIs0Error) msg() string {
+	return 'os: size of type is 0'
 }
 
 fn error_file_not_opened() IError {
-	return IError(&ErrFileNotOpened{})
+	return IError(&FileNotOpenedError{})
 }
 
 fn error_size_of_type_0() IError {
-	return IError(&ErrSizeOfTypeIs0{})
+	return IError(&SizeOfTypeIs0Error{})
 }
 
 // read_struct reads a single struct of type `T`

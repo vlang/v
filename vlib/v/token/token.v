@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module token
@@ -48,6 +48,7 @@ pub enum Kind {
 	str_dollar
 	left_shift // <<
 	right_shift // >>
+	unsigned_right_shift // >>>
 	not_in // !in
 	not_is // !is
 	assign // =
@@ -62,11 +63,13 @@ pub enum Kind {
 	and_assign // &=
 	right_shift_assign // <<=
 	left_shift_assign // >>=
+	unsigned_right_shift_assign // >>>=
 	lcbr // {
 	rcbr // }
 	lpar // (
 	rpar // )
 	lsbr // [
+	nilsbr // #[
 	rsbr // ]
 	eq // ==
 	ne // !=
@@ -124,19 +127,17 @@ pub enum Kind {
 	key_union
 	key_pub
 	key_static
+	key_volatile
 	key_unsafe
 	keyword_end
 	_end_
 }
 
-pub const (
-	assign_tokens = [Kind.assign, .plus_assign, .minus_assign, .mult_assign, .div_assign, .xor_assign,
-		.mod_assign, .or_assign, .and_assign, .right_shift_assign, .left_shift_assign]
-)
+pub const assign_tokens = [Kind.assign, .plus_assign, .minus_assign, .mult_assign, .div_assign,
+	.xor_assign, .mod_assign, .or_assign, .and_assign, .right_shift_assign, .left_shift_assign,
+	.unsigned_right_shift_assign]
 
-const (
-	nr_tokens = int(Kind._end_)
-)
+const nr_tokens = int(Kind._end_)
 
 // @FN => will be substituted with the name of the current V function
 // @METHOD => will be substituted with ReceiverType.MethodName
@@ -178,10 +179,8 @@ pub enum AtKind {
 	vexeroot_path
 }
 
-pub const (
-	valid_at_tokens = ['@VROOT', '@VMODROOT', '@VEXEROOT', '@FN', '@METHOD', '@MOD', '@STRUCT',
-		'@VEXE', '@FILE', '@LINE', '@COLUMN', '@VHASH', '@VMOD_FILE']
-)
+pub const valid_at_tokens = ['@VROOT', '@VMODROOT', '@VEXEROOT', '@FN', '@METHOD', '@MOD', '@STRUCT',
+	'@VEXE', '@FILE', '@LINE', '@COLUMN', '@VHASH', '@VMOD_FILE']
 
 // build_keys genereates a map with keywords' string values:
 // Keywords['return'] == .key_return
@@ -238,12 +237,14 @@ fn build_token_str() []string {
 	s[Kind.or_assign] = '|='
 	s[Kind.and_assign] = '&='
 	s[Kind.right_shift_assign] = '>>='
+	s[Kind.unsigned_right_shift_assign] = '>>>='
 	s[Kind.left_shift_assign] = '<<='
 	s[Kind.lcbr] = '{'
 	s[Kind.rcbr] = '}'
 	s[Kind.lpar] = '('
 	s[Kind.rpar] = ')'
 	s[Kind.lsbr] = '['
+	s[Kind.nilsbr] = '#['
 	s[Kind.rsbr] = ']'
 	s[Kind.eq] = '=='
 	s[Kind.ne] = '!='
@@ -254,6 +255,7 @@ fn build_token_str() []string {
 	s[Kind.question] = '?'
 	s[Kind.left_shift] = '<<'
 	s[Kind.right_shift] = '>>'
+	s[Kind.unsigned_right_shift] = '>>>'
 	s[Kind.comment] = 'comment'
 	s[Kind.nl] = 'NLL'
 	s[Kind.dollar] = '$'
@@ -298,6 +300,7 @@ fn build_token_str() []string {
 	s[Kind.key_global] = '__global'
 	s[Kind.key_union] = 'union'
 	s[Kind.key_static] = 'static'
+	s[Kind.key_volatile] = 'volatile'
 	s[Kind.key_as] = 'as'
 	s[Kind.key_defer] = 'defer'
 	s[Kind.key_match] = 'match'
@@ -308,13 +311,11 @@ fn build_token_str() []string {
 	return s
 }
 
-const (
-	token_str = build_token_str()
-)
+const token_str = build_token_str()
 
-pub const (
-	keywords = build_keys()
-)
+pub const keywords = build_keys()
+
+pub const matcher = new_keywords_matcher<Kind>(keywords)
 
 [inline]
 pub fn is_key(key string) bool {
@@ -324,8 +325,7 @@ pub fn is_key(key string) bool {
 [inline]
 pub fn is_decl(t Kind) bool {
 	return t in [.key_enum, .key_interface, .key_fn, .key_struct, .key_type, .key_const, .key_pub,
-		.eof,
-	]
+		.eof]
 }
 
 [inline]
@@ -359,10 +359,8 @@ pub fn (t Token) str() string {
 
 // Representation of highest and lowest precedence
 /*
-pub const (
-	lowest_prec = 0
-	highest_prec = 8
-)
+pub const lowest_prec = 0
+pub const highest_prec = 8
 */
 pub enum Precedence {
 	lowest
@@ -372,7 +370,7 @@ pub enum Precedence {
 	eq // == or !=
 	// less_greater // > or <
 	sum // + - | ^
-	product // * / << >> &
+	product // * / << >> >>> &
 	// mod // %
 	prefix // -X or !X
 	postfix // ++ or --
@@ -383,17 +381,19 @@ pub enum Precedence {
 pub fn build_precedences() []Precedence {
 	mut p := []Precedence{len: int(Kind._end_)}
 	p[Kind.lsbr] = .index
+	p[Kind.nilsbr] = .index
 	p[Kind.dot] = .call
 	// `++` | `--` | `?`
 	p[Kind.inc] = .postfix
 	p[Kind.dec] = .postfix
 	p[Kind.question] = .postfix
-	// `*` |  `/` | `%` | `<<` | `>>` | `&`
+	// `*` |  `/` | `%` | `<<` | `>>` | `>>>` | `&`
 	p[Kind.mul] = .product
 	p[Kind.div] = .product
 	p[Kind.mod] = .product
 	p[Kind.left_shift] = .product
 	p[Kind.right_shift] = .product
+	p[Kind.unsigned_right_shift] = .product
 	p[Kind.amp] = .product
 	p[Kind.arrow] = .product
 	// `+` |  `-` |  `|` | `^`
@@ -419,6 +419,7 @@ pub fn build_precedences() []Precedence {
 	// <<= | *= | ...
 	p[Kind.left_shift_assign] = .assign
 	p[Kind.right_shift_assign] = .assign
+	p[Kind.unsigned_right_shift_assign] = .assign
 	p[Kind.mult_assign] = .assign
 	p[Kind.xor_assign] = .assign
 	p[Kind.key_in] = .in_as
@@ -431,9 +432,7 @@ pub fn build_precedences() []Precedence {
 	return p
 }
 
-const (
-	precedences = build_precedences()
-)
+const precedences = build_precedences()
 
 // precedence returns a tokens precedence if defined, otherwise lowest_prec
 [inline]
@@ -474,17 +473,5 @@ pub fn (kind Kind) is_prefix() bool {
 pub fn (kind Kind) is_infix() bool {
 	return kind in [.plus, .minus, .mod, .mul, .div, .eq, .ne, .gt, .lt, .key_in, .key_as, .ge,
 		.le, .logical_or, .xor, .not_in, .key_is, .not_is, .and, .dot, .pipe, .amp, .left_shift,
-		.right_shift, .arrow]
-}
-
-// Pass ast.builtin_type_names
-// Note: can't import table here due to circular module dependency
-pub fn (tok &Token) can_start_type(builtin_types []string) bool {
-	match tok.kind {
-		.name { return (tok.lit.len > 0 && tok.lit[0].is_capital()) || tok.lit in builtin_types }
-		// Note: return type (T1, T2) should be handled elsewhere
-		.amp, .key_fn, .lsbr, .question { return true }
-		else {}
-	}
-	return false
+		.right_shift, .unsigned_right_shift, .arrow]
 }

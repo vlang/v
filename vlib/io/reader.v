@@ -6,17 +6,8 @@ pub interface Reader {
 	// them into buf.
 	// A type that implements this should return
 	// `none` on end of stream (EOF) instead of just returning 0
+mut:
 	read(mut buf []byte) ?int
-}
-
-// make_reader is a temp that converts a type to a reader
-// (e.g. for use in struct initialisation)
-// (this shouldnt need to be a thing but until coercion gets made better
-// it is required)
-[deprecated: 'use just `x` instead of `io.make_reader(x)`. Interfaces are now checked against all types.']
-[deprecated_after: '2021-05-27']
-pub fn make_reader(r Reader) Reader {
-	return r
 }
 
 const (
@@ -27,14 +18,15 @@ const (
 // ReadAllConfig allows options to be passed for the behaviour
 // of read_all
 pub struct ReadAllConfig {
-	reader                Reader
 	read_to_end_of_stream bool
+mut:
+	reader Reader
 }
 
 // read_all reads all bytes from a reader until either a 0 length read
 // or if read_to_end_of_stream is true then the end of the stream (`none`)
 pub fn read_all(config ReadAllConfig) ?[]byte {
-	r := config.reader
+	mut r := config.reader
 	read_till_eof := config.read_to_end_of_stream
 
 	mut b := []byte{len: io.read_all_len}
@@ -54,7 +46,7 @@ pub fn read_all(config ReadAllConfig) ?[]byte {
 
 // read_any reads any available bytes from a reader
 // (until the reader returns a read of 0 length)
-pub fn read_any(r Reader) ?[]byte {
+pub fn read_any(mut r Reader) ?[]byte {
 	mut b := []byte{len: io.read_all_len}
 	mut read := 0
 	for {
@@ -71,6 +63,6 @@ pub fn read_any(r Reader) ?[]byte {
 }
 
 // RandomReader represents a stream of data that can be read from at a random location
-interface RandomReader {
+pub interface RandomReader {
 	read_from(pos u64, mut buf []byte) ?int
 }

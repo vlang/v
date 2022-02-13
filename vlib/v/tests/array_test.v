@@ -18,3 +18,10 @@ fn test_for_in_shared_array_named_array() {
 		}
 	}
 }
+
+fn test_fixed_array_to_dynamic_array() {
+	y := [1, 2, 3]!
+	mut x := y[..]
+	x << 4
+	assert x.len == 4
+}

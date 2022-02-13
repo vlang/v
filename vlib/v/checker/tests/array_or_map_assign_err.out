@@ -11,10 +11,10 @@ vlib/v/checker/tests/array_or_map_assign_err.vv:5:5: error: use `array2 = array1
     5 |     a3 = a1
       |        ^
     6 |
-    7 |     m1 := map{'one': 1}
+    7 |     m1 := {'one': 1}
 vlib/v/checker/tests/array_or_map_assign_err.vv:8:8: error: cannot copy map: call `move` or `clone` method (or use a reference)
     6 |
-    7 |     m1 := map{'one': 1}
+    7 |     m1 := {'one': 1}
     8 |     m2 := m1
       |           ~~
     9 |     mut m3 := map[string]int{}

@@ -79,11 +79,11 @@ fn test_array_of_strings_interpolation() {
 
 fn test_array_of_map_interpolation() {
 	mut a := []map[string]int{}
-	a << map{
+	a << {
 		'a': int(1)
 		'b': 2
 	}
-	a << map{
+	a << {
 		'c': int(3)
 		'd': 4
 	}

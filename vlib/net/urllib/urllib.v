@@ -54,8 +54,7 @@ fn should_escape(c byte, mode EncodingMode) bool {
 		// escape them (because hosts can`t use %-encoding for
 		// ASCII bytes).
 		if c in [`!`, `$`, `&`, `\\`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `:`, `[`, `]`, `<`, `>`,
-			`"`,
-		] {
+			`"`] {
 			return false
 		}
 	}
@@ -212,7 +211,7 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 		}
 	}
 	if n == 0 && !has_plus {
-		return s
+		return '$s' // TODO `return s` once an autofree bug is fixed
 	}
 	if s.len < 2 * n {
 		return error(error_msg('unescape: invalid escape sequence', ''))
@@ -272,14 +271,8 @@ fn escape(s string, mode EncodingMode) string {
 	if space_count == 0 && hex_count == 0 {
 		return s
 	}
-	buf := []byte{len: (64)}
-	mut t := []byte{}
 	required := s.len + 2 * hex_count
-	if required <= buf.len {
-		t = buf[..required]
-	} else {
-		t = []byte{len: required}
-	}
+	mut t := []byte{len: required}
 	if hex_count == 0 {
 		copy(t, s.bytes())
 		for i in 0 .. s.len {
@@ -417,7 +410,7 @@ fn split_by_scheme(rawurl string) ?[]string {
 }
 
 fn get_scheme(rawurl string) ?string {
-	split := split_by_scheme(rawurl) or { return err.msg }
+	split := split_by_scheme(rawurl) or { return err.msg() }
 	return split[0]
 }
 
@@ -600,9 +593,9 @@ fn parse_host(host string) ?string {
 		// We do impose some restrictions on the zone, to avoid stupidity
 		// like newlines.
 		if zone := host[..i].index('%25') {
-			host1 := unescape(host[..zone], .encode_host) or { return err.msg }
-			host2 := unescape(host[zone..i], .encode_zone) or { return err.msg }
-			host3 := unescape(host[i..], .encode_host) or { return err.msg }
+			host1 := unescape(host[..zone], .encode_host) or { return err.msg() }
+			host2 := unescape(host[zone..i], .encode_zone) or { return err.msg() }
+			host3 := unescape(host[i..], .encode_host) or { return err.msg() }
 			return host1 + host2 + host3
 		}
 		if idx := host.last_index(':') {
@@ -613,7 +606,7 @@ fn parse_host(host string) ?string {
 			}
 		}
 	}
-	h := unescape(host, .encode_host) or { return err.msg }
+	h := unescape(host, .encode_host) or { return err.msg() }
 	return h
 	// host = h
 	// return host
@@ -628,15 +621,8 @@ fn parse_host(host string) ?string {
 // set_path will return an error only if the provided path contains an invalid
 // escaping.
 pub fn (mut u URL) set_path(p string) ?bool {
-	path := unescape(p, .encode_path) ?
-	u.path = path
-	escp := escape(path, .encode_path)
-	if p == escp {
-		// Default encoding is fine.
-		u.raw_path = ''
-	} else {
-		u.raw_path = p
-	}
+	u.path = unescape(p, .encode_path) ?
+	u.raw_path = if p == escape(u.path, .encode_path) { '' } else { p }
 	return true
 }
 
@@ -849,28 +835,32 @@ fn parse_query_values(mut m Values, query string) ?bool {
 }
 
 // encode encodes the values into ``URL encoded'' form
-// ('bar=baz&foo=quux') sorted by key.
+// ('bar=baz&foo=quux').
+// The syntx of the query string is specified in the
+// RFC173 https://datatracker.ietf.org/doc/html/rfc1738
+//
+// HTTP grammar
+//
+// httpurl        = "http://" hostport [ "/" hpath [ "?" search ]]
+// hpath          = hsegment *[ "/" hsegment ]
+// hsegment       = *[ uchar | ";" | ":" | "@" | "&" | "=" ]
+// search         = *[ uchar | ";" | ":" | "@" | "&" | "=" ]
 pub fn (v Values) encode() string {
 	if v.len == 0 {
 		return ''
 	}
 	mut buf := strings.new_builder(200)
-	mut keys := []string{}
-	for k, _ in v.data {
-		keys << k
-	}
-	keys.sort()
-	for k in keys {
-		vs := v.data[k]
-		key_kscaped := query_escape(k)
-		for _, val in vs.data {
-			if buf.len > 0 {
-				buf.write_string('&')
-			}
-			buf.write_string(key_kscaped)
-			buf.write_string('=')
-			buf.write_string(query_escape(val))
+	for qvalue in v.data {
+		key_kscaped := query_escape(qvalue.key)
+		if buf.len > 0 {
+			buf.write_string('&')
 		}
+		buf.write_string(key_kscaped)
+		if qvalue.value == '' {
+			continue
+		}
+		buf.write_string('=')
+		buf.write_string(query_escape(qvalue.value))
 	}
 	return buf.str()
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module util
@@ -11,12 +11,12 @@ import v.util.recompilation
 
 // math.bits is needed by strconv.ftoa
 pub const (
-	builtin_module_parts = ['math.bits', 'strconv', 'strconv.ftoa', 'strings', 'builtin']
+	builtin_module_parts = ['math.bits', 'strconv', 'dlmalloc', 'strconv.ftoa', 'strings', 'builtin']
 	bundle_modules       = ['clipboard', 'fontstash', 'gg', 'gx', 'sokol', 'szip', 'ui']
 )
 
 pub const (
-	external_module_dependencies_for_tool = map{
+	external_module_dependencies_for_tool = {
 		'vdoc': ['markdown']
 	}
 )
@@ -43,10 +43,14 @@ pub fn tabs(n int) string {
 //
 pub fn set_vroot_folder(vroot_path string) {
 	// Preparation for the compiler module:
-	// VEXE env variable is needed so that compiler.vexe_path()
-	// can return it later to whoever needs it:
-	vname := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
-	os.setenv('VEXE', os.real_path(os.join_path(vroot_path, vname)), true)
+	// VEXE env variable is needed so that compiler.vexe_path() can return it
+	// later to whoever needs it. NB: guessing is a heuristic, so only try to
+	// guess the V executable name, if VEXE has not been set already.
+	vexe := os.getenv('VEXE')
+	if vexe == '' {
+		vname := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
+		os.setenv('VEXE', os.real_path(os.join_path_single(vroot_path, vname)), true)
+	}
 	os.setenv('VCHILD', 'true', true)
 }
 
@@ -75,7 +79,7 @@ pub fn resolve_env_value(str string, check_for_presence bool) ?string {
 		if ch.is_letter() || ch.is_digit() || ch == `_` {
 			env_lit += ch.ascii_str()
 		} else {
-			if !(ch == `\'` || ch == `)`) {
+			if !(ch == `'` || ch == `)`) {
 				if ch == `$` {
 					return error('cannot use string interpolation in compile time \$env() expression')
 				}
@@ -115,24 +119,25 @@ pub fn resolve_env_value(str string, check_for_presence bool) ?string {
 // V itself. That mechanism can be disabled by package managers by creating/touching a small
 // `cmd/tools/.disable_autorecompilation` file, OR by changing the timestamps of all executables
 // in cmd/tools to be < 1024 seconds (in unix time).
+[noreturn]
 pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
 	set_vroot_folder(vroot)
 	tool_args := args_quote_paths(args)
 	tools_folder := os.join_path(vroot, 'cmd', 'tools')
-	tool_basename := os.real_path(os.join_path(tools_folder, tool_name))
+	tool_basename := os.real_path(os.join_path_single(tools_folder, tool_name))
 	mut tool_exe := ''
 	mut tool_source := ''
 	if os.is_dir(tool_basename) {
-		tool_exe = path_of_executable(os.join_path(tool_basename, tool_name))
+		tool_exe = path_of_executable(os.join_path_single(tool_basename, os.file_name(tool_name)))
 		tool_source = tool_basename
 	} else {
 		tool_exe = path_of_executable(tool_basename)
 		tool_source = tool_basename + '.v'
 	}
 	if is_verbose {
-		println('launch_tool vexe        : $vroot')
+		println('launch_tool vexe        : $vexe')
 		println('launch_tool vroot       : $vroot')
 		println('launch_tool tool_source : $tool_source')
 		println('launch_tool tool_exe    : $tool_exe')
@@ -150,7 +155,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		for emodule in emodules {
 			check_module_is_installed(emodule, is_verbose) or { panic(err) }
 		}
-		mut compilation_command := '"$vexe" -skip-unused '
+		mut compilation_command := '${os.quoted_path(vexe)} -skip-unused '
 		if tool_name in ['vself', 'vup', 'vdoctor', 'vsymlink'] {
 			// These tools will be called by users in cases where there
 			// is high chance of there being a problem somewhere. Thus
@@ -159,7 +164,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 			// .v line numbers, to ease diagnostic in #bugs and issues.
 			compilation_command += ' -g '
 		}
-		compilation_command += '"$tool_source"'
+		compilation_command += os.quoted_path(tool_source)
 		if is_verbose {
 			println('Compiling $tool_name with: "$compilation_command"')
 		}
@@ -170,10 +175,14 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		}
 	}
 	$if windows {
-		exit(os.system('"$tool_exe" $tool_args'))
+		exit(os.system('${os.quoted_path(tool_exe)} $tool_args'))
+	} $else $if js {
+		// no way to implement os.execvp in JS backend
+		exit(os.system('$tool_exe $tool_args'))
 	} $else {
 		os.execvp(tool_exe, args) or { panic(err) }
 	}
+	exit(2)
 }
 
 // NB: should_recompile_tool/4 compares unix timestamps that have 1 second resolution
@@ -183,7 +192,7 @@ pub fn should_recompile_tool(vexe string, tool_source string, tool_name string, 
 	if os.is_dir(tool_source) {
 		source_files := os.walk_ext(tool_source, '.v')
 		mut newest_sfile := ''
-		mut newest_sfile_mtime := 0
+		mut newest_sfile_mtime := i64(0)
 		for sfile in source_files {
 			mtime := os.file_last_mod_unix(sfile)
 			if mtime > newest_sfile_mtime {
@@ -237,19 +246,12 @@ pub fn should_recompile_tool(vexe string, tool_source string, tool_name string, 
 fn tool_source2name_and_exe(tool_source string) (string, string) {
 	sfolder := os.dir(tool_source)
 	tool_name := os.base(tool_source).replace('.v', '')
-	tool_exe := os.join_path(sfolder, path_of_executable(tool_name))
+	tool_exe := os.join_path_single(sfolder, path_of_executable(tool_name))
 	return tool_name, tool_exe
 }
 
 pub fn quote_path(s string) string {
-	mut qs := s
-	if qs.contains('&') {
-		qs = qs.replace('&', '\\&')
-	}
-	if qs.contains(' ') {
-		return '"$qs"'
-	}
-	return qs
+	return os.quoted_path(s)
 }
 
 pub fn args_quote_paths(args []string) string {
@@ -267,25 +269,36 @@ pub fn path_of_executable(path string) string {
 	return path
 }
 
-pub fn read_file(file_path string) ?string {
-	raw_text := os.read_file(file_path) or { return error('failed to open $file_path') }
-	return skip_bom(raw_text)
+[heap]
+struct SourceCache {
+mut:
+	sources map[string]string
 }
 
-pub fn skip_bom(file_content string) string {
-	mut raw_text := file_content
-	// BOM check
-	if raw_text.len >= 3 {
-		unsafe {
-			c_text := raw_text.str
-			if c_text[0] == 0xEF && c_text[1] == 0xBB && c_text[2] == 0xBF {
-				// skip three BOM bytes
-				offset_from_begin := 3
-				raw_text = tos(c_text[offset_from_begin], vstrlen(c_text) - offset_from_begin)
-			}
-		}
+[unsafe]
+pub fn cached_read_source_file(path string) ?string {
+	mut static cache := &SourceCache(0)
+	if isnil(cache) {
+		cache = &SourceCache{}
 	}
-	return raw_text
+
+	if path.len == 0 {
+		unsafe { cache.sources.free() }
+		unsafe { free(cache) }
+		cache = &SourceCache(0)
+		return error('memory source file cache cleared')
+	}
+
+	// eprintln('>> cached_read_source_file path: $path')
+	if res := cache.sources[path] {
+		// eprintln('>> cached')
+		return res
+	}
+	// eprintln('>> not cached | cache.sources.len: $cache.sources.len')
+	raw_text := os.read_file(path) or { return error('failed to open $path') }
+	res := skip_bom(raw_text)
+	cache.sources[path] = res
+	return res
 }
 
 pub fn replace_op(s string) string {
@@ -325,8 +338,8 @@ fn non_empty(arg []string) []string {
 }
 
 pub fn check_module_is_installed(modulename string, is_verbose bool) ?bool {
-	mpath := os.join_path(os.vmodules_dir(), modulename)
-	mod_v_file := os.join_path(mpath, 'v.mod')
+	mpath := os.join_path_single(os.vmodules_dir(), modulename)
+	mod_v_file := os.join_path_single(mpath, 'v.mod')
 	murl := 'https://github.com/vlang/$modulename'
 	if is_verbose {
 		eprintln('check_module_is_installed: mpath: $mpath')
@@ -335,7 +348,7 @@ pub fn check_module_is_installed(modulename string, is_verbose bool) ?bool {
 	}
 	if os.exists(mod_v_file) {
 		vexe := pref.vexe_path()
-		update_cmd := '"$vexe" update "$modulename"'
+		update_cmd := "${os.quoted_path(vexe)} update '$modulename'"
 		if is_verbose {
 			eprintln('check_module_is_installed: updating with $update_cmd ...')
 		}
@@ -435,7 +448,7 @@ pub fn prepare_tool_when_needed(source_name string) {
 }
 
 pub fn recompile_file(vexe string, file string) {
-	cmd := '$vexe $file'
+	cmd := '${os.quoted_path(vexe)} ${os.quoted_path(file)}'
 	$if trace_recompilation ? {
 		println('recompilation command: $cmd')
 	}
@@ -451,7 +464,8 @@ pub fn get_vtmp_folder() string {
 	if vtmp.len > 0 {
 		return vtmp
 	}
-	vtmp = os.join_path(os.temp_dir(), 'v')
+	uid := os.getuid()
+	vtmp = os.join_path_single(os.temp_dir(), 'v_$uid')
 	if !os.exists(vtmp) || !os.is_dir(vtmp) {
 		os.mkdir_all(vtmp) or { panic(err) }
 	}
@@ -484,4 +498,18 @@ pub fn find_all_v_files(roots []string) ?[]string {
 		files << file
 	}
 	return files
+}
+
+// free_caches knows about all `util` caches and makes sure that they are freed
+// if you add another cached unsafe function using static, do not forget to add
+// a mechanism to clear its cache, and call it here.
+pub fn free_caches() {
+	unsafe {
+		cached_file2sourcelines('')
+		cached_read_source_file('') or { '' }
+	}
+}
+
+pub fn read_file(file_path string) ?string {
+	return unsafe { cached_read_source_file(file_path) }
 }

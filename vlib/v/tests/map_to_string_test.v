@@ -22,7 +22,7 @@ fn test_interpolation_map_to_string() {
 	c['2'] = false
 	assert '$c' == "{'1': true, '2': false}"
 
-	d := map{
+	d := {
 		'f1': 1.1
 		'f2': 2.2
 		'f3': 3.3
@@ -42,7 +42,7 @@ fn test_interpolation_map_to_string() {
 	assert s.contains("}, '2': Test{")
 	assert s.contains("y: 'def'")
 
-	f := map{
+	f := {
 		'hello': [1, 2, 3]!
 	}
 	assert '$f' == "{'hello': [1, 2, 3]}"

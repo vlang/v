@@ -6,12 +6,12 @@ import v.ast
 // parse `x` or `x.y.z` - no index, no struct literals (`{` starts lock block)
 fn (mut p Parser) lockable() ast.Expr {
 	mut names := []string{}
-	mut positions := []token.Position{}
-	mut pos := p.tok.position()
+	mut positions := []token.Pos{}
+	mut pos := p.tok.pos()
 	for {
 		if p.tok.kind != .name {
 			p.error_with_pos('unexpected `$p.tok.lit` (field/variable name expected)',
-				p.tok.position())
+				p.tok.pos())
 		}
 		names << p.tok.lit
 		positions << pos
@@ -20,7 +20,7 @@ fn (mut p Parser) lockable() ast.Expr {
 			break
 		}
 		p.next()
-		pos.extend(p.tok.position())
+		pos.extend(p.tok.pos())
 	}
 	mut expr := ast.Expr(ast.Ident{
 		language: ast.Language.v
@@ -67,14 +67,14 @@ fn (mut p Parser) lock_expr() ast.LockExpr {
 	// TODO Handle aliasing sync
 	p.register_auto_import('sync')
 	p.open_scope()
-	mut pos := p.tok.position()
+	mut pos := p.tok.pos()
 	mut lockeds := []ast.Expr{}
 	mut comments := []ast.Comment{}
 	mut is_rlocked := []bool{}
 	for {
 		is_rlock := p.tok.kind == .key_rlock
 		if !is_rlock && p.tok.kind != .key_lock {
-			p.error_with_pos('unexpected `$p.tok`, expected `lock` or `rlock`', p.tok.position())
+			p.error_with_pos('unexpected `$p.tok`, expected `lock` or `rlock`', p.tok.pos())
 		}
 		p.next()
 		if p.tok.kind == .lcbr {
@@ -85,7 +85,7 @@ fn (mut p Parser) lock_expr() ast.LockExpr {
 			for e in exprs {
 				if !e.is_lockable() {
 					p.error_with_pos('`$e` cannot be locked - only `x` or `x.y` are supported',
-						e.position())
+						e.pos())
 				}
 				lockeds << e
 				is_rlocked << is_rlock

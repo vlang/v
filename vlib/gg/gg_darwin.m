@@ -68,7 +68,6 @@ int darwin_text_width(string s) {
 	return (int)(ceil(size.width));
 }
 
-
 void darwin_draw_rect(float x, float y, float width, float height, gx__Color c) {
 	NSColor* color = nscolor(c);
 	NSRect rect = NSMakeRect(x, y, width, height);

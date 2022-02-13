@@ -1,3 +1,5 @@
+import math.big
+
 // Test cross assign of array elements
 fn test_cross_assign_of_array() {
 	mut a := [0, 1]
@@ -26,7 +28,7 @@ fn test_cross_assign_of_array_in_fn() {
 
 // Test cross assign of map values
 fn test_cross_assign_of_map() {
-	mut a := map{
+	mut a := {
 		'one': 1
 		'two': 2
 	}
@@ -42,7 +44,7 @@ fn foo2(mut a map[string]int) {
 }
 
 fn test_cross_assign_of_map_in_fn() {
-	mut a := map{
+	mut a := {
 		'one': 1
 		'two': 2
 	}
@@ -94,7 +96,7 @@ fn test_cross_assign_of_struct_in_fn() {
 // Test cross assign of mixed types
 fn test_cross_assign_of_mixed_types() {
 	mut a := [0, 1]
-	mut m := map{
+	mut m := {
 		'one': 1
 		'two': 2
 	}
@@ -119,7 +121,7 @@ fn foo(mut a []int, mut m map[string]int, mut x Zoo) {
 
 fn test_cross_assign_of_mixed_types_in_fn() {
 	mut a := [0, 1]
-	mut m := map{
+	mut m := {
 		'one': 1
 		'two': 2
 	}
@@ -140,7 +142,7 @@ fn test_cross_assign_of_mixed_types_in_fn() {
 // Test cross assign of complex types
 fn test_cross_assign_of_complex_types() {
 	mut a := [0, 1]
-	mut m := map{
+	mut m := {
 		'one': 1
 		'two': 2
 	}
@@ -156,4 +158,13 @@ fn test_cross_assign_of_complex_types() {
 	assert m['two'] == 3
 	assert x.a == 2
 	assert x.b == -1
+}
+
+fn test_cross_assign_of_big_int() {
+	mut a := big.zero_int
+	mut b := big.one_int
+
+	a, b = a + b, a
+	println(a)
+	assert a == big.one_int
 }

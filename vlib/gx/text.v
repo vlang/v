@@ -1,30 +1,12 @@
 module gx
 
-import fontstash
-
-const (
-	used_import = fontstash.used_import
-)
-
-// TODO: remove these and uae the enum everywhere
+// TODO: remove these, and use the enum everywhere
 pub const (
 	align_left  = HorizontalAlign.left
 	align_right = HorizontalAlign.right
 )
 
-pub enum HorizontalAlign {
-	left = C.FONS_ALIGN_LEFT
-	center = C.FONS_ALIGN_CENTER
-	right = C.FONS_ALIGN_RIGHT
-}
-
-pub enum VerticalAlign {
-	top = C.FONS_ALIGN_TOP
-	middle = C.FONS_ALIGN_MIDDLE
-	bottom = C.FONS_ALIGN_BOTTOM
-	baseline = C.FONS_ALIGN_BASELINE
-}
-
+[params]
 pub struct TextCfg {
 pub:
 	color          Color = black
@@ -36,4 +18,18 @@ pub:
 	bold           bool
 	mono           bool
 	italic         bool
+}
+
+pub fn (cfg TextCfg) to_css_string() string {
+	mut font_style := ''
+	if cfg.bold {
+		font_style += 'bold '
+	}
+	if cfg.mono {
+		font_style += 'mono '
+	}
+	if cfg.italic {
+		font_style += 'italic '
+	}
+	return '$font_style ${cfg.size}px $cfg.family'
 }

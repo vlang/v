@@ -116,7 +116,7 @@ fn test_shared_auto_init_map() {
 
 fn test_shared_map_in_struct() {
 	x := Hjk{
-		m: map{
+		m: {
 			'st': -6.0625
 			'xy': 12.125
 			'rz': 2.25

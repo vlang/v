@@ -27,6 +27,66 @@ fn test_simple() ? {
 	assert y.title == .worker
 }
 
+fn test_decode_top_level_array() {
+	s := '[{"name":"Peter", "age": 29}, {"name":"Bob", "age":31}]'
+	x := json.decode([]Employee, s) or { panic(err) }
+	assert x.len == 2
+	assert x[0].name == 'Peter'
+	assert x[0].age == 29
+	assert x[1].name == 'Bob'
+	assert x[1].age == 31
+}
+
+struct Human {
+	name string
+}
+
+struct Item {
+	tag string
+}
+
+enum Animal {
+	dog // Will be encoded as `0`
+	cat
+}
+
+type Entity = Animal | Human | Item | string | time.Time
+
+struct SomeGame {
+	title  string
+	player Entity
+	other  []Entity
+}
+
+fn test_encode_decode_sumtype() ? {
+	t := time.now()
+	game := SomeGame{
+		title: 'Super Mega Game'
+		player: Human{'Monke'}
+		other: [
+			Entity(Item{'Pen'}),
+			Item{'Cookie'},
+			Animal.cat,
+			'Stool',
+			t,
+		]
+	}
+	eprintln('Game: $game')
+
+	enc := json.encode(game)
+	eprintln('Encoded Game: $enc')
+
+	assert enc == '{"title":"Super Mega Game","player":{"name":"Monke","_type":"Human"},"other":[{"tag":"Pen","_type":"Item"},{"tag":"Cookie","_type":"Item"},1,"Stool",{"_type":"Time","value":$t.unix_time()}]}'
+
+	dec := json.decode(SomeGame, enc) ?
+	eprintln('Decoded Game: $dec')
+
+	assert game.title == dec.title
+	assert game.player == dec.player
+	assert (game.other[2] as Animal) == (dec.other[2] as Animal)
+	assert (game.other[4] as time.Time).unix_time() == (dec.other[4] as time.Time).unix_time()
+}
+
 fn bar<T>(payload string) ?Bar { // ?T doesn't work currently
 	result := json.decode(T, payload) ?
 	return result
@@ -151,7 +211,7 @@ fn test_struct_in_struct() ? {
 
 fn test_encode_map() {
 	expected := '{"one":1,"two":2,"three":3,"four":4}'
-	numbers := map{
+	numbers := {
 		'one':   1
 		'two':   2
 		'three': 3
@@ -163,7 +223,7 @@ fn test_encode_map() {
 }
 
 fn test_parse_map() ? {
-	expected := map{
+	expected := {
 		'one':   1
 		'two':   2
 		'three': 3
@@ -193,7 +253,7 @@ fn test_nested_type() ? {
 				cities: [City{'Donlon'}, City{'Termanches'}]
 			},
 		]
-		users: map{
+		users: {
 			'Foo': User{
 				age: 10
 				nums: [1, 2, 3]
@@ -211,14 +271,14 @@ fn test_nested_type() ? {
 				pets: 'little boo'
 			}
 		}
-		extra: map{
-			'2': map{
+		extra: {
+			'2': {
 				'n1': 2
 				'n2': 4
 				'n3': 8
 				'n4': 16
 			}
-			'3': map{
+			'3': {
 				'n1': 3
 				'n2': 9
 				'n3': 27
@@ -273,7 +333,7 @@ fn test_errors() {
 		data := '{"countries":[{"cities":[{"name":"London"},{"name":"Manchester"}],"name":"UK"},{"cities":{"name":"Donlon"},"name":"KU"}],"users":{"Foo":{"age":10,"nums":[1,2,3],"lastName":"Johnson","IsRegistered":true,"type":0,"pet_animals":"little foo"},"Boo":{"age":20,"nums":[5,3,1],"lastName":"Smith","IsRegistered":false,"type":4,"pet_animals":"little boo"}},"extra":{"2":{"n1":2,"n2":4,"n3":8,"n4":16},"3":{"n1":3,"n2":9,"n3":27,"n4":81}}}'
 		json.decode(Data, data) or {
 			println(err)
-			assert err.msg.starts_with('Json element is not an array:')
+			assert err.msg().starts_with('Json element is not an array:')
 			return
 		}
 		assert false
@@ -282,7 +342,7 @@ fn test_errors() {
 		data := '{"countries":[{"cities":[{"name":"London"},{"name":"Manchester"}],"name":"UK"},{"cities":[{"name":"Donlon"},{"name":"Termanches"}],"name":"KU"}],"users":[{"age":10,"nums":[1,2,3],"lastName":"Johnson","IsRegistered":true,"type":0,"pet_animals":"little foo"},{"age":20,"nums":[5,3,1],"lastName":"Smith","IsRegistered":false,"type":4,"pet_animals":"little boo"}],"extra":{"2":{"n1":2,"n2":4,"n3":8,"n4":16},"3":{"n1":3,"n2":9,"n3":27,"n4":81}}}'
 		json.decode(Data, data) or {
 			println(err)
-			assert err.msg.starts_with('Json element is not an object:')
+			assert err.msg().starts_with('Json element is not an object:')
 			return
 		}
 		assert false
@@ -355,4 +415,42 @@ fn test_pretty() {
 	assert json.encode_pretty(foo) == '{
 	"name":	"Bob"
 }'
+}
+
+struct Foo3 {
+	name string
+	age  int    [omitempty]
+}
+
+fn test_omit_empty() {
+	foo := Foo3{'Bob', 0}
+	assert json.encode_pretty(foo) == '{
+	"name":	"Bob"
+}'
+	// println('omitempty:')
+	// println(json.encode_pretty(foo))
+}
+
+struct Asdasd {
+	data GamePacketData
+}
+
+type GamePacketData = GPEquipItem | GPScale
+
+struct GPScale {
+	value f32
+}
+
+struct GPEquipItem {
+	name string
+}
+
+fn create_game_packet(data &GamePacketData) string {
+	return json.encode(data)
+}
+
+fn test_encode_sumtype_defined_ahead() {
+	ret := create_game_packet(&GamePacketData(GPScale{}))
+	println(ret)
+	assert ret == '{"value":0,"_type":"GPScale"}'
 }

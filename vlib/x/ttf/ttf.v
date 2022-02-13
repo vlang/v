@@ -501,7 +501,7 @@ fn (mut tf TTF_File) get_i8() i8 {
 }
 
 fn (mut tf TTF_File) get_u16() u16 {
-	x := u16(tf.buf[tf.pos] << u16(8)) | u16(tf.buf[tf.pos + 1])
+	x := u16(tf.buf[tf.pos]) << 8 | u16(tf.buf[tf.pos + 1])
 	tf.pos += 2
 	return x
 }
@@ -552,10 +552,10 @@ fn (mut tf TTF_File) get_unicode_string(length int) string {
 		c_len := ((0xe5000000 >> ((c >> 3) & 0x1e)) & 3) + 1
 		real_len += c_len
 		if c_len == 1 {
-			tmp_txt.write_b(byte(c & 0xff))
+			tmp_txt.write_byte(byte(c & 0xff))
 		} else {
-			tmp_txt.write_b(byte((c >> 8) & 0xff))
-			tmp_txt.write_b(byte(c & 0xff))
+			tmp_txt.write_byte(byte((c >> 8) & 0xff))
+			tmp_txt.write_byte(byte(c & 0xff))
 		}
 		// dprintln("c: ${c:c}|${ byte(c &0xff) :c} c_len: ${c_len} str_len: ${real_len} in_len: ${length}")
 	}
@@ -975,7 +975,7 @@ fn (mut tf TTF_File) create_kern_table0(vertical bool, cross bool) Kern0Table {
 
 fn (mut tf TTF_File) read_kern_table() {
 	dprintln('*** READ KERN TABLE ***')
-	if !('kern' in tf.tables) {
+	if 'kern' !in tf.tables {
 		return
 	}
 	table_offset := tf.tables['kern'].offset

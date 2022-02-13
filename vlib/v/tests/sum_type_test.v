@@ -107,7 +107,7 @@ fn test_converting_down() {
 }
 
 fn test_assignment_and_push() {
-	mut expr1 := Expr{}
+	mut expr1 := Expr(IfExpr{})
 	mut arr1 := []Expr{}
 	expr := IntegerLiteral{
 		val: '111'
@@ -553,7 +553,7 @@ fn sumtype_match_with_string_interpolation(code int) string {
 fn handle(e Expr) string {
 	is_literal := e is IntegerLiteral
 	assert is_literal
-	assert !(e !is IntegerLiteral)
+	assert e is IntegerLiteral
 	if e is IntegerLiteral {
 		assert typeof(e.val).name == 'string'
 	}
@@ -711,4 +711,49 @@ fn test_binary_search_tree() {
 	}
 	deleted.sort()
 	assert deleted == [0.0, 0.3, 0.6, 1.0]
+}
+
+struct Common {
+	a int
+	b int
+}
+
+struct Common2 {
+	Common
+}
+
+struct Aa {
+	Common
+	x int
+}
+
+struct Bb {
+	Common
+	x int
+}
+
+struct Cc {
+	a int
+}
+
+struct Dd {
+	Common2
+}
+
+type MySum = Aa | Bb | Cc | Dd
+
+fn test_sumtype_access_embed_fields() {
+	a := MySum(Aa{
+		a: 1
+	})
+	assert a.a == 1
+}
+
+fn test_sumtype_access_nested_embed_fields() {
+	a := MySum(Dd{
+		Common2: Common2{
+			a: 2
+		}
+	})
+	assert a.a == 2
 }

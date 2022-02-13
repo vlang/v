@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module main
 
@@ -222,7 +222,7 @@ fn (vt &Vet) e2string(err vet.Error) string {
 }
 
 fn (mut vt Vet) error(msg string, line int, fix vet.FixKind) {
-	pos := token.Position{
+	pos := token.Pos{
 		line_nr: line + 1
 	}
 	vt.errors << vet.Error{
@@ -236,7 +236,7 @@ fn (mut vt Vet) error(msg string, line int, fix vet.FixKind) {
 }
 
 fn (mut vt Vet) warn(msg string, line int, fix vet.FixKind) {
-	pos := token.Position{
+	pos := token.Pos{
 		line_nr: line + 1
 	}
 	mut w := vet.Error{

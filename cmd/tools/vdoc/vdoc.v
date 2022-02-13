@@ -51,6 +51,7 @@ mut:
 	is_verbose       bool
 	include_readme   bool
 	include_examples bool = true
+	include_comments bool // for plaintext
 	inline_assets    bool
 	no_timestamp     bool
 	output_path      string
@@ -95,13 +96,15 @@ fn (vd VDoc) gen_plaintext(d doc.Doc) string {
 	} else {
 		pw.writeln('$d.head.content\n')
 	}
-	comments := if cfg.include_examples {
-		d.head.merge_comments()
-	} else {
-		d.head.merge_comments_without_examples()
-	}
-	if comments.trim_space().len > 0 && !cfg.pub_only {
-		pw.writeln(comments.split_into_lines().map('    ' + it).join('\n'))
+	if cfg.include_comments {
+		comments := if cfg.include_examples {
+			d.head.merge_comments()
+		} else {
+			d.head.merge_comments_without_examples()
+		}
+		if comments.trim_space().len > 0 {
+			pw.writeln(comments.split_into_lines().map('    ' + it).join('\n'))
+		}
 	}
 	vd.write_plaintext_content(d.contents.arr(), mut pw)
 	return pw.str()
@@ -116,7 +119,7 @@ fn (vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.Buil
 			} else {
 				pw.writeln(cn.content)
 			}
-			if cn.comments.len > 0 && !cfg.pub_only {
+			if cn.comments.len > 0 && cfg.include_comments {
 				comments := if cfg.include_examples {
 					cn.merge_comments()
 				} else {
@@ -152,6 +155,9 @@ fn (vd VDoc) get_file_name(mod string, out Output) string {
 		name = 'index'
 	} else if !cfg.is_multi && !os.is_dir(out.path) {
 		name = os.file_name(out.path)
+	}
+	if name == '' {
+		name = 'index'
 	}
 	name = name + match out.typ {
 		.html { '.html' }
@@ -286,11 +292,9 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			}
 		}
 	}
-	dirs := if cfg.is_multi {
-		get_modules_list(cfg.input_path, []string{})
-	} else {
-		[cfg.input_path]
-	}
+	dirs := if cfg.is_multi { get_modules_list(cfg.input_path, []string{}) } else { [
+			cfg.input_path,
+		] }
 	for dirpath in dirs {
 		vd.vprintln('Generating $out.typ docs for "$dirpath"')
 		mut dcs := doc.generate(dirpath, cfg.pub_only, true, cfg.platform, cfg.symbol_name) or {
@@ -324,6 +328,10 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		docs << vd.docs.filter(it.head.name != 'builtin')
 		vd.docs = docs
 	}
+	if dirs.len == 0 && cfg.is_multi {
+		eprintln('vdoc: -m requires at least 1 module folder')
+		exit(1)
+	}
 	vd.vprintln('Rendering docs...')
 	if out.path.len == 0 || out.path == 'stdout' {
 		if out.typ == .html {
@@ -331,7 +339,11 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		}
 		outputs := vd.render(out)
 		if outputs.len == 0 {
-			eprintln('vdoc: No documentation found for ${dirs[0]}')
+			if dirs.len == 0 {
+				eprintln('vdoc: No documentation found')
+			} else {
+				eprintln('vdoc: No documentation found for ${dirs[0]}')
+			}
 			exit(1)
 		} else {
 			first := outputs.keys()[0]
@@ -414,6 +426,9 @@ fn parse_arguments(args []string) Config {
 			'-l' {
 				cfg.show_loc = true
 			}
+			'-comments' {
+				cfg.include_comments = true
+			}
 			'-m' {
 				cfg.is_multi = true
 			}
@@ -490,7 +505,7 @@ fn parse_arguments(args []string) Config {
 fn main() {
 	if os.args.len < 2 || '-h' in os.args || '-help' in os.args || '--help' in os.args
 		|| os.args[1..] == ['doc', 'help'] {
-		os.system('$vexe help doc')
+		os.system('${os.quoted_path(vexe)} help doc')
 		exit(0)
 	}
 	args := os.args[2..].clone()

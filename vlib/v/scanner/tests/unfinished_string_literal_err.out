@@ -1,0 +1,10 @@
+vlib/v/scanner/tests/unfinished_string_literal_err.vv:7:1: error: unfinished string literal
+    5 | 
+    6 | zzzz
+vlib/v/scanner/tests/unfinished_string_literal_err.vv:4:6: details: literal started here
+    2 | a := 'abc'
+    3 | println(a)
+    4 | x := 'asdka
+      |      ^
+    5 | 
+    6 | zzzz

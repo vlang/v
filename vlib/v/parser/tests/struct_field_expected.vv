@@ -2,8 +2,8 @@ enum TestEnum {
 	a b
 }
 
-x = {
-	.a : 'Alpha'
-	.b : 'Beta'
+x = Bar{
+	.a: 'Alpha'
+	.b: 'Beta'
 }
 

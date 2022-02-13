@@ -8,7 +8,7 @@ fn (a Abc) str() string {
 }
 
 [deprecated: 'custom message 1']
-[deprecated_after: '9999-11-01']
+[deprecated_after: '3000-11-01']
 fn (a Abc) future() {
 	dump(@METHOD)
 	dump(a)
@@ -29,7 +29,7 @@ fn (a Abc) simply_deprecated() {
 
 // functions using [deprecated_after]:
 [deprecated: 'custom message 4']
-[deprecated_after: '9999-12-30']
+[deprecated_after: '3000-12-30']
 fn future() {
 	dump(@FN)
 }
@@ -41,6 +41,12 @@ fn past() {
 }
 
 [deprecated: 'custom message 6']
+[deprecated_after: '1990-03-01']
+fn ancient() {
+	dump(@FN)
+}
+
+[deprecated: 'custom message 7']
 fn simply_deprecated() {
 	dump(@FN)
 }
@@ -55,6 +61,7 @@ fn main() {
 	past()
 	simply_deprecated()
 	just_deprecated()
+	ancient()
 	//
 	a := Abc{}
 	a.future()

@@ -213,12 +213,14 @@ fn new_udp_socket(local_addr Addr) ?&UdpSocket {
 		s.set_dualstack(true) ?
 	}
 
-	// NOTE: refer to comments in tcp.v
-	$if windows {
-		t := u32(1) // true
-		socket_error(C.ioctlsocket(sockfd, fionbio, &t)) ?
-	} $else {
-		socket_error(C.fcntl(sockfd, C.F_SETFD, C.O_NONBLOCK)) ?
+	$if !net_blocking_sockets ? {
+		// NOTE: refer to comments in tcp.v
+		$if windows {
+			t := u32(1) // true
+			socket_error(C.ioctlsocket(sockfd, fionbio, &t)) ?
+		} $else {
+			socket_error(C.fcntl(sockfd, C.F_SETFD, C.O_NONBLOCK)) ?
+		}
 	}
 
 	// cast to the correct type
@@ -235,7 +237,11 @@ fn new_udp_socket_for_remote(raddr Addr) ?&UdpSocket {
 		}
 	}
 	match raddr.family() {
-		.ip, .ip6 {
+		.ip {
+			// Use ip dualstack
+			addr = new_ip(0, addr_ip_any)
+		}
+		.ip6 {
 			// Use ip6 dualstack
 			addr = new_ip6(0, addr_ip6_any)
 		}

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builtin
@@ -44,7 +44,7 @@ fn print_backtrace_skipping_top_frames_bsd(skipframes int) bool {
 	$if no_backtrace ? {
 		return false
 	} $else {
-		$if macos || freebsd || openbsd || netbsd {
+		$if macos || freebsd || netbsd {
 			buffer := [100]voidptr{}
 			nr_ptrs := C.backtrace(&buffer[0], 100)
 			if nr_ptrs < 2 {
@@ -131,7 +131,7 @@ fn break_if_debugger_attached() {
 	unsafe {
 		mut ptr := &voidptr(0)
 		*ptr = voidptr(0)
-		_ = ptr
+		//_ = ptr
 	}
 }
 

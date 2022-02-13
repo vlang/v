@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 // Directed acyclic graph
@@ -23,6 +23,12 @@ struct OrderedDepMap {
 mut:
 	keys []string
 	data map[string][]string
+}
+
+pub fn new_ordered_dependency_map() OrderedDepMap {
+	mut res := OrderedDepMap{}
+	unsafe { res.keys.flags.set(.noslices) }
+	return res
 }
 
 pub fn (mut o OrderedDepMap) set(name string, deps []string) {
@@ -92,8 +98,8 @@ pub fn (mut graph DepGraph) add(mod string, deps []string) {
 }
 
 pub fn (graph &DepGraph) resolve() &DepGraph {
-	mut node_names := OrderedDepMap{}
-	mut node_deps := OrderedDepMap{}
+	mut node_names := new_ordered_dependency_map()
+	mut node_deps := new_ordered_dependency_map()
 	for node in graph.nodes {
 		node_names.add(node.name, node.deps)
 		node_deps.add(node.name, node.deps)

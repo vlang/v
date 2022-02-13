@@ -12,3 +12,4 @@ vlib/v/checker/tests/generic_fn_decl_without_generic_names_err.vv:32:1: error: g
       | ~~~~~~~~~~~~~~
    33 |     println("hi")
    34 | }
+

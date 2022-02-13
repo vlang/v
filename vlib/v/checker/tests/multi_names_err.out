@@ -1,5 +1,5 @@
-vlib/v/checker/tests/multi_names_err.vv:2:4: error: unexpected name `a`
+vlib/v/checker/tests/multi_names_err.vv:2:2: error: unexpected name `a`
     1 | fn main() {
     2 |     a a a a := 1
-      |       ^
+      |     ^
     3 | }

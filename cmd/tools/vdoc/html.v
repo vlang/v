@@ -4,6 +4,7 @@ import os
 import net.urllib
 import strings
 import markdown
+import regex
 import v.scanner
 import v.ast
 import v.token
@@ -22,9 +23,10 @@ const (
 		<meta http-equiv="x-ua-compatible" content="IE=edge" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0">
 		<title>{{ title }} | vdoc</title>
-		<link rel="preconnect" href="https://fonts.gstatic.com">
-		<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-		<link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+		<link rel="preconnect" href="https://fonts.googleapis.com">
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+		<link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+		<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono&display=swap" rel="stylesheet">
 		<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
 		<link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
 		<link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
@@ -35,6 +37,7 @@ const (
 		{{ head_assets }}
 	</head>
 	<body>
+		<div><a id="skip-to-content-link" href="#main-content">Skip to content</a></div>
 		<div id="page">
 			<header class="doc-nav hidden">
 				<div class="heading-container">
@@ -57,7 +60,7 @@ const (
 					</ul>
 				</nav>
 			</header>
-			<div class="doc-scrollview">
+			<div class="doc-scrollview" id="main-content">
 				<div class="doc-container">
 					<div class="doc-content">
 {{ contents }}
@@ -133,7 +136,7 @@ fn (vd VDoc) render_search_index(out Output) {
 }
 
 fn (mut vd VDoc) render_static_html(out Output) {
-	vd.assets = map{
+	vd.assets = {
 		'doc_css':       vd.get_resource(css_js_assets[0], out)
 		'normalize_css': vd.get_resource(css_js_assets[1], out)
 		'doc_js':        vd.get_resource(css_js_assets[2], out)
@@ -251,7 +254,8 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 		write_toc(cn, mut symbols_toc)
 	} // write head
 	// write css
-	version := if vd.manifest.version.len != 0 { vd.manifest.version } else { '' }
+	mut version := if vd.manifest.version.len != 0 { vd.manifest.version } else { '' }
+	version = [version, @VHASH].join(' ')
 	header_name := if cfg.is_multi && vd.docs.len > 1 {
 		os.file_name(os.real_path(cfg.input_path))
 	} else {
@@ -418,7 +422,7 @@ fn html_highlight(code string, tb &ast.Table) string {
 				break
 			}
 		} else {
-			buf.write_b(code[i])
+			buf.write_byte(code[i])
 			i++
 		}
 	}
@@ -493,7 +497,12 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 }
 
 fn html_tag_escape(str string) string {
-	return str.replace_each(['<', '&lt;', '>', '&gt;'])
+	excaped_string := str.replace_each(['<', '&lt;', '>', '&gt;'])
+	mut re := regex.regex_opt(r'`.+[(&lt;)(&gt;)].+`') or { regex.RE{} }
+	if re.find_all_str(excaped_string).len > 0 {
+		return str
+	}
+	return excaped_string
 }
 
 /*

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 import os
@@ -29,7 +29,7 @@ fn test_fmt() {
 		exit(error_missing_vexe)
 	}
 	vroot := os.dir(vexe)
-	os.chdir(vroot)
+	os.chdir(vroot) or {}
 	basepath := os.join_path(vroot, '')
 	tmpfolder := os.temp_dir()
 	diff_cmd := diff.find_working_diff_command() or { '' }
@@ -67,7 +67,7 @@ fn test_fmt() {
 				continue
 			}
 			vfmt_result_file := os.join_path(tmpfolder, 'vfmt_run_over_$ifilename')
-			os.write_file(vfmt_result_file, result_ocontent) or { panic(err.msg) }
+			os.write_file(vfmt_result_file, result_ocontent) or { panic(err) }
 			eprintln(diff.color_compare_files(diff_cmd, opath, vfmt_result_file))
 			continue
 		}
@@ -75,7 +75,7 @@ fn test_fmt() {
 		eprintln(fmt_bench.step_message_ok(vrelpath))
 	}
 	restore_bin2v_placeholder() or {
-		eprintln('failed restoring vbin2v_keep.vv placeholder: $err.msg')
+		eprintln('failed restoring vbin2v_keep.vv placeholder: $err.msg()')
 	}
 	fmt_bench.stop()
 	eprintln(term.h_divider('-'))
@@ -90,7 +90,7 @@ fn prepare_bin2v_file(mut fmt_bench benchmark.Benchmark) {
 	fmt_bench.step()
 	write_bin2v_keep_content() or {
 		fmt_bench.fail()
-		eprintln(fmt_bench.step_message_fail('Failed preparing bin2v_keep.vv: $err.msg'))
+		eprintln(fmt_bench.step_message_fail('Failed preparing bin2v_keep.vv: $err.msg()'))
 		return
 	}
 	fmt_bench.ok()
@@ -98,10 +98,10 @@ fn prepare_bin2v_file(mut fmt_bench benchmark.Benchmark) {
 }
 
 fn write_bin2v_keep_content() ? {
-	img0 := os.join_path('vlib', 'v', 'embed_file', 'v.png')
+	img0 := os.join_path('vlib', 'v', 'embed_file', 'tests', 'v.png')
 	img1 := os.join_path('tutorials', 'building_a_simple_web_blog_with_vweb', 'img', 'time.png')
 	os.rm(b2v_keep_path) ?
-	res := os.execute('$vexe bin2v -w $b2v_keep_path $img0 $img1')
+	res := os.execute('${os.quoted_path(vexe)} bin2v -w ${os.quoted_path(b2v_keep_path)} ${os.quoted_path(img0)} ${os.quoted_path(img1)}')
 	if res.exit_code != 0 {
 		restore_bin2v_placeholder() or {}
 		return error_with_code(res.output.trim_space(), res.exit_code)

@@ -10,11 +10,17 @@ pub fn (mut g Gen) gen_c_main() {
 	if g.pref.is_liveshared {
 		return
 	}
+	if g.pref.is_o {
+		// no main in .o files
+		return
+	}
+	if 'no_main' in g.pref.compile_defines {
+		return
+	}
 	g.out.writeln('')
 	main_fn_start_pos := g.out.len
 
 	is_sokol := 'sokol' in g.table.imports
-
 	if (g.pref.os == .android && g.pref.is_apk) || (g.pref.os == .ios && is_sokol) {
 		g.gen_c_android_sokol_main()
 	} else {
@@ -90,6 +96,16 @@ fn (mut g Gen) gen_c_main_header() {
 	if g.pref.is_livemain {
 		g.generate_hotcode_reloading_main_caller()
 	}
+	if g.pref.profile_file != '' {
+		if 'no_profile_startup' in g.pref.compile_defines {
+			g.writeln('vreset_profile_stats();')
+		}
+		if g.pref.profile_fns.len > 0 {
+			g.writeln('vreset_profile_stats();')
+			// v__profile_enabled will be set true *inside* the fns in g.pref.profile_fns:
+			g.writeln('v__profile_enabled = false;')
+		}
+	}
 }
 
 pub fn (mut g Gen) gen_c_main_footer() {
@@ -145,28 +161,26 @@ sapp_desc sokol_main(int argc, char* argv[]) {
 
 pub fn (mut g Gen) write_tests_definitions() {
 	g.includes.writeln('#include <setjmp.h> // write_tests_main')
-	g.definitions.writeln('int g_test_oks = 0;')
-	g.definitions.writeln('int g_test_fails = 0;')
 	g.definitions.writeln('jmp_buf g_jump_buffer;')
 }
 
 pub fn (mut g Gen) gen_failing_error_propagation_for_test_fn(or_block ast.OrExpr, cvar_name string) {
 	// in test_() functions, an `opt()?` call is sugar for
-	// `or { cb_propagate_test_error(@LINE, @FILE, @MOD, @FN, err.msg) }`
+	// `or { cb_propagate_test_error(@LINE, @FILE, @MOD, @FN, err.msg() ) }`
 	// and the test is considered failed
 	paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
-	g.writeln('\tmain__cb_propagate_test_error($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), *(${cvar_name}.err.msg) );')
-	g.writeln('\tg_test_fails++;')
+	err_msg := 'IError_name_table[${cvar_name}.err._typ]._method_msg(${cvar_name}.err._object)'
+	g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_fn_error(test_runner._object, $paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), $err_msg );')
 	g.writeln('\tlongjmp(g_jump_buffer, 1);')
 }
 
 pub fn (mut g Gen) gen_failing_return_error_for_test_fn(return_stmt ast.Return, cvar_name string) {
 	// in test_() functions, a `return error('something')` is sugar for
-	// `or { err := error('something') cb_propagate_test_error(@LINE, @FILE, @MOD, @FN, err.msg) return err }`
+	// `or { err := error('something') cb_propagate_test_error(@LINE, @FILE, @MOD, @FN, err.msg() ) return err }`
 	// and the test is considered failed
 	paline, pafile, pamod, pafn := g.panic_debug_info(return_stmt.pos)
-	g.writeln('\tmain__cb_propagate_test_error($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), *(${cvar_name}.err.msg) );')
-	g.writeln('\tg_test_fails++;')
+	err_msg := 'IError_name_table[${cvar_name}.err._typ]._method_msg(${cvar_name}.err._object)'
+	g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_fn_error(test_runner._object, $paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), $err_msg );')
 	g.writeln('\tlongjmp(g_jump_buffer, 1);')
 }
 
@@ -185,30 +199,90 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 		}
 		g.writeln('#endif')
 	}
+	g.writeln('\tmain__vtest_init();')
 	g.writeln('\t_vinit(___argc, (voidptr)___argv);')
-	all_tfuncs := g.get_all_test_function_names()
+	//
+	mut all_tfuncs := g.get_all_test_function_names()
+	all_tfuncs = g.filter_only_matching_fn_names(all_tfuncs)
+	g.writeln('\tstring v_test_file = ${ctoslit(g.pref.path)};')
 	if g.pref.is_stats {
-		g.writeln('\tmain__BenchedTests bt = main__start_testing($all_tfuncs.len, _SLIT("$g.pref.path"));')
+		g.writeln('\tmain__BenchedTests bt = main__start_testing($all_tfuncs.len, v_test_file);')
 	}
 	g.writeln('')
-	for tname in all_tfuncs {
+	g.writeln('\tstruct _main__TestRunner_interface_methods _vtrunner = main__TestRunner_name_table[test_runner._typ];')
+	g.writeln('\tvoid * _vtobj = test_runner._object;')
+	g.writeln('')
+	g.writeln('\tmain__VTestFileMetaInfo_free(test_runner.file_test_info);')
+	g.writeln('\t*(test_runner.file_test_info) = main__vtest_new_filemetainfo(v_test_file, $all_tfuncs.len);')
+	g.writeln('\t_vtrunner._method_start(_vtobj, $all_tfuncs.len);')
+	g.writeln('')
+	for tnumber, tname in all_tfuncs {
 		tcname := util.no_dots(tname)
+		testfn := g.table.fns[tname]
+		lnum := testfn.pos.line_nr + 1
+		g.writeln('\tmain__VTestFnMetaInfo_free(test_runner.fn_test_info);')
+		g.writeln('\tstring tcname_$tnumber = _SLIT("$tcname");')
+		g.writeln('\tstring tcmod_$tnumber  = _SLIT("$testfn.mod");')
+		g.writeln('\tstring tcfile_$tnumber = ${ctoslit(testfn.file)};')
+		g.writeln('\t*(test_runner.fn_test_info) = main__vtest_new_metainfo(tcname_$tnumber, tcmod_$tnumber, tcfile_$tnumber, $lnum);')
+		g.writeln('\t_vtrunner._method_fn_start(_vtobj);')
+		g.writeln('\tif (!setjmp(g_jump_buffer)) {')
+		//
 		if g.pref.is_stats {
-			g.writeln('\tmain__BenchedTests_testing_step_start(&bt, _SLIT("$tcname"));')
+			g.writeln('\t\tmain__BenchedTests_testing_step_start(&bt, tcname_$tnumber);')
 		}
-		g.writeln('\tif (!setjmp(g_jump_buffer)) ${tcname}();')
+		g.writeln('\t\t${tcname}();')
+		g.writeln('\t\t_vtrunner._method_fn_pass(_vtobj);')
+		//
+		g.writeln('\t}else{')
+		//
+		g.writeln('\t\t_vtrunner._method_fn_fail(_vtobj);')
+		//
+		g.writeln('\t}')
 		if g.pref.is_stats {
 			g.writeln('\tmain__BenchedTests_testing_step_end(&bt);')
 		}
+		g.writeln('')
 	}
-	g.writeln('')
 	if g.pref.is_stats {
 		g.writeln('\tmain__BenchedTests_end_testing(&bt);')
 	}
+	g.writeln('')
+	g.writeln('\t_vtrunner._method_finish(_vtobj);')
+	g.writeln('\tint test_exit_code = _vtrunner._method_exit_code(_vtobj);')
+	//
+	g.writeln('\t_vtrunner._method__v_free(_vtobj);')
+	g.writeln('')
 	g.writeln('\t_vcleanup();')
-	g.writeln('\treturn g_test_fails > 0;')
+	g.writeln('')
+	g.writeln('\treturn test_exit_code;')
 	g.writeln('}')
 	if g.pref.printfn_list.len > 0 && 'main' in g.pref.printfn_list {
 		println(g.out.after(main_fn_start_pos))
 	}
+}
+
+pub fn (mut g Gen) filter_only_matching_fn_names(fnames []string) []string {
+	if g.pref.run_only.len == 0 {
+		return fnames
+	}
+	mut res := []string{}
+	for tname in fnames {
+		if tname.contains('testsuite_') {
+			res << tname
+			continue
+		}
+		mut is_matching := false
+		for fn_glob_pattern in g.pref.run_only {
+			if tname.match_glob(fn_glob_pattern) {
+				is_matching = true
+				break
+			}
+		}
+		if !is_matching {
+			continue
+		}
+		res << tname
+	}
+	return res
 }

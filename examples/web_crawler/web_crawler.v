@@ -6,7 +6,7 @@ fn main() {
 	config := http.FetchConfig{
 		user_agent: 'Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:88.0) Gecko/20100101 Firefox/88.0'
 	}
-	resp := http.fetch('https://tuicool.com', config) or {
+	resp := http.fetch(http.FetchConfig{ ...config, url: 'https://tuicool.com' }) or {
 		println('failed to fetch data from the server')
 		return
 	}

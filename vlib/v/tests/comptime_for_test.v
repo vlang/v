@@ -85,12 +85,10 @@ fn test_comptime_for_fields() {
 		if field.name == 'f' {
 			assert sizeof(field) == 8
 			assert isreftype(field) == false
-			// assert typeof(field) == 'u64'
 			assert typeof(field).name == 'u64'
 			fields_found++
 		}
 		if field.name == 'g' {
-			// assert typeof(field) == 'string'
 			assert typeof(field).name == 'string'
 			assert isreftype(field) == true
 			fields_found++

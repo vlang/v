@@ -69,13 +69,15 @@ pub fn get_terminal_size() (int, int) {
 }
 
 // get_cursor_position returns a Coord containing the current cursor position
-pub fn get_cursor_position() Coord {
+pub fn get_cursor_position() ?Coord {
 	mut res := Coord{}
 	if os.is_atty(1) > 0 && os.getenv('TERM') != 'dumb' {
 		info := C.CONSOLE_SCREEN_BUFFER_INFO{}
 		if C.GetConsoleScreenBufferInfo(C.GetStdHandle(C.STD_OUTPUT_HANDLE), &info) {
 			res.x = info.dwCursorPosition.X
 			res.y = info.dwCursorPosition.Y
+		} else {
+			return os.last_error()
 		}
 	}
 	return res

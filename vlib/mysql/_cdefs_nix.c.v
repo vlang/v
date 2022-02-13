@@ -4,8 +4,8 @@ module mysql
 
 $if $pkgconfig('mysqlclient') {
 	#pkgconfig mysqlclient
+	#include <mysql.h> # Please install the libmysqlclient-dev development headers
 } $else {
 	#pkgconfig mariadb
+	#include <mysql.h> # Please install the libmariadb-dev development headers
 }
-
-#include <mysql/mysql.h> # Please install the mysqlclient development headers

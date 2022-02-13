@@ -11,12 +11,10 @@ struct App {
 }
 
 fn main() {
-	vweb.run(&App{}, 8081)
-}
-
-pub fn (mut app App) init_server() {
+	mut app := &App{}
 	app.serve_static('/favicon.ico', 'favicon.ico')
 	app.mount_static_folder_at(os.resource_abs_path('.'), '/')
+	vweb.run(app, 8081)
 }
 
 pub fn (mut app App) index() vweb.Result {

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
@@ -9,6 +9,10 @@
 module readline
 
 import os
+
+// needed for parity with readline_default.c.v
+struct Termios {
+}
 
 // Only use standard os.get_line
 // Need implementation for readline capabilities

@@ -12,7 +12,7 @@ const (
 	support_color = term.can_show_color_on_stderr() && term.can_show_color_on_stdout()
 	ecode_timeout = 101
 	ecode_memout  = 102
-	ecode_details = map{
+	ecode_details = {
 		-1:  'worker executable not found'
 		101: 'too slow'
 		102: 'too memory hungry'
@@ -212,7 +212,7 @@ fn (mut context Context) process_whole_file_in_worker(path string) (int, int) {
 	for i in 0 .. len {
 		verbosity := if context.is_verbose { '-v' } else { '' }
 		context.cut_index = i // needed for the progress bar
-		cmd := '"$context.myself" $verbosity --worker --timeout_ms ${context.timeout_ms:5} --cut_index ${i:5} --path "$path" '
+		cmd := '${os.quoted_path(context.myself)} $verbosity --worker --timeout_ms ${context.timeout_ms:5} --cut_index ${i:5} --path ${os.quoted_path(path)} '
 		context.log(cmd)
 		mut res := os.execute(cmd)
 		context.log('worker exit_code: $res.exit_code | worker output:\n$res.output')

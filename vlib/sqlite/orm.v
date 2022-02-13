@@ -140,7 +140,8 @@ fn (stmt Stmt) sqlite_select_column(idx int, typ int) ?orm.Primitive {
 	} else if typ == orm.string {
 		primitive = stmt.get_text(idx).clone()
 	} else if typ == orm.time {
-		primitive = time.unix(stmt.get_int(idx))
+		d := stmt.get_int(idx)
+		primitive = time.unix(d)
 	} else {
 		return error('Unknown type $typ')
 	}
@@ -149,7 +150,7 @@ fn (stmt Stmt) sqlite_select_column(idx int, typ int) ?orm.Primitive {
 }
 
 fn sqlite_type_from_v(typ int) ?string {
-	return if typ in orm.nums || typ < 0 || typ in orm.num64 {
+	return if typ in orm.nums || typ < 0 || typ in orm.num64 || typ == orm.time {
 		'INTEGER'
 	} else if typ in orm.float {
 		'REAL'

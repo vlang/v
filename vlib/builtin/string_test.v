@@ -1,6 +1,6 @@
 import strings
 
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -120,6 +120,34 @@ fn test_sort_reverse() {
 	assert vals[3] == 'arr'
 }
 
+fn test_ranges() {
+	s := 'test'
+	s1 := s[0..20] or { 'both' }
+	s2 := s[..20] or { 'last' }
+	s3 := s[10..] or { 'first' }
+	s4 := ranges_propagate_both(s) or { 'both' }
+	s5 := ranges_propagate_last(s) or { 'last' }
+	s6 := ranges_propagate_first(s) or { 'first' }
+	assert s1 == 'both'
+	assert s2 == 'last'
+	assert s3 == 'first'
+	assert s4 == 'both'
+	assert s5 == 'last'
+	assert s6 == 'first'
+}
+
+fn ranges_propagate_first(s string) ?string {
+	return s[10..] ?
+}
+
+fn ranges_propagate_last(s string) ?string {
+	return s[..20] ?
+}
+
+fn ranges_propagate_both(s string) ?string {
+	return s[1..20] ?
+}
+
 fn test_split_nth() {
 	a := '1,2,3'
 	assert a.split(',').len == 3
@@ -227,6 +255,17 @@ fn test_split() {
 	assert vals.len == 2
 	assert vals[0] == 'wavy turquoise'
 	assert vals[1] == ''
+}
+
+fn test_split_any() {
+	assert 'ABC'.split_any('') == ['A', 'B', 'C']
+	assert ''.split_any(' ') == []
+	assert ' '.split_any(' ') == ['']
+	assert '  '.split_any(' ') == ['', '']
+	assert 'Ciao come stai? '.split_any(' ') == ['Ciao', 'come', 'stai?']
+	assert 'Ciao+come*stai? '.split_any('+*') == ['Ciao', 'come', 'stai? ']
+	assert 'Ciao+come*stai? '.split_any('+* ') == ['Ciao', 'come', 'stai?']
+	assert 'first row\nsecond row'.split_any(' \n') == ['first', 'row', 'second', 'row']
 }
 
 fn test_trim_space() {
@@ -418,6 +457,7 @@ fn test_arr_contains() {
 fn test_to_num() {
 	s := '7'
 	assert s.int() == 7
+	assert s.byte() == 7
 	assert s.u64() == 7
 	f := '71.5 hasdf'
 	// QTODO
@@ -651,7 +691,7 @@ fn test_for_loop_two() {
 }
 
 fn test_quote() {
-	a := `\'`
+	a := `'`
 	println('testing double quotes')
 	b := 'hi'
 	assert b == 'hi'
@@ -685,34 +725,42 @@ fn test_starts_with() {
 	assert s.starts_with('Language') == false
 }
 
-fn test_trim_prefix() {
-	s := 'V Programming Language'
-	assert s.trim_prefix('V ') == 'Programming Language'
-	assert s.trim_prefix('V Programming ') == 'Language'
-	assert s.trim_prefix('Language') == s
-
-	s2 := 'TestTestTest'
-	assert s2.trim_prefix('Test') == 'TestTest'
-	assert s2.trim_prefix('TestTest') == 'Test'
-
-	s3 := '123Test123Test'
-	assert s3.trim_prefix('123') == 'Test123Test'
-	assert s3.trim_prefix('123Test') == '123Test'
+fn test_starts_with_capital() {
+	assert 'A sentence'.starts_with_capital()
+	assert 'A paragraph. It also does.'.starts_with_capital()
+	assert ''.starts_with_capital() == false
+	assert 'no'.starts_with_capital() == false
+	assert ' No'.starts_with_capital() == false
 }
 
-fn test_trim_suffix() {
+fn test_trim_string_left() {
 	s := 'V Programming Language'
-	assert s.trim_suffix(' Language') == 'V Programming'
-	assert s.trim_suffix(' Programming Language') == 'V'
-	assert s.trim_suffix('V') == s
+	assert s.trim_string_left('V ') == 'Programming Language'
+	assert s.trim_string_left('V Programming ') == 'Language'
+	assert s.trim_string_left('Language') == s
 
 	s2 := 'TestTestTest'
-	assert s2.trim_suffix('Test') == 'TestTest'
-	assert s2.trim_suffix('TestTest') == 'Test'
+	assert s2.trim_string_left('Test') == 'TestTest'
+	assert s2.trim_string_left('TestTest') == 'Test'
 
 	s3 := '123Test123Test'
-	assert s3.trim_suffix('123') == s3
-	assert s3.trim_suffix('123Test') == '123Test'
+	assert s3.trim_string_left('123') == 'Test123Test'
+	assert s3.trim_string_left('123Test') == '123Test'
+}
+
+fn test_trim_string_right() {
+	s := 'V Programming Language'
+	assert s.trim_string_right(' Language') == 'V Programming'
+	assert s.trim_string_right(' Programming Language') == 'V'
+	assert s.trim_string_right('V') == s
+
+	s2 := 'TestTestTest'
+	assert s2.trim_string_right('Test') == 'TestTest'
+	assert s2.trim_string_right('TestTest') == 'Test'
+
+	s3 := '123Test123Test'
+	assert s3.trim_string_right('123') == s3
+	assert s3.trim_string_right('123Test') == '123Test'
 }
 
 fn test_raw() {
@@ -772,7 +820,7 @@ fn test_c_r() {
 	println('$r')
 }
 
-fn test_inter_before_comp_if() {
+fn test_inter_before_comptime_if() {
 	s := '123'
 	// This used to break ('123 $....')
 	$if linux {
@@ -909,4 +957,26 @@ fn test_emoji_to_runes() {
 fn test_string_to_rune() {
 	x := 'Hello World 👋'
 	assert x.runes().len == 13
+}
+
+fn test_index_any() {
+	x := 'abcdefghij'
+	assert x.index_any('ef') == 4
+	assert x.index_any('fe') == 4
+}
+
+fn test_string_f64() {
+	assert ''.f64() == 0
+	assert '123'.f64() == 123
+	assert '-123'.f64() == -123
+	assert '-123.456'.f64() == -123.456
+}
+
+const f32_epsilon = 0.0000000001
+
+fn test_string_f32() {
+	assert ''.f32() - 0 <= f32_epsilon
+	assert '123'.f32() - 123 < f32_epsilon
+	assert '-123'.f32() - (-123) < f32_epsilon
+	assert '-123.456'.f32() - (-123.456) <= f32_epsilon
 }

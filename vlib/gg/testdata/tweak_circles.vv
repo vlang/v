@@ -1,0 +1,49 @@
+module main
+
+import gg
+import gx
+
+struct App {
+mut:
+	gg     &gg.Context = 0
+	radius f64 = 10.0
+}
+
+fn main() {
+	mut app := &App{}
+	app.gg = gg.new_context(
+		bg_color: gx.white
+		width: 300
+		height: 300
+		window_title: 'Circles'
+		frame_fn: frame
+		event_fn: on_event
+		user_data: app
+	)
+	app.gg.run()
+}
+
+fn on_event(e &gg.Event, mut app App) {
+	match e.typ {
+		.key_down {
+			match e.key_code {
+				.up {
+					app.radius += 1
+				}
+				.down {
+					app.radius -= 1
+				}
+				else {}
+			}
+		}
+		else {}
+	}
+}
+
+fn frame(mut app App) {
+	app.gg.begin()
+	app.gg.draw_circle_empty(150, 150, f32(app.radius), gx.blue)
+	app.gg.draw_text(20, 20, 'radius: $app.radius')
+	//	app.gg.draw_text(20, 50, 'circle_segment_size: $circle_segment_size')
+	app.gg.end()
+}

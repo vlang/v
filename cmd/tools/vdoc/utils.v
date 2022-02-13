@@ -149,8 +149,7 @@ fn color_highlight(code string, tb &ast.Table) string {
 			.string {
 				use_double_quote := tok.lit.contains("'") && !tok.lit.contains('"')
 				unescaped_val := tok.lit.replace('\\\\', '\x01').replace_each(["\\'", "'", '\\"',
-					'"',
-				])
+					'"'])
 				if use_double_quote {
 					s := unescaped_val.replace_each(['\x01', '\\\\', '"', '\\"'])
 					lit = term.yellow('"$s"')
@@ -267,7 +266,7 @@ fn color_highlight(code string, tb &ast.Table) string {
 			tok = next_tok
 			next_tok = s.scan()
 		} else {
-			buf.write_b(code[i])
+			buf.write_byte(code[i])
 			i++
 		}
 	}

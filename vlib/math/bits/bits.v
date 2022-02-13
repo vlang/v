@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module bits
@@ -12,8 +12,7 @@ const (
 	de_bruijn64tab = [byte(0), 1, 56, 2, 57, 49, 28, 3, 61, 58, 42, 50, 38, 29, 17, 4, 62, 47,
 		59, 36, 45, 43, 51, 22, 53, 39, 33, 30, 24, 18, 12, 5, 63, 55, 48, 27, 60, 41, 37, 16,
 		46, 35, 44, 21, 52, 32, 23, 11, 54, 26, 40, 15, 34, 20, 31, 10, 25, 14, 19, 9, 13, 8, 7,
-		6,
-	]
+		6]
 )
 
 const (
@@ -150,7 +149,7 @@ pub fn ones_count_64(x u64) int {
 pub fn rotate_left_8(x byte, k int) byte {
 	n := byte(8)
 	s := byte(k) & (n - byte(1))
-	return ((x << s) | (x >> (n - s)))
+	return (x << s) | (x >> (n - s))
 }
 
 // rotate_left_16 returns the value of x rotated left by (k mod 16) bits.
@@ -161,7 +160,7 @@ pub fn rotate_left_8(x byte, k int) byte {
 pub fn rotate_left_16(x u16, k int) u16 {
 	n := u16(16)
 	s := u16(k) & (n - u16(1))
-	return ((x << s) | (x >> (n - s)))
+	return (x << s) | (x >> (n - s))
 }
 
 // rotate_left_32 returns the value of x rotated left by (k mod 32) bits.
@@ -172,7 +171,7 @@ pub fn rotate_left_16(x u16, k int) u16 {
 pub fn rotate_left_32(x u32, k int) u32 {
 	n := u32(32)
 	s := u32(k) & (n - u32(1))
-	return ((x << s) | (x >> (n - s)))
+	return (x << s) | (x >> (n - s))
 }
 
 // rotate_left_64 returns the value of x rotated left by (k mod 64) bits.
@@ -183,7 +182,7 @@ pub fn rotate_left_32(x u32, k int) u32 {
 pub fn rotate_left_64(x u64, k int) u64 {
 	n := u64(64)
 	s := u64(k) & (n - u64(1))
-	return ((x << s) | (x >> (n - s)))
+	return (x << s) | (x >> (n - s))
 }
 
 // --- Reverse ---
@@ -430,30 +429,51 @@ pub fn div_64(hi u64, lo u64, y1 u64) (u64, u64) {
 	y <<= s
 	yn1 := y >> 32
 	yn0 := y & bits.mask32
-	un32 := (hi << s) | (lo >> (64 - s))
+	ss1 := (hi << s)
+	xxx := 64 - s
+	mut ss2 := lo >> xxx
+	if xxx == 64 {
+		// in Go, shifting right a u64 number, 64 times produces 0 *always*.
+		// See https://go.dev/ref/spec
+		// > The shift operators implement arithmetic shifts if the left operand
+		// > is a signed integer and logical shifts if it is an unsigned integer.
+		// > There is no upper limit on the shift count.
+		// > Shifts behave as if the left operand is shifted n times by 1 for a shift count of n.
+		// > As a result, x << 1 is the same as x*2 and x >> 1 is the same as x/2
+		// > but truncated towards negative infinity.
+		//
+		// In V, that is currently left to whatever C is doing, which is apparently a NOP.
+		// This function was a direct port of https://cs.opensource.google/go/go/+/refs/tags/go1.17.6:src/math/bits/bits.go;l=512,
+		// so we have to use the Go behaviour.
+		// TODO: reconsider whether we need to adopt it for our shift ops, or just use function wrappers that do it.
+		ss2 = 0
+	}
+	un32 := ss1 | ss2
 	un10 := lo << s
 	un1 := un10 >> 32
 	un0 := un10 & bits.mask32
 	mut q1 := un32 / yn1
-	mut rhat := un32 - q1 * yn1
-	for q1 >= bits.two32 || q1 * yn0 > bits.two32 * rhat + un1 {
+	mut rhat := un32 - (q1 * yn1)
+	for (q1 >= bits.two32) || (q1 * yn0) > ((bits.two32 * rhat) + un1) {
 		q1--
 		rhat += yn1
 		if rhat >= bits.two32 {
 			break
 		}
 	}
-	un21 := un32 * bits.two32 + un1 - q1 * y
+	un21 := (un32 * bits.two32) + (un1 - (q1 * y))
 	mut q0 := un21 / yn1
 	rhat = un21 - q0 * yn1
-	for q0 >= bits.two32 || q0 * yn0 > bits.two32 * rhat + un0 {
+	for (q0 >= bits.two32) || (q0 * yn0) > ((bits.two32 * rhat) + un0) {
 		q0--
 		rhat += yn1
 		if rhat >= bits.two32 {
 			break
 		}
 	}
-	return q1 * bits.two32 + q0, (un21 * bits.two32 + un0 - q0 * y) >> s
+	qq := ((q1 * bits.two32) + q0)
+	rr := ((un21 * bits.two32) + un0 - (q0 * y)) >> s
+	return qq, rr
 }
 
 // rem_32 returns the remainder of (hi, lo) divided by y. Rem32 panics
@@ -475,4 +495,18 @@ pub fn rem_64(hi u64, lo u64, y u64) u64 {
 	// hi<<64 + lo ≡ (hi%y)<<64 + lo    (mod y)
 	_, rem := div_64(hi % y, lo, y)
 	return rem
+}
+
+// normalize returns a normal number y and exponent exp
+// satisfying x == y × 2**exp. It assumes x is finite and non-zero.
+pub fn normalize(x f64) (f64, int) {
+	smallest_normal := 2.2250738585072014e-308 // 2**-1022
+	if (if x > 0.0 {
+		x
+	} else {
+		-x
+	}) < smallest_normal {
+		return x * (u64(1) << u64(52)), -52
+	}
+	return x, 0
 }

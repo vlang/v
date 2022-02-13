@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -7,7 +7,7 @@ import v.ast
 
 fn (mut p Parser) for_stmt() ast.Stmt {
 	p.check(.key_for)
-	mut pos := p.tok.position()
+	mut pos := p.tok.pos()
 	p.open_scope()
 	p.inside_for = true
 	if p.tok.kind == .key_match {
@@ -86,12 +86,12 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		|| (p.tok.kind == .key_mut && p.peek_token(2).kind in [.key_in, .comma]) {
 		// `for i in vals`, `for i in start .. end`, `for mut user in users`, `for i, mut user in users`
 		mut val_is_mut := p.tok.kind == .key_mut
-		mut_pos := p.tok.position()
+		mut_pos := p.tok.pos()
 		if val_is_mut {
 			p.next()
 		}
-		key_var_pos := p.tok.position()
-		mut val_var_pos := p.tok.position()
+		key_var_pos := p.tok.pos()
+		mut val_var_pos := p.tok.pos()
 		mut key_var_name := ''
 		mut val_var_name := p.check_name()
 		if p.tok.kind == .comma {
@@ -105,7 +105,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 				val_is_mut = true
 			}
 			key_var_name = val_var_name
-			val_var_pos = p.tok.position()
+			val_var_pos = p.tok.pos()
 			val_var_name = p.check_name()
 			if key_var_name == val_var_name && key_var_name != '_' {
 				return p.error_with_pos('key and value in a for loop cannot be the same',
@@ -152,6 +152,9 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			if key_var_name.len > 0 {
 				return p.error_with_pos('cannot declare index variable with range `for`',
 					key_var_pos)
+			}
+			if val_is_mut {
+				return p.error_with_pos('variable in range `for` cannot be mut', mut_pos)
 			}
 		} else {
 			// this type will be set in checker

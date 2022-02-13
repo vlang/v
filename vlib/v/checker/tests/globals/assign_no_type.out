@@ -1,3 +1,0 @@
-vlib/v/checker/tests/globals/assign_no_type.vv:1:21: error: global assign must have a type and value, use `name = type(value)` or `name type`
-    1 | __global ( test = 0 )
-      |                     ^

@@ -41,7 +41,7 @@ fn test_generic_fn_infer_multi_paras() {
 		page: 'one'
 		var_one: 'variable one'
 		var_two: 'variable two'
-		var_three: {
+		var_three: Two_data{
 			title: 'what a title'
 			content: 'what a content'
 		}

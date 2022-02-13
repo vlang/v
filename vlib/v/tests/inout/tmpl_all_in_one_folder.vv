@@ -1,4 +1,11 @@
+struct Person {
+mut:
+	name string
+}
+
 fn abc() string {
+	mut p1 := Person{}
+	p1.name = 'Peter'
 	content := 'some string'
 	return $tmpl('file.md')
 }

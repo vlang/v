@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
@@ -44,31 +44,72 @@ import os
 const (
 	auto_complete_shells = ['bash', 'fish', 'zsh', 'powershell'] // list of supported shells
 	vexe                 = os.getenv('VEXE')
+	help_text            = "Usage:
+  v complete [options] [SUBCMD] QUERY...
+
+Description:
+  Tool for bridging auto completion between various shells and v
+
+Supported shells:
+  bash, fish, zsh, powershell
+
+Examples:
+  Echo auto-detected shell install script to STDOUT
+    v complete
+  Echo specific shell install script to STDOUT
+    v complete setup bash
+  Auto complete input `v tes`*USER PUSHES TAB* (in Bash compatible format).
+  This is not meant for manual invocation - it's called by the relevant
+  shell via the script installed with `v complete` or `v complete setup SHELL`.
+    v complete bash v tes
+
+Options:
+  -h, --help                Show this help text.
+
+SUBCMD:
+  setup     : setup [SHELL] - returns the code for completion setup for SHELL
+  bash      : [QUERY]       - returns Bash compatible completion code with completions computed from QUERY
+  fish      : [QUERY]       - returns Fish compatible completion code with completions computed from QUERY
+  zsh       : [QUERY]       - returns ZSH  compatible completion code with completions computed from QUERY
+  powershell: [QUERY]       - returns PowerShell compatible completion code with completions computed from QUERY"
 )
 
 // Snooped from cmd/v/v.v, vlib/v/pref/pref.v
 const (
-	auto_complete_commands    = [
+	auto_complete_commands     = [
 		// simple_cmd
-		'fmt',
-		'up',
-		'vet',
-		'self',
-		'tracev',
-		'symlink',
-		'bin2v',
-		'test',
-		'test-fmt',
-		'test-self',
-		'test-cleancode',
-		'repl',
-		'complete',
-		'build-tools',
-		'build-examples',
-		'build-vbinaries',
-		'setup-freetype',
+		'ast',
 		'doc',
+		'vet',
+		// tools in one .v file
+		'bin2v',
+		'bug',
+		'build-examples',
+		'build-tools',
+		'build-vbinaries',
+		'bump',
+		'check-md',
+		'complete',
+		'compress',
+		'create',
 		'doctor',
+		'fmt',
+		'gret',
+		'repl',
+		'self',
+		'setup-freetype',
+		'shader',
+		'symlink',
+		'test-all',
+		'test-cleancode',
+		'test-fmt',
+		'test-parser',
+		'test-self',
+		'test',
+		'tracev',
+		'up',
+		'watch',
+		'wipe-cache',
 		// commands
 		'help',
 		'new',
@@ -90,10 +131,11 @@ const (
 		'build',
 		'build-module',
 	]
-	auto_complete_flags       = [
+	auto_complete_flags        = [
 		'-apk',
 		'-show-timings',
 		'-check-syntax',
+		'-check',
 		'-v',
 		'-progress',
 		'-silent',
@@ -131,6 +173,7 @@ const (
 		'-w',
 		'-print-v-files',
 		'-error-limit',
+		'-message-limit',
 		'-os',
 		'-printfn',
 		'-cflags',
@@ -147,7 +190,7 @@ const (
 		'-version',
 		'--version',
 	]
-	auto_complete_flags_doc   = [
+	auto_complete_flags_doc    = [
 		'-all',
 		'-f',
 		'-h',
@@ -165,7 +208,7 @@ const (
 		'-s',
 		'-l',
 	]
-	auto_complete_flags_fmt   = [
+	auto_complete_flags_fmt    = [
 		'-c',
 		'-diff',
 		'-l',
@@ -173,7 +216,7 @@ const (
 		'-debug',
 		'-verify',
 	]
-	auto_complete_flags_bin2v = [
+	auto_complete_flags_bin2v  = [
 		'-h',
 		'--help',
 		'-m',
@@ -183,10 +226,22 @@ const (
 		'-w',
 		'--write',
 	]
-	auto_complete_flags_self  = [
+	auto_complete_flags_shader = [
+		'help',
+		'h',
+		'force-update',
+		'u',
+		'verbose',
+		'v',
+		'slang',
+		'l',
+		'output',
+		'o',
+	]
+	auto_complete_flags_self   = [
 		'-prod',
 	]
-	auto_complete_compilers   = [
+	auto_complete_compilers    = [
 		'cc',
 		'gcc',
 		'tcc',
@@ -202,6 +257,16 @@ const (
 fn auto_complete(args []string) {
 	if args.len <= 1 || args[0] != 'complete' {
 		if args.len == 1 {
+			shell_path := os.getenv('SHELL')
+			if shell_path.len > 0 {
+				shell_name := os.file_name(shell_path).to_lower()
+				if shell_name in auto_complete_shells {
+					println(setup_for_shell(shell_name))
+					exit(0)
+				}
+				eprintln('Unknown shell ${shell_name}. Supported shells are: $auto_complete_shells')
+				exit(1)
+			}
 			eprintln('auto completion require arguments to work.')
 		} else {
 			eprintln('auto completion failed for "$args".')
@@ -217,62 +282,7 @@ fn auto_complete(args []string) {
 				exit(1)
 			}
 			shell := sub_args[1]
-			mut setup := ''
-			match shell {
-				'bash' {
-					setup = '
-_v_completions() {
-	local src
-	local limit
-	# Send all words up to the word the cursor is currently on
-	let limit=1+\$COMP_CWORD
-	src=\$($vexe complete bash \$(printf "%s\\n" \${COMP_WORDS[@]: 0:\$limit}))
-	if [[ \$? == 0 ]]; then
-		eval \${src}
-		#echo \${src}
-	fi
-}
-
-complete -o nospace -F _v_completions v
-'
-				}
-				'fish' {
-					setup = '
-function __v_completions
-	# Send all words up to the one before the cursor
-	$vexe complete fish (commandline -cop)
-end
-complete -f -c v -a "(__v_completions)"
-'
-				}
-				'zsh' {
-					setup = '
-#compdef v
-_v() {
-	local src
-	# Send all words up to the word the cursor is currently on
-	src=\$($vexe complete zsh \$(printf "%s\\n" \${(@)words[1,\$CURRENT]}))
-	if [[ \$? == 0 ]]; then
-		eval \${src}
-		#echo \${src}
-	fi
-}
-compdef _v v
-'
-				}
-				'powershell' {
-					setup = '
-Register-ArgumentCompleter -Native -CommandName v -ScriptBlock {
-	param(\$commandName, \$wordToComplete, \$cursorPosition)
-		$vexe complete powershell "\$wordToComplete" | ForEach-Object {
-			[System.Management.Automation.CompletionResult]::new(\$_, \$_, \'ParameterValue\', \$_)
-		}
-}
-'
-				}
-				else {}
-			}
-			println(setup)
+			println(setup_for_shell(shell))
 		}
 		'bash' {
 			if sub_args.len <= 1 {
@@ -307,6 +317,9 @@ Register-ArgumentCompleter -Native -CommandName v -ScriptBlock {
 			}
 			println(lines.join('\n'))
 		}
+		'-h', '--help' {
+			println(help_text)
+		}
 		else {}
 	}
 	exit(0)
@@ -321,12 +334,26 @@ fn append_separator_if_dir(path string) string {
 	return path
 }
 
+// nearest_path_or_root returns the nearest valid path searching
+// backwards from `path`.
+fn nearest_path_or_root(path string) string {
+	mut fixed_path := path
+	if !os.is_dir(fixed_path) {
+		fixed_path = path.all_before_last(os.path_separator)
+		if fixed_path == '' {
+			fixed_path = '/'
+		}
+	}
+	return fixed_path
+}
+
 // auto_complete_request retuns a list of completions resolved from a full argument list.
 fn auto_complete_request(args []string) []string {
 	// Using space will ensure a uniform input in cases where the shell
 	// returns the completion input as a string (['v','run'] vs. ['v run']).
 	split_by := ' '
 	request := args.join(split_by)
+	mut do_home_expand := false
 	mut list := []string{}
 	// new_part := request.ends_with('\n\n')
 	mut parts := request.trim_right(' ').split(split_by)
@@ -335,7 +362,7 @@ fn auto_complete_request(args []string) []string {
 			list << command
 		}
 	} else {
-		part := parts.last().trim(' ')
+		mut part := parts.last().trim(' ')
 		mut parent_command := ''
 		for i := parts.len - 1; i >= 0; i-- {
 			if parts[i].starts_with('-') {
@@ -365,6 +392,9 @@ fn auto_complete_request(args []string) []string {
 				}
 				'self' { // 'v self -<tab>' -> flags.
 					list = get_flags(auto_complete_flags_self, part)
+				}
+				'shader' { // 'v shader -<tab>' -> flags.
+					list = get_flags(auto_complete_flags_shader, part)
 				}
 				else {
 					for flag in auto_complete_flags {
@@ -405,17 +435,34 @@ fn auto_complete_request(args []string) []string {
 			mut ls_path := '.'
 			mut collect_all := part in auto_complete_commands
 			mut path_complete := false
+			do_home_expand = part.starts_with('~')
+			if do_home_expand {
+				add_sep := if part == '~' { os.path_separator } else { '' }
+				part = part.replace_once('~', os.home_dir().trim_right(os.path_separator)) + add_sep
+			}
+			is_abs_path := part.starts_with(os.path_separator) // TODO Windows support for drive prefixes
 			if part.ends_with(os.path_separator) || part == '.' || part == '..' {
 				// 'v <command>(.*/$|.|..)<tab>' -> output full directory list
 				ls_path = '.' + os.path_separator + part
+				if is_abs_path {
+					ls_path = nearest_path_or_root(part)
+				}
 				collect_all = true
 			} else if !collect_all && part.contains(os.path_separator) && os.is_dir(os.dir(part)) {
 				// 'v <command>(.*/.* && os.is_dir)<tab>'  -> output completion friendly directory list
-				ls_path = os.dir(part)
+				if is_abs_path {
+					ls_path = nearest_path_or_root(part)
+				} else {
+					ls_path = os.dir(part)
+				}
 				path_complete = true
 			}
+
 			entries := os.ls(ls_path) or { return list }
-			last := part.all_after_last(os.path_separator)
+			mut last := part.all_after_last(os.path_separator)
+			if is_abs_path && os.is_dir(part) {
+				last = ''
+			}
 			if path_complete {
 				path := part.all_before_last(os.path_separator)
 				for entry in entries {
@@ -423,25 +470,78 @@ fn auto_complete_request(args []string) []string {
 						list << append_separator_if_dir(os.join_path(path, entry))
 					}
 				}
-				// If only one possible file - send full path to completion system.
-				// Please note that this might be bash specific - needs more testing.
-				if list.len == 1 {
-					list = [list[0]]
-				}
 			} else {
 				for entry in entries {
-					if collect_all {
+					if collect_all || entry.starts_with(last) {
 						list << append_separator_if_dir(entry)
-					} else {
-						if entry.starts_with(last) {
-							list << append_separator_if_dir(entry)
-						}
 					}
 				}
 			}
 		}
 	}
+	if do_home_expand {
+		return list.map(it.replace_once(os.home_dir().trim_right(os.path_separator), '~'))
+	}
 	return list
+}
+
+fn setup_for_shell(shell string) string {
+	mut setup := ''
+	match shell {
+		'bash' {
+			setup = '
+_v_completions() {
+	local src
+	local limit
+	# Send all words up to the word the cursor is currently on
+	let limit=1+\$COMP_CWORD
+	src=\$($vexe complete bash \$(printf "%s\\n" \${COMP_WORDS[@]: 0:\$limit}))
+	if [[ \$? == 0 ]]; then
+		eval \${src}
+		#echo \${src}
+	fi
+}
+
+complete -o nospace -F _v_completions v
+'
+		}
+		'fish' {
+			setup = '
+function __v_completions
+	# Send all words up to the one before the cursor
+	$vexe complete fish (commandline -cop)
+end
+complete -f -c v -a "(__v_completions)"
+'
+		}
+		'zsh' {
+			setup = '
+#compdef v
+_v() {
+	local src
+	# Send all words up to the word the cursor is currently on
+	src=\$($vexe complete zsh \$(printf "%s\\n" \${(@)words[1,\$CURRENT]}))
+	if [[ \$? == 0 ]]; then
+		eval \${src}
+		#echo \${src}
+	fi
+}
+compdef _v v
+'
+		}
+		'powershell' {
+			setup = '
+Register-ArgumentCompleter -Native -CommandName v -ScriptBlock {
+	param(\$commandName, \$wordToComplete, \$cursorPosition)
+		$vexe complete powershell "\$wordToComplete" | ForEach-Object {
+			[System.Management.Automation.CompletionResult]::new(\$_, \$_, \'ParameterValue\', \$_)
+		}
+}
+'
+		}
+		else {}
+	}
+	return setup
 }
 
 fn main() {

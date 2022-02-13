@@ -1,11 +1,10 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module json2
 
 // `Any` is a sum type that lists the possible types to be decoded and used.
-pub type Any = Null | []Any | bool | f32 | f64 | i64 | int | map[string]Any | string |
-	u64
+pub type Any = Null | []Any | bool | f32 | f64 | i64 | int | map[string]Any | string | u64
 
 // `Null` struct is a simple representation of the `null` value in JSON.
 pub struct Null {
@@ -23,13 +22,11 @@ mut:
 }
 
 struct InvalidTokenError {
-	msg  string
-	code int
+	MessageError
 }
 
 struct UnknownTokenError {
-	msg  string
-	code int
+	MessageError
 }
 
 fn (mut p Parser) next() {
@@ -107,8 +104,10 @@ fn (mut p Parser) decode_value() ?Any {
 			kind := p.tok.kind
 			p.next_with_err() ?
 			if p.convert_type {
-				if kind == .float {
-					return Any(tl.f64())
+				$if !nofloat ? {
+					if kind == .float {
+						return Any(tl.f64())
+					}
 				}
 				return Any(tl.i64())
 			}
@@ -143,6 +142,7 @@ fn (mut p Parser) decode_value() ?Any {
 	return Any(null)
 }
 
+[manualfree]
 fn (mut p Parser) decode_array() ?Any {
 	mut items := []Any{}
 	p.next_with_err() ?

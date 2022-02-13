@@ -55,6 +55,7 @@ mut:
 	best       HighScore
 	snake      []Pos
 	dir        Direction
+	last_dir   Direction
 	food       Pos
 	start_time i64
 	last_tick  i64
@@ -70,6 +71,7 @@ fn (mut app App) reset_game() {
 		Pos{0, 8},
 	]
 	app.dir = .right
+	app.last_dir = app.dir
 	app.food = Pos{10, 8}
 	app.start_time = time.ticks()
 	app.last_tick = time.ticks()
@@ -91,22 +93,22 @@ fn (mut app App) move_food() {
 fn on_keydown(key gg.KeyCode, mod gg.Modifier, mut app App) {
 	match key {
 		.w, .up {
-			if app.dir != .down {
+			if app.last_dir != .down {
 				app.dir = .up
 			}
 		}
 		.s, .down {
-			if app.dir != .up {
+			if app.last_dir != .up {
 				app.dir = .down
 			}
 		}
 		.a, .left {
-			if app.dir != .right {
+			if app.last_dir != .right {
 				app.dir = .left
 			}
 		}
 		.d, .right {
-			if app.dir != .left {
+			if app.last_dir != .left {
 				app.dir = .right
 			}
 		}
@@ -150,19 +152,21 @@ fn on_frame(mut app App) {
 			}
 			app.snake << app.snake.last() + app.snake.last() - app.snake[app.snake.len - 2]
 		}
+
+		app.last_dir = app.dir
 	}
 	// drawing snake
 	for pos in app.snake {
-		app.gg.draw_rect(tile_size * pos.x, tile_size * pos.y + top_height, tile_size,
+		app.gg.draw_rect_filled(tile_size * pos.x, tile_size * pos.y + top_height, tile_size,
 			tile_size, gx.blue)
 	}
 
 	// drawing food
-	app.gg.draw_rect(tile_size * app.food.x, tile_size * app.food.y + top_height, tile_size,
-		tile_size, gx.red)
+	app.gg.draw_rect_filled(tile_size * app.food.x, tile_size * app.food.y + top_height,
+		tile_size, tile_size, gx.red)
 
 	// drawing top
-	app.gg.draw_rect(0, 0, canvas_size, top_height, gx.black)
+	app.gg.draw_rect_filled(0, 0, canvas_size, top_height, gx.black)
 	app.gg.draw_text(150, top_height / 2, 'Score: $app.score', gx.TextCfg{
 		color: gx.white
 		align: .center

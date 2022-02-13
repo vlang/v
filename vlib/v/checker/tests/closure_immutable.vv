@@ -1,0 +1,19 @@
+fn my_fn() {
+	a := 1
+	f1 := fn [a] () {
+		a++
+		println(a)
+	}
+	f2 := fn [mut a] () {
+		a++
+		println(a)
+	}
+	mut b := 2
+	f3 := fn [b] () {
+		b++
+		println(b)
+	}
+	f1()
+	f2()
+	f3()
+}

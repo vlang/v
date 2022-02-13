@@ -252,8 +252,8 @@ pub fn (mut ws Client) parse_frame_header() ?Frame {
 		if frame.payload_len == 126 && bytes_read == u64(websocket.extended_payload16_end_byte) {
 			frame.header_len += 2
 			frame.payload_len = 0
-			frame.payload_len |= buffer[2] << 8
-			frame.payload_len |= buffer[3]
+			frame.payload_len |= int(u32(buffer[2]) << 8)
+			frame.payload_len |= int(buffer[3])
 			frame.frame_size = frame.header_len + frame.payload_len
 			if !frame.has_mask {
 				break

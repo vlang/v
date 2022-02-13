@@ -1,3 +1,4 @@
+// vtest retry: 4
 import sync
 
 fn one() int {
@@ -28,6 +29,30 @@ fn test_global_init() {
 	assert true
 }
 
+fn get_u64() u64 {
+	return 27
+}
+
+fn test_no_type() {
+	assert test == 0
+	assert typeof(test).name == 'int'
+	assert testf == 1.25
+	assert typeof(testf).name == 'f64'
+	assert testneg == -2
+	assert typeof(testneg).name == 'int'
+	assert testnegf == -1250000
+	assert typeof(testnegf).name == 'f64'
+	assert testexpl == 7
+	assert typeof(testexpl).name == 'f32'
+	assert testfn == 27
+	assert typeof(testfn).name == 'u64'
+	assert typeof(testarr).name == '[]f64'
+	assert testarr.len == 10
+	assert testarr[9] == 2.75
+	assert typeof(testmap).name == 'map[string]f64'
+	assert testmap['asd'] == -7.25
+}
+
 __global (
 	intmap    map[string]int
 	numberfns map[string]fn () int
@@ -36,8 +61,20 @@ __global (
 	sem       sync.Semaphore
 	shmap     shared map[string]f64
 	mtx       sync.RwMutex
-	f1        = f64(34.0625)
+	f1        = f64(545 / (sizeof(f64) + f32(8))) // directly initialized
 	f2        f64
+	test      = 0 // int
+	testf     = 1.25 // f64
+	testneg   = -2 // int
+	testnegf  = -1.25e06 // f64
+	testexpl  = f32(7)
+	testfn    = get_u64()
+	testarr   = []f64{len: 10, init: 2.75}
+	testmap   = {
+		'qwe': 2.5
+		'asd': -7.25
+		'yxc': 3.125
+	}
 )
 
 fn init() {
@@ -85,6 +122,7 @@ fn test_global_shared() {
 	}
 	sem.post()
 	t.wait()
+	eprintln('> a: $a | b: $b')
 	assert (a == 13.75 && b == -35.125) || (a == -35.125 && b == 13.75)
 }
 
@@ -116,6 +154,7 @@ fn switch2() u64 {
 }
 
 fn test_global_mutex() {
+	assert f1 == 34.0625
 	t := go switch2()
 	for _ in 0 .. 2500000 {
 		mtx.@lock()
@@ -133,5 +172,6 @@ fn test_global_mutex() {
 	assert (f1 == 17.0 && f2 == 34.0625) || (f1 == 34.0625 && f2 == 17.0)
 	mtx.runlock()
 	n := t.wait()
+	eprintln('> n: $n | f1: $f1 | $f2: $f2')
 	assert n > 0
 }

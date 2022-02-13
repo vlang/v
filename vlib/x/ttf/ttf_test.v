@@ -215,15 +215,15 @@ fn test_main() {
 fn get_raw_data(data string) []byte {
 	mut buf := []byte{}
 	mut c := 0
-	mut b := 0
+	mut b := u32(0)
 	for ch in data {
 		if ch >= `0` && ch <= `9` {
 			b = b << 4
-			b += int(ch - `0`)
+			b += u32(ch - `0`)
 			c++
 		} else if ch >= `a` && ch <= `f` {
 			b = b << 4
-			b += int(ch - `a` + 10)
+			b += u32(ch - `a` + 10)
 			c++
 		}
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module fmt
@@ -16,6 +16,7 @@ pub enum CommentsLevel {
 // - level:  either .keep (don't indent), or .indent (increment indentation)
 // - iembed: a /* ... */ block comment used inside expressions; // comments the whole line
 // - prev_line: the line number of the previous token to save linebreaks
+[params]
 pub struct CommentsOptions {
 	has_nl    bool = true
 	inline    bool

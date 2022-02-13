@@ -1,13 +1,13 @@
 fn test_map_equality() {
-	a1 := map{
+	a1 := {
 		'a': 1
 		'b': 2
 	}
-	b1 := map{
+	b1 := {
 		'b': 2
 		'a': 1
 	}
-	c1 := map{
+	c1 := {
 		'a': 2
 		'b': 1
 	}
@@ -15,21 +15,21 @@ fn test_map_equality() {
 	assert a1 == b1
 	assert a1 != c1
 
-	a2 := map{
+	a2 := {
 		'a': 1
 	}
-	b2 := map{
+	b2 := {
 		'a': 1
 		'b': 2
 	}
 
 	assert a2 != b2
 
-	a3 := map{
+	a3 := {
 		'a': '1'
 		'b': '2'
 	}
-	b3 := map{
+	b3 := {
 		'b': '2'
 		'a': '1'
 	}

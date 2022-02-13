@@ -1,7 +1,7 @@
 fn foo(mut m map[string][1][2]map[string]int) {
-	m['foo'] = [[map{
+	m['foo'] = [[{
 		'bar': 1
-	}, map{
+	}, {
 		'baz': 3
 	}]!]!
 }
@@ -15,9 +15,9 @@ fn test_complex_map_fixed_array() {
 
 fn test_innermost_value_of_map_fixed_array() {
 	mut m := map[string][1][2]map[string]int{}
-	m['foo'] = [[map{
+	m['foo'] = [[{
 		'bar': 1
-	}, map{
+	}, {
 		'baz': 3
 	}]!]!
 	println(m['foo'][0][0]['bar'])
@@ -27,16 +27,16 @@ fn test_innermost_value_of_map_fixed_array() {
 }
 
 fn test_complex_map_high_order_fixed_array() {
-	mut m := map{
-		'foo': [[map{
+	mut m := {
+		'foo': [[{
 			'a': 1
 		}]!]!
-		'bar': [[map{
+		'bar': [[{
 			'b': 2
 		}]!]!
 	}
 	for _, mut j in m {
-		j = [[map{
+		j = [[{
 			'c': 3
 		}]!]!
 	}

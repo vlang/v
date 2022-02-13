@@ -8,13 +8,17 @@ import json
 struct App {
 	vweb.Context
 pub mut:
-	db      sqlite.DB [server_var]
+	db      sqlite.DB
 	user_id string
 }
 
 fn main() {
-	mut app := App{}
-	app.init_server()
+	mut app := App{
+		db: sqlite.connect('blog.db') or { panic(err) }
+	}
+	sql app.db {
+		create table Article
+	}
 	vweb.run(app, 8081)
 }
 
@@ -33,13 +37,6 @@ pub fn (app &App) index_html() vweb.Result {
 pub fn (app &App) index() vweb.Result {
 	articles := app.find_all_articles()
 	return $vweb.html()
-}
-
-pub fn (mut app App) init_server() {
-	app.db = sqlite.connect('blog.db') or { panic(err) }
-	sql app.db {
-		create table Article
-	}
 }
 
 pub fn (mut app App) before_request() {

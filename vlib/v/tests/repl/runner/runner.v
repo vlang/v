@@ -35,7 +35,7 @@ pub fn full_path_to_v(dirs_in int) string {
 }
 
 fn diff_files(file_result string, file_expected string) string {
-	diffcmd := diff.find_working_diff_command() or { return err.msg }
+	diffcmd := diff.find_working_diff_command() or { return err.msg() }
 	return diff.color_compare_files(diffcmd, file_result, file_expected)
 }
 
@@ -49,16 +49,21 @@ pub fn run_repl_file(wd string, vexec string, file string) ?string {
 	input_temporary_filename := os.real_path(os.join_path(wd, 'input_temporary_filename.txt'))
 	os.write_file(input_temporary_filename, input) or { panic(err) }
 	os.write_file(os.real_path(os.join_path(wd, 'original.txt')), fcontent) or { panic(err) }
-	rcmd := '"$vexec" repl -replfolder "$wd" -replprefix "${fname}." < $input_temporary_filename'
+	rcmd := '${os.quoted_path(vexec)} repl -replfolder ${os.quoted_path(wd)} -replprefix "${fname}." < ${os.quoted_path(input_temporary_filename)}'
 	r := os.execute(rcmd)
-	if r.exit_code < 0 {
-		os.rm(input_temporary_filename) or { panic(err) }
+	if r.exit_code != 0 {
+		os.rm(input_temporary_filename) ?
 		return error('Could not execute: $rcmd')
 	}
-	os.rm(input_temporary_filename) or { panic(err) }
 	result := r.output.replace('\r', '').replace('>>> ', '').replace('>>>', '').replace('... ',
 		'').replace(wd + os.path_separator, '').replace(vexec_folder, '').replace('\\',
 		'/').trim_right('\n\r')
+	$if windows {
+		dump(rcmd)
+		dump(r.output)
+		dump(result)
+	}
+	os.rm(input_temporary_filename) ?
 	if result != output {
 		file_result := '${file}.result.txt'
 		file_expected := '${file}.expected.txt'
@@ -84,7 +89,7 @@ pub fn run_prod_file(wd string, vexec string, file string) ?string {
 		return error('Could not read expected prod file $file_expected')
 	}
 	expected_content := f_expected_content.replace('\r', '')
-	cmd := '"$vexec" -prod run "$file"'
+	cmd := '${os.quoted_path(vexec)} -prod run ${os.quoted_path(file)}'
 	r := os.execute(cmd)
 	if r.exit_code < 0 {
 		return error('Could not execute: $cmd')
@@ -117,7 +122,7 @@ pub fn new_options() RunnerOptions {
 	if os.args.len > 1 {
 		files = os.args[1..]
 	} else {
-		os.chdir(os.dir(vexec))
+		os.chdir(os.dir(vexec)) or {}
 		wd = os.getwd()
 		files = os.walk_ext('.', '.repl')
 	}

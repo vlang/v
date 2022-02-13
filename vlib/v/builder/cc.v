@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builder
@@ -10,19 +10,20 @@ import v.util
 import v.vcache
 import term
 
-const (
-	c_verror_message_marker = 'VERROR_MESSAGE '
-	c_error_info            = '
+const c_verror_message_marker = 'VERROR_MESSAGE '
+
+const c_error_info = '
 ==================
 C error. This should never happen.
 
-If you were not working with C interop, this is a compiler bug, please report the bug using `v bug file.v`.
+This is a compiler bug, please report it using `v bug file.v`.
 
 https://github.com/vlang/v/issues/new/choose
 
 You can also use #help on Discord: https://discord.gg/vlang
 '
-	no_compiler_error = '
+
+pub const no_compiler_error = '
 ==================
 Error: no C compiler detected.
 
@@ -37,17 +38,12 @@ You can also use `v doctor`, to see what V knows about your current environment.
 
 You can also seek #help on Discord: https://discord.gg/vlang
 '
-)
 
-const (
-	mingw_cc = 'x86_64-w64-mingw32-gcc'
-)
-
-fn (mut v Builder) find_win_cc() ? {
+pub fn (mut v Builder) find_win_cc() ? {
 	$if !windows {
 		return
 	}
-	ccompiler_version_res := os.execute('$v.pref.ccompiler -v')
+	ccompiler_version_res := os.execute('${os.quoted_path(v.pref.ccompiler)} -v')
 	if ccompiler_version_res.exit_code != 0 {
 		if v.pref.is_verbose {
 			println('$v.pref.ccompiler not found, looking for msvc...')
@@ -58,7 +54,7 @@ fn (mut v Builder) find_win_cc() ? {
 			}
 			vpath := os.dir(pref.vexe_path())
 			thirdparty_tcc := os.join_path(vpath, 'thirdparty', 'tcc', 'tcc.exe')
-			tcc_version_res := os.execute('$thirdparty_tcc -v')
+			tcc_version_res := os.execute('${os.quoted_path(thirdparty_tcc)} -v')
 			if tcc_version_res.exit_code != 0 {
 				if v.pref.is_verbose {
 					println('tcc not found')
@@ -92,7 +88,7 @@ fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 				if v.pref.is_verbose {
 					eprintln('>> remove tmp file: $tmpfile')
 				}
-				os.rm(tmpfile) or { panic(err) }
+				os.rm(tmpfile) or {}
 			}
 		}
 		return
@@ -124,38 +120,13 @@ fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 	verror(builder.c_error_info)
 }
 
-fn (mut v Builder) rebuild_cached_module(vexe string, imp_path string) string {
-	res := v.pref.cache_manager.exists('.o', imp_path) or {
-		if v.pref.is_verbose {
-			println('Cached $imp_path .o file not found... Building .o file for $imp_path')
-		}
-		// do run `v build-module x` always in main vfolder; x can be a relative path
-		pwd := os.getwd()
-		vroot := os.dir(vexe)
-		os.chdir(vroot)
-		boptions := v.pref.build_options.join(' ')
-		rebuild_cmd := '$vexe $boptions build-module $imp_path'
-		vcache.dlog('| Builder.' + @FN, 'vexe: $vexe | imp_path: $imp_path | rebuild_cmd: $rebuild_cmd')
-		os.system(rebuild_cmd)
-		rebuilded_o := v.pref.cache_manager.exists('.o', imp_path) or {
-			panic('could not rebuild cache module for $imp_path, error: $err.msg')
-		}
-		os.chdir(pwd)
-		return rebuilded_o
-	}
-	return res
-}
-
 fn (mut v Builder) show_cc(cmd string, response_file string, response_file_content string) {
 	if v.pref.is_verbose || v.pref.show_cc {
-		println('')
-		println('=====================')
 		println('> C compiler cmd: $cmd')
-		if v.pref.show_cc {
-			println('> C compiler response file $response_file:')
+		if v.pref.show_cc && !v.pref.no_rsp {
+			println('> C compiler response file "$response_file":')
 			println(response_file_content)
 		}
-		println('=====================')
 	}
 }
 
@@ -189,7 +160,14 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	mut debug_options := ['-g']
 	mut optimization_options := ['-O2']
 	// arguments for the C compiler
-	ccoptions.args = [v.pref.cflags, '-std=gnu99']
+	ccoptions.args = [v.pref.cflags]
+	if !v.pref.no_std {
+		if v.pref.os == .linux {
+			ccoptions.args << '-std=gnu99 -D_DEFAULT_SOURCE'
+		} else {
+			ccoptions.args << '-std=c99 -D_DEFAULT_SOURCE'
+		}
+	}
 	ccoptions.wargs = [
 		'-Wall',
 		'-Wextra',
@@ -207,6 +185,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		// enable additional warnings:
 		'-Wno-unknown-warning' /* if a C compiler does not understand a certain flag, it should just ignore it */,
 		'-Wno-unknown-warning-option' /* clang equivalent of the above */,
+		'-Wno-excess-initializers' /* vlib/v/tests/struct_init_with_complex_fields_test.v fails without that on macos clang 13 */,
 		'-Wdate-time',
 		'-Wduplicated-branches',
 		'-Wduplicated-cond',
@@ -228,7 +207,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	ccoptions.guessed_compiler = v.pref.ccompiler
 	if ccoptions.guessed_compiler == 'cc' && v.pref.is_prod {
 		// deliberately guessing only for -prod builds for performance reasons
-		ccversion := os.execute('cc --version')
+		ccversion := os.execute('${os.quoted_path('cc')} --version')
 		if ccversion.exit_code == 0 {
 			if ccversion.output.contains('This is free software;')
 				&& ccversion.output.contains('Free Software Foundation, Inc.') {
@@ -307,16 +286,36 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 	if v.pref.is_shared {
 		ccoptions.linker_flags << '-shared'
-		ccoptions.args << '-fPIC' // -Wl,-z,defs'
+		$if !windows {
+			ccoptions.args << '-fPIC' // -Wl,-z,defs'
+		}
 	}
-	if v.pref.is_bare {
+	if v.pref.is_bare && v.pref.os != .wasm32 {
 		ccoptions.args << '-fno-stack-protector'
 		ccoptions.args << '-ffreestanding'
 		ccoptions.linker_flags << '-static'
 		ccoptions.linker_flags << '-nostdlib'
+	} else if v.pref.os == .wasm32 {
+		ccoptions.args << '--no-standard-libraries'
+		ccoptions.args << '-target wasm32-unknown-unknown'
+		ccoptions.args << '-static'
+		ccoptions.args << '-nostdlib'
+		ccoptions.args << '-ffreestanding'
+		ccoptions.args << '-Wl,--export-all'
+		ccoptions.args << '-Wl,--no-entry'
 	}
 	if ccoptions.debug_mode && os.user_os() != 'windows' && v.pref.build_mode != .build_module {
 		ccoptions.linker_flags << '-rdynamic' // needed for nicer symbolic backtraces
+	}
+	if v.pref.os == .freebsd {
+		// Needed for -usecache on FreeBSD 13, otherwise we get `ld: error: duplicate symbol: _const_math__bits__de_bruijn32` errors there
+		if !ccoptions.is_cc_tcc {
+			ccoptions.linker_flags << '-Wl,--allow-multiple-definition'
+		} else {
+			// tcc needs this, otherwise it fails to compile the runetype.h system header with:
+			// /usr/include/runetype.h:94: error: ';' expected (got "const")
+			ccoptions.args << '-D__RUNETYPE_INTERNAL'
+		}
 	}
 
 	if ccompiler != 'msvc' && v.pref.os != .freebsd {
@@ -350,25 +349,17 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		ccoptions.post_args << '-municode'
 	}
 	cflags := v.get_os_cflags()
-	ccoptions.o_args << cflags.c_options_only_object_files()
+
+	if v.pref.build_mode != .build_module {
+		only_o_files := cflags.c_options_only_object_files()
+		ccoptions.o_args << only_o_files
+	}
+
 	defines, others, libs := cflags.defines_others_libs()
 	ccoptions.pre_args << defines
 	ccoptions.pre_args << others
 	ccoptions.linker_flags << libs
-	// TODO: why is this duplicated from above?
 	if v.pref.use_cache && v.pref.build_mode != .build_module {
-		// vexe := pref.vexe_path()
-		// cached_modules := ['builtin', 'os', 'math', 'strconv', 'strings', 'hash'],  // , 'strconv.ftoa']
-		// for cfile in cached_modules {
-		// ofile := os.join_path(pref.default_module_path, 'cache', 'vlib', cfile.replace('.', '/') +
-		// '.o')
-		// if !os.exists(ofile) {
-		// println('${cfile}.o is missing. Building...')
-		// println('$vexe build-module vlib/$cfile')
-		// os.system('$vexe build-module vlib/$cfile')
-		// }
-		// args << ofile
-		// }
 		if !ccoptions.is_cc_tcc {
 			$if linux {
 				ccoptions.linker_flags << '-Xlinker -z'
@@ -412,7 +403,11 @@ fn (v &Builder) all_args(ccoptions CcompilerOptions) []string {
 	all << ccoptions.pre_args
 	all << ccoptions.source_args
 	all << ccoptions.post_args
-	all << ccoptions.linker_flags
+	// in `build-mode`, we do not need -lxyz flags, since we are
+	// building an (.o) object file, that will be linked later.
+	if v.pref.build_mode != .build_module {
+		all << ccoptions.linker_flags
+	}
 	all << ccoptions.env_ldflags
 	return all
 }
@@ -466,7 +461,7 @@ fn (mut v Builder) dump_c_options(all_args []string) {
 	}
 }
 
-fn (mut v Builder) cc() {
+pub fn (mut v Builder) cc() {
 	if os.executable().contains('vfmt') {
 		return
 	}
@@ -479,7 +474,13 @@ fn (mut v Builder) cc() {
 		}
 		return
 	}
-	if v.pref.out_name.ends_with('/-') {
+	if v.pref.check_only {
+		if v.pref.is_verbose {
+			println('builder.cc returning early, since pref.check_only is true')
+		}
+		return
+	}
+	if v.pref.should_output_to_stdout() {
 		// output to stdout
 		content := os.read_file(v.out_name_c) or { panic(err) }
 		println(content)
@@ -499,7 +500,7 @@ fn (mut v Builder) cc() {
 		return
 	}
 	// Cross compiling for Windows
-	if v.pref.os == .windows {
+	if v.pref.os == .windows && v.pref.ccompiler != 'msvc' {
 		$if !windows {
 			v.cc_windows_cross()
 			return
@@ -532,93 +533,57 @@ fn (mut v Builder) cc() {
 				'-arch armv7 -arch armv7s -arch arm64'
 			}
 			ccompiler = 'xcrun --sdk iphoneos clang -isysroot $isysroot $arch'
+		} else if v.pref.os == .wasm32 {
+			ccompiler = 'clang-12'
 		}
 		v.setup_ccompiler_options(ccompiler)
 		v.build_thirdparty_obj_files()
 		v.setup_output_name()
-		//
-		mut libs := []string{} // builtin.o os.o http.o etc
+
+		if v.pref.os != .windows && ccompiler.contains('++') {
+			cpp_atomic_h_path := '${@VEXEROOT}/thirdparty/stdatomic/nix/cpp/atomic.h'
+			if !os.exists(cpp_atomic_h_path) {
+				for file in v.parsed_files {
+					if file.imports.any(it.mod.contains('sync')) {
+						$if trace_stdatomic_gen ? {
+							eprintln('> creating $cpp_atomic_h_path ...')
+						}
+						cppgenv := '${@VEXEROOT}/thirdparty/stdatomic/nix/cpp/gen.v'
+						os.execute('${os.quoted_path(vexe)} run ${os.quoted_path(cppgenv)} ${os.quoted_path(ccompiler)}')
+						break
+					}
+				}
+			}
+		}
 		if v.pref.build_mode == .build_module {
 			v.ccoptions.pre_args << '-c'
-		} else if v.pref.use_cache {
-			mut built_modules := []string{}
-			builtin_obj_path := v.rebuild_cached_module(vexe, 'vlib/builtin')
-			libs << builtin_obj_path
-			for ast_file in v.parsed_files {
-				if v.pref.is_test && ast_file.mod.name != 'main' {
-					imp_path := v.find_module_path(ast_file.mod.name, ast_file.path) or {
-						verror('cannot import module "$ast_file.mod.name" (not found)')
-						break
-					}
-					obj_path := v.rebuild_cached_module(vexe, imp_path)
-					libs << obj_path
-					built_modules << ast_file.mod.name
-				}
-				for imp_stmt in ast_file.imports {
-					imp := imp_stmt.mod
-					// strconv is already imported inside builtin, so skip generating its object file
-					// TODO: incase we have other modules with the same name, make sure they are vlib
-					// is this even doign anything?
-					if imp in ['strconv', 'strings'] {
-						continue
-					}
-					if imp in built_modules {
-						continue
-					}
-					if util.should_bundle_module(imp) {
-						continue
-					}
-					// not working
-					if imp == 'webview' {
-						continue
-					}
-					// The problem is cmd/v is in module main and imports
-					// the relative module named help, which is built as cmd.v.help not help
-					// currently this got this workign by building into main, see ast.FnDecl in cgen
-					if imp == 'help' {
-						continue
-					}
-					// we are skipping help manually above, this code will skip all relative imports
-					// if os.is_dir(af_base_dir + os.path_separator + mod_path) {
-					// continue
-					// }
-					// mod_path := imp.replace('.', os.path_separator)
-					// imp_path := os.join_path('vlib', mod_path)
-					imp_path := v.find_module_path(imp, ast_file.path) or {
-						verror('cannot import module "$imp" (not found)')
-						break
-					}
-					obj_path := v.rebuild_cached_module(vexe, imp_path)
-					libs << obj_path
-					if obj_path.ends_with('vlib/ui.o') {
-						v.ccoptions.post_args << '-framework Cocoa'
-						v.ccoptions.post_args << '-framework Carbon'
-					}
-					built_modules << imp
-				}
-			}
-			v.ccoptions.post_args << libs
 		}
-		//
-		$if windows {
-			if ccompiler == 'msvc' {
-				v.cc_msvc()
-				return
-			}
+		v.handle_usecache(vexe)
+		if ccompiler == 'msvc' {
+			v.cc_msvc()
+			return
 		}
 		//
 		all_args := v.all_args(v.ccoptions)
 		v.dump_c_options(all_args)
 		str_args := all_args.join(' ')
-		// write args to response file
-		response_file := '${v.out_name_c}.rsp'
-		response_file_content := str_args.replace('\\', '\\\\')
-		os.write_file(response_file, response_file_content) or {
-			verror('Unable to write response file "$response_file"')
+		mut cmd := '${os.quoted_path(ccompiler)} $str_args'
+		mut response_file := ''
+		mut response_file_content := str_args
+		if !v.pref.no_rsp {
+			response_file = '${v.out_name_c}.rsp'
+			response_file_content = str_args.replace('\\', '\\\\')
+			rspexpr := '@$response_file'
+			cmd = '${os.quoted_path(ccompiler)} ${os.quoted_path(rspexpr)}'
+			os.write_file(response_file, response_file_content) or {
+				verror('Unable to write to C response file "$response_file"')
+			}
 		}
 		if !v.ccoptions.debug_mode {
 			v.pref.cleanup_files << v.out_name_c
-			v.pref.cleanup_files << response_file
+			if !v.pref.no_rsp {
+				v.pref.cleanup_files << response_file
+			}
 		}
 		$if windows {
 			if v.ccoptions.is_cc_tcc {
@@ -627,8 +592,7 @@ fn (mut v Builder) cc() {
 			}
 		}
 		//
-		os.chdir(vdir)
-		cmd := '$ccompiler "@$response_file"'
+		os.chdir(vdir) or {}
 		tried_compilation_commands << cmd
 		v.show_cc(cmd, response_file, response_file_content)
 		// Run
@@ -639,7 +603,7 @@ fn (mut v Builder) cc() {
 		if v.pref.show_c_output {
 			v.show_c_compiler_output(res)
 		}
-		os.chdir(original_pwd)
+		os.chdir(original_pwd) or {}
 		vcache.dlog('| Builder.' + @FN, '>       v.pref.use_cache: $v.pref.use_cache | v.pref.retry_compilation: $v.pref.retry_compilation')
 		vcache.dlog('| Builder.' + @FN, '>      cmd res.exit_code: $res.exit_code | cmd: $cmd')
 		vcache.dlog('| Builder.' + @FN, '>  response_file_content:\n$response_file_content')
@@ -738,7 +702,7 @@ fn (mut b Builder) ensure_linuxroot_exists(sysroot string) {
 		if !os.exists(sysroot_git_config_path) {
 			verror('Failed to clone `$crossrepo_url` to `$sysroot`')
 		}
-		os.chmod(os.join_path(sysroot, 'ld.lld'), 0o755)
+		os.chmod(os.join_path(sysroot, 'ld.lld'), 0o755) or { panic(err) }
 	}
 }
 
@@ -767,7 +731,7 @@ fn (mut b Builder) cc_linux_cross() {
 	cc_args << '-c "$b.out_name_c"'
 	cc_args << libs
 	b.dump_c_options(cc_args)
-	cc_cmd := 'cc ' + cc_args.join(' ')
+	cc_cmd := '${os.quoted_path('cc')} ' + cc_args.join(' ')
 	if b.pref.show_cc {
 		println(cc_cmd)
 	}
@@ -777,16 +741,16 @@ fn (mut b Builder) cc_linux_cross() {
 		verror(cc_res.output)
 		return
 	}
-	mut linker_args := ['-L $sysroot/usr/lib/x86_64-linux-gnu/', '--sysroot=$sysroot', '-v',
-		'-o $b.pref.out_name', '-m elf_x86_64',
+	mut linker_args := ['-L$sysroot/usr/lib/x86_64-linux-gnu/', '-L$sysroot/lib/x86_64-linux-gnu',
+		'--sysroot=$sysroot', '-v', '-o $b.pref.out_name', '-m elf_x86_64',
 		'-dynamic-linker /lib/x86_64-linux-gnu/ld-linux-x86-64.so.2',
 		'$sysroot/crt1.o $sysroot/crti.o $obj_file', '-lc', '-lcrypto', '-lssl', '-lpthread',
-		'$sysroot/crtn.o',
-	]
+		'$sysroot/crtn.o', '-lm']
 	linker_args << cflags.c_options_only_object_files()
 	// -ldl
 	b.dump_c_options(linker_args)
-	linker_cmd := '$sysroot/ld.lld ' + linker_args.join(' ')
+	ldlld := '$sysroot/ld.lld'
+	linker_cmd := '${os.quoted_path(ldlld)} ' + linker_args.join(' ')
 	// s = s.replace('SYSROOT', sysroot) // TODO $ inter bug
 	// s = s.replace('-o hi', '-o ' + c.pref.out_name)
 	if b.pref.show_cc {
@@ -878,7 +842,7 @@ fn (mut c Builder) cc_windows_cross() {
 	all_args << args
 	all_args << '-municode'
 	c.dump_c_options(all_args)
-	mut cmd := '$builder.mingw_cc ' + all_args.join(' ')
+	mut cmd := pref.vcross_compiler_name(pref.cc_to_windows) + ' ' + all_args.join(' ')
 	// cmd := 'clang -o $obj_name -w $include -m32 -c -target x86_64-win32 ${pref.default_module_path}/$c.out_name_c'
 	if c.pref.is_verbose || c.pref.show_cc {
 		println(cmd)
@@ -943,24 +907,26 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 		os.cp(obj_path, opath) or { panic(err) }
 		return
 	}
-	println(rebuild_reason_message)
-	//
+	if v.pref.is_verbose {
+		println(rebuild_reason_message)
+	}
 	// prepare for tcc, it needs relative paths to thirdparty/tcc to work:
 	current_folder := os.getwd()
-	os.chdir(os.dir(pref.vexe_path()))
+	os.chdir(os.dir(pref.vexe_path())) or {}
 	//
 	mut all_options := []string{}
 	all_options << v.pref.third_party_option
 	all_options << moduleflags.c_options_before_target()
-	all_options << '-o "$opath"'
-	all_options << '-c "$cfile"'
+	all_options << '-o ${os.quoted_path(opath)}'
+	all_options << '-c ${os.quoted_path(cfile)}'
 	cc_options := v.thirdparty_object_args(v.ccoptions, all_options).join(' ')
-	cmd := '$v.pref.ccompiler $cc_options'
+
+	cmd := '${os.quoted_path(v.pref.ccompiler)} $cc_options'
 	$if trace_thirdparty_obj_files ? {
 		println('>>> build_thirdparty_obj_files cmd: $cmd')
 	}
 	res := os.execute(cmd)
-	os.chdir(current_folder)
+	os.chdir(current_folder) or {}
 	if res.exit_code != 0 {
 		eprintln('failed thirdparty object build cmd:\n$cmd')
 		verror(res.output)
@@ -989,12 +955,12 @@ fn missing_compiler_info() string {
 
 fn error_context_lines(text string, keyword string, before int, after int) []string {
 	khighlight := if term.can_show_color_on_stdout() { term.red(keyword) } else { keyword }
-	mut eline_idx := 0
+	mut eline_idx := -1
 	mut lines := text.split_into_lines()
 	for idx, eline in lines {
 		if eline.contains(keyword) {
 			lines[idx] = lines[idx].replace(keyword, khighlight)
-			if eline_idx == 0 {
+			if eline_idx == -1 {
 				eline_idx = idx
 			}
 		}

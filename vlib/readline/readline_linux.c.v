@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
@@ -13,9 +13,32 @@ import os
 #include <termios.h>
 #include <sys/ioctl.h>
 
+const cclen = 10
+
+// Termios stores the terminal options on Linux.
+struct C.termios {
+mut:
+	c_iflag int
+	c_oflag int
+	c_cflag int
+	c_lflag int
+	c_line  byte
+	c_cc    [cclen]int
+}
+
+struct Termios {
+mut:
+	c_iflag u32
+	c_oflag u32
+	c_cflag u32
+	c_lflag u32
+	c_line  byte
+	c_cc    [cclen]int
+}
+
 fn C.tcgetattr(fd int, termios_p &C.termios) int
 
-fn C.tcsetattr(fd int, optional_actions int, termios_p &C.termios) int
+fn C.tcsetattr(fd int, optional_actions int, const_termios_p &C.termios) int
 
 fn C.raise(sig int)
 
@@ -47,18 +70,22 @@ enum Action {
 // Please note that `enable_raw_mode` catches the `SIGUSER` (CTRL + C) signal.
 // For a method that does please see `enable_raw_mode_nosig`.
 pub fn (mut r Readline) enable_raw_mode() {
-	if C.tcgetattr(0, unsafe { &C.termios(&r.orig_termios) }) == -1 {
+	if unsafe { C.tcgetattr(0, &C.termios(&r.orig_termios)) } != 0 {
 		r.is_tty = false
 		r.is_raw = false
 		return
 	}
-	mut raw := r.orig_termios
+	mut raw := C.termios{}
+	unsafe { vmemcpy(&raw, &r.orig_termios, int(sizeof(raw))) }
+	// println('> r.orig_termios: $r.orig_termios')
+	// println('>            raw: $raw')
 	raw.c_iflag &= ~(C.BRKINT | C.ICRNL | C.INPCK | C.ISTRIP | C.IXON)
 	raw.c_cflag |= C.CS8
 	raw.c_lflag &= ~(C.ECHO | C.ICANON | C.IEXTEN | C.ISIG)
-	raw.c_cc[C.VMIN] = 1
-	raw.c_cc[C.VTIME] = 0
-	C.tcsetattr(0, C.TCSADRAIN, unsafe { &C.termios(&raw) })
+	raw.c_cc[C.VMIN] = byte(1)
+	raw.c_cc[C.VTIME] = byte(0)
+	unsafe { C.tcsetattr(0, C.TCSADRAIN, &raw) }
+	// println('>   after    raw: $raw')
 	r.is_raw = true
 	r.is_tty = true
 }
@@ -68,18 +95,19 @@ pub fn (mut r Readline) enable_raw_mode() {
 // Please note that `enable_raw_mode_nosig` does not catch the `SIGUSER` (CTRL + C) signal
 // as opposed to `enable_raw_mode`.
 pub fn (mut r Readline) enable_raw_mode_nosig() {
-	if C.tcgetattr(0, unsafe { &C.termios(&r.orig_termios) }) == -1 {
+	if unsafe { C.tcgetattr(0, &C.termios(&r.orig_termios)) } != 0 {
 		r.is_tty = false
 		r.is_raw = false
 		return
 	}
-	mut raw := r.orig_termios
+	mut raw := C.termios{}
+	unsafe { vmemcpy(&raw, &r.orig_termios, int(sizeof(raw))) }
 	raw.c_iflag &= ~(C.BRKINT | C.ICRNL | C.INPCK | C.ISTRIP | C.IXON)
 	raw.c_cflag |= C.CS8
 	raw.c_lflag &= ~(C.ECHO | C.ICANON | C.IEXTEN)
-	raw.c_cc[C.VMIN] = 1
-	raw.c_cc[C.VTIME] = 0
-	C.tcsetattr(0, C.TCSADRAIN, unsafe { &C.termios(&raw) })
+	raw.c_cc[C.VMIN] = byte(1)
+	raw.c_cc[C.VTIME] = byte(0)
+	unsafe { C.tcsetattr(0, C.TCSADRAIN, &raw) }
 	r.is_raw = true
 	r.is_tty = true
 }
@@ -88,7 +116,7 @@ pub fn (mut r Readline) enable_raw_mode_nosig() {
 // For a description of raw mode please see the `enable_raw_mode` method.
 pub fn (mut r Readline) disable_raw_mode() {
 	if r.is_raw {
-		C.tcsetattr(0, C.TCSADRAIN, unsafe { &C.termios(&r.orig_termios) })
+		unsafe { C.tcsetattr(0, C.TCSADRAIN, &C.termios(&r.orig_termios)) }
 		r.is_raw = false
 	}
 }
@@ -122,7 +150,7 @@ pub fn (mut r Readline) read_line_utf8(prompt string) ?[]rune {
 	}
 	print(r.prompt)
 	for {
-		C.fflush(C.stdout)
+		unsafe { C.fflush(C.stdout) }
 		c := r.read_char()
 		a := r.analyse(c)
 		if r.execute(a, c) {
@@ -172,6 +200,9 @@ pub fn read_line(prompt string) ?string {
 
 // analyse returns an `Action` based on the type of input byte given in `c`.
 fn (r Readline) analyse(c int) Action {
+	if c > 255 {
+		return Action.insert_character
+	}
 	match byte(c) {
 		`\0`, 0x3, 0x4, 255 {
 			return .eof
@@ -311,7 +342,7 @@ fn (mut r Readline) execute(a Action, c int) bool {
 // get_screen_columns returns the number of columns (`width`) in the terminal.
 fn get_screen_columns() int {
 	ws := Winsize{}
-	cols := if C.ioctl(1, C.TIOCGWINSZ, &ws) == -1 { 80 } else { int(ws.ws_col) }
+	cols := if unsafe { C.ioctl(1, C.TIOCGWINSZ, &ws) } == -1 { 80 } else { int(ws.ws_col) }
 	return cols
 }
 
@@ -424,7 +455,7 @@ fn (mut r Readline) delete_character() {
 
 // suppr_character removes (suppresses) the character in front of the cursor.
 fn (mut r Readline) suppr_character() {
-	if r.cursor > r.current.len {
+	if r.cursor >= r.current.len {
 		return
 	}
 	r.current.delete(r.cursor)
@@ -542,10 +573,12 @@ fn (mut r Readline) suspend() {
 	r.disable_raw_mode()
 	if !is_standalone {
 		// We have to SIGSTOP the parent v process
-		ppid := C.getppid()
-		C.kill(ppid, C.SIGSTOP)
+		unsafe {
+			ppid := C.getppid()
+			C.kill(ppid, C.SIGSTOP)
+		}
 	}
-	C.raise(C.SIGSTOP)
+	unsafe { C.raise(C.SIGSTOP) }
 	r.enable_raw_mode()
 	r.refresh_line()
 	if r.is_tty {

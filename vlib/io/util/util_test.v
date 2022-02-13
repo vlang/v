@@ -13,12 +13,12 @@ fn testsuite_begin() {
 	os.rmdir_all(tfolder) or {}
 	assert !os.is_dir(tfolder)
 	os.mkdir_all(tfolder) or { panic(err) }
-	os.chdir(tfolder)
+	os.chdir(tfolder) or {}
 	assert os.is_dir(tfolder)
 }
 
 fn testsuite_end() {
-	os.chdir(os.wd_at_startup)
+	os.chdir(os.wd_at_startup) or {}
 	os.rmdir_all(tfolder) or {}
 	assert !os.is_dir(tfolder)
 	// eprintln('testsuite_end  , tfolder = $tfolder removed.')

@@ -13,13 +13,14 @@ pub mut:
 
 [inline]
 pub fn (mut r Request) parse_request(s string, max_headers int) int {
-	method_len := size_t(0)
-	path_len := size_t(0)
+	method_len := usize(0)
+	path_len := usize(0)
 	minor_version := 0
-	num_headers := size_t(max_headers)
+	num_headers := usize(max_headers)
 
-	pret := C.phr_parse_request(s.str, s.len, PPchar(&r.method.str), &method_len, PPchar(&r.path.str),
-		&path_len, &minor_version, &r.headers[0], &num_headers, r.prev_len)
+	pret := C.phr_parse_request(&char(s.str), s.len, voidptr(&r.method.str), &method_len,
+		voidptr(&r.path.str), &path_len, &minor_version, &r.headers[0], &num_headers,
+		r.prev_len)
 	if pret > 0 {
 		unsafe {
 			r.method = tos(r.method.str, int(method_len))
@@ -34,11 +35,11 @@ pub fn (mut r Request) parse_request(s string, max_headers int) int {
 
 [inline]
 pub fn (mut r Request) parse_request_path(s string) int {
-	method_len := size_t(0)
-	path_len := size_t(0)
+	method_len := usize(0)
+	path_len := usize(0)
 
-	pret := C.phr_parse_request_path(s.str, s.len, PPchar(&r.method.str), &method_len,
-		PPchar(&r.path.str), &path_len)
+	pret := C.phr_parse_request_path(&char(s.str), s.len, voidptr(&r.method.str), &method_len,
+		voidptr(&r.path.str), &path_len)
 	if pret > 0 {
 		unsafe {
 			r.method = tos(r.method.str, int(method_len))
@@ -50,11 +51,11 @@ pub fn (mut r Request) parse_request_path(s string) int {
 
 [inline]
 pub fn (mut r Request) parse_request_path_pipeline(s string) int {
-	method_len := size_t(0)
-	path_len := size_t(0)
+	method_len := usize(0)
+	path_len := usize(0)
 
-	pret := C.phr_parse_request_path_pipeline(s.str, s.len, PPchar(&r.method.str), &method_len,
-		PPchar(&r.path.str), &path_len)
+	pret := C.phr_parse_request_path_pipeline(&char(s.str), s.len, voidptr(&r.method.str),
+		&method_len, voidptr(&r.path.str), &path_len)
 	if pret > 0 {
 		unsafe {
 			r.method = tos(r.method.str, int(method_len))

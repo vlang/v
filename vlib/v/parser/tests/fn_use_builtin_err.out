@@ -1,5 +1,5 @@
-vlib/v/parser/tests/fn_use_builtin_err.vv:1:4: error: cannot redefine builtin function `print`
+vlib/v/parser/tests/fn_use_builtin_err.vv:1:1: error: cannot redefine builtin public function `print`
     1 | fn print(strings ...string) {
-      |    ~~~~~
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~~~
     2 |     for s in strings {
     3 |         println(s)

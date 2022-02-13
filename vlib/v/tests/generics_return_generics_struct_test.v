@@ -6,7 +6,7 @@ mut:
 }
 
 pub fn new_some<T>(value T) Optional<T> {
-	return {
+	return Optional<T>{
 		value: value
 		some: true
 	}
@@ -40,7 +40,7 @@ pub struct Foo {
 }
 
 pub fn (f Foo) new_some<T>(value T) Optional<T> {
-	return {
+	return Optional<T>{
 		value: value
 		some: true
 	}
@@ -77,7 +77,7 @@ mut:
 }
 
 pub fn iter<T>(arr []T) ArrayIterator<T> {
-	return ArrayIterator{
+	return ArrayIterator<T>{
 		data: arr
 		index: 11
 	}
@@ -114,7 +114,7 @@ pub fn (mut i Iterator<T>) next<T>() ?T {
 }
 
 pub fn iter_data<T>(data []T) Iterator<T> {
-	return Iterator{
+	return Iterator<T>{
 		data: data
 	}
 }

@@ -14,5 +14,35 @@ jobs:
         run: make
       - name: Check markdown line length & code examples
         run: ./v check-md -hide-warnings .
-      ## NB: -hide-warnings is used here, so that the output is less noisy,
-      ## thus real errors are easier to spot.
+        ## NB: -hide-warnings is used here, so that the output is less noisy,
+        ## thus real errors are easier to spot.
+
+  report-missing-fn-doc:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 5
+    env:
+      MOPTIONS: --no-line-numbers --relative-paths --exclude /vlib/v/ --exclude /builtin/linux_bare/ --exclude /testdata/ --exclude /tests/ vlib/
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build V
+        run: make
+
+      - name: Checkout previous v
+        uses: actions/checkout@v2
+        with:
+          repository: vlang/v
+          path: pv
+
+      - name: Check against parent commit
+        run: |
+          ./v run cmd/tools/missdoc.v $MOPTIONS | sort > /tmp/n_v.txt
+          cd pv/ && ../v run ../cmd/tools/missdoc.v $MOPTIONS | sort > /tmp/o_v.txt
+          count_new=$(cat /tmp/n_v.txt | wc -l)
+          count_old=$(cat /tmp/o_v.txt | wc -l)
+          echo "new pubs: $count_new | old pubs: $count_old"
+          echo "new head: $(head -n1 /tmp/n_v.txt)"
+          echo "old head: $(head -n1 /tmp/o_v.txt)"
+          if [[ ${count_new} -gt ${count_old} ]]; then
+            echo "The following $((count_new-count_old)) function(s) are introduced with no documentation:"
+            diff /tmp/n_v.txt /tmp/o_v.txt ## diff does exit(1) when files are different
+          fi

@@ -1,34 +1,78 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builtin
 
 // IError holds information about an error instance
 pub interface IError {
+	// >> Hack to allow old style custom error implementations
+	// TODO: remove once deprecation period for `IError` methods has ended
 	msg string
-	code int
+	code int // <<
+	msg() string
+	code() int
 }
 
-// Error is the default implementation of IError, that is returned by e.g. `error()`
-pub struct Error {
+pub fn (err IError) str() string {
+	return match err {
+		None__ {
+			'none'
+		}
+		Error {
+			err.msg()
+		}
+		MessageError {
+			err.msg()
+		}
+		else {
+			// >> Hack to allow old style custom error implementations
+			// TODO: remove once deprecation period for `IError` methods has ended
+			old_error_style := unsafe { voidptr(&err.msg) != voidptr(&err.code) } // if fields are not defined (new style) they don't have an offset between
+			if old_error_style {
+				'$err.type_name(): $err.msg'
+			} else {
+				// <<
+				'$err.type_name(): $err.msg()'
+			}
+		}
+	}
+}
+
+// Error is the empty default implementation of `IError`.
+pub struct Error {}
+
+pub fn (err Error) msg() string {
+	return ''
+}
+
+pub fn (err Error) code() int {
+	return 0
+}
+
+// MessageError is the default implementation of the `IError` interface that is returned by the `error()` function
+struct MessageError {
 pub:
 	msg  string
 	code int
 }
 
-pub fn (err IError) str() string {
-	return match err {
-		None__ { 'none' }
-		Error { err.msg }
-		else { '$err.type_name(): $err.msg' }
-	}
+pub fn (err MessageError) msg() string {
+	return err.msg
+}
+
+pub fn (err MessageError) code() int {
+	return err.code
+}
+
+[unsafe]
+pub fn (err &MessageError) free() {
+	unsafe { err.msg.free() }
 }
 
 const none__ = IError(&None__{})
 
 struct None__ {
-	msg  string
-	code int
+	Error
 }
 
 fn (_ None__) str() string {
@@ -45,7 +89,7 @@ fn trace_error(x string) {
 [inline]
 pub fn error(message string) IError {
 	trace_error(message)
-	return &Error{
+	return &MessageError{
 		msg: message
 	}
 }
@@ -55,7 +99,7 @@ pub fn error(message string) IError {
 [inline]
 pub fn error_with_code(message string, code int) IError {
 	trace_error('$message | code: $code')
-	return &Error{
+	return &MessageError{
 		msg: message
 		code: code
 	}
@@ -74,30 +118,10 @@ fn opt_ok(data voidptr, mut option Option, size int) {
 	unsafe {
 		*option = Option{}
 		// use err to get the end of OptionBase and then memcpy into it
-		C.memcpy(&byte(&option.err) + sizeof(IError), data, size)
+		vmemcpy(&byte(&option.err) + sizeof(IError), data, size)
 	}
 }
 
-[unsafe]
-pub fn (e &Error) free() {
-	unsafe { e.msg.free() }
-}
-
-[unsafe]
-pub fn (n &None__) free() {
-	unsafe { n.msg.free() }
-}
-
-[typedef]
-struct C.IError {
-	_object voidptr
-}
-
-[unsafe]
-pub fn (ie &IError) free() {
-	unsafe {
-		ie.msg.free()
-		cie := &C.IError(ie)
-		free(cie._object)
-	}
+pub fn (_ none) str() string {
+	return 'none'
 }

@@ -17,7 +17,7 @@ fn init_singlylinkedlist<T>(nodes ...Node<T>) SinglyLinkedList<T> {
 		current_node.next = &nodes[i + 1]
 	}
 
-	return SinglyLinkedList{&nodes[0]}
+	return SinglyLinkedList<T>{&nodes[0]}
 }
 
 fn test_generic_with_variadic_generic_args() {

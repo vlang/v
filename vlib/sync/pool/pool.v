@@ -81,12 +81,10 @@ pub fn (mut pool PoolProcessor) work_on_pointers(items []voidptr) {
 	if pool.njobs > 0 {
 		njobs = pool.njobs
 	}
-	pool.items = []
-	pool.results = []
-	pool.thread_contexts = []
+	pool.thread_contexts = []voidptr{len: items.len}
+	pool.results = []voidptr{len: items.len}
+	pool.items = []voidptr{cap: items.len}
 	pool.items << items
-	pool.results = []voidptr{len: (pool.items.len)}
-	pool.thread_contexts << []voidptr{len: (pool.items.len)}
 	pool.waitgroup.add(njobs)
 	for i := 0; i < njobs; i++ {
 		if njobs > 1 {
@@ -129,9 +127,18 @@ pub fn (pool &PoolProcessor) get_result<T>(idx int) T {
 
 // get_results - get a list of type safe results in the main thread.
 pub fn (pool &PoolProcessor) get_results<T>() []T {
-	mut res := []T{}
+	mut res := []T{cap: pool.results.len}
 	for i in 0 .. pool.results.len {
 		res << *(&T(pool.results[i]))
+	}
+	return res
+}
+
+// get_results_ref - get a list of type safe results in the main thread.
+pub fn (pool &PoolProcessor) get_results_ref<T>() []&T {
+	mut res := []&T{cap: pool.results.len}
+	for i in 0 .. pool.results.len {
+		res << &T(pool.results[i])
 	}
 	return res
 }

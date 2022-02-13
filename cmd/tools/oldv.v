@@ -123,7 +123,7 @@ fn main() {
 	}
 	should_sync := fp.bool('cache-sync', `s`, false, 'Update the local cache')
 	if !should_sync {
-		fp.limit_free_args(1, 1)
+		fp.limit_free_args(1, 1) ?
 	}
 	////
 	context.cleanup = fp.bool('clean', 0, false, 'Clean before running (slower).')
@@ -171,6 +171,9 @@ fn main() {
 		}
 		scripting.cprint_strong('#            result: ')
 		print(cmdres.output)
+		if !cmdres.output.ends_with('\n') {
+			println('')
+		}
 		exit(cmdres.exit_code)
 	}
 }

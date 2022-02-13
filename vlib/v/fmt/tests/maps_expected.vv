@@ -1,5 +1,5 @@
 const (
-	reserved_types = map{
+	reserved_types = {
 		'i8':   true
 		'i16':  true
 		'int':  true
@@ -8,9 +8,15 @@ const (
 	}
 )
 
-numbers := map{
+numbers := {
 	'one':                                 1
 	'two':                                 2
 	'sevenhundredseventyseven':            777
 	'fivethousandthreehundredtwentyseven': 5327
+}
+
+explicit_init := map[string]string{}
+
+explicit_init_with_value := {
+	'abc': 0
 }

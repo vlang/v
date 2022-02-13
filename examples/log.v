@@ -11,8 +11,14 @@ fn main() {
 	l.info('info')
 	l.warn('warn')
 	l.error('error')
-	l.debug('no debug')
+	l.debug('no output for debug')
 	l.set_level(.debug)
-	l.debug('debug')
-	l.fatal('fatal')
+	l.debug('debug now')
+	l.set_level(log.level_from_tag('INFO') or { log.Level.disabled }) // set level from string, sample
+	l.info('info again')
+	l.set_level(log.level_from_tag('') or { log.Level.disabled }) // set level from string, sample
+	l.error('no output anymore')
+	l.fatal('fatal') // panic, next statements won't be executed
+	l.set_level(.info)
+	l.warn('warn')
 }

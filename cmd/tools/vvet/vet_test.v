@@ -11,10 +11,10 @@ fn find_diff_cmd() string {
 	return res
 }
 
-fn test_vet() {
+fn test_vet() ? {
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
-	os.chdir(vroot)
+	os.chdir(vroot) ?
 	test_dir := 'cmd/tools/vvet/tests'
 	tests := get_tests_in_dir(test_dir)
 	fails := check_path(vexe, test_dir, tests)
@@ -35,7 +35,7 @@ fn check_path(vexe string, dir string, tests []string) int {
 		program := path
 		print(path + ' ')
 		// -force is needed so that `v vet` would not skip the regression files
-		res := os.execute('$vexe vet -force -nocolor $program')
+		res := os.execute('${os.quoted_path(vexe)} vet -force -nocolor ${os.quoted_path(program)}')
 		if res.exit_code < 0 {
 			panic(res.output)
 		}

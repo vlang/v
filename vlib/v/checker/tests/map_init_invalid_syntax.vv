@@ -1,4 +1,4 @@
 fn main() {
-	a := map{}
+	a := {}
 	println(a)
 }

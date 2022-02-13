@@ -9,25 +9,8 @@
 * Example .obj model of V from SurmanPP
 *
 * HOW TO COMPILE SHADERS:
-* - download the sokol shader convertor tool from https://github.com/floooh/sokol-tools-bin
-*
-* - compile the .glsl shader with:
-* linux  :  sokol-shdc --input gouraud.glsl --output gouraud.h --slang glsl330
-* windows:  sokol-shdc.exe --input gouraud.glsl --output gouraud.h --slang glsl330
-*
-* --slang parameter can be:
-* - glsl330: desktop GL
-* - glsl100: GLES2 / WebGL
-* - glsl300es: GLES3 / WebGL2
-* - hlsl4: D3D11
-* - hlsl5: D3D11
-* - metal_macos: Metal on macOS
-* - metal_ios: Metal on iOS device
-* - metal_sim: Metal on iOS simulator
-* - wgpu: WebGPU
-*
-* you can have multiple platforms at the same time passing parameters like this: --slang glsl330:hlsl5:metal_macos
-* for further infos have a look at the sokol shader tool docs.
+* Run `v shader .` in this directory to compile the shaders.
+* For more info and help with shader compilation see `docs.md` and `v help shader`.
 *
 * ALTERNATIVE .OBJ MODELS:
 * you can load alternative models putting them in the "assets/model" folder with or without their .mtl file.
@@ -50,9 +33,9 @@ import obj
 // GLSL Include and functions
 
 #flag -I @VMODROOT/.
-#include "gouraud.h" #Please use sokol-shdc to generate the necessary rt_glsl.h file from rt_glsl.glsl (see the instructions at the top of this file)
+#include "gouraud.h" # Should be generated with `v shader .` (see the instructions at the top of this file)
 
-fn C.gouraud_shader_desc(gfx.Backend) &C.sg_shader_desc
+fn C.gouraud_shader_desc(gfx.Backend) &gfx.ShaderDesc
 
 const (
 	win_width  = 600
@@ -63,7 +46,7 @@ const (
 struct App {
 mut:
 	gg          &gg.Context
-	texture     C.sg_image
+	texture     gfx.Image
 	init_flag   bool
 	frame_count int
 
@@ -166,9 +149,9 @@ fn frame(mut app App) {
 	ws := gg.window_size_real_pixels()
 
 	// clear
-	mut color_action := C.sg_color_attachment_action{
-		action: gfx.Action(C.SG_ACTION_CLEAR)
-		value: C.sg_color{
+	mut color_action := gfx.ColorAttachmentAction{
+		action: .clear
+		value: gfx.Color{
 			r: 0.0
 			g: 0.0
 			b: 0.0
@@ -176,7 +159,7 @@ fn frame(mut app App) {
 		}
 	}
 
-	mut pass_action := C.sg_pass_action{}
+	mut pass_action := gfx.PassAction{}
 	pass_action.colors[0] = color_action
 	gfx.begin_default_pass(&pass_action, ws.width, ws.height)
 
@@ -229,7 +212,7 @@ fn my_init(mut app App) {
 	// for a large number of the same type of object it is better use the instances!!
 	desc := sapp.create_desc()
 	gfx.setup(&desc)
-	sgl_desc := C.sgl_desc_t{
+	sgl_desc := sgl.Desc{
 		max_vertices: 128 * 65536
 	}
 	sgl.setup(&sgl_desc)
@@ -250,7 +233,6 @@ fn my_init(mut app App) {
 }
 
 fn cleanup(mut app App) {
-	gfx.shutdown()
 	/*
 	for _, mat in app.obj_part.texture {
 		obj.destroy_texture(mat)

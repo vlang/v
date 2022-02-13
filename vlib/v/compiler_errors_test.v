@@ -9,7 +9,7 @@ import runtime
 import benchmark
 
 const skip_files = [
-	'non_existing.vv' /* minimize commit diff churn, do not remove */,
+	'non_existing.vv', // minimize commit diff churn, do not remove
 ]
 
 const skip_on_ubuntu_musl = [
@@ -18,12 +18,17 @@ const skip_on_ubuntu_musl = [
 
 const turn_off_vcolors = os.setenv('VCOLORS', 'never', true)
 
+// This is needed, because some of the .vv files are tests, and we do need stable
+// output from them, that can be compared against their .out files:
+const turn_on_normal_test_runner = os.setenv('VTEST_RUNNER', 'normal', true)
+
 const should_autofix = os.getenv('VAUTOFIX') != ''
 
 const github_job = os.getenv('GITHUB_JOB')
 
 struct TaskDescription {
 	vexe             string
+	evars            string
 	dir              string
 	voptions         string
 	result_extension string
@@ -51,7 +56,7 @@ mut:
 fn test_all() {
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
-	os.chdir(vroot)
+	os.chdir(vroot) or {}
 	checker_dir := 'vlib/v/checker/tests'
 	parser_dir := 'vlib/v/parser/tests'
 	scanner_dir := 'vlib/v/scanner/tests'
@@ -111,9 +116,9 @@ fn test_all() {
 		cte_dir := '$checker_dir/comptime_env'
 		files := get_tests_in_dir(cte_dir, false)
 		cte_tasks.add('', cte_dir, '-no-retry-compilation run', '.run.out', files, false)
-		cte_tasks.add('VAR=/usr/include $vexe', cte_dir, '-no-retry-compilation run',
+		cte_tasks.add_evars('VAR=/usr/include', '', cte_dir, '-no-retry-compilation run',
 			'.var.run.out', ['using_comptime_env.vv'], false)
-		cte_tasks.add('VAR=/opt/invalid/path $vexe', cte_dir, '-no-retry-compilation run',
+		cte_tasks.add_evars('VAR=/opt/invalid/path', '', cte_dir, '-no-retry-compilation run',
 			'.var_invalid.run.out', ['using_comptime_env.vv'], false)
 		cte_tasks.run()
 	}
@@ -132,9 +137,15 @@ fn test_all() {
 		'custom_comptime_define_if_flag.vv',
 	])
 	ct_tasks.add_checked_run('run', '.run.out', ['custom_comptime_define_if_debug.vv'])
-	ct_tasks.add_checked_run('-g run', '.g.run.out', ['custom_comptime_define_if_debug.vv'])
-	ct_tasks.add_checked_run('-cg run', '.cg.run.out', ['custom_comptime_define_if_debug.vv'])
-	ct_tasks.add_checked_run('-d debug run', '.debug.run.out', ['custom_comptime_define_if_debug.vv'])
+	ct_tasks.add_checked_run('-g run', '.g.run.out', [
+		'custom_comptime_define_if_debug.vv',
+	])
+	ct_tasks.add_checked_run('-cg run', '.cg.run.out', [
+		'custom_comptime_define_if_debug.vv',
+	])
+	ct_tasks.add_checked_run('-d debug run', '.debug.run.out', [
+		'custom_comptime_define_if_debug.vv',
+	])
 	ct_tasks.add_checked_run('-d debug -d bar run', '.debug.bar.run.out', [
 		'custom_comptime_define_if_debug.vv',
 	])
@@ -147,6 +158,10 @@ fn (mut tasks Tasks) add_checked_run(voptions string, result_extension string, t
 }
 
 fn (mut tasks Tasks) add(custom_vexe string, dir string, voptions string, result_extension string, tests []string, is_module bool) {
+	tasks.add_evars('', custom_vexe, dir, voptions, result_extension, tests, is_module)
+}
+
+fn (mut tasks Tasks) add_evars(evars string, custom_vexe string, dir string, voptions string, result_extension string, tests []string, is_module bool) {
 	mut vexe := tasks.vexe
 	if custom_vexe != '' {
 		vexe = custom_vexe
@@ -154,6 +169,7 @@ fn (mut tasks Tasks) add(custom_vexe string, dir string, voptions string, result
 	paths := vtest.filter_vtest_only(tests, basepath: dir)
 	for path in paths {
 		tasks.all << TaskDescription{
+			evars: evars
 			vexe: vexe
 			dir: dir
 			voptions: voptions
@@ -196,6 +212,9 @@ fn (mut tasks Tasks) run() {
 		// TODO: investigate why MSVC regressed
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_1.vv'
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv'
+	}
+	$if windows {
+		m_skip_files << 'vlib/v/checker/tests/modules/deprecated_module'
 	}
 	for i in 0 .. tasks.all.len {
 		if tasks.all[i].path in m_skip_files {
@@ -240,6 +259,7 @@ fn (mut tasks Tasks) run() {
 			line_can_be_erased = false
 		} else {
 			bench.ok()
+			assert true
 			if tasks.show_cmd {
 				eprintln(bstep_message(mut bench, benchmark.b_ok, '$task.cli_cmd $task.path',
 					task.took))
@@ -284,13 +304,14 @@ fn (mut task TaskDescription) execute() {
 		return
 	}
 	program := task.path
-	cli_cmd := '$task.vexe $task.voptions $program'
+	cmd_prefix := if task.evars.len > 0 { '$task.evars ' } else { '' }
+	cli_cmd := '$cmd_prefix${os.quoted_path(task.vexe)} $task.voptions ${os.quoted_path(program)}'
 	res := os.execute(cli_cmd)
 	expected_out_path := program.replace('.vv', '') + task.result_extension
 	task.expected_out_path = expected_out_path
 	task.cli_cmd = cli_cmd
 	if should_autofix && !os.exists(expected_out_path) {
-		os.write_file(expected_out_path, '') or { panic(err) }
+		os.create(expected_out_path) or { panic(err) }
 	}
 	mut expected := os.read_file(expected_out_path) or { panic(err) }
 	task.expected = clean_line_endings(expected)

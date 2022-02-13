@@ -219,3 +219,117 @@ fn test_signed_cast() {
 		assert '${u.f:G}' == '-INF'
 	}
 }
+
+fn test_binary() {
+	i := i8(127)
+	u := u8(127)
+	assert '${i:08b}' == '01111111'
+	assert '${u:08b}' == '01111111'
+	assert '${i16(i):08b}' == '01111111'
+	assert '${u16(u):08b}' == '01111111'
+	assert '${int(i):08b}' == '01111111'
+	assert '${u32(u):08b}' == '01111111'
+	assert '${i64(i):08b}' == '01111111'
+	assert '${u64(u):08b}' == '01111111'
+
+	n := i8(-1)
+	assert '${u8(-1):08b}' == '11111111'
+	assert '${u16(n):08b}' == '1111111111111111'
+	assert '${u32(n):08b}' == '11111111111111111111111111111111'
+	assert '${u64(n):08b}' == '1111111111111111111111111111111111111111111111111111111111111111'
+}
+
+fn test_binary32() {
+	i := int(0x7fff_ffff)
+	u := u32(0x7fff_ffff)
+	assert '${i:032b}' == '01111111111111111111111111111111'
+	assert '${u:032b}' == '01111111111111111111111111111111'
+	assert '${i64(i):032b}' == '01111111111111111111111111111111'
+	assert '${u64(u):032b}' == '01111111111111111111111111111111'
+}
+
+fn test_binary64() {
+	i := i64(0x7fff_ffff_ffff_ffff)
+	u := u64(0x7fff_ffff_ffff_ffff)
+	assert '${i:064b}' == '0111111111111111111111111111111111111111111111111111111111111111'
+	assert '${u:064b}' == '0111111111111111111111111111111111111111111111111111111111111111'
+}
+
+fn test_interpolation_of_negative_numbers_padding_and_width() {
+	a := -77
+	assert '                 -77' == '${a:20}'
+	assert '                 -77' == '${a:20d}'
+	assert '                 -4d' == '${a:20x}'
+	assert '            -1001101' == '${a:20b}'
+
+	assert '-0000000000000000077' == '${a:020}'
+	assert '-0000000000000000077' == '${a:020d}'
+	assert '-000000000000000004d' == '${a:020x}'
+	assert '-0000000000001001101' == '${a:020b}'
+
+	//
+	assert '     -77' == '${a:8}'
+	assert '     -77' == '${a:8d}'
+	assert '     -4d' == '${a:8x}'
+	assert '-1001101' == '${a:8b}'
+
+	assert '-0000077' == '${a:08}'
+	assert '-0000077' == '${a:08d}'
+	assert '-1001101' == '${a:08b}'
+	assert '-000004d' == '${a:08x}'
+
+	//
+	assert ' -77' == '${a:4}'
+	assert ' -77' == '${a:4d}'
+	assert '-1001101' == '${a:4b}'
+	assert ' -4d' == '${a:4x}'
+
+	assert '-077' == '${a:04}'
+	assert '-077' == '${a:04d}'
+	assert '-1001101' == '${a:04b}'
+	assert '-04d' == '${a:04x}'
+
+	//
+	assert '-77' == '${a:2}'
+	assert '-77' == '${a:2d}'
+	assert '-1001101' == '${a:2b}'
+	assert '-4d' == '${a:2x}'
+
+	assert '-77' == '${a:02}'
+	assert '-77' == '${a:02d}'
+	assert '-1001101' == '${a:02b}'
+	assert '-4d' == '${a:02x}'
+
+	//
+	bin0 := ~6
+	assert bin0 == -7
+	assert '-0000111' == '${bin0:08b}' // a minimum of 8 characters for the whole number, including the padding and the sign
+	assert '-0000111' == '${~6:08b}'
+	assert '    -111' == '${~6:8b}'
+
+	//
+	assert '-0000110' == '${-6:08b}'
+	assert '    -110' == '${-6:8b}'
+}
+
+fn test_parse() {
+	assert i64(1) == '1'.parse_int(0, 8) or { 0 }
+	assert i64(1) == '0b01'.parse_int(0, 8) or { 0 }
+	assert i64(1) == '01'.parse_int(0, 8) or { 0 }
+	assert i64(1) == '0o01'.parse_int(0, 8) or { 0 }
+	assert i64(1) == '0x01'.parse_int(0, 8) or { 0 }
+	assert i64(1) == '1'.parse_int(2, 8) or { 0 }
+	assert i64(1) == '1'.parse_int(8, 8) or { 0 }
+	assert i64(1) == '1'.parse_int(10, 8) or { 0 }
+	assert i64(1) == '1'.parse_int(16, 8) or { 0 }
+
+	assert u64(1) == '1'.parse_uint(0, 8) or { 0 }
+	assert u64(1) == '0b01'.parse_uint(0, 8) or { 0 }
+	assert u64(1) == '01'.parse_uint(0, 8) or { 0 }
+	assert u64(1) == '0o01'.parse_uint(0, 8) or { 0 }
+	assert u64(1) == '0x01'.parse_uint(0, 8) or { 0 }
+	assert u64(1) == '1'.parse_uint(2, 8) or { 0 }
+	assert u64(1) == '1'.parse_uint(8, 8) or { 0 }
+	assert u64(1) == '1'.parse_uint(10, 8) or { 0 }
+	assert u64(1) == '1'.parse_uint(16, 8) or { 0 }
+}

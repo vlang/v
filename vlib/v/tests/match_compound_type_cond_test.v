@@ -22,11 +22,11 @@ fn test_match_array_or_map_cond() {
 	assert ret2
 
 	// map
-	y3 := map{
+	y3 := {
 		1: 11
 		2: 22
 	}
-	x3 := map{
+	x3 := {
 		1: 11
 		2: 22
 	}

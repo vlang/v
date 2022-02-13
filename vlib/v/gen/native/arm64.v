@@ -3,23 +3,37 @@ module native
 import v.ast
 
 enum Arm64Register {
-	x0
-	x1
-	x2
-	x3
-	x4
-	x5
-	x6
-	x7
-	x8
-	x9
-	x10
-	x11
-	x12
-	x13
-	x14
-	x15
-	x16
+	x0 // v----
+	x1 // |
+	x2 // |
+	x3 // | parameter and result registers
+	x4 // |
+	x5 // |
+	x6 // |
+	x7 // ^----
+	x8 // XR - indirect result location register
+	x9 //  v----
+	x10 // |
+	x11 // |
+	x12 // | caller saved registers
+	x13 // |
+	x14 // |
+	x15 // ^----
+	x16 // IP0 - inter procedure call scratch register
+	x17 // IP1 - inter procedure call scratch register
+	x18 // PR - platform register
+	x19 // v----
+	x20 // |
+	x21 // |
+	x22 // |
+	x23 // | callee saved registers
+	x24 // |
+	x25 // |
+	x26 // |
+	x27 // |
+	x28 // ^----
+	x29 // FP - frame pointer
+	x30 // LR - link register
 }
 
 pub struct Arm64 {
@@ -44,10 +58,10 @@ fn (mut g Gen) mov_arm(reg Arm64Register, val u64) {
 		g.write32(0xd2800020)
 		g.println('mov x0, 1')
 	} else if r >= 0 && r <= 16 {
-		g.write32(0xd2800000 + int(r) + (int(val) << 5))
+		g.write32(int(u32(0xd2800000 + int(r) + int(val)) << 5))
 		g.println('mov x$r, $val')
 	} else {
-		verror('mov_arm unsupported values')
+		g.n_error('mov_arm unsupported values')
 	}
 	/*
 	if 1 ^ (x & ~m) != 0 {
@@ -73,7 +87,7 @@ pub fn (mut g Gen) call_fn_arm64(node ast.CallExpr) {
 	// println('call fn $name')
 	addr := g.fn_addr[name]
 	if addr == 0 {
-		verror('fn addr of `$name` = 0')
+		g.n_error('fn addr of `$name` = 0')
 	}
 	// Copy values to registers (calling convention)
 	// g.mov_arm(.eax, 0)
@@ -96,12 +110,12 @@ pub fn (mut g Gen) call_fn_arm64(node ast.CallExpr) {
 			}
 			*/
 			else {
-				verror('unhandled call_fn (name=$name) node: ' + expr.type_name())
+				g.n_error('unhandled call_fn (name=$name) node: ' + expr.type_name())
 			}
 		}
 	}
 	if node.args.len > 6 {
-		verror('more than 6 args not allowed for now')
+		g.n_error('more than 6 args not allowed for now')
 	}
 	g.call(int(addr))
 	g.println('fn call `${name}()`')
@@ -129,7 +143,7 @@ fn (mut g Gen) gen_arm64_helloworld() {
 }
 
 fn (mut g Gen) adr(r Arm64Register, delta int) {
-	g.write32(0x10000000 | int(r) | (delta << 4))
+	g.write32(int(0x10000000 | int(r) | int(u32(delta) << 4)))
 	g.println('adr $r, $delta')
 }
 
@@ -151,7 +165,7 @@ pub fn (mut c Arm64) gen_exit(mut g Gen, expr ast.Expr) {
 			return_code = expr.val.u64()
 		}
 		else {
-			verror('native builtin exit expects a numeric argument')
+			g.n_error('native builtin exit expects a numeric argument')
 		}
 	}
 	match c.g.pref.os {
@@ -165,7 +179,7 @@ pub fn (mut c Arm64) gen_exit(mut g Gen, expr ast.Expr) {
 			c.g.mov_arm(.x0, 0)
 		}
 		else {
-			verror('unsupported os $c.g.pref.os')
+			g.n_error('unsupported os $c.g.pref.os')
 		}
 	}
 	g.svc()
@@ -177,9 +191,13 @@ pub fn (mut g Gen) gen_arm64_exit(expr ast.Expr) {
 			g.mov_arm(.x16, expr.val.u64())
 		}
 		else {
-			verror('native builtin exit expects a numeric argument')
+			g.n_error('native builtin exit expects a numeric argument')
 		}
 	}
 	g.mov_arm(.x0, 0)
 	g.svc()
+}
+
+fn (mut g Gen) gen_asm_stmt_arm64(asm_node ast.AsmStmt) {
+	g.v_error('The asm statement for arm64 not yet implemented', asm_node.pos)
 }

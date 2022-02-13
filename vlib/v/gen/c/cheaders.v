@@ -1,5 +1,8 @@
 module c
 
+import strings
+import v.pref
+
 // NB: @@@ here serve as placeholders.
 // They will be replaced with correct strings
 // for each constant, during C code generation.
@@ -20,14 +23,20 @@ const c_current_commit_hash_default = '
 
 const c_concurrency_helpers = '
 typedef struct __shared_map __shared_map;
-struct __shared_map { map val; sync__RwMutex mtx; };
+struct __shared_map {
+	sync__RwMutex mtx;
+	map val;
+};
 static inline voidptr __dup_shared_map(voidptr src, int sz) {
 	__shared_map* dest = memdup(src, sz);
 	sync__RwMutex_init(&dest->mtx);
 	return dest;
 }
 typedef struct __shared_array __shared_array;
-struct __shared_array { array val; sync__RwMutex mtx; };
+struct __shared_array {
+	sync__RwMutex mtx;
+	array val;
+};
 static inline voidptr __dup_shared_array(voidptr src, int sz) {
 	__shared_array* dest = memdup(src, sz);
 	sync__RwMutex_init(&dest->mtx);
@@ -48,6 +57,204 @@ static inline void __sort_ptr(uintptr_t a[], bool b[], int l) {
 	}
 }
 '
+
+fn arm64_bytes(nargs int) string {
+	// start:
+	// ldr  x16,    start-0x08
+	// ldr  x<REG>, start-0x10
+	// br  x16
+	bytes := '0xd0, 0xff, 0xff, 0x58, 0x6<REG>, 0xff, 0xff, 0x58, 0x00, 0x02, 0x1f, 0xd6'
+	return bytes.replace('<REG>', nargs.str())
+}
+
+fn arm32_bytes(nargs int) string {
+	// start:
+	// ldr  r9,     start-0x4
+	// ldr  r<REG>, start-0x8
+	// bx   r9
+	bytes := '0x0c, 0x90, 0x1f, 0xe5, 0x14, 0x<REG>0, 0x1f, 0xe5, 0x19, 0xff, 0x2f, 0xe1'
+	return bytes.replace('<REG>', nargs.str())
+}
+
+// gen_amd64_bytecode generates the amd64 bytecode a closure with `nargs` parameters.
+// NB: `nargs` includes the last `userdata` parameter that will be passed to the original
+// function, and as such nargs must always be > 0
+fn amd64_bytes(nargs int) string {
+	match nargs {
+		1 {
+			return '0x48, 0x8b, 0x3d, 0xe9, 0xff, 0xff, 0xff, 0xff, 0x25, 0xeb, 0xff, 0xff, 0xff'
+		}
+		2 {
+			return '0x48, 0x8b, 0x35, 0xe9, 0xff, 0xff, 0xff, 0xff, 0x25, 0xeb, 0xff, 0xff, 0xff'
+		}
+		3 {
+			return '0x48, 0x8b, 0x15, 0xe9, 0xff, 0xff, 0xff, 0xff, 0x25, 0xeb, 0xff, 0xff, 0xff'
+		}
+		4 {
+			return '0x48, 0x8b, 0x0d, 0xe9, 0xff, 0xff, 0xff, 0xff, 0x25, 0xeb, 0xff, 0xff, 0xff'
+		}
+		5 {
+			return '0x4C, 0x8b, 0x05, 0xe9, 0xff, 0xff, 0xff, 0xff, 0x25, 0xeb, 0xff, 0xff, 0xff'
+		}
+		6 {
+			return '0x4C, 0x8b, 0x0d, 0xe9, 0xff, 0xff, 0xff, 0xff, 0x25, 0xeb, 0xff, 0xff, 0xff'
+		}
+		else {
+			// see https://godbolt.org/z/64e5TEf5n for similar assembly
+			mut sb := strings.new_builder(256)
+			s := (((byte(nargs) & 1) + 1) << 3).hex()
+			sb.write_string('0x48, 0x83, 0xec, 0x$s, ') // sub rsp,0x8  <OR>  sub rsp,0x10
+			sb.write_string('0xff, 0x35, 0xe6, 0xff, 0xff, 0xff, ') // push QWORD PTR [rip+0xffffffffffffffe6]
+
+			rsp_offset := byte(0x18 + ((byte(nargs - 7) >> 1) << 4)).hex()
+			for _ in 0 .. nargs - 7 {
+				sb.write_string('0xff, 0xb4, 0x24, 0x$rsp_offset, 0x00, 0x00, 0x00, ') // push QWORD PTR [rsp+$rsp_offset]
+			}
+			sb.write_string('0xff, 0x15, 0x${byte(256 - sb.len / 6 - 6 - 8).hex()}, 0xff, 0xff, 0xff, ') // call   QWORD PTR [rip+OFFSET]
+			sb.write_string('0x48, 0x81, 0xc4, 0x$rsp_offset, 0x00, 0x00, 0x00, ') // add rsp,$rsp_offset
+			sb.write_string('0xc3') // ret
+
+			return sb.str()
+		}
+	}
+}
+
+// Heavily based on Chris Wellons's work
+// https://nullprogram.com/blog/2017/01/08/
+
+fn c_closure_helpers(pref &pref.Preferences) string {
+	if pref.os == .windows {
+		verror('closures are not implemented on Windows yet')
+	}
+	if pref.arch !in [.amd64, .arm64, .arm32] {
+		verror('closures are not implemented on this architecture yet: $pref.arch')
+	}
+	mut builder := strings.new_builder(2048)
+	if pref.os != .windows {
+		builder.writeln('#include <sys/mman.h>')
+	}
+	// TODO: support additional arguments by pushing them onto the stack
+	// https://en.wikipedia.org/wiki/Calling_convention
+	if pref.arch == .amd64 {
+		// TODO: the `amd64_bytes()` function above should work for an arbitrary* number of arguments,
+		// so we should just remove the table and call the function directly at runtime
+		builder.write_string('
+static unsigned char __closure_thunk[32][${amd64_bytes(31).len / 6 +
+			2}] = {
+	{ ${amd64_bytes(1)} },
+	{ ${amd64_bytes(2)} },
+	{ ${amd64_bytes(3)} },
+	{ ${amd64_bytes(4)} },
+	{ ${amd64_bytes(5)} },
+	{ ${amd64_bytes(6)} },
+	{ ${amd64_bytes(7)} },
+	{ ${amd64_bytes(8)} },
+	{ ${amd64_bytes(9)} },
+	{ ${amd64_bytes(10)} },
+	{ ${amd64_bytes(11)} },
+	{ ${amd64_bytes(12)} },
+	{ ${amd64_bytes(13)} },
+	{ ${amd64_bytes(14)} },
+	{ ${amd64_bytes(15)} },
+	{ ${amd64_bytes(16)} },
+	{ ${amd64_bytes(17)} },
+	{ ${amd64_bytes(18)} },
+	{ ${amd64_bytes(19)} },
+	{ ${amd64_bytes(20)} },
+	{ ${amd64_bytes(21)} },
+	{ ${amd64_bytes(22)} },
+	{ ${amd64_bytes(23)} },
+	{ ${amd64_bytes(24)} },
+	{ ${amd64_bytes(25)} },
+	{ ${amd64_bytes(26)} },
+	{ ${amd64_bytes(27)} },
+	{ ${amd64_bytes(28)} },
+	{ ${amd64_bytes(29)} },
+	{ ${amd64_bytes(30)} },
+	{ ${amd64_bytes(31)} },
+};
+')
+	} else if pref.arch == .arm64 {
+		builder.write_string('
+static unsigned char __closure_thunk[8][12] = {
+    {
+        ${arm64_bytes(0)}
+    }, {
+        ${arm64_bytes(1)}
+    }, {
+        ${arm64_bytes(2)}
+    }, {
+        ${arm64_bytes(3)}
+    }, {
+        ${arm64_bytes(4)}
+    }, {
+        ${arm64_bytes(5)}
+    }, {
+        ${arm64_bytes(6)}
+    }, {
+        ${arm64_bytes(7)}
+    },
+};
+')
+	} else if pref.arch == .arm32 {
+		builder.write_string('
+static unsigned char __closure_thunk[4][12] = {
+    {
+        ${arm32_bytes(0)}
+    }, {
+        ${arm32_bytes(1)}
+    }, {
+        ${arm32_bytes(2)}
+    }, {
+        ${arm32_bytes(3)}
+    },
+};
+')
+	}
+	builder.write_string('
+static void __closure_set_data(void *closure, void *data) {
+    void **p = closure;
+    p[-2] = data;
+}
+
+static void __closure_set_function(void *closure, void *f) {
+    void **p = closure;
+    p[-1] = f;
+}
+
+static inline int __closure_check_nargs(int nargs) {
+	if (nargs > (int)_ARR_LEN(__closure_thunk)) {
+		_v_panic(_SLIT("Closure too large. Reduce the number of parameters, or pass the parameters by reference."));
+		VUNREACHABLE();
+	}
+	return nargs;
+}
+')
+	if pref.os != .windows {
+		builder.write_string('
+static void * __closure_create(void *f, int nargs, void *userdata) {
+    long page_size = sysconf(_SC_PAGESIZE);
+    int prot = PROT_READ | PROT_WRITE;
+    int flags = MAP_ANONYMOUS | MAP_PRIVATE;
+    char *p = mmap(0, page_size * 2, prot, flags, -1, 0);
+    if (p == MAP_FAILED)
+        return 0;
+    void *closure = p + page_size;
+    memcpy(closure, __closure_thunk[nargs - 1], sizeof(__closure_thunk[0]));
+    mprotect(closure, page_size, PROT_READ | PROT_EXEC);
+    __closure_set_function(closure, f);
+    __closure_set_data(closure, userdata);
+    return closure;
+}
+
+static void __closure_destroy(void *closure) {
+    long page_size = sysconf(_SC_PAGESIZE);
+    munmap((char *)closure - page_size, page_size * 2);
+}
+')
+	}
+	return builder.str()
+}
 
 const c_common_macros = '
 #define EMPTY_VARG_INITIALIZATION 0
@@ -121,6 +328,11 @@ const c_common_macros = '
 	#define __offsetof(PTYPE,FIELDNAME) ((size_t)((char *)&((PTYPE *)0)->FIELDNAME - (char *)0))
 #endif
 
+// returns the number of CPU registers that TYPE takes up
+#define _REG_WIDTH(T) (((sizeof(T) + sizeof(void*) - 1) & ~(sizeof(void*) - 1)) / sizeof(void*))
+// parameters of size <= 2 registers are spilled across those two registers; larger types are passed as one pointer to some stack location
+#define _REG_WIDTH_BOUNDED(T) (_REG_WIDTH(T) <= 2 ? _REG_WIDTH(T) : 1)
+
 #define OPTION_CAST(x) (x)
 
 #ifndef V64_PRINTFORMAT
@@ -167,6 +379,15 @@ const c_common_macros = '
 // tcc does not support has_include properly yet, turn it off completely
 #if defined(__TINYC__) && defined(__has_include)
 #undef __has_include
+#endif
+
+
+#if !defined(VWEAK)
+	#define VWEAK __attribute__((weak))
+	#ifdef _MSC_VER
+		#undef VWEAK
+		#define VWEAK
+	#endif
 #endif
 
 #if !defined(VNORETURN)
@@ -301,9 +522,8 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 
 //================================== GLOBALS =================================*/
 int load_so(byteptr);
-void reload_so();
 void _vinit(int ___argc, voidptr ___argv);
-void _vcleanup();
+void _vcleanup(void);
 #define sigaction_size sizeof(sigaction);
 #define _ARR_LEN(a) ( (sizeof(a)) / (sizeof(a[0])) )
 
@@ -372,6 +592,7 @@ voidptr memdup(voidptr src, int sz);
 
 	#include <io.h> // _waccess
 	#include <direct.h> // _wgetcwd
+	#include <signal.h> // signal and SIGSEGV for segmentation fault handler
 
 	#ifdef _MSC_VER
 		// On MSVC these are the same (as long as /volatile:ms is passed)
@@ -433,10 +654,21 @@ typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint8_t byte;
 typedef uint32_t rune;
+typedef size_t usize;
+typedef ptrdiff_t isize;
+#ifndef VNOFLOAT 
 typedef float f32;
 typedef double f64;
+#else
+typedef int32_t f32;
+typedef int64_t f64;
+#endif
 typedef int64_t int_literal;
+#ifndef VNOFLOAT
 typedef double float_literal;
+#else
+typedef int64_t float_literal;
+#endif
 typedef unsigned char* byteptr;
 typedef void* voidptr;
 typedef char* charptr;
@@ -446,7 +678,11 @@ typedef struct sync__Channel* chan;
 
 #ifndef __cplusplus
 	#ifndef bool
-		typedef byte bool;
+		#ifdef CUSTOM_DEFINE_4bytebool
+			typedef int bool;
+		#else
+			typedef byte bool;
+		#endif
 		#define true 1
 		#define false 0
 	#endif
@@ -481,7 +717,6 @@ typedef __builtin_va_list va_list;
 
 //================================== GLOBALS =================================*/
 int load_so(byteptr);
-void reload_so();
 void _vinit(int ___argc, voidptr ___argv);
 void _vcleanup();
 #define sigaction_size sizeof(sigaction);
@@ -527,7 +762,7 @@ static inline void _wymum(uint64_t *A, uint64_t *B){
 	#else
 	*A=_wyrot(hl)^hh; *B=_wyrot(lh)^ll;
 	#endif
-#elif defined(__SIZEOF_INT128__)
+#elif defined(__SIZEOF_INT128__) && !defined(VWASM)
 	__uint128_t r=*A; r*=*B;
 	#if(WYHASH_CONDOM>1)
 	*A^=(uint64_t)r; *B^=(uint64_t)(r>>64);

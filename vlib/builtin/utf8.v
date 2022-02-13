@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module builtin
@@ -12,34 +12,47 @@ pub fn utf8_char_len(b byte) int {
 pub fn utf32_to_str(code u32) string {
 	unsafe {
 		mut buffer := malloc_noscan(5)
-		return utf32_to_str_no_malloc(code, buffer)
+		res := utf32_to_str_no_malloc(code, buffer)
+		if res.len == 0 {
+			// the buffer was not used at all
+			free(buffer)
+		}
+		return res
 	}
 }
 
-[unsafe]
-pub fn utf32_to_str_no_malloc(code u32, buf voidptr) string {
-	icode := int(code) // Prevents doing casts everywhere
-	mut res := ''
+[manualfree; unsafe]
+pub fn utf32_to_str_no_malloc(code u32, buf &byte) string {
 	unsafe {
+		len := utf32_decode_to_buffer(code, buf)
+		if len == 0 {
+			return ''
+		}
+		buf[len] = 0
+		return tos(buf, len)
+	}
+}
+
+[manualfree; unsafe]
+pub fn utf32_decode_to_buffer(code u32, buf &byte) int {
+	unsafe {
+		icode := int(code) // Prevents doing casts everywhere
 		mut buffer := &byte(buf)
 		if icode <= 127 {
 			// 0x7F
 			buffer[0] = byte(icode)
-			buffer[1] = 0
-			res = tos(buffer, 1)
+			return 1
 		} else if icode <= 2047 {
 			// 0x7FF
 			buffer[0] = 192 | byte(icode >> 6) // 0xC0 - 110xxxxx
 			buffer[1] = 128 | byte(icode & 63) // 0x80 - 0x3F - 10xxxxxx
-			buffer[2] = 0
-			res = tos(buffer, 2)
+			return 2
 		} else if icode <= 65535 {
 			// 0xFFFF
 			buffer[0] = 224 | byte(icode >> 12) // 0xE0 - 1110xxxx
 			buffer[1] = 128 | (byte(icode >> 6) & 63) // 0x80 - 0x3F - 10xxxxxx
 			buffer[2] = 128 | byte(icode & 63) // 0x80 - 0x3F - 10xxxxxx
-			buffer[3] = 0
-			res = tos(buffer, 3)
+			return 3
 		}
 		// 0x10FFFF
 		else if icode <= 1114111 {
@@ -47,32 +60,51 @@ pub fn utf32_to_str_no_malloc(code u32, buf voidptr) string {
 			buffer[1] = 128 | (byte(icode >> 12) & 63) // 0x80 - 0x3F - 10xxxxxx
 			buffer[2] = 128 | (byte(icode >> 6) & 63) // 0x80 - 0x3F - 10xxxxxx
 			buffer[3] = 128 | byte(icode & 63) // 0x80 - 0x3F - 10xxxxxx
-			buffer[4] = 0
-			res = tos(buffer, 4)
+			return 4
 		}
 	}
-	res.is_lit = 1 // let autofree know this string doesn't have to be freed
-	return res
+	return 0
 }
 
 // Convert utf8 to utf32
+// the original implementation did not check for
+// valid utf8 in the string, and could result in
+// values greater than the utf32 spec
+// it has been replaced by `utf8_to_utf32` which
+// has an optional return type.
+//
+// this function is left for backward compatibility
+// it is used in vlib/builtin/string.v,
+// and also in vlib/v/gen/c/cgen.v
 pub fn (_rune string) utf32_code() int {
-	if _rune.len == 0 {
+	return int(_rune.bytes().utf8_to_utf32() or {
+		// error('more than one utf-8 rune found in this string')
+		rune(0)
+	})
+}
+
+// convert array of utf8 bytes to single utf32 value
+// will error if more than 4 bytes are submitted
+pub fn (_bytes []byte) utf8_to_utf32() ?rune {
+	if _bytes.len == 0 {
 		return 0
 	}
-	// save ASC symbol as is
-	if _rune.len == 1 {
-		return int(_rune[0])
+	// return ASCII unchanged
+	if _bytes.len == 1 {
+		return rune(_bytes[0])
 	}
-	mut b := byte(int(_rune[0]))
-	// TODO should be
-	// res := int( rune[0] << rune.len)
-	b = b << _rune.len
-	mut res := int(b)
-	mut shift := 6 - _rune.len
-	for i := 1; i < _rune.len; i++ {
-		c := int(_rune[i])
-		res = res << shift
+	if _bytes.len > 4 {
+		return error('attempted to decode too many bytes, utf-8 is limited to four bytes maximum')
+	}
+
+	mut b := byte(int(_bytes[0]))
+
+	b = b << _bytes.len
+	mut res := rune(b)
+	mut shift := 6 - _bytes.len
+	for i := 1; i < _bytes.len; i++ {
+		c := rune(_bytes[i])
+		res = rune(res) << shift
 		res |= c & 63 // 0x3f
 		shift = 6
 	}

@@ -1,0 +1,11 @@
+struct TestStruct {}
+
+fn (t TestStruct) next() ?(string, string) {
+	return 'foo', 'bar'
+}
+
+t := TestStruct{}
+for x in t {
+	println(x) // ('foo', 'bar')
+	break
+}

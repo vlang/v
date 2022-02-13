@@ -11,11 +11,11 @@ fn test_the_v_compiler_can_be_invoked() {
 	vexec := runner.full_path_to_v(5)
 	println('vexecutable: $vexec')
 	assert vexec != ''
-	vcmd := '"$vexec" -version'
+	vcmd := '${os.quoted_path(vexec)} -version'
 	r := os.execute_or_exit(vcmd)
 	assert r.exit_code == 0
 	// println('"$vcmd" exit_code: $r.exit_code | output: $r.output')
-	vcmd_error := '"$vexec" nonexisting.v'
+	vcmd_error := '${os.quoted_path(vexec)} nonexisting.v'
 	r_error := os.execute(vcmd_error)
 	if r_error.exit_code < 0 {
 		panic(r_error.output)
@@ -33,6 +33,14 @@ mut:
 }
 
 fn test_all_v_repl_files() {
+	if os.user_os() == 'windows' {
+		if os.getenv('VTEST_ENABLE_REPL') == '' {
+			println('This test is disabled on windows temporarily')
+			println('set VTEST_ENABLE_REPL=1')
+			println('if you do want to run it anyway.')
+			exit(0)
+		}
+	}
 	mut session := &Session{
 		options: runner.new_options()
 		bmark: benchmark.new_benchmark()
@@ -75,7 +83,7 @@ fn worker_repl(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		session.bmark.fail()
 		tls_bench.fail()
 		os.rmdir_all(tfolder) or { panic(err) }
-		eprintln(tls_bench.step_message_fail(err.msg))
+		eprintln(tls_bench.step_message_fail(err.msg()))
 		assert false
 		return pool.no_result
 	}

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -7,8 +7,20 @@ import v.ast
 
 fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 	if typ.has_flag(.generic) {
-		if t_typ := g.table.resolve_generic_to_concrete(typ, g.table.cur_fn.generic_names,
-			g.table.cur_concrete_types)
+		/*
+		resolve_generic_to_concrete should not mutate the table.
+		It mutates if the generic type is for example []T and the
+		concrete type is an array type that has not been registered
+		yet. This should have already happened in the checker, since
+		it also calls resolve_generic_to_concrete. g.table is made
+		non-mut to make sure no one else can accidentally mutates the table.
+		*/
+		mut muttable := unsafe { &ast.Table(g.table) }
+		if t_typ := muttable.resolve_generic_to_concrete(typ, if g.cur_fn != 0 {
+			g.cur_fn.generic_names
+		} else {
+			[]string{}
+		}, g.cur_concrete_types)
 		{
 			return t_typ
 		}
@@ -31,7 +43,7 @@ struct Type {
 // * alias unwrapped
 fn (mut g Gen) unwrap(typ ast.Type) Type {
 	no_generic := g.unwrap_generic(typ)
-	no_generic_sym := g.table.get_type_symbol(no_generic)
+	no_generic_sym := g.table.sym(no_generic)
 	if no_generic_sym.kind != .alias {
 		return Type{
 			typ: no_generic
@@ -44,6 +56,6 @@ fn (mut g Gen) unwrap(typ ast.Type) Type {
 		typ: no_generic
 		sym: no_generic_sym
 		unaliased: no_generic_sym.parent_idx
-		unaliased_sym: g.table.get_type_symbol(no_generic_sym.parent_idx)
+		unaliased_sym: g.table.sym(no_generic_sym.parent_idx)
 	}
 }

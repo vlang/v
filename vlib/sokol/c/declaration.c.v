@@ -49,10 +49,11 @@ $if gcboehm ? {
 	#define SOKOL_FREE GC_FREE
 }
 
-#include "sokol_v.h"
+#include "sokol_v.pre.h"
 #include "sokol_app.h"
 #define SOKOL_IMPL
 #define SOKOL_NO_DEPRECATED
 #include "sokol_gfx.h"
 #define SOKOL_GL_IMPL
 #include "util/sokol_gl.h"
+#include "sokol_v.post.h"

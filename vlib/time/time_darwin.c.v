@@ -82,3 +82,13 @@ fn darwin_utc() Time {
 	C.gettimeofday(&tv, 0)
 	return unix2(i64(tv.tv_sec), int(tv.tv_usec))
 }
+
+// dummy to compile with all compilers
+pub fn solaris_now() Time {
+	return Time{}
+}
+
+// dummy to compile with all compilers
+pub fn solaris_utc() Time {
+	return Time{}
+}

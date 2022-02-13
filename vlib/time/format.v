@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module time
@@ -117,7 +117,7 @@ pub fn (t Time) get_fmt_date_str(fmt_dlmtr FormatDelimiter, fmt_date FormatDate)
 	if fmt_date == .no_date {
 		return ''
 	}
-	month := '$t.smonth()'
+	month := t.smonth()
 	year := '${(t.year % 100):02d}'
 	mut res := match fmt_date {
 		.ddmmyy { '${t.day:02d}|${t.month:02d}|$year' }
@@ -156,7 +156,9 @@ pub fn (t Time) get_fmt_str(fmt_dlmtr FormatDelimiter, fmt_time FormatTime, fmt_
 		}
 	} else {
 		if fmt_time != .no_time {
-			return t.get_fmt_date_str(fmt_dlmtr, fmt_date) + ' ' + t.get_fmt_time_str(fmt_time)
+			dstr := t.get_fmt_date_str(fmt_dlmtr, fmt_date)
+			tstr := t.get_fmt_time_str(fmt_time)
+			return '$dstr $tstr'
 		} else {
 			return t.get_fmt_date_str(fmt_dlmtr, fmt_date)
 		}

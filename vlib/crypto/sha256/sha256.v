@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 // Package sha256 implements the SHA224 and SHA256 hash algorithms as defined
@@ -124,6 +124,7 @@ fn (mut d Digest) write(p_ []byte) ?int {
 	}
 }
 
+// sum returns the SHA256 or SHA224 checksum of digest with the data.
 pub fn (d &Digest) sum(b_in []byte) []byte {
 	// Make a copy of d so that caller can keep writing and summing.
 	mut d0 := *d

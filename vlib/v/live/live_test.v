@@ -1,6 +1,8 @@
 import os
 import time
 
+// vtest retry: 4
+
 /*
 The goal of this test, is to simulate a developer, that has run a program, compiled with -live flag.
 
@@ -149,9 +151,9 @@ fn setup_cycles_environment() {
 fn test_live_program_can_be_compiled() {
 	setup_cycles_environment()
 	eprintln('Compiling...')
-	os.system('$vexe -nocolor -live -o $genexe_file $source_file')
+	os.system('${os.quoted_path(vexe)} -nocolor -live -o ${os.quoted_path(genexe_file)} ${os.quoted_path(source_file)}')
 	//
-	cmd := '$genexe_file > /dev/null &'
+	cmd := '${os.quoted_path(genexe_file)} > /dev/null &'
 	eprintln('Running with: $cmd')
 	res := os.system(cmd)
 	assert res == 0

@@ -4,7 +4,7 @@ import sokol.gfx
 import sokol.sgl
 
 struct AppState {
-	pass_action C.sg_pass_action
+	pass_action gfx.PassAction
 }
 
 const (
@@ -16,7 +16,7 @@ fn main() {
 		pass_action: gfx.create_clear_pass(0.1, 0.1, 0.1, 1.0)
 	}
 	title := 'Sokol Drawing Template'
-	desc := C.sapp_desc{
+	desc := sapp.Desc{
 		user_data: state
 		init_userdata_cb: init
 		frame_userdata_cb: frame
@@ -27,9 +27,9 @@ fn main() {
 }
 
 fn init(user_data voidptr) {
-	desc := sapp.create_desc() // C.sg_desc{
+	desc := sapp.create_desc() // gfx.Desc{
 	gfx.setup(&desc)
-	sgl_desc := C.sgl_desc_t{}
+	sgl_desc := sgl.Desc{}
 	sgl.setup(&sgl_desc)
 }
 

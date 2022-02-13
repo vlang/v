@@ -11,7 +11,7 @@ fn test_vexe_exists() {
 }
 
 fn test_v_profile_works() ? {
-	os.chdir(vroot)
+	os.chdir(vroot) or {}
 	folders_root := os.join_path(vroot, 'vlib/v/tests/run_project_folders')
 	folder_names := os.ls(folders_root) ?
 	mut folder_paths := []string{}
@@ -24,13 +24,13 @@ fn test_v_profile_works() ? {
 	for folder_path in folder_paths {
 		local_path := folder_path.replace(vroot + os.path_separator, '').replace('\\',
 			'/')
-		println('..... $local_path/')
-		res := os.execute('"$vexe" run $folder_path')
+		println('..... v run $local_path/')
+		res := os.execute('${os.quoted_path(vexe)} run ${os.quoted_path(folder_path)}')
 		// eprintln('res: $res')
 		assert res.exit_code == 0
 		assert res.output.len > 0
 		assert res.output.contains('OK')
 		term.clear_previous_line()
-		println('${term.bold('OK')}    $local_path/')
+		println('${term.bold('OK')}    v run $local_path/')
 	}
 }

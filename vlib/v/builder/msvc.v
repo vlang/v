@@ -188,10 +188,10 @@ fn find_vs_by_reg(vswhere_dir string, host_arch string, target_arch string) ?VsI
 		version2 := version // TODO remove. cgen option bug if expr
 		// println('version: $version')
 		v := if version.ends_with('\n') { version2[..version.len - 2] } else { version2 }
-		lib_path := '$res.output\\VC\\Tools\\MSVC\\$v\\lib\\$target_arch'
-		include_path := '$res.output\\VC\\Tools\\MSVC\\$v\\include'
+		lib_path := '$res_output\\VC\\Tools\\MSVC\\$v\\lib\\$target_arch'
+		include_path := '$res_output\\VC\\Tools\\MSVC\\$v\\include'
 		if os.exists('$lib_path\\vcruntime.lib') {
-			p := '$res.output\\VC\\Tools\\MSVC\\$v\\bin\\Host$host_arch\\$target_arch'
+			p := '$res_output\\VC\\Tools\\MSVC\\$v\\bin\\Host$host_arch\\$target_arch'
 			// println('$lib_path $include_path')
 			return VsInstallation{
 				exe_path: p
@@ -237,16 +237,7 @@ fn find_msvc(m64_target bool) ?MsvcResult {
 			'%ProgramFiles(x86)%'
 		}
 		host_arch := if processor_architecture == 'x86' { 'X86' } else { 'X64' }
-		mut target_arch := 'X64'
-		if host_arch == 'X86' {
-			if !m64_target {
-				target_arch = 'X86'
-			}
-		} else if host_arch == 'X64' {
-			if !m64_target {
-				target_arch = 'X86'
-			}
-		}
+		target_arch := if !m64_target { 'X86' } else { 'X64' }
 		wk := find_windows_kit_root(target_arch) or { return error('Unable to find windows sdk') }
 		vs := find_vs(vswhere_dir, host_arch, target_arch) or {
 			return error('Unable to find visual studio')
@@ -277,29 +268,36 @@ pub fn (mut v Builder) cc_msvc() {
 	r := v.cached_msvc
 	if r.valid == false {
 		verror('Cannot find MSVC on this OS')
-		return
 	}
 	out_name_obj := os.real_path(v.out_name_c + '.obj')
 	out_name_pdb := os.real_path(v.out_name_c + '.pdb')
 	out_name_cmd_line := os.real_path(v.out_name_c + '.rsp')
+	//
+	env_cflags := os.getenv('CFLAGS')
+	env_ldflags := os.getenv('LDFLAGS')
+	mut a := [v.pref.cflags]
+	if env_cflags != '' {
+		a << env_cflags
+	}
 	// Default arguments
-	// volatile:ms enables atomic volatile (gcc _Atomic)
-	// -w: no warnings
-	// 2 unicode defines
-	// /Fo sets the object file name - needed so we can clean up after ourselves properly
-	mut a := ['-w', '/we4013', '/volatile:ms', '/Fo"$out_name_obj"']
+	// `-w` no warnings
+	// `/we4013` 2 unicode defines, see https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-3-c4013?redirectedfrom=MSDN&view=msvc-170
+	// `/volatile:ms` enables atomic volatile (gcc _Atomic)
+	// `/Fo` sets the object file name - needed so we can clean up after ourselves properly
+	// `/F 16777216` changes the stack size to 16MB, see https://docs.microsoft.com/en-us/cpp/build/reference/f-set-stack-size?view=msvc-170
+	a << ['-w', '/we4013', '/volatile:ms', '/Fo"$out_name_obj"', '/F 16777216']
 	if v.pref.is_prod {
 		a << '/O2'
-		a << '/MD'
-		a << '/DNDEBUG'
-	} else {
-		a << '/MDd'
-		a << '/D_DEBUG'
 	}
 	if v.pref.is_debug {
+		a << '/MDd'
+		a << '/D_DEBUG'
 		// /Zi generates a .pdb
 		// /Fd sets the pdb file name (so its not just vc140 all the time)
 		a << ['/Zi', '/Fd"$out_name_pdb"']
+	} else {
+		a << '/MD'
+		a << '/DNDEBUG'
 	}
 	if v.pref.is_shared {
 		if !v.pref.out_name.ends_with('.dll') {
@@ -332,7 +330,7 @@ pub fn (mut v Builder) cc_msvc() {
 		*/
 	}
 	if v.pref.sanitize {
-		println('Sanitize not supported on msvc.')
+		eprintln('Sanitize not supported on msvc.')
 	}
 	// The C file we are compiling
 	// a << '"$TmpPath/$v.out_name_c"'
@@ -341,7 +339,6 @@ pub fn (mut v Builder) cc_msvc() {
 	// Not all of these are needed (but the compiler should discard them if they are not used)
 	// these are the defaults used by msbuild and visual studio
 	mut real_libs := ['kernel32.lib', 'user32.lib', 'advapi32.lib']
-	// sflags := v.get_os_cflags().msvc_string_flags()
 	sflags := msvc_string_flags(v.get_os_cflags())
 	real_libs << sflags.real_libs
 	inc_paths := sflags.inc_paths
@@ -371,6 +368,9 @@ pub fn (mut v Builder) cc_msvc() {
 		a << '/OPT:ICF'
 	}
 	a << lib_paths
+	if env_ldflags != '' {
+		a << env_ldflags
+	}
 	args := a.join(' ')
 	// write args to a file so that we dont smash createprocess
 	os.write_file(out_name_cmd_line, args) or {
@@ -380,12 +380,14 @@ pub fn (mut v Builder) cc_msvc() {
 	// It is hard to see it at first, but the quotes above ARE balanced :-| ...
 	// Also the double quotes at the start ARE needed.
 	v.show_cc(cmd, out_name_cmd_line, args)
+	if os.user_os() != 'windows' && !v.pref.out_name.ends_with('.c') {
+		verror('Cannot build with msvc on $os.user_os()')
+	}
 	util.timing_start('C msvc')
 	res := os.execute(cmd)
 	if res.exit_code != 0 {
 		eprintln(res.output)
 		verror('msvc error')
-		return
 	}
 	util.timing_measure('C msvc')
 	if v.pref.show_c_output {
@@ -396,14 +398,13 @@ pub fn (mut v Builder) cc_msvc() {
 	// println(res)
 	// println('C OUTPUT:')
 	// Always remove the object file - it is completely unnecessary
-	os.rm(out_name_obj) or { panic(err) }
+	os.rm(out_name_obj) or {}
 }
 
 fn (mut v Builder) build_thirdparty_obj_file_with_msvc(path string, moduleflags []cflag.CFlag) {
 	msvc := v.cached_msvc
 	if msvc.valid == false {
 		verror('Cannot find MSVC on this OS')
-		return
 	}
 	// msvc expects .obj not .o
 	mut obj_path := '${path}bj'
@@ -419,7 +420,12 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(path string, moduleflags 
 	defines := flags.defines.join(' ')
 	include_string := '-I "$msvc.ucrt_include_path" -I "$msvc.vs_include_path" -I "$msvc.um_include_path" -I "$msvc.shared_include_path" $inc_dirs'
 	// println('cfiles: $cfiles')
-	mut oargs := []string{}
+	env_cflags := os.getenv('CFLAGS')
+	env_ldflags := os.getenv('LDFLAGS')
+	mut oargs := [v.pref.cflags]
+	if env_cflags != '' {
+		oargs << env_cflags
+	}
 	if v.pref.is_prod {
 		oargs << '/O2'
 		oargs << '/MD'
@@ -427,6 +433,9 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(path string, moduleflags 
 	} else {
 		oargs << '/MDd'
 		oargs << '/D_DEBUG'
+	}
+	if env_ldflags != '' {
+		oargs << env_ldflags
 	}
 	str_oargs := oargs.join(' ')
 	cmd := '"$msvc.full_cl_exe_path" /volatile:ms $str_oargs $defines $include_string /c $cfiles /Fo"$obj_path"'
@@ -438,7 +447,6 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(path string, moduleflags 
 	if res.exit_code != 0 {
 		println('msvc: failed to build a thirdparty object; cmd: $cmd')
 		verror(res.output)
-		return
 	}
 	println(res.output)
 }
@@ -474,6 +482,8 @@ pub fn msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 			real_libs << lib_lib
 		} else if flag.name == '-I' {
 			inc_paths << flag.format()
+		} else if flag.name == '-D' {
+			defines << '/D$flag.value'
 		} else if flag.name == '-L' {
 			lib_paths << flag.value
 			lib_paths << flag.value + os.path_separator + 'msvc'

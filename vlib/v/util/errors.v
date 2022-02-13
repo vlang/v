@@ -1,13 +1,13 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module util
 
-import math.mathutil as mu
 import os
 import strings
 import term
 import v.token
+import v.mathutil as mu
 
 // The filepath:line:col: format is the default C compiler error output format.
 // It allows editors and IDE's like emacs to quickly find the errors in the
@@ -68,24 +68,26 @@ fn color(kind string, msg string) string {
 	return term.magenta(msg)
 }
 
+const normalised_workdir = os.wd_at_startup.replace('\\', '/') + '/'
+
 // formatted_error - `kind` may be 'error' or 'warn'
-pub fn formatted_error(kind string, omsg string, filepath string, pos token.Position) string {
+pub fn formatted_error(kind string, omsg string, filepath string, pos token.Pos) string {
 	emsg := omsg.replace('main.', '')
 	mut path := filepath
 	verror_paths_override := os.getenv('VERROR_PATHS')
 	if verror_paths_override == 'absolute' {
 		path = os.real_path(path)
 	} else {
-		// Get relative path
-		workdir := os.getwd() + os.path_separator
-		if path.starts_with(workdir) {
-			path = path.replace(workdir, '')
+		// always use `/` in the error paths, to ensure the compiler output does not vary in the tests:
+		path = path.replace('\\', '/')
+		if path.starts_with(util.normalised_workdir) {
+			// Get a relative path to the compiler's workdir, when possible:
+			path = path.replace_once(util.normalised_workdir, '')
 		}
 	}
 	//
-	source := read_file(filepath) or { '' }
 	position := '$path:${pos.line_nr + 1}:${mu.max(1, pos.col + 1)}:'
-	scontext := source_context(kind, source, pos).join('\n')
+	scontext := source_file_context(kind, filepath, pos).join('\n')
 	final_position := bold(position)
 	final_kind := bold(color(kind, kind))
 	final_msg := emsg
@@ -94,12 +96,39 @@ pub fn formatted_error(kind string, omsg string, filepath string, pos token.Posi
 	return '$final_position $final_kind $final_msg$final_context'.trim_space()
 }
 
-pub fn source_context(kind string, source string, pos token.Position) []string {
+[heap]
+struct LinesCache {
+mut:
+	lines map[string][]string
+}
+
+[unsafe]
+pub fn cached_file2sourcelines(path string) []string {
+	mut static cache := &LinesCache(0)
+	if isnil(cache) {
+		cache = &LinesCache{}
+	}
+	if path.len == 0 {
+		unsafe { cache.lines.free() }
+		unsafe { free(cache) }
+		cache = &LinesCache(0)
+		return []string{}
+	}
+	if res := cache.lines[path] {
+		return res
+	}
+	source := read_file(path) or { '' }
+	res := source.split_into_lines()
+	cache.lines[path] = res
+	return res
+}
+
+pub fn source_file_context(kind string, filepath string, pos token.Pos) []string {
 	mut clines := []string{}
-	if source.len == 0 {
+	source_lines := unsafe { cached_file2sourcelines(filepath) }
+	if source_lines.len == 0 {
 		return clines
 	}
-	source_lines := source.split_into_lines()
 	bline := mu.max(0, pos.line_nr - util.error_context_before)
 	aline := mu.max(0, mu.min(source_lines.len - 1, pos.line_nr + util.error_context_after))
 	tab_spaces := '    '
@@ -123,7 +152,7 @@ pub fn source_context(kind string, source string, pos token.Position) []string {
 			mut pointerline_builder := strings.new_builder(sline.len)
 			for i := 0; i < start_column; {
 				if sline[i].is_space() {
-					pointerline_builder.write_b(sline[i])
+					pointerline_builder.write_byte(sline[i])
 					i++
 				} else {
 					char_len := utf8_char_len(sline[i])

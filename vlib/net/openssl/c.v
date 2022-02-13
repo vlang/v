@@ -3,9 +3,14 @@ module openssl
 // On Linux, prefer a localy built openssl, because it is
 // much more likely for it to be newer, than the system
 // openssl from libssl-dev. If there is no local openssl,
-// the next flag is harmless, since it will still use the
-// (older) system openssl.
-#flag linux -I/usr/local/include/openssl -L/usr/local/lib
+// the next #pkgconfig flag is harmless, since it will still
+// use the (older) system openssl.
+#flag linux -I/usr/local/include/openssl
+#flag linux -L/usr/local/lib
+$if $pkgconfig('openssl') {
+	#pkgconfig openssl
+}
+
 #flag windows -l libssl -l libcrypto
 #flag -lssl -lcrypto
 #flag linux -ldl -lpthread
@@ -23,6 +28,7 @@ module openssl
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
+[typedef]
 pub struct C.SSL {
 }
 
@@ -63,9 +69,13 @@ fn C.SSL_CTX_set_options(ctx &C.SSL_CTX, options int)
 
 fn C.SSL_CTX_set_verify_depth(s &C.SSL_CTX, depth int)
 
-fn C.SSL_CTX_load_verify_locations(ctx &C.SSL_CTX, ca_file &char, ca_path &char) int
+fn C.SSL_CTX_load_verify_locations(ctx &C.SSL_CTX, const_file &char, ca_path &char) int
 
 fn C.SSL_CTX_free(ctx &C.SSL_CTX)
+
+fn C.SSL_CTX_use_certificate_file(ctx &C.SSL_CTX, const_file &char, file_type int) int
+
+fn C.SSL_CTX_use_PrivateKey_file(ctx &C.SSL_CTX, const_file &char, file_type int) int
 
 fn C.SSL_new(&C.SSL_CTX) &C.SSL
 
@@ -76,6 +86,8 @@ fn C.SSL_connect(&C.SSL) int
 fn C.SSL_set_cipher_list(ctx &SSL, str &char) int
 
 fn C.SSL_get_peer_certificate(ssl &SSL) &C.X509
+
+fn C.X509_free(const_cert &C.X509)
 
 fn C.ERR_clear_error()
 

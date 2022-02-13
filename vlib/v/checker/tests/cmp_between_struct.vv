@@ -1,0 +1,31 @@
+module main
+
+import datatypes
+
+struct Item {
+	priority int
+}
+
+// Issue https://github.com/vlang/v/issues/13318
+
+/*
+fn (a Item) < (b Item) bool {
+	return a.priority < b.priority
+}
+
+fn (a Item) == (b Item) bool {
+	return a.priority == b.priority
+}
+*/
+
+fn  main() {
+	min_heap()
+}
+
+fn min_heap() {
+	mut heap := datatypes.MinHeap<Item>{}
+
+	heap.insert(Item{10})
+
+	println(heap)
+}

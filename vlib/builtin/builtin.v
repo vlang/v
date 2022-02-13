@@ -1,6 +1,7 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+[has_globals]
 module builtin
 
 // isnil returns true if an object is nil (only for C objects).
@@ -14,26 +15,6 @@ fn on_panic(f fn(int)int) {
 	// TODO
 }
 */
-
-// print_backtrace shows a backtrace of the current call stack on stdout
-pub fn print_backtrace() {
-	// At the time of backtrace_symbols_fd call, the C stack would look something like this:
-	// * print_backtrace_skipping_top_frames
-	// * print_backtrace itself
-	// * the rest of the backtrace frames
-	// => top 2 frames should be skipped, since they will not be informative to the developer
-	$if !no_backtrace ? {
-		$if freestanding {
-			println(bare_backtrace())
-		} $else {
-			$if tinyc {
-				C.tcc_backtrace(c'Backtrace')
-			} $else {
-				print_backtrace_skipping_top_frames(2)
-			}
-		}
-	}
-}
 
 struct VCastTypeIndexName {
 	tindex int
@@ -60,8 +41,8 @@ fn __as_cast(obj voidptr, obj_type int, expected_type int) voidptr {
 	return obj
 }
 
-// VAssertMetaInfo is used during assertions. An instance of it
-// is filled in by compile time generated code, when an assertion fails.
+// VAssertMetaInfo is used during assertions. An instance of it is filled in by
+// compile time generated code, when an assertion fails.
 pub struct VAssertMetaInfo {
 pub:
 	fpath   string // the source file path of the assertion
@@ -73,6 +54,22 @@ pub:
 	rlabel  string // the right side of the infix expressions as source
 	lvalue  string // the stringified *actual value* of the left side of a failed assertion
 	rvalue  string // the stringified *actual value* of the right side of a failed assertion
+}
+
+// free frees the memory occupied by the assertion meta data. It is called automatically by
+// the code, that V's test framework generates, after all other callbacks have been called.
+[manualfree; unsafe]
+pub fn (ami &VAssertMetaInfo) free() {
+	unsafe {
+		ami.fpath.free()
+		ami.fn_name.free()
+		ami.src.free()
+		ami.op.free()
+		ami.llabel.free()
+		ami.rlabel.free()
+		ami.lvalue.free()
+		ami.rvalue.free()
+	}
 }
 
 fn __print_assert_failure(i &VAssertMetaInfo) {
@@ -128,4 +125,11 @@ pub:
 	has_arg bool
 	arg     string
 	kind    AttributeKind
+}
+
+[markused]
+fn v_segmentation_fault_handler(signal int) {
+	eprintln('signal 11: segmentation fault')
+	print_backtrace()
+	exit(128 + 11)
 }

@@ -1,3 +1,4 @@
+[has_globals]
 module builtin
 
 type FnExitCb = fn ()
@@ -172,8 +173,25 @@ pub fn eprint(s string) {
 	}
 }
 
+pub fn flush_stdout() {
+	$if freestanding {
+		not_implemented := 'flush_stdout is not implemented\n'
+		bare_eprint(not_implemented.str, u64(not_implemented.len))
+	} $else {
+		C.fflush(C.stdout)
+	}
+}
+
+pub fn flush_stderr() {
+	$if freestanding {
+		not_implemented := 'flush_stderr is not implemented\n'
+		bare_eprint(not_implemented.str, u64(not_implemented.len))
+	} $else {
+		C.fflush(C.stderr)
+	}
+}
+
 // print prints a message to stdout. Unlike `println` stdout is not automatically flushed.
-// A call to `flush()` will flush the output buffer to stdout.
 [manualfree]
 pub fn print(s string) {
 	$if android {
@@ -251,7 +269,7 @@ __global total_m = i64(0)
 [unsafe]
 pub fn malloc(n int) &byte {
 	if n <= 0 {
-		panic('> V malloc(<=0)')
+		panic('malloc($n <= 0)')
 	}
 	$if vplayground ? {
 		if n > 10000 {
@@ -274,13 +292,9 @@ pub fn malloc(n int) &byte {
 			res = C.GC_MALLOC(n)
 		}
 	} $else $if freestanding {
-		mut e := Errno{}
-		res, e = mm_alloc(u64(n))
-		if e != .enoerror {
-			eprint('malloc() failed: ')
-			eprintln(e.str())
-			panic('malloc() failed')
-		}
+		// todo: is this safe to call malloc there? We export __malloc as malloc and it uses dlmalloc behind the scenes
+		// so theoretically it is safe
+		res = unsafe { __malloc(usize(n)) }
 	} $else {
 		res = unsafe { C.malloc(n) }
 	}
@@ -288,9 +302,9 @@ pub fn malloc(n int) &byte {
 		panic('malloc($n) failed')
 	}
 	$if debug_malloc ? {
-		// Fill in the memory with something != 0, so it is easier to spot
+		// Fill in the memory with something != 0 i.e. `M`, so it is easier to spot
 		// when the calling code wrongly relies on it being zeroed.
-		unsafe { C.memset(res, 0x88, n) }
+		unsafe { C.memset(res, 0x4D, n) }
 	}
 	return res
 }
@@ -298,7 +312,7 @@ pub fn malloc(n int) &byte {
 [unsafe]
 pub fn malloc_noscan(n int) &byte {
 	if n <= 0 {
-		panic('> V malloc(<=0)')
+		panic('malloc_noscan($n <= 0)')
 	}
 	$if vplayground ? {
 		if n > 10000 {
@@ -327,23 +341,17 @@ pub fn malloc_noscan(n int) &byte {
 			}
 		}
 	} $else $if freestanding {
-		mut e := Errno{}
-		res, e = mm_alloc(u64(n))
-		if e != .enoerror {
-			eprint('malloc() failed: ')
-			eprintln(e.str())
-			panic('malloc() failed')
-		}
+		res = unsafe { __malloc(usize(n)) }
 	} $else {
 		res = unsafe { C.malloc(n) }
 	}
 	if res == 0 {
-		panic('malloc($n) failed')
+		panic('malloc_noscan($n) failed')
 	}
 	$if debug_malloc ? {
-		// Fill in the memory with something != 0, so it is easier to spot
+		// Fill in the memory with something != 0 i.e. `M`, so it is easier to spot
 		// when the calling code wrongly relies on it being zeroed.
-		unsafe { C.memset(res, 0x88, n) }
+		unsafe { C.memset(res, 0x4D, n) }
 	}
 	return res
 }
@@ -426,7 +434,7 @@ pub fn realloc_data(old_data &byte, old_size int, new_size int) &byte {
 // Unlike `v_calloc` vcalloc checks for negative values given in `n`.
 pub fn vcalloc(n int) &byte {
 	if n < 0 {
-		panic('calloc(<0)')
+		panic('calloc($n < 0)')
 	} else if n == 0 {
 		return &byte(0)
 	}
@@ -459,7 +467,7 @@ pub fn vcalloc_noscan(n int) &byte {
 			}
 		}
 		if n < 0 {
-			panic('calloc(<0)')
+			panic('calloc_noscan($n < 0)')
 		}
 		return $if gcboehm_opt ? {
 			unsafe { &byte(C.memset(C.GC_MALLOC_ATOMIC(n), 0, n)) }
@@ -510,7 +518,7 @@ pub fn memdup_noscan(src voidptr, sz int) voidptr {
 		return vcalloc_noscan(1)
 	}
 	unsafe {
-		mem := vcalloc_noscan(sz)
+		mem := malloc_noscan(sz)
 		return C.memcpy(mem, src, sz)
 	}
 }
@@ -524,4 +532,24 @@ fn v_fixed_index(i int, len int) int {
 		}
 	}
 	return i
+}
+
+// print_backtrace shows a backtrace of the current call stack on stdout
+pub fn print_backtrace() {
+	// At the time of backtrace_symbols_fd call, the C stack would look something like this:
+	// * print_backtrace_skipping_top_frames
+	// * print_backtrace itself
+	// * the rest of the backtrace frames
+	// => top 2 frames should be skipped, since they will not be informative to the developer
+	$if !no_backtrace ? {
+		$if freestanding {
+			println(bare_backtrace())
+		} $else {
+			$if tinyc {
+				C.tcc_backtrace(c'Backtrace')
+			} $else {
+				print_backtrace_skipping_top_frames(2)
+			}
+		}
+	}
 }

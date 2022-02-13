@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module ast
@@ -18,7 +18,7 @@ fn (t &Table) has_cflag(flag cflag.CFlag) bool {
 // parse the flags to (ast.cflags) []CFlag
 // Note: clean up big time (joe-c)
 pub fn (mut t Table) parse_cflag(cflg string, mod string, ctimedefines []string) ?bool {
-	allowed_flags := ['framework', 'library', 'Wa', 'Wl', 'Wp', 'I', 'l', 'L']
+	allowed_flags := ['framework', 'library', 'Wa', 'Wl', 'Wp', 'I', 'l', 'L', 'D']
 	flag_orig := cflg.trim_space()
 	mut flag := flag_orig
 	if flag == '' {

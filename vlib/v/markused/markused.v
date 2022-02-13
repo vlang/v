@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module markused
 
@@ -36,7 +36,6 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		'isnil',
 		'opt_ok',
 		'error',
-		'__print_assert_failure',
 		// utf8_str_visible_length is used by c/str.v
 		'utf8_str_visible_length',
 		'compare_ints',
@@ -49,55 +48,57 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		// byteptr and charptr
 		'3.vstring',
 		'3.vstring_with_len',
+		'3.vstring_literal',
 		'4.vstring',
 		'4.vstring_with_len',
+		'4.vstring_literal',
 		// byte. methods
-		'9.str_escaped',
+		'10.str_escaped',
 		// string. methods
-		'18.add',
-		'18.trim_space',
-		'18.repeat',
-		'18.replace',
-		'18.clone',
-		'18.clone_static',
-		'18.trim',
-		'18.substr',
-		'18.at',
-		'18.at_with_check',
-		'18.index_kmp',
+		'20.add',
+		'20.trim_space',
+		'20.repeat',
+		'20.replace',
+		'20.clone',
+		'20.clone_static',
+		'20.trim',
+		'20.substr',
+		'20.at',
+		'20.at_with_check',
+		'20.index_kmp',
 		// string. ==, !=, etc...
-		'18.eq',
-		'18.ne',
-		'18.lt',
-		'18.gt',
-		'18.le',
-		'18.ge',
+		'20.eq',
+		'20.ne',
+		'20.lt',
+		'20.gt',
+		'20.le',
+		'20.ge',
 		'fast_string_eq',
 		// other array methods
-		'20.get',
-		'20.set',
-		'20.get_unsafe',
-		'20.set_unsafe',
-		'20.get_with_check' /* used for `x := a[i] or {}` */,
-		'20.clone_static_to_depth',
-		'20.clone_to_depth',
-		'20.first',
-		'20.last',
-		'20.pointers' /* TODO: handle generic methods calling array primitives more precisely in pool_test.v */,
-		'20.reverse',
-		'20.repeat_to_depth',
-		'20.slice',
-		'20.slice2',
-		'59.get',
-		'59.set',
-		'65556.last',
-		'65556.pop',
-		'65556.push',
-		'65556.insert_many',
-		'65556.prepend_many',
-		'65556.reverse',
-		'65556.set',
-		'65556.set_unsafe',
+		'22.get',
+		'22.set',
+		'22.get_unsafe',
+		'22.set_unsafe',
+		'22.get_with_check' /* used for `x := a[i] or {}` */,
+		'22.clone_static_to_depth',
+		'22.clone_to_depth',
+		'22.first',
+		'22.last',
+		'22.pointers' /* TODO: handle generic methods calling array primitives more precisely in pool_test.v */,
+		'22.reverse',
+		'22.repeat_to_depth',
+		'22.slice',
+		'22.slice2',
+		'61.get',
+		'61.set',
+		'65558.last',
+		'65558.pop',
+		'65558.push',
+		'65558.insert_many',
+		'65558.prepend_many',
+		'65558.reverse',
+		'65558.set',
+		'65558.set_unsafe',
 		// TODO: process the _vinit const initializations automatically too
 		'json.decode_string',
 		'json.decode_int',
@@ -109,10 +110,14 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		'json.encode_u64',
 		'json.json_print',
 		'json.json_parse',
-		'main.cb_propagate_test_error',
+		'main.nasserts',
+		'main.vtest_init',
+		'main.vtest_new_metainfo',
+		'main.vtest_new_filemetainfo',
 		'os.getwd',
 		'os.init_os_args',
 		'os.init_os_args_wide',
+		'v.embed_file.find_index_entry_by_path',
 	]
 
 	if pref.is_bare {
@@ -126,33 +131,16 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		]
 	}
 
-	if pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
-		all_fn_root_names << [
-			'memdup_noscan',
-			'__new_array_noscan',
-			'__new_array_with_default_noscan',
-			'__new_array_with_array_default_noscan',
-			'new_array_from_c_array_noscan',
-			'20.clone_static_to_depth_noscan',
-			'20.clone_to_depth_noscan',
-			'20.reverse_noscan',
-			'20.repeat_to_depth_noscan',
-			'65556.pop_noscan',
-			'65556.push_noscan',
-			'65556.push_many_noscan',
-			'65556.insert_noscan',
-			'65556.insert_many_noscan',
-			'65556.prepend_noscan',
-			'65556.prepend_many_noscan',
-			'65556.reverse_noscan',
-			'65556.grow_cap_noscan',
-			'65556.grow_len_noscan',
-		]
-	}
+	is_noscan_whitelisted := pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt]
 
 	for k, mut mfn in all_fns {
 		$if trace_skip_unused_all_fns ? {
 			println('k: $k | mfn: $mfn.name')
+		}
+		// _noscan functions/methods are selected when the `-gc boehm` is on:
+		if is_noscan_whitelisted && mfn.name.ends_with('_noscan') {
+			all_fn_root_names << k
+			continue
 		}
 		mut method_receiver_typename := ''
 		if mfn.is_method {
@@ -201,6 +189,12 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 			all_fn_root_names << k
 			continue
 		}
+		if mfn.receiver.typ != ast.void_type && mfn.receiver.typ.has_flag(.generic) {
+			// generic methods may be used in cgen after specialisation :-|
+			// TODO: move generic method specialisation from cgen to before markused
+			all_fn_root_names << k
+			continue
+		}
 		// testing framework:
 		if pref.is_test {
 			if k.starts_with('test_') || k.contains('.test_') {
@@ -238,7 +232,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 	if pref.is_test {
 		all_fn_root_names << 'main.cb_assertion_ok'
 		all_fn_root_names << 'main.cb_assertion_failed'
-		if benched_tests_sym := table.find_type('main.BenchedTests') {
+		if benched_tests_sym := table.find_sym('main.BenchedTests') {
 			bts_type := benched_tests_sym.methods[0].params[0].typ
 			all_fn_root_names << '${bts_type}.testing_step_start'
 			all_fn_root_names << '${bts_type}.testing_step_end'
@@ -252,18 +246,26 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		if isym.kind != .interface_ {
 			continue
 		}
+		if isym.info !is ast.Interface {
+			// Do not remove this check, isym.info could be &IError.
+			continue
+		}
 		interface_info := isym.info as ast.Interface
 		if interface_info.methods.len == 0 {
 			continue
 		}
 		for itype in interface_info.types {
-			pitype := itype.set_nr_muls(1)
+			ptype := itype.set_nr_muls(1)
+			ntype := itype.set_nr_muls(0)
+			interface_types := [ptype, ntype]
 			for method in interface_info.methods {
-				interface_implementation_method_name := '${pitype}.$method.name'
-				$if trace_skip_unused_interface_methods ? {
-					eprintln('>> isym.name: $isym.name | interface_implementation_method_name: $interface_implementation_method_name')
+				for typ in interface_types {
+					interface_implementation_method_name := '${int(typ)}.$method.name'
+					$if trace_skip_unused_interface_methods ? {
+						eprintln('>> isym.name: $isym.name | interface_implementation_method_name: $interface_implementation_method_name')
+					}
+					all_fn_root_names << interface_implementation_method_name
 				}
-				all_fn_root_names << interface_implementation_method_name
 			}
 		}
 	}
@@ -275,7 +277,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		typ_vweb_context := ast.Type(table.find_type_idx('vweb.Context')).set_nr_muls(1)
 		all_fn_root_names << '${int(typ_vweb_context)}.html'
 		for vgt in table.used_vweb_types {
-			sym_app := table.get_type_symbol(vgt)
+			sym_app := table.sym(vgt)
 			for m in sym_app.methods {
 				if m.return_type == typ_vweb_result {
 					pvgt := vgt.set_nr_muls(1)
@@ -320,6 +322,9 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		pref: pref
 	}
 	// println( all_fns.keys() )
+	walker.mark_markused_fns() // tagged with `[markused]`
+	walker.mark_markused_consts() // tagged with `[markused]`
+	walker.mark_markused_globals() // tagged with `[markused]`
 	walker.mark_exported_fns()
 	walker.mark_root_fns(all_fn_root_names)
 
@@ -340,8 +345,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 			if pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt] {
 				if k in ['new_map_noscan_key', 'new_map_noscan_value', 'new_map_noscan_key_value',
 					'new_map_init_noscan_key', 'new_map_init_noscan_value',
-					'new_map_init_noscan_key_value',
-				] {
+					'new_map_init_noscan_key_value'] {
 					walker.fn_decl(mut mfn)
 				}
 			}
@@ -364,6 +368,15 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 	$if trace_skip_unused_fn_names ? {
 		for key, _ in walker.used_fns {
 			println('> used fn key: $key')
+		}
+	}
+
+	for kcon, con in all_consts {
+		if pref.is_shared && con.is_pub {
+			walker.mark_const_as_used(kcon)
+		}
+		if !pref.is_shared && con.is_pub && con.name.starts_with('main.') {
+			walker.mark_const_as_used(kcon)
 		}
 	}
 

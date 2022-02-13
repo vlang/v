@@ -76,7 +76,7 @@ pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string, stri
 
 pub fn clone_or_pull(remote_git_url string, local_worktree_path string) {
 	// NB: after clone_or_pull, the current repo branch is === HEAD === master
-	if os.is_dir(local_worktree_path) && os.is_dir(os.join_path(local_worktree_path, '.git')) {
+	if os.is_dir(local_worktree_path) && os.is_dir(os.join_path_single(local_worktree_path, '.git')) {
 		// Already existing ... Just pulling in this case is faster usually.
 		scripting.run('git -C "$local_worktree_path"  checkout --quiet master')
 		scripting.run('git -C "$local_worktree_path"  pull     --quiet ')
@@ -107,14 +107,14 @@ pub mut:
 
 pub fn (mut vgit_context VGitContext) compile_oldv_if_needed() {
 	vgit_context.vexename = if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
-	vgit_context.vexepath = os.real_path(os.join_path(vgit_context.path_v, vgit_context.vexename))
+	vgit_context.vexepath = os.real_path(os.join_path_single(vgit_context.path_v, vgit_context.vexename))
 	mut command_for_building_v_from_c_source := ''
 	mut command_for_selfbuilding := ''
 	if 'windows' == os.user_os() {
-		command_for_building_v_from_c_source = '$vgit_context.cc -std=c99 -municode -w -o cv.exe  "$vgit_context.path_vc/v_win.c" '
+		command_for_building_v_from_c_source = '$vgit_context.cc -std=c99 -I ./thirdparty/stdatomic/win -municode -w -o cv.exe  "$vgit_context.path_vc/v_win.c" '
 		command_for_selfbuilding = './cv.exe -o $vgit_context.vexename {SOURCE}'
 	} else {
-		command_for_building_v_from_c_source = '$vgit_context.cc -std=gnu11 -w -o cv "$vgit_context.path_vc/v.c"  -lm -lpthread'
+		command_for_building_v_from_c_source = '$vgit_context.cc -std=gnu11 -I ./thirdparty/stdatomic/nix -w -o cv "$vgit_context.path_vc/v.c"  -lm -lpthread'
 		command_for_selfbuilding = './cv -o $vgit_context.vexename {SOURCE}'
 	}
 	scripting.chdir(vgit_context.workdir)

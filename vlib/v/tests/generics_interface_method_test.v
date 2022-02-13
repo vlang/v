@@ -1,4 +1,5 @@
 interface Iter<T> {
+mut:
 	next() ?T
 }
 

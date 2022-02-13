@@ -126,7 +126,7 @@ pub mut:
 	name        string
 	content     string
 	comments    []DocComment
-	pos         token.Position
+	pos         token.Pos
 	file_path   string
 	kind        SymbolKind
 	tags        []string
@@ -279,7 +279,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 						kind: .variable
 						parent_name: node.name
 						pos: param.pos
-						attrs: map{
+						attrs: {
 							'mut': param.is_mut.str()
 						}
 						return_type: d.type_to_str(param.typ)
@@ -429,7 +429,7 @@ pub fn (mut d Doc) generate() ? {
 	// parse files
 	mut comments_mode := scanner.CommentsMode.skip_comments
 	if d.with_comments {
-		comments_mode = .toplevel_comments
+		comments_mode = .parse_comments
 	}
 	mut file_asts := []ast.File{}
 	for i, file_path in v_files {

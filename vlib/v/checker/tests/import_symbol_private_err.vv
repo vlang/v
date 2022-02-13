@@ -1,12 +1,14 @@
 import v.scanner
 import v.parser
-import time { now, since }
+import time { vpc_now }
 import io { ReaderWriterImpl }
 
 fn main() {
 	println(scanner.single_quote)
 	println(parser.State.html)
-	since(now())
-	_ = map{'h': 2}.exists('h')
+	vpc_now()
+	_ = {
+		'h': 2
+	}.exists('h')
 	_ = ReaderWriterImpl{}
 }

@@ -7,6 +7,10 @@ fn test_getenv() {
 	assert os.getenv('PATH').len > 0
 }
 
+fn test_getenv_opt() {
+	assert os.getenv_opt('VEXE') or { '' }.len > 0
+}
+
 fn test_setenv() {
 	os.setenv('foo', 'bar', true)
 	assert os.getenv('foo') == 'bar'
@@ -16,6 +20,7 @@ fn test_setenv() {
 	// `setenv` should overwrite if `overwrite` is true
 	os.setenv('foo', 'bar2', true)
 	assert os.getenv('foo') == 'bar2'
+	assert os.getenv_opt('foo') or { '' } == 'bar2'
 }
 
 fn test_unsetenv() {

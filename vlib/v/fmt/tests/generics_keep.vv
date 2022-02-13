@@ -1,4 +1,4 @@
-import mymod { ImpNode }
+import mymod { Data, ImpNode }
 
 fn foobar_mymod<U>(inode ImpNode<U>) ImpNode<U> {
 	return ImpNode{}
@@ -14,13 +14,9 @@ fn (_ Foo) simple<T>() T {
 	return T{}
 }
 
-struct NonGenericStruct {}
-
-fn use_as_generic(ngs NonGenericStruct<V>) NonGenericStruct<V> {
-	return NonGenericStruct{}
+struct GenericStruct<A, B> {
+	v Data<Data<A>, B>
 }
-
-struct GenericStruct<A, B> {}
 
 fn proper_generics(gs GenericStruct<A, B>) GenericStruct<A, B> {
 	return gs

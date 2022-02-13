@@ -16,15 +16,15 @@ fn main() {
 		x: 0
 		y: 0
 	})
-	bar2_func({})
-	bar2_func({x: 's'}, {x: 's'})
+	bar2_func()
+	bar2_func(Bar{x: 's'}, x: 's')
 	baz_func('foo', 'bar', x: 0
 		y: 0
 	)
-	ui.row({
+	ui.row(
 		//stretch: true
-		margin: {top:10,left:10,right:10,bottom:10}
-	})
+		margin: Margin{top:10,left:10,right:10,bottom:10}
+	)
 }
 
 fn bar_func(bar Bar) {

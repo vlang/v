@@ -1,3 +1,10 @@
+fn cast_test() {
+	a := int(1)
+	assert a == 1
+	b := u64(2)
+	assert b == 2
+}
+
 fn if_test() {
 	mut a := 1
 	if a == 1 {
@@ -81,6 +88,7 @@ struct User {
 
 fn main() {
 	if_test()
+	cast_test()
 	loop()
 	args()
 	// expr()

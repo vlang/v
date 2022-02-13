@@ -26,7 +26,7 @@ fn new_app() App {
 fn main() {
 	app := new_app()
 	recompilation.must_be_enabled(app.vroot, 'Please install V from source, to use `v up` .')
-	os.chdir(app.vroot)
+	os.chdir(app.vroot) ?
 	println('Updating V...')
 	app.update_from_master()
 	v_hash := version.githash(false)
@@ -69,7 +69,7 @@ fn (app App) update_from_master() {
 fn (app App) recompile_v() {
 	// NB: app.vexe is more reliable than just v (which may be a symlink)
 	opts := if app.is_prod { '-prod' } else { '' }
-	vself := '"$app.vexe" $opts self'
+	vself := '${os.quoted_path(app.vexe)} $opts self'
 	app.vprintln('> recompiling v itself with `$vself` ...')
 	self_result := os.execute(vself)
 	if self_result.exit_code == 0 {
@@ -83,7 +83,7 @@ fn (app App) recompile_v() {
 }
 
 fn (app App) recompile_vup() {
-	vup_result := os.execute('"$app.vexe" -g cmd/tools/vup.v')
+	vup_result := os.execute('${os.quoted_path(app.vexe)} -g cmd/tools/vup.v')
 	if vup_result.exit_code != 0 {
 		eprintln('recompiling vup.v failed:')
 		eprintln(vup_result.output)
@@ -106,7 +106,7 @@ fn (app App) make(vself string) {
 }
 
 fn (app App) show_current_v_version() {
-	vout := os.execute('"$app.vexe" version')
+	vout := os.execute('${os.quoted_path(app.vexe)} version')
 	if vout.exit_code >= 0 {
 		mut vversion := vout.output.trim_space()
 		if vout.exit_code == 0 {
@@ -153,7 +153,7 @@ fn (app App) get_git() {
 			eprintln('Unable to install git automatically: please install git manually')
 			panic(res_download.output)
 		}
-		res_git32 := os.execute('$os.getwd()/git32.exe')
+		res_git32 := os.execute(os.quoted_path(os.join_path_single(os.getwd(), 'git32.exe')))
 		if res_git32.exit_code != 0 {
 			eprintln('Unable to install git automatically: please install git manually')
 			panic(res_git32.output)

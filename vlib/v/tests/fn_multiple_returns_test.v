@@ -51,7 +51,7 @@ fn test_multiple_ret() {
 	// none case
 	wrapper1 := fn () (string, string) {
 		res2_1, res2_2 := split_to_two('') or {
-			assert err.msg == ''
+			assert err.msg() == ''
 			return 'replaced', 'val'
 		}
 		return res2_1, res2_2
@@ -63,7 +63,7 @@ fn test_multiple_ret() {
 	// error case
 	wrapper2 := fn () (string, string) {
 		res3_1, res3_2 := split_to_two('fishhouse') or {
-			assert err.msg == 'error'
+			assert err.msg() == 'error'
 			return 'replaced', 'val'
 		}
 		return res3_1, res3_2
@@ -81,4 +81,30 @@ fn test_multi_values() {
 	x, y := multi_values()
 	assert x == 'abc'
 	assert y == 'def'
+}
+
+fn match_expr(x bool) (int, int) {
+	return match x {
+		true { 1, 1 }
+		else { 0, 0 }
+	}
+}
+
+fn if_expr(x bool) (int, int) {
+	return if x { 3, 3 } else { 2, 2 }
+}
+
+fn test_multi_return_if_match_expr() {
+	a, b := match_expr(true)
+	c, d := match_expr(false)
+	x, y := if_expr(true)
+	z, w := if_expr(false)
+	assert a == 1
+	assert b == 1
+	assert c == 0
+	assert d == 0
+	assert x == 3
+	assert y == 3
+	assert z == 2
+	assert w == 2
 }

@@ -1,7 +1,7 @@
 /*
 str_intp.v
 
-Copyright (c) 2019-2021 Dario Deledda. All rights reserved.
+Copyright (c) 2019-2022 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
 that can be found in the LICENSE file.
 
@@ -16,7 +16,7 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 	mut base := 0 // numeric base
 	mut upper_case := false // set upercase for the result string
 	mut typ := g.unwrap_generic(node.expr_types[i])
-	sym := g.table.get_type_symbol(typ)
+	sym := g.table.sym(typ)
 	if sym.kind == .alias {
 		typ = (sym.info as ast.Alias).parent_type
 	}
@@ -76,6 +76,10 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 		if fspec == `o` {
 			base = 8 - 2 // our base start from 2
 		}
+		// binary format
+		if fspec == `b` {
+			base = 1 // our base start from 2 we use 1 for binary
+		}
 		if fspec == `c` {
 			fmt_type = .si_c
 		} else {
@@ -87,6 +91,8 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 				ast.i64_type { fmt_type = .si_i64 }
 				ast.u64_type { fmt_type = .si_u64 }
 				ast.u32_type { fmt_type = .si_u32 }
+				ast.usize_type { fmt_type = .si_u64 }
+				ast.isize_type { fmt_type = .si_i64 }
 				else { fmt_type = .si_i32 }
 			}
 		}
@@ -119,7 +125,8 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int) {
 	expr := node.exprs[i]
 
 	typ := g.unwrap_generic(node.expr_types[i])
-	if typ == ast.string_type {
+	typ_sym := g.table.sym(typ)
+	if typ == ast.string_type && g.comptime_for_method.len == 0 {
 		if g.inside_vweb_tmpl {
 			g.write('vweb__filter(')
 			if expr.is_auto_deref_var() {
@@ -133,8 +140,30 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int) {
 			}
 			g.expr(expr)
 		}
+	} else if typ_sym.kind == .interface_ && (typ_sym.info as ast.Interface).defines_method('str') {
+		rec_type_name := util.no_dots(g.cc_type(typ, false))
+		g.write('${c_name(rec_type_name)}_name_table[')
+		g.expr(expr)
+		dot := if typ.is_ptr() { '->' } else { '.' }
+		g.write('${dot}_typ]._method_str(')
+		g.expr(expr)
+		g.write('${dot}_object')
+		g.write(')')
 	} else if node.fmts[i] == `s` || typ.has_flag(.variadic) {
-		g.gen_expr_to_string(expr, typ)
+		mut exp_typ := typ
+		if expr is ast.Ident {
+			if expr.obj is ast.Var {
+				if g.comptime_var_type_map.len > 0 || g.comptime_for_method.len > 0 {
+					exp_typ = expr.obj.typ
+				} else if expr.obj.smartcasts.len > 0 {
+					cast_sym := g.table.sym(expr.obj.smartcasts.last())
+					if cast_sym.info is ast.Aggregate {
+						exp_typ = cast_sym.info.types[g.aggregate_type_idx]
+					}
+				}
+			}
+		}
+		g.gen_expr_to_string(expr, exp_typ)
 	} else if typ.is_number() || typ.is_pointer() || node.fmts[i] == `d` {
 		if typ.is_signed() && node.fmts[i] in [`x`, `X`, `o`] {
 			// convert to unsigned first befors C's integer propagation strikes
@@ -168,6 +197,16 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int) {
 
 fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	// fn (mut g Gen) str_int2(node ast.StringInterLiteral) {
+	if g.inside_comptime_for_field {
+		mut node_ := unsafe { node }
+		for i, expr in node_.exprs {
+			if mut expr is ast.Ident {
+				if mut expr.obj is ast.Var {
+					node_.expr_types[i] = expr.obj.typ
+				}
+			}
+		}
+	}
 	g.write(' str_intp($node.vals.len, ')
 	g.write('_MOV((StrIntpData[]){')
 	for i, val in node.vals {

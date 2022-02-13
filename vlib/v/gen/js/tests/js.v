@@ -30,7 +30,18 @@ fn class(extends string, instanceof int) {
 fn main() {
 	println('Hello from V.js!')
 	println(JS.Math.atan2(1, 0))
-	println(JS.eval("console.log('Hello!')"))
+	non := JS.eval("console.log('Hello!')".str)
+	if isnil(non) {
+		println('non=nil')
+	}
+	ren := int(JS.eval('3'.str))
+	if ren != 0 {
+		println('ren=$ren')
+	}
+	res := string(JS.eval('"3"'.str))
+	if res != '' {
+		println('res=$res')
+	}
 	mut a := 1
 	a *= 2
 	a += 3
@@ -43,7 +54,7 @@ fn main() {
 	println(c)
 	println('int(1.5) == "${int(1.5)}"')
 	d := int(10) + f32(127)
-	println('typeof (int + f32) == "${typeof(d)}"')
+	println('typeof (int + f32) == "${typeof(d).name}"')
 	_ = 'done'
 	{
 		_ = 'block'
@@ -71,7 +82,7 @@ fn main() {
 	arr := [1, 2, 3, 4, 5]
 	for i in arr {
 	}
-	ma := map{
+	ma := {
 		'str': 'done'
 		'ddo': 'baba'
 	}

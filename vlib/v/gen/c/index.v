@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module c
@@ -10,7 +10,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 	if node.index is ast.RangeExpr {
 		g.range_expr(node, node.index)
 	} else {
-		sym := g.table.get_final_type_symbol(node.left_type)
+		sym := g.table.final_sym(node.left_type)
 		if sym.kind == .array {
 			g.index_of_array(node, sym)
 		} else if sym.kind == .array_fixed {
@@ -18,7 +18,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 		} else if sym.kind == .map {
 			g.index_of_map(node, sym)
 		} else if sym.kind == .string && !node.left_type.is_ptr() {
-			is_direct_array_access := g.fn_decl != 0 && g.fn_decl.is_direct_arr
+			is_direct_array_access := (g.fn_decl != 0 && g.fn_decl.is_direct_arr) || node.is_direct
 			if is_direct_array_access {
 				g.expr(node.left)
 				g.write('.str[ ')
@@ -58,12 +58,35 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 }
 
 fn (mut g Gen) range_expr(node ast.IndexExpr, range ast.RangeExpr) {
-	sym := g.table.get_final_type_symbol(node.left_type)
+	sym := g.table.final_sym(node.left_type)
+	mut tmp_opt := ''
+	mut cur_line := ''
+	mut gen_or := node.or_expr.kind != .absent || node.is_option
+
 	if sym.kind == .string {
-		g.write('string_substr(')
+		if node.is_gated {
+			g.write('string_substr_ni(')
+		} else {
+			if gen_or {
+				tmp_opt = g.new_tmp_var()
+				cur_line = g.go_before_stmt(0)
+				g.out.write_string(util.tabs(g.indent))
+				opt_elem_type := g.typ(ast.string_type.set_flag(.optional))
+				g.write('$opt_elem_type $tmp_opt = string_substr_with_check(')
+			} else {
+				g.write('string_substr(')
+			}
+		}
+		if node.left_type.is_ptr() {
+			g.write('*')
+		}
 		g.expr(node.left)
 	} else if sym.kind == .array {
-		g.write('array_slice(')
+		if node.is_gated {
+			g.write('array_slice_ni(')
+		} else {
+			g.write('array_slice(')
+		}
 		if node.left_type.is_ptr() {
 			g.write('*')
 		}
@@ -72,7 +95,12 @@ fn (mut g Gen) range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 		// Convert a fixed array to V array when doing `fixed_arr[start..end]`
 		info := sym.info as ast.ArrayFixed
 		noscan := g.check_noscan(info.elem_type)
-		g.write('array_slice(new_array_from_c_array${noscan}(')
+		if node.is_gated {
+			g.write('array_slice_ni(')
+		} else {
+			g.write('array_slice(')
+		}
+		g.write('new_array_from_c_array${noscan}(')
 		g.write('$info.size')
 		g.write(', $info.size')
 		g.write(', sizeof(')
@@ -115,6 +143,14 @@ fn (mut g Gen) range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 		g.write('.len')
 	}
 	g.write(')')
+
+	if gen_or {
+		if !node.is_option {
+			g.or_block(tmp_opt, node.or_expr, ast.string_type)
+		}
+
+		g.write('\n$cur_line*(string*)&${tmp_opt}.data')
+	}
 }
 
 fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
@@ -123,12 +159,12 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 	info := sym.info as ast.Array
 	elem_type_str := g.typ(info.elem_type)
 	elem_type := info.elem_type
-	elem_typ := g.table.get_type_symbol(elem_type)
+	elem_typ := g.table.sym(elem_type)
 	// `vals[i].field = x` is an exception and requires `array_get`:
 	// `(*(Val*)array_get(vals, i)).field = x;`
 	is_selector := node.left is ast.SelectorExpr
 	if g.is_assign_lhs && !is_selector && node.is_setter {
-		is_direct_array_access := g.fn_decl != 0 && g.fn_decl.is_direct_arr
+		is_direct_array_access := (g.fn_decl != 0 && g.fn_decl.is_direct_arr) || node.is_direct
 		is_op_assign := g.assign_op != .assign && info.elem_type != ast.string_type
 		array_ptr_type_str := match elem_typ.kind {
 			.function { 'voidptr*' }
@@ -195,7 +231,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			}
 		}
 	} else {
-		is_direct_array_access := g.fn_decl != 0 && g.fn_decl.is_direct_arr
+		is_direct_array_access := (g.fn_decl != 0 && g.fn_decl.is_direct_arr) || node.is_direct
 		array_ptr_type_str := match elem_typ.kind {
 			.function { 'voidptr*' }
 			else { '$elem_type_str*' }
@@ -287,7 +323,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 	info := sym.info as ast.ArrayFixed
 	elem_type := info.elem_type
-	elem_sym := g.table.get_type_symbol(elem_type)
+	elem_sym := g.table.sym(elem_type)
 	is_fn_index_call := g.is_fn_index_call && elem_sym.info is ast.FnType
 
 	if is_fn_index_call {
@@ -323,7 +359,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 	key_type_str := g.typ(info.key_type)
 	elem_type := info.value_type
 	elem_type_str := g.typ(elem_type)
-	elem_typ := g.table.get_type_symbol(elem_type)
+	elem_typ := g.table.sym(elem_type)
 	get_and_set_types := elem_typ.kind in [.struct_, .map]
 	if g.is_assign_lhs && !g.is_arraymap_set && !get_and_set_types {
 		if g.assign_op == .assign || info.value_type == ast.string_type {
@@ -347,14 +383,16 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 			g.expr(node.left)
 		}
 		if node.left_type.has_flag(.shared_f) {
-			if left_is_ptr {
-				g.write('->val')
-			} else {
-				g.write('.val')
-			}
+			g.write('->val')
 		}
 		g.write(', &($key_type_str[]){')
+		old_is_arraymap_set := g.is_arraymap_set
+		old_is_assign_lhs := g.is_assign_lhs
+		g.is_arraymap_set = false
+		g.is_assign_lhs = false
 		g.expr(node.index)
+		g.is_arraymap_set = old_is_arraymap_set
+		g.is_assign_lhs = old_is_assign_lhs
 		g.write('}')
 		if elem_typ.kind == .function {
 			g.write(', &(voidptr[]) { ')
@@ -374,10 +412,13 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 		} else {
 			g.write('(*($elem_type_str*)map_get((map*)')
 		}
-		if !left_is_ptr {
+		if !left_is_ptr || node.left_type.has_flag(.shared_f) {
 			g.write('&')
 		}
 		g.expr(node.left)
+		if node.left_type.has_flag(.shared_f) {
+			g.write('->val')
+		}
 		g.write(', &($key_type_str[]){')
 		g.expr(node.index)
 		g.write('}, &($elem_type_str[]){ $zero }))')

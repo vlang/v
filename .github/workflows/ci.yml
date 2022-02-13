@@ -8,46 +8,12 @@ on:
     paths-ignore:
       - "**.md"
 
+concurrency:
+  group: build-ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
 jobs:
-  no-scheduling:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Dont schedule all jobs
-        run: sleep 10
-
-  code-formatting-perf-regressions:
-    needs: no-scheduling
-    runs-on: ubuntu-20.04
-    timeout-minutes: 15
-    env:
-      VFLAGS: -cc gcc
-    steps:
-      - uses: actions/checkout@v2
-      - name: Environment info
-        run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
-      - name: Build local v
-        run: make -j4
-      - name: v test-cleancode
-        run: ./v -silent test-cleancode
-      - name: v test-fmt
-        run: ./v -silent test-fmt
-
-  ## Performance regressions
-      - name: Clone & Build vmaster/v
-        run: |
-          git clone --depth=1 https://github.com/vlang/v vmaster/
-          (cd vmaster; make -j4)
-      - name: V versions
-        run: ./v version && ./vmaster/v version
-      - name: Build the repeat tool
-        run: ./v cmd/tools/repeat.v
-      - name: Repeat -o hw.c examples/hello_world.v
-        run: cmd/tools/repeat --max_time 201 --series 3 --count 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o hw.c examples/hello_world.v' . ./vmaster
-      - name: Repeat -o v.c cmd/v
-        run: cmd/tools/repeat --max_time 1201 --series 3 --count 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o v.c cmd/v' . ./vmaster
-
   ubuntu-tcc:
-    needs: no-scheduling
     runs-on: ubuntu-20.04
     timeout-minutes: 121
     env:
@@ -85,6 +51,7 @@ jobs:
           ./v doctor
       - name: Verify `v test` works
         run: |
+          echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Self tests
@@ -107,14 +74,22 @@ jobs:
         run: ./v -W build-tools
       - name: Test v binaries
         run: ./v build-vbinaries
+      - name: Run a VSH script
+        run: ./v run examples/v_script.vsh
       - name: Test v tutorials
-        run: |
-          ./v tutorials/building_a_simple_web_blog_with_vweb/code/blog
+        run: ./v tutorials/building_a_simple_web_blog_with_vweb/code/blog
       - name: Build cmd/tools/fast
         run: cd cmd/tools/fast && ../../../v fast.v && ./fast
+      - name: V self compilation with -usecache
+        run: |
+          unset VFLAGS
+          ./v -usecache examples/hello_world.v && examples/hello_world
+          ./v  -o v2 -usecache cmd/v
+          ./v2 -o v3 -usecache cmd/v
+          ./v3 version
+          ./v3 -o tetris  -usecache examples/tetris/tetris.v
 
   ubuntu-tcc-boehm-gc:
-    needs: no-scheduling
     runs-on: ubuntu-20.04
     timeout-minutes: 121
     env:
@@ -154,127 +129,26 @@ jobs:
         run: ./v -gc boehm -silent test-self
       - name: Test leak detector
         run: |
-          ./v -gc boehm_leak -o testcase_leak vlib/v/tests/testcase_leak.v
+          ./v -gc boehm_leak -o testcase_leak vlib/v/tests/testcase_leak.vv
           ./testcase_leak 2>leaks.txt
           grep "Found 1 leaked object" leaks.txt && grep ", sz=1000," leaks.txt
       - name: Test leak detector not being active for `-gc boehm`
         run: |
-          ./v -gc boehm -o testcase_leak vlib/v/tests/testcase_leak.v
+          ./v -gc boehm -o testcase_leak vlib/v/tests/testcase_leak.vv
           ./testcase_leak 2>leaks.txt
           [ "$(stat -c %s leaks.txt)" = "0" ]
       - name: Test leak detector not being active for normal compile
         run: |
-          ./v -o testcase_leak vlib/v/tests/testcase_leak.v
+          ./v -o testcase_leak vlib/v/tests/testcase_leak.vv
           ./testcase_leak 2>leaks.txt
           [ "$(stat -c %s leaks.txt)" = "0" ]
 
-  misc-tooling:
-    needs: no-scheduling
-    runs-on: ubuntu-20.04
-    timeout-minutes: 121
-    env:
-      VFLAGS: -cc tcc -no-retry-compilation
-    steps:
-      - uses: actions/checkout@v2
-        with:
-          fetch-depth: 10
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
-          sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
-      - name: Build v
-        run: make
-
-      - name: v.c can be compiled and run with -os cross
-        run: |
-          ./v -os cross -o /tmp/v.c cmd/v
-          gcc  -g -std=gnu11 -w -o v_from_vc /tmp/v.c  -lm -lpthread
-          ls -lart v_from_vc
-          ./v_from_vc version
-
-      - name: Ensure v up works
-        run: |
-          ./v cmd/tools/oldv.v
-          ./cmd/tools/oldv -v HEAD^^^^^
-          cd ~/.cache/oldv/v_at_HEAD_____/
-          ./v version
-          ./v -v up
-          ./v version
-          ./v  -o v2 cmd/v
-          ./v2 -o v3 cmd/v
-
-      - name: Ensure V can be compiled with -autofree
-        run: ./v -autofree -o v2 cmd/v  ## NB: this does not mean it runs, but at least keeps it from regressing
-
-      - name: Shader examples can be build
-        run: |
-          wget https://github.com/floooh/sokol-tools-bin/raw/master/bin/linux/sokol-shdc
-          chmod +x ./sokol-shdc
-          for f in examples/sokol/02_cubes_glsl/cube_glsl \
-              examples/sokol/03_march_tracing_glsl/rt_glsl \
-              examples/sokol/04_multi_shader_glsl/rt_glsl_puppy \
-              examples/sokol/04_multi_shader_glsl/rt_glsl_march \
-              examples/sokol/05_instancing_glsl/rt_glsl_instancing \
-              examples/sokol/06_obj_viewer/gouraud \
-              ; do \
-                 echo "compiling shader $f.glsl ..."; \
-                 ./sokol-shdc --input $f.glsl --output $f.h --slang glsl330 ; \
-          done
-          for vfile in examples/sokol/0?*/*.v; do echo "compiling $vfile ..."; ./v $vfile ; done
-
-      - name: Install C++ dependencies
-        run: |
-          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev
-          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
-          sudo apt-get install --quiet -y valgrind g++-9
-      - name: Build V
-        run: make -j4
-      - name: g++ version
-        run: g++-9 --version
-      - name: V self compilation with g++
-        run: ./v -cc g++-9 -o v2 cmd/v && ./v2 -cc g++-9 -o v3 cmd/v
-  ##    - name: Running tests with g++
-  ##      run: ./v -cc g++-9 -silent test-self
-
-
-  alpine-docker-musl-gcc:
-    needs: no-scheduling
-    name: alpine-musl
-    runs-on: ubuntu-20.04
-    timeout-minutes: 121
-    container:
-      # Alpine docker pre-built container
-      image: thevlang/vlang:alpine-build
-      env:
-        V_CI_MUSL: 1
-        VFLAGS: -cc gcc
-      volumes:
-        - ${{github.workspace}}:/opt/vlang
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-
-      - name: Build V
-        run: |
-          make CC=clang
-      - name: Show PWD and Environment
-        run: |
-          echo "PWD:"
-          pwd
-          echo "ENVIRONMENT"
-          env
-      - name: Test V fixed tests
-        run: |
-          ./v -silent test-self
-
   macos:
-    needs: no-scheduling
     runs-on: macOS-latest
     timeout-minutes: 121
     env:
       VFLAGS: -cc clang
+      PKG_CONFIG_PATH: /usr/local/opt/openssl@3/lib/pkgconfig
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v1
@@ -284,8 +158,9 @@ jobs:
         run: |
           ##brew install libpq openssl freetype ### these are *already installed* on Catalina ...
           brew uninstall --ignore-dependencies libpq ## libpq is a dependency of PHP
-          brew install postgresql
+          brew install postgresql openssl
           export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
+          echo "PKG_CONFIG_PATH is '$PKG_CONFIG_PATH'"
       - name: Build V
         run: make -j4 && ./v -cg -cstrict -o v cmd/v
       - name: Run sanitizers
@@ -294,12 +169,6 @@ jobs:
           UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
       - name: Build V using V
         run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v
-# QTODO
-#      - name: v self compilation with -usecache
-#        run: |
-#          ./v -o v2 -usecache cmd/v
-#          ./v2 -o v3 -usecache cmd/v
-#          ./v3 -usecache examples/tetris/tetris.v
       - name: Test symlink
         run: ./v symlink
       #    - name: Set up pg database
@@ -316,6 +185,7 @@ jobs:
       ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
       - name: Verify `v test` works
         run: |
+          echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
 
@@ -356,10 +226,9 @@ jobs:
           mkdir -p ~/.vmodules
           ln -s $(pwd) ~/.vmodules/ui
           ../v examples/rectangles.v
-          ../v run examples/build_examples.vsh
+          ## ../v run examples/build_examples.vsh
 
   ubuntu:
-    needs: no-scheduling
     runs-on: ubuntu-20.04
     timeout-minutes: 121
     steps:
@@ -394,16 +263,19 @@ jobs:
       #      run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . && cd ..
       - name: Freestanding
         run: ./v -freestanding run vlib/os/bare/bare_example_linux.v
-      - name: v self compilation
+      - name: V self compilation
         run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
-# QTODO
-#      - name: v self compilation with -usecache
-#        run: |
-#          ./v -o v2 -usecache cmd/v
-#          ./v2 -o v3 -usecache cmd/v
-#          ./v3 -usecache examples/tetris/tetris.v
+      - name: V self compilation with -usecache
+        run: |
+          unset VFLAGS
+          ./v -usecache examples/hello_world.v && examples/hello_world
+          ./v  -o v2     -usecache cmd/v
+          ./v2 -o v3     -usecache cmd/v
+          ./v3 version
+          ./v3 -o tetris -usecache examples/tetris/tetris.v
       - name: Verify `v test` works
         run: |
+          echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Self tests
@@ -448,14 +320,13 @@ jobs:
           ls
 
   #        ./1m
-  #run: echo "TODO" #cd examples/native && ../../v -native hello_world.v && ./hello_world
+  # run: echo "TODO" #cd examples/native && ../../v -native hello_world.v && ./hello_world
   #    - name: Coveralls GitHub Action
   #      uses: coverallsapp/github-action@v1.0.1
   #      with:
   #        github-token: ${{ secrets.GITHUB_TOKEN }}
 
   ubuntu-clang:
-    needs: no-scheduling
     runs-on: ubuntu-20.04
     timeout-minutes: 121
     env:
@@ -487,14 +358,17 @@ jobs:
           ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v5 -o v.c cmd/v
       - name: v self compilation
         run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
-# QTODO
-#      - name: v self compilation with -usecache
-#        run: |
-#          ./v -o v2 -usecache cmd/v
-#          ./v2 -o v3 -usecache cmd/v
-#          ./v3 -usecache examples/tetris/tetris.v
+      - name: v self compilation with -usecache
+        run: |
+          unset VFLAGS
+          ./v -usecache examples/hello_world.v && examples/hello_world
+          ./v  -o v2     -usecache cmd/v
+          ./v2 -o v3     -usecache cmd/v
+          ./v3 version
+          ./v3 -o tetris -usecache examples/tetris/tetris.v
       - name: Verify `v test` works
         run: |
+          echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Self tests
@@ -537,6 +411,222 @@ jobs:
           echo "Running it..."
           ls
 
+  windows-gcc:
+    runs-on: windows-2019
+    timeout-minutes: 121
+    env:
+      VFLAGS: -cc gcc
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 12.x
+      - name: Build
+        run: |
+          gcc --version
+          .\make.bat -gcc
+      - name: Test new v.c
+        run: .\v.exe -o v.c cmd/v && gcc -Werror -I ./thirdparty/stdatomic/win -municode -w v.c
+      - name: Install dependencies
+        run: |
+          .\v.exe setup-freetype
+          .\.github\workflows\windows-install-sqlite.bat
+      - name: v doctor
+        run: |
+          ./v doctor
+      - name: Verify `v test` works
+        run: |
+          echo $VFLAGS
+          ./v cmd/tools/test_if_v_test_system_works.v
+          ./cmd/tools/test_if_v_test_system_works
+      - name: Self tests
+        run: |
+          .\v.exe -silent test-self
+  #    - name: Test
+  #      run: |
+  #        .\v.exe -silent test-all
+      - name: Test v->js
+        run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+      - name: Test v binaries
+        run: ./v build-vbinaries
+      - name: Build examples
+        run: ./v build-examples
+      - name: v2 self compilation
+        run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
+
+  windows-msvc:
+    runs-on: windows-2019
+    timeout-minutes: 121
+    env:
+      VFLAGS: -cc msvc
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 12.x
+      - name: Build
+        run: |
+          echo %VFLAGS%
+          echo $VFLAGS
+          .\make.bat -msvc
+          .\v.exe -cflags /WX self
+      - name: Install dependencies
+        run: |
+          .\v.exe setup-freetype
+          .\.github\workflows\windows-install-sqlite.bat
+      - name: v doctor
+        run: |
+          ./v doctor
+      - name: Verify `v test` works
+        run: |
+          echo $VFLAGS
+          ./v cmd/tools/test_if_v_test_system_works.v
+          ./cmd/tools/test_if_v_test_system_works
+      - name: Self tests
+        run: |
+          ./v -cg cmd\tools\vtest-self.v
+          ./v -silent test-self
+  #    - name: Test
+  #      run: |
+  #        .\v.exe -silent test-all
+      - name: Test v->js
+        run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+      - name: Test v binaries
+        run: ./v build-vbinaries
+      - name: Build examples
+        run: ./v build-examples
+      - name: v2 self compilation
+        run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
+
+  windows-tcc:
+    runs-on: windows-2019
+    timeout-minutes: 121
+    env:
+      VFLAGS: -cc tcc -no-retry-compilation
+      VJOBS: 1
+      VTEST_SHOW_START: 1
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-node@v1
+        with:
+          node-version: 12.x
+      - name: Build with make.bat -tcc
+        run: |
+          .\make.bat -tcc
+      - name: Test new v.c
+        run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -I ./thirdparty/stdatomic/win -Werror -w -ladvapi32 -bt10 v.c
+      - name: Install dependencies
+        run: |
+          .\v.exe setup-freetype
+          .\.github\workflows\windows-install-sqlite.bat
+      - name: v doctor
+        run: |
+          ./v doctor
+
+      - name: Verify `v test` works
+        run: |
+          .\v.exe cmd/tools/test_if_v_test_system_works.v
+          .\cmd\tools\test_if_v_test_system_works.exe
+
+      - name: Verify `v vlib/v/gen/c/coutput_test.v` works
+        run: |
+          .\v.exe vlib/v/gen/c/coutput_test.v
+
+      - name: Make sure running TCC64 instead of TCC32
+        run: ./v test .github\workflows\make_sure_ci_run_with_64bit_compiler_test.v
+
+      - name: Test ./v doc -v clipboard *BEFORE building tools*
+        run: ./v doc -v clipboard
+
+      - name: Test v build-tools
+        run: ./v -W build-tools
+
+      - name: Test ./v doc clipboard
+        run: ./v doc clipboard
+
+      - name: Self tests
+        run: ./v test-self
+
+      - name: Test v->js
+        run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+      - name: Test v binaries
+        run: ./v build-vbinaries
+      - name: Build examples
+        run: ./v build-examples
+      - name: v2 self compilation
+        run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
+
+        ##      ## tcc32
+        ##      - name: Build with make.bat -tcc32
+        ##        run: |
+        ##          Remove-Item -Recurse -Force .\thirdparty\tcc
+        ##          .\v.exe wipe-cache
+        ##          .\make.bat -tcc32
+        ##      - name: Test new v.c
+        ##        run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -I ./thirdparty/stdatomic/win -Werror -g -w -ladvapi32 -bt10 v.c
+        ##      - name: v doctor
+        ##        run: ./v doctor
+        ##
+        ##      - name: Verify `v test` works
+        ##        run: |
+        ##          .\v.exe cmd/tools/test_if_v_test_system_works.v
+        ##          .\cmd\tools\test_if_v_test_system_works.exe
+        ##
+        ##      - name: Verify `v vlib/v/gen/c/coutput_test.v` works
+        ##        run: |
+        ##          .\v.exe vlib/v/gen/c/coutput_test.v
+        ##
+        ##      - name: Make sure running TCC32 instead of TCC64
+        ##        run: ./v -stats .github\workflows\make_sure_ci_run_with_32bit_compiler_test.v
+        ##
+        ##      - name: Test v build-tools
+        ##        run: ./v -W build-tools
+        ##
+        ##      - name: Test ./v doc clipboard
+        ##        run: ./v doc clipboard
+        ##
+        ##      - name: Self tests
+        ##        run: ./v test-self
+        ##      - name: Test v->js
+        ##        run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+        ##      - name: Test v binaries
+        ##        run: ./v build-vbinaries
+        ##      - name: Build examples
+        ##        run: ./v build-examples
+        ##      - name: v2 self compilation
+        ##        run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
+
+  alpine-docker-musl-gcc:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 121
+    container:
+      # Alpine docker pre-built container
+      image: thevlang/vlang:alpine-build
+      env:
+        V_CI_MUSL: 1
+        VFLAGS: -cc gcc
+      volumes:
+        - ${{github.workspace}}:/opt/vlang
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Show Environment
+        run: |
+          echo "PWD:"
+          pwd
+          echo "ENVIRONMENT:"
+          env
+          echo "C Compiler:"
+          gcc --version
+
+      - name: Build V
+        run: CC=gcc make
+
+      - name: Test V fixed tests
+        run: ./v -silent test-self
+
+
   #  ubuntu-autofree-selfcompile:
   #    runs-on: ubuntu-20.04
   #    timeout-minutes: 121
@@ -549,34 +639,6 @@ jobs:
   #    - name: V self compilation with -autofree
   #      run: ./v -o v2 -autofree cmd/v && ./v2 -o v3 -autofree cmd/v && ./v3 -o v4 -autofree cmd/v
 
-  # Ubuntu docker pre-built container
-  ubuntu-musl:
-    needs: no-scheduling
-    name: ubuntu-musl
-    runs-on: ubuntu-20.04
-    timeout-minutes: 121
-    container:
-      image: thevlang/vlang:ubuntu-build
-      env:
-        V_CI_MUSL: 1
-        V_CI_UBUNTU_MUSL: 1
-        VFLAGS: -cc musl-gcc
-      volumes:
-        - ${{github.workspace}}:/opt/vlang
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-
-      - name: Build V
-        run: |
-          echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
-      - name: Verify `v test` works
-        run: |
-          ./v cmd/tools/test_if_v_test_system_works.v
-          ./cmd/tools/test_if_v_test_system_works
-      - name: Test V fixed tests
-        run: |
-          ./v -silent test-self
 
   #   ubuntu-musl:
   #     runs-on: ubuntu-20.04
@@ -603,283 +665,30 @@ jobs:
   #     - name: Self tests
   #       run: ./v -silent test-self
 
-  windows-gcc:
-    needs: no-scheduling
-    runs-on: windows-2019
-    timeout-minutes: 121
-    env:
-      VFLAGS: -cc gcc
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
-        with:
-          node-version: 12.x
-      - name: Build
-        run: |
-          gcc --version
-          .\make.bat -gcc
-      - name: Test new v.c
-        run: .\v.exe -o v.c cmd/v && gcc -Werror -municode -w v.c
-      - name: Install dependencies
-        run: |
-          .\v.exe setup-freetype
-          .\.github\workflows\windows-install-sqlite.bat
-      - name: v doctor
-        run: |
-          ./v doctor
-      - name: Verify `v test` works
-        run: |
-          ./v cmd/tools/test_if_v_test_system_works.v
-          ./cmd/tools/test_if_v_test_system_works
-      - name: Self tests
-        run: |
-          .\v.exe -silent test-self
-  #    - name: Test
-  #      run: |
-  #        .\v.exe -silent test-all
-      - name: Test v->js
-        run: ./v -o hi.js examples/hello_v_js.v && node hi.js
-      - name: Test v binaries
-        run: ./v build-vbinaries
-      - name: Build examples
-        run: ./v build-examples
-      - name: v2 self compilation
-        run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
-
-  windows-msvc:
-    needs: no-scheduling
-    runs-on: windows-2019
-    timeout-minutes: 121
-    env:
-      VFLAGS: -cc msvc
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
-        with:
-          node-version: 12.x
-      - name: Build
-        run: |
-          echo %VFLAGS%
-          echo $VFLAGS
-          .\make.bat -msvc --verbose
-          .\v.exe -cflags /WX self
-      - name: Install dependencies
-        run: |
-          .\v.exe setup-freetype
-          .\.github\workflows\windows-install-sqlite.bat
-      - name: v doctor
-        run: |
-          ./v doctor
-      - name: Verify `v test` works
-        run: |
-          ./v cmd/tools/test_if_v_test_system_works.v
-          ./cmd/tools/test_if_v_test_system_works
-      - name: Self tests
-        run: |
-          ./v -cg cmd\tools\vtest-self.v
-          ./v -silent test-self
-  #    - name: Test
-  #      run: |
-  #        .\v.exe -silent test-all
-      - name: Test v->js
-        run: ./v -o hi.js examples/hello_v_js.v && node hi.js
-      - name: Test v binaries
-        run: ./v build-vbinaries
-      - name: Build examples
-        run: ./v build-examples
-      - name: v2 self compilation
-        run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
-
-  windows-tcc:
-    needs: no-scheduling
-    runs-on: windows-2019
-    timeout-minutes: 121
-    env:
-      VFLAGS: -cc tcc -no-retry-compilation
-      VJOBS: 1
-      VTEST_SHOW_START: 1
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v1
-        with:
-          node-version: 12.x
-      - name: Build with make.bat -tcc
-        run: |
-          .\make.bat -tcc --verbose
-      - name: Test new v.c
-        run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -bt10 v.c
-      - name: Install dependencies
-        run: |
-          .\v.exe setup-freetype
-          .\.github\workflows\windows-install-sqlite.bat
-      - name: v doctor
-        run: |
-          ./v doctor
-      - name: Verify `v test` works
-        run: |
-          .\v.exe cmd/tools/test_if_v_test_system_works.v
-          .\cmd\tools\test_if_v_test_system_works.exe
-      - name: Make sure running TCC64 instead of TCC32
-        run: ./v test .github\workflows\make_sure_ci_run_with_64bit_compiler_test.v
-
-      - name: Test ./v doc -v clipboard *BEFORE building tools*
-        run: ./v doc -v clipboard
-
-      - name: Test v build-tools
-        run: ./v -W build-tools
-
-      - name: Test ./v doc clipboard
-        run: ./v doc clipboard
-
-      - name: Self tests
-        run: ./v test-self
-
-      - name: Test v->js
-        run: ./v -o hi.js examples/hello_v_js.v && node hi.js
-      - name: Test v binaries
-        run: ./v build-vbinaries
-      - name: Build examples
-        run: ./v build-examples
-      - name: v2 self compilation
-        run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
-
-  ## tcc32
-      - name: Build with make.bat -tcc32
-        run: |
-          Remove-Item -Recurse -Force .\thirdparty\tcc
-          .\v.exe wipe-cache
-          .\make.bat -tcc32 --verbose
-      - name: Test new v.c
-        run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -bt10 v.c
-      - name: v doctor
-        run: ./v doctor
-      - name: Verify `v test` works
-        run: |
-          .\v.exe cmd/tools/test_if_v_test_system_works.v
-          .\cmd\tools\test_if_v_test_system_works.exe
-
-      - name: Make sure running TCC32 instead of TCC64
-        run: ./v -stats .github\workflows\make_sure_ci_run_with_32bit_compiler_test.v
-
-      - name: Test v build-tools
-        run: ./v -W build-tools
-
-      - name: Test ./v doc clipboard
-        run: ./v doc clipboard
-
-      - name: Self tests
-        run: ./v test-self
-      - name: Test v->js
-        run: ./v -o hi.js examples/hello_v_js.v && node hi.js
-      - name: Test v binaries
-        run: ./v build-vbinaries
-      - name: Build examples
-        run: ./v build-examples
-      - name: v2 self compilation
-        run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
-
-  parser-silent:
-    needs: no-scheduling
-    name: Parser silent mode
+  # Ubuntu docker pre-built container
+  ubuntu-musl:
     runs-on: ubuntu-20.04
     timeout-minutes: 121
+    container:
+      image: thevlang/vlang:ubuntu-build
+      env:
+        V_CI_MUSL: 1
+        V_CI_UBUNTU_MUSL: 1
+        VFLAGS: -cc musl-gcc
+      volumes:
+        - ${{github.workspace}}:/opt/vlang
     steps:
-      - uses: actions/checkout@v2
-      - name: Install zzuf
-        run: sudo apt install -qq zzuf
-      - name: Build local v
-        run: |
-          make -j4
-          ./v -g cmd/tools/vtest-parser.v
-      - name: Run test-parser
-        run: |
-          ./v test-parser -S examples/hello_world.v
-          ./v test-parser -S examples/hanoi.v
-          ./v test-parser -S examples/fibonacci.v
-          ./v test-parser -S examples/cli.v
-          ./v test-parser -S examples/json.v
-          ./v test-parser -S examples/vmod.v
-          ./v test-parser -S examples/regex/regex_example.v
-          ./v test-parser -S examples/2048/2048.v
+      - name: Checkout
+        uses: actions/checkout@v2
 
-      - name: Run test-parser over fuzzed files
-        run: |
-          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/hello_world.v > examples/hello_world_fuzz.v
-          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/hanoi.v > examples/hanoi_fuzz.v
-          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/fibonacci.v > examples/fibonacci_fuzz.v
-          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/cli.v > examples/cli_fuzz.v
-          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/json.v > examples/json_fuzz.v
-          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/vmod.v > examples/vmod_fuzz.v
-          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/regex/regex_example.v > examples/regex_example_fuzz.v
-          zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/2048/2048.v > examples/2048/2048_fuzz.v
-          ./v test-parser -S examples/hello_world_fuzz.v
-          ./v test-parser -S examples/hanoi_fuzz.v
-          ./v test-parser -S examples/cli_fuzz.v
-          ./v test-parser -S examples/regex_example_fuzz.v
-          ./v test-parser -S examples/2048/2048_fuzz.v
-
-  v-apps-compile:
-    needs: no-scheduling
-    runs-on: ubuntu-20.04
-    timeout-minutes: 121
-    steps:
-      - uses: actions/checkout@v2
       - name: Build V
-        run: make && sudo ./v symlink
-
-  ## vls
-      - name: Clone tree-sitter-v to ~/.vmodules/tree_sitter_v
-        run: git clone --depth 1 https://github.com/nedpals/tree-sitter-v ~/.vmodules/tree_sitter_v
-      - name: Clone VLS tree-sitter
-        run: git clone --depth 1 --no-single-branch https://github.com/vlang/vls
-      - name: Checkout branch tree-sitter
-        run: pushd vls; git checkout use-tree-sitter; popd
-      - name: Build VLS tree-sitter
-        run: pushd vls; v cmd/vls ; popd
-      - name: Build VLS tree-sitter with -prod
-        run: pushd vls; v -prod cmd/vls; popd
-      - name: Checkout branch master
-        run: pushd vls; git checkout master; popd
-      - name: Build VLS master
-        run: pushd vls; v cmd/vls ; popd
-      - name: Build VLS master with -prod
-        run: pushd vls; v -prod cmd/vls ; popd
-
-  ## vab
-      - name: Clone vab
-        run: git clone --depth 1 https://github.com/vlang/vab
-      - name: Build vab
-        run: cd vab; ../v ./vab.v ; cd ..
-
-  ## gitly
-      - name: Install markdown
-        run: ./v install markdown
-      - name: Build Gitly
         run: |
-          git clone --depth 1 https://github.com/vlang/gitly
-          cd gitly
-          ../v .
-          ../v -autofree .
-          cd ..
-
-  ## vex
-      - name: Install Vex dependencies
-        run: sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev
-      - name: Install Vex
-        run: mkdir -p ~/.vmodules/nedpals; git clone https://github.com/nedpals/vex ~/.vmodules/nedpals/vex
-      - name: Compile the simple Vex example
-        run: ./v ~/.vmodules/nedpals/vex/examples/simple_example.v
-      - name: Run Vex Tests
-        run: ./v test ~/.vmodules/nedpals/vex
-
-  ## vpm modules
-      - name: Install UI through VPM
-        run: ./v install ui
-
-  ## libsodium
-      - name: Install libsodium-dev package
-        run: sudo apt-get install --quiet -y libsodium-dev
-      - name: Installl the libsodium wrapper through VPM
-        run: ./v install libsodium
-      - name: Test libsodium
-        run: ./v test ~/.vmodules/libsodium
+          echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
+      - name: Verify `v test` works
+        run: |
+          echo $VFLAGS
+          ./v cmd/tools/test_if_v_test_system_works.v
+          ./cmd/tools/test_if_v_test_system_works
+      - name: Test V fixed tests
+        run: |
+          ./v -silent test-self

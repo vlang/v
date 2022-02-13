@@ -23,7 +23,6 @@ pub fn (a &A2D) set(x int, y int, newval int) {
 		mut e := &int(0)
 		e = a.data + y * a.maxx + x
 		*e = newval
-		_ = e // TODO compiler bug, this is not necessary
 	}
 }
 

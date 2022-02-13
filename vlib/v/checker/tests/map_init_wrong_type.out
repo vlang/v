@@ -1,21 +1,21 @@
-vlib/v/checker/tests/map_init_wrong_type.vv:3:18: error: invalid map value: expected `f32`, not `float literal`
+vlib/v/checker/tests/map_init_wrong_type.vv:3:15: error: invalid map value: expected `f32`, not `float literal`
     1 | fn main() {
     2 |    mut a := map[string]f32{}
-    3 |    a = map{ 'x': 12.3 }
-      |                  ~~~~
-    4 |    _ = map{2:0 3:0 "hi":0}
-    5 |    _ = map{2:0 3:`@` 4:0}
-vlib/v/checker/tests/map_init_wrong_type.vv:4:20: error: invalid map key: expected `int`, not `string`
+    3 |    a = { 'x': 12.3 }
+      |               ~~~~
+    4 |    _ = {2:0 3:0 "hi":0}
+    5 |    _ = {2:0 3:`@` 4:0}
+vlib/v/checker/tests/map_init_wrong_type.vv:4:17: error: invalid map key: expected `int`, not `string`
     2 |    mut a := map[string]f32{}
-    3 |    a = map{ 'x': 12.3 }
-    4 |    _ = map{2:0 3:0 "hi":0}
-      |                    ~~~~
-    5 |    _ = map{2:0 3:`@` 4:0}
+    3 |    a = { 'x': 12.3 }
+    4 |    _ = {2:0 3:0 "hi":0}
+      |                 ~~~~
+    5 |    _ = {2:0 3:`@` 4:0}
     6 |   _ = a
-vlib/v/checker/tests/map_init_wrong_type.vv:5:18: error: invalid map value: expected `int`, not `rune`
-    3 |    a = map{ 'x': 12.3 }
-    4 |    _ = map{2:0 3:0 "hi":0}
-    5 |    _ = map{2:0 3:`@` 4:0}
-      |                  ~~~
+vlib/v/checker/tests/map_init_wrong_type.vv:5:15: error: invalid map value: expected `int`, not `rune`
+    3 |    a = { 'x': 12.3 }
+    4 |    _ = {2:0 3:0 "hi":0}
+    5 |    _ = {2:0 3:`@` 4:0}
+      |               ~~~
     6 |   _ = a
     7 | }

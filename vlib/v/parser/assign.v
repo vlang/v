@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -18,7 +18,16 @@ fn (mut p Parser) assign_stmt() ast.Stmt {
 	return p.partial_assign_stmt(exprs, comments)
 }
 
+const max_expr_level = 310
+
 fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) ? {
+	p.expr_level++
+	defer {
+		p.expr_level--
+	}
+	if p.expr_level > parser.max_expr_level {
+		return error('expr level > $parser.max_expr_level')
+	}
 	match val {
 		ast.Ident {
 			for expr in exprs {
@@ -124,7 +133,7 @@ fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
 fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comment) ast.Stmt {
 	p.is_stmt_ident = false
 	op := p.tok.kind
-	mut pos := p.tok.position()
+	mut pos := p.tok.pos()
 	p.next()
 	mut comments := []ast.Comment{cap: 2 * left_comments.len + 1}
 	comments << left_comments
@@ -135,27 +144,8 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 	comments << right_comments
 	end_comments := p.eat_comments(same_line: true)
 	mut has_cross_var := false
-	if op == .decl_assign {
-		// a, b := a + 1, b
-		for r in right {
-			p.check_undefined_variables(left, r) or {
-				return p.error('check_undefined_variables failed')
-			}
-		}
-	} else if left.len > 1 {
-		// a, b = b, a
-		for r in right {
-			has_cross_var = p.check_cross_variables(left, r)
-			if op !in [.assign, .decl_assign] {
-				return p.error_with_pos('unexpected $op.str(), expecting := or = or comma',
-					pos)
-			}
-			if has_cross_var {
-				break
-			}
-		}
-	}
 	mut is_static := false
+	mut is_volatile := false
 	for i, lx in left {
 		match mut lx {
 			ast.Ident {
@@ -168,11 +158,15 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 						iv := lx.info as ast.IdentVar
 						share = iv.share
 						if iv.is_static {
-							if !p.pref.translated && !p.pref.is_fmt && !p.inside_unsafe_fn {
-								return p.error_with_pos('static variables are supported only in -translated mode or in [unsafe] fn',
+							if !p.pref.translated && !p.is_translated && !p.pref.is_fmt
+								&& !p.inside_unsafe_fn {
+								return p.error_with_pos('static variables are supported only in translated mode or in [unsafe] fn',
 									lx.pos)
 							}
 							is_static = true
+						}
+						if iv.is_volatile {
+							is_volatile = true
 						}
 					}
 					r0 := right[0]
@@ -217,7 +211,25 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 			}
 			else {
 				// TODO: parexpr ( check vars)
-				// else { p.error_with_pos('unexpected `${typeof(lx)}`', lx.position()) }
+				// else { p.error_with_pos('unexpected `${typeof(lx)}`', lx.pos()) }
+			}
+		}
+	}
+	if op == .decl_assign {
+		// a, b := a + 1, b
+		for r in right {
+			p.check_undefined_variables(left, r) or { return p.error_with_pos(err.msg(), pos) }
+		}
+	} else if left.len > 1 {
+		// a, b = b, a
+		for r in right {
+			has_cross_var = p.check_cross_variables(left, r)
+			if op !in [.assign, .decl_assign] {
+				return p.error_with_pos('unexpected $op.str(), expecting := or = or comma',
+					pos)
+			}
+			if has_cross_var {
+				break
 			}
 		}
 	}
@@ -232,5 +244,6 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 		has_cross_var: has_cross_var
 		is_simple: p.inside_for && p.tok.kind == .lcbr
 		is_static: is_static
+		is_volatile: is_volatile
 	}
 }

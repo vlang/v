@@ -18,11 +18,14 @@ pub enum EventType {
 	resized
 	iconified
 	restored
+	focused
+	unfocused
 	suspended
 	resumed
 	update_cursor
 	quit_requested
 	clipboard_pasted
+	files_droped
 	num
 }
 
@@ -38,6 +41,9 @@ pub enum Modifier {
 	ctrl = 2 //(1<<1)
 	alt = 4 //(1<<2)
 	super = 8 //(1<<3)
+	lmb = 0x100
+	rmb = 0x200
+	mmb = 0x400
 }
 
 pub enum KeyCode {

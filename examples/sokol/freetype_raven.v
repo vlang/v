@@ -2,9 +2,9 @@ import sokol
 import sokol.sapp
 import sokol.gfx
 import sokol.sgl
+import fontstash
 import sokol.sfons
 import os
-import time
 
 const (
 	text = '
@@ -55,30 +55,31 @@ Let my heart be still a moment and this mystery explore;—
 
 struct AppState {
 mut:
-	pass_action C.sg_pass_action
-	fons        &C.FONScontext
+	pass_action gfx.PassAction
+	fons        &fontstash.Context
 	font_normal int
 	inited      bool
 }
 
+[console]
 fn main() {
-	mut color_action := C.sg_color_attachment_action{
-		action: gfx.Action(C.SG_ACTION_CLEAR)
-		value: C.sg_color{
+	mut color_action := gfx.ColorAttachmentAction{
+		action: .clear
+		value: gfx.Color{
 			r: 1.0
 			g: 1.0
 			b: 1.0
 			a: 1.0
 		}
 	}
-	mut pass_action := C.sg_pass_action{}
+	mut pass_action := gfx.PassAction{}
 	pass_action.colors[0] = color_action
 	state := &AppState{
 		pass_action: pass_action
-		fons: &C.FONScontext(0)
+		fons: voidptr(0) // &fontstash.Context(0)
 	}
 	title := 'V Metal/GL Text Rendering'
-	desc := C.sapp_desc{
+	desc := sapp.Desc{
 		user_data: state
 		init_userdata_cb: init
 		frame_userdata_cb: frame
@@ -95,53 +96,53 @@ fn init(user_data voidptr) {
 	mut state := &AppState(user_data)
 	desc := sapp.create_desc()
 	gfx.setup(&desc)
-	s := &C.sgl_desc_t{}
+	s := &sgl.Desc{}
 	C.sgl_setup(s)
 	state.fons = sfons.create(512, 512, 1)
 	// or use DroidSerif-Regular.ttf
-	if bytes := os.read_bytes(os.resource_abs_path('../assets/fonts/RobotoMono-Regular.ttf')) {
+	if bytes := os.read_bytes(os.resource_abs_path(os.join_path('..', 'assets', 'fonts',
+		'RobotoMono-Regular.ttf')))
+	{
 		println('loaded font: $bytes.len')
-		state.font_normal = C.fonsAddFontMem(state.fons, c'sans', bytes.data, bytes.len,
-			false)
+		state.font_normal = state.fons.add_font_mem('sans', bytes, false)
 	}
 }
 
 fn frame(user_data voidptr) {
-	t := time.ticks()
 	mut state := &AppState(user_data)
 	state.render_font()
 	gfx.begin_default_pass(&state.pass_action, sapp.width(), sapp.height())
 	sgl.draw()
 	gfx.end_pass()
 	gfx.commit()
-	println(time.ticks() - t)
 }
 
 const (
-	black = C.sfons_rgba(0, 0, 0, 255)
+	black = sfons.rgba(0, 0, 0, 255)
 )
 
 fn (mut state AppState) render_font() {
 	lh := 30
 	mut dy := lh
+	mut fons := state.fons
 	if !state.inited {
-		state.fons.clear_state()
+		fons.clear_state()
 		sgl.defaults()
 		sgl.matrix_mode_projection()
-		sgl.ortho(0.0, f32(C.sapp_width()), f32(C.sapp_height()), 0.0, -1.0, 1.0)
-		state.fons.set_font(state.font_normal)
-		state.fons.set_size(100.0)
-		C.fonsSetColor(state.fons, black)
-		C.fonsSetFont(state.fons, state.font_normal)
-		C.fonsSetSize(state.fons, 35.0)
+		sgl.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
+		fons.set_font(state.font_normal)
+		fons.set_size(100.0)
+		fons.set_color(black)
+		fons.set_font(state.font_normal)
+		fons.set_size(35.0)
 		state.inited = true
 	}
 
 	for line in lines {
-		C.fonsDrawText(state.fons, 40, dy, line.str, C.NULL)
+		fons.draw_text(40, dy, line)
 		dy += lh
 	}
-	C.sfons_flush(state.fons)
+	sfons.flush(fons)
 }
 
 fn line(sx f32, sy f32, ex f32, ey f32) {

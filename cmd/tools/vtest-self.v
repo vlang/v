@@ -8,6 +8,7 @@ const github_job = os.getenv('GITHUB_JOB')
 
 const (
 	skip_test_files               = [
+		'vlib/context/onecontext/onecontext_test.v',
 		'vlib/context/deadline_test.v' /* sometimes blocks */,
 		'vlib/mysql/mysql_orm_test.v' /* mysql not installed */,
 		'vlib/pg/pg_orm_test.v' /* pg not installed */,
@@ -36,6 +37,7 @@ const (
 		'vlib/net/http/status_test.v',
 		'vlib/net/http/http_httpbin_test.v',
 		'vlib/net/http/header_test.v',
+		'vlib/net/http/server_test.v',
 		'vlib/net/udp_test.v',
 		'vlib/net/tcp_test.v',
 		'vlib/orm/orm_test.v',
@@ -43,9 +45,11 @@ const (
 		'vlib/sqlite/sqlite_orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
+		'vlib/v/tests/sql_statement_inside_fn_call_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/vweb/request_test.v',
 		'vlib/net/http/request_test.v',
+		'vlib/net/http/response_test.v',
 		'vlib/vweb/route_test.v',
 		'vlib/net/websocket/websocket_test.v',
 		'vlib/crypto/rand/crypto_rand_read_test.v',
@@ -67,6 +71,7 @@ const (
 	]
 	skip_on_musl                  = [
 		'vlib/v/tests/profile/profile_test.v',
+		'vlib/gg/draw_fns_api_test.v',
 	]
 	skip_on_ubuntu_musl           = [
 		//'vlib/v/gen/js/jsgen_test.v',
@@ -79,6 +84,7 @@ const (
 		'vlib/orm/orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
+		'vlib/v/tests/sql_statement_inside_fn_call_test.v',
 		'vlib/clipboard/clipboard_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/vweb/request_test.v',
@@ -87,6 +93,9 @@ const (
 		'vlib/net/websocket/websocket_test.v',
 		'vlib/net/http/http_httpbin_test.v',
 		'vlib/net/http/header_test.v',
+		'vlib/net/http/server_test.v',
+		'vlib/net/http/response_test.v',
+		'vlib/builtin/js/array_test.js.v',
 	]
 	skip_on_linux                 = [
 		'do_not_remove',
@@ -95,8 +104,14 @@ const (
 		'do_not_remove',
 	]
 	skip_on_windows               = [
+		'vlib/context/cancel_test.v',
+		'vlib/context/deadline_test.v',
+		'vlib/context/empty_test.v',
+		'vlib/context/value_test.v',
 		'vlib/orm/orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
+		'vlib/v/tests/closure_test.v',
+		'vlib/v/tests/closure_generator_test.v',
 		'vlib/net/websocket/ws_test.v',
 		'vlib/net/unix/unix_test.v',
 		'vlib/net/websocket/websocket_test.v',
@@ -104,6 +119,8 @@ const (
 		'vlib/vweb/request_test.v',
 		'vlib/net/http/request_test.v',
 		'vlib/vweb/route_test.v',
+		'vlib/sync/many_times_test.v',
+		'vlib/sync/once_test.v',
 	]
 	skip_on_non_windows           = [
 		'do_not_remove',
@@ -114,6 +131,25 @@ const (
 	skip_on_non_macos             = [
 		'do_not_remove',
 	]
+	skip_on_amd64                 = [
+		'do_not_remove',
+	]
+	skip_on_arm64                 = [
+		'vlib/v/tests/closure_generator_test.v',
+		'do_not_remove',
+	]
+	skip_on_non_amd64_or_arm64    = [
+		// closures aren't implemented yet:
+		'vlib/v/tests/closure_test.v',
+		'vlib/context/cancel_test.v',
+		'vlib/context/deadline_test.v',
+		'vlib/context/empty_test.v',
+		'vlib/context/value_test.v',
+		'vlib/context/onecontext/onecontext_test.v',
+		'vlib/sync/once_test.v',
+		'vlib/sync/many_times_test.v',
+		'do_not_remove',
+	]
 )
 
 // NB: musl misses openssl, thus the http tests can not be done there
@@ -121,16 +157,27 @@ const (
 fn main() {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
-	os.chdir(vroot)
+	os.chdir(vroot) or { panic(err) }
 	args := os.args.clone()
 	args_string := args[1..].join(' ')
 	cmd_prefix := args_string.all_before('test-self')
 	title := 'testing vlib'
-	all_test_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.v')
+	mut all_test_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.v')
+	test_js_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.js.v')
+	all_test_files << test_js_files
 	testing.eheader(title)
 	mut tsession := testing.new_test_session(cmd_prefix, true)
 	tsession.files << all_test_files.filter(!it.contains('testdata' + os.path_separator))
 	tsession.skip_files << skip_test_files
+
+	if !testing.is_node_present {
+		testroot := vroot + os.path_separator
+		tsession.skip_files << test_js_files.map(it.replace(testroot, ''))
+	}
+	testing.find_started_process('mysqld') or {
+		tsession.skip_files << 'vlib/mysql/mysql_orm_test.v'
+	}
+	testing.find_started_process('postgres') or { tsession.skip_files << 'vlib/pg/pg_orm_test.v' }
 
 	if github_job == 'windows-tcc' {
 		// TODO: fix these ASAP
@@ -192,6 +239,15 @@ fn main() {
 	}
 	if os.getenv('V_CI_UBUNTU_MUSL').len > 0 {
 		tsession.skip_files << skip_on_ubuntu_musl
+	}
+	$if !amd64 && !arm64 {
+		tsession.skip_files << skip_on_non_amd64
+	}
+	$if amd64 {
+		tsession.skip_files << skip_on_amd64
+	}
+	$if arm64 {
+		tsession.skip_files << skip_on_arm64
 	}
 	$if !linux {
 		tsession.skip_files << skip_on_non_linux

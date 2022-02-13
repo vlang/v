@@ -25,6 +25,15 @@ fn return_array(array_arg []string) []int { // array argument must not be freed
 	return s
 }
 
+fn return_option(array_arg []string) ?Foo { // array argument must not be freed
+	s := get_foo() ? // escaping option must not be freed
+	return s
+}
+
+fn get_foo() ?Foo {
+	return Foo{}
+}
+
 fn handle_strings(s string, p string) int {
 	return 0
 }
@@ -215,7 +224,7 @@ fn return_if_expr() string {
 }
 
 fn loop_map() {
-	m := map{
+	m := {
 		'UK':     'London'
 		'France': 'Paris'
 	}
@@ -330,7 +339,7 @@ fn string_array_get() {
 	println(s)
 }
 
-fn comp_if() {
+fn comptime_if() {
 	// compif pos used to be 0, if it was the first statement in a block, vars wouldn't be freed
 	$if macos {
 		println('macos')
@@ -389,7 +398,7 @@ fn main() {
 	q := if_expr()
 	s := return_if_expr()
 	free_inside_opt_block()
-	comp_if()
+	comptime_if()
 	free_before_return()
 	free_before_return_bool()
 	free_before_break()

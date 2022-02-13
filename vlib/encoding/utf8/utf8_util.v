@@ -1,7 +1,7 @@
 /*
 utf-8 util
 
-Copyright (c) 2019-2021 Dario Deledda. All rights reserved.
+Copyright (c) 2019-2022 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
 that can be found in the LICENSE file.
 
@@ -46,7 +46,7 @@ pub fn get_uchar(s string, index int) int {
 		if ch_len > 1 && ch_len < 5 {
 			mut lword := 0
 			for i := 0; i < ch_len; i++ {
-				lword = (lword << 8) | int(s[index + i])
+				lword = int(u32(lword) << 8 | u32(s[index + i]))
 			}
 
 			// 2 byte utf-8
@@ -71,9 +71,6 @@ pub fn get_uchar(s string, index int) int {
 	}
 	return res
 }
-
-// raw_index - get the raw chracter from the string by the given index value.
-// example: '我是V Lang'.raw_index(1) => '是'
 
 // raw_index - get the raw chracter from the string by the given index value.
 // example: utf8.raw_index('我是V Lang', 1) => '是'
@@ -142,6 +139,25 @@ the global unicode table search. **Use only for western chars**.
 // is_punct return true if the string[index] byte is the start of a unicode western punctuation
 pub fn is_punct(s string, index int) bool {
 	return is_uchar_punct(get_uchar(s, index))
+}
+
+// is_control return true if the rune is control code
+pub fn is_control(r rune) bool {
+	// control codes are all below 0xff
+	if r > max_latin_1 {
+		return false
+	}
+	return props[byte(r)] == 1
+}
+
+// is_letter returns true if the rune is unicode letter or in unicode category L
+pub fn is_letter(r rune) bool {
+	if (r >= `a` && r <= `z`) || (r >= `A` && r <= `Z`) {
+		return true
+	} else if r <= max_latin_1 {
+		return props[byte(r)] & p_l_mask != 0
+	}
+	return is_excluding_latin(letter_table, r)
 }
 
 // is_uchar_punct return true if the input unicode is a western unicode punctuation
@@ -400,7 +416,7 @@ fn up_low(s string, upper_flag bool) string {
 			mut lword := 0
 
 			for i := 0; i < ch_len; i++ {
-				lword = (lword << 8) | int(s[index + i])
+				lword = int(u32(lword) << 8 | u32(s[index + i]))
 			}
 
 			// println("#${index} ($lword)")

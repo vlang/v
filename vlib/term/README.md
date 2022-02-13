@@ -1,11 +1,11 @@
-# Quickstart
+## Description
 
-The V `term` module is a module designed to provide the building blocks
-for building very simple TUI apps.
-For more complex apps, you should really look at the `term.input` module,
-as it includes terminal events, is easier to use and is much more performant for large draws.
+The `term` module is designed to provide the building blocks for building
+very simple TUI apps. For more complex apps, you should really look at the
+`term.input` module, as it includes terminal events, is easier to use and
+is much more performant for large draws.
 
-# Use
+## Usage
 
 You can use the `term` module to either color the output on a terminal
 or to decide on where to put the output in your terminal.
@@ -39,7 +39,7 @@ fn main() {
 
 This simple program covers many of the principal aspects of the `term ` module.
 
-# API
+## API
 
 Here are some functions you should be aware of in the `term `module:
 
@@ -53,10 +53,11 @@ term.ok_message('cool')
 // returns the string as red text to be printed on stdout
 term.fail_message('oh, no')
 // returns the string as yellow text to be printed on stdout
-term.warning_message('be warned')
+term.warn_message('be warned')
 // clears the entire terminal and leaves a blank one
 term.clear()
-// colors the output of the output, the available colors are: black,blue,yellow,green,cyan,gray,bright_blue,bright_green,bright_red,bright_black,bright_cyan
+// colors the output of the output, the available colors are:
+// black,blue,yellow,green,cyan,gray,bright_blue,bright_green,bright_red,bright_black,bright_cyan
 term.yellow('submarine')
 // transforms the given string into bold text
 term.bold('and beautiful')

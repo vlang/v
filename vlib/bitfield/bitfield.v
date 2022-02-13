@@ -338,22 +338,7 @@ pub fn (instance BitField) clone() BitField {
 	return output
 }
 
-// cmp compares two bit arrays bit by bit and returns 'true' if they are
-// identical by length and contents and 'false' otherwise.
-[deprecated: 'use a == b instead']
-[deprecated_after: '2021-06-29']
-pub fn (instance BitField) cmp(input BitField) bool {
-	if instance.size != input.size {
-		return false
-	}
-	for i in 0 .. zbitnslots(instance.size) {
-		if instance.field[i] != input.field[i] {
-			return false
-		}
-	}
-	return true
-}
-
+// == compares 2 bitfields, and returns true when they are equal
 pub fn (a BitField) == (b BitField) bool {
 	if a.size != b.size {
 		return false

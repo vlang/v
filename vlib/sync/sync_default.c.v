@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module sync
@@ -31,6 +31,18 @@ fn C.sem_wait(voidptr) int
 fn C.sem_trywait(voidptr) int
 fn C.sem_timedwait(voidptr, voidptr) int
 fn C.sem_destroy(voidptr) int
+
+[typedef]
+struct C.pthread_mutex_t {}
+
+[typedef]
+struct C.pthread_rwlock_t {}
+
+[typedef]
+struct C.pthread_rwlockattr_t {}
+
+[typedef]
+struct C.sem_t {}
 
 // [init_with=new_mutex] // TODO: implement support for this struct attribute, and disallow Mutex{} from outside the sync.new_mutex() function.
 [heap]
@@ -163,10 +175,16 @@ pub fn (mut sem Semaphore) try_wait() bool {
 }
 
 pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
+	$if macos {
+		time.sleep(timeout)
+		return true
+	}
 	t_spec := timeout.timespec()
 	for {
-		if C.sem_timedwait(&sem.sem, &t_spec) == 0 {
-			return true
+		$if !macos {
+			if C.sem_timedwait(&sem.sem, &t_spec) == 0 {
+				return true
+			}
 		}
 		e := C.errno
 		match e {

@@ -41,20 +41,20 @@ const (
 )
 
 const (
-	tfolder = os.join_path(os.temp_dir(), 'os_file_test')
-	tfile   = os.join_path(tfolder, 'test_file')
+	tfolder = os.join_path_single(os.temp_dir(), 'os_file_test')
+	tfile   = os.join_path_single(tfolder, 'test_file')
 )
 
 fn testsuite_begin() ? {
 	os.rmdir_all(tfolder) or {}
 	assert !os.is_dir(tfolder)
 	os.mkdir_all(tfolder) ?
-	os.chdir(tfolder)
+	os.chdir(tfolder) ?
 	assert os.is_dir(tfolder)
 }
 
 fn testsuite_end() ? {
-	os.chdir(os.wd_at_startup)
+	os.chdir(os.wd_at_startup) ?
 	os.rmdir_all(tfolder) ?
 	assert !os.is_dir(tfolder)
 }
@@ -273,7 +273,7 @@ fn test_write_raw_at_negative_pos() ? {
 	if _ := f.write_raw_at(another_point, -1) {
 		assert false
 	}
-	f.write_raw_at(another_point, -234) or { assert err.msg == 'Invalid argument' }
+	f.write_raw_at(another_point, -234) or { assert err.msg() == 'Invalid argument' }
 	f.close()
 }
 
@@ -328,7 +328,7 @@ fn test_read_raw_at_negative_pos() ? {
 	if _ := f.read_raw_at<Point>(-1) {
 		assert false
 	}
-	f.read_raw_at<Point>(-234) or { assert err.msg == 'Invalid argument' }
+	f.read_raw_at<Point>(-234) or { assert err.msg() == 'Invalid argument' }
 	f.close()
 }
 

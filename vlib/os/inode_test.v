@@ -12,12 +12,12 @@ fn testsuite_begin() {
 	rmdir_all(os.tfolder) or {}
 	assert !is_dir(os.tfolder)
 	mkdir_all(os.tfolder) or { panic(err) }
-	chdir(os.tfolder)
+	chdir(os.tfolder) or {}
 	assert is_dir(os.tfolder)
 }
 
 fn testsuite_end() {
-	chdir(wd_at_startup)
+	chdir(wd_at_startup) or {}
 	rmdir_all(os.tfolder) or { panic(err) }
 	assert !is_dir(os.tfolder)
 }
@@ -40,4 +40,17 @@ fn test_inode_file_owner_permission() {
 	assert mode.owner.read
 	assert mode.owner.write
 	assert !mode.owner.execute
+}
+
+fn test_inode_file_permissions_bitmask() {
+	if user_os() == 'windows' {
+		println('> skipping ${@FN} on windows')
+		return
+	}
+	filename := './test3.txt'
+	mut file := open_file(filename, 'w', 0o641) or { return }
+	file.close()
+	mode := inode(filename)
+	rm(filename) or {}
+	assert mode.bitmask() == 0o641
 }

@@ -2,9 +2,7 @@
 // A: This is a mini "home-made" calculator. You may also regard it as a very elementary version of "interpreter".
 import os
 
-const (
-	numeric_char = [`0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`, `.`, `e`, `E`]
-)
+const numeric_char = [`0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`, `.`, `e`, `E`]
 
 // Convert expression to Reverse Polish Notation.
 fn expr_to_rev_pol(expr string) ?[]string {
@@ -117,7 +115,10 @@ fn main() {
 	mut expr_count := 0
 	for {
 		expr_count++
-		expr := os.input('[$expr_count] ').trim_space()
+		expr := os.input_opt('[$expr_count] ') or {
+			println('')
+			break
+		}.trim_space()
 		if expr in ['exit', 'EXIT'] {
 			break
 		}

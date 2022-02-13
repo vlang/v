@@ -1,5 +1,10 @@
+struct Website {
+	link string
+}
+
 fn abc() string {
 	title := 'TEST'
+	website := Website{'example.com'}
 	return $tmpl('file.html')
 }
 

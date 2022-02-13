@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
@@ -16,8 +16,20 @@ import v.pref
 
 pub type Type = int
 
-pub type TypeInfo = Aggregate | Alias | Array | ArrayFixed | Chan | Enum | FnType | GenericStructInst |
-	Interface | Map | MultiReturn | Struct | SumType | Thread
+pub type TypeInfo = Aggregate
+	| Alias
+	| Array
+	| ArrayFixed
+	| Chan
+	| Enum
+	| FnType
+	| GenericInst
+	| Interface
+	| Map
+	| MultiReturn
+	| Struct
+	| SumType
+	| Thread
 
 pub enum Language {
 	v
@@ -51,6 +63,9 @@ pub fn pref_arch_to_table_language(pref_arch pref.Arch) Language {
 		.i386 {
 			Language.i386
 		}
+		.js_node, .js_browser, .js_freestanding {
+			Language.js
+		}
 		._auto, ._max {
 			Language.v
 		}
@@ -63,7 +78,7 @@ pub fn pref_arch_to_table_language(pref_arch pref.Arch) Language {
 // * Table.type_to_str(typ) not TypeSymbol.name.
 // * Table.type_kind(typ) not TypeSymbol.kind.
 // Each TypeSymbol is entered into `Table.types`.
-// See also: Table.get_type_symbol.
+// See also: Table.sym.
 
 pub struct TypeSymbol {
 pub:
@@ -120,7 +135,7 @@ pub fn (t Type) atomic_typename() string {
 }
 
 pub fn sharetype_from_flags(is_shared bool, is_atomic bool) ShareType {
-	return ShareType((int(is_atomic) << 1) | int(is_shared))
+	return ShareType(int(u32(is_atomic) << 1) | int(is_shared))
 }
 
 pub fn (t Type) share() ShareType {
@@ -168,17 +183,17 @@ pub fn (t Type) set_nr_muls(nr_muls int) Type {
 	if nr_muls < 0 || nr_muls > 255 {
 		panic('set_nr_muls: nr_muls must be between 0 & 255')
 	}
-	return int(t) & 0xff00ffff | (nr_muls << 16)
+	return int(t) & 0xff00ffff | int(u32(nr_muls) << 16)
 }
 
-// increments nr_nuls on `t` and return it
+// increments nr_muls on `t` and return it
 [inline]
-pub fn (t Type) to_ptr() Type {
+pub fn (t Type) ref() Type {
 	nr_muls := (int(t) >> 16) & 0xff
 	if nr_muls == 255 {
-		panic('to_ptr: nr_muls is already at max of 255')
+		panic('ref: nr_muls is already at max of 255')
 	}
-	return int(t) & 0xff00ffff | ((nr_muls + 1) << 16)
+	return int(t) & 0xff00ffff | int(u32(nr_muls + 1) << 16)
 }
 
 // decrement nr_muls on `t` and return it
@@ -188,7 +203,7 @@ pub fn (t Type) deref() Type {
 	if nr_muls == 0 {
 		panic('deref: type `$t` is not a pointer')
 	}
-	return int(t) & 0xff00ffff | ((nr_muls - 1) << 16)
+	return int(t) & 0xff00ffff | int(u32(nr_muls - 1) << 16)
 }
 
 // set `flag` on `t` and return `t`
@@ -246,6 +261,11 @@ pub fn (t Type) str() string {
 	return 'ast.Type(0x$t.hex() = ${u32(t)})'
 }
 
+pub fn (t &Table) type_str(typ Type) string {
+	sym := t.sym(typ)
+	return sym.name
+}
+
 // debug returns a verbose representation of the information in the type `t`, useful for tracing/debugging
 pub fn (t Type) debug() []string {
 	mut res := []string{}
@@ -300,13 +320,18 @@ pub fn new_type_ptr(idx int, nr_muls int) Type {
 	if nr_muls < 0 || nr_muls > 255 {
 		panic('new_type_ptr: nr_muls must be between 0 & 255')
 	}
-	return (nr_muls << 16) | u16(idx)
+	return (u32(nr_muls) << 16) | u16(idx)
 }
 
 [inline]
 pub fn (typ Type) is_pointer() bool {
 	// builtin pointer types (voidptr, byteptr, charptr)
 	return typ.idx() in ast.pointer_type_idxs
+}
+
+[inline]
+pub fn (typ Type) is_real_pointer() bool {
+	return typ.is_ptr() || typ.is_pointer()
 }
 
 [inline]
@@ -378,40 +403,50 @@ pub const (
 	i16_type_idx           = 6
 	int_type_idx           = 7
 	i64_type_idx           = 8
-	byte_type_idx          = 9
-	u16_type_idx           = 10
-	u32_type_idx           = 11
-	u64_type_idx           = 12
-	f32_type_idx           = 13
-	f64_type_idx           = 14
-	char_type_idx          = 15
-	bool_type_idx          = 16
-	none_type_idx          = 17
-	string_type_idx        = 18
-	rune_type_idx          = 19
-	array_type_idx         = 20
-	map_type_idx           = 21
-	chan_type_idx          = 22
-	size_t_type_idx        = 23
-	any_type_idx           = 24
-	float_literal_type_idx = 25
-	int_literal_type_idx   = 26
-	thread_type_idx        = 27
-	error_type_idx         = 28
-	u8_type_idx            = 29
+	isize_type_idx         = 9
+	byte_type_idx          = 10
+	u16_type_idx           = 11
+	u32_type_idx           = 12
+	u64_type_idx           = 13
+	usize_type_idx         = 14
+	f32_type_idx           = 15
+	f64_type_idx           = 16
+	char_type_idx          = 17
+	bool_type_idx          = 18
+	none_type_idx          = 19
+	string_type_idx        = 20
+	rune_type_idx          = 21
+	array_type_idx         = 22
+	map_type_idx           = 23
+	chan_type_idx          = 24
+	any_type_idx           = 25
+	float_literal_type_idx = 26
+	int_literal_type_idx   = 27
+	thread_type_idx        = 28
+	error_type_idx         = 29
+	u8_type_idx            = 30
 )
+
+// NB: builtin_type_names must be in the same order as the idx consts above
+pub const builtin_type_names = ['void', 'voidptr', 'byteptr', 'charptr', 'i8', 'i16', 'int', 'i64',
+	'isize', 'byte', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'char', 'bool', 'none', 'string',
+	'rune', 'array', 'map', 'chan', 'any', 'float_literal', 'int_literal', 'thread', 'Error', 'u8']
+
+pub const builtin_type_names_matcher = build_builtin_type_names_matcher()
 
 pub const (
 	integer_type_idxs          = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx,
-		byte_type_idx, u8_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, int_literal_type_idx,
-		rune_type_idx,
-	]
-	signed_integer_type_idxs   = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx]
-	unsigned_integer_type_idxs = [byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx]
+		byte_type_idx, u8_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx,
+		usize_type_idx, int_literal_type_idx, rune_type_idx]
+	signed_integer_type_idxs   = [char_type_idx, i8_type_idx, i16_type_idx, int_type_idx,
+		i64_type_idx, isize_type_idx]
+	unsigned_integer_type_idxs = [byte_type_idx, u8_type_idx, u16_type_idx, u32_type_idx,
+		u64_type_idx, usize_type_idx]
 	float_type_idxs            = [f32_type_idx, f64_type_idx, float_literal_type_idx]
 	number_type_idxs           = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx,
-		byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, f32_type_idx, f64_type_idx,
-		int_literal_type_idx, float_literal_type_idx, rune_type_idx]
+		byte_type_idx, char_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx,
+		usize_type_idx, f32_type_idx, f64_type_idx, int_literal_type_idx, float_literal_type_idx,
+		rune_type_idx]
 	pointer_type_idxs          = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx]
 	string_type_idxs           = [string_type_idx]
 )
@@ -426,11 +461,13 @@ pub const (
 	int_type           = new_type(int_type_idx)
 	i16_type           = new_type(i16_type_idx)
 	i64_type           = new_type(i64_type_idx)
+	isize_type         = new_type(isize_type_idx)
 	byte_type          = new_type(byte_type_idx)
 	u8_type            = new_type(u8_type_idx)
 	u16_type           = new_type(u16_type_idx)
 	u32_type           = new_type(u32_type_idx)
 	u64_type           = new_type(u64_type_idx)
+	usize_type         = new_type(usize_type_idx)
 	f32_type           = new_type(f32_type_idx)
 	f64_type           = new_type(f64_type_idx)
 	char_type          = new_type(char_type_idx)
@@ -460,13 +497,13 @@ pub fn merge_types(params ...[]Type) []Type {
 	return res
 }
 
-pub const (
-	// must be in the same order as the idx consts above
-	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64', 'u16',
-		'u32', 'u64', 'int_literal', 'f32', 'f64', 'float_literal', 'string', 'char', 'byte', 'bool',
-		'none', 'array', 'array_fixed', 'map', 'chan', 'any', 'struct', 'mapnode', 'size_t', 'rune',
-		'thread', 'Error', 'u8']
-)
+pub fn mktyp(typ Type) Type {
+	match typ {
+		ast.float_literal_type { return ast.f64_type }
+		ast.int_literal_type { return ast.int_type }
+		else { return typ }
+	}
+}
 
 pub struct MultiReturn {
 pub mut:
@@ -485,7 +522,7 @@ pub fn (t &Table) type_kind(typ Type) Kind {
 	if typ.nr_muls() > 0 || typ.has_flag(.optional) {
 		return Kind.placeholder
 	}
-	return t.get_type_symbol(typ).kind
+	return t.sym(typ).kind
 }
 
 pub enum Kind {
@@ -498,15 +535,16 @@ pub enum Kind {
 	i16
 	int
 	i64
+	isize
 	byte
 	u8
 	u16
 	u32
 	u64
+	usize
 	f32
 	f64
 	char
-	size_t
 	rune
 	bool
 	none_
@@ -517,7 +555,7 @@ pub enum Kind {
 	chan
 	any
 	struct_
-	generic_struct_inst
+	generic_inst
 	multi_return
 	sum_type
 	alias
@@ -530,80 +568,139 @@ pub enum Kind {
 	thread
 }
 
-pub fn (t &TypeSymbol) str() string {
+pub fn (t TypeSymbol) str() string {
 	return t.name
+}
+
+[noreturn]
+fn (t &TypeSymbol) no_info_panic(fname string) {
+	panic('$fname: no info for type: $t.name')
 }
 
 [inline]
 pub fn (t &TypeSymbol) enum_info() Enum {
-	match mut t.info {
-		Enum { return t.info }
-		else { panic('TypeSymbol.enum_info(): no enum info for type: $t.name') }
+	if t.info is Enum {
+		return t.info
 	}
+	if t.info is Alias {
+		fsym := global_table.final_sym(t.info.parent_type)
+		if fsym.info is Enum {
+			return fsym.info
+		}
+	}
+	t.no_info_panic(@METHOD)
 }
 
 [inline]
 pub fn (t &TypeSymbol) mr_info() MultiReturn {
-	match mut t.info {
-		MultiReturn { return t.info }
-		else { panic('TypeSymbol.mr_info(): no multi return info for type: $t.name') }
+	if t.info is MultiReturn {
+		return t.info
 	}
+	if t.info is Alias {
+		fsym := global_table.final_sym(t.info.parent_type)
+		if fsym.info is MultiReturn {
+			return fsym.info
+		}
+	}
+	t.no_info_panic(@METHOD)
 }
 
 [inline]
 pub fn (t &TypeSymbol) array_info() Array {
-	match mut t.info {
-		Array { return t.info }
-		else { panic('TypeSymbol.array_info(): no array info for type: $t.name') }
+	if t.info is Array {
+		return t.info
 	}
+	if t.info is Alias {
+		fsym := global_table.final_sym(t.info.parent_type)
+		if fsym.info is Array {
+			return fsym.info
+		}
+	}
+	t.no_info_panic(@METHOD)
 }
 
 [inline]
 pub fn (t &TypeSymbol) array_fixed_info() ArrayFixed {
-	match mut t.info {
-		ArrayFixed { return t.info }
-		else { panic('TypeSymbol.array_fixed(): no array fixed info for type: $t.name') }
+	if t.info is ArrayFixed {
+		return t.info
 	}
+	if t.info is Alias {
+		fsym := global_table.final_sym(t.info.parent_type)
+		if fsym.info is ArrayFixed {
+			return fsym.info
+		}
+	}
+	t.no_info_panic(@METHOD)
 }
 
 [inline]
 pub fn (t &TypeSymbol) chan_info() Chan {
-	match mut t.info {
-		Chan { return t.info }
-		else { panic('TypeSymbol.chan_info(): no chan info for type: $t.name') }
+	if t.info is Chan {
+		return t.info
 	}
+	if t.info is Alias {
+		fsym := global_table.final_sym(t.info.parent_type)
+		if fsym.info is Chan {
+			return fsym.info
+		}
+	}
+	t.no_info_panic(@METHOD)
 }
 
 [inline]
 pub fn (t &TypeSymbol) thread_info() Thread {
-	match mut t.info {
-		Thread { return t.info }
-		else { panic('TypeSymbol.thread_info(): no thread info for type: $t.name') }
+	if t.info is Thread {
+		return t.info
 	}
+	if t.info is Alias {
+		fsym := global_table.final_sym(t.info.parent_type)
+		if fsym.info is Thread {
+			return fsym.info
+		}
+	}
+	t.no_info_panic(@METHOD)
 }
 
 [inline]
 pub fn (t &TypeSymbol) map_info() Map {
-	match mut t.info {
-		Map { return t.info }
-		else { panic('TypeSymbol.map_info(): no map info for type: $t.name') }
+	if t.info is Map {
+		return t.info
 	}
+	if t.info is Alias {
+		fsym := global_table.final_sym(t.info.parent_type)
+		if fsym.info is Map {
+			return fsym.info
+		}
+	}
+	t.no_info_panic(@METHOD)
 }
 
 [inline]
 pub fn (t &TypeSymbol) struct_info() Struct {
-	match mut t.info {
-		Struct { return t.info }
-		else { panic('TypeSymbol.struct_info(): no struct info for type: $t.name') }
+	if t.info is Struct {
+		return t.info
 	}
+	if t.info is Alias {
+		fsym := global_table.final_sym(t.info.parent_type)
+		if fsym.info is Struct {
+			return fsym.info
+		}
+	}
+	t.no_info_panic(@METHOD)
 }
 
 [inline]
 pub fn (t &TypeSymbol) sumtype_info() SumType {
-	match mut t.info {
-		SumType { return t.info }
-		else { panic('TypeSymbol.sumtype_info(): no sumtype info for type: $t.name') }
+	if t.info is SumType {
+		return t.info
 	}
+	if t.info is SumType {
+		fsym := global_table.final_sym(t.info.parent_type)
+		if fsym.info is SumType {
+			return fsym.info
+		}
+	}
+	t.no_info_panic(@METHOD)
 }
 
 pub fn (t &TypeSymbol) is_heap() bool {
@@ -615,52 +712,48 @@ pub fn (t &TypeSymbol) is_heap() bool {
 	}
 }
 
-/*
-pub fn (t TypeSymbol) str() string {
-	return t.name
-}
-*/
 pub fn (mut t Table) register_builtin_type_symbols() {
 	// reserve index 0 so nothing can go there
 	// save index check, 0 will mean not found
-	t.register_type_symbol(kind: .placeholder, name: 'reserved_0')
-	t.register_type_symbol(kind: .void, name: 'void', cname: 'void', mod: 'builtin')
-	t.register_type_symbol(kind: .voidptr, name: 'voidptr', cname: 'voidptr', mod: 'builtin')
-	t.register_type_symbol(kind: .byteptr, name: 'byteptr', cname: 'byteptr', mod: 'builtin')
-	t.register_type_symbol(kind: .charptr, name: 'charptr', cname: 'charptr', mod: 'builtin')
-	t.register_type_symbol(kind: .i8, name: 'i8', cname: 'i8', mod: 'builtin')
-	t.register_type_symbol(kind: .i16, name: 'i16', cname: 'i16', mod: 'builtin')
-	t.register_type_symbol(kind: .int, name: 'int', cname: 'int', mod: 'builtin')
-	t.register_type_symbol(kind: .i64, name: 'i64', cname: 'i64', mod: 'builtin')
-	t.register_type_symbol(kind: .byte, name: 'byte', cname: 'byte', mod: 'builtin')
-	t.register_type_symbol(kind: .u16, name: 'u16', cname: 'u16', mod: 'builtin')
-	t.register_type_symbol(kind: .u32, name: 'u32', cname: 'u32', mod: 'builtin')
-	t.register_type_symbol(kind: .u64, name: 'u64', cname: 'u64', mod: 'builtin')
-	t.register_type_symbol(kind: .f32, name: 'f32', cname: 'f32', mod: 'builtin')
-	t.register_type_symbol(kind: .f64, name: 'f64', cname: 'f64', mod: 'builtin')
-	t.register_type_symbol(kind: .char, name: 'char', cname: 'char', mod: 'builtin')
-	t.register_type_symbol(kind: .bool, name: 'bool', cname: 'bool', mod: 'builtin')
-	t.register_type_symbol(kind: .none_, name: 'none', cname: 'none', mod: 'builtin')
-	t.register_type_symbol(kind: .string, name: 'string', cname: 'string', mod: 'builtin')
-	t.register_type_symbol(kind: .rune, name: 'rune', cname: 'rune', mod: 'builtin')
-	t.register_type_symbol(kind: .array, name: 'array', cname: 'array', mod: 'builtin')
-	t.register_type_symbol(kind: .map, name: 'map', cname: 'map', mod: 'builtin')
-	t.register_type_symbol(kind: .chan, name: 'chan', cname: 'chan', mod: 'builtin')
-	t.register_type_symbol(kind: .size_t, name: 'size_t', cname: 'size_t', mod: 'builtin')
-	t.register_type_symbol(kind: .any, name: 'any', cname: 'any', mod: 'builtin')
-	t.register_type_symbol(
+	t.register_sym(kind: .placeholder, name: 'reserved_0')
+	t.register_sym(kind: .void, name: 'void', cname: 'void', mod: 'builtin')
+	t.register_sym(kind: .voidptr, name: 'voidptr', cname: 'voidptr', mod: 'builtin')
+	t.register_sym(kind: .byteptr, name: 'byteptr', cname: 'byteptr', mod: 'builtin')
+	t.register_sym(kind: .charptr, name: 'charptr', cname: 'charptr', mod: 'builtin')
+	t.register_sym(kind: .i8, name: 'i8', cname: 'i8', mod: 'builtin')
+	t.register_sym(kind: .i16, name: 'i16', cname: 'i16', mod: 'builtin')
+	t.register_sym(kind: .int, name: 'int', cname: 'int', mod: 'builtin')
+	t.register_sym(kind: .i64, name: 'i64', cname: 'i64', mod: 'builtin')
+	t.register_sym(kind: .isize, name: 'isize', cname: 'isize', mod: 'builtin')
+	t.register_sym(kind: .byte, name: 'byte', cname: 'byte', mod: 'builtin')
+	t.register_sym(kind: .u16, name: 'u16', cname: 'u16', mod: 'builtin')
+	t.register_sym(kind: .u32, name: 'u32', cname: 'u32', mod: 'builtin')
+	t.register_sym(kind: .u64, name: 'u64', cname: 'u64', mod: 'builtin')
+	t.register_sym(kind: .usize, name: 'usize', cname: 'usize', mod: 'builtin')
+	t.register_sym(kind: .f32, name: 'f32', cname: 'f32', mod: 'builtin')
+	t.register_sym(kind: .f64, name: 'f64', cname: 'f64', mod: 'builtin')
+	t.register_sym(kind: .char, name: 'char', cname: 'char', mod: 'builtin')
+	t.register_sym(kind: .bool, name: 'bool', cname: 'bool', mod: 'builtin')
+	t.register_sym(kind: .none_, name: 'none', cname: 'none', mod: 'builtin')
+	t.register_sym(kind: .string, name: 'string', cname: 'string', mod: 'builtin')
+	t.register_sym(kind: .rune, name: 'rune', cname: 'rune', mod: 'builtin')
+	t.register_sym(kind: .array, name: 'array', cname: 'array', mod: 'builtin')
+	t.register_sym(kind: .map, name: 'map', cname: 'map', mod: 'builtin')
+	t.register_sym(kind: .chan, name: 'chan', cname: 'chan', mod: 'builtin')
+	t.register_sym(kind: .any, name: 'any', cname: 'any', mod: 'builtin')
+	t.register_sym(
 		kind: .float_literal
 		name: 'float literal'
 		cname: 'float_literal'
 		mod: 'builtin'
 	)
-	t.register_type_symbol(
+	t.register_sym(
 		kind: .int_literal
 		name: 'int literal'
 		cname: 'int_literal'
 		mod: 'builtin'
 	)
-	t.register_type_symbol(
+	t.register_sym(
 		kind: .thread
 		name: 'thread'
 		cname: '__v_thread'
@@ -669,8 +762,8 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 			return_type: ast.void_type
 		}
 	)
-	t.register_type_symbol(kind: .interface_, name: 'IError', cname: 'IError', mod: 'builtin')
-	t.register_type_symbol(kind: .u8, name: 'zu8', cname: 'zu8', mod: 'builtin')
+	t.register_sym(kind: .interface_, name: 'IError', cname: 'IError', mod: 'builtin')
+	t.register_sym(kind: .u8, name: 'zu8', cname: 'zu8', mod: 'builtin')
 }
 
 [inline]
@@ -680,7 +773,8 @@ pub fn (t &TypeSymbol) is_pointer() bool {
 
 [inline]
 pub fn (t &TypeSymbol) is_int() bool {
-	res := t.kind in [.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .int_literal, .rune]
+	res := t.kind in [.i8, .i16, .int, .i64, .isize, .byte, .u16, .u32, .u64, .usize, .int_literal,
+		.rune]
 	if !res && t.kind == .alias {
 		return (t.info as Alias).parent_type.is_number()
 	}
@@ -725,11 +819,13 @@ pub fn (k Kind) str() string {
 		.i8 { 'i8' }
 		.i16 { 'i16' }
 		.i64 { 'i64' }
+		.isize { 'isize' }
 		.byte { 'byte' }
 		.u8 { 'u8' }
 		.u16 { 'u16' }
 		.u32 { 'u32' }
 		.u64 { 'u64' }
+		.usize { 'usize' }
 		.int_literal { 'int_literal' }
 		.f32 { 'f32' }
 		.f64 { 'f64' }
@@ -737,7 +833,6 @@ pub fn (k Kind) str() string {
 		.string { 'string' }
 		.char { 'char' }
 		.bool { 'bool' }
-		.size_t { 'size_t' }
 		.none_ { 'none' }
 		.array { 'array' }
 		.array_fixed { 'array_fixed' }
@@ -750,7 +845,7 @@ pub fn (k Kind) str() string {
 		.any { 'any' }
 		.function { 'function' }
 		.interface_ { 'interface' }
-		.generic_struct_inst { 'generic_struct_inst' }
+		.generic_inst { 'generic_inst' }
 		.rune { 'rune' }
 		.aggregate { 'aggregate' }
 		.thread { 'thread' }
@@ -785,7 +880,7 @@ pub mut:
 }
 
 // instantiation of a generic struct
-pub struct GenericStructInst {
+pub struct GenericInst {
 pub mut:
 	parent_idx     int    // idx of the base generic struct
 	concrete_types []Type // concrete types, e.g. <int, string>
@@ -797,6 +892,8 @@ pub mut:
 	fields  []StructField
 	methods []Fn
 	ifaces  []Type
+	// `I1 is I2` conversions
+	conversions map[int][]Type
 	// generic interface support
 	is_generic     bool
 	generic_types  []Type
@@ -823,31 +920,6 @@ mut:
 	fields []StructField // used for faster lookup inside the module
 pub:
 	types []Type
-}
-
-/*
-pub struct Field {
-pub:
-	name string
-pub mut:
-	typ              Type
-	default_expr     Expr
-	has_default_expr bool
-	default_expr_typ Type
-	default_val      string
-	attrs            []Attr
-	is_pub           bool
-	is_mut           bool
-	is_global        bool
-}
-*/
-
-pub fn (f &StructField) equals(o &StructField) bool {
-	// TODO: f.is_mut == o.is_mut was removed here to allow read only access
-	// to (mut/not mut), but otherwise equal fields; some other new checks are needed:
-	// - if node is declared mut, and we mutate node.stmts, all stmts fields must be mutable
-	// - same goes for pub and global, if we call the field from another module
-	return f.name == o.name && f.typ == o.typ && f.is_pub == o.is_pub && f.is_global == o.is_global
 }
 
 pub struct Array {
@@ -883,13 +955,13 @@ pub mut:
 }
 
 pub struct SumType {
-pub:
-	variants []Type
 pub mut:
 	fields       []StructField
 	found_fields bool
+	is_anon      bool
 	// generic sumtype support
 	is_generic     bool
+	variants       []Type
 	generic_types  []Type
 	concrete_types []Type
 	parent_type    Type
@@ -903,14 +975,14 @@ pub fn (t &Table) type_to_str(typ Type) string {
 // type name in code (for builtin)
 pub fn (mytable &Table) type_to_code(t Type) string {
 	match t {
-		ast.int_literal_type, ast.float_literal_type { return mytable.get_type_symbol(t).kind.str() }
+		ast.int_literal_type, ast.float_literal_type { return mytable.sym(t).kind.str() }
 		else { return mytable.type_to_str_using_aliases(t, map[string]string{}) }
 	}
 }
 
 // import_aliases is a map of imported symbol aliases 'module.Type' => 'Type'
 pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]string) string {
-	sym := t.get_type_symbol(typ)
+	sym := t.sym(typ)
 	mut res := sym.name
 	// Note, that the duplication of code in some of the match branches here
 	// is VERY deliberate. DO NOT be tempted to use `else {}` instead, because
@@ -922,19 +994,11 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 	// *clearly*, and that when a new kind is added, it should also be handled
 	// explicitly.
 	match sym.kind {
-		.int_literal, .float_literal {
-			res = sym.name
-		}
-		.i8, .i16, .int, .i64, .byte, .u8, .u16, .u32, .u64, .f32, .f64, .char, .rune, .string,
-		.bool, .none_, .byteptr, .voidptr, .charptr {
+		.int_literal, .float_literal {}
+		.i8, .i16, .int, .i64, .isize, .byte, .u8, .u16, .u32, .u64, .usize, .f32, .f64, .char,
+		.rune, .string, .bool, .none_, .voidptr, .byteptr, .charptr {
 			// primitive types
-			if sym.kind == .byteptr {
-				res = '&byte'
-			} else if sym.kind == .charptr {
-				res = '&char'
-			} else {
-				res = sym.kind.str()
-			}
+			res = sym.kind.str()
 		}
 		.array {
 			if typ == ast.array_type {
@@ -1017,7 +1081,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 					Struct, Interface, SumType {
 						res += '<'
 						for i, gtyp in sym.info.generic_types {
-							res += t.get_type_symbol(gtyp).name
+							res += t.sym(gtyp).name
 							if i != sym.info.generic_types.len - 1 {
 								res += ', '
 							}
@@ -1026,22 +1090,25 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 					}
 					else {}
 				}
+			} else if sym.info is SumType && (sym.info as SumType).is_anon {
+				variant_names := sym.info.variants.map(t.shorten_user_defined_typenames(t.sym(it).name,
+					import_aliases))
+				res = '${variant_names.join(' | ')}'
 			} else {
 				res = t.shorten_user_defined_typenames(res, import_aliases)
 			}
 		}
-		.generic_struct_inst {
-			info := sym.info as GenericStructInst
-			res = sym.name.all_before('<')
+		.generic_inst {
+			info := sym.info as GenericInst
+			res = t.shorten_user_defined_typenames(sym.name.all_before('<'), import_aliases)
 			res += '<'
 			for i, ctyp in info.concrete_types {
-				res += t.get_type_symbol(ctyp).name
+				res += t.type_to_str_using_aliases(ctyp, import_aliases)
 				if i != info.concrete_types.len - 1 {
 					res += ', '
 				}
 			}
 			res += '>'
-			res = t.shorten_user_defined_typenames(res, import_aliases)
 		}
 		.void {
 			if typ.has_flag(.optional) {
@@ -1055,7 +1122,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 				res = 'thread ' + t.type_to_str_using_aliases(rtype, import_aliases)
 			}
 		}
-		.alias, .any, .size_t, .aggregate, .placeholder, .enum_ {
+		.alias, .any, .aggregate, .placeholder, .enum_ {
 			res = t.shorten_user_defined_typenames(res, import_aliases)
 		}
 	}
@@ -1064,11 +1131,11 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 		nr_muls--
 		res = 'shared ' + res
 	}
-	if nr_muls > 0 {
+	if nr_muls > 0 && !typ.has_flag(.variadic) {
 		res = strings.repeat(`&`, nr_muls) + res
 	}
 	if typ.has_flag(.optional) {
-		res = '?' + res
+		res = '?$res'
 	}
 	return res
 }
@@ -1129,7 +1196,9 @@ pub fn (t &Table) fn_signature_using_aliases(func &Fn, import_aliases map[string
 		param := func.params[i]
 		mut typ := param.typ
 		if param.is_mut {
-			typ = typ.deref()
+			if param.typ.is_ptr() {
+				typ = typ.deref()
+			}
 			sb.write_string('mut ')
 		}
 		if !opts.type_only {
@@ -1161,12 +1230,21 @@ pub fn (t &TypeSymbol) embed_name() string {
 }
 
 pub fn (t &TypeSymbol) has_method(name string) bool {
-	t.find_method(name) or { return false }
+	for mut method in unsafe { t.methods } {
+		if method.name == name {
+			return true
+		}
+	}
+	return false
+}
+
+pub fn (t &TypeSymbol) has_method_with_generic_parent(name string) bool {
+	t.find_method_with_generic_parent(name) or { return false }
 	return true
 }
 
 pub fn (t &TypeSymbol) find_method(name string) ?Fn {
-	for method in t.methods {
+	for mut method in unsafe { t.methods } {
 		if method.name == name {
 			return method
 		}
@@ -1182,12 +1260,12 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 	match t.info {
 		Struct, Interface, SumType {
 			if t.info.parent_type.has_flag(.generic) {
-				parent_sym := table.get_type_symbol(t.info.parent_type)
+				parent_sym := table.sym(t.info.parent_type)
 				if x := parent_sym.find_method(name) {
 					match parent_sym.info {
 						Struct, Interface, SumType {
 							mut method := x
-							generic_names := parent_sym.info.generic_types.map(table.get_type_symbol(it).name)
+							generic_names := parent_sym.info.generic_types.map(table.sym(it).name)
 							if rt := table.resolve_generic_to_concrete(method.return_type,
 								generic_names, t.info.concrete_types)
 							{
@@ -1215,11 +1293,39 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 	return none
 }
 
+// is_js_compatible returns true if type can be converted to JS type and from JS type back to V type
+pub fn (t &TypeSymbol) is_js_compatible() bool {
+	mut table := global_table
+	if t.kind == .void {
+		return true
+	}
+	if t.kind == .function {
+		return true
+	}
+	if t.language == .js || t.name.starts_with('JS.') {
+		return true
+	}
+	match t.info {
+		SumType {
+			for variant in t.info.variants {
+				sym := table.final_sym(variant)
+				if !sym.is_js_compatible() {
+					return false
+				}
+			}
+			return true
+		}
+		else {
+			return true
+		}
+	}
+}
+
 pub fn (t &TypeSymbol) str_method_info() (bool, bool, int) {
 	mut has_str_method := false
 	mut expects_ptr := false
 	mut nr_args := 0
-	if sym_str_method := t.find_method('str') {
+	if sym_str_method := t.find_method_with_generic_parent('str') {
 		has_str_method = true
 		nr_args = sym_str_method.params.len
 		if nr_args > 0 {
@@ -1240,7 +1346,7 @@ pub fn (t &TypeSymbol) find_field(name string) ?StructField {
 }
 
 fn (a &Aggregate) find_field(name string) ?StructField {
-	for field in a.fields {
+	for mut field in unsafe { a.fields } {
 		if field.name == name {
 			return field
 		}
@@ -1249,7 +1355,7 @@ fn (a &Aggregate) find_field(name string) ?StructField {
 }
 
 pub fn (i &Interface) find_field(name string) ?StructField {
-	for field in i.fields {
+	for mut field in unsafe { i.fields } {
 		if field.name == name {
 			return field
 		}
@@ -1258,7 +1364,7 @@ pub fn (i &Interface) find_field(name string) ?StructField {
 }
 
 pub fn (i &Interface) find_method(name string) ?Fn {
-	for method in i.methods {
+	for mut method in unsafe { i.methods } {
 		if method.name == name {
 			return method
 		}
@@ -1267,14 +1373,16 @@ pub fn (i &Interface) find_method(name string) ?Fn {
 }
 
 pub fn (i &Interface) has_method(name string) bool {
-	if _ := i.find_method(name) {
-		return true
+	for mut method in unsafe { i.methods } {
+		if method.name == name {
+			return true
+		}
 	}
 	return false
 }
 
 pub fn (s Struct) find_field(name string) ?StructField {
-	for field in s.fields {
+	for mut field in unsafe { s.fields } {
 		if field.name == name {
 			return field
 		}
@@ -1290,7 +1398,7 @@ pub fn (s Struct) get_field(name string) StructField {
 }
 
 pub fn (s &SumType) find_field(name string) ?StructField {
-	for field in s.fields {
+	for mut field in unsafe { s.fields } {
 		if field.name == name {
 			return field
 		}
@@ -1299,7 +1407,7 @@ pub fn (s &SumType) find_field(name string) ?StructField {
 }
 
 pub fn (i Interface) defines_method(name string) bool {
-	for method in i.methods {
+	for mut method in unsafe { i.methods } {
 		if method.name == name {
 			return true
 		}

@@ -31,7 +31,7 @@ fn foo3(mut m map[string][3]int) {
 }
 
 fn test_fn_mut_val_of_map() {
-	mut m := map{
+	mut m := {
 		'hello': [1, 2, 3]!
 	}
 	foo3(mut m)
@@ -46,7 +46,7 @@ fn foo4(mut m map[string][3]int) {
 }
 
 fn test_for_in_mut_val_of_map() {
-	mut m := map{
+	mut m := {
 		'hello': [1, 2, 3]!
 	}
 	foo4(mut m)
@@ -55,7 +55,7 @@ fn test_for_in_mut_val_of_map() {
 }
 
 fn test_for_in_mut_val_of_map_direct() {
-	mut m := map{
+	mut m := {
 		'foo': 1
 		'bar': 2
 	}
@@ -67,16 +67,16 @@ fn test_for_in_mut_val_of_map_direct() {
 }
 
 fn test_for_in_mut_val_of_map_fixed_array() {
-	mut m := map{
-		'foo': [map{
+	mut m := {
+		'foo': [{
 			'a': 1
 		}]!
-		'bar': [map{
+		'bar': [{
 			'b': 2
 		}]!
 	}
 	for _, mut j in m {
-		j = [map{
+		j = [{
 			'c': 3
 		}]!
 	}
@@ -97,13 +97,13 @@ fn test_for_in_mut_val_of_string() {
 }
 
 fn test_for_in_mut_val_of_float() {
-	mut values := [1., 2, 3]
+	mut values := [1.0, 2, 3]
 	println(values)
 
 	for mut v in values {
-		v = 1.
-		v = v + 1.
+		v = 1.0
+		v = v + 1.0
 	}
 	println(values)
-	assert values == [2., 2, 2]
+	assert values == [2.0, 2, 2]
 }

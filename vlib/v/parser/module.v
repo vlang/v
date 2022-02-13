@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -18,7 +18,7 @@ fn (p &Parser) prepend_mod(name string) string {
 	if p.builtin_mod {
 		return name
 	}
-	return '${p.mod}.$name'
+	return p.mod + '.' + name
 }
 
 fn (p &Parser) is_used_import(alias string) bool {
@@ -36,7 +36,7 @@ fn (mut p Parser) register_auto_import(alias string) {
 		p.imports[alias] = alias
 		p.table.imports << alias
 		node := ast.Import{
-			pos: p.tok.position()
+			pos: p.tok.pos()
 			mod: alias
 			alias: alias
 		}

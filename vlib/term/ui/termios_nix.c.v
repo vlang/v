@@ -10,27 +10,18 @@ import time
 #include <sys/ioctl.h>
 #include <signal.h>
 
-fn C.tcgetattr(fd int, termios_p &C.termios) int
-
-fn C.tcsetattr(fd int, optional_actions int, termios_p &C.termios) int
-
-fn C.ioctl(fd int, request u64, arg voidptr) int
-
-struct C.termios {
-mut:
-	c_iflag u32
-	c_lflag u32
-	c_cc    [32]byte
-}
-
 struct C.winsize {
 	ws_row u16
 	ws_col u16
 }
 
-const (
-	termios_at_startup = get_termios()
-)
+fn C.tcgetattr(fd int, termios_p &C.termios) int
+
+fn C.tcsetattr(fd int, optional_actions int, const_termios_p &C.termios) int
+
+fn C.ioctl(fd int, request u64, arg voidptr) int
+
+const termios_at_startup = get_termios()
 
 [inline]
 fn get_termios() C.termios {
@@ -74,11 +65,11 @@ fn (mut ctx Context) termios_setup() ? {
 	if ctx.cfg.capture_events {
 		// Set raw input mode by unsetting ICANON and ECHO,
 		// as well as disable e.g. ctrl+c and ctrl.z
-		termios.c_iflag &= ~u32(C.IGNBRK | C.BRKINT | C.PARMRK | C.IXON)
-		termios.c_lflag &= ~u32(C.ICANON | C.ISIG | C.ECHO | C.IEXTEN | C.TOSTOP)
+		termios.c_iflag &= ~(C.IGNBRK | C.BRKINT | C.PARMRK | C.IXON)
+		termios.c_lflag &= ~(C.ICANON | C.ISIG | C.ECHO | C.IEXTEN | C.TOSTOP)
 	} else {
 		// Set raw input mode by unsetting ICANON and ECHO
-		termios.c_lflag &= ~u32(C.ICANON | C.ECHO)
+		termios.c_lflag &= ~(C.ICANON | C.ECHO)
 	}
 
 	if ctx.cfg.hide_cursor {
@@ -267,8 +258,14 @@ fn (mut ctx Context) parse_events() {
 			event = e
 			ctx.shift(len)
 		} else {
-			event = single_char(ctx.read_buf.bytestr())
-			ctx.shift(1)
+			if ctx.read_all_bytes {
+				e, len := multi_char(ctx.read_buf.bytestr())
+				event = e
+				ctx.shift(len)
+			} else {
+				event = single_char(ctx.read_buf.bytestr())
+				ctx.shift(1)
+			}
 		}
 		if event != 0 {
 			ctx.event(event)
@@ -278,6 +275,47 @@ fn (mut ctx Context) parse_events() {
 }
 
 fn single_char(buf string) &Event {
+	ch := buf[0]
+
+	mut event := &Event{
+		typ: .key_down
+		ascii: ch
+		code: KeyCode(ch)
+		utf8: ch.ascii_str()
+	}
+
+	match ch {
+		// special handling for `ctrl + letter`
+		// TODO: Fix assoc in V and remove this workaround :/
+		// 1  ... 26 { event = Event{ ...event, code: KeyCode(96 | ch), modifiers: .ctrl  } }
+		// 65 ... 90 { event = Event{ ...event, code: KeyCode(32 | ch), modifiers: .shift } }
+		// The bit `or`s here are really just `+`'s, just written in this way for a tiny performance improvement
+		// don't treat tab, enter as ctrl+i, ctrl+j
+		1...8, 11...26 {
+			event = &Event{
+				typ: event.typ
+				ascii: event.ascii
+				utf8: event.utf8
+				code: KeyCode(96 | ch)
+				modifiers: .ctrl
+			}
+		}
+		65...90 {
+			event = &Event{
+				typ: event.typ
+				ascii: event.ascii
+				utf8: event.utf8
+				code: KeyCode(32 | ch)
+				modifiers: .shift
+			}
+		}
+		else {}
+	}
+
+	return event
+}
+
+fn multi_char(buf string) (&Event, int) {
 	ch := buf[0]
 
 	mut event := &Event{
@@ -315,7 +353,7 @@ fn single_char(buf string) &Event {
 		else {}
 	}
 
-	return event
+	return event, buf.len
 }
 
 // Gets an entire, independent escape sequence from the buffer

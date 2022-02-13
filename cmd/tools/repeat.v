@@ -143,19 +143,19 @@ const (
 
 fn main() {
 	mut context := Context{}
-	context.parse_options()
+	context.parse_options() ?
 	context.run()
 	context.show_diff_summary()
 }
 
-fn (mut context Context) parse_options() {
+fn (mut context Context) parse_options() ? {
 	mut fp := flag.new_flag_parser(os.args)
 	fp.application(os.file_name(os.executable()))
 	fp.version('0.0.1')
 	fp.description('Repeat command(s) and collect statistics. NB: you have to quote each command, if it contains spaces.')
 	fp.arguments_description('CMD1 CMD2 ...')
 	fp.skip_executable()
-	fp.limit_free_args_to_at_least(1)
+	fp.limit_free_args_to_at_least(1) ?
 	context.count = fp.int('count', `c`, 10, 'Repetition count.')
 	context.series = fp.int('series', `s`, 2, 'Series count. `-s 2 -c 4 a b` => aaaabbbbaaaabbbb, while `-s 3 -c 2 a b` => aabbaabbaabb.')
 	context.warmup = fp.int('warmup', `w`, 2, 'Warmup runs. These are done *only at the start*, and are ignored.')

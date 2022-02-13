@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module main
 
@@ -42,50 +42,60 @@ fn check_name(name string) string {
 }
 
 fn vmod_content(c Create) string {
-	return [
-		'Module {',
-		"	name: '$c.name'",
-		"	description: '$c.description'",
-		"	version: '$c.version'",
-		"	license: '$c.license'",
-		'	dependencies: []',
-		'}',
-		'',
-	].join('\n')
+	return "Module {
+	name: '$c.name'
+	description: '$c.description'
+	version: '$c.version'
+	license: '$c.license'
+	dependencies: []
+}
+"
 }
 
 fn main_content() string {
-	return [
-		'module main\n',
-		'fn main() {',
-		"	println('Hello World!')",
-		'}',
-		'',
-	].join('\n')
+	return "module main
+
+fn main() {
+	println('Hello World!')
+}
+"
 }
 
 fn gen_gitignore(name string) string {
-	return [
-		'# Binaries for programs and plugins',
-		'main',
-		'$name',
-		'*.exe',
-		'*.exe~',
-		'*.so',
-		'*.dylib',
-		'*.dll',
-		'',
-	].join('\n')
+	return '# Binaries for programs and plugins
+main
+$name
+*.exe
+*.exe~
+*.so
+*.dylib
+*.dll
+vls.log
+'
+}
+
+fn gitattributes_content() string {
+	return '*.v linguist-language=V text=auto eol=lf
+*.vv linguist-language=V text=auto eol=lf
+'
+}
+
+fn editorconfig_content() string {
+	return '[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.v]
+indent_style = tab
+indent_size = 4
+'
 }
 
 fn (c &Create) write_vmod(new bool) {
 	vmod_path := if new { '$c.name/v.mod' } else { 'v.mod' }
-	mut vmod := os.create(vmod_path) or {
-		cerror(err.msg)
-		exit(1)
-	}
-	vmod.write_string(vmod_content(c)) or { panic(err) }
-	vmod.close()
+	os.write_file(vmod_path, vmod_content(c)) or { panic(err) }
 }
 
 fn (c &Create) write_main(new bool) {
@@ -93,12 +103,23 @@ fn (c &Create) write_main(new bool) {
 		return
 	}
 	main_path := if new { '$c.name/${c.name}.v' } else { '${c.name}.v' }
-	mut mainfile := os.create(main_path) or {
-		cerror(err.msg)
-		exit(2)
+	os.write_file(main_path, main_content()) or { panic(err) }
+}
+
+fn (c &Create) write_gitattributes(new bool) {
+	gitattributes_path := if new { '$c.name/.gitattributes' } else { '.gitattributes' }
+	if !new && os.exists(gitattributes_path) {
+		return
 	}
-	mainfile.write_string(main_content()) or { panic(err) }
-	mainfile.close()
+	os.write_file(gitattributes_path, gitattributes_content()) or { panic(err) }
+}
+
+fn (c &Create) write_editorconfig(new bool) {
+	editorconfig_path := if new { '$c.name/.editorconfig' } else { '.editorconfig' }
+	if !new && os.exists(editorconfig_path) {
+		return
+	}
+	os.write_file(editorconfig_path, editorconfig_content()) or { panic(err) }
 }
 
 fn (c &Create) create_git_repo(dir string) {
@@ -110,13 +131,9 @@ fn (c &Create) create_git_repo(dir string) {
 			exit(4)
 		}
 	}
-	if !os.exists('$dir/.gitignore') {
-		mut fl := os.create('$dir/.gitignore') or {
-			// We don't really need a .gitignore, it's just a nice-to-have
-			return
-		}
-		fl.write_string(gen_gitignore(c.name)) or { panic(err) }
-		fl.close()
+	gitignore_path := '$dir/.gitignore'
+	if !os.exists(gitignore_path) {
+		os.write_file(gitignore_path, gen_gitignore(c.name)) or {}
 	}
 }
 
@@ -150,22 +167,23 @@ fn create(args []string) {
 	os.mkdir(c.name) or { panic(err) }
 	c.write_vmod(true)
 	c.write_main(true)
+	c.write_gitattributes(true)
+	c.write_editorconfig(true)
 	c.create_git_repo(c.name)
 }
 
 fn init_project() {
-	if os.exists('v.mod') {
-		cerror('`v init` cannot be run on existing v modules')
-		exit(3)
-	}
 	mut c := Create{}
 	c.name = check_name(os.file_name(os.getwd()))
-	c.description = ''
-	c.write_vmod(false)
+	if !os.exists('v.mod') {
+		c.description = ''
+		c.write_vmod(false)
+		println('Change the description of your project in `v.mod`')
+	}
 	c.write_main(false)
+	c.write_gitattributes(false)
+	c.write_editorconfig(false)
 	c.create_git_repo('.')
-
-	println('Change the description of your project in `v.mod`')
 }
 
 fn main() {

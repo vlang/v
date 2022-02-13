@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module native
@@ -12,9 +12,10 @@ import v.errors
 import v.pref
 import term
 
-pub const builtins = ['println', 'exit']
+pub const builtins = ['assert', 'print', 'eprint', 'println', 'eprintln', 'exit', 'C.syscall']
 
 interface CodeGen {
+mut:
 	g &Gen
 	gen_exit(mut g Gen, expr ast.Expr)
 	// XXX WHY gen_exit fn (expr ast.Expr)
@@ -25,12 +26,13 @@ pub struct Gen {
 	out_name string
 	pref     &pref.Preferences // Preferences shared from V struct
 mut:
-	cgen                 CodeGen
+	code_gen             CodeGen
 	table                &ast.Table
 	buf                  []byte
 	sect_header_name_pos int
 	offset               i64
 	str_pos              []i64
+	stackframe_size      int
 	strings              []string // TODO use a map and don't duplicate strings
 	file_size_pos        i64
 	main_fn_addr         i64
@@ -42,9 +44,20 @@ mut:
 	errors               []errors.Error
 	warnings             []errors.Warning
 	syms                 []Symbol
-	relocs               []Reloc
 	size_pos             []int
 	nlines               int
+	callpatches          []CallPatch
+	strs                 []String
+}
+
+struct String {
+	str string
+	pos int
+}
+
+struct CallPatch {
+	name string
+	pos  int
 }
 
 enum Size {
@@ -54,13 +67,17 @@ enum Size {
 	_64
 }
 
-fn (g &Gen) get_backend() ?CodeGen {
-	match g.pref.arch {
+fn get_backend(arch pref.Arch) ?CodeGen {
+	match arch {
 		.arm64 {
-			return Arm64{g}
+			return Arm64{
+				g: 0
+			}
 		}
 		.amd64 {
-			return Amd64{g}
+			return Amd64{
+				g: 0
+			}
 		}
 		else {}
 	}
@@ -68,23 +85,32 @@ fn (g &Gen) get_backend() ?CodeGen {
 }
 
 pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Preferences) (int, int) {
+	exe_name := if pref.os == .windows && !out_name.ends_with('.exe') {
+		out_name + '.exe'
+	} else {
+		out_name
+	}
 	mut g := &Gen{
 		table: table
 		sect_header_name_pos: 0
-		out_name: out_name
+		out_name: exe_name
 		pref: pref
+		// TODO: workaround, needs to support recursive init
+		code_gen: get_backend(pref.arch) or {
+			eprintln('No available backend for this configuration. Use `-a arm64` or `-a amd64`.')
+			exit(1)
+		}
 	}
-	g.cgen = g.get_backend() or {
-		eprintln('No available backend for this configuration. Use `-a arm64` or `-a amd64`.')
-		exit(1)
-	}
+	g.code_gen.g = g
 	g.generate_header()
 	for file in files {
+		/*
 		if file.warnings.len > 0 {
-			eprintln('Warning: ${file.warnings[0]}')
+			eprintln('warning: ${file.warnings[0]}')
 		}
+		*/
 		if file.errors.len > 0 {
-			verror('Error ${file.errors[0]}')
+			g.n_error(file.errors[0].str())
 		}
 		g.stmts(file.stmts)
 	}
@@ -92,10 +118,17 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 	return g.nlines, g.buf.len
 }
 
+pub fn (mut g Gen) typ(a int) &ast.TypeSymbol {
+	return g.table.type_symbols[a]
+}
+
 pub fn (mut g Gen) generate_header() {
 	match g.pref.os {
 		.macos {
 			g.generate_macho_header()
+		}
+		.windows {
+			g.generate_pe_header()
 		}
 		.linux {
 			g.generate_elf_header()
@@ -106,7 +139,7 @@ pub fn (mut g Gen) generate_header() {
 			}
 		}
 		else {
-			verror('Error: only `raw`, `linux` and `macos` are supported for -os in -native')
+			g.n_error('only `raw`, `linux` and `macos` are supported for -os in -native')
 		}
 	}
 }
@@ -114,16 +147,20 @@ pub fn (mut g Gen) generate_header() {
 pub fn (mut g Gen) create_executable() {
 	// Create the binary // should be .o ?
 	os.write_file_array(g.out_name, g.buf) or { panic(err) }
-	os.chmod(g.out_name, 0o775) // make it executable
+	os.chmod(g.out_name, 0o775) or { panic(err) } // make it executable
 	if g.pref.is_verbose {
 		println('\n$g.out_name: native binary has been successfully generated')
 	}
 }
 
 pub fn (mut g Gen) generate_footer() {
+	g.patch_calls()
 	match g.pref.os {
 		.macos {
 			g.generate_macho_footer()
+		}
+		.windows {
+			g.generate_pe_footer()
 		}
 		.linux {
 			g.generate_elf_footer()
@@ -145,6 +182,12 @@ pub fn (g &Gen) pos() i64 {
 	return g.buf.len
 }
 
+fn (mut g Gen) write(bytes []byte) {
+	for _, b in bytes {
+		g.buf << b
+	}
+}
+
 fn (mut g Gen) write8(n int) {
 	// write 1 byte
 	g.buf << byte(n)
@@ -157,7 +200,8 @@ fn (mut g Gen) write16(n int) {
 }
 
 fn (mut g Gen) read32_at(at int) int {
-	return int(g.buf[at] | (g.buf[at + 1] << 8) | (g.buf[at + 2] << 16) | (g.buf[at + 3] << 24))
+	return int(u32(g.buf[at]) | (u32(g.buf[at + 1]) << 8) | (u32(g.buf[at + 2]) << 16) | (u32(g.buf[
+		at + 3]) << 24))
 }
 
 fn (mut g Gen) write32(n int) {
@@ -219,40 +263,166 @@ fn (mut g Gen) write_string_with_padding(s string, max int) {
 fn (mut g Gen) get_var_offset(var_name string) int {
 	offset := g.var_offset[var_name]
 	if offset == 0 {
-		verror('unknown variable `$var_name`')
+		g.n_error('unknown variable `$var_name`')
 	}
 	return offset
 }
 
-pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, newline bool) {
+pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, name string) {
+	newline := name in ['println', 'eprintln']
+	fd := if name in ['eprint', 'eprintln'] { 2 } else { 1 }
 	match expr {
 		ast.StringLiteral {
 			if newline {
-				g.gen_print(expr.val + '\n')
+				g.gen_print(expr.val + '\n', fd)
 			} else {
-				g.gen_print(expr.val)
+				g.gen_print(expr.val, fd)
 			}
 		}
 		ast.CallExpr {
 			g.call_fn(expr)
-			g.gen_print_reg(.rax, 3)
+			g.gen_print_reg(.rax, 3, fd)
 		}
 		ast.Ident {
 			g.expr(expr)
-			g.gen_print_reg(.rax, 3)
+			g.gen_print_reg(.rax, 3, fd)
+		}
+		ast.IntegerLiteral {
+			g.mov64(.rax, g.allocate_string('$expr.val\n', 2))
+			g.gen_print_reg(.rax, 3, fd)
+		}
+		ast.BoolLiteral {
+			// register 'true' and 'false' strings // g.expr(expr)
+			if expr.val {
+				g.mov64(.rax, g.allocate_string('true', 2))
+			} else {
+				g.mov64(.rax, g.allocate_string('false', 2))
+			}
+			g.gen_print_reg(.rax, 3, fd)
+		}
+		ast.SizeOf {}
+		ast.OffsetOf {
+			styp := g.typ(expr.struct_type)
+			field_name := expr.field
+			if styp.kind == .struct_ {
+				s := styp.info as ast.Struct
+				ptrsz := 4 // should be 8, but for locals is used 8 and C backend shows that too
+				mut off := 0
+				for f in s.fields {
+					if f.name == field_name {
+						g.mov64(.rax, g.allocate_string('$off\n', 2))
+						g.gen_print_reg(.rax, 3, fd)
+						break
+					}
+					off += ptrsz
+				}
+			} else {
+				g.v_error('_offsetof expects a struct Type as first argument', expr.pos)
+			}
+		}
+		ast.None {}
+		ast.EmptyExpr {
+			g.n_error('unhandled EmptyExpr')
+		}
+		ast.PostfixExpr {}
+		ast.PrefixExpr {}
+		ast.SelectorExpr {
+			// struct.field
+			g.expr(expr)
+			g.gen_print_reg(.rax, 3, fd)
+			/*
+			field_name := expr.field_name
+g.expr
+			if expr.is_mut {
+				// mutable field access (rw)
+			}
+			*/
+			dump(expr)
+			g.v_error('struct.field selector not yet implemented for this backend', expr.pos)
+		}
+		ast.NodeError {}
+		/*
+		ast.AnonFn {}
+		ast.ArrayDecompose {}
+		ast.ArrayInit {}
+		ast.AsCast {}
+		ast.Assoc {}
+		ast.AtExpr {}
+		ast.CTempVar {}
+		ast.CastExpr {}
+		ast.ChanInit {}
+		ast.CharLiteral {}
+		ast.Comment {}
+		ast.ComptimeCall {}
+		ast.ComptimeSelector {}
+		ast.ConcatExpr {}
+		ast.DumpExpr {}
+		ast.EnumVal {}
+		ast.GoExpr {}
+		ast.IfGuardExpr {}
+		ast.IndexExpr {}
+		ast.InfixExpr {}
+		ast.IsRefType {}
+		ast.MapInit {}
+		ast.MatchExpr {}
+		ast.OrExpr {}
+		ast.ParExpr {}
+		ast.RangeExpr {}
+		ast.SelectExpr {}
+		ast.SqlExpr {}
+		ast.TypeNode {}
+		ast.TypeOf {}
+		*/
+		ast.LockExpr {
+			// passthru
+			eprintln('Warning: locks not implemented yet in the native backend')
+			g.expr(expr)
+		}
+		ast.Likely {
+			// passthru
+			g.expr(expr)
+		}
+		ast.UnsafeExpr {
+			// passthru
+			g.expr(expr)
+		}
+		ast.StringInterLiteral {
+			g.n_error('Interlaced string literals are not yet supported in the native backend.') // , expr.pos)
 		}
 		else {
 			dump(typeof(expr).name)
 			dump(expr)
-			verror('expected string as argument for print')
+			//	g.v_error('expected string as argument for print', expr.pos)
+			g.n_error('expected string as argument for print') // , expr.pos)
 		}
 	}
 }
 
+fn (mut g Gen) fn_decl(node ast.FnDecl) {
+	if g.pref.is_verbose {
+		println(term.green('\n$node.name:'))
+	}
+	if node.is_deprecated {
+		g.warning('fn_decl: $node.name is deprecated', node.pos)
+	}
+	if node.is_builtin {
+		g.warning('fn_decl: $node.name is builtin', node.pos)
+	}
+	g.stack_var_pos = 0
+	g.register_function_address(node.name)
+	if g.pref.arch == .arm64 {
+		g.fn_decl_arm64(node)
+	} else {
+		g.fn_decl_amd64(node)
+	}
+}
+
 pub fn (mut g Gen) register_function_address(name string) {
-	addr := g.pos()
-	// eprintln('register function $name = $addr')
-	g.fn_addr[name] = addr
+	if name == 'main.main' {
+		g.main_fn_addr = i64(g.buf.len)
+	} else {
+		g.fn_addr[name] = g.pos()
+	}
 }
 
 fn (mut g Gen) println(comment string) {
@@ -263,7 +433,7 @@ fn (mut g Gen) println(comment string) {
 	addr := g.debug_pos.hex()
 	// println('$g.debug_pos "$addr"')
 	print(term.red(strings.repeat(`0`, 6 - addr.len) + addr + '  '))
-	for i := g.debug_pos; i < g.buf.len; i++ {
+	for i := g.debug_pos; i < g.pos(); i++ {
 		s := g.buf[i].hex()
 		if s.len == 1 {
 			print(term.blue('0'))
@@ -276,30 +446,89 @@ fn (mut g Gen) println(comment string) {
 	println(' ' + comment)
 }
 
-fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
-	verror('for-in statement is not yet implemented')
-	/*
-	if node.is_range {
-		// `for x in 1..10 {`
-		// i := if node.val_var == '_' { g.new_tmp_var() } else { c_name(node.val_var) }
-		// val_typ := g.table.mktyp(node.val_type)
-		g.write32(0x3131) // 'for (${g.typ(val_typ)} $i = ')
+fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
+	if node.has_init {
+		g.stmts([node.init])
+	}
+	start := g.pos()
+	mut jump_addr := i64(0)
+	if node.has_cond {
+		cond := node.cond
+		match cond {
+			ast.InfixExpr {
+				// g.infix_expr(node.cond)
+				match mut cond.left {
+					ast.Ident {
+						lit := cond.right as ast.IntegerLiteral
+						g.cmp_var(cond.left.name, lit.val.int())
+						match cond.op {
+							.gt {
+								jump_addr = g.cjmp(.jle)
+							}
+							.lt {
+								jump_addr = g.cjmp(.jge)
+							}
+							else {
+								g.n_error('unsupported conditional in for-c loop')
+							}
+						}
+					}
+					else {
+						g.n_error('unhandled infix.left')
+					}
+				}
+			}
+			else {}
+		}
+		// dump(node.cond)
 		g.expr(node.cond)
-		g.write32(0x3232) // ; $i < ')
-		g.expr(node.high)
-		g.write32(0x3333) // '; ++$i) {')
+	}
+	g.stmts(node.stmts)
+	if node.has_inc {
+		g.stmts([node.inc])
+	}
+	g.jmp(int(0xffffffff - (g.pos() + 5 - start) + 1))
+	g.write32_at(jump_addr, int(g.pos() - jump_addr - 4))
+
+	// loop back
+}
+
+fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
+	if node.stmts.len == 0 {
+		// if no statements, just dont make it
+		return
+	}
+	if node.is_range {
+		// for a in node.cond .. node.high {
+		i := g.allocate_var(node.val_var, 8, 0) // iterator variable
+		g.expr(node.cond)
+		g.mov_reg_to_var(i, .rax) // i = node.cond // initial value
+		start := g.pos() // label-begin:
+		g.mov_var_to_reg(.rbx, i) // rbx = iterator value
+		g.expr(node.high) // final value
+		g.cmp_reg(.rbx, .rax) // rbx = iterator, rax = max value
+		jump_addr := g.cjmp(.jge) // leave loop if i is beyond end
+		g.stmts(node.stmts)
+		g.inc_var(node.val_var)
+		g.jmp(int(0xffffffff - (g.pos() + 5 - start) + 1))
+		g.write32_at(jump_addr, int(g.pos() - jump_addr - 4))
+		/*
 		} else if node.kind == .array {
 	} else if node.kind == .array_fixed {
 	} else if node.kind == .map {
 	} else if node.kind == .string {
 	} else if node.kind == .struct_ {
+	} else if it.kind in [.array, .string] || it.cond_type.has_flag(.variadic) {
+	} else if it.kind == .map {
+		*/
+	} else {
+		g.v_error('for-in statement is not yet implemented', node.pos)
 	}
-	*/
 }
 
 pub fn (mut g Gen) gen_exit(node ast.Expr) {
-	// check node type and then call the cgen method
-	g.cgen.gen_exit(mut g, node)
+	// check node type and then call the code_gen method
+	g.code_gen.gen_exit(mut g, node)
 }
 
 fn (mut g Gen) stmt(node ast.Stmt) {
@@ -317,6 +546,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.FnDecl {
 			g.fn_decl(node)
 		}
+		ast.ForCStmt {
+			g.gen_forc_stmt(node)
+		}
 		ast.ForInStmt {
 			g.for_in_stmt(node)
 		}
@@ -327,7 +559,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			words := node.val.split(' ')
 			for word in words {
 				if word.len != 2 {
-					verror('opcodes format: xx xx xx xx')
+					g.n_error('opcodes format: xx xx xx xx')
 				}
 				b := unsafe { C.strtol(&char(word.str), 0, 16) }
 				// b := word.byte()
@@ -341,77 +573,170 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// if in main
 			// zero := ast.IntegerLiteral{}
 			// g.gen_exit(zero)
-			dump(node)
-			dump(node.types)
+			// dump(node)
+			// dump(node.types)
 			mut s := '?' //${node.exprs[0].val.str()}'
 			e0 := node.exprs[0]
 			match e0 {
 				ast.IntegerLiteral {
-					// TODO
+					g.mov64(.rax, e0.val.int())
+				}
+				ast.InfixExpr {
+					g.infix_expr(e0)
+				}
+				ast.CastExpr {
+					g.mov64(.rax, e0.expr.str().int())
+					// do the job
 				}
 				ast.StringLiteral {
 					s = e0.val.str()
-					eprintln('jlalala $s')
+					g.expr(node.exprs[0])
+					g.mov64(.rax, g.allocate_string(s, 2))
+				}
+				ast.Ident {
+					g.expr(e0)
 				}
 				else {
-					verror('unknown return type')
+					g.n_error('unknown return type $e0.type_name()')
 				}
 			}
-			g.expr(node.exprs[0])
-			g.mov64(.rax, g.allocate_string(s, 2))
 			// intel specific
-			g.add8(.rsp, 0x20) // XXX depends on scope frame size
+			g.add8(.rsp, g.stackframe_size)
 			g.pop(.rbp)
 			g.ret()
 		}
+		ast.AsmStmt {
+			g.gen_asm_stmt(node)
+		}
+		ast.AssertStmt {
+			g.gen_assert(node)
+		}
+		ast.Import {} // do nothing here
 		ast.StructDecl {}
 		else {
-			println('native.stmt(): bad node: ' + node.type_name())
+			eprintln('native.stmt(): bad node: ' + node.type_name())
 		}
 	}
 }
 
 fn C.strtol(str &char, endptr &&char, base int) int
 
+fn (mut g Gen) gen_syscall(node ast.CallExpr) {
+	mut i := 0
+	mut ra := [Register.rax, .rdi, .rsi, .rdx]
+	for i < node.args.len {
+		expr := node.args[i].expr
+		if i >= ra.len {
+			g.warning('Too many arguments for syscall', node.pos)
+			return
+		}
+		match expr {
+			ast.IntegerLiteral {
+				g.mov(ra[i], expr.val.int())
+			}
+			ast.BoolLiteral {
+				g.mov(ra[i], if expr.val { 1 } else { 0 })
+			}
+			ast.SelectorExpr {
+				mut done := false
+				if expr.field_name == 'str' {
+					match expr.expr {
+						ast.StringLiteral {
+							s := expr.expr.val.replace('\\n', '\n')
+							g.allocate_string(s, 2)
+							g.mov64(ra[i], 1)
+							done = true
+						}
+						else {}
+					}
+				}
+				if !done {
+					g.v_error('Unknown selector in syscall argument type $expr', node.pos)
+				}
+			}
+			ast.StringLiteral {
+				if expr.language != .c {
+					g.warning('C.syscall expects c"string" or "string".str, C backend will crash',
+						node.pos)
+				}
+				s := expr.val.replace('\\n', '\n')
+				g.allocate_string(s, 2)
+				g.mov64(ra[i], 1)
+			}
+			else {
+				g.v_error('Unknown syscall $expr.type_name() argument type $expr', node.pos)
+				return
+			}
+		}
+		i++
+	}
+	g.syscall()
+}
+
 fn (mut g Gen) expr(node ast.Expr) {
 	match node {
-		ast.ArrayInit {
-			verror('array init expr not supported yet')
+		ast.ParExpr {
+			g.expr(node.expr)
 		}
-		ast.BoolLiteral {}
+		ast.ArrayInit {
+			g.n_error('array init expr not supported yet')
+		}
+		ast.BoolLiteral {
+			g.mov64(.rax, if node.val { 1 } else { 0 })
+			eprintln('bool literal')
+		}
 		ast.CallExpr {
-			if node.name == 'exit' {
+			if node.name == 'C.syscall' {
+				g.gen_syscall(node)
+			} else if node.name == 'exit' {
 				g.gen_exit(node.args[0].expr)
-				return
-			}
-			if node.name in ['println', 'print', 'eprintln', 'eprint'] {
+			} else if node.name in ['println', 'print', 'eprintln', 'eprint'] {
 				expr := node.args[0].expr
-				g.gen_print_from_expr(expr, node.name in ['println', 'eprintln'])
-				return
+				g.gen_print_from_expr(expr, node.name)
+			} else {
+				g.call_fn(node)
 			}
-			g.call_fn(node)
 		}
 		ast.FloatLiteral {}
-		ast.Ident {}
-		ast.IfExpr {
-			g.if_expr(node)
+		ast.Ident {
+			offset := g.get_var_offset(node.obj.name) // i := 0
+			// offset := g.get_var_offset(node.name)
+			// XXX this is intel specific
+			g.mov_var_to_reg(.rax, offset)
 		}
-		ast.InfixExpr {}
-		ast.IntegerLiteral {}
+		ast.IfExpr {
+			if node.is_comptime {
+				eprintln('Warning: ignored compile time conditional not yet supported for the native backend.')
+			} else {
+				g.if_expr(node)
+			}
+		}
+		ast.InfixExpr {
+			g.infix_expr(node)
+			// get variable by name
+			// save the result in rax
+		}
+		ast.IntegerLiteral {
+			g.mov64(.rax, node.val.int())
+			// g.gen_print_reg(.rax, 3, fd)
+		}
 		ast.PostfixExpr {
 			g.postfix_expr(node)
 		}
 		ast.StringLiteral {}
 		ast.StructInit {}
+		ast.GoExpr {
+			g.v_error('native backend doesnt support threads yet', node.pos)
+		}
 		else {
-			println(term.red('native.expr(): unhandled node: ' + node.type_name()))
+			g.n_error('expr: unhandled node type: $node.type_name()')
 		}
 	}
 }
 
 /*
 fn (mut g Gen) allocate_var(name string, size int, initial_val int) {
-	g.cgen.allocate_var(name, size, initial_val)
+	g.code_gen.allocate_var(name, size, initial_val)
 }
 */
 
@@ -421,17 +746,37 @@ fn (mut g Gen) postfix_expr(node ast.PostfixExpr) {
 	}
 	ident := node.expr as ast.Ident
 	var_name := ident.name
-	if node.op == .inc {
-		g.inc_var(var_name)
+	match node.op {
+		.inc {
+			g.inc_var(var_name)
+		}
+		.dec {
+			g.dec_var(var_name)
+		}
+		else {}
 	}
 }
 
 [noreturn]
-fn verror(s string) {
-	util.verror('native gen error', s)
+pub fn (mut g Gen) n_error(s string) {
+	util.verror('native error', s)
 }
 
-pub fn (mut g Gen) error_with_pos(s string, pos token.Position) {
+pub fn (mut g Gen) warning(s string, pos token.Pos) {
+	if g.pref.output_mode == .stdout {
+		werror := util.formatted_error('warning', s, g.pref.path, pos)
+		eprintln(werror)
+	} else {
+		g.warnings << errors.Warning{
+			file_path: g.pref.path
+			pos: pos
+			reporter: .gen
+			message: s
+		}
+	}
+}
+
+pub fn (mut g Gen) v_error(s string, pos token.Pos) {
 	// TODO: store a file index in the Position too,
 	// so that the file path can be retrieved from the pos, instead
 	// of guessed from the pref.path ...

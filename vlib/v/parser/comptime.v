@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module parser
@@ -14,7 +14,7 @@ const (
 
 // // #include, #flag, #v
 fn (mut p Parser) hash() ast.HashStmt {
-	pos := p.tok.position()
+	pos := p.tok.pos()
 	val := p.tok.lit
 	kind := val.all_before(' ')
 	p.next()
@@ -39,61 +39,69 @@ fn (mut p Parser) hash() ast.HashStmt {
 	}
 }
 
-fn (mut p Parser) comp_call() ast.ComptimeCall {
+fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	err_node := ast.ComptimeCall{
 		scope: 0
 	}
 	p.check(.dollar)
-	start_pos := p.prev_tok.position()
+	start_pos := p.prev_tok.pos()
 	error_msg := 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()` and `\$vweb.html()` comptime functions are supported right now'
 	if p.peek_tok.kind == .dot {
-		n := p.check_name() // skip `vweb.html()` TODO
-		if n != 'vweb' {
+		name := p.check_name() // skip `vweb.html()` TODO
+		if name != 'vweb' {
 			p.error(error_msg)
 			return err_node
 		}
 		p.check(.dot)
 	}
-	n := p.check_name() // (.name)
-	if n !in parser.supported_comptime_calls {
+	method_name := p.check_name() // (.name)
+	if method_name !in parser.supported_comptime_calls {
 		p.error(error_msg)
 		return err_node
 	}
-	is_embed_file := n == 'embed_file'
-	is_html := n == 'html'
+	is_embed_file := method_name == 'embed_file'
+	is_html := method_name == 'html'
 	// $env('ENV_VAR_NAME')
 	p.check(.lpar)
-	spos := p.tok.position()
-	if n == 'env' {
+	spos := p.tok.pos()
+	if method_name == 'env' {
 		s := p.tok.lit
 		p.check(.string)
 		p.check(.rpar)
 		return ast.ComptimeCall{
 			scope: 0
-			method_name: n
+			method_name: method_name
 			args_var: s
 			is_env: true
 			env_pos: spos
-			pos: spos.extend(p.prev_tok.position())
+			pos: spos.extend(p.prev_tok.pos())
 		}
 	}
-	if n == 'pkgconfig' {
+	if method_name == 'pkgconfig' {
 		s := p.tok.lit
 		p.check(.string)
 		p.check(.rpar)
 		return ast.ComptimeCall{
 			scope: 0
-			method_name: n
+			method_name: method_name
 			args_var: s
 			is_pkgconfig: true
 			env_pos: spos
-			pos: spos.extend(p.prev_tok.position())
+			pos: spos.extend(p.prev_tok.pos())
 		}
 	}
 	literal_string_param := if is_html { '' } else { p.tok.lit }
 	path_of_literal_string_param := literal_string_param.replace('/', os.path_separator)
 	if !is_html {
 		p.check(.string)
+	}
+	mut embed_compression_type := 'none'
+	if is_embed_file {
+		if p.tok.kind == .comma {
+			p.check(.comma)
+			p.check(.dot)
+			embed_compression_type = p.check_name()
+		}
 	}
 	p.check(.rpar)
 	// $embed_file('/path/to/file')
@@ -110,7 +118,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 			// check absolute path first
 			if !os.exists(abs_path) {
 				// ... look relative to the source file:
-				epath = os.real_path(os.join_path(os.dir(p.file_name), epath))
+				epath = os.real_path(os.join_path_single(os.dir(p.file_name), epath))
 				if !os.exists(epath) {
 					p.error_with_pos('"$epath" does not exist so it cannot be embedded',
 						spos)
@@ -125,15 +133,20 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 				epath = abs_path
 			}
 		}
-		p.register_auto_import('v.embed_file')
+		p.register_auto_import('v.preludes.embed_file')
+		if embed_compression_type == 'zlib'
+			&& (p.pref.is_prod || 'debug_embed_file_in_prod' in p.pref.compile_defines) {
+			p.register_auto_import('v.preludes.embed_file.zlib')
+		}
 		return ast.ComptimeCall{
 			scope: 0
 			is_embed: true
 			embed_file: ast.EmbeddedFile{
 				rpath: literal_string_param
 				apath: epath
+				compression_type: embed_compression_type
 			}
-			pos: start_pos.extend(p.prev_tok.position())
+			pos: start_pos.extend(p.prev_tok.pos())
 		}
 	}
 	// Compile vweb html template to V code, parse that V code and embed the resulting V function
@@ -144,11 +157,15 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 	tmpl_path := if is_html { '${fn_path.last()}.html' } else { path_of_literal_string_param }
 	// Looking next to the vweb program
 	dir := os.dir(compiled_vfile_path)
-	mut path := os.join_path(dir, fn_path_joined)
+	mut path := os.join_path_single(dir, fn_path_joined)
 	path += '.html'
 	path = os.real_path(path)
 	if !is_html {
-		path = os.join_path(dir, tmpl_path)
+		if os.is_abs_path(tmpl_path) {
+			path = tmpl_path
+		} else {
+			path = os.join_path_single(dir, tmpl_path)
+		}
 	}
 	if !os.exists(path) {
 		if is_html {
@@ -161,9 +178,9 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 				return ast.ComptimeCall{
 					scope: 0
 					is_vweb: true
-					method_name: n
+					method_name: method_name
 					args_var: literal_string_param
-					pos: start_pos.extend(p.prev_tok.position())
+					pos: start_pos.extend(p.prev_tok.pos())
 				}
 			}
 			if is_html {
@@ -175,7 +192,7 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		}
 		// println('path is now "$path"')
 	}
-	tmp_fn_name := p.cur_fn_name.replace('.', '__')
+	tmp_fn_name := p.cur_fn_name.replace('.', '__') + start_pos.pos.str()
 	$if trace_comptime ? {
 		println('>>> compiling comptime template file "$path" for $tmp_fn_name')
 	}
@@ -226,28 +243,28 @@ fn (mut p Parser) comp_call() ast.ComptimeCall {
 		scope: 0
 		is_vweb: true
 		vweb_tmpl: file
-		method_name: n
+		method_name: method_name
 		args_var: literal_string_param
-		pos: start_pos.extend(p.prev_tok.position())
+		pos: start_pos.extend(p.prev_tok.pos())
 	}
 }
 
-fn (mut p Parser) comp_for() ast.CompFor {
-	// p.comp_for() handles these special forms:
+fn (mut p Parser) comptime_for() ast.ComptimeFor {
+	// p.comptime_for() handles these special forms:
 	// $for method in App(methods) {
 	// $for field in App(fields) {
 	p.next()
 	p.check(.key_for)
-	var_pos := p.tok.position()
+	var_pos := p.tok.pos()
 	val_var := p.check_name()
 	p.check(.key_in)
-	mut typ_pos := p.tok.position()
+	mut typ_pos := p.tok.pos()
 	lang := p.parse_language()
 	typ := p.parse_any_type(lang, false, false)
-	typ_pos = typ_pos.extend(p.prev_tok.position())
+	typ_pos = typ_pos.extend(p.prev_tok.pos())
 	p.check(.dot)
 	for_val := p.check_name()
-	mut kind := ast.CompForKind.methods
+	mut kind := ast.ComptimeForKind.methods
 	p.open_scope()
 	if for_val == 'methods' {
 		p.scope.register(ast.Var{
@@ -271,19 +288,19 @@ fn (mut p Parser) comp_for() ast.CompFor {
 		kind = .attributes
 	} else {
 		p.error_with_pos('unknown kind `$for_val`, available are: `methods`, `fields` or `attributes`',
-			p.prev_tok.position())
-		return ast.CompFor{}
+			p.prev_tok.pos())
+		return ast.ComptimeFor{}
 	}
-	spos := p.tok.position()
+	spos := p.tok.pos()
 	stmts := p.parse_block()
 	p.close_scope()
-	return ast.CompFor{
+	return ast.ComptimeFor{
 		val_var: val_var
 		stmts: stmts
 		kind: kind
 		typ: typ
 		typ_pos: typ_pos
-		pos: spos.extend(p.tok.position())
+		pos: spos.extend(p.tok.pos())
 	}
 }
 
@@ -309,16 +326,16 @@ fn (mut p Parser) at() ast.AtExpr {
 	p.next()
 	return ast.AtExpr{
 		name: name
-		pos: p.tok.position()
+		pos: p.tok.pos()
 		kind: kind
 	}
 }
 
 fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 	p.check(.dollar)
-	start_pos := p.prev_tok.position()
+	start_pos := p.prev_tok.pos()
 	if p.peek_tok.kind == .lpar {
-		method_pos := p.tok.position()
+		method_pos := p.tok.pos()
 		method_name := p.check_name()
 		p.mark_var_as_used(method_name)
 		// `app.$action()` (`action` is a string)
@@ -336,7 +353,7 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 			scope: p.scope
 			args_var: ''
 			args: args
-			pos: start_pos.extend(p.prev_tok.position())
+			pos: start_pos.extend(p.prev_tok.pos())
 		}
 	}
 	mut has_parens := false
@@ -344,7 +361,7 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 		p.check(.lpar)
 		has_parens = true
 	} else {
-		p.warn_with_pos('use brackets instead e.g. `s.$(field.name)` - run vfmt', p.tok.position())
+		p.warn_with_pos('use brackets instead e.g. `s.$(field.name)` - run vfmt', p.tok.pos())
 	}
 	expr := p.expr(0)
 	if has_parens {
@@ -354,6 +371,6 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 		has_parens: has_parens
 		left: left
 		field_expr: expr
-		pos: start_pos.extend(p.prev_tok.position())
+		pos: start_pos.extend(p.prev_tok.pos())
 	}
 }

@@ -45,11 +45,11 @@ fn test_interpolation_array_to_string() {
 
 fn test_interpolation_array_of_map_to_string() {
 	mut ams := []map[string]string{}
-	ams << map{
+	ams << {
 		'a': 'b'
 		'c': 'd'
 	}
-	ams << map{
+	ams << {
 		'e': 'f'
 		'g': 'h'
 	}

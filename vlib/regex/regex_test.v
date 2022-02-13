@@ -1,5 +1,6 @@
 import regex
 import rand
+import strings
 
 /******************************************************************************
 *
@@ -17,9 +18,9 @@ const(
 match_test_suite = [
 	// minus in CC
 	TestItem{"d.def",r"abc.\.[\w\-]{,100}",-1,0},
-	TestItem{"abc12345.asd",r"abc.\.[\w\-]{,100}",-1,0},
+	TestItem{"abc12345.asd",r"abc.\.[\w\-]{,100}",-1,4},
 	TestItem{"abca.exe",r"abc.\.[\w\-]{,100}",0,8},
-	TestItem{"abc2.exe-test_12",r"abc.\.[\w\-]{,100}",0,13},
+	TestItem{"abc2.exe-test_12",r"abc.\.[\w\-]{,100}",0,16},
 	TestItem{"abcdefGHK",r"[a-f]+\A+",0,9},
 	TestItem{"ab-cd-efGHK",r"[a-f\-g]+\A+",0,11},
 
@@ -95,30 +96,30 @@ match_test_suite = [
 
 	// negative
 	TestItem{"zthis ciao",r"((t[hieo]+se?)\s*)+",-1,0},
-	TestItem{"this is a good.",r"thes",-1,0},
-	TestItem{"test1post.pip.com, pera",r"[\w]+@([\w]+\.)+\w+",-1,0},
+	TestItem{"this is a good.",r"thes",-1,2},
+	TestItem{"test1post.pip.com, pera",r"[\w]+@([\w]+\.)+\w+",-1,9},
 	TestItem{"this cpapaz adce",r"(c(pa)+z)(\s[\a]+){2}",-1,0},
 	TestItem{"this cpapaz adce aabe third",r"(c(pa)+z)(\s[\a]+){2}$",-1,0},
 	TestItem{"1234this cpapaz adce aabe ter",r"(c(pa)+z)(\s[\a]+){2}$",-1,0},
 	TestItem{"cpapaz ole. pipipo,",r"^.*c.+ol?e.*p([ip])+o$",-1,0},
-	TestItem{"/home/us_er/pippo/info-01.jpeg", r"(/?[-\w_]+)*\.txt$",-1,0}
+	TestItem{"/home/us_er/pippo/info-01.jpeg", r"(/?[-\w_]+)*\.txt$",-1,26}
 
 	// check unicode
 	TestItem{"this is a Ⅰ Ⅱ Ⅲ Ⅳ Ⅴ Ⅵ test",r".*a [Ⅰ-Ⅵ ]+",0,34},
 	TestItem{"123Ⅰ Ⅱ Ⅲ Ⅳ Ⅴ Ⅵ test",r"[Ⅰ-Ⅴ\s]+",3,23},
 
 	// new edge cases
-	TestItem{"12345678", r"[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]",-1,0},
+	TestItem{"12345678", r"[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]",-1,8},
 	TestItem{"12345678", r"[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]",0,8},
 	TestItem{"123456789", r"^[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]$",0,9}
 	TestItem{"12345678", r"^\d{8}$",0,8},
 	TestItem{"12345678", r"^\d{7}$",-1,0},
-	TestItem{"12345678", r"^\d{9}$",-1,0},
+	TestItem{"12345678", r"^\d{9}$",-1,8},
 	
 	TestItem{"eth", r"(oth)|(eth)",0,3},
-	TestItem{"et", r"(oth)|(eth)",-1,0},
-	TestItem{"et", r".*(oth)|(eth)",-1,0},
-	TestItem{"peoth", r".*(ith)|(eth)",-1,0},
+	TestItem{"et", r"(oth)|(eth)",-1,2},
+	TestItem{"et", r".*(oth)|(eth)",-1,2},
+	TestItem{"peoth", r".*(ith)|(eth)",-1,5},
 
 	TestItem{"poth", r"(eth)|(oth)",1,4},
 	TestItem{"poth", r"(oth)|(eth)",1,4},
@@ -131,13 +132,15 @@ match_test_suite = [
 	TestItem{"accccb deer", r"^a(.*)b d(.+)r",0,11},
 	TestItem{"accccb deer", r"^a(.*)b d(.+)",0,11},
 	TestItem{"accccb deer", r"^(.*)$",0,11},
-	TestItem{"accccb deer", r"^a(.*)b d(.+)p",-1,0},
+	TestItem{"accccb deer", r"^a(.*)b d(.+)p",-1,11},
 	TestItem{"##.#....#.##.####...#.##", r".{18}[.#]",0,19},
 	TestItem{"#.#......##.#..#..##........##....###...##...######.......#.....#..#......#...#........###.#..#.", r'.*#[.#]{4}##[.#]{4}##[.#]{4}###',0,49},
 
 	// test bcksls chars
 	TestItem{"[ an s. s! ]( wi4ki:something )", r"\[.*\]\( *(\w*:*\w+) *\)",0,31},
 	TestItem{"[ an s. s! ](wiki:something)", r"\[.*\]\( *(\w*:*\w+) *\)",0,28},
+	TestItem{"p_p", r"\w+",0,3},
+	TestItem{"p_é", r"\w+",0,2},
 	
 	// Crazywulf tests (?:^|[()])(\d+)(*)(\d+)(?:$|[()])
     TestItem{"1*1", r"(\d+)([*])(\d+)",0,3},
@@ -153,6 +156,15 @@ match_test_suite = [
     // particular groups
     TestItem{"ababababac", r"ab(.*)(ac)",0,10},
 
+    // backslash on finish string
+    TestItem{"a", r"\S+",0,1},
+    TestItem{"aaaa", r"\S+",0,4},
+    TestItem{"aaaa ", r"\S+",0,4},
+
+    // multiple dot char
+    TestItem{"aba", r"a*(b*)*a",0,3},
+    TestItem{"/*x*/", r"/\**(.*)\**/",0,5},
+    TestItem{"/*x*/", r"/*(.*)*/",0,5},
 ]
 )
 
@@ -321,23 +333,29 @@ find_all_test_suite = [
 		[29, 49],
 		['#....###...##...####']
 	},
-		Test_find_all{
+	Test_find_all{
 		"#.#......##.#..#..##........##....###...##...######.......#.....#..#......#...#........###.#..#.",
 		r".*#[.#]{4}##[.#]{4}##[.#]{4}###",
 		[0, 49],
 		['#.#......##.#..#..##........##....###...##...####']
 	},
-		Test_find_all{
+	Test_find_all{
 		"1234 Aa dddd Aaf 12334 Aa opopo Aaf",
 		r"Aa.+Aaf",
 		[5, 16, 23, 35],
 		['Aa dddd Aaf', 'Aa opopo Aaf']
 	},
-		Test_find_all{
+	Test_find_all{
 		"@for something @endfor @for something else @endfor altro testo @for body @endfor uno due @for senza dire più @endfor pippo",
 		r"@for.+@endfor",
 		[0, 22, 23, 50, 63, 80, 89, 117],
 		['@for something @endfor', '@for something else @endfor', '@for body @endfor', '@for senza dire più @endfor']
+	},
+	Test_find_all{
+		"+++pippo+++\n elvo +++ pippo2 +++ +++ oggi+++",
+		r"\+{3}.*\+{3}",
+		[0, 11, 18, 32, 33, 44],
+		['+++pippo+++', '+++ pippo2 +++', '+++ oggi+++']
 	}
 
 ]
@@ -377,9 +395,8 @@ fn test_regex(){
 		}
 
 		if start != to.s || end != to.e {
-			//println("#$c [$to.src] q[$to.q] res[$tmp_str] $start, $end")
+			println("#$c [$to.src] q[$to.q] res[$tmp_str] base:[${to.s},${to.e}] $start, $end")
 			eprintln("ERROR!")
-			//C.printf("ERROR!! res:(%d, %d) refh:(%d, %d)\n",start, end, to.s, to.e)
 			assert false
 			continue
 		}	
@@ -418,8 +435,8 @@ fn test_regex(){
 			for ln:=0; ln < re.groups.len; ln++ {
 				if re.groups[ln] != to.cg[ln] {
 					eprintln("Capture group doesn't match:")
-					eprintln("true ground: [${to.cg}]")
-					eprintln("elaborated : [${re.groups}]")
+					eprintln("true ground: ${to.cg}")
+					eprintln("elaborated : ${re.groups}")
 					assert false
 				}
 			} 
@@ -539,9 +556,15 @@ fn test_regex(){
 		if start != to.s || end != to.e {
 			eprintln("#$c [$to.src] q[$to.q] res[$tmp_str] $start, $end")
 			eprintln("ERROR!")
-			//C.printf("ERROR!! res:(%d, %d) refh:(%d, %d)\n",start, end, to.s, to.e)
 			assert false
 			continue
+		}
+
+		// test the match predicate
+		if to.s >= 0 {
+			assert re.matches_string(to.src)
+		} else {
+			assert !re.matches_string(to.src)
 		}
 
 		// rerun to test consistency
@@ -573,13 +596,27 @@ fn test_regex_func(){
 	}
 }
 
+fn my_repl_1(re regex.RE, in_txt string, start int, end int) string {
+	s0 := re.get_group_by_id(in_txt,0)
+	println("[$start, $end] => ${s0}")
+	return "a" + s0.to_upper()
+}
+
+fn test_regex_func_replace1(){
+	txt := "abbabbbabbbbaabba"
+	query := r"a(b+)"
+	mut re := regex.regex_opt(query) or { panic(err) }
+	result := re.replace_by_fn(txt, my_repl_1)
+
+	assert result == "aBBaBBBaBBBBaaBBa"
+}
+
 fn my_repl(re regex.RE, in_txt string, start int, end int) string {
 	s0 := re.get_group_by_id(in_txt,0)[0..1] + "X"
 	s1 := re.get_group_by_id(in_txt,1)[0..1] + "X"
 	s2 := re.get_group_by_id(in_txt,2)[0..1] + "X"
 	return "${s0}${s1}${s2}"
 }
-
 
 // test regex replace function
 fn test_regex_func_replace(){
@@ -603,4 +640,185 @@ fn test_regex_func_replace(){
 		eprintln(txt2)
 	}
 	assert result == txt2
+}
+
+fn rest_regex_replace_n(){
+	s := "dario 1234 pepep 23454 pera"
+    query := r"\d+"
+
+    mut re := regex.regex_opt(query) or { panic(err) }
+
+    assert re.replace_n(s, "[repl]", 0) == "dario 1234 pepep 23454 pera"
+    assert re.replace_n(s, "[repl]", -1) == "dario 1234 pepep [repl] pera"
+    assert re.replace_n(s, "[repl]", 1) == "dario [repl] pepep 23454 pera"
+    assert re.replace_n(s, "[repl]", 2) == "dario [repl] pepep [repl] pera"
+    assert re.replace_n(s, "[repl]", -2) == "dario [repl] pepep [repl] pera"
+    assert re.replace_n(s, "[repl]", 3) == "dario [repl] pepep [repl] pera"
+    assert re.replace_n(s, "[repl]", -3) == "dario [repl] pepep [repl] pera"
+
+    //mut res := re.replace_n(s, "[repl]", -1)
+    //println("source: ${s}")
+    //println("res   : ${res}")
+}
+
+// test quantifier wrong sequences
+const(
+	test_quantifier_sequences_list = [
+		r'+{3}.*+{3}', 
+		r'+{3}.*?{3}', 
+		r'+{3}.**{3}',
+		r'+{3}.*\+{3}*',
+		r'+{3}.*\+{3}+',
+		r'+{3}.*\+{3}??',
+		r'+{3}.*\+{3}{4}'
+	]
+)
+fn test_quantifier_sequences(){
+	for pattern in test_quantifier_sequences_list {
+		re, re_err, err_pos := regex.regex_base(pattern)
+		if re_err != regex.err_syntax_error {
+			eprintln("pattern: $pattern => $re_err")
+		}
+		assert re_err == regex.err_syntax_error
+	}
+}
+
+// test group index in find
+struct Test_find_groups {
+	src string
+	q string
+	s int // start index
+	e int // end index
+	res []int // groups indexes 
+}
+const (
+find_groups_test_suite = [
+	Test_find_groups{
+		"aabbbccccdd",
+		r"(b+)(c+)",
+		2,
+		9,
+		[2, 5, 5, 9],
+	},
+	Test_find_groups{
+		"aabbbccccdd",
+		r"(a+).*(c+)",
+		0,
+		9,
+		[0, 2, 5, 9],
+	},
+	Test_find_groups{
+		"aabbbccccdd",
+		r"((b+).*)(d+)",
+		2,
+		11,
+		[2, 9, 2, 5, 9, 11],
+	},
+]
+)
+fn test_groups_in_find(){
+	for test_obj in find_groups_test_suite {
+		src_text := test_obj.src
+		query := test_obj.q
+		mut re := regex.regex_opt(query) or { panic(err) }
+		start, end := re.find(src_text)
+		// Debug print do not remove!!
+		/*
+		println("---------")
+		println("src_text:[${src_text}]")
+		println("query   :[${query}]")
+		println("[${start}, ${end}]")
+		println(re.groups)
+		mut gi := 0
+		for gi < re.groups.len {
+			if re.groups[gi] >= 0 {
+				println('${gi / 2} :[${src_text[re.groups[gi]..re.groups[gi + 1]]}]')
+			}
+			gi += 2
+		}
+		*/
+		// check
+		assert start == test_obj.s
+		assert end == test_obj.e
+		assert re.groups == test_obj.res
+	}
+}
+
+const(
+	err_query_list = [
+		r'([a]|[b])*'
+	]
+)
+fn test_errors(){
+	mut count := 0
+	for query in err_query_list {
+		_, err, _ := regex.regex_base(query)
+		if err != regex.compile_ok {
+			count++
+		}
+	}
+	assert count == err_query_list.len
+}
+
+
+fn test_long_query() {
+    test_len := 32768
+    mut buf := strings.new_builder(test_len * 3)
+    base_string := rand.string(test_len)
+
+    for c in base_string {
+        buf.write_byte(`(`)
+        buf.write_byte(c)
+        buf.write_byte(`)`)
+    }
+
+    mut query := buf.str()
+    
+    //println(base_string)
+    //println(buf.str())
+
+    // test 1
+    mut re := regex.regex_opt(query) or { panic(err) }
+    mut start, mut end := re.match_string(base_string)
+    //println("$start, $end")
+    assert start >= 0 && end == base_string.len
+
+    // test 2
+    buf.clear()
+    for c in base_string {
+        buf.write_byte(`(`)
+        buf.write_byte(c)
+    }
+    for _ in 0..base_string.len {
+        buf.write_byte(`)`)
+    }
+    query = buf.str()
+    re = regex.regex_opt(query) or { panic(err) }
+    start, end = re.match_string(base_string)
+    //println("$start, $end")
+    assert start >= 0 && end == base_string.len
+}
+
+
+struct Test_negation_group {
+	src string
+	res bool 
+}
+const(
+	negation_groups = [
+        Test_negation_group{'automobile',false},
+        Test_negation_group{'botomobile',true},
+        Test_negation_group{'auto_caravan',false},
+        Test_negation_group{'moto_mobile',true},
+        Test_negation_group{'pippole',true},
+        Test_negation_group{'boring test',false},
+    ]
+)
+fn test_negation_groups() {
+	mut query := r"(?!auto)\w+le"
+    mut re := regex.regex_opt(query) or { panic(err) }
+	for test in negation_groups {
+        start, end := re.match_string(test.src)
+        assert (start >= 0) ==  test.res
+    }
 }

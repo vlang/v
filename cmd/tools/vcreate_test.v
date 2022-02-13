@@ -3,8 +3,7 @@ import os
 const test_path = 'vcreate_test'
 
 fn init_and_check() ? {
-	vexe := @VEXE
-	os.execute_or_exit('$vexe init')
+	os.execute_or_exit('${os.quoted_path(@VEXE)} init')
 
 	assert os.read_file('vcreate_test.v') ? == [
 		'module main\n',
@@ -12,7 +11,7 @@ fn init_and_check() ? {
 		"	println('Hello World!')",
 		'}',
 		'',
-	].join('\n')
+	].join_lines()
 
 	assert os.read_file('v.mod') ? == [
 		'Module {',
@@ -23,7 +22,7 @@ fn init_and_check() ? {
 		'	dependencies: []',
 		'}',
 		'',
-	].join('\n')
+	].join_lines()
 
 	assert os.read_file('.gitignore') ? == [
 		'# Binaries for programs and plugins',
@@ -34,8 +33,28 @@ fn init_and_check() ? {
 		'*.so',
 		'*.dylib',
 		'*.dll',
+		'vls.log',
 		'',
-	].join('\n')
+	].join_lines()
+
+	assert os.read_file('.gitattributes') ? == [
+		'*.v linguist-language=V text=auto eol=lf',
+		'*.vv linguist-language=V text=auto eol=lf',
+		'',
+	].join_lines()
+
+	assert os.read_file('.editorconfig') ? == [
+		'[*]',
+		'charset = utf-8',
+		'end_of_line = lf',
+		'insert_final_newline = true',
+		'trim_trailing_whitespace = true',
+		'',
+		'[*.v]',
+		'indent_style = tab',
+		'indent_size = 4',
+		'',
+	].join_lines()
 }
 
 fn test_v_init() ? {
@@ -45,7 +64,7 @@ fn test_v_init() ? {
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	os.chdir(dir)
+	os.chdir(dir) ?
 
 	init_and_check() ?
 }
@@ -57,7 +76,7 @@ fn test_v_init_in_git_dir() ? {
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	os.chdir(dir)
+	os.chdir(dir) ?
 	os.execute_or_exit('git init .')
 	init_and_check() ?
 }
@@ -70,10 +89,38 @@ fn test_v_init_no_overwrite_gitignore() ? {
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	os.chdir(dir)
+	os.chdir(dir) ?
 
-	vexe := @VEXE
-	os.execute_or_exit('$vexe init')
+	os.execute_or_exit('${os.quoted_path(@VEXE)} init')
 
 	assert os.read_file('.gitignore') ? == 'blah'
+}
+
+fn test_v_init_no_overwrite_gitattributes_and_editorconfig() ? {
+	git_attributes_content := '*.v linguist-language=V text=auto eol=lf'
+	editor_config_content := '[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.v]
+indent_style = tab
+indent_size = 4
+'
+
+	dir := os.join_path(os.temp_dir(), test_path)
+	os.rmdir_all(dir) or {}
+	os.mkdir(dir) or {}
+	os.write_file('$dir/.gitattributes', git_attributes_content) ?
+	os.write_file('$dir/.editorconfig', editor_config_content) ?
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	os.chdir(dir) ?
+
+	os.execute_or_exit('${os.quoted_path(@VEXE)} init')
+
+	assert os.read_file('.gitattributes') ? == git_attributes_content
+	assert os.read_file('.editorconfig') ? == editor_config_content
 }

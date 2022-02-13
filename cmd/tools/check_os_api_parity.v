@@ -5,6 +5,7 @@ import v.util
 import v.util.diff
 import v.pref
 import v.builder
+import v.builder.cbuilder
 import v.ast
 import rand
 import term
@@ -42,7 +43,7 @@ fn main() {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
 	util.set_vroot_folder(vroot)
-	os.chdir(vroot)
+	os.chdir(vroot) ?
 	cmd := diff.find_working_diff_command() or { '' }
 	mut app := App{
 		diff_cmd: cmd
@@ -98,7 +99,7 @@ fn (app App) gen_api_for_module_in_os(mod_name string, os_name string) string {
 	tmpname := '/tmp/${mod_name}_${os_name}.c'
 	prefs, _ := pref.parse_args([], ['-os', os_name, '-o', tmpname, '-shared', mpath])
 	mut b := builder.new_builder(prefs)
-	b.compile_c()
+	cbuilder.compile_c(mut b)
 	mut res := []string{}
 	for f in b.parsed_files {
 		for s in f.stmts {

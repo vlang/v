@@ -1,22 +1,64 @@
 name: Sanitized CI
 
+## Running these jobs is slow (over ~1 hour, sometimes even 2)
+## so we run them only when there is a chance that the generated
+## C code could have changed, or for some critical vlib modules,
+## like `builtin`, `os`, `sync`, where they have demonstrated
+## their usefulness by catching actual very hard to find bugs.
+## The cost of this selective running is delayed feedback when
+## there are bugs in other V modules.
+## The positive is *much faster CI runs* for most V contributors,
+## that make PRs that are not concerning V itself, or the critical
+## V modules.
+
 on:
   push:
-    paths-ignore:
-      - "**.md"
+    paths:
+      - '!**'
+      - 'cmd/tools/vtest*'
+      - 'vlib/builtin/**.v'
+      - 'vlib/strconv/**.v'
+      - 'vlib/strings/**.v'
+      - 'vlib/os/**.v'
+      - 'vlib/sync/**.v'
+      - 'vlib/v/tests/**.v'
+      - 'vlib/v/ast/**.v'
+      - 'vlib/v/scanner/**.v'
+      - 'vlib/v/parser/**.v'
+      - 'vlib/v/checker/**.v'
+      - 'vlib/v/gen/c/**.v'
+      - 'vlib/v/cflag/**.v'
+      - 'vlib/v/live/**.v'
+      - 'vlib/v/util/**.v'
+      - 'vlib/v/preludes/**.v'
+      - 'vlib/v/embed_file/**.v'
   pull_request:
-    paths-ignore:
-      - "**.md"
+    paths:
+      - '!**'
+      - 'cmd/tools/vtest*'
+      - 'vlib/builtin/**.v'
+      - 'vlib/strconv/**.v'
+      - 'vlib/strings/**.v'
+      - 'vlib/os/**.v'
+      - 'vlib/sync/**.v'
+      - 'vlib/v/tests/**.v'
+      - 'vlib/v/ast/**.v'
+      - 'vlib/v/scanner/**.v'
+      - 'vlib/v/parser/**.v'
+      - 'vlib/v/checker/**.v'
+      - 'vlib/v/gen/c/**.v'
+      - 'vlib/v/cflag/**.v'
+      - 'vlib/v/live/**.v'
+      - 'vlib/v/util/**.v'
+      - 'vlib/v/preludes/**.v'
+      - 'vlib/v/embed_file/**.v'
+
+concurrency:
+  group: build-sanitized-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
 
 jobs:
-  no-scheduling:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Dont schedule all jobs
-        run: sleep 10
-
   tests-sanitize-undefined-clang:
-    needs: no-scheduling
     runs-on: ubuntu-20.04
     timeout-minutes: 180
     env:
@@ -42,7 +84,6 @@ jobs:
         run: ./v2 build-examples
 
   tests-sanitize-undefined-gcc:
-    needs: no-scheduling
     runs-on: ubuntu-20.04
     timeout-minutes: 180
     env:
@@ -67,7 +108,6 @@ jobs:
         run: ./v2 build-examples
 
   tests-sanitize-address-clang:
-    needs: no-scheduling
     runs-on: ubuntu-20.04
     timeout-minutes: 180
     env:
@@ -97,7 +137,6 @@ jobs:
         run: ASAN_OPTIONS=detect_leaks=0 ./v build-examples
 
   tests-sanitize-address-msvc:
-    needs: no-scheduling
     runs-on: windows-2019
     timeout-minutes: 180
     env:
@@ -114,17 +153,16 @@ jobs:
           echo %VFLAGS%
           echo $VFLAGS
           .\make.bat -msvc
-          .\v.exe -cflags /WX self
-      - name: Install dependencies
-        run: |
-          .\v.exe setup-freetype
-          .\.github\workflows\windows-install-sqlite.bat
-      - name: Self tests (-fsanitize=address)
-        run: |
-          .\v.exe -cflags -fsanitize=address test-self
+          .\v.exe self
+      ##      - name: Install dependencies
+      ##        run: |
+      ##          .\v.exe setup-freetype
+      ##          .\.github\workflows\windows-install-sqlite.bat
+      ##      - name: Self tests (TODO: /fsanitize=address)
+      ##        run: |
+      ##          .\v.exe -cflags "/fsanitize=address" test-self
 
   tests-sanitize-address-gcc:
-    needs: no-scheduling
     runs-on: ubuntu-20.04
     timeout-minutes: 180
     env:
@@ -154,7 +192,6 @@ jobs:
         run: ASAN_OPTIONS=detect_leaks=0 ./v build-examples
 
   tests-sanitize-memory-clang:
-    needs: no-scheduling
     runs-on: ubuntu-20.04
     timeout-minutes: 180
     env:

@@ -14,7 +14,7 @@ fn main() {
 }
 
 fn create_generic_t<T>() Generic<T> {
-	g := Generic{
+	g := Generic<T>{
 		ch: chan T{}
 	}
 

@@ -2,17 +2,15 @@ module io
 
 // ReaderWriter represents a stream that can be read from and wrote to
 pub interface ReaderWriter {
-	// from Reader
-	read(mut buf []byte) ?int
-	// from Writer
-	write(buf []byte) ?int
+	Reader
+	Writer
 }
 
 // ReaderWriterImpl is a ReaderWriter that can be made from
 // a seperate reader and writer (see fn make_readerwriter)
 struct ReaderWriterImpl {
-	r Reader
 mut:
+	r Reader
 	w Writer
 }
 

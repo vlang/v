@@ -1,6 +1,8 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+// Based off:   https://github.com/golang/go/blob/master/src/encoding/base64/base64.go
+// Last commit: https://github.com/golang/go/commit/9a93baf4d7d13d7d5c67388c93960d78abc8e11e
 module base64
 
 const (
@@ -12,61 +14,6 @@ const (
 	ending_table = [0, 2, 1]!
 	enc_table    = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 )
-
-// decode decodes the base64 encoded `string` value passed in `data`.
-// Please note: If you need to decode many strings repeatedly, take a look at `decode_in_buffer`.
-// Example: assert base64.decode('ViBpbiBiYXNlIDY0') == 'V in base 64'
-pub fn decode(data string) []byte {
-	size := data.len * 3 / 4
-	if size <= 0 || data.len % 4 != 0 {
-		return []
-	}
-	unsafe {
-		buffer := malloc(size)
-		n := decode_in_buffer(data, buffer)
-		return buffer.vbytes(n)
-	}
-}
-
-// decode_str is the string variant of decode
-pub fn decode_str(data string) string {
-	size := data.len * 3 / 4
-	if size <= 0 || data.len % 4 != 0 {
-		return ''
-	}
-	unsafe {
-		buffer := malloc_noscan(size + 1)
-		buffer[size] = 0
-		return tos(buffer, decode_in_buffer(data, buffer))
-	}
-}
-
-// encode encodes the `[]byte` value passed in `data` to base64.
-// Please note: base64 encoding returns a `string` that is ~ 4/3 larger than the input.
-// Please note: If you need to encode many strings repeatedly, take a look at `encode_in_buffer`.
-// Example: assert base64.encode('V in base 64') == 'ViBpbiBiYXNlIDY0'
-pub fn encode(data []byte) string {
-	return alloc_and_encode(data.data, data.len)
-}
-
-// encode_str is the string variant of encode
-pub fn encode_str(data string) string {
-	return alloc_and_encode(data.str, data.len)
-}
-
-// alloc_and_encode is a private function that allocates and encodes data into a string
-// Used by encode and encode_str
-fn alloc_and_encode(src &byte, len int) string {
-	size := 4 * ((len + 2) / 3)
-	if size <= 0 {
-		return ''
-	}
-	unsafe {
-		buffer := malloc_noscan(size + 1)
-		buffer[size] = 0
-		return tos(buffer, encode_from_buffer(buffer, src, len))
-	}
-}
 
 // url_decode returns a decoded URL `string` version of
 // the a base64 url encoded `string` passed in `data`.
@@ -104,121 +51,16 @@ pub fn url_encode_str(data string) string {
 	return encode_str(data).replace_each(['+', '-', '/', '_', '=', ''])
 }
 
-// decode_in_buffer decodes the base64 encoded `string` reference passed in `data` into `buffer`.
-// decode_in_buffer returns the size of the decoded data in the buffer.
-// Please note: The `buffer` should be large enough (i.e. 3/4 of the data.len, or larger)
-// to hold the decoded data.
-// Please note: This function does NOT allocate new memory, and is thus suitable for handling very large strings.
-pub fn decode_in_buffer(data &string, buffer &byte) int {
-	mut padding := 0
-	if data.ends_with('=') {
-		if data.ends_with('==') {
-			padding = 2
-		} else {
-			padding = 1
-		}
-	}
-	// input_length is the length of meaningful data
-	input_length := data.len - padding
-	output_length := input_length * 3 / 4
-
-	mut i := 0
-	mut j := 0
-	mut b := &byte(0)
-	mut d := &byte(0)
-	unsafe {
-		d = &byte(data.str)
-		b = &byte(buffer)
-	}
-	for i < input_length {
-		mut char_a := 0
-		mut char_b := 0
-		mut char_c := 0
-		mut char_d := 0
-		if i < input_length {
-			char_a = base64.index[unsafe { d[i] }]
-			i++
-		}
-		if i < input_length {
-			char_b = base64.index[unsafe { d[i] }]
-			i++
-		}
-		if i < input_length {
-			char_c = base64.index[unsafe { d[i] }]
-			i++
-		}
-		if i < input_length {
-			char_d = base64.index[unsafe { d[i] }]
-			i++
-		}
-
-		decoded_bytes := (char_a << 18) | (char_b << 12) | (char_c << 6) | (char_d << 0)
-		unsafe {
-			b[j] = byte(decoded_bytes >> 16)
-			b[j + 1] = byte((decoded_bytes >> 8) & 0xff)
-			b[j + 2] = byte((decoded_bytes >> 0) & 0xff)
-		}
-		j += 3
-	}
-	return output_length
+// assemble64 assembles 8 base64 digits into 6 bytes.
+// Each digit comes from the decode map.
+// Please note: Invalid base64 digits are not expected and not handled.
+fn assemble64(n1 byte, n2 byte, n3 byte, n4 byte, n5 byte, n6 byte, n7 byte, n8 byte) u64 {
+	return u64(n1) << 58 | u64(n2) << 52 | u64(n3) << 46 | u64(n4) << 40 | u64(n5) << 34 | u64(n6) << 28 | u64(n7) << 22 | u64(n8) << 16
 }
 
-// encode_in_buffer base64 encodes the `[]byte` passed in `data` into `buffer`.
-// encode_in_buffer returns the size of the encoded data in the buffer.
-// Please note: The buffer should be large enough (i.e. 4/3 of the data.len, or larger) to hold the encoded data.
-// Please note: The function does NOT allocate new memory, and is suitable for handling very large strings.
-pub fn encode_in_buffer(data []byte, buffer &byte) int {
-	return encode_from_buffer(buffer, data.data, data.len)
-}
-
-// encode_from_buffer will perform encoding from any type of src buffer
-// and write the bytes into `dest`.
-// Please note: The `dest` buffer should be large enough (i.e. 4/3 of the src_len, or larger) to hold the encoded data.
-// Please note: This function is for internal base64 encoding
-fn encode_from_buffer(dest &byte, src &byte, src_len int) int {
-	input_length := src_len
-	output_length := 4 * ((input_length + 2) / 3)
-
-	mut i := 0
-	mut j := 0
-
-	mut d := unsafe { src }
-	mut b := unsafe { dest }
-	mut etable := base64.enc_table.str
-	for i < input_length {
-		mut octet_a := 0
-		mut octet_b := 0
-		mut octet_c := 0
-
-		if i < input_length {
-			octet_a = int(unsafe { d[i] })
-			i++
-		}
-		if i < input_length {
-			octet_b = int(unsafe { d[i] })
-			i++
-		}
-		if i < input_length {
-			octet_c = int(unsafe { d[i] })
-			i++
-		}
-
-		triple := ((octet_a << 0x10) + (octet_b << 0x08) + octet_c)
-
-		unsafe {
-			b[j] = etable[(triple >> 3 * 6) & 63] // 63 is 0x3F
-			b[j + 1] = etable[(triple >> 2 * 6) & 63]
-			b[j + 2] = etable[(triple >> 1 * 6) & 63]
-			b[j + 3] = etable[(triple >> 0 * 6) & 63]
-		}
-		j += 4
-	}
-
-	padding_length := base64.ending_table[input_length % 3]
-	for i = 0; i < padding_length; i++ {
-		unsafe {
-			b[output_length - 1 - i] = `=`
-		}
-	}
-	return output_length
+// assemble32 assembles 4 base64 digits into 3 bytes.
+// Each digit comes from the decode map.
+// Please note: Invalid base64 digits are not expected and not handled.
+fn assemble32(n1 byte, n2 byte, n3 byte, n4 byte) u32 {
+	return u32(n1) << 26 | u32(n2) << 20 | u32(n3) << 14 | u32(n4) << 8
 }

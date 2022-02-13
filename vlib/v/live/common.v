@@ -22,7 +22,7 @@ pub mut:
 	reloads           int            // how many times a reloading was tried
 	reloads_ok        int            // how many times the reloads succeeded
 	reload_time_ms    int            // how much time the last reload took (compilation + loading)
-	last_mod_ts       int            // a timestamp for when the original was last changed
+	last_mod_ts       i64            // a timestamp for when the original was last changed
 	recheck_period_ms int = 100 // how often do you want to check for changes
 	cb_recheck        FNLiveReloadCB = voidptr(0) // executed periodically
 	cb_compile_failed FNLiveReloadCB = voidptr(0) // executed when a reload compilation failed

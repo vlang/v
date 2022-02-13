@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
@@ -22,16 +22,6 @@ const (
 	wyp3 = u64(0x589965cc75374cc3)
 	wyp4 = u64(0x1d8e4e27c47d124f)
 )
-
-[inline]
-pub fn sum64_string(key string, seed u64) u64 {
-	return wyhash_c(key.str, u64(key.len), seed)
-}
-
-[inline]
-pub fn sum64(key []byte, seed u64) u64 {
-	return wyhash_c(&byte(key.data), u64(key.len), seed)
-}
 
 [inline]
 fn wyrotr(v u64, k u32) u64 {

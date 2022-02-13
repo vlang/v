@@ -1,6 +1,6 @@
 fn test_match_in_map_or_expr() {
 	a := 5
-	some_map := map{
+	some_map := {
 		3: '3'
 		4: '4'
 	}

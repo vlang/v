@@ -286,3 +286,12 @@ fn test_bits() {
 		assert rem == rem_64(hi, lo, y)
 	}
 }
+
+fn test_div_64_edge_cases() {
+	qq, rr := div_64(10, 12, 11)
+	assert qq == 16769767339735956015
+	assert rr == 7
+	q, r := div_64(0, 23, 10000000000000000000)
+	assert q == 0
+	assert r == 23
+}

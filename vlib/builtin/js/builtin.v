@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 
@@ -6,64 +6,86 @@ module builtin
 
 fn (a any) toString()
 
-pub fn println(s any) {
-	// Quickfix to properly print basic types
-	// TODO: Add proper detection code for this
-	JS.console.log(s.toString())
-}
-
-pub fn print(s any) {
-	// TODO
-	// $if js.node {
-	JS.process.stdout.write(s.toString())
-	// } $else {
-	//	panic('Cannot `print` in a browser, use `println` instead')
-	// }
-}
-
-pub fn eprintln(s any) {
-	JS.console.error(s.toString())
-}
-
-pub fn eprint(s any) {
-	// TODO
-	// $if js.node {
-	JS.process.stderr.write(s.toString())
-	// } $else {
-	//	panic('Cannot `eprint` in a browser, use `eprintln` instead')
-	// }
-}
-
-// Exits the process in node, and halts execution in the browser
-// because `process.exit` is undefined. Workaround for not having
-// a 'real' way to exit in the browser.
-pub fn exit(c int) {
-	JS.process.exit(c)
-	js_throw('exit($c)')
-}
-
-pub fn unwrap(opt any) any {
-	o := &Option(opt)
-	if o.state != 0 {
-		js_throw(o.err)
-	}
-	return opt
-}
-
+[noreturn]
 pub fn panic(s string) {
-	eprintln('V panic: $s')
+	eprintln('V panic: $s\n$js_stacktrace()')
 	exit(1)
 }
 
-struct Option {
-	state byte
-	err   Error
+// IError holds information about an error instance
+pub interface IError {
+	// >> Hack to allow old style custom error implementations
+	// TODO: remove once deprecation period for `IError` methods has ended
+	msg string
+	code int // <<
+	msg() string
+	code() int
 }
 
-pub struct Error {
+pub fn (err IError) str() string {
+	return match err {
+		None__ {
+			'none'
+		}
+		Error {
+			err.msg()
+		}
+		MessageError {
+			err.msg()
+		}
+		else {
+			// >> Hack to allow old style custom error implementations
+			// TODO: remove once deprecation period for `IError` methods has ended
+			old_error_style := unsafe { voidptr(&err.msg) != voidptr(&err.code) } // if fields are not defined (new style) they don't have an offset between them
+			if old_error_style {
+				'$err.type_name(): $err.msg'
+			} else {
+				// <<
+				'$err.type_name(): $err.msg()'
+			}
+		}
+	}
+}
+
+// Error is the empty default implementation of `IError`.
+pub struct Error {}
+
+pub fn (err Error) msg() string {
+	return ''
+}
+
+pub fn (err Error) code() int {
+	return 0
+}
+
+// MessageError is the default implementation of the `IError` interface that is returned by the `error()` function
+struct MessageError {
 pub:
 	msg  string
 	code int
+}
+
+pub fn (err MessageError) msg() string {
+	return err.msg
+}
+
+pub fn (err MessageError) code() int {
+	return err.code
+}
+
+pub const none__ = IError(&None__{})
+
+struct None__ {
+	Error
+}
+
+fn (_ None__) str() string {
+	return 'none'
+}
+
+pub struct Option {
+	state byte
+	err   IError = none__
 }
 
 pub fn (o Option) str() string {
@@ -76,21 +98,35 @@ pub fn (o Option) str() string {
 	return 'Option{ error: "$o.err" }'
 }
 
-pub fn error(s string) Option {
-	return Option{
-		state: 2
-		err: Error{
-			msg: s
-		}
+// trace_error prints to stderr a string and a backtrace of the error
+fn trace_error(x string) {
+	eprintln('> ${@FN} | $x')
+}
+
+// error returns a default error instance containing the error given in `message`.
+// Example: if ouch { return error('an error occurred') }
+[inline]
+pub fn error(message string) IError {
+	// trace_error(message)
+	return &MessageError{
+		msg: message
 	}
 }
 
-pub fn error_with_code(s string, code int) Option {
-	return Option{
-		state: 2
-		err: Error{
-			msg: s
-			code: code
-		}
+// error_with_code returns a default error instance containing the given `message` and error `code`.
+// Example: if ouch { return error_with_code('an error occurred', 1) }
+[inline]
+pub fn error_with_code(message string, code int) IError {
+	// trace_error('$message | code: $code')
+	return &MessageError{
+		msg: message
+		code: code
 	}
+}
+
+// free allows for manually freeing memory allocated at the address `ptr`.
+// However, this is a no-op on JS backend
+[unsafe]
+pub fn free(ptr voidptr) {
+	_ := ptr
 }

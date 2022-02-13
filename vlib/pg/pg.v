@@ -5,6 +5,8 @@ import io
 #flag -lpq
 #flag linux -I/usr/include/postgresql
 #flag darwin -I/opt/local/include/postgresql11
+#flag darwin -I/opt/homebrew/include
+#flag darwin -L/opt/homebrew/lib
 #flag windows -I @VEXEROOT/thirdparty/pg/include
 #flag windows -L @VEXEROOT/thirdparty/pg/win64
 
@@ -214,7 +216,7 @@ fn (db DB) handle_error_or_result(res voidptr, elabel string) ?[]Row {
 
 // copy_expert execute COPY commands
 // https://www.postgresql.org/docs/9.5/libpq-copy.html
-pub fn (db DB) copy_expert(query string, file io.ReaderWriter) ?int {
+pub fn (db DB) copy_expert(query string, mut file io.ReaderWriter) ?int {
 	res := C.PQexec(db.conn, query.str)
 	status := C.PQresultStatus(res)
 

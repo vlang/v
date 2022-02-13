@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module rand
@@ -11,7 +11,7 @@ const (
 
 // read returns an array of `bytes_needed` random bytes read from the OS.
 pub fn read(bytes_needed int) ?[]byte {
-	mut buffer := unsafe { malloc_noscan(bytes_needed) }
+	mut buffer := unsafe { vcalloc_noscan(bytes_needed) }
 	mut bytes_read := 0
 	mut remaining_bytes := bytes_needed
 	// getrandom syscall wont block if requesting <= 256 bytes

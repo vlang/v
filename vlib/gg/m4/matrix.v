@@ -88,7 +88,7 @@ pub fn (x Mat4) get_e(elem_index int) f32 {
 // Get an element of the matrix using [0..3][0..3] indexes, two dimension
 pub fn (x Mat4) get_f(index_col int, index_row int) f32 {
 	unsafe {
-		return x.e[(index_row << 2) + index_col]
+		return x.e[int(u32(index_row) << 2) + index_col]
 	}
 }
 
@@ -102,7 +102,7 @@ pub fn (mut x Mat4) set_e(index int, value f32) {
 // Set an element of the matrix using [0..3][0..3] indexes, two dimension
 pub fn (mut x Mat4) set_f(index_col int, index_row int, value f32) {
 	unsafe {
-		x.e[(index_row << 2) + index_col] = value
+		x.e[int(u32(index_row) << 2) + index_col] = value
 	}
 }
 

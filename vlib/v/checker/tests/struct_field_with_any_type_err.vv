@@ -1,0 +1,8 @@
+struct My_type {
+	fld any
+}
+
+fn main() {
+	a := My_type{}
+	println(a)
+}

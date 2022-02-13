@@ -39,9 +39,9 @@ fn example_with_cancel() {
 	// The callers of gen need to cancel the context once
 	// they are done consuming generated integers not to leak
 	// the internal routine started by gen.
-	gen := fn (ctx context.Context) chan int {
+	gen := fn (mut ctx context.Context) chan int {
 		dst := chan int{}
-		go fn (ctx context.Context, dst chan int) {
+		go fn (mut ctx context.Context, dst chan int) {
 			mut v := 0
 			ch := ctx.done()
 			for {
@@ -55,16 +55,19 @@ fn example_with_cancel() {
 					}
 				}
 			}
-		}(ctx, dst)
+		}(mut ctx, dst)
 		return dst
 	}
 
-	ctx := context.with_cancel(context.background())
+	mut background := context.background()
+	mut ctx, cancel := context.with_cancel(mut &background)
 	defer {
-		context.cancel(ctx)
+		cancel()
 	}
 
-	ch := gen(ctx)
+	mut mut_ctx := ctx
+	mut ctx2 := &mut_ctx
+	ch := gen(mut ctx2)
 	for i in 0 .. 5 {
 		v := <-ch
 		assert i == v
@@ -87,13 +90,14 @@ const (
 // function that it should abandon its work as soon as it gets to it.
 fn example_with_deadline() {
 	dur := time.now().add(short_duration)
-	ctx := context.with_deadline(context.background(), dur)
+	mut background := context.background()
+	mut ctx, cancel := context.with_deadline(mut &background, dur)
 
 	defer {
 		// Even though ctx will be expired, it is good practice to call its
 		// cancellation function in any case. Failure to do so may keep the
 		// context and its parent alive longer than necessary.
-		context.cancel(ctx)
+		cancel()
 	}
 
 	ctx_ch := ctx.done()
@@ -122,9 +126,10 @@ const (
 fn example_with_timeout() {
 	// Pass a context with a timeout to tell a blocking function that it
 	// should abandon its work after the timeout elapses.
-	ctx := context.with_timeout(context.background(), short_duration)
+	mut background := context.background()
+	mut ctx, cancel := context.with_timeout(mut &background, short_duration)
 	defer {
-		context.cancel(ctx)
+		cancel()
 	}
 
 	ctx_ch := ctx.done()
@@ -142,25 +147,36 @@ fn example_with_timeout() {
 ```v
 import context
 
-type ValueContextKey = string
+const not_found_value = &Value{
+	val: 'key not found'
+}
+
+struct Value {
+	val string
+}
 
 // This example demonstrates how a value can be passed to the context
 // and also how to retrieve it if it exists.
 fn example_with_value() {
-	f := fn (ctx context.Context, key ValueContextKey) string {
+	f := fn (ctx context.Context, key context.Key) &Value {
 		if value := ctx.value(key) {
-			if !isnil(value) {
-				return *(&string(value))
+			match value {
+				Value {
+					return value
+				}
+				else {}
 			}
 		}
-		return 'key not found'
+		return not_found_value
 	}
 
-	key := ValueContextKey('language')
-	value := 'VAL'
-	ctx := context.with_value(context.background(), key, &value)
+	key := 'language'
+	value := &Value{
+		val: 'VAL'
+	}
+	ctx := context.with_value(context.background(), key, value)
 
 	assert value == f(ctx, key)
-	assert 'key not found' == f(ctx, ValueContextKey('color'))
+	assert not_found_value == f(ctx, 'color')
 }
 ```

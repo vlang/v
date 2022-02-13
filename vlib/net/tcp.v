@@ -16,14 +16,19 @@ mut:
 	read_deadline  time.Time
 	read_timeout   time.Duration
 	write_timeout  time.Duration
+	is_blocking    bool
 }
 
 pub fn dial_tcp(address string) ?&TcpConn {
-	addrs := resolve_addrs_fuzzy(address, .tcp) ?
+	addrs := resolve_addrs_fuzzy(address, .tcp) or {
+		return error('$err.msg(); could not resolve address $address in dial_tcp')
+	}
 
 	// Very simple dialer
 	for addr in addrs {
-		mut s := new_tcp_socket(addr.family()) ?
+		mut s := new_tcp_socket(addr.family()) or {
+			return error('$err.msg(); could not create new tcp socket in dial_tcp')
+		}
 		s.connect(addr) or {
 			// Connection failed
 			s.close() or { continue }
@@ -37,11 +42,57 @@ pub fn dial_tcp(address string) ?&TcpConn {
 		}
 	}
 	// failed
-	return error('dial_tcp failed')
+	return error('dial_tcp failed for address $address')
 }
 
 pub fn (mut c TcpConn) close() ? {
+	$if trace_tcp ? {
+		eprintln('    TcpConn.close | c.sock.handle: ${c.sock.handle:6}')
+	}
 	c.sock.close() ?
+}
+
+pub fn (c TcpConn) read_ptr(buf_ptr &byte, len int) ?int {
+	mut res := wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)) ?
+	$if trace_tcp ? {
+		eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
+	}
+	if res > 0 {
+		$if trace_tcp_data_read ? {
+			eprintln('<<< TcpConn.read_ptr  | 1 data.len: ${res:6} | data: ' +
+				unsafe { buf_ptr.vstring_with_len(res) })
+		}
+		return res
+	}
+	code := error_code()
+	if code == int(error_ewouldblock) {
+		c.wait_for_read() ?
+		res = wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)) ?
+		$if trace_tcp ? {
+			eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
+		}
+		$if trace_tcp_data_read ? {
+			if res > 0 {
+				eprintln('<<< TcpConn.read_ptr  | 2 data.len: ${res:6} | data: ' +
+					unsafe { buf_ptr.vstring_with_len(res) })
+			}
+		}
+		return socket_error(res)
+	} else {
+		wrap_error(code) ?
+	}
+	return none
+}
+
+pub fn (c TcpConn) read(mut buf []byte) ?int {
+	return c.read_ptr(buf.data, buf.len)
+}
+
+pub fn (mut c TcpConn) read_deadline() ?time.Time {
+	if c.read_deadline.unix == 0 {
+		return c.read_deadline
+	}
+	return none
 }
 
 // write_ptr blocks and attempts to write all data
@@ -51,6 +102,10 @@ pub fn (mut c TcpConn) write_ptr(b &byte, len int) ?int {
 			'>>> TcpConn.write_ptr | c.sock.handle: $c.sock.handle | b: ${ptr_str(b)} len: $len |\n' +
 			unsafe { b.vstring_with_len(len) })
 	}
+	$if trace_tcp_data_write ? {
+		eprintln('>>> TcpConn.write_ptr | data.len: ${len:6} | data: ' +
+			unsafe { b.vstring_with_len(len) })
+	}
 	unsafe {
 		mut ptr_base := &byte(b)
 		mut total_sent := 0
@@ -58,6 +113,9 @@ pub fn (mut c TcpConn) write_ptr(b &byte, len int) ?int {
 			ptr := ptr_base + total_sent
 			remaining := len - total_sent
 			mut sent := C.send(c.sock.handle, ptr, remaining, msg_nosignal)
+			$if trace_tcp_data_write ? {
+				eprintln('>>> TcpConn.write_ptr | data chunk, total_sent: ${total_sent:6}, chunk_size: ${chunk_size:6}, sent: ${sent:6}, ptr: ${ptr_str(ptr)}')
+			}
 			if sent < 0 {
 				code := error_code()
 				if code == int(error_ewouldblock) {
@@ -81,39 +139,6 @@ pub fn (mut c TcpConn) write(bytes []byte) ?int {
 // write_string blocks and attempts to write all data
 pub fn (mut c TcpConn) write_string(s string) ?int {
 	return c.write_ptr(s.str, s.len)
-}
-
-pub fn (mut c TcpConn) read_ptr(buf_ptr &byte, len int) ?int {
-	mut res := wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)) ?
-	$if trace_tcp ? {
-		eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
-	}
-	if res > 0 {
-		return res
-	}
-	code := error_code()
-	if code == int(error_ewouldblock) {
-		c.wait_for_read() ?
-		res = wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)) ?
-		$if trace_tcp ? {
-			eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
-		}
-		return socket_error(res)
-	} else {
-		wrap_error(code) ?
-	}
-	return none
-}
-
-pub fn (mut c TcpConn) read(mut buf []byte) ?int {
-	return c.read_ptr(buf.data, buf.len)
-}
-
-pub fn (mut c TcpConn) read_deadline() ?time.Time {
-	if c.read_deadline.unix == 0 {
-		return c.read_deadline
-	}
-	return none
 }
 
 pub fn (mut c TcpConn) set_read_deadline(deadline time.Time) {
@@ -148,7 +173,7 @@ pub fn (mut c TcpConn) set_write_timeout(t time.Duration) {
 }
 
 [inline]
-pub fn (mut c TcpConn) wait_for_read() ? {
+pub fn (c TcpConn) wait_for_read() ? {
 	return wait_for_read(c.sock.handle, c.read_deadline, c.read_timeout)
 }
 
@@ -164,7 +189,7 @@ pub fn (c &TcpConn) peer_addr() ?Addr {
 		}
 	}
 	mut size := sizeof(Addr)
-	socket_error(C.getpeername(c.sock.handle, voidptr(&addr), &size)) ?
+	socket_error_message(C.getpeername(c.sock.handle, voidptr(&addr), &size), 'peer_addr failed') ?
 	return addr
 }
 
@@ -190,18 +215,19 @@ mut:
 }
 
 pub fn listen_tcp(family AddrFamily, saddr string) ?&TcpListener {
-	s := new_tcp_socket(family) ?
+	s := new_tcp_socket(family) or { return error('$err.msg(); could not create new socket') }
 
-	addrs := resolve_addrs(saddr, family, .tcp) ?
+	addrs := resolve_addrs(saddr, family, .tcp) or {
+		return error('$err.msg(); could not resolve address $saddr')
+	}
 
 	// TODO(logic to pick here)
 	addr := addrs[0]
 
 	// cast to the correct type
 	alen := addr.len()
-	bindres := C.bind(s.handle, voidptr(&addr), alen)
-	socket_error(bindres) ?
-	socket_error(C.listen(s.handle, 128)) ?
+	socket_error_message(C.bind(s.handle, voidptr(&addr), alen), 'binding to $saddr failed') ?
+	socket_error_message(C.listen(s.handle, 128), 'listening on $saddr failed') ?
 	return &TcpListener{
 		sock: s
 		accept_deadline: no_deadline
@@ -210,6 +236,9 @@ pub fn listen_tcp(family AddrFamily, saddr string) ?&TcpListener {
 }
 
 pub fn (mut l TcpListener) accept() ?&TcpConn {
+	$if trace_tcp ? {
+		eprintln('    TcpListener.accept | l.sock.handle: ${l.sock.handle:6}')
+	}
 	addr := Addr{
 		addr: AddrData{
 			Ip6: Ip6{}
@@ -225,6 +254,9 @@ pub fn (mut l TcpListener) accept() ?&TcpConn {
 		}
 	}
 	new_sock := tcp_socket_from_handle(new_handle) ?
+	$if trace_tcp ? {
+		eprintln('    TcpListener.accept | << new_sock.handle: ${new_sock.handle:6}')
+	}
 	return &TcpConn{
 		sock: new_sock
 		read_timeout: net.tcp_default_read_timeout
@@ -273,6 +305,10 @@ fn new_tcp_socket(family AddrFamily) ?TcpSocket {
 	mut s := TcpSocket{
 		handle: handle
 	}
+	$if trace_tcp ? {
+		eprintln('    new_tcp_socket | s.handle: ${s.handle:6}')
+	}
+
 	// TODO(emily):
 	// we shouldnt be using ioctlsocket in the 21st century
 	// use the non-blocking socket option instead please :)
@@ -280,11 +316,14 @@ fn new_tcp_socket(family AddrFamily) ?TcpSocket {
 	// TODO(emily):
 	// Move this to its own function on the socket
 	s.set_option_int(.reuse_addr, 1) ?
-	$if windows {
-		t := u32(1) // true
-		socket_error(C.ioctlsocket(handle, fionbio, &t)) ?
-	} $else {
-		socket_error(C.fcntl(handle, C.F_SETFL, C.fcntl(handle, C.F_GETFL) | C.O_NONBLOCK)) ?
+
+	$if !net_blocking_sockets ? {
+		$if windows {
+			t := u32(1) // true
+			socket_error(C.ioctlsocket(handle, fionbio, &t)) ?
+		} $else {
+			socket_error(C.fcntl(handle, C.F_SETFL, C.fcntl(handle, C.F_GETFL) | C.O_NONBLOCK)) ?
+		}
 	}
 	return s
 }
@@ -293,16 +332,21 @@ fn tcp_socket_from_handle(sockfd int) ?TcpSocket {
 	mut s := TcpSocket{
 		handle: sockfd
 	}
+	$if trace_tcp ? {
+		eprintln('    tcp_socket_from_handle | s.handle: ${s.handle:6}')
+	}
 	// s.set_option_bool(.reuse_addr, true)?
 	s.set_option_int(.reuse_addr, 1) ?
 	s.set_dualstack(true) or {
 		// Not ipv6, we dont care
 	}
-	$if windows {
-		t := u32(1) // true
-		socket_error(C.ioctlsocket(sockfd, fionbio, &t)) ?
-	} $else {
-		socket_error(C.fcntl(sockfd, C.F_SETFL, C.fcntl(sockfd, C.F_GETFL) | C.O_NONBLOCK)) ?
+	$if !net_blocking_sockets ? {
+		$if windows {
+			t := u32(1) // true
+			socket_error(C.ioctlsocket(sockfd, fionbio, &t)) ?
+		} $else {
+			socket_error(C.fcntl(sockfd, C.F_SETFL, C.fcntl(sockfd, C.F_GETFL) | C.O_NONBLOCK)) ?
+		}
 	}
 	return s
 }

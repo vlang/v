@@ -7,7 +7,7 @@ fn main() {
 	for mut j in a2 {
 		j *= 2
 	}
-	m := map{'aa': 1, 'bb': 2}
+	m := {'aa': 1, 'bb': 2}
 	for _, mut j in m {
 		j *= 2
 	}
@@ -17,7 +17,17 @@ fn main() {
 	for mut j in [1, 2, 3]! {
 		j *= 2
 	}
-	for _, mut j in map{'aa': 1, 'bb': 2} {
+	for _, mut j in {'aa': 1, 'bb': 2} {
 		j *= 2
+	}
+}
+
+struct Test {
+	a []int = [1, 2]
+}
+
+fn foo(t Test) {
+	for mut e in t.a {
+		e = 0
 	}
 }

@@ -23,18 +23,20 @@ fn test_str_methods() {
 	assert int(-2147483648).str() == '-2147483648'
 	assert i64(1).str() == '1'
 	assert i64(-1).str() == '-1'
-	// assert byte(1).str() == '1'
-	// assert byte(-1).str() == '255'
 	assert u16(1).str() == '1'
 	assert u16(-1).str() == '65535'
 	assert u32(1).str() == '1'
 	assert u32(-1).str() == '4294967295'
 	assert u64(1).str() == '1'
 	assert u64(-1).str() == '18446744073709551615'
-	assert voidptr(-1).str() == 'ffffffffffffffff'
-	assert voidptr(1).str() == '1'
-	assert byteptr(-1).str() == 'ffffffffffffffff'
-	assert byteptr(1).str() == '1'
+	assert voidptr(-1).str() == '0xffffffffffffffff'
+	assert voidptr(1).str() == '0x1'
+	assert (&byte(-1)).str() == 'ffffffffffffffff'
+	assert (&byte(1)).str() == '1'
+	assert byteptr(-1).str() == '0xffffffffffffffff'
+	assert byteptr(1).str() == '0x1'
+	assert charptr(-1).str() == '0xffffffffffffffff'
+	assert charptr(1).str() == '0x1'
 }
 
 fn test_and_precendence() {
@@ -105,6 +107,18 @@ fn test_hex() {
 	assert b.hex() == '4d2'
 	b1 := -1
 	assert b1.hex() == 'ffffffff'
+	// unsigned tests
+	assert u8(12).hex() == '0c'
+	assert u8(255).hex() == 'ff'
+	assert u16(65535).hex() == 'ffff'
+	assert u32(-1).hex() == 'ffffffff'
+	assert u64(-1).hex() == 'ffffffffffffffff'
+	// signed tests
+	assert i8(-1).hex() == 'ff'
+	assert i8(12).hex() == '0c'
+	assert i16(32767).hex() == '7fff'
+	assert int(2147483647).hex() == '7fffffff'
+	assert i64(9223372036854775807).hex() == '7fffffffffffffff'
 }
 
 fn test_bin() {
@@ -119,7 +133,12 @@ fn test_bin() {
 	x5 := byte(0b11111111)
 	assert x5 == 255
 	x6 := char(0b11111111)
-	assert int(x6) == -1
+	// C.char is unsigned on arm64, but signed on amd64, by default
+	$if arm64 {
+		assert int(x6) == 255
+	} $else {
+		assert int(x6) == -1
+	}
 	x7 := 0b0
 	assert x7 == 0
 	x8 := -0b0
@@ -168,7 +187,6 @@ fn test_num_separator() {
 	// f32 or f64
 	assert 312_2.55 == 3122.55
 	assert 312_2.55 == 3122.55
-
 }
 
 fn test_int_decl() {
@@ -227,4 +245,11 @@ fn test_int_to_hex() {
 	assert u64(9223372036854775807).hex() == '7fffffffffffffff'
 	assert i64(-1).hex() == 'ffffffffffffffff'
 	assert u64(18446744073709551615).hex() == 'ffffffffffffffff'
+}
+
+fn test_repeat() {
+	b := byte(`V`)
+	assert b.repeat(5) == 'VVVVV'
+	assert b.repeat(1) == b.ascii_str()
+	assert b.repeat(0) == ''
 }

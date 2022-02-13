@@ -6,8 +6,9 @@ import flag
 
 const (
 	tool_name        = os.file_name(os.executable())
-	tool_version     = '0.0.2'
+	tool_version     = '0.0.3'
 	tool_description = 'Prints all V functions in .v files under PATH/, that do not yet have documentation comments.'
+	work_dir_prefix  = normalise_path(os.real_path(os.wd_at_startup) + '/')
 )
 
 struct UndocumentedFN {
@@ -17,50 +18,46 @@ struct UndocumentedFN {
 }
 
 struct Options {
-	show_help    bool
-	collect_tags bool
-	deprecated   bool
+	show_help       bool
+	collect_tags    bool
+	deprecated      bool
+	private         bool
+	js              bool
+	no_line_numbers bool
+	exclude         []string
+	relative_paths  bool
 }
 
-fn collect(path string, mut l []string, f fn (string, mut []string)) {
-	if !os.is_dir(path) {
-		return
-	}
-	mut files := os.ls(path) or { return }
-	for file in files {
-		p := path + os.path_separator + file
-		if os.is_dir(p) && !os.is_link(p) {
-			collect(p, mut l, f)
-		} else if os.exists(p) {
-			f(p, mut l)
-		}
-	}
-	return
-}
-
-fn report_undocumented_functions_in_path(opt Options, path string) {
+fn (opt Options) report_undocumented_functions_in_path(path string) {
 	mut files := []string{}
-	collect_fn := fn (path string, mut l []string) {
-		if os.file_ext(path) == '.v' {
-			l << os.real_path(path)
+	collect(path, mut files, fn (npath string, mut accumulated_paths []string) {
+		if !npath.ends_with('.v') {
+			return
 		}
-	}
-	collect(path, mut files, collect_fn)
+		if npath.ends_with('_test.v') {
+			return
+		}
+		accumulated_paths << npath
+	})
 	for file in files {
-		if file.ends_with('_test.v') {
+		if !opt.js && file.ends_with('.js.v') {
 			continue
 		}
-		report_undocumented_functions_in_file(opt, file)
+		if opt.exclude.len > 0 && opt.exclude.any(file.contains(it)) {
+			continue
+		}
+		opt.report_undocumented_functions_in_file(file)
 	}
 }
 
-fn report_undocumented_functions_in_file(opt Options, file string) {
+fn (opt &Options) report_undocumented_functions_in_file(nfile string) {
+	file := os.real_path(nfile)
 	contents := os.read_file(file) or { panic(err) }
 	lines := contents.split('\n')
 	mut info := []UndocumentedFN{}
 	for i, line in lines {
-		if line.starts_with('pub fn') || (line.starts_with('fn ') && !(line.starts_with('fn C.')
-			|| line.starts_with('fn main'))) {
+		if line.starts_with('pub fn') || (opt.private && (line.starts_with('fn ')
+			&& !(line.starts_with('fn C.') || line.starts_with('fn main')))) {
 			// println('Match: $line')
 			if i > 0 && lines.len > 0 {
 				mut line_above := lines[i - 1]
@@ -89,20 +86,49 @@ fn report_undocumented_functions_in_file(opt Options, file string) {
 	}
 	if info.len > 0 {
 		for undocumented_fn in info {
+			mut line_numbers := '$undocumented_fn.line:0:'
+			if opt.no_line_numbers {
+				line_numbers = ''
+			}
 			tags_str := if opt.collect_tags && undocumented_fn.tags.len > 0 {
 				'$undocumented_fn.tags'
 			} else {
 				''
 			}
+			ofile := if opt.relative_paths {
+				nfile.replace(work_dir_prefix, '')
+			} else {
+				os.real_path(nfile)
+			}
 			if opt.deprecated {
-				println('$file:$undocumented_fn.line:0:$undocumented_fn.signature $tags_str')
+				println('$ofile:$line_numbers$undocumented_fn.signature $tags_str')
 			} else {
 				if 'deprecated' !in undocumented_fn.tags {
-					println('$file:$undocumented_fn.line:0:$undocumented_fn.signature $tags_str')
+					println('$ofile:$line_numbers$undocumented_fn.signature $tags_str')
 				}
 			}
 		}
 	}
+}
+
+fn normalise_path(path string) string {
+	return path.replace('\\', '/')
+}
+
+fn collect(path string, mut l []string, f fn (string, mut []string)) {
+	if !os.is_dir(path) {
+		return
+	}
+	mut files := os.ls(path) or { return }
+	for file in files {
+		p := normalise_path(os.join_path_single(path, file))
+		if os.is_dir(p) && !os.is_link(p) {
+			collect(p, mut l, f)
+		} else if os.exists(p) {
+			f(p, mut l)
+		}
+	}
+	return
 }
 
 fn collect_tags(line string) []string {
@@ -125,7 +151,12 @@ fn main() {
 	opt := Options{
 		show_help: fp.bool('help', `h`, false, 'Show this help text.')
 		deprecated: fp.bool('deprecated', `d`, false, 'Include deprecated functions in output.')
+		private: fp.bool('private', `p`, false, 'Include private functions in output.')
+		js: fp.bool('js', 0, false, 'Include JavaScript functions in output.')
+		no_line_numbers: fp.bool('no-line-numbers', `n`, false, 'Exclude line numbers in output.')
 		collect_tags: fp.bool('tags', `t`, false, 'Also print function tags if any is found.')
+		exclude: fp.string_multi('exclude', `e`, '')
+		relative_paths: fp.bool('relative-paths', `r`, false, 'Use relative paths in output.')
 	}
 	if opt.show_help {
 		println(fp.usage())
@@ -133,9 +164,9 @@ fn main() {
 	}
 	for path in os.args[1..] {
 		if os.is_file(path) {
-			report_undocumented_functions_in_file(opt, path)
+			opt.report_undocumented_functions_in_file(path)
 		} else {
-			report_undocumented_functions_in_path(opt, path)
+			opt.report_undocumented_functions_in_path(path)
 		}
 	}
 }

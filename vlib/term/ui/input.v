@@ -201,8 +201,7 @@ pub struct Config {
 	skip_init_checks     bool
 	// All kill signals to set up exit listeners on:
 	reset []os.Signal = [.hup, .int, .quit, .ill, .abrt, .bus, .fpe, .kill, .segv, .pipe, .alrm, .term,
-	.stop,
-]
+	.stop]
 }
 
 [inline]

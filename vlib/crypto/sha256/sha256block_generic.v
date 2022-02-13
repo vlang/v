@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 // SHA256 block step.
@@ -95,7 +95,7 @@ fn block_generic(mut dig Digest, p_ []byte) {
 			// rounds below if needed for speed.
 			for i in 0 .. 16 {
 				j := i * 4
-				w[i] = u32(p[j] << 24) | u32(p[j + 1] << 16) | u32(p[j + 2] << 8) | u32(p[j + 3])
+				w[i] = u32(p[j]) << 24 | u32(p[j + 1]) << 16 | u32(p[j + 2]) << 8 | u32(p[j + 3])
 			}
 			for i := 16; i < 64; i++ {
 				v1 := w[i - 2]

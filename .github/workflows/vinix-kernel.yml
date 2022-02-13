@@ -2,9 +2,13 @@ name: Build Vinix kernel
 
 on:
   pull_request:
+    paths-ignore:
+      - "**.md"
   push:
     branches:
       - master
+    paths-ignore:
+      - "**.md"
 
 jobs:
   vinix-build:
@@ -16,11 +20,12 @@ jobs:
       - name: Build V
         run: make
       - name: Clone current Vinix
-        run: git clone https://github.com/vlang/vinix.git --depth=1
+        run: |
+          git clone https://github.com/vlang/vinix.git --depth 1
       - name: Clone current mlibc
         run: git clone https://github.com/managarm/mlibc.git --depth=1
       - name: Patch mlibc for Vinix
-        run: cd mlibc && patch -p3 < ../vinix/patches/mlibc/mlibc.patch
+        run: cd mlibc && patch -p1 < ../vinix/patches/mlibc/0001-Vinix-specific-changes.patch || true
       - name: Install mlibc headers
         run: mkdir mlibc-build && cd mlibc-build && meson --cross-file ../vinix/cross_file.txt --prefix=/ -Dheaders_only=true ../mlibc && ninja && mkdir ../mlibc-headers && DESTDIR=`realpath ../mlibc-headers` ninja install
       - name: Attempt to build the Vinix kernel (debug)

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module csv
@@ -23,7 +23,7 @@ pub fn new_writer() &Writer {
 // write writes a single record
 pub fn (mut w Writer) write(record []string) ?bool {
 	if !valid_delim(w.delimiter) {
-		return IError(&ErrInvalidDelimiter{})
+		return IError(&InvalidDelimiterError{})
 	}
 	le := if w.use_crlf { '\r\n' } else { '\n' }
 	for n, field_ in record {

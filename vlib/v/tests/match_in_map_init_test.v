@@ -1,7 +1,7 @@
 fn test_match_in_map_init() {
 	ret := foo()
 	println(ret)
-	assert ret == map{
+	assert ret == {
 		'token': 'a'
 		'sleep': '30'
 		'every': '1'
@@ -14,7 +14,7 @@ fn foo() map[string]string {
 	cfg['sleep'] = ['30', '60']
 	cfg['every'] = ['1', '5']
 
-	return map{
+	return {
 		'token': cfg['token'][0]
 		'sleep': match cfg['sleep'][0].len {
 			0 { '60' }

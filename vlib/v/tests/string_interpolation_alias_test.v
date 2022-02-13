@@ -11,7 +11,7 @@ fn test_fixed_array_alias_string() {
 }
 
 fn test_map_alias_string() {
-	m := map{
+	m := {
 		'one': Literal('1')
 		'two': Literal('2')
 	}

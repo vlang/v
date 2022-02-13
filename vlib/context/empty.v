@@ -1,6 +1,6 @@
 // This module defines the Context type, which carries deadlines, cancellation signals,
 // and other request-scoped values across API boundaries and between processes.
-// Based off:   https://github.com/golang/go/tree/master/src/context
+// Based on:   https://github.com/golang/go/tree/master/src/context
 // Last commit: https://github.com/golang/go/commit/52bf14e0e8bdcd73f1ddfb0c4a1d0200097d3ba2
 module context
 
@@ -10,11 +10,11 @@ import time
 // struct{}, since vars of this type must have distinct addresses.
 pub type EmptyContext = int
 
-pub fn (ctx EmptyContext) deadline() ?time.Time {
+pub fn (ctx &EmptyContext) deadline() ?time.Time {
 	return none
 }
 
-pub fn (ctx EmptyContext) done() chan int {
+pub fn (ctx &EmptyContext) done() chan int {
 	ch := chan int{}
 	defer {
 		ch.close()
@@ -22,16 +22,15 @@ pub fn (ctx EmptyContext) done() chan int {
 	return ch
 }
 
-pub fn (ctx EmptyContext) err() IError {
-	// TODO: Change this to `none`
-	return none_
-}
-
-pub fn (ctx EmptyContext) value(key string) ?voidptr {
+pub fn (ctx &EmptyContext) err() IError {
 	return none
 }
 
-pub fn (ctx EmptyContext) str() string {
+pub fn (ctx &EmptyContext) value(key Key) ?Any {
+	return none
+}
+
+pub fn (ctx &EmptyContext) str() string {
 	if ctx == background {
 		return 'context.Background'
 	}

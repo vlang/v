@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 import os
@@ -16,16 +16,18 @@ const vdir = @VEXEROOT
 fn main() {
 	dump(fast_dir)
 	dump(vdir)
-	os.chdir(fast_dir)
+	os.chdir(fast_dir) ?
 	if !os.exists('$vdir/v') && !os.is_dir('$vdir/vlib') {
 		println('fast.html generator needs to be located in `v/cmd/tools/fast`')
 	}
 	println('fast.html generator\n')
-	println('Fetching updates...')
-	ret := os.system('$vdir/v up')
-	if ret != 0 {
-		println('failed to update V')
-		return
+	if !os.args.contains('-noupdate') {
+		println('Fetching updates...')
+		ret := os.system('$vdir/v up')
+		if ret != 0 {
+			println('failed to update V')
+			return
+		}
 	}
 	// Fetch the last commit's hash
 	commit := exec('git rev-parse HEAD')[..8]
@@ -33,10 +35,13 @@ fn main() {
 		os.create('table.html') ?
 	}
 	mut table := os.read_file('table.html') ?
-	if table.contains('>$commit<') {
-		println('nothing to benchmark')
-		exit(1)
-		return
+	if os.exists('website/index.html') {
+		uploaded_index := os.read_file('website/index.html') ?
+		if uploaded_index.contains('>$commit<') {
+			println('nothing to benchmark')
+			exit(1)
+			return
+		}
 	}
 	// for i, commit in commits {
 	message := exec('git log --pretty=format:"%s" -n1 $commit')
@@ -46,10 +51,12 @@ fn main() {
 	// println('Checking out ${commit}...')
 	// exec('git checkout $commit')
 	println('  Building vprod...')
-	os.chdir(vdir)
-	exec('./v -o vprod -prod -prealloc cmd/v')
-	// println('cur vdir="$vdir"')
-	// exec('v -o vprod cmd/v') // for faster debugging
+	os.chdir(vdir) ?
+	if os.args.contains('-noprod') {
+		exec('./v -o vprod cmd/v') // for faster debugging
+	} else {
+		exec('./v -o vprod -prod -prealloc cmd/v')
+	}
 	// cache vlib modules
 	exec('$vdir/v wipe-cache')
 	exec('$vdir/v -o v2 -prod cmd/v')
@@ -58,6 +65,12 @@ fn main() {
 	mut tcc_path := 'tcc'
 	$if freebsd {
 		tcc_path = '/usr/local/bin/tcc'
+		if vdir.contains('/tmp/cirrus-ci-build') {
+			tcc_path = 'clang'
+		}
+	}
+	if os.args.contains('-clang') {
+		tcc_path = 'clang'
 	}
 	diff2 := measure('$vdir/vprod $voptions -cc $tcc_path -o v2 cmd/v', 'v2')
 	diff3 := 0 // measure('$vdir/vprod -native $vdir/cmd/tools/1mil.v', 'native 1mil')
@@ -70,7 +83,7 @@ fn main() {
 	commit_date := exec('git log -n1 --pretty="format:%at" $commit')
 	date := time.unix(commit_date.int())
 	//
-	os.chdir(fast_dir)
+	os.chdir(fast_dir) ?
 	mut out := os.create('table.html') ?
 	// Place the new row on top
 	html_message := message.replace_each(['<', '&lt;', '>', '&gt;'])
@@ -105,6 +118,16 @@ fn main() {
 	//}
 	// exec('git checkout master')
 	// os.write_file('last_commit.txt', commits[commits.len - 1]) ?
+	// Upload the result to github pages
+	if os.args.contains('-upload') {
+		println('uploading...')
+		os.chdir('website') ?
+		os.execute_or_exit('git checkout gh-pages')
+		os.cp('../index.html', 'index.html') ?
+		os.rm('../index.html') ?
+		os.system('git commit -am "update benchmark"')
+		os.system('git push origin gh-pages')
+	}
 }
 
 fn exec(s string) string {

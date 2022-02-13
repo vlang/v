@@ -70,7 +70,7 @@ fn linebreaks_in_ascii_art_block_comments() {
 }
 
 fn map_comments() {
-	mymap := map{
+	mymap := {
 		// pre
 		`:`: 1
 		`!`: 2 // after

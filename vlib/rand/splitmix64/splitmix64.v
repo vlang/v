@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module splitmix64
@@ -45,8 +45,8 @@ pub fn (mut rng SplitMix64RNG) u32() u32 {
 pub fn (mut rng SplitMix64RNG) u64() u64 {
 	rng.state += (0x9e3779b97f4a7c15)
 	mut z := rng.state
-	z = (z ^ ((z >> u64(30)))) * (0xbf58476d1ce4e5b9)
-	z = (z ^ ((z >> u64(27)))) * (0x94d049bb133111eb)
+	z = (z ^ (z >> u64(30))) * 0xbf58476d1ce4e5b9
+	z = (z ^ (z >> u64(27))) * 0x94d049bb133111eb
 	return z ^ (z >> (31))
 }
 
@@ -222,4 +222,10 @@ pub fn (mut rng SplitMix64RNG) f64_in_range(min f64, max f64) f64 {
 		exit(1)
 	}
 	return min + rng.f64n(max - min)
+}
+
+// free should be called when the generator is no longer needed
+[unsafe]
+pub fn (mut rng SplitMix64RNG) free() {
+	unsafe { free(rng) }
 }

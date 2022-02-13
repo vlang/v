@@ -101,8 +101,7 @@ fn test_format_ss_micro() {
 
 fn test_smonth() {
 	month_names := ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov',
-		'Dec',
-	]
+		'Dec']
 	for i, name in month_names {
 		month_num := i + 1
 		t := time.Time{
@@ -160,18 +159,18 @@ fn test_add() {
 	t2 := time_to_test.add(duration)
 	assert t2.second == t1.second + d_seconds
 	assert t2.microsecond == t1.microsecond + d_microseconds
-	assert t2.unix == t1.unix + u64(d_seconds)
+	assert t2.unix == t1.unix + d_seconds
 	t3 := time_to_test.add(-duration)
 	assert t3.second == t1.second - d_seconds
 	assert t3.microsecond == t1.microsecond - d_microseconds
-	assert t3.unix == t1.unix - u64(d_seconds)
+	assert t3.unix == t1.unix - d_seconds
 }
 
 fn test_add_days() {
 	num_of_days := 3
 	t := time_to_test.add_days(num_of_days)
 	assert t.day == time_to_test.day + num_of_days
-	assert t.unix == time_to_test.unix + 86400 * u64(num_of_days)
+	assert t.unix == time_to_test.unix + 86400 * num_of_days
 }
 
 fn test_str() {
@@ -217,8 +216,8 @@ fn test_unix_time() {
 	//
 	utm1 := t1.unix_time_milli()
 	utm2 := t2.unix_time_milli()
-	assert (utm1 - u64(ut1) * 1000) < 1000
-	assert (utm2 - u64(ut2) * 1000) < 1000
+	assert (utm1 - ut1 * 1000) < 1000
+	assert (utm2 - ut2 * 1000) < 1000
 	//
 	// println('utm1: $utm1 | utm2: $utm2')
 	assert utm2 - utm1 > 2
@@ -244,4 +243,14 @@ fn test_offset() {
 	}
 
 	assert diff_seconds == time.offset()
+}
+
+fn test_since() {
+	t1 := time.now()
+	time.sleep(20 * time.millisecond)
+	d1 := time.since(t1)
+	assert d1 >= 20_000_000
+	time.sleep(20 * time.millisecond)
+	d2 := time.since(t1)
+	assert d2 >= 40_000_000
 }

@@ -23,7 +23,7 @@ fn main() {
 	args_string := os.args[1..].join(' ')
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
-	os.chdir(vroot)
+	os.chdir(vroot) ?
 	folder := os.join_path('cmd', 'tools')
 	tfolder := os.join_path(vroot, 'cmd', 'tools')
 	main_label := 'Building $folder ...'
@@ -56,6 +56,10 @@ fn main() {
 		}
 		//
 		tpath := os.join_path(session.vtmp_dir, texe)
+		if texe.ends_with('_builder') || texe.ends_with('_builder.exe') {
+			os.mv_by_cp(tpath, os.join_path(tfolder, 'builders', texe)) or { panic(err) }
+			continue
+		}
 		if tname in tools_in_subfolders {
 			os.mv_by_cp(tpath, os.join_path(tfolder, tname, texe)) or { panic(err) }
 			continue

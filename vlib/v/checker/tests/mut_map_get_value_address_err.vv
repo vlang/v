@@ -1,5 +1,5 @@
 fn main() {
-    mut m := map{'key' : 3}
+    mut m := {'key' : 3}
     a := &m['key']
     println(a)
 }

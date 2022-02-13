@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module native
@@ -395,9 +395,14 @@ fn (mut g Gen) write_symbol(s Symbol) {
 fn (mut g Gen) sym_string_table() int {
 	begin := g.buf.len
 	g.zeroes(1)
-	at := i64(0x100000000)
 	for i, s in g.strings {
-		g.write64_at(at + g.buf.len, int(g.str_pos[i]))
+		pos := g.buf.len - int(g.str_pos[i])
+		if g.pref.os == .windows {
+			g.write32_at(int(g.str_pos[i]), pos - 4) // 0x402028 + pos)
+		} else {
+			baddr := i64(0x100000000)
+			g.write64_at(g.buf.len + baddr, int(g.str_pos[i]))
+		}
 		g.write_string(s)
 		g.write8(0)
 	}

@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module http
@@ -6,6 +6,7 @@ module http
 import io
 import net
 import net.urllib
+import rand
 import strings
 import time
 
@@ -26,6 +27,13 @@ pub mut:
 	// time = -1 for no timeout
 	read_timeout  i64 = 30 * time.second
 	write_timeout i64 = 30 * time.second
+	//
+	validate               bool // when true, certificate failures will stop further processing
+	verify                 string
+	cert                   string
+	cert_key               string
+	in_memory_verification bool // if true, verify, cert, and cert_key are read from memory, not from a file
+	allow_redirect         bool = true // whether to allow redirect
 }
 
 fn (mut req Request) free() {
@@ -56,9 +64,11 @@ pub fn (req &Request) do() ?Response {
 		}
 		qresp := req.method_and_url_to_response(req.method, rurl) ?
 		resp = qresp
+		if !req.allow_redirect {
+			break
+		}
 		if resp.status() !in [.moved_permanently, .found, .see_other, .temporary_redirect,
-			.permanent_redirect,
-		] {
+			.permanent_redirect] {
 			break
 		}
 		// follow any redirects
@@ -220,7 +230,12 @@ fn parse_request_line(s string) ?(Method, urllib.URL, Version) {
 }
 
 // Parse URL encoded key=value&key=value forms
-fn parse_form(body string) map[string]string {
+//
+// FIXME: Some servers can require the
+// parameter in a specific order.
+//
+// a possible solution is to use the a list of QueryValue
+pub fn parse_form(body string) map[string]string {
 	words := body.split('&')
 	mut form := map[string]string{}
 	for word in words {
@@ -238,62 +253,146 @@ fn parse_form(body string) map[string]string {
 	// ...
 }
 
-struct FileData {
+pub struct FileData {
 pub:
 	filename     string
 	content_type string
 	data         string
 }
 
-struct UnexpectedExtraAttributeError {
-	msg  string
-	code int
+pub struct UnexpectedExtraAttributeError {
+	Error
+	attributes []string
 }
 
-struct MultiplePathAttributesError {
-	msg  string = 'Expected at most one path attribute'
-	code int
+pub fn (err UnexpectedExtraAttributeError) msg() string {
+	return 'Encountered unexpected extra attributes: $err.attributes'
 }
 
-fn parse_multipart_form(body string, boundary string) (map[string]string, map[string][]FileData) {
-	sections := body.split(boundary)
-	fields := sections[1..sections.len - 1]
+pub struct MultiplePathAttributesError {
+	Error
+}
+
+pub fn (err MultiplePathAttributesError) msg() string {
+	return 'Expected at most one path attribute'
+}
+
+// multipart_form_body converts form and file data into a multipart/form
+// HTTP request body. It is the inverse of parse_multipart_form. Returns
+// (body, boundary).
+// NB: Form keys should not contain quotes
+fn multipart_form_body(form map[string]string, files map[string][]FileData) (string, string) {
+	alpha_numeric := 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+	boundary := rand.string_from_set(alpha_numeric, 64)
+
+	mut sb := strings.new_builder(1024)
+	for name, value in form {
+		sb.write_string('\r\n--')
+		sb.write_string(boundary)
+		sb.write_string('\r\nContent-Disposition: form-data; name="')
+		sb.write_string(name)
+		sb.write_string('"\r\n\r\n')
+		sb.write_string(value)
+	}
+	for name, fs in files {
+		for f in fs {
+			sb.write_string('\r\n--')
+			sb.write_string(boundary)
+			sb.write_string('\r\nContent-Disposition: form-data; name="')
+			sb.write_string(name)
+			sb.write_string('"; filename="')
+			sb.write_string(f.filename)
+			sb.write_string('"\r\nContent-Type: ')
+			sb.write_string(f.content_type)
+			sb.write_string('\r\n\r\n')
+			sb.write_string(f.data)
+		}
+	}
+	sb.write_string('\r\n--')
+	sb.write_string(boundary)
+	sb.write_string('--')
+	return sb.str(), boundary
+}
+
+struct LineSegmentIndexes {
+mut:
+	start int
+	end   int
+}
+
+// parse_multipart_form parses an http request body, given a boundary string
+// For more details about multipart forms, see:
+//   https://datatracker.ietf.org/doc/html/rfc2183
+//   https://datatracker.ietf.org/doc/html/rfc2388
+//   https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition
+pub fn parse_multipart_form(body string, boundary string) (map[string]string, map[string][]FileData) {
+	// dump(body)
+	// dump(boundary)
 	mut form := map[string]string{}
 	mut files := map[string][]FileData{}
-
+	// TODO: do not use split, but only indexes, to reduce copying of potentially large data
+	sections := body.split(boundary)
+	fields := sections[1..sections.len - 1]
 	for field in fields {
-		// TODO: do not split into lines; do same parsing for HTTP body
-		lines := field.split_into_lines()[1..]
-		disposition := parse_disposition(lines[0])
+		mut line_segments := []LineSegmentIndexes{cap: 100}
+		mut line_idx, mut line_start := 0, 0
+		for cidx, c in field {
+			if line_idx >= 6 {
+				// no need to scan further
+				break
+			}
+			if c == `\n` {
+				line_segments << LineSegmentIndexes{line_start, cidx}
+				line_start = cidx + 1
+				line_idx++
+			}
+		}
+		line_segments << LineSegmentIndexes{line_start, field.len}
+		line1 := field[line_segments[1].start..line_segments[1].end]
+		line2 := field[line_segments[2].start..line_segments[2].end]
+		disposition := parse_disposition(line1.trim_space())
 		// Grab everything between the double quotes
 		name := disposition['name'] or { continue }
 		// Parse files
-		// TODO: filename*
-		if 'filename' in disposition {
-			filename := disposition['filename']
-			// Parse Content-Type header
-			if lines.len == 1 || !lines[1].to_lower().starts_with('content-type:') {
+		// TODO: handle `filename*`, see https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition
+		if filename := disposition['filename'] {
+			// reject early broken content
+			if line_segments.len < 5 {
 				continue
 			}
-			mut ct := lines[1].split_nth(':', 2)[1]
-			ct = ct.trim_left(' \t')
-			data := lines_to_string(field.len, lines, 3, lines.len - 1)
+			// reject early non Content-Type headers
+			if !line2.to_lower().starts_with('content-type:') {
+				continue
+			}
+			content_type := line2.split_nth(':', 2)[1].trim_space()
+			// line1: Content-Disposition: form-data; name="upfile"; filename="photo123.jpg"
+			// line2: Content-Type: image/jpeg
+			// line3:
+			// line4: DATA
+			// ...
+			// lineX: --
+			data := field[line_segments[4].start..field.len - 4] // each multipart field ends with \r\n--
+			// dump(data.limit(20).bytes())
+			// dump(data.len)
 			files[name] << FileData{
 				filename: filename
-				content_type: ct
+				content_type: content_type
 				data: data
 			}
 			continue
 		}
-		data := lines_to_string(field.len, lines, 2, lines.len - 1)
-		form[name] = data
+		if line_segments.len < 4 {
+			continue
+		}
+		form[name] = field[line_segments[3].start..field.len - 4]
 	}
+	// dump(form)
 	return form, files
 }
 
 // Parse the Content-Disposition header of a multipart form
 // Returns a map of the key="value" pairs
-// Example: parse_disposition('Content-Disposition: form-data; name="a"; filename="b"') == {'name': 'a', 'filename': 'b'}
+// Example: assert parse_disposition('Content-Disposition: form-data; name="a"; filename="b"') == {'name': 'a', 'filename': 'b'}
 fn parse_disposition(line string) map[string]string {
 	mut data := map[string]string{}
 	for word in line.split(';') {
@@ -309,16 +408,4 @@ fn parse_disposition(line string) map[string]string {
 		}
 	}
 	return data
-}
-
-[manualfree]
-fn lines_to_string(len int, lines []string, start int, end int) string {
-	mut sb := strings.new_builder(len)
-	for i in start .. end {
-		sb.writeln(lines[i])
-	}
-	sb.cut_last(1) // last newline
-	res := sb.str()
-	unsafe { sb.free() }
-	return res
 }

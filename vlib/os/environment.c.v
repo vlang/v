@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module os
@@ -11,18 +11,30 @@ fn C.GetEnvironmentStringsW() &u16
 fn C.FreeEnvironmentStringsW(&u16) int
 
 // `getenv` returns the value of the environment variable named by the key.
+// If there is not one found, it returns an empty string ''.
 pub fn getenv(key string) string {
+	return getenv_opt(key) or { '' }
+}
+
+// `getenv_opt` returns the value of the environment variable named by the key
+// If there is not one found, it returns `none`.
+[manualfree]
+pub fn getenv_opt(key string) ?string {
 	unsafe {
 		$if windows {
-			s := C._wgetenv(key.to_wide())
+			kw := key.to_wide()
+			defer {
+				free(voidptr(kw))
+			}
+			s := C._wgetenv(kw)
 			if s == 0 {
-				return ''
+				return none
 			}
 			return string_from_wide(s)
 		} $else {
 			s := C.getenv(&char(key.str))
 			if s == voidptr(0) {
-				return ''
+				return none
 			}
 			// NB: C.getenv *requires* that the result be copied.
 			return cstring_to_vstring(s)

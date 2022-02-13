@@ -1,25 +1,17 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+[has_globals]
 module rand
 
-import rand.seed
+import rand.config
 import rand.wyrand
-import time
-
-// PRNGConfigStruct is a configuration struct for creating a new instance of the default RNG.
-// Note that the RNGs may have a different number of u32s required for seeding. The default
-// generator WyRand used 64 bits, ie. 2 u32s so that is the default. In case your desired generator
-// uses a different number of u32s, use the `seed.time_seed_array()` method with the correct
-// number of u32s.
-pub struct PRNGConfigStruct {
-	seed []u32 = seed.time_seed_array(2)
-}
 
 // PRNG is a common interface for all PRNGs that can be used seamlessly with the rand
 // modules's API. It defines all the methods that a PRNG (in the vlib or custom made) must
 // implement in order to ensure that _all_ functions can be used with the generator.
 pub interface PRNG {
+mut:
 	seed(seed_data []u32)
 	u32() u32
 	u64() u64
@@ -41,22 +33,18 @@ pub interface PRNG {
 	f64n(max f64) f64
 	f32_in_range(min f32, max f32) f32
 	f64_in_range(min f64, max f64) f64
+	free()
 }
 
-__global (
-	default_rng &PRNG
-)
-
-// init initializes the default RNG.
-fn init() {
-	default_rng = new_default()
-}
+__global default_rng &PRNG
 
 // new_default returns a new instance of the default RNG. If the seed is not provided, the current time will be used to seed the instance.
-pub fn new_default(config PRNGConfigStruct) &PRNG {
+[manualfree]
+pub fn new_default(config config.PRNGConfigStruct) &PRNG {
 	mut rng := &wyrand.WyRandRNG{}
-	rng.seed(config.seed)
-	return rng
+	rng.seed(config.seed_)
+	unsafe { config.seed_.free() }
+	return &PRNG(rng)
 }
 
 // get_current_rng returns the PRNG instance currently in use. If it is not changed, it will be an instance of wyrand.WyRandRNG.
@@ -186,132 +174,18 @@ pub fn f64_in_range(min f64, max f64) f64 {
 	return default_rng.f64_in_range(min, max)
 }
 
+// bytes returns a buffer of `bytes_needed` random bytes
+pub fn bytes(bytes_needed int) ?[]byte {
+	if bytes_needed < 0 {
+		return error('can not read < 0 random bytes')
+	}
+	mut res := []byte{len: bytes_needed}
+	read(mut res)
+	return res
+}
+
 const (
 	english_letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
 	hex_chars       = 'abcdef0123456789'
 	ascii_chars     = '!"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ\\^_`abcdefghijklmnopqrstuvwxyz{|}~'
 )
-
-// string_from_set returns a string of length `len` containing random characters sampled from the given `charset`
-pub fn string_from_set(charset string, len int) string {
-	if len == 0 {
-		return ''
-	}
-	mut buf := unsafe { malloc_noscan(len + 1) }
-	for i in 0 .. len {
-		unsafe {
-			buf[i] = charset[intn(charset.len)]
-		}
-	}
-	unsafe {
-		buf[len] = 0
-	}
-	return unsafe { buf.vstring_with_len(len) }
-}
-
-// string returns a string of length `len` containing random characters in range `[a-zA-Z]`.
-pub fn string(len int) string {
-	return string_from_set(rand.english_letters, len)
-}
-
-// hex returns a hexadecimal number of length `len` containing random characters in range `[a-f0-9]`.
-pub fn hex(len int) string {
-	return string_from_set(rand.hex_chars, len)
-}
-
-// ascii returns a random string of the printable ASCII characters with length `len`.
-pub fn ascii(len int) string {
-	return string_from_set(rand.ascii_chars, len)
-}
-
-// uuid_v4 generates a random (v4) UUID
-// See https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_4_(random)
-pub fn uuid_v4() string {
-	buflen := 36
-	mut buf := unsafe { malloc_noscan(37) }
-	mut i_buf := 0
-	mut x := u64(0)
-	mut d := byte(0)
-	for i_buf < buflen {
-		mut c := 0
-		x = default_rng.u64()
-		// do most of the bit manipulation at once:
-		x &= 0x0F0F0F0F0F0F0F0F
-		x += 0x3030303030303030
-		// write the ASCII codes to the buffer:
-		for c < 8 && i_buf < buflen {
-			d = byte(x)
-			unsafe {
-				buf[i_buf] = if d > 0x39 { d + 0x27 } else { d }
-			}
-			i_buf++
-			c++
-			x = x >> 8
-		}
-	}
-	// there are still some random bits in x:
-	x = x >> 8
-	d = byte(x)
-	unsafe {
-		buf[19] = if d > 0x39 { d + 0x27 } else { d }
-		buf[8] = `-`
-		buf[13] = `-`
-		buf[18] = `-`
-		buf[23] = `-`
-		buf[14] = `4`
-		buf[buflen] = 0
-		return buf.vstring_with_len(buflen)
-	}
-}
-
-const (
-	ulid_encoding = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
-)
-
-// ulid generates an Unique Lexicographically sortable IDentifier.
-// See https://github.com/ulid/spec .
-// NB: ULIDs can leak timing information, if you make them public, because
-// you can infer the rate at which some resource is being created, like
-// users or business transactions.
-// (https://news.ycombinator.com/item?id=14526173)
-pub fn ulid() string {
-	return ulid_at_millisecond(time.utc().unix_time_milli())
-}
-
-// ulid_at_millisecond does the same as `ulid` but takes a custom Unix millisecond timestamp via `unix_time_milli`.
-pub fn ulid_at_millisecond(unix_time_milli u64) string {
-	buflen := 26
-	mut buf := unsafe { malloc_noscan(27) }
-	mut t := unix_time_milli
-	mut i := 9
-	for i >= 0 {
-		unsafe {
-			buf[i] = rand.ulid_encoding[t & 0x1F]
-		}
-		t = t >> 5
-		i--
-	}
-	// first rand set
-	mut x := default_rng.u64()
-	i = 10
-	for i < 19 {
-		unsafe {
-			buf[i] = rand.ulid_encoding[x & 0x1F]
-		}
-		x = x >> 5
-		i++
-	}
-	// second rand set
-	x = default_rng.u64()
-	for i < 26 {
-		unsafe {
-			buf[i] = rand.ulid_encoding[x & 0x1F]
-		}
-		x = x >> 5
-		i++
-	}
-	unsafe {
-		buf[26] = 0
-		return buf.vstring_with_len(buflen)
-	}
-}

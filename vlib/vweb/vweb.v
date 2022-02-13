@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module vweb
@@ -9,14 +9,27 @@ import net
 import net.http
 import net.urllib
 import time
+import json
+
+// A type which don't get filtered inside templates
+pub type RawHtml = string
+
+// A dummy structure that returns from routes to indicate that you actually sent something to a user
+[noinit]
+pub struct Result {}
 
 pub const (
 	methods_with_form = [http.Method.post, .put, .patch]
-	headers_close     = http.new_custom_header_from_map(map{
+	headers_close     = http.new_custom_header_from_map({
 		'Server':          'VWeb'
 		http.CommonHeader.connection.str(): 'close'
 	}) or { panic('should never fail') }
 
+	http_302          = http.new_response(
+		status: .found
+		text: '302 Found'
+		header: headers_close
+	)
 	http_400          = http.new_response(
 		status: .bad_request
 		text: '400 Bad Request'
@@ -41,45 +54,119 @@ pub const (
 			value: 'text/plain'
 		).join(headers_close)
 	)
-	mime_types        = map{
-		'.css':  'text/css; charset=utf-8'
-		'.gif':  'image/gif'
-		'.htm':  'text/html; charset=utf-8'
-		'.html': 'text/html; charset=utf-8'
-		'.jpg':  'image/jpeg'
-		'.js':   'application/javascript'
-		'.json': 'application/json'
-		'.md':   'text/markdown; charset=utf-8'
-		'.pdf':  'application/pdf'
-		'.png':  'image/png'
-		'.svg':  'image/svg+xml'
-		'.txt':  'text/plain; charset=utf-8'
-		'.wasm': 'application/wasm'
-		'.xml':  'text/xml; charset=utf-8'
-		'.ico':  'img/x-icon'
+	mime_types        = {
+		'.aac':    'audio/aac'
+		'.abw':    'application/x-abiword'
+		'.arc':    'application/x-freearc'
+		'.avi':    'video/x-msvideo'
+		'.azw':    'application/vnd.amazon.ebook'
+		'.bin':    'application/octet-stream'
+		'.bmp':    'image/bmp'
+		'.bz':     'application/x-bzip'
+		'.bz2':    'application/x-bzip2'
+		'.cda':    'application/x-cdf'
+		'.csh':    'application/x-csh'
+		'.css':    'text/css'
+		'.csv':    'text/csv'
+		'.doc':    'application/msword'
+		'.docx':   'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+		'.eot':    'application/vnd.ms-fontobject'
+		'.epub':   'application/epub+zip'
+		'.gz':     'application/gzip'
+		'.gif':    'image/gif'
+		'.htm':    'text/html'
+		'.html':   'text/html'
+		'.ico':    'image/vnd.microsoft.icon'
+		'.ics':    'text/calendar'
+		'.jar':    'application/java-archive'
+		'.jpeg':   'image/jpeg'
+		'.jpg':    'image/jpeg'
+		'.js':     'text/javascript'
+		'.json':   'application/json'
+		'.jsonld': 'application/ld+json'
+		'.mid':    'audio/midi audio/x-midi'
+		'.midi':   'audio/midi audio/x-midi'
+		'.mjs':    'text/javascript'
+		'.mp3':    'audio/mpeg'
+		'.mp4':    'video/mp4'
+		'.mpeg':   'video/mpeg'
+		'.mpkg':   'application/vnd.apple.installer+xml'
+		'.odp':    'application/vnd.oasis.opendocument.presentation'
+		'.ods':    'application/vnd.oasis.opendocument.spreadsheet'
+		'.odt':    'application/vnd.oasis.opendocument.text'
+		'.oga':    'audio/ogg'
+		'.ogv':    'video/ogg'
+		'.ogx':    'application/ogg'
+		'.opus':   'audio/opus'
+		'.otf':    'font/otf'
+		'.png':    'image/png'
+		'.pdf':    'application/pdf'
+		'.php':    'application/x-httpd-php'
+		'.ppt':    'application/vnd.ms-powerpoint'
+		'.pptx':   'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+		'.rar':    'application/vnd.rar'
+		'.rtf':    'application/rtf'
+		'.sh':     'application/x-sh'
+		'.svg':    'image/svg+xml'
+		'.swf':    'application/x-shockwave-flash'
+		'.tar':    'application/x-tar'
+		'.tif':    'image/tiff'
+		'.tiff':   'image/tiff'
+		'.ts':     'video/mp2t'
+		'.ttf':    'font/ttf'
+		'.txt':    'text/plain'
+		'.vsd':    'application/vnd.visio'
+		'.wav':    'audio/wav'
+		'.weba':   'audio/webm'
+		'.webm':   'video/webm'
+		'.webp':   'image/webp'
+		'.woff':   'font/woff'
+		'.woff2':  'font/woff2'
+		'.xhtml':  'application/xhtml+xml'
+		'.xls':    'application/vnd.ms-excel'
+		'.xlsx':   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+		'.xml':    'application/xml'
+		'.xul':    'application/vnd.mozilla.xul+xml'
+		'.zip':    'application/zip'
+		'.3gp':    'video/3gpp'
+		'.3g2':    'video/3gpp2'
+		'.7z':     'application/x-7z-compressed'
 	}
 	max_http_post_size = 1024 * 1024
 	default_port       = 8080
 )
 
+// The Context struct represents the Context which hold the HTTP request and response.
+// It has fields for the query, form, files.
 pub struct Context {
 mut:
 	content_type string = 'text/plain'
 	status       string = '200 OK'
 pub:
+	// HTTP Request
 	req http.Request
 	// TODO Response
 pub mut:
+	done bool
+	// time.ticks() from start of vweb connection handle.
+	// You can use it to determine how much time is spent on your request.
+	page_gen_start i64
+	// TCP connection to client.
+	// But beware, do not store it for further use, after request processing vweb will close connection.
 	conn              &net.TcpConn
 	static_files      map[string]string
 	static_mime_types map[string]string
-	form              map[string]string
-	query             map[string]string
-	files             map[string][]FileData
-	header            http.Header // response headers
-	done              bool
-	page_gen_start    i64
-	form_error        string
+	// Map containing query params for the route.
+	// Example: `http://localhost:3000/index?q=vpm&order_by=desc => { 'q': 'vpm', 'order_by': 'desc' }
+	query map[string]string
+	// Multipart-form fields.
+	form map[string]string
+	// Files from multipart-form.
+	files map[string][]http.FileData
+
+	header http.Header // response headers
+	// ? It doesn't seem to be used anywhere
+	form_error string
 }
 
 struct FileData {
@@ -89,20 +176,21 @@ pub:
 	data         string
 }
 
-struct UnexpectedExtraAttributeError {
-	msg  string
-	code int
+struct Route {
+	methods []http.Method
+	path    string
 }
 
-struct MultiplePathAttributesError {
-	msg  string = 'Expected at most one path attribute'
-	code int
+// Defining this method is optional.
+// This method called at server start.
+// You can use it for initializing globals.
+pub fn (ctx Context) init_server() {
+	eprintln('init_server() has been deprecated, please init your web app in `fn main()`')
 }
 
-// declaring init_server in your App struct is optional
-pub fn (ctx Context) init_server() {}
-
-// declaring before_request in your App struct is optional
+// Defining this method is optional.
+// This method called before every request (aka middleware).
+// Probably you can use it for check user session cookie or add header.
 pub fn (ctx Context) before_request() {}
 
 pub struct Cookie {
@@ -111,10 +199,6 @@ pub struct Cookie {
 	expires   time.Time
 	secure    bool
 	http_only bool
-}
-
-[noinit]
-pub struct Result {
 }
 
 // vweb intern function
@@ -126,7 +210,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	ctx.done = true
 
 	// build header
-	header := http.new_header_from_map(map{
+	header := http.new_header_from_map({
 		http.CommonHeader.content_type:   mimetype
 		http.CommonHeader.content_length: res.len.str()
 	}).join(ctx.header)
@@ -153,9 +237,35 @@ pub fn (mut ctx Context) text(s string) Result {
 	return Result{}
 }
 
-// Response HTTP_OK with s as payload with content-type `application/json`
-pub fn (mut ctx Context) json(s string) Result {
-	ctx.send_response_to_client('application/json', s)
+// Response HTTP_OK with json_s as payload with content-type `application/json`
+pub fn (mut ctx Context) json<T>(j T) Result {
+	json_s := json.encode(j)
+	ctx.send_response_to_client('application/json', json_s)
+	return Result{}
+}
+
+// Response HTTP_OK with a pretty-printed JSON result
+pub fn (mut ctx Context) json_pretty<T>(j T) Result {
+	json_s := json.encode_pretty(j)
+	ctx.send_response_to_client('application/json', json_s)
+	return Result{}
+}
+
+// Response HTTP_OK with file as payload
+pub fn (mut ctx Context) file(f_path string) Result {
+	ext := os.file_ext(f_path)
+	data := os.read_file(f_path) or {
+		eprint(err.msg())
+		ctx.server_error(500)
+		return Result{}
+	}
+	content_type := vweb.mime_types[ext]
+	if content_type == '' {
+		eprintln('no MIME type found for extension $ext')
+		ctx.server_error(500)
+	} else {
+		ctx.send_response_to_client(content_type, data)
+	}
 	return Result{}
 }
 
@@ -183,9 +293,10 @@ pub fn (mut ctx Context) redirect(url string) Result {
 		return Result{}
 	}
 	ctx.done = true
-	send_string(mut ctx.conn, 'HTTP/1.1 302 Found\r\nLocation: $url$ctx.header\r\n$vweb.headers_close\r\n') or {
-		return Result{}
-	}
+	mut resp := vweb.http_302
+	resp.header = resp.header.join(ctx.header)
+	resp.header.add(.location, url)
+	send_string(mut ctx.conn, resp.bytestr()) or { return Result{} }
 	return Result{}
 }
 
@@ -261,38 +372,35 @@ pub fn (ctx &Context) get_header(key string) string {
 	return ctx.req.header.get_custom(key) or { '' }
 }
 
-/*
-pub fn run<T>(port int) {
-	mut x := &T{}
-	run_app(mut x, port)
-}
-*/
-
 interface DbInterface {
 	db voidptr
 }
 
-// run_app
-[manualfree]
+// run - start a new VWeb server, listening to all available addresses, at the specified `port`
 pub fn run<T>(global_app &T, port int) {
-	// x := global_app.clone()
-	// mut global_app := &T{}
-	// mut app := &T{}
-	// run_app<T>(mut app, port)
+	run_at<T>(global_app, '', port)
+}
 
-	mut l := net.listen_tcp(.ip6, ':$port') or { panic('failed to listen $err.code $err') }
+// run_at - start a new VWeb server, listening only on a specific address `host`, at the specified `port`
+// Example: `vweb.run_at(app, 'localhost', 8099)`
+[manualfree]
+pub fn run_at<T>(global_app &T, host string, port int) {
+	mut l := net.listen_tcp(.ip, '$host:$port') or { panic('failed to listen $err.code $err') }
 
+	// Parsing methods attributes
+	mut routes := map[string]Route{}
+	$for method in T.methods {
+		http_methods, route_path := parse_attrs(method.name, method.attrs) or {
+			eprintln('error parsing method attributes: $err')
+			return
+		}
+
+		routes[method.name] = Route{
+			methods: http_methods
+			path: route_path
+		}
+	}
 	println('[Vweb] Running app on http://localhost:$port')
-	// app.Context = Context{
-	// conn: 0
-	//}
-	// app.init_server()
-	// global_app.init_server()
-	//$for method in T.methods {
-	//$if method.return_type is Result {
-	// check routes for validity
-	//}
-	//}
 	for {
 		// Create a new app object for each connection, copy global data like db connections
 		mut request_app := &T{}
@@ -302,25 +410,22 @@ pub fn run<T>(global_app &T, port int) {
 			// println('vweb no db')
 		}
 		$for field in T.fields {
-			if field.is_shared {
+			if 'vweb_global' in field.attrs || field.is_shared {
 				request_app.$(field.name) = global_app.$(field.name)
 			}
 		}
 		request_app.Context = global_app.Context // copy the context ref that contains static files map etc
-		// request_app.Context = Context{
-		// conn: 0
-		//}
 		mut conn := l.accept() or {
 			// failures should not panic
-			eprintln('accept() failed with error: $err.msg')
+			eprintln('accept() failed with error: $err.msg()')
 			continue
 		}
-		go handle_conn<T>(mut conn, mut request_app)
+		go handle_conn<T>(mut conn, mut request_app, routes)
 	}
 }
 
 [manualfree]
-fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
+fn handle_conn<T>(mut conn net.TcpConn, mut app T, routes map[string]Route) {
 	conn.set_read_timeout(30 * time.second)
 	conn.set_write_timeout(30 * time.second)
 	defer {
@@ -329,90 +434,88 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 			free(app)
 		}
 	}
+
 	mut reader := io.new_buffered_reader(reader: conn)
 	defer {
 		reader.free()
 	}
+
 	page_gen_start := time.ticks()
-	req := parse_request(mut reader) or {
+
+	// Request parse
+	req := http.parse_request(mut reader) or {
 		// Prevents errors from being thrown when BufferedReader is empty
 		if '$err' != 'none' {
 			eprintln('error parsing request: $err')
 		}
 		return
 	}
-	app.Context = Context{
-		req: req
-		conn: conn
-		form: map[string]string{}
-		static_files: app.static_files
-		static_mime_types: app.static_mime_types
-		page_gen_start: page_gen_start
-	}
-	if req.method in vweb.methods_with_form {
-		ct := req.header.get(.content_type) or { '' }.split(';').map(it.trim_left(' \t'))
-		if 'multipart/form-data' in ct {
-			boundary := ct.filter(it.starts_with('boundary='))
-			if boundary.len != 1 {
-				send_string(mut conn, vweb.http_400.bytestr()) or {}
-				return
-			}
-			form, files := parse_multipart_form(req.data, boundary[0][9..])
-			for k, v in form {
-				app.form[k] = v
-			}
-			for k, v in files {
-				app.files[k] = v
-			}
-		} else {
-			form := parse_form(req.data)
-			for k, v in form {
-				app.form[k] = v
-			}
-		}
-	}
-	// Serve a static file if it is one
-	// TODO: get the real path
-	url := urllib.parse(app.req.url) or {
+
+	// URL Parse
+	url := urllib.parse(req.url) or {
 		eprintln('error parsing path: $err')
 		return
 	}
+
+	// Query parse
+	query := parse_query_from_url(url)
+	url_words := url.path.split('/').filter(it != '')
+
+	// Form parse
+	form, files := parse_form_from_request(req) or {
+		// Bad request
+		conn.write(vweb.http_400.bytes()) or {}
+		return
+	}
+
+	app.Context = Context{
+		req: req
+		page_gen_start: page_gen_start
+		conn: conn
+		query: query
+		form: form
+		files: files
+		static_files: app.static_files
+		static_mime_types: app.static_mime_types
+	}
+
+	// Calling middleware...
+	app.before_request()
+
+	// Static handling
 	if serve_if_static<T>(mut app, url) {
 		// successfully served a static file
 		return
 	}
 
-	app.before_request()
-	// Call the right action
-	$if debug {
-		println('route matching...')
-	}
-	url_words := url.path.split('/').filter(it != '')
-	// copy query args to app.query
-	for k, v in url.query().data {
-		app.query[k] = v.data[0]
-	}
-
+	// Route matching
 	$for method in T.methods {
 		$if method.return_type is Result {
-			mut method_args := []string{}
-			// TODO: move to server start
-			http_methods, route_path := parse_attrs(method.name, method.attrs) or {
-				eprintln('error parsing method attributes: $err')
-				return
+			route := routes[method.name] or {
+				eprintln('parsed attributes for the `$method.name` are not found, skipping...')
+				Route{}
 			}
 
-			// Used for route matching
-			route_words := route_path.split('/').filter(it != '')
-
 			// Skip if the HTTP request method does not match the attributes
-			if app.req.method in http_methods {
+			if req.method in route.methods {
+				// Used for route matching
+				route_words := route.path.split('/').filter(it != '')
+
 				// Route immediate matches first
 				// For example URL `/register` matches route `/:user`, but `fn register()`
 				// should be called first.
-				if !route_path.contains('/:') && url_words == route_words {
+				if !route.path.contains('/:') && url_words == route_words {
 					// We found a match
-					app.$method()
+					if req.method == .post && method.args.len > 0 {
+						// Populate method args with form values
+						mut args := []string{cap: method.args.len}
+						for param in method.args {
+							args << form[param.name]
+						}
+						app.$method(args)
+					} else {
+						app.$method()
+					}
 					return
 				}
 
@@ -422,7 +525,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 				}
 
 				if params := route_matches(url_words, route_words) {
-					method_args = params.clone()
+					method_args := params.clone()
 					if method_args.len != method.args.len {
 						eprintln('warning: uneven parameters count ($method.args.len) in `$method.name`, compared to the vweb route `$method.attrs` ($method_args.len)')
 					}
@@ -432,12 +535,16 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 			}
 		}
 	}
-	// site not found
-	send_string(mut conn, vweb.http_404.bytestr()) or {}
+	// Route not found
+	conn.write(vweb.http_404.bytes()) or {}
 }
 
 fn route_matches(url_words []string, route_words []string) ?[]string {
 	// URL path should be at least as long as the route path
+	// except for the catchall route (`/:path...`)
+	if route_words.len == 1 && route_words[0].starts_with(':') && route_words[0].ends_with('...') {
+		return ['/' + url_words.join('/')]
+	}
 	if url_words.len < route_words.len {
 		return none
 	}
@@ -472,50 +579,6 @@ fn route_matches(url_words []string, route_words []string) ?[]string {
 	}
 	params << url_words[route_words.len - 1..url_words.len].join('/')
 	return params
-}
-
-// parse function attribute list for methods and a path
-fn parse_attrs(name string, attrs []string) ?([]http.Method, string) {
-	if attrs.len == 0 {
-		return [http.Method.get], '/$name'
-	}
-
-	mut x := attrs.clone()
-	mut methods := []http.Method{}
-	mut path := ''
-
-	for i := 0; i < x.len; {
-		attr := x[i]
-		attru := attr.to_upper()
-		m := http.method_from_str(attru)
-		if attru == 'GET' || m != .get {
-			methods << m
-			x.delete(i)
-			continue
-		}
-		if attr.starts_with('/') {
-			if path != '' {
-				return IError(&MultiplePathAttributesError{})
-			}
-			path = attr
-			x.delete(i)
-			continue
-		}
-		i++
-	}
-	if x.len > 0 {
-		return IError(&UnexpectedExtraAttributeError{
-			msg: 'Encountered unexpected extra attributes: $x'
-		})
-	}
-	if methods.len == 0 {
-		methods = [http.Method.get]
-	}
-	if path == '' {
-		path = '/$name'
-	}
-	// Make path lowercase for case-insensitive comparisons
-	return methods, path.to_lower()
 }
 
 // check if request is for a static file and serves it
@@ -581,7 +644,9 @@ pub fn (mut ctx Context) mount_static_folder_at(directory_path string, mount_pat
 		return false
 	}
 	dir_path := directory_path.trim_right('/')
-	ctx.scan_static_directory(dir_path, mount_path[1..])
+
+	trim_mount_path := mount_path.trim_left('/').trim_right('/')
+	ctx.scan_static_directory(dir_path, '/$trim_mount_path')
 	return true
 }
 
@@ -621,6 +686,13 @@ pub fn not_found() Result {
 	return Result{}
 }
 
+fn send_string(mut conn net.TcpConn, s string) ? {
+	conn.write(s.bytes()) ?
+}
+
+// Do not delete.
+// It used by `vlib/v/gen/c/str_intp.v:130` for string interpolation inside vweb templates
+// TODO: move it to template render
 fn filter(s string) string {
 	return s.replace_each([
 		'<',
@@ -630,11 +702,4 @@ fn filter(s string) string {
 		'&',
 		'&amp;',
 	])
-}
-
-// A type which don't get filtered inside templates
-pub type RawHtml = string
-
-fn send_string(mut conn net.TcpConn, s string) ? {
-	conn.write(s.bytes()) ?
 }

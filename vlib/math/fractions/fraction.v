@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module fractions
@@ -15,9 +15,9 @@ import math.bits
 // 2. d cannot be set to zero. The factory function will panic.
 // 3. If provided d is negative, it will be made positive. n will change as well.
 struct Fraction {
-	n i64
-	d i64
 pub:
+	n          i64
+	d          i64
 	is_reduced bool
 }
 

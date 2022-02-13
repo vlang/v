@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module markused
 
@@ -33,6 +33,9 @@ pub fn (mut w Walker) mark_const_as_used(ckey string) {
 	$if trace_skip_unused_marked ? {
 		eprintln('    const > |$ckey|')
 	}
+	if w.used_consts[ckey] {
+		return
+	}
 	w.used_consts[ckey] = true
 	cfield := w.all_consts[ckey] or { return }
 	w.expr(cfield.expr)
@@ -41,6 +44,9 @@ pub fn (mut w Walker) mark_const_as_used(ckey string) {
 pub fn (mut w Walker) mark_global_as_used(ckey string) {
 	$if trace_skip_unused_marked ? {
 		eprintln('  global > |$ckey|')
+	}
+	if w.used_globals[ckey] {
+		return
 	}
 	w.used_globals[ckey] = true
 	gfield := w.all_globals[ckey] or { return }
@@ -66,6 +72,30 @@ pub fn (mut w Walker) mark_exported_fns() {
 	}
 }
 
+pub fn (mut w Walker) mark_markused_fns() {
+	for _, mut func in w.all_fns {
+		if func.is_markused {
+			w.fn_decl(mut func)
+		}
+	}
+}
+
+pub fn (mut w Walker) mark_markused_consts() {
+	for ckey, mut constfield in w.all_consts {
+		if constfield.is_markused {
+			w.mark_const_as_used(ckey)
+		}
+	}
+}
+
+pub fn (mut w Walker) mark_markused_globals() {
+	for gkey, mut globalfield in w.all_globals {
+		if globalfield.is_markused {
+			w.mark_global_as_used(gkey)
+		}
+	}
+}
+
 pub fn (mut w Walker) stmt(node ast.Stmt) {
 	match mut node {
 		ast.EmptyStmt {}
@@ -86,7 +116,7 @@ pub fn (mut w Walker) stmt(node ast.Stmt) {
 		ast.Block {
 			w.stmts(node.stmts)
 		}
-		ast.CompFor {
+		ast.ComptimeFor {
 			w.stmts(node.stmts)
 		}
 		ast.ConstDecl {
@@ -109,6 +139,16 @@ pub fn (mut w Walker) stmt(node ast.Stmt) {
 			w.stmts(node.stmts)
 			if node.kind == .map {
 				w.table.used_maps++
+			}
+			if node.kind == .struct_ {
+				if node.cond_type == 0 {
+					return
+				}
+				// the .next() method of the struct will be used for iteration:
+				cond_type_sym := w.table.sym(node.cond_type)
+				if next_fn := cond_type_sym.find_method('next') {
+					w.fn_decl(mut &ast.FnDecl(next_fn.source_fn))
+				}
 			}
 		}
 		ast.ForStmt {
@@ -238,7 +278,10 @@ fn (mut w Walker) expr(node ast.Expr) {
 			w.expr(node.left)
 			w.expr(node.index)
 			w.or_block(node.or_expr)
-			sym := w.table.get_final_type_symbol(node.left_type)
+			if node.left_type == 0 {
+				return
+			}
+			sym := w.table.final_sym(node.left_type)
 			if sym.kind == .map {
 				w.table.used_maps++
 			}
@@ -250,13 +293,16 @@ fn (mut w Walker) expr(node ast.Expr) {
 			if node.left_type == 0 {
 				return
 			}
-			sym := w.table.get_type_symbol(node.left_type)
+			sym := w.table.sym(node.left_type)
 			if sym.kind == .struct_ {
 				if opmethod := sym.find_method(node.op.str()) {
 					w.fn_decl(mut &ast.FnDecl(opmethod.source_fn))
 				}
 			}
-			right_sym := w.table.get_type_symbol(node.right_type)
+			if node.right_type == 0 {
+				return
+			}
+			right_sym := w.table.sym(node.right_type)
 			if node.op in [.not_in, .key_in] && right_sym.kind == .map {
 				w.table.used_maps++
 			}
@@ -338,12 +384,21 @@ fn (mut w Walker) expr(node ast.Expr) {
 			w.expr(node.where_expr)
 		}
 		ast.StructInit {
-			sym := w.table.get_type_symbol(node.typ)
+			if node.typ == 0 {
+				return
+			}
+			sym := w.table.sym(node.typ)
 			if sym.kind == .struct_ {
 				info := sym.info as ast.Struct
 				for ifield in info.fields {
 					if ifield.has_default_expr {
 						w.expr(ifield.default_expr)
+					}
+					if ifield.typ != 0 {
+						fsym := w.table.sym(ifield.typ)
+						if fsym.kind == .map {
+							w.table.used_maps++
+						}
 					}
 				}
 			}
@@ -416,6 +471,9 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 		w.expr(arg.expr)
 	}
 	if node.language == .c {
+		if node.name in ['C.wyhash', 'C.wyhash64'] {
+			w.table.used_maps++
+		}
 		return
 	}
 	w.expr(node.left)

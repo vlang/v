@@ -95,7 +95,7 @@ fn test_readme_exists_and_is_readable() {
 }
 
 fn testsuite_end() {
-	os.chdir(os.wd_at_startup)
+	os.chdir(os.wd_at_startup) or {}
 	os.rmdir_all(vcache_folder) or {}
 	assert !os.is_dir(vcache_folder)
 }

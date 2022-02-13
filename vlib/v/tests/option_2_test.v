@@ -12,7 +12,7 @@ fn test_lhs_option() {
 }
 
 fn ret_no_opt(n int) int {
-	return f(n) or { panic(err.msg) }
+	return f(n) or { panic(err) }
 }
 
 fn test_opt_return_no_opt() {
