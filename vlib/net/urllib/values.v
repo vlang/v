@@ -63,7 +63,9 @@ pub fn (mut v Values) set(key string, value string) {
 	// duplicate, so we need to make sure that we
 	// cover all the edge case.
 	for mut qvalue in v.data {
-		qvalue.value = value
+		if v.key == key {
+			qvalue.value = value
+		}
 	}
 }
 
