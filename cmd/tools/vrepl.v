@@ -207,16 +207,26 @@ fn (mut r Repl) parse_import(line string) {
 }
 
 fn print_welcome_screen() {
-	println(version.full_v_version(false))
-	println('Use Ctrl-C or ${term.highlight_command('exit')} to exit, or ${term.highlight_command('help')} to see other available commands')
-	println(r'
-		____    ____
-		\   \  /   /
-		 \   \/   /
-		  \      /
-		   \    /
-		    \__/
-	')
+	cmd_exit := term.highlight_command('exit')
+	cmd_help := term.highlight_command('v help')
+	file_main := term.highlight_command('main.v')
+	cmd_run := term.highlight_command('v run main.v')
+	vbar := term.bright_green('|')
+	vlogo := [
+		term.bright_blue(r' ____    ____ '),
+		term.bright_blue(r' \   \  /   / '),
+		term.bright_blue(r'  \   \/   /  '),
+		term.bright_blue(r'   \      /   '),
+		term.bright_blue(r'    \    /    '),
+		term.bright_blue(r'     \__/     '),
+	]
+	eprintln('${vlogo[0]}')
+	eprintln('${vlogo[1]} $vbar  Welcome to the V REPL (for help with V itself, type $cmd_exit, then run $cmd_help).')
+	eprintln('${vlogo[2]} $vbar  NB: the REPL is highly experimental. For best V experience, use a text editor,')
+	eprintln('${vlogo[3]} $vbar  save your code in a $file_main file and execute: $cmd_run')
+	eprintln('${vlogo[4]} $vbar  ${version.full_v_version(false)}')
+	eprintln('${vlogo[5]} $vbar  Use Ctrl-C or ${term.highlight_command('exit')} to exit, or ${term.highlight_command('help')} to see other available commands')
+	eprintln('')
 }
 
 fn run_repl(workdir string, vrepl_prefix string) {
