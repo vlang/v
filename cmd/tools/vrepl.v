@@ -212,21 +212,33 @@ fn print_welcome_screen() {
 	file_main := term.highlight_command('main.v')
 	cmd_run := term.highlight_command('v run main.v')
 	vbar := term.bright_green('|')
+	width, _ := term.get_terminal_size() // get the size of the terminal
 	vlogo := [
-		term.bright_blue(r' ____    ____ '),
-		term.bright_blue(r' \   \  /   / '),
-		term.bright_blue(r'  \   \/   /  '),
-		term.bright_blue(r'   \      /   '),
-		term.bright_blue(r'    \    /    '),
-		term.bright_blue(r'     \__/     '),
-	]
-	eprintln('${vlogo[0]}')
-	eprintln('${vlogo[1]} $vbar  Welcome to the V REPL (for help with V itself, type $cmd_exit, then run $cmd_help).')
-	eprintln('${vlogo[2]} $vbar  NB: the REPL is highly experimental. For best V experience, use a text editor,')
-	eprintln('${vlogo[3]} $vbar  save your code in a $file_main file and execute: $cmd_run')
-	eprintln('${vlogo[4]} $vbar  ${version.full_v_version(false)}')
-	eprintln('${vlogo[5]} $vbar  Use Ctrl-C or ${term.highlight_command('exit')} to exit, or ${term.highlight_command('help')} to see other available commands')
-	eprintln('')
+			term.bright_blue(r' ____    ____ '),
+			term.bright_blue(r' \   \  /   / '),
+			term.bright_blue(r'  \   \/   /  '),
+			term.bright_blue(r'   \      /   '),
+			term.bright_blue(r'    \    /    '),
+			term.bright_blue(r'     \__/     '),
+		]
+	if width >= 97 {
+		eprintln('${vlogo[0]}')
+		eprintln('${vlogo[1]} $vbar  Welcome to the V REPL (for help with V itself, type $cmd_exit, then run $cmd_help).')
+		eprintln('${vlogo[2]} $vbar  NB: the REPL is highly experimental. For best V experience, use a text editor,')
+		eprintln('${vlogo[3]} $vbar  save your code in a $file_main file and execute: $cmd_run')
+		eprintln('${vlogo[4]} $vbar  ${version.full_v_version(false)}')
+		eprintln('${vlogo[5]} $vbar  Use Ctrl-C or ${term.highlight_command('exit')} to exit, or ${term.highlight_command('help')} to see other available commands')
+		eprintln('')
+	} else {
+		left_margin := ' '.repeat(int(width / 2 - 7))
+		for num in 0 .. 6 {
+			println(left_margin + vlogo[num])
+		}
+		println('Welcome to the V REPL (for help with V itself, type $cmd_exit, then run $cmd_help).')
+		println('NB: the REPL is highly experimental. For best V experience, use a text editor, save your code in a $file_main file and execute: $cmd_run')
+		println('save your code in a $file_main file and execute: $cmd_run')
+		println('Use Ctrl-C or ${term.highlight_command('exit')} to exit, or ${term.highlight_command('help')} to see other available commands')
+	}
 }
 
 fn run_repl(workdir string, vrepl_prefix string) {
