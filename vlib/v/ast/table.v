@@ -426,6 +426,26 @@ pub fn (t &Table) find_method_from_embeds(sym &TypeSymbol, method_name string) ?
 		} else if found_methods.len > 1 {
 			return error('ambiguous method `$method_name`')
 		}
+	} else if sym.info is Interface {
+		mut found_methods := []Fn{}
+		mut embed_of_found_methods := []Type{}
+		for embed in sym.info.ifaces {
+			embed_sym := t.sym(embed)
+			if m := t.find_method(embed_sym, method_name) {
+				found_methods << m
+				embed_of_found_methods << embed
+			} else {
+				method, types := t.find_method_from_embeds(embed_sym, method_name) or { continue }
+				found_methods << method
+				embed_of_found_methods << embed
+				embed_of_found_methods << types
+			}
+		}
+		if found_methods.len == 1 {
+			return found_methods[0], embed_of_found_methods
+		} else if found_methods.len > 1 {
+			return error('ambiguous method `$method_name`')
+		}
 	} else if sym.info is Aggregate {
 		for typ in sym.info.types {
 			agg_sym := t.sym(typ)
