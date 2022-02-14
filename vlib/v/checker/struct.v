@@ -154,7 +154,8 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				}
 			}
 		}
-		if node.generic_types.len > 0 && struct_sym.info.generic_types != node.generic_types {
+		if node.generic_types.len > 0 && struct_sym.info.generic_types.len == node.generic_types.len
+			&& struct_sym.info.generic_types != node.generic_types {
 			c.table.replace_generic_type(node.typ, node.generic_types)
 		}
 	} else if struct_sym.info is ast.Alias {
