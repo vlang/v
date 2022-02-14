@@ -106,8 +106,8 @@ fn find_between_pair_string(input string, start string, end string) string {
 // find_between_pair works the fastest with marks of type `byte`
 // find_between_pair works the slowest with marks of type `string`
 // find_between_pair works at speeds inbetween with marks of type `rune`
-// Example: assert strings.find_between_pair('/* /*V*/ */','/*','*/') == 'V'
-// Example: assert strings.find_between_pair('s {X}',`{`,`}`) == 'X'
+// Example: assert strings.find_between_pair('/*V*/ /*NOT V*/','/*','*/') == 'V'
+// Example: assert strings.find_between_pair('s {X{Y}} s',`{`,`}`) == 'X{Y}'
 pub fn find_between_pair(input string, start Mark, end Mark) string {
 	if input == '' {
 		return ''
