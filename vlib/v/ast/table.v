@@ -1293,14 +1293,7 @@ pub fn (mut t Table) complete_interface_check() {
 		if tsym.kind != .struct_ {
 			continue
 		}
-		info := tsym.info as Struct
 		for _, mut idecl in t.interfaces {
-			if idecl.methods.len > tsym.methods.len {
-				continue
-			}
-			if idecl.fields.len > info.fields.len {
-				continue
-			}
 			if idecl.typ == 0 {
 				continue
 			}
