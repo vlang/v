@@ -16,12 +16,15 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install build-essential meson -y
+        run: |
+          sudo apt-get update
+          sudo apt-get install build-essential meson -y
       - name: Build V
         run: make
       - name: Clone current Vinix
         run: |
-          git clone https://github.com/vlang/vinix.git --depth 1
+          git clone https://github.com/vlang/vinix
+          cd vinix && git checkout aa18fc0
       - name: Clone current mlibc
         run: git clone https://github.com/managarm/mlibc.git --depth=1
       - name: Patch mlibc for Vinix
