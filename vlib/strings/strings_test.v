@@ -74,7 +74,7 @@ fn test_find_between_pair() {
 	assert strings.find_between_pair('xx{ok}yy', byte(`{`), byte(`}`)) == 'ok'
 	assert strings.find_between_pair('xx/*ok*/yy', '/*', '*/') == 'ok'
 	assert strings.find_between_pair('xx{ok}yy', `{`, `}`) == 'ok'
-	assert strings.find_between_pair('xx{ok}yy', byte(`{`), byte(`}`)) == 'ok'
+	assert strings.find_between_pair('xxxxokyyyy', 'xxx', 'yyy') == 'xok'
 
 	for i, tstr in test_runes {
 		e1 := strings.find_between_pair(tstr, `[`, `]`)
