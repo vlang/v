@@ -161,7 +161,7 @@ fn (r &Repl) current_source_code(should_add_temp_lines bool, not_add_print bool)
 	if should_add_temp_lines {
 		all_lines << r.temp_lines
 	}
-	return all_lines.join('')
+	return all_lines.join('\n')
 }
 
 // the new_line is probably a function call, but some function calls
@@ -329,7 +329,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 		}
 		if r.line == 'list' {
 			source_code := r.current_source_code(true, true)
-			println('\n$source_code')
+			println('\n${source_code.replace('\n\n', '\n')}')
 			continue
 		}
 		// Save the source only if the user is printing something,
