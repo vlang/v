@@ -161,7 +161,7 @@ fn (r &Repl) current_source_code(should_add_temp_lines bool, not_add_print bool)
 	if should_add_temp_lines {
 		all_lines << r.temp_lines
 	}
-	return all_lines.join('\n')
+	return all_lines.join('')
 }
 
 // the new_line is probably a function call, but some function calls
@@ -228,7 +228,7 @@ fn print_welcome_screen() {
 		version.full_v_version(false),
 		'Use Ctrl-C or ${term.highlight_command('exit')} to exit, or ${term.highlight_command('help')} to see other available commands',
 	]
-	if width >= 97 || width < 14 {
+	if width >= 97 {
 		eprintln('${vlogo[0]}')
 		eprintln('${vlogo[1]} $vbar  ${help_text[0]}')
 		eprintln('${vlogo[2]} $vbar  ${help_text[1]}')
@@ -237,14 +237,13 @@ fn print_welcome_screen() {
 		eprintln('${vlogo[5]} $vbar  ${help_text[4]}')
 		eprintln('')
 	} else {
-		left_margin := ' '.repeat(int(width / 2 - 7))
-		for num in 0 .. 6 {
-			println(left_margin + vlogo[num])
+		if width >= 14 {
+			left_margin := ' '.repeat(int(width / 2 - 7))
+			for l in vlogo {
+				println(left_margin + l)
+			}
 		}
-		println(help_text[0])
-		println(help_text[1] + help_text[2])
-		println(help_text[3])
-		println(help_text[4])
+		println(help_text.join('\n'))
 	}
 }
 
@@ -330,11 +329,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 		}
 		if r.line == 'list' {
 			source_code := r.current_source_code(true, true)
-			width, _ := term.get_terminal_size() // get the size of the terminal
-			p := '/'.repeat(width)
-			println(p)
-			println(source_code)
-			println(p)
+			println('\n$source_code')
 			continue
 		}
 		// Save the source only if the user is printing something,
