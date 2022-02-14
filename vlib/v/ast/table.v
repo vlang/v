@@ -1384,7 +1384,7 @@ pub fn (t Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 		}
 		// verify methods
 		for imethod in inter_sym.info.methods {
-			if method := sym.find_method(imethod.name) {
+			if method := t.find_method_with_embeds(sym, imethod.name) {
 				msg := t.is_same_method(imethod, method)
 				if msg.len > 0 {
 					return false
