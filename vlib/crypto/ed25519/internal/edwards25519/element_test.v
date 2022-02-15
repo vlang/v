@@ -1,19 +1,25 @@
 module edwards25519
 
+import os
 import rand
 import math.bits
 import math.big
 import encoding.hex
-import crypto.internal.subtle // for equal([]byte, []byte)
-import crypto.rand as crand // for rand.read(size)
 
-const (
-	mask_low_52_bits = (1 << 52) - 1
-)
+const github_job = os.getenv('GITHUB_JOB')
+
+fn testsuite_begin() {
+	if edwards25519.github_job != '' {
+		// ensure that the CI does not run flaky tests:
+		rand.seed([u32(0xffff24), 0xabcd])
+	}
+}
 
 fn (mut v Element) str() string {
 	return hex.encode(v.bytes())
 }
+
+const mask_low_52_bits = (u64(1) << 52) - 1
 
 fn generate_field_element() Element {
 	return Element{
@@ -28,11 +34,50 @@ fn generate_field_element() Element {
 // weirdLimbs can be combined to generate a range of edge-case edwards25519 elements.
 // 0 and -1 are intentionally more weighted, as they combine well.
 const (
-	weird_limbs_51 = [u64(0), 0, 0, 0, 1, 19 - 1, 19, 0x2aaaaaaaaaaaa, 0x5555555555555,
-		(1 << 51) - 20, (1 << 51) - 19, (1 << 51) - 1, (1 << 51) - 1, (1 << 51) - 1, (1 << 51) - 1]
-	weird_limbs_52 = [u64(0), 0, 0, 0, 0, 0, 1, 19 - 1, 19, 0x2aaaaaaaaaaaa, 0x5555555555555,
-		(1 << 51) - 20, (1 << 51) - 19, (1 << 51) - 1, (1 << 51) - 1, (1 << 51) - 1, (1 << 51) - 1,
-		(1 << 51) - 1, (1 << 51) - 1, 1 << 51, (1 << 51) + 1, (1 << 52) - 19, (1 << 52) - 1]
+	two_to_51      = u64(1) << 51
+	two_to_52      = u64(1) << 52
+	weird_limbs_51 = [
+		u64(0),
+		0,
+		0,
+		0,
+		1,
+		19 - 1,
+		19,
+		0x2aaaaaaaaaaaa,
+		0x5555555555555,
+		two_to_51 - 20,
+		two_to_51 - 19,
+		two_to_51 - 1,
+		two_to_51 - 1,
+		two_to_51 - 1,
+		two_to_51 - 1,
+	]
+	weird_limbs_52 = [
+		u64(0),
+		0,
+		0,
+		0,
+		0,
+		0,
+		1,
+		19 - 1,
+		19,
+		0x2aaaaaaaaaaaa,
+		0x5555555555555,
+		two_to_51 - 20,
+		two_to_51 - 19,
+		two_to_51 - 1,
+		two_to_51 - 1,
+		two_to_51 - 1,
+		two_to_51 - 1,
+		two_to_51 - 1,
+		two_to_51 - 1,
+		two_to_51,
+		two_to_51 + 1,
+		two_to_52 - 19,
+		two_to_52 - 1,
+	]
 )
 
 fn generate_weird_field_element() Element {
@@ -159,13 +204,13 @@ fn test_sqrt_ratio() ? {
 fn test_set_bytes_normal() ? {
 	for i in 0 .. 15 {
 		mut el := Element{}
-		mut random_inp := crand.read(32) ?
+		mut random_inp := rand.bytes(32) ?
 
 		el = el.set_bytes(random_inp.clone()) ?
 		random_inp[random_inp.len - 1] &= (1 << 7) - 1
 		// assert f1(random_inp, el) == true
 
-		assert subtle.constant_time_compare(random_inp, el.bytes()) == 1
+		assert random_inp == el.bytes()
 		assert is_in_bounds(el) == true
 	}
 }
@@ -173,7 +218,7 @@ fn test_set_bytes_normal() ? {
 fn test_set_bytes_reduced() {
 	mut fe := Element{}
 	mut r := Element{}
-	mut random_inp := crand.read(32) or { return }
+	mut random_inp := rand.bytes(32) or { return }
 
 	fe.set_bytes(random_inp) or { return }
 	r.set_bytes(fe.bytes()) or { return }
@@ -206,7 +251,7 @@ fn test_set_bytes_from_dalek_test_vectors() ? {
 		mut el := Element{}
 		mut fe := el.set_bytes(tt.b) ?
 
-		assert subtle.constant_time_compare(b, tt.b) == 1
+		assert b == tt.b
 		assert fe.equal(tt.fe) == 1
 	}
 }
@@ -233,7 +278,7 @@ fn test_invert() ? {
 	r.reduce()
 
 	assert one == r
-	bytes := crand.read(32) or { return err }
+	bytes := rand.bytes(32) or { return err }
 
 	x.set_bytes(bytes) ?
 
@@ -303,7 +348,7 @@ fn test_consistency_between_mult_and_square() {
 
 	assert x2 == x2sq
 
-	bytes := crand.read(32) or { return }
+	bytes := rand.bytes(32) or { return }
 	x.set_bytes(bytes) or { return }
 	x2.multiply(x, x)
 	x2sq.square(x)
@@ -337,7 +382,7 @@ fn (mut v Element) from_decimal_string(s string) ?Element {
 }
 
 fn test_bytes_big_equivalence() ? {
-	mut inp := crand.read(32) ?
+	mut inp := rand.bytes(32) ?
 	el := Element{}
 	mut fe := el.generate_element()
 	mut fe1 := el.generate_element()
@@ -355,8 +400,7 @@ fn test_bytes_big_equivalence() ? {
 	mut fedbig_bytes, _ := fedtobig.bytes()
 	copy(buf, fedbig_bytes) // does not need to do swap_endianness
 
-	assert subtle.constant_time_compare(fe.bytes(), buf) == 1 && is_in_bounds(fe)
-		&& is_in_bounds(fe1)
+	assert fe.bytes() == buf && is_in_bounds(fe) && is_in_bounds(fe1)
 	// assert big_equivalence(inp, fe, fe1) == true
 }
 

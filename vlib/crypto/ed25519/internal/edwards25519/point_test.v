@@ -1,11 +1,8 @@
 module edwards25519
 
-import crypto.internal.subtle
 import encoding.hex
 
-const (
-	zero_point = Point{fe_zero, fe_zero, fe_zero, fe_zero}
-)
+const zero_point = Point{fe_zero, fe_zero, fe_zero, fe_zero}
 
 fn test_invalid_encodings() ? {
 	// An invalid point, that also happens to have y > p.
@@ -106,7 +103,7 @@ fn test_non_canonical_points() ? {
 		p2.set_bytes(hex.decode(tt.canonical) ?) ?
 
 		assert p1.equal(p2) == 1
-		assert subtle.constant_time_compare(p1.bytes(), p2.bytes()) == 1
+		assert p1.bytes() == p2.bytes()
 		assert hex.encode(p1.bytes()) == tt.canonical // NEED FIX!
 
 		assert check_on_curve(p1, p2) == true

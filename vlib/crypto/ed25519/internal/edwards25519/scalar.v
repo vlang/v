@@ -3,7 +3,6 @@ module edwards25519
 import rand
 import encoding.binary
 import crypto.internal.subtle
-// import crypto.rand as crand
 
 // A Scalar is an integer modulo
 //
@@ -136,7 +135,8 @@ fn is_reduced(s Scalar) bool {
 			return false
 		case s.s[i] < sc_minus_one.s[i]:
 			return true
-		}*/
+		}
+		*/
 	}
 	return true
 }
@@ -1096,14 +1096,16 @@ fn generate_scalar(size int) ?Scalar {
 		rand.Read(s.s[:])
 		s.s[31] &= (1 * 16) - 1
 	}
-	return reflect.ValueOf(s)*/
+	return reflect.ValueOf(s)
+	*/
 	mut s := edwards25519.sc_zero
 	diceroll := rand.intn(100)
 	match true {
+		/*
+		case diceroll == 0:
+			case diceroll == 1:
+		*/
 		diceroll == 0 || diceroll == 1 {
-			/*
-			case diceroll == 0:
-		case diceroll == 1:*/
 			s = edwards25519.sc_one
 		}
 		diceroll == 2 {
@@ -1113,13 +1115,14 @@ fn generate_scalar(size int) ?Scalar {
 			// rand.Read(s.s[:16]) // read random bytes and fill buf
 			// using builtin rand.read([]buf)
 			rand.read(mut s.s[..16])
-			// buf := crand.read(s.s[..16].len) ?
+			// buf := rand.read(s.s[..16].len) ?
 			// copy(s.s[..16], buf)
 
 			/*
 			for i, item in buf {
 				s.s[i] = item
-			}*/
+			}
+			*/
 			s.s[15] &= (1 * 32) - 1
 			// generate a low scalar in [0, 2^125).
 		}
@@ -1129,13 +1132,14 @@ fn generate_scalar(size int) ?Scalar {
 			// Read generates len(p) random bytes and writes them into p
 			// rand.Read(s.s[:16])
 			rand.read(mut s.s[..16])
-			// buf := crand.read(s.s[..16].len) ?
+			// buf := rand.read(s.s[..16].len) ?
 			// copy(s.s[..16], buf)
 
 			/*
 			for i, item in buf {
 				s.s[i] = item
-			}*/
+			}
+			*/
 			s.s[15] &= (1 * 16) - 1
 		}
 		else {
@@ -1150,7 +1154,8 @@ fn generate_scalar(size int) ?Scalar {
 			/*
 			for i, item in buf {
 				s.s[i] = item
-			}*/
+			}
+			*/
 			s.s[31] &= (1 * 16) - 1
 		}
 	}

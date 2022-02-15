@@ -145,7 +145,7 @@ pub fn verify(publickey PublicKey, message []byte, sig []byte) ?bool {
 
 // `generate_key` generates a public/private key pair entropy using `crypto.rand`.
 pub fn generate_key() ?(PublicKey, PrivateKey) {
-	mut seed := rand.read(ed25519.seed_size) ?
+	mut seed := rand.bytes(ed25519.seed_size) ?
 
 	privatekey := new_key_from_seed(seed)
 	publickey := []byte{len: ed25519.public_key_size}

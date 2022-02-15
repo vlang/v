@@ -1,9 +1,18 @@
 module edwards25519
 
+import os
+import rand
 import encoding.hex
-import crypto.rand as crand
-import crypto.internal.subtle
 import math.big
+
+const github_job = os.getenv('GITHUB_JOB')
+
+fn testsuite_begin() {
+	if edwards25519.github_job != '' {
+		// ensure that the CI does not run flaky tests:
+		rand.seed([u32(0xffff24), 0xabcd])
+	}
+}
 
 fn test_scalar_equal() {
 	assert sc_one.equal(sc_minus_one) != 1
@@ -70,12 +79,13 @@ fn test_scalar_generate() ? {
 //
 fn test_scalar_set_canonical_bytes() ? {
 	for i in 0 .. 10 {
-		mut buf := crand.read(32) or { panic(err.msg) }
+		mut buf := rand.bytes(32) or { panic(err.msg) }
 		mut sc := generate_scalar(1000) or { panic(err.msg) }
 		buf[buf.len - 1] &= (1 << 4) - 1
 		sc = sc.set_canonical_bytes(buf) or { panic(err.msg) }
 
-		assert subtle.constant_time_compare(buf[..], sc.bytes()) == 1 && is_reduced(sc)
+		assert buf[..] == sc.bytes()
+		assert is_reduced(sc)
 	}
 }
 
@@ -112,7 +122,7 @@ fn test_scalar_set_uniform_bytes() ? {
 	mod = mod + big.integer_from_i64(1).lshift(252)
 
 	mut sc := generate_scalar(100) ?
-	inp := crand.read(64) ?
+	inp := rand.bytes(64) ?
 
 	sc.set_uniform_bytes(inp[..]) ?
 	assert is_reduced(sc) == true
