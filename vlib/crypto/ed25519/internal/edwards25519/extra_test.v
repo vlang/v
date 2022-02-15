@@ -1,7 +1,17 @@
 module edwards25519
 
+import os
+import rand
 import encoding.hex
-import crypto.rand as crand
+
+const github_job = os.getenv('GITHUB_JOB')
+
+fn testsuite_begin() {
+	if edwards25519.github_job != '' {
+		// ensure that the CI does not run flaky tests:
+		rand.seed([u32(0xffff24), 0xabcd])
+	}
+}
 
 // test_bytes_montgomery tests the set_bytes_with_clamping+bytes_montgomery path
 // equivalence to curve25519.X25519 for basepoint scalar multiplications.
@@ -105,7 +115,7 @@ fn fn_cofactor(mut data []byte) bool {
 
 fn test_mult_by_cofactor() ? {
 	mut loworder := Point{}
-	mut data := crand.read(64) or { panic(err.msg) }
+	mut data := rand.bytes(64) ?
 
 	assert fn_cofactor(mut data) == true
 }
