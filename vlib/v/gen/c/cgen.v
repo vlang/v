@@ -196,10 +196,12 @@ mut:
 	tests_inited        bool
 	has_main            bool
 	// main_fn_decl_node  ast.FnDecl
-	cur_mod            ast.Module
-	cur_concrete_types []ast.Type  // do not use table.cur_concrete_types because table is global, so should not be accessed by different threads
-	cur_fn             &ast.FnDecl = 0 // same here
-	cur_lock           ast.LockExpr
+	cur_mod                ast.Module
+	cur_concrete_types     []ast.Type  // do not use table.cur_concrete_types because table is global, so should not be accessed by different threads
+	cur_fn                 &ast.FnDecl = 0 // same here
+	cur_lock               ast.LockExpr
+	autofree_methods       map[int]bool
+	generated_free_methods map[int]bool
 }
 
 pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
@@ -346,6 +348,9 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			global_g.json_types << g.json_types
 			global_g.hotcode_fn_names << g.hotcode_fn_names
 			unsafe { g.free_builders() }
+			for k, v in g.autofree_methods {
+				global_g.autofree_methods[k] = v
+			}
 		}
 	} else {
 		for file in files {
@@ -374,6 +379,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	global_g.gen_array_contains_methods()
 	global_g.gen_array_index_methods()
 	global_g.gen_equality_fns()
+	global_g.gen_free_methods()
 	global_g.timers.show('cgen unification')
 
 	mut g := global_g

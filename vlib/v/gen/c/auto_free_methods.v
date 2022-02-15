@@ -5,10 +5,37 @@ module c
 import v.ast
 import strings
 
-fn (mut g Gen) gen_free_method_for_type(typ ast.Type) string {
+fn (mut g Gen) get_free_method(typ ast.Type) string {
+	g.autofree_methods[typ] = true
 	styp := g.typ(typ).replace('*', '')
 	mut sym := g.table.sym(g.unwrap_generic(typ))
 	mut fn_name := styp_to_free_fn_name(styp)
+	if mut sym.info is ast.Alias {
+		if sym.info.is_import {
+			sym = g.table.sym(sym.info.parent_type)
+		}
+	}
+
+	if sym.has_method_with_generic_parent('free') {
+		return fn_name
+	}
+	return fn_name
+}
+
+fn (mut g Gen) gen_free_methods() {
+	for typ, _ in g.autofree_methods {
+		g.gen_free_method(typ)
+	}
+}
+
+fn (mut g Gen) gen_free_method(typ ast.Type) string {
+	styp := g.typ(typ).replace('*', '')
+	mut sym := g.table.sym(g.unwrap_generic(typ))
+	mut fn_name := styp_to_free_fn_name(styp)
+	if typ in g.generated_free_methods {
+		return fn_name
+	}
+	g.generated_free_methods[typ] = true
 	if mut sym.info is ast.Alias {
 		if sym.info.is_import {
 			sym = g.table.sym(sym.info.parent_type)
@@ -50,12 +77,20 @@ fn (mut g Gen) gen_free_for_struct(info ast.Struct, styp string, fn_name string)
 			continue
 		}
 		mut field_styp := g.typ(field.typ).replace('*', '')
+		is_shared := field_styp.starts_with('__shared')
+		if is_shared {
+			field_styp = field_styp.all_after('__shared__')
+		}
 		field_styp_fn_name := if sym.has_method('free') {
 			'${field_styp}_free'
 		} else {
-			g.gen_free_method_for_type(field.typ)
+			g.gen_free_method(field.typ)
 		}
-		fn_builder.writeln('\t${field_styp_fn_name}(&(it->$field.name));')
+		if is_shared {
+			fn_builder.writeln('\t${field_styp_fn_name}(&(it->$field.name->val));')
+		} else {
+			fn_builder.writeln('\t${field_styp_fn_name}(&(it->$field.name));')
+		}
 	}
 	fn_builder.writeln('}')
 }
@@ -76,7 +111,7 @@ fn (mut g Gen) gen_free_for_array(info ast.Array, styp string, fn_name string) {
 		elem_styp_fn_name := if sym.has_method('free') {
 			'${elem_styp}_free'
 		} else {
-			g.gen_free_method_for_type(info.elem_type)
+			g.gen_free_method(info.elem_type)
 		}
 		fn_builder.writeln('\t\t${elem_styp_fn_name}(&((($elem_styp*)it->data)[i]));')
 		fn_builder.writeln('\t}')
