@@ -59,7 +59,7 @@ pub fn compare_hash_and_password(password []byte, hashed_password []byte) ? {
 
 // generate_salt generate a string to be treated as a salt.
 pub fn generate_salt() string {
-	randbytes := rand.read(bcrypt.salt_length) or { panic(err) }
+	randbytes := rand.bytes(bcrypt.salt_length) or { panic(err) }
 	return randbytes.bytestr()
 }
 
