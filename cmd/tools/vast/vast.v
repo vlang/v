@@ -674,8 +674,8 @@ fn (t Tree) interface_decl(node ast.InterfaceDecl) &Node {
 	obj.add('name_pos', t.pos(node.name_pos))
 	obj.add_terse('language', t.enum_node(node.language))
 	obj.add('pos', t.pos(node.pos))
-	obj.add('are_ifaces_expanded', t.bool_node(node.are_ifaces_expanded))
-	obj.add_terse('ifaces', t.array_node_interface_embedding(node.ifaces))
+	obj.add('are_embeds_expanded', t.bool_node(node.are_embeds_expanded))
+	obj.add_terse('embeds', t.array_node_interface_embedding(node.embeds))
 	obj.add_terse('attrs', t.array_node_attr(node.attrs))
 	return obj
 }

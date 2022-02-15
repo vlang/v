@@ -429,7 +429,7 @@ pub fn (t &Table) find_method_from_embeds(sym &TypeSymbol, method_name string) ?
 	} else if sym.info is Interface {
 		mut found_methods := []Fn{}
 		mut embed_of_found_methods := []Type{}
-		for embed in sym.info.ifaces {
+		for embed in sym.info.embeds {
 			embed_sym := t.sym(embed)
 			if m := t.find_method(embed_sym, method_name) {
 				found_methods << m
