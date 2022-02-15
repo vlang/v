@@ -13,7 +13,7 @@ fn test_repeat_string() {
 	assert strings.repeat_string('', 200) == ''
 }
 
-const test_runes = [
+const test_rune_and_byte = [
 	'xxx[ok1]xxx',
 	'xxx[[ok2]okok]',
 	'xxx[ok3[[[ok]okok]]]',
@@ -41,7 +41,7 @@ const test_strings = [
 	xxx*/xxx',
 ]
 
-const expected_rune_outputs = [
+const expected_rune_and_byte_outputs = [
 	'ok1',
 	'[ok2]okok',
 	'ok3[[[ok]okok]]',
@@ -69,21 +69,27 @@ const expected_string_outputs = [
 	xxx',
 ]
 
-fn test_find_between_pair() {
-	assert strings.find_between_pair('xx♡ok❦yy', `♡`, `❦`) == 'ok'
-	assert strings.find_between_pair('xx{ok}yy', byte(`{`), byte(`}`)) == 'ok'
-	assert strings.find_between_pair('xx/*ok*/yy', '/*', '*/') == 'ok'
-	assert strings.find_between_pair('xx{ok}yy', `{`, `}`) == 'ok'
-	assert strings.find_between_pair('xxxxokyyyy', 'xxx', 'yyy') == 'xok'
+fn test_find_between_pair_family() {
+	assert strings.find_between_pair_rune('xx♡ok❦yy', `♡`, `❦`) == 'ok'
+	assert strings.find_between_pair_byte('xx{ok}yy', `{`, `}`) == 'ok'
+	assert strings.find_between_pair_string('xx/*ok*/yy', '/*', '*/') == 'ok'
+	assert strings.find_between_pair_byte('xx{ok}yy', `{`, `}`) == 'ok'
+	assert strings.find_between_pair_string('xxxxokyyyy', 'xxx', 'yyy') == 'xok'
 
-	for i, tstr in test_runes {
-		e1 := strings.find_between_pair(tstr, `[`, `]`)
-		e2 := expected_rune_outputs[i]
+	for i, tstr in test_rune_and_byte {
+		e1 := strings.find_between_pair_rune(tstr, `[`, `]`)
+		e2 := expected_rune_and_byte_outputs[i]
+		assert '$e1' == '$e2'
+	}
+
+	for i, tstr in test_rune_and_byte {
+		e1 := strings.find_between_pair_byte(tstr, `[`, `]`)
+		e2 := expected_rune_and_byte_outputs[i]
 		assert '$e1' == '$e2'
 	}
 
 	for i, tstr in test_strings {
-		e1 := strings.find_between_pair(tstr, '/*', '*/')
+		e1 := strings.find_between_pair_string(tstr, '/*', '*/')
 		e2 := expected_string_outputs[i]
 		assert '$e1' == '$e2'
 	}
