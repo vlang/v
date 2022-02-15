@@ -2,7 +2,7 @@ module main
 
 import encoding.hex
 import encoding.base64
-import ed25519
+import crypto.ed25519
 
 // adapted from https://asecuritysite.com/signatures/ed25519
 fn main() {
