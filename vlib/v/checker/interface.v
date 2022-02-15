@@ -11,10 +11,10 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 	mut decl_sym := c.table.sym(node.typ)
 	is_js := node.language == .js
 	if mut decl_sym.info is ast.Interface {
-		if node.ifaces.len > 0 {
-			all_ifaces := c.expand_iface_embeds(node, 0, node.ifaces)
-			// eprintln('> node.name: $node.name | node.ifaces.len: $node.ifaces.len | all_ifaces: $all_ifaces.len')
-			node.ifaces = all_ifaces
+		if node.embeds.len > 0 {
+			all_embeds := c.expand_iface_embeds(node, 0, node.embeds)
+			// eprintln('> node.name: $node.name | node.embeds.len: $node.embeds.len | all_embeds: $all_embeds.len')
+			node.embeds = all_embeds
 			mut emnames := map[string]int{}
 			mut emnames_ds := map[string]bool{}
 			mut emnames_ds_info := map[string]bool{}
@@ -29,12 +29,11 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 				efnames[f.name] = i
 				efnames_ds_info[f.name] = true
 			}
-			//
-			for iface in all_ifaces {
-				isym := c.table.sym(iface.typ)
+			for embed in all_embeds {
+				isym := c.table.sym(embed.typ)
 				if isym.kind != .interface_ {
 					c.error('interface `$node.name` tries to embed `$isym.name`, but `$isym.name` is not an interface, but `$isym.kind`',
-						iface.pos)
+						embed.pos)
 					continue
 				}
 				isym_info := isym.info as ast.Interface
@@ -56,8 +55,8 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 						decl_sym.methods << m.new_method_with_receiver_type(node.typ)
 					}
 				}
-				if iface_decl := c.table.interfaces[iface.typ] {
-					for f in iface_decl.fields {
+				if embed_decl := c.table.interfaces[embed.typ] {
+					for f in embed_decl.fields {
 						if f.name in efnames {
 							// already existing method name, check for conflicts
 							ifield := node.fields[efnames[f.name]]
@@ -65,7 +64,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 								if ifield.typ != field.typ {
 									exp := c.table.type_to_str(ifield.typ)
 									got := c.table.type_to_str(field.typ)
-									c.error('embedded interface `$iface_decl.name` conflicts existing field: `$ifield.name`, expecting type: `$exp`, got type: `$got`',
+									c.error('embedded interface `$embed_decl.name` conflicts existing field: `$ifield.name`, expecting type: `$exp`, got type: `$got`',
 										ifield.pos)
 								}
 							}
@@ -74,7 +73,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 							node.fields << f
 						}
 					}
-					for m in iface_decl.methods {
+					for m in embed_decl.methods {
 						if m.name in emnames {
 							// already existing field name, check for conflicts
 							imethod := node.methods[emnames[m.name]]
@@ -84,7 +83,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 									if msg.len > 0 {
 										em_sig := c.table.fn_signature(em_fn, skip_receiver: true)
 										m_sig := c.table.fn_signature(m_fn, skip_receiver: true)
-										c.error('embedded interface `$iface_decl.name` causes conflict: $msg, for interface method `$em_sig` vs `$m_sig`',
+										c.error('embedded interface `$embed_decl.name` causes conflict: $msg, for interface method `$em_sig` vs `$m_sig`',
 											imethod.pos)
 									}
 								}
@@ -92,7 +91,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 						} else {
 							emnames[m.name] = node.methods.len
 							mut new_method := m.new_method_with_receiver_type(node.typ)
-							new_method.pos = iface.pos
+							new_method.pos = embed.pos
 							node.methods << new_method
 						}
 					}

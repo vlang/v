@@ -1071,9 +1071,9 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 		f.writeln('')
 	}
 	f.comments_before_field(node.pre_comments)
-	for iface in node.ifaces {
-		f.write('\t$iface.name')
-		f.comments(iface.comments, inline: true, has_nl: false, level: .indent)
+	for embed in node.embeds {
+		f.write('\t$embed.name')
+		f.comments(embed.comments, inline: true, has_nl: false, level: .indent)
 		f.writeln('')
 	}
 	immut_fields := if node.mut_pos < 0 { node.fields } else { node.fields[..node.mut_pos] }

@@ -891,7 +891,7 @@ pub mut:
 	types   []Type // all types that implement this interface
 	fields  []StructField
 	methods []Fn
-	ifaces  []Type
+	embeds  []Type
 	// `I1 is I2` conversions
 	conversions map[int][]Type
 	// generic interface support

@@ -362,11 +362,10 @@ pub:
 	generic_types []Type
 	attrs         []Attr
 pub mut:
-	methods []FnDecl
-	fields  []StructField
-	//
-	ifaces              []InterfaceEmbedding
-	are_ifaces_expanded bool
+	methods             []FnDecl
+	fields              []StructField
+	embeds              []InterfaceEmbedding
+	are_embeds_expanded bool
 }
 
 pub struct StructInitField {

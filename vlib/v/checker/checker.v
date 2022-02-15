@@ -500,11 +500,11 @@ pub fn (mut c Checker) expand_iface_embeds(idecl &ast.InterfaceDecl, level int, 
 	mut ares := []ast.InterfaceEmbedding{}
 	for ie in iface_embeds {
 		if iface_decl := c.table.interfaces[ie.typ] {
-			mut list := iface_decl.ifaces
-			if !iface_decl.are_ifaces_expanded {
-				list = c.expand_iface_embeds(idecl, level + 1, iface_decl.ifaces)
-				c.table.interfaces[ie.typ].ifaces = list
-				c.table.interfaces[ie.typ].are_ifaces_expanded = true
+			mut list := iface_decl.embeds
+			if !iface_decl.are_embeds_expanded {
+				list = c.expand_iface_embeds(idecl, level + 1, iface_decl.embeds)
+				c.table.interfaces[ie.typ].embeds = list
+				c.table.interfaces[ie.typ].are_embeds_expanded = true
 			}
 			for partial in list {
 				res[partial.typ] = partial

@@ -648,7 +648,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			}
 		}
 	}
-	info.ifaces = ifaces.map(it.typ)
+	info.embeds = ifaces.map(it.typ)
 	ts.info = info
 	p.top_level_statement_end()
 	p.check(.rcbr)
@@ -659,7 +659,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		typ: typ
 		fields: fields
 		methods: methods
-		ifaces: ifaces
+		embeds: ifaces
 		is_pub: is_pub
 		attrs: attrs
 		pos: pos
