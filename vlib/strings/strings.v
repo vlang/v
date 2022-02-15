@@ -18,10 +18,9 @@ pub fn random(n int) string {
 // `string` type, this function can extract content between *nested* marks in `input`.
 // If `start` and `end` marks are nested in `input`, the characters
 // between the *outermost* mark pair is returned. It is expected that `start` and `end`
-// marks are *balanced*, meaning that both `start` and `end` are of the same type **and**
-// the amount of `start` marks equal the amount of `end` marks in the `input`.
-// An empty string is returned otherwise. Using two identical marks as `start` and `end`
-// results in undefined output behavior.
+// marks are *balanced*, meaning that the amount of `start` marks equal the
+// amount of `end` marks in the `input`. An empty string is returned otherwise.
+// Using two identical marks as `start` and `end` results in undefined output behavior.
 // find_between_pair_byte is the fastest in the find_between_pair_* family of functions.
 // Example: assert strings.find_between_pair_byte('(V) (NOT V)',`(`,`)`) == 'V'
 // Example: assert strings.find_between_pair_byte('s {X{Y}} s',`{`,`}`) == 'X{Y}'
@@ -54,10 +53,9 @@ pub fn find_between_pair_byte(input string, start byte, end byte) string {
 // `string` type, this function can extract content between *nested* marks in `input`.
 // If `start` and `end` marks are nested in `input`, the characters
 // between the *outermost* mark pair is returned. It is expected that `start` and `end`
-// marks are *balanced*, meaning that both `start` and `end` are of the same type **and**
-// the amount of `start` marks equal the amount of `end` marks in the `input`.
-// An empty string is returned otherwise. Using two identical marks as `start` and `end`
-// results in undefined output behavior.
+// marks are *balanced*, meaning that the amount of `start` marks equal the
+// amount of `end` marks in the `input`. An empty string is returned otherwise.
+// Using two identical marks as `start` and `end` results in undefined output behavior.
 // find_between_pair_rune is inbetween the fastest and slowest in the find_between_pair_* family of functions.
 // Example: assert strings.find_between_pair_rune('(V) (NOT V)',`(`,`)`) == 'V'
 // Example: assert strings.find_between_pair_rune('s {X{Y}} s',`{`,`}`) == 'X{Y}'
@@ -91,10 +89,9 @@ pub fn find_between_pair_rune(input string, start rune, end rune) string {
 // `string` type, this function can extract content between *nested* marks in `input`.
 // If `start` and `end` marks are nested in `input`, the characters
 // between the *outermost* mark pair is returned. It is expected that `start` and `end`
-// marks are *balanced*, meaning that both `start` and `end` are of the same type **and**
-// the amount of `start` marks equal the amount of `end` marks in the `input`.
-// An empty string is returned otherwise. Using two identical marks as `start` and `end`
-// results in undefined output behavior.
+// marks are *balanced*, meaning that the amount of `start` marks equal the
+// amount of `end` marks in the `input`. An empty string is returned otherwise.
+// Using two identical marks as `start` and `end` results in undefined output behavior.
 // find_between_pair_string is the slowest in the find_between_pair_* function family.
 // Example: assert strings.find_between_pair_string('/*V*/ /*NOT V*/','/*','*/') == 'V'
 // Example: assert strings.find_between_pair_string('s {{X{{Y}}}} s','{{','}}') == 'X{{Y}}'
