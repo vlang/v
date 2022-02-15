@@ -3,7 +3,7 @@ module ed25519
 import crypto.rand
 import crypto.sha512
 import crypto.internal.subtle
-import github.ed25519.internal.edwards25519
+import internal.edwards25519
 
 pub const (
 	// public_key_size is the sizeof public keys in bytes
