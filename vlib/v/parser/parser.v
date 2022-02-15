@@ -94,6 +94,9 @@ __global codegen_files = []&ast.File{}
 
 // for tests
 pub fn parse_stmt(text string, table &ast.Table, scope &ast.Scope) ast.Stmt {
+	$if trace_parse_stmt ? {
+		eprintln('> ${@MOD}.${@FN} text: $text')
+	}
 	mut p := Parser{
 		scanner: scanner.new_scanner(text, .skip_comments, &pref.Preferences{})
 		inside_test_file: true
@@ -111,6 +114,9 @@ pub fn parse_stmt(text string, table &ast.Table, scope &ast.Scope) ast.Stmt {
 }
 
 pub fn parse_comptime(text string, table &ast.Table, pref &pref.Preferences, scope &ast.Scope) &ast.File {
+	$if trace_parse_comptime ? {
+		eprintln('> ${@MOD}.${@FN} text: $text')
+	}
 	mut p := Parser{
 		scanner: scanner.new_scanner(text, .skip_comments, pref)
 		table: table
@@ -125,6 +131,9 @@ pub fn parse_comptime(text string, table &ast.Table, pref &pref.Preferences, sco
 }
 
 pub fn parse_text(text string, path string, table &ast.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences) &ast.File {
+	$if trace_parse_text ? {
+		eprintln('> ${@MOD}.${@FN} comments_mode: ${comments_mode:-20} | path: ${path:-20} | text: $text')
+	}
 	mut p := Parser{
 		scanner: scanner.new_scanner(text, comments_mode, pref)
 		comments_mode: comments_mode
@@ -199,6 +208,9 @@ pub fn parse_file(path string, table &ast.Table, comments_mode scanner.CommentsM
 	// the parser gives feedback to the scanner about toplevel statements, so that the scanner can skip
 	// all the tricky inner comments. This is needed because we do not have a good general solution
 	// for handling them, and should be removed when we do (the general solution is also needed for vfmt)
+	$if trace_parse_file ? {
+		eprintln('> ${@MOD}.${@FN} comments_mode: ${comments_mode:-20} | path: $path')
+	}
 	mut p := Parser{
 		scanner: scanner.new_scanner_file(path, comments_mode, pref)
 		comments_mode: comments_mode
@@ -218,6 +230,9 @@ pub fn parse_file(path string, table &ast.Table, comments_mode scanner.CommentsM
 }
 
 pub fn parse_vet_file(path string, table_ &ast.Table, pref &pref.Preferences) (&ast.File, []vet.Error) {
+	$if trace_parse_vet_file ? {
+		eprintln('> ${@MOD}.${@FN} path: $path')
+	}
 	global_scope := &ast.Scope{
 		parent: 0
 	}

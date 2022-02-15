@@ -756,6 +756,9 @@ pub fn (t &Table) unaliased_type(typ Type) Type {
 
 fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx int) int {
 	existing_symbol := t.type_symbols[existing_idx]
+	$if trace_rewrite_already_registered_symbol ? {
+		eprintln('>> rewrite_already_registered_symbol sym: $typ.name | existing_idx: $existing_idx | existing_symbol: $existing_symbol.name')
+	}
 	if existing_symbol.kind == .placeholder {
 		// override placeholder
 		t.type_symbols[existing_idx] = &TypeSymbol{
@@ -789,6 +792,11 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 [inline]
 pub fn (mut t Table) register_sym(sym TypeSymbol) int {
 	mut idx := -2
+	$if trace_register_sym ? {
+		defer {
+			eprintln('>> register_sym: ${sym.name:-60} | idx: $idx')
+		}
+	}
 	mut existing_idx := t.type_idxs[sym.name]
 	if existing_idx > 0 {
 		idx = t.rewrite_already_registered_symbol(sym, existing_idx)
