@@ -1255,18 +1255,6 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				final_arg_typ = exp_arg_sym.array_info().elem_type
 				final_arg_sym = c.table.sym(final_arg_typ)
 			}
-			// Handle expected interface
-			if final_arg_sym.kind == .interface_ {
-				if c.type_implements(got_arg_typ, final_arg_typ, arg.expr.pos()) {
-					if !got_arg_typ.is_ptr() && !got_arg_typ.is_pointer() && !c.inside_unsafe {
-						got_arg_typ_sym := c.table.sym(got_arg_typ)
-						if got_arg_typ_sym.kind != .interface_ {
-							c.mark_as_referenced(mut &arg.expr, true)
-						}
-					}
-				}
-				continue
-			}
 			if exp_arg_typ.has_flag(.generic) {
 				if concrete_types.len == 0 {
 					continue
@@ -1288,18 +1276,6 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					} else {
 						continue
 					}
-				}
-			}
-			c.check_expected_call_arg(got_arg_typ, exp_arg_typ, node.language, arg) or {
-				// str method, allow type with str method if fn arg is string
-				// Passing an int or a string array produces a c error here
-				// Deleting this condition results in propper V error messages
-				// if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
-				// continue
-				// }
-				if got_arg_typ != ast.void_type {
-					c.error('$err.msg() in argument ${i + 1} to `${left_sym.name}.$method_name`',
-						arg.pos)
 				}
 			}
 			param := if method.is_variadic && i >= method.params.len - 1 {
@@ -1335,6 +1311,30 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 						i + 1}`', arg.expr.pos())
 				} else {
 					c.fail_if_unreadable(arg.expr, got_arg_typ, 'argument')
+				}
+			}
+			// Handle expected interface
+			if final_arg_sym.kind == .interface_ {
+				if c.type_implements(got_arg_typ, final_arg_typ, arg.expr.pos()) {
+					if !got_arg_typ.is_ptr() && !got_arg_typ.is_pointer() && !c.inside_unsafe {
+						got_arg_typ_sym := c.table.sym(got_arg_typ)
+						if got_arg_typ_sym.kind != .interface_ {
+							c.mark_as_referenced(mut &arg.expr, true)
+						}
+					}
+				}
+				continue
+			}
+			c.check_expected_call_arg(got_arg_typ, exp_arg_typ, node.language, arg) or {
+				// str method, allow type with str method if fn arg is string
+				// Passing an int or a string array produces a c error here
+				// Deleting this condition results in propper V error messages
+				// if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
+				// continue
+				// }
+				if got_arg_typ != ast.void_type {
+					c.error('$err.msg() in argument ${i + 1} to `${left_sym.name}.$method_name`',
+						arg.pos)
 				}
 			}
 		}
