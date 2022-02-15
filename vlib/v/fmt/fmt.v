@@ -2120,6 +2120,7 @@ pub fn (mut f Fmt) map_init(node ast.MapInit) {
 		f.write(': ')
 		f.write(strings.repeat(` `, max_field_len - key.str().len))
 		f.expr(node.vals[i])
+		f.write(',')
 		f.comments(node.comments[i], prev_line: node.vals[i].pos().last_line, has_nl: false)
 		f.writeln('')
 	}
