@@ -121,9 +121,9 @@ fn test_mult_by_cofactor() ? {
 }
 
 fn invert_works(mut xinv Scalar, x NotZeroScalar) bool {
-	xinv.invert(Scalar{ s: x.s })
+	xinv.invert(x)
 	mut check := Scalar{}
-	check.multiply(Scalar{ s: x.s }, xinv)
+	check.multiply(x, xinv)
 	return check == sc_one && is_reduced(xinv)
 }
 
