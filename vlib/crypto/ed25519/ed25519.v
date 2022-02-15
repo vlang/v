@@ -5,16 +5,17 @@ import crypto.sha512
 import crypto.internal.subtle
 import crypto.ed25519.internal.edwards25519
 
-pub const (
-	// public_key_size is the sizeof public keys in bytes
-	public_key_size  = 32
-	// private_key_size is the sizeof private keys in bytes
-	private_key_size = 64
-	// signature_size is the size of signatures generated and verified by this modules, in bytes.
-	signature_size   = 64
-	// seed_size is the size of private key seeds in bytes
-	seed_size        = 32
-)
+// public_key_size is the sizeof public keys in bytes
+pub const public_key_size = 32
+
+// private_key_size is the sizeof private keys in bytes
+pub const private_key_size = 64
+
+// signature_size is the size of signatures generated and verified by this modules, in bytes.
+pub const signature_size = 64
+
+// seed_size is the size of private key seeds in bytes
+pub const seed_size = 32
 
 // `PublicKey` is Ed25519 public keys.
 pub type PublicKey = []byte

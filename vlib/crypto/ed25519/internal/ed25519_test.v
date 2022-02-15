@@ -1,13 +1,21 @@
-module ed25519
+module main
 
+// NB: this should be in vlib/crypto/ed25519/ed25519_test.v
+// but is currently one folder below, because of a V parser/symbol registration bug.
+// TODO: move this test back to vlib/crypto/ed25519/ed25519_test.v
 import os
 import sync.pool
 import crypto.internal.subtle
 import encoding.hex
+import crypto.ed25519
 
-const (
-	contents = os.read_lines('testdata/sign.input') or { panic(err.msg) } //[]string
-)
+const vexe = os.getenv('VEXE')
+
+const vroot = os.dir(vexe)
+
+const testdata = os.join_path(vroot, 'vlib/crypto/ed25519/testdata')
+
+const contents = os.read_lines(os.join_path(testdata, 'sign.input')) or { panic(err) }
 
 /*
 struct ZeroReader {}
@@ -22,20 +30,20 @@ fn (z ZeroReader) read(mut buf []byte) ?int {
 
 fn test_sign_verify() ? {
 	// mut zero := ZeroReader{}
-	public, private := generate_key() ?
+	public, private := ed25519.generate_key() ?
 
 	message := 'test message'.bytes()
-	sig := sign(private, message) ?
-	res := verify(public, message, sig) or { false }
+	sig := ed25519.sign(private, message) ?
+	res := ed25519.verify(public, message, sig) or { false }
 	assert res == true
 
 	wrongmessage := 'wrong message'.bytes()
-	res2 := verify(public, wrongmessage, sig) ?
+	res2 := ed25519.verify(public, wrongmessage, sig) ?
 	assert res2 == false
 }
 
 fn test_equal() ? {
-	public, private := generate_key() ?
+	public, private := ed25519.generate_key() ?
 
 	assert public.equal(public) == true
 
@@ -46,7 +54,7 @@ fn test_equal() ? {
 	}*/
 	assert private.equal(private) == true
 
-	otherpub, otherpriv := generate_key() ?
+	otherpub, otherpriv := ed25519.generate_key() ?
 	assert public.equal(otherpub) == false
 
 	assert private.equal(otherpriv) == false
@@ -66,7 +74,7 @@ fn test_malleability() ? {
 		0xab, 0xbe, 0xe6, 0x85, 0xfd, 0xa4, 0x42, 0x0f, 0x88, 0x34, 0xb1, 0x08, 0xc3, 0xbd, 0xae,
 		0x36, 0x9e, 0xf5, 0x49, 0xfa]
 	// verify should fail on provided bytes
-	res := verify(publickey, msg, sig) or { false }
+	res := ed25519.verify(publickey, msg, sig) or { false }
 	assert res == false
 }
 
@@ -83,29 +91,29 @@ fn works_check_on_sign_input_string(item string) bool {
 	msg := hex.decode(parts[2]) or { panic(err.msg) }
 	mut sig := hex.decode(parts[3]) or { panic(err.msg) }
 
-	if pubkey.len != public_key_size {
+	if pubkey.len != ed25519.public_key_size {
 		return false
 	}
 	// assert pubkey.len == public_key_size
 
-	sig = sig[..signature_size]
-	mut priv := []byte{len: private_key_size, cap: private_key_size}
+	sig = sig[..ed25519.signature_size]
+	mut priv := []byte{len: ed25519.private_key_size}
 	copy(priv[..], privbytes)
 	copy(priv[32..], pubkey)
 
-	sig2 := sign(priv[..], msg) or { panic(err.msg) }
+	sig2 := ed25519.sign(priv[..], msg) or { panic(err.msg) }
 	// assert subtle.constant_time_compare(sig, sig2[..])
 	if subtle.constant_time_compare(sig, sig2[..]) != 1 {
 		return false
 	}
 
-	res := verify(pubkey, msg, sig2) or { panic(err.msg) }
+	res := ed25519.verify(pubkey, msg, sig2) or { panic(err.msg) }
 	// assert res == true
 	if !res {
 		return false
 	}
 
-	priv2 := new_key_from_seed(priv[..32])
+	priv2 := ed25519.new_key_from_seed(priv[..32])
 	// assert subtle.constant_time_compare(priv[..], priv2)
 	if subtle.constant_time_compare(priv[..], priv2) != 1 {
 		return false
@@ -152,7 +160,7 @@ fn test_input_from_djb_ed25519_crypto_sign_input_with_syncpool() ? {
 		callback: worker_for_string_content
 		maxjobs: 4
 	)
-	pool_s.work_on_items<string>(ed25519.contents)
+	pool_s.work_on_items<string>(contents)
 	for i, x in pool_s.get_results<SignResult>() {
 		// println("i: $i = $x.result")
 		assert x.result == true
@@ -178,14 +186,14 @@ fn test_input_from_djb_ed25519_crypto_sign_input_without_syncpool() ? {
 		assert pubkey.len == public_key_size
 
 		sig = sig[..signature_size]
-		mut priv := []byte{len: private_key_size, cap: private_key_size}
+		mut priv := []byte{len: ed25519.private_key_size}
 		copy(priv[..], privbytes)
 		copy(priv[32..], pubkey)
 
-		sig2 := sign(priv[..], msg) ?
+		sig2 := ed25519.sign(priv[..], msg) ?
 		assert subtle.constant_time_compare(sig, sig2[..]) == 1
 
-		res := verify(pubkey, msg, sig2) ?
+		res := ed25519.verify(pubkey, msg, sig2) ?
 		assert res == true
 
 		priv2 := new_key_from_seed(priv[..32])
