@@ -156,7 +156,7 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 
 		mut dot_res_sp := -1
 
-		// get sign and deciaml parts
+		// get sign and decimal parts
 		for c in s {
 			if c == `-` {
 				sgn = -1
@@ -263,6 +263,10 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 
 		// no more digits needed, stop here
 		if dec_digit <= 0 {
+			// C.printf(c'f: %f, i: %d, res.data: %p | dot_res_sp: %d | *(res.data): %s \n', f, i, res.data, dot_res_sp, res.data)
+			if dot_res_sp < 0 {
+				dot_res_sp = i + 1
+			}
 			tmp_res := tos(res.data, dot_res_sp).clone()
 			res.free()
 			return tmp_res
