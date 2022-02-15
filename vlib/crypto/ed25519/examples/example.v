@@ -22,13 +22,13 @@ fn main() {
 	println('   Public key (Base64): ${base64.encode(publ)}')
 
 	println('=== Private key ===')
-	println('Private key: $priv.seed()') // priv[0:32]
+	println('Private key: $priv.seed().hex()') // priv[0:32]
 	println('   Private key (Base64): ${base64.encode(priv.seed())}') // priv[0:32]
 	println('   Private key (Base64) Full key:  ${base64.encode(priv)}')
 	println('   Private key (Full key in Hex): ${hex.encode(priv)}')
 
 	println('=== signature (R,s) ===')
-	println('signature: R=${sig[0..32]} s=${sig[32..64]}')
+	println('signature: R=${sig[0..32].hex()} s=${sig[32..64].hex()}')
 	println('   signature (Base64)=${base64.encode(sig)}')
 
 	rtn := ed25519.verify(publ, m, sig) or { panic(err.msg) }
