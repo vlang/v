@@ -96,6 +96,7 @@ const (
 		'vlib/net/http/server_test.v',
 		'vlib/net/http/response_test.v',
 		'vlib/builtin/js/array_test.js.v',
+		'vlib/net/smtp/smtp_test.v',
 	]
 	skip_on_linux                 = [
 		'do_not_remove',
@@ -121,6 +122,7 @@ const (
 		'vlib/vweb/route_test.v',
 		'vlib/sync/many_times_test.v',
 		'vlib/sync/once_test.v',
+		'vlib/net/smtp/smtp_test.v',
 	]
 	skip_on_non_windows           = [
 		'do_not_remove',
