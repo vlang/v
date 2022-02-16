@@ -2120,7 +2120,11 @@ pub fn (mut f Fmt) map_init(node ast.MapInit) {
 		f.write(': ')
 		f.write(strings.repeat(` `, max_field_len - key.str().len))
 		f.expr(node.vals[i])
-		f.write(',')
+		if key is ast.EnumVal {
+			// enforce the use of `,` for maps with enum keys, otherwise there is ambiguity
+			// when the values are struct values, and the code will no longer parse properly
+			f.write(',') 
+		}
 		f.comments(node.comments[i], prev_line: node.vals[i].pos().last_line, has_nl: false)
 		f.writeln('')
 	}

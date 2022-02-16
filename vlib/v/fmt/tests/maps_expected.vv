@@ -1,24 +1,24 @@
 const (
 	reserved_types = {
-		'i8':   true,
-		'i16':  true,
-		'int':  true,
-		'i64':  true,
-		'i128': true,
+		'i8':   true
+		'i16':  true
+		'int':  true
+		'i64':  true
+		'i128': true
 	}
 )
 
 numbers := {
-	'one':                                 1,
-	'two':                                 2,
-	'sevenhundredseventyseven':            777,
-	'fivethousandthreehundredtwentyseven': 5327,
+	'one':                                 1
+	'two':                                 2
+	'sevenhundredseventyseven':            777
+	'fivethousandthreehundredtwentyseven': 5327
 }
 
 explicit_init := map[string]string{}
 
 explicit_init_with_value := {
-	'abc': 0,
+	'abc': 0
 }
 
 headers := http.new_header_from_map({
