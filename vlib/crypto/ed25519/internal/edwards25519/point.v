@@ -46,7 +46,6 @@ fn generator() ?Point {
 }
 
 // Point types.
-
 struct ProjectiveP1 {
 mut:
 	x Element
@@ -77,7 +76,7 @@ mut:
 	z Element
 	t Element
 	// Make the type not comparable (i.e. used with == or as a map key), as
-	// equivalent points can be represented by different Go values.
+	// equivalent points can be represented by different values.
 	// _ incomparable
 }
 
@@ -112,7 +111,7 @@ fn (mut v ProjectiveP2) zero() ProjectiveP2 {
 }
 
 // set_bytes sets v = x, where x is a 32-byte encoding of v. If x does not
-// represent a valid point on the curve, set_bytes returns nil and an error and
+// represent a valid point on the curve, set_bytes returns an error and
 // the receiver is unchanged. Otherwise, set_bytes returns v.
 //
 // Note that set_bytes accepts all non-canonical encodings of valid points.
@@ -165,19 +164,19 @@ pub fn (mut v Point) set_bytes(x []byte) ?Point {
 	return v
 }
 
-// `set` sets v = u, and returns v.
+// set sets v = u, and returns v.
 pub fn (mut v Point) set(u Point) Point {
 	v = u
 	return v
 }
 
-// `new_identity_point` returns a new Point set to the identity.
+// new_identity_point returns a new Point set to the identity.
 pub fn new_identity_point() Point {
 	mut p := Point{}
 	return p.set(edwards25519.id_point)
 }
 
-// `new_generator_point` returns a new Point set to the canonical generator.
+// new_generator_point returns a new Point set to the canonical generator.
 pub fn new_generator_point() Point {
 	mut p := Point{}
 	return p.set(edwards25519.gen_point)
@@ -200,7 +199,7 @@ fn (mut v AffineCached) zero() AffineCached {
 
 // Encoding.
 
-// `bytes` returns the canonical 32-byte encoding of v, according to RFC 8032,
+// bytes returns the canonical 32-byte encoding of v, according to RFC 8032,
 // Section 5.1.2.
 pub fn (mut v Point) bytes() []byte {
 	// This function is outlined to make the allocations inline in the caller
@@ -298,7 +297,7 @@ fn (mut v AffineCached) from_p3(p Point) AffineCached {
 
 // (Re)addition and subtraction.
 
-// `add` sets v = p + q, and returns v.
+// add sets v = p + q, and returns v.
 pub fn (mut v Point) add(p Point, q Point) Point {
 	check_initialized(p, q)
 	mut pc := ProjectiveCached{}
@@ -309,7 +308,7 @@ pub fn (mut v Point) add(p Point, q Point) Point {
 	return v.from_p1(result)
 }
 
-// `subtract` sets v = p - q, and returns v.
+// subtract sets v = p - q, and returns v.
 pub fn (mut v Point) subtract(p Point, q Point) Point {
 	check_initialized(p, q)
 	mut pc := ProjectiveCached{}
@@ -444,7 +443,7 @@ fn (mut v ProjectiveP1) double(p ProjectiveP2) ProjectiveP1 {
 
 // Negation.
 
-// `negate` sets v = -p, and returns v.
+// negate sets v = -p, and returns v.
 pub fn (mut v Point) negate(p Point) Point {
 	check_initialized(p)
 	v.x.negate(p.x)
@@ -454,7 +453,7 @@ pub fn (mut v Point) negate(p Point) Point {
 	return v
 }
 
-// `equal` returns 1 if v is equivalent to u, and 0 otherwise.
+// equal returns 1 if v is equivalent to u, and 0 otherwise.
 pub fn (mut v Point) equal(u Point) int {
 	check_initialized(v, u)
 

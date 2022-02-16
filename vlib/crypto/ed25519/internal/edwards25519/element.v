@@ -222,7 +222,7 @@ fn fe_mul_generic(a Element, b Element) Element {
 	return v
 }
 
-// carryPropagate brings the limbs below 52 bits by applying the reduction
+// carry_propagate_generic brings the limbs below 52 bits by applying the reduction
 // identity (a * 2²⁵⁵ + b = a * 19 + b) to the l4 carry.
 fn (mut v Element) carry_propagate_generic() Element {
 	c0 := v.l0 >> 51
@@ -329,19 +329,19 @@ fn fe_square_generic(a Element) Element {
 	return v
 }
 
-// `zero` sets v = 0, and returns v.
+// zero sets v = 0, and returns v.
 pub fn (mut v Element) zero() Element {
 	v = edwards25519.fe_zero
 	return v
 }
 
-// `one` sets v = 1, and returns v.
+// one sets v = 1, and returns v.
 pub fn (mut v Element) one() Element {
 	v = edwards25519.fe_one
 	return v
 }
 
-// `reduce` reduces v modulo 2^255 - 19 and returns it.
+// reduce reduces v modulo 2^255 - 19 and returns it.
 pub fn (mut v Element) reduce() Element {
 	v = v.carry_propagate_generic()
 
@@ -374,7 +374,7 @@ pub fn (mut v Element) reduce() Element {
 	return v
 }
 
-// `add` sets v = a + b, and returns v.
+// add sets v = a + b, and returns v.
 pub fn (mut v Element) add(a Element, b Element) Element {
 	v.l0 = a.l0 + b.l0
 	v.l1 = a.l1 + b.l1
@@ -388,7 +388,7 @@ pub fn (mut v Element) add(a Element, b Element) Element {
 	return v.carry_propagate_generic()
 }
 
-// `subtract` sets v = a - b, and returns v.
+// subtract sets v = a - b, and returns v.
 pub fn (mut v Element) subtract(a Element, b Element) Element {
 	// We first add 2 * p, to guarantee the subtraction won't underflow, and
 	// then subtract b (which can be up to 2^255 + 2^13 * 19).
@@ -400,12 +400,12 @@ pub fn (mut v Element) subtract(a Element, b Element) Element {
 	return v.carry_propagate_generic()
 }
 
-// `negate` sets v = -a, and returns v.
+// negate sets v = -a, and returns v.
 pub fn (mut v Element) negate(a Element) Element {
 	return v.subtract(edwards25519.fe_zero, a)
 }
 
-// `invert` sets v = 1/z mod p, and returns v.
+// invert sets v = 1/z mod p, and returns v.
 //
 // If z == 0, invert returns v = 0.
 pub fn (mut v Element) invert(z Element) Element {
@@ -480,13 +480,13 @@ pub fn (mut v Element) invert(z Element) Element {
 	return v.multiply(t, z11) // 2^255 - 21
 }
 
-// `square` sets v = x * x, and returns v.
+// square sets v = x * x, and returns v.
 pub fn (mut v Element) square(x Element) Element {
 	v = fe_square_generic(x)
 	return v
 }
 
-// `multiply` sets v = x * y, and returns v.
+// multiply sets v = x * y, and returns v.
 pub fn (mut v Element) multiply(x Element, y Element) Element {
 	v = fe_mul_generic(x, y)
 	return v
@@ -500,7 +500,7 @@ fn mul_51(a u64, b u32) (u64, u64) {
 	return lo, hi
 }
 
-// `pow_22523` set v = x^((p-5)/8), and returns v. (p-5)/8 is 2^252-3.
+// pow_22523 set v = x^((p-5)/8), and returns v. (p-5)/8 is 2^252-3.
 pub fn (mut v Element) pow_22523(x Element) Element {
 	mut t0, mut t1, mut t2 := Element{}, Element{}, Element{}
 
@@ -551,7 +551,7 @@ pub fn (mut v Element) pow_22523(x Element) Element {
 	return v.multiply(t0, x) // 2^252 - 3 -> x^(2^252-3)
 }
 
-// `sqrt_ratio` sets r to the non-negative square root of the ratio of u and v.
+// sqrt_ratio sets r to the non-negative square root of the ratio of u and v.
 //
 // If u/v is square, sqrt_ratio returns r and 1. If u/v is not square, sqrt_ratio
 // sets r according to Section 4.3 of draft-irtf-cfrg-ristretto255-decaf448-00,
@@ -587,7 +587,7 @@ fn mask_64_bits(cond int) u64 {
 	return ~(u64(cond) - 1)
 }
 
-// `selected` sets v to a if cond == 1, and to b if cond == 0.
+// selected sets v to a if cond == 1, and to b if cond == 0.
 pub fn (mut v Element) selected(a Element, b Element, cond int) Element {
 	// see above notes
 	m := mask_64_bits(cond)
@@ -599,25 +599,25 @@ pub fn (mut v Element) selected(a Element, b Element, cond int) Element {
 	return v
 }
 
-// `is_negative` returns 1 if v is negative, and 0 otherwise.
+// is_negative returns 1 if v is negative, and 0 otherwise.
 pub fn (mut v Element) is_negative() int {
 	return int(v.bytes()[0] & 1)
 }
 
-// `absolute` sets v to |u|, and returns v.
+// absolute sets v to |u|, and returns v.
 pub fn (mut v Element) absolute(u Element) Element {
 	mut e := Element{}
 	mut uk := u
 	return v.selected(e.negate(uk), uk, uk.is_negative())
 }
 
-// `set` sets v = a, and returns v.
+// set sets v = a, and returns v.
 pub fn (mut v Element) set(a Element) Element {
 	v = a
 	return v
 }
 
-// `set_bytes` sets v to x, where x is a 32-byte little-endian encoding. If x is
+// set_bytes sets v to x, where x is a 32-byte little-endian encoding. If x is
 // not of the right length, SetUniformBytes returns an error, and the
 // receiver is unchanged.
 //
@@ -649,7 +649,7 @@ pub fn (mut v Element) set_bytes(x []byte) ?Element {
 	return v
 }
 
-// `bytes` returns the canonical 32-byte little-endian encoding of v.
+// bytes returns the canonical 32-byte little-endian encoding of v.
 pub fn (mut v Element) bytes() []byte {
 	// This function is outlined to make the allocations inline in the caller
 	// rather than happen on the heap.
@@ -679,7 +679,7 @@ fn (mut v Element) bytes_generic() []byte {
 	return out
 }
 
-// `equal` returns 1 if v and u are equal, and 0 otherwise.
+// equal returns 1 if v and u are equal, and 0 otherwise.
 pub fn (mut v Element) equal(ue Element) int {
 	mut u := ue
 	sa := u.bytes()
@@ -687,7 +687,7 @@ pub fn (mut v Element) equal(ue Element) int {
 	return subtle.constant_time_compare(sa, sv)
 }
 
-// `swap` swaps v and u if cond == 1 or leaves them unchanged if cond == 0, and returns v.
+// swap swaps v and u if cond == 1 or leaves them unchanged if cond == 0, and returns v.
 pub fn (mut v Element) swap(mut u Element, cond int) {
 	// mut u := ue
 	m := mask_64_bits(cond)
@@ -708,7 +708,7 @@ pub fn (mut v Element) swap(mut u Element, cond int) {
 	u.l4 ^= t
 }
 
-// `mult_32` sets v = x * y, and returns v.
+// mult_32 sets v = x * y, and returns v.
 pub fn (mut v Element) mult_32(x Element, y u32) Element {
 	x0lo, x0hi := mul_51(x.l0, y)
 	x1lo, x1hi := mul_51(x.l1, y)

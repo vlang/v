@@ -8,7 +8,7 @@ mut:
 	initonce sync.Once
 }
 
-// `basepoint_table` is a set of 32 affineLookupTables, where table i is generated
+// basepoint_table is a set of 32 affineLookupTables, where table i is generated
 // from 256i * basepoint. It is precomputed the first time it's used.
 fn basepoint_table() []AffineLookupTable {
 	mut bpt := &BasepointTablePrecomp{
@@ -39,7 +39,7 @@ fn basepoint_table() []AffineLookupTable {
 	return bpt.table
 }
 
-// `scalar_base_mult` sets v = x * B, where B is the canonical generator, and
+// scalar_base_mult sets v = x * B, where B is the canonical generator, and
 // returns v.
 //
 // The scalar multiplication is done in constant time.
@@ -92,7 +92,7 @@ pub fn (mut v Point) scalar_base_mult(mut x Scalar) Point {
 	return v
 }
 
-// `scalar_mult` sets v = x * q, and returns v.
+// scalar_mult sets v = x * q, and returns v.
 //
 // The scalar multiplication is done in constant time.
 pub fn (mut v Point) scalar_mult(mut x Scalar, q Point) Point {
@@ -149,7 +149,7 @@ fn basepoint_naf_table() NafLookupTable8 {
 	return bnft.table
 }
 
-// `vartime_double_scalar_base_mult` sets v = a * A + b * B, where B is the canonical
+// vartime_double_scalar_base_mult sets v = a * A + b * B, where B is the canonical
 // generator, and returns v.
 //
 // Execution time depends on the inputs.
