@@ -12,7 +12,7 @@ fn test_map_init_with_enum_keys() {
 	mut st := St{}
 
 	st.m = {
-		.ea: 'a'
+		.ea: 'a',
 	}
 
 	println(st.m)
