@@ -2853,10 +2853,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.dump_expr(node)
 		}
 		ast.EnumVal {
-			// g.write('${it.mod}${it.enum_name}_$it.val')
-			// g.enum_expr(node)
-			styp := g.typ(g.table.unaliased_type(node.typ))
-			g.write('${styp}__$node.val')
+			g.enum_val(node)
 		}
 		ast.FloatLiteral {
 			if g.pref.nofloat {
@@ -5049,6 +5046,17 @@ fn (mut g Gen) size_of(node ast.SizeOf) {
 	}
 	styp := g.typ(node_typ)
 	g.write('sizeof(${util.no_dots(styp)})')
+}
+
+fn (mut g Gen) enum_val(node ast.EnumVal) {
+	// g.write('${it.mod}${it.enum_name}_$it.val')
+	// g.enum_expr(node)
+	styp := g.typ(g.table.unaliased_type(node.typ))
+	if node.typ.is_number() {
+		// Mostly in translated code, when C enums are used as ints in switches
+		// g.write('/*enum val is_number $node.mod styp=$styp*/')
+	}
+	g.write('${styp}__$node.val')
 }
 
 fn (mut g Gen) go_expr(node ast.GoExpr) {
