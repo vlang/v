@@ -28,7 +28,7 @@ pub fn (p PublicKey) equal(x []byte) bool {
 // PrivateKey is Ed25519 private keys
 pub type PrivateKey = []byte
 
-// seed returns the private key seed corresponding to priv. 
+// seed returns the private key seed corresponding to priv.
 // RFC 8032's private keys correspond to seeds in this module.
 pub fn (priv PrivateKey) seed() []byte {
 	mut seed := []byte{len: ed25519.seed_size}
