@@ -2110,16 +2110,25 @@ pub fn (mut f Fmt) map_init(node ast.MapInit) {
 	f.indent++
 	f.comments(node.pre_cmnts)
 	mut max_field_len := 0
+	mut skeys := []string{}
 	for key in node.keys {
-		if key.str().len > max_field_len {
-			max_field_len = key.str().len
+		skey := f.node_str(key).trim_space()
+		skeys << skey
+		if skey.len > max_field_len {
+			max_field_len = skey.len
 		}
 	}
 	for i, key in node.keys {
-		f.expr(key)
+		skey := skeys[i]
+		f.write(skey)
 		f.write(': ')
-		f.write(strings.repeat(` `, max_field_len - key.str().len))
+		f.write(strings.repeat(` `, max_field_len - skey.len))
 		f.expr(node.vals[i])
+		if key is ast.EnumVal && skey.starts_with('.') {
+			// enforce the use of `,` for maps with short enum keys, otherwise there is ambiguity
+			// when the values are struct values, and the code will no longer parse properly
+			f.write(',')
+		}
 		f.comments(node.comments[i], prev_line: node.vals[i].pos().last_line, has_nl: false)
 		f.writeln('')
 	}

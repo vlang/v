@@ -20,3 +20,8 @@ explicit_init := map[string]string{}
 explicit_init_with_value := {
 	'abc': 0
 }
+
+headers := http.new_header_from_map({
+	.content_type:  'application/json',
+	.authorization: 'Bearer abcdef',
+})
