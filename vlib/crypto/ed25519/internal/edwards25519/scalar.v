@@ -21,7 +21,7 @@ mut:
 	s [32]byte
 }
 
-const (
+pub const (
 	sc_zero = Scalar{
 		s: [byte(0), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 			0, 0, 0, 0, 0, 0]!
@@ -38,52 +38,52 @@ const (
 	}
 )
 
-// `new_scalar` return new zero scalar
+// new_scalar return new zero scalar
 pub fn new_scalar() Scalar {
 	return Scalar{}
 }
 
-// `add` sets s = x + y mod l, and returns s.
+// add sets s = x + y mod l, and returns s.
 pub fn (mut s Scalar) add(x Scalar, y Scalar) Scalar {
 	// s = 1 * x + y mod l
 	sc_mul_add(mut s.s, edwards25519.sc_one.s, x.s, y.s)
 	return s
 }
 
-// `multiply_add` sets s = x * y + z mod l, and returns s.
+// multiply_add sets s = x * y + z mod l, and returns s.
 pub fn (mut s Scalar) multiply_add(x Scalar, y Scalar, z Scalar) Scalar {
 	sc_mul_add(mut s.s, x.s, y.s, z.s)
 	return s
 }
 
-// `subtract` sets s = x - y mod l, and returns s.
+// subtract sets s = x - y mod l, and returns s.
 pub fn (mut s Scalar) subtract(x Scalar, y Scalar) Scalar {
 	// s = -1 * y + x mod l
 	sc_mul_add(mut s.s, edwards25519.sc_minus_one.s, y.s, x.s)
 	return s
 }
 
-// `negate` sets s = -x mod l, and returns s.
+// negate sets s = -x mod l, and returns s.
 pub fn (mut s Scalar) negate(x Scalar) Scalar {
 	// s = -1 * x + 0 mod l
 	sc_mul_add(mut s.s, edwards25519.sc_minus_one.s, x.s, edwards25519.sc_zero.s)
 	return s
 }
 
-// `multiply` sets s = x * y mod l, and returns s.
+// multiply sets s = x * y mod l, and returns s.
 pub fn (mut s Scalar) multiply(x Scalar, y Scalar) Scalar {
 	// s = x * y + 0 mod l
 	sc_mul_add(mut s.s, x.s, y.s, edwards25519.sc_zero.s)
 	return s
 }
 
-// `set` sets s = x, and returns s.
+// set sets s = x, and returns s.
 pub fn (mut s Scalar) set(x Scalar) Scalar {
 	s = x
 	return s
 }
 
-// `set_uniform_bytes` sets s to an uniformly distributed value given 64 uniformly
+// set_uniform_bytes sets s to an uniformly distributed value given 64 uniformly
 // distributed random bytes. If x is not of the right length, set_uniform_bytes
 // returns an error, and the receiver is unchanged.
 pub fn (mut s Scalar) set_uniform_bytes(x []byte) ?Scalar {
@@ -99,7 +99,7 @@ pub fn (mut s Scalar) set_uniform_bytes(x []byte) ?Scalar {
 	return s
 }
 
-// `set_canonical_bytes` sets s = x, where x is a 32-byte little-endian encoding of
+// set_canonical_bytes sets s = x, where x is a 32-byte little-endian encoding of
 // s, and returns s. If x is not a canonical encoding of s, set_canonical_bytes
 // returns an error, and the receiver is unchanged.
 pub fn (mut s Scalar) set_canonical_bytes(x []byte) ?Scalar {
@@ -120,7 +120,7 @@ pub fn (mut s Scalar) set_canonical_bytes(x []byte) ?Scalar {
 	return s
 }
 
-// `is_reduced` returns whether the given scalar is reduced modulo l.
+// is_reduced returns whether the given scalar is reduced modulo l.
 fn is_reduced(s Scalar) bool {
 	for i := s.s.len - 1; i >= 0; i-- {
 		if s.s[i] > edwards25519.sc_minus_one.s[i] {
@@ -141,7 +141,7 @@ fn is_reduced(s Scalar) bool {
 	return true
 }
 
-// `set_bytes_with_clamping` applies the buffer pruning described in RFC 8032,
+// set_bytes_with_clamping applies the buffer pruning described in RFC 8032,
 // Section 5.1.5 (also known as clamping) and sets s to the result. The input
 // must be 32 bytes, and it is not modified. If x is not of the right length,
 // `set_bytes_with_clamping` returns an error, and the receiver is unchanged.
@@ -173,14 +173,14 @@ pub fn (mut s Scalar) set_bytes_with_clamping(x []byte) ?Scalar {
 	return s
 }
 
-// `bytes` returns the canonical 32-byte little-endian encoding of s.
+// bytes returns the canonical 32-byte little-endian encoding of s.
 pub fn (mut s Scalar) bytes() []byte {
 	mut buf := []byte{len: 32}
 	copy(buf, s.s[..])
 	return buf
 }
 
-// `equal` returns 1 if s and t are equal, and 0 otherwise.
+// equal returns 1 if s and t are equal, and 0 otherwise.
 pub fn (s Scalar) equal(t Scalar) int {
 	return subtle.constant_time_compare(s.s[..], t.s[..])
 }
@@ -977,7 +977,7 @@ fn sc_reduce(mut out [32]byte, mut s []byte) {
 // non_adjacent_form computes a width-w non-adjacent form for this scalar.
 //
 // w must be between 2 and 8, or non_adjacent_form will panic.
-fn (mut s Scalar) non_adjacent_form(w u32) []i8 {
+pub fn (mut s Scalar) non_adjacent_form(w u32) []i8 {
 	// This implementation is adapted from the one
 	// in curve25519-dalek and is documented there:
 	// https://github.com/dalek-cryptography/curve25519-dalek/blob/f630041af28e9a405255f98a8a93adca18e4315b/src/scalar.rs#L800-L871

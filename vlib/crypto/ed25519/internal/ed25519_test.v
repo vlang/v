@@ -117,7 +117,7 @@ fn works_check_on_sign_input_string(item string) bool {
 	}
 
 	pubkey2 := priv2.public_key()
-	if pubkey != pubkey2 {
+	if ed25519.PublicKey(pubkey) != pubkey2 {
 		return false
 	}
 

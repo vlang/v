@@ -20,24 +20,24 @@ pub const seed_size = 32
 // `PublicKey` is Ed25519 public keys.
 pub type PublicKey = []byte
 
-// `equal` reports whether p and x have the same value.
+// equal reports whether p and x have the same value.
 pub fn (p PublicKey) equal(x []byte) bool {
 	return subtle.constant_time_compare(p, PublicKey(x)) == 1
 }
 
-// `PrivateKey` is Ed25519 private keys
+// PrivateKey is Ed25519 private keys
 pub type PrivateKey = []byte
 
-// seed returns the private key seed corresponding to priv. RFC 8032's private keys correspond to seeds
-// in this module.
+// seed returns the private key seed corresponding to priv.
+// RFC 8032's private keys correspond to seeds in this module.
 pub fn (priv PrivateKey) seed() []byte {
 	mut seed := []byte{len: ed25519.seed_size}
 	copy(seed, priv[..32])
 	return seed
 }
 
-// `public_key` returns the []byte corresponding to priv.
-pub fn (priv PrivateKey) public_key() []byte {
+// public_key returns the []byte corresponding to priv.
+pub fn (priv PrivateKey) public_key() PublicKey {
 	assert priv.len == ed25519.private_key_size
 	mut publickey := []byte{len: ed25519.public_key_size}
 	copy(publickey, priv[32..])
@@ -49,7 +49,7 @@ pub fn (priv PrivateKey) equal(x []byte) bool {
 	return subtle.constant_time_compare(priv, PrivateKey(x)) == 1
 }
 
-// `sign` signs the given message with priv.
+// sign signs the given message with priv.
 pub fn (priv PrivateKey) sign(message []byte) ?[]byte {
 	/*
 	if opts.HashFunc() != crypto.Hash(0) {
@@ -59,7 +59,7 @@ pub fn (priv PrivateKey) sign(message []byte) ?[]byte {
 	return sign(priv, message)
 }
 
-// `sign `signs the message with privatekey and returns a signature
+// sign`signs the message with privatekey and returns a signature
 pub fn sign(privatekey PrivateKey, message []byte) ?[]byte {
 	mut signature := []byte{len: ed25519.signature_size}
 	sign_generic(signature, privatekey, message) ?
@@ -107,7 +107,7 @@ fn sign_generic(signature []byte, privatekey []byte, message []byte) ? {
 	copy(signature[32..], ss.bytes())
 }
 
-// `verify` reports whether sig is a valid signature of message by publickey.
+// verify reports whether sig is a valid signature of message by publickey.
 pub fn verify(publickey PublicKey, message []byte, sig []byte) ?bool {
 	if publickey.len != ed25519.public_key_size {
 		return error('ed25519: bad public key length: $publickey.len')
@@ -143,7 +143,7 @@ pub fn verify(publickey PublicKey, message []byte, sig []byte) ?bool {
 	return subtle.constant_time_compare(sig[..32], rr.bytes()) == 1
 }
 
-// `generate_key` generates a public/private key pair entropy using `crypto.rand`.
+// generate_key generates a public/private key pair entropy using `crypto.rand`.
 pub fn generate_key() ?(PublicKey, PrivateKey) {
 	mut seed := rand.bytes(ed25519.seed_size) ?
 
@@ -154,7 +154,7 @@ pub fn generate_key() ?(PublicKey, PrivateKey) {
 	return publickey, privatekey
 }
 
-// `new_key_from_seed` calculates a private key from a seed. private keys of RFC 8032
+// new_key_from_seed calculates a private key from a seed. private keys of RFC 8032
 // correspond to seeds in this module
 pub fn new_key_from_seed(seed []byte) PrivateKey {
 	// Outline the function body so that the returned key can be stack-allocated.
