@@ -980,3 +980,7 @@ fn test_string_f32() {
 	assert '-123'.f32() - (-123) < f32_epsilon
 	assert '-123.456'.f32() - (-123.456) <= f32_epsilon
 }
+
+fn test_string_with_zero_byte_escape() {
+	assert '\x00'.bytes() == [byte(0)]
+}
