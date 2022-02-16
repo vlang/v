@@ -1,0 +1,6 @@
+vlib/v/checker/tests/mut_interface_param_err.vv:19:10: error: `add` parameter `widget` is `mut`, you need to provide `mut` e.g. `mut arg1`
+   17 |     mut win := Window{}
+   18 |     mut btn := Button{}
+   19 |     win.add(btn)  // should be an error here
+      |             ~~~
+   20 | }
