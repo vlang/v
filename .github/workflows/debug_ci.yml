@@ -34,7 +34,7 @@ jobs:
       - name: Self tests
         run: |
           ./v -cg cmd\tools\vtest-self.v
-          ./v -silent test-self
+          ./v test-self
       - name: Test v->js
         run: ./v -o hi.js examples/hello_v_js.v && node hi.js
       - name: Test v binaries
@@ -43,4 +43,3 @@ jobs:
         run: ./v build-examples
       - name: v2 self compilation
         run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
-

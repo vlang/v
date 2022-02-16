@@ -41,7 +41,7 @@ jobs:
         run: |
           thirdparty/tcc/tcc.exe -version
           ./v -cg -o v cmd/v # Make sure vtcc can build itself twice
-      #        ./v -silent test-all
+      #        ./v test-all
       - name: v self compilation
         run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
       - name: v self compilation with -skip-unused
@@ -55,7 +55,7 @@ jobs:
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Self tests
-        run: ./v -silent test-self
+        run: ./v test-self
       # - name: Self tests (-cstrict)
       #   run: ./v -cstrict test-self
       - name: Test time functions in a timezone UTC-12
@@ -126,7 +126,7 @@ jobs:
           ./v -gc boehm cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Self tests with `-gc boehm` with V compiler using Boehm-GC itself
-        run: ./v -gc boehm -silent test-self
+        run: ./v -gc boehm test-self
       - name: Test leak detector
         run: |
           ./v -gc boehm_leak -o testcase_leak vlib/v/tests/testcase_leak.vv
@@ -178,7 +178,7 @@ jobs:
       #        psql -d postgres -c 'create database customerdb;'
       #        psql -d customerdb -f examples/database/pg/mydb.sql
       #    - name: Test v->c
-      #      run: ./v -silent test-all
+      #      run: ./v test-all
       #    - name: Test v binaries
       #      run: ./v build-vbinaries
       ##    - name: Test v->js
@@ -190,7 +190,7 @@ jobs:
           ./cmd/tools/test_if_v_test_system_works
 
       - name: Self tests
-        run: VJOBS=1 ./v -silent test-self
+        run: VJOBS=1 ./v test-self
 
       - name: Build examples
         run: ./v build-examples
@@ -252,7 +252,7 @@ jobs:
           UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
           UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v3 -o v.c cmd/v
       #    - name: Test V
-      #      run: ./v -silent test-all
+      #      run: ./v test-all
       #    - name: Test v binaries
       #      run: ./v build-vbinaries
       ##    - name: Test v->js
@@ -279,10 +279,9 @@ jobs:
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Self tests
-        run: |
-          ./v -silent test-self
+        run: ./v test-self
       - name: Self tests (-prod)
-        run: ./v -o vprod -prod cmd/v && ./vprod -silent test-self
+        run: ./v -o vprod -prod cmd/v && ./vprod test-self
       - name: Self tests (-cstrict)
         run: ./v -cc gcc -cstrict test-self
       - name: Build examples
@@ -372,10 +371,9 @@ jobs:
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Self tests
-        run: |
-          ./v -silent test-self
+        run: ./v test-self
       - name: Self tests (-prod)
-        run: ./v -o vprod -prod cmd/v && ./vprod -silent test-self
+        run: ./v -o vprod -prod cmd/v && ./vprod test-self
       - name: Self tests (-cstrict)
         run: ./v -cstrict test-self
       - name: Build examples
@@ -440,11 +438,9 @@ jobs:
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Self tests
-        run: |
-          .\v.exe -silent test-self
+        run: .\v.exe test-self
   #    - name: Test
-  #      run: |
-  #        .\v.exe -silent test-all
+  #      run: .\v.exe test-all
       - name: Test v->js
         run: ./v -o hi.js examples/hello_v_js.v && node hi.js
       - name: Test v binaries
@@ -485,10 +481,9 @@ jobs:
       - name: Self tests
         run: |
           ./v -cg cmd\tools\vtest-self.v
-          ./v -silent test-self
+          ./v test-self
   #    - name: Test
-  #      run: |
-  #        .\v.exe -silent test-all
+  #      run: .\v.exe test-all
       - name: Test v->js
         run: ./v -o hi.js examples/hello_v_js.v && node hi.js
       - name: Test v binaries
@@ -624,8 +619,7 @@ jobs:
         run: CC=gcc make
 
       - name: Test V fixed tests
-        run: ./v -silent test-self
-
+        run: ./v test-self
 
   #  ubuntu-autofree-selfcompile:
   #    runs-on: ubuntu-20.04
@@ -663,7 +657,7 @@ jobs:
   #     - name: quick debug
   #       run: ./v -stats vlib/strconv/format_test.v
   #     - name: Self tests
-  #       run: ./v -silent test-self
+  #       run: ./v test-self
 
   # Ubuntu docker pre-built container
   ubuntu-musl:
@@ -690,5 +684,4 @@ jobs:
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: Test V fixed tests
-        run: |
-          ./v -silent test-self
+        run: ./v test-self

@@ -34,9 +34,9 @@ jobs:
       - name: Build local v
         run: make -j4
       - name: v test-cleancode
-        run: ./v -silent test-cleancode
+        run: ./v test-cleancode
       - name: v test-fmt
-        run: ./v -silent test-fmt
+        run: ./v test-fmt
 
   performance-regressions:
     runs-on: ubuntu-20.04
@@ -111,7 +111,7 @@ jobs:
       - name: V self compilation with g++
         run: ./v -cc g++-9 -no-std -cflags -std=c++11 -o v2 cmd/v && ./v2 -cc g++-9 -no-std -cflags -std=c++11 -o v3 cmd/v
   ##    - name: Running tests with g++
-  ##      run: ./v -cc g++-9 -silent test-self
+  ##      run: ./v -cc g++-9 test-self
 
 
   parser-silent:
