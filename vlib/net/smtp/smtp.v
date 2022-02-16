@@ -6,6 +6,7 @@ module smtp
 * Created by: nedimf (07/2020)
 */
 import net
+import net.openssl
 import encoding.base64
 import strings
 import time
@@ -30,16 +31,20 @@ pub enum BodyType {
 
 pub struct Client {
 mut:
-	conn   net.TcpConn
-	reader io.BufferedReader
+	conn     net.TcpConn
+	ssl_conn &openssl.SSLConn = 0
+	reader   io.BufferedReader
 pub:
 	server   string
 	port     int = 25
 	username string
 	password string
 	from     string
+	ssl      bool
+	starttls bool
 pub mut:
-	is_open bool
+	is_open   bool
+	encrypted bool
 }
 
 pub struct Mail {
@@ -55,6 +60,10 @@ pub struct Mail {
 
 // new_client returns a new SMTP client and connects to it
 pub fn new_client(config Client) ?&Client {
+	if config.ssl && config.starttls {
+		return error('Can not use both implicit SSL and STARTTLS')
+	}
+
 	mut c := &Client{
 		...config
 	}
@@ -71,10 +80,19 @@ pub fn (mut c Client) reconnect() ? {
 	conn := net.dial_tcp('$c.server:$c.port') or { return error('Connecting to server failed') }
 	c.conn = conn
 
-	c.reader = io.new_buffered_reader(reader: c.conn)
+	if c.ssl {
+		c.connect_ssl() ?
+	} else {
+		c.reader = io.new_buffered_reader(reader: c.conn)
+	}
 
 	c.expect_reply(.ready) or { return error('Received invalid response from server') }
 	c.send_ehlo() or { return error('Sending EHLO packet failed') }
+
+	if c.starttls && !c.encrypted {
+		c.send_starttls() or { return error('Sending STARTTLS failed') }
+	}
+
 	c.send_auth() or { return error('Authenticating to server failed') }
 	c.is_open = true
 }
@@ -98,15 +116,41 @@ pub fn (mut c Client) send(config Mail) ? {
 pub fn (mut c Client) quit() ? {
 	c.send_str('QUIT\r\n') ?
 	c.expect_reply(.close) ?
-	c.conn.close() ?
+	if c.encrypted {
+		c.ssl_conn.shutdown() ?
+	} else {
+		c.conn.close() ?
+	}
 	c.is_open = false
+	c.encrypted = false
+}
+
+fn (mut c Client) connect_ssl() ? {
+	c.ssl_conn = openssl.new_ssl_conn()
+	c.ssl_conn.connect(mut c.conn, c.server) or {
+		return error('Connecting to server using OpenSSL failed: $err')
+	}
+
+	c.reader = io.new_buffered_reader(reader: c.ssl_conn)
+	c.encrypted = true
 }
 
 // expect_reply checks if the SMTP server replied with the expected reply code
 fn (mut c Client) expect_reply(expected ReplyCode) ? {
-	bytes := io.read_all(reader: c.conn) ?
+	mut str := ''
+	for {
+		str = c.reader.read_line() ?
+		if str.len < 4 {
+			return error('Invalid SMTP response: $str')
+		}
 
-	str := bytes.bytestr().trim_space()
+		if str.runes()[3] == `-` {
+			continue
+		} else {
+			break
+		}
+	}
+
 	$if smtp_debug ? {
 		eprintln('\n\n[RECV]')
 		eprint(str)
@@ -129,13 +173,25 @@ fn (mut c Client) send_str(s string) ? {
 		eprint(s.trim_space())
 		eprintln('\n[SEND END]')
 	}
-	c.conn.write(s.bytes()) ?
+
+	if c.encrypted {
+		c.ssl_conn.write(s.bytes()) ?
+	} else {
+		c.conn.write(s.bytes()) ?
+	}
 }
 
 [inline]
 fn (mut c Client) send_ehlo() ? {
 	c.send_str('EHLO $c.server\r\n') ?
 	c.expect_reply(.action_ok) ?
+}
+
+[inline]
+fn (mut c Client) send_starttls() ? {
+	c.send_str('STARTTLS\r\n') ?
+	c.expect_reply(.ready) ?
+	c.connect_ssl() ?
 }
 
 [inline]
