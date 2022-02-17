@@ -4301,15 +4301,14 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 }
 
 fn (mut g Gen) global_decl(node ast.GlobalDecl) {
-	// was static used here to to make code optimizable? it was removed when 
+	// was static used here to to make code optimizable? it was removed when
 	// 'extern' was used to fix the duplicate symbols with usecache && clang
 	// visibility_kw := if g.pref.build_mode == .build_module && g.is_builtin_mod { 'static ' }
-	visibility_kw := if 
-	(g.pref.use_cache || (g.pref.build_mode == .build_module && g.module_built != node.mod))
+	visibility_kw := if
+		(g.pref.use_cache || (g.pref.build_mode == .build_module && g.module_built != node.mod))
 		&& !util.should_bundle_module(node.mod) {
 		'extern '
-	}
-	else {
+	} else {
 		''
 	}
 	mut attributes := ''
@@ -4331,20 +4330,21 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		g.definitions.write_string('$visibility_kw$styp $attributes $field.name')
 		if field.has_expr {
 			if field.expr.is_literal() && should_init {
-				g.definitions.write_string(' = ${g.expr_string(field.expr)}; // global')
+				g.definitions.write_string(' = ${g.expr_string(field.expr)}')
 			} else {
 				g.global_init.writeln('\t$field.name = ${g.expr_string(field.expr)}; // global')
 			}
 		} else {
 			default_initializer := g.type_default(field.typ)
 			if default_initializer == '{0}' && should_init {
-				g.definitions.writeln(' = {0}; // global')
+				g.definitions.write_string(' = {0}')
 			} else {
 				if field.name !in ['as_cast_type_indexes', 'g_memory_block', 'global_allocator'] {
 					g.global_init.writeln('\t$field.name = *($styp*)&(($styp[]){${g.type_default(field.typ)}}[0]); // global')
 				}
 			}
 		}
+		g.definitions.writeln('; // global')
 	}
 }
 
