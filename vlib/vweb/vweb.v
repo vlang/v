@@ -385,7 +385,7 @@ pub fn run<T>(global_app &T, port int) {
 // Example: `vweb.run_at(app, 'localhost', 8099)`
 [manualfree]
 pub fn run_at<T>(global_app &T, host string, port int) {
-	mut l := net.listen_tcp(.ip, '$host:$port') or { panic('failed to listen $err.code $err') }
+	mut l := net.listen_tcp(.ip6, '$host:$port') or { panic('failed to listen $err.code $err') }
 
 	// Parsing methods attributes
 	mut routes := map[string]Route{}
