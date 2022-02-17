@@ -188,13 +188,10 @@ jobs:
           echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
-
       - name: Self tests
         run: VJOBS=1 ./v test-self
-
       - name: Build examples
         run: ./v build-examples
-
       - name: Build examples with -autofree
         run: |
           ./v -autofree -o tetris examples/tetris/tetris.v
@@ -202,14 +199,12 @@ jobs:
       - name: v doctor
         run: |
           ./v doctor
-
       - name: Test ved
         run: |
           git clone --depth 1 https://github.com/vlang/ved
           cd ved && ../v -o ved .
           ../v -autofree .
           cd ..
-
 #      - name: Test c2v
 #        run: |
 #          git clone --depth 1 https://github.com/vlang/c2v
@@ -218,7 +213,6 @@ jobs:
 #          ../v run tests/run_tests.vsh
 #          ../v -experimental -w c2v_test.v
 #          cd ..
-
       - name: Build V UI examples
         run: |
           git clone --depth 1 https://github.com/vlang/ui
@@ -227,6 +221,14 @@ jobs:
           ln -s $(pwd) ~/.vmodules/ui
           ../v examples/rectangles.v
           ## ../v run examples/build_examples.vsh
+      - name: V self compilation with -usecache
+        run: |
+          unset VFLAGS
+          ./v -usecache examples/hello_world.v && examples/hello_world
+          ./v  -o v2 -usecache cmd/v
+          ./v2 -o v3 -usecache cmd/v
+          ./v3 version
+          ./v3 -o tetris  -usecache examples/tetris/tetris.v
 
   ubuntu:
     runs-on: ubuntu-20.04
@@ -517,31 +519,23 @@ jobs:
       - name: v doctor
         run: |
           ./v doctor
-
       - name: Verify `v test` works
         run: |
           .\v.exe cmd/tools/test_if_v_test_system_works.v
           .\cmd\tools\test_if_v_test_system_works.exe
-
       - name: Verify `v vlib/v/gen/c/coutput_test.v` works
         run: |
           .\v.exe vlib/v/gen/c/coutput_test.v
-
       - name: Make sure running TCC64 instead of TCC32
         run: ./v test .github\workflows\make_sure_ci_run_with_64bit_compiler_test.v
-
       - name: Test ./v doc -v clipboard *BEFORE building tools*
         run: ./v doc -v clipboard
-
       - name: Test v build-tools
         run: ./v -W build-tools
-
       - name: Test ./v doc clipboard
         run: ./v doc clipboard
-
       - name: Self tests
         run: ./v test-self
-
       - name: Test v->js
         run: ./v -o hi.js examples/hello_v_js.v && node hi.js
       - name: Test v binaries

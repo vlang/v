@@ -362,7 +362,11 @@ const c_common_macros = '
 		#else
 			#define VV_EXPORTED_SYMBOL  extern __attribute__((visibility("default")))
 		#endif
-		#define VV_LOCAL_SYMBOL  __attribute__ ((visibility ("hidden")))
+		#if defined(__clang__) && (defined(_VUSECACHE) || defined(_VBUILDMODULE))
+			#define VV_LOCAL_SYMBOL static
+		#else
+			#define VV_LOCAL_SYMBOL  __attribute__ ((visibility ("hidden")))
+		#endif
 	#else
 		#define VV_EXPORTED_SYMBOL extern
 		#define VV_LOCAL_SYMBOL static
@@ -477,33 +481,6 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 #include <stdio.h>  // TODO remove all these includes, define all function signatures and types manually
 #include <stdlib.h>
 #include <string.h>
-
-#if defined(_WIN32) || defined(__CYGWIN__)
-	#define VV_EXPORTED_SYMBOL extern __declspec(dllexport)
-	#define VV_LOCAL_SYMBOL static
-#else
-	// 4 < gcc < 5 is used by some older Ubuntu LTS and Centos versions,
-	// and does not support __has_attribute(visibility) ...
-	#ifndef __has_attribute
-		#define __has_attribute(x) 0  // Compatibility with non-clang compilers.
-	#endif
-	#if (defined(__GNUC__) && (__GNUC__ >= 4)) || (defined(__clang__) && __has_attribute(visibility))
-		#ifdef ARM
-			#define VV_EXPORTED_SYMBOL  extern __attribute__((externally_visible,visibility("default")))
-		#else
-			#define VV_EXPORTED_SYMBOL  extern __attribute__((visibility("default")))
-		#endif
-		#define VV_LOCAL_SYMBOL  __attribute__ ((visibility ("hidden")))
-	#else
-		#define VV_EXPORTED_SYMBOL extern
-		#define VV_LOCAL_SYMBOL static
-	#endif
-#endif
-
-#if defined(__TINYC__) && defined(__has_include)
-// tcc does not support has_include properly yet, turn it off completely
-#undef __has_include
-#endif
 
 #ifndef _WIN32
 	#if defined __has_include

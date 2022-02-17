@@ -61,7 +61,10 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		// TODO true for not just "builtin"
 		// TODO: clean this up
 		mod := if g.is_builtin_mod { 'builtin' } else { node.name.all_before_last('.') }
-		if (mod != g.module_built && node.mod != g.module_built.after('/')) || should_bundle_module {
+		// for now dont skip generic functions as they are being marked as static
+		// when -usecache is enabled, until a better solution is implemented.
+		if ((mod != g.module_built && node.mod != g.module_built.after('/'))
+			|| should_bundle_module) && node.generic_names.len == 0 {
 			// Skip functions that don't have to be generated for this module.
 			// println('skip bm $node.name mod=$node.mod module_built=$g.module_built')
 			skip = true
@@ -269,7 +272,16 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 				g.definitions.write_string('VV_LOCAL_SYMBOL ')
 			}
 		}
-		fn_header := '$type_name $fn_attrs${name}('
+		// as a temp solution generic functions are marked static
+		// when -usecache is enabled to fix duplicate symbols with clang
+		// TODO: implement a better sulution
+		visibility_kw := if g.cur_concrete_types.len > 0
+			&& (g.pref.build_mode == .build_module || g.pref.use_cache) {
+			'static '
+		} else {
+			''
+		}
+		fn_header := '$visibility_kw$type_name $fn_attrs${name}('
 		g.definitions.write_string(fn_header)
 		g.write(fn_header)
 	}
