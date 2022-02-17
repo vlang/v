@@ -1,5 +1,6 @@
-@echo off
-setlocal EnableDelayedExpansion EnableExtensions
+@setlocal EnableDelayedExpansion EnableExtensions
+
+IF NOT DEFINED VERBOSE_MAKE @echo off
 
 REM Option flags
 set /a shift_counter=0

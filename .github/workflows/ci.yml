@@ -416,6 +416,7 @@ jobs:
     timeout-minutes: 121
     env:
       VFLAGS: -cc gcc
+      VERBOSE_MAKE: 1
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v1
@@ -426,7 +427,9 @@ jobs:
           gcc --version
           .\make.bat -gcc
       - name: Test new v.c
-        run: .\v.exe -o v.c cmd/v && gcc -Werror -I ./thirdparty/stdatomic/win -municode -w v.c
+        run: |
+          .\v.exe -o v.c cmd/v
+          gcc -Werror -I ./thirdparty/stdatomic/win -municode -w v.c
       - name: Install dependencies
         run: |
           .\v.exe setup-freetype
@@ -441,8 +444,8 @@ jobs:
           ./cmd/tools/test_if_v_test_system_works
       - name: Self tests
         run: .\v.exe test-self
-  #    - name: Test
-  #      run: .\v.exe test-all
+        #    - name: Test
+        #      run: .\v.exe test-all
       - name: Test v->js
         run: ./v -o hi.js examples/hello_v_js.v && node hi.js
       - name: Test v binaries
@@ -457,6 +460,7 @@ jobs:
     timeout-minutes: 121
     env:
       VFLAGS: -cc msvc
+      VERBOSE_MAKE: 1
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v1
@@ -502,6 +506,7 @@ jobs:
       VFLAGS: -cc tcc -no-retry-compilation
       VJOBS: 1
       VTEST_SHOW_START: 1
+      VERBOSE_MAKE: 1
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-node@v1
@@ -511,7 +516,9 @@ jobs:
         run: |
           .\make.bat -tcc
       - name: Test new v.c
-        run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -I ./thirdparty/stdatomic/win -Werror -w -ladvapi32 -bt10 v.c
+        run: |
+          .\v.exe -o v.c cmd/v
+          .\thirdparty\tcc\tcc.exe -I ./thirdparty/stdatomic/win -Werror -w -ladvapi32 -bt10 v.c
       - name: Install dependencies
         run: |
           .\v.exe setup-freetype
