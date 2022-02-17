@@ -86,8 +86,7 @@ fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) ? {
 			}
 		}
 		ast.StructInit {
-			fields := val.fields.clone()
-			for field in fields {
+			for field in val.fields {
 				p.check_undefined_variables(exprs, field.expr) ?
 			}
 		}
