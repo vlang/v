@@ -222,9 +222,6 @@ pub fn (mut zentry Zip) read_entry_buf(buf voidptr, in_bsize int) ?int {
 
 // extract_entry extracts the current zip entry into output file.
 pub fn (mut zentry Zip) extract_entry(path string) ? {
-	if !os.is_file(path) {
-		return error('szip: cannot open file for extracting, "$path" not exists')
-	}
 	res := C.zip_entry_fread(zentry, &char(path.str))
 	if res != 0 {
 		return error('szip: failed to extract entry')
