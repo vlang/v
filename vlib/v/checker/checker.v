@@ -17,6 +17,13 @@ const int_min = int(0x80000000)
 
 const int_max = int(0x7FFFFFFF)
 
+// prevent stack overflows by restricting too deep recursion:
+const expr_level_cutoff_limit = 40
+
+const stmt_level_cutoff_limit = 40
+
+const iface_level_cutoff_limit = 40
+
 const (
 	valid_comptime_if_os             = ['windows', 'ios', 'macos', 'mach', 'darwin', 'hpux', 'gnu',
 		'qnx', 'linux', 'freebsd', 'openbsd', 'netbsd', 'bsd', 'dragonfly', 'android', 'solaris',
@@ -488,7 +495,7 @@ pub fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 
 pub fn (mut c Checker) expand_iface_embeds(idecl &ast.InterfaceDecl, level int, iface_embeds []ast.InterfaceEmbedding) []ast.InterfaceEmbedding {
 	// eprintln('> expand_iface_embeds: idecl.name: $idecl.name | level: $level | iface_embeds.len: $iface_embeds.len')
-	if level > 100 {
+	if level > checker.iface_level_cutoff_limit {
 		c.error('too many interface embedding levels: $level, for interface `$idecl.name`',
 			idecl.pos)
 		return []
@@ -2310,6 +2317,17 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 //    `x := if cond { stmt1 stmt2 ExprStmt } else { stmt2 stmt3 ExprStmt }`,
 //    `x := match expr { Type1 { stmt1 stmt2 ExprStmt } else { stmt2 stmt3 ExprStmt }`.
 fn (mut c Checker) stmts_ending_with_expression(stmts []ast.Stmt) {
+	if stmts.len == 0 {
+		c.scope_returns = false
+		c.expected_type = ast.void_type
+		return
+	}
+	if c.stmt_level > checker.stmt_level_cutoff_limit {
+		c.scope_returns = false
+		c.expected_type = ast.void_type
+		c.error('checker: too many stmt levels: $c.stmt_level ', stmts[0].pos)
+		return
+	}
 	mut unreachable := token.Pos{
 		line_nr: -1
 	}
@@ -2360,8 +2378,7 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 		c.expr_level--
 	}
 
-	// c.expr_level set to 150 so that stack overflow does not occur on windows
-	if c.expr_level > 150 {
+	if c.expr_level > checker.expr_level_cutoff_limit {
 		c.error('checker: too many expr levels: $c.expr_level ', node.pos())
 		return ast.void_type
 	}
