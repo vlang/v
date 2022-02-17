@@ -40,6 +40,7 @@ mut:
 	cleanup       bool   // should the tool run a cleanup first
 	use_cache     bool   // use local cached copies for --vrepo and --vcrepo in
 	fresh_tcc     bool   // do use `make fresh_tcc`
+	is_bisect     bool   // bisect mode; usage: `cmd/tools/oldv -b -c './v run bug.v'`
 }
 
 fn (mut c Context) compile_oldv_if_needed() {
@@ -122,7 +123,8 @@ fn main() {
 		context.vgo.vc_repo_url = 'https://github.com/vlang/vc'
 	}
 	should_sync := fp.bool('cache-sync', `s`, false, 'Update the local cache')
-	if !should_sync {
+	context.is_bisect = fp.bool('bisect', `b`, false, 'Bisect mode. Use the current commit in the repo where oldv is.')
+	if !should_sync && !context.is_bisect {
 		fp.limit_free_args(1, 1) ?
 	}
 	////
@@ -141,6 +143,10 @@ fn main() {
 	}
 	if commits.len > 0 {
 		context.commit_v = commits[0]
+		if context.is_bisect {
+			eprintln('In bisect mode, you should not pass any commits, since oldv will use the current one.')
+			exit(2)
+		}
 	} else {
 		context.commit_v = scripting.run('git rev-list -n1 HEAD')
 	}
