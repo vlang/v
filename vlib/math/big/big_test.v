@@ -362,3 +362,36 @@ fn test_bitwise_ops() {
 	assert b.bitwise_and(b) == b
 	assert b.bitwise_not() == big.zero_int
 }
+
+fn test_get_bit() {
+	x := big.integer_from_int(42)
+	assert x.get_bit(0) == false
+	assert x.get_bit(1) == true
+	assert x.get_bit(2) == false
+	assert x.get_bit(3) == true
+	assert x.get_bit(4) == false
+	assert x.get_bit(5) == true
+	assert x.get_bit(10) == false
+
+	values := ['1001001001001010010010100100100101011101001001010',
+		'1111111111111111111111111111111111111111111111111',
+		'0000000000000000000000000000000000000000010000', '1110010', '0001001']
+	for value in values {
+		a := big.integer_from_radix(value, 2) or { panic('Could not read binary') }
+		bits := []bool{len: value.len, init: value[value.len - 1 - it] == `1`}
+		for i in 0 .. value.len {
+			assert a.get_bit(i) == bits[i]
+		}
+	}
+}
+
+fn test_set_bit() {
+	mut a := big.integer_from_int(32)
+	a.set_bit(1, true)
+	assert a.int() == 34
+	a.set_bit(1, false)
+	a.set_bit(3, true)
+	assert a.int() == 40
+	a.set_bit(50, true)
+	assert a == big.one_int.lshift(50) + big.integer_from_int(40)
+}

@@ -465,6 +465,42 @@ fn check_sign(a Integer) {
 	}
 }
 
+pub fn (a Integer) get_bit(i u32) bool {
+	check_sign(a)
+	target_index := i / 32
+	offset := i % 32
+	if target_index >= a.digits.len {
+		return false
+	}
+	return (a.digits[target_index] >> offset) & 1 != 0
+}
+
+pub fn (mut a Integer) set_bit(i u32, value bool) {
+	check_sign(a)
+	target_index := i / 32
+	offset := i % 32
+
+	if target_index >= a.digits.len {
+		if value {
+			a = one_int.lshift(i) + a
+		}
+		return
+	}
+
+	mut copy := a.digits.clone()
+
+	if value {
+		copy[target_index] |= 1 << offset
+	} else {
+		copy[target_index] &= ~(1 << offset)
+	}
+
+	a = Integer{
+		signum: a.signum
+		digits: copy
+	}
+}
+
 pub fn (a Integer) bitwise_or(b Integer) Integer {
 	check_sign(a)
 	check_sign(b)
