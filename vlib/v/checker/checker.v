@@ -22,7 +22,7 @@ const expr_level_cutoff_limit = 40
 
 const stmt_level_cutoff_limit = 40
 
-const iface_level_cutoff_limit = 99
+const iface_level_cutoff_limit = 100
 
 const (
 	valid_comptime_if_os             = ['windows', 'ios', 'macos', 'mach', 'darwin', 'hpux', 'gnu',
