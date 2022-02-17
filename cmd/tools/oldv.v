@@ -16,7 +16,7 @@ const (
 |          git checkout known_good_commit
 |          git bisect good
 |              ## Now git will automatically checkout a middle commit between the bad and the good
-|          cmd/tools/oldv HEAD --command="run commands in oldv folder, to verify if the commit is good or bad"
+|          cmd/tools/oldv --bisect --command="run commands in oldv folder, to verify if the commit is good or bad"
 |              ## See what the result is, and either do: ...
 |          git bisect good
 |              ## ... or do:
