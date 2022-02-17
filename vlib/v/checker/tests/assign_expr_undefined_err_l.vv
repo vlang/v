@@ -1,0 +1,32 @@
+module main
+
+struct Stru {
+mut:
+	a int
+	i Iface2
+}
+
+interface Iface {
+	result() &Iface2
+}
+
+interface Iface2 {
+	result2() Iface
+}
+
+pub fn (s Stru)result() &Iface2 {
+	return &Stru{}
+}
+
+pub fn (s Stru)result2() Iface {
+	return &Stru{}
+}
+
+fn main() {
+	println('hello world')
+	poo := Stru{
+		a: 123
+		i: poo.result()
+	}
+ 	println('$poo')
+}

@@ -18,7 +18,7 @@ fn (mut p Parser) assign_stmt() ast.Stmt {
 	return p.partial_assign_stmt(exprs, comments)
 }
 
-const max_expr_level = 310
+const max_expr_level = 100
 
 fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) ? {
 	p.expr_level++
@@ -83,6 +83,12 @@ fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) ? {
 		ast.StringInterLiteral {
 			for expr_ in val.exprs {
 				p.check_undefined_variables(exprs, expr_) ?
+			}
+		}
+		ast.StructInit {
+			fields := val.fields.clone()
+			for field in fields {
+				p.check_undefined_variables(exprs, field.expr) ?
 			}
 		}
 		else {}
