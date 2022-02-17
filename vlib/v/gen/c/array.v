@@ -930,14 +930,15 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 		g.infix_left_var_name = ''
 		g.indent++
 	}
+	tmp_orig := tmp + if node.left_type.has_flag(.shared_f) { '_orig->val' } else { '_orig' }
 	g.write('${g.typ(node.left_type)} ${tmp}_orig = ')
 	g.expr(node.left)
 	g.writeln(';')
-	g.writeln('int ${tmp}_len = ${tmp}_orig.len;')
+	g.writeln('int ${tmp}_len = ${tmp_orig}.len;')
 	i := g.new_tmp_var()
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.indent++
-	g.writeln('$elem_type_str it = (($elem_type_str*) ${tmp}_orig.data)[$i];')
+	g.writeln('$elem_type_str it = (($elem_type_str*) ${tmp_orig}.data)[$i];')
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
 	mut expr := node.args[0].expr
@@ -1014,14 +1015,15 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 		g.infix_left_var_name = ''
 		g.indent++
 	}
-	g.write('${g.typ(node.left_type)} ${tmp}_orig = ')
+	tmp_orig := tmp + if node.left_type.has_flag(.shared_f) { '_orig->val' } else { '_orig' }
+	g.write('${g.typ(node.left_type)} $tmp_orig = ')
 	g.expr(node.left)
 	g.writeln(';')
-	g.writeln('int ${tmp}_len = ${tmp}_orig.len;')
+	g.writeln('int ${tmp}_len = ${tmp_orig}.len;')
 	i := g.new_tmp_var()
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.indent++
-	g.writeln('$elem_type_str it = (($elem_type_str*) ${tmp}_orig.data)[$i];')
+	g.writeln('$elem_type_str it = (($elem_type_str*) ${tmp_orig}.data)[$i];')
 	g.empty_line = true
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
