@@ -4311,6 +4311,9 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 	} else {
 		''
 	}
+	// should the global be initialized now
+	should_init := (!g.pref.use_cache && g.pref.build_mode != .build_module)
+		|| (g.pref.build_mode == .build_module && g.module_built == node.mod)
 	mut attributes := ''
 	if node.attrs.contains('weak') {
 		attributes += 'VWEAK '
@@ -4325,8 +4328,6 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			}
 		}
 		styp := g.typ(field.typ)
-		should_init := (!g.pref.use_cache && g.pref.build_mode != .build_module)
-			|| (g.pref.build_mode == .build_module && g.module_built == node.mod)
 		g.definitions.write_string('$visibility_kw$styp $attributes $field.name')
 		if field.has_expr {
 			if field.expr.is_literal() && should_init {
