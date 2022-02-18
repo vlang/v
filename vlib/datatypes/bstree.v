@@ -182,7 +182,6 @@ pub fn (bst &BSTree<T>) is_empty() bool {
 pub fn (bst &BSTree<T>) in_order_traversals() []T {
 	mut result := []T{}
 	bst.in_order_traversals_helper(bst.root, mut result)
-	println(result)
 	return result
 }
 
