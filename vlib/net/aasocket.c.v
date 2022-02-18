@@ -6,6 +6,19 @@ $if windows {
 	#include "@VMODROOT/vlib/net/ipv6_v6only.h"
 }
 
+$if windows {
+	$if msvc {
+		// Force these to be included before afunix!
+		#include <winsock2.h>
+		#include <ws2tcpip.h>
+		#include <afunix.h>
+	} $else {
+		#include "@VMODROOT/vlib/net/afunix.h"
+	}
+} $else {
+	#include <sys/un.h>
+}
+
 // Select represents a select operation
 enum Select {
 	read
