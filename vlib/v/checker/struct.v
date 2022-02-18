@@ -130,6 +130,13 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 	}
 	struct_sym := c.table.sym(node.typ)
 	if struct_sym.info is ast.Struct {
+		// check if the generic param types have been defined
+		for ct in struct_sym.info.concrete_types {
+			ct_sym := c.table.sym(ct)
+			if ct_sym.kind == .placeholder {
+				c.error('unknown type `$ct_sym.name`', node.pos)
+			}
+		}
 		if struct_sym.info.generic_types.len > 0 && struct_sym.info.concrete_types.len == 0
 			&& !node.is_short_syntax {
 			if c.table.cur_concrete_types.len == 0 {
