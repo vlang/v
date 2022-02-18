@@ -114,6 +114,25 @@ pub fn (bst &BSTree<T>) is_empty() bool {
 	return bst.root == 0
 }
 
+// In order Traverse the BST in other and return the result in
+// an array
+pub fn (bst &BSTree<T>) in_order_traversals() []T {
+	mut result := []T{}
+	bst.in_order_traversals_helper(bst.root, mut result)
+	return result
+}
+
+// In order Traversals helper logic to implement the startegy to walk the BST.
+fn (bst &BSTree<T>) in_order_traversals_helper(node &BTreeNode<T>, mut result []T) {
+	if node == 0 || !node.is_init {
+		return
+	}
+
+	bst.in_order_traversals_helper(node.left, mut result)
+	result << node.value
+	bst.in_order_traversals_helper(node.right, mut result)
+}
+
 /*
 // Return the element to the left of a value
 pub fn (bst &BSTree<T>) to_left(value T) T {
