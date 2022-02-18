@@ -592,35 +592,6 @@ jobs:
         ##      - name: v2 self compilation
         ##        run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
-  alpine-docker-musl-gcc:
-    runs-on: ubuntu-20.04
-    timeout-minutes: 121
-    container:
-      # Alpine docker pre-built container
-      image: thevlang/vlang:alpine-build
-      env:
-        V_CI_MUSL: 1
-        VFLAGS: -cc gcc
-      volumes:
-        - ${{github.workspace}}:/opt/vlang
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-
-      - name: Show Environment
-        run: |
-          echo "PWD:"
-          pwd
-          echo "ENVIRONMENT:"
-          env
-          echo "C Compiler:"
-          gcc --version
-
-      - name: Build V
-        run: CC=gcc make
-
-      - name: Test V fixed tests
-        run: ./v test-self
 
   #  ubuntu-autofree-selfcompile:
   #    runs-on: ubuntu-20.04
@@ -659,30 +630,3 @@ jobs:
   #       run: ./v -stats vlib/strconv/format_test.v
   #     - name: Self tests
   #       run: ./v test-self
-
-  # Ubuntu docker pre-built container
-  ubuntu-musl:
-    runs-on: ubuntu-20.04
-    timeout-minutes: 121
-    container:
-      image: thevlang/vlang:ubuntu-build
-      env:
-        V_CI_MUSL: 1
-        V_CI_UBUNTU_MUSL: 1
-        VFLAGS: -cc musl-gcc
-      volumes:
-        - ${{github.workspace}}:/opt/vlang
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-
-      - name: Build V
-        run: |
-          echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
-      - name: Verify `v test` works
-        run: |
-          echo $VFLAGS
-          ./v cmd/tools/test_if_v_test_system_works.v
-          ./cmd/tools/test_if_v_test_system_works
-      - name: Test V fixed tests
-        run: ./v test-self
