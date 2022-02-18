@@ -4,8 +4,7 @@
 import os
 import time
 
-// TODO -usecache
-const voptions = ' -skip-unused -show-timings -stats '
+const voptions = ' -usecache -skip-unused -show-timings -stats '
 
 const exe = os.executable()
 
