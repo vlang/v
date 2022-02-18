@@ -428,4 +428,7 @@ fn test_set_bit() {
 	assert a.int() == 40
 	a.set_bit(50, true)
 	assert a == big.one_int.lshift(50) + big.integer_from_int(40)
+	b := a
+	a.set_bit(100, false)
+	assert a == b
 }

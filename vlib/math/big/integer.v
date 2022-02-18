@@ -518,7 +518,7 @@ pub fn (mut a Integer) set_bit(i u32, value bool) {
 
 	if target_index >= a.digits.len {
 		if value {
-			a = one_int.lshift(i) + a
+			a = one_int.lshift(i).bitwise_or(a)
 		}
 		return
 	}
