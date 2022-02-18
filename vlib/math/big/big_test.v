@@ -262,6 +262,40 @@ fn test_mod_exponentiation() {
 	assert b.mod_pow(413, div) == a
 }
 
+fn test_big_mod_exponentiation_1() {
+	a := big.integer_from_int(23)
+	b := big.integer_from_int(35)
+	c := big.integer_from_int(4205)
+	result := big.integer_from_int(552)
+	assert a.big_mod_pow(b, c) == result
+}
+
+fn test_big_mod_exponentiation_2() {
+	a := big.integer_from_string('2222589987119231759186196754430278233855361024') or {
+		panic('Could not read big integer')
+	}
+	b := big.integer_from_string('3104719823194124242') or { panic('Could not read big integer') }
+	c := big.integer_from_string('15121308410741') or { panic('Could not read big integer') }
+	result := big.integer_from_string('487881863537') or { panic('Could not read big integer') }
+	assert a.big_mod_pow(b, c) == result
+}
+
+fn test_big_mod_exponentiation_3() {
+	a := big.integer_from_string('3192874698137469817346981364918346578619384619387463987413') or {
+		panic('Could not read big integer')
+	}
+	b := big.integer_from_string('3104981983749813749137493871037') or {
+		panic('Could not read big integer')
+	}
+	c := big.integer_from_string('2137476918375698711341313') or {
+		panic('Could not read big integer')
+	}
+	result := big.integer_from_string('418107071760838517119254') or {
+		panic('Could not read big integer')
+	}
+	assert a.big_mod_pow(b, c) == result
+}
+
 fn test_gcd() {
 	assert big.integer_from_int(0).gcd(big.integer_from_int(0)) == big.zero_int
 	assert big.integer_from_int(10).gcd(big.integer_from_int(0)) == big.integer_from_int(10)
@@ -361,4 +395,40 @@ fn test_bitwise_ops() {
 	assert b.bitwise_or(b) == b
 	assert b.bitwise_and(b) == b
 	assert b.bitwise_not() == big.zero_int
+}
+
+fn test_get_bit() {
+	x := big.integer_from_int(42)
+	assert x.get_bit(0) == false
+	assert x.get_bit(1) == true
+	assert x.get_bit(2) == false
+	assert x.get_bit(3) == true
+	assert x.get_bit(4) == false
+	assert x.get_bit(5) == true
+	assert x.get_bit(10) == false
+
+	values := ['1001001001001010010010100100100101011101001001010',
+		'1111111111111111111111111111111111111111111111111',
+		'0000000000000000000000000000000000000000010000', '1110010', '0001001']
+	for value in values {
+		a := big.integer_from_radix(value, 2) or { panic('Could not read binary') }
+		bits := []bool{len: value.len, init: value[value.len - 1 - it] == `1`}
+		for i in 0 .. value.len {
+			assert a.get_bit(i) == bits[i]
+		}
+	}
+}
+
+fn test_set_bit() {
+	mut a := big.integer_from_int(32)
+	a.set_bit(1, true)
+	assert a.int() == 34
+	a.set_bit(1, false)
+	a.set_bit(3, true)
+	assert a.int() == 40
+	a.set_bit(50, true)
+	assert a == big.one_int.lshift(50) + big.integer_from_int(40)
+	b := a
+	a.set_bit(100, false)
+	assert a == b
 }

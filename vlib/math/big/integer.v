@@ -425,6 +425,42 @@ pub fn (a Integer) mod_pow(exponent u32, divisor Integer) Integer {
 	return x * y % divisor
 }
 
+pub fn (a Integer) big_mod_pow(exponent Integer, divisor Integer) Integer {
+	if exponent.signum < 0 {
+		panic('Exponent needs to be non-negative.')
+	}
+	if exponent.signum == 0 {
+		return one_int
+	}
+	mut x := a % divisor
+	mut y := one_int
+	mut n := u32(0)
+
+	// For all but the last digit of the exponent
+	for index in 0 .. exponent.digits.len - 1 {
+		n = exponent.digits[index]
+		for _ in 0 .. 32 {
+			if n & 1 == 1 {
+				y *= x % divisor
+			}
+			x *= x % divisor
+			n >>= 1
+		}
+	}
+
+	// Last digit of the exponent
+	n = exponent.digits.last()
+	for n > 1 {
+		if n & 1 == 1 {
+			y *= x % divisor
+		}
+		x *= x % divisor
+		n >>= 1
+	}
+
+	return x * y % divisor
+}
+
 pub fn (mut a Integer) inc() {
 	a = a + one_int
 }
@@ -462,6 +498,42 @@ pub fn (a Integer) < (b Integer) bool {
 fn check_sign(a Integer) {
 	if a.signum < 0 {
 		panic('Bitwise operations are only supported for nonnegative integers')
+	}
+}
+
+pub fn (a Integer) get_bit(i u32) bool {
+	check_sign(a)
+	target_index := i / 32
+	offset := i % 32
+	if target_index >= a.digits.len {
+		return false
+	}
+	return (a.digits[target_index] >> offset) & 1 != 0
+}
+
+pub fn (mut a Integer) set_bit(i u32, value bool) {
+	check_sign(a)
+	target_index := i / 32
+	offset := i % 32
+
+	if target_index >= a.digits.len {
+		if value {
+			a = one_int.lshift(i).bitwise_or(a)
+		}
+		return
+	}
+
+	mut copy := a.digits.clone()
+
+	if value {
+		copy[target_index] |= 1 << offset
+	} else {
+		copy[target_index] &= ~(1 << offset)
+	}
+
+	a = Integer{
+		signum: a.signum
+		digits: copy
 	}
 }
 
