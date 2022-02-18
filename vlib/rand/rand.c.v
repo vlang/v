@@ -1,9 +1,11 @@
 module rand
 
 import time
+
+const clock_seq_hi_and_reserved_valid_values = [`8`, `9`, `a`, `b`]
+
 // uuid_v4 generates a random (v4) UUID
 // See https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_4_(random)
-
 pub fn uuid_v4() string {
 	buflen := 36
 	mut buf := unsafe { malloc_noscan(37) }
@@ -31,20 +33,26 @@ pub fn uuid_v4() string {
 	x = x >> 8
 	d = byte(x)
 	unsafe {
-		buf[19] = if d > 0x39 { d + 0x27 } else { d }
+		// From https://www.ietf.org/rfc/rfc4122.txt :
+		// >> Set the two most significant bits (bits 6 and 7) of the clock_seq_hi_and_reserved
+		// >> to zero and one, respectively.
+		// all nibbles starting with 10 are: 1000, 1001, 1010, 1011 -> hex digits `8`, `9`, `a`, `b`
+		// these are stored in clock_seq_hi_and_reserved_valid_values, choose one of them at random:
+		buf[19] = rand.clock_seq_hi_and_reserved_valid_values[d & 0x03]
+		// >> Set the four most significant bits (bits 12 through 15) of the
+		// >> time_hi_and_version field to the 4-bit version number from Section 4.1.3.
+		buf[14] = `4`
 		buf[8] = `-`
 		buf[13] = `-`
 		buf[18] = `-`
 		buf[23] = `-`
-		buf[14] = `4`
-		buf[buflen] = 0
+		buf[buflen] = 0 // ensure the string will be 0 terminated, just in case
+		// for i in 0..37 { println('i: ${i:2} | ${buf[i].ascii_str()} | ${buf[i].hex()} | ${buf[i]:08b}') }
 		return buf.vstring_with_len(buflen)
 	}
 }
 
-const (
-	ulid_encoding = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
-)
+const ulid_encoding = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
 
 // ulid generates an Unique Lexicographically sortable IDentifier.
 // See https://github.com/ulid/spec .
