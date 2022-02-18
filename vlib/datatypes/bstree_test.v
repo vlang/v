@@ -73,3 +73,49 @@ fn test_get_left_on_empty_bst() {
 	right_val, found_right := bst.to_right(10)
 	assert found_right == false
 }
+
+fn test_remove_from_bst_one() {
+	mut bst := BSTree<int>{}
+	assert bst.insert(10)
+	assert bst.insert(20)
+	assert bst.insert(21)
+	assert bst.insert(1)
+	assert bst.in_order_traversals() == [1, 10, 20, 21]
+	assert bst.remove(21)
+
+	assert bst.in_order_traversals() == [1, 10, 20]
+}
+
+fn test_remove_from_bst_two() {
+	mut bst := BSTree<int>{}
+	assert bst.insert(10)
+	assert bst.insert(20)
+	assert bst.insert(21)
+	assert bst.insert(1)
+	assert bst.in_order_traversals() == [1, 10, 20, 21]
+	assert bst.remove(20)
+
+	assert bst.in_order_traversals() == [1, 10, 21]
+}
+
+fn test_get_max_in_bst() {
+	mut bst := BSTree<int>{}
+	assert bst.insert(10)
+	assert bst.insert(20)
+	assert bst.insert(21)
+	assert bst.insert(1)
+	max, found := bst.max()
+	assert found
+	assert max == 21
+}
+
+fn test_get_min_in_bst() {
+	mut bst := BSTree<int>{}
+	assert bst.insert(10)
+	assert bst.insert(20)
+	assert bst.insert(21)
+	assert bst.insert(1)
+	min, found := bst.min()
+	assert found
+	assert min == 1
+}

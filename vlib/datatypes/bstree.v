@@ -51,12 +51,13 @@ fn (mut node BSTreeNode<T>) bind(mut to_bind BSTreeNode<T>, left bool) {
 	node.right = to_bind.right
 	node.value = to_bind.value
 	node.is_init = to_bind.is_init
+	to_bind.parent = node.parent
 	if left {
 		to_bind.parent.left = node
 	} else {
 		to_bind.parent.right = node
 	}
-	node.parent = to_bind.parent
+	to_bind = new_none_node<T>(false)
 }
 
 // Binary Seach Tree implementation
@@ -129,15 +130,15 @@ fn (mut bst BSTree<T>) remove_helper(mut node BSTreeNode<T>, value T, left bool)
 		return false
 	}
 	if node.value == value {
-		if node.left.is_init {
+		if node.left != 0 && node.left.is_init {
 			// In order to remove the element we need to bring up as parent the max of the
 			// smaller element
 			mut max_node := bst.get_max_from_right(node.left)
-			max_node.bind(mut node, true)
-		} else if node.right.is_init {
+			node.bind(mut max_node, true)
+		} else if node.right != 0 && node.right.is_init {
 			// remove the right node
 			mut min_node := bst.get_min_from_left(node.right)
-			min_node.bind(mut node, false)
+			node.bind(mut min_node, false)
 		} else {
 			mut parent := node.parent
 			if left {
@@ -145,6 +146,7 @@ fn (mut bst BSTree<T>) remove_helper(mut node BSTreeNode<T>, value T, left bool)
 			} else {
 				parent.right = new_none_node<T>(false)
 			}
+			node = new_none_node<T>(false)
 		}
 		return true
 	}
@@ -152,7 +154,7 @@ fn (mut bst BSTree<T>) remove_helper(mut node BSTreeNode<T>, value T, left bool)
 	if node.value < value {
 		return bst.remove_helper(mut node.right, value, false)
 	}
-	return bst.remove_helper(mut node.left, value, false)
+	return bst.remove_helper(mut node.left, value, true)
 }
 
 fn (bst &BSTree<T>) get_max_from_right(node &BSTreeNode<T>) &BSTreeNode<T> {
@@ -180,6 +182,7 @@ pub fn (bst &BSTree<T>) is_empty() bool {
 pub fn (bst &BSTree<T>) in_order_traversals() []T {
 	mut result := []T{}
 	bst.in_order_traversals_helper(bst.root, mut result)
+	println(result)
 	return result
 }
 
@@ -188,7 +191,6 @@ fn (bst &BSTree<T>) in_order_traversals_helper(node &BSTreeNode<T>, mut result [
 	if node == 0 || !node.is_init {
 		return
 	}
-
 	bst.in_order_traversals_helper(node.left, mut result)
 	result << node.value
 	bst.in_order_traversals_helper(node.right, mut result)
