@@ -1,11 +1,11 @@
 ## [Version 0.3](https://github.com/vlang/v/projects/5)
 - [ ] [make `-autofree` the default](https://github.com/vlang/v/issues/6989)
 - [x] [gc option]
-- [ ] [coroutines](https://github.com/vlang/v/issues/561)
+- [ ] [coroutines](https://github.com/vlang/v/discussions/11582)
 - [x] channels
 - [x] lock{}
 - [x] thread safe arrays
-- [ ] [thread safe maps](https://github.com/vlang/v/issues/6992)
+- [ ] [thread safe maps](https://github.com/vlang/v/discussions/11729)
 - [ ] [C2V translator](https://github.com/vlang/v/issues/6985)
 - [ ] doom.v
 - [x] rune type
