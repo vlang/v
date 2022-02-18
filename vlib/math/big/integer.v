@@ -425,6 +425,42 @@ pub fn (a Integer) mod_pow(exponent u32, divisor Integer) Integer {
 	return x * y % divisor
 }
 
+pub fn (a Integer) big_mod_pow(exponent Integer, divisor Integer) Integer {
+	if exponent.signum < 0 {
+		panic('Exponent needs to be non-negative.')
+	}
+	if exponent.signum == 0 {
+		return one_int
+	}
+	mut x := a % divisor
+	mut y := one_int
+	mut n := u32(0)
+
+	// For all but the last digit of the exponent
+	for index in 0 .. exponent.digits.len - 1 {
+		n = exponent.digits[index]
+		for _ in 0 .. 32 {
+			if n & 1 == 1 {
+				y *= x % divisor
+			}
+			x *= x % divisor
+			n >>= 1
+		}
+	}
+
+	// Last digit of the exponent
+	n = exponent.digits.last()
+	for n > 1 {
+		if n & 1 == 1 {
+			y *= x % divisor
+		}
+		x *= x % divisor
+		n >>= 1
+	}
+
+	return x * y % divisor
+}
+
 pub fn (mut a Integer) inc() {
 	a = a + one_int
 }
