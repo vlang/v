@@ -1,25 +1,25 @@
 module datatypes
 
 [heap]
-struct BTreeNode<T> {
+struct BSTreeNode<T> {
 mut:
 	// Mark a node as ready to be walked
 	is_init bool
 	// Value of the node
 	value T
 	// The parent of the node
-	parent &BTreeNode<T> = 0
+	parent &BSTreeNode<T> = 0
 	// The left side with value less than the
 	// value of this node
-	left &BTreeNode<T> = 0
+	left &BSTreeNode<T> = 0
 	// The right side with value grater than the
 	// value of thiss node
-	right &BTreeNode<T> = 0
+	right &BSTreeNode<T> = 0
 }
 
 // Create new root bst node
-fn new_root_node<T>(value T) &BTreeNode<T> {
-	return &BTreeNode<T>{
+fn new_root_node<T>(value T) &BSTreeNode<T> {
+	return &BSTreeNode<T>{
 		is_init: true
 		value: value
 		parent: new_none_node<T>(true)
@@ -30,8 +30,8 @@ fn new_root_node<T>(value T) &BTreeNode<T> {
 
 // Create a new generic bst node, this help to create
 // node during the walking tree
-fn new_node<T>(parent &BTreeNode<T>, value T) &BTreeNode<T> {
-	return &BTreeNode<T>{
+fn new_node<T>(parent &BSTreeNode<T>, value T) &BSTreeNode<T> {
+	return &BSTreeNode<T>{
 		is_init: true
 		value: value
 		parent: parent
@@ -40,8 +40,8 @@ fn new_node<T>(parent &BTreeNode<T>, value T) &BTreeNode<T> {
 
 // Create a dummy node
 // FIXME: adding the init parameter as optional
-fn new_none_node<T>(init bool) &BTreeNode<T> {
-	return &BTreeNode<T>{
+fn new_none_node<T>(init bool) &BSTreeNode<T> {
+	return &BSTreeNode<T>{
 		is_init: false
 	}
 }
@@ -53,7 +53,7 @@ fn new_none_node<T>(init bool) &BTreeNode<T> {
 // Space complexity O(N)
 pub struct BSTree<T> {
 mut:
-	root &BTreeNode<T> = 0
+	root &BSTreeNode<T> = 0
 }
 
 // Insert an element in order inside the data structure
@@ -67,7 +67,7 @@ pub fn (mut bst BSTree<T>) insert(value T) bool {
 
 // Helper function that give the possibility to walk the tree and make
 // the insert operation in the correct position.
-fn (mut bst BSTree<T>) insert_helper(mut node BTreeNode<T>, value T) bool {
+fn (mut bst BSTree<T>) insert_helper(mut node BSTreeNode<T>, value T) bool {
 	if node.value < value {
 		if node.right != 0 && node.right.is_init {
 			return bst.insert_helper(mut node.right, value)
@@ -90,8 +90,7 @@ pub fn (bst &BSTree<T>) contains(value T) bool {
 }
 
 // Helper function to walk the tree, and check the result
-// FIXME: the walk function can be generilized with a general function as params?
-fn (bst &BSTree<T>) contains_helper(node &BTreeNode<T>, value T) bool {
+fn (bst &BSTree<T>) contains_helper(node &BSTreeNode<T>, value T) bool {
 	if node == 0 || !node.is_init {
 		return false
 	}
@@ -122,7 +121,7 @@ pub fn (bst &BSTree<T>) in_order_traversals() []T {
 }
 
 // In order Traversals helper logic to implement the startegy to walk the BST.
-fn (bst &BSTree<T>) in_order_traversals_helper(node &BTreeNode<T>, mut result []T) {
+fn (bst &BSTree<T>) in_order_traversals_helper(node &BSTreeNode<T>, mut result []T) {
 	if node == 0 || !node.is_init {
 		return
 	}
@@ -140,7 +139,7 @@ pub fn (bst &BSTree<T>) post_order_traversal() []T {
 }
 
 // Post order traversal helper in other to implement the walk on the BST.
-fn (bst &BSTree<T>) post_order_traversal_helper(node &BTreeNode<T>, mut result []T) {
+fn (bst &BSTree<T>) post_order_traversal_helper(node &BSTreeNode<T>, mut result []T) {
 	if node == 0 || !node.is_init {
 		return
 	}
@@ -156,7 +155,7 @@ pub fn (bst &BSTree<T>) pre_order_traversal() []T {
 	return result
 }
 
-fn (bst &BSTree<T>) pre_order_traversal_helper(node &BTreeNode<T>, mut result []T) {
+fn (bst &BSTree<T>) pre_order_traversal_helper(node &BSTreeNode<T>, mut result []T) {
 	if node == 0 || !node.is_init {
 		return
 	}
@@ -165,7 +164,7 @@ fn (bst &BSTree<T>) pre_order_traversal_helper(node &BTreeNode<T>, mut result []
 	bst.pre_order_traversal_helper(node.right, mut result)
 }
 
-fn (bst &BSTree<T>) get_node(node &BTreeNode<T>, value T) &BTreeNode<T> {
+fn (bst &BSTree<T>) get_node(node &BSTreeNode<T>, value T) &BSTreeNode<T> {
 	if node == 0 || !node.is_init {
 		return new_none_node<T>(false)
 	}
