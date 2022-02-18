@@ -5697,10 +5697,19 @@ rmdir_all('build') or { }
 mkdir('build') ?
 
 // Move *.v files to build/
-result := exec('mv *.v build/') ?
+result := execute('mv *.v build/') ?
 if result.exit_code != 0 {
 	println(result.output)
 }
+
+// execute command with print
+fn sh(cmd string){
+  println("❯ $cmd")
+  print(execute_or_exit(cmd).output)
+}
+
+sh('ls')
+
 // Similar to:
 // files := ls('.') ?
 // mut count := 0
