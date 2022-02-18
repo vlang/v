@@ -114,8 +114,7 @@ pub fn (bst &BSTree<T>) is_empty() bool {
 	return bst.root == 0
 }
 
-// In order Traverse the BST in other and return the result in
-// an array
+// In order Traverse on the BST, and return the result as an array
 pub fn (bst &BSTree<T>) in_order_traversals() []T {
 	mut result := []T{}
 	bst.in_order_traversals_helper(bst.root, mut result)
@@ -133,15 +132,69 @@ fn (bst &BSTree<T>) in_order_traversals_helper(node &BTreeNode<T>, mut result []
 	bst.in_order_traversals_helper(node.right, mut result)
 }
 
-/*
+// Post order traversal on the BST, and return the result as an array
+pub fn (bst &BSTree<T>) post_order_traversal() []T {
+	mut result := []T{}
+	bst.post_order_traversal_helper(bst.root, mut result)
+	return result
+}
+
+// Post order traversal helper in other to implement the walk on the BST.
+fn (bst &BSTree<T>) post_order_traversal_helper(node &BTreeNode<T>, mut result []T) {
+	if node == 0 || !node.is_init {
+		return
+	}
+
+	bst.post_order_traversal_helper(node.left, mut result)
+	bst.post_order_traversal_helper(node.right, mut result)
+	result << node.value
+}
+
+pub fn (bst &BSTree<T>) pre_order_traversal() []T {
+	mut result := []T{}
+	bst.pre_order_traversal_helper(bst.root, mut result)
+	return result
+}
+
+fn (bst &BSTree<T>) pre_order_traversal_helper(node &BTreeNode<T>, mut result []T) {
+	if node == 0 || !node.is_init {
+		return
+	}
+	result << node.value
+	bst.pre_order_traversal_helper(node.left, mut result)
+	bst.pre_order_traversal_helper(node.right, mut result)
+}
+
+fn (bst &BSTree<T>) get_node(node &BTreeNode<T>, value T) &BTreeNode<T> {
+	if node == 0 || !node.is_init {
+		return new_none_node<T>(false)
+	}
+	if node.value == value {
+		return node
+	}
+
+	if node.value < value {
+		return bst.get_node(node.right, value)
+	}
+	return bst.get_node(node.left, value)
+}
+
 // Return the element to the left of a value
-pub fn (bst &BSTree<T>) to_left(value T) T {
-	panic('TODO')
-	return 0;
+pub fn (bst &BSTree<T>) to_left(value T) (T, bool) {
+	node := bst.get_node(bst.root, value)
+	if !node.is_init {
+		return node.value, false
+	}
+	left_node := node.left
+	return left_node.value, left_node.is_init
 }
 
 // Return the element to the right of the value
-pub fn (bst &BSTree<T>) to_right(value T) T {
-	panic('TODO')
+pub fn (bst &BSTree<T>) to_right(value T) (T, bool) {
+	node := bst.get_node(bst.root, value)
+	if !node.is_init {
+		return node.value, false
+	}
+	right_node := node.right
+	return right_node.value, right_node.is_init
 }
-*/
