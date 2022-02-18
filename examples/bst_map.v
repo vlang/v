@@ -17,5 +17,5 @@ fn (a KeyVal) < (b KeyVal) bool {
 fn main() {
 	mut bst := datatypes.BSTree<KeyVal>{}
 	bst.insert(KeyVal{ key: 1, val: 12 })
-	println(bst.in_order_traversals())
+	println(bst.in_order_traversal())
 }
