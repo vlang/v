@@ -378,21 +378,29 @@ interface DbInterface {
 
 // run - start a new VWeb server, listening to all available addresses, at the specified `port`
 pub fn run<T>(global_app &T, port int) {
-	run_at<T>(global_app, '', port)
+	run_at<T>(global_app, host: '', port: port, family: .ip6) or { panic(err.msg()) }
+}
+
+[params]
+pub struct RunParams {
+	host   string
+	port   int = 8080
+	family net.AddrFamily = .ip6 // use `family: .ip, host: 'localhost'` when you want it to bind only to 127.0.0.1
 }
 
 // run_at - start a new VWeb server, listening only on a specific address `host`, at the specified `port`
 // Example: `vweb.run_at(app, 'localhost', 8099)`
 [manualfree]
-pub fn run_at<T>(global_app &T, host string, port int) {
-	mut l := net.listen_tcp(.ip6, '$host:$port') or { panic('failed to listen $err.code $err') }
+pub fn run_at<T>(global_app &T, params RunParams) ? {
+	mut l := net.listen_tcp(params.family, '$params.host:$params.port') or {
+		return error('failed to listen $err.code $err')
+	}
 
 	// Parsing methods attributes
 	mut routes := map[string]Route{}
 	$for method in T.methods {
 		http_methods, route_path := parse_attrs(method.name, method.attrs) or {
-			eprintln('error parsing method attributes: $err')
-			return
+			return error('error parsing method attributes: $err')
 		}
 
 		routes[method.name] = Route{
@@ -400,7 +408,8 @@ pub fn run_at<T>(global_app &T, host string, port int) {
 			path: route_path
 		}
 	}
-	println('[Vweb] Running app on http://localhost:$port')
+	host := if params.host == '' { 'localhost' } else { params.host }
+	println('[Vweb] Running app on http://$host:$params.port/')
 	for {
 		// Create a new app object for each connection, copy global data like db connections
 		mut request_app := &T{}
