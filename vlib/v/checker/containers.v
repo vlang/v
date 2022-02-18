@@ -71,11 +71,15 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	if node.exprs.len > 0 && node.elem_type == ast.void_type {
 		mut expected_value_type := ast.void_type
 		mut expecting_interface_array := false
+		mut expecting_sumtype_array := false
 		if c.expected_type != 0 {
 			expected_value_type = c.table.value_type(c.expected_type)
-			if c.table.sym(expected_value_type).kind == .interface_ {
+			expected_value_sym := c.table.sym(expected_value_type)
+			if expected_value_sym.kind == .interface_ {
 				// Array of interfaces? (`[dog, cat]`) Save the interface type (`Animal`)
 				expecting_interface_array = true
+			} else if expected_value_sym.kind == .sum_type {
+				expecting_sumtype_array = true
 			}
 		}
 		// expecting_interface_array := c.expected_type != 0 &&
@@ -102,6 +106,11 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 					if typ_sym.kind != .interface_ {
 						c.mark_as_referenced(mut &expr, true)
 					}
+				}
+				continue
+			} else if expecting_sumtype_array {
+				if i == 0 {
+					elem_type = expected_value_type
 				}
 				continue
 			}
