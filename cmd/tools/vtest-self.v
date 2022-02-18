@@ -116,6 +116,7 @@ const (
 		'vlib/v/tests/closure_generator_test.v',
 		'vlib/net/websocket/ws_test.v',
 		'vlib/net/unix/unix_test.v',
+		'vlib/net/unix/use_net_and_net_unix_together_test.v',
 		'vlib/net/websocket/websocket_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/vweb/request_test.v',
