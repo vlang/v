@@ -260,7 +260,7 @@ fn new_udp_socket_for_remote(raddr Addr) ?&UdpSocket {
 }
 
 // address gets the address of a socket
-pub fn (s &UdpSocket) addr() ?Addr {
+pub fn (s &UdpSocket) address() ?Addr {
 	return addr_from_socket_handle(s.handle)
 }
 
