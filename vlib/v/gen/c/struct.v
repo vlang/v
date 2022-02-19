@@ -230,13 +230,19 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 					g.write('.')
 				}
 				if node.is_update_embed {
-					embed_sym := g.table.sym(node.typ)
-					embed_name := embed_sym.embed_name()
-					g.write(embed_name)
-					if node.typ.is_ptr() {
-						g.write('->')
-					} else {
-						g.write('.')
+					update_sym := g.table.sym(node.update_expr_type)
+					_, embeds := g.table.find_field_from_embeds(update_sym, field.name) or {
+						ast.StructField{}, []ast.Type{}
+					}
+					for embed in embeds {
+						esym := g.table.sym(embed)
+						ename := esym.embed_name()
+						g.write(ename)
+						if embed.is_ptr() {
+							g.write('->')
+						} else {
+							g.write('.')
+						}
 					}
 				}
 				g.write(field.name)
