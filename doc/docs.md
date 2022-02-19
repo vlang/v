@@ -1174,10 +1174,8 @@ the `it` built-in variable to achieve a classic `map/filter` functional paradigm
 
 ```v
 // using filter, map and negatives array slices
-a := ['pippo.jpg', '01.bmp', '_v.txt', 'img_02.jpg', 'img_01.JPG']
-res := a.filter(it#[-4..].to_lower() == '.jpg').map(fn (w string) string {
-	return w.to_upper()
-})
+files := ['pippo.jpg', '01.bmp', '_v.txt', 'img_02.jpg', 'img_01.JPG']
+filtered := files.filter(it#[-4..].to_lower() == '.jpg').map(it.to_upper())
 // ['PIPPO.JPG', 'IMG_02.JPG', 'IMG_01.JPG']
 ```
 
