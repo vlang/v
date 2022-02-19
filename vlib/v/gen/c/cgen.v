@@ -3852,7 +3852,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		return
 	}
 	tmpvar := g.new_tmp_var()
-	ret_typ := g.typ(g.fn_decl.return_type)
+	ret_typ := g.typ(g.unwrap_generic(g.fn_decl.return_type))
 	mut use_tmp_var := g.defer_stmts.len > 0 || g.defer_profile_code.len > 0
 	// handle promoting none/error/function returning 'Option'
 	if fn_return_is_optional {
