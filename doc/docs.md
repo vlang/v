@@ -5702,7 +5702,7 @@ if result.exit_code != 0 {
 	println(result.output)
 }
 
-// execute command with print
+// print command then execute it
 fn sh(cmd string){
   println("❯ $cmd")
   print(execute_or_exit(cmd).output)
