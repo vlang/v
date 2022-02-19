@@ -1,0 +1,7 @@
+vlib/v/checker/tests/array_sort_with_compare_ref_elem_err.vv:21:23: error: sort_with_compare callback function parameter `a` with type `&Cell` should be `&&Cell`
+   19 | }
+   20 |
+   21 | fn sort_cells_by_yx(a &Cell, b &Cell) int {
+      |                       ^
+   22 |     if a.pos.y == b.pos.y {
+   23 |         if a.pos.x < b.pos.x {

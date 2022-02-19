@@ -1,3 +1,10 @@
+vlib/v/checker/tests/array_sort_with_compare_err.vv:11:24: error: sort_with_compare callback function parameter `a` with type `string` should be `&string`
+    9 | }
+   10 |
+   11 | fn sort_by_file_base(a string, b string) int {
+      |                        ~~~~~~
+   12 |     return int(a > b)
+   13 | }
 vlib/v/checker/tests/array_sort_with_compare_err.vv:4:26: error: cannot use `fn (string, string) int` as `fn (voidptr, voidptr) int` in argument 1 to `[]string.sort_with_compare`
     2 |     mut names := ['aaa', 'bbb', 'ccc']
     3 |
