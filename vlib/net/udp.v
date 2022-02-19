@@ -259,6 +259,11 @@ fn new_udp_socket_for_remote(raddr Addr) ?&UdpSocket {
 	return sock
 }
 
+// address gets the address of a socket
+pub fn (s &UdpSocket) addr() ?Addr {
+	return addr_from_socket_handle(s.handle)
+}
+
 pub fn (mut s UdpSocket) set_option_bool(opt SocketOption, value bool) ? {
 	// TODO reenable when this `in` operation works again
 	// if opt !in opts_can_set {
