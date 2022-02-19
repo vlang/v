@@ -24,7 +24,7 @@ const stmt_level_cutoff_limit = 40
 
 const iface_level_cutoff_limit = 100
 
-const (
+pub const (
 	valid_comptime_if_os             = ['windows', 'ios', 'macos', 'mach', 'darwin', 'hpux', 'gnu',
 		'qnx', 'linux', 'freebsd', 'openbsd', 'netbsd', 'bsd', 'dragonfly', 'android', 'solaris',
 		'haiku', 'serenity', 'vinix']
