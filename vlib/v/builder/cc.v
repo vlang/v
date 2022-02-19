@@ -770,9 +770,10 @@ fn (mut c Builder) cc_windows_cross() {
 	c.setup_ccompiler_options(c.pref.ccompiler)
 	c.build_thirdparty_obj_files()
 	c.setup_output_name()
-	if !c.pref.out_name.ends_with('.exe') {
+	if !c.pref.out_name.to_lower().ends_with('.exe') {
 		c.pref.out_name += '.exe'
 	}
+	c.pref.out_name = os.quoted_path(c.pref.out_name)
 	mut args := []string{}
 	args << '$c.pref.cflags'
 	args << '-o $c.pref.out_name'
@@ -810,7 +811,7 @@ fn (mut c Builder) cc_windows_cross() {
 	}
 	// add the thirdparty .o files, produced by all the #flag directives:
 	args << cflags.c_options_only_object_files()
-	args << c.out_name_c
+	args << os.quoted_path(c.out_name_c)
 	if c.pref.ccompiler == 'msvc' {
 		args << cflags.c_options_after_target_msvc()
 	} else {
