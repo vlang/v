@@ -5633,6 +5633,9 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 								methods_wrapper.write_string('.$esym.embed_name()')
 							}
 						}
+						if fargs.len > 1 {
+							methods_wrapper.write_string(', ')
+						}
 						methods_wrapper.writeln('${fargs[1..].join(', ')});')
 					} else {
 						if parameter_name.starts_with('__shared__') {
