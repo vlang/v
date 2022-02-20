@@ -2694,6 +2694,10 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		// `foo()?`
 		if p.tok.kind == .question {
 			p.next()
+			if p.inside_defer {
+				p.error_with_pos('error propagation not allowed inside `defer` blocks',
+					p.prev_tok.pos())
+			}
 			or_kind = .propagate
 		}
 		//

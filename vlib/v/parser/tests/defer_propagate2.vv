@@ -1,0 +1,23 @@
+struct Abc {
+mut:
+	x int = 123
+}
+
+fn (mut s Abc) close() ? {
+	println('> CLOSE 1 s.x: $s.x')
+	s.x = -1
+	println('> CLOSE 2 s.x: $s.x')
+}
+
+fn opt2() ?int {
+	mut s := Abc{}
+	dump(s.x)
+	defer {
+		s.close() ?
+	}
+	return s.x
+}
+
+fn main() {
+	println(opt2() ?)
+}

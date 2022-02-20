@@ -11,12 +11,12 @@ fn test_that_net_and_net_unix_can_be_imported_together_without_conflicts() ? {
 	mut l := unix.listen_stream(test_port) or { panic(err) }
 	go echo_server(mut l)
 	defer {
-		l.close() ?
+		l.close() or {}
 	}
 	//
 	mut c := unix.connect_stream(test_port) ?
 	defer {
-		c.close() ?
+		c.close() or {}
 	}
 	//
 	data := 'Hello from vlib/net!'
