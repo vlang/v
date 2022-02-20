@@ -1977,6 +1977,13 @@ fn (mut c Checker) stmts_ending_with_expression(stmts []ast.Stmt) {
 			}
 		}
 		c.stmt(stmt)
+		if c.is_last_stmt {
+			if stmt is ast.ExprStmt {
+				if stmt.typ != ast.void_type {
+					c.fail_if_unreadable(stmt.expr, stmt.typ, 'last statement in expression block')
+				}
+			}
+		}
 		if stmt is ast.GotoLabel {
 			unreachable = token.Pos{
 				line_nr: -1
