@@ -7,7 +7,7 @@ module complex
 import math
 
 pub struct Complex {
-pub:
+pub mut:
 	re f64
 	im f64
 }
