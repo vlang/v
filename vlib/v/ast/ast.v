@@ -368,6 +368,7 @@ pub mut:
 	are_embeds_expanded bool
 }
 
+// `field1: val1`
 pub struct StructInitField {
 pub:
 	pos           token.Pos
@@ -375,9 +376,9 @@ pub:
 	comments      []Comment
 	next_comments []Comment
 pub mut:
-	expr          Expr
-	name          string
-	typ           Type
+	expr          Expr   // `val1`
+	name          string // 'field1'
+	typ           Type   // the type of this field
 	expected_type Type
 	parent_type   Type
 }
@@ -394,22 +395,26 @@ pub mut:
 	expected_type Type
 }
 
+// `s := Foo{
+//    ...a
+//    field1: 'hello'
+// }`
 pub struct StructInit {
 pub:
 	pos             token.Pos
 	name_pos        token.Pos
-	is_short        bool
-	is_short_syntax bool
+	is_short        bool // Foo{val1, val2}
+	is_short_syntax bool // foo(field1: val1, field2: val2)
 pub mut:
 	unresolved           bool
 	pre_comments         []Comment
-	typ_str              string
-	typ                  Type
-	update_expr          Expr
+	typ_str              string // 'Foo'
+	typ                  Type   // the type of this struct
+	update_expr          Expr   // `a` in `...a`
 	update_expr_type     Type
 	update_expr_comments []Comment
 	is_update_embed      bool
-	has_update_expr      bool
+	has_update_expr      bool // has `...a`
 	fields               []StructInitField
 	embeds               []StructInitEmbed
 	generic_types        []Type
