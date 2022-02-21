@@ -67,12 +67,10 @@ fn test_get_left_root() {
 	assert bst.insert(21)
 	assert bst.insert(1)
 
-	left_val, found_left := bst.to_left(10)
-	assert found_left
+	left_val := bst.to_left(10) or { -1 }
 	assert left_val == 1
 
-	right_val, found_right := bst.to_right(10)
-	assert found_right
+	right_val := bst.to_right(10) or { -1 }
 	assert right_val == 20
 }
 
@@ -80,11 +78,11 @@ fn test_get_left_root() {
 fn test_get_left_on_empty_bst() {
 	mut bst := BSTree<int>{}
 
-	left_val, found_left := bst.to_left(10)
-	assert found_left == false
+	left_val := bst.to_left(10) or { -1 }
+	assert left_val == -1
 
-	right_val, found_right := bst.to_right(10)
-	assert found_right == false
+	right_val := bst.to_right(10) or { -1 }
+	assert right_val == -1
 }
 
 // Check the remove operation if it is able to remove
@@ -122,8 +120,7 @@ fn test_get_max_in_bst() {
 	assert bst.insert(20)
 	assert bst.insert(21)
 	assert bst.insert(1)
-	max, found := bst.max()
-	assert found
+	max := bst.max() or { -1 }
 	assert max == 21
 }
 
@@ -134,7 +131,6 @@ fn test_get_min_in_bst() {
 	assert bst.insert(20)
 	assert bst.insert(21)
 	assert bst.insert(1)
-	min, found := bst.min()
-	assert found
+	min := bst.min() or { -1 }
 	assert min == 1
 }
