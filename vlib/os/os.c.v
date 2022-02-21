@@ -599,23 +599,6 @@ pub fn read_file_array<T>(path string) []T {
 	}
 }
 
-pub fn on_segfault(f voidptr) {
-	$if windows {
-		return
-	}
-	$if macos {
-		C.printf(c'TODO')
-		/*
-		mut sa := C.sigaction{}
-		C.memset(&sa, 0, sizeof(C.sigaction_size))
-		C.sigemptyset(&sa.sa_mask)
-		sa.sa_sigaction = f
-		sa.sa_flags = C.SA_SIGINFO
-		C.sigaction(C.SIGSEGV, &sa, 0)
-		*/
-	}
-}
-
 // executable returns the path name of the executable that started the current
 // process.
 [manualfree]
