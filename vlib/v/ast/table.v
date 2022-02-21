@@ -2082,5 +2082,11 @@ pub fn (t &Table) is_comptime_type(x Type, y ComptimeType) bool {
 		.array {
 			return x_kind in [.array, .array_fixed]
 		}
+		.sum_type {
+			return x_kind == .sum_type
+		}
+		.enum_ {
+			return x_kind == .enum_
+		}
 	}
 }

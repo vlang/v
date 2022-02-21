@@ -10,8 +10,49 @@ import v.token
 
 const (
 	supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig']
-	comptime_types           = ['Map', 'Array', 'Int', 'Float', 'Struct', 'Interface']
+	comptime_types           = ['Map', 'Array', 'Int', 'Float', 'Struct', 'Interface', 'Enum',
+		'Sumtype']
 )
+
+pub fn (mut p Parser) parse_comptime_type() ast.ComptimeType {
+	mut node := ast.ComptimeType{ast.ComptimeTypeKind.map_, p.tok.pos()}
+
+	p.check(.dollar)
+	name := p.check_name()
+	if name !in parser.comptime_types {
+		p.error('unsupported compile-time type `$name`: only $parser.comptime_types are supported')
+	}
+	mut cty := ast.ComptimeTypeKind.map_
+	match name {
+		'Map' {
+			cty = .map_
+		}
+		'Struct' {
+			cty = .struct_
+		}
+		'Interface' {
+			cty = .iface
+		}
+		'Int' {
+			cty = .int
+		}
+		'Float' {
+			cty = .float
+		}
+		'Array' {
+			cty = .array
+		}
+		'Enum' {
+			cty = .enum_
+		}
+		'Sumtype' {
+			cty = .sum_type
+		}
+		else {}
+	}
+	node = ast.ComptimeType{cty, node.pos}
+	return node
+}
 
 // // #include, #flag, #v
 fn (mut p Parser) hash() ast.HashStmt {

@@ -122,6 +122,8 @@ pub enum ComptimeTypeKind {
 	struct_
 	iface
 	array
+	sum_type
+	enum_
 }
 
 pub struct ComptimeType {
@@ -138,6 +140,8 @@ pub fn (cty ComptimeType) str() string {
 		.struct_ { '\$Struct' }
 		.iface { '\$Interface' }
 		.array { '\$Array' }
+		.sum_type { '\$Sumtype' }
+		.enum_ { '\$Enum' }
 	}
 }
 

@@ -79,38 +79,11 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 			match p.peek_tok.kind {
 				.name {
 					if p.peek_tok.lit in comptime_types {
-						p.check(.dollar)
-						name := p.check_name()
-						mut cty := ast.ComptimeTypeKind.map_
-						match name {
-							'Map' {
-								cty = .map_
-							}
-							'Struct' {
-								cty = .struct_
-							}
-							'Interface' {
-								cty = .iface
-							}
-							'Int' {
-								cty = .int
-							}
-							'Float' {
-								cty = .float
-							}
-							'Array' {
-								cty = .array
-							}
-							else {
-								p.error('unknown comptile-time type: `$name`')
-							}
-						}
-						node = ast.ComptimeType{cty, p.tok.pos()}
-						p.is_stmt_ident = is_stmt_ident
+						node = p.parse_comptime_type()
 					} else {
 						node = p.comptime_call()
-						p.is_stmt_ident = is_stmt_ident
 					}
+					p.is_stmt_ident = is_stmt_ident
 				}
 				.key_if {
 					return p.if_expr(true)
