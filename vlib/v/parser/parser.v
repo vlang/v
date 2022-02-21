@@ -849,9 +849,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				}
 				.name {
 					mut pos := p.tok.pos()
-					name := p.check_name() // TODO: Supper ComptimeType in stmt position too?
-					println('name $name')
-					expr := p.comptime_call(name)
+					expr := p.comptime_call()
 					pos.update_last_line(p.prev_tok.line_nr)
 					return ast.ExprStmt{
 						expr: expr
@@ -2137,7 +2135,6 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 					panic('unreachable')
 				}
 			}
-			println('CTY $cty')
 			node = ast.ComptimeType{cty, p.tok.pos()}
 			p.expecting_type = false
 			return node

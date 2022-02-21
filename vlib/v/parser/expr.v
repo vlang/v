@@ -78,9 +78,9 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 		.dollar {
 			match p.peek_tok.kind {
 				.name {
-					p.check(.dollar)
-					name := p.check_name()
-					if name in comptime_types {
+					if p.peek_tok.lit in comptime_types {
+						p.check(.dollar)
+						name := p.check_name()
 						mut cty := ast.ComptimeTypeKind.map_
 						match name {
 							'Map' {
@@ -108,7 +108,7 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 						node = ast.ComptimeType{cty, p.tok.pos()}
 						p.is_stmt_ident = is_stmt_ident
 					} else {
-						node = p.comptime_call(name)
+						node = p.comptime_call()
 						p.is_stmt_ident = is_stmt_ident
 					}
 				}

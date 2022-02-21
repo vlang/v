@@ -856,6 +856,9 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 fn (mut g JsGen) expr(node ast.Expr) {
 	// NB: please keep the type names in the match here in alphabetical order:
 	match mut node {
+		ast.ComptimeType {
+			verror('not yet implemented')
+		}
 		ast.EmptyExpr {}
 		ast.AnonFn {
 			g.gen_anon_fn(mut node)
