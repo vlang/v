@@ -1534,6 +1534,9 @@ fn (mut g Gen) write_v_source_line_info(pos token.Pos) {
 	if g.inside_ternary == 0 && g.pref.is_vlines && g.is_vlines_enabled {
 		nline := pos.line_nr + 1
 		lineinfo := '\n#line $nline "$g.vlines_path"'
+		$if trace_gen_source_line_info ? {
+			eprintln('> lineinfo: ${lineinfo.replace('\n', '')}')
+		}
 		g.writeln(lineinfo)
 	}
 }
