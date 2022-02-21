@@ -660,6 +660,18 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		ast.UnsafeExpr {
 			f.unsafe_expr(node)
 		}
+		ast.ComptimeType {
+			match node.kind {
+				.array { f.write('\$Array') }
+				.struct_ { f.write('\$Struct') }
+				.iface { f.write('\$Interface') }
+				.map_ { f.write('\$Map') }
+				.int { f.write('\$Int') }
+				.float { f.write('\$Float') }
+				.sum_type { f.write('\$Sumtype') }
+				.enum_ { f.write('\$Enum') }
+			}
+		}
 	}
 }
 

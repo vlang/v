@@ -2105,6 +2105,11 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	prev_tok_kind := p.prev_tok.kind
 	mut node := ast.empty_expr()
 	if p.expecting_type {
+		if p.tok.kind == .dollar {
+			node = p.parse_comptime_type()
+			p.expecting_type = false
+			return node
+		}
 		p.expecting_type = false
 		// get type position before moving to next
 		type_pos := p.tok.pos()

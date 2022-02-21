@@ -337,6 +337,25 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 				.key_is, .not_is {
 					left := cond.left
 					mut name := ''
+					if left is ast.TypeNode && cond.right is ast.ComptimeType {
+						checked_type := g.unwrap_generic(left.typ)
+						is_true := g.table.is_comptime_type(checked_type, cond.right)
+						if cond.op == .key_is {
+							if is_true {
+								g.write('1')
+							} else {
+								g.write('0')
+							}
+							return is_true
+						} else {
+							if is_true {
+								g.write('0')
+							} else {
+								g.write('1')
+							}
+							return !is_true
+						}
+					}
 					mut exp_type := ast.Type(0)
 					got_type := (cond.right as ast.TypeNode).typ
 					// Handle `$if x is Interface {`

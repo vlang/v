@@ -24,6 +24,7 @@ pub type Expr = AnonFn
 	| Comment
 	| ComptimeCall
 	| ComptimeSelector
+	| ComptimeType
 	| ConcatExpr
 	| DumpExpr
 	| EmptyExpr
@@ -112,6 +113,36 @@ pub struct TypeNode {
 pub:
 	typ Type
 	pos token.Pos
+}
+
+pub enum ComptimeTypeKind {
+	map_
+	int
+	float
+	struct_
+	iface
+	array
+	sum_type
+	enum_
+}
+
+pub struct ComptimeType {
+pub:
+	kind ComptimeTypeKind
+	pos  token.Pos
+}
+
+pub fn (cty ComptimeType) str() string {
+	return match cty.kind {
+		.map_ { '\$Map' }
+		.int { '\$Int' }
+		.float { '\$Float' }
+		.struct_ { '\$Struct' }
+		.iface { '\$Interface' }
+		.array { '\$Array' }
+		.sum_type { '\$Sumtype' }
+		.enum_ { '\$Enum' }
+	}
 }
 
 pub struct EmptyExpr {
@@ -1683,7 +1714,7 @@ pub fn (expr Expr) pos() token.Pos {
 		EnumVal, DumpExpr, FloatLiteral, GoExpr, Ident, IfExpr, IntegerLiteral, IsRefType, Likely,
 		LockExpr, MapInit, MatchExpr, None, OffsetOf, OrExpr, ParExpr, PostfixExpr, PrefixExpr,
 		RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral,
-		StructInit, TypeNode, TypeOf, UnsafeExpr {
+		StructInit, TypeNode, TypeOf, UnsafeExpr, ComptimeType {
 			return expr.pos
 		}
 		IndexExpr {

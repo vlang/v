@@ -468,6 +468,10 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) bool {
 							// c.error('`$sym.name` is not an interface', cond.right.pos())
 						}
 						return false
+					} else if cond.left is ast.TypeNode && cond.right is ast.ComptimeType {
+						left := cond.left as ast.TypeNode
+						checked_type := c.unwrap_generic(left.typ)
+						return c.table.is_comptime_type(checked_type, cond.right)
 					} else if cond.left in [ast.SelectorExpr, ast.TypeNode] {
 						// `$if method.@type is string`
 						c.expr(cond.left)

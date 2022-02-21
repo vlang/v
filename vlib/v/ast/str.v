@@ -261,6 +261,9 @@ pub fn (x Expr) str() string {
 		AnonFn {
 			return 'anon_fn'
 		}
+		ComptimeType {
+			return x.str()
+		}
 		DumpExpr {
 			return 'dump($x.expr.str())'
 		}

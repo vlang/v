@@ -78,7 +78,11 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 		.dollar {
 			match p.peek_tok.kind {
 				.name {
-					node = p.comptime_call()
+					if p.peek_tok.lit in comptime_types {
+						node = p.parse_comptime_type()
+					} else {
+						node = p.comptime_call()
+					}
 					p.is_stmt_ident = is_stmt_ident
 				}
 				.key_if {
@@ -490,6 +494,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	if is_key_in {
 		p.inside_in_array = true
 	}
+
 	right = p.expr(precedence)
 	if is_key_in {
 		p.inside_in_array = false
