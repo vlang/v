@@ -755,7 +755,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 
 		left_is_shared := node.left_type.has_flag(.shared_f)
-		g.write('${c_name(receiver_type_name)}_name_table[')
+		left_cc_type := g.cc_type(node.left_type, false)
+		left_type_name := util.no_dots(left_cc_type)
+		g.write('${c_name(left_type_name)}_name_table[')
 		g.expr(node.left)
 		dot := if left_is_shared {
 			'->val.'
