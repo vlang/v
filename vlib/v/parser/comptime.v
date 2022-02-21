@@ -10,6 +10,7 @@ import v.token
 
 const (
 	supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig']
+	comptime_types           = ['Map', 'Array', 'Int', 'Float', 'Struct', 'Interface']
 )
 
 // // #include, #flag, #v
@@ -39,7 +40,7 @@ fn (mut p Parser) hash() ast.HashStmt {
 	}
 }
 
-fn (mut p Parser) comptime_call() ast.ComptimeCall {
+fn (mut p Parser) comptime_call(name string) ast.ComptimeCall {
 	err_node := ast.ComptimeCall{
 		scope: 0
 	}
@@ -47,7 +48,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	start_pos := p.prev_tok.pos()
 	error_msg := 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()` and `\$vweb.html()` comptime functions are supported right now'
 	if p.peek_tok.kind == .dot {
-		name := p.check_name() // skip `vweb.html()` TODO
+		// name := p.check_name() // skip `vweb.html()` TODO
 		if name != 'vweb' {
 			p.error(error_msg)
 			return err_node

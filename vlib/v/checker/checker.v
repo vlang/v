@@ -2384,6 +2384,9 @@ pub fn (mut c Checker) expr(node ast.Expr) ast.Type {
 	}
 	match mut node {
 		ast.NodeError {}
+		ast.ComptimeType {
+			c.error('incorrect use of compile-time type', node.pos)
+		}
 		ast.EmptyExpr {
 			c.error('checker.expr(): unhandled EmptyExpr', token.Pos{})
 		}

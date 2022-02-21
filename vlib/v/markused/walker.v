@@ -221,6 +221,7 @@ fn (mut w Walker) expr(node ast.Expr) {
 			// TODO make sure this doesn't happen
 			// panic('Walker: EmptyExpr')
 		}
+		ast.ComptimeType {}
 		ast.AnonFn {
 			w.fn_decl(mut node.decl)
 		}

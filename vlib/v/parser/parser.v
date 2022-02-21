@@ -849,7 +849,9 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				}
 				.name {
 					mut pos := p.tok.pos()
-					expr := p.comptime_call()
+					name := p.check_name() // TODO: Supper ComptimeType in stmt position too?
+					println('name $name')
+					expr := p.comptime_call(name)
 					pos.update_last_line(p.prev_tok.line_nr)
 					return ast.ExprStmt{
 						expr: expr
@@ -2105,6 +2107,41 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	prev_tok_kind := p.prev_tok.kind
 	mut node := ast.empty_expr()
 	if p.expecting_type {
+		if p.tok.kind == .dollar {
+			p.check(.dollar)
+			name := p.check_name()
+			if name !in comptime_types {
+				p.error('unsupported compile-time type `$name`: only $comptime_types are supported')
+			}
+			mut cty := ast.ComptimeTypeKind.map_
+			match name {
+				'Map' {
+					cty = .map_
+				}
+				'Struct' {
+					cty = .struct_
+				}
+				'Interface' {
+					cty = .iface
+				}
+				'Int' {
+					cty = .int
+				}
+				'Float' {
+					cty = .float
+				}
+				'Array' {
+					cty = .array
+				}
+				else {
+					panic('unreachable')
+				}
+			}
+			println('CTY $cty')
+			node = ast.ComptimeType{cty, p.tok.pos()}
+			p.expecting_type = false
+			return node
+		}
 		p.expecting_type = false
 		// get type position before moving to next
 		type_pos := p.tok.pos()

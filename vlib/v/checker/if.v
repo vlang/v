@@ -52,32 +52,39 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			mut comptime_field_name := ''
 			if mut branch.cond is ast.InfixExpr {
 				if branch.cond.op == .key_is {
-					if branch.cond.right !is ast.TypeNode {
+					if branch.cond.right !is ast.TypeNode && branch.cond.right !is ast.ComptimeType {
 						c.error('invalid `\$if` condition: expected a type', branch.cond.right.pos())
 						return 0
 					}
-					got_type := c.unwrap_generic((branch.cond.right as ast.TypeNode).typ)
-					sym := c.table.sym(got_type)
-					if sym.kind == .placeholder || got_type.has_flag(.generic) {
-						c.error('unknown type `$sym.name`', branch.cond.right.pos())
-					}
 					left := branch.cond.left
-					if left is ast.SelectorExpr {
-						comptime_field_name = left.expr.str()
-						c.comptime_fields_type[comptime_field_name] = got_type
+					if branch.cond.right is ast.ComptimeType && left is ast.TypeNode {
 						is_comptime_type_is_expr = true
-					} else if branch.cond.right is ast.TypeNode && left is ast.TypeNode
-						&& sym.kind == .interface_ {
-						is_comptime_type_is_expr = true
-						// is interface
 						checked_type := c.unwrap_generic(left.typ)
-						should_skip = !c.table.does_type_implement_interface(checked_type,
-							got_type)
-					} else if left is ast.TypeNode {
-						is_comptime_type_is_expr = true
-						left_type := c.unwrap_generic(left.typ)
-						if left_type != got_type {
-							should_skip = true
+						should_skip = !c.is_comptime_type(checked_type, branch.cond.right as ast.ComptimeType)
+					} else {
+						got_type := c.unwrap_generic((branch.cond.right as ast.TypeNode).typ)
+						sym := c.table.sym(got_type)
+						if sym.kind == .placeholder || got_type.has_flag(.generic) {
+							c.error('unknown type `$sym.name`', branch.cond.right.pos())
+						}
+
+						if left is ast.SelectorExpr {
+							comptime_field_name = left.expr.str()
+							c.comptime_fields_type[comptime_field_name] = got_type
+							is_comptime_type_is_expr = true
+						} else if branch.cond.right is ast.TypeNode && left is ast.TypeNode
+							&& sym.kind == .interface_ {
+							is_comptime_type_is_expr = true
+							// is interface
+							checked_type := c.unwrap_generic(left.typ)
+							should_skip = !c.table.does_type_implement_interface(checked_type,
+								got_type)
+						} else if left is ast.TypeNode {
+							is_comptime_type_is_expr = true
+							left_type := c.unwrap_generic(left.typ)
+							if left_type != got_type {
+								should_skip = true
+							}
 						}
 					}
 				}
