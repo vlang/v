@@ -29,6 +29,7 @@ Options:
 
 For HTML mode:
   -inline-assets  Embeds the contents of the CSS and JS assets into the webpage directly.
+  -theme-dir      The directory for doc theme template
 
 For plain text mode:
   -l              Shows the locations of the generated signatures.

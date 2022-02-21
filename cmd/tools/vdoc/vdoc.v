@@ -53,6 +53,7 @@ mut:
 	include_examples bool = true
 	include_comments bool // for plaintext
 	inline_assets    bool
+	theme_dir        string = default_theme
 	no_timestamp     bool
 	output_path      string
 	output_type      OutputType = .unset
@@ -378,6 +379,9 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			vd.render_search_index(out)
 			// move favicons to target directory
 			println('Copying favicons...')
+
+			favicons_path := os.join_path(cfg.theme_dir, 'favicons')
+
 			favicons := os.ls(favicons_path) or { panic(err) }
 			for favicon in favicons {
 				favicon_path := os.join_path(favicons_path, favicon)
@@ -422,6 +426,9 @@ fn parse_arguments(args []string) Config {
 			}
 			'-inline-assets' {
 				cfg.inline_assets = true
+			}
+			'-theme-dir' {
+				cfg.theme_dir = cmdline.option(current_args, '-theme-dir', default_theme)
 			}
 			'-l' {
 				cfg.show_loc = true
