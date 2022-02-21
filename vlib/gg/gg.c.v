@@ -161,7 +161,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 	gfx.setup(&desc)
 	sgl_desc := sgl.Desc{}
 	sgl.setup(&sgl_desc)
-	ctx.scale = dpi_scale()
+	ctx.set_scale()
 	// is_high_dpi := sapp.high_dpi()
 	// fb_w := sapp.width()
 	// fb_h := sapp.height()
@@ -176,7 +176,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 		ctx.ft = new_ft(
 			font_path: ctx.config.font_path
 			custom_bold_font_path: ctx.config.custom_bold_font_path
-			scale: dpi_scale()
+			scale: ctx.scale
 		) or { panic(err) }
 		// println('FT took ${time.ticks()-t} ms')
 		ctx.font_inited = true
@@ -479,9 +479,44 @@ pub fn (ctx &Context) end() {
 	*/
 }
 
+fn (mut ctx Context) set_scale() {
+	mut s := sapp.dpi_scale()
+	$if android {
+		w := ctx.config.width
+		h := ctx.config.height
+		dw := sapp.width()
+		dh := sapp.height()
+		if dw <= dh {
+			if w <= 0 {
+				s = 1.0
+			} else {
+				s = f32(dw) / w
+			}
+		} else {
+			if h <= 0 {
+				s = 1.0
+			} else {
+				s = f32(dh) / h
+			}
+		}
+	}
+	// NB: on older X11, `Xft.dpi` from ~/.Xresources, that sokol uses,
+	// may not be set which leads to sapp.dpi_scale reporting incorrectly 0.0
+	if s < 0.1 {
+		s = 1.0
+	}
+	ctx.scale = s
+}
+
+pub fn (ctx Context) window_size() Size {
+	s := ctx.scale
+	return Size{int(sapp.width() / s), int(sapp.height() / s)}
+}
+
 //---- public module functions
 
 // dpi_scale returns the DPI scale coefficient for the screen
+// Do not use for Android development, use `Context.scale` instead.
 pub fn dpi_scale() f32 {
 	mut s := sapp.dpi_scale()
 	$if android {
@@ -514,6 +549,7 @@ pub fn screen_size() Size {
 }
 
 // window_size returns the `Size` of the active window
+// Do not use for Android development, use `Context.window_size()` instead.
 pub fn window_size() Size {
 	s := dpi_scale()
 	return Size{int(sapp.width() / s), int(sapp.height() / s)}
