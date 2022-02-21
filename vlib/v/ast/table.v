@@ -2044,3 +2044,43 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 		}
 	}
 }
+
+pub fn (t &Table) is_comptime_type(x Type, y ComptimeType) bool {
+	x_kind := t.type_kind(x)
+	match y.kind {
+		.map_ {
+			return x_kind == .map
+		}
+		.int {
+			return x_kind in [
+				.i8,
+				.i16,
+				.int,
+				.i64,
+				.byte,
+				.u8,
+				.u16,
+				.u32,
+				.u64,
+				.usize,
+				.int_literal,
+			]
+		}
+		.float {
+			return x_kind in [
+				.f32,
+				.f64,
+				.float_literal,
+			]
+		}
+		.struct_ {
+			return x_kind == .struct_
+		}
+		.iface {
+			return x_kind == .interface_
+		}
+		.array {
+			return x_kind in [.array, .array_fixed]
+		}
+	}
+}

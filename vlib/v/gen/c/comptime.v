@@ -339,7 +339,7 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 					mut name := ''
 					if left is ast.TypeNode && cond.right is ast.ComptimeType {
 						checked_type := g.unwrap_generic(left.typ)
-						is_true := g.is_comptime_type(checked_type, cond.right)
+						is_true := g.table.is_comptime_type(checked_type, cond.right)
 						if cond.op == .key_is {
 							if is_true {
 								g.write('1')
@@ -722,44 +722,4 @@ fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_optional bool) ?str
 		}
 	}
 	return none
-}
-
-fn (mut g Gen) is_comptime_type(x ast.Type, y ast.ComptimeType) bool {
-	x_kind := g.table.type_kind(x)
-	match y.kind {
-		.map_ {
-			return x_kind == .map
-		}
-		.int {
-			return x_kind in [
-				.i8,
-				.i16,
-				.int,
-				.i64,
-				.byte,
-				.u8,
-				.u16,
-				.u32,
-				.u64,
-				.usize,
-				.int_literal,
-			]
-		}
-		.float {
-			return x_kind in [
-				.f32,
-				.f64,
-				.float_literal,
-			]
-		}
-		.struct_ {
-			return x_kind == .struct_
-		}
-		.iface {
-			return x_kind == .interface_
-		}
-		.array {
-			return x_kind in [.array, .array_fixed]
-		}
-	}
 }

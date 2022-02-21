@@ -471,7 +471,7 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) bool {
 					} else if cond.left is ast.TypeNode && cond.right is ast.ComptimeType {
 						left := cond.left as ast.TypeNode
 						checked_type := c.unwrap_generic(left.typ)
-						return c.is_comptime_type(checked_type, cond.right)
+						return c.table.is_comptime_type(checked_type, cond.right)
 					} else if cond.left in [ast.SelectorExpr, ast.TypeNode] {
 						// `$if method.@type is string`
 						c.expr(cond.left)
@@ -597,44 +597,4 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) bool {
 		}
 	}
 	return false
-}
-
-fn (mut c Checker) is_comptime_type(x ast.Type, y ast.ComptimeType) bool {
-	x_kind := c.table.type_kind(x)
-	match y.kind {
-		.map_ {
-			return x_kind == .map
-		}
-		.int {
-			return x_kind in [
-				.i8,
-				.i16,
-				.int,
-				.i64,
-				.byte,
-				.u8,
-				.u16,
-				.u32,
-				.u64,
-				.usize,
-				.int_literal,
-			]
-		}
-		.float {
-			return x_kind in [
-				.f32,
-				.f64,
-				.float_literal,
-			]
-		}
-		.struct_ {
-			return x_kind == .struct_
-		}
-		.iface {
-			return x_kind == .interface_
-		}
-		.array {
-			return x_kind in [.array, .array_fixed]
-		}
-	}
 }

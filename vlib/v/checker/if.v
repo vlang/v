@@ -60,7 +60,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					if branch.cond.right is ast.ComptimeType && left is ast.TypeNode {
 						is_comptime_type_is_expr = true
 						checked_type := c.unwrap_generic(left.typ)
-						should_skip = !c.is_comptime_type(checked_type, branch.cond.right as ast.ComptimeType)
+						should_skip = !c.table.is_comptime_type(checked_type, branch.cond.right as ast.ComptimeType)
 					} else {
 						got_type := c.unwrap_generic((branch.cond.right as ast.TypeNode).typ)
 						sym := c.table.sym(got_type)
