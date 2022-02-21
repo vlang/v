@@ -203,6 +203,7 @@ const (
 		'-pos',
 		'-no-timestamp',
 		'-inline-assets',
+		'-theme-dir',
 		'-open',
 		'-p',
 		'-s',
