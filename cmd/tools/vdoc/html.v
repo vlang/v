@@ -13,69 +13,8 @@ import v.pref
 
 const (
 	css_js_assets = ['doc.css', 'normalize.css', 'doc.js', 'dark-mode.js']
-	res_path      = os.resource_abs_path('resources')
-	favicons_path = os.join_path(res_path, 'favicons')
+	default_theme = os.resource_abs_path('theme')
 	link_svg      = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M0 0h24v24H0z" fill="none"/><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>'
-	html_content  = '<!DOCTYPE html>
-<html lang="en">
-	<head>
-		<meta charset="UTF-8">
-		<meta http-equiv="x-ua-compatible" content="IE=edge" />
-		<meta name="viewport" content="width=device-width, initial-scale=1.0">
-		<title>{{ title }} | vdoc</title>
-		<link rel="preconnect" href="https://fonts.googleapis.com">
-		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-		<link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-		<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono&display=swap" rel="stylesheet">
-		<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
-		<link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
-		<link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
-		<link rel="manifest" href="site.webmanifest">
-		<link rel="mask-icon" href="safari-pinned-tab.svg" color="#5bbad5">
-		<meta name="msapplication-TileColor" content="#da532c">
-		<meta name="theme-color" content="#ffffff">
-		{{ head_assets }}
-	</head>
-	<body>
-		<div><a id="skip-to-content-link" href="#main-content">Skip to content</a></div>
-		<div id="page">
-			<header class="doc-nav hidden">
-				<div class="heading-container">
-					<div class="heading">
-						<div class="info">
-							<div class="module">{{ head_name }}</div>
-							<div class="toggle-version-container">
-								<span>{{ version }}</span>
-								<div id="dark-mode-toggle" role="switch" aria-checked="false" aria-label="Toggle dark mode">{{ light_icon }}{{ dark_icon }}</div>
-							</div>
-							{{ menu_icon }}
-						</div>
-						<input type="text" id="search" placeholder="Search... (beta)" autocomplete="off">
-					</div>
-				</div>
-				<nav class="search hidden"></nav>
-				<nav class="content hidden">
-					<ul>
-						{{ toc_links }}
-					</ul>
-				</nav>
-			</header>
-			<div class="doc-scrollview" id="main-content">
-				<div class="doc-container">
-					<div class="doc-content">
-{{ contents }}
-						<div class="footer">
-							{{ footer_content }}
-						</div>
-					</div>
-					{{ right_content }}
-				</div>
-			</div>
-		</div>
-		{{ footer_assets }}
-		<script async src="search_index.js" type="text/javascript"></script>
-	</body>
-</html>'
 )
 
 enum HighlightTokenTyp {
@@ -150,7 +89,7 @@ fn (mut vd VDoc) render_static_html(out Output) {
 
 fn (vd VDoc) get_resource(name string, out Output) string {
 	cfg := vd.cfg
-	path := os.join_path(res_path, name)
+	path := os.join_path(cfg.theme_dir, name)
 	mut res := os.read_file(path) or { panic('vdoc: could not read $path') }
 	/*
 	if minify {
@@ -301,8 +240,9 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 	}
 	modules_toc_str := modules_toc.str()
 	symbols_toc_str := symbols_toc.str()
-	result := html_content.replace('{{ title }}', d.head.name).replace('{{ head_name }}',
-		header_name).replace('{{ version }}', version).replace('{{ light_icon }}', vd.assets['light_icon']).replace('{{ dark_icon }}',
+	result := (os.read_file(os.join_path(cfg.theme_dir, 'index.html')) or { panic(err) }).replace('{{ title }}',
+		d.head.name).replace('{{ head_name }}', header_name).replace('{{ version }}',
+		version).replace('{{ light_icon }}', vd.assets['light_icon']).replace('{{ dark_icon }}',
 		vd.assets['dark_icon']).replace('{{ menu_icon }}', vd.assets['menu_icon']).replace('{{ head_assets }}',
 		if cfg.inline_assets {
 		'\n${tabs[0]}<style>' + vd.assets['doc_css'] + '</style>\n${tabs[0]}<style>' +
