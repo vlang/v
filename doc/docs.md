@@ -2105,18 +2105,11 @@ but a short, preferably one letter long, name.
 
 ### Embedded structs
 
-V supports embedded structs , similar to inherit, parent-subclasses in other programming languages.
+V support embedded structs .
 
-Unlike inherit in other programming languages, Embedded struct in v is just [mixin](https://en.wikipedia.org/wiki/Mixin), where there is no parent-child relationship between embedded structs, and can't type cast.
+Basically, V embedding should work the same way as Golang embedding .
 
 ```v
-struct Color {
-mut:
-        r byte
-        g byte
-        b byte
-}
-
 struct Widget {
 mut:
         x int
@@ -2129,7 +2122,6 @@ fn (w &Widget) area() int {
 
 struct Button {
         Widget
-        Color
         title string
 }
 ```
@@ -2144,7 +2136,7 @@ mut button := Button{
 
 button.x = 3
 assert button.area() == 6
-button.r = 255
+assert button.Widget.area() == 6
 print(button)
 ```
 
@@ -2155,16 +2147,25 @@ Button{
         x: 3
         y: 2
     }
-    Color: Color{
-        r: 255
-        g: 0
-        b: 0
-    }
     title: 'Click me'
 }
 ```
 
-Note: If multiple structures are embedded, fields and functions cannot have same name between them.
+Embedded struct like inherit , struct will automatically have the fields and functions from embedded struct.
+
+Embedded struct is not inherit, there is no parent-child relationship between embedded structs, and can't type cast.
+
+If multiple embedded structs have functions or fields with the same name, 
+or if functions or fields with the same name are defined in struct, 
+they can be called or assigned in a way similar to `button.Widget.area()`.
+
+You can also initialize an embedded struct like this
+```v
+button.Widget = Widget{
+  x: 4
+  y: 5
+}
+```
 
 ## Unions
 
