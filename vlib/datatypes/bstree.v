@@ -41,7 +41,7 @@ fn new_node<T>(parent &BSTreeNode<T>, value T) &BSTreeNode<T> {
 // new_none_node creates a dummy node.
 fn new_none_node<T>(init bool) &BSTreeNode<T> {
 	return &BSTreeNode<T>{
-		is_init: false
+		is_init: init
 	}
 }
 
