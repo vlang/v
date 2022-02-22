@@ -2157,9 +2157,10 @@ Embedded struct is not inherit, there is no parent-child relationship between em
 
 If multiple embedded structs have functions or fields with the same name, 
 or if functions or fields with the same name are defined in struct, 
-they can be called or assigned in a way similar to `button.Size.area()`.
+then call or assign embedded struct like `button.Size.area()`.
 
 You can also initialize an embedded struct like this
+
 ```v
 button.Size = Size{
   x: 4
