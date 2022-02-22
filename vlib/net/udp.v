@@ -8,8 +8,8 @@ const (
 )
 
 struct UdpSocket {
-	handle int
-	l      Addr
+	Socket
+	l Addr
 	// TODO(emily): replace with option again
 	// when i figure out how to coerce it properly
 mut:
@@ -257,11 +257,6 @@ fn new_udp_socket_for_remote(raddr Addr) ?&UdpSocket {
 	sock.r = raddr
 
 	return sock
-}
-
-// address gets the address of a socket
-pub fn (s &UdpSocket) address() ?Addr {
-	return addr_from_socket_handle(s.handle)
 }
 
 pub fn (mut s UdpSocket) set_option_bool(opt SocketOption, value bool) ? {

@@ -296,8 +296,7 @@ pub fn (c &TcpListener) addr() ?Addr {
 }
 
 struct TcpSocket {
-pub:
-	handle int
+	Socket
 }
 
 fn new_tcp_socket(family AddrFamily) ?TcpSocket {
@@ -417,9 +416,4 @@ fn (mut s TcpSocket) connect(a Addr) ? {
 
 	// otherwise we timed out
 	return err_connect_timed_out
-}
-
-// address gets the address of a socket
-pub fn (s &TcpSocket) address() ?Addr {
-	return addr_from_socket_handle(s.handle)
 }
