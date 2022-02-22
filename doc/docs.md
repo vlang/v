@@ -2151,7 +2151,7 @@ Button{
 
 Similar to inheritance, structs will automatically have the fields and methods from embedded structs.
 
-Unlike inheritance in OOP, you cannot type cast between structs and embedded structs.
+Unlike inheritance, you cannot type cast between structs and embedded structs.
 
 If you need to access embedded structs directly, use an explicit reference like `button.Size`.
 
@@ -2159,7 +2159,7 @@ Conceptually, embedded structs are similar to [mixin](https://en.wikipedia.org/w
 
 An embedded structs is responsible for implementing a small point and exposing a few methods, just like Lego blocks. 
 
-Don't bother to elaborate a bulky base class with huge methods. Needn't import a forest for a banana.
+It is not recommended to create a bulky base class with a huge number of fields or functions. There is no need to import a forest for a banana.
 
 >  The problem with object-oriented languages is they’ve got all this implicit environment that they carry around with them. You wanted a banana but what you got was a gorilla holding the banana and the entire jungle.
  
