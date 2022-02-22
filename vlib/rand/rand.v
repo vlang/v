@@ -24,13 +24,17 @@ mut:
 	free()
 }
 
+// byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
 [inline]
 pub fn (mut rng PRNG) byte() byte {
+	// TODO: Reimplement for all PRNGs efficiently
 	return byte(rng.u32() & 0xff)
 }
 
+// bytes returns a buffer of `bytes_needed` random bytes.
 [inline]
 pub fn (mut rng PRNG) bytes(bytes_needed int) ?[]byte {
+	// TODO: Reimplement for all PRNGs efficiently
 	if bytes_needed < 0 {
 		return error('can not read < 0 random bytes')
 	}
@@ -60,6 +64,7 @@ pub fn (mut rng PRNG) bytes(bytes_needed int) ?[]byte {
 	return res
 }
 
+// u32n returns a uniformly distributed pseudorandom 32-bit signed positive `u32` in range `[0, max)`.
 [inline]
 pub fn (mut rng PRNG) u32n(max u32) ?u32 {
 	if max == 0 {
@@ -91,6 +96,7 @@ pub fn (mut rng PRNG) u32n(max u32) ?u32 {
 	return u32(0)
 }
 
+// u64n returns a uniformly distributed pseudorandom 64-bit signed positive `u64` in range `[0, max)`.
 [inline]
 pub fn (mut rng PRNG) u64n(max u64) ?u64 {
 	if max == 0 {
@@ -116,6 +122,7 @@ pub fn (mut rng PRNG) u64n(max u64) ?u64 {
 	return u64(0)
 }
 
+// u32_in_range returns a uniformly distributed pseudorandom 32-bit unsigned `u32` in range `[min, max)`.
 [inline]
 pub fn (mut rng PRNG) u32_in_range(min u32, max u32) ?u32 {
 	if max <= min {
@@ -124,6 +131,7 @@ pub fn (mut rng PRNG) u32_in_range(min u32, max u32) ?u32 {
 	return min + rng.u32n(max - min) ?
 }
 
+// u64_in_range returns a uniformly distributed pseudorandom 64-bit unsigned `u64` in range `[min, max)`.
 [inline]
 pub fn (mut rng PRNG) u64_in_range(min u64, max u64) ?u64 {
 	if max <= min {
