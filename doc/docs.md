@@ -2110,18 +2110,18 @@ V support embedded structs .
 Basically, V embedding should work the same way as Golang embedding .
 
 ```v
-struct Widget {
+struct Size {
 mut:
-        x int
-        y int
+        width int
+        height int
 }
 
-fn (w &Widget) area() int {
-        return w.x * w.y
+fn (w &Size) area() int {
+        return w.width * w.height
 }
 
 struct Button {
-        Widget
+        Size
         title string
 }
 ```
@@ -2131,21 +2131,21 @@ With embedding Button auto have field and method from `Color` and `Widget` do:
 ```v oksyntax
 mut button := Button{
 	title: 'Click me'
-        y: 2
+        height: 2
 }
 
-button.x = 3
+button.width = 3
 assert button.area() == 6
-assert button.Widget.area() == 6
+assert button.Size.area() == 6
 print(button)
 ```
 
 output :
 ```v
 Button{
-    Widget: Widget{
-        x: 3
-        y: 2
+    Size: Size{
+        width: 3
+        height: 2
     }
     title: 'Click me'
 }
@@ -2157,11 +2157,11 @@ Embedded struct is not inherit, there is no parent-child relationship between em
 
 If multiple embedded structs have functions or fields with the same name, 
 or if functions or fields with the same name are defined in struct, 
-they can be called or assigned in a way similar to `button.Widget.area()`.
+they can be called or assigned in a way similar to `button.Size.area()`.
 
 You can also initialize an embedded struct like this
 ```v
-button.Widget = Widget{
+button.Size = Size{
   x: 4
   y: 5
 }
