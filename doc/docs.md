@@ -2110,26 +2110,27 @@ V support embedded structs .
 ```v
 struct Size {
 mut:
-        width int
-        height int
+	width  int
+	height int
 }
 
 fn (s &Size) area() int {
-        return s.width * s.height
+	return s.width * s.height
 }
 
 struct Button {
-        Size
-        title string
+	Size
+	title string
 }
 ```
 
-With embedding, `Button` automatically has all fields and methods from `Size`, which allows you to do:
+With embedding, the struct `Button` will automatically have get all the fields and methods from
+the struct `Size`, which allows you to do:
 
 ```v oksyntax
 mut button := Button{
-        title: 'Click me'
-        height: 2
+	title: 'Click me'
+	height: 2
 }
 
 button.width = 3
@@ -2139,7 +2140,7 @@ print(button)
 ```
 
 output :
-```v
+```
 Button{
     Size: Size{
         width: 3
@@ -2149,43 +2150,50 @@ Button{
 }
 ```
 
-Similar to inheritance, structs will automatically have the fields and methods from embedded structs.
+Slightly similar to inheritance, a struct will automatically get all the fields and methods
+from its embedded structs.
 
-Unlike inheritance, you cannot type cast between structs and embedded structs.
+Unlike inheritance however, you cannot type cast between structs and embedded structs
+(the embedding struct can also has its own fields, and it can also embed multiple structs).
 
 If you need to access embedded structs directly, use an explicit reference like `button.Size`.
 
-Conceptually, embedded structs are similar to [mixin](https://en.wikipedia.org/wiki/Mixin)s in OOP, not base classes.
+Conceptually, embedded structs are similar to [mixin](https://en.wikipedia.org/wiki/Mixin)s
+in OOP, *NOT* base classes.
 
-An embedded structs is responsible for implementing a common structure and exposing a few functions, just like Lego blocks.
+An embedded structs is responsible for implementing a common structure and exposing a few
+functions, just like Lego blocks.
 
-It is not recommended to create a bulky base class with a huge number of fields or functions. There is no need to import a forest for a banana.
+It is not recommended to create a bulky base class with a huge number of fields or functions.
+There is no need to import a forest for a banana.
 
->  The problem with object-oriented languages is they’ve got all this implicit environment that they carry around with them. You wanted a banana but what you got was a gorilla holding the banana and the entire jungle.
- 
+> The problem with object-oriented languages is they’ve got all this implicit environment
+> that they carry around with them. You wanted a banana but what you got was a gorilla
+> holding the banana and the entire jungle.
+
 —— Joe Armstrong, creator of Erlang progamming language
 
-If multiple embedded structs have methods or fields with the same name, 
-or if methods or fields with the same name are defined in the struct, 
-you can call functions or assign to variables in the embedded struct like `button.Size.area()`.
+If multiple embedded structs have methods or fields with the same name, or if methods or fields
+with the same name are defined in the struct, you can call functions or assign to variables in
+the embedded struct like `button.Size.area()`.
 
 You can also initialize an embedded struct:
 
-```v
+```v oksyntax
 mut button := Button{
-    Size: Size{
-        width: 3
-        height: 2
-    }
+	Size: Size{
+		width: 3
+		height: 2
+	}
 }
 ```
 
 or assign values:
 
-```v
+```v oksyntax
 button.Size = Size{
-  width: 4
-  height: 5
+	width: 4
+	height: 5
 }
 ```
 
