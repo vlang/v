@@ -2155,7 +2155,7 @@ Unlike inheritance, you cannot type cast between structs and embedded structs.
 
 If you need to access embedded structs directly, use an explicit reference like `button.Size`.
 
-Conceptually, embedded struct similar [mixin](https://en.wikipedia.org/wiki/Mixin) in OOP, not base class.
+Conceptually, embedded structs are similar to [mixin](https://en.wikipedia.org/wiki/Mixin)s in OOP, not base classes.
 
 An embedded structs is responsible for implementing a small point and exposing a few methods, just like Lego blocks. 
 
