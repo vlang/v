@@ -2159,7 +2159,7 @@ If multiple embedded structs have functions or fields with the same name,
 or if functions or fields with the same name are defined in struct, 
 then call or assign embedded struct like `button.Size.area()`.
 
-You can also initialize an embedded struct like this
+You can also initialize an embedded struct like :
 
 ```v
 mut button := Button{
@@ -2170,7 +2170,7 @@ mut button := Button{
 }
 ```
 
-or like assign this
+or assign like :
 
 ```v
 button.Size = Size{
