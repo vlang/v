@@ -2149,6 +2149,8 @@ Button{
 }
 ```
 
+Similar to inheritance, structs will automatically have the fields and methods from embedded structs.
+
 Unlike inheritance in OOP, you cannot type cast between structs and embedded structs.
 
 If you need to access embedded structs directly, use an explicit reference like `button.Size`.
