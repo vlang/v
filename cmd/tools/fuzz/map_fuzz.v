@@ -10,9 +10,9 @@ fn generate_strings(str_len int, arr_len int) []string {
 }
 
 fn fuzz1() {
-	amount := 200000 - rand.intn(100000)
-	amount2 := 200000 - rand.intn(100000)
-	len := 25 - rand.intn(10)
+	amount := 200000 - rand.intn(100000) or { 0 }
+	amount2 := 200000 - rand.intn(100000) or { 0 }
+	len := 25 - rand.intn(10) or { 0 }
 	arr := generate_strings(len, amount)
 	arr2 := generate_strings(len, amount2)
 	mut m := map[string]int{}
@@ -34,8 +34,8 @@ fn fuzz1() {
 
 fn fuzz2() {
 	mut m := map[string]int{}
-	amount := rand.intn(500000) + 1
-	len := 25 - rand.intn(10)
+	amount := rand.intn(500000) or { 0 } + 1
+	len := 25 - rand.intn(10) or { 0 }
 	arr := generate_strings(len, amount)
 	for i, x in arr {
 		m[x] = i
@@ -54,8 +54,8 @@ fn fuzz2() {
 
 fn fuzz3() {
 	mut m := map[string]int{}
-	amount := rand.intn(500000) + 1
-	len := 25 - rand.intn(10)
+	amount := rand.intn(500000) or { 0 } + 1
+	len := 25 - rand.intn(10) or { 0 }
 	arr := generate_strings(len, amount)
 	for i, x in arr {
 		if (i % 10000) == 0 {
@@ -74,8 +74,8 @@ fn fuzz3() {
 }
 
 fn fuzz4() {
-	amount := rand.intn(500000)
-	len := 25 - rand.intn(10)
+	amount := rand.intn(500000) or { 0 }
+	len := 25 - rand.intn(10) or { 0 }
 	arr := generate_strings(len, amount)
 	mut m := map[string]int{}
 	for i in 0 .. amount {
@@ -93,7 +93,7 @@ fn fuzz4() {
 }
 
 fn fuzz5() {
-	amount := rand.intn(500000) + 1
+	amount := rand.intn(500000) or { 0 } + 1
 	arr := generate_strings(20, amount)
 	mut m := map[string]int{}
 	for i in 0 .. amount {
@@ -114,8 +114,8 @@ fn fuzz5() {
 
 fn fuzz6() {
 	mut m := map[string]int{}
-	amount := rand.intn(500000) + 1
-	len := 25 - rand.intn(10)
+	amount := rand.intn(500000) or { 0 } + 1
+	len := 25 - rand.intn(10) or { 0 }
 	arr := generate_strings(len, amount)
 	for i, x in arr {
 		m[x]++
