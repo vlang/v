@@ -2132,16 +2132,16 @@ struct Button {
         Color
         title string
 }
-
-mut button := Button{
-        title: 'Click me'
-        y: 2
-}
 ```
 
 With embedding Button auto have field and method from the `Widget` and Color do:
 
 ```v oksyntax
+mut button := Button{
+	title: 'Click me'
+        y: 2
+}
+
 button.x = 3
 assert button.area() == 6
 button.r = 255
@@ -2164,8 +2164,7 @@ Button{
 }
 ```
 
-Note: If multiple structures are embedded, cannot have fields and functions with the same name between them.
-
+Note: If multiple structures are embedded, fields and functions cannot have same name between them.
 
 ## Unions
 
