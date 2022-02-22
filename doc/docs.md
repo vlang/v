@@ -87,11 +87,11 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Match](#match)
     * [Defer](#defer)
 * [Structs](#structs)
-    * [Embedded structs](#embedded-structs)
     * [Default field values](#default-field-values)
     * [Short struct literal syntax](#short-struct-literal-syntax)
     * [Access modifiers](#access-modifiers)
     * [Methods](#methods)
+    * [Embedded structs](#embedded-structs)
 * [Unions](#unions)
 
 </td><td width=33% valign=top>
@@ -1920,33 +1920,6 @@ println(p.x)
 The type of `p` is `&Point`. It's a [reference](#references) to `Point`.
 References are similar to Go pointers and C++ references.
 
-### Embedded structs
-
-V doesn't allow subclassing, but it supports embedded structs:
-
-```v
-struct Widget {
-mut:
-	x int
-	y int
-}
-
-struct Button {
-	Widget
-	title string
-}
-
-mut button := Button{
-	title: 'Click me'
-}
-button.x = 3
-```
-Without embedding we'd have to name the `Widget` field and do:
-
-```v oksyntax
-button.widget.x = 3
-```
-
 ### Default field values
 
 ```v
@@ -2129,6 +2102,70 @@ Methods must be in the same module as the receiver type.
 In this example, the `can_register` method has a receiver of type `User` named `u`.
 The convention is not to use receiver names like `self` or `this`,
 but a short, preferably one letter long, name.
+
+### Embedded structs
+
+V supports embedded structs , similar to inherit, parent-subclasses in other programming languages.
+
+Unlike inherit in other programming languages, Embedded struct in v is just [mixin](https://en.wikipedia.org/wiki/Mixin), where there is no parent-child relationship between embedded structs, and can't type cast.
+
+```v
+struct Color {
+mut:
+        r byte
+        g byte
+        b byte
+}
+
+struct Widget {
+mut:
+        x int
+        y int
+}
+
+fn (w &Widget) area() int {
+        return w.x * w.y
+}
+
+struct Button {
+        Widget
+        Color
+        title string
+}
+
+mut button := Button{
+        title: 'Click me'
+        y: 2
+}
+```
+
+With embedding Button auto have field and method from the `Widget` and Color do:
+
+```v oksyntax
+button.x = 3
+assert button.area() == 6
+button.r = 255
+print(button)
+```
+
+output :
+```v
+Button{
+    Widget: Widget{
+        x: 3
+        y: 2
+    }
+    Color: Color{
+        r: 255
+        g: 0
+        b: 0
+    }
+    title: 'Click me'
+}
+```
+
+Note: If multiple structures are embedded, cannot have fields and functions with the same name between them.
+
 
 ## Unions
 
