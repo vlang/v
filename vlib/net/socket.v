@@ -1,7 +1,8 @@
 module net
 
 pub struct Socket {
-	pub handle int
+	pub:
+	handle int
 }
 
 // address gets the address of a socket
