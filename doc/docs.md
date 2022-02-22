@@ -2153,7 +2153,7 @@ Embedded struct like inheritance, struct will automatically have the fields and 
 
 Unlike inheritance, you cannot type cast between structs and embedded structs.
 
-If you want to access embedded structs, write something like `button.Size`.
+If you need to access embedded structs directly, use an explicit reference like `button.Size`.
 
 Conceptually, embedded struct similar [mixin](https://en.wikipedia.org/wiki/Mixin) in OOP, not base class.
 
