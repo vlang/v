@@ -10,6 +10,7 @@ fn test_all_samples_can_be_compiled() {
 		res := os.execute(compile_cmd)
 		if res.exit_code != 0 {
 			eprintln('>>> FAIL $compile_cmd')
+			eprintln(res.output)
 			fails << compile_cmd
 		}
 		println('OK $compile_cmd')
