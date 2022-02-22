@@ -2128,7 +2128,7 @@ With embedding, `Button` automatically has all fields and methods from `Size`, w
 
 ```v oksyntax
 mut button := Button{
-    title: 'Click me'
+        title: 'Click me'
         height: 2
 }
 
@@ -2149,9 +2149,7 @@ Button{
 }
 ```
 
-Embedded struct like inheritance, struct will automatically have the fields and methods from embedded struct.
-
-Unlike inheritance, you cannot type cast between structs and embedded structs.
+Unlike inheritance in OOP, you cannot type cast between structs and embedded structs.
 
 If you need to access embedded structs directly, use an explicit reference like `button.Size`.
 
@@ -2166,7 +2164,7 @@ Don't bother to elaborate a bulky base class with huge methods. Needn't import a
 —— Joe Armstrong, creator of Erlang progamming language
 
 If multiple embedded structs have methods or fields with the same name, 
-or if methods or fields with the same name are defined in struct, 
+or if methods or fields with the same name are defined in the struct, 
 then call or assign embedded struct like `button.Size.area()`.
 
 You can also initialize an embedded struct:
