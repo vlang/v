@@ -1145,7 +1145,7 @@ println(a) // `[2, 2, 2, 13, 2, 3, 4]`
 println(b) // `[2, 3, 13]`
 ```
 
-for immidaite realoocation and become independent you can call `.clone()` after slice brackets:
+for immidaite reallocation and become independent you can call `.clone()` after slice brackets:
 ```v
 mut a := [0, 1, 2, 3, 4, 5]
 mut b := a[2..4].colne()
