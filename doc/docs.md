@@ -2151,9 +2151,21 @@ Button{
 }
 ```
 
-Embedded struct like inheritance , struct will automatically have the fields and functions from embedded struct.
+Embedded struct like inheritance, struct will automatically have the fields and functions from embedded struct.
 
-Embedded struct is not inheritance , there is no parent-child relationship between embedded structs, and can't type cast.
+Embedded struct is not inheritance, can't type cast between structs and embedded structs.
+
+If you want to access embedded structs, write something like `button.Size`.
+
+Conceptually, embedded struct similar [mixin](https://en.wikipedia.org/wiki/Mixin) in OOP, not base class.
+
+An embedded structs is responsible for implementing a small point and exposing a few functions, just like Lego blocks. 
+
+Don't bother to elaborate a bulky base class with huge functions. Needn't import a forest for a banana.
+
+>  The problem with object-oriented languages is they’ve got all this implicit environment that they carry around with them. You wanted a banana but what you got was a gorilla holding the banana and the entire jungle.
+ 
+—— Joe Armstrong, creator of Erlang progamming language
 
 If multiple embedded structs have functions or fields with the same name, 
 or if functions or fields with the same name are defined in struct, 
