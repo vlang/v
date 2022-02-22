@@ -2151,9 +2151,9 @@ Button{
 }
 ```
 
-Embedded struct like inherit , struct will automatically have the fields and functions from embedded struct.
+Embedded struct like inheritance , struct will automatically have the fields and functions from embedded struct.
 
-Embedded struct is not inherit, there is no parent-child relationship between embedded structs, and can't type cast.
+Embedded struct is not inheritance , there is no parent-child relationship between embedded structs, and can't type cast.
 
 If multiple embedded structs have functions or fields with the same name, 
 or if functions or fields with the same name are defined in struct, 
