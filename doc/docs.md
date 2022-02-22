@@ -2174,8 +2174,8 @@ You can also initialize an embedded struct:
 ```v
 mut button := Button{
     Size: Size{
-        x: 4
-        y: 5
+        width: 3
+        height: 2
     }
 }
 ```
@@ -2184,8 +2184,8 @@ or assign values:
 
 ```v
 button.Size = Size{
-  x: 4
-  y: 5
+  width: 4
+  height: 5
 }
 ```
 
