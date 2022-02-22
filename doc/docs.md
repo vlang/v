@@ -2151,7 +2151,7 @@ Button{
 
 Embedded struct like inheritance, struct will automatically have the fields and methods from embedded struct.
 
-Embedded struct is not inheritance, can't type cast between structs and embedded structs.
+Unlike inheritance, you cannot type cast between structs and embedded structs.
 
 If you want to access embedded structs, write something like `button.Size`.
 
