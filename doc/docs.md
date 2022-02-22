@@ -87,11 +87,11 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Match](#match)
     * [Defer](#defer)
 * [Structs](#structs)
-    * [Embedded structs](#embedded-structs)
     * [Default field values](#default-field-values)
     * [Short struct literal syntax](#short-struct-literal-syntax)
     * [Access modifiers](#access-modifiers)
     * [Methods](#methods)
+    * [Embedded structs](#embedded-structs)
 * [Unions](#unions)
 
 </td><td width=33% valign=top>
@@ -1929,33 +1929,6 @@ println(p.x)
 The type of `p` is `&Point`. It's a [reference](#references) to `Point`.
 References are similar to Go pointers and C++ references.
 
-### Embedded structs
-
-V doesn't allow subclassing, but it supports embedded structs:
-
-```v
-struct Widget {
-mut:
-	x int
-	y int
-}
-
-struct Button {
-	Widget
-	title string
-}
-
-mut button := Button{
-	title: 'Click me'
-}
-button.x = 3
-```
-Without embedding we'd have to name the `Widget` field and do:
-
-```v oksyntax
-button.widget.x = 3
-```
-
 ### Default field values
 
 ```v
@@ -2138,6 +2111,100 @@ Methods must be in the same module as the receiver type.
 In this example, the `can_register` method has a receiver of type `User` named `u`.
 The convention is not to use receiver names like `self` or `this`,
 but a short, preferably one letter long, name.
+
+### Embedded structs
+
+V support embedded structs .
+
+```v
+struct Size {
+mut:
+	width  int
+	height int
+}
+
+fn (s &Size) area() int {
+	return s.width * s.height
+}
+
+struct Button {
+	Size
+	title string
+}
+```
+
+With embedding, the struct `Button` will automatically have get all the fields and methods from
+the struct `Size`, which allows you to do:
+
+```v oksyntax
+mut button := Button{
+	title: 'Click me'
+	height: 2
+}
+
+button.width = 3
+assert button.area() == 6
+assert button.Size.area() == 6
+print(button)
+```
+
+output :
+```
+Button{
+    Size: Size{
+        width: 3
+        height: 2
+    }
+    title: 'Click me'
+}
+```
+
+Slightly similar to inheritance, a struct will automatically get all the fields and methods
+from its embedded structs.
+
+Unlike inheritance however, you cannot type cast between structs and embedded structs
+(the embedding struct can also has its own fields, and it can also embed multiple structs).
+
+If you need to access embedded structs directly, use an explicit reference like `button.Size`.
+
+Conceptually, embedded structs are similar to [mixin](https://en.wikipedia.org/wiki/Mixin)s
+in OOP, *NOT* base classes.
+
+An embedded structs is responsible for implementing a common structure and exposing a few
+functions, just like Lego blocks.
+
+It is not recommended to create a bulky base class with a huge number of fields or functions.
+There is no need to import a forest for a banana.
+
+> The problem with object-oriented languages is they’ve got all this implicit environment
+> that they carry around with them. You wanted a banana but what you got was a gorilla
+> holding the banana and the entire jungle.
+
+—— Joe Armstrong, creator of Erlang progamming language
+
+If multiple embedded structs have methods or fields with the same name, or if methods or fields
+with the same name are defined in the struct, you can call functions or assign to variables in
+the embedded struct like `button.Size.area()`.
+
+You can also initialize an embedded struct:
+
+```v oksyntax
+mut button := Button{
+	Size: Size{
+		width: 3
+		height: 2
+	}
+}
+```
+
+or assign values:
+
+```v oksyntax
+button.Size = Size{
+	width: 4
+	height: 5
+}
+```
 
 ## Unions
 
