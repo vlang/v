@@ -30,7 +30,7 @@ pub fn sample_r<T>(array []T, k int) []T {
 	n := array.len
 	mut results := []T{len: k}
 	for i in 0 .. k {
-		results[i] = array[rand.intn(n)]
+		results[i] = array[rand.intn(n) or { 0 }]
 	}
 	return results
 }
@@ -43,7 +43,7 @@ pub fn shuffle<T>(mut a []T, n int) {
 	}
 	cnt := if n == 0 { a.len - 1 } else { n }
 	for i in 0 .. cnt {
-		x := rand.int_in_range(i, a.len)
+		x := rand.int_in_range(i, a.len) or { 0 }
 		// swap
 		a_i := a[i]
 		a[i] = a[x]
