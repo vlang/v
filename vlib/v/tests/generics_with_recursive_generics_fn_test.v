@@ -8,7 +8,7 @@ const (
 fn test_generics_with_recursive_generics_fn() {
 	mut arr := []int{}
 	for _ in 0 .. gen_len {
-		arr << rand.intn(gen_max)
+		arr << rand.intn(gen_max) or { 0 }
 	}
 	println('before quick sort whether array is sorted: ${is_sorted<int>(arr)}')
 	assert !is_sorted<int>(arr)

@@ -75,7 +75,7 @@ pub fn temp_dir(tdo TempFileOptions) ?string {
 
 // * Utility functions
 fn random_number() string {
-	s := (1_000_000_000 + (u32(os.getpid()) + rand.u32n(1_000_000_000))).str()
+	s := (1_000_000_000 + (u32(os.getpid()) + rand.u32n(1_000_000_000) or { 0 })).str()
 	return s.substr(1, s.len)
 }
 

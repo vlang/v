@@ -20,7 +20,7 @@ fn htonl64(payload_len u64) []byte {
 
 // create_masking_key returs a new masking key to use when masking websocket messages
 fn create_masking_key() []byte {
-	mask_bit := byte(rand.intn(255))
+	mask_bit := rand.byte()
 	buf := []byte{len: 4, init: `0`}
 	unsafe { C.memcpy(buf.data, &mask_bit, 4) }
 	return buf
@@ -48,7 +48,7 @@ fn get_nonce(nonce_size int) string {
 	mut nonce := []byte{len: nonce_size, cap: nonce_size}
 	alphanum := '0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz'
 	for i in 0 .. nonce_size {
-		nonce[i] = alphanum[rand.intn(alphanum.len)]
+		nonce[i] = alphanum[rand.intn(alphanum.len) or { 0 }]
 	}
 	return unsafe { tos(nonce.data, nonce.len) }.clone()
 }

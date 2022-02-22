@@ -82,16 +82,16 @@ const (
 
 fn generate_weird_field_element() Element {
 	return Element{
-		l0: edwards25519.weird_limbs_52[rand.intn(edwards25519.weird_limbs_52.len)]
-		l1: edwards25519.weird_limbs_51[rand.intn(edwards25519.weird_limbs_51.len)]
-		l2: edwards25519.weird_limbs_51[rand.intn(edwards25519.weird_limbs_51.len)]
-		l3: edwards25519.weird_limbs_51[rand.intn(edwards25519.weird_limbs_51.len)]
-		l4: edwards25519.weird_limbs_51[rand.intn(edwards25519.weird_limbs_51.len)]
+		l0: edwards25519.weird_limbs_52[rand.intn(edwards25519.weird_limbs_52.len) or { 0 }]
+		l1: edwards25519.weird_limbs_51[rand.intn(edwards25519.weird_limbs_51.len) or { 0 }]
+		l2: edwards25519.weird_limbs_51[rand.intn(edwards25519.weird_limbs_51.len) or { 0 }]
+		l3: edwards25519.weird_limbs_51[rand.intn(edwards25519.weird_limbs_51.len) or { 0 }]
+		l4: edwards25519.weird_limbs_51[rand.intn(edwards25519.weird_limbs_51.len) or { 0 }]
 	}
 }
 
 fn (e Element) generate_element() Element {
-	if rand.intn(2) == 0 {
+	if rand.intn(2) or { 0 } == 0 {
 		return generate_weird_field_element()
 	}
 	return generate_field_element()
