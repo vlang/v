@@ -20,6 +20,38 @@ mut:
 	decrypt bool
 }
 
+// new_cfb_encrypter returns a `Cfb` which encrypts with cipher feedback mode,
+// using the given Block. The iv must be the same length as the Block's block
+// size
+pub fn new_cfb_encrypter(b Block, iv []byte) Cfb {
+	return new_cfb(b, iv, false)
+}
+
+// new_cfb_decrypter returns a `Cfb` which decrypts with cipher feedback mode,
+// using the given Block. The iv must be the same length as the Block's block
+// size
+pub fn new_cfb_decrypter(b Block, iv []byte) Cfb {
+	return new_cfb(b, iv, true)
+}
+
+fn new_cfb(b Block, iv []byte, decrypt bool) Cfb {
+	block_size := b.block_size
+	if iv.len != block_size {
+		panic('cipher.new_cfb: IV length must be equal block size')
+	}
+	x := Cfb{
+		b: b
+		out: []byte{len: b.block_size}
+		next: []byte{len: b.block_size}
+		out_used: block_size
+		decrypt: decrypt
+	}
+
+	copy(x.next, iv)
+
+	return x
+}
+
 pub fn (x &Cfb) xor_key_stream(mut dst_ []byte, src_ []byte) {
 	unsafe {
 		mut dst := *dst_
@@ -51,36 +83,4 @@ pub fn (x &Cfb) xor_key_stream(mut dst_ []byte, src_ []byte) {
 			x.out_used += n
 		}
 	}
-}
-
-// new_cfb_encrypter returns a `Cfb` which encrypts with cipher feedback mode,
-// using the given Block. The iv must be the same length as the Block's block
-// size
-pub fn new_cfb_encrypter(b Block, iv []byte) Cfb {
-	return new_cfb(b, iv, false)
-}
-
-// new_cfb_decrypter returns a `Cfb` which decrypts with cipher feedback mode,
-// using the given Block. The iv must be the same length as the Block's block
-// size
-pub fn new_cfb_decrypter(b Block, iv []byte) Cfb {
-	return new_cfb(b, iv, true)
-}
-
-fn new_cfb(b Block, iv []byte, decrypt bool) Cfb {
-	block_size := b.block_size
-	if iv.len != block_size {
-		panic('cipher.new_cfb: IV length must be equal block size')
-	}
-	x := Cfb{
-		b: b
-		out: []byte{len: b.block_size}
-		next: []byte{len: b.block_size}
-		out_used: block_size
-		decrypt: decrypt
-	}
-
-	copy(x.next, iv)
-
-	return x
 }
