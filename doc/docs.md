@@ -1145,6 +1145,15 @@ println(a) // `[2, 2, 2, 13, 2, 3, 4]`
 println(b) // `[2, 3, 13]`
 ```
 
+You can call .clone() on the slice, if you do want to have an independent copy right away:
+```v
+mut a := [0, 1, 2, 3, 4, 5]
+mut b := a[2..4].clone()
+b[0] = 7 // NB: `b[0]` is NOT referring to `a[2]`, as it would have been, without the .clone()
+println(a) // [0, 1, 2, 3, 4, 5]
+println(b) // [7, 3]
+```
+
 ### Slices with negative indexes
 
 V supports array and string slices with negative indexes.
