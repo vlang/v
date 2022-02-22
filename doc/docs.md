@@ -2107,8 +2107,6 @@ but a short, preferably one letter long, name.
 
 V support embedded structs .
 
-Basically, V embedding should work the same way as Golang embedding .
-
 ```v
 struct Size {
 mut:
