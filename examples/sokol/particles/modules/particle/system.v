@@ -68,10 +68,11 @@ pub fn (mut s System) explode(x f32, y f32) {
 		p = s.bin[i]
 		p.reset()
 		p.location.from(center)
-		p.acceleration = vec2.Vec2{rand.f32_in_range(-0.5, 0.5), rand.f32_in_range(-0.5,
-			0.5)}
-		p.velocity = vec2.Vec2{rand.f32_in_range(-0.5, 0.5), rand.f32_in_range(-0.5, 0.5)}
-		p.life_time = rand.f64_in_range(500, 2000)
+		p.acceleration = vec2.Vec2{rand.f32_in_range(-0.5, 0.5) or { -0.5 }, rand.f32_in_range(-0.5,
+			0.5) or { -0.5 }}
+		p.velocity = vec2.Vec2{rand.f32_in_range(-0.5, 0.5) or { -0.5 }, rand.f32_in_range(-0.5,
+			0.5) or { -0.5 }}
+		p.life_time = rand.f64_in_range(500, 2000) or { 500 }
 		s.pool << p
 		s.bin.delete(i)
 		reserve--

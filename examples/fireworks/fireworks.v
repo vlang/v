@@ -32,7 +32,7 @@ fn on_frame(mut app App) {
 	}
 
 	// chance of firing new rocket
-	if rand.intn(30) == 0 {
+	if rand.intn(30) or { 0 } == 0 {
 		app.rockets << objects.new_rocket()
 	}
 	// simulating rockets

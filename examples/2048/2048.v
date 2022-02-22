@@ -390,10 +390,11 @@ fn (mut b Board) place_random_tile() (Pos, int) {
 		}
 	}
 	if empty_tiles_max > 0 {
-		new_random_tile_index := rand.intn(empty_tiles_max)
+		new_random_tile_index := rand.intn(empty_tiles_max) or { 0 }
 		empty_pos := etiles[new_random_tile_index]
 		// 10% chance of getting a `4` tile
-		random_value := if rand.f64n(1.0) < 0.9 { 1 } else { 2 }
+		value := rand.f64n(1.0) or { 0.0 }
+		random_value := if value < 0.9 { 1 } else { 2 }
 		b.field[empty_pos.y][empty_pos.x] = random_value
 		return empty_pos, random_value
 	}
@@ -465,7 +466,7 @@ fn (mut app App) ai_move() {
 			cboard.place_random_tile()
 			mut cmoves := 0
 			for !cboard.is_game_over() {
-				nmove := possible_moves[rand.intn(possible_moves.len)]
+				nmove := possible_moves[rand.intn(possible_moves.len) or { 0 }]
 				cboard, is_valid = cboard.move(nmove)
 				if !is_valid {
 					continue

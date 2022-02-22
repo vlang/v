@@ -18,7 +18,7 @@ pub fn (vector Vector) mult(scalar f32) Vector {
 }
 
 pub fn random_vector_in_circle() Vector {
-	theta := rand.f32n(2 * math.pi)
+	theta := rand.f32n(2 * math.pi) or { 0 }
 	y := rand.f32()
 
 	return Vector{

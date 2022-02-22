@@ -33,7 +33,7 @@ fn main() {
 
 	mut generation_bin := []int{len: n}
 	for i in 0 .. n {
-		generation_bin[i] = rand.intn(2)
+		generation_bin[i] = rand.intn(2) or { 0 }
 	}
 	print('\n')
 

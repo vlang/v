@@ -51,11 +51,11 @@ pub fn new_rocket() Rocket {
 	return Rocket{
 		color: random_color()
 		pos: Vector{
-			x: rand.f32_in_range(50, get_params().width - 50)
+			x: rand.f32_in_range(50, get_params().width - 50) or { 50 }
 		}
 		vel: Vector{
-			x: rand.f32_in_range(-1.5, 1.5)
-			y: rand.f32_in_range(5, 7)
+			x: rand.f32_in_range(-1.5, 1.5) or { -1.5 }
+			y: rand.f32_in_range(5, 7) or { 5 }
 		}
 	}
 }
