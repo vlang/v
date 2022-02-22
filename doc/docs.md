@@ -2116,8 +2116,8 @@ mut:
         height int
 }
 
-fn (w &Size) area() int {
-        return w.width * w.height
+fn (s &Size) area() int {
+        return s.width * s.height
 }
 
 struct Button {
@@ -2160,6 +2160,17 @@ or if functions or fields with the same name are defined in struct,
 then call or assign embedded struct like `button.Size.area()`.
 
 You can also initialize an embedded struct like this
+
+```v
+mut button := Button{
+    Size: Size{
+        x: 4
+        y: 5
+    }
+}
+```
+
+or like assign this
 
 ```v
 button.Size = Size{
