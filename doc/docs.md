@@ -2167,7 +2167,7 @@ It is not recommended to create a bulky base class with a huge number of fields 
 
 If multiple embedded structs have methods or fields with the same name, 
 or if methods or fields with the same name are defined in the struct, 
-then call or assign embedded struct like `button.Size.area()`.
+you can call functions or assign to variables in the embedded struct like `button.Size.area()`.
 
 You can also initialize an embedded struct:
 
