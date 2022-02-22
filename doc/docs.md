@@ -2157,7 +2157,7 @@ If you need to access embedded structs directly, use an explicit reference like 
 
 Conceptually, embedded structs are similar to [mixin](https://en.wikipedia.org/wiki/Mixin)s in OOP, not base classes.
 
-An embedded structs is responsible for implementing a small point and exposing a few methods, just like Lego blocks. 
+An embedded structs is responsible for implementing a common structure and exposing a few functions, just like Lego blocks.
 
 It is not recommended to create a bulky base class with a huge number of fields or functions. There is no need to import a forest for a banana.
 
