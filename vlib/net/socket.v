@@ -1,7 +1,7 @@
 module net
 
 pub struct Socket {
-	pub:
+pub:
 	handle int
 }
 
