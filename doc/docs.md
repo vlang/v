@@ -2180,7 +2180,7 @@ mut button := Button{
 }
 ```
 
-or assign like :
+or assign values:
 
 ```v
 button.Size = Size{
