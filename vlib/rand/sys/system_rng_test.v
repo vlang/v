@@ -1,4 +1,5 @@
 import math
+import rand
 import rand.sys
 
 const (
@@ -13,7 +14,7 @@ const (
 	inv_sqrt_12   = 1.0 / math.sqrt(12)
 )
 
-fn get_n_randoms(n int, r sys.SysRNG) []int {
+fn get_n_randoms(n int, mut r rand.PRNG) []int {
 	mut ints := []int{cap: n}
 	for _ in 0 .. n {
 		ints << r.int()
@@ -28,25 +29,14 @@ fn test_sys_rng_reproducibility() {
 	// seed for another batch of data.
 	for seed in seeds {
 		seed_data := [seed]
-		mut r1 := sys.SysRNG{}
-		mut r2 := sys.SysRNG{}
+		mut r1 := &rand.PRNG(&sys.SysRNG{})
+		mut r2 := &rand.PRNG(&sys.SysRNG{})
 		r1.seed(seed_data)
-		ints1 := get_n_randoms(value_count, r1)
+		ints1 := get_n_randoms(value_count, mut r1)
 		r2.seed(seed_data)
-		ints2 := get_n_randoms(value_count, r2)
+		ints2 := get_n_randoms(value_count, mut r2)
 		assert ints1 == ints2
 	}
-}
-
-// TODO: use the `in` syntax and remove this function
-// after generics has been completely implemented
-fn found(value u64, arr []u64) bool {
-	for item in arr {
-		if value == item {
-			return true
-		}
-	}
-	return false
 }
 
 fn test_sys_rng_variability() {
@@ -55,24 +45,24 @@ fn test_sys_rng_variability() {
 	// improbable but not impossible.
 	for seed in seeds {
 		seed_data := [seed]
-		mut rng := sys.SysRNG{}
+		mut rng := &rand.PRNG(&sys.SysRNG{})
 		rng.seed(seed_data)
 		mut values := []u64{cap: value_count}
 		for i in 0 .. value_count {
 			value := rng.u64()
-			assert !found(value, values)
+			assert value !in values
 			assert values.len == i
 			values << value
 		}
 	}
 }
 
-fn check_uniformity_u64(rng sys.SysRNG, range u64) {
+fn check_uniformity_u64(mut rng rand.PRNG, range u64) {
 	range_f64 := f64(range)
 	expected_mean := range_f64 / 2.0
 	mut variance := 0.0
 	for _ in 0 .. sample_size {
-		diff := f64(rng.u64n(range)) - expected_mean
+		diff := f64(rng.u64n(range) or { panic("Couldn't obtain u64") }) - expected_mean
 		variance += diff * diff
 	}
 	variance /= sample_size - 1
@@ -88,15 +78,15 @@ fn test_sys_rng_uniformity_u64() {
 	ranges := [14019545, 80240, 130]
 	for seed in seeds {
 		seed_data := [seed]
-		mut rng := sys.SysRNG{}
+		mut rng := &rand.PRNG(&sys.SysRNG{})
 		rng.seed(seed_data)
 		for range in ranges {
-			check_uniformity_u64(rng, u64(range))
+			check_uniformity_u64(mut rng, u64(range))
 		}
 	}
 }
 
-fn check_uniformity_f64(rng sys.SysRNG) {
+fn check_uniformity_f64(mut rng rand.PRNG) {
 	expected_mean := 0.5
 	mut variance := 0.0
 	for _ in 0 .. sample_size {
@@ -114,9 +104,9 @@ fn test_sys_rng_uniformity_f64() {
 	// The f64 version
 	for seed in seeds {
 		seed_data := [seed]
-		mut rng := sys.SysRNG{}
+		mut rng := &rand.PRNG(&sys.SysRNG{})
 		rng.seed(seed_data)
-		check_uniformity_f64(rng)
+		check_uniformity_f64(mut rng)
 	}
 }
 
@@ -124,10 +114,10 @@ fn test_sys_rng_u32n() {
 	max := u32(16384)
 	for seed in seeds {
 		seed_data := [seed]
-		mut rng := sys.SysRNG{}
+		mut rng := &rand.PRNG(&sys.SysRNG{})
 		rng.seed(seed_data)
 		for _ in 0 .. range_limit {
-			value := rng.u32n(max)
+			value := rng.u32n(max) or { panic("Couldn't obtain u32") }
 			assert value >= 0
 			assert value < max
 		}
@@ -138,10 +128,10 @@ fn test_sys_rng_u64n() {
 	max := u64(379091181005)
 	for seed in seeds {
 		seed_data := [seed]
-		mut rng := sys.SysRNG{}
+		mut rng := &rand.PRNG(&sys.SysRNG{})
 		rng.seed(seed_data)
 		for _ in 0 .. range_limit {
-			value := rng.u64n(max)
+			value := rng.u64n(max) or { panic("Couldn't obtain u64") }
 			assert value >= 0
 			assert value < max
 		}
@@ -153,10 +143,10 @@ fn test_sys_rng_u32_in_range() {
 	min := u32(316846)
 	for seed in seeds {
 		seed_data := [seed]
-		mut rng := sys.SysRNG{}
+		mut rng := &rand.PRNG(&sys.SysRNG{})
 		rng.seed(seed_data)
 		for _ in 0 .. range_limit {
-			value := rng.u32_in_range(min, max)
+			value := rng.u32_in_range(min, max) or { panic("Couldn't obtain u32 in range") }
 			assert value >= min
 			assert value < max
 		}
@@ -168,10 +158,10 @@ fn test_sys_rng_u64_in_range() {
 	min := u64(6848646868)
 	for seed in seeds {
 		seed_data := [seed]
-		mut rng := sys.SysRNG{}
+		mut rng := &rand.PRNG(&sys.SysRNG{})
 		rng.seed(seed_data)
 		for _ in 0 .. range_limit {
-			value := rng.u64_in_range(min, max)
+			value := rng.u64_in_range(min, max) or { panic("Couldn't obtain u64 in range") }
 			assert value >= min
 			assert value < max
 		}
@@ -182,10 +172,10 @@ fn test_sys_rng_intn() {
 	max := 2525642
 	for seed in seeds {
 		seed_data := [seed]
-		mut rng := sys.SysRNG{}
+		mut rng := &rand.PRNG(&sys.SysRNG{})
 		rng.seed(seed_data)
 		for _ in 0 .. range_limit {
-			value := rng.intn(max)
+			value := rng.intn(max) or { panic("Couldn't obtain int") }
 			assert value >= 0
 			assert value < max
 		}
@@ -196,10 +186,10 @@ fn test_sys_rng_i64n() {
 	max := i64(3246727724653636)
 	for seed in seeds {
 		seed_data := [seed]
-		mut rng := sys.SysRNG{}
+		mut rng := &rand.PRNG(&sys.SysRNG{})
 		rng.seed(seed_data)
 		for _ in 0 .. range_limit {
-			value := rng.i64n(max)
+			value := rng.i64n(max) or { panic("Couldn't obtain i64") }
 			assert value >= 0
 			assert value < max
 		}
@@ -211,10 +201,10 @@ fn test_sys_rng_int_in_range() {
 	max := 23054962
 	for seed in seeds {
 		seed_data := [seed]
-		mut rng := sys.SysRNG{}
+		mut rng := &rand.PRNG(&sys.SysRNG{})
 		rng.seed(seed_data)
 		for _ in 0 .. range_limit {
-			value := rng.int_in_range(min, max)
+			value := rng.int_in_range(min, max) or { panic("Couldn't obtain int in range") }
 			assert value >= min
 			assert value < max
 		}
@@ -226,10 +216,10 @@ fn test_sys_rng_i64_in_range() {
 	max := i64(324058)
 	for seed in seeds {
 		seed_data := [seed]
-		mut rng := sys.SysRNG{}
+		mut rng := &rand.PRNG(&sys.SysRNG{})
 		rng.seed(seed_data)
 		for _ in 0 .. range_limit {
-			value := rng.i64_in_range(min, max)
+			value := rng.i64_in_range(min, max) or { panic("Couldn't obtain i64 in range") }
 			assert value >= min
 			assert value < max
 		}
@@ -241,7 +231,7 @@ fn test_sys_rng_int31() {
 	sign_mask := int(0x80000000)
 	for seed in seeds {
 		seed_data := [seed]
-		mut rng := sys.SysRNG{}
+		mut rng := &rand.PRNG(&sys.SysRNG{})
 		rng.seed(seed_data)
 		for _ in 0 .. range_limit {
 			value := rng.int31()
@@ -258,7 +248,7 @@ fn test_sys_rng_int63() {
 	sign_mask := i64(0x8000000000000000)
 	for seed in seeds {
 		seed_data := [seed]
-		mut rng := sys.SysRNG{}
+		mut rng := &rand.PRNG(&sys.SysRNG{})
 		rng.seed(seed_data)
 		for _ in 0 .. range_limit {
 			value := rng.int63()
@@ -272,7 +262,7 @@ fn test_sys_rng_int63() {
 fn test_sys_rng_f32() {
 	for seed in seeds {
 		seed_data := [seed]
-		mut rng := sys.SysRNG{}
+		mut rng := &rand.PRNG(&sys.SysRNG{})
 		rng.seed(seed_data)
 		for _ in 0 .. range_limit {
 			value := rng.f32()
@@ -285,7 +275,7 @@ fn test_sys_rng_f32() {
 fn test_sys_rng_f64() {
 	for seed in seeds {
 		seed_data := [seed]
-		mut rng := sys.SysRNG{}
+		mut rng := &rand.PRNG(&sys.SysRNG{})
 		rng.seed(seed_data)
 		for _ in 0 .. range_limit {
 			value := rng.f64()
@@ -299,10 +289,10 @@ fn test_sys_rng_f32n() {
 	max := f32(357.0)
 	for seed in seeds {
 		seed_data := [seed]
-		mut rng := sys.SysRNG{}
+		mut rng := &rand.PRNG(&sys.SysRNG{})
 		rng.seed(seed_data)
 		for _ in 0 .. range_limit {
-			value := rng.f32n(max)
+			value := rng.f32n(max) or { panic("Couldn't obtain f32") }
 			assert value >= 0.0
 			assert value < max
 		}
@@ -313,10 +303,10 @@ fn test_sys_rng_f64n() {
 	max := 1.52e6
 	for seed in seeds {
 		seed_data := [seed]
-		mut rng := sys.SysRNG{}
+		mut rng := &rand.PRNG(&sys.SysRNG{})
 		rng.seed(seed_data)
 		for _ in 0 .. range_limit {
-			value := rng.f64n(max)
+			value := rng.f64n(max) or { panic("Couldn't obtain f64") }
 			assert value >= 0.0
 			assert value < max
 		}
@@ -328,10 +318,10 @@ fn test_sys_rng_f32_in_range() {
 	max := f32(125.0)
 	for seed in seeds {
 		seed_data := [seed]
-		mut rng := sys.SysRNG{}
+		mut rng := &rand.PRNG(&sys.SysRNG{})
 		rng.seed(seed_data)
 		for _ in 0 .. range_limit {
-			value := rng.f32_in_range(min, max)
+			value := rng.f32_in_range(min, max) or { panic("Couldn't obtain f32 in range") }
 			assert value >= min
 			assert value < max
 		}
@@ -343,10 +333,10 @@ fn test_sys_rng_f64_in_range() {
 	max := 5015.2
 	for seed in seeds {
 		seed_data := [seed]
-		mut rng := sys.SysRNG{}
+		mut rng := &rand.PRNG(&sys.SysRNG{})
 		rng.seed(seed_data)
 		for _ in 0 .. range_limit {
-			value := rng.f64_in_range(min, max)
+			value := rng.f64_in_range(min, max) or { panic("Couldn't obtain f64 in range") }
 			assert value >= min
 			assert value < max
 		}
