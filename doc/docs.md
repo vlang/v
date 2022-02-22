@@ -2124,7 +2124,7 @@ struct Button {
 }
 ```
 
-With embedding Button auto have field and method from `Size` do:
+With embedding, `Button` automatically has all fields and methods from `Size`, which allows you to do:
 
 ```v oksyntax
 mut button := Button{
