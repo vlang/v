@@ -2134,7 +2134,7 @@ struct Button {
 }
 ```
 
-With embedding Button auto have field and method from the `Widget` and Color do:
+With embedding Button auto have field and method from `Color` and `Widget` do:
 
 ```v oksyntax
 mut button := Button{
