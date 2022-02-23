@@ -1266,10 +1266,16 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 						Struct, Interface, SumType {
 							mut method := x
 							generic_names := parent_sym.info.generic_types.map(table.sym(it).name)
-							if rt := table.resolve_generic_to_concrete(method.return_type,
-								generic_names, t.info.concrete_types)
-							{
-								method.return_type = rt
+							return_sym := table.sym(method.return_type)
+							if return_sym.kind in [.struct_, .interface_, .sum_type] {
+								method.return_type = table.unwrap_generic_type(method.return_type,
+									generic_names, t.info.concrete_types)
+							} else {
+								if rt := table.resolve_generic_to_concrete(method.return_type,
+									generic_names, t.info.concrete_types)
+								{
+									method.return_type = rt
+								}
 							}
 							method.params = method.params.clone()
 							for mut param in method.params {
