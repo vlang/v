@@ -247,9 +247,7 @@ fn (bst &BSTree<T>) get_node(node &BSTreeNode<T>, value T) &BSTreeNode<T> {
 // otherwise the a false value is returned.
 //
 // An example of usage can be the following one
-//```v
-// left_value, exist := bst.to_left(10)
-//```
+// 	left_value, exist := bst.to_left(10)
 pub fn (bst &BSTree<T>) to_left(value T) ?T {
 	node := bst.get_node(bst.root, value)
 	if !node.is_init {
@@ -263,9 +261,7 @@ pub fn (bst &BSTree<T>) to_left(value T) ?T {
 // otherwise, the boolean value is false
 // An example of usage can be the following one
 //
-//```v
-// left_value, exist := bst.to_right(10)
-//```
+// 	left_value, exist := bst.to_right(10)
 pub fn (bst &BSTree<T>) to_right(value T) ?T {
 	node := bst.get_node(bst.root, value)
 	if !node.is_init {

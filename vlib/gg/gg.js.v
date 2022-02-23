@@ -119,10 +119,10 @@ pub enum DOMKeyCode {
 	x = 88
 	y = 89
 	z = 90
-	left_bracket = 91 //[
-	backslash = 92 //\
-	right_bracket = 93 //]
-	grave_accent = 96 //`
+	left_bracket = 91 // [
+	backslash = 92 // \
+	right_bracket = 93 // ]
+	grave_accent = 96 // `
 	world_1 = 161 // non-us #1
 	world_2 = 162 // non-us #2
 	escape = 256
