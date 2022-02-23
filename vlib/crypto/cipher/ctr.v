@@ -21,6 +21,8 @@ mut:
 	out_used int
 }
 
+// new_ctr returns a Ctr which encrypts/decrypts using the given Block in
+// counter mode. The length of iv must be the same as the Block's block size.
 pub fn new_ctr(b Block, iv []byte) Ctr {
 	block_size := b.block_size
 	if iv.len != block_size {
@@ -54,6 +56,7 @@ pub fn (x &Ctr) xor_key_stream(mut dst_ []byte, src_ []byte) {
 
 			n := xor_bytes(mut dst, src, x.out[x.out_used..])
 
+			// increment counter
 			for i := x.next.len - 1; i >= 0; i-- {
 				x.next[i]++
 				if x.next[i] != 0 {
