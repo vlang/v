@@ -3614,7 +3614,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			}
 			is_public: is_pub
 		})
-		if typ == -1 {
+		if typ == ast.invalid_type_idx {
 			p.error_with_pos('cannot register sum type `$name`, another type with this name exists',
 				name_pos)
 			return ast.SumTypeDecl{}
@@ -3655,7 +3655,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		is_public: is_pub
 	})
 	type_end_pos := p.prev_tok.pos()
-	if idx == -1 {
+	if idx == ast.invalid_type_idx {
 		p.error_with_pos('cannot register alias `$name`, another type with this name exists',
 			name_pos)
 		return ast.AliasTypeDecl{}

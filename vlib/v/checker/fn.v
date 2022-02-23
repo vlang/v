@@ -697,7 +697,8 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			node.pos)
 		return func.return_type
 	}
-	if func.return_type == ast.void_type && func.is_conditional && func.ctdefine_idx != -1 {
+	if func.return_type == ast.void_type && func.is_conditional
+		&& func.ctdefine_idx != ast.invalid_type_idx {
 		node.should_be_skipped = c.evaluate_once_comptime_if_attribute(mut func.attrs[func.ctdefine_idx])
 	}
 	// dont check number of args for JS functions since arguments are not required
@@ -1203,7 +1204,8 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			&& method.language == .v && method.no_body {
 			c.error('cannot call a method that does not have a body', node.pos)
 		}
-		if method.return_type == ast.void_type && method.is_conditional && method.ctdefine_idx != -1 {
+		if method.return_type == ast.void_type && method.is_conditional
+			&& method.ctdefine_idx != ast.invalid_type_idx {
 			node.should_be_skipped = c.evaluate_once_comptime_if_attribute(mut method.attrs[method.ctdefine_idx])
 		}
 		c.check_expected_arg_count(mut node, method) or { return method.return_type }
