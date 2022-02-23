@@ -48,7 +48,7 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 		mut s := node.text.trim_left('\x01').trim_right(' ')
 		mut out_s := '//'
 		if s != '' {
-			if is_char_alphanumeric(s[0]) {
+			if is_char_alphanumeric(s[0]) || s[0] == `\`` {
 				out_s += ' '
 			}
 			out_s += s
