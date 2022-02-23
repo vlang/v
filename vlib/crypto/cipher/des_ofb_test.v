@@ -22,7 +22,7 @@ fn test_des_ofb() {
 	mut src := str.bytes()
 
 	des_ofb_en(mut src, key[..8], iv)
-	assert src.hex() == '2743e2164b8604562f4ab73dd3d1bccb1fc08e77f34560b920ec8cce5c6a110ea1fcdc2a7ddd812e35387435de2985f6e636893db25a9d0683748edc145e1ef0'
+	assert src.hex() == '2743e2164b860456c1313fb9b1196a70bb217dfad57be81cb10f368dd1ee13b06bb776eb52e0b4f6b1af32f44b8f094cfd3c0892021a2aa93f6a9e2139ba26f3'
 
 	des_ofb_de(mut src, key[..8], iv)
 	assert src.bytestr() == str

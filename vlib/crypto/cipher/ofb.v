@@ -1,8 +1,10 @@
-// Copyright 2011 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
+// The source code refers to the go standard library, which will be combined with AES in the future.
+//
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+//
 // OFB (Output Feedback) Mode.
+// See NIST SP 800-38A, pp 13-15
 module cipher
 
 import crypto.internal.subtle
@@ -10,7 +12,7 @@ import crypto.internal.subtle
 struct Ofb {
 mut:
 	b        Block
-	cipher   []byte
+	next     []byte
 	out      []byte
 	out_used int
 }
@@ -23,19 +25,15 @@ pub fn new_ofb(b Block, iv []byte) Ofb {
 	if iv.len != block_size {
 		panic('cipher.new_ofb: IV length must be equal block size')
 	}
-	mut buf_size := cipher.stream_buffer_size
-	if buf_size < block_size {
-		buf_size = block_size
-	}
-
 	x := Ofb{
 		b: b
-		cipher: []byte{len: block_size}
-		out: []byte{len: buf_size}
-		out_used: 0
+		out: []byte{len: b.block_size}
+		next: []byte{len: b.block_size}
+		out_used: block_size
 	}
 
-	copy(x.cipher, iv)
+	copy(x.next, iv)
+
 	return x
 }
 
@@ -43,7 +41,6 @@ pub fn (x &Ofb) xor_key_stream(mut dst_ []byte, src_ []byte) {
 	unsafe {
 		mut dst := *dst_
 		mut src := src_
-
 		if dst.len < src.len {
 			panic('crypto.cipher.xor_key_stream: output smaller than input')
 		}
@@ -53,26 +50,14 @@ pub fn (x &Ofb) xor_key_stream(mut dst_ []byte, src_ []byte) {
 		}
 
 		for src.len > 0 {
-			if x.out_used >= x.out.len - x.b.block_size {
-				bs := x.b.block_size
-				mut remain := x.out.len - x.out_used
-				if remain <= x.out_used {
-					copy(x.out, x.out[x.out_used..])
-
-					x.out = x.out[..x.out.cap]
-
-					for remain < x.out.len - bs {
-						x.b.encrypt(mut x.cipher, x.cipher)
-						copy(x.out[remain..], x.cipher)
-						remain += bs
-					}
-					x.out = x.out[..remain]
-					x.out_used = 0
-				}
+			if x.out_used == x.out.len {
+				x.b.encrypt(mut x.out, x.next)
+				x.out_used = 0
 			}
 
-			n := xor_bytes(mut dst, src, x.out[x.out_used..])
+			copy(x.next, x.out)
 
+			n := xor_bytes(mut dst, src, x.out)
 			dst = dst[n..]
 			src = src[n..]
 			x.out_used += n

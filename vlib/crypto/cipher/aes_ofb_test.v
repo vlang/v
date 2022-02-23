@@ -1,7 +1,7 @@
 import crypto.aes
 import crypto.cipher
 
-fn test_aes_cbc() {
+fn test_aes_ofb() {
 	key := '6368616e676520746869732070617373'.bytes()
 	iv := '1234567890123456'.bytes()
 	str := '73c86d43a9d700a253a96c85b0f6b03ac9792e0e757f869cca306bd3cba1c62b'
