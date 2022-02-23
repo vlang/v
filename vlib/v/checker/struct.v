@@ -319,7 +319,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 					}
 				} else {
 					if field_info.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_pointer()
-						&& !expr_type.is_number() {
+						&& field.expr.str() != '0' {
 						c.error('reference field must be initialized with reference',
 							field.pos)
 					}

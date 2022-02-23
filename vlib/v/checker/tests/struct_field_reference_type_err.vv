@@ -1,0 +1,20 @@
+struct Animal {
+mut:
+	ageee int
+	duck  Duck
+}
+
+struct Duck {
+	age &int
+}
+
+fn main() {
+	mut animal := Animal{
+		ageee: 20
+	}
+
+	animal.duck = Duck{
+		age: animal.ageee
+	}
+	dump(animal.duck.age)
+}
