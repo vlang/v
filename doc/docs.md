@@ -2159,32 +2159,13 @@ Button{
 }
 ```
 
-Slightly similar to inheritance, a struct will automatically get all the fields and methods
-from its embedded structs.
-
-Unlike inheritance however, you cannot type cast between structs and embedded structs
+Unlike inheritance, you cannot type cast between structs and embedded structs
 (the embedding struct can also has its own fields, and it can also embed multiple structs).
 
 If you need to access embedded structs directly, use an explicit reference like `button.Size`.
 
 Conceptually, embedded structs are similar to [mixin](https://en.wikipedia.org/wiki/Mixin)s
 in OOP, *NOT* base classes.
-
-An embedded structs is responsible for implementing a common structure and exposing a few
-functions, just like Lego blocks.
-
-It is not recommended to create a bulky base class with a huge number of fields or functions.
-There is no need to import a forest for a banana.
-
-> The problem with object-oriented languages is they’ve got all this implicit environment
-> that they carry around with them. You wanted a banana but what you got was a gorilla
-> holding the banana and the entire jungle.
-
-—— Joe Armstrong, creator of Erlang progamming language
-
-If multiple embedded structs have methods or fields with the same name, or if methods or fields
-with the same name are defined in the struct, you can call functions or assign to variables in
-the embedded struct like `button.Size.area()`.
 
 You can also initialize an embedded struct:
 
@@ -2205,6 +2186,12 @@ button.Size = Size{
 	height: 5
 }
 ```
+
+If multiple embedded structs have methods or fields with the same name, or if methods or fields
+with the same name are defined in the struct, you can call methods or assign to variables in
+the embedded struct like `button.Size.area()`.
+When you do not specify the embedded struct name, the method of the outermost struct will be 
+targeted.
 
 ## Unions
 
