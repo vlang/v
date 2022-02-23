@@ -53,8 +53,8 @@ fn (v Vec) facing() Orientation {
 
 // generate a random vector with x in [min_x, max_x] and y in [min_y, max_y]
 fn (mut v Vec) randomize(min_x int, min_y int, max_x int, max_y int) {
-	v.x = rand.int_in_range(min_x, max_x)
-	v.y = rand.int_in_range(min_y, max_y)
+	v.x = rand.int_in_range(min_x, max_x) or { min_x }
+	v.y = rand.int_in_range(min_y, max_y) or { min_y }
 }
 
 // part of snake's body representation
@@ -192,8 +192,8 @@ fn (mut s Snake) randomize() {
 	for pos.x % 2 != 0 || (pos.x < buffer && pos.x > s.app.width - buffer) {
 		pos.randomize(buffer, buffer, s.app.width - buffer, s.app.height - buffer)
 	}
-	s.velocity.y = rand.int_in_range(-1 * block_size, block_size)
-	s.velocity.x = speeds[rand.intn(speeds.len)]
+	s.velocity.y = rand.int_in_range(-1 * block_size, block_size) or { 0 }
+	s.velocity.x = speeds[rand.intn(speeds.len) or { 0 }]
 	s.direction = s.velocity.facing()
 	s.body[0].pos = pos
 }

@@ -21,7 +21,7 @@ fn test_ws_ipv6() {
 	if should_skip {
 		return
 	}
-	port := 30000 + rand.intn(1024)
+	port := 30000 + rand.intn(1024) or { 0 }
 	go start_server(.ip6, port)
 	time.sleep(500 * time.millisecond)
 	ws_test(.ip6, 'ws://localhost:$port') or { assert false }
@@ -32,7 +32,7 @@ fn test_ws_ipv4() {
 	if should_skip {
 		return
 	}
-	port := 30000 + rand.intn(1024)
+	port := 30000 + rand.intn(1024) or { 0 }
 	go start_server(.ip, port)
 	time.sleep(500 * time.millisecond)
 	ws_test(.ip, 'ws://localhost:$port') or { assert false }

@@ -110,7 +110,7 @@ pub fn string_from_set(charset string, len int) string {
 	mut buf := unsafe { malloc_noscan(len + 1) }
 	for i in 0 .. len {
 		unsafe {
-			buf[i] = charset[intn(charset.len)]
+			buf[i] = charset[intn(charset.len) or { 0 }]
 		}
 	}
 	unsafe {

@@ -49,9 +49,9 @@ fn tt(mut sem sync.Semaphore) int {
 fn waste_mem(n int, mut sem sync.Semaphore) {
 	mut m := []voidptr{len: 30}
 	for j := 0; n < 0 || j < n; j++ {
-		i := rand.intn(30)
+		i := rand.intn(30) or { 0 }
 		m[i] = unsafe { malloc(10000) }
-		fill := rand.intn(256)
+		fill := rand.intn(256) or { 0 }
 		unsafe { C.memset(m[i], fill, 10000) }
 		if n < 0 && sem.try_wait() {
 			break

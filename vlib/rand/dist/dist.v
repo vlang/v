@@ -49,8 +49,8 @@ pub fn normal_pair(config NormalConfigStruct) (f64, f64) {
 	// See: https://doi.org/10.1137%2F1006063
 	// Also: https://en.wikipedia.org/wiki/Marsaglia_polar_method
 	for {
-		u := rand.f64_in_range(-1, 1)
-		v := rand.f64_in_range(-1, 1)
+		u := rand.f64_in_range(-1, 1) or { 0.0 }
+		v := rand.f64_in_range(-1, 1) or { 0.0 }
 
 		s := u * u + v * v
 		if s >= 1 || s == 0 {

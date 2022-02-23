@@ -79,8 +79,8 @@ fn (mut app App) reset_game() {
 
 fn (mut app App) move_food() {
 	for {
-		x := rand.int_in_range(0, game_size)
-		y := rand.int_in_range(0, game_size)
+		x := rand.intn(game_size) or { 0 }
+		y := rand.intn(game_size) or { 0 }
 		app.food = Pos{x, y}
 
 		if app.food !in app.snake {

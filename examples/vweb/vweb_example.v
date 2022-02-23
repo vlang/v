@@ -25,7 +25,7 @@ fn main() {
 
 ['/users/:user']
 pub fn (mut app App) user_endpoint(user string) vweb.Result {
-	id := rand.intn(100)
+	id := rand.intn(100) or { 0 }
 	return app.json({
 		user: id
 	})

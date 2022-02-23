@@ -4,7 +4,9 @@
 [has_globals]
 module rand
 
+import math.bits
 import rand.config
+import rand.constants
 import rand.wyrand
 
 // PRNG is a common interface for all PRNGs that can be used seamlessly with the rand
@@ -13,27 +15,238 @@ import rand.wyrand
 pub interface PRNG {
 mut:
 	seed(seed_data []u32)
+	// TODO: Support buffering for bytes
+	// byte() byte
+	// bytes(bytes_needed int) ?[]byte
+	// u16() u16
 	u32() u32
 	u64() u64
-	u32n(max u32) u32
-	u64n(max u64) u64
-	u32_in_range(min u32, max u32) u32
-	u64_in_range(min u64, max u64) u64
-	int() int
-	i64() i64
-	int31() int
-	int63() i64
-	intn(max int) int
-	i64n(max i64) i64
-	int_in_range(min int, max int) int
-	i64_in_range(min i64, max i64) i64
-	f32() f32
-	f64() f64
-	f32n(max f32) f32
-	f64n(max f64) f64
-	f32_in_range(min f32, max f32) f32
-	f64_in_range(min f64, max f64) f64
 	free()
+}
+
+// byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
+[inline]
+pub fn (mut rng PRNG) byte() byte {
+	// TODO: Reimplement for all PRNGs efficiently
+	return byte(rng.u32() & 0xff)
+}
+
+// bytes returns a buffer of `bytes_needed` random bytes.
+[inline]
+pub fn (mut rng PRNG) bytes(bytes_needed int) ?[]byte {
+	// TODO: Reimplement for all PRNGs efficiently
+	if bytes_needed < 0 {
+		return error('can not read < 0 random bytes')
+	}
+	mut res := []byte{cap: bytes_needed}
+	mut remaining := bytes_needed
+
+	for remaining > 8 {
+		mut value := rng.u64()
+		for _ in 0 .. 8 {
+			res << byte(value & 0xff)
+			value >>= 8
+		}
+		remaining -= 8
+	}
+	for remaining > 4 {
+		mut value := rng.u32()
+		for _ in 0 .. 4 {
+			res << byte(value & 0xff)
+			value >>= 8
+		}
+		remaining -= 4
+	}
+	for remaining > 0 {
+		res << rng.byte()
+		remaining -= 1
+	}
+	return res
+}
+
+// u32n returns a uniformly distributed pseudorandom 32-bit signed positive `u32` in range `[0, max)`.
+[inline]
+pub fn (mut rng PRNG) u32n(max u32) ?u32 {
+	if max == 0 {
+		return error('max must be positive integer')
+	}
+	// Owing to the pigeon-hole principle, we can't simply do
+	// val := rng.u32() % max.
+	// It'll wreck the properties of the distribution unless
+	// max evenly divides 2^32. So we divide evenly to
+	// the closest power of two. Then we loop until we find
+	// an int in the required range
+	bit_len := bits.len_32(max)
+	if bit_len == 32 {
+		for {
+			value := rng.u32()
+			if value < max {
+				return value
+			}
+		}
+	} else {
+		mask := (u32(1) << (bit_len + 1)) - 1
+		for {
+			value := rng.u32() & mask
+			if value < max {
+				return value
+			}
+		}
+	}
+	return u32(0)
+}
+
+// u64n returns a uniformly distributed pseudorandom 64-bit signed positive `u64` in range `[0, max)`.
+[inline]
+pub fn (mut rng PRNG) u64n(max u64) ?u64 {
+	if max == 0 {
+		return error('max must be positive integer')
+	}
+	bit_len := bits.len_64(max)
+	if bit_len == 64 {
+		for {
+			value := rng.u64()
+			if value < max {
+				return value
+			}
+		}
+	} else {
+		mask := (u64(1) << (bit_len + 1)) - 1
+		for {
+			value := rng.u64() & mask
+			if value < max {
+				return value
+			}
+		}
+	}
+	return u64(0)
+}
+
+// u32_in_range returns a uniformly distributed pseudorandom 32-bit unsigned `u32` in range `[min, max)`.
+[inline]
+pub fn (mut rng PRNG) u32_in_range(min u32, max u32) ?u32 {
+	if max <= min {
+		return error('max must be greater than min')
+	}
+	return min + rng.u32n(max - min) ?
+}
+
+// u64_in_range returns a uniformly distributed pseudorandom 64-bit unsigned `u64` in range `[min, max)`.
+[inline]
+pub fn (mut rng PRNG) u64_in_range(min u64, max u64) ?u64 {
+	if max <= min {
+		return error('max must be greater than min')
+	}
+	return min + rng.u64n(max - min) ?
+}
+
+// int returns a (possibly negative) pseudorandom 32-bit `int`.
+[inline]
+pub fn (mut rng PRNG) int() int {
+	return int(rng.u32())
+}
+
+// i64 returns a (possibly negative) pseudorandom 64-bit `i64`.
+[inline]
+pub fn (mut rng PRNG) i64() i64 {
+	return i64(rng.u64())
+}
+
+// int31 returns a positive pseudorandom 31-bit `int`.
+[inline]
+pub fn (mut rng PRNG) int31() int {
+	return int(rng.u32() & constants.u31_mask) // Set the 32nd bit to 0.
+}
+
+// int63 returns a positive pseudorandom 63-bit `i64`.
+[inline]
+pub fn (mut rng PRNG) int63() i64 {
+	return i64(rng.u64() & constants.u63_mask) // Set the 64th bit to 0.
+}
+
+// intn returns a pseudorandom `int` in range `[0, max)`.
+[inline]
+pub fn (mut rng PRNG) intn(max int) ?int {
+	if max <= 0 {
+		return error('max has to be positive.')
+	}
+	return int(rng.u32n(u32(max)) ?)
+}
+
+// i64n returns a pseudorandom int that lies in `[0, max)`.
+[inline]
+pub fn (mut rng PRNG) i64n(max i64) ?i64 {
+	if max <= 0 {
+		return error('max has to be positive.')
+	}
+	return i64(rng.u64n(u64(max)) ?)
+}
+
+// int_in_range returns a pseudorandom `int` in range `[min, max)`.
+[inline]
+pub fn (mut rng PRNG) int_in_range(min int, max int) ?int {
+	if max <= min {
+		return error('max must be greater than min')
+	}
+	// This supports negative ranges like [-10, -5) because the difference is positive
+	return min + rng.intn(max - min) ?
+}
+
+// i64_in_range returns a pseudorandom `i64` in range `[min, max)`.
+[inline]
+pub fn (mut rng PRNG) i64_in_range(min i64, max i64) ?i64 {
+	if max <= min {
+		return error('max must be greater than min')
+	}
+	return min + rng.i64n(max - min) ?
+}
+
+// f32 returns a pseudorandom `f32` value in range `[0, 1)`.
+[inline]
+pub fn (mut rng PRNG) f32() f32 {
+	return f32(rng.u32()) / constants.max_u32_as_f32
+}
+
+// f64 returns a pseudorandom `f64` value in range `[0, 1)`.
+[inline]
+pub fn (mut rng PRNG) f64() f64 {
+	return f64(rng.u64()) / constants.max_u64_as_f64
+}
+
+// f32n returns a pseudorandom `f32` value in range `[0, max)`.
+[inline]
+pub fn (mut rng PRNG) f32n(max f32) ?f32 {
+	if max <= 0 {
+		return error('max has to be positive.')
+	}
+	return rng.f32() * max
+}
+
+// f64n returns a pseudorandom `f64` value in range `[0, max)`.
+[inline]
+pub fn (mut rng PRNG) f64n(max f64) ?f64 {
+	if max <= 0 {
+		return error('max has to be positive.')
+	}
+	return rng.f64() * max
+}
+
+// f32_in_range returns a pseudorandom `f32` in range `[min, max)`.
+[inline]
+pub fn (mut rng PRNG) f32_in_range(min f32, max f32) ?f32 {
+	if max <= min {
+		return error('max must be greater than min')
+	}
+	return min + rng.f32n(max - min) ?
+}
+
+// i64_in_range returns a pseudorandom `i64` in range `[min, max)`.
+[inline]
+pub fn (mut rng PRNG) f64_in_range(min f64, max f64) ?f64 {
+	if max <= min {
+		return error('max must be greater than min')
+	}
+	return min + rng.f64n(max - min) ?
 }
 
 __global default_rng &PRNG
@@ -79,22 +292,22 @@ pub fn u64() u64 {
 }
 
 // u32n returns a uniformly distributed pseudorandom 32-bit signed positive `u32` in range `[0, max)`.
-pub fn u32n(max u32) u32 {
+pub fn u32n(max u32) ?u32 {
 	return default_rng.u32n(max)
 }
 
 // u64n returns a uniformly distributed pseudorandom 64-bit signed positive `u64` in range `[0, max)`.
-pub fn u64n(max u64) u64 {
+pub fn u64n(max u64) ?u64 {
 	return default_rng.u64n(max)
 }
 
 // u32_in_range returns a uniformly distributed pseudorandom 32-bit unsigned `u32` in range `[min, max)`.
-pub fn u32_in_range(min u32, max u32) u32 {
+pub fn u32_in_range(min u32, max u32) ?u32 {
 	return default_rng.u32_in_range(min, max)
 }
 
 // u64_in_range returns a uniformly distributed pseudorandom 64-bit unsigned `u64` in range `[min, max)`.
-pub fn u64_in_range(min u64, max u64) u64 {
+pub fn u64_in_range(min u64, max u64) ?u64 {
 	return default_rng.u64_in_range(min, max)
 }
 
@@ -104,18 +317,18 @@ pub fn int() int {
 }
 
 // intn returns a uniformly distributed pseudorandom 32-bit signed positive `int` in range `[0, max)`.
-pub fn intn(max int) int {
+pub fn intn(max int) ?int {
 	return default_rng.intn(max)
 }
 
 // byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
 pub fn byte() byte {
-	return byte(default_rng.u32() & 0xff)
+	return default_rng.byte()
 }
 
 // int_in_range returns a uniformly distributed pseudorandom  32-bit signed int in range `[min, max)`.
 // Both `min` and `max` can be negative, but we must have `min < max`.
-pub fn int_in_range(min int, max int) int {
+pub fn int_in_range(min int, max int) ?int {
 	return default_rng.int_in_range(min, max)
 }
 
@@ -130,12 +343,12 @@ pub fn i64() i64 {
 }
 
 // i64n returns a uniformly distributed pseudorandom 64-bit signed positive `i64` in range `[0, max)`.
-pub fn i64n(max i64) i64 {
+pub fn i64n(max i64) ?i64 {
 	return default_rng.i64n(max)
 }
 
 // i64_in_range returns a uniformly distributed pseudorandom 64-bit signed `i64` in range `[min, max)`.
-pub fn i64_in_range(min i64, max i64) i64 {
+pub fn i64_in_range(min i64, max i64) ?i64 {
 	return default_rng.i64_in_range(min, max)
 }
 
@@ -155,33 +368,28 @@ pub fn f64() f64 {
 }
 
 // f32n returns a uniformly distributed 32-bit floating point in range `[0, max)`.
-pub fn f32n(max f32) f32 {
+pub fn f32n(max f32) ?f32 {
 	return default_rng.f32n(max)
 }
 
 // f64n returns a uniformly distributed 64-bit floating point in range `[0, max)`.
-pub fn f64n(max f64) f64 {
+pub fn f64n(max f64) ?f64 {
 	return default_rng.f64n(max)
 }
 
 // f32_in_range returns a uniformly distributed 32-bit floating point in range `[min, max)`.
-pub fn f32_in_range(min f32, max f32) f32 {
+pub fn f32_in_range(min f32, max f32) ?f32 {
 	return default_rng.f32_in_range(min, max)
 }
 
 // f64_in_range returns a uniformly distributed 64-bit floating point in range `[min, max)`.
-pub fn f64_in_range(min f64, max f64) f64 {
+pub fn f64_in_range(min f64, max f64) ?f64 {
 	return default_rng.f64_in_range(min, max)
 }
 
 // bytes returns a buffer of `bytes_needed` random bytes
 pub fn bytes(bytes_needed int) ?[]byte {
-	if bytes_needed < 0 {
-		return error('can not read < 0 random bytes')
-	}
-	mut res := []byte{len: bytes_needed}
-	read(mut res)
-	return res
+	return default_rng.bytes(bytes_needed)
 }
 
 const (

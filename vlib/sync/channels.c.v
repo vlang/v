@@ -592,10 +592,10 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 	mut event_idx := -1 // negative index means `timed out`
 
 	outer: for {
-		rnd := rand.u32_in_range(0, u32(channels.len))
+		rnd := rand.intn(channels.len) or { 0 }
 		mut num_closed := 0
 		for j, _ in channels {
-			mut i := j + int(rnd)
+			mut i := j + rnd
 			if i >= channels.len {
 				i -= channels.len
 			}

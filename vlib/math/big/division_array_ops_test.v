@@ -142,7 +142,7 @@ fn random_number(length int) Integer {
 	numbers := '0123456789'
 	mut stri := ''
 	for _ in 0 .. length {
-		i := rand.intn(10)
+		i := rand.intn(10) or { 0 }
 		nr := numbers[i]
 		stri = stri + nr.ascii_str()
 	}
