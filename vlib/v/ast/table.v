@@ -69,6 +69,8 @@ pub fn (mut t Table) free() {
 	}
 }
 
+pub const invalid_type_idx = -1
+
 pub type FnPanicHandler = fn (&Table, string)
 
 fn default_table_panic_handler(t &Table, message string) {
@@ -685,8 +687,8 @@ pub fn (t &Table) find_sym_and_type_idx(name string) (&TypeSymbol, int) {
 }
 
 pub const invalid_type_symbol = &TypeSymbol{
-	idx: -1
-	parent_idx: -1
+	idx: invalid_type_idx
+	parent_idx: invalid_type_idx
 	language: .v
 	mod: 'builtin'
 	kind: .placeholder
@@ -786,7 +788,7 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 		}
 		return existing_idx
 	}
-	return -1
+	return ast.invalid_type_idx
 }
 
 [inline]
