@@ -845,6 +845,22 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 							right_pos)
 					}
 					return ast.void_type
+				} else if left_value_sym.kind == .sum_type {
+					if right_final.kind != .array {
+						if left_value_type.idx() != right_type.idx()
+							&& !c.table.sumtype_has_variant(left_value_type, right_type, false) {
+							c.error('cannot append `$right_sym.name` to `$left_sym.name`',
+								right_pos)
+						}
+					} else {
+						right_value_type := c.table.value_type(right_type)
+						if left_value_type.idx() != right_value_type.idx()
+							&& !c.table.sumtype_has_variant(left_value_type, right_value_type, false) {
+							c.error('cannot append `$right_sym.name` to `$left_sym.name`',
+								right_pos)
+						}
+					}
+					return ast.void_type
 				}
 				// []T << T or []T << []T
 				unwrapped_right_type := c.unwrap_generic(right_type)
