@@ -1,0 +1,13 @@
+vlib/v/checker/tests/array_of_sumtype_append_err.vv:9:9: error: cannot append `[]string` to `[]Bar`
+    7 | fn main() {
+    8 |     mut bar := []Bar{}
+    9 |     bar << ['hey']
+      |            ~~~~~~~
+   10 |     bar << 'hey'
+   11 | }
+vlib/v/checker/tests/array_of_sumtype_append_err.vv:10:9: error: cannot append `string` to `[]Bar`
+    8 |     mut bar := []Bar{}
+    9 |     bar << ['hey']
+   10 |     bar << 'hey'
+      |            ~~~~~
+   11 | }

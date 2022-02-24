@@ -110,7 +110,17 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				continue
 			} else if expecting_sumtype_array {
 				if i == 0 {
-					elem_type = expected_value_type
+					if expected_value_type.idx() == typ.idx()
+						|| c.table.sumtype_has_variant(expected_value_type, typ, false) {
+						elem_type = expected_value_type
+					} else {
+						if expr.is_auto_deref_var() {
+							elem_type = ast.mktyp(typ.deref())
+						} else {
+							elem_type = ast.mktyp(typ)
+						}
+					}
+					c.expected_type = elem_type
 				}
 				continue
 			}
