@@ -2082,7 +2082,7 @@ fn main() {
 
 This means that defining public readonly fields is very easy in V.
 
-## Methods
+### Methods
 
 ```v
 struct User {
@@ -4729,7 +4729,7 @@ surrounding code).
 
 * Note: This is work in progress.
 
-### Structs with reference fields
+## Structs with reference fields
 
 Structs with references require explicitly setting the initial value to a
 reference value unless the struct already defines its own initial value.
