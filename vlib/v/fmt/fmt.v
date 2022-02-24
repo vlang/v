@@ -901,10 +901,11 @@ pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	f.write(node.stringify(f.table, f.cur_mod, f.mod2alias)) // `Expr` instead of `ast.Expr` in mod ast
 	// Handle trailing comments after fn header declarations
 	if node.end_comments.len > 0 {
-		f.write(' ')
 		first_comment := node.end_comments[0]
 		if first_comment.text.contains('\n') {
 			f.writeln('\n')
+		} else {
+			f.write(' ')
 		}
 		f.comment(first_comment)
 		if node.end_comments.len > 1 {
