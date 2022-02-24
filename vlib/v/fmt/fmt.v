@@ -842,10 +842,20 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 		f.write(strings.repeat(` `, align_infos[align_idx].max - field.name.len))
 		f.write('= ')
 		f.expr(field.expr)
-		f.writeln('')
+		if node.is_block {
+			f.writeln('')
+		} else {
+			if node.end_comments.len > 0 && node.end_comments[0].text.contains('\n') {
+				f.writeln('')
+			}
+			f.comments(node.end_comments, inline: true)
+		}
 		prev_field = field
 	}
-	f.comments_after_last_field(node.end_comments)
+
+	if node.is_block {
+		f.comments_after_last_field(node.end_comments)
+	}
 	if node.is_block {
 		f.indent--
 		f.writeln(')\n')
