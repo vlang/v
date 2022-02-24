@@ -846,7 +846,7 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 			f.writeln('')
 		} else {
 			if node.end_comments.len > 0 && node.end_comments[0].text.contains('\n') {
-				f.writeln('')
+				f.writeln('\n')
 			}
 			f.comments(node.end_comments, inline: true)
 		}
