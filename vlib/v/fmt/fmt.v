@@ -845,6 +845,8 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 		if node.is_block {
 			f.writeln('')
 		} else {
+			// Write out single line comments after const expr if present
+			// E.g.: `const x = 1 // <comment>`
 			if node.end_comments.len > 0 && node.end_comments[0].text.contains('\n') {
 				f.writeln('\n')
 			}
@@ -855,6 +857,9 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 
 	if node.is_block {
 		f.comments_after_last_field(node.end_comments)
+	} else if node.end_comments.len == 0 {
+		// If no single line comments after the const expr is present
+		f.writeln('')
 	}
 	if node.is_block {
 		f.indent--
