@@ -10,9 +10,11 @@ fn test_aes_ofb() {
 
 	aes_ofb_en(mut src, key, iv)
 	assert src.hex() == '04380c1470ab2d8a0b3f9b4c1949b8aca120db226fa0a848236f9904f786dfc39bc433b5d3870d1cfdef36debdee5e6f39b0e8e9462b0151d61e822944181b51'
-
-	aes_ofb_de(mut src, key, iv)
-	assert src.bytestr() == str
+	dump(src.hex())
+	mut plaintext := src.clone()
+	aes_ofb_de(mut plaintext, key, iv)
+	assert plaintext.bytestr() == str
+	dump(plaintext.bytestr())
 	println('test_aes_ofb ok')
 }
 
