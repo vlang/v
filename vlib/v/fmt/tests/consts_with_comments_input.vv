@@ -1,0 +1,11 @@
+// leave
+const one = 1 // leave
+// move
+
+const two = 2 /* move
+*/
+
+const three = 3 /* rewrite and leave */
+
+// leave
+const four = 4 // leave

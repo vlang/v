@@ -3292,6 +3292,8 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	p.top_level_statement_end()
 	if is_block {
 		p.check(.rpar)
+	} else {
+		comments << p.eat_comments(same_line: true)
 	}
 	return ast.ConstDecl{
 		pos: start_pos.extend_with_last_line(const_pos, p.prev_tok.line_nr)

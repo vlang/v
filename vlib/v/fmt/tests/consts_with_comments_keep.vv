@@ -2,3 +2,8 @@ const (
 	fsm_state_array = ['init', 'state_a', 'state_b', 'state_c', 'exit'] // use as a first half key for map see fsm_state_ev_fn, the same order as in enum FSM_state
 	fsm_event_array = ['ev1', 'ev2', 'ev3', 'ev4', 'ev5'] // use as a second half key for map see fsm_state_ev_fn, the same order as in enum FSM_event
 )
+
+// Keep
+const one = 1 // Keep
+
+// Keep
