@@ -319,3 +319,43 @@ fn test_splitmix64_f64_in_range() {
 		}
 	}
 }
+
+fn test_splitmix64_buffering() {
+	for seed in seeds {
+		for offset in [0, 2, 3, 5, 19, 47] {
+			count := 5
+			mut rngs := []rand.PRNG{cap: count}
+
+			for i in 0 .. count {
+				rngs << &rand.PRNG(&splitmix64.SplitMix64RNG{})
+				rngs[i].seed(seed)
+			}
+
+			for mut rng in rngs {
+				for _ in 0 .. offset {
+					rng.byte()
+				}
+			}
+
+			for _ in 0 .. 6 {
+				first_64bit := rngs[0].u64()
+				second_64bit := u64(rngs[1].u32()) | (u64(rngs[1].u32()) << 32)
+				mut third_64bit := u64(rngs[2].byte())
+
+				for shift in 1 .. 8 {
+					third_64bit |= u64(rngs[2].byte()) << (shift * 8)
+				}
+
+				fourth_64bit := u64(rngs[3].byte()) | (u64(rngs[3].u32()) << 8) | (u64(rngs[3].u16()) << 40) | (u64(rngs[3].byte()) << 56)
+
+				eight_bytes := rngs[4].bytes(8) or { panic("Couldn't obtain random bytes") }
+				mut fifth_64bit := u64(eight_bytes[0]) | (u64(eight_bytes[1]) << 8) | (u64(eight_bytes[2]) << 16) | (u64(eight_bytes[3]) << 24) | (u64(eight_bytes[4]) << 32) | (u64(eight_bytes[5]) << 40) | (u64(eight_bytes[6]) << 48) | (u64(eight_bytes[7]) << 56)
+
+				assert first_64bit == second_64bit
+				assert first_64bit == third_64bit
+				assert first_64bit == fourth_64bit
+				assert first_64bit == fifth_64bit
+			}
+		}
+	}
+}
