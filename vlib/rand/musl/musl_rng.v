@@ -23,8 +23,12 @@ pub fn (mut rng MuslRNG) seed(seed_data []u32) {
 		exit(1)
 	}
 	rng.state = seed_data[0]
+	rng.bytes_left = 0
+	rng.buffer = 0
 }
 
+// byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
+[inline]
 fn (mut rng MuslRNG) byte() byte {
 	// Can we extract a value from the buffer?
 	if rng.bytes_left >= 1 {

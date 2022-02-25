@@ -4,7 +4,6 @@
 module pcg32
 
 import rand.seed
-import rand.constants
 
 pub const seed_len = 4
 
@@ -34,6 +33,8 @@ pub fn (mut rng PCG32RNG) seed(seed_data []u32) {
 	rng.u32()
 	rng.state += init_state
 	rng.u32()
+	rng.bytes_left = 0
+	rng.buffer = 0
 }
 
 // byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
