@@ -6,27 +6,27 @@ const (
 	eb = eventbus.new()
 )
 
-pub struct Work {
+pub struct Duration {
 pub:
 	hours int
 }
 
-pub struct Event {
+pub struct EventMetadata {
 pub:
 	message string
 }
 
 pub fn do_work() {
-	work := Work{10}
+	duration := Duration{10}
 	for i in 0 .. 10 {
 		println('working...')
 		if i == 5 {
-			error := &Event{'Iteration '+i.str()}
-			some_module.eb.publish('event_foo', work, error)
-			some_module.eb.publish('event_bar', work, error)
+			event_metadata := &EventMetadata{'Iteration '+i.str()}
+			some_module.eb.publish('event_foo', duration, event_metadata)
+			some_module.eb.publish('event_bar', duration, event_metadata)
 		}
 	}
-	some_module.eb.publish('event_bar', &Work{42}, &Event{'Additional data at the end.'})
+	some_module.eb.publish('event_baz', &Duration{42}, &EventMetadata{'Additional data at the end.'})
 }
 
 pub fn get_subscriber() eventbus.Subscriber {
