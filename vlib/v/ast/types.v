@@ -1267,7 +1267,7 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 							mut method := x
 							generic_names := parent_sym.info.generic_types.map(table.sym(it).name)
 							return_sym := table.sym(method.return_type)
-							if return_sym.kind == .struct_ {
+							if return_sym.kind in [.struct_, .interface_, .sum_type] {
 								method.return_type = table.unwrap_generic_type(method.return_type,
 									generic_names, t.info.concrete_types)
 							} else {
