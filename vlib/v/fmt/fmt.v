@@ -913,7 +913,7 @@ pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 			comments := node.end_comments[1..]
 			for i, comment in comments {
 				f.comment(comment)
-				if i != comments.len-1 {
+				if i != comments.len - 1 {
 					f.writeln('\n')
 				}
 			}
