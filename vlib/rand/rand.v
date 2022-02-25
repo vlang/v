@@ -100,6 +100,12 @@ pub fn (mut rng PRNG) u64_in_range(min u64, max u64) ?u64 {
 	return min + rng.u64n(max - min) ?
 }
 
+// i8 returns a (possibly negative) pseudorandom 8-bit `i8`.
+[inline]
+pub fn (mut rng PRNG) i8() i8 {
+	return i8(rng.byte())
+}
+
 // i16 returns a (possibly negative) pseudorandom 16-bit `i16`.
 [inline]
 pub fn (mut rng PRNG) i16() i16 {
