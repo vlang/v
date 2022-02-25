@@ -21,7 +21,7 @@ pub fn do_work() {
 	for i in 0 .. 10 {
 		println('working...')
 		if i == 5 {
-			event_metadata := &EventMetadata{'Iteration '+i.str()}
+			event_metadata := &EventMetadata{'Iteration ' + i.str()}
 			some_module.eb.publish('event_foo', duration, event_metadata)
 			some_module.eb.publish('event_bar', duration, event_metadata)
 		}
