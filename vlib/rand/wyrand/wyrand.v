@@ -3,8 +3,9 @@
 // that can be found in the LICENSE file.
 module wyrand
 
-import rand.seed
 import hash
+import math
+import rand.seed
 
 // Redefinition of some constants that we will need for pseudorandom number generation.
 const (
@@ -67,7 +68,7 @@ pub fn (mut rng WyRandRNG) read(mut buf []byte) {
 	mut bytes_needed := buf.len
 	mut index := 0
 
-	for _ in 0 .. rng.bytes_left {
+	for _ in 0 .. math.min(rng.bytes_left, bytes_needed) {
 		buf[index] = rng.byte()
 		bytes_needed--
 		index++
@@ -84,7 +85,7 @@ pub fn (mut rng WyRandRNG) read(mut buf []byte) {
 	}
 
 	for bytes_needed > 0 {
-		buf[index] += rng.byte()
+		buf[index] = rng.byte()
 		index++
 		bytes_needed--
 	}
