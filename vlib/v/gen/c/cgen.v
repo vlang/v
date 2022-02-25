@@ -209,6 +209,7 @@ mut:
 	autofree_methods       map[int]bool
 	generated_free_methods map[int]bool
 	autofree_scope_stmts   []string
+	tmp_var_types          map[string]ast.Type
 	use_segfault_handler   bool = true
 	test_function_names    []string
 }
@@ -1532,7 +1533,11 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 					if stmt.typ == ast.error_type_idx || stmt.expr is ast.None {
 						g.writeln('${tmp_var}.state = 2;')
 						g.write('${tmp_var}.err = ')
-						g.expr(stmt.expr)
+						if tmp_var in g.tmp_var_types {
+							g.expr_with_cast(stmt.expr, stmt.typ, g.tmp_var_types[tmp_var])
+						} else {
+							g.expr(stmt.expr)
+						}
 						g.writeln(';')
 					} else {
 						mut styp := g.base_type(stmt.typ)
@@ -1551,14 +1556,16 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 			} else {
 				g.set_current_pos_as_last_stmt_pos()
 				g.skip_stmt_pos = true
-				mut is_noreturn := false
-				if stmt is ast.ExprStmt {
-					is_noreturn = is_noreturn_callexpr(stmt.expr)
-				}
-				if !is_noreturn {
+				if stmt is ast.ExprStmt && !is_noreturn_callexpr((stmt as ast.ExprStmt).expr) {
 					g.write('$tmp_var = ')
+					if tmp_var in g.tmp_var_types {
+						g.expr_with_cast(stmt.expr, stmt.typ, g.tmp_var_types[tmp_var])
+					} else {
+						g.expr(stmt.expr)
+					}
+				} else {
+					g.stmt(stmt)
 				}
-				g.stmt(stmt)
 				if !g.out.last_n(2).contains(';') {
 					g.writeln(';')
 				}
@@ -4753,6 +4760,11 @@ fn (g &Gen) error(s string, pos token.Pos) {
 	ferror := util.formatted_error('cgen error:', s, g.file.path, pos)
 	eprintln(ferror)
 	exit(1)
+}
+
+fn (g &Gen) warn(s string, pos token.Pos) {
+	ferror := util.formatted_error('cgen warn:', s, g.file.path, pos)
+	eprintln(ferror)
 }
 
 fn (g &Gen) checker_bug(s string, pos token.Pos) {
