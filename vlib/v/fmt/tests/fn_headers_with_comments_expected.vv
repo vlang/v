@@ -1,0 +1,16 @@
+fn C.Mix_LoadMUS1(file byteptr) voidptr // *Mix_Music
+
+fn C.Mix_LoadMUS2(file byteptr) voidptr //*Mix_Music
+
+fn C.Mix_LoadMUS3(file byteptr) voidptr // 1
+
+// 2
+
+// 3
+
+// Loads music
+fn C.Mix_LoadMUS4(file byteptr) voidptr
+
+/*
+Test
+*/
