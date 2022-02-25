@@ -44,6 +44,8 @@ C++ functions for MT19937, with initialization improved 2002/2/10.
    http://www.math.sci.hiroshima-u.ac.jp/~m-mat/MT/emt.html
    email: m-mat @ math.sci.hiroshima-u.ac.jp (remove space)
 */
+pub const seed_len = 2
+
 const (
 	nn            = 312
 	mm            = 156
@@ -57,10 +59,10 @@ const (
 // **NOTE**: The RNG is not seeded when instantiated so remember to seed it before use.
 pub struct MT19937RNG {
 mut:
-	state    []u64 = []u64{len: mt19937.nn}
-	mti      int   = mt19937.nn
-	next_rnd u32
-	has_next bool
+	state      []u64 = []u64{len: mt19937.nn}
+	mti        int   = mt19937.nn
+	bytes_left int
+	buffer     u64
 }
 
 // calculate_state returns a random state array calculated from the `seed_data`.
@@ -85,26 +87,136 @@ pub fn (mut rng MT19937RNG) seed(seed_data []u32) {
 	rng.state = calculate_state(seed_data, mut rng.state)
 	rng.state = calculate_state(seed_data, mut rng.state)
 	rng.mti = mt19937.nn
-	rng.next_rnd = 0
-	rng.has_next = false
+	rng.bytes_left = 0
+	rng.buffer = 0
+}
+
+// byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
+[inline]
+pub fn (mut rng MT19937RNG) byte() byte {
+	// Can we extract a value from the buffer?
+	if rng.bytes_left >= 1 {
+		rng.bytes_left -= 1
+		value := byte(rng.buffer)
+		rng.buffer >>= 8
+		return value
+	}
+	// Add a new value to the buffer
+	rng.buffer = rng.internal_u64()
+	rng.bytes_left = 7
+	value := byte(rng.buffer)
+	rng.buffer >>= 8
+	return value
+}
+
+// bytes returns a buffer of `bytes_needed` random bytes.
+[inline]
+pub fn (mut rng MT19937RNG) bytes(bytes_needed int) ?[]byte {
+	if bytes_needed < 0 {
+		return error('can not read < 0 random bytes')
+	}
+	mut res := []byte{len: bytes_needed}
+
+	rng.read(mut res)
+
+	return res
+}
+
+// read fills up the buffer with random bytes.
+pub fn (mut rng MT19937RNG) read(mut buf []byte) {
+	mut bytes_needed := buf.len
+	mut index := 0
+
+	for _ in 0 .. rng.bytes_left {
+		buf[index] = rng.byte()
+		bytes_needed--
+		index++
+	}
+
+	for bytes_needed >= 8 {
+		mut full_value := rng.u64()
+		for _ in 0 .. 8 {
+			buf[index] = byte(full_value)
+			full_value >>= 8
+			index++
+		}
+		bytes_needed -= 8
+	}
+
+	for bytes_needed > 0 {
+		buf[index] += rng.byte()
+		index++
+		bytes_needed--
+	}
+}
+
+[inline]
+fn (mut rng MT19937RNG) step_by(amount int) u64 {
+	next_number := rng.internal_u64()
+
+	bits_left := rng.bytes_left * 8
+	bits_needed := amount - bits_left
+
+	old_value := rng.buffer & ((u64(1) << bits_left) - 1)
+	new_value := next_number & ((u64(1) << bits_needed) - 1)
+	value := old_value | (new_value << bits_left)
+
+	rng.buffer = next_number >> bits_needed
+	rng.bytes_left = 8 - (bits_needed / 8)
+
+	return value
+}
+
+// u16 returns a pseudorandom 16bit int in range `[0, 2¹⁶)`.
+[inline]
+pub fn (mut rng MT19937RNG) u16() u16 {
+	// Can we take a whole u16 out of the buffer?
+	if rng.bytes_left >= 2 {
+		rng.bytes_left -= 2
+		value := u16(rng.buffer)
+		rng.buffer >>= 16
+		return value
+	}
+	if rng.bytes_left > 0 {
+		return u16(rng.step_by(16))
+	}
+	ans := rng.internal_u64()
+	rng.buffer = ans >> 16
+	rng.bytes_left = 6
+	return u16(ans)
 }
 
 // u32 returns a pseudorandom 32bit int in range `[0, 2³²)`.
 [inline]
 pub fn (mut rng MT19937RNG) u32() u32 {
-	if rng.has_next {
-		rng.has_next = false
-		return rng.next_rnd
+	// Can we take a whole u32 out of the buffer?
+	if rng.bytes_left >= 4 {
+		rng.bytes_left -= 4
+		value := u32(rng.buffer)
+		rng.buffer >>= 32
+		return value
 	}
-	ans := rng.u64()
-	rng.next_rnd = u32(ans >> 32)
-	rng.has_next = true
-	return u32(ans & 0xffffffff)
+	if rng.bytes_left > 0 {
+		return u32(rng.step_by(32))
+	}
+	// We're out so we start fresh.
+	ans := rng.internal_u64()
+	rng.buffer = ans >> 32
+	rng.bytes_left = 4
+	return u32(ans)
 }
 
 // u64 returns a pseudorandom 64bit int in range `[0, 2⁶⁴)`.
 [inline]
 pub fn (mut rng MT19937RNG) u64() u64 {
+	if rng.bytes_left > 0 {
+		return rng.step_by(64)
+	}
+	return rng.internal_u64()
+}
+
+[inline]
+fn (mut rng MT19937RNG) internal_u64() u64 {
 	mag01 := [u64(0), u64(mt19937.matrix_a)]
 	mut x := u64(0)
 	mut i := int(0)
