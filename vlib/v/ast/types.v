@@ -1290,7 +1290,6 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 						}
 						else {}
 					}
-				} else {
 				}
 			}
 		}
