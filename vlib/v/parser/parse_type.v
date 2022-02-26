@@ -376,6 +376,9 @@ pub fn (mut p Parser) parse_type() ast.Type {
 		p.register_auto_import('sync')
 	}
 	mut nr_muls := 0
+	if p.inside_fn_return && p.tok.kind == .key_mut {
+		p.error_with_pos('cannot use `mut` in fn return parameter', p.tok.pos())
+	}
 	if p.tok.kind == .key_mut || is_shared || is_atomic {
 		nr_muls++
 		p.next()
