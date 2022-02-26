@@ -16,12 +16,24 @@ pub interface PRNG {
 mut:
 	seed(seed_data []u32)
 	byte() byte
-	bytes(bytes_needed int) ?[]byte
 	read(mut buf []byte)
 	u16() u16
 	u32() u32
 	u64() u64
 	free()
+}
+
+// bytes returns a buffer of `bytes_needed` random bytes
+[inline]
+pub fn (mut rng PRNG) bytes(bytes_needed int) ?[]byte {
+	if bytes_needed < 0 {
+		return error('can not read < 0 random bytes')
+	}
+
+	mut buffer := []byte{len: bytes_needed}
+	rng.read(mut buffer)
+
+	return buffer
 }
 
 // u32n returns a uniformly distributed pseudorandom 32-bit signed positive `u32` in range `[0, max)`.

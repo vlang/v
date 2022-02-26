@@ -111,19 +111,6 @@ pub fn (mut rng MT19937RNG) byte() byte {
 	return value
 }
 
-// bytes returns a buffer of `bytes_needed` random bytes.
-[inline]
-pub fn (mut rng MT19937RNG) bytes(bytes_needed int) ?[]byte {
-	if bytes_needed < 0 {
-		return error('can not read < 0 random bytes')
-	}
-	mut res := []byte{len: bytes_needed}
-
-	rng.read(mut res)
-
-	return res
-}
-
 // read fills up the buffer with random bytes.
 pub fn (mut rng MT19937RNG) read(mut buf []byte) {
 	mut bytes_needed := buf.len
