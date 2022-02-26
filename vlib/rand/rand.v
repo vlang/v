@@ -197,38 +197,38 @@ pub fn (mut rng PRNG) f64() f64 {
 	return f64(rng.u64()) / constants.max_u64_as_f64
 }
 
-// f32n returns a pseudorandom `f32` value in range `[0, max)`.
+// f32n returns a pseudorandom `f32` value in range `[0, max]`.
 [inline]
 pub fn (mut rng PRNG) f32n(max f32) ?f32 {
-	if max <= 0 {
-		return error('max has to be positive.')
+	if max < 0 {
+		return error('max has to be non-negative.')
 	}
 	return rng.f32() * max
 }
 
-// f64n returns a pseudorandom `f64` value in range `[0, max)`.
+// f64n returns a pseudorandom `f64` value in range `[0, max]`.
 [inline]
 pub fn (mut rng PRNG) f64n(max f64) ?f64 {
-	if max <= 0 {
-		return error('max has to be positive.')
+	if max < 0 {
+		return error('max has to be non-negative.')
 	}
 	return rng.f64() * max
 }
 
-// f32_in_range returns a pseudorandom `f32` in range `[min, max)`.
+// f32_in_range returns a pseudorandom `f32` in range `[min, max]`.
 [inline]
 pub fn (mut rng PRNG) f32_in_range(min f32, max f32) ?f32 {
-	if max <= min {
-		return error('max must be greater than min')
+	if max < min {
+		return error('max must be greater than or equal to min')
 	}
 	return min + rng.f32n(max - min) ?
 }
 
-// i64_in_range returns a pseudorandom `i64` in range `[min, max)`.
+// i64_in_range returns a pseudorandom `i64` in range `[min, max]`.
 [inline]
 pub fn (mut rng PRNG) f64_in_range(min f64, max f64) ?f64 {
-	if max <= min {
-		return error('max must be greater than min')
+	if max < min {
+		return error('max must be greater than or equal to min')
 	}
 	return min + rng.f64n(max - min) ?
 }
