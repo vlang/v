@@ -47,6 +47,10 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			name_pos)
 		return ast.StructDecl{}
 	}
+	if name == 'IError' && p.mod != 'builtin' {
+		p.error_with_pos('cannot register struct `IError`, it is builtin interface type',
+			name_pos)
+	}
 	generic_types, _ := p.parse_generic_types()
 	no_body := p.tok.kind != .lcbr
 	if language == .v && no_body {
@@ -453,6 +457,10 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	name_pos := p.tok.pos()
 	p.check_for_impure_v(language, name_pos)
 	modless_name := p.check_name()
+	if modless_name == 'IError' && p.mod != 'builtin' {
+		p.error_with_pos('cannot register interface `IError`, it is builtin interface type',
+			name_pos)
+	}
 	mut interface_name := ''
 	if language == .js {
 		interface_name = 'JS.' + modless_name
