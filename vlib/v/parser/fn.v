@@ -527,6 +527,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		is_builtin: p.builtin_mod || p.mod in util.builtin_module_parts
 		scope: p.scope
 		label_names: p.label_names
+		end_comments: p.eat_comments(same_line: true)
 	}
 	if generic_names.len > 0 {
 		p.table.register_fn_generic_types(fn_decl.fkey())

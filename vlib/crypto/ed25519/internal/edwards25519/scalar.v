@@ -1099,7 +1099,7 @@ fn generate_scalar(size int) ?Scalar {
 	return reflect.ValueOf(s)
 	*/
 	mut s := edwards25519.sc_zero
-	diceroll := rand.intn(100) or {0}
+	diceroll := rand.intn(100) or { 0 }
 	match true {
 		/*
 		case diceroll == 0:

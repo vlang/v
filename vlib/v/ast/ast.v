@@ -530,7 +530,8 @@ pub mut:
 	has_await         bool // 'true' if this function uses JS.await
 	//
 	comments      []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
-	next_comments []Comment // coments that are one line after the decl; used for InterfaceDecl
+	end_comments  []Comment // comments *after* header declarations. E.g.: `fn C.C_func(x int) int // Comment`
+	next_comments []Comment // comments that are one line after the decl; used for InterfaceDecl
 	//
 	source_file &File = 0
 	scope       &Scope
