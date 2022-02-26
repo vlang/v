@@ -16,9 +16,14 @@ import rand.seed
 // 2147483647. The repetition period also varies wildly. In order to provide more entropy
 // without altering the underlying algorithm too much, this implementation simply
 // requests for more random bits until the necessary width for the integers is achieved.
+
+pub const seed_len = 1
+
 const (
 	rand_limit     = u64(C.RAND_MAX)
 	rand_bitsize   = bits.len_64(rand_limit)
+	rand_bytesize  = rand_bitsize / 8
+	u16_iter_count = calculate_iterations_for(16)
 	u32_iter_count = calculate_iterations_for(32)
 	u64_iter_count = calculate_iterations_for(64)
 )
@@ -32,7 +37,9 @@ fn calculate_iterations_for(bits int) int {
 // SysRNG is the PRNG provided by default in the libc implementiation that V uses.
 pub struct SysRNG {
 mut:
-	seed u32 = seed.time_seed_32()
+	seed       u32 = seed.time_seed_32()
+	bytes_left int
+	buffer     u64
 }
 
 // r.seed() sets the seed of the accepting SysRNG to the given data.
@@ -55,7 +62,43 @@ pub fn (r SysRNG) default_rand() int {
 	return C.rand()
 }
 
-// r.u32() returns a pseudorandom u32 value less than 2^32
+// byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
+[inline]
+pub fn (r SysRNG) byte() byte {
+	return byte(C.rand())
+}
+
+pub fn (r SysRNG) read(mut buf []byte) {
+	mut bytes_left := buf.len
+	mut index := 0
+
+	for bytes_left > 0 {
+		mut value := u64(C.rand())
+		for _ in 0 ..rand_bytesize {
+			buf[index] = byte(value)
+			value >>= 8
+			index++
+		}
+		bytes_left -= rand_bytesize
+	}
+
+	for bytes_left > 0 {
+		buf[index] = r.byte()
+		index++
+	}
+}
+
+// u16 returns a uniformly distributed pseudorandom 16-bit unsigned positive `u16`.
+[inline]
+pub fn (r SysRNG) u16() u16 {
+	mut result := u16(C.rand())
+	for i in 1 .. sys.u16_iter_count {
+		result = result ^ (u16(C.rand()) << (sys.rand_bitsize * i))
+	}
+	return result
+}
+
+// u32 returns a uniformly distributed pseudorandom 32-bit unsigned positive `u32`.
 [inline]
 pub fn (r SysRNG) u32() u32 {
 	mut result := u32(C.rand())
@@ -65,7 +108,7 @@ pub fn (r SysRNG) u32() u32 {
 	return result
 }
 
-// r.u64() returns a pseudorandom u64 value less than 2^64
+// u64 returns a uniformly distributed pseudorandom 64-bit unsigned positive `u64`.
 [inline]
 pub fn (r SysRNG) u64() u64 {
 	mut result := u64(C.rand())
