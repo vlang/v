@@ -19,15 +19,15 @@ fn main() {
 	println('Receiver ok: ' + r.ok.str())
 }
 
-fn on_foo(mut receiver Receiver, e &some_module.EventMetadata, sender voidptr) {
+fn on_foo(mut receiver Receiver, sender voidptr, e &some_module.EventMetadata) {
 	receiver.ok = true
 	println('on_foo :: ' + e.message)
 }
 
-fn on_bar(receiver voidptr, e &some_module.EventMetadata, sender voidptr) {
+fn on_bar(receiver voidptr, sender voidptr, e &some_module.EventMetadata) {
 	println('on_bar :: ' + e.message)
 }
 
-fn on_baz(receiver voidptr, event voidptr, d &some_module.Duration) {
+fn on_baz(receiver voidptr, d &some_module.Duration, e voidptr) {
 	println('on_baz :: ' + d.hours.str())
 }

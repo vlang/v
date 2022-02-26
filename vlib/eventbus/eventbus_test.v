@@ -96,13 +96,13 @@ fn test_unsubscribe_reveiver() {
 	assert !eb.subscriber.is_subscribed_method('on_test', r)
 }
 
-fn on_test(receiver voidptr, ev &EventData, sender voidptr) {
+fn on_test(receiver voidptr, sender voidptr, ev &EventData) {
 	assert receiver == 0
 	assert sender != 0
 	assert ev.data == 'hello'
 }
 
-fn on_test_with_receiver(receiver &FakeReceiver, ev &EventData, sender voidptr) {
+fn on_test_with_receiver(receiver &FakeReceiver, sender voidptr, ev &EventData) {
 	assert receiver.ok == false
 	assert sender != 0
 	assert ev.data == 'hello'

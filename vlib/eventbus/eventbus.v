@@ -1,6 +1,6 @@
 module eventbus
 
-pub type EventHandlerFn = fn (receiver voidptr, args voidptr, sender voidptr)
+pub type EventHandlerFn = fn (receiver voidptr, sender voidptr, args voidptr)
 
 pub struct Publisher {
 mut:
@@ -57,7 +57,7 @@ pub fn (eb &EventBus) has_subscriber(name string) bool {
 fn (mut pb Publisher) publish(name string, sender voidptr, args voidptr) {
 	for event in pb.registry.events {
 		if event.name == name {
-			event.handler(event.receiver, args, sender)
+			event.handler(event.receiver, sender, args)
 		}
 	}
 	pb.registry.events = pb.registry.events.filter(!(it.name == name && it.once))
