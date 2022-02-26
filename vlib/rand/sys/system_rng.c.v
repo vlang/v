@@ -74,12 +74,12 @@ pub fn (r SysRNG) read(mut buf []byte) {
 
 	for bytes_left > 0 {
 		mut value := u64(C.rand())
-		for _ in 0 ..rand_bytesize {
+		for _ in 0 .. sys.rand_bytesize {
 			buf[index] = byte(value)
 			value >>= 8
 			index++
 		}
-		bytes_left -= rand_bytesize
+		bytes_left -= sys.rand_bytesize
 	}
 
 	for bytes_left > 0 {
