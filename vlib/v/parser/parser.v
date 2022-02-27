@@ -40,6 +40,7 @@ mut:
 	inside_or_expr            bool
 	inside_for                bool
 	inside_fn                 bool // true even with implicit main
+	inside_fn_return          bool
 	inside_unsafe_fn          bool
 	inside_str_interp         bool
 	inside_array_lit          bool
