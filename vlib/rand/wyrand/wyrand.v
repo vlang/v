@@ -4,7 +4,6 @@
 module wyrand
 
 import hash
-import math
 import rand.seed
 
 // Redefinition of some constants that we will need for pseudorandom number generation.
@@ -48,34 +47,6 @@ pub fn (mut rng WyRandRNG) byte() byte {
 	value := byte(rng.buffer)
 	rng.buffer >>= 8
 	return value
-}
-
-// read fills up the buffer with random bytes.
-pub fn (mut rng WyRandRNG) read(mut buf []byte) {
-	mut bytes_needed := buf.len
-	mut index := 0
-
-	for _ in 0 .. math.min(rng.bytes_left, bytes_needed) {
-		buf[index] = rng.byte()
-		bytes_needed--
-		index++
-	}
-
-	for bytes_needed >= 8 {
-		mut full_value := rng.u64()
-		for _ in 0 .. 8 {
-			buf[index] = byte(full_value)
-			full_value >>= 8
-			index++
-		}
-		bytes_needed -= 8
-	}
-
-	for bytes_needed > 0 {
-		buf[index] = rng.byte()
-		index++
-		bytes_needed--
-	}
 }
 
 [inline]
@@ -152,4 +123,9 @@ fn (mut rng WyRandRNG) internal_u64() u64 {
 		return hash.wymum(seed1 ^ wyrand.wyp1, seed1)
 	}
 	return 0
+}
+
+[inline]
+pub fn (mut rng WyRandRNG) block_size() int {
+	return 64
 }

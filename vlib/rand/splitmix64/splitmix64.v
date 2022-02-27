@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 module splitmix64
 
-import math
 import rand.seed
 
 pub const seed_len = 2
@@ -44,34 +43,6 @@ pub fn (mut rng SplitMix64RNG) byte() byte {
 	value := byte(rng.buffer)
 	rng.buffer >>= 8
 	return value
-}
-
-// read fills up the buffer with random bytes.
-pub fn (mut rng SplitMix64RNG) read(mut buf []byte) {
-	mut bytes_needed := buf.len
-	mut index := 0
-
-	for _ in 0 .. math.min(rng.bytes_left, bytes_needed) {
-		buf[index] = rng.byte()
-		bytes_needed--
-		index++
-	}
-
-	for bytes_needed >= 8 {
-		mut full_value := rng.u64()
-		for _ in 0 .. 8 {
-			buf[index] = byte(full_value)
-			full_value >>= 8
-			index++
-		}
-		bytes_needed -= 8
-	}
-
-	for bytes_needed > 0 {
-		buf[index] = rng.byte()
-		index++
-		bytes_needed--
-	}
 }
 
 [inline]
@@ -147,6 +118,11 @@ fn (mut rng SplitMix64RNG) internal_u64() u64 {
 	z = (z ^ (z >> u64(30))) * 0xbf58476d1ce4e5b9
 	z = (z ^ (z >> u64(27))) * 0x94d049bb133111eb
 	return z ^ (z >> (31))
+}
+
+[inline]
+pub fn (mut rng SplitMix64RNG) block_size() int {
+	return 64
 }
 
 // free should be called when the generator is no longer needed

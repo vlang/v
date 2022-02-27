@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 module pcg32
 
-import math
 import rand.seed
 
 pub const seed_len = 4
@@ -54,34 +53,6 @@ fn (mut rng PCG32RNG) byte() byte {
 	value := byte(rng.buffer)
 	rng.buffer >>= 8
 	return value
-}
-
-// read fills up the buffer with random bytes.
-pub fn (mut rng PCG32RNG) read(mut buf []byte) {
-	mut bytes_needed := buf.len
-	mut index := 0
-
-	for _ in 0 .. math.min(rng.bytes_left, bytes_needed) {
-		buf[index] = rng.byte()
-		bytes_needed--
-		index++
-	}
-
-	for bytes_needed >= 4 {
-		mut full_value := rng.u32()
-		for _ in 0 .. 4 {
-			buf[index] = byte(full_value)
-			full_value >>= 8
-			index++
-		}
-		bytes_needed -= 4
-	}
-
-	for bytes_needed > 0 {
-		buf[index] = rng.byte()
-		index++
-		bytes_needed--
-	}
 }
 
 [inline]
@@ -141,6 +112,11 @@ fn (mut rng PCG32RNG) internal_u32() u32 {
 [inline]
 pub fn (mut rng PCG32RNG) u64() u64 {
 	return u64(rng.u32()) | (u64(rng.u32()) << 32)
+}
+
+[inline]
+pub fn (mut rng PCG32RNG) block_size() int {
+	return 32
 }
 
 // free should be called when the generator is no longer needed
