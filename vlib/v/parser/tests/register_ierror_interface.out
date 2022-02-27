@@ -1,0 +1,5 @@
+vlib/v/parser/tests/register_ierror_interface.vv:1:11: error: cannot register interface `IError`, it is builtin interface type
+    1 | interface IError {
+      |           ~~~~~~
+    2 |     foo() string
+    3 | }
