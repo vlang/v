@@ -1,0 +1,7 @@
+interface IError {
+	foo() string
+}
+
+fn main() {
+	println('Hello World')
+}
