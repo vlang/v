@@ -16,10 +16,10 @@ pub interface PRNG {
 mut:
 	seed(seed_data []u32)
 	byte() byte
-	read(mut buf []byte)
 	u16() u16
 	u32() u32
 	u64() u64
+	block_size() int
 	free()
 }
 
@@ -31,7 +31,7 @@ pub fn (mut rng PRNG) bytes(bytes_needed int) ?[]byte {
 	}
 
 	mut buffer := []byte{len: bytes_needed}
-	rng.read(mut buffer)
+	read_internal(mut rng, mut buffer)
 
 	return buffer
 }
@@ -383,7 +383,7 @@ pub fn bytes(bytes_needed int) ?[]byte {
 
 // read fills in `buf` a maximum of `buf.len` random bytes
 pub fn read(mut buf []byte) {
-	default_rng.read(mut buf)
+	read_internal(mut default_rng, mut buf)
 }
 
 const (

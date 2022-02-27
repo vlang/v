@@ -65,3 +65,9 @@ pub fn ulid_at_millisecond(unix_time_milli u64) string {
 
 	return res
 }
+
+fn read_internal(mut rng PRNG, mut buf []byte) {
+	for i in 0 .. buf.len {
+		buf[i] = rng.byte()
+	}
+}
