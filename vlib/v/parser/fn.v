@@ -353,7 +353,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	same_line := p.tok.line_nr == p.prev_tok.line_nr
 	if (p.tok.kind.is_start_of_type() && (same_line || p.tok.kind != .lsbr))
 		|| (same_line && p.tok.kind == .key_fn) {
+		p.inside_fn_return = true
 		return_type = p.parse_type()
+		p.inside_fn_return = false
 		return_type_pos = return_type_pos.extend(p.prev_tok.pos())
 	}
 	mut type_sym_method_idx := 0
