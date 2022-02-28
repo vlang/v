@@ -117,9 +117,8 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 
 		// try to see if we need to pass a pointer
 		if node.left is ast.Ident {
-			scope := g.file.scope.innermost(node.pos.pos)
-			if v := scope.find_var(node.left.name) {
-				if m.params[0].typ.is_ptr() && !v.typ.is_ptr() {
+			if node.left.obj is ast.Var {
+				if m.params[0].typ.is_ptr() && !node.left.obj.typ.is_ptr() {
 					g.write('&')
 				}
 			}

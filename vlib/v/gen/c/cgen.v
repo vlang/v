@@ -3665,8 +3665,10 @@ fn (mut g Gen) ident(node ast.Ident) {
 			g.write('${name}.val')
 			return
 		}
-		scope := g.file.scope.innermost(node.pos.pos)
-		if v := scope.find_var(node.name) {
+		// TODO: investigate why node.obj is pointing to outdated ScopeObject?
+		// v := node.obj
+		// if v is ast.Var {
+		if v := node.scope.find_var(node.name) {
 			is_auto_heap = v.is_auto_heap && (!g.is_assign_lhs || g.assign_op != .decl_assign)
 			if is_auto_heap {
 				g.write('(*(')

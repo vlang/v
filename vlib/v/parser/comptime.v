@@ -260,21 +260,15 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	file.path = tmpl_path
 	// copy vars from current fn scope into vweb_tmpl scope
 	for stmt in file.stmts {
-		if stmt is ast.FnDecl {
+		if mut stmt is ast.FnDecl {
 			if stmt.name == 'main.vweb_tmpl_$tmp_fn_name' {
-				// mut tmpl_scope := file.scope.innermost(stmt.body_pos.pos)
-				mut tmpl_scope := stmt.scope
 				for _, obj in p.scope.objects {
-					if obj is ast.Var {
-						mut v := obj
-						v.pos = stmt.body_pos
-						tmpl_scope.register(ast.Var{
-							...v
+					if mut obj is ast.Var {
+						stmt.scope.register(ast.Var{
+							...obj
 							is_used: true
+							pos: stmt.body_pos
 						})
-						// set the controller action var to used
-						// if it's unused in the template it will warn
-						v.is_used = true
 					}
 				}
 				break
