@@ -3360,7 +3360,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	for {
 		comments = p.eat_comments()
 		if is_block && p.tok.kind == .eof {
-			p.error('unexpected eof, expecting ´)´')
+			p.error('unexpected eof, expecting `)`')
 			return ast.GlobalDecl{}
 		}
 		if p.tok.kind == .rpar {
@@ -3375,18 +3375,9 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		if has_expr {
 			p.next() // =
 			expr = p.expr(0)
-			match expr {
-				ast.CastExpr {
-					typ = (expr as ast.CastExpr).typ
-				}
-				ast.StructInit {
-					typ = (expr as ast.StructInit).typ
-				}
-				ast.ArrayInit {
-					typ = (expr as ast.ArrayInit).typ
-				}
-				ast.ChanInit {
-					typ = (expr as ast.ChanInit).typ
+			match mut expr {
+				ast.CastExpr, ast.StructInit, ast.ArrayInit, ast.ChanInit {
+					typ = expr.typ
 				}
 				ast.BoolLiteral, ast.IsRefType {
 					typ = ast.bool_type
