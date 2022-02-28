@@ -1070,14 +1070,14 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Pos) {
 			return '', pos
 		}
 		ast.Ident {
-			if expr.obj is ast.Var {
-				mut v := expr.obj as ast.Var
-				if !v.is_mut && !c.pref.translated && !c.file.is_translated && !c.inside_unsafe {
+			if mut expr.obj is ast.Var {
+				if !expr.obj.is_mut && !c.pref.translated && !c.file.is_translated
+					&& !c.inside_unsafe {
 					c.error('`$expr.name` is immutable, declare it with `mut` to make it mutable',
 						expr.pos)
 				}
-				v.is_changed = true
-				if v.typ.share() == .shared_t {
+				expr.obj.is_changed = true
+				if expr.obj.typ.share() == .shared_t {
 					if expr.name !in c.locked_names {
 						if c.locked_names.len > 0 || c.rlocked_names.len > 0 {
 							if expr.name in c.rlocked_names {
@@ -1764,11 +1764,8 @@ pub fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 				}
 				// ast.ParExpr {} // TODO allow `.x = (1+2)`
 				else {
-					if field.expr is ast.Ident {
-						x := field.expr as ast.Ident
-						// TODO sum type bug, remove temp var
-						// if field.expr.language == .c {
-						if x.language == .c {
+					if mut field.expr is ast.Ident {
+						if field.expr.language == .c {
 							continue
 						}
 					}
@@ -1856,7 +1853,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			}
 			for i, ident in node.defer_vars {
 				mut id := ident
-				if id.info is ast.IdentVar {
+				if mut id.info is ast.IdentVar {
 					if id.comptime && id.name in checker.valid_comptime_not_user_defined {
 						node.defer_vars[i] = ast.Ident{
 							scope: 0
@@ -1864,13 +1861,11 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 						}
 						continue
 					}
-					mut info := id.info as ast.IdentVar
 					typ := c.ident(mut id)
 					if typ == ast.error_type_idx {
 						continue
 					}
-					info.typ = typ
-					id.info = info
+					id.info.typ = typ
 					node.defer_vars[i] = id
 				}
 			}
@@ -2886,9 +2881,9 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 
 	// checks on int literal to enum cast if the value represents a value on the enum
 	if to_sym.kind == .enum_ {
-		if node.expr is ast.IntegerLiteral {
+		if mut node.expr is ast.IntegerLiteral {
 			enum_typ_name := c.table.get_type_name(to_type)
-			node_val := (node.expr as ast.IntegerLiteral).val.int()
+			node_val := node.expr.val.int()
 
 			if enum_decl := c.table.enum_decls[to_sym.name] {
 				mut in_range := false
@@ -3414,8 +3409,8 @@ fn (mut c Checker) find_obj_definition(obj ast.ScopeObject) ?ast.Expr {
 	} else {
 		return error('`$name` is a global variable and is unknown at compile time')
 	}
-	if expr is ast.Ident {
-		return c.find_definition(expr as ast.Ident) // TODO: smartcast
+	if mut expr is ast.Ident {
+		return c.find_definition(expr)
 	}
 	if !expr.is_lit() {
 		return error('definition of `$name` is unknown at compile time')
@@ -3706,10 +3701,9 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		&& !node.left.is_auto_deref_var()) || typ.is_pointer()) {
 		mut is_ok := false
 		if mut node.left is ast.Ident {
-			if node.left.obj is ast.Var {
-				v := node.left.obj as ast.Var
+			if mut node.left.obj is ast.Var {
 				// `mut param []T` function parameter
-				is_ok = v.is_mut && v.is_arg && !typ.deref().is_ptr()
+				is_ok = node.left.obj.is_mut && node.left.obj.is_arg && !typ.deref().is_ptr()
 			}
 		}
 		if !is_ok && !c.pref.translated && !c.file.is_translated {
