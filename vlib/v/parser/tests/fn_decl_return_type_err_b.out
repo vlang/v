@@ -1,0 +1,7 @@
+vlib/v/parser/tests/fn_decl_return_type_err_b.vv:3:13: error: cannot use `mut` on fn return type
+    1 | struct Foo{}
+    2 |
+    3 | fn maker() (mut Foo) {
+      |             ~~~
+    4 |     inner := &Foo{}
+    5 |     return *inner
