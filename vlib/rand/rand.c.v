@@ -147,16 +147,44 @@ fn init() {
 	C.atexit(deinit)
 }
 
-// read fills in `buf` a maximum of `buf.len` random bytes
-pub fn read(mut buf []byte) {
+fn read_32(mut rng PRNG, mut buf []byte) {
+	p32 := unsafe { &u32(buf.data) }
+	u32s := buf.len / 4
+	for i in 0 .. u32s {
+		unsafe {
+			*(p32 + i) = rng.u32()
+		}
+	}
+	for i in u32s * 4 .. buf.len {
+		buf[i] = rng.byte()
+	}
+}
+
+fn read_64(mut rng PRNG, mut buf []byte) {
 	p64 := unsafe { &u64(buf.data) }
 	u64s := buf.len / 8
 	for i in 0 .. u64s {
 		unsafe {
-			*(p64 + i) = default_rng.u64()
+			*(p64 + i) = rng.u64()
 		}
 	}
 	for i in u64s * 8 .. buf.len {
-		buf[i] = byte(default_rng.u32())
+		buf[i] = rng.byte()
+	}
+}
+
+fn read_internal(mut rng PRNG, mut buf []byte) {
+	match rng.block_size() {
+		32 {
+			read_32(mut rng, mut buf)
+		}
+		64 {
+			read_64(mut rng, mut buf)
+		}
+		else {
+			for i in 0 .. buf.len {
+				buf[i] = rng.byte()
+			}
+		}
 	}
 }

@@ -44,6 +44,8 @@ C++ functions for MT19937, with initialization improved 2002/2/10.
    http://www.math.sci.hiroshima-u.ac.jp/~m-mat/MT/emt.html
    email: m-mat @ math.sci.hiroshima-u.ac.jp (remove space)
 */
+pub const seed_len = 2
+
 const (
 	nn            = 312
 	mm            = 156
@@ -57,10 +59,10 @@ const (
 // **NOTE**: The RNG is not seeded when instantiated so remember to seed it before use.
 pub struct MT19937RNG {
 mut:
-	state    []u64 = []u64{len: mt19937.nn}
-	mti      int   = mt19937.nn
-	next_rnd u32
-	has_next bool
+	state      []u64 = []u64{len: mt19937.nn}
+	mti        int   = mt19937.nn
+	bytes_left int
+	buffer     u64
 }
 
 // calculate_state returns a random state array calculated from the `seed_data`.
@@ -85,21 +87,55 @@ pub fn (mut rng MT19937RNG) seed(seed_data []u32) {
 	rng.state = calculate_state(seed_data, mut rng.state)
 	rng.state = calculate_state(seed_data, mut rng.state)
 	rng.mti = mt19937.nn
-	rng.next_rnd = 0
-	rng.has_next = false
+	rng.bytes_left = 0
+	rng.buffer = 0
+}
+
+// byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
+[inline]
+pub fn (mut rng MT19937RNG) byte() byte {
+	if rng.bytes_left >= 1 {
+		rng.bytes_left -= 1
+		value := byte(rng.buffer)
+		rng.buffer >>= 8
+		return value
+	}
+	rng.buffer = rng.u64()
+	rng.bytes_left = 7
+	value := byte(rng.buffer)
+	rng.buffer >>= 8
+	return value
+}
+
+// u16 returns a pseudorandom 16bit int in range `[0, 2¹⁶)`.
+[inline]
+pub fn (mut rng MT19937RNG) u16() u16 {
+	if rng.bytes_left >= 2 {
+		rng.bytes_left -= 2
+		value := u16(rng.buffer)
+		rng.buffer >>= 16
+		return value
+	}
+	ans := rng.u64()
+	rng.buffer = ans >> 16
+	rng.bytes_left = 6
+	return u16(ans)
 }
 
 // u32 returns a pseudorandom 32bit int in range `[0, 2³²)`.
 [inline]
 pub fn (mut rng MT19937RNG) u32() u32 {
-	if rng.has_next {
-		rng.has_next = false
-		return rng.next_rnd
+	// Can we take a whole u32 out of the buffer?
+	if rng.bytes_left >= 4 {
+		rng.bytes_left -= 4
+		value := u32(rng.buffer)
+		rng.buffer >>= 32
+		return value
 	}
 	ans := rng.u64()
-	rng.next_rnd = u32(ans >> 32)
-	rng.has_next = true
-	return u32(ans & 0xffffffff)
+	rng.buffer = ans >> 32
+	rng.bytes_left = 4
+	return u32(ans)
 }
 
 // u64 returns a pseudorandom 64bit int in range `[0, 2⁶⁴)`.
@@ -129,6 +165,12 @@ pub fn (mut rng MT19937RNG) u64() u64 {
 	x ^= (x << 37) & 0xFFF7EEE000000000
 	x ^= (x >> 43)
 	return x
+}
+
+// block_size returns the number of bits that the RNG can produce in a single iteration.
+[inline]
+pub fn (mut rng MT19937RNG) block_size() int {
+	return 64
 }
 
 // free should be called when the generator is no longer needed

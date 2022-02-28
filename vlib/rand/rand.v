@@ -15,53 +15,25 @@ import rand.wyrand
 pub interface PRNG {
 mut:
 	seed(seed_data []u32)
-	// TODO: Support buffering for bytes
-	// byte() byte
-	// bytes(bytes_needed int) ?[]byte
-	// u16() u16
+	byte() byte
+	u16() u16
 	u32() u32
 	u64() u64
+	block_size() int
 	free()
 }
 
-// byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
-[inline]
-pub fn (mut rng PRNG) byte() byte {
-	// TODO: Reimplement for all PRNGs efficiently
-	return byte(rng.u32() & 0xff)
-}
-
-// bytes returns a buffer of `bytes_needed` random bytes.
+// bytes returns a buffer of `bytes_needed` random bytes
 [inline]
 pub fn (mut rng PRNG) bytes(bytes_needed int) ?[]byte {
-	// TODO: Reimplement for all PRNGs efficiently
 	if bytes_needed < 0 {
 		return error('can not read < 0 random bytes')
 	}
-	mut res := []byte{cap: bytes_needed}
-	mut remaining := bytes_needed
 
-	for remaining > 8 {
-		mut value := rng.u64()
-		for _ in 0 .. 8 {
-			res << byte(value & 0xff)
-			value >>= 8
-		}
-		remaining -= 8
-	}
-	for remaining > 4 {
-		mut value := rng.u32()
-		for _ in 0 .. 4 {
-			res << byte(value & 0xff)
-			value >>= 8
-		}
-		remaining -= 4
-	}
-	for remaining > 0 {
-		res << rng.byte()
-		remaining -= 1
-	}
-	return res
+	mut buffer := []byte{len: bytes_needed}
+	read_internal(mut rng, mut buffer)
+
+	return buffer
 }
 
 // u32n returns a uniformly distributed pseudorandom 32-bit signed positive `u32` in range `[0, max)`.
@@ -140,6 +112,18 @@ pub fn (mut rng PRNG) u64_in_range(min u64, max u64) ?u64 {
 	return min + rng.u64n(max - min) ?
 }
 
+// i8 returns a (possibly negative) pseudorandom 8-bit `i8`.
+[inline]
+pub fn (mut rng PRNG) i8() i8 {
+	return i8(rng.byte())
+}
+
+// i16 returns a (possibly negative) pseudorandom 16-bit `i16`.
+[inline]
+pub fn (mut rng PRNG) i16() i16 {
+	return i16(rng.u16())
+}
+
 // int returns a (possibly negative) pseudorandom 32-bit `int`.
 [inline]
 pub fn (mut rng PRNG) int() int {
@@ -213,38 +197,38 @@ pub fn (mut rng PRNG) f64() f64 {
 	return f64(rng.u64()) / constants.max_u64_as_f64
 }
 
-// f32n returns a pseudorandom `f32` value in range `[0, max)`.
+// f32n returns a pseudorandom `f32` value in range `[0, max]`.
 [inline]
 pub fn (mut rng PRNG) f32n(max f32) ?f32 {
-	if max <= 0 {
-		return error('max has to be positive.')
+	if max < 0 {
+		return error('max has to be non-negative.')
 	}
 	return rng.f32() * max
 }
 
-// f64n returns a pseudorandom `f64` value in range `[0, max)`.
+// f64n returns a pseudorandom `f64` value in range `[0, max]`.
 [inline]
 pub fn (mut rng PRNG) f64n(max f64) ?f64 {
-	if max <= 0 {
-		return error('max has to be positive.')
+	if max < 0 {
+		return error('max has to be non-negative.')
 	}
 	return rng.f64() * max
 }
 
-// f32_in_range returns a pseudorandom `f32` in range `[min, max)`.
+// f32_in_range returns a pseudorandom `f32` in range `[min, max]`.
 [inline]
 pub fn (mut rng PRNG) f32_in_range(min f32, max f32) ?f32 {
-	if max <= min {
-		return error('max must be greater than min')
+	if max < min {
+		return error('max must be greater than or equal to min')
 	}
 	return min + rng.f32n(max - min) ?
 }
 
-// i64_in_range returns a pseudorandom `i64` in range `[min, max)`.
+// i64_in_range returns a pseudorandom `i64` in range `[min, max]`.
 [inline]
 pub fn (mut rng PRNG) f64_in_range(min f64, max f64) ?f64 {
-	if max <= min {
-		return error('max must be greater than min')
+	if max < min {
+		return error('max must be greater than or equal to min')
 	}
 	return min + rng.f64n(max - min) ?
 }
@@ -309,6 +293,11 @@ pub fn u32_in_range(min u32, max u32) ?u32 {
 // u64_in_range returns a uniformly distributed pseudorandom 64-bit unsigned `u64` in range `[min, max)`.
 pub fn u64_in_range(min u64, max u64) ?u64 {
 	return default_rng.u64_in_range(min, max)
+}
+
+// i16 returns a uniformly distributed pseudorandom 16-bit signed (possibly negative) `i16`.
+pub fn i16() i16 {
+	return default_rng.i16()
 }
 
 // int returns a uniformly distributed pseudorandom 32-bit signed (possibly negative) `int`.
@@ -390,6 +379,11 @@ pub fn f64_in_range(min f64, max f64) ?f64 {
 // bytes returns a buffer of `bytes_needed` random bytes
 pub fn bytes(bytes_needed int) ?[]byte {
 	return default_rng.bytes(bytes_needed)
+}
+
+// read fills in `buf` a maximum of `buf.len` random bytes
+pub fn read(mut buf []byte) {
+	read_internal(mut default_rng, mut buf)
 }
 
 const (
