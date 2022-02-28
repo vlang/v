@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 module musl
 
-import math
 import rand.seed
 
 pub const seed_len = 1
