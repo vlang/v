@@ -40,52 +40,29 @@ pub fn (mut rng PCG32RNG) seed(seed_data []u32) {
 // byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
 [inline]
 fn (mut rng PCG32RNG) byte() byte {
-	// Can we extract a value from the buffer?
 	if rng.bytes_left >= 1 {
 		rng.bytes_left -= 1
 		value := byte(rng.buffer)
 		rng.buffer >>= 8
 		return value
 	}
-	// Add a new value to the buffer
-	rng.buffer = rng.internal_u32()
+	rng.buffer = rng.u32()
 	rng.bytes_left = 3
 	value := byte(rng.buffer)
 	rng.buffer >>= 8
 	return value
 }
 
-[inline]
-fn (mut rng PCG32RNG) step_by(amount int) u32 {
-	next_number := rng.internal_u32()
-
-	bits_left := rng.bytes_left * 8
-	bits_needed := amount - bits_left
-
-	old_value := rng.buffer & ((u32(1) << bits_left) - 1)
-	new_value := next_number & ((u32(1) << bits_needed) - 1)
-	value := old_value | (new_value << bits_left)
-
-	rng.buffer = next_number >> bits_needed
-	rng.bytes_left = 4 - (bits_needed / 8)
-
-	return value
-}
-
 // u16 returns a pseudorandom 16-bit unsigned integer (`u16`).
 [inline]
 pub fn (mut rng PCG32RNG) u16() u16 {
-	// Can we take a whole u16 out of the buffer?
 	if rng.bytes_left >= 2 {
 		rng.bytes_left -= 2
 		value := u16(rng.buffer)
 		rng.buffer >>= 16
 		return value
 	}
-	if rng.bytes_left > 0 {
-		return u16(rng.step_by(16))
-	}
-	ans := rng.internal_u32()
+	ans := rng.u32()
 	rng.buffer = ans >> 16
 	rng.bytes_left = 2
 	return u16(ans)
@@ -93,14 +70,7 @@ pub fn (mut rng PCG32RNG) u16() u16 {
 
 // u32 returns a pseudorandom unsigned `u32`.
 [inline]
-pub fn (mut rng PCG32RNG) u32() u32 {
-	if rng.bytes_left >= 1 {
-		return rng.step_by(32)
-	}
-	return rng.internal_u32()
-}
-
-fn (mut rng PCG32RNG) internal_u32() u32 {
+fn (mut rng PCG32RNG) u32() u32 {
 	oldstate := rng.state
 	rng.state = oldstate * (6364136223846793005) + rng.inc
 	xorshifted := u32(((oldstate >> u64(18)) ^ oldstate) >> u64(27))
@@ -114,6 +84,7 @@ pub fn (mut rng PCG32RNG) u64() u64 {
 	return u64(rng.u32()) | (u64(rng.u32()) << 32)
 }
 
+// block_size returns the number of bits that the RNG can produce in a single iteration.
 [inline]
 pub fn (mut rng PCG32RNG) block_size() int {
 	return 32

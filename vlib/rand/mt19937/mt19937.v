@@ -94,52 +94,29 @@ pub fn (mut rng MT19937RNG) seed(seed_data []u32) {
 // byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
 [inline]
 pub fn (mut rng MT19937RNG) byte() byte {
-	// Can we extract a value from the buffer?
 	if rng.bytes_left >= 1 {
 		rng.bytes_left -= 1
 		value := byte(rng.buffer)
 		rng.buffer >>= 8
 		return value
 	}
-	// Add a new value to the buffer
-	rng.buffer = rng.internal_u64()
+	rng.buffer = rng.u64()
 	rng.bytes_left = 7
 	value := byte(rng.buffer)
 	rng.buffer >>= 8
 	return value
 }
 
-[inline]
-fn (mut rng MT19937RNG) step_by(amount int) u64 {
-	next_number := rng.internal_u64()
-
-	bits_left := rng.bytes_left * 8
-	bits_needed := amount - bits_left
-
-	old_value := rng.buffer & ((u64(1) << bits_left) - 1)
-	new_value := next_number & ((u64(1) << bits_needed) - 1)
-	value := old_value | (new_value << bits_left)
-
-	rng.buffer = next_number >> bits_needed
-	rng.bytes_left = 8 - (bits_needed / 8)
-
-	return value
-}
-
 // u16 returns a pseudorandom 16bit int in range `[0, 2¹⁶)`.
 [inline]
 pub fn (mut rng MT19937RNG) u16() u16 {
-	// Can we take a whole u16 out of the buffer?
 	if rng.bytes_left >= 2 {
 		rng.bytes_left -= 2
 		value := u16(rng.buffer)
 		rng.buffer >>= 16
 		return value
 	}
-	if rng.bytes_left > 0 {
-		return u16(rng.step_by(16))
-	}
-	ans := rng.internal_u64()
+	ans := rng.u64()
 	rng.buffer = ans >> 16
 	rng.bytes_left = 6
 	return u16(ans)
@@ -155,11 +132,7 @@ pub fn (mut rng MT19937RNG) u32() u32 {
 		rng.buffer >>= 32
 		return value
 	}
-	if rng.bytes_left > 0 {
-		return u32(rng.step_by(32))
-	}
-	// We're out so we start fresh.
-	ans := rng.internal_u64()
+	ans := rng.u64()
 	rng.buffer = ans >> 32
 	rng.bytes_left = 4
 	return u32(ans)
@@ -168,14 +141,6 @@ pub fn (mut rng MT19937RNG) u32() u32 {
 // u64 returns a pseudorandom 64bit int in range `[0, 2⁶⁴)`.
 [inline]
 pub fn (mut rng MT19937RNG) u64() u64 {
-	if rng.bytes_left > 0 {
-		return rng.step_by(64)
-	}
-	return rng.internal_u64()
-}
-
-[inline]
-fn (mut rng MT19937RNG) internal_u64() u64 {
 	mag01 := [u64(0), u64(mt19937.matrix_a)]
 	mut x := u64(0)
 	mut i := int(0)
@@ -202,6 +167,7 @@ fn (mut rng MT19937RNG) internal_u64() u64 {
 	return x
 }
 
+// block_size returns the number of bits that the RNG can produce in a single iteration.
 [inline]
 pub fn (mut rng MT19937RNG) block_size() int {
 	return 64

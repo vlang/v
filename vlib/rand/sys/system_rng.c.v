@@ -37,7 +37,9 @@ fn calculate_iterations_for(bits int) int {
 // SysRNG is the PRNG provided by default in the libc implementiation that V uses.
 pub struct SysRNG {
 mut:
-	seed u32 = seed.time_seed_32()
+	seed       u32 = seed.time_seed_32()
+	buffer     int
+	bytes_left int
 }
 
 // r.seed() sets the seed of the accepting SysRNG to the given data.
@@ -62,13 +64,29 @@ pub fn (r SysRNG) default_rand() int {
 
 // byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
 [inline]
-pub fn (r SysRNG) byte() byte {
-	return byte(C.rand())
+pub fn (mut r SysRNG) byte() byte {
+	if r.bytes_left >= 1 {
+		r.bytes_left -= 1
+		value := byte(r.buffer)
+		r.buffer >>= 8
+		return value
+	}
+	r.buffer = r.default_rand()
+	r.bytes_left = sys.rand_bytesize - 1
+	value := byte(r.buffer)
+	r.buffer >>= 8
+	return value
 }
 
 // u16 returns a uniformly distributed pseudorandom 16-bit unsigned positive `u16`.
 [inline]
-pub fn (r SysRNG) u16() u16 {
+pub fn (mut r SysRNG) u16() u16 {
+	if r.bytes_left >= 2 {
+		r.bytes_left -= 2
+		value := u16(r.buffer)
+		r.buffer >>= 16
+		return value
+	}
 	mut result := u16(C.rand())
 	for i in 1 .. sys.u16_iter_count {
 		result = result ^ (u16(C.rand()) << (sys.rand_bitsize * i))
@@ -96,6 +114,7 @@ pub fn (r SysRNG) u64() u64 {
 	return result
 }
 
+// block_size returns the number of bits that the RNG can produce in a single iteration.
 [inline]
 pub fn (r SysRNG) block_size() int {
 	return sys.rand_bitsize

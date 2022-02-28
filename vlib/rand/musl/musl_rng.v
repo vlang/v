@@ -31,64 +31,32 @@ pub fn (mut rng MuslRNG) seed(seed_data []u32) {
 // byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
 [inline]
 fn (mut rng MuslRNG) byte() byte {
-	// Can we extract a value from the buffer?
 	if rng.bytes_left >= 1 {
 		rng.bytes_left -= 1
 		value := byte(rng.buffer)
 		rng.buffer >>= 8
 		return value
 	}
-	// Add a new value to the buffer
-	rng.buffer = rng.internal_u32()
+	rng.buffer = rng.u32()
 	rng.bytes_left = 3
 	value := byte(rng.buffer)
 	rng.buffer >>= 8
 	return value
 }
 
-[inline]
-fn (mut rng MuslRNG) step_by(amount int) u32 {
-	next_number := rng.internal_u32()
-
-	bits_left := rng.bytes_left * 8
-	bits_needed := amount - bits_left
-
-	old_value := rng.buffer & ((u32(1) << bits_left) - 1)
-	new_value := next_number & ((u32(1) << bits_needed) - 1)
-	value := old_value | (new_value << bits_left)
-
-	rng.buffer = next_number >> bits_needed
-	rng.bytes_left = 4 - (bits_needed / 8)
-
-	return value
-}
-
 // u16 returns a pseudorandom 16-bit unsigned integer (`u16`).
 [inline]
 pub fn (mut rng MuslRNG) u16() u16 {
-	// Can we take a whole u16 out of the buffer?
 	if rng.bytes_left >= 2 {
 		rng.bytes_left -= 2
 		value := u16(rng.buffer)
 		rng.buffer >>= 16
 		return value
 	}
-	if rng.bytes_left > 0 {
-		return u16(rng.step_by(16))
-	}
-	ans := rng.internal_u32()
+	ans := rng.u32()
 	rng.buffer = ans >> 16
 	rng.bytes_left = 2
 	return u16(ans)
-}
-
-// u32 returns a pseudorandom 32-bit unsigned integer (`u32`).
-[inline]
-pub fn (mut rng MuslRNG) u32() u32 {
-	if rng.bytes_left >= 1 {
-		return rng.step_by(32)
-	}
-	return rng.internal_u32()
 }
 
 // temper returns a tempered value based on `prev` value.
@@ -102,7 +70,8 @@ fn temper(prev u32) u32 {
 	return x
 }
 
-fn (mut rng MuslRNG) internal_u32() u32 {
+// u32 returns a pseudorandom 32-bit unsigned integer (`u32`).
+fn (mut rng MuslRNG) u32() u32 {
 	rng.state = rng.state * 1103515245 + 12345
 	// We are not dividing by 2 (or shifting right by 1)
 	// because we want all 32-bits of random data
@@ -115,6 +84,7 @@ pub fn (mut rng MuslRNG) u64() u64 {
 	return u64(rng.u32()) | (u64(rng.u32()) << 32)
 }
 
+// block_size returns the number of bits that the RNG can produce in a single iteration.
 [inline]
 pub fn (mut rng MuslRNG) block_size() int {
 	return 32
