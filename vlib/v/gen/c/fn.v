@@ -1709,6 +1709,11 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 				g.write('&/*sum*/')
 				g.expr(arg.expr)
 				return
+			} else if arg_sym.kind == .interface_ && exp_sym.kind == .interface_
+				&& (arg.expr is ast.Ident || arg.expr is ast.SelectorExpr) {
+				g.write('&/*iface*/')
+				g.expr(arg.expr)
+				return
 			}
 		}
 		if !g.is_json_fn {
