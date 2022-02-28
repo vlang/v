@@ -1284,6 +1284,17 @@ pub fn (t &Table) sumtype_has_variant(parent Type, variant Type, is_as bool) boo
 	return false
 }
 
+pub fn (t &Table) is_sumtype_or_in_variant(parent Type, typ Type) bool {
+	if typ == 0 {
+		return false
+	}
+	if t.type_kind(typ) == .sum_type && parent.idx() == typ.idx()
+		&& parent.nr_muls() == typ.nr_muls() {
+		return true
+	}
+	return t.sumtype_has_variant(parent, typ, false)
+}
+
 // only used for debugging V compiler type bugs
 pub fn (t &Table) known_type_names() []string {
 	mut res := []string{cap: t.type_idxs.len}
