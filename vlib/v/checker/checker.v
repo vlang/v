@@ -1667,6 +1667,12 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	if sym.kind !in [.struct_, .aggregate, .interface_, .sum_type] {
 		if sym.kind != .placeholder {
 			unwrapped_sym := c.table.sym(c.unwrap_generic(typ))
+
+			if unwrapped_sym.kind == .array_fixed {
+				node.typ = ast.int_type
+				return ast.int_type
+			}
+
 			c.error('`$unwrapped_sym.name` has no property `$node.field_name`', node.pos)
 		}
 	} else {
