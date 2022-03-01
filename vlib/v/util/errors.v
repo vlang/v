@@ -1,6 +1,7 @@
 // Copyright (c) 2019-2022 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
+[has_globals]
 module util
 
 import os
@@ -102,25 +103,22 @@ mut:
 	lines map[string][]string
 }
 
-[unsafe]
+__global lines_cache = &LinesCache{}
+
 pub fn cached_file2sourcelines(path string) []string {
-	mut static cache := &LinesCache(0)
-	if isnil(cache) {
-		cache = &LinesCache{}
-	}
-	if path.len == 0 {
-		unsafe { cache.lines.free() }
-		unsafe { free(cache) }
-		cache = &LinesCache(0)
-		return []string{}
-	}
-	if res := cache.lines[path] {
+	if res := lines_cache.lines[path] {
 		return res
 	}
 	source := read_file(path) or { '' }
-	res := source.split_into_lines()
-	cache.lines[path] = res
+	res := set_source_for_path(path, source)
 	return res
+}
+
+// set_source_for_path should be called for every file, over which you want to use util.formatted_error
+pub fn set_source_for_path(path string, source string) []string {
+	lines := source.split_into_lines()
+	lines_cache.lines[path] = lines
+	return lines
 }
 
 pub fn source_file_context(kind string, filepath string, pos token.Pos) []string {
