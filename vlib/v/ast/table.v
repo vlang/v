@@ -1489,9 +1489,8 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 			mut elem_type := sym.info.elem_type
 			mut elem_sym := t.sym(elem_type)
 			mut dims := 1
-			for elem_sym.info is Array {
-				info := elem_sym.info as Array
-				elem_type = info.elem_type
+			for mut elem_sym.info is Array {
+				elem_type = elem_sym.info.elem_type
 				elem_sym = t.sym(elem_type)
 				dims++
 			}
@@ -1646,9 +1645,8 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 			mut elem_type := ts.info.elem_type
 			mut elem_sym := t.sym(elem_type)
 			mut dims := 1
-			for elem_sym.info is Array {
-				info := elem_sym.info as Array
-				elem_type = info.elem_type
+			for mut elem_sym.info is Array {
+				elem_type = elem_sym.info.elem_type
 				elem_sym = t.sym(elem_type)
 				dims++
 			}
@@ -1857,9 +1855,8 @@ pub fn (mut t Table) replace_generic_type(typ Type, generic_types []Type) {
 			mut elem_type := ts.info.elem_type
 			mut elem_sym := t.sym(elem_type)
 			mut dims := 1
-			for elem_sym.info is Array {
-				info := elem_sym.info as Array
-				elem_type = info.elem_type
+			for mut elem_sym.info is Array {
+				elem_type = elem_sym.info.elem_type
 				elem_sym = t.sym(elem_type)
 				dims++
 			}

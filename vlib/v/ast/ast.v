@@ -269,8 +269,8 @@ pub fn (e &SelectorExpr) root_ident() ?Ident {
 	for mut root is SelectorExpr {
 		root = root.expr
 	}
-	if root is Ident {
-		return root as Ident
+	if mut root is Ident {
+		return root
 	}
 
 	return none
