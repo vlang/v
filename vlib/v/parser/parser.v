@@ -2734,7 +2734,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	}
 	mut is_mut := false
 	mut mut_pos := token.Pos{}
-	if p.inside_match || p.inside_if_expr {
+	if p.inside_match || p.inside_if_expr || p.inside_for {
 		match left {
 			ast.Ident, ast.SelectorExpr {
 				is_mut = left.is_mut
