@@ -1668,7 +1668,7 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		if sym.kind != .placeholder {
 			unwrapped_sym := c.table.sym(c.unwrap_generic(typ))
 
-			if unwrapped_sym.kind == .array_fixed {
+			if unwrapped_sym.kind == .array_fixed && field.name == 'len' {
 				node.typ = ast.int_type
 				return ast.int_type
 			}
