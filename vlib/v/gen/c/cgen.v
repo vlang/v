@@ -2001,7 +2001,7 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr
 	if !got_is_ptr {
 		if !expr.is_lvalue()
 			|| (expr is ast.Ident && (expr as ast.Ident).obj.is_simple_define_const()) {
-			g.write('ADDR($got_styp, (')
+			g.write('HEAP($got_styp, (')
 			rparen_n += 2
 		} else {
 			g.write('&')
