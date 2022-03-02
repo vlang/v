@@ -1,8 +1,6 @@
 fn test_comptime_generic() {
 	a := [5]int{}
-	b := []int{}
 	func1(&a)
-	func1(&b)
 }
 
 [inline]
