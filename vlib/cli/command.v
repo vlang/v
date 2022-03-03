@@ -1,5 +1,7 @@
 module cli
 
+import term
+
 type FnCommandCallback = fn (cmd Command) ?
 
 // str returns the `string` representation of the callback.
@@ -228,19 +230,19 @@ fn (mut cmd Command) parse_commands() {
 	cmd.check_required_flags()
 	if !isnil(cmd.pre_execute) {
 		cmd.pre_execute(*cmd) or {
-			eprintln('cli preexecution error: $err')
+			eprintln('${term.bright_red('cli preexecution error:')} $err')
 			exit(1)
 		}
 	}
 	if !isnil(cmd.execute) {
 		cmd.execute(*cmd) or {
-			eprintln('cli execution error: $err')
+			eprintln('${term.bright_red('cli execution error:')} $err')
 			exit(1)
 		}
 	}
 	if !isnil(cmd.post_execute) {
 		cmd.post_execute(*cmd) or {
-			eprintln('cli postexecution error: $err')
+			eprintln('${term.bright_red('cli postexecution error:')} $err')
 			exit(1)
 		}
 	}
