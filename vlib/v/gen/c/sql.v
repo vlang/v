@@ -684,10 +684,8 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string) {
 				name := sel
 				s := g.table.find_type_idx('orm.Primitive')
 				if s != 0 {
-					if ident.info is ast.IdentVar {
-						mut info := ident.info as ast.IdentVar
-						info.typ = s
-						ident.info = info
+					if mut ident.info is ast.IdentVar {
+						ident.info.typ = s
 					}
 				}
 				ident.name = name
