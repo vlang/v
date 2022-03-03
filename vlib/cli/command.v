@@ -228,24 +228,30 @@ fn (mut cmd Command) parse_commands() {
 		}
 	}
 	cmd.check_required_flags()
+
+	color_support := term.can_show_color_on_stderr()
 	if !isnil(cmd.pre_execute) {
 		cmd.pre_execute(*cmd) or {
-			eprintln('${term.bright_red('cli preexecution error:')} $err')
+			eprintln('${get_error_msg('preexecution', color_support)} $err')
 			exit(1)
 		}
 	}
 	if !isnil(cmd.execute) {
 		cmd.execute(*cmd) or {
-			eprintln('${term.bright_red('cli execution error:')} $err')
+			eprintln('${get_error_msg('execution', color_support)} $err')
 			exit(1)
 		}
 	}
 	if !isnil(cmd.post_execute) {
 		cmd.post_execute(*cmd) or {
-			eprintln('${term.bright_red('cli postexecution error:')} $err')
+			eprintln('${get_error_msg('postexecution', color_support)} $err')
 			exit(1)
 		}
 	}
+}
+
+fn get_error_msg(name string, color_support bool) string {
+	return if color_support { term.bright_red('cli $name error:') } else { 'cli $name error:' }
 }
 
 fn (cmd Command) check_help_flag() {
