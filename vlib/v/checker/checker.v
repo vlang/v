@@ -92,6 +92,7 @@ pub mut:
 	inside_comptime_for_field bool
 	skip_flags                bool // should `#flag` and `#include` be skipped
 	fn_level                  int  // 0 for the top level, 1 for `fn abc() {}`, 2 for a nested fn, etc
+	smartcast_mut_pos         token.Pos
 	ct_cond_stack             []ast.Expr
 mut:
 	stmt_level int // the nesting level inside each stmts list;
@@ -1677,8 +1678,13 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		}
 	} else {
 		if sym.info is ast.Struct {
+			if c.smartcast_mut_pos != token.Pos{} {
+				c.note('smartcasting requires either an immutable value, or an explicit mut keyword before the value',
+					c.smartcast_mut_pos)
+			}
 			suggestion := util.new_suggestion(field_name, sym.info.fields.map(it.name))
 			c.error(suggestion.say(unknown_field_msg), node.pos)
+			return ast.void_type
 		}
 
 		// >> Hack to allow old style custom error implementations
@@ -1693,7 +1699,10 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			return method.return_type
 		}
 		// <<<
-
+		if c.smartcast_mut_pos != token.Pos{} {
+			c.note('smartcasting requires either an immutable value, or an explicit mut keyword before the value',
+				c.smartcast_mut_pos)
+		}
 		c.error(unknown_field_msg, node.pos)
 	}
 	return ast.void_type
@@ -3215,7 +3224,7 @@ pub fn (mut c Checker) concat_expr(mut node ast.ConcatExpr) ast.Type {
 }
 
 // smartcast takes the expression with the current type which should be smartcasted to the target type in the given scope
-fn (c Checker) smartcast(expr ast.Expr, cur_type ast.Type, to_type_ ast.Type, mut scope ast.Scope) {
+fn (mut c Checker) smartcast(expr ast.Expr, cur_type ast.Type, to_type_ ast.Type, mut scope ast.Scope) {
 	sym := c.table.sym(cur_type)
 	to_type := if sym.kind == .interface_ { to_type_.ref() } else { to_type_ }
 	match expr {
@@ -3250,6 +3259,8 @@ fn (c Checker) smartcast(expr ast.Expr, cur_type ast.Type, to_type_ ast.Type, mu
 					pos: expr.pos
 					orig_type: orig_type
 				})
+			} else {
+				c.smartcast_mut_pos = expr.pos
 			}
 		}
 		ast.Ident {
@@ -3277,6 +3288,8 @@ fn (c Checker) smartcast(expr ast.Expr, cur_type ast.Type, to_type_ ast.Type, mu
 					smartcasts: smartcasts
 					orig_type: orig_type
 				})
+			} else if is_mut && !expr.is_mut {
+				c.smartcast_mut_pos = expr.pos
 			}
 		}
 		else {}

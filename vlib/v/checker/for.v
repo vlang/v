@@ -3,6 +3,7 @@
 module checker
 
 import v.ast
+import v.token
 
 fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
 	c.in_for_count++
@@ -164,4 +165,7 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 	c.stmts(node.stmts)
 	c.loop_label = prev_loop_label
 	c.in_for_count--
+	if c.smartcast_mut_pos != token.Pos{} {
+		c.smartcast_mut_pos = token.Pos{}
+	}
 }
