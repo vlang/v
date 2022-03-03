@@ -466,10 +466,10 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	// Body
 	p.cur_fn_name = name
 	mut stmts := []ast.Stmt{}
-	body_start_pos := p.peek_tok.pos()
+	body_start_pos := p.tok.pos()
 	if p.tok.kind == .lcbr {
 		if language != .v && language != .js {
-			p.error_with_pos('interop functions cannot have a body', p.tok.pos())
+			p.error_with_pos('interop functions cannot have a body', body_start_pos)
 		}
 		p.inside_fn = true
 		p.inside_unsafe_fn = is_unsafe
