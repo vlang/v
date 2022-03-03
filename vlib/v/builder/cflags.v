@@ -1,6 +1,7 @@
 module builder
 
 import os
+import v.pref
 import v.cflag
 
 // get flags for current os
@@ -14,17 +15,18 @@ fn (mut v Builder) get_os_cflags() []cflag.CFlag {
 		if flag.value.ends_with('.o') {
 			flag.cached = v.pref.cache_manager.postfix_with_key2cpath('.o', os.real_path(flag.value))
 		}
-		if flag.os == '' || (flag.os == 'linux' && v.pref.os == .linux)
-			|| (flag.os == 'macos' && v.pref.os == .macos)
-			|| (flag.os == 'darwin' && v.pref.os == .macos)
-			|| (flag.os == 'freebsd' && v.pref.os == .freebsd)
-			|| (flag.os == 'windows' && v.pref.os == .windows)
-			|| (flag.os == 'mingw' && v.pref.os == .windows && v.pref.ccompiler != 'msvc')
-			|| (flag.os == 'solaris' && v.pref.os == .solaris) {
+		if flag.os == '' || flag.os in ctimedefines {
 			flags << flag
+			continue
 		}
-		if flag.os in ctimedefines {
+		fos := pref.os_from_string(flag.os) or { pref.OS.all }
+		if fos != .all && fos == v.pref.os {
 			flags << flag
+			continue
+		}
+		if v.pref.os == .windows && flag.os == 'mingw' && v.pref.ccompiler != 'msvc' {
+			flags << flag
+			continue
 		}
 	}
 	return flags
