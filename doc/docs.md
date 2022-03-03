@@ -5777,6 +5777,12 @@ An example `deploy.vsh`:
 // so it can be run just by specifying the path to the file
 // once it's made executable using `chmod +x`.
 
+// print command then execute it
+fn sh(cmd string){
+  println("❯ $cmd")
+  print(execute_or_exit(cmd).output)
+}
+
 // Remove if build/ exits, ignore any errors if it doesn't
 rmdir_all('build') or { }
 
@@ -5784,15 +5790,9 @@ rmdir_all('build') or { }
 mkdir('build') ?
 
 // Move *.v files to build/
-result := execute('mv *.v build/') ?
+result := execute('mv *.v build/')
 if result.exit_code != 0 {
 	println(result.output)
-}
-
-// print command then execute it
-fn sh(cmd string){
-  println("❯ $cmd")
-  print(execute_or_exit(cmd).output)
 }
 
 sh('ls')
