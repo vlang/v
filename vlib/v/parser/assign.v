@@ -159,10 +159,9 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 						return p.error_with_pos('redefinition of `$lx.name`', lx.pos)
 					}
 					mut share := ast.ShareType(0)
-					if lx.info is ast.IdentVar {
-						iv := lx.info as ast.IdentVar
-						share = iv.share
-						if iv.is_static {
+					if mut lx.info is ast.IdentVar {
+						share = lx.info.share
+						if lx.info.is_static {
 							if !p.pref.translated && !p.is_translated && !p.pref.is_fmt
 								&& !p.inside_unsafe_fn {
 								return p.error_with_pos('static variables are supported only in translated mode or in [unsafe] fn',
@@ -170,7 +169,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 							}
 							is_static = true
 						}
-						if iv.is_volatile {
+						if lx.info.is_volatile {
 							is_volatile = true
 						}
 					}

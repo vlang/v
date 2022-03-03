@@ -2001,7 +2001,10 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr
 	if !got_is_ptr {
 		if !expr.is_lvalue()
 			|| (expr is ast.Ident && (expr as ast.Ident).obj.is_simple_define_const()) {
-			g.write('HEAP($got_styp, (')
+			// NB: the `_to_sumtype_` family of functions do call memdup internally, making
+			// another duplicate with the HEAP macro is redundant, so use ADDR instead:
+			promotion_macro_name := if fname.contains('_to_sumtype_') { 'ADDR' } else { 'HEAP' }
+			g.write('${promotion_macro_name}($got_styp, (')
 			rparen_n += 2
 		} else {
 			g.write('&')
@@ -2109,8 +2112,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 					unwrapped_got_type = unwrapped_got_sym.info.types[g.aggregate_type_idx]
 					unwrapped_got_sym = g.table.sym(unwrapped_got_type)
 				}
-				g.get_sumtype_casting_fn(unwrapped_got_type, unwrapped_expected_type)
-				fname := '${unwrapped_got_sym.cname}_to_sumtype_$unwrapped_exp_sym.cname'
+				fname := g.get_sumtype_casting_fn(unwrapped_got_type, unwrapped_expected_type)
 				g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, unwrapped_exp_sym.cname,
 					got_is_ptr, got_styp)
 			}

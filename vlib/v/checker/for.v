@@ -103,10 +103,9 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				value_type = value_type.ref()
 				match node.cond {
 					ast.Ident {
-						if node.cond.obj is ast.Var {
-							obj := node.cond.obj as ast.Var
-							if !obj.is_mut {
-								c.error('`$obj.name` is immutable, it cannot be changed',
+						if mut node.cond.obj is ast.Var {
+							if !node.cond.obj.is_mut {
+								c.error('`$node.cond.obj.name` is immutable, it cannot be changed',
 									node.cond.pos)
 							}
 						}
