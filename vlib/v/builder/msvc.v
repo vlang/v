@@ -176,18 +176,17 @@ fn find_vs_by_reg(vswhere_dir string, host_arch string, target_arch string) ?VsI
 		// If its not there then end user needs to update their visual studio
 		// installation!
 		res := os.execute('"$vswhere_dir\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath')
+		// println('res: "$res"')
 		if res.exit_code != 0 {
 			return error_with_code(res.output, res.exit_code)
 		}
-		res_output := res.output.trim_right('\r\n')
-		// println('res: "$res"')
+		res_output := res.output.trim_space()
 		version := os.read_file('$res_output\\VC\\Auxiliary\\Build\\Microsoft.VCToolsVersion.default.txt') or {
 			// println('Unable to find msvc version')
 			return error('Unable to find vs installation')
 		}
-		version2 := version // TODO remove. cgen option bug if expr
 		// println('version: $version')
-		v := if version.ends_with('\n') { version2[..version.len - 2] } else { version2 }
+		v := version.trim_space()
 		lib_path := '$res_output\\VC\\Tools\\MSVC\\$v\\lib\\$target_arch'
 		include_path := '$res_output\\VC\\Tools\\MSVC\\$v\\include'
 		if os.exists('$lib_path\\vcruntime.lib') {
@@ -272,13 +271,14 @@ pub fn (mut v Builder) cc_msvc() {
 	out_name_obj := os.real_path(v.out_name_c + '.obj')
 	out_name_pdb := os.real_path(v.out_name_c + '.pdb')
 	out_name_cmd_line := os.real_path(v.out_name_c + '.rsp')
+	mut a := []string{}
 	//
 	env_cflags := os.getenv('CFLAGS')
-	env_ldflags := os.getenv('LDFLAGS')
-	mut a := [v.pref.cflags]
-	if env_cflags != '' {
-		a << env_cflags
+	mut all_cflags := '$env_cflags $v.pref.cflags'
+	if all_cflags != ' ' {
+		a << all_cflags
 	}
+	//
 	// Default arguments
 	// `-w` no warnings
 	// `/we4013` 2 unicode defines, see https://docs.microsoft.com/en-us/cpp/error-messages/compiler-warnings/compiler-warning-level-3-c4013?redirectedfrom=MSDN&view=msvc-170
@@ -361,13 +361,17 @@ pub fn (mut v Builder) cc_msvc() {
 	a << '/LIBPATH:"$r.ucrt_lib_path"'
 	a << '/LIBPATH:"$r.um_lib_path"'
 	a << '/LIBPATH:"$r.vs_lib_path"'
-	a << '/DEBUG:FULL' // required for prod builds to generate PDB
+	if !all_cflags.contains('/DEBUG') {
+		// only use /DEBUG, if the user *did not* provide its own:
+		a << '/DEBUG:FULL' // required for prod builds to generate a PDB file
+	}
 	if v.pref.is_prod {
 		a << '/INCREMENTAL:NO' // Disable incremental linking
 		a << '/OPT:REF'
 		a << '/OPT:ICF'
 	}
 	a << lib_paths
+	env_ldflags := os.getenv('LDFLAGS')
 	if env_ldflags != '' {
 		a << env_ldflags
 	}
@@ -407,25 +411,27 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(path string, moduleflags 
 		verror('Cannot find MSVC on this OS')
 	}
 	// msvc expects .obj not .o
-	mut obj_path := '${path}bj'
+	path_without_o_postfix := path[..path.len - 2] // remove .o
+	mut obj_path := '${path_without_o_postfix}.obj'
 	obj_path = os.real_path(obj_path)
 	if os.exists(obj_path) {
 		// println('$obj_path already built.')
 		return
 	}
 	println('$obj_path not found, building it (with msvc)...')
-	cfiles := '${path[..path.len - 2]}.c'
+	cfile := '${path_without_o_postfix}.c'
+	// println('cfile: $cfile')
 	flags := msvc_string_flags(moduleflags)
 	inc_dirs := flags.inc_paths.join(' ')
 	defines := flags.defines.join(' ')
 	include_string := '-I "$msvc.ucrt_include_path" -I "$msvc.vs_include_path" -I "$msvc.um_include_path" -I "$msvc.shared_include_path" $inc_dirs'
-	// println('cfiles: $cfiles')
+	mut oargs := []string{}
 	env_cflags := os.getenv('CFLAGS')
-	env_ldflags := os.getenv('LDFLAGS')
-	mut oargs := [v.pref.cflags]
-	if env_cflags != '' {
-		oargs << env_cflags
+	mut all_cflags := '$env_cflags $v.pref.cflags'
+	if all_cflags != ' ' {
+		oargs << all_cflags
 	}
+	//
 	if v.pref.is_prod {
 		oargs << '/O2'
 		oargs << '/MD'
@@ -434,11 +440,12 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(path string, moduleflags 
 		oargs << '/MDd'
 		oargs << '/D_DEBUG'
 	}
+	env_ldflags := os.getenv('LDFLAGS')
 	if env_ldflags != '' {
 		oargs << env_ldflags
 	}
 	str_oargs := oargs.join(' ')
-	cmd := '"$msvc.full_cl_exe_path" /volatile:ms $str_oargs $defines $include_string /c $cfiles /Fo"$obj_path"'
+	cmd := '"$msvc.full_cl_exe_path" /volatile:ms $str_oargs $defines $include_string /c "$cfile" /Fo"$obj_path"'
 	// NB: the quotes above ARE balanced.
 	$if trace_thirdparty_obj_files ? {
 		println('>>> build_thirdparty_obj_file_with_msvc cmd: $cmd')
