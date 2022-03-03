@@ -134,6 +134,11 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 				continue
 			}
 			if expr !is ast.TypeNode {
+				if c.table.type_kind(elem_type) == .interface_ {
+					if c.type_implements(typ, elem_type, expr.pos()) {
+						continue
+					}
+				}
 				c.check_expected(typ, elem_type) or {
 					c.error('invalid array element: $err.msg()', expr.pos())
 				}
