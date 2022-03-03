@@ -3544,12 +3544,9 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 		for mut expr is ast.ParExpr {
 			expr = expr.expr
 		}
-		match expr {
-			ast.BoolLiteral, ast.CallExpr, ast.CharLiteral, ast.FloatLiteral, ast.IntegerLiteral,
-			ast.InfixExpr, ast.StringLiteral, ast.StringInterLiteral {
-				c.error('cannot take the address of $expr', node.pos)
-			}
-			else {}
+		if expr in [ast.BoolLiteral, ast.CallExpr, ast.CharLiteral, ast.FloatLiteral,
+			ast.IntegerLiteral, ast.InfixExpr, ast.StringLiteral, ast.StringInterLiteral] {
+			c.error('cannot take the address of $expr', node.pos)
 		}
 		if mut node.right is ast.IndexExpr {
 			typ_sym := c.table.sym(node.right.left_type)

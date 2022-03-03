@@ -935,8 +935,8 @@ pub fn (mut t Transformer) if_expr(mut node ast.IfExpr) ast.Expr {
 			stmt = t.stmt(mut stmt)
 
 			if i == branch.stmts.len - 1 {
-				if stmt is ast.ExprStmt {
-					expr := (stmt as ast.ExprStmt).expr
+				if mut stmt is ast.ExprStmt {
+					expr := stmt.expr
 
 					match expr {
 						ast.IfExpr {
@@ -976,8 +976,8 @@ pub fn (mut t Transformer) match_expr(mut node ast.MatchExpr) ast.Expr {
 			stmt = t.stmt(mut stmt)
 
 			if i == branch.stmts.len - 1 {
-				if stmt is ast.ExprStmt {
-					expr := (stmt as ast.ExprStmt).expr
+				if mut stmt is ast.ExprStmt {
+					expr := stmt.expr
 
 					match expr {
 						ast.IfExpr {
