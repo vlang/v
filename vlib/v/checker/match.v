@@ -3,6 +3,7 @@ module checker
 import v.ast
 import v.pref
 import v.util
+import v.token
 import strings
 
 pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
@@ -31,6 +32,9 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 			c.stmts_ending_with_expression(branch.stmts)
 		} else {
 			c.stmts(branch.stmts)
+		}
+		if c.smartcast_mut_pos != token.Pos{} {
+			c.smartcast_mut_pos = token.Pos{}
 		}
 		if node.is_expr {
 			if branch.stmts.len > 0 {

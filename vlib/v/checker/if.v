@@ -4,6 +4,7 @@ module checker
 
 import v.ast
 import v.pref
+import v.token
 
 pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	if_kind := if node.is_comptime { '\$if' } else { 'if' }
@@ -144,6 +145,9 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				c.stmts_ending_with_expression(branch.stmts)
 			} else {
 				c.stmts(branch.stmts)
+			}
+			if c.smartcast_mut_pos != token.Pos{} {
+				c.smartcast_mut_pos = token.Pos{}
 			}
 		}
 		if expr_required {
