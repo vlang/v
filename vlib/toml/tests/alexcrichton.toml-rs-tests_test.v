@@ -236,7 +236,7 @@ fn to_alexcrichton(value ast.Value, array_type int) string {
 	match value {
 		ast.Quoted {
 			json_text := json2.Any(value.text).json_str()
-			return '{ "type": "string", "value": "$json_text" }'
+			return '{ "type": "string", "value": $json_text }'
 		}
 		ast.DateTime {
 			// Normalization for json
@@ -253,16 +253,16 @@ fn to_alexcrichton(value ast.Value, array_type int) string {
 			// date-time values are represented in detail. For now we follow the BurntSushi format
 			// that expands to 6 digits which is also a valid RFC 3339 representation.
 			json_text = to_alexcrichton_time(json_text)
-			return '{ "type": "$typ", "value": "$json_text" }'
+			return '{ "type": "$typ", "value": $json_text }'
 		}
 		ast.Date {
 			json_text := json2.Any(value.text).json_str()
-			return '{ "type": "date", "value": "$json_text" }'
+			return '{ "type": "date", "value": $json_text }'
 		}
 		ast.Time {
 			mut json_text := json2.Any(value.text).json_str()
 			json_text = to_alexcrichton_time(json_text)
-			return '{ "type": "time", "value": "$json_text" }'
+			return '{ "type": "time", "value": $json_text }'
 		}
 		ast.Bool {
 			json_text := json2.Any(value.text.bool()).json_str()

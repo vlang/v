@@ -27,19 +27,16 @@ fn any_to_json(a toml.Any) string {
 			return 'null'
 		}
 		toml.DateTime {
-			json_text := json2.Any(a.str())
-			return '"$json_text.json_str()"'
+			return json2.Any(a.str()).json_str()
 		}
 		toml.Date {
-			json_text := json2.Any(a.str())
-			return '"$json_text.json_str()"'
+			return json2.Any(a.str()).json_str()
 		}
 		toml.Time {
-			json_text := json2.Any(a.str())
-			return '"$json_text.json_str()"'
+			return json2.Any(a.str()).json_str()
 		}
 		string {
-			return '"' + json2.Any(a.str()).json_str() + '"'
+			return json2.Any(a.str()).json_str()
 		}
 		bool {
 			return json2.Any(bool(a)).json_str()
@@ -63,7 +60,7 @@ fn any_to_json(a toml.Any) string {
 			mut str := '{'
 			for key, val in a {
 				json_key := json2.Any(key)
-				str += ' "$json_key.json_str()": ${any_to_json(val)},'
+				str += ' $json_key.json_str(): ${any_to_json(val)},'
 			}
 			str = str.trim_right(',')
 			str += ' }'
