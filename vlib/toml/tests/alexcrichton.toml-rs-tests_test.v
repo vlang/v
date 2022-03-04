@@ -242,7 +242,7 @@ fn to_alexcrichton(value ast.Value, array_type int) string {
 			// Normalization for json
 			mut json_text := json2.Any(value.text).json_str().to_upper().replace(' ',
 				'T')
-			typ := if json_text.ends_with('Z') || json_text.all_after('T').contains('-')
+			typ := if json_text.ends_with('Z"') || json_text.all_after('T').contains('-')
 				|| json_text.all_after('T').contains('+') {
 				'datetime'
 			} else {
