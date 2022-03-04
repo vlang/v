@@ -1,0 +1,7 @@
+vlib/v/checker/tests/assign_expr_undefined_err_m.vv:5:14: error: undefined variable: `x`
+    3 |     n := 2
+    4 |     x := match a {
+    5 |         'add'{ n + x }
+      |                    ^
+    6 |         else{0}
+    7 |     }

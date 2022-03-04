@@ -63,12 +63,36 @@ fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) ? {
 			p.check_undefined_variables(exprs, val.left) ?
 			p.check_undefined_variables(exprs, val.right) ?
 		}
+		ast.IfExpr {
+			p.check_undefined_variables(exprs, val.left) ?
+			for branch in val.branches {
+				p.check_undefined_variables(exprs, branch.cond) ?
+				for stmt in branch.stmts {
+					if stmt is ast.ExprStmt {
+						p.check_undefined_variables(exprs, stmt.expr) ?
+					}
+				}
+			}
+		}
 		ast.MapInit {
 			for key in val.keys {
 				p.check_undefined_variables(exprs, key) ?
 			}
 			for value in val.vals {
 				p.check_undefined_variables(exprs, value) ?
+			}
+		}
+		ast.MatchExpr {
+			p.check_undefined_variables(exprs, val.cond) ?
+			for branch in val.branches {
+				for expr in branch.exprs {
+					p.check_undefined_variables(exprs, expr) ?
+				}
+				for stmt in branch.stmts {
+					if stmt is ast.ExprStmt {
+						p.check_undefined_variables(exprs, stmt.expr) ?
+					}
+				}
 			}
 		}
 		ast.ParExpr {

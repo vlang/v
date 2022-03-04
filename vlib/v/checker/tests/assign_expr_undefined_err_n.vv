@@ -1,0 +1,6 @@
+fn main(){
+	a := 'add'
+	n := 2
+	x := if a == 'add' { n + x } else { 0 }
+	println(x)
+}
