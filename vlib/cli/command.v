@@ -229,29 +229,23 @@ fn (mut cmd Command) parse_commands() {
 	}
 	cmd.check_required_flags()
 
-	color_support := term.can_show_color_on_stderr()
-	if !isnil(cmd.pre_execute) {
-		cmd.pre_execute(*cmd) or {
-			eprintln('${get_error_msg('preexecution', color_support)} $err')
-			exit(1)
-		}
-	}
-	if !isnil(cmd.execute) {
-		cmd.execute(*cmd) or {
-			eprintln('${get_error_msg('execution', color_support)} $err')
-			exit(1)
-		}
-	}
-	if !isnil(cmd.post_execute) {
-		cmd.post_execute(*cmd) or {
-			eprintln('${get_error_msg('postexecution', color_support)} $err')
-			exit(1)
-		}
-	}
+	cmd.handle_error('preexecution', cmd.pre_execute)
+	cmd.handle_error('execution', cmd.execute)
+	cmd.handle_error('postexecution', cmd.post_execute)
 }
 
-fn get_error_msg(name string, color_support bool) string {
-	return if color_support { term.bright_red('cli $name error:') } else { 'cli $name error:' }
+fn (mut cmd Command) handle_error(label string, cb FnCommandCallback) {
+	if !isnil(cb) {
+		cb(*cmd) or {
+			label_message := if term.can_show_color_on_stderr() {
+				term.bright_red('cli $label error:')
+			} else {
+				'cli $label error:'
+			}
+			eprintln('$label_message $err')
+			exit(1)
+		}
+	}
 }
 
 fn (cmd Command) check_help_flag() {
