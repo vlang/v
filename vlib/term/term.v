@@ -61,10 +61,20 @@ pub fn warn_message(s string) string {
 }
 
 // colorize returns a colored string by running the specified `cfn` over
-// the message `s`, only if colored output is supported by the terminal.
+// the message `s`, only if colored stdout is supported by the terminal.
 // Example: term.colorize(term.yellow, 'the message')
 pub fn colorize(cfn fn (string) string, s string) string {
 	if can_show_color_on_stdout() {
+		return cfn(s)
+	}
+	return s
+}
+
+// ecolorize returns a colored string by running the specified `cfn` over
+// the message `s`, only if colored stderr is supported by the terminal.
+// Example: term.ecolorize(term.bright_red, 'the message')
+pub fn ecolorize(cfn fn (string) string, s string) string {
+	if can_show_color_on_stderr() {
 		return cfn(s)
 	}
 	return s

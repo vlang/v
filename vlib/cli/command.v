@@ -1,5 +1,7 @@
 module cli
 
+import term
+
 type FnCommandCallback = fn (cmd Command) ?
 
 // str returns the `string` representation of the callback.
@@ -92,8 +94,7 @@ pub fn (mut cmd Command) add_commands(commands []Command) {
 pub fn (mut cmd Command) add_command(command Command) {
 	mut subcmd := command
 	if cmd.commands.contains(subcmd.name) {
-		println('Command with the name `$subcmd.name` already exists')
-		exit(1)
+		eprintln_exit('Command with the name `$subcmd.name` already exists')
 	}
 	subcmd.parent = unsafe { cmd }
 	cmd.commands << subcmd
@@ -119,8 +120,7 @@ pub fn (mut cmd Command) add_flags(flags []Flag) {
 // add_flag adds `flag` to this `Command`.
 pub fn (mut cmd Command) add_flag(flag Flag) {
 	if cmd.flags.contains(flag.name) {
-		println('Flag with the name `$flag.name` already exists')
-		exit(1)
+		eprintln_exit('Flag with the name `$flag.name` already exists')
 	}
 	cmd.flags << flag
 }
@@ -181,16 +181,14 @@ fn (mut cmd Command) parse_flags() {
 					found = true
 					flag.found = true
 					cmd.args = flag.parse(cmd.args, cmd.posix_mode) or {
-						println('Failed to parse flag `${cmd.args[0]}`: $err')
-						exit(1)
+						eprintln_exit('Failed to parse flag `${cmd.args[0]}`: $err')
 					}
 					break
 				}
 			}
 		}
 		if !found {
-			println('Command `$cmd.name` has no flag `${cmd.args[0]}`')
-			exit(1)
+			eprintln_exit('Command `$cmd.name` has no flag `${cmd.args[0]}`')
 		}
 	}
 }
@@ -221,27 +219,21 @@ fn (mut cmd Command) parse_commands() {
 	// if no further command was found, execute current command
 	if cmd.required_args > 0 {
 		if cmd.required_args > cmd.args.len {
-			eprintln('Command `$cmd.name` needs at least $cmd.required_args arguments')
-			exit(1)
+			eprintln_exit('Command `$cmd.name` needs at least $cmd.required_args arguments')
 		}
 	}
 	cmd.check_required_flags()
-	if !isnil(cmd.pre_execute) {
-		cmd.pre_execute(*cmd) or {
-			eprintln('cli preexecution error: $err')
-			exit(1)
-		}
-	}
-	if !isnil(cmd.execute) {
-		cmd.execute(*cmd) or {
-			eprintln('cli execution error: $err')
-			exit(1)
-		}
-	}
-	if !isnil(cmd.post_execute) {
-		cmd.post_execute(*cmd) or {
-			eprintln('cli postexecution error: $err')
-			exit(1)
+
+	cmd.handle_cb(cmd.pre_execute, 'preexecution')
+	cmd.handle_cb(cmd.execute, 'execution')
+	cmd.handle_cb(cmd.post_execute, 'postexecution')
+}
+
+fn (mut cmd Command) handle_cb(cb FnCommandCallback, label string) {
+	if !isnil(cb) {
+		cb(*cmd) or {
+			label_message := term.ecolorize(term.bright_red, 'cli $label error:')
+			eprintln_exit('$label_message $err')
 		}
 	}
 }
@@ -271,8 +263,7 @@ fn (cmd Command) check_required_flags() {
 	for flag in cmd.flags {
 		if flag.required && flag.value.len == 0 {
 			full_name := cmd.full_name()
-			println('Flag `$flag.name` is required by `$full_name`')
-			exit(1)
+			eprintln_exit('Flag `$flag.name` is required by `$full_name`')
 		}
 	}
 }
@@ -304,4 +295,10 @@ fn (cmds []Command) contains(name string) bool {
 		}
 	}
 	return false
+}
+
+[noreturn]
+fn eprintln_exit(message string) {
+	eprintln(message)
+	exit(1)
 }
