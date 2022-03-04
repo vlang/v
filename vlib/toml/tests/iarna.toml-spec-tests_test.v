@@ -288,9 +288,9 @@ fn to_iarna(value ast.Value, skip_value_map bool) string {
 		ast.Quoted {
 			json_text := json2.Any(value.text).json_str()
 			if skip_value_map {
-				return '"$json_text"'
+				return json_text
 			}
-			return '{ "type": "string", "value": "$json_text" }'
+			return '{ "type": "string", "value": $json_text }'
 		}
 		ast.DateTime {
 			// Normalization for json
@@ -308,38 +308,38 @@ fn to_iarna(value ast.Value, skip_value_map bool) string {
 			// that expands to 6 digits which is also a valid RFC 3339 representation.
 			json_text = to_iarna_time(json_text)
 			if skip_value_map {
-				return '"$json_text"'
+				return json_text
 			}
-			return '{ "type": "$typ", "value": "$json_text" }'
+			return '{ "type": "$typ", "value": $json_text }'
 		}
 		ast.Date {
 			json_text := json2.Any(value.text).json_str()
 			if skip_value_map {
-				return '"$json_text"'
+				return json_text
 			}
-			return '{ "type": "date", "value": "$json_text" }'
+			return '{ "type": "date", "value": $json_text }'
 		}
 		ast.Time {
 			mut json_text := json2.Any(value.text).json_str()
 			json_text = to_iarna_time(json_text)
 			if skip_value_map {
-				return '"$json_text"'
+				return json_text
 			}
-			return '{ "type": "time", "value": "$json_text" }'
+			return '{ "type": "time", "value": $json_text }'
 		}
 		ast.Bool {
 			json_text := json2.Any(value.text.bool()).json_str()
 			if skip_value_map {
-				return '$json_text'
+				return json_text
 			}
 			return '{ "type": "bool", "value": "$json_text" }'
 		}
 		ast.Null {
 			json_text := json2.Any(value.text).json_str()
 			if skip_value_map {
-				return '$json_text'
+				return json_text
 			}
-			return '{ "type": "null", "value": "$json_text" }'
+			return '{ "type": "null", "value": $json_text }'
 		}
 		ast.Number {
 			if value.text.contains('inf') {

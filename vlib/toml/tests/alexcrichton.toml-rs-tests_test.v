@@ -270,12 +270,12 @@ fn to_alexcrichton(value ast.Value, array_type int) string {
 		}
 		ast.Null {
 			json_text := json2.Any(value.text).json_str()
-			return '{ "type": "null", "value": "$json_text" }'
+			return '{ "type": "null", "value": $json_text }'
 		}
 		ast.Number {
 			text := value.text
 			if text.contains('inf') || text.contains('nan') {
-				return '{ "type": "float", "value": "$value.text" }'
+				return '{ "type": "float", "value": $value.text }'
 			}
 			if !text.starts_with('0x') && (text.contains('.') || text.to_lower().contains('e')) {
 				mut val := ''
