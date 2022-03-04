@@ -296,7 +296,7 @@ fn to_iarna(value ast.Value, skip_value_map bool) string {
 			// Normalization for json
 			mut json_text := json2.Any(value.text).json_str().to_upper().replace(' ',
 				'T')
-			typ := if json_text.ends_with('Z') || json_text.all_after('T').contains('-')
+			typ := if json_text.ends_with('Z"') || json_text.all_after('T').contains('-')
 				|| json_text.all_after('T').contains('+') {
 				'datetime'
 			} else {
@@ -306,11 +306,11 @@ fn to_iarna(value ast.Value, skip_value_map bool) string {
 			// It seems it's implementation specific how time and
 			// date-time values are represented in detail. For now we follow the BurntSushi format
 			// that expands to 6 digits which is also a valid RFC 3339 representation.
-			json_text = to_iarna_time(json_text)
+			json_text = to_iarna_time(json_text[1..json_text.len - 1])
 			if skip_value_map {
 				return json_text
 			}
-			return '{ "type": "$typ", "value": $json_text }'
+			return '{ "type": "$typ", "value": "$json_text" }'
 		}
 		ast.Date {
 			json_text := json2.Any(value.text).json_str()
