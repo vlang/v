@@ -1,0 +1,7 @@
+vlib/v/checker/tests/assign_expr_undefined_err_n.vv:4:27: error: undefined variable: `x`
+    2 |     a := 'add'
+    3 |     n := 2
+    4 |     x := if a == 'add' { n + x } else { 0 }
+      |                              ^
+    5 |     println(x)
+    6 | }
