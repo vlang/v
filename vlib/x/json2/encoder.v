@@ -11,7 +11,7 @@ import strings
 pub struct Encoder {
 	newline              byte
 	newline_spaces_count int
-	escape_utf32         bool = true
+	escape_unicode       bool = true
 }
 
 // byte array versions of the most common tokens/chars
@@ -220,10 +220,11 @@ fn (e &Encoder) encode_string(s string, mut wr io.Writer) ? {
 		} else {
 			slice := s[i..i + char_len]
 			hex_code := slice.utf32_code().hex().bytes()
-			if !e.escape_utf32 || hex_code.len < 4 {
-				// an utf8 codepoint or an unescape utf32
+			if !e.escape_unicode || hex_code.len < 4 {
+				// unescaped non-ASCII char
 				wr.write(slice.bytes()) ?
 			} else if hex_code.len == 4 {
+				// a unicode endpoint
 				wr.write(json2.unicode_escape_chars) ?
 				wr.write(hex_code) ?
 			} else {
