@@ -40,7 +40,6 @@ pub struct DecodeError {
 	message string
 }
 
-
 // code returns the error code of DecodeError
 pub fn (err DecodeError) code() int {
 	return 3
