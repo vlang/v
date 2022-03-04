@@ -232,11 +232,7 @@ fn (mut cmd Command) parse_commands() {
 fn (mut cmd Command) handle_cb(cb FnCommandCallback, label string) {
 	if !isnil(cb) {
 		cb(*cmd) or {
-			label_message := if term.can_show_color_on_stderr() {
-				term.bright_red('cli $label error:')
-			} else {
-				'cli $label error:'
-			}
+			label_message := term.ecolorize(term.bright_red, 'cli $label error:')
 			eprintln_exit('$label_message $err')
 		}
 	}
