@@ -47,7 +47,7 @@ fn test_utf8_strings_are_not_modified() ? {
 fn test_encoder_unescaped_utf32() ? {
 	jap_text := json2.Any('ひらがな')
 	enc := json2.Encoder{
-		escape_utf32: false
+		escape_unicode: false
 	}
 
 	mut sb := strings.new_builder(20)
