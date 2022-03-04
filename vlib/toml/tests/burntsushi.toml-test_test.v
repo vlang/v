@@ -251,7 +251,7 @@ fn to_burntsushi(value ast.Value) string {
 			mut str := '{ '
 			for key, val in value {
 				json_key := json2.Any(key).json_str()
-				str += ' "$json_key": ${to_burntsushi(val)},'
+				str += ' $json_key: ${to_burntsushi(val)},'
 			}
 			str = str.trim_right(',')
 			str += ' }'

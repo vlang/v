@@ -384,7 +384,7 @@ fn to_iarna(value ast.Value, skip_value_map bool) string {
 			mut str := '{ '
 			for key, val in value {
 				json_key := json2.Any(key).json_str()
-				str += ' "$json_key": ${to_iarna(val, skip_value_map)},'
+				str += ' $json_key: ${to_iarna(val, skip_value_map)},'
 			}
 			str = str.trim_right(',')
 			str += ' }'

@@ -297,7 +297,7 @@ fn to_alexcrichton(value ast.Value, array_type int) string {
 			mut str := '{ '
 			for key, val in value {
 				json_key := json2.Any(key).json_str()
-				str += ' "$json_key": ${to_alexcrichton(val, array_type)},'
+				str += ' $json_key: ${to_alexcrichton(val, array_type)},'
 			}
 			str = str.trim_right(',')
 			str += ' }'
