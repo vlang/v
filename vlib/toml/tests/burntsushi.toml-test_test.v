@@ -199,26 +199,30 @@ fn to_burntsushi(value ast.Value) string {
 	match value {
 		ast.Quoted {
 			json_text := json2.Any(value.text).json_str()
-			return '{ "type": "string", "value": "$json_text" }'
+			return '{ "type": "string", "value": $json_text }'
 		}
 		ast.DateTime {
 			// Normalization for json
 			json_text := json2.Any(value.text).json_str().to_upper().replace(' ', 'T')
-			typ := if json_text.ends_with('Z') || json_text.all_after('T').contains('-')
+
+			// NB: Since encoding strings in JSON now automatically includes quotes,
+			// I added a somewhat a workaround by adding an ending quote in order to
+			// recognize properly the date time type. - Ned
+			typ := if json_text.ends_with('Z"') || json_text.all_after('T').contains('-')
 				|| json_text.all_after('T').contains('+') {
 				'datetime'
 			} else {
 				'datetime-local'
 			}
-			return '{ "type": "$typ", "value": "$json_text" }'
+			return '{ "type": "$typ", "value": $json_text }'
 		}
 		ast.Date {
 			json_text := json2.Any(value.text).json_str()
-			return '{ "type": "date-local", "value": "$json_text" }'
+			return '{ "type": "date-local", "value": $json_text }'
 		}
 		ast.Time {
 			json_text := json2.Any(value.text).json_str()
-			return '{ "type": "time-local", "value": "$json_text" }'
+			return '{ "type": "time-local", "value": $json_text }'
 		}
 		ast.Bool {
 			json_text := json2.Any(value.text.bool()).json_str()
@@ -226,7 +230,7 @@ fn to_burntsushi(value ast.Value) string {
 		}
 		ast.Null {
 			json_text := json2.Any(value.text).json_str()
-			return '{ "type": "null", "value": "$json_text" }'
+			return '{ "type": "null", "value": $json_text }'
 		}
 		ast.Number {
 			if value.text.contains('inf') || value.text.contains('nan') {
@@ -251,7 +255,7 @@ fn to_burntsushi(value ast.Value) string {
 			mut str := '{ '
 			for key, val in value {
 				json_key := json2.Any(key).json_str()
-				str += ' "$json_key": ${to_burntsushi(val)},'
+				str += ' $json_key: ${to_burntsushi(val)},'
 			}
 			str = str.trim_right(',')
 			str += ' }'

@@ -288,15 +288,15 @@ fn to_iarna(value ast.Value, skip_value_map bool) string {
 		ast.Quoted {
 			json_text := json2.Any(value.text).json_str()
 			if skip_value_map {
-				return '"$json_text"'
+				return json_text
 			}
-			return '{ "type": "string", "value": "$json_text" }'
+			return '{ "type": "string", "value": $json_text }'
 		}
 		ast.DateTime {
 			// Normalization for json
 			mut json_text := json2.Any(value.text).json_str().to_upper().replace(' ',
 				'T')
-			typ := if json_text.ends_with('Z') || json_text.all_after('T').contains('-')
+			typ := if json_text.ends_with('Z"') || json_text.all_after('T').contains('-')
 				|| json_text.all_after('T').contains('+') {
 				'datetime'
 			} else {
@@ -306,40 +306,41 @@ fn to_iarna(value ast.Value, skip_value_map bool) string {
 			// It seems it's implementation specific how time and
 			// date-time values are represented in detail. For now we follow the BurntSushi format
 			// that expands to 6 digits which is also a valid RFC 3339 representation.
-			json_text = to_iarna_time(json_text)
+			json_text = to_iarna_time(json_text[1..json_text.len - 1])
 			if skip_value_map {
-				return '"$json_text"'
+				return json_text
 			}
 			return '{ "type": "$typ", "value": "$json_text" }'
 		}
 		ast.Date {
 			json_text := json2.Any(value.text).json_str()
 			if skip_value_map {
-				return '"$json_text"'
+				return json_text
 			}
-			return '{ "type": "date", "value": "$json_text" }'
+			return '{ "type": "date", "value": $json_text }'
 		}
 		ast.Time {
 			mut json_text := json2.Any(value.text).json_str()
-			json_text = to_iarna_time(json_text)
+			// NB: Removes the quotes of the encoded JSON string - Ned
+			json_text = to_iarna_time(json_text[1..json_text.len - 1])
 			if skip_value_map {
-				return '"$json_text"'
+				return json_text
 			}
 			return '{ "type": "time", "value": "$json_text" }'
 		}
 		ast.Bool {
 			json_text := json2.Any(value.text.bool()).json_str()
 			if skip_value_map {
-				return '$json_text'
+				return json_text
 			}
 			return '{ "type": "bool", "value": "$json_text" }'
 		}
 		ast.Null {
 			json_text := json2.Any(value.text).json_str()
 			if skip_value_map {
-				return '$json_text'
+				return json_text
 			}
-			return '{ "type": "null", "value": "$json_text" }'
+			return '{ "type": "null", "value": $json_text }'
 		}
 		ast.Number {
 			if value.text.contains('inf') {
@@ -384,7 +385,7 @@ fn to_iarna(value ast.Value, skip_value_map bool) string {
 			mut str := '{ '
 			for key, val in value {
 				json_key := json2.Any(key).json_str()
-				str += ' "$json_key": ${to_iarna(val, skip_value_map)},'
+				str += ' $json_key: ${to_iarna(val, skip_value_map)},'
 			}
 			str = str.trim_right(',')
 			str += ' }'

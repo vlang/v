@@ -236,13 +236,13 @@ fn to_alexcrichton(value ast.Value, array_type int) string {
 	match value {
 		ast.Quoted {
 			json_text := json2.Any(value.text).json_str()
-			return '{ "type": "string", "value": "$json_text" }'
+			return '{ "type": "string", "value": $json_text }'
 		}
 		ast.DateTime {
 			// Normalization for json
 			mut json_text := json2.Any(value.text).json_str().to_upper().replace(' ',
 				'T')
-			typ := if json_text.ends_with('Z') || json_text.all_after('T').contains('-')
+			typ := if json_text.ends_with('Z"') || json_text.all_after('T').contains('-')
 				|| json_text.all_after('T').contains('+') {
 				'datetime'
 			} else {
@@ -252,16 +252,16 @@ fn to_alexcrichton(value ast.Value, array_type int) string {
 			// It seems it's implementation specific how time and
 			// date-time values are represented in detail. For now we follow the BurntSushi format
 			// that expands to 6 digits which is also a valid RFC 3339 representation.
-			json_text = to_alexcrichton_time(json_text)
+			json_text = to_alexcrichton_time(json_text[1..json_text.len - 1])
 			return '{ "type": "$typ", "value": "$json_text" }'
 		}
 		ast.Date {
 			json_text := json2.Any(value.text).json_str()
-			return '{ "type": "date", "value": "$json_text" }'
+			return '{ "type": "date", "value": $json_text }'
 		}
 		ast.Time {
 			mut json_text := json2.Any(value.text).json_str()
-			json_text = to_alexcrichton_time(json_text)
+			json_text = to_alexcrichton_time(json_text[1..json_text.len - 1])
 			return '{ "type": "time", "value": "$json_text" }'
 		}
 		ast.Bool {
@@ -270,12 +270,12 @@ fn to_alexcrichton(value ast.Value, array_type int) string {
 		}
 		ast.Null {
 			json_text := json2.Any(value.text).json_str()
-			return '{ "type": "null", "value": "$json_text" }'
+			return '{ "type": "null", "value": $json_text }'
 		}
 		ast.Number {
 			text := value.text
 			if text.contains('inf') || text.contains('nan') {
-				return '{ "type": "float", "value": "$value.text" }'
+				return '{ "type": "float", "value": $value.text }'
 			}
 			if !text.starts_with('0x') && (text.contains('.') || text.to_lower().contains('e')) {
 				mut val := ''
@@ -297,7 +297,7 @@ fn to_alexcrichton(value ast.Value, array_type int) string {
 			mut str := '{ '
 			for key, val in value {
 				json_key := json2.Any(key).json_str()
-				str += ' "$json_key": ${to_alexcrichton(val, array_type)},'
+				str += ' $json_key: ${to_alexcrichton(val, array_type)},'
 			}
 			str = str.trim_right(',')
 			str += ' }'
