@@ -1,4 +1,5 @@
 import x.json2
+import strings
 
 fn test_json_string_characters() {
 	text := json2.raw_decode(r'"\n\r\b\f\t\\\"\/"') or { '' }
@@ -41,4 +42,49 @@ fn test_utf8_strings_are_not_modified() ? {
 	deresult := json2.raw_decode(original) ?
 	// dump(deresult)
 	assert deresult.str() == original
+}
+
+fn test_encoder_unescaped_utf32() ? {
+	jap_text := json2.Any('ひらがな')
+	enc := json2.Encoder{
+		escape_utf32: false
+	}
+
+	mut sb := strings.new_builder(20)
+	enc.encode_value(jap_text, mut sb) ?
+
+	assert sb.str() == '"$jap_text"'
+	sb.go_back_to(0)
+
+	emoji_text := json2.Any('🐈')
+	enc.encode_value(emoji_text, mut sb) ?
+	assert sb.str() == '"$emoji_text"'
+}
+
+fn test_encoder_prettify() ? {
+	obj := {
+		'hello': json2.Any('world')
+		'arr':   [json2.Any('im a string'), [json2.Any('3rd level')]]
+		'obj':   {
+			'map': json2.Any('map inside a map')
+		}
+	}
+	enc := json2.Encoder{
+		newline: `\n`
+		newline_spaces_count: 2
+	}
+	mut sb := strings.new_builder(20)
+	enc.encode_value(obj, mut sb) ?
+	assert sb.str() == '{
+  "hello": "world",
+  "arr": [
+    "im a string",
+    [
+      "3rd level"
+    ]
+  ],
+  "obj": {
+    "map": "map inside a map"
+  }
+}'
 }
