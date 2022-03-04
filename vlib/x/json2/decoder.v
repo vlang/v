@@ -19,6 +19,7 @@ pub enum ValueKind {
 	number
 }
 
+// str returns the string representation of the specific ValueKind
 pub fn (k ValueKind) str() string {
 	return match k {
 		.unknown { 'unknown' }
@@ -39,10 +40,13 @@ pub struct DecodeError {
 	message string
 }
 
+
+// code returns the error code of DecodeError
 pub fn (err DecodeError) code() int {
 	return 3
 }
 
+// msg returns the message of the DecodeError
 pub fn (err DecodeError) msg() string {
 	return format_message(err.message, err.line, err.column)
 }
@@ -53,10 +57,12 @@ pub struct InvalidTokenError {
 	expected TokenKind
 }
 
+// code returns the error code of the InvalidTokenError
 pub fn (err InvalidTokenError) code() int {
 	return 2
 }
 
+// msg returns the message of the InvalidTokenError
 pub fn (err InvalidTokenError) msg() string {
 	footer_text := if err.expected != .none_ { ', expecting `$err.expected`' } else { '' }
 	return format_message('invalid token `$err.token.kind`$footer_text', err.token.line,
@@ -69,10 +75,12 @@ pub struct UnknownTokenError {
 	kind  ValueKind = .unknown
 }
 
+// code returns the error code of the UnknownTokenError
 pub fn (err UnknownTokenError) code() int {
 	return 1
 }
 
+// msg returns the error message of the UnknownTokenError
 pub fn (err UnknownTokenError) msg() string {
 	return format_message("unknown token '$err.token.lit' when decoding ${err.kind}.",
 		err.token.line, err.token.full_col())
