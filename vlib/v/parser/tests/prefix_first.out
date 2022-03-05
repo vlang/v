@@ -13,16 +13,16 @@ vlib/v/parser/tests/prefix_first.vv:27:3: warning: move infix `&` operator befor
    28 |     }
    29 | }
 vlib/v/parser/tests/prefix_first.vv:13:6: error: `if` expression requires an expression as the last statement of every branch
-   11 | 
+   11 |
    12 |     // later this should compile correctly
    13 |     _ = if true {
       |         ~~~~~~~
    14 |         v = 1
    15 |         -1
-vlib/v/parser/tests/prefix_first.vv:25:12: error: last statement in the `or {}` block should be an expression of type `&int` or exit parent scope
-   23 |     // later this should compile correctly
+vlib/v/parser/tests/prefix_first.vv:26:5: error: last statement in the `or {}` block should be an expression of type `&int` or exit parent scope
    24 |     v := 3
    25 |     _ = opt() or {
-      |               ~~~~
    26 |         _ = 1
+      |           ^
    27 |         &v
+   28 |     }

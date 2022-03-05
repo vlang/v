@@ -1441,34 +1441,50 @@ pub fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_re
 		return
 	}
 	last_stmt := node.stmts[stmts_len - 1]
+	c.check_or_last_stmt(last_stmt, ret_type, expr_return_type)
+}
+
+fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_return_type ast.Type) {
 	if ret_type != ast.void_type {
-		match last_stmt {
+		match stmt {
 			ast.ExprStmt {
 				c.expected_type = ret_type
 				c.expected_or_type = ret_type.clear_flag(.optional)
-				last_stmt_typ := c.expr(last_stmt.expr)
+				last_stmt_typ := c.expr(stmt.expr)
 				c.expected_or_type = ast.void_type
 				type_fits := c.check_types(last_stmt_typ, ret_type)
 					&& last_stmt_typ.nr_muls() == ret_type.nr_muls()
-				is_noreturn := is_noreturn_callexpr(last_stmt.expr)
+				is_noreturn := is_noreturn_callexpr(stmt.expr)
 				if type_fits || is_noreturn {
 					return
 				}
 				expected_type_name := c.table.type_to_str(ret_type.clear_flag(.optional))
-				if last_stmt.typ == ast.void_type {
+				if stmt.typ == ast.void_type {
+					if stmt.expr is ast.IfExpr {
+						for branch in stmt.expr.branches {
+							last_stmt := branch.stmts[branch.stmts.len - 1]
+							c.check_or_last_stmt(last_stmt, ret_type, expr_return_type)
+						}
+						return
+					} else if stmt.expr is ast.MatchExpr {
+						for branch in stmt.expr.branches {
+							last_stmt := branch.stmts[branch.stmts.len - 1]
+							c.check_or_last_stmt(last_stmt, ret_type, expr_return_type)
+						}
+						return
+					}
 					c.error('`or` block must provide a default value of type `$expected_type_name`, or return/continue/break or call a [noreturn] function like panic(err) or exit(1)',
-						last_stmt.pos)
+						stmt.expr.pos())
 				} else {
 					type_name := c.table.type_to_str(last_stmt_typ)
 					c.error('wrong return type `$type_name` in the `or {}` block, expected `$expected_type_name`',
-						last_stmt.pos)
+						stmt.expr.pos())
 				}
-				return
 			}
 			ast.BranchStmt {
-				if last_stmt.kind !in [.key_continue, .key_break] {
+				if stmt.kind !in [.key_continue, .key_break] {
 					c.error('only break/continue is allowed as a branch statement in the end of an `or {}` block',
-						last_stmt.pos)
+						stmt.pos)
 					return
 				}
 			}
@@ -1476,27 +1492,42 @@ pub fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_re
 			else {
 				expected_type_name := c.table.type_to_str(ret_type.clear_flag(.optional))
 				c.error('last statement in the `or {}` block should be an expression of type `$expected_type_name` or exit parent scope',
-					node.pos)
-				return
+					stmt.pos)
 			}
 		}
 	} else {
-		match last_stmt {
+		match stmt {
 			ast.ExprStmt {
-				if last_stmt.typ == ast.void_type {
-					return
+				match stmt.expr {
+					ast.IfExpr {
+						for branch in stmt.expr.branches {
+							last_stmt := branch.stmts[branch.stmts.len - 1]
+							c.check_or_last_stmt(last_stmt, ret_type, expr_return_type)
+						}
+					}
+					ast.MatchExpr {
+						for branch in stmt.expr.branches {
+							last_stmt := branch.stmts[branch.stmts.len - 1]
+							c.check_or_last_stmt(last_stmt, ret_type, expr_return_type)
+						}
+					}
+					else {
+						if stmt.typ == ast.void_type {
+							return
+						}
+						if is_noreturn_callexpr(stmt.expr) {
+							return
+						}
+						if c.check_types(stmt.typ, expr_return_type) {
+							return
+						}
+						// opt_returning_string() or { ... 123 }
+						type_name := c.table.type_to_str(stmt.typ)
+						expr_return_type_name := c.table.type_to_str(expr_return_type)
+						c.error('the default expression type in the `or` block should be `$expr_return_type_name`, instead you gave a value of type `$type_name`',
+							stmt.expr.pos())
+					}
 				}
-				if is_noreturn_callexpr(last_stmt.expr) {
-					return
-				}
-				if c.check_types(last_stmt.typ, expr_return_type) {
-					return
-				}
-				// opt_returning_string() or { ... 123 }
-				type_name := c.table.type_to_str(last_stmt.typ)
-				expr_return_type_name := c.table.type_to_str(expr_return_type)
-				c.error('the default expression type in the `or` block should be `$expr_return_type_name`, instead you gave a value of type `$type_name`',
-					last_stmt.expr.pos())
 			}
 			else {}
 		}
