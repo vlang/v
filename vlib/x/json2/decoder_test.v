@@ -66,3 +66,19 @@ fn test_nested_array_object() ? {
 	decoded := parser.decode() ?
 	assert parser.n_level == 0
 }
+
+fn test_raw_decode_map_invalid() ? {
+	raw_decode('{"name","Bob","age":20}') or {
+		assert err.msg() == '[x.json2] invalid token `comma`, expecting `colon` (0:5)'
+		return
+	}
+	assert false
+}
+
+fn test_raw_decode_array_invalid() ? {
+	raw_decode('["Foo", 1,}') or {
+		assert err.msg() == '[x.json2] invalid token `rcbr` (0:5)'
+		return
+	}
+	assert false
+}

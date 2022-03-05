@@ -30,11 +30,16 @@ enum TokenKind {
 	rcbr = 125
 }
 
-struct Token {
+pub struct Token {
 	lit  []byte
 	kind TokenKind
 	line int
 	col  int
+}
+
+// full_col returns the full column information which includes the length
+pub fn (t Token) full_col() int {
+	return t.col + t.lit.len
 }
 
 const (

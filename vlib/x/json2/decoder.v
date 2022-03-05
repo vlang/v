@@ -11,6 +11,80 @@ pub struct Null {
 	is_null bool = true
 }
 
+pub enum ValueKind {
+	unknown
+	array
+	object
+	string_
+	number
+}
+
+// str returns the string representation of the specific ValueKind
+pub fn (k ValueKind) str() string {
+	return match k {
+		.unknown { 'unknown' }
+		.array { 'array' }
+		.object { 'object' }
+		.string_ { 'string' }
+		.number { 'number' }
+	}
+}
+
+fn format_message(msg string, line int, column int) string {
+	return '[x.json2] $msg ($line:$column)'
+}
+
+pub struct DecodeError {
+	line    int
+	column  int
+	message string
+}
+
+// code returns the error code of DecodeError
+pub fn (err DecodeError) code() int {
+	return 3
+}
+
+// msg returns the message of the DecodeError
+pub fn (err DecodeError) msg() string {
+	return format_message(err.message, err.line, err.column)
+}
+
+pub struct InvalidTokenError {
+	DecodeError
+	token    Token
+	expected TokenKind
+}
+
+// code returns the error code of the InvalidTokenError
+pub fn (err InvalidTokenError) code() int {
+	return 2
+}
+
+// msg returns the message of the InvalidTokenError
+pub fn (err InvalidTokenError) msg() string {
+	footer_text := if err.expected != .none_ { ', expecting `$err.expected`' } else { '' }
+	return format_message('invalid token `$err.token.kind`$footer_text', err.token.line,
+		err.token.full_col())
+}
+
+pub struct UnknownTokenError {
+	DecodeError
+	token Token
+	kind  ValueKind = .unknown
+}
+
+// code returns the error code of the UnknownTokenError
+pub fn (err UnknownTokenError) code() int {
+	return 1
+}
+
+// msg returns the error message of the UnknownTokenError
+pub fn (err UnknownTokenError) msg() string {
+	return format_message("unknown token '$err.token.lit' when decoding ${err.kind}.",
+		err.token.line, err.token.full_col())
+}
+
 struct Parser {
 mut:
 	scanner      &Scanner
@@ -19,14 +93,6 @@ mut:
 	n_tok        Token
 	n_level      int
 	convert_type bool = true
-}
-
-struct InvalidTokenError {
-	MessageError
-}
-
-struct UnknownTokenError {
-	MessageError
 }
 
 fn (mut p Parser) next() {
@@ -38,14 +104,12 @@ fn (mut p Parser) next() {
 fn (mut p Parser) next_with_err() ? {
 	p.next()
 	if p.tok.kind == .error {
-		return error(p.emit_error(p.tok.lit.bytestr()))
+		return IError(DecodeError{
+			line: p.tok.line
+			column: p.tok.full_col()
+			message: p.tok.lit.bytestr()
+		})
 	}
-}
-
-fn (p Parser) emit_error(msg string) string {
-	line := p.tok.line
-	column := p.tok.col + p.tok.lit.len
-	return '[x.json2] $msg ($line:$column)'
 }
 
 // TODO: copied from v.util to avoid the entire module and its functions
@@ -81,8 +145,8 @@ fn (mut p Parser) decode() ?Any {
 	p.next_with_err() ?
 	fi := p.decode_value() ?
 	if p.tok.kind != .eof {
-		return IError(&InvalidTokenError{
-			msg: p.emit_error('invalid token `$p.tok.kind`')
+		return IError(InvalidTokenError{
+			token: p.tok
 		})
 	}
 	return fi
@@ -90,7 +154,9 @@ fn (mut p Parser) decode() ?Any {
 
 fn (mut p Parser) decode_value() ?Any {
 	if p.n_level + 1 == 500 {
-		return error(p.emit_error('reached maximum nesting level of 500'))
+		return IError(DecodeError{
+			message: 'reached maximum nesting level of 500'
+		})
 	}
 	match p.tok.kind {
 		.lsbr {
@@ -134,8 +200,8 @@ fn (mut p Parser) decode_value() ?Any {
 			return Any(str)
 		}
 		else {
-			return IError(&InvalidTokenError{
-				msg: p.emit_error('invalid token `$p.tok.kind`')
+			return IError(InvalidTokenError{
+				token: p.tok
 			})
 		}
 	}
@@ -152,16 +218,15 @@ fn (mut p Parser) decode_array() ?Any {
 		items << item
 		if p.tok.kind == .comma {
 			p.next_with_err() ?
-			if p.tok.kind == .rsbr || p.tok.kind == .rcbr {
-				return IError(&InvalidTokenError{
-					msg: p.emit_error('invalid token `$p.tok.lit')
+			if p.tok.kind == .rsbr {
+				return IError(InvalidTokenError{
+					token: p.tok
 				})
 			}
-		} else if p.tok.kind == .rsbr {
-			break
-		} else {
-			return IError(&UnknownTokenError{
-				msg: p.emit_error("unknown token '$p.tok.lit' when decoding array.")
+		} else if p.tok.kind != .rsbr {
+			return IError(UnknownTokenError{
+				token: p.tok
+				kind: .array
 			})
 		}
 	}
@@ -175,23 +240,31 @@ fn (mut p Parser) decode_object() ?Any {
 	p.next_with_err() ?
 	p.n_level++
 	for p.tok.kind != .rcbr {
-		is_key := p.tok.kind == .str_ && p.n_tok.kind == .colon
-		if !is_key {
-			return IError(&InvalidTokenError{
-				msg: p.emit_error('invalid token `$p.tok.kind`, expecting `str_`')
+		if p.tok.kind != .str_ {
+			return IError(InvalidTokenError{
+				token: p.tok
+				expected: .str_
 			})
 		}
+
 		cur_key := p.tok.lit.bytestr()
 		p.next_with_err() ?
+		if p.tok.kind != .colon {
+			return IError(InvalidTokenError{
+				token: p.tok
+				expected: .colon
+			})
+		}
+
 		p.next_with_err() ?
 		fields[cur_key] = p.decode_value() ?
-		if p.tok.kind == .comma {
+		if p.tok.kind != .comma && p.tok.kind != .rcbr {
+			return IError(UnknownTokenError{
+				token: p.tok
+				kind: .object
+			})
+		} else if p.tok.kind == .comma {
 			p.next_with_err() ?
-			if p.tok.kind != .str_ {
-				return IError(&UnknownTokenError{
-					msg: p.emit_error("unknown token '$p.tok.lit' when decoding object.")
-				})
-			}
 		}
 	}
 	p.next_with_err() ?
