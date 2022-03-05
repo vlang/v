@@ -4359,10 +4359,6 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 	}
 }
 
-fn (mut g Gen) go_back_out(n int) {
-	g.out.go_back(n)
-}
-
 fn (mut g Gen) assoc(node ast.Assoc) {
 	g.writeln('// assoc')
 	if node.typ == 0 {

@@ -5,16 +5,14 @@ module c
 
 import v.ast
 
-const (
-	skip_struct_init = ['struct stat', 'struct addrinfo']
-)
+const skip_struct_init = ['struct stat', 'struct addrinfo']
 
 fn (mut g Gen) struct_init(node ast.StructInit) {
 	styp := g.typ(node.typ)
 	mut shared_styp := '' // only needed for shared x := St{...
 	if styp in c.skip_struct_init {
 		// needed for c++ compilers
-		g.go_back_out(3)
+		g.out.go_back(3)
 		return
 	}
 	mut sym := g.table.final_sym(g.unwrap_generic(node.typ))
