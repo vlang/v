@@ -245,7 +245,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 						}
 					}
 				}
-				g.write(field.name)
+				g.write(c_name(field.name))
 			} else {
 				if !g.zero_struct_field(field) {
 					nr_fields--
