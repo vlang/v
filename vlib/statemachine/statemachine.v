@@ -13,8 +13,8 @@ mut:
 
 struct Transition {
 mut:
-	to        string
-	condition ConditionFn
+	to                string
+	condition_handler ConditionFn
 }
 
 struct StateMachine {
@@ -39,17 +39,17 @@ pub fn (mut s StateMachine) add_state(name string, entry EventHandlerFn, run Eve
 	}
 }
 
-pub fn (mut s StateMachine) add_transition(from string, to string, condition ConditionFn) {
+pub fn (mut s StateMachine) add_transition(from string, to string, condition_handler ConditionFn) {
 	s.transitions[from] = Transition{
 		to: to
-		condition: condition
+		condition_handler: condition_handler
 	}
 }
 
 pub fn (mut s StateMachine) run(receiver voidptr) {
 	for from_state, transition in s.transitions {
 		if from_state == s.current_state {
-			if transition.condition(receiver) {
+			if transition.condition_handler(receiver) {
 				s.change_state(receiver, s.transitions[from_state].to)
 			}
 			s.states[s.current_state].run_handler(receiver)
