@@ -23,7 +23,6 @@ mut:
 	current_state string
 }
 
-
 pub fn new() &StateMachine {
 	return &StateMachine{}
 }
@@ -48,7 +47,7 @@ pub fn (mut s StateMachine) add_transition(from string, to string, condition Con
 
 pub fn (mut s StateMachine) run(receiver voidptr){
 	for from_state, transition in s.transitions{
-		if from_state in s.states {
+		if from_state == s.current_state {
 			if transition.condition(receiver){
 				s.change_state(receiver, s.transitions[from_state].to)
 			}
