@@ -14,7 +14,7 @@ mut:
 struct Transition {
 mut:
 	to                string
-	condition_handler ConditionFn
+	condition_handler ConditionFn = voidptr(0)
 }
 
 struct StateMachine {
