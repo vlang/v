@@ -2,7 +2,7 @@
 
 The `term` module is designed to provide the building blocks for building
 very simple TUI apps. For more complex apps, you should really look at the
-`term.input` module, as it includes terminal events, is easier to use and
+`term.ui` module, as it includes terminal events, is easier to use and
 is much more performant for large draws.
 
 ## Usage
