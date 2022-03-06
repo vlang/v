@@ -894,7 +894,7 @@ fn (mut s Scanner) text_scan() token.Token {
 				if '@' + name in token.valid_at_tokens || name.starts_with('cc') { // `=@cccond` in inline assembly
 					return s.new_token(.at, '@' + name, name.len + 1)
 				}
-				if !token.is_key(name) {
+				if !token.is_key(name) && name != 'map' {
 					mut at_error_msg := '@ must be used before keywords or compile time variables (e.g. `@type string` or `@FN`)'
 					// If name is all uppercase, the user is probably looking for a compile time variable ("at-token")
 					if name.is_upper() {
