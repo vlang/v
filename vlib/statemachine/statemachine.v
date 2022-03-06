@@ -51,6 +51,7 @@ pub fn (mut s StateMachine) run(receiver voidptr){
 			if transition.condition(receiver){
 				s.change_state(receiver, s.transitions[from_state].to)
 			}
+			s.states[s.current_state].run_handler(receiver)
 		}
 	}
 }
@@ -59,7 +60,6 @@ pub fn (mut s StateMachine) change_state(receiver voidptr, newstate string){
 	mut current_state := s.current_state
 	s.states[current_state].exit_handler(receiver)
 	current_state = newstate
-	s.states[current_state].run_handler(receiver)
 	s.states[current_state].entry_handler(receiver)
 	s.current_state = current_state
 }

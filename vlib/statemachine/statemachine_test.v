@@ -25,8 +25,8 @@ fn test_statemachine_works_when_typical() {
 	s.run(receiver)
 
 	assert receiver.data[0] == "on_state_exit"
-	assert receiver.data[1] == "on_state_run"
-	assert receiver.data[2] == "on_state_entry"
+	assert receiver.data[1] == "on_state_entry"
+	assert receiver.data[2] == "on_state_run"
 }
 
 fn test_statemachine_works_when_final_state() {
