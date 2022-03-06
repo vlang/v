@@ -1,15 +1,15 @@
 import statemachine
 
-struct FakeReceiver {
+struct MyReceiver {
 mut:
 	data []string
 }
 
 fn test_statemachine_works_when_single_transition() {
-	mut receiver := &FakeReceiver{}
+	mut receiver := &MyReceiver{}
 	mut s := statemachine.new()
-	s.add_state("A",on_test_entry, on_test_run, on_test_exit)
-	s.add_state("B",on_test_entry, on_test_run, on_test_exit)
+	s.add_state("A",on_state_entry, on_state_run, on_state_exit)
+	s.add_state("B",on_state_entry, on_state_run, on_state_exit)
 	s.add_transition("A", "B", condition_a_b)
 	s.run(receiver)
 
@@ -17,23 +17,23 @@ fn test_statemachine_works_when_single_transition() {
 }
 
 fn test_statemachine_works_when_typical() {
-	mut receiver := &FakeReceiver{}
+	mut receiver := &MyReceiver{}
 	mut s := statemachine.new()
-	s.add_state("A",on_test_entry, on_test_run, on_test_exit)
-	s.add_state("B",on_test_entry, on_test_run, on_test_exit)
+	s.add_state("A",on_state_entry, on_state_run, on_state_exit)
+	s.add_state("B",on_state_entry, on_state_run, on_state_exit)
 	s.add_transition("A", "B", condition_a_b)
 	s.run(receiver)
 
-	assert receiver.data[0] == "on_test_exit"
-	assert receiver.data[1] == "on_test_run"
-	assert receiver.data[2] == "on_test_entry"
+	assert receiver.data[0] == "on_state_exit"
+	assert receiver.data[1] == "on_state_run"
+	assert receiver.data[2] == "on_state_entry"
 }
 
 fn test_statemachine_works_when_final_state() {
-	mut receiver := &FakeReceiver{}
+	mut receiver := &MyReceiver{}
 	mut s := statemachine.new()
-	s.add_state("A",on_test_entry, on_test_run, on_test_exit)
-	s.add_state("B",on_test_entry, on_test_run, on_test_exit)
+	s.add_state("A",on_state_entry, on_state_run, on_state_exit)
+	s.add_state("B",on_state_entry, on_state_run, on_state_exit)
 	s.add_transition("A", "B", condition_a_b)
 	s.run(receiver)
 	s.run(receiver)
@@ -41,16 +41,16 @@ fn test_statemachine_works_when_final_state() {
 	assert receiver.data.len == 3
 }
 
-fn on_test_entry(mut receiver &FakeReceiver) {
-	receiver.data << "on_test_entry"
+fn on_state_entry(mut receiver &MyReceiver) {
+	receiver.data << "on_state_entry"
 }
-fn on_test_run(mut receiver &FakeReceiver) {
-	receiver.data << "on_test_run"
+fn on_state_run(mut receiver &MyReceiver) {
+	receiver.data << "on_state_run"
 }
-fn on_test_exit(mut receiver &FakeReceiver) {
-	receiver.data << "on_test_exit"
+fn on_state_exit(mut receiver &MyReceiver) {
+	receiver.data << "on_state_exit"
 }
 
-fn condition_a_b(receiver &FakeReceiver) bool {
+fn condition_a_b(receiver &MyReceiver) bool {
 	return true
 }
