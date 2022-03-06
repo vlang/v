@@ -10,7 +10,7 @@ fn test_statemachine_works_when_single_transition() {
 	mut s := statemachine.new()
 	s.add_state("A",on_state_entry, on_state_run, on_state_exit)
 	s.add_state("B",on_state_entry, on_state_run, on_state_exit)
-	s.add_transition("A", "B", condition_a_b)
+	s.add_transition("A", "B", condition_transition)
 	s.run(receiver)
 
 	assert receiver.data.len == 3
@@ -21,7 +21,7 @@ fn test_statemachine_works_when_typical() {
 	mut s := statemachine.new()
 	s.add_state("A",on_state_entry, on_state_run, on_state_exit)
 	s.add_state("B",on_state_entry, on_state_run, on_state_exit)
-	s.add_transition("A", "B", condition_a_b)
+	s.add_transition("A", "B", condition_transition)
 	s.run(receiver)
 
 	assert receiver.data[0] == "on_state_exit"
@@ -34,7 +34,7 @@ fn test_statemachine_works_when_final_state() {
 	mut s := statemachine.new()
 	s.add_state("A",on_state_entry, on_state_run, on_state_exit)
 	s.add_state("B",on_state_entry, on_state_run, on_state_exit)
-	s.add_transition("A", "B", condition_a_b)
+	s.add_transition("A", "B", condition_transition)
 	s.run(receiver)
 	s.run(receiver)
 
@@ -51,6 +51,6 @@ fn on_state_exit(mut receiver &MyReceiver) {
 	receiver.data << "on_state_exit"
 }
 
-fn condition_a_b(receiver &MyReceiver) bool {
+fn condition_transition(receiver &MyReceiver) bool {
 	return true
 }
