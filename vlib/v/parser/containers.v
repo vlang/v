@@ -58,7 +58,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		p.inside_array_lit = old_inside_array_lit
 		line_nr := p.tok.line_nr
 		$if tinyc {
-			// NB: do not remove the next line without testing
+			// Note: do not remove the next line without testing
 			// v selfcompilation with tcc first
 			tcc_stack_bug := 12345
 			_ = tcc_stack_bug

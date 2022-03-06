@@ -44,7 +44,7 @@ pub fn tabs(n int) string {
 pub fn set_vroot_folder(vroot_path string) {
 	// Preparation for the compiler module:
 	// VEXE env variable is needed so that compiler.vexe_path() can return it
-	// later to whoever needs it. NB: guessing is a heuristic, so only try to
+	// later to whoever needs it. Note: guessing is a heuristic, so only try to
 	// guess the V executable name, if VEXE has not been set already.
 	vexe := os.getenv('VEXE')
 	if vexe == '' {
@@ -185,7 +185,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	exit(2)
 }
 
-// NB: should_recompile_tool/4 compares unix timestamps that have 1 second resolution
+// Note: should_recompile_tool/4 compares unix timestamps that have 1 second resolution
 // That means that a tool can get recompiled twice, if called in short succession.
 // TODO: use a nanosecond mtime timestamp, if available.
 pub fn should_recompile_tool(vexe string, tool_source string, tool_name string, tool_exe string) bool {

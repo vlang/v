@@ -25,7 +25,7 @@ pub mut:
 	out_imports        strings.Builder
 	indent             int
 	empty_line         bool
-	line_len           int    // the current line length, NB: it counts \t as 4 spaces, and starts at 0 after f.writeln
+	line_len           int    // the current line length, Note: it counts \t as 4 spaces, and starts at 0 after f.writeln
 	buffering          bool   // disables line wrapping for exprs that will be analyzed later
 	par_level          int    // how many parentheses are put around the current expression
 	array_init_break   []bool // line breaks after elements in hierarchy level of multi dimensional array

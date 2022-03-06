@@ -13,7 +13,7 @@ import v.mathutil as mu
 // The filepath:line:col: format is the default C compiler error output format.
 // It allows editors and IDE's like emacs to quickly find the errors in the
 // output and jump to their source with a keyboard shortcut.
-// NB: using only the filename may lead to inability of IDE/editors
+// Note: using only the filename may lead to inability of IDE/editors
 // to find the source file, when the IDE has a different working folder than
 // v itself.
 // error_context_before - how many lines of source context to print before the pointer line

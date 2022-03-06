@@ -3,7 +3,7 @@ module c
 import strings
 import v.pref
 
-// NB: @@@ here serve as placeholders.
+// Note: @@@ here serve as placeholders.
 // They will be replaced with correct strings
 // for each constant, during C code generation.
 
@@ -77,7 +77,7 @@ fn arm32_bytes(nargs int) string {
 }
 
 // gen_amd64_bytecode generates the amd64 bytecode a closure with `nargs` parameters.
-// NB: `nargs` includes the last `userdata` parameter that will be passed to the original
+// Note: `nargs` includes the last `userdata` parameter that will be passed to the original
 // function, and as such nargs must always be > 0
 fn amd64_bytes(nargs int) string {
 	match nargs {

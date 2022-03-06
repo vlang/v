@@ -102,7 +102,7 @@ pub fn open(path string) ?File {
 // create creates or opens a file at a specified location and returns a write-only `File` object.
 pub fn create(path string) ?File {
 	/*
-	// NB: android/termux/bionic is also a kind of linux,
+	// Note: android/termux/bionic is also a kind of linux,
 	// but linux syscalls there sometimes fail,
 	// while the libc version should work.
 	$if linux {
@@ -264,7 +264,7 @@ pub fn (mut f File) write_to(pos u64, buf []byte) ?int {
 }
 
 // write_ptr writes `size` bytes to the file, starting from the address in `data`.
-// NB: write_ptr is unsafe and should be used carefully, since if you pass invalid
+// Note: write_ptr is unsafe and should be used carefully, since if you pass invalid
 // pointers to it, it will cause your programs to segfault.
 [unsafe]
 pub fn (mut f File) write_ptr(data voidptr, size int) int {
@@ -297,7 +297,7 @@ pub fn (mut f File) write_full_buffer(buffer voidptr, buffer_len usize) ? {
 
 // write_ptr_at writes `size` bytes to the file, starting from the address in `data`,
 // at byte offset `pos`, counting from the start of the file (pos 0).
-// NB: write_ptr_at is unsafe and should be used carefully, since if you pass invalid
+// Note: write_ptr_at is unsafe and should be used carefully, since if you pass invalid
 // pointers to it, it will cause your programs to segfault.
 [unsafe]
 pub fn (mut f File) write_ptr_at(data voidptr, size int, pos u64) int {

@@ -36,7 +36,7 @@ pub fn getenv_opt(key string) ?string {
 			if s == voidptr(0) {
 				return none
 			}
-			// NB: C.getenv *requires* that the result be copied.
+			// Note: C.getenv *requires* that the result be copied.
 			return cstring_to_vstring(s)
 		}
 	}

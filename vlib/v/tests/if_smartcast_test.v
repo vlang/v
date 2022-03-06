@@ -102,7 +102,7 @@ fn test_mutable_with_struct() {
 		assert c.abc.val == 'xyz'
 	}
 	if mut c.abc is Abc {
-		// NB: in this second smart cast, `another` is
+		// Note: in this second smart cast, `another` is
 		// the same wrapped value, that was changed in
 		// the first smart cast:
 		assert c.abc.val == 'xyz'

@@ -30,7 +30,7 @@ fn test_literal() {
 
 //
 fn choose4<T>(a T, b T, c T, d T) T {
-	// NB: a similar construct is used in prime31's via engine
+	// Note: a similar construct is used in prime31's via engine
 	return a
 }
 

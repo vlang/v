@@ -283,7 +283,7 @@ pub fn (mut a array) delete_many(i int, size int) {
 			panic('array.delete: index out of range (i == $i$endidx, a.len == $a.len)')
 		}
 	}
-	// NB: if a is [12,34], a.len = 2, a.delete(0)
+	// Note: if a is [12,34], a.len = 2, a.delete(0)
 	// should move (2-0-1) elements = 1 element (the 34) forward
 	old_data := a.data
 	new_size := a.len - size
@@ -400,7 +400,7 @@ pub fn (mut a array) pop() voidptr {
 	new_len := a.len - 1
 	last_elem := unsafe { &byte(a.data) + new_len * a.element_size }
 	a.len = new_len
-	// NB: a.cap is not changed here *on purpose*, so that
+	// Note: a.cap is not changed here *on purpose*, so that
 	// further << ops on that array will be more efficient.
 	return unsafe { memdup(last_elem, a.element_size) }
 }

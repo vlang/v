@@ -10,7 +10,7 @@ fn test_pub_const_using_private_fn_for_its_initialisation() {
 }
 
 /*
-NB: this main program is under bin/ , but it still
+Note: this main program is under bin/ , but it still
 can find mod1, because the parent project has v.mod,
 so v module lookup for this program will find mod1 through
 relation to the parent v.mod file

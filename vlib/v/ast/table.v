@@ -236,7 +236,7 @@ pub fn (t &Table) fn_type_source_signature(f &Fn) string {
 		if arg.is_mut {
 			sig += 'mut '
 		}
-		// NB: arg name is only added for fmt, else it would causes errors with generics
+		// Note: arg name is only added for fmt, else it would causes errors with generics
 		if t.is_fmt && arg.name.len > 0 {
 			sig += '$arg.name '
 		}

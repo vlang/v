@@ -57,7 +57,7 @@ fn (mut c Context) compile_oldv_if_needed() {
 	c.vgcontext.compile_oldv_if_needed()
 	c.commit_v_hash = c.vgcontext.commit_v__hash
 	if !os.exists(c.vgcontext.vexepath) && c.cmd_to_run.len > 0 {
-		// NB: 125 is a special code, that git bisect understands as 'skip this commit'.
+		// Note: 125 is a special code, that git bisect understands as 'skip this commit'.
 		// it is used to inform git bisect that the current commit leads to a build failure.
 		exit(125)
 	}

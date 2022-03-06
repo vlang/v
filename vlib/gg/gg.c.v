@@ -500,7 +500,7 @@ fn (mut ctx Context) set_scale() {
 			}
 		}
 	}
-	// NB: on older X11, `Xft.dpi` from ~/.Xresources, that sokol uses,
+	// Note: on older X11, `Xft.dpi` from ~/.Xresources, that sokol uses,
 	// may not be set which leads to sapp.dpi_scale reporting incorrectly 0.0
 	if s < 0.1 {
 		s = 1.0
@@ -522,7 +522,7 @@ pub fn dpi_scale() f32 {
 	$if android {
 		s *= android_dpi_scale()
 	}
-	// NB: on older X11, `Xft.dpi` from ~/.Xresources, that sokol uses,
+	// Note: on older X11, `Xft.dpi` from ~/.Xresources, that sokol uses,
 	// may not be set which leads to sapp.dpi_scale reporting incorrectly 0.0
 	if s < 0.1 {
 		s = 1.0

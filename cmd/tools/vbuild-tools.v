@@ -4,7 +4,7 @@ import os
 import testing
 import v.util
 
-// NB: tools like vdoc are compiled in their own subfolder
+// Note: tools like vdoc are compiled in their own subfolder
 // => cmd/tools/vdoc/vdoc.exe
 // Usually, they have several top level .v files in the subfolder,
 // that cannot be compiled separately, but instead, the whole folder,

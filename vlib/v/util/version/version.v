@@ -39,7 +39,7 @@ pub fn full_v_version(is_verbose bool) string {
 // relevant files in the .git/ folder, or if that is not possible
 // for example when using a V from a V binary release, that does not have .git/
 // defaults to getting the predefined C constant again.
-// NB: githash(true) must be called only when v detects that it builds itself.
+// Note: githash(true) must be called only when v detects that it builds itself.
 // For all other programs, githash(false) should be used.
 pub fn githash(should_get_from_filesystem bool) string {
 	for {

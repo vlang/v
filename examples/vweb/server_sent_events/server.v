@@ -24,7 +24,7 @@ pub fn (mut app App) index() vweb.Result {
 
 fn (mut app App) sse() vweb.Result {
 	mut session := sse.new_connection(app.conn)
-	// NB: you can setup session.write_timeout and session.headers here
+	// Note: you can setup session.write_timeout and session.headers here
 	session.start() or { return app.server_error(501) }
 	session.send_message(data: 'ok') or { return app.server_error(501) }
 	for {

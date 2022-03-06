@@ -76,7 +76,7 @@ fn main() {
 		eprintln(vt.e2string(err))
 	}
 	if vfmt_err_count > 0 {
-		eprintln('NB: You can run `v fmt -w file.v` to fix these errors automatically')
+		eprintln('Note: You can run `v fmt -w file.v` to fix these errors automatically')
 	}
 	if vt.errors.len > 0 {
 		exit(1)

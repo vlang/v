@@ -13,7 +13,7 @@ fn (mut p Process) unix_spawn_process() int {
 	pid := fork()
 	if pid != 0 {
 		// This is the parent process after the fork.
-		// NB: pid contains the process ID of the child process
+		// Note: pid contains the process ID of the child process
 		if p.use_stdio_ctl {
 			p.stdio_fd[0] = pipeset[1] // store the write end of child's in
 			p.stdio_fd[1] = pipeset[2] // store the read end of child's out

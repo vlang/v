@@ -42,7 +42,7 @@ fn test_work_on_strings() {
 }
 
 fn test_work_on_ints() {
-	// NB: since maxjobs is left empty here,
+	// Note: since maxjobs is left empty here,
 	// the pool processor will use njobs = runtime.nr_jobs so that
 	// it will work optimally without overloading the system
 	mut pool_i := pool.new_pool_processor(

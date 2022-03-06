@@ -129,7 +129,7 @@ pub fn (ss &TextScanner) peek_back_n(n int) int {
 
 // current returns the current character code from the input text.
 // current returns `-1` at the start of the input text.
-// NB: after `c := ts.next()`, `ts.current()` will also return `c`.
+// Note: after `c := ts.next()`, `ts.current()` will also return `c`.
 [direct_array_access; inline]
 pub fn (mut ss TextScanner) current() int {
 	if ss.pos > 0 {

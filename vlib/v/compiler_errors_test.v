@@ -106,7 +106,7 @@ fn test_all() {
 	//
 	if github_job == 'ubuntu-tcc' {
 		// This is done with tcc only, because the error output is compiler specific.
-		// NB: the tasks should be run serially, since they depend on
+		// Note: the tasks should be run serially, since they depend on
 		// setting and using environment variables.
 		mut cte_tasks := Tasks{
 			vexe: vexe
@@ -200,7 +200,7 @@ fn (mut tasks Tasks) run() {
 		m_skip_files = []
 	}
 	$if tinyc {
-		// NB: tcc does not support __has_include, so the detection mechanism
+		// Note: tcc does not support __has_include, so the detection mechanism
 		// used for the other compilers does not work. It still provides a
 		// cleaner error message, than a generic C error, but without the explanation.
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_1.vv'
@@ -298,7 +298,7 @@ fn work_processor(mut work sync.Channel, mut results sync.Channel) {
 	}
 }
 
-// actual processing; NB: no output is done here at all
+// actual processing; Note: no output is done here at all
 fn (mut task TaskDescription) execute() {
 	if task.is_skipped {
 		return

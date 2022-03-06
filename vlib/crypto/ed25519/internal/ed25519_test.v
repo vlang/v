@@ -1,6 +1,6 @@
 module main
 
-// NB: this should be in vlib/crypto/ed25519/ed25519_test.v
+// Note: this should be in vlib/crypto/ed25519/ed25519_test.v
 // but is currently one folder below, because of a V parser/symbol registration bug.
 // TODO: move this test back to vlib/crypto/ed25519/ed25519_test.v
 import os

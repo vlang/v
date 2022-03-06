@@ -100,7 +100,7 @@ pub mut:
 // free frees the resources allocated for the given FlagParser instance.
 // It should be called manually in functions that use it, and that are
 // marked with `[manualfree]`,  otherwise, it is called automatically
-// in programs, compiled with `-autofree`. NB: you should NOT use the
+// in programs, compiled with `-autofree`. Note: you should NOT use the
 // instance over which you have called .free() for anything after the call.
 [unsafe]
 fn (mut f FlagParser) free() {

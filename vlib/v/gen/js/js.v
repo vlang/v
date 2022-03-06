@@ -854,7 +854,7 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 }
 
 fn (mut g JsGen) expr(node ast.Expr) {
-	// NB: please keep the type names in the match here in alphabetical order:
+	// Note: please keep the type names in the match here in alphabetical order:
 	match mut node {
 		ast.ComptimeType {
 			verror('not yet implemented')
@@ -2077,7 +2077,7 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 }
 
 fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
-	// NB: Fixed arrays and regular arrays are handled the same, since fixed arrays:
+	// Note: Fixed arrays and regular arrays are handled the same, since fixed arrays:
 	// 1)  Are only available for number types
 	// 2)  Give the code unnecessary complexity
 	// 3)  Have several limitations like missing most `Array.prototype` methods

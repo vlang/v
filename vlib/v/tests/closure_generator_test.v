@@ -63,7 +63,7 @@ const return_types = [
 // and parameters of type `typ`, to makes sure that all combinations work correctly
 fn test_closures_with_n_args() ? {
 	mut v_code := strings.new_builder(1024)
-	// NB: the type or value of the captured arg doesn't matter for this test,
+	// Note: the type or value of the captured arg doesn't matter for this test,
 	// as the entire closure context is always passed as one pointer anyways
 
 	v_code.write_string('struct BigStruct {')
@@ -96,7 +96,7 @@ fn test_closures_with_n_args() ? {
 				"'127'", 'string'
 			}
 
-			// NB: the captured arg doesn't matter for this test, as closures always receive
+			// Note: the captured arg doesn't matter for this test, as closures always receive
 			// a pointer to the entire closure context as their last argument anyways
 			v_code.writeln("
 fn test_big_closure_${typ}_${i}() {
@@ -136,7 +136,7 @@ fn test_big_closure_${typ}_${i}() {
 			} else {
 				'c(${values.join(', ')}) $assertion'
 			}
-			// NB: the captured arg doesn't matter for this test, as closures always receive
+			// Note: the captured arg doesn't matter for this test, as closures always receive
 			// a pointer to the entire closure context as their last argument anyways
 			v_code.writeln("
 fn test_closure_return_${styp}_${i}() ? {

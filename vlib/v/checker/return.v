@@ -175,7 +175,7 @@ pub fn (mut c Checker) find_unreachable_statements_after_noreturn_calls(stmts []
 	}
 }
 
-// NB: has_top_return/1 should be called on *already checked* stmts,
+// Note: has_top_return/1 should be called on *already checked* stmts,
 // which do have their stmt.expr.is_noreturn set properly:
 fn has_top_return(stmts []ast.Stmt) bool {
 	for stmt in stmts {

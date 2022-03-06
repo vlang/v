@@ -1,4 +1,4 @@
-// NB: .type_name() and .type_idx() called on an interface instance are more expensive
+// Note: .type_name() and .type_idx() called on an interface instance are more expensive
 // than typeof(instance).name and typeof(instance).idx, since they will search and return
 // the name and type index of the concrete interface instance.
 //

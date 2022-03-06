@@ -79,7 +79,7 @@ pub fn sys_mono_now() u64 {
 	return (tm - time.start_time) * 1000000000 / time.freq_time
 }
 
-// NB: vpc_now is used by `v -profile` .
+// Note: vpc_now is used by `v -profile` .
 // It should NOT call *any other v function*, just C functions and casts.
 [inline]
 fn vpc_now() u64 {

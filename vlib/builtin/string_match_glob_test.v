@@ -89,7 +89,7 @@ fn test_match_glob_with_complex_patterns() {
 }
 
 fn test_match_glob_search_is_linear() {
-	// NB: these are pathological cases, when matches are performed
+	// Note: these are pathological cases, when matches are performed
 	// using the exponential recursive approach, that can take many
 	// seconds, even minutes, but take usually only microseconds,
 	// using the linear approach from https://research.swtch.com/glob

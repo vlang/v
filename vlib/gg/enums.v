@@ -9,7 +9,7 @@ pub enum MouseButton {
 	invalid = 256
 }
 
-// NB: unlike the MouseButton enum from above,
+// Note: unlike the MouseButton enum from above,
 // the [flag]-ed enum here can have combined states,
 // representing several pressed buttons at once.
 

@@ -152,8 +152,8 @@ const nr_tokens = int(Kind._end_)
 // @VEXE => will be substituted with the path to the V compiler
 // @VEXEROOT => will be substituted with the *folder* where the V executable is (as a string).
 // @VROOT => the old name for @VMODROOT; sometimes it was used as @VEXEROOT;
-//           NB: @VROOT is now deprecated, use either @VMODROOT or @VEXEROOT instead.
-// NB: @VEXEROOT & @VMODROOT are used for compilation options like this:
+//           Note: @VROOT is now deprecated, use either @VMODROOT or @VEXEROOT instead.
+// Note: @VEXEROOT & @VMODROOT are used for compilation options like this:
 //   #include "@VMODROOT/include/abc.h"
 //   #flag -L@VEXEROOT/thirdparty/libgc
 //

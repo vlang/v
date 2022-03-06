@@ -82,7 +82,7 @@ fn show_usage() {
 	println('   B)')
 	println('      v test file_test.v : run test functions in a given test file.')
 	println('      v -stats test file_test.v : as above, but with more stats.')
-	println('   NB: you can also give many and mixed folder/ file_test.v arguments after `v test` .')
+	println('   Note: you can also give many and mixed folder/ file_test.v arguments after `v test` .')
 	println('')
 }
 

@@ -152,7 +152,7 @@ fn (mut context Context) parse_options() ? {
 	mut fp := flag.new_flag_parser(os.args)
 	fp.application(os.file_name(os.executable()))
 	fp.version('0.0.1')
-	fp.description('Repeat command(s) and collect statistics. NB: you have to quote each command, if it contains spaces.')
+	fp.description('Repeat command(s) and collect statistics. Note: you have to quote each command, if it contains spaces.')
 	fp.arguments_description('CMD1 CMD2 ...')
 	fp.skip_executable()
 	fp.limit_free_args_to_at_least(1) ?
@@ -161,7 +161,7 @@ fn (mut context Context) parse_options() ? {
 	context.warmup = fp.int('warmup', `w`, 2, 'Warmup runs. These are done *only at the start*, and are ignored.')
 	context.show_help = fp.bool('help', `h`, false, 'Show this help screen.')
 	context.use_newline = fp.bool('newline', `n`, false, 'Use \\n, do not overwrite the last line. Produces more output, but easier to diagnose.')
-	context.show_output = fp.bool('output', `O`, false, 'Show command stdout/stderr in the progress indicator for each command. NB: slower, for verbose commands.')
+	context.show_output = fp.bool('output', `O`, false, 'Show command stdout/stderr in the progress indicator for each command. Note: slower, for verbose commands.')
 	context.verbose = fp.bool('verbose', `v`, false, 'Be more verbose.')
 	context.fail_on_maxtime = fp.int('max_time', `m`, max_time, 'Fail with exit code 2, when first cmd takes above M milliseconds (regression).')
 	context.fail_on_regress_percent = fp.int('fail_percent', `f`, max_fail_percent, 'Fail with exit code 3, when first cmd is X% slower than the rest (regression).')

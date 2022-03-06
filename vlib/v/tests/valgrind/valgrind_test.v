@@ -10,7 +10,7 @@ fn bold(s string) string {
 }
 
 //
-// NB: skip_compile_files can be used for totally skipping .v files temporarily.
+// Note: skip_compile_files can be used for totally skipping .v files temporarily.
 // .v files in skip_valgrind_files will be compiled, but will not be run under
 // valgrind. This ensures that at least the generated code does not have C syntax
 // errors.

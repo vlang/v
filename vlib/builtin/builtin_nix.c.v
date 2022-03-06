@@ -117,7 +117,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 					output = ''
 				}
 				// See http://wiki.dwarfstd.org/index.php?title=Path_Discriminators
-				// NB: it is shortened here to just d. , just so that it fits, and so
+				// Note: it is shortened here to just d. , just so that it fits, and so
 				// that the common error file:lineno: line format is enforced.
 				output = output.replace(' (discriminator', ': (d.')
 				eprintln('${output:-55s} | ${addr:14s} | $beforeaddr')

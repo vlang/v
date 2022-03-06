@@ -5,7 +5,7 @@ module stdatomic
 //
 // On windows tcc can simulate with other atomic operations.
 //
-// NB: this implementations should be regarded as alpha stage and be tested
+// Note: this implementations should be regarded as alpha stage and be tested
 // much more.
 
 // add_u64 adds provided delta as an atomic operation

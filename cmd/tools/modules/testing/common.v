@@ -452,7 +452,7 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 	mut skipped := oskipped.clone()
 	next_file: for f in files {
 		fnormalised := f.replace('\\', '/')
-		// NB: a `testdata` folder, is the preferred name of a folder, containing V code,
+		// Note: a `testdata` folder, is the preferred name of a folder, containing V code,
 		// that you *do not want* the test framework to find incidentally for various reasons,
 		// for example module import tests, or subtests, that are compiled/run by other parent tests
 		// in specific configurations, etc.

@@ -173,7 +173,7 @@ fn get_all_commands() []Command {
 	}
 	res << Command{
 		line: '$vexe $vargs -progress test-fmt'
-		okmsg: 'All .v files can be processed with `v fmt`. NB: the result may not always be compilable, but `v fmt` should not crash.'
+		okmsg: 'All .v files can be processed with `v fmt`. Note: the result may not always be compilable, but `v fmt` should not crash.'
 	}
 	res << Command{
 		line: '$vexe $vargs -progress test-self'
@@ -201,7 +201,7 @@ fn get_all_commands() []Command {
 		okmsg: '`v -usecache -cg` works.'
 		rmfile: 'examples/hello_world'
 	}
-	// NB: test that a program that depends on thirdparty libraries with its
+	// Note: test that a program that depends on thirdparty libraries with its
 	// own #flags (tetris depends on gg, which uses sokol) can be compiled
 	// with -usecache:
 	res << Command{

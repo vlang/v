@@ -169,7 +169,7 @@ fn (mut a array) pop_noscan() voidptr {
 	new_len := a.len - 1
 	last_elem := unsafe { &byte(a.data) + new_len * a.element_size }
 	a.len = new_len
-	// NB: a.cap is not changed here *on purpose*, so that
+	// Note: a.cap is not changed here *on purpose*, so that
 	// further << ops on that array will be more efficient.
 	return unsafe { memdup_noscan(last_elem, a.element_size) }
 }

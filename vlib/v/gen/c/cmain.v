@@ -59,7 +59,7 @@ fn (mut g Gen) gen_c_main_function_header() {
 			}
 			// GUI application
 			g.writeln('int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, LPWSTR cmd_line, int show_cmd){')
-			g.writeln('\tLPWSTR full_cmd_line = GetCommandLineW(); // NB: do not use cmd_line')
+			g.writeln('\tLPWSTR full_cmd_line = GetCommandLineW(); // Note: do not use cmd_line')
 			g.writeln('\ttypedef LPWSTR*(WINAPI *cmd_line_to_argv)(LPCWSTR, int*);')
 			g.writeln('\tHMODULE shell32_module = LoadLibrary(L"shell32.dll");')
 			g.writeln('\tcmd_line_to_argv CommandLineToArgvW = (cmd_line_to_argv)GetProcAddress(shell32_module, "CommandLineToArgvW");')

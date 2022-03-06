@@ -8,7 +8,7 @@ struct Node {
 	right Tree
 }
 
-// NB: a match expression, infers the type of its result
+// Note: a match expression, infers the type of its result
 // from the type of the return value in the first branch,
 // => it needs an explicit int(0) cast here:
 fn size(tree Tree) int {

@@ -13,7 +13,7 @@ fn get_name(s Speaker) {
 //
 fn test_an_array_of_interfaces_works() {
 	dog := Dog{}
-	get_name(dog) // NB: this line does nothing, but forces interface _name_table generation
+	get_name(dog) // Note: this line does nothing, but forces interface _name_table generation
 	get_names([dog, dog])
 }
 

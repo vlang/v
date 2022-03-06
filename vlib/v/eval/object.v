@@ -2,7 +2,7 @@ module eval
 
 const empty = Void{}
 
-// NB: i64 is an int_literal, NOT an i64 (same with f64)
+// Note: i64 is an int_literal, NOT an i64 (same with f64)
 type Object = Array
 	| Float
 	| Int

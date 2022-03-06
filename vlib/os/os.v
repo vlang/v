@@ -283,7 +283,7 @@ pub fn get_lines_joined() string {
 }
 
 // get_raw_lines_joined reads *all* input lines from stdin.
-// It returns them as one large string. NB: unlike os.get_lines_joined,
+// It returns them as one large string. Note: unlike os.get_lines_joined,
 // empty lines (that contain only `\r\n` or `\n`), will be present in
 // the output.
 // Reading is stopped, only on EOF of stdin.

@@ -280,7 +280,7 @@ pub fn (err MultiplePathAttributesError) msg() string {
 // multipart_form_body converts form and file data into a multipart/form
 // HTTP request body. It is the inverse of parse_multipart_form. Returns
 // (body, boundary).
-// NB: Form keys should not contain quotes
+// Note: Form keys should not contain quotes
 fn multipart_form_body(form map[string]string, files map[string][]FileData) (string, string) {
 	alpha_numeric := 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
 	boundary := rand.string_from_set(alpha_numeric, 64)

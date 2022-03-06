@@ -118,7 +118,7 @@ pub mut:
 	is_run            bool
 	is_debug          bool // turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
 	is_vlines         bool // turned on by -g (it slows down .tmp.c generation slightly).
-	// NB: passing -cg instead of -g will set is_vlines to false and is_debug to true, thus making v generate cleaner C files,
+	// Note: passing -cg instead of -g will set is_vlines to false and is_debug to true, thus making v generate cleaner C files,
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
 	sanitize               bool   // use Clang's new "-fsanitize" option
 	sourcemap              bool   // JS Backend: -sourcemap will create a source map - default false
@@ -260,7 +260,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.check_only = true
 			}
 			'-h', '-help', '--help' {
-				// NB: help is *very important*, just respond to all variations:
+				// Note: help is *very important*, just respond to all variations:
 				res.is_help = true
 			}
 			'-v' {
@@ -673,7 +673,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		res.parse_define('debug')
 	}
 	if command == 'run' && res.is_prod && os.is_atty(1) > 0 {
-		eprintln_cond(show_output, "NB: building an optimized binary takes much longer. It shouldn't be used with `v run`.")
+		eprintln_cond(show_output, "Note: building an optimized binary takes much longer. It shouldn't be used with `v run`.")
 		eprintln_cond(show_output, 'Use `v run` without optimization, or build an optimized binary with -prod first, then run it separately.')
 	}
 
@@ -889,7 +889,7 @@ pub fn cc_from_string(cc_str string) CompilerType {
 }
 
 pub fn get_host_arch() Arch {
-	// NB: we can not use `$if arch` here, because V skips cgen for the non
+	// Note: we can not use `$if arch` here, because V skips cgen for the non
 	// current comptime branches by default, so there is a bootstrapping
 	// problem => the __V_architecture macro is used to resolve it.
 	// TODO: think about how to solve it for non C backends, perhaps we

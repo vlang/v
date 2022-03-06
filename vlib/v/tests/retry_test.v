@@ -9,7 +9,7 @@ import os
 // This is useful for reducing false positives on the CI, due to
 // flakyness of specific tests like `vlib/v/live/live_test.v` for example.
 
-// NB: this test is supposed to be run with `v test retry_test.v`.
+// Note: this test is supposed to be run with `v test retry_test.v`.
 // Running just `v retry_test.v` WILL fail.
 
 fn test_test_runner_retrying_failing_tests() {

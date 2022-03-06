@@ -95,7 +95,7 @@ pub fn (mut ed EmbedFileData) data() &byte {
 // program that uses $embed_file('file.bin') in -prod mode.
 // V will generate a static index of all embedded files, and will call the
 // find_index_entry_by_path over the index and the relative paths of the embeds.
-// NB: these are public on purpose, to help -usecache.
+// Note: these are public on purpose, to help -usecache.
 pub struct EmbedFileIndexEntry {
 	id   int
 	path string

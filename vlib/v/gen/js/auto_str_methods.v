@@ -497,7 +497,7 @@ fn (mut g JsGen) gen_str_for_array(info ast.Array, styp string, str_fn_name stri
 			// g.definitions.writeln('\t\tstring x = str_intp(2, _MOV((StrIntpData[]){{new string("\'"), $c.si_s_code, {.d_s = it }}, {new string("\'"), 0, {.d_c = 0 }}}));\n')
 		} else {
 			// There is a custom .str() method, so use it.
-			// NB: we need to take account of whether the user has defined
+			// Note: we need to take account of whether the user has defined
 			// `fn (x T) str() {` or `fn (x &T) str() {`, and convert accordingly
 			deref, deref_label := deref_kind(str_method_expects_ptr, is_elem_ptr, typ)
 			g.definitions.writeln('\t\tstrings__Builder_write_string(sb, new string("$deref_label"));')

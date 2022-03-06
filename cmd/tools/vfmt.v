@@ -17,7 +17,7 @@ import vhelp
 
 struct FormatOptions {
 	is_l       bool
-	is_c       bool // NB: This refers to the '-c' fmt flag, NOT the C backend
+	is_c       bool // Note: This refers to the '-c' fmt flag, NOT the C backend
 	is_w       bool
 	is_diff    bool
 	is_verbose bool
@@ -25,7 +25,7 @@ struct FormatOptions {
 	is_debug   bool
 	is_noerror bool
 	is_verify  bool // exit(1) if the file is not vfmt'ed
-	is_worker  bool // true *only* in the worker processes. NB: workers can crash.
+	is_worker  bool // true *only* in the worker processes. Note: workers can crash.
 	is_backup  bool // make a `file.v.bak` copy *before* overwriting a `file.v` in place with `-w`
 }
 

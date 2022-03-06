@@ -357,7 +357,7 @@ fn test_mv() {
 
 fn test_cp_all() {
 	// fileX -> dir/fileX
-	// NB: clean up of the files happens inside the cleanup_leftovers function
+	// Note: clean up of the files happens inside the cleanup_leftovers function
 	os.write_file('ex1.txt', 'wow!') or { panic(err) }
 	os.mkdir('ex') or { panic(err) }
 	os.cp_all('ex1.txt', 'ex', false) or { panic(err) }
@@ -749,7 +749,7 @@ fn test_posix_set_bit() ? {
 		}
 		mode = u32(s.st_mode) & 0o0777
 		assert mode == 0o0777
-		// NB: setting the sticky bit is platform dependend
+		// Note: setting the sticky bit is platform dependend
 		// `chmod -s -g -t`
 		os.posix_set_permission_bit(fpath, os.s_isuid, false)
 		os.posix_set_permission_bit(fpath, os.s_isgid, false)

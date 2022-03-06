@@ -53,7 +53,7 @@ fn C.link(&char, &char) int
 
 fn C.gethostname(&char, int) int
 
-// NB: not available on Android fn C.getlogin_r(&char, int) int
+// Note: not available on Android fn C.getlogin_r(&char, int) int
 fn C.getlogin() &char
 
 fn C.getppid() int

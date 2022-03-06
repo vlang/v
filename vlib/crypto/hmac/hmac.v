@@ -37,7 +37,7 @@ pub fn new(key []byte, data []byte, hash_func fn ([]byte) []byte, blocksize int)
 }
 
 // equal compares 2 MACs for equality, without leaking timing info.
-// NB: if the lengths of the 2 MACs are different, probably a completely different
+// Note: if the lengths of the 2 MACs are different, probably a completely different
 // hash function was used to generate them => no useful timing information.
 pub fn equal(mac1 []byte, mac2 []byte) bool {
 	return subtle.constant_time_compare(mac1, mac2) == 1

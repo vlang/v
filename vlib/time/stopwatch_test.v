@@ -1,6 +1,6 @@
 import time
 
-// NB: on CI jobs, especially msvc ones, sleep_ms may sleep for much more
+// Note: on CI jobs, especially msvc ones, sleep_ms may sleep for much more
 // time than you have specified. To avoid false positives from CI test
 // failures, some of the asserts will be run only if you pass `-d stopwatch`
 fn test_stopwatch_works_as_intended() {

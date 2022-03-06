@@ -11,7 +11,7 @@ module builtin
 // The goal of all this is to amortize the cost of calling libc's malloc,
 // trading higher memory usage for a compiler (or any single threaded batch
 // mode program), for a ~8-10% speed increase.
-// NB: `-prealloc` is NOT safe to be used for multithreaded programs!
+// Note: `-prealloc` is NOT safe to be used for multithreaded programs!
 
 // size of the preallocated chunk
 const prealloc_block_size = 16 * 1024 * 1024
@@ -74,7 +74,7 @@ fn prealloc_vinit() {
 [unsafe]
 fn prealloc_vcleanup() {
 	$if prealloc_stats ? {
-		// NB: we do 2 loops here, because string interpolation
+		// Note: we do 2 loops here, because string interpolation
 		// in the first loop may still use g_memory_block
 		// The second loop however should *not* allocate at all.
 		mut nr_mallocs := i64(0)

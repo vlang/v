@@ -50,7 +50,7 @@ fn get_scan_timeout_seconds() int {
 //   workers, thus it does not leak much.
 //
 //   b) A worker process, doing the actual monitoring/polling.
-//    NB: *workers are started with the --vwatchworker option*
+//    Note: *workers are started with the --vwatchworker option*
 //
 //    Worker processes will run for a limited number of iterations, then
 // they will do exit(255), and then the parent will start a new worker.

@@ -75,7 +75,7 @@ pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string, stri
 }
 
 pub fn clone_or_pull(remote_git_url string, local_worktree_path string) {
-	// NB: after clone_or_pull, the current repo branch is === HEAD === master
+	// Note: after clone_or_pull, the current repo branch is === HEAD === master
 	if os.is_dir(local_worktree_path) && os.is_dir(os.join_path_single(local_worktree_path, '.git')) {
 		// Already existing ... Just pulling in this case is faster usually.
 		scripting.run('git -C "$local_worktree_path"  checkout --quiet master')

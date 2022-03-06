@@ -112,7 +112,7 @@ pub fn (ctx &Context) draw_image(x f32, y f32, width f32, height f32, img_ &Imag
 // new_streaming_image returns a cached `image_idx` of a special image, that
 // can be updated *each frame* by calling:  gg.update_pixel_data(image_idx, buf)
 // ... where buf is a pointer to the actual pixel data for the image.
-// NB: you still need to call app.gg.draw_image after that, to actually draw it.
+// Note: you still need to call app.gg.draw_image after that, to actually draw it.
 pub fn (mut ctx Context) new_streaming_image(w int, h int, channels int, sicfg StreamingImageConfig) int {
 	mut img := Image{}
 	img.width = w

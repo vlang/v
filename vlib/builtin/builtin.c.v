@@ -23,11 +23,11 @@ fn vcommithash() string {
 
 // panic_debug private function that V uses for panics, -cg/-g is passed
 // recent versions of tcc print nicer backtraces automatically
-// NB: the duplication here is because tcc_backtrace should be called directly
+// Note: the duplication here is because tcc_backtrace should be called directly
 // inside the panic functions.
 [noreturn]
 fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
-	// NB: the order here is important for a stabler test output
+	// Note: the order here is important for a stabler test output
 	// module is less likely to change than function, etc...
 	// During edits, the line number will change most frequently,
 	// so it is last
@@ -387,7 +387,7 @@ pub fn v_realloc(b &byte, n int) &byte {
 // bytes. `old_data` must be a pointer to an existing memory block, previously
 // allocated with `malloc`, `v_calloc` or `vcalloc`, of size `old_data`.
 // realloc_data returns a pointer to the new location of the block.
-// NB: if you know the old data size, it is preferable to call `realloc_data`,
+// Note: if you know the old data size, it is preferable to call `realloc_data`,
 // instead of `v_realloc`, at least during development, because `realloc_data`
 // can make debugging easier, when you compile your program with
 // `-d debug_realloc`.
@@ -400,7 +400,7 @@ pub fn realloc_data(old_data &byte, old_size int, new_size int) &byte {
 		return unsafe { prealloc_realloc(old_data, old_size, new_size) }
 	}
 	$if debug_realloc ? {
-		// NB: this is slower, but helps debugging memory problems.
+		// Note: this is slower, but helps debugging memory problems.
 		// The main idea is to always force reallocating:
 		// 1) allocate a new memory block
 		// 2) copy the old to the new

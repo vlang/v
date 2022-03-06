@@ -24,7 +24,7 @@ Since this test program is sensitive to coordination (or lack of) of several pro
 it tries to sidestep the coordination issue by polling the file system for the existance
 of files, ORIGINAL.txt ... STOP.txt , which are appended to by the generated program.
 
-NB: That approach of monitoring the state of the running generated program, is clearly not ideal,
+Note: That approach of monitoring the state of the running generated program, is clearly not ideal,
 but sidesteps the issue of coordinating processes through IPC or stdin/stdout in hopefully
 not very flaky way.
 
@@ -59,7 +59,7 @@ fn edefault(name string, default string) string {
 }
 
 fn atomic_write_source(source string) {
-	// NB: here wrtiting is done in 2 steps, since os.write_file can take some time,
+	// Note: here wrtiting is done in 2 steps, since os.write_file can take some time,
 	// during which the file will be modified, but it will still be not completely written.
 	// The os.mv after that, guarantees that the reloader will see a complete valid V program.
 	os.write_file(tmp_file, source) or { panic(err) }

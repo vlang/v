@@ -1,6 +1,6 @@
 module mod1
 
-// NB: the function here, should be overriden by the one in the wrapper.c.v file with the same name
+// Note: the function here, should be overriden by the one in the wrapper.c.v file with the same name
 pub fn vadd(a int, b int) int {
 	return 123456
 }

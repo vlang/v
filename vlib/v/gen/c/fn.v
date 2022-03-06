@@ -498,7 +498,7 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 
 	// ensure that nargs maps to a known entry in the __closure_thunk array
 	// TODO make it a compile-time error (you can't call `sizeof()` inside preprocessor `#if`s)
-	// NB: this won't be necessary when (if) we have functions that return the machine code for
+	// Note: this won't be necessary when (if) we have functions that return the machine code for
 	// an arbitrary number of arguments
 	g.write('__closure_create($node.decl.name, __closure_check_nargs($args_size), ($ctx_struct*) memdup(&($ctx_struct){')
 	g.indent++

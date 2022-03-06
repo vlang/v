@@ -1700,7 +1700,7 @@ pub fn (expr Expr) is_blank_ident() bool {
 
 pub fn (expr Expr) pos() token.Pos {
 	// all uncommented have to be implemented
-	// NB: please do not print here. the language server will hang
+	// Note: please do not print here. the language server will hang
 	// as it uses STDIO primarly to communicate ~Ned
 	match expr {
 		AnonFn {
@@ -2002,7 +2002,7 @@ pub fn (node Node) children() []Node {
 			Return {
 				return node.exprs.map(Node(it))
 			}
-			// NB: these four decl nodes cannot be merged as one branch
+			// Note: these four decl nodes cannot be merged as one branch
 			StructDecl {
 				return node.fields.map(Node(it))
 			}

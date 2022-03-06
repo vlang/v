@@ -225,7 +225,7 @@ fn print_welcome_screen() {
 	]
 	help_text := [
 		'Welcome to the V REPL (for help with V itself, type $cmd_exit, then run $cmd_help).',
-		'NB: the REPL is highly experimental. For best V experience, use a text editor, ',
+		'Note: the REPL is highly experimental. For best V experience, use a text editor, ',
 		'save your code in a $file_main file and execute: $cmd_run',
 		version.full_v_version(false),
 		'Use Ctrl-C or ${term.highlight_command('exit')} to exit, or ${term.highlight_command('help')} to see other available commands',
@@ -387,7 +387,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 					}
 				}
 			}
-			// NB: starting a line with 2 spaces escapes the println heuristic
+			// Note: starting a line with 2 spaces escapes the println heuristic
 			if oline.starts_with('  ') {
 				is_statement = true
 			}

@@ -5,7 +5,7 @@ fn main() {
 	}
 
 	println('
-NB: `tcc` was not used, so unless you install it yourself, your backend
+Note: `tcc` was not used, so unless you install it yourself, your backend
 C compiler will be `cc`, which is usually either `clang`, `gcc` or `msvc`.
 
 These C compilers, are several times slower at compiling C source code,

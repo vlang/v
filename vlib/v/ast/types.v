@@ -168,7 +168,7 @@ pub fn (t Type) nr_muls() int {
 [inline]
 pub fn (t Type) is_ptr() bool {
 	// any normal pointer, i.e. &Type, &&Type etc;
-	// NB: voidptr, charptr and byteptr are NOT included!
+	// Note: voidptr, charptr and byteptr are NOT included!
 	return (int(t) >> 16) & 0xff > 0
 }
 
@@ -427,7 +427,7 @@ pub const (
 	u8_type_idx            = 30
 )
 
-// NB: builtin_type_names must be in the same order as the idx consts above
+// Note: builtin_type_names must be in the same order as the idx consts above
 pub const builtin_type_names = ['void', 'voidptr', 'byteptr', 'charptr', 'i8', 'i16', 'int', 'i64',
 	'isize', 'byte', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'char', 'bool', 'none', 'string',
 	'rune', 'array', 'map', 'chan', 'any', 'float_literal', 'int_literal', 'thread', 'Error', 'u8']

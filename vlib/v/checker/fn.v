@@ -832,7 +832,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			final_param_typ = param_typ_sym.array_info().elem_type
 			final_param_sym = c.table.sym(final_param_typ)
 		}
-		// NB: Casting to voidptr is used as an escape mechanism, so:
+		// Note: Casting to voidptr is used as an escape mechanism, so:
 		// 1. allow passing *explicit* voidptr (native or through cast) to functions
 		// expecting voidptr or ...voidptr
 		// ... but 2. disallow passing non-pointers - that is very rarely what the user wanted,

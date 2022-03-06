@@ -2,7 +2,7 @@ module os
 
 // os.Signal - enumerate possible POSIX signals and
 // their integer codes.
-// NB: the integer codes are given here explicitly,
+// Note: the integer codes are given here explicitly,
 // to make it easier to lookup, without needing to
 // consult man pages / signal.h .
 

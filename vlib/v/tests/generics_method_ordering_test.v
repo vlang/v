@@ -10,7 +10,7 @@ struct Bar<T> {
 	y int
 }
 
-// NB: Bar.foo before Bar.pop, should not cause a V compiler panic
+// Note: Bar.foo before Bar.pop, should not cause a V compiler panic
 fn (b Bar<T>) foo() bool {
 	return true
 }

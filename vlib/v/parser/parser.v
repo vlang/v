@@ -205,7 +205,7 @@ pub fn (mut p Parser) set_path(path string) {
 }
 
 pub fn parse_file(path string, table &ast.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences) &ast.File {
-	// NB: when comments_mode == .toplevel_comments,
+	// Note: when comments_mode == .toplevel_comments,
 	// the parser gives feedback to the scanner about toplevel statements, so that the scanner can skip
 	// all the tricky inner comments. This is needed because we do not have a good general solution
 	// for handling them, and should be removed when we do (the general solution is also needed for vfmt)
@@ -2898,7 +2898,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 		mut has_fmt := false
 		mut fwidth := 0
 		mut fwidthneg := false
-		// 987698 is a magic default value, unlikely to be present in user input. NB: 0 is valid precision
+		// 987698 is a magic default value, unlikely to be present in user input. Note: 0 is valid precision
 		mut precision := 987698
 		mut visible_plus := false
 		mut fill := false
@@ -3018,7 +3018,7 @@ fn (mut p Parser) module_decl() ast.Module {
 			p.error_with_pos('`module` and `$name` must be at same line', name_pos)
 			return mod_node
 		}
-		// NB: this shouldn't be reassigned into name_pos
+		// Note: this shouldn't be reassigned into name_pos
 		// as it creates a wrong position when extended
 		// to module_pos
 		n_pos := p.tok.pos()

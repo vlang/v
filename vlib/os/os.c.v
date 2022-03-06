@@ -258,7 +258,7 @@ pub fn cp(src string, dst string) ? {
 }
 
 // vfopen returns an opened C file, given its path and open mode.
-// NB: os.vfopen is useful for compatibility with C libraries, that expect `FILE *`.
+// Note: os.vfopen is useful for compatibility with C libraries, that expect `FILE *`.
 // If you write pure V code, os.create or os.open are more convenient.
 pub fn vfopen(path string, mode string) ?&C.FILE {
 	if path.len == 0 {
@@ -397,7 +397,7 @@ pub fn exists(path string) bool {
 // is_executable returns `true` if `path` is executable.
 pub fn is_executable(path string) bool {
 	$if windows {
-		// NB: https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/access-waccess?view=vs-2019
+		// Note: https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/access-waccess?view=vs-2019
 		// i.e. there is no X bit there, the modes can be:
 		// 00 Existence only
 		// 02 Write-only
@@ -781,7 +781,7 @@ pub fn getwd() string {
 // See http://pubs.opengroup.org/onlinepubs/9699919799/functions/realpath.html
 // Also https://insanecoding.blogspot.com/2007/11/pathmax-simply-isnt.html
 // and https://insanecoding.blogspot.com/2007/11/implementing-realpath-in-c.html
-// NB: this particular rabbit hole is *deep* ...
+// Note: this particular rabbit hole is *deep* ...
 [manualfree]
 pub fn real_path(fpath string) string {
 	size := max_path_bufffer_size()
@@ -833,7 +833,7 @@ pub fn real_path(fpath string) string {
 			unsafe { res.free() }
 			return fpath.clone()
 		}
-		// NB: fullpath is much larger (usually ~4KB), than what C.realpath will
+		// Note: fullpath is much larger (usually ~4KB), than what C.realpath will
 		// actually fill in the vast majority of the cases => it pays to copy the
 		// resulting string from that buffer, to a shorter one, and then free the
 		// 4KB fullpath buffer.
@@ -946,7 +946,7 @@ pub fn open_append(path string) ?File {
 // execvp - loads and executes a new child process, *in place* of the current process.
 // The child process executable is located in `cmdpath`.
 // The arguments, that will be passed to it are in `args`.
-// NB: this function will NOT return when successfull, since
+// Note: this function will NOT return when successfull, since
 // the child process will take control over execution.
 pub fn execvp(cmdpath string, cmdargs []string) ? {
 	mut cargs := []&char{}
@@ -972,7 +972,7 @@ pub fn execvp(cmdpath string, cmdargs []string) ? {
 // The child process executable is located in `cmdpath`.
 // The arguments, that will be passed to it are in `args`.
 // You can pass environment variables to through `envs`.
-// NB: this function will NOT return when successfull, since
+// Note: this function will NOT return when successfull, since
 // the child process will take control over execution.
 pub fn execve(cmdpath string, cmdargs []string, envs []string) ? {
 	mut cargv := []&char{}
@@ -992,7 +992,7 @@ pub fn execve(cmdpath string, cmdargs []string, envs []string) ? {
 	} $else {
 		res = C.execve(&char(cmdpath.str), cargv.data, cenvs.data)
 	}
-	// NB: normally execve does not return at all.
+	// Note: normally execve does not return at all.
 	// If it returns, then something went wrong...
 	if res == -1 {
 		return error_with_code(posix_get_error_msg(C.errno), C.errno)

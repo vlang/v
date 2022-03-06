@@ -219,7 +219,7 @@ pub fn (mut g JsGen) doc_typ(t ast.Type) string {
 			styp += '$name'
 		}
 		.enum_ {
-			// NB: We could declare them as TypeScript enums but TS doesn't like
+			// Note: We could declare them as TypeScript enums but TS doesn't like
 			// our namespacing so these break if declared in a different module.
 			// Until this is fixed, We need to use the type of an enum's members
 			// rather than the enum itself, and this can only be 'number' for now

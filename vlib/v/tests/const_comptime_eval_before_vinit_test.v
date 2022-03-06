@@ -1,4 +1,4 @@
-// NB: the names are deliberately prefixed with zzz_, so that searching
+// Note: the names are deliberately prefixed with zzz_, so that searching
 // for that in the generated C code is easier. Do not rename the consts.
 const zzz_an_i8_const = i8(0x28)
 

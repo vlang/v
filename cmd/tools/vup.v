@@ -67,7 +67,7 @@ fn (app App) update_from_master() {
 }
 
 fn (app App) recompile_v() {
-	// NB: app.vexe is more reliable than just v (which may be a symlink)
+	// Note: app.vexe is more reliable than just v (which may be a symlink)
 	opts := if app.is_prod { '-prod' } else { '' }
 	vself := '${os.quoted_path(app.vexe)} $opts self'
 	app.vprintln('> recompiling v itself with `$vself` ...')

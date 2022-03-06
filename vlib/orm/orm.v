@@ -272,7 +272,7 @@ pub fn orm_select_gen(orm SelectConfig, para string, num bool, qm string, start_
 		}
 	}
 
-	// NB: do not order, if the user did not want it explicitly,
+	// Note: do not order, if the user did not want it explicitly,
 	// ordering is *slow*, especially if there are no indexes!
 	if orm.has_order {
 		str += ' ORDER BY '

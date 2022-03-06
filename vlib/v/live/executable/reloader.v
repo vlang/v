@@ -11,7 +11,7 @@ pub const (
 )
 
 // The live reloader code is implemented here.
-// NB: new_live_reload_info will be called by generated C code inside main()
+// Note: new_live_reload_info will be called by generated C code inside main()
 pub fn new_live_reload_info(original string, vexe string, vopts string, live_fn_mutex voidptr, live_linkfn live.FNLinkLiveSymbols) &live.LiveReloadInfo {
 	file_base := os.file_name(original).replace('.v', '')
 	so_dir := os.cache_dir()
@@ -34,7 +34,7 @@ pub fn new_live_reload_info(original string, vexe string, vopts string, live_fn_
 	}
 }
 
-// NB: start_reloader will be called by generated code inside main(), to start
+// Note: start_reloader will be called by generated code inside main(), to start
 // the hot code reloader thread. start_reloader is executed in the context of
 // the original main thread.
 pub fn start_reloader(mut r live.LiveReloadInfo) {
@@ -127,7 +127,7 @@ fn protected_load_lib(mut r live.LiveReloadInfo, new_lib_path string) {
 	os.rm(new_lib_path) or {}
 }
 
-// NB: r.reloader() is executed in a new, independent thread
+// Note: r.reloader() is executed in a new, independent thread
 fn reloader(mut r live.LiveReloadInfo) {
 	//	elog(r,'reloader, r: $r')
 	mut last_ts := os.file_last_mod_unix(r.original)

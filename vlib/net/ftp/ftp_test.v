@@ -4,7 +4,7 @@ fn test_ftp_cleint() {
 	$if !network ? {
 		return
 	}
-	// NB: this function makes network calls to external servers,
+	// Note: this function makes network calls to external servers,
 	// that is why it is not a very good idea to run it in CI.
 	// If you want to run it manually, use:
 	// `v -d network vlib/net/ftp/ftp_test.v`

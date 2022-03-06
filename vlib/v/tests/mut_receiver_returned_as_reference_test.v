@@ -10,7 +10,7 @@ fn (mut p Player) set_name(name string) &Player {
 	return unsafe { p } // because of automatic (de)reference of return values
 }
 
-// NB: `p` is declared as a `mut` parameter,
+// Note: `p` is declared as a `mut` parameter,
 // which now only affects its mutability.
 fn (mut p Player) set_position(x int, y int) &Player {
 	p.x = x

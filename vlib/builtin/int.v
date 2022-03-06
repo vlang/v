@@ -533,7 +533,7 @@ pub fn (b []byte) clone() []byte {
 }
 
 // bytestr produces a string from *all* the bytes in the array.
-// NB: the returned string will have .len equal to the array.len,
+// Note: the returned string will have .len equal to the array.len,
 // even when some of the array bytes were `0`.
 // If you want to get a V string, that contains only the bytes till
 // the first `0` byte, use `tos_clone(&byte(array.data))` instead.

@@ -1,6 +1,6 @@
 module main
 
-// NB: this benchmark is preferable to be compiled with: `v -prod -cg -gc boehm bench_euclid.v`
+// Note: this benchmark is preferable to be compiled with: `v -prod -cg -gc boehm bench_euclid.v`
 import math.big
 import benchmark
 import os

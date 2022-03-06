@@ -88,7 +88,7 @@ fn (mut p Player) free() {
 // http://www.lightlink.com/tjweber/StripWav/WAVE.html
 // http://www.lightlink.com/tjweber/StripWav/Canon.html
 // https://tools.ietf.org/html/draft-ema-vpim-wav-00
-// NB: > The chunks MAY appear in any order except that the Format chunk
+// Note: > The chunks MAY appear in any order except that the Format chunk
 // > MUST be placed before the Sound data chunk (but not necessarily
 // > contiguous to the Sound data chunk).
 struct RIFFHeader {

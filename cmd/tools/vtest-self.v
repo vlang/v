@@ -156,8 +156,8 @@ const (
 	]
 )
 
-// NB: musl misses openssl, thus the http tests can not be done there
-// NB: http_httpbin_test.v: fails with 'cgen error: json: map_string_string is not struct'
+// Note: musl misses openssl, thus the http tests can not be done there
+// Note: http_httpbin_test.v: fails with 'cgen error: json: map_string_string is not struct'
 fn main() {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)

@@ -1,4 +1,4 @@
-// NB: this test should be able to run without warnings/errors
+// Note: this test should be able to run without warnings/errors
 
 type SumType = bool | int | string
 

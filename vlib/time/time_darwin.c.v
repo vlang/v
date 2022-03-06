@@ -47,7 +47,7 @@ fn sys_mono_now_darwin() u64 {
 	return (tm - time.start_time) * time.time_base.numer / time.time_base.denom
 }
 
-// NB: vpc_now_darwin is used by `v -profile` .
+// Note: vpc_now_darwin is used by `v -profile` .
 // It should NOT call *any other v function*, just C functions and casts.
 [inline]
 fn vpc_now_darwin() u64 {

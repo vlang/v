@@ -43,7 +43,7 @@ pub fn (mut con TcpConn) set_blocking(state bool) ? {
 
 // read_line is a *simple*, *non customizable*, blocking line reader.
 // It will return a line, ending with LF, or just '', on EOF.
-// NB: if you want more control over the buffer, please use a buffered IO
+// Note: if you want more control over the buffer, please use a buffered IO
 // reader instead: `io.new_buffered_reader({reader: io.make_reader(con)})`
 pub fn (mut con TcpConn) read_line() string {
 	return con.read_line_max(net.max_read_line_len)

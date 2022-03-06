@@ -3,7 +3,7 @@ const (
 	disable_opt_features = true
 )
 
-// NB: the `unknown_fn()` calls are here on purpose, to make sure that anything
+// Note: the `unknown_fn()` calls are here on purpose, to make sure that anything
 // that doesn't match a compile-time condition is not even parsed.
 fn test_ct_expressions() {
 	foo := version

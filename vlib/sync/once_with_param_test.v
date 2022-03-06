@@ -1,6 +1,6 @@
 import sync
 
-// NB: this is the same test as `vlib/sync/once_test.v`, but
+// Note: this is the same test as `vlib/sync/once_test.v`, but
 // it uses an explicit passing of the voidptr parameter in
 // once.do_with_param/2, instead of passing a closure of it
 // in once.do/1.

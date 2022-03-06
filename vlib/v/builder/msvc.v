@@ -446,7 +446,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(path string, moduleflags 
 	}
 	str_oargs := oargs.join(' ')
 	cmd := '"$msvc.full_cl_exe_path" /volatile:ms $str_oargs $defines $include_string /c "$cfile" /Fo"$obj_path"'
-	// NB: the quotes above ARE balanced.
+	// Note: the quotes above ARE balanced.
 	$if trace_thirdparty_obj_files ? {
 		println('>>> build_thirdparty_obj_file_with_msvc cmd: $cmd')
 	}
@@ -496,7 +496,7 @@ pub fn msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 			lib_paths << flag.value + os.path_separator + 'msvc'
 			// The above allows putting msvc specific .lib files in a subfolder msvc/ ,
 			// where gcc will NOT find them, but cl will do...
-			// NB: gcc is smart enough to not need .lib files at all in most cases, the .dll is enough.
+			// Note: gcc is smart enough to not need .lib files at all in most cases, the .dll is enough.
 			// When both a msvc .lib file and .dll file are present in the same folder,
 			// as for example for glfw3, compilation with gcc would fail.
 		} else if flag.value.ends_with('.o') {

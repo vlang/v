@@ -39,7 +39,7 @@ fn do_rec(ch chan int, id int, mut ctx Context) {
 	mut timer_sw_x := time.new_stopwatch()
 	mut tmp := int(0)
 	mut i := int(0)
-	// NB: a single receiver thread can get slightly more
+	// Note: a single receiver thread can get slightly more
 	// than its fair share of sends, that is why
 	// the receiver's Event array is much larger,
 	// enough so a single receiver can potentially process all

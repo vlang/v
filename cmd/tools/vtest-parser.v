@@ -103,7 +103,7 @@ fn process_cli_args() &Context {
 	fp.description('Test the V parser, by parsing each .v file in each PATH,\n' +
 		'as if it was typed character by character by the user.\n' +
 		'A PATH can be either a folder, or a specific .v file.\n' +
-		'NB: you *have to quote* the PATH, if it contains spaces/punctuation.')
+		'Note: you *have to quote* the PATH, if it contains spaces/punctuation.')
 	fp.arguments_description('PATH1 PATH2 ...')
 	fp.skip_executable()
 	context.is_help = fp.bool('help', `h`, false, 'Show help/usage screen.')

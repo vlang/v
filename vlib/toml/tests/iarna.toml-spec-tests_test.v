@@ -321,7 +321,7 @@ fn to_iarna(value ast.Value, skip_value_map bool) string {
 		}
 		ast.Time {
 			mut json_text := json2.Any(value.text).json_str()
-			// NB: Removes the quotes of the encoded JSON string - Ned
+			// Note: Removes the quotes of the encoded JSON string - Ned
 			json_text = to_iarna_time(json_text[1..json_text.len - 1])
 			if skip_value_map {
 				return json_text

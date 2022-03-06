@@ -40,10 +40,10 @@ pub fn (mut p Process) signal_continue() {
 }
 
 // wait - wait for a process to finish.
-// NB: You have to call p.wait(), otherwise a finished process
+// Note: You have to call p.wait(), otherwise a finished process
 // would get to a zombie state, and its resources will not get
 // released fully, until its parent process exits.
-// NB: This call will block the calling process until the child
+// Note: This call will block the calling process until the child
 // process is finished.
 pub fn (mut p Process) wait() {
 	if p.status == .not_started {

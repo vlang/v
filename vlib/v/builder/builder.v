@@ -36,7 +36,7 @@ pub mut:
 	table               &ast.Table
 	ccoptions           CcompilerOptions
 	//
-	// NB: changes in mod `builtin` force invalidation of every other .v file
+	// Note: changes in mod `builtin` force invalidation of every other .v file
 	mod_invalidates_paths map[string][]string // changes in mod `os`, invalidate only .v files, that do `import os`
 	mod_invalidates_mods  map[string][]string // changes in mod `os`, force invalidation of mods, that do `import os`
 	path_invalidates_mods map[string][]string // changes in a .v file from `os`, invalidates `os`
@@ -153,7 +153,7 @@ pub fn (mut b Builder) parse_imports() {
 			done_imports << file.mod.name
 		}
 	}
-	// NB: b.parsed_files is appended in the loop,
+	// Note: b.parsed_files is appended in the loop,
 	// so we can not use the shorter `for in` form.
 	for i := 0; i < b.parsed_files.len; i++ {
 		ast_file := b.parsed_files[i]

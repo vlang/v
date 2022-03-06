@@ -5,7 +5,7 @@ $if js_node {
 }
 
 // new_process - create a new process descriptor
-// NB: new does NOT start the new process.
+// Note: new does NOT start the new process.
 // That is done because you may want to customize it first,
 // by calling different set_ methods on it.
 // In order to start it, call p.run() or p.wait()

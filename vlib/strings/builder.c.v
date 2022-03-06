@@ -79,7 +79,7 @@ pub fn (mut b Builder) drain_builder(mut other Builder, other_new_cap int) {
 }
 
 // byte_at returns a byte, located at a given index `i`.
-// NB: it can panic, if there are not enough bytes in the strings builder yet.
+// Note: it can panic, if there are not enough bytes in the strings builder yet.
 [inline]
 pub fn (b &Builder) byte_at(n int) byte {
 	return unsafe { (&[]byte(b))[n] }
@@ -123,7 +123,7 @@ pub fn (mut b Builder) cut_to(pos int) string {
 }
 
 // go_back_to resets the buffer to the given position `pos`
-// NB: pos should be < than the existing buffer length.
+// Note: pos should be < than the existing buffer length.
 pub fn (mut b Builder) go_back_to(pos int) {
 	b.trim(pos)
 }
@@ -162,7 +162,7 @@ pub fn (b &Builder) after(n int) string {
 }
 
 // str returns a copy of all of the accumulated buffer content.
-// NB: after a call to b.str(), the builder b should not be
+// Note: after a call to b.str(), the builder b should not be
 // used again, you need to call b.free() first, or just leave
 // it to be freed by -autofree when it goes out of scope.
 // The returned string *owns* its own separate copy of the

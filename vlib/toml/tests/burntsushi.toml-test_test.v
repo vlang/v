@@ -205,7 +205,7 @@ fn to_burntsushi(value ast.Value) string {
 			// Normalization for json
 			json_text := json2.Any(value.text).json_str().to_upper().replace(' ', 'T')
 
-			// NB: Since encoding strings in JSON now automatically includes quotes,
+			// Note: Since encoding strings in JSON now automatically includes quotes,
 			// I added a somewhat a workaround by adding an ending quote in order to
 			// recognize properly the date time type. - Ned
 			typ := if json_text.ends_with('Z"') || json_text.all_after('T').contains('-')

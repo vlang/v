@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module stbi
 
-// NB: stbi uses math.h because of `ldexp` and `pow`, for which we *do* have
+// Note: stbi uses math.h because of `ldexp` and `pow`, for which we *do* have
 // pure V implementations, but our `math` module still depends on libm
 // because of 'powf', 'cosf', 'sinf', 'sqrtf' and 'tanf'.
 

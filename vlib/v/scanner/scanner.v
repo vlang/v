@@ -152,7 +152,7 @@ fn (mut s Scanner) init_scanner() {
 [unsafe]
 pub fn (mut s Scanner) free() {
 	unsafe {
-		// NB: s.text is not freed here, because it is shared with all other util.read_file instances,
+		// Note: s.text is not freed here, because it is shared with all other util.read_file instances,
 		// and strings are not reference counted yet:
 		// s.text.free()
 		// .all_tokens however are not shared with anything, and can be freed:
@@ -166,7 +166,7 @@ fn (s &Scanner) should_parse_comment() bool {
 		|| (s.comments_mode == .toplevel_comments && !s.is_inside_toplvl_statement)
 }
 
-// NB: this is called by v's parser
+// Note: this is called by v's parser
 pub fn (mut s Scanner) set_is_inside_toplevel_statement(newstate bool) {
 	s.is_inside_toplvl_statement = newstate
 }
@@ -1059,7 +1059,7 @@ fn (mut s Scanner) text_scan() token.Token {
 							}
 						}
 						if is_separate_line_comment {
-							// NB: ´\x01´ is used to preserve the initial whitespace in comments
+							// Note: ´\x01´ is used to preserve the initial whitespace in comments
 							//     that are on a separate line
 							comment = '\x01' + comment
 						}

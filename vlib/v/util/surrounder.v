@@ -7,7 +7,7 @@ import strings
 // code, in a synchronised way. It does so by forcing you to put the
 // creation/destruction samples next to each other, so that it is easier to
 // keep them in sync and spot errors.
-// NB: Surrounder writes the creation samples (`befores`) in the _same_ order
+// Note: Surrounder writes the creation samples (`befores`) in the _same_ order
 // they were added, and the destruction samples (`afters`) in _reverse_ order.
 //
 // Usage:

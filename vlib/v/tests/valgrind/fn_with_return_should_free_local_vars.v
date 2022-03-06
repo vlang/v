@@ -9,7 +9,7 @@ fn many_strings() []string {
 fn abc() int {
 	x := many_strings()
 	n := x.len
-	// NB: the local `x` is no longer used
+	// Note: the local `x` is no longer used
 	// it should be freed *before* the return
 	return n
 }

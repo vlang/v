@@ -8,7 +8,7 @@ import hash
 // Most filesystems can not handle performantly such folders, and slow down.
 // The first level will contain a max of 256 folders, named from 00/ to ff/.
 // Each of them will contain many entries, but hopefully < 1000.
-// NB: using a hash here, makes the cache storage immune to special
+// Note: using a hash here, makes the cache storage immune to special
 // characters in the keys, like quotes, spaces and so on.
 // Cleanup of the cache is simple: just delete the $VCACHE folder.
 // The cache tree will look like this:
@@ -63,7 +63,7 @@ pub fn new_cache_manager(opts []string) CacheManager {
 }
 
 // set_temporary_options can be used to add temporary options to the hash salt
-// NB: these can be changed easily with another .set_temporary_options call
+// Note: these can be changed easily with another .set_temporary_options call
 // without affecting the .original_vopts
 pub fn (mut cm CacheManager) set_temporary_options(new_opts []string) {
 	cm.vopts = cm.original_vopts + '#' + new_opts.join('|')
