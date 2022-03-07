@@ -507,7 +507,7 @@ pub fn (mut g Gen) inline_strlen(r Register) {
 
 // TODO: strlen of string at runtime
 pub fn (mut g Gen) gen_print_reg(r Register, n int, fd int) {
-	mystrlen := true
+	mystrlen := true // if n < 0 maybe?
 	g.mov_reg(.rsi, r)
 	if mystrlen {
 		g.inline_strlen(.rsi)
@@ -639,12 +639,19 @@ pub fn (mut g Gen) gen_amd64_exit(expr ast.Expr) {
 }
 
 fn (mut g Gen) learel(reg Register, val int) {
-	if reg != .rsi {
-		g.n_error('learel must use rsi')
-	}
 	g.write8(0x48)
 	g.write8(0x8d)
-	g.write8(0x35)
+	match reg {
+		.rax {
+			g.write8(0x05)
+		}
+		.rsi {
+			g.write8(0x35)
+		}
+		else {
+			g.n_error('learel must use rsi or rax')
+		}
+	}
 	g.write32(val)
 	g.println('lea $reg, rip + $val')
 }

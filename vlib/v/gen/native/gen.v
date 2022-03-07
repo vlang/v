@@ -304,15 +304,16 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, name string) {
 			g.gen_print_reg(.rax, 3, fd)
 		}
 		ast.IntegerLiteral {
-			g.mov64(.rax, g.allocate_string('$expr.val\n', 2, .abs64))
+			g.learel(.rax, g.allocate_string('$expr.val\n', 3, .rel32))
 			g.gen_print_reg(.rax, 3, fd)
 		}
 		ast.BoolLiteral {
 			// register 'true' and 'false' strings // g.expr(expr)
+			// XXX mov64 shuoldnt be used for addressing
 			if expr.val {
-				g.mov64(.rax, g.allocate_string('true', 2, .abs64))
+				g.learel(.rax, g.allocate_string('true', 3, .rel32))
 			} else {
-				g.mov64(.rax, g.allocate_string('false', 2, .abs64))
+				g.learel(.rax, g.allocate_string('false', 3, .rel32))
 			}
 			g.gen_print_reg(.rax, 3, fd)
 		}
@@ -326,7 +327,7 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, name string) {
 				mut off := 0
 				for f in s.fields {
 					if f.name == field_name {
-						g.mov64(.rax, g.allocate_string('$off\n', 2, .abs64))
+						g.learel(.rax, g.allocate_string('$off\n', 3, .rel32))
 						g.gen_print_reg(.rax, 3, fd)
 						break
 					}
