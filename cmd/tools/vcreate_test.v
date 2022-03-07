@@ -41,7 +41,7 @@ fn init_and_check() ? {
 		'*.v linguist-language=V text=auto eol=lf',
 		'*.vv linguist-language=V text=auto eol=lf',
 		'*.vsh linguist-language=V text=auto eol=lf',
-		'**/v.mod linguist-language=V text=auto eol=lf'
+		'**/v.mod linguist-language=V text=auto eol=lf',
 		'',
 	].join_lines()
 
