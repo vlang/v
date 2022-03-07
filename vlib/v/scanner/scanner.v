@@ -105,14 +105,11 @@ pub enum CommentsMode {
 }
 
 // new scanner from file.
-pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref &pref.Preferences) &Scanner {
+pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref &pref.Preferences) ?&Scanner {
 	if !os.is_file(file_path) {
-		verror('$file_path is not a file')
+		return error('$file_path is not a .v file')
 	}
-	raw_text := util.read_file(file_path) or {
-		verror(err.msg())
-		return voidptr(0)
-	}
+	raw_text := util.read_file(file_path) or { return err }
 	mut s := &Scanner{
 		pref: pref
 		text: raw_text
@@ -519,7 +516,7 @@ fn (mut s Scanner) ident_number() string {
 fn (mut s Scanner) skip_whitespace() {
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
-		if c == 8 {
+		if c == 9 {
 			// tabs are most common
 			s.pos++
 			continue
@@ -1593,11 +1590,6 @@ fn (mut s Scanner) vet_error(msg string, fix vet.FixKind) {
 		typ: .default
 	}
 	s.vet_errors << ve
-}
-
-[noreturn]
-pub fn verror(s string) {
-	util.verror('scanner error', s)
 }
 
 fn (mut s Scanner) trace(fbase string, message string) {

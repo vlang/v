@@ -213,7 +213,7 @@ pub fn parse_file(path string, table &ast.Table, comments_mode scanner.CommentsM
 		eprintln('> ${@MOD}.${@FN} comments_mode: ${comments_mode:-20} | path: $path')
 	}
 	mut p := Parser{
-		scanner: scanner.new_scanner_file(path, comments_mode, pref)
+		scanner: scanner.new_scanner_file(path, comments_mode, pref) or { panic(err) }
 		comments_mode: comments_mode
 		table: table
 		pref: pref
@@ -238,7 +238,7 @@ pub fn parse_vet_file(path string, table_ &ast.Table, pref &pref.Preferences) (&
 		parent: 0
 	}
 	mut p := Parser{
-		scanner: scanner.new_scanner_file(path, .parse_comments, pref)
+		scanner: scanner.new_scanner_file(path, .parse_comments, pref) or { panic(err) }
 		comments_mode: .parse_comments
 		table: table_
 		pref: pref

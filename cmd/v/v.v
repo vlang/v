@@ -33,6 +33,7 @@ const (
 		'setup-freetype',
 		'shader',
 		'symlink',
+		'scan',
 		'test',
 		'test-all', // runs most of the tests and other checking tools, that will be run by the CI
 		'test-cleancode',
