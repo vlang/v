@@ -459,8 +459,6 @@ pub fn (mut g Gen) gen_loop_end(to int, label int) {
 }
 
 pub fn (mut g Gen) allocate_string(s string, opsize int, typ RelocType) int {
-	// g.strings << s
-	// g.str_pos << str_pos
 	str_pos := g.buf.len + opsize
 	g.strs << String{s, str_pos, typ}
 	return str_pos
@@ -558,12 +556,8 @@ pub fn (mut g Gen) gen_print(s string, fd int) {
 		// g.mov(.r9, rsp+0x20)
 		g.apicall('WriteFile')
 	} else {
-		//
-		// qq := s + '\n'
-		//
 		g.mov(.eax, g.nsyscall_write())
 		g.mov(.edi, fd)
-		// segment_start +  0x9f) // str pos // placeholder
 		g.learel(.rsi, g.allocate_string(s, 3, .rel32)) // for rsi its 2
 		g.mov(.edx, s.len) // len
 		g.syscall()
@@ -1272,14 +1266,16 @@ fn (mut g Gen) gen_asm_stmt_amd64(asm_node ast.AsmStmt) {
 					line += a.val.str()
 					imm = if a.val { 1 } else { 0 }
 				}
+				ast.CharLiteral {
+					line += a.val.str()
+					imm = a.val.int()
+				}
 				/*
 				ast.AsmAddressing {
 				}
 				ast.AsmAlias {
 				}
 				ast.AsmDisp {
-				}
-				ast.CharLiteral {
 				}
 				ast.FloatLiteral {
 				}
