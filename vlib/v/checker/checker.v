@@ -819,6 +819,28 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				} else if need_overload && !gen_sym.has_method('<') && node.op == .gt {
 					c.error('cannot use `>` as `<=` operator method is not defined', left_right_pos)
 				}
+			} else if left_type in ast.integer_type_idxs && right_type in ast.integer_type_idxs {
+				is_left_type_signed := left_type in ast.signed_integer_type_idxs
+					|| left_type == ast.int_literal_type_idx
+				is_right_type_signed := right_type in ast.signed_integer_type_idxs
+					|| right_type == ast.int_literal_type_idx
+				if is_left_type_signed != is_right_type_signed {
+					if is_right_type_signed {
+						if mut node.right is ast.IntegerLiteral {
+							if node.right.val.int() < 0 {
+								c.error('unsigned integer cannot be compared with negative value',
+									node.right.pos)
+							}
+						}
+					} else if is_left_type_signed {
+						if mut node.left is ast.IntegerLiteral {
+							if node.left.val.int() < 0 {
+								c.error('unsigned integer cannot be compared with negative value',
+									node.left.pos)
+							}
+						}
+					}
+				}
 			}
 		}
 		.left_shift {
