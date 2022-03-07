@@ -395,16 +395,23 @@ fn (mut g Gen) write_symbol(s Symbol) {
 fn (mut g Gen) sym_string_table() int {
 	begin := g.buf.len
 	g.zeroes(1)
-	for i, s in g.strings {
-		pos := g.buf.len - int(g.str_pos[i])
-		if g.pref.os == .windows {
-			g.write32_at(int(g.str_pos[i]), pos - 4) // 0x402028 + pos)
-		} else {
-			baddr := i64(0x100000000)
-			g.write64_at(g.buf.len + baddr, int(g.str_pos[i]))
+	for _, s in g.strs {
+		pos := g.buf.len - s.pos - 4
+		match s.typ {
+			.rel32 {
+				g.write32_at(s.pos, pos)
+			}
+			else {
+				if g.pref.os == .windows {
+					// that should be .rel32, not windows-specific
+					g.write32_at(s.pos, pos)
+				} else {
+					baddr := i64(0x100000000)
+					g.write64_at(s.pos, g.buf.len + baddr)
+				}
+			}
 		}
-		g.write_string(s)
-		g.write8(0)
+		g.write_string(s.str)
 	}
 	return g.buf.len - begin
 }

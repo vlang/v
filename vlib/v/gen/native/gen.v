@@ -31,9 +31,7 @@ mut:
 	buf                  []byte
 	sect_header_name_pos int
 	offset               i64
-	str_pos              []i64
 	stackframe_size      int
-	strings              []string // TODO use a map and don't duplicate strings
 	file_size_pos        i64
 	main_fn_addr         i64
 	code_start_pos       i64 // location of the start of the assembly instructions
@@ -50,9 +48,18 @@ mut:
 	strs                 []String
 }
 
+enum RelocType {
+	rel8
+	rel16
+	rel32
+	rel64
+	abs64
+}
+
 struct String {
 	str string
 	pos int
+	typ RelocType
 }
 
 struct CallPatch {
@@ -168,7 +175,10 @@ pub fn (mut g Gen) generate_footer() {
 		.raw {
 			g.create_executable()
 		}
-		else {}
+		else {
+			eprintln('Unsupported target file format')
+			exit(1)
+		}
 	}
 }
 
@@ -224,7 +234,7 @@ fn (mut g Gen) write64(n i64) {
 	g.buf << byte(n >> 56)
 }
 
-fn (mut g Gen) write64_at(n i64, at i64) {
+fn (mut g Gen) write64_at(at i64, n i64) {
 	// write 8 bytes
 	g.buf[at] = byte(n)
 	g.buf[at + 1] = byte(n >> 8)
@@ -244,11 +254,17 @@ fn (mut g Gen) write32_at(at i64, n int) {
 	g.buf[at + 3] = byte(n >> 24)
 }
 
+fn (mut g Gen) write16_at(at i64, n int) {
+	// write 2 bytes
+	g.buf[at] = byte(n)
+	g.buf[at + 1] = byte(n >> 8)
+}
+
 fn (mut g Gen) write_string(s string) {
 	for c in s {
 		g.write8(int(c))
 	}
-	// g.write8(0) // null terminated strings
+	g.zeroes(1)
 }
 
 fn (mut g Gen) write_string_with_padding(s string, max int) {
@@ -288,15 +304,16 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, name string) {
 			g.gen_print_reg(.rax, 3, fd)
 		}
 		ast.IntegerLiteral {
-			g.mov64(.rax, g.allocate_string('$expr.val\n', 2))
+			g.learel(.rax, g.allocate_string('$expr.val\n', 3, .rel32))
 			g.gen_print_reg(.rax, 3, fd)
 		}
 		ast.BoolLiteral {
 			// register 'true' and 'false' strings // g.expr(expr)
+			// XXX mov64 shuoldnt be used for addressing
 			if expr.val {
-				g.mov64(.rax, g.allocate_string('true', 2))
+				g.learel(.rax, g.allocate_string('true', 3, .rel32))
 			} else {
-				g.mov64(.rax, g.allocate_string('false', 2))
+				g.learel(.rax, g.allocate_string('false', 3, .rel32))
 			}
 			g.gen_print_reg(.rax, 3, fd)
 		}
@@ -310,7 +327,7 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, name string) {
 				mut off := 0
 				for f in s.fields {
 					if f.name == field_name {
-						g.mov64(.rax, g.allocate_string('$off\n', 2))
+						g.learel(.rax, g.allocate_string('$off\n', 3, .rel32))
 						g.gen_print_reg(.rax, 3, fd)
 						break
 					}
@@ -591,7 +608,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				ast.StringLiteral {
 					s = e0.val.str()
 					g.expr(node.exprs[0])
-					g.mov64(.rax, g.allocate_string(s, 2))
+					g.mov64(.rax, g.allocate_string(s, 2, .abs64))
 				}
 				ast.Ident {
 					g.expr(e0)
@@ -643,7 +660,7 @@ fn (mut g Gen) gen_syscall(node ast.CallExpr) {
 					match expr.expr {
 						ast.StringLiteral {
 							s := expr.expr.val.replace('\\n', '\n')
-							g.allocate_string(s, 2)
+							g.allocate_string(s, 2, .abs64)
 							g.mov64(ra[i], 1)
 							done = true
 						}
@@ -660,7 +677,7 @@ fn (mut g Gen) gen_syscall(node ast.CallExpr) {
 						node.pos)
 				}
 				s := expr.val.replace('\\n', '\n')
-				g.allocate_string(s, 2)
+				g.allocate_string(s, 2, .abs64)
 				g.mov64(ra[i], 1)
 			}
 			else {

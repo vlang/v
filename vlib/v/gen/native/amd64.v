@@ -458,11 +458,9 @@ pub fn (mut g Gen) gen_loop_end(to int, label int) {
 	g.jl(label)
 }
 
-pub fn (mut g Gen) allocate_string(s string, opsize int) int {
-	g.strings << s
+pub fn (mut g Gen) allocate_string(s string, opsize int, typ RelocType) int {
 	str_pos := g.buf.len + opsize
-	g.str_pos << str_pos
-	g.strs << String{s, str_pos}
+	g.strs << String{s, str_pos, typ}
 	return str_pos
 }
 
@@ -507,7 +505,7 @@ pub fn (mut g Gen) inline_strlen(r Register) {
 
 // TODO: strlen of string at runtime
 pub fn (mut g Gen) gen_print_reg(r Register, n int, fd int) {
-	mystrlen := true
+	mystrlen := true // if n < 0 maybe?
 	g.mov_reg(.rsi, r)
 	if mystrlen {
 		g.inline_strlen(.rsi)
@@ -550,24 +548,20 @@ pub fn (mut g Gen) gen_print(s string, fd int) {
 		g.apicall('GetStdHandle')
 		g.mov_reg(.rcx, .rax)
 		// g.mov64(.rdx, g.allocate_string(s, 3))
-		g.lea(.rdx, g.allocate_string(s, 3))
+		g.lea(.rdx, g.allocate_string(s, 3, .abs64))
 		g.mov(.r8, s.len) // string length
 		g.write([byte(0x4c), 0x8d, 0x4c, 0x24, 0x20]) // lea r9, [rsp+0x20]
 		g.write([byte(0x48), 0xc7, 0x44, 0x24, 0x20])
 		g.write32(0) // mov qword[rsp+0x20], 0
 		// g.mov(.r9, rsp+0x20)
 		g.apicall('WriteFile')
-		return
+	} else {
+		g.mov(.eax, g.nsyscall_write())
+		g.mov(.edi, fd)
+		g.learel(.rsi, g.allocate_string(s, 3, .rel32)) // for rsi its 2
+		g.mov(.edx, s.len) // len
+		g.syscall()
 	}
-	//
-	// qq := s + '\n'
-	//
-	g.mov(.eax, g.nsyscall_write())
-	g.mov(.edi, fd)
-	// segment_start +  0x9f) // str pos // placeholder
-	g.mov64(.rsi, g.allocate_string(s, 2)) // for rsi its 2
-	g.mov(.edx, s.len) // len
-	g.syscall()
 }
 
 fn (mut g Gen) nsyscall_write() int {
@@ -636,6 +630,24 @@ pub fn (mut g Gen) gen_amd64_exit(expr ast.Expr) {
 		g.syscall()
 	}
 	g.trap() // should never be reached, just in case
+}
+
+fn (mut g Gen) learel(reg Register, val int) {
+	g.write8(0x48)
+	g.write8(0x8d)
+	match reg {
+		.rax {
+			g.write8(0x05)
+		}
+		.rsi {
+			g.write8(0x35)
+		}
+		else {
+			g.n_error('learel must use rsi or rax')
+		}
+	}
+	g.write32(val)
+	g.println('lea $reg, rip + $val')
 }
 
 fn (mut g Gen) lea(reg Register, val int) {
@@ -1109,7 +1121,7 @@ g.v_error('oops', node.pos)
 							pos += 8
 						}
 						ast.StringLiteral {
-							g.mov64(.rsi, g.allocate_string('$e.val', 2)) // for rsi its 2
+							g.mov64(.rsi, g.allocate_string('$e.val', 2, .abs64)) // for rsi its 2
 							g.mov_reg_to_var(pos, .rsi)
 							pos += 8
 						}
@@ -1148,7 +1160,7 @@ g.v_error('oops', node.pos)
 			ast.StringLiteral {
 				dest := g.allocate_var(name, 4, 0)
 				ie := node.right[i] as ast.StringLiteral
-				g.mov64(.rsi, g.allocate_string(ie.str(), 2)) // for rsi its 2
+				g.mov64(.rsi, g.allocate_string(ie.str(), 2, .abs64)) // for rsi its 2
 				g.mov_reg_to_var(dest, .rsi)
 			}
 			ast.CallExpr {
@@ -1254,14 +1266,16 @@ fn (mut g Gen) gen_asm_stmt_amd64(asm_node ast.AsmStmt) {
 					line += a.val.str()
 					imm = if a.val { 1 } else { 0 }
 				}
+				ast.CharLiteral {
+					line += a.val.str()
+					imm = a.val.int()
+				}
 				/*
 				ast.AsmAddressing {
 				}
 				ast.AsmAlias {
 				}
 				ast.AsmDisp {
-				}
-				ast.CharLiteral {
 				}
 				ast.FloatLiteral {
 				}
@@ -1489,7 +1503,6 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 		return
 	}
 	infix_expr := node.cond as ast.InfixExpr
-	// g.mov(.eax, 0x77777777)
 	mut jump_addr := 0 // location of `jne *00 00 00 00*`
 	start := g.pos()
 	match mut infix_expr.left {
