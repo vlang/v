@@ -1,8 +1,8 @@
 module fsm
 
-pub type EventHandlerFn = fn (receiver voidptr)
+pub type EventHandlerFn = fn (receiver voidptr, from string, to string)
 
-pub type ConditionFn = fn (receiver voidptr) bool
+pub type ConditionFn = fn (receiver voidptr, from string, to string) bool
 
 struct State {
 mut:
@@ -49,18 +49,18 @@ pub fn (mut s StateMachine) add_transition(from string, to string, condition_han
 pub fn (mut s StateMachine) run(receiver voidptr) {
 	for from_state, transition in s.transitions {
 		if from_state == s.current_state {
-			if transition.condition_handler(receiver) {
+			if transition.condition_handler(receiver, from_state, s.transitions[from_state].to) {
 				s.change_state(receiver, s.transitions[from_state].to)
 			}
-			s.states[s.current_state].run_handler(receiver)
+			s.states[s.current_state].run_handler(receiver, from_state, s.transitions[from_state].to)
 		}
 	}
 }
 
 pub fn (mut s StateMachine) change_state(receiver voidptr, newstate string) {
 	mut current_state := s.current_state
-	s.states[current_state].exit_handler(receiver)
+	s.states[current_state].exit_handler(receiver, current_state, newstate)
 	current_state = newstate
-	s.states[current_state].entry_handler(receiver)
+	s.states[current_state].entry_handler(receiver, s.current_state, newstate)
 	s.current_state = current_state
 }

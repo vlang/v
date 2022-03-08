@@ -16,18 +16,18 @@ fn main() {
 	s.run(receiver)
 }
 
-fn on_state_entry(mut receiver MyReceiver) {
-	println('on_state_entry')
+fn on_state_entry(mut receiver MyReceiver, from string, to string) {
+	println('on_state_entry: ' + from + ' -> ' + to)
 }
 
-fn on_state_run(mut receiver MyReceiver) {
-	println('on_state_run')
+fn on_state_run(mut receiver MyReceiver, from string, to string) {
+	println('on_state_run: ' + from + ' -> ' + to)
 }
 
-fn on_state_exit(mut receiver MyReceiver) {
-	println('on_state_exit')
+fn on_state_exit(mut receiver MyReceiver, from string, to string) {
+	println('on_state_exit: ' + from + ' -> ' + to)
 }
 
-fn condition_transition(receiver &MyReceiver) bool {
+fn condition_transition(receiver &MyReceiver, from string, to string) bool {
 	return true
 }

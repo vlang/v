@@ -41,18 +41,18 @@ fn test_statemachine_works_when_final_state() {
 	assert receiver.data.len == 3
 }
 
-fn on_state_entry(mut receiver MyReceiver) {
+fn on_state_entry(mut receiver MyReceiver, from string, to string) {
 	receiver.data << 'on_state_entry'
 }
 
-fn on_state_run(mut receiver MyReceiver) {
+fn on_state_run(mut receiver MyReceiver, from string, to string) {
 	receiver.data << 'on_state_run'
 }
 
-fn on_state_exit(mut receiver MyReceiver) {
+fn on_state_exit(mut receiver MyReceiver, from string, to string) {
 	receiver.data << 'on_state_exit'
 }
 
-fn condition_transition(receiver &MyReceiver) bool {
+fn condition_transition(receiver &MyReceiver, from string, to string) bool {
 	return true
 }
