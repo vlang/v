@@ -301,12 +301,12 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, name string) {
 		}
 		ast.Ident {
 			g.n_error('Printing idents is not yet supported in the native backend')
-/*
+			/*
 			vo := g.get_var_offset(expr.name)
 			g.mov_var_to_reg(.rax, vo)
 			//g.expr(expr)
 			g.gen_print_reg(.rax, 3, fd)
-*/
+			*/
 		}
 		ast.IntegerLiteral {
 			g.learel(.rax, g.allocate_string('$expr.val\n', 3, .rel32))
