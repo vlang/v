@@ -21,6 +21,12 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	}
 	expr_required := c.expected_type != ast.void_type
 	former_expected_type := c.expected_type
+	if node_is_expr {
+		c.expected_expr_type = c.expected_type
+		defer {
+			c.expected_expr_type = ast.void_type
+		}
+	}
 	node.typ = ast.void_type
 	mut nbranches_with_return := 0
 	mut nbranches_without_return := 0
