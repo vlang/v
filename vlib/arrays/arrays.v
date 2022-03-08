@@ -530,3 +530,15 @@ fn swap_nonoverlapping<T>(x_ &T, y_ &T, count int) {
 		memswap(x, y, len)
 	}
 }
+
+// copy copies the `src` array elements to the `dst` array.
+// The number of the elements copied is the minimum of the length of both arrays.
+// Returns the number of elements copied.
+pub fn copy<T>(dst []T, src []T) int {
+	min := if dst.len < src.len { dst.len } else { src.len }
+	if min > 0 {
+		blen := min * int(sizeof(T))
+		unsafe { vmemmove(&T(dst.data), src.data, blen) }
+	}
+	return min
+}

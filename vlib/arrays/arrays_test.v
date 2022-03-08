@@ -264,3 +264,20 @@ fn test_rotate_left_string() {
 	rotate_left(mut x, 2)
 	assert x == ['x3', 'x4', 'x5', 'x6', 'x1', 'x2']
 }
+
+fn test_copy() {
+	mut a := [1, 2, 3]
+	mut b := [4, 5, 6]
+	assert copy(b, a) == 3
+	assert b == [1, 2, 3]
+	// check independent copies
+	b[0] = 99
+	assert a[0] == 1
+	// check longer src
+	b << 7
+	assert copy(a, b) == 3
+	assert a == [99, 2, 3]
+	// check longer dst
+	assert copy(b, [8, 9]) == 2
+	assert b == [8, 9, 3, 7]
+}

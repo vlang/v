@@ -815,11 +815,11 @@ pub fn (b []byte) hex() string {
 // The number of the elements copied is the minimum of the length of both arrays.
 // Returns the number of elements copied.
 // NOTE: This is not an `array` method. It is a function that takes two arrays of bytes.
-// TODO: implement for all types
+// See also: `arrays.copy`.
 pub fn copy(dst []byte, src []byte) int {
 	min := if dst.len < src.len { dst.len } else { src.len }
 	if min > 0 {
-		unsafe { vmemcpy(&byte(dst.data), src.data, min) }
+		unsafe { vmemmove(&byte(dst.data), src.data, min) }
 	}
 	return min
 }
