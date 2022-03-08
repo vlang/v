@@ -27,9 +27,9 @@ fn test_statemachine_sequence_works_when_typical() {
 
 	s.run(receiver)
 
-	assert receiver.data[0] == 'on_state_exit'
-	assert receiver.data[1] == 'on_state_entry'
-	assert receiver.data[2] == 'on_state_run'
+	assert receiver.data[0] == 'on_state_exit: A -> B'
+	assert receiver.data[1] == 'on_state_entry: A -> B'
+	assert receiver.data[2] == 'on_state_run: A -> B'
 }
 
 fn test_statemachine_works_when_final_state() {
@@ -42,15 +42,15 @@ fn test_statemachine_works_when_final_state() {
 }
 
 fn on_state_entry(mut receiver MyReceiver, from string, to string) {
-	receiver.data << 'on_state_entry'
+	receiver.data << 'on_state_entry: ' + from + ' -> ' + to
 }
 
 fn on_state_run(mut receiver MyReceiver, from string, to string) {
-	receiver.data << 'on_state_run'
+	receiver.data << 'on_state_run: ' + from + ' -> ' + to
 }
 
 fn on_state_exit(mut receiver MyReceiver, from string, to string) {
-	receiver.data << 'on_state_exit'
+	receiver.data << 'on_state_exit: ' + from + ' -> ' + to
 }
 
 fn condition_transition(receiver &MyReceiver, from string, to string) bool {
