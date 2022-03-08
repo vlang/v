@@ -1,4 +1,4 @@
-import fsm
+import datatypes.fsm
 
 struct MyReceiver {
 mut:
