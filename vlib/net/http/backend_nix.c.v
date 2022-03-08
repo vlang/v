@@ -80,7 +80,7 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 	res = C.SSL_set_tlsext_host_name(voidptr(ssl), host_name.str)
 	res = C.BIO_do_connect(web)
 	if res != 1 {
-		return error('http: openssl: BIO_do_connect failed, res: $res')
+		return error('http: openssl: BIO_do_connect failed, res: $res (potential network issue?)')
 	}
 	res = C.BIO_do_handshake(web)
 	pcert := C.SSL_get_peer_certificate(voidptr(ssl))
