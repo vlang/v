@@ -57,25 +57,26 @@ fn all_valid_comptime_idents() []string {
 pub struct Checker {
 	pref &pref.Preferences // Preferences shared from V struct
 pub mut:
-	table            &ast.Table
-	file             &ast.File = 0
-	nr_errors        int
-	nr_warnings      int
-	nr_notices       int
-	errors           []errors.Error
-	warnings         []errors.Warning
-	notices          []errors.Notice
-	error_lines      []int // to avoid printing multiple errors for the same line
-	expected_type    ast.Type
-	expected_or_type ast.Type // fn() or { 'this type' } eg. string. expected or block type
-	mod              string   // current module name
-	const_decl       string
-	const_deps       []string
-	const_names      []string
-	global_names     []string
-	locked_names     []string // vars that are currently locked
-	rlocked_names    []string // vars that are currently read-locked
-	in_for_count     int      // if checker is currently in a for loop
+	table              &ast.Table
+	file               &ast.File = 0
+	nr_errors          int
+	nr_warnings        int
+	nr_notices         int
+	errors             []errors.Error
+	warnings           []errors.Warning
+	notices            []errors.Notice
+	error_lines        []int // to avoid printing multiple errors for the same line
+	expected_type      ast.Type
+	expected_or_type   ast.Type // fn() or { 'this type' } eg. string. expected or block type
+	expected_expr_type ast.Type // if/match is_expr: expected_type
+	mod                string   // current module name
+	const_decl         string
+	const_deps         []string
+	const_names        []string
+	global_names       []string
+	locked_names       []string // vars that are currently locked
+	rlocked_names      []string // vars that are currently read-locked
+	in_for_count       int      // if checker is currently in a for loop
 	// checked_ident  string // to avoid infinite checker loops
 	should_abort              bool // when too many errors/warnings/notices are accumulated, .should_abort becomes true. It is checked in statement/expression loops, so the checker can return early, instead of wasting time.
 	returns                   bool
@@ -3835,7 +3836,11 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 // with this value.
 pub fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
 	mut typ_idx := if node.enum_name == '' {
-		c.expected_type.idx()
+		if c.expected_type == ast.void_type && c.expected_expr_type != ast.void_type {
+			c.expected_expr_type.idx()
+		} else {
+			c.expected_type.idx()
+		}
 	} else {
 		c.table.find_type_idx(node.enum_name)
 	}
