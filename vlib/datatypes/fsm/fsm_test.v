@@ -1,13 +1,13 @@
-import statemachine
+import fsm
 
 struct MyReceiver {
 mut:
 	data []string
 }
 
-fn default_setup() (MyReceiver, statemachine.StateMachine) {
+fn default_setup() (MyReceiver, fsm.StateMachine) {
 	mut receiver := MyReceiver{}
-	mut s := statemachine.new()
+	mut s := fsm.new()
 	s.add_state('A', on_state_entry, on_state_run, on_state_exit)
 	s.add_state('B', on_state_entry, on_state_run, on_state_exit)
 	s.add_transition('A', 'B', condition_transition)

@@ -1,4 +1,4 @@
-module statemachine
+module fsm
 
 pub type EventHandlerFn = fn (receiver voidptr)
 

@@ -1,4 +1,4 @@
-# statemachine
+# fsm
 
 This module implements a Finite State Machine (FSM), or State Machine in short.
 The FSM is composed of states and transitions between them.
