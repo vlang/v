@@ -135,6 +135,15 @@ fn (mut g Gen) cmp_reg(reg Register, reg2 Register) {
 	g.println('cmp $reg, $reg2')
 }
 
+fn (mut g Gen) cmp_var_reg(var_name string, reg Register) {
+	g.write8(0x48) // 83 for 1 byte?
+	g.write8(0x39)
+	g.write8(0x45)
+	offset := g.get_var_offset(var_name)
+	g.write8(0xff - offset + 1)
+	g.println('cmp var `$var_name`, $reg')
+}
+
 fn (mut g Gen) cmp_var(var_name string, val int) {
 	g.write8(0x81) // 83 for 1 byte?
 	g.write8(0x7d)
@@ -1007,7 +1016,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 								g.mov_reg_to_var(offset, .rax)
 							}
 							ast.InfixExpr {
-								eprintln('assign')
+								// eprintln('assign')
 								// dump(node.left[i])
 								offset := g.get_var_offset('i') // node.left[i])
 								g.mov_reg_to_var(offset, native.fn_arg_registers[i])
@@ -1407,6 +1416,7 @@ fn (mut g Gen) condition(infix_expr ast.InfixExpr, neg bool) int {
 					// 3 < 4
 					a0 := infix_expr.left.val.int()
 					// a0 := (infix_expr.left as ast.IntegerLiteral).val.int()
+					// XXX this will not compile
 					a1 := (infix_expr.right as ast.IntegerLiteral).val.int()
 					// TODO. compute at compile time
 					g.mov(.eax, a0)
@@ -1507,8 +1517,20 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	start := g.pos()
 	match mut infix_expr.left {
 		ast.Ident {
-			lit := infix_expr.right as ast.IntegerLiteral
-			g.cmp_var(infix_expr.left.name, lit.val.int())
+			match infix_expr.right {
+				ast.Ident {
+					var_offset := g.get_var_offset(infix_expr.right.name)
+					g.mov_var_to_reg(.rax, var_offset)
+					g.cmp_var_reg(infix_expr.left.name, .rax)
+				}
+				ast.IntegerLiteral {
+					lit := infix_expr.right as ast.IntegerLiteral
+					g.cmp_var(infix_expr.left.name, lit.val.int())
+				}
+				else {
+					g.n_error('unhandled expression type')
+				}
+			}
 			match infix_expr.left.tok_kind {
 				.lt {
 					jump_addr = g.cjmp(.jge)
