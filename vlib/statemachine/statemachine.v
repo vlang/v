@@ -17,15 +17,15 @@ mut:
 	condition_handler ConditionFn = voidptr(0)
 }
 
-struct StateMachine {
+pub struct StateMachine {
 mut:
 	states        map[string]State
 	transitions   map[string]Transition
 	current_state string
 }
 
-pub fn new() &StateMachine {
-	return &StateMachine{}
+pub fn new() StateMachine {
+	return StateMachine{}
 }
 
 pub fn (mut s StateMachine) add_state(name string, entry EventHandlerFn, run EventHandlerFn, exit EventHandlerFn) {

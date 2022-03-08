@@ -5,23 +5,26 @@ mut:
 	data []string
 }
 
-fn test_statemachine_works_when_single_transition() {
-	mut receiver := &MyReceiver{}
+fn default_setup() (MyReceiver, statemachine.StateMachine) {
+	mut receiver := MyReceiver{}
 	mut s := statemachine.new()
 	s.add_state('A', on_state_entry, on_state_run, on_state_exit)
 	s.add_state('B', on_state_entry, on_state_run, on_state_exit)
 	s.add_transition('A', 'B', condition_transition)
+	return receiver, s
+}
+
+fn test_statemachine_works_when_single_transition() {
+	mut receiver, mut s := default_setup()
+
 	s.run(receiver)
 
 	assert receiver.data.len == 3
 }
 
 fn test_statemachine_works_when_typical() {
-	mut receiver := &MyReceiver{}
-	mut s := statemachine.new()
-	s.add_state('A', on_state_entry, on_state_run, on_state_exit)
-	s.add_state('B', on_state_entry, on_state_run, on_state_exit)
-	s.add_transition('A', 'B', condition_transition)
+	mut receiver, mut s := default_setup()
+
 	s.run(receiver)
 
 	assert receiver.data[0] == 'on_state_exit'
@@ -30,11 +33,8 @@ fn test_statemachine_works_when_typical() {
 }
 
 fn test_statemachine_works_when_final_state() {
-	mut receiver := &MyReceiver{}
-	mut s := statemachine.new()
-	s.add_state('A', on_state_entry, on_state_run, on_state_exit)
-	s.add_state('B', on_state_entry, on_state_run, on_state_exit)
-	s.add_transition('A', 'B', condition_transition)
+	mut receiver, mut s := default_setup()
+
 	s.run(receiver)
 	s.run(receiver)
 
