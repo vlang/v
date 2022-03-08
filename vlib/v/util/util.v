@@ -371,7 +371,7 @@ and the existing module `$modulename` may still work.')
 	if is_verbose {
 		eprintln('check_module_is_installed: cloning from $murl ...')
 	}
-	cloning_res := os.execute('git clone $murl $mpath')
+	cloning_res := os.execute('git clone ${os.quoted_path(murl)} ${os.quoted_path(mpath)}')
 	if cloning_res.exit_code < 0 {
 		return error_with_code('git is not installed, error: $cloning_res.output', cloning_res.exit_code)
 	}
