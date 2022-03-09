@@ -1,6 +1,7 @@
 -## V 0.2.5
 -*Not yet released, changelog is not full*
-- Introduce `isize` and `usize` types, deprecate `size_t` in favor of `usize`
+- Introduce `isize` and `usize` types, deprecate `size_t` in favor of `usize`.
+- Add `datatypes` and `datatypes.fsm` modules.
 
 -## V 0.2.4
 -*Not yet released, changelog is not full*
