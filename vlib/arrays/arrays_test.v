@@ -281,3 +281,15 @@ fn test_copy() {
 	assert copy(mut b, [8, 9]) == 2
 	assert b == [8, 9, 3, 7]
 }
+
+fn test_can_copy_bits() {
+	assert can_copy_bits<byte>()
+	assert can_copy_bits<int>()
+	assert can_copy_bits<voidptr>()
+	assert can_copy_bits<&byte>()
+	// autofree needs to intercept assign
+	assert !can_copy_bits<string>()
+	assert !can_copy_bits<[]int>()
+	// map not copyable
+	assert !can_copy_bits<map[string]int>()
+}
