@@ -961,8 +961,12 @@ fn test_string_to_rune() {
 
 fn test_index_any() {
 	x := 'abcdefghij'
-	assert x.index_any('ef') == 4
-	assert x.index_any('fe') == 4
+	if idx := x.index_any('ef') {
+		assert idx == 4
+	}
+	if idx := x.index_any('fe') {
+		assert idx == 4
+	}
 }
 
 fn test_string_f64() {

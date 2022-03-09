@@ -63,7 +63,7 @@ pub fn (mut t Table) parse_cflag(cflg string, mod string, ctimedefines []string)
 			if has_next {
 				break
 			}
-			index = flag.index_after(' -', index + 1)
+			index = flag.index_after(' -', index + 1) or { -1 }
 		}
 		if index == -1 {
 			value = flag.trim_space()

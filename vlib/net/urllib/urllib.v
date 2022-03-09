@@ -418,10 +418,7 @@ fn get_scheme(rawurl string) ?string {
 // sep. If cutc is true then sep is included with the second substring.
 // If sep does not occur in s then s and the empty string is returned.
 fn split(s string, sep byte, cutc bool) (string, string) {
-	i := s.index_byte(sep)
-	if i < 0 {
-		return s, ''
-	}
+	i := s.index_byte(sep) or { return s, '' }
 	if cutc {
 		return s[..i], s[i + 1..]
 	}
@@ -746,11 +743,10 @@ pub fn (u URL) str() string {
 			// it would be mistaken for a scheme name. Such a segment must be
 			// preceded by a dot-segment (e.g., './this:that') to make a relative-
 			// path reference.
-			i := path.index_byte(`:`)
-			if i > -1 {
+			if i := path.index_byte(`:`) {
 				// TODO remove this when autofree handles tmp
 				// expressions like this
-				if i > -1 && path[..i].index_byte(`/`) == -1 {
+				if i > -1 && path[..i].index_byte(`/`) or { -1 } == -1 {
 					buf.write_string('./')
 				}
 			}
@@ -800,7 +796,7 @@ fn parse_query_values(mut m Values, query string) ?bool {
 	mut q := query
 	for q != '' {
 		mut key := q
-		mut i := key.index_any('&;')
+		mut i := key.index_any('&;') or { -1 }
 		if i >= 0 {
 			q = key[i + 1..]
 			key = key[..i]
@@ -1006,8 +1002,7 @@ pub fn (u &URL) port() string {
 fn split_host_port(hostport string) (string, string) {
 	mut host := hostport
 	mut port := ''
-	colon := host.last_index_byte(`:`)
-	if colon != -1 {
+	if colon := host.last_index_byte(`:`) {
 		if valid_optional_port(host[colon..]) {
 			port = host[colon + 1..]
 			host = host[..colon]

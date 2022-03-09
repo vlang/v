@@ -2975,7 +2975,7 @@ fn (mut p Parser) parse_number_literal() ast.Expr {
 	lit := p.tok.lit
 	full_lit := if is_neg { '-' + lit } else { lit }
 	mut node := ast.empty_expr()
-	if lit.index_any('.eE') >= 0 && lit[..2] !in ['0x', '0X', '0o', '0O', '0b', '0B'] {
+	if lit.index_any('.eE') or { -1 } >= 0 && lit[..2] !in ['0x', '0X', '0o', '0O', '0b', '0B'] {
 		node = ast.FloatLiteral{
 			val: full_lit
 			pos: pos

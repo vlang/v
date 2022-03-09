@@ -305,7 +305,8 @@ fn (mut fs FlagParser) parse_bool_value(longhand string, shorthand byte) ?string
 				fs.args.delete(i)
 				return val
 			}
-			if arg.len > 1 && arg[0] == `-` && arg[1] != `-` && arg.index_byte(shorthand) != -1 {
+			if arg.len > 1 && arg[0] == `-` && arg[1] != `-`
+				&& arg.index_byte(shorthand) or { -1 } != -1 {
 				// -abc is equivalent to -a -b -c
 				return 'true'
 			}

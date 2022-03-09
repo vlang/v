@@ -94,8 +94,7 @@ pub fn decode_int_walpha(input string, alphabet Alphabet) ?int {
 	mut total := 0 // to hold the results
 	b58 := input.reverse()
 	for i, ch in b58 {
-		ch_i := alphabet.encode.bytestr().index_byte(ch)
-		if ch_i == -1 {
+		ch_i := alphabet.encode.bytestr().index_byte(ch) or {
 			return error(@MOD + '.' + @FN +
 				': input string contains values not found in the provided alphabet')
 		}

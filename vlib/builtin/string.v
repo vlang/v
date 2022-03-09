@@ -319,11 +319,11 @@ pub fn (a string) clone() string {
 
 // replace_once replaces the first occurence of `rep` with the string passed in `with`.
 pub fn (s string) replace_once(rep string, with string) string {
-	idx := s.index_(rep)
-	if idx == -1 {
+	if idx := s.index(rep) {
+		return s.substr(0, idx) + with + s.substr(idx + rep.len, s.len)
+	} else {
 		return s.clone()
 	}
-	return s.substr(0, idx) + with + s.substr(idx + rep.len, s.len)
 }
 
 // replace replaces all occurences of `rep` with the string passed in `with`.
@@ -343,10 +343,7 @@ pub fn (s string) replace(rep string, with string) string {
 	}
 	mut idx := 0
 	for {
-		idx = s.index_after(rep, idx)
-		if idx == -1 {
-			break
-		}
+		idx = s.index_after(rep, idx) or { break }
 		idxs << idx
 		idx += rep.len
 	}
@@ -419,7 +416,7 @@ pub fn (s string) replace_each(vals []string) string {
 		with := vals[rep_i + 1]
 
 		for {
-			idx = s_.index_after(rep, idx)
+			idx = s_.index_after(rep, idx) or { -1 }
 			if idx == -1 {
 				break
 			}
@@ -899,11 +896,11 @@ pub fn (s string) substr_ni(_start int, _end int) string {
 }
 
 // index returns the position of the first character of the input string.
-// It will return `-1` if the input string can't be found.
+// It will return `none` if the input string can't be found.
 [direct_array_access]
-fn (s string) index_(p string) int {
+pub fn (s string) index(p string) ?int {
 	if p.len > s.len || p.len == 0 {
-		return -1
+		return none
 	}
 	if p.len > 2 {
 		return s.index_kmp(p)
@@ -919,24 +916,14 @@ fn (s string) index_(p string) int {
 		}
 		i++
 	}
-	return -1
-}
-
-// index returns the position of the first character of the input string.
-// It will return `none` if the input string can't be found.
-pub fn (s string) index(p string) ?int {
-	idx := s.index_(p)
-	if idx == -1 {
-		return none
-	}
-	return idx
+	return none
 }
 
 // index_kmp does KMP search.
 [direct_array_access; manualfree]
-fn (s string) index_kmp(p string) int {
+fn (s string) index_kmp(p string) ?int {
 	if p.len > s.len {
-		return -1
+		return none
 	}
 	mut prefix := []int{len: p.len}
 	defer {
@@ -964,11 +951,11 @@ fn (s string) index_kmp(p string) int {
 			return i - p.len + 1
 		}
 	}
-	return -1
+	return none
 }
 
 // index_any returns the position of any of the characters in the input string - if found.
-pub fn (s string) index_any(chars string) int {
+pub fn (s string) index_any(chars string) ?int {
 	for i, ss in s {
 		for c in chars {
 			if c == ss {
@@ -976,14 +963,14 @@ pub fn (s string) index_any(chars string) int {
 			}
 		}
 	}
-	return -1
+	return none
 }
 
 // last_index returns the position of the last occurence of the input string.
 [direct_array_access]
-fn (s string) last_index_(p string) int {
+pub fn (s string) last_index(p string) ?int {
 	if p.len > s.len || p.len == 0 {
-		return -1
+		return none
 	}
 	mut i := s.len - p.len
 	for i >= 0 {
@@ -996,30 +983,21 @@ fn (s string) last_index_(p string) int {
 		}
 		i--
 	}
-	return -1
-}
-
-// last_index returns the position of the last occurence of the input string.
-pub fn (s string) last_index(p string) ?int {
-	idx := s.last_index_(p)
-	if idx == -1 {
-		return none
-	}
-	return idx
+	return none
 }
 
 // index_after returns the position of the input string, starting search from `start` position.
 [direct_array_access]
-pub fn (s string) index_after(p string, start int) int {
+pub fn (s string) index_after(p string, start int) ?int {
 	if p.len > s.len {
-		return -1
+		return none
 	}
 	mut strt := start
 	if start < 0 {
 		strt = 0
 	}
 	if start >= s.len {
-		return -1
+		return none
 	}
 	mut i := strt
 	for i < s.len {
@@ -1034,35 +1012,35 @@ pub fn (s string) index_after(p string, start int) int {
 		}
 		i++
 	}
-	return -1
+	return none
 }
 
 // index_byte returns the index of byte `c` if found in the string.
-// index_byte returns -1 if the byte can not be found.
+// index_byte returns `none` if the byte can not be found.
 [direct_array_access]
-pub fn (s string) index_byte(c byte) int {
+pub fn (s string) index_byte(c byte) ?int {
 	for i in 0 .. s.len {
 		if unsafe { s.str[i] } == c {
 			return i
 		}
 	}
-	return -1
+	return none
 }
 
 // last_index_byte returns the index of the last occurence of byte `c` if found in the string.
-// last_index_byte returns -1 if the byte is not found.
+// last_index_byte returns `none` if the byte is not found.
 [direct_array_access]
-pub fn (s string) last_index_byte(c byte) int {
+pub fn (s string) last_index_byte(c byte) ?int {
 	for i := s.len - 1; i >= 0; i-- {
 		if unsafe { s.str[i] == c } {
 			return i
 		}
 	}
-	return -1
+	return none
 }
 
 // count returns the number of occurrences of `substr` in the string.
-// count returns -1 if no `substr` could be found.
+// count returns 0 if no `substr` could be found.
 [direct_array_access]
 pub fn (s string) count(substr string) int {
 	if s.len == 0 || substr.len == 0 {
@@ -1088,10 +1066,7 @@ pub fn (s string) count(substr string) int {
 
 	mut i := 0
 	for {
-		i = s.index_after(substr, i)
-		if i == -1 {
-			return n
-		}
+		i = s.index_after(substr, i) or { return n }
 		i += substr.len
 		n++
 	}
@@ -1103,10 +1078,11 @@ pub fn (s string) contains(substr string) bool {
 	if substr.len == 0 {
 		return true
 	}
-	if s.index_(substr) == -1 {
+	if _ := s.index(substr) {
+		return true
+	} else {
 		return false
 	}
-	return true
 }
 
 // contains_any returns `true` if the string contains any chars in `chars`.
@@ -1294,16 +1270,10 @@ pub fn (s string) is_title() bool {
 // find_between returns the string found between `start` string and `end` string.
 // Example: assert 'hey [man] how you doin'.find_between('[', ']') == 'man'
 pub fn (s string) find_between(start string, end string) string {
-	start_pos := s.index_(start)
-	if start_pos == -1 {
-		return ''
-	}
+	start_pos := s.index(start) or { return '' }
 	// First get everything to the right of 'start'
 	val := s[start_pos + start.len..]
-	end_pos := val.index_(end)
-	if end_pos == -1 {
-		return val
-	}
+	end_pos := val.index(end) or { return val }
 	return val[..end_pos]
 }
 
@@ -1582,11 +1552,11 @@ pub fn (s &string) free() {
 // Example: assert 'abcd'.before('.') == 'abcd'
 // TODO: deprecate and remove either .before or .all_before
 pub fn (s string) before(sub string) string {
-	pos := s.index_(sub)
-	if pos == -1 {
+	if pos := s.index(sub) {
+		return s[..pos]
+	} else {
 		return s.clone()
 	}
-	return s[..pos]
 }
 
 // all_before returns the contents before `sub` in the string.
@@ -1595,11 +1565,11 @@ pub fn (s string) before(sub string) string {
 // Example: assert 'abcd'.all_before('.') == 'abcd'
 pub fn (s string) all_before(sub string) string {
 	// TODO remove dup method
-	pos := s.index_(sub)
-	if pos == -1 {
+	if pos := s.index(sub) {
+		return s[..pos]
+	} else {
 		return s.clone()
 	}
-	return s[..pos]
 }
 
 // all_before_last returns the contents before the last occurence of `sub` in the string.
@@ -1607,11 +1577,11 @@ pub fn (s string) all_before(sub string) string {
 // Example: assert '23:34:45.234'.all_before_last(':') == '23:34'
 // Example: assert 'abcd'.all_before_last('.') == 'abcd'
 pub fn (s string) all_before_last(sub string) string {
-	pos := s.last_index_(sub)
-	if pos == -1 {
+	if pos := s.last_index(sub) {
+		return s[..pos]
+	} else {
 		return s.clone()
 	}
-	return s[..pos]
 }
 
 // all_after returns the contents after `sub` in the string.
@@ -1619,11 +1589,11 @@ pub fn (s string) all_before_last(sub string) string {
 // Example: assert '23:34:45.234'.all_after('.') == '234'
 // Example: assert 'abcd'.all_after('z') == 'abcd'
 pub fn (s string) all_after(sub string) string {
-	pos := s.index_(sub)
-	if pos == -1 {
+	if pos := s.index(sub) {
+		return s[pos + sub.len..]
+	} else {
 		return s.clone()
 	}
-	return s[pos + sub.len..]
 }
 
 // all_after_last returns the contents after the last occurence of `sub` in the string.
@@ -1631,11 +1601,11 @@ pub fn (s string) all_after(sub string) string {
 // Example: assert '23:34:45.234'.all_after_last(':') == '45.234'
 // Example: assert 'abcd'.all_after_last('z') == 'abcd'
 pub fn (s string) all_after_last(sub string) string {
-	pos := s.last_index_(sub)
-	if pos == -1 {
+	if pos := s.last_index(sub) {
+		return s[pos + sub.len..]
+	} else {
 		return s.clone()
 	}
-	return s[pos + sub.len..]
 }
 
 // after returns the contents after the last occurence of `sub` in the string.
