@@ -31,7 +31,7 @@ fn test_des_ofb() {
 
 fn des_ofb_en(mut src []byte, key []byte, iv []byte) {
 	block := des.new_cipher(key)
-	mode := cipher.new_ofb(block, iv)
+	mut mode := cipher.new_ofb(block, iv)
 	mode.xor_key_stream(mut src, src.clone())
 }
 
@@ -43,7 +43,7 @@ fn des_ofb_de(mut src []byte, key []byte, iv []byte) {
 
 fn triple_des_ofb_en(mut src []byte, key []byte, iv []byte) {
 	block := des.new_triple_des_cipher(key)
-	mode := cipher.new_ofb(block, iv)
+	mut mode := cipher.new_ofb(block, iv)
 	mode.xor_key_stream(mut src, src.clone())
 }
 

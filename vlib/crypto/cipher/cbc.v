@@ -41,7 +41,7 @@ pub fn new_cbc(b Block, iv []byte) Cbc {
 
 // encrypt_blocks encrypts the blocks in `src_` to `dst_`.
 // Please note: `dst_` is mutable for performance reasons.
-pub fn (x &Cbc) encrypt_blocks(mut dst_ []byte, src_ []byte) {
+pub fn (mut x Cbc) encrypt_blocks(mut dst_ []byte, src_ []byte) {
 	unsafe {
 		mut dst := *dst_
 		mut src := src_
@@ -113,7 +113,7 @@ pub fn (mut x Cbc) decrypt_blocks(mut dst []byte, src []byte) {
 	x.tmp = x.iv
 }
 
-fn (x &Cbc) set_iv(iv []byte) {
+fn (mut x Cbc) set_iv(iv []byte) {
 	if iv.len != x.iv.len {
 		panic('cipher: incorrect length IV')
 	}

@@ -39,20 +39,18 @@ fn new_cfb(b Block, iv []byte, decrypt bool) Cfb {
 	if iv.len != block_size {
 		panic('cipher.new_cfb: IV length must be equal block size')
 	}
-	x := Cfb{
+	mut x := Cfb{
 		b: b
 		out: []byte{len: b.block_size}
 		next: []byte{len: b.block_size}
 		out_used: block_size
 		decrypt: decrypt
 	}
-
 	copy(mut x.next, iv)
-
 	return x
 }
 
-pub fn (x &Cfb) xor_key_stream(mut dst_ []byte, src_ []byte) {
+pub fn (mut x Cfb) xor_key_stream(mut dst_ []byte, src_ []byte) {
 	unsafe {
 		mut dst := *dst_
 		mut src := src_

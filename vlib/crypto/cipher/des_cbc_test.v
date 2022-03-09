@@ -31,7 +31,7 @@ fn test_des_cbc() {
 
 fn des_cbc_en(mut src []byte, key []byte, iv []byte) {
 	block := des.new_cipher(key)
-	mode := cipher.new_cbc(block, iv)
+	mut mode := cipher.new_cbc(block, iv)
 	mode.encrypt_blocks(mut src, src.clone())
 }
 
@@ -43,7 +43,7 @@ fn des_cbc_de(mut src []byte, key []byte, iv []byte) {
 
 fn triple_des_cbc_en(mut src []byte, key []byte, iv []byte) {
 	block := des.new_triple_des_cipher(key)
-	mode := cipher.new_cbc(block, iv)
+	mut mode := cipher.new_cbc(block, iv)
 	mode.encrypt_blocks(mut src, src.clone())
 }
 

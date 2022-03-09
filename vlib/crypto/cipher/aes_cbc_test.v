@@ -21,7 +21,7 @@ fn test_aes_cbc() {
 
 fn aes_cbc_en(mut src []byte, key []byte, iv []byte) {
 	block := aes.new_cipher(key)
-	mode := cipher.new_cbc(block, iv)
+	mut mode := cipher.new_cbc(block, iv)
 	mode.encrypt_blocks(mut src, src.clone())
 }
 

@@ -191,7 +191,7 @@ pub fn sum224(data []byte) []byte {
 	mut d := new224()
 	d.write(data) or { panic(err) }
 	sum := d.checksum()
-	sum224 := []byte{len: sha256.size224}
+	mut sum224 := []byte{len: sha256.size224}
 	copy(mut sum224, sum[..sha256.size224])
 	return sum224
 }

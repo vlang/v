@@ -62,11 +62,11 @@ pub fn (priv PrivateKey) sign(message []byte) ?[]byte {
 // sign`signs the message with privatekey and returns a signature
 pub fn sign(privatekey PrivateKey, message []byte) ?[]byte {
 	mut signature := []byte{len: ed25519.signature_size}
-	sign_generic(signature, privatekey, message) ?
+	sign_generic(mut signature, privatekey, message) ?
 	return signature
 }
 
-fn sign_generic(signature []byte, privatekey []byte, message []byte) ? {
+fn sign_generic(mut signature []byte, privatekey []byte, message []byte) ? {
 	if privatekey.len != ed25519.private_key_size {
 		panic('ed25519: bad private key length: $privatekey.len')
 	}
@@ -148,7 +148,7 @@ pub fn generate_key() ?(PublicKey, PrivateKey) {
 	mut seed := rand.bytes(ed25519.seed_size) ?
 
 	privatekey := new_key_from_seed(seed)
-	publickey := []byte{len: ed25519.public_key_size}
+	mut publickey := []byte{len: ed25519.public_key_size}
 	copy(mut publickey, privatekey[32..])
 
 	return publickey, privatekey
@@ -158,12 +158,12 @@ pub fn generate_key() ?(PublicKey, PrivateKey) {
 // correspond to seeds in this module
 pub fn new_key_from_seed(seed []byte) PrivateKey {
 	// Outline the function body so that the returned key can be stack-allocated.
-	privatekey := []byte{len: ed25519.private_key_size}
-	new_key_from_seed_generic(privatekey, seed)
+	mut privatekey := []byte{len: ed25519.private_key_size}
+	new_key_from_seed_generic(mut privatekey, seed)
 	return PrivateKey(privatekey)
 }
 
-fn new_key_from_seed_generic(privatekey []byte, seed []byte) {
+fn new_key_from_seed_generic(mut privatekey []byte, seed []byte) {
 	if seed.len != ed25519.seed_size {
 		panic('ed25519: bad seed length: $seed.len')
 	}
