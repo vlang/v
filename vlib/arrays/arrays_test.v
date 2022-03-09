@@ -268,16 +268,16 @@ fn test_rotate_left_string() {
 fn test_copy() {
 	mut a := [1, 2, 3]
 	mut b := [4, 5, 6]
-	assert copy(b, a) == 3
+	assert copy(mut b, a) == 3
 	assert b == [1, 2, 3]
 	// check independent copies
 	b[0] = 99
 	assert a[0] == 1
 	// check longer src
 	b << 7
-	assert copy(a, b) == 3
+	assert copy(mut a, b) == 3
 	assert a == [99, 2, 3]
 	// check longer dst
-	assert copy(b, [8, 9]) == 2
+	assert copy(mut b, [8, 9]) == 2
 	assert b == [8, 9, 3, 7]
 }

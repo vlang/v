@@ -274,7 +274,7 @@ fn escape(s string, mode EncodingMode) string {
 	required := s.len + 2 * hex_count
 	mut t := []byte{len: required}
 	if hex_count == 0 {
-		copy(t, s.bytes())
+		copy(mut t, s.bytes())
 		for i in 0 .. s.len {
 			if s[i] == ` ` {
 				t[i] = `+`

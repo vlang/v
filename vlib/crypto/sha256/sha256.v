@@ -96,7 +96,7 @@ pub fn (mut d Digest) write(p_ []byte) ?int {
 		nn := p.len
 		d.len += u64(nn)
 		if d.nx > 0 {
-			n := copy(d.x[d.nx..], p)
+			n := copy(mut d.x[d.nx..], p)
 			d.nx += n
 			if d.nx == sha256.chunk {
 				block(mut d, d.x)
@@ -118,7 +118,7 @@ pub fn (mut d Digest) write(p_ []byte) ?int {
 			}
 		}
 		if p.len > 0 {
-			d.nx = copy(d.x, p)
+			d.nx = copy(mut d.x, p)
 		}
 		return nn
 	}
@@ -191,8 +191,8 @@ pub fn sum224(data []byte) []byte {
 	mut d := new224()
 	d.write(data) or { panic(err) }
 	sum := d.checksum()
-	sum224 := []byte{len: sha256.size224}
-	copy(sum224, sum[..sha256.size224])
+	mut sum224 := []byte{len: sha256.size224}
+	copy(mut sum224, sum[..sha256.size224])
 	return sum224
 }
 

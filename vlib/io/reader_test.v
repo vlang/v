@@ -11,7 +11,7 @@ fn (mut b Buf) read(mut buf []byte) ?int {
 	if !(b.i < b.bytes.len) {
 		return none
 	}
-	n := copy(buf, b.bytes[b.i..])
+	n := copy(mut buf, b.bytes[b.i..])
 	b.i += n
 	return n
 }
@@ -48,7 +48,7 @@ fn (mut s StringReader) read(mut buf []byte) ?int {
 	if s.place >= s.text.len {
 		return none
 	}
-	read := copy(buf, s.text[s.place..].bytes())
+	read := copy(mut buf, s.text[s.place..].bytes())
 	s.place += read
 	return read
 }

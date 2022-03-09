@@ -229,7 +229,7 @@ fn (mut v Point) bytes_generic(mut buf [32]byte) []byte {
 fn copy_field_element(mut buf [32]byte, mut v Element) []byte {
 	// this fail in test
 	/*
-	copy(buf[..], v.bytes())
+	copy(mut buf[..], v.bytes())
 	return buf[..]
 	*/
 

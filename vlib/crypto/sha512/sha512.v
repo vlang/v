@@ -155,7 +155,7 @@ pub fn (mut d Digest) write(p_ []byte) ?int {
 		nn := p.len
 		d.len += u64(nn)
 		if d.nx > 0 {
-			n := copy(d.x[d.nx..], p)
+			n := copy(mut d.x[d.nx..], p)
 			d.nx += n
 			if d.nx == sha512.chunk {
 				block(mut d, d.x)
@@ -177,7 +177,7 @@ pub fn (mut d Digest) write(p_ []byte) ?int {
 			}
 		}
 		if p.len > 0 {
-			d.nx = copy(d.x, p)
+			d.nx = copy(mut d.x, p)
 		}
 		return nn
 	}
@@ -258,8 +258,8 @@ pub fn sum384(data []byte) []byte {
 	mut d := new_digest(.sha384)
 	d.write(data) or { panic(err) }
 	sum := d.checksum()
-	sum384 := []byte{len: sha512.size384}
-	copy(sum384, sum[..sha512.size384])
+	mut sum384 := []byte{len: sha512.size384}
+	copy(mut sum384, sum[..sha512.size384])
 	return sum384
 }
 
@@ -268,8 +268,8 @@ pub fn sum512_224(data []byte) []byte {
 	mut d := new_digest(.sha512_224)
 	d.write(data) or { panic(err) }
 	sum := d.checksum()
-	sum224 := []byte{len: sha512.size224}
-	copy(sum224, sum[..sha512.size224])
+	mut sum224 := []byte{len: sha512.size224}
+	copy(mut sum224, sum[..sha512.size224])
 	return sum224
 }
 
@@ -278,8 +278,8 @@ pub fn sum512_256(data []byte) []byte {
 	mut d := new_digest(.sha512_256)
 	d.write(data) or { panic(err) }
 	sum := d.checksum()
-	sum256 := []byte{len: sha512.size256}
-	copy(sum256, sum[..sha512.size256])
+	mut sum256 := []byte{len: sha512.size256}
+	copy(mut sum256, sum[..sha512.size256])
 	return sum256
 }
 

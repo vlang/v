@@ -41,7 +41,7 @@ pub fn new_cbc(b Block, iv []byte) Cbc {
 
 // encrypt_blocks encrypts the blocks in `src_` to `dst_`.
 // Please note: `dst_` is mutable for performance reasons.
-pub fn (x &Cbc) encrypt_blocks(mut dst_ []byte, src_ []byte) {
+pub fn (mut x Cbc) encrypt_blocks(mut dst_ []byte, src_ []byte) {
 	unsafe {
 		mut dst := *dst_
 		mut src := src_
@@ -69,7 +69,7 @@ pub fn (x &Cbc) encrypt_blocks(mut dst_ []byte, src_ []byte) {
 			dst = dst[x.block_size..]
 		}
 		// Save the iv for the next crypt_blocks call.
-		copy(x.iv, iv)
+		copy(mut x.iv, iv)
 	}
 }
 
@@ -94,7 +94,7 @@ pub fn (mut x Cbc) decrypt_blocks(mut dst []byte, src []byte) {
 	mut start := end - x.block_size
 	mut prev := start - x.block_size
 	// Copy the last block of ciphertext in preparation as the new iv.
-	copy(x.tmp, src[start..end])
+	copy(mut x.tmp, src[start..end])
 	// Loop over all but the first block.
 	for start > 0 {
 		src_chunk := src[start..end]
@@ -113,9 +113,9 @@ pub fn (mut x Cbc) decrypt_blocks(mut dst []byte, src []byte) {
 	x.tmp = x.iv
 }
 
-fn (x &Cbc) set_iv(iv []byte) {
+fn (mut x Cbc) set_iv(iv []byte) {
 	if iv.len != x.iv.len {
 		panic('cipher: incorrect length IV')
 	}
-	copy(x.iv, iv)
+	copy(mut x.iv, iv)
 }

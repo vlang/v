@@ -18,7 +18,7 @@ fn test_aes_cfb() {
 
 fn aes_cfb_en(mut src []byte, key []byte, iv []byte) {
 	block := aes.new_cipher(key)
-	mode := cipher.new_cfb_encrypter(block, iv)
+	mut mode := cipher.new_cfb_encrypter(block, iv)
 	mode.xor_key_stream(mut src, src.clone())
 }
 

@@ -47,7 +47,7 @@ pub fn (mut r BufferedReader) read(mut buf []byte) ?int {
 			return none
 		}
 	}
-	read := copy(buf, r.buf[r.offset..r.len])
+	read := copy(mut buf, r.buf[r.offset..r.len])
 	if read == 0 {
 		return none
 	}

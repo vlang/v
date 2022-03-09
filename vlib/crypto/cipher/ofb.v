@@ -25,19 +25,17 @@ pub fn new_ofb(b Block, iv []byte) Ofb {
 	if iv.len != block_size {
 		panic('cipher.new_ofb: IV length must be equal block size')
 	}
-	x := Ofb{
+	mut x := Ofb{
 		b: b
 		out: []byte{len: b.block_size}
 		next: []byte{len: b.block_size}
 		out_used: block_size
 	}
-
-	copy(x.next, iv)
-
+	copy(mut x.next, iv)
 	return x
 }
 
-pub fn (x &Ofb) xor_key_stream(mut dst_ []byte, src_ []byte) {
+pub fn (mut x Ofb) xor_key_stream(mut dst_ []byte, src_ []byte) {
 	unsafe {
 		mut dst := *dst_
 		mut src := src_
@@ -55,7 +53,7 @@ pub fn (x &Ofb) xor_key_stream(mut dst_ []byte, src_ []byte) {
 				x.out_used = 0
 			}
 
-			copy(x.next, x.out)
+			copy(mut x.next, x.out)
 
 			n := xor_bytes(mut dst, src, x.out)
 			dst = dst[n..]

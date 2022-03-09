@@ -16,7 +16,7 @@ fn (mut b Buf) read(mut buf []byte) ?int {
 	if !(b.i < b.bytes.len) {
 		return none
 	}
-	n := copy(buf, b.bytes[b.i..])
+	n := copy(mut buf, b.bytes[b.i..])
 	b.i += n
 	return n
 }

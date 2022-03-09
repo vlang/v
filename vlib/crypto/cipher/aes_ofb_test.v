@@ -20,7 +20,7 @@ fn test_aes_ofb() {
 
 fn aes_ofb_en(mut src []byte, key []byte, iv []byte) {
 	block := aes.new_cipher(key)
-	mode := cipher.new_ofb(block, iv)
+	mut mode := cipher.new_ofb(block, iv)
 	mode.xor_key_stream(mut src, src.clone())
 }
 
