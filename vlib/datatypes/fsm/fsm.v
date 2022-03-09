@@ -20,12 +20,23 @@ mut:
 pub struct StateMachine {
 mut:
 	states        map[string]State
-	transitions   map[string]Transition
+	transitions   map[string][]Transition
 	current_state string
 }
 
 pub fn new() StateMachine {
 	return StateMachine{}
+}
+
+pub fn (mut s StateMachine) set_state(name string) ? {
+	if name in s.states {
+		s.current_state = name
+	}
+	return error('unknown state: $name')
+}
+
+pub fn (mut s StateMachine) get_state() string {
+	return s.current_state
 }
 
 pub fn (mut s StateMachine) add_state(name string, entry EventHandlerFn, run EventHandlerFn, exit EventHandlerFn) {
@@ -40,27 +51,37 @@ pub fn (mut s StateMachine) add_state(name string, entry EventHandlerFn, run Eve
 }
 
 pub fn (mut s StateMachine) add_transition(from string, to string, condition_handler ConditionFn) {
-	s.transitions[from] = Transition{
+	t := Transition{
 		to: to
 		condition_handler: condition_handler
 	}
-}
-
-pub fn (mut s StateMachine) run(receiver voidptr) {
-	for from_state, transition in s.transitions {
-		if from_state == s.current_state {
-			if transition.condition_handler(receiver, from_state, s.transitions[from_state].to) {
-				s.change_state(receiver, s.transitions[from_state].to)
-			}
-			s.states[s.current_state].run_handler(receiver, from_state, s.transitions[from_state].to)
-		}
+	if from in s.transitions {
+		s.transitions[from] << t
+		return
 	}
+	s.transitions[from] = [t]
 }
 
-pub fn (mut s StateMachine) change_state(receiver voidptr, newstate string) {
-	mut current_state := s.current_state
-	s.states[current_state].exit_handler(receiver, current_state, newstate)
-	current_state = newstate
-	s.states[current_state].entry_handler(receiver, s.current_state, newstate)
-	s.current_state = current_state
+pub fn (mut s StateMachine) run(receiver voidptr) ? {
+	from_state := s.current_state
+	mut to_state := s.current_state
+	if transitions := s.transitions[s.current_state] {
+		for transition in transitions {
+			if transition.condition_handler(receiver, from_state, transition.to) {
+				s.change_state(receiver, transition.to)
+				to_state = transition.to
+				break
+			}
+		}
+	} else {
+		s.states[s.current_state].run_handler(receiver, from_state, to_state)
+		return error('no more transitions')
+	}
+	s.states[s.current_state].run_handler(receiver, from_state, to_state)
+}
+
+fn (mut s StateMachine) change_state(receiver voidptr, newstate string) {
+	s.states[s.current_state].exit_handler(receiver, s.current_state, newstate)
+	s.states[newstate].entry_handler(receiver, s.current_state, newstate)
+	s.current_state = newstate
 }
