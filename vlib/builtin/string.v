@@ -692,6 +692,9 @@ pub fn (s string) split(delim string) []string {
 // the remainder contains more `delim` substrings.
 [direct_array_access]
 pub fn (s string) split_nth(delim string, nth int) []string {
+	if s.len == 0 {
+		return []
+	}
 	mut res := []string{}
 	mut i := 0
 

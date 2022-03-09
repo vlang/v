@@ -178,6 +178,8 @@ fn test_split_nth() {
 	assert e.split_nth(',,', 3).len == 3
 	assert e.split_nth(',', -1).len == 12
 	assert e.split_nth(',', 3).len == 3
+	f := ''
+	assert f.split(',').len == 0
 }
 
 fn test_split_nth_values() {

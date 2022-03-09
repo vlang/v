@@ -263,6 +263,9 @@ pub fn (mut f Fmt) mark_types_import_as_used(typ ast.Type) {
 // `name` is a function (`foo.bar()`) or type (`foo.Bar{}`)
 pub fn (mut f Fmt) mark_import_as_used(name string) {
 	parts := name.split('.')
+	if parts.len == 0 {
+		return
+	}
 	last := parts.last()
 	if last in f.import_syms_used {
 		f.import_syms_used[last] = true
