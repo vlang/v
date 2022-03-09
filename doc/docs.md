@@ -3086,6 +3086,50 @@ Output: `Grocery IDs: 0, 5, 6`.
 
 Operations are not allowed on enum variables; they must be explicitly cast to `int`.
 
+Enums can have methods, just like structs
+
+```v
+enum Cycle {
+	one
+	two
+	three
+}
+
+fn (c Cycle) next() Cycle {
+	match c {
+		.one {
+			return .two
+		}
+		.two {
+			return .three
+		}
+		.three {
+			return .one
+		}
+	}
+}
+
+mut c := Cycle.one
+for _ in 0 .. 10 {
+	println(c)
+	c = c.next()
+}
+```
+
+Output:
+```
+one
+two
+three
+one
+two
+three
+one
+two
+three
+one
+```
+
 ### Sum types
 
 A sum type instance can hold a value of several different types. Use the `type`
@@ -3134,50 +3178,6 @@ fn main() {
 	tree := Node{0.5, left, right}
 	println(sum(tree)) // 0.2 + 0.3 + 0.4 + 0.5 = 1.4
 }
-```
-
-Enums can have methods, just like structs
-
-```v
-enum Cycle {
-	one
-	two
-	three
-}
-
-fn (c Cycle) next() Cycle {
-	match c {
-		.one {
-			return .two
-		}
-		.two {
-			return .three
-		}
-		.three {
-			return .one
-		}
-	}
-}
-
-mut c := Cycle.one
-for _ in 0 .. 10 {
-	println(c)
-	c = c.next()
-}
-```
-
-Output:
-```
-one
-two
-three
-one
-two
-three
-one
-two
-three
-one
 ```
 
 #### Dynamic casts
