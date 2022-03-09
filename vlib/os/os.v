@@ -761,7 +761,11 @@ pub fn execute_or_exit(cmd string) Result {
 // quoted path - return a quoted version of the path, depending on the platform.
 pub fn quoted_path(path string) string {
 	$if windows {
-		return '"$path"'
+		if path.ends_with(path_separator) {
+			return '"${path + path_separator}"'
+		} else {
+			return '"$path"'
+		}
 	} $else {
 		return "'$path'"
 	}
