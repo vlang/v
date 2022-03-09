@@ -398,7 +398,7 @@ fn test_bytes_big_equivalence() ? {
 	mut buf := []byte{len: 32} // pad with zeroes
 	fedtobig := fe1.to_big_integer()
 	mut fedbig_bytes, _ := fedtobig.bytes()
-	copy(buf, fedbig_bytes) // does not need to do swap_endianness
+	copy(mut buf, fedbig_bytes) // does not need to do swap_endianness
 
 	assert fe.bytes() == buf && is_in_bounds(fe) && is_in_bounds(fe1)
 	// assert big_equivalence(inp, fe, fe1) == true

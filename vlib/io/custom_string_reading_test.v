@@ -19,7 +19,7 @@ fn (mut s StringReader) read(mut buf []byte) ?int {
 	}
 	mut howmany := imin(buf.len, s.text.len - s.place)
 	xxx := s.text[s.place..s.place + howmany].bytes()
-	read := copy(buf, xxx)
+	read := copy(mut buf, xxx)
 	s.place += read
 	return read
 }

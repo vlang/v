@@ -47,7 +47,7 @@ fn new_cfb(b Block, iv []byte, decrypt bool) Cfb {
 		decrypt: decrypt
 	}
 
-	copy(x.next, iv)
+	copy(mut x.next, iv)
 
 	return x
 }
@@ -71,12 +71,12 @@ pub fn (x &Cfb) xor_key_stream(mut dst_ []byte, src_ []byte) {
 			}
 
 			if x.decrypt {
-				copy(x.next[x.out_used..], src)
+				copy(mut x.next[x.out_used..], src)
 			}
 
 			n := xor_bytes(mut dst, src, x.out[x.out_used..])
 			if !x.decrypt {
-				copy(x.next[x.out_used..], dst)
+				copy(mut x.next[x.out_used..], dst)
 			}
 			dst = dst[n..]
 			src = src[n..]

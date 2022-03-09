@@ -151,13 +151,13 @@ fn (mut h Hashed) hash_byte() []byte {
 	}
 	arr[n] = `$`
 	n++
-	copy(arr[n..], '${int(h.cost):02}'.bytes())
+	copy(mut arr[n..], '${int(h.cost):02}'.bytes())
 	n += 2
 	arr[n] = `$`
 	n++
-	copy(arr[n..], h.salt)
+	copy(mut arr[n..], h.salt)
 	n += bcrypt.encoded_salt_size
-	copy(arr[n..], h.hash)
+	copy(mut arr[n..], h.hash)
 	n += bcrypt.encoded_hash_size
 	res := arr[..n].clone()
 	return res

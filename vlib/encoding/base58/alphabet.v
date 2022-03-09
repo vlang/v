@@ -47,7 +47,7 @@ pub fn new_alphabet(str string) ?Alphabet {
 	}
 
 	mut ret := Alphabet{}
-	copy(ret.encode, str.bytes())
+	copy(mut ret.encode, str.bytes())
 
 	mut distinct := 0
 	for i, b in ret.encode {

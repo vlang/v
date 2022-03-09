@@ -50,6 +50,6 @@ interface BlockMode {
 
 // fn dup(p []byte) []byte {
 // 	q := make([]byte, p.len)
-// 	copy(q, p)
+// 	copy(mut q, p)
 // 	return q
 // }

@@ -14,7 +14,7 @@ fn (mut s StringReader) read(mut buf []byte) ?int {
 	}
 	max_bytes := 100
 	end := if s.place + max_bytes >= s.text.len { s.text.len } else { s.place + max_bytes }
-	n := copy(buf, s.text[s.place..end].bytes())
+	n := copy(mut buf, s.text[s.place..end].bytes())
 	s.place += n
 	return n
 }

@@ -58,7 +58,7 @@ pub fn (mut d Digest) write(p_ []byte) ?int {
 		nn := p.len
 		d.len += u64(nn)
 		if d.nx > 0 {
-			n := copy(d.x[d.nx..], p)
+			n := copy(mut d.x[d.nx..], p)
 			d.nx += n
 			if d.nx == md5.block_size {
 				block(mut d, d.x)
@@ -80,7 +80,7 @@ pub fn (mut d Digest) write(p_ []byte) ?int {
 			}
 		}
 		if p.len > 0 {
-			d.nx = copy(d.x, p)
+			d.nx = copy(mut d.x, p)
 		}
 		return nn
 	}

@@ -91,7 +91,7 @@ pub fn (mut s Scalar) set_uniform_bytes(x []byte) ?Scalar {
 		return error('edwards25519: invalid set_uniform_bytes input length')
 	}
 	mut wide_bytes := []byte{len: 64}
-	copy(wide_bytes, x)
+	copy(mut wide_bytes, x)
 	// for i, item in x {
 	//	wide_bytes[i] = item
 	//}
@@ -112,7 +112,7 @@ pub fn (mut s Scalar) set_canonical_bytes(x []byte) ?Scalar {
 		ss.s[i] = item
 	}
 
-	//_ := copy(ss.s[..], x) //its not working
+	//_ := copy(mut ss.s[..], x) //its not working
 	if !is_reduced(ss) {
 		return error('invalid scalar encoding')
 	}
@@ -162,7 +162,7 @@ pub fn (mut s Scalar) set_bytes_with_clamping(x []byte) ?Scalar {
 	}
 
 	mut wide_bytes := []byte{len: 64, cap: 64}
-	copy(wide_bytes, x)
+	copy(mut wide_bytes, x)
 	// for i, item in x {
 	//	wide_bytes[i] = item
 	//}
@@ -176,7 +176,7 @@ pub fn (mut s Scalar) set_bytes_with_clamping(x []byte) ?Scalar {
 // bytes returns the canonical 32-byte little-endian encoding of s.
 pub fn (mut s Scalar) bytes() []byte {
 	mut buf := []byte{len: 32}
-	copy(buf, s.s[..])
+	copy(mut buf, s.s[..])
 	return buf
 }
 
@@ -1116,7 +1116,7 @@ fn generate_scalar(size int) ?Scalar {
 			// using builtin rand.read([]buf)
 			rand.read(mut s.s[..16])
 			// buf := rand.read(s.s[..16].len) ?
-			// copy(s.s[..16], buf)
+			// copy(mut s.s[..16], buf)
 
 			/*
 			for i, item in buf {
@@ -1133,7 +1133,7 @@ fn generate_scalar(size int) ?Scalar {
 			// rand.Read(s.s[:16])
 			rand.read(mut s.s[..16])
 			// buf := rand.read(s.s[..16].len) ?
-			// copy(s.s[..16], buf)
+			// copy(mut s.s[..16], buf)
 
 			/*
 			for i, item in buf {
@@ -1149,7 +1149,7 @@ fn generate_scalar(size int) ?Scalar {
 			// rand.Read(s.s[:])
 			rand.read(mut s.s[..])
 			// buf := crand.read(s.s.len) ?
-			// copy(s.s[..], buf)
+			// copy(mut s.s[..], buf)
 
 			/*
 			for i, item in buf {
