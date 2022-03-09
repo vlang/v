@@ -2397,19 +2397,16 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 fn (mut c Checker) stmts_ending_with_expression(stmts []ast.Stmt) {
 	if stmts.len == 0 {
 		c.scope_returns = false
-		c.expected_type = ast.void_type
 		return
 	}
 	if c.stmt_level > checker.stmt_level_cutoff_limit {
 		c.scope_returns = false
-		c.expected_type = ast.void_type
 		c.error('checker: too many stmt levels: $c.stmt_level ', stmts[0].pos)
 		return
 	}
 	mut unreachable := token.Pos{
 		line_nr: -1
 	}
-	c.expected_type = ast.void_type
 	c.stmt_level++
 	for i, stmt in stmts {
 		c.is_last_stmt = i == stmts.len - 1
@@ -2435,7 +2432,6 @@ fn (mut c Checker) stmts_ending_with_expression(stmts []ast.Stmt) {
 	}
 	c.find_unreachable_statements_after_noreturn_calls(stmts)
 	c.scope_returns = false
-	c.expected_type = ast.void_type
 }
 
 pub fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
