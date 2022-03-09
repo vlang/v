@@ -91,8 +91,7 @@ pub fn environ() map[string]string {
 		mut eline := ''
 		for c := estrings; *c != 0; {
 			eline = unsafe { string_from_wide(c) }
-			eq_index := eline.index_byte(`=`)
-			if eq_index > 0 {
+			if eq_index := eline.index_byte(`=`) {
 				res[eline[0..eq_index]] = eline[eq_index + 1..]
 			}
 			unsafe {
