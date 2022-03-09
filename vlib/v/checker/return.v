@@ -178,6 +178,7 @@ pub fn (mut c Checker) find_unreachable_statements_after_noreturn_calls(stmts []
 // Note: has_top_return/1 should be called on *already checked* stmts,
 // which do have their stmt.expr.is_noreturn set properly:
 fn has_top_return(stmts []ast.Stmt) bool {
+	mut has_return := false
 	for stmt in stmts {
 		match stmt {
 			ast.Return {
@@ -189,16 +190,25 @@ fn has_top_return(stmts []ast.Stmt) bool {
 				}
 			}
 			ast.ExprStmt {
-				if stmt.expr is ast.CallExpr {
-					if stmt.expr.is_noreturn {
-						return true
+				match stmt.expr {
+					ast.CallExpr {
+						if stmt.expr.is_noreturn {
+							return true
+						}
 					}
+					ast.IfExpr {
+						if stmt.expr.is_comptime && stmt.expr.has_else {
+							has_return = stmt.expr.branches.all(!it.pkg_exist
+								|| has_top_return(it.stmts)) // `.pkg_exist` is set to `false` when the compile-time branch is skipped (and therefore does not identify `noreturn` function calls)
+						}
+					}
+					else {}
 				}
 			}
 			else {}
 		}
 	}
-	return false
+	return has_return
 }
 
 fn (mut c Checker) check_noreturn_fn_decl(mut node ast.FnDecl) {
