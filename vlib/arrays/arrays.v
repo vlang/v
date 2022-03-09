@@ -218,8 +218,10 @@ pub fn sum<T>(list []T) ?T {
 	}
 }
 
-// accumulates values with the first element and applying providing operation to current accumulator value and each elements.
-// If the array is empty, then returns error.
+// reduce sets `acc = list[0]`, then successively calls `acc = reduce_op(acc, elem)` for each remaining element in `list`.
+// returns the accumulated value in `acc`.
+// returns an error if the array is empty.
+// See also: [fold](#fold).
 // Example: arrays.reduce([1, 2, 3, 4, 5], fn (t1 int, t2 int) int { return t1 * t2 })? // => 120
 pub fn reduce<T>(list []T, reduce_op fn (t1 T, t2 T) T) ?T {
 	if list.len == 0 {
@@ -239,8 +241,16 @@ pub fn reduce<T>(list []T, reduce_op fn (t1 T, t2 T) T) ?T {
 	}
 }
 
-// accumulates values with providing initial value and applying providing operation to current accumulator value and each elements.
-// Example: arrays.fold<string, byte>(['H', 'e', 'l', 'l', 'o'], 0, fn (r int, t string) int { return r + t[0] }) // => 149
+// fold sets `acc = init`, then successively calls `acc = fold_op(acc, elem)` for each element in `list`.
+// returns `acc`.
+// Example:
+// ```v
+// // Sum the length of each string in an array
+// a := ['Hi', 'all']
+// r := arrays.fold<string, int>(a, 0,
+// 	fn (r int, t string) int { return r + t.len })
+// assert r == 5
+// ```
 pub fn fold<T, R>(list []T, init R, fold_op fn (r R, t T) R) R {
 	mut value := init
 
@@ -275,7 +285,7 @@ pub fn flatten<T>(list [][]T) []T {
 	return result
 }
 
-// grouping list of elements with given key selector.
+// group_by groups together elements, for which the `grouping_op` callback produced the same result.
 // Example: arrays.group_by<int, string>(['H', 'el', 'lo'], fn (v string) int { return v.len }) // => {1: ['H'], 2: ['el', 'lo']}
 pub fn group_by<K, V>(list []V, grouping_op fn (v V) K) map[K][]V {
 	mut result := map[K][]V{}
