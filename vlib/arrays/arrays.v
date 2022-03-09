@@ -546,9 +546,27 @@ fn swap_nonoverlapping<T>(x_ &T, y_ &T, count int) {
 // Returns the number of elements copied.
 pub fn copy<T>(mut dst []T, src []T) int {
 	min := if dst.len < src.len { dst.len } else { src.len }
-	if min > 0 {
+	if min <= 0 {
+		return 0
+	}
+	if can_copy_bits<T>() {
 		blen := min * int(sizeof(T))
 		unsafe { vmemmove(&T(dst.data), src.data, blen) }
+	} else {
+		for i in 0 .. min {
+			dst[i] = src[i]
+		}
 	}
 	return min
+}
+
+// determines if T can be copied using `memcpy`
+// false if autofree needs to intervene
+// false if type is not copyable e.g. map
+fn can_copy_bits<T>() bool {
+	// references, C pointers, integers, floats, runes
+	if T.name[0] in [`&`, `b`, `c`, `f`, `i`, `r`, `u`, `v`] {
+		return true
+	}
+	return false
 }
