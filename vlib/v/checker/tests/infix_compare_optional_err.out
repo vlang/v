@@ -1,0 +1,6 @@
+vlib/v/checker/tests/infix_compare_optional_err.vv:6:5: error: unwrapped optional cannot be compared in an infix expression
+    4 |
+    5 | fn main(){
+    6 |     if foo() > foo() {}
+      |        ~~~~~~~~~~~~~
+    7 | }
