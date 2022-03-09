@@ -1,4 +1,4 @@
-import view
+import v.tests.view
 
 pub struct TextBox {
 	view.TextDrawer
