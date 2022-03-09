@@ -842,6 +842,9 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						}
 					}
 				}
+			} else if left_type.has_flag(.optional) && right_type.has_flag(.optional) {
+				c.error('unwrapped optional cannot be compared in an infix expression',
+					left_right_pos)
 			}
 		}
 		.left_shift {
