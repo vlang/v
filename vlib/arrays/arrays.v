@@ -218,8 +218,8 @@ pub fn sum<T>(list []T) ?T {
 	}
 }
 
-// sets `acc = list[0]` then successively calls `acc = fold_op(acc, elem)` for each remaining element in `list`.
-// returns `acc`.
+// reduce sets `acc = list[0]`, then successively calls `acc = reduce_op(acc, elem)` for each remaining element in `list`.
+// returns the accumulated value in `acc`.
 // returns an error if the array is empty.
 // See also: [fold](#fold).
 // Example: arrays.reduce([1, 2, 3, 4, 5], fn (t1 int, t2 int) int { return t1 * t2 })? // => 120
@@ -241,7 +241,7 @@ pub fn reduce<T>(list []T, reduce_op fn (t1 T, t2 T) T) ?T {
 	}
 }
 
-// sets `acc = init` then successively calls `acc = fold_op(acc, elem)` for each element in `list`.
+// fold sets `acc = init`, then successively calls `acc = fold_op(acc, elem)` for each element in `list`.
 // returns `acc`.
 // Example:
 // ```v
@@ -285,7 +285,7 @@ pub fn flatten<T>(list [][]T) []T {
 	return result
 }
 
-// groups elements with the same callback result.
+// group_by groups together elements, for which the `grouping_op` callback produced the same result.
 // Example: arrays.group_by<int, string>(['H', 'el', 'lo'], fn (v string) int { return v.len }) // => {1: ['H'], 2: ['el', 'lo']}
 pub fn group_by<K, V>(list []V, grouping_op fn (v V) K) map[K][]V {
 	mut result := map[K][]V{}
