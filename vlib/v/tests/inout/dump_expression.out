@@ -15,5 +15,5 @@
     y: 2
     z: 3
 }
-[vlib/v/tests/inout/dump_expression.vv:38] os.file_name(vexe).replace('.exe', ''): v
+[vlib/v/tests/inout/dump_expression.vv:38] os.file_name(vfile): dump_expression.vv
 [vlib/v/tests/inout/dump_expression.vv:41] f.read(mut buf): 10

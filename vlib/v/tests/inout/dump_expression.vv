@@ -34,11 +34,11 @@ fn dump_of_struct() {
 }
 
 fn dump_of_callexpr() {
-	vexe := @VEXE
-	dump(os.file_name(vexe).replace('.exe', ''))
-	mut f := os.open_file(os.join_path(os.dir(vexe), 'Makefile'), 'r') or { return }
-	mut buf := []byte{len:10}
-	dump( f.read(mut buf) or { -999 })
+	vfile := @FILE
+	dump(os.file_name(vfile))
+	mut f := os.open_file(@FILE, 'r') or { return }
+	mut buf := []byte{len: 10}
+	dump(f.read(mut buf) or { -999 })
 	f.close()
 }
 
