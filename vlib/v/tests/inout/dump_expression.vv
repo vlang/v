@@ -1,3 +1,5 @@
+import os
+
 fn dump_of_int() {
 	x := dump(1) + 1
 	assert x == 2
@@ -31,8 +33,18 @@ fn dump_of_struct() {
 	assert x3 == Point{101, 2, 3}
 }
 
+fn dump_of_callexpr() {
+	vexe := @VEXE
+	dump(os.file_name(vexe).replace('.exe', ''))
+	mut f := os.open_file(os.join_path(os.dir(vexe), 'Makefile'), 'r') or { return }
+	mut buf := []byte{len:10}
+	dump( f.read(mut buf) or { -999 })
+	f.close()
+}
+
 fn main() {
 	dump_of_int()
 	dump_of_string()
 	dump_of_struct()
+	dump_of_callexpr()
 }

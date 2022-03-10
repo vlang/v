@@ -311,6 +311,9 @@ pub fn (x Expr) str() string {
 			if x.mod == '' && x.name == '' {
 				return x.left.str() + '($sargs)$propagate_suffix'
 			}
+			if x.name.contains('.') {
+				return '${x.name}($sargs)$propagate_suffix'
+			}
 			return '${x.mod}.${x.name}($sargs)$propagate_suffix'
 		}
 		CharLiteral {

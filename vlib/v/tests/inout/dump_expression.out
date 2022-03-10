@@ -1,17 +1,19 @@
-[vlib/v/tests/inout/dump_expression.vv:2] 1: 1
-[vlib/v/tests/inout/dump_expression.vv:7] 'a': a
-[vlib/v/tests/inout/dump_expression.vv:23] p: Point{
+[vlib/v/tests/inout/dump_expression.vv:4] 1: 1
+[vlib/v/tests/inout/dump_expression.vv:9] 'a': a
+[vlib/v/tests/inout/dump_expression.vv:25] p: Point{
     x: 1
     y: 2
     z: 3
 }
-[vlib/v/tests/inout/dump_expression.vv:24] p_mut: Point{
+[vlib/v/tests/inout/dump_expression.vv:26] p_mut: Point{
     x: 1
     y: 2
     z: 3
 }
-[vlib/v/tests/inout/dump_expression.vv:25] p_ptr: &Point{
+[vlib/v/tests/inout/dump_expression.vv:27] p_ptr: &Point{
     x: 1
     y: 2
     z: 3
 }
+[vlib/v/tests/inout/dump_expression.vv:38] os.file_name(vexe).replace('.exe', ''): v
+[vlib/v/tests/inout/dump_expression.vv:41] f.read(mut buf): 10
