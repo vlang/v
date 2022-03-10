@@ -2798,7 +2798,7 @@ fn (mut p Parser) parse_generic_types() ([]ast.Type, []string) {
 				cname: util.no_dots(name)
 				mod: p.mod
 				kind: .any
-				is_public: true
+				is_pub: true
 			})
 		}
 		types << ast.new_type(idx).set_flag(.generic)
@@ -3517,7 +3517,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			is_flag: is_flag
 			is_multi_allowed: is_multi_allowed
 		}
-		is_public: is_pub
+		is_pub: is_pub
 	})
 	if idx == -1 {
 		p.error_with_pos('cannot register enum `$name`, another type with this name exists',
@@ -3571,7 +3571,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		// function type: `type mycallback = fn(string, int)`
 		fn_name := p.prepend_mod(name)
 		fn_type := p.parse_fn_type(fn_name)
-		p.table.sym(fn_type).is_public = is_pub
+		p.table.sym(fn_type).is_pub = is_pub
 		type_pos = type_pos.extend(p.tok.pos())
 		comments = p.eat_comments(same_line: true)
 		return ast.FnTypeDecl{
@@ -3606,7 +3606,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 				is_generic: generic_types.len > 0
 				generic_types: generic_types
 			}
-			is_public: is_pub
+			is_pub: is_pub
 		})
 		if typ == ast.invalid_type_idx {
 			p.error_with_pos('cannot register sum type `$name`, another type with this name exists',
@@ -3646,7 +3646,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			parent_type: parent_type
 			language: parent_sym.language
 		}
-		is_public: is_pub
+		is_pub: is_pub
 	})
 	type_end_pos := p.prev_tok.pos()
 	if idx == ast.invalid_type_idx {

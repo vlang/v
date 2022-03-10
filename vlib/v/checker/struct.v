@@ -210,7 +210,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 		}
 	}
 	// allow init structs from generic if they're private except the type is from builtin module
-	if !type_sym.is_public && type_sym.kind != .placeholder && type_sym.language != .c
+	if !type_sym.is_pub && type_sym.kind != .placeholder && type_sym.language != .c
 		&& (type_sym.mod != c.mod && !(node.typ.has_flag(.generic) && type_sym.mod != 'builtin')) {
 		c.error('type `$type_sym.name` is private', node.pos)
 	}

@@ -84,15 +84,15 @@ pub struct TypeSymbol {
 pub:
 	parent_idx int
 pub mut:
-	info      TypeInfo
-	kind      Kind
-	name      string // the internal & source name of the type, i.e. `[5]int`.
-	cname     string // the name with no dots for use in the generated C code
-	methods   []Fn
-	mod       string
-	is_public bool
-	language  Language
-	idx       int
+	info     TypeInfo
+	kind     Kind
+	name     string // the internal & source name of the type, i.e. `[5]int`.
+	cname    string // the name with no dots for use in the generated C code
+	methods  []Fn
+	mod      string
+	is_pub   bool
+	language Language
+	idx      int
 }
 
 // max of 8
@@ -253,7 +253,7 @@ fn (ts TypeSymbol) dbg_common(mut res []string) {
 	res << 'name: $ts.name'
 	res << 'cname: $ts.cname'
 	res << 'kind: $ts.kind'
-	res << 'is_public: $ts.is_public'
+	res << 'is_pub: $ts.is_pub'
 	res << 'language: $ts.language'
 }
 
