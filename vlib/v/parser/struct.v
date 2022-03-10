@@ -304,7 +304,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			generic_types: generic_types
 			attrs: attrs
 		}
-		is_public: is_pub
+		is_pub: is_pub
 	}
 	if p.table.has_deep_child_no_ref(&t, name) {
 		p.error_with_pos('invalid recursive struct `$orig_name`', name_pos)
@@ -478,7 +478,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	}
 	// Declare the type
 	reg_idx := p.table.register_sym(
-		is_public: is_pub
+		is_pub: is_pub
 		kind: .interface_
 		name: interface_name
 		cname: util.no_dots(interface_name)

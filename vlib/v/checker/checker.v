@@ -2357,7 +2357,7 @@ fn (mut c Checker) import_stmt(node ast.Import) {
 		if sym.name[0].is_capital() {
 			if type_sym := c.table.find_sym(name) {
 				if type_sym.kind != .placeholder {
-					if !type_sym.is_public {
+					if !type_sym.is_pub {
 						c.error('module `$node.mod` type `$sym.name` is private', sym.pos)
 					}
 					continue
@@ -3886,7 +3886,7 @@ pub fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
 		c.error('not an enum', node.pos)
 		return ast.void_type
 	}
-	if !(typ_sym.is_public || typ_sym.mod == c.mod) {
+	if !(typ_sym.is_pub || typ_sym.mod == c.mod) {
 		c.error('enum `$typ_sym.name` is private', node.pos)
 	}
 	info := typ_sym.enum_info()
