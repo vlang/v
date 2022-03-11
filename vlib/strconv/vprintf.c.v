@@ -23,7 +23,7 @@ enum Char_parse_state {
 }
 
 pub fn v_printf(str string, pt ...voidptr) {
-	print(v_sprintf(str, pt))
+	print(v_sprintf(str, ...pt))
 }
 
 pub fn v_sprintf(str string, pt ...voidptr) string {
