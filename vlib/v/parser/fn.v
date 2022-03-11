@@ -736,7 +736,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 		|| (p.peek_tok.kind == .comma && p.table.known_type(argname))
 		|| p.peek_tok.kind == .dot || p.peek_tok.kind == .rpar
 		|| (p.tok.kind == .key_mut && (p.peek_token(2).kind == .comma
-		|| p.peek_token(2).kind == .rpar || (p.peek_token(1).kind == .name
+		|| p.peek_token(2).kind == .rpar || (p.peek_tok.kind == .name
 		&& p.peek_token(2).kind == .dot)))
 	// TODO copy pasta, merge 2 branches
 	if types_only {
