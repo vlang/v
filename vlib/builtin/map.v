@@ -662,7 +662,7 @@ pub fn (m &map) clone() map {
 		cached_hashbits: m.cached_hashbits
 		shift: m.shift
 		key_values: unsafe { m.key_values.clone() }
-		metas: unsafe { &u32(malloc(metasize)) }
+		metas: unsafe { &u32(malloc_noscan(metasize)) }
 		extra_metas: m.extra_metas
 		len: m.len
 		has_string_keys: m.has_string_keys

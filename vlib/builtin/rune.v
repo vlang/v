@@ -18,7 +18,7 @@ pub fn (c rune) str() string {
 		println('len=$len')
 		mut str := string{
 			len: len
-			str: malloc(len + 1)
+			str: malloc_noscan(len + 1)
 		}
 		for i in 0..len {
 			str.str[i] = byte(int(c)>>8 * (3 - i) & 0xff)

@@ -791,7 +791,7 @@ pub fn (a []string) str() string {
 // hex returns a string with the hexadecimal representation
 // of the byte elements of the array.
 pub fn (b []byte) hex() string {
-	mut hex := unsafe { malloc(b.len * 2 + 1) }
+	mut hex := unsafe { malloc_noscan(b.len * 2 + 1) }
 	mut dst_i := 0
 	for i in b {
 		n0 := i >> 4
