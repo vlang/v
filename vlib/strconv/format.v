@@ -89,6 +89,7 @@ pub mut:
 	rm_tail_zero bool       // remove the tail zeros from floats
 }
 
+[manualfree]
 pub fn format_str(s string, p BF_param) string {
 	if p.len0 <= 0 {
 		return s.clone()

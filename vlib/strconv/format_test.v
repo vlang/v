@@ -108,3 +108,8 @@ fn test_format() {
 		cnt++
 	}
 }
+
+fn test_sprintf_does_not_double_free_on_g() {
+	x := 3.141516
+	assert strconv.v_sprintf('aaa %G', x) == 'aaa 3.141516'
+}
