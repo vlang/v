@@ -46,28 +46,28 @@ pub enum Language {
 pub fn pref_arch_to_table_language(pref_arch pref.Arch) Language {
 	return match pref_arch {
 		.amd64 {
-			Language.amd64
+			.amd64
 		}
 		.arm64 {
-			Language.arm64
+			.arm64
 		}
 		.arm32 {
-			Language.arm32
+			.arm32
 		}
 		.rv64 {
-			Language.rv64
+			.rv64
 		}
 		.rv32 {
-			Language.rv32
+			.rv32
 		}
 		.i386 {
-			Language.i386
+			.i386
 		}
 		.js_node, .js_browser, .js_freestanding {
-			Language.js
+			.js
 		}
 		._auto, ._max {
-			Language.v
+			.v
 		}
 	}
 }
