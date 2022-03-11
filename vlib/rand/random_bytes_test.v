@@ -101,4 +101,3 @@ fn test_prng_rand_read() ? {
 	dump(differences)
 	assert differences > 11700 // normally around 11758
 }
-
