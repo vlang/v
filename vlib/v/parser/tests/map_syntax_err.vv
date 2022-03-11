@@ -1,0 +1,4 @@
+fn main() {
+	m := map{"aaa": 1}
+	println(m)
+}
