@@ -46,12 +46,8 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 				p.inside_match = false
 			} else if p.tok.lit == 'map' && p.peek_tok.kind == .lcbr && !(p.builtin_mod
 				&& p.file_base in ['map.v', 'map_d_gcboehm_opt.v']) {
-				p.warn_with_pos("deprecated map syntax, use syntax like `{'age': 20}`",
+				p.error_with_pos("deprecated map syntax, use syntax like `{'age': 20}`",
 					p.tok.pos())
-				p.next() // `map`
-				p.next() // `{`
-				node = p.map_init()
-				p.check(.rcbr) // `}`
 			} else {
 				if p.inside_if && p.is_generic_name() && p.peek_tok.kind != .dot {
 					// $if T is string {}
