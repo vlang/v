@@ -36,6 +36,11 @@ pub fn (mut rng PRNG) bytes(bytes_needed int) ?[]byte {
 	return buffer
 }
 
+// read fills in `buf` with a maximum of `buf.len` random bytes
+pub fn (mut rng PRNG) read(mut buf []byte) {
+	read_internal(mut rng, mut buf)
+}
+
 // u32n returns a uniformly distributed pseudorandom 32-bit signed positive `u32` in range `[0, max)`.
 [inline]
 pub fn (mut rng PRNG) u32n(max u32) ?u32 {
