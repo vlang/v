@@ -1,7 +1,5 @@
 module rand
 
-import time
-
 // init initializes the default RNG.
 fn init() {
 	default_rng = new_default()

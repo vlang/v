@@ -1,7 +1,5 @@
 module rand
 
-import time
-
 const clock_seq_hi_and_reserved_valid_values = [`8`, `9`, `a`, `b`]
 
 // uuid_v4 generates a random (v4) UUID
