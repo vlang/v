@@ -19,3 +19,13 @@ When that happens:
 
 After all transitions are checked, and thus the state is changed, the client-specified
 `on_run()` handler of the now current state is called.
+
+## Plot States and Transitions
+
+First install dependencies:
+* Linux `sudo apt install xdot`.
+
+Example of how to generate the graph and transitions:
+```bash
+xdot <(v run fsm_graph.v -f fsm_test.v)
+```
