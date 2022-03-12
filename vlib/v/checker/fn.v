@@ -1297,26 +1297,12 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					c.fail_if_unreadable(arg.expr, got_arg_typ, 'argument')
 				}
 			}
-			if left_sym.kind == .array && method_name == 'sort_with_compare' {
-				array_info := left_sym.info as ast.Array
-				elem_typ := array_info.elem_type
-				arg_sym := c.table.sym(arg.typ)
-				if arg_sym.kind == .function {
-					func_info := arg_sym.info as ast.FnType
-					if func_info.func.params.len == 2 {
-						if func_info.func.params[0].typ.nr_muls() != elem_typ.nr_muls() + 1 {
-							arg_typ_str := c.table.type_to_str(func_info.func.params[0].typ)
-							expected_typ_str := c.table.type_to_str(elem_typ.ref())
-							c.error('sort_with_compare callback function parameter `${func_info.func.params[0].name}` with type `$arg_typ_str` should be `$expected_typ_str`',
-								func_info.func.params[0].type_pos)
-						}
-						if func_info.func.params[1].typ.nr_muls() != elem_typ.nr_muls() + 1 {
-							arg_typ_str := c.table.type_to_str(func_info.func.params[1].typ)
-							expected_typ_str := c.table.type_to_str(elem_typ.ref())
-							c.error('sort_with_compare callback function parameter `${func_info.func.params[1].name}` with type `$arg_typ_str` should be `$expected_typ_str`',
-								func_info.func.params[1].type_pos)
-						}
-					}
+			if left_sym.kind == .array {
+				if method_name == 'sort_with_compare' {
+					c.check_sort_cb_args(2, 'sort_with_compare', left_sym, arg)
+				}
+				if method_name == 'sort_with_compare_context' {
+					c.check_sort_cb_args(3, 'sort_with_compare_context', left_sym, arg)
 				}
 			}
 			// Handle expected interface
@@ -1843,4 +1829,27 @@ fn scope_register_a_b(mut s ast.Scope, pos token.Pos, typ ast.Type) {
 		typ: typ.ref()
 		is_used: true
 	})
+}
+
+fn (mut c Checker) check_sort_cb_args(howmany int, fname string, left_sym &ast.TypeSymbol, arg &ast.CallArg) {
+	array_info := left_sym.info as ast.Array
+	elem_typ := array_info.elem_type
+	arg_sym := c.table.sym(arg.typ)
+	if arg_sym.kind != .function {
+		return
+	}
+	func_info := arg_sym.info as ast.FnType
+	if func_info.func.params.len != howmany {
+		c.error('$fname callback should have exactly $howmany parameters', arg.expr.pos())
+		return
+	}
+	desired_et_muls := elem_typ.nr_muls() + 1
+	expected_typ_str := c.table.type_to_str(elem_typ.ref())
+	for k in 0 .. 2 {
+		if func_info.func.params[k].typ.nr_muls() != desired_et_muls {
+			arg_typ_str := c.table.type_to_str(func_info.func.params[k].typ)
+			c.error('$fname callback function parameter `${func_info.func.params[k].name}` with type `$arg_typ_str` should be `$expected_typ_str`',
+				func_info.func.params[k].type_pos)
+		}
+	}
 }
