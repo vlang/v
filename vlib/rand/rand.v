@@ -8,6 +8,7 @@ import math.bits
 import rand.config
 import rand.constants
 import rand.wyrand
+import time
 
 // PRNG is a common interface for all PRNGs that can be used seamlessly with the rand
 // modules's API. It defines all the methods that a PRNG (in the vlib or custom made) must
@@ -34,6 +35,11 @@ pub fn (mut rng PRNG) bytes(bytes_needed int) ?[]byte {
 	read_internal(mut rng, mut buffer)
 
 	return buffer
+}
+
+// read fills in `buf` with a maximum of `buf.len` random bytes
+pub fn (mut rng PRNG) read(mut buf []byte) {
+	read_internal(mut rng, mut buf)
 }
 
 // u32n returns a uniformly distributed pseudorandom 32-bit signed positive `u32` in range `[0, max)`.
@@ -233,6 +239,41 @@ pub fn (mut rng PRNG) f64_in_range(min f64, max f64) ?f64 {
 	return min + rng.f64n(max - min) ?
 }
 
+// ulid generates an Unique Lexicographically sortable IDentifier.
+// See https://github.com/ulid/spec .
+// Note: ULIDs can leak timing information, if you make them public, because
+// you can infer the rate at which some resource is being created, like
+// users or business transactions.
+// (https://news.ycombinator.com/item?id=14526173)
+pub fn (mut rng PRNG) ulid() string {
+	return internal_ulid_at_millisecond(mut rng, u64(time.utc().unix_time_milli()))
+}
+
+// ulid_at_millisecond does the same as `ulid` but takes a custom Unix millisecond timestamp via `unix_time_milli`.
+pub fn (mut rng PRNG) ulid_at_millisecond(unix_time_milli u64) string {
+	return internal_ulid_at_millisecond(mut rng, unix_time_milli)
+}
+
+// string_from_set returns a string of length `len` containing random characters sampled from the given `charset`
+pub fn (mut rng PRNG) string_from_set(charset string, len int) string {
+	return internal_string_from_set(mut rng, charset, len)
+}
+
+// string returns a string of length `len` containing random characters in range `[a-zA-Z]`.
+pub fn (mut rng PRNG) string(len int) string {
+	return internal_string_from_set(mut rng, rand.english_letters, len)
+}
+
+// hex returns a hexadecimal number of length `len` containing random characters in range `[a-f0-9]`.
+pub fn (mut rng PRNG) hex(len int) string {
+	return internal_string_from_set(mut rng, rand.hex_chars, len)
+}
+
+// ascii returns a random string of the printable ASCII characters with length `len`.
+pub fn (mut rng PRNG) ascii(len int) string {
+	return internal_string_from_set(mut rng, rand.ascii_chars, len)
+}
+
 __global default_rng &PRNG
 
 // new_default returns a new instance of the default RNG. If the seed is not provided, the current time will be used to seed the instance.
@@ -391,3 +432,38 @@ const (
 	hex_chars       = 'abcdef0123456789'
 	ascii_chars     = '!"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ\\^_`abcdefghijklmnopqrstuvwxyz{|}~'
 )
+
+// ulid generates an Unique Lexicographically sortable IDentifier.
+// See https://github.com/ulid/spec .
+// Note: ULIDs can leak timing information, if you make them public, because
+// you can infer the rate at which some resource is being created, like
+// users or business transactions.
+// (https://news.ycombinator.com/item?id=14526173)
+pub fn ulid() string {
+	return internal_ulid_at_millisecond(mut default_rng, u64(time.utc().unix_time_milli()))
+}
+
+// ulid_at_millisecond does the same as `ulid` but takes a custom Unix millisecond timestamp via `unix_time_milli`.
+pub fn ulid_at_millisecond(unix_time_milli u64) string {
+	return internal_ulid_at_millisecond(mut default_rng, unix_time_milli)
+}
+
+// string_from_set returns a string of length `len` containing random characters sampled from the given `charset`
+pub fn string_from_set(charset string, len int) string {
+	return internal_string_from_set(mut default_rng, charset, len)
+}
+
+// string returns a string of length `len` containing random characters in range `[a-zA-Z]`.
+pub fn string(len int) string {
+	return string_from_set(rand.english_letters, len)
+}
+
+// hex returns a hexadecimal number of length `len` containing random characters in range `[a-f0-9]`.
+pub fn hex(len int) string {
+	return string_from_set(rand.hex_chars, len)
+}
+
+// ascii returns a random string of the printable ASCII characters with length `len`.
+pub fn ascii(len int) string {
+	return string_from_set(rand.ascii_chars, len)
+}
