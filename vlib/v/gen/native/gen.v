@@ -7,6 +7,7 @@ import os
 import strings
 import v.ast
 import v.util
+import v.mathutil as mu
 import v.token
 import v.errors
 import v.pref
@@ -453,19 +454,25 @@ fn (mut g Gen) println(comment string) {
 		return
 	}
 	addr := g.debug_pos.hex()
+	mut sb := strings.new_builder(80)
 	// println('$g.debug_pos "$addr"')
-	print(term.red(strings.repeat(`0`, 6 - addr.len) + addr + '  '))
+	sb.write_string(term.red(strings.repeat(`0`, 6 - addr.len) + addr + '  '))
 	for i := g.debug_pos; i < g.pos(); i++ {
 		s := g.buf[i].hex()
 		if s.len == 1 {
-			print(term.blue('0'))
+			sb.write_string(term.blue('0'))
 		}
 		gbihex := g.buf[i].hex()
 		hexstr := term.blue(gbihex) + ' '
-		print(hexstr)
+		sb.write_string(hexstr)
 	}
 	g.debug_pos = g.buf.len
-	println(' ' + comment)
+	//
+	colored := sb.str()
+	plain := term.strip_ansi(colored)
+	padding := ' '.repeat(mu.max(1, 40 - plain.len))
+	final := '$colored$padding$comment'
+	println(final)
 }
 
 fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
