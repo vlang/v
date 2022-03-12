@@ -66,7 +66,41 @@ pub fn vmemset(s voidptr, c int, n int) voidptr {
 
 type FnSortCB = fn (const_a voidptr, const_b voidptr) int
 
+type FnSortContextCB = fn (const_a voidptr, const_b voidptr, context voidptr) int
+
 [inline; unsafe]
 fn vqsort(base voidptr, nmemb usize, size usize, sort_cb FnSortCB) {
 	C.qsort(base, nmemb, size, voidptr(sort_cb))
+}
+
+struct VIndirectQSortContext {
+mut:
+	real_context voidptr
+	real_sort_cb FnSortContextCB
+}
+
+[inline; unsafe]
+fn vqsort_context(base voidptr, nmemb usize, size usize, sort_cb FnSortContextCB, context voidptr) {
+	// See https://stackoverflow.com/questions/39560773/different-declarations-of-qsort-r-on-mac-and-linux
+	// ... and https://xkcd.com/927/ :-|
+	$if linux {
+		C.qsort_r(base, nmemb, size, voidptr(sort_cb), context)
+	} $else {
+		ic := VIndirectQSortContext{
+			real_context: context
+			real_sort_cb: sort_cb
+		}
+		$if windows {
+			cb := fn (context &VIndirectQSortContext, const_a voidptr, const_b voidptr) int {
+				return context.real_sort_cb(const_a, const_b, context.real_context)
+			}
+			C.qsort_s(base, nmemb, size, voidptr(cb), &ic)
+		} $else {
+			// macos, BSDs, probably other unixes too:
+			cb := fn (context &VIndirectQSortContext, const_a voidptr, const_b voidptr) int {
+				return context.real_sort_cb(const_a, const_b, context.real_context)
+			}
+			C.qsort_r(base, nmemb, size, &ic, voidptr(cb))
+		}
+	}
 }

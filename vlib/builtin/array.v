@@ -756,9 +756,19 @@ pub fn (mut a array) sort(callback fn (voidptr, voidptr) int)
 // ```
 pub fn (mut a array) sort_with_compare(callback fn (voidptr, voidptr) int) {
 	$if freestanding {
-		panic('sort does not work with -freestanding')
+		panic('sort_with_compare does not work with -freestanding')
 	} $else {
 		unsafe { vqsort(a.data, usize(a.len), usize(a.element_size), callback) }
+	}
+}
+
+pub fn (mut a array) sort_with_compare_context(callback fn (voidptr, voidptr, voidptr) int, context voidptr) {
+	$if freestanding {
+		panic('sort_with_compare_context does not work with -freestanding')
+	} $else {
+		unsafe {
+			vqsort_context(a.data, usize(a.len), usize(a.element_size), callback, context)
+		}
 	}
 }
 
