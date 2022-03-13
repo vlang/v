@@ -23,6 +23,10 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	// we setting this here rather than at the end of the method
 	// since it is used in c.match_exprs() it saves checking twice
 	node.cond_type = ast.mktyp(cond_type)
+	if (node.cond is ast.Ident && (node.cond as ast.Ident).is_mut)
+		|| (node.cond is ast.SelectorExpr && (node.cond as ast.SelectorExpr).is_mut) {
+		c.fail_if_immutable(node.cond)
+	}
 	c.ensure_type_exists(node.cond_type, node.pos) or { return ast.void_type }
 	c.check_expr_opt_call(node.cond, cond_type)
 	cond_type_sym := c.table.sym(cond_type)
@@ -307,7 +311,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 			}
 		}
 	} else {
-		match mut cond_type_sym.info {
+		match cond_type_sym.info {
 			ast.SumType {
 				for v in cond_type_sym.info.variants {
 					v_str := c.table.type_to_str(v)

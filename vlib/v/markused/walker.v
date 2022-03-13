@@ -96,7 +96,8 @@ pub fn (mut w Walker) mark_markused_globals() {
 	}
 }
 
-pub fn (mut w Walker) stmt(node ast.Stmt) {
+pub fn (mut w Walker) stmt(node_ ast.Stmt) {
+	mut node := unsafe { node_ }
 	match mut node {
 		ast.EmptyStmt {}
 		ast.AsmStmt {
@@ -215,7 +216,8 @@ fn (mut w Walker) exprs(exprs []ast.Expr) {
 	}
 }
 
-fn (mut w Walker) expr(node ast.Expr) {
+fn (mut w Walker) expr(node_ ast.Expr) {
+	mut node := unsafe { node_ }
 	match mut node {
 		ast.EmptyExpr {
 			// TODO make sure this doesn't happen

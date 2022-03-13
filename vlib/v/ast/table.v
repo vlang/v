@@ -1640,7 +1640,7 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 	mut nrt := ''
 	mut c_nrt := ''
 	ts := t.sym(typ)
-	match mut ts.info {
+	match ts.info {
 		Array {
 			mut elem_type := ts.info.elem_type
 			mut elem_sym := t.sym(elem_type)
@@ -1744,7 +1744,7 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 		}
 		else {}
 	}
-	match mut ts.info {
+	match ts.info {
 		Struct {
 			mut info := ts.info
 			info.is_generic = false

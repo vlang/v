@@ -1122,7 +1122,7 @@ fn (mut g Gen) cc_type(typ ast.Type, is_prefix_struct bool) string {
 	sym := g.table.sym(g.unwrap_generic(typ))
 	mut styp := sym.cname
 	// TODO: this needs to be removed; cgen shouldn't resolve generic types (job of checker)
-	match mut sym.info {
+	match sym.info {
 		ast.Struct, ast.Interface, ast.SumType {
 			if sym.info.is_generic {
 				mut sgtyps := '_T'
@@ -2733,7 +2733,7 @@ fn (mut g Gen) map_fn_ptrs(key_typ ast.TypeSymbol) (string, string, string, stri
 	return hash_fn, key_eq_fn, clone_fn, free_fn
 }
 
-fn (mut g Gen) expr(node ast.Expr) {
+fn (mut g Gen) expr(node_ ast.Expr) {
 	// println('cgen expr() line_nr=$node.pos.line_nr')
 	old_discard_or_result := g.discard_or_result
 	old_is_void_expr_stmt := g.is_void_expr_stmt
@@ -2744,6 +2744,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		g.discard_or_result = false
 	}
 	// Note: please keep the type names in the match here in alphabetical order:
+	mut node := unsafe { node_ }
 	match mut node {
 		ast.ComptimeType {
 			g.error('g.expr(): Unhandled ComptimeType', node.pos)
@@ -4550,7 +4551,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 		}
 		// sym := g.table.sym(typ)
 		mut name := sym.cname
-		match mut sym.info {
+		match sym.info {
 			ast.Struct {
 				if sym.info.is_generic {
 					continue
@@ -4724,7 +4725,7 @@ fn (g &Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 		}
 		// create list of deps
 		mut field_deps := []string{}
-		match mut sym.info {
+		match sym.info {
 			ast.ArrayFixed {
 				dep := g.table.sym(sym.info.elem_type).name
 				if dep in type_names {
@@ -5576,7 +5577,7 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 				mut name := method.name
 				if inter_info.parent_type.has_flag(.generic) {
 					parent_sym := g.table.sym(inter_info.parent_type)
-					match mut parent_sym.info {
+					match parent_sym.info {
 						ast.Struct, ast.Interface, ast.SumType {
 							name = g.generic_fn_name(parent_sym.info.concrete_types, method.name,
 								false)

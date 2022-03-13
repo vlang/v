@@ -505,7 +505,8 @@ fn stmt_is_single_line(stmt ast.Stmt) bool {
 
 //=== General Expr-related methods and helpers ===//
 
-pub fn (mut f Fmt) expr(node ast.Expr) {
+pub fn (mut f Fmt) expr(node_ ast.Expr) {
+	mut node := unsafe { node_ }
 	if f.is_debug {
 		eprintln('expr: ${node.pos():-42} | node: ${node.type_name():-20} | $node.str()')
 	}

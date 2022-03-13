@@ -107,7 +107,7 @@ fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt) string {
 	g.writeln('\t${metaname}.fn_name = ${ctoslit(fn_name)};')
 	metasrc := cnewlines(ctoslit(src))
 	g.writeln('\t${metaname}.src = $metasrc;')
-	match mut node.expr {
+	match node.expr {
 		ast.InfixExpr {
 			expr_op_str := ctoslit(node.expr.op.str())
 			expr_left_str := cnewlines(ctoslit(node.expr.left.str()))

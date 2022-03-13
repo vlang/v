@@ -501,7 +501,7 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 	if sym.kind == .interface_ {
 		g.write('_typ $cmp_op ')
 		// `_Animal_Dog_index`
-		sub_type := match mut node.right {
+		sub_type := match node.right {
 			ast.TypeNode { node.right.typ }
 			ast.None { g.table.type_idxs['None__'] }
 			else { ast.Type(0) }

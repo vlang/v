@@ -401,7 +401,7 @@ pub fn (mut t Transformer) expr_stmt_match_expr(mut node ast.MatchExpr) ast.Expr
 		for mut expr in branch.exprs {
 			expr = t.expr(mut expr)
 
-			match mut cond {
+			match cond {
 				ast.BoolLiteral {
 					if expr is ast.BoolLiteral {
 						if cond.val == (expr as ast.BoolLiteral).val {

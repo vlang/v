@@ -486,7 +486,7 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 		match cond {
 			ast.InfixExpr {
 				// g.infix_expr(node.cond)
-				match mut cond.left {
+				match cond.left {
 					ast.Ident {
 						lit := cond.right as ast.IntegerLiteral
 						g.cmp_var(cond.left.name, lit.val.int())

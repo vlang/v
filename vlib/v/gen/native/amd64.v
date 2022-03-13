@@ -1209,13 +1209,13 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	if node.left is ast.InfixExpr {
 		g.n_error('only simple expressions are supported right now (not more than 2 operands)')
 	}
-	match mut node.left {
+	match node.left {
 		ast.Ident {
 			g.mov_var_to_reg(.eax, g.get_var_offset(node.left.name))
 		}
 		else {}
 	}
-	if mut node.right is ast.Ident {
+	if node.right is ast.Ident {
 		var_offset := g.get_var_offset(node.right.name)
 		match node.op {
 			.plus { g.add8_var(.eax, var_offset) }
@@ -1409,9 +1409,9 @@ fn (mut g Gen) cjmp_op(op token.Kind) int {
 }
 
 fn (mut g Gen) condition(infix_expr ast.InfixExpr, neg bool) int {
-	match mut infix_expr.left {
+	match infix_expr.left {
 		ast.IntegerLiteral {
-			match mut infix_expr.right {
+			match infix_expr.right {
 				ast.IntegerLiteral {
 					// 3 < 4
 					a0 := infix_expr.left.val.int()
@@ -1435,7 +1435,7 @@ fn (mut g Gen) condition(infix_expr ast.InfixExpr, neg bool) int {
 			}
 		}
 		ast.Ident {
-			match mut infix_expr.right {
+			match infix_expr.right {
 				ast.IntegerLiteral {
 					// var < 4
 					lit := infix_expr.right as ast.IntegerLiteral
@@ -1515,7 +1515,7 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	infix_expr := node.cond as ast.InfixExpr
 	mut jump_addr := 0 // location of `jne *00 00 00 00*`
 	start := g.pos()
-	match mut infix_expr.left {
+	match infix_expr.left {
 		ast.Ident {
 			match infix_expr.right {
 				ast.Ident {

@@ -175,7 +175,8 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 	mut has_cross_var := false
 	mut is_static := false
 	mut is_volatile := false
-	for i, lx in left {
+	for i, lx_ in left {
+		mut lx := unsafe { lx_ }
 		match mut lx {
 			ast.Ident {
 				if op == .decl_assign {

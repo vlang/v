@@ -796,7 +796,7 @@ pub mut:
 }
 
 pub fn (i &Ident) var_info() IdentVar {
-	match mut i.info {
+	match i.info {
 		IdentVar {
 			return i.info
 		}

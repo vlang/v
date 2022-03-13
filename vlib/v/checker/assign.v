@@ -71,18 +71,18 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		return
 	}
 
-	for i, left in node.left {
-		if left is ast.CallExpr {
+	for i, mut left in node.left {
+		if mut left is ast.CallExpr {
 			// ban `foo() = 10`
 			c.error('cannot call function `${left.name}()` on the left side of an assignment',
 				left.pos)
-		} else if left is ast.PrefixExpr {
+		} else if mut left is ast.PrefixExpr {
 			// ban `*foo() = 10`
 			if left.right is ast.CallExpr && left.op == .mul {
 				c.error('cannot dereference a function call on the left side of an assignment, use a temporary variable',
 					left.pos)
 			}
-		} else if left is ast.IndexExpr {
+		} else if mut left is ast.IndexExpr {
 			if left.index is ast.RangeExpr {
 				c.error('cannot reassign using range expression on the left side of an assignment',
 					left.pos)
@@ -99,8 +99,8 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		if node.right_types.len < node.left.len { // first type or multi return types added above
 			old_inside_ref_lit := c.inside_ref_lit
-			if left is ast.Ident {
-				if left.info is ast.IdentVar {
+			if mut left is ast.Ident {
+				if mut left.info is ast.IdentVar {
 					c.inside_ref_lit = c.inside_ref_lit || left.info.share == .shared_t
 				}
 			}
