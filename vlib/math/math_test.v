@@ -914,8 +914,10 @@ fn test_lcm() {
 }
 
 fn test_digits() {
-	palindrom_digits_in_10th_base := digits(i64(1234432112344321)).reverse()
+	palindrom_digits_in_10th_base := digits(i64(1234432112344321))
 	assert palindrom_digits_in_10th_base == [1, 2, 3, 4, 4, 3, 2, 1, 1, 2, 3, 4, 4, 3, 2, 1]
+
+	assert digits(125, base: 10, reverse: true) == [1, 2, 5]
 
 	digits_in_10th_base := digits(125, base: 10).reverse()
 	assert digits_in_10th_base == [1, 2, 5]

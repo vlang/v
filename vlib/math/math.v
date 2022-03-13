@@ -44,7 +44,8 @@ pub fn degrees(radians f64) f64 {
 
 [params]
 pub struct DigitParams {
-	base int = 10
+	base    int = 10
+	reverse bool
 }
 
 // digits returns an array of the digits of n in the given base b.
@@ -72,6 +73,10 @@ pub fn digits(num i64, params DigitParams) []int {
 	for n != 0 {
 		res << int((n % b) * sign)
 		n /= b
+	}
+
+	if params.reverse {
+		res = res.reverse()
 	}
 
 	return res
