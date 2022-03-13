@@ -79,12 +79,16 @@ mut:
 	real_sort_cb FnSortContextCB
 }
 
+fn vqsort_context_pure_v(base voidptr, nmemb usize, size usize, sort_cb FnSortContextCB, context voidptr) {
+}
+
 [inline; unsafe]
 fn vqsort_context(base voidptr, nmemb usize, size usize, sort_cb FnSortContextCB, context voidptr) {
 	// See https://stackoverflow.com/questions/39560773/different-declarations-of-qsort-r-on-mac-and-linux
 	// ... and https://xkcd.com/927/ :-|
 	$if linux {
-		C.qsort_r(base, nmemb, size, voidptr(sort_cb), context)
+		vqsort_context_pure_v(base, nmemb, size, sort_cb, context)
+		// C.qsort_r(base, nmemb, size, voidptr(sort_cb), context)
 	} $else {
 		ic := VIndirectQSortContext{
 			real_context: context
