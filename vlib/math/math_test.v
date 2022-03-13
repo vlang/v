@@ -917,20 +917,20 @@ fn test_digits() {
 	palindrom_digits_in_10th_base := digits(i64(1234432112344321)).reverse()
 	assert palindrom_digits_in_10th_base == [1, 2, 3, 4, 4, 3, 2, 1, 1, 2, 3, 4, 4, 3, 2, 1]
 
-	digits_in_10th_base := digits(125, 10).reverse()
+	digits_in_10th_base := digits(125, base: 10).reverse()
 	assert digits_in_10th_base == [1, 2, 5]
 
-	digits_in_16th_base := digits(15, 16).reverse()
+	digits_in_16th_base := digits(15, base: 16).reverse()
 	assert digits_in_16th_base == [15]
 
-	negative_digits := digits(-4, 2).reverse()
+	negative_digits := digits(-4, base: 2).reverse()
 	assert negative_digits == [-1, 0, 0]
 
-	digits_in_7th_base := digits(234, 7).reverse()
+	digits_in_7th_base := digits(234, base: 7).reverse()
 	assert digits_in_7th_base == [4, 5, 3]
 
-	digits_in_12th_base := digits(67432, 12).reverse()
-	assert i64_digits_in_12th_base == [3, 3, 0, 3, 4]
+	digits_in_12th_base := digits(67432, base: 12).reverse()
+	assert digits_in_12th_base == [3, 3, 0, 3, 4]
 }
 
 // Check that math functions of high angle values

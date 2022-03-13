@@ -42,18 +42,20 @@ pub fn degrees(radians f64) f64 {
 	return radians * (180.0 / pi)
 }
 
+[params]
+pub struct DigitParams {
+	base int = 10
+}
+
 // digits returns an array of the digits of n in the given base b.
 // Number argument accepts any integer type (i8|i16|int|isize|i64) and will be cast to i64
 // The base argument is optional, if no value is given it will default to base 10.
 // digits returns an array with the digits in reverse order i.e. digits(12345, 10) == [5,4,3,2,1]
-pub fn digits(num i64, base ...int) []int {
+pub fn digits(num i64, params DigitParams) []int {
 	// set base to 10 initially and change only if base is explicitly set.
-	mut b := 10
-	if base.len != 0 {
-		b = base[0]
-	}
+	mut b := params.base
 	if b < 2 {
-		panic('digits: Cannot find digits of n with base $base')
+		panic('digits: Cannot find digits of n with base $b')
 	}
 	mut n := num
 	mut sign := 1
