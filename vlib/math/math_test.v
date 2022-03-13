@@ -914,6 +914,22 @@ fn test_lcm() {
 }
 
 fn test_digits() {
+	// a small sanity check with a known number like 100,
+	// just written in different base systems:
+	assert digits(100, reverse: true) == [1, 0, 0]
+	assert digits(100, base: 2, reverse: true) == [1, 1, 0, 0, 1, 0, 0]
+	assert digits(100, base: 3, reverse: true) == [1, 0, 2, 0, 1]
+	assert digits(100, base: 4, reverse: true) == [1, 2, 1, 0]
+	assert digits(100, base: 8, reverse: true) == [1, 4, 4]
+	assert digits(100, base: 10, reverse: true) == [1, 0, 0]
+	assert digits(100, base: 12, reverse: true) == [8, 4]
+	assert digits(100, base: 16, reverse: true) == [6, 4]
+	assert digits(100, base: 20, reverse: true) == [5, 0]
+	assert digits(100, base: 32, reverse: true) == [3, 4]
+	assert digits(100, base: 64, reverse: true) == [1, 36]
+	assert digits(100, base: 128, reverse: true) == [100]
+	assert digits(100, base: 256, reverse: true) == [100]
+
 	palindrom_digits_in_10th_base := digits(i64(1234432112344321))
 	assert palindrom_digits_in_10th_base == [1, 2, 3, 4, 4, 3, 2, 1, 1, 2, 3, 4, 4, 3, 2, 1]
 
