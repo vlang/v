@@ -21,11 +21,34 @@ After all transitions are checked, and thus the state is changed, the client-spe
 `on_run()` handler of the now current state is called.
 
 ## Plot States and Transitions
+This module includes a tool for generating dot diagrams from .v source code,
+that defines a FSM. The tool is located in [fsm_graph.v](tools/fsm_graph.v).
 
-First install dependencies:
-* Linux `sudo apt install xdot`.
-
-Example of how to generate the graph and transitions:
+Here is an example of how to generate a .dot file with the graph and transitions:
 ```bash
-xdot <(v run fsm_graph.v -f fsm_test.v)
+v run vlib/datatypes/fsm/tools/fsm_graph.v -f vlib/datatypes/fsm/fsm_test.v > graph.dot
 ```
+
+You can convert the generated .dot file to a PNG file with Graphviz's `dot`
+conversion tool:
+```bash
+v run vlib/datatypes/fsm/tools/fsm_graph.v -f vlib/datatypes/fsm/fsm_test.v > graph.dot
+dot -Tpng graph.dot > graph.png
+xdg-open graph.png
+```
+
+You can also visualise it with Graphviz (the `dot` command) 
+& ImageMagick (the `display` command):
+```bash
+v run vlib/datatypes/fsm/tools/fsm_graph.v -f vlib/datatypes/fsm/fsm_test.v | dot -Tpng | display
+```
+
+To view the .dot file, you can also use any of the 
+[Graphviz Graphical Interfaces](https://graphviz.org/resources/#graphical-interfaces)
+and `xdot` in particular:
+```bash
+v run vlib/datatypes/fsm/tools/fsm_graph.v -f vlib/datatypes/fsm/fsm_test.v | xdot -
+```
+
+In all of the above examples, you can replace `vlib/datatypes/fsm/fsm_test.v`
+with the path to your own .v code that imports and uses `fsm`.
