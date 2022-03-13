@@ -1803,7 +1803,7 @@ pub fn (mut f Fmt) enum_val(node ast.EnumVal) {
 }
 
 pub fn (mut f Fmt) ident(node ast.Ident) {
-	if mut node.info is ast.IdentVar {
+	if node.info is ast.IdentVar {
 		if node.info.is_mut {
 			f.write(node.info.share.str() + ' ')
 		}

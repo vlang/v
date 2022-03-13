@@ -373,7 +373,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 	}
 	if right.unaliased_sym.kind == .array {
 		if left.sym.kind in [.sum_type, .interface_] {
-			if mut node.right is ast.ArrayInit {
+			if node.right is ast.ArrayInit {
 				if node.right.exprs.len > 0 {
 					mut infix_exprs := []ast.InfixExpr{}
 					for i in 0 .. node.right.exprs.len {
@@ -392,7 +392,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 				}
 			}
 		}
-		if mut node.right is ast.ArrayInit {
+		if node.right is ast.ArrayInit {
 			if node.right.exprs.len > 0 {
 				// `a in [1,2,3]` optimization => `a == 1 || a == 2 || a == 3`
 				// avoids an allocation

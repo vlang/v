@@ -624,7 +624,6 @@ pub struct Stmt {
 pub struct Var {
 pub:
 	name            string
-	expr            Expr
 	share           ShareType
 	is_mut          bool
 	is_autofree_tmp bool
@@ -632,6 +631,7 @@ pub:
 	is_auto_deref   bool
 	is_inherited    bool
 pub mut:
+	expr       Expr
 	typ        Type
 	orig_type  Type   // original sumtype type; 0 if it's not a sumtype
 	smartcasts []Type // nested sum types require nested smart casting, for that a list of types is needed
@@ -997,7 +997,6 @@ pub struct ForInStmt {
 pub:
 	key_var    string
 	val_var    string
-	cond       Expr
 	is_range   bool
 	high       Expr // `10` in `for i in 0..10 {`
 	stmts      []Stmt
@@ -1005,6 +1004,7 @@ pub:
 	val_is_mut bool // `for mut val in vals {` means that modifying `val` will modify the array
 	// and the array cannot be indexed inside the loop
 pub mut:
+	cond      Expr
 	key_type  Type
 	val_type  Type
 	cond_type Type

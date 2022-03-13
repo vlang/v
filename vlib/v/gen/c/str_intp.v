@@ -200,7 +200,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	// fn (mut g Gen) str_int2(node ast.StringInterLiteral) {
 	if g.inside_comptime_for_field {
 		mut node_ := unsafe { node }
-		for i, expr in node_.exprs {
+		for i, mut expr in node_.exprs {
 			if mut expr is ast.Ident {
 				if mut expr.obj is ast.Var {
 					node_.expr_types[i] = expr.obj.typ

@@ -7,7 +7,8 @@ import v.ast
 import v.util
 import v.token
 
-fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
+fn (mut g Gen) gen_assign_stmt(node_ ast.AssignStmt) {
+	mut node := unsafe { node_ }
 	if node.is_static {
 		g.write('static ')
 	}
@@ -88,7 +89,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 		g.checker_bug('node.left_types.len < node.left.len', node.pos)
 	}
 
-	for i, left in node.left {
+	for i, mut left in node.left {
 		mut is_auto_heap := false
 		mut var_type := node.left_types[i]
 		mut val_type := node.right_types[i]
@@ -163,7 +164,7 @@ fn (mut g Gen) gen_assign_stmt(node ast.AssignStmt) {
 					g.expr(left)
 					g.is_assign_lhs = false
 					g.is_arraymap_set = false
-					if left is ast.IndexExpr {
+					if mut left is ast.IndexExpr {
 						sym := g.table.sym(left.left_type)
 						if sym.kind in [.map, .array] {
 							g.expr(val)

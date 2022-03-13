@@ -1342,7 +1342,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 									}
 								}
 								dot := if is_ptr { '->' } else { '.' }
-								if mut cast_sym.info is ast.Aggregate {
+								if cast_sym.info is ast.Aggregate {
 									sym := g.table.sym(cast_sym.info.types[g.aggregate_type_idx])
 									g.write('${dot}_$sym.cname')
 								} else {

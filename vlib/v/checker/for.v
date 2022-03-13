@@ -102,7 +102,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			}
 			if node.val_is_mut {
 				value_type = value_type.ref()
-				match node.cond {
+				match mut node.cond {
 					ast.Ident {
 						if mut node.cond.obj is ast.Var {
 							if !node.cond.obj.is_mut {
