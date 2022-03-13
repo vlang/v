@@ -982,3 +982,9 @@ fn test_powi() {
 	assert powi(0, -2) == -1 // div by 0
 	assert powi(2, -1) == 0
 }
+
+fn test_count_digits() {
+	assert count_digits(12345) == 5
+	assert count_digits(i64(1234567890)) == 10
+	assert count_digits(-67345) == 5
+}

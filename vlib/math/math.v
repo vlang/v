@@ -79,7 +79,7 @@ pub fn digits(_n i64, _b ...int) []int {
 // count_digits return the number of digits in the number passed.
 // Number argument accepts any integer type (i8|i16|int|isize|i64) and will be cast to i64
 pub fn count_digits(n i64) int {
-	return int(math.ceil(math.log(f64(n) + 1 ) / math.log(10.0)))
+	return int(math.ceil(math.log(math.abs(f64(_n) + 1 )) / math.log(10.0)))
 }
 
 // minmax returns the minimum and maximum value of the two provided.
