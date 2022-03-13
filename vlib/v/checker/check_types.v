@@ -821,7 +821,7 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 				} else if arg_sym.kind in [.struct_, .interface_, .sum_type] {
 					mut generic_types := []ast.Type{}
 					mut concrete_types := []ast.Type{}
-					match mut arg_sym.info {
+					match arg_sym.info {
 						ast.Struct, ast.Interface, ast.SumType {
 							generic_types = arg_sym.info.generic_types
 							concrete_types = arg_sym.info.concrete_types

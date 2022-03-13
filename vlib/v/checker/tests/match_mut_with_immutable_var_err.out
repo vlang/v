@@ -1,0 +1,7 @@
+vlib/v/checker/tests/match_mut_with_immutable_var_err.vv:5:12: error: `i` is immutable, declare it with `mut` to make it mutable
+    3 | fn main() {
+    4 |     i := Int(0)
+    5 |     match mut i {
+      |               ^
+    6 |         int { i = 1 }
+    7 |         byte { i = 2 }

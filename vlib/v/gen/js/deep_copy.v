@@ -206,7 +206,7 @@ fn (mut g JsGen) final_gen_copy(typ StrType) {
 		}
 		else {}
 	}
-	match mut sym.info {
+	match sym.info {
 		ast.Alias {
 			g.gen_copy_for_alias(sym.info, styp, copy_fn_name)
 		}

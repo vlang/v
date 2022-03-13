@@ -178,7 +178,7 @@ fn (mut g Gen) final_gen_str(typ StrType) {
 		g.gen_str_for_option(typ.typ, styp, str_fn_name)
 		return
 	}
-	match mut sym.info {
+	match sym.info {
 		ast.Alias {
 			if sym.info.is_import {
 				g.gen_str_default(sym, styp, str_fn_name)
