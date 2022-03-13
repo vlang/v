@@ -48,10 +48,14 @@ pub struct DigitParams {
 	reverse bool
 }
 
-// digits returns an array of the digits of n in the given base b.
-// Number argument accepts any integer type (i8|i16|int|isize|i64) and will be cast to i64
-// The base argument is optional, if no value is given it will default to base 10.
-// digits returns an array with the digits in reverse order i.e. digits(12345, 10) == [5,4,3,2,1]
+// digits returns an array of the digits of `num` in the given optional `base`.
+// The `num` argument accepts any integer type (i8|i16|int|isize|i64), and will be cast to i64
+// The `base:` argument is optional, it will default to base: 10.
+// This function returns an array of the digits in reverse order i.e.:
+// Example: assert math.digits(12345, base: 10) == [5,4,3,2,1]
+// You can also use it, with an explicit `reverse: true` parameter,
+// (it will do a reverse of the result array internally => slower):
+// Example: assert math.digits(12345, reverse: true) == [1,2,3,4,5]
 pub fn digits(num i64, params DigitParams) []int {
 	// set base to 10 initially and change only if base is explicitly set.
 	mut b := params.base
