@@ -259,10 +259,10 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	mut file := parse_comptime(v_code, p.table, p.pref, scope)
 	file.path = tmpl_path
 	// copy vars from current fn scope into vweb_tmpl scope
-	for stmt in file.stmts {
+	for mut stmt in file.stmts {
 		if mut stmt is ast.FnDecl {
 			if stmt.name == 'main.vweb_tmpl_$tmp_fn_name' {
-				for _, obj in p.scope.objects {
+				for _, mut obj in p.scope.objects {
 					if mut obj is ast.Var {
 						stmt.scope.register(ast.Var{
 							...obj

@@ -3235,7 +3235,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 							dot := if field.typ.is_ptr() { '->' } else { '.' }
 							sum_type_deref_field += ')$dot'
 						}
-						if mut cast_sym.info is ast.Aggregate {
+						if cast_sym.info is ast.Aggregate {
 							agg_sym := g.table.sym(cast_sym.info.types[g.aggregate_type_idx])
 							sum_type_deref_field += '_$agg_sym.cname'
 						} else {
@@ -3695,7 +3695,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 							}
 						}
 						dot := if is_ptr || is_auto_heap { '->' } else { '.' }
-						if mut cast_sym.info is ast.Aggregate {
+						if cast_sym.info is ast.Aggregate {
 							sym := g.table.sym(cast_sym.info.types[g.aggregate_type_idx])
 							g.write('${dot}_$sym.cname')
 						} else {

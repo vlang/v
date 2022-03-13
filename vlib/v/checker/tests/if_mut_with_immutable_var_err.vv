@@ -1,0 +1,11 @@
+type Int = byte | int
+
+fn main() {
+	i := Int(0)
+	if mut i is int {
+		i = 1
+	} else if mut i is byte {
+		i = 2
+	}
+	println(i)
+}
