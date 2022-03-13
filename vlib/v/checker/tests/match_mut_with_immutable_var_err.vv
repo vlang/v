@@ -2,7 +2,7 @@ type Int = byte | int
 
 fn main() {
 	i := Int(0)
-	match i {
+	match mut i {
 		int { i = 1 }
 		byte { i = 2 }
 	}
