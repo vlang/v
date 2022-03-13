@@ -1,0 +1,16 @@
+
+
+fn main() {
+	a := 'string'
+	t := typeof(a)
+	println(t)
+	t2 := typeof('another string')
+	println(t2)
+	n := 123
+	t3 := typeof(n)
+	println(t3)
+	t4 := typeof(123)
+	println(t4)
+//	id := 'hello world'
+//	println(id)
+}

@@ -641,6 +641,31 @@ pub fn (mut g Gen) gen_amd64_exit(expr ast.Expr) {
 	g.trap() // should never be reached, just in case
 }
 
+fn (mut g Gen) relpc(dst Register, src Register) {
+	//  488d1d 00000000 lea 0(%rip),%dst
+	//  4801d8          add %dst, %src
+	match dst {
+		.rax {
+			match src {
+				.rsi {
+					g.write([byte(0x48), 0x8d, 0x35, 0x00, 0x00, 0x00, 0x00]) // lea rsi, rip
+					g.write([byte(0x48), 0x01, 0xf0]) // add rax, rsi
+				}
+				.rbx {
+					g.write([byte(0x48), 0x8d, 0x1d, 0x00, 0x00, 0x00, 0x00])
+					g.write([byte(0x48), 0x01, 0xd8])
+				}
+				else {
+					panic('relpc requires .rax, {.rsi,.rbx}')
+				}
+			}
+		}
+		else {
+			panic('relpc requires .rax, {.rsi,.rbx}')
+		}
+	}
+}
+
 fn (mut g Gen) learel(reg Register, val int) {
 	g.write8(0x48)
 	g.write8(0x8d)
@@ -848,7 +873,9 @@ fn (mut g Gen) add_reg(a Register, b Register) {
 }
 
 fn (mut g Gen) mov_reg(a Register, b Register) {
-	if a == .rbp && b == .rsp {
+	if a == .rax && b == .rsi {
+		g.write([byte(0x48), 0x89, 0xf0])
+	} else if a == .rbp && b == .rsp {
 		g.write8(0x48)
 		g.write8(0x89)
 	} else if a == .rdx && b == .rax {
@@ -1024,26 +1051,26 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 							/*
 							ast.int_type_idx {
 								g.expr(node.left[i])
-match node.left[i] {
-ast.IndexExpr {
-								ie := node.left[i] as ast.IndexExpr
-								bracket := name.index('[') or {
-									g.v_error('bracket expected', node.pos)
-									exit(1)
+								match node.left[i] {
+								ast.IndexExpr {
+									ie := node.left[i] as ast.IndexExpr
+									bracket := name.index('[') or {
+										g.v_error('bracket expected', node.pos)
+										exit(1)
+									}
+									var_name := name[0 .. bracket]
+									mut dest := g.get_var_offset(var_name)
+									index := ie.index as ast.IntegerLiteral
+									dest += index.val.int() * 8
+									// TODO check if out of bounds access
+									g.mov(.rax, right.val.int())
+									g.mov_reg_to_var(dest, .rax)
+									// eprintln('${var_name}[$index] = ${right.val.int()}')
+								} else {
+									dump(node)
+									g.v_error('oops', node.pos)
 								}
-								var_name := name[0 .. bracket]
-								mut dest := g.get_var_offset(var_name)
-								index := ie.index as ast.IntegerLiteral
-								dest += index.val.int() * 8
-								// TODO check if out of bounds access
-								g.mov(.rax, right.val.int())
-								g.mov_reg_to_var(dest, .rax)
-								// eprintln('${var_name}[$index] = ${right.val.int()}')
-} else {
-dump(node)
-g.v_error('oops', node.pos)
-}
-}
+								}
 							}
 							*/
 							else {
@@ -1130,6 +1157,7 @@ g.v_error('oops', node.pos)
 							pos += 8
 						}
 						ast.StringLiteral {
+							// TODO: use learel
 							g.mov64(.rsi, g.allocate_string('$e.val', 2, .abs64)) // for rsi its 2
 							g.mov_reg_to_var(pos, .rsi)
 							pos += 8
@@ -1169,7 +1197,7 @@ g.v_error('oops', node.pos)
 			ast.StringLiteral {
 				dest := g.allocate_var(name, 4, 0)
 				ie := node.right[i] as ast.StringLiteral
-				g.mov64(.rsi, g.allocate_string(ie.str(), 2, .abs64)) // for rsi its 2
+				g.learel(.rsi, g.allocate_string(ie.val.str(), 3, .rel32))
 				g.mov_reg_to_var(dest, .rsi)
 			}
 			ast.CallExpr {
@@ -1177,6 +1205,9 @@ g.v_error('oops', node.pos)
 				g.call_fn(right)
 				g.mov_reg_to_var(dest, .rax)
 				g.mov_var_to_reg(.rsi, dest)
+			}
+			ast.SelectorExpr {
+				g.v_error('unhandled selectors', node.pos)
 			}
 			ast.GoExpr {
 				g.v_error('threads not implemented for the native backend', node.pos)
@@ -1194,6 +1225,14 @@ g.v_error('oops', node.pos)
 						g.v_error('unsupported cast type $right.typ', node.pos)
 					}
 				}
+			}
+			ast.FloatLiteral {
+				g.v_error('floating point arithmetic not yet implemented for the native backend',
+					node.pos)
+			}
+			ast.TypeOf {
+				g.gen_typeof_expr(node.right[i] as ast.TypeOf, true)
+				g.mov_reg(.rsi, .rax)
 			}
 			else {
 				// dump(node)
@@ -1286,9 +1325,11 @@ fn (mut g Gen) gen_asm_stmt_amd64(asm_node ast.AsmStmt) {
 				}
 				ast.AsmDisp {
 				}
-				ast.FloatLiteral {
-				}
 				*/
+				ast.FloatLiteral {
+					g.v_error('floating point arithmetic is not yet implemented for the native backend',
+						asm_node.pos)
+				}
 				string {
 					// XXX
 					g.v_error('no strings allowed in this context', asm_node.pos)
@@ -1630,6 +1671,6 @@ pub fn (mut g Gen) allocate_var(name string, size int, initial_val int) int {
 	// Generate the value assigned to the variable
 	g.write32(initial_val)
 	// println('allocate_var(size=$size, initial_val=$initial_val)')
-	g.println('mov [rbp-$n.hex2()], $initial_val (Allocate var `$name`)')
+	g.println('mov [rbp-$n.hex2()], $initial_val ; Allocate var `$name`')
 	return g.stack_var_pos
 }
