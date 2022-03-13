@@ -47,8 +47,7 @@ pub fn degrees(radians f64) f64 {
 // The base argument is optional, if no value is given it will default to base 10.
 // digits returns an array with the digits in reverse order i.e. digits(12345, 10) == [5,4,3,2,1]
 pub fn digits(num i64, base ...int) []int {
-	
-	//set base to 10 initially and change only if base is explicitly set.
+	// set base to 10 initially and change only if base is explicitly set.
 	mut b := 10
 	if base.len != 0 {
 		b = base[0]
@@ -72,14 +71,14 @@ pub fn digits(num i64, base ...int) []int {
 		res << int((n % b) * sign)
 		n /= b
 	}
-	
+
 	return res
 }
 
 // count_digits return the number of digits in the number passed.
 // Number argument accepts any integer type (i8|i16|int|isize|i64) and will be cast to i64
 pub fn count_digits(n i64) int {
-	return int(math.ceil(math.log(math.abs(f64(n) + 1 )) / math.log(10.0)))
+	return int(ceil(log(abs(f64(n) + 1)) / log(10.0)))
 }
 
 // minmax returns the minimum and maximum value of the two provided.
