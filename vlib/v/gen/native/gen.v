@@ -415,7 +415,6 @@ g.expr
 		*/
 		ast.TypeOf {
 			g.gen_typeof_expr(expr, newline)
-			//			g.gen_print_reg(.rax, 3, fd)
 		}
 		ast.LockExpr {
 			// passthru
