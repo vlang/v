@@ -914,31 +914,24 @@ fn test_lcm() {
 }
 
 fn test_digits() {
-	//int - 10th base (125)
-	digits_in_10th_base := digits(125, 10)
-	assert digits_in_10th_base[0] == 5
-	assert digits_in_10th_base[1] == 2
-	assert digits_in_10th_base[2] == 1
-	//int - 16th base (15 - f)
-	digits_in_16th_base := digits(15, 16)
-	assert digits_in_16th_base[0] == 15
-	//int - negative base 2 (100)
-	negative_digits := digits(-4, 2)
-	assert negative_digits[2] == -1
-	//i64 - default base 10 - no arg given
-	i64_digits_in_10th_base := digits(i64(1234432112344321))
-	assert i64_digits_in_10th_base[7] == 1
-	assert i64_digits_in_10th_base[14] == 3
-	//i8 - 7th base (453)
-	i8_digits_in_7th_base := digits(i8(234), 7)
-	assert i8_digits_in_7th_base[0] == 3
-	assert i8_digits_in_7th_base[2] == 4
-	//i16 - 12th base (33034)
-	i16_digits_in_12th_base := digits(i16(67432), 16)
-	assert i16_digits_in_12th_base[0] == 4
-	assert i16_digits_in_12th_base[2] == 0
-	assert i16_digits_in_12th_base[3] == 3
+	palindrom_digits_in_10th_base := digits(i64(1234432112344321)).reverse()
+	assert palindrom_digits_in_10th_base == [1, 2, 3, 4, 4, 3, 2, 1, 1, 2, 3, 4, 4, 3, 2, 1]
 
+	digits_in_10th_base := digits(125, 10).reverse()
+	assert digits_in_10th_base == [1, 2, 5]
+
+	digits_in_16th_base := digits(15, 16).reverse()
+	assert digits_in_16th_base == [15]
+
+	negative_digits := digits(-4, 2).reverse()
+	assert negative_digits == [-1, 0, 0]
+
+	digits_in_7th_base := digits(234, 7).reverse()
+	assert digits_in_7th_base == [4, 5, 3]
+
+	digits_in_12th_base := digits(67432, 12).reverse()
+	assert i64_digits_in_12th_base == [3, 3, 0, 3, 4]
+}
 
 // Check that math functions of high angle values
 // return accurate results. [since (vf_[i] + large) - large != vf_[i],
