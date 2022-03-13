@@ -93,7 +93,7 @@ pub fn load(path string) ?Image {
 		data: 0
 	}
 	// flag := if ext == 'png' { C.STBI_rgb_alpha } else { 0 }
-	desired_channels := if ext == 'png' { 4 } else { 0 }
+	desired_channels := if ext in ['png', 'jpg', 'jpeg'] { 4 } else { 0 }
 	res.data = C.stbi_load(&char(path.str), &res.width, &res.height, &res.nr_channels,
 		desired_channels)
 	if desired_channels == 4 && res.nr_channels == 3 {
