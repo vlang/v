@@ -245,4 +245,12 @@ jobs:
       - name: Installl the libsodium wrapper through VPM
         run: ./v install libsodium
       - name: Test libsodium
-        run: ./v test ~/.vmodules/libsodium
+        run: VJOBS=1 ./v -stats test ~/.vmodules/libsodium
+
+      ## Go2V
+      - name: Clone & Build go2v
+        run: git clone --depth=1 https://github.com/vlang/go2v go2v/
+      - name: Build go2v
+        run: ./v go2v/
+      - name: Run tests for go2v
+        run: VJOBS=1 ./v -stats test go2v/
