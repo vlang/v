@@ -148,7 +148,7 @@ fn (mut g Gen) range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 		g.write('$info.size')
 	} else if sym.kind == .array {
 		if node.left_type.is_ptr() {
-			g.write('${tmp_left}->len')
+			g.write('$tmp_left->len')
 		} else {
 			g.write('${tmp_left}.len')
 		}
