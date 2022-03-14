@@ -106,7 +106,7 @@ pub fn (mut b Builder) go_back(n int) {
 // cut_last cuts the last `n` bytes from the buffer and returns them
 pub fn (mut b Builder) cut_last(n int) string {
 	cut_pos := b.len - n
-	x := unsafe { (&[]byte(b))[cut_pos..] }
+	x := unsafe { (*&[]byte(b))[cut_pos..] }
 	res := x.bytestr()
 	b.trim(cut_pos)
 	return res
@@ -147,7 +147,7 @@ pub fn (b &Builder) last_n(n int) string {
 	if n > b.len {
 		return ''
 	}
-	x := unsafe { (&[]byte(b))[b.len - n..] }
+	x := unsafe { (*&[]byte(b))[b.len - n..] }
 	return x.bytestr()
 }
 
@@ -157,7 +157,7 @@ pub fn (b &Builder) after(n int) string {
 	if n >= b.len {
 		return ''
 	}
-	x := unsafe { (&[]byte(b))[n..] }
+	x := unsafe { (*&[]byte(b))[n..] }
 	return x.bytestr()
 }
 

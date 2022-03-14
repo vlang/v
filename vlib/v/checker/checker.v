@@ -3763,8 +3763,8 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			'(note, that variables may be mutable but string values are always immutable, like in Go and Java)',
 			node.pos)
 	}
-	if !c.inside_unsafe && ((typ.is_ptr() && !typ.has_flag(.shared_f)
-		&& !node.left.is_auto_deref_var()) || typ.is_pointer()) {
+	if (typ.is_ptr() && !typ.has_flag(.shared_f)
+		&& !node.left.is_auto_deref_var()) || typ.is_pointer() {
 		mut is_ok := false
 		if mut node.left is ast.Ident {
 			if mut node.left.obj is ast.Var {
@@ -3772,7 +3772,11 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 				is_ok = node.left.obj.is_mut && node.left.obj.is_arg && !typ.deref().is_ptr()
 			}
 		}
-		if !is_ok && !c.pref.translated && !c.file.is_translated {
+		if !is_ok && node.index is ast.RangeExpr {
+			s := c.table.type_to_str(typ)
+			c.error('type `$s` does not support slicing', node.pos)
+		}
+		else if !c.inside_unsafe && !is_ok && !c.pref.translated && !c.file.is_translated {
 			c.warn('pointer indexing is only allowed in `unsafe` blocks', node.pos)
 		}
 	}
