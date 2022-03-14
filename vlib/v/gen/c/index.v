@@ -85,7 +85,7 @@ fn (mut g Gen) range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 	} else if sym.kind == .array {
 		if !range.has_high {
 			tmp_left = g.new_tmp_var()
-			line := g.go_before_stmt(0)
+			line := g.go_before_ternary()
 			g.out.write_string(util.tabs(g.indent))
 			tmp_type := g.typ(node.left_type)
 			g.write('$tmp_type $tmp_left = ')
