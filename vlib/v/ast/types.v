@@ -1122,9 +1122,10 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 				res = 'thread ' + t.type_to_str_using_aliases(rtype, import_aliases)
 			}
 		}
-		.alias, .any, .aggregate, .placeholder, .enum_ {
+		.alias, .any, .placeholder, .enum_ {
 			res = t.shorten_user_defined_typenames(res, import_aliases)
 		}
+		.aggregate {}
 	}
 	mut nr_muls := typ.nr_muls()
 	if typ.has_flag(.shared_f) {
