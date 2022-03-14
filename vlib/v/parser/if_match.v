@@ -173,6 +173,24 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 	}
 }
 
+fn (mut p Parser) is_only_array_type() bool {
+	if p.tok.kind == .lsbr {
+		for i in 1 .. 20 {
+			if p.peek_token(i).kind == .rsbr {
+				next_kind := p.peek_token(i + 1).kind
+				if next_kind == .name {
+					return true
+				} else if next_kind == .lsbr {
+					continue
+				} else {
+					return false
+				}
+			}
+		}
+	}
+	return false
+}
+
 fn (mut p Parser) match_expr() ast.MatchExpr {
 	match_first_pos := p.tok.pos()
 	p.inside_match = true
@@ -199,7 +217,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		} else if (p.tok.kind == .name && !(p.tok.lit == 'C' && p.peek_tok.kind == .dot)
 			&& (((ast.builtin_type_names_matcher.find(p.tok.lit) > 0 || p.tok.lit[0].is_capital())
 			&& p.peek_tok.kind != .lpar) || (p.peek_tok.kind == .dot && p.peek_token(2).lit.len > 0
-			&& p.peek_token(2).lit[0].is_capital()))) || p.tok.kind == .lsbr {
+			&& p.peek_token(2).lit[0].is_capital()))) || p.is_only_array_type() {
 			mut types := []ast.Type{}
 			for {
 				// Sum type match
