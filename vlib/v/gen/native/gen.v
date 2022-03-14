@@ -295,7 +295,7 @@ fn (mut g Gen) get_var_offset(var_name string) int {
 
 fn (mut g Gen) gen_typeof_expr(it ast.TypeOf, newline bool) {
 	nl := if newline { '\n' } else { '' }
-	r := g.typ(it.expr_type)
+	r := g.typ(it.expr_type).name
 	g.learel(.rax, g.allocate_string('$r$nl', 3, .rel32))
 }
 
