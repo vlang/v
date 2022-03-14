@@ -2084,9 +2084,9 @@ __global:
 	f int // public and mutable both inside and outside parent module
 }
 ```
-Private fields are available only inside the same [module](#modules), the attempt
-to access it from another module will cause an error during compilation.
-Immutable fields are readonly from anywhere.
+Private fields are available only inside the same [module](#modules), any attempt
+to directly access them from another module will cause an error during compilation.
+Public immutable fields are readonly everywhere.
 
 ### Methods
 
