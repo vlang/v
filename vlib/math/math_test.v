@@ -930,25 +930,24 @@ fn test_digits() {
 	assert digits(100, base: 128, reverse: true) == [100]
 	assert digits(100, base: 256, reverse: true) == [100]
 
-	palindrom_digits_in_10th_base := digits(i64(1234432112344321))
-	assert palindrom_digits_in_10th_base == [1, 2, 3, 4, 4, 3, 2, 1, 1, 2, 3, 4, 4, 3, 2, 1]
+	assert digits(1234432112344321) == digits(1234432112344321, reverse: true)
+	assert digits(1234432112344321) == [1, 2, 3, 4, 4, 3, 2, 1, 1, 2, 3, 4, 4, 3, 2, 1]
 
 	assert digits(125, base: 10, reverse: true) == [1, 2, 5]
+	assert digits(125, base: 10).reverse() == [1, 2, 5]
 
-	digits_in_10th_base := digits(125, base: 10).reverse()
-	assert digits_in_10th_base == [1, 2, 5]
+	assert digits(15, base: 16, reverse: true) == [15]
+	assert digits(127, base: 16, reverse: true) == [7, 15]
+	assert digits(65535, base: 16, reverse: true) == [15, 15, 15, 15]
+	assert digits(-65535, base: 16, reverse: true) == [-15, 15, 15, 15]
 
-	digits_in_16th_base := digits(15, base: 16).reverse()
-	assert digits_in_16th_base == [15]
+	assert digits(-127) == [7, 2, -1]
+	assert digits(-127).reverse() == [-1, 2, 7]
+	assert digits(-127, reverse: true) == [-1, 2, 7]
 
-	negative_digits := digits(-4, base: 2).reverse()
-	assert negative_digits == [-1, 0, 0]
+	assert digits(234, base: 7).reverse() == [4, 5, 3]
 
-	digits_in_7th_base := digits(234, base: 7).reverse()
-	assert digits_in_7th_base == [4, 5, 3]
-
-	digits_in_12th_base := digits(67432, base: 12).reverse()
-	assert digits_in_12th_base == [3, 3, 0, 3, 4]
+	assert digits(67432, base: 12).reverse() == [3, 3, 0, 3, 4]
 }
 
 // Check that math functions of high angle values
@@ -995,7 +994,19 @@ fn test_powi() {
 }
 
 fn test_count_digits() {
+	assert count_digits(-999) == 3
+	assert count_digits(-100) == 3
+	assert count_digits(-99) == 2
+	assert count_digits(-10) == 2
+	assert count_digits(-1) == 1
+	assert count_digits(0) == 1
+	assert count_digits(1) == 1
+	assert count_digits(10) == 2
+	assert count_digits(99) == 2
+	assert count_digits(100) == 3
+	assert count_digits(999) == 3
+	//
 	assert count_digits(12345) == 5
-	assert count_digits(i64(1234567890)) == 10
+	assert count_digits(123456789012345) == 15
 	assert count_digits(-67345) == 5
 }

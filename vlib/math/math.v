@@ -68,15 +68,21 @@ pub fn digits(num i64, params DigitParams) []int {
 		sign = -1
 		n = -n
 	}
+
 	mut res := []int{}
-	// if number passed to function is 0 then short-circuit and return 0
 	if n == 0 {
+		// short-circuit and return 0
 		res << 0
 		return res
 	}
 	for n != 0 {
-		res << int((n % b) * sign)
-		n /= b
+		next_n := n / b
+		res << int(n - next_n * b)
+		n = next_n
+	}
+
+	if sign == -1 {
+		res[res.len - 1] *= sign
 	}
 
 	if params.reverse {
@@ -88,8 +94,17 @@ pub fn digits(num i64, params DigitParams) []int {
 
 // count_digits return the number of digits in the number passed.
 // Number argument accepts any integer type (i8|i16|int|isize|i64) and will be cast to i64
-pub fn count_digits(n i64) int {
-	return int(ceil(log(abs(f64(n) + 1)) / log(10.0)))
+pub fn count_digits(number i64) int {
+	mut n := number
+	if n == 0 {
+		return 1
+	}
+	mut c := 0
+	for n != 0 {
+		n = n / 10
+		c++
+	}
+	return c
 }
 
 // minmax returns the minimum and maximum value of the two provided.
