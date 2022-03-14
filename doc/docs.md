@@ -2084,29 +2084,9 @@ __global:
 	f int // public and mutable both inside and outside parent module
 }
 ```
-
-For example, here's the `string` type defined in the `builtin` module:
-
-```v ignore
-struct string {
-    str &byte
-pub:
-    len int
-}
-```
-
-It's easy to see from this definition that `string` is an immutable type.
-The byte pointer with the string data is not accessible outside `builtin` at all.
-The `len` field is public, but immutable:
-```v failcompile
-fn main() {
-	str := 'hello'
-	len := str.len // OK
-	str.len++ // Compilation error
-}
-```
-
-This means that defining public readonly fields is very easy in V.
+Private fields are available only inside the same [module](#modules), any attempt
+to directly access them from another module will cause an error during compilation.
+Public immutable fields are readonly everywhere.
 
 ### Methods
 
