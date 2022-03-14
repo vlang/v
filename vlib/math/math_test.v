@@ -914,14 +914,40 @@ fn test_lcm() {
 }
 
 fn test_digits() {
-	digits_in_10th_base := digits(125, 10)
-	assert digits_in_10th_base[0] == 5
-	assert digits_in_10th_base[1] == 2
-	assert digits_in_10th_base[2] == 1
-	digits_in_16th_base := digits(15, 16)
-	assert digits_in_16th_base[0] == 15
-	negative_digits := digits(-4, 2)
-	assert negative_digits[2] == -1
+	// a small sanity check with a known number like 100,
+	// just written in different base systems:
+	assert digits(100, reverse: true) == [1, 0, 0]
+	assert digits(100, base: 2, reverse: true) == [1, 1, 0, 0, 1, 0, 0]
+	assert digits(100, base: 3, reverse: true) == [1, 0, 2, 0, 1]
+	assert digits(100, base: 4, reverse: true) == [1, 2, 1, 0]
+	assert digits(100, base: 8, reverse: true) == [1, 4, 4]
+	assert digits(100, base: 10, reverse: true) == [1, 0, 0]
+	assert digits(100, base: 12, reverse: true) == [8, 4]
+	assert digits(100, base: 16, reverse: true) == [6, 4]
+	assert digits(100, base: 20, reverse: true) == [5, 0]
+	assert digits(100, base: 32, reverse: true) == [3, 4]
+	assert digits(100, base: 64, reverse: true) == [1, 36]
+	assert digits(100, base: 128, reverse: true) == [100]
+	assert digits(100, base: 256, reverse: true) == [100]
+
+	assert digits(1234432112344321) == digits(1234432112344321, reverse: true)
+	assert digits(1234432112344321) == [1, 2, 3, 4, 4, 3, 2, 1, 1, 2, 3, 4, 4, 3, 2, 1]
+
+	assert digits(125, base: 10, reverse: true) == [1, 2, 5]
+	assert digits(125, base: 10).reverse() == [1, 2, 5]
+
+	assert digits(15, base: 16, reverse: true) == [15]
+	assert digits(127, base: 16, reverse: true) == [7, 15]
+	assert digits(65535, base: 16, reverse: true) == [15, 15, 15, 15]
+	assert digits(-65535, base: 16, reverse: true) == [-15, 15, 15, 15]
+
+	assert digits(-127) == [7, 2, -1]
+	assert digits(-127).reverse() == [-1, 2, 7]
+	assert digits(-127, reverse: true) == [-1, 2, 7]
+
+	assert digits(234, base: 7).reverse() == [4, 5, 3]
+
+	assert digits(67432, base: 12).reverse() == [3, 3, 0, 3, 4]
 }
 
 // Check that math functions of high angle values
@@ -965,4 +991,22 @@ fn test_powi() {
 	assert powi(2, 62) == i64(4611686018427387904)
 	assert powi(0, -2) == -1 // div by 0
 	assert powi(2, -1) == 0
+}
+
+fn test_count_digits() {
+	assert count_digits(-999) == 3
+	assert count_digits(-100) == 3
+	assert count_digits(-99) == 2
+	assert count_digits(-10) == 2
+	assert count_digits(-1) == 1
+	assert count_digits(0) == 1
+	assert count_digits(1) == 1
+	assert count_digits(10) == 2
+	assert count_digits(99) == 2
+	assert count_digits(100) == 3
+	assert count_digits(999) == 3
+	//
+	assert count_digits(12345) == 5
+	assert count_digits(123456789012345) == 15
+	assert count_digits(-67345) == 5
 }

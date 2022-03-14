@@ -42,23 +42,69 @@ pub fn degrees(radians f64) f64 {
 	return radians * (180.0 / pi)
 }
 
-// digits returns an array of the digits of n in the given base.
-pub fn digits(_n int, base int) []int {
-	if base < 2 {
-		panic('digits: Cannot find digits of n with base $base')
+[params]
+pub struct DigitParams {
+	base    int = 10
+	reverse bool
+}
+
+// digits returns an array of the digits of `num` in the given optional `base`.
+// The `num` argument accepts any integer type (i8|i16|int|isize|i64), and will be cast to i64
+// The `base:` argument is optional, it will default to base: 10.
+// This function returns an array of the digits in reverse order i.e.:
+// Example: assert math.digits(12345, base: 10) == [5,4,3,2,1]
+// You can also use it, with an explicit `reverse: true` parameter,
+// (it will do a reverse of the result array internally => slower):
+// Example: assert math.digits(12345, reverse: true) == [1,2,3,4,5]
+pub fn digits(num i64, params DigitParams) []int {
+	// set base to 10 initially and change only if base is explicitly set.
+	mut b := params.base
+	if b < 2 {
+		panic('digits: Cannot find digits of n with base $b')
 	}
-	mut n := _n
+	mut n := num
 	mut sign := 1
 	if n < 0 {
 		sign = -1
 		n = -n
 	}
+
 	mut res := []int{}
-	for n != 0 {
-		res << (n % base) * sign
-		n /= base
+	if n == 0 {
+		// short-circuit and return 0
+		res << 0
+		return res
 	}
+	for n != 0 {
+		next_n := n / b
+		res << int(n - next_n * b)
+		n = next_n
+	}
+
+	if sign == -1 {
+		res[res.len - 1] *= sign
+	}
+
+	if params.reverse {
+		res = res.reverse()
+	}
+
 	return res
+}
+
+// count_digits return the number of digits in the number passed.
+// Number argument accepts any integer type (i8|i16|int|isize|i64) and will be cast to i64
+pub fn count_digits(number i64) int {
+	mut n := number
+	if n == 0 {
+		return 1
+	}
+	mut c := 0
+	for n != 0 {
+		n = n / 10
+		c++
+	}
+	return c
 }
 
 // minmax returns the minimum and maximum value of the two provided.
