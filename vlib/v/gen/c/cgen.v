@@ -4795,7 +4795,7 @@ fn (mut g Gen) go_before_ternary() string {
 }
 
 fn (mut g Gen) insert_before_stmt(s string) {
-	cur_line := g.go_before_stmt(0)
+	cur_line := g.go_before_stmt(g.inside_ternary)
 	g.writeln(s)
 	g.write(cur_line)
 }

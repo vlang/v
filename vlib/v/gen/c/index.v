@@ -85,12 +85,12 @@ fn (mut g Gen) range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 	} else if sym.kind == .array {
 		if !range.has_high {
 			tmp_left = g.new_tmp_var()
-			line := g.go_before_ternary()
-			g.out.write_string(util.tabs(g.indent))
 			tmp_type := g.typ(node.left_type)
-			g.write('$tmp_type $tmp_left = ')
+			g.insert_before_stmt('${util.tabs(g.indent)}$tmp_type $tmp_left;')
+			// (tmp = expr, array_slice(...))
+			g.write('($tmp_left = ')
 			g.expr(node.left)
-			g.write(';\n$line')
+			g.write(', ')
 		}
 		if node.is_gated {
 			g.write('array_slice_ni(')
@@ -148,10 +148,11 @@ fn (mut g Gen) range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 		g.write('$info.size')
 	} else if sym.kind == .array {
 		if node.left_type.is_ptr() {
-			g.write('$tmp_left->len')
+			g.write('$tmp_left->')
 		} else {
-			g.write('${tmp_left}.len')
+			g.write('${tmp_left}.')
 		}
+		g.write('len)')
 	} else {
 		g.write('(')
 		g.expr(node.left)
