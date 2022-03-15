@@ -1,6 +1,0 @@
-vlib/v/parser/tests/unnecessary_mut_2.vv:2:9: error: unexpected token `true`
-    1 | fn main() {
-    2 |     if mut true {
-      |            ~~~~
-    3 |         println(true)
-    4 |     }

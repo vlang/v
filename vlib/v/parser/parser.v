@@ -1943,6 +1943,7 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 		p.register_auto_import('sync')
 	}
 	mut_pos := p.tok.pos()
+	kind_name := '$p.tok.kind'
 	is_mut := p.tok.kind == .key_mut || is_shared || is_atomic
 	if is_mut {
 		p.next()
@@ -1956,7 +1957,11 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 		p.next()
 	}
 	if p.tok.kind != .name {
-		p.error('unexpected token `$p.tok.lit`')
+		if is_mut || is_static || is_volatile {
+			p.error_with_pos('the `$kind_name` keyword is invalid here', mut_pos)
+		} else {
+			p.error('unexpected token `$p.tok.lit`')
+		}
 		return ast.Ident{
 			scope: p.scope
 		}
