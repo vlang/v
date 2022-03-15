@@ -1,0 +1,14 @@
+vlib/v/checker/tests/invalid_mut.vv:3:5: error: the `mut` keyword is invalid here
+    1 | fn main() {
+    2 |     mut x := 0
+    3 |     if mut x == 0 {
+      |        ~~~
+    4 |         println(true)
+    5 |     }
+vlib/v/checker/tests/invalid_mut.vv:6:10: error: the `mut` keyword is invalid here
+    4 |         println(true)
+    5 |     }
+    6 |     if 0 == mut x {
+      |             ~~~
+    7 |         println(true)
+    8 |     }

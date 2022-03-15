@@ -3,5 +3,8 @@ fn main() {
 	if mut x == 0 {
 		println(true)
 	}
+	if 0 == mut x {
+		println(true)
+	}
 	_ = x
 }

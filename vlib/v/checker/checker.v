@@ -594,11 +594,19 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		match mut node.left {
 			ast.Ident, ast.SelectorExpr {
 				if node.left.is_mut {
-					c.error('remove unnecessary `mut`', node.left.mut_pos)
+					c.error('the `mut` keyword is invalid here', node.left.mut_pos)
 				}
 			}
 			else {}
 		}
+	}
+	match mut node.right {
+		ast.Ident, ast.SelectorExpr {
+			if node.right.is_mut {
+				c.error('the `mut` keyword is invalid here', node.right.mut_pos)
+			}
+		}
+		else {}
 	}
 	eq_ne := node.op in [.eq, .ne]
 	// Single side check
