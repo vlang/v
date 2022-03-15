@@ -660,7 +660,7 @@ pub fn str_intp(data_len int, in_data voidptr) string {
 	mut res := strings.new_builder(256)
 	input_base := &StrIntpData(in_data)
 	for i := 0; i < data_len; i++ {
-		data := unsafe { &(input_base[i]) }
+		data := unsafe { &input_base[i] }
 		// avoid empty strings
 		if data.str.len != 0 {
 			res.write_string(data.str)
