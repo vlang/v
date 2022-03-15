@@ -5,7 +5,7 @@ module builtin
 [unsafe]
 pub fn __malloc(size usize) voidptr {
 	unsafe {
-		return malloc(int(size))
+		return C.malloc(int(size))
 	}
 }
 
