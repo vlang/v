@@ -144,7 +144,7 @@ fn main() {
 	// TTF render 0 Frame counter
 	app.ttf_render << &ttf.TTF_render_Sokol{
 		bmp: &ttf.BitMap{
-			tf: &(app.tf[0])
+			tf: &app.tf[0]
 			buf: unsafe { malloc_noscan(32000000) }
 			buf_size: (32000000)
 			color: 0xFF0000FF
@@ -155,7 +155,7 @@ fn main() {
 	// TTF render 1 Text Block
 	app.ttf_render << &ttf.TTF_render_Sokol{
 		bmp: &ttf.BitMap{
-			tf: &(app.tf[1])
+			tf: &app.tf[1]
 			// color : 0xFF0000_10
 			// style: .raw
 			// use_font_metrics: true
@@ -164,7 +164,7 @@ fn main() {
 	// TTF mouse position render
 	app.ttf_render << &ttf.TTF_render_Sokol{
 		bmp: &ttf.BitMap{
-			tf: &(app.tf[0])
+			tf: &app.tf[0]
 		}
 	}
 	// setup sokol_gfx
