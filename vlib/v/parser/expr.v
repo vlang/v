@@ -605,7 +605,7 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 			}
 		}
 		if mut right is ast.ParExpr {
-			if right.expr in [ast.Ident, ast.StructInit, ast.IndexExpr, ast.SelectorExpr] {
+			if right.expr is ast.StructInit {
 				p.note_with_pos('unnecessary `()`, use `&$right.expr` instead of `&($right.expr)`',
 					right.pos)
 				right = right.expr
