@@ -1,0 +1,5 @@
+fn main() {
+	if atomic true {
+		println(true)
+	}
+}
