@@ -81,7 +81,7 @@ jobs:
         run: make
 
       - name: Ensure V can be compiled with -autofree
-        run: ./v -autofree -o v2 cmd/v  ## NB: this does not mean it runs, but at least keeps it from regressing
+        run: ./v -autofree -cc gcc -cg -o v2 cmd/v  ## NB: this does not mean it runs, but at least keeps it from regressing
 
       - name: Shader examples can be build
         run: |
