@@ -352,32 +352,12 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 }
 
 pub fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
-	// First check everything that applies to both fns and methods
 	// TODO merge logic from method_call and fn_call
-	/*
-	for i, call_arg in node.args {
-		if call_arg.is_mut {
-			c.fail_if_immutable(call_arg.expr)
-			if !arg.is_mut {
-				tok := call_arg.share.str()
-				c.error('`$node.name` parameter `$arg.name` is not `$tok`, `$tok` is not needed`',
-					call_arg.expr.pos())
-			} else if arg.typ.share() != call_arg.share {
-				c.error('wrong shared type', call_arg.expr.pos())
-			}
-		} else {
-			if arg.is_mut && (!call_arg.is_mut || arg.typ.share() != call_arg.share) {
-				tok := call_arg.share.str()
-				c.error('`$node.name` parameter `$arg.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${i+1}`',
-					call_arg.expr.pos())
-			}
-		}
-	}
-	*/
-	// Now call `method_call` or `fn_call` for specific checks.
+	// First check everything that applies to both fns and methods
 	old_inside_fn_arg := c.inside_fn_arg
 	c.inside_fn_arg = true
 	mut continue_check := true
+	// Now call `method_call` or `fn_call` for specific checks.
 	typ := if node.is_method {
 		c.method_call(mut node)
 	} else {
@@ -810,7 +790,8 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 					call_arg.expr.pos())
 			} else {
 				if param.typ.share() != call_arg.share {
-					c.error('wrong shared type', call_arg.expr.pos())
+					c.error('wrong shared type `$call_arg.share.str()`, expected: `$param.typ.share().str()`',
+						call_arg.expr.pos())
 				}
 				if to_lock != '' && !param.typ.has_flag(.shared_f) {
 					c.error('$to_lock is `shared` and must be `lock`ed to be passed as `mut`',
@@ -1299,7 +1280,8 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 						arg.expr.pos())
 				} else {
 					if param_share != arg.share {
-						c.error('wrong shared type', arg.expr.pos())
+						c.error('wrong shared type `$arg.share.str()`, expected: `$param_share.str()`',
+							arg.expr.pos())
 					}
 					if to_lock != '' && param_share != .shared_t {
 						c.error('$to_lock is `shared` and must be `lock`ed to be passed as `mut`',
