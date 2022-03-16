@@ -71,7 +71,7 @@ make
 ```
 or 
 ```
-Download the stable zip file depending your OS [Tag/Release](https://github.com/vlang/v/tags depend on your OS).
+Download the stable zip file depending your OS [Tag/Release](https://github.com/vlang/v/tags).
 ```
 
 That's it! Now you have a V executable at `[path to V repo]/v`.
