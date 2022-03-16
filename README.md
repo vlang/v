@@ -69,6 +69,10 @@ git clone https://github.com/vlang/v
 cd v
 make
 ```
+or 
+```
+Download the stable zip file depending your OS [Tag/Release](https://github.com/vlang/v/tags depend on your OS).
+```
 
 That's it! Now you have a V executable at `[path to V repo]/v`.
 `[path to V repo]` can be anywhere.
