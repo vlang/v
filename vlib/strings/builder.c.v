@@ -176,6 +176,30 @@ pub fn (mut b Builder) str() string {
 	return s
 }
 
+// grow ensures that the buffer has enough space for at least `n` bytes by growing the buffer if necessary
+pub fn (mut b Builder) grow(n int) {
+	// code adapted from vlib/builtin/array.v
+	if n < 0 || b.cap - b.len >= n {
+		return
+	}
+
+	cap := 2 * b.cap + n
+	new_size := cap * b.element_size
+	new_data := vcalloc(new_size)
+	if b.data != voidptr(0) {
+		unsafe { vmemcpy(new_data, b.data, b.len * b.element_size) }
+		// TODO: the old data may be leaked when no GC is used (ref-counting?)
+		if b.flags.has(.noslices) {
+			unsafe { free(b.data) }
+		}
+	}
+	unsafe {
+		b.data = new_data
+		b.offset = 0
+		b.cap = cap
+	}
+}
+
 // free is for manually freeing the contents of the buffer
 [unsafe]
 pub fn (mut b Builder) free() {

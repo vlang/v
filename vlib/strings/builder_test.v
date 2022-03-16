@@ -112,3 +112,14 @@ fn test_write_runes() {
 	x := sb.str()
 	assert x == 'hello world'
 }
+
+fn test_grow() {
+	mut sb := strings.new_builder(0)
+	assert sb.cap == 0
+	sb.grow(10)
+	assert sb.cap == 10
+	sb.grow(10)
+	assert sb.cap == 10
+	sb.grow(15)
+	assert sb.cap == 35
+}
