@@ -85,7 +85,10 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 							&& !c.check_types(expr_type, ret_type) {
 							ret_sym := c.table.sym(ret_type)
 							is_noreturn := is_noreturn_callexpr(stmt.expr)
-							if !(node.is_expr && ret_sym.kind == .sum_type) && !is_noreturn {
+							if !(node.is_expr && ret_sym.kind == .sum_type
+								&& (ret_type.has_flag(.generic)
+								|| c.table.is_sumtype_or_in_variant(ret_type, expr_type)))
+								&& !is_noreturn {
 								c.error('return type mismatch, it should be `$ret_sym.name`',
 									stmt.expr.pos())
 							}
