@@ -66,40 +66,36 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 		// If the last statement is an expression, return its type
 		if branch.stmts.len > 0 {
 			mut stmt := branch.stmts[branch.stmts.len - 1]
-			match mut stmt {
-				ast.ExprStmt {
-					if node.is_expr {
-						c.expected_type = node.expected_type
+			if mut stmt is ast.ExprStmt {
+				if node.is_expr {
+					c.expected_type = node.expected_type
+				}
+				expr_type := c.expr(stmt.expr)
+				if first_iteration {
+					if node.is_expr && (node.expected_type.has_flag(.optional)
+						|| c.table.type_kind(node.expected_type) == .sum_type) {
+						ret_type = node.expected_type
+					} else {
+						ret_type = expr_type
 					}
-					expr_type := c.expr(stmt.expr)
-					if first_iteration {
-						if node.is_expr && (node.expected_type.has_flag(.optional)
-							|| c.table.type_kind(node.expected_type) == .sum_type) {
-							ret_type = node.expected_type
-						} else {
-							ret_type = expr_type
-						}
-						stmt.typ = expr_type
-					} else if node.is_expr && ret_type.idx() != expr_type.idx() {
-						if !c.check_types(ret_type, expr_type)
-							&& !c.check_types(expr_type, ret_type) {
-							ret_sym := c.table.sym(ret_type)
-							is_noreturn := is_noreturn_callexpr(stmt.expr)
-							if !(node.is_expr && ret_sym.kind == .sum_type
-								&& (ret_type.has_flag(.generic)
-								|| c.table.is_sumtype_or_in_variant(ret_type, expr_type)))
-								&& !is_noreturn {
-								c.error('return type mismatch, it should be `$ret_sym.name`',
-									stmt.expr.pos())
-							}
+					stmt.typ = expr_type
+				} else if node.is_expr && ret_type.idx() != expr_type.idx() {
+					if !c.check_types(ret_type, expr_type) && !c.check_types(expr_type, ret_type) {
+						ret_sym := c.table.sym(ret_type)
+						is_noreturn := is_noreturn_callexpr(stmt.expr)
+						if !(node.is_expr && ret_sym.kind == .sum_type
+							&& (ret_type.has_flag(.generic)
+							|| c.table.is_sumtype_or_in_variant(ret_type, expr_type)))
+							&& !is_noreturn {
+							c.error('return type mismatch, it should be `$ret_sym.name`',
+								stmt.expr.pos())
 						}
 					}
 				}
-				else {
-					if node.is_expr && ret_type != ast.void_type {
-						c.error('`match` expression requires an expression as the last statement of every branch',
-							stmt.pos)
-					}
+			} else {
+				if node.is_expr && ret_type != ast.void_type {
+					c.error('`match` expression requires an expression as the last statement of every branch',
+						stmt.pos)
 				}
 			}
 		}
@@ -122,10 +118,6 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 			c.returns = false
 		}
 	}
-	// if ret_type != ast.void_type {
-	// node.is_expr = c.expected_type != ast.void_type
-	// node.expected_type = c.expected_type
-	// }
 	node.return_type = ret_type
 	cond_var := c.get_base_name(&node.cond)
 	if cond_var != '' {
