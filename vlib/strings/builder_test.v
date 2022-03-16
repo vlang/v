@@ -113,13 +113,17 @@ fn test_write_runes() {
 	assert x == 'hello world'
 }
 
-fn test_grow() {
+fn test_ensure_cap() {
 	mut sb := strings.new_builder(0)
 	assert sb.cap == 0
-	sb.grow(10)
+	sb.ensure_cap(10)
 	assert sb.cap == 10
-	sb.grow(10)
+	sb.ensure_cap(10)
 	assert sb.cap == 10
-	sb.grow(15)
-	assert sb.cap == 35
+	sb.ensure_cap(15)
+	assert sb.cap == 15
+	sb.ensure_cap(10)
+	assert sb.cap == 15
+	sb.ensure_cap(-1)
+	assert sb.cap == 15
 }
