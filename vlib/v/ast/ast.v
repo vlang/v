@@ -1692,10 +1692,10 @@ pub:
 
 [inline]
 pub fn (expr Expr) is_blank_ident() bool {
-	match expr {
-		Ident { return expr.kind == .blank_ident }
-		else { return false }
+	if expr is Ident {
+		return expr.kind == .blank_ident
 	}
+	return false
 }
 
 pub fn (expr Expr) pos() token.Pos {
