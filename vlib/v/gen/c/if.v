@@ -115,88 +115,83 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				cvar_name := guard_vars[guard_idx]
 				g.writeln('\tIError err = ${cvar_name}.err;')
 			}
-		} else {
-			match branch.cond {
-				ast.IfGuardExpr {
-					mut var_name := guard_vars[i]
-					mut short_opt := false
-					if var_name == '' {
-						short_opt = true // we don't need a further tmp, so use the one we'll get later
-						var_name = g.new_tmp_var()
-						guard_vars[i] = var_name // for `else`
-						g.tmp_count--
-						g.writeln('if (${var_name}.state == 0) {')
+		} else if branch.cond is ast.IfGuardExpr {
+			mut var_name := guard_vars[i]
+			mut short_opt := false
+			if var_name == '' {
+				short_opt = true // we don't need a further tmp, so use the one we'll get later
+				var_name = g.new_tmp_var()
+				guard_vars[i] = var_name // for `else`
+				g.tmp_count--
+				g.writeln('if (${var_name}.state == 0) {')
+			} else {
+				g.write('if ($var_name = ')
+				g.expr(branch.cond.expr)
+				g.writeln(', ${var_name}.state == 0) {')
+			}
+			if short_opt || branch.cond.vars[0].name != '_' {
+				base_type := g.base_type(branch.cond.expr_type)
+				if short_opt {
+					cond_var_name := if branch.cond.vars[0].name == '_' {
+						'_dummy_${g.tmp_count + 1}'
 					} else {
-						g.write('if ($var_name = ')
-						g.expr(branch.cond.expr)
-						g.writeln(', ${var_name}.state == 0) {')
+						branch.cond.vars[0].name
 					}
-					if short_opt || branch.cond.vars[0].name != '_' {
-						base_type := g.base_type(branch.cond.expr_type)
-						if short_opt {
-							cond_var_name := if branch.cond.vars[0].name == '_' {
-								'_dummy_${g.tmp_count + 1}'
-							} else {
-								branch.cond.vars[0].name
-							}
-							g.write('\t$base_type $cond_var_name = ')
-							g.expr(branch.cond.expr)
-							g.writeln(';')
+					g.write('\t$base_type $cond_var_name = ')
+					g.expr(branch.cond.expr)
+					g.writeln(';')
+				} else {
+					mut is_auto_heap := false
+					if branch.stmts.len > 0 {
+						scope := g.file.scope.innermost(ast.Node(branch.stmts[branch.stmts.len - 1]).pos().pos)
+						if v := scope.find_var(branch.cond.vars[0].name) {
+							is_auto_heap = v.is_auto_heap
+						}
+					}
+					if branch.cond.vars.len == 1 {
+						left_var_name := c_name(branch.cond.vars[0].name)
+						if is_auto_heap {
+							g.writeln('\t$base_type* $left_var_name = HEAP($base_type, *($base_type*)${var_name}.data);')
 						} else {
-							mut is_auto_heap := false
-							if branch.stmts.len > 0 {
-								scope := g.file.scope.innermost(ast.Node(branch.stmts[branch.stmts.len - 1]).pos().pos)
-								if v := scope.find_var(branch.cond.vars[0].name) {
-									is_auto_heap = v.is_auto_heap
-								}
-							}
-							if branch.cond.vars.len == 1 {
-								left_var_name := c_name(branch.cond.vars[0].name)
-								if is_auto_heap {
-									g.writeln('\t$base_type* $left_var_name = HEAP($base_type, *($base_type*)${var_name}.data);')
-								} else {
-									g.writeln('\t$base_type $left_var_name = *($base_type*)${var_name}.data;')
-								}
-							} else if branch.cond.vars.len > 1 {
-								for vi, var in branch.cond.vars {
-									left_var_name := c_name(var.name)
-									sym := g.table.sym(branch.cond.expr_type)
-									if sym.kind == .multi_return {
-										mr_info := sym.info as ast.MultiReturn
-										if mr_info.types.len == branch.cond.vars.len {
-											var_typ := g.typ(mr_info.types[vi])
-											if is_auto_heap {
-												g.writeln('\t$var_typ* $left_var_name = (HEAP($base_type, *($base_type*)${var_name}.data).arg$vi);')
-											} else {
-												g.writeln('\t$var_typ $left_var_name = (*($base_type*)${var_name}.data).arg$vi;')
-											}
-										}
+							g.writeln('\t$base_type $left_var_name = *($base_type*)${var_name}.data;')
+						}
+					} else if branch.cond.vars.len > 1 {
+						for vi, var in branch.cond.vars {
+							left_var_name := c_name(var.name)
+							sym := g.table.sym(branch.cond.expr_type)
+							if sym.kind == .multi_return {
+								mr_info := sym.info as ast.MultiReturn
+								if mr_info.types.len == branch.cond.vars.len {
+									var_typ := g.typ(mr_info.types[vi])
+									if is_auto_heap {
+										g.writeln('\t$var_typ* $left_var_name = (HEAP($base_type, *($base_type*)${var_name}.data).arg$vi);')
+									} else {
+										g.writeln('\t$var_typ $left_var_name = (*($base_type*)${var_name}.data).arg$vi;')
 									}
 								}
 							}
 						}
 					}
 				}
-				else {
-					mut no_needs_par := false
-					if branch.cond is ast.InfixExpr {
-						if branch.cond.op == .key_in && branch.cond.left !is ast.InfixExpr
-							&& branch.cond.right is ast.ArrayInit {
-							no_needs_par = true
-						}
-					}
-					if no_needs_par {
-						g.write('if ')
-					} else {
-						g.write('if (')
-					}
-					g.expr(branch.cond)
-					if no_needs_par {
-						g.writeln(' {')
-					} else {
-						g.writeln(') {')
-					}
+			}
+		} else {
+			mut no_needs_par := false
+			if branch.cond is ast.InfixExpr {
+				if branch.cond.op == .key_in && branch.cond.left !is ast.InfixExpr
+					&& branch.cond.right is ast.ArrayInit {
+					no_needs_par = true
 				}
+			}
+			if no_needs_par {
+				g.write('if ')
+			} else {
+				g.write('if (')
+			}
+			g.expr(branch.cond)
+			if no_needs_par {
+				g.writeln(' {')
+			} else {
+				g.writeln(') {')
 			}
 		}
 		if needs_tmp_var {
