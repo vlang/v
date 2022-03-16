@@ -176,7 +176,7 @@ pub fn (mut b Builder) str() string {
 	return s
 }
 
-// grow ensures that the buffer has enough space for at least `n` bytes by growing the buffer if necessary
+// ensure_cap ensures that the buffer has enough space for at least `n` bytes by growing the buffer if necessary
 pub fn (mut b Builder) ensure_cap(n int) {
 	// code adapted from vlib/builtin/array.v
 	if n < 0 || n <= b.cap {
