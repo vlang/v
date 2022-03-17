@@ -91,9 +91,10 @@ pub mut:
 	inside_fn_arg             bool // `a`, `b` in `a.f(b)`
 	inside_ct_attr            bool // true inside `[if expr]`
 	inside_comptime_for_field bool
-	skip_flags                bool // should `#flag` and `#include` be skipped
-	fn_level                  int  // 0 for the top level, 1 for `fn abc() {}`, 2 for a nested fn, etc
-	smartcast_mut_pos         token.Pos
+	skip_flags                bool      // should `#flag` and `#include` be skipped
+	fn_level                  int       // 0 for the top level, 1 for `fn abc() {}`, 2 for a nested fn, etc
+	smartcast_mut_pos         token.Pos // match mut foo, if mut foo is Foo
+	smartcast_cond_pos        token.Pos // match cond
 	ct_cond_stack             []ast.Expr
 mut:
 	stmt_level int // the nesting level inside each stmts list;
@@ -1769,6 +1770,10 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			c.note('smartcasting requires either an immutable value, or an explicit mut keyword before the value',
 				c.smartcast_mut_pos)
 		}
+		if c.smartcast_cond_pos != token.Pos{} {
+			c.note('smartcast can only be used on the ident or selector, e.g. match foo, match foo.bar',
+				c.smartcast_cond_pos)
+		}
 		c.error(unknown_field_msg, node.pos)
 	}
 	return ast.void_type
@@ -3357,7 +3362,9 @@ fn (mut c Checker) smartcast(expr_ ast.Expr, cur_type ast.Type, to_type_ ast.Typ
 				c.smartcast_mut_pos = expr.pos
 			}
 		}
-		else {}
+		else {
+			c.smartcast_cond_pos = expr.pos()
+		}
 	}
 }
 

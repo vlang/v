@@ -1,0 +1,32 @@
+struct Left<E> {
+	error E
+}
+
+struct Right<T> {
+	inner T
+}
+
+type Either<T, E> =
+	Left<E> |
+	Right<T>
+
+fn works(v []Either<int, int>) {
+	first := v[0]
+	match first {
+		Left<int> {
+			println(first.error)
+		}
+		else {}
+	}
+}
+
+fn doesntwork(v []Either<int, int>) {
+	match v[0] {
+		Left<int> {
+			println(v[0].error)
+		}
+		else {}
+	}
+}
+
+fn main() {}
