@@ -308,7 +308,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 				// calculate final generated location in output based on position
 				current_segment := g.out.substr(int(sm_pos), int(sourcemap_ns_entry.ns_pos))
 				current_line += u32(current_segment.count('\n'))
-				current_column := if last_nl_pos := current_segment.last_index('\n') {
+				current_column := if last_nl_pos := current_segment.last_index_opt('\n') {
 					u32(current_segment.len - last_nl_pos - 1)
 				} else {
 					u32(0)
@@ -547,7 +547,7 @@ pub fn (mut g JsGen) new_tmp_var() string {
 // 'fn' => ''
 [inline]
 fn get_ns(s string) string {
-	idx := s.last_index('.') or { return '' }
+	idx := s.last_index_opt('.') or { return '' }
 	return s.substr(0, idx)
 }
 
@@ -3394,7 +3394,7 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 	type_sym := g.table.sym(it.typ)
 	mut name := type_sym.name
 	if name.contains('<') {
-		name = name[0..name.index('<') or { name.len }]
+		name = name[0..name.index_opt('<') or { name.len }]
 	}
 	if it.fields.len == 0 && type_sym.kind != .interface_ {
 		if type_sym.kind == .struct_ && type_sym.language == .js {

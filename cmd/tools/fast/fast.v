@@ -188,8 +188,8 @@ fn measure_steps(vdir string) (int, int, int, int, int) {
 			} else {
 				// Fetch number of V lines
 				if line[0].contains('V') && line[0].contains('source') && line[0].contains('size') {
-					start := line[0].index(':') or { 0 }
-					end := line[0].index('lines,') or { 0 }
+					start := line[0].index_opt(':') or { 0 }
+					end := line[0].index_opt('lines,') or { 0 }
 					s := line[0][start + 1..end]
 					vlines = s.trim_space().int()
 				}

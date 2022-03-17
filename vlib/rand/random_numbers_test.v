@@ -208,7 +208,7 @@ fn test_rand_string_from_set() {
 			str := rand.string_from_set(charset, len)
 			assert str.len == len
 			for character in str {
-				position := charset.index(character.ascii_str()) or { -1 }
+				position := charset.index(character.ascii_str())
 				assert position > -1
 			}
 		}

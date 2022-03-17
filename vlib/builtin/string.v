@@ -319,7 +319,7 @@ pub fn (a string) clone() string {
 
 // replace_once replaces the first occurence of `rep` with the string passed in `with`.
 pub fn (s string) replace_once(rep string, with string) string {
-	idx := s.index_(rep)
+	idx := s.index(rep)
 	if idx == -1 {
 		return s.clone()
 	}
@@ -901,7 +901,7 @@ pub fn (s string) substr_ni(_start int, _end int) string {
 // index returns the position of the first character of the input string.
 // It will return `-1` if the input string can't be found.
 [direct_array_access]
-fn (s string) index_(p string) int {
+pub fn (s string) index(p string) int {
 	if p.len > s.len || p.len == 0 {
 		return -1
 	}
@@ -922,10 +922,9 @@ fn (s string) index_(p string) int {
 	return -1
 }
 
-// index returns the position of the first character of the input string.
-// It will return `none` if the input string can't be found.
-pub fn (s string) index(p string) ?int {
-	idx := s.index_(p)
+// index_opt is a wrapper around `index` that returns `none` if the input string can't be found.
+pub fn (s string) index_opt(p string) ?int {
+	idx := s.index(p)
 	if idx == -1 {
 		return none
 	}
@@ -967,6 +966,15 @@ fn (s string) index_kmp(p string) int {
 	return -1
 }
 
+// index_kmp_opt is a wrapper around `index_kmp` that returns `none` if the input string can't be found.
+pub fn (s string) index_kmp_opt(p string) ?int {
+	idx := s.index_kmp(p)
+	if idx == -1 {
+		return none
+	}
+	return idx
+}
+
 // index_any returns the position of any of the characters in the input string - if found.
 pub fn (s string) index_any(chars string) int {
 	for i, ss in s {
@@ -979,9 +987,18 @@ pub fn (s string) index_any(chars string) int {
 	return -1
 }
 
+// index_any_opt is a wrapper around `index_any` that returns `none` if the input string can't be found.
+pub fn (s string) index_any_opt(chars string) ?int {
+	idx := s.index_any(chars)
+	if idx == -1 {
+		return none
+	}
+	return idx
+}
+
 // last_index returns the position of the last occurence of the input string.
 [direct_array_access]
-fn (s string) last_index_(p string) int {
+pub fn (s string) last_index(p string) int {
 	if p.len > s.len || p.len == 0 {
 		return -1
 	}
@@ -999,9 +1016,9 @@ fn (s string) last_index_(p string) int {
 	return -1
 }
 
-// last_index returns the position of the last occurence of the input string.
-pub fn (s string) last_index(p string) ?int {
-	idx := s.last_index_(p)
+// last_index_opt is a wrapper around `last_index` that returns `none` if the input string can't be found.
+pub fn (s string) last_index_opt(p string) ?int {
+	idx := s.last_index(p)
 	if idx == -1 {
 		return none
 	}
@@ -1037,6 +1054,15 @@ pub fn (s string) index_after(p string, start int) int {
 	return -1
 }
 
+// index_after_opt is a wrapper around `index_after` that returns `none` if the input string can't be found.
+pub fn (s string) index_after_opt(p string, start int) ?int {
+	idx := s.index_after(p, start)
+	if idx == -1 {
+		return none
+	}
+	return idx
+}
+
 // index_byte returns the index of byte `c` if found in the string.
 // index_byte returns -1 if the byte can not be found.
 [direct_array_access]
@@ -1047,6 +1073,15 @@ pub fn (s string) index_byte(c byte) int {
 		}
 	}
 	return -1
+}
+
+// index_byte_opt is a wrapper around `index_byte` that returns `none` if the input string can't be found.
+pub fn (s string) index_byte_opt(c byte) ?int {
+	idx := s.index_byte(c)
+	if idx == -1 {
+		return none
+	}
+	return idx
 }
 
 // last_index_byte returns the index of the last occurence of byte `c` if found in the string.
@@ -1061,8 +1096,16 @@ pub fn (s string) last_index_byte(c byte) int {
 	return -1
 }
 
+// last_index_byte_opt is a wrapper around `last_index_byte` that returns `none` if the input string can't be found.
+pub fn (s string) last_index_byte_opt(c byte) ?int {
+	idx := s.last_index_byte(c)
+	if idx == -1 {
+		return none
+	}
+	return idx
+}
+
 // count returns the number of occurrences of `substr` in the string.
-// count returns -1 if no `substr` could be found.
 [direct_array_access]
 pub fn (s string) count(substr string) int {
 	if s.len == 0 || substr.len == 0 {
@@ -1103,7 +1146,7 @@ pub fn (s string) contains(substr string) bool {
 	if substr.len == 0 {
 		return true
 	}
-	if s.index_(substr) == -1 {
+	if s.index(substr) == -1 {
 		return false
 	}
 	return true
@@ -1294,13 +1337,13 @@ pub fn (s string) is_title() bool {
 // find_between returns the string found between `start` string and `end` string.
 // Example: assert 'hey [man] how you doin'.find_between('[', ']') == 'man'
 pub fn (s string) find_between(start string, end string) string {
-	start_pos := s.index_(start)
+	start_pos := s.index(start)
 	if start_pos == -1 {
 		return ''
 	}
 	// First get everything to the right of 'start'
 	val := s[start_pos + start.len..]
-	end_pos := val.index_(end)
+	end_pos := val.index(end)
 	if end_pos == -1 {
 		return val
 	}
@@ -1582,7 +1625,7 @@ pub fn (s &string) free() {
 // Example: assert 'abcd'.before('.') == 'abcd'
 // TODO: deprecate and remove either .before or .all_before
 pub fn (s string) before(sub string) string {
-	pos := s.index_(sub)
+	pos := s.index(sub)
 	if pos == -1 {
 		return s.clone()
 	}
@@ -1595,7 +1638,7 @@ pub fn (s string) before(sub string) string {
 // Example: assert 'abcd'.all_before('.') == 'abcd'
 pub fn (s string) all_before(sub string) string {
 	// TODO remove dup method
-	pos := s.index_(sub)
+	pos := s.index(sub)
 	if pos == -1 {
 		return s.clone()
 	}
@@ -1607,7 +1650,7 @@ pub fn (s string) all_before(sub string) string {
 // Example: assert '23:34:45.234'.all_before_last(':') == '23:34'
 // Example: assert 'abcd'.all_before_last('.') == 'abcd'
 pub fn (s string) all_before_last(sub string) string {
-	pos := s.last_index_(sub)
+	pos := s.last_index(sub)
 	if pos == -1 {
 		return s.clone()
 	}
@@ -1619,7 +1662,7 @@ pub fn (s string) all_before_last(sub string) string {
 // Example: assert '23:34:45.234'.all_after('.') == '234'
 // Example: assert 'abcd'.all_after('z') == 'abcd'
 pub fn (s string) all_after(sub string) string {
-	pos := s.index_(sub)
+	pos := s.index(sub)
 	if pos == -1 {
 		return s.clone()
 	}
@@ -1631,7 +1674,7 @@ pub fn (s string) all_after(sub string) string {
 // Example: assert '23:34:45.234'.all_after_last(':') == '45.234'
 // Example: assert 'abcd'.all_after_last('z') == 'abcd'
 pub fn (s string) all_after_last(sub string) string {
-	pos := s.last_index_(sub)
+	pos := s.last_index(sub)
 	if pos == -1 {
 		return s.clone()
 	}

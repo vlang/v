@@ -103,7 +103,7 @@ fn (c Checker) check_number(num ast.Number) ? {
 	mut is_bin, mut is_oct, mut is_hex := false, false, false
 	is_float := lit_lower_case.all_before('e').contains('.')
 	has_exponent_notation := lit_lower_case.contains('e')
-	float_decimal_index := lit.index('.') or { -1 }
+	float_decimal_index := lit.index('.')
 	// mut is_first_digit := byte(lit[0]).is_digit()
 	mut ascii := byte(lit[0]).ascii_str()
 	is_sign_prefixed := lit[0] in [`+`, `-`]

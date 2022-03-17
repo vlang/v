@@ -413,7 +413,7 @@ fn (mut c Checker) check_valid_snake_case(name string, identifier string, pos to
 }
 
 fn stripped_name(name string) string {
-	idx := name.last_index('.') or { -1 }
+	idx := name.last_index('.')
 	return name[(idx + 1)..]
 }
 

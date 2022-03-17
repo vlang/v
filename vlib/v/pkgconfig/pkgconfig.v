@@ -72,8 +72,8 @@ fn (mut pc PkgConfig) parse_list(s string) []string {
 fn (mut pc PkgConfig) parse_line(s string) string {
 	mut r := s.trim_space()
 	for r.contains('\${') {
-		tok0 := r.index('\${') or { break }
-		mut tok1 := r[tok0..].index('}') or { break }
+		tok0 := r.index_opt('\${') or { break }
+		mut tok1 := r[tok0..].index_opt('}') or { break }
 		tok1 += tok0
 		v := r[tok0 + 2..tok1]
 		r = r.replace('\${$v}', pc.vars[v])

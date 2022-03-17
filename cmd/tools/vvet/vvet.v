@@ -122,14 +122,14 @@ fn (mut vt Vet) vet_line(lines []string, line string, lnumber int) {
 				return cleaned.split(',')
 			}
 			ident_fn_name := fn (line string) string {
-				mut fn_idx := line.index(' fn ') or { return '' }
+				mut fn_idx := line.index_opt(' fn ') or { return '' }
 				if line.len < fn_idx + 5 {
 					return ''
 				}
 				mut tokens := line[fn_idx + 4..].split(' ')
 				// Skip struct identifier
 				if tokens.first().starts_with('(') {
-					fn_idx = line.index(')') or { return '' }
+					fn_idx = line.index_opt(')') or { return '' }
 					tokens = line[fn_idx..].split(' ')
 					if tokens.len > 1 {
 						tokens = [tokens[1]]

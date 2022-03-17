@@ -445,7 +445,7 @@ fn convert_output(os_result os.Result) string {
 		if line.contains('.vrepl_temp.v:') {
 			// Hide the temporary file name
 			sline := line.all_after('.vrepl_temp.v:')
-			idx := sline.index(' ') or {
+			idx := sline.index_opt(' ') or {
 				content += endline_if_missed(sline)
 				return content
 			}
@@ -453,7 +453,7 @@ fn convert_output(os_result os.Result) string {
 		} else if line.contains('.vrepl.v:') {
 			// Ensure that .vrepl.v: is at the start, ignore the path
 			// This is needed to have stable .repl tests.
-			idx := line.index('.vrepl.v:') or { panic(err) }
+			idx := line.index_opt('.vrepl.v:') or { panic(err) }
 			content += endline_if_missed(line[idx..])
 		} else {
 			content += endline_if_missed(line)

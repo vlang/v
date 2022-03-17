@@ -189,7 +189,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 	// but `x := T{}` is ok.
 	if !c.is_builtin_mod && !c.inside_unsafe && type_sym.language == .v
 		&& c.table.cur_concrete_types.len == 0 {
-		pos := type_sym.name.last_index('.') or { -1 }
+		pos := type_sym.name.last_index('.')
 		first_letter := type_sym.name[pos + 1]
 		if !first_letter.is_capital() {
 			c.error('cannot initialize builtin type `$type_sym.name`', node.pos)

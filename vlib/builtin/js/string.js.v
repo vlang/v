@@ -719,7 +719,7 @@ pub fn (s string) replace_each(vals []string) string {
 }
 
 // last_index returns the position of the last occurence of the input string.
-fn (s string) last_index_(p string) int {
+pub fn (s string) last_index(p string) int {
 	if p.len > s.len || p.len == 0 {
 		return -1
 	}
@@ -737,9 +737,9 @@ fn (s string) last_index_(p string) int {
 	return -1
 }
 
-// last_index returns the position of the last occurence of the input string.
-pub fn (s string) last_index(p string) ?int {
-	idx := s.last_index_(p)
+// lsat_index_opt is a wrapper around `last_index` that returns `none` if the input string can't be found.
+pub fn (s string) last_index_opt(p string) ?int {
+	idx := s.last_index(p)
 	if idx == -1 {
 		return none
 	}
@@ -781,6 +781,15 @@ pub fn (s string) index_after(p string, start int) int {
 		i++
 	}
 	return -1
+}
+
+// index_after_opt is a wrapper around `index_after` that returns `none` if the input string can't be found.
+pub fn (s string) index_after_opt(p string, start int) ?int {
+	idx := s.index_after(p, start)
+	if idx == -1 {
+		return none
+	}
+	return idx
 }
 
 pub fn (s string) split_into_lines() []string {
@@ -825,6 +834,15 @@ pub fn (s string) index_any(chars string) int {
 		}
 	}
 	return -1
+}
+
+// index_any_opt is a wrapper around `index_any` that returns `none` if the input string can't be found.
+pub fn (s string) index_any_opt(chars string) ?int {
+	idx := s.index_any(chars)
+	if idx == -1 {
+		return none
+	}
+	return idx
 }
 
 // limit returns a portion of the string, starting at `0` and extending for a given number of characters afterward.
@@ -948,14 +966,21 @@ pub fn (s []string) join(sep string) string {
 // There's no better way to find length of JS String in bytes.
 #Object.defineProperty(string.prototype,"len", { get: function() {return new int(new TextEncoder().encode(this.str).length);}, set: function(l) {/* ignore */ } });
 // index returns the position of the first character of the input string.
-// It will return `none` if the input string can't be found.
-pub fn (s string) index(search string) ?int {
+// It will return `-1` if the input string can't be found.
+pub fn (s string) index(search string) int {
 	res := 0
 	#res.val = s.str.indexOf(search)
-	if res == -1 {
+
+	return res
+}
+
+// index_opt is a wrapper around `index` that returns `none` if the input string can't be found.
+pub fn (s string) index_opt(search string) ?int {
+	idx := s.index(search)
+	if idx == -1 {
 		return none
 	}
-	return res
+	return idx
 }
 
 pub fn (_rune string) utf32_code() int {

@@ -18,7 +18,7 @@ pub fn parse_rfc3339(s string) ?Time {
 		return t
 	}
 
-	t_i := sn.index('T') or { -1 }
+	t_i := sn.index('T')
 	parts := if t_i != -1 { [sn[..t_i], sn[t_i + 1..]] } else { sn.split(' ') }
 
 	// Check if sn is date only
@@ -62,7 +62,7 @@ pub fn parse(s string) ?Time {
 	if s == '' {
 		return error_invalid_time(0)
 	}
-	pos := s.index(' ') or { return error_invalid_time(1) }
+	pos := s.index_opt(' ') or { return error_invalid_time(1) }
 	symd := s[..pos]
 	ymd := symd.split('-')
 	if ymd.len != 3 {
@@ -119,7 +119,7 @@ pub fn parse_iso8601(s string) ?Time {
 	if s == '' {
 		return error_invalid_time(0)
 	}
-	t_i := s.index('T') or { -1 }
+	t_i := s.index('T')
 	parts := if t_i != -1 { [s[..t_i], s[t_i + 1..]] } else { s.split(' ') }
 	if !(parts.len == 1 || parts.len == 2) {
 		return error_invalid_time(12)
@@ -160,7 +160,7 @@ pub fn parse_rfc2822(s string) ?Time {
 	if fields.len < 5 {
 		return error_invalid_time(1)
 	}
-	pos := months_string.index(fields[2]) or { return error_invalid_time(2) }
+	pos := months_string.index_opt(fields[2]) or { return error_invalid_time(2) }
 	mm := pos / 3 + 1
 	unsafe {
 		tmstr := malloc_noscan(s.len * 2)

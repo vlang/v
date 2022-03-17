@@ -84,7 +84,7 @@ fn prefix_and_suffix(pattern string) ?(string, string) {
 	if pat.contains(os.path_separator) {
 		return error('pattern cannot contain path separators ($os.path_separator).')
 	}
-	pos := pat.last_index('*') or { -1 }
+	pos := pat.last_index('*')
 	mut prefix := ''
 	mut suffix := ''
 	if pos != -1 {
