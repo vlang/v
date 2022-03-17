@@ -66,7 +66,7 @@ language, very similar to the way it is right now.
 
 Usually installing V is quite simple if you have an environment that already has a functional `git` installation. 
 
-*(* ***PLEASE NOTE:*** *If you run into any trouble or you have a different operating system or Linux distribution that doesn't install or work immediately, please see [Installation Issues](https://github.com/vlang/v/discussions/categories/installation-issues) and search for your OS and problem. If you can't find your problem, please add it to an existing discussion if one exists for your OS, or create a new one if a main discussion doesn't yet exist for your OS.)*
+* *(* ***PLEASE NOTE:*** *If you run into any trouble or you have a different operating system or Linux distribution that doesn't install or work immediately, please see [Installation Issues](https://github.com/vlang/v/discussions/categories/installation-issues) and search for your OS and problem. If you can't find your problem, please add it to an existing discussion if one exists for your OS, or create a new one if a main discussion doesn't yet exist for your OS.)*
 
 
 To get started, simply try to execute the following in your terminal/shell:
@@ -83,6 +83,8 @@ That should be it and you should find your V executable at `[path to V repo]/v`.
 (As in the hint above, on Windows `make` means running `make.bat`, so make sure you use the `cmd.exe` terminal.)
 
 Now you can try `./v run examples/hello_world.v` (`v.exe` on Windows).
+
+* *Trouble? Please see the note above and link to [Installation Issues](https://github.com/vlang/v/discussions/categories/installation-issues) for help.*
 
 V is constantly being updated. To update V, simply run:
 
