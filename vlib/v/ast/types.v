@@ -980,6 +980,12 @@ pub fn (mytable &Table) type_to_code(t Type) string {
 	}
 }
 
+// clean type name from generics form. From Type<int> -> Type
+pub fn (t &Table) clean_generics_type_str(typ Type) string {
+	result := t.type_to_str(typ)
+	return result.split('<')[0]
+}
+
 // import_aliases is a map of imported symbol aliases 'module.Type' => 'Type'
 pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]string) string {
 	sym := t.sym(typ)

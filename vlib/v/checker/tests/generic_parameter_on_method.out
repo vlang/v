@@ -1,4 +1,4 @@
-vlib/v/checker/tests/generic_parameter_on_method.vv:15:15: error: expected Type<> but received a reference (&Type<int>), maybe you missed a `&`? in argument 1 to `ConatinerType<int>.contains`
+vlib/v/checker/tests/generic_parameter_on_method.vv:15:15: error: cannot use `&Type<int>` as `Type<>` in argument 1 to `ConatinerType<int>.contains`
    13 | fn main() {
    14 |     con := ConatinerType<int>{typ: &Type<int>{0}}
    15 |     con.contains(con.typ)
