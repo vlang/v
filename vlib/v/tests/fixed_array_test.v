@@ -16,6 +16,7 @@ fn test_fixed_array_can_be_assigned() {
 	}
 	v = [8]f64{init: 3.0}
 	assert v[1] == 3.0
+	assert v[..].len == 8
 }
 
 fn test_fixed_array_assignment() {

@@ -64,6 +64,15 @@ fn (mut g Gen) range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 	mut gen_or := node.or_expr.kind != .absent || node.is_option
 	mut tmp_left := ''
 
+	if !range.has_high && sym.kind != .array_fixed {
+		tmp_left = g.new_tmp_var()
+		tmp_type := g.typ(node.left_type)
+		g.insert_before_stmt('${util.tabs(g.indent)}$tmp_type $tmp_left;')
+		// (tmp = left, slice_func(tmp, low, tmp.len))
+		g.write('($tmp_left = ')
+		g.expr(node.left)
+		g.write(', ')
+	}
 	if sym.kind == .string {
 		if node.is_gated {
 			g.write('string_substr_ni(')
@@ -78,32 +87,11 @@ fn (mut g Gen) range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 				g.write('string_substr(')
 			}
 		}
-		if node.left_type.is_ptr() {
-			g.write('*')
-		}
-		g.expr(node.left)
 	} else if sym.kind == .array {
-		if !range.has_high {
-			tmp_left = g.new_tmp_var()
-			tmp_type := g.typ(node.left_type)
-			g.insert_before_stmt('${util.tabs(g.indent)}$tmp_type $tmp_left;')
-			// (tmp = expr, array_slice(...))
-			g.write('($tmp_left = ')
-			g.expr(node.left)
-			g.write(', ')
-		}
 		if node.is_gated {
 			g.write('array_slice_ni(')
 		} else {
 			g.write('array_slice(')
-		}
-		if node.left_type.is_ptr() {
-			g.write('*')
-		}
-		if range.has_high {
-			g.expr(node.left)
-		} else {
-			g.write(tmp_left)
 		}
 	} else if sym.kind == .array_fixed {
 		// Convert a fixed array to V array when doing `fixed_arr[start..end]`
@@ -132,7 +120,18 @@ fn (mut g Gen) range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 		g.expr(node.left)
 		g.write(')')
 	} else {
-		g.expr(node.left)
+		t := g.table.type_to_str(node.left_type)
+		g.error('unexpected slice of type $t', node.left.pos())
+	}
+	if sym.kind != .array_fixed {
+		if node.left_type.is_ptr() {
+			g.write('*')
+		}
+		if range.has_high {
+			g.expr(node.left)
+		} else {
+			g.write(tmp_left)
+		}
 	}
 	g.write(', ')
 	if range.has_low {
@@ -146,17 +145,13 @@ fn (mut g Gen) range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 	} else if sym.kind == .array_fixed {
 		info := sym.info as ast.ArrayFixed
 		g.write('$info.size')
-	} else if sym.kind == .array {
+	} else {
 		if node.left_type.is_ptr() {
 			g.write('$tmp_left->')
 		} else {
 			g.write('${tmp_left}.')
 		}
 		g.write('len)')
-	} else {
-		g.write('(')
-		g.expr(node.left)
-		g.write(').len')
 	}
 	g.write(')')
 
