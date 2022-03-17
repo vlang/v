@@ -1,0 +1,17 @@
+struct Type<T> {
+	value T
+}
+
+struct ConatinerType<T> {
+	typ &Type<T>
+}
+
+fn (instance &ConatinerType<T>) contains(typ Type<T>) {
+	println(typ)
+}
+
+fn main() {
+	con := ConatinerType<int>{typ: &Type<int>{0}}
+	con.contains(con.typ)
+	println(con)
+}

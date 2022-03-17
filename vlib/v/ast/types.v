@@ -1222,6 +1222,19 @@ pub fn (t &Table) fn_signature_using_aliases(func &Fn, import_aliases map[string
 	return sb.str()
 }
 
+// Get the name of the complete quanlified name of the type
+// without the generic parts.
+pub fn (t &TypeSymbol) module_name() string {
+	// main.Abc<int>
+	mut embed_name := t.name
+	// remove generic part from name
+	// main.Abc<int> => main.Abc
+	if embed_name.contains('<') {
+		embed_name = embed_name.split('<')[0]
+	}
+	return embed_name
+}
+
 pub fn (t &TypeSymbol) embed_name() string {
 	// main.Abc<int> => Abc<int>
 	mut embed_name := t.name.split('.').last()

@@ -188,7 +188,38 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 			return
 		}
 	}
-	return error('cannot use `${c.table.type_to_str(got.clear_flag(.variadic))}` as `${c.table.type_to_str(expected.clear_flag(.variadic))}`')
+
+	// Check on Generics types, there are some case where we have the following case
+	// `&Type<int> == &Type<>`. This is a common case we are implementing a function
+	// with generic parameters like `compare(bst Bst<T> node) {}`
+	got_typ_sym := c.table.sym(got)
+	got_typ_str := c.table.type_to_str(got.clear_flag(.variadic))
+	expected_typ_sym := c.table.sym(expected_)
+	expected_typ_str := c.table.type_to_str(expected.clear_flag(.variadic))
+
+	if got_typ_sym.module_name() == expected_typ_sym.module_name() {
+		// Check if we are making a comparison between two different types of
+		// the same type like `Type<int> and &Type<>`
+		if (got.is_ptr() != expected.is_ptr()) || (got_typ_str != expected_typ_str) {
+			mut expected_msg := 'expected '
+			if expected_.is_ptr() {
+				expected_msg += 'a reference ($expected_typ_str)'
+			} else {
+				expected_msg += '$expected_typ_str'
+			}
+
+			mut got_msg := 'received '
+			if arg.typ.is_ptr() {
+				got_msg += 'a reference ($got_typ_str)'
+			} else {
+				got_msg += '$got_typ_str'
+			}
+
+			return error('$expected_msg but $got_msg, maybe you missed a `&`?')
+		}
+		return
+	}
+	return error('cannot use `$got_typ_str` as `$expected_typ_str`')
 }
 
 pub fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
