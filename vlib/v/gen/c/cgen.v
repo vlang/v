@@ -5643,7 +5643,8 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 						if fargs.len > 1 {
 							methods_wrapper.write_string(', ')
 						}
-						methods_wrapper.writeln('${fargs[1..].join(', ')});')
+						args := fargs[1..].join(', ')
+						methods_wrapper.writeln('$args);')
 					} else {
 						if parameter_name.starts_with('__shared__') {
 							methods_wrapper.writeln('${method_call}(${fargs.join(', ')}->val);')
