@@ -161,7 +161,9 @@ $enc_fn_dec {
 fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, mut dec strings.Builder) {
 	info := sym.info as ast.SumType
 	type_var := g.new_tmp_var()
-	typ := g.table.type_idxs[sym.name]
+	typ := rlock g.table.type_idxs {
+		g.table.type_idxs[sym.name]
+	}
 
 	// DECODING (inline)
 	$if !json_no_inline_sumtypes ? {

@@ -107,6 +107,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 			c.inside_decl_rhs = is_decl
 			right_type := c.expr(node.right[i])
+			c.fail_if_unreadable(node.right[i], right_type, 'right-hand side of assignment')
 			c.inside_decl_rhs = false
 			c.inside_ref_lit = old_inside_ref_lit
 			if node.right_types.len == i {

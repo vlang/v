@@ -77,8 +77,12 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 		}
 	}
 	// allow `none` & `error` return types for function that returns optional
-	option_type_idx := c.table.type_idxs['_option']
-	result_type_idx := c.table.type_idxs['_result']
+	option_type_idx := rlock c.table.type_idxs {
+		c.table.type_idxs['_option']
+	}
+	result_type_idx := rlock c.table.type_idxs {
+		c.table.type_idxs['_result']
+	}
 	got_types_0_idx := got_types[0].idx()
 	if (exp_is_optional
 		&& got_types_0_idx in [ast.none_type_idx, ast.error_type_idx, option_type_idx])
@@ -204,10 +208,18 @@ fn has_top_return(stmts []ast.Stmt) bool {
 				}
 			}
 			ast.ExprStmt {
-				if stmt.expr is ast.CallExpr {
-					if stmt.expr.is_noreturn {
-						return true
+				match stmt.expr {
+					ast.CallExpr {
+						if stmt.expr.is_noreturn {
+							return true
+						}
 					}
+					ast.LockExpr {
+						if has_top_return(stmt.expr.stmts) {
+							return true
+						}
+					}
+					else {}
 				}
 			}
 			else {}

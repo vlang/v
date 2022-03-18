@@ -696,7 +696,9 @@ pub fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 			return ast.new_type(gt_idx)
 		}
 		gt_idx = p.table.add_placeholder_type(bs_name, .v)
-		mut parent_idx := p.table.type_idxs[name]
+		mut parent_idx := rlock p.table.type_idxs {
+			p.table.type_idxs[name]
+		}
 		if parent_idx == 0 {
 			parent_idx = p.table.add_placeholder_type(name, .v)
 		}

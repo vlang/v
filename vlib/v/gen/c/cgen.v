@@ -1304,7 +1304,9 @@ static inline void __${sym.cname}_pushval($sym.cname ch, $el_stype val) {
 }
 
 pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
-	parent := g.table.type_symbols[sym.parent_idx]
+	parent := rlock g.table.type_symbols {
+		g.table.type_symbols[sym.parent_idx]
+	}
 	is_c_parent := parent.name.len > 2 && parent.name[0] == `C` && parent.name[1] == `.`
 	mut is_typedef := false
 	mut is_fixed_array_of_non_builtin := false

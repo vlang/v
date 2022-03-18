@@ -281,7 +281,9 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 					}
 					agg_name.write_string(')')
 					name := agg_name.str()
-					existing_idx := c.table.type_idxs[name]
+					existing_idx := rlock c.table.type_idxs {
+						c.table.type_idxs[name]
+					}
 					if existing_idx > 0 {
 						expr_type = existing_idx
 					} else {
