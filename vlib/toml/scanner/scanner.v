@@ -64,7 +64,7 @@ pub fn new_simple(config Config) ?Scanner {
 	}
 }
 
-// new_simple_text returns a new *stack* allocated `Scanner` instance.
+// new_simple_text returns a new *stack* allocated `Scanner` instance
 // ready for parsing TOML in `text`.
 pub fn new_simple_text(text string) ?Scanner {
 	in_config := input.Config{
@@ -79,7 +79,7 @@ pub fn new_simple_text(text string) ?Scanner {
 	}
 }
 
-// new_simple_text returns a new *stack* allocated `Scanner` instance.
+// new_simple_file returns a new *stack* allocated `Scanner` instance
 // ready for parsing TOML in file read from `path`.
 pub fn new_simple_file(path string) ?Scanner {
 	in_config := input.Config{
