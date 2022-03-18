@@ -354,7 +354,11 @@ fn vexe() string {
 }
 
 fn new_config(root_path string, toml_config string) ?Config {
-	doc := toml.parse(toml_config) ?
+	doc := if os.is_file(toml_config) {
+		toml.parse_file(toml_config) ?
+	} else {
+		toml.parse_text(toml_config) ?
+	}
 
 	path := os.real_path(root_path).trim_right('/')
 
