@@ -47,7 +47,8 @@ pub:
 	tokenize_formatting bool = true // if true, generate tokens for `\n`, ` `, `\t`, `\r` etc.
 }
 
-// new_scanner returns a new *heap* allocated `Scanner` instance.
+// new_scanner returns a new *heap* allocated `Scanner` instance, based on the file in config.input.file_path,
+// or based on the text in config.input.text .
 pub fn new_scanner(config Config) ?&Scanner {
 	config.input.validate() ?
 	mut text := config.input.text
@@ -65,10 +66,12 @@ pub fn new_scanner(config Config) ?&Scanner {
 	return s
 }
 
-// returns a new *stack* allocated `Scanner` instance.
+// new_simple returns a new *stack* allocated `Scanner` instance, that will work on the text in `toml_input`.
 pub fn new_simple(toml_input string) ?Scanner {
 	config := Config{
-		input: input.auto_config(toml_input) ?
+		input: input.Config{
+			text: toml_input
+		}
 	}
 	return Scanner{
 		config: config
