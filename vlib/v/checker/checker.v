@@ -1531,41 +1531,36 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 					stmt.pos)
 			}
 		}
-	} else {
-		match stmt {
-			ast.ExprStmt {
-				match stmt.expr {
-					ast.IfExpr {
-						for branch in stmt.expr.branches {
-							last_stmt := branch.stmts[branch.stmts.len - 1]
-							c.check_or_last_stmt(last_stmt, ret_type, expr_return_type)
-						}
-					}
-					ast.MatchExpr {
-						for branch in stmt.expr.branches {
-							last_stmt := branch.stmts[branch.stmts.len - 1]
-							c.check_or_last_stmt(last_stmt, ret_type, expr_return_type)
-						}
-					}
-					else {
-						if stmt.typ == ast.void_type {
-							return
-						}
-						if is_noreturn_callexpr(stmt.expr) {
-							return
-						}
-						if c.check_types(stmt.typ, expr_return_type) {
-							return
-						}
-						// opt_returning_string() or { ... 123 }
-						type_name := c.table.type_to_str(stmt.typ)
-						expr_return_type_name := c.table.type_to_str(expr_return_type)
-						c.error('the default expression type in the `or` block should be `$expr_return_type_name`, instead you gave a value of type `$type_name`',
-							stmt.expr.pos())
-					}
+	} else if stmt is ast.ExprStmt {
+		match stmt.expr {
+			ast.IfExpr {
+				for branch in stmt.expr.branches {
+					last_stmt := branch.stmts[branch.stmts.len - 1]
+					c.check_or_last_stmt(last_stmt, ret_type, expr_return_type)
 				}
 			}
-			else {}
+			ast.MatchExpr {
+				for branch in stmt.expr.branches {
+					last_stmt := branch.stmts[branch.stmts.len - 1]
+					c.check_or_last_stmt(last_stmt, ret_type, expr_return_type)
+				}
+			}
+			else {
+				if stmt.typ == ast.void_type {
+					return
+				}
+				if is_noreturn_callexpr(stmt.expr) {
+					return
+				}
+				if c.check_types(stmt.typ, expr_return_type) {
+					return
+				}
+				// opt_returning_string() or { ... 123 }
+				type_name := c.table.type_to_str(stmt.typ)
+				expr_return_type_name := c.table.type_to_str(expr_return_type)
+				c.error('the default expression type in the `or` block should be `$expr_return_type_name`, instead you gave a value of type `$type_name`',
+					stmt.expr.pos())
+			}
 		}
 	}
 }
