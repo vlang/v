@@ -43,9 +43,8 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 		} else {
 			c.stmts(branch.stmts)
 		}
-		if c.smartcast_mut_pos != token.Pos{} {
-			c.smartcast_mut_pos = token.Pos{}
-		}
+		c.smartcast_mut_pos = token.Pos{}
+		c.smartcast_cond_pos = token.Pos{}
 		if node.is_expr {
 			if branch.stmts.len > 0 {
 				// ignore last statement - workaround

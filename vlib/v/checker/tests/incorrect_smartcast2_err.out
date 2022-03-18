@@ -1,0 +1,14 @@
+vlib/v/checker/tests/incorrect_smartcast2_err.vv:24:9: notice: smartcast can only be used on the ident or selector, e.g. match foo, match foo.bar
+   22 |
+   23 | fn doesntwork(v []Either<int, int>) {
+   24 |     match v[0] {
+      |            ~~~
+   25 |         Left<int> {
+   26 |             println(v[0].error)
+vlib/v/checker/tests/incorrect_smartcast2_err.vv:26:17: error: field `error` does not exist or have the same type in all sumtype variants
+   24 |     match v[0] {
+   25 |         Left<int> {
+   26 |             println(v[0].error)
+      |                          ~~~~~
+   27 |         }
+   28 |         else {}
