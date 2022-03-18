@@ -203,7 +203,7 @@ fn cgen_attrs(attrs []ast.Attr) []string {
 
 fn (mut g Gen) comptime_at(node ast.AtExpr) {
 	if node.kind == .vmod_file {
-		val := cnewlines(node.val.replace('\r', ''))
+		val := cescape_nonascii(util.smart_quote(node.val, false))
 		g.write('_SLIT("$val")')
 	} else {
 		val := node.val.replace('\\', '\\\\')
