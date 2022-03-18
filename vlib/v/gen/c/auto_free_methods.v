@@ -7,15 +7,14 @@ import strings
 
 fn (mut g Gen) get_free_method(typ ast.Type) string {
 	g.autofree_methods[typ] = true
-	styp := g.typ(typ).replace('*', '')
 	mut sym := g.table.sym(g.unwrap_generic(typ))
-	mut fn_name := styp_to_free_fn_name(styp)
 	if mut sym.info is ast.Alias {
 		if sym.info.is_import {
 			sym = g.table.sym(sym.info.parent_type)
 		}
 	}
-
+	styp := g.typ(typ).replace('*', '')
+	fn_name := styp_to_free_fn_name(styp)
 	if sym.has_method_with_generic_parent('free') {
 		return fn_name
 	}
@@ -30,21 +29,23 @@ fn (mut g Gen) gen_free_methods() {
 
 fn (mut g Gen) gen_free_method(typ ast.Type) string {
 	styp := g.typ(typ).replace('*', '')
-	mut sym := g.table.sym(g.unwrap_generic(typ))
 	mut fn_name := styp_to_free_fn_name(styp)
-	if typ in g.generated_free_methods {
+	deref_typ := typ.set_nr_muls(0)
+	if deref_typ in g.generated_free_methods {
 		return fn_name
 	}
-	g.generated_free_methods[typ] = true
+	g.generated_free_methods[deref_typ] = true
+
+	mut sym := g.table.sym(g.unwrap_generic(typ))
 	if mut sym.info is ast.Alias {
 		if sym.info.is_import {
 			sym = g.table.sym(sym.info.parent_type)
 		}
 	}
-
 	if sym.has_method_with_generic_parent('free') {
 		return fn_name
 	}
+
 	match mut sym.info {
 		ast.Struct {
 			g.gen_free_for_struct(sym.info, styp, fn_name)
