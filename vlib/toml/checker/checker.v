@@ -415,7 +415,7 @@ pub fn (c Checker) check_quoted(q ast.Quoted) ? {
 // \UXXXXXXXX - Unicode         (U+XXXXXXXX)
 fn (c Checker) check_quoted_escapes(q ast.Quoted) ? {
 	// Setup a scanner in stack memory for easier navigation.
-	mut s := scanner.new_simple(q.text) ?
+	mut s := scanner.new_simple_text(q.text) ?
 
 	// See https://toml.io/en/v1.0.0#string for more info on string types.
 	is_basic := q.quote == `\"`
@@ -552,7 +552,7 @@ fn (c Checker) check_unicode_escape(esc_unicode string) ? {
 pub fn (c Checker) check_comment(comment ast.Comment) ? {
 	lit := comment.text
 	// Setup a scanner in stack memory for easier navigation.
-	mut s := scanner.new_simple(lit) ?
+	mut s := scanner.new_simple_text(lit) ?
 	for {
 		ch := s.next()
 		if ch == scanner.end_of_text {
