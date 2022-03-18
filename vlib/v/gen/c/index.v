@@ -115,17 +115,8 @@ fn (mut g Gen) range_expr(node ast.IndexExpr, range ast.RangeExpr) {
 			g.write('array_slice(')
 		}
 		g.write('new_array_from_c_array${noscan}(')
-		g.write('$info.size')
-		g.write(', $info.size')
-		g.write(', sizeof(')
-		if node.left_type.is_ptr() {
-			g.write('(*')
-		}
-		g.expr(node.left)
-		if node.left_type.is_ptr() {
-			g.write(')')
-		}
-		g.write('[0]), ')
+		ctype := g.typ(info.elem_type)
+		g.write('$info.size, $info.size, sizeof($ctype), ')
 		if node.left_type.is_ptr() {
 			g.write('*')
 		}
