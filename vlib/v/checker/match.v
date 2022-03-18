@@ -236,7 +236,11 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				if expr_type !in cond_type_sym.info.variants {
 					expr_str := c.table.type_to_str(expr_type)
 					expect_str := c.table.type_to_str(node.cond_type)
-					c.error('`$expect_str` has no variant `$expr_str`', expr.pos())
+					sumtype_variant_names := cond_type_sym.info.variants.map(c.table.type_to_str_using_aliases(it,
+						{}))
+					suggestion := util.new_suggestion(expr_str, sumtype_variant_names)
+					c.error(suggestion.say('`$expect_str` has no variant `$expr_str`'),
+						expr.pos())
 				}
 			} else if cond_type_sym.info is ast.Alias && expr_type_sym.info is ast.Struct {
 				expr_str := c.table.type_to_str(expr_type)
