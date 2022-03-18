@@ -60,22 +60,39 @@ Unlike many other languages, V is not going to be always changing, with new feat
 being introduced and old features modified. It is always going to be a small and simple
 language, very similar to the way it is right now.
 
-## Installing V from source
+## Installing V - from source *(preferred method)*
 
-### Linux, macOS, Windows, *BSD, Solaris, WSL, Android, Raspbian
+### Linux, macOS, Windows, *BSD, Solaris, WSL, Android, etc.
 
+Usually installing V is quite simple if you have an environment that already has a 
+functional `git` installation. 
+
+* *(* ***PLEASE NOTE:*** *If you run into any trouble or you have a different operating
+system or Linux distribution that doesn't install or work immediately, please see 
+[Installation Issues](https://github.com/vlang/v/discussions/categories/installation-issues)
+and search for your OS and problem. If you can't find your problem, please add it to an
+existing discussion if one exists for your OS, or create a new one if a main discussion
+doesn't yet exist for your OS.)*
+
+
+To get started, simply try to execute the following in your terminal/shell:
 ```bash
 git clone https://github.com/vlang/v
 cd v
 make
+# HINT: Using Windows?: run make.bat in the cmd.exe shell
 ```
 
-That's it! Now you have a V executable at `[path to V repo]/v`.
+That should be it and you should find your V executable at `[path to V repo]/v`.
 `[path to V repo]` can be anywhere.
 
-(On Windows `make` means running `make.bat`, so make sure you use `cmd.exe`)
+(As in the hint above, on Windows `make` means running `make.bat`, so make sure you use
+the `cmd.exe` terminal.)
 
 Now you can try `./v run examples/hello_world.v` (`v.exe` on Windows).
+
+* *Trouble? Please see the note above and link to
+[Installation Issues](https://github.com/vlang/v/discussions/categories/installation-issues) for help.*
 
 V is constantly being updated. To update V, simply run:
 
