@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 module scanner
 
-import os
 import math
 import toml.input
 import toml.token
@@ -50,28 +49,44 @@ pub:
 // new_scanner returns a new *heap* allocated `Scanner` instance, based on the file in config.input.file_path,
 // or based on the text in config.input.text .
 pub fn new_scanner(config Config) ?&Scanner {
-	config.input.validate() ?
-	mut text := config.input.text
-	file_path := config.input.file_path
-	if os.is_file(file_path) {
-		text = os.read_file(file_path) or {
-			return error(@MOD + '.' + @STRUCT + '.' + @FN +
-				' Could not read "$file_path": "$err.msg()"')
-		}
-	}
 	mut s := &Scanner{
 		config: config
-		text: text
+		text: config.input.read_input() ?
 	}
 	return s
 }
 
-// new_simple returns a new *stack* allocated `Scanner` instance, that will work on the text in `toml_input`.
-pub fn new_simple(toml_input string) ?Scanner {
+// new_simple returns a new *stack* allocated `Scanner` instance.
+pub fn new_simple(config Config) ?Scanner {
+	return Scanner{
+		config: config
+		text: config.input.read_input() ?
+	}
+}
+
+// new_simple_text returns a new *stack* allocated `Scanner` instance
+// ready for parsing TOML in `text`.
+pub fn new_simple_text(text string) ?Scanner {
+	in_config := input.Config{
+		text: text
+	}
 	config := Config{
-		input: input.Config{
-			text: toml_input
-		}
+		input: in_config
+	}
+	return Scanner{
+		config: config
+		text: config.input.read_input() ?
+	}
+}
+
+// new_simple_file returns a new *stack* allocated `Scanner` instance
+// ready for parsing TOML in file read from `path`.
+pub fn new_simple_file(path string) ?Scanner {
+	in_config := input.Config{
+		file_path: path
+	}
+	config := Config{
+		input: in_config
 	}
 	return Scanner{
 		config: config
