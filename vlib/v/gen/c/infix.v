@@ -602,7 +602,6 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 	if left_sym.kind == .interface_ {
 		g.write('_typ $cmp_op ')
 		// `_Animal_Dog_index`
-
 		sub_type := match node.right {
 			ast.TypeNode {
 				g.unwrap_generic(node.right.typ)
