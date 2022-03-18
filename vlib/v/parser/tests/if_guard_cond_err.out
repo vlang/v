@@ -1,0 +1,7 @@
+vlib/v/parser/tests/if_guard_cond_err.vv:16:16: error: if guard condition expression is illegal, it should return optional
+   14 |     fp.usage_example('GOOG AAPL')
+   15 |     _ := fp.bool('version', `v`, false, 'version information.')
+   16 |     if args := fp.finalize() && args.len > 0 {
+      |                   ~~~~~~~~~~~~~~~~~~~~~~~~~~
+   17 |         return args
+   18 |     } else {
