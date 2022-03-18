@@ -507,7 +507,7 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 			else { ast.Type(0) }
 		}
 		sub_sym := g.table.sym(sub_type)
-		g.write('_${c_name(sym.name)}_${c_name(sub_sym.name)}_index')
+		g.write('_${sym.cname}_${sub_sym.cname}_index')
 		return
 	} else if sym.kind == .sum_type {
 		g.write('_typ $cmp_op ')
