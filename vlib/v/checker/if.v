@@ -152,12 +152,8 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			} else {
 				c.stmts(branch.stmts)
 			}
-			if c.smartcast_mut_pos != token.Pos{} {
-				c.smartcast_mut_pos = token.Pos{}
-			}
-			if c.smartcast_cond_pos != token.Pos{} {
-				c.smartcast_cond_pos = token.Pos{}
-			}
+			c.smartcast_mut_pos = token.Pos{}
+			c.smartcast_cond_pos = token.Pos{}
 		}
 		if expr_required {
 			if branch.stmts.len > 0 && branch.stmts[branch.stmts.len - 1] is ast.ExprStmt {
