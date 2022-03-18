@@ -14,7 +14,7 @@ const (
 )
 
 fn test_nested_array_of_tables() {
-	mut toml_doc := toml.parse(toml_text) or { panic(err) }
+	mut toml_doc := toml.parse_text(toml_text) or { panic(err) }
 
 	toml_json := to.json(toml_doc)
 

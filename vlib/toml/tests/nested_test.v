@@ -25,7 +25,7 @@ enabled = true
 '
 
 fn test_parse() {
-	toml_doc := toml.parse(toml_text) or { panic(err) }
+	toml_doc := toml.parse_text(toml_text) or { panic(err) }
 	// dump(toml_doc.ast)
 	// assert false
 

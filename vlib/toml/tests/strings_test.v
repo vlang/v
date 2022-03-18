@@ -33,7 +33,7 @@ long = "\U000003B4"'
 )
 
 fn test_multiline_strings() {
-	mut toml_doc := toml.parse(toml_multiline_text_1) or { panic(err) }
+	mut toml_doc := toml.parse_text(toml_multiline_text_1) or { panic(err) }
 
 	mut value := toml_doc.value('multi1')
 	assert value.string() == 'one'
@@ -44,7 +44,7 @@ fn test_multiline_strings() {
 	value = toml_doc.value('multi4')
 	assert value.string() == 'one\ntwo\nthree\nfour\n'
 
-	toml_doc = toml.parse(toml_multiline_text_2) or { panic(err) }
+	toml_doc = toml.parse_text(toml_multiline_text_2) or { panic(err) }
 	value = toml_doc.value('multi1')
 	assert value.string() == 'one'
 	value = toml_doc.value('multi2')
@@ -57,7 +57,7 @@ fn test_multiline_strings() {
 	toml_file :=
 		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
 		'.toml'
-	toml_doc = toml.parse(toml_file) or { panic(err) }
+	toml_doc = toml.parse_file(toml_file) or { panic(err) }
 	value = toml_doc.value('lit_one')
 	assert value.string() == "'one quote'"
 	value = toml_doc.value('lit_two')
@@ -69,7 +69,7 @@ fn test_multiline_strings() {
 }
 
 fn test_unicode_escapes() {
-	mut toml_doc := toml.parse(toml_unicode_escapes) or { panic(err) }
+	mut toml_doc := toml.parse_text(toml_unicode_escapes) or { panic(err) }
 
 	mut value := toml_doc.value('short')
 	assert value.string() == '\u03B4' // <- This escape is handled by V
@@ -81,7 +81,7 @@ fn test_literal_strings() {
 	toml_file :=
 		os.real_path(os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))) +
 		'.toml'
-	toml_doc := toml.parse(toml_file) or { panic(err) }
+	toml_doc := toml.parse_file(toml_file) or { panic(err) }
 
 	assert toml_doc.value('lit1').string() == r'\' // '\'
 	assert toml_doc.value('lit2').string() == r'\\' // '\\'

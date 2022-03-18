@@ -15,7 +15,7 @@ fn test_large_file() {
 		'.toml'
 	if os.exists(toml_file) {
 		println('Testing parsing of large (${os.file_size(toml_file)} bytes) "$toml_file"...')
-		toml_doc := toml.parse(toml_file) or { panic(err) }
+		toml_doc := toml.parse_file(toml_file) or { panic(err) }
 		println('OK   [1/1] "$toml_file"...') // So it can be checked with `v -stats test ...`
 	}
 }

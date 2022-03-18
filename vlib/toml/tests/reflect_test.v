@@ -50,7 +50,7 @@ mut:
 }
 
 fn test_reflect() {
-	toml_doc := toml.parse(toml_text) or { panic(err) }
+	toml_doc := toml.parse_text(toml_text) or { panic(err) }
 
 	mut user := toml_doc.reflect<User>()
 	user.bio = toml_doc.value('bio').reflect<Bio>()

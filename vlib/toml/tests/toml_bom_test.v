@@ -17,7 +17,7 @@ const (
 )
 
 fn test_toml_with_bom() {
-	toml_doc := toml.parse(toml_text_with_utf8_bom) or { panic(err) }
+	toml_doc := toml.parse_text(toml_text_with_utf8_bom) or { panic(err) }
 	toml_json := to.json(toml_doc)
 
 	title := toml_doc.value('title')
@@ -36,13 +36,13 @@ fn test_toml_with_bom() {
 
 	// Re-cycle bad_toml_doc
 	mut bad_toml_doc := empty_toml_document
-	bad_toml_doc = toml.parse(toml_text_with_utf16_bom) or {
+	bad_toml_doc = toml.parse_text(toml_text_with_utf16_bom) or {
 		println('     $err.msg()')
 		assert true
 		empty_toml_document
 	}
 
-	bad_toml_doc = toml.parse(toml_text_with_utf32_bom) or {
+	bad_toml_doc = toml.parse_text(toml_text_with_utf32_bom) or {
 		println('     $err.msg()')
 		assert true
 		empty_toml_document

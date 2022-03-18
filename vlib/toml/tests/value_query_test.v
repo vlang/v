@@ -50,7 +50,7 @@ colors = [
 )
 
 fn test_value_query_in_array() {
-	toml_doc := toml.parse(toml_text) or { panic(err) }
+	toml_doc := toml.parse_text(toml_text) or { panic(err) }
 	mut value := toml_doc.value('themes[0].colors[1]').string()
 	assert value == 'black'
 	value = toml_doc.value('themes[1].colors[0]').string()
@@ -67,7 +67,7 @@ fn test_value_query_in_array() {
 }
 
 fn test_any_value_query() {
-	toml_doc := toml.parse(toml_text) or { panic(err) }
+	toml_doc := toml.parse_text(toml_text) or { panic(err) }
 	themes := toml_doc.value('themes')
 	assert themes.value('[0].colors[0]').string() == 'red'
 
@@ -94,7 +94,7 @@ fn test_any_value_query() {
 }
 
 fn test_inf_and_nan_query() {
-	toml_doc := toml.parse(toml_text) or { panic(err) }
+	toml_doc := toml.parse_text(toml_text) or { panic(err) }
 
 	value := toml_doc.value('values.nan').string()
 	assert value == 'nan'
@@ -106,7 +106,7 @@ fn test_inf_and_nan_query() {
 }
 
 fn test_any_value_query_2() {
-	toml_doc := toml.parse(toml_text_2) or { panic(err) }
+	toml_doc := toml.parse_text(toml_text_2) or { panic(err) }
 	defaults := toml_doc.value('defaults')
 	assert defaults.value('run.flags[0]').string() == '-f 1'
 	assert defaults.value('env[0].RUN_TIME').int() == 5

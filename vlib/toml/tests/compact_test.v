@@ -29,7 +29,7 @@ hosts = [
 ]'
 
 fn test_parse_compact_text() {
-	toml_doc := toml.parse(toml_text) or { panic(err) }
+	toml_doc := toml.parse_text(toml_text) or { panic(err) }
 
 	title := toml_doc.value('title')
 	assert title == toml.Any('TOML Example')

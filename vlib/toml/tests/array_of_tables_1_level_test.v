@@ -18,7 +18,7 @@ color = "gray"'
 )
 
 fn test_tables() {
-	mut toml_doc := toml.parse(toml_table_text) or { panic(err) }
+	mut toml_doc := toml.parse_text(toml_table_text) or { panic(err) }
 
 	toml_json := to.json(toml_doc)
 

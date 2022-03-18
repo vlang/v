@@ -8,7 +8,8 @@ Parsing files or `string`s containing TOML is easy.
 
 Simply import the `toml` module and do:
 ```v ignore
-doc := toml.parse(<file path or string>) or { panic(err) }
+doc1 := toml.parse_text(<string content>) or { panic(err) }
+doc2 := toml.parse_file(<file path>) or { panic(err) }
 ```
 
 ## Example
@@ -54,7 +55,7 @@ hosts = [
 ]'
 
 fn main() {
-	doc := toml.parse(toml_text) or { panic(err) }
+	doc := toml.parse_text(toml_text) or { panic(err) }
 	title := doc.value('title').string()
 	println('title: "$title"')
 	ip := doc.value('servers.alpha.ip').string()
@@ -91,7 +92,7 @@ array = [
 ]
 '
 
-doc := toml.parse(toml_text) or { panic(err) }
+doc := toml.parse_text(toml_text) or { panic(err) }
 
 assert doc.value('val').bool() == true
 assert doc.value('table.array[0].a').string() == 'A'
@@ -142,6 +143,6 @@ array = [
 ]
 '
 
-doc := toml.parse(toml_text) or { panic(err) }
+doc := toml.parse_text(toml_text) or { panic(err) }
 assert to.json(doc) == '{ "val": true, "table": { "array": [ { "a": "A" }, { "b": "B" } ] } }'
 ```
