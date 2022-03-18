@@ -46,9 +46,8 @@ fn (c Config) validate() ? {
 	}
 }
 
-// read_input returns, depending on which one is sat, the contents of Config.text
-// unless it is empty - in which case it will return the contents read from
-// the file specified in Config.file_path
+// read_input returns either Config.text or the read file contents of Config.file_path
+// depending on which one is not empty.
 pub fn (c Config) read_input() ?string {
 	c.validate() ?
 	mut text := c.text
