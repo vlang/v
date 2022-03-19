@@ -183,7 +183,6 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 }
 
 fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string, enum_typ ast.TypeSymbol) {
-	cname := '${enum_typ.cname}__'
 	mut covered_enum := []string{cap: (enum_typ.info as ast.Enum).vals.len} // collects missing enum variant branches to avoid cstrict errors
 	mut range_branches := []ast.MatchBranch{cap: node.branches.len} // branches have RangeExpr cannot emit as switch case branch, we handle it in default branch
 	mut default_generated := false
@@ -192,11 +191,6 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 	g.indent++
 	for branch in node.branches {
 		if branch.is_else {
-			for val in (enum_typ.info as ast.Enum).vals {
-				if val !in covered_enum {
-					g.writeln('case $cname$val:')
-				}
-			}
 			g.writeln('default:')
 			default_generated = true
 			if range_branches.len > 0 {
@@ -233,7 +227,7 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 					}
 					g.writeln(') {')
 					g.stmts_with_tmp_var(range_branch.stmts, tmp_var)
-					g.writeln('break;')
+					g.writeln('\tbreak;')
 					g.writeln('}')
 				}
 				g.indent--
@@ -259,7 +253,8 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 		}
 		g.stmts_with_tmp_var(branch.stmts, tmp_var)
 		g.expected_cast_type = 0
-		g.writeln('} break;')
+		g.writeln('\tbreak;')
+		g.writeln('}')
 		g.indent--
 	}
 	if range_branches.len > 0 && !default_generated {
@@ -297,7 +292,7 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 			}
 			g.writeln(') {')
 			g.stmts_with_tmp_var(range_branch.stmts, tmp_var)
-			g.writeln('break;')
+			g.writeln('\tbreak;')
 			g.writeln('}')
 		}
 		g.indent--
