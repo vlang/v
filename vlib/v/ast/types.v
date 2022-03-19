@@ -1186,7 +1186,7 @@ pub fn (t &Table) fn_signature_using_aliases(func &Fn, import_aliases map[string
 		// TODO write receiver
 	}
 	if !opts.type_only {
-		sb.write_string('$func.name')
+		sb.write_string(func.name)
 	}
 	sb.write_string('(')
 	start := int(opts.skip_receiver)
@@ -1203,18 +1203,21 @@ pub fn (t &Table) fn_signature_using_aliases(func &Fn, import_aliases map[string
 			sb.write_string('mut ')
 		}
 		if !opts.type_only {
-			sb.write_string('$param.name ')
+			sb.write_string(param.name)
+			sb.write_string(' ')
 		}
 		styp := t.type_to_str_using_aliases(typ, import_aliases)
 		if i == func.params.len - 1 && func.is_variadic {
-			sb.write_string('...$styp')
+			sb.write_string('...')
+			sb.write_string(styp)
 		} else {
-			sb.write_string('$styp')
+			sb.write_string(styp)
 		}
 	}
 	sb.write_string(')')
 	if func.return_type != ast.void_type {
-		sb.write_string(' ${t.type_to_str_using_aliases(func.return_type, import_aliases)}')
+		sb.write_string(' ')
+		sb.write_string(t.type_to_str_using_aliases(func.return_type, import_aliases))
 	}
 	return sb.str()
 }
