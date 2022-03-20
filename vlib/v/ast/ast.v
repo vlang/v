@@ -557,6 +557,7 @@ pub mut:
 	name               string // left.name()
 	is_method          bool
 	is_field           bool // temp hack, remove ASAP when re-impl CallExpr / Selector (joe)
+	is_fn_var          bool // fn variable
 	is_keep_alive      bool // GC must not free arguments before fn returns
 	is_noreturn        bool // whether the function/method is marked as [noreturn]
 	is_ctor_new        bool // if JS ctor calls requires `new` before call, marked as `[use_new]` in V
@@ -568,6 +569,7 @@ pub mut:
 	left_type          Type // type of `user`
 	receiver_type      Type // User
 	return_type        Type
+	fn_var_type        Type   // fn variable type
 	should_be_skipped  bool   // true for calls to `[if someflag?]` functions, when there is no `-d someflag`
 	concrete_types     []Type // concrete types, e.g. <int, string>
 	concrete_list_pos  token.Pos
