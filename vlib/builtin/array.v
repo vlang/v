@@ -124,7 +124,7 @@ fn (mut a array) ensure_cap(required int) {
 		cap *= 2
 	}
 	new_size := cap * a.element_size
-	new_data := vcalloc(new_size)
+	new_data := unsafe { malloc(new_size) }
 	if a.data != voidptr(0) {
 		unsafe { vmemcpy(new_data, a.data, a.len * a.element_size) }
 		// TODO: the old data may be leaked when no GC is used (ref-counting?)
