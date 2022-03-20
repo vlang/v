@@ -171,9 +171,9 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 		for i in 0 .. count {
 			if depth > 0 {
 				ary_clone := unsafe { a.clone_to_depth(depth) }
-				unsafe { vmemcpy( &byte(arr.data) + (i*arr.len) * arr.element_size, &byte(ary_clone.data), a.len * a.element_size) }
+				unsafe { vmemcpy(arr.get_unsafe(i * a.len), &byte(ary_clone.data), a.len * a.element_size) }
 			} else {
-				unsafe { vmemcpy( &byte(arr.data) + (i*arr.len) * arr.element_size, &byte(a.data), a.len * a.element_size) }
+				unsafe { vmemcpy(arr.get_unsafe(i * a.len), &byte(a.data), a.len * a.element_size) }
 			}
 		}
 	}
@@ -537,18 +537,17 @@ pub fn (a &array) clone_to_depth(depth int) array {
 		len: a.len
 		cap: a.cap
 	}
-	isizea := int(sizeof(array))
 	// Recursively clone-generated elements if array element is array type
-	if depth > 0 && a.element_size == isizea && a.len >= 0 && a.cap >= a.len {
+	if depth > 0 && a.element_size == sizeof(array) && a.len >= 0 && a.cap >= a.len {
 		for i in 0 .. a.len {
 			ar := array{}
-			unsafe { vmemcpy(&ar, &byte(a.data) + i * a.element_size, isizea) }
+			unsafe { vmemcpy(&ar, a.get_unsafe(i), int(sizeof(array))) }
 			ar_clone := unsafe { ar.clone_to_depth(depth - 1) }
-			unsafe { vmemcpy(&byte(arr.data) + arr.element_size * i, &ar_clone, isizea) }
+			unsafe { arr.set_unsafe(i, &ar_clone) }
 		}
 		return arr
 	} else {
-		if a.data != 0 {
+		if !isnil(a.data) {
 			unsafe { vmemcpy(&byte(arr.data), a.data, a.cap * a.element_size) }
 		}
 		return arr
@@ -572,33 +571,31 @@ fn (mut a array) set(i int, val voidptr) {
 }
 
 fn (mut a array) push(val voidptr) {
-	olen := a.len
-	nlen := olen + 1
-	if olen >= a.cap {
-		a.ensure_cap(nlen)
+	if a.len >= a.cap {
+		a.ensure_cap(a.len + 1)
 	}
-	unsafe { vmemmove(&byte(a.data) + a.element_size * olen, val, a.element_size) }
-	a.len = nlen
+	unsafe { vmemmove(&byte(a.data) + a.element_size * a.len, val, a.element_size) }
+	a.len++
 }
 
 // push_many implements the functionality for pushing another array.
 // `val` is array.data and user facing usage is `a << [1,2,3]`
 [unsafe]
 pub fn (mut a3 array) push_many(val voidptr, size int) {
-	nlen := a3.len + size
-	a3.ensure_cap(nlen)
-	if a3.data == val && a3.data != 0 {
+	a3.ensure_cap(a3.len + size)
+	if a3.data == val && !isnil(a3.data) {
 		// handle `arr << arr`
 		copy := a3.clone()
 		unsafe {
-			vmemcpy(&byte(a3.data) + a3.len * a3.element_size, copy.data, a3.element_size * size)
+			// vmemcpy(a.data, copy.data, copy.element_size * copy.len)
+			vmemcpy(a3.get_unsafe(a3.len), copy.data, a3.element_size * size)
 		}
 	} else {
-		if a3.data != 0 && val != 0 {
-			unsafe { vmemcpy(&byte(a3.data) + a3.len * a3.element_size, val, a3.element_size * size) }
+		if !isnil(a3.data) && !isnil(val) {
+			unsafe { vmemcpy(a3.get_unsafe(a3.len), val, a3.element_size * size) }
 		}
 	}
-	a3.len = nlen
+	a3.len += size
 }
 
 // reverse_in_place reverses existing array data, modifying original array.
