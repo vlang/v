@@ -820,10 +820,12 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 		c.error('cannot implement interface `$inter_sym.name` with a different interface `$styp`',
 			pos)
 	}
-	imethods := if inter_sym.kind == .interface_ {
-		(inter_sym.info as ast.Interface).methods
-	} else {
-		inter_sym.methods
+	imethods := rlock inter_sym.methods {
+		if inter_sym.kind == .interface_ {
+			(inter_sym.info as ast.Interface).methods
+		} else {
+			inter_sym.methods
+		}
 	}
 	// voidptr is an escape hatch, it should be allowed to be passed
 	if utyp != ast.voidptr_type {

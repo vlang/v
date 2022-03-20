@@ -165,10 +165,14 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 		// needed for proper error reporting during vweb route checking
 		if node.method_idx < sym.methods.len {
-			sym.methods[node.method_idx].source_fn = voidptr(node)
+			lock sym.methods {
+				sym.methods[node.method_idx].source_fn = voidptr(node)
+			}
 		} else {
-			c.error('method index: $node.method_idx >= sym.methods.len: $sym.methods.len',
-				node.pos)
+			rlock sym.methods {
+				c.error('method index: $node.method_idx >= sym.methods.len: $sym.methods.len',
+					node.pos)
+			}
 		}
 	}
 	if node.language == .v {
@@ -1877,12 +1881,11 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type ast.
 
 fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type ast.Type, left_sym ast.TypeSymbol) ast.Type {
 	method_name := node.name
-	mut elem_typ := ast.void_type
 	if method_name == 'slice' && !c.is_builtin_mod {
 		c.error('.slice() is a private method, use `x[start..end]` instead', node.pos)
 	}
 	array_info := left_sym.info as ast.Array
-	elem_typ = array_info.elem_type
+	elem_typ := array_info.elem_type
 	if method_name in ['filter', 'map', 'any', 'all'] {
 		// position of `it` doesn't matter
 		scope_register_it(mut node.scope, node.pos, elem_typ)

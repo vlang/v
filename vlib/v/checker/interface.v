@@ -52,7 +52,9 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 				for m in isym.methods {
 					if !emnames_ds[m.name] {
 						emnames_ds[m.name] = true
-						decl_sym.methods << m.new_method_with_receiver_type(node.typ)
+						lock decl_sym.methods {
+							decl_sym.methods << m.new_method_with_receiver_type(node.typ)
+						}
 					}
 				}
 				if embed_decl := c.table.interfaces[embed.typ] {

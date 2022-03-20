@@ -1090,8 +1090,8 @@ fn (mut g Gen) register_thread_void_wait_call() {
 }
 
 fn (mut g Gen) register_thread_array_wait_call(eltyp string) string {
-	is_void := eltyp == 'void'
-	thread_typ := if is_void { '__v_thread' } else { '__v_thread_$eltyp' }
+	is_void := eltyp.contains('void')
+	thread_typ := if is_void { '__v_thread' } else { '$eltyp' }
 	ret_typ := if is_void { 'void' } else { 'Array_$eltyp' }
 	thread_arr_typ := 'Array_$thread_typ'
 	fn_name := '${thread_arr_typ}_wait'
@@ -1124,7 +1124,7 @@ $ret_typ ${fn_name}($thread_arr_typ a) {
 			} else {
 				g.gowrappers.writeln('\t\tif (t == 0) continue;')
 			}
-			g.gowrappers.writeln('\t\t(($eltyp*)res.data)[i] = __v_thread_${eltyp}_wait(t);
+			g.gowrappers.writeln('\t\t(($eltyp*)res.data)[i] = ${eltyp}_wait(t);
 	}
 	return res;
 }')
@@ -5785,7 +5785,7 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 					}
 				}
 			}
-			mut methods := st_sym.methods
+			mut methods := st_sym.methods.clone()
 			method_names := methods.map(it.name)
 			match st_sym.info {
 				ast.Struct, ast.Interface, ast.SumType {

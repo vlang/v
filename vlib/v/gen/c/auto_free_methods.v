@@ -95,13 +95,24 @@ fn (mut g Gen) gen_free_for_struct(info ast.Struct, styp string, fn_name string)
 }
 
 fn (mut g Gen) gen_free_for_array(info ast.Array, styp string, fn_name string) {
-	g.definitions.writeln('void ${fn_name}($styp* it); // auto')
+	is_shared := styp.starts_with('__shared')
+	println('is_shared($styp) = $is_shared')
+	no_shared := styp.all_after('__shared')
+
+	proto := if is_shared {
+		'void ${fn_name}($styp _it); // auto'
+	} else {
+		'void ${fn_name}($styp* it); // auto'
+	}
+	g.definitions.writeln('$proto; // auto')
 	mut fn_builder := strings.new_builder(128)
 	defer {
 		g.auto_fn_definitions << fn_builder.str()
 	}
-	fn_builder.writeln('void ${fn_name}($styp* it) {')
-
+	fn_builder.writeln('$proto {')
+	if is_shared {
+		fn_builder.writeln('\t$no_shared* it = _it->val;')
+	}
 	sym := g.table.sym(g.unwrap_generic(info.elem_type))
 	if sym.kind in [.string, .array, .map, .struct_] {
 		fn_builder.writeln('\tfor (int i = 0; i < it->len; i++) {')

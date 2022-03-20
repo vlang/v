@@ -537,5 +537,7 @@ pub fn free_caches() {
 }
 
 pub fn read_file(file_path string) ?string {
-	return unsafe { cached_read_source_file(file_path) }
+	return os.read_file(file_path)
+	// cache is not used because of parallel parser
+	// return unsafe { cached_read_source_file(file_path) }
 }

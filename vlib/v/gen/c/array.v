@@ -533,6 +533,7 @@ fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, compare_fn string) {
 
 // `nums.filter(it % 2 == 0)`
 fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
+	g.inside_lambda = true
 	tmp := g.new_tmp_var()
 	mut s := g.go_before_stmt(0)
 	s_ends_with_ln := s.ends_with('\n')
@@ -906,7 +907,7 @@ fn (mut g Gen) gen_array_wait(node ast.CallExpr) {
 	thread_type := g.table.array_info(arr).elem_type
 	thread_sym := g.table.sym(thread_type)
 	thread_ret_type := g.table.thread_info(thread_sym).return_type
-	eltyp := g.table.sym(thread_ret_type).cname
+	eltyp := g.table.thread_cname(thread_ret_type)
 	fn_name := g.register_thread_array_wait_call(eltyp)
 	g.write('${fn_name}(')
 	g.expr(node.left)
