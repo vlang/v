@@ -324,6 +324,15 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 							field.pos)
 					}
 				}
+				if field_type_sym.kind == .function && field_type_sym.language == .v {
+					pos := field.expr.pos()
+					if mut field.expr is ast.AnonFn {
+						if field.expr.decl.no_body {
+							c.error('cannot initialize the fn field with anonymous fn that does not have a body',
+								pos)
+						}
+					}
+				}
 				node.fields[i].typ = expr_type
 				node.fields[i].expected_type = field_info.typ
 
