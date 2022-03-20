@@ -208,11 +208,21 @@ fn (mut r Repl) parse_import(line string) {
 	}
 }
 
+fn highlight_console_command(command string) string {
+	return term.bright_white(term.bright_bg_black(' $command '))
+}
+
+fn highlight_repl_command(command string) string {
+	return term.bright_white(term.bg_blue(' $command '))
+}
+
 fn print_welcome_screen() {
-	cmd_exit := term.highlight_command('exit')
-	cmd_help := term.highlight_command('v help')
-	file_main := term.highlight_command('main.v')
-	cmd_run := term.highlight_command('v run main.v')
+	cmd_exit := highlight_repl_command('exit')
+	cmd_list := highlight_repl_command('list')
+	cmd_help := highlight_repl_command('help')
+	cmd_v_help := highlight_console_command('v help')
+	cmd_v_run := highlight_console_command('v run main.v')
+	file_main := highlight_console_command('main.v')
 	vbar := term.bright_green('|')
 	width, _ := term.get_terminal_size() // get the size of the terminal
 	vlogo := [
@@ -224,11 +234,11 @@ fn print_welcome_screen() {
 		term.bright_blue(r'     \__/     '),
 	]
 	help_text := [
-		'Welcome to the V REPL (for help with V itself, type $cmd_exit, then run $cmd_help).',
+		'Welcome to the V REPL (for help with V itself, type $cmd_exit, then run $cmd_v_help).',
 		'Note: the REPL is highly experimental. For best V experience, use a text editor, ',
-		'save your code in a $file_main file and execute: $cmd_run',
-		version.full_v_version(false),
-		'Use Ctrl-C or ${term.highlight_command('exit')} to exit, or ${term.highlight_command('help')} to see other available commands',
+		'save your code in a $file_main file and execute: $cmd_v_run',
+		'${version.full_v_version(false)} . Use $cmd_list to see the accumulated program so far.',
+		'Use Ctrl-C or $cmd_exit to exit, or $cmd_help to see other available commands.',
 	]
 	if width >= 97 {
 		eprintln('${vlogo[0]}')
