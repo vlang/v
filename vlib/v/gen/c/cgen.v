@@ -955,7 +955,13 @@ fn (mut g Gen) optional_type_name(t ast.Type) (string, string) {
 
 fn (g Gen) optional_type_text(styp string, base string) string {
 	// replace void with something else
-	size := if base == 'void' { 'byte' } else { base }
+	size := if base == 'void' {
+		'byte'
+	} else if base.starts_with('anon_fn') {
+		'void*'
+	} else {
+		base
+	}
 	ret := 'struct $styp {
 	byte state;
 	IError err;
@@ -4815,12 +4821,15 @@ fn (mut g Gen) insert_at(pos int, s string) {
 // Returns the type of the last stmt
 fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Type) {
 	cvar_name := c_name(var_name)
-	mr_styp := g.base_type(return_type)
+	mut mr_styp := g.base_type(return_type)
 	is_none_ok := return_type == ast.ovoid_type
 	g.writeln(';')
 	if is_none_ok {
 		g.writeln('if (${cvar_name}.state != 0 && ${cvar_name}.err._typ != _IError_None___index) {')
 	} else {
+		if return_type != 0 && g.table.sym(return_type).kind == .function {
+			mr_styp = 'voidptr'
+		}
 		g.writeln('if (${cvar_name}.state != 0) { /*or block*/ ')
 	}
 	if or_block.kind == .block {

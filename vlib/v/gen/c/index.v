@@ -365,8 +365,11 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 	info := sym.info as ast.Map
 	key_type_str := g.typ(info.key_type)
 	elem_type := info.value_type
-	elem_type_str := g.typ(elem_type)
+	mut elem_type_str := g.typ(elem_type)
 	elem_typ := g.table.sym(elem_type)
+	if elem_typ.kind == .function {
+		elem_type_str = 'voidptr'
+	}
 	get_and_set_types := elem_typ.kind in [.struct_, .map]
 	if g.is_assign_lhs && !g.is_arraymap_set && !get_and_set_types {
 		if g.assign_op == .assign || info.value_type == ast.string_type {
@@ -401,12 +404,8 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 		g.is_arraymap_set = old_is_arraymap_set
 		g.is_assign_lhs = old_is_assign_lhs
 		g.write('}')
-		if elem_typ.kind == .function {
-			g.write(', &(voidptr[]) { ')
-		} else {
-			g.arraymap_set_pos = g.out.len
-			g.write(', &($elem_type_str[]) { ')
-		}
+		g.arraymap_set_pos = g.out.len
+		g.write(', &($elem_type_str[]) { ')
 		if g.assign_op != .assign && info.value_type != ast.string_type {
 			zero := g.type_default(info.value_type)
 			g.write('$zero })))')
@@ -450,8 +449,6 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 					g.write_fn_ptr_decl(&elem_typ.info, '')
 					g.write(')(*(voidptr*)map_get(')
 				}
-			} else if elem_typ.kind == .function {
-				g.write('(*(voidptr*)map_get(')
 			} else {
 				g.write('(*($elem_type_str*)map_get(')
 			}
@@ -477,8 +474,6 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 			g.write('))')
 		} else if g.is_fn_index_call {
 			g.write(', &(voidptr[]){ $zero })))')
-		} else if elem_typ.kind == .function {
-			g.write(', &(voidptr[]){ $zero }))')
 		} else {
 			g.write(', &($elem_type_str[]){ $zero }))')
 		}
