@@ -480,6 +480,9 @@ fn main() {
 		println('  ... where vexepath is the full path to the v executable file')
 		return
 	}
+	if !is_stdin_a_pipe {
+		os.setenv('VCOLORS', 'always', true)
+	}
 	run_repl(replfolder, replprefix)
 }
 
