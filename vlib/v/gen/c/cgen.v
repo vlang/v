@@ -4524,17 +4524,17 @@ fn (mut g Gen) write_builtin_types() {
 // Sort the types, make sure types that are referenced by other types
 // are added before them.
 fn (mut g Gen) write_sorted_types() {
+	g.type_definitions.writeln('// #start sorted_symbols')
+	defer {
+		g.type_definitions.writeln('// #end sorted_symbols')
+	}
 	mut symbols := []&ast.TypeSymbol{cap: g.table.type_symbols.len} // structs that need to be sorted
 	for sym in g.table.type_symbols {
 		if sym.name !in c.builtins {
 			symbols << sym
 		}
 	}
-	// sort structs
 	sorted_symbols := g.sort_structs(symbols)
-	// Generate C code
-	g.type_definitions.writeln('// builtin types:')
-	g.type_definitions.writeln('//------------------ #endbuiltin')
 	g.write_types(sorted_symbols)
 }
 
@@ -4706,7 +4706,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 }
 
 // sort structs by dependant fields
-fn (g &Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
+fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 	util.timing_start(@METHOD)
 	defer {
 		util.timing_measure(@METHOD)
@@ -4742,12 +4742,23 @@ fn (g &Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 					field_deps << dep
 				}
 				for field in sym.info.fields {
-					dep := g.table.sym(field.typ).name
+					if field.typ.is_ptr() {
+						continue
+					}
+					fsym := g.table.sym(field.typ)
+					dep := fsym.name
 					// skip if not in types list or already in deps
-					if dep !in type_names || dep in field_deps || field.typ.is_ptr() {
+					if dep !in type_names || dep in field_deps {
 						continue
 					}
 					field_deps << dep
+					if fsym.info is ast.Alias {
+						xdep := g.table.sym(fsym.info.parent_type).name
+						if xdep !in type_names || xdep in field_deps {
+							continue
+						}
+						field_deps << xdep
+					}
 				}
 			}
 			// ast.Interface {}
