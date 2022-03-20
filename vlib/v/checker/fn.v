@@ -600,9 +600,13 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			match obj {
 				ast.GlobalField {
 					typ = obj.typ
+					node.is_fn_var = true
+					node.fn_var_type = typ
 				}
 				ast.Var {
 					typ = if obj.smartcasts.len != 0 { obj.smartcasts.last() } else { obj.typ }
+					node.is_fn_var = true
+					node.fn_var_type = typ
 				}
 				else {}
 			}

@@ -5106,6 +5106,8 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 	} else if mut expr.left is ast.AnonFn {
 		g.gen_anon_fn_decl(mut expr.left)
 		name = expr.left.decl.name
+	} else if expr.is_fn_var {
+		name = g.table.sym(expr.fn_var_type).name
 	}
 	name = util.no_dots(name)
 	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') {
