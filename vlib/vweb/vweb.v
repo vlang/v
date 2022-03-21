@@ -459,7 +459,12 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T, routes map[string]Route) {
 		}
 		return
 	}
-
+	$if trace_request ? {
+		dump(req)
+	}
+	$if trace_request_url ? {
+		dump(req.url)
+	}
 	// URL Parse
 	url := urllib.parse(req.url) or {
 		eprintln('error parsing path: $err')
@@ -702,6 +707,9 @@ pub fn not_found() Result {
 }
 
 fn send_string(mut conn net.TcpConn, s string) ? {
+	$if trace_response ? {
+		eprintln('> send_string:\n$s\n')
+	}
 	conn.write(s.bytes()) ?
 }
 
