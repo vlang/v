@@ -1840,7 +1840,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.Module {
 			// g.is_builtin_mod = node.name == 'builtin'
-			g.is_builtin_mod = node.name in ['builtin', 'strconv', 'strings', 'dlmalloc']
+			// g.is_builtin_mod = node.name in ['builtin', 'strconv', 'strings', 'dlmalloc']
+			g.is_builtin_mod = util.module_is_builtin(node.name)
 			// g.cur_mod = node.name
 			g.cur_mod = node
 		}
@@ -3651,11 +3652,23 @@ fn (mut g Gen) ident(node ast.Ident) {
 		g.write(util.no_dots(node.name[2..]))
 		return
 	}
-	if node.kind == .constant { // && !node.name.starts_with('g_') {
-		// TODO globals hack
-		g.write('_const_')
-	}
 	mut name := c_name(node.name)
+	if node.kind == .constant { // && !node.name.starts_with('g_') {
+		if g.pref.translated && !g.is_builtin_mod
+			&& !util.module_is_builtin(node.name.all_before_last('.')) {
+			// Don't prepend "_const" to translated C consts,
+			// but only in user code, continue prepending "_const" to builtin consts.
+			mut x := util.no_dots(node.name)
+			if x.starts_with('main__') {
+				x = x['main__'.len..]
+			}
+			g.write(x)
+			return
+		} else {
+			// TODO globals hack
+			g.write('_const_')
+		}
+	}
 	// TODO: temporary, remove this
 	node_info := node.info
 	mut is_auto_heap := false
@@ -4120,6 +4133,12 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 			}
 		}
 		name := c_name(field.name)
+		const_name := if node.attrs.contains('export') && !g.is_builtin_mod {
+			// TODO this only works for the first const in the group for now
+			node.attrs[0].arg
+		} else {
+			'_const_' + name
+		}
 		field_expr := field.expr
 		match field.expr {
 			ast.ArrayInit {
@@ -4127,19 +4146,19 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 					styp := g.typ(field.expr.typ)
 					if g.pref.build_mode != .build_module {
 						val := g.expr_string(field.expr)
-						g.definitions.writeln('$styp _const_$name = $val; // fixed array const')
+						g.definitions.writeln('$styp $const_name = $val; // fixed array const')
 					} else {
-						g.definitions.writeln('$styp _const_$name; // fixed array const')
+						g.definitions.writeln('$styp $const_name; // fixed array const')
 					}
 				} else {
 					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false)
 				}
 			}
 			ast.StringLiteral {
-				g.definitions.writeln('string _const_$name; // a string literal, inited later')
+				g.definitions.writeln('string $const_name; // a string literal, inited later')
 				if g.pref.build_mode != .build_module {
 					val := g.expr_string(field.expr)
-					g.stringliterals.writeln('\t_const_$name = $val;')
+					g.stringliterals.writeln('\t$const_name = $val;')
 				}
 			}
 			ast.CallExpr {
@@ -4183,7 +4202,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 
 fn (mut g Gen) const_decl_precomputed(mod string, name string, ct_value ast.ComptTimeConstValue, typ ast.Type) bool {
 	mut styp := g.typ(typ)
-	cname := '_const_$name'
+	cname := if g.pref.translated && !g.is_builtin_mod { name } else { '_const_$name' }
 	$if trace_const_precomputed ? {
 		eprintln('> styp: $styp | cname: $cname | ct_value: $ct_value | $ct_value.type_name()')
 	}
@@ -4252,7 +4271,7 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, ct_value ast.Comp
 			// TODO: ^ the above for strings, cause:
 			// `error C2099: initializer is not a constant` errors in MSVC,
 			// so fall back to the delayed initialisation scheme:
-			g.definitions.writeln('$styp $cname; // inited later')
+			g.definitions.writeln('$styp $cname; // str inited later')
 			g.init.writeln('\t$cname = _SLIT("$escaped_val");')
 			if g.is_autofree {
 				g.cleanups[mod].writeln('\tstring_free(&$cname);')
@@ -4282,7 +4301,7 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 	// Initialize more complex consts in `void _vinit/2{}`
 	// (C doesn't allow init expressions that can't be resolved at compile time).
 	mut styp := g.typ(typ)
-	cname := '_const_$name'
+	cname := if g.pref.translated && !g.is_builtin_mod { name } else { '_const_$name' }
 	g.definitions.writeln('$styp $cname; // inited later')
 	if cname == '_const_os__args' {
 		if g.pref.os == .windows {
