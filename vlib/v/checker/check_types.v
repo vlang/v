@@ -197,11 +197,11 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 	expected_typ_sym := c.table.sym(expected_)
 	expected_typ_str := c.table.type_to_str(expected.clear_flag(.variadic))
 
-	if got_typ_sym.module_name() == expected_typ_sym.module_name() {
+	if got_typ_sym.symbol_name_except_generic() == expected_typ_sym.symbol_name_except_generic() {
 		// Check if we are making a comparison between two different types of
 		// the same type like `Type<int> and &Type<>`
-		clean_got_typ := c.table.clean_generics_type_str(got.clear_flag(.variadic))
-		clean_expected_typ := c.table.clean_generics_type_str(expected.clear_flag(.variadic))
+		clean_got_typ := c.table.clean_generics_type_str(got.clear_flag(.variadic)).all_before('<')
+		clean_expected_typ := c.table.clean_generics_type_str(expected.clear_flag(.variadic)).all_before('<')
 		if (got.is_ptr() != expected.is_ptr()) || (clean_got_typ != clean_expected_typ) {
 			return error('cannot use `$got_typ_str` as `$expected_typ_str`')
 		}

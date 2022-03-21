@@ -1243,13 +1243,6 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				final_arg_sym = c.table.sym(final_arg_typ)
 			}
 			if exp_arg_typ.has_flag(.generic) {
-				/*
-				this cause to skip the check betwen a &Val and Val, and we have a c error
-
-				if concrete_types.len == 0 {
-					continue
-				}
-				*/
 				if exp_utyp := c.table.resolve_generic_to_concrete(exp_arg_typ, method.generic_names,
 					concrete_types)
 				{

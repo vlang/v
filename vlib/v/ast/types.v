@@ -983,7 +983,7 @@ pub fn (mytable &Table) type_to_code(t Type) string {
 // clean type name from generics form. From Type<int> -> Type
 pub fn (t &Table) clean_generics_type_str(typ Type) string {
 	result := t.type_to_str(typ)
-	return result.split('<')[0]
+	return result.all_before('<')
 }
 
 // import_aliases is a map of imported symbol aliases 'module.Type' => 'Type'
@@ -1230,13 +1230,13 @@ pub fn (t &Table) fn_signature_using_aliases(func &Fn, import_aliases map[string
 
 // Get the name of the complete quanlified name of the type
 // without the generic parts.
-pub fn (t &TypeSymbol) module_name() string {
+pub fn (t &TypeSymbol) symbol_name_except_generic() string {
 	// main.Abc<int>
 	mut embed_name := t.name
 	// remove generic part from name
 	// main.Abc<int> => main.Abc
 	if embed_name.contains('<') {
-		embed_name = embed_name.split('<')[0]
+		embed_name = embed_name.all_before('<')
 	}
 	return embed_name
 }
