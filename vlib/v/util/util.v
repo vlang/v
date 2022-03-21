@@ -36,8 +36,10 @@ const (
 	]
 )
 
+const builtin_module_names = ['builtin', 'strconv', 'strings', 'dlmalloc']
+
 pub fn module_is_builtin(mod string) bool {
-	return mod in util.builtin_module_parts
+	return mod in util.builtin_module_names
 }
 
 pub fn tabs(n int) string {
