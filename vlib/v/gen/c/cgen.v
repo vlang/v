@@ -2045,7 +2045,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		&& !expected_type.has_flag(.optional) {
 		if expr is ast.StructInit && !got_type.is_ptr() {
 			g.inside_cast_in_heap++
-			got_styp := g.cc_type(got_type.ref(), true)
+			got_styp := g.cc_type(got_type_raw.ref(), true)
 			// TODO: why does cc_type even add this in the first place?
 			exp_styp := exp_sym.cname
 			mut fname := 'I_${got_styp}_to_Interface_$exp_styp'
@@ -2056,12 +2056,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 				got_styp)
 			g.inside_cast_in_heap--
 		} else {
-			mut got_styp := g.cc_type(got_type, true)
-			got_styp = match got_styp {
-				'int' { 'int_literal' }
-				'f64' { 'float_literal' }
-				else { got_styp }
-			}
+			got_styp := g.cc_type(got_type_raw, true)
 			got_is_shared := got_type.has_flag(.shared_f)
 			exp_styp := if got_is_shared { '__shared__$exp_sym.cname' } else { exp_sym.cname }
 			// If it's shared, we need to use the other caster:
