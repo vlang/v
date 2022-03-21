@@ -1,4 +1,4 @@
-fn main() {
+fn test_escapes() {
 	@if := 0
 	@for := 0
 	auto := 0
@@ -7,4 +7,5 @@ fn main() {
 	signed := 0
 	@true := 0
 	@false := 0
+	assert true
 }
