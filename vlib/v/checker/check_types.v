@@ -200,14 +200,27 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 	if got_typ_sym.symbol_name_except_generic() == expected_typ_sym.symbol_name_except_generic() {
 		// Check if we are making a comparison between two different types of
 		// the same type like `Type<int> and &Type<>`
-		clean_got_typ := c.table.clean_generics_type_str(got.clear_flag(.variadic)).all_before('<')
-		clean_expected_typ := c.table.clean_generics_type_str(expected.clear_flag(.variadic)).all_before('<')
-		if (got.is_ptr() != expected.is_ptr()) || (clean_got_typ != clean_expected_typ) {
+		if (got.is_ptr() != expected.is_ptr()) || !c.check_same_module(got, expected) {
 			return error('cannot use `$got_typ_str` as `$expected_typ_str`')
 		}
 		return
 	}
 	return error('cannot use `$got_typ_str` as `$expected_typ_str`')
+}
+
+// helper method to check if the type is of the same module.
+// FIXME(vincenzopalazzo) This is a work around to the issue
+// explained in the https://github.com/vlang/v/pull/13718#issuecomment-1074517800
+fn (c Checker) check_same_module(got ast.Type, expected ast.Type) bool {
+	clean_got_typ := c.table.clean_generics_type_str(got.clear_flag(.variadic)).all_before('<')
+	clean_expected_typ := c.table.clean_generics_type_str(expected.clear_flag(.variadic)).all_before('<')
+	if clean_got_typ == clean_expected_typ {
+		return true
+		// The following if confition should catch the bugs descripted in the issue
+	} else if clean_expected_typ.all_after('.') == clean_got_typ.all_after('.') {
+		return true
+	}
+	return false
 }
 
 pub fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
