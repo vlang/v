@@ -5156,7 +5156,8 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 			panic('cgen: obf name "$key" not found, this should never happen')
 		}
 	}
-	g.writeln('// go')
+	g.empty_line = true
+	g.writeln('// start go')
 	wrapper_struct_name := 'thread_arg_' + name
 	wrapper_fn_name := name + '_thread_wrapper'
 	arg_tmp_var := 'arg_' + tmp
@@ -5195,7 +5196,7 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		} else {
 			'thread_$tmp'
 		}
-		g.writeln('HANDLE $simple_handle = CreateThread(0,0, (LPTHREAD_START_ROUTINE)$wrapper_fn_name, $arg_tmp_var, 0,0);')
+		g.writeln('HANDLE $simple_handle = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)$wrapper_fn_name, $arg_tmp_var, 0, 0);')
 		g.writeln('if (!$simple_handle) panic_lasterr(tos3("`go ${name}()`: "));')
 		if node.is_expr && node.call_expr.return_type != ast.void_type {
 			g.writeln('$gohandle_name thread_$tmp = {')
@@ -5214,7 +5215,7 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 			g.writeln('pthread_detach(thread_$tmp);')
 		}
 	}
-	g.writeln('// endgo\n')
+	g.writeln('// end go')
 	if node.is_expr {
 		handle = 'thread_$tmp'
 		// create wait handler for this return type if none exists
