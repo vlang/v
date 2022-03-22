@@ -40,6 +40,7 @@ jobs:
 
       - name: Build sdl examples
         run: |
+          v shader sdl/examples/sdl_opengl_and_sokol
           for example in sdl/examples/*; do
               echo "v $example"
               v "$example";
