@@ -2097,6 +2097,10 @@ fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
 			c.error('unknown type `$sym.name`', field.typ_pos)
 		}
 		if field.has_expr {
+			if field.expr is ast.AnonFn && field.name == 'main' {
+				c.error('the `main` function is the program entry point, cannot redefine it',
+					field.pos)
+			}
 			field.typ = c.expr(field.expr)
 			mut v := c.file.global_scope.find_global(field.name) or {
 				panic('internal compiler error - could not find global in scope')
