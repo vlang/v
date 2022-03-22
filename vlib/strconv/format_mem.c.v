@@ -158,29 +158,36 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 
 		// get sign and decimal parts
 		for c in s {
-			if c == `-` {
-				sgn = -1
-				i++
-			} else if c == `+` {
-				sgn = 1
-				i++
-			} else if c >= `0` && c <= `9` {
-				b[i1] = c
-				i1++
-				i++
-			} else if c == `.` {
-				if sgn > 0 {
-					d_pos = i
-				} else {
-					d_pos = i - 1
+			match c {
+				`-` {
+					sgn = -1
+					i++
 				}
-				i++
-			} else if c == `e` {
-				i++
-				break
-			} else {
-				s.free()
-				return '[Float conversion error!!]'
+				`+` {
+					sgn = 1
+					i++
+				}
+				`0`...`9` {
+					b[i1] = c
+					i1++
+					i++
+				}
+				`.` {
+					if sgn > 0 {
+						d_pos = i
+					} else {
+						d_pos = i - 1
+					}
+					i++
+				}
+				`e` {
+					i++
+					break
+				}
+				else {
+					s.free()
+					return '[Float conversion error!!]'
+				}
 			}
 		}
 		b[i1] = 0
