@@ -274,10 +274,13 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 
 		// println("r_i-d_pos: ${r_i - d_pos}")
 		if dot_res_sp >= 0 {
-			if (r_i - dot_res_sp) > dec_digit {
-				r_i = dot_res_sp + dec_digit + 1
-			}
+			r_i = dot_res_sp + dec_digit + 1
 			res[r_i] = 0
+			for c1 in 1 .. dec_digit + 1 {
+				if res[r_i - c1] == 0 {
+					res[r_i - c1] = `0`
+				}
+			}
 			// println("result: [${tos(&res[0],r_i)}]")
 			tmp_res := tos(res.data, r_i).clone()
 			res.free()
