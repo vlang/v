@@ -118,7 +118,7 @@ fn main() {
 	build_output := get_v_build_output(is_verbose, is_yes, file_path)
 	// ask the user if he wants to submit even after an error
 	if !is_yes && (vdoctor_output == '' || file_content == '' || build_output == '') {
-		confirm_or_exit('An error occured retrieving the information, do you want to continue?')
+		confirm_or_exit('An error occurred retrieving the information, do you want to continue?')
 	}
 
 	expected_result := readline.read_line('What did you expect to see? ') or {
