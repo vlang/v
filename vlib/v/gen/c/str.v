@@ -70,8 +70,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		typ = typ.clear_flag(.shared_f).set_nr_muls(0)
 	}
 	mut sym := g.table.sym(typ)
-	// when type is alias, print the aliased value
-	if mut sym.info is ast.Alias {
+	// when type is alias and doesn't has `str()`, print the aliased value
+	if mut sym.info is ast.Alias && !sym.has_method('str') {
 		parent_sym := g.table.sym(sym.info.parent_type)
 		if parent_sym.has_method('str') {
 			typ = sym.info.parent_type
