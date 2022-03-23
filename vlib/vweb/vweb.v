@@ -459,7 +459,12 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T, routes map[string]Route) {
 		}
 		return
 	}
-
+	$if trace_request ? {
+		dump(req)
+	}
+	$if trace_request_url ? {
+		dump(req.url)
+	}
 	// URL Parse
 	url := urllib.parse(req.url) or {
 		eprintln('error parsing path: $err')
@@ -628,8 +633,14 @@ fn (mut ctx Context) scan_static_directory(directory_path string, mount_path str
 	}
 }
 
-// Handles a directory static
+// handle_static is used to mark a folder (relative to the current working folder)
+// as one that contains only static resources (css files, images etc).
 // If `root` is set the mount path for the dir will be in '/'
+// Usage:
+// ```v
+// os.chdir( os.executable() ) ?
+// app.handle_static('assets', true)
+// ```
 pub fn (mut ctx Context) handle_static(directory_path string, root bool) bool {
 	if ctx.done || !os.exists(directory_path) {
 		return false
@@ -696,6 +707,9 @@ pub fn not_found() Result {
 }
 
 fn send_string(mut conn net.TcpConn, s string) ? {
+	$if trace_response ? {
+		eprintln('> send_string:\n$s\n')
+	}
 	conn.write(s.bytes()) ?
 }
 

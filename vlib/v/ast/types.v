@@ -257,10 +257,6 @@ fn (ts TypeSymbol) dbg_common(mut res []string) {
 	res << 'language: $ts.language'
 }
 
-pub fn (t Type) str() string {
-	return 'ast.Type(0x$t.hex() = ${u32(t)})'
-}
-
 pub fn (t &Table) type_str(typ Type) string {
 	sym := t.sym(typ)
 	return sym.name
@@ -980,6 +976,12 @@ pub fn (mytable &Table) type_to_code(t Type) string {
 	}
 }
 
+// clean type name from generics form. From Type<int> -> Type
+pub fn (t &Table) clean_generics_type_str(typ Type) string {
+	result := t.type_to_str(typ)
+	return result.all_before('<')
+}
+
 // import_aliases is a map of imported symbol aliases 'module.Type' => 'Type'
 pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]string) string {
 	sym := t.sym(typ)
@@ -1186,7 +1188,7 @@ pub fn (t &Table) fn_signature_using_aliases(func &Fn, import_aliases map[string
 		// TODO write receiver
 	}
 	if !opts.type_only {
-		sb.write_string('$func.name')
+		sb.write_string(func.name)
 	}
 	sb.write_string('(')
 	start := int(opts.skip_receiver)
@@ -1203,20 +1205,36 @@ pub fn (t &Table) fn_signature_using_aliases(func &Fn, import_aliases map[string
 			sb.write_string('mut ')
 		}
 		if !opts.type_only {
-			sb.write_string('$param.name ')
+			sb.write_string(param.name)
+			sb.write_string(' ')
 		}
 		styp := t.type_to_str_using_aliases(typ, import_aliases)
 		if i == func.params.len - 1 && func.is_variadic {
-			sb.write_string('...$styp')
+			sb.write_string('...')
+			sb.write_string(styp)
 		} else {
-			sb.write_string('$styp')
+			sb.write_string(styp)
 		}
 	}
 	sb.write_string(')')
 	if func.return_type != ast.void_type {
-		sb.write_string(' ${t.type_to_str_using_aliases(func.return_type, import_aliases)}')
+		sb.write_string(' ')
+		sb.write_string(t.type_to_str_using_aliases(func.return_type, import_aliases))
 	}
 	return sb.str()
+}
+
+// Get the name of the complete quanlified name of the type
+// without the generic parts.
+pub fn (t &TypeSymbol) symbol_name_except_generic() string {
+	// main.Abc<int>
+	mut embed_name := t.name
+	// remove generic part from name
+	// main.Abc<int> => main.Abc
+	if embed_name.contains('<') {
+		embed_name = embed_name.all_before('<')
+	}
+	return embed_name
 }
 
 pub fn (t &TypeSymbol) embed_name() string {

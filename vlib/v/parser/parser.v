@@ -1943,6 +1943,7 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 		p.register_auto_import('sync')
 	}
 	mut_pos := p.tok.pos()
+	modifier_kind := p.tok.kind
 	is_mut := p.tok.kind == .key_mut || is_shared || is_atomic
 	if is_mut {
 		p.next()
@@ -1956,7 +1957,11 @@ pub fn (mut p Parser) parse_ident(language ast.Language) ast.Ident {
 		p.next()
 	}
 	if p.tok.kind != .name {
-		p.error('unexpected token `$p.tok.lit`')
+		if is_mut || is_static || is_volatile {
+			p.error_with_pos('the `$modifier_kind` keyword is invalid here', mut_pos)
+		} else {
+			p.error('unexpected token `$p.tok.lit`')
+		}
 		return ast.Ident{
 			scope: p.scope
 		}
@@ -2190,7 +2195,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	}
 	// Raw string (`s := r'hello \n ')
 	if p.peek_tok.kind == .string && !p.inside_str_interp && p.peek_token(2).kind != .colon {
-		if p.tok.lit in ['r', 'c', 'js'] && p.tok.kind == .name {
+		if p.tok.kind == .name && p.tok.lit in ['r', 'c', 'js'] {
 			return p.string_expr()
 		} else {
 			// don't allow any other string prefix except `r`, `js` and `c`
@@ -2198,7 +2203,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		}
 	}
 	// don't allow r`byte` and c`byte`
-	if p.tok.lit in ['r', 'c'] && p.peek_tok.kind == .chartoken {
+	if p.peek_tok.kind == .chartoken && p.tok.lit.len == 1 && p.tok.lit[0] in [`r`, `c`] {
 		opt := if p.tok.lit == 'r' { '`r` (raw string)' } else { '`c` (c string)' }
 		return p.error('cannot use $opt with `byte` and `rune`')
 	}

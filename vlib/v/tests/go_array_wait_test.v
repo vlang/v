@@ -1,3 +1,5 @@
+// vtest retry: 3
+
 fn f(x f64) f64 {
 	y := x * x
 	return y

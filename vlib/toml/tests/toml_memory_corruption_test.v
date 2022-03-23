@@ -7,7 +7,7 @@ const toml_text = os.read_file(os.real_path(os.join_path(os.dir(@FILE), 'testdat
 	'.toml') or { panic(err) }
 
 fn test_toml_known_memory_corruption() {
-	toml_doc := toml.parse(toml_text) or { panic(err) }
+	toml_doc := toml.parse_text(toml_text) or { panic(err) }
 
 	owner := toml_doc.value('owner') as map[string]toml.Any
 	any_name := owner.value('name')
@@ -34,7 +34,7 @@ fn test_toml_known_memory_corruption_2() {
 	lt1 = 07:32:00
 	lt2 = 00:32:00.999999
 '
-	toml_doc := toml.parse(toml_txt) or { panic(err) }
+	toml_doc := toml.parse_text(toml_txt) or { panic(err) }
 
 	// ldt1 test section
 	odt_time := toml.DateTime{'1979-05-27T07:32:00'}

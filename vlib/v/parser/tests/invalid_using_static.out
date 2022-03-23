@@ -1,0 +1,6 @@
+vlib/v/parser/tests/invalid_using_static.vv:2:5: error: the `static` keyword is invalid here
+    1 | fn main() {
+    2 |     if static true {
+      |        ~~~~~~
+    3 |         println(true)
+    4 |     }

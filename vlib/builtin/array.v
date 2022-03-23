@@ -124,7 +124,7 @@ fn (mut a array) ensure_cap(required int) {
 		cap *= 2
 	}
 	new_size := cap * a.element_size
-	new_data := vcalloc(new_size)
+	new_data := unsafe { malloc(new_size) }
 	if a.data != voidptr(0) {
 		unsafe { vmemcpy(new_data, a.data, a.len * a.element_size) }
 		// TODO: the old data may be leaked when no GC is used (ref-counting?)
@@ -402,12 +402,13 @@ pub fn (mut a array) pop() voidptr {
 	a.len = new_len
 	// Note: a.cap is not changed here *on purpose*, so that
 	// further << ops on that array will be more efficient.
-	return unsafe { memdup(last_elem, a.element_size) }
+	return last_elem
 }
 
 // delete_last efficiently deletes the last element of the array.
 // It does it simply by reducing the length of the array by 1.
 // If the array is empty, this will panic.
+// See also: [trim](#array.trim)
 pub fn (mut a array) delete_last() {
 	// copy pasting code for performance
 	$if !no_bounds_checking ? {

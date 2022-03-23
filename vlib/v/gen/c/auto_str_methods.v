@@ -144,7 +144,7 @@ fn (mut g Gen) get_str_fn(typ ast.Type) string {
 	styp := g.typ(unwrapped)
 	mut sym := g.table.sym(unwrapped)
 	mut str_fn_name := styp_to_str_fn_name(styp)
-	if mut sym.info is ast.Alias {
+	if mut sym.info is ast.Alias && !sym.has_method('str') {
 		if sym.info.is_import {
 			sym = g.table.sym(sym.info.parent_type)
 			str_fn_name = styp_to_str_fn_name(sym.name)

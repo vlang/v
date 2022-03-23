@@ -91,9 +91,10 @@ pub mut:
 	inside_fn_arg             bool // `a`, `b` in `a.f(b)`
 	inside_ct_attr            bool // true inside `[if expr]`
 	inside_comptime_for_field bool
-	skip_flags                bool // should `#flag` and `#include` be skipped
-	fn_level                  int  // 0 for the top level, 1 for `fn abc() {}`, 2 for a nested fn, etc
-	smartcast_mut_pos         token.Pos
+	skip_flags                bool      // should `#flag` and `#include` be skipped
+	fn_level                  int       // 0 for the top level, 1 for `fn abc() {}`, 2 for a nested fn, etc
+	smartcast_mut_pos         token.Pos // match mut foo, if mut foo is Foo
+	smartcast_cond_pos        token.Pos // match cond
 	ct_cond_stack             []ast.Expr
 mut:
 	stmt_level int // the nesting level inside each stmts list;
@@ -594,11 +595,19 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		match mut node.left {
 			ast.Ident, ast.SelectorExpr {
 				if node.left.is_mut {
-					c.error('remove unnecessary `mut`', node.left.mut_pos)
+					c.error('the `mut` keyword is invalid here', node.left.mut_pos)
 				}
 			}
 			else {}
 		}
+	}
+	match mut node.right {
+		ast.Ident, ast.SelectorExpr {
+			if node.right.is_mut {
+				c.error('the `mut` keyword is invalid here', node.right.mut_pos)
+			}
+		}
+		else {}
 	}
 	eq_ne := node.op in [.eq, .ne]
 	// Single side check
@@ -1522,41 +1531,36 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 					stmt.pos)
 			}
 		}
-	} else {
-		match stmt {
-			ast.ExprStmt {
-				match stmt.expr {
-					ast.IfExpr {
-						for branch in stmt.expr.branches {
-							last_stmt := branch.stmts[branch.stmts.len - 1]
-							c.check_or_last_stmt(last_stmt, ret_type, expr_return_type)
-						}
-					}
-					ast.MatchExpr {
-						for branch in stmt.expr.branches {
-							last_stmt := branch.stmts[branch.stmts.len - 1]
-							c.check_or_last_stmt(last_stmt, ret_type, expr_return_type)
-						}
-					}
-					else {
-						if stmt.typ == ast.void_type {
-							return
-						}
-						if is_noreturn_callexpr(stmt.expr) {
-							return
-						}
-						if c.check_types(stmt.typ, expr_return_type) {
-							return
-						}
-						// opt_returning_string() or { ... 123 }
-						type_name := c.table.type_to_str(stmt.typ)
-						expr_return_type_name := c.table.type_to_str(expr_return_type)
-						c.error('the default expression type in the `or` block should be `$expr_return_type_name`, instead you gave a value of type `$type_name`',
-							stmt.expr.pos())
-					}
+	} else if stmt is ast.ExprStmt {
+		match stmt.expr {
+			ast.IfExpr {
+				for branch in stmt.expr.branches {
+					last_stmt := branch.stmts[branch.stmts.len - 1]
+					c.check_or_last_stmt(last_stmt, ret_type, expr_return_type)
 				}
 			}
-			else {}
+			ast.MatchExpr {
+				for branch in stmt.expr.branches {
+					last_stmt := branch.stmts[branch.stmts.len - 1]
+					c.check_or_last_stmt(last_stmt, ret_type, expr_return_type)
+				}
+			}
+			else {
+				if stmt.typ == ast.void_type {
+					return
+				}
+				if is_noreturn_callexpr(stmt.expr) {
+					return
+				}
+				if c.check_types(stmt.typ, expr_return_type) {
+					return
+				}
+				// opt_returning_string() or { ... 123 }
+				type_name := c.table.type_to_str(stmt.typ)
+				expr_return_type_name := c.table.type_to_str(expr_return_type)
+				c.error('the default expression type in the `or` block should be `$expr_return_type_name`, instead you gave a value of type `$type_name`',
+					stmt.expr.pos())
+			}
 		}
 	}
 }
@@ -1760,6 +1764,10 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		if c.smartcast_mut_pos != token.Pos{} {
 			c.note('smartcasting requires either an immutable value, or an explicit mut keyword before the value',
 				c.smartcast_mut_pos)
+		}
+		if c.smartcast_cond_pos != token.Pos{} {
+			c.note('smartcast can only be used on the ident or selector, e.g. match foo, match foo.bar',
+				c.smartcast_cond_pos)
 		}
 		c.error(unknown_field_msg, node.pos)
 	}
@@ -2089,6 +2097,10 @@ fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
 			c.error('unknown type `$sym.name`', field.typ_pos)
 		}
 		if field.has_expr {
+			if field.expr is ast.AnonFn && field.name == 'main' {
+				c.error('the `main` function is the program entry point, cannot redefine it',
+					field.pos)
+			}
 			field.typ = c.expr(field.expr)
 			mut v := c.file.global_scope.find_global(field.name) or {
 				panic('internal compiler error - could not find global in scope')
@@ -3349,7 +3361,9 @@ fn (mut c Checker) smartcast(expr_ ast.Expr, cur_type ast.Type, to_type_ ast.Typ
 				c.smartcast_mut_pos = expr.pos
 			}
 		}
-		else {}
+		else {
+			c.smartcast_cond_pos = expr.pos()
+		}
 	}
 }
 
@@ -3764,6 +3778,9 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 	if typ_sym.kind !in [.array, .array_fixed, .string, .map] && !typ.is_ptr()
 		&& typ !in [ast.byteptr_type, ast.charptr_type] && !typ.has_flag(.variadic) {
 		c.error('type `$typ_sym.name` does not support indexing', node.pos)
+	}
+	if typ.has_flag(.optional) {
+		c.error('type `?$typ_sym.name` is optional, it does not support indexing', node.left.pos())
 	}
 	if typ_sym.kind == .string && !typ.is_ptr() && node.is_setter {
 		c.error('cannot assign to s[i] since V strings are immutable\n' +

@@ -188,7 +188,39 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 			return
 		}
 	}
-	return error('cannot use `${c.table.type_to_str(got.clear_flag(.variadic))}` as `${c.table.type_to_str(expected.clear_flag(.variadic))}`')
+
+	// Check on Generics types, there are some case where we have the following case
+	// `&Type<int> == &Type<>`. This is a common case we are implementing a function
+	// with generic parameters like `compare(bst Bst<T> node) {}`
+	got_typ_sym := c.table.sym(got)
+	got_typ_str := c.table.type_to_str(got.clear_flag(.variadic))
+	expected_typ_sym := c.table.sym(expected_)
+	expected_typ_str := c.table.type_to_str(expected.clear_flag(.variadic))
+
+	if got_typ_sym.symbol_name_except_generic() == expected_typ_sym.symbol_name_except_generic() {
+		// Check if we are making a comparison between two different types of
+		// the same type like `Type<int> and &Type<>`
+		if (got.is_ptr() != expected.is_ptr()) || !c.check_same_module(got, expected) {
+			return error('cannot use `$got_typ_str` as `$expected_typ_str`')
+		}
+		return
+	}
+	return error('cannot use `$got_typ_str` as `$expected_typ_str`')
+}
+
+// helper method to check if the type is of the same module.
+// FIXME(vincenzopalazzo) This is a work around to the issue
+// explained in the https://github.com/vlang/v/pull/13718#issuecomment-1074517800
+fn (c Checker) check_same_module(got ast.Type, expected ast.Type) bool {
+	clean_got_typ := c.table.clean_generics_type_str(got.clear_flag(.variadic)).all_before('<')
+	clean_expected_typ := c.table.clean_generics_type_str(expected.clear_flag(.variadic)).all_before('<')
+	if clean_got_typ == clean_expected_typ {
+		return true
+		// The following if confition should catch the bugs descripted in the issue
+	} else if clean_expected_typ.all_after('.') == clean_got_typ.all_after('.') {
+		return true
+	}
+	return false
 }
 
 pub fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
@@ -580,7 +612,12 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Typ
 		}
 		c.fail_if_unreadable(expr, ftyp, 'interpolation object')
 		node.expr_types << ftyp
-		typ := c.table.unalias_num_type(ftyp)
+		ftyp_sym := c.table.sym(ftyp)
+		typ := if ftyp_sym.kind == .alias && !ftyp_sym.has_method('str') {
+			c.table.unalias_num_type(ftyp)
+		} else {
+			ftyp
+		}
 		mut fmt := node.fmts[i]
 		// analyze and validate format specifier
 		if fmt !in [`E`, `F`, `G`, `e`, `f`, `g`, `d`, `u`, `x`, `X`, `o`, `c`, `s`, `S`, `p`,

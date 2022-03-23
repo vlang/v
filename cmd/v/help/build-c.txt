@@ -25,7 +25,7 @@ see also `v help build`.
 
    -cstrict
       Turn on additional C warnings. This slows down compilation
-      slightly (~10-10% for gcc), but sometimes provides better diagnosis.
+      slightly (~10% for gcc), but sometimes provides better diagnosis.
 
    -showcc
       Prints the C command that is used to build the program.
@@ -97,7 +97,8 @@ see also `v help build`.
       systems also (although we do not test it as regularly as for the above):
             `android`, `ios`,
             `freebsd`, `openbsd`, `netbsd`, `dragonfly`,
-            `solaris`, `serenity`, `haiku`, `vinix`
+            `solaris`, `serenity`, `haiku`, `vinix`,
+            `wasm32`, `wasm32-wasi`, `wasm32-emscripten`
 
       Note that V has the concept of platform files, i.e. files ending
       with `_platform.c.v`, and usually only the matching files are used in

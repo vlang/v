@@ -84,7 +84,7 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ? {
 		return
 	}
 
-	mut s := scanner.new_simple(q.text) ?
+	mut s := scanner.new_simple_text(q.text) ?
 	q.text = q.text.replace('\\"', '"')
 
 	for {

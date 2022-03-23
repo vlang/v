@@ -55,6 +55,16 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 							field.type_pos)
 					}
 				}
+				field_sym := c.table.sym(field.typ)
+				if field_sym.kind == .function {
+					fn_info := field_sym.info as ast.FnType
+					c.ensure_type_exists(fn_info.func.return_type, fn_info.func.return_type_pos) or {
+						return
+					}
+					for param in fn_info.func.params {
+						c.ensure_type_exists(param.typ, param.type_pos) or { return }
+					}
+				}
 			}
 			if sym.kind == .struct_ {
 				info := sym.info as ast.Struct
@@ -322,6 +332,15 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 						&& field.expr.str() != '0' {
 						c.error('reference field must be initialized with reference',
 							field.pos)
+					}
+				}
+				if field_type_sym.kind == .function && field_type_sym.language == .v {
+					pos := field.expr.pos()
+					if mut field.expr is ast.AnonFn {
+						if field.expr.decl.no_body {
+							c.error('cannot initialize the fn field with anonymous fn that does not have a body',
+								pos)
+						}
 					}
 				}
 				node.fields[i].typ = expr_type

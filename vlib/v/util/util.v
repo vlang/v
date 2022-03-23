@@ -36,6 +36,12 @@ const (
 	]
 )
 
+const builtin_module_names = ['builtin', 'strconv', 'strings', 'dlmalloc']
+
+pub fn module_is_builtin(mod string) bool {
+	return mod in util.builtin_module_names
+}
+
 pub fn tabs(n int) string {
 	return if n < util.const_tabs.len { util.const_tabs[n] } else { '\t'.repeat(n) }
 }

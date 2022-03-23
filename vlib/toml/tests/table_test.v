@@ -27,7 +27,7 @@ T = {a.b=2}'
 )
 
 fn test_tables() {
-	mut toml_doc := toml.parse(toml_table_text) or { panic(err) }
+	mut toml_doc := toml.parse_text(toml_table_text) or { panic(err) }
 
 	mut value := toml_doc.value('inline.a.b')
 	assert value.int() == 42

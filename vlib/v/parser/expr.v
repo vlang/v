@@ -604,6 +604,13 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 				return right
 			}
 		}
+		if mut right is ast.ParExpr {
+			if right.expr is ast.StructInit {
+				p.note_with_pos('unnecessary `()`, use `&$right.expr` instead of `&($right.expr)`',
+					right.pos)
+				right = right.expr
+			}
+		}
 	}
 	mut or_stmts := []ast.Stmt{}
 	mut or_kind := ast.OrKind.absent

@@ -27,6 +27,8 @@ struct FormatOptions {
 	is_verify  bool // exit(1) if the file is not vfmt'ed
 	is_worker  bool // true *only* in the worker processes. Note: workers can crash.
 	is_backup  bool // make a `file.v.bak` copy *before* overwriting a `file.v` in place with `-w`
+mut:
+	diff_cmd string // filled in when -diff or -verify is passed
 }
 
 const (
@@ -201,34 +203,21 @@ fn print_compiler_options(compiler_params &pref.Preferences) {
 	eprintln('  is_script: $compiler_params.is_script ')
 }
 
-fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path string) ? {
+fn (mut foptions FormatOptions) find_diff_cmd() string {
+	if foptions.diff_cmd != '' {
+		return foptions.diff_cmd
+	}
+	if foptions.is_verify || foptions.is_diff {
+		foptions.diff_cmd = diff.find_working_diff_command() or {
+			eprintln(err)
+			exit(1)
+		}
+	}
+	return foptions.diff_cmd
+}
+
+fn (mut foptions FormatOptions) post_process_file(file string, formatted_file_path string) ? {
 	if formatted_file_path.len == 0 {
-		return
-	}
-	if foptions.is_diff {
-		diff_cmd := diff.find_working_diff_command() or {
-			eprintln(err)
-			return
-		}
-		if foptions.is_verbose {
-			eprintln('Using diff command: $diff_cmd')
-		}
-		diff := diff.color_compare_files(diff_cmd, file, formatted_file_path)
-		if diff.len > 0 {
-			println(diff)
-		}
-		return
-	}
-	if foptions.is_verify {
-		diff_cmd := diff.find_working_diff_command() or {
-			eprintln(err)
-			return
-		}
-		x := diff.color_compare_files(diff_cmd, file, formatted_file_path)
-		if x.len != 0 {
-			println("$file is not vfmt'ed")
-			return error('')
-		}
 		return
 	}
 	fc := os.read_file(file) or {
@@ -240,6 +229,31 @@ fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path 
 		return
 	}
 	is_formatted_different := fc != formatted_fc
+	if foptions.is_diff {
+		if !is_formatted_different {
+			return
+		}
+		diff_cmd := foptions.find_diff_cmd()
+		if foptions.is_verbose {
+			eprintln('Using diff command: $diff_cmd')
+		}
+		diff := diff.color_compare_files(diff_cmd, file, formatted_file_path)
+		if diff.len > 0 {
+			println(diff)
+		}
+		return
+	}
+	if foptions.is_verify {
+		if !is_formatted_different {
+			return
+		}
+		x := diff.color_compare_files(foptions.find_diff_cmd(), file, formatted_file_path)
+		if x.len != 0 {
+			println("$file is not vfmt'ed")
+			return error('')
+		}
+		return
+	}
 	if foptions.is_c {
 		if is_formatted_different {
 			eprintln('File is not formatted: $file')
