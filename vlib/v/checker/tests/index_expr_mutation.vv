@@ -1,7 +1,11 @@
+const imm_arr = [10, 20]
+
 fn test_immutable_slice() {
 	arr := [1, 2, 3, 4, 5]
 	mut s := arr[1..2]
 	s[0] = 0
+	mut s2 := imm_arr[..]
+	s2[0] = 0
 }
 
 fn test_immutable_element() {

@@ -792,7 +792,18 @@ pub mut:
 	name   string
 	kind   IdentKind
 	info   IdentInfo
-	is_mut bool
+	is_mut bool // if mut *token* is before name. Use `is_mut()` to lookup mut variable
+}
+
+pub fn (i &Ident) is_mut() bool {
+	match i.obj {
+		Var { return i.obj.is_mut }
+		ConstField { return false }
+		GlobalField { return true }
+		else {
+			panic('TODO')
+		}
+	}
 }
 
 pub fn (i &Ident) var_info() IdentVar {

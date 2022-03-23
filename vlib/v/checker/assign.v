@@ -338,7 +338,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		if left_sym.kind == .array && mut left is ast.Ident && mut right is ast.IndexExpr {
 			sym := c.table.sym(right.left_type)
 			if sym.kind == .array && mut right.left is ast.Ident {
-				if left.is_mut && !right.left.is_mut {
+				if left.is_mut && !right.left.is_mut() {
 					if right.index is ast.RangeExpr {
 						c.error('cannot mutate immutable slice', right.left.pos)
 					} else {
