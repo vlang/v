@@ -797,9 +797,15 @@ pub mut:
 
 pub fn (i &Ident) is_mut() bool {
 	match i.obj {
-		Var { return i.obj.is_mut }
-		ConstField { return false }
-		GlobalField { return true }
+		Var {
+			return i.obj.is_mut
+		}
+		ConstField {
+			return false
+		}
+		GlobalField {
+			return true
+		}
 		else {
 			panic('TODO')
 		}
