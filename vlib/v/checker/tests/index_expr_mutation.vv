@@ -4,6 +4,7 @@ fn test_immutable_slice() {
 	arr := [1, 2, 3, 4, 5]
 	mut s := arr[1..2]
 	s[0] = 0
+	s = arr[1..2]
 	mut s2 := imm_arr[..]
 	s2[0] = 0
 }
