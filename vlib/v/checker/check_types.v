@@ -612,7 +612,12 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Typ
 		}
 		c.fail_if_unreadable(expr, ftyp, 'interpolation object')
 		node.expr_types << ftyp
-		typ := c.table.unalias_num_type(ftyp)
+		ftyp_sym := c.table.sym(ftyp)
+		typ := if ftyp_sym.kind == .alias && !ftyp_sym.has_method('str') {
+			c.table.unalias_num_type(ftyp)
+		} else {
+			ftyp
+		}
 		mut fmt := node.fmts[i]
 		// analyze and validate format specifier
 		if fmt !in [`E`, `F`, `G`, `e`, `f`, `g`, `d`, `u`, `x`, `X`, `o`, `c`, `s`, `S`, `p`,

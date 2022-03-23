@@ -257,10 +257,6 @@ fn (ts TypeSymbol) dbg_common(mut res []string) {
 	res << 'language: $ts.language'
 }
 
-pub fn (t Type) str() string {
-	return 'ast.Type(0x$t.hex() = ${u32(t)})'
-}
-
 pub fn (t &Table) type_str(typ Type) string {
 	sym := t.sym(typ)
 	return sym.name
