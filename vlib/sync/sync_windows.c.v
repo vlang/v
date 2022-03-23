@@ -8,7 +8,6 @@ import time
 #include <synchapi.h>
 #include <time.h>
 
-fn C.GetCurrentThreadId() u32
 fn C.GetSystemTimeAsFileTime(lpSystemTimeAsFileTime &C._FILETIME)
 fn C.InitializeConditionVariable(voidptr)
 fn C.WakeConditionVariable(voidptr)
