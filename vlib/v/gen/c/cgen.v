@@ -4360,6 +4360,13 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			}
 		}
 		styp := g.typ(field.typ)
+		mut anon_fn_expr := unsafe { field.expr }
+		if field.has_expr && mut anon_fn_expr is ast.AnonFn {
+			g.gen_anon_fn_decl(mut anon_fn_expr)
+			fn_type_name := g.get_anon_fn_type_name(mut anon_fn_expr, field.name)
+			g.definitions.writeln('$fn_type_name = ${g.table.sym(field.typ).name}; // global')
+			continue
+		}
 		g.definitions.write_string('$visibility_kw$styp $attributes $field.name')
 		if field.has_expr {
 			if field.expr.is_literal() && should_init {

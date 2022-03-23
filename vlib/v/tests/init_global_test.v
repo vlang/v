@@ -53,6 +53,11 @@ fn test_no_type() {
 	assert testmap['asd'] == -7.25
 }
 
+fn test_fn_type() {
+	assert func2(22) == 22
+	assert func3(22) == '22'
+}
+
 __global (
 	intmap    map[string]int
 	numberfns map[string]fn () int
@@ -74,6 +79,13 @@ __global (
 		'qwe': 2.5
 		'asd': -7.25
 		'yxc': 3.125
+	}
+	func1     = fn () {}
+	func2     = fn (n int) int {
+		return n
+	}
+	func3     = fn (n int) string {
+		return '$n'
 	}
 )
 

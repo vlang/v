@@ -612,6 +612,25 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 	return fargs, fargtypes, heap_promoted
 }
 
+fn (mut g Gen) get_anon_fn_type_name(mut node ast.AnonFn, var_name string) string {
+	mut builder := strings.new_builder(64)
+	return_styp := g.typ(node.decl.return_type)
+	builder.write_string('$return_styp (*$var_name) (')
+	if node.decl.params.len == 0 {
+		builder.write_string('void)')
+	} else {
+		for i, param in node.decl.params {
+			param_styp := g.typ(param.typ)
+			builder.write_string('$param_styp $param.name')
+			if i != node.decl.params.len - 1 {
+				builder.write_string(', ')
+			}
+		}
+		builder.write_string(')')
+	}
+	return builder.str()
+}
+
 fn (mut g Gen) call_expr(node ast.CallExpr) {
 	// g.write('/*call expr*/')
 	// NOTE: everything could be done this way
