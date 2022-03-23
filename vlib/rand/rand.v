@@ -476,3 +476,11 @@ pub fn shuffle<T>(mut a []T) {
 		a[si], a[i] = a[i], a[si]
 	}
 }
+
+// shuffle_clone returns a random permutation of the elements in `a`.
+// The permutation is done on a fresh clone of `a`, so `a` remains unchanged.
+pub fn shuffle_clone<T>(a []T) []T {
+	mut res := a.clone()
+	shuffle(mut res)
+	return res
+}

@@ -354,3 +354,18 @@ fn test_shuffle() {
 		// eprintln('digits[$digit]: ${digits[digit]}')
 	}
 }
+
+fn test_shuffle_clone() {
+	original := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+	mut a := original.clone()
+	mut results := [][]int{}
+	for _ in 0 .. 10 {
+		results << rand.shuffle_clone(a)
+	}
+	assert original == a
+	for idx in 1 .. 10 {
+		assert results[idx].len == 10
+		assert results[idx] != results[0]
+		assert results[idx] != original
+	}
+}
