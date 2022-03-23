@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generic_parameter_on_method.vv:15:15: error: cannot use `&Type<int>` as `Type<>` in argument 1 to `ContainerType<int>.contains`
+   13 | fn main() {
+   14 |     con := ContainerType<int>{typ: &Type<int>{0}}
+   15 |     con.contains(con.typ)
+      |                  ~~~~~~~
+   16 |     println(con)
+   17 | }
