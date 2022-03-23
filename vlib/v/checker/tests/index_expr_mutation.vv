@@ -1,0 +1,11 @@
+fn test_immutable_slice() {
+	arr := [1, 2, 3, 4, 5]
+	mut s := arr[1..2]
+	s[0] = 0
+}
+
+fn test_immutable_element() {
+	a := [[1]]
+	mut b := a[0]
+	b[0] = 0
+}

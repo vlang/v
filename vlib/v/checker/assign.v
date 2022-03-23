@@ -335,6 +335,18 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			c.error('use `array2 $node.op.str() array1.clone()` instead of `array2 $node.op.str() array1` (or use `unsafe`)',
 				node.pos)
 		}
+		if left_sym.kind == .array && mut left is ast.Ident && mut right is ast.IndexExpr {
+			sym := c.table.sym(right.left_type)
+			if sym.kind == .array && mut right.left is ast.Ident {
+				if left.is_mut && !right.left.is_mut {
+					if right.index is ast.RangeExpr {
+						c.error('cannot mutate immutable slice', right.left.pos)
+					} else {
+						c.error('cannot mutate immutable element', right.left.pos)
+					}
+				}
+			}
+		}
 		if left_sym.kind == .array_fixed && !c.inside_unsafe && node.op in [.assign, .decl_assign]
 			&& right_sym.kind == .array_fixed && (left is ast.Ident && !left.is_blank_ident())
 			&& right is ast.Ident {

@@ -1,0 +1,14 @@
+vlib/v/checker/tests/index_expr_mutation.vv:3:11: error: cannot mutate immutable slice
+    1 | fn test_immutable_slice() {
+    2 |     arr := [1, 2, 3, 4, 5]
+    3 |     mut s := arr[1..2]
+      |              ~~~
+    4 |     s[0] = 0
+    5 | }
+vlib/v/checker/tests/index_expr_mutation.vv:9:11: error: cannot mutate immutable element
+    7 | fn test_immutable_element() {
+    8 |     a := [[1]]
+    9 |     mut b := a[0]
+      |              ^
+   10 |     b[0] = 0
+   11 | }
