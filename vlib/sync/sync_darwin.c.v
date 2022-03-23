@@ -10,6 +10,7 @@ import time
 #include <sys/errno.h>
 
 [trusted]
+fn C.pthread_self() usize
 fn C.pthread_mutex_init(voidptr, voidptr) int
 fn C.pthread_mutex_lock(voidptr) int
 fn C.pthread_mutex_unlock(voidptr) int
