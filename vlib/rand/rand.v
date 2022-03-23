@@ -467,3 +467,12 @@ pub fn hex(len int) string {
 pub fn ascii(len int) string {
 	return string_from_set(rand.ascii_chars, len)
 }
+
+// shuffle randomly permutates the elements in `a`.
+pub fn shuffle<T>(mut a []T) {
+	len := a.len
+	for i in 0 .. len {
+		si := i + intn(len - i) or {len}
+		a[si], a[i] = a[i], a[si]
+	}
+}

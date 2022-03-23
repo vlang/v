@@ -317,3 +317,10 @@ fn test_new_global_rng() {
 
 	rand.set_rng(old)
 }
+
+fn test_shuffle() {
+	mut a := get_n_random_ints(seeds[0], 10)
+	rand.shuffle(mut a)
+	assert a == [4, 0, 8, 0, 1, 2, 1, 1, 0, 9]
+}
+
