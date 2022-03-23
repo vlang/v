@@ -131,7 +131,7 @@ pub const (
 
 // new_flag_parser - create a new flag parser for the given args
 pub fn new_flag_parser(args []string) &FlagParser {
-	original_args := args.clone()
+	mut original_args := args.clone()
 	idx_dashdash := args.index('--')
 	mut all_before_dashdash := args.clone()
 	mut all_after_dashdash := []string{}

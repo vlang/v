@@ -19,8 +19,7 @@ fn block_generic(mut dig Digest, p []byte) {
 	mut d := dig.s[3]
 
 	for i := 0; i <= p.len - block_size; i += block_size {
-		mut q := p[i..]
-		q = q[..block_size]
+		q := p[i..][..block_size]
 		// save current state
 		aa := a
 		bb := b
