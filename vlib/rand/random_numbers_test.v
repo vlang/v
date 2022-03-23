@@ -317,3 +317,55 @@ fn test_new_global_rng() {
 
 	rand.set_rng(old)
 }
+
+fn test_shuffle() {
+	mut arrays := [][]int{}
+	arrays << [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+	arrays << [9, 8, 7, 6, 5, 4, 3, 2, 1, 0]
+	for seed in seeds {
+		a := get_n_random_ints(seed, 10)
+		arrays << a
+	}
+	//
+	mut digits := []map[int]int{len: 10}
+	for digit in 0 .. 10 {
+		digits[digit] = {}
+		for idx in 0 .. 10 {
+			digits[digit][idx] = 0
+		}
+	}
+	for mut a in arrays {
+		o := a.clone()
+		for _ in 0 .. 100 {
+			rand.shuffle(mut a)
+			assert *a != o
+			for idx in 0 .. 10 {
+				digits[idx][a[idx]]++
+			}
+		}
+	}
+	for digit in 1 .. 10 {
+		assert digits[0] != digits[digit]
+	}
+	for digit in 0 .. 10 {
+		for idx in 0 .. 10 {
+			assert digits[digit][idx] > 10
+		}
+		// eprintln('digits[$digit]: ${digits[digit]}')
+	}
+}
+
+fn test_shuffle_clone() {
+	original := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+	mut a := original.clone()
+	mut results := [][]int{}
+	for _ in 0 .. 10 {
+		results << rand.shuffle_clone(a)
+	}
+	assert original == a
+	for idx in 1 .. 10 {
+		assert results[idx].len == 10
+		assert results[idx] != results[0]
+		assert results[idx] != original
+	}
+}
