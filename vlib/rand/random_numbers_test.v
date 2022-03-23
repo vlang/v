@@ -323,4 +323,3 @@ fn test_shuffle() {
 	rand.shuffle(mut a)
 	assert a == [4, 0, 8, 0, 1, 2, 1, 1, 0, 9]
 }
-

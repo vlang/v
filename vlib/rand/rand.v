@@ -472,7 +472,7 @@ pub fn ascii(len int) string {
 pub fn shuffle<T>(mut a []T) {
 	len := a.len
 	for i in 0 .. len {
-		si := i + intn(len - i) or {len}
+		si := i + intn(len - i) or { len }
 		a[si], a[i] = a[i], a[si]
 	}
 }
