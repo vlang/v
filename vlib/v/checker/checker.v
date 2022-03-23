@@ -2603,10 +2603,16 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 		}
 		ast.DumpExpr {
 			node.expr_type = c.expr(node.expr)
-			if node.expr_type.idx() == ast.void_type_idx {
+			etidx := node.expr_type.idx()
+			if etidx == ast.void_type_idx {
 				c.error('dump expression can not be void', node.expr.pos())
 				return ast.void_type
+			} else if etidx == ast.char_type_idx && node.expr_type.nr_muls() == 0 {
+				c.error('`char` values cannot be dumped directly, use dump(byte(x)) or dump(int(x)) instead',
+					node.expr.pos())
+				return ast.void_type
 			}
+
 			tsym := c.table.sym(node.expr_type)
 			c.table.dumps[int(node.expr_type)] = tsym.cname
 			node.cname = tsym.cname
