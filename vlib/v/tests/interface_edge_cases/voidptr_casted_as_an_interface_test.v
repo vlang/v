@@ -19,7 +19,7 @@ fn test_voidptr_casted_as_an_interface_reference() {
 	dump(pi)
 	assert f(pi) == '&IAbc(0x0)'
 	//
-	i := IAbc(Abc{})
+	mut i := IAbc(Abc{})
 	pi = &i
 	dump(pi)
 	assert f(pi).contains('x: 123')
