@@ -103,11 +103,20 @@ pub fn (mut b Builder) go_back(n int) {
 	b.trim(b.len - n)
 }
 
+[inline]
+fn (b &Builder) spart(start_pos int, n int) string {
+	unsafe {
+		mut x := malloc_noscan(n + 1)
+		vmemcpy(x, &byte(b.data) + start_pos, n)
+		x[n] = 0
+		return tos(x, n)
+	}
+}
+
 // cut_last cuts the last `n` bytes from the buffer and returns them
 pub fn (mut b Builder) cut_last(n int) string {
 	cut_pos := b.len - n
-	x := unsafe { (*&[]byte(b))[cut_pos..] }
-	res := x.bytestr()
+	res := b.spart(cut_pos, n)
 	b.trim(cut_pos)
 	return res
 }
@@ -147,8 +156,7 @@ pub fn (b &Builder) last_n(n int) string {
 	if n > b.len {
 		return ''
 	}
-	x := unsafe { (*&[]byte(b))[b.len - n..] }
-	return x.bytestr()
+	return b.spart(b.len - n, n)
 }
 
 // after(6) returns 'world'
@@ -157,8 +165,7 @@ pub fn (b &Builder) after(n int) string {
 	if n >= b.len {
 		return ''
 	}
-	x := unsafe { (*&[]byte(b))[n..] }
-	return x.bytestr()
+	return b.spart(n, b.len - n)
 }
 
 // str returns a copy of all of the accumulated buffer content.
