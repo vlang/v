@@ -4171,3 +4171,44 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) ? {
 		else {}
 	}
 }
+
+pub fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what string) {
+	mut pos := token.Pos{}
+	match expr {
+		ast.Ident {
+			if typ.has_flag(.shared_f) {
+				if expr.name !in c.rlocked_names && expr.name !in c.locked_names {
+					action := if what == 'argument' { 'passed' } else { 'used' }
+					c.error('`$expr.name` is `shared` and must be `rlock`ed or `lock`ed to be $action as non-mut $what',
+						expr.pos)
+				}
+			}
+			return
+		}
+		ast.SelectorExpr {
+			pos = expr.pos
+			if typ.has_flag(.shared_f) {
+				expr_name := '${expr.expr}.$expr.field_name'
+				if expr_name !in c.rlocked_names && expr_name !in c.locked_names {
+					action := if what == 'argument' { 'passed' } else { 'used' }
+					c.error('`$expr_name` is `shared` and must be `rlock`ed or `lock`ed to be $action as non-mut $what',
+						expr.pos)
+				}
+				return
+			} else {
+				c.fail_if_unreadable(expr.expr, expr.expr_type, what)
+			}
+		}
+		ast.IndexExpr {
+			pos = expr.left.pos().extend(expr.pos)
+			c.fail_if_unreadable(expr.left, expr.left_type, what)
+		}
+		else {
+			pos = expr.pos()
+		}
+	}
+	if typ.has_flag(.shared_f) {
+		c.error('you have to create a handle and `rlock` it to use a `shared` element as non-mut $what',
+			pos)
+	}
+}
