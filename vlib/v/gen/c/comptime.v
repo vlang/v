@@ -402,10 +402,10 @@ fn (mut g Gen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 					}
 
 					if cond.op == .key_is {
-						g.write('$exp_type == $got_type')
+						g.write('$exp_type.idx() == $got_type.idx()')
 						return exp_type == got_type
 					} else {
-						g.write('$exp_type != $got_type')
+						g.write('$exp_type.idx() != $got_type.idx()')
 						return exp_type != got_type
 					}
 				}
@@ -544,7 +544,7 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				// field_sym := g.table.sym(field.typ)
 				// g.writeln('\t${node.val_var}.typ = _SLIT("$field_sym.name");')
 				styp := field.typ
-				g.writeln('\t${node.val_var}.typ = $styp;')
+				g.writeln('\t${node.val_var}.typ = $styp.idx();')
 				g.writeln('\t${node.val_var}.is_pub = $field.is_pub;')
 				g.writeln('\t${node.val_var}.is_mut = $field.is_mut;')
 				g.writeln('\t${node.val_var}.is_shared = ${field.typ.has_flag(.shared_f)};')
