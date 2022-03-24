@@ -812,7 +812,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 				g.writeln('\t\tcase $tidx: return "${util.strip_main_name(sym.name)}";')
 				for v in sum_info.variants {
 					subtype := g.table.sym(v)
-					g.writeln('\t\tcase $v: return "${util.strip_main_name(subtype.name)}";')
+					g.writeln('\t\tcase $v.idx(): return "${util.strip_main_name(subtype.name)}";')
 				}
 				g.writeln('\t\tdefault: return "unknown ${util.strip_main_name(sym.name)}";')
 				g.writeln('\t}')
@@ -832,7 +832,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 				g.writeln('\tswitch(sidx) {')
 				g.writeln('\t\tcase $tidx: return ${int(ityp)};')
 				for v in sum_info.variants {
-					g.writeln('\t\tcase $v: return ${int(v)};')
+					g.writeln('\t\tcase $v.idx(): return ${int(v)};')
 				}
 				g.writeln('\t\tdefault: return ${int(ityp)};')
 				g.writeln('\t}')

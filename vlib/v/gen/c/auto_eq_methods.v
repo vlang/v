@@ -66,7 +66,7 @@ fn (mut g Gen) gen_sumtype_equality_fn(left_type ast.Type) string {
 	fn_builder.writeln('\tif (a._typ != b._typ) { return false; }')
 	for typ in info.variants {
 		variant := g.unwrap(typ)
-		fn_builder.writeln('\tif (a._typ == $variant.typ) {')
+		fn_builder.writeln('\tif (a._typ == $variant.typ.idx()) {')
 		name := '_$variant.sym.cname'
 		if variant.sym.kind == .string {
 			fn_builder.writeln('\t\treturn string__eq(*a.$name, *b.$name);')
@@ -427,7 +427,7 @@ fn (mut g Gen) gen_interface_equality_fn(left_type ast.Type) string {
 	fn_builder.writeln('\t\tint idx = v_typeof_interface_idx_${ptr_styp}(a._typ);')
 	if info is ast.Interface {
 		for typ in info.types {
-			fn_builder.writeln('\t\tif (idx == $typ) {')
+			fn_builder.writeln('\t\tif (idx == $typ.idx()) {')
 			fn_builder.write_string('\t\t\treturn ')
 			match g.table.type_kind(typ) {
 				.struct_ {
