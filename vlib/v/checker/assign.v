@@ -559,15 +559,10 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					if right_node.right.obj is ast.Var {
 						v := right_node.right.obj
 						right_type0 = v.typ
-						if !v.is_mut && assigned_var.is_mut && !c.inside_unsafe {
-							c.error('`$right_node.right.name` is immutable, cannot have a mutable reference to it',
-								right_node.pos)
-						}
-					} else if right_node.right.obj is ast.ConstField {
-						if assigned_var.is_mut && !c.inside_unsafe {
-							c.error('`$right_node.right.name` is immutable, cannot have a mutable reference to it',
-								right_node.pos)
-						}
+					}
+					if !c.inside_unsafe && assigned_var.is_mut() && !right_node.right.is_mut() {
+						c.error('`$right_node.right.name` is immutable, cannot have a mutable reference to it',
+							right_node.pos)
 					}
 				}
 			}
