@@ -22,7 +22,8 @@ pub mut:
 
 [flag]
 pub enum ArrayFlags {
-	noslices
+	noslices // when <<, `.noslices` will free the old data block immediately (you have to be sure, that there are *no slices* to that specific array). TODO: integrate with reference counting/compiler support for the static cases.
+	noshrink // when `.noslices` and `.noshrink` are *both set*, .delete(x) will NOT allocate new memory and free the old. It will just move the elements in place, and adjust .len.
 }
 
 // Internal function, used by V (`nums := []int`)
@@ -283,6 +284,14 @@ pub fn (mut a array) delete_many(i int, size int) {
 			panic('array.delete: index out of range (i == $i$endidx, a.len == $a.len)')
 		}
 	}
+	if a.flags.all(.noshrink | .noslices) {
+		unsafe {
+			vmemmove(&byte(a.data) + i * a.element_size, &byte(a.data) + (i + size) * a.element_size,
+				(a.len - i - size) * a.element_size)
+		}
+		a.len -= size
+		return
+	}
 	// Note: if a is [12,34], a.len = 2, a.delete(0)
 	// should move (2-0-1) elements = 1 element (the 34) forward
 	old_data := a.data
@@ -441,6 +450,8 @@ fn (a array) slice(start int, _end int) array {
 			panic('array.slice: slice bounds out of range ($start < 0)')
 		}
 	}
+	// TODO: integrate reference counting
+	// a.flags.clear(.noslices)
 	offset := start * a.element_size
 	data := unsafe { &byte(a.data) + offset }
 	l := end - start
@@ -461,6 +472,7 @@ fn (a array) slice(start int, _end int) array {
 // that get the last 3 elements of the array otherwise it return an empty array.
 // This function always return a valid array.
 fn (a array) slice_ni(_start int, _end int) array {
+	// a.flags.clear(.noslices)
 	mut end := _end
 	mut start := _start
 

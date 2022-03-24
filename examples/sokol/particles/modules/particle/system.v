@@ -19,8 +19,8 @@ mut:
 }
 
 pub fn (mut s System) init(sc SystemConfig) {
-	unsafe { s.pool.flags.set(.noslices) }
-	unsafe { s.bin.flags.set(.noslices) }
+	unsafe { s.pool.flags.set(.noslices | .noshrink) }
+	unsafe { s.bin.flags.set(.noslices | .noshrink) }
 	for i := 0; i < sc.pool; i++ {
 		p := new(vec2.Vec2{f32(s.width) * 0.5, f32(s.height) * 0.5})
 		s.bin << p
@@ -29,12 +29,19 @@ pub fn (mut s System) init(sc SystemConfig) {
 
 pub fn (mut s System) update(dt f64) {
 	mut p := &Particle(0)
+	mut moved := 0
 	for i := 0; i < s.pool.len; i++ {
 		p = s.pool[i]
 		p.update(dt)
 		if p.is_dead() {
 			s.bin << p
 			s.pool.delete(i)
+			moved++
+		}
+	}
+	$if trace_moves_spool_to_sbin ? {
+		if moved != 0 {
+			eprintln('${moved:4} particles s.pool -> s.bin')
 		}
 	}
 }
@@ -64,6 +71,7 @@ pub fn (mut s System) explode(x f32, y f32) {
 	mut reserve := 500
 	center := vec2.Vec2{x, y}
 	mut p := &Particle(0)
+	mut moved := 0
 	for i := 0; i < s.bin.len && reserve > 0; i++ {
 		p = s.bin[i]
 		p.reset()
@@ -75,7 +83,13 @@ pub fn (mut s System) explode(x f32, y f32) {
 		p.life_time = rand.f64_in_range(500, 2000) or { 500 }
 		s.pool << p
 		s.bin.delete(i)
+		moved++
 		reserve--
+	}
+	$if trace_moves_sbin_to_spool ? {
+		if moved != 0 {
+			eprintln('${moved:4} particles s.bin -> s.pool')
+		}
 	}
 }
 
