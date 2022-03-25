@@ -2685,7 +2685,11 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 		if v.typ == ast.error_type && !v.is_autofree_tmp {
 			return
 		}
-		g.writeln('\t${free_fn_name}(&${c_name(v.name)}); // autofreed var $g.cur_mod.name $g.is_builtin_mod')
+		if v.is_auto_heap {
+			g.writeln('\t${free_fn_name}(${c_name(v.name)}); // autofreed heap var $g.cur_mod.name $g.is_builtin_mod')
+		} else {
+			g.writeln('\t${free_fn_name}(&${c_name(v.name)}); // autofreed var $g.cur_mod.name $g.is_builtin_mod')
+		}
 	}
 }
 
