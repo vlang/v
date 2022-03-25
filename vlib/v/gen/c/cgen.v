@@ -2638,11 +2638,12 @@ fn (mut g Gen) autofree_variable(v ast.Var) {
 		g.autofree_var_call('string_free', v)
 		return
 	}
-	if sym.has_method('free') {
-		g.autofree_var_call(free_fn, v)
-	} else if g.pref.experimental && v.typ.is_ptr() && sym.name.after('.')[0].is_capital() {
+	if g.pref.experimental && v.typ.is_ptr() && sym.name.after('.')[0].is_capital() {
 		// Free user reference types
 		g.autofree_var_call('free', v)
+	}
+	if sym.has_method('free') {
+		g.autofree_var_call(free_fn, v)
 	}
 }
 
