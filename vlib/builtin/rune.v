@@ -61,6 +61,8 @@ pub fn (c rune) bytes() []byte {
 	return res
 }
 
+// length_in_bytes returns the number of bytes needed to store the code point.
+// Returns -1 if the data is not a valid code point.
 pub fn (c rune) length_in_bytes() int {
 	code := u32(c)
 	if code <= 0x7F {
