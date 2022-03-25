@@ -4371,17 +4371,23 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		if field.has_expr && mut anon_fn_expr is ast.AnonFn {
 			g.gen_anon_fn_decl(mut anon_fn_expr)
 			fn_type_name := g.get_anon_fn_type_name(mut anon_fn_expr, field.name)
-			g.definitions.writeln('$fn_type_name = ${g.table.sym(field.typ).name}; // global')
+			g.definitions.writeln('$fn_type_name = ${g.table.sym(field.typ).name}; // global2')
 			continue
 		}
 		g.definitions.write_string('$visibility_kw$styp $attributes $field.name')
 		if field.has_expr {
-			if field.expr.is_literal() && should_init {
+			if g.pref.translated {
+				g.definitions.write_string(' = ${g.expr_string(field.expr)}')
+			} else if field.expr.is_literal() && should_init {
+				// Simple literals can be initialized right away in global scope in C.
+				// e.g. `int myglobal = 10;`
 				g.definitions.write_string(' = ${g.expr_string(field.expr)}')
 			} else {
-				g.global_init.writeln('\t$field.name = ${g.expr_string(field.expr)}; // global')
+				// More complex expressions need to be moved to `_vinit()`
+				// e.g. `__global ( mygblobal = 'hello ' + world' )`
+				g.global_init.writeln('\t$field.name = ${g.expr_string(field.expr)}; // 3global')
 			}
-		} else {
+		} else if !g.pref.translated { // don't zero globals from C code
 			default_initializer := g.type_default(field.typ)
 			if default_initializer == '{0}' && should_init {
 				g.definitions.write_string(' = {0}')
@@ -4391,7 +4397,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 				}
 			}
 		}
-		g.definitions.writeln('; // global')
+		g.definitions.writeln('; // global4')
 	}
 }
 
