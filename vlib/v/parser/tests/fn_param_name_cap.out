@@ -1,0 +1,7 @@
+vlib/v/parser/tests/fn_param_name_cap.vv:6:9: error: parameter name must not begin with upper case letter (`T`)
+    4 | fn f(Type)
+    5 | 
+    6 | fn g<T>(T v) {
+      |         ^
+    7 |     
+    8 | }
