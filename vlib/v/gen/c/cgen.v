@@ -203,6 +203,7 @@ mut:
 	cur_lock               ast.LockExpr
 	autofree_methods       map[int]bool
 	generated_free_methods map[int]bool
+	autofree_scope_stmts   []string
 }
 
 pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
@@ -716,7 +717,8 @@ pub fn (mut g Gen) init() {
 	}
 	if g.pref.autofree {
 		g.comptime_definitions.writeln('#define _VAUTOFREE (1)')
-		// g.comptime_definitions.writeln('unsigned char* g_cur_str;')
+	} else {
+		g.comptime_definitions.writeln('#define _VAUTOFREE (0)')
 	}
 	if g.pref.prealloc {
 		g.comptime_definitions.writeln('#define _VPREALLOC (1)')
@@ -2577,6 +2579,9 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 			else {}
 		}
 	}
+	for g.autofree_scope_stmts.len > 0 {
+		g.write(g.autofree_scope_stmts.pop())
+	}
 	// Free all vars in parent scopes as well:
 	// ```
 	// s := ...
@@ -2663,34 +2668,36 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 		// TODO remove this temporary hack
 		return
 	}
+	mut af := strings.new_builder(128)
 	if v.typ.is_ptr() {
-		g.write('\t')
+		af.write_string('\t')
 		if v.typ.share() == .shared_t {
-			g.write(free_fn_name.replace_each(['__shared__', '']))
+			af.write_string(free_fn_name.replace_each(['__shared__', '']))
 		} else {
-			g.write(free_fn_name)
+			af.write_string(free_fn_name)
 		}
-		g.write('(')
+		af.write_string('(')
 		if v.typ.share() == .shared_t {
-			g.write('&')
+			af.write_string('&')
 		}
-		g.write(strings.repeat(`*`, v.typ.nr_muls() - 1)) // dereference if it is a pointer to a pointer
-		g.write(c_name(v.name))
+		af.write_string(strings.repeat(`*`, v.typ.nr_muls() - 1)) // dereference if it is a pointer to a pointer
+		af.write_string(c_name(v.name))
 		if v.typ.share() == .shared_t {
-			g.write('->val')
+			af.write_string('->val')
 		}
 
-		g.writeln('); // autofreed ptr var')
+		af.writeln('); // autofreed ptr var')
 	} else {
 		if v.typ == ast.error_type && !v.is_autofree_tmp {
 			return
 		}
 		if v.is_auto_heap {
-			g.writeln('\t${free_fn_name}(${c_name(v.name)}); // autofreed heap var $g.cur_mod.name $g.is_builtin_mod')
+			af.writeln('\t${free_fn_name}(${c_name(v.name)}); // autofreed heap var $g.cur_mod.name $g.is_builtin_mod')
 		} else {
-			g.writeln('\t${free_fn_name}(&${c_name(v.name)}); // autofreed var $g.cur_mod.name $g.is_builtin_mod')
+			af.writeln('\t${free_fn_name}(&${c_name(v.name)}); // autofreed var $g.cur_mod.name $g.is_builtin_mod')
 		}
 	}
+	g.autofree_scope_stmts << af.str()
 }
 
 fn (mut g Gen) map_fn_ptrs(key_typ ast.TypeSymbol) (string, string, string, string) {
