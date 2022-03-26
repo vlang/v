@@ -834,7 +834,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 			mut arg_pos := [p.tok.pos()]
 			name := p.check_name()
 			mut arg_names := [name]
-			if name.len > 0 && name[0].is_capital() {
+			if name.len > 0 && p.fn_language == .v && name[0].is_capital() {
 				p.error_with_pos('parameter name must not begin with upper case letter (`${arg_names[0]}`)',
 					p.prev_tok.pos())
 			}
