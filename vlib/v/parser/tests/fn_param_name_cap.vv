@@ -1,0 +1,10 @@
+type Type = int
+
+// OK
+fn f(Type)
+
+fn g<T>(T v) {
+	
+}
+
+g(5)
