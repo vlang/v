@@ -3086,7 +3086,7 @@ Output: `Grocery IDs: 0, 5, 6`.
 
 Operations are not allowed on enum variables; they must be explicitly cast to `int`.
 
-Enums can have methods, just like structs
+Enums can have methods, just like structs.
 
 ```v
 enum Cycle {
