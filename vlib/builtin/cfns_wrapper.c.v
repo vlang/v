@@ -79,7 +79,13 @@ mut:
 	real_sort_cb FnSortContextCB
 }
 
+
+// GLIBC:
+// void qsort_r(void *base, size_t nmemb, size_t size,
+//                   int (*compar)(const void *, const void *, void *),
+//                   void *arg);
 fn vqsort_context_pure_v(base voidptr, nmemb usize, size usize, sort_cb FnSortContextCB, context voidptr) {
+	C.qsort_r(base, nmemb, size, voidptr(sort_cb), context)
 }
 
 [inline; unsafe]
