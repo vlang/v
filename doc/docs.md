@@ -993,6 +993,8 @@ even_fn := nums.filter(fn (x int) bool {
 	return x % 2 == 0
 })
 println(even_fn)
+```
+```v
 words := ['hello', 'world']
 upper := words.map(it.to_upper())
 println(upper) // ['HELLO', 'WORLD']
@@ -1003,7 +1005,8 @@ upper_fn := words.map(fn (w string) string {
 println(upper_fn) // ['HELLO', 'WORLD']
 ```
 
-`it` is a builtin variable which refers to element currently being processed in filter/map methods.
+`it` is a builtin variable which refers to the element currently being 
+processed in filter/map methods.
 
 Additionally, `.any()` and `.all()` can be used to conveniently test
 for elements that satisfy a condition.
@@ -1014,26 +1017,30 @@ println(nums.any(it == 2)) // true
 println(nums.all(it >= 2)) // false
 ```
 
-There are further built in methods for arrays:
-* `b := a.repeat(n)` concatenate `n` times the elements of `a`
-* `a.insert(i, val)` insert new element `val` at index `i` and move all following elements upwards
-* `a.insert(i, [3, 4, 5])` insert several elements
-* `a.prepend(val)` insert value at beginning, equivalent to `a.insert(0, val)`
-* `a.prepend(arr)` insert elements of array `arr` at beginning
-* `a.trim(new_len)` truncate the length (if `new_length < a.len`, otherwise do nothing)
-* `a.clear()` empty the array (without changing `cap`, equivalent to `a.trim(0)`)
-* `a.delete_many(start, size)` removes `size` consecutive elements beginning with index `start`
+There are further built-in methods for arrays:
+* `a.repeat(n)` concatenates the array elements `n` times 
+* `a.insert(i, val)` inserts a new element `val` at index `i` and 
+  shifts all following elements to the right
+* `a.insert(i, [3, 4, 5])` inserts several elements
+* `a.prepend(val)` inserts a value at the beginning, equivalent to `a.insert(0, val)`
+* `a.prepend(arr)` inserts elements of array `arr` at the beginning
+* `a.trim(new_len)` truncates the length (if `new_length < a.len`, otherwise does nothing)
+* `a.clear()` empties the array without changing `cap` (equivalent to `a.trim(0)`)
+* `a.delete_many(start, size)` removes `size` consecutive elements from index `start`
   &ndash; triggers reallocation
 * `a.delete(index)` equivalent to `a.delete_many(index, 1)`
-* `v := a.first()` equivalent to `v := a[0]`
-* `v := a.last()` equivalent to `v := a[a.len - 1]`
-* `v := a.pop()` get last element and remove it from array
-* `a.delete_last()` remove last element from array
-* `b := a.reverse()` make `b` contain the elements of `a` in reversed order
-* `a.reverse_in_place()` reverse the order of elements in `a`
-* `a.join(joiner)` concatenate array of strings into a string using `joiner` string as a separator
+* `a.delete_last()` removes the last element
+* `a.first()` equivalent to `a[0]`
+* `a.last()` equivalent to `a[a.len - 1]`
+* `a.pop()` removes the last element and returns it
+* `a.reverse()` makes a new array with the elements of `a` in reverse order
+* `a.reverse_in_place()` reverses the order of elements in `a`
+* `a.join(joiner)` concatenates an array of strings into one string 
+  using `joiner` string as a separator
 
-#### Sorting Arrays
+See also [vlib/arrays](https://modules.vlang.io/arrays.html).
+
+##### Sorting Arrays
 
 Sorting arrays of all kinds is very simple and intuitive. Special variables `a` and `b`
 are used when providing a custom sorting condition.
@@ -2632,6 +2639,8 @@ println('hi') // "hi"
 println([1, 2, 3]) // "[1, 2, 3]"
 println(User{ name: 'Bob', age: 20 }) // "User{name:'Bob', age:20}"
 ```
+
+See also [Array methods](#array-methods).
 
 <a id='custom-print-of-types' />
 
