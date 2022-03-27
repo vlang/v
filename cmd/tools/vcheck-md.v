@@ -22,6 +22,7 @@ const (
 	show_progress                  = os.getenv('GITHUB_JOB') == '' && '-silent' !in os.args
 	non_option_args                = cmdline.only_non_options(os.args[2..])
 	is_verbose                     = os.getenv('VERBOSE') != ''
+	vcheckfolder                   = os.join_path_single(os.temp_dir(), 'vcheck_$os.getuid()')
 )
 
 struct CheckResult {
@@ -56,6 +57,10 @@ fn main() {
 	mut res := CheckResult{}
 	if term_colors {
 		os.setenv('VCOLORS', 'always', true)
+	}
+	os.mkdir_all(vcheckfolder) or {}
+	defer {
+		os.rmdir_all(vcheckfolder) or {}
 	}
 	for i := 0; i < files_paths.len; i++ {
 		file_path := files_paths[i]
@@ -427,8 +432,9 @@ fn (mut f MDFile) check_examples() CheckResult {
 		}
 		fname := os.base(f.path).replace('.md', '_md')
 		uid := rand.ulid()
-		cfile := os.join_path(os.temp_dir(), '${uid}.c')
-		vfile := os.join_path(os.temp_dir(), 'check_${fname}_example_${e.sline}__${e.eline}__${uid}.v')
+		cfile := os.join_path(vcheckfolder, '${uid}.c')
+		vfile := os.join_path(vcheckfolder, 'check_${fname}_example_${e.sline}__${e.eline}__${uid}.v')
+		efile := os.join_path(vcheckfolder, 'check_${fname}_example_${e.sline}__${e.eline}__${uid}.exe')
 		mut should_cleanup_vfile := true
 		// eprintln('>>> checking example $vfile ...')
 		vcontent := e.text.join('\n') + '\n'
@@ -440,7 +446,7 @@ fn (mut f MDFile) check_examples() CheckResult {
 			fmt_res := if nofmt { 0 } else { get_fmt_exit_code(vfile, vexe) }
 			match command {
 				'compile' {
-					res := cmdexecute('${os.quoted_path(vexe)} -w -Wfatal-errors ${os.quoted_path(vfile)}')
+					res := cmdexecute('${os.quoted_path(vexe)} -w -Wfatal-errors -o ${os.quoted_path(efile)} ${os.quoted_path(vfile)}')
 					if res != 0 || fmt_res != 0 {
 						if res != 0 {
 							eprintln(eline(f.path, e.sline, 0, 'example failed to compile'))
@@ -457,7 +463,6 @@ fn (mut f MDFile) check_examples() CheckResult {
 				}
 				'cgen' {
 					res := cmdexecute('${os.quoted_path(vexe)} -w -Wfatal-errors -o ${os.quoted_path(cfile)} ${os.quoted_path(vfile)}')
-					os.rm(cfile) or {}
 					if res != 0 || fmt_res != 0 {
 						if res != 0 {
 							eprintln(eline(f.path, e.sline, 0, 'example failed to generate C code'))
@@ -474,7 +479,6 @@ fn (mut f MDFile) check_examples() CheckResult {
 				}
 				'globals' {
 					res := cmdexecute('${os.quoted_path(vexe)} -w -Wfatal-errors -enable-globals -o ${os.quoted_path(cfile)} ${os.quoted_path(vfile)}')
-					os.rm(cfile) or {}
 					if res != 0 || fmt_res != 0 {
 						if res != 0 {
 							eprintln(eline(f.path, e.sline, 0, '`example failed to compile with -enable-globals'))
@@ -491,7 +495,6 @@ fn (mut f MDFile) check_examples() CheckResult {
 				}
 				'live' {
 					res := cmdexecute('${os.quoted_path(vexe)} -w -Wfatal-errors -live -o ${os.quoted_path(cfile)} ${os.quoted_path(vfile)}')
-					os.rm(cfile) or {}
 					if res != 0 || fmt_res != 0 {
 						if res != 0 {
 							eprintln(eline(f.path, e.sline, 0, 'example failed to compile with -live'))
@@ -508,7 +511,6 @@ fn (mut f MDFile) check_examples() CheckResult {
 				}
 				'failcompile' {
 					res := silent_cmdexecute('${os.quoted_path(vexe)} -w -Wfatal-errors -o ${os.quoted_path(cfile)} ${os.quoted_path(vfile)}')
-					os.rm(cfile) or {}
 					if res == 0 || fmt_res != 0 {
 						if res == 0 {
 							eprintln(eline(f.path, e.sline, 0, '`failcompile` example compiled'))
@@ -558,6 +560,8 @@ fn (mut f MDFile) check_examples() CheckResult {
 				}
 			}
 		}
+		os.rm(cfile) or {}
+		os.rm(efile) or {}
 		if should_cleanup_vfile {
 			os.rm(vfile) or { panic(err) }
 		}
