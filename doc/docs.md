@@ -77,6 +77,9 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Strings](#strings)
     * [Numbers](#numbers)
     * [Arrays](#arrays)
+        * [Multidimensional arrays](#multidimensional-arrays)
+        * [Array methods](#array-methods)
+        * [Array slices](#array-slices)
     * [Fixed size arrays](#fixed-size-arrays)
     * [Maps](#maps)
 * [Module imports](#module-imports)
@@ -1157,7 +1160,7 @@ println(a) // [0, 1, 2, 3, 4, 5]
 println(b) // [7, 3]
 ```
 
-### Slices with negative indexes
+##### Slices with negative indexes
 
 V supports array and string slices with negative indexes.
 Negative indexing starts from the end of the array towards the start,
@@ -1180,7 +1183,7 @@ println(a#[20..10]) // []
 println(a#[20..30]) // []
 ```
 
-### Array method chaining
+#### Array method chaining
 You can chain the calls of array methods like `.filter()` and `.map()` and use
 the `it` built-in variable to achieve a classic `map/filter` functional paradigm:
 
