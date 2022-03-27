@@ -108,7 +108,8 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 * [References](#references)
 * [Constants](#constants)
 * [Builtin functions](#builtin-functions)
-* [Printing custom types](#printing-custom-types)
+    * [println](#println)
+    * [Dumping expressions at runtime](#dumping-expressions-at-runtime)
 * [Modules](#modules)
 * [Type Declarations](#type-declarations)
     * [Interfaces](#interfaces)
@@ -140,7 +141,6 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 * [Package Management](#package-management)
 	* [Publish package](#publish-package)
 * [Advanced Topics](#advanced-topics)
-    * [Dumping expressions at runtime](#dumping-expressions-at-runtime)
     * [Memory-unsafe code](#memory-unsafe-code)
     * [Structs with reference fields](#structs-with-reference-fields)
     * [sizeof and __offsetof](#sizeof-and-__offsetof)
@@ -199,7 +199,7 @@ In this case `main` doesn't return anything, so there is no return type.
 
 As in many other languages (such as C, Go, and Rust), `main` is the entry point of your program.
 
-`println` is one of the few built-in functions.
+[`println`](#println) is one of the few [built-in functions](#builtin-functions).
 It prints the value passed to it to standard output.
 
 `fn main()` declaration can be skipped in one file programs.
@@ -2626,16 +2626,22 @@ println('Top cities: ${top_cities.filter(.usa)}')
 Some functions are builtin like `println`. Here is the complete list:
 
 ```v ignore
-fn print(s string) // print anything on sdtout
-fn println(s string) // print anything and a newline on sdtout
+fn print(s string) // prints anything on stdout
+fn println(s string) // prints anything and a newline on stdout
 
-fn eprint(s string) // same as print(), but use stderr
-fn eprintln(s string) // same as println(), but use stderr
+fn eprint(s string) // same as print(), but uses stderr
+fn eprintln(s string) // same as println(), but uses stderr
 
-fn exit(code int) // terminate the program with a custom error code
-fn panic(s string) // print a message and backtraces on stderr, and terminate the program with error code 1
-fn print_backtrace() // print backtraces on stderr
+fn exit(code int) // terminates the program with a custom error code
+fn panic(s string) // prints a message and backtraces on stderr, and terminates the program with error code 1
+fn print_backtrace() // prints backtraces on stderr
 ```
+Note: Although the `print` functions take a string, V accepts other printable types too.
+See below for details.
+
+There is also a special built-in function called [`dump`](#dumping-expressions-at-runtime).
+
+### println
 
 `println` is a simple yet powerful builtin function, that can print anything:
 strings, numbers, arrays, maps, structs.
@@ -2656,10 +2662,10 @@ See also [Array methods](#array-methods).
 
 <a id='custom-print-of-types' />
 
-## Printing custom types
+### Printing custom types
 
 If you want to define a custom print value for your type, simply define a
-`.str() string` method:
+`str() string` method:
 
 ```v
 struct Color {
@@ -2679,6 +2685,40 @@ red := Color{
 }
 println(red)
 ```
+
+### Dumping expressions at runtime
+
+You can dump/trace the value of any V expression using `dump(expr)`.
+For example, save this code sample as `factorial.v`, then run it with
+`v run factorial.v`:
+```v
+fn factorial(n u32) u32 {
+	if dump(n <= 1) {
+		return dump(1)
+	}
+	return dump(n * factorial(n - 1))
+}
+
+fn main() {
+	println(factorial(5))
+}
+```
+You will get:
+```
+[factorial.v:2] n <= 1: false
+[factorial.v:2] n <= 1: false
+[factorial.v:2] n <= 1: false
+[factorial.v:2] n <= 1: false
+[factorial.v:2] n <= 1: true
+[factorial.v:3] 1: 1
+[factorial.v:5] n * factorial(n - 1): 2
+[factorial.v:5] n * factorial(n - 1): 6
+[factorial.v:5] n * factorial(n - 1): 24
+[factorial.v:5] n * factorial(n - 1): 120
+120
+```
+Note that `dump(expr)` will trace both the source location,
+the expression itself, and the expression value.
 
 ## Modules
 
@@ -4680,39 +4720,6 @@ Modules are up to date.
 to allow for a better search experience.
 
 # Advanced Topics
-
-## Dumping expressions at runtime
-You can dump/trace the value of any V expression using `dump(expr)`.
-For example, save this code sample as `factorial.v`, then run it with
-`v run factorial.v`:
-```v
-fn factorial(n u32) u32 {
-	if dump(n <= 1) {
-		return dump(1)
-	}
-	return dump(n * factorial(n - 1))
-}
-
-fn main() {
-	println(factorial(5))
-}
-```
-You will get:
-```
-[factorial.v:2] n <= 1: false
-[factorial.v:2] n <= 1: false
-[factorial.v:2] n <= 1: false
-[factorial.v:2] n <= 1: false
-[factorial.v:2] n <= 1: true
-[factorial.v:3] 1: 1
-[factorial.v:5] n * factorial(n - 1): 2
-[factorial.v:5] n * factorial(n - 1): 6
-[factorial.v:5] n * factorial(n - 1): 24
-[factorial.v:5] n * factorial(n - 1): 120
-120
-```
-Note that `dump(expr)` will trace both the source location,
-the expression itself, and the expression value.
 
 ## Memory-unsafe code
 
