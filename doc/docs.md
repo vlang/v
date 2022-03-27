@@ -2607,19 +2607,20 @@ println('Top cities: ${top_cities.filter(.usa)}')
 Some functions are builtin like `println`. Here is the complete list:
 
 ```v ignore
-fn print(s IStr) // prints anything on stdout
-fn println(s IStr) // prints anything and a newline on stdout
+fn print(s string) // prints anything on stdout
+fn println(s string) // prints anything and a newline on stdout
 
-fn eprint(s IStr) // same as print(), but uses stderr
-fn eprintln(s IStr) // same as println(), but uses stderr
-
-fn dump(expr Expr) // prints file, line, expression source code and expression value
+fn eprint(s string) // same as print(), but uses stderr
+fn eprintln(s string) // same as println(), but uses stderr
 
 fn exit(code int) // terminates the program with a custom error code
 fn panic(s string) // prints a message and backtraces on stderr, and terminates the program with error code 1
 fn print_backtrace() // prints backtraces on stderr
 ```
-Note: the types IStr and Expr above are not public types - see below for usage.
+Note: Although the `print` functions take a string, V accepts other printable types too.
+See below for details.
+
+There is also a special built-in function called [`dump`](#dumping-expressions-at-runtime).
 
 ### println
 
