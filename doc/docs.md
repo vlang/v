@@ -1005,7 +1005,8 @@ upper_fn := words.map(fn (w string) string {
 println(upper_fn) // ['HELLO', 'WORLD']
 ```
 
-`it` is a builtin variable which refers to the element currently being processed in filter/map methods.
+`it` is a builtin variable which refers to the element currently being 
+processed in filter/map methods.
 
 Additionally, `.any()` and `.all()` can be used to conveniently test
 for elements that satisfy a condition.
@@ -1018,7 +1019,8 @@ println(nums.all(it >= 2)) // false
 
 There are further built-in methods for arrays:
 * `a.repeat(n)` concatenates the array elements `n` times 
-* `a.insert(i, val)` inserts a new element `val` at index `i` and shifts all following elements to the right
+* `a.insert(i, val)` inserts a new element `val` at index `i` and 
+  shifts all following elements to the right
 * `a.insert(i, [3, 4, 5])` inserts several elements
 * `a.prepend(val)` inserts a value at the beginning, equivalent to `a.insert(0, val)`
 * `a.prepend(arr)` inserts elements of array `arr` at the beginning
@@ -1033,7 +1035,8 @@ There are further built-in methods for arrays:
 * `a.pop()` removes the last element and returns it
 * `a.reverse()` makes a new array with the elements of `a` in reverse order
 * `a.reverse_in_place()` reverses the order of elements in `a`
-* `a.join(joiner)` concatenates an array of strings into one string using `joiner` string as a separator
+* `a.join(joiner)` concatenates an array of strings into one string 
+  using `joiner` string as a separator
 
 See also [vlib/arrays](https://modules.vlang.io/arrays.html).
 
