@@ -359,18 +359,12 @@ fn test_shuffle_partial() ? {
 	mut b := a.clone()
 
 	rand.shuffle(mut a, start: 4) ?
-	for i in 0 .. 4 {
-		assert a[i] == b[i]
-	}
+	assert a[..4] == b[..4]
 
 	a = b.clone()
 	rand.shuffle(mut a, start: 3, end: 7) ?
-	for i in 0 .. 3 {
-		assert a[i] == b[i]
-	}
-	for i in 7 .. a.len {
-		assert a[i] == b[i]
-	}
+	assert a[..3] == b[..3]
+	assert a[7..] == b[7..]
 }
 
 fn test_shuffle_clone() {
@@ -385,5 +379,35 @@ fn test_shuffle_clone() {
 		assert results[idx].len == 10
 		assert results[idx] != results[0]
 		assert results[idx] != original
+	}
+}
+
+fn test_choose() ? {
+	lengths := [1, 3, 4, 5, 6, 7]
+	a := ['one', 'two', 'three', 'four', 'five', 'six', 'seven']
+	for length in lengths {
+		b := rand.choose(a, length) ?
+		assert b.len == length
+		for element in b {
+			assert element in a
+			// make sure every element occurs once
+			mut count := 0
+			for e in b {
+				if e == element {
+					count++
+				}
+			}
+			assert count == 1
+		}
+	}
+}
+
+fn test_sample() {
+	k := 20
+	a := ['heads', 'tails']
+	b := rand.sample(a, k)
+	assert b.len == k
+	for element in b {
+		assert element in a
 	}
 }
