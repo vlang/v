@@ -326,7 +326,6 @@ fn test_shuffle() {
 		a := get_n_random_ints(seed, 10)
 		arrays << a
 	}
-	//
 	mut digits := []map[int]int{len: 10}
 	for digit in 0 .. 10 {
 		digits[digit] = {}
@@ -337,7 +336,7 @@ fn test_shuffle() {
 	for mut a in arrays {
 		o := a.clone()
 		for _ in 0 .. 100 {
-			rand.shuffle(mut a)
+			rand.shuffle(mut a) or { panic('shuffle failed') }
 			assert *a != o
 			for idx in 0 .. 10 {
 				digits[idx][a[idx]]++
@@ -355,12 +354,31 @@ fn test_shuffle() {
 	}
 }
 
+fn test_shuffle_partial() ? {
+	mut a := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+	mut b := a.clone()
+
+	rand.shuffle(mut a, start: 4) ?
+	for i in 0 .. 4 {
+		assert a[i] == b[i]
+	}
+
+	a = b.clone()
+	rand.shuffle(mut a, start: 3, end: 7) ?
+	for i in 0 .. 3 {
+		assert a[i] == b[i]
+	}
+	for i in 7 .. a.len {
+		assert a[i] == b[i]
+	}
+}
+
 fn test_shuffle_clone() {
 	original := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 	mut a := original.clone()
 	mut results := [][]int{}
 	for _ in 0 .. 10 {
-		results << rand.shuffle_clone(a)
+		results << rand.shuffle_clone(a) or { panic('shuffle failed') }
 	}
 	assert original == a
 	for idx in 1 .. 10 {
