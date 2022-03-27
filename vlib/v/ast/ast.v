@@ -610,19 +610,6 @@ pub mut:
 	types []Type
 }
 
-/*
-pub enum Expr {
-	Binary(InfixExpr)
-	If(IfExpr)
-	Integer(IntegerExpr)
-}
-*/
-/*
-pub struct Stmt {
-	pos int
-	//end int
-}
-*/
 pub struct Var {
 pub:
 	name            string
