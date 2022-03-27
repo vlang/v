@@ -793,6 +793,9 @@ println(nums[1]) // `2`
 nums[1] = 5
 println(nums) // `[1, 5, 3]`
 ```
+
+<a id='array-operations' />
+
 An element can be appended to the end of an array using the push operator `<<`.
 It can also append an entire array.
 
