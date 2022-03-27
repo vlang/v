@@ -440,17 +440,17 @@ const (
 // users or business transactions.
 // (https://news.ycombinator.com/item?id=14526173)
 pub fn ulid() string {
-	return internal_ulid_at_millisecond(mut default_rng, u64(time.utc().unix_time_milli()))
+	return default_rng.ulid()
 }
 
 // ulid_at_millisecond does the same as `ulid` but takes a custom Unix millisecond timestamp via `unix_time_milli`.
 pub fn ulid_at_millisecond(unix_time_milli u64) string {
-	return internal_ulid_at_millisecond(mut default_rng, unix_time_milli)
+	return default_rng.ulid_at_millisecond(unix_time_milli)
 }
 
 // string_from_set returns a string of length `len` containing random characters sampled from the given `charset`
 pub fn string_from_set(charset string, len int) string {
-	return internal_string_from_set(mut default_rng, charset, len)
+	return default_rng.string_from_set(charset, len)
 }
 
 // string returns a string of length `len` containing random characters in range `[a-zA-Z]`.
@@ -468,19 +468,45 @@ pub fn ascii(len int) string {
 	return string_from_set(rand.ascii_chars, len)
 }
 
-// shuffle randomly permutates the elements in `a`.
-pub fn shuffle<T>(mut a []T) {
-	len := a.len
-	for i in 0 .. len {
-		si := i + intn(len - i) or { len }
-		a[si], a[i] = a[i], a[si]
+// Configuration struct for the shuffle functions.
+// The start index is inclusive and the end index is exclusive.
+// Set the end to 0 to shuffle until the end of the array.
+[params]
+pub struct ShuffleConfigStruct {
+pub:
+	start int
+	end   int
+}
+
+fn (config ShuffleConfigStruct) validate_for<T>(a []T) ? {
+	if config.start < 0 || config.start >= a.len {
+		return error("argument 'config.start' must be in range [0, a.len)")
+	}
+	if config.end < 0 || config.end > a.len {
+		return error("argument 'config.end' must be in range [0, a.len]")
+	}
+}
+
+// shuffle randomly permutates the elements in `a`. The range for shuffling is
+// optional and the entire array is shuffled by default. Leave the end as 0 to
+// shuffle all elements until the end.
+[direct_array_access]
+pub fn shuffle<T>(mut a []T, config ShuffleConfigStruct) ? {
+	config.validate_for(a) ?
+	new_end := if config.end == 0 { a.len } else { config.end }
+	for i in config.start .. new_end {
+		x := int_in_range(i, new_end) or { config.start }
+		// swap
+		a_i := a[i]
+		a[i] = a[x]
+		a[x] = a_i
 	}
 }
 
 // shuffle_clone returns a random permutation of the elements in `a`.
 // The permutation is done on a fresh clone of `a`, so `a` remains unchanged.
-pub fn shuffle_clone<T>(a []T) []T {
+pub fn shuffle_clone<T>(a []T, config ShuffleConfigStruct) ?[]T {
 	mut res := a.clone()
-	shuffle(mut res)
+	shuffle(mut res, config) ?
 	return res
 }
