@@ -780,19 +780,50 @@ f2 := 456e+2 // 45600
 ```
 
 ### Arrays
-#### Basic Array Concepts
-Arrays are collections of data elements of the same type. They can be represented by
-a list of elements surrounded by brackets. The elements can be accessed by appending
-an *index* (starting with `0`) in brackets to the array variable:
+
+An array is a collection of data elements of the same type. An array literal is a
+list of expressions surrounded by square brackets. An individual element can be
+accessed using an *index* expression. Indexes start from `0`:
 ```v
 mut nums := [1, 2, 3]
 println(nums) // `[1, 2, 3]`
 println(nums[0]) // `1`
 println(nums[1]) // `2`
+
 nums[1] = 5
 println(nums) // `[1, 5, 3]`
 ```
+
+<a id='array-operations' />
+
+An element can be appended to the end of an array using the push operator `<<`.
+It can also append an entire array.
+
+```v
+mut nums := [1, 2, 3]
+nums << 4
+println(nums) // "[1, 2, 3, 4]"
+
+// append array
+nums << [5, 6, 7]
+println(nums) // "[1, 2, 3, 4, 5, 6, 7]"
+```
+```v
+mut names := ['John']
+names << 'Peter'
+names << 'Sam'
+// names << 10  <-- This will not compile. `names` is an array of strings.
+```
+
+`val in array` returns true if the array contains `val`. See [`in` operator](#in-operator).
+
+```v
+names := ['John', 'Peter', 'Sam']
+println('Alex' in names) // "false"
+```
+
 #### Array Fields
+
 There are two fields that control the "size" of an array:
 * `len`: *length* - the number of pre-allocated and initialized elements in the array
 * `cap`: *capacity* - the amount of memory space which has been reserved for elements,
@@ -807,11 +838,13 @@ println(nums.cap) // "3" or greater
 nums = [] // The array is now empty
 println(nums.len) // "0"
 ```
+`data` is a field (of type `voidptr`) with the address of the first 
+element. This is for low-level [`unsafe`](#memory-unsafe-code) code.
 
-Note that fields are read-only and can't be modified by the user.
+Note that the fields are read-only and can't be modified by the user.
 
 #### Array Initialization
-The basic initialization syntax is as described [above](#basic-array-concepts).
+
 The type of an array is determined by the first element:
 * `[1, 2, 3]` is an array of ints (`[]int`).
 * `['a', 'b']` is an array of strings (`[]string`).
@@ -852,12 +885,15 @@ for i in 0 .. 1000 {
 	numbers << i
 }
 ```
-Note: The above code uses a [range `for`](#range-for) statement and a
-[push operator (`<<`)](#array-operations).
+Note: The above code uses a [range `for`](#range-for) statement.
 
-You can initialize the array by accessing the `it` variable as shown here:
+You can initialize the array by accessing the `it` variable which gives 
+the index as shown here:
 
 ```v
+count := []int{len: 4, init: it}
+assert count == [0, 1, 2, 3]
+
 mut square := []int{len: 6, init: it * it}
 // square == [0, 1, 4, 9, 16, 25]
 ```
@@ -944,33 +980,6 @@ mut a := [][][]int{len: 2, init: [][]int{len: 3, init: []int{len: 2}}}
 a[0][1][1] = 2
 println(a) // [[[0, 0], [0, 2], [0, 0]], [[0, 0], [0, 0], [0, 0]]]
 ```
-
-#### Array Operations
-
-Elements can be appended to the end of an array using the push operator `<<`.
-It can also append an entire array.
-
-```v
-mut nums := [1, 2, 3]
-nums << 4
-println(nums) // "[1, 2, 3, 4]"
-// append array
-nums << [5, 6, 7]
-println(nums) // "[1, 2, 3, 4, 5, 6, 7]"
-mut names := ['John']
-names << 'Peter'
-names << 'Sam'
-// names << 10  <-- This will not compile. `names` is an array of strings.
-```
-
-`val in array` returns true if the array contains `val`. See [`in` operator](#in-operator).
-
-```v
-names := ['John', 'Peter', 'Sam']
-println(names.len) // "3"
-println('Alex' in names) // "false"
-```
-
 
 #### Array methods
 
