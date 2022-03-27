@@ -3771,6 +3771,18 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		g.write('))')
 	} else if sym.kind == .alias && g.table.final_sym(node.typ).kind == .array_fixed {
 		g.expr(node.expr)
+	} else if node.expr_type != 0 && g.table.final_sym(node.expr_type).kind == .bool
+		&& node.typ.is_int() {
+		styp := g.typ(node.typ)
+		tmp := g.new_tmp_var()
+		g.empty_line = true
+		s := g.go_before_stmt(0)
+		g.write('$styp $tmp = (')
+		g.expr(node.expr)
+		g.writeln(')?1:0;')
+		g.empty_line = false
+		g.write(s)
+		g.write(tmp)
 	} else {
 		styp := g.typ(node.typ)
 		if (g.pref.translated || g.file.is_translated) && sym.kind == .function {
