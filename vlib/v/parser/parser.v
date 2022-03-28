@@ -54,8 +54,9 @@ mut:
 	inside_asm_template       bool
 	inside_asm                bool
 	inside_defer              bool
-	inside_generic_params     bool       // indicates if parsing between `<` and `>` of a method/function
-	inside_receiver_param     bool       // indicates if parsing the receiver parameter inside the first `(` and `)` of a method
+	inside_generic_params     bool // indicates if parsing between `<` and `>` of a method/function
+	inside_receiver_param     bool // indicates if parsing the receiver parameter inside the first `(` and `)` of a method
+	inside_struct_field_decl  bool
 	or_is_handled             bool       // ignore `or` in this expression
 	builtin_mod               bool       // are we in the `builtin` module?
 	mod                       string     // current module name

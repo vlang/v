@@ -223,7 +223,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 						break
 					}
 				}
+				p.inside_struct_field_decl = true
 				typ = p.parse_type()
+				p.inside_struct_field_decl = false
 				if typ.idx() == 0 {
 					// error is set in parse_type
 					return ast.StructDecl{}
