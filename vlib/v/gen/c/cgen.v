@@ -3840,10 +3840,10 @@ fn (mut g Gen) concat_expr(node ast.ConcatExpr) {
 
 [inline]
 fn (g &Gen) expr_is_multi_return_call(expr ast.Expr) bool {
-	match expr {
-		ast.CallExpr { return g.table.sym(expr.return_type).kind == .multi_return }
-		else { return false }
+	if expr is ast.CallExpr {
+		return g.table.sym(expr.return_type).kind == .multi_return
 	}
+	return false
 }
 
 fn (mut g Gen) gen_optional_error(target_type ast.Type, expr ast.Expr) {
