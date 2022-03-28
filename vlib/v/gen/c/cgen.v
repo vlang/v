@@ -3771,8 +3771,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		g.write('))')
 	} else if sym.kind == .alias && g.table.final_sym(node.typ).kind == .array_fixed {
 		g.expr(node.expr)
-	} else if node.expr_type != 0 && g.table.final_sym(node.expr_type).kind == .bool
-		&& node.typ.is_int() {
+	} else if node.expr_type == ast.bool_type && node.typ.is_int() {
 		styp := g.typ(node.typ)
 		tmp := g.new_tmp_var()
 		g.empty_line = true
