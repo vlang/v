@@ -68,7 +68,9 @@ pub fn vmemset(s voidptr, c int, n int) voidptr {
 }
 
 type FnSortCB = fn (const_a voidptr, const_b voidptr) int
+
 type FnSortContextCB = fn (const_a voidptr, const_b voidptr, context voidptr) int
+
 fn C.vqsort_r(base voidptr, nel usize, width usize, cb FnSortContextCB, context voidptr)
 
 [inline; unsafe]
