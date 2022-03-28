@@ -29,12 +29,14 @@ fn test_sort_with_compare() {
 	dump(a)
 	dump(context)
 	assert a == ['1', '3', '5', 'hi']
+	
 	assert context.comparisons == [
+		'a: "5" | b: "hi"',
 		'a: "hi" | b: "1"',
-		'a: "5" | b: "3"',
-		'a: "1" | b: "3"',
 		'a: "hi" | b: "3"',
-		'a: "hi" | b: "5"',
+		'a: "3" | b: "5"',
+		'a: "5" | b: "1"',
+		'a: "3" | b: "1"'
 	]
 	//
 	mut already_sorted_context := Context{}
@@ -43,9 +45,9 @@ fn test_sort_with_compare() {
 	dump(already_sorted_context)
 	assert context != already_sorted_context
 	assert already_sorted_context.comparisons == [
-		'a: "1" | b: "3"',
+		'a: "5" | b: "1"',
+		'a: "5" | b: "3"',
 		'a: "5" | b: "hi"',
-		'a: "1" | b: "5"',
-		'a: "3" | b: "5"',
+		'a: "1" | b: "3"'
 	]
 }

@@ -1,5 +1,8 @@
 module builtin
 
+#include "@VEXEROOT/thirdparty/musl_qsort/vqsort_r.h"
+#flag @VEXEROOT/thirdparty/musl_qsort/vqsort_r.o
+
 // vstrlen returns the V length of the C string `s` (0 terminator is not counted).
 // The C string is expected to be a &byte pointer.
 [inline; unsafe]
@@ -65,52 +68,15 @@ pub fn vmemset(s voidptr, c int, n int) voidptr {
 }
 
 type FnSortCB = fn (const_a voidptr, const_b voidptr) int
-
 type FnSortContextCB = fn (const_a voidptr, const_b voidptr, context voidptr) int
+fn C.vqsort_r(base voidptr, nel usize, width usize, cb FnSortContextCB, context voidptr)
 
 [inline; unsafe]
 fn vqsort(base voidptr, nmemb usize, size usize, sort_cb FnSortCB) {
 	C.qsort(base, nmemb, size, voidptr(sort_cb))
 }
 
-struct VIndirectQSortContext {
-mut:
-	real_context voidptr
-	real_sort_cb FnSortContextCB
-}
-
-
-// GLIBC:
-// void qsort_r(void *base, size_t nmemb, size_t size,
-//                   int (*compar)(const void *, const void *, void *),
-//                   void *arg);
-fn vqsort_context_pure_v(base voidptr, nmemb usize, size usize, sort_cb FnSortContextCB, context voidptr) {
-	C.qsort_r(base, nmemb, size, voidptr(sort_cb), context)
-}
-
 [inline; unsafe]
 fn vqsort_context(base voidptr, nmemb usize, size usize, sort_cb FnSortContextCB, context voidptr) {
-	// See https://stackoverflow.com/questions/39560773/different-declarations-of-qsort-r-on-mac-and-linux
-	// ... and https://xkcd.com/927/ :-|
-	$if linux {
-		vqsort_context_pure_v(base, nmemb, size, sort_cb, context)
-		// C.qsort_r(base, nmemb, size, voidptr(sort_cb), context)
-	} $else {
-		ic := VIndirectQSortContext{
-			real_context: context
-			real_sort_cb: sort_cb
-		}
-		$if windows {
-			cb := fn (context &VIndirectQSortContext, const_a voidptr, const_b voidptr) int {
-				return context.real_sort_cb(const_a, const_b, context.real_context)
-			}
-			C.qsort_s(base, nmemb, size, voidptr(cb), &ic)
-		} $else {
-			// macos, BSDs, probably other unixes too:
-			cb := fn (context &VIndirectQSortContext, const_a voidptr, const_b voidptr) int {
-				return context.real_sort_cb(const_a, const_b, context.real_context)
-			}
-			C.qsort_r(base, nmemb, size, &ic, voidptr(cb))
-		}
-	}
+	C.vqsort_r(base, nmemb, size, voidptr(sort_cb), context)
 }

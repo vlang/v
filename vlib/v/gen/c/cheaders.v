@@ -478,10 +478,6 @@ const c_headers = c_helper_macros + c_unsigned_comparison_functions + c_common_m
 	r'
 // c_headers
 typedef int (*qsort_callback_func)(const void*, const void*);
-typedef int (*qsort_s_iso_callback_func_context)(const void*, const void*, void*); // ISO C11, *optional* Annex K
-typedef int (*qsort_s_windows_callback_func_context)(void*, const void*, const void*); // Windows
-typedef int (*qsort_r_gnu_callback_func_context)(const void*, const void*, void*); // Linux, GNU
-typedef int (*qsort_r_bsd_callback_func_context)(void*, const void*, const void*); // MacOS, BSD
 #include <stdio.h>  // TODO remove all these includes, define all function signatures and types manually
 #include <stdlib.h>
 #include <string.h>
