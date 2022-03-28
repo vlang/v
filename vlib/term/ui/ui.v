@@ -28,7 +28,8 @@ pub fn (mut ctx Context) write(s string) {
 	if s == '' {
 		return
 	}
-	unsafe { ctx.print_buf.push_many(s.str, s.len) }
+	tmp := unsafe { s.str.vbytes(s.len) }
+	ctx.print_buf << tmp
 }
 
 // flush displays the accumulated print buffer to the screen.
