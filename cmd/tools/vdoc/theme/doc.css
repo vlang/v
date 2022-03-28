@@ -24,18 +24,18 @@
   --menu-search-badge-background-hover-color: #0000004d;
   --toc-text-color: #2779bd;
   --toc-indicator-color: #4299e1;
-  --code-default-text-color: #5c6e74;
+  --code-default-text-color: #2c3e64;
   --code-background-color: #edf2f7;
   --code-keyword-text-color: #2b6cb0;
-  --code-builtin-text-color: #0a0a0a;
-  --code-function-text-color: #319795;
+  --code-builtin-text-color: #219321;
+  --code-function-text-color: #288341;
   --code-comment-text-color: #93a1a1;
-  --code-punctuation-text-color: #999999;
+  --code-punctuation-text-color: #696969;
   --code-symbol-text-color: #702459;
-  --code-operator-text-color: #a67f59;
+  --code-operator-text-color: #864f29;
   --attribute-deprecated-background-color: #f59f0b48;
   --attribute-deprecated-text-color: #92400e;
-  --attribute-text-color: #000000af;
+  --attribute-text-color: #000000cf;
 }
 :root.dark .dark-icon {
   display: none;
@@ -76,6 +76,7 @@
   --code-comment-text-color: #a0aec0;
   --code-punctuation-text-color: #a0aec0;
   --code-symbol-text-color: #ed64a6;
+  --code-operator-text-color: #a67f59;
   --attribute-background-color: #ffffff20;
   --attribute-text-color: #ffffffaf;
   --attribute-deprecated-text-color: #fef3c7;
@@ -417,6 +418,8 @@ body {
   background-color: var(--code-background-color);
   color: var(--attribute-text-color);
   margin-right: 0.8rem;
+  font-family: "Jetbrains Mono", monospace;
+  font-size: 0.9rem;
 }
 .doc-content > .doc-node > .attributes > .attribute-deprecated {
   background-color: var(--attribute-deprecated-background-color);
@@ -612,6 +615,7 @@ pre {
 .token.keyword {
   color: #2b6cb0;
   color: var(--code-keyword-text-color);
+  font-weight: bold;
 }
 .token.function {
   color: #319795;
