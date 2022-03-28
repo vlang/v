@@ -22,7 +22,8 @@ pub fn (mut b Builder) write_ptr(ptr &byte, len int) {
 	if len == 0 {
 		return
 	}
-	unsafe { b.push_many(ptr, len) }
+	tmp := unsafe { ptr.vbytes(len) }
+	b << tmp
 }
 
 // write_rune appends a single rune to the accumulated buffer
@@ -33,7 +34,8 @@ pub fn (mut b Builder) write_rune(r rune) {
 	if res.len == 0 {
 		return
 	}
-	unsafe { b.push_many(res.str, res.len) }
+	tmp := unsafe { res.str.vbytes(res.len) }
+	b << tmp
 }
 
 // write_runes appends all the given runes to the accumulated buffer
@@ -44,7 +46,8 @@ pub fn (mut b Builder) write_runes(runes []rune) {
 		if res.len == 0 {
 			continue
 		}
-		unsafe { b.push_many(res.str, res.len) }
+		tmp := unsafe { res.str.vbytes(res.len) }
+		b << tmp
 	}
 }
 
@@ -91,7 +94,8 @@ pub fn (mut b Builder) write_string(s string) {
 	if s.len == 0 {
 		return
 	}
-	unsafe { b.push_many(s.str, s.len) }
+	tmp := unsafe { s.str.vbytes(s.len) }
+	b << tmp
 	// for c in s {
 	// b.buf << c
 	// }
@@ -144,7 +148,8 @@ pub fn (mut b Builder) writeln(s string) {
 	// b.buf << c
 	// }
 	if s.len > 0 {
-		unsafe { b.push_many(s.str, s.len) }
+		tmp := unsafe { s.str.vbytes(s.len) }
+		b << tmp
 	}
 	// b.buf << []byte(s)  // TODO
 	b << byte(`\n`)
