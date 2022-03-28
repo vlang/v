@@ -594,7 +594,7 @@ fn (mut a array) push(val voidptr) {
 // push_many implements the functionality for pushing another array.
 // `val` is array.data and user facing usage is `a << [1,2,3]`
 [unsafe]
-fn (mut a3 array) push_many(val voidptr, size int) {
+pub fn (mut a3 array) push_many(val voidptr, size int) {
 	a3.ensure_cap(a3.len + size)
 	if a3.data == val && !isnil(a3.data) {
 		// handle `arr << arr`
