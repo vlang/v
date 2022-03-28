@@ -114,6 +114,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		mut right := if i < node.right.len { node.right[i] } else { node.right[0] }
 		mut right_type := node.right_types[i]
+		c.fail_if_unreadable(right, right_type, 'right-hand side of assignment')
 		if mut right is ast.Ident {
 			right_sym := c.table.sym(right_type)
 			if right_sym.info is ast.Struct {

@@ -1861,6 +1861,9 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		}
 	} else if method_name == 'filter' {
 		// check fn
+		if node.return_type.has_flag(.shared_f) {
+			node.return_type = node.return_type.clear_flag(.shared_f).deref()
+		}
 		c.check_map_and_filter(false, elem_typ, node)
 	} else if method_name in ['any', 'all'] {
 		c.check_map_and_filter(false, elem_typ, node)

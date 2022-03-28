@@ -984,7 +984,10 @@ fn (mut g Gen) register_optional(t ast.Type) string {
 }
 
 fn (mut g Gen) write_optionals() {
-	mut done := g.done_optionals.clone()
+	mut done := []string{}
+	rlock g.done_optionals {
+		done = g.done_optionals
+	}
 	for base, styp in g.optionals {
 		if base in done {
 			continue

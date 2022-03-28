@@ -403,11 +403,11 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	// the only argument can only be an infix expression like `a < b` or `b.field > a.field`
 	if node.args.len == 0 {
 		comparison_type = g.unwrap(info.elem_type.set_nr_muls(0))
-		shared a := g.array_sort_fn
-		array_sort_fn := a.clone()
-		if compare_fn in array_sort_fn {
-			g.gen_array_sort_call(node, compare_fn)
-			return
+		rlock g.array_sort_fn {
+			if compare_fn in g.array_sort_fn {
+				g.gen_array_sort_call(node, compare_fn)
+				return
+			}
 		}
 		left_expr = '*a'
 		right_expr = '*b'
@@ -424,11 +424,11 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 		if is_reverse {
 			compare_fn += '_reverse'
 		}
-		shared a := g.array_sort_fn
-		array_sort_fn := a.clone()
-		if compare_fn in array_sort_fn {
-			g.gen_array_sort_call(node, compare_fn)
-			return
+		rlock g.array_sort_fn {
+			if compare_fn in g.array_sort_fn {
+				g.gen_array_sort_call(node, compare_fn)
+				return
+			}
 		}
 		if left_name.starts_with('a') != is_reverse {
 			left_expr = g.expr_string(infix_expr.left)
@@ -503,18 +503,25 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	elem_type_str := g.typ(info.elem_type)
 	g.empty_line = true
 	noscan := g.check_noscan(info.elem_type)
-	g.writeln('$styp $tmp = __new_array${noscan}(0, 0, sizeof($elem_type_str));')
 	has_infix_left_var_name := g.infix_left_var_name.len > 0
 	if has_infix_left_var_name {
 		g.writeln('if ($g.infix_left_var_name) {')
 		g.infix_left_var_name = ''
 		g.indent++
 	}
-	g.write('${g.typ(node.left_type)} ${tmp}_orig = ')
+	left_type := if node.left_type.has_flag(.shared_f) {
+		node.left_type.clear_flag(.shared_f).deref()
+	} else {
+		node.left_type
+	}
+	g.write('${g.typ(left_type)} ${tmp}_orig = ')
 	g.expr(node.left)
+	if node.left_type.has_flag(.shared_f) {
+		g.write('->val')
+	}
 	g.writeln(';')
 	g.writeln('int ${tmp}_len = ${tmp}_orig.len;')
-	g.writeln('$tmp = __new_array${noscan}(0, ${tmp}_len, sizeof($elem_type_str));\n')
+	g.writeln('$styp $tmp = __new_array${noscan}(0, ${tmp}_len, sizeof($elem_type_str));\n')
 	i := g.new_tmp_var()
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.indent++

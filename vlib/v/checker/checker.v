@@ -4189,6 +4189,15 @@ pub fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what stri
 				c.fail_if_unreadable(expr.expr, expr.expr_type, what)
 			}
 		}
+		ast.CallExpr {
+			pos = expr.pos
+			if expr.is_method {
+				c.fail_if_unreadable(expr.left, expr.left_type, what)
+			}
+		}
+		ast.LockExpr {
+			return
+		}
 		ast.IndexExpr {
 			pos = expr.left.pos().extend(expr.pos)
 			c.fail_if_unreadable(expr.left, expr.left_type, what)
