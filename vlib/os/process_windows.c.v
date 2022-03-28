@@ -190,10 +190,8 @@ fn (mut p Process) win_read_string(idx int, maxbytes int) (string, int) {
 		return '', 0
 	}
 	mut bytes_avail := int(0)
-	unsafe {
-		if C.PeekNamedPipe(rhandle, voidptr(0), int(0), voidptr(0), &bytes_avail, voidptr(0)) == false {
-			return '', 0
-		}
+	if !C.PeekNamedPipe(rhandle, voidptr(0), int(0), voidptr(0), &bytes_avail, voidptr(0)) {
+		return '', 0
 	}
 	if bytes_avail == 0 {
 		return '', 0
