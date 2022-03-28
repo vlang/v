@@ -1,0 +1,7 @@
+vlib/v/parser/tests/struct_field_mut_type_err.vv:3:6: error: cannot use `mut` on struct field type
+    1 | struct Foo {
+    2 | mut:
+    3 |     foo mut string
+      |         ~~~
+    4 | }
+    5 |
