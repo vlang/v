@@ -3773,15 +3773,9 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		g.expr(node.expr)
 	} else if node.expr_type == ast.bool_type && node.typ.is_int() {
 		styp := g.typ(node.typ)
-		tmp := g.new_tmp_var()
-		g.empty_line = true
-		s := g.go_before_stmt(0)
-		g.write('$styp $tmp = (')
+		g.write('($styp[]){(')
 		g.expr(node.expr)
-		g.writeln(')?1:0;')
-		g.empty_line = false
-		g.write(s)
-		g.write(tmp)
+		g.write(')?1:0}[0]')
 	} else {
 		styp := g.typ(node.typ)
 		if (g.pref.translated || g.file.is_translated) && sym.kind == .function {
