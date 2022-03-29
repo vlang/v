@@ -3556,6 +3556,9 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) 
 				if c.fn_scope != voidptr(0) {
 					obj = c.fn_scope.find_var(node.obj.name) or { obj }
 				}
+				if obj.typ == 0 {
+					return
+				}
 				type_sym := c.table.sym(obj.typ.set_nr_muls(0))
 				if obj.is_stack_obj && !type_sym.is_heap() && !c.pref.translated
 					&& !c.file.is_translated {
