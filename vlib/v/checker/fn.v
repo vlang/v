@@ -673,6 +673,12 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		&& !c.file.is_translated && !func.is_unsafe {
 		c.error('cannot call a function that does not have a body', node.pos)
 	}
+	if node.concrete_types.len > 0 && func.generic_names.len > 0
+		&& node.concrete_types.len != func.generic_names.len {
+		desc := if node.concrete_types.len > func.generic_names.len { 'many' } else { 'little' }
+		c.error('too $desc generic parameters got $node.concrete_types.len, expected $func.generic_names.len',
+			node.concrete_list_pos)
+	}
 	for concrete_type in node.concrete_types {
 		c.ensure_type_exists(concrete_type, node.concrete_list_pos) or {}
 	}
@@ -961,10 +967,6 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		c.error('a non generic function called like a generic one', node.concrete_list_pos)
 	}
 
-	if node.concrete_types.len > func.generic_names.len {
-		c.error('too many generic parameters got $node.concrete_types.len, expected $func.generic_names.len',
-			node.concrete_list_pos)
-	}
 	if func.generic_names.len > 0 {
 		if has_generic {
 			if typ := c.table.resolve_generic_to_concrete(func.return_type, func.generic_names,
@@ -1189,6 +1191,19 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			&& method.language == .v && method.no_body {
 			c.error('cannot call a method that does not have a body', node.pos)
 		}
+		if node.concrete_types.len > 0 && method.generic_names.len > 0
+			&& node.concrete_types.len != method.generic_names.len {
+			desc := if node.concrete_types.len > method.generic_names.len {
+				'many'
+			} else {
+				'little'
+			}
+			c.error('too $desc generic parameters got $node.concrete_types.len, expected $method.generic_names.len',
+				node.concrete_list_pos)
+		}
+		for concrete_type in node.concrete_types {
+			c.ensure_type_exists(concrete_type, node.concrete_list_pos) or {}
+		}
 		if method.return_type == ast.void_type && method.is_conditional
 			&& method.ctdefine_idx != ast.invalid_type_idx {
 			node.should_be_skipped = c.evaluate_once_comptime_if_attribute(mut method.attrs[method.ctdefine_idx])
@@ -1394,10 +1409,6 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 		if node.concrete_types.len > 0 && method.generic_names.len == 0 {
 			c.error('a non generic function called like a generic one', node.concrete_list_pos)
-		}
-		if node.concrete_types.len > method.generic_names.len {
-			c.error('too many generic parameters got $node.concrete_types.len, expected $method.generic_names.len',
-				node.concrete_list_pos)
 		}
 		if method.generic_names.len > 0 {
 			if !left_type.has_flag(.generic) {
