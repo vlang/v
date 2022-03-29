@@ -812,8 +812,8 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		} else {
 			if param.is_mut {
 				tok := call_arg.share.str()
-				c.error('`$node.name` parameter `$param.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${
-					i + 1}`', call_arg.expr.pos())
+				c.error('function `$node.name` parameter `$param.name` is `$tok`, so use `$tok $call_arg.expr` instead',
+					call_arg.expr.pos())
 			} else {
 				c.fail_if_unreadable(call_arg.expr, typ, 'argument')
 			}
@@ -1307,8 +1307,8 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			} else {
 				if param_is_mut {
 					tok := arg.share.str()
-					c.error('`$node.name` parameter `$param.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${
-						i + 1}`', arg.expr.pos())
+					c.error('method `$node.name` parameter `$param.name` is `$tok`, so use `$tok $arg.expr` instead',
+						arg.expr.pos())
 				} else {
 					c.fail_if_unreadable(arg.expr, got_arg_typ, 'argument')
 				}

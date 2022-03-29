@@ -12,7 +12,7 @@ vlib/v/checker/tests/chan_args.vv:5:19: error: cannot use `float literal` as `&f
       |                      ~~~
     6 |     b := 2.5
     7 |     _ := ch.try_pop(b)
-vlib/v/checker/tests/chan_args.vv:7:18: error: `try_pop` parameter `obj` is `mut`, you need to provide `mut` e.g. `mut arg1`
+vlib/v/checker/tests/chan_args.vv:7:18: error: method `try_pop` parameter `obj` is `mut`, so use `mut b` instead
     5 |     _ := ch.try_push(2.5)
     6 |     b := 2.5
     7 |     _ := ch.try_pop(b)

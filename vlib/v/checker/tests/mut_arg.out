@@ -1,25 +1,25 @@
-vlib/v/checker/tests/mut_arg.vv:6:3: error: `f` parameter `par` is `mut`, you need to provide `mut` e.g. `mut arg1`
+vlib/v/checker/tests/mut_arg.vv:6:3: error: function `f` parameter `par` is `mut`, so use `mut [3, 4]` instead
     4 | }
-    5 |
+    5 | 
     6 | f([3,4])
       |   ~~~~~
     7 | mut a := [1,2]
     8 | f(a)
-vlib/v/checker/tests/mut_arg.vv:8:3: error: `f` parameter `par` is `mut`, you need to provide `mut` e.g. `mut arg1`
+vlib/v/checker/tests/mut_arg.vv:8:3: error: function `f` parameter `par` is `mut`, so use `mut a` instead
     6 | f([3,4])
     7 | mut a := [1,2]
     8 | f(a)
       |   ^
-    9 |
+    9 | 
    10 | g(mut [3,4])
 vlib/v/checker/tests/mut_arg.vv:10:7: error: array literal can not be modified
     8 | f(a)
-    9 |
+    9 | 
    10 | g(mut [3,4])
       |       ~~~~~
    11 | g(mut a)
 vlib/v/checker/tests/mut_arg.vv:11:7: error: `g` parameter `par` is not `mut`, `mut` is not needed`
-    9 |
+    9 | 
    10 | g(mut [3,4])
    11 | g(mut a)
       |       ^
