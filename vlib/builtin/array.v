@@ -690,7 +690,7 @@ pub fn (a array) filter(predicate fn (voidptr) bool) array
 // Example: array.any(it.name == 'Bob') // will yield `true` if any element has `.name == 'Bob'`
 pub fn (a array) any(predicate fn (voidptr) bool) bool
 
-// all tests whether all elements in the array pass the test
+// all tests whether all elements in the array pass the test.
 // Ignore the function signature. `all` does not take an actual callback. Rather, it
 // takes an `it` expression.
 // It returns `false` if any element fails the test. Otherwise,

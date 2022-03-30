@@ -426,8 +426,8 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 		example_title := if examples.len > 1 { 'Examples' } else { 'Example' }
 		dnw.writeln('<section class="doc-node examples"><h4>$example_title</h4>')
 		for example in examples {
-			// hl_example := html_highlight(example, tb)
-			dnw.writeln('<pre><code class="language-v">$example</code></pre>')
+			hl_example := html_highlight(example, tb)
+			dnw.writeln('<pre><code class="language-v">$hl_example</code></pre>')
 		}
 		dnw.writeln('</section>')
 	}

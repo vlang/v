@@ -516,7 +516,7 @@ pub fn (b byte) str_escaped() string {
 
 // is_capital returns `true`, if the byte is a Latin capital letter.
 // Example: assert `H`.is_capital() == true
-// Example: assert 'h`.is_capital() == false
+// Example: assert `h`.is_capital() == false
 [inline]
 pub fn (c byte) is_capital() bool {
 	return c >= `A` && c <= `Z`
