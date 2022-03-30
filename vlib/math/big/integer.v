@@ -817,7 +817,7 @@ pub fn (a Integer) isqrt() Integer {
 		return a
 	}
 
-	mut shift := a.digits.len * 32 - bits.leading_zeros_32(a.digits.last())
+	mut shift := a.bit_len()
 	if shift & 1 == 1 {
 		shift += 1
 	}
@@ -901,16 +901,11 @@ pub fn (x Integer) gcd_binary(y Integer) Integer {
 	return b.lshift(shift)
 }
 
-[direct_array_access]
+[inline; direct_array_access]
 pub fn (x Integer) bit_len() int {
 	if x.signum == 0 {
 		return 0
 	}
 
-	mut length := 0
-	for _ in 1 .. x.digits.len {
-		length += 32
-	}
-
-	return length + (32 - bits.leading_zeros_32(x.digits.last()))
+	return x.digits.len * 32 - bits.leading_zeros_32(x.digits.last())
 }
