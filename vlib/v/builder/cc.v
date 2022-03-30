@@ -203,6 +203,9 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	if v.pref.os == .ios {
 		ccoptions.args << '-fobjc-arc'
 	}
+	if v.pref.os == .macos && os.exists('/opt/procursus') {
+		ccoptions.linker_flags << '-Wl,-rpath,/opt/procursus/lib'
+	}
 	ccoptions.debug_mode = v.pref.is_debug
 	ccoptions.guessed_compiler = v.pref.ccompiler
 	if ccoptions.guessed_compiler == 'cc' && v.pref.is_prod {
