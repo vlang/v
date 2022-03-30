@@ -529,29 +529,29 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		sym := c.table.sym(expr.left_type)
 		if sym.kind == .array {
 			info := sym.info as ast.Array
-			elem_typ := c.table.sym(info.elem_type)
-			if elem_typ.info is ast.FnType {
-				node.return_type = elem_typ.info.func.return_type
-				return elem_typ.info.func.return_type
+			elem_sym := c.table.sym(info.elem_type)
+			if elem_sym.info is ast.FnType {
+				node.return_type = elem_sym.info.func.return_type
+				return elem_sym.info.func.return_type
 			} else {
 				c.error('cannot call the element of the array, it is not a function',
 					node.pos)
 			}
 		} else if sym.kind == .map {
 			info := sym.info as ast.Map
-			value_typ := c.table.sym(info.value_type)
-			if value_typ.info is ast.FnType {
-				node.return_type = value_typ.info.func.return_type
-				return value_typ.info.func.return_type
+			value_sym := c.table.sym(info.value_type)
+			if value_sym.info is ast.FnType {
+				node.return_type = value_sym.info.func.return_type
+				return value_sym.info.func.return_type
 			} else {
 				c.error('cannot call the value of the map, it is not a function', node.pos)
 			}
 		} else if sym.kind == .array_fixed {
 			info := sym.info as ast.ArrayFixed
-			elem_typ := c.table.sym(info.elem_type)
-			if elem_typ.info is ast.FnType {
-				node.return_type = elem_typ.info.func.return_type
-				return elem_typ.info.func.return_type
+			elem_sym := c.table.sym(info.elem_type)
+			if elem_sym.info is ast.FnType {
+				node.return_type = elem_sym.info.func.return_type
+				return elem_sym.info.func.return_type
 			} else {
 				c.error('cannot call the element of the array, it is not a function',
 					node.pos)
