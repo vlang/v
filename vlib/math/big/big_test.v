@@ -432,3 +432,16 @@ fn test_set_bit() {
 	a.set_bit(100, false)
 	assert a == b
 }
+
+fn test_bit_len() {
+	assert big.zero_int.bit_len() == 0
+	assert big.one_int.bit_len() == 1
+
+	assert big.integer_from_u32(0xffffffff).bit_len() == 32
+
+	assert big.one_int.lshift(1239).bit_len() == 1240
+
+	assert big.integer_from_string('4338476092346017364013796407961305761039463198075691378460917856') or {
+		panic('Could not read from decimal')
+	}.bit_len() == 212
+}

@@ -634,8 +634,7 @@ pub fn (integer Integer) binary_str() string {
 	}
 	// Add the sign if present
 	sign_needed := integer.signum == -1
-	mut result_builder := strings.new_builder(integer.digits.len * 32 +
-		if sign_needed { 1 } else { 0 })
+	mut result_builder := strings.new_builder(integer.bit_len() + if sign_needed { 1 } else { 0 })
 	if sign_needed {
 		result_builder.write_string('-')
 	}
@@ -900,4 +899,18 @@ pub fn (x Integer) gcd_binary(y Integer) Integer {
 		a = diff.abs()
 	}
 	return b.lshift(shift)
+}
+
+[direct_array_access]
+pub fn (x Integer) bit_len() int {
+	if x.signum == 0 {
+		return 0
+	}
+
+	mut length := 0
+	for _ in 1 .. x.digits.len {
+		length += 32
+	}
+
+	return length + (32 - bits.leading_zeros_32(x.digits.last()))
 }
