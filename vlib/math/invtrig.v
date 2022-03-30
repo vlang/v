@@ -206,9 +206,6 @@ pub fn acos(x f64) f64 {
 	if (x < -1.0) || (x > 1.0) {
 		return nan()
 	}
-	if x == 0.0 {
-		return nan()
-	}
 	if x > 0.5 {
 		return f64(2.0) * asin(sqrt(0.5 - 0.5 * x))
 	}
