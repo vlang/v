@@ -523,17 +523,7 @@ pub fn (mut v Builder) cc() {
 		// try to compile with the choosen compiler
 		// if compilation fails, retry again with another
 		mut ccompiler := v.pref.ccompiler
-		if v.pref.os == .ios {
-			ios_sdk := if v.pref.is_ios_simulator { 'iphonesimulator' } else { 'iphoneos' }
-			ios_sdk_path_res := os.execute_or_exit('xcrun --sdk $ios_sdk --show-sdk-path')
-			mut isysroot := ios_sdk_path_res.output.replace('\n', '')
-			arch := if v.pref.is_ios_simulator {
-				'-arch x86_64'
-			} else {
-				'-arch armv7 -arch armv7s -arch arm64'
-			}
-			ccompiler = 'xcrun --sdk iphoneos clang -isysroot $isysroot $arch'
-		} else if v.pref.os == .wasm32 {
+		if v.pref.os == .wasm32 {
 			ccompiler = 'clang'
 		}
 		v.setup_ccompiler_options(ccompiler)
@@ -619,7 +609,7 @@ pub fn (mut v Builder) cc() {
 				}
 				if v.pref.retry_compilation {
 					tcc_output = res
-					v.pref.ccompiler = pref.default_c_compiler()
+					v.pref.default_c_compiler()
 					if v.pref.is_verbose {
 						eprintln('Compilation with tcc failed. Retrying with $v.pref.ccompiler ...')
 					}
