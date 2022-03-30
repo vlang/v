@@ -23,6 +23,9 @@ $if $pkgconfig('openssl') {
 // Brew arm64
 #flag darwin -I /opt/homebrew/opt/openssl/include
 #flag darwin -L /opt/homebrew/opt/openssl/lib
+// Procursus
+#flag darwin -I/opt/procursus/include
+#flag darwin -L/opt/procursus/lib
 //
 #include <openssl/rand.h> # Please install OpenSSL development headers
 #include <openssl/ssl.h>
