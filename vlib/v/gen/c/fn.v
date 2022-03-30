@@ -1748,8 +1748,8 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 				expected_type
 			}
 			deref_sym := g.table.sym(expected_deref_type)
-			if !((arg_typ_sym.kind == .function)
-				|| deref_sym.kind in [.sum_type, .interface_]) && lang != .c {
+			if arg_typ_sym.kind != .function && deref_sym.kind !in [.sum_type, .interface_]
+				&& lang != .c {
 				if arg.expr.is_lvalue() {
 					g.write('(voidptr)&/*qq*/')
 				} else {
