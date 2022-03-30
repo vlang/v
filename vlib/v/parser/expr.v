@@ -545,27 +545,6 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	}
 }
 
-fn (mut p Parser) go_expr() ast.GoExpr {
-	p.next()
-	spos := p.tok.pos()
-	expr := p.expr(0)
-	call_expr := if expr is ast.CallExpr {
-		expr
-	} else {
-		p.error_with_pos('expression in `go` must be a function call', expr.pos())
-		ast.CallExpr{
-			scope: p.scope
-		}
-	}
-	pos := spos.extend(p.prev_tok.pos())
-	p.register_auto_import('sync.threads')
-	p.table.gostmts++
-	return ast.GoExpr{
-		call_expr: call_expr
-		pos: pos
-	}
-}
-
 fn (p &Parser) fileis(s string) bool {
 	return p.file_name.contains(s)
 }
