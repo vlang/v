@@ -104,6 +104,7 @@ pub fn (t Time) local() Time {
 		hour: u16(t.hour)
 		minute: u16(t.minute)
 		second: u16(t.second)
+		millisecond: u16(t.microsecond / 1000)
 	}
 	st_local := SystemTime{}
 	C.SystemTimeToTzSpecificLocalTime(voidptr(0), &st_utc, &st_local)
