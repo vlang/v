@@ -584,10 +584,10 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 				left_sym := g.table.sym(left_typ)
 				if left_sym.kind == .function {
 					g.write_fn_ptr_decl(left_sym.info as ast.FnType, '_var_$left.pos.pos')
-					g.writeln(' = $left.name;')
+					g.writeln(' = ${c_name(left.name)};')
 				} else {
 					styp := g.typ(left_typ)
-					g.writeln('$styp _var_$left.pos.pos = $left.name;')
+					g.writeln('$styp _var_$left.pos.pos = ${c_name(left.name)};')
 				}
 			}
 			ast.IndexExpr {
