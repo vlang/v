@@ -157,7 +157,7 @@ pub mut:
 	static_files      map[string]string
 	static_mime_types map[string]string
 	// Map containing query params for the route.
-	// Example: `http://localhost:3000/index?q=vpm&order_by=desc => { 'q': 'vpm', 'order_by': 'desc' }
+	// http://localhost:3000/index?q=vpm&order_by=desc => { 'q': 'vpm', 'order_by': 'desc' }
 	query map[string]string
 	// Multipart-form fields.
 	form map[string]string
@@ -389,7 +389,7 @@ pub struct RunParams {
 }
 
 // run_at - start a new VWeb server, listening only on a specific address `host`, at the specified `port`
-// Example: `vweb.run_at(app, 'localhost', 8099)`
+// Example: vweb.run_at(app, 'localhost', 8099)
 [manualfree]
 pub fn run_at<T>(global_app &T, params RunParams) ? {
 	mut l := net.listen_tcp(params.family, '$params.host:$params.port') or {
