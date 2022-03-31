@@ -71,14 +71,22 @@ jobs:
       - uses: actions/checkout@v2
         with:
           fetch-depth: 10
+
       - name: Install dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
-          sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
+          sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev postgresql libpq-dev valgrind
+          sudo apt-get install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
+          sudo apt-get install --quiet -y g++-9
+
       - name: Build v
         run: make
+
+      - name: g++ version
+        run: g++-9 --version
+      - name: V self compilation with g++
+        run: ./v -cc g++-9 -no-std -cflags -std=c++11 -o v2 cmd/v && ./v2 -cc g++-9 -no-std -cflags -std=c++11 -o v3 cmd/v
+        ##    - name: Running tests with g++
+        ##      run: ./v -cc g++-9 test-self
 
       - name: Ensure V can be compiled with -autofree
         run: ./v -autofree -o v2 cmd/v  ## NB: this does not mean it runs, but at least keeps it from regressing
@@ -97,22 +105,7 @@ jobs:
                  echo "compiling shader $f.glsl ..."; \
                  ./sokol-shdc --input $f.glsl --output $f.h --slang glsl330 ; \
           done
-          for vfile in examples/sokol/0?*/*.v; do echo "compiling $vfile ..."; ./v $vfile ; done
-
-      - name: Install C++ dependencies
-        run: |
-          sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev
-          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
-          sudo apt-get install --quiet -y valgrind g++-9
-      - name: Build V
-        run: make -j4
-      - name: g++ version
-        run: g++-9 --version
-      - name: V self compilation with g++
-        run: ./v -cc g++-9 -no-std -cflags -std=c++11 -o v2 cmd/v && ./v2 -cc g++-9 -no-std -cflags -std=c++11 -o v3 cmd/v
-  ##    - name: Running tests with g++
-  ##      run: ./v -cc g++-9 test-self
-
+          v should-compile-all examples/sokol/*.v examples/sokol/0?*/*.v
 
   parser-silent:
     runs-on: ubuntu-20.04
@@ -161,7 +154,12 @@ jobs:
         run: make && sudo ./v symlink
 
       - name: Install dependencies
-        run: sudo apt-get install --quiet -y libgc-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install --quiet -y libgc-dev
+          sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
+          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
+          sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
 
       ## vls
       - name: Clone VLS
@@ -228,8 +226,8 @@ jobs:
         run: sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev
       - name: Install Vex
         run: mkdir -p ~/.vmodules/nedpals; git clone https://github.com/nedpals/vex ~/.vmodules/nedpals/vex
-      - name: Compile the simple Vex example
-        run: ./v ~/.vmodules/nedpals/vex/examples/simple_example.v
+      - name: Compile all of the Vex examples
+        run: ./v should-compile-all ~/.vmodules/nedpals/vex/examples
       - name: Compile the simple Vex example with -gc boehm -skip-unused
         run: ./v -gc boehm -skip-unused ~/.vmodules/nedpals/vex/examples/simple_example.v
       - name: Run Vex Tests
@@ -254,3 +252,9 @@ jobs:
         run: ./v go2v/
       - name: Run tests for go2v
         run: VJOBS=1 ./v -stats test go2v/
+
+      ## vlang/pdf
+      - name: Clone & Build vlang/pdf
+        run: git clone --depth=1 https://github.com/vlang/pdf ~/.vmodules/pdf/
+      - name: PDF examples should compile
+        run: ./v should-compile-all ~/.vmodules/pdf/examples
