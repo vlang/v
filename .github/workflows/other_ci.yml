@@ -74,7 +74,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev postgresql libpq-dev valgrind
+          sudo apt-get update
+          sudo apt-get install --quiet -y libsodium-dev libssl-dev sqlite3 libsqlite3-dev postgresql libpq-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
           sudo apt-get install --quiet -y g++-9
 
@@ -157,7 +158,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --quiet -y libgc-dev
-          sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
+          sudo apt-get install --quiet -y libsodium-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
           sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
 
@@ -223,7 +224,7 @@ jobs:
 
       ## vex
       - name: Install Vex dependencies
-        run: sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev
+        run: sudo apt-get install --quiet -y libsodium-dev libssl-dev sqlite3 libsqlite3-dev
       - name: Install Vex
         run: mkdir -p ~/.vmodules/nedpals; git clone https://github.com/nedpals/vex ~/.vmodules/nedpals/vex
       - name: Compile all of the Vex examples
