@@ -32,6 +32,7 @@ const (
 		'self',
 		'setup-freetype',
 		'shader',
+		'should-compile-all',
 		'symlink',
 		'scan',
 		'test',
