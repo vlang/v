@@ -13,8 +13,12 @@ pub const (
 #flag windows -lgdi32
 // METAL
 $if macos {
-	#flag -DSOKOL_METAL
-	#flag -framework Metal -framework Cocoa -framework MetalKit -framework QuartzCore
+	$if darwin_sokol_glcore33 ? {
+		#flag darwin -DSOKOL_GLCORE33 -framework OpenGL -framework Cocoa -framework QuartzCore
+	} $else {
+		#flag -DSOKOL_METAL
+		#flag -framework Metal -framework Cocoa -framework MetalKit -framework QuartzCore
+	}
 }
 $if ios {
 	#flag -DSOKOL_METAL
