@@ -106,7 +106,7 @@ jobs:
                  echo "compiling shader $f.glsl ..."; \
                  ./sokol-shdc --input $f.glsl --output $f.h --slang glsl330 ; \
           done
-          v should-compile-all examples/sokol/*.v examples/sokol/0?*/*.v
+          ./v should-compile-all examples/sokol/*.v examples/sokol/0?*/*.v
 
   parser-silent:
     runs-on: ubuntu-20.04
