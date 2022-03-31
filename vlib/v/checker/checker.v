@@ -823,10 +823,12 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				left_gen_type := c.unwrap_generic(left_type)
 				gen_sym := c.table.sym(left_gen_type)
 				need_overload := gen_sym.kind in [.struct_, .interface_]
-				if need_overload && !gen_sym.has_method('<') && node.op in [.ge, .le] {
+				if need_overload && !gen_sym.has_method_with_generic_parent('<')
+					&& node.op in [.ge, .le] {
 					c.error('cannot use `$node.op` as `<` operator method is not defined',
 						left_right_pos)
-				} else if need_overload && !gen_sym.has_method('<') && node.op == .gt {
+				} else if need_overload && !gen_sym.has_method_with_generic_parent('<')
+					&& node.op == .gt {
 					c.error('cannot use `>` as `<=` operator method is not defined', left_right_pos)
 				}
 			} else if left_type in ast.integer_type_idxs && right_type in ast.integer_type_idxs {
