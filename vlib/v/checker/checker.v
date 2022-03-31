@@ -2111,32 +2111,6 @@ fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
 	}
 }
 
-fn (mut c Checker) go_expr(mut node ast.GoExpr) ast.Type {
-	ret_type := c.call_expr(mut node.call_expr)
-	if node.call_expr.or_block.kind != .absent {
-		c.error('optional handling cannot be done in `go` call. Do it when calling `.wait()`',
-			node.call_expr.or_block.pos)
-	}
-	// Make sure there are no mutable arguments
-	for arg in node.call_expr.args {
-		if arg.is_mut && !arg.typ.is_ptr() {
-			c.error('function in `go` statement cannot contain mutable non-reference arguments',
-				arg.expr.pos())
-		}
-	}
-	if node.call_expr.is_method && node.call_expr.receiver_type.is_ptr()
-		&& !node.call_expr.left_type.is_ptr() {
-		c.error('method in `go` statement cannot have non-reference mutable receiver',
-			node.call_expr.left.pos())
-	}
-
-	if c.pref.backend.is_js() {
-		return c.table.find_or_register_promise(ret_type)
-	} else {
-		return c.table.find_or_register_thread(ret_type)
-	}
-}
-
 fn (mut c Checker) asm_stmt(mut stmt ast.AsmStmt) {
 	if stmt.is_goto {
 		c.warn('inline assembly goto is not supported, it will most likely not work',
