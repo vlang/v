@@ -347,7 +347,11 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	if v.pref.os == .macos {
 		ccoptions.post_args << '-mmacosx-version-min=10.7'
 	} else if v.pref.os == .ios {
-		ccoptions.post_args << '-miphoneos-version-min=10.0'
+		if v.pref.is_ios_simulator {
+			ccoptions.post_args << '-miphonesimulator-version-min=10.0'
+		} else {
+			ccoptions.post_args << '-miphoneos-version-min=10.0'
+		}
 	} else if v.pref.os == .windows {
 		ccoptions.post_args << '-municode'
 	}

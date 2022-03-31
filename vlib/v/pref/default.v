@@ -219,11 +219,14 @@ pub fn (mut p Preferences) default_c_compiler() {
 			ios_sdk_path_res := os.execute_or_exit('xcrun --sdk $ios_sdk --show-sdk-path')
 			mut isysroot := ios_sdk_path_res.output.replace('\n', '')
 			arch := if p.is_ios_simulator {
-				'-arch x86_64'
+				'-arch x86_64 -arch arm64'
 			} else {
 				'-arch armv7 -arch armv7s -arch arm64'
 			}
-			p.ccompiler = 'xcrun --sdk iphoneos clang -isysroot $isysroot $arch'
+			// On macOS, /usr/bin/cc is a hardlink/wrapper for xcrun. clang on darwin hosts
+			// will automatically change the build target based off of the selected sdk, making xcrun -sdk iphoneos pointless
+			p.ccompiler = '/usr/bin/cc'
+			p.cflags = '-isysroot $isysroot $arch' + p.cflags
 			return
 		}
 	}
