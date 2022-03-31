@@ -259,23 +259,7 @@ fn test_since() {
 // problem: the local method add 2h on the time in a Linux machine
 // the other machine are not tested in a local env
 fn test_recursive_local_call() {
-	assert time.now().unix == time.now().local().unix
-	assert time.now().str() == time.now().local().str()
-	assert time.now().local().str() == time.now().local().local().str()
-}
-
-fn test_local_method_with_time_operation() {
-	//FIXME: add a fixed TIMEZONE here
-	assert time.now().str() != time.utc().str()
-	assert time.now().str() == time.utc().local().str()
-
-	utc := time.utc()
-	utc_plus_1h := time.utc().add(time.hour).local()
-
-	// check if the utc local is increased by 1h
-	assert utc_plus_1h.hour == time.now().local().hour - 1
-	// trivial check
-	assert utc.hour < utc_plus_1h.hour
-	// normal utc vs an 1h alterate utc + local convertion
-	assert utc.hour == utc_plus_1h.hour - 3
+	now_tm := time.now()
+	assert now_tm.str() == now_tm.local().str()
+	assert now_tm.local().str() == now_tm.local().local().str()
 }

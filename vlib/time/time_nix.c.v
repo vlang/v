@@ -30,6 +30,9 @@ fn make_unix_time(t C.tm) i64 {
 
 // local returns t with the location set to local time.
 pub fn (t Time) local() Time {
+	if t.is_local {
+		return t
+	}
 	loc_tm := C.tm{}
 	C.localtime_r(voidptr(&t.unix), &loc_tm)
 	return convert_ctime(loc_tm, t.microsecond)
