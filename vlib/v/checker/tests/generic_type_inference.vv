@@ -1,7 +1,6 @@
 import datatypes
 
 struct KeyVal<T> {
-mut:
 	key string
 	val T
 }
