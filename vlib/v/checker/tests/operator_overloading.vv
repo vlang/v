@@ -1,0 +1,15 @@
+struct Foo {
+        one   int
+        two   int
+        three int
+        four  int
+        five  int
+        six   int
+        seven int
+        eight int
+        nine  int
+}
+
+fn (_ Foo) == (_ Foo) bool {
+        return true
+}
