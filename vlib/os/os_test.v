@@ -894,3 +894,10 @@ fn test_command() {
 	// dump( cmd_to_fail )
 	assert cmd_to_fail.exit_code != 0 // 2 on linux, 1 on macos
 }
+
+fn test_config_dir() {
+	cdir := os.config_dir() or { panic(err) }
+	adir := '$cdir/test-v-config'
+	os.mkdir_all(adir) or { panic(err) }
+	os.rmdir(adir) or { panic(err) }
+}
