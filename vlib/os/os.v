@@ -766,3 +766,28 @@ pub fn quoted_path(path string) string {
 		return "'$path'"
 	}
 }
+
+// returns the path to the user configuration directory or error in case the environment is missing
+pub fn config_dir() ?string {
+	$if windows {
+		app_data := getenv('AppData')
+		if app_data != '' {
+			return app_data
+		}
+	} $else $if macos || darwin || ios {
+		home := home_dir()
+		if home != '' {
+			return home + '/Library/Application Support'
+		}
+	} $else {
+		xdg_home := getenv('XDG_CONFIG_HOME')
+		if xdg_home != '' {
+			return xdg_home
+		}
+		home := home_dir()
+		if home != '' {
+			return home + '/.config'
+		}
+	}
+	return error('Cannot find config directory')
+}
