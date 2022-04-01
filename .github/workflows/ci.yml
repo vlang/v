@@ -446,6 +446,22 @@ jobs:
         run: .\v.exe test-self
         #    - name: Test
         #      run: .\v.exe test-all
+      - name: Test time functions in a timezone UTC-12
+        run: |
+          tzutil /s "Dateline Standard Time"
+          ./v test vlib/time/
+      - name: Test time functions in a timezone UTC-3
+        run: |
+          tzutil /s "Greenland Standard Time"
+          ./v test vlib/time/
+      - name: Test time functions in a timezone UTC+3
+        run: |
+          tzutil /s "Russian Standard Time"
+          ./v test vlib/time/
+      - name: Test time functions in a timezone UTC+12
+        run: |
+          tzutil /s "New Zealand Standard Time"
+          ./v test vlib/time/
       - name: Test v->js
         run: ./v -o hi.js examples/hello_v_js.v && node hi.js
       - name: Test v binaries
