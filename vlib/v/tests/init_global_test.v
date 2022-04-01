@@ -168,7 +168,7 @@ fn switch2() u64 {
 fn test_global_mutex() {
 	assert f1 == 34.0625
 	t := go switch2()
-	for _ in 0 .. 2500000 {
+	for _ in 0 .. 25000 {
 		mtx.@lock()
 		f1, f2 = f2, f1
 		mtx.unlock()
