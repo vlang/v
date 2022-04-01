@@ -327,7 +327,6 @@ pub fn (mut rng PRNG) choose<T>(array []T, k int) ?[]T {
 	}
 	mut results := []T{len: k}
 	mut indices := []int{len: n, init: it}
-	// enfoce the type to int to avoid ambiguity
 	rng.shuffle(mut indices) ?
 	for i in 0 .. k {
 		results[i] = array[indices[i]]
