@@ -24,10 +24,12 @@ pub fn (dc DocComment) example() string {
 	return dc.text.all_after(doc.example_pattern)
 }
 
+// is_multi_line_example returns true if an example line has no inline code
 pub fn (dc DocComment) is_multi_line_example() bool {
 	return dc.text == '\x01 Example:'
 }
 
+// has_triple_backtick returns true if the comment starts or ends a markdown code block
 pub fn (dc DocComment) has_triple_backtick() bool {
 	return dc.text.starts_with('\x01 ```')
 }
