@@ -327,7 +327,9 @@ pub fn (mut rng PRNG) choose<T>(array []T, k int) ?[]T {
 	}
 	mut results := []T{len: k}
 	mut indices := []int{len: n, init: it}
-	rng.shuffle(mut indices) ?
+	// TODO: see why exactly it is necessary to enfoce the type here in Checker.infer_fn_generic_types
+	// (v errors with: `inferred generic type T is ambiguous: got int, expected string`, when <int> is missing)
+	rng.shuffle<int>(mut indices) ?
 	for i in 0 .. k {
 		results[i] = array[indices[i]]
 	}
