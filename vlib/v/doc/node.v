@@ -87,13 +87,11 @@ pub fn (dn DocNode) examples() []string {
 			output << comment.example()
 		} else if comment.is_multi_line_example() {
 			mut j := i + 1
-			//~ comments = dn.comments
 			mut ml_ex := ''
 			if j + 2 < dn.comments.len && dn.comments[j].has_triple_backtick()
 			{
 				j++
 				for j < dn.comments.len && !dn.comments[j].has_triple_backtick() {
-			//~ println(dn.comments[j].text)
 					if ml_ex.len > 0 {
 						ml_ex += '\n'
 					}
@@ -101,7 +99,6 @@ pub fn (dn DocNode) examples() []string {
 					if s.len > 2 { ml_ex += s[2..] }
 					j++
 				}
-				println(ml_ex)
 				output << ml_ex
 				break
 			}
