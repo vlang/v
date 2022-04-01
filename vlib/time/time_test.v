@@ -263,3 +263,7 @@ fn test_recursive_local_call() {
 	assert now_tm.str() == now_tm.local().str()
 	assert now_tm.local().str() == now_tm.local().local().str()
 }
+
+fn test_strftime() {
+	assert '1980 July 11' == time_to_test.strftime('%Y %B %d')
+}

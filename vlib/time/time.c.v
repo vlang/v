@@ -12,8 +12,12 @@ pub struct C.timeval {
 }
 
 fn C.localtime(t &C.time_t) &C.tm
+fn C.localtime_r(t &C.time_t, tm &C.tm)
 
 fn C.time(t &C.time_t) C.time_t
+
+fn C.gmtime_r(t &C.time_t, res &C.tm) &C.tm
+fn C.strftime(buf &C.char, maxsize C.size_t, fmt &C.char, tm &C.tm) C.size_t
 
 // now returns current local time.
 pub fn now() Time {
@@ -122,4 +126,18 @@ fn convert_ctime(t C.tm, microsecond int) Time {
 		// when we manage the local time.
 		is_local: true
 	}
+}
+
+// strftime returns the formatted time using `strftime(3)`
+pub fn (t Time) strftime(fmt string) string {
+	mut tm := &C.tm{}
+	$if windows {
+		tm = C.gmtime(voidptr(&t.unix))
+	} $else {
+		C.gmtime_r(voidptr(&t.unix), tm)
+	}
+	mut buf := [1024]C.char{}
+	fmt_c := unsafe { &C.char(fmt.str) }
+	C.strftime(&buf[0], C.size_t(sizeof(buf)), fmt_c, tm)
+	return unsafe { cstring_to_vstring(&char(&buf[0])) }
 }
