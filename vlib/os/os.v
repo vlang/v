@@ -767,7 +767,12 @@ pub fn quoted_path(path string) string {
 	}
 }
 
-// returns the path to the user configuration directory or error in case the environment is missing
+// config_dir returns the path to the user configuration directory (depending on the platform).
+// On windows, that is `%AppData%`.
+// On macos, that is `~/Library/Application Support`.
+// On the rest, that is `$XDG_CONFIG_HOME`, or if that is not available, `~/.config`.
+// If the path cannot be determined, it returns an error.
+// (for example, when $HOME on linux, or %AppData% on windows is not defined)
 pub fn config_dir() ?string {
 	$if windows {
 		app_data := getenv('AppData')
