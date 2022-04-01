@@ -256,7 +256,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 						c.error('receiver cannot be `mut` for operator overloading', node.receiver_pos)
 					} else if node.params[1].is_mut {
 						c.error('argument cannot be `mut` for operator overloading', node.pos)
-					} else if node.receiver.typ != node.params[1].typ {
+					} else if !c.check_same_type_ignoring_pointers(node.receiver.typ,
+						node.params[1].typ) {
 						c.error('expected `$receiver_sym.name` not `$param_sym.name` - both operands must be the same type for operator overloading',
 							node.params[1].type_pos)
 					} else if node.name in ['<', '=='] && node.return_type != ast.bool_type {
@@ -320,6 +321,22 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	node.source_file = c.file
+}
+
+// FIXME: if the optimizzation will go after the checker, we can safelly remove
+// this util function
+// check_same_type_ignoring_pointers util function to check if the Type are the same, included all the corner case
+fn (c Checker) check_same_type_ignoring_pointers(type_a ast.Type, type_b ast.Type) bool {
+	// FIXME: if is possible pass the ast.Node and check
+	// the propriety `is_auto_rec`
+	if type_a != type_b {
+		// before failing we must be sure that
+		// the parse doen't optimize the function
+		clean_type_a := type_a.set_nr_muls(0)
+		clean_type_b := type_b.set_nr_muls(0)
+		return clean_type_a == clean_type_b
+	}
+	return true
 }
 
 fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
