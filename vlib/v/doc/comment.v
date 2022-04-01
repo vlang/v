@@ -13,13 +13,22 @@ pub mut:
 	pos      token.Pos
 }
 
-// is_example returns true if the contents of this comment is a doc example.
+// is_example returns true if the contents of this comment is an inline doc example.
 // The current convention is '// Example: <content>'
 pub fn (dc DocComment) is_example() bool {
 	return dc.text.starts_with(doc.example_pattern)
 }
 
-// example returns the content of the example body
+// example returns the content of the inline example body
 pub fn (dc DocComment) example() string {
 	return dc.text.all_after(doc.example_pattern)
 }
+
+pub fn (dc DocComment) is_multi_line_example() bool {
+	return dc.text == '\x01 Example:'
+}
+
+pub fn (dc DocComment) has_triple_backtick() bool {
+	return dc.text.starts_with('\x01 ```')
+}
+

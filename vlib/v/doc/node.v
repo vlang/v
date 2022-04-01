@@ -54,7 +54,28 @@ pub fn (dc DocNode) merge_comments() string {
 // merge_comments_without_examples returns a `string` with the
 // combined contents of `DocNode.comments` - excluding any examples.
 pub fn (dc DocNode) merge_comments_without_examples() string {
-	sans_examples := dc.comments.filter(!it.is_example())
+	mut sans_examples := []DocComment{cap:dc.comments.len}
+	for i := 0; i < dc.comments.len; i++ {
+		if dc.comments[i].is_example() { continue }
+		if dc.comments[i].is_multi_line_example() {
+			i++
+			if i == dc.comments.len || !dc.comments[i].has_triple_backtick() {
+				eprintln('${dc.file_path}: Expected code block after empty example line:')
+				eprintln('// ```')
+				if i < dc.comments.len {
+					eprintln('Found:')
+					eprintln('//' + dc.comments[i].text[1..])
+				}
+				exit(1)
+			}
+			i++
+			for i < dc.comments.len && !dc.comments[i].has_triple_backtick() {
+				i++
+			}
+		} else {
+			sans_examples << dc.comments[i]
+		}
+	}
 	return merge_doc_comments(sans_examples)
 }
 
@@ -64,15 +85,14 @@ pub fn (dn DocNode) examples() []string {
 	for i, comment in dn.comments {
 		if comment.is_example() {
 			output << comment.example()
-		} else if comment.text == '\x01 Example:' {
+		} else if comment.is_multi_line_example() {
 			mut j := i + 1
 			//~ comments = dn.comments
 			mut ml_ex := ''
-			mdcode := '\x01 ```'
-			if j + 2 < dn.comments.len && dn.comments[j].text == mdcode + 'v'
+			if j + 2 < dn.comments.len && dn.comments[j].has_triple_backtick()
 			{
 				j++
-				for j < dn.comments.len && dn.comments[j].text != mdcode {
+				for j < dn.comments.len && !dn.comments[j].has_triple_backtick() {
 			//~ println(dn.comments[j].text)
 					if ml_ex.len > 0 {
 						ml_ex += '\n'
