@@ -175,7 +175,7 @@ pub struct WindowAttribute {
 // - `size` - snapshot size
 // - `step` - gap size between each snapshot, default is 1.
 //
-// Example: arrays.window([1, 2, 3, 4], size: 2) => [[1, 2], [2, 3], [3, 4]]
+// Example: arrays.window([1, 2, 3, 4], size: 2) // => [[1, 2], [2, 3], [3, 4]]
 // Example: arrays.window([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], size: 3, step: 2) // => [[1, 2, 3], [3, 4, 5], [5, 6, 7], [7, 8, 9]]
 pub fn window<T>(list []T, attr WindowAttribute) [][]T {
 	// allocate snapshot array
@@ -394,7 +394,7 @@ pub fn binary_search<T>(arr []T, target T) ?int {
 // Example:
 // ```v
 // mut x := [1,2,3,4,5,6]
-// arrays.rotate_left(mut x,2)
+// arrays.rotate_left(mut x, 2)
 // println(x) // [3, 4, 5, 6, 1, 2]
 // ```
 pub fn rotate_left<T>(mut arr []T, mid int) {

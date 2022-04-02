@@ -555,7 +555,6 @@ pub fn (s string) u64() u64 {
 // This method directly exposes the `parse_uint` function from `strconv`
 // as a method on `string`. For more advanced features,
 // consider calling `strconv.common_parse_uint` directly.
-// Example:
 pub fn (s string) parse_uint(_base int, _bit_size int) ?u64 {
 	return strconv.parse_uint(s, _base, _bit_size)
 }
@@ -1823,13 +1822,15 @@ pub fn (s string) fields() []string {
 // the value in ``.
 //
 // Example:
+// ```v
 // st := 'Hello there,
 // |this is a string,
 // |    Everything before the first | is removed'.strip_margin()
-// Returns:
-// Hello there,
+//
+// assert st == 'Hello there,
 // this is a string,
-// Everything before the first | is removed
+// Everything before the first | is removed'
+// ```
 pub fn (s string) strip_margin() string {
 	return s.strip_margin_custom(`|`)
 }
