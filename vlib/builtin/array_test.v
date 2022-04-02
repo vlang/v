@@ -1046,6 +1046,21 @@ fn test_trim() {
 	assert arr.last() == 2
 }
 
+fn test_drop() {
+	mut a := [1,2]
+	a << 3 // should reallocate
+	
+	a.drop(2)
+	assert a == [3]
+	assert a.cap > a.len
+	
+	a.drop(10)
+	assert a == []
+	assert a.cap > a.len
+	
+	unsafe { a.free() } // test offset OK
+}
+
 fn test_hex() {
 	// array hex
 	st := [byte(`V`), `L`, `A`, `N`, `G`]
