@@ -33,4 +33,3 @@ pub fn (dc DocComment) is_multi_line_example() bool {
 pub fn (dc DocComment) has_triple_backtick() bool {
 	return dc.text.starts_with('\x01 ```')
 }
-

@@ -84,26 +84,26 @@ pub fn (dc DocNode) merge_comments_without_examples() string {
 // examples returns a `[]string` containing examples parsed from `DocNode.comments`.
 pub fn (dn DocNode) examples() []string {
 	mut output := []string{}
-	for i, comment in dn.comments {
+	for i := 0; i < dn.comments.len; i++ {
+		comment := dn.comments[i]
 		if comment.is_example() {
 			output << comment.example()
 		} else if comment.is_multi_line_example() {
-			mut j := i + 1
-			mut ml_ex := ''
-			if j + 2 < dn.comments.len && dn.comments[j].has_triple_backtick() {
-				j++
-				for j < dn.comments.len && !dn.comments[j].has_triple_backtick() {
+			i++
+			if i + 2 < dn.comments.len && dn.comments[i].has_triple_backtick() {
+				i++
+				mut ml_ex := ''
+				for i < dn.comments.len && !dn.comments[i].has_triple_backtick() {
 					if ml_ex.len > 0 {
 						ml_ex += '\n'
 					}
-					s := dn.comments[j].text
+					s := dn.comments[i].text
 					if s.len > 2 {
 						ml_ex += s[2..]
 					}
-					j++
+					i++
 				}
 				output << ml_ex
-				break
 			}
 		}
 	}
