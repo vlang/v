@@ -158,19 +158,16 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 pub fn (mut c Checker) find_unreachable_statements_after_noreturn_calls(stmts []ast.Stmt) {
 	mut prev_stmt_was_noreturn_call := false
 	for stmt in stmts {
-		match stmt {
-			ast.ExprStmt {
-				if stmt.expr is ast.CallExpr {
-					if prev_stmt_was_noreturn_call {
-						c.error('unreachable code after a [noreturn] call', stmt.pos)
-						return
-					}
-					prev_stmt_was_noreturn_call = stmt.expr.is_noreturn
+		if stmt is ast.ExprStmt {
+			if stmt.expr is ast.CallExpr {
+				if prev_stmt_was_noreturn_call {
+					c.error('unreachable code after a [noreturn] call', stmt.pos)
+					return
 				}
+				prev_stmt_was_noreturn_call = stmt.expr.is_noreturn
 			}
-			else {
-				prev_stmt_was_noreturn_call = false
-			}
+		} else {
+			prev_stmt_was_noreturn_call = false
 		}
 	}
 }
