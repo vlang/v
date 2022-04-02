@@ -16,7 +16,7 @@ pub mut:
 // is_example returns true if the contents of this comment is an inline doc example.
 // The current convention is '// Example: <content>'
 pub fn (dc DocComment) is_example() bool {
-	return dc.text.starts_with(doc.example_pattern)
+	return dc.text.trim_space().starts_with(doc.example_pattern)
 }
 
 // example returns the content of the inline example body
@@ -26,7 +26,7 @@ pub fn (dc DocComment) example() string {
 
 // is_multi_line_example returns true if an example line has no inline code
 pub fn (dc DocComment) is_multi_line_example() bool {
-	return dc.text == '\x01 Example:'
+	return dc.text.trim_space() == '\x01 Example:'
 }
 
 // has_triple_backtick returns true if the comment starts or ends a markdown code block
