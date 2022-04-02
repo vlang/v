@@ -16,6 +16,7 @@ fn C.localtime_r(t &C.time_t, tm &C.tm)
 
 fn C.time(t &C.time_t) C.time_t
 
+fn C.gmtime(t &C.time_t) &C.tm
 fn C.gmtime_r(t &C.time_t, res &C.tm) &C.tm
 fn C.strftime(buf &C.char, maxsize C.size_t, fmt &C.char, tm &C.tm) C.size_t
 
