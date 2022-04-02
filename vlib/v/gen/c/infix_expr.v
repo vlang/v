@@ -613,9 +613,8 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 			// push a single element
 			elem_type_str := g.typ(array_info.elem_type)
 			elem_sym := g.table.sym(array_info.elem_type)
+			elem_is_array_var := elem_sym.kind in [.array, .array_fixed] && node.right is ast.Ident
 			g.write('array_push${noscan}((array*)')
-			if node.left_type.has_flag(.shared_f) && !node.left_type.deref().is_ptr() {
-			}
 			if !left.typ.is_ptr()
 				|| (node.left_type.has_flag(.shared_f) && !node.left_type.deref().is_ptr()) {
 				g.write('&')
@@ -626,6 +625,8 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 			}
 			if elem_sym.kind == .function {
 				g.write(', _MOV((voidptr[]){ ')
+			} else if elem_is_array_var {
+				g.write(', &')
 			} else {
 				g.write(', _MOV(($elem_type_str[]){ ')
 			}
@@ -638,7 +639,11 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 			if needs_clone {
 				g.write(')')
 			}
-			g.write(' }))')
+			if elem_is_array_var {
+				g.write(')')
+			} else {
+				g.write(' }))')
+			}
 		}
 	} else {
 		g.gen_plain_infix_expr(node)
