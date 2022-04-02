@@ -587,7 +587,7 @@ fn (mut a array) push(val voidptr) {
 	if a.len >= a.cap {
 		a.ensure_cap(a.len + 1)
 	}
-	unsafe { vmemmove(&byte(a.data) + a.element_size * a.len, val, a.element_size) }
+	unsafe { vmemcpy(&byte(a.data) + a.element_size * a.len, val, a.element_size) }
 	a.len++
 }
 
