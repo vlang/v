@@ -539,6 +539,19 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	return fn_decl
 }
 
+// optimize_receiver optimize method `automatic use fn (a &big_foo) instead of fn (a big_foo)`
+fn (p &Parser) optimize_receiver(mut rec ReceiverParsingInfo) bool {
+	type_sym := p.table.sym(rec.typ)
+	if type_sym.kind == .struct_ {
+		info := type_sym.info as ast.Struct
+		if !rec.is_mut && !rec.typ.is_ptr() && info.fields.len > 8 {
+			rec.typ = rec.typ.ref()
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInfo) ? {
 	p.inside_receiver_param = true
 	defer {
@@ -593,16 +606,8 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 	if is_atomic {
 		rec.typ = rec.typ.set_flag(.atomic_f)
 	}
-	// optimize method `automatic use fn (a &big_foo) instead of fn (a big_foo)`
-	type_sym := p.table.sym(rec.typ)
-	mut is_auto_rec := false
-	if type_sym.kind == .struct_ {
-		info := type_sym.info as ast.Struct
-		if !rec.is_mut && !rec.typ.is_ptr() && info.fields.len > 8 {
-			rec.typ = rec.typ.ref()
-			is_auto_rec = true
-		}
-	}
+
+	is_auto_rec := p.optimize_receiver(mut rec)
 
 	if rec.language != .v {
 		p.check_for_impure_v(rec.language, rec.type_pos)
