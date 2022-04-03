@@ -213,7 +213,7 @@ fn (a &array) clone_to_depth_noscan(depth int) array {
 
 fn (mut a array) push_noscan(val voidptr) {
 	a.ensure_cap_noscan(a.len + 1)
-	unsafe { vmemmove(&byte(a.data) + a.element_size * a.len, val, a.element_size) }
+	unsafe { vmemcpy(&byte(a.data) + a.element_size * a.len, val, a.element_size) }
 	a.len++
 }
 
