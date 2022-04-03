@@ -60,7 +60,7 @@ pub fn new_reader(data string) &Reader {
 }
 
 [params]
-struct ReaderConfig {
+pub struct ReaderConfig {
 	data      string
 	delimiter byte = `,`
 	comment   byte = `#`
