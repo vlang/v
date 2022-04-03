@@ -593,6 +593,11 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 	if is_atomic {
 		rec.typ = rec.typ.set_flag(.atomic_f)
 	}
+	mut is_auto_rec := false
+	/*
+	TODO(vincenzopalazzo): disabling it to fix the following issue https://github.com/vlang/v/issues/13888
+	this required a little big of reasoning when use this optimizzation. e.g: with overloading method ==.
+
 	// optimize method `automatic use fn (a &big_foo) instead of fn (a big_foo)`
 	type_sym := p.table.sym(rec.typ)
 	mut is_auto_rec := false
@@ -603,7 +608,7 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 			is_auto_rec = true
 		}
 	}
-
+	*/
 	if rec.language != .v {
 		p.check_for_impure_v(rec.language, rec.type_pos)
 	}
