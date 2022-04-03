@@ -328,6 +328,28 @@ pub fn (mut a array) trim(index int) {
 	}
 }
 
+// drop advances the array past the first `num` elements whilst preserving spare capacity.
+// If `num` is greater than `len` the array will be emptied.
+// Example:
+// ```v
+// mut a := [1,2]
+// a << 3
+// a.drop(2)
+// assert a == [3]
+// assert a.cap > a.len
+// ```
+pub fn (mut a array) drop(num int) {
+	if num <= 0 {
+		return
+	}
+	n := if num <= a.len { num } else { a.len }
+	blen := n * a.element_size
+	a.data = unsafe { &byte(a.data) + blen }
+	a.offset += blen
+	a.len -= n
+	a.cap -= n
+}
+
 // we manually inline this for single operations for performance without -prod
 [inline; unsafe]
 fn (a array) get_unsafe(i int) voidptr {
