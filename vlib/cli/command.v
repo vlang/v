@@ -16,11 +16,13 @@ pub mut:
 	name            string
 	usage           string
 	description     string
+	man_description string
 	version         string
 	pre_execute     FnCommandCallback
 	execute         FnCommandCallback
 	post_execute    FnCommandCallback
 	disable_help    bool
+	disable_man     bool
 	disable_version bool
 	disable_flags   bool
 	sort_flags      bool
@@ -41,7 +43,9 @@ pub fn (cmd Command) str() string {
 	res << '	usage: "$cmd.usage"'
 	res << '	version: "$cmd.version"'
 	res << '	description: "$cmd.description"'
+	res << '	man_description: "$cmd.man_description"'
 	res << '	disable_help: $cmd.disable_help'
+	res << '	disable_man: $cmd.disable_man'
 	res << '	disable_flags: $cmd.disable_flags'
 	res << '	disable_version: $cmd.disable_version'
 	res << '	sort_flags: $cmd.sort_flags'
@@ -155,6 +159,9 @@ fn (mut cmd Command) add_default_flags() {
 		use_version_abbrev := !cmd.flags.contains('v') && cmd.posix_mode
 		cmd.add_flag(version_flag(use_version_abbrev))
 	}
+	if !cmd.disable_man && !cmd.flags.contains('man') {
+		cmd.add_flag(man_flag())
+	}
 }
 
 // add_default_commands adds the command functions of the
@@ -165,6 +172,9 @@ fn (mut cmd Command) add_default_commands() {
 	}
 	if !cmd.disable_version && cmd.version != '' && !cmd.commands.contains('version') {
 		cmd.add_command(version_cmd())
+	}
+	if !cmd.disable_man && !cmd.commands.contains('man') && cmd.is_root() {
+		cmd.add_command(man_cmd())
 	}
 }
 
@@ -197,6 +207,7 @@ fn (mut cmd Command) parse_commands() {
 	global_flags := cmd.flags.filter(it.global)
 	cmd.check_help_flag()
 	cmd.check_version_flag()
+	cmd.check_man_flag()
 	for i in 0 .. cmd.args.len {
 		arg := cmd.args[i]
 		for j in 0 .. cmd.commands.len {
@@ -248,6 +259,16 @@ fn (cmd Command) check_help_flag() {
 	}
 }
 
+fn (cmd Command) check_man_flag() {
+	if !cmd.disable_man && cmd.flags.contains('man') {
+		man_flag := cmd.flags.get_bool('man') or { return } // ignore error and handle command normally
+		if man_flag {
+			cmd.execute_man()
+			exit(0)
+		}
+	}
+}
+
 fn (cmd Command) check_version_flag() {
 	if !cmd.disable_version && cmd.version != '' && cmd.flags.contains('version') {
 		version_flag := cmd.flags.get_bool('version') or { return } // ignore error and handle command normally
@@ -276,6 +297,17 @@ pub fn (cmd Command) execute_help() {
 		help_cmd.execute(help_cmd) or { panic(err) }
 	} else {
 		print(cmd.help_message())
+	}
+}
+
+// execute_help executes the callback registered
+// for the `-man` flag option.
+pub fn (cmd Command) execute_man() {
+	if cmd.commands.contains('man') {
+		man_cmd := cmd.commands.get('man') or { return }
+		man_cmd.execute(man_cmd) or { panic(err) }
+	} else {
+		print(cmd.manpage())
 	}
 }
 
