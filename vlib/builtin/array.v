@@ -339,6 +339,9 @@ pub fn (mut a array) trim(index int) {
 // assert a.cap > a.len
 // ```
 pub fn (mut a array) drop(num int) {
+	if num <= 0 {
+		return
+	}
 	n := if num <= a.len { num } else { a.len }
 	blen := n * a.element_size
 	a.data = unsafe { &byte(a.data) + blen }

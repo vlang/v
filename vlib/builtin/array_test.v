@@ -1046,17 +1046,36 @@ fn test_trim() {
 	assert arr.last() == 2
 }
 
+[manualfree]
 fn test_drop() {
 	mut a := [1, 2]
-	a << 3 // should reallocate
+	a << 3 // pushing assures reallocation; a.cap now should be bigger:
+	assert a.cap > 3
+	// eprintln('>>> a.cap: $a.cap | a.len: $a.len')
+
+	a.drop(-1000)
+	assert a == [1, 2, 3] // a.drop( negative ) should NOT modify the array
+	// eprintln('>>> a.cap: $a.cap | a.len: $a.len')
 
 	a.drop(2)
 	assert a == [3]
 	assert a.cap > a.len
+	// eprintln('>>> a.cap: $a.cap | a.len: $a.len')
 
 	a.drop(10)
 	assert a == []
 	assert a.cap > a.len
+	// eprintln('>>> a.cap: $a.cap | a.len: $a.len')
+
+	a << 123
+	a << 456
+	a << 789
+	// eprintln('>>> a.cap: $a.cap | a.len: $a.len')
+	assert a == [123, 456, 789]
+
+	a.drop(10)
+	assert a == []
+	// eprintln('>>> a.cap: $a.cap | a.len: $a.len')
 
 	unsafe { a.free() } // test offset OK
 }
