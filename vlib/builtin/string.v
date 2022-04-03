@@ -1208,6 +1208,7 @@ pub fn (s string) to_upper() string {
 }
 
 // is_upper returns `true` if all characters in the string is uppercase.
+// See also: [`byte.is_capital`](#byte.is_capital)
 // Example: assert 'HELLO V'.is_upper() == true
 [direct_array_access]
 pub fn (s string) is_upper() bool {
