@@ -30,7 +30,7 @@ fn test_encoding_csv_reader() {
 
 fn test_encoding_csv_reader_with_custom_delimiter() {
 	data := 'name|email|phone|other\njoe|joe@blow.com|0400000000|test\nsam|sam@likesham.com|0433000000|"test quoted field"\n#chris|chris@nomail.com|94444444|"commented row"\n'
-	mut csv_reader := csv.new_reader(data, delimiter: `|`)
+	mut csv_reader := csv.new_custom_reader(data: data, delimiter: `|`)
 	mut row_count := 0
 	for {
 		row := csv_reader.read() or { break }
