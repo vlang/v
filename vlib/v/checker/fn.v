@@ -662,6 +662,20 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 	}
 	if !found {
 		continue_check = false
+		if dot_index := fn_name.index('.') {
+			if !fn_name[0].is_capital() {
+				mod_name := fn_name#[..dot_index]
+				mut mod_func_names := []string{}
+				for ctfnk, ctfnv in c.table.fns {
+					if ctfnv.is_pub && ctfnk.starts_with(mod_name) {
+						mod_func_names << ctfnk
+					}
+				}
+				suggestion := util.new_suggestion(fn_name, mod_func_names)
+				c.error(suggestion.say('unknown function: $fn_name '), node.pos)
+				return ast.void_type
+			}
+		}
 		c.error('unknown function: $fn_name', node.pos)
 		return ast.void_type
 	}

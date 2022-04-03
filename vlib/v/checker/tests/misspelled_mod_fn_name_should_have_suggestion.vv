@@ -1,0 +1,3 @@
+import os
+
+dump(os.read_fil('abc'))
