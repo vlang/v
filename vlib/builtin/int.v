@@ -449,6 +449,7 @@ pub fn (nn u64) hex_full() string {
 }
 
 // str returns the contents of `byte` as a zero terminated `string`.
+// See also: [`byte.ascii_str`](#byte.ascii_str)
 // Example: assert byte(111).str() == '111'
 pub fn (b byte) str() string {
 	return int(b).str_l(7)

@@ -206,7 +206,7 @@ fn color_highlight(code string, tb &ast.Table) string {
 					} else if
 						next_tok.kind in [.lcbr, .rpar, .eof, .comma, .pipe, .name, .rcbr, .assign, .key_pub, .key_mut, .pipe, .comma]
 						&& prev.kind in [.name, .amp, .rsbr, .key_type, .assign, .dot, .question, .rpar, .key_struct, .key_enum, .pipe, .key_interface]
-						&& (tok.lit[0].ascii_str().is_upper() || prev_prev.lit in ['C', 'JS']) {
+						&& (tok.lit[0].is_capital() || prev_prev.lit in ['C', 'JS']) {
 						tok_typ = .symbol
 					} else if next_tok.kind in [.lpar, .lt] {
 						tok_typ = .function
@@ -214,7 +214,7 @@ fn color_highlight(code string, tb &ast.Table) string {
 						if tok.lit in ['C', 'JS'] {
 							tok_typ = .prefix
 						} else {
-							if tok.lit[0].ascii_str().is_upper() {
+							if tok.lit[0].is_capital() {
 								tok_typ = .symbol
 							} else {
 								tok_typ = .module_
