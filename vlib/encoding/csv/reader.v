@@ -50,7 +50,7 @@ pub mut:
 	row_pos           int
 }
 
-// new_reader initializes a Reader with string data
+// new_reader initializes a Reader with string data to parse
 pub fn new_reader(data string) &Reader {
 	return &Reader{
 		data: data
