@@ -608,6 +608,15 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 		p.check_for_impure_v(rec.language, rec.type_pos)
 	}
 
+	p.check(.rpar)
+
+	if is_auto_rec && p.tok.kind != .name {
+		// Disable the auto-reference conversion for methodlike operators like ==, <=, > etc,
+		// since their parameters and receivers, *must* always be of the same type.
+		is_auto_rec = false
+		rec.typ = rec.typ.deref()
+	}
+
 	params << ast.Param{
 		pos: rec_start_pos
 		name: rec.name
@@ -616,9 +625,6 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 		typ: rec.typ
 		type_pos: rec.type_pos
 	}
-	p.check(.rpar)
-
-	return
 }
 
 fn (mut p Parser) anon_fn() ast.AnonFn {
