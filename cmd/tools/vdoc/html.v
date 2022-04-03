@@ -347,7 +347,8 @@ fn html_highlight(code string, tb &ast.Table) string {
 				.key_true, .key_false {
 					tok_typ = .boolean
 				}
-				.lpar, .lcbr, .rpar, .rcbr, .lsbr, .rsbr, .semicolon, .colon, .comma, .dot, .dotdot, .ellipsis {
+				.lpar, .lcbr, .rpar, .rcbr, .lsbr, .rsbr, .semicolon, .colon, .comma, .dot,
+				.dotdot, .ellipsis {
 					tok_typ = .punctuation
 				}
 				else {
