@@ -52,9 +52,9 @@ pub mut:
 
 [params]
 struct ReaderConfig {
-	data string
+	data      string
 	delimiter byte = `,`
-	comment byte = `#`
+	comment   byte = `#`
 }
 
 // new_reader initializes a Reader with string data to parse and,
