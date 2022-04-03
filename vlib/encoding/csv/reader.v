@@ -50,27 +50,17 @@ pub mut:
 	row_pos           int
 }
 
-// new_reader initializes a Reader with string data to parse
-pub fn new_reader(data string) &Reader {
-	return &Reader{
-		data: data
-		delimiter: `,`
-		comment: `#`
-	}
-}
-
 [params]
 pub struct ReaderConfig {
-	data      string
 	delimiter byte = `,`
 	comment   byte = `#`
 }
 
-// new_custom_reader initializes a Reader with string data to parse and,
+// new_reader initializes a Reader with string data to parse and,
 // optionally, a custom delimiter.
-pub fn new_custom_reader(config ReaderConfig) &Reader {
+pub fn new_reader(data string, config ReaderConfig) &Reader {
 	return &Reader{
-		data: config.data
+		data: data
 		delimiter: config.delimiter
 		comment: config.comment
 	}
