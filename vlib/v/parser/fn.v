@@ -596,7 +596,7 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 	mut is_auto_rec := false
 	/*
 	TODO(vincenzopalazzo): disabling it to fix the following issue https://github.com/vlang/v/issues/13888
-	this required a little big of reasoning when use this optimizzation. e.g: with overloading method ==.
+	this required a little big of reasoning when use this optimization. e.g: with overloading method ==.
 
 	// optimize method `automatic use fn (a &big_foo) instead of fn (a big_foo)`
 	type_sym := p.table.sym(rec.typ)

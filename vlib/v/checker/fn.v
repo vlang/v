@@ -323,7 +323,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	node.source_file = c.file
 }
 
-// FIXME: if the optimizzation will go after the checker, we can safelly remove
+// FIXME: if the optimization will go after the checker, we can safely remove
 // this util function
 // check_same_type_ignoring_pointers util function to check if the Type are the same, included all the corner case
 fn (c Checker) check_same_type_ignoring_pointers(type_a ast.Type, type_b ast.Type) bool {
@@ -331,7 +331,7 @@ fn (c Checker) check_same_type_ignoring_pointers(type_a ast.Type, type_b ast.Typ
 	// the propriety `is_auto_rec`
 	if type_a != type_b {
 		// before failing we must be sure that
-		// the parse doen't optimize the function
+		// the parser didn't optimize the function
 		clean_type_a := type_a.set_nr_muls(0)
 		clean_type_b := type_b.set_nr_muls(0)
 		return clean_type_a == clean_type_b
