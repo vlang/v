@@ -43,5 +43,6 @@ fn known_topics(topicdir string) string {
 	mut topics := topic_files.map(os.file_name(it).replace('.txt', ''))
 	topics.sort()
 	res << topics.join(', ')
+	res << '.'
 	return res.join('')
 }
