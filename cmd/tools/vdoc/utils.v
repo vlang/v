@@ -161,6 +161,9 @@ fn color_highlight(code string, tb &ast.Table) string {
 			.char {
 				lit = term.yellow('`$tok.lit`')
 			}
+			.comment {
+				lit = if tok.lit[0] == 1 { '//${tok.lit[1..]}' } else { '//$tok.lit' }
+			}
 			.keyword {
 				lit = term.bright_blue(tok.lit)
 			}

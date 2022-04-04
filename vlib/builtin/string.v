@@ -1098,6 +1098,7 @@ pub fn (s string) count(substr string) int {
 }
 
 // contains returns `true` if the string contains `substr`.
+// See also: [`string.index`](#string.index)
 pub fn (s string) contains(substr string) bool {
 	if substr.len == 0 {
 		return true
