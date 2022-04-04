@@ -214,7 +214,7 @@ pub fn (ctx &Context) draw_rect_filled(x f32, y f32, w f32, h f32, c gx.Color) {
 // draw_rounded_rect_empty draws the outline of a rounded rectangle
 // `x`,`y` is the top-left corner of the rectangle.
 // `w` is the width, `h` is the height.
-// `radius` is the radius of the corner-rounding in radians.
+// `radius` is the radius of the corner-rounding in pixels.
 // `c` is the color of the outline.
 pub fn (ctx &Context) draw_rounded_rect_empty(x f32, y f32, w f32, h f32, radius f32, c gx.Color) {
 	mut theta := f32(0)
@@ -277,7 +277,7 @@ pub fn (ctx &Context) draw_rounded_rect_empty(x f32, y f32, w f32, h f32, radius
 // draw_rounded_rect_filled draws a filled rounded rectangle.
 // `x`,`y` is the top-left corner of the rectangle.
 // `w` is the width, `h` is the height .
-// `radius` is the radius of the corner-rounding in radians.
+// `radius` is the radius of the corner-rounding in pixels.
 // `c` is the color of the outline.
 pub fn (ctx &Context) draw_rounded_rect_filled(x f32, y f32, w f32, h f32, radius f32, c gx.Color) {
 	sgl.c4b(c.r, c.g, c.b, c.a)
@@ -638,7 +638,7 @@ pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_radius f32, thickness f
 }
 
 // draw_arc_filled draws a filled arc.
-// `x`,`y` defines the end point of the arc (center of the circle that the arc is part of).
+// `x`,`y` defines the central point of the arc (center of the circle that the arc is part of).
 // `inner_radius` defines the radius of the arc (length from the center point where the arc is drawn).
 // `thickness` defines how wide the arc is drawn.
 // `start_angle` is the radians at which the arc starts.
