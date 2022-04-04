@@ -7,8 +7,7 @@ module clipboard
 
 // Clipboard represents a system clipboard.
 //
-// The system clipboard is what "copy" and "paste" actions
-// utilize.
+// System "copy" and "paste" actions utilize the clipboard for temporary storage.
 pub struct Clipboard {
 	pb             voidptr
 	last_cb_serial i64
@@ -29,20 +28,19 @@ fn new_clipboard() &Clipboard {
 	return cb
 }
 
-// check_availability returns true if the clipboard is ready to be used
-// on the current platform.
+// check_availability returns true if the clipboard is ready to be used.
 pub fn (cb &Clipboard) check_availability() bool {
 	return cb.pb != C.NULL
 }
 
-// clear clears the clipboard contents.
+// clear empties the clipboard contents.
 pub fn (mut cb Clipboard) clear() {
 	cb.foo = 0
 	cb.set_text('')
 	//#[cb->pb clearContents];
 }
 
-// free frees all memory associated with the clipboard
+// free releases all memory associated with the clipboard
 // instance.
 pub fn (mut cb Clipboard) free() {
 	cb.foo = 0
@@ -50,7 +48,7 @@ pub fn (mut cb Clipboard) free() {
 }
 
 // has_ownership returns true if the contents of
-// the clipboard was issued by this clipboard instance.
+// the clipboard were created by this clipboard instance.
 pub fn (cb &Clipboard) has_ownership() bool {
 	if cb.last_cb_serial == 0 {
 		return false

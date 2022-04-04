@@ -1,8 +1,8 @@
 module dummy
 
 // Clipboard represents a system clipboard.
-// The system clipboard is what "copy" and "paste" actions
-// utilize.
+//
+// System "copy" and "paste" actions utilize the clipboard for temporary storage.
 pub struct Clipboard {
 mut:
 	text     string // text data sent or received
@@ -38,25 +38,24 @@ pub fn (mut cb Clipboard) get_text() string {
 	return cb.text
 }
 
-// clear clears the clipboard contents.
+// clear empties the clipboard contents.
 pub fn (mut cb Clipboard) clear() {
 	cb.text = ''
 	cb.is_owner = false
 }
 
-// free frees all memory associated with the clipboard
+// free releases all memory associated with the clipboard
 // instance.
 pub fn (mut cb Clipboard) free() {
 }
 
 // has_ownership returns true if the contents of
-// the clipboard was issued by this clipboard instance.
+// the clipboard were created by this clipboard instance.
 pub fn (cb &Clipboard) has_ownership() bool {
 	return cb.is_owner
 }
 
-// check_availability returns true if the clipboard is ready to be used
-// on the current platform.
+// check_availability returns true if the clipboard is ready to be used.
 pub fn (cb &Clipboard) check_availability() bool {
 	// This is a dummy clipboard implementation,
 	// which can be always used, although it does not do much...

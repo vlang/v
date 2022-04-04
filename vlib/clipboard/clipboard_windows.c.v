@@ -53,8 +53,7 @@ fn C.DestroyWindow(hwnd C.HWND)
 
 // Clipboard represents a system clipboard.
 //
-// The system clipboard is what "copy" and "paste" actions
-// utilize.
+// System "copy" and "paste" actions utilize the clipboard for temporary storage.
 struct Clipboard {
 	max_retries int
 	retry_delay int
@@ -108,19 +107,18 @@ fn new_clipboard() &Clipboard {
 	return cb
 }
 
-// check_availability returns true if the clipboard is ready to be used
-// on the current platform.
+// check_availability returns true if the clipboard is ready to be used.
 pub fn (cb &Clipboard) check_availability() bool {
 	return cb.hwnd != C.HWND(C.NULL)
 }
 
 // has_ownership returns true if the contents of
-// the clipboard was issued by this clipboard instance.
+// the clipboard were created by this clipboard instance.
 pub fn (cb &Clipboard) has_ownership() bool {
 	return C.GetClipboardOwner() == cb.hwnd
 }
 
-// clear clears the clipboard contents.
+// clear empties the clipboard contents.
 pub fn (mut cb Clipboard) clear() {
 	if !cb.get_clipboard_lock() {
 		return
@@ -130,7 +128,7 @@ pub fn (mut cb Clipboard) clear() {
 	cb.foo = 0
 }
 
-// free frees all memory associated with the clipboard
+// free releases all memory associated with the clipboard
 // instance.
 pub fn (mut cb Clipboard) free() {
 	C.DestroyWindow(cb.hwnd)
