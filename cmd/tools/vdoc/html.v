@@ -326,8 +326,8 @@ fn html_highlight(code string, tb &ast.Table) string {
 						tok_typ = .builtin
 					} else if next_tok.kind == .lcbr {
 						tok_typ = .symbol
-					} else if next_tok.kind == .lpar
-						|| (!tok.lit[0].is_capital() && next_tok.kind == .lt && next_tok.pos == tok.pos + tok.lit.len) {
+					} else if next_tok.kind == .lpar || (!tok.lit[0].is_capital()
+						&& next_tok.kind == .lt && next_tok.pos == tok.pos + tok.lit.len) {
 						tok_typ = .function
 					} else {
 						tok_typ = .name
