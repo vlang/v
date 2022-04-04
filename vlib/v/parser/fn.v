@@ -738,13 +738,14 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 	} else {
 		p.tok.lit
 	}
+
 	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn, .lsbr]
 		|| (p.peek_tok.kind == .comma && p.table.known_type(argname))
 		|| p.peek_tok.kind == .dot || p.peek_tok.kind == .rpar
 		|| (p.tok.kind == .key_mut && (p.peek_token(2).kind == .comma
 		|| p.peek_token(2).kind == .rpar || (p.peek_tok.kind == .name
 		&& p.peek_token(2).kind == .dot)))
-	// TODO copy pasta, merge 2 branches
+	// TODO copy paste, merge 2 branches
 	if types_only {
 		mut arg_no := 1
 		for p.tok.kind != .rpar {
@@ -800,6 +801,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 				p.error_with_pos('expecting `)`', p.prev_tok.pos())
 				return []ast.Param{}, false, false
 			}
+
 			if p.tok.kind == .comma {
 				if is_variadic {
 					p.error_with_pos('cannot use ...(variadic) with non-final parameter no $arg_no',
