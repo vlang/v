@@ -9,5 +9,9 @@ fn test_voidptr() {
 		p--
 		p -= 3
 		_ = p[3]
+		mut foo := &Foo{}
+		foo % 3
 	}
 }
+
+struct Foo{}

@@ -651,7 +651,8 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			}
 			return ast.bool_type
 		}
-		.plus, .minus, .mul, .div, .mod, .xor, .amp, .pipe { // binary operators that expect matching types
+		.plus, .minus, .mul, .div, .mod, .xor, .amp, .pipe {
+			// binary operators that expect matching types
 			if right_sym.info is ast.Alias && (right_sym.info as ast.Alias).language != .c
 				&& c.mod == c.table.type_to_str(right_type).split('.')[0]
 				&& c.table.sym((right_sym.info as ast.Alias).parent_type).is_primitive() {
@@ -3515,9 +3516,9 @@ pub fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 	if !c.inside_unsafe && is_non_void_pointer && !node.expr.is_auto_deref_var() {
 		c.warn('pointer arithmetic is only allowed in `unsafe` blocks', node.pos)
 	}
-	if !(typ_sym.is_number() || (c.inside_unsafe && is_non_void_pointer)) {
-		c.error('invalid operation: $node.op.str() (non-numeric type `$typ_sym.name`)',
-			node.pos)
+	if !(typ_sym.is_number() || ((c.inside_unsafe || c.pref.translated) && is_non_void_pointer)) {
+		typ_str := c.table.type_to_str(typ)
+		c.error('invalid operation: $node.op.str() (non-numeric type `$typ_str`)', node.pos)
 	} else {
 		node.auto_locked, _ = c.fail_if_immutable(node.expr)
 	}

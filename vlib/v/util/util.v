@@ -41,6 +41,7 @@ const builtin_module_names = ['builtin', 'strconv', 'strings', 'dlmalloc']
 pub fn module_is_builtin(mod string) bool {
 	// NOTE: using util.builtin_module_parts here breaks -usecache on macos
 	return mod in util.builtin_module_names
+	// return mod in util.builtin_module_parts
 }
 
 pub fn tabs(n int) string {
