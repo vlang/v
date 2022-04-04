@@ -804,8 +804,12 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					left_name := c.table.type_to_str(left_type)
 					right_name := c.table.type_to_str(right_type)
 					if left_name == right_name {
-						c.error('undefined operation `$left_name` $node.op.str() `$right_name`',
-							left_right_pos)
+						if !(node.op == .lt && c.pref.translated) {
+							// Allow `&Foo < &Foo` in translated code.
+							// TODO maybe in unsafe as well?
+							c.error('undefined operation `$left_name` $node.op.str() `$right_name`',
+								left_right_pos)
+						}
 					} else {
 						c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
 					}

@@ -801,8 +801,8 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			continue
 		}
 
-		typ := c.check_expr_opt_call(call_arg.expr, c.expr(call_arg.expr))
-		node.args[i].typ = typ
+		arg_typ := c.check_expr_opt_call(call_arg.expr, c.expr(call_arg.expr))
+		node.args[i].typ = arg_typ
 		if c.inside_comptime_for_field {
 			if mut call_arg.expr is ast.Ident {
 				if mut call_arg.expr.obj is ast.Var {
@@ -810,9 +810,9 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				}
 			}
 		}
-		typ_sym := c.table.sym(typ)
+		arg_typ_sym := c.table.sym(arg_typ)
 		param_typ_sym := c.table.sym(param.typ)
-		if func.is_variadic && typ.has_flag(.variadic) && node.args.len - 1 > i {
+		if func.is_variadic && arg_typ.has_flag(.variadic) && node.args.len - 1 > i {
 			c.error('when forwarding a variadic variable, it must be the final argument',
 				call_arg.pos)
 		}
@@ -846,7 +846,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				c.error('function `$node.name` parameter `$param.name` is `$tok`, so use `$tok $call_arg.expr` instead',
 					call_arg.expr.pos())
 			} else {
-				c.fail_if_unreadable(call_arg.expr, typ, 'argument')
+				c.fail_if_unreadable(call_arg.expr, arg_typ, 'argument')
 			}
 		}
 		mut final_param_sym := param_typ_sym
@@ -871,22 +871,23 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 		// Handle expected interface
 		if final_param_sym.kind == .interface_ {
-			if c.type_implements(typ, final_param_typ, call_arg.expr.pos()) {
-				if !typ.is_ptr() && !typ.is_pointer() && !c.inside_unsafe
-					&& typ_sym.kind != .interface_ {
+			if c.type_implements(arg_typ, final_param_typ, call_arg.expr.pos()) {
+				if !arg_typ.is_ptr() && !arg_typ.is_pointer() && !c.inside_unsafe
+					&& arg_typ_sym.kind != .interface_ {
 					c.mark_as_referenced(mut &call_arg.expr, true)
 				}
 			}
 			continue
 		}
-		c.check_expected_call_arg(typ, c.unwrap_generic(param.typ), node.language, call_arg) or {
+		c.check_expected_call_arg(arg_typ, c.unwrap_generic(param.typ), node.language,
+			call_arg) or {
 			// str method, allow type with str method if fn arg is string
 			// Passing an int or a string array produces a c error here
 			// Deleting this condition results in propper V error messages
 			// if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
 			// continue
 			// }
-			if typ_sym.kind == .void && param_typ_sym.kind == .string {
+			if arg_typ_sym.kind == .void && param_typ_sym.kind == .string {
 				continue
 			}
 			if param.typ.has_flag(.generic) {
@@ -895,10 +896,10 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			if c.pref.translated || c.file.is_translated {
 				// TODO duplicated logic in check_types() (check_types.v)
 				// Allow enums to be used as ints and vice versa in translated code
-				if param.typ == ast.int_type && typ_sym.kind == .enum_ {
+				if param.typ == ast.int_type && arg_typ_sym.kind == .enum_ {
 					continue
 				}
-				if typ == ast.int_type && param_typ_sym.kind == .enum_ {
+				if arg_typ == ast.int_type && param_typ_sym.kind == .enum_ {
 					continue
 				}
 				// In C unsafe number casts are used all the time (e.g. `char*` where
@@ -907,19 +908,19 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				if param.typ.is_ptr() {
 					param_is_number = param.typ.deref().is_number()
 				}
-				mut typ_is_number := typ.is_number()
-				if typ.is_ptr() {
-					typ_is_number = typ.deref().is_number()
+				mut typ_is_number := arg_typ.is_number()
+				if arg_typ.is_ptr() {
+					typ_is_number = arg_typ.deref().is_number()
 				}
 				if param_is_number && typ_is_number {
 					continue
 				}
 				// Allow voidptrs for everything
-				if param.typ == ast.voidptr_type_idx || typ == ast.voidptr_type_idx {
+				if param.typ == ast.voidptr_type_idx || arg_typ == ast.voidptr_type_idx {
 					continue
 				}
 				// Allow `[32]i8` as `&i8` etc
-				if (typ_sym.kind == .array_fixed && param_is_number)
+				if (arg_typ_sym.kind == .array_fixed && param_is_number)
 					|| (param_typ_sym.kind == .array_fixed && typ_is_number) {
 					continue
 				}
@@ -927,15 +928,19 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				if param.typ.is_any_kind_of_pointer() && typ_is_number {
 					continue
 				}
+				// Allow `&i8` as `int`
+				if arg_typ.is_any_kind_of_pointer() && param_is_number {
+					continue
+				}
 			}
 			c.error('$err.msg() in argument ${i + 1} to `$fn_name`', call_arg.pos)
 		}
 		// Warn about automatic (de)referencing, which will be removed soon.
-		if func.language != .c && !c.inside_unsafe && typ.nr_muls() != param.typ.nr_muls()
+		if func.language != .c && !c.inside_unsafe && arg_typ.nr_muls() != param.typ.nr_muls()
 			&& !(call_arg.is_mut && param.is_mut) && !(!call_arg.is_mut && !param.is_mut)
 			&& param.typ !in [ast.byteptr_type, ast.charptr_type, ast.voidptr_type] {
 			// sym := c.table.sym(typ)
-			c.warn('automatic referencing/dereferencing is deprecated and will be removed soon (got: $typ.nr_muls() references, expected: $param.typ.nr_muls() references)',
+			c.warn('automatic referencing/dereferencing is deprecated and will be removed soon (got: $arg_typ.nr_muls() references, expected: $param.typ.nr_muls() references)',
 				call_arg.pos)
 		}
 	}
