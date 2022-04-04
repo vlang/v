@@ -777,7 +777,14 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		left_cc_type := g.cc_type(node.left_type, false)
 		left_type_name := util.no_dots(left_cc_type)
 		g.write('${c_name(left_type_name)}_name_table[')
-		g.expr(node.left)
+		if node.left.is_auto_deref_var() && node.left_type.nr_muls() > 1 {
+			g.write('(')
+			g.write('*'.repeat(node.left_type.nr_muls() - 1))
+			g.expr(node.left)
+			g.write(')')
+		} else {
+			g.expr(node.left)
+		}
 		dot := if left_is_shared {
 			'->val.'
 		} else if node.left_type.is_ptr() {
@@ -787,7 +794,14 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 		mname := c_name(node.name)
 		g.write('${dot}_typ]._method_${mname}(')
-		g.expr(node.left)
+		if node.left.is_auto_deref_var() && node.left_type.nr_muls() > 1 {
+			g.write('(')
+			g.write('*'.repeat(node.left_type.nr_muls() - 1))
+			g.expr(node.left)
+			g.write(')')
+		} else {
+			g.expr(node.left)
+		}
 		g.write('${dot}_object')
 		if node.args.len > 0 {
 			g.write(', ')

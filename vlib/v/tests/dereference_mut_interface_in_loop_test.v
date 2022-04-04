@@ -4,7 +4,7 @@ import rand
 import rand.wyrand
 import rand.splitmix64
 
-fn main() {
+fn test_deref_mut_interface_in_loop() {
 	mut wyrand_rng := &rand.PRNG(&wyrand.WyRandRNG{})
 	mut splitmix_rng := &rand.PRNG(&splitmix64.SplitMix64RNG{})
 
@@ -14,5 +14,6 @@ fn main() {
 		// NB: `seed_len := (*rng).block_size() / 32` does compile
 		dump(seed_len)
 		println(rng.string(15))
+		assert seed_len == 2
 	}
 }
