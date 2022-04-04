@@ -494,6 +494,11 @@ pub fn (kind Kind) is_infix() bool {
 		.right_shift, .unsigned_right_shift, .arrow]
 }
 
+[inline]
+pub fn (kind Kind) is_postfix() bool {
+	return kind in [.inc, .dec, .question]
+}
+
 pub fn kind_to_string(k Kind) string {
 	return match k {
 		.unknown { 'unknown' }

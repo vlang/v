@@ -348,14 +348,15 @@ fn html_highlight(code string, tb &ast.Table) string {
 				.key_true, .key_false {
 					tok_typ = .boolean
 				}
-				.lpar, .lcbr, .rpar, .rcbr, .lsbr, .rsbr, .semicolon, .colon, .comma, .dot {
+				.lpar, .lcbr, .rpar, .rcbr, .lsbr, .rsbr, .semicolon, .colon, .comma, .dot,
+				.dotdot, .ellipsis {
 					tok_typ = .punctuation
 				}
 				else {
 					if token.is_key(tok.lit) || token.is_decl(tok.kind) {
 						tok_typ = .keyword
 					} else if tok.kind == .decl_assign || tok.kind.is_assign() || tok.is_unary()
-						|| tok.kind.is_relational() || tok.kind.is_infix() {
+						|| tok.kind.is_relational() || tok.kind.is_infix() || tok.kind.is_postfix() {
 						tok_typ = .operator
 					}
 				}
