@@ -61,14 +61,14 @@ pub fn (cb &Clipboard) has_ownership() bool {
 fn C.OSAtomicCompareAndSwapLong()
 
 // set_text transfers `text` to the system clipboard.
-// This is often associated with a *copy* action (`Ctrl` + `C`).
+// This is often associated with a *copy* action (`Cmd` + `C`).
 pub fn (mut cb Clipboard) set_text(text string) bool {
 	return C.darwin_set_pasteboard_text(cb.pb, text)
 }
 
 // get_text retrieves the contents of the system clipboard
 // as a `string`.
-// This is often associated with a *paste* action (`Ctrl` + `V`).
+// This is often associated with a *paste* action (`Cmd` + `V`).
 pub fn (mut cb Clipboard) get_text() string {
 	cb.foo = 0
 	if isnil(cb.pb) {
