@@ -2,6 +2,9 @@ module clipboard
 
 import clipboard.x11
 
+// Clipboard represents a system clipboard.
+// The system clipboard is what "copy" and "paste" actions
+// utilize.
 pub type Clipboard = x11.Clipboard
 
 fn new_clipboard() &Clipboard {

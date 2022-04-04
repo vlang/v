@@ -2,6 +2,9 @@ module clipboard
 
 import clipboard.dummy
 
+// Clipboard represents a system clipboard.
+// The system clipboard is what "copy" and "paste" actions
+// utilize.
 pub type Clipboard = dummy.Clipboard
 
 fn new_clipboard() &Clipboard {
