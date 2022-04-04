@@ -189,6 +189,7 @@ fn (mut g Gen) gen_assign_stmt(node_ ast.AssignStmt) {
 		is_fixed_array_var := unaliased_right_sym.kind == .array_fixed && val !is ast.ArrayInit
 			&& (val in [ast.Ident, ast.IndexExpr, ast.CallExpr, ast.SelectorExpr]
 			|| (val is ast.CastExpr && (val as ast.CastExpr).expr !is ast.ArrayInit))
+			&& !g.pref.translated
 		g.is_assign_lhs = true
 		g.assign_op = node.op
 		if val_type.has_flag(.optional) {
@@ -403,7 +404,7 @@ fn (mut g Gen) gen_assign_stmt(node_ ast.AssignStmt) {
 			}
 			g.is_shared = var_type.has_flag(.shared_f)
 			if !cloned {
-				if is_fixed_array_var && !g.pref.translated {
+				if is_fixed_array_var {
 					// TODO Instead of the translated check, check if it's a pointer already
 					// and don't generate memcpy &
 					typ_str := g.typ(val_type).trim('*')

@@ -336,7 +336,7 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 	}
 	g.write('[')
 	direct := g.fn_decl != 0 && g.fn_decl.is_direct_arr
-	if direct || node.index is ast.IntegerLiteral {
+	if (direct || node.index is ast.IntegerLiteral) || g.pref.translated {
 		g.expr(node.index)
 	} else {
 		// bounds check
