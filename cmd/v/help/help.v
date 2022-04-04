@@ -38,10 +38,11 @@ pub fn print_and_exit(topic string) {
 
 fn known_topics(topicdir string) string {
 	mut res := []string{}
-	res << 'Known help topics:'
+	res << 'Known help topics: '
 	topic_files := os.glob(os.join_path(topicdir, '*.txt')) or { [] }
 	mut topics := topic_files.map(os.file_name(it).replace('.txt', ''))
 	topics.sort()
 	res << topics.join(', ')
+	res << '.'
 	return res.join('')
 }
