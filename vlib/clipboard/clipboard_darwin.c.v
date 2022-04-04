@@ -6,6 +6,7 @@ module clipboard
 #include "@VEXEROOT/vlib/clipboard/clipboard_darwin.m"
 
 // Clipboard represents a system clipboard.
+//
 // The system clipboard is what "copy" and "paste" actions
 // utilize.
 pub struct Clipboard {

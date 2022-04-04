@@ -52,6 +52,7 @@ fn C.OpenClipboard(hwnd C.HWND) int
 fn C.DestroyWindow(hwnd C.HWND)
 
 // Clipboard represents a system clipboard.
+//
 // The system clipboard is what "copy" and "paste" actions
 // utilize.
 struct Clipboard {
