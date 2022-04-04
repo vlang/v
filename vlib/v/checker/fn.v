@@ -323,7 +323,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	node.source_file = c.file
 }
 
-// check_same_type_ignoring_pointers util function to check if the Type are the same, included all 
+// check_same_type_ignoring_pointers util function to check if the Type are the same, included all
 // the corner case.
 // FIXME: if the optimization will go after the checker, we can safely remove this util function
 fn (c Checker) check_same_type_ignoring_pointers(type_a ast.Type, type_b ast.Type) bool {
