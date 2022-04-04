@@ -259,7 +259,7 @@ fn print_welcome_screen() {
 	}
 }
 
-fn run_repl(workdir string, vrepl_prefix string) {
+fn run_repl(workdir string, vrepl_prefix string) int {
 	if !is_stdin_a_pipe {
 		print_welcome_screen()
 	}
@@ -295,6 +295,16 @@ fn run_repl(workdir string, vrepl_prefix string) {
 			continue
 		}
 		if line.len <= -1 || line == '' || line == 'exit' {
+			break
+		}
+		if exit_pos := line.index('exit') {
+			oparen := line[(exit_pos + 4)..].trim_space()
+			if oparen.starts_with('(') {
+				if closing := oparen.index(')') {
+					rc := oparen[1..closing].parse_int(0, 8) or { panic(err) }
+					return int(rc)
+				}
+			}
 			break
 		}
 		r.line = line
@@ -353,7 +363,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 		if r.line.starts_with('print') {
 			source_code := r.current_source_code(false, false) + '\n$r.line\n'
 			os.write_file(file, source_code) or { panic(err) }
-			s := repl_run_vfile(file) or { return }
+			s := repl_run_vfile(file) or { return 1 }
 			print_output(s)
 		} else {
 			mut temp_line := r.line
@@ -423,7 +433,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 				temp_source_code = r.current_source_code(true, false) + '\n$temp_line\n'
 			}
 			os.write_file(temp_file, temp_source_code) or { panic(err) }
-			s := repl_run_vfile(temp_file) or { return }
+			s := repl_run_vfile(temp_file) or { return 1 }
 			if !func_call && s.exit_code == 0 && !temp_flag {
 				for r.temp_lines.len > 0 {
 					if !r.temp_lines[0].starts_with('print') {
@@ -446,6 +456,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 			print_output(s)
 		}
 	}
+	return 0
 }
 
 fn convert_output(os_result os.Result) string {
@@ -493,7 +504,7 @@ fn main() {
 	if !is_stdin_a_pipe {
 		os.setenv('VCOLORS', 'always', true)
 	}
-	run_repl(replfolder, replprefix)
+	exit(run_repl(replfolder, replprefix))
 }
 
 fn rerror(s string) {
