@@ -211,8 +211,9 @@ fn (mut g Gen) gen_assign_stmt(node_ ast.AssignStmt) {
 				g.expr(val)
 				g.writeln(';}')
 			}
-		} else if node.op == .assign
+		} else if node.op == .assign && !g.pref.translated
 			&& (is_fixed_array_init || (right_sym.kind == .array_fixed && val is ast.Ident)) {
+			// Fixed arrays
 			mut v_var := ''
 			arr_typ := styp.trim('*')
 			if is_fixed_array_init {
@@ -402,7 +403,9 @@ fn (mut g Gen) gen_assign_stmt(node_ ast.AssignStmt) {
 			}
 			g.is_shared = var_type.has_flag(.shared_f)
 			if !cloned {
-				if is_fixed_array_var {
+				if is_fixed_array_var && !g.pref.translated {
+					// TODO Instead of the translated check, check if it's a pointer already
+					// and don't generate memcpy &
 					typ_str := g.typ(val_type).trim('*')
 					ref_str := if val_type.is_ptr() { '' } else { '&' }
 					g.write('memcpy(($typ_str*)')
