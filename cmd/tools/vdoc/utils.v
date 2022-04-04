@@ -208,7 +208,8 @@ fn color_highlight(code string, tb &ast.Table) string {
 						&& prev.kind in [.name, .amp, .rsbr, .key_type, .assign, .dot, .question, .rpar, .key_struct, .key_enum, .pipe, .key_interface]
 						&& (tok.lit[0].is_capital() || prev_prev.lit in ['C', 'JS']) {
 						tok_typ = .symbol
-					} else if next_tok.kind in [.lpar, .lt] {
+					} else if next_tok.kind == .lpar
+						|| (!tok.lit[0].is_capital() && next_tok.kind == .lt && next_tok.pos == tok.pos + tok.lit.len) {
 						tok_typ = .function
 					} else if next_tok.kind == .dot {
 						if tok.lit in ['C', 'JS'] {
