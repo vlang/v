@@ -19,6 +19,7 @@ pub:
 	color     gx.Color = gx.white
 }
 
+// Rect represents a rectangular shape in `gg`.
 pub struct Rect {
 pub:
 	x      f32
@@ -27,6 +28,11 @@ pub:
 	height f32
 }
 
+// cache_image caches the image `img` in memory for later reuse.
+// cache_image returns the cache index of the cached image.
+//
+// See also: get_cached_image_by_idx
+// See also: remove_cached_image_by_idx
 pub fn (mut ctx Context) cache_image(img Image) int {
 	ctx.image_cache << img
 	image_idx := ctx.image_cache.len - 1
@@ -34,10 +40,19 @@ pub fn (mut ctx Context) cache_image(img Image) int {
 	return image_idx
 }
 
+// get_cached_image_by_idx returns a cached `Image` identified by `image_idx`.
+//
+// See also: cache_image
+// See also: remove_cached_image_by_idx
 pub fn (mut ctx Context) get_cached_image_by_idx(image_idx int) &Image {
 	return &ctx.image_cache[image_idx]
 }
 
+// remove_cached_image_by_idx removes an `Image` identified by `image_idx` from the
+// image cache.
+//
+// See also: cache_image
+// See also: get_cached_image_by_idx
 pub fn (mut ctx Context) remove_cached_image_by_idx(image_idx int) {
 	ctx.image_cache.delete(image_idx)
 }
