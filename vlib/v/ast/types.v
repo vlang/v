@@ -1155,6 +1155,13 @@ fn (t Table) shorten_user_defined_typenames(originalname string, import_aliases 
 	} else if res in import_aliases {
 		res = import_aliases[res]
 	} else {
+		// FIXME: clean this case and remove the following if
+		// because it is an hack to format well the type when
+		// there is a []modul.name
+		if res.contains('[]') {
+			idx := res.index('.') or { -1 }
+			return res.substr(idx + 1, res.len)
+		}
 		// types defined by the user
 		// mod.submod.submod2.Type => submod2.Type
 		mut parts := res.split('.')
