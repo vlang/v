@@ -73,27 +73,29 @@ $dec_fn_dec {
 	if (!root) {
 		const char *error_ptr = cJSON_GetErrorPtr();
 		if (error_ptr != NULL)	{
-			char *prevline_ptr = (char*)error_ptr;
+			const size_t error_pos = cJSON_GetErrorPos();
 			int maxcontext_chars = 30;
-			int backlines = 1;
-			int backchars = maxcontext_chars-7;
-			while(backchars--){
-				 char prevc = *(prevline_ptr - 1);
-				 if(0==prevc){
-					 break;
-				 }
-				 if(10==prevc && !backlines--){
-					 break;
-				 }
-				 prevline_ptr--;
-				 if(123==prevc) {
-					 break; // stop at `{` too
-				 }
+			byte *buf = vcalloc_noscan(maxcontext_chars + 10);
+			if(error_pos > 0) {
+				int backlines = 1;
+				int backchars = error_pos < maxcontext_chars-7 ? (int)error_pos : maxcontext_chars-7 ;
+				char *prevline_ptr = (char*)error_ptr;
+				while(backchars--){
+					char prevc = *(prevline_ptr - 1);
+					if(0==prevc){
+						break;
+					}
+					if(10==prevc && !backlines--){
+						break;
+					}
+					prevline_ptr--;
+					if(123==prevc) {
+						break; // stop at `{` too
+					}
+				}
+				int maxchars = vstrlen_char(prevline_ptr);
+				vmemcpy(buf, prevline_ptr, (maxchars < maxcontext_chars ? maxchars : maxcontext_chars));
 			}
-			byte *buf = _v_malloc(maxcontext_chars + 10);
-			vmemset(buf, 0, maxcontext_chars+10);
-			vmemcpy(buf, prevline_ptr, maxcontext_chars);
-			// for(int x=-10;x<10;x++){ char *xx = prevline_ptr+x; fprintf(stderr, "2 prevline_ptr + %d: %p | %c | %d \\n", x, xx, (int)(*(xx)), (int)(*(xx))); } fprintf(stderr, "--------\\n");
 			return (Option_$styp){.state = 2,.err = _v_error(tos2(buf)),.data = {0}};
 		}
 	}
