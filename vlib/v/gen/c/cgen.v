@@ -121,6 +121,7 @@ mut:
 	inside_comptime_for_field bool
 	inside_cast_in_heap       int // inside cast to interface type in heap (resolve recursive calls)
 	inside_const              bool
+	inside_const_optional     bool
 	inside_lambda             bool
 	loop_depth                int
 	ternary_names             map[string]string
@@ -4174,11 +4175,13 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 			}
 			ast.CallExpr {
 				if field.expr.return_type.has_flag(.optional) {
+					g.inside_const_optional = true
 					unwrap_option := field.expr.or_block.kind != .absent
 					g.const_decl_init_later(field.mod, name, field.expr, field.typ, unwrap_option)
 				} else {
 					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false)
 				}
+				g.inside_const_optional = false
 			}
 			else {
 				// Note: -usecache uses prebuilt modules, each compiled with:
