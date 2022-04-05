@@ -3,11 +3,13 @@
 // that can be found in the LICENSE file.
 module time
 
+// TimeParseError represents a time parsing error.
 pub struct TimeParseError {
 	Error
 	code int
 }
 
+// msg implements the `IError.msg()` method for `TimeParseError`.
 pub fn (err TimeParseError) msg() string {
 	return 'Invalid time format code: $err.code'
 }
