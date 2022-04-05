@@ -17,7 +17,7 @@ fn exec(cmd string) (string, int) {
 	p.set_redirect_stdio()
 	p.run()
 
-	p.stdin_write('$cmd2 && echo **OK**\n')
+	p.stdin_write('$cmd2 && echo **OK**')
 	os.fd_close(p.stdio_fd[0]) // important: close stdin so cmd can end by itself
 
 	for p.is_alive() {
@@ -36,10 +36,9 @@ fn exec(cmd string) (string, int) {
 	// println("read from stdout, should not block")
 	// is not really needed but good test to see behaviour
 	out += p.stdout_read()
-	println("read done")
+	println('read done')
 
 	println(p.stderr_read())
-	// documentation says we need to call p.wait(), but this does not seem to work, will be process stop or become zombie?
 	p.close()
 	p.wait()
 	if p.code > 0 {
