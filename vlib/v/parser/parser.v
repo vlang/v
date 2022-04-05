@@ -3499,6 +3499,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 [inline] $pubfn (    e &$enum_name) all(flag $enum_name) bool { return  (int(*e) &  (int(flag))) == int(flag) }
 [inline] $pubfn (mut e  $enum_name) set(flag $enum_name)      { unsafe{ *e = ${enum_name}(int(*e) |  (int(flag))) } }
 [inline] $pubfn (mut e  $enum_name) clear(flag $enum_name)    { unsafe{ *e = ${enum_name}(int(*e) & ~(int(flag))) } }
+[inline] $pubfn (mut e  $enum_name) clear_all()               { unsafe{ *e = ${enum_name}(int(*e) & ~(int(0xFFFFFFFF))) } }
 [inline] $pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = ${enum_name}(int(*e) ^  (int(flag))) } }
 //
 ')
