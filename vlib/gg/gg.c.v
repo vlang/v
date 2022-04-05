@@ -430,7 +430,7 @@ pub fn new_context(cfg Config) &Context {
 	return ctx
 }
 
-// run starts the main loop of the context
+// run starts the main loop of the context.
 pub fn (ctx &Context) run() {
 	sapp.run(&ctx.window)
 }
@@ -519,7 +519,7 @@ pub fn (ctx Context) window_size() Size {
 
 //---- public module functions
 
-// dpi_scale returns the DPI scale coefficient for the screen
+// dpi_scale returns the DPI scale coefficient for the screen.
 // Do not use for Android development, use `Context.scale` instead.
 pub fn dpi_scale() f32 {
 	mut s := sapp.dpi_scale()
@@ -534,7 +534,7 @@ pub fn dpi_scale() f32 {
 	return s
 }
 
-// high_dpi returns true if `gg` is running on a high DPI monitor or screen
+// high_dpi returns true if `gg` is running on a high DPI monitor or screen.
 pub fn high_dpi() bool {
 	return C.sapp_high_dpi()
 }
@@ -554,7 +554,7 @@ pub fn screen_size() Size {
 	return Size{}
 }
 
-// window_size returns the `Size` of the active window
+// window_size returns the `Size` of the active window.
 // Do not use for Android development, use `Context.window_size()` instead.
 pub fn window_size() Size {
 	s := dpi_scale()
