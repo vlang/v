@@ -3,6 +3,8 @@ module gg
 import sokol.sapp
 import os
 
+// record_frame records the current frame to a file.
+// record_frame acts according to settings specified in `gg.recorder_settings`.
 [if gg_record ?]
 pub fn (mut ctx Context) record_frame() {
 	if ctx.frame in gg.recorder_settings.screenshot_frames {

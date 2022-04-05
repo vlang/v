@@ -389,7 +389,7 @@ fn gg_fail_fn(msg &char, user_data voidptr) {
 
 //---- public methods
 
-//
+// new_context returns an initialized `Context` allocated on the heap.
 pub fn new_context(cfg Config) &Context {
 	mut ctx := &Context{
 		user_data: cfg.user_data
@@ -430,6 +430,7 @@ pub fn new_context(cfg Config) &Context {
 	return ctx
 }
 
+// run starts the main loop of the context.
 pub fn (ctx &Context) run() {
 	sapp.run(&ctx.window)
 }
@@ -439,6 +440,7 @@ pub fn (ctx &Context) quit() {
 	sapp.request_quit() // does not require ctx right now, but sokol multi-window might in the future
 }
 
+// set_bg_color sets the color of the window background to `c`.
 pub fn (mut ctx Context) set_bg_color(c gx.Color) {
 	ctx.clear_pass = gfx.create_clear_pass(f32(c.r) / 255.0, f32(c.g) / 255.0, f32(c.b) / 255.0,
 		f32(c.a) / 255.0)
@@ -450,12 +452,13 @@ pub fn (mut ctx Context) resize(width int, height int) {
 	ctx.height = height
 }
 
+// refresh_ui requests a complete re-draw of the window contents.
 pub fn (mut ctx Context) refresh_ui() {
 	ctx.needs_refresh = true
 	ctx.ticks = 0
 }
 
-// Prepares the context for drawing
+// begin prepares the context for drawing.
 pub fn (ctx &Context) begin() {
 	if ctx.render_text && ctx.font_inited {
 		ctx.ft.flush()
@@ -465,7 +468,7 @@ pub fn (ctx &Context) begin() {
 	sgl.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
 }
 
-// Finishes drawing for the context
+// end finishes drawing for the context.
 pub fn (ctx &Context) end() {
 	gfx.begin_default_pass(ctx.clear_pass, sapp.width(), sapp.height())
 	sgl.draw()
@@ -508,6 +511,7 @@ fn (mut ctx Context) set_scale() {
 	ctx.scale = s
 }
 
+// window_size returns the current dimensions of the window.
 pub fn (ctx Context) window_size() Size {
 	s := ctx.scale
 	return Size{int(sapp.width() / s), int(sapp.height() / s)}
@@ -515,7 +519,7 @@ pub fn (ctx Context) window_size() Size {
 
 //---- public module functions
 
-// dpi_scale returns the DPI scale coefficient for the screen
+// dpi_scale returns the DPI scale coefficient for the screen.
 // Do not use for Android development, use `Context.scale` instead.
 pub fn dpi_scale() f32 {
 	mut s := sapp.dpi_scale()
@@ -530,10 +534,12 @@ pub fn dpi_scale() f32 {
 	return s
 }
 
+// high_dpi returns true if `gg` is running on a high DPI monitor or screen.
 pub fn high_dpi() bool {
 	return C.sapp_high_dpi()
 }
 
+// screen_size returns the size of the active screen.
 pub fn screen_size() Size {
 	$if macos {
 		return C.gg_get_screen_size()
@@ -548,7 +554,7 @@ pub fn screen_size() Size {
 	return Size{}
 }
 
-// window_size returns the `Size` of the active window
+// window_size returns the `Size` of the active window.
 // Do not use for Android development, use `Context.window_size()` instead.
 pub fn window_size() Size {
 	s := dpi_scale()

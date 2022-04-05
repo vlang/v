@@ -27,6 +27,7 @@ pub:
 	vm               voidptr // The global handle on the process's Java VM
 }
 
+// android_dpi_scale returns the scale factor of the device.
 pub fn android_dpi_scale() f32 {
 	config := C.AConfiguration_new()
 	activity := &C.ANativeActivity(sapp.android_get_native_activity())
