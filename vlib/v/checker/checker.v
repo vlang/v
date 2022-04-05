@@ -4194,8 +4194,10 @@ pub fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what stri
 			if expr.is_method {
 				c.fail_if_unreadable(expr.left, expr.left_type, what)
 			}
+			return
 		}
 		ast.LockExpr {
+			// TODO: check expressions inside the lock by appending to c.(r)locked_names
 			return
 		}
 		ast.IndexExpr {

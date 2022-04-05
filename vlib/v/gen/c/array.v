@@ -503,6 +503,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	elem_type_str := g.typ(info.elem_type)
 	g.empty_line = true
 	noscan := g.check_noscan(info.elem_type)
+	g.writeln('$styp $tmp = {0};')
 	has_infix_left_var_name := g.infix_left_var_name.len > 0
 	if has_infix_left_var_name {
 		g.writeln('if ($g.infix_left_var_name) {')
@@ -521,7 +522,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	}
 	g.writeln(';')
 	g.writeln('int ${tmp}_len = ${tmp}_orig.len;')
-	g.writeln('$styp $tmp = __new_array${noscan}(0, ${tmp}_len, sizeof($elem_type_str));\n')
+	g.writeln('$tmp = __new_array${noscan}(0, ${tmp}_len, sizeof($elem_type_str));\n')
 	i := g.new_tmp_var()
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.indent++

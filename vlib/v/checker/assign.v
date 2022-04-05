@@ -23,6 +23,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				c.expected_type = c.expr(node.left[i])
 			}
 			right_type := c.expr(right)
+			c.fail_if_unreadable(right, right_type, 'right-hand side of assignment')
 			if i == 0 {
 				right_type0 = right_type
 				node.right_types = [
@@ -114,7 +115,6 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		mut right := if i < node.right.len { node.right[i] } else { node.right[0] }
 		mut right_type := node.right_types[i]
-		c.fail_if_unreadable(right, right_type, 'right-hand side of assignment')
 		if mut right is ast.Ident {
 			right_sym := c.table.sym(right_type)
 			if right_sym.info is ast.Struct {
@@ -186,7 +186,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		// Do not allow `a := 0; b := 0; a = &b`
 		if !is_decl && left is ast.Ident && !is_blank_ident && !left_type.is_real_pointer()
-			&& right_type.is_real_pointer() {
+			&& right_type.is_real_pointer() && !right_type.has_flag(.shared_f) {
 			left_sym := c.table.sym(left_type)
 			if left_sym.kind != .function {
 				c.warn(

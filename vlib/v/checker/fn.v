@@ -1741,11 +1741,12 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type ast.
 			if method_name[0] == `m` {
 				c.fail_if_immutable(node.left)
 			}
-			if node.left.is_auto_deref_var() {
+			if node.left.is_auto_deref_var() || ret_type.has_flag(.shared_f) {
 				ret_type = left_type.deref()
 			} else {
 				ret_type = left_type
 			}
+			ret_type = ret_type.clear_flag(.shared_f)
 		}
 		'keys' {
 			info := left_sym.info as ast.Map
@@ -1876,6 +1877,9 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			node.return_type = left_type.deref()
 		} else {
 			node.return_type = node.receiver_type.set_nr_muls(0)
+		}
+		if node.return_type.has_flag(.shared_f) {
+			node.return_type = node.return_type.clear_flag(.shared_f)
 		}
 	} else if method_name == 'sort' {
 		node.return_type = ast.void_type
