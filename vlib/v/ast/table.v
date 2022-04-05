@@ -11,6 +11,8 @@ import v.util
 
 [heap]
 pub struct Table {
+mut:
+	parsing_type string // name of the type to enable recursive type parsing
 pub mut:
 	type_symbols       []&TypeSymbol
 	type_idxs          map[string]int
@@ -830,7 +832,17 @@ pub fn (mut t Table) register_enum_decl(enum_decl EnumDecl) {
 }
 
 pub fn (t &Table) known_type(name string) bool {
-	return t.find_type_idx(name) != 0
+	return t.find_type_idx(name) != 0 || t.parsing_type == name
+}
+
+// start_parsing_type open the scope during the parsing of a type
+// where the type name must include the module prefix
+pub fn (mut t Table) start_parsing_type(type_name string) {
+	t.parsing_type = type_name
+}
+
+pub fn (mut t Table) reset_parsing_type() {
+	t.parsing_type = ''
 }
 
 pub fn (t &Table) known_type_idx(typ Type) bool {
