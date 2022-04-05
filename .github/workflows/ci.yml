@@ -261,8 +261,8 @@ jobs:
       ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
       #    - name: Build Vorum
       #      run: git clone --depth 1 https://github.com/vlang/vorum && cd vorum && ../v . && cd ..
-      #    - name: Build vpm
-      #      run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . && cd ..
+      - name: Build vpm
+        run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . && cd ..
       - name: Freestanding
         run: ./v -freestanding run vlib/os/bare/bare_example_linux.v
       - name: V self compilation
