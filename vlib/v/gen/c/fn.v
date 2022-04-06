@@ -695,8 +695,6 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		unwrapped_styp := g.typ(unwrapped_typ)
 		if unwrapped_typ == ast.void_type {
 			g.write('\n $cur_line')
-		} else if g.table.sym(node.return_type).kind == .multi_return {
-			g.write('\n $cur_line $tmp_opt /*U*/')
 		} else {
 			if !g.inside_const_optional {
 				g.write('\n $cur_line (*($unwrapped_styp*)${tmp_opt}.data)')

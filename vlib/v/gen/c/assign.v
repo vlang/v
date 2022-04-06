@@ -471,7 +471,7 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 	// TODO Handle in if_expr
 	is_opt := return_type.has_flag(.optional)
 	mr_var_name := 'mr_$node.pos.pos'
-	mr_styp := g.typ(return_type)
+	mr_styp := g.typ(return_type.clear_flag(.optional))
 	g.write('$mr_styp $mr_var_name = ')
 	g.expr(node.right[0])
 	g.writeln(';')
@@ -505,9 +505,9 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 			if is_opt {
 				mr_base_styp := g.base_type(return_type)
 				if is_auto_heap {
-					g.writeln('HEAP${noscan}($mr_base_styp, *($mr_base_styp*)${mr_var_name}.data).arg$i) });')
+					g.writeln('HEAP${noscan}($mr_base_styp, ${mr_var_name}.arg$i) });')
 				} else {
-					g.writeln('(*($mr_base_styp*)${mr_var_name}.data).arg$i });')
+					g.writeln('${mr_var_name}.arg$i });')
 				}
 			} else {
 				if is_auto_heap {
@@ -520,9 +520,9 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 			if is_opt {
 				mr_base_styp := g.base_type(return_type)
 				if is_auto_heap {
-					g.writeln(' = HEAP${noscan}($mr_base_styp, *($mr_base_styp*)${mr_var_name}.data).arg$i);')
+					g.writeln(' = HEAP${noscan}($mr_base_styp, ${mr_var_name}.arg$i);')
 				} else {
-					g.writeln(' = (*($mr_base_styp*)${mr_var_name}.data).arg$i;')
+					g.writeln(' = ${mr_var_name}.arg$i;')
 				}
 			} else {
 				if is_auto_heap {
