@@ -118,6 +118,7 @@ fn new_ft(c FTConfig) ?&FT {
 	}
 }
 
+// set_cfg sets the current text configuration
 pub fn (ctx &Context) set_cfg(cfg gx.TextCfg) {
 	if !ctx.font_inited {
 		return
@@ -146,6 +147,8 @@ pub fn (ctx &Context) set_cfg(cfg gx.TextCfg) {
 	ctx.ft.fons.vert_metrics(&ascender, &descender, &lh)
 }
 
+// draw_text draws the string in `text_` starting at top-left position `x`,`y`.
+// Text settings can be provided with `cfg`.
 pub fn (ctx &Context) draw_text(x int, y int, text_ string, cfg gx.TextCfg) {
 	$if macos {
 		if ctx.native_rendering {
@@ -172,18 +175,18 @@ pub fn (ctx &Context) draw_text(x int, y int, text_ string, cfg gx.TextCfg) {
 	ctx.ft.fons.draw_text(x * scale, y * scale, text_) // TODO: check offsets/alignment
 }
 
+// draw_text draws the string in `text_` starting at top-left position `x`,`y` using
+// default text settings.
 pub fn (ctx &Context) draw_text_def(x int, y int, text string) {
 	ctx.draw_text(x, y, text)
 }
 
-/*
-pub fn (mut gg FT) init_font() {
-}
-*/
+// flush prepares the font for use.
 pub fn (ft &FT) flush() {
 	sfons.flush(ft.fons)
 }
 
+// text_width returns the width of the `string` `s` in pixels.
 pub fn (ctx &Context) text_width(s string) int {
 	$if macos {
 		if ctx.native_rendering {
@@ -210,6 +213,7 @@ pub fn (ctx &Context) text_width(s string) int {
 	return int((buf[2] - buf[0]) / ctx.scale)
 }
 
+// text_height returns the height of the `string` `s` in pixels.
 pub fn (ctx &Context) text_height(s string) int {
 	// ctx.set_cfg(cfg) TODO
 	if !ctx.font_inited {
@@ -220,6 +224,7 @@ pub fn (ctx &Context) text_height(s string) int {
 	return int((buf[3] - buf[1]) / ctx.scale)
 }
 
+// text_size returns the width and height of the `string` `s` in pixels.
 pub fn (ctx &Context) text_size(s string) (int, int) {
 	// ctx.set_cfg(cfg) TODO
 	if !ctx.font_inited {
