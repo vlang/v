@@ -1180,10 +1180,11 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	is_json_encode := name == 'json.encode'
 	is_json_encode_pretty := name == 'json.encode_pretty'
 	is_json_decode := name == 'json.decode'
-	g.is_json_fn = is_json_encode || is_json_encode_pretty || is_json_decode
+	is_json_fn := is_json_encode || is_json_encode_pretty || is_json_decode
 	mut json_type_str := ''
 	mut json_obj := ''
-	if g.is_json_fn {
+	if is_json_fn {
+		g.is_json_fn = true
 		json_obj = g.new_tmp_var()
 		mut tmp2 := ''
 		cur_line := g.go_before_stmt(0)
@@ -1218,7 +1219,6 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			// its name was already used to generate the function call
 			g.is_js_call = true
 			g.call_args(node)
-			g.is_js_call = false
 			g.writeln(');')
 			tmp2 = g.new_tmp_var()
 			g.writeln('Option_$typ $tmp2 = $fn_name ($json_obj);')
@@ -1383,7 +1383,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			}
 			mut tmp_cnt_save := -1
 			g.write('(')
-			if g.is_json_fn {
+			if is_json_fn {
 				g.write(json_obj)
 			} else {
 				if node.is_keep_alive
@@ -1546,6 +1546,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		if node.args.len < 1 {
 			g.error('node should have at least 1 arg', node.pos)
 		}
+		g.is_js_call = false
 		node.args[1..]
 	} else {
 		node.args
