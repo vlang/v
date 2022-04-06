@@ -13,7 +13,9 @@ fn test_autolock_array() {
 		a[2]++
 	}
 	t.wait()
-	assert a[2] == 2 * iterations + 7
+	rlock a {
+		assert a[2] == 2 * iterations + 7
+	}
 }
 
 fn inc_map_elem(shared b map[string]int, k string) {
@@ -34,5 +36,7 @@ fn test_autolock_map() {
 		m['asd']++
 	}
 	t.wait()
-	assert m['asd'] == 2 * iterations + 7
+	rlock m {
+		assert m['asd'] == 2 * iterations + 7
+	}
 }

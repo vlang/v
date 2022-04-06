@@ -51,7 +51,9 @@ fn main() {
 //}
 
 pub fn (mut app App) index() vweb.Result {
-	assert app.global_config.max_ping == 50
+	rlock app.global_config {
+		assert app.global_config.max_ping == 50
+	}
 	return app.text('Welcome to VWeb')
 }
 
