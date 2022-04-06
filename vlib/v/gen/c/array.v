@@ -305,15 +305,23 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	}
 	g.empty_line = true
 	noscan := g.check_noscan(ret_info.elem_type)
-	g.writeln('$ret_typ $tmp = __new_array${noscan}(0, 0, sizeof($ret_elem_type));')
+	g.writeln('$ret_typ $tmp = {0};')
 	has_infix_left_var_name := g.infix_left_var_name.len > 0
 	if has_infix_left_var_name {
 		g.writeln('if ($g.infix_left_var_name) {')
 		g.infix_left_var_name = ''
 		g.indent++
 	}
-	g.write('${g.typ(node.left_type)} ${tmp}_orig = ')
+	left_type := if node.left_type.has_flag(.shared_f) {
+		node.left_type.clear_flag(.shared_f).deref()
+	} else {
+		node.left_type
+	}
+	g.write('${g.typ(left_type)} ${tmp}_orig = ')
 	g.expr(node.left)
+	if node.left_type.has_flag(.shared_f) {
+		g.write('->val')
+	}
 	g.writeln(';')
 	g.writeln('int ${tmp}_len = ${tmp}_orig.len;')
 	g.writeln('$tmp = __new_array${noscan}(0, ${tmp}_len, sizeof($ret_elem_type));\n')

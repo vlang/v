@@ -2066,6 +2066,7 @@ fn (mut c Checker) assert_stmt(node ast.AssertStmt) {
 		c.error('assert can be used only with `bool` expressions, but found `$atype_name` instead',
 			node.pos)
 	}
+	c.fail_if_unreadable(node.expr, ast.bool_type_idx, 'assertion')
 	c.expected_type = cur_exp_typ
 }
 
@@ -4203,6 +4204,11 @@ pub fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what stri
 		ast.IndexExpr {
 			pos = expr.left.pos().extend(expr.pos)
 			c.fail_if_unreadable(expr.left, expr.left_type, what)
+		}
+		ast.InfixExpr {
+			pos = expr.left.pos().extend(expr.pos)
+			c.fail_if_unreadable(expr.left, expr.left_type, what)
+			c.fail_if_unreadable(expr.right, expr.right_type, what)
 		}
 		else {
 			pos = expr.pos()
