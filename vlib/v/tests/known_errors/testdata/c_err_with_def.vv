@@ -1,0 +1,61 @@
+import math
+
+struct Vector{
+	x f64
+	y f64
+}
+
+struct Vector3d{
+	x f64
+	y f64
+	z f64
+}
+
+struct Position{
+	x f64
+	y f64
+}
+
+struct Position3d{
+	x f64
+	y f64
+	z f64
+}
+
+fn new_position (v &Vector, p &Position, time f32) Vector{
+	x := v.x*time
+	y := v.y*time
+	return Vector{p.x + x, p.y + y}
+}
+
+fn acceleration(u &Vector, v &Vector, time f32) Vector{
+	x := u.x+v.x/time
+	y := u.y+u.y/time
+	return Vector{x, y}
+}
+
+fn magnitude3d(v3d &Vector3d) f64{
+	return math.sqrt(math.pow(v3d.x,2)+math.pow(v3d.y,2)+math.pow(v3d.z,2))
+}
+
+fn magnitude(v &Vector) f64{
+	return math.sqrt(math.pow(v.x, 2)+math.pow(v.y, 2))
+
+}
+
+fn unit_vector(v &Vector) Vector{
+	x := v.x/magnitude(v)
+	y := v.y/magnitude(v)
+	return Vector{x, y}
+}
+
+fn unit_vector3d(v &Vector3d) Vector3d{
+	x := v.x/magnitude3d(v)
+	y := v.y/magnitude3d(v)
+	z := v.z/magnitude3d(v)
+	return Vector3d{x, y, z}
+}
+
+mut object := Vector{4,3}
+
+println(acceleration(Vector{0,0}, object, 5))
