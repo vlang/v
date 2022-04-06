@@ -73,7 +73,7 @@ $dec_fn_dec {
 	if (!root) {
 		const char *error_ptr = cJSON_GetErrorPtr();
 		if (error_ptr != NULL)	{
-			const size_t error_pos = cJSON_GetErrorPos();
+			const int error_pos = (int)cJSON_GetErrorPos();
 			int maxcontext_chars = 30;
 			byte *buf = vcalloc_noscan(maxcontext_chars + 10);
 			if(error_pos > 0) {
