@@ -315,7 +315,7 @@ fn (s Scanner) at_crlf() bool {
 // peek returns the character code from the input text at position + `n`.
 // peek returns `end_of_text` if it can't peek `n` characters ahead.
 [direct_array_access; inline]
-pub fn (s &Scanner) peek(n int) int {
+pub fn (s &Scanner) peek(n int) u32 {
 	if s.pos + n < s.text.len {
 		// Allow peeking back - needed for spaces between date and time in RFC 3339 format :/
 		if n - 1 < 0 && s.pos + n - 1 >= 0 {
