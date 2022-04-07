@@ -379,7 +379,8 @@ fn (mut g Gen) gen_assign_stmt(node_ ast.AssignStmt) {
 				g.write(', ')
 			}
 			mut cloned := false
-			if g.is_autofree && right_sym.kind in [.array, .string] {
+			if g.is_autofree && right_sym.kind in [.array, .string]
+				&& !unwrapped_val_type.has_flag(.shared_f) {
 				if g.gen_clone_assignment(val, unwrapped_val_type, false) {
 					cloned = true
 				}
