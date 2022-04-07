@@ -629,19 +629,17 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				if !is_left_type_signed && mut node.right is ast.IntegerLiteral {
 					if node.right.val.int() < 0 {
 						lt := c.table.sym(left_type).name
-						c.error('`$lt` cannot be compared with negative value',
-							node.right.pos)
+						c.error('`$lt` cannot be compared with negative value', node.right.pos)
 					}
 				} else if !is_right_type_signed && mut node.left is ast.IntegerLiteral {
 					if node.left.val.int() < 0 {
 						rt := c.table.sym(right_type).name
-						c.error('negative value cannot be compared with `$rt`',
-							node.left.pos)
+						c.error('negative value cannot be compared with `$rt`', node.left.pos)
 					}
 				} else if is_left_type_signed != is_right_type_signed {
 					// prevent e.g. `u16(-1) == int(-1)` which is false in C
-					if (is_right_type_signed && left_type in ast.int_promoted_type_idxs) ||
-						(is_left_type_signed && right_type in ast.int_promoted_type_idxs) {
+					if (is_right_type_signed && left_type in ast.int_promoted_type_idxs)
+						|| (is_left_type_signed && right_type in ast.int_promoted_type_idxs) {
 						lt := c.table.sym(left_type).name
 						rt := c.table.sym(right_type).name
 						c.error('`$lt` cannot be compared with `$rt`', node.pos)
