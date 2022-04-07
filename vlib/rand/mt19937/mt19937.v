@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module mt19937
 
+import rand.seed
+
 /*
 C++ functions for MT19937, with initialization improved 2002/2/10.
    Coded by Takuji Nishimura and Makoto Matsumoto.
@@ -59,10 +61,16 @@ const (
 // **NOTE**: The RNG is not seeded when instantiated so remember to seed it before use.
 pub struct MT19937RNG {
 mut:
-	state      []u64 = []u64{len: mt19937.nn}
+	state      []u64 = get_first_state(seed.time_seed_array(2))
 	mti        int   = mt19937.nn
 	bytes_left int
 	buffer     u64
+}
+
+fn get_first_state(seed_data []u32) []u64 {
+	mut state := []u64{len: mt19937.nn}
+	calculate_state(seed_data, mut state)
+	return state
 }
 
 // calculate_state returns a random state array calculated from the `seed_data`.
@@ -83,8 +91,6 @@ pub fn (mut rng MT19937RNG) seed(seed_data []u32) {
 		eprintln('mt19937 needs only two 32bit integers as seed: [lower, higher]')
 		exit(1)
 	}
-	// calculate 2 times because MT19937RNG init didn't call calculate_state.
-	rng.state = calculate_state(seed_data, mut rng.state)
 	rng.state = calculate_state(seed_data, mut rng.state)
 	rng.mti = mt19937.nn
 	rng.bytes_left = 0
