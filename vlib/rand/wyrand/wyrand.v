@@ -12,6 +12,8 @@ const (
 	wyp1 = u64(0xe7037ed1a0b428db)
 )
 
+pub const seed_len = 2
+
 // WyRandRNG is a RNG based on the WyHash hashing algorithm.
 pub struct WyRandRNG {
 mut:
