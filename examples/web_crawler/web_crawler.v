@@ -15,8 +15,9 @@ fn main() {
 	// html.DocumentObjectModel.get_tag_by_attribute_value() retrieves all the tags in the document that has the given attribute name and value.
 	tags := doc.get_tag_by_attribute_value('class', 'list_article_item')
 	for tag in tags {
-		href := tag.children[0].attributes['href'] or { panic('key not found') }
-		title := tag.children[0].attributes['title'] or { panic('key not found') }
+		el := tag.children[1].children[0].children[0].children[0]
+		href := el.attributes['href'] or { panic('key not found') }
+		title := el.attributes['title'] or { panic('key not found') }
 		println('href: $href')
 		println('title: $title')
 		println('')
