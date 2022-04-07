@@ -6,8 +6,35 @@ vlib/v/checker/tests/infix_unsigned_and_signed_int_err.vv:2:14: error: unsigned 
     4 |     }
 vlib/v/checker/tests/infix_unsigned_and_signed_int_err.vv:6:5: error: unsigned integer cannot be compared with negative value
     4 |     }
-    5 |
+    5 | 
     6 |     if -1 > u32(1) {
       |        ~~
     7 |         println('unexpected')
     8 |     }
+vlib/v/checker/tests/infix_unsigned_and_signed_int_err.vv:10:18: error: `byte` cannot be compared with negative value
+    8 |     }
+    9 |     // unsigned == literal
+   10 |     _ = byte(-1) == -1 // false!
+      |                     ~~
+   11 |     _ = -1 == u16(-1) // false!
+   12 |
+vlib/v/checker/tests/infix_unsigned_and_signed_int_err.vv:11:6: error: negative value cannot be compared with `u16`
+    9 |     // unsigned == literal
+   10 |     _ = byte(-1) == -1 // false!
+   11 |     _ = -1 == u16(-1) // false!
+      |         ~~
+   12 |     
+   13 |     // unsigned == signed
+vlib/v/checker/tests/infix_unsigned_and_signed_int_err.vv:14:14: error: `u16` cannot be compared with `int`
+   12 |     
+   13 |     // unsigned == signed
+   14 |     _ = u16(-1) == int(-1)
+      |                 ~~
+   15 |     _ = int(-1) != byte(-1)
+   16 | }
+vlib/v/checker/tests/infix_unsigned_and_signed_int_err.vv:15:14: error: `int` cannot be compared with `byte`
+   13 |     // unsigned == signed
+   14 |     _ = u16(-1) == int(-1)
+   15 |     _ = int(-1) != byte(-1)
+      |                 ~~
+   16 | }
