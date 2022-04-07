@@ -22,6 +22,10 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	if is_amp {
 		g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
 	}
+	g.write('(')
+	defer {
+		g.write(')')
+	}
 	if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
 		mut shared_typ := node.typ.set_flag(.shared_f)
 		shared_styp = g.typ(shared_typ)
