@@ -1160,7 +1160,7 @@ fn (t Table) shorten_user_defined_typenames(originalname string, import_aliases 
 		// there is a []modul.name
 		if res.contains('[]') {
 			idx := res.index('.') or { -1 }
-			return res.substr(idx + 1, res.len)
+			return res[idx + 1..]
 		}
 		// types defined by the user
 		// mod.submod.submod2.Type => submod2.Type
