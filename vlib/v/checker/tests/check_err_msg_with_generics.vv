@@ -1,0 +1,16 @@
+import datatypes
+
+type Result<T, U> = Err<U> | Ok<T>
+
+struct Ok<T> {
+	value T
+}
+
+struct Err<U> {
+	value U
+}
+
+fn test_err_msg() {
+	typ := datatypes.BSTree<Result<[]Token, Err<string>>>{}
+	println(int(typ))
+}
