@@ -3107,14 +3107,15 @@ pub fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 				ast.Var {
 					// inside vweb tmpl ident positions are meaningless, use the position of the comptime call.
 					// if the variable is declared before the comptime call then we can assume all is well.
-					// `node.name !in node.scope.objects` checks it's an inherited var (not defined in the tmpl).
-					node_pos := if c.pref.is_vweb && node.name !in node.scope.objects {
+					// `node.name !in node.scope.objects && node.scope.start_pos < c.comptime_call_pos` (inherited)
+					node_pos := if c.pref.is_vweb && node.name !in node.scope.objects
+						&& node.scope.start_pos < c.comptime_call_pos {
 						c.comptime_call_pos
 					} else {
 						node.pos.pos
 					}
 					if node_pos < obj.pos.pos {
-						c.error('undefined variable `$node.name` (used before declaration)',
+						c.error('undefined variable `$node.name` (used before declaration) # $node_pos < $obj.pos.pos | $node.pos.pos',
 							node.pos)
 					}
 					is_sum_type_cast := obj.smartcasts.len != 0
