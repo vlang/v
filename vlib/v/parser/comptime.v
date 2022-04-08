@@ -245,10 +245,6 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			println('$path:${i + 1}: $line')
 		}
 	}
-	mut scope := &ast.Scope{
-		start_pos: 0
-		parent: p.table.global_scope
-	}
 	$if trace_comptime ? {
 		println('')
 		println('>>> template for $path:')
@@ -256,25 +252,11 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		println('>>> end of template END')
 		println('')
 	}
-	mut file := parse_comptime(v_code, p.table, p.pref, scope)
+	// the tmpl inherits all parent scopes. previous functionality was just to
+	// inherit the scope from which the comptime call was made and no parents.
+	// this is much simpler and allws access to globals. can be changed if needed.
+	mut file := parse_comptime(tmpl_path, v_code, p.table, p.pref, p.scope)
 	file.path = tmpl_path
-	// copy vars from current fn scope into vweb_tmpl scope
-	for mut stmt in file.stmts {
-		if mut stmt is ast.FnDecl {
-			if stmt.name == 'main.vweb_tmpl_$tmp_fn_name' {
-				for _, mut obj in p.scope.objects {
-					if mut obj is ast.Var {
-						stmt.scope.register(ast.Var{
-							...obj
-							is_used: true
-							pos: stmt.body_pos
-						})
-					}
-				}
-				break
-			}
-		}
-	}
 	return ast.ComptimeCall{
 		scope: 0
 		is_vweb: true
