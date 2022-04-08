@@ -1280,23 +1280,37 @@ pub fn (t &Table) sumtype_has_variant(parent Type, variant Type, is_as bool) boo
 	if parent_sym.kind == .sum_type {
 		parent_info := parent_sym.info as SumType
 		var_sym := t.sym(variant)
-		if var_sym.kind == .aggregate {
-			var_info := var_sym.info as Aggregate
-			for var_type in var_info.types {
-				if !t.sumtype_has_variant(parent, var_type, is_as) {
-					return false
-				}
+		match var_sym.kind {
+			.aggregate {
+				return t.sumtype_check_aggregate_variant(parent, var_sym.info as Aggregate,
+					is_as)
 			}
-			return true
-		} else {
-			for v in parent_info.variants {
-				if v.idx() == variant.idx() && (!is_as || v.nr_muls() == variant.nr_muls()) {
-					return true
+			.alias {
+				return t.sumtype_check_alias_variant(parent, var_sym.info as Alias, is_as)
+			}
+			else {
+				for v in parent_info.variants {
+					if v.idx() == variant.idx() && (!is_as || v.nr_muls() == variant.nr_muls()) {
+						return true
+					}
 				}
 			}
 		}
 	}
 	return false
+}
+
+fn (t &Table) sumtype_check_aggregate_variant(parent_type Type, aggregate_sym &Aggregate, is_as bool) bool {
+	for var_type in aggregate_sym.types {
+		if !t.sumtype_has_variant(parent_type, var_type, is_as) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (t &Table) sumtype_check_alias_variant(parent_type Type, alias_info &Alias, is_as bool) bool {
+	return alias_info.parent_type == parent_type
 }
 
 pub fn (t &Table) is_sumtype_or_in_variant(parent Type, typ Type) bool {

@@ -1,8 +1,6 @@
 type ParseRes = Result<[]Token, ParseErr>
 
-struct ParseErr{
-
-}
+struct ParseErr {}
 
 type Opt<T> = None<T> | Some<T>
 
@@ -26,7 +24,7 @@ fn test_report() {
 	r := Opt<ParseRes>(None<ParseRes>{})
 	match r {
 		Some<ParseRes> {
-			rx := Result<[]Token, ParseErr>(r)
+			rx := Result<[]Token, ParseErr>(r.value)
 		}
 		None<ParseRes> {}
 	}
