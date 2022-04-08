@@ -1,0 +1,10 @@
+struct Empty {}
+type IndexNumber = u32
+type NameIndexType = Empty | IndexNumber
+
+fn main() {
+	elem := NameIndexType(Empty{})
+	if elem is IndexNumber {
+
+	}
+}
