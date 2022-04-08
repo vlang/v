@@ -972,7 +972,7 @@ fn (g Gen) optional_type_text(styp string, base string) string {
 	ret := 'struct $styp {
 	byte state;
 	IError err;
-	byte data[sizeof($size)];
+	byte data[sizeof($size) > 0 ? sizeof($size) : 1];
 }'
 	return ret
 }
