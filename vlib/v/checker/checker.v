@@ -3115,7 +3115,7 @@ pub fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 						node.pos.pos
 					}
 					if node_pos < obj.pos.pos {
-						c.error('undefined variable `$node.name` (used before declaration) # $node_pos < $obj.pos.pos | $node.pos.pos',
+						c.error('undefined variable `$node.name` (used before declaration)',
 							node.pos)
 					}
 					is_sum_type_cast := obj.smartcasts.len != 0
