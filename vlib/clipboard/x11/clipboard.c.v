@@ -330,7 +330,7 @@ fn (mut cb Clipboard) start_listener() {
 						property: xsre.property
 					}
 					if !cb.transmit_selection(&xse) {
-						xse.property = new_atom(0)
+						xse.property = Atom(0)
 					}
 					C.XSendEvent(cb.display, xse.requestor, 0, C.PropertyChangeMask, voidptr(&xse))
 					C.XFlush(cb.display)
@@ -477,10 +477,6 @@ fn (cb &Clipboard) get_target_index(target Atom) int {
 
 fn (cb &Clipboard) get_supported_targets() []Atom {
 	return cb.get_atoms(AtomType.utf8_string, .xa_string, .text, .text_plain, .text_html)
-}
-
-fn new_atom(value int) &Atom {
-	return unsafe { &Atom(&u64(u64(value))) }
 }
 
 fn create_xwindow(display &C.Display) Window {
