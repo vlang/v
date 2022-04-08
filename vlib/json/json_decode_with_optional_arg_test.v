@@ -1,9 +1,7 @@
 import json
 import os
 
-struct DbConfig {
-	foo int
-}
+struct DbConfig {}
 
 fn test_json_decode_with_optional_arg() {
 	if ret := print_info() {
