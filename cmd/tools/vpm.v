@@ -445,12 +445,11 @@ fn vpm_outdated() {
 fn vpm_list() {
 	module_names := get_installed_modules()
 	if module_names.len == 0 {
-		println('You have no modules installed.')
+		eprintln('You have no modules installed.')
 		exit(0)
 	}
-	println('Installed modules:')
 	for mod in module_names {
-		println('  $mod')
+		println(mod)
 	}
 }
 
