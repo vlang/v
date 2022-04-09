@@ -288,8 +288,8 @@ fn (mut ctx Context) parse_events() {
 				if !C.GetConsoleScreenBufferInfo(ctx.stdout_handle, &sb) {
 					panic('could not get screenbuffer info')
 				}
-				w := sb.srWindow.Right - sb.srWindow.Left + 1
-				h := sb.srWindow.Bottom - sb.srWindow.Top + 1
+				w := int(sb.srWindow.Right - sb.srWindow.Left + 1)
+				h := int(sb.srWindow.Bottom - sb.srWindow.Top + 1)
 				utf8 := '($ctx.window_width, $ctx.window_height) -> ($w, $h)'
 				if w != ctx.window_width || h != ctx.window_height {
 					ctx.window_width, ctx.window_height = w, h
