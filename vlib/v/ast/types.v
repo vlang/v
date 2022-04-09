@@ -374,6 +374,23 @@ pub fn (typ Type) is_unsigned() bool {
 	return typ.idx() in ast.unsigned_integer_type_idxs
 }
 
+pub fn (typ Type) flip_signedness() Type {
+	r := match typ {
+		i8_type    {byte_type}
+		i16_type   {u16_type}
+		int_type   {u32_type}
+		isize_type {usize_type}
+		i64_type   {u64_type}
+		byte_type  {i8_type}
+		u16_type   {i16_type}
+		u32_type   {int_type}
+		usize_type {isize_type}
+		u64_type   {i64_type}
+		else       {typ}
+	}
+	return r
+}
+
 [inline]
 pub fn (typ Type) is_int_literal() bool {
 	return int(typ) == ast.int_literal_type_idx
