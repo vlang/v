@@ -10,7 +10,7 @@ import toml.util
 
 pub const (
 	digit_extras = [`_`, `.`, `x`, `o`, `b`, `e`, `E`]
-	end_of_text  = -1
+	end_of_text  = math.max_u32
 )
 
 // Scanner contains the necessary fields for the state of the scan process.
@@ -263,7 +263,7 @@ pub fn (s &Scanner) remaining() int {
 // next returns the next character code from the input text.
 // next returns `end_of_text` if it can't reach the next character.
 [direct_array_access; inline]
-pub fn (mut s Scanner) next() int {
+pub fn (mut s Scanner) next() u32 {
 	if s.pos < s.text.len {
 		opos := s.pos
 		s.pos++
@@ -299,7 +299,7 @@ pub fn (mut s Scanner) skip_n(n int) {
 // at returns `end_of_text` if it can't get the current character.
 // unlike `next()`, `at()` does not change the state of the scanner.
 [direct_array_access; inline]
-pub fn (s &Scanner) at() int {
+pub fn (s &Scanner) at() u32 {
 	if s.pos < s.text.len {
 		return s.text[s.pos]
 	}
