@@ -636,8 +636,8 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						rt := c.table.sym(right_type).name
 						c.error('negative value cannot be compared with `$rt`', node.left.pos)
 					}
-				} else if is_left_type_signed != is_right_type_signed &&
-					left_type.flip_signedness() != right_type {
+				} else if is_left_type_signed != is_right_type_signed
+					&& left_type.flip_signedness() != right_type {
 					// prevent e.g. `u16(-1) == int(-1)` which is false in C
 					if (is_right_type_signed && left_type in ast.int_promoted_type_idxs)
 						|| (is_left_type_signed && right_type in ast.int_promoted_type_idxs) {

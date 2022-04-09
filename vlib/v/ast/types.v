@@ -376,17 +376,17 @@ pub fn (typ Type) is_unsigned() bool {
 
 pub fn (typ Type) flip_signedness() Type {
 	r := match typ {
-		i8_type    {byte_type}
-		i16_type   {u16_type}
-		int_type   {u32_type}
-		isize_type {usize_type}
-		i64_type   {u64_type}
-		byte_type  {i8_type}
-		u16_type   {i16_type}
-		u32_type   {int_type}
-		usize_type {isize_type}
-		u64_type   {i64_type}
-		else       {typ}
+		ast.i8_type { ast.byte_type }
+		ast.i16_type { ast.u16_type }
+		ast.int_type { ast.u32_type }
+		ast.isize_type { ast.usize_type }
+		ast.i64_type { ast.u64_type }
+		ast.byte_type { ast.i8_type }
+		ast.u16_type { ast.i16_type }
+		ast.u32_type { ast.int_type }
+		ast.usize_type { ast.isize_type }
+		ast.u64_type { ast.i64_type }
+		else { typ }
 	}
 	return r
 }
