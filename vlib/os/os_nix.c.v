@@ -332,7 +332,10 @@ pub fn execute(cmd string) Result {
 	// if cmd.contains(';') || cmd.contains('&&') || cmd.contains('||') || cmd.contains('\n') {
 	// return Result{ exit_code: -1, output: ';, &&, || and \\n are not allowed in shell commands' }
 	// }
-	pcmd := if cmd.contains('2>') { cmd } else { '$cmd 2>&1' }
+	pcmd := if cmd.contains('2>') { cmd.clone() } else { '$cmd 2>&1' }
+	defer {
+		unsafe { pcmd.free() }
+	}
 	f := vpopen(pcmd)
 	if isnil(f) {
 		return Result{

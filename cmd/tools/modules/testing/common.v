@@ -306,12 +306,14 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	mut run_js := false
 
 	is_fmt := ts.vargs.contains('fmt')
+	is_vet := ts.vargs.contains('vet')
+	produces_file_output := !(is_fmt || is_vet)
 
 	if relative_file.ends_with('js.v') {
-		if !is_fmt {
+		if produces_file_output {
 			cmd_options << ' -b js'
+			run_js = true
 		}
-		run_js = true
 	}
 
 	if relative_file.contains('global') && !is_fmt {
@@ -333,13 +335,13 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		fname.replace('.v', '')
 	}
 	generated_binary_fpath := os.join_path_single(tmpd, generated_binary_fname)
-	if os.exists(generated_binary_fpath) {
-		if ts.rm_binaries {
-			os.rm(generated_binary_fpath) or {}
+	if produces_file_output {
+		if os.exists(generated_binary_fpath) {
+			if ts.rm_binaries {
+				os.rm(generated_binary_fpath) or {}
+			}
 		}
-	}
 
-	if !ts.vargs.contains('fmt') {
 		cmd_options << ' -o ${os.quoted_path(generated_binary_fpath)}'
 	}
 	cmd := '${os.quoted_path(ts.vexe)} ' + cmd_options.join(' ') + ' ${os.quoted_path(file)}'
@@ -421,10 +423,8 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			}
 		}
 	}
-	if os.exists(generated_binary_fpath) {
-		if ts.rm_binaries {
-			os.rm(generated_binary_fpath) or {}
-		}
+	if produces_file_output && os.exists(generated_binary_fpath) && ts.rm_binaries {
+		os.rm(generated_binary_fpath) or {}
 	}
 	return pool.no_result
 }
