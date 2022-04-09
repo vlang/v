@@ -16,8 +16,6 @@ fn create(x int) &Foo {
 fn (f &Foo) free() {
 	println('> freeing Foo $f.x at address: ${voidptr(f)} | frees.len: $frees.len')
 	frees << f.x
-	// TODO: this should NOT be necessary - the compiler should do it automatically in the parent scope
-	unsafe { free(f) }
 }
 
 fn create_some_foos() {
