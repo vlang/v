@@ -4211,7 +4211,8 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				if field.is_simple_define_const() {
 					// "Simple" expressions are not going to need multiple statements,
 					// only the ones which are inited later, so it's safe to use expr_string
-					g.const_decl_simple_define(name, g.expr_string(field_expr))
+					mut styp := g.typ(field.typ)
+					g.const_decl_simple_define(styp, name, g.expr_string(field_expr))
 				} else {
 					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false)
 				}
@@ -4246,7 +4247,7 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, ct_value ast.Comp
 				// with -cstrict. Add checker errors for overflows instead,
 				// so V can catch them earlier, instead of relying on the
 				// C compiler for that.
-				g.const_decl_simple_define(name, ct_value.str())
+				g.const_decl_simple_define(styp, name, ct_value.str())
 				return true
 			}
 			if typ == ast.u64_type {
@@ -4305,16 +4306,18 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, ct_value ast.Comp
 }
 
 fn (mut g Gen) const_decl_write_precomputed(styp string, cname string, ct_value string) {
-	g.definitions.writeln('$styp $cname = $ct_value; // precomputed')
+	g.definitions.writeln('const $styp $cname = $ct_value; // precomputed')
 }
 
-fn (mut g Gen) const_decl_simple_define(name string, val string) {
-	// Simple expressions should use a #define
-	// so that we don't pollute the binary with unnecessary global vars
-	// Do not do this when building a module, otherwise the consts
-	// will not be accessible.
-	g.definitions.write_string('#define _const_$name ')
-	g.definitions.writeln(val)
+fn (mut g Gen) const_decl_simple_define(typ string, name string, val string) {
+	$if true {
+		g.definitions.write_string('#define _const_$name ')
+		g.definitions.writeln(val)
+	} $else {
+		g.definitions.write_string('const $typ _const_$name = ')
+		g.definitions.write_string(val)
+		g.definitions.writeln(';')
+	}
 }
 
 fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ ast.Type, unwrap_option bool) {
