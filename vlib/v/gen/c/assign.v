@@ -238,11 +238,12 @@ fn (mut g Gen) gen_assign_stmt(node_ ast.AssignStmt) {
 			} else {
 				g.out.go_back_to(pos)
 				is_var_mut := !is_decl && left.is_auto_deref_var()
-				addr := if is_var_mut { '' } else { '&' }
+				addr_left := if is_var_mut { '' } else { '&' }
 				g.writeln('')
-				g.write('memcpy($addr')
+				g.write('memcpy($addr_left')
 				g.expr(left)
-				g.writeln(', &$v_var, sizeof($arr_typ));')
+				addr_val := if is_fixed_array_var { '' } else { '&' }
+				g.writeln(', $addr_val$v_var, sizeof($arr_typ));')
 			}
 			g.is_assign_lhs = false
 		} else {
