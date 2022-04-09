@@ -1,0 +1,6 @@
+vlib/v/checker/tests/array_of_generic_struct_init_err.vv:6:15: error: generic struct must specify type parameter, e.g. Foo<int>
+    4 |
+    5 | fn main() {
+    6 |     mut arr := []Item{}
+      |                  ~~~~
+    7 | }

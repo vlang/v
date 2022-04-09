@@ -9,6 +9,22 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	mut elem_type := ast.void_type
 	// []string - was set in parser
 	if node.typ != ast.void_type {
+		if node.elem_type != 0 {
+			elem_sym := c.table.sym(node.elem_type)
+			if elem_sym.kind == .struct_ {
+				elem_info := elem_sym.info as ast.Struct
+				if elem_info.generic_types.len > 0 && elem_info.concrete_types.len == 0
+					&& !node.elem_type.has_flag(.generic) {
+					if c.table.cur_concrete_types.len == 0 {
+						c.error('generic struct must specify type parameter, e.g. Foo<int>',
+							node.elem_type_pos)
+					} else {
+						c.error('generic struct must specify type parameter, e.g. Foo<T>',
+							node.elem_type_pos)
+					}
+				}
+			}
+		}
 		if node.exprs.len == 0 {
 			if node.has_cap {
 				c.check_array_init_para_type('cap', node.cap_expr, node.pos)
