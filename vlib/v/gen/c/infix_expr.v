@@ -626,7 +626,8 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 			if elem_sym.kind == .function {
 				g.write(', _MOV((voidptr[]){ ')
 			} else if elem_is_array_var {
-				g.write(', &')
+				addr := if elem_sym.kind == .array_fixed { '' } else { '&' }
+				g.write(', $addr')
 			} else {
 				g.write(', _MOV(($elem_type_str[]){ ')
 			}
