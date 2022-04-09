@@ -2645,11 +2645,12 @@ fn (mut g Gen) autofree_variable(v ast.Var) {
 		g.autofree_var_call('string_free', v)
 		return
 	}
-	if sym.has_method('free') {
-		g.autofree_var_call(free_fn, v)
-	} else if g.pref.experimental && v.typ.is_ptr() && sym.name.after('.')[0].is_capital() {
+	if g.pref.experimental && v.typ.is_ptr() && sym.name.after('.')[0].is_capital() {
 		// Free user reference types
 		g.autofree_var_call('free', v)
+	}
+	if sym.has_method('free') {
+		g.autofree_var_call(free_fn, v)
 	}
 }
 
@@ -2698,7 +2699,11 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 		if v.typ == ast.error_type && !v.is_autofree_tmp {
 			return
 		}
-		af.writeln('\t${free_fn_name}(&${c_name(v.name)}); // autofreed var $g.cur_mod.name $g.is_builtin_mod')
+		if v.is_auto_heap {
+			af.writeln('\t${free_fn_name}(${c_name(v.name)}); // autofreed heap var $g.cur_mod.name $g.is_builtin_mod')
+		} else {
+			af.writeln('\t${free_fn_name}(&${c_name(v.name)}); // autofreed var $g.cur_mod.name $g.is_builtin_mod')
+		}
 	}
 	g.autofree_scope_stmts << af.str()
 }
