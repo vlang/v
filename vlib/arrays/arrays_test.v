@@ -293,3 +293,10 @@ fn test_can_copy_bits() {
 	// map not copyable
 	assert !can_copy_bits<map[string]int>()
 }
+
+type Str = string
+
+fn test_alias_string_contains() {
+	names := [Str('')]
+	assert (Str('') in names) == true
+}
