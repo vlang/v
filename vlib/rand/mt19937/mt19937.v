@@ -147,7 +147,7 @@ pub fn (mut rng MT19937RNG) u32() u32 {
 const mag01 = [u64(0), u64(matrix_a)]
 
 // u64 returns a pseudorandom 64bit int in range `[0, 2⁶⁴)`.
-[inline]
+[direct_array_access; inline]
 pub fn (mut rng MT19937RNG) u64() u64 {
 	mut x := u64(0)
 	mut i := int(0)
