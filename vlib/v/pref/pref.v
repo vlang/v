@@ -110,7 +110,7 @@ pub mut:
 	test_runner       string   // can be 'simple' (fastest, but much less detailed), 'tap', 'normal'
 	profile_file      string   // the profile results will be stored inside profile_file
 	profile_no_inline bool     // when true, [inline] functions would not be profiled
-	profile_fns       []string // when set, profiling will be off by default, but inside these functions (and what they call) it will be on.	
+	profile_fns       []string // when set, profiling will be off by default, but inside these functions (and what they call) it will be on.
 	translated        bool     // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
 	is_prod           bool     // use "-O2"
 	obfuscate         bool     // `v -obf program.v`, renames functions to "f_XXX"
@@ -634,7 +634,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					eprintln('Use `v $arg` instead.')
 					exit(1)
 				}
-				if arg[0] == `-` {
+				if arg.len != 0 && arg[0] == `-` {
 					if arg[1..] in pref.list_of_flags_with_param {
 						// skip parameter
 						i++
