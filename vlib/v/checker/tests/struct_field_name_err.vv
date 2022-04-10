@@ -1,0 +1,9 @@
+struct Release {
+	Architecture []string
+	Components   []string
+}
+
+fn main() {
+	r := Release{}
+	println(r)
+}
