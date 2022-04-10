@@ -30,13 +30,10 @@ fn main() {
 		println('failed to fetch data from /v0/topstories.json')
 		return
 	}
-	mut ids := json.decode([]int, resp.text) or {
+	ids := json.decode([]int, resp.text) or {
 		println('failed to decode topstories.json')
 		return
-	}
-	if ids.len > 10 {
-		ids = ids[0..10]
-	}
+	}#[0..10]
 	mut fetcher_pool := pool.new_pool_processor(
 		callback: worker_fetch
 	)
