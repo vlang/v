@@ -673,7 +673,11 @@ fn (mut g Gen) gen_array_contains_methods() {
 		fn_name := '${left_type_str}_contains'
 		left_info := left_final_sym.info as ast.Array
 		mut elem_type_str := g.typ(left_info.elem_type)
-		elem_sym := g.table.sym(left_info.elem_type)
+		mut elem_sym := g.table.sym(left_info.elem_type)
+		if elem_sym.kind == .alias {
+			info := elem_sym.info as ast.Alias
+			elem_sym = g.table.sym(info.parent_type)
+		}
 		if elem_sym.kind == .function {
 			left_type_str = 'Array_voidptr'
 			elem_type_str = 'voidptr'
@@ -751,7 +755,11 @@ fn (mut g Gen) gen_array_index_methods() {
 		fn_name := '${left_type_str}_index'
 		info := final_left_sym.info as ast.Array
 		mut elem_type_str := g.typ(info.elem_type)
-		elem_sym := g.table.sym(info.elem_type)
+		mut elem_sym := g.table.sym(info.elem_type)
+		if elem_sym.kind == .alias {
+			info_t := elem_sym.info as ast.Alias
+			elem_sym = g.table.sym(info_t.parent_type)
+		}
 		if elem_sym.kind == .function {
 			left_type_str = 'Array_voidptr'
 			elem_type_str = 'voidptr'
