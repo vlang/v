@@ -1320,7 +1320,10 @@ fn (t &Table) sumtype_check_alias_variant(parent_type Type, alias_type Type, is_
 		// the alias is not inside one of the Sum type, like
 		// https://github.com/vlang/v/issues/13863
 		alias_info := t.sym(alias_type).info as Alias
-		return t.sumtype_has_variant(parent_type, alias_info.parent_type, is_as)
+		// The alias is an alias or of the same type of the parent or one
+		// of the SumType variant. e.g: alias of another sum type
+		return parent_type == alias_info.parent_type
+			|| t.sumtype_has_variant(parent_type, alias_info.parent_type, is_as)
 	}
 	// the alias_type is inside one of the variant of the sum type
 	return true
