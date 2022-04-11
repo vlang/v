@@ -124,6 +124,7 @@ mut:
 	inside_println_arg               bool
 	inside_decl_rhs                  bool
 	inside_if_guard                  bool // true inside the guard condition of `if x := opt() {}`
+	comptime_call_pos                int  // needed for correctly checking use before decl for templates
 }
 
 pub fn new_checker(table &ast.Table, pref &pref.Preferences) &Checker {
@@ -3127,9 +3128,16 @@ pub fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					return obj.typ
 				}
 				ast.Var {
-					// incase var was not marked as used yet (vweb tmpl)
-					// obj.is_used = true
-					if node.pos.pos < obj.pos.pos {
+					// inside vweb tmpl ident positions are meaningless, use the position of the comptime call.
+					// if the variable is declared before the comptime call then we can assume all is well.
+					// `node.name !in node.scope.objects && node.scope.start_pos < c.comptime_call_pos` (inherited)
+					node_pos := if c.pref.is_vweb && node.name !in node.scope.objects
+						&& node.scope.start_pos < c.comptime_call_pos {
+						c.comptime_call_pos
+					} else {
+						node.pos.pos
+					}
+					if node_pos < obj.pos.pos {
 						c.error('undefined variable `$node.name` (used before declaration)',
 							node.pos)
 					}

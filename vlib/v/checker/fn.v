@@ -1726,6 +1726,10 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast
 			if is_map && arg_expr.return_type in [ast.void_type, 0] {
 				c.error('type mismatch, `$arg_expr.name` does not return anything', arg_expr.pos)
 			} else if !is_map && arg_expr.return_type != ast.bool_type {
+				if arg_expr.or_block.kind != .absent && arg_expr.return_type.has_flag(.optional)
+					&& arg_expr.return_type.clear_flag(.optional) == ast.bool_type {
+					return
+				}
 				c.error('type mismatch, `$arg_expr.name` must return a bool', arg_expr.pos)
 			}
 		}

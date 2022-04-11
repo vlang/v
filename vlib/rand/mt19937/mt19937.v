@@ -144,24 +144,25 @@ pub fn (mut rng MT19937RNG) u32() u32 {
 	return u32(ans)
 }
 
+const mag01 = [u64(0), u64(matrix_a)]
+
 // u64 returns a pseudorandom 64bit int in range `[0, 2⁶⁴)`.
-[inline]
+[direct_array_access; inline]
 pub fn (mut rng MT19937RNG) u64() u64 {
-	mag01 := [u64(0), u64(mt19937.matrix_a)]
 	mut x := u64(0)
 	mut i := int(0)
 	if rng.mti >= mt19937.nn {
 		for i = 0; i < mt19937.nn - mt19937.mm; i++ {
 			x = (rng.state[i] & mt19937.um) | (rng.state[i + 1] & mt19937.lm)
-			rng.state[i] = rng.state[i + mt19937.mm] ^ (x >> 1) ^ mag01[int(x & 1)]
+			rng.state[i] = rng.state[i + mt19937.mm] ^ (x >> 1) ^ mt19937.mag01[int(x & 1)]
 		}
 		for i < mt19937.nn - 1 {
 			x = (rng.state[i] & mt19937.um) | (rng.state[i + 1] & mt19937.lm)
-			rng.state[i] = rng.state[i + (mt19937.mm - mt19937.nn)] ^ (x >> 1) ^ mag01[int(x & 1)]
+			rng.state[i] = rng.state[i + (mt19937.mm - mt19937.nn)] ^ (x >> 1) ^ mt19937.mag01[int(x & 1)]
 			i++
 		}
 		x = (rng.state[mt19937.nn - 1] & mt19937.um) | (rng.state[0] & mt19937.lm)
-		rng.state[mt19937.nn - 1] = rng.state[mt19937.mm - 1] ^ (x >> 1) ^ mag01[int(x & 1)]
+		rng.state[mt19937.nn - 1] = rng.state[mt19937.mm - 1] ^ (x >> 1) ^ mt19937.mag01[int(x & 1)]
 		rng.mti = 0
 	}
 	x = rng.state[rng.mti]

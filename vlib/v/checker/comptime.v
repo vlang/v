@@ -36,28 +36,8 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 			is_vweb: true
 		}
 		mut c2 := new_checker(c.table, pref2)
+		c2.comptime_call_pos = node.pos.pos
 		c2.check(node.vweb_tmpl)
-		mut caller_scope := c.fn_scope.innermost(node.pos.pos)
-		mut i := 0 // tmp counter var for skipping first three tmpl vars
-		for k, _ in c2.file.scope.children[0].objects {
-			if i < 2 {
-				// Skip first three because they are tmpl vars see vlib/vweb/tmpl/tmpl.v
-				i++
-				continue
-			}
-			tmpl_obj := unsafe { c2.file.scope.children[0].objects[k] }
-			if tmpl_obj is ast.Var {
-				if mut caller_var := caller_scope.find_var(tmpl_obj.name) {
-					// var is used in the tmpl so mark it as used in the caller
-					caller_var.is_used = true
-					// update props from the caller scope var to the tmpl scope var
-					c2.file.scope.children[0].objects[k] = ast.Var{
-						...(*caller_var)
-						pos: tmpl_obj.pos
-					}
-				}
-			}
-		}
 		c.warnings << c2.warnings
 		c.errors << c2.errors
 		c.notices << c2.notices

@@ -3,14 +3,13 @@
 // that can be found in the LICENSE file.
 module scanner
 
-import math
 import toml.input
 import toml.token
 import toml.util
 
 pub const (
 	digit_extras = [`_`, `.`, `x`, `o`, `b`, `e`, `E`]
-	end_of_text  = math.max_u32
+	end_of_text  = 4294967295
 )
 
 // Scanner contains the necessary fields for the state of the scan process.
@@ -346,7 +345,7 @@ fn (mut s Scanner) new_token(kind token.Kind, lit string, len int) token.Token {
 	return token.Token{
 		kind: kind
 		lit: lit
-		col: math.max(1, col)
+		col: if col < 1 { 1 } else { col }
 		line_nr: s.line_nr + 1
 		pos: s.pos - s.header_len - len + 1
 		len: len

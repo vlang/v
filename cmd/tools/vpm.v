@@ -87,6 +87,12 @@ fn main() {
 				module_names = manifest.dependencies
 			}
 			mut source := Source.vpm
+			if '--once' in options {
+				module_names = vpm_once_filter(module_names)
+				if module_names.len == 0 {
+					return
+				}
+			}
 			if '--git' in options {
 				source = Source.git
 			}
@@ -327,6 +333,17 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 	}
 }
 
+fn vpm_once_filter(module_names []string) []string {
+	installed_modules := get_installed_modules()
+	mut toinstall := []string{}
+	for mn in module_names {
+		if mn !in installed_modules {
+			toinstall << mn
+		}
+	}
+	return toinstall
+}
+
 fn vpm_install(module_names []string, source Source) {
 	if settings.is_help {
 		vhelp.show_topic('install')
@@ -336,15 +353,16 @@ fn vpm_install(module_names []string, source Source) {
 		println('´v install´ requires *at least one* module name.')
 		exit(2)
 	}
-
-	if source == .vpm {
-		vpm_install_from_vpm(module_names)
-	}
-	if source == .git {
-		vpm_install_from_vcs(module_names, 'git')
-	}
-	if source == .hg {
-		vpm_install_from_vcs(module_names, 'hg')
+	match source {
+		.vpm {
+			vpm_install_from_vpm(module_names)
+		}
+		.git {
+			vpm_install_from_vcs(module_names, 'git')
+		}
+		.hg {
+			vpm_install_from_vcs(module_names, 'hg')
+		}
 	}
 }
 
@@ -445,12 +463,11 @@ fn vpm_outdated() {
 fn vpm_list() {
 	module_names := get_installed_modules()
 	if module_names.len == 0 {
-		println('You have no modules installed.')
+		eprintln('You have no modules installed.')
 		exit(0)
 	}
-	println('Installed modules:')
 	for mod in module_names {
-		println('  $mod')
+		println(mod)
 	}
 }
 

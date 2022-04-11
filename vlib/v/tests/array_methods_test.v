@@ -30,3 +30,12 @@ fn test_array_eval_count() {
 	a4 = Counter{}
 	assert a4.new_arr('all() failed').all(it == 2) == false
 }
+
+fn opt_bool_fn() ?bool {
+	return true
+}
+
+fn test_any_called_with_opt_bool_fn() ? {
+	_ := [1, 2, 3].any(opt_bool_fn() ?)
+	assert true
+}

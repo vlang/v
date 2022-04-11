@@ -1,0 +1,6 @@
+vlib/v/checker/tests/map_of_generic_struct_init_err.vv:6:11: error: generic struct `Item` must specify type parameter, e.g. Foo<int>
+    4 |
+    5 | fn main() {
+    6 |     mut m := map[string]Item{}
+      |              ~~~~~~~~~~~~~~~~~
+    7 | }

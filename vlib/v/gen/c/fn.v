@@ -1206,6 +1206,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			// `json__encode` => `json__encode_User`
 			// encode_name := c_name(name) + '_' + util.no_dots(json_type_str)
 			encode_name := js_enc_name(json_type_str)
+			g.empty_line = true
 			g.writeln('// json.encode')
 			g.write('cJSON* $json_obj = ${encode_name}(')
 			if node.args[0].typ.is_ptr() {
@@ -1225,6 +1226,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			typ := c_name(g.typ(ast_type.typ))
 			fn_name := c_name(name) + '_' + typ
 			g.gen_json_for_type(ast_type.typ)
+			g.empty_line = true
 			g.writeln('// json.decode')
 			g.write('cJSON* $json_obj = json__json_parse(')
 			// Skip the first argument in json.decode which is a type
@@ -1233,10 +1235,10 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.call_args(node)
 			g.writeln(');')
 			tmp2 = g.new_tmp_var()
-			g.writeln('Option_$typ $tmp2 = $fn_name ($json_obj);')
+			g.writeln('Option_$typ $tmp2 = ${fn_name}($json_obj);')
 		}
 		if !g.is_autofree {
-			g.write('cJSON_Delete($json_obj); //del')
+			g.write('cJSON_Delete($json_obj); // del')
 		}
 		g.write('\n$cur_line')
 		name = ''

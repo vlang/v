@@ -247,12 +247,8 @@ fn (mut foptions FormatOptions) post_process_file(file string, formatted_file_pa
 		if !is_formatted_different {
 			return
 		}
-		x := diff.color_compare_files(foptions.find_diff_cmd(), file, formatted_file_path)
-		if x.len != 0 {
-			println("$file is not vfmt'ed")
-			return error('')
-		}
-		return
+		println("$file is not vfmt'ed")
+		return error('')
 	}
 	if foptions.is_c {
 		if is_formatted_different {

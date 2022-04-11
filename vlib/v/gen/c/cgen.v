@@ -972,7 +972,7 @@ fn (g Gen) optional_type_text(styp string, base string) string {
 	ret := 'struct $styp {
 	byte state;
 	IError err;
-	byte data[sizeof($size)];
+	byte data[sizeof($size) > 0 ? sizeof($size) : 1];
 }'
 	return ret
 }
@@ -2645,11 +2645,12 @@ fn (mut g Gen) autofree_variable(v ast.Var) {
 		g.autofree_var_call('string_free', v)
 		return
 	}
-	if sym.has_method('free') {
-		g.autofree_var_call(free_fn, v)
-	} else if g.pref.experimental && v.typ.is_ptr() && sym.name.after('.')[0].is_capital() {
+	if g.pref.experimental && v.typ.is_ptr() && sym.name.after('.')[0].is_capital() {
 		// Free user reference types
 		g.autofree_var_call('free', v)
+	}
+	if sym.has_method('free') {
+		g.autofree_var_call(free_fn, v)
 	}
 }
 
@@ -2698,7 +2699,11 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 		if v.typ == ast.error_type && !v.is_autofree_tmp {
 			return
 		}
-		af.writeln('\t${free_fn_name}(&${c_name(v.name)}); // autofreed var $g.cur_mod.name $g.is_builtin_mod')
+		if v.is_auto_heap {
+			af.writeln('\t${free_fn_name}(${c_name(v.name)}); // autofreed heap var $g.cur_mod.name $g.is_builtin_mod')
+		} else {
+			af.writeln('\t${free_fn_name}(&${c_name(v.name)}); // autofreed var $g.cur_mod.name $g.is_builtin_mod')
+		}
 	}
 	g.autofree_scope_stmts << af.str()
 }
@@ -3697,10 +3702,8 @@ fn (mut g Gen) ident(node ast.Ident) {
 			g.write('${name}.val')
 			return
 		}
-		// TODO: investigate why node.obj is pointing to outdated ScopeObject?
-		// v := node.obj
-		// if v is ast.Var {
-		if v := node.scope.find_var(node.name) {
+		v := node.obj
+		if v is ast.Var {
 			is_auto_heap = v.is_auto_heap && (!g.is_assign_lhs || g.assign_op != .decl_assign)
 			if is_auto_heap {
 				g.write('(*(')
