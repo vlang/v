@@ -1,20 +1,22 @@
 module fontstash
 
+[flag]
 pub enum Flags {
-	top_left = 1
-	bottom_left = 2
+	top_left
+	bottom_left
 }
 
+[flag]
 pub enum Align {
 	// Horizontal align
-	left = 1 // Default
-	center = 2
-	right = 4
+	left // Default
+	center
+	right
 	// Vertical align
-	top = 8
-	middle = 16
-	bottom = 32
-	baseline = 64 // Default
+	top
+	middle
+	bottom
+	baseline // Default
 }
 
 pub enum ErrorCode {

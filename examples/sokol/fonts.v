@@ -110,7 +110,7 @@ fn (state &AppState) render_font() {
 	font_context.draw_text(dx, dy, 'Now is the time for all good men to come to the aid of the party.')
 	dx = 300
 	dy = 350
-	font_context.set_align(int(fontstash.Align.left) | int(fontstash.Align.baseline))
+	font_context.set_alignment(.left | .baseline)
 	font_context.set_size(60.0)
 	font_context.set_font(state.font_normal)
 	font_context.set_color(white)
@@ -134,27 +134,27 @@ fn (state &AppState) render_font() {
 	dx = 50
 	dy = 350
 	line(f32(dx - 10), f32(dy), f32(dx + 250), f32(dy))
-	font_context.set_align(int(fontstash.Align.left) | int(fontstash.Align.top))
+	font_context.set_alignment(.left | .top)
 	dx = font_context.draw_text(dx, dy, 'Top')
 	dx += 10
-	font_context.set_align(int(fontstash.Align.left) | int(fontstash.Align.middle))
+	font_context.set_alignment(.left | .middle)
 	dx = font_context.draw_text(dx, dy, 'Middle')
 	dx += 10
-	font_context.set_align(int(fontstash.Align.left) | int(fontstash.Align.baseline))
+	font_context.set_alignment(.left | .baseline)
 	dx = font_context.draw_text(dx, dy, 'Baseline')
 	dx += 10
-	font_context.set_align(int(fontstash.Align.left) | int(fontstash.Align.bottom))
+	font_context.set_alignment(.left | .bottom)
 	font_context.draw_text(dx, dy, 'Bottom')
 	dx = 150
 	dy = 400
 	line(f32(dx), f32(dy - 30), f32(dx), f32(dy + 80.0))
-	font_context.set_align(int(fontstash.Align.left) | int(fontstash.Align.baseline))
+	font_context.set_alignment(.left | .baseline)
 	font_context.draw_text(dx, dy, 'Left')
 	dy += 30
-	font_context.set_align(int(fontstash.Align.center) | int(fontstash.Align.baseline))
+	font_context.set_alignment(.center | .baseline)
 	font_context.draw_text(dx, dy, 'Center')
 	dy += 30
-	font_context.set_align(int(fontstash.Align.right) | int(fontstash.Align.baseline))
+	font_context.set_alignment(.right | .baseline)
 	font_context.draw_text(dx, dy, 'Right')
 	sfons.flush(font_context)
 }
