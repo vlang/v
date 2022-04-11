@@ -300,3 +300,15 @@ fn test_alias_string_contains() {
 	names := [Str('')]
 	assert (Str('') in names) == true
 }
+
+struct XYZ {}
+
+fn test_array_append_empty_struct() {
+	mut names := []XYZ{cap: 2}
+	names << XYZ{}
+	assert (XYZ{} in names) == true
+
+	// test fixed array
+	array := [XYZ{}]
+	assert (XYZ{} in names) == true
+}

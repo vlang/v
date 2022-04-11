@@ -633,7 +633,7 @@ typedef uint8_t byte;
 typedef uint32_t rune;
 typedef size_t usize;
 typedef ptrdiff_t isize;
-#ifndef VNOFLOAT 
+#ifndef VNOFLOAT
 typedef float f32;
 typedef double f64;
 #else

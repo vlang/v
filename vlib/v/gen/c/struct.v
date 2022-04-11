@@ -305,3 +305,18 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 	}
 	return true
 }
+
+fn (mut g Gen) is_empty_struct(t Type) bool {
+	sym := t.unaliased_sym
+	match sym.info {
+		ast.Struct {
+			if sym.info.fields.len > 0 || sym.info.embeds.len > 0 {
+				return false
+			}
+			return true
+		}
+		else {
+			return false
+		}
+	}
+}
