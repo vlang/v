@@ -10,7 +10,9 @@ fn binary_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient [
 	}
 
 	len_diff := operand_a.len - operand_b.len
-	assert len_diff >= 0
+	$if debug {
+		assert len_diff >= 0
+	}
 
 	// we must do in place shift and operations.
 	mut divisor := []u32{cap: operand_b.len}
@@ -35,7 +37,9 @@ fn binary_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient [
 		lshift_in_place(mut remainder, lead_zer_remainder - lead_zer_divisor)
 	}
 
-	assert left_align_p(divisor[divisor.len - 1], remainder[remainder.len - 1])
+	$if debug {
+		assert left_align_p(divisor[divisor.len - 1], remainder[remainder.len - 1])
+	}
 	for bit_idx := int(bit_offset); bit_idx >= 0; bit_idx-- {
 		if greater_equal_from_end(remainder, divisor) {
 			bit_set(mut quotient, bit_idx)
@@ -63,7 +67,9 @@ fn binary_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient [
 fn bit_set(mut a []u32, n int) {
 	byte_offset := n >> 5
 	mask := u32(1) << u32(n % 32)
-	assert a.len >= byte_offset
+	$if debug {
+		assert a.len >= byte_offset
+	}
 	a[byte_offset] |= mask
 }
 
@@ -71,7 +77,9 @@ fn bit_set(mut a []u32, n int) {
 // returns true if a >= b (completed with zeroes)
 [inline]
 fn greater_equal_from_end(a []u32, b []u32) bool {
-	assert a.len >= b.len
+	$if debug {
+		assert a.len >= b.len
+	}
 	offset := a.len - b.len
 	for index := a.len - 1; index >= offset; index-- {
 		if a[index] > b[index - offset] {
@@ -99,7 +107,9 @@ fn subtract_align_last_byte_in_place(mut a []u32, b []u32) {
 		a[index] -= (b[index - offset] + carry)
 		carry = new_carry
 	}
-	assert carry == 0
+	$if debug {
+		assert carry == 0
+	}
 }
 
 // logical left shift
