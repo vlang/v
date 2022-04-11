@@ -258,8 +258,8 @@ static void __closure_destroy(void *closure) {
 
 const c_common_macros = '
 #define EMPTY_VARG_INITIALIZATION 0
-#define EMPTY_STRUCT_DECLARATION
-#define EMPTY_STRUCT_INITIALIZATION
+#define EMPTY_STRUCT_INITIALIZATION 0
+#define EMPTY_STRUCT_DECLARATION voidptr _dummy_pad
 // Due to a tcc bug, the length of an array needs to be specified, but GCC crashes if it is...
 #define EMPTY_ARRAY_OF_ELEMS(x,n) (x[])
 #define TCCSKIP(x) x
@@ -301,7 +301,7 @@ const c_common_macros = '
 
 #ifdef __TINYC__
 	#undef EMPTY_STRUCT_DECLARATION
-	#define EMPTY_STRUCT_DECLARATION char _dummy
+	#define EMPTY_STRUCT_DECLARATION voidptr _dummy_pad
 	#undef EMPTY_ARRAY_OF_ELEMS
 	#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[n])
 	#undef __NOINLINE
@@ -579,7 +579,7 @@ voidptr memdup(voidptr src, int sz);
 		#undef EMPTY_STRUCT_DECLARATION
 		#undef OPTION_CAST
 
-		#define EMPTY_STRUCT_DECLARATION char __pad
+		#define EMPTY_STRUCT_DECLARATION voidptr _dummy_pad
 		#define OPTION_CAST(x)
 		#undef __NOINLINE
 		#undef __IRQHANDLER
