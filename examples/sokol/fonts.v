@@ -8,9 +8,9 @@ import os
 
 struct AppState {
 mut:
-	pass_action gfx.PassAction
-	fons        &fontstash.Context
-	font_normal int
+	pass_action  gfx.PassAction
+	font_context &fontstash.Context
+	font_normal  int
 }
 
 [console]
@@ -28,7 +28,7 @@ fn main() {
 	pass_action.colors[0] = color_action
 	state := &AppState{
 		pass_action: pass_action
-		fons: voidptr(0) // &fontstash.Context(0)
+		font_context: voidptr(0) // &fontstash.Context(0)
 	}
 	title := 'V Metal/GL Text Rendering'
 	desc := sapp.Desc{
@@ -45,14 +45,14 @@ fn init(mut state AppState) {
 	desc := sapp.create_desc()
 	gfx.setup(&desc)
 	s := &sgl.Desc{}
-	C.sgl_setup(s)
-	state.fons = sfons.create(512, 512, 1)
+	sgl.setup(s)
+	state.font_context = sfons.create(512, 512, 1)
 	// or use DroidSerif-Regular.ttf
 	if bytes := os.read_bytes(os.resource_abs_path(os.join_path('..', 'assets', 'fonts',
 		'RobotoMono-Regular.ttf')))
 	{
 		println('loaded font: $bytes.len')
-		state.font_normal = state.fons.add_font_mem('sans', bytes, false)
+		state.font_normal = state.font_context.add_font_mem('sans', bytes, false)
 	}
 }
 
@@ -76,8 +76,8 @@ fn (state &AppState) render_font() {
 	brown := sfons.rgba(192, 128, 0, 128)
 	blue := sfons.rgba(0, 192, 255, 255)
 
-	fons := state.fons
-	fons.clear_state()
+	font_context := state.font_context
+	font_context.clear_state()
 	sgl.defaults()
 	sgl.matrix_mode_projection()
 	sgl.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
@@ -85,78 +85,78 @@ fn (state &AppState) render_font() {
 	sy = 50
 	dx = sx
 	dy = sy
-	fons.set_font(state.font_normal)
-	fons.set_size(100.0)
+	font_context.set_font(state.font_normal)
+	font_context.set_size(100.0)
 	ascender := f32(0.0)
 	descender := f32(0.0)
-	fons.vert_metrics(&ascender, &descender, &lh)
+	font_context.vert_metrics(&ascender, &descender, &lh)
 	dx = sx
 	dy += lh
-	fons.set_color(white)
-	dx = fons.draw_text(dx, dy, 'The quick ')
-	fons.set_font(state.font_normal)
-	fons.set_size(48.0)
-	fons.set_color(brown)
-	dx = fons.draw_text(dx, dy, 'brown ')
-	fons.set_font(state.font_normal)
-	fons.set_size(24.0)
-	fons.set_color(white)
-	dx = fons.draw_text(dx, dy, 'fox ')
+	font_context.set_color(white)
+	dx = font_context.draw_text(dx, dy, 'The quick ')
+	font_context.set_font(state.font_normal)
+	font_context.set_size(48.0)
+	font_context.set_color(brown)
+	dx = font_context.draw_text(dx, dy, 'brown ')
+	font_context.set_font(state.font_normal)
+	font_context.set_size(24.0)
+	font_context.set_color(white)
+	dx = font_context.draw_text(dx, dy, 'fox ')
 	dx = sx
 	dy += lh * 1.2
-	fons.set_size(20.0)
-	fons.set_font(state.font_normal)
-	fons.set_color(blue)
-	fons.draw_text(dx, dy, 'Now is the time for all good men to come to the aid of the party.')
+	font_context.set_size(20.0)
+	font_context.set_font(state.font_normal)
+	font_context.set_color(blue)
+	font_context.draw_text(dx, dy, 'Now is the time for all good men to come to the aid of the party.')
 	dx = 300
 	dy = 350
-	fons.set_align(C.FONS_ALIGN_LEFT | C.FONS_ALIGN_BASELINE)
-	fons.set_size(60.0)
-	fons.set_font(state.font_normal)
-	fons.set_color(white)
-	fons.set_spacing(5.0)
-	fons.set_blur(6.0)
-	fons.draw_text(dx, dy, 'Blurry...')
+	font_context.set_alignment(.left | .baseline)
+	font_context.set_size(60.0)
+	font_context.set_font(state.font_normal)
+	font_context.set_color(white)
+	font_context.set_spacing(5.0)
+	font_context.set_blur(6.0)
+	font_context.draw_text(dx, dy, 'Blurry...')
 	dx = 300
 	dy += 50.0
-	fons.set_size(28.0)
-	fons.set_font(state.font_normal)
-	fons.set_color(white)
-	fons.set_spacing(0.0)
-	fons.set_blur(3.0)
-	fons.draw_text(dx, dy + 2, 'DROP SHADOW')
-	fons.set_color(black)
-	fons.set_blur(0)
-	fons.draw_text(dx, dy, 'DROP SHADOW')
-	fons.set_size(18.0)
-	fons.set_font(state.font_normal)
-	fons.set_color(white)
+	font_context.set_size(28.0)
+	font_context.set_font(state.font_normal)
+	font_context.set_color(white)
+	font_context.set_spacing(0.0)
+	font_context.set_blur(3.0)
+	font_context.draw_text(dx, dy + 2, 'DROP SHADOW')
+	font_context.set_color(black)
+	font_context.set_blur(0)
+	font_context.draw_text(dx, dy, 'DROP SHADOW')
+	font_context.set_size(18.0)
+	font_context.set_font(state.font_normal)
+	font_context.set_color(white)
 	dx = 50
 	dy = 350
 	line(f32(dx - 10), f32(dy), f32(dx + 250), f32(dy))
-	fons.set_align(C.FONS_ALIGN_LEFT | C.FONS_ALIGN_TOP)
-	dx = fons.draw_text(dx, dy, 'Top')
+	font_context.set_alignment(.left | .top)
+	dx = font_context.draw_text(dx, dy, 'Top')
 	dx += 10
-	fons.set_align(C.FONS_ALIGN_LEFT | C.FONS_ALIGN_MIDDLE)
-	dx = fons.draw_text(dx, dy, 'Middle')
+	font_context.set_alignment(.left | .middle)
+	dx = font_context.draw_text(dx, dy, 'Middle')
 	dx += 10
-	fons.set_align(C.FONS_ALIGN_LEFT | C.FONS_ALIGN_BASELINE)
-	dx = fons.draw_text(dx, dy, 'Baseline')
+	font_context.set_alignment(.left | .baseline)
+	dx = font_context.draw_text(dx, dy, 'Baseline')
 	dx += 10
-	fons.set_align(C.FONS_ALIGN_LEFT | C.FONS_ALIGN_BOTTOM)
-	fons.draw_text(dx, dy, 'Bottom')
+	font_context.set_alignment(.left | .bottom)
+	font_context.draw_text(dx, dy, 'Bottom')
 	dx = 150
 	dy = 400
 	line(f32(dx), f32(dy - 30), f32(dx), f32(dy + 80.0))
-	fons.set_align(C.FONS_ALIGN_LEFT | C.FONS_ALIGN_BASELINE)
-	fons.draw_text(dx, dy, 'Left')
+	font_context.set_alignment(.left | .baseline)
+	font_context.draw_text(dx, dy, 'Left')
 	dy += 30
-	fons.set_align(C.FONS_ALIGN_CENTER | C.FONS_ALIGN_BASELINE)
-	fons.draw_text(dx, dy, 'Center')
+	font_context.set_alignment(.center | .baseline)
+	font_context.draw_text(dx, dy, 'Center')
 	dy += 30
-	fons.set_align(C.FONS_ALIGN_RIGHT | C.FONS_ALIGN_BASELINE)
-	fons.draw_text(dx, dy, 'Right')
-	C.sfons_flush(fons)
+	font_context.set_alignment(.right | .baseline)
+	font_context.draw_text(dx, dy, 'Right')
+	sfons.flush(font_context)
 }
 
 fn line(sx f32, sy f32, ex f32, ey f32) {

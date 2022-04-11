@@ -97,7 +97,7 @@ fn init(user_data voidptr) {
 	desc := sapp.create_desc()
 	gfx.setup(&desc)
 	s := &sgl.Desc{}
-	C.sgl_setup(s)
+	sgl.setup(s)
 	state.fons = sfons.create(512, 512, 1)
 	// or use DroidSerif-Regular.ttf
 	if bytes := os.read_bytes(os.resource_abs_path(os.join_path('..', 'assets', 'fonts',

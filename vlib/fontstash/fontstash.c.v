@@ -178,7 +178,17 @@ pub fn (s &Context) set_blur(blur f32) {
 // See also: clear_state
 [inline]
 pub fn (s &Context) set_align(align int) {
-	C.fonsSetAlign(s, align)
+	C.fonsSetAlign(s, int(align))
+}
+
+// set_alignment sets the font aligning to the `align` flags.
+//
+// See also: push_state
+// See also: pop_state
+// See also: clear_state
+[inline]
+pub fn (s &Context) set_alignment(align Align) {
+	C.fonsSetAlign(s, int(align))
 }
 
 // set_font sets the font used for this render on the active state.

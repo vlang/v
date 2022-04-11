@@ -1,23 +1,25 @@
 module fontstash
 
-pub enum FonsFlags {
-	top_left = 1
-	bottom_left = 2
+[flag]
+pub enum Flags {
+	top_left
+	bottom_left
 }
 
-pub enum FonsAlign {
+[flag]
+pub enum Align {
 	// Horizontal align
-	left = 1 // Default
-	center = 2
-	right = 4
+	left // Default
+	center
+	right
 	// Vertical align
-	top = 8
-	middle = 16
-	bottom = 32
-	baseline = 64 // Default
+	top
+	middle
+	bottom
+	baseline // Default
 }
 
-pub enum FonsErrorCode {
+pub enum ErrorCode {
 	// Font atlas is full.
 	atlas_full = 1
 	// Scratch memory used to render glyphs is full, requested size reported in 'val', you may need to bump up FONS_SCRATCH_BUF_SIZE.
