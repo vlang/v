@@ -82,7 +82,7 @@ fn main() {
 		eprintln('vfmt possible_files: ' + possible_files.str())
 	}
 	files := util.find_all_v_files(possible_files) or {
-		verror(err.msg)
+		verror(err.msg())
 		return
 	}
 	if os.is_atty(0) == 0 && files.len == 0 {

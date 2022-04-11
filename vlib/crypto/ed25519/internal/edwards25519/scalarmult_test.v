@@ -10,7 +10,7 @@ const (
 
 fn dalek_scalar_basepoint() Point {
 	mut p := Point{}
-	p.set_bytes(edwards25519.dsc_basepoint) or { panic(err.msg) }
+	p.set_bytes(edwards25519.dsc_basepoint) or { panic(err) }
 	return p
 }
 
@@ -70,8 +70,8 @@ fn test_vartime_double_basemult_vs_dalek() {
 }
 
 fn test_scalar_mult_distributes_over_add() {
-	mut x := generate_scalar(100) or { panic(err.msg) }
-	mut y := generate_scalar(100) or { panic(err.msg) }
+	mut x := generate_scalar(100) or { panic(err) }
+	mut y := generate_scalar(100) or { panic(err) }
 	mut z := Scalar{}
 
 	z.add(x, y)
@@ -142,7 +142,7 @@ fn test_basepoint_table_generation() {
 }
 
 fn test_scalar_mult_matches_base_mult() {
-	mut x := generate_scalar(100) or { panic(err.msg) }
+	mut x := generate_scalar(100) or { panic(err) }
 	b := new_generator_point()
 	mut p := Point{}
 	mut q := Point{}
@@ -165,8 +165,8 @@ fn test_basepoint_naf_table_generation() {
 }
 
 fn test_vartime_double_scalar_base_mult() {
-	mut x := generate_scalar(100) or { panic(err.msg) }
-	mut y := generate_scalar(100) or { panic(err.msg) }
+	mut x := generate_scalar(100) or { panic(err) }
+	mut y := generate_scalar(100) or { panic(err) }
 	b := new_generator_point()
 
 	mut p := Point{}

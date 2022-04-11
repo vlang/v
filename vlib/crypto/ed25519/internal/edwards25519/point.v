@@ -10,12 +10,12 @@ const (
 	gen_bytes = [byte(0x58), 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66,
 		0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66,
 		0x66, 0x66, 0x66, 0x66, 0x66]
-	d_const   = d_const_generate() or { panic(err.msg) }
-	d2_const  = d2_const_generate() or { panic(err.msg) }
+	d_const   = d_const_generate() or { panic(err) }
+	d2_const  = d2_const_generate() or { panic(err) }
 	// id_point is the point at infinity.
-	id_point  = id_point_generate() or { panic(err.msg) }
+	id_point  = id_point_generate() or { panic(err) }
 	// generator point
-	gen_point = generator() or { panic(err.msg) }
+	gen_point = generator() or { panic(err) }
 )
 
 fn d_const_generate() ?Element {

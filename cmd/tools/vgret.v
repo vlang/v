@@ -211,7 +211,7 @@ fn generate_screenshots(mut opt Options, output_path string) ? {
 
 		app_config.screenshots_path = screenshot_path
 		app_config.screenshots = take_screenshots(opt, app_config) or {
-			return error('Failed taking screenshots of `$app_path`:\n$err.msg')
+			return error('Failed taking screenshots of `$app_path`:\n$err.msg()')
 		}
 	}
 }
