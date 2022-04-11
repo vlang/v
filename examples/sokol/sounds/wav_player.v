@@ -48,7 +48,7 @@ fn audio_player_callback(buffer &f32, num_frames int, num_channels int, mut p Pl
 		p.finished = true
 		return
 	}
-	unsafe { C.memcpy(buffer, &p.samples[p.pos], nsamples * int(sizeof(f32))) }
+	unsafe { vmemcpy(buffer, &p.samples[p.pos], nsamples * int(sizeof(f32))) }
 	p.pos += nsamples
 }
 
