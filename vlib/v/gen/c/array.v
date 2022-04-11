@@ -151,7 +151,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 			} else {
 				g.write('0, ')
 			}
-			if elem_type.unaliased_sym.kind == .function {
+			if elem_type.unaliased_sym.kind == .function || g.is_empty_struct(elem_type) {
 				g.write('sizeof(voidptr), ')
 			} else {
 				g.write('sizeof($elem_styp), ')
@@ -217,7 +217,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 		} else {
 			g.write('0, ')
 		}
-		if elem_type.unaliased_sym.kind == .function {
+		if elem_type.unaliased_sym.kind == .function || g.is_empty_struct(elem_type) {
 			g.write('sizeof(voidptr), ')
 		} else {
 			g.write('sizeof($elem_styp), ')
@@ -251,6 +251,8 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 	len := node.exprs.len
 	if elem_type.unaliased_sym.kind == .function {
 		g.write('new_array_from_c_array($len, $len, sizeof(voidptr), _MOV((voidptr[$len]){')
+	} else if g.is_empty_struct(elem_type) {
+		g.write('new_array_from_c_array${noscan}($len, $len, sizeof(voidptr), _MOV(($elem_styp[$len]){')
 	} else {
 		g.write('new_array_from_c_array${noscan}($len, $len, sizeof($elem_styp), _MOV(($elem_styp[$len]){')
 	}
