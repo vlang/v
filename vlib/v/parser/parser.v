@@ -2140,10 +2140,12 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	p.expr_mod = ''
 	// `map[string]int` initialization
 	if p.tok.lit == 'map' && p.peek_tok.kind == .lsbr {
+		mut pos := p.tok.pos()
 		map_type := p.parse_map_type()
 		if p.tok.kind == .lcbr {
 			p.next()
 			if p.tok.kind == .rcbr {
+				pos = pos.extend(p.tok.pos())
 				p.next()
 			} else {
 				if p.pref.is_fmt {
@@ -2156,7 +2158,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		}
 		return ast.MapInit{
 			typ: map_type
-			pos: p.prev_tok.pos()
+			pos: pos
 		}
 	}
 	// `chan typ{...}`

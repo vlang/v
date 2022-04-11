@@ -260,6 +260,22 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 	// `x := map[string]string` - set in parser
 	if node.typ != 0 {
 		info := c.table.sym(node.typ).map_info()
+		if info.value_type != 0 {
+			val_sym := c.table.sym(info.value_type)
+			if val_sym.kind == .struct_ {
+				val_info := val_sym.info as ast.Struct
+				if val_info.generic_types.len > 0 && val_info.concrete_types.len == 0
+					&& !info.value_type.has_flag(.generic) {
+					if c.table.cur_concrete_types.len == 0 {
+						c.error('generic struct `$val_sym.name` must specify type parameter, e.g. Foo<int>',
+							node.pos)
+					} else {
+						c.error('generic struct `$val_sym.name` must specify type parameter, e.g. Foo<T>',
+							node.pos)
+					}
+				}
+			}
+		}
 		c.ensure_type_exists(info.key_type, node.pos) or {}
 		c.ensure_type_exists(info.value_type, node.pos) or {}
 		node.key_type = info.key_type
