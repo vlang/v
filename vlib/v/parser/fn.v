@@ -182,6 +182,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut is_ctor_new := false
 	mut is_c2v_variadic := false
 	mut is_markused := false
+	mut comments := []ast.Comment{}
 	for fna in p.attrs {
 		match fna.name {
 			'noreturn' { is_noreturn = true }
@@ -205,6 +206,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		p.next()
 	}
 	p.check(.key_fn)
+	comments << p.eat_comments()
 	p.open_scope()
 	// C. || JS.
 	mut language := ast.Language.v
@@ -530,6 +532,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		scope: p.scope
 		label_names: p.label_names
 		end_comments: p.eat_comments(same_line: true)
+		comments: comments
 	}
 	if generic_names.len > 0 {
 		p.table.register_fn_generic_types(fn_decl.fkey())

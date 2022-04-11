@@ -953,8 +953,11 @@ fn (mut f Fmt) fn_body(node ast.FnDecl) {
 	if node.language == .v {
 		if !node.no_body {
 			f.write(' {')
+			f.comments(node.comments, inline: true)
 			if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
-				f.writeln('')
+				if node.comments.len == 0 {
+					f.writeln('')
+				}
 				f.stmts(node.stmts)
 			}
 			f.write('}')
