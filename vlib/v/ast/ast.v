@@ -323,9 +323,10 @@ pub:
 	is_markused bool // an explict `[markused]` tag; the const will NOT be removed by `-skip-unused`, no matter what
 	pos         token.Pos
 pub mut:
-	expr     Expr      // the value expr of field; everything after `=`
-	typ      Type      // the type of the const field, it can be any type in V
-	comments []Comment // comments before current const field
+	expr         Expr      // the value expr of field; everything after `=`
+	typ          Type      // the type of the const field, it can be any type in V
+	comments     []Comment // comments before current const field
+	end_comments []Comment // comments that after const field
 	// the comptime_expr_value field is filled by the checker, when it has enough
 	// info to evaluate the constant at compile time
 	comptime_expr_value ComptTimeConstValue = empty_comptime_const_expr()

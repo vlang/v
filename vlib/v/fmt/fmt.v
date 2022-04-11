@@ -843,7 +843,8 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 		f.write(strings.repeat(` `, align_infos[align_idx].max - field.name.len))
 		f.write('= ')
 		f.expr(field.expr)
-		if node.is_block {
+		f.comments(field.end_comments, inline: true)
+		if node.is_block && field.end_comments.len == 0 {
 			f.writeln('')
 		} else {
 			// Write out single line comments after const expr if present

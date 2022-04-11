@@ -3247,6 +3247,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	}
 	mut fields := []ast.ConstField{}
 	mut comments := []ast.Comment{}
+	mut end_comments := []ast.Comment{}
 	for {
 		comments = p.eat_comments()
 		if is_block && p.tok.kind == .eof {
@@ -3258,12 +3259,14 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		}
 		pos := p.tok.pos()
 		name := p.check_name()
+		end_comments << p.eat_comments()
 		if util.contains_capital(name) {
 			p.warn_with_pos('const names cannot contain uppercase letters, use snake_case instead',
 				pos)
 		}
 		full_name := p.prepend_mod(name)
 		p.check(.assign)
+		end_comments << p.eat_comments()
 		if p.tok.kind == .key_fn {
 			p.error('const initializer fn literal is not a constant')
 			return ast.ConstDecl{}
@@ -3280,6 +3283,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			expr: expr
 			pos: pos.extend(expr.pos())
 			comments: comments
+			end_comments: end_comments
 			is_markused: is_markused
 		}
 		fields << field
