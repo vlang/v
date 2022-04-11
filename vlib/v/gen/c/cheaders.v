@@ -258,7 +258,7 @@ static void __closure_destroy(void *closure) {
 
 const c_common_macros = '
 #define EMPTY_VARG_INITIALIZATION 0
-#define EMPTY_STRUCT_DECLARATION
+#define EMPTY_STRUCT_DECLARATION char _dummy
 #define EMPTY_STRUCT_INITIALIZATION
 // Due to a tcc bug, the length of an array needs to be specified, but GCC crashes if it is...
 #define EMPTY_ARRAY_OF_ELEMS(x,n) (x[])
@@ -300,8 +300,6 @@ const c_common_macros = '
 #endif
 
 #ifdef __TINYC__
-	#undef EMPTY_STRUCT_DECLARATION
-	#define EMPTY_STRUCT_DECLARATION char _dummy
 	#undef EMPTY_ARRAY_OF_ELEMS
 	#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[n])
 	#undef __NOINLINE
@@ -576,10 +574,8 @@ voidptr memdup(voidptr src, int sz);
 		#define _Atomic volatile
 
 		// MSVC cannot parse some things properly
-		#undef EMPTY_STRUCT_DECLARATION
 		#undef OPTION_CAST
 
-		#define EMPTY_STRUCT_DECLARATION char __pad
 		#define OPTION_CAST(x)
 		#undef __NOINLINE
 		#undef __IRQHANDLER
@@ -633,7 +629,7 @@ typedef uint8_t byte;
 typedef uint32_t rune;
 typedef size_t usize;
 typedef ptrdiff_t isize;
-#ifndef VNOFLOAT 
+#ifndef VNOFLOAT
 typedef float f32;
 typedef double f64;
 #else
