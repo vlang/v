@@ -5,10 +5,6 @@ module builtin
 
 // IError holds information about an error instance
 pub interface IError {
-	// >> Hack to allow old style custom error implementations
-	// TODO: remove once deprecation period for `IError` methods has ended
-	msg string
-	code int // <<
 	msg() string
 	code() int
 }
@@ -25,15 +21,7 @@ pub fn (err IError) str() string {
 			err.msg()
 		}
 		else {
-			// >> Hack to allow old style custom error implementations
-			// TODO: remove once deprecation period for `IError` methods has ended
-			old_error_style := unsafe { voidptr(&err.msg) != voidptr(&err.code) } // if fields are not defined (new style) they don't have an offset between
-			if old_error_style {
-				'$err.type_name(): $err.msg'
-			} else {
-				// <<
-				'$err.type_name(): $err.msg()'
-			}
+			'$err.type_name(): $err.msg()'
 		}
 	}
 }

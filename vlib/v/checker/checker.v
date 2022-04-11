@@ -1373,15 +1373,6 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 		// Verify methods
 		for imethod in imethods {
 			method := c.table.find_method_with_embeds(typ_sym, imethod.name) or {
-				// >> Hack to allow old style custom error implementations
-				// TODO: remove once deprecation period for `IError` methods has ended
-				if inter_sym.name == 'IError' && (imethod.name == 'msg' || imethod.name == 'code') {
-					c.note("`$styp` doesn't implement method `$imethod.name` of interface `$inter_sym.name`. The usage of fields is being deprecated in favor of methods.",
-						pos)
-					continue
-				}
-				// <<
-
 				typ_sym.find_method_with_generic_parent(imethod.name) or {
 					c.error("`$styp` doesn't implement method `$imethod.name` of interface `$inter_sym.name`",
 						pos)
@@ -1419,15 +1410,8 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 			}
 			// voidptr is an escape hatch, it should be allowed to be passed
 			if utyp != ast.voidptr_type {
-				// >> Hack to allow old style custom error implementations
-				// TODO: remove once deprecation period for `IError` methods has ended
-				if inter_sym.name == 'IError' && (ifield.name == 'msg' || ifield.name == 'code') {
-					// do nothing, necessary warnings are already printed
-				} else {
-					// <<
-					c.error("`$styp` doesn't implement field `$ifield.name` of interface `$inter_sym.name`",
-						pos)
-				}
+				c.error("`$styp` doesn't implement field `$ifield.name` of interface `$inter_sym.name`",
+					pos)
 			}
 		}
 		inter_sym.info.types << utyp
@@ -1757,18 +1741,6 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			return ast.void_type
 		}
 
-		// >> Hack to allow old style custom error implementations
-		// TODO: remove once deprecation period for `IError` methods has ended
-		if sym.name == 'IError' && (field_name == 'msg' || field_name == 'code') {
-			method := c.table.find_method(sym, field_name) or {
-				c.error('invalid `IError` interface implementation: $err', node.pos)
-				return ast.void_type
-			}
-			c.note('the `.$field_name` field on `IError` is deprecated, use `.${field_name}()` instead.',
-				node.pos)
-			return method.return_type
-		}
-		// <<<
 		if c.smartcast_mut_pos != token.Pos{} {
 			c.note('smartcasting requires either an immutable value, or an explicit mut keyword before the value',
 				c.smartcast_mut_pos)
