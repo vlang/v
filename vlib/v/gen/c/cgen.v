@@ -5785,7 +5785,9 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 					}
 				}
 			}
+
 			mut methods := st_sym.methods.clone()
+
 			method_names := methods.map(it.name)
 			match st_sym.info {
 				ast.Struct, ast.Interface, ast.SumType {

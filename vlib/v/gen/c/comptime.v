@@ -451,8 +451,8 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 	mut i := 0
 	// g.writeln('string method = _SLIT("");')
 	if node.kind == .methods {
-		mut methods := sym.methods.filter(it.attrs.len == 0) // methods without attrs first
-		methods_with_attrs := sym.methods.filter(it.attrs.len > 0) // methods with attrs second
+		// methods without attrs first /////// methods with attrs second
+		mut methods, methods_with_attrs := sym.methods.filter(it.attrs.len == 0), sym.methods.filter(it.attrs.len > 0)
 		methods << methods_with_attrs
 		if methods.len > 0 {
 			g.writeln('FunctionData $node.val_var = {0};')
