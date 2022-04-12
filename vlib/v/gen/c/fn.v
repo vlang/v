@@ -2150,6 +2150,9 @@ fn (mut g Gen) write_fn_attrs(attrs []ast.Attr) string {
 				// prefixed by windows to indicate they're for advanced users only and not really supported by V.
 				fn_attrs += '__stdcall '
 			}
+			'_fastcall' {
+				fn_attrs += '__fastcall '
+			}
 			'console' {
 				g.force_main_console = true
 			}
