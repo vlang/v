@@ -374,6 +374,23 @@ pub fn (typ Type) is_unsigned() bool {
 	return typ.idx() in ast.unsigned_integer_type_idxs
 }
 
+pub fn (typ Type) flip_signedness() Type {
+	r := match typ {
+		ast.i8_type { ast.byte_type }
+		ast.i16_type { ast.u16_type }
+		ast.int_type { ast.u32_type }
+		ast.isize_type { ast.usize_type }
+		ast.i64_type { ast.u64_type }
+		ast.byte_type { ast.i8_type }
+		ast.u16_type { ast.i16_type }
+		ast.u32_type { ast.int_type }
+		ast.usize_type { ast.isize_type }
+		ast.u64_type { ast.i64_type }
+		else { typ }
+	}
+	return r
+}
+
 [inline]
 pub fn (typ Type) is_int_literal() bool {
 	return int(typ) == ast.int_literal_type_idx
@@ -442,6 +459,9 @@ pub const (
 		i64_type_idx, isize_type_idx]
 	unsigned_integer_type_idxs = [byte_type_idx, u8_type_idx, u16_type_idx, u32_type_idx,
 		u64_type_idx, usize_type_idx]
+	// C will promote any type smaller than int to int in an expression
+	int_promoted_type_idxs     = [char_type_idx, i8_type_idx, i16_type_idx, byte_type_idx,
+		u8_type_idx, u16_type_idx]
 	float_type_idxs            = [f32_type_idx, f64_type_idx, float_literal_type_idx]
 	number_type_idxs           = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx,
 		byte_type_idx, char_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx,

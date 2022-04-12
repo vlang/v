@@ -775,7 +775,7 @@ fn test_byte_keys() {
 		m[i]++
 		assert m[i] == i + 1
 	}
-	assert m.len == byte_max
+	assert m.len == int(byte_max)
 	keys := m.keys()
 	for i in byte(0) .. byte_max {
 		assert keys[i] == i
@@ -827,7 +827,7 @@ fn test_u16_keys() {
 		m[i]++
 		assert m[i] == i + 1
 	}
-	assert m.len == end
+	assert m.len == int(end)
 	keys := m.keys()
 	for i in u16(0) .. end {
 		assert keys[i] == i
