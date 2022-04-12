@@ -239,16 +239,10 @@ pub fn (mut l TcpListener) accept() ?&TcpConn {
 	$if trace_tcp ? {
 		eprintln('    TcpListener.accept | l.sock.handle: ${l.sock.handle:6}')
 	}
-	addr := Addr{
-		addr: AddrData{
-			Ip6: Ip6{}
-		}
-	}
-	size := sizeof(Addr)
-	mut new_handle := C.accept(l.sock.handle, voidptr(&addr), &size)
+	mut new_handle := C.accept(l.sock.handle, 0, 0)
 	if new_handle <= 0 {
 		l.wait_for_accept() ?
-		new_handle = C.accept(l.sock.handle, voidptr(&addr), &size)
+		new_handle = C.accept(l.sock.handle, 0, 0)
 		if new_handle == -1 || new_handle == 0 {
 			return error('accept failed')
 		}
