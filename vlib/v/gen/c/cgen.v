@@ -4368,9 +4368,11 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 	} else {
 		''
 	}
-	// should the global be initialized now
+	// should the global be initialized now, not later in `vinit()`
+	cinit := node.attrs.contains('cinit')
 	should_init := (!g.pref.use_cache && g.pref.build_mode != .build_module)
 		|| (g.pref.build_mode == .build_module && g.module_built == node.mod)
+		|| cinit
 	mut attributes := ''
 	if node.attrs.contains('weak') {
 		attributes += 'VWEAK '
