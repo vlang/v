@@ -85,10 +85,10 @@ fn works_check_on_sign_input_string(item string) bool {
 		return false
 	}
 	// assert parts.len == 5
-	privbytes := hex.decode(parts[0]) or { panic(err.msg) }
-	pubkey := hex.decode(parts[1]) or { panic(err.msg) }
-	msg := hex.decode(parts[2]) or { panic(err.msg) }
-	mut sig := hex.decode(parts[3]) or { panic(err.msg) }
+	privbytes := hex.decode(parts[0]) or { panic(err) }
+	pubkey := hex.decode(parts[1]) or { panic(err) }
+	msg := hex.decode(parts[2]) or { panic(err) }
+	mut sig := hex.decode(parts[3]) or { panic(err) }
 
 	if pubkey.len != ed25519.public_key_size {
 		return false
@@ -100,12 +100,12 @@ fn works_check_on_sign_input_string(item string) bool {
 	copy(mut priv[..], privbytes)
 	copy(mut priv[32..], pubkey)
 
-	sig2 := ed25519.sign(priv[..], msg) or { panic(err.msg) }
+	sig2 := ed25519.sign(priv[..], msg) or { panic(err) }
 	if sig != sig2[..] {
 		return false
 	}
 
-	res := ed25519.verify(pubkey, msg, sig2) or { panic(err.msg) }
+	res := ed25519.verify(pubkey, msg, sig2) or { panic(err) }
 	// assert res == true
 	if !res {
 		return false
@@ -150,7 +150,7 @@ mut:
 // so, maybe need a long time to finish.
 // be quiet and patient
 fn test_input_from_djb_ed25519_crypto_sign_input_with_syncpool() ? {
-	// contents := os.read_lines('testdata/sign.input') or { panic(err.msg) } //[]string
+	// contents := os.read_lines('testdata/sign.input') or { panic(err) } //[]string
 	mut pool_s := pool.new_pool_processor(
 		callback: worker_for_string_content
 		maxjobs: 4
@@ -165,7 +165,7 @@ fn test_input_from_djb_ed25519_crypto_sign_input_with_syncpool() ? {
 // same as above, but without sync.pool
 /*
 fn test_input_from_djb_ed25519_crypto_sign_input_without_syncpool() ? {
-	// contents := os.read_lines('testdata/sign.input') or { panic(err.msg) } //[]string
+	// contents := os.read_lines('testdata/sign.input') or { panic(err) } //[]string
 	for i, item in ed25519.contents {
 		parts := item.split(':') // []string
 		// println(parts)

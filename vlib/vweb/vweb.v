@@ -393,7 +393,8 @@ pub struct RunParams {
 [manualfree]
 pub fn run_at<T>(global_app &T, params RunParams) ? {
 	mut l := net.listen_tcp(params.family, '$params.host:$params.port') or {
-		return error('failed to listen $err.code $err')
+		ecode := err.code()
+		return error('failed to listen $ecode $err')
 	}
 
 	// Parsing methods attributes

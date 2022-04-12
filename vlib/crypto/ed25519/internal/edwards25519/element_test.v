@@ -387,11 +387,11 @@ fn test_bytes_big_equivalence() ? {
 	mut fe := el.generate_element()
 	mut fe1 := el.generate_element()
 
-	fe.set_bytes(inp) or { panic(err.msg) }
+	fe.set_bytes(inp) or { panic(err) }
 	inp[inp.len - 1] &= (1 << 7) - 1 // mask the most significant bit
 
 	mut b := big.integer_from_bytes(swap_endianness(mut inp)) // need swap_endianness
-	fe1.from_big_integer(b) or { panic(err.msg) } // do swap_endianness internally
+	fe1.from_big_integer(b) or { panic(err) } // do swap_endianness internally
 
 	assert fe == fe1
 

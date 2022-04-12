@@ -170,7 +170,7 @@ fn new_key_from_seed_generic(mut privatekey []byte, seed []byte) {
 
 	mut h := sha512.sum512(seed)
 	mut s := edwards25519.new_scalar()
-	s.set_bytes_with_clamping(h[..32]) or { panic(err.msg) }
+	s.set_bytes_with_clamping(h[..32]) or { panic(err) }
 	mut aa := edwards25519.Point{}
 	aa.scalar_base_mult(mut s)
 

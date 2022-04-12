@@ -82,6 +82,7 @@ pub mut:
 	returns                   bool
 	scope_returns             bool
 	is_builtin_mod            bool // true inside the 'builtin', 'os' or 'strconv' modules; TODO: remove the need for special casing this
+	is_just_builtin_mod       bool // true only inside 'builtin'
 	is_generated              bool // true for `[generated] module xyz` .v files
 	inside_unsafe             bool // true inside `unsafe {}` blocks
 	inside_const              bool // true inside `const ( ... )` blocks
@@ -149,6 +150,7 @@ fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
 	c.scope_returns = false
 	c.mod = ''
 	c.is_builtin_mod = false
+	c.is_just_builtin_mod = false
 	c.inside_unsafe = false
 	c.inside_const = false
 	c.inside_anon_fn = false
@@ -1721,6 +1723,21 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			}
 		}
 	}
+
+	// >> Hack to allow old style custom error implementations
+	// TODO: remove once deprecation period for `IError` methods has ended
+	if sym.idx == ast.error_type_idx && !c.is_just_builtin_mod
+		&& (field_name == 'msg' || field_name == 'code') {
+		method := c.table.find_method(sym, field_name) or {
+			c.error('invalid `IError` interface implementation: $err', node.pos)
+			return ast.void_type
+		}
+		c.note('the `.$field_name` field on `IError` is deprecated, and will be removed after 2022-06-01, use `.${field_name}()` instead.',
+			node.pos)
+		return method.return_type
+	}
+	// <<<
+
 	if has_field {
 		if sym.mod != c.mod && !field.is_pub && sym.language != .c {
 			unwrapped_sym := c.table.sym(c.unwrap_generic(typ))
@@ -1758,19 +1775,6 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			c.error(suggestion.say(unknown_field_msg), node.pos)
 			return ast.void_type
 		}
-
-		// >> Hack to allow old style custom error implementations
-		// TODO: remove once deprecation period for `IError` methods has ended
-		if sym.name == 'IError' && (field_name == 'msg' || field_name == 'code') {
-			method := c.table.find_method(sym, field_name) or {
-				c.error('invalid `IError` interface implementation: $err', node.pos)
-				return ast.void_type
-			}
-			c.note('the `.$field_name` field on `IError` is deprecated, use `.${field_name}()` instead.',
-				node.pos)
-			return method.return_type
-		}
-		// <<<
 		if c.smartcast_mut_pos != token.Pos{} {
 			c.note('smartcasting requires either an immutable value, or an explicit mut keyword before the value',
 				c.smartcast_mut_pos)
@@ -2041,7 +2045,8 @@ fn (mut c Checker) stmt(node_ ast.Stmt) {
 		}
 		ast.Module {
 			c.mod = node.name
-			c.is_builtin_mod = node.name in ['builtin', 'os', 'strconv']
+			c.is_just_builtin_mod = node.name == 'builtin'
+			c.is_builtin_mod = c.is_just_builtin_mod || node.name in ['os', 'strconv']
 			c.check_valid_snake_case(node.name, 'module name', node.pos)
 		}
 		ast.Return {

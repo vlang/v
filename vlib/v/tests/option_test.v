@@ -8,11 +8,11 @@ fn test_err_with_code() {
 		_ := w
 	} else {
 		assert err.msg() == 'hi'
-		assert err.code == 137
+		assert err.code() == 137
 	}
 	v := opt_err_with_code() or {
 		assert err.msg() == 'hi'
-		assert err.code == 137
+		assert err.code() == 137
 		return
 	}
 	assert false
