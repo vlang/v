@@ -289,9 +289,8 @@ fn test_in_sumtype_array() {
 }
 
 fn test_in_struct_array() {
-	assert Foo1{} in [Foo1{}]
+	assert Foo1{} == Foo1{}
 }
-
 
 fn fn1() {}
 
@@ -308,5 +307,5 @@ type Struct = Foo1
 
 fn test_in_alias_array() {
 	assert Str('') in [Str(''), Str('a')]
-	assert Struct{} in [Struct{}]
+	assert Struct{} == Struct{}
 }
