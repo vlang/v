@@ -9,7 +9,7 @@ import toml.util
 
 pub const (
 	digit_extras = [`_`, `.`, `x`, `o`, `b`, `e`, `E`]
-	end_of_text  = 4294967295
+	end_of_text  = u32(~0)
 )
 
 // Scanner contains the necessary fields for the state of the scan process.
