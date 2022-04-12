@@ -454,25 +454,38 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 // and transform them in a serie of equality comparison
 // i.e. `a in [1,2,3]` => `a == 1 || a == 2 || a == 3`
 fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, right ast.ArrayInit) {
-	is_str := right.elem_type.idx() == ast.string_type_idx
-	elem_sym := g.table.sym(right.elem_type)
-	is_array := elem_sym.kind == .array
+	mut elem_sym := g.table.sym(right.elem_type)
 	for i, array_expr in right.exprs {
-		if is_str {
-			g.write('string__eq(')
-		} else if is_array {
-			ptr_typ := g.equality_fn(right.elem_type)
-			g.write('${ptr_typ}_arr_eq(')
-		}
-		g.expr(left)
-		if is_str || is_array {
-			g.write(', ')
-		} else {
-			g.write(' == ')
-		}
-		g.expr(array_expr)
-		if is_str || is_array {
-			g.write(')')
+		match elem_sym.kind {
+			.string, .alias, .sum_type, .map, .interface_, .array, .struct_ {
+				if elem_sym.kind == .string {
+					g.write('string__eq(')
+				} else {
+					ptr_typ := g.equality_fn(right.elem_type)
+					if elem_sym.kind == .alias {
+						g.write('${ptr_typ}_alias_eq(')
+					} else if elem_sym.kind == .sum_type {
+						g.write('${ptr_typ}_sumtype_eq(')
+					} else if elem_sym.kind == .map {
+						g.write('${ptr_typ}_map_eq(')
+					} else if elem_sym.kind == .interface_ {
+						g.write('${ptr_typ}_interface_eq(')
+					} else if elem_sym.kind == .array {
+						g.write('${ptr_typ}_arr_eq(')
+					} else if elem_sym.kind == .struct_ {
+						g.write('${ptr_typ}_struct_eq(')
+					}
+				}
+				g.expr(left)
+				g.write(', ')
+				g.expr(array_expr)
+				g.write(')')
+			}
+			else { // works in function kind
+				g.expr(left)
+				g.write(' == ')
+				g.expr(array_expr)
+			}
 		}
 		if i < right.exprs.len - 1 {
 			g.write(' || ')
