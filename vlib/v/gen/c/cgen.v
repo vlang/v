@@ -4372,7 +4372,6 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 	cinit := node.attrs.contains('cinit')
 	should_init := (!g.pref.use_cache && g.pref.build_mode != .build_module)
 		|| (g.pref.build_mode == .build_module && g.module_built == node.mod)
-		|| cinit
 	mut attributes := ''
 	if node.attrs.contains('weak') {
 		attributes += 'VWEAK '
@@ -4395,10 +4394,10 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			continue
 		}
 		g.definitions.write_string('$visibility_kw$styp $attributes $field.name')
-		if field.has_expr {
+		if field.has_expr || cinit {
 			if g.pref.translated {
 				g.definitions.write_string(' = ${g.expr_string(field.expr)}')
-			} else if field.expr.is_literal() && should_init {
+			} else if (field.expr.is_literal() && should_init) || cinit {
 				// Simple literals can be initialized right away in global scope in C.
 				// e.g. `int myglobal = 10;`
 				g.definitions.write_string(' = ${g.expr_string(field.expr)}')
