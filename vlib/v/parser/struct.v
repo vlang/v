@@ -535,7 +535,9 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	mut ts := p.table.sym(typ)
 	mut info := ts.info as ast.Interface
 	// if methods were declared before, it's an error, ignore them
-	ts.methods = []ast.Fn{cap: 10}
+	lock ts.methods {
+		ts.methods = []ast.Fn{cap: 10}
+	}
 	// Parse fields or methods
 	mut fields := []ast.StructField{cap: 20}
 	mut methods := []ast.FnDecl{cap: 20}

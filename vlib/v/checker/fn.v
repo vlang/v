@@ -165,10 +165,14 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 		// needed for proper error reporting during vweb route checking
 		if node.method_idx < sym.methods.len {
-			sym.methods[node.method_idx].source_fn = voidptr(node)
+			lock sym.methods {
+				sym.methods[node.method_idx].source_fn = voidptr(node)
+			}
 		} else {
-			c.error('method index: $node.method_idx >= sym.methods.len: $sym.methods.len',
-				node.pos)
+			rlock sym.methods {
+				c.error('method index: $node.method_idx >= sym.methods.len: $sym.methods.len',
+					node.pos)
+			}
 		}
 	}
 	if node.language == .v {
@@ -1588,7 +1592,9 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 	}
 	if left_type != ast.void_type {
-		suggestion := util.new_suggestion(method_name, left_sym.methods.map(it.name))
+		suggestion := util.new_suggestion(method_name, rlock left_sym.methods {
+			left_sym.methods.map(it.name)
+		})
 		c.error(suggestion.say(unknown_method_msg), node.pos)
 	}
 	return ast.void_type

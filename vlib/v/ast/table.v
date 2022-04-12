@@ -366,8 +366,11 @@ pub fn (mut t Table) register_interface(idecl InterfaceDecl) {
 pub fn (mut t TypeSymbol) register_method(new_fn Fn) int {
 	// returns a method index, stored in the ast.FnDecl
 	// for faster lookup in the checker's fn_decl method
-	t.methods << new_fn
-	idx := t.methods.len - 1
+
+	idx := lock t.methods {
+		t.methods << new_fn
+		t.methods.len - 1
+	}
 	return idx
 }
 
@@ -1951,7 +1954,9 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 					}
 				}
 			}
-			mut all_methods := ts.methods.clone()
+			mut all_methods := rlock ts.methods {
+				ts.methods.clone()
+			}
 			for imethod in imethods {
 				for mut method in all_methods {
 					if imethod.name == method.name {
@@ -2119,7 +2124,9 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 							sym.register_method(method)
 						}
 
-						mut all_methods := parent.methods.clone()
+						mut all_methods := rlock parent.methods {
+							parent.methods.clone()
+						}
 						for imethod in imethods {
 							for mut method in all_methods {
 								if imethod.name == method.name {
@@ -2137,7 +2144,9 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 						}
 						sym.is_pub = true
 						sym.kind = parent.kind
-						sym.methods = all_methods
+						lock sym.methods {
+							sym.methods = all_methods
+						}
 					} else {
 						util.verror('generic error', 'the number of generic types of interface `$parent.name` is inconsistent with the concrete types')
 					}

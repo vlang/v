@@ -88,7 +88,7 @@ pub mut:
 	kind     Kind
 	name     string // the internal & source name of the type, i.e. `[5]int`.
 	cname    string // the name with no dots for use in the generated C code
-	methods  []Fn
+	methods  shared []Fn
 	mod      string
 	is_pub   bool
 	language Language
@@ -238,7 +238,9 @@ pub fn (ts TypeSymbol) debug() []string {
 	mut res := []string{}
 	ts.dbg_common(mut res)
 	res << 'info: $ts.info'
-	res << 'methods ($ts.methods.len): ' + ts.methods.map(it.str()).join(', ')
+	rlock ts.methods {
+		res << 'methods ($ts.methods.len): ' + ts.methods.map(it.str()).join(', ')
+	}
 	return res
 }
 
