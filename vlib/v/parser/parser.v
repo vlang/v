@@ -36,6 +36,7 @@ mut:
 	inside_test_file          bool // when inside _test.v or _test.vv file
 	inside_if                 bool
 	inside_if_expr            bool
+	inside_if_cond            bool
 	inside_ct_if_expr         bool
 	inside_or_expr            bool
 	inside_for                bool
@@ -90,6 +91,7 @@ mut:
 	should_abort              bool // when too many errors/warnings/notices are accumulated, should_abort becomes true, and the parser should stop
 	codegen_text              string
 	struct_init_generic_types []ast.Type
+	if_cond_comments          []ast.Comment
 }
 
 __global codegen_files = []&ast.File{}

@@ -21,6 +21,9 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 	if !p.pref.is_fmt {
 		p.eat_comments()
 	}
+	if p.inside_if_cond {
+		p.if_cond_comments << p.eat_comments()
+	}
 	inside_array_lit := p.inside_array_lit
 	p.inside_array_lit = false
 	defer {
@@ -350,6 +353,9 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 			return node
 		}
 	}
+	if p.inside_if_cond {
+		p.if_cond_comments << p.eat_comments()
+	}
 	return p.expr_with_left(node, precedence, is_stmt_ident)
 }
 
@@ -481,6 +487,9 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	precedence := p.tok.precedence()
 	mut pos := p.tok.pos()
 	p.next()
+	if p.inside_if_cond {
+		p.if_cond_comments << p.eat_comments()
+	}
 	mut right := ast.empty_expr()
 	prev_expecting_type := p.expecting_type
 	if op in [.key_is, .not_is] {
