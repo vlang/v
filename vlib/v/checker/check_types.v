@@ -87,8 +87,8 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	}
 	if expected.has_flag(.optional) {
 		sym := c.table.sym(got)
-		if (sym.kind == .interface_ && sym.name == 'IError')
-			|| got in [ast.none_type, ast.error_type] {
+		if sym.idx == ast.error_type_idx || got in [ast.none_type, ast.error_type] {
+			// IErorr
 			return true
 		} else if !c.check_basic(got, expected.clear_flag(.optional)) {
 			return false

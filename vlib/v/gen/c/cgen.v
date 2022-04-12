@@ -2046,7 +2046,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		g.write('.msg))')
 		return
 	}
-	if got_sym.kind == .none_ && exp_sym.name == 'IError' {
+	if got_sym.kind == .none_ && exp_sym.idx == ast.error_type_idx {
 		g.expr(expr)
 		return
 	}
@@ -5488,7 +5488,7 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 			// >> Hack to allow old style custom error implementations
 			// TODO: remove once deprecation period for `IError` methods has ended
 			// fix MSVC not handling empty struct inits
-			if methods.len == 0 && interface_name == 'IError' {
+			if methods.len == 0 && isym.idx == ast.error_type_idx {
 				methods_struct.writeln('\t\t._method_msg = NULL,')
 				methods_struct.writeln('\t\t._method_code = NULL,')
 			}

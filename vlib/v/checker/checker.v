@@ -1375,7 +1375,8 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 			method := c.table.find_method_with_embeds(typ_sym, imethod.name) or {
 				// >> Hack to allow old style custom error implementations
 				// TODO: remove once deprecation period for `IError` methods has ended
-				if inter_sym.name == 'IError' && (imethod.name == 'msg' || imethod.name == 'code') {
+				if inter_sym.idx == ast.error_type_idx
+					&& (imethod.name == 'msg' || imethod.name == 'code') {
 					c.note("`$styp` doesn't implement method `$imethod.name` of interface `$inter_sym.name`. The usage of fields is being deprecated in favor of methods.",
 						pos)
 					continue
@@ -1421,7 +1422,8 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 			if utyp != ast.voidptr_type {
 				// >> Hack to allow old style custom error implementations
 				// TODO: remove once deprecation period for `IError` methods has ended
-				if inter_sym.name == 'IError' && (ifield.name == 'msg' || ifield.name == 'code') {
+				if inter_sym.idx == ast.error_type_idx
+					&& (ifield.name == 'msg' || ifield.name == 'code') {
 					// do nothing, necessary warnings are already printed
 				} else {
 					// <<
