@@ -287,3 +287,25 @@ fn test_in_sumtype_array() {
 	assert Foo1{} in foos
 	assert Foo2{} !in foos
 }
+
+fn test_in_struct_array() {
+	assert Foo1{} == Foo1{}
+}
+
+fn fn1() {}
+
+fn fn2() {}
+
+fn fn3() {}
+
+fn test_in_func_array() {
+	assert fn1 in [fn1, fn2, fn3]
+}
+
+type Str = string
+type Struct = Foo1
+
+fn test_in_alias_array() {
+	assert Str('') in [Str(''), Str('a')]
+	assert Struct{} == Struct{}
+}
