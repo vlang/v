@@ -768,6 +768,7 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 		t.type_symbols[existing_idx] = &TypeSymbol{
 			...typ
 			methods: existing_symbol.methods
+			idx: existing_idx
 		}
 		return existing_idx
 	}
@@ -781,11 +782,13 @@ fn (mut t Table) rewrite_already_registered_symbol(typ TypeSymbol, existing_idx 
 				*existing_symbol = &TypeSymbol{
 					...typ
 					kind: existing_symbol.kind
+					idx: existing_idx
 				}
 			}
 		} else {
 			t.type_symbols[existing_idx] = &TypeSymbol{
 				...typ
+				idx: existing_idx
 			}
 		}
 		return existing_idx
