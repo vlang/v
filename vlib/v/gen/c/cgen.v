@@ -1343,7 +1343,21 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
 	if !info.has_decl && (not_anon || is_fn_sig) && !func.return_type.has_flag(.generic)
 		&& !has_generic_arg {
 		fn_name := sym.cname
-		g.type_definitions.write_string('typedef ${g.typ(func.return_type)} (*$fn_name)(')
+
+		mut call_conv := ""
+
+		for attr in func.attrs {
+			match attr.name {
+				"callconv" {
+					if attr.has_arg {
+						call_conv = "__$attr.arg "
+					}
+				}
+				else {}
+			}
+		}
+
+		g.type_definitions.write_string('typedef ${g.typ(func.return_type)} ($call_conv*$fn_name)(')
 		for i, param in func.params {
 			g.type_definitions.write_string(g.typ(param.typ))
 			if i < func.params.len - 1 {
