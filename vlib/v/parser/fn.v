@@ -197,6 +197,19 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			'c2v_variadic' { is_c2v_variadic = true }
 			'use_new' { is_ctor_new = true }
 			'markused' { is_markused = true }
+			"windows_stdcall" {
+				p.warn_with_pos('windows_stdcall has been deprecated, it will be an error soon', p.tok.pos())
+			}
+			"_fastcall" {
+				p.warn_with_pos('_fastcall has been deprecated, it will be an error soon', p.tok.pos())
+			}
+			"callconv" {
+				if fna.has_arg {
+					if fna.arg !in ['stdcall', 'fastcall', 'cdecl'] {
+						p.error_with_pos('unsupported calling convention, supported are stdcall, fastcall and cdecl', p.tok.pos())
+					 }
+				}
+			}
 			else {}
 		}
 	}

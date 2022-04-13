@@ -2153,6 +2153,11 @@ fn (mut g Gen) write_fn_attrs(attrs []ast.Attr) string {
 			'_fastcall' {
 				fn_attrs += '__fastcall '
 			}
+			"callconv" {
+				if attr.has_arg {
+					fn_attrs += '__$attr.arg '
+				}
+			}
 			'console' {
 				g.force_main_console = true
 			}
