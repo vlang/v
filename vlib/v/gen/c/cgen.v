@@ -1349,9 +1349,7 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
 		for attr in func.attrs {
 			match attr.name {
 				'callconv' {
-					if attr.has_arg {
-						call_conv = '__$attr.arg '
-					}
+					call_conv = '__$attr.arg '
 				}
 				else {}
 			}
