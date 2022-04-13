@@ -1317,11 +1317,10 @@ fn (t &Table) sumtype_check_aggregate_variant(parent_type Type, aggregate_type &
 fn (t &Table) sumtype_check_alias_variant(parent_type Type, alias_type Type, is_as bool) bool {
 	parent_sym := t.sym(parent_type).info as SumType
 	if !t.sumtype_check_variant_in_type(parent_sym, alias_type, is_as) {
-		// the alias is not inside one of the Sum type, like
-		// https://github.com/vlang/v/issues/13863
 		alias_info := t.sym(alias_type).info as Alias
-		// The alias is an alias or of the same type of the parent or one
-		// of the SumType variant. e.g: alias of another sum type
+		// The alias is an alias or of the same sumtype parent, or one
+		// of the SumType variant. e.g: alias of another sum type.
+		// https://github.com/vlang/v/issues/14029
 		return parent_type == alias_info.parent_type
 			|| t.sumtype_has_variant(parent_type, alias_info.parent_type, is_as)
 	}
