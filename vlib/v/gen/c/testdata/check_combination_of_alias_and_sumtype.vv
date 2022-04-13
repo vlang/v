@@ -20,7 +20,7 @@ struct Err<U> {
 	value U
 }
 
-fn test_report() {
+fn main() {
 	r := Opt<ParseRes>(None<ParseRes>{})
 	match r {
 		Some<ParseRes> {
