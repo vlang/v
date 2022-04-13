@@ -311,6 +311,17 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 					dec.writeln('\t\t}')
 				}
 
+				if var_t == 'Array_string' {
+					tmp := g.new_tmp_var()
+					dec.writeln('\t\tif (cJSON_IsArray(root)) {')
+					dec.writeln('\t\t\tOption_Array_string $tmp = ${js_dec_name(var_t)}(root);')
+					dec.writeln('\t\t\tif (${tmp}.state != 0) {')
+					dec.writeln('\t\t\t\treturn (Option_$sym.cname){ .state = ${tmp}.state, .err = ${tmp}.err, .data = {0} };')
+					dec.writeln('\t\t\t}')
+					dec.writeln('\t\t\tres = Array_string_to_sumtype_${sym.cname}(($var_t*)${tmp}.data);')
+					dec.writeln('\t\t}')
+				}
+
 				if var_t in ['i64', 'int', 'i8', 'u64', 'u32', 'u16', 'byte', 'u8', 'rune', 'f64',
 					'f32'] {
 					if number_is_met {
