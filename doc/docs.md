@@ -40,7 +40,7 @@ NB: You can also pass one of `-gcc`, `-msvc`, `-clang` to `make.bat` instead,
 if you do prefer to use a different C compiler, but -tcc is small, fast, and
 easy to install (V will download a prebuilt binary automatically).
 
-For C compiler downloads and more info, see 
+For C compiler downloads and more info, see
 [here](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows).
 
 It is recommended to add this folder to the PATH of your environment variables.
@@ -843,7 +843,7 @@ println(nums.cap) // "3" or greater
 nums = [] // The array is now empty
 println(nums.len) // "0"
 ```
-`data` is a field (of type `voidptr`) with the address of the first 
+`data` is a field (of type `voidptr`) with the address of the first
 element. This is for low-level [`unsafe`](#memory-unsafe-code) code.
 
 Note that the fields are read-only and can't be modified by the user.
@@ -892,7 +892,7 @@ for i in 0 .. 1000 {
 ```
 Note: The above code uses a [range `for`](#range-for) statement.
 
-You can initialize the array by accessing the `it` variable which gives 
+You can initialize the array by accessing the `it` variable which gives
 the index as shown here:
 
 ```v
@@ -1022,7 +1022,7 @@ upper_fn := words.map(fn (w string) string {
 println(upper_fn) // ['HELLO', 'WORLD']
 ```
 
-`it` is a builtin variable which refers to the element currently being 
+`it` is a builtin variable which refers to the element currently being
 processed in filter/map methods.
 
 Additionally, `.any()` and `.all()` can be used to conveniently test
@@ -1035,8 +1035,8 @@ println(nums.all(it >= 2)) // false
 ```
 
 There are further built-in methods for arrays:
-* `a.repeat(n)` concatenates the array elements `n` times 
-* `a.insert(i, val)` inserts a new element `val` at index `i` and 
+* `a.repeat(n)` concatenates the array elements `n` times
+* `a.insert(i, val)` inserts a new element `val` at index `i` and
   shifts all following elements to the right
 * `a.insert(i, [3, 4, 5])` inserts several elements
 * `a.prepend(val)` inserts a value at the beginning, equivalent to `a.insert(0, val)`
@@ -1052,7 +1052,7 @@ There are further built-in methods for arrays:
 * `a.pop()` removes the last element and returns it
 * `a.reverse()` makes a new array with the elements of `a` in reverse order
 * `a.reverse_in_place()` reverses the order of elements in `a`
-* `a.join(joiner)` concatenates an array of strings into one string 
+* `a.join(joiner)` concatenates an array of strings into one string
   using `joiner` string as a separator
 
 See also [vlib/arrays](https://modules.vlang.io/arrays.html).
@@ -1185,7 +1185,7 @@ println(b) // [7, 3]
 
 V supports array and string slices with negative indexes.
 Negative indexing starts from the end of the array towards the start,
-for example `-3` is equal to `array.len - 3`. 
+for example `-3` is equal to `array.len - 3`.
 Negative slices have a different syntax from normal slices, i.e. you need
 to add a `gate` between the array name and the square bracket: `a#[..-3]`.
 The `gate` specifies that this is a different type of slice and remember that
@@ -2223,7 +2223,7 @@ button.Size = Size{
 If multiple embedded structs have methods or fields with the same name, or if methods or fields
 with the same name are defined in the struct, you can call methods or assign to variables in
 the embedded struct like `button.Size.area()`.
-When you do not specify the embedded struct name, the method of the outermost struct will be 
+When you do not specify the embedded struct name, the method of the outermost struct will be
 targeted.
 
 ## Unions
@@ -2951,7 +2951,7 @@ a convenience for writing `s.xyz()` instead of `xyz(s)`.
 N.B. This feature is NOT a "default implementation" like in C#.
 
 For example, if a struct `cat` is wrapped in an interface `a`, that has
-implemented a method with the same name `speak`, as a method implemented by 
+implemented a method with the same name `speak`, as a method implemented by
 the struct, and you do `a.speak()`, *only* the interface method is called:
 
 ```v
@@ -3491,13 +3491,13 @@ Above, `http.get` returns a `?http.Response`. `resp` is only in scope for the fi
 
 ## Custom error types
 
-V gives you the ability to define custom error types through the `IError` interface. 
-The interface requires two methods: `msg() string` and `code() int`. Every type that 
-implements these methods can be used as an error. 
+V gives you the ability to define custom error types through the `IError` interface.
+The interface requires two methods: `msg() string` and `code() int`. Every type that
+implements these methods can be used as an error.
 
-When defining a custom error type it is recommended to embed the builtin `Error` default 
-implementation. This provides an empty default implementation for both required methods, 
-so you only have to implement what you really need, and may provide additional utility 
+When defining a custom error type it is recommended to embed the builtin `Error` default
+implementation. This provides an empty default implementation for both required methods,
+so you only have to implement what you really need, and may provide additional utility
 functions in the future.
 
 ```v
@@ -4112,8 +4112,8 @@ memory manually. (See [attributes](#attributes)).
 _Note: right now autofree is hidden behind the -autofree flag. It will be enabled by
 default in V 0.3. If autofree is not used, V programs will leak memory._
 
-Note 2: Autofree is still WIP. Until it stabilises and becomes the default, please 
-compile your long running processes with `-gc boehm`, which will use the 
+Note 2: Autofree is still WIP. Until it stabilises and becomes the default, please
+compile your long running processes with `-gc boehm`, which will use the
 Boehm-Demers-Weiser conservative garbage collector, to free the memory, that your
 programs leak, at runtime.
 
@@ -4702,7 +4702,7 @@ Modules are up to date.
 	at the top of all files in your module. For `mymodule.v`:
 	```v
 	module mymodule
-	
+
 	pub fn hello_world() {
 		println('Hello World!')
 	}
@@ -5745,11 +5745,11 @@ fn main() {
 ```
 
 Build this example with `v -live message.v`.
-	
-You can also run this example with `v -live run message.v`. 
-	Make sure that in command you use a path to a V's file, 
-	**not** a path to a folder (like `v -live run .`) - 
-	in that case you need to modify content of a folder (add new file, for example), 
+
+You can also run this example with `v -live run message.v`.
+	Make sure that in command you use a path to a V's file,
+	**not** a path to a folder (like `v -live run .`) -
+	in that case you need to modify content of a folder (add new file, for example),
 	because changes in *message.v* will have no effect.
 
 Functions that you want to be reloaded must have `[live]` attribute
@@ -5978,9 +5978,14 @@ fn custom_allocations() {
 struct C.Foo {
 }
 
-// Used in Win32 API code when you need to pass callback function
-[windows_stdcall]
+// Used to add a custom calling convention to a function, available calling convention: stdcall, fastcall and cdecl.
+// This list aslo apply for type aliases (see below).
+[callconv: "stdcall"]
 fn C.DefWindowProc(hwnd int, msg int, lparam int, wparam int)
+
+// Used to add a custom calling convention to a function type aliases.
+[callconv: "fastcall"]
+type FastFn = fn (int) bool
 
 // Windows only:
 // If a default graphics library is imported (ex. gg, ui), then the graphical window takes
