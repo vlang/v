@@ -543,7 +543,10 @@ fn repl_run_vfile(file string) ?os.Result {
 	$if trace_repl_temp_files ? {
 		eprintln('>> repl_run_vfile file: $file')
 	}
-	s := os.execute('${os.quoted_path(vexe)} -repl run ${os.quoted_path(file)}')
+	// FIXME: gcc is slower so we could make the check on witch compiler
+	// is available and pick the best one, but overall the repl should not compiler
+	// the code, so why not focusing on a real repl?
+	s := os.execute('${os.quoted_path(vexe)} -repl -cc gcc run ${os.quoted_path(file)}')
 	if s.exit_code < 0 {
 		rerror(s.output)
 		return error(s.output)
