@@ -1280,23 +1280,52 @@ pub fn (t &Table) sumtype_has_variant(parent Type, variant Type, is_as bool) boo
 	if parent_sym.kind == .sum_type {
 		parent_info := parent_sym.info as SumType
 		var_sym := t.sym(variant)
-		if var_sym.kind == .aggregate {
-			var_info := var_sym.info as Aggregate
-			for var_type in var_info.types {
-				if !t.sumtype_has_variant(parent, var_type, is_as) {
-					return false
-				}
+		match var_sym.kind {
+			.aggregate {
+				return t.sumtype_check_aggregate_variant(parent, variant, is_as)
 			}
-			return true
-		} else {
-			for v in parent_info.variants {
-				if v.idx() == variant.idx() && (!is_as || v.nr_muls() == variant.nr_muls()) {
-					return true
-				}
+			.alias {
+				return t.sumtype_check_alias_variant(parent, variant, is_as)
+			}
+			else {
+				return t.sumtype_check_variant_in_type(parent_info, variant, is_as)
 			}
 		}
 	}
 	return false
+}
+
+fn (t &Table) sumtype_check_variant_in_type(parent_info SumType, variant Type, is_as bool) bool {
+	for v in parent_info.variants {
+		if v.idx() == variant.idx() && (!is_as || v.nr_muls() == variant.nr_muls()) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (t &Table) sumtype_check_aggregate_variant(parent_type Type, aggregate_type &Type, is_as bool) bool {
+	aggregate_sym := t.sym(aggregate_type).info as Aggregate
+	for var_type in aggregate_sym.types {
+		if !t.sumtype_has_variant(parent_type, var_type, is_as) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (t &Table) sumtype_check_alias_variant(parent_type Type, alias_type Type, is_as bool) bool {
+	parent_sym := t.sym(parent_type).info as SumType
+	if !t.sumtype_check_variant_in_type(parent_sym, alias_type, is_as) {
+		alias_info := t.sym(alias_type).info as Alias
+		// The alias is an alias or of the same sumtype parent, or one
+		// of the SumType variant. e.g: alias of another sum type.
+		// https://github.com/vlang/v/issues/14029
+		return parent_type == alias_info.parent_type
+			|| t.sumtype_has_variant(parent_type, alias_info.parent_type, is_as)
+	}
+	// the alias_type is inside one of the variant of the sum type
+	return true
 }
 
 pub fn (t &Table) is_sumtype_or_in_variant(parent Type, typ Type) bool {

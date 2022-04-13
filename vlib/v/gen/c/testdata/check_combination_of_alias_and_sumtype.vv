@@ -20,10 +20,11 @@ struct Err<U> {
 	value U
 }
 
-fn test_report() {
+fn main() {
 	r := Opt<ParseRes>(None<ParseRes>{})
 	match r {
 		Some<ParseRes> {
+			// make possible cast fo the same type!
 			rx := Result<[]Token, ParseErr>(r.value)
 		}
 		None<ParseRes> {}
