@@ -896,7 +896,12 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 		sftyp := g.typ(field.typ)
 		mut field_styp := sftyp.replace('*', '')
 		field_styp_fn_name := if sym_has_str_method {
-			'${field_styp}_str'
+			mut field_fn_name := '${field_styp}_str'
+			if sym.info is ast.Struct {
+				field_fn_name = g.generic_fn_name(sym.info.concrete_types, field_fn_name,
+					false)
+			}
+			field_fn_name
 		} else {
 			g.get_str_fn(field.typ)
 		}
