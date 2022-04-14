@@ -148,29 +148,18 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	}
 }
 
-pub const cc_to_windows = 'x86_64-w64-mingw32-gcc'
-
-pub const cc_to_linux = 'clang'
-
 fn (mut p Preferences) find_cc_if_cross_compiling() {
-	if p.os == .windows {
-		$if !windows {
-			// Allow for explicit overrides like `v -showcc -cc msvc -os windows file.v`,
-			// so that the flag passing can be debugged on other OSes too, not only
-			// on windows (building will stop later, when -showcc already could display all
-			// options).
-			if p.ccompiler != 'msvc' {
-				// Cross compiling to Windows
-				p.ccompiler = vcross_compiler_name(pref.cc_to_windows)
-			}
-		}
+	if p.os == get_host_os() {
+		return
 	}
-	if p.os == .linux {
-		$if !linux {
-			// Cross compiling to Linux
-			p.ccompiler = vcross_compiler_name(pref.cc_to_linux)
-		}
+	if p.os == .windows && p.ccompiler == 'msvc' {
+		// Allow for explicit overrides like `v -showcc -cc msvc -os windows file.v`,
+		// this makes flag passing more easily debuggable on other OSes too, not only
+		// on windows (building will stop later, when -showcc already could display all
+		// options).
+		return
 	}
+	p.ccompiler = p.vcross_compiler_name()
 }
 
 fn (mut p Preferences) try_to_use_tcc_by_default() {
@@ -256,10 +245,22 @@ pub fn vexe_path() string {
 	return real_vexe_path
 }
 
-pub fn vcross_compiler_name(vccname_default string) string {
+pub fn (p &Preferences) vcross_compiler_name() string {
 	vccname := os.getenv('VCROSS_COMPILER_NAME')
 	if vccname != '' {
 		return vccname
 	}
-	return vccname_default
+	if p.os == .windows {
+		if p.m64 {
+			return 'x86_64-w64-mingw32-gcc'
+		}
+		return 'i686-w64-mingw32-gcc'
+	}
+	if p.os == .linux {
+		return 'clang'
+	}
+	eprintln('Note: V can only cross compile to windows and linux for now by default.')
+	eprintln('It will use `cc` as a cross compiler for now, although that will probably fail.')
+	eprintln('Set `VCROSS_COMPILER_NAME` to the name of your cross compiler, for your target OS: $p.os .')
+	return 'cc'
 }

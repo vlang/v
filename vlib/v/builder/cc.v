@@ -840,7 +840,7 @@ fn (mut c Builder) cc_windows_cross() {
 	all_args << args
 	all_args << '-municode'
 	c.dump_c_options(all_args)
-	mut cmd := pref.vcross_compiler_name(pref.cc_to_windows) + ' ' + all_args.join(' ')
+	mut cmd := c.pref.vcross_compiler_name() + ' ' + all_args.join(' ')
 	// cmd := 'clang -o $obj_name -w $include -m32 -c -target x86_64-win32 ${pref.default_module_path}/$c.out_name_c'
 	if c.pref.is_verbose || c.pref.show_cc {
 		println(cmd)
