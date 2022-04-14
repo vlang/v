@@ -3364,6 +3364,10 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	mut comments := []ast.Comment{}
 	for {
 		comments = p.eat_comments()
+		is_volatile := p.tok.kind == .key_volatile
+		if is_volatile {
+			p.next()
+		}
 		if is_block && p.tok.kind == .eof {
 			p.error('unexpected eof, expecting `)`')
 			return ast.GlobalDecl{}
@@ -3416,6 +3420,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 			typ: typ
 			comments: comments
 			is_markused: is_markused
+			is_volatile: is_volatile
 		}
 		fields << field
 		p.table.global_scope.register(field)

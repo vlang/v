@@ -663,6 +663,7 @@ pub:
 	pos         token.Pos
 	typ_pos     token.Pos
 	is_markused bool // an explict `[markused]` tag; the global will NOT be removed by `-skip-unused`
+	is_volatile bool
 pub mut:
 	expr     Expr
 	typ      Type

@@ -4417,7 +4417,8 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			g.definitions.writeln('$fn_type_name = ${g.table.sym(field.typ).name}; // global2')
 			continue
 		}
-		g.definitions.write_string('$visibility_kw$styp $attributes $field.name')
+		modifier := if field.is_volatile { ' volatile ' } else { '' }
+		g.definitions.write_string('$visibility_kw$modifier$styp $attributes $field.name')
 		if field.has_expr || cinit {
 			if g.pref.translated {
 				g.definitions.write_string(' = ${g.expr_string(field.expr)}')
