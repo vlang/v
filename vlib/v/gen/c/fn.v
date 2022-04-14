@@ -2148,10 +2148,13 @@ fn (mut g Gen) write_fn_attrs(attrs []ast.Attr) string {
 			'windows_stdcall' {
 				// windows attributes (msvc/mingw)
 				// prefixed by windows to indicate they're for advanced users only and not really supported by V.
-				fn_attrs += '__stdcall '
+				fn_attrs += call_convention_attribute('stdcall', g.is_cc_msvc)
 			}
 			'_fastcall' {
-				fn_attrs += '__fastcall '
+				fn_attrs += call_convention_attribute('fastcall', g.is_cc_msvc)
+			}
+			'callconv' {
+				fn_attrs += call_convention_attribute(attr.arg, g.is_cc_msvc)
 			}
 			'console' {
 				g.force_main_console = true
@@ -2162,4 +2165,8 @@ fn (mut g Gen) write_fn_attrs(attrs []ast.Attr) string {
 		}
 	}
 	return fn_attrs
+}
+
+fn call_convention_attribute(cconvention string, is_cc_msvc bool) string {
+	return if is_cc_msvc { '__$cconvention ' } else { '__attribute__(($cconvention)) ' }
 }

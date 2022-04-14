@@ -1152,6 +1152,7 @@ pub:
 	pos      token.Pos
 	type_pos token.Pos
 	comments []Comment
+	attrs    []Attr // attributes of type declaration
 }
 
 // TODO: handle this differently

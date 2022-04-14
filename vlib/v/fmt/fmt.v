@@ -1290,6 +1290,7 @@ pub fn (mut f Fmt) alias_type_decl(node ast.AliasTypeDecl) {
 }
 
 pub fn (mut f Fmt) fn_type_decl(node ast.FnTypeDecl) {
+	f.attrs(node.attrs)
 	if node.is_pub {
 		f.write('pub ')
 	}

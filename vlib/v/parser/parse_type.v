@@ -229,6 +229,23 @@ pub fn (mut p Parser) parse_multi_return_type() ast.Type {
 pub fn (mut p Parser) parse_fn_type(name string) ast.Type {
 	// p.warn('parse fn')
 	p.check(.key_fn)
+
+	for attr in p.attrs {
+		match attr.name {
+			'callconv' {
+				if !attr.has_arg {
+					p.error_with_pos('callconv attribute is present but its value is missing',
+						p.prev_tok.pos())
+				}
+				if attr.arg !in ['stdcall', 'fastcall', 'cdecl'] {
+					p.error_with_pos('unsupported calling convention, supported are stdcall, fastcall and cdecl',
+						p.prev_tok.pos())
+				}
+			}
+			else {}
+		}
+	}
+
 	mut has_generic := false
 	line_nr := p.tok.line_nr
 	args, _, is_variadic := p.fn_args()
@@ -255,6 +272,7 @@ pub fn (mut p Parser) parse_fn_type(name string) ast.Type {
 		return_type: return_type
 		return_type_pos: return_type_pos
 		is_method: false
+		attrs: p.attrs
 	}
 	// MapFooFn typedefs are manually added in cheaders.v
 	// because typedefs get generated after the map struct is generated
