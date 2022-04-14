@@ -1345,24 +1345,34 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
 		fn_name := sym.cname
 
 		mut call_conv := ''
-
+		mut msvc_call_conv := ''
+		is_cc_msvc := g.pref.ccompiler == 'msvc'
 		for attr in func.attrs {
 			match attr.name {
 				'callconv' {
-					call_conv = '__$attr.arg '
+					if is_cc_msvc {
+						msvc_call_conv = '__$attr.arg '
+					} else {
+						call_conv = '$attr.arg'
+					}
 				}
 				else {}
 			}
 		}
+		call_conv_attribute_suffix := if call_conv.len != 0 {
+			'__attribute__(($call_conv))'
+		} else {
+			''
+		}
 
-		g.type_definitions.write_string('typedef ${g.typ(func.return_type)} ($call_conv*$fn_name)(')
+		g.type_definitions.write_string('typedef ${g.typ(func.return_type)} ($msvc_call_conv*$fn_name)(')
 		for i, param in func.params {
 			g.type_definitions.write_string(g.typ(param.typ))
 			if i < func.params.len - 1 {
 				g.type_definitions.write_string(',')
 			}
 		}
-		g.type_definitions.writeln(');')
+		g.type_definitions.writeln(')$call_conv_attribute_suffix;')
 	}
 }
 

@@ -231,10 +231,12 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			}
 			'callconv' {
 				if !fna.has_arg {
-					p.error_with_pos('callconv attribute is present but its value is missing', p.prev_tok.pos())
+					p.error_with_pos('callconv attribute is present but its value is missing',
+						p.prev_tok.pos())
 				}
 				if fna.arg !in ['stdcall', 'fastcall', 'cdecl'] {
-					p.error_with_pos('unsupported calling convention, supported are stdcall, fastcall and cdecl', p.prev_tok.pos())
+					p.error_with_pos('unsupported calling convention, supported are stdcall, fastcall and cdecl',
+						p.prev_tok.pos())
 				}
 			}
 			else {}

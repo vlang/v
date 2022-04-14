@@ -234,10 +234,12 @@ pub fn (mut p Parser) parse_fn_type(name string) ast.Type {
 		match attr.name {
 			'callconv' {
 				if !attr.has_arg {
-					p.error_with_pos('callconv attribute is present but its value is missing', p.prev_tok.pos())
+					p.error_with_pos('callconv attribute is present but its value is missing',
+						p.prev_tok.pos())
 				}
 				if attr.arg !in ['stdcall', 'fastcall', 'cdecl'] {
-					p.error_with_pos('unsupported calling convention, supported are stdcall, fastcall and cdecl', p.prev_tok.pos())
+					p.error_with_pos('unsupported calling convention, supported are stdcall, fastcall and cdecl',
+						p.prev_tok.pos())
 				}
 			}
 			else {}
