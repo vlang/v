@@ -31,7 +31,7 @@ jobs:
           rm -rf vc/v.c vc/v_win.c
 
           ./v -o vc/v.c -os cross cmd/v
-          ./v -o vc/v_win.c -os windows cmd/v
+          ./v -o vc/v_win.c -os windows -cc msvc cmd/v
 
           sed -i "1s/^/#define V_COMMIT_HASH \"$COMMIT_HASH\"\n/" vc/v.c
           sed -i "1s/^/#define V_COMMIT_HASH \"$COMMIT_HASH\"\n/" vc/v_win.c
