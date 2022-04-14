@@ -311,14 +311,21 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 					dec.writeln('\t\t}')
 				}
 
-				if var_t == 'Array_string' {
+				if var_t.starts_with('Array_') {
 					tmp := g.new_tmp_var()
-					dec.writeln('\t\tif (cJSON_IsArray(root)) {')
-					dec.writeln('\t\t\tOption_Array_string $tmp = ${js_dec_name(var_t)}(root);')
+					judge_elem_typ := if var_t.ends_with('string') {
+						'cJSON_IsString(root->child)'
+					} else if var_t.ends_with('bool') {
+						'cJSON_IsBool(root->child)'
+					} else {
+						'cJSON_IsNumber(root->child)'
+					}
+					dec.writeln('\t\tif (cJSON_IsArray(root) && $judge_elem_typ) {')
+					dec.writeln('\t\t\tOption_$var_t $tmp = ${js_dec_name(var_t)}(root);')
 					dec.writeln('\t\t\tif (${tmp}.state != 0) {')
 					dec.writeln('\t\t\t\treturn (Option_$sym.cname){ .state = ${tmp}.state, .err = ${tmp}.err, .data = {0} };')
 					dec.writeln('\t\t\t}')
-					dec.writeln('\t\t\tres = Array_string_to_sumtype_${sym.cname}(($var_t*)${tmp}.data);')
+					dec.writeln('\t\t\tres = ${var_t}_to_sumtype_${sym.cname}(($var_t*)${tmp}.data);')
 					dec.writeln('\t\t}')
 				}
 
