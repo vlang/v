@@ -547,8 +547,10 @@ fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
 //               -2 if all channels are closed
 
 pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []voidptr, timeout time.Duration) int {
-	assert channels.len == dir.len
-	assert dir.len == objrefs.len
+	$if debug {
+		assert channels.len == dir.len
+		assert dir.len == objrefs.len
+	}
 	mut subscr := []Subscription{len: channels.len}
 	mut sem := unsafe { Semaphore{} }
 	sem.init(0)
