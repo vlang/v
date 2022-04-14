@@ -143,7 +143,7 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 					ast.i64_type { return 8 }
 					//
 					ast.byte_type { return 1 }
-					ast.u8_type { return 1 }
+					// ast.u8_type { return 1 }
 					ast.u16_type { return 2 }
 					ast.u32_type { return 4 }
 					ast.u64_type { return 8 }

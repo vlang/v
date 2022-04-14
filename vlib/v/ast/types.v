@@ -441,7 +441,7 @@ pub const (
 	int_literal_type_idx   = 27
 	thread_type_idx        = 28
 	error_type_idx         = 29
-	u8_type_idx            = 30
+		// u8_type_idx            = 30
 )
 
 // Note: builtin_type_names must be in the same order as the idx consts above
@@ -453,15 +453,15 @@ pub const builtin_type_names_matcher = build_builtin_type_names_matcher()
 
 pub const (
 	integer_type_idxs          = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx,
-		byte_type_idx, u8_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx,
-		usize_type_idx, int_literal_type_idx, rune_type_idx]
+		byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx, usize_type_idx,
+		int_literal_type_idx, rune_type_idx]
 	signed_integer_type_idxs   = [char_type_idx, i8_type_idx, i16_type_idx, int_type_idx,
 		i64_type_idx, isize_type_idx]
-	unsigned_integer_type_idxs = [byte_type_idx, u8_type_idx, u16_type_idx, u32_type_idx,
-		u64_type_idx, usize_type_idx]
+	unsigned_integer_type_idxs = [byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx,
+		usize_type_idx]
 	// C will promote any type smaller than int to int in an expression
 	int_promoted_type_idxs     = [char_type_idx, i8_type_idx, i16_type_idx, byte_type_idx,
-		u8_type_idx, u16_type_idx]
+		u16_type_idx]
 	float_type_idxs            = [f32_type_idx, f64_type_idx, float_literal_type_idx]
 	number_type_idxs           = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx,
 		byte_type_idx, char_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx,
@@ -483,7 +483,7 @@ pub const (
 	i64_type           = new_type(i64_type_idx)
 	isize_type         = new_type(isize_type_idx)
 	byte_type          = new_type(byte_type_idx)
-	u8_type            = new_type(u8_type_idx)
+	// u8_type            = new_type(u8_type_idx)
 	u16_type           = new_type(u16_type_idx)
 	u32_type           = new_type(u32_type_idx)
 	u64_type           = new_type(u64_type_idx)

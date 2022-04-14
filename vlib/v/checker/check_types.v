@@ -394,7 +394,7 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type ast.Type, right
 						ast.i64_type { 63 }
 						//
 						ast.byte_type { 7 }
-						ast.u8_type { 7 }
+						// ast.u8_type { 7 }
 						ast.u16_type { 15 }
 						ast.u32_type { 31 }
 						ast.u64_type { 63 }
