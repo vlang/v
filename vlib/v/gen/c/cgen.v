@@ -96,6 +96,7 @@ mut:
 	is_json_fn                bool // inside json.encode()
 	is_js_call                bool // for handling a special type arg #1 `json.decode(User, ...)`
 	is_fn_index_call          bool
+	is_cc_msvc                bool   // g.pref.ccompiler == 'msvc'
 	vlines_path               string // set to the proper path for generating #line directives
 	optionals                 map[string]string // to avoid duplicates
 	done_optionals            shared []string   // to avoid duplicates
@@ -258,6 +259,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		inner_loop: &ast.EmptyStmt{}
 		field_data_type: ast.Type(table.find_type_idx('FieldData'))
 		init: strings.new_builder(100)
+		is_cc_msvc: pref.ccompiler == 'msvc'
 	}
 	// anon fn may include assert and thus this needs
 	// to be included before any test contents are written
@@ -557,6 +559,7 @@ fn cgen_process_one_file_cb(p &pool.PoolProcessor, idx int, wid int) &Gen {
 		done_optionals: global_g.done_optionals
 		is_autofree: global_g.pref.autofree
 		referenced_fns: global_g.referenced_fns
+		is_cc_msvc: global_g.is_cc_msvc
 	}
 	g.gen_file()
 	return g
@@ -1346,11 +1349,10 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
 
 		mut call_conv := ''
 		mut msvc_call_conv := ''
-		is_cc_msvc := g.pref.ccompiler == 'msvc'
 		for attr in func.attrs {
 			match attr.name {
 				'callconv' {
-					if is_cc_msvc {
+					if g.is_cc_msvc {
 						msvc_call_conv = '__$attr.arg '
 					} else {
 						call_conv = '$attr.arg'
