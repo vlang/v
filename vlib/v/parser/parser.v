@@ -3579,6 +3579,8 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		p.table.sym(fn_type).is_pub = is_pub
 		type_pos = type_pos.extend(p.tok.pos())
 		comments = p.eat_comments(same_line: true)
+		attrs := p.attrs
+		p.attrs = []
 		return ast.FnTypeDecl{
 			name: fn_name
 			is_pub: is_pub
@@ -3586,6 +3588,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			pos: decl_pos
 			type_pos: type_pos
 			comments: comments
+			attrs: attrs
 		}
 	}
 	sum_variants << p.parse_sum_type_variants()
