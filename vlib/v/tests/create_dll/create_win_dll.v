@@ -14,7 +14,7 @@ pub fn test_tatltuae() int {
 }
 
 [export: DllMain]
-[windows_stdcall]
+[callconv: stdcall]
 fn main(hinst voidptr, fdw_reason int, lp_reserved voidptr) bool {
 	match fdw_reason {
 		C.DLL_PROCESS_ATTACH {

@@ -77,7 +77,7 @@ jobs:
 
       - name: v_win.c can be compiled and run with -os windows
         run: |
-          ./v -os windows -o /tmp/v_win.c cmd/v
+          ./v -cc msvc -os windows -o /tmp/v_win.c cmd/v
           x86_64-w64-mingw32-gcc -I ./thirdparty/stdatomic/win /tmp/v_win.c -std=c99 -w -municode -o v_from_vc.exe
           ls -lart v_from_vc.exe
           wine64 ./v_from_vc.exe version
@@ -102,8 +102,6 @@ jobs:
   windows-cross:
     runs-on: windows-2019
     timeout-minutes: 25
-    env:
-      VFLAGS: -cc msvc
     steps:
       - uses: actions/checkout@v2
       - name: Build
@@ -113,8 +111,8 @@ jobs:
           .\make.bat -msvc
       - name: TODO v_win.c can be compiled and run with -os windows
         run: |
-          .\v.exe -os windows -showcc -o v2.exe cmd\v
-          .\v.exe -os windows -o v_win.c cmd\v
+          .\v.exe -os windows -cc msvc -showcc -o v2.exe cmd\v
+          .\v.exe -os windows -cc msvc -o v_win.c cmd\v
           dir v2.exe
           dir v_win.c
           .\v2.exe version

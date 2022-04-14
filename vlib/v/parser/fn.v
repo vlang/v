@@ -222,12 +222,12 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				is_markused = true
 			}
 			'windows_stdcall' {
-				// TODO: uncomment after bootstrapping and replacing usages in builtin
-				// p.note_with_pos('windows_stdcall has been deprecated, it will be an error soon', p.tok.pos())
+				p.note_with_pos('the tag [windows_stdcall] has been deprecated, it will be an error after 2022-06-01, use `[callconv: stdcall]` instead',
+					p.tok.pos())
 			}
 			'_fastcall' {
-				// TODO: uncomment after bootstrapping and replacing usages in builtin
-				// p.note_with_pos('_fastcall has been deprecated, it will be an error soon', p.tok.pos())
+				p.note_with_pos('teh tag [_fastcall] has been deprecated, it will be an error after 2022-06-01, use `[callconv: fastcall]` instead',
+					p.tok.pos())
 			}
 			'callconv' {
 				if !fna.has_arg {
