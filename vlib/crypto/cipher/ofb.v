@@ -12,30 +12,30 @@ import crypto.internal.subtle
 struct Ofb {
 mut:
 	b        Block
-	next     []byte
-	out      []byte
+	next     []u8
+	out      []u8
 	out_used int
 }
 
 // new_ofb returns a Ofb that encrypts or decrypts using the block cipher b
 // in output feedback mode. The initialization vector iv's length must be equal
 // to b's block size.
-pub fn new_ofb(b Block, iv []byte) Ofb {
+pub fn new_ofb(b Block, iv []u8) Ofb {
 	block_size := b.block_size
 	if iv.len != block_size {
 		panic('cipher.new_ofb: IV length must be equal block size')
 	}
 	mut x := Ofb{
 		b: b
-		out: []byte{len: b.block_size}
-		next: []byte{len: b.block_size}
+		out: []u8{len: b.block_size}
+		next: []u8{len: b.block_size}
 		out_used: block_size
 	}
 	copy(mut x.next, iv)
 	return x
 }
 
-pub fn (mut x Ofb) xor_key_stream(mut dst_ []byte, src_ []byte) {
+pub fn (mut x Ofb) xor_key_stream(mut dst_ []u8, src_ []u8) {
 	unsafe {
 		mut dst := *dst_
 		mut src := src_

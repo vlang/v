@@ -230,7 +230,7 @@ pub fn (db DB) copy_expert(query string, mut file io.ReaderWriter) ?int {
 	}
 
 	if status == C.PGRES_COPY_IN {
-		mut buf := []byte{len: 4 * 1024}
+		mut buf := []u8{len: 4 * 1024}
 		for {
 			n := file.read(mut buf) or {
 				msg := 'pg copy error: Failed to read from input'
@@ -257,7 +257,7 @@ pub fn (db DB) copy_expert(query string, mut file io.ReaderWriter) ?int {
 			address := &u8(0)
 			n_bytes := C.PQgetCopyData(db.conn, &address, 0)
 			if n_bytes > 0 {
-				mut local_buf := []byte{len: n_bytes}
+				mut local_buf := []u8{len: n_bytes}
 				unsafe { C.memcpy(&u8(local_buf.data), address, n_bytes) }
 				file.write(local_buf) or {
 					C.PQfreemem(address)

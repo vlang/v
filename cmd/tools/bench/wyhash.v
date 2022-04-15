@@ -14,7 +14,7 @@ fn main() {
 	mut checksum := u64(0)
 	mut start_pos := 0
 	mut bgenerating := benchmark.start()
-	mut bytepile := []byte{}
+	mut bytepile := []u8{}
 	for _ in 0 .. sample_size * max_str_len {
 		bytepile << u8(rand.int_in_range(40, 125) or { 40 })
 	}

@@ -7,11 +7,11 @@ module strings
 // dynamically growing buffer, then use the resulting large string. Using
 // a string builder is much better for performance/memory usage than doing
 // constantly string concatenation.
-pub type Builder = []byte
+pub type Builder = []u8
 
 // new_builder returns a new string builder, with an initial capacity of `initial_size`
 pub fn new_builder(initial_size int) Builder {
-	mut res := Builder([]byte{cap: initial_size})
+	mut res := Builder([]u8{cap: initial_size})
 	unsafe { res.flags.set(.noslices) }
 	return res
 }
@@ -61,7 +61,7 @@ pub fn (mut b Builder) write_u8(data byte) {
 }
 
 // write implements the Writer interface
-pub fn (mut b Builder) write(data []byte) ?int {
+pub fn (mut b Builder) write(data []u8) ?int {
 	if data.len == 0 {
 		return 0
 	}

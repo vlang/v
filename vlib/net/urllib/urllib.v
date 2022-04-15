@@ -272,7 +272,7 @@ fn escape(s string, mode EncodingMode) string {
 		return s
 	}
 	required := s.len + 2 * hex_count
-	mut t := []byte{len: required}
+	mut t := []u8{len: required}
 	if hex_count == 0 {
 		copy(mut t, s.bytes())
 		for i in 0 .. s.len {

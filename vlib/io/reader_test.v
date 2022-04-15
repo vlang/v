@@ -2,12 +2,12 @@ module io
 
 struct Buf {
 pub:
-	bytes []byte
+	bytes []u8
 mut:
 	i int
 }
 
-fn (mut b Buf) read(mut buf []byte) ?int {
+fn (mut b Buf) read(mut buf []u8) ?int {
 	if !(b.i < b.bytes.len) {
 		return none
 	}
@@ -44,7 +44,7 @@ mut:
 	place int
 }
 
-fn (mut s StringReader) read(mut buf []byte) ?int {
+fn (mut s StringReader) read(mut buf []u8) ?int {
 	if s.place >= s.text.len {
 		return none
 	}

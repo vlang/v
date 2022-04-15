@@ -179,13 +179,13 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &byte, len int) ?int {
 	return res
 }
 
-pub fn (mut s SSLConn) read(mut buffer []byte) ?int {
+pub fn (mut s SSLConn) read(mut buffer []u8) ?int {
 	res := s.socket_read_into_ptr(&u8(buffer.data), buffer.len) ?
 	return res
 }
 
 // write number of bytes to SSL connection
-pub fn (mut s SSLConn) write(bytes []byte) ?int {
+pub fn (mut s SSLConn) write(bytes []u8) ?int {
 	unsafe {
 		mut ptr_base := &u8(bytes.data)
 		mut total_sent := 0

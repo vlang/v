@@ -70,7 +70,7 @@ const (
 	loworder_bytes  = hex.decode(loworder_string) or { panic(err) }
 )
 
-fn fn_cofactor(mut data []byte) bool {
+fn fn_cofactor(mut data []u8) bool {
 	if data.len != 64 {
 		panic('data.len should be 64')
 	}

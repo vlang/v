@@ -4,7 +4,7 @@ fn test_long_encoding() {
 	repeats := 1000
 	input_size := 3000
 
-	s_original := []byte{len: input_size, init: `a`}
+	s_original := []u8{len: input_size, init: `a`}
 	s_encoded := base64.encode(s_original)
 	s_encoded_bytes := s_encoded.bytes()
 	s_decoded := base64.decode(s_encoded)
@@ -20,7 +20,7 @@ fn test_long_encoding() {
 	}
 	//
 	encoded_size := base64.encode_in_buffer(s_original, ebuffer)
-	mut encoded_in_buf := []byte{len: encoded_size}
+	mut encoded_in_buf := []u8{len: encoded_size}
 	unsafe { C.memcpy(encoded_in_buf.data, ebuffer, encoded_size) }
 	assert input_size * 4 / 3 == encoded_size
 	assert encoded_in_buf[0] == `Y`
@@ -37,7 +37,7 @@ fn test_long_encoding() {
 
 	decoded_size := base64.decode_in_buffer(s_encoded, dbuffer)
 	assert decoded_size == input_size
-	mut decoded_in_buf := []byte{len: decoded_size}
+	mut decoded_in_buf := []u8{len: decoded_size}
 	unsafe { C.memcpy(decoded_in_buf.data, dbuffer, decoded_size) }
 	assert decoded_in_buf == s_original
 

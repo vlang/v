@@ -51,7 +51,7 @@ fn decode64(input byte) byte {
 // Note that `i64::MIN = -(2^63)` cannot be represented in that form, and this
 // NOT IMPLEMENTED: function will return `Error::Overflowed` when attempting to decode it.
 pub fn decode(mut input io.Reader) ?i64 {
-	mut buf := []byte{len: 1}
+	mut buf := []u8{len: 1}
 
 	mut accum := u64(0)
 	mut shifter := 0

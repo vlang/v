@@ -69,7 +69,7 @@ fn test_read_bytes_into_newline_text() ? {
 	f.close()
 
 	f = os.open_file(tfile, 'r') ?
-	mut buf := []byte{len: 8}
+	mut buf := []u8{len: 8}
 
 	n0 := f.read_bytes_into_newline(mut buf) ?
 	assert n0 == 8
@@ -91,7 +91,7 @@ fn test_read_bytes_into_newline_text() ? {
 // appears in that stream and an EOF occurs before the buffer is full.
 fn test_read_bytes_into_newline_binary() ? {
 	os.rm(tfile) or {} // FIXME This is a workaround for macos, because the file isn't truncated when open with 'w'
-	mut bw := []byte{len: 15}
+	mut bw := []u8{len: 15}
 	bw[9] = 0xff
 	bw[12] = 10 // newline
 
@@ -104,7 +104,7 @@ fn test_read_bytes_into_newline_binary() ? {
 	f.close()
 
 	f = os.open_file(tfile, 'r') ?
-	mut buf := []byte{len: 10}
+	mut buf := []u8{len: 10}
 
 	n0 := f.read_bytes_into_newline(mut buf) ?
 	assert n0 == 10
@@ -126,12 +126,12 @@ fn test_read_bytes_into_newline_binary() ? {
 // containing data.
 fn test_read_eof_last_read_partial_buffer_fill() ? {
 	mut f := os.open_file(tfile, 'w') ?
-	bw := []byte{len: 199, init: 5}
+	bw := []u8{len: 199, init: 5}
 	f.write(bw) ?
 	f.close()
 
 	f = os.open_file(tfile, 'r') ?
-	mut br := []byte{len: 100}
+	mut br := []u8{len: 100}
 	// Read first 100 bytes of 199 byte file, should fill buffer with no error.
 	n0 := f.read(mut br) ?
 	assert n0 == 100
@@ -158,12 +158,12 @@ fn test_read_eof_last_read_partial_buffer_fill() ? {
 // fread that returns no data.
 fn test_read_eof_last_read_full_buffer_fill() ? {
 	mut f := os.open_file(tfile, 'w') ?
-	bw := []byte{len: 200, init: 5}
+	bw := []u8{len: 200, init: 5}
 	f.write(bw) ?
 	f.close()
 
 	f = os.open_file(tfile, 'r') ?
-	mut br := []byte{len: 100}
+	mut br := []u8{len: 100}
 	// Read first 100 bytes of 200 byte file, should fill buffer with no error.
 	n0 := f.read(mut br) ?
 	assert n0 == 100

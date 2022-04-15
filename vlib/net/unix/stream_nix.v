@@ -199,7 +199,7 @@ pub fn (mut c StreamConn) write_ptr(b &byte, len int) ?int {
 }
 
 // write blocks and attempts to write all data
-pub fn (mut c StreamConn) write(bytes []byte) ?int {
+pub fn (mut c StreamConn) write(bytes []u8) ?int {
 	return c.write_ptr(bytes.data, bytes.len)
 }
 
@@ -230,7 +230,7 @@ pub fn (mut c StreamConn) read_ptr(buf_ptr &byte, len int) ?int {
 	return net.socket_error(code)
 }
 
-pub fn (mut c StreamConn) read(mut buf []byte) ?int {
+pub fn (mut c StreamConn) read(mut buf []u8) ?int {
 	return c.read_ptr(buf.data, buf.len)
 }
 

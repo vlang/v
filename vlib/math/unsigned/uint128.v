@@ -403,7 +403,7 @@ pub fn (u_ Uint128) str() string {
 }
 
 // put_bytes stores u in b in little-endian order
-pub fn (u Uint128) put_bytes(mut b []byte) {
+pub fn (u Uint128) put_bytes(mut b []u8) {
 	binary.little_endian_put_u64(mut b, u.lo)
 	binary.little_endian_put_u64(mut b, u.hi)
 }

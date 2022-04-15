@@ -85,13 +85,13 @@ pub fn (s string) split(dot string) []string {
 	return arr
 }
 
-pub fn (s string) bytes() []byte {
+pub fn (s string) bytes() []u8 {
 	sep := ''
 	tmparr := s.str.split(sep.str).map(fn (it JS.Any) JS.Any {
 		return JS.Any(u8(JS.String(it).charCodeAt(JS.Number(0))))
 	})
 	_ := tmparr
-	mut arr := []byte{}
+	mut arr := []u8{}
 	#arr = new array(new array_buffer({arr: tmparr,index_start: new int(0),len: new int(tmparr.length)}))
 
 	return arr
@@ -500,7 +500,7 @@ pub fn (s string) strip_margin_custom(del byte) string {
 	}
 	// don't know how much space the resulting string will be, but the max it
 	// can be is this big
-	mut ret := []byte{}
+	mut ret := []u8{}
 	#ret = new array()
 
 	mut count := 0

@@ -38,7 +38,7 @@ module aes
 import encoding.binary
 
 // Encrypt one block from src into dst, using the expanded key xk.
-fn encrypt_block_generic(xk []u32, mut dst []byte, src []byte) {
+fn encrypt_block_generic(xk []u32, mut dst []u8, src []u8) {
 	_ = src[15] // early bounds check
 	mut s0 := binary.big_endian_u32(src[..4])
 	mut s1 := binary.big_endian_u32(src[4..8])
@@ -85,7 +85,7 @@ fn encrypt_block_generic(xk []u32, mut dst []byte, src []byte) {
 }
 
 // Decrypt one block from src into dst, using the expanded key xk.
-fn decrypt_block_generic(xk []u32, mut dst []byte, src []byte) {
+fn decrypt_block_generic(xk []u32, mut dst []u8, src []u8) {
 	_ = src[15] // early bounds check
 	mut s0 := binary.big_endian_u32(src[0..4])
 	mut s1 := binary.big_endian_u32(src[4..8])
@@ -143,7 +143,7 @@ fn rotw(w u32) u32 {
 
 // Key expansion algorithm. See FIPS-197, Figure 11.
 // Their rcon[i] is our powx[i-1] << 24.
-fn expand_key_generic(key []byte, mut enc []u32, mut dec []u32) {
+fn expand_key_generic(key []u8, mut enc []u32, mut dec []u32) {
 	// Encryption key setup.
 	mut i := 0
 	nk := key.len / 4

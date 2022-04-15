@@ -40,20 +40,20 @@ fn test_multi_writer_write_error() {
 
 struct TestWriter {
 pub mut:
-	bytes []byte
+	bytes []u8
 }
 
-fn (mut w TestWriter) write(buf []byte) ?int {
+fn (mut w TestWriter) write(buf []u8) ?int {
 	w.bytes << buf
 	return buf.len
 }
 
 struct TestIncompleteWriter {
 pub mut:
-	bytes []byte
+	bytes []u8
 }
 
-fn (mut w TestIncompleteWriter) write(buf []byte) ?int {
+fn (mut w TestIncompleteWriter) write(buf []u8) ?int {
 	b := buf[..buf.len - 1]
 	w.bytes << b
 	return b.len
@@ -61,6 +61,6 @@ fn (mut w TestIncompleteWriter) write(buf []byte) ?int {
 
 struct TestErrorWriter {}
 
-fn (mut w TestErrorWriter) write(buf []byte) ?int {
+fn (mut w TestErrorWriter) write(buf []u8) ?int {
 	return error('error writer errored')
 }

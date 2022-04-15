@@ -84,7 +84,7 @@ pub fn (c TcpConn) read_ptr(buf_ptr &byte, len int) ?int {
 	return none
 }
 
-pub fn (c TcpConn) read(mut buf []byte) ?int {
+pub fn (c TcpConn) read(mut buf []u8) ?int {
 	return c.read_ptr(buf.data, buf.len)
 }
 
@@ -132,7 +132,7 @@ pub fn (mut c TcpConn) write_ptr(b &byte, len int) ?int {
 }
 
 // write blocks and attempts to write all data
-pub fn (mut c TcpConn) write(bytes []byte) ?int {
+pub fn (mut c TcpConn) write(bytes []u8) ?int {
 	return c.write_ptr(bytes.data, bytes.len)
 }
 

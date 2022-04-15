@@ -1,5 +1,5 @@
-fn hex_to_bytes(s string) ?[]byte {
-	mut ret := []byte{cap: s.len}
+fn hex_to_bytes(s string) ?[]u8 {
+	mut ret := []u8{cap: s.len}
 	for read := 0; read < s.len; read += 2 {
 		high := s[read]
 		low := s[read + 1]

@@ -182,11 +182,11 @@ pub fn parse_request(mut reader io.BufferedReader) ?Request {
 	mut request := parse_request_head(mut reader) ?
 
 	// body
-	mut body := []byte{}
+	mut body := []u8{}
 	if length := request.header.get(.content_length) {
 		n := length.int()
 		if n > 0 {
-			body = []byte{len: n}
+			body = []u8{len: n}
 			mut count := 0
 			for count < body.len {
 				count += reader.read(mut body[count..]) or { break }

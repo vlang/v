@@ -11,7 +11,7 @@ const (
 
 // Fragment represents a websocket data fragment
 struct Fragment {
-	data   []byte // included data payload data in a fragment
+	data   []u8 // included data payload data in a fragment
 	opcode OPCode // interpretation of the payload data
 }
 
@@ -81,11 +81,11 @@ fn is_data_frame(opcode OPCode) bool {
 }
 
 // read_payload reads the message payload from the socket
-fn (mut ws Client) read_payload(frame &Frame) ?[]byte {
+fn (mut ws Client) read_payload(frame &Frame) ?[]u8 {
 	if frame.payload_len == 0 {
-		return []byte{}
+		return []u8{}
 	}
-	mut buffer := []byte{cap: frame.payload_len}
+	mut buffer := []u8{cap: frame.payload_len}
 	mut read_buf := [1]byte{}
 	mut bytes_read := 0
 	for bytes_read < frame.payload_len {
@@ -109,7 +109,7 @@ fn (mut ws Client) read_payload(frame &Frame) ?[]byte {
 
 // validate_utf_8 validates payload for valid utf8 encoding
 // - Future implementation needs to support fail fast utf errors for strict autobahn conformance
-fn (mut ws Client) validate_utf_8(opcode OPCode, payload []byte) ? {
+fn (mut ws Client) validate_utf_8(opcode OPCode, payload []u8) ? {
 	if opcode in [.text_frame, .close] && !utf8.validate(payload.data, payload.len) {
 		ws.logger.error('malformed utf8 payload, payload len: ($payload.len)')
 		ws.send_error_event('Recieved malformed utf8.')
@@ -181,7 +181,7 @@ pub fn (mut ws Client) read_next_message() ?Message {
 }
 
 // payload_from_fragments returs the whole paylaod from fragmented message
-fn (ws Client) payload_from_fragments(fin_payload []byte) ?[]byte {
+fn (ws Client) payload_from_fragments(fin_payload []u8) ?[]u8 {
 	mut total_size := 0
 	for f in ws.fragments {
 		if f.data.len > 0 {
@@ -190,9 +190,9 @@ fn (ws Client) payload_from_fragments(fin_payload []byte) ?[]byte {
 	}
 	total_size += fin_payload.len
 	if total_size == 0 {
-		return []byte{}
+		return []u8{}
 	}
-	mut total_buffer := []byte{cap: total_size}
+	mut total_buffer := []u8{cap: total_size}
 	for f in ws.fragments {
 		if f.data.len > 0 {
 			total_buffer << f.data
@@ -288,7 +288,7 @@ pub fn (mut ws Client) parse_frame_header() ?Frame {
 }
 
 // unmask_sequence unmask any given sequence
-fn (f Frame) unmask_sequence(mut buffer []byte) {
+fn (f Frame) unmask_sequence(mut buffer []u8) {
 	for i in 0 .. buffer.len {
 		buffer[i] ^= f.masking_key[i % 4] & 0xff
 	}

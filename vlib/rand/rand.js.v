@@ -21,7 +21,7 @@ const (
 )
 
 fn internal_ulid_at_millisecond(mut rng PRNG, unix_time_milli u64) string {
-	mut buf := []byte{cap: 27}
+	mut buf := []u8{cap: 27}
 	mut t := unix_time_milli
 	mut i := 9
 	for i >= 0 {
@@ -53,7 +53,7 @@ fn internal_ulid_at_millisecond(mut rng PRNG, unix_time_milli u64) string {
 	return res
 }
 
-fn read_internal(mut rng PRNG, mut buf []byte) {
+fn read_internal(mut rng PRNG, mut buf []u8) {
 	for i in 0 .. buf.len {
 		buf[i] = rng.u8()
 	}

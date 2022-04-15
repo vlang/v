@@ -8,9 +8,9 @@ module cipher
 // extend that capability to streams of blocks.
 interface Block {
 	block_size int // block_size returns the cipher's block size.
-	encrypt(mut dst []byte, src []byte) // Encrypt encrypts the first block in src into dst.
+	encrypt(mut dst []u8, src []u8) // Encrypt encrypts the first block in src into dst.
 	// Dst and src must overlap entirely or not at all.
-	decrypt(mut dst []byte, src []byte) // Decrypt decrypts the first block in src into dst.
+	decrypt(mut dst []u8, src []u8) // Decrypt decrypts the first block in src into dst.
 	// Dst and src must overlap entirely or not at all.
 }
 
@@ -26,14 +26,14 @@ interface Stream {
 	// Multiple calls to xor_key_stream behave as if the concatenation of
 	// the src buffers was passed in a single run. That is, Stream
 	// maintains state and does not reset at each xor_key_stream call.
-	xor_key_stream(mut dst []byte, src []byte)
+	xor_key_stream(mut dst []u8, src []u8)
 }
 
 // A BlockMode represents a block cipher running in a block-based mode (CBC,
 // ECB etc).
 interface BlockMode {
 	block_size int // block_size returns the mode's block size.
-	crypt_blocks(mut dst []byte, src []byte) // crypt_blocks encrypts or decrypts a number of blocks. The length of
+	crypt_blocks(mut dst []u8, src []u8) // crypt_blocks encrypts or decrypts a number of blocks. The length of
 	// src must be a multiple of the block size. Dst and src must overlap
 	// entirely or not at all.
 	//
@@ -48,8 +48,8 @@ interface BlockMode {
 
 // Utility routines
 
-// fn dup(p []byte) []byte {
-// 	q := make([]byte, p.len)
+// fn dup(p []u8) []u8 {
+// 	q := make([]u8, p.len)
 // 	copy(mut q, p)
 // 	return q
 // }

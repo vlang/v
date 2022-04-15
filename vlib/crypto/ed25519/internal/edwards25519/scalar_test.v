@@ -134,7 +134,7 @@ fn test_scalar_set_uniform_bytes() ? {
 	assert m.abs_cmp(scbig) == 0 // NEED FIX
 }
 
-fn bigint_from_le_bytes(b []byte) big.Integer {
+fn bigint_from_le_bytes(b []u8) big.Integer {
 	mut bc := b.clone()
 	buf := swap_endianness(mut bc) // WITHOUT THIS, some test would fail
 	bg := big.integer_from_bytes(buf)

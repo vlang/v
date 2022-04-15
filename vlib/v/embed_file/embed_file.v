@@ -50,7 +50,7 @@ pub fn (original &EmbedFileData) to_string() string {
 	}
 }
 
-pub fn (original &EmbedFileData) to_bytes() []byte {
+pub fn (original &EmbedFileData) to_bytes() []u8 {
 	unsafe {
 		mut ed := &EmbedFileData(original)
 		the_copy := memdup(ed.data(), ed.len)

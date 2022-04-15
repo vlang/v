@@ -5,26 +5,26 @@ module binary
 
 // Little Endian
 [inline]
-pub fn little_endian_u16(b []byte) u16 {
+pub fn little_endian_u16(b []u8) u16 {
 	_ = b[1] // bounds check
 	return u16(b[0]) | (u16(b[1]) << u16(8))
 }
 
 [inline]
-pub fn little_endian_put_u16(mut b []byte, v u16) {
+pub fn little_endian_put_u16(mut b []u8, v u16) {
 	_ = b[1] // bounds check
 	b[0] = u8(v)
 	b[1] = u8(v >> u16(8))
 }
 
 [inline]
-pub fn little_endian_u32(b []byte) u32 {
+pub fn little_endian_u32(b []u8) u32 {
 	_ = b[3] // bounds check
 	return u32(b[0]) | (u32(b[1]) << u32(8)) | (u32(b[2]) << u32(16)) | (u32(b[3]) << u32(24))
 }
 
 [inline]
-pub fn little_endian_put_u32(mut b []byte, v u32) {
+pub fn little_endian_put_u32(mut b []u8, v u32) {
 	_ = b[3] // bounds check
 	b[0] = u8(v)
 	b[1] = u8(v >> u32(8))
@@ -33,13 +33,13 @@ pub fn little_endian_put_u32(mut b []byte, v u32) {
 }
 
 [inline]
-pub fn little_endian_u64(b []byte) u64 {
+pub fn little_endian_u64(b []u8) u64 {
 	_ = b[7] // bounds check
 	return u64(b[0]) | (u64(b[1]) << u64(8)) | (u64(b[2]) << u64(16)) | (u64(b[3]) << u64(24)) | (u64(b[4]) << u64(32)) | (u64(b[5]) << u64(40)) | (u64(b[6]) << u64(48)) | (u64(b[7]) << u64(56))
 }
 
 [inline]
-pub fn little_endian_put_u64(mut b []byte, v u64) {
+pub fn little_endian_put_u64(mut b []u8, v u64) {
 	_ = b[7] // bounds check
 	b[0] = u8(v)
 	b[1] = u8(v >> u64(8))
@@ -53,26 +53,26 @@ pub fn little_endian_put_u64(mut b []byte, v u64) {
 
 // Big Endian
 [inline]
-pub fn big_endian_u16(b []byte) u16 {
+pub fn big_endian_u16(b []u8) u16 {
 	_ = b[1] // bounds check
 	return u16(b[1]) | (u16(b[0]) << u16(8))
 }
 
 [inline]
-pub fn big_endian_put_u16(mut b []byte, v u16) {
+pub fn big_endian_put_u16(mut b []u8, v u16) {
 	_ = b[1] // bounds check
 	b[0] = u8(v >> u16(8))
 	b[1] = u8(v)
 }
 
 [inline]
-pub fn big_endian_u32(b []byte) u32 {
+pub fn big_endian_u32(b []u8) u32 {
 	_ = b[3] // bounds check
 	return u32(b[3]) | (u32(b[2]) << u32(8)) | (u32(b[1]) << u32(16)) | (u32(b[0]) << u32(24))
 }
 
 [inline]
-pub fn big_endian_put_u32(mut b []byte, v u32) {
+pub fn big_endian_put_u32(mut b []u8, v u32) {
 	_ = b[3] // bounds check
 	b[0] = u8(v >> u32(24))
 	b[1] = u8(v >> u32(16))
@@ -81,13 +81,13 @@ pub fn big_endian_put_u32(mut b []byte, v u32) {
 }
 
 [inline]
-pub fn big_endian_u64(b []byte) u64 {
+pub fn big_endian_u64(b []u8) u64 {
 	_ = b[7] // bounds check
 	return u64(b[7]) | (u64(b[6]) << u64(8)) | (u64(b[5]) << u64(16)) | (u64(b[4]) << u64(24)) | (u64(b[3]) << u64(32)) | (u64(b[2]) << u64(40)) | (u64(b[1]) << u64(48)) | (u64(b[0]) << u64(56))
 }
 
 [inline]
-pub fn big_endian_put_u64(mut b []byte, v u64) {
+pub fn big_endian_put_u64(mut b []u8, v u64) {
 	_ = b[7] // bounds check
 	b[0] = u8(v >> u64(56))
 	b[1] = u8(v >> u64(48))

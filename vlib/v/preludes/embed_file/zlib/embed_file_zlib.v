@@ -5,7 +5,7 @@ import v.embed_file
 
 struct ZLibDecoder {}
 
-fn (_ ZLibDecoder) decompress(data []byte) ?[]byte {
+fn (_ ZLibDecoder) decompress(data []u8) ?[]u8 {
 	return zlib.decompress(data)
 }
 

@@ -1,7 +1,7 @@
 module blowfish
 
 // expand_key performs a key expansion on the given Blowfish cipher.
-pub fn expand_key(key []byte, mut bf Blowfish) {
+pub fn expand_key(key []u8, mut bf Blowfish) {
 	mut j := 0
 	for i := 0; i < 18; i++ {
 		mut d := u32(0)
@@ -41,7 +41,7 @@ pub fn expand_key(key []byte, mut bf Blowfish) {
 }
 
 // expand_key_with_salt using salt to expand the key.
-pub fn expand_key_with_salt(key []byte, salt []byte, mut bf Blowfish) {
+pub fn expand_key_with_salt(key []u8, salt []u8, mut bf Blowfish) {
 	mut j := 0
 	for i := 0; i < 18; i++ {
 		bf.p[i] ^= get_next_word(key, &j)
@@ -128,7 +128,7 @@ fn setup_tables(l u32, r u32, mut bf Blowfish) []u32 {
 
 // get_next_word returns the next big-endian u32 value from the byte
 // slice at the given position in a circular manner, updating the position.
-fn get_next_word(b []byte, pos &int) u32 {
+fn get_next_word(b []u8, pos &int) u32 {
 	mut w := u32(0)
 	mut j := 0
 	unsafe {

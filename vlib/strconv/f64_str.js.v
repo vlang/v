@@ -16,7 +16,7 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 		fw_zeros = pad_digit - out_len
 	}
 
-	mut buf := []byte{len: (out_len + 6 + 1 + 1 + fw_zeros)} // sign + mant_len + . +  e + e_sign + exp_len(2) + \0}
+	mut buf := []u8{len: (out_len + 6 + 1 + 1 + fw_zeros)} // sign + mant_len + . +  e + e_sign + exp_len(2) + \0}
 	mut i := 0
 
 	if neg {

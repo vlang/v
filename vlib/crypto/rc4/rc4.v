@@ -22,7 +22,7 @@ mut:
 
 // new_cipher creates and returns a new Cipher. The key argument should be the
 // RC4 key, at least 1 byte and at most 256 bytes.
-pub fn new_cipher(key []byte) ?Cipher {
+pub fn new_cipher(key []u8) ?Cipher {
 	if key.len < 1 || key.len > 256 {
 		return error('crypto.rc4: invalid key size ' + key.len.str())
 	}
@@ -56,7 +56,7 @@ pub fn (mut c Cipher) reset() {
 
 // xor_key_stream sets dst to the result of XORing src with the key stream.
 // Dst and src must overlap entirely or not at all.
-pub fn (mut c Cipher) xor_key_stream(mut dst []byte, mut src []byte) {
+pub fn (mut c Cipher) xor_key_stream(mut dst []u8, mut src []u8) {
 	if src.len == 0 {
 		return
 	}

@@ -18,7 +18,7 @@ fn C.AAsset_read(&C.AAsset, voidptr, int) int
 
 fn C.AAsset_close(&C.AAsset)
 
-pub fn read_apk_asset(file string) ?[]byte {
+pub fn read_apk_asset(file string) ?[]u8 {
 	$if apk {
 		act := &C.ANativeActivity(C.sapp_android_get_native_activity())
 		if isnil(act) {
@@ -29,7 +29,7 @@ pub fn read_apk_asset(file string) ?[]byte {
 			return error('File `$file` not found')
 		}
 		len := C.AAsset_getLength(asset)
-		buf := []byte{len: len}
+		buf := []u8{len: len}
 		for {
 			if C.AAsset_read(asset, buf.data, len) > 0 {
 				break

@@ -92,7 +92,7 @@ pub fn (s &Context) add_fallback_font(base int, fallback int) int {
 // `free_data` indicates if `data` should be freed after the font is added.
 // The function returns the id of the font on success, `fontstash.invalid` otherwise.
 [inline]
-pub fn (s &Context) add_font_mem(name string, data []byte, free_data bool) int {
+pub fn (s &Context) add_font_mem(name string, data []u8, free_data bool) int {
 	return C.fonsAddFontMem(s, &char(name.str), data.data, data.len, int(free_data))
 }
 

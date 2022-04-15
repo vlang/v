@@ -114,8 +114,8 @@ pub fn (mut bmp BitMap) save_as_ppm(file_name string) {
 	bmp.buf = tmp_buf
 }
 
-pub fn (mut bmp BitMap) get_raw_bytes() []byte {
-	mut f_buf := []byte{len: bmp.buf_size / 4}
+pub fn (mut bmp BitMap) get_raw_bytes() []u8 {
+	mut f_buf := []u8{len: bmp.buf_size / 4}
 	mut i := 0
 	for i < bmp.buf_size {
 		unsafe {

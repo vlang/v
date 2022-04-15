@@ -31,7 +31,7 @@ fn test_integer_from_bytes() {
 	assert big.integer_from_bytes([u8(0x13), 0x37, 0xca, 0xfe, 0xba]).hex() == '1337cafeba'
 	assert big.integer_from_bytes([u8(0x13), 0x37, 0xca, 0xfe, 0xba, 0xbe]).hex() == '1337cafebabe'
 
-	mut bytes := []byte{cap: 1024}
+	mut bytes := []u8{cap: 1024}
 	mut expected := ''
 	for i := 0; i < bytes.cap; i++ {
 		bytes << u8(i)
@@ -45,7 +45,7 @@ fn test_bytes() {
 	assert result1 == [u8(0x13), 0x37, 0xca, 0xfe, 0xba, 0xbe]
 	assert sign1 == 1
 
-	mut bytes := []byte{cap: 1024}
+	mut bytes := []u8{cap: 1024}
 	mut expected := ''
 	for i := 0; i < bytes.cap; i++ {
 		bytes << u8(i | 1)

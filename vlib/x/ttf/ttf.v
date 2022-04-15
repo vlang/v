@@ -45,7 +45,7 @@ mut:
 ******************************************************************************/
 pub struct TTF_File {
 pub mut:
-	buf                     []byte
+	buf                     []u8
 	pos                     u32
 	length                  u16
 	scalar_type             u32
@@ -319,7 +319,7 @@ fn (mut tf TTF_File) read_simple_glyph(mut in_glyph Glyph) {
 	num_points++
 
 	mut i := 0
-	mut flags := []byte{}
+	mut flags := []u8{}
 	for i < num_points {
 		flag := tf.get_u8()
 		flags << flag

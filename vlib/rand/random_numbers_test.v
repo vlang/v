@@ -180,7 +180,7 @@ fn test_rand_f64_in_range() {
 }
 
 fn test_rand_u8() {
-	mut all := []byte{}
+	mut all := []u8{}
 	for _ in 0 .. 256 {
 		x := rand.u8()
 		assert x >= 0

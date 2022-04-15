@@ -6,7 +6,7 @@ module strings
 /*
 pub struct Builder {
 mut:
-	buf []byte
+	buf []u8
 pub mut:
 	len          int
 	initial_size int = 1

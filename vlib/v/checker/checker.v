@@ -2947,8 +2947,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			c.error('cannot cast type `$ft` to string, use `x.str()` instead.', node.pos)
 		} else if final_from_sym.kind == .array {
 			snexpr := node.expr.str()
-			if final_from_sym.name == '[]byte' {
-				c.error('cannot cast []byte to string, use `${snexpr}.bytestr()` or `${snexpr}.str()` instead.',
+			if final_from_sym.name == '[]u8' {
+				c.error('cannot cast []u8 to string, use `${snexpr}.bytestr()` or `${snexpr}.str()` instead.',
 					node.pos)
 			} else {
 				first_elem_idx := '[0]'

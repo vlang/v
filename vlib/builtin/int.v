@@ -525,9 +525,9 @@ pub fn (c u8) is_capital() bool {
 }
 
 // clone clones the byte array, and returns the newly created copy.
-pub fn (b []u8) clone() []byte {
-	mut res := []byte{len: b.len}
-	// mut res := make([]byte, {repeat:b.len})
+pub fn (b []u8) clone() []u8 {
+	mut res := []u8{len: b.len}
+	// mut res := make([]u8, {repeat:b.len})
 	for i in 0 .. b.len {
 		res[i] = b[i]
 	}

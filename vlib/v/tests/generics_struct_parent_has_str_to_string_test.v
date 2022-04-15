@@ -19,7 +19,7 @@ mut:
 }
 
 struct Pattern {
-	pattern []byte
+	pattern []u8
 	handler fn (mut m Vm)
 }
 

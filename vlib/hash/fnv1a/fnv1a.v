@@ -23,7 +23,7 @@ pub fn sum32_string(data string) u32 {
 // sum32 returns a fnv1a hash of the memory block, described by the dynamic
 // byte array `data`.
 [direct_array_access; inline]
-pub fn sum32(data []byte) u32 {
+pub fn sum32(data []u8) u32 {
 	mut hash := fnv1a.fnv32_offset_basis
 	for i in 0 .. data.len {
 		hash = (hash ^ u32(data[i])) * fnv1a.fnv32_prime
@@ -67,7 +67,7 @@ pub fn sum64_string(data string) u64 {
 // sum64 returns a fnv1a hash of the memory block, described by the dynamic
 // byte array `data`.
 [direct_array_access; inline]
-pub fn sum64(data []byte) u64 {
+pub fn sum64(data []u8) u64 {
 	mut hash := fnv1a.fnv64_offset_basis
 	for i in 0 .. data.len {
 		hash = (hash ^ u64(data[i])) * fnv1a.fnv64_prime

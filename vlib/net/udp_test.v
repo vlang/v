@@ -5,7 +5,7 @@ fn echo_server(mut c net.UdpConn) {
 	mut count := 0
 	for {
 		eprintln('> echo_server loop count: $count')
-		mut buf := []byte{len: 100}
+		mut buf := []u8{len: 100}
 		read, addr := c.read(mut buf) or { continue }
 		eprintln('Server got addr $addr, read: $read | buf: $buf')
 		c.write_to(addr, buf[..read]) or {
@@ -33,7 +33,7 @@ fn echo() ? {
 
 	c.write_string(data) or { panic('could not write_string: $err') }
 
-	mut buf := []byte{len: 100, init: 0}
+	mut buf := []u8{len: 100, init: 0}
 	read, addr := c.read(mut buf) or { panic('could not read: $err') }
 
 	assert read == data.len

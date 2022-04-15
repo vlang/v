@@ -9,7 +9,7 @@ fn test_generics_with_nested_generic_fn_inst_call() {
 	assert decoded[3] == 'it works!!'
 }
 
-fn decode_arr<T>(buf []byte) []T {
+fn decode_arr<T>(buf []u8) []T {
 	arr_size := decode<u32>(buf[0..4])
 	mut ret := []T{cap: int(arr_size)}
 
@@ -19,7 +19,7 @@ fn decode_arr<T>(buf []byte) []T {
 	return ret
 }
 
-fn decode<T>(buf []byte) T {
+fn decode<T>(buf []u8) T {
 	$if T is u32 {
 		return u32(buf.len)
 	} $else $if T is string {

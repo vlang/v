@@ -137,9 +137,9 @@ fn test_decode_in_buffer_bytes() {
 		TestPair{'fooba', 'Zm9vYmE='},
 		TestPair{'foobar', 'Zm9vYmFy'},
 	]
-	mut src_dec_buf := []byte{len: 8}
-	mut src_enc_buf := []byte{len: 8}
-	mut out_buf := []byte{len: 8}
+	mut src_dec_buf := []u8{len: 8}
+	mut src_enc_buf := []u8{len: 8}
+	mut out_buf := []u8{len: 8}
 
 	for p in rfc4648_pairs {
 		src_dec_buf = p.decoded.bytes()

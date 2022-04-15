@@ -21,7 +21,7 @@ fn test_that_net_and_net_unix_can_be_imported_together_without_conflicts() ? {
 	//
 	data := 'Hello from vlib/net!'
 	c.write_string(data) ?
-	mut buf := []byte{len: 100}
+	mut buf := []u8{len: 100}
 	assert c.read(mut buf) ? == data.len
 	eprintln('< client read back buf: |${buf[0..data.len].bytestr()}|')
 	assert buf[0..data.len] == data.bytes()
@@ -33,7 +33,7 @@ fn perror(s string) ? {
 
 fn handle_conn(mut c unix.StreamConn) ? {
 	for {
-		mut buf := []byte{len: 100, init: 0}
+		mut buf := []u8{len: 100, init: 0}
 		read := c.read(mut buf) or { return perror('Server: connection dropped') }
 		eprintln('> server read ${read:3}, buf: |$buf.bytestr()|')
 		c.write(buf[..read]) or { return perror('Server: connection dropped') }

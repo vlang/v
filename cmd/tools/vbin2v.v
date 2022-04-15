@@ -46,7 +46,7 @@ fn (context Context) footer() string {
 	return ')\n'
 }
 
-fn (context Context) file2v(bname string, fbytes []byte, bn_max int) string {
+fn (context Context) file2v(bname string, fbytes []u8, bn_max int) string {
 	mut sb := strings.new_builder(1000)
 	bn_diff_len := bn_max - bname.len
 	sb.write_string('\t${bname}_len' + ' '.repeat(bn_diff_len - 4) + ' = $fbytes.len\n')
@@ -73,7 +73,7 @@ fn (context Context) file2v(bname string, fbytes []byte, bn_max int) string {
 	return sb.str()
 }
 
-fn (context Context) bname_and_bytes(file string) ?(string, []byte) {
+fn (context Context) bname_and_bytes(file string) ?(string, []u8) {
 	fname := os.file_name(file)
 	fname_escaped := fname.replace_each(['.', '_', '-', '_'])
 	byte_name := '$context.prefix$fname_escaped'.to_lower()
@@ -120,7 +120,7 @@ fn main() {
 	if context.write_file != '' && os.file_ext(context.write_file) !in ['.vv', '.v'] {
 		context.write_file += '.v'
 	}
-	mut file_byte_map := map[string][]byte{}
+	mut file_byte_map := map[string][]u8{}
 	for file in real_files {
 		bname, fbytes := context.bname_and_bytes(file) or {
 			eprintln(err.msg())

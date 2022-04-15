@@ -208,7 +208,7 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 		}
 
 		// allocate exp+32 chars for the return string
-		// mut res := []byte{len:exp+32,init:`0`}
+		// mut res := []u8{len:exp+32,init:`0`}
 		mut res := []u8{len: exp + 32, init: 0}
 		mut r_i := 0 // result string buffer index
 

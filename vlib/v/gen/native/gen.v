@@ -29,7 +29,7 @@ pub struct Gen {
 mut:
 	code_gen             CodeGen
 	table                &ast.Table
-	buf                  []byte
+	buf                  []u8
 	sect_header_name_pos int
 	offset               i64
 	stackframe_size      int
@@ -193,7 +193,7 @@ pub fn (g &Gen) pos() i64 {
 	return g.buf.len
 }
 
-fn (mut g Gen) write(bytes []byte) {
+fn (mut g Gen) write(bytes []u8) {
 	for _, b in bytes {
 		g.buf << b
 	}

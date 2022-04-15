@@ -975,7 +975,7 @@ fn (mut g Gen) patch_calls() {
 		}
 		last := g.buf.len
 		g.call(int(addr + last - c.pos))
-		mut patch := []byte{}
+		mut patch := []u8{}
 		for last < g.buf.len {
 			patch << g.buf.pop()
 		}

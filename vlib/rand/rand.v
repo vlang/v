@@ -26,19 +26,19 @@ mut:
 
 // bytes returns a buffer of `bytes_needed` random bytes
 [inline]
-pub fn (mut rng PRNG) bytes(bytes_needed int) ?[]byte {
+pub fn (mut rng PRNG) bytes(bytes_needed int) ?[]u8 {
 	if bytes_needed < 0 {
 		return error('can not read < 0 random bytes')
 	}
 
-	mut buffer := []byte{len: bytes_needed}
+	mut buffer := []u8{len: bytes_needed}
 	read_internal(mut rng, mut buffer)
 
 	return buffer
 }
 
 // read fills in `buf` with a maximum of `buf.len` random bytes
-pub fn (mut rng PRNG) read(mut buf []byte) {
+pub fn (mut rng PRNG) read(mut buf []u8) {
 	read_internal(mut rng, mut buf)
 }
 
@@ -490,12 +490,12 @@ pub fn f64_in_range(min f64, max f64) ?f64 {
 }
 
 // bytes returns a buffer of `bytes_needed` random bytes
-pub fn bytes(bytes_needed int) ?[]byte {
+pub fn bytes(bytes_needed int) ?[]u8 {
 	return default_rng.bytes(bytes_needed)
 }
 
 // read fills in `buf` a maximum of `buf.len` random bytes
-pub fn read(mut buf []byte) {
+pub fn read(mut buf []u8) {
 	read_internal(mut default_rng, mut buf)
 }
 

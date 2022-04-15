@@ -2209,7 +2209,7 @@ fn (t Tree) array_node_int(nodes []int) &Node {
 	return arr
 }
 
-fn (t Tree) array_node_u8(nodes []byte) &Node {
+fn (t Tree) array_node_u8(nodes []u8) &Node {
 	mut arr := new_array()
 	for node in nodes {
 		arr.add_item(t.number_node(node))

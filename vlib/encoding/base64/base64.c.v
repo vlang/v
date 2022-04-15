@@ -215,7 +215,7 @@ pub fn decode_str(data string) string {
 	}
 }
 
-// encode encodes the `[]byte` value passed in `data` to base64.
+// encode encodes the `[]u8` value passed in `data` to base64.
 // Please note: base64 encoding returns a `string` that is ~ 4/3 larger than the input.
 // Please note: If you need to encode many strings repeatedly, take a look at `encode_in_buffer`.
 // Example: assert base64.encode('V in base 64') == 'ViBpbiBiYXNlIDY0'

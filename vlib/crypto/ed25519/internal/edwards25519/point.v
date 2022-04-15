@@ -117,7 +117,7 @@ fn (mut v ProjectiveP2) zero() ProjectiveP2 {
 // Note that set_bytes accepts all non-canonical encodings of valid points.
 // That is, it follows decoding rules that match most implementations in
 // the ecosystem rather than RFC 8032.
-pub fn (mut v Point) set_bytes(x []byte) ?Point {
+pub fn (mut v Point) set_bytes(x []u8) ?Point {
 	// Specifically, the non-canonical encodings that are accepted are
 	//   1) the ones where the edwards25519 element is not reduced (see the
 	//      (*edwards25519.Element).set_bytes docs) and
@@ -201,14 +201,14 @@ fn (mut v AffineCached) zero() AffineCached {
 
 // bytes returns the canonical 32-byte encoding of v, according to RFC 8032,
 // Section 5.1.2.
-pub fn (mut v Point) bytes() []byte {
+pub fn (mut v Point) bytes() []u8 {
 	// This function is outlined to make the allocations inline in the caller
 	// rather than happen on the heap.
 	mut buf := [32]byte{}
 	return v.bytes_generic(mut buf)
 }
 
-fn (mut v Point) bytes_generic(mut buf [32]byte) []byte {
+fn (mut v Point) bytes_generic(mut buf [32]byte) []u8 {
 	check_initialized(v)
 
 	mut zinv := Element{}
@@ -226,7 +226,7 @@ fn (mut v Point) bytes_generic(mut buf [32]byte) []byte {
 	return out
 }
 
-fn copy_field_element(mut buf [32]byte, mut v Element) []byte {
+fn copy_field_element(mut buf [32]byte, mut v Element) []u8 {
 	// this fail in test
 	/*
 	copy(mut buf[..], v.bytes())
@@ -234,7 +234,7 @@ fn copy_field_element(mut buf [32]byte, mut v Element) []byte {
 	*/
 
 	// this pass the test
-	mut out := []byte{len: 32}
+	mut out := []u8{len: 32}
 	for i := 0; i <= buf.len - 1; i++ {
 		out[i] = v.bytes()[i]
 	}

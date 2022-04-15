@@ -839,7 +839,7 @@ pub fn (a []string) str() string {
 
 // hex returns a string with the hexadecimal representation
 // of the byte elements of the array.
-pub fn (b []byte) hex() string {
+pub fn (b []u8) hex() string {
 	mut hex := unsafe { malloc_noscan(b.len * 2 + 1) }
 	mut dst_i := 0
 	for i in b {
@@ -865,7 +865,7 @@ pub fn (b []byte) hex() string {
 // Returns the number of elements copied.
 // NOTE: This is not an `array` method. It is a function that takes two arrays of bytes.
 // See also: `arrays.copy`.
-pub fn copy(mut dst []byte, src []byte) int {
+pub fn copy(mut dst []u8, src []u8) int {
 	min := if dst.len < src.len { dst.len } else { src.len }
 	if min > 0 {
 		unsafe { vmemmove(&u8(dst.data), src.data, min) }
@@ -913,10 +913,10 @@ pub fn (a array) pointers() []voidptr {
 	return res
 }
 
-// vbytes on`voidptr` makes a V []byte structure from a C style memory buffer.
+// vbytes on`voidptr` makes a V []u8 structure from a C style memory buffer.
 // NOTE: the data is reused, NOT copied!
 [unsafe]
-pub fn (data voidptr) vbytes(len int) []byte {
+pub fn (data voidptr) vbytes(len int) []u8 {
 	res := array{
 		element_size: 1
 		data: data
@@ -926,9 +926,9 @@ pub fn (data voidptr) vbytes(len int) []byte {
 	return res
 }
 
-// vbytes on `&byte` makes a V []byte structure from a C style memory buffer.
+// vbytes on `&byte` makes a V []u8 structure from a C style memory buffer.
 // NOTE: the data is reused, NOT copied!
 [unsafe]
-pub fn (data &byte) vbytes(len int) []byte {
+pub fn (data &byte) vbytes(len int) []u8 {
 	return unsafe { voidptr(data).vbytes(len) }
 }

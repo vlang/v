@@ -74,7 +74,7 @@ mut:
 	dw_flags           u32
 	w_show_window      u16
 	cb_reserved2       u16
-	lp_reserved2       &byte
+	lp_reserved2       &u8
 	h_std_input        voidptr
 	h_std_output       voidptr
 	h_std_error        voidptr
@@ -94,7 +94,7 @@ struct C._utimbuf {
 
 fn C._utime(&char, voidptr) int
 
-fn init_os_args_wide(argc int, argv &&byte) []string {
+fn init_os_args_wide(argc int, argv &&u8) []string {
 	mut args_ := []string{len: argc}
 	for i in 0 .. argc {
 		args_[i] = unsafe { string_from_wide(&u16(argv[i])) }
@@ -352,7 +352,7 @@ pub fn execute(cmd string) Result {
 	}
 	C.CloseHandle(child_stdin)
 	C.CloseHandle(child_stdout_write)
-	buf := [4096]byte{}
+	buf := [4096]u8{}
 	mut bytes_read := u32(0)
 	mut read_data := strings.new_builder(1024)
 	for {

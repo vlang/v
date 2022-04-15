@@ -169,7 +169,7 @@ fn test_write_and_read_bytes() {
 	// eprintln('payload: $payload')
 	assert rbytes == payload
 	// check that trying to read data from EOF doesn't error and returns 0
-	mut a := []byte{len: 5}
+	mut a := []u8{len: 5}
 	nread := file_read.read_bytes_into(5, mut a) or {
 		n := if err is none {
 			int(0)
@@ -681,7 +681,7 @@ struct IntPoint {
 
 fn test_write_file_array_bytes() {
 	fpath := './abytes.bin'
-	mut arr := []byte{len: maxn}
+	mut arr := []u8{len: maxn}
 	for i in 0 .. maxn {
 		arr[i] = 65 + u8(i)
 	}

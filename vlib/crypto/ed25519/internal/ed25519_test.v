@@ -19,7 +19,7 @@ const contents = os.read_lines(os.join_path(testdata, 'sign.input')) or { panic(
 /*
 struct ZeroReader {}
 
-fn (z ZeroReader) read(mut buf []byte) ?int {
+fn (z ZeroReader) read(mut buf []u8) ?int {
 	for i, _ in buf {
 		buf[i] = 0
 	}
@@ -96,7 +96,7 @@ fn works_check_on_sign_input_string(item string) bool {
 	// assert pubkey.len == public_key_size
 
 	sig = sig[..ed25519.signature_size]
-	mut priv := []byte{len: ed25519.private_key_size}
+	mut priv := []u8{len: ed25519.private_key_size}
 	copy(mut priv[..], privbytes)
 	copy(mut priv[32..], pubkey)
 
@@ -181,7 +181,7 @@ fn test_input_from_djb_ed25519_crypto_sign_input_without_syncpool() ? {
 		assert pubkey.len == public_key_size
 
 		sig = sig[..signature_size]
-		mut priv := []byte{len: ed25519.private_key_size}
+		mut priv := []u8{len: ed25519.private_key_size}
 		copy(mut priv[..], privbytes)
 		copy(mut priv[32..], pubkey)
 

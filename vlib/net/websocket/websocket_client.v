@@ -12,7 +12,7 @@ import log
 import rand
 
 const (
-	empty_bytearr = []byte{} // used as empty response to avoid allocation
+	empty_bytearr = []u8{} // used as empty response to avoid allocation
 )
 
 // Client represents websocket client
@@ -60,7 +60,7 @@ pub enum State {
 pub struct Message {
 pub:
 	opcode  OPCode // websocket frame type of this message
-	payload []byte // payload of the message
+	payload []u8 // payload of the message
 }
 
 // OPCode represents the supported websocket frame types
@@ -182,7 +182,7 @@ pub fn (mut ws Client) listen() ? {
 						ws.close(1002, 'invalid close code: $code') ?
 						return error('invalid close code: $code')
 					}
-					reason := if msg.payload.len > 2 { msg.payload[2..] } else { []byte{} }
+					reason := if msg.payload.len > 2 { msg.payload[2..] } else { []u8{} }
 					if reason.len > 0 {
 						ws.validate_utf_8(.close, reason) ?
 					}
@@ -240,7 +240,7 @@ pub fn (mut ws Client) write_ptr(bytes &byte, payload_len int, code OPCode) ?int
 	if !ws.is_server {
 		header_len += 4
 	}
-	mut header := []byte{len: header_len, init: `0`} // [`0`].repeat(header_len)
+	mut header := []u8{len: header_len, init: `0`} // [`0`].repeat(header_len)
 	header[0] = u8(int(code)) | 0x80
 	masking_key := create_masking_key()
 	if ws.is_server {
@@ -284,7 +284,7 @@ pub fn (mut ws Client) write_ptr(bytes &byte, payload_len int, code OPCode) ?int
 		}
 	}
 	len := header.len + payload_len
-	mut frame_buf := []byte{len: len}
+	mut frame_buf := []u8{len: len}
 	unsafe {
 		C.memcpy(&frame_buf[0], &u8(header.data), header.len)
 		if payload_len > 0 {
@@ -306,7 +306,7 @@ pub fn (mut ws Client) write_ptr(bytes &byte, payload_len int, code OPCode) ?int
 }
 
 // write writes a byte array with a websocket messagetype to socket
-pub fn (mut ws Client) write(bytes []byte, code OPCode) ?int {
+pub fn (mut ws Client) write(bytes []u8, code OPCode) ?int {
 	return ws.write_ptr(&u8(bytes.data), bytes.len, code)
 }
 
@@ -332,7 +332,7 @@ pub fn (mut ws Client) close(code int, message string) ? {
 	if code > 0 {
 		code_ := C.htons(code)
 		message_len := message.len + 2
-		mut close_frame := []byte{len: message_len}
+		mut close_frame := []u8{len: message_len}
 		close_frame[0] = u8(code_ & 0xFF)
 		close_frame[1] = u8(code_ >> 8)
 		// code32 = (close_frame[0] << 8) + close_frame[1]
@@ -348,14 +348,14 @@ pub fn (mut ws Client) close(code int, message string) ? {
 }
 
 // send_control_frame sends a control frame to the server
-fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []byte) ? {
+fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []u8) ? {
 	ws.debug_log('send control frame $code, frame_type: $frame_typ')
 	if ws.state !in [.open, .closing] && ws.conn.sock.handle > 1 {
 		return error('socket is not connected')
 	}
 	header_len := if ws.is_server { 2 } else { 6 }
 	frame_len := header_len + payload.len
-	mut control_frame := []byte{len: frame_len}
+	mut control_frame := []u8{len: frame_len}
 	mut masking_key := if !ws.is_server { create_masking_key() } else { websocket.empty_bytearr }
 	defer {
 		unsafe {
@@ -378,7 +378,7 @@ fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []b
 	if code == .close {
 		if payload.len >= 2 {
 			if !ws.is_server {
-				mut parsed_payload := []byte{len: payload.len + 1}
+				mut parsed_payload := []u8{len: payload.len + 1}
 				unsafe { C.memcpy(parsed_payload.data, &payload[0], payload.len) }
 				parsed_payload[payload.len] = `\0`
 				for i in 0 .. payload.len {

@@ -35,7 +35,7 @@ pub fn int_u64(max u64) ?u64 {
 	return n
 }
 
-fn bytes_to_u64(b []byte) []u64 {
+fn bytes_to_u64(b []u8) []u64 {
 	ws := 64 / 8
 	mut z := []u64{len: ((b.len + ws - 1) / ws)}
 	mut i := b.len

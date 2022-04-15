@@ -17,7 +17,7 @@ const (
 
 // url_decode returns a decoded URL `string` version of
 // the a base64 url encoded `string` passed in `data`.
-pub fn url_decode(data string) []byte {
+pub fn url_decode(data string) []u8 {
 	mut result := data.replace_each(['-', '+', '_', '/'])
 	match result.len % 4 {
 		// Pad with trailing '='s
@@ -42,7 +42,7 @@ pub fn url_decode_str(data string) string {
 
 // url_encode returns a base64 URL encoded `string` version
 // of the value passed in `data`.
-pub fn url_encode(data []byte) string {
+pub fn url_encode(data []u8) string {
 	return encode(data).replace_each(['+', '-', '/', '_', '=', ''])
 }
 

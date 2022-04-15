@@ -108,13 +108,13 @@ pub struct IntegerConfig {
 
 // integer_from_bytes creates a new `big.Integer` from the given byte array. By default, positive integers are assumed. If you want a negative integer, use in the following manner:
 // `value := big.integer_from_bytes(bytes, signum: -1)`
-pub fn integer_from_bytes(input []byte, config IntegerConfig) Integer {
+pub fn integer_from_bytes(input []u8, config IntegerConfig) Integer {
 	// Thank you to Miccah (@mcastorina) for this implementation and relevant unit tests.
 	if input.len == 0 {
 		return integer_from_int(0)
 	}
 	// pad input
-	mut padded_input := []byte{len: ((input.len + 3) & ~0x3) - input.len, cap: (input.len + 3) & ~0x3, init: 0x0}
+	mut padded_input := []u8{len: ((input.len + 3) & ~0x3) - input.len, cap: (input.len + 3) & ~0x3, init: 0x0}
 	padded_input << input
 	mut digits := []u32{len: padded_input.len / 4}
 	// combine every 4 bytes into a u32 and insert into n.digits
@@ -778,11 +778,11 @@ pub fn (a Integer) int() int {
 
 // bytes returns the a byte representation of the integer a, along with the signum int.
 // NOTE: The byte array returned is in big endian order.
-pub fn (a Integer) bytes() ([]byte, int) {
+pub fn (a Integer) bytes() ([]u8, int) {
 	if a.signum == 0 {
-		return []byte{len: 0}, 0
+		return []u8{len: 0}, 0
 	}
-	mut result := []byte{cap: a.digits.len * 4}
+	mut result := []u8{cap: a.digits.len * 4}
 	mut mask := u32(0xff000000)
 	mut offset := 24
 	mut non_zero_found := false

@@ -14,11 +14,11 @@ mut:
 	w Writer
 }
 
-pub fn (mut r ReaderWriterImpl) read(mut buf []byte) ?int {
+pub fn (mut r ReaderWriterImpl) read(mut buf []u8) ?int {
 	return r.r.read(mut buf)
 }
 
-pub fn (mut r ReaderWriterImpl) write(buf []byte) ?int {
+pub fn (mut r ReaderWriterImpl) write(buf []u8) ?int {
 	return r.w.write(buf)
 }
 

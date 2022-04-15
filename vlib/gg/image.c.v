@@ -237,7 +237,7 @@ pub fn (mut ctx Context) create_image_from_memory(buf &byte, bufsize int) Image 
 // byte array `b`.
 //
 // See also: create_image_from_memory
-pub fn (mut ctx Context) create_image_from_byte_array(b []byte) Image {
+pub fn (mut ctx Context) create_image_from_byte_array(b []u8) Image {
 	return ctx.create_image_from_memory(b.data, b.len)
 }
 

@@ -230,7 +230,7 @@ fn test_set_bytes_reduced() {
 struct FeRTTest {
 mut:
 	fe Element
-	b  []byte
+	b  []u8
 }
 
 fn test_set_bytes_from_dalek_test_vectors() ? {
@@ -395,7 +395,7 @@ fn test_bytes_big_equivalence() ? {
 
 	assert fe == fe1
 
-	mut buf := []byte{len: 32} // pad with zeroes
+	mut buf := []u8{len: 32} // pad with zeroes
 	fedtobig := fe1.to_big_integer()
 	mut fedbig_bytes, _ := fedtobig.bytes()
 	copy(mut buf, fedbig_bytes) // does not need to do swap_endianness

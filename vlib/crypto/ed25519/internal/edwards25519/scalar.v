@@ -86,11 +86,11 @@ pub fn (mut s Scalar) set(x Scalar) Scalar {
 // set_uniform_bytes sets s to an uniformly distributed value given 64 uniformly
 // distributed random bytes. If x is not of the right length, set_uniform_bytes
 // returns an error, and the receiver is unchanged.
-pub fn (mut s Scalar) set_uniform_bytes(x []byte) ?Scalar {
+pub fn (mut s Scalar) set_uniform_bytes(x []u8) ?Scalar {
 	if x.len != 64 {
 		return error('edwards25519: invalid set_uniform_bytes input length')
 	}
-	mut wide_bytes := []byte{len: 64}
+	mut wide_bytes := []u8{len: 64}
 	copy(mut wide_bytes, x)
 	// for i, item in x {
 	//	wide_bytes[i] = item
@@ -102,11 +102,11 @@ pub fn (mut s Scalar) set_uniform_bytes(x []byte) ?Scalar {
 // set_canonical_bytes sets s = x, where x is a 32-byte little-endian encoding of
 // s, and returns s. If x is not a canonical encoding of s, set_canonical_bytes
 // returns an error, and the receiver is unchanged.
-pub fn (mut s Scalar) set_canonical_bytes(x []byte) ?Scalar {
+pub fn (mut s Scalar) set_canonical_bytes(x []u8) ?Scalar {
 	if x.len != 32 {
 		return error('invalid scalar length')
 	}
-	// mut bb := []byte{len:32}
+	// mut bb := []u8{len:32}
 	mut ss := Scalar{}
 	for i, item in x {
 		ss.s[i] = item
@@ -152,7 +152,7 @@ fn is_reduced(s Scalar) bool {
 // expected as long as it is applied to points on the prime order subgroup, like
 // in Ed25519. In fact, it is lost to history why RFC 8032 adopted the
 // irrelevant RFC 7748 clamping, but it is now required for compatibility.
-pub fn (mut s Scalar) set_bytes_with_clamping(x []byte) ?Scalar {
+pub fn (mut s Scalar) set_bytes_with_clamping(x []u8) ?Scalar {
 	// The description above omits the purpose of the high bits of the clamping
 	// for brevity, but those are also lost to reductions, and are also
 	// irrelevant to edwards25519 as they protect against a specific
@@ -161,7 +161,7 @@ pub fn (mut s Scalar) set_bytes_with_clamping(x []byte) ?Scalar {
 		return error('edwards25519: invalid set_bytes_with_clamping input length')
 	}
 
-	mut wide_bytes := []byte{len: 64, cap: 64}
+	mut wide_bytes := []u8{len: 64, cap: 64}
 	copy(mut wide_bytes, x)
 	// for i, item in x {
 	//	wide_bytes[i] = item
@@ -174,8 +174,8 @@ pub fn (mut s Scalar) set_bytes_with_clamping(x []byte) ?Scalar {
 }
 
 // bytes returns the canonical 32-byte little-endian encoding of s.
-pub fn (mut s Scalar) bytes() []byte {
-	mut buf := []byte{len: 32}
+pub fn (mut s Scalar) bytes() []u8 {
+	mut buf := []u8{len: 32}
 	copy(mut buf, s.s[..])
 	return buf
 }
@@ -187,14 +187,14 @@ pub fn (s Scalar) equal(t Scalar) int {
 
 // sc_mul_add and sc_reduce are ported from the public domain, “ref10”
 // implementation of ed25519 from SUPERCOP.
-fn load3(inp []byte) i64 {
+fn load3(inp []u8) i64 {
 	mut r := i64(inp[0])
 	r |= i64(inp[1]) * 256 // << 8
 	r |= i64(inp[2]) * 65536 // << 16
 	return r
 }
 
-fn load4(inp []byte) i64 {
+fn load4(inp []u8) i64 {
 	mut r := i64(inp[0])
 	r |= i64(inp[1]) * 256
 	r |= i64(inp[2]) * 65536
@@ -653,7 +653,7 @@ fn sc_mul_add(mut s [32]byte, a [32]byte, b [32]byte, c [32]byte) {
 // Output:
 //   s[0]+256*s[1]+...+256^31*s[31] = s mod l
 //   where l = 2^252 + 27742317777372353535851937790883648493.
-fn sc_reduce(mut out [32]byte, mut s []byte) {
+fn sc_reduce(mut out [32]byte, mut s []u8) {
 	assert out.len == 32
 	assert s.len == 64
 	mut s0 := 2097151 & load3(s[..])

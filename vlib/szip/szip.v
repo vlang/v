@@ -172,7 +172,7 @@ pub fn (mut zentry Zip) crc32() u32 {
 }
 
 // write_entry compresses an input buffer for the current zip entry.
-pub fn (mut zentry Zip) write_entry(data []byte) ? {
+pub fn (mut zentry Zip) write_entry(data []u8) ? {
 	if int(data[0] & 0xff) == -1 {
 		return error('szip: cannot write entry')
 	}

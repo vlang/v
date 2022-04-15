@@ -16,27 +16,27 @@ import crypto.internal.subtle
 struct Ctr {
 mut:
 	b        Block
-	next     []byte
-	out      []byte
+	next     []u8
+	out      []u8
 	out_used int
 }
 
 // new_ctr returns a Ctr which encrypts/decrypts using the given Block in
 // counter mode. The length of iv must be the same as the Block's block size.
-pub fn new_ctr(b Block, iv []byte) Ctr {
+pub fn new_ctr(b Block, iv []u8) Ctr {
 	block_size := b.block_size
 	if iv.len != block_size {
 		panic('cipher.new_cfb: IV length must be equal block size')
 	}
 	return Ctr{
 		b: b
-		out: []byte{len: b.block_size}
+		out: []u8{len: b.block_size}
 		next: iv.clone()
 		out_used: block_size
 	}
 }
 
-pub fn (x &Ctr) xor_key_stream(mut dst_ []byte, src_ []byte) {
+pub fn (x &Ctr) xor_key_stream(mut dst_ []u8, src_ []u8) {
 	unsafe {
 		mut dst := *dst_
 		mut src := src_

@@ -213,7 +213,7 @@ pub fn (mut g Gen) generate_pe_header() {
 	g.main_fn_addr = g.buf.len
 }
 
-fn pad_to(mut buf []byte, len int) {
+fn pad_to(mut buf []u8, len int) {
 	for buf.len < len {
 		buf << u8(0)
 	}

@@ -172,7 +172,7 @@ pub struct Context {
 pub:
 	cfg Config // adsasdas
 mut:
-	print_buf  []byte
+	print_buf  []u8
 	paused     bool
 	enable_su  bool
 	enable_rgb bool
