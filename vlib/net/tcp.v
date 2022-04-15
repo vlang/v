@@ -52,7 +52,7 @@ pub fn (mut c TcpConn) close() ? {
 	c.sock.close() ?
 }
 
-pub fn (c TcpConn) read_ptr(buf_ptr &byte, len int) ?int {
+pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) ?int {
 	mut res := wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)) ?
 	$if trace_tcp ? {
 		eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
@@ -96,7 +96,7 @@ pub fn (mut c TcpConn) read_deadline() ?time.Time {
 }
 
 // write_ptr blocks and attempts to write all data
-pub fn (mut c TcpConn) write_ptr(b &byte, len int) ?int {
+pub fn (mut c TcpConn) write_ptr(b &u8, len int) ?int {
 	$if trace_tcp ? {
 		eprintln(
 			'>>> TcpConn.write_ptr | c.sock.handle: $c.sock.handle | b: ${ptr_str(b)} len: $len |\n' +

@@ -10,7 +10,7 @@ fn C.PeekNamedPipe(hNamedPipe voidptr, lpBuffer voidptr, nBufferSize int, lpByte
 
 type FN_NTSuspendResume = fn (voidptr)
 
-fn ntdll_fn(name &byte) FN_NTSuspendResume {
+fn ntdll_fn(name &u8) FN_NTSuspendResume {
 	ntdll := C.GetModuleHandleA(c'NTDLL')
 	if ntdll == 0 {
 		return FN_NTSuspendResume(0)

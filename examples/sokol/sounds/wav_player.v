@@ -104,15 +104,15 @@ struct RIFFChunkHeader {
 }
 
 struct RIFFFormat {
-	format_tag            u16      // PCM = 1; Values other than 1 indicate some form of compression.
-	nchannels             u16      // Nc ; 1 = mono ; 2 = stereo
-	sample_rate           u32      // F
-	avg_bytes_per_second  u32      // F * M*Nc
-	nblock_align          u16      // M*Nc
-	bits_per_sample       u16      // 8 * M
-	cbsize                u16      // Size of the extension: 22
-	valid_bits_per_sample u16      // at most 8*M
-	channel_mask          u32      // Speaker position mask
+	format_tag            u16    // PCM = 1; Values other than 1 indicate some form of compression.
+	nchannels             u16    // Nc ; 1 = mono ; 2 = stereo
+	sample_rate           u32    // F
+	avg_bytes_per_second  u32    // F * M*Nc
+	nblock_align          u16    // M*Nc
+	bits_per_sample       u16    // 8 * M
+	cbsize                u16    // Size of the extension: 22
+	valid_bits_per_sample u16    // at most 8*M
+	channel_mask          u32    // Speaker position mask
 	sub_format            [16]u8 // GUID
 }
 

@@ -54,7 +54,7 @@ fn (mut g Gen) dec(reg Register) {
 }
 
 [inline]
-fn byt(n int, s int) byte {
+fn byt(n int, s int) u8 {
 	return u8((n >> (s * 8)) & 0xff)
 }
 

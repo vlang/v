@@ -72,7 +72,7 @@ fn C.sqlite3_finalize(&C.sqlite3_stmt) int
 //
 fn C.sqlite3_column_name(&C.sqlite3_stmt, int) &char
 
-fn C.sqlite3_column_text(&C.sqlite3_stmt, int) &byte
+fn C.sqlite3_column_text(&C.sqlite3_stmt, int) &u8
 
 fn C.sqlite3_column_int(&C.sqlite3_stmt, int) int
 

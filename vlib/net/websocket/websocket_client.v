@@ -60,7 +60,7 @@ pub enum State {
 pub struct Message {
 pub:
 	opcode  OPCode // websocket frame type of this message
-	payload []u8 // payload of the message
+	payload []u8   // payload of the message
 }
 
 // OPCode represents the supported websocket frame types
@@ -229,7 +229,7 @@ pub fn (mut ws Client) pong() ? {
 }
 
 // write_ptr writes len bytes provided a byteptr with a websocket messagetype
-pub fn (mut ws Client) write_ptr(bytes &byte, payload_len int, code OPCode) ?int {
+pub fn (mut ws Client) write_ptr(bytes &u8, payload_len int, code OPCode) ?int {
 	// ws.debug_log('write_ptr code: $code')
 	if ws.state != .open || ws.conn.sock.handle < 1 {
 		// todo: send error here later

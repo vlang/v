@@ -74,7 +74,7 @@ fn test_unsafe_if_stmt() {
 	assert x == 4
 }
 
-const fixedbytes = [100]byte{}
+const fixedbytes = [100]u8{}
 
 fn test_unsafe_pointers() {
 	fsize := fixedbytes.len

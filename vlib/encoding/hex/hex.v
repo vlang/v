@@ -52,7 +52,7 @@ pub fn encode(bytes []u8) string {
 }
 
 // char2nibble converts an ASCII hex character to it's hex value
-fn char2nibble(b byte) ?byte {
+fn char2nibble(b u8) ?u8 {
 	match b {
 		`0`...`9` { return b - u8(`0`) }
 		`A`...`F` { return b - u8(`A`) + 10 }

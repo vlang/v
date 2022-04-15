@@ -240,12 +240,12 @@ pub fn c4f(r f32, g f32, b f32, a f32) {
 }
 
 [inline]
-pub fn c3b(r byte, g byte, b byte) {
+pub fn c3b(r u8, g u8, b u8) {
 	C.sgl_c3b(r, g, b)
 }
 
 [inline]
-pub fn c4b(r byte, g byte, b byte, a byte) {
+pub fn c4b(r u8, g u8, b u8, a u8) {
 	C.sgl_c4b(r, g, b, a)
 }
 
@@ -316,7 +316,7 @@ pub fn v2f_c3f(x f32, y f32, r f32, g f32, b f32) {
 }
 
 [inline]
-pub fn v2f_c3b(x f32, y f32, r byte, g byte, b byte) {
+pub fn v2f_c3b(x f32, y f32, r u8, g u8, b u8) {
 	C.sgl_v2f_c3b(x, y, r, g, b)
 }
 
@@ -326,7 +326,7 @@ pub fn v2f_c4f(x f32, y f32, r f32, g f32, b f32, a f32) {
 }
 
 [inline]
-pub fn v2f_c4b(x f32, y f32, r byte, g byte, b byte, a byte) {
+pub fn v2f_c4b(x f32, y f32, r u8, g u8, b u8, a u8) {
 	C.sgl_v2f_c4b(x, y, r, g, b, a)
 }
 
@@ -341,7 +341,7 @@ pub fn v3f_c3f(x f32, y f32, z f32, r f32, g f32, b f32) {
 }
 
 [inline]
-pub fn v3f_c3b(x f32, y f32, z f32, r byte, g byte, b byte) {
+pub fn v3f_c3b(x f32, y f32, z f32, r u8, g u8, b u8) {
 	C.sgl_v3f_c3b(x, y, z, r, g, b)
 }
 
@@ -351,7 +351,7 @@ pub fn v3f_c4f(x f32, y f32, z f32, r f32, g f32, b f32, a f32) {
 }
 
 [inline]
-pub fn v3f_c4b(x f32, y f32, z f32, r byte, g byte, b byte, a byte) {
+pub fn v3f_c4b(x f32, y f32, z f32, r u8, g u8, b u8, a u8) {
 	C.sgl_v3f_c4b(x, y, z, r, g, b, a)
 }
 
@@ -366,7 +366,7 @@ pub fn v2f_t2f_c3f(x f32, y f32, u f32, v f32, r f32, g f32, b f32) {
 }
 
 [inline]
-pub fn v2f_t2f_c3b(x f32, y f32, u f32, v f32, r byte, g byte, b byte) {
+pub fn v2f_t2f_c3b(x f32, y f32, u f32, v f32, r u8, g u8, b u8) {
 	C.sgl_v2f_t2f_c3b(x, y, u, v, r, g, b)
 }
 
@@ -376,7 +376,7 @@ pub fn v2f_t2f_c4f(x f32, y f32, u f32, v f32, r f32, g f32, b f32, a f32) {
 }
 
 [inline]
-pub fn v2f_t2f_c4b(x f32, y f32, u f32, v f32, r byte, g byte, b byte, a byte) {
+pub fn v2f_t2f_c4b(x f32, y f32, u f32, v f32, r u8, g u8, b u8, a u8) {
 	C.sgl_v2f_t2f_c4b(x, y, u, v, r, g, b, a)
 }
 
@@ -391,7 +391,7 @@ pub fn v3f_t2f_c3f(x f32, y f32, z f32, u f32, v f32, r f32, g f32, b f32) {
 }
 
 [inline]
-pub fn v3f_t2f_c3b(x f32, y f32, z f32, u f32, v f32, r byte, g byte, b byte) {
+pub fn v3f_t2f_c3b(x f32, y f32, z f32, u f32, v f32, r u8, g u8, b u8) {
 	C.sgl_v3f_t2f_c3b(x, y, z, u, v, r, g, b)
 }
 
@@ -401,7 +401,7 @@ pub fn v3f_t2f_c4f(x f32, y f32, z f32, u f32, v f32, r f32, g f32, b f32, a f32
 }
 
 [inline]
-pub fn v3f_t2f_c4b(x f32, y f32, z f32, u f32, v f32, r byte, g byte, b byte, a byte) {
+pub fn v3f_t2f_c4b(x f32, y f32, z f32, u f32, v f32, r u8, g u8, b u8, a u8) {
 	C.sgl_v3f_t2f_c4b(x, y, z, u, v, r, g, b, a)
 }
 

@@ -16,7 +16,7 @@ import time
 pub interface PRNG {
 mut:
 	seed(seed_data []u32)
-	u8() byte
+	u8() u8
 	u16() u16
 	u32() u32
 	u64() u64
@@ -424,7 +424,7 @@ pub fn intn(max int) ?int {
 }
 
 // byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
-pub fn u8() byte {
+pub fn u8() u8 {
 	return default_rng.u8()
 }
 

@@ -150,14 +150,14 @@ pub fn (mut ctx Context) new_streaming_image(w int, h int, channels int, sicfg S
 
 // update_pixel_data is a helper for working with image streams (i.e. images,
 // that are updated dynamically by the CPU on each frame)
-pub fn (mut ctx Context) update_pixel_data(cached_image_idx int, buf &byte) {
+pub fn (mut ctx Context) update_pixel_data(cached_image_idx int, buf &u8) {
 	mut image := ctx.get_cached_image_by_idx(cached_image_idx)
 	image.update_pixel_data(buf)
 }
 
 // update_pixel_data updates the sokol specific pixel data associated
 // with this `Image`.
-pub fn (mut img Image) update_pixel_data(buf &byte) {
+pub fn (mut img Image) update_pixel_data(buf &u8) {
 	mut data := gfx.ImageData{}
 	data.subimage[0][0].ptr = buf
 	data.subimage[0][0].size = usize(img.width * img.height * img.nr_channels)
@@ -218,7 +218,7 @@ fn create_image(file string) Image {
 // memory buffer `buf` of size `bufsize`.
 //
 // See also: create_image_from_byte_array
-pub fn (mut ctx Context) create_image_from_memory(buf &byte, bufsize int) Image {
+pub fn (mut ctx Context) create_image_from_memory(buf &u8, bufsize int) Image {
 	stb_img := stbi.load_from_memory(buf, bufsize) or { return Image{} }
 	mut img := Image{
 		width: stb_img.width

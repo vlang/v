@@ -490,7 +490,7 @@ fn (mut tf TTF_File) read_compound_glyph(mut in_glyph Glyph) {
 * TTF_File get functions
 *
 ******************************************************************************/
-fn (mut tf TTF_File) get_u8() byte {
+fn (mut tf TTF_File) get_u8() u8 {
 	x := tf.buf[tf.pos]
 	tf.pos++
 	return u8(x)

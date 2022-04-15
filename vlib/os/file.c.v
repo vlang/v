@@ -465,7 +465,7 @@ pub fn (f &File) read_from(pos u64, mut buf []u8) ?int {
 
 // read_into_ptr reads at most max_size bytes from the file and writes it into ptr.
 // Returns the amount of bytes read or an error.
-pub fn (f &File) read_into_ptr(ptr &byte, max_size int) ?int {
+pub fn (f &File) read_into_ptr(ptr &u8, max_size int) ?int {
 	return fread(ptr, 1, max_size, f.cfile)
 }
 

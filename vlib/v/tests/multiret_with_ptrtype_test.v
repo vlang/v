@@ -2,7 +2,7 @@ fn multi_voidptr_ret() (voidptr, bool) {
 	return voidptr(0), true
 }
 
-fn multi_byteptr_ret() (&byte, bool) {
+fn multi_byteptr_ret() (&u8, bool) {
 	return &u8(0), true
 }
 

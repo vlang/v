@@ -4,7 +4,7 @@ const (
 )
 
 struct Foo {
-	bar [size]byte
+	bar [size]u8
 }
 
 fn test_fixed_array_const_size() {

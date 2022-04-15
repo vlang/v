@@ -37,7 +37,7 @@ pub:
 	frame_cb   fn ()
 	cleanup_cb fn ()
 	event_cb   fn (&Event) //&sapp_event)
-	fail_cb    fn (&byte)
+	fail_cb    fn (&u8)
 
 	user_data           voidptr // these are the user-provided callbacks with user data
 	init_userdata_cb    fn (voidptr)

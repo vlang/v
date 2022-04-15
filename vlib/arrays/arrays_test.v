@@ -283,10 +283,10 @@ fn test_copy() {
 }
 
 fn test_can_copy_bits() {
-	assert can_copy_bits<byte>()
+	assert can_copy_bits<u8>()
 	assert can_copy_bits<int>()
 	assert can_copy_bits<voidptr>()
-	assert can_copy_bits<&byte>()
+	assert can_copy_bits<&u8>()
 	// autofree needs to intercept assign
 	assert !can_copy_bits<string>()
 	assert !can_copy_bits<[]int>()

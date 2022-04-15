@@ -24,7 +24,7 @@ fn init_alphabets() map[string]Alphabet {
 // will be encoded to and a decode table.
 struct Alphabet {
 mut:
-	decode []i8   = []i8{len: 128, init: -1}
+	decode []i8 = []i8{len: 128, init: -1}
 	encode []u8 = []u8{len: 58}
 }
 

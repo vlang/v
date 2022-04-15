@@ -29,7 +29,7 @@ pub fn (mut rng MuslRNG) seed(seed_data []u32) {
 
 // byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
 [inline]
-pub fn (mut rng MuslRNG) u8() byte {
+pub fn (mut rng MuslRNG) u8() u8 {
 	if rng.bytes_left >= 1 {
 		rng.bytes_left -= 1
 		value := u8(rng.buffer)

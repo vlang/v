@@ -14,7 +14,7 @@ fn do_send_int(ch chan int) {
 	}
 }
 
-fn do_send_u8(ch chan byte) {
+fn do_send_u8(ch chan u8) {
 	for i in 0 .. 300 {
 		ch <- u8(i)
 	}
@@ -29,7 +29,7 @@ fn do_send_i64(ch chan i64) {
 fn test_select() {
 	chi := chan int{}
 	chl := chan i64{cap: 1}
-	chb := chan byte{cap: 10}
+	chb := chan u8{cap: 10}
 	recch := chan i64{cap: 0}
 	go do_rec_i64(recch)
 	go do_send_int(chi)

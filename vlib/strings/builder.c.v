@@ -18,7 +18,7 @@ pub fn new_builder(initial_size int) Builder {
 
 // write_ptr writes `len` bytes provided byteptr to the accumulated buffer
 [unsafe]
-pub fn (mut b Builder) write_ptr(ptr &byte, len int) {
+pub fn (mut b Builder) write_ptr(ptr &u8, len int) {
 	if len == 0 {
 		return
 	}
@@ -51,12 +51,12 @@ pub fn (mut b Builder) write_runes(runes []rune) {
 // write_b appends a single `data` byte to the accumulated buffer
 [deprecated: 'Use write_u8() instead']
 [deprecated_after: '2022-02-11']
-pub fn (mut b Builder) write_b(data byte) {
+pub fn (mut b Builder) write_b(data u8) {
 	b << data
 }
 
 // write_byte appends a single `data` byte to the accumulated buffer
-pub fn (mut b Builder) write_u8(data byte) {
+pub fn (mut b Builder) write_u8(data u8) {
 	b << data
 }
 
@@ -81,7 +81,7 @@ pub fn (mut b Builder) drain_builder(mut other Builder, other_new_cap int) {
 // byte_at returns a byte, located at a given index `i`.
 // Note: it can panic, if there are not enough bytes in the strings builder yet.
 [inline]
-pub fn (b &Builder) byte_at(n int) byte {
+pub fn (b &Builder) byte_at(n int) u8 {
 	return unsafe { (&[]u8(b))[n] }
 }
 

@@ -128,7 +128,7 @@ pub mut:
 	ui_mode     bool // do not redraw everything 60 times/second, but only when the user requests
 	frame       u64  // the current frame counted from the start of the application; always increasing
 	//
-	mbtn_mask     byte
+	mbtn_mask     u8
 	mouse_buttons MouseButtons // typed version of mbtn_mask; easier to use for user programs
 	mouse_pos_x   int
 	mouse_pos_y   int

@@ -38,11 +38,11 @@ pub:
 	dbname   string
 }
 
-fn C.PQconnectdb(a &byte) &C.PGconn
+fn C.PQconnectdb(a &u8) &C.PGconn
 
-fn C.PQerrorMessage(voidptr) &byte
+fn C.PQerrorMessage(voidptr) &u8
 
-fn C.PQgetvalue(&C.PGResult, int, int) &byte
+fn C.PQgetvalue(&C.PGResult, int, int) &u8
 
 fn C.PQstatus(voidptr) int
 
@@ -52,20 +52,20 @@ fn C.PQntuples(&C.PGResult) int
 
 fn C.PQnfields(&C.PGResult) int
 
-fn C.PQexec(voidptr, &byte) &C.PGResult
+fn C.PQexec(voidptr, &u8) &C.PGResult
 
 // Params:
 // const Oid *paramTypes
 // const char *const *paramValues
 // const int *paramLengths
 // const int *paramFormats
-fn C.PQexecParams(conn voidptr, command &byte, nParams int, paramTypes int, paramValues &byte, paramLengths int, paramFormats int, resultFormat int) &C.PGResult
+fn C.PQexecParams(conn voidptr, command &u8, nParams int, paramTypes int, paramValues &u8, paramLengths int, paramFormats int, resultFormat int) &C.PGResult
 
-fn C.PQputCopyData(conn voidptr, buffer &byte, nbytes int) int
+fn C.PQputCopyData(conn voidptr, buffer &u8, nbytes int) int
 
-fn C.PQputCopyEnd(voidptr, &byte) int
+fn C.PQputCopyEnd(voidptr, &u8) int
 
-fn C.PQgetCopyData(conn voidptr, buffer &&byte, async int) int
+fn C.PQgetCopyData(conn voidptr, buffer &&u8, async int) int
 
 fn C.PQclear(&C.PGResult) voidptr
 

@@ -50,7 +50,7 @@ struct Ip {
 }
 
 struct Unix {
-	path [max_unix_path]byte
+	path [max_unix_path]u8
 }
 
 [_pack: '1']

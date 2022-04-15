@@ -1,7 +1,7 @@
 module strings
 
 // strings.repeat - fill a string with `n` repetitions of the character `c`
-pub fn repeat(c byte, n int) string {
+pub fn repeat(c u8, n int) string {
 	if n <= 0 {
 		return ''
 	}

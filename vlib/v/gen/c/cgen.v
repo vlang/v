@@ -2212,7 +2212,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	g.expr(expr)
 }
 
-fn write_octal_escape(mut b strings.Builder, c byte) {
+fn write_octal_escape(mut b strings.Builder, c u8) {
 	b << 92 // \
 	b << 48 + (c >> 6) // oct digit 2
 	b << 48 + (c >> 3) & 7 // oct digit 1

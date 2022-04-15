@@ -160,7 +160,7 @@ pub:
 	// Keyboard event info
 	code      KeyCode
 	modifiers Modifiers
-	ascii     byte
+	ascii     u8
 	utf8      string
 	// Resized event info
 	width  int

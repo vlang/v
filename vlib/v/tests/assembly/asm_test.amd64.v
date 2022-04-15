@@ -116,7 +116,7 @@ mut:
 	ebx  u32
 	edx  u32
 	ecx  u32
-	zero byte // for string
+	zero u8 // for string
 }
 
 fn (m Manu) str() string {

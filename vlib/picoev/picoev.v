@@ -70,10 +70,10 @@ struct Picoev {
 	timeout_secs int
 	max_headers  int
 mut:
-	date &byte
-	buf  &byte
+	date &u8
+	buf  &u8
 	idx  [1024]int
-	out  &byte
+	out  &u8
 }
 
 [inline]
@@ -94,7 +94,7 @@ fn close_conn(loop &C.picoev_loop, fd int) {
 }
 
 [inline]
-fn req_read(fd int, b &byte, max_len int, idx int) int {
+fn req_read(fd int, b &u8, max_len int, idx int) int {
 	unsafe {
 		return C.read(fd, b + idx, max_len - idx)
 	}

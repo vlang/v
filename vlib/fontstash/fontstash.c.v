@@ -251,7 +251,7 @@ pub fn (s &Context) text_iter_next(iter &C.FONStextIter, quad &C.FONSquad) int {
 // get_texture_data returns the current Context's raw texture data.
 // `width` and `height` is assigned the size of the texture dimensions.
 [inline]
-pub fn (s &Context) get_texture_data(width &int, height &int) &byte {
+pub fn (s &Context) get_texture_data(width &int, height &int) &u8 {
 	return &u8(C.fonsGetTextureData(s, width, height))
 }
 

@@ -17,7 +17,7 @@ mut:
 
 fn C.darwin_new_pasteboard() voidptr
 
-fn C.darwin_get_pasteboard_text(voidptr) &byte
+fn C.darwin_get_pasteboard_text(voidptr) &u8
 
 fn C.darwin_set_pasteboard_text(voidptr, string) bool
 

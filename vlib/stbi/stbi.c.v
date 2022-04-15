@@ -69,7 +69,7 @@ pub fn write_tga_with_rle(flag bool) {
 // Utility functions
 //
 //-----------------------------------------------------------------------------
-fn C.stbi_image_free(retval_from_stbi_load &byte)
+fn C.stbi_image_free(retval_from_stbi_load &u8)
 
 pub fn (img &Image) free() {
 	C.stbi_image_free(img.data)
@@ -80,9 +80,9 @@ pub fn (img &Image) free() {
 // Load functions
 //
 //-----------------------------------------------------------------------------
-fn C.stbi_load(filename &char, x &int, y &int, channels_in_file &int, desired_channels int) &byte
-fn C.stbi_load_from_file(f voidptr, x &int, y &int, channels_in_file &int, desired_channels int) &byte
-fn C.stbi_load_from_memory(buffer &byte, len int, x &int, y &int, channels_in_file &int, desired_channels int) &byte
+fn C.stbi_load(filename &char, x &int, y &int, channels_in_file &int, desired_channels int) &u8
+fn C.stbi_load_from_file(f voidptr, x &int, y &int, channels_in_file &int, desired_channels int) &u8
+fn C.stbi_load_from_memory(buffer &u8, len int, x &int, y &int, channels_in_file &int, desired_channels int) &u8
 
 // load load an image from a path
 pub fn load(path string) ?Image {
@@ -107,7 +107,7 @@ pub fn load(path string) ?Image {
 }
 
 // load_from_memory load an image from a memory buffer
-pub fn load_from_memory(buf &byte, bufsize int) ?Image {
+pub fn load_from_memory(buf &u8, bufsize int) ?Image {
 	mut res := Image{
 		ok: true
 		data: 0
@@ -126,30 +126,30 @@ pub fn load_from_memory(buf &byte, bufsize int) ?Image {
 // Write functions
 //
 //-----------------------------------------------------------------------------
-fn C.stbi_write_png(filename &char, w int, h int, comp int, buffer &byte, stride_in_bytes int) int
-fn C.stbi_write_bmp(filename &char, w int, h int, comp int, buffer &byte) int
-fn C.stbi_write_tga(filename &char, w int, h int, comp int, buffer &byte) int
-fn C.stbi_write_jpg(filename &char, w int, h int, comp int, buffer &byte, quality int) int
+fn C.stbi_write_png(filename &char, w int, h int, comp int, buffer &u8, stride_in_bytes int) int
+fn C.stbi_write_bmp(filename &char, w int, h int, comp int, buffer &u8) int
+fn C.stbi_write_tga(filename &char, w int, h int, comp int, buffer &u8) int
+fn C.stbi_write_jpg(filename &char, w int, h int, comp int, buffer &u8, quality int) int
 
 // fn C.stbi_write_hdr(filename &char, w int, h int, comp int, buffer &byte) int // buffer &byte => buffer &f32
 
 // stbi_write_png write on path a PNG file
 // row_stride_in_bytes is usually equal to: w * comp
-pub fn stbi_write_png(path string, w int, h int, comp int, buf &byte, row_stride_in_bytes int) ? {
+pub fn stbi_write_png(path string, w int, h int, comp int, buf &u8, row_stride_in_bytes int) ? {
 	if 0 == C.stbi_write_png(&char(path.str), w, h, comp, buf, row_stride_in_bytes) {
 		return error('stbi_image failed to write png file to "$path"')
 	}
 }
 
 // stbi_write_png write on path a BMP file
-pub fn stbi_write_bmp(path string, w int, h int, comp int, buf &byte) ? {
+pub fn stbi_write_bmp(path string, w int, h int, comp int, buf &u8) ? {
 	if 0 == C.stbi_write_bmp(&char(path.str), w, h, comp, buf) {
 		return error('stbi_image failed to write bmp file to "$path"')
 	}
 }
 
 // stbi_write_png write on path a TGA file
-pub fn stbi_write_tga(path string, w int, h int, comp int, buf &byte) ? {
+pub fn stbi_write_tga(path string, w int, h int, comp int, buf &u8) ? {
 	if 0 == C.stbi_write_tga(&char(path.str), w, h, comp, buf) {
 		return error('stbi_image failed to write tga file to "$path"')
 	}
@@ -158,7 +158,7 @@ pub fn stbi_write_tga(path string, w int, h int, comp int, buf &byte) ? {
 // stbi_write_png write on path a JPG file
 // quality select teh compression quality of the JPG
 // quality is between 1 and 100. Higher quality looks better but results in a bigger image.
-pub fn stbi_write_jpg(path string, w int, h int, comp int, buf &byte, quality int) ? {
+pub fn stbi_write_jpg(path string, w int, h int, comp int, buf &u8, quality int) ? {
 	if 0 == C.stbi_write_jpg(&char(path.str), w, h, comp, buf, quality) {
 		return error('stbi_image failed to write jpg file to "$path"')
 	}

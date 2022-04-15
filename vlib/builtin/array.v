@@ -642,8 +642,8 @@ pub fn (mut a array) reverse_in_place() {
 		mut tmp_value := malloc(a.element_size)
 		for i in 0 .. a.len / 2 {
 			vmemcpy(tmp_value, &u8(a.data) + i * a.element_size, a.element_size)
-			vmemcpy(&u8(a.data) + i * a.element_size, &u8(a.data) +
-				(a.len - 1 - i) * a.element_size, a.element_size)
+			vmemcpy(&u8(a.data) + i * a.element_size, &u8(a.data) + (a.len - 1 - i) * a.element_size,
+				a.element_size)
 			vmemcpy(&u8(a.data) + (a.len - 1 - i) * a.element_size, tmp_value, a.element_size)
 		}
 		free(tmp_value)

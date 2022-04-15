@@ -6,7 +6,7 @@ enum WireType {
 	_32bit = 5
 }
 
-fn pack_wire_type(w WireType) byte {
+fn pack_wire_type(w WireType) u8 {
 	return u8(w)
 }
 

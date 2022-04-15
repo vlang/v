@@ -536,7 +536,7 @@ fn (mut s Scanner) extract_multiline_string() ?string {
 
 // handle_escapes returns any escape character sequence.
 // For escape sequence validation see `Checker.check_quoted_escapes`.
-fn (mut s Scanner) handle_escapes(quote byte, is_multiline bool) (string, int) {
+fn (mut s Scanner) handle_escapes(quote u8, is_multiline bool) (string, int) {
 	c := u8(s.at())
 	mut lit := c.ascii_str()
 	is_literal_string := quote == `'`
@@ -597,8 +597,7 @@ fn (mut s Scanner) extract_number() ?string {
 			s.col += 2
 		}
 		c = s.at()
-		if !(u8(c).is_hex_digit() || c in scanner.digit_extras)
-			|| (c == `.` && s.is_left_of_assign) {
+		if !(u8(c).is_hex_digit() || c in scanner.digit_extras) || (c == `.` && s.is_left_of_assign) {
 			break
 		}
 		s.pos++

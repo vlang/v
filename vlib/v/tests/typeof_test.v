@@ -127,7 +127,7 @@ fn myfn(i int) int {
 fn myfn2() {
 }
 
-fn myfn3(i int, s string) byte {
+fn myfn3(i int, s string) u8 {
 	return u8(0)
 }
 

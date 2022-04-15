@@ -44,7 +44,7 @@ Note: A V string should be/is immutable from the point of view of
 pub struct string {
 pub:
 	str &u8 = 0 // points to a C style 0 terminated string of bytes.
-	len int   // the length of the .str field, excluding the ending 0 byte. It is always equal to strlen(.str).
+	len int // the length of the .str field, excluding the ending 0 byte. It is always equal to strlen(.str).
 	// NB string.is_lit is an enumeration of the following:
 	// .is_lit == 0 => a fresh string, should be freed by autofree
 	// .is_lit == 1 => a literal string from .rodata, should NOT be freed
@@ -1215,7 +1215,7 @@ pub fn (s string) to_upper() string {
 pub fn (s string) is_upper() bool {
 	for i in 0 .. s.len {
 		if s[i] >= `a` && s[i] <= `z` {
-	return false
+			return false
 		}
 	}
 	return true

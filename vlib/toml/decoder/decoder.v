@@ -159,9 +159,8 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ? {
 					&& u8(s.peek(3)).is_hex_digit() && u8(s.peek(4)).is_hex_digit()
 
 				if is_valid_short {
-					is_valid_long := u8(s.peek(5)).is_hex_digit()
-						&& u8(s.peek(6)).is_hex_digit() && u8(s.peek(7)).is_hex_digit()
-						&& u8(s.peek(8)).is_hex_digit()
+					is_valid_long := u8(s.peek(5)).is_hex_digit() && u8(s.peek(6)).is_hex_digit()
+						&& u8(s.peek(7)).is_hex_digit() && u8(s.peek(8)).is_hex_digit()
 					// If it's a long type Unicode (\UXXXXXXXX) with a maximum of 10 chars: '\' + 'U' + 8 hex characters
 					// we pass in 10 characters from the `u`/`U` which is the longest possible sequence
 					// of 9 chars plus one extra.

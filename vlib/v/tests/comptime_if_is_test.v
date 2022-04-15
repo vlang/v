@@ -15,7 +15,7 @@ fn test_generic_is() {
 }
 
 fn g<T>(t T) int {
-	$if T is byte || T is i8 {
+	$if T is u8 || T is i8 {
 		return 1
 	}
 	return 2

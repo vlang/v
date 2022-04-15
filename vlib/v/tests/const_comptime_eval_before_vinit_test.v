@@ -58,8 +58,8 @@ const zzz_an_f64_const_1 = zzz_an_f64_const + f64(1.0)
 // values will be the same.
 
 [unsafe]
-fn static_storage(idx int, value int) byte {
-	mut static storage := [256]byte{}
+fn static_storage(idx int, value int) u8 {
+	mut static storage := [256]u8{}
 	if value == -1 {
 		return storage[idx]
 	}

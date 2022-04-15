@@ -3,7 +3,7 @@ module mysql
 import orm
 import time
 
-type Prims = byte | f32 | f64 | i16 | i64 | i8 | int | string | u16 | u32 | u64
+type Prims = f32 | f64 | i16 | i64 | i8 | int | string | u16 | u32 | u64 | u8
 
 // sql expr
 

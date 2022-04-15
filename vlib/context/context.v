@@ -21,19 +21,7 @@ const (
 )
 
 // Key represents the type for the ValueContext key
-pub type Key = bool
-	| byte
-	| f32
-	| f64
-	| i16
-	| i64
-	| i8
-	| int
-	| string
-	| u16
-	| u32
-	| u64
-	| voidptr
+pub type Key = bool | f32 | f64 | i16 | i64 | i8 | int | string | u16 | u32 | u64 | u8 | voidptr
 
 // Any represents a generic type for the ValueContext
 pub interface Any {}

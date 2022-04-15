@@ -100,15 +100,15 @@ fn sub96(s2 u32, s1 u32, s0 u32, d2 u32, d1 u32, d0 u32) (u32, u32, u32) {
 }
 
 // Utility functions
-fn is_digit(x byte) bool {
+fn is_digit(x u8) bool {
 	return (x >= strconv.c_zero && x <= strconv.c_nine) == true
 }
 
-fn is_space(x byte) bool {
+fn is_space(x u8) bool {
 	return x == `\t` || x == `\n` || x == `\v` || x == `\f` || x == `\r` || x == ` `
 }
 
-fn is_exp(x byte) bool {
+fn is_exp(x u8) bool {
 	return (x == `E` || x == `e`) == true
 }
 

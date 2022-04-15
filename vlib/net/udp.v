@@ -58,7 +58,7 @@ pub fn dial_udp(raddr string) ?&UdpConn {
 // 	}
 // }
 
-pub fn (mut c UdpConn) write_ptr(b &byte, len int) ?int {
+pub fn (mut c UdpConn) write_ptr(b &u8, len int) ?int {
 	remote := c.sock.remote() or { return err_no_udp_remote }
 	return c.write_to_ptr(remote, b, len)
 }
@@ -71,7 +71,7 @@ pub fn (mut c UdpConn) write_string(s string) ?int {
 	return c.write_ptr(s.str, s.len)
 }
 
-pub fn (mut c UdpConn) write_to_ptr(addr Addr, b &byte, len int) ?int {
+pub fn (mut c UdpConn) write_to_ptr(addr Addr, b &u8, len int) ?int {
 	res := C.sendto(c.sock.handle, b, len, 0, voidptr(&addr), addr.len())
 	if res >= 0 {
 		return res

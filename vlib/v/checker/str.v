@@ -6,7 +6,7 @@ module checker
 import v.ast
 import v.token
 
-pub fn (mut c Checker) get_default_fmt(ftyp ast.Type, typ ast.Type) byte {
+pub fn (mut c Checker) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 	if ftyp.has_flag(.optional) {
 		return `s`
 	} else if typ.is_float() {

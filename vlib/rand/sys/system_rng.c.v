@@ -64,7 +64,7 @@ pub fn (r SysRNG) default_rand() int {
 
 // byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
 [inline]
-pub fn (mut r SysRNG) u8() byte {
+pub fn (mut r SysRNG) u8() u8 {
 	if r.bytes_left >= 1 {
 		r.bytes_left -= 1
 		value := u8(r.buffer)

@@ -24,7 +24,7 @@ pub fn random(n int) string {
 // find_between_pair_byte is the fastest in the find_between_pair_* family of functions.
 // Example: assert strings.find_between_pair_u8('(V) (NOT V)',`(`,`)`) == 'V'
 // Example: assert strings.find_between_pair_u8('s {X{Y}} s',`{`,`}`) == 'X{Y}'
-pub fn find_between_pair_u8(input string, start byte, end byte) string {
+pub fn find_between_pair_u8(input string, start u8, end u8) string {
 	mut marks := 0
 	mut start_index := -1
 	for i, b in input {

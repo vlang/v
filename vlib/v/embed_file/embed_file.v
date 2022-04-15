@@ -12,8 +12,8 @@ pub struct EmbedFileData {
 	apath            string
 	compression_type string
 mut:
-	compressed        &byte
-	uncompressed      &byte
+	compressed        &u8
+	uncompressed      &u8
 	free_compressed   bool
 	free_uncompressed bool
 pub:
@@ -58,7 +58,7 @@ pub fn (original &EmbedFileData) to_bytes() []u8 {
 	}
 }
 
-pub fn (mut ed EmbedFileData) data() &byte {
+pub fn (mut ed EmbedFileData) data() &u8 {
 	if !isnil(ed.uncompressed) {
 		return ed.uncompressed
 	}
@@ -100,7 +100,7 @@ pub struct EmbedFileIndexEntry {
 	id   int
 	path string
 	algo string
-	data &byte
+	data &u8
 }
 
 // find_index_entry_by_path is used internally by the V compiler:

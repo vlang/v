@@ -22,7 +22,7 @@ mut:
 	c_oflag int
 	c_cflag int
 	c_lflag int
-	c_line  byte
+	c_line  u8
 	c_cc    [cclen]int
 }
 
@@ -32,7 +32,7 @@ mut:
 	c_oflag u32
 	c_cflag u32
 	c_lflag u32
-	c_line  byte
+	c_line  u8
 	c_cc    [cclen]int
 }
 
@@ -300,7 +300,7 @@ fn (r Readline) analyse_extended_control() Action {
 
 // analyse_extended_control_no_eat returns an `Action` based on the type of input byte given in `c`.
 // analyse_extended_control_no_eat specialises in detection of delete and insert keys.
-fn (r Readline) analyse_extended_control_no_eat(last_c byte) Action {
+fn (r Readline) analyse_extended_control_no_eat(last_c u8) Action {
 	c := r.read_char()
 	match u8(c) {
 		`~` {

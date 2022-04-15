@@ -116,10 +116,10 @@ pub const (
 // Color represents a 32 bit color value in sRGB format
 pub struct Color {
 pub mut:
-	r byte
-	g byte
-	b byte
-	a byte = 255
+	r u8
+	g u8
+	b u8
+	a u8 = 255
 }
 
 // hex takes in a 32 bit integer and splits it into 4 byte values
@@ -132,7 +132,7 @@ pub fn hex(color int) Color {
 	}
 }
 
-pub fn rgb(r byte, g byte, b byte) Color {
+pub fn rgb(r u8, g u8, b u8) Color {
 	return Color{
 		r: r
 		g: g
@@ -140,7 +140,7 @@ pub fn rgb(r byte, g byte, b byte) Color {
 	}
 }
 
-pub fn rgba(r byte, g byte, b byte, a byte) Color {
+pub fn rgba(r u8, g u8, b u8, a u8) Color {
 	return Color{
 		r: r
 		g: g

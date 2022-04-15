@@ -783,11 +783,11 @@ fn test_double_quote_inter() {
 	assert '$a $b' == '1 2'
 }
 
-fn foo(b byte) byte {
+fn foo(b u8) u8 {
 	return b - 10
 }
 
-fn filter(b byte) bool {
+fn filter(b u8) bool {
 	return b != `a`
 }
 

@@ -276,7 +276,7 @@ pub mut:
 	user_data     voidptr
 	ui_mode       bool
 	frame         u64
-	mbtn_mask     byte
+	mbtn_mask     u8
 	mouse_buttons MouseButtons
 	mouse_pos_x   int
 	mouse_pos_y   int

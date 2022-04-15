@@ -3,11 +3,11 @@ enum Index {
 	two
 }
 
-fn direct(b byte) bool {
+fn direct(b u8) bool {
 	return true
 }
 
-fn access(b byte) bool {
+fn access(b u8) bool {
 	return false
 }
 

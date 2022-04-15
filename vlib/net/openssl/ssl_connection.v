@@ -147,7 +147,7 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ? {
 	}
 }
 
-pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &byte, len int) ?int {
+pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) ?int {
 	mut res := 0
 	for {
 		res = C.SSL_read(voidptr(s.ssl), buf_ptr, len)

@@ -54,13 +54,13 @@ pub fn url_encode_str(data string) string {
 // assemble64 assembles 8 base64 digits into 6 bytes.
 // Each digit comes from the decode map.
 // Please note: Invalid base64 digits are not expected and not handled.
-fn assemble64(n1 byte, n2 byte, n3 byte, n4 byte, n5 byte, n6 byte, n7 byte, n8 byte) u64 {
+fn assemble64(n1 u8, n2 u8, n3 u8, n4 u8, n5 u8, n6 u8, n7 u8, n8 u8) u64 {
 	return u64(n1) << 58 | u64(n2) << 52 | u64(n3) << 46 | u64(n4) << 40 | u64(n5) << 34 | u64(n6) << 28 | u64(n7) << 22 | u64(n8) << 16
 }
 
 // assemble32 assembles 4 base64 digits into 3 bytes.
 // Each digit comes from the decode map.
 // Please note: Invalid base64 digits are not expected and not handled.
-fn assemble32(n1 byte, n2 byte, n3 byte, n4 byte) u32 {
+fn assemble32(n1 u8, n2 u8, n3 u8, n4 u8) u32 {
 	return u32(n1) << 26 | u32(n2) << 20 | u32(n3) << 14 | u32(n4) << 8
 }

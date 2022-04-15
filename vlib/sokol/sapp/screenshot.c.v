@@ -6,7 +6,7 @@ pub struct Screenshot {
 	height int
 	size   int
 mut:
-	pixels &byte
+	pixels &u8
 }
 
 [manualfree]

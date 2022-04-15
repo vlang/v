@@ -19,8 +19,8 @@ import math
 pub struct BitMap {
 pub mut:
 	tf       &TTF_File
-	buf      &byte = 0 // pointer to the memory buffer
-	buf_size int   // allocated buf size in bytes
+	buf      &u8 = 0 // pointer to the memory buffer
+	buf_size int // allocated buf size in bytes
 	width    int = 1 // width of the buffer
 	height   int = 1 // height of the buffer
 	bp       int = 4 // byte per pixel of the buffer

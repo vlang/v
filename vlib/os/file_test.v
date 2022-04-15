@@ -286,7 +286,7 @@ fn test_read_raw() ? {
 	f.close()
 	f = os.open_file(tfile, 'r') ?
 	p := f.read_raw<Point>() ?
-	b := f.read_raw<byte>() ?
+	b := f.read_raw<u8>() ?
 	c := f.read_raw<Color>() ?
 	x := f.read_raw<Permissions>() ?
 	f.close()
@@ -309,8 +309,8 @@ fn test_read_raw_at() ? {
 	mut at := u64(3)
 	p := f.read_raw_at<Point>(at) ?
 	at += sizeof(Point)
-	b := f.read_raw_at<byte>(at) ?
-	at += sizeof(byte)
+	b := f.read_raw_at<u8>(at) ?
+	at += sizeof(u8)
 	c := f.read_raw_at<Color>(at) ?
 	at += sizeof(Color)
 	x := f.read_raw_at<Permissions>(at) ?
@@ -345,7 +345,7 @@ fn test_seek() ? {
 	//
 	f.seek(i64(sizeof(Point)), .start) ?
 	assert f.tell() ? == sizeof(Point)
-	b := f.read_raw<byte>() ?
+	b := f.read_raw<u8>() ?
 	assert b == another_byte
 
 	f.seek(i64(sizeof(Color)), .current) ?

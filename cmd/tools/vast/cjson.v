@@ -24,7 +24,7 @@ fn C.cJSON_CreateNull() &C.cJSON
 
 // fn C.cJSON_CreateNumber() &C.cJSON
 // fn C.cJSON_CreateString() &C.cJSON
-fn C.cJSON_CreateRaw(&byte) &C.cJSON
+fn C.cJSON_CreateRaw(&u8) &C.cJSON
 
 fn C.cJSON_IsInvalid(voidptr) bool
 
@@ -45,13 +45,13 @@ fn C.cJSON_IsObject(voidptr) bool
 
 fn C.cJSON_IsRaw(voidptr) bool
 
-fn C.cJSON_AddItemToObject(voidptr, &byte, voidptr)
+fn C.cJSON_AddItemToObject(voidptr, &u8, voidptr)
 
 fn C.cJSON_AddItemToArray(voidptr, voidptr)
 
 fn C.cJSON_Delete(voidptr)
 
-fn C.cJSON_Print(voidptr) &byte
+fn C.cJSON_Print(voidptr) &u8
 
 [inline]
 fn create_object() &C.cJSON {

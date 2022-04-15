@@ -153,7 +153,7 @@ pub fn (mut stmt Stmt) bind_bool(b &bool) {
 	stmt.bind(mysql.mysql_type_tiny, b, 0)
 }
 
-pub fn (mut stmt Stmt) bind_u8(b &byte) {
+pub fn (mut stmt Stmt) bind_u8(b &u8) {
 	stmt.bind(mysql.mysql_type_tiny, b, 0)
 }
 

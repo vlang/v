@@ -68,7 +68,7 @@ fn destroy_texture(sg_img gfx.Image) {
 }
 
 // Use only if usage: .dynamic is enabled
-fn update_text_texture(sg_img gfx.Image, w int, h int, buf &byte) {
+fn update_text_texture(sg_img gfx.Image, w int, h int, buf &u8) {
 	sz := w * h * 4
 	mut tmp_sbc := gfx.ImageData{}
 	tmp_sbc.subimage[0][0] = gfx.Range{

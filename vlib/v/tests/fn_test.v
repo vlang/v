@@ -51,7 +51,7 @@ interface MyInterface {}
 
 type F9 = fn (MyInterface)
 
-fn C.atoi(&byte) int
+fn C.atoi(&u8) int
 fn C.freec(ptr voidptr)
 
 [trusted]

@@ -18,7 +18,7 @@ import stbi
 /******************************************************************************
 * Texture functions
 ******************************************************************************/
-pub fn create_texture(w int, h int, buf &byte) gfx.Image {
+pub fn create_texture(w int, h int, buf &u8) gfx.Image {
 	sz := w * h * 4
 	mut img_desc := gfx.ImageDesc{
 		width: w

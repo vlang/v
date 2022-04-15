@@ -38,7 +38,7 @@ fn error_msg(message string, val string) string {
 //
 // Please be informed that for now should_escape does not check all
 // reserved characters correctly. See golang.org/issue/5684.
-fn should_escape(c byte, mode EncodingMode) bool {
+fn should_escape(c u8, mode EncodingMode) bool {
 	// §2.3 Unreserved characters (alphanum)
 	if (`a` <= c && c <= `z`) || (`A` <= c && c <= `Z`) || (`0` <= c && c <= `9`) {
 		return false
@@ -417,7 +417,7 @@ fn get_scheme(rawurl string) ?string {
 // split slices s into two substrings separated by the first occurence of
 // sep. If cutc is true then sep is included with the second substring.
 // If sep does not occur in s then s and the empty string is returned.
-fn split(s string, sep byte, cutc bool) (string, string) {
+fn split(s string, sep u8, cutc bool) (string, string) {
 	i := s.index_u8(sep)
 	if i < 0 {
 		return s, ''
@@ -1062,7 +1062,7 @@ fn string_contains_ctl_u8(s string) bool {
 	return false
 }
 
-pub fn ishex(c byte) bool {
+pub fn ishex(c u8) bool {
 	if `0` <= c && c <= `9` {
 		return true
 	} else if `a` <= c && c <= `f` {
@@ -1073,7 +1073,7 @@ pub fn ishex(c byte) bool {
 	return false
 }
 
-fn unhex(c byte) byte {
+fn unhex(c u8) u8 {
 	if `0` <= c && c <= `9` {
 		return c - `0`
 	} else if `a` <= c && c <= `f` {

@@ -10,7 +10,7 @@ mut:
 }
 
 struct Dog {
-	padding  [256]byte
+	padding  [256]u8
 	padding2 int
 mut:
 	breed string

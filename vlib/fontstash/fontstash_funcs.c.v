@@ -18,7 +18,7 @@ fn C.fonsResetAtlas(s &C.FONScontext, width int, height int) int
 // Add fonts
 fn C.fonsGetFontByName(s &C.FONScontext, name &char) int
 fn C.fonsAddFallbackFont(s &C.FONScontext, base int, fallback int) int
-fn C.fonsAddFontMem(s &C.FONScontext, name &char, data &byte, dataSize int, freeData int) int
+fn C.fonsAddFontMem(s &C.FONScontext, name &char, data &u8, dataSize int, freeData int) int
 
 // State handling
 fn C.fonsPushState(s &C.FONScontext)

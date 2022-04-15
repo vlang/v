@@ -4,7 +4,7 @@ module base64
 // encode_in_buffer returns the size of the encoded data in the buffer.
 // Please note: The buffer should be large enough (i.e. 4/3 of the data.len, or larger) to hold the encoded data.
 // Please note: The function does NOT allocate new memory, and is suitable for handling very large strings.
-pub fn encode_in_buffer(data []u8, buffer &byte) int {
+pub fn encode_in_buffer(data []u8, buffer &u8) int {
 	return encode_from_buffer(buffer, data.data, data.len)
 }
 
@@ -126,8 +126,8 @@ fn decode_from_buffer(dest &u8, src &u8, src_len int) int {
 		for src_len - si >= 8 {
 			// Converting 8 bytes of input into 6 bytes of output. Storing these in the upper bytes of an u64.
 			datablock_64.data = assemble64(u8(index[d[si + 0]]), u8(index[d[si + 1]]),
-				u8(index[d[si + 2]]), u8(index[d[si + 3]]), u8(index[d[si + 4]]),
-				u8(index[d[si + 5]]), u8(index[d[si + 6]]), u8(index[d[si + 7]]))
+				u8(index[d[si + 2]]), u8(index[d[si + 3]]), u8(index[d[si + 4]]), u8(index[d[si + 5]]),
+				u8(index[d[si + 6]]), u8(index[d[si + 7]]))
 
 			// Reading out the individual bytes from the u64. Watch out with endianess.
 			$if little_endian {

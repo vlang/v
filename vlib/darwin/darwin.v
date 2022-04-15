@@ -30,10 +30,10 @@ pub fn nsstring(s string) voidptr {
 // for .app packages: .../my.app/Contents/Resources
 // for cli: .../parent_folder/Resources
 
-fn C.CFBundleCopyResourcesDirectoryURL(bundle voidptr) &byte
+fn C.CFBundleCopyResourcesDirectoryURL(bundle voidptr) &u8
 fn C.CFBundleGetMainBundle() voidptr
-fn C.CFURLGetFileSystemRepresentation(url &byte, resolve_against_base bool, buffer &byte, buffer_size int) int
-fn C.CFRelease(url &byte)
+fn C.CFURLGetFileSystemRepresentation(url &u8, resolve_against_base bool, buffer &u8, buffer_size int) int
+fn C.CFRelease(url &u8)
 
 pub fn resource_path() string {
 	main_bundle := C.CFBundleGetMainBundle()

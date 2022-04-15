@@ -33,7 +33,7 @@ fn abs64(x i64) u64 {
 
 // Decode a single base64 digit.
 [inline]
-fn decode64(input byte) byte {
+fn decode64(input u8) u8 {
 	$if debug {
 		assert input >= vlq.enc_char_special_plus
 		assert input <= vlq.enc_char_end_zl
@@ -82,7 +82,7 @@ pub fn decode(mut input io.Reader) ?i64 {
 }
 
 [inline]
-fn encode64(input byte) byte {
+fn encode64(input u8) u8 {
 	$if debug {
 		assert input < 64
 	}

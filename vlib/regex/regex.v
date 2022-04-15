@@ -75,7 +75,7 @@ General Utilities
 */
 // utf8util_char_len calculate the length in bytes of a utf8 char
 [inline]
-fn utf8util_char_len(b byte) int {
+fn utf8util_char_len(b u8) int {
 	return ((0xe5000000 >> ((b >> 3) & 0x1e)) & 3) + 1
 }
 
@@ -100,7 +100,7 @@ fn (re RE) get_char(in_txt string, i int) (u32, int) {
 
 // get_charb get a char from position i and return an u32 with the unicode code
 [direct_array_access; inline]
-fn (re RE) get_charb(in_txt &byte, i int) (u32, int) {
+fn (re RE) get_charb(in_txt &u8, i int) (u32, int) {
 	// ascii 8 bit
 	if (re.flag & regex.f_bin) != 0 || unsafe { in_txt[i] } & 0x80 == 0 {
 		return u32(unsafe { in_txt[i] }), 1
@@ -117,7 +117,7 @@ fn (re RE) get_charb(in_txt &byte, i int) (u32, int) {
 }
 
 [inline]
-fn is_alnum(in_char byte) bool {
+fn is_alnum(in_char u8) bool {
 	mut tmp := in_char - `A`
 	if tmp <= 25 {
 		return true
@@ -137,28 +137,28 @@ fn is_alnum(in_char byte) bool {
 }
 
 [inline]
-fn is_not_alnum(in_char byte) bool {
+fn is_not_alnum(in_char u8) bool {
 	return !is_alnum(in_char)
 }
 
 [inline]
-fn is_space(in_char byte) bool {
+fn is_space(in_char u8) bool {
 	return in_char in regex.spaces
 }
 
 [inline]
-fn is_not_space(in_char byte) bool {
+fn is_not_space(in_char u8) bool {
 	return !is_space(in_char)
 }
 
 [inline]
-fn is_digit(in_char byte) bool {
+fn is_digit(in_char u8) bool {
 	tmp := in_char - `0`
 	return tmp <= 0x09
 }
 
 [inline]
-fn is_not_digit(in_char byte) bool {
+fn is_not_digit(in_char u8) bool {
 	return !is_digit(in_char)
 }
 
@@ -175,13 +175,13 @@ fn is_not_wordchar(in_char byte) bool {
 */
 
 [inline]
-fn is_lower(in_char byte) bool {
+fn is_lower(in_char u8) bool {
 	tmp := in_char - `a`
 	return tmp <= 25
 }
 
 [inline]
-fn is_upper(in_char byte) bool {
+fn is_upper(in_char u8) bool {
 	tmp := in_char - `A`
 	return tmp <= 25
 }
@@ -231,14 +231,14 @@ fn simple_log(txt string) {
 * Token Structs
 *
 ******************************************************************************/
-pub type FnValidator = fn (byte) bool
+pub type FnValidator = fn (u8) bool
 
 struct Token {
 mut:
 	ist rune
 	// char
 	ch     rune // char of the token if any
-	ch_len byte // char len
+	ch_len u8   // char len
 	// Quantifiers / branch
 	rep_min int  // used also for jump next in the OR branch [no match] pc jump
 	rep_max int  // used also for jump next in the OR branch [   match] pc jump
@@ -1666,7 +1666,7 @@ pub mut:
 }
 
 [direct_array_access]
-pub fn (mut re RE) match_base(in_txt &byte, in_txt_len int) (int, int) {
+pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 	// result status
 	mut result := regex.no_match_found // function return
 

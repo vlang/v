@@ -181,7 +181,7 @@ fn test_various_map_value() {
 	mut m9 := map[string]bool{}
 	m9['test'] = true
 	assert m9['test'] == true
-	mut m10 := map[string]byte{}
+	mut m10 := map[string]u8{}
 	m10['test'] = u8(0)
 	assert m10['test'] == u8(0)
 	mut m11 := map[string]f32{}
@@ -762,7 +762,7 @@ fn test_in_map_literal() {
 }
 
 fn test_byte_keys() {
-	mut m := map[byte]byte{}
+	mut m := map[u8]u8{}
 	byte_max := u8(255)
 	for i in u8(0) .. byte_max {
 		m[i] = i

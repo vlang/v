@@ -38,7 +38,7 @@ fn test_fixed_type_init() {
 }
 
 fn test_fixed_custom_init() {
-	a := [2]byte{init: 7}
+	a := [2]u8{init: 7}
 	assert a == [u8(7), 7]!
 	mut b := [3]int{}
 	assert b == [0, 0, 0]!

@@ -7,7 +7,7 @@ module builtin
 // ----- value to string functions -----
 //
 
-//type u8 = byte
+// type u8 = byte
 type byte = u8
 type i32 = int
 

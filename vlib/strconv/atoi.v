@@ -12,7 +12,7 @@ const (
 	max_u64  = u64(18446744073709551615) // as u64 // use this until we add support
 )
 
-pub fn byte_to_lower(c byte) byte {
+pub fn byte_to_lower(c u8) u8 {
 	return c | (`x` - `X`)
 }
 

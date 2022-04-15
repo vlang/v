@@ -15,13 +15,13 @@ fn C.zip_open(&char, int, char) &Zip
 
 fn C.zip_close(&Zip)
 
-fn C.zip_entry_open(&Zip, &byte) int
+fn C.zip_entry_open(&Zip, &u8) int
 
 fn C.zip_entry_openbyindex(&Zip, int) int
 
 fn C.zip_entry_close(&Zip) int
 
-fn C.zip_entry_name(&Zip) &byte
+fn C.zip_entry_name(&Zip) &u8
 
 fn C.zip_entry_index(&Zip) int
 
@@ -66,7 +66,7 @@ pub enum OpenMode {
 }
 
 [inline]
-fn (om OpenMode) to_u8() byte {
+fn (om OpenMode) to_u8() u8 {
 	return match om {
 		.write {
 			`w`

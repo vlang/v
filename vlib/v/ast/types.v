@@ -1148,6 +1148,13 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 		}
 		.alias, .any, .placeholder, .enum_ {
 			res = t.shorten_user_defined_typenames(res, import_aliases)
+			/*
+			if res.ends_with('.byte') {
+				res = 'u8'
+			} else {
+				res = t.shorten_user_defined_typenames(res, import_aliases)
+			}
+			*/
 		}
 		.aggregate {}
 	}

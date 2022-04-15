@@ -43,7 +43,7 @@ fn do_send_i64(mut ch Channel) {
 fn test_select() {
 	mut chi := new_channel<int>(0)
 	mut chl := new_channel<i64>(1)
-	mut chb := new_channel<byte>(10)
+	mut chb := new_channel<u8>(10)
 	mut recch := new_channel<i64>(0)
 	go do_rec_i64(mut recch)
 	go do_send_int(mut chi)

@@ -20,18 +20,18 @@ mut:
 struct C.sockaddr_in6 {
 mut:
 	// 1 + 1 + 2 + 4 + 16 + 4 = 28;
-	sin6_len      byte     // 1
-	sin6_family   byte     // 1
-	sin6_port     u16      // 2
-	sin6_flowinfo u32      // 4
+	sin6_len      u8     // 1
+	sin6_family   u8     // 1
+	sin6_port     u16    // 2
+	sin6_flowinfo u32    // 4
 	sin6_addr     [16]u8 // 16
-	sin6_scope_id u32      // 4
+	sin6_scope_id u32    // 4
 }
 
 struct C.sockaddr_in {
 mut:
-	sin_len    byte
-	sin_family byte
+	sin_len    u8
+	sin_family u8
 	sin_port   u16
 	sin_addr   u32
 	sin_zero   [8]char
@@ -39,8 +39,8 @@ mut:
 
 struct C.sockaddr_un {
 mut:
-	sun_len    byte
-	sun_family byte
+	sun_len    u8
+	sun_family u8
 	sun_path   [max_unix_path]char
 }
 
