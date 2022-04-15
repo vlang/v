@@ -60,6 +60,11 @@ pub fn (mut b Builder) write_u8(data u8) {
 	b << data
 }
 
+// write_byte appends a single `data` byte to the accumulated buffer
+pub fn (mut b Builder) write_byte(data byte) {
+	b << data
+}
+
 // write implements the Writer interface
 pub fn (mut b Builder) write(data []u8) ?int {
 	if data.len == 0 {

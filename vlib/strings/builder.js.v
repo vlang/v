@@ -23,6 +23,10 @@ pub fn (mut b Builder) write_b(data u8) {
 	b << data
 }
 
+pub fn (mut b Builder) write_byte(data byte) {
+	b << data
+}
+
 pub fn (mut b Builder) write_u8(data u8) {
 	b << data
 }

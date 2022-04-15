@@ -16,8 +16,8 @@ import crypto.internal.subtle
 struct Cipher {
 mut:
 	s []u32
-	i byte
-	j byte
+	i u8
+	j u8
 }
 
 // new_cipher creates and returns a new Cipher. The key argument should be the
