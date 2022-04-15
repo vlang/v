@@ -4,9 +4,8 @@
    type    FooBar=   Foo |     Bar
    pub type   PublicBar = Foo | Bar | FooBar
 
-type   Uint =   u16 | u64
-	| u32
-	    | byte // This should stay on the same line
+type   Uint =   u8 |u16 | u64
+	| u32   // This should stay on the same line
 type
 Float =
 	f32 |
