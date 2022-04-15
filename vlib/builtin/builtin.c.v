@@ -267,7 +267,7 @@ __global total_m = i64(0)
 // malloc returns a `byteptr` pointing to the memory address of the allocated space.
 // unlike the `calloc` family of functions - malloc will not zero the memory block.
 [unsafe]
-pub fn malloc(n int) &byte {
+pub fn malloc(n int) &u8 {
 	if n <= 0 {
 		panic('malloc($n <= 0)')
 	}
@@ -310,7 +310,7 @@ pub fn malloc(n int) &byte {
 }
 
 [unsafe]
-pub fn malloc_noscan(n int) &byte {
+pub fn malloc_noscan(n int) &u8 {
 	if n <= 0 {
 		panic('malloc_noscan($n <= 0)')
 	}
@@ -361,7 +361,7 @@ pub fn malloc_noscan(n int) &byte {
 // previously allocated with `malloc`, `v_calloc` or `vcalloc`.
 // Please, see also realloc_data, and use it instead if possible.
 [unsafe]
-pub fn v_realloc(b &byte, n int) &byte {
+pub fn v_realloc(b &u8, n int) &u8 {
 	$if trace_realloc ? {
 		C.fprintf(C.stderr, c'v_realloc %6d\n', n)
 	}
@@ -392,7 +392,7 @@ pub fn v_realloc(b &byte, n int) &byte {
 // can make debugging easier, when you compile your program with
 // `-d debug_realloc`.
 [unsafe]
-pub fn realloc_data(old_data &byte, old_size int, new_size int) &byte {
+pub fn realloc_data(old_data &u8, old_size int, new_size int) &u8 {
 	$if trace_realloc ? {
 		C.fprintf(C.stderr, c'realloc_data old_size: %6d new_size: %6d\n', old_size, new_size)
 	}
@@ -432,7 +432,7 @@ pub fn realloc_data(old_data &byte, old_size int, new_size int) &byte {
 // vcalloc dynamically allocates a zeroed `n` bytes block of memory on the heap.
 // vcalloc returns a `byteptr` pointing to the memory address of the allocated space.
 // Unlike `v_calloc` vcalloc checks for negative values given in `n`.
-pub fn vcalloc(n int) &byte {
+pub fn vcalloc(n int) &u8 {
 	if n < 0 {
 		panic('calloc($n < 0)')
 	} else if n == 0 {
@@ -453,7 +453,7 @@ pub fn vcalloc(n int) &byte {
 
 // special versions of the above that allocate memory which is not scanned
 // for pointers (but is collected) when the Boehm garbage collection is used
-pub fn vcalloc_noscan(n int) &byte {
+pub fn vcalloc_noscan(n int) &u8 {
 	$if trace_vcalloc ? {
 		total_m += n
 		C.fprintf(C.stderr, c'vcalloc_noscan %6d total %10d\n', n, total_m)
