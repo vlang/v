@@ -19,7 +19,7 @@ const (
 		'try', 'typeof', 'var', 'void', 'while', 'with', 'yield', 'Number', 'String', 'Boolean',
 		'Array', 'Map', 'document', 'Promise']
 	// used to generate type structs
-	v_types            = ['i8', 'i16', 'int', 'i64', 'byte', 'u16', 'u32', 'u64', 'f32', 'f64',
+	v_types            = ['i8', 'i16', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64',
 		'int_literal', 'float_literal', 'bool', 'string', 'map', 'array', 'rune', 'any', 'voidptr']
 	shallow_equatables = [ast.Kind.i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64,
 		.int_literal, .float_literal, .bool, .string]

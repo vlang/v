@@ -1,5 +1,7 @@
 module builtin
 
+type byte = u8
+
 pub fn (i i8) str() string {
 	mut res := ''
 	#res.str = i.val.toString()
