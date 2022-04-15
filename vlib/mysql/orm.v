@@ -162,7 +162,7 @@ fn stmt_binder_match(mut stmt Stmt, data orm.Primitive) {
 		i64 {
 			stmt.bind_i64(&data)
 		}
-		byte {
+		u8 {
 			stmt.bind_u8(&data)
 		}
 		u16 {

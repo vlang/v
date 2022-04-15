@@ -28,7 +28,7 @@ pub fn (s string) after(dot string) string {
 	return string(s.str.slice(JS.Number(int(s.str.lastIndexOf(dot.str)) + 1), s.str.length))
 }
 
-pub fn (s string) after_char(dot byte) string {
+pub fn (s string) after_char(dot u8) string {
 	// TODO: Implement after byte
 	return s
 }
@@ -385,7 +385,7 @@ fn compare_lower_strings(a &string, b &string) int {
 
 // at returns the byte at index `idx`.
 // Example: assert 'ABC'.at(1) == u8(`B`)
-fn (s string) at(idx int) byte {
+fn (s string) at(idx int) u8 {
 	mut result := u8(0)
 	#result = new u8(s.str.charCodeAt(result))
 
@@ -491,7 +491,7 @@ pub fn (s string) strip_margin() string {
 
 // strip_margin_custom does the same as `strip_margin` but will use `del` as delimiter instead of `|`
 [direct_array_access]
-pub fn (s string) strip_margin_custom(del byte) string {
+pub fn (s string) strip_margin_custom(del u8) string {
 	mut sep := del
 	if sep.is_space() {
 		eprintln('Warning: `strip_margin` cannot use white-space as a delimiter')

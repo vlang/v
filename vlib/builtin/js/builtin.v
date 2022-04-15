@@ -84,7 +84,7 @@ fn (_ None__) str() string {
 }
 
 pub struct Option {
-	state byte
+	state u8
 	err   IError = none__
 }
 
