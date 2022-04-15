@@ -40,6 +40,6 @@ pub fn (mut bf Blowfish) encrypt(mut dst []byte, src []byte) {
 	l := u32(src[0]) << 24 | u32(src[1]) << 16 | u32(src[2]) << 8 | u32(src[3])
 	r := u32(src[4]) << 24 | u32(src[5]) << 16 | u32(src[6]) << 8 | u32(src[7])
 	arr := setup_tables(l, r, mut bf)
-	dst[0], dst[1], dst[2], dst[3] = byte(arr[0] >> 24), byte(arr[0] >> 16), byte(arr[0] >> 8), byte(arr[0])
-	dst[4], dst[5], dst[6], dst[7] = byte(arr[1] >> 24), byte(arr[1] >> 16), byte(arr[1] >> 8), byte(arr[1])
+	dst[0], dst[1], dst[2], dst[3] = u8(arr[0] >> 24), u8(arr[0] >> 16), u8(arr[0] >> 8), u8(arr[0])
+	dst[4], dst[5], dst[6], dst[7] = u8(arr[1] >> 24), u8(arr[1] >> 16), u8(arr[1] >> 8), u8(arr[1])
 }

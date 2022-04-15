@@ -23,7 +23,7 @@ pub fn constant_time_compare(x []byte, y []byte) int {
 	if x.len != y.len {
 		return 0
 	}
-	mut v := byte(0)
+	mut v := u8(0)
 	for i in 0 .. x.len {
 		v |= x[i] ^ y[i]
 	}
@@ -37,8 +37,8 @@ pub fn constant_time_copy(v int, mut x []byte, y []byte) {
 	if x.len != y.len {
 		panic('subtle: arrays have different lengths')
 	}
-	xmask := byte(v - 1)
-	ymask := byte(~(v - 1))
+	xmask := u8(v - 1)
+	ymask := u8(~(v - 1))
 	for i := 0; i < x.len; i++ {
 		x[i] = x[i] & xmask | y[i] & ymask
 	}

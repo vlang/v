@@ -271,7 +271,7 @@ fn color_highlight(code string, tb &ast.Table) string {
 			tok = next_tok
 			next_tok = s.scan()
 		} else {
-			buf.write_byte(code[i])
+			buf.write_u8(code[i])
 			i++
 		}
 	}

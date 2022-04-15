@@ -252,7 +252,7 @@ pub fn (s &Context) text_iter_next(iter &C.FONStextIter, quad &C.FONSquad) int {
 // `width` and `height` is assigned the size of the texture dimensions.
 [inline]
 pub fn (s &Context) get_texture_data(width &int, height &int) &byte {
-	return &byte(C.fonsGetTextureData(s, width, height))
+	return &u8(C.fonsGetTextureData(s, width, height))
 }
 
 // validate_texture fills the `dirty` argument with the pixel dimensions

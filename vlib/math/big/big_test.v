@@ -24,32 +24,32 @@ fn test_integer_from_u64() {
 
 fn test_integer_from_bytes() {
 	assert big.integer_from_bytes([]).hex() == '0'
-	assert big.integer_from_bytes([byte(0)]).hex() == '0'
-	assert big.integer_from_bytes([byte(0x13), 0x37]).hex() == '1337'
-	assert big.integer_from_bytes([byte(0x13), 0x37, 0xca]).hex() == '1337ca'
-	assert big.integer_from_bytes([byte(0x13), 0x37, 0xca, 0xfe]).hex() == '1337cafe'
-	assert big.integer_from_bytes([byte(0x13), 0x37, 0xca, 0xfe, 0xba]).hex() == '1337cafeba'
-	assert big.integer_from_bytes([byte(0x13), 0x37, 0xca, 0xfe, 0xba, 0xbe]).hex() == '1337cafebabe'
+	assert big.integer_from_bytes([u8(0)]).hex() == '0'
+	assert big.integer_from_bytes([u8(0x13), 0x37]).hex() == '1337'
+	assert big.integer_from_bytes([u8(0x13), 0x37, 0xca]).hex() == '1337ca'
+	assert big.integer_from_bytes([u8(0x13), 0x37, 0xca, 0xfe]).hex() == '1337cafe'
+	assert big.integer_from_bytes([u8(0x13), 0x37, 0xca, 0xfe, 0xba]).hex() == '1337cafeba'
+	assert big.integer_from_bytes([u8(0x13), 0x37, 0xca, 0xfe, 0xba, 0xbe]).hex() == '1337cafebabe'
 
 	mut bytes := []byte{cap: 1024}
 	mut expected := ''
 	for i := 0; i < bytes.cap; i++ {
-		bytes << byte(i)
-		expected = expected + byte(i).hex()
+		bytes << u8(i)
+		expected = expected + u8(i).hex()
 	}
 	assert big.integer_from_bytes(bytes).hex() == expected.trim_left('0')
 }
 
 fn test_bytes() {
 	result1, sign1 := big.integer_from_u64(0x1337cafebabe).bytes()
-	assert result1 == [byte(0x13), 0x37, 0xca, 0xfe, 0xba, 0xbe]
+	assert result1 == [u8(0x13), 0x37, 0xca, 0xfe, 0xba, 0xbe]
 	assert sign1 == 1
 
 	mut bytes := []byte{cap: 1024}
 	mut expected := ''
 	for i := 0; i < bytes.cap; i++ {
-		bytes << byte(i | 1)
-		expected = expected + byte(i).hex()
+		bytes << u8(i | 1)
+		expected = expected + u8(i).hex()
 	}
 	result2, sign2 := big.integer_from_bytes(bytes).bytes()
 	assert result2 == bytes
@@ -334,8 +334,8 @@ fn test_lshift() {
 	assert big.integer_from_int(45).lshift(4) == big.integer_from_int(45 * 16)
 	assert big.integer_from_int(45).lshift(5) == big.integer_from_int(45 * 32)
 	assert big.integer_from_u64(0xabcedabcde).lshift(20) == big.integer_from_u64(0xabcedabcde00000)
-	assert big.integer_from_bytes([byte(1), 1, 1]).lshift(56) == big.integer_from_bytes([
-		byte(1),
+	assert big.integer_from_bytes([u8(1), 1, 1]).lshift(56) == big.integer_from_bytes([
+		u8(1),
 		1,
 		1,
 		0,
@@ -352,7 +352,7 @@ fn test_rshift() {
 	assert big.integer_from_int(45).rshift(3) == big.integer_from_int(5)
 	assert big.integer_from_int(0x13374956).rshift(16) == big.integer_from_int(0x1337)
 	assert big.integer_from_bytes([
-		byte(1),
+		u8(1),
 		1,
 		1,
 		0,
@@ -362,7 +362,7 @@ fn test_rshift() {
 		0,
 		0,
 		0,
-	]).rshift(56) == big.integer_from_bytes([byte(1), 1, 1])
+	]).rshift(56) == big.integer_from_bytes([u8(1), 1, 1])
 }
 
 fn test_isqrt() {

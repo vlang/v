@@ -13,7 +13,7 @@ fn internal_uuid_v4(mut rng PRNG) string {
 	mut buf := unsafe { malloc_noscan(37) }
 	mut i_buf := 0
 	mut x := u64(0)
-	mut d := byte(0)
+	mut d := u8(0)
 	for i_buf < buflen {
 		mut c := 0
 		x = rng.u64()
@@ -131,7 +131,7 @@ fn read_32(mut rng PRNG, mut buf []byte) {
 		}
 	}
 	for i in u32s * 4 .. buf.len {
-		buf[i] = rng.byte()
+		buf[i] = rng.u8()
 	}
 }
 
@@ -144,7 +144,7 @@ fn read_64(mut rng PRNG, mut buf []byte) {
 		}
 	}
 	for i in u64s * 8 .. buf.len {
-		buf[i] = rng.byte()
+		buf[i] = rng.u8()
 	}
 }
 
@@ -158,7 +158,7 @@ fn read_internal(mut rng PRNG, mut buf []byte) {
 		}
 		else {
 			for i in 0 .. buf.len {
-				buf[i] = rng.byte()
+				buf[i] = rng.u8()
 			}
 		}
 	}

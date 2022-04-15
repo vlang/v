@@ -234,7 +234,7 @@ fn str_to_primitive(str string, typ int) ?orm.Primitive {
 		// byte
 		9 {
 			data := str.i8()
-			return orm.Primitive(*unsafe { &byte(&data) })
+			return orm.Primitive(*unsafe { &u8(&data) })
 		}
 		// u16
 		10 {

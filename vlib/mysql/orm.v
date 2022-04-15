@@ -30,7 +30,7 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 		f := unsafe { fields[i] }
 		match FieldType(f.@type) {
 			.type_tiny {
-				dataptr << byte(0)
+				dataptr << u8(0)
 			}
 			.type_short {
 				dataptr << u16(0)
@@ -51,7 +51,7 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 				dataptr << ''
 			}
 			else {
-				dataptr << byte(0)
+				dataptr << u8(0)
 			}
 		}
 	}
@@ -163,7 +163,7 @@ fn stmt_binder_match(mut stmt Stmt, data orm.Primitive) {
 			stmt.bind_i64(&data)
 		}
 		byte {
-			stmt.bind_byte(&data)
+			stmt.bind_u8(&data)
 		}
 		u16 {
 			stmt.bind_u16(&data)
@@ -211,7 +211,7 @@ fn buffer_to_primitive(data_list []&char, types []int) ?[]orm.Primitive {
 				primitive = *(&i64(data))
 			}
 			9 {
-				primitive = *(&byte(data))
+				primitive = *(&u8(data))
 			}
 			10 {
 				primitive = *(&u16(data))

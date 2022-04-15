@@ -35,7 +35,7 @@ const (
 	unit_point         = Point{1.0, 1.0, 1.0}
 	another_point      = Point{0.25, 2.25, 6.25}
 	extended_point     = Extended_Point{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0}
-	another_byte       = byte(123)
+	another_byte       = u8(123)
 	another_color      = Color.red
 	another_permission = Permissions.read | .write
 )
@@ -191,7 +191,7 @@ fn test_write_struct() ? {
 	f.write_struct(another_point) ?
 	f.close()
 	x := os.read_file(tfile) ?
-	pcopy := unsafe { &byte(memdup(&another_point, size_of_point)) }
+	pcopy := unsafe { &u8(memdup(&another_point, size_of_point)) }
 	y := unsafe { pcopy.vstring_with_len(size_of_point) }
 	assert x == y
 	$if debug {
@@ -228,7 +228,7 @@ fn test_read_struct() ? {
 
 fn test_read_struct_at() ? {
 	mut f := os.open_file(tfile, 'w') ?
-	f.write([byte(1), 2, 3]) ?
+	f.write([u8(1), 2, 3]) ?
 	f.write_struct(another_point) ?
 	f.close()
 	f = os.open_file(tfile, 'r') ?
@@ -246,7 +246,7 @@ fn test_write_raw() ? {
 	f.write_raw(another_point) ?
 	f.close()
 	x := os.read_file(tfile) ?
-	pcopy := unsafe { &byte(memdup(&another_point, size_of_point)) }
+	pcopy := unsafe { &u8(memdup(&another_point, size_of_point)) }
 	y := unsafe { pcopy.vstring_with_len(size_of_point) }
 	assert x == y
 	$if debug {
@@ -299,7 +299,7 @@ fn test_read_raw() ? {
 
 fn test_read_raw_at() ? {
 	mut f := os.open_file(tfile, 'w') ?
-	f.write([byte(1), 2, 3]) ?
+	f.write([u8(1), 2, 3]) ?
 	f.write_raw(another_point) ?
 	f.write_raw(another_byte) ?
 	f.write_raw(another_color) ?

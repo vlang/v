@@ -180,8 +180,8 @@ fn test_various_map_value() {
 	m9['test'] = true
 	assert m9['test'] == true
 	mut m10 := map[string]byte{}
-	m10['test'] = byte(0)
-	assert m10['test'] == byte(0)
+	m10['test'] = u8(0)
+	assert m10['test'] == u8(0)
 	mut m11 := map[string]f32{}
 	m11['test'] = f32(0.0)
 	assert m11['test'] == f32(0.0)
@@ -195,8 +195,8 @@ fn test_various_map_value() {
 	m14['test'] = voidptr(0)
 	assert m14['test'] == voidptr(0)
 	mut m15 := map[string]&byte{}
-	m15['test'] = &byte(0)
-	assert m15['test'] == &byte(0)
+	m15['test'] = &u8(0)
+	assert m15['test'] == &u8(0)
 	mut m16 := map[string]i64{}
 	m16['test'] = i64(0)
 	assert m16['test'] == i64(0)
@@ -751,24 +751,24 @@ fn test_in_map_literal() {
 
 fn test_byte_keys() {
 	mut m := map[byte]byte{}
-	byte_max := byte(255)
-	for i in byte(0) .. byte_max {
+	byte_max := u8(255)
+	for i in u8(0) .. byte_max {
 		m[i] = i
 		assert m[i] == i
 	}
 	for k, v in m {
 		assert k == v
 	}
-	for i in byte(0) .. 100 {
+	for i in u8(0) .. 100 {
 		m[i]++
 		assert m[i] == i + 1
 	}
 	assert m.len == int(byte_max)
 	keys := m.keys()
-	for i in byte(0) .. byte_max {
+	for i in u8(0) .. byte_max {
 		assert keys[i] == i
 	}
-	for i in byte(0) .. byte_max {
+	for i in u8(0) .. byte_max {
 		m.delete(i)
 		assert m[i] == 0
 	}

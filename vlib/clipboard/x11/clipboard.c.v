@@ -398,7 +398,7 @@ fn read_property(d &C.Display, w Window, p Atom) Property {
 	actual_format := 0
 	nitems := u64(0)
 	bytes_after := u64(0)
-	ret := &byte(0)
+	ret := &u8(0)
 	mut read_bytes := 1024
 	for {
 		if ret != 0 {

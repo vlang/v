@@ -33,11 +33,11 @@ pub fn (mut ed EmbedFileData) free() {
 		ed.compression_type.free()
 		if ed.free_compressed {
 			free(ed.compressed)
-			ed.compressed = &byte(0)
+			ed.compressed = &u8(0)
 		}
 		if ed.free_uncompressed {
 			free(ed.uncompressed)
-			ed.uncompressed = &byte(0)
+			ed.uncompressed = &u8(0)
 		}
 	}
 }
@@ -45,7 +45,7 @@ pub fn (mut ed EmbedFileData) free() {
 pub fn (original &EmbedFileData) to_string() string {
 	unsafe {
 		mut ed := &EmbedFileData(original)
-		the_copy := &byte(memdup(ed.data(), ed.len))
+		the_copy := &u8(memdup(ed.data(), ed.len))
 		return the_copy.vstring_with_len(ed.len)
 	}
 }
@@ -71,7 +71,7 @@ pub fn (mut ed EmbedFileData) data() &byte {
 			panic('EmbedFileData error: decompression of "$ed.path" failed: $err')
 		}
 		unsafe {
-			ed.uncompressed = &byte(memdup(decompressed.data, ed.len))
+			ed.uncompressed = &u8(memdup(decompressed.data, ed.len))
 		}
 	} else {
 		mut path := os.resource_abs_path(ed.path)

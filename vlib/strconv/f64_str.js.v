@@ -228,7 +228,7 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 	// Step 4: Find the shortest decimal representation
 	// in the interval of valid representations.
 	mut removed := 0
-	mut last_removed_digit := byte(0)
+	mut last_removed_digit := u8(0)
 	mut out := u64(0)
 	// On average, we remove ~2 digits.
 	if vm_is_trailing_zeros || vr_is_trailing_zeros {
@@ -244,7 +244,7 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 			vr_mod_10 := vr % 10
 			vm_is_trailing_zeros = vm_is_trailing_zeros && vm_mod_10 == 0
 			vr_is_trailing_zeros = vr_is_trailing_zeros && (last_removed_digit == 0)
-			last_removed_digit = byte(vr_mod_10)
+			last_removed_digit = u8(vr_mod_10)
 			vr = vr_div_10
 			vp = vp_div_10
 			vm = vm_div_10
@@ -261,7 +261,7 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 				vr_div_10 := vr / 10
 				vr_mod_10 := vr % 10
 				vr_is_trailing_zeros = vr_is_trailing_zeros && (last_removed_digit == 0)
-				last_removed_digit = byte(vr_mod_10)
+				last_removed_digit = u8(vr_mod_10)
 				vr = vr_div_10
 				vp = vp_div_10
 				vm = vm_div_10

@@ -87,18 +87,18 @@ fn test_interpolation_string_prefix_expr() {
 
 fn test_inttypes_string_interpolation() {
 	c := i8(-103) // -0x67
-	uc := byte(217) // 0xD9
-	uc2 := byte(13) // 0x0D
+	uc := u8(217) // 0xD9
+	uc2 := u8(13) // 0x0D
 	s := i16(-23456) // -0x5BA0
 	us := u16(54321) // 0xD431
 	i := -1622999040 // -0x60BD 0000
 	ui := u32(3421958087) // 0xCBF6 EFC7
 	vp := voidptr(ui)
-	mut bp := &byte(0)
+	mut bp := &u8(0)
 	$if x64 {
-		bp = &byte(15541149836) // 0x3 9E53 208C
+		bp = &u8(15541149836) // 0x3 9E53 208C
 	} $else {
-		bp = &byte(3541149836) // 0xD311 A88C
+		bp = &u8(3541149836) // 0xD311 A88C
 	}
 	l := i64(-7694555558525237396)
 	ul := u64(17234006112912956370)

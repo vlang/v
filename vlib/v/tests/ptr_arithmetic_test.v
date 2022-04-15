@@ -20,20 +20,20 @@ fn test_ptr_arithmetic() {
 
 fn test_ptr_arithmetic_over_byteptr() {
 	// byteptr, voidptr, charptr are handled differently
-	mut q := &byte(10)
+	mut q := &u8(10)
 	unsafe {
 		q -= 2
 		q = q + 1
 	}
-	assert u64(q) == u64(&byte(9))
+	assert u64(q) == u64(&u8(9))
 	s := unsafe { q - 1 }
-	assert u64(s) == u64(&byte(8))
+	assert u64(s) == u64(&u8(8))
 	unsafe {
 		q++
 		q++
 		q--
 	}
-	assert u64(q) == u64(&byte(10))
+	assert u64(q) == u64(&u8(10))
 }
 
 struct Abc {

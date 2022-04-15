@@ -422,7 +422,7 @@ fn test_arr_contains() {
 fn test_to_num() {
 	s := '7'
 	assert s.int() == 7
-	assert s.byte() == 7
+	assert s.u8() == 7
 	assert s.u64() == 7
 	f := '71.5 hasdf'
 	// QTODO

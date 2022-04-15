@@ -46,10 +46,10 @@ fn read_from_string(text string, capacity int) []byte {
 
 pub fn test_reading_from_a_string() {
 	for capacity in 1 .. 1000 {
-		assert read_from_string('a', capacity) == [byte(`a`)]
-		assert read_from_string('ab', capacity) == [byte(`a`), `b`]
-		assert read_from_string('abc', capacity) == [byte(`a`), `b`, `c`]
-		assert read_from_string('abcde', capacity) == [byte(`a`), `b`, `c`, `d`, `e`]
+		assert read_from_string('a', capacity) == [u8(`a`)]
+		assert read_from_string('ab', capacity) == [u8(`a`), `b`]
+		assert read_from_string('abc', capacity) == [u8(`a`), `b`, `c`]
+		assert read_from_string('abcde', capacity) == [u8(`a`), `b`, `c`, `d`, `e`]
 		large_string_bytes := []byte{len: 1000, init: `x`}
 		large_string := large_string_bytes.bytestr()
 		assert read_from_string(large_string, capacity) == large_string_bytes

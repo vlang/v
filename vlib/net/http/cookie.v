@@ -222,11 +222,11 @@ fn sanitize_cookie_path(v string) string {
 	return sanitize(valid_cookie_path_byte, v)
 }
 
-fn valid_cookie_value_byte(b byte) bool {
+fn valid_cookie_value_u8(b byte) bool {
 	return 0x20 <= b && b < 0x7f && b != `"` && b != `;` && b != `\\`
 }
 
-fn valid_cookie_path_byte(b byte) bool {
+fn valid_cookie_path_u8(b byte) bool {
 	return 0x20 <= b && b < 0x7f && b != `!`
 }
 
@@ -300,7 +300,7 @@ fn parse_cookie_value(_raw string, allow_double_quote bool) ?string {
 		raw = raw.substr(1, raw.len - 1)
 	}
 	for i in 0 .. raw.len {
-		if !valid_cookie_value_byte(raw[i]) {
+		if !valid_cookie_value_u8(raw[i]) {
 			return error('http.cookie: invalid cookie value')
 		}
 	}

@@ -54,9 +54,9 @@ pub fn encode(bytes []byte) string {
 // char2nibble converts an ASCII hex character to it's hex value
 fn char2nibble(b byte) ?byte {
 	match b {
-		`0`...`9` { return b - byte(`0`) }
-		`A`...`F` { return b - byte(`A`) + 10 }
-		`a`...`f` { return b - byte(`a`) + 10 }
+		`0`...`9` { return b - u8(`0`) }
+		`A`...`F` { return b - u8(`A`) + 10 }
+		`a`...`f` { return b - u8(`a`) + 10 }
 		else { return error('invalid hex char $b.ascii_str()') }
 	}
 }

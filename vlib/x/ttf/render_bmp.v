@@ -195,12 +195,12 @@ pub fn (mut bmp BitMap) plot(x int, y int, c u32) bool {
 	mut index := (x + y * bmp.width) * bmp.bp
 	unsafe {
 		// bmp.buf[index]=0xFF
-		bmp.buf[index] = byte(c & 0xFF) // write only the alpha
+		bmp.buf[index] = u8(c & 0xFF) // write only the alpha
 	}
 	/*
 	for count in 0..(bmp.bp) {
 		unsafe{
-			bmp.buf[index + count] = byte((c >> (bmp.bp - count - 1) * 8) & 0x0000_00FF)
+			bmp.buf[index + count] = u8((c >> (bmp.bp - count - 1) * 8) & 0x0000_00FF)
 		}
 	}
 	*/

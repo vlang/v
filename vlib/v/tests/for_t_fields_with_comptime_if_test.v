@@ -36,7 +36,7 @@ fn decode2<T>() T {
 	mut x := T{}
 	$for field in T.fields {
 		$if field.typ is byte {
-			x.$(field.name) = byte(-1)
+			x.$(field.name) = u8(-1)
 		} $else $if field.typ is int {
 			x.$(field.name) = int(-1)
 		} $else $if field.typ is string {

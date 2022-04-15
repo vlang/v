@@ -128,7 +128,7 @@ fn myfn2() {
 }
 
 fn myfn3(i int, s string) byte {
-	return byte(0)
+	return u8(0)
 }
 
 fn myfn4() i8 {

@@ -51,7 +51,7 @@ fn (context Context) file2v(bname string, fbytes []byte, bn_max int) string {
 	bn_diff_len := bn_max - bname.len
 	sb.write_string('\t${bname}_len' + ' '.repeat(bn_diff_len - 4) + ' = $fbytes.len\n')
 	fbyte := fbytes[0]
-	bnmae_line := '\t$bname' + ' '.repeat(bn_diff_len) + ' = [byte($fbyte), '
+	bnmae_line := '\t$bname' + ' '.repeat(bn_diff_len) + ' = [u8($fbyte), '
 	sb.write_string(bnmae_line)
 	mut line_len := bnmae_line.len + 3
 	for i := 1; i < fbytes.len; i++ {

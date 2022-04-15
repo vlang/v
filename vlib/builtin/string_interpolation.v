@@ -174,7 +174,7 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 	}
 
 	// mange pad char, for now only 0 allowed
-	mut pad_ch := byte(` `)
+	mut pad_ch := u8(` `)
 	if fmt_pad_ch > 0 {
 		// pad_ch = fmt_pad_ch
 		pad_ch = `0`
@@ -263,7 +263,7 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 					tmp.free()
 				}
 				if write_minus {
-					sb.write_byte(`-`)
+					sb.write_u8(`-`)
 					bf.len0-- // compensate for the `-` above
 				}
 				if width == 0 {

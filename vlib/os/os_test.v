@@ -148,7 +148,7 @@ fn test_write_and_read_string_to_file() {
 // read_bytes, read_bytes_at and write_bytes.
 fn test_write_and_read_bytes() {
 	file_name := './byte_reader_writer.tst'
-	payload := [byte(`I`), `D`, `D`, `Q`, `D`]
+	payload := [u8(`I`), `D`, `D`, `Q`, `D`]
 	mut file_write := os.create(os.real_path(file_name)) or {
 		eprintln('failed to create file $file_name')
 		return
@@ -683,7 +683,7 @@ fn test_write_file_array_bytes() {
 	fpath := './abytes.bin'
 	mut arr := []byte{len: maxn}
 	for i in 0 .. maxn {
-		arr[i] = 65 + byte(i)
+		arr[i] = 65 + u8(i)
 	}
 	os.write_file_array(fpath, arr) or { panic(err) }
 	rarr := os.read_bytes(fpath) or { panic(err) }

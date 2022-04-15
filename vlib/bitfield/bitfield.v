@@ -29,7 +29,7 @@ const (
 pub fn from_bytes(input []byte) BitField {
 	mut output := new(input.len * 8)
 	for i, b in input {
-		mut ob := byte(0)
+		mut ob := u8(0)
 		if b & 0b10000000 > 0 {
 			ob |= 0b00000001
 		}

@@ -294,9 +294,9 @@ fn u64_to_hex_no_leading_zeros(nn u64, len u8) string {
 
 // hex returns the value of the `byte` as a hexadecimal `string`.
 // Note that the output is zero padded for values below 16.
-// Example: assert byte(2).hex() == '02'
-// Example: assert byte(15).hex() == '0f'
-// Example: assert byte(255).hex() == 'ff'
+// Example: assert u8(2).hex() == '02'
+// Example: assert u8(15).hex() == '0f'
+// Example: assert u8(255).hex() == 'ff'
 pub fn (nn u8) hex() string {
 	if nn == 0 {
 		return '00'
@@ -451,13 +451,13 @@ pub fn (nn u64) hex_full() string {
 
 // str returns the contents of `byte` as a zero terminated `string`.
 // See also: [`byte.ascii_str`](#byte.ascii_str)
-// Example: assert byte(111).str() == '111'
+// Example: assert u8(111).str() == '111'
 pub fn (b u8) str() string {
 	return int(b).str_l(7)
 }
 
 // ascii_str returns the contents of `byte` as a zero terminated ASCII `string` character.
-// Example: assert byte(97).ascii_str() == 'a'
+// Example: assert u8(97).ascii_str() == 'a'
 pub fn (b u8) ascii_str() string {
 	mut str := string{
 		str: unsafe { malloc_noscan(2) }
@@ -472,7 +472,7 @@ pub fn (b u8) ascii_str() string {
 }
 
 // str_escaped returns the contents of `byte` as an escaped `string`.
-// Example: assert byte(0).str_escaped() == r'`\0`'
+// Example: assert u8(0).str_escaped() == r'`\0`'
 [manualfree]
 pub fn (b u8) str_escaped() string {
 	str := match b {
@@ -538,7 +538,7 @@ pub fn (b []u8) clone() []byte {
 // Note: the returned string will have .len equal to the array.len,
 // even when some of the array bytes were `0`.
 // If you want to get a V string, that contains only the bytes till
-// the first `0` byte, use `tos_clone(&byte(array.data))` instead.
+// the first `0` byte, use `tos_clone(&u8(array.data))` instead.
 pub fn (b []u8) bytestr() string {
 	unsafe {
 		buf := malloc_noscan(b.len + 1)

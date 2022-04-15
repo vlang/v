@@ -40,7 +40,7 @@ fn (mut c Crc32) generate_table(poly int) {
 fn (c &Crc32) sum32(b []byte) u32 {
 	mut crc := ~u32(0)
 	for i in 0 .. b.len {
-		crc = c.table[byte(crc) ^ b[i]] ^ (crc >> 8)
+		crc = c.table[u8(crc) ^ b[i]] ^ (crc >> 8)
 	}
 	return ~crc
 }

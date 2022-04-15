@@ -4,8 +4,8 @@ fn test_cast_in_comptime_if() {
 
 fn generic_bool<T>(val T) {
 	$if T is bool {
-		println(byte(val))
-		assert byte(val) == 1
+		println(u8(val))
+		assert u8(val) == 1
 
 		println(i8(val))
 		assert i8(val) == 1

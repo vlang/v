@@ -32,9 +32,9 @@ pub fn new_cipher(key []byte) ?Cipher {
 	for i in 0 .. 256 {
 		c.s[i] = u32(i)
 	}
-	mut j := byte(0)
+	mut j := u8(0)
 	for i in 0 .. 256 {
-		j += byte(c.s[i]) + key[i % key.len]
+		j += u8(c.s[i]) + key[i % key.len]
 		tmp := c.s[i]
 		c.s[i] = c.s[j]
 		c.s[j] = tmp
@@ -66,13 +66,13 @@ pub fn (mut c Cipher) xor_key_stream(mut dst []byte, mut src []byte) {
 	mut i := c.i
 	mut j := c.j
 	for k, v in src {
-		i += byte(1)
+		i += u8(1)
 		x := c.s[i]
-		j += byte(x)
+		j += u8(x)
 		y := c.s[j]
 		c.s[i] = y
 		c.s[j] = x
-		dst[k] = v ^ byte(c.s[byte(x + y)])
+		dst[k] = v ^ u8(c.s[u8(x + y)])
 	}
 	c.i = i
 	c.j = j

@@ -122,7 +122,7 @@ mut:
 fn (m Manu) str() string {
 	return unsafe {
 		string{
-			str: &byte(&m)
+			str: &u8(&m)
 			len: 24
 			is_lit: 1
 		}
@@ -154,7 +154,7 @@ $if !macos {
 // this test does not appear in i386 test since rip relative addressing was introduced in 64-bit mode
 // doesn't actually work
 [if !macos]
-fn test_rip_relative_label_byte() {
+fn test_rip_relative_label_u8() {
 	$if !macos {
 		mut a := int(4)
 		asm amd64 {

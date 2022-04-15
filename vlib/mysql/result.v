@@ -58,7 +58,7 @@ pub fn (r Result) rows() []Row {
 			if unsafe { rr[i] == 0 } {
 				row.vals << ''
 			} else {
-				row.vals << mystring(unsafe { &byte(rr[i]) })
+				row.vals << mystring(unsafe { &u8(rr[i]) })
 			}
 		}
 		rows << row

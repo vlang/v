@@ -902,7 +902,7 @@ fn (mut g JsGen) expr(node_ ast.Expr) {
 			if utf8_str_len(node.val) < node.val.len {
 				g.write("new rune('$node.val'.charCodeAt())")
 			} else {
-				g.write("new byte('$node.val')")
+				g.write("new u8('$node.val')")
 			}
 		}
 		ast.Comment {}
@@ -1689,7 +1689,7 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 
 				g.write('new ')
 
-				g.write('byte($val)])')
+				g.write('u8($val)])')
 			} else {
 				g.expr(it.cond)
 				if it.cond_type.is_ptr() {
@@ -1712,7 +1712,7 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 
 				g.write('new ')
 
-				g.write('byte(c))')
+				g.write('u8(c))')
 			}
 		}
 		g.writeln(') {')
@@ -1841,7 +1841,7 @@ fn (mut g JsGen) gen_interface_decl(it ast.InterfaceDecl) {
 }
 
 fn (mut g JsGen) gen_optional_error(expr ast.Expr) {
-	g.write('new Option({ state:  new byte(2),err: ')
+	g.write('new Option({ state:  new u8(2),err: ')
 	g.expr(expr)
 	g.write('})')
 }
@@ -1896,7 +1896,7 @@ fn (mut g JsGen) gen_return_stmt(it ast.Return) {
 		g.write('const $tmp = new ')
 
 		g.writeln('Option({});')
-		g.write('${tmp}.state = new byte(0);')
+		g.write('${tmp}.state = new u8(0);')
 		g.write('${tmp}.data = ')
 		if it.exprs.len == 1 {
 			g.expr(it.exprs[0])
@@ -2942,7 +2942,7 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 			// 'string'[3] = `o`
 		} else {
 			// TODO: Maybe use u16 there? JS String returns values up to 2^16-1
-			g.write('new byte(')
+			g.write('new u8(')
 			g.expr(expr.left)
 			if expr.left_type.is_ptr() {
 				g.write('.valueOf()')
@@ -3796,7 +3796,7 @@ fn (mut g JsGen) gen_postfix_index_expr(expr ast.IndexExpr, op token.Kind) {
 			// 'string'[3] = `o`
 		} else {
 			// TODO: Maybe use u16 there? JS String returns values up to 2^16-1
-			g.write('new byte(')
+			g.write('new u8(')
 			g.expr(expr.left)
 			if expr.left_type.is_ptr() {
 				g.write('.valueOf()')

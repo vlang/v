@@ -1,5 +1,5 @@
 fn test_generics_with_nested_generic_fn_inst_call() {
-	value := [byte(105), 116, 32, 119, 111, 114, 107, 115, 33, 33]
+	value := [u8(105), 116, 32, 119, 111, 114, 107, 115, 33, 33]
 	decoded := decode_arr<string>(value)
 	dump(decoded)
 	assert decoded.len == 4

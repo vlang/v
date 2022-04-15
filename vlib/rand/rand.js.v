@@ -55,6 +55,6 @@ fn internal_ulid_at_millisecond(mut rng PRNG, unix_time_milli u64) string {
 
 fn read_internal(mut rng PRNG, mut buf []byte) {
 	for i in 0 .. buf.len {
-		buf[i] = rng.byte()
+		buf[i] = rng.u8()
 	}
 }

@@ -147,7 +147,7 @@ pub fn (mut sem Semaphore) wait() {
 				continue // interrupted by signal
 			}
 			else {
-				panic(unsafe { tos_clone(&byte(C.strerror(C.errno))) })
+				panic(unsafe { tos_clone(&u8(C.strerror(C.errno))) })
 			}
 		}
 	}
@@ -166,7 +166,7 @@ pub fn (mut sem Semaphore) try_wait() bool {
 					return false
 				}
 				else {
-					panic(unsafe { tos_clone(&byte(C.strerror(C.errno))) })
+					panic(unsafe { tos_clone(&u8(C.strerror(C.errno))) })
 				}
 			}
 		}
@@ -195,7 +195,7 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 				break
 			}
 			else {
-				panic(unsafe { tos_clone(&byte(C.strerror(e))) })
+				panic(unsafe { tos_clone(&u8(C.strerror(e))) })
 			}
 		}
 	}
@@ -207,5 +207,5 @@ pub fn (sem Semaphore) destroy() {
 	if res == 0 {
 		return
 	}
-	panic(unsafe { tos_clone(&byte(C.strerror(res))) })
+	panic(unsafe { tos_clone(&u8(C.strerror(res))) })
 }

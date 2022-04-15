@@ -12,7 +12,7 @@ pub fn (_str string) to_wide() &u16 {
 			mut wstr := &u16(malloc_noscan((num_chars + 1) * 2)) // sizeof(wchar_t)
 			if wstr != 0 {
 				C.MultiByteToWideChar(cp_utf8, 0, &char(_str.str), _str.len, wstr, num_chars)
-				C.memset(&byte(wstr) + num_chars * 2, 0, 2)
+				C.memset(&u8(wstr) + num_chars * 2, 0, 2)
 			}
 			return wstr
 		}

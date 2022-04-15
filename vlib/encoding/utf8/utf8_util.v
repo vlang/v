@@ -147,7 +147,7 @@ pub fn is_control(r rune) bool {
 	if r > max_latin_1 {
 		return false
 	}
-	return props[byte(r)] == 1
+	return props[u8(r)] == 1
 }
 
 // is_letter returns true if the rune is unicode letter or in unicode category L
@@ -155,7 +155,7 @@ pub fn is_letter(r rune) bool {
 	if (r >= `a` && r <= `z`) || (r >= `A` && r <= `Z`) {
 		return true
 	} else if r <= max_latin_1 {
-		return props[byte(r)] & p_l_mask != 0
+		return props[u8(r)] & p_l_mask != 0
 	}
 	return is_excluding_latin(letter_table, r)
 }
@@ -405,11 +405,11 @@ fn up_low(s string, upper_flag bool) string {
 		if ch_len == 1 {
 			if upper_flag == true {
 				unsafe {
-					str_res[index] = byte(C.toupper(s.str[index]))
+					str_res[index] = u8(C.toupper(s.str[index]))
 				}
 			} else {
 				unsafe {
-					str_res[index] = byte(C.tolower(s.str[index]))
+					str_res[index] = u8(C.tolower(s.str[index]))
 				}
 			}
 		} else if ch_len > 1 && ch_len < 5 {
@@ -451,8 +451,8 @@ fn up_low(s string, upper_flag bool) string {
 			}
 
 			if ch_len == 2 {
-				ch0 := byte((tab_char >> 6) & 0x1f) | 0xc0 // 110x xxxx
-				ch1 := byte((tab_char >> 0) & 0x3f) | 0x80 // 10xx xxxx
+				ch0 := u8((tab_char >> 6) & 0x1f) | 0xc0 // 110x xxxx
+				ch1 := u8((tab_char >> 0) & 0x3f) | 0x80 // 10xx xxxx
 				// C.printf("[%02x%02x] \n",ch0,ch1)
 
 				unsafe {
@@ -462,11 +462,11 @@ fn up_low(s string, upper_flag bool) string {
 				//****************************************************************
 				//  BUG: doesn't compile, workaround use shitf to right of 0 bit
 				//****************************************************************
-				// str_res[index + 1 ] = byte( tab_char & 0xbf )	// 1011 1111
+				// str_res[index + 1 ] = u8( tab_char & 0xbf )	// 1011 1111
 			} else if ch_len == 3 {
-				ch0 := byte((tab_char >> 12) & 0x0f) | 0xe0 // 1110 xxxx
-				ch1 := byte((tab_char >> 6) & 0x3f) | 0x80 // 10xx xxxx
-				ch2 := byte((tab_char >> 0) & 0x3f) | 0x80 // 10xx xxxx
+				ch0 := u8((tab_char >> 12) & 0x0f) | 0xe0 // 1110 xxxx
+				ch1 := u8((tab_char >> 6) & 0x3f) | 0x80 // 10xx xxxx
+				ch2 := u8((tab_char >> 0) & 0x3f) | 0x80 // 10xx xxxx
 				// C.printf("[%02x%02x%02x] \n",ch0,ch1,ch2)
 
 				unsafe {

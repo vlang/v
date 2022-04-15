@@ -10,8 +10,8 @@ union AddrData {
 }
 
 const (
-	addr_ip6_any = [16]byte{init: byte(0)}
-	addr_ip_any  = [4]byte{init: byte(0)}
+	addr_ip6_any = [16]byte{init: u8(0)}
+	addr_ip_any  = [4]byte{init: u8(0)}
 )
 
 fn new_ip6(port u16, addr [16]byte) Addr {

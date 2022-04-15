@@ -80,10 +80,10 @@ pub fn resolve_env_value(str string, check_for_presence bool) ?string {
 	at := str.index(env_ident) or {
 		return error('no "$env_ident' + '...\')" could be found in "$str".')
 	}
-	mut ch := byte(`.`)
+	mut ch := u8(`.`)
 	mut env_lit := ''
 	for i := at + env_ident.len; i < str.len && ch != `)`; i++ {
-		ch = byte(str[i])
+		ch = u8(str[i])
 		if ch.is_letter() || ch.is_digit() || ch == `_` {
 			env_lit += ch.ascii_str()
 		} else {

@@ -179,10 +179,10 @@ fn test_rand_f64_in_range() {
 	}
 }
 
-fn test_rand_byte() {
+fn test_rand_u8() {
 	mut all := []byte{}
 	for _ in 0 .. 256 {
-		x := rand.byte()
+		x := rand.u8()
 		assert x >= 0
 		assert x <= 255
 		all << x

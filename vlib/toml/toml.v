@@ -131,7 +131,7 @@ pub fn parse_dotted_key(key string) ?[]string {
 	mut out := []string{}
 	mut buf := ''
 	mut in_string := false
-	mut delim := byte(` `)
+	mut delim := u8(` `)
 	for ch in key {
 		if ch in [`"`, `'`] {
 			if !in_string {

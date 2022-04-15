@@ -42,7 +42,7 @@ fn test_str_invalid_escape() {
 fn test_str_invalid_must_be_escape() {
 	for char in important_escapable_chars {
 		mut sc := Scanner{
-			text: [byte(`"`), `t`, char, `"`]
+			text: [u8(`"`), `t`, char, `"`]
 		}
 		tok := sc.scan()
 		assert tok.kind == .error

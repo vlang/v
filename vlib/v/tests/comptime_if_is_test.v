@@ -22,7 +22,7 @@ fn g<T>(t T) int {
 }
 
 fn test_is_or() {
-	assert g(byte(1)) == 1
+	assert g(u8(1)) == 1
 	assert g(i8(1)) == 1
 	assert g(1) == 2
 }

@@ -74,7 +74,7 @@ pub fn (mut cb Clipboard) get_text() string {
 		return ''
 	}
 	utf8_clip := C.darwin_get_pasteboard_text(cb.pb)
-	return unsafe { tos_clone(&byte(utf8_clip)) }
+	return unsafe { tos_clone(&u8(utf8_clip)) }
 }
 
 // new_primary returns a new X11 `PRIMARY` type `Clipboard` instance allocated on the heap.

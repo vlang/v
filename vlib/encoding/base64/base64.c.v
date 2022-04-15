@@ -57,11 +57,11 @@ fn encode_from_buffer(dest &byte, src &byte, src_len int) int {
 		match remain {
 			2 {
 				b[di + 2] = etable[val >> 6 & 0x3F]
-				b[di + 3] = byte(`=`)
+				b[di + 3] = u8(`=`)
 			}
 			1 {
-				b[di + 2] = byte(`=`)
-				b[di + 3] = byte(`=`)
+				b[di + 2] = u8(`=`)
+				b[di + 3] = u8(`=`)
 			}
 			else {
 				panic('base64: This case should never occur.')
@@ -125,9 +125,9 @@ fn decode_from_buffer(dest &byte, src &byte, src_len int) int {
 
 		for src_len - si >= 8 {
 			// Converting 8 bytes of input into 6 bytes of output. Storing these in the upper bytes of an u64.
-			datablock_64.data = assemble64(byte(index[d[si + 0]]), byte(index[d[si + 1]]),
-				byte(index[d[si + 2]]), byte(index[d[si + 3]]), byte(index[d[si + 4]]),
-				byte(index[d[si + 5]]), byte(index[d[si + 6]]), byte(index[d[si + 7]]))
+			datablock_64.data = assemble64(u8(index[d[si + 0]]), u8(index[d[si + 1]]),
+				u8(index[d[si + 2]]), u8(index[d[si + 3]]), u8(index[d[si + 4]]),
+				u8(index[d[si + 5]]), u8(index[d[si + 6]]), u8(index[d[si + 7]]))
 
 			// Reading out the individual bytes from the u64. Watch out with endianess.
 			$if little_endian {
@@ -151,8 +151,8 @@ fn decode_from_buffer(dest &byte, src &byte, src_len int) int {
 		}
 
 		for src_len - si >= 4 {
-			datablock_32.data = assemble32(byte(index[d[si + 0]]), byte(index[d[si + 1]]),
-				byte(index[d[si + 2]]), byte(index[d[si + 3]]))
+			datablock_32.data = assemble32(u8(index[d[si + 0]]), u8(index[d[si + 1]]),
+				u8(index[d[si + 2]]), u8(index[d[si + 3]]))
 			$if little_endian {
 				b[n_decoded_bytes + 0] = datablock_32.data_byte[3]
 				b[n_decoded_bytes + 1] = datablock_32.data_byte[2]

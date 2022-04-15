@@ -111,23 +111,23 @@ fn test_url_decode_str() {
 	assert test == 'Hello Base64Url encoding!'
 }
 
-fn test_encode_null_byte() {
-	assert base64.encode([byte(`A`), 0, `C`]) == 'QQBD'
+fn test_encode_null_u8() {
+	assert base64.encode([u8(`A`), 0, `C`]) == 'QQBD'
 }
 
 fn test_encode_null_byte_str() {
 	// While this works, bytestr() does a memcpy
-	s := [byte(`A`), 0, `C`].bytestr()
+	s := [u8(`A`), 0, `C`].bytestr()
 	assert base64.encode_str(s) == 'QQBD'
 }
 
-fn test_decode_null_byte() {
-	assert base64.decode('QQBD') == [byte(`A`), 0, `C`]
+fn test_decode_null_u8() {
+	assert base64.decode('QQBD') == [u8(`A`), 0, `C`]
 }
 
 fn test_decode_null_byte_str() {
 	// While this works, bytestr() does a memcpy
-	s := [byte(`A`), 0, `C`].bytestr()
+	s := [u8(`A`), 0, `C`].bytestr()
 	assert base64.decode_str('QQBD') == s
 }
 

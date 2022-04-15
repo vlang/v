@@ -201,13 +201,13 @@ fn (mut g Gen) write(bytes []byte) {
 
 fn (mut g Gen) write8(n int) {
 	// write 1 byte
-	g.buf << byte(n)
+	g.buf << u8(n)
 }
 
 fn (mut g Gen) write16(n int) {
 	// write 2 bytes
-	g.buf << byte(n)
-	g.buf << byte(n >> 8)
+	g.buf << u8(n)
+	g.buf << u8(n >> 8)
 }
 
 fn (mut g Gen) read32_at(at int) int {
@@ -217,48 +217,48 @@ fn (mut g Gen) read32_at(at int) int {
 
 fn (mut g Gen) write32(n int) {
 	// write 4 bytes
-	g.buf << byte(n)
-	g.buf << byte(n >> 8)
-	g.buf << byte(n >> 16)
-	g.buf << byte(n >> 24)
+	g.buf << u8(n)
+	g.buf << u8(n >> 8)
+	g.buf << u8(n >> 16)
+	g.buf << u8(n >> 24)
 }
 
 fn (mut g Gen) write64(n i64) {
 	// write 8 bytes
-	g.buf << byte(n)
-	g.buf << byte(n >> 8)
-	g.buf << byte(n >> 16)
-	g.buf << byte(n >> 24)
-	g.buf << byte(n >> 32)
-	g.buf << byte(n >> 40)
-	g.buf << byte(n >> 48)
-	g.buf << byte(n >> 56)
+	g.buf << u8(n)
+	g.buf << u8(n >> 8)
+	g.buf << u8(n >> 16)
+	g.buf << u8(n >> 24)
+	g.buf << u8(n >> 32)
+	g.buf << u8(n >> 40)
+	g.buf << u8(n >> 48)
+	g.buf << u8(n >> 56)
 }
 
 fn (mut g Gen) write64_at(at i64, n i64) {
 	// write 8 bytes
-	g.buf[at] = byte(n)
-	g.buf[at + 1] = byte(n >> 8)
-	g.buf[at + 2] = byte(n >> 16)
-	g.buf[at + 3] = byte(n >> 24)
-	g.buf[at + 4] = byte(n >> 32)
-	g.buf[at + 5] = byte(n >> 40)
-	g.buf[at + 6] = byte(n >> 48)
-	g.buf[at + 7] = byte(n >> 56)
+	g.buf[at] = u8(n)
+	g.buf[at + 1] = u8(n >> 8)
+	g.buf[at + 2] = u8(n >> 16)
+	g.buf[at + 3] = u8(n >> 24)
+	g.buf[at + 4] = u8(n >> 32)
+	g.buf[at + 5] = u8(n >> 40)
+	g.buf[at + 6] = u8(n >> 48)
+	g.buf[at + 7] = u8(n >> 56)
 }
 
 fn (mut g Gen) write32_at(at i64, n int) {
 	// write 4 bytes
-	g.buf[at] = byte(n)
-	g.buf[at + 1] = byte(n >> 8)
-	g.buf[at + 2] = byte(n >> 16)
-	g.buf[at + 3] = byte(n >> 24)
+	g.buf[at] = u8(n)
+	g.buf[at + 1] = u8(n >> 8)
+	g.buf[at + 2] = u8(n >> 16)
+	g.buf[at + 3] = u8(n >> 24)
 }
 
 fn (mut g Gen) write16_at(at i64, n int) {
 	// write 2 bytes
-	g.buf[at] = byte(n)
-	g.buf[at + 1] = byte(n >> 8)
+	g.buf[at] = u8(n)
+	g.buf[at + 1] = u8(n >> 8)
 }
 
 fn (mut g Gen) write_string(s string) {
@@ -611,7 +611,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					g.n_error('opcodes format: xx xx xx xx')
 				}
 				b := unsafe { C.strtol(&char(word.str), 0, 16) }
-				// b := word.byte()
+				// b := word.u8()
 				// println('"$word" $b')
 				g.write8(b)
 			}

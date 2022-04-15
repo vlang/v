@@ -51,7 +51,7 @@ fn minus_one<T>(a T) T {
 
 fn test_postfix_expr() {
 	assert plus_one(-1) == 0
-	assert plus_one(byte(0)) == 1
+	assert plus_one(u8(0)) == 1
 	assert plus_one(u16(1)) == 2
 	assert plus_one(u32(2)) == 3
 	assert plus_one(u64(3)) == 4
@@ -60,7 +60,7 @@ fn test_postfix_expr() {
 	assert plus_one(int(-8)) == -7
 	assert plus_one(i64(-7)) == -6
 	assert minus_one(0) == -1
-	assert minus_one(byte(1)) == 0
+	assert minus_one(u8(1)) == 0
 	assert minus_one(u16(2)) == 1
 	assert minus_one(u32(3)) == 2
 	assert minus_one(u64(4)) == 3
@@ -108,7 +108,7 @@ fn test_generic_variadic() {
 	assert max('krkr', 1, 2, 3, 4) == 4
 	a := [f64(1.2), 3.2, 0.1, 2.2]
 	assert max('krkr', ...a) == 3.2
-	assert max('krkr', ...[byte(4), 3, 2, 1]) == 4
+	assert max('krkr', ...[u8(4), 3, 2, 1]) == 4
 }
 
 fn create<T>() {

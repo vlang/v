@@ -524,7 +524,7 @@ fn (mut g Context) handle_mouse_event(event JS.MouseEvent, typ DOMEventType) Eve
 	e.mouse_dx = int(event.movementX)
 	e.mouse_dy = int(event.movementY)
 	bitplace := int(event.button)
-	g.mbtn_mask |= byte(1 << bitplace)
+	g.mbtn_mask |= u8(1 << bitplace)
 	// g.mouse_buttons = MouseButtons(g.mbtn_mask)
 
 	g.mouse_pos_x = int(event.offsetX)

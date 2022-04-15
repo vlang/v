@@ -3,7 +3,7 @@ fn multi_voidptr_ret() (voidptr, bool) {
 }
 
 fn multi_byteptr_ret() (&byte, bool) {
-	return &byte(0), true
+	return &u8(0), true
 }
 
 fn test_multi_ptrtype_ret() {

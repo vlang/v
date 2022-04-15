@@ -90,7 +90,7 @@ fn fn_cofactor(mut data []byte) bool {
 	mut sc := Scalar{
 		s: [32]byte{}
 	}
-	sc.s[0] = byte(0x08)
+	sc.s[0] = u8(0x08)
 	s.multiply(s, sc)
 	mut pp := Point{}
 	pp.scalar_base_mult(mut s)

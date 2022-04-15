@@ -678,7 +678,7 @@ fn test_map() {
 	assert nums.map(it + strs.map(it.len)[0]) == [2, 3, 4, 5, 6, 7]
 	assert strs.map(it.len + strs.map(it.len)[0]) == [2, 3, 8]
 	// nested (different it types)
-	assert strs.map(it[nums.map(it - it)[0]]) == [byte(`v`), `i`, `a`]
+	assert strs.map(it[nums.map(it - it)[0]]) == [u8(`v`), `i`, `a`]
 	assert nums[0..3].map('$it' + strs.map(it)[it - 1]) == ['1v', '2is', '3awesome']
 	assert nums.map(map_test_helper_1) == [1, 4, 9, 16, 25, 36]
 	assert [1, 5, 10].map(map_test_helper_1) == [1, 25, 100]
@@ -1045,10 +1045,10 @@ fn test_trim() {
 /*
 fn test_hex() {
 	// array hex
-	st := [byte(`V`), `L`, `A`, `N`, `G`]
+	st := [u8(`V`), `L`, `A`, `N`, `G`]
 	assert st.hex() == '564c414e47'
 	assert st.hex().len == 10
-	st1 := [byte(0x41)].repeat(100)
+	st1 := [u8(0x41)].repeat(100)
 	assert st1.hex() == '41'.repeat(100)
 }*/
 

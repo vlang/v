@@ -228,7 +228,7 @@ fn get_raw_data(data string) []byte {
 		}
 
 		if c == 2 {
-			buf << byte(b)
+			buf << u8(b)
 			b = 0
 			c = 0
 		}

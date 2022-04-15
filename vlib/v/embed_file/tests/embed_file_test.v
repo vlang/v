@@ -17,7 +17,7 @@ fn test_const_embed_file() {
 	assert file.path == 'v.png'
 	assert file.len == 603
 	unsafe {
-		assert fdata.vbytes(4) == [byte(0x89), `P`, `N`, `G`]
+		assert fdata.vbytes(4) == [u8(0x89), `P`, `N`, `G`]
 	}
 }
 
@@ -29,6 +29,6 @@ fn test_embed_file() {
 	eprintln('file after .data() call: $file')
 	assert file.len == 603
 	unsafe {
-		assert fdata.vbytes(4) == [byte(0x89), `P`, `N`, `G`]
+		assert fdata.vbytes(4) == [u8(0x89), `P`, `N`, `G`]
 	}
 }

@@ -49,14 +49,14 @@ pub fn (mut b Builder) write_runes(runes []rune) {
 }
 
 // write_b appends a single `data` byte to the accumulated buffer
-[deprecated: 'Use write_byte() instead']
+[deprecated: 'Use write_u8() instead']
 [deprecated_after: '2022-02-11']
 pub fn (mut b Builder) write_b(data byte) {
 	b << data
 }
 
 // write_byte appends a single `data` byte to the accumulated buffer
-pub fn (mut b Builder) write_byte(data byte) {
+pub fn (mut b Builder) write_u8(data byte) {
 	b << data
 }
 
@@ -82,7 +82,7 @@ pub fn (mut b Builder) drain_builder(mut other Builder, other_new_cap int) {
 // Note: it can panic, if there are not enough bytes in the strings builder yet.
 [inline]
 pub fn (b &Builder) byte_at(n int) byte {
-	return unsafe { (&[]byte(b))[n] }
+	return unsafe { (&[]u8(b))[n] }
 }
 
 // write appends the string `s` to the buffer
@@ -95,7 +95,7 @@ pub fn (mut b Builder) write_string(s string) {
 	// for c in s {
 	// b.buf << c
 	// }
-	// b.buf << []byte(s)  // TODO
+	// b.buf << []u8(s)  // TODO
 }
 
 // go_back discards the last `n` bytes from the buffer
@@ -146,8 +146,8 @@ pub fn (mut b Builder) writeln(s string) {
 	if s.len > 0 {
 		unsafe { b.push_many(s.str, s.len) }
 	}
-	// b.buf << []byte(s)  // TODO
-	b << byte(`\n`)
+	// b.buf << []u8(s)  // TODO
+	b << u8(`\n`)
 }
 
 // last_n(5) returns 'world'
@@ -176,8 +176,8 @@ pub fn (b &Builder) after(n int) string {
 // accumulated data that was in the string builder, before the
 // .str() call.
 pub fn (mut b Builder) str() string {
-	b << byte(0)
-	bcopy := unsafe { &byte(memdup_noscan(b.data, b.len)) }
+	b << u8(0)
+	bcopy := unsafe { &u8(memdup_noscan(b.data, b.len)) }
 	s := unsafe { bcopy.vstring_with_len(b.len - 1) }
 	b.trim(0)
 	return s

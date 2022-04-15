@@ -159,8 +159,8 @@ pub fn (db DB) q_string(query string) string {
 	C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
 	C.sqlite3_step(stmt)
 
-	val := unsafe { &byte(C.sqlite3_column_text(stmt, 0)) }
-	return if val != &byte(0) { unsafe { tos_clone(val) } } else { '' }
+	val := unsafe { &u8(C.sqlite3_column_text(stmt, 0)) }
+	return if val != &u8(0) { unsafe { tos_clone(val) } } else { '' }
 }
 
 // Execute the query on db, return an array of all the results, alongside any result code.
@@ -180,8 +180,8 @@ pub fn (db DB) exec(query string) ([]Row, int) {
 		}
 		mut row := Row{}
 		for i in 0 .. nr_cols {
-			val := unsafe { &byte(C.sqlite3_column_text(stmt, i)) }
-			if val == &byte(0) {
+			val := unsafe { &u8(C.sqlite3_column_text(stmt, i)) }
+			if val == &u8(0) {
 				row.vals << ''
 			} else {
 				row.vals << unsafe { tos_clone(val) }

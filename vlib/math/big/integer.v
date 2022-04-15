@@ -787,7 +787,7 @@ pub fn (a Integer) bytes() ([]byte, int) {
 	mut offset := 24
 	mut non_zero_found := false
 	for index := a.digits.len - 1; index >= 0; {
-		value := byte((a.digits[index] & mask) >> offset)
+		value := u8((a.digits[index] & mask) >> offset)
 		non_zero_found = non_zero_found || value != 0
 		if non_zero_found {
 			result << value

@@ -457,7 +457,7 @@ fn test_arr_contains() {
 fn test_to_num() {
 	s := '7'
 	assert s.int() == 7
-	assert s.byte() == 7
+	assert s.u8() == 7
 	assert s.u64() == 7
 	f := '71.5 hasdf'
 	// QTODO
@@ -574,7 +574,7 @@ fn test_bytes_to_string() {
 	}
 	assert unsafe { buf.vstring() } == 'hello'
 	assert unsafe { buf.vstring_with_len(2) } == 'he'
-	bytes := [byte(`h`), `e`, `l`, `l`, `o`]
+	bytes := [u8(`h`), `e`, `l`, `l`, `o`]
 	assert bytes.bytestr() == 'hello'
 }
 
@@ -982,5 +982,5 @@ fn test_string_f32() {
 }
 
 fn test_string_with_zero_byte_escape() {
-	assert '\x00'.bytes() == [byte(0)]
+	assert '\x00'.bytes() == [u8(0)]
 }

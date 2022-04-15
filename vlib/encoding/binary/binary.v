@@ -13,8 +13,8 @@ pub fn little_endian_u16(b []byte) u16 {
 [inline]
 pub fn little_endian_put_u16(mut b []byte, v u16) {
 	_ = b[1] // bounds check
-	b[0] = byte(v)
-	b[1] = byte(v >> u16(8))
+	b[0] = u8(v)
+	b[1] = u8(v >> u16(8))
 }
 
 [inline]
@@ -26,10 +26,10 @@ pub fn little_endian_u32(b []byte) u32 {
 [inline]
 pub fn little_endian_put_u32(mut b []byte, v u32) {
 	_ = b[3] // bounds check
-	b[0] = byte(v)
-	b[1] = byte(v >> u32(8))
-	b[2] = byte(v >> u32(16))
-	b[3] = byte(v >> u32(24))
+	b[0] = u8(v)
+	b[1] = u8(v >> u32(8))
+	b[2] = u8(v >> u32(16))
+	b[3] = u8(v >> u32(24))
 }
 
 [inline]
@@ -41,14 +41,14 @@ pub fn little_endian_u64(b []byte) u64 {
 [inline]
 pub fn little_endian_put_u64(mut b []byte, v u64) {
 	_ = b[7] // bounds check
-	b[0] = byte(v)
-	b[1] = byte(v >> u64(8))
-	b[2] = byte(v >> u64(16))
-	b[3] = byte(v >> u64(24))
-	b[4] = byte(v >> u64(32))
-	b[5] = byte(v >> u64(40))
-	b[6] = byte(v >> u64(48))
-	b[7] = byte(v >> u64(56))
+	b[0] = u8(v)
+	b[1] = u8(v >> u64(8))
+	b[2] = u8(v >> u64(16))
+	b[3] = u8(v >> u64(24))
+	b[4] = u8(v >> u64(32))
+	b[5] = u8(v >> u64(40))
+	b[6] = u8(v >> u64(48))
+	b[7] = u8(v >> u64(56))
 }
 
 // Big Endian
@@ -61,8 +61,8 @@ pub fn big_endian_u16(b []byte) u16 {
 [inline]
 pub fn big_endian_put_u16(mut b []byte, v u16) {
 	_ = b[1] // bounds check
-	b[0] = byte(v >> u16(8))
-	b[1] = byte(v)
+	b[0] = u8(v >> u16(8))
+	b[1] = u8(v)
 }
 
 [inline]
@@ -74,10 +74,10 @@ pub fn big_endian_u32(b []byte) u32 {
 [inline]
 pub fn big_endian_put_u32(mut b []byte, v u32) {
 	_ = b[3] // bounds check
-	b[0] = byte(v >> u32(24))
-	b[1] = byte(v >> u32(16))
-	b[2] = byte(v >> u32(8))
-	b[3] = byte(v)
+	b[0] = u8(v >> u32(24))
+	b[1] = u8(v >> u32(16))
+	b[2] = u8(v >> u32(8))
+	b[3] = u8(v)
 }
 
 [inline]
@@ -89,12 +89,12 @@ pub fn big_endian_u64(b []byte) u64 {
 [inline]
 pub fn big_endian_put_u64(mut b []byte, v u64) {
 	_ = b[7] // bounds check
-	b[0] = byte(v >> u64(56))
-	b[1] = byte(v >> u64(48))
-	b[2] = byte(v >> u64(40))
-	b[3] = byte(v >> u64(32))
-	b[4] = byte(v >> u64(24))
-	b[5] = byte(v >> u64(16))
-	b[6] = byte(v >> u64(8))
-	b[7] = byte(v)
+	b[0] = u8(v >> u64(56))
+	b[1] = u8(v >> u64(48))
+	b[2] = u8(v >> u64(40))
+	b[3] = u8(v >> u64(32))
+	b[4] = u8(v >> u64(24))
+	b[5] = u8(v >> u64(16))
+	b[6] = u8(v >> u64(8))
+	b[7] = u8(v)
 }

@@ -35,20 +35,20 @@ fn test_constant_time_select() {
 }
 
 fn test_constant_time_compare() {
-	assert constant_time_compare([byte(1), 2, 3], [byte(1), 2, 3]) == 1
-	assert constant_time_compare([byte(1), 2, 3], [byte(1), 2, 9]) == 0
-	assert constant_time_compare([byte(1), 2, 3], [byte(1), 2, 3, 4]) == 0
-	assert constant_time_compare([byte(1), 2, 3], [byte(1), 2]) == 0
+	assert constant_time_compare([u8(1), 2, 3], [u8(1), 2, 3]) == 1
+	assert constant_time_compare([u8(1), 2, 3], [u8(1), 2, 9]) == 0
+	assert constant_time_compare([u8(1), 2, 3], [u8(1), 2, 3, 4]) == 0
+	assert constant_time_compare([u8(1), 2, 3], [u8(1), 2]) == 0
 }
 
 fn test_constant_time_copy() {
-	y := [byte(3), 4, 5]
-	mut x := [byte(0), 0, 0]
+	y := [u8(3), 4, 5]
+	mut x := [u8(0), 0, 0]
 	constant_time_copy(0, mut x, y)
-	assert x == [byte(0), 0, 0]
+	assert x == [u8(0), 0, 0]
 	constant_time_copy(1, mut x, y)
 	assert x == y
-	assert x == [byte(3), 4, 5]
+	assert x == [u8(3), 4, 5]
 }
 
 fn test_constant_time_less_or_eq() {

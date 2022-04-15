@@ -107,7 +107,7 @@ pub fn (mut c TcpConn) write_ptr(b &byte, len int) ?int {
 			unsafe { b.vstring_with_len(len) })
 	}
 	unsafe {
-		mut ptr_base := &byte(b)
+		mut ptr_base := &u8(b)
 		mut total_sent := 0
 		for total_sent < len {
 			ptr := ptr_base + total_sent

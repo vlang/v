@@ -180,7 +180,7 @@ pub fn tos5(s &char) string {
 
 // vstring converts a C style string to a V string.
 // Note: the memory block pointed by `bp` is *reused, not copied*!
-// Note: instead of `&byte(arr.data).vstring()`, do use `tos_clone(&byte(arr.data))`.
+// Note: instead of `&u8(arr.data).vstring()`, do use `tos_clone(&u8(arr.data))`.
 // Strings returned from this function will be normal V strings beside that,
 // (i.e. they would be freed by V's -autofree mechanism, when they are no longer used).
 // See also `tos_clone`.
@@ -211,7 +211,7 @@ pub fn (bp &u8) vstring_with_len(len int) string {
 // Strings returned from this function will be normal V strings beside that,
 // (i.e. they would be freed by V's -autofree mechanism, when they are
 // no longer used).
-// Note: instead of `&byte(a.data).vstring()`, use `tos_clone(&byte(a.data))`.
+// Note: instead of `&u8(a.data).vstring()`, use `tos_clone(&u8(a.data))`.
 // See also `tos_clone`.
 [unsafe]
 pub fn (cp &char) vstring() string {
@@ -520,7 +520,7 @@ pub fn (s string) f64() f64 {
 }
 
 // u8 returns the value of the string as u8 `'1'.u8() == u8(1)`.
-pub fn (s string) byte() u8 {
+pub fn (s string) u8() u8 {
 	return u8(strconv.common_parse_uint(s, 0, 8, false, false) or { 0 })
 }
 
@@ -1039,7 +1039,7 @@ pub fn (s string) index_after(p string, start int) int {
 // index_byte returns the index of byte `c` if found in the string.
 // index_byte returns -1 if the byte can not be found.
 [direct_array_access]
-pub fn (s string) index_byte(c u8) int {
+pub fn (s string) index_u8(c u8) int {
 	for i in 0 .. s.len {
 		if unsafe { s.str[i] } == c {
 			return i
@@ -1051,7 +1051,7 @@ pub fn (s string) index_byte(c u8) int {
 // last_index_byte returns the index of the last occurence of byte `c` if found in the string.
 // last_index_byte returns -1 if the byte is not found.
 [direct_array_access]
-pub fn (s string) last_index_byte(c u8) int {
+pub fn (s string) last_index_u8(c u8) int {
 	for i := s.len - 1; i >= 0; i-- {
 		if unsafe { s.str[i] == c } {
 			return i
@@ -1476,7 +1476,7 @@ pub fn (s string) str() string {
 }
 
 // at returns the byte at index `idx`.
-// Example: assert 'ABC'.at(1) == byte(`B`)
+// Example: assert 'ABC'.at(1) == u8(`B`)
 fn (s string) at(idx int) byte {
 	$if !no_bounds_checking ? {
 		if idx < 0 || idx >= s.len {
@@ -1501,7 +1501,7 @@ fn (s string) at_with_check(idx int) ?u8 {
 
 // is_space returns `true` if the byte is a white space character.
 // The following list is considered white space characters: ` `, `\t`, `\n`, `\v`, `\f`, `\r`, 0x85, 0xa0
-// Example: assert byte(` `).is_space() == true
+// Example: assert u8(` `).is_space() == true
 [inline]
 pub fn (c u8) is_space() bool {
 	// 0x85 is NEXT LINE (NEL)
@@ -1510,42 +1510,42 @@ pub fn (c u8) is_space() bool {
 }
 
 // is_digit returns `true` if the byte is in range 0-9 and `false` otherwise.
-// Example: assert byte(`9`) == true
+// Example: assert u8(`9`) == true
 [inline]
 pub fn (c u8) is_digit() bool {
 	return c >= `0` && c <= `9`
 }
 
 // is_hex_digit returns `true` if the byte is either in range 0-9, a-f or A-F and `false` otherwise.
-// Example: assert byte(`F`) == true
+// Example: assert u8(`F`) == true
 [inline]
 pub fn (c u8) is_hex_digit() bool {
 	return (c >= `0` && c <= `9`) || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)
 }
 
 // is_oct_digit returns `true` if the byte is in range 0-7 and `false` otherwise.
-// Example: assert byte(`7`) == true
+// Example: assert u8(`7`) == true
 [inline]
 pub fn (c u8) is_oct_digit() bool {
 	return c >= `0` && c <= `7`
 }
 
 // is_bin_digit returns `true` if the byte is a binary digit (0 or 1) and `false` otherwise.
-// Example: assert byte(`0`) == true
+// Example: assert u8(`0`) == true
 [inline]
 pub fn (c u8) is_bin_digit() bool {
 	return c == `0` || c == `1`
 }
 
 // is_letter returns `true` if the byte is in range a-z or A-Z and `false` otherwise.
-// Example: assert byte(`V`) == true
+// Example: assert u8(`V`) == true
 [inline]
 pub fn (c u8) is_letter() bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
 }
 
 // is_alnum returns `true` if the byte is in range a-z, A-Z, 0-9 and `false` otherwise.
-// Example: assert byte(`V`) == true
+// Example: assert u8(`V`) == true
 [inline]
 pub fn (c u8) is_alnum() bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`)
@@ -1558,7 +1558,7 @@ pub fn (s &string) free() {
 		return
 	}
 	if s.is_lit == -98761234 {
-		double_free_msg := unsafe { &byte(c'double string.free() detected\n') }
+		double_free_msg := unsafe { &u8(c'double string.free() detected\n') }
 		double_free_msg_len := unsafe { vstrlen(double_free_msg) }
 		$if freestanding {
 			bare_eprint(double_free_msg, u64(double_free_msg_len))
@@ -1937,7 +1937,7 @@ pub fn (name string) match_glob(pattern string) bool {
 						mut is_inverted := false
 						mut inner_match := false
 						mut inner_idx := bstart + 1
-						mut inner_c := byte(0)
+						mut inner_c := u8(0)
 						if inner_idx < plen {
 							inner_c = pattern[inner_idx]
 							if inner_c == `^` {

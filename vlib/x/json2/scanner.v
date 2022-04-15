@@ -65,7 +65,7 @@ const (
 		34:  `"`
 		47:  `/`
 	}
-	exp_signs = [byte(`-`), `+`]
+	exp_signs = [u8(`-`), `+`]
 )
 
 // move_pos proceeds to the next position.
@@ -135,7 +135,7 @@ fn (mut s Scanner) text_scan() Token {
 		} else if (s.pos - 1 >= 0 && s.text[s.pos - 1] != `\\`)
 			&& ch in json2.important_escapable_chars {
 			return s.error('character must be escaped with a backslash')
-		} else if (s.pos == s.text.len - 1 && ch == `\\`) || ch == byte(0) {
+		} else if (s.pos == s.text.len - 1 && ch == `\\`) || ch == u8(0) {
 			return s.error('invalid backslash escape')
 		} else if s.pos + 1 < s.text.len && ch == `\\` {
 			peek := s.text[s.pos + 1]
@@ -179,7 +179,7 @@ fn (mut s Scanner) text_scan() Token {
 				}
 			} else if peek == `U` {
 				return s.error('unicode endpoints must be in lowercase `u`')
-			} else if peek == byte(229) {
+			} else if peek == u8(229) {
 				return s.error('unicode endpoint not allowed')
 			} else {
 				return s.error('invalid backslash escape')

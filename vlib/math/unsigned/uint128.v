@@ -391,7 +391,7 @@ pub fn (u_ Uint128) str() string {
 		mut n := int(0)
 		for ; r != 0; r /= 10 {
 			n++
-			buf[i - n] += byte(r % 10)
+			buf[i - n] += u8(r % 10)
 		}
 		if q.is_zero() {
 			return buf[i - n..].bytestr()

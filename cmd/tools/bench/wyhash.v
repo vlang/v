@@ -16,7 +16,7 @@ fn main() {
 	mut bgenerating := benchmark.start()
 	mut bytepile := []byte{}
 	for _ in 0 .. sample_size * max_str_len {
-		bytepile << byte(rand.int_in_range(40, 125) or { 40 })
+		bytepile << u8(rand.int_in_range(40, 125) or { 40 })
 	}
 	mut str_lens := []int{}
 	for _ in 0 .. sample_size {
@@ -30,7 +30,7 @@ fn main() {
 	checksum = 0
 	for len in str_lens {
 		end_pos := start_pos + len
-		checksum ^= wyhash.wyhash_c(unsafe { &byte(bytepile.data) + start_pos }, u64(len),
+		checksum ^= wyhash.wyhash_c(unsafe { &u8(bytepile.data) + start_pos }, u64(len),
 			1)
 		start_pos = end_pos
 	}

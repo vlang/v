@@ -125,10 +125,10 @@ pub mut:
 // hex takes in a 32 bit integer and splits it into 4 byte values
 pub fn hex(color int) Color {
 	return Color{
-		r: byte((color >> 24) & 0xFF)
-		g: byte((color >> 16) & 0xFF)
-		b: byte((color >> 8) & 0xFF)
-		a: byte(color & 0xFF)
+		r: u8((color >> 24) & 0xFF)
+		g: u8((color >> 16) & 0xFF)
+		b: u8((color >> 8) & 0xFF)
+		a: u8(color & 0xFF)
 	}
 }
 
@@ -168,10 +168,10 @@ pub fn (a Color) + (b Color) Color {
 		nb = 255
 	}
 	return Color{
-		r: byte(nr)
-		g: byte(ng)
-		b: byte(nb)
-		a: byte(na)
+		r: u8(nr)
+		g: u8(ng)
+		b: u8(nb)
+		a: u8(na)
 	}
 }
 
@@ -194,10 +194,10 @@ pub fn (a Color) - (b Color) Color {
 		nb = 0
 	}
 	return Color{
-		r: byte(nr)
-		g: byte(ng)
-		b: byte(nb)
-		a: byte(na)
+		r: u8(nr)
+		g: u8(ng)
+		b: u8(nb)
+		a: u8(na)
 	}
 }
 
@@ -230,10 +230,10 @@ pub fn (a Color) over(b Color) Color {
 	gr := (f32(a.g) * aa + f32(b.g) * ab * (1 - aa)) / ar
 	br := (f32(a.b) * aa + f32(b.b) * ab * (1 - aa)) / ar
 	return Color{
-		r: byte(rr)
-		g: byte(gr)
-		b: byte(br)
-		a: byte(ar * 255)
+		r: u8(rr)
+		g: u8(gr)
+		b: u8(br)
+		a: u8(ar * 255)
 	}
 }
 

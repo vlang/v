@@ -254,11 +254,11 @@ pub fn (db DB) copy_expert(query string, mut file io.ReaderWriter) ?int {
 		}
 	} else if status == C.PGRES_COPY_OUT {
 		for {
-			address := &byte(0)
+			address := &u8(0)
 			n_bytes := C.PQgetCopyData(db.conn, &address, 0)
 			if n_bytes > 0 {
 				mut local_buf := []byte{len: n_bytes}
-				unsafe { C.memcpy(&byte(local_buf.data), address, n_bytes) }
+				unsafe { C.memcpy(&u8(local_buf.data), address, n_bytes) }
 				file.write(local_buf) or {
 					C.PQfreemem(address)
 					return err

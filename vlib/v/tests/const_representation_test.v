@@ -1,4 +1,4 @@
-const zzz_byte_a = byte(`A`)
+const zzz_byte_a = u8(`A`)
 
 const zzz_u16_a = u16(999) + 5
 

@@ -172,7 +172,7 @@ pub fn parse_rfc2822(s string) ?Time {
 
 // ----- iso8601 -----
 fn parse_iso8601_date(s string) ?(int, int, int) {
-	year, month, day, dummy := 0, 0, 0, byte(0)
+	year, month, day, dummy := 0, 0, 0, u8(0)
 	count := unsafe { C.sscanf(&char(s.str), c'%4d-%2d-%2d%c', &year, &month, &day, &dummy) }
 	if count != 3 {
 		return error_invalid_time(10)

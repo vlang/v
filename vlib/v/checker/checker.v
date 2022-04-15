@@ -2621,7 +2621,7 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 				c.error('dump expression can not be void', node.expr.pos())
 				return ast.void_type
 			} else if etidx == ast.char_type_idx && node.expr_type.nr_muls() == 0 {
-				c.error('`char` values cannot be dumped directly, use dump(byte(x)) or dump(int(x)) instead',
+				c.error('`char` values cannot be dumped directly, use dump(u8(x)) or dump(int(x)) instead',
 					node.expr.pos())
 				return ast.void_type
 			}
@@ -2937,7 +2937,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		} else if from_type.is_real_pointer() {
 			snexpr := node.expr.str()
 			ft := c.table.type_to_str(from_type)
-			c.error('cannot cast pointer type `$ft` to string, use `&byte($snexpr).vstring()` or `cstring_to_vstring($snexpr)` instead.',
+			c.error('cannot cast pointer type `$ft` to string, use `&u8($snexpr).vstring()` or `cstring_to_vstring($snexpr)` instead.',
 				node.pos)
 		} else if from_type.is_number() {
 			snexpr := node.expr.str()

@@ -268,12 +268,12 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 	}
 	if e.typ == .mouse_down {
 		bitplace := int(e.mouse_button)
-		ctx.mbtn_mask |= byte(1 << bitplace)
+		ctx.mbtn_mask |= u8(1 << bitplace)
 		ctx.mouse_buttons = MouseButtons(ctx.mbtn_mask)
 	}
 	if e.typ == .mouse_up {
 		bitplace := int(e.mouse_button)
-		ctx.mbtn_mask &= ~(byte(1 << bitplace))
+		ctx.mbtn_mask &= ~(u8(1 << bitplace))
 		ctx.mouse_buttons = MouseButtons(ctx.mbtn_mask)
 	}
 	if e.typ == .mouse_move && e.mouse_button == .invalid {

@@ -244,7 +244,7 @@ fn test_escape_string() {
 	// (should not be converted to unicode)
 	result = scan_tokens(r"'\xe29885'")
 	assert result[0].kind == .string
-	assert result[0].lit.bytes() == [byte(0xe2), `9`, `8`, `8`, `5`]
+	assert result[0].lit.bytes() == [u8(0xe2), `9`, `8`, `8`, `5`]
 
 	// SHOULD RESULT IN ERRORS
 	// result = scan_tokens(r'`\x61\x61`') // should always result in an error
@@ -255,7 +255,7 @@ fn test_escape_string() {
 fn test_comment_string() {
 	mut result := scan_tokens('// single line comment will get an \\x01 prepended')
 	assert result[0].kind == .comment
-	assert result[0].lit[0] == byte(1) // \x01
+	assert result[0].lit[0] == u8(1) // \x01
 	// result = scan_tokens('/// doc comment will keep third / at beginning')
 	// result = scan_tokens('/* block comment will be stripped of whitespace */')
 	// result = scan_tokens('a := 0 // line end comment also gets \\x01 prepended')

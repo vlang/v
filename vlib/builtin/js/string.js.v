@@ -88,7 +88,7 @@ pub fn (s string) split(dot string) []string {
 pub fn (s string) bytes() []byte {
 	sep := ''
 	tmparr := s.str.split(sep.str).map(fn (it JS.Any) JS.Any {
-		return JS.Any(byte(JS.String(it).charCodeAt(JS.Number(0))))
+		return JS.Any(u8(JS.String(it).charCodeAt(JS.Number(0))))
 	})
 	_ := tmparr
 	mut arr := []byte{}
@@ -249,9 +249,9 @@ pub fn (s string) u64() u64 {
 	return u64(JS.parseInt(s.str))
 }
 
-pub fn (s string) byte() u64 {
-	res := byte(0)
-	#res.val = byte(JS.parseInt(s.str))
+pub fn (s string) u8() u64 {
+	res := u8(0)
+	#res.val = u8(JS.parseInt(s.str))
 
 	return res
 }
@@ -384,10 +384,10 @@ fn compare_lower_strings(a &string, b &string) int {
 }
 
 // at returns the byte at index `idx`.
-// Example: assert 'ABC'.at(1) == byte(`B`)
+// Example: assert 'ABC'.at(1) == u8(`B`)
 fn (s string) at(idx int) byte {
-	mut result := byte(0)
-	#result = new byte(s.str.charCodeAt(result))
+	mut result := u8(0)
+	#result = new u8(s.str.charCodeAt(result))
 
 	return result
 }
@@ -443,7 +443,7 @@ pub fn (s string) repeat(count int) string {
 	return result
 }
 
-// TODO(playX): Use this iterator instead of using .split('').map(c => byte(c))
+// TODO(playX): Use this iterator instead of using .split('').map(c => u8(c))
 #function string_iterator(string) { this.stringIteratorFieldIndex = 0; this.stringIteratorIteratedString = string.str; }
 #string_iterator.prototype.next = function next() {
 #var done = true;
@@ -458,9 +458,9 @@ pub fn (s string) repeat(count int) string {
 #done = false;
 #var first = string.charCodeAt(position);
 #if (first < 0xD800 || first > 0xDBFF || position + 1 === length)
-#value = new byte(string[position]);
+#value = new u8(string[position]);
 #else {
-#value = new byte(string[position]+string[position+1])
+#value = new u8(string[position]+string[position+1])
 #}
 #this.stringIteratorFieldIndex = position + value.length;
 #}

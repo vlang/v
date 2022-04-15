@@ -27,13 +27,13 @@ mut:
 	minor string
 }
 
-const magic_cipher_data = [byte(0x4f), 0x72, 0x70, 0x68, 0x65, 0x61, 0x6e, 0x42, 0x65, 0x68, 0x6f,
+const magic_cipher_data = [u8(0x4f), 0x72, 0x70, 0x68, 0x65, 0x61, 0x6e, 0x42, 0x65, 0x68, 0x6f,
 	0x6c, 0x64, 0x65, 0x72, 0x53, 0x63, 0x72, 0x79, 0x44, 0x6f, 0x75, 0x62, 0x74]
 
 // generate_from_password return a bcrypt string from Hashed struct.
 pub fn generate_from_password(password []byte, cost int) ?string {
 	mut p := new_from_password(password, cost) or { return error('Error: $err') }
-	x := p.hash_byte()
+	x := p.hash_u8()
 	return x.bytestr()
 }
 
@@ -52,7 +52,7 @@ pub fn compare_hash_and_password(password []byte, hashed_password []byte) ? {
 		minor: p.minor
 	}
 
-	if p.hash_byte() != other_p.hash_byte() {
+	if p.hash_u8() != other_p.hash_u8() {
 		return error('mismatched hash and password')
 	}
 }
@@ -140,7 +140,7 @@ fn expensive_blowfish_setup(key []byte, cost u32, salt []byte) ?&blowfish.Blowfi
 }
 
 // hash_byte converts the hash value to a byte array.
-fn (mut h Hashed) hash_byte() []byte {
+fn (mut h Hashed) hash_u8() []byte {
 	mut arr := []byte{len: 65, init: 0}
 	arr[0] = `$`
 	arr[1] = h.major[0]

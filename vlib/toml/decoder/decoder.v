@@ -92,7 +92,7 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ? {
 		if ch == scanner.end_of_text {
 			break
 		}
-		ch_byte := byte(ch)
+		ch_byte := u8(ch)
 
 		if eat_whitespace && ch_byte.is_space() {
 			continue
@@ -101,7 +101,7 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ? {
 
 		if ch == `\\` {
 			ch_next := s.at()
-			ch_next_byte := byte(ch_next)
+			ch_next_byte := u8(ch_next)
 
 			if ch_next == `\\` {
 				decoded_s += ch_next_byte.ascii_str()
@@ -155,13 +155,13 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ? {
 			escape := ch_byte.ascii_str() + ch_next_byte.ascii_str()
 			// Decode unicode escapes
 			if escape.to_lower() == '\\u' {
-				is_valid_short := byte(s.peek(1)).is_hex_digit() && byte(s.peek(2)).is_hex_digit()
-					&& byte(s.peek(3)).is_hex_digit() && byte(s.peek(4)).is_hex_digit()
+				is_valid_short := u8(s.peek(1)).is_hex_digit() && u8(s.peek(2)).is_hex_digit()
+					&& u8(s.peek(3)).is_hex_digit() && u8(s.peek(4)).is_hex_digit()
 
 				if is_valid_short {
-					is_valid_long := byte(s.peek(5)).is_hex_digit()
-						&& byte(s.peek(6)).is_hex_digit() && byte(s.peek(7)).is_hex_digit()
-						&& byte(s.peek(8)).is_hex_digit()
+					is_valid_long := u8(s.peek(5)).is_hex_digit()
+						&& u8(s.peek(6)).is_hex_digit() && u8(s.peek(7)).is_hex_digit()
+						&& u8(s.peek(8)).is_hex_digit()
 					// If it's a long type Unicode (\UXXXXXXXX) with a maximum of 10 chars: '\' + 'U' + 8 hex characters
 					// we pass in 10 characters from the `u`/`U` which is the longest possible sequence
 					// of 9 chars plus one extra.

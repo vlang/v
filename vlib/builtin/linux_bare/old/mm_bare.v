@@ -19,9 +19,9 @@ pub fn mm_alloc(size u64) (&byte, Errno) {
 	if e == .enoerror {
 		mut ap := &int(a)
 		*ap = pages
-		return &byte(a + 4), e
+		return &u8(a + 4), e
 	}
-	return &byte(0), e
+	return &u8(0), e
 }
 
 pub fn mm_free(addr &byte) Errno {
@@ -32,8 +32,8 @@ pub fn mm_free(addr &byte) Errno {
 }
 
 pub fn mem_copy(dest0 voidptr, src0 voidptr, n int) voidptr {
-	mut dest := &byte(dest0)
-	src := &byte(src0)
+	mut dest := &u8(dest0)
+	src := &u8(src0)
 	for i in 0 .. n {
 		dest[i] = src[i]
 	}

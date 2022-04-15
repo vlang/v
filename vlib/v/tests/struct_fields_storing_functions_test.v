@@ -14,7 +14,7 @@ mut:
 }
 
 fn test_struct_fn_field_can_be_used_directly() {
-	buf := [byte(1), 2, 3]
+	buf := [u8(1), 2, 3]
 	mut res := []byte{}
 	res << 0x88
 	async_cb(buf[0..2], mut res)
@@ -25,5 +25,5 @@ fn test_struct_fn_field_can_be_used_directly() {
 	data.cb(buf[1..2], mut res)
 	res << 0x99
 	eprintln(res)
-	assert res == [byte(0x88), 0x01, 0x02, 0x02, 0x99]
+	assert res == [u8(0x88), 0x01, 0x02, 0x02, 0x99]
 }

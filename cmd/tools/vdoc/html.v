@@ -370,7 +370,7 @@ fn html_highlight(code string, tb &ast.Table) string {
 				break
 			}
 		} else {
-			buf.write_byte(code[i])
+			buf.write_u8(code[i])
 			i++
 		}
 	}

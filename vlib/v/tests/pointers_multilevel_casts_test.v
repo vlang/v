@@ -5,10 +5,10 @@ struct Struct {
 
 fn test_byte_pointer_casts() {
 	unsafe {
-		pb := &byte(1)
-		ppb := &&byte(2)
-		pppb := &&&byte(3)
-		ppppb := &&&&byte(4)
+		pb := &u8(1)
+		ppb := &&u8(2)
+		pppb := &&&u8(3)
+		ppppb := &&&&u8(4)
 		assert voidptr(pb).str() == '0x1'
 		assert voidptr(ppb).str() == '0x2'
 		assert voidptr(pppb).str() == '0x3'

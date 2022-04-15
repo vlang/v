@@ -493,7 +493,7 @@ fn (mut tf TTF_File) read_compound_glyph(mut in_glyph Glyph) {
 fn (mut tf TTF_File) get_u8() byte {
 	x := tf.buf[tf.pos]
 	tf.pos++
-	return byte(x)
+	return u8(x)
 }
 
 fn (mut tf TTF_File) get_i8() i8 {
@@ -540,7 +540,7 @@ fn (mut tf TTF_File) get_fixed() f32 {
 fn (mut tf TTF_File) get_string(length int) string {
 	tmp_pos := u64(tf.pos)
 	tf.pos += u32(length)
-	return unsafe { tos(&byte(u64(tf.buf.data) + tmp_pos), length) }
+	return unsafe { tos(&u8(u64(tf.buf.data) + tmp_pos), length) }
 }
 
 fn (mut tf TTF_File) get_unicode_string(length int) string {
@@ -552,12 +552,12 @@ fn (mut tf TTF_File) get_unicode_string(length int) string {
 		c_len := ((0xe5000000 >> ((c >> 3) & 0x1e)) & 3) + 1
 		real_len += c_len
 		if c_len == 1 {
-			tmp_txt.write_byte(byte(c & 0xff))
+			tmp_txt.write_u8(u8(c & 0xff))
 		} else {
-			tmp_txt.write_byte(byte((c >> 8) & 0xff))
-			tmp_txt.write_byte(byte(c & 0xff))
+			tmp_txt.write_u8(u8((c >> 8) & 0xff))
+			tmp_txt.write_u8(u8(c & 0xff))
 		}
-		// dprintln("c: ${c:c}|${ byte(c &0xff) :c} c_len: ${c_len} str_len: ${real_len} in_len: ${length}")
+		// dprintln("c: ${c:c}|${ u8(c &0xff) :c} c_len: ${c_len} str_len: ${real_len} in_len: ${length}")
 	}
 	tf.pos += u32(real_len)
 	res_txt := tmp_txt.str()
@@ -1056,7 +1056,7 @@ fn tst() {
 	mut tf := TTF_File{}
 
 	tf.buf = [
-		byte(0xFF), /* 8  bit */
+		u8(0xFF), /* 8  bit */
 		0xF1,
 		0xF2, /* 16 bit */
 		0x81,

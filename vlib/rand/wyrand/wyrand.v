@@ -35,7 +35,7 @@ pub fn (mut rng WyRandRNG) seed(seed_data []u32) {
 
 // byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
 [inline]
-pub fn (mut rng WyRandRNG) byte() byte {
+pub fn (mut rng WyRandRNG) u8() byte {
 	// Can we extract a value from the buffer?
 	if rng.bytes_left >= 1 {
 		rng.bytes_left -= 1

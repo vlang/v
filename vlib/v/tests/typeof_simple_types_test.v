@@ -22,7 +22,7 @@ fn test_typeof_for_builtin_int_types() {
 	assert typeof(int(1)).name == 'int'
 	// assert typeof(1).name == 'int_literal'
 	assert typeof(i64(1)).name == 'i64'
-	assert typeof(byte(1)).name == 'byte'
+	assert typeof(u8(1)).name == 'byte'
 	assert typeof(u16(1)).name == 'u16'
 	assert typeof(u32(1)).name == 'u32'
 	assert typeof(u64(1)).name == 'u64'

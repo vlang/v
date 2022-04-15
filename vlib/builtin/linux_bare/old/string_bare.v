@@ -64,8 +64,8 @@ pub fn tos3(s &char) string {
 		panic('tos3: nil string')
 	}
 	return string{
-		str: &byte(s)
-		len: strlen(&byte(s))
+		str: &u8(s)
+		len: strlen(&u8(s))
 	}
 }
 

@@ -3,9 +3,9 @@ module vlq
 import io
 
 const (
-	shift                  = byte(5)
-	mask                   = byte((1 << shift) - 1)
-	continued              = byte(1 << shift)
+	shift                  = u8(5)
+	mask                   = u8((1 << shift) - 1)
+	continued              = u8(1 << shift)
 	max_i64                = u64(9223372036854775807)
 
 	// index start is: byte - vlq.enc_char_special_plus
@@ -38,7 +38,7 @@ fn decode64(input byte) byte {
 		assert input >= vlq.enc_char_special_plus
 		assert input <= vlq.enc_char_end_zl
 	}
-	return byte(vlq.enc_index[input - vlq.enc_char_special_plus])
+	return u8(vlq.enc_index[input - vlq.enc_char_special_plus])
 }
 
 // Decode a single VLQ value from the input stream, returning the value.
@@ -55,7 +55,7 @@ pub fn decode(mut input io.Reader) ?i64 {
 
 	mut accum := u64(0)
 	mut shifter := 0
-	mut digit := byte(0)
+	mut digit := u8(0)
 
 	mut keep_going := true
 	for keep_going {
@@ -101,7 +101,7 @@ pub fn encode(value i64, mut output io.Writer) ? {
 		value_u64 |= 1
 	}
 	for {
-		mut digit := byte(value_u64) & vlq.mask
+		mut digit := u8(value_u64) & vlq.mask
 		value_u64 >>= vlq.shift
 		if value_u64 > 0 {
 			digit |= vlq.continued

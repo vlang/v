@@ -1,7 +1,7 @@
 import rand
 
 const (
-	my_random_letter_const = byte(65) + (rand.byte() % 26)
+	my_random_letter_const = u8(65) + (rand.u8() % 26)
 )
 
 fn test_rand_is_initialized_before_main() {

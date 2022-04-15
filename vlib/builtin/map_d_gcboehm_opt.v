@@ -101,8 +101,8 @@ fn new_map_init_noscan_key(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapClo
 	mut out := new_map_noscan_key(key_bytes, value_bytes, hash_fn, key_eq_fn, clone_fn,
 		free_fn)
 	// TODO pre-allocate n slots
-	mut pkey := &byte(keys)
-	mut pval := &byte(values)
+	mut pkey := &u8(keys)
+	mut pval := &u8(values)
 	for _ in 0 .. n {
 		unsafe {
 			out.set(pkey, pval)
@@ -117,8 +117,8 @@ fn new_map_init_noscan_value(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapC
 	mut out := new_map_noscan_value(key_bytes, value_bytes, hash_fn, key_eq_fn, clone_fn,
 		free_fn)
 	// TODO pre-allocate n slots
-	mut pkey := &byte(keys)
-	mut pval := &byte(values)
+	mut pkey := &u8(keys)
+	mut pval := &u8(values)
 	for _ in 0 .. n {
 		unsafe {
 			out.set(pkey, pval)
@@ -133,8 +133,8 @@ fn new_map_init_noscan_key_value(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn 
 	mut out := new_map_noscan_key_value(key_bytes, value_bytes, hash_fn, key_eq_fn, clone_fn,
 		free_fn)
 	// TODO pre-allocate n slots
-	mut pkey := &byte(keys)
-	mut pval := &byte(values)
+	mut pkey := &u8(keys)
+	mut pval := &u8(values)
 	for _ in 0 .. n {
 		unsafe {
 			out.set(pkey, pval)

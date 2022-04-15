@@ -65,7 +65,7 @@ pub fn encode_walpha(input string, alphabet Alphabet) string {
 		i = sz - 1
 		for carry = u32(b); i > high || carry != 0; i-- {
 			carry = carry + 256 * u32(out[i])
-			out[i] = byte(carry % 58)
+			out[i] = u8(carry % 58)
 			carry /= 58
 		}
 		high = 1
@@ -94,7 +94,7 @@ pub fn decode_int_walpha(input string, alphabet Alphabet) ?int {
 	mut total := 0 // to hold the results
 	b58 := input.reverse()
 	for i, ch in b58 {
-		ch_i := alphabet.encode.bytestr().index_byte(ch)
+		ch_i := alphabet.encode.bytestr().index_u8(ch)
 		if ch_i == -1 {
 			return error(@MOD + '.' + @FN +
 				': input string contains values not found in the provided alphabet')
@@ -162,7 +162,7 @@ pub fn decode_walpha(str string, alphabet Alphabet) ?string {
 	mut out_len := 0
 	for j := 0; j < outi.len; j++ {
 		for mask < 32 {
-			binu[out_len] = byte(outi[j] >> mask)
+			binu[out_len] = u8(outi[j] >> mask)
 			mask -= 8
 			out_len++
 		}

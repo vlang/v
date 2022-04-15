@@ -46,10 +46,10 @@ pub fn (mut p Particle) update(dt f64) {
 	lt := p.life_time - (1000 * dt)
 	if lt > 0 {
 		p.life_time = lt
-		p.color.r = p.color.r - 1 // byte(remap(p.life_time,0.0,p.life_time_init,0,p.color.r))
-		p.color.g = p.color.g - 1 // byte(remap(p.life_time,0.0,p.life_time_init,0,p.color.g))
-		p.color.b = p.color.b - 1 // byte(remap(p.life_time,0.0,p.life_time_init,0,p.color.b))
-		p.color.a = byte(int(remap(p.life_time, 0.0, p.life_time_init, 0, 255))) - 10
+		p.color.r = p.color.r - 1 // u8(remap(p.life_time,0.0,p.life_time_init,0,p.color.r))
+		p.color.g = p.color.g - 1 // u8(remap(p.life_time,0.0,p.life_time_init,0,p.color.g))
+		p.color.b = p.color.b - 1 // u8(remap(p.life_time,0.0,p.life_time_init,0,p.color.b))
+		p.color.a = u8(int(remap(p.life_time, 0.0, p.life_time_init, 0, 255))) - 10
 	} else {
 		p.life_time = 0
 	}

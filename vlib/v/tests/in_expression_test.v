@@ -233,7 +233,7 @@ fn test_in_array_init() {
 }
 
 fn test_in_expression_numeric() {
-	b := [byte(2), 4, 7]
+	b := [u8(2), 4, 7]
 	b2 := [i8(3), -4, 9]
 	s := [u16(6), 1, 0]
 	s2 := [i16(34), -17, 45]
@@ -243,7 +243,7 @@ fn test_in_expression_numeric() {
 	l2 := [i64(-45), 8, 2]
 	f := [f32(12.5), 0, -17.25]
 	f2 := [1.0625, 3, 17.125]
-	assert byte(4) in b
+	assert u8(4) in b
 	assert 3 !in b
 	assert -4 in b2
 	assert i8(5) !in b2
