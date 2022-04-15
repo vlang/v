@@ -1,10 +1,10 @@
 module base64
 
-// encode_in_buffer base64 encodes the `[]byte` passed in `data` into `buffer`.
+// encode_in_buffer base64 encodes the `[]u8` passed in `data` into `buffer`.
 // encode_in_buffer returns the size of the encoded data in the buffer.
 // Please note: The buffer should be large enough (i.e. 4/3 of the data.len, or larger) to hold the encoded data.
 // Please note: The function does NOT allocate new memory, and is suitable for handling very large strings.
-pub fn encode_in_buffer(data []byte, buffer &byte) int {
+pub fn encode_in_buffer(data []u8, buffer &byte) int {
 	return encode_from_buffer(buffer, data.data, data.len)
 }
 
@@ -12,7 +12,7 @@ pub fn encode_in_buffer(data []byte, buffer &byte) int {
 // and write the bytes into `dest`.
 // Please note: The `dest` buffer should be large enough (i.e. 4/3 of the src_len, or larger) to hold the encoded data.
 // Please note: This function is for internal base64 encoding
-fn encode_from_buffer(dest &byte, src &byte, src_len int) int {
+fn encode_from_buffer(dest &u8, src &u8, src_len int) int {
 	if src_len == 0 {
 		return 0
 	}
@@ -76,7 +76,7 @@ fn encode_from_buffer(dest &byte, src &byte, src_len int) int {
 // Please note: The `buffer` should be large enough (i.e. 3/4 of the data.len, or larger)
 // to hold the decoded data.
 // Please note: This function does NOT allocate new memory, and is thus suitable for handling very large strings.
-pub fn decode_in_buffer(data &string, buffer &byte) int {
+pub fn decode_in_buffer(data &string, buffer &u8) int {
 	return decode_from_buffer(buffer, data.str, data.len)
 }
 
@@ -85,7 +85,7 @@ pub fn decode_in_buffer(data &string, buffer &byte) int {
 // Please note: The `buffer` should be large enough (i.e. 3/4 of the data.len, or larger)
 // to hold the decoded data.
 // Please note: This function does NOT allocate new memory, and is thus suitable for handling very large strings.
-pub fn decode_in_buffer_bytes(data []byte, buffer &byte) int {
+pub fn decode_in_buffer_bytes(data []u8, buffer &u8) int {
 	return decode_from_buffer(buffer, data.data, data.len)
 }
 
@@ -95,7 +95,7 @@ pub fn decode_in_buffer_bytes(data []byte, buffer &byte) int {
 // to hold the decoded data.
 // Please note: This function does NOT allocate new memory, and is thus suitable for handling very large strings.
 // Please note: This function is for internal base64 decoding
-fn decode_from_buffer(dest &byte, src &byte, src_len int) int {
+fn decode_from_buffer(dest &u8, src &u8, src_len int) int {
 	if src_len < 4 {
 		return 0
 	}
@@ -176,19 +176,19 @@ fn decode_from_buffer(dest &byte, src &byte, src_len int) int {
 union B64_64_datablock {
 mut:
 	data      u64
-	data_byte [8]byte
+	data_byte [8]u8
 }
 
 union B64_32_datablock {
 mut:
 	data      u32
-	data_byte [4]byte
+	data_byte [4]u8
 }
 
 // decode decodes the base64 encoded `string` value passed in `data`.
 // Please note: If you need to decode many strings repeatedly, take a look at `decode_in_buffer`.
 // Example: assert base64.decode('ViBpbiBiYXNlIDY0') == 'V in base 64'
-pub fn decode(data string) []byte {
+pub fn decode(data string) []u8 {
 	mut size := i64(data.len) * 3 / 4
 	if size <= 0 || data.len % 4 != 0 {
 		return []
@@ -219,7 +219,7 @@ pub fn decode_str(data string) string {
 // Please note: base64 encoding returns a `string` that is ~ 4/3 larger than the input.
 // Please note: If you need to encode many strings repeatedly, take a look at `encode_in_buffer`.
 // Example: assert base64.encode('V in base 64') == 'ViBpbiBiYXNlIDY0'
-pub fn encode(data []byte) string {
+pub fn encode(data []u8) string {
 	return alloc_and_encode(data.data, data.len)
 }
 
@@ -230,7 +230,7 @@ pub fn encode_str(data string) string {
 
 // alloc_and_encode is a private function that allocates and encodes data into a string
 // Used by encode and encode_str
-fn alloc_and_encode(src &byte, len int) string {
+fn alloc_and_encode(src &u8, len int) string {
 	if len == 0 {
 		return ''
 	}
