@@ -100,7 +100,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 					eprintln(sframe)
 					continue
 				}
-				buf := [1000]byte{}
+				buf := [1000]u8{}
 				mut output := ''
 				unsafe {
 					bp := &buf[0]
