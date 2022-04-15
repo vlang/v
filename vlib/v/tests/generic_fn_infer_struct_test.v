@@ -12,8 +12,8 @@ fn test_generics_fn_infer_struct() {
 	assert ret1.contains('Node<int>{')
 	assert ret1.contains('data: 0')
 
-	ret2 := foo(Node<byte>{})
+	ret2 := foo(Node<u8>{})
 	println(ret2)
-	assert ret2.contains('Node<byte>{')
+	assert ret2.contains('Node<u8>{')
 	assert ret2.contains('data: 0')
 }
