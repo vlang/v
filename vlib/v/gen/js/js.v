@@ -2119,7 +2119,7 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 		g.expr(it.len_expr)
 		g.write(')')
 	} else if it.is_fixed && it.exprs.len == 1 {
-		// [100]byte codegen
+		// [100]u8 codegen
 		t1 := g.new_tmp_var()
 		t2 := g.new_tmp_var()
 		g.writeln('(function() {')

@@ -23,7 +23,7 @@ fn testsuite_begin() {
 //
 // Disabled curve25519 not available yet, but maybe can use own curve25519
 /*
-fn fn_mon(scalar [32]byte) bool {
+fn fn_mon(scalar [32]u8) bool {
                mut s := new_scalar().set_bytes_with_clamping(scalar[..])
                p := (&Point{}).scalar_base_mult(s)
                got := p.bytes_montgomery()
@@ -32,7 +32,7 @@ fn fn_mon(scalar [32]byte) bool {
        }
 
 fn test_bytes_montgomery() {
-       /* f := fn(scalar [32]byte) bool {
+       /* f := fn(scalar [32]u8) bool {
                s := new_scalar().set_bytes_with_clamping(scalar[..])
                p := (&Point{}).scalar_base_mult(s)
                got := p.bytes_montgomery()
@@ -88,7 +88,7 @@ fn fn_cofactor(mut data []u8) bool {
 
 	// 8 * p == (8 * s) * B
 	mut sc := Scalar{
-		s: [32]byte{}
+		s: [32]u8{}
 	}
 	sc.s[0] = u8(0x08)
 	s.multiply(s, sc)

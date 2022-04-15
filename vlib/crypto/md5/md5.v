@@ -105,7 +105,7 @@ pub fn (mut d Digest) checksum() []u8 {
 	// 8 bytes representing the message length in bits.
 	//
 	// 1 byte end marker :: 0-63 padding bytes :: 8 byte length
-	// tmp := [1 + 63 + 8]byte{0x80}
+	// tmp := [1 + 63 + 8]u8{0x80}
 	mut tmp := []u8{len: (1 + 63 + 8)}
 	tmp[0] = 0x80
 	pad := ((55 - d.len) % 64) // calculate number of padding bytes

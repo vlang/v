@@ -1407,7 +1407,7 @@ pub fn (mut t Table) complete_interface_check() {
 //
 // `128 > [16]u8`
 //
-// `608 > [76]byte`
+// `608 > [76]u8`
 pub fn (mut t Table) bitsize_to_type(bit_size int) Type {
 	match bit_size {
 		8 {

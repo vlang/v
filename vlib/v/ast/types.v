@@ -950,7 +950,7 @@ pub mut:
 pub struct ArrayFixed {
 pub:
 	size      int
-	size_expr Expr // used by fmt for e.g. ´[my_const]byte´
+	size_expr Expr // used by fmt for e.g. ´[my_const]u8´
 pub mut:
 	elem_type Type
 }

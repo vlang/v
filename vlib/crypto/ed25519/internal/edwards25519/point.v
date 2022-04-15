@@ -204,11 +204,11 @@ fn (mut v AffineCached) zero() AffineCached {
 pub fn (mut v Point) bytes() []u8 {
 	// This function is outlined to make the allocations inline in the caller
 	// rather than happen on the heap.
-	mut buf := [32]byte{}
+	mut buf := [32]u8{}
 	return v.bytes_generic(mut buf)
 }
 
-fn (mut v Point) bytes_generic(mut buf [32]byte) []u8 {
+fn (mut v Point) bytes_generic(mut buf [32]u8) []u8 {
 	check_initialized(v)
 
 	mut zinv := Element{}
@@ -226,7 +226,7 @@ fn (mut v Point) bytes_generic(mut buf [32]byte) []u8 {
 	return out
 }
 
-fn copy_field_element(mut buf [32]byte, mut v Element) []u8 {
+fn copy_field_element(mut buf [32]u8, mut v Element) []u8 {
 	// this fail in test
 	/*
 	copy(mut buf[..], v.bytes())

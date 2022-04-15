@@ -101,7 +101,7 @@ fn test_scalar_set_canonical_bytes_round_trip() ? {
 
 const (
 	sc_error = Scalar{
-		s: [32]byte{init: (u8(-1))}
+		s: [32]u8{init: (u8(-1))}
 	}
 )
 

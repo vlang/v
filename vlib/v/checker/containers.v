@@ -177,7 +177,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		}
 		node.elem_type = elem_type
 	} else if node.is_fixed && node.exprs.len == 1 && node.elem_type != ast.void_type {
-		// [50]byte
+		// [50]u8
 		mut fixed_size := i64(0)
 		init_expr := node.exprs[0]
 		c.expr(init_expr)

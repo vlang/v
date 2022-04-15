@@ -18,7 +18,7 @@ struct Scalar {
 mut:
 	// s is the Scalar value in little-endian. The value is always reduced
 	// between operations.
-	s [32]byte
+	s [32]u8
 }
 
 pub const (
@@ -210,7 +210,7 @@ fn load4(inp []u8) i64 {
 // Output:
 //   s[0]+256*s[1]+...+256^31*s[31] = (ab+c) mod l
 //   where l = 2^252 + 27742317777372353535851937790883648493.
-fn sc_mul_add(mut s [32]byte, a [32]byte, b [32]byte, c [32]byte) {
+fn sc_mul_add(mut s [32]u8, a [32]u8, b [32]u8, c [32]u8) {
 	a0 := 2097151 & load3(a[..])
 	a1 := 2097151 & (load4(a[2..]) >> 5)
 	a2 := 2097151 & (load3(a[5..]) >> 2)
@@ -653,7 +653,7 @@ fn sc_mul_add(mut s [32]byte, a [32]byte, b [32]byte, c [32]byte) {
 // Output:
 //   s[0]+256*s[1]+...+256^31*s[31] = s mod l
 //   where l = 2^252 + 27742317777372353535851937790883648493.
-fn sc_reduce(mut out [32]byte, mut s []u8) {
+fn sc_reduce(mut out [32]u8, mut s []u8) {
 	assert out.len == 32
 	assert s.len == 64
 	mut s0 := 2097151 & load3(s[..])

@@ -81,7 +81,7 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 	/*
 	// Legacy version
 	// max u64 18446744073709551615 => 20 byte
-	mut buf := [32]byte{}
+	mut buf := [32]u8{}
 	mut i := 20
 	mut d1 := d
 	for i >= (21 - n_char) {

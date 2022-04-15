@@ -1578,7 +1578,7 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		f.indent--
 	}
 	f.write(']')
-	// `[100]byte`
+	// `[100]u8`
 	if node.is_fixed {
 		if node.has_val {
 			f.write('!')
