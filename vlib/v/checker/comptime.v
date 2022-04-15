@@ -195,7 +195,7 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 			}
 			//
 			if expr.typ == ast.byte_type {
-				return cast_expr_value.byte() or { return none }
+				return cast_expr_value.u8() or { return none }
 			}
 			if expr.typ == ast.u16_type {
 				return cast_expr_value.u16() or { return none }

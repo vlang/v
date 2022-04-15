@@ -966,7 +966,7 @@ fn (mut g Gen) optional_type_name(t ast.Type) (string, string) {
 fn (g Gen) optional_type_text(styp string, base string) string {
 	// replace void with something else
 	size := if base == 'void' {
-		'byte'
+		'u8'
 	} else if base.starts_with('anon_fn') {
 		'void*'
 	} else {
@@ -4280,7 +4280,7 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, ct_value ast.Comp
 				g.const_decl_write_precomputed(styp, cname, ct_value.str())
 			}
 		}
-		byte {
+		u8 {
 			g.const_decl_write_precomputed(styp, cname, ct_value.str())
 		}
 		u16 {

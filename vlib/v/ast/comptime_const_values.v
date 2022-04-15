@@ -1,7 +1,7 @@
 module ast
 
 pub type ComptTimeConstValue = EmptyExpr
-	| byte
+	| u8
 	| f32
 	| f64
 	| i16
@@ -56,9 +56,9 @@ pub fn (val ComptTimeConstValue) i64() ?i64 {
 		i64 {
 			return i64(val)
 		}
-		//
-		byte {
-			return i64(val)
+		
+		 u8 {
+		 return i64(val)
 		}
 		u16 {
 			return i64(val)
@@ -94,10 +94,10 @@ pub fn (val ComptTimeConstValue) i64() ?i64 {
 	return none
 }
 
-pub fn (val ComptTimeConstValue) byte() ?byte {
+pub fn (val ComptTimeConstValue) u8() ?u8 {
 	x := val.u64() ?
 	if x < 256 {
-		return byte(x)
+		return u8(x)
 	}
 	return none
 }
@@ -140,7 +140,7 @@ pub fn (val ComptTimeConstValue) u64() ?u64 {
 				return u64(val)
 			}
 		}
-		byte {
+		u8 {
 			return u64(val)
 		}
 		u16 {
@@ -190,7 +190,7 @@ pub fn (val ComptTimeConstValue) f64() ?f64 {
 		i64 {
 			return f64(val)
 		}
-		byte {
+		u8 {
 			return f64(val)
 		}
 		u16 {
@@ -231,7 +231,7 @@ pub fn (val ComptTimeConstValue) string() ?string {
 		i64 {
 			return val.str()
 		}
-		byte {
+		u8 {
 			return val.str()
 		}
 		u16 {

@@ -446,7 +446,7 @@ pub const (
 
 // Note: builtin_type_names must be in the same order as the idx consts above
 pub const builtin_type_names = ['void', 'voidptr', 'byteptr', 'charptr', 'i8', 'i16', 'int', 'i64',
-	'isize', 'byte', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'char', 'bool', 'none', 'string',
+	'isize', 'u8', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'char', 'bool', 'none', 'string',
 	'rune', 'array', 'map', 'chan', 'any', 'float_literal', 'int_literal', 'thread', 'Error', 'u8']
 
 pub const builtin_type_names_matcher = build_builtin_type_names_matcher()
@@ -745,7 +745,7 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_sym(kind: .int, name: 'int', cname: 'int', mod: 'builtin')
 	t.register_sym(kind: .i64, name: 'i64', cname: 'i64', mod: 'builtin')
 	t.register_sym(kind: .isize, name: 'isize', cname: 'isize', mod: 'builtin')
-	t.register_sym(kind: .byte, name: 'byte', cname: 'byte', mod: 'builtin')
+	t.register_sym(kind: .byte, name: 'u8', cname: 'u8', mod: 'builtin')
 	t.register_sym(kind: .u16, name: 'u16', cname: 'u16', mod: 'builtin')
 	t.register_sym(kind: .u32, name: 'u32', cname: 'u32', mod: 'builtin')
 	t.register_sym(kind: .u64, name: 'u64', cname: 'u64', mod: 'builtin')

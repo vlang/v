@@ -111,7 +111,7 @@ pub fn c_error_number_str(errnum int) string {
 		$if !vinix {
 			c_msg := C.strerror(errnum)
 			err_msg = string{
-				str: &byte(c_msg)
+				str: &u8(c_msg)
 				len: unsafe { C.strlen(c_msg) }
 				is_lit: 1
 			}
@@ -284,7 +284,7 @@ pub fn malloc(n int) &byte {
 		C.fprintf(C.stderr, c'_v_malloc %6d total %10d\n', n, total_m)
 		// print_backtrace()
 	}
-	mut res := &byte(0)
+	mut res := &u8(0)
 	$if prealloc {
 		return unsafe { prealloc_malloc(n) }
 	} $else $if gcboehm ? {
@@ -327,7 +327,7 @@ pub fn malloc_noscan(n int) &byte {
 		C.fprintf(C.stderr, c'malloc_noscan %6d total %10d\n', n, total_m)
 		// print_backtrace()
 	}
-	mut res := &byte(0)
+	mut res := &u8(0)
 	$if prealloc {
 		return unsafe { prealloc_malloc(n) }
 	} $else $if gcboehm ? {
@@ -365,7 +365,7 @@ pub fn v_realloc(b &byte, n int) &byte {
 	$if trace_realloc ? {
 		C.fprintf(C.stderr, c'v_realloc %6d\n', n)
 	}
-	mut new_ptr := &byte(0)
+	mut new_ptr := &u8(0)
 	$if prealloc {
 		unsafe {
 			new_ptr = malloc(n)
@@ -417,7 +417,7 @@ pub fn realloc_data(old_data &byte, old_size int, new_size int) &byte {
 			return new_ptr
 		}
 	}
-	mut nptr := &byte(0)
+	mut nptr := &u8(0)
 	$if gcboehm ? {
 		nptr = unsafe { C.GC_REALLOC(old_data, new_size) }
 	} $else {
@@ -436,7 +436,7 @@ pub fn vcalloc(n int) &byte {
 	if n < 0 {
 		panic('calloc($n < 0)')
 	} else if n == 0 {
-		return &byte(0)
+		return &u8(0)
 	}
 	$if trace_vcalloc ? {
 		total_m += n
