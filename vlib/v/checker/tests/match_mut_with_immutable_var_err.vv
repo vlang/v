@@ -1,4 +1,4 @@
-type Int = byte | int
+type Int = int | u8
 
 fn main() {
 	i := Int(0)

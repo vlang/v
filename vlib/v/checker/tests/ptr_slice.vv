@@ -2,12 +2,12 @@ struct Foo {
 }
 
 fn jeje() &Foo {
-    return &Foo{}
+	return &Foo{}
 }
 
 fn main() {
-    fs := jeje()[1..]
-    println(fs)
-    vs := byteptr(0)[..3]
-    println(vs)
+	fs := jeje()[1..]
+	println(fs)
+	vs := byteptr(0)[..3]
+	println(vs)
 }

@@ -9,7 +9,7 @@ fn main() {
 	// unsigned == literal
 	_ = byte(-1) == -1 // false!
 	_ = -1 == u16(-1) // false!
-	
+
 	// unsigned == signed
 	_ = u16(-1) == int(-1)
 	_ = int(-1) != byte(-1)

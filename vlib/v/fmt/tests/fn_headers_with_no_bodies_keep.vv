@@ -2,4 +2,4 @@ fn proc_pidpath(int, voidptr, int) int
 
 fn C.realpath(&char, &char) &char
 
-fn C.chmod(&byte, int) int
+fn C.chmod(&u8, int) int

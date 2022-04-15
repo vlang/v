@@ -1,4 +1,4 @@
-type Byte = byte
+type Byte = u8
 
 fn (b Byte) str() string {
 	return 'hello'

@@ -17,7 +17,7 @@ fn frame(mut ctx gg.Context) {
 	ctx.begin()
 	id := ctx.new_streaming_image(ctx.width, ctx.height, 4, pixel_format: .rgba8)
 	mut img := ctx.get_cached_image_by_idx(id)
-	mut bytes := []byte{len: img.width * img.height * 4, cap: img.width * img.height * 4}
+	mut bytes := []u8{len: img.width * img.height * 4, cap: img.width * img.height * 4}
 	for y in 0 .. img.height {
 		for x in 0 .. img.width {
 			unsafe {
