@@ -490,7 +490,7 @@ d := b + x     // d is of type `f64` - automatic promotion of `x`'s value
 ```v nofmt
 name := 'Bob'
 assert name.len == 3       // will print 3
-assert name[0] == byte(66) // indexing gives a byte, byte(66) == `B`
+assert name[0] == u8(66) // indexing gives a byte, u8(66) == `B`
 assert name[1..3] == 'ob'  // slicing gives a string 'ob'
 
 // escape codes
@@ -499,7 +499,7 @@ assert windows_newline.len == 2
 
 // arbitrary bytes can be directly specified using `\x##` notation where `#` is
 // a hex digit aardvark_str := '\x61ardvark' assert aardvark_str == 'aardvark'
-assert '\xc0'[0] == byte(0xc0)
+assert '\xc0'[0] == u8(0xc0)
 
 // or using octal escape `\###` notation where `#` is an octal digit
 aardvark_str2 := '\141ardvark'
@@ -692,7 +692,7 @@ A `rune` can be converted to UTF-8 bytes by using the `.bytes()` method.
 
 ```v
 rocket := `🚀`
-assert rocket.bytes() == [byte(0xf0), 0x9f, 0x9a, 0x80]
+assert rocket.bytes() == [u8(0xf0), 0x9f, 0x9a, 0x80]
 ```
 
 Hex, Unicode, and Octal escape sequences also work in a `rune` literal:
@@ -704,9 +704,9 @@ assert `\u0061` == `a`
 
 // multibyte literals work too
 assert `\u2605` == `★`
-assert `\u2605`.bytes() == [byte(0xe2), 0x98, 0x85]
-assert `\xe2\x98\x85`.bytes() == [byte(0xe2), 0x98, 0x85]
-assert `\342\230\205`.bytes() == [byte(0xe2), 0x98, 0x85]
+assert `\u2605`.bytes() == [u8(0xe2), 0x98, 0x85]
+assert `\xe2\x98\x85`.bytes() == [u8(0xe2), 0x98, 0x85]
+assert `\342\230\205`.bytes() == [u8(0xe2), 0x98, 0x85]
 ```
 
 Note that `rune` literals use the same escape syntax as strings, but they can only hold one unicode
@@ -763,7 +763,7 @@ If you want a different type of integer, you can use casting:
 
 ```v
 a := i64(123)
-b := byte(42)
+b := u8(42)
 c := i16(12345)
 ```
 
@@ -854,7 +854,7 @@ The type of an array is determined by the first element:
 * `[1, 2, 3]` is an array of ints (`[]int`).
 * `['a', 'b']` is an array of strings (`[]string`).
 
-The user can explicitly specify the type for the first element: `[byte(16), 32, 64, 128]`.
+The user can explicitly specify the type for the first element: `[u8(16), 32, 64, 128]`.
 V arrays are homogeneous (all elements must have the same type).
 This means that code like `[1, 'a']` will not compile.
 
