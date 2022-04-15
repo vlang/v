@@ -3,12 +3,12 @@ vlib/v/checker/tests/fixed_array_size_err.vv:4:8: error: fixed size cannot be ze
     3 | fn main() {
     4 |     a := [size]int{}
       |           ~~~~
-    5 |     b := [0]byte{}
+    5 |     b := [0]u8{}
     6 |     println(a)
 vlib/v/checker/tests/fixed_array_size_err.vv:5:8: error: fixed size cannot be zero or negative (fixed_size: 0)
     3 | fn main() {
     4 |     a := [size]int{}
-    5 |     b := [0]byte{}
+    5 |     b := [0]u8{}
       |           ^
     6 |     println(a)
     7 |     println(b)

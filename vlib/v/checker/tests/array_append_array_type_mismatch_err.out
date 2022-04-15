@@ -1,6 +1,6 @@
-vlib/v/checker/tests/array_append_array_type_mismatch_err.vv:3:8: error: cannot append `[]int` to `[]byte`
+vlib/v/checker/tests/array_append_array_type_mismatch_err.vv:3:8: error: cannot append `[]int` to `[]u8`
     1 | fn main() {
-    2 |     mut bc := []byte{}
+    2 |     mut bc := []u8{}
     3 |     bc << [0xCA, 0xFE, 0xBA, 0xBE]
       |           ~~~~~~~~~~~~~~~~~~~~~~~~
     4 |     println(bc)

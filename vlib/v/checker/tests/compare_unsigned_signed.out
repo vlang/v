@@ -11,30 +11,30 @@ vlib/v/checker/tests/compare_unsigned_signed.vv:6:5: error: unsigned integer can
       |        ~~
     7 |         println('unexpected')
     8 |     }
-vlib/v/checker/tests/compare_unsigned_signed.vv:10:18: error: `byte` cannot be compared with negative value
+vlib/v/checker/tests/compare_unsigned_signed.vv:10:16: error: `u8` cannot be compared with negative value
     8 |     }
     9 |     // unsigned == literal
-   10 |     _ = byte(-1) == -1 // false!
-      |                     ~~
+   10 |     _ = u8(-1) == -1 // false!
+      |                   ~~
    11 |     _ = -1 == u16(-1) // false!
    12 |
 vlib/v/checker/tests/compare_unsigned_signed.vv:11:6: error: negative value cannot be compared with `u16`
     9 |     // unsigned == literal
-   10 |     _ = byte(-1) == -1 // false!
+   10 |     _ = u8(-1) == -1 // false!
    11 |     _ = -1 == u16(-1) // false!
       |         ~~
-   12 |     
+   12 | 
    13 |     // unsigned == signed
 vlib/v/checker/tests/compare_unsigned_signed.vv:14:14: error: `u16` cannot be compared with `int`
-   12 |     
+   12 | 
    13 |     // unsigned == signed
    14 |     _ = u16(-1) == int(-1)
       |                 ~~
-   15 |     _ = int(-1) != byte(-1)
+   15 |     _ = int(-1) != u8(-1)
    16 | }
-vlib/v/checker/tests/compare_unsigned_signed.vv:15:14: error: `int` cannot be compared with `byte`
+vlib/v/checker/tests/compare_unsigned_signed.vv:15:14: error: `int` cannot be compared with `u8`
    13 |     // unsigned == signed
    14 |     _ = u16(-1) == int(-1)
-   15 |     _ = int(-1) != byte(-1)
+   15 |     _ = int(-1) != u8(-1)
       |                 ~~
    16 | }

@@ -3,9 +3,9 @@ vlib/v/checker/tests/immutable_builtin_modify.vv:2:3: error: `string` can not be
     2 | s.len = 123
       |   ~~~
     3 | //
-    4 | b := []byte{}
+    4 | b := []u8{}
 vlib/v/checker/tests/immutable_builtin_modify.vv:5:3: error: `array` can not be modified
     3 | //
-    4 | b := []byte{}
+    4 | b := []u8{}
     5 | b.len = 34
       |   ~~~

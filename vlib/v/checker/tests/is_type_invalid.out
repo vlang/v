@@ -1,7 +1,7 @@
-vlib/v/checker/tests/is_type_invalid.vv:14:12: error: `IoS` has no variant `byte`
-   12 |
+vlib/v/checker/tests/is_type_invalid.vv:14:12: error: `IoS` has no variant `u8`
+   12 | 
    13 | fn main() {
-   14 |     if IoS(1) is byte {
+   14 |     if IoS(1) is u8 {
       |               ~~
    15 |         println('not cool')
    16 |     }

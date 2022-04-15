@@ -26,9 +26,9 @@ vlib/v/checker/tests/cast_string_err.vv:26:8: error: cannot cast map to string.
       |           ~~~~~~~~~~
    27 |     println(sm)
    28 |     //
-vlib/v/checker/tests/cast_string_err.vv:30:8: error: cannot cast []byte to string, use `arr.bytestr()` or `arr.str()` instead.
+vlib/v/checker/tests/cast_string_err.vv:30:8: error: cannot cast []u8 to string, use `arr.bytestr()` or `arr.str()` instead.
    28 |     //
-   29 |     arr := []byte{}
+   29 |     arr := []u8{}
    30 |     sa := string(arr)
       |           ~~~~~~~~~~~
    31 |     println(sa)

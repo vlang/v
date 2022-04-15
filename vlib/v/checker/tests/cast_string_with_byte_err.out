@@ -1,4 +1,4 @@
-vlib/v/checker/tests/cast_string_with_byte_err.vv:2:12: error: cannot cast type `byte` to string, use `by.str()` instead.
+vlib/v/checker/tests/cast_string_with_byte_err.vv:2:12: error: cannot cast type `u8` to string, use `by.str()` instead.
     1 | for by in 'abc' {
     2 |    println(string(by))
       |            ~~~~~~~~~~

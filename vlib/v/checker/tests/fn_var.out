@@ -1,23 +1,31 @@
 vlib/v/checker/tests/fn_var.vv:1:10: error: missing return at the end of an anonymous function
-    1 | mut f := fn(i int) byte {}
-      |          ~~~~~~~~~~~~~~~~~
+    1 | mut f := fn (i int) u8 {}
+      |          ~~~~~~~~~~~~~~~~
     2 | f = 4
     3 | mut p := &f
-vlib/v/checker/tests/fn_var.vv:2:5: error: cannot assign to `f`: expected `fn (int) byte`, not `int literal`
-    1 | mut f := fn(i int) byte {}
+vlib/v/checker/tests/fn_var.vv:2:5: error: cannot assign to `f`: expected `fn (int) u8`, not `int literal`
+    1 | mut f := fn (i int) u8 {}
     2 | f = 4
       |     ^
     3 | mut p := &f
     4 | p = &[f]
-vlib/v/checker/tests/fn_var.vv:4:5: error: cannot assign to `p`: expected `&fn (int) byte`, not `&[]fn (int) byte`
+vlib/v/checker/tests/fn_var.vv:4:5: error: cannot assign to `p`: expected `&fn (int) u8`, not `&[]fn (int) u8`
     2 | f = 4
     3 | mut p := &f
     4 | p = &[f]
       |     ^
     5 | _ = p
     6 | i := 0
-vlib/v/checker/tests/fn_var.vv:8:31: error: undefined ident: `i`
+vlib/v/checker/tests/fn_var.vv:9:10: error: undefined ident: `i`
+    7 | println(i)
+    8 | f = fn (mut a []int) {
+    9 |     println(i)
+      |             ^
+   10 | }
+vlib/v/checker/tests/fn_var.vv:8:5: error: cannot assign to `f`: expected `fn (int) u8`, not `fn (mut []int)`
     6 | i := 0
     7 | println(i)
-    8 | f = fn(mut a []int) { println(i) }
-      |                               ^
+    8 | f = fn (mut a []int) {
+      |     ~~~~~~~~~~~~~~~~~~
+    9 |     println(i)
+   10 | }
