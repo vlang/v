@@ -166,7 +166,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 						c.error('mismatched range types', low_expr.pos)
 					}
 				} else if low_expr is ast.CharLiteral {
-					if high_expr is ast.CharLiteral && cond_type_sym.kind in [.byte, .char, .rune] {
+					if high_expr is ast.CharLiteral && cond_type_sym.kind in [.u8, .char, .rune] {
 						low = low_expr.val[0]
 						high = high_expr.val[0]
 						if low > high {

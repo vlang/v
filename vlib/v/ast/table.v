@@ -2111,7 +2111,6 @@ pub fn (t &Table) is_comptime_type(x Type, y ComptimeType) bool {
 				.i16,
 				.int,
 				.i64,
-				.byte,
 				.u8,
 				.u16,
 				.u32,

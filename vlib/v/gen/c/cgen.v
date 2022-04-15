@@ -2738,7 +2738,7 @@ fn (mut g Gen) map_fn_ptrs(key_typ ast.TypeSymbol) (string, string, string, stri
 	mut clone_fn := ''
 	mut free_fn := '&map_free_nop'
 	match key_typ.kind {
-		.byte, .i8, .char {
+		.u8, .i8, .char {
 			hash_fn = '&map_hash_int_1'
 			key_eq_fn = '&map_eq_int_1'
 			clone_fn = '&map_clone_int_1'
@@ -5081,7 +5081,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 				for field in info.fields {
 					field_sym := g.table.sym(field.typ)
 					if field.has_default_expr
-						|| field_sym.kind in [.array, .map, .string, .bool, .alias, .i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .char, .voidptr, .byteptr, .charptr, .struct_] {
+						|| field_sym.kind in [.array, .map, .string, .bool, .alias, .i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .char, .voidptr, .byteptr, .charptr, .struct_] {
 						field_name := c_name(field.name)
 						if field.has_default_expr {
 							mut expr_str := ''
@@ -5642,7 +5642,7 @@ pub fn (mut g Gen) contains_ptr(el_typ ast.Type) bool {
 		return true
 	}
 	match sym.kind {
-		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .char, .rune, .bool, .enum_ {
+		.i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .char, .rune, .bool, .enum_ {
 			return false
 		}
 		.array_fixed {

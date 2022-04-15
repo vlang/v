@@ -2884,7 +2884,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 	mut precisions := []int{}
 	mut visible_pluss := []bool{}
 	mut fills := []bool{}
-	mut fmts := []byte{}
+	mut fmts := []u8{}
 	mut fposs := []token.Pos{}
 	// Handle $ interpolation
 	p.inside_str_interp = true

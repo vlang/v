@@ -574,7 +574,7 @@ fn (mut g Gen) gen_str_for_array(info ast.Array, styp string, str_fn_name string
 	is_elem_ptr := typ.is_ptr()
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
 	mut elem_str_fn_name := g.get_str_fn(typ)
-	if sym.kind == .byte {
+	if sym.kind == .u8 {
 		elem_str_fn_name = elem_str_fn_name + '_escaped'
 	}
 

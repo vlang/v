@@ -223,7 +223,7 @@ pub:
 pub mut:
 	exprs      []Expr
 	expr_types []Type
-	fmts       []byte
+	fmts       []u8
 	need_fmts  []bool // an explicit non-default fmt required, e.g. `x`
 }
 
@@ -689,7 +689,7 @@ pub:
 pub mut:
 	// these are set by gen_embed_file_init in v/gen/c/embed
 	is_compressed bool
-	bytes         []byte
+	bytes         []u8
 	len           int
 }
 

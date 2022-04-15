@@ -556,7 +556,6 @@ pub enum Kind {
 	int
 	i64
 	isize
-	byte
 	u8
 	u16
 	u32
@@ -745,7 +744,7 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_sym(kind: .int, name: 'int', cname: 'int', mod: 'builtin')
 	t.register_sym(kind: .i64, name: 'i64', cname: 'i64', mod: 'builtin')
 	t.register_sym(kind: .isize, name: 'isize', cname: 'isize', mod: 'builtin')
-	t.register_sym(kind: .byte, name: 'u8', cname: 'u8', mod: 'builtin')
+	t.register_sym(kind: .u8, name: 'u8', cname: 'u8', mod: 'builtin')
 	t.register_sym(kind: .u16, name: 'u16', cname: 'u16', mod: 'builtin')
 	t.register_sym(kind: .u32, name: 'u32', cname: 'u32', mod: 'builtin')
 	t.register_sym(kind: .u64, name: 'u64', cname: 'u64', mod: 'builtin')
@@ -793,7 +792,7 @@ pub fn (t &TypeSymbol) is_pointer() bool {
 
 [inline]
 pub fn (t &TypeSymbol) is_int() bool {
-	res := t.kind in [.i8, .i16, .int, .i64, .isize, .byte, .u16, .u32, .u64, .usize, .int_literal,
+	res := t.kind in [.i8, .i16, .int, .i64, .isize, .u8, .u16, .u32, .u64, .usize, .int_literal,
 		.rune]
 	if !res && t.kind == .alias {
 		return (t.info as Alias).parent_type.is_number()
@@ -840,7 +839,6 @@ pub fn (k Kind) str() string {
 		.i16 { 'i16' }
 		.i64 { 'i64' }
 		.isize { 'isize' }
-		.byte { 'byte' }
 		.u8 { 'u8' }
 		.u16 { 'u16' }
 		.u32 { 'u32' }
@@ -1021,8 +1019,8 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 	// explicitly.
 	match sym.kind {
 		.int_literal, .float_literal {}
-		.i8, .i16, .int, .i64, .isize, .byte, .u8, .u16, .u32, .u64, .usize, .f32, .f64, .char,
-		.rune, .string, .bool, .none_, .voidptr, .byteptr, .charptr {
+		.i8, .i16, .int, .i64, .isize, .u8, .u16, .u32, .u64, .usize, .f32, .f64, .char, .rune,
+		.string, .bool, .none_, .voidptr, .byteptr, .charptr {
 			// primitive types
 			res = sym.kind.str()
 		}

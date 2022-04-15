@@ -2830,7 +2830,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	if to_sym.language != .c {
 		c.ensure_type_exists(to_type, node.pos) or {}
 	}
-	if from_sym.kind == .byte && from_type.is_ptr() && to_sym.kind == .string && !to_type.is_ptr() {
+	if from_sym.kind == .u8 && from_type.is_ptr() && to_sym.kind == .string && !to_type.is_ptr() {
 		c.error('to convert a C string buffer pointer to a V string, use x.vstring() instead of string(x)',
 			node.pos)
 	}
@@ -2898,7 +2898,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			type_name := c.table.type_to_str(to_type)
 			c.error('cannot cast struct `$from_type_name` to `$type_name`', node.pos)
 		}
-	} else if to_sym.kind == .byte && !final_from_sym.is_number() && !final_from_sym.is_pointer()
+	} else if to_sym.kind == .u8 && !final_from_sym.is_number() && !final_from_sym.is_pointer()
 		&& !from_type.is_ptr() && final_from_sym.kind !in [.char, .enum_, .bool] {
 		ft := c.table.type_to_str(from_type)
 		tt := c.table.type_to_str(to_type)
