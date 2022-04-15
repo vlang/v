@@ -114,8 +114,8 @@ fn (mut s Server) parse_client_handshake(client_handshake string, mut c Client) 
 // read_handshake_str returns the handshake response
 fn (mut ws Client) read_handshake_str() ?string {
 	mut total_bytes_read := 0
-	mut msg := [1024]byte{}
-	mut buffer := [1]byte{}
+	mut msg := [1024]u8{}
+	mut buffer := [1]u8{}
 	for total_bytes_read < 1024 {
 		bytes_read := ws.socket_read_ptr(&buffer[0], 1) ?
 		if bytes_read == 0 {

@@ -230,7 +230,7 @@ pub fn cp(src string, dst string) ? {
 		}
 		// TODO use defer{} to close files in case of error or return.
 		// Currently there is a C-Error when building.
-		mut buf := [1024]byte{}
+		mut buf := [1024]u8{}
 		mut count := 0
 		for {
 			count = C.read(fp_from, &buf[0], sizeof(buf))

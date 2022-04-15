@@ -28,7 +28,7 @@ pub fn (mut b Builder) write_ptr(ptr &byte, len int) {
 // write_rune appends a single rune to the accumulated buffer
 [manualfree]
 pub fn (mut b Builder) write_rune(r rune) {
-	mut buffer := [5]byte{}
+	mut buffer := [5]u8{}
 	res := unsafe { utf32_to_str_no_malloc(u32(r), &buffer[0]) }
 	if res.len == 0 {
 		return
@@ -38,7 +38,7 @@ pub fn (mut b Builder) write_rune(r rune) {
 
 // write_runes appends all the given runes to the accumulated buffer
 pub fn (mut b Builder) write_runes(runes []rune) {
-	mut buffer := [5]byte{}
+	mut buffer := [5]u8{}
 	for r in runes {
 		res := unsafe { utf32_to_str_no_malloc(u32(r), &buffer[0]) }
 		if res.len == 0 {
@@ -107,7 +107,7 @@ pub fn (mut b Builder) go_back(n int) {
 fn (b &Builder) spart(start_pos int, n int) string {
 	unsafe {
 		mut x := malloc_noscan(n + 1)
-		vmemcpy(x, &byte(b.data) + start_pos, n)
+		vmemcpy(x, &u8(b.data) + start_pos, n)
 		x[n] = 0
 		return tos(x, n)
 	}

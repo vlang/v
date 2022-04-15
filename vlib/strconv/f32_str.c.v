@@ -64,7 +64,7 @@ pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string 
 		fw_zeros = pad_digit - out_len
 	}
 
-	mut buf := []byte{len: int(out_len + 5 + 1 + 1)} // sign + mant_len + . +  e + e_sign + exp_len(2) + \0}
+	mut buf := []u8{len: int(out_len + 5 + 1 + 1)} // sign + mant_len + . +  e + e_sign + exp_len(2) + \0}
 	mut i := 0
 
 	if neg {
@@ -92,7 +92,7 @@ pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string 
 	y := i + out_len
 	mut x := 0
 	for x < (out_len - disp - 1) {
-		buf[y - x] = `0` + byte(out % 10)
+		buf[y - x] = `0` + u8(out % 10)
 		out /= 10
 		i++
 		x++
@@ -102,7 +102,7 @@ pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string 
 	if i_n_digit == 0 {
 		unsafe {
 			buf[i] = 0
-			return tos(&byte(&buf[0]), i)
+			return tos(&u8(&buf[0]), i)
 		}
 	}
 
@@ -113,7 +113,7 @@ pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string 
 	}
 
 	if y - x >= 0 {
-		buf[y - x] = `0` + byte(out % 10)
+		buf[y - x] = `0` + u8(out % 10)
 		i++
 	}
 
@@ -139,14 +139,14 @@ pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string 
 	// Always print two digits to match strconv's formatting.
 	d1 := exp % 10
 	d0 := exp / 10
-	buf[i] = `0` + byte(d0)
+	buf[i] = `0` + u8(d0)
 	i++
-	buf[i] = `0` + byte(d1)
+	buf[i] = `0` + u8(d1)
 	i++
 	buf[i] = 0
 
 	return unsafe {
-		tos(&byte(&buf[0]), i)
+		tos(&u8(&buf[0]), i)
 	}
 }
 
@@ -197,7 +197,7 @@ fn f32_to_decimal(mant u32, exp u32) Dec32 {
 	mut e10 := 0
 	mut vm_is_trailing_zeros := false
 	mut vr_is_trailing_zeros := false
-	mut last_removed_digit := byte(0)
+	mut last_removed_digit := u8(0)
 
 	if e2 >= 0 {
 		q := log10_pow2(e2)
@@ -215,7 +215,7 @@ fn f32_to_decimal(mant u32, exp u32) Dec32 {
 			// we've found that 32-bit arithmetic is faster even on
 			// 64-bit machines.
 			l := pow5_inv_num_bits_32 + pow5_bits(int(q - 1)) - 1
-			last_removed_digit = byte(mul_pow5_invdiv_pow2(mv, q - 1, -e2 + int(q - 1) + l) % 10)
+			last_removed_digit = u8(mul_pow5_invdiv_pow2(mv, q - 1, -e2 + int(q - 1) + l) % 10)
 		}
 		if q <= 9 {
 			// The largest power of 5 that fits in 24 bits is 5^10,
@@ -240,7 +240,7 @@ fn f32_to_decimal(mant u32, exp u32) Dec32 {
 		vm = mul_pow5_div_pow2(mm, u32(i), j)
 		if q != 0 && ((vp - 1) / 10) <= vm / 10 {
 			j = int(q) - 1 - (pow5_bits(i + 1) - pow5_num_bits_32)
-			last_removed_digit = byte(mul_pow5_div_pow2(mv, u32(i + 1), j) % 10)
+			last_removed_digit = u8(mul_pow5_div_pow2(mv, u32(i + 1), j) % 10)
 		}
 		if q <= 1 {
 			// {vr,vp,vm} is trailing zeros if {mv,mp,mm} has at
@@ -270,7 +270,7 @@ fn f32_to_decimal(mant u32, exp u32) Dec32 {
 		for vp / 10 > vm / 10 {
 			vm_is_trailing_zeros = vm_is_trailing_zeros && (vm % 10) == 0
 			vr_is_trailing_zeros = vr_is_trailing_zeros && (last_removed_digit == 0)
-			last_removed_digit = byte(vr % 10)
+			last_removed_digit = u8(vr % 10)
 			vr /= 10
 			vp /= 10
 			vm /= 10
@@ -279,7 +279,7 @@ fn f32_to_decimal(mant u32, exp u32) Dec32 {
 		if vm_is_trailing_zeros {
 			for vm % 10 == 0 {
 				vr_is_trailing_zeros = vr_is_trailing_zeros && (last_removed_digit == 0)
-				last_removed_digit = byte(vr % 10)
+				last_removed_digit = u8(vr % 10)
 				vr /= 10
 				vp /= 10
 				vm /= 10
@@ -301,7 +301,7 @@ fn f32_to_decimal(mant u32, exp u32) Dec32 {
 		// are relative to this. Loop iterations below (approximately):
 		// 0: 13.6%, 1: 70.7%, 2: 14.1%, 3: 1.39%, 4: 0.14%, 5+: 0.01%
 		for vp / 10 > vm / 10 {
-			last_removed_digit = byte(vr % 10)
+			last_removed_digit = u8(vr % 10)
 			vr /= 10
 			vp /= 10
 			vm /= 10

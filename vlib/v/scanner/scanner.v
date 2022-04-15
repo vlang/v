@@ -1279,7 +1279,7 @@ fn decode_h_escapes(s string, start int, escapes_pos []int) string {
 		idx := pos - start
 		end_idx := idx + 4 // "\xXX".len == 4
 		// notice this function doesn't do any decoding... it just replaces '\xc0' with the byte 0xc0
-		ss << [byte(strconv.parse_uint(s[idx + 2..end_idx], 16, 8) or { 0 })].bytestr()
+		ss << [u8(strconv.parse_uint(s[idx + 2..end_idx], 16, 8) or { 0 })].bytestr()
 		if i + 1 < escapes_pos.len {
 			ss << s[end_idx..escapes_pos[i + 1] - start]
 		} else {
@@ -1300,7 +1300,7 @@ fn decode_o_escapes(s string, start int, escapes_pos []int) string {
 		idx := pos - start
 		end_idx := idx + 4 // "\XXX".len == 4
 		// notice this function doesn't do any decoding... it just replaces '\141' with the byte 0o141
-		ss << [byte(strconv.parse_uint(s[idx + 1..end_idx], 8, 8) or { 0 })].bytestr()
+		ss << [u8(strconv.parse_uint(s[idx + 1..end_idx], 8, 8) or { 0 })].bytestr()
 		if i + 1 < escapes_pos.len {
 			ss << s[end_idx..escapes_pos[i + 1] - start]
 		} else {

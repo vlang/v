@@ -6,5 +6,5 @@ mut:
 	c_oflag int
 	c_cflag int
 	c_lflag int
-	c_cc    [20]byte
+	c_cc    [20]u8
 }

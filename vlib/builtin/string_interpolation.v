@@ -159,7 +159,7 @@ fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 	tail_zeros := ((x >> 16) & 0x01) > 0
 	width := int(i16((x >> 17) & 0x3FF))
 	mut base := int(x >> 27) & 0xF
-	fmt_pad_ch := byte((x >> 31) & 0xFF)
+	fmt_pad_ch := u8((x >> 31) & 0xFF)
 
 	// no string interpolation is needed, return empty string
 	if typ == .si_no_str {

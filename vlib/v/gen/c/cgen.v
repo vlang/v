@@ -4304,7 +4304,7 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, ct_value ast.Comp
 				if rune_code in [`"`, `\\`, `'`] {
 					return false
 				}
-				escval := util.smart_quote(byte(rune_code).ascii_str(), false)
+				escval := util.smart_quote(u8(rune_code).ascii_str(), false)
 				g.const_decl_write_precomputed(styp, cname, "'$escval'")
 			} else {
 				g.const_decl_write_precomputed(styp, cname, u32(ct_value).str())

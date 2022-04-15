@@ -116,7 +116,7 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 		pad_ch = 1
 	}
 	res := get_str_intp_u32_format(fmt_type, node.fwidths[i], node.precisions[i], remove_tail_zeros,
-		node.pluss[i], byte(pad_ch), base, upper_case)
+		node.pluss[i], u8(pad_ch), base, upper_case)
 	//
 	return res, fmt_type.str()
 }

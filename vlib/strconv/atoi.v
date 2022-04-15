@@ -98,7 +98,7 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 		} else {
 			return n, i + 1
 		}
-		if d >= byte(base) {
+		if d >= u8(base) {
 			return n, i + 1
 		}
 		if n >= cutoff {

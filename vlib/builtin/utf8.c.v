@@ -61,7 +61,7 @@ pub fn string_from_wide2(_wstr &u16, len int) string {
 // Reads an utf8 character from standard input
 pub fn utf8_getchar() int {
 	c := C.getchar()
-	len := utf8_len(byte(~c))
+	len := utf8_len(u8(~c))
 	if c < 0 {
 		return 0
 	} else if len == 0 {

@@ -68,7 +68,7 @@ pub fn fxx_to_str_l_parse(s string) string {
 
 	m_sgn_flag := false
 	mut sgn := 1
-	mut b := [26]byte{}
+	mut b := [26]u8{}
 	mut d_pos := 1
 	mut i := 0
 	mut i1 := 0
@@ -119,7 +119,7 @@ pub fn fxx_to_str_l_parse(s string) string {
 	}
 
 	// allocate exp+32 chars for the return string
-	mut res := []byte{len: exp + 32, init: 0}
+	mut res := []u8{len: exp + 32, init: 0}
 	mut r_i := 0 // result string buffer index
 
 	// println("s:${sgn} b:${b[0]} es:${exp_sgn} exp:${exp}")
@@ -191,7 +191,7 @@ pub fn fxx_to_str_l_parse_no_dot(s string) string {
 
 	m_sgn_flag := false
 	mut sgn := 1
-	mut b := [26]byte{}
+	mut b := [26]u8{}
 	mut d_pos := 1
 	mut i := 0
 	mut i1 := 0
@@ -242,7 +242,7 @@ pub fn fxx_to_str_l_parse_no_dot(s string) string {
 	}
 
 	// allocate exp+32 chars for the return string
-	mut res := []byte{len: exp + 32, init: 0}
+	mut res := []u8{len: exp + 32, init: 0}
 	mut r_i := 0 // result string buffer index
 
 	// println("s:${sgn} b:${b[0]} es:${exp_sgn} exp:${exp}")

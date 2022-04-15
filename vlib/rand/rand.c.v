@@ -22,7 +22,7 @@ fn internal_uuid_v4(mut rng PRNG) string {
 		x += 0x3030303030303030
 		// write the ASCII codes to the buffer:
 		for c < 8 && i_buf < buflen {
-			d = byte(x)
+			d = u8(x)
 			unsafe {
 				buf[i_buf] = if d > 0x39 { d + 0x27 } else { d }
 			}
@@ -33,7 +33,7 @@ fn internal_uuid_v4(mut rng PRNG) string {
 	}
 	// there are still some random bits in x:
 	x = x >> 8
-	d = byte(x)
+	d = u8(x)
 	unsafe {
 		// From https://www.ietf.org/rfc/rfc4122.txt :
 		// >> Set the two most significant bits (bits 6 and 7) of the clock_seq_hi_and_reserved

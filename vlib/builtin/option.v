@@ -103,7 +103,7 @@ pub fn error_with_code(message string, code int) IError {
 
 // Option is the base of V's internal optional return system.
 struct Option {
-	state byte
+	state u8
 	err   IError = none__
 	// Data is trailing after err
 	// and is not included in here but in the
@@ -114,7 +114,7 @@ fn opt_ok(data voidptr, mut option Option, size int) {
 	unsafe {
 		*option = Option{}
 		// use err to get the end of OptionBase and then memcpy into it
-		vmemcpy(&byte(&option.err) + sizeof(IError), data, size)
+		vmemcpy(&u8(&option.err) + sizeof(IError), data, size)
 	}
 }
 

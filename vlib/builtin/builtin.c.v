@@ -247,7 +247,7 @@ fn _writeln_to_fd(fd int, s string) {
 }
 
 [manualfree]
-fn _write_buf_to_fd(fd int, buf &byte, buf_len int) {
+fn _write_buf_to_fd(fd int, buf &u8, buf_len int) {
 	if buf_len <= 0 {
 		return
 	}

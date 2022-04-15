@@ -39,14 +39,14 @@ pub fn (mut rng WyRandRNG) byte() byte {
 	// Can we extract a value from the buffer?
 	if rng.bytes_left >= 1 {
 		rng.bytes_left -= 1
-		value := byte(rng.buffer)
+		value := u8(rng.buffer)
 		rng.buffer >>= 8
 		return value
 	}
 	// Add a new value to the buffer
 	rng.buffer = rng.u64()
 	rng.bytes_left = 7
-	value := byte(rng.buffer)
+	value := u8(rng.buffer)
 	rng.buffer >>= 8
 	return value
 }

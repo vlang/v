@@ -1074,7 +1074,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			// g.write('&')
 		} else if diff > 0 {
 			g.write('/*diff=$diff*/')
-			g.write([]byte{len: diff, init: `*`}.bytestr())
+			g.write([]u8{len: diff, init: `*`}.bytestr())
 		}
 	}
 

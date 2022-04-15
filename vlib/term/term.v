@@ -85,7 +85,7 @@ pub fn strip_ansi(text string) string {
 	// This is a port of https://github.com/kilobyte/colorized-logs/blob/master/ansi2txt.c
 	// \e, [, 1, m, a, b, c, \e, [, 2, 2, m => abc
 	mut input := textscanner.new(text)
-	mut output := []byte{cap: text.len}
+	mut output := []u8{cap: text.len}
 	mut ch := 0
 	for ch != -1 {
 		ch = input.next()
@@ -117,7 +117,7 @@ pub fn strip_ansi(text string) string {
 				ch = input.next()
 			}
 		} else if ch != -1 {
-			output << byte(ch)
+			output << u8(ch)
 		}
 	}
 	return output.bytestr()

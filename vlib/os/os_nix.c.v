@@ -242,7 +242,7 @@ pub fn loginname() string {
 	return ''
 }
 
-fn init_os_args(argc int, argv &&byte) []string {
+fn init_os_args(argc int, argv &&u8) []string {
 	mut args_ := []string{len: argc}
 	for i in 0 .. argc {
 		args_[i] = unsafe { tos_clone(argv[i]) }
@@ -267,7 +267,7 @@ pub fn ls(path string) ?[]string {
 			break
 		}
 		unsafe {
-			bptr := &byte(&ent.d_name[0])
+			bptr := &u8(&ent.d_name[0])
 			if bptr[0] == 0 || (bptr[0] == `.` && bptr[1] == 0)
 				|| (bptr[0] == `.` && bptr[1] == `.` && bptr[2] == 0) {
 				continue
@@ -348,7 +348,7 @@ pub fn execute(cmd string) Result {
 	defer {
 		unsafe { res.free() }
 	}
-	buf := [4096]byte{}
+	buf := [4096]u8{}
 	unsafe {
 		pbuf := &buf[0]
 		for {
@@ -381,7 +381,7 @@ pub fn (mut c Command) start() ? {
 
 [manualfree]
 pub fn (mut c Command) read_line() string {
-	buf := [4096]byte{}
+	buf := [4096]u8{}
 	mut res := strings.new_builder(1024)
 	defer {
 		unsafe { res.free() }
@@ -462,7 +462,7 @@ pub fn debugger_present() bool {
 	return false
 }
 
-fn C.mkstemp(stemplate &byte) int
+fn C.mkstemp(stemplate &u8) int
 
 // `is_writable_folder` - `folder` exists and is writable to the process
 [manualfree]

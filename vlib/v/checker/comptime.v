@@ -286,7 +286,7 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 					.unsigned_right_shift { return i64(u64(left) >>> right) }
 					else { return none }
 				}
-			} else if left is byte && right is byte {
+			} else if left is u8 && right is u8 {
 				match expr.op {
 					.plus { return left + right }
 					.minus { return left - right }

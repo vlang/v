@@ -52,7 +52,7 @@ pub fn leading_zeros_64(x u64) int {
 
 // --- TrailingZeros ---
 // trailing_zeros_8 returns the number of trailing zero bits in x; the result is 8 for x == 0.
-pub fn trailing_zeros_8(x byte) int {
+pub fn trailing_zeros_8(x u8) int {
 	return int(ntz_8_tab[x])
 }
 
@@ -95,7 +95,7 @@ pub fn trailing_zeros_64(x u64) int {
 
 // --- OnesCount ---
 // ones_count_8 returns the number of one bits ("population count") in x.
-pub fn ones_count_8(x byte) int {
+pub fn ones_count_8(x u8) int {
 	return int(pop_8_tab[x])
 }
 
@@ -148,7 +148,7 @@ pub fn ones_count_64(x u64) int {
 [inline]
 pub fn rotate_left_8(x byte, k int) byte {
 	n := byte(8)
-	s := byte(k) & (n - byte(1))
+	s := u8(k) & (n - u8(1))
 	return (x << s) | (x >> (n - s))
 }
 
@@ -188,7 +188,7 @@ pub fn rotate_left_64(x u64, k int) u64 {
 // --- Reverse ---
 // reverse_8 returns the value of x with its bits in reversed order.
 [inline]
-pub fn reverse_8(x byte) byte {
+pub fn reverse_8(x u8) u8 {
 	return rev_8_tab[x]
 }
 
@@ -246,7 +246,7 @@ pub fn reverse_bytes_64(x u64) u64 {
 
 // --- Len ---
 // len_8 returns the minimum number of bits required to represent x; the result is 0 for x == 0.
-pub fn len_8(x byte) int {
+pub fn len_8(x u8) int {
 	return int(len_8_tab[x])
 }
 
