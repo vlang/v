@@ -17,7 +17,7 @@ struct v__embed_file__EmbedFileIndexEntry {
 
 string v__embed_file__EmbedFileData_str(v__embed_file__EmbedFileData ed);
 void v__embed_file__EmbedFileData_free(v__embed_file__EmbedFileData* ed);
-byte* v__embed_file__EmbedFileData_data(v__embed_file__EmbedFileData* ed);
+u8* v__embed_file__EmbedFileData_data(v__embed_file__EmbedFileData* ed);
 v__embed_file__EmbedFileIndexEntry* v__embed_file__find_index_entry_by_path(voidptr start, string path, string algo);
 
 string v__embed_file__EmbedFileData_str(v__embed_file__EmbedFileData ed) {
