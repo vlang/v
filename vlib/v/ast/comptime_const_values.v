@@ -1,7 +1,6 @@
 module ast
 
 pub type ComptTimeConstValue = EmptyExpr
-	| u8
 	| f32
 	| f64
 	| i16
@@ -13,6 +12,7 @@ pub type ComptTimeConstValue = EmptyExpr
 	| u16
 	| u32
 	| u64
+	| u8
 
 pub fn empty_comptime_const_expr() ComptTimeConstValue {
 	return EmptyExpr{}
@@ -56,9 +56,8 @@ pub fn (val ComptTimeConstValue) i64() ?i64 {
 		i64 {
 			return i64(val)
 		}
-		
-		 u8 {
-		 return i64(val)
+		u8 {
+			return i64(val)
 		}
 		u16 {
 			return i64(val)

@@ -16,14 +16,14 @@ pub mut:
 	f_size           u32
 	f_mod_base       u64 // Base Address of module comtaining this symbol
 	f_flags          u32
-	f_value          u64  // Value of symbol, ValuePresent should be 1
-	f_address        u64  // Address of symbol including base address of module
-	f_register       u32  // register holding value or pointer to value
-	f_scope          u32  // scope of the symbol
-	f_tag            u32  // pdb classification
-	f_name_len       u32  // Actual length of name
-	f_max_name_len   u32  // must be manually set
-	f_name           u8 // must be calloc(f_max_name_len)
+	f_value          u64 // Value of symbol, ValuePresent should be 1
+	f_address        u64 // Address of symbol including base address of module
+	f_register       u32 // register holding value or pointer to value
+	f_scope          u32 // scope of the symbol
+	f_tag            u32 // pdb classification
+	f_name_len       u32 // Actual length of name
+	f_max_name_len   u32 // must be manually set
+	f_name           u8  // must be calloc(f_max_name_len)
 }
 
 pub struct SymbolInfoContainer {

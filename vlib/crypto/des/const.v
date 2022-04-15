@@ -38,9 +38,9 @@ const permuted_choice1 = [u8(7), 15, 23, 31, 39, 47, 55, 63, 6, 14, 22, 30, 38, 
 
 // Used in the key schedule to produce each subkey by selecting 48 bits from
 // the 56-bit input
-const permuted_choice2 = [u8(42), 39, 45, 32, 55, 51, 53, 28, 41, 50, 35, 46, 33, 37, 44, 52,
-	30, 48, 40, 49, 29, 36, 43, 54, 15, 4, 25, 19, 9, 1, 26, 16, 5, 11, 23, 8, 12, 7, 17, 0, 22,
-	3, 10, 14, 6, 20, 27, 24]
+const permuted_choice2 = [u8(42), 39, 45, 32, 55, 51, 53, 28, 41, 50, 35, 46, 33, 37, 44, 52, 30,
+	48, 40, 49, 29, 36, 43, 54, 15, 4, 25, 19, 9, 1, 26, 16, 5, 11, 23, 8, 12, 7, 17, 0, 22, 3,
+	10, 14, 6, 20, 27, 24]
 
 // 8 S-boxes composed of 4 rows and 16 columns
 // Used in the DES cipher function
