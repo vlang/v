@@ -142,7 +142,8 @@ pub fn (d &Digest) sum(b_in []byte) []byte {
 	return b_out
 }
 
-fn (mut d Digest) checksum() []byte {
+// checksum returns the current byte checksum of the Digest.
+pub fn (mut d Digest) checksum() []byte {
 	mut len := d.len
 	// Padding. Add a 1 bit and 0 bits until 56 bytes mod 64.
 	mut tmp := []byte{len: (64)}
