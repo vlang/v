@@ -445,7 +445,7 @@ pub fn vcalloc(n int) &byte {
 	$if prealloc {
 		return unsafe { prealloc_calloc(n) }
 	} $else $if gcboehm ? {
-		return unsafe { &byte(C.GC_MALLOC(n)) }
+		return unsafe { &u8(C.GC_MALLOC(n)) }
 	} $else {
 		return unsafe { C.calloc(1, n) }
 	}
@@ -470,9 +470,9 @@ pub fn vcalloc_noscan(n int) &byte {
 			panic('calloc_noscan($n < 0)')
 		}
 		return $if gcboehm_opt ? {
-			unsafe { &byte(C.memset(C.GC_MALLOC_ATOMIC(n), 0, n)) }
+			unsafe { &u8(C.memset(C.GC_MALLOC_ATOMIC(n), 0, n)) }
 		} $else {
-			unsafe { &byte(C.GC_MALLOC(n)) }
+			unsafe { &u8(C.GC_MALLOC(n)) }
 		}
 	} $else {
 		return unsafe { vcalloc(n) }

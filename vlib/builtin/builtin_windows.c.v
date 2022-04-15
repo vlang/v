@@ -126,7 +126,7 @@ fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
 		si.f_max_name_len = sizeof(SymbolInfoContainer) - sizeof(SymbolInfo) - 1
 		fname := &char(&si.f_name)
 		mut sline64 := Line64{
-			f_file_name: &byte(0)
+			f_file_name: &u8(0)
 		}
 		sline64.f_size_of_struct = sizeof(Line64)
 
