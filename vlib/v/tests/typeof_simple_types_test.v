@@ -26,6 +26,9 @@ fn test_typeof_for_builtin_int_types() {
 	assert typeof(u16(1)).name == 'u16'
 	assert typeof(u32(1)).name == 'u32'
 	assert typeof(u64(1)).name == 'u64'
+	//
+	assert typeof(byte(1)).name == 'byte'
+	assert typeof(char(1)).name == 'char'
 }
 
 fn test_typeof_for_builtin_float_types() {
