@@ -163,7 +163,7 @@ pub fn frame_duration() f64 {
 
 // write string into clipboard
 [inline]
-pub fn set_clipboard_string(str &char) {
+pub fn set_clipboard_string(str &u8) {
 	C.sapp_set_clipboard_string(str)
 }
 
