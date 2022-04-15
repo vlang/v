@@ -629,7 +629,7 @@ typedef uint64_t u64;
 typedef uint32_t u32;
 typedef uint8_t u8;
 typedef uint16_t u16;
-typedef uint8_t byte;
+//typedef uint8_t byte;
 typedef uint32_t rune;
 typedef size_t usize;
 typedef ptrdiff_t isize;
@@ -649,7 +649,7 @@ typedef int64_t float_literal;
 typedef unsigned char* byteptr;
 typedef void* voidptr;
 typedef char* charptr;
-typedef byte array_fixed_byte_300 [300];
+typedef u8 array_fixed_byte_300 [300];
 
 typedef struct sync__Channel* chan;
 
@@ -658,7 +658,7 @@ typedef struct sync__Channel* chan;
 		#ifdef CUSTOM_DEFINE_4bytebool
 			typedef int bool;
 		#else
-			typedef byte bool;
+			typedef u8 bool;
 		#endif
 		#define true 1
 		#define false 0
