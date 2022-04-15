@@ -22,7 +22,7 @@ fn mm_alloc(size u64) (&byte, Errno) {
 	return &u8(0), e
 }
 
-fn mm_free(addr &byte) Errno {
+fn mm_free(addr &u8) Errno {
 	unsafe {
 		ap := &u64(addr - sizeof(u64))
 		size := *ap
