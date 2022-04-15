@@ -1,4 +1,4 @@
-type MyByte = byte
+type MyByte = u8
 
 type MyInt = int
 

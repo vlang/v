@@ -11,7 +11,7 @@ const (
 
 // Fragment represents a websocket data fragment
 struct Fragment {
-	data   []u8 // included data payload data in a fragment
+	data   []u8   // included data payload data in a fragment
 	opcode OPCode // interpretation of the payload data
 }
 
@@ -22,14 +22,14 @@ mut:
 	header_len int = 2
 	// size of total frame
 	frame_size  int = 2
-	fin         bool    // true if final fragment of message
-	rsv1        bool    // reserved for future use in websocket RFC
-	rsv2        bool    // reserved for future use in websocket RFC
-	rsv3        bool    // reserved for future use in websocket RFC
-	opcode      OPCode  // interpretation of the payload data
-	has_mask    bool    // true if the payload data is masked
-	payload_len int     // payload length
-	masking_key [4]u8 // all frames from client to server is masked with this key
+	fin         bool   // true if final fragment of message
+	rsv1        bool   // reserved for future use in websocket RFC
+	rsv2        bool   // reserved for future use in websocket RFC
+	rsv3        bool   // reserved for future use in websocket RFC
+	opcode      OPCode // interpretation of the payload data
+	has_mask    bool   // true if the payload data is masked
+	payload_len int    // payload length
+	masking_key [4]u8  // all frames from client to server is masked with this key
 }
 
 const (
@@ -86,7 +86,7 @@ fn (mut ws Client) read_payload(frame &Frame) ?[]u8 {
 		return []u8{}
 	}
 	mut buffer := []u8{cap: frame.payload_len}
-	mut read_buf := [1]byte{}
+	mut read_buf := [1]u8{}
 	mut bytes_read := 0
 	for bytes_read < frame.payload_len {
 		len := ws.socket_read_ptr(&read_buf[0], 1) ?
@@ -209,10 +209,10 @@ fn (ws Client) opcode_from_fragments() OPCode {
 
 // parse_frame_header parses next message by decoding the incoming frames
 pub fn (mut ws Client) parse_frame_header() ?Frame {
-	mut buffer := [256]byte{}
+	mut buffer := [256]u8{}
 	mut bytes_read := 0
 	mut frame := Frame{}
-	mut rbuff := [1]byte{}
+	mut rbuff := [1]u8{}
 	mut mask_end_byte := 0
 	for ws.state == .open {
 		read_bytes := ws.socket_read_ptr(&rbuff[0], 1) ?

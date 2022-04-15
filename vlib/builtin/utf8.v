@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module builtin
 
-pub fn utf8_char_len(b byte) int {
+pub fn utf8_char_len(b u8) int {
 	return ((0xe5000000 >> ((b >> 3) & 0x1e)) & 3) + 1
 }
 
@@ -22,7 +22,7 @@ pub fn utf32_to_str(code u32) string {
 }
 
 [manualfree; unsafe]
-pub fn utf32_to_str_no_malloc(code u32, buf &byte) string {
+pub fn utf32_to_str_no_malloc(code u32, buf &u8) string {
 	unsafe {
 		len := utf32_decode_to_buffer(code, buf)
 		if len == 0 {
@@ -34,7 +34,7 @@ pub fn utf32_to_str_no_malloc(code u32, buf &byte) string {
 }
 
 [manualfree; unsafe]
-pub fn utf32_decode_to_buffer(code u32, buf &byte) int {
+pub fn utf32_decode_to_buffer(code u32, buf &u8) int {
 	unsafe {
 		icode := int(code) // Prevents doing casts everywhere
 		mut buffer := &u8(buf)
@@ -112,7 +112,7 @@ pub fn (_bytes []u8) utf8_to_utf32() ?rune {
 }
 
 // Calculate length to read from the first byte
-fn utf8_len(c byte) int {
+fn utf8_len(c u8) int {
 	mut b := 0
 	mut x := c
 	if (x & 240) != 0 {
