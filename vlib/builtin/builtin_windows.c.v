@@ -23,7 +23,7 @@ pub mut:
 	f_tag            u32  // pdb classification
 	f_name_len       u32  // Actual length of name
 	f_max_name_len   u32  // must be manually set
-	f_name           byte // must be calloc(f_max_name_len)
+	f_name           u8 // must be calloc(f_max_name_len)
 }
 
 pub struct SymbolInfoContainer {
@@ -37,7 +37,7 @@ pub mut:
 	f_size_of_struct u32
 	f_key            voidptr
 	f_line_number    u32
-	f_file_name      &byte
+	f_file_name      &u8
 	f_address        u64
 }
 
@@ -47,7 +47,7 @@ fn C.SymSetOptions(symoptions u32) u32
 // returns handle
 fn C.GetCurrentProcess() voidptr
 
-fn C.SymInitialize(h_process voidptr, p_user_search_path &byte, b_invade_process int) int
+fn C.SymInitialize(h_process voidptr, p_user_search_path &u8, b_invade_process int) int
 
 fn C.CaptureStackBackTrace(frames_to_skip u32, frames_to_capture u32, p_backtrace voidptr, p_backtrace_hash voidptr) u16
 
