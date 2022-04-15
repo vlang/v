@@ -71,13 +71,6 @@ fn decode_i64(root &C.cJSON) i64 {
 	return i64(root.valuedouble) // i64 is double in C
 }
 
-fn decode_u8(root &C.cJSON) byte {
-	if isnil(root) {
-		return u8(0)
-	}
-	return u8(root.valueint)
-}
-
 fn decode_u8(root &C.cJSON) u8 {
 	if isnil(root) {
 		return u8(0)
@@ -165,10 +158,6 @@ fn encode_i16(val i16) &C.cJSON {
 }
 
 fn encode_i64(val i64) &C.cJSON {
-	return C.cJSON_CreateNumber(val)
-}
-
-fn encode_u8(val byte) &C.cJSON {
 	return C.cJSON_CreateNumber(val)
 }
 

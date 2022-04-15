@@ -92,13 +92,13 @@ fn (mut p Player) free() {
 // > MUST be placed before the Sound data chunk (but not necessarily
 // > contiguous to the Sound data chunk).
 struct RIFFHeader {
-	riff      [4]byte
+	riff      [4]u8
 	file_size u32
-	form_type [4]byte
+	form_type [4]u8
 }
 
 struct RIFFChunkHeader {
-	chunk_type [4]byte
+	chunk_type [4]u8
 	chunk_size u32
 	chunk_data voidptr
 }
@@ -113,7 +113,7 @@ struct RIFFFormat {
 	cbsize                u16      // Size of the extension: 22
 	valid_bits_per_sample u16      // at most 8*M
 	channel_mask          u32      // Speaker position mask
-	sub_format            [16]byte // GUID
+	sub_format            [16]u8 // GUID
 }
 
 fn read_wav_file_samples(fpath string) ?[]f32 {

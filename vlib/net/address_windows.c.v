@@ -38,15 +38,15 @@ mut:
 struct Ip6 {
 	port      u16
 	flow_info u32
-	addr      [16]byte
+	addr      [16]u8
 	scope_id  u32
 }
 
 [_pack: '1']
 struct Ip {
 	port    u16
-	addr    [4]byte
-	sin_pad [8]byte
+	addr    [4]u8
+	sin_pad [8]u8
 }
 
 struct Unix {

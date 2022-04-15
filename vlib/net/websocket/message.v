@@ -29,7 +29,7 @@ mut:
 	opcode      OPCode  // interpretation of the payload data
 	has_mask    bool    // true if the payload data is masked
 	payload_len int     // payload length
-	masking_key [4]byte // all frames from client to server is masked with this key
+	masking_key [4]u8 // all frames from client to server is masked with this key
 }
 
 const (

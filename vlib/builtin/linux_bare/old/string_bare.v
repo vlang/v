@@ -133,7 +133,7 @@ pub fn i64_str(n0 i64, base int) string {
 }
 
 pub fn ptr_str(ptr voidptr) string {
-	buf := [16]byte{}
+	buf := [16]u8{}
 	hex := i64_tos(buf, 15, i64(ptr), 16)
 	res := '0x' + hex
 	return res

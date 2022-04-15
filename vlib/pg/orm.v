@@ -92,10 +92,10 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats 
 			lens << int(sizeof(bool))
 			formats << 1
 		}
-		byte {
+		u8 {
 			types << u32(Oid.t_char)
-			vals << &char(&(d as byte))
-			lens << int(sizeof(byte))
+			vals << &char(&(d as u8))
+			lens << int(sizeof(u8))
 			formats << 1
 		}
 		u16 {
