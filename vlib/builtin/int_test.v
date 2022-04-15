@@ -253,3 +253,9 @@ fn test_repeat() {
 	assert b.repeat(1) == b.ascii_str()
 	assert b.repeat(0) == ''
 }
+
+fn test_byte_vs_u8() {
+	b := byte(1)
+	u := u8(1)
+	assert b == u
+}
