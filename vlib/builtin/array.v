@@ -926,9 +926,9 @@ pub fn (data voidptr) vbytes(len int) []u8 {
 	return res
 }
 
-// vbytes on `&byte` makes a V []u8 structure from a C style memory buffer.
+// vbytes on `&u8` makes a V []u8 structure from a C style memory buffer.
 // NOTE: the data is reused, NOT copied!
 [unsafe]
-pub fn (data &byte) vbytes(len int) []u8 {
+pub fn (data &u8) vbytes(len int) []u8 {
 	return unsafe { voidptr(data).vbytes(len) }
 }
