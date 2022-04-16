@@ -434,7 +434,7 @@ bool
 string
 
 i8    i16  int  i64      i128 (soon)
-byte  u16  u32  u64      u128 (soon)
+u8    u16  u32  u64      u128 (soon)
 
 rune // represents a Unicode code point
 
@@ -460,7 +460,7 @@ These are the allowed possibilities:
                   ↘     ↘
                     f32 → f64
                   ↗     ↗
- byte → u16 → u32 → u64 ⬎
+   u8 → u16 → u32 → u64 ⬎
       ↘     ↘     ↘      ptr
    i8 → i16 → int → i64 ⬏
 ```
@@ -518,7 +518,7 @@ In V, a string is a read-only array of bytes. All Unicode characters are encoded
 s := 'hello 🌎' // emoji takes 4 bytes
 assert s.len == 10
 
-arr := s.bytes() // convert `string` to `[]byte`
+arr := s.bytes() // convert `string` to `[]u8`
 assert arr.len == 10
 
 s2 := arr.bytestr() // convert `[]byte` to `string`
