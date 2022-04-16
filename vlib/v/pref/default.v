@@ -259,7 +259,7 @@ pub fn (p &Preferences) vcross_compiler_name() string {
 	if p.os == .linux {
 		return 'clang'
 	}
-	if p.backend == .c {
+	if p.backend == .c && !p.out_name.ends_with('.c') {
 		eprintln('Note: V can only cross compile to windows and linux for now by default.')
 		eprintln('It will use `cc` as a cross compiler for now, although that will probably fail.')
 		eprintln('Set `VCROSS_COMPILER_NAME` to the name of your cross compiler, for your target OS: $p.os .')
