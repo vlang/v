@@ -1,6 +1,7 @@
 type ParseRes = Result<[]Token, ParseErr>
 
-struct Token {}
+// Token type is unknown
+//struct Token {}
 
 struct ParseErr {}
 
@@ -22,12 +23,11 @@ struct Err<U> {
 	value U
 }
 
-fn main() {
+fn test_report() {
 	r := Opt<ParseRes>(None<ParseRes>{})
 	match r {
 		Some<ParseRes> {
-			// make possible cast fo the same type!
-			rx := Result<[]Token, ParseErr>(r.value)
+			rx := r.value
 		}
 		None<ParseRes> {}
 	}
