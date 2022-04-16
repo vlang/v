@@ -1,0 +1,13 @@
+vlib/v/checker/tests/undefined_type_on_sumtype.vv:1:17: error: unknown type `Token`.
+Did you mean `Ok<[]Token>`?
+    1 | type ParseRes = Result<[]Token, ParseErr>
+      |                 ~~~~~~~~~~~~~~~~~~~~~~~~~
+    2 | 
+    3 | // Token type is unknown
+vlib/v/checker/tests/undefined_type_on_sumtype.vv:30:4: error: unused variable: `rx`
+   28 |     match r {
+   29 |         Some<ParseRes> {
+   30 |             rx := r.value
+      |             ~~
+   31 |         }
+   32 |         None<ParseRes> {}

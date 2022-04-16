@@ -687,3 +687,27 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 		c.need_recheck_generic_fns = true
 	}
 }
+
+// generic_type_has_concrete_type make sure that the generics is declared with a type
+// `Type<int>` and not `Type<T>`.
+fn (mut c Checker) generic_type_has_declared_with_concrete_type(typ ast.Type) bool {
+	_, is_generic := c.concrete_type_in_generic_type(typ)
+	return is_generic
+}
+
+fn (mut c Checker) concrete_type_in_generic_type(typ ast.Type) ([]ast.Type, bool) {
+	if typ.has_flag(.generic) {
+		unwrap_typ := c.unwrap_generic(typ)
+		unwrap_sym := c.table.sym(unwrap_typ)
+		match unwrap_sym.info {
+			ast.Struct, ast.SumType, ast.Interface {
+				return unwrap_sym.info.concrete_types, true
+			}
+			ast.Alias {
+				return c.concrete_type_in_generic_type(unwrap_sym.info.parent_type)
+			}
+			else {}
+		}
+	}
+	return []ast.Type{}, false
+}
