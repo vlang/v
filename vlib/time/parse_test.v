@@ -161,3 +161,17 @@ fn test_invalid_dates_should_error_during_parse() {
 	check_invalid_date('2008-12-01 00:60:00')
 	check_invalid_date('2008-12-01 00:01:60')
 }
+
+fn test_ad_second_to_parse_result_in_2001() ? {
+	now_tm := time.parse('2001-01-01 04:00:00') ?
+	future_tm := now_tm.add_seconds(60)
+	assert future_tm.str() == '2001-01-01 04:01:00'
+	assert now_tm.unix < future_tm.unix
+}
+
+fn test_ad_second_to_parse_result_pre_2001() ? {
+	now_tm := time.parse('2000-01-01 04:00:00') ?
+	future_tm := now_tm.add_seconds(60)
+	assert future_tm.str() == '2000-01-01 04:01:00'
+	assert now_tm.unix < future_tm.unix
+}
