@@ -4197,6 +4197,12 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) ? {
 			c.ensure_type_exists(info.key_type, pos) ?
 			c.ensure_type_exists(info.value_type, pos) ?
 		}
+		.sum_type {
+			info := sym.info as ast.SumType
+			for concrete_typ in info.concrete_types {
+				c.ensure_type_exists(concrete_typ, pos) ?
+			}
+		}
 		else {}
 	}
 }
