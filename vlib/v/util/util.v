@@ -172,6 +172,9 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 			// .v line numbers, to ease diagnostic in #bugs and issues.
 			compilation_command += ' -g '
 		}
+		if tool_name == 'vfmt' {
+			compilation_command += ' -d vfmt '
+		}
 		compilation_command += os.quoted_path(tool_source)
 		if is_verbose {
 			println('Compiling $tool_name with: "$compilation_command"')
