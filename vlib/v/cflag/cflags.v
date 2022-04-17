@@ -117,7 +117,7 @@ pub fn (cflags []CFlag) defines_others_libs() ([]string, []string, []string) {
 	mut others := []string{}
 	mut libs := []string{}
 	for copt in copts_without_obj_files {
-		if copt.starts_with('-l') {
+		if copt.starts_with('-l') || copt.ends_with('.a') {
 			libs << copt
 			continue
 		}
