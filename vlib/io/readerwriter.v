@@ -7,7 +7,7 @@ pub interface ReaderWriter {
 }
 
 // ReaderWriterImpl is a ReaderWriter that can be made from
-// a seperate reader and writer (see fn make_readerwriter)
+// a separate reader and writer (see fn make_readerwriter)
 struct ReaderWriterImpl {
 mut:
 	r Reader
