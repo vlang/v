@@ -148,7 +148,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				} else {
 					mut is_auto_heap := false
 					if branch.stmts.len > 0 {
-						scope := g.file.scope.innermost(ast.Node(branch.stmts[branch.stmts.len - 1]).pos().pos)
+						scope := g.file.scope.innermost(ast.Node(branch.stmts.last()).pos().pos)
 						if v := scope.find_var(branch.cond.vars[0].name) {
 							is_auto_heap = v.is_auto_heap
 						}

@@ -1533,14 +1533,12 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 				if stmt.typ == ast.void_type {
 					if stmt.expr is ast.IfExpr {
 						for branch in stmt.expr.branches {
-							last_stmt := branch.stmts[branch.stmts.len - 1]
-							c.check_or_last_stmt(last_stmt, ret_type, expr_return_type)
+							c.check_or_last_stmt(branch.stmts.last(), ret_type, expr_return_type)
 						}
 						return
 					} else if stmt.expr is ast.MatchExpr {
 						for branch in stmt.expr.branches {
-							last_stmt := branch.stmts[branch.stmts.len - 1]
-							c.check_or_last_stmt(last_stmt, ret_type, expr_return_type)
+							c.check_or_last_stmt(branch.stmts.last(), ret_type, expr_return_type)
 						}
 						return
 					}
@@ -1570,14 +1568,12 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 		match stmt.expr {
 			ast.IfExpr {
 				for branch in stmt.expr.branches {
-					last_stmt := branch.stmts[branch.stmts.len - 1]
-					c.check_or_last_stmt(last_stmt, ret_type, expr_return_type)
+					c.check_or_last_stmt(branch.stmts.last(), ret_type, expr_return_type)
 				}
 			}
 			ast.MatchExpr {
 				for branch in stmt.expr.branches {
-					last_stmt := branch.stmts[branch.stmts.len - 1]
-					c.check_or_last_stmt(last_stmt, ret_type, expr_return_type)
+					c.check_or_last_stmt(branch.stmts.last(), ret_type, expr_return_type)
 				}
 			}
 			else {
