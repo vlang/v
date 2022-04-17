@@ -204,6 +204,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						}
 					}
 					if node.is_expr && c.table.sym(former_expected_type).kind == .sum_type {
+						node.typ = former_expected_type
 						continue
 					}
 					if is_noreturn_callexpr(last_expr.expr) {

@@ -74,7 +74,12 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.expr(branch.cond)
 				g.write(' ? ')
 			}
+			prev_expected_cast_type := g.expected_cast_type
+			if node.is_expr && g.table.sym(node.typ).kind == .sum_type {
+				g.expected_cast_type = node.typ
+			}
 			g.stmts(branch.stmts)
+			g.expected_cast_type = prev_expected_cast_type
 		}
 		if node.branches.len == 1 {
 			g.write(': 0')
@@ -195,11 +200,12 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			}
 		}
 		if needs_tmp_var {
+			prev_expected_cast_type := g.expected_cast_type
 			if node.is_expr && g.table.sym(node.typ).kind == .sum_type {
 				g.expected_cast_type = node.typ
 			}
 			g.stmts_with_tmp_var(branch.stmts, tmp)
-			g.expected_cast_type = 0
+			g.expected_cast_type = prev_expected_cast_type
 		} else {
 			// restore if_expr stmt header pos
 			stmt_pos := g.nth_stmt_pos(0)
