@@ -263,14 +263,14 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 		if node.is_expr {
 			len := branch.stmts.len
 			if len > 0 {
-				last := branch.stmts[len - 1] as ast.ExprStmt
+				last := branch.stmts.last() as ast.ExprStmt
 				if len > 1 {
 					tmp := g.new_tmp_var()
 					styp := g.typ(last.typ)
 					g.indent++
 					g.writeln('$styp $tmp;')
 					g.writeln('{')
-					g.stmts(branch.stmts[0..len - 1])
+					g.stmts(branch.stmts[..len - 1])
 					g.write('\t$tmp = ')
 					g.stmt(last)
 					g.writeln('}')

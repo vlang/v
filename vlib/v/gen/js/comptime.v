@@ -28,13 +28,13 @@ fn (mut g JsGen) comptime_if(node ast.IfExpr) {
 			print('$branch.stmts')
 			len := branch.stmts.len
 			if len > 0 {
-				last := branch.stmts[len - 1] as ast.ExprStmt
+				last := branch.stmts.last() as ast.ExprStmt
 				if len > 1 {
 					tmp := g.new_tmp_var()
 					g.inc_indent()
 					g.writeln('let $tmp;')
 					g.writeln('{')
-					g.stmts(branch.stmts[0..len - 1])
+					g.stmts(branch.stmts[..len - 1])
 					g.write('\t$tmp = ')
 					g.stmt(last)
 					g.writeln('}')
