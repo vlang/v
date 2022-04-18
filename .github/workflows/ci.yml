@@ -131,7 +131,7 @@ jobs:
         run: |
           ./v -gc boehm_leak -o testcase_leak vlib/v/tests/testcase_leak.vv
           ./testcase_leak 2>leaks.txt
-          grep "Found 1 leaked object" leaks.txt && grep ", sz=1000," leaks.txt
+          grep "Found 1 leaked object" leaks.txt && grep -P ", sz=\s?1000," leaks.txt
       - name: Test leak detector not being active for `-gc boehm`
         run: |
           ./v -gc boehm -o testcase_leak vlib/v/tests/testcase_leak.vv
