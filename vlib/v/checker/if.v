@@ -296,7 +296,10 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 			if right_type != ast.Type(0) {
 				left_sym := c.table.sym(node.left_type)
 				right_sym := c.table.sym(right_type)
-				expr_type := c.unwrap_generic(c.expr(node.left))
+				mut expr_type := c.unwrap_generic(c.expr(node.left))
+				if left_sym.kind == .aggregate {
+					expr_type = (left_sym.info as ast.Aggregate).sum_type
+				}
 				if left_sym.kind == .interface_ {
 					if right_sym.kind != .interface_ {
 						c.type_implements(right_type, expr_type, node.pos)

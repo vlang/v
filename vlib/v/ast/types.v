@@ -937,7 +937,8 @@ pub struct Aggregate {
 mut:
 	fields []StructField // used for faster lookup inside the module
 pub:
-	types []Type
+	sum_type Type
+	types    []Type
 }
 
 pub struct Array {
