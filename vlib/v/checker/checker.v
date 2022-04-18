@@ -556,12 +556,16 @@ fn (mut c Checker) compare_ints(node &ast.InfixExpr, left_type ast.Type, right_t
 	is_left_type_signed := left_type in ast.signed_integer_type_idxs
 	is_right_type_signed := right_type in ast.signed_integer_type_idxs
 	if !is_left_type_signed && node.right is ast.IntegerLiteral {
-		if node.right.val[0] == `-` && left_type in ast.int_promoted_type_idxs {
+		// TODO remove promoted, eq/ne check
+		if node.right.val[0] == `-`
+			&& (left_type in ast.int_promoted_type_idxs || node.op !in [.eq, .ne]) {
 			lt := c.table.sym(left_type).name
 			c.error('`$lt` cannot be compared with negative value', node.right.pos)
 		}
 	} else if !is_right_type_signed && node.left is ast.IntegerLiteral {
-		if node.left.val[0] == `-` && right_type in ast.int_promoted_type_idxs {
+		// ditto
+		if node.left.val[0] == `-`
+			&& (right_type in ast.int_promoted_type_idxs || node.op !in [.eq, .ne]) {
 			rt := c.table.sym(right_type).name
 			c.error('negative value cannot be compared with `$rt`', node.left.pos)
 		}
