@@ -7,7 +7,7 @@ const (
 // validate_port checks whether a port is valid
 // and returns the port or an error
 pub fn validate_port(port int) ?u16 {
-	if port <= net.socket_max_port {
+	if port <= int(net.socket_max_port) {
 		return u16(port)
 	} else {
 		return err_port_out_of_range
