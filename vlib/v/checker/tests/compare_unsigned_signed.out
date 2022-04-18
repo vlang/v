@@ -45,4 +45,17 @@ vlib/v/checker/tests/compare_unsigned_signed.vv:20:13: error: `int` cannot be co
    20 |     _ = int(0) == u64(0)
       |                ~~
    21 |     _ = i32(0) == u64(0) // FIXME
-   22 | }
+   22 |     // swap order
+vlib/v/checker/tests/compare_unsigned_signed.vv:23:13: error: `u16` cannot be compared with `i8`
+   21 |     _ = i32(0) == u64(0) // FIXME
+   22 |     // swap order
+   23 |     _ = u16(0) == i8(0)
+      |                ~~
+   24 |     _ = u64(0) == i16(0)
+   25 | }
+vlib/v/checker/tests/compare_unsigned_signed.vv:24:13: error: `u64` cannot be compared with `i16`
+   22 |     // swap order
+   23 |     _ = u16(0) == i8(0)
+   24 |     _ = u64(0) == i16(0)
+      |                ~~
+   25 | }
