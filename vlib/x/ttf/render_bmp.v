@@ -778,7 +778,7 @@ pub fn (mut bmp BitMap) draw_glyph(index u16) (int, int) {
 			}
 		}
 
-		if count == int(glyph.contour_ends[c]) {
+		if count == glyph.contour_ends[c] {
 			// dprintln("count == glyph.contour_ends[count]")
 			if s == 2 { // final point was off-curve. connect to start
 
