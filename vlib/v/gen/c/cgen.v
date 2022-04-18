@@ -2194,9 +2194,31 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			g.write('*')
 		}
 	}
-	if expected_type.has_flag(.optional) && expr is ast.None {
-		g.gen_optional_error(expected_type, expr)
-		return
+	if expected_type.has_flag(.optional) {
+		if expr is ast.None {
+			g.gen_optional_error(expected_type, expr)
+			return
+		} else if !g.inside_return && g.inside_call {
+			tmp_var := g.new_tmp_var()
+			line := g.go_before_stmt(0).trim_space()
+			ret_typ := g.typ(g.unwrap_generic(expected_type))
+			mut styp := g.base_type(got_type)
+			$if tinyc && x32 && windows {
+				if got_type == ast.int_literal_type {
+					styp = 'int'
+				} else if got_type == ast.float_literal_type {
+					styp = 'f64'
+				}
+			}
+			g.empty_line = true
+			g.writeln('$ret_typ $tmp_var;')
+			g.write('opt_ok(&($styp[]) { ')
+			g.expr(expr)
+			g.writeln(' }, (Option*)(&$tmp_var), sizeof($styp));')
+			g.write(line)
+			g.write(tmp_var)
+			return
+		}
 	}
 	if expr is ast.IntegerLiteral {
 		if expected_type in [ast.u64_type, ast.u32_type, ast.u16_type] && expr.val[0] != `-` {
