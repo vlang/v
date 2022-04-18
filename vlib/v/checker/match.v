@@ -282,6 +282,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 							kind: .aggregate
 							mod: c.mod
 							info: ast.Aggregate{
+								sum_type: node.cond_type
 								types: expr_types.map(it.typ)
 							}
 						})

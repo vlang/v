@@ -1013,6 +1013,10 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				if typ_sym.kind == .placeholder {
 					c.error('$op: type `$typ_sym.name` does not exist', right_expr.pos())
 				}
+				if left_sym.kind == .aggregate {
+					parent_left_type := (left_sym.info as ast.Aggregate).sum_type
+					left_sym = c.table.sym(parent_left_type)
+				}
 				if left_sym.kind !in [.interface_, .sum_type] {
 					c.error('`$op` can only be used with interfaces and sum types', node.pos)
 				} else if mut left_sym.info is ast.SumType {
