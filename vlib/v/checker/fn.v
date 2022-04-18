@@ -181,6 +181,9 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.error('invalid use of reserved type `$param.name` as a parameter name',
 					param.pos)
 			}
+			if param.typ.has_flag(.optional) {
+				c.error('optional type argument is not supported currently', param.type_pos)
+			}
 			if !param.typ.is_ptr() { // value parameter, i.e. on stack - check for `[heap]`
 				arg_typ_sym := c.table.sym(param.typ)
 				if arg_typ_sym.kind == .struct_ {
