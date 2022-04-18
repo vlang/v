@@ -552,6 +552,31 @@ fn (mut c Checker) check_div_mod_by_zero(expr ast.Expr, op_kind token.Kind) {
 	}
 }
 
+fn (mut c Checker) compare_ints(node &ast.InfixExpr, left_type ast.Type, right_type ast.Type) {
+	is_left_type_signed := left_type in ast.signed_integer_type_idxs
+	is_right_type_signed := right_type in ast.signed_integer_type_idxs
+	if !is_left_type_signed && node.right is ast.IntegerLiteral {
+		if node.right.val.int() < 0 && left_type in ast.int_promoted_type_idxs {
+			lt := c.table.sym(left_type).name
+			c.error('`$lt` cannot be compared with negative value', node.right.pos)
+		}
+	} else if !is_right_type_signed && node.left is ast.IntegerLiteral {
+		if node.left.val.int() < 0 && right_type in ast.int_promoted_type_idxs {
+			rt := c.table.sym(right_type).name
+			c.error('negative value cannot be compared with `$rt`', node.left.pos)
+		}
+	} else if is_left_type_signed != is_right_type_signed
+		&& left_type.flip_signedness() != right_type {
+		// prevent e.g. `u16(-1) == int(-1)` which is false in C
+		if (is_right_type_signed && left_type in ast.int_promoted_type_idxs)
+			|| (is_left_type_signed && right_type in ast.int_promoted_type_idxs) {
+			lt := c.table.sym(left_type).name
+			rt := c.table.sym(right_type).name
+			c.error('`$lt` cannot be compared with `$rt`', node.pos)
+		}
+	}
+}
+
 pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	former_expected_type := c.expected_type
 	defer {
@@ -627,28 +652,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				c.error('possible type mismatch of compared values of `$node.op` operation',
 					left_right_pos)
 			} else if left_type in ast.integer_type_idxs && right_type in ast.integer_type_idxs {
-				is_left_type_signed := left_type in ast.signed_integer_type_idxs
-				is_right_type_signed := right_type in ast.signed_integer_type_idxs
-				if !is_left_type_signed && mut node.right is ast.IntegerLiteral {
-					if node.right.val.int() < 0 && left_type in ast.int_promoted_type_idxs {
-						lt := c.table.sym(left_type).name
-						c.error('`$lt` cannot be compared with negative value', node.right.pos)
-					}
-				} else if !is_right_type_signed && mut node.left is ast.IntegerLiteral {
-					if node.left.val.int() < 0 && right_type in ast.int_promoted_type_idxs {
-						rt := c.table.sym(right_type).name
-						c.error('negative value cannot be compared with `$rt`', node.left.pos)
-					}
-				} else if is_left_type_signed != is_right_type_signed
-					&& left_type.flip_signedness() != right_type {
-					// prevent e.g. `u16(-1) == int(-1)` which is false in C
-					if (is_right_type_signed && left_type in ast.int_promoted_type_idxs)
-						|| (is_left_type_signed && right_type in ast.int_promoted_type_idxs) {
-						lt := c.table.sym(left_type).name
-						rt := c.table.sym(right_type).name
-						c.error('`$lt` cannot be compared with `$rt`', node.pos)
-					}
-				}
+				c.compare_ints(node, left_type, right_type)
 			}
 		}
 		.key_in, .not_in {
@@ -863,27 +867,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					c.error('cannot use `>` as `<=` operator method is not defined', left_right_pos)
 				}
 			} else if left_type in ast.integer_type_idxs && right_type in ast.integer_type_idxs {
-				is_left_type_signed := left_type in ast.signed_integer_type_idxs
-					|| left_type == ast.int_literal_type_idx
-				is_right_type_signed := right_type in ast.signed_integer_type_idxs
-					|| right_type == ast.int_literal_type_idx
-				if is_left_type_signed != is_right_type_signed {
-					if is_right_type_signed {
-						if mut node.right is ast.IntegerLiteral {
-							if node.right.val.int() < 0 {
-								c.error('unsigned integer cannot be compared with negative value',
-									node.right.pos)
-							}
-						}
-					} else if is_left_type_signed {
-						if mut node.left is ast.IntegerLiteral {
-							if node.left.val.int() < 0 {
-								c.error('unsigned integer cannot be compared with negative value',
-									node.left.pos)
-							}
-						}
-					}
-				}
+				c.compare_ints(node, left_type, right_type)
 			} else if left_type.has_flag(.optional) && right_type.has_flag(.optional) {
 				c.error('unwrapped optional cannot be compared in an infix expression',
 					left_right_pos)
