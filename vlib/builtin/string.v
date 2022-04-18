@@ -1937,7 +1937,7 @@ pub fn (name string) match_glob(pattern string) bool {
 						mut is_inverted := false
 						mut inner_match := false
 						mut inner_idx := bstart + 1
-						mut inner_c := u8(0)
+						mut inner_c := 0
 						if inner_idx < plen {
 							inner_c = pattern[inner_idx]
 							if inner_c == `^` {
