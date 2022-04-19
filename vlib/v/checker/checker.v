@@ -442,11 +442,12 @@ pub fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 		c.check_valid_pascal_case(node.name, 'type alias', node.pos)
 	}
 	c.ensure_type_exists(node.parent_type, node.type_pos) or { return }
-	typ_sym := c.table.sym(node.parent_type)
+	mut typ_sym := c.table.sym(node.parent_type)
 	if typ_sym.kind in [.placeholder, .int_literal, .float_literal] {
 		c.error('unknown type `$typ_sym.name`', node.type_pos)
-	} else if typ_sym.kind == .alias {
+	} else if typ_sym.kind == .alias && !c.pref.translated {
 		orig_sym := c.table.sym((typ_sym.info as ast.Alias).parent_type)
+		typ_sym = orig_sym
 		c.error('type `$typ_sym.str()` is an alias, use the original alias type `$orig_sym.name` instead',
 			node.type_pos)
 	} else if typ_sym.kind == .chan {
@@ -594,6 +595,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		}
 	}
 	mut return_type := left_type
+
 	if node.op != .key_is {
 		match mut node.left {
 			ast.Ident, ast.SelectorExpr {
@@ -681,7 +683,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				left_sym = c.table.sym((left_sym.info as ast.Alias).parent_type)
 			}
 			// Check if the alias type is not a primitive then allow using operator overloading for aliased `arrays` and `maps`
-			if left_sym.kind == .alias && left_sym.info is ast.Alias
+			if !c.pref.translated && left_sym.kind == .alias && left_sym.info is ast.Alias
 				&& !(c.table.sym((left_sym.info as ast.Alias).parent_type).is_primitive()) {
 				if left_sym.has_method(node.op.str()) {
 					if method := left_sym.find_method(node.op.str()) {
@@ -699,7 +701,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
 					}
 				}
-			} else if right_sym.kind == .alias && right_sym.info is ast.Alias
+			} else if !c.pref.translated && right_sym.kind == .alias && right_sym.info is ast.Alias
 				&& !(c.table.sym((right_sym.info as ast.Alias).parent_type).is_primitive()) {
 				if right_sym.has_method(node.op.str()) {
 					if method := right_sym.find_method(node.op.str()) {
@@ -806,6 +808,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				if node.op in [.div, .mod] {
 					c.check_div_mod_by_zero(node.right, node.op)
 				}
+
 				return_type = promoted_type
 			}
 		}

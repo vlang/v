@@ -781,6 +781,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		if func.params.len == 0 {
 			continue
 		}
+
 		param := if func.is_variadic && i >= func.params.len - 1 {
 			func.params[func.params.len - 1]
 		} else {
@@ -1277,6 +1278,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			}
 			exp_arg_sym := c.table.sym(exp_arg_typ)
 			c.expected_type = exp_arg_typ
+
 			mut got_arg_typ := c.check_expr_opt_call(arg.expr, c.expr(arg.expr))
 			node.args[i].typ = got_arg_typ
 			if no_type_promotion {
