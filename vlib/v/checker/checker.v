@@ -2260,7 +2260,8 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 		return
 	}
 	match node.kind {
-		'include' {
+		'include', 'insert' {
+			original_flag := node.main
 			mut flag := node.main
 			if flag.contains('@VROOT') {
 				// c.note(checker.vroot_is_deprecated_message, node.pos)
@@ -2268,13 +2269,13 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 					c.error(err.msg(), node.pos)
 					return
 				}
-				node.val = 'include $vroot'
+				node.val = '$node.kind $vroot'
 				node.main = vroot
 				flag = vroot
 			}
 			if flag.contains('@VEXEROOT') {
 				vroot := flag.replace('@VEXEROOT', os.dir(pref.vexe_path()))
-				node.val = 'include $vroot'
+				node.val = '$node.kind $vroot'
 				node.main = vroot
 				flag = vroot
 			}
@@ -2283,7 +2284,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 					c.error(err.msg(), node.pos)
 					return
 				}
-				node.val = 'include $vroot'
+				node.val = '$node.kind $vroot'
 				node.main = vroot
 				flag = vroot
 			}
@@ -2295,10 +2296,33 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 				node.main = env
 			}
 			flag_no_comment := flag.all_before('//').trim_space()
-			if !((flag_no_comment.starts_with('"') && flag_no_comment.ends_with('"'))
-				|| (flag_no_comment.starts_with('<') && flag_no_comment.ends_with('>'))) {
-				c.error('including C files should use either `"header_file.h"` or `<header_file.h>` quoting',
-					node.pos)
+			if node.kind == 'include' {
+				if !((flag_no_comment.starts_with('"') && flag_no_comment.ends_with('"'))
+					|| (flag_no_comment.starts_with('<') && flag_no_comment.ends_with('>'))) {
+					c.error('including C files should use either `"header_file.h"` or `<header_file.h>` quoting',
+						node.pos)
+				}
+			}
+			if node.kind == 'insert' {
+				if !(flag_no_comment.starts_with('"') && flag_no_comment.ends_with('"')) {
+					c.error('inserting .c or .h files, should use `"header_file.h"` quoting',
+						node.pos)
+				}
+				node.main = node.main.trim('"')
+				if fcontent := os.read_file(node.main) {
+					node.val = fcontent
+				} else {
+					mut missing_message := 'The file $original_flag, needed for insertion by module `$node.mod`,'
+					if os.is_file(node.main) {
+						missing_message += ' is not readable.'
+					} else {
+						missing_message += ' does not exist.'
+					}
+					if node.msg != '' {
+						missing_message += ' ${node.msg}.'
+					}
+					c.error(missing_message, node.pos)
+				}
 			}
 		}
 		'pkgconfig' {
@@ -2361,7 +2385,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 		}
 		else {
 			if node.kind != 'define' {
-				c.error('expected `#define`, `#flag`, `#include` or `#pkgconfig` not $node.val',
+				c.error('expected `#define`, `#flag`, `#include`, `#insert` or `#pkgconfig` not $node.val',
 					node.pos)
 			}
 		}

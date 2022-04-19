@@ -1797,6 +1797,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln('goto ${c_name(node.name)};')
 		}
 		ast.HashStmt {
+			line_nr := node.pos.line_nr + 1
 			mut ct_condition := ''
 			if node.ct_conds.len > 0 {
 				ct_condition_start := g.out.len
@@ -1830,7 +1831,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					}
 					// Objective C code import, include it after V types, so that e.g. `string` is
 					// available there
-					g.definitions.writeln('// added by module `$node.mod`')
+					g.definitions.writeln('// added by module `$node.mod`, file: ${os.file_name(node.source_file)}:$line_nr:')
 					g.definitions.writeln(guarded_include)
 					if ct_condition.len > 0 {
 						g.definitions.writeln('#endif // \$if $ct_condition')
@@ -1841,12 +1842,21 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					if ct_condition.len > 0 {
 						g.includes.writeln('#if $ct_condition')
 					}
-					g.includes.writeln('// added by module `$node.mod`')
+					g.includes.writeln('// added by module `$node.mod`, file: ${os.file_name(node.source_file)}:$line_nr:')
 					g.includes.writeln(guarded_include)
 					if ct_condition.len > 0 {
 						g.includes.writeln('#endif // \$if $ct_condition')
 					}
 					g.includes.writeln('\n')
+				}
+			} else if node.kind == 'insert' {
+				if ct_condition.len > 0 {
+					g.includes.writeln('#if $ct_condition')
+				}
+				g.includes.writeln('// inserted by module `$node.mod`, file: ${os.file_name(node.source_file)}:$line_nr:')
+				g.includes.writeln(node.val)
+				if ct_condition.len > 0 {
+					g.includes.writeln('#endif // \$if $ct_condition')
 				}
 			} else if node.kind == 'define' {
 				if ct_condition.len > 0 {
