@@ -429,13 +429,13 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type ast.Type, right
 
 pub fn (mut c Checker) promote(left_type ast.Type, right_type ast.Type) ast.Type {
 	if left_type.is_any_kind_of_pointer() {
-		if right_type.is_int() {
+		if right_type.is_int() || c.pref.translated {
 			return left_type
 		} else {
 			return ast.void_type
 		}
 	} else if right_type.is_any_kind_of_pointer() {
-		if left_type.is_int() {
+		if left_type.is_int() || c.pref.translated {
 			return right_type
 		} else {
 			return ast.void_type
@@ -489,6 +489,8 @@ fn (c &Checker) promote_num(left_type ast.Type, right_type ast.Type) ast.Type {
 		return if idx_lo == ast.i64_type_idx { type_lo } else { type_hi }
 	} else if idx_hi - idx_lo < (ast.byte_type_idx - ast.i8_type_idx) {
 		return type_lo // conversion unsigned -> signed if signed type is larger
+	} else if c.pref.translated {
+		return type_hi
 	} else {
 		return ast.void_type // conversion signed -> unsigned not allowed
 	}
