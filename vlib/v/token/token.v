@@ -133,12 +133,6 @@ pub enum Kind {
 	_end_
 }
 
-pub const assign_tokens = [Kind.assign, .plus_assign, .minus_assign, .mult_assign, .div_assign,
-	.xor_assign, .mod_assign, .or_assign, .and_assign, .right_shift_assign, .left_shift_assign,
-	.unsigned_right_shift_assign]
-
-const nr_tokens = int(Kind._end_)
-
 // @FN => will be substituted with the name of the current V function
 // @METHOD => will be substituted with ReceiverType.MethodName
 // @MOD => will be substituted with the name of the current V module
@@ -179,8 +173,20 @@ pub enum AtKind {
 	vexeroot_path
 }
 
-pub const valid_at_tokens = ['@VROOT', '@VMODROOT', '@VEXEROOT', '@FN', '@METHOD', '@MOD', '@STRUCT',
-	'@VEXE', '@FILE', '@LINE', '@COLUMN', '@VHASH', '@VMOD_FILE']
+pub const (
+	assign_tokens   = [Kind.assign, .plus_assign, .minus_assign, .mult_assign, .div_assign,
+		.xor_assign, .mod_assign, .or_assign, .and_assign, .right_shift_assign, .left_shift_assign,
+		.unsigned_right_shift_assign]
+
+	valid_at_tokens = ['@VROOT', '@VMODROOT', '@VEXEROOT', '@FN', '@METHOD', '@MOD', '@STRUCT',
+		'@VEXE', '@FILE', '@LINE', '@COLUMN', '@VHASH', '@VMOD_FILE']
+
+	token_str       = build_token_str()
+
+	keywords        = build_keys()
+
+	matcher         = new_keywords_matcher<Kind>(keywords)
+)
 
 // build_keys genereates a map with keywords' string values:
 // Keywords['return'] == .key_return
@@ -195,7 +201,7 @@ fn build_keys() map[string]Kind {
 
 // TODO remove once we have `enum Kind { name('name') if('if') ... }`
 fn build_token_str() []string {
-	mut s := []string{len: token.nr_tokens}
+	mut s := []string{len: int(Kind._end_)}
 	s[Kind.unknown] = 'unknown'
 	s[Kind.eof] = 'eof'
 	s[Kind.name] = 'name'
@@ -322,12 +328,6 @@ fn build_token_str() []string {
 	}
 	return s
 }
-
-pub const token_str = build_token_str()
-
-pub const keywords = build_keys()
-
-pub const matcher = new_keywords_matcher<Kind>(keywords)
 
 [inline]
 pub fn is_key(key string) bool {
@@ -620,122 +620,122 @@ pub fn kind_to_string(k Kind) string {
 }
 
 pub fn kind_from_string(s string) ?Kind {
-	match s {
-		'unknown' { return .unknown }
-		'eof' { return .eof }
-		'name' { return .name }
-		'number' { return .number }
-		'string' { return .string }
-		'str_inter' { return .str_inter }
-		'chartoken' { return .chartoken }
-		'plus' { return .plus }
-		'minus' { return .minus }
-		'mul' { return .mul }
-		'div' { return .div }
-		'mod' { return .mod }
-		'xor' { return .xor }
-		'pipe' { return .pipe }
-		'inc' { return .inc }
-		'dec' { return .dec }
-		'and' { return .and }
-		'logical_or' { return .logical_or }
-		'not' { return .not }
-		'bit_not' { return .bit_not }
-		'question' { return .question }
-		'comma' { return .comma }
-		'semicolon' { return .semicolon }
-		'colon' { return .colon }
-		'arrow' { return .arrow }
-		'amp' { return .amp }
-		'hash' { return .hash }
-		'dollar' { return .dollar }
-		'at' { return .at }
-		'str_dollar' { return .str_dollar }
-		'left_shift' { return .left_shift }
-		'right_shift' { return .right_shift }
-		'unsigned_right_shift' { return .unsigned_right_shift }
-		'not_in' { return .not_in }
-		'not_is' { return .not_is }
-		'assign' { return .assign }
-		'decl_assign' { return .decl_assign }
-		'plus_assign' { return .plus_assign }
-		'minus_assign' { return .minus_assign }
-		'div_assign' { return .div_assign }
-		'mult_assign' { return .mult_assign }
-		'xor_assign' { return .xor_assign }
-		'mod_assign' { return .mod_assign }
-		'or_assign' { return .or_assign }
-		'and_assign' { return .and_assign }
-		'right_shift_assign' { return .right_shift_assign }
-		'left_shift_assign' { return .left_shift_assign }
-		'unsigned_right_shift_assign' { return .unsigned_right_shift_assign }
-		'lcbr' { return .lcbr }
-		'rcbr' { return .rcbr }
-		'lpar' { return .lpar }
-		'rpar' { return .rpar }
-		'lsbr' { return .lsbr }
-		'nilsbr' { return .nilsbr }
-		'rsbr' { return .rsbr }
-		'eq' { return .eq }
-		'ne' { return .ne }
-		'gt' { return .gt }
-		'lt' { return .lt }
-		'ge' { return .ge }
-		'le' { return .le }
-		'comment' { return .comment }
-		'nl' { return .nl }
-		'dot' { return .dot }
-		'dotdot' { return .dotdot }
-		'ellipsis' { return .ellipsis }
-		'keyword_beg' { return .keyword_beg }
-		'key_as' { return .key_as }
-		'key_asm' { return .key_asm }
-		'key_assert' { return .key_assert }
-		'key_atomic' { return .key_atomic }
-		'key_break' { return .key_break }
-		'key_const' { return .key_const }
-		'key_continue' { return .key_continue }
-		'key_defer' { return .key_defer }
-		'key_else' { return .key_else }
-		'key_enum' { return .key_enum }
-		'key_false' { return .key_false }
-		'key_for' { return .key_for }
-		'key_fn' { return .key_fn }
-		'key_global' { return .key_global }
-		'key_go' { return .key_go }
-		'key_goto' { return .key_goto }
-		'key_if' { return .key_if }
-		'key_import' { return .key_import }
-		'key_in' { return .key_in }
-		'key_interface' { return .key_interface }
-		'key_is' { return .key_is }
-		'key_match' { return .key_match }
-		'key_module' { return .key_module }
-		'key_mut' { return .key_mut }
-		'key_shared' { return .key_shared }
-		'key_lock' { return .key_lock }
-		'key_rlock' { return .key_rlock }
-		'key_none' { return .key_none }
-		'key_return' { return .key_return }
-		'key_select' { return .key_select }
-		'key_sizeof' { return .key_sizeof }
-		'key_isreftype' { return .key_isreftype }
-		'key_likely' { return .key_likely }
-		'key_unlikely' { return .key_unlikely }
-		'key_offsetof' { return .key_offsetof }
-		'key_struct' { return .key_struct }
-		'key_true' { return .key_true }
-		'key_type' { return .key_type }
-		'key_typeof' { return .key_typeof }
-		'key_dump' { return .key_dump }
-		'key_orelse' { return .key_orelse }
-		'key_union' { return .key_union }
-		'key_pub' { return .key_pub }
-		'key_static' { return .key_static }
-		'key_volatile' { return .key_volatile }
-		'key_unsafe' { return .key_unsafe }
-		'keyword_end' { return .keyword_end }
-		'_end_' { return ._end_ }
-		else { return error('unknown') }
+	return match s {
+		'unknown' { .unknown }
+		'eof' { .eof }
+		'name' { .name }
+		'number' { .number }
+		'string' { .string }
+		'str_inter' { .str_inter }
+		'chartoken' { .chartoken }
+		'plus' { .plus }
+		'minus' { .minus }
+		'mul' { .mul }
+		'div' { .div }
+		'mod' { .mod }
+		'xor' { .xor }
+		'pipe' { .pipe }
+		'inc' { .inc }
+		'dec' { .dec }
+		'and' { .and }
+		'logical_or' { .logical_or }
+		'not' { .not }
+		'bit_not' { .bit_not }
+		'question' { .question }
+		'comma' { .comma }
+		'semicolon' { .semicolon }
+		'colon' { .colon }
+		'arrow' { .arrow }
+		'amp' { .amp }
+		'hash' { .hash }
+		'dollar' { .dollar }
+		'at' { .at }
+		'str_dollar' { .str_dollar }
+		'left_shift' { .left_shift }
+		'right_shift' { .right_shift }
+		'unsigned_right_shift' { .unsigned_right_shift }
+		'not_in' { .not_in }
+		'not_is' { .not_is }
+		'assign' { .assign }
+		'decl_assign' { .decl_assign }
+		'plus_assign' { .plus_assign }
+		'minus_assign' { .minus_assign }
+		'div_assign' { .div_assign }
+		'mult_assign' { .mult_assign }
+		'xor_assign' { .xor_assign }
+		'mod_assign' { .mod_assign }
+		'or_assign' { .or_assign }
+		'and_assign' { .and_assign }
+		'right_shift_assign' { .right_shift_assign }
+		'left_shift_assign' { .left_shift_assign }
+		'unsigned_right_shift_assign' { .unsigned_right_shift_assign }
+		'lcbr' { .lcbr }
+		'rcbr' { .rcbr }
+		'lpar' { .lpar }
+		'rpar' { .rpar }
+		'lsbr' { .lsbr }
+		'nilsbr' { .nilsbr }
+		'rsbr' { .rsbr }
+		'eq' { .eq }
+		'ne' { .ne }
+		'gt' { .gt }
+		'lt' { .lt }
+		'ge' { .ge }
+		'le' { .le }
+		'comment' { .comment }
+		'nl' { .nl }
+		'dot' { .dot }
+		'dotdot' { .dotdot }
+		'ellipsis' { .ellipsis }
+		'keyword_beg' { .keyword_beg }
+		'key_as' { .key_as }
+		'key_asm' { .key_asm }
+		'key_assert' { .key_assert }
+		'key_atomic' { .key_atomic }
+		'key_break' { .key_break }
+		'key_const' { .key_const }
+		'key_continue' { .key_continue }
+		'key_defer' { .key_defer }
+		'key_else' { .key_else }
+		'key_enum' { .key_enum }
+		'key_false' { .key_false }
+		'key_for' { .key_for }
+		'key_fn' { .key_fn }
+		'key_global' { .key_global }
+		'key_go' { .key_go }
+		'key_goto' { .key_goto }
+		'key_if' { .key_if }
+		'key_import' { .key_import }
+		'key_in' { .key_in }
+		'key_interface' { .key_interface }
+		'key_is' { .key_is }
+		'key_match' { .key_match }
+		'key_module' { .key_module }
+		'key_mut' { .key_mut }
+		'key_shared' { .key_shared }
+		'key_lock' { .key_lock }
+		'key_rlock' { .key_rlock }
+		'key_none' { .key_none }
+		'key_return' { .key_return }
+		'key_select' { .key_select }
+		'key_sizeof' { .key_sizeof }
+		'key_isreftype' { .key_isreftype }
+		'key_likely' { .key_likely }
+		'key_unlikely' { .key_unlikely }
+		'key_offsetof' { .key_offsetof }
+		'key_struct' { .key_struct }
+		'key_true' { .key_true }
+		'key_type' { .key_type }
+		'key_typeof' { .key_typeof }
+		'key_dump' { .key_dump }
+		'key_orelse' { .key_orelse }
+		'key_union' { .key_union }
+		'key_pub' { .key_pub }
+		'key_static' { .key_static }
+		'key_volatile' { .key_volatile }
+		'key_unsafe' { .key_unsafe }
+		'keyword_end' { .keyword_end }
+		'_end_' { ._end_ }
+		else { error('unknown') }
 	}
 }
