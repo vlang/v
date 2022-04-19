@@ -541,7 +541,10 @@ correspond to _bytes_ in the string, not Unicode code points. If you want to con
 ```v
 country := 'Netherlands'
 println(country[0]) // Output: 78
+assert typeof(country[0]).name == 'u8'
+
 println(country[0].ascii_str()) // Output: N
+assert typeof(country[0].ascii_str()).name == 'string'
 ```
 
 Both single and double quotes can be used to denote strings. For consistency, `vfmt` converts double
