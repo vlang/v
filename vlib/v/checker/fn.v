@@ -708,7 +708,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 	}
 	if node.concrete_types.len > 0 && func.generic_names.len > 0
 		&& node.concrete_types.len != func.generic_names.len {
-		plural := if node.concrete_types.len == 1 { '' } else { 's' }
+		plural := if func.generic_names.len == 1 { '' } else { 's' }
 		c.error('expected $func.generic_names.len generic parameter$plural, got $node.concrete_types.len',
 			node.concrete_list_pos)
 	}
@@ -1231,7 +1231,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 		if node.concrete_types.len > 0 && method.generic_names.len > 0
 			&& node.concrete_types.len != method.generic_names.len {
-			plural := if node.concrete_types.len == 1 { '' } else { 's' }
+			plural := if method.generic_names.len == 1 { '' } else { 's' }
 			c.error('expected $method.generic_names.len generic parameter$plural, got $node.concrete_types.len',
 				node.concrete_list_pos)
 		}
