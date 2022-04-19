@@ -48,7 +48,12 @@ $if linux {
 	}
 }
 
-#include <atomic.h>
+$if windows {
+	#insert "@VEXEROOT/thirdparty/stdatomic/win/atomic.h"
+} $else {
+	#insert "@VEXEROOT/thirdparty/stdatomic/nix/atomic.h"
+}
+
 // The following functions are actually generic in C
 fn C.atomic_load_ptr(voidptr) voidptr
 fn C.atomic_store_ptr(voidptr, voidptr)
