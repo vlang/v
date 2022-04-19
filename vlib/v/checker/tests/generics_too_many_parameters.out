@@ -1,5 +1,5 @@
-vlib/v/checker/tests/generics_too_many_parameters.vv:6:8: error: too many generic parameters got 5, expected 1
-    4 | 
+vlib/v/checker/tests/generics_too_many_parameters.vv:6:8: error: expected 1 generic parameter, got 5
+    4 |
     5 | fn main() {
     6 |     foo<bool, int, bool, bool, int>(1)
       |        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -1,25 +1,25 @@
-vlib/v/checker/tests/generics_fn_arguments_count_err.vv:12:18: error: too little generic parameters got 1, expected 2
+vlib/v/checker/tests/generics_fn_arguments_count_err.vv:12:18: error: expected 2 generic parameters, got 1
    10 |
    11 | fn main() {
    12 |     ret1 := get_name<int>(11, 22)
       |                     ~~~~~
    13 |     println(ret1)
    14 |
-vlib/v/checker/tests/generics_fn_arguments_count_err.vv:15:18: error: too many generic parameters got 3, expected 2
+vlib/v/checker/tests/generics_fn_arguments_count_err.vv:15:18: error: expected 2 generic parameters, got 3
    13 |     println(ret1)
    14 |
    15 |     ret2 := get_name<int, int, string>(11, 22, 'hello')
       |                     ~~~~~~~~~~~~~~~~~~
    16 |     println(ret2)
    17 |
-vlib/v/checker/tests/generics_fn_arguments_count_err.vv:19:22: error: too little generic parameters got 1, expected 2
+vlib/v/checker/tests/generics_fn_arguments_count_err.vv:19:22: error: expected 2 generic parameters, got 1
    17 |
    18 |     foo := Foo{}
    19 |     ret3 := foo.get_name<int>(11, 22)
       |                         ~~~~~
    20 |     println(ret3)
    21 |
-vlib/v/checker/tests/generics_fn_arguments_count_err.vv:22:22: error: too many generic parameters got 3, expected 2
+vlib/v/checker/tests/generics_fn_arguments_count_err.vv:22:22: error: expected 2 generic parameters, got 3
    20 |     println(ret3)
    21 |
    22 |     ret4 := foo.get_name<int, int, string>(11, 22, 'hello')
