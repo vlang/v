@@ -445,11 +445,14 @@ pub fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 	mut typ_sym := c.table.sym(node.parent_type)
 	if typ_sym.kind in [.placeholder, .int_literal, .float_literal] {
 		c.error('unknown type `$typ_sym.name`', node.type_pos)
-	} else if typ_sym.kind == .alias && !c.pref.translated {
+	} else if typ_sym.kind == .alias {
 		orig_sym := c.table.sym((typ_sym.info as ast.Alias).parent_type)
-		typ_sym = orig_sym
-		c.error('type `$typ_sym.str()` is an alias, use the original alias type `$orig_sym.name` instead',
-			node.type_pos)
+		if c.pref.translated {
+			typ_sym = orig_sym
+		} else {
+			c.error('type `$typ_sym.str()` is an alias, use the original alias type `$orig_sym.name` instead',
+				node.type_pos)
+		}
 	} else if typ_sym.kind == .chan {
 		c.error('aliases of `chan` types are not allowed.', node.type_pos)
 	}
