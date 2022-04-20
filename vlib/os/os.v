@@ -368,7 +368,7 @@ pub fn expand_tilde_to_home(path string) string {
 }
 
 // write_file writes `text` data to the file in `path`.
-// If `path` exists already, the contents of `path` will be overwritten with the contents of `text`.
+// If `path` exists, the contents of `path` will be overwritten with the contents of `text`.
 pub fn write_file(path string, text string) ? {
 	mut f := create(path) ?
 	unsafe { f.write_full_buffer(text.str, usize(text.len)) ? }
