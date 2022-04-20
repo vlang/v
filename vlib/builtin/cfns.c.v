@@ -53,6 +53,7 @@ fn C.chmod(&char, u32) int
 fn C.printf(&char, ...voidptr) int
 
 fn C.puts(&char) int
+fn C.abs(f64) f64
 
 fn C.fputs(str &char, stream &C.FILE) int
 
