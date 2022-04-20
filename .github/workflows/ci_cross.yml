@@ -71,14 +71,14 @@ jobs:
       - name: v.c can be compiled and run with -os cross
         run: |
           ./v -os cross -o /tmp/v.c cmd/v
-          gcc  -g -std=gnu11 -I ./thirdparty/stdatomic/nix -w -o v_from_vc /tmp/v.c  -lm -lpthread
+          gcc  -g -std=gnu11 -w -o v_from_vc /tmp/v.c  -lm -lpthread
           ls -lart v_from_vc
           ./v_from_vc version
 
       - name: v_win.c can be compiled and run with -os windows
         run: |
           ./v -cc msvc -os windows -o /tmp/v_win.c cmd/v
-          x86_64-w64-mingw32-gcc -I ./thirdparty/stdatomic/win /tmp/v_win.c -std=c99 -w -municode -o v_from_vc.exe
+          x86_64-w64-mingw32-gcc /tmp/v_win.c -std=c99 -w -municode -o v_from_vc.exe
           ls -lart v_from_vc.exe
           wine64 ./v_from_vc.exe version
 
