@@ -84,7 +84,7 @@ fn main() {
 
 	os.chdir(fast_dir) ?
 	mut out := os.create('table.html') ?
-	
+
 	// place the new row on top
 	html_message := message.replace_each(['<', '&lt;', '>', '&gt;'])
 	table =
@@ -107,7 +107,7 @@ fn main() {
 		table.trim_space()
 	out.writeln(table) ?
 	out.close()
-	
+
 	// regenerate index.html
 	header := os.read_file('header.html') ?
 	footer := os.read_file('footer.html') ?
