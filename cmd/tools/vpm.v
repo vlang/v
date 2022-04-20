@@ -589,12 +589,17 @@ fn get_all_modules() []string {
 		// get the start index of the module entry
 		mut start_index := s.index_after(start_token, read_len)
 		if start_index == -1 {
-			break
+			start_token = '<a href="/mod'
+			start_index = s.index_after(start_token, read_len)
+			if start_index == -1 {
+				break
+			}
 		}
 		// get the index of the end of anchor (a) opening tag
 		// we use the previous start_index to make sure we are getting a module and not just a random 'a' tag
-		start_token = "'>"
+		start_token = '>'
 		start_index = s.index_after(start_token, start_index) + start_token.len
+
 		// get the index of the end of module entry
 		end_index := s.index_after(end_token, start_index)
 		if end_index == -1 {
