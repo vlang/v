@@ -162,6 +162,7 @@ pub fn rmdir_all(path string) ? {
 }
 
 // is_dir_empty will return a `bool` whether or not `path` is empty.
+// Note that it will return `true` if `path` does not exist.
 [manualfree]
 pub fn is_dir_empty(path string) bool {
 	items := ls(path) or { return true }
