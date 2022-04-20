@@ -5,8 +5,10 @@ module stdatomic
 
 $if windows {
 	#flag -I @VEXEROOT/thirdparty/stdatomic/win
+	#insert "@VEXEROOT/thirdparty/stdatomic/win/atomic.h"
 } $else {
 	#flag -I @VEXEROOT/thirdparty/stdatomic/nix
+	#insert "@VEXEROOT/thirdparty/stdatomic/nix/atomic.h"
 }
 
 $if linux {
@@ -46,12 +48,6 @@ $if linux {
 		}
 		#flag -latomic
 	}
-}
-
-$if windows {
-	#insert "@VEXEROOT/thirdparty/stdatomic/win/atomic.h"
-} $else {
-	#insert "@VEXEROOT/thirdparty/stdatomic/nix/atomic.h"
 }
 
 // The following functions are actually generic in C

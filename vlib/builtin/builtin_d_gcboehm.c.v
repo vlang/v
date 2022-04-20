@@ -32,13 +32,14 @@ $if dynamic_boehm ? {
 	$if macos || linux {
 		#flag -DGC_PTHREADS=1
 		#flag -I@VEXEROOT/thirdparty/libgc/include
-		#flag -lpthread -ldl
+		#flag -lpthread
 		$if (prod && !tinyc && !debug) || !(amd64 || arm64 || i386 || arm32) {
 			// TODO: replace the architecture check with a `!$exists("@VEXEROOT/thirdparty/tcc/lib/libgc.a")` comptime call
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		} $else {
 			#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a
 		}
+		#flag -ldl
 	} $else $if freebsd {
 		// Tested on FreeBSD 13.0-RELEASE-p3, with clang, gcc and tcc:
 		#flag -DBUS_PAGE_FAULT=T_PAGEFLT

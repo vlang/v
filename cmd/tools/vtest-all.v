@@ -81,6 +81,18 @@ fn get_all_commands() []Command {
 			runcmd: .execute
 			expect: 'Hello, World!\n'
 		}
+		if os.getenv('V_CI_MUSL').len == 0 {
+			for compiler_name in ['clang', 'gcc'] {
+				if _ := os.find_abs_path_of_executable(compiler_name) {
+					res << Command{
+						line: '$vexe -cc $compiler_name -gc boehm run examples/hello_world.v'
+						okmsg: '`v -cc $compiler_name -gc boehm run examples/hello_world.v` works'
+						runcmd: .execute
+						expect: 'Hello, World!\n'
+					}
+				}
+			}
+		}
 		res << Command{
 			line: '$vexe interpret examples/hello_world.v'
 			okmsg: 'V can interpret hello world.'
@@ -210,9 +222,8 @@ fn get_all_commands() []Command {
 		rmfile: 'examples/tetris/tetris'
 	}
 	$if macos || linux {
-		ipath := '$vroot/thirdparty/stdatomic/nix'
 		res << Command{
-			line: '$vexe -o v.c cmd/v && cc -Werror -I ${os.quoted_path(ipath)} v.c -lpthread -lm && rm -rf a.out'
+			line: '$vexe -o v.c cmd/v && cc -Werror v.c -lpthread -lm && rm -rf a.out'
 			label: 'v.c should be buildable with no warnings...'
 			okmsg: 'v.c can be compiled without warnings. This is good :)'
 			rmfile: 'v.c'
