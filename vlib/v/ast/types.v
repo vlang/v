@@ -262,8 +262,7 @@ pub fn (t Type) str() string {
 }
 
 pub fn (t &Table) type_str(typ Type) string {
-	sym := t.sym(typ)
-	return sym.name
+	return t.sym(typ).name
 }
 
 // debug returns a verbose representation of the information in the type `t`, useful for tracing/debugging
@@ -375,7 +374,7 @@ pub fn (typ Type) is_unsigned() bool {
 }
 
 pub fn (typ Type) flip_signedness() Type {
-	r := match typ {
+	return match typ {
 		ast.i8_type { ast.byte_type }
 		ast.i16_type { ast.u16_type }
 		ast.int_type { ast.u32_type }
@@ -388,7 +387,6 @@ pub fn (typ Type) flip_signedness() Type {
 		ast.u64_type { ast.i64_type }
 		else { typ }
 	}
-	return r
 }
 
 [inline]
@@ -510,7 +508,7 @@ pub const (
 )
 
 pub fn merge_types(params ...[]Type) []Type {
-	mut res := []Type{}
+	mut res := []Type{cap: params.len}
 	for types in params {
 		res << types
 	}
@@ -518,10 +516,10 @@ pub fn merge_types(params ...[]Type) []Type {
 }
 
 pub fn mktyp(typ Type) Type {
-	match typ {
-		ast.float_literal_type { return ast.f64_type }
-		ast.int_literal_type { return ast.int_type }
-		else { return typ }
+	return match typ {
+		ast.float_literal_type { ast.f64_type }
+		ast.int_literal_type { ast.int_type }
+		else { typ }
 	}
 }
 
@@ -827,7 +825,7 @@ pub fn (t &TypeSymbol) is_builtin() bool {
 
 // for debugging/errors only, perf is not an issue
 pub fn (k Kind) str() string {
-	k_str := match k {
+	return match k {
 		.placeholder { 'placeholder' }
 		.void { 'void' }
 		.voidptr { 'voidptr' }
@@ -868,7 +866,6 @@ pub fn (k Kind) str() string {
 		.aggregate { 'aggregate' }
 		.thread { 'thread' }
 	}
-	return k_str
 }
 
 pub fn (kinds []Kind) str() string {
