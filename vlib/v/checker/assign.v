@@ -275,18 +275,10 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					if !c.inside_unsafe && !c.pref.translated && !c.file.is_translated {
 						c.error('modifying variables via dereferencing can only be done in `unsafe` blocks',
 							node.pos)
-					} else {
+					} else if mut left.right is ast.Ident {
 						// mark `p` in `*p = val` as used:
-						match mut left.right {
-							ast.Ident {
-								match mut left.right.obj {
-									ast.Var {
-										left.right.obj.is_used = true
-									}
-									else {}
-								}
-							}
-							else {}
+						if mut left.right.obj is ast.Var {
+							left.right.obj.is_used = true
 						}
 					}
 				}
