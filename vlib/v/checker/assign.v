@@ -336,6 +336,17 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			c.error('use `array2 $node.op.str() array1.clone()` instead of `array2 $node.op.str() array1` (or use `unsafe`)',
 				node.pos)
 		}
+		if left_sym.kind == .array && right_sym.kind == .array {
+			// `mut arr := [u8(1),2,3]`
+			// `arr = [byte(4),5,6]`
+			left_info := left_sym.info as ast.Array
+			left_elem_type := c.table.unaliased_type(left_info.elem_type)
+			right_info := right_sym.info as ast.Array
+			right_elem_type := c.table.unaliased_type(right_info.elem_type)
+			if left_info.nr_dims == right_info.nr_dims && left_elem_type == right_elem_type {
+				continue
+			}
+		}
 		if left_sym.kind == .array_fixed && !c.inside_unsafe && node.op in [.assign, .decl_assign]
 			&& right_sym.kind == .array_fixed && (left is ast.Ident && !left.is_blank_ident())
 			&& right is ast.Ident {
