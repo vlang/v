@@ -3497,7 +3497,7 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) ast.Type {
 	// handle `x := rlock a { a.getval() }`
 	mut ret_type := ast.void_type
 	if node.stmts.len > 0 {
-		last_stmt := node.stmts[node.stmts.len - 1]
+		last_stmt := node.stmts.last()
 		if last_stmt is ast.ExprStmt {
 			ret_type = last_stmt.typ
 		}

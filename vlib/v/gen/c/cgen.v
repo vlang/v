@@ -4943,8 +4943,8 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			g.inside_or_block = false
 		}
 		stmts := or_block.stmts
-		if stmts.len > 0 && stmts[or_block.stmts.len - 1] is ast.ExprStmt
-			&& (stmts[stmts.len - 1] as ast.ExprStmt).typ != ast.void_type {
+		if stmts.len > 0 && stmts.last() is ast.ExprStmt
+			&& (stmts.last() as ast.ExprStmt).typ != ast.void_type {
 			g.indent++
 			for i, stmt in stmts {
 				if i == stmts.len - 1 {
@@ -4966,7 +4966,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			g.indent--
 		} else {
 			g.stmts(stmts)
-			if stmts.len > 0 && stmts[or_block.stmts.len - 1] is ast.ExprStmt {
+			if stmts.len > 0 && stmts.last() is ast.ExprStmt {
 				g.writeln(';')
 			}
 		}
