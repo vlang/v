@@ -1893,6 +1893,17 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		node.return_type = ast.void_type
 	} else if method_name == 'contains' {
 		// c.warn('use `value in arr` instead of `arr.contains(value)`', node.pos)
+		if node.args.len != 1 {
+			c.error('`.contains()` expected 1 argument, but got $node.args.len', node.pos)
+		} else {
+			arg_typ := ast.mktyp(c.expr(node.args[0].expr))
+			elem_typ_str := c.table.type_to_str(elem_typ)
+			arg_typ_str := c.table.type_to_str(arg_typ)
+			if !left_sym.has_method('contains') && elem_typ_str != arg_typ_str {
+				c.error('`.contains()` expected `$elem_typ_str` argument, but got `$arg_typ_str`',
+					node.pos)
+			}
+		}
 		node.return_type = ast.bool_type
 	} else if method_name == 'index' {
 		node.return_type = ast.int_type
