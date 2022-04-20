@@ -29,7 +29,7 @@ fn main() {
 		}
 	}
 
-	// Fetch the last commit's hash
+	// fetch the last commit's hash
 	commit := exec('git rev-parse HEAD')[..8]
 	if !os.exists('table.html') {
 		os.create('table.html') ?
@@ -46,7 +46,7 @@ fn main() {
 	message := exec('git log --pretty=format:"%s" -n1 $commit')
 	println('\nBenchmarking commit $commit "$message"')
 
-	// Build an optimized V
+	// build an optimized V
 	println('  Building vprod...')
 	os.chdir(vdir) ?
 	if os.args.contains('-noprod') {
@@ -55,11 +55,11 @@ fn main() {
 		exec('./v -o vprod -prod -prealloc cmd/v')
 	}
 
-	// Cache vlib modules
+	// cache vlib modules
 	exec('$vdir/v wipe-cache')
 	exec('$vdir/v -o v2 -prod cmd/v')
 
-	// Measure
+	// measure
 	diff1 := measure('$vdir/vprod $voptions -o v.c cmd/v', 'v.c')
 	mut tcc_path := 'tcc'
 	$if freebsd {
@@ -85,7 +85,7 @@ fn main() {
 	os.chdir(fast_dir) ?
 	mut out := os.create('table.html') ?
 	
-	// Place the new row on top
+	// place the new row on top
 	html_message := message.replace_each(['<', '&lt;', '>', '&gt;'])
 	table =
 		'	<tr>
@@ -108,7 +108,7 @@ fn main() {
 	out.writeln(table) ?
 	out.close()
 	
-	// Regenerate index.html
+	// regenerate index.html
 	header := os.read_file('header.html') ?
 	footer := os.read_file('footer.html') ?
 	mut res := os.create('index.html') ?
@@ -117,7 +117,7 @@ fn main() {
 	res.writeln(footer) ?
 	res.close()
 
-	// Upload the result to github pages
+	// upload the result to github pages
 	if os.args.contains('-upload') {
 		println('uploading...')
 		os.chdir('website') ?
@@ -134,7 +134,7 @@ fn exec(s string) string {
 	return e.output.trim_right('\r\n')
 }
 
-// returns milliseconds
+// measure returns milliseconds
 fn measure(cmd string, description string) int {
 	println('  Measuring $description')
 	println('  Warming up...')
