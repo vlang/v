@@ -83,7 +83,7 @@ fn get_all_commands() []Command {
 		}
 		if os.getenv('V_CI_MUSL').len == 0 {
 			for compiler_name in ['clang', 'gcc'] {
-				if cc := os.find_abs_path_of_executable(compiler_name) {
+				if _ := os.find_abs_path_of_executable(compiler_name) {
 					res << Command{
 						line: '$vexe -cc $compiler_name -gc boehm run examples/hello_world.v'
 						okmsg: '`v -cc $compiler_name -gc boehm run examples/hello_world.v` works'
