@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 30
     env:
       VFLAGS: -cc tcc -no-retry-compilation
-      B_CFLAGS: -g -std=gnu11 -I ./thirdparty/stdatomic/nix -w
+      B_CFLAGS: -g -std=gnu11 -w
       B_LFLAGS: -lm -lpthread
     steps:
       - uses: actions/checkout@v2
@@ -52,7 +52,7 @@ jobs:
     timeout-minutes: 30
     env:
       VFLAGS: -cc clang
-      B_CFLAGS: -g -std=gnu11 -I ./thirdparty/stdatomic/nix -w
+      B_CFLAGS: -g -std=gnu11 -w
       B_LFLAGS: -lm -lpthread
     steps:
       - uses: actions/checkout@v2
