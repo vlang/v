@@ -72,7 +72,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 				expr_type := c.expr(stmt.expr)
 				if first_iteration {
 					if node.is_expr && (node.expected_type.has_flag(.optional)
-						|| c.table.type_kind(node.expected_type) == .sum_type) {
+						|| c.table.type_kind(node.expected_type) in [.sum_type, .multi_return]) {
 						ret_type = node.expected_type
 					} else {
 						ret_type = expr_type
@@ -86,6 +86,14 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 							&& (ret_type.has_flag(.generic)
 							|| c.table.is_sumtype_or_in_variant(ret_type, expr_type)))
 							&& !is_noreturn {
+							expr_sym := c.table.sym(expr_type)
+							if expr_sym.kind == .multi_return && ret_sym.kind == .multi_return {
+								ret_types := ret_sym.mr_info().types
+								expr_types := expr_sym.mr_info().types.map(ast.mktyp(it))
+								if expr_types == ret_types {
+									continue
+								}
+							}
 							c.error('return type mismatch, it should be `$ret_sym.name`',
 								stmt.expr.pos())
 						}

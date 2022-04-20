@@ -173,6 +173,13 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					continue
 				}
 				last_expr.typ = c.expr(last_expr.expr)
+				if c.table.type_kind(c.expected_type) == .multi_return
+					&& c.table.type_kind(last_expr.typ) == .multi_return {
+					if node.typ == ast.void_type {
+						node.is_expr = true
+						node.typ = c.expected_type
+					}
+				}
 				if !c.check_types(last_expr.typ, node.typ) {
 					if node.typ == ast.void_type {
 						// first branch of if expression
@@ -209,6 +216,15 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					}
 					if is_noreturn_callexpr(last_expr.expr) {
 						continue
+					}
+					node_sym := c.table.sym(node.typ)
+					last_sym := c.table.sym(last_expr.typ)
+					if node_sym.kind == .multi_return && last_sym.kind == .multi_return {
+						node_types := node_sym.mr_info().types
+						last_types := last_sym.mr_info().types.map(ast.mktyp(it))
+						if node_types == last_types {
+							continue
+						}
 					}
 
 					c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(last_expr.typ)}`',
