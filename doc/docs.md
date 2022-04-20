@@ -1,5 +1,7 @@
 # V Documentation
 
+(See https://modules.vlang.io/ for documentation of V's standard library)
+
 ## Introduction
 
 V is a statically typed compiled programming language designed for building maintainable software.
