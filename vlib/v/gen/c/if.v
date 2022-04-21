@@ -20,6 +20,9 @@ fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
 					if is_noreturn_callexpr(stmt.expr) {
 						return true
 					}
+					if stmt.expr is ast.MatchExpr {
+						return true
+					}
 					if stmt.expr is ast.CallExpr {
 						if stmt.expr.is_method {
 							left_sym := g.table.sym(stmt.expr.receiver_type)
