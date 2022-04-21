@@ -1821,6 +1821,9 @@ pub fn (stmt Stmt) check_c_expr() ? {
 		AssignStmt {
 			return
 		}
+		ForCStmt, ForInStmt, ForStmt {
+			return
+		}
 		ExprStmt {
 			if stmt.expr.is_expr() {
 				return
