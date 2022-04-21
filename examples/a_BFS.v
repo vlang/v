@@ -4,7 +4,7 @@
 // https://github.com/vlang/v/blob/master/examples/bfs.v
 //
 // I  follow literally code in C, done many years ago
-
+// Author: ccs
 fn breadth_first_search_path(graph map[string][]string, start string, target string) []string 
  {
 	mut path := []string{} // ONE PATH with SUCCESS = array
