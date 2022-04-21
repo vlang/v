@@ -2,7 +2,7 @@
 // Depth-First Search (BFS) allows you to ﬁnd a path between two nodes in the graph.
 // I  follow literally code in C, done many years ago
 // coded by CCS
-//
+// Author: ccs
 fn depth_first_search_path(graph map[string][]string, start string, target string) []string 
  {
 	mut path := []string{} // ONE PATH with SUCCESS = array
