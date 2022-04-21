@@ -1,0 +1,28 @@
+vlib/v/checker/tests/array_builtin_method_args_err.vv:4:18: error: `.clone()` does not have any arguments
+    2 |     arr := [1, 2, 3]
+    3 |
+    4 |     a1 := arr.clone(22)
+      |                     ~~
+    5 |     println(a1)
+    6 |
+vlib/v/checker/tests/array_builtin_method_args_err.vv:7:18: error: `.first()` does not have any arguments
+    5 |     println(a1)
+    6 |
+    7 |     a2 := arr.first('a2')
+      |                     ~~~~
+    8 |     println(a2)
+    9 |
+vlib/v/checker/tests/array_builtin_method_args_err.vv:10:17: error: `.last()` does not have any arguments
+    8 |     println(a2)
+    9 |
+   10 |     a3 := arr.last(1)
+      |                    ^
+   11 |     println(a3)
+   12 |
+vlib/v/checker/tests/array_builtin_method_args_err.vv:13:16: error: `.pop()` does not have any arguments
+   11 |     println(a3)
+   12 |
+   13 |     a4 := arr.pop(2)
+      |                   ^
+   14 |     println(a4)
+   15 | }

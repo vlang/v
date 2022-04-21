@@ -1884,6 +1884,9 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		c.check_map_and_filter(false, elem_typ, node)
 		node.return_type = ast.bool_type
 	} else if method_name == 'clone' {
+		if node.args.len != 0 {
+			c.error('`.clone()` does not have any arguments', node.args[0].pos)
+		}
 		// need to return `array_xxx` instead of `array`
 		// in ['clone', 'str'] {
 		node.receiver_type = left_type.ref()
@@ -1914,6 +1917,9 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 	} else if method_name == 'index' {
 		node.return_type = ast.int_type
 	} else if method_name in ['first', 'last', 'pop'] {
+		if node.args.len != 0 {
+			c.error('`.${method_name}()` does not have any arguments', node.args[0].pos)
+		}
 		node.return_type = array_info.elem_type
 		if method_name == 'pop' {
 			c.fail_if_immutable(node.left)
