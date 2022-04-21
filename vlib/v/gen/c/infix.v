@@ -441,6 +441,54 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 			g.expr(node.right)
 		}
 		g.write(')')
+	} else if right.unaliased_sym.kind == .array_fixed {
+		if left.sym.kind in [.sum_type, .interface_] {
+			if node.right is ast.ArrayInit {
+				if node.right.exprs.len > 0 {
+					mut infix_exprs := []ast.InfixExpr{}
+					for i in 0 .. node.right.exprs.len {
+						infix_exprs << ast.InfixExpr{
+							op: .key_is
+							left: node.left
+							left_type: node.left_type
+							right: node.right.exprs[i]
+							right_type: node.right.expr_types[i]
+						}
+					}
+					g.write('(')
+					g.infix_expr_in_sumtype_interface_array(infix_exprs)
+					g.write(')')
+					return
+				}
+			}
+		}
+		if node.right is ast.ArrayInit {
+			if node.right.exprs.len > 0 {
+				// `a in [1,2,3]!` optimization => `a == 1 || a == 2 || a == 3`
+				// avoids an allocation
+				g.write('(')
+				g.infix_expr_in_optimization(node.left, node.right)
+				g.write(')')
+				return
+			}
+		}
+		if right.sym.info is ast.Array {
+			elem_type := right.sym.info.elem_type
+			elem_type_ := g.unwrap(elem_type)
+			if elem_type_.sym.kind == .sum_type {
+				if node.left_type in elem_type_.sym.sumtype_info().variants {
+					new_node_left := ast.CastExpr{
+						arg: ast.EmptyExpr{}
+						typ: elem_type
+						expr: node.left
+						expr_type: node.left_type
+					}
+					g.gen_array_contains(node.right_type, node.right, new_node_left)
+					return
+				}
+			}
+		}
+		g.gen_array_contains(node.right_type, node.right, node.left)
 	} else if right.unaliased_sym.kind == .string {
 		g.write('string_contains(')
 		g.expr(node.right)
