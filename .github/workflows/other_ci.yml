@@ -257,7 +257,6 @@ jobs:
       - name: PDF examples should compile
         run: ./v should-compile-all ~/.vmodules/pdf/examples
 
-## Due to temporary problems with https://vpm.vlang.io, the following is commented for now.
-##      ## vpm modules
-##      - name: Install UI through VPM
-##        run: ./v install ui
+      ## vpm modules
+      - name: Install UI through VPM
+        run: ./v install ui
