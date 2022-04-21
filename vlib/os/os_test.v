@@ -355,6 +355,12 @@ fn test_mv() {
 	assert !os.is_dir(expected)
 }
 
+fn test_is_dir_empty() {
+	// Test that is_dir_empty returns true on
+	// non-existent directories ***as stated in it's doc string***
+	assert os.is_dir_empty('dir that does not exist at all')
+}
+
 fn test_cp_all() {
 	// fileX -> dir/fileX
 	// Note: clean up of the files happens inside the cleanup_leftovers function
