@@ -335,7 +335,8 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			left_elem_type := c.table.unaliased_type(left_info.elem_type)
 			right_info := right_sym.info as ast.Array
 			right_elem_type := c.table.unaliased_type(right_info.elem_type)
-			if left_info.nr_dims == right_info.nr_dims && left_elem_type == right_elem_type {
+			if left_type_unwrapped.nr_muls() == right_type_unwrapped.nr_muls()
+				&& left_info.nr_dims == right_info.nr_dims && left_elem_type == right_elem_type {
 				continue
 			}
 		}

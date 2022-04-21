@@ -895,6 +895,16 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			if param.typ.has_flag(.generic) {
 				continue
 			}
+			if param_typ_sym.kind == .array && arg_typ_sym.kind == .array {
+				param_info := param_typ_sym.info as ast.Array
+				param_elem_type := c.table.unaliased_type(param_info.elem_type)
+				arg_info := arg_typ_sym.info as ast.Array
+				arg_elem_type := c.table.unaliased_type(arg_info.elem_type)
+				if param.typ.nr_muls() == arg_typ.nr_muls()
+					&& param_info.nr_dims == arg_info.nr_dims && param_elem_type == arg_elem_type {
+					continue
+				}
+			}
 			if c.pref.translated || c.file.is_translated {
 				// TODO duplicated logic in check_types() (check_types.v)
 				// Allow enums to be used as ints and vice versa in translated code
@@ -1389,6 +1399,19 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				// if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
 				// continue
 				// }
+				param_typ_sym := c.table.sym(exp_arg_typ)
+				arg_typ_sym := c.table.sym(got_arg_typ)
+				if param_typ_sym.kind == .array && arg_typ_sym.kind == .array {
+					param_info := param_typ_sym.info as ast.Array
+					param_elem_type := c.table.unaliased_type(param_info.elem_type)
+					arg_info := arg_typ_sym.info as ast.Array
+					arg_elem_type := c.table.unaliased_type(arg_info.elem_type)
+					if exp_arg_typ.nr_muls() == got_arg_typ.nr_muls()
+						&& param_info.nr_dims == arg_info.nr_dims
+						&& param_elem_type == arg_elem_type {
+						continue
+					}
+				}
 				if got_arg_typ != ast.void_type {
 					c.error('$err.msg() in argument ${i + 1} to `${left_sym.name}.$method_name`',
 						arg.pos)
