@@ -2315,7 +2315,11 @@ pub fn (mut f Fmt) par_expr(node ast.ParExpr) {
 		f.par_level++
 		f.write('(')
 	}
-	f.expr(node.expr)
+	mut expr := node.expr
+	for mut expr is ast.ParExpr {
+		expr = expr.expr
+	}
+	f.expr(expr)
 	if requires_paren {
 		f.par_level--
 		f.write(')')
