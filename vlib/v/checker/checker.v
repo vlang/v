@@ -662,6 +662,15 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 					node.left_type = map_info.key_type
 				}
+				.array_fixed {
+					if left_sym.kind !in [.sum_type, .interface_] {
+						elem_type := right_final.array_fixed_info().elem_type
+						c.check_expected(left_type, elem_type) or {
+							c.error('left operand to `$node.op` does not match the fixed array element type: $err.msg()',
+								left_right_pos)
+						}
+					}
+				}
 				else {
 					c.error('`$node.op.str()` can only be used with arrays and maps',
 						node.pos)
