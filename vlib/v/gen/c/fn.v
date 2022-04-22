@@ -941,7 +941,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 					g.gen_expr_to_string(node.left, rec_type)
 					return
 				} else if node.left.obj.smartcasts.len > 0 {
-					rec_type = node.left.obj.smartcasts.last()
+					rec_type = g.unwrap_generic(node.left.obj.smartcasts.last())
 					cast_sym := g.table.sym(rec_type)
 					if cast_sym.info is ast.Aggregate {
 						rec_type = cast_sym.info.types[g.aggregate_type_idx]
@@ -1331,7 +1331,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 					if expr.obj is ast.Var {
 						typ = expr.obj.typ
 						if expr.obj.smartcasts.len > 0 {
-							typ = expr.obj.smartcasts.last()
+							typ = g.unwrap_generic(expr.obj.smartcasts.last())
 							cast_sym := g.table.sym(typ)
 							if cast_sym.info is ast.Aggregate {
 								typ = cast_sym.info.types[g.aggregate_type_idx]

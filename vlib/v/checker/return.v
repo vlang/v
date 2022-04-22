@@ -34,7 +34,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 	mut got_types := []ast.Type{}
 	mut expr_idxs := []int{}
 	for i, expr in node.exprs {
-		typ := c.expr(expr)
+		mut typ := c.expr(expr)
 		if typ == ast.void_type {
 			c.error('`$expr` used as value', node.pos)
 		}
@@ -46,6 +46,13 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 				expr_idxs << i
 			}
 		} else {
+			if expr is ast.Ident {
+				if expr.obj is ast.Var {
+					if expr.obj.smartcasts.len > 0 {
+						typ = c.unwrap_generic(expr.obj.smartcasts.last())
+					}
+				}
+			}
 			got_types << typ
 			expr_idxs << i
 		}
