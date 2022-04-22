@@ -296,7 +296,7 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 			c.smartcast_if_conds(node.right, mut scope)
 		} else if node.op == .key_is {
 			right_expr := node.right
-			mut right_type := match right_expr {
+			right_type := match right_expr {
 				ast.TypeNode {
 					right_expr.typ
 				}
@@ -308,11 +308,10 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 					ast.Type(0)
 				}
 			}
-			right_type = c.unwrap_generic(right_type)
 			if right_type != ast.Type(0) {
 				left_sym := c.table.sym(node.left_type)
 				right_sym := c.table.sym(right_type)
-				mut expr_type := c.unwrap_generic(c.expr(node.left))
+				mut expr_type := c.expr(node.left)
 				if left_sym.kind == .aggregate {
 					expr_type = (left_sym.info as ast.Aggregate).sum_type
 				}
@@ -322,7 +321,7 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 					} else {
 						return
 					}
-				} else if !c.check_types(right_type, expr_type) {
+				} else if !c.check_types(right_type, expr_type) && left_sym.kind != .sum_type {
 					expect_str := c.table.type_to_str(right_type)
 					expr_str := c.table.type_to_str(expr_type)
 					c.error('cannot use type `$expect_str` as type `$expr_str`', node.pos)
