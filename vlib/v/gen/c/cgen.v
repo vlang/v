@@ -3286,7 +3286,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 						if field_sym.kind == .sum_type {
 							g.write('*')
 						}
-						cast_sym := g.table.sym(typ)
+						cast_sym := g.table.sym(g.unwrap_generic(typ))
 						if i != 0 {
 							dot := if field.typ.is_ptr() { '->' } else { '.' }
 							sum_type_deref_field += ')$dot'
