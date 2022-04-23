@@ -17,13 +17,14 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 	mut upper_case := false // set upercase for the result string
 	mut typ := g.unwrap_generic(node.expr_types[i])
 	sym := g.table.sym(typ)
+
 	if sym.kind == .alias {
 		typ = (sym.info as ast.Alias).parent_type
 	}
 	mut remove_tail_zeros := false
 	fspec := node.fmts[i]
 	mut fmt_type := StrIntpType{}
-
+	g.write('/*$fspec $sym*/')
 	// upper cases
 	if (fspec - `A`) <= (`Z` - `A`) {
 		upper_case = true

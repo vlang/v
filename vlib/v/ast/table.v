@@ -231,7 +231,7 @@ pub fn (t &Table) fn_type_signature(f &Fn) string {
 	return sig
 }
 
-// source_signature generates the signature of a function which looks like in the V source
+// fn_type_source_signature generates the signature of a function which looks like in the V source
 pub fn (t &Table) fn_type_source_signature(f &Fn) string {
 	mut sig := '('
 	for i, arg in f.params {
@@ -255,6 +255,8 @@ pub fn (t &Table) fn_type_source_signature(f &Fn) string {
 		return_type_sym := t.sym(f.return_type)
 		if f.return_type.has_flag(.optional) {
 			sig += ' ?$return_type_sym.name'
+		} else if f.return_type.has_flag(.result) {
+			sig += ' !$return_type_sym.name'
 		} else {
 			sig += ' $return_type_sym.name'
 		}

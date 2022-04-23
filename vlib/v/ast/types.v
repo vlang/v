@@ -98,6 +98,7 @@ pub mut:
 // max of 8
 pub enum TypeFlag {
 	optional
+	result
 	variadic
 	generic
 	shared_f
@@ -1136,6 +1137,9 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			if typ.has_flag(.optional) {
 				return '?'
 			}
+			if typ.has_flag(.result) {
+				return '!'
+			}
 			return 'void'
 		}
 		.thread {
@@ -1166,6 +1170,9 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 	}
 	if typ.has_flag(.optional) {
 		res = '?$res'
+	}
+	if typ.has_flag(.result) {
+		res = '!$res'
 	}
 	return res
 }

@@ -310,6 +310,16 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 		}
 	}
+	// same for result `fn (...) ! { ... }`
+	if node.return_type != ast.void_type && node.return_type.has_flag(.result)
+		&& (node.stmts.len == 0 || node.stmts.last() !is ast.Return) {
+		sym := c.table.sym(node.return_type)
+		if sym.kind == .void {
+			node.stmts << ast.Return{
+				pos: node.pos
+			}
+		}
+	}
 	c.fn_scope = node.scope
 	c.stmts(node.stmts)
 	node_has_top_return := has_top_return(node.stmts)

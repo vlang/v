@@ -1,25 +1,25 @@
-vlib/v/checker/tests/go_wait_or.vv:11:17: error: unexpected `?`, the function `wait` does not return an optional
+vlib/v/checker/tests/go_wait_or.vv:11:17: error: unexpected `?`, the function `wait` does neither return an optional nor a result
     9 |         go d(1)
    10 |     ]
    11 |     r := tg.wait() ?
       |                    ^
    12 |     println(r)
    13 |     s := tg[0].wait() or { panic('problem') }
-vlib/v/checker/tests/go_wait_or.vv:13:20: error: unexpected `or` block, the function `wait` does not return an optional
+vlib/v/checker/tests/go_wait_or.vv:13:20: error: unexpected `or` block, the function `wait` does neither return an optional nor a result
    11 |     r := tg.wait() ?
    12 |     println(r)
    13 |     s := tg[0].wait() or { panic('problem') }
       |                       ~~~~~~~~~~~~~~~~~~~~~~~
    14 |     println(s)
    15 |     tg2 := [
-vlib/v/checker/tests/go_wait_or.vv:19:13: error: unexpected `or` block, the function `wait` does not return an optional
+vlib/v/checker/tests/go_wait_or.vv:19:13: error: unexpected `or` block, the function `wait` does neither return an optional nor a result
    17 |         go e(1)
    18 |     ]
    19 |     tg2.wait() or { panic('problem') }
       |                ~~~~~~~~~~~~~~~~~~~~~~~
    20 |     tg2[0].wait() ?
    21 |     tg3 := [
-vlib/v/checker/tests/go_wait_or.vv:20:16: error: unexpected `?`, the function `wait` does not return an optional
+vlib/v/checker/tests/go_wait_or.vv:20:16: error: unexpected `?`, the function `wait` does neither return an optional nor a result
    18 |     ]
    19 |     tg2.wait() or { panic('problem') }
    20 |     tg2[0].wait() ?

@@ -1335,6 +1335,8 @@ pub fn (mut f Fmt) fn_type_decl(node ast.FnTypeDecl) {
 		f.write(' $ret_str')
 	} else if fn_info.return_type.has_flag(.optional) {
 		f.write(' ?')
+	} else if fn_info.return_type.has_flag(.result) {
+		f.write(' !')
 	}
 
 	f.comments(node.comments, has_nl: false)

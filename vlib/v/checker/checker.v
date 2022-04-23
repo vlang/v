@@ -1471,13 +1471,19 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 // return the actual type of the expression, once the optional is handled
 pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast.Type {
 	if expr is ast.CallExpr {
-		if expr.return_type.has_flag(.optional) {
+		if expr.return_type.has_flag(.optional) || expr.return_type.has_flag(.result) {
+			return_modifier_kind := if expr.return_type.has_flag(.optional) {
+				'option'
+			} else {
+				'result'
+			}
+			return_modifier := if expr.return_type.has_flag(.optional) { '?' } else { '!' }
 			if expr.or_block.kind == .absent {
 				if c.inside_defer {
-					c.error('${expr.name}() returns an option, so it should have an `or {}` block at the end',
+					c.error('${expr.name}() returns an $return_modifier_kind, so it should have an `or {}` block at the end',
 						expr.pos)
 				} else {
-					c.error('${expr.name}() returns an option, so it should have either an `or {}` block, or `?` at the end',
+					c.error('${expr.name}() returns an $return_modifier_kind, so it should have either an `or {}` block, or `$return_modifier` at the end',
 						expr.pos)
 				}
 			} else {
@@ -1485,7 +1491,7 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast
 			}
 			return ret_type.clear_flag(.optional)
 		} else if expr.or_block.kind == .block {
-			c.error('unexpected `or` block, the function `$expr.name` does not return an optional',
+			c.error('unexpected `or` block, the function `$expr.name` does neither return an optional nor a result',
 				expr.or_block.pos)
 		} else if expr.or_block.kind == .propagate {
 			c.error('unexpected `?`, the function `$expr.name` does not return an optional',
@@ -2581,17 +2587,22 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 		}
 		ast.CallExpr {
 			mut ret_type := c.call_expr(mut node)
-			if !ret_type.has_flag(.optional) {
+			if !ret_type.has_flag(.optional) && !ret_type.has_flag(.result) {
 				if node.or_block.kind == .block {
-					c.error('unexpected `or` block, the function `$node.name` does not return an optional',
+					c.error('unexpected `or` block, the function `$node.name` does neither return an optional nor a result',
 						node.or_block.pos)
 				} else if node.or_block.kind == .propagate {
-					c.error('unexpected `?`, the function `$node.name` does not return an optional',
+					c.error('unexpected `?`, the function `$node.name` does neither return an optional nor a result',
 						node.or_block.pos)
 				}
 			}
-			if ret_type.has_flag(.optional) && node.or_block.kind != .absent {
-				ret_type = ret_type.clear_flag(.optional)
+			if node.or_block.kind != .absent {
+				if ret_type.has_flag(.optional) {
+					ret_type = ret_type.clear_flag(.optional)
+				}
+				if ret_type.has_flag(.result) {
+					ret_type = ret_type.clear_flag(.result)
+				}
 			}
 			return ret_type
 		}
