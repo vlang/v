@@ -2040,6 +2040,12 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		g.expr(arg.expr)
 		g.write('->val')
 		return
+	} else if arg.expr is ast.ArrayInit {
+		if arg.expr.is_fixed {
+			if !arg.expr.has_it {
+				g.write('(${g.typ(arg.expr.typ)})')
+			}
+		}
 	}
 	g.expr_with_cast(arg.expr, arg_typ, expected_type)
 	if needs_closing {
