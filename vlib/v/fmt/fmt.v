@@ -2308,6 +2308,9 @@ pub fn (mut f Fmt) or_expr(node ast.OrExpr) {
 		.propagate_option {
 			f.write(' ?')
 		}
+		.propagate_result {
+			f.write(' !')
+		}
 	}
 }
 
