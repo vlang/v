@@ -220,10 +220,10 @@ fn my_init(mut app App) {
 	// 1x1 pixel white, default texture
 	unsafe {
 		tmp_txt := malloc(4)
-		tmp_txt[0] = byte(0xFF)
-		tmp_txt[1] = byte(0xFF)
-		tmp_txt[2] = byte(0xFF)
-		tmp_txt[3] = byte(0xFF)
+		tmp_txt[0] = u8(0xFF)
+		tmp_txt[1] = u8(0xFF)
+		tmp_txt[2] = u8(0xFF)
+		tmp_txt[3] = u8(0xFF)
 		app.texture = obj.create_texture(1, 1, tmp_txt)
 		free(tmp_txt)
 	}

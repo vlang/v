@@ -16,13 +16,13 @@ fn test_aes_ctr() {
 	println('test_aes_ctr ok')
 }
 
-fn aes_ctr_en(mut src []byte, key []byte, iv []byte) {
+fn aes_ctr_en(mut src []u8, key []u8, iv []u8) {
 	block := aes.new_cipher(key)
 	mode := cipher.new_ctr(block, iv)
 	mode.xor_key_stream(mut src, src.clone())
 }
 
-fn aes_ctr_de(mut src []byte, key []byte, iv []byte) {
+fn aes_ctr_de(mut src []u8, key []u8, iv []u8) {
 	block := aes.new_cipher(key)
 	mode := cipher.new_ctr(block, iv)
 	mode.xor_key_stream(mut src, src.clone())

@@ -1,0 +1,21 @@
+vlib/v/checker/tests/map_builtin_method_args_err.vv:4:16: error: `.clone()` does not have any arguments
+    2 |     mut m := {11: 22}
+    3 |
+    4 |     a1 := m.clone(11)
+      |                   ~~
+    5 |     println(a1)
+    6 |
+vlib/v/checker/tests/map_builtin_method_args_err.vv:7:15: error: `.move()` does not have any arguments
+    5 |     println(a1)
+    6 |
+    7 |     a2 := m.move(11)
+      |                  ~~
+    8 |     println(a2)
+    9 |
+vlib/v/checker/tests/map_builtin_method_args_err.vv:10:15: error: `.keys()` does not have any arguments
+    8 |     println(a2)
+    9 |
+   10 |     a3 := m.keys('aaa')
+      |                  ~~~~~
+   11 |     println(a3)
+   12 | }

@@ -75,10 +75,10 @@ fn C.sapp_frame_count() u64
 fn C.sapp_frame_duration() f64
 
 // write string into clipboard
-fn C.sapp_set_clipboard_string(str &byte)
+fn C.sapp_set_clipboard_string(str &u8)
 
 // read string from clipboard (usually during SAPP_EVENTTYPE_CLIPBOARD_PASTED)
-fn C.sapp_get_clipboard_string() &byte
+fn C.sapp_get_clipboard_string() &u8
 
 // set the window title (only on desktop platforms)
 fn C.sapp_set_window_title(&char)
@@ -90,7 +90,7 @@ fn C.sapp_set_window_title(&char)
 fn C.sapp_get_num_dropped_files() int
 
 // Get the file path of the droped file
-fn C.sapp_get_dropped_file_path(int) &byte
+fn C.sapp_get_dropped_file_path(int) &u8
 
 // special run-function for SOKOL_NO_ENTRY (in standard mode this is an empty stub)
 fn C.sapp_run(desc &Desc) int

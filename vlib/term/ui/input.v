@@ -160,7 +160,7 @@ pub:
 	// Keyboard event info
 	code      KeyCode
 	modifiers Modifiers
-	ascii     byte
+	ascii     u8
 	utf8      string
 	// Resized event info
 	width  int
@@ -172,7 +172,7 @@ pub struct Context {
 pub:
 	cfg Config // adsasdas
 mut:
-	print_buf  []byte
+	print_buf  []u8
 	paused     bool
 	enable_su  bool
 	enable_rgb bool

@@ -2,7 +2,7 @@
 type FooBar = Bar | Foo
 pub type PublicBar = Bar | Foo | FooBar
 
-type Uint = byte | u16 | u32 | u64 // This should stay on the same line
+type Uint = u16 | u32 | u64 | u8 // This should stay on the same line
 type Float = f32 | f64
 
 // Alias type

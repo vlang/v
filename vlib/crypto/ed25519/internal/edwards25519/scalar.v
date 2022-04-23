@@ -18,23 +18,23 @@ struct Scalar {
 mut:
 	// s is the Scalar value in little-endian. The value is always reduced
 	// between operations.
-	s [32]byte
+	s [32]u8
 }
 
 pub const (
 	sc_zero = Scalar{
-		s: [byte(0), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-			0, 0, 0, 0, 0, 0]!
+		s: [u8(0), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+			0, 0, 0, 0, 0]!
 	}
 
 	sc_one = Scalar{
-		s: [byte(1), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-			0, 0, 0, 0, 0, 0]!
+		s: [u8(1), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+			0, 0, 0, 0, 0]!
 	}
 
 	sc_minus_one = Scalar{
-		s: [byte(236), 211, 245, 92, 26, 99, 18, 88, 214, 156, 247, 162, 222, 249, 222, 20, 0,
-			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16]!
+		s: [u8(236), 211, 245, 92, 26, 99, 18, 88, 214, 156, 247, 162, 222, 249, 222, 20, 0, 0,
+			0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16]!
 	}
 )
 
@@ -86,11 +86,11 @@ pub fn (mut s Scalar) set(x Scalar) Scalar {
 // set_uniform_bytes sets s to an uniformly distributed value given 64 uniformly
 // distributed random bytes. If x is not of the right length, set_uniform_bytes
 // returns an error, and the receiver is unchanged.
-pub fn (mut s Scalar) set_uniform_bytes(x []byte) ?Scalar {
+pub fn (mut s Scalar) set_uniform_bytes(x []u8) ?Scalar {
 	if x.len != 64 {
 		return error('edwards25519: invalid set_uniform_bytes input length')
 	}
-	mut wide_bytes := []byte{len: 64}
+	mut wide_bytes := []u8{len: 64}
 	copy(mut wide_bytes, x)
 	// for i, item in x {
 	//	wide_bytes[i] = item
@@ -102,11 +102,11 @@ pub fn (mut s Scalar) set_uniform_bytes(x []byte) ?Scalar {
 // set_canonical_bytes sets s = x, where x is a 32-byte little-endian encoding of
 // s, and returns s. If x is not a canonical encoding of s, set_canonical_bytes
 // returns an error, and the receiver is unchanged.
-pub fn (mut s Scalar) set_canonical_bytes(x []byte) ?Scalar {
+pub fn (mut s Scalar) set_canonical_bytes(x []u8) ?Scalar {
 	if x.len != 32 {
 		return error('invalid scalar length')
 	}
-	// mut bb := []byte{len:32}
+	// mut bb := []u8{len:32}
 	mut ss := Scalar{}
 	for i, item in x {
 		ss.s[i] = item
@@ -152,7 +152,7 @@ fn is_reduced(s Scalar) bool {
 // expected as long as it is applied to points on the prime order subgroup, like
 // in Ed25519. In fact, it is lost to history why RFC 8032 adopted the
 // irrelevant RFC 7748 clamping, but it is now required for compatibility.
-pub fn (mut s Scalar) set_bytes_with_clamping(x []byte) ?Scalar {
+pub fn (mut s Scalar) set_bytes_with_clamping(x []u8) ?Scalar {
 	// The description above omits the purpose of the high bits of the clamping
 	// for brevity, but those are also lost to reductions, and are also
 	// irrelevant to edwards25519 as they protect against a specific
@@ -161,7 +161,7 @@ pub fn (mut s Scalar) set_bytes_with_clamping(x []byte) ?Scalar {
 		return error('edwards25519: invalid set_bytes_with_clamping input length')
 	}
 
-	mut wide_bytes := []byte{len: 64, cap: 64}
+	mut wide_bytes := []u8{len: 64, cap: 64}
 	copy(mut wide_bytes, x)
 	// for i, item in x {
 	//	wide_bytes[i] = item
@@ -174,8 +174,8 @@ pub fn (mut s Scalar) set_bytes_with_clamping(x []byte) ?Scalar {
 }
 
 // bytes returns the canonical 32-byte little-endian encoding of s.
-pub fn (mut s Scalar) bytes() []byte {
-	mut buf := []byte{len: 32}
+pub fn (mut s Scalar) bytes() []u8 {
+	mut buf := []u8{len: 32}
 	copy(mut buf, s.s[..])
 	return buf
 }
@@ -187,14 +187,14 @@ pub fn (s Scalar) equal(t Scalar) int {
 
 // sc_mul_add and sc_reduce are ported from the public domain, “ref10”
 // implementation of ed25519 from SUPERCOP.
-fn load3(inp []byte) i64 {
+fn load3(inp []u8) i64 {
 	mut r := i64(inp[0])
 	r |= i64(inp[1]) * 256 // << 8
 	r |= i64(inp[2]) * 65536 // << 16
 	return r
 }
 
-fn load4(inp []byte) i64 {
+fn load4(inp []u8) i64 {
 	mut r := i64(inp[0])
 	r |= i64(inp[1]) * 256
 	r |= i64(inp[2]) * 65536
@@ -210,7 +210,7 @@ fn load4(inp []byte) i64 {
 // Output:
 //   s[0]+256*s[1]+...+256^31*s[31] = (ab+c) mod l
 //   where l = 2^252 + 27742317777372353535851937790883648493.
-fn sc_mul_add(mut s [32]byte, a [32]byte, b [32]byte, c [32]byte) {
+fn sc_mul_add(mut s [32]u8, a [32]u8, b [32]u8, c [32]u8) {
 	a0 := 2097151 & load3(a[..])
 	a1 := 2097151 & (load4(a[2..]) >> 5)
 	a2 := 2097151 & (load3(a[5..]) >> 2)
@@ -613,38 +613,38 @@ fn sc_mul_add(mut s [32]byte, a [32]byte, b [32]byte, c [32]byte) {
 	s11 += carry[10]
 	s10 -= carry[10] * 2097152
 
-	s[0] = byte(s0 >> 0)
-	s[1] = byte(s0 >> 8)
-	s[2] = byte((s0 >> 16) | (s1 * 32))
-	s[3] = byte(s1 >> 3)
-	s[4] = byte(s1 >> 11)
-	s[5] = byte((s1 >> 19) | (s2 * 4))
-	s[6] = byte(s2 >> 6)
-	s[7] = byte((s2 >> 14) | (s3 * 128))
-	s[8] = byte(s3 >> 1)
-	s[9] = byte(s3 >> 9)
-	s[10] = byte((s3 >> 17) | (s4 * 16))
-	s[11] = byte(s4 >> 4)
-	s[12] = byte(s4 >> 12)
-	s[13] = byte((s4 >> 20) | (s5 * 2))
-	s[14] = byte(s5 >> 7)
-	s[15] = byte((s5 >> 15) | (s6 * 64))
-	s[16] = byte(s6 >> 2)
-	s[17] = byte(s6 >> 10)
-	s[18] = byte((s6 >> 18) | (s7 * 8))
-	s[19] = byte(s7 >> 5)
-	s[20] = byte(s7 >> 13)
-	s[21] = byte(s8 >> 0)
-	s[22] = byte(s8 >> 8)
-	s[23] = byte((s8 >> 16) | (s9 * 32))
-	s[24] = byte(s9 >> 3)
-	s[25] = byte(s9 >> 11)
-	s[26] = byte((s9 >> 19) | (s10 * 4))
-	s[27] = byte(s10 >> 6)
-	s[28] = byte((s10 >> 14) | (s11 * 128))
-	s[29] = byte(s11 >> 1)
-	s[30] = byte(s11 >> 9)
-	s[31] = byte(s11 >> 17)
+	s[0] = u8(s0 >> 0)
+	s[1] = u8(s0 >> 8)
+	s[2] = u8((s0 >> 16) | (s1 * 32))
+	s[3] = u8(s1 >> 3)
+	s[4] = u8(s1 >> 11)
+	s[5] = u8((s1 >> 19) | (s2 * 4))
+	s[6] = u8(s2 >> 6)
+	s[7] = u8((s2 >> 14) | (s3 * 128))
+	s[8] = u8(s3 >> 1)
+	s[9] = u8(s3 >> 9)
+	s[10] = u8((s3 >> 17) | (s4 * 16))
+	s[11] = u8(s4 >> 4)
+	s[12] = u8(s4 >> 12)
+	s[13] = u8((s4 >> 20) | (s5 * 2))
+	s[14] = u8(s5 >> 7)
+	s[15] = u8((s5 >> 15) | (s6 * 64))
+	s[16] = u8(s6 >> 2)
+	s[17] = u8(s6 >> 10)
+	s[18] = u8((s6 >> 18) | (s7 * 8))
+	s[19] = u8(s7 >> 5)
+	s[20] = u8(s7 >> 13)
+	s[21] = u8(s8 >> 0)
+	s[22] = u8(s8 >> 8)
+	s[23] = u8((s8 >> 16) | (s9 * 32))
+	s[24] = u8(s9 >> 3)
+	s[25] = u8(s9 >> 11)
+	s[26] = u8((s9 >> 19) | (s10 * 4))
+	s[27] = u8(s10 >> 6)
+	s[28] = u8((s10 >> 14) | (s11 * 128))
+	s[29] = u8(s11 >> 1)
+	s[30] = u8(s11 >> 9)
+	s[31] = u8(s11 >> 17)
 }
 
 // Input:
@@ -653,7 +653,7 @@ fn sc_mul_add(mut s [32]byte, a [32]byte, b [32]byte, c [32]byte) {
 // Output:
 //   s[0]+256*s[1]+...+256^31*s[31] = s mod l
 //   where l = 2^252 + 27742317777372353535851937790883648493.
-fn sc_reduce(mut out [32]byte, mut s []byte) {
+fn sc_reduce(mut out [32]u8, mut s []u8) {
 	assert out.len == 32
 	assert s.len == 64
 	mut s0 := 2097151 & load3(s[..])
@@ -940,38 +940,38 @@ fn sc_reduce(mut out [32]byte, mut s []byte) {
 	s11 += carry[10]
 	s10 -= carry[10] * 2097152
 
-	out[0] = byte(s0 >> 0)
-	out[1] = byte(s0 >> 8)
-	out[2] = byte((s0 >> 16) | (s1 * 32))
-	out[3] = byte(s1 >> 3)
-	out[4] = byte(s1 >> 11)
-	out[5] = byte((s1 >> 19) | (s2 * 4))
-	out[6] = byte(s2 >> 6)
-	out[7] = byte((s2 >> 14) | (s3 * 128))
-	out[8] = byte(s3 >> 1)
-	out[9] = byte(s3 >> 9)
-	out[10] = byte((s3 >> 17) | (s4 * 16))
-	out[11] = byte(s4 >> 4)
-	out[12] = byte(s4 >> 12)
-	out[13] = byte((s4 >> 20) | (s5 * 2))
-	out[14] = byte(s5 >> 7)
-	out[15] = byte((s5 >> 15) | (s6 * 64))
-	out[16] = byte(s6 >> 2)
-	out[17] = byte(s6 >> 10)
-	out[18] = byte((s6 >> 18) | (s7 * 8))
-	out[19] = byte(s7 >> 5)
-	out[20] = byte(s7 >> 13)
-	out[21] = byte(s8 >> 0)
-	out[22] = byte(s8 >> 8)
-	out[23] = byte((s8 >> 16) | (s9 * 32))
-	out[24] = byte(s9 >> 3)
-	out[25] = byte(s9 >> 11)
-	out[26] = byte((s9 >> 19) | (s10 * 4))
-	out[27] = byte(s10 >> 6)
-	out[28] = byte((s10 >> 14) | (s11 * 128))
-	out[29] = byte(s11 >> 1)
-	out[30] = byte(s11 >> 9)
-	out[31] = byte(s11 >> 17)
+	out[0] = u8(s0 >> 0)
+	out[1] = u8(s0 >> 8)
+	out[2] = u8((s0 >> 16) | (s1 * 32))
+	out[3] = u8(s1 >> 3)
+	out[4] = u8(s1 >> 11)
+	out[5] = u8((s1 >> 19) | (s2 * 4))
+	out[6] = u8(s2 >> 6)
+	out[7] = u8((s2 >> 14) | (s3 * 128))
+	out[8] = u8(s3 >> 1)
+	out[9] = u8(s3 >> 9)
+	out[10] = u8((s3 >> 17) | (s4 * 16))
+	out[11] = u8(s4 >> 4)
+	out[12] = u8(s4 >> 12)
+	out[13] = u8((s4 >> 20) | (s5 * 2))
+	out[14] = u8(s5 >> 7)
+	out[15] = u8((s5 >> 15) | (s6 * 64))
+	out[16] = u8(s6 >> 2)
+	out[17] = u8(s6 >> 10)
+	out[18] = u8((s6 >> 18) | (s7 * 8))
+	out[19] = u8(s7 >> 5)
+	out[20] = u8(s7 >> 13)
+	out[21] = u8(s8 >> 0)
+	out[22] = u8(s8 >> 8)
+	out[23] = u8((s8 >> 16) | (s9 * 32))
+	out[24] = u8(s9 >> 3)
+	out[25] = u8(s9 >> 11)
+	out[26] = u8((s9 >> 19) | (s10 * 4))
+	out[27] = u8(s10 >> 6)
+	out[28] = u8((s10 >> 14) | (s11 * 128))
+	out[29] = u8(s11 >> 1)
+	out[30] = u8(s11 >> 9)
+	out[31] = u8(s11 >> 17)
 }
 
 // non_adjacent_form computes a width-w non-adjacent form for this scalar.

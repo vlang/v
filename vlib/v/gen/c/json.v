@@ -73,9 +73,30 @@ $dec_fn_dec {
 	if (!root) {
 		const char *error_ptr = cJSON_GetErrorPtr();
 		if (error_ptr != NULL)	{
-			// fprintf(stderr, "Error in decode() for $styp error_ptr=: %s\\n", error_ptr);
-			// printf("\\nbad js=%%s\\n", js.str);
-			return (Option_$styp){.state = 2,.err = _v_error(tos2((byteptr)error_ptr)),.data = {0}};
+			const int error_pos = (int)cJSON_GetErrorPos();
+			int maxcontext_chars = 30;
+			byte *buf = vcalloc_noscan(maxcontext_chars + 10);
+			if(error_pos > 0) {
+				int backlines = 1;
+				int backchars = error_pos < maxcontext_chars-7 ? (int)error_pos : maxcontext_chars-7 ;
+				char *prevline_ptr = (char*)error_ptr;
+				while(backchars--){
+					char prevc = *(prevline_ptr - 1);
+					if(0==prevc){
+						break;
+					}
+					if(10==prevc && !backlines--){
+						break;
+					}
+					prevline_ptr--;
+					if(123==prevc) {
+						break; // stop at `{` too
+					}
+				}
+				int maxchars = vstrlen_char(prevline_ptr);
+				vmemcpy(buf, prevline_ptr, (maxchars < maxcontext_chars ? maxchars : maxcontext_chars));
+			}
+			return (Option_$styp){.state = 2,.err = _v_error(tos2(buf)),.data = {0}};
 		}
 	}
 ')
@@ -181,7 +202,7 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 		g.definitions.writeln('static inline $sym.cname ${variant_typ}_to_sumtype_${sym.cname}($variant_typ* x);')
 
 		// ENCODING
-		enc.writeln('\tif (val._typ == $variant) {')
+		enc.writeln('\tif (val._typ == $variant.idx()) {')
 		$if json_no_inline_sumtypes ? {
 			if variant_sym.kind == .enum_ {
 				enc.writeln('\t\tcJSON_AddItemToObject(o, "$unmangled_variant_name", ${js_enc_name('u64')}(*val._$variant_typ));')
@@ -287,6 +308,24 @@ fn (mut g Gen) gen_sumtype_enc_dec(sym ast.TypeSymbol, mut enc strings.Builder, 
 					dec.writeln('\t\tif (cJSON_IsString(root)) {')
 					dec.writeln('\t\t\t$var_t value = ${js_dec_name(var_t)}(root);')
 					dec.writeln('\t\t\tres = ${var_t}_to_sumtype_${sym.cname}(&value);')
+					dec.writeln('\t\t}')
+				}
+
+				if var_t.starts_with('Array_') {
+					tmp := g.new_tmp_var()
+					judge_elem_typ := if var_t.ends_with('string') {
+						'cJSON_IsString(root->child)'
+					} else if var_t.ends_with('bool') {
+						'cJSON_IsBool(root->child)'
+					} else {
+						'cJSON_IsNumber(root->child)'
+					}
+					dec.writeln('\t\tif (cJSON_IsArray(root) && $judge_elem_typ) {')
+					dec.writeln('\t\t\tOption_$var_t $tmp = ${js_dec_name(var_t)}(root);')
+					dec.writeln('\t\t\tif (${tmp}.state != 0) {')
+					dec.writeln('\t\t\t\treturn (Option_$sym.cname){ .state = ${tmp}.state, .err = ${tmp}.err, .data = {0} };')
+					dec.writeln('\t\t\t}')
+					dec.writeln('\t\t\tres = ${var_t}_to_sumtype_${sym.cname}(($var_t*)${tmp}.data);')
 					dec.writeln('\t\t}')
 				}
 

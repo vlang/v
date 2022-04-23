@@ -203,6 +203,9 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	if v.pref.os == .ios {
 		ccoptions.args << '-fobjc-arc'
 	}
+	if v.pref.os == .macos && os.exists('/opt/procursus') {
+		ccoptions.linker_flags << '-Wl,-rpath,/opt/procursus/lib'
+	}
 	ccoptions.debug_mode = v.pref.is_debug
 	ccoptions.guessed_compiler = v.pref.ccompiler
 	if ccoptions.guessed_compiler == 'cc' && v.pref.is_prod {
@@ -344,7 +347,11 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	if v.pref.os == .macos {
 		ccoptions.post_args << '-mmacosx-version-min=10.7'
 	} else if v.pref.os == .ios {
-		ccoptions.post_args << '-miphoneos-version-min=10.0'
+		if v.pref.is_ios_simulator {
+			ccoptions.post_args << '-miphonesimulator-version-min=10.0'
+		} else {
+			ccoptions.post_args << '-miphoneos-version-min=10.0'
+		}
 	} else if v.pref.os == .windows {
 		ccoptions.post_args << '-municode'
 	}
@@ -523,17 +530,7 @@ pub fn (mut v Builder) cc() {
 		// try to compile with the choosen compiler
 		// if compilation fails, retry again with another
 		mut ccompiler := v.pref.ccompiler
-		if v.pref.os == .ios {
-			ios_sdk := if v.pref.is_ios_simulator { 'iphonesimulator' } else { 'iphoneos' }
-			ios_sdk_path_res := os.execute_or_exit('xcrun --sdk $ios_sdk --show-sdk-path')
-			mut isysroot := ios_sdk_path_res.output.replace('\n', '')
-			arch := if v.pref.is_ios_simulator {
-				'-arch x86_64'
-			} else {
-				'-arch armv7 -arch armv7s -arch arm64'
-			}
-			ccompiler = 'xcrun --sdk iphoneos clang -isysroot $isysroot $arch'
-		} else if v.pref.os == .wasm32 {
+		if v.pref.os == .wasm32 {
 			ccompiler = 'clang'
 		}
 		v.setup_ccompiler_options(ccompiler)
@@ -619,7 +616,7 @@ pub fn (mut v Builder) cc() {
 				}
 				if v.pref.retry_compilation {
 					tcc_output = res
-					v.pref.ccompiler = pref.default_c_compiler()
+					v.pref.default_c_compiler()
 					if v.pref.is_verbose {
 						eprintln('Compilation with tcc failed. Retrying with $v.pref.ccompiler ...')
 					}
@@ -843,7 +840,7 @@ fn (mut c Builder) cc_windows_cross() {
 	all_args << args
 	all_args << '-municode'
 	c.dump_c_options(all_args)
-	mut cmd := pref.vcross_compiler_name(pref.cc_to_windows) + ' ' + all_args.join(' ')
+	mut cmd := c.pref.vcross_compiler_name() + ' ' + all_args.join(' ')
 	// cmd := 'clang -o $obj_name -w $include -m32 -c -target x86_64-win32 ${pref.default_module_path}/$c.out_name_c'
 	if c.pref.is_verbose || c.pref.show_cc {
 		println(cmd)

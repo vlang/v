@@ -1,0 +1,6 @@
+fn /*main*/main() {
+	return
+}
+
+fn // hi
+print_hi(){println('hi')}

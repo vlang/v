@@ -15,14 +15,14 @@ fn test_generic_is() {
 }
 
 fn g<T>(t T) int {
-	$if T is byte || T is i8 {
+	$if T is u8 || T is i8 {
 		return 1
 	}
 	return 2
 }
 
 fn test_is_or() {
-	assert g(byte(1)) == 1
+	assert g(u8(1)) == 1
 	assert g(i8(1)) == 1
 	assert g(1) == 2
 }

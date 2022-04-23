@@ -1,0 +1,6 @@
+vlib/v/checker/tests/misspelled_mod_fn_name_should_have_suggestion.vv:3:9: error: unknown function: os.read_fil .
+Did you mean `os.read_file`?
+    1 | import os
+    2 | 
+    3 | dump(os.read_fil('abc'))
+      |         ~~~~~~~~~~~~~~~

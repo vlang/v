@@ -8,7 +8,7 @@ const oldvexe = fullpath(tools_folder, 'oldv')
 
 const oldv_source = fullpath(tools_folder, 'oldv.v')
 
-const vroot = os.real_path(os.dir(tools_folder))
+const vroot = os.real_path(os.dir(os.dir(tools_folder)))
 
 const vexe = fullpath(vroot, 'v')
 

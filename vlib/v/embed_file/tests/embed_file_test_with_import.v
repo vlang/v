@@ -8,7 +8,7 @@ fn test_embed_file_with_import() {
 	eprintln('file after .data() call: $file')
 	assert file.len == 603
 	unsafe {
-		assert fdata.vbytes(4) == [byte(0x89), `P`, `N`, `G`]
+		assert fdata.vbytes(4) == [u8(0x89), `P`, `N`, `G`]
 	}
 	assert check_file(file)
 }

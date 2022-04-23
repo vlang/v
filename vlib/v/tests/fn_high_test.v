@@ -28,7 +28,7 @@ fn high_fn_return_single_anon() fn (int) f32 {
 
 fn high_fn_return_multi_anons() (fn (int) f32, fn (int) string) {
 	// parsing trap
-	_ = fn (n int) byte {
+	_ = fn (n int) u8 {
 		return 0x00
 	}
 	correct_second := fn (n int) string {

@@ -161,8 +161,8 @@ fn test_embed_method_generic() {
 type Piece = King | Queen
 
 struct Pos {
-	x byte
-	y byte
+	x u8
+	y u8
 }
 
 enum TeamEnum {

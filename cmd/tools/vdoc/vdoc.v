@@ -104,11 +104,15 @@ fn (vd VDoc) gen_plaintext(d doc.Doc) string {
 			d.head.merge_comments_without_examples()
 		}
 		if comments.trim_space().len > 0 {
-			pw.writeln(comments.split_into_lines().map('    ' + it).join('\n'))
+			pw.writeln(indent(comments))
 		}
 	}
 	vd.write_plaintext_content(d.contents.arr(), mut pw)
 	return pw.str()
+}
+
+fn indent(s string) string {
+	return '    ' + s.replace('\n', '\n    ')
 }
 
 fn (vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.Builder) {
@@ -121,12 +125,24 @@ fn (vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.Buil
 				pw.writeln(cn.content)
 			}
 			if cn.comments.len > 0 && cfg.include_comments {
-				comments := if cfg.include_examples {
-					cn.merge_comments()
-				} else {
-					cn.merge_comments_without_examples()
+				comments := cn.merge_comments_without_examples()
+				pw.writeln(indent(comments.trim_space()))
+				if cfg.include_examples {
+					examples := cn.examples()
+					for ex in examples {
+						pw.write_string('    Example: ')
+						mut fex := ex
+						if ex.index_u8(`\n`) >= 0 {
+							// multi-line example
+							pw.write_u8(`\n`)
+							fex = indent(ex)
+						}
+						if cfg.is_color {
+							fex = color_highlight(fex, vd.docs[0].table)
+						}
+						pw.writeln(fex)
+					}
 				}
-				pw.writeln(comments.trim_space().split_into_lines().map('    ' + it).join('\n'))
 			}
 			if cfg.show_loc {
 				pw.writeln('Location: $cn.file_path:${cn.pos.line_nr + 1}\n')
@@ -228,8 +244,8 @@ fn (vd VDoc) get_readme(path string) string {
 
 fn (vd VDoc) emit_generate_err(err IError) {
 	cfg := vd.cfg
-	mut err_msg := err.msg
-	if err.code == 1 {
+	mut err_msg := err.msg()
+	if err.code() == 1 {
 		mod_list := get_modules_list(cfg.input_path, []string{})
 		println('Available modules:\n==================')
 		for mod in mod_list {
@@ -451,7 +467,7 @@ fn parse_arguments(args []string) Config {
 					exit(1)
 				}
 				selected_platform := doc.platform_from_string(platform_str) or {
-					eprintln(err.msg)
+					eprintln(err.msg())
 					exit(1)
 				}
 				cfg.platform = selected_platform

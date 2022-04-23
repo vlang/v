@@ -38,7 +38,7 @@ fn error_msg(message string, val string) string {
 //
 // Please be informed that for now should_escape does not check all
 // reserved characters correctly. See golang.org/issue/5684.
-fn should_escape(c byte, mode EncodingMode) bool {
+fn should_escape(c u8, mode EncodingMode) bool {
 	// §2.3 Unreserved characters (alphanum)
 	if (`a` <= c && c <= `z`) || (`A` <= c && c <= `Z`) || (`0` <= c && c <= `9`) {
 		return false
@@ -190,7 +190,7 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 					if i + 3 >= s.len {
 						return error(error_msg('unescape: invalid escape sequence', ''))
 					}
-					v := ((unhex(s[i + 1]) << byte(4)) | unhex(s[i + 2]))
+					v := ((unhex(s[i + 1]) << u8(4)) | unhex(s[i + 2]))
 					if s[i..i + 3] != '%25' && v != ` ` && should_escape(v, .encode_host) {
 						error(error_msg(urllib.err_msg_escape, s[i..i + 3]))
 					}
@@ -224,7 +224,7 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 				if i + 2 >= s.len {
 					return error(error_msg('unescape: invalid escape sequence', ''))
 				}
-				t.write_string(((unhex(s[i + 1]) << byte(4)) | unhex(s[i + 2])).ascii_str())
+				t.write_string(((unhex(s[i + 1]) << u8(4)) | unhex(s[i + 2])).ascii_str())
 				i += 2
 			}
 			`+` {
@@ -257,7 +257,7 @@ pub fn path_escape(s string) string {
 fn escape(s string, mode EncodingMode) string {
 	mut space_count := 0
 	mut hex_count := 0
-	mut c := byte(0)
+	mut c := u8(0)
 	for i in 0 .. s.len {
 		c = s[i]
 		if should_escape(c, mode) {
@@ -272,7 +272,7 @@ fn escape(s string, mode EncodingMode) string {
 		return s
 	}
 	required := s.len + 2 * hex_count
-	mut t := []byte{len: required}
+	mut t := []u8{len: required}
 	if hex_count == 0 {
 		copy(mut t, s.bytes())
 		for i in 0 .. s.len {
@@ -417,8 +417,8 @@ fn get_scheme(rawurl string) ?string {
 // split slices s into two substrings separated by the first occurence of
 // sep. If cutc is true then sep is included with the second substring.
 // If sep does not occur in s then s and the empty string is returned.
-fn split(s string, sep byte, cutc bool) (string, string) {
-	i := s.index_byte(sep)
+fn split(s string, sep u8, cutc bool) (string, string) {
+	i := s.index_u8(sep)
 	if i < 0 {
 		return s, ''
 	}
@@ -462,7 +462,7 @@ fn parse_request_uri(rawurl string) ?URL {
 // If via_request is false, all forms of relative URLs are allowed.
 [manualfree]
 fn parse_url(rawurl string, via_request bool) ?URL {
-	if string_contains_ctl_byte(rawurl) {
+	if string_contains_ctl_u8(rawurl) {
 		return error(error_msg('parse_url: invalid control character in URL', rawurl))
 	}
 	if rawurl == '' && via_request {
@@ -746,11 +746,11 @@ pub fn (u URL) str() string {
 			// it would be mistaken for a scheme name. Such a segment must be
 			// preceded by a dot-segment (e.g., './this:that') to make a relative-
 			// path reference.
-			i := path.index_byte(`:`)
+			i := path.index_u8(`:`)
 			if i > -1 {
 				// TODO remove this when autofree handles tmp
 				// expressions like this
-				if i > -1 && path[..i].index_byte(`/`) == -1 {
+				if i > -1 && path[..i].index_u8(`/`) == -1 {
 					buf.write_string('./')
 				}
 			}
@@ -1006,7 +1006,7 @@ pub fn (u &URL) port() string {
 fn split_host_port(hostport string) (string, string) {
 	mut host := hostport
 	mut port := ''
-	colon := host.last_index_byte(`:`)
+	colon := host.last_index_u8(`:`)
 	if colon != -1 {
 		if valid_optional_port(host[colon..]) {
 			port = host[colon + 1..]
@@ -1052,7 +1052,7 @@ pub fn valid_userinfo(s string) bool {
 }
 
 // string_contains_ctl_byte reports whether s contains any ASCII control character.
-fn string_contains_ctl_byte(s string) bool {
+fn string_contains_ctl_u8(s string) bool {
 	for i in 0 .. s.len {
 		b := s[i]
 		if b < ` ` || b == 0x7f {
@@ -1062,7 +1062,7 @@ fn string_contains_ctl_byte(s string) bool {
 	return false
 }
 
-pub fn ishex(c byte) bool {
+pub fn ishex(c u8) bool {
 	if `0` <= c && c <= `9` {
 		return true
 	} else if `a` <= c && c <= `f` {
@@ -1073,7 +1073,7 @@ pub fn ishex(c byte) bool {
 	return false
 }
 
-fn unhex(c byte) byte {
+fn unhex(c u8) u8 {
 	if `0` <= c && c <= `9` {
 		return c - `0`
 	} else if `a` <= c && c <= `f` {

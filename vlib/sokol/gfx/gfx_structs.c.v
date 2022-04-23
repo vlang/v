@@ -527,9 +527,9 @@ struct C.sg_stencil_state {
 	enabled    bool
 	front      StencilFaceState
 	back       StencilFaceState
-	read_mask  byte
-	write_mask byte
-	ref        byte
+	read_mask  u8
+	write_mask u8
+	ref        u8
 }
 
 pub type StencilState = C.sg_stencil_state
@@ -594,7 +594,7 @@ pub type DepthAttachmentAction = C.sg_depth_attachment_action
 struct C.sg_stencil_attachment_action {
 pub mut:
 	action Action
-	value  byte
+	value  u8
 }
 
 pub type StencilAttachmentAction = C.sg_stencil_attachment_action

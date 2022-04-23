@@ -2,12 +2,12 @@ module hash
 
 //#flag -I @VEXEROOT/thirdparty/wyhash
 //#include "wyhash.h"
-fn C.wyhash(&byte, u64, u64, &u64) u64
+fn C.wyhash(&u8, u64, u64, &u64) u64
 
 fn C.wyhash64(u64, u64) u64
 
 [inline]
-pub fn wyhash_c(key &byte, len u64, seed u64) u64 {
+pub fn wyhash_c(key &u8, len u64, seed u64) u64 {
 	return C.wyhash(key, len, seed, &u64(C._wyp))
 }
 
@@ -22,6 +22,6 @@ pub fn sum64_string(key string, seed u64) u64 {
 }
 
 [inline]
-pub fn sum64(key []byte, seed u64) u64 {
-	return wyhash_c(&byte(key.data), u64(key.len), seed)
+pub fn sum64(key []u8, seed u64) u64 {
+	return wyhash_c(&u8(key.data), u64(key.len), seed)
 }

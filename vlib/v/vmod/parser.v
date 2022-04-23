@@ -80,11 +80,11 @@ fn (mut s Scanner) skip_whitespace() {
 	}
 }
 
-fn is_name_alpha(chr byte) bool {
+fn is_name_alpha(chr u8) bool {
 	return chr.is_letter() || chr == `_`
 }
 
-fn (mut s Scanner) create_string(q byte) string {
+fn (mut s Scanner) create_string(q u8) string {
 	mut str := ''
 	for s.pos < s.text.len && s.text[s.pos] != q {
 		if s.text[s.pos] == `\\` && s.text[s.pos + 1] == q {
@@ -107,7 +107,7 @@ fn (mut s Scanner) create_ident() string {
 	return text
 }
 
-fn (s Scanner) peek_char(c byte) bool {
+fn (s Scanner) peek_char(c u8) bool {
 	return s.pos - 1 < s.text.len && s.text[s.pos - 1] == c
 }
 

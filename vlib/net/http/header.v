@@ -630,7 +630,7 @@ struct HeaderKeyError {
 	Error
 	code         int
 	header       string
-	invalid_char byte
+	invalid_char u8
 }
 
 pub fn (err HeaderKeyError) msg() string {
@@ -662,7 +662,7 @@ fn is_valid(header string) ? {
 }
 
 // is_token checks if the byte is valid for a header token
-fn is_token(b byte) bool {
+fn is_token(b u8) bool {
 	return match b {
 		33, 35...39, 42, 43, 45, 46, 48...57, 65...90, 94...122, 124, 126 { true }
 		else { false }

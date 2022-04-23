@@ -4,7 +4,7 @@ import io
 
 struct TestReader {
 pub:
-	bytes []byte
+	bytes []u8
 mut:
 	i int
 }
@@ -35,7 +35,7 @@ fn test_decode_a() ? {
 	}
 }
 
-fn (mut b TestReader) read(mut buf []byte) ?int {
+fn (mut b TestReader) read(mut buf []u8) ?int {
 	if !(b.i < b.bytes.len) {
 		return none
 	}

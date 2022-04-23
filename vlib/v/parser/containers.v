@@ -43,7 +43,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		}
 		last_pos = p.tok.pos()
 	} else {
-		// [1,2,3] or [const]byte
+		// [1,2,3] or [const]u8
 		old_inside_array_lit := p.inside_array_lit
 		p.inside_array_lit = true
 		pre_cmnts = p.eat_comments()
@@ -66,8 +66,11 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		last_pos = p.tok.pos()
 		p.check(.rsbr)
 		if exprs.len == 1 && p.tok.kind in [.name, .amp, .lsbr] && p.tok.line_nr == line_nr {
-			// [100]byte
+			// [100]u8
 			elem_type = p.parse_type()
+			if p.table.sym(elem_type).name == 'byte' {
+				p.error('`byte` has been deprecated in favor of `u8`: use `[10]u8{}` instead of `[10]byte{}`')
+			}
 			last_pos = p.tok.pos()
 			is_fixed = true
 			if p.tok.kind == .lcbr {

@@ -3,7 +3,7 @@
 {1, { .str=(byteptr)("embed.vv"), .len=8, .is_lit=1 }, { .str=(byteptr)("none"), .len=4, .is_lit=1 }, _v_embed_blob_1},
 
 VV_LOCAL_SYMBOL void v__preludes__embed_file__zlib__init(void);
-VV_LOCAL_SYMBOL Option_Array_byte v__preludes__embed_file__zlib__ZLibDecoder_decompress(v__preludes__embed_file__zlib__ZLibDecoder _d1, Array_byte data) {
+VV_LOCAL_SYMBOL Option_Array_u8 v__preludes__embed_file__zlib__ZLibDecoder_decompress(v__preludes__embed_file__zlib__ZLibDecoder _d1, Array_u8 data) {
 = compress__zlib__decompress(data);
 
 res.compressed = v__embed_file__find_index_entry_by_path((voidptr)_v_embed_file_index, _SLIT("embed.vv"), _SLIT("zlib"))->data;

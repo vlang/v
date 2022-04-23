@@ -6,20 +6,20 @@ module strings
 /*
 pub struct Builder {
 mut:
-	buf []byte
+	buf []u8
 pub mut:
 	len          int
 	initial_size int = 1
 }*/
 
-pub type Builder = []byte
+pub type Builder = []u8
 
 pub fn new_builder(initial_size int) Builder {
-	return []byte{cap: initial_size}
+	return []u8{cap: initial_size}
 }
 
-[deprecated: 'Use write_byte() instead']
-pub fn (mut b Builder) write_b(data byte) {
+[deprecated: 'Use write_u8() instead']
+pub fn (mut b Builder) write_b(data u8) {
 	b << data
 }
 
@@ -27,7 +27,11 @@ pub fn (mut b Builder) write_byte(data byte) {
 	b << data
 }
 
-pub fn (mut b Builder) write(data []byte) ?int {
+pub fn (mut b Builder) write_u8(data u8) {
+	b << data
+}
+
+pub fn (mut b Builder) write(data []u8) ?int {
 	if data.len == 0 {
 		return 0
 	}
@@ -35,7 +39,7 @@ pub fn (mut b Builder) write(data []byte) ?int {
 	return data.len
 }
 
-pub fn (b &Builder) byte_at(n int) byte {
+pub fn (b &Builder) byte_at(n int) u8 {
 	unsafe {
 		return b[n]
 	}

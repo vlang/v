@@ -29,22 +29,22 @@ fn test_des() {
 	println('test_des ok')
 }
 
-fn des_en(mut src []byte, key []byte, iv []byte) {
+fn des_en(mut src []u8, key []u8, iv []u8) {
 	block := des.new_cipher(key)
 	block.encrypt(mut src, src.clone())
 }
 
-fn des_de(mut src []byte, key []byte, iv []byte) {
+fn des_de(mut src []u8, key []u8, iv []u8) {
 	block := des.new_cipher(key)
 	block.decrypt(mut src, src.clone())
 }
 
-fn triple_des_en(mut src []byte, key []byte, iv []byte) {
+fn triple_des_en(mut src []u8, key []u8, iv []u8) {
 	block := des.new_triple_des_cipher(key)
 	block.encrypt(mut src, src.clone())
 }
 
-fn triple_des_de(mut src []byte, key []byte, iv []byte) {
+fn triple_des_de(mut src []u8, key []u8, iv []u8) {
 	block := des.new_triple_des_cipher(key)
 	inbuf := src.clone()
 	block.decrypt(mut src, inbuf)

@@ -9,7 +9,7 @@ import strings
 // Encoder encodes the an `Any` type into JSON representation.
 // It provides parameters in order to change the end result.
 pub struct Encoder {
-	newline              byte
+	newline              u8
 	newline_spaces_count int
 	escape_unicode       bool = true
 }
@@ -22,17 +22,17 @@ const true_in_bytes = 'true'.bytes()
 
 const false_in_bytes = 'false'.bytes()
 
-const zero_in_bytes = [byte(`0`)]
+const zero_in_bytes = [u8(`0`)]
 
-const comma_bytes = [byte(`,`)]
+const comma_bytes = [u8(`,`)]
 
-const colon_bytes = [byte(`:`)]
+const colon_bytes = [u8(`:`)]
 
-const space_bytes = [byte(` `)]
+const space_bytes = [u8(` `)]
 
-const unicode_escape_chars = [byte(`\\`), `u`]
+const unicode_escape_chars = [u8(`\\`), `u`]
 
-const quote_bytes = [byte(`"`)]
+const quote_bytes = [u8(`"`)]
 
 const escaped_chars = [(r'\b').bytes(), (r'\f').bytes(), (r'\n').bytes(),
 	(r'\r').bytes(), (r'\t').bytes()]
@@ -78,7 +78,7 @@ fn (e &Encoder) encode_value_with_level(f Any, level int, mut wr io.Writer) ? {
 			wr.write(json2.zero_in_bytes) ?
 		}
 		map[string]Any {
-			wr.write([byte(`{`)]) ?
+			wr.write([u8(`{`)]) ?
 			mut i := 0
 			for k, v in f {
 				e.encode_newline(level, mut wr) ?
@@ -94,10 +94,10 @@ fn (e &Encoder) encode_value_with_level(f Any, level int, mut wr io.Writer) ? {
 				i++
 			}
 			e.encode_newline(level - 1, mut wr) ?
-			wr.write([byte(`}`)]) ?
+			wr.write([u8(`}`)]) ?
 		}
 		[]Any {
-			wr.write([byte(`[`)]) ?
+			wr.write([u8(`[`)]) ?
 			for i, v in f {
 				e.encode_newline(level, mut wr) ?
 				e.encode_value_with_level(v, level + 1, mut wr) ?
@@ -106,7 +106,7 @@ fn (e &Encoder) encode_value_with_level(f Any, level int, mut wr io.Writer) ? {
 				}
 			}
 			e.encode_newline(level - 1, mut wr) ?
-			wr.write([byte(`]`)]) ?
+			wr.write([u8(`]`)]) ?
 		}
 		Null {
 			wr.write(json2.null_in_bytes) ?
@@ -180,7 +180,7 @@ fn (mut iter CharLengthIterator) next() ?int {
 	mut len := 1
 	c := iter.text[iter.idx]
 	if (c & (1 << 7)) != 0 {
-		for t := byte(1 << 6); (c & t) != 0; t >>= 1 {
+		for t := u8(1 << 6); (c & t) != 0; t >>= 1 {
 			len++
 			iter.idx++
 		}
@@ -207,7 +207,7 @@ fn (e &Encoder) encode_string(s string, mut wr io.Writer) ? {
 					}
 				}
 			} else if chr == `"` || chr == `/` || chr == `\\` {
-				wr.write([byte(`\\`), chr]) ?
+				wr.write([u8(`\\`), chr]) ?
 			} else if int(chr) < 0x20 {
 				hex_code := chr.hex().bytes()
 				wr.write(json2.unicode_escape_chars) ? // \u
@@ -215,7 +215,7 @@ fn (e &Encoder) encode_string(s string, mut wr io.Writer) ? {
 				wr.write(json2.zero_in_bytes) ? // \u00
 				wr.write(hex_code) ? // \u00xxxx
 			} else {
-				wr.write([byte(chr)]) ?
+				wr.write([u8(chr)]) ?
 			}
 		} else {
 			slice := s[i..i + char_len]

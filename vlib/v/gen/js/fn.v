@@ -121,7 +121,7 @@ fn (mut g JsGen) js_call(node ast.CallExpr) {
 				if g.file.mod.name == 'main' && g.fn_decl.name == 'main.main' {
 					g.writeln('return builtin__panic($panicstr)')
 				} else {
-					g.writeln('throw new Option({ state: new byte(2), err: error(new string($panicstr)) });')
+					g.writeln('throw new Option({ state: new u8(2), err: error(new string($panicstr)) });')
 				}
 			}
 			else {}
@@ -181,7 +181,7 @@ fn (mut g JsGen) js_method_call(node ast.CallExpr) {
 				if g.file.mod.name == 'main' && g.fn_decl.name == 'main.main' {
 					g.writeln('return builtin__panic($panicstr)')
 				} else {
-					g.writeln('throw new Option({ state: new byte(2), err: error(new string($panicstr)) });')
+					g.writeln('throw new Option({ state: new u8(2), err: error(new string($panicstr)) });')
 				}
 			}
 			else {}

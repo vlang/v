@@ -42,17 +42,17 @@ fn C.XChangeProperty(d &C.Display, requestor Window, property Atom, typ Atom, fo
 
 fn C.XSendEvent(d &C.Display, requestor Window, propogate int, mask i64, event &C.XEvent)
 
-fn C.XInternAtom(d &C.Display, typ &byte, only_if_exists int) Atom
+fn C.XInternAtom(d &C.Display, typ &u8, only_if_exists int) Atom
 
 fn C.XCreateSimpleWindow(d &C.Display, root Window, x int, y int, width u32, height u32, border_width u32, border u64, background u64) Window
 
-fn C.XOpenDisplay(name &byte) &C.Display
+fn C.XOpenDisplay(name &u8) &C.Display
 
 fn C.XConvertSelection(d &C.Display, selection Atom, target Atom, property Atom, requestor Window, time int) int
 
 fn C.XSync(d &C.Display, discard int) int
 
-fn C.XGetWindowProperty(d &C.Display, w Window, property Atom, offset i64, length i64, delete int, req_type Atom, actual_type_return &Atom, actual_format_return &int, nitems &u64, bytes_after_return &u64, prop_return &&byte) int
+fn C.XGetWindowProperty(d &C.Display, w Window, property Atom, offset i64, length i64, delete int, req_type Atom, actual_type_return &Atom, actual_format_return &int, nitems &u64, bytes_after_return &u64, prop_return &&u8) int
 
 fn C.XDeleteProperty(d &C.Display, w Window, property Atom) int
 
@@ -154,7 +154,7 @@ struct Property {
 	actual_type   Atom
 	actual_format int
 	nitems        u64
-	data          &byte
+	data          &u8
 }
 
 // new_clipboard returns a new `Clipboard` instance allocated on the heap.
@@ -330,7 +330,7 @@ fn (mut cb Clipboard) start_listener() {
 						property: xsre.property
 					}
 					if !cb.transmit_selection(&xse) {
-						xse.property = new_atom(0)
+						xse.property = Atom(0)
 					}
 					C.XSendEvent(cb.display, xse.requestor, 0, C.PropertyChangeMask, voidptr(&xse))
 					C.XFlush(cb.display)
@@ -398,7 +398,7 @@ fn read_property(d &C.Display, w Window, p Atom) Property {
 	actual_format := 0
 	nitems := u64(0)
 	bytes_after := u64(0)
-	ret := &byte(0)
+	ret := &u8(0)
 	mut read_bytes := 1024
 	for {
 		if ret != 0 {
@@ -477,10 +477,6 @@ fn (cb &Clipboard) get_target_index(target Atom) int {
 
 fn (cb &Clipboard) get_supported_targets() []Atom {
 	return cb.get_atoms(AtomType.utf8_string, .xa_string, .text, .text_plain, .text_html)
-}
-
-fn new_atom(value int) &Atom {
-	return unsafe { &Atom(&u64(u64(value))) }
 }
 
 fn create_xwindow(display &C.Display) Window {

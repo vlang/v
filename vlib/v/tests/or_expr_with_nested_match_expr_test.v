@@ -5,7 +5,7 @@ pub mut:
 
 fn delete_secret_v1() API_error {
 	response := req_do() or {
-		match err.msg {
+		match err.msg() {
 			'dial_tcp failed' {
 				return API_error{
 					errors: ['Vault server not started']
@@ -13,7 +13,7 @@ fn delete_secret_v1() API_error {
 			}
 			else {
 				return API_error{
-					errors: [err.msg]
+					errors: [err.msg()]
 				}
 			}
 		}

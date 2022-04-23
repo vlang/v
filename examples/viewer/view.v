@@ -126,7 +126,7 @@ fn create_texture(w int, h int, buf &u8) gfx.Image {
 		// usage: .dynamic
 		wrap_u: .clamp_to_edge
 		wrap_v: .clamp_to_edge
-		label: &byte(0)
+		label: &u8(0)
 		d3d11_texture: 0
 	}
 	// comment if .dynamic is enabled
@@ -144,7 +144,7 @@ fn destroy_texture(sg_img gfx.Image) {
 }
 
 // Use only if: .dynamic is enabled
-fn update_text_texture(sg_img gfx.Image, w int, h int, buf &byte) {
+fn update_text_texture(sg_img gfx.Image, w int, h int, buf &u8) {
 	sz := w * h * 4
 	mut tmp_sbc := gfx.ImageData{}
 	tmp_sbc.subimage[0][0] = gfx.Range{
@@ -215,9 +215,9 @@ fn (mut app App) read_bytes(path string) bool {
 	return true
 }
 
-// read a file as []byte
-pub fn read_bytes_from_file(file_path string) []byte {
-	mut buffer := []byte{}
+// read a file as []u8
+pub fn read_bytes_from_file(file_path string) []u8 {
+	mut buffer := []u8{}
 	buffer = os.read_bytes(file_path) or {
 		eprintln('ERROR: Texure file: [$file_path] NOT FOUND.')
 		exit(0)
@@ -428,7 +428,7 @@ fn frame(mut app App) {
 
 	// println("$w,$h")
 	// white multiplicator for now
-	mut c := [byte(255), 255, 255]!
+	mut c := [u8(255), 255, 255]!
 	sgl.begin_quads()
 	sgl.v2f_t2f_c3b(-w, -h, 0, 0, c[0], c[1], c[2])
 	sgl.v2f_t2f_c3b(w, -h, 1, 0, c[0], c[1], c[2])
@@ -478,7 +478,7 @@ fn frame(mut app App) {
 		bx += (bw_old - bw) / 2 - (tr_x / 8) / app.scale
 		by += (bh_old - bh) / 2 - ((tr_y / 8) / app.scale) * ratio
 		
-		c = [byte(255),255,0]! // yellow
+		c = [u8(255),255,0]! // yellow
 		sgl.begin_line_strip()
 		sgl.v2f_c3b(bx     , by     , c[0], c[1], c[2])
 		sgl.v2f_c3b(bx + bw, by     , c[0], c[1], c[2])

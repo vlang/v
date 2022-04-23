@@ -74,13 +74,13 @@ fn test_unsafe_if_stmt() {
 	assert x == 4
 }
 
-const fixedbytes = [100]byte{}
+const fixedbytes = [100]u8{}
 
 fn test_unsafe_pointers() {
 	fsize := fixedbytes.len
 	src := &fixedbytes[0]
 	//
-	b := []byte{}
+	b := []u8{}
 	eprintln('b.data before: $b.data')
 	eprintln('b.len before: $b.len')
 	eprintln('b.cap before: $b.cap')

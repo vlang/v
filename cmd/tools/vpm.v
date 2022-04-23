@@ -87,6 +87,12 @@ fn main() {
 				module_names = manifest.dependencies
 			}
 			mut source := Source.vpm
+			if '--once' in options {
+				module_names = vpm_once_filter(module_names)
+				if module_names.len == 0 {
+					return
+				}
+			}
 			if '--git' in options {
 				source = Source.git
 			}
@@ -327,6 +333,17 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 	}
 }
 
+fn vpm_once_filter(module_names []string) []string {
+	installed_modules := get_installed_modules()
+	mut toinstall := []string{}
+	for mn in module_names {
+		if mn !in installed_modules {
+			toinstall << mn
+		}
+	}
+	return toinstall
+}
+
 fn vpm_install(module_names []string, source Source) {
 	if settings.is_help {
 		vhelp.show_topic('install')
@@ -336,15 +353,16 @@ fn vpm_install(module_names []string, source Source) {
 		println('´v install´ requires *at least one* module name.')
 		exit(2)
 	}
-
-	if source == .vpm {
-		vpm_install_from_vpm(module_names)
-	}
-	if source == .git {
-		vpm_install_from_vcs(module_names, 'git')
-	}
-	if source == .hg {
-		vpm_install_from_vcs(module_names, 'hg')
+	match source {
+		.vpm {
+			vpm_install_from_vpm(module_names)
+		}
+		.git {
+			vpm_install_from_vcs(module_names, 'git')
+		}
+		.hg {
+			vpm_install_from_vcs(module_names, 'hg')
+		}
 	}
 }
 
@@ -445,12 +463,11 @@ fn vpm_outdated() {
 fn vpm_list() {
 	module_names := get_installed_modules()
 	if module_names.len == 0 {
-		println('You have no modules installed.')
+		eprintln('You have no modules installed.')
 		exit(0)
 	}
-	println('Installed modules:')
 	for mod in module_names {
-		println('  $mod')
+		println(mod)
 	}
 }
 
@@ -468,7 +485,7 @@ fn vpm_remove(module_names []string) {
 		println('Removing module "$name" ...')
 		verbose_println('removing folder $final_module_path')
 		os.rmdir_all(final_module_path) or {
-			verbose_println('error while removing "$final_module_path": $err.msg')
+			verbose_println('error while removing "$final_module_path": $err.msg()')
 		}
 		// delete author directory if it is empty
 		author := name.split('.')[0]
@@ -479,7 +496,7 @@ fn vpm_remove(module_names []string) {
 		if os.is_dir_empty(author_dir) {
 			verbose_println('removing author folder $author_dir')
 			os.rmdir(author_dir) or {
-				verbose_println('error while removing "$author_dir": $err.msg')
+				verbose_println('error while removing "$author_dir": $err.msg()')
 			}
 		}
 	}
@@ -567,17 +584,22 @@ fn get_all_modules() []string {
 	mut read_len := 0
 	mut modules := []string{}
 	for read_len < s.len {
-		mut start_token := '<a href="/mod'
+		mut start_token := "<a href='/mod"
 		end_token := '</a>'
 		// get the start index of the module entry
 		mut start_index := s.index_after(start_token, read_len)
 		if start_index == -1 {
-			break
+			start_token = '<a href="/mod'
+			start_index = s.index_after(start_token, read_len)
+			if start_index == -1 {
+				break
+			}
 		}
 		// get the index of the end of anchor (a) opening tag
 		// we use the previous start_index to make sure we are getting a module and not just a random 'a' tag
-		start_token = '">'
+		start_token = '>'
 		start_index = s.index_after(start_token, start_index) + start_token.len
+
 		// get the index of the end of module entry
 		end_index := s.index_after(end_token, start_index)
 		if end_index == -1 {

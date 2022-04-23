@@ -373,7 +373,7 @@ pub fn (mut a array) delete_last() {
 pub fn (a &array) free() {
 }
 
-// todo: once (a []byte) will work rewrite this
+// todo: once (a []u8) will work rewrite this
 pub fn (a array) bytestr() string {
 	res := ''
 	#for (let i = 0;i < a.arr.len.valueOf();i++) res.str += String.fromCharCode(a.arr.get(new int(i)))
@@ -487,7 +487,7 @@ pub interface JS.Float64Array {
 	every(JS.EveryFn) JS.Boolean
 }
 
-pub fn uint8_array(arr []byte) JS.Uint8Array {
+pub fn uint8_array(arr []u8) JS.Uint8Array {
 	#let tmp = new Array();
 
 	for elem in arr {

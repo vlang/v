@@ -24,14 +24,14 @@ fn init_alphabets() map[string]Alphabet {
 // will be encoded to and a decode table.
 struct Alphabet {
 mut:
-	decode []i8   = []i8{len: 128, init: -1}
-	encode []byte = []byte{len: 58}
+	decode []i8 = []i8{len: 128, init: -1}
+	encode []u8 = []u8{len: 58}
 }
 
 // str returns an Alphabet encode table byte array as a string
 pub fn (alphabet Alphabet) str() string {
 	// i guess i had a brain fart here. Why would I actually use this code?!
-	// mut str := []byte{}
+	// mut str := []u8{}
 	// for entry in alphabet.encode {
 	// 	str << entry
 	// }

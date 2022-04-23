@@ -38,11 +38,11 @@ pub:
 	dbname   string
 }
 
-fn C.PQconnectdb(a &byte) &C.PGconn
+fn C.PQconnectdb(a &u8) &C.PGconn
 
-fn C.PQerrorMessage(voidptr) &byte
+fn C.PQerrorMessage(voidptr) &u8
 
-fn C.PQgetvalue(&C.PGResult, int, int) &byte
+fn C.PQgetvalue(&C.PGResult, int, int) &u8
 
 fn C.PQstatus(voidptr) int
 
@@ -52,20 +52,20 @@ fn C.PQntuples(&C.PGResult) int
 
 fn C.PQnfields(&C.PGResult) int
 
-fn C.PQexec(voidptr, &byte) &C.PGResult
+fn C.PQexec(voidptr, &u8) &C.PGResult
 
 // Params:
 // const Oid *paramTypes
 // const char *const *paramValues
 // const int *paramLengths
 // const int *paramFormats
-fn C.PQexecParams(conn voidptr, command &byte, nParams int, paramTypes int, paramValues &byte, paramLengths int, paramFormats int, resultFormat int) &C.PGResult
+fn C.PQexecParams(conn voidptr, command &u8, nParams int, paramTypes int, paramValues &u8, paramLengths int, paramFormats int, resultFormat int) &C.PGResult
 
-fn C.PQputCopyData(conn voidptr, buffer &byte, nbytes int) int
+fn C.PQputCopyData(conn voidptr, buffer &u8, nbytes int) int
 
-fn C.PQputCopyEnd(voidptr, &byte) int
+fn C.PQputCopyEnd(voidptr, &u8) int
 
-fn C.PQgetCopyData(conn voidptr, buffer &&byte, async int) int
+fn C.PQgetCopyData(conn voidptr, buffer &&u8, async int) int
 
 fn C.PQclear(&C.PGResult) voidptr
 
@@ -230,7 +230,7 @@ pub fn (db DB) copy_expert(query string, mut file io.ReaderWriter) ?int {
 	}
 
 	if status == C.PGRES_COPY_IN {
-		mut buf := []byte{len: 4 * 1024}
+		mut buf := []u8{len: 4 * 1024}
 		for {
 			n := file.read(mut buf) or {
 				msg := 'pg copy error: Failed to read from input'
@@ -254,11 +254,11 @@ pub fn (db DB) copy_expert(query string, mut file io.ReaderWriter) ?int {
 		}
 	} else if status == C.PGRES_COPY_OUT {
 		for {
-			address := &byte(0)
+			address := &u8(0)
 			n_bytes := C.PQgetCopyData(db.conn, &address, 0)
 			if n_bytes > 0 {
-				mut local_buf := []byte{len: n_bytes}
-				unsafe { C.memcpy(&byte(local_buf.data), address, n_bytes) }
+				mut local_buf := []u8{len: n_bytes}
+				unsafe { C.memcpy(&u8(local_buf.data), address, n_bytes) }
 				file.write(local_buf) or {
 					C.PQfreemem(address)
 					return err

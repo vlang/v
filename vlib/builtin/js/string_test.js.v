@@ -422,7 +422,7 @@ fn test_arr_contains() {
 fn test_to_num() {
 	s := '7'
 	assert s.int() == 7
-	assert s.byte() == 7
+	assert s.u8() == 7
 	assert s.u64() == 7
 	f := '71.5 hasdf'
 	// QTODO
@@ -783,11 +783,11 @@ fn test_double_quote_inter() {
 	assert '$a $b' == '1 2'
 }
 
-fn foo(b byte) byte {
+fn foo(b u8) u8 {
 	return b - 10
 }
 
-fn filter(b byte) bool {
+fn filter(b u8) bool {
 	return b != `a`
 }
 

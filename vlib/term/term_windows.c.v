@@ -33,7 +33,7 @@ mut:
 union C.uChar {
 mut:
 	UnicodeChar rune
-	AsciiChar   byte
+	AsciiChar   u8
 }
 
 [typedef]

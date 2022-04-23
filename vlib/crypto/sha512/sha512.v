@@ -64,7 +64,7 @@ const (
 struct Digest {
 mut:
 	h        []u64
-	x        []byte
+	x        []u8
 	nx       int
 	len      u64
 	function crypto.Hash
@@ -72,7 +72,7 @@ mut:
 
 fn (mut d Digest) reset() {
 	d.h = []u64{len: (8)}
-	d.x = []byte{len: sha512.chunk}
+	d.x = []u8{len: sha512.chunk}
 	match d.function {
 		.sha384 {
 			d.h[0] = sha512.init0_384
@@ -149,7 +149,7 @@ fn new384() &Digest {
 }
 
 // write writes the contents of `p_` to the internal hash representation.
-pub fn (mut d Digest) write(p_ []byte) ?int {
+pub fn (mut d Digest) write(p_ []u8) ?int {
 	unsafe {
 		mut p := p_
 		nn := p.len
@@ -184,7 +184,7 @@ pub fn (mut d Digest) write(p_ []byte) ?int {
 }
 
 // sum returns the SHA512 or SHA384 checksum of digest with the data bytes in `b_in`
-pub fn (d &Digest) sum(b_in []byte) []byte {
+pub fn (d &Digest) sum(b_in []u8) []u8 {
 	// Make a copy of d so that caller can keep writing and summing.
 	mut d0 := *d
 	hash := d0.checksum()
@@ -214,10 +214,11 @@ pub fn (d &Digest) sum(b_in []byte) []byte {
 	return b_out
 }
 
-fn (mut d Digest) checksum() []byte {
+// checksum returns the current byte checksum of the Digest.
+pub fn (mut d Digest) checksum() []u8 {
 	// Padding. Add a 1 bit and 0 bits until 112 bytes mod 128.
 	mut len := d.len
-	mut tmp := []byte{len: (128)}
+	mut tmp := []u8{len: (128)}
 	tmp[0] = 0x80
 	if int(len) % 128 < 112 {
 		d.write(tmp[..112 - int(len) % 128]) or { panic(err) }
@@ -232,7 +233,7 @@ fn (mut d Digest) checksum() []byte {
 	if d.nx != 0 {
 		panic('d.nx != 0')
 	}
-	mut digest := []byte{len: sha512.size}
+	mut digest := []u8{len: sha512.size}
 	binary.big_endian_put_u64(mut digest, d.h[0])
 	binary.big_endian_put_u64(mut digest[8..], d.h[1])
 	binary.big_endian_put_u64(mut digest[16..], d.h[2])
@@ -247,43 +248,43 @@ fn (mut d Digest) checksum() []byte {
 }
 
 // sum512 returns the SHA512 checksum of the data.
-pub fn sum512(data []byte) []byte {
+pub fn sum512(data []u8) []u8 {
 	mut d := new_digest(.sha512)
 	d.write(data) or { panic(err) }
 	return d.checksum()
 }
 
 // sum384 returns the SHA384 checksum of the data.
-pub fn sum384(data []byte) []byte {
+pub fn sum384(data []u8) []u8 {
 	mut d := new_digest(.sha384)
 	d.write(data) or { panic(err) }
 	sum := d.checksum()
-	mut sum384 := []byte{len: sha512.size384}
+	mut sum384 := []u8{len: sha512.size384}
 	copy(mut sum384, sum[..sha512.size384])
 	return sum384
 }
 
 // sum512_224 returns the Sum512/224 checksum of the data.
-pub fn sum512_224(data []byte) []byte {
+pub fn sum512_224(data []u8) []u8 {
 	mut d := new_digest(.sha512_224)
 	d.write(data) or { panic(err) }
 	sum := d.checksum()
-	mut sum224 := []byte{len: sha512.size224}
+	mut sum224 := []u8{len: sha512.size224}
 	copy(mut sum224, sum[..sha512.size224])
 	return sum224
 }
 
 // sum512_256 returns the Sum512/256 checksum of the data.
-pub fn sum512_256(data []byte) []byte {
+pub fn sum512_256(data []u8) []u8 {
 	mut d := new_digest(.sha512_256)
 	d.write(data) or { panic(err) }
 	sum := d.checksum()
-	mut sum256 := []byte{len: sha512.size256}
+	mut sum256 := []u8{len: sha512.size256}
 	copy(mut sum256, sum[..sha512.size256])
 	return sum256
 }
 
-fn block(mut dig Digest, p []byte) {
+fn block(mut dig Digest, p []u8) {
 	// For now just use block_generic until we have specific
 	// architecture optimized versions
 	block_generic(mut dig, p)

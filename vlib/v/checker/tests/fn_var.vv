@@ -1,8 +1,10 @@
-mut f := fn(i int) byte {}
+mut f := fn (i int) u8 {}
 f = 4
 mut p := &f
 p = &[f]
 _ = p
 i := 0
 println(i)
-f = fn(mut a []int) { println(i) }
+f = fn (mut a []int) {
+	println(i)
+}

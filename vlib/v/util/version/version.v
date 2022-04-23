@@ -6,7 +6,7 @@ pub const v_version = '0.2.4'
 
 // vhash() returns the build string C.V_COMMIT_HASH . See cmd/tools/gen_vc.v .
 pub fn vhash() string {
-	mut buf := [50]byte{}
+	mut buf := [50]u8{}
 	buf[0] = 0
 	unsafe {
 		bp := &buf[0]
@@ -75,7 +75,7 @@ pub fn githash(should_get_from_filesystem bool) string {
 		}
 		break
 	}
-	mut buf := [50]byte{}
+	mut buf := [50]u8{}
 	buf[0] = 0
 	unsafe {
 		bp := &buf[0]

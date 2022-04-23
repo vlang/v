@@ -116,7 +116,7 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 		pad_ch = 1
 	}
 	res := get_str_intp_u32_format(fmt_type, node.fwidths[i], node.precisions[i], remove_tail_zeros,
-		node.pluss[i], byte(pad_ch), base, upper_case)
+		node.pluss[i], u8(pad_ch), base, upper_case)
 	//
 	return res, fmt_type.str()
 }
@@ -156,7 +156,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int) {
 				if g.comptime_var_type_map.len > 0 || g.comptime_for_method.len > 0 {
 					exp_typ = expr.obj.typ
 				} else if expr.obj.smartcasts.len > 0 {
-					exp_typ = expr.obj.smartcasts.last()
+					exp_typ = g.unwrap_generic(expr.obj.smartcasts.last())
 					cast_sym := g.table.sym(exp_typ)
 					if cast_sym.info is ast.Aggregate {
 						exp_typ = cast_sym.info.types[g.aggregate_type_idx]

@@ -153,7 +153,8 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 						typ := branch.exprs[sumtype_index] as ast.TypeNode
 						branch_sym := g.table.sym(g.unwrap_generic(typ.typ))
 						g.write('${dot_or_ptr}_typ == _${sym.cname}_${branch_sym.cname}_index')
-					} else if branch.exprs[sumtype_index] is ast.None && sym.name == 'IError' {
+					} else if branch.exprs[sumtype_index] is ast.None
+						&& sym.idx == ast.error_type_idx {
 						g.write('${dot_or_ptr}_typ == _IError_None___index')
 					}
 				}

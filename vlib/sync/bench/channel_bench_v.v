@@ -41,7 +41,9 @@ fn main() {
 		go do_rec(ch, resch, n)
 		no -= n
 	}
-	assert no == 0
+	$if debug {
+		assert no == 0
+	}
 	no = nobj
 	for i in 0 .. nsend {
 		n := no / (nsend - i)

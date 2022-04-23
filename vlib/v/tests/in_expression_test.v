@@ -233,7 +233,7 @@ fn test_in_array_init() {
 }
 
 fn test_in_expression_numeric() {
-	b := [byte(2), 4, 7]
+	b := [u8(2), 4, 7]
 	b2 := [i8(3), -4, 9]
 	s := [u16(6), 1, 0]
 	s2 := [i16(34), -17, 45]
@@ -243,7 +243,7 @@ fn test_in_expression_numeric() {
 	l2 := [i64(-45), 8, 2]
 	f := [f32(12.5), 0, -17.25]
 	f2 := [1.0625, 3, 17.125]
-	assert byte(4) in b
+	assert u8(4) in b
 	assert 3 !in b
 	assert -4 in b2
 	assert i8(5) !in b2
@@ -286,4 +286,26 @@ fn test_in_sumtype_array() {
 	foos << Foo1{}
 	assert Foo1{} in foos
 	assert Foo2{} !in foos
+}
+
+fn test_in_struct_array() {
+	assert Foo1{} == Foo1{}
+}
+
+fn fn1() {}
+
+fn fn2() {}
+
+fn fn3() {}
+
+fn test_in_func_array() {
+	assert fn1 in [fn1, fn2, fn3]
+}
+
+type Str = string
+type Struct = Foo1
+
+fn test_in_alias_array() {
+	assert Str('') in [Str(''), Str('a')]
+	assert Struct{} == Struct{}
 }

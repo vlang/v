@@ -160,7 +160,7 @@ fn create(args []string) {
 	if c.version == '' {
 		c.version = default_version
 	}
-	default_license := 'MIT'
+	default_license := os.getenv_opt('VLICENSE') or { 'MIT' }
 	c.license = os.input('Input your project license: ($default_license) ')
 	if c.license == '' {
 		c.license = default_license

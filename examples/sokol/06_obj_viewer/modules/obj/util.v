@@ -23,10 +23,10 @@ pub fn read_lines_from_file(file_path string) []string {
 	return rows
 }
 
-// read a file as []byte
-pub fn read_bytes_from_file(file_path string) []byte {
+// read a file as []u8
+pub fn read_bytes_from_file(file_path string) []u8 {
 	mut path := ''
-	mut buffer := []byte{}
+	mut buffer := []u8{}
 	$if android {
 		path = 'models/' + file_path
 		buffer = os.read_apk_asset(path) or {

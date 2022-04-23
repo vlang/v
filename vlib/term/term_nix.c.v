@@ -55,7 +55,7 @@ pub fn get_cursor_position() ?Coord {
 
 	mut x := 0
 	mut y := 0
-	mut stage := byte(0)
+	mut stage := u8(0)
 
 	// ESC [ YYY `;` XXX `R`
 

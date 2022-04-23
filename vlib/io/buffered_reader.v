@@ -4,7 +4,7 @@ module io
 struct BufferedReader {
 mut:
 	reader Reader
-	buf    []byte
+	buf    []u8
 	offset int // current offset in the buffer
 	len    int
 	fails  int // how many times fill_buffer has read 0 bytes in a row
@@ -28,7 +28,7 @@ pub fn new_buffered_reader(o BufferedReaderConfig) &BufferedReader {
 	// create
 	r := &BufferedReader{
 		reader: o.reader
-		buf: []byte{len: o.cap, cap: o.cap}
+		buf: []u8{len: o.cap, cap: o.cap}
 		offset: 0
 		mfails: o.retries
 	}
@@ -36,7 +36,7 @@ pub fn new_buffered_reader(o BufferedReaderConfig) &BufferedReader {
 }
 
 // read fufills the Reader interface
-pub fn (mut r BufferedReader) read(mut buf []byte) ?int {
+pub fn (mut r BufferedReader) read(mut buf []u8) ?int {
 	if r.end_of_stream {
 		return none
 	}
@@ -108,7 +108,7 @@ pub fn (mut r BufferedReader) read_line() ?string {
 	if r.end_of_stream {
 		return none
 	}
-	mut line := []byte{}
+	mut line := []u8{}
 	for {
 		if r.needs_fill() {
 			// go fetch some new data

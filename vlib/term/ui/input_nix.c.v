@@ -5,7 +5,7 @@ module ui
 
 struct ExtraContext {
 mut:
-	read_buf []byte
+	read_buf []u8
 	// read_all_bytes causes all the raw bytes to be read as one event unit.
 	// This is cruicial for UTF-8 support since Unicode codepoints can span several bytes.
 	read_all_bytes bool = true
@@ -17,7 +17,7 @@ pub fn init(cfg Config) &Context {
 	mut ctx := &Context{
 		cfg: cfg
 	}
-	ctx.read_buf = []byte{cap: cfg.buffer_size}
+	ctx.read_buf = []u8{cap: cfg.buffer_size}
 
 	// lmao
 	unsafe {
@@ -55,7 +55,7 @@ pub fn (mut ctx Context) run() ? {
 [inline]
 fn (mut ctx Context) shift(len int) {
 	unsafe {
-		C.memmove(ctx.read_buf.data, &byte(ctx.read_buf.data) + len, ctx.read_buf.cap - len)
+		C.memmove(ctx.read_buf.data, &u8(ctx.read_buf.data) + len, ctx.read_buf.cap - len)
 		ctx.resize_arr(ctx.read_buf.len - len)
 	}
 }

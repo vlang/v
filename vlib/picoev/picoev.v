@@ -70,10 +70,10 @@ struct Picoev {
 	timeout_secs int
 	max_headers  int
 mut:
-	date &byte
-	buf  &byte
+	date &u8
+	buf  &u8
 	idx  [1024]int
-	out  &byte
+	out  &u8
 }
 
 [inline]
@@ -94,7 +94,7 @@ fn close_conn(loop &C.picoev_loop, fd int) {
 }
 
 [inline]
-fn req_read(fd int, b &byte, max_len int, idx int) int {
+fn req_read(fd int, b &u8, max_len int, idx int) int {
 	unsafe {
 		return C.read(fd, b + idx, max_len - idx)
 	}
@@ -211,7 +211,7 @@ pub fn new(config Config) &Picoev {
 
 	// Setting addr
 	mut addr := C.sockaddr_in{
-		sin_family: byte(C.AF_INET)
+		sin_family: u8(C.AF_INET)
 		sin_port: C.htons(config.port)
 		sin_addr: C.htonl(C.INADDR_ANY)
 	}
@@ -234,7 +234,7 @@ pub fn new(config Config) &Picoev {
 		user_data: config.user_data
 		timeout_secs: config.timeout_secs
 		max_headers: config.max_headers
-		date: &byte(C.get_date())
+		date: &u8(C.get_date())
 		buf: unsafe { malloc_noscan(picoev.max_fds * picoev.max_read + 1) }
 		out: unsafe { malloc_noscan(picoev.max_fds * picoev.max_write + 1) }
 	}
@@ -252,7 +252,7 @@ pub fn (p Picoev) serve() {
 
 fn update_date(mut p Picoev) {
 	for {
-		p.date = &byte(C.get_date())
+		p.date = &u8(C.get_date())
 		C.usleep(1000000)
 	}
 }

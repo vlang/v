@@ -27,13 +27,9 @@ pub fn (err IError) str() string {
 		else {
 			// >> Hack to allow old style custom error implementations
 			// TODO: remove once deprecation period for `IError` methods has ended
-			old_error_style := unsafe { voidptr(&err.msg) != voidptr(&err.code) } // if fields are not defined (new style) they don't have an offset between
-			if old_error_style {
-				'$err.type_name(): $err.msg'
-			} else {
-				// <<
-				'$err.type_name(): $err.msg()'
-			}
+			// old_error_style := unsafe { voidptr(&err.msg) != voidptr(&err.code) } // if fields are not defined (new style) they don't have an offset between
+			// <<
+			'$err.type_name(): $err.msg()'
 		}
 	}
 }
@@ -85,7 +81,7 @@ fn trace_error(x string) {
 }
 
 // error returns a default error instance containing the error given in `message`.
-// Example: `if ouch { return error('an error occurred') }`
+// Example: if ouch { return error('an error occurred') }
 [inline]
 pub fn error(message string) IError {
 	trace_error(message)
@@ -95,7 +91,7 @@ pub fn error(message string) IError {
 }
 
 // error_with_code returns a default error instance containing the given `message` and error `code`.
-// `if ouch { return error_with_code('an error occurred', 1) }`
+// Example: if ouch { return error_with_code('an error occurred', 1) }
 [inline]
 pub fn error_with_code(message string, code int) IError {
 	trace_error('$message | code: $code')
@@ -107,7 +103,7 @@ pub fn error_with_code(message string, code int) IError {
 
 // Option is the base of V's internal optional return system.
 struct Option {
-	state byte
+	state u8
 	err   IError = none__
 	// Data is trailing after err
 	// and is not included in here but in the
@@ -118,7 +114,7 @@ fn opt_ok(data voidptr, mut option Option, size int) {
 	unsafe {
 		*option = Option{}
 		// use err to get the end of OptionBase and then memcpy into it
-		vmemcpy(&byte(&option.err) + sizeof(IError), data, size)
+		vmemcpy(&u8(&option.err) + sizeof(IError), data, size)
 	}
 }
 

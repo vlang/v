@@ -96,16 +96,16 @@ fn (mut g Gen) write_pe_sections() {
 	g.write32(0)
 	g.write32(0)
 	g.write32(0x20000000) // 0, 0, 0, 32,
-	g.write([byte(0), 0, 96])
+	g.write([u8(0), 0, 96])
 	g.zeroes(52)
-	g.write([byte(72), 16, 0, 0])
-	g.write([byte(40), 16, 0, 0])
+	g.write([u8(72), 16, 0, 0])
+	g.write([u8(40), 16, 0, 0])
 	g.zeroes(20)
-	g.write([byte(96), 16, 0, 0])
+	g.write([u8(96), 16, 0, 0])
 	g.write32(0)
-	g.write([byte(110), 16, 0, 0])
+	g.write([u8(110), 16, 0, 0])
 	g.write32(0)
-	g.write([byte(125), 16, 0, 0])
+	g.write([u8(125), 16, 0, 0])
 	g.zeroes(12)
 	g.write_string_with_padding('KERNEL32.DLL', 13)
 	g.write_string_with_padding('USER32.DLL', 13)
@@ -213,9 +213,9 @@ pub fn (mut g Gen) generate_pe_header() {
 	g.main_fn_addr = g.buf.len
 }
 
-fn pad_to(mut buf []byte, len int) {
+fn pad_to(mut buf []u8, len int) {
 	for buf.len < len {
-		buf << byte(0)
+		buf << u8(0)
 	}
 }
 

@@ -15,24 +15,24 @@ struct Cbc {
 mut:
 	b          Block
 	block_size int
-	iv         []byte
-	tmp        []byte
+	iv         []u8
+	tmp        []u8
 }
 
 // internal
-fn new_des_cbc(b Block, iv []byte) Cbc {
+fn new_des_cbc(b Block, iv []u8) Cbc {
 	return Cbc{
 		b: b
 		block_size: b.block_size
 		iv: iv.clone()
-		tmp: []byte{len: b.block_size}
+		tmp: []u8{len: b.block_size}
 	}
 }
 
 // new_cbc returns a `DesCbc` which encrypts in cipher block chaining
 // mode, using the given Block. The length of iv must be the same as the
 // Block's block size.
-pub fn new_cbc(b Block, iv []byte) Cbc {
+pub fn new_cbc(b Block, iv []u8) Cbc {
 	if iv.len != b.block_size {
 		panic('crypto.cipher.new_cbc_encrypter: IV length must equal block size')
 	}
@@ -41,7 +41,7 @@ pub fn new_cbc(b Block, iv []byte) Cbc {
 
 // encrypt_blocks encrypts the blocks in `src_` to `dst_`.
 // Please note: `dst_` is mutable for performance reasons.
-pub fn (mut x Cbc) encrypt_blocks(mut dst_ []byte, src_ []byte) {
+pub fn (mut x Cbc) encrypt_blocks(mut dst_ []u8, src_ []u8) {
 	unsafe {
 		mut dst := *dst_
 		mut src := src_
@@ -75,7 +75,7 @@ pub fn (mut x Cbc) encrypt_blocks(mut dst_ []byte, src_ []byte) {
 
 // decrypt_blocks decrypts the blocks in `src` to `dst`.
 // Please note: `dst` is mutable for performance reasons.
-pub fn (mut x Cbc) decrypt_blocks(mut dst []byte, src []byte) {
+pub fn (mut x Cbc) decrypt_blocks(mut dst []u8, src []u8) {
 	if src.len % x.block_size != 0 {
 		panic('crypto.cipher: input not full blocks')
 	}
@@ -113,7 +113,7 @@ pub fn (mut x Cbc) decrypt_blocks(mut dst []byte, src []byte) {
 	x.tmp = x.iv
 }
 
-fn (mut x Cbc) set_iv(iv []byte) {
+fn (mut x Cbc) set_iv(iv []u8) {
 	if iv.len != x.iv.len {
 		panic('cipher: incorrect length IV')
 	}

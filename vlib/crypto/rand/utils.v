@@ -21,7 +21,7 @@ pub fn int_u64(max u64) ?u64 {
 	mut n := u64(0)
 	for {
 		mut bytes := read(k) ?
-		bytes[0] &= byte(int(u64(1) << b) - 1)
+		bytes[0] &= u8(int(u64(1) << b) - 1)
 		x := bytes_to_u64(bytes)
 		n = x[0]
 		// NOTE: maybe until we have bigint could do it another way?
@@ -35,7 +35,7 @@ pub fn int_u64(max u64) ?u64 {
 	return n
 }
 
-fn bytes_to_u64(b []byte) []u64 {
+fn bytes_to_u64(b []u8) []u64 {
 	ws := 64 / 8
 	mut z := []u64{len: ((b.len + ws - 1) / ws)}
 	mut i := b.len

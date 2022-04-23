@@ -624,7 +624,7 @@ pub fn (mut v Element) set(a Element) Element {
 // Consistent with RFC 7748, the most significant bit (the high bit of the
 // last byte) is ignored, and non-canonical values (2^255-19 through 2^255-1)
 // are accepted. Note that this is laxer than specified by RFC 8032.
-pub fn (mut v Element) set_bytes(x []byte) ?Element {
+pub fn (mut v Element) set_bytes(x []u8) ?Element {
 	if x.len != 32 {
 		return error('edwards25519: invalid edwards25519 element input size')
 	}
@@ -650,19 +650,19 @@ pub fn (mut v Element) set_bytes(x []byte) ?Element {
 }
 
 // bytes returns the canonical 32-byte little-endian encoding of v.
-pub fn (mut v Element) bytes() []byte {
+pub fn (mut v Element) bytes() []u8 {
 	// This function is outlined to make the allocations inline in the caller
 	// rather than happen on the heap.
 	// out := v.bytes_generic()
 	return v.bytes_generic()
 }
 
-fn (mut v Element) bytes_generic() []byte {
-	mut out := []byte{len: 32}
+fn (mut v Element) bytes_generic() []u8 {
+	mut out := []u8{len: 32}
 
 	v = v.reduce()
 
-	mut buf := []byte{len: 8}
+	mut buf := []u8{len: 8}
 	idxs := [v.l0, v.l1, v.l2, v.l3, v.l4]
 	for i, l in idxs {
 		bits_offset := i * 51
@@ -725,7 +725,7 @@ pub fn (mut v Element) mult_32(x Element, y u32) Element {
 	return v
 }
 
-fn swap_endianness(mut buf []byte) []byte {
+fn swap_endianness(mut buf []u8) []u8 {
 	for i := 0; i < buf.len / 2; i++ {
 		buf[i], buf[buf.len - i - 1] = buf[buf.len - i - 1], buf[i]
 	}

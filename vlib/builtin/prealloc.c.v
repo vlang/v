@@ -25,7 +25,7 @@ mut:
 	start     &byte = 0
 	previous  &VMemoryBlock = 0
 	remaining int
-	current   &byte = 0
+	current   &u8 = 0
 	mallocs   int
 }
 
@@ -50,7 +50,7 @@ fn vmemory_block_malloc(n int) &byte {
 		if g_memory_block.remaining < n {
 			g_memory_block = vmemory_block_new(g_memory_block, n)
 		}
-		mut res := &byte(0)
+		mut res := &u8(0)
 		res = g_memory_block.current
 		g_memory_block.remaining -= n
 		g_memory_block.mallocs++

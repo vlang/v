@@ -16,14 +16,14 @@ pub mut:
 	f_size           u32
 	f_mod_base       u64 // Base Address of module comtaining this symbol
 	f_flags          u32
-	f_value          u64  // Value of symbol, ValuePresent should be 1
-	f_address        u64  // Address of symbol including base address of module
-	f_register       u32  // register holding value or pointer to value
-	f_scope          u32  // scope of the symbol
-	f_tag            u32  // pdb classification
-	f_name_len       u32  // Actual length of name
-	f_max_name_len   u32  // must be manually set
-	f_name           byte // must be calloc(f_max_name_len)
+	f_value          u64 // Value of symbol, ValuePresent should be 1
+	f_address        u64 // Address of symbol including base address of module
+	f_register       u32 // register holding value or pointer to value
+	f_scope          u32 // scope of the symbol
+	f_tag            u32 // pdb classification
+	f_name_len       u32 // Actual length of name
+	f_max_name_len   u32 // must be manually set
+	f_name           u8  // must be calloc(f_max_name_len)
 }
 
 pub struct SymbolInfoContainer {
@@ -37,7 +37,7 @@ pub mut:
 	f_size_of_struct u32
 	f_key            voidptr
 	f_line_number    u32
-	f_file_name      &byte
+	f_file_name      &u8
 	f_address        u64
 }
 
@@ -47,7 +47,7 @@ fn C.SymSetOptions(symoptions u32) u32
 // returns handle
 fn C.GetCurrentProcess() voidptr
 
-fn C.SymInitialize(h_process voidptr, p_user_search_path &byte, b_invade_process int) int
+fn C.SymInitialize(h_process voidptr, p_user_search_path &u8, b_invade_process int) int
 
 fn C.CaptureStackBackTrace(frames_to_skip u32, frames_to_capture u32, p_backtrace voidptr, p_backtrace_hash voidptr) u16
 
@@ -126,7 +126,7 @@ fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
 		si.f_max_name_len = sizeof(SymbolInfoContainer) - sizeof(SymbolInfo) - 1
 		fname := &char(&si.f_name)
 		mut sline64 := Line64{
-			f_file_name: &byte(0)
+			f_file_name: &u8(0)
 		}
 		sline64.f_size_of_struct = sizeof(Line64)
 
@@ -238,7 +238,7 @@ fn add_vectored_exception_handler(handler VectoredExceptionHandler) {
 	C.AddVectoredExceptionHandler(1, C.PVECTORED_EXCEPTION_HANDLER(handler))
 }
 
-[windows_stdcall]
+[callconv: stdcall]
 fn unhandled_exception_handler(e &ExceptionPointers) int {
 	match e.exception_record.code {
 		// These are 'used' by the backtrace printer

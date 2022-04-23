@@ -7,9 +7,9 @@ import strings
 
 pub struct Color {
 pub:
-	r byte
-	g byte
-	b byte
+	r u8
+	g u8
+	b u8
 }
 
 pub fn (c Color) hex() string {

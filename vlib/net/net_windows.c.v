@@ -762,11 +762,11 @@ struct C.WSAData {
 mut:
 	wVersion       u16
 	wHighVersion   u16
-	szDescription  [257]byte
-	szSystemStatus [129]byte
+	szDescription  [257]u8
+	szSystemStatus [129]u8
 	iMaxSockets    u16
 	iMaxUdpDg      u16
-	lpVendorInfo   &byte
+	lpVendorInfo   &u8
 }
 
 fn init() {

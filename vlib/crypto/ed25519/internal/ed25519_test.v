@@ -19,7 +19,7 @@ const contents = os.read_lines(os.join_path(testdata, 'sign.input')) or { panic(
 /*
 struct ZeroReader {}
 
-fn (z ZeroReader) read(mut buf []byte) ?int {
+fn (z ZeroReader) read(mut buf []u8) ?int {
 	for i, _ in buf {
 		buf[i] = 0
 	}
@@ -63,15 +63,15 @@ fn test_malleability() ? {
 	// https://tools.ietf.org/html/rfc8032#section-5.1.7 adds an additional test
 	// that s be in [0, order). This prevents someone from adding a multiple of
 	// order to s and obtaining a second valid signature for the same message.
-	msg := [byte(0x54), 0x65, 0x73, 0x74]
-	sig := [byte(0x7c), 0x38, 0xe0, 0x26, 0xf2, 0x9e, 0x14, 0xaa, 0xbd, 0x05, 0x9a, 0x0f, 0x2d,
-		0xb8, 0xb0, 0xcd, 0x78, 0x30, 0x40, 0x60, 0x9a, 0x8b, 0xe6, 0x84, 0xdb, 0x12, 0xf8, 0x2a,
-		0x27, 0x77, 0x4a, 0xb0, 0x67, 0x65, 0x4b, 0xce, 0x38, 0x32, 0xc2, 0xd7, 0x6f, 0x8f, 0x6f,
-		0x5d, 0xaf, 0xc0, 0x8d, 0x93, 0x39, 0xd4, 0xee, 0xf6, 0x76, 0x57, 0x33, 0x36, 0xa5, 0xc5,
-		0x1e, 0xb6, 0xf9, 0x46, 0xb3, 0x1d]
-	publickey := [byte(0x7d), 0x4d, 0x0e, 0x7f, 0x61, 0x53, 0xa6, 0x9b, 0x62, 0x42, 0xb5, 0x22,
-		0xab, 0xbe, 0xe6, 0x85, 0xfd, 0xa4, 0x42, 0x0f, 0x88, 0x34, 0xb1, 0x08, 0xc3, 0xbd, 0xae,
-		0x36, 0x9e, 0xf5, 0x49, 0xfa]
+	msg := [u8(0x54), 0x65, 0x73, 0x74]
+	sig := [u8(0x7c), 0x38, 0xe0, 0x26, 0xf2, 0x9e, 0x14, 0xaa, 0xbd, 0x05, 0x9a, 0x0f, 0x2d, 0xb8,
+		0xb0, 0xcd, 0x78, 0x30, 0x40, 0x60, 0x9a, 0x8b, 0xe6, 0x84, 0xdb, 0x12, 0xf8, 0x2a, 0x27,
+		0x77, 0x4a, 0xb0, 0x67, 0x65, 0x4b, 0xce, 0x38, 0x32, 0xc2, 0xd7, 0x6f, 0x8f, 0x6f, 0x5d,
+		0xaf, 0xc0, 0x8d, 0x93, 0x39, 0xd4, 0xee, 0xf6, 0x76, 0x57, 0x33, 0x36, 0xa5, 0xc5, 0x1e,
+		0xb6, 0xf9, 0x46, 0xb3, 0x1d]
+	publickey := [u8(0x7d), 0x4d, 0x0e, 0x7f, 0x61, 0x53, 0xa6, 0x9b, 0x62, 0x42, 0xb5, 0x22, 0xab,
+		0xbe, 0xe6, 0x85, 0xfd, 0xa4, 0x42, 0x0f, 0x88, 0x34, 0xb1, 0x08, 0xc3, 0xbd, 0xae, 0x36,
+		0x9e, 0xf5, 0x49, 0xfa]
 	// verify should fail on provided bytes
 	res := ed25519.verify(publickey, msg, sig) or { false }
 	assert res == false
@@ -85,10 +85,10 @@ fn works_check_on_sign_input_string(item string) bool {
 		return false
 	}
 	// assert parts.len == 5
-	privbytes := hex.decode(parts[0]) or { panic(err.msg) }
-	pubkey := hex.decode(parts[1]) or { panic(err.msg) }
-	msg := hex.decode(parts[2]) or { panic(err.msg) }
-	mut sig := hex.decode(parts[3]) or { panic(err.msg) }
+	privbytes := hex.decode(parts[0]) or { panic(err) }
+	pubkey := hex.decode(parts[1]) or { panic(err) }
+	msg := hex.decode(parts[2]) or { panic(err) }
+	mut sig := hex.decode(parts[3]) or { panic(err) }
 
 	if pubkey.len != ed25519.public_key_size {
 		return false
@@ -96,16 +96,16 @@ fn works_check_on_sign_input_string(item string) bool {
 	// assert pubkey.len == public_key_size
 
 	sig = sig[..ed25519.signature_size]
-	mut priv := []byte{len: ed25519.private_key_size}
+	mut priv := []u8{len: ed25519.private_key_size}
 	copy(mut priv[..], privbytes)
 	copy(mut priv[32..], pubkey)
 
-	sig2 := ed25519.sign(priv[..], msg) or { panic(err.msg) }
+	sig2 := ed25519.sign(priv[..], msg) or { panic(err) }
 	if sig != sig2[..] {
 		return false
 	}
 
-	res := ed25519.verify(pubkey, msg, sig2) or { panic(err.msg) }
+	res := ed25519.verify(pubkey, msg, sig2) or { panic(err) }
 	// assert res == true
 	if !res {
 		return false
@@ -150,7 +150,7 @@ mut:
 // so, maybe need a long time to finish.
 // be quiet and patient
 fn test_input_from_djb_ed25519_crypto_sign_input_with_syncpool() ? {
-	// contents := os.read_lines('testdata/sign.input') or { panic(err.msg) } //[]string
+	// contents := os.read_lines('testdata/sign.input') or { panic(err) } //[]string
 	mut pool_s := pool.new_pool_processor(
 		callback: worker_for_string_content
 		maxjobs: 4
@@ -165,7 +165,7 @@ fn test_input_from_djb_ed25519_crypto_sign_input_with_syncpool() ? {
 // same as above, but without sync.pool
 /*
 fn test_input_from_djb_ed25519_crypto_sign_input_without_syncpool() ? {
-	// contents := os.read_lines('testdata/sign.input') or { panic(err.msg) } //[]string
+	// contents := os.read_lines('testdata/sign.input') or { panic(err) } //[]string
 	for i, item in ed25519.contents {
 		parts := item.split(':') // []string
 		// println(parts)
@@ -181,7 +181,7 @@ fn test_input_from_djb_ed25519_crypto_sign_input_without_syncpool() ? {
 		assert pubkey.len == public_key_size
 
 		sig = sig[..signature_size]
-		mut priv := []byte{len: ed25519.private_key_size}
+		mut priv := []u8{len: ed25519.private_key_size}
 		copy(mut priv[..], privbytes)
 		copy(mut priv[32..], pubkey)
 

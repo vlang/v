@@ -39,7 +39,6 @@ pub const (
 
 pub type Primitive = InfixType
 	| bool
-	| byte
 	| f32
 	| f64
 	| i16
@@ -51,6 +50,7 @@ pub type Primitive = InfixType
 	| u16
 	| u32
 	| u64
+	| u8
 
 pub enum OperationKind {
 	neq // !=
@@ -467,7 +467,7 @@ pub fn i64_to_primitive(b i64) Primitive {
 	return Primitive(b)
 }
 
-pub fn byte_to_primitive(b byte) Primitive {
+pub fn u8_to_primitive(b u8) Primitive {
 	return Primitive(b)
 }
 

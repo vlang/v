@@ -105,9 +105,9 @@ fn (a array) repeat_to_depth_noscan(count int, depth int) array {
 		for i in 0 .. count {
 			if depth > 0 {
 				ary_clone := unsafe { a.clone_to_depth_noscan(depth) }
-				unsafe { vmemcpy(arr.get_unsafe(i * a.len), &byte(ary_clone.data), a.len * a.element_size) }
+				unsafe { vmemcpy(arr.get_unsafe(i * a.len), &u8(ary_clone.data), a.len * a.element_size) }
 			} else {
-				unsafe { vmemcpy(arr.get_unsafe(i * a.len), &byte(a.data), a.len * a.element_size) }
+				unsafe { vmemcpy(arr.get_unsafe(i * a.len), &u8(a.data), a.len * a.element_size) }
 			}
 		}
 	}
@@ -167,7 +167,7 @@ fn (mut a array) pop_noscan() voidptr {
 		}
 	}
 	new_len := a.len - 1
-	last_elem := unsafe { &byte(a.data) + new_len * a.element_size }
+	last_elem := unsafe { &u8(a.data) + new_len * a.element_size }
 	a.len = new_len
 	// Note: a.cap is not changed here *on purpose*, so that
 	// further << ops on that array will be more efficient.
@@ -205,7 +205,7 @@ fn (a &array) clone_to_depth_noscan(depth int) array {
 		return arr
 	} else {
 		if !isnil(a.data) {
-			unsafe { vmemcpy(&byte(arr.data), a.data, a.cap * a.element_size) }
+			unsafe { vmemcpy(&u8(arr.data), a.data, a.cap * a.element_size) }
 		}
 		return arr
 	}
@@ -213,7 +213,7 @@ fn (a &array) clone_to_depth_noscan(depth int) array {
 
 fn (mut a array) push_noscan(val voidptr) {
 	a.ensure_cap_noscan(a.len + 1)
-	unsafe { vmemmove(&byte(a.data) + a.element_size * a.len, val, a.element_size) }
+	unsafe { vmemcpy(&u8(a.data) + a.element_size * a.len, val, a.element_size) }
 	a.len++
 }
 

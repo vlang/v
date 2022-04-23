@@ -8,7 +8,7 @@ mut:
 	place int
 }
 
-fn (mut s StringReader) read(mut buf []byte) ?int {
+fn (mut s StringReader) read(mut buf []u8) ?int {
 	if s.place >= s.text.len {
 		return none
 	}

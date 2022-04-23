@@ -16,7 +16,7 @@ import time
 pub interface PRNG {
 mut:
 	seed(seed_data []u32)
-	byte() byte
+	u8() u8
 	u16() u16
 	u32() u32
 	u64() u64
@@ -26,19 +26,19 @@ mut:
 
 // bytes returns a buffer of `bytes_needed` random bytes
 [inline]
-pub fn (mut rng PRNG) bytes(bytes_needed int) ?[]byte {
+pub fn (mut rng PRNG) bytes(bytes_needed int) ?[]u8 {
 	if bytes_needed < 0 {
 		return error('can not read < 0 random bytes')
 	}
 
-	mut buffer := []byte{len: bytes_needed}
+	mut buffer := []u8{len: bytes_needed}
 	read_internal(mut rng, mut buffer)
 
 	return buffer
 }
 
 // read fills in `buf` with a maximum of `buf.len` random bytes
-pub fn (mut rng PRNG) read(mut buf []byte) {
+pub fn (mut rng PRNG) read(mut buf []u8) {
 	read_internal(mut rng, mut buf)
 }
 
@@ -121,7 +121,7 @@ pub fn (mut rng PRNG) u64_in_range(min u64, max u64) ?u64 {
 // i8 returns a (possibly negative) pseudorandom 8-bit `i8`.
 [inline]
 pub fn (mut rng PRNG) i8() i8 {
-	return i8(rng.byte())
+	return i8(rng.u8())
 }
 
 // i16 returns a (possibly negative) pseudorandom 16-bit `i16`.
@@ -274,6 +274,78 @@ pub fn (mut rng PRNG) ascii(len int) string {
 	return internal_string_from_set(mut rng, rand.ascii_chars, len)
 }
 
+// Configuration struct for the shuffle functions.
+// The start index is inclusive and the end index is exclusive.
+// Set the end to 0 to shuffle until the end of the array.
+[params]
+pub struct ShuffleConfigStruct {
+pub:
+	start int
+	end   int
+}
+
+fn (config ShuffleConfigStruct) validate_for<T>(a []T) ? {
+	if config.start < 0 || config.start >= a.len {
+		return error("argument 'config.start' must be in range [0, a.len)")
+	}
+	if config.end < 0 || config.end > a.len {
+		return error("argument 'config.end' must be in range [0, a.len]")
+	}
+}
+
+// shuffle randomly permutates the elements in `a`. The range for shuffling is
+// optional and the entire array is shuffled by default. Leave the end as 0 to
+// shuffle all elements until the end.
+[direct_array_access]
+pub fn (mut rng PRNG) shuffle<T>(mut a []T, config ShuffleConfigStruct) ? {
+	config.validate_for(a) ?
+	new_end := if config.end == 0 { a.len } else { config.end }
+	for i in config.start .. new_end {
+		x := rng.int_in_range(i, new_end) or { config.start }
+		// swap
+		a_i := a[i]
+		a[i] = a[x]
+		a[x] = a_i
+	}
+}
+
+// shuffle_clone returns a random permutation of the elements in `a`.
+// The permutation is done on a fresh clone of `a`, so `a` remains unchanged.
+pub fn (mut rng PRNG) shuffle_clone<T>(a []T, config ShuffleConfigStruct) ?[]T {
+	mut res := a.clone()
+	rng.shuffle(mut res, config) ?
+	return res
+}
+
+// choose samples k elements from the array without replacement.
+// This means the indices cannot repeat and it restricts the sample size to be less than or equal to the size of the given array.
+// Note that if the array has repeating elements, then the sample may have repeats as well.
+pub fn (mut rng PRNG) choose<T>(array []T, k int) ?[]T {
+	n := array.len
+	if k > n {
+		return error('Cannot choose $k elements without replacement from a $n-element array.')
+	}
+	mut results := []T{len: k}
+	mut indices := []int{len: n, init: it}
+	// TODO: see why exactly it is necessary to enfoce the type here in Checker.infer_fn_generic_types
+	// (v errors with: `inferred generic type T is ambiguous: got int, expected string`, when <int> is missing)
+	rng.shuffle<int>(mut indices) ?
+	for i in 0 .. k {
+		results[i] = array[indices[i]]
+	}
+	return results
+}
+
+// sample samples k elements from the array with replacement.
+// This means the elements can repeat and the size of the sample may exceed the size of the array.
+pub fn (mut rng PRNG) sample<T>(array []T, k int) []T {
+	mut results := []T{len: k}
+	for i in 0 .. k {
+		results[i] = array[rng.intn(array.len) or { 0 }]
+	}
+	return results
+}
+
 __global default_rng &PRNG
 
 // new_default returns a new instance of the default RNG. If the seed is not provided, the current time will be used to seed the instance.
@@ -352,8 +424,8 @@ pub fn intn(max int) ?int {
 }
 
 // byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
-pub fn byte() byte {
-	return default_rng.byte()
+pub fn u8() u8 {
+	return default_rng.u8()
 }
 
 // int_in_range returns a uniformly distributed pseudorandom  32-bit signed int in range `[min, max)`.
@@ -418,12 +490,12 @@ pub fn f64_in_range(min f64, max f64) ?f64 {
 }
 
 // bytes returns a buffer of `bytes_needed` random bytes
-pub fn bytes(bytes_needed int) ?[]byte {
+pub fn bytes(bytes_needed int) ?[]u8 {
 	return default_rng.bytes(bytes_needed)
 }
 
 // read fills in `buf` a maximum of `buf.len` random bytes
-pub fn read(mut buf []byte) {
+pub fn read(mut buf []u8) {
 	read_internal(mut default_rng, mut buf)
 }
 
@@ -440,17 +512,17 @@ const (
 // users or business transactions.
 // (https://news.ycombinator.com/item?id=14526173)
 pub fn ulid() string {
-	return internal_ulid_at_millisecond(mut default_rng, u64(time.utc().unix_time_milli()))
+	return default_rng.ulid()
 }
 
 // ulid_at_millisecond does the same as `ulid` but takes a custom Unix millisecond timestamp via `unix_time_milli`.
 pub fn ulid_at_millisecond(unix_time_milli u64) string {
-	return internal_ulid_at_millisecond(mut default_rng, unix_time_milli)
+	return default_rng.ulid_at_millisecond(unix_time_milli)
 }
 
 // string_from_set returns a string of length `len` containing random characters sampled from the given `charset`
 pub fn string_from_set(charset string, len int) string {
-	return internal_string_from_set(mut default_rng, charset, len)
+	return default_rng.string_from_set(charset, len)
 }
 
 // string returns a string of length `len` containing random characters in range `[a-zA-Z]`.
@@ -468,19 +540,28 @@ pub fn ascii(len int) string {
 	return string_from_set(rand.ascii_chars, len)
 }
 
-// shuffle randomly permutates the elements in `a`.
-pub fn shuffle<T>(mut a []T) {
-	len := a.len
-	for i in 0 .. len {
-		si := i + intn(len - i) or { len }
-		a[si], a[i] = a[i], a[si]
-	}
+// shuffle randomly permutates the elements in `a`. The range for shuffling is
+// optional and the entire array is shuffled by default. Leave the end as 0 to
+// shuffle all elements until the end.
+pub fn shuffle<T>(mut a []T, config ShuffleConfigStruct) ? {
+	default_rng.shuffle(mut a, config) ?
 }
 
 // shuffle_clone returns a random permutation of the elements in `a`.
 // The permutation is done on a fresh clone of `a`, so `a` remains unchanged.
-pub fn shuffle_clone<T>(a []T) []T {
-	mut res := a.clone()
-	shuffle(mut res)
-	return res
+pub fn shuffle_clone<T>(a []T, config ShuffleConfigStruct) ?[]T {
+	return default_rng.shuffle_clone(a, config)
+}
+
+// choose samples k elements from the array without replacement.
+// This means the indices cannot repeat and it restricts the sample size to be less than or equal to the size of the given array.
+// Note that if the array has repeating elements, then the sample may have repeats as well.
+pub fn choose<T>(array []T, k int) ?[]T {
+	return default_rng.choose(array, k)
+}
+
+// sample samples k elements from the array with replacement.
+// This means the elements can repeat and the size of the sample may exceed the size of the array.
+pub fn sample<T>(array []T, k int) []T {
+	return default_rng.sample(array, k)
 }

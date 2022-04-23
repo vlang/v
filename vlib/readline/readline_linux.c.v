@@ -22,7 +22,7 @@ mut:
 	c_oflag int
 	c_cflag int
 	c_lflag int
-	c_line  byte
+	c_line  u8
 	c_cc    [cclen]int
 }
 
@@ -32,7 +32,7 @@ mut:
 	c_oflag u32
 	c_cflag u32
 	c_lflag u32
-	c_line  byte
+	c_line  u8
 	c_cc    [cclen]int
 }
 
@@ -82,8 +82,8 @@ pub fn (mut r Readline) enable_raw_mode() {
 	raw.c_iflag &= ~(C.BRKINT | C.ICRNL | C.INPCK | C.ISTRIP | C.IXON)
 	raw.c_cflag |= C.CS8
 	raw.c_lflag &= ~(C.ECHO | C.ICANON | C.IEXTEN | C.ISIG)
-	raw.c_cc[C.VMIN] = byte(1)
-	raw.c_cc[C.VTIME] = byte(0)
+	raw.c_cc[C.VMIN] = u8(1)
+	raw.c_cc[C.VTIME] = u8(0)
 	unsafe { C.tcsetattr(0, C.TCSADRAIN, &raw) }
 	// println('>   after    raw: $raw')
 	r.is_raw = true
@@ -105,8 +105,8 @@ pub fn (mut r Readline) enable_raw_mode_nosig() {
 	raw.c_iflag &= ~(C.BRKINT | C.ICRNL | C.INPCK | C.ISTRIP | C.IXON)
 	raw.c_cflag |= C.CS8
 	raw.c_lflag &= ~(C.ECHO | C.ICANON | C.IEXTEN)
-	raw.c_cc[C.VMIN] = byte(1)
-	raw.c_cc[C.VTIME] = byte(0)
+	raw.c_cc[C.VMIN] = u8(1)
+	raw.c_cc[C.VTIME] = u8(0)
 	unsafe { C.tcsetattr(0, C.TCSADRAIN, &raw) }
 	r.is_raw = true
 	r.is_tty = true
@@ -203,7 +203,7 @@ fn (r Readline) analyse(c int) Action {
 	if c > 255 {
 		return Action.insert_character
 	}
-	match byte(c) {
+	match u8(c) {
 		`\0`, 0x3, 0x4, 255 {
 			return .eof
 		} // NUL, End of Text, End of Transmission
@@ -240,16 +240,16 @@ fn (r Readline) analyse(c int) Action {
 // analyse_control returns an `Action` based on the type of input read by `read_char`.
 fn (r Readline) analyse_control() Action {
 	c := r.read_char()
-	match byte(c) {
+	match u8(c) {
 		`[` {
 			sequence := r.read_char()
-			match byte(sequence) {
+			match u8(sequence) {
 				`C` { return .move_cursor_right }
 				`D` { return .move_cursor_left }
 				`B` { return .history_next }
 				`A` { return .history_previous }
 				`1` { return r.analyse_extended_control() }
-				`2`, `3` { return r.analyse_extended_control_no_eat(byte(sequence)) }
+				`2`, `3` { return r.analyse_extended_control_no_eat(u8(sequence)) }
 				else {}
 			}
 		}
@@ -284,10 +284,10 @@ match c {
 fn (r Readline) analyse_extended_control() Action {
 	r.read_char() // Removes ;
 	c := r.read_char()
-	match byte(c) {
+	match u8(c) {
 		`5` {
 			direction := r.read_char()
-			match byte(direction) {
+			match u8(direction) {
 				`C` { return .move_cursor_word_right }
 				`D` { return .move_cursor_word_left }
 				else {}
@@ -300,9 +300,9 @@ fn (r Readline) analyse_extended_control() Action {
 
 // analyse_extended_control_no_eat returns an `Action` based on the type of input byte given in `c`.
 // analyse_extended_control_no_eat specialises in detection of delete and insert keys.
-fn (r Readline) analyse_extended_control_no_eat(last_c byte) Action {
+fn (r Readline) analyse_extended_control_no_eat(last_c u8) Action {
 	c := r.read_char()
-	match byte(c) {
+	match u8(c) {
 		`~` {
 			match last_c {
 				`3` { return .delete_right } // Suppr key

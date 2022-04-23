@@ -127,8 +127,8 @@ fn myfn(i int) int {
 fn myfn2() {
 }
 
-fn myfn3(i int, s string) byte {
-	return byte(0)
+fn myfn3(i int, s string) u8 {
+	return u8(0)
 }
 
 fn myfn4() i8 {
@@ -138,7 +138,7 @@ fn myfn4() i8 {
 fn test_typeof_on_fn() {
 	assert typeof(myfn) == 'fn (int) int'
 	assert typeof(myfn2) == 'fn ()'
-	assert typeof(myfn3) == 'fn (int, string) byte'
+	assert typeof(myfn3) == 'fn (int, string) u8'
 	assert typeof(myfn4) == 'fn () i8'
 	assert typeof(myfn).name == typeof(myfn)
 	assert typeof(&myfn).name == '&fn (int) int'

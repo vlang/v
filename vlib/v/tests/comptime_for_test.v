@@ -9,7 +9,7 @@ pub:
 	f u64
 pub mut:
 	g string
-	h byte
+	h u8
 }
 
 ['foo/bar/three']

@@ -103,7 +103,14 @@ fn (opt &Options) report_undocumented_functions_in_file(nfile string) {
 			if opt.deprecated {
 				println('$ofile:$line_numbers$undocumented_fn.signature $tags_str')
 			} else {
-				if 'deprecated' !in undocumented_fn.tags {
+				mut has_deprecation_tag := false
+				for tag in undocumented_fn.tags {
+					if tag.starts_with('deprecated') {
+						has_deprecation_tag = true
+						break
+					}
+				}
+				if !has_deprecation_tag {
 					println('$ofile:$line_numbers$undocumented_fn.signature $tags_str')
 				}
 			}

@@ -181,6 +181,9 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.error('invalid use of reserved type `$param.name` as a parameter name',
 					param.pos)
 			}
+			if param.typ.has_flag(.optional) {
+				c.error('optional type argument is not supported currently', param.type_pos)
+			}
 			if !param.typ.is_ptr() { // value parameter, i.e. on stack - check for `[heap]`
 				arg_typ_sym := c.table.sym(param.typ)
 				if arg_typ_sym.kind == .struct_ {
@@ -256,7 +259,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 						c.error('receiver cannot be `mut` for operator overloading', node.receiver_pos)
 					} else if node.params[1].is_mut {
 						c.error('argument cannot be `mut` for operator overloading', node.pos)
-					} else if node.receiver.typ != node.params[1].typ {
+					} else if !c.check_same_type_ignoring_pointers(node.receiver.typ,
+						node.params[1].typ) {
 						c.error('expected `$receiver_sym.name` not `$param_sym.name` - both operands must be the same type for operator overloading',
 							node.params[1].type_pos)
 					} else if node.name in ['<', '=='] && node.return_type != ast.bool_type {
@@ -298,7 +302,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	// c.table.cur_fn = node
 	// Add return if `fn(...) ? {...}` have no return at end
 	if node.return_type != ast.void_type && node.return_type.has_flag(.optional)
-		&& (node.stmts.len == 0 || node.stmts[node.stmts.len - 1] !is ast.Return) {
+		&& (node.stmts.len == 0 || node.stmts.last() !is ast.Return) {
 		sym := c.table.sym(node.return_type)
 		if sym.kind == .void {
 			node.stmts << ast.Return{
@@ -320,6 +324,20 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	node.source_file = c.file
+}
+
+// check_same_type_ignoring_pointers util function to check if the Types are the same, including all
+// corner cases.
+// FIXME: if the optimization is done after the checker, we can safely remove this util function
+fn (c Checker) check_same_type_ignoring_pointers(type_a ast.Type, type_b ast.Type) bool {
+	// FIXME: if possible pass the ast.Node and check the property `is_auto_rec`
+	if type_a != type_b {
+		// before failing we must be sure that the parser didn't optimize the function
+		clean_type_a := type_a.set_nr_muls(0)
+		clean_type_b := type_b.set_nr_muls(0)
+		return clean_type_a == clean_type_b
+	}
+	return true
 }
 
 fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
@@ -529,32 +547,33 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		sym := c.table.sym(expr.left_type)
 		if sym.kind == .array {
 			info := sym.info as ast.Array
-			elem_typ := c.table.sym(info.elem_type)
-			if elem_typ.info is ast.FnType {
-				return elem_typ.info.func.return_type
+			elem_sym := c.table.sym(info.elem_type)
+			if elem_sym.info is ast.FnType {
+				node.return_type = elem_sym.info.func.return_type
+				return elem_sym.info.func.return_type
 			} else {
 				c.error('cannot call the element of the array, it is not a function',
 					node.pos)
 			}
 		} else if sym.kind == .map {
 			info := sym.info as ast.Map
-			value_typ := c.table.sym(info.value_type)
-			if value_typ.info is ast.FnType {
-				return value_typ.info.func.return_type
+			value_sym := c.table.sym(info.value_type)
+			if value_sym.info is ast.FnType {
+				node.return_type = value_sym.info.func.return_type
+				return value_sym.info.func.return_type
 			} else {
 				c.error('cannot call the value of the map, it is not a function', node.pos)
 			}
 		} else if sym.kind == .array_fixed {
 			info := sym.info as ast.ArrayFixed
-			elem_typ := c.table.sym(info.elem_type)
-			if elem_typ.info is ast.FnType {
-				return elem_typ.info.func.return_type
+			elem_sym := c.table.sym(info.elem_type)
+			if elem_sym.info is ast.FnType {
+				node.return_type = elem_sym.info.func.return_type
+				return elem_sym.info.func.return_type
 			} else {
 				c.error('cannot call the element of the array, it is not a function',
 					node.pos)
 			}
-		} else {
-			// TODO: assert? is this possible?
 		}
 		found = true
 		return ast.string_type
@@ -644,6 +663,20 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 	}
 	if !found {
 		continue_check = false
+		if dot_index := fn_name.index('.') {
+			if !fn_name[0].is_capital() {
+				mod_name := fn_name#[..dot_index]
+				mut mod_func_names := []string{}
+				for ctfnk, ctfnv in c.table.fns {
+					if ctfnv.is_pub && ctfnk.starts_with(mod_name) {
+						mod_func_names << ctfnk
+					}
+				}
+				suggestion := util.new_suggestion(fn_name, mod_func_names)
+				c.error(suggestion.say('unknown function: $fn_name '), node.pos)
+				return ast.void_type
+			}
+		}
 		c.error('unknown function: $fn_name', node.pos)
 		return ast.void_type
 	}
@@ -672,6 +705,12 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 	if func.mod != 'builtin' && func.language == .v && func.no_body && !c.pref.translated
 		&& !c.file.is_translated && !func.is_unsafe {
 		c.error('cannot call a function that does not have a body', node.pos)
+	}
+	if node.concrete_types.len > 0 && func.generic_names.len > 0
+		&& node.concrete_types.len != func.generic_names.len {
+		plural := if func.generic_names.len == 1 { '' } else { 's' }
+		c.error('expected $func.generic_names.len generic parameter$plural, got $node.concrete_types.len',
+			node.concrete_list_pos)
 	}
 	for concrete_type in node.concrete_types {
 		c.ensure_type_exists(concrete_type, node.concrete_list_pos) or {}
@@ -742,6 +781,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		if func.params.len == 0 {
 			continue
 		}
+
 		param := if func.is_variadic && i >= func.params.len - 1 {
 			func.params[func.params.len - 1]
 		} else {
@@ -763,8 +803,8 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			continue
 		}
 
-		typ := c.check_expr_opt_call(call_arg.expr, c.expr(call_arg.expr))
-		node.args[i].typ = typ
+		arg_typ := c.check_expr_opt_call(call_arg.expr, c.expr(call_arg.expr))
+		node.args[i].typ = arg_typ
 		if c.inside_comptime_for_field {
 			if mut call_arg.expr is ast.Ident {
 				if mut call_arg.expr.obj is ast.Var {
@@ -772,9 +812,9 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				}
 			}
 		}
-		typ_sym := c.table.sym(typ)
+		arg_typ_sym := c.table.sym(arg_typ)
 		param_typ_sym := c.table.sym(param.typ)
-		if func.is_variadic && typ.has_flag(.variadic) && node.args.len - 1 > i {
+		if func.is_variadic && arg_typ.has_flag(.variadic) && node.args.len - 1 > i {
 			c.error('when forwarding a variadic variable, it must be the final argument',
 				call_arg.pos)
 		}
@@ -805,10 +845,10 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		} else {
 			if param.is_mut {
 				tok := call_arg.share.str()
-				c.error('`$node.name` parameter `$param.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${
-					i + 1}`', call_arg.expr.pos())
+				c.error('function `$node.name` parameter `$param.name` is `$tok`, so use `$tok $call_arg.expr` instead',
+					call_arg.expr.pos())
 			} else {
-				c.fail_if_unreadable(call_arg.expr, typ, 'argument')
+				c.fail_if_unreadable(call_arg.expr, arg_typ, 'argument')
 			}
 		}
 		mut final_param_sym := param_typ_sym
@@ -833,34 +873,45 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 		// Handle expected interface
 		if final_param_sym.kind == .interface_ {
-			if c.type_implements(typ, final_param_typ, call_arg.expr.pos()) {
-				if !typ.is_ptr() && !typ.is_pointer() && !c.inside_unsafe
-					&& typ_sym.kind != .interface_ {
+			if c.type_implements(arg_typ, final_param_typ, call_arg.expr.pos()) {
+				if !arg_typ.is_ptr() && !arg_typ.is_pointer() && !c.inside_unsafe
+					&& arg_typ_sym.kind != .interface_ {
 					c.mark_as_referenced(mut &call_arg.expr, true)
 				}
 			}
 			continue
 		}
-		c.check_expected_call_arg(typ, c.unwrap_generic(param.typ), node.language, call_arg) or {
+		c.check_expected_call_arg(arg_typ, c.unwrap_generic(param.typ), node.language,
+			call_arg) or {
 			// str method, allow type with str method if fn arg is string
 			// Passing an int or a string array produces a c error here
 			// Deleting this condition results in propper V error messages
 			// if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
 			// continue
 			// }
-			if typ_sym.kind == .void && param_typ_sym.kind == .string {
+			if arg_typ_sym.kind == .void && param_typ_sym.kind == .string {
 				continue
 			}
 			if param.typ.has_flag(.generic) {
 				continue
 			}
+			if param_typ_sym.kind == .array && arg_typ_sym.kind == .array {
+				param_info := param_typ_sym.info as ast.Array
+				param_elem_type := c.table.unaliased_type(param_info.elem_type)
+				arg_info := arg_typ_sym.info as ast.Array
+				arg_elem_type := c.table.unaliased_type(arg_info.elem_type)
+				if param.typ.nr_muls() == arg_typ.nr_muls()
+					&& param_info.nr_dims == arg_info.nr_dims && param_elem_type == arg_elem_type {
+					continue
+				}
+			}
 			if c.pref.translated || c.file.is_translated {
 				// TODO duplicated logic in check_types() (check_types.v)
 				// Allow enums to be used as ints and vice versa in translated code
-				if param.typ == ast.int_type && typ_sym.kind == .enum_ {
+				if param.typ == ast.int_type && arg_typ_sym.kind == .enum_ {
 					continue
 				}
-				if typ == ast.int_type && param_typ_sym.kind == .enum_ {
+				if arg_typ == ast.int_type && param_typ_sym.kind == .enum_ {
 					continue
 				}
 				// In C unsafe number casts are used all the time (e.g. `char*` where
@@ -869,19 +920,19 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				if param.typ.is_ptr() {
 					param_is_number = param.typ.deref().is_number()
 				}
-				mut typ_is_number := typ.is_number()
-				if typ.is_ptr() {
-					typ_is_number = typ.deref().is_number()
+				mut typ_is_number := arg_typ.is_number()
+				if arg_typ.is_ptr() {
+					typ_is_number = arg_typ.deref().is_number()
 				}
 				if param_is_number && typ_is_number {
 					continue
 				}
 				// Allow voidptrs for everything
-				if param.typ == ast.voidptr_type_idx || typ == ast.voidptr_type_idx {
+				if param.typ == ast.voidptr_type_idx || arg_typ == ast.voidptr_type_idx {
 					continue
 				}
 				// Allow `[32]i8` as `&i8` etc
-				if (typ_sym.kind == .array_fixed && param_is_number)
+				if (arg_typ_sym.kind == .array_fixed && param_is_number)
 					|| (param_typ_sym.kind == .array_fixed && typ_is_number) {
 					continue
 				}
@@ -889,15 +940,19 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				if param.typ.is_any_kind_of_pointer() && typ_is_number {
 					continue
 				}
+				// Allow `&i8` as `int`
+				if arg_typ.is_any_kind_of_pointer() && param_is_number {
+					continue
+				}
 			}
 			c.error('$err.msg() in argument ${i + 1} to `$fn_name`', call_arg.pos)
 		}
 		// Warn about automatic (de)referencing, which will be removed soon.
-		if func.language != .c && !c.inside_unsafe && typ.nr_muls() != param.typ.nr_muls()
+		if func.language != .c && !c.inside_unsafe && arg_typ.nr_muls() != param.typ.nr_muls()
 			&& !(call_arg.is_mut && param.is_mut) && !(!call_arg.is_mut && !param.is_mut)
 			&& param.typ !in [ast.byteptr_type, ast.charptr_type, ast.voidptr_type] {
 			// sym := c.table.sym(typ)
-			c.warn('automatic referencing/dereferencing is deprecated and will be removed soon (got: $typ.nr_muls() references, expected: $param.typ.nr_muls() references)',
+			c.warn('automatic referencing/dereferencing is deprecated and will be removed soon (got: $arg_typ.nr_muls() references, expected: $param.typ.nr_muls() references)',
 				call_arg.pos)
 		}
 	}
@@ -961,10 +1016,6 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		c.error('a non generic function called like a generic one', node.concrete_list_pos)
 	}
 
-	if node.concrete_types.len > func.generic_names.len {
-		c.error('too many generic parameters got $node.concrete_types.len, expected $func.generic_names.len',
-			node.concrete_list_pos)
-	}
 	if func.generic_names.len > 0 {
 		if has_generic {
 			if typ := c.table.resolve_generic_to_concrete(func.return_type, func.generic_names,
@@ -1189,6 +1240,15 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			&& method.language == .v && method.no_body {
 			c.error('cannot call a method that does not have a body', node.pos)
 		}
+		if node.concrete_types.len > 0 && method.generic_names.len > 0
+			&& node.concrete_types.len != method.generic_names.len {
+			plural := if method.generic_names.len == 1 { '' } else { 's' }
+			c.error('expected $method.generic_names.len generic parameter$plural, got $node.concrete_types.len',
+				node.concrete_list_pos)
+		}
+		for concrete_type in node.concrete_types {
+			c.ensure_type_exists(concrete_type, node.concrete_list_pos) or {}
+		}
 		if method.return_type == ast.void_type && method.is_conditional
 			&& method.ctdefine_idx != ast.invalid_type_idx {
 			node.should_be_skipped = c.evaluate_once_comptime_if_attribute(mut method.attrs[method.ctdefine_idx])
@@ -1224,6 +1284,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			}
 			exp_arg_sym := c.table.sym(exp_arg_typ)
 			c.expected_type = exp_arg_typ
+
 			mut got_arg_typ := c.check_expr_opt_call(arg.expr, c.expr(arg.expr))
 			node.args[i].typ = got_arg_typ
 			if no_type_promotion {
@@ -1291,8 +1352,8 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			} else {
 				if param_is_mut {
 					tok := arg.share.str()
-					c.error('`$node.name` parameter `$param.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${
-						i + 1}`', arg.expr.pos())
+					c.error('method `$node.name` parameter `$param.name` is `$tok`, so use `$tok $arg.expr` instead',
+						arg.expr.pos())
 				} else {
 					c.fail_if_unreadable(arg.expr, got_arg_typ, 'argument')
 				}
@@ -1338,6 +1399,19 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				// if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
 				// continue
 				// }
+				param_typ_sym := c.table.sym(exp_arg_typ)
+				arg_typ_sym := c.table.sym(got_arg_typ)
+				if param_typ_sym.kind == .array && arg_typ_sym.kind == .array {
+					param_info := param_typ_sym.info as ast.Array
+					param_elem_type := c.table.unaliased_type(param_info.elem_type)
+					arg_info := arg_typ_sym.info as ast.Array
+					arg_elem_type := c.table.unaliased_type(arg_info.elem_type)
+					if exp_arg_typ.nr_muls() == got_arg_typ.nr_muls()
+						&& param_info.nr_dims == arg_info.nr_dims
+						&& param_elem_type == arg_elem_type {
+						continue
+					}
+				}
 				if got_arg_typ != ast.void_type {
 					c.error('$err.msg() in argument ${i + 1} to `${left_sym.name}.$method_name`',
 						arg.pos)
@@ -1394,10 +1468,6 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 		if node.concrete_types.len > 0 && method.generic_names.len == 0 {
 			c.error('a non generic function called like a generic one', node.concrete_list_pos)
-		}
-		if node.concrete_types.len > method.generic_names.len {
-			c.error('too many generic parameters got $node.concrete_types.len, expected $method.generic_names.len',
-				node.concrete_list_pos)
 		}
 		if method.generic_names.len > 0 {
 			if !left_type.has_flag(.generic) {
@@ -1470,6 +1540,32 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		c.error(suggestion.say(unknown_method_msg), node.pos)
 	}
 	return ast.void_type
+}
+
+fn (mut c Checker) go_expr(mut node ast.GoExpr) ast.Type {
+	ret_type := c.call_expr(mut node.call_expr)
+	if node.call_expr.or_block.kind != .absent {
+		c.error('optional handling cannot be done in `go` call. Do it when calling `.wait()`',
+			node.call_expr.or_block.pos)
+	}
+	// Make sure there are no mutable arguments
+	for arg in node.call_expr.args {
+		if arg.is_mut && !arg.typ.is_ptr() {
+			c.error('function in `go` statement cannot contain mutable non-reference arguments',
+				arg.expr.pos())
+		}
+	}
+	if node.call_expr.is_method && node.call_expr.receiver_type.is_ptr()
+		&& !node.call_expr.left_type.is_ptr() {
+		c.error('method in `go` statement cannot have non-reference mutable receiver',
+			node.call_expr.left.pos())
+	}
+
+	if c.pref.backend.is_js() {
+		return c.table.find_or_register_promise(ret_type)
+	} else {
+		return c.table.find_or_register_thread(ret_type)
+	}
 }
 
 fn (mut c Checker) deprecate_fnmethod(kind string, name string, the_fn ast.Fn, node ast.CallExpr) {
@@ -1654,6 +1750,10 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast
 			if is_map && arg_expr.return_type in [ast.void_type, 0] {
 				c.error('type mismatch, `$arg_expr.name` does not return anything', arg_expr.pos)
 			} else if !is_map && arg_expr.return_type != ast.bool_type {
+				if arg_expr.or_block.kind != .absent && arg_expr.return_type.has_flag(.optional)
+					&& arg_expr.return_type.clear_flag(.optional) == ast.bool_type {
+					return
+				}
 				c.error('type mismatch, `$arg_expr.name` must return a bool', arg_expr.pos)
 			}
 		}
@@ -1666,16 +1766,23 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type ast.
 	mut ret_type := ast.void_type
 	match method_name {
 		'clone', 'move' {
+			if node.args.len != 0 {
+				c.error('`.${method_name}()` does not have any arguments', node.args[0].pos)
+			}
 			if method_name[0] == `m` {
 				c.fail_if_immutable(node.left)
 			}
-			if node.left.is_auto_deref_var() {
+			if node.left.is_auto_deref_var() || ret_type.has_flag(.shared_f) {
 				ret_type = left_type.deref()
 			} else {
 				ret_type = left_type
 			}
+			ret_type = ret_type.clear_flag(.shared_f)
 		}
 		'keys' {
+			if node.args.len != 0 {
+				c.error('`.keys()` does not have any arguments', node.args[0].pos)
+			}
 			info := left_sym.info as ast.Map
 			typ := c.table.find_or_register_array(info.key_type)
 			ret_type = ast.Type(typ)
@@ -1783,17 +1890,26 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			else { arg_type }
 		}
 		node.return_type = c.table.find_or_register_array(c.unwrap_generic(ret_type))
+		if node.return_type.has_flag(.shared_f) {
+			node.return_type = node.return_type.clear_flag(.shared_f).deref()
+		}
 		ret_sym := c.table.sym(ret_type)
 		if ret_sym.kind == .multi_return {
 			c.error('returning multiple values is not supported in .map() calls', node.pos)
 		}
 	} else if method_name == 'filter' {
 		// check fn
+		if node.return_type.has_flag(.shared_f) {
+			node.return_type = node.return_type.clear_flag(.shared_f).deref()
+		}
 		c.check_map_and_filter(false, elem_typ, node)
 	} else if method_name in ['any', 'all'] {
 		c.check_map_and_filter(false, elem_typ, node)
 		node.return_type = ast.bool_type
 	} else if method_name == 'clone' {
+		if node.args.len != 0 {
+			c.error('`.clone()` does not have any arguments', node.args[0].pos)
+		}
 		// need to return `array_xxx` instead of `array`
 		// in ['clone', 'str'] {
 		node.receiver_type = left_type.ref()
@@ -1802,14 +1918,28 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		} else {
 			node.return_type = node.receiver_type.set_nr_muls(0)
 		}
+		if node.return_type.has_flag(.shared_f) {
+			node.return_type = node.return_type.clear_flag(.shared_f)
+		}
 	} else if method_name == 'sort' {
 		node.return_type = ast.void_type
 	} else if method_name == 'contains' {
 		// c.warn('use `value in arr` instead of `arr.contains(value)`', node.pos)
+		if node.args.len != 1 {
+			c.error('`.contains()` expected 1 argument, but got $node.args.len', node.pos)
+		} else if !left_sym.has_method('contains') {
+			arg_typ := c.expr(node.args[0].expr)
+			c.check_expected_call_arg(arg_typ, elem_typ, node.language, node.args[0]) or {
+				c.error('$err.msg() in argument 1 to `.contains()`', node.args[0].pos)
+			}
+		}
 		node.return_type = ast.bool_type
 	} else if method_name == 'index' {
 		node.return_type = ast.int_type
 	} else if method_name in ['first', 'last', 'pop'] {
+		if node.args.len != 0 {
+			c.error('`.${method_name}()` does not have any arguments', node.args[0].pos)
+		}
 		node.return_type = array_info.elem_type
 		if method_name == 'pop' {
 			c.fail_if_immutable(node.left)

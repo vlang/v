@@ -112,13 +112,13 @@ mut:
 	ebx  u32
 	edx  u32
 	ecx  u32
-	zero byte // for string
+	zero u8 // for string
 }
 
 fn (m Manu) str() string {
 	return unsafe {
 		string{
-			str: &byte(&m)
+			str: &u8(&m)
 			len: 24
 			is_lit: 1
 		}

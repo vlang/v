@@ -36,10 +36,12 @@ const (
 	]
 )
 
-const builtin_module_names = ['builtin', 'strconv', 'strings', 'dlmalloc']
+const builtin_module_names = ['builtin', 'strconv', 'strings', 'dlmalloc', 'math']
 
 pub fn module_is_builtin(mod string) bool {
+	// NOTE: using util.builtin_module_parts here breaks -usecache on macos
 	return mod in util.builtin_module_names
+	// return mod in util.builtin_module_parts
 }
 
 pub fn tabs(n int) string {
@@ -78,10 +80,10 @@ pub fn resolve_env_value(str string, check_for_presence bool) ?string {
 	at := str.index_opt(env_ident) or {
 		return error('no "$env_ident' + '...\')" could be found in "$str".')
 	}
-	mut ch := byte(`.`)
+	mut ch := u8(`.`)
 	mut env_lit := ''
 	for i := at + env_ident.len; i < str.len && ch != `)`; i++ {
-		ch = byte(str[i])
+		ch = u8(str[i])
 		if ch.is_letter() || ch.is_digit() || ch == `_` {
 			env_lit += ch.ascii_str()
 		} else {
@@ -169,6 +171,9 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 			// case these tools do crash/panic, their backtraces will have
 			// .v line numbers, to ease diagnostic in #bugs and issues.
 			compilation_command += ' -g '
+		}
+		if tool_name == 'vfmt' {
+			compilation_command += ' -d vfmt '
 		}
 		compilation_command += os.quoted_path(tool_source)
 		if is_verbose {

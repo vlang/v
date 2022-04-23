@@ -51,21 +51,21 @@ pub fn wymum(a u64, b u64) u64 {
 }
 
 [inline]
-fn wyr3(p &byte, k u64) u64 {
+fn wyr3(p &u8, k u64) u64 {
 	unsafe {
 		return (u64(p[0]) << 16) | (u64(p[k >> 1]) << 8) | u64(p[k - 1])
 	}
 }
 
 [inline]
-fn wyr4(p &byte) u64 {
+fn wyr4(p &u8) u64 {
 	unsafe {
 		return u32(p[0]) | (u32(p[1]) << u32(8)) | (u32(p[2]) << u32(16)) | (u32(p[3]) << u32(24))
 	}
 }
 
 [inline]
-fn wyr8(p &byte) u64 {
+fn wyr8(p &u8) u64 {
 	unsafe {
 		return u64(p[0]) | (u64(p[1]) << 8) | (u64(p[2]) << 16) | (u64(p[3]) << 24) | (u64(p[4]) << 32) | (u64(p[5]) << 40) | (u64(p[6]) << 48) | (u64(p[7]) << 56)
 	}

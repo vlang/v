@@ -11,11 +11,11 @@ fn test_min() ? {
 	assert rf == f32(1.1)
 	rf = min(b[..2]) ?
 	assert rf == f32(3.1)
-	c := [byte(4), 9, 3, 1]
+	c := [u8(4), 9, 3, 1]
 	mut rb := min(c) ?
-	assert rb == byte(1)
+	assert rb == u8(1)
 	rb = min(c[..3]) ?
-	assert rb == byte(3)
+	assert rb == u8(3)
 }
 
 fn test_max() ? {
@@ -29,11 +29,11 @@ fn test_max() ? {
 	assert rf == f32(9.1)
 	rf = max(b[..3]) ?
 	assert rf == f32(5.1)
-	c := [byte(4), 9, 3, 1]
+	c := [u8(4), 9, 3, 1]
 	mut rb := max(c) ?
-	assert rb == byte(9)
+	assert rb == u8(9)
 	rb = max(c[2..]) ?
-	assert rb == byte(3)
+	assert rb == u8(3)
 }
 
 fn test_idx_min() ? {
@@ -43,7 +43,7 @@ fn test_idx_min() ? {
 	b := [f32(5.1), 3.1, 1.1, 9.1]
 	rf := idx_min(b) ?
 	assert rf == 2
-	c := [byte(4), 9, 3, 1]
+	c := [u8(4), 9, 3, 1]
 	rb := idx_min(c) ?
 	assert rb == 3
 }
@@ -55,7 +55,7 @@ fn test_idx_max() ? {
 	b := [f32(5.1), 3.1, 1.1, 9.1]
 	rf := idx_max(b) ?
 	assert rf == 3
-	c := [byte(4), 9, 3, 1]
+	c := [u8(4), 9, 3, 1]
 	rb := idx_max(c) ?
 	assert rb == 1
 }
@@ -283,13 +283,32 @@ fn test_copy() {
 }
 
 fn test_can_copy_bits() {
-	assert can_copy_bits<byte>()
+	assert can_copy_bits<u8>()
 	assert can_copy_bits<int>()
 	assert can_copy_bits<voidptr>()
-	assert can_copy_bits<&byte>()
+	assert can_copy_bits<&u8>()
 	// autofree needs to intercept assign
 	assert !can_copy_bits<string>()
 	assert !can_copy_bits<[]int>()
 	// map not copyable
 	assert !can_copy_bits<map[string]int>()
+}
+
+type Str = string
+
+fn test_alias_string_contains() {
+	names := [Str('')]
+	assert (Str('') in names) == true
+}
+
+struct XYZ {}
+
+fn test_array_append_empty_struct() {
+	mut names := []XYZ{cap: 2}
+	names << XYZ{}
+	assert (XYZ{} in names) == true
+
+	// test fixed array
+	array := [XYZ{}]
+	assert (XYZ{} in names) == true
 }

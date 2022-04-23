@@ -15,7 +15,7 @@ pub fn encode_int_walpha(input int, alphabet Alphabet) ?string {
 		return error(@MOD + '.' + @FN + ': input must be greater than zero')
 	}
 
-	mut buffer := []byte{}
+	mut buffer := []u8{}
 
 	mut i := input
 	for i > 0 {
@@ -55,7 +55,7 @@ pub fn encode_walpha(input string, alphabet Alphabet) string {
 	// integer simplification of
 	// ceil(log(256)/log(58))
 
-	mut out := []byte{len: sz}
+	mut out := []u8{len: sz}
 	mut i := 0
 	mut high := 0
 	mut carry := u32(0)
@@ -65,7 +65,7 @@ pub fn encode_walpha(input string, alphabet Alphabet) string {
 		i = sz - 1
 		for carry = u32(b); i > high || carry != 0; i-- {
 			carry = carry + 256 * u32(out[i])
-			out[i] = byte(carry % 58)
+			out[i] = u8(carry % 58)
 			carry /= 58
 		}
 		high = 1
@@ -94,7 +94,7 @@ pub fn decode_int_walpha(input string, alphabet Alphabet) ?int {
 	mut total := 0 // to hold the results
 	b58 := input.reverse()
 	for i, ch in b58 {
-		ch_i := alphabet.encode.bytestr().index_byte(ch)
+		ch_i := alphabet.encode.bytestr().index_u8(ch)
 		if ch_i == -1 {
 			return error(@MOD + '.' + @FN +
 				': input string contains values not found in the provided alphabet')
@@ -131,7 +131,7 @@ pub fn decode_walpha(str string, alphabet Alphabet) ?string {
 	mut c := u64(0)
 
 	// the 32-bit algorithm stretches the result up to 2x
-	mut binu := []byte{len: 2 * ((b58sz * 406 / 555) + 1)}
+	mut binu := []u8{len: 2 * ((b58sz * 406 / 555) + 1)}
 	mut outi := []u32{len: (b58sz + 3) / 4}
 
 	for _, r in str {
@@ -162,7 +162,7 @@ pub fn decode_walpha(str string, alphabet Alphabet) ?string {
 	mut out_len := 0
 	for j := 0; j < outi.len; j++ {
 		for mask < 32 {
-			binu[out_len] = byte(outi[j] >> mask)
+			binu[out_len] = u8(outi[j] >> mask)
 			mask -= 8
 			out_len++
 		}

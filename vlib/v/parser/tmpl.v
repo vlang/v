@@ -76,7 +76,7 @@ fn is_html_open_tag(name string, s string) bool {
 fn insert_template_code(fn_name string, tmpl_str_start string, line string) string {
 	// HTML, may include `@var`
 	// escaped by cgen, unless it's a `vweb.RawHtml` string
-	trailing_bs := parser.tmpl_str_end + 'sb_${fn_name}.write_byte(92)\n' + tmpl_str_start
+	trailing_bs := parser.tmpl_str_end + 'sb_${fn_name}.write_u8(92)\n' + tmpl_str_start
 	round1 := ['\\', '\\\\', r"'", "\\'", r'@', r'$']
 	round2 := [r'$$', r'\@', r'.$', r'.@']
 	mut rline := line.replace_each(round1).replace_each(round2)
@@ -256,30 +256,27 @@ fn vweb_tmpl_${fn_name}() string {
 
 		match state {
 			.html {
-				if line.starts_with('span.') && line.ends_with('{') {
+				line_t := line.trim_space()
+				if line_t.starts_with('span.') && line.ends_with('{') {
 					// `span.header {` => `<span class='header'>`
 					class := line.find_between('span.', '{').trim_space()
 					source.writeln('<span class="$class">')
 					in_span = true
 					continue
-				}
-				if line.trim_space().starts_with('.') && line.ends_with('{') {
+				} else if line_t.starts_with('.') && line.ends_with('{') {
 					// `.header {` => `<div class='header'>`
 					class := line.find_between('.', '{').trim_space()
 					trimmed := line.trim_space()
 					source.write_string(strings.repeat(`\t`, line.len - trimmed.len)) // add the necessary indent to keep <div><div><div> code clean
 					source.writeln('<div class="$class">')
 					continue
-				}
-				if line.starts_with('#') && line.ends_with('{') {
+				} else if line_t.starts_with('#') && line.ends_with('{') {
 					// `#header {` => `<div id='header'>`
 					class := line.find_between('#', '{').trim_space()
 					source.writeln('<div id="$class">')
 					continue
-				}
-				if line.trim_space() == '}' {
-					trimmed := line.trim_space()
-					source.write_string(strings.repeat(`\t`, line.len - trimmed.len)) // add the necessary indent to keep <div><div><div> code clean
+				} else if line_t == '}' {
+					source.write_string(strings.repeat(`\t`, line.len - line_t.len)) // add the necessary indent to keep <div><div><div> code clean
 					if in_span {
 						source.writeln('</span>')
 						in_span = false

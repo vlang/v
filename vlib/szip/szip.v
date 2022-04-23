@@ -15,13 +15,13 @@ fn C.zip_open(&char, int, char) &Zip
 
 fn C.zip_close(&Zip)
 
-fn C.zip_entry_open(&Zip, &byte) int
+fn C.zip_entry_open(&Zip, &u8) int
 
 fn C.zip_entry_openbyindex(&Zip, int) int
 
 fn C.zip_entry_close(&Zip) int
 
-fn C.zip_entry_name(&Zip) &byte
+fn C.zip_entry_name(&Zip) &u8
 
 fn C.zip_entry_index(&Zip) int
 
@@ -66,7 +66,7 @@ pub enum OpenMode {
 }
 
 [inline]
-fn (om OpenMode) to_byte() byte {
+fn (om OpenMode) to_u8() u8 {
 	return match om {
 		.write {
 			`w`
@@ -88,7 +88,7 @@ pub fn open(name string, level CompressionLevel, mode OpenMode) ?&Zip {
 	if name.len == 0 {
 		return error('szip: name of file empty')
 	}
-	p_zip := unsafe { &Zip(C.zip_open(&char(name.str), int(level), char(mode.to_byte()))) }
+	p_zip := unsafe { &Zip(C.zip_open(&char(name.str), int(level), char(mode.to_u8()))) }
 	if isnil(p_zip) {
 		return error('szip: cannot open/create/append new zip archive')
 	}
@@ -134,7 +134,7 @@ pub fn (mut zentry Zip) close_entry() {
 // All slashes MUST be forward slashes '/' as opposed to backwards slashes '\'
 // for compatibility with Amiga and UNIX file systems etc.
 pub fn (mut zentry Zip) name() string {
-	name := unsafe { &byte(C.zip_entry_name(zentry)) }
+	name := unsafe { &u8(C.zip_entry_name(zentry)) }
 	if name == 0 {
 		return ''
 	}
@@ -172,8 +172,8 @@ pub fn (mut zentry Zip) crc32() u32 {
 }
 
 // write_entry compresses an input buffer for the current zip entry.
-pub fn (mut zentry Zip) write_entry(data []byte) ? {
-	if (data[0] & 0xff) == -1 {
+pub fn (mut zentry Zip) write_entry(data []u8) ? {
+	if int(data[0] & 0xff) == -1 {
 		return error('szip: cannot write entry')
 	}
 	res := C.zip_entry_write(zentry, data.data, data.len)
@@ -195,7 +195,7 @@ pub fn (mut zentry Zip) create_entry(name string) ? {
 // NOTE: remember to release the memory allocated for an output buffer.
 // for large entries, please take a look at zip_entry_extract function.
 pub fn (mut zentry Zip) read_entry() ?voidptr {
-	mut buf := &byte(0)
+	mut buf := &u8(0)
 	mut bsize := usize(0)
 	res := C.zip_entry_read(zentry, unsafe { &voidptr(&buf) }, &bsize)
 	if res == -1 {

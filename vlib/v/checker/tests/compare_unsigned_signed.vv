@@ -1,0 +1,12 @@
+fn main() {
+	if u32(1) < -1 {
+		println('unexpected')
+	}
+
+	if -1 > u32(1) {
+		println('unexpected')
+	}
+	// unsigned == literal
+	_ = u8(-1) == -1 // false!
+	_ = -1 == u16(-1) // false!
+}

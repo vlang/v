@@ -30,13 +30,13 @@ const (
 struct Digest {
 mut:
 	h   []u32
-	x   []byte
+	x   []u8
 	nx  int
 	len u64
 }
 
 fn (mut d Digest) reset() {
-	d.x = []byte{len: sha1.chunk}
+	d.x = []u8{len: sha1.chunk}
 	d.h = []u32{len: (5)}
 	d.h[0] = u32(sha1.init0)
 	d.h[1] = u32(sha1.init1)
@@ -56,7 +56,7 @@ pub fn new() &Digest {
 
 // write writes the contents of `p_` to the internal hash representation.
 [manualfree]
-pub fn (mut d Digest) write(p_ []byte) ?int {
+pub fn (mut d Digest) write(p_ []u8) ?int {
 	nn := p_.len
 	unsafe {
 		mut p := p_
@@ -91,7 +91,7 @@ pub fn (mut d Digest) write(p_ []byte) ?int {
 }
 
 // sum returns a copy of the generated sum of the bytes in `b_in`.
-pub fn (d &Digest) sum(b_in []byte) []byte {
+pub fn (d &Digest) sum(b_in []u8) []u8 {
 	// Make a copy of d so that caller can keep writing and summing.
 	mut d0 := *d
 	hash := d0.checksum()
@@ -102,11 +102,11 @@ pub fn (d &Digest) sum(b_in []byte) []byte {
 	return b_out
 }
 
-// checksum returns the byte checksum of the `Digest`.
-fn (mut d Digest) checksum() []byte {
+// checksum returns the current byte checksum of the `Digest`.
+pub fn (mut d Digest) checksum() []u8 {
 	mut len := d.len
 	// Padding.  Add a 1 bit and 0 bits until 56 bytes mod 64.
-	mut tmp := []byte{len: (64)}
+	mut tmp := []u8{len: (64)}
 	tmp[0] = 0x80
 	if int(len) % 64 < 56 {
 		d.write(tmp[..56 - int(len) % 64]) or { panic(err) }
@@ -117,7 +117,7 @@ fn (mut d Digest) checksum() []byte {
 	len <<= 3
 	binary.big_endian_put_u64(mut tmp, len)
 	d.write(tmp[..8]) or { panic(err) }
-	mut digest := []byte{len: sha1.size}
+	mut digest := []u8{len: sha1.size}
 	binary.big_endian_put_u32(mut digest, d.h[0])
 	binary.big_endian_put_u32(mut digest[4..], d.h[1])
 	binary.big_endian_put_u32(mut digest[8..], d.h[2])
@@ -127,13 +127,13 @@ fn (mut d Digest) checksum() []byte {
 }
 
 // sum returns the SHA-1 checksum of the bytes passed in `data`.
-pub fn sum(data []byte) []byte {
+pub fn sum(data []u8) []u8 {
 	mut d := new()
 	d.write(data) or { panic(err) }
 	return d.checksum()
 }
 
-fn block(mut dig Digest, p []byte) {
+fn block(mut dig Digest, p []u8) {
 	// For now just use block_generic until we have specific
 	// architecture optimized versions
 	block_generic(mut dig, p)

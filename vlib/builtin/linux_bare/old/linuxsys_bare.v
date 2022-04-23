@@ -360,7 +360,7 @@ pub fn sys_close(fd i64) Errno {
 pub fn sys_mmap(addr &byte, len u64, prot Mm_prot, flags Map_flags, fildes u64, off u64) (&byte, Errno) {
 	rc := sys_call6(9, u64(addr), len, u64(prot), u64(flags), fildes, off)
 	a, e := split_int_errno(rc)
-	return &byte(a), e
+	return &u8(a), e
 }
 
 pub fn sys_munmap(addr voidptr, len u64) Errno {
@@ -404,7 +404,7 @@ pub fn sys_dup2(oldfd int, newfd int) (i64, Errno) {
 }
 
 // 59  sys_execve  const char *filename  const char *const argv[]  const char *const envp[]
-// pub fn sys_execve(filename byteptr, argv []byteptr, envp []byteptr) int {
+// pub fn sys_execve(filename byteptr, argv []u8ptr, envp []u8ptr) int {
 //  return sys_call3(59, filename, argv, envp)
 //}
 

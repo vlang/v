@@ -21,8 +21,8 @@ fn (mut resp Response) free() {
 }
 
 // Formats resp to bytes suitable for HTTP response transmission
-pub fn (resp Response) bytes() []byte {
-	// TODO: build []byte directly; this uses two allocations
+pub fn (resp Response) bytes() []u8 {
+	// TODO: build []u8 directly; this uses two allocations
 	return resp.bytestr().bytes()
 }
 

@@ -52,7 +52,7 @@ pub fn (mut c TcpConn) close() ? {
 	c.sock.close() ?
 }
 
-pub fn (c TcpConn) read_ptr(buf_ptr &byte, len int) ?int {
+pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) ?int {
 	mut res := wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)) ?
 	$if trace_tcp ? {
 		eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
@@ -84,7 +84,7 @@ pub fn (c TcpConn) read_ptr(buf_ptr &byte, len int) ?int {
 	return none
 }
 
-pub fn (c TcpConn) read(mut buf []byte) ?int {
+pub fn (c TcpConn) read(mut buf []u8) ?int {
 	return c.read_ptr(buf.data, buf.len)
 }
 
@@ -96,7 +96,7 @@ pub fn (mut c TcpConn) read_deadline() ?time.Time {
 }
 
 // write_ptr blocks and attempts to write all data
-pub fn (mut c TcpConn) write_ptr(b &byte, len int) ?int {
+pub fn (mut c TcpConn) write_ptr(b &u8, len int) ?int {
 	$if trace_tcp ? {
 		eprintln(
 			'>>> TcpConn.write_ptr | c.sock.handle: $c.sock.handle | b: ${ptr_str(b)} len: $len |\n' +
@@ -107,7 +107,7 @@ pub fn (mut c TcpConn) write_ptr(b &byte, len int) ?int {
 			unsafe { b.vstring_with_len(len) })
 	}
 	unsafe {
-		mut ptr_base := &byte(b)
+		mut ptr_base := &u8(b)
 		mut total_sent := 0
 		for total_sent < len {
 			ptr := ptr_base + total_sent
@@ -132,7 +132,7 @@ pub fn (mut c TcpConn) write_ptr(b &byte, len int) ?int {
 }
 
 // write blocks and attempts to write all data
-pub fn (mut c TcpConn) write(bytes []byte) ?int {
+pub fn (mut c TcpConn) write(bytes []u8) ?int {
 	return c.write_ptr(bytes.data, bytes.len)
 }
 
@@ -239,16 +239,10 @@ pub fn (mut l TcpListener) accept() ?&TcpConn {
 	$if trace_tcp ? {
 		eprintln('    TcpListener.accept | l.sock.handle: ${l.sock.handle:6}')
 	}
-	addr := Addr{
-		addr: AddrData{
-			Ip6: Ip6{}
-		}
-	}
-	size := sizeof(Addr)
-	mut new_handle := C.accept(l.sock.handle, voidptr(&addr), &size)
+	mut new_handle := C.accept(l.sock.handle, 0, 0)
 	if new_handle <= 0 {
 		l.wait_for_accept() ?
-		new_handle = C.accept(l.sock.handle, voidptr(&addr), &size)
+		new_handle = C.accept(l.sock.handle, 0, 0)
 		if new_handle == -1 || new_handle == 0 {
 			return error('accept failed')
 		}

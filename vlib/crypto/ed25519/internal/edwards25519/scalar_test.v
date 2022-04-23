@@ -22,9 +22,9 @@ fn test_scalar_equal() {
 
 fn test_scalar_non_adjacent_form() {
 	mut s := Scalar{
-		s: [byte(0x1a), 0x0e, 0x97, 0x8a, 0x90, 0xf6, 0x62, 0x2d, 0x37, 0x47, 0x02, 0x3f, 0x8a,
-			0xd8, 0x26, 0x4d, 0xa7, 0x58, 0xaa, 0x1b, 0x88, 0xe0, 0x40, 0xd1, 0x58, 0x9e, 0x7b,
-			0x7f, 0x23, 0x76, 0xef, 0x09]!
+		s: [u8(0x1a), 0x0e, 0x97, 0x8a, 0x90, 0xf6, 0x62, 0x2d, 0x37, 0x47, 0x02, 0x3f, 0x8a, 0xd8,
+			0x26, 0x4d, 0xa7, 0x58, 0xaa, 0x1b, 0x88, 0xe0, 0x40, 0xd1, 0x58, 0x9e, 0x7b, 0x7f,
+			0x23, 0x76, 0xef, 0x09]!
 	}
 	expected_naf := [i8(0), 13, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, -9, 0, 0, 0, 0, -11,
 		0, 0, 0, 0, 3, 0, 0, 0, 0, 1, 0, 0, 0, 0, 9, 0, 0, 0, 0, -5, 0, 0, 0, 0, 0, 0, 3, 0, 0,
@@ -58,8 +58,8 @@ fn addlike_subneg(x Scalar, y Scalar) bool {
 
 fn test_scalar_add_like_subneg() {
 	for i in 0 .. 15 {
-		x := generate_scalar(1000) or { panic(err.msg) }
-		y := generate_scalar(1000) or { panic(err.msg) }
+		x := generate_scalar(1000) or { panic(err) }
+		y := generate_scalar(1000) or { panic(err) }
 		assert addlike_subneg(x, y) == true
 	}
 }
@@ -70,7 +70,7 @@ fn fg(sc Scalar) bool {
 
 fn test_scalar_generate() ? {
 	for i in 0 .. 15 {
-		sc := generate_scalar(1000) or { panic(err.msg) }
+		sc := generate_scalar(1000) or { panic(err) }
 
 		assert fg(sc) == true
 	}
@@ -79,10 +79,10 @@ fn test_scalar_generate() ? {
 //
 fn test_scalar_set_canonical_bytes() ? {
 	for i in 0 .. 10 {
-		mut buf := rand.bytes(32) or { panic(err.msg) }
-		mut sc := generate_scalar(1000) or { panic(err.msg) }
+		mut buf := rand.bytes(32) or { panic(err) }
+		mut sc := generate_scalar(1000) or { panic(err) }
 		buf[buf.len - 1] &= (1 << 4) - 1
-		sc = sc.set_canonical_bytes(buf) or { panic(err.msg) }
+		sc = sc.set_canonical_bytes(buf) or { panic(err) }
 
 		assert buf[..] == sc.bytes()
 		assert is_reduced(sc)
@@ -93,7 +93,7 @@ fn test_scalar_set_canonical_bytes_round_trip() ? {
 	for i in 0 .. 10 {
 		mut sc1 := generate_scalar(2) ?
 		mut sc2 := generate_scalar(6) ?
-		sc2.set_canonical_bytes(sc1.bytes()) or { panic(err.msg) }
+		sc2.set_canonical_bytes(sc1.bytes()) or { panic(err) }
 
 		assert sc1 == sc2
 	}
@@ -101,7 +101,7 @@ fn test_scalar_set_canonical_bytes_round_trip() ? {
 
 const (
 	sc_error = Scalar{
-		s: [32]byte{init: (byte(-1))}
+		s: [32]u8{init: (u8(-1))}
 	}
 )
 
@@ -134,7 +134,7 @@ fn test_scalar_set_uniform_bytes() ? {
 	assert m.abs_cmp(scbig) == 0 // NEED FIX
 }
 
-fn bigint_from_le_bytes(b []byte) big.Integer {
+fn bigint_from_le_bytes(b []u8) big.Integer {
 	mut bc := b.clone()
 	buf := swap_endianness(mut bc) // WITHOUT THIS, some test would fail
 	bg := big.integer_from_bytes(buf)
@@ -152,10 +152,10 @@ fn test_scalar_set_bytes_with_clamping() {
 		t.Errorf("random: got %q, want %q", got, want)
 	}*/
 	random := '633d368491364dc9cd4c1bf891b1d59460face1644813240a313e61f2c88216e'
-	random_bytes := hex.decode(random) or { panic(err.msg) }
+	random_bytes := hex.decode(random) or { panic(err) }
 
 	mut s0 := Scalar{}
-	s0.set_bytes_with_clamping(random_bytes) or { panic(err.msg) }
+	s0.set_bytes_with_clamping(random_bytes) or { panic(err) }
 
 	mut p0 := Point{}
 	p0.scalar_base_mult(mut s0)
@@ -167,8 +167,8 @@ fn test_scalar_set_bytes_with_clamping() {
 
 	zero := '0000000000000000000000000000000000000000000000000000000000000000'
 	mut s1 := Scalar{}
-	zero_bytes := hex.decode(zero) or { panic(err.msg) }
-	s1.set_bytes_with_clamping(zero_bytes) or { panic(err.msg) }
+	zero_bytes := hex.decode(zero) or { panic(err) }
+	s1.set_bytes_with_clamping(zero_bytes) or { panic(err) }
 	mut p1 := Point{}
 	p1.scalar_base_mult(mut s1)
 
@@ -178,8 +178,8 @@ fn test_scalar_set_bytes_with_clamping() {
 
 	one := 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
 	mut s2 := Scalar{}
-	mut one_bytes := hex.decode(one) or { panic(err.msg) }
-	s2.set_bytes_with_clamping(one_bytes) or { panic(err.msg) }
+	mut one_bytes := hex.decode(one) or { panic(err) }
+	s2.set_bytes_with_clamping(one_bytes) or { panic(err) }
 	mut p2 := Point{}
 	p2.scalar_base_mult(mut s2)
 

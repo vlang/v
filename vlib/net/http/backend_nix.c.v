@@ -101,7 +101,7 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 	// println(req_headers)
 	C.BIO_puts(web, &char(req_headers.str))
 	mut content := strings.new_builder(100)
-	mut buff := [bufsize]byte{}
+	mut buff := [bufsize]u8{}
 	bp := unsafe { &buff[0] }
 	mut readcounter := 0
 	for {

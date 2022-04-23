@@ -79,3 +79,9 @@ fn test_derive() {
 	assert t2.has_flag(ast.TypeFlag.generic) == true
 	assert t2.nr_muls() == 10
 }
+
+fn test_flip_signedness() {
+	assert ast.i8_type.flip_signedness() == ast.byte_type
+	assert ast.u16_type.flip_signedness() == ast.i16_type
+	assert ast.isize_type.flip_signedness() == ast.usize_type
+}

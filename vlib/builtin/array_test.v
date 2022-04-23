@@ -669,7 +669,7 @@ fn test_map() {
 	assert nums.map(it + strs.map(it.len)[0]) == [2, 3, 4, 5, 6, 7]
 	assert strs.map(it.len + strs.map(it.len)[0]) == [2, 3, 8]
 	// nested (different it types)
-	assert strs.map(it[nums.map(it - it)[0]]) == [byte(`v`), `i`, `a`]
+	assert strs.map(it[nums.map(it - it)[0]]) == [u8(`v`), `i`, `a`]
 	assert nums[0..3].map('$it' + strs.map(it)[it - 1]) == ['1v', '2is', '3awesome']
 	assert nums.map(map_test_helper_1) == [1, 4, 9, 16, 25, 36]
 	assert [1, 5, 10].map(map_test_helper_1) == [1, 25, 100]
@@ -1046,12 +1046,46 @@ fn test_trim() {
 	assert arr.last() == 2
 }
 
+[manualfree]
+fn test_drop() {
+	mut a := [1, 2]
+	a << 3 // pushing assures reallocation; a.cap now should be bigger:
+	assert a.cap > 3
+	// eprintln('>>> a.cap: $a.cap | a.len: $a.len')
+
+	a.drop(-1000)
+	assert a == [1, 2, 3] // a.drop( negative ) should NOT modify the array
+	// eprintln('>>> a.cap: $a.cap | a.len: $a.len')
+
+	a.drop(2)
+	assert a == [3]
+	assert a.cap > a.len
+	// eprintln('>>> a.cap: $a.cap | a.len: $a.len')
+
+	a.drop(10)
+	assert a == []
+	assert a.cap > a.len
+	// eprintln('>>> a.cap: $a.cap | a.len: $a.len')
+
+	a << 123
+	a << 456
+	a << 789
+	// eprintln('>>> a.cap: $a.cap | a.len: $a.len')
+	assert a == [123, 456, 789]
+
+	a.drop(10)
+	assert a == []
+	// eprintln('>>> a.cap: $a.cap | a.len: $a.len')
+
+	unsafe { a.free() } // test offset OK
+}
+
 fn test_hex() {
 	// array hex
-	st := [byte(`V`), `L`, `A`, `N`, `G`]
+	st := [u8(`V`), `L`, `A`, `N`, `G`]
 	assert st.hex() == '564c414e47'
 	assert st.hex().len == 10
-	st1 := [byte(0x41)].repeat(100)
+	st1 := [u8(0x41)].repeat(100)
 	assert st1.hex() == '41'.repeat(100)
 }
 

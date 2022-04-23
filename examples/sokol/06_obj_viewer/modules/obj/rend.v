@@ -18,7 +18,7 @@ import stbi
 /******************************************************************************
 * Texture functions
 ******************************************************************************/
-pub fn create_texture(w int, h int, buf &byte) gfx.Image {
+pub fn create_texture(w int, h int, buf &u8) gfx.Image {
 	sz := w * h * 4
 	mut img_desc := gfx.ImageDesc{
 		width: w
@@ -29,7 +29,7 @@ pub fn create_texture(w int, h int, buf &byte) gfx.Image {
 		// usage: .dynamic
 		wrap_u: .clamp_to_edge
 		wrap_v: .clamp_to_edge
-		label: &byte(0)
+		label: &u8(0)
 		d3d11_texture: 0
 	}
 	// comment if .dynamic is enabled

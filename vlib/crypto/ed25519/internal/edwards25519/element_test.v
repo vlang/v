@@ -230,19 +230,19 @@ fn test_set_bytes_reduced() {
 struct FeRTTest {
 mut:
 	fe Element
-	b  []byte
+	b  []u8
 }
 
 fn test_set_bytes_from_dalek_test_vectors() ? {
 	mut tests := [
 		FeRTTest{
 			fe: Element{358744748052810, 1691584618240980, 977650209285361, 1429865912637724, 560044844278676}
-			b: [byte(74), 209, 69, 197, 70, 70, 161, 222, 56, 226, 229, 19, 112, 60, 25, 92, 187,
+			b: [u8(74), 209, 69, 197, 70, 70, 161, 222, 56, 226, 229, 19, 112, 60, 25, 92, 187,
 				74, 222, 56, 50, 153, 51, 233, 40, 74, 57, 6, 160, 185, 213, 31]
 		},
 		FeRTTest{
 			fe: Element{84926274344903, 473620666599931, 365590438845504, 1028470286882429, 2146499180330972}
-			b: [byte(199), 23, 106, 112, 61, 77, 216, 79, 186, 60, 11, 118, 13, 16, 103, 15, 42,
+			b: [u8(199), 23, 106, 112, 61, 77, 216, 79, 186, 60, 11, 118, 13, 16, 103, 15, 42,
 				32, 83, 250, 44, 57, 204, 198, 78, 199, 253, 119, 146, 172, 3, 122]
 		},
 	]
@@ -387,15 +387,15 @@ fn test_bytes_big_equivalence() ? {
 	mut fe := el.generate_element()
 	mut fe1 := el.generate_element()
 
-	fe.set_bytes(inp) or { panic(err.msg) }
+	fe.set_bytes(inp) or { panic(err) }
 	inp[inp.len - 1] &= (1 << 7) - 1 // mask the most significant bit
 
 	mut b := big.integer_from_bytes(swap_endianness(mut inp)) // need swap_endianness
-	fe1.from_big_integer(b) or { panic(err.msg) } // do swap_endianness internally
+	fe1.from_big_integer(b) or { panic(err) } // do swap_endianness internally
 
 	assert fe == fe1
 
-	mut buf := []byte{len: 32} // pad with zeroes
+	mut buf := []u8{len: 32} // pad with zeroes
 	fedtobig := fe1.to_big_integer()
 	mut fedbig_bytes, _ := fedtobig.bytes()
 	copy(mut buf, fedbig_bytes) // does not need to do swap_endianness

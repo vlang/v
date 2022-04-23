@@ -15,8 +15,9 @@ struct C.INPUT_RECORD {
 }
 
 union C.uChar {
+mut:
 	UnicodeChar rune
-	AsciiChar   byte
+	AsciiChar   u8
 }
 
 [typedef]
@@ -54,12 +55,14 @@ struct C.FOCUS_EVENT_RECORD {
 
 [typedef]
 struct C.COORD {
+mut:
 	X i16
 	Y i16
 }
 
 [typedef]
 struct C.SMALL_RECT {
+mut:
 	Left   u16
 	Top    u16
 	Right  u16
@@ -68,6 +71,7 @@ struct C.SMALL_RECT {
 
 [typedef]
 struct C.CONSOLE_SCREEN_BUFFER_INFO {
+mut:
 	dwSize              C.COORD
 	dwCursorPosition    C.COORD
 	wAttributes         u16

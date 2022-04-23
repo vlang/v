@@ -85,7 +85,7 @@ pub fn strip_ansi(text string) string {
 	// This is a port of https://github.com/kilobyte/colorized-logs/blob/master/ansi2txt.c
 	// \e, [, 1, m, a, b, c, \e, [, 2, 2, m => abc
 	mut input := textscanner.new(text)
-	mut output := []byte{cap: text.len}
+	mut output := []u8{cap: text.len}
 	mut ch := 0
 	for ch != -1 {
 		ch = input.next()
@@ -117,7 +117,7 @@ pub fn strip_ansi(text string) string {
 				ch = input.next()
 			}
 		} else if ch != -1 {
-			output << byte(ch)
+			output << u8(ch)
 		}
 	}
 	return output.bytestr()
@@ -142,11 +142,11 @@ pub fn h_divider(divider string) string {
 // ==== TITLE =========================
 pub fn header_left(text string, divider string) string {
 	plain_text := strip_ansi(text)
-	xcols, _ := get_terminal_size()
+	xcols, _ := get_terminal_size() // can get 0 in lldb/gdb
 	cols := imax(1, xcols)
 	relement := if divider.len > 0 { divider } else { ' ' }
 	hstart := relement.repeat(4)[0..4]
-	remaining_cols := (cols - (hstart.len + 1 + plain_text.len + 1))
+	remaining_cols := imax(0, (cols - (hstart.len + 1 + plain_text.len + 1)))
 	hend := relement.repeat((remaining_cols + 1) / relement.len)[0..remaining_cols]
 	return '$hstart $text $hend'
 }

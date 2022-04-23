@@ -11,7 +11,7 @@ fn (d Dog) speak() {}
 struct Cat {}
 
 fn main() {
-	if IoS(1) is byte {
+	if IoS(1) is u8 {
 		println('not cool')
 	}
 	a := Animal(Dog{})

@@ -45,7 +45,7 @@ pub fn screenshot_png(path string) ? {
 }
 
 // write_rgba_to_ppm writes `pixels` data in RGBA format to PPM3 format.
-fn write_rgba_to_ppm(path string, w int, h int, components int, pixels &byte) ? {
+fn write_rgba_to_ppm(path string, w int, h int, components int, pixels &u8) ? {
 	mut f_out := os.create(path) ?
 	defer {
 		f_out.close()

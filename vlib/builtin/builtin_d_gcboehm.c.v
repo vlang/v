@@ -1,65 +1,74 @@
 module builtin
 
-$if freebsd {
-	// Tested on FreeBSD 13.0-RELEASE-p3, with clang, gcc and tcc:
-	#flag -DBUS_PAGE_FAULT=T_PAGEFLT
-	$if !tinyc {
-		#flag -DGC_THREADS=1
-		#flag -DGC_BUILTIN_ATOMIC=1
-		#flag @VEXEROOT/thirdparty/libgc/gc.o
-		#flag -lpthread
-	}
-} $else {
-	#flag -DGC_THREADS=1
-}
-
-$if static_boehm ? {
-	$if macos {
-		#flag -I$first_existing("/opt/homebrew/include",     "/usr/local/include")
-		#flag   $first_existing("/opt/homebrew/lib/libgc.a", "/usr/local/lib/libgc.a")
-	} $else $if linux {
-		#flag -l:libgc.a
-	} $else $if openbsd {
-		#flag -I/usr/local/include
-		#flag /usr/local/lib/libgc.a
-		#flag -lpthread
-	} $else $if windows {
-		#flag -DGC_NOT_DLL=1
+$if dynamic_boehm ? {
+	$if windows {
 		$if tinyc {
 			#flag -I@VEXEROOT/thirdparty/libgc/include
-			#flag -L@VEXEROOT/thirdparty/libgc
+			#flag -L@VEXEROOT/thirdparty/tcc/lib
 			#flag -lgc
 		} $else $if msvc {
 			#flag -DGC_BUILTIN_ATOMIC=1
 			#flag -I@VEXEROOT/thirdparty/libgc/include
 		} $else {
+			#flag -DGC_WIN32_THREADS=1
 			#flag -DGC_BUILTIN_ATOMIC=1
 			#flag -I@VEXEROOT/thirdparty/libgc
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}
 	} $else {
-		#flag -lgc
+		$if $pkgconfig('bdw-gc') {
+			#pkgconfig bdw-gc
+		} $else {
+			$if openbsd || freebsd {
+				#flag -I/usr/local/include
+				#flag -L/usr/local/lib
+			}
+			#flag -lgc
+		}
 	}
 } $else {
-	$if macos {
-		#pkgconfig bdw-gc
-	} $else $if openbsd || freebsd {
+	#flag -DGC_THREADS=1
+	#flag -DGC_BUILTIN_ATOMIC=1
+	$if macos || linux {
+		#flag -DGC_PTHREADS=1
+		#flag -I@VEXEROOT/thirdparty/libgc/include
+		#flag -lpthread
+		$if (prod && !tinyc && !debug) || !(amd64 || arm64 || i386 || arm32) {
+			// TODO: replace the architecture check with a `!$exists("@VEXEROOT/thirdparty/tcc/lib/libgc.a")` comptime call
+			#flag @VEXEROOT/thirdparty/libgc/gc.o
+		} $else {
+			#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a
+		}
+		#flag -ldl
+	} $else $if freebsd {
+		// Tested on FreeBSD 13.0-RELEASE-p3, with clang, gcc and tcc:
+		#flag -DBUS_PAGE_FAULT=T_PAGEFLT
+		#flag -DGC_PTHREADS=1
+		$if !tinyc {
+			#flag @VEXEROOT/thirdparty/libgc/gc.o
+		} $else {
+			#flag -I/usr/local/include
+			#flag $first_existing("/usr/local/lib/libgc.a", "/usr/lib/libgc.a")
+		}
+		#flag -lpthread
+	} $else $if openbsd {
 		#flag -I/usr/local/include
-		#flag -L/usr/local/lib
-	}
-	$if windows {
+		#flag $first_existing("/usr/local/lib/libgc.a", "/usr/lib/libgc.a")
+		#flag -lpthread
+	} $else $if windows {
 		$if tinyc {
 			#flag -I@VEXEROOT/thirdparty/libgc/include
-			#flag -L@VEXEROOT/thirdparty/libgc
+			#flag -L@VEXEROOT/thirdparty/tcc/lib
 			#flag -lgc
-		} $else $if msvc {
+		} $else {
+			#flag -DGC_NOT_DLL=1
+			#flag -DGC_WIN32_THREADS=1
 			#flag -DGC_BUILTIN_ATOMIC=1
 			#flag -I@VEXEROOT/thirdparty/libgc/include
-		} $else {
-			#flag -DGC_BUILTIN_ATOMIC=1
-			#flag -I@VEXEROOT/thirdparty/libgc
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}
+	} $else $if $pkgconfig('bdw-gc') {
+		#pkgconfig bdw-gc
 	} $else {
 		#flag -lgc
 	}
@@ -85,7 +94,7 @@ fn C.GC_REALLOC(ptr voidptr, n usize) voidptr
 
 fn C.GC_FREE(ptr voidptr)
 
-// explicitely perform garbage collection now! Garbage collections
+// explicitly perform garbage collection now! Garbage collections
 // are done automatically when needed, so this function is hardly needed
 fn C.GC_gcollect()
 

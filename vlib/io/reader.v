@@ -7,7 +7,7 @@ pub interface Reader {
 	// A type that implements this should return
 	// `none` on end of stream (EOF) instead of just returning 0
 mut:
-	read(mut buf []byte) ?int
+	read(mut buf []u8) ?int
 }
 
 const (
@@ -25,11 +25,11 @@ mut:
 
 // read_all reads all bytes from a reader until either a 0 length read
 // or if read_to_end_of_stream is true then the end of the stream (`none`)
-pub fn read_all(config ReadAllConfig) ?[]byte {
+pub fn read_all(config ReadAllConfig) ?[]u8 {
 	mut r := config.reader
 	read_till_eof := config.read_to_end_of_stream
 
-	mut b := []byte{len: io.read_all_len}
+	mut b := []u8{len: io.read_all_len}
 	mut read := 0
 	for {
 		new_read := r.read(mut b[read..]) or { break }
@@ -46,8 +46,8 @@ pub fn read_all(config ReadAllConfig) ?[]byte {
 
 // read_any reads any available bytes from a reader
 // (until the reader returns a read of 0 length)
-pub fn read_any(mut r Reader) ?[]byte {
-	mut b := []byte{len: io.read_all_len}
+pub fn read_any(mut r Reader) ?[]u8 {
+	mut b := []u8{len: io.read_all_len}
 	mut read := 0
 	for {
 		new_read := r.read(mut b[read..]) or { break }
@@ -64,5 +64,5 @@ pub fn read_any(mut r Reader) ?[]byte {
 
 // RandomReader represents a stream of data that can be read from at a random location
 pub interface RandomReader {
-	read_from(pos u64, mut buf []byte) ?int
+	read_from(pos u64, mut buf []u8) ?int
 }

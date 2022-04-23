@@ -149,7 +149,7 @@ fn pow2(k int) Integer {
 	}
 }
 
-// optimized left shift of full byte(s) in place. byte_nb must be positive
+// optimized left shift of full u8(s) in place. byte_nb must be positive
 fn lshift_byte_in_place(mut a []u32, byte_nb int) {
 	a_len := a.len
 	// control or allocate capacity

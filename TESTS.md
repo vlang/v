@@ -83,6 +83,20 @@ This *test runner*, checks whether whole project folders, can be compiled, and r
 NB: Each project in these folders, should finish with an exit code of 0,
 and it should output `OK` as its last stdout line.
 
+## `v vlib/v/tests/known_errors/known_errors_test.v`
+This *test runner*, checks whether a known program, that was expected to compile, 
+but did NOT, due to a buggy checker, parser or cgen, continues to fail.
+The negative programs are collected in the `vlib/v/tests/known_errors/testdata/` folder.
+Each of them should FAIL to compile, due to a known/confirmed compiler bug/limitation.
+
+The intended use of this, is for providing samples, that currently do NOT compile,
+but that a future compiler improvement WILL be able to compile, and to
+track, whether they were not fixed incidentally, due to an unrelated
+change/improvement. For example, code that triggers generating invalid C code can go here,
+and later when a bug is fixed, can be moved to a proper _test.v or .vv/.out pair, outside of
+the `vlib/v/tests/known_errors/testdata/` folder.
+
+
 ## Test building of actual V programs (examples, tools, V itself)
 
 * `v build-tools`

@@ -39,11 +39,18 @@ vlib/v/checker/tests/pointer_ops.vv:10:3: error: operator `-=` not defined on le
    10 |         p -= 3
       |         ^
    11 |         _ = p[3]
-   12 |     }
+   12 |         mut foo := &Foo{}
 vlib/v/checker/tests/pointer_ops.vv:11:8: error: type `voidptr` does not support indexing
     9 |         p--
    10 |         p -= 3
    11 |         _ = p[3]
       |              ~~~
-   12 |     }
-   13 | }
+   12 |         mut foo := &Foo{}
+   13 |         foo % 3
+vlib/v/checker/tests/pointer_ops.vv:13:3: error: invalid operator `%` to `&Foo` and `int literal`
+   11 |         _ = p[3]
+   12 |         mut foo := &Foo{}
+   13 |         foo % 3
+      |         ~~~~~~~
+   14 |     }
+   15 | }

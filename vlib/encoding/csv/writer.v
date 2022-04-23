@@ -10,7 +10,7 @@ mut:
 	sb strings.Builder
 pub mut:
 	use_crlf  bool
-	delimiter byte
+	delimiter u8
 }
 
 pub fn new_writer() &Writer {

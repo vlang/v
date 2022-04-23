@@ -12,7 +12,7 @@ pub fn (_str string) to_wide() &u16 {
 			mut wstr := &u16(malloc_noscan((num_chars + 1) * 2)) // sizeof(wchar_t)
 			if wstr != 0 {
 				C.MultiByteToWideChar(cp_utf8, 0, &char(_str.str), _str.len, wstr, num_chars)
-				C.memset(&byte(wstr) + num_chars * 2, 0, 2)
+				C.memset(&u8(wstr) + num_chars * 2, 0, 2)
 			}
 			return wstr
 		}
@@ -61,7 +61,7 @@ pub fn string_from_wide2(_wstr &u16, len int) string {
 // Reads an utf8 character from standard input
 pub fn utf8_getchar() int {
 	c := C.getchar()
-	len := utf8_len(byte(~c))
+	len := utf8_len(u8(~c))
 	if c < 0 {
 		return 0
 	} else if len == 0 {

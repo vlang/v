@@ -1,0 +1,26 @@
+vlib/v/checker/tests/compare_unsigned_signed.vv:2:14: error: unsigned integer cannot be compared with negative value
+    1 | fn main() {
+    2 |     if u32(1) < -1 {
+      |                 ~~
+    3 |         println('unexpected')
+    4 |     }
+vlib/v/checker/tests/compare_unsigned_signed.vv:6:5: error: unsigned integer cannot be compared with negative value
+    4 |     }
+    5 | 
+    6 |     if -1 > u32(1) {
+      |        ~~
+    7 |         println('unexpected')
+    8 |     }
+vlib/v/checker/tests/compare_unsigned_signed.vv:10:16: error: `u8` cannot be compared with negative value
+    8 |     }
+    9 |     // unsigned == literal
+   10 |     _ = u8(-1) == -1 // false!
+      |                   ~~
+   11 |     _ = -1 == u16(-1) // false!
+   12 | }
+vlib/v/checker/tests/compare_unsigned_signed.vv:11:6: error: negative value cannot be compared with `u16`
+    9 |     // unsigned == literal
+   10 |     _ = u8(-1) == -1 // false!
+   11 |     _ = -1 == u16(-1) // false!
+      |         ~~
+   12 | }

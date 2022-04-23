@@ -12,7 +12,7 @@ const (
 	max_u64  = u64(18446744073709551615) // as u64 // use this until we add support
 )
 
-pub fn byte_to_lower(c byte) byte {
+pub fn byte_to_lower(c u8) u8 {
 	return c | (`x` - `X`)
 }
 
@@ -87,7 +87,7 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 		c := s[i]
 		cl := byte_to_lower(c)
 
-		mut d := byte(0)
+		mut d := u8(0)
 		if c == `_` && base0 {
 			// underscore_ok already called
 			continue
@@ -98,7 +98,7 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 		} else {
 			return n, i + 1
 		}
-		if d >= byte(base) {
+		if d >= u8(base) {
 			return n, i + 1
 		}
 		if n >= cutoff {

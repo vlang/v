@@ -472,7 +472,7 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_
 				{_SLIT("${clean_sum_type_v_type_name}(\'"), $c.si_s_code, {.d_s = $val}},
 				{_SLIT("\')"), 0, {.d_c = 0 }}
 			}))'
-			fn_builder.write_string('\t\tcase $typ: return $res;')
+			fn_builder.write_string('\t\tcase $typ.idx(): return $res;\n')
 		} else {
 			mut val := '${func_name}(${deref}($typ_str*)x._$sym.cname'
 			if should_use_indent_func(sym.kind) && !sym_has_str_method {
@@ -483,7 +483,7 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_
 				{_SLIT("${clean_sum_type_v_type_name}("), $c.si_s_code, {.d_s = $val}},
 				{_SLIT(")"), 0, {.d_c = 0 }}
 			}))'
-			fn_builder.write_string('\t\tcase $typ: return $res;')
+			fn_builder.write_string('\t\tcase $typ.idx(): return $res;\n')
 		}
 	}
 	fn_builder.writeln('\t\tdefault: return _SLIT("unknown sum type value");')
@@ -574,7 +574,7 @@ fn (mut g Gen) gen_str_for_array(info ast.Array, styp string, str_fn_name string
 	is_elem_ptr := typ.is_ptr()
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
 	mut elem_str_fn_name := g.get_str_fn(typ)
-	if sym.kind == .byte {
+	if sym.kind == .u8 {
 		elem_str_fn_name = elem_str_fn_name + '_escaped'
 	}
 
@@ -896,7 +896,12 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 		sftyp := g.typ(field.typ)
 		mut field_styp := sftyp.replace('*', '')
 		field_styp_fn_name := if sym_has_str_method {
-			'${field_styp}_str'
+			mut field_fn_name := '${field_styp}_str'
+			if sym.info is ast.Struct {
+				field_fn_name = g.generic_fn_name(sym.info.concrete_types, field_fn_name,
+					false)
+			}
+			field_fn_name
 		} else {
 			g.get_str_fn(field.typ)
 		}

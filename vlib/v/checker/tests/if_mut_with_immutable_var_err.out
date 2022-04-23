@@ -4,11 +4,11 @@ vlib/v/checker/tests/if_mut_with_immutable_var_err.vv:5:9: error: `i` is immutab
     5 |     if mut i is int {
       |            ^
     6 |         i = 1
-    7 |     } else if mut i is byte {
+    7 |     } else if mut i is u8 {
 vlib/v/checker/tests/if_mut_with_immutable_var_err.vv:7:16: error: `i` is immutable, declare it with `mut` to make it mutable
     5 |     if mut i is int {
     6 |         i = 1
-    7 |     } else if mut i is byte {
+    7 |     } else if mut i is u8 {
       |                   ^
     8 |         i = 2
     9 |     }

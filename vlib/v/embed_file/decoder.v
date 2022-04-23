@@ -2,7 +2,7 @@
 module embed_file
 
 interface Decoder {
-	decompress([]byte) ?[]byte
+	decompress([]u8) ?[]u8
 }
 
 struct EmbedFileDecoders {

@@ -18,11 +18,11 @@ fn main() {
 // from another .v file
 
 struct VerifyKey {
-	public_key [public_key_size]byte
+	public_key [public_key_size]u8
 }
 
 struct SigningKey {
-	secret_key [secret_key_size]byte
+	secret_key [secret_key_size]u8
 pub:
 	verify_key VerifyKey
 }

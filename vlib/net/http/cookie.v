@@ -177,7 +177,7 @@ pub fn (c &Cookie) str() string {
 	return b.str()
 }
 
-fn sanitize(valid fn (byte) bool, v string) string {
+fn sanitize(valid fn (u8) bool, v string) string {
 	mut ok := true
 	for i in 0 .. v.len {
 		if valid(v[i]) {
@@ -222,11 +222,11 @@ fn sanitize_cookie_path(v string) string {
 	return sanitize(valid_cookie_path_byte, v)
 }
 
-fn valid_cookie_value_byte(b byte) bool {
+fn valid_cookie_value_byte(b u8) bool {
 	return 0x20 <= b && b < 0x7f && b != `"` && b != `;` && b != `\\`
 }
 
-fn valid_cookie_path_byte(b byte) bool {
+fn valid_cookie_path_byte(b u8) bool {
 	return 0x20 <= b && b < 0x7f && b != `!`
 }
 

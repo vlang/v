@@ -20,25 +20,25 @@ pub const (
 
 pub struct Hashed {
 mut:
-	hash  []byte
-	salt  []byte
+	hash  []u8
+	salt  []u8
 	cost  int
 	major string
 	minor string
 }
 
-const magic_cipher_data = [byte(0x4f), 0x72, 0x70, 0x68, 0x65, 0x61, 0x6e, 0x42, 0x65, 0x68, 0x6f,
+const magic_cipher_data = [u8(0x4f), 0x72, 0x70, 0x68, 0x65, 0x61, 0x6e, 0x42, 0x65, 0x68, 0x6f,
 	0x6c, 0x64, 0x65, 0x72, 0x53, 0x63, 0x72, 0x79, 0x44, 0x6f, 0x75, 0x62, 0x74]
 
 // generate_from_password return a bcrypt string from Hashed struct.
-pub fn generate_from_password(password []byte, cost int) ?string {
+pub fn generate_from_password(password []u8, cost int) ?string {
 	mut p := new_from_password(password, cost) or { return error('Error: $err') }
-	x := p.hash_byte()
+	x := p.hash_u8()
 	return x.bytestr()
 }
 
 // compare_hash_and_password compares a bcrypt hashed password with its possible hashed version.
-pub fn compare_hash_and_password(password []byte, hashed_password []byte) ? {
+pub fn compare_hash_and_password(password []u8, hashed_password []u8) ? {
 	mut p := new_from_hash(hashed_password) or { return error('Error: $err') }
 	p.salt << `=`
 	p.salt << `=`
@@ -52,7 +52,7 @@ pub fn compare_hash_and_password(password []byte, hashed_password []byte) ? {
 		minor: p.minor
 	}
 
-	if p.hash_byte() != other_p.hash_byte() {
+	if p.hash_u8() != other_p.hash_u8() {
 		return error('mismatched hash and password')
 	}
 }
@@ -64,7 +64,7 @@ pub fn generate_salt() string {
 }
 
 // new_from_password converting from password to a Hashed struct with bcrypt.
-fn new_from_password(password []byte, cost int) ?&Hashed {
+fn new_from_password(password []u8, cost int) ?&Hashed {
 	mut cost_ := cost
 	if cost < bcrypt.min_cost {
 		cost_ = bcrypt.default_cost
@@ -86,7 +86,7 @@ fn new_from_password(password []byte, cost int) ?&Hashed {
 }
 
 // new_from_hash converting from hashed data to a Hashed struct.
-fn new_from_hash(hashed_secret []byte) ?&Hashed {
+fn new_from_hash(hashed_secret []u8) ?&Hashed {
 	mut tmp := hashed_secret.clone()
 	if tmp.len < bcrypt.min_hash_size {
 		return error('hash to short')
@@ -106,8 +106,8 @@ fn new_from_hash(hashed_secret []byte) ?&Hashed {
 }
 
 // bcrypt hashing passwords.
-fn bcrypt(password []byte, cost int, salt []byte) ?[]byte {
-	mut cipher_data := []byte{len: 72 - bcrypt.magic_cipher_data.len, init: 0}
+fn bcrypt(password []u8, cost int, salt []u8) ?[]u8 {
+	mut cipher_data := []u8{len: 72 - bcrypt.magic_cipher_data.len, init: 0}
 	cipher_data << bcrypt.magic_cipher_data
 
 	mut bf := expensive_blowfish_setup(password, u32(cost), salt) or { return err }
@@ -123,7 +123,7 @@ fn bcrypt(password []byte, cost int, salt []byte) ?[]byte {
 }
 
 // expensive_blowfish_setup generate a Blowfish cipher, given key, cost and salt.
-fn expensive_blowfish_setup(key []byte, cost u32, salt []byte) ?&blowfish.Blowfish {
+fn expensive_blowfish_setup(key []u8, cost u32, salt []u8) ?&blowfish.Blowfish {
 	csalt := base64.decode(salt.bytestr())
 
 	mut bf := blowfish.new_salted_cipher(key, csalt) or { return err }
@@ -140,8 +140,8 @@ fn expensive_blowfish_setup(key []byte, cost u32, salt []byte) ?&blowfish.Blowfi
 }
 
 // hash_byte converts the hash value to a byte array.
-fn (mut h Hashed) hash_byte() []byte {
-	mut arr := []byte{len: 65, init: 0}
+fn (mut h Hashed) hash_u8() []u8 {
+	mut arr := []u8{len: 65, init: 0}
 	arr[0] = `$`
 	arr[1] = h.major[0]
 	mut n := 2
@@ -164,7 +164,7 @@ fn (mut h Hashed) hash_byte() []byte {
 }
 
 // decode_version decode bcrypt version.
-fn (mut h Hashed) decode_version(sbytes []byte) ?int {
+fn (mut h Hashed) decode_version(sbytes []u8) ?int {
 	if sbytes[0] != `$` {
 		return error("bcrypt hashes must start with '$'")
 	}
@@ -181,7 +181,7 @@ fn (mut h Hashed) decode_version(sbytes []byte) ?int {
 }
 
 // decode_cost extracts the value of cost and returns the next index in the array.
-fn (mut h Hashed) decode_cost(sbytes []byte) ?int {
+fn (mut h Hashed) decode_cost(sbytes []u8) ?int {
 	cost := sbytes[0..2].bytestr().int()
 	check_cost(cost) or { return err }
 	h.cost = cost

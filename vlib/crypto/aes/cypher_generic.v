@@ -7,7 +7,7 @@ import crypto.cipher
 
 // new_cipher_generic creates and returns a new cipher.Block
 // this is the generiv v version, no arch optimisations
-fn new_cipher_generic(key []byte) cipher.Block {
+fn new_cipher_generic(key []u8) cipher.Block {
 	n := key.len + 28
 	mut c := AesCipher{
 		enc: []u32{len: n}

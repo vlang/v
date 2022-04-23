@@ -86,14 +86,14 @@ fn is_on_curve(x Element, y Element, z Element, t Element) bool {
 // Note that bytes_montgomery only encodes the u-coordinate, so v and -v encode
 // to the same value. If v is the identity point, bytes_montgomery returns 32
 // zero bytes, analogously to the X25519 function.
-pub fn (mut v Point) bytes_montgomery() []byte {
+pub fn (mut v Point) bytes_montgomery() []u8 {
 	// This function is outlined to make the allocations inline in the caller
 	// rather than happen on the heap.
-	mut buf := [32]byte{}
+	mut buf := [32]u8{}
 	return v.bytes_montgomery_generic(mut buf)
 }
 
-fn (mut v Point) bytes_montgomery_generic(mut buf [32]byte) []byte {
+fn (mut v Point) bytes_montgomery_generic(mut buf [32]u8) []u8 {
 	check_initialized(v)
 
 	// RFC 7748, Section 4.1 provides the bilinear map to calculate the

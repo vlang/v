@@ -161,6 +161,9 @@ fn color_highlight(code string, tb &ast.Table) string {
 			.char {
 				lit = term.yellow('`$tok.lit`')
 			}
+			.comment {
+				lit = if tok.lit[0] == 1 { '//${tok.lit[1..]}' } else { '//$tok.lit' }
+			}
 			.keyword {
 				lit = term.bright_blue(tok.lit)
 			}
@@ -206,15 +209,16 @@ fn color_highlight(code string, tb &ast.Table) string {
 					} else if
 						next_tok.kind in [.lcbr, .rpar, .eof, .comma, .pipe, .name, .rcbr, .assign, .key_pub, .key_mut, .pipe, .comma]
 						&& prev.kind in [.name, .amp, .rsbr, .key_type, .assign, .dot, .question, .rpar, .key_struct, .key_enum, .pipe, .key_interface]
-						&& (tok.lit[0].ascii_str().is_upper() || prev_prev.lit in ['C', 'JS']) {
+						&& (tok.lit[0].is_capital() || prev_prev.lit in ['C', 'JS']) {
 						tok_typ = .symbol
-					} else if next_tok.kind in [.lpar, .lt] {
+					} else if next_tok.kind == .lpar || (!tok.lit[0].is_capital()
+						&& next_tok.kind == .lt && next_tok.pos == tok.pos + tok.lit.len) {
 						tok_typ = .function
 					} else if next_tok.kind == .dot {
 						if tok.lit in ['C', 'JS'] {
 							tok_typ = .prefix
 						} else {
-							if tok.lit[0].ascii_str().is_upper() {
+							if tok.lit[0].is_capital() {
 								tok_typ = .symbol
 							} else {
 								tok_typ = .module_
@@ -241,7 +245,8 @@ fn color_highlight(code string, tb &ast.Table) string {
 				.key_true, .key_false {
 					tok_typ = .boolean
 				}
-				.lpar, .lcbr, .rpar, .rcbr, .lsbr, .rsbr, .semicolon, .colon, .comma, .dot {
+				.lpar, .lcbr, .rpar, .rcbr, .lsbr, .rsbr, .semicolon, .colon, .comma, .dot,
+				.dotdot, .ellipsis {
 					tok_typ = .punctuation
 				}
 				.key_none {
@@ -251,7 +256,7 @@ fn color_highlight(code string, tb &ast.Table) string {
 					if token.is_key(tok.lit) || token.is_decl(tok.kind) {
 						tok_typ = .keyword
 					} else if tok.kind == .decl_assign || tok.kind.is_assign() || tok.is_unary()
-						|| tok.kind.is_relational() || tok.kind.is_infix() {
+						|| tok.kind.is_relational() || tok.kind.is_infix() || tok.kind.is_postfix() {
 						tok_typ = .operator
 					}
 				}
@@ -266,7 +271,7 @@ fn color_highlight(code string, tb &ast.Table) string {
 			tok = next_tok
 			next_tok = s.scan()
 		} else {
-			buf.write_byte(code[i])
+			buf.write_u8(code[i])
 			i++
 		}
 	}

@@ -1,0 +1,10 @@
+// The following file exists, so there should not be a checker error for it:
+#insert "@VEXEROOT/vlib/v/checker/tests/comptime_insert_err.cc"
+
+// some more comments
+
+#insert "@VEXEROOT/vlib/v/checker/tests/Non_Existant_File.cc"
+
+fn main() {
+	println('hello')
+}

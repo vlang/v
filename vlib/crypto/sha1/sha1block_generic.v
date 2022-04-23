@@ -15,7 +15,7 @@ const (
 	_k3 = 0xCA62C1D6
 )
 
-fn block_generic(mut dig Digest, p_ []byte) {
+fn block_generic(mut dig Digest, p_ []u8) {
 	unsafe {
 		mut p := p_
 		mut w := []u32{len: (16)}

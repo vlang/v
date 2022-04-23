@@ -391,7 +391,7 @@ pub fn (u_ Uint128) str() string {
 		mut n := int(0)
 		for ; r != 0; r /= 10 {
 			n++
-			buf[i - n] += byte(r % 10)
+			buf[i - n] += u8(r % 10)
 		}
 		if q.is_zero() {
 			return buf[i - n..].bytestr()
@@ -403,7 +403,7 @@ pub fn (u_ Uint128) str() string {
 }
 
 // put_bytes stores u in b in little-endian order
-pub fn (u Uint128) put_bytes(mut b []byte) {
+pub fn (u Uint128) put_bytes(mut b []u8) {
 	binary.little_endian_put_u64(mut b, u.lo)
 	binary.little_endian_put_u64(mut b, u.hi)
 }

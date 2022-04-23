@@ -54,8 +54,8 @@ fn (mut g Gen) dec(reg Register) {
 }
 
 [inline]
-fn byt(n int, s int) byte {
-	return byte((n >> (s * 8)) & 0xff)
+fn byt(n int, s int) u8 {
+	return u8((n >> (s * 8)) & 0xff)
 }
 
 fn (mut g Gen) inc(reg Register) {
@@ -111,7 +111,7 @@ fn (mut g Gen) cmp_reg(reg Register, reg2 Register) {
 		.rax {
 			match reg2 {
 				.rbx {
-					g.write([byte(0x48), 0x39, 0xd8])
+					g.write([u8(0x48), 0x39, 0xd8])
 				}
 				else {
 					g.n_error('Cannot compare $reg and $reg2')
@@ -121,7 +121,7 @@ fn (mut g Gen) cmp_reg(reg Register, reg2 Register) {
 		.rbx {
 			match reg2 {
 				.rax {
-					g.write([byte(0x48), 0x39, 0xc3])
+					g.write([u8(0x48), 0x39, 0xc3])
 				}
 				else {
 					g.n_error('Cannot compare $reg and $reg2')
@@ -559,8 +559,8 @@ pub fn (mut g Gen) gen_print(s string, fd int) {
 		// g.mov64(.rdx, g.allocate_string(s, 3))
 		g.lea(.rdx, g.allocate_string(s, 3, .abs64))
 		g.mov(.r8, s.len) // string length
-		g.write([byte(0x4c), 0x8d, 0x4c, 0x24, 0x20]) // lea r9, [rsp+0x20]
-		g.write([byte(0x48), 0xc7, 0x44, 0x24, 0x20])
+		g.write([u8(0x4c), 0x8d, 0x4c, 0x24, 0x20]) // lea r9, [rsp+0x20]
+		g.write([u8(0x48), 0xc7, 0x44, 0x24, 0x20])
 		g.write32(0) // mov qword[rsp+0x20], 0
 		// g.mov(.r9, rsp+0x20)
 		g.apicall('WriteFile')
@@ -648,12 +648,12 @@ fn (mut g Gen) relpc(dst Register, src Register) {
 		.rax {
 			match src {
 				.rsi {
-					g.write([byte(0x48), 0x8d, 0x35, 0x00, 0x00, 0x00, 0x00]) // lea rsi, rip
-					g.write([byte(0x48), 0x01, 0xf0]) // add rax, rsi
+					g.write([u8(0x48), 0x8d, 0x35, 0x00, 0x00, 0x00, 0x00]) // lea rsi, rip
+					g.write([u8(0x48), 0x01, 0xf0]) // add rax, rsi
 				}
 				.rbx {
-					g.write([byte(0x48), 0x8d, 0x1d, 0x00, 0x00, 0x00, 0x00])
-					g.write([byte(0x48), 0x01, 0xd8])
+					g.write([u8(0x48), 0x8d, 0x1d, 0x00, 0x00, 0x00, 0x00])
+					g.write([u8(0x48), 0x01, 0xd8])
 				}
 				else {
 					panic('relpc requires .rax, {.rsi,.rbx}')
@@ -874,7 +874,7 @@ fn (mut g Gen) add_reg(a Register, b Register) {
 
 fn (mut g Gen) mov_reg(a Register, b Register) {
 	if a == .rax && b == .rsi {
-		g.write([byte(0x48), 0x89, 0xf0])
+		g.write([u8(0x48), 0x89, 0xf0])
 	} else if a == .rbp && b == .rsp {
 		g.write8(0x48)
 		g.write8(0x89)
@@ -975,7 +975,7 @@ fn (mut g Gen) patch_calls() {
 		}
 		last := g.buf.len
 		g.call(int(addr + last - c.pos))
-		mut patch := []byte{}
+		mut patch := []u8{}
 		for last < g.buf.len {
 			patch << g.buf.pop()
 		}
@@ -1342,43 +1342,43 @@ fn (mut g Gen) gen_asm_stmt_amd64(asm_node ast.AsmStmt) {
 		g.println(': $line')
 		match t.name {
 			'nop' {
-				g.write8(byte(0x90))
+				g.write8(u8(0x90))
 				g.println('nop')
 			}
 			'syscall' {
-				g.write8(byte(0x0f))
-				g.write8(byte(0x05))
+				g.write8(u8(0x0f))
+				g.write8(u8(0x05))
 				g.println('syscall')
 			}
 			'ret' {
-				g.write8(byte(0xc3))
+				g.write8(u8(0xc3))
 				g.println('ret')
 			}
 			'int3' {
-				g.write8(byte(0xcc))
-				g.write8(byte(imm))
+				g.write8(u8(0xcc))
+				g.write8(u8(imm))
 				g.println('int3')
 			}
 			'sti' {
-				g.write8(byte(0xfb))
+				g.write8(u8(0xfb))
 				g.println('sti')
 			}
 			'cli' {
-				g.write8(byte(0xfa))
+				g.write8(u8(0xfa))
 				g.println('cli')
 			}
 			'int' {
-				g.write8(byte(0xcd))
-				g.write8(byte(imm))
+				g.write8(u8(0xcd))
+				g.write8(u8(imm))
 				g.println('int')
 			}
 			'cpuid' {
-				g.write8(byte(0x0f))
-				g.write8(byte(0xa2))
+				g.write8(u8(0x0f))
+				g.write8(u8(0xa2))
 				g.println('cpuid')
 			}
 			'mov' {
-				g.write8(byte(0xb8 + reg))
+				g.write8(u8(0xb8 + reg))
 				g.write8(byt(imm, 0))
 				g.write8(byt(imm, 1))
 				g.write8(byt(imm, 2))
@@ -1532,10 +1532,10 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 
 fn (mut g Gen) infloop() {
 	if g.pref.arch == .arm64 {
-		g.write32(byte(0x14))
+		g.write32(u8(0x14))
 	} else {
-		g.write8(byte(0xeb))
-		g.write8(byte(0xfe))
+		g.write8(u8(0xeb))
+		g.write8(u8(0xfe))
 	}
 	g.println('jmp $$')
 }

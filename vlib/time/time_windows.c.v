@@ -97,6 +97,9 @@ fn local_as_unix_time() i64 {
 
 // local - return the time `t`, converted to the currently active local timezone
 pub fn (t Time) local() Time {
+	if t.is_local {
+		return t
+	}
 	st_utc := SystemTime{
 		year: u16(t.year)
 		month: u16(t.month)
@@ -104,6 +107,7 @@ pub fn (t Time) local() Time {
 		hour: u16(t.hour)
 		minute: u16(t.minute)
 		second: u16(t.second)
+		millisecond: u16(t.microsecond / 1000)
 	}
 	st_local := SystemTime{}
 	C.SystemTimeToTzSpecificLocalTime(voidptr(0), &st_utc, &st_local)
@@ -139,6 +143,7 @@ fn win_now() Time {
 		second: st_local.second
 		microsecond: st_local.millisecond * 1000
 		unix: st_local.unix_time()
+		is_local: true
 	}
 	return t
 }
@@ -160,6 +165,7 @@ fn win_utc() Time {
 		second: st_utc.second
 		microsecond: st_utc.millisecond * 1000
 		unix: st_utc.unix_time()
+		is_local: false
 	}
 	return t
 }

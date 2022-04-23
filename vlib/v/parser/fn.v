@@ -182,20 +182,63 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut is_ctor_new := false
 	mut is_c2v_variadic := false
 	mut is_markused := false
+	mut comments := []ast.Comment{}
 	for fna in p.attrs {
 		match fna.name {
-			'noreturn' { is_noreturn = true }
-			'manualfree' { is_manualfree = true }
-			'deprecated' { is_deprecated = true }
-			'direct_array_access' { is_direct_arr = true }
-			'keep_args_alive' { is_keep_alive = true }
-			'export' { is_exported = true }
-			'wasm_export' { is_exported = true }
-			'unsafe' { is_unsafe = true }
-			'trusted' { is_trusted = true }
-			'c2v_variadic' { is_c2v_variadic = true }
-			'use_new' { is_ctor_new = true }
-			'markused' { is_markused = true }
+			'noreturn' {
+				is_noreturn = true
+			}
+			'manualfree' {
+				is_manualfree = true
+			}
+			'deprecated' {
+				is_deprecated = true
+			}
+			'direct_array_access' {
+				is_direct_arr = true
+			}
+			'keep_args_alive' {
+				is_keep_alive = true
+			}
+			'export' {
+				is_exported = true
+			}
+			'wasm_export' {
+				is_exported = true
+			}
+			'unsafe' {
+				is_unsafe = true
+			}
+			'trusted' {
+				is_trusted = true
+			}
+			'c2v_variadic' {
+				is_c2v_variadic = true
+			}
+			'use_new' {
+				is_ctor_new = true
+			}
+			'markused' {
+				is_markused = true
+			}
+			'windows_stdcall' {
+				p.note_with_pos('the tag [windows_stdcall] has been deprecated, it will be an error after 2022-06-01, use `[callconv: stdcall]` instead',
+					p.tok.pos())
+			}
+			'_fastcall' {
+				p.note_with_pos('teh tag [_fastcall] has been deprecated, it will be an error after 2022-06-01, use `[callconv: fastcall]` instead',
+					p.tok.pos())
+			}
+			'callconv' {
+				if !fna.has_arg {
+					p.error_with_pos('callconv attribute is present but its value is missing',
+						p.prev_tok.pos())
+				}
+				if fna.arg !in ['stdcall', 'fastcall', 'cdecl'] {
+					p.error_with_pos('unsupported calling convention, supported are stdcall, fastcall and cdecl',
+						p.prev_tok.pos())
+				}
+			}
 			else {}
 		}
 	}
@@ -205,6 +248,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		p.next()
 	}
 	p.check(.key_fn)
+	comments << p.eat_comments()
 	p.open_scope()
 	// C. || JS.
 	mut language := ast.Language.v
@@ -530,6 +574,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		scope: p.scope
 		label_names: p.label_names
 		end_comments: p.eat_comments(same_line: true)
+		comments: comments
 	}
 	if generic_names.len > 0 {
 		p.table.register_fn_generic_types(fn_decl.fkey())
@@ -608,6 +653,15 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 		p.check_for_impure_v(rec.language, rec.type_pos)
 	}
 
+	p.check(.rpar)
+
+	if is_auto_rec && p.tok.kind != .name {
+		// Disable the auto-reference conversion for methodlike operators like ==, <=, > etc,
+		// since their parameters and receivers, *must* always be of the same type.
+		is_auto_rec = false
+		rec.typ = rec.typ.deref()
+	}
+
 	params << ast.Param{
 		pos: rec_start_pos
 		name: rec.name
@@ -616,9 +670,6 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 		typ: rec.typ
 		type_pos: rec.type_pos
 	}
-	p.check(.rpar)
-
-	return
 }
 
 fn (mut p Parser) anon_fn() ast.AnonFn {
@@ -732,13 +783,15 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 	} else {
 		p.tok.lit
 	}
+	is_generic_type := p.tok.kind == .name && p.tok.lit.len == 1 && p.tok.lit[0].is_capital()
+
 	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn, .lsbr]
-		|| (p.peek_tok.kind == .comma && p.table.known_type(argname))
+		|| (p.peek_tok.kind == .comma && (p.table.known_type(argname) || is_generic_type))
 		|| p.peek_tok.kind == .dot || p.peek_tok.kind == .rpar
 		|| (p.tok.kind == .key_mut && (p.peek_token(2).kind == .comma
 		|| p.peek_token(2).kind == .rpar || (p.peek_tok.kind == .name
 		&& p.peek_token(2).kind == .dot)))
-	// TODO copy pasta, merge 2 branches
+	// TODO copy paste, merge 2 branches
 	if types_only {
 		mut arg_no := 1
 		for p.tok.kind != .rpar {
@@ -794,6 +847,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 				p.error_with_pos('expecting `)`', p.prev_tok.pos())
 				return []ast.Param{}, false, false
 			}
+
 			if p.tok.kind == .comma {
 				if is_variadic {
 					p.error_with_pos('cannot use ...(variadic) with non-final parameter no $arg_no',
@@ -832,7 +886,12 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 				p.next()
 			}
 			mut arg_pos := [p.tok.pos()]
-			mut arg_names := [p.check_name()]
+			name := p.check_name()
+			mut arg_names := [name]
+			if name.len > 0 && p.fn_language == .v && name[0].is_capital() {
+				p.error_with_pos('parameter name must not begin with upper case letter (`${arg_names[0]}`)',
+					p.prev_tok.pos())
+			}
 			mut type_pos := [p.tok.pos()]
 			// `a, b, c int`
 			for p.tok.kind == .comma {
@@ -921,6 +980,27 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 	}
 	p.check(.rpar)
 	return args, types_only, is_variadic
+}
+
+fn (mut p Parser) go_expr() ast.GoExpr {
+	p.next()
+	spos := p.tok.pos()
+	expr := p.expr(0)
+	call_expr := if expr is ast.CallExpr {
+		expr
+	} else {
+		p.error_with_pos('expression in `go` must be a function call', expr.pos())
+		ast.CallExpr{
+			scope: p.scope
+		}
+	}
+	pos := spos.extend(p.prev_tok.pos())
+	p.register_auto_import('sync.threads')
+	p.table.gostmts++
+	return ast.GoExpr{
+		call_expr: call_expr
+		pos: pos
+	}
 }
 
 fn (mut p Parser) closure_vars() []ast.Param {

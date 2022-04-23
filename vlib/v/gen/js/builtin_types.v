@@ -26,8 +26,7 @@ fn (mut g JsGen) to_js_typ_val(t ast.Type) string {
 	mut styp := ''
 	mut prefix := 'new '
 	match sym.kind {
-		.i8, .i16, .int, .i64, .byte, .u8, .u16, .u32, .u64, .f32, .f64, .int_literal,
-		.float_literal {
+		.i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64, .int_literal, .float_literal {
 			styp = '$prefix${g.sym_to_js_typ(sym)}(0)'
 		}
 		.bool {
@@ -71,8 +70,8 @@ fn (mut g JsGen) sym_to_js_typ(sym ast.TypeSymbol) string {
 		.i64 {
 			styp = 'i64'
 		}
-		.byte {
-			styp = 'byte'
+		.u8 {
+			styp = 'u8'
 		}
 		.u16 {
 			styp = 'u16'
@@ -162,8 +161,8 @@ pub fn (mut g JsGen) doc_typ(t ast.Type) string {
 		.byteptr, .charptr {
 			styp = '${g.sym_to_js_typ(sym)}'
 		}
-		.i8, .i16, .int, .i64, .isize, .byte, .u8, .u16, .u32, .u64, .usize, .f32, .f64,
-		.int_literal, .float_literal {
+		.i8, .i16, .int, .i64, .isize, .u8, .u16, .u32, .u64, .usize, .f32, .f64, .int_literal,
+		.float_literal {
 			styp = '${g.sym_to_js_typ(sym)}'
 		}
 		.bool {
@@ -396,7 +395,7 @@ fn (mut g JsGen) gen_builtin_type_defs() {
 					)
 				}
 			}
-			'byte' {
+			'u8' {
 				g.gen_builtin_prototype(
 					typ_name: typ_name
 					default_value: 'new Number(0)'

@@ -62,7 +62,7 @@ fn (mut s StreamSocket) connect(a string) ? {
 	}
 	mut addr := C.sockaddr_un{}
 	unsafe { C.memset(&addr, 0, sizeof(C.sockaddr_un)) }
-	addr.sun_family = byte(C.AF_UNIX)
+	addr.sun_family = u8(C.AF_UNIX)
 	unsafe { C.strncpy(&addr.sun_path[0], &char(a.str), max_sun_path) }
 	size := C.SUN_LEN(&addr)
 	res := C.connect(s.handle, voidptr(&addr), size)
@@ -94,7 +94,7 @@ pub fn listen_stream(sock string) ?&StreamListener {
 	s.path = sock
 	mut addr := C.sockaddr_un{}
 	unsafe { C.memset(&addr, 0, sizeof(C.sockaddr_un)) }
-	addr.sun_family = byte(C.AF_UNIX)
+	addr.sun_family = u8(C.AF_UNIX)
 	unsafe { C.strncpy(&addr.sun_path[0], &char(sock.str), max_sun_path) }
 	size := C.SUN_LEN(&addr)
 	if os.exists(sock) {
@@ -170,14 +170,14 @@ pub fn (mut c StreamConn) close() ? {
 }
 
 // write_ptr blocks and attempts to write all data
-pub fn (mut c StreamConn) write_ptr(b &byte, len int) ?int {
+pub fn (mut c StreamConn) write_ptr(b &u8, len int) ?int {
 	$if trace_unix ? {
 		eprintln(
 			'>>> StreamConn.write_ptr | c.sock.handle: $c.sock.handle | b: ${ptr_str(b)} len: $len |\n' +
 			unsafe { b.vstring_with_len(len) })
 	}
 	unsafe {
-		mut ptr_base := &byte(b)
+		mut ptr_base := &u8(b)
 		mut total_sent := 0
 		for total_sent < len {
 			ptr := ptr_base + total_sent
@@ -199,7 +199,7 @@ pub fn (mut c StreamConn) write_ptr(b &byte, len int) ?int {
 }
 
 // write blocks and attempts to write all data
-pub fn (mut c StreamConn) write(bytes []byte) ?int {
+pub fn (mut c StreamConn) write(bytes []u8) ?int {
 	return c.write_ptr(bytes.data, bytes.len)
 }
 
@@ -208,7 +208,7 @@ pub fn (mut c StreamConn) write_string(s string) ?int {
 	return c.write_ptr(s.str, s.len)
 }
 
-pub fn (mut c StreamConn) read_ptr(buf_ptr &byte, len int) ?int {
+pub fn (mut c StreamConn) read_ptr(buf_ptr &u8, len int) ?int {
 	mut res := wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)) ?
 	$if trace_unix ? {
 		eprintln('<<< StreamConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
@@ -230,7 +230,7 @@ pub fn (mut c StreamConn) read_ptr(buf_ptr &byte, len int) ?int {
 	return net.socket_error(code)
 }
 
-pub fn (mut c StreamConn) read(mut buf []byte) ?int {
+pub fn (mut c StreamConn) read(mut buf []u8) ?int {
 	return c.read_ptr(buf.data, buf.len)
 }
 

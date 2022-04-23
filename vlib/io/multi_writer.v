@@ -22,7 +22,7 @@ pub mut:
 // written. If any writer fails to write the full length an error is returned
 // and writing to other writers stops. If any writer returns an error the error
 // is returned immediately and writing to other writers stops.
-pub fn (mut m MultiWriter) write(buf []byte) ?int {
+pub fn (mut m MultiWriter) write(buf []u8) ?int {
 	for mut w in m.writers {
 		n := w.write(buf) ?
 		if n != buf.len {

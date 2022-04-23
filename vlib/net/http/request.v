@@ -176,8 +176,30 @@ pub fn (req &Request) referer() string {
 	return req.header.get(.referer) or { '' }
 }
 
-// Parse a raw HTTP request into a Request object
+// parse_request parses a raw HTTP request into a Request object.
+// See also: `parse_request_head`, which parses only the headers.
 pub fn parse_request(mut reader io.BufferedReader) ?Request {
+	mut request := parse_request_head(mut reader) ?
+
+	// body
+	mut body := []u8{}
+	if length := request.header.get(.content_length) {
+		n := length.int()
+		if n > 0 {
+			body = []u8{len: n}
+			mut count := 0
+			for count < body.len {
+				count += reader.read(mut body[count..]) or { break }
+			}
+		}
+	}
+
+	request.data = body.bytestr()
+	return request
+}
+
+// parse_request_head parses *only* the header of a raw HTTP request into a Request object
+pub fn parse_request_head(mut reader io.BufferedReader) ?Request {
 	// request line
 	mut line := reader.read_line() ?
 	method, target, version := parse_request_line(line) ?
@@ -192,24 +214,10 @@ pub fn parse_request(mut reader io.BufferedReader) ?Request {
 	}
 	header.coerce(canonicalize: true)
 
-	// body
-	mut body := []byte{}
-	if length := header.get(.content_length) {
-		n := length.int()
-		if n > 0 {
-			body = []byte{len: n}
-			mut count := 0
-			for count < body.len {
-				count += reader.read(mut body[count..]) or { break }
-			}
-		}
-	}
-
 	return Request{
 		method: method
 		url: target.str()
 		header: header
-		data: body.bytestr()
 		version: version
 	}
 }
@@ -390,7 +398,7 @@ pub fn parse_multipart_form(body string, boundary string) (map[string]string, ma
 	return form, files
 }
 
-// Parse the Content-Disposition header of a multipart form
+// parse_disposition parses the Content-Disposition header of a multipart form
 // Returns a map of the key="value" pairs
 // Example: assert parse_disposition('Content-Disposition: form-data; name="a"; filename="b"') == {'name': 'a', 'filename': 'b'}
 fn parse_disposition(line string) map[string]string {

@@ -78,7 +78,7 @@ pub fn stderr() File {
 	}
 }
 
-pub fn (f &File) read(mut buf []byte) ?int {
+pub fn (f &File) read(mut buf []u8) ?int {
 	if buf.len == 0 {
 		return 0
 	}
@@ -93,7 +93,7 @@ pub fn (f &File) read(mut buf []byte) ?int {
 	return nbytes
 }
 
-pub fn (mut f File) write(buf []byte) ?int {
+pub fn (mut f File) write(buf []u8) ?int {
 	if !f.is_opened {
 		return error('file is not opened')
 	}
@@ -113,7 +113,7 @@ pub fn (mut f File) writeln(s string) ?int {
 	return nbytes
 }
 
-pub fn (mut f File) write_to(pos u64, buf []byte) ?int {
+pub fn (mut f File) write_to(pos u64, buf []u8) ?int {
 	if !f.is_opened {
 		return error('file is not opened')
 	}

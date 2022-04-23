@@ -26,7 +26,7 @@ vlib/v/checker/tests/fixed_array_conv.vv:11:13: error: cannot use `[2]int` as `v
       |                ~~~
    12 |     _ = tos(arr, 1)
    13 |     fn (p &int){}(arr)
-vlib/v/checker/tests/fixed_array_conv.vv:12:10: error: cannot use `[2]int` as `&byte` in argument 1 to `tos`
+vlib/v/checker/tests/fixed_array_conv.vv:12:10: error: cannot use `[2]int` as `&u8` in argument 1 to `tos`
    10 | unsafe {
    11 |     _ = memdup(arr, 1)
    12 |     _ = tos(arr, 1)

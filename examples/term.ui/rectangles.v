@@ -21,9 +21,9 @@ mut:
 
 fn random_color() tui.Color {
 	return tui.Color{
-		r: rand.byte()
-		g: rand.byte()
-		b: rand.byte()
+		r: rand.u8()
+		g: rand.u8()
+		b: rand.u8()
 	}
 }
 

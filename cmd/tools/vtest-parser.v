@@ -121,7 +121,7 @@ fn process_cli_args() &Context {
 		exit(0)
 	}
 	context.all_paths = fp.finalize() or {
-		context.error(err.msg)
+		context.error(err.msg())
 		exit(1)
 	}
 	if !context.is_worker && context.all_paths.len == 0 {

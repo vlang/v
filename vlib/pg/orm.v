@@ -92,10 +92,10 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats 
 			lens << int(sizeof(bool))
 			formats << 1
 		}
-		byte {
+		u8 {
 			types << u32(Oid.t_char)
-			vals << &char(&(d as byte))
-			lens << int(sizeof(byte))
+			vals << &char(&(d as u8))
+			lens << int(sizeof(u8))
 			formats << 1
 		}
 		u16 {
@@ -234,7 +234,7 @@ fn str_to_primitive(str string, typ int) ?orm.Primitive {
 		// byte
 		9 {
 			data := str.i8()
-			return orm.Primitive(*unsafe { &byte(&data) })
+			return orm.Primitive(*unsafe { &u8(&data) })
 		}
 		// u16
 		10 {

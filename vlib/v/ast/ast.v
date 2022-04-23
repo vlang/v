@@ -223,7 +223,7 @@ pub:
 pub mut:
 	exprs      []Expr
 	expr_types []Type
-	fmts       []byte
+	fmts       []u8
 	need_fmts  []bool // an explicit non-default fmt required, e.g. `x`
 }
 
@@ -323,9 +323,10 @@ pub:
 	is_markused bool // an explict `[markused]` tag; the const will NOT be removed by `-skip-unused`, no matter what
 	pos         token.Pos
 pub mut:
-	expr     Expr      // the value expr of field; everything after `=`
-	typ      Type      // the type of the const field, it can be any type in V
-	comments []Comment // comments before current const field
+	expr         Expr      // the value expr of field; everything after `=`
+	typ          Type      // the type of the const field, it can be any type in V
+	comments     []Comment // comments before current const field
+	end_comments []Comment // comments that after const field
 	// the comptime_expr_value field is filled by the checker, when it has enough
 	// info to evaluate the constant at compile time
 	comptime_expr_value ComptTimeConstValue = empty_comptime_const_expr()
@@ -610,19 +611,6 @@ pub mut:
 	types []Type
 }
 
-/*
-pub enum Expr {
-	Binary(InfixExpr)
-	If(IfExpr)
-	Integer(IntegerExpr)
-}
-*/
-/*
-pub struct Stmt {
-	pos int
-	//end int
-}
-*/
 pub struct Var {
 pub:
 	name            string
@@ -675,6 +663,7 @@ pub:
 	pos         token.Pos
 	typ_pos     token.Pos
 	is_markused bool // an explict `[markused]` tag; the global will NOT be removed by `-skip-unused`
+	is_volatile bool
 pub mut:
 	expr     Expr
 	typ      Type
@@ -700,7 +689,7 @@ pub:
 pub mut:
 	// these are set by gen_embed_file_init in v/gen/c/embed
 	is_compressed bool
-	bytes         []byte
+	bytes         []u8
 	len           int
 }
 
@@ -794,7 +783,21 @@ pub mut:
 	name   string
 	kind   IdentKind
 	info   IdentInfo
-	is_mut bool
+	is_mut bool // if mut *token* is before name. Use `is_mut()` to lookup mut variable
+}
+
+pub fn (i &Ident) is_mut() bool {
+	match i.obj {
+		Var {
+			return i.obj.is_mut
+		}
+		ConstField {
+			return false
+		}
+		AsmRegister, GlobalField {
+			return true
+		}
+	}
 }
 
 pub fn (i &Ident) var_info() IdentVar {
@@ -1150,6 +1153,7 @@ pub:
 	pos      token.Pos
 	type_pos token.Pos
 	comments []Comment
+	attrs    []Attr // attributes of type declaration
 }
 
 // TODO: handle this differently
@@ -1817,6 +1821,9 @@ pub fn (stmt Stmt) check_c_expr() ? {
 		AssignStmt {
 			return
 		}
+		ForCStmt, ForInStmt, ForStmt {
+			return
+		}
 		ExprStmt {
 			if stmt.expr.is_expr() {
 				return
@@ -2176,7 +2183,7 @@ pub fn (expr Expr) is_literal() bool {
 		CastExpr {
 			return !expr.has_arg && expr.expr.is_literal()
 				&& (expr.typ.is_ptr() || expr.typ.is_pointer()
-				|| expr.typ in [i8_type, i16_type, int_type, i64_type, byte_type, u8_type, u16_type, u32_type, u64_type, f32_type, f64_type, char_type, bool_type, rune_type])
+				|| expr.typ in [i8_type, i16_type, int_type, i64_type, byte_type, u16_type, u32_type, u64_type, f32_type, f64_type, char_type, bool_type, rune_type])
 		}
 		SizeOf, IsRefType {
 			return expr.is_type || expr.expr.is_literal()

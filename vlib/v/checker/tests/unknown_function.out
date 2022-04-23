@@ -1,4 +1,5 @@
-vlib/v/checker/tests/unknown_function.vv:4:15: error: unknown function: math.max_i64
+vlib/v/checker/tests/unknown_function.vv:4:15: error: unknown function: math.max_i64 .
+Did you mean `math.max`?
     2 | 
     3 | fn main() {
     4 |     println(math.max_i64())

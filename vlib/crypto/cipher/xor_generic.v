@@ -6,7 +6,7 @@ module cipher
 // NOTE: Implement other versions (joe-c)
 // xor_bytes xors the bytes in a and b. The destination should have enough
 // space, otherwise xor_bytes will panic. Returns the number of bytes xor'd.
-pub fn xor_bytes(mut dst []byte, a []byte, b []byte) int {
+pub fn xor_bytes(mut dst []u8, a []u8, b []u8) int {
 	mut n := a.len
 	if b.len < n {
 		n = b.len
@@ -20,7 +20,7 @@ pub fn xor_bytes(mut dst []byte, a []byte, b []byte) int {
 
 // safe_xor_bytes XORs the bytes in `a` and `b` into `dst` it does so `n` times.
 // Please note: `n` needs to be smaller or equal than the length of `a` and `b`.
-pub fn safe_xor_bytes(mut dst []byte, a []byte, b []byte, n int) {
+pub fn safe_xor_bytes(mut dst []u8, a []u8, b []u8, n int) {
 	for i in 0 .. n {
 		dst[i] = a[i] ^ b[i]
 	}
@@ -28,6 +28,6 @@ pub fn safe_xor_bytes(mut dst []byte, a []byte, b []byte, n int) {
 
 // xor_words XORs multiples of 4 or 8 bytes (depending on architecture.)
 // The slice arguments `a` and `b` are assumed to be of equal length.
-pub fn xor_words(mut dst []byte, a []byte, b []byte) {
+pub fn xor_words(mut dst []u8, a []u8, b []u8) {
 	safe_xor_bytes(mut dst, a, b, b.len)
 }

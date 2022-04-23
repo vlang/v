@@ -51,6 +51,11 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		p.error_with_pos('cannot register struct `IError`, it is builtin interface type',
 			name_pos)
 	}
+	// append module name before any type of parsing to enable recursion parsing
+	p.table.start_parsing_type(p.prepend_mod(name))
+	defer {
+		p.table.reset_parsing_type()
+	}
 	generic_types, _ := p.parse_generic_types()
 	no_body := p.tok.kind != .lcbr
 	if language == .v && no_body {
@@ -179,7 +184,8 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				p.next()
 				is_field_volatile = true
 			}
-			is_embed := ((p.tok.lit.len > 1 && p.tok.lit[0].is_capital())
+			is_embed := ((p.tok.lit.len > 1 && p.tok.lit[0].is_capital()
+				&& (p.peek_tok.kind != .lsbr || p.peek_token(2).kind != .rsbr))
 				|| p.peek_tok.kind == .dot) && language == .v && p.peek_tok.kind != .key_fn
 			is_on_top := ast_fields.len == 0 && !(is_field_mut || is_field_global)
 			mut field_name := ''
@@ -223,7 +229,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 						break
 					}
 				}
+				p.inside_struct_field_decl = true
 				typ = p.parse_type()
+				p.inside_struct_field_decl = false
 				if typ.idx() == 0 {
 					// error is set in parse_type
 					return ast.StructDecl{}

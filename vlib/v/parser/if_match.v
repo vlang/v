@@ -128,7 +128,13 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		} else {
 			prev_guard = false
 			p.comptime_if_cond = true
+			p.inside_if_cond = true
 			cond = p.expr(0)
+			p.inside_if_cond = false
+			if p.if_cond_comments.len > 0 {
+				comments << p.if_cond_comments
+				p.if_cond_comments = []
+			}
 			p.comptime_if_cond = false
 		}
 		comments << p.eat_comments()

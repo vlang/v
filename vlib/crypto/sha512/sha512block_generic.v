@@ -32,7 +32,7 @@ const (
 		u64(0x4cc5d4becb3e42b6), u64(0x597f299cfc657e2a), u64(0x5fcb6fab3ad6faec), u64(0x6c44198c4a475817)]
 )
 
-fn block_generic(mut dig Digest, p_ []byte) {
+fn block_generic(mut dig Digest, p_ []u8) {
 	unsafe {
 		mut p := p_
 		mut w := []u64{len: (80)}

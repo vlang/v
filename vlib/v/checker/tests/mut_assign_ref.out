@@ -1,0 +1,28 @@
+vlib/v/checker/tests/mut_assign_ref.vv:10:12: error: `f` is immutable, cannot have a mutable reference to it
+    8 | fn main() {
+    9 |     f := Foo{}
+   10 |     mut pf := &f
+      |               ^
+   11 |     pf = &f
+   12 |     p := &f
+vlib/v/checker/tests/mut_assign_ref.vv:11:7: error: `f` is immutable, cannot have a mutable reference to it
+    9 |     f := Foo{}
+   10 |     mut pf := &f
+   11 |     pf = &f
+      |          ^
+   12 |     p := &f
+   13 |     _ = p
+vlib/v/checker/tests/mut_assign_ref.vv:15:11: error: `constant` is immutable, cannot have a mutable reference to it
+   13 |     _ = p
+   14 | 
+   15 |     mut c := &constant
+      |              ^
+   16 |     c.value = 200
+   17 |     c = &constant
+vlib/v/checker/tests/mut_assign_ref.vv:17:6: error: `constant` is immutable, cannot have a mutable reference to it
+   15 |     mut c := &constant
+   16 |     c.value = 200
+   17 |     c = &constant
+      |         ^
+   18 |     ic := &constant // ok
+   19 |     _=ic

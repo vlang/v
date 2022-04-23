@@ -1,22 +1,22 @@
 module main
 
 struct Animal {
-	mut:
-		height byte
+mut:
+	height u8
 }
 
-fn new_animal(height byte) ?Animal {
+fn new_animal(height u8) ?Animal {
 	if height < 10 {
 		return error('Too small to be an animal!')
 	}
 
-	return Animal{ height: height }
+	return Animal{
+		height: height
+	}
 }
 
 fn main() {
-	mut dog := new_animal(9) or {
-		none
-	}
+	mut dog := new_animal(9) or { none }
 
 	println(dog)
 }

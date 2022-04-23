@@ -43,9 +43,9 @@ pub mut:
 	is_print_line_on_error      bool
 	is_print_colored_error      bool
 	is_print_rel_paths_on_error bool
-	quote                       byte // which quote is used to denote current string: ' or "
-	inter_quote                 byte
-	nr_lines                    int  // total number of lines in the source file that were scanned
+	quote                       u8  // which quote is used to denote current string: ' or "
+	inter_quote                 u8
+	nr_lines                    int // total number of lines in the source file that were scanned
 	is_vh                       bool // Keep newlines
 	is_fmt                      bool // Used for v fmt.
 	comments_mode               CommentsMode
@@ -623,7 +623,7 @@ pub fn (s &Scanner) peek_token(n int) token.Token {
 }
 
 [direct_array_access; inline]
-fn (s &Scanner) look_ahead(n int) byte {
+fn (s &Scanner) look_ahead(n int) u8 {
 	if s.pos + n < s.text.len {
 		return s.text[s.pos + n]
 	} else {
@@ -1127,7 +1127,7 @@ fn (s &Scanner) current_column() int {
 	return s.pos - s.last_nl_pos
 }
 
-fn (s &Scanner) count_symbol_before(p int, sym byte) int {
+fn (s &Scanner) count_symbol_before(p int, sym u8) int {
 	mut count := 0
 	for i := p; i >= 0; i-- {
 		if s.text[i] != sym {
@@ -1279,7 +1279,7 @@ fn decode_h_escapes(s string, start int, escapes_pos []int) string {
 		idx := pos - start
 		end_idx := idx + 4 // "\xXX".len == 4
 		// notice this function doesn't do any decoding... it just replaces '\xc0' with the byte 0xc0
-		ss << [byte(strconv.parse_uint(s[idx + 2..end_idx], 16, 8) or { 0 })].bytestr()
+		ss << [u8(strconv.parse_uint(s[idx + 2..end_idx], 16, 8) or { 0 })].bytestr()
 		if i + 1 < escapes_pos.len {
 			ss << s[end_idx..escapes_pos[i + 1] - start]
 		} else {
@@ -1300,7 +1300,7 @@ fn decode_o_escapes(s string, start int, escapes_pos []int) string {
 		idx := pos - start
 		end_idx := idx + 4 // "\XXX".len == 4
 		// notice this function doesn't do any decoding... it just replaces '\141' with the byte 0o141
-		ss << [byte(strconv.parse_uint(s[idx + 1..end_idx], 8, 8) or { 0 })].bytestr()
+		ss << [u8(strconv.parse_uint(s[idx + 1..end_idx], 8, 8) or { 0 })].bytestr()
 		if i + 1 < escapes_pos.len {
 			ss << s[end_idx..escapes_pos[i + 1] - start]
 		} else {

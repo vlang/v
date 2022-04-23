@@ -39,16 +39,16 @@ pub fn (mut rng PCG32RNG) seed(seed_data []u32) {
 
 // byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
 [inline]
-fn (mut rng PCG32RNG) byte() byte {
+pub fn (mut rng PCG32RNG) u8() u8 {
 	if rng.bytes_left >= 1 {
 		rng.bytes_left -= 1
-		value := byte(rng.buffer)
+		value := u8(rng.buffer)
 		rng.buffer >>= 8
 		return value
 	}
 	rng.buffer = rng.u32()
 	rng.bytes_left = 3
-	value := byte(rng.buffer)
+	value := u8(rng.buffer)
 	rng.buffer >>= 8
 	return value
 }
@@ -70,7 +70,7 @@ pub fn (mut rng PCG32RNG) u16() u16 {
 
 // u32 returns a pseudorandom unsigned `u32`.
 [inline]
-fn (mut rng PCG32RNG) u32() u32 {
+pub fn (mut rng PCG32RNG) u32() u32 {
 	oldstate := rng.state
 	rng.state = oldstate * (6364136223846793005) + rng.inc
 	xorshifted := u32(((oldstate >> u64(18)) ^ oldstate) >> u64(27))

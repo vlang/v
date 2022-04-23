@@ -58,12 +58,12 @@ pub fn dial_udp(raddr string) ?&UdpConn {
 // 	}
 // }
 
-pub fn (mut c UdpConn) write_ptr(b &byte, len int) ?int {
+pub fn (mut c UdpConn) write_ptr(b &u8, len int) ?int {
 	remote := c.sock.remote() or { return err_no_udp_remote }
 	return c.write_to_ptr(remote, b, len)
 }
 
-pub fn (mut c UdpConn) write(buf []byte) ?int {
+pub fn (mut c UdpConn) write(buf []u8) ?int {
 	return c.write_ptr(buf.data, buf.len)
 }
 
@@ -71,7 +71,7 @@ pub fn (mut c UdpConn) write_string(s string) ?int {
 	return c.write_ptr(s.str, s.len)
 }
 
-pub fn (mut c UdpConn) write_to_ptr(addr Addr, b &byte, len int) ?int {
+pub fn (mut c UdpConn) write_to_ptr(addr Addr, b &u8, len int) ?int {
 	res := C.sendto(c.sock.handle, b, len, 0, voidptr(&addr), addr.len())
 	if res >= 0 {
 		return res
@@ -87,7 +87,7 @@ pub fn (mut c UdpConn) write_to_ptr(addr Addr, b &byte, len int) ?int {
 }
 
 // write_to blocks and writes the buf to the remote addr specified
-pub fn (mut c UdpConn) write_to(addr Addr, buf []byte) ?int {
+pub fn (mut c UdpConn) write_to(addr Addr, buf []u8) ?int {
 	return c.write_to_ptr(addr, buf.data, buf.len)
 }
 
@@ -97,7 +97,7 @@ pub fn (mut c UdpConn) write_to_string(addr Addr, s string) ?int {
 }
 
 // read reads from the socket into buf up to buf.len returning the number of bytes read
-pub fn (mut c UdpConn) read(mut buf []byte) ?(int, Addr) {
+pub fn (mut c UdpConn) read(mut buf []u8) ?(int, Addr) {
 	mut addr := Addr{
 		addr: AddrData{
 			Ip6: Ip6{}

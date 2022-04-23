@@ -21,6 +21,9 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 	if !p.pref.is_fmt {
 		p.eat_comments()
 	}
+	if p.inside_if_cond {
+		p.if_cond_comments << p.eat_comments()
+	}
 	inside_array_lit := p.inside_array_lit
 	p.inside_array_lit = false
 	defer {
@@ -350,6 +353,9 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 			return node
 		}
 	}
+	if p.inside_if_cond {
+		p.if_cond_comments << p.eat_comments()
+	}
 	return p.expr_with_left(node, precedence, is_stmt_ident)
 }
 
@@ -372,7 +378,9 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 				return node
 			}
 			p.is_stmt_ident = is_stmt_ident
-		} else if p.tok.kind in [.lsbr, .nilsbr] && p.tok.line_nr == p.prev_tok.line_nr {
+		} else if p.tok.kind in [.lsbr, .nilsbr] && (p.tok.line_nr == p.prev_tok.line_nr
+			|| (p.prev_tok.kind == .string
+			&& p.tok.line_nr == p.prev_tok.line_nr + p.prev_tok.lit.count('\n'))) {
 			if p.tok.kind == .nilsbr {
 				node = p.index_expr(node, true)
 			} else {
@@ -479,6 +487,9 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	precedence := p.tok.precedence()
 	mut pos := p.tok.pos()
 	p.next()
+	if p.inside_if_cond {
+		p.if_cond_comments << p.eat_comments()
+	}
 	mut right := ast.empty_expr()
 	prev_expecting_type := p.expecting_type
 	if op in [.key_is, .not_is] {
@@ -540,27 +551,6 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 			kind: or_kind
 			pos: or_pos
 		}
-	}
-}
-
-fn (mut p Parser) go_expr() ast.GoExpr {
-	p.next()
-	spos := p.tok.pos()
-	expr := p.expr(0)
-	call_expr := if expr is ast.CallExpr {
-		expr
-	} else {
-		p.error_with_pos('expression in `go` must be a function call', expr.pos())
-		ast.CallExpr{
-			scope: p.scope
-		}
-	}
-	pos := spos.extend(p.prev_tok.pos())
-	p.register_auto_import('sync.threads')
-	p.table.gostmts++
-	return ast.GoExpr{
-		call_expr: call_expr
-		pos: pos
 	}
 }
 

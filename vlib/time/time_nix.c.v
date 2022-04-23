@@ -20,7 +20,8 @@ struct C.tm {
 
 fn C.timegm(&C.tm) C.time_t
 
-// fn C.gmtime_r(&tm, &gbuf)
+// prefering localtime_r over the localtime because
+// from docs localtime_r is thread safe,
 fn C.localtime_r(t &C.time_t, tm &C.tm)
 
 fn make_unix_time(t C.tm) i64 {
@@ -29,6 +30,9 @@ fn make_unix_time(t C.tm) i64 {
 
 // local returns t with the location set to local time.
 pub fn (t Time) local() Time {
+	if t.is_local {
+		return t
+	}
 	loc_tm := C.tm{}
 	C.localtime_r(voidptr(&t.unix), &loc_tm)
 	return convert_ctime(loc_tm, t.microsecond)

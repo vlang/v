@@ -29,16 +29,16 @@ pub fn (mut rng MuslRNG) seed(seed_data []u32) {
 
 // byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
 [inline]
-fn (mut rng MuslRNG) byte() byte {
+pub fn (mut rng MuslRNG) u8() u8 {
 	if rng.bytes_left >= 1 {
 		rng.bytes_left -= 1
-		value := byte(rng.buffer)
+		value := u8(rng.buffer)
 		rng.buffer >>= 8
 		return value
 	}
 	rng.buffer = rng.u32()
 	rng.bytes_left = 3
-	value := byte(rng.buffer)
+	value := u8(rng.buffer)
 	rng.buffer >>= 8
 	return value
 }
@@ -70,7 +70,7 @@ fn temper(prev u32) u32 {
 }
 
 // u32 returns a pseudorandom 32-bit unsigned integer (`u32`).
-fn (mut rng MuslRNG) u32() u32 {
+pub fn (mut rng MuslRNG) u32() u32 {
 	rng.state = rng.state * 1103515245 + 12345
 	// We are not dividing by 2 (or shifting right by 1)
 	// because we want all 32-bits of random data

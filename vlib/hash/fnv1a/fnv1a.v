@@ -23,7 +23,7 @@ pub fn sum32_string(data string) u32 {
 // sum32 returns a fnv1a hash of the memory block, described by the dynamic
 // byte array `data`.
 [direct_array_access; inline]
-pub fn sum32(data []byte) u32 {
+pub fn sum32(data []u8) u32 {
 	mut hash := fnv1a.fnv32_offset_basis
 	for i in 0 .. data.len {
 		hash = (hash ^ u32(data[i])) * fnv1a.fnv32_prime
@@ -34,7 +34,7 @@ pub fn sum32(data []byte) u32 {
 // sum32_bytes returns a fnv1a hash of the struct `s`.
 [direct_array_access; inline]
 pub fn sum32_struct<T>(s &T) u32 {
-	bp := unsafe { &byte(s) }
+	bp := unsafe { &u8(s) }
 	sz := int(sizeof(T))
 	mut hash := fnv1a.fnv32_offset_basis
 	for i in 0 .. sz {
@@ -46,7 +46,7 @@ pub fn sum32_struct<T>(s &T) u32 {
 // sum32_bytes returns a fnv1a hash of `data_len` bytes starting at
 // the address in the given &byte pointer `data`.
 [direct_array_access; inline; unsafe]
-pub fn sum32_bytes(data &byte, data_len int) u32 {
+pub fn sum32_bytes(data &u8, data_len int) u32 {
 	mut hash := fnv1a.fnv32_offset_basis
 	for i in 0 .. data_len {
 		hash = unsafe { (hash ^ u32(data[i])) * fnv1a.fnv32_prime }
@@ -67,7 +67,7 @@ pub fn sum64_string(data string) u64 {
 // sum64 returns a fnv1a hash of the memory block, described by the dynamic
 // byte array `data`.
 [direct_array_access; inline]
-pub fn sum64(data []byte) u64 {
+pub fn sum64(data []u8) u64 {
 	mut hash := fnv1a.fnv64_offset_basis
 	for i in 0 .. data.len {
 		hash = (hash ^ u64(data[i])) * fnv1a.fnv64_prime
@@ -78,7 +78,7 @@ pub fn sum64(data []byte) u64 {
 // sum64_bytes returns a fnv1a hash of `data_len` bytes starting at
 // the address in the given &byte pointer `data`.
 [direct_array_access; inline; unsafe]
-pub fn sum64_bytes(data &byte, data_len int) u64 {
+pub fn sum64_bytes(data &u8, data_len int) u64 {
 	mut hash := fnv1a.fnv64_offset_basis
 	for i in 0 .. data_len {
 		hash = unsafe { (hash ^ u64(data[i])) * fnv1a.fnv64_prime }
@@ -89,7 +89,7 @@ pub fn sum64_bytes(data &byte, data_len int) u64 {
 // sum64_bytes returns a fnv1a hash of the struct `s`.
 [direct_array_access; inline]
 pub fn sum64_struct<T>(s &T) u64 {
-	bp := unsafe { &byte(s) }
+	bp := unsafe { &u8(s) }
 	sz := int(sizeof(T))
 	mut hash := fnv1a.fnv64_offset_basis
 	for i in 0 .. sz {

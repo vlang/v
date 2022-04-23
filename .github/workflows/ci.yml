@@ -131,7 +131,7 @@ jobs:
         run: |
           ./v -gc boehm_leak -o testcase_leak vlib/v/tests/testcase_leak.vv
           ./testcase_leak 2>leaks.txt
-          grep "Found 1 leaked object" leaks.txt && grep ", sz=1000," leaks.txt
+          grep "Found 1 leaked object" leaks.txt && grep -P ", sz=\s?1000," leaks.txt
       - name: Test leak detector not being active for `-gc boehm`
         run: |
           ./v -gc boehm -o testcase_leak vlib/v/tests/testcase_leak.vv
@@ -261,8 +261,8 @@ jobs:
       ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
       #    - name: Build Vorum
       #      run: git clone --depth 1 https://github.com/vlang/vorum && cd vorum && ../v . && cd ..
-      #    - name: Build vpm
-      #      run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . && cd ..
+      - name: Build vpm
+        run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . && cd ..
       - name: Freestanding
         run: ./v -freestanding run vlib/os/bare/bare_example_linux.v
       - name: V self compilation
@@ -429,7 +429,7 @@ jobs:
       - name: Test new v.c
         run: |
           .\v.exe -o v.c cmd/v
-          gcc -Werror -I ./thirdparty/stdatomic/win -municode -w v.c
+          gcc -Werror -municode -w v.c
       - name: Install dependencies
         run: |
           .\v.exe setup-freetype
@@ -446,6 +446,22 @@ jobs:
         run: .\v.exe test-self
         #    - name: Test
         #      run: .\v.exe test-all
+      - name: Test time functions in a timezone UTC-12
+        run: |
+          tzutil /s "Dateline Standard Time"
+          ./v test vlib/time/
+      - name: Test time functions in a timezone UTC-3
+        run: |
+          tzutil /s "Greenland Standard Time"
+          ./v test vlib/time/
+      - name: Test time functions in a timezone UTC+3
+        run: |
+          tzutil /s "Russian Standard Time"
+          ./v test vlib/time/
+      - name: Test time functions in a timezone UTC+12
+        run: |
+          tzutil /s "New Zealand Standard Time"
+          ./v test vlib/time/
       - name: Test v->js
         run: ./v -o hi.js examples/hello_v_js.v && node hi.js
       - name: Test v binaries
@@ -518,7 +534,7 @@ jobs:
       - name: Test new v.c
         run: |
           .\v.exe -o v.c cmd/v
-          .\thirdparty\tcc\tcc.exe -I ./thirdparty/stdatomic/win -Werror -w -ladvapi32 -bt10 v.c
+          .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -bt10 v.c
       - name: Install dependencies
         run: |
           .\v.exe setup-freetype
@@ -559,7 +575,7 @@ jobs:
         ##          .\v.exe wipe-cache
         ##          .\make.bat -tcc32
         ##      - name: Test new v.c
-        ##        run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -I ./thirdparty/stdatomic/win -Werror -g -w -ladvapi32 -bt10 v.c
+        ##        run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -Werror -g -w -ladvapi32 -bt10 v.c
         ##      - name: v doctor
         ##        run: ./v doctor
         ##

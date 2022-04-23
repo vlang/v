@@ -37,7 +37,7 @@ fn dump_of_callexpr() {
 	vfile := @FILE
 	dump(os.file_name(vfile))
 	mut f := os.open_file(@FILE, 'r') or { return }
-	mut buf := []byte{len: 10}
+	mut buf := []u8{len: 10}
 	dump(f.read(mut buf) or { -999 })
 	f.close()
 }

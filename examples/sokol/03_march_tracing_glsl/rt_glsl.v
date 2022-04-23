@@ -65,7 +65,7 @@ fn create_texture(w int, h int, buf &byte) gfx.Image {
 		// usage: .dynamic
 		wrap_u: .clamp_to_edge
 		wrap_v: .clamp_to_edge
-		label: &byte(0)
+		label: &u8(0)
 		d3d11_texture: 0
 	}
 	// comment if .dynamic is enabled
@@ -342,23 +342,23 @@ fn my_init(mut app App) {
 			x := (i & 0xFF) >> 5 // 8 cell
 			// upper left corner
 			if x == 0 && y == 0 {
-				tmp_txt[i + 0] = byte(0xFF)
-				tmp_txt[i + 1] = byte(0)
-				tmp_txt[i + 2] = byte(0)
-				tmp_txt[i + 3] = byte(0xFF)
+				tmp_txt[i + 0] = u8(0xFF)
+				tmp_txt[i + 1] = u8(0)
+				tmp_txt[i + 2] = u8(0)
+				tmp_txt[i + 3] = u8(0xFF)
 			}
 			// low right corner
 			else if x == 7 && y == 7 {
-				tmp_txt[i + 0] = byte(0)
-				tmp_txt[i + 1] = byte(0xFF)
-				tmp_txt[i + 2] = byte(0)
-				tmp_txt[i + 3] = byte(0xFF)
+				tmp_txt[i + 0] = u8(0)
+				tmp_txt[i + 1] = u8(0xFF)
+				tmp_txt[i + 2] = u8(0)
+				tmp_txt[i + 3] = u8(0xFF)
 			} else {
 				col := if ((x + y) & 1) == 1 { 0xFF } else { 128 }
-				tmp_txt[i + 0] = byte(col)  // red
-				tmp_txt[i + 1] = byte(col)  // green
-				tmp_txt[i + 2] = byte(col)  // blue
-				tmp_txt[i + 3] = byte(0xFF) // alpha
+				tmp_txt[i + 0] = u8(col)  // red
+				tmp_txt[i + 1] = u8(col)  // green
+				tmp_txt[i + 2] = u8(col)  // blue
+				tmp_txt[i + 3] = u8(0xFF) // alpha
 			}
 			i += 4
 		}

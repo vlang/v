@@ -1,0 +1,5 @@
+vlib/v/checker/tests/dump_char.vv:3:6: error: `char` values cannot be dumped directly, use dump(u8(x)) or dump(int(x)) instead
+    1 | c := char(67)
+    2 | dump(byte(c))
+    3 | dump(c)
+      |      ^

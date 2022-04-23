@@ -45,6 +45,7 @@ pub:
 	second      int
 	microsecond int
 	unix        i64
+	is_local    bool // used to make time.now().local().local() == time.now().local()
 }
 
 // FormatDelimiter contains different time formats.
@@ -348,7 +349,7 @@ pub fn (d Duration) str() string {
 
 // offset returns time zone UTC offset in seconds.
 pub fn offset() int {
-	t := now()
+	t := utc()
 	local := t.local()
 	return int(local.unix - t.unix)
 }

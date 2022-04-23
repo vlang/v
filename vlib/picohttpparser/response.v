@@ -3,10 +3,10 @@ module picohttpparser
 pub struct Response {
 	fd int
 pub:
-	date      &byte = 0
-	buf_start &byte = 0
+	date      &u8 = 0
+	buf_start &u8 = 0
 pub mut:
-	buf &byte = 0
+	buf &u8 = 0
 }
 
 [inline]

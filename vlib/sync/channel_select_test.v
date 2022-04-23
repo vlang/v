@@ -1,13 +1,11 @@
-/*
-* ATTENTION! Do not use this file as an example!
- * For that, please look at `channel_select_2_test.v` or `channel_select_3_test.v`
- *
- * This test case uses the implementation in `sync/channels.v` directly
- * in order to test it independently from the support in the core language
-*/
-
 module sync
 
+// vtest retry: 6
+
+// ATTENTION! Do not use this file as an example!
+// For that, please look at `channel_select_2_test.v` or `channel_select_3_test.v`
+// This test case uses the implementation in `sync/channels.v` directly
+// in order to test it independently from the support in the core language
 import time
 
 fn do_rec_i64(mut ch Channel) {
@@ -26,9 +24,9 @@ fn do_send_int(mut ch Channel) {
 	}
 }
 
-fn do_send_byte(mut ch Channel) {
+fn do_send_u8(mut ch Channel) {
 	for i in 0 .. 300 {
-		ii := byte(i)
+		ii := u8(i)
 		ch.push(&ii)
 	}
 }
@@ -43,18 +41,18 @@ fn do_send_i64(mut ch Channel) {
 fn test_select() {
 	mut chi := new_channel<int>(0)
 	mut chl := new_channel<i64>(1)
-	mut chb := new_channel<byte>(10)
+	mut chb := new_channel<u8>(10)
 	mut recch := new_channel<i64>(0)
 	go do_rec_i64(mut recch)
 	go do_send_int(mut chi)
-	go do_send_byte(mut chb)
+	go do_send_u8(mut chb)
 	go do_send_i64(mut chl)
 	mut channels := [chi, recch, chl, chb]
 	directions := [Direction.pop, .push, .pop, .pop]
 	mut sum := i64(0)
 	mut rl := i64(0)
 	mut ri := int(0)
-	mut rb := byte(0)
+	mut rb := u8(0)
 	mut sl := i64(0)
 	mut objs := [voidptr(&ri), &sl, &rl, &rb]
 	for _ in 0 .. 1200 {

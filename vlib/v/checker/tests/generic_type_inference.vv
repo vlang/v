@@ -1,0 +1,20 @@
+import datatypes
+
+struct KeyVal<T> {
+	key string
+	val T
+}
+
+fn (a KeyVal<T>) == (b KeyVal<T>) bool {
+	return a.key == b.key
+}
+
+fn (a KeyVal<T>) < (b KeyVal<T>) bool {
+	return a.key < b.key
+}
+
+fn main() {
+	mut bst := datatypes.BSTree<KeyVal<int>>{}
+	bst.insert(KeyVal<int>{key: "alibaba", val: 12})
+	println(bst.in_order_traversal())
+}

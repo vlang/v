@@ -1,4 +1,4 @@
-type MyByte = byte
+type MyByte = u8
 
 type MyInt = int
 
@@ -10,17 +10,17 @@ fn ok() {
 
 // bytes
 fn test_byte_aliasing() {
-	dump(byte(123))
-	dump(MyByte(byte(123)))
-	dump(byte(MyByte(byte(123))))
+	dump(u8(123))
+	dump(MyByte(u8(123)))
+	dump(u8(MyByte(u8(123))))
 	ok()
 }
 
 fn test_pbyte_aliasing() {
 	unsafe {
-		dump(voidptr(&byte(123)))
-		dump(voidptr(&MyByte(&byte(123))))
-		dump(voidptr(&byte(&MyByte(&byte(123)))))
+		dump(voidptr(&u8(123)))
+		dump(voidptr(&MyByte(&u8(123))))
+		dump(voidptr(&u8(&MyByte(&u8(123)))))
 	}
 	ok()
 }

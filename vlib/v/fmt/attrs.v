@@ -7,8 +7,11 @@ import v.ast
 
 pub fn (mut f Fmt) attrs(attrs []ast.Attr) {
 	mut sorted_attrs := attrs.clone()
-	// Sort the attributes. The ones with arguments come first.
-	sorted_attrs.sort(a.arg.len > b.arg.len)
+	// Sort the attributes. The ones with arguments come first
+	sorted_attrs.sort_with_compare(fn (a &ast.Attr, b &ast.Attr) int {
+		d := b.arg.len - a.arg.len
+		return if d != 0 { d } else { compare_strings(b.arg, a.arg) }
+	})
 	for i, attr in sorted_attrs {
 		if attr.arg.len == 0 {
 			f.single_line_attrs(sorted_attrs[i..])

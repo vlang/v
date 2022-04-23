@@ -22,6 +22,10 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	if is_amp {
 		g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
 	}
+	g.write('(')
+	defer {
+		g.write(')')
+	}
 	if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
 		mut shared_typ := node.typ.set_flag(.shared_f)
 		shared_styp = g.typ(shared_typ)
@@ -300,4 +304,19 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 		g.write(g.type_default(field.typ))
 	}
 	return true
+}
+
+fn (mut g Gen) is_empty_struct(t Type) bool {
+	sym := t.unaliased_sym
+	match sym.info {
+		ast.Struct {
+			if sym.info.fields.len > 0 || sym.info.embeds.len > 0 {
+				return false
+			}
+			return true
+		}
+		else {
+			return false
+		}
+	}
 }

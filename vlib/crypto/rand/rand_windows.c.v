@@ -14,8 +14,8 @@ const (
 )
 
 // read returns an array of `bytes_needed` random bytes read from the OS.
-pub fn read(bytes_needed int) ?[]byte {
-	mut buffer := []byte{len: bytes_needed}
+pub fn read(bytes_needed int) ?[]u8 {
+	mut buffer := []u8{len: bytes_needed}
 	// use bcrypt_use_system_preferred_rng because we passed null as algo
 	status := C.BCryptGenRandom(0, buffer.data, bytes_needed, rand.bcrypt_use_system_preferred_rng)
 	if status != rand.status_success {

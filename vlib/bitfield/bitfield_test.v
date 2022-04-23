@@ -133,7 +133,7 @@ fn test_hamming() {
 }
 
 fn test_bf_from_bytes() {
-	input := [byte(0x01), 0xF0, 0x0F, 0xF0, 0xFF]
+	input := [u8(0x01), 0xF0, 0x0F, 0xF0, 0xFF]
 	output := bitfield.from_bytes(input).str()
 	assert output == '00000001' + '11110000' + '00001111' + '11110000' + '11111111'
 	newoutput := bitfield.from_str(output).str()
@@ -141,7 +141,7 @@ fn test_bf_from_bytes() {
 }
 
 fn test_bf_from_bytes_lowest_bits_first() {
-	input := [byte(0x01), 0xF0]
+	input := [u8(0x01), 0xF0]
 	output := bitfield.from_bytes_lowest_bits_first(input).str()
 	assert output == '10000000' + '00001111'
 	newoutput := bitfield.from_str(output).str()

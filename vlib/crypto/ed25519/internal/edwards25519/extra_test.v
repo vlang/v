@@ -23,7 +23,7 @@ fn testsuite_begin() {
 //
 // Disabled curve25519 not available yet, but maybe can use own curve25519
 /*
-fn fn_mon(scalar [32]byte) bool {
+fn fn_mon(scalar [32]u8) bool {
                mut s := new_scalar().set_bytes_with_clamping(scalar[..])
                p := (&Point{}).scalar_base_mult(s)
                got := p.bytes_montgomery()
@@ -32,7 +32,7 @@ fn fn_mon(scalar [32]byte) bool {
        }
 
 fn test_bytes_montgomery() {
-       /* f := fn(scalar [32]byte) bool {
+       /* f := fn(scalar [32]u8) bool {
                s := new_scalar().set_bytes_with_clamping(scalar[..])
                p := (&Point{}).scalar_base_mult(s)
                got := p.bytes_montgomery()
@@ -67,20 +67,20 @@ fn test_bytes_montgomery_infinity() {
 
 const (
 	loworder_string = '26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc85'
-	loworder_bytes  = hex.decode(loworder_string) or { panic(err.msg) }
+	loworder_bytes  = hex.decode(loworder_string) or { panic(err) }
 )
 
-fn fn_cofactor(mut data []byte) bool {
+fn fn_cofactor(mut data []u8) bool {
 	if data.len != 64 {
-		panic('err.msg')
+		panic('data.len should be 64')
 	}
 	mut loworder := Point{}
-	loworder.set_bytes(edwards25519.loworder_bytes) or { panic(err.msg) }
+	loworder.set_bytes(edwards25519.loworder_bytes) or { panic(err) }
 
 	mut s := new_scalar()
 	mut p := Point{}
 	mut p8 := Point{}
-	s.set_uniform_bytes(data) or { panic(err.msg) }
+	s.set_uniform_bytes(data) or { panic(err) }
 	p.scalar_base_mult(mut s)
 	p8.mult_by_cofactor(p)
 
@@ -88,9 +88,9 @@ fn fn_cofactor(mut data []byte) bool {
 
 	// 8 * p == (8 * s) * B
 	mut sc := Scalar{
-		s: [32]byte{}
+		s: [32]u8{}
 	}
-	sc.s[0] = byte(0x08)
+	sc.s[0] = u8(0x08)
 	s.multiply(s, sc)
 	mut pp := Point{}
 	pp.scalar_base_mult(mut s)
@@ -128,8 +128,8 @@ fn invert_works(mut xinv Scalar, x NotZeroScalar) bool {
 }
 
 fn test_scalar_invert() {
-	nsc := generate_notzero_scalar(5) or { panic(err.msg) }
-	mut xsc := generate_scalar(5) or { panic(err.msg) }
+	nsc := generate_notzero_scalar(5) or { panic(err) }
+	mut xsc := generate_scalar(5) or { panic(err) }
 	assert invert_works(mut xsc, nsc) == true
 
 	mut zero := new_scalar()
@@ -140,9 +140,9 @@ fn test_scalar_invert() {
 
 fn test_multiscalarmultmatchesbasemult() {
 	for i in 0 .. 6 {
-		x := generate_scalar(100) or { panic(err.msg) }
-		y := generate_scalar(5) or { panic(err.msg) }
-		z := generate_scalar(2) or { panic(err.msg) }
+		x := generate_scalar(100) or { panic(err) }
+		y := generate_scalar(5) or { panic(err) }
+		z := generate_scalar(2) or { panic(err) }
 		assert multiscalarmultmatchesbasemult(x, y, z) == true
 	}
 }
@@ -196,9 +196,9 @@ fn vartime_multiscala_rmultmatches_basemult(xx Scalar, yy Scalar, zz Scalar) boo
 
 fn test_vartimemultiscalarmultmatchesbasemult() {
 	for i in 0 .. 5 {
-		x := generate_scalar(100) or { panic(err.msg) }
-		y := generate_scalar(5) or { panic(err.msg) }
-		z := generate_scalar(2) or { panic(err.msg) }
+		x := generate_scalar(100) or { panic(err) }
+		y := generate_scalar(5) or { panic(err) }
+		z := generate_scalar(2) or { panic(err) }
 		assert vartime_multiscala_rmultmatches_basemult(x, y, z) == true
 	}
 }

@@ -19,11 +19,11 @@ pub fn constant_time_select(v int, x int, y int) int {
 // constant_time_compare returns 1 when x and y have equal contents.
 // The runtime of this function is proportional of the length of x and y.
 // It is *NOT* dependent on their content.
-pub fn constant_time_compare(x []byte, y []byte) int {
+pub fn constant_time_compare(x []u8, y []u8) int {
 	if x.len != y.len {
 		return 0
 	}
-	mut v := byte(0)
+	mut v := u8(0)
 	for i in 0 .. x.len {
 		v |= x[i] ^ y[i]
 	}
@@ -33,12 +33,12 @@ pub fn constant_time_compare(x []byte, y []byte) int {
 // constant_time_copy copies the contents of y into x, when v == 1.
 // When v == 0, x is left unchanged. this function is undefined, when
 // v takes any other value
-pub fn constant_time_copy(v int, mut x []byte, y []byte) {
+pub fn constant_time_copy(v int, mut x []u8, y []u8) {
 	if x.len != y.len {
 		panic('subtle: arrays have different lengths')
 	}
-	xmask := byte(v - 1)
-	ymask := byte(~(v - 1))
+	xmask := u8(v - 1)
+	ymask := u8(~(v - 1))
 	for i := 0; i < x.len; i++ {
 		x[i] = x[i] & xmask | y[i] & ymask
 	}

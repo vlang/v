@@ -31,12 +31,12 @@ fn main() {
 	cipher := aes.new_cipher(key)
 
 	println('performing encryption')
-	mut encrypted := []byte{len: aes.block_size}
+	mut encrypted := []u8{len: aes.block_size}
 	cipher.encrypt(mut encrypted, data)
 	println(encrypted)
 
 	println('performing decryption')
-	mut decrypted := []byte{len: aes.block_size}
+	mut decrypted := []u8{len: aes.block_size}
 	cipher.decrypt(mut decrypted, encrypted)
 	println(decrypted)
 

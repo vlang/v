@@ -17,6 +17,8 @@ fn main() {
 	}
 	title := 'Sokol Drawing Template'
 	desc := sapp.Desc{
+		width: 640
+		height: 480
 		user_data: state
 		init_userdata_cb: init
 		frame_userdata_cb: frame
@@ -49,9 +51,9 @@ fn draw() {
 	sgl.matrix_mode_projection()
 	sgl.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
 	sgl.c4b(255, 0, 0, 128)
-	draw_hollow_rect(10, 10, 100, 30)
-	sgl.c4b(25, 150, 0, 128)
-	draw_filled_rect(10, 150, 80, 40)
+	draw_hollow_rect(220, 140, 200, 200)
+	sgl.c4b(25, 150, 255, 128)
+	draw_filled_rect(270, 190, 100, 100)
 	// line(0, 0, 500, 500)
 }
 

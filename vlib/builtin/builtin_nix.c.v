@@ -87,7 +87,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 			//////csymbols := backtrace_symbols(*voidptr(&buffer[skipframes]), nr_actual_frames)
 			csymbols := C.backtrace_symbols(voidptr(&buffer[skipframes]), nr_actual_frames)
 			for i in 0 .. nr_actual_frames {
-				sframes << unsafe { tos2(&byte(csymbols[i])) }
+				sframes << unsafe { tos2(&u8(csymbols[i])) }
 			}
 			for sframe in sframes {
 				executable := sframe.all_before('(')
@@ -100,7 +100,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 					eprintln(sframe)
 					continue
 				}
-				buf := [1000]byte{}
+				buf := [1000]u8{}
 				mut output := ''
 				unsafe {
 					bp := &buf[0]

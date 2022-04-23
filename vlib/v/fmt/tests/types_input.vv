@@ -1,37 +1,27 @@
+// Sumtype
+type FooBar = Bar | Foo
+pub type PublicBar = Bar | Foo | FooBar
 
+type Uint = u16 | u32 | u64 | u8 // This should stay on the same line
+type Float = f32 | f64
 
-  // Sumtype
-   type    FooBar=   Foo |     Bar
-   pub type   PublicBar = Foo | Bar | FooBar
+// Alias type
+type MyInt = int
 
-type   Uint =   u16 | u64
-	| u32
-	    | byte // This should stay on the same line
-type
-Float =
-	f32 |
-	f64
-
- // Alias type
-     type  MyInt  =  int
-
- pub type Abc = f32
-
+pub type Abc = f32
 
 // Fn type decl
 
- type EmptyFn	= fn()
-type OneArgFn =
-	fn (i    int)
-type TwoDiffArgs
-= fn (i    int, s string) bool
+type EmptyFn = fn ()
 
+type OneArgFn = fn (i int)
 
-	type TwoSameArgs = fn(i int, j int) string // And a comment
+type TwoDiffArgs = fn (i int, s string) bool
 
-type VarArgs = fn
-(s ...string) int
+type TwoSameArgs = fn (i int, j int) string // And a comment
 
-type NOVarArgs = fn(i int, s ...string) f64
+type VarArgs = fn (s ...string) int
 
-type NoNameArgs = fn( int,  string , ...string)
+type NOVarArgs = fn (i int, s ...string) f64
+
+type NoNameArgs = fn (int, string, ...string)

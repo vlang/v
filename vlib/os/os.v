@@ -162,6 +162,7 @@ pub fn rmdir_all(path string) ? {
 }
 
 // is_dir_empty will return a `bool` whether or not `path` is empty.
+// Note that it will return `true` if `path` does not exist.
 [manualfree]
 pub fn is_dir_empty(path string) bool {
 	items := ls(path) or { return true }
@@ -367,7 +368,8 @@ pub fn expand_tilde_to_home(path string) string {
 	return path
 }
 
-// write_file writes `text` data to a file in `path`.
+// write_file writes `text` data to the file in `path`.
+// If `path` exists, the contents of `path` will be overwritten with the contents of `text`.
 pub fn write_file(path string, text string) ? {
 	mut f := create(path) ?
 	unsafe { f.write_full_buffer(text.str, usize(text.len)) ? }
@@ -765,4 +767,34 @@ pub fn quoted_path(path string) string {
 	} $else {
 		return "'$path'"
 	}
+}
+
+// config_dir returns the path to the user configuration directory (depending on the platform).
+// On windows, that is `%AppData%`.
+// On macos, that is `~/Library/Application Support`.
+// On the rest, that is `$XDG_CONFIG_HOME`, or if that is not available, `~/.config`.
+// If the path cannot be determined, it returns an error.
+// (for example, when $HOME on linux, or %AppData% on windows is not defined)
+pub fn config_dir() ?string {
+	$if windows {
+		app_data := getenv('AppData')
+		if app_data != '' {
+			return app_data
+		}
+	} $else $if macos || darwin || ios {
+		home := home_dir()
+		if home != '' {
+			return home + '/Library/Application Support'
+		}
+	} $else {
+		xdg_home := getenv('XDG_CONFIG_HOME')
+		if xdg_home != '' {
+			return xdg_home
+		}
+		home := home_dir()
+		if home != '' {
+			return home + '/.config'
+		}
+	}
+	return error('Cannot find config directory')
 }

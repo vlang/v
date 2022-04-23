@@ -228,5 +228,5 @@ pub fn (mut sem Semaphore) destroy() {
 			return
 		}
 	}
-	panic(unsafe { tos_clone(&byte(C.strerror(res))) })
+	panic(unsafe { tos_clone(&u8(C.strerror(res))) })
 }

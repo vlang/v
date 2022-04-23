@@ -9,7 +9,7 @@ fn main() {
 	println('------------------------------------------')
 	is_server := '-l' in os.args
 	port := cmdline.option(os.args, '-p', '40001').int()
-	mut buf := []byte{len: 100}
+	mut buf := []u8{len: 100}
 	if is_server {
 		println('UDP echo server, listening for udp packets on port: $port')
 		mut c := net.listen_udp(':$port') ?

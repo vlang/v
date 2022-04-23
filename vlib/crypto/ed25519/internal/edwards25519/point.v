@@ -2,20 +2,20 @@ module edwards25519
 
 const (
 	// d is a constant in the curve equation.
-	d_bytes   = [byte(0xa3), 0x78, 0x59, 0x13, 0xca, 0x4d, 0xeb, 0x75, 0xab, 0xd8, 0x41, 0x41,
-		0x4d, 0x0a, 0x70, 0x00, 0x98, 0xe8, 0x79, 0x77, 0x79, 0x40, 0xc7, 0x8c, 0x73, 0xfe, 0x6f,
-		0x2b, 0xee, 0x6c, 0x03, 0x52]
-	id_bytes  = [byte(1), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0]
-	gen_bytes = [byte(0x58), 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66,
+	d_bytes   = [u8(0xa3), 0x78, 0x59, 0x13, 0xca, 0x4d, 0xeb, 0x75, 0xab, 0xd8, 0x41, 0x41, 0x4d,
+		0x0a, 0x70, 0x00, 0x98, 0xe8, 0x79, 0x77, 0x79, 0x40, 0xc7, 0x8c, 0x73, 0xfe, 0x6f, 0x2b,
+		0xee, 0x6c, 0x03, 0x52]
+	id_bytes  = [u8(1), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0]
+	gen_bytes = [u8(0x58), 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66,
 		0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66,
-		0x66, 0x66, 0x66, 0x66, 0x66]
-	d_const   = d_const_generate() or { panic(err.msg) }
-	d2_const  = d2_const_generate() or { panic(err.msg) }
+		0x66, 0x66, 0x66, 0x66]
+	d_const   = d_const_generate() or { panic(err) }
+	d2_const  = d2_const_generate() or { panic(err) }
 	// id_point is the point at infinity.
-	id_point  = id_point_generate() or { panic(err.msg) }
+	id_point  = id_point_generate() or { panic(err) }
 	// generator point
-	gen_point = generator() or { panic(err.msg) }
+	gen_point = generator() or { panic(err) }
 )
 
 fn d_const_generate() ?Element {
@@ -117,7 +117,7 @@ fn (mut v ProjectiveP2) zero() ProjectiveP2 {
 // Note that set_bytes accepts all non-canonical encodings of valid points.
 // That is, it follows decoding rules that match most implementations in
 // the ecosystem rather than RFC 8032.
-pub fn (mut v Point) set_bytes(x []byte) ?Point {
+pub fn (mut v Point) set_bytes(x []u8) ?Point {
 	// Specifically, the non-canonical encodings that are accepted are
 	//   1) the ones where the edwards25519 element is not reduced (see the
 	//      (*edwards25519.Element).set_bytes docs) and
@@ -201,14 +201,14 @@ fn (mut v AffineCached) zero() AffineCached {
 
 // bytes returns the canonical 32-byte encoding of v, according to RFC 8032,
 // Section 5.1.2.
-pub fn (mut v Point) bytes() []byte {
+pub fn (mut v Point) bytes() []u8 {
 	// This function is outlined to make the allocations inline in the caller
 	// rather than happen on the heap.
-	mut buf := [32]byte{}
+	mut buf := [32]u8{}
 	return v.bytes_generic(mut buf)
 }
 
-fn (mut v Point) bytes_generic(mut buf [32]byte) []byte {
+fn (mut v Point) bytes_generic(mut buf [32]u8) []u8 {
 	check_initialized(v)
 
 	mut zinv := Element{}
@@ -220,13 +220,13 @@ fn (mut v Point) bytes_generic(mut buf [32]byte) []byte {
 
 	mut out := copy_field_element(mut buf, mut y)
 	unsafe {
-		// out[31] |= byte(x.is_negative() << 7) //original one
-		out[31] |= byte(x.is_negative() * 128) // x << 7 == x * 2^7
+		// out[31] |= u8(x.is_negative() << 7) //original one
+		out[31] |= u8(x.is_negative() * 128) // x << 7 == x * 2^7
 	}
 	return out
 }
 
-fn copy_field_element(mut buf [32]byte, mut v Element) []byte {
+fn copy_field_element(mut buf [32]u8, mut v Element) []u8 {
 	// this fail in test
 	/*
 	copy(mut buf[..], v.bytes())
@@ -234,7 +234,7 @@ fn copy_field_element(mut buf [32]byte, mut v Element) []byte {
 	*/
 
 	// this pass the test
-	mut out := []byte{len: 32}
+	mut out := []u8{len: 32}
 	for i := 0; i <= buf.len - 1; i++ {
 		out[i] = v.bytes()[i]
 	}

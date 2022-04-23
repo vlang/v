@@ -12,9 +12,13 @@ import v.doc
 import v.pref
 
 const (
-	css_js_assets = ['doc.css', 'normalize.css', 'doc.js', 'dark-mode.js']
-	default_theme = os.resource_abs_path('theme')
-	link_svg      = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M0 0h24v24H0z" fill="none"/><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>'
+	css_js_assets         = ['doc.css', 'normalize.css', 'doc.js', 'dark-mode.js']
+	default_theme         = os.resource_abs_path('theme')
+	link_svg              = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M0 0h24v24H0z" fill="none"/><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>'
+
+	single_quote          = "'"
+	double_quote          = '"'
+	no_quotes_replacement = [single_quote, '', double_quote, '']
 )
 
 enum HighlightTokenTyp {
@@ -298,6 +302,8 @@ fn html_highlight(code string, tb &ast.Table) string {
 			"'$tok.lit'"
 		} else if typ == .char {
 			'`$tok.lit`'
+		} else if typ == .comment {
+			if tok.lit[0] == 1 { '//${tok.lit[1..]}' } else { '//$tok.lit' }
 		} else {
 			tok.lit
 		}
@@ -320,7 +326,8 @@ fn html_highlight(code string, tb &ast.Table) string {
 						tok_typ = .builtin
 					} else if next_tok.kind == .lcbr {
 						tok_typ = .symbol
-					} else if next_tok.kind == .lpar {
+					} else if next_tok.kind == .lpar || (!tok.lit[0].is_capital()
+						&& next_tok.kind == .lt && next_tok.pos == tok.pos + tok.lit.len) {
 						tok_typ = .function
 					} else {
 						tok_typ = .name
@@ -341,14 +348,15 @@ fn html_highlight(code string, tb &ast.Table) string {
 				.key_true, .key_false {
 					tok_typ = .boolean
 				}
-				.lpar, .lcbr, .rpar, .rcbr, .lsbr, .rsbr, .semicolon, .colon, .comma, .dot {
+				.lpar, .lcbr, .rpar, .rcbr, .lsbr, .rsbr, .semicolon, .colon, .comma, .dot,
+				.dotdot, .ellipsis {
 					tok_typ = .punctuation
 				}
 				else {
 					if token.is_key(tok.lit) || token.is_decl(tok.kind) {
 						tok_typ = .keyword
 					} else if tok.kind == .decl_assign || tok.kind.is_assign() || tok.is_unary()
-						|| tok.kind.is_relational() || tok.kind.is_infix() {
+						|| tok.kind.is_relational() || tok.kind.is_infix() || tok.kind.is_postfix() {
 						tok_typ = .operator
 					}
 				}
@@ -362,7 +370,7 @@ fn html_highlight(code string, tb &ast.Table) string {
 				break
 			}
 		} else {
-			buf.write_byte(code[i])
+			buf.write_u8(code[i])
 			i++
 		}
 	}
@@ -385,8 +393,9 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 	highlighted_code := html_highlight(dn.content, tb)
 	node_class := if dn.kind == .const_group { ' const' } else { '' }
 	sym_name := get_sym_name(dn)
-	has_deprecated := 'deprecated' in dn.tags
-	mut tags := dn.tags.filter(it != 'deprecated')
+	mut deprecated_tags := dn.tags.filter(it.starts_with('deprecated'))
+	deprecated_tags.sort()
+	mut tags := dn.tags.filter(!it.starts_with('deprecated'))
 	tags.sort()
 	mut node_id := get_node_id(dn)
 	mut hash_link := if !head { ' <a href="#$node_id">#</a>' } else { '' }
@@ -406,13 +415,12 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 		}
 		dnw.write_string('</div>')
 	}
-	if tags.len > 0 || has_deprecated {
-		mut attributes := if has_deprecated {
-			'<div class="attribute attribute-deprecated">deprecated</div>'
-		} else {
-			''
-		}
-		attributes += tags.map('<div class="attribute">$it</div>').join('')
+	if deprecated_tags.len > 0 {
+		attributes := deprecated_tags.map('<div class="attribute attribute-deprecated">${no_quotes(it)}</div>').join('')
+		dnw.writeln('<div class="attributes">$attributes</div>')
+	}
+	if tags.len > 0 {
+		attributes := tags.map('<div class="attribute">$it</div>').join('')
 		dnw.writeln('<div class="attributes">$attributes</div>')
 	}
 	if !head && dn.content.len > 0 {
@@ -426,8 +434,8 @@ fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, 
 		example_title := if examples.len > 1 { 'Examples' } else { 'Example' }
 		dnw.writeln('<section class="doc-node examples"><h4>$example_title</h4>')
 		for example in examples {
-			// hl_example := html_highlight(example, tb)
-			dnw.writeln('<pre><code class="language-v">$example</code></pre>')
+			hl_example := html_highlight(example, tb)
+			dnw.writeln('<pre><code class="language-v">$hl_example</code></pre>')
 		}
 		dnw.writeln('</section>')
 	}
@@ -493,4 +501,8 @@ fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 		toc.write_string('<li class="open"><a href="#$toc_slug">$dn.name</a>')
 	}
 	toc.writeln('</li>')
+}
+
+fn no_quotes(s string) string {
+	return s.replace_each(no_quotes_replacement)
 }

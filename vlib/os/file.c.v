@@ -161,7 +161,7 @@ pub fn stderr() File {
 }
 
 // read implements the Reader interface.
-pub fn (f &File) read(mut buf []byte) ?int {
+pub fn (f &File) read(mut buf []u8) ?int {
 	if buf.len == 0 {
 		return 0
 	}
@@ -172,7 +172,7 @@ pub fn (f &File) read(mut buf []byte) ?int {
 // **************************** Write ops  ***************************
 // write implements the Writer interface.
 // It returns how many bytes were actually written.
-pub fn (mut f File) write(buf []byte) ?int {
+pub fn (mut f File) write(buf []u8) ?int {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
@@ -228,7 +228,7 @@ pub fn (mut f File) write_string(s string) ?int {
 // write_to implements the RandomWriter interface.
 // It returns how many bytes were actually written.
 // It resets the seek position to the end of the file.
-pub fn (mut f File) write_to(pos u64, buf []byte) ?int {
+pub fn (mut f File) write_to(pos u64, buf []u8) ?int {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
@@ -281,7 +281,7 @@ pub fn (mut f File) write_full_buffer(buffer voidptr, buffer_len usize) ? {
 	if !f.is_opened {
 		return error_file_not_opened()
 	}
-	mut ptr := &byte(buffer)
+	mut ptr := &u8(buffer)
 	mut remaining_bytes := i64(buffer_len)
 	for remaining_bytes > 0 {
 		unsafe {
@@ -351,13 +351,13 @@ fn fread(ptr voidptr, item_size int, items int, stream &C.FILE) ?int {
 
 // read_bytes reads bytes from the beginning of the file.
 // Utility method, same as .read_bytes_at(size, 0).
-pub fn (f &File) read_bytes(size int) []byte {
+pub fn (f &File) read_bytes(size int) []u8 {
 	return f.read_bytes_at(size, 0)
 }
 
 // read_bytes_at reads `size` bytes at the given position in the file.
-pub fn (f &File) read_bytes_at(size int, pos u64) []byte {
-	mut arr := []byte{len: size}
+pub fn (f &File) read_bytes_at(size int, pos u64) []u8 {
+	mut arr := []u8{len: size}
 	nreadbytes := f.read_bytes_into(pos, mut arr) or {
 		// return err
 		return []
@@ -368,7 +368,7 @@ pub fn (f &File) read_bytes_at(size int, pos u64) []byte {
 // read_bytes_into_newline reads from the beginning of the file into the provided buffer.
 // Each consecutive call on the same file continues reading where it previously ended.
 // A read call is either stopped, if the buffer is full, a newline was read or EOF.
-pub fn (f &File) read_bytes_into_newline(mut buf []byte) ?int {
+pub fn (f &File) read_bytes_into_newline(mut buf []u8) ?int {
 	if buf.len == 0 {
 		return error(@FN + ': `buf.len` == 0')
 	}
@@ -390,12 +390,12 @@ pub fn (f &File) read_bytes_into_newline(mut buf []byte) ?int {
 				}
 			}
 			newline {
-				buf[buf_ptr] = byte(c)
+				buf[buf_ptr] = u8(c)
 				nbytes++
 				return nbytes
 			}
 			else {
-				buf[buf_ptr] = byte(c)
+				buf[buf_ptr] = u8(c)
 				buf_ptr++
 				nbytes++
 			}
@@ -407,7 +407,7 @@ pub fn (f &File) read_bytes_into_newline(mut buf []byte) ?int {
 // read_bytes_into fills `buf` with bytes at the given position in the file.
 // `buf` *must* have length greater than zero.
 // Returns the number of read bytes, or an error.
-pub fn (f &File) read_bytes_into(pos u64, mut buf []byte) ?int {
+pub fn (f &File) read_bytes_into(pos u64, mut buf []u8) ?int {
 	if buf.len == 0 {
 		return error(@FN + ': `buf.len` == 0')
 	}
@@ -441,7 +441,7 @@ pub fn (f &File) read_bytes_into(pos u64, mut buf []byte) ?int {
 }
 
 // read_from implements the RandomReader interface.
-pub fn (f &File) read_from(pos u64, mut buf []byte) ?int {
+pub fn (f &File) read_from(pos u64, mut buf []u8) ?int {
 	if buf.len == 0 {
 		return 0
 	}
@@ -465,7 +465,7 @@ pub fn (f &File) read_from(pos u64, mut buf []byte) ?int {
 
 // read_into_ptr reads at most max_size bytes from the file and writes it into ptr.
 // Returns the amount of bytes read or an error.
-pub fn (f &File) read_into_ptr(ptr &byte, max_size int) ?int {
+pub fn (f &File) read_into_ptr(ptr &u8, max_size int) ?int {
 	return fread(ptr, 1, max_size, f.cfile)
 }
 

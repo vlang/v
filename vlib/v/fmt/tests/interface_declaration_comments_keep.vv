@@ -1,6 +1,6 @@
 pub interface ReaderWriter {
-	read(mut buf []byte) ?int // from Reader
-	write(buf []byte) ?int // from Writer
+	read(mut buf []u8) ?int // from Reader
+	write(buf []u8) ?int // from Writer
 }
 
 interface Speaker {

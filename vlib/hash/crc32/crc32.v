@@ -37,15 +37,15 @@ fn (mut c Crc32) generate_table(poly int) {
 	}
 }
 
-fn (c &Crc32) sum32(b []byte) u32 {
+fn (c &Crc32) sum32(b []u8) u32 {
 	mut crc := ~u32(0)
 	for i in 0 .. b.len {
-		crc = c.table[byte(crc) ^ b[i]] ^ (crc >> 8)
+		crc = c.table[u8(crc) ^ b[i]] ^ (crc >> 8)
 	}
 	return ~crc
 }
 
-pub fn (c &Crc32) checksum(b []byte) u32 {
+pub fn (c &Crc32) checksum(b []u8) u32 {
 	return c.sum32(b)
 }
 
@@ -57,7 +57,7 @@ pub fn new(poly int) &Crc32 {
 }
 
 // calculate crc32 using ieee
-pub fn sum(b []byte) u32 {
+pub fn sum(b []u8) u32 {
 	c := new(int(crc32.ieee))
 	return c.sum32(b)
 }

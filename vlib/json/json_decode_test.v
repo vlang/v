@@ -69,3 +69,49 @@ fn test_skip_fields_should_be_initialised_by_json_decode() ? {
 	assert task.total_comments == 55
 	assert task.comments == []
 }
+
+//
+
+struct DbConfig {
+	host   string
+	dbname string
+	user   string
+}
+
+fn test_decode_error_message_should_have_enough_context_empty() {
+	json.decode(DbConfig, '') or {
+		assert err.msg().len < 2
+		return
+	}
+	assert false
+}
+
+fn test_decode_error_message_should_have_enough_context_just_brace() {
+	json.decode(DbConfig, '{') or {
+		assert err.msg() == '{'
+		return
+	}
+	assert false
+}
+
+fn test_decode_error_message_should_have_enough_context_trailing_comma_at_end() {
+	txt := '{
+    "host": "localhost",
+    "dbname": "alex",
+    "user": "alex",
+}'
+	json.decode(DbConfig, txt) or {
+		assert err.msg() == '    "user": "alex",\n}'
+		return
+	}
+	assert false
+}
+
+fn test_decode_error_message_should_have_enough_context_in_the_middle() {
+	txt := '{"host": "localhost", "dbname": "alex" "user": "alex", "port": "1234"}'
+	json.decode(DbConfig, txt) or {
+		assert err.msg() == 'ost", "dbname": "alex" "user":'
+		return
+	}
+	assert false
+}

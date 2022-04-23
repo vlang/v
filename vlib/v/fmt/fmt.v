@@ -843,7 +843,8 @@ pub fn (mut f Fmt) const_decl(node ast.ConstDecl) {
 		f.write(strings.repeat(` `, align_infos[align_idx].max - field.name.len))
 		f.write('= ')
 		f.expr(field.expr)
-		if node.is_block {
+		f.comments(field.end_comments, inline: true)
+		if node.is_block && field.end_comments.len == 0 {
 			f.writeln('')
 		} else {
 			// Write out single line comments after const expr if present
@@ -952,8 +953,11 @@ fn (mut f Fmt) fn_body(node ast.FnDecl) {
 	if node.language == .v {
 		if !node.no_body {
 			f.write(' {')
+			f.comments(node.comments, inline: true)
 			if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
-				f.writeln('')
+				if node.comments.len == 0 {
+					f.writeln('')
+				}
 				f.stmts(node.stmts)
 			}
 			f.write('}')
@@ -1286,6 +1290,7 @@ pub fn (mut f Fmt) alias_type_decl(node ast.AliasTypeDecl) {
 }
 
 pub fn (mut f Fmt) fn_type_decl(node ast.FnTypeDecl) {
+	f.attrs(node.attrs)
 	if node.is_pub {
 		f.write('pub ')
 	}
@@ -1573,7 +1578,7 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		f.indent--
 	}
 	f.write(']')
-	// `[100]byte`
+	// `[100]u8`
 	if node.is_fixed {
 		if node.has_val {
 			f.write('!')
@@ -2310,7 +2315,11 @@ pub fn (mut f Fmt) par_expr(node ast.ParExpr) {
 		f.par_level++
 		f.write('(')
 	}
-	f.expr(node.expr)
+	mut expr := node.expr
+	for mut expr is ast.ParExpr {
+		expr = expr.expr
+	}
+	f.expr(expr)
 	if requires_paren {
 		f.par_level--
 		f.write(')')

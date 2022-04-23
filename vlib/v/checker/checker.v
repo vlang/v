@@ -82,6 +82,7 @@ pub mut:
 	returns                   bool
 	scope_returns             bool
 	is_builtin_mod            bool // true inside the 'builtin', 'os' or 'strconv' modules; TODO: remove the need for special casing this
+	is_just_builtin_mod       bool // true only inside 'builtin'
 	is_generated              bool // true for `[generated] module xyz` .v files
 	inside_unsafe             bool // true inside `unsafe {}` blocks
 	inside_const              bool // true inside `const ( ... )` blocks
@@ -124,6 +125,7 @@ mut:
 	inside_println_arg               bool
 	inside_decl_rhs                  bool
 	inside_if_guard                  bool // true inside the guard condition of `if x := opt() {}`
+	comptime_call_pos                int  // needed for correctly checking use before decl for templates
 }
 
 pub fn new_checker(table &ast.Table, pref &pref.Preferences) &Checker {
@@ -148,6 +150,7 @@ fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
 	c.scope_returns = false
 	c.mod = ''
 	c.is_builtin_mod = false
+	c.is_just_builtin_mod = false
 	c.inside_unsafe = false
 	c.inside_const = false
 	c.inside_anon_fn = false
@@ -439,7 +442,7 @@ pub fn (mut c Checker) alias_type_decl(node ast.AliasTypeDecl) {
 		c.check_valid_pascal_case(node.name, 'type alias', node.pos)
 	}
 	c.ensure_type_exists(node.parent_type, node.type_pos) or { return }
-	typ_sym := c.table.sym(node.parent_type)
+	mut typ_sym := c.table.sym(node.parent_type)
 	if typ_sym.kind in [.placeholder, .int_literal, .float_literal] {
 		c.error('unknown type `$typ_sym.name`', node.type_pos)
 	} else if typ_sym.kind == .alias {
@@ -576,8 +579,8 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	left_right_pos := left_pos.extend(right_pos)
 	if left_type.is_any_kind_of_pointer()
 		&& node.op in [.plus, .minus, .mul, .div, .mod, .xor, .amp, .pipe] {
-		if (right_type.is_any_kind_of_pointer() && node.op != .minus)
-			|| (!right_type.is_any_kind_of_pointer() && node.op !in [.plus, .minus]) {
+		if !c.pref.translated && ((right_type.is_any_kind_of_pointer() && node.op != .minus)
+			|| (!right_type.is_any_kind_of_pointer() && node.op !in [.plus, .minus])) {
 			left_name := c.table.type_to_str(left_type)
 			right_name := c.table.type_to_str(right_type)
 			c.error('invalid operator `$node.op` to `$left_name` and `$right_name`', left_right_pos)
@@ -591,6 +594,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		}
 	}
 	mut return_type := left_type
+
 	if node.op != .key_is {
 		match mut node.left {
 			ast.Ident, ast.SelectorExpr {
@@ -623,6 +627,20 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			if is_mismatch {
 				c.error('possible type mismatch of compared values of `$node.op` operation',
 					left_right_pos)
+			} else if left_type in ast.integer_type_idxs && right_type in ast.integer_type_idxs {
+				is_left_type_signed := left_type in ast.signed_integer_type_idxs
+				is_right_type_signed := right_type in ast.signed_integer_type_idxs
+				if !is_left_type_signed && mut node.right is ast.IntegerLiteral {
+					if node.right.val.int() < 0 && left_type in ast.int_promoted_type_idxs {
+						lt := c.table.sym(left_type).name
+						c.error('`$lt` cannot be compared with negative value', node.right.pos)
+					}
+				} else if !is_right_type_signed && mut node.left is ast.IntegerLiteral {
+					if node.left.val.int() < 0 && right_type in ast.int_promoted_type_idxs {
+						rt := c.table.sym(right_type).name
+						c.error('negative value cannot be compared with `$rt`', node.left.pos)
+					}
+				}
 			}
 		}
 		.key_in, .not_in {
@@ -644,6 +662,15 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 					node.left_type = map_info.key_type
 				}
+				.array_fixed {
+					if left_sym.kind !in [.sum_type, .interface_] {
+						elem_type := right_final.array_fixed_info().elem_type
+						c.check_expected(left_type, elem_type) or {
+							c.error('left operand to `$node.op` does not match the fixed array element type: $err.msg()',
+								left_right_pos)
+						}
+					}
+				}
 				else {
 					c.error('`$node.op.str()` can only be used with arrays and maps',
 						node.pos)
@@ -651,7 +678,8 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			}
 			return ast.bool_type
 		}
-		.plus, .minus, .mul, .div, .mod, .xor, .amp, .pipe { // binary operators that expect matching types
+		.plus, .minus, .mul, .div, .mod, .xor, .amp, .pipe {
+			// binary operators that expect matching types
 			if right_sym.info is ast.Alias && (right_sym.info as ast.Alias).language != .c
 				&& c.mod == c.table.type_to_str(right_type).split('.')[0]
 				&& c.table.sym((right_sym.info as ast.Alias).parent_type).is_primitive() {
@@ -663,7 +691,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				left_sym = c.table.sym((left_sym.info as ast.Alias).parent_type)
 			}
 			// Check if the alias type is not a primitive then allow using operator overloading for aliased `arrays` and `maps`
-			if left_sym.kind == .alias && left_sym.info is ast.Alias
+			if !c.pref.translated && left_sym.kind == .alias && left_sym.info is ast.Alias
 				&& !(c.table.sym((left_sym.info as ast.Alias).parent_type).is_primitive()) {
 				if left_sym.has_method(node.op.str()) {
 					if method := left_sym.find_method(node.op.str()) {
@@ -681,7 +709,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
 					}
 				}
-			} else if right_sym.kind == .alias && right_sym.info is ast.Alias
+			} else if !c.pref.translated && right_sym.kind == .alias && right_sym.info is ast.Alias
 				&& !(c.table.sym((right_sym.info as ast.Alias).parent_type).is_primitive()) {
 				if right_sym.has_method(node.op.str()) {
 					if method := right_sym.find_method(node.op.str()) {
@@ -788,6 +816,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				if node.op in [.div, .mod] {
 					c.check_div_mod_by_zero(node.right, node.op)
 				}
+
 				return_type = promoted_type
 			}
 		}
@@ -803,8 +832,12 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					left_name := c.table.type_to_str(left_type)
 					right_name := c.table.type_to_str(right_type)
 					if left_name == right_name {
-						c.error('undefined operation `$left_name` $node.op.str() `$right_name`',
-							left_right_pos)
+						if !(node.op == .lt && c.pref.translated) {
+							// Allow `&Foo < &Foo` in translated code.
+							// TODO maybe in unsafe as well?
+							c.error('undefined operation `$left_name` $node.op.str() `$right_name`',
+								left_right_pos)
+						}
 					} else {
 						c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
 					}
@@ -823,10 +856,12 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				left_gen_type := c.unwrap_generic(left_type)
 				gen_sym := c.table.sym(left_gen_type)
 				need_overload := gen_sym.kind in [.struct_, .interface_]
-				if need_overload && !gen_sym.has_method('<') && node.op in [.ge, .le] {
+				if need_overload && !gen_sym.has_method_with_generic_parent('<')
+					&& node.op in [.ge, .le] {
 					c.error('cannot use `$node.op` as `<` operator method is not defined',
 						left_right_pos)
-				} else if need_overload && !gen_sym.has_method('<') && node.op == .gt {
+				} else if need_overload && !gen_sym.has_method_with_generic_parent('<')
+					&& node.op == .gt {
 					c.error('cannot use `>` as `<=` operator method is not defined', left_right_pos)
 				}
 			} else if left_type in ast.integer_type_idxs && right_type in ast.integer_type_idxs {
@@ -979,6 +1014,10 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				op := node.op.str()
 				if typ_sym.kind == .placeholder {
 					c.error('$op: type `$typ_sym.name` does not exist', right_expr.pos())
+				}
+				if left_sym.kind == .aggregate {
+					parent_left_type := (left_sym.info as ast.Aggregate).sum_type
+					left_sym = c.table.sym(parent_left_type)
 				}
 				if left_sym.kind !in [.interface_, .sum_type] {
 					c.error('`$op` can only be used with interfaces and sum types', node.pos)
@@ -1367,7 +1406,8 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 			method := c.table.find_method_with_embeds(typ_sym, imethod.name) or {
 				// >> Hack to allow old style custom error implementations
 				// TODO: remove once deprecation period for `IError` methods has ended
-				if inter_sym.name == 'IError' && (imethod.name == 'msg' || imethod.name == 'code') {
+				if inter_sym.idx == ast.error_type_idx
+					&& (imethod.name == 'msg' || imethod.name == 'code') {
 					c.note("`$styp` doesn't implement method `$imethod.name` of interface `$inter_sym.name`. The usage of fields is being deprecated in favor of methods.",
 						pos)
 					continue
@@ -1413,7 +1453,8 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 			if utyp != ast.voidptr_type {
 				// >> Hack to allow old style custom error implementations
 				// TODO: remove once deprecation period for `IError` methods has ended
-				if inter_sym.name == 'IError' && (ifield.name == 'msg' || ifield.name == 'code') {
+				if inter_sym.idx == ast.error_type_idx
+					&& (ifield.name == 'msg' || ifield.name == 'code') {
 					// do nothing, necessary warnings are already printed
 				} else {
 					// <<
@@ -1498,14 +1539,12 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 				if stmt.typ == ast.void_type {
 					if stmt.expr is ast.IfExpr {
 						for branch in stmt.expr.branches {
-							last_stmt := branch.stmts[branch.stmts.len - 1]
-							c.check_or_last_stmt(last_stmt, ret_type, expr_return_type)
+							c.check_or_last_stmt(branch.stmts.last(), ret_type, expr_return_type)
 						}
 						return
 					} else if stmt.expr is ast.MatchExpr {
 						for branch in stmt.expr.branches {
-							last_stmt := branch.stmts[branch.stmts.len - 1]
-							c.check_or_last_stmt(last_stmt, ret_type, expr_return_type)
+							c.check_or_last_stmt(branch.stmts.last(), ret_type, expr_return_type)
 						}
 						return
 					}
@@ -1535,14 +1574,12 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 		match stmt.expr {
 			ast.IfExpr {
 				for branch in stmt.expr.branches {
-					last_stmt := branch.stmts[branch.stmts.len - 1]
-					c.check_or_last_stmt(last_stmt, ret_type, expr_return_type)
+					c.check_or_last_stmt(branch.stmts.last(), ret_type, expr_return_type)
 				}
 			}
 			ast.MatchExpr {
 				for branch in stmt.expr.branches {
-					last_stmt := branch.stmts[branch.stmts.len - 1]
-					c.check_or_last_stmt(last_stmt, ret_type, expr_return_type)
+					c.check_or_last_stmt(branch.stmts.last(), ret_type, expr_return_type)
 				}
 			}
 			else {
@@ -1711,6 +1748,21 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			}
 		}
 	}
+
+	// >> Hack to allow old style custom error implementations
+	// TODO: remove once deprecation period for `IError` methods has ended
+	if sym.idx == ast.error_type_idx && !c.is_just_builtin_mod
+		&& (field_name == 'msg' || field_name == 'code') {
+		method := c.table.find_method(sym, field_name) or {
+			c.error('invalid `IError` interface implementation: $err', node.pos)
+			return ast.void_type
+		}
+		c.note('the `.$field_name` field on `IError` is deprecated, and will be removed after 2022-06-01, use `.${field_name}()` instead.',
+			node.pos)
+		return method.return_type
+	}
+	// <<<
+
 	if has_field {
 		if sym.mod != c.mod && !field.is_pub && sym.language != .c {
 			unwrapped_sym := c.table.sym(c.unwrap_generic(typ))
@@ -1748,19 +1800,6 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			c.error(suggestion.say(unknown_field_msg), node.pos)
 			return ast.void_type
 		}
-
-		// >> Hack to allow old style custom error implementations
-		// TODO: remove once deprecation period for `IError` methods has ended
-		if sym.name == 'IError' && (field_name == 'msg' || field_name == 'code') {
-			method := c.table.find_method(sym, field_name) or {
-				c.error('invalid `IError` interface implementation: $err', node.pos)
-				return ast.void_type
-			}
-			c.note('the `.$field_name` field on `IError` is deprecated, use `.${field_name}()` instead.',
-				node.pos)
-			return method.return_type
-		}
-		// <<<
 		if c.smartcast_mut_pos != token.Pos{} {
 			c.note('smartcasting requires either an immutable value, or an explicit mut keyword before the value',
 				c.smartcast_mut_pos)
@@ -2031,7 +2070,8 @@ fn (mut c Checker) stmt(node_ ast.Stmt) {
 		}
 		ast.Module {
 			c.mod = node.name
-			c.is_builtin_mod = node.name in ['builtin', 'os', 'strconv']
+			c.is_just_builtin_mod = node.name == 'builtin'
+			c.is_builtin_mod = c.is_just_builtin_mod || node.name in ['os', 'strconv']
 			c.check_valid_snake_case(node.name, 'module name', node.pos)
 		}
 		ast.Return {
@@ -2059,6 +2099,7 @@ fn (mut c Checker) assert_stmt(node ast.AssertStmt) {
 		c.error('assert can be used only with `bool` expressions, but found `$atype_name` instead',
 			node.pos)
 	}
+	c.fail_if_unreadable(node.expr, ast.bool_type_idx, 'assertion')
 	c.expected_type = cur_exp_typ
 }
 
@@ -2108,32 +2149,6 @@ fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
 			v.typ = ast.mktyp(field.typ)
 		}
 		c.global_names << field.name
-	}
-}
-
-fn (mut c Checker) go_expr(mut node ast.GoExpr) ast.Type {
-	ret_type := c.call_expr(mut node.call_expr)
-	if node.call_expr.or_block.kind != .absent {
-		c.error('optional handling cannot be done in `go` call. Do it when calling `.wait()`',
-			node.call_expr.or_block.pos)
-	}
-	// Make sure there are no mutable arguments
-	for arg in node.call_expr.args {
-		if arg.is_mut && !arg.typ.is_ptr() {
-			c.error('function in `go` statement cannot contain mutable non-reference arguments',
-				arg.expr.pos())
-		}
-	}
-	if node.call_expr.is_method && node.call_expr.receiver_type.is_ptr()
-		&& !node.call_expr.left_type.is_ptr() {
-		c.error('method in `go` statement cannot have non-reference mutable receiver',
-			node.call_expr.left.pos())
-	}
-
-	if c.pref.backend.is_js() {
-		return c.table.find_or_register_promise(ret_type)
-	} else {
-		return c.table.find_or_register_thread(ret_type)
 	}
 }
 
@@ -2256,7 +2271,8 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 		return
 	}
 	match node.kind {
-		'include' {
+		'include', 'insert' {
+			original_flag := node.main
 			mut flag := node.main
 			if flag.contains('@VROOT') {
 				// c.note(checker.vroot_is_deprecated_message, node.pos)
@@ -2264,13 +2280,13 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 					c.error(err.msg(), node.pos)
 					return
 				}
-				node.val = 'include $vroot'
+				node.val = '$node.kind $vroot'
 				node.main = vroot
 				flag = vroot
 			}
 			if flag.contains('@VEXEROOT') {
 				vroot := flag.replace('@VEXEROOT', os.dir(pref.vexe_path()))
-				node.val = 'include $vroot'
+				node.val = '$node.kind $vroot'
 				node.main = vroot
 				flag = vroot
 			}
@@ -2279,7 +2295,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 					c.error(err.msg(), node.pos)
 					return
 				}
-				node.val = 'include $vroot'
+				node.val = '$node.kind $vroot'
 				node.main = vroot
 				flag = vroot
 			}
@@ -2291,10 +2307,33 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 				node.main = env
 			}
 			flag_no_comment := flag.all_before('//').trim_space()
-			if !((flag_no_comment.starts_with('"') && flag_no_comment.ends_with('"'))
-				|| (flag_no_comment.starts_with('<') && flag_no_comment.ends_with('>'))) {
-				c.error('including C files should use either `"header_file.h"` or `<header_file.h>` quoting',
-					node.pos)
+			if node.kind == 'include' {
+				if !((flag_no_comment.starts_with('"') && flag_no_comment.ends_with('"'))
+					|| (flag_no_comment.starts_with('<') && flag_no_comment.ends_with('>'))) {
+					c.error('including C files should use either `"header_file.h"` or `<header_file.h>` quoting',
+						node.pos)
+				}
+			}
+			if node.kind == 'insert' {
+				if !(flag_no_comment.starts_with('"') && flag_no_comment.ends_with('"')) {
+					c.error('inserting .c or .h files, should use `"header_file.h"` quoting',
+						node.pos)
+				}
+				node.main = node.main.trim('"')
+				if fcontent := os.read_file(node.main) {
+					node.val = fcontent
+				} else {
+					mut missing_message := 'The file $original_flag, needed for insertion by module `$node.mod`,'
+					if os.is_file(node.main) {
+						missing_message += ' is not readable.'
+					} else {
+						missing_message += ' does not exist.'
+					}
+					if node.msg != '' {
+						missing_message += ' ${node.msg}.'
+					}
+					c.error(missing_message, node.pos)
+				}
 			}
 		}
 		'pkgconfig' {
@@ -2357,7 +2396,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 		}
 		else {
 			if node.kind != 'define' {
-				c.error('expected `#define`, `#flag`, `#include` or `#pkgconfig` not $node.val',
+				c.error('expected `#define`, `#flag`, `#include`, `#insert` or `#pkgconfig` not $node.val',
 					node.pos)
 			}
 		}
@@ -2603,10 +2642,16 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 		}
 		ast.DumpExpr {
 			node.expr_type = c.expr(node.expr)
-			if node.expr_type.idx() == ast.void_type_idx {
+			etidx := node.expr_type.idx()
+			if etidx == ast.void_type_idx {
 				c.error('dump expression can not be void', node.expr.pos())
 				return ast.void_type
+			} else if etidx == ast.char_type_idx && node.expr_type.nr_muls() == 0 {
+				c.error('`char` values cannot be dumped directly, use dump(u8(x)) or dump(int(x)) instead',
+					node.expr.pos())
+				return ast.void_type
 			}
+
 			tsym := c.table.sym(node.expr_type)
 			c.table.dumps[int(node.expr_type)] = tsym.cname
 			node.cname = tsym.cname
@@ -2811,7 +2856,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	if to_sym.language != .c {
 		c.ensure_type_exists(to_type, node.pos) or {}
 	}
-	if from_sym.kind == .byte && from_type.is_ptr() && to_sym.kind == .string && !to_type.is_ptr() {
+	if from_sym.kind == .u8 && from_type.is_ptr() && to_sym.kind == .string && !to_type.is_ptr() {
 		c.error('to convert a C string buffer pointer to a V string, use x.vstring() instead of string(x)',
 			node.pos)
 	}
@@ -2879,7 +2924,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			type_name := c.table.type_to_str(to_type)
 			c.error('cannot cast struct `$from_type_name` to `$type_name`', node.pos)
 		}
-	} else if to_sym.kind == .byte && !final_from_sym.is_number() && !final_from_sym.is_pointer()
+	} else if to_sym.kind == .u8 && !final_from_sym.is_number() && !final_from_sym.is_pointer()
 		&& !from_type.is_ptr() && final_from_sym.kind !in [.char, .enum_, .bool] {
 		ft := c.table.type_to_str(from_type)
 		tt := c.table.type_to_str(to_type)
@@ -2918,7 +2963,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		} else if from_type.is_real_pointer() {
 			snexpr := node.expr.str()
 			ft := c.table.type_to_str(from_type)
-			c.error('cannot cast pointer type `$ft` to string, use `&byte($snexpr).vstring()` or `cstring_to_vstring($snexpr)` instead.',
+			c.error('cannot cast pointer type `$ft` to string, use `&u8($snexpr).vstring()` or `cstring_to_vstring($snexpr)` instead.',
 				node.pos)
 		} else if from_type.is_number() {
 			snexpr := node.expr.str()
@@ -2928,8 +2973,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			c.error('cannot cast type `$ft` to string, use `x.str()` instead.', node.pos)
 		} else if final_from_sym.kind == .array {
 			snexpr := node.expr.str()
-			if final_from_sym.name == '[]byte' {
-				c.error('cannot cast []byte to string, use `${snexpr}.bytestr()` or `${snexpr}.str()` instead.',
+			if final_from_sym.name == '[]u8' {
+				c.error('cannot cast []u8 to string, use `${snexpr}.bytestr()` or `${snexpr}.str()` instead.',
 					node.pos)
 			} else {
 				first_elem_idx := '[0]'
@@ -3116,9 +3161,16 @@ pub fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					return obj.typ
 				}
 				ast.Var {
-					// incase var was not marked as used yet (vweb tmpl)
-					// obj.is_used = true
-					if node.pos.pos < obj.pos.pos {
+					// inside vweb tmpl ident positions are meaningless, use the position of the comptime call.
+					// if the variable is declared before the comptime call then we can assume all is well.
+					// `node.name !in node.scope.objects && node.scope.start_pos < c.comptime_call_pos` (inherited)
+					node_pos := if c.pref.is_vweb && node.name !in node.scope.objects
+						&& node.scope.start_pos < c.comptime_call_pos {
+						c.comptime_call_pos
+					} else {
+						node.pos.pos
+					}
+					if node_pos < obj.pos.pos {
 						c.error('undefined variable `$node.name` (used before declaration)',
 							node.pos)
 					}
@@ -3454,7 +3506,7 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) ast.Type {
 	// handle `x := rlock a { a.getval() }`
 	mut ret_type := ast.void_type
 	if node.stmts.len > 0 {
-		last_stmt := node.stmts[node.stmts.len - 1]
+		last_stmt := node.stmts.last()
 		if last_stmt is ast.ExprStmt {
 			ret_type = last_stmt.typ
 		}
@@ -3533,9 +3585,9 @@ pub fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 	if !c.inside_unsafe && is_non_void_pointer && !node.expr.is_auto_deref_var() {
 		c.warn('pointer arithmetic is only allowed in `unsafe` blocks', node.pos)
 	}
-	if !(typ_sym.is_number() || (c.inside_unsafe && is_non_void_pointer)) {
-		c.error('invalid operation: $node.op.str() (non-numeric type `$typ_sym.name`)',
-			node.pos)
+	if !(typ_sym.is_number() || ((c.inside_unsafe || c.pref.translated) && is_non_void_pointer)) {
+		typ_str := c.table.type_to_str(typ)
+		c.error('invalid operation: $node.op.str() (non-numeric type `$typ_str`)', node.pos)
 	} else {
 		node.auto_locked, _ = c.fail_if_immutable(node.expr)
 	}
@@ -3549,6 +3601,9 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) 
 				mut obj := unsafe { &node.obj }
 				if c.fn_scope != voidptr(0) {
 					obj = c.fn_scope.find_var(node.obj.name) or { obj }
+				}
+				if obj.typ == 0 {
+					return
 				}
 				type_sym := c.table.sym(obj.typ.set_nr_muls(0))
 				if obj.is_stack_obj && !type_sym.is_heap() && !c.pref.translated
@@ -4168,6 +4223,69 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) ? {
 			c.ensure_type_exists(info.key_type, pos) ?
 			c.ensure_type_exists(info.value_type, pos) ?
 		}
+		.sum_type {
+			info := sym.info as ast.SumType
+			for concrete_typ in info.concrete_types {
+				c.ensure_type_exists(concrete_typ, pos) ?
+			}
+		}
 		else {}
+	}
+}
+
+pub fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what string) {
+	mut pos := token.Pos{}
+	match expr {
+		ast.Ident {
+			if typ.has_flag(.shared_f) {
+				if expr.name !in c.rlocked_names && expr.name !in c.locked_names {
+					action := if what == 'argument' { 'passed' } else { 'used' }
+					c.error('`$expr.name` is `shared` and must be `rlock`ed or `lock`ed to be $action as non-mut $what',
+						expr.pos)
+				}
+			}
+			return
+		}
+		ast.SelectorExpr {
+			pos = expr.pos
+			if typ.has_flag(.shared_f) {
+				expr_name := '${expr.expr}.$expr.field_name'
+				if expr_name !in c.rlocked_names && expr_name !in c.locked_names {
+					action := if what == 'argument' { 'passed' } else { 'used' }
+					c.error('`$expr_name` is `shared` and must be `rlock`ed or `lock`ed to be $action as non-mut $what',
+						expr.pos)
+				}
+				return
+			} else {
+				c.fail_if_unreadable(expr.expr, expr.expr_type, what)
+			}
+		}
+		ast.CallExpr {
+			pos = expr.pos
+			if expr.is_method {
+				c.fail_if_unreadable(expr.left, expr.left_type, what)
+			}
+			return
+		}
+		ast.LockExpr {
+			// TODO: check expressions inside the lock by appending to c.(r)locked_names
+			return
+		}
+		ast.IndexExpr {
+			pos = expr.left.pos().extend(expr.pos)
+			c.fail_if_unreadable(expr.left, expr.left_type, what)
+		}
+		ast.InfixExpr {
+			pos = expr.left.pos().extend(expr.pos)
+			c.fail_if_unreadable(expr.left, expr.left_type, what)
+			c.fail_if_unreadable(expr.right, expr.right_type, what)
+		}
+		else {
+			pos = expr.pos()
+		}
+	}
+	if typ.has_flag(.shared_f) {
+		c.error('you have to create a handle and `rlock` it to use a `shared` element as non-mut $what',
+			pos)
 	}
 }

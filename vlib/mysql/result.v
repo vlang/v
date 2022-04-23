@@ -33,7 +33,7 @@ pub struct Field {
 }
 
 // fetch_row - fetches the next row from a result.
-pub fn (r Result) fetch_row() &&byte {
+pub fn (r Result) fetch_row() &&u8 {
 	return C.mysql_fetch_row(r.result)
 }
 
@@ -58,7 +58,7 @@ pub fn (r Result) rows() []Row {
 			if unsafe { rr[i] == 0 } {
 				row.vals << ''
 			} else {
-				row.vals << mystring(unsafe { &byte(rr[i]) })
+				row.vals << mystring(unsafe { &u8(rr[i]) })
 			}
 		}
 		rows << row

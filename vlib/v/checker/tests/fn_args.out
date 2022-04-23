@@ -1,4 +1,4 @@
-vlib/v/checker/tests/fn_args.vv:9:6: error: cannot use `&int` as `byte` in argument 1 to `uu8`
+vlib/v/checker/tests/fn_args.vv:9:6: error: cannot use `&int` as `u8` in argument 1 to `uu8`
     7 | fn basic() {
     8 |     v := 4
     9 |     uu8(&v)

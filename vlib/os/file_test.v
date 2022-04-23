@@ -35,7 +35,7 @@ const (
 	unit_point         = Point{1.0, 1.0, 1.0}
 	another_point      = Point{0.25, 2.25, 6.25}
 	extended_point     = Extended_Point{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0}
-	another_byte       = byte(123)
+	another_byte       = u8(123)
 	another_color      = Color.red
 	another_permission = Permissions.read | .write
 )
@@ -69,7 +69,7 @@ fn test_read_bytes_into_newline_text() ? {
 	f.close()
 
 	f = os.open_file(tfile, 'r') ?
-	mut buf := []byte{len: 8}
+	mut buf := []u8{len: 8}
 
 	n0 := f.read_bytes_into_newline(mut buf) ?
 	assert n0 == 8
@@ -91,7 +91,7 @@ fn test_read_bytes_into_newline_text() ? {
 // appears in that stream and an EOF occurs before the buffer is full.
 fn test_read_bytes_into_newline_binary() ? {
 	os.rm(tfile) or {} // FIXME This is a workaround for macos, because the file isn't truncated when open with 'w'
-	mut bw := []byte{len: 15}
+	mut bw := []u8{len: 15}
 	bw[9] = 0xff
 	bw[12] = 10 // newline
 
@@ -104,7 +104,7 @@ fn test_read_bytes_into_newline_binary() ? {
 	f.close()
 
 	f = os.open_file(tfile, 'r') ?
-	mut buf := []byte{len: 10}
+	mut buf := []u8{len: 10}
 
 	n0 := f.read_bytes_into_newline(mut buf) ?
 	assert n0 == 10
@@ -126,12 +126,12 @@ fn test_read_bytes_into_newline_binary() ? {
 // containing data.
 fn test_read_eof_last_read_partial_buffer_fill() ? {
 	mut f := os.open_file(tfile, 'w') ?
-	bw := []byte{len: 199, init: 5}
+	bw := []u8{len: 199, init: 5}
 	f.write(bw) ?
 	f.close()
 
 	f = os.open_file(tfile, 'r') ?
-	mut br := []byte{len: 100}
+	mut br := []u8{len: 100}
 	// Read first 100 bytes of 199 byte file, should fill buffer with no error.
 	n0 := f.read(mut br) ?
 	assert n0 == 100
@@ -158,12 +158,12 @@ fn test_read_eof_last_read_partial_buffer_fill() ? {
 // fread that returns no data.
 fn test_read_eof_last_read_full_buffer_fill() ? {
 	mut f := os.open_file(tfile, 'w') ?
-	bw := []byte{len: 200, init: 5}
+	bw := []u8{len: 200, init: 5}
 	f.write(bw) ?
 	f.close()
 
 	f = os.open_file(tfile, 'r') ?
-	mut br := []byte{len: 100}
+	mut br := []u8{len: 100}
 	// Read first 100 bytes of 200 byte file, should fill buffer with no error.
 	n0 := f.read(mut br) ?
 	assert n0 == 100
@@ -191,7 +191,7 @@ fn test_write_struct() ? {
 	f.write_struct(another_point) ?
 	f.close()
 	x := os.read_file(tfile) ?
-	pcopy := unsafe { &byte(memdup(&another_point, size_of_point)) }
+	pcopy := unsafe { &u8(memdup(&another_point, size_of_point)) }
 	y := unsafe { pcopy.vstring_with_len(size_of_point) }
 	assert x == y
 	$if debug {
@@ -228,7 +228,7 @@ fn test_read_struct() ? {
 
 fn test_read_struct_at() ? {
 	mut f := os.open_file(tfile, 'w') ?
-	f.write([byte(1), 2, 3]) ?
+	f.write([u8(1), 2, 3]) ?
 	f.write_struct(another_point) ?
 	f.close()
 	f = os.open_file(tfile, 'r') ?
@@ -246,7 +246,7 @@ fn test_write_raw() ? {
 	f.write_raw(another_point) ?
 	f.close()
 	x := os.read_file(tfile) ?
-	pcopy := unsafe { &byte(memdup(&another_point, size_of_point)) }
+	pcopy := unsafe { &u8(memdup(&another_point, size_of_point)) }
 	y := unsafe { pcopy.vstring_with_len(size_of_point) }
 	assert x == y
 	$if debug {
@@ -286,7 +286,7 @@ fn test_read_raw() ? {
 	f.close()
 	f = os.open_file(tfile, 'r') ?
 	p := f.read_raw<Point>() ?
-	b := f.read_raw<byte>() ?
+	b := f.read_raw<u8>() ?
 	c := f.read_raw<Color>() ?
 	x := f.read_raw<Permissions>() ?
 	f.close()
@@ -299,7 +299,7 @@ fn test_read_raw() ? {
 
 fn test_read_raw_at() ? {
 	mut f := os.open_file(tfile, 'w') ?
-	f.write([byte(1), 2, 3]) ?
+	f.write([u8(1), 2, 3]) ?
 	f.write_raw(another_point) ?
 	f.write_raw(another_byte) ?
 	f.write_raw(another_color) ?
@@ -309,8 +309,8 @@ fn test_read_raw_at() ? {
 	mut at := u64(3)
 	p := f.read_raw_at<Point>(at) ?
 	at += sizeof(Point)
-	b := f.read_raw_at<byte>(at) ?
-	at += sizeof(byte)
+	b := f.read_raw_at<u8>(at) ?
+	at += sizeof(u8)
 	c := f.read_raw_at<Color>(at) ?
 	at += sizeof(Color)
 	x := f.read_raw_at<Permissions>(at) ?
@@ -345,7 +345,7 @@ fn test_seek() ? {
 	//
 	f.seek(i64(sizeof(Point)), .start) ?
 	assert f.tell() ? == sizeof(Point)
-	b := f.read_raw<byte>() ?
+	b := f.read_raw<u8>() ?
 	assert b == another_byte
 
 	f.seek(i64(sizeof(Color)), .current) ?

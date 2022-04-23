@@ -46,12 +46,12 @@ fn (context Context) footer() string {
 	return ')\n'
 }
 
-fn (context Context) file2v(bname string, fbytes []byte, bn_max int) string {
+fn (context Context) file2v(bname string, fbytes []u8, bn_max int) string {
 	mut sb := strings.new_builder(1000)
 	bn_diff_len := bn_max - bname.len
 	sb.write_string('\t${bname}_len' + ' '.repeat(bn_diff_len - 4) + ' = $fbytes.len\n')
 	fbyte := fbytes[0]
-	bnmae_line := '\t$bname' + ' '.repeat(bn_diff_len) + ' = [byte($fbyte), '
+	bnmae_line := '\t$bname' + ' '.repeat(bn_diff_len) + ' = [u8($fbyte), '
 	sb.write_string(bnmae_line)
 	mut line_len := bnmae_line.len + 3
 	for i := 1; i < fbytes.len; i++ {
@@ -73,11 +73,11 @@ fn (context Context) file2v(bname string, fbytes []byte, bn_max int) string {
 	return sb.str()
 }
 
-fn (context Context) bname_and_bytes(file string) ?(string, []byte) {
+fn (context Context) bname_and_bytes(file string) ?(string, []u8) {
 	fname := os.file_name(file)
 	fname_escaped := fname.replace_each(['.', '_', '-', '_'])
 	byte_name := '$context.prefix$fname_escaped'.to_lower()
-	fbytes := os.read_bytes(file) or { return error('Error: $err.msg') }
+	fbytes := os.read_bytes(file) or { return error('Error: $err.msg()') }
 	return byte_name, fbytes
 }
 
@@ -108,7 +108,7 @@ fn main() {
 		exit(0)
 	}
 	files := fp.finalize() or {
-		eprintln('Error: $err.msg')
+		eprintln('Error: $err.msg()')
 		exit(1)
 	}
 	real_files := files.filter(it != 'bin2v')
@@ -120,10 +120,10 @@ fn main() {
 	if context.write_file != '' && os.file_ext(context.write_file) !in ['.vv', '.v'] {
 		context.write_file += '.v'
 	}
-	mut file_byte_map := map[string][]byte{}
+	mut file_byte_map := map[string][]u8{}
 	for file in real_files {
 		bname, fbytes := context.bname_and_bytes(file) or {
-			eprintln(err.msg)
+			eprintln(err.msg())
 			exit(1)
 		}
 		file_byte_map[bname] = fbytes

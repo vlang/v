@@ -57,7 +57,7 @@ pub fn (mut con TcpConn) read_line_max(max_line_len int) string {
 	if !con.is_blocking {
 		con.set_blocking(true) or {}
 	}
-	mut buf := [net.max_read]byte{} // where C.recv will store the network data
+	mut buf := [net.max_read]u8{} // where C.recv will store the network data
 	mut res := strings.new_builder(net.max_read) // The final result, including the ending \n.
 	defer {
 		unsafe { res.free() }

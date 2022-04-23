@@ -15,7 +15,7 @@ fn test_clash_var_name_of_array() {
 	a_f64 := []f64{}
 	a_bool := []bool{}
 	a_i8 := []i8{}
-	a_byte := []byte{}
+	a_byte := []u8{}
 	a_i16 := []i16{}
 	a_u16 := []u16{}
 	a_int := []int{}

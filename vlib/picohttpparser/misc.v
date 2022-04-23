@@ -1,7 +1,7 @@
 module picohttpparser
 
 [inline; unsafe]
-fn cpy(dst &byte, src &byte, len int) int {
+fn cpy(dst &u8, src &u8, len int) int {
 	unsafe { C.memcpy(dst, src, len) }
 	return len
 }

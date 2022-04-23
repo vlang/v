@@ -400,7 +400,7 @@ struct AA {
 }
 
 struct BB {
-	pad [10]byte
+	pad [10]u8
 mut:
 	my_field int
 }

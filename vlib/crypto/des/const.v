@@ -10,37 +10,37 @@
 module des
 
 // Used to perform an initial permutation of a 64-bit input block.
-// const initial_permutation = [byte(6), 14, 22, 30, 38, 46, 54, 62, 4, 12, 20, 28, 36, 44, 52, 60,
+// const initial_permutation = [u8(6), 14, 22, 30, 38, 46, 54, 62, 4, 12, 20, 28, 36, 44, 52, 60,
 // 	2, 10, 18, 26, 34, 42, 50, 58, 0, 8, 16, 24, 32, 40, 48, 56, 7, 15, 23, 31, 39, 47, 55, 63,
 // 	5, 13, 21, 29, 37, 45, 53, 61, 3, 11, 19, 27, 35, 43, 51, 59, 1, 9, 17, 25, 33, 41, 49, 57]
 
 // // Used to perform a final permutation of a 4-bit preoutput block. This is the
 // // inverse of initialPermutation
-// const final_permutation = [byte(24), 56, 16, 48, 8, 40, 0, 32, 25, 57, 17, 49, 9, 41, 1, 33, 26,
+// const final_permutation = [u8(24), 56, 16, 48, 8, 40, 0, 32, 25, 57, 17, 49, 9, 41, 1, 33, 26,
 // 	58, 18, 50, 10, 42, 2, 34, 27, 59, 19, 51, 11, 43, 3, 35, 28, 60, 20, 52, 12, 44, 4, 36, 29,
 // 	61, 21, 53, 13, 45, 5, 37, 30, 62, 22, 54, 14, 46, 6, 38, 31, 63, 23, 55, 15, 47, 7, 39]
 
 // // Used to expand an input block of 32 bits, producing an output block of 48
 // // bits.
-// const expansion_function = [byte(0), 31, 30, 29, 28, 27, 28, 27, 26, 25, 24, 23, 24, 23, 22, 21,
+// const expansion_function = [u8(0), 31, 30, 29, 28, 27, 28, 27, 26, 25, 24, 23, 24, 23, 22, 21,
 // 	20, 19, 20, 19, 18, 17, 16, 15, 16, 15, 14, 13, 12, 11, 12, 11, 10, 9, 8, 7, 8, 7, 6, 5, 4,
 // 	3, 4, 3, 2, 1, 0, 31]
 
 // // Yields a 32-bit output from a 32-bit input
-// const permutation_function = [byte(16), 25, 12, 11, 3, 20, 4, 15, 31, 17, 9, 6, 27, 14, 1, 22,
+// const permutation_function = [u8(16), 25, 12, 11, 3, 20, 4, 15, 31, 17, 9, 6, 27, 14, 1, 22,
 // 	30, 24, 8, 18, 0, 5, 29, 23, 13, 19, 2, 26, 10, 21, 28, 7]
 
 // Used in the key schedule to select 56 bits
 // from a 64-bit input.
-const permuted_choice1 = [byte(7), 15, 23, 31, 39, 47, 55, 63, 6, 14, 22, 30, 38, 46, 54, 62, 5,
+const permuted_choice1 = [u8(7), 15, 23, 31, 39, 47, 55, 63, 6, 14, 22, 30, 38, 46, 54, 62, 5,
 	13, 21, 29, 37, 45, 53, 61, 4, 12, 20, 28, 1, 9, 17, 25, 33, 41, 49, 57, 2, 10, 18, 26, 34,
 	42, 50, 58, 3, 11, 19, 27, 35, 43, 51, 59, 36, 44, 52, 60]
 
 // Used in the key schedule to produce each subkey by selecting 48 bits from
 // the 56-bit input
-const permuted_choice2 = [byte(42), 39, 45, 32, 55, 51, 53, 28, 41, 50, 35, 46, 33, 37, 44, 52,
-	30, 48, 40, 49, 29, 36, 43, 54, 15, 4, 25, 19, 9, 1, 26, 16, 5, 11, 23, 8, 12, 7, 17, 0, 22,
-	3, 10, 14, 6, 20, 27, 24]
+const permuted_choice2 = [u8(42), 39, 45, 32, 55, 51, 53, 28, 41, 50, 35, 46, 33, 37, 44, 52, 30,
+	48, 40, 49, 29, 36, 43, 54, 15, 4, 25, 19, 9, 1, 26, 16, 5, 11, 23, 8, 12, 7, 17, 0, 22, 3,
+	10, 14, 6, 20, 27, 24]
 
 // 8 S-boxes composed of 4 rows and 16 columns
 // Used in the DES cipher function

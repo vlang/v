@@ -200,9 +200,9 @@ fn (mut c Client) send_auth() ? {
 		return
 	}
 	mut sb := strings.new_builder(100)
-	sb.write_byte(0)
+	sb.write_u8(0)
 	sb.write_string(c.username)
-	sb.write_byte(0)
+	sb.write_u8(0)
 	sb.write_string(c.password)
 	a := sb.str()
 	auth := 'AUTH PLAIN ${base64.encode_str(a)}\r\n'

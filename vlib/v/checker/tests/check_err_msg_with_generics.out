@@ -1,0 +1,27 @@
+vlib/v/checker/tests/check_err_msg_with_generics.vv:15:10: error: cannot cast struct `BSTree<Result<[]Token, Err<string>>>` to `int`
+   13 | fn test_err_msg() {
+   14 |     typ := datatypes.BSTree<Result<[]Token, Err<string>>>{}
+   15 |     println(int(typ))
+      |             ~~~~~~~~
+   16 | }
+vlib/datatypes/bstree.v:196:17: error: cannot append `T` to `[]T`
+  194 |     }
+  195 |     bst.in_order_traversal_helper(node.left, mut result)
+  196 |     result << node.value
+      |                    ~~~~~
+  197 |     bst.in_order_traversal_helper(node.right, mut result)
+  198 | }
+vlib/datatypes/bstree.v:216:17: error: cannot append `T` to `[]T`
+  214 |     bst.post_order_traversal_helper(node.left, mut result)
+  215 |     bst.post_order_traversal_helper(node.right, mut result)
+  216 |     result << node.value
+      |                    ~~~~~
+  217 | }
+  218 |
+vlib/datatypes/bstree.v:232:17: error: cannot append `T` to `[]T`
+  230 |         return
+  231 |     }
+  232 |     result << node.value
+      |                    ~~~~~
+  233 |     bst.pre_order_traversal_helper(node.left, mut result)
+  234 |     bst.pre_order_traversal_helper(node.right, mut result)

@@ -17,7 +17,7 @@ pub fn format_str_sb(s string, p BF_param, mut sb strings.Builder) {
 
 	if p.allign == .right {
 		for i1 := 0; i1 < dif; i1++ {
-			sb.write_byte(p.pad_ch)
+			sb.write_u8(p.pad_ch)
 		}
 	}
 
@@ -25,7 +25,7 @@ pub fn format_str_sb(s string, p BF_param, mut sb strings.Builder) {
 
 	if p.allign == .left {
 		for i1 := 0; i1 < dif; i1++ {
-			sb.write_byte(p.pad_ch)
+			sb.write_u8(p.pad_ch)
 		}
 	}
 }
@@ -49,17 +49,17 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 		if p.pad_ch == `0` {
 			if p.positive {
 				if p.sign_flag {
-					res.write_byte(`+`)
+					res.write_u8(`+`)
 					sign_written = true
 				}
 			} else {
-				res.write_byte(`-`)
+				res.write_u8(`-`)
 				sign_written = true
 			}
 		}
 		// write the pad chars
 		for i1 := 0; i1 < dif; i1++ {
-			res.write_byte(p.pad_ch)
+			res.write_u8(p.pad_ch)
 		}
 	}
 
@@ -67,20 +67,20 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 		// no pad char, write the sign before the number
 		if p.positive {
 			if p.sign_flag {
-				res.write_byte(`+`)
+				res.write_u8(`+`)
 			}
 		} else {
-			res.write_byte(`-`)
+			res.write_u8(`-`)
 		}
 	}
 
 	// Legacy version
 	// max u64 18446744073709551615 => 20 byte
-	mut buf := [32]byte{}
+	mut buf := [32]u8{}
 	mut i := 20
 	mut d1 := d
 	for i >= (21 - n_char) {
-		buf[i] = byte(d1 % 10) + `0`
+		buf[i] = u8(d1 % 10) + `0`
 
 		d1 = d1 / 10
 		i--
@@ -88,7 +88,7 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 
 	for _ in 0 .. n_char {
 		i++
-		res.write_byte(buf[i])
+		res.write_u8(buf[i])
 	}
 	i++
 
@@ -96,7 +96,7 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 
 	if p.allign == .left {
 		for i1 := 0; i1 < dif; i1++ {
-			res.write_byte(p.pad_ch)
+			res.write_u8(p.pad_ch)
 		}
 	}
 	return

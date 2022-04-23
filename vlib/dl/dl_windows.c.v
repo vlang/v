@@ -6,7 +6,7 @@ pub const rtld_lazy = 0
 
 fn C.LoadLibrary(libfilename &u16) voidptr
 
-fn C.GetProcAddress(handle voidptr, procname &byte) voidptr
+fn C.GetProcAddress(handle voidptr, procname &u8) voidptr
 
 fn C.FreeLibrary(handle voidptr) bool
 

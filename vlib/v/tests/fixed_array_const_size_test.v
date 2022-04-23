@@ -4,14 +4,14 @@ const (
 )
 
 struct Foo {
-	bar [size]byte
+	bar [size]u8
 }
 
 fn test_fixed_array_const_size() {
 	a := Foo{}
 	println(a)
 	assert a == Foo{
-		bar: [byte(0), 0, 0, 0, 0]!
+		bar: [u8(0), 0, 0, 0, 0]!
 	}
 }
 

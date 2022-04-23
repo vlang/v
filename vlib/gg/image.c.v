@@ -7,6 +7,8 @@ import stbi
 import sokol.gfx
 import sokol.sgl
 
+// Image holds the fileds and data needed to
+// represent a bitmap/pixel based image in memory.
 [heap]
 pub struct Image {
 pub mut:
@@ -22,6 +24,7 @@ pub mut:
 	path        string
 }
 
+// create_image creates an `Image` from `file`.
 // TODO return ?Image
 pub fn (mut ctx Context) create_image(file string) Image {
 	// println('\ncreate_image("$file")')
@@ -62,6 +65,8 @@ pub fn (mut ctx Context) create_image(file string) Image {
 	return img
 }
 
+// init_sokol_image initializes this `Image` for use with the
+// sokol graphical backend system.
 pub fn (mut img Image) init_sokol_image() &Image {
 	// println('\n init sokol image $img.path ok=$img.simg_ok')
 	mut img_desc := gfx.ImageDesc{
@@ -83,7 +88,7 @@ pub fn (mut img Image) init_sokol_image() &Image {
 	return img
 }
 
-// draw_image draws the provided image onto the screen
+// draw_image draws the provided image onto the screen.
 pub fn (ctx &Context) draw_image(x f32, y f32, width f32, height f32, img_ &Image) {
 	$if macos {
 		if img_.id >= ctx.image_cache.len {
@@ -145,18 +150,23 @@ pub fn (mut ctx Context) new_streaming_image(w int, h int, channels int, sicfg S
 
 // update_pixel_data is a helper for working with image streams (i.e. images,
 // that are updated dynamically by the CPU on each frame)
-pub fn (mut ctx Context) update_pixel_data(cached_image_idx int, buf &byte) {
+pub fn (mut ctx Context) update_pixel_data(cached_image_idx int, buf &u8) {
 	mut image := ctx.get_cached_image_by_idx(cached_image_idx)
 	image.update_pixel_data(buf)
 }
 
-pub fn (mut img Image) update_pixel_data(buf &byte) {
+// update_pixel_data updates the sokol specific pixel data associated
+// with this `Image`.
+pub fn (mut img Image) update_pixel_data(buf &u8) {
 	mut data := gfx.ImageData{}
 	data.subimage[0][0].ptr = buf
 	data.subimage[0][0].size = usize(img.width * img.height * img.nr_channels)
 	gfx.update_image(img.simg, &data)
 }
 
+// create_image_with_size creates an `Image` from `file` in the given
+// `width` x `height` dimension.
+//
 // TODO copypasta
 pub fn (mut ctx Context) create_image_with_size(file string, width int, height int) Image {
 	if !gfx.is_valid() {
@@ -182,6 +192,8 @@ pub fn (mut ctx Context) create_image_with_size(file string, width int, height i
 	return img
 }
 
+// create_image creates an `Image` from `file`.
+//
 // TODO remove this
 fn create_image(file string) Image {
 	if !os.exists(file) {
@@ -202,7 +214,11 @@ fn create_image(file string) Image {
 	return img
 }
 
-pub fn (mut ctx Context) create_image_from_memory(buf &byte, bufsize int) Image {
+// create_image_from_memory creates an `Image` from the
+// memory buffer `buf` of size `bufsize`.
+//
+// See also: create_image_from_byte_array
+pub fn (mut ctx Context) create_image_from_memory(buf &u8, bufsize int) Image {
 	stb_img := stbi.load_from_memory(buf, bufsize) or { return Image{} }
 	mut img := Image{
 		width: stb_img.width
@@ -217,7 +233,11 @@ pub fn (mut ctx Context) create_image_from_memory(buf &byte, bufsize int) Image 
 	return img
 }
 
-pub fn (mut ctx Context) create_image_from_byte_array(b []byte) Image {
+// create_image_from_byte_array creates an `Image` from the
+// byte array `b`.
+//
+// See also: create_image_from_memory
+pub fn (mut ctx Context) create_image_from_byte_array(b []u8) Image {
 	return ctx.create_image_from_memory(b.data, b.len)
 }
 

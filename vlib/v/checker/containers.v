@@ -9,6 +9,22 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	mut elem_type := ast.void_type
 	// []string - was set in parser
 	if node.typ != ast.void_type {
+		if node.elem_type != 0 {
+			elem_sym := c.table.sym(node.elem_type)
+			if elem_sym.kind == .struct_ {
+				elem_info := elem_sym.info as ast.Struct
+				if elem_info.generic_types.len > 0 && elem_info.concrete_types.len == 0
+					&& !node.elem_type.has_flag(.generic) {
+					if c.table.cur_concrete_types.len == 0 {
+						c.error('generic struct must specify type parameter, e.g. Foo<int>',
+							node.elem_type_pos)
+					} else {
+						c.error('generic struct must specify type parameter, e.g. Foo<T>',
+							node.elem_type_pos)
+					}
+				}
+			}
+		}
 		if node.exprs.len == 0 {
 			if node.has_cap {
 				c.check_array_init_para_type('cap', node.cap_expr, node.pos)
@@ -161,7 +177,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		}
 		node.elem_type = elem_type
 	} else if node.is_fixed && node.exprs.len == 1 && node.elem_type != ast.void_type {
-		// [50]byte
+		// [50]u8
 		mut fixed_size := i64(0)
 		init_expr := node.exprs[0]
 		c.expr(init_expr)
@@ -244,6 +260,22 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 	// `x := map[string]string` - set in parser
 	if node.typ != 0 {
 		info := c.table.sym(node.typ).map_info()
+		if info.value_type != 0 {
+			val_sym := c.table.sym(info.value_type)
+			if val_sym.kind == .struct_ {
+				val_info := val_sym.info as ast.Struct
+				if val_info.generic_types.len > 0 && val_info.concrete_types.len == 0
+					&& !info.value_type.has_flag(.generic) {
+					if c.table.cur_concrete_types.len == 0 {
+						c.error('generic struct `$val_sym.name` must specify type parameter, e.g. Foo<int>',
+							node.pos)
+					} else {
+						c.error('generic struct `$val_sym.name` must specify type parameter, e.g. Foo<T>',
+							node.pos)
+					}
+				}
+			}
+		}
 		c.ensure_type_exists(info.key_type, node.pos) or {}
 		c.ensure_type_exists(info.value_type, node.pos) or {}
 		node.key_type = info.key_type

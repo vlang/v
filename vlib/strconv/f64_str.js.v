@@ -16,7 +16,7 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 		fw_zeros = pad_digit - out_len
 	}
 
-	mut buf := []byte{len: (out_len + 6 + 1 + 1 + fw_zeros)} // sign + mant_len + . +  e + e_sign + exp_len(2) + \0}
+	mut buf := []u8{len: (out_len + 6 + 1 + 1 + fw_zeros)} // sign + mant_len + . +  e + e_sign + exp_len(2) + \0}
 	mut i := 0
 
 	if neg {
@@ -228,7 +228,7 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 	// Step 4: Find the shortest decimal representation
 	// in the interval of valid representations.
 	mut removed := 0
-	mut last_removed_digit := byte(0)
+	mut last_removed_digit := u8(0)
 	mut out := u64(0)
 	// On average, we remove ~2 digits.
 	if vm_is_trailing_zeros || vr_is_trailing_zeros {
@@ -244,7 +244,7 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 			vr_mod_10 := vr % 10
 			vm_is_trailing_zeros = vm_is_trailing_zeros && vm_mod_10 == 0
 			vr_is_trailing_zeros = vr_is_trailing_zeros && (last_removed_digit == 0)
-			last_removed_digit = byte(vr_mod_10)
+			last_removed_digit = u8(vr_mod_10)
 			vr = vr_div_10
 			vp = vp_div_10
 			vm = vm_div_10
@@ -261,7 +261,7 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 				vr_div_10 := vr / 10
 				vr_mod_10 := vr % 10
 				vr_is_trailing_zeros = vr_is_trailing_zeros && (last_removed_digit == 0)
-				last_removed_digit = byte(vr_mod_10)
+				last_removed_digit = u8(vr_mod_10)
 				vr = vr_div_10
 				vp = vp_div_10
 				vm = vm_div_10

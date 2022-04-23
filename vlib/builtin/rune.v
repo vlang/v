@@ -14,14 +14,14 @@ pub fn (c rune) str() string {
 	/*
 	unsafe {
 		fst_byte := int(c)>>8 * 3 & 0xff
-		len := utf8_char_len(byte(fst_byte))
+		len := utf8_char_len(u8(fst_byte))
 		println('len=$len')
 		mut str := string{
 			len: len
 			str: malloc_noscan(len + 1)
 		}
 		for i in 0..len {
-			str.str[i] = byte(int(c)>>8 * (3 - i) & 0xff)
+			str.str[i] = u8(int(c)>>8 * (3 - i) & 0xff)
 		}
 		str.str[len] = `\0`
 		println(str)
@@ -49,18 +49,20 @@ pub fn (c rune) repeat(count int) string {
 	} else if count == 1 {
 		return c.str()
 	}
-	mut buffer := [5]byte{}
+	mut buffer := [5]u8{}
 	res := unsafe { utf32_to_str_no_malloc(u32(c), &buffer[0]) }
 	return res.repeat(count)
 }
 
 [manualfree]
-pub fn (c rune) bytes() []byte {
-	mut res := []byte{cap: 5}
-	res.len = unsafe { utf32_decode_to_buffer(u32(c), &byte(res.data)) }
+pub fn (c rune) bytes() []u8 {
+	mut res := []u8{cap: 5}
+	res.len = unsafe { utf32_decode_to_buffer(u32(c), &u8(res.data)) }
 	return res
 }
 
+// length_in_bytes returns the number of bytes needed to store the code point.
+// Returns -1 if the data is not a valid code point.
 pub fn (c rune) length_in_bytes() int {
 	code := u32(c)
 	if code <= 0x7F {

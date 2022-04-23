@@ -11,8 +11,8 @@ module rand
 fn C.SecRandomCopyBytes(rnd C.SecRandomRef, count usize, bytes voidptr) int
 
 // read returns an array of `bytes_needed` random bytes read from the OS.
-pub fn read(bytes_needed int) ?[]byte {
-	mut buffer := []byte{len: bytes_needed}
+pub fn read(bytes_needed int) ?[]u8 {
+	mut buffer := []u8{len: bytes_needed}
 	status := C.SecRandomCopyBytes(C.SecRandomRef(0), bytes_needed, buffer.data)
 	if status != 0 {
 		return IError(&ReadError{})

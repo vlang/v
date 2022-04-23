@@ -5,7 +5,7 @@ fn test_format() {
 	mut tmp_str := ''
 	a0 := u32(10)
 	b0 := 200
-	c0 := byte(12)
+	c0 := u8(12)
 	s0 := 'ciAo'
 	ch0 := `B`
 	f0 := 0.312345
@@ -20,7 +20,7 @@ fn test_format() {
 	// println("\n$temp_s")
 	assert tmp_str == temp_s
 
-	a := byte(12)
+	a := u8(12)
 	b := i16(13)
 	c := 14
 	d := i64(15)
@@ -31,7 +31,7 @@ fn test_format() {
 	// println("\n$temp_s")
 	assert tmp_str == temp_s
 
-	a1 := byte(0xff)
+	a1 := u8(0xff)
 	b1 := i16(0xffff)
 	c1 := u32(0xffff_ffff)
 	d1 := u64(-1)

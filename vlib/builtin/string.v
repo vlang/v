@@ -43,8 +43,8 @@ Note: A V string should be/is immutable from the point of view of
 */
 pub struct string {
 pub:
-	str &byte = 0 // points to a C style 0 terminated string of bytes.
-	len int   // the length of the .str field, excluding the ending 0 byte. It is always equal to strlen(.str).
+	str &u8 = 0 // points to a C style 0 terminated string of bytes.
+	len int // the length of the .str field, excluding the ending 0 byte. It is always equal to strlen(.str).
 	// NB string.is_lit is an enumeration of the following:
 	// .is_lit == 0 => a fresh string, should be freed by autofree
 	// .is_lit == 1 => a literal string from .rodata, should NOT be freed
@@ -83,7 +83,7 @@ pub fn (s string) runes() []rune {
 // It will panic, if the pointer `s` is 0.
 [unsafe]
 pub fn cstring_to_vstring(s &char) string {
-	return unsafe { tos2(&byte(s)) }.clone()
+	return unsafe { tos2(&u8(s)) }.clone()
 }
 
 // tos_clone creates a new V string copy of the C style string, pointed by `s`.
@@ -91,7 +91,7 @@ pub fn cstring_to_vstring(s &char) string {
 // that tos_clone expects `&byte`, while cstring_to_vstring expects &char).
 // It will panic, if the pointer `s` is 0.
 [unsafe]
-pub fn tos_clone(s &byte) string {
+pub fn tos_clone(s &u8) string {
 	return unsafe { tos2(s) }.clone()
 }
 
@@ -100,7 +100,7 @@ pub fn tos_clone(s &byte) string {
 // It will panic, when the pointer `s` is 0.
 // See also `tos_clone`.
 [unsafe]
-pub fn tos(s &byte, len int) string {
+pub fn tos(s &u8, len int) string {
 	if s == 0 {
 		panic('tos(): nil string')
 	}
@@ -117,7 +117,7 @@ pub fn tos(s &byte, len int) string {
 // It is the same as `tos3`, but for &byte pointers, avoiding callsite casts.
 // See also `tos_clone`.
 [unsafe]
-pub fn tos2(s &byte) string {
+pub fn tos2(s &u8) string {
 	if s == 0 {
 		panic('tos2: nil string')
 	}
@@ -139,7 +139,7 @@ pub fn tos3(s &char) string {
 		panic('tos3: nil string')
 	}
 	return string{
-		str: unsafe { &byte(s) }
+		str: unsafe { &u8(s) }
 		len: unsafe { vstrlen_char(s) }
 	}
 }
@@ -151,7 +151,7 @@ pub fn tos3(s &char) string {
 // It is the same as `tos5`, but for &byte pointers, avoiding callsite casts.
 // See also `tos_clone`.
 [unsafe]
-pub fn tos4(s &byte) string {
+pub fn tos4(s &u8) string {
 	if s == 0 {
 		return ''
 	}
@@ -173,19 +173,19 @@ pub fn tos5(s &char) string {
 		return ''
 	}
 	return string{
-		str: unsafe { &byte(s) }
+		str: unsafe { &u8(s) }
 		len: unsafe { vstrlen_char(s) }
 	}
 }
 
 // vstring converts a C style string to a V string.
 // Note: the memory block pointed by `bp` is *reused, not copied*!
-// Note: instead of `&byte(arr.data).vstring()`, do use `tos_clone(&byte(arr.data))`.
+// Note: instead of `&u8(arr.data).vstring()`, do use `tos_clone(&u8(arr.data))`.
 // Strings returned from this function will be normal V strings beside that,
 // (i.e. they would be freed by V's -autofree mechanism, when they are no longer used).
 // See also `tos_clone`.
 [unsafe]
-pub fn (bp &byte) vstring() string {
+pub fn (bp &u8) vstring() string {
 	return string{
 		str: unsafe { bp }
 		len: unsafe { vstrlen(bp) }
@@ -198,7 +198,7 @@ pub fn (bp &byte) vstring() string {
 // does not need to calculate the length of the 0 terminated string.
 // See also `tos_clone`.
 [unsafe]
-pub fn (bp &byte) vstring_with_len(len int) string {
+pub fn (bp &u8) vstring_with_len(len int) string {
 	return string{
 		str: unsafe { bp }
 		len: len
@@ -211,12 +211,12 @@ pub fn (bp &byte) vstring_with_len(len int) string {
 // Strings returned from this function will be normal V strings beside that,
 // (i.e. they would be freed by V's -autofree mechanism, when they are
 // no longer used).
-// Note: instead of `&byte(a.data).vstring()`, use `tos_clone(&byte(a.data))`.
+// Note: instead of `&u8(a.data).vstring()`, use `tos_clone(&u8(a.data))`.
 // See also `tos_clone`.
 [unsafe]
 pub fn (cp &char) vstring() string {
 	return string{
-		str: &byte(cp)
+		str: &u8(cp)
 		len: unsafe { vstrlen_char(cp) }
 		is_lit: 0
 	}
@@ -230,7 +230,7 @@ pub fn (cp &char) vstring() string {
 [unsafe]
 pub fn (cp &char) vstring_with_len(len int) string {
 	return string{
-		str: &byte(cp)
+		str: &u8(cp)
 		len: len
 		is_lit: 0
 	}
@@ -245,7 +245,7 @@ pub fn (cp &char) vstring_with_len(len int) string {
 // managed/freed by it, for example `os.args` is implemented using it.
 // See also `tos_clone`.
 [unsafe]
-pub fn (bp &byte) vstring_literal() string {
+pub fn (bp &u8) vstring_literal() string {
 	return string{
 		str: unsafe { bp }
 		len: unsafe { vstrlen(bp) }
@@ -259,7 +259,7 @@ pub fn (bp &byte) vstring_literal() string {
 // does not need to calculate the length of the 0 terminated string.
 // See also `tos_clone`.
 [unsafe]
-pub fn (bp &byte) vstring_literal_with_len(len int) string {
+pub fn (bp &u8) vstring_literal_with_len(len int) string {
 	return string{
 		str: unsafe { bp }
 		len: len
@@ -274,7 +274,7 @@ pub fn (bp &byte) vstring_literal_with_len(len int) string {
 [unsafe]
 pub fn (cp &char) vstring_literal() string {
 	return string{
-		str: &byte(cp)
+		str: &u8(cp)
 		len: unsafe { vstrlen_char(cp) }
 		is_lit: 1
 	}
@@ -289,7 +289,7 @@ pub fn (cp &char) vstring_literal() string {
 [unsafe]
 pub fn (cp &char) vstring_literal_with_len(len int) string {
 	return string{
-		str: &byte(cp)
+		str: &u8(cp)
 		len: len
 		is_lit: 1
 	}
@@ -520,8 +520,8 @@ pub fn (s string) f64() f64 {
 }
 
 // u8 returns the value of the string as u8 `'1'.u8() == u8(1)`.
-pub fn (s string) byte() u8 {
-	return byte(strconv.common_parse_uint(s, 0, 8, false, false) or { 0 })
+pub fn (s string) u8() u8 {
+	return u8(strconv.common_parse_uint(s, 0, 8, false, false) or { 0 })
 }
 
 // u16 returns the value of the string as u16 `'1'.u16() == u16(1)`.
@@ -555,7 +555,6 @@ pub fn (s string) u64() u64 {
 // This method directly exposes the `parse_uint` function from `strconv`
 // as a method on `string`. For more advanced features,
 // consider calling `strconv.common_parse_uint` directly.
-// Example:
 pub fn (s string) parse_uint(_base int, _bit_size int) ?u64 {
 	return strconv.parse_uint(s, _base, _bit_size)
 }
@@ -1066,7 +1065,7 @@ pub fn (s string) index_after_opt(p string, start int) ?int {
 // index_byte returns the index of byte `c` if found in the string.
 // index_byte returns -1 if the byte can not be found.
 [direct_array_access]
-pub fn (s string) index_byte(c byte) int {
+pub fn (s string) index_u8(c u8) int {
 	for i in 0 .. s.len {
 		if unsafe { s.str[i] } == c {
 			return i
@@ -1087,7 +1086,7 @@ pub fn (s string) index_byte_opt(c byte) ?int {
 // last_index_byte returns the index of the last occurence of byte `c` if found in the string.
 // last_index_byte returns -1 if the byte is not found.
 [direct_array_access]
-pub fn (s string) last_index_byte(c byte) int {
+pub fn (s string) last_index_u8(c u8) int {
 	for i := s.len - 1; i >= 0; i-- {
 		if unsafe { s.str[i] == c } {
 			return i
@@ -1142,6 +1141,7 @@ pub fn (s string) count(substr string) int {
 }
 
 // contains returns `true` if the string contains `substr`.
+// See also: [`string.index`](#string.index)
 pub fn (s string) contains(substr string) bool {
 	if substr.len == 0 {
 		return true
@@ -1252,6 +1252,7 @@ pub fn (s string) to_upper() string {
 }
 
 // is_upper returns `true` if all characters in the string is uppercase.
+// See also: [`byte.is_capital`](#byte.is_capital)
 // Example: assert 'HELLO V'.is_upper() == true
 [direct_array_access]
 pub fn (s string) is_upper() bool {
@@ -1518,7 +1519,7 @@ pub fn (s string) str() string {
 }
 
 // at returns the byte at index `idx`.
-// Example: assert 'ABC'.at(1) == byte(`B`)
+// Example: assert 'ABC'.at(1) == u8(`B`)
 fn (s string) at(idx int) byte {
 	$if !no_bounds_checking ? {
 		if idx < 0 || idx >= s.len {
@@ -1532,7 +1533,7 @@ fn (s string) at(idx int) byte {
 
 // version of `at()` that is used in `a[i] or {`
 // return an error when the index is out of range
-fn (s string) at_with_check(idx int) ?byte {
+fn (s string) at_with_check(idx int) ?u8 {
 	if idx < 0 || idx >= s.len {
 		return error('string index out of range')
 	}
@@ -1543,53 +1544,53 @@ fn (s string) at_with_check(idx int) ?byte {
 
 // is_space returns `true` if the byte is a white space character.
 // The following list is considered white space characters: ` `, `\t`, `\n`, `\v`, `\f`, `\r`, 0x85, 0xa0
-// Example: assert byte(` `).is_space() == true
+// Example: assert u8(` `).is_space() == true
 [inline]
-pub fn (c byte) is_space() bool {
+pub fn (c u8) is_space() bool {
 	// 0x85 is NEXT LINE (NEL)
 	// 0xa0 is NO-BREAK SPACE
 	return c == 32 || (c > 8 && c < 14) || (c == 0x85) || (c == 0xa0)
 }
 
 // is_digit returns `true` if the byte is in range 0-9 and `false` otherwise.
-// Example: assert byte(`9`) == true
+// Example: assert u8(`9`) == true
 [inline]
-pub fn (c byte) is_digit() bool {
+pub fn (c u8) is_digit() bool {
 	return c >= `0` && c <= `9`
 }
 
 // is_hex_digit returns `true` if the byte is either in range 0-9, a-f or A-F and `false` otherwise.
-// Example: assert byte(`F`) == true
+// Example: assert u8(`F`) == true
 [inline]
-pub fn (c byte) is_hex_digit() bool {
+pub fn (c u8) is_hex_digit() bool {
 	return (c >= `0` && c <= `9`) || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)
 }
 
 // is_oct_digit returns `true` if the byte is in range 0-7 and `false` otherwise.
-// Example: assert byte(`7`) == true
+// Example: assert u8(`7`) == true
 [inline]
-pub fn (c byte) is_oct_digit() bool {
+pub fn (c u8) is_oct_digit() bool {
 	return c >= `0` && c <= `7`
 }
 
 // is_bin_digit returns `true` if the byte is a binary digit (0 or 1) and `false` otherwise.
-// Example: assert byte(`0`) == true
+// Example: assert u8(`0`) == true
 [inline]
-pub fn (c byte) is_bin_digit() bool {
+pub fn (c u8) is_bin_digit() bool {
 	return c == `0` || c == `1`
 }
 
 // is_letter returns `true` if the byte is in range a-z or A-Z and `false` otherwise.
-// Example: assert byte(`V`) == true
+// Example: assert u8(`V`) == true
 [inline]
-pub fn (c byte) is_letter() bool {
+pub fn (c u8) is_letter() bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
 }
 
 // is_alnum returns `true` if the byte is in range a-z, A-Z, 0-9 and `false` otherwise.
-// Example: assert byte(`V`) == true
+// Example: assert u8(`V`) == true
 [inline]
-pub fn (c byte) is_alnum() bool {
+pub fn (c u8) is_alnum() bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`)
 }
 
@@ -1600,7 +1601,7 @@ pub fn (s &string) free() {
 		return
 	}
 	if s.is_lit == -98761234 {
-		double_free_msg := unsafe { &byte(c'double string.free() detected\n') }
+		double_free_msg := unsafe { &u8(c'double string.free() detected\n') }
 		double_free_msg_len := unsafe { vstrlen(double_free_msg) }
 		$if freestanding {
 			bare_eprint(double_free_msg, u64(double_free_msg_len))
@@ -1694,7 +1695,7 @@ pub fn (s string) after(sub string) string {
 // If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.after_char(`:`) == '34:45.234'
 // Example: assert 'abcd'.after_char(`:`) == 'abcd'
-pub fn (s string) after_char(sub byte) string {
+pub fn (s string) after_char(sub u8) string {
 	mut pos := -1
 	for i, c in s {
 		if c == sub {
@@ -1727,13 +1728,13 @@ pub fn (a []string) join(sep string) string {
 	mut idx := 0
 	for i, val in a {
 		unsafe {
-			vmemcpy(res.str + idx, val.str, val.len)
+			vmemcpy(voidptr(res.str + idx), val.str, val.len)
 			idx += val.len
 		}
 		// Add sep if it's not last
 		if i != a.len - 1 {
 			unsafe {
-				vmemcpy(res.str + idx, sep.str, sep.len)
+				vmemcpy(voidptr(res.str + idx), sep.str, sep.len)
 				idx += sep.len
 			}
 		}
@@ -1793,11 +1794,11 @@ pub fn (s string) hash() int {
 }
 
 // bytes returns the string converted to a byte array.
-pub fn (s string) bytes() []byte {
+pub fn (s string) bytes() []u8 {
 	if s.len == 0 {
 		return []
 	}
-	mut buf := []byte{len: s.len}
+	mut buf := []u8{len: s.len}
 	unsafe { vmemcpy(buf.data, s.str, s.len) }
 	return buf
 }
@@ -1866,20 +1867,22 @@ pub fn (s string) fields() []string {
 // the value in ``.
 //
 // Example:
+// ```v
 // st := 'Hello there,
 // |this is a string,
 // |    Everything before the first | is removed'.strip_margin()
-// Returns:
-// Hello there,
+//
+// assert st == 'Hello there,
 // this is a string,
-// Everything before the first | is removed
+// Everything before the first | is removed'
+// ```
 pub fn (s string) strip_margin() string {
 	return s.strip_margin_custom(`|`)
 }
 
 // strip_margin_custom does the same as `strip_margin` but will use `del` as delimiter instead of `|`
 [direct_array_access]
-pub fn (s string) strip_margin_custom(del byte) string {
+pub fn (s string) strip_margin_custom(del u8) string {
 	mut sep := del
 	if sep.is_space() {
 		println('Warning: `strip_margin` cannot use white-space as a delimiter')

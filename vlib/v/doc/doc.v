@@ -260,7 +260,11 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 		}
 		ast.FnDecl {
 			if stmt.is_deprecated {
-				node.tags << 'deprecated'
+				for sa in stmt.attrs {
+					if sa.name.starts_with('deprecated') {
+						node.tags << sa.str()
+					}
+				}
 			}
 			if stmt.is_unsafe {
 				node.tags << 'unsafe'

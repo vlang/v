@@ -2,8 +2,8 @@ struct Foo {}
 
 fn test_match_array_or_map_cond() {
 	// array
-	y1 := []byte{}
-	x1 := []byte{}
+	y1 := []u8{}
+	x1 := []u8{}
 	ret1 := match x1 {
 		y1 { true }
 		else { false }

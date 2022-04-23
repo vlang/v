@@ -243,10 +243,10 @@ pub:
 	custom_bold_font_path string
 	ui_mode               bool // refreshes only on events to save CPU usage
 	// font bytes for embedding
-	font_bytes_normal []byte
-	font_bytes_bold   []byte
-	font_bytes_mono   []byte
-	font_bytes_italic []byte
+	font_bytes_normal []u8
+	font_bytes_bold   []u8
+	font_bytes_mono   []u8
+	font_bytes_italic []u8
 	native_rendering  bool // Cocoa on macOS/iOS, GDI+ on Windows
 	// drag&drop
 	enable_dragndrop             bool // enable file dropping (drag'n'drop), default is false
@@ -276,7 +276,7 @@ pub mut:
 	user_data     voidptr
 	ui_mode       bool
 	frame         u64
-	mbtn_mask     byte
+	mbtn_mask     u8
 	mouse_buttons MouseButtons
 	mouse_pos_x   int
 	mouse_pos_y   int
@@ -524,7 +524,7 @@ fn (mut g Context) handle_mouse_event(event JS.MouseEvent, typ DOMEventType) Eve
 	e.mouse_dx = int(event.movementX)
 	e.mouse_dy = int(event.movementY)
 	bitplace := int(event.button)
-	g.mbtn_mask |= byte(1 << bitplace)
+	g.mbtn_mask |= u8(1 << bitplace)
 	// g.mouse_buttons = MouseButtons(g.mbtn_mask)
 
 	g.mouse_pos_x = int(event.offsetX)

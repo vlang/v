@@ -51,15 +51,15 @@ fn dprintln(txt string) {
 ******************************************************************************/
 // transform the bitmap from one layer to color layers
 fn (mut bmp BitMap) format_texture() {
-	r := byte(bmp.color >> 24)
-	g := byte((bmp.color >> 16) & 0xFF)
-	b := byte((bmp.color >> 8) & 0xFF)
-	a := byte(bmp.color & 0xFF)
+	r := u8(bmp.color >> 24)
+	g := u8((bmp.color >> 16) & 0xFF)
+	b := u8((bmp.color >> 8) & 0xFF)
+	a := u8(bmp.color & 0xFF)
 
-	b_r := byte(bmp.bg_color >> 24)
-	b_g := byte((bmp.bg_color >> 16) & 0xFF)
-	b_b := byte((bmp.bg_color >> 8) & 0xFF)
-	b_a := byte(bmp.bg_color & 0xFF)
+	b_r := u8(bmp.bg_color >> 24)
+	b_g := u8((bmp.bg_color >> 16) & 0xFF)
+	b_b := u8((bmp.bg_color >> 8) & 0xFF)
+	b_a := u8(bmp.bg_color & 0xFF)
 
 	// trasform buffer in a texture
 	x := bmp.buf
@@ -72,7 +72,7 @@ fn (mut bmp BitMap) format_texture() {
 				x[i + 1] = g
 				x[i + 2] = b
 				// alpha
-				x[i + 3] = byte(u16(a * data) >> 8)
+				x[i + 3] = u8(u16(a * data) >> 8)
 			} else {
 				x[i + 0] = b_r
 				x[i + 1] = b_g
@@ -114,8 +114,8 @@ pub fn (mut bmp BitMap) save_as_ppm(file_name string) {
 	bmp.buf = tmp_buf
 }
 
-pub fn (mut bmp BitMap) get_raw_bytes() []byte {
-	mut f_buf := []byte{len: bmp.buf_size / 4}
+pub fn (mut bmp BitMap) get_raw_bytes() []u8 {
+	mut f_buf := []u8{len: bmp.buf_size / 4}
 	mut i := 0
 	for i < bmp.buf_size {
 		unsafe {

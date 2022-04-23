@@ -42,9 +42,9 @@ mut:
 	port   int
 }
 
-fn (mut dtp DTP) read() ?[]byte {
-	mut data := []byte{}
-	mut buf := []byte{len: 1024}
+fn (mut dtp DTP) read() ?[]u8 {
+	mut data := []u8{}
+	mut buf := []u8{len: 1024}
 	for {
 		len := dtp.reader.read(mut buf) or { break }
 		if len == 0 {
@@ -227,7 +227,7 @@ pub fn (mut zftp FTP) dir() ?[]string {
 	return dir
 }
 
-pub fn (mut zftp FTP) get(file string) ?[]byte {
+pub fn (mut zftp FTP) get(file string) ?[]u8 {
 	mut dtp := zftp.pasv() or { return error('Cannot stablish data connection') }
 	zftp.write('RETR $file') ?
 	code, _ := zftp.read() ?

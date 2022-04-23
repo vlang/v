@@ -39,7 +39,7 @@ fn C._chsize_s(voidptr, u64) int
 
 // read_bytes returns all bytes read from file in `path`.
 [manualfree]
-pub fn read_bytes(path string) ?[]byte {
+pub fn read_bytes(path string) ?[]u8 {
 	mut fp := vfopen(path, 'rb') ?
 	defer {
 		C.fclose(fp)
@@ -59,7 +59,7 @@ pub fn read_bytes(path string) ?[]byte {
 		return error('$fsize cast to int results in ${int(fsize)})')
 	}
 	C.rewind(fp)
-	mut res := []byte{len: len}
+	mut res := []u8{len: len}
 	nr_read_elements := int(C.fread(res.data, len, 1, fp))
 	if nr_read_elements == 0 && fsize > 0 {
 		return error('fread failed')
@@ -203,7 +203,7 @@ pub fn mv(src string, dst string) ? {
 	} $else {
 		ret := C.rename(&char(src.str), &char(rdst.str))
 		if ret != 0 {
-			return error_with_code('failed to rename $src to $dst', int(ret))
+			return error_with_code('failed to rename $src to $dst', ret)
 		}
 	}
 }
@@ -230,7 +230,7 @@ pub fn cp(src string, dst string) ? {
 		}
 		// TODO use defer{} to close files in case of error or return.
 		// Currently there is a C-Error when building.
-		mut buf := [1024]byte{}
+		mut buf := [1024]u8{}
 		mut count := 0
 		for {
 			count = C.read(fp_from, &buf[0], sizeof(buf))
@@ -356,7 +356,7 @@ pub fn system(cmd string) int {
 	} $else {
 		$if ios {
 			unsafe {
-				arg := [c'/bin/sh', c'-c', &byte(cmd.str), 0]
+				arg := [c'/bin/sh', c'-c', &u8(cmd.str), 0]
 				pid := 0
 				ret = C.posix_spawn(&pid, c'/bin/sh', 0, 0, arg.data, 0)
 				status := 0
@@ -481,7 +481,7 @@ pub fn rmdir(path string) ? {
 // print_c_errno will print the current value of `C.errno`.
 fn print_c_errno() {
 	e := C.errno
-	se := unsafe { tos_clone(&byte(C.strerror(e))) }
+	se := unsafe { tos_clone(&u8(C.strerror(e))) }
 	println('errno=$e err=$se')
 }
 
@@ -522,12 +522,12 @@ pub fn get_raw_line() string {
 		max := usize(0)
 		buf := &char(0)
 		nr_chars := unsafe { C.getline(&buf, &max, C.stdin) }
-		return unsafe { tos(&byte(buf), if nr_chars < 0 { 0 } else { nr_chars }) }
+		return unsafe { tos(&u8(buf), if nr_chars < 0 { 0 } else { nr_chars }) }
 	}
 }
 
 // get_raw_stdin will get the raw input from stdin.
-pub fn get_raw_stdin() []byte {
+pub fn get_raw_stdin() []u8 {
 	$if windows {
 		unsafe {
 			block_bytes := 512

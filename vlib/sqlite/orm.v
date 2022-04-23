@@ -106,7 +106,7 @@ fn sqlite_stmt_binder(stmt Stmt, d orm.QueryData, query string, mut c &int) ? {
 fn bind(stmt Stmt, c &int, data orm.Primitive) int {
 	mut err := 0
 	match data {
-		i8, i16, int, byte, u16, u32, bool {
+		i8, i16, int, u8, u16, u32, bool {
 			err = stmt.bind_int(c, int(data))
 		}
 		i64, u64 {

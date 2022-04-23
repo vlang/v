@@ -283,7 +283,7 @@ fn (t Tree) embed_file(node ast.EmbeddedFile) &Node {
 	obj.add('compression_type', t.string_node(node.compression_type))
 	obj.add('is_compressed', t.bool_node(node.is_compressed))
 	obj.add('len', t.number_node(node.len))
-	obj.add('bytes', t.array_node_byte(node.bytes))
+	obj.add('bytes', t.array_node_u8(node.bytes))
 	return obj
 }
 
@@ -1216,7 +1216,7 @@ fn (t Tree) string_inter_literal(node ast.StringInterLiteral) &Node {
 	obj.add_terse('pluss', t.array_node_bool(node.pluss))
 	obj.add_terse('fills', t.array_node_bool(node.fills))
 	obj.add_terse('fmt_poss', t.array_node_position(node.fmt_poss))
-	obj.add_terse('fmts', t.array_node_byte(node.fmts))
+	obj.add_terse('fmts', t.array_node_u8(node.fmts))
 	obj.add_terse('need_fmts', t.array_node_bool(node.need_fmts))
 	obj.add('pos', t.pos(node.pos))
 	return obj
@@ -2209,7 +2209,7 @@ fn (t Tree) array_node_int(nodes []int) &Node {
 	return arr
 }
 
-fn (t Tree) array_node_byte(nodes []byte) &Node {
+fn (t Tree) array_node_u8(nodes []u8) &Node {
 	mut arr := new_array()
 	for node in nodes {
 		arr.add_item(t.number_node(node))

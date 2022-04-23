@@ -151,7 +151,7 @@ ffbf ffff bf00 0000 0000 0000 0000 0000
 0000 0000 0000 0000 0000 0000 0000 0000
 '
 
-fn save_raw_data_as_array(buf_bin []byte, file_name string) {
+fn save_raw_data_as_array(buf_bin []u8, file_name string) {
 	mut buf := strings.new_builder(buf_bin.len * 5)
 	for x in buf_bin {
 		buf.write_string('0x${x:02x},')
@@ -212,8 +212,8 @@ fn test_main() {
 	}
 }
 
-fn get_raw_data(data string) []byte {
-	mut buf := []byte{}
+fn get_raw_data(data string) []u8 {
+	mut buf := []u8{}
 	mut c := 0
 	mut b := u32(0)
 	for ch in data {
@@ -228,7 +228,7 @@ fn get_raw_data(data string) []byte {
 		}
 
 		if c == 2 {
-			buf << byte(b)
+			buf << u8(b)
 			b = 0
 			c = 0
 		}

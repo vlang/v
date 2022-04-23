@@ -31,7 +31,7 @@ fn (mut s ChunkScanner) read_chunk_size() u32 {
 	return n
 }
 
-fn unhex(c byte) byte {
+fn unhex(c u8) u8 {
 	if `0` <= c && c <= `9` {
 		return c - `0`
 	} else if `a` <= c && c <= `f` {

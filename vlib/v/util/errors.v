@@ -150,7 +150,7 @@ pub fn source_file_context(kind string, filepath string, pos token.Pos) []string
 			mut pointerline_builder := strings.new_builder(sline.len)
 			for i := 0; i < start_column; {
 				if sline[i].is_space() {
-					pointerline_builder.write_byte(sline[i])
+					pointerline_builder.write_u8(sline[i])
 					i++
 				} else {
 					char_len := utf8_char_len(sline[i])

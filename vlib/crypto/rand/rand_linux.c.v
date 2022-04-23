@@ -10,7 +10,7 @@ const (
 )
 
 // read returns an array of `bytes_needed` random bytes read from the OS.
-pub fn read(bytes_needed int) ?[]byte {
+pub fn read(bytes_needed int) ?[]u8 {
 	mut buffer := unsafe { vcalloc_noscan(bytes_needed) }
 	mut bytes_read := 0
 	mut remaining_bytes := bytes_needed

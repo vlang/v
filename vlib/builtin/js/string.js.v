@@ -28,7 +28,7 @@ pub fn (s string) after(dot string) string {
 	return string(s.str.slice(JS.Number(int(s.str.lastIndexOf(dot.str)) + 1), s.str.length))
 }
 
-pub fn (s string) after_char(dot byte) string {
+pub fn (s string) after_char(dot u8) string {
 	// TODO: Implement after byte
 	return s
 }
@@ -85,13 +85,13 @@ pub fn (s string) split(dot string) []string {
 	return arr
 }
 
-pub fn (s string) bytes() []byte {
+pub fn (s string) bytes() []u8 {
 	sep := ''
 	tmparr := s.str.split(sep.str).map(fn (it JS.Any) JS.Any {
-		return JS.Any(byte(JS.String(it).charCodeAt(JS.Number(0))))
+		return JS.Any(u8(JS.String(it).charCodeAt(JS.Number(0))))
 	})
 	_ := tmparr
-	mut arr := []byte{}
+	mut arr := []u8{}
 	#arr = new array(new array_buffer({arr: tmparr,index_start: new int(0),len: new int(tmparr.length)}))
 
 	return arr
@@ -249,9 +249,9 @@ pub fn (s string) u64() u64 {
 	return u64(JS.parseInt(s.str))
 }
 
-pub fn (s string) byte() u64 {
-	res := byte(0)
-	#res.val = byte(JS.parseInt(s.str))
+pub fn (s string) u8() u64 {
+	res := u8(0)
+	#res.val = u8(JS.parseInt(s.str))
 
 	return res
 }
@@ -384,10 +384,10 @@ fn compare_lower_strings(a &string, b &string) int {
 }
 
 // at returns the byte at index `idx`.
-// Example: assert 'ABC'.at(1) == byte(`B`)
-fn (s string) at(idx int) byte {
-	mut result := byte(0)
-	#result = new byte(s.str.charCodeAt(result))
+// Example: assert 'ABC'.at(1) == u8(`B`)
+fn (s string) at(idx int) u8 {
+	mut result := u8(0)
+	#result = new u8(s.str.charCodeAt(result))
 
 	return result
 }
@@ -443,7 +443,7 @@ pub fn (s string) repeat(count int) string {
 	return result
 }
 
-// TODO(playX): Use this iterator instead of using .split('').map(c => byte(c))
+// TODO(playX): Use this iterator instead of using .split('').map(c => u8(c))
 #function string_iterator(string) { this.stringIteratorFieldIndex = 0; this.stringIteratorIteratedString = string.str; }
 #string_iterator.prototype.next = function next() {
 #var done = true;
@@ -458,9 +458,9 @@ pub fn (s string) repeat(count int) string {
 #done = false;
 #var first = string.charCodeAt(position);
 #if (first < 0xD800 || first > 0xDBFF || position + 1 === length)
-#value = new byte(string[position]);
+#value = new u8(string[position]);
 #else {
-#value = new byte(string[position]+string[position+1])
+#value = new u8(string[position]+string[position+1])
 #}
 #this.stringIteratorFieldIndex = position + value.length;
 #}
@@ -491,7 +491,7 @@ pub fn (s string) strip_margin() string {
 
 // strip_margin_custom does the same as `strip_margin` but will use `del` as delimiter instead of `|`
 [direct_array_access]
-pub fn (s string) strip_margin_custom(del byte) string {
+pub fn (s string) strip_margin_custom(del u8) string {
 	mut sep := del
 	if sep.is_space() {
 		eprintln('Warning: `strip_margin` cannot use white-space as a delimiter')
@@ -500,7 +500,7 @@ pub fn (s string) strip_margin_custom(del byte) string {
 	}
 	// don't know how much space the resulting string will be, but the max it
 	// can be is this big
-	mut ret := []byte{}
+	mut ret := []u8{}
 	#ret = new array()
 
 	mut count := 0

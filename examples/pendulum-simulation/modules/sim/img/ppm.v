@@ -35,14 +35,14 @@ pub fn (s ImageSettings) to_grid_settings() sim.GridSettings {
 pub struct PPMWriter {
 mut:
 	file       os.File
-	cache      []byte
+	cache      []u8
 	cache_size int
 }
 
 pub fn ppm_writer_for_fname(fname string, settings ImageSettings) ?&PPMWriter {
 	mut writer := &PPMWriter{
 		cache_size: settings.cache_size
-		cache: []byte{cap: settings.cache_size}
+		cache: []u8{cap: settings.cache_size}
 	}
 	writer.start_for_file(fname, settings) ?
 	return writer

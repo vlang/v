@@ -1,9 +1,9 @@
 fn test_generics_with_complex_nested_generics_type() {
-	mut buf := []byte{}
+	mut buf := []u8{}
 	initial<string, u64>(buf)
 }
 
-fn initial<K, V>(buf []byte) map[K]V {
+fn initial<K, V>(buf []u8) map[K]V {
 	mut ret := map[K]V{}
 	for _ in 0 .. 3 {
 		k := get<K>(buf)
@@ -15,7 +15,7 @@ fn initial<K, V>(buf []byte) map[K]V {
 	return ret
 }
 
-fn get<T>(buf []byte) T {
+fn get<T>(buf []u8) T {
 	$if T is string {
 		return buf.bytestr() + 'get'
 	} $else $if T is u64 {

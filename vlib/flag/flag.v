@@ -4,7 +4,7 @@ module flag
 pub struct Flag {
 pub:
 	name     string // name as it appears on command line
-	abbr     byte   // shortcut
+	abbr     u8     // shortcut
 	usage    string // help message
 	val_desc string // something like '<arg>' that appears in usage,
 	// and also the default value, when the flag is not given
@@ -200,7 +200,7 @@ pub fn (mut fs FlagParser) allow_unknown_args() {
 
 // private helper to register a flag
 // This version supports abbreviations.
-fn (mut fs FlagParser) add_flag(name string, abbr byte, usage string, desc string) {
+fn (mut fs FlagParser) add_flag(name string, abbr u8, usage string, desc string) {
 	fs.flags << Flag{
 		name: name
 		abbr: abbr
@@ -219,7 +219,7 @@ fn (mut fs FlagParser) add_flag(name string, abbr byte, usage string, desc strin
 // - the name, usage are registered
 // - found arguments and corresponding values are removed from args list
 [manualfree]
-fn (mut fs FlagParser) parse_value(longhand string, shorthand byte) []string {
+fn (mut fs FlagParser) parse_value(longhand string, shorthand u8) []string {
 	full := '--$longhand'
 	defer {
 		unsafe { full.free() }
@@ -278,7 +278,7 @@ fn (mut fs FlagParser) parse_value(longhand string, shorthand byte) []string {
 // special: it is allowed to define bool flags without value
 // -> '--flag' is parsed as true
 // -> '--flag' is equal to '--flag=true'
-fn (mut fs FlagParser) parse_bool_value(longhand string, shorthand byte) ?string {
+fn (mut fs FlagParser) parse_bool_value(longhand string, shorthand u8) ?string {
 	{
 		full := '--$longhand'
 		for i, arg in fs.args {
@@ -305,7 +305,7 @@ fn (mut fs FlagParser) parse_bool_value(longhand string, shorthand byte) ?string
 				fs.args.delete(i)
 				return val
 			}
-			if arg.len > 1 && arg[0] == `-` && arg[1] != `-` && arg.index_byte(shorthand) != -1 {
+			if arg.len > 1 && arg[0] == `-` && arg[1] != `-` && arg.index_u8(shorthand) != -1 {
 				// -abc is equivalent to -a -b -c
 				return 'true'
 			}
@@ -317,7 +317,7 @@ fn (mut fs FlagParser) parse_bool_value(longhand string, shorthand byte) ?string
 // bool_opt returns an option with the bool value of the given command line flag, named `name`.
 // It returns an error, when the flag is not given by the user.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) bool_opt(name string, abbr byte, usage string) ?bool {
+pub fn (mut fs FlagParser) bool_opt(name string, abbr u8, usage string) ?bool {
 	mut res := false
 	{
 		fs.add_flag(name, abbr, usage, '<bool>')
@@ -333,7 +333,7 @@ pub fn (mut fs FlagParser) bool_opt(name string, abbr byte, usage string) ?bool 
 // If that flag is given by the user, then it returns its parsed bool value.
 // When it is not, it returns the default value in `bdefault`.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) bool(name string, abbr byte, bdefault bool, usage string) bool {
+pub fn (mut fs FlagParser) bool(name string, abbr u8, bdefault bool, usage string) bool {
 	value := fs.bool_opt(name, abbr, usage) or { return bdefault }
 	return value
 }
@@ -341,7 +341,7 @@ pub fn (mut fs FlagParser) bool(name string, abbr byte, bdefault bool, usage str
 // int_multi returns all values associated with the provided flag in `name`.
 // When that flag has no values, it returns an empty array.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) int_multi(name string, abbr byte, usage string) []int {
+pub fn (mut fs FlagParser) int_multi(name string, abbr u8, usage string) []int {
 	fs.add_flag(name, abbr, usage, '<multiple ints>')
 	parsed := fs.parse_value(name, abbr)
 	mut value := []int{}
@@ -354,7 +354,7 @@ pub fn (mut fs FlagParser) int_multi(name string, abbr byte, usage string) []int
 // int_opt returns an option with the integer value, associated with the flag in `name`.
 // When the flag is not given by the user, it returns an error.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) int_opt(name string, abbr byte, usage string) ?int {
+pub fn (mut fs FlagParser) int_opt(name string, abbr u8, usage string) ?int {
 	mut res := 0
 	{
 		fs.add_flag(name, abbr, usage, '<int>')
@@ -372,7 +372,7 @@ pub fn (mut fs FlagParser) int_opt(name string, abbr byte, usage string) ?int {
 // When the flag is given by the user, it returns its parsed integer value.
 // When it is not, it returns the integer value in `idefault`.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) int(name string, abbr byte, idefault int, usage string) int {
+pub fn (mut fs FlagParser) int(name string, abbr u8, idefault int, usage string) int {
 	value := fs.int_opt(name, abbr, usage) or { return idefault }
 	return value
 }
@@ -380,7 +380,7 @@ pub fn (mut fs FlagParser) int(name string, abbr byte, idefault int, usage strin
 // float_multi returns all floating point values, associated with the flag named `name`.
 // When no values for that flag are found, it returns an empty array.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) float_multi(name string, abbr byte, usage string) []f64 {
+pub fn (mut fs FlagParser) float_multi(name string, abbr u8, usage string) []f64 {
 	fs.add_flag(name, abbr, usage, '<multiple floats>')
 	parsed := fs.parse_value(name, abbr)
 	mut value := []f64{}
@@ -393,7 +393,7 @@ pub fn (mut fs FlagParser) float_multi(name string, abbr byte, usage string) []f
 // float_opt returns an option with the floating point value, associated with the flag in `name`.
 // When the flag is not given by the user, it returns an error.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) float_opt(name string, abbr byte, usage string) ?f64 {
+pub fn (mut fs FlagParser) float_opt(name string, abbr u8, usage string) ?f64 {
 	mut res := 0.0
 	{
 		fs.add_flag(name, abbr, usage, '<float>')
@@ -410,7 +410,7 @@ pub fn (mut fs FlagParser) float_opt(name string, abbr byte, usage string) ?f64 
 // When the flag is given by the user, it returns its parsed floating point value.
 // When it is not, it returns the value in `fdefault`.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) float(name string, abbr byte, fdefault f64, usage string) f64 {
+pub fn (mut fs FlagParser) float(name string, abbr u8, fdefault f64, usage string) f64 {
 	value := fs.float_opt(name, abbr, usage) or { return fdefault }
 	return value
 }
@@ -418,7 +418,7 @@ pub fn (mut fs FlagParser) float(name string, abbr byte, fdefault f64, usage str
 // string_multi returns all string values, associated with the flag named `name`.
 // When no values for that flag are found, it returns an empty array.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) string_multi(name string, abbr byte, usage string) []string {
+pub fn (mut fs FlagParser) string_multi(name string, abbr u8, usage string) []string {
 	fs.add_flag(name, abbr, usage, '<multiple strings>')
 	return fs.parse_value(name, abbr)
 }
@@ -426,7 +426,7 @@ pub fn (mut fs FlagParser) string_multi(name string, abbr byte, usage string) []
 // string_opt returns an option with the string value, associated with the flag in `name`.
 // When the flag is not given by the user, it returns an error.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) string_opt(name string, abbr byte, usage string) ?string {
+pub fn (mut fs FlagParser) string_opt(name string, abbr u8, usage string) ?string {
 	mut res := ''
 	{
 		fs.add_flag(name, abbr, usage, '<string>')
@@ -443,7 +443,7 @@ pub fn (mut fs FlagParser) string_opt(name string, abbr byte, usage string) ?str
 // If that flag is given as an option, then its parsed value is returned as a string.
 // When it is not, it returns the default string value in `sdefault`.
 // This version supports abbreviations.
-pub fn (mut fs FlagParser) string(name string, abbr byte, sdefault string, usage string) string {
+pub fn (mut fs FlagParser) string(name string, abbr u8, sdefault string, usage string) string {
 	value := fs.string_opt(name, abbr, usage) or { return sdefault }
 	return value
 }

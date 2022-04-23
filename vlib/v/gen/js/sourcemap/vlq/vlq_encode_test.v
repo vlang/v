@@ -7,7 +7,7 @@ struct TestData {
 
 struct TestWriter {
 pub mut:
-	bytes []byte
+	bytes []u8
 }
 
 fn test_encode_a() ? {
@@ -29,7 +29,7 @@ fn test_encode_a() ? {
 	}
 }
 
-fn (mut w TestWriter) write(buf []byte) ?int {
+fn (mut w TestWriter) write(buf []u8) ?int {
 	w.bytes << buf
 	return buf.len
 }

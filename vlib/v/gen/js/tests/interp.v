@@ -98,8 +98,8 @@ fn interpolation_string_prefix_expr() {
 inttypes_string_interpolation()
 fn inttypes_string_interpolation() {
 	c := i8(-103)
-	uc := byte(217)
-	uc2 := byte(13)
+	uc := u8(217)
+	uc2 := u8(13)
 	s := i16(-23456)
 	us := u16(54321)
 	i := -1622999040

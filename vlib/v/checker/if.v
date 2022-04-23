@@ -11,8 +11,8 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 	mut node_is_expr := false
 	if node.branches.len > 0 && node.has_else {
 		stmts := node.branches[0].stmts
-		if stmts.len > 0 && stmts[stmts.len - 1] is ast.ExprStmt
-			&& (stmts[stmts.len - 1] as ast.ExprStmt).typ != ast.void_type {
+		if stmts.len > 0 && stmts.last() is ast.ExprStmt
+			&& (stmts.last() as ast.ExprStmt).typ != ast.void_type {
 			node_is_expr = true
 		}
 	}
@@ -156,8 +156,8 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			c.smartcast_cond_pos = token.Pos{}
 		}
 		if expr_required {
-			if branch.stmts.len > 0 && branch.stmts[branch.stmts.len - 1] is ast.ExprStmt {
-				mut last_expr := branch.stmts[branch.stmts.len - 1] as ast.ExprStmt
+			if branch.stmts.len > 0 && branch.stmts.last() is ast.ExprStmt {
+				mut last_expr := branch.stmts.last() as ast.ExprStmt
 				c.expected_type = former_expected_type
 				if c.expected_type.has_flag(.optional) {
 					if node.typ == ast.void_type {
@@ -173,6 +173,13 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					continue
 				}
 				last_expr.typ = c.expr(last_expr.expr)
+				if c.table.type_kind(c.expected_type) == .multi_return
+					&& c.table.type_kind(last_expr.typ) == .multi_return {
+					if node.typ == ast.void_type {
+						node.is_expr = true
+						node.typ = c.expected_type
+					}
+				}
 				if !c.check_types(last_expr.typ, node.typ) {
 					if node.typ == ast.void_type {
 						// first branch of if expression
@@ -204,10 +211,20 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						}
 					}
 					if node.is_expr && c.table.sym(former_expected_type).kind == .sum_type {
+						node.typ = former_expected_type
 						continue
 					}
 					if is_noreturn_callexpr(last_expr.expr) {
 						continue
+					}
+					node_sym := c.table.sym(node.typ)
+					last_sym := c.table.sym(last_expr.typ)
+					if node_sym.kind == .multi_return && last_sym.kind == .multi_return {
+						node_types := node_sym.mr_info().types
+						last_types := last_sym.mr_info().types.map(ast.mktyp(it))
+						if node_types == last_types {
+							continue
+						}
 					}
 
 					c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(last_expr.typ)}`',
@@ -279,7 +296,7 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 			c.smartcast_if_conds(node.right, mut scope)
 		} else if node.op == .key_is {
 			right_expr := node.right
-			mut right_type := match right_expr {
+			right_type := match right_expr {
 				ast.TypeNode {
 					right_expr.typ
 				}
@@ -291,18 +308,20 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 					ast.Type(0)
 				}
 			}
-			right_type = c.unwrap_generic(right_type)
 			if right_type != ast.Type(0) {
 				left_sym := c.table.sym(node.left_type)
 				right_sym := c.table.sym(right_type)
-				expr_type := c.unwrap_generic(c.expr(node.left))
+				mut expr_type := c.expr(node.left)
+				if left_sym.kind == .aggregate {
+					expr_type = (left_sym.info as ast.Aggregate).sum_type
+				}
 				if left_sym.kind == .interface_ {
 					if right_sym.kind != .interface_ {
 						c.type_implements(right_type, expr_type, node.pos)
 					} else {
 						return
 					}
-				} else if !c.check_types(right_type, expr_type) {
+				} else if !c.check_types(right_type, expr_type) && left_sym.kind != .sum_type {
 					expect_str := c.table.type_to_str(right_type)
 					expr_str := c.table.type_to_str(expr_type)
 					c.error('cannot use type `$expect_str` as type `$expr_str`', node.pos)

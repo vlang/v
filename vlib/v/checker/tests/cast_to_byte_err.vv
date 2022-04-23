@@ -7,17 +7,17 @@ type FAlias = f32
 
 fn main() {
 	// should be errors:
-	_ := byte('hello')
-	_ := byte(SAlias('hello'))
+	_ := u8('hello')
+	_ := u8(SAlias('hello'))
 
 	// should be allowed:
-	_ := byte(char(1))
-	_ := byte(int(1))
-	_ := byte(u32(1))
-	_ := byte(f32(1.0))
+	_ := u8(char(1))
+	_ := u8(int(1))
+	_ := u8(u32(1))
+	_ := u8(f32(1.0))
 
-	_ := byte(CAlias(1))
-	_ := byte(IAlias(1))
-	_ := byte(UAlias(1))
-	_ := byte(FAlias(1))
+	_ := u8(CAlias(1))
+	_ := u8(IAlias(1))
+	_ := u8(UAlias(1))
+	_ := u8(FAlias(1))
 }

@@ -49,7 +49,7 @@ fn test_socket() {
 	$if debug {
 		println('send socket: $socket.sock.handle')
 	}
-	mut buf := []byte{len: 1024}
+	mut buf := []u8{len: 1024}
 	nbytes := client.read(mut buf) or {
 		assert false
 		return
@@ -71,7 +71,7 @@ fn test_socket_write_and_read() {
 	}
 	message1 := 'a message 1'
 	socket.write_string(message1) or { assert false }
-	mut rbuf := []byte{len: message1.len}
+	mut rbuf := []u8{len: message1.len}
 	client.read(mut rbuf) or {
 		assert false
 		return

@@ -10,7 +10,7 @@ pub struct C.FONSparams {
 	// int (*renderResize)(void* uptr, int width, int height)
 	renderResize fn (uptr voidptr, width int, height int) int
 	// void (*renderUpdate)(void* uptr, int* rect, const unsigned char* data)
-	renderUpdate fn (uptr voidptr, rect &int, data &byte)
+	renderUpdate fn (uptr voidptr, rect &int, data &u8)
 	// void (*renderDraw)(void* uptr, const float* verts, const float* tcoords, const unsigned int* colors, int nverts)
 	renderDraw fn (uptr voidptr, verts &f32, tcoords &f32, colors &u32, nverts int)
 	// void (*renderDelete)(void* uptr)
@@ -40,9 +40,9 @@ pub struct C.FONStextIter {
 	iblur          i16
 	font           &C.FONSfont
 	prevGlyphIndex int
-	str            &byte
-	next           &byte
-	end            &byte
+	str            &u8
+	next           &u8
+	end            &u8
 	utf8state      u32
 }
 

@@ -66,8 +66,9 @@ fn main() {
 		}
 		target_path := os.join_path(tfolder, texe)
 		os.mv_by_cp(tpath, target_path) or {
-			if !err.msg.contains('vbuild-tools') && !err.msg.contains('vtest-all') {
-				eprintln('error while moving $tpath to $target_path: $err.msg')
+			emsg := err.msg()
+			if !emsg.contains('vbuild-tools') && !emsg.contains('vtest-all') {
+				eprintln('error while moving $tpath to $target_path: $emsg')
 			}
 			continue
 		}

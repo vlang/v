@@ -1,4 +1,4 @@
-fn uu8(a byte) {}
+fn uu8(a u8) {}
 
 fn arr(a []int) {}
 

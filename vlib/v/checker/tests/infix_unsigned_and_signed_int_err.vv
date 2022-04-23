@@ -1,9 +1,0 @@
-fn main() {
-	if u32(1) < -1 {
-		println('unexpected')
-	}
-
-	if -1 > u32(1) {
-		println('unexpected')
-	}
-}

@@ -44,18 +44,25 @@ struct Reader {
 	// headings          []string
 	data string
 pub mut:
-	delimiter         byte
-	comment           byte
+	delimiter         u8
+	comment           u8
 	is_mac_pre_osx_le bool
 	row_pos           int
 }
 
-// new_reader initializes a Reader with string data to parse
-pub fn new_reader(data string) &Reader {
+[params]
+pub struct ReaderConfig {
+	delimiter u8 = `,`
+	comment   u8 = `#`
+}
+
+// new_reader initializes a Reader with string data to parse and,
+// optionally, a custom delimiter.
+pub fn new_reader(data string, config ReaderConfig) &Reader {
 	return &Reader{
-		delimiter: `,`
-		comment: `#`
 		data: data
+		delimiter: config.delimiter
+		comment: config.comment
 	}
 }
 
@@ -203,6 +210,6 @@ fn (mut r Reader) read_record() ?[]string {
 	return fields
 }
 
-fn valid_delim(b byte) bool {
+fn valid_delim(b u8) bool {
 	return b != 0 && b != `"` && b != `\r` && b != `\n`
 }

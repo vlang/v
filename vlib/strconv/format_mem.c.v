@@ -23,13 +23,13 @@ pub fn format_str_sb(s string, p BF_param, mut sb strings.Builder) {
 
 	if p.allign == .right {
 		for i1 := 0; i1 < dif; i1++ {
-			sb.write_byte(p.pad_ch)
+			sb.write_u8(p.pad_ch)
 		}
 	}
 	sb.write_string(s)
 	if p.allign == .left {
 		for i1 := 0; i1 < dif; i1++ {
-			sb.write_byte(p.pad_ch)
+			sb.write_u8(p.pad_ch)
 		}
 	}
 }
@@ -53,17 +53,17 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 		if p.pad_ch == `0` {
 			if p.positive {
 				if p.sign_flag {
-					res.write_byte(`+`)
+					res.write_u8(`+`)
 					sign_written = true
 				}
 			} else {
-				res.write_byte(`-`)
+				res.write_u8(`-`)
 				sign_written = true
 			}
 		}
 		// write the pad chars
 		for i1 := 0; i1 < dif; i1++ {
-			res.write_byte(p.pad_ch)
+			res.write_u8(p.pad_ch)
 		}
 	}
 
@@ -71,21 +71,21 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 		// no pad char, write the sign before the number
 		if p.positive {
 			if p.sign_flag {
-				res.write_byte(`+`)
+				res.write_u8(`+`)
 			}
 		} else {
-			res.write_byte(`-`)
+			res.write_u8(`-`)
 		}
 	}
 
 	/*
 	// Legacy version
 	// max u64 18446744073709551615 => 20 byte
-	mut buf := [32]byte{}
+	mut buf := [32]u8{}
 	mut i := 20
 	mut d1 := d
 	for i >= (21 - n_char) {
-		buf[i] = byte(d1 % 10) + `0`
+		buf[i] = u8(d1 % 10) + `0`
 		d1 = d1 / 10
 		i--
 	}
@@ -95,7 +95,7 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 	//===========================================
 	// Speed version
 	// max u64 18446744073709551615 => 20 byte
-	mut buf := [32]byte{}
+	mut buf := [32]u8{}
 	mut i := 20
 	mut n := d
 	mut d_i := u64(0)
@@ -123,13 +123,13 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 		unsafe { res.write_ptr(&buf[i], n_char) }
 	} else {
 		// we have a zero no need of more code!
-		res.write_byte(`0`)
+		res.write_u8(`0`)
 	}
 	//===========================================
 
 	if p.allign == .left {
 		for i1 := 0; i1 < dif; i1++ {
-			res.write_byte(p.pad_ch)
+			res.write_u8(p.pad_ch)
 		}
 	}
 	return
@@ -147,7 +147,7 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 
 		m_sgn_flag := false
 		mut sgn := 1
-		mut b := [26]byte{}
+		mut b := [26]u8{}
 		mut d_pos := 1
 		mut i := 0
 		mut i1 := 0
@@ -208,8 +208,8 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 		}
 
 		// allocate exp+32 chars for the return string
-		// mut res := []byte{len:exp+32,init:`0`}
-		mut res := []byte{len: exp + 32, init: 0}
+		// mut res := []u8{len:exp+32,init:`0`}
+		mut res := []u8{len: exp + 32, init: 0}
 		mut r_i := 0 // result string buffer index
 
 		// println("s:${sgn} b:${b[0]} es:${exp_sgn} exp:${exp}")
@@ -490,7 +490,7 @@ pub fn remove_tail_zeros(s string) string {
 			mut i_s1 := i_s + 1
 			mut sum := 0
 			for i_s1 < s.len && s[i_s1] >= `0` && s[i_s1] <= `9` {
-				sum += s[i_s1] - byte(`0`)
+				sum += s[i_s1] - u8(`0`)
 				i_s1++
 			}
 			// decimal part must be copied

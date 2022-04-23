@@ -47,7 +47,7 @@ fn (mut g Gen) gen_embed_file_init(mut node ast.ComptimeCall) {
 					eprintln('unable to read compressed file')
 					{
 					}
-					[]byte{}
+					[]u8{}
 				}
 				os.rm(cache_path) or {} // clean up
 				node.embed_file.is_compressed = compressed_bytes.len > 0

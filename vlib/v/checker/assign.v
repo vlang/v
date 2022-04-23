@@ -23,6 +23,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				c.expected_type = c.expr(node.left[i])
 			}
 			right_type := c.expr(right)
+			c.fail_if_unreadable(right, right_type, 'right-hand side of assignment')
 			if i == 0 {
 				right_type0 = right_type
 				node.right_types = [
@@ -185,7 +186,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		// Do not allow `a := 0; b := 0; a = &b`
 		if !is_decl && left is ast.Ident && !is_blank_ident && !left_type.is_real_pointer()
-			&& right_type.is_real_pointer() {
+			&& right_type.is_real_pointer() && !right_type.has_flag(.shared_f) {
 			left_sym := c.table.sym(left_type)
 			if left_sym.kind != .function {
 				c.warn(
@@ -274,18 +275,10 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					if !c.inside_unsafe && !c.pref.translated && !c.file.is_translated {
 						c.error('modifying variables via dereferencing can only be done in `unsafe` blocks',
 							node.pos)
-					} else {
+					} else if mut left.right is ast.Ident {
 						// mark `p` in `*p = val` as used:
-						match mut left.right {
-							ast.Ident {
-								match mut left.right.obj {
-									ast.Var {
-										left.right.obj.is_used = true
-									}
-									else {}
-								}
-							}
-							else {}
+						if mut left.right.obj is ast.Var {
+							left.right.obj.is_used = true
 						}
 					}
 				}
@@ -329,14 +322,26 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		left_sym := c.table.sym(left_type_unwrapped)
 		right_sym := c.table.sym(right_type_unwrapped)
 		if left_sym.kind == .array && !c.inside_unsafe && node.op in [.assign, .decl_assign]
-			&& right_sym.kind == .array && (left is ast.Ident && !left.is_blank_ident())
+			&& right_sym.kind == .array && left is ast.Ident && !left.is_blank_ident()
 			&& right is ast.Ident {
 			// Do not allow `a = b`, only `a = b.clone()`
 			c.error('use `array2 $node.op.str() array1.clone()` instead of `array2 $node.op.str() array1` (or use `unsafe`)',
 				node.pos)
 		}
+		if left_sym.kind == .array && right_sym.kind == .array {
+			// `mut arr := [u8(1),2,3]`
+			// `arr = [byte(4),5,6]`
+			left_info := left_sym.info as ast.Array
+			left_elem_type := c.table.unaliased_type(left_info.elem_type)
+			right_info := right_sym.info as ast.Array
+			right_elem_type := c.table.unaliased_type(right_info.elem_type)
+			if left_type_unwrapped.nr_muls() == right_type_unwrapped.nr_muls()
+				&& left_info.nr_dims == right_info.nr_dims && left_elem_type == right_elem_type {
+				continue
+			}
+		}
 		if left_sym.kind == .array_fixed && !c.inside_unsafe && node.op in [.assign, .decl_assign]
-			&& right_sym.kind == .array_fixed && (left is ast.Ident && !left.is_blank_ident())
+			&& right_sym.kind == .array_fixed && left is ast.Ident && !left.is_blank_ident()
 			&& right is ast.Ident {
 			if right_sym.info is ast.ArrayFixed {
 				if right_sym.info.elem_type.is_ptr() {
@@ -346,8 +351,8 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 		}
 		if left_sym.kind == .map && node.op in [.assign, .decl_assign] && right_sym.kind == .map
-			&& ((right is ast.Ident && right.is_auto_deref_var())
-			|| !right_type.is_ptr()) && !left.is_blank_ident() && right.is_lvalue() {
+			&& !left.is_blank_ident() && right.is_lvalue()
+			&& (!right_type.is_ptr() || (right is ast.Ident && right.is_auto_deref_var())) {
 			// Do not allow `a = b`
 			c.error('cannot copy map: call `move` or `clone` method (or use a reference)',
 				right.pos())
@@ -363,8 +368,8 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				c.error('cannot assign to `$left`: ' +
 					c.expected_msg(right_type_unwrapped, left_type_unwrapped), right.pos())
 			}
-			if (right is ast.StructInit || !right_is_ptr) && !(right_sym.is_number()
-				|| left_type.has_flag(.shared_f)) {
+			if !right_sym.is_number() && !left_type.has_flag(.shared_f)
+				&& (right is ast.StructInit || !right_is_ptr) {
 				left_name := c.table.type_to_str(left_type_unwrapped)
 				mut rtype := right_type_unwrapped
 				if rtype.is_ptr() {
@@ -475,8 +480,8 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			else {}
 		}
 		if node.op in [.plus_assign, .minus_assign, .mod_assign, .mult_assign, .div_assign]
-			&& ((left_sym.kind == .struct_ && right_sym.kind == .struct_)
-			|| left_sym.kind == .alias) {
+			&& (left_sym.kind == .alias || (left_sym.kind == .struct_
+			&& right_sym.kind == .struct_)) {
 			left_name := c.table.type_to_str(left_type_unwrapped)
 			right_name := c.table.type_to_str(right_type_unwrapped)
 			parent_sym := c.table.final_sym(left_type_unwrapped)
@@ -551,7 +556,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				is_shared = left_first.info.share == .shared_t
 			}
 			old_inside_ref_lit := c.inside_ref_lit
-			c.inside_ref_lit = (c.inside_ref_lit || right_node.op == .amp || is_shared)
+			c.inside_ref_lit = c.inside_ref_lit || right_node.op == .amp || is_shared
 			c.expr(right_node.right)
 			c.inside_ref_lit = old_inside_ref_lit
 			if right_node.op == .amp {
@@ -559,15 +564,10 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					if right_node.right.obj is ast.Var {
 						v := right_node.right.obj
 						right_type0 = v.typ
-						if !v.is_mut && assigned_var.is_mut && !c.inside_unsafe {
-							c.error('`$right_node.right.name` is immutable, cannot have a mutable reference to it',
-								right_node.pos)
-						}
-					} else if right_node.right.obj is ast.ConstField {
-						if assigned_var.is_mut && !c.inside_unsafe {
-							c.error('`$right_node.right.name` is immutable, cannot have a mutable reference to it',
-								right_node.pos)
-						}
+					}
+					if !c.inside_unsafe && assigned_var.is_mut() && !right_node.right.is_mut() {
+						c.error('`$right_node.right.name` is immutable, cannot have a mutable reference to it',
+							right_node.pos)
 					}
 				}
 			}

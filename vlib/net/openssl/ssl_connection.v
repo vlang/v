@@ -147,7 +147,7 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ? {
 	}
 }
 
-pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &byte, len int) ?int {
+pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) ?int {
 	mut res := 0
 	for {
 		res = C.SSL_read(voidptr(s.ssl), buf_ptr, len)
@@ -179,15 +179,15 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &byte, len int) ?int {
 	return res
 }
 
-pub fn (mut s SSLConn) read(mut buffer []byte) ?int {
-	res := s.socket_read_into_ptr(&byte(buffer.data), buffer.len) ?
+pub fn (mut s SSLConn) read(mut buffer []u8) ?int {
+	res := s.socket_read_into_ptr(&u8(buffer.data), buffer.len) ?
 	return res
 }
 
 // write number of bytes to SSL connection
-pub fn (mut s SSLConn) write(bytes []byte) ?int {
+pub fn (mut s SSLConn) write(bytes []u8) ?int {
 	unsafe {
-		mut ptr_base := &byte(bytes.data)
+		mut ptr_base := &u8(bytes.data)
 		mut total_sent := 0
 		for total_sent < bytes.len {
 			ptr := ptr_base + total_sent

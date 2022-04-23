@@ -257,9 +257,12 @@ fn (ts TypeSymbol) dbg_common(mut res []string) {
 	res << 'language: $ts.language'
 }
 
+pub fn (t Type) str() string {
+	return 'ast.Type(0x$t.hex() = ${u32(t)})'
+}
+
 pub fn (t &Table) type_str(typ Type) string {
-	sym := t.sym(typ)
-	return sym.name
+	return t.sym(typ).name
 }
 
 // debug returns a verbose representation of the information in the type `t`, useful for tracing/debugging
@@ -370,6 +373,22 @@ pub fn (typ Type) is_unsigned() bool {
 	return typ.idx() in ast.unsigned_integer_type_idxs
 }
 
+pub fn (typ Type) flip_signedness() Type {
+	return match typ {
+		ast.i8_type { ast.byte_type }
+		ast.i16_type { ast.u16_type }
+		ast.int_type { ast.u32_type }
+		ast.isize_type { ast.usize_type }
+		ast.i64_type { ast.u64_type }
+		ast.byte_type { ast.i8_type }
+		ast.u16_type { ast.i16_type }
+		ast.u32_type { ast.int_type }
+		ast.usize_type { ast.isize_type }
+		ast.u64_type { ast.i64_type }
+		else { typ }
+	}
+}
+
 [inline]
 pub fn (typ Type) is_int_literal() bool {
 	return int(typ) == ast.int_literal_type_idx
@@ -420,24 +439,27 @@ pub const (
 	int_literal_type_idx   = 27
 	thread_type_idx        = 28
 	error_type_idx         = 29
-	u8_type_idx            = 30
+		// u8_type_idx            = 30
 )
 
 // Note: builtin_type_names must be in the same order as the idx consts above
 pub const builtin_type_names = ['void', 'voidptr', 'byteptr', 'charptr', 'i8', 'i16', 'int', 'i64',
-	'isize', 'byte', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'char', 'bool', 'none', 'string',
+	'isize', 'u8', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'char', 'bool', 'none', 'string',
 	'rune', 'array', 'map', 'chan', 'any', 'float_literal', 'int_literal', 'thread', 'Error', 'u8']
 
 pub const builtin_type_names_matcher = build_builtin_type_names_matcher()
 
 pub const (
 	integer_type_idxs          = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx,
-		byte_type_idx, u8_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx,
-		usize_type_idx, int_literal_type_idx, rune_type_idx]
+		byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx, usize_type_idx,
+		int_literal_type_idx, rune_type_idx]
 	signed_integer_type_idxs   = [char_type_idx, i8_type_idx, i16_type_idx, int_type_idx,
 		i64_type_idx, isize_type_idx]
-	unsigned_integer_type_idxs = [byte_type_idx, u8_type_idx, u16_type_idx, u32_type_idx,
-		u64_type_idx, usize_type_idx]
+	unsigned_integer_type_idxs = [byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx,
+		usize_type_idx]
+	// C will promote any type smaller than int to int in an expression
+	int_promoted_type_idxs     = [char_type_idx, i8_type_idx, i16_type_idx, byte_type_idx,
+		u16_type_idx]
 	float_type_idxs            = [f32_type_idx, f64_type_idx, float_literal_type_idx]
 	number_type_idxs           = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx,
 		byte_type_idx, char_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx,
@@ -459,7 +481,7 @@ pub const (
 	i64_type           = new_type(i64_type_idx)
 	isize_type         = new_type(isize_type_idx)
 	byte_type          = new_type(byte_type_idx)
-	u8_type            = new_type(u8_type_idx)
+	// u8_type            = new_type(u8_type_idx)
 	u16_type           = new_type(u16_type_idx)
 	u32_type           = new_type(u32_type_idx)
 	u64_type           = new_type(u64_type_idx)
@@ -486,7 +508,7 @@ pub const (
 )
 
 pub fn merge_types(params ...[]Type) []Type {
-	mut res := []Type{}
+	mut res := []Type{cap: params.len}
 	for types in params {
 		res << types
 	}
@@ -494,10 +516,10 @@ pub fn merge_types(params ...[]Type) []Type {
 }
 
 pub fn mktyp(typ Type) Type {
-	match typ {
-		ast.float_literal_type { return ast.f64_type }
-		ast.int_literal_type { return ast.int_type }
-		else { return typ }
+	return match typ {
+		ast.float_literal_type { ast.f64_type }
+		ast.int_literal_type { ast.int_type }
+		else { typ }
 	}
 }
 
@@ -532,7 +554,6 @@ pub enum Kind {
 	int
 	i64
 	isize
-	byte
 	u8
 	u16
 	u32
@@ -721,7 +742,7 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_sym(kind: .int, name: 'int', cname: 'int', mod: 'builtin')
 	t.register_sym(kind: .i64, name: 'i64', cname: 'i64', mod: 'builtin')
 	t.register_sym(kind: .isize, name: 'isize', cname: 'isize', mod: 'builtin')
-	t.register_sym(kind: .byte, name: 'byte', cname: 'byte', mod: 'builtin')
+	t.register_sym(kind: .u8, name: 'u8', cname: 'u8', mod: 'builtin')
 	t.register_sym(kind: .u16, name: 'u16', cname: 'u16', mod: 'builtin')
 	t.register_sym(kind: .u32, name: 'u32', cname: 'u32', mod: 'builtin')
 	t.register_sym(kind: .u64, name: 'u64', cname: 'u64', mod: 'builtin')
@@ -769,7 +790,7 @@ pub fn (t &TypeSymbol) is_pointer() bool {
 
 [inline]
 pub fn (t &TypeSymbol) is_int() bool {
-	res := t.kind in [.i8, .i16, .int, .i64, .isize, .byte, .u16, .u32, .u64, .usize, .int_literal,
+	res := t.kind in [.i8, .i16, .int, .i64, .isize, .u8, .u16, .u32, .u64, .usize, .int_literal,
 		.rune]
 	if !res && t.kind == .alias {
 		return (t.info as Alias).parent_type.is_number()
@@ -804,7 +825,7 @@ pub fn (t &TypeSymbol) is_builtin() bool {
 
 // for debugging/errors only, perf is not an issue
 pub fn (k Kind) str() string {
-	k_str := match k {
+	return match k {
 		.placeholder { 'placeholder' }
 		.void { 'void' }
 		.voidptr { 'voidptr' }
@@ -816,7 +837,6 @@ pub fn (k Kind) str() string {
 		.i16 { 'i16' }
 		.i64 { 'i64' }
 		.isize { 'isize' }
-		.byte { 'byte' }
 		.u8 { 'u8' }
 		.u16 { 'u16' }
 		.u32 { 'u32' }
@@ -846,7 +866,6 @@ pub fn (k Kind) str() string {
 		.aggregate { 'aggregate' }
 		.thread { 'thread' }
 	}
-	return k_str
 }
 
 pub fn (kinds []Kind) str() string {
@@ -915,7 +934,8 @@ pub struct Aggregate {
 mut:
 	fields []StructField // used for faster lookup inside the module
 pub:
-	types []Type
+	sum_type Type
+	types    []Type
 }
 
 pub struct Array {
@@ -928,7 +948,7 @@ pub mut:
 pub struct ArrayFixed {
 pub:
 	size      int
-	size_expr Expr // used by fmt for e.g. ´[my_const]byte´
+	size_expr Expr // used by fmt for e.g. ´[my_const]u8´
 pub mut:
 	elem_type Type
 }
@@ -997,8 +1017,8 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 	// explicitly.
 	match sym.kind {
 		.int_literal, .float_literal {}
-		.i8, .i16, .int, .i64, .isize, .byte, .u8, .u16, .u32, .u64, .usize, .f32, .f64, .char,
-		.rune, .string, .bool, .none_, .voidptr, .byteptr, .charptr {
+		.i8, .i16, .int, .i64, .isize, .u8, .u16, .u32, .u64, .usize, .f32, .f64, .char, .rune,
+		.string, .bool, .none_, .voidptr, .byteptr, .charptr {
 			// primitive types
 			res = sym.kind.str()
 		}
@@ -1126,6 +1146,13 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 		}
 		.alias, .any, .placeholder, .enum_ {
 			res = t.shorten_user_defined_typenames(res, import_aliases)
+			/*
+			if res.ends_with('.byte') {
+				res = 'u8'
+			} else {
+				res = t.shorten_user_defined_typenames(res, import_aliases)
+			}
+			*/
 		}
 		.aggregate {}
 	}
@@ -1151,6 +1178,13 @@ fn (t Table) shorten_user_defined_typenames(originalname string, import_aliases 
 	} else if res in import_aliases {
 		res = import_aliases[res]
 	} else {
+		// FIXME: clean this case and remove the following if
+		// because it is an hack to format well the type when
+		// there is a []modul.name
+		if res.contains('[]') {
+			idx := res.index('.') or { -1 }
+			return res[idx + 1..]
+		}
 		// types defined by the user
 		// mod.submod.submod2.Type => submod2.Type
 		mut parts := res.split('.')

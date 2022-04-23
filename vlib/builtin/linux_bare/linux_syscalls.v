@@ -254,7 +254,7 @@ fn sys_close(fd i64) Errno {
 fn sys_mmap(addr &byte, len u64, prot MemProt, flags MapFlags, fildes u64, off u64) (&byte, Errno) {
 	rc := sys_call6(9, u64(addr), len, u64(prot), u64(flags), fildes, off)
 	a, e := split_int_errno(rc)
-	return &byte(a), e
+	return &u8(a), e
 }
 
 // 11 sys_munmap
@@ -266,7 +266,7 @@ fn sys_munmap(addr voidptr, len u64) Errno {
 fn sys_mremap(old_addr voidptr, old_len u64, new_len u64, flags u64) (&byte, Errno) {
 	rc := sys_call4(25, u64(old_addr), old_len, new_len, flags)
 	a, e := split_int_errno(rc)
-	return &byte(a), e
+	return &u8(a), e
 }
 
 // 22  sys_pipe

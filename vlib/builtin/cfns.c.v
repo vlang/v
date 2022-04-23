@@ -27,7 +27,7 @@ fn C.sprintf(a ...voidptr) int
 
 fn C.strlen(s &char) int
 
-fn C.sscanf(&byte, &byte, ...&byte) int
+fn C.sscanf(&u8, &u8, ...&u8) int
 
 [trusted]
 fn C.isdigit(c int) bool
@@ -53,6 +53,7 @@ fn C.chmod(&char, u32) int
 fn C.printf(&char, ...voidptr) int
 
 fn C.puts(&char) int
+fn C.abs(f64) f64
 
 fn C.fputs(str &char, stream &C.FILE) int
 
@@ -247,11 +248,11 @@ fn C.CreateProcessW(lpApplicationName &u16, lpCommandLine &u16, lpProcessAttribu
 
 fn C.ReadFile(hFile voidptr, lpBuffer voidptr, nNumberOfBytesToRead u32, lpNumberOfBytesRead C.LPDWORD, lpOverlapped voidptr) bool
 
-fn C.GetFileAttributesW(lpFileName &byte) u32
+fn C.GetFileAttributesW(lpFileName &u8) u32
 
-fn C.RegQueryValueEx(hKey voidptr, lpValueName &u16, lp_reserved &u32, lpType &u32, lpData &byte, lpcbData &u32) voidptr
+fn C.RegQueryValueEx(hKey voidptr, lpValueName &u16, lp_reserved &u32, lpType &u32, lpData &u8, lpcbData &u32) voidptr
 
-fn C.RegQueryValueExW(hKey voidptr, lpValueName &u16, lp_reserved &u32, lpType &u32, lpData &byte, lpcbData &u32) int
+fn C.RegQueryValueExW(hKey voidptr, lpValueName &u16, lp_reserved &u32, lpType &u32, lpData &u8, lpcbData &u32) int
 
 fn C.RegOpenKeyEx(hKey voidptr, lpSubKey &u16, ulOptions u32, samDesired u32, phkResult voidptr) voidptr
 
@@ -259,7 +260,7 @@ fn C.RegOpenKeyExW(hKey voidptr, lpSubKey &u16, ulOptions u32, samDesired u32, p
 
 fn C.RegSetValueEx() voidptr
 
-fn C.RegSetValueExW(hKey voidptr, lpValueName &u16, reserved u32, dwType u32, lpData &byte, lpcbData u32) int
+fn C.RegSetValueExW(hKey voidptr, lpValueName &u16, reserved u32, dwType u32, lpData &u8, lpcbData u32) int
 
 fn C.RegCloseKey(hKey voidptr)
 
@@ -331,7 +332,7 @@ fn C.LocalFree()
 
 fn C.FindFirstFileW(lpFileName &u16, lpFindFileData voidptr) voidptr
 
-fn C.FindFirstFile(lpFileName &byte, lpFindFileData voidptr) voidptr
+fn C.FindFirstFile(lpFileName &u8, lpFindFileData voidptr) voidptr
 
 fn C.FindNextFile(hFindFile voidptr, lpFindFileData voidptr) int
 
@@ -361,7 +362,7 @@ fn C.closesocket(int) int
 
 fn C.vschannel_init(&C.TlsContext)
 
-fn C.request(&C.TlsContext, int, &u16, &byte, &&byte) int
+fn C.request(&C.TlsContext, int, &u16, &u8, &&u8) int
 
 fn C.vschannel_cleanup(&C.TlsContext)
 
@@ -370,19 +371,19 @@ fn C.URLDownloadToFile(int, &u16, &u16, int, int)
 [trusted]
 fn C.GetLastError() u32
 
-fn C.CreateDirectory(&byte, int) bool
+fn C.CreateDirectory(&u8, int) bool
 
 // win crypto
 fn C.BCryptGenRandom(int, voidptr, int, int) int
 
 // win synchronization
-fn C.CreateMutex(int, bool, &byte) voidptr
+fn C.CreateMutex(int, bool, &u8) voidptr
 
 fn C.WaitForSingleObject(voidptr, int) int
 
 fn C.ReleaseMutex(voidptr) bool
 
-fn C.CreateEvent(int, bool, bool, &byte) voidptr
+fn C.CreateEvent(int, bool, bool, &u8) voidptr
 
 fn C.SetEvent(voidptr) int
 
@@ -480,4 +481,4 @@ fn C.dup2(oldfd int, newfd int) int
 fn C.glTexImage2D()
 
 // used by ios for println
-fn C.WrappedNSLog(str &byte)
+fn C.WrappedNSLog(str &u8)

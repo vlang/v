@@ -102,15 +102,15 @@ fn amd64_bytes(nargs int) string {
 		else {
 			// see https://godbolt.org/z/64e5TEf5n for similar assembly
 			mut sb := strings.new_builder(256)
-			s := (((byte(nargs) & 1) + 1) << 3).hex()
+			s := (((u8(nargs) & 1) + 1) << 3).hex()
 			sb.write_string('0x48, 0x83, 0xec, 0x$s, ') // sub rsp,0x8  <OR>  sub rsp,0x10
 			sb.write_string('0xff, 0x35, 0xe6, 0xff, 0xff, 0xff, ') // push QWORD PTR [rip+0xffffffffffffffe6]
 
-			rsp_offset := byte(0x18 + ((byte(nargs - 7) >> 1) << 4)).hex()
+			rsp_offset := u8(0x18 + ((u8(nargs - 7) >> 1) << 4)).hex()
 			for _ in 0 .. nargs - 7 {
 				sb.write_string('0xff, 0xb4, 0x24, 0x$rsp_offset, 0x00, 0x00, 0x00, ') // push QWORD PTR [rsp+$rsp_offset]
 			}
-			sb.write_string('0xff, 0x15, 0x${byte(256 - sb.len / 6 - 6 - 8).hex()}, 0xff, 0xff, 0xff, ') // call   QWORD PTR [rip+OFFSET]
+			sb.write_string('0xff, 0x15, 0x${u8(256 - sb.len / 6 - 6 - 8).hex()}, 0xff, 0xff, 0xff, ') // call   QWORD PTR [rip+OFFSET]
 			sb.write_string('0x48, 0x81, 0xc4, 0x$rsp_offset, 0x00, 0x00, 0x00, ') // add rsp,$rsp_offset
 			sb.write_string('0xc3') // ret
 
@@ -258,8 +258,8 @@ static void __closure_destroy(void *closure) {
 
 const c_common_macros = '
 #define EMPTY_VARG_INITIALIZATION 0
-#define EMPTY_STRUCT_DECLARATION
-#define EMPTY_STRUCT_INITIALIZATION
+#define EMPTY_STRUCT_INITIALIZATION 0
+#define EMPTY_STRUCT_DECLARATION voidptr _dummy_pad
 // Due to a tcc bug, the length of an array needs to be specified, but GCC crashes if it is...
 #define EMPTY_ARRAY_OF_ELEMS(x,n) (x[])
 #define TCCSKIP(x) x
@@ -301,7 +301,7 @@ const c_common_macros = '
 
 #ifdef __TINYC__
 	#undef EMPTY_STRUCT_DECLARATION
-	#define EMPTY_STRUCT_DECLARATION char _dummy
+	#define EMPTY_STRUCT_DECLARATION voidptr _dummy_pad
 	#undef EMPTY_ARRAY_OF_ELEMS
 	#define EMPTY_ARRAY_OF_ELEMS(x,n) (x[n])
 	#undef __NOINLINE
@@ -579,7 +579,7 @@ voidptr memdup(voidptr src, int sz);
 		#undef EMPTY_STRUCT_DECLARATION
 		#undef OPTION_CAST
 
-		#define EMPTY_STRUCT_DECLARATION char __pad
+		#define EMPTY_STRUCT_DECLARATION voidptr _dummy_pad
 		#define OPTION_CAST(x)
 		#undef __NOINLINE
 		#undef __IRQHANDLER
@@ -629,11 +629,11 @@ typedef uint64_t u64;
 typedef uint32_t u32;
 typedef uint8_t u8;
 typedef uint16_t u16;
-typedef uint8_t byte;
+//typedef uint8_t byte;
 typedef uint32_t rune;
 typedef size_t usize;
 typedef ptrdiff_t isize;
-#ifndef VNOFLOAT 
+#ifndef VNOFLOAT
 typedef float f32;
 typedef double f64;
 #else
@@ -649,7 +649,7 @@ typedef int64_t float_literal;
 typedef unsigned char* byteptr;
 typedef void* voidptr;
 typedef char* charptr;
-typedef byte array_fixed_byte_300 [300];
+typedef u8 array_fixed_byte_300 [300];
 
 typedef struct sync__Channel* chan;
 
@@ -658,7 +658,7 @@ typedef struct sync__Channel* chan;
 		#ifdef CUSTOM_DEFINE_4bytebool
 			typedef int bool;
 		#else
-			typedef byte bool;
+			typedef u8 bool;
 		#endif
 		#define true 1
 		#define false 0
