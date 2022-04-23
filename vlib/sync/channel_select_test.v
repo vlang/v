@@ -1,13 +1,11 @@
-/*
-* ATTENTION! Do not use this file as an example!
- * For that, please look at `channel_select_2_test.v` or `channel_select_3_test.v`
- *
- * This test case uses the implementation in `sync/channels.v` directly
- * in order to test it independently from the support in the core language
-*/
-
 module sync
 
+// vtest retry: 6
+
+// ATTENTION! Do not use this file as an example!
+// For that, please look at `channel_select_2_test.v` or `channel_select_3_test.v`
+// This test case uses the implementation in `sync/channels.v` directly
+// in order to test it independently from the support in the core language
 import time
 
 fn do_rec_i64(mut ch Channel) {
