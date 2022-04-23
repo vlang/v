@@ -210,7 +210,8 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 				}
 				CallExpr {
 					if sub_expr.args.len != 0 || sub_expr.concrete_types.len != 0
-						|| sub_expr.or_block.kind == .propagate_option || sub_expr.or_block.stmts.len > 0 {
+						|| sub_expr.or_block.kind == .propagate_option
+						|| sub_expr.or_block.stmts.len > 0 {
 						needs_braces = true
 					} else if sub_expr.left is CallExpr {
 						sub_expr = sub_expr.left
