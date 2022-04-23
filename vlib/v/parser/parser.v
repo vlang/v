@@ -2466,7 +2466,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 			// `a[start..end] ?`
 			if p.tok.kind == .question {
 				or_pos_high = p.tok.pos()
-				or_kind_high = .propagate
+				or_kind_high = .propagate_option
 				p.next()
 			}
 		}
@@ -2540,7 +2540,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 			// `a[start..end] ?`
 			if p.tok.kind == .question {
 				or_pos_low = p.tok.pos()
-				or_kind_low = .propagate
+				or_kind_low = .propagate_option
 				p.next()
 			}
 		}
@@ -2597,7 +2597,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 		// `a[i] ?`
 		if p.tok.kind == .question {
 			or_pos = p.tok.pos()
-			or_kind = .propagate
+			or_kind = .propagate_option
 			p.next()
 		}
 	}
@@ -2699,15 +2699,15 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			p.inside_or_expr = was_inside_or_expr
 		}
 		// `foo()?`
-		if p.tok.kind == .question {
+		if p.tok.kind in [.question, .not] {
+			is_not := p.tok.kind == .not
 			p.next()
 			if p.inside_defer {
 				p.error_with_pos('error propagation not allowed inside `defer` blocks',
 					p.prev_tok.pos())
 			}
-			or_kind = .propagate
+			or_kind = if is_not { .propagate_result } else { .propagate_option }
 		}
-		//
 		end_pos := p.prev_tok.pos()
 		pos := name_pos.extend(end_pos)
 		comments := p.eat_comments(same_line: true)

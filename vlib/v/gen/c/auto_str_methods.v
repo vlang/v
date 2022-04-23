@@ -544,6 +544,8 @@ fn (mut g Gen) fn_decl_str(info ast.FnType) string {
 	fn_str += ')'
 	if info.func.return_type == ast.ovoid_type {
 		fn_str += ' ?'
+	} else if info.func.return_type == ast.rvoid_type {
+		fn_str += ' !'
 	} else if info.func.return_type != ast.void_type {
 		x := util.strip_main_name(g.table.get_type_name(g.unwrap_generic(info.func.return_type)))
 		if info.func.return_type.has_flag(.optional) {

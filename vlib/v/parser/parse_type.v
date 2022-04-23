@@ -391,6 +391,9 @@ pub fn (mut p Parser) parse_type() ast.Type {
 		if is_optional {
 			typ = typ.set_flag(.optional)
 		}
+		if is_result {
+			typ = typ.set_flag(.result)
+		}
 		return typ
 	}
 	is_shared := p.tok.kind == .key_shared

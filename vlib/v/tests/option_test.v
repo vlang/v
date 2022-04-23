@@ -98,7 +98,7 @@ fn foo_str() ?string {
 	return 'something'
 }
 
-fn propagate_optional(b bool) ?int {
+fn .propagate_optional(b bool) ?int {
 	a := err_call(b) ?
 	return a
 }
@@ -110,11 +110,11 @@ fn propagate_different_type(b bool) ?bool {
 
 fn test_propagation() {
 	println(1)
-	a := propagate_optional(true) or { 0 }
+	a := .propagate_optional(true) or { 0 }
 	println(2)
 	assert a == 42
 	println(3)
-	if _ := propagate_optional(false) {
+	if _ := .propagate_optional(false) {
 		assert false
 	}
 	println(4)

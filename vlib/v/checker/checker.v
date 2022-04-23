@@ -1473,17 +1473,17 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast
 	if expr is ast.CallExpr {
 		if expr.return_type.has_flag(.optional) || expr.return_type.has_flag(.result) {
 			return_modifier_kind := if expr.return_type.has_flag(.optional) {
-				'option'
+				'an option'
 			} else {
-				'result'
+				'a result'
 			}
 			return_modifier := if expr.return_type.has_flag(.optional) { '?' } else { '!' }
 			if expr.or_block.kind == .absent {
 				if c.inside_defer {
-					c.error('${expr.name}() returns an $return_modifier_kind, so it should have an `or {}` block at the end',
+					c.error('${expr.name}() returns $return_modifier_kind, so it should have an `or {}` block at the end',
 						expr.pos)
 				} else {
-					c.error('${expr.name}() returns an $return_modifier_kind, so it should have either an `or {}` block, or `$return_modifier` at the end',
+					c.error('${expr.name}() returns $return_modifier_kind, so it should have either an `or {}` block, or `$return_modifier` at the end',
 						expr.pos)
 				}
 			} else {
@@ -1493,7 +1493,7 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast
 		} else if expr.or_block.kind == .block {
 			c.error('unexpected `or` block, the function `$expr.name` does neither return an optional nor a result',
 				expr.or_block.pos)
-		} else if expr.or_block.kind == .propagate {
+		} else if expr.or_block.kind == .propagate_option {
 			c.error('unexpected `?`, the function `$expr.name` does not return an optional',
 				expr.or_block.pos)
 		}
@@ -1506,10 +1506,18 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast
 }
 
 pub fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return_type ast.Type) {
-	if node.kind == .propagate {
+	if node.kind == .propagate_option {
 		if !c.table.cur_fn.return_type.has_flag(.optional) && c.table.cur_fn.name != 'main.main'
 			&& !c.inside_const {
-			c.error('to propagate the optional call, `$c.table.cur_fn.name` must return an optional',
+			c.error('to propagate the call, `$c.table.cur_fn.name` must return an optional type',
+				node.pos)
+		}
+		return
+	}
+	if node.kind == .propagate_result {
+		if !c.table.cur_fn.return_type.has_flag(.result) && c.table.cur_fn.name != 'main.main'
+			&& !c.inside_const {
+			c.error('to propagate the call, `$c.table.cur_fn.name` must return an result type',
 				node.pos)
 		}
 		return
@@ -2591,7 +2599,7 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 				if node.or_block.kind == .block {
 					c.error('unexpected `or` block, the function `$node.name` does neither return an optional nor a result',
 						node.or_block.pos)
-				} else if node.or_block.kind == .propagate {
+				} else if node.or_block.kind == .propagate_option {
 					c.error('unexpected `?`, the function `$node.name` does neither return an optional nor a result',
 						node.or_block.pos)
 				}

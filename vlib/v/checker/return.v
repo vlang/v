@@ -158,7 +158,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 	if exp_is_optional && node.exprs.len > 0 {
 		expr0 := node.exprs[0]
 		if expr0 is ast.CallExpr {
-			if expr0.or_block.kind == .propagate && node.exprs.len == 1 {
+			if expr0.or_block.kind == .propagate_option && node.exprs.len == 1 {
 				c.error('`?` is not needed, use `return ${expr0.name}()`', expr0.pos)
 			}
 		}

@@ -2305,7 +2305,7 @@ pub fn (mut f Fmt) or_expr(node ast.OrExpr) {
 			f.stmts(node.stmts)
 			f.write('}')
 		}
-		.propagate {
+		.propagate_option {
 			f.write(' ?')
 		}
 	}

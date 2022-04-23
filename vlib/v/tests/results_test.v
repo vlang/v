@@ -42,3 +42,11 @@ fn test_result_void_err() {
 	}
 	assert or_block
 }
+
+fn propagate() ! {
+	result_void(false) !
+}
+
+fn test_propagation() {
+	propagate() or { assert false }
+}
