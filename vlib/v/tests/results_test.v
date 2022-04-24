@@ -50,3 +50,19 @@ fn propagate() ! {
 fn test_propagation() {
 	propagate() or { assert false }
 }
+
+fn function_that_can_return_error() !int {
+	return error('abc')
+}
+
+fn util_error_propagation() ! {
+	function_that_can_return_error() !
+	assert false
+}
+
+fn test_return_on_error_propagation() {
+   	util_error_propagation() or {
+		assert err.msg() == 'abc'
+	}
+}
+
