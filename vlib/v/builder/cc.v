@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module builder
 
+import math
 import os
 import v.cflag
 import v.pref
@@ -206,6 +207,14 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	if v.pref.os == .macos && os.exists('/opt/procursus') {
 		ccoptions.linker_flags << '-Wl,-rpath,/opt/procursus/lib'
 	}
+	mut user_darwin_version := math.inf(1)
+	mut user_darwin_ppc := false
+	$if macos {
+		user_darwin_version = os.uname().release.split('.')[0].int()
+		if os.uname().machine == 'Power Macintosh' {
+			user_darwin_ppc = true
+		}
+	}
 	ccoptions.debug_mode = v.pref.is_debug
 	ccoptions.guessed_compiler = v.pref.ccompiler
 	if ccoptions.guessed_compiler == 'cc' && v.pref.is_prod {
@@ -251,7 +260,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		]
 	}
 	if ccoptions.is_cc_gcc {
-		if ccoptions.debug_mode {
+		if ccoptions.debug_mode && user_darwin_version > 9 {
 			debug_options = ['-g', '-no-pie']
 		}
 		optimization_options = ['-O3', '-fno-strict-aliasing', '-flto']
@@ -334,7 +343,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 	// macOS code can include objective C  TODO remove once objective C is replaced with C
 	if v.pref.os == .macos || v.pref.os == .ios {
-		if !ccoptions.is_cc_tcc {
+		if !ccoptions.is_cc_tcc && !user_darwin_ppc {
 			ccoptions.source_args << '-x objective-c'
 		}
 	}
