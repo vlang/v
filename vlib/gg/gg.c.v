@@ -48,16 +48,17 @@ pub mut:
 
 pub struct Config {
 pub:
-	width         int
-	height        int
-	use_ortho     bool // unused, still here just for backwards compatibility
-	retina        bool
-	resizable     bool
-	user_data     voidptr
-	font_size     int
-	create_window bool
+	width			  int
+	height        	  int
+	use_ortho     	  bool // unused, still here just for backwards compatibility
+	retina        	  bool
+	resizable     	  bool
+	internal_handle   voidptr
+	user_data     	  voidptr
+	font_size     	  int
+	create_window 	  bool
 	// window_user_ptr voidptr
-	window_title      string
+	window_title	  string
 	borderless_window bool
 	always_on_top     bool
 	bg_color          gx.Color
@@ -115,18 +116,19 @@ mut:
 pub:
 	native_rendering bool
 pub mut:
-	scale       f32 = 1.0 // will get set to 2.0 for retina, will remain 1.0 for normal
-	width       int
-	height      int
-	clear_pass  gfx.PassAction
-	window      sapp.Desc
-	timage_pip  sgl.Pipeline
-	config      Config
-	user_data   voidptr
-	ft          &FT
-	font_inited bool
-	ui_mode     bool // do not redraw everything 60 times/second, but only when the user requests
-	frame       u64  // the current frame counted from the start of the application; always increasing
+	scale       	f32 = 1.0 // will get set to 2.0 for retina, will remain 1.0 for normal
+	width       	int
+	height      	int
+	clear_pass  	gfx.PassAction
+	window      	sapp.Desc
+	timage_pip  	sgl.Pipeline
+	config      	Config
+	internal_handle voidptr
+	user_data   	voidptr
+	ft          	&FT
+	font_inited 	bool
+	ui_mode     	bool // do not redraw everything 60 times/second, but only when the user requests
+	frame       	u64  // the current frame counted from the start of the application; always increasing
 	//
 	mbtn_mask     u8
 	mouse_buttons MouseButtons // typed version of mbtn_mask; easier to use for user programs
@@ -144,8 +146,8 @@ pub mut:
 	// *before* the current event was different
 }
 
-fn gg_init_sokol_window(user_data voidptr) {
-	mut ctx := unsafe { &Context(user_data) }
+fn gg_init_sokol_window(internal_handle voidptr) {
+	mut ctx := unsafe { &Context(internal_handle) }
 	desc := sapp.create_desc()
 	/*
 	desc := gfx.Desc{
@@ -222,7 +224,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 	ctx.timage_pip = sgl.make_pipeline(&pipdesc)
 	//
 	if ctx.config.init_fn != voidptr(0) {
-		ctx.config.init_fn(ctx.user_data)
+		ctx.config.init_fn(ctx.internal_handle)
 	}
 	// Create images now that we can do that after sg is inited
 	if ctx.native_rendering {
@@ -236,8 +238,8 @@ fn gg_init_sokol_window(user_data voidptr) {
 	}
 }
 
-fn gg_frame_fn(user_data voidptr) {
-	mut ctx := unsafe { &Context(user_data) }
+fn gg_frame_fn(internal_handle voidptr) {
+	mut ctx := unsafe { &Context(internal_handle) }
 	ctx.frame++
 	if ctx.config.frame_fn == voidptr(0) {
 		return
@@ -255,14 +257,14 @@ fn gg_frame_fn(user_data voidptr) {
 			return
 		}
 	}
-	ctx.config.frame_fn(ctx.user_data)
+	ctx.config.frame_fn(ctx.internal_handle)
 	ctx.needs_refresh = false
 }
 
-fn gg_event_fn(ce voidptr, user_data voidptr) {
+fn gg_event_fn(ce voidptr, internal_handle voidptr) {
 	// e := unsafe { &sapp.Event(ce) }
 	mut e := unsafe { &Event(ce) }
-	mut ctx := unsafe { &Context(user_data) }
+	mut ctx := unsafe { &Context(internal_handle) }
 	if ctx.ui_mode {
 		ctx.refresh_ui()
 	}
@@ -303,64 +305,64 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 		ctx.pressed_keys_edge[key_idx] = prev != next
 	}
 	if ctx.config.event_fn != voidptr(0) {
-		ctx.config.event_fn(e, ctx.config.user_data)
+		ctx.config.event_fn(e, ctx.config.internal_handle)
 	}
 	match e.typ {
 		.mouse_move {
 			if ctx.config.move_fn != voidptr(0) {
-				ctx.config.move_fn(e.mouse_x / ctx.scale, e.mouse_y / ctx.scale, ctx.config.user_data)
+				ctx.config.move_fn(e.mouse_x / ctx.scale, e.mouse_y / ctx.scale, ctx.config.internal_handle)
 			}
 		}
 		.mouse_down {
 			if ctx.config.click_fn != voidptr(0) {
 				ctx.config.click_fn(e.mouse_x / ctx.scale, e.mouse_y / ctx.scale, e.mouse_button,
-					ctx.config.user_data)
+					ctx.config.internal_handle)
 			}
 		}
 		.mouse_up {
 			if ctx.config.unclick_fn != voidptr(0) {
 				ctx.config.unclick_fn(e.mouse_x / ctx.scale, e.mouse_y / ctx.scale, e.mouse_button,
-					ctx.config.user_data)
+					ctx.config.internal_handle)
 			}
 		}
 		.mouse_leave {
 			if ctx.config.leave_fn != voidptr(0) {
-				ctx.config.leave_fn(e, ctx.config.user_data)
+				ctx.config.leave_fn(e, ctx.config.internal_handle)
 			}
 		}
 		.mouse_enter {
 			if ctx.config.enter_fn != voidptr(0) {
-				ctx.config.enter_fn(e, ctx.config.user_data)
+				ctx.config.enter_fn(e, ctx.config.internal_handle)
 			}
 		}
 		.mouse_scroll {
 			if ctx.config.scroll_fn != voidptr(0) {
-				ctx.config.scroll_fn(e, ctx.config.user_data)
+				ctx.config.scroll_fn(e, ctx.config.internal_handle)
 			}
 		}
 		.key_down {
 			if ctx.config.keydown_fn != voidptr(0) {
-				ctx.config.keydown_fn(e.key_code, Modifier(e.modifiers), ctx.config.user_data)
+				ctx.config.keydown_fn(e.key_code, Modifier(e.modifiers), ctx.config.internal_handle)
 			}
 		}
 		.key_up {
 			if ctx.config.keyup_fn != voidptr(0) {
-				ctx.config.keyup_fn(e.key_code, Modifier(e.modifiers), ctx.config.user_data)
+				ctx.config.keyup_fn(e.key_code, Modifier(e.modifiers), ctx.config.internal_handle)
 			}
 		}
 		.char {
 			if ctx.config.char_fn != voidptr(0) {
-				ctx.config.char_fn(e.char_code, ctx.config.user_data)
+				ctx.config.char_fn(e.char_code, ctx.config.internal_handle)
 			}
 		}
 		.resized {
 			if ctx.config.resized_fn != voidptr(0) {
-				ctx.config.resized_fn(e, ctx.config.user_data)
+				ctx.config.resized_fn(e, ctx.config.internal_handle)
 			}
 		}
 		.quit_requested {
 			if ctx.config.quit_fn != voidptr(0) {
-				ctx.config.quit_fn(e, ctx.config.user_data)
+				ctx.config.quit_fn(e, ctx.config.internal_handle)
 			}
 		}
 		else {
@@ -369,19 +371,19 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 	}
 }
 
-fn gg_cleanup_fn(user_data voidptr) {
-	mut ctx := unsafe { &Context(user_data) }
+fn gg_cleanup_fn(internal_handle voidptr) {
+	mut ctx := unsafe { &Context(internal_handle) }
 	if ctx.config.cleanup_fn != voidptr(0) {
-		ctx.config.cleanup_fn(ctx.config.user_data)
+		ctx.config.cleanup_fn(ctx.config.internal_handle)
 	}
 	gfx.shutdown()
 }
 
-fn gg_fail_fn(msg &char, user_data voidptr) {
-	mut ctx := unsafe { &Context(user_data) }
+fn gg_fail_fn(msg &char, internal_handle voidptr) {
+	mut ctx := unsafe { &Context(internal_handle) }
 	vmsg := unsafe { tos3(msg) }
 	if ctx.config.fail_fn != voidptr(0) {
-		ctx.config.fail_fn(vmsg, ctx.config.user_data)
+		ctx.config.fail_fn(vmsg, ctx.config.internal_handle)
 	} else {
 		eprintln('gg error: $vmsg')
 	}
@@ -392,7 +394,7 @@ fn gg_fail_fn(msg &char, user_data voidptr) {
 // new_context returns an initialized `Context` allocated on the heap.
 pub fn new_context(cfg Config) &Context {
 	mut ctx := &Context{
-		user_data: cfg.user_data
+		internal_handle: cfg.internal_handle
 		width: cfg.width
 		height: cfg.height
 		config: cfg
@@ -400,13 +402,13 @@ pub fn new_context(cfg Config) &Context {
 		ui_mode: cfg.ui_mode
 		native_rendering: cfg.native_rendering
 	}
-	if isnil(cfg.user_data) {
-		ctx.user_data = ctx
+	if isnil(cfg.internal_handle) {
+		ctx.internal_handle = ctx
 	}
 	ctx.set_bg_color(cfg.bg_color)
-	// C.printf('new_context() %p\n', cfg.user_data)
+	// C.printf('new_context() %p\n', cfg.internal_handle)
 	window := sapp.Desc{
-		user_data: ctx
+		internal_handle: ctx
 		init_userdata_cb: gg_init_sokol_window
 		frame_userdata_cb: gg_frame_fn
 		event_userdata_cb: gg_event_fn
