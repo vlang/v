@@ -132,7 +132,7 @@ fn (vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.Buil
 					for ex in examples {
 						pw.write_string('    Example: ')
 						mut fex := ex
-						if ex.index_u8(`\n`) >= 0 {
+						if ex.index_u8_int(`\n`) >= 0 {
 							// multi-line example
 							pw.write_u8(`\n`)
 							fex = indent(ex)

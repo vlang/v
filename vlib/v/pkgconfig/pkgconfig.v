@@ -171,17 +171,17 @@ pub fn (mut pc PkgConfig) atleast(v string) bool {
 
 pub fn (mut pc PkgConfig) extend(pcdep &PkgConfig) ?string {
 	for flag in pcdep.cflags {
-		if pc.cflags.index_int(flag) == -1 {
+		if pc.cflags.index(flag) == -1 {
 			pc.cflags << flag
 		}
 	}
 	for lib in pcdep.libs {
-		if pc.libs.index_int(lib) == -1 {
+		if pc.libs.index(lib) == -1 {
 			pc.libs << lib
 		}
 	}
 	for lib in pcdep.libs_private {
-		if pc.libs_private.index_int(lib) == -1 {
+		if pc.libs_private.index(lib) == -1 {
 			pc.libs_private << lib
 		}
 	}
@@ -219,7 +219,7 @@ fn (mut pc PkgConfig) add_path(path string) {
 	if !os.exists(p) {
 		return
 	}
-	if pc.paths.index_int(p) == -1 {
+	if pc.paths.index(p) == -1 {
 		pc.paths << p
 	}
 }
@@ -269,7 +269,7 @@ pub fn list() []string {
 		for file in files {
 			if file.ends_with('.pc') {
 				name := file.replace('.pc', '')
-				if modules.index_int(name) == -1 {
+				if modules.index(name) == -1 {
 					modules << name
 				}
 			}

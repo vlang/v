@@ -923,7 +923,7 @@ pub fn (s string) index_int(p string) int {
 
 // index is a wrapper around `index_int` that returns `none` if the input string can't be found.
 pub fn (s string) index(p string) ?int {
-	idx := s.index(p)
+	idx := s.index_int(p)
 	if idx == -1 {
 		return none
 	}
@@ -1053,7 +1053,7 @@ pub fn (s string) index_after_int(p string, start int) int {
 	return -1
 }
 
-// index_after is a wrapper around `index_after` that returns `none` if the input string can't be found.
+// index_after is a wrapper around `index_after_int` that returns `none` if the input string can't be found.
 pub fn (s string) index_after(p string, start int) ?int {
 	idx := s.index_after_int(p, start)
 	if idx == -1 {
@@ -1062,7 +1062,7 @@ pub fn (s string) index_after(p string, start int) ?int {
 	return idx
 }
 
-// index_u8_int returns the index of byte `c` if found in the string.
+// index_u8_int returns the index of u8 `c` if found in the string.
 // index_u8_int returns -1 if the byte can not be found.
 [direct_array_access]
 pub fn (s string) index_u8_int(c u8) int {
@@ -1074,7 +1074,7 @@ pub fn (s string) index_u8_int(c u8) int {
 	return -1
 }
 
-// index_u8 is a wrapper around `index_byte` that returns `none` if the input string can't be found.
+// index_u8 is a wrapper around `index_u8_int` that returns `none` if the input string can't be found.
 pub fn (s string) index_u8(c byte) ?int {
 	idx := s.index_u8_int(c)
 	if idx == -1 {
@@ -1095,7 +1095,7 @@ pub fn (s string) last_index_u8_int(c u8) int {
 	return -1
 }
 
-// last_index_u8 is a wrapper around `last_index_byte` that returns `none` if the input string can't be found.
+// last_index_u8 is a wrapper around `last_index_u8_int` that returns `none` if the input string can't be found.
 pub fn (s string) last_index_u8(c byte) ?int {
 	idx := s.last_index_u8_int(c)
 	if idx == -1 {

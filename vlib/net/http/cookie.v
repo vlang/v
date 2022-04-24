@@ -68,7 +68,7 @@ pub fn read_cookies(h map[string][]string, filter string) []&Cookie {
 		mut line := line_.trim_space()
 		mut part := ''
 		for line.len > 0 {
-			if line.index_any(';') > 0 {
+			if line.index_any_int(';') > 0 {
 				line_parts := line.split(';')
 				part = line_parts[0]
 				line = line_parts[1]

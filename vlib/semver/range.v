@@ -130,7 +130,7 @@ fn parse_comparator(input string) ?Comparator {
 fn parse_xrange(input string) ?Version {
 	mut raw_ver := parse(input).complete()
 	for typ in versions {
-		if raw_ver.raw_ints[typ].index_any(semver.x_range_symbols) == -1 {
+		if raw_ver.raw_ints[typ].index_any_int(semver.x_range_symbols) == -1 {
 			continue
 		}
 		match typ {
@@ -157,7 +157,7 @@ fn parse_xrange(input string) ?Version {
 
 fn can_expand(input string) bool {
 	return input[0] == `~` || input[0] == `^` || input.contains(semver.hyphen_range_sep)
-		|| input.index_any(semver.x_range_symbols) > -1
+		|| input.index_any_int(semver.x_range_symbols) > -1
 }
 
 fn expand_comparator_set(input string) ?ComparatorSet {

@@ -1334,7 +1334,7 @@ fn trim_slash_line_break(s string) string {
 	mut start := 0
 	mut ret_str := s
 	for {
-		idx := ret_str.index_after('\\\n', start)
+		idx := ret_str.index_after_int('\\\n', start)
 		if idx != -1 {
 			ret_str = ret_str[..idx] + ret_str[idx + 2..].trim_left(' \n\t\v\f\r')
 			start = idx

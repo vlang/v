@@ -838,7 +838,7 @@ pub fn (s string) index_any_int(chars string) int {
 
 // index_any is a wrapper around `index_any_int` that returns `none` if the input string can't be found.
 pub fn (s string) index_any(chars string) ?int {
-	idx := s.index_any(chars)
+	idx := s.index_any_int(chars)
 	if idx == -1 {
 		return none
 	}

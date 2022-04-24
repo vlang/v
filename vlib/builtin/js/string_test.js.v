@@ -899,6 +899,6 @@ fn test_interpolation_after_quoted_variable_still_works() {
 */
 fn test_index_any() {
 	x := 'abcdefghij'
-	assert x.index_any('ef') == 4
-	assert x.index_any('fe') == 4
+	assert x.index_any_int('ef') == 4
+	assert x.index_any_int('fe') == 4
 }

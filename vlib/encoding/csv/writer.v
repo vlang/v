@@ -37,7 +37,7 @@ pub fn (mut w Writer) write(record []string) ?bool {
 		}
 		w.sb.write_string('"')
 		for field.len > 0 {
-			mut i := field.index_any('"\r\n')
+			mut i := field.index_any_int('"\r\n')
 			if i < 0 {
 				i = field.len
 			}
@@ -69,7 +69,7 @@ fn (w &Writer) field_needs_quotes(field string) bool {
 	if field == '' {
 		return false
 	}
-	if field.contains(w.delimiter.ascii_str()) || (field.index_any('"\r\n') != -1) {
+	if field.contains(w.delimiter.ascii_str()) || (field.index_any_int('"\r\n') != -1) {
 		return true
 	}
 	return false

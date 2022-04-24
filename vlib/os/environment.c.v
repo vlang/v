@@ -109,7 +109,7 @@ pub fn environ() map[string]string {
 				break
 			}
 			eline := unsafe { cstring_to_vstring(x) }
-			eq_index := eline.index_u8(`=`)
+			eq_index := eline.index_u8_int(`=`)
 			if eq_index > 0 {
 				res[eline[0..eq_index]] = eline[eq_index + 1..]
 			}
