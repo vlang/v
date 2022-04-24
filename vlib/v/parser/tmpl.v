@@ -129,7 +129,7 @@ fn vweb_tmpl_${fn_name}() string {
 			eprintln('>>> tfile: $template_file, spos: ${start_of_line_pos:6}, epos:${end_of_line_pos:6}, fi: ${tline_number:5}, i: ${i:5}, state: ${state:10}, line: $line')
 		}
 		if line.contains('@header') {
-			position := line.index_opt('@header') or { 0 }
+			position := line.index('@header') or { 0 }
 			p.error_with_error(errors.Error{
 				message: "Please use @include 'header' instead of @header (deprecated)"
 				file_path: template_file
@@ -144,7 +144,7 @@ fn vweb_tmpl_${fn_name}() string {
 			continue
 		}
 		if line.contains('@footer') {
-			position := line.index_opt('@footer') or { 0 }
+			position := line.index('@footer') or { 0 }
 			p.error_with_error(errors.Error{
 				message: "Please use @include 'footer' instead of @footer (deprecated)"
 				file_path: template_file
@@ -177,7 +177,7 @@ fn vweb_tmpl_${fn_name}() string {
 				eprintln('>>> basepath: "$basepath" , template_file: "$template_file" , fn_name: "$fn_name" , @include line: "$line" , file_name: "$file_name" , file_ext: "$file_ext" , templates_folder: "$templates_folder" , file_path: "$file_path"')
 			}
 			file_content := os.read_file(file_path) or {
-				position := line.index_opt('@include ') or { 0 } + '@include '.len
+				position := line.index('@include ') or { 0 } + '@include '.len
 				p.error_with_error(errors.Error{
 					message: 'Reading file $file_name from path: $file_path failed'
 					details: "Failed to @include '$file_name'"
@@ -202,7 +202,7 @@ fn vweb_tmpl_${fn_name}() string {
 		}
 		if line.contains('@if ') {
 			source.writeln(parser.tmpl_str_end)
-			pos := line.index_opt('@if') or { continue }
+			pos := line.index('@if') or { continue }
 			source.writeln('if ' + line[pos + 4..] + '{')
 			source.writeln(tmpl_str_start)
 			continue
@@ -225,7 +225,7 @@ fn vweb_tmpl_${fn_name}() string {
 		}
 		if line.contains('@for') {
 			source.writeln(parser.tmpl_str_end)
-			pos := line.index_opt('@for') or { continue }
+			pos := line.index('@for') or { continue }
 			source.writeln('for ' + line[pos + 4..] + '{')
 			source.writeln(tmpl_str_start)
 			continue
@@ -239,14 +239,14 @@ fn vweb_tmpl_${fn_name}() string {
 
 		if state != .simple {
 			if line.contains('@js ') {
-				pos := line.index_opt('@js') or { continue }
+				pos := line.index('@js') or { continue }
 				source.write_string('<script src="')
 				source.write_string(line[pos + 5..line.len - 1])
 				source.writeln('"></script>')
 				continue
 			}
 			if line.contains('@css ') {
-				pos := line.index_opt('@css') or { continue }
+				pos := line.index('@css') or { continue }
 				source.write_string('<link href="')
 				source.write_string(line[pos + 6..line.len - 1])
 				source.writeln('" rel="stylesheet" type="text/css">')

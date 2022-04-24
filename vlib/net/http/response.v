@@ -136,7 +136,7 @@ pub fn new_response(conf ResponseConfig) Response {
 // helper function expects the first line in `data` to be the HTTP status line
 // (HTTP/1.1 200 OK).
 fn find_headers_range(data string) ?(int, int) {
-	start_idx := data.index_opt('\n') or { return error('no start index found') } + 1
+	start_idx := data.index('\n') or { return error('no start index found') } + 1
 	mut count := 0
 	for i := start_idx; i < data.len; i++ {
 		if data[i] == `\n` {

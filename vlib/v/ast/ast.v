@@ -2092,7 +2092,7 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 			for bit_size, array in ast.x86_with_number_register_list {
 				for name, max_num in array {
 					for i in 0 .. max_num {
-						hash_index := name.index_opt('#') or {
+						hash_index := name.index('#') or {
 							panic('all_registers: no hashtag found')
 						}
 						assembled_name := '${name[..hash_index]}$i${name[hash_index + 1..]}'
@@ -2153,7 +2153,7 @@ fn gen_all_registers(mut t Table, without_numbers []string, with_numbers map[str
 	}
 	for name, max_num in with_numbers {
 		for i in 0 .. max_num {
-			hash_index := name.index_opt('#') or { panic('all_registers: no hashtag found') }
+			hash_index := name.index('#') or { panic('all_registers: no hashtag found') }
 			assembled_name := '${name[..hash_index]}$i${name[hash_index + 1..]}'
 			res[assembled_name] = AsmRegister{
 				name: assembled_name

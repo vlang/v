@@ -663,7 +663,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 	}
 	if !found {
 		continue_check = false
-		if dot_index := fn_name.index('.') {
+		if dot_index := fn_name.index_opt('.') {
 			if !fn_name[0].is_capital() {
 				mod_name := fn_name#[..dot_index]
 				mut mod_func_names := []string{}

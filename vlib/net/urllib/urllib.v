@@ -418,7 +418,7 @@ fn get_scheme(rawurl string) ?string {
 // sep. If cutc is true then sep is included with the second substring.
 // If sep does not occur in s then s and the empty string is returned.
 fn split(s string, sep u8, cutc bool) (string, string) {
-	i := s.index_u8(sep)
+	i := s.index_u8_int(sep)
 	if i < 0 {
 		return s, ''
 	}
@@ -505,8 +505,8 @@ fn parse_url(rawurl string, via_request bool) ?URL {
 		// RFC 3986, §3.3:
 		// In addition, a URI reference (Section 4.1) may be a relative-path reference,
 		// in which case the first path segment cannot contain a colon (':') character.
-		colon := rest.index_opt(':') or { return error('there should be a : in the URL') }
-		slash := rest.index_opt('/') or { return error('there should be a / in the URL') }
+		colon := rest.index(':') or { return error('there should be a : in the URL') }
+		slash := rest.index('/') or { return error('there should be a / in the URL') }
 		if colon >= 0 && (slash < 0 || colon < slash) {
 			// First path segment has colon. Not allowed in relative URL.
 			return error(error_msg('parse_url: first path segment in URL cannot contain colon',
@@ -534,7 +534,7 @@ struct ParseAuthorityRes {
 }
 
 fn parse_authority(authority string) ?ParseAuthorityRes {
-	i := authority.last_index('@')
+	i := authority.last_index_int('@')
 	mut host := ''
 	mut zuser := user('')
 	if i < 0 {
@@ -578,7 +578,7 @@ fn parse_host(host string) ?string {
 	if host.starts_with('[') {
 		// parse an IP-Literal in RFC 3986 and RFC 6874.
 		// E.g., '[fe80::1]', '[fe80::1%25en0]', '[fe80::1]:80'.
-		mut i := host.last_index_opt(']') or {
+		mut i := host.last_index(']') or {
 			return error(error_msg("parse_host: missing ']' in host", ''))
 		}
 		mut colon_port := host[i + 1..]
@@ -592,13 +592,13 @@ fn parse_host(host string) ?string {
 		// can only %-encode non-ASCII bytes.
 		// We do impose some restrictions on the zone, to avoid stupidity
 		// like newlines.
-		if zone := host[..i].index_opt('%25') {
+		if zone := host[..i].index('%25') {
 			host1 := unescape(host[..zone], .encode_host) or { return err.msg() }
 			host2 := unescape(host[zone..i], .encode_zone) or { return err.msg() }
 			host3 := unescape(host[i..], .encode_host) or { return err.msg() }
 			return host1 + host2 + host3
 		}
-		if idx := host.last_index_opt(':') {
+		if idx := host.last_index(':') {
 			colon_port = host[idx..]
 			if !valid_optional_port(colon_port) {
 				return error(error_msg('parse_host: invalid port $colon_port after host ',
@@ -746,11 +746,11 @@ pub fn (u URL) str() string {
 			// it would be mistaken for a scheme name. Such a segment must be
 			// preceded by a dot-segment (e.g., './this:that') to make a relative-
 			// path reference.
-			i := path.index_u8(`:`)
+			i := path.index_u8_int(`:`)
 			if i > -1 {
 				// TODO remove this when autofree handles tmp
 				// expressions like this
-				if i > -1 && path[..i].index_u8(`/`) == -1 {
+				if i > -1 && path[..i].index_u8_int(`/`) == -1 {
 					buf.write_string('./')
 				}
 			}
@@ -800,7 +800,7 @@ fn parse_query_values(mut m Values, query string) ?bool {
 	mut q := query
 	for q != '' {
 		mut key := q
-		mut i := key.index_any('&;')
+		mut i := key.index_any_int('&;')
 		if i >= 0 {
 			q = key[i + 1..]
 			key = key[..i]
@@ -811,7 +811,7 @@ fn parse_query_values(mut m Values, query string) ?bool {
 			continue
 		}
 		mut value := ''
-		if idx := key.index_opt('=') {
+		if idx := key.index('=') {
 			i = idx
 			value = key[i + 1..]
 			key = key[..i]
@@ -872,7 +872,7 @@ fn resolve_path(base string, ref string) string {
 	if ref == '' {
 		full = base
 	} else if ref[0] != `/` {
-		i := base.last_index('/')
+		i := base.last_index_int('/')
 		full = base[..i + 1] + ref
 	} else {
 		full = ref
@@ -1006,7 +1006,7 @@ pub fn (u &URL) port() string {
 fn split_host_port(hostport string) (string, string) {
 	mut host := hostport
 	mut port := ''
-	colon := host.last_index_u8(`:`)
+	colon := host.last_index_u8_int(`:`)
 	if colon != -1 {
 		if valid_optional_port(host[colon..]) {
 			port = host[colon + 1..]

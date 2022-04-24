@@ -174,7 +174,7 @@ pub fn is_dir_empty(path string) bool {
 // file_ext will return the part after the last occurence of `.` in `path`.
 // The `.` is included.
 pub fn file_ext(path string) string {
-	pos := path.last_index_opt('.') or { return '' }
+	pos := path.last_index('.') or { return '' }
 	return path[pos..]
 }
 
@@ -188,7 +188,7 @@ pub fn dir(opath string) string {
 		return '.'
 	}
 	path := opath.replace_each(['/', path_separator, r'\', path_separator])
-	pos := path.last_index_opt(path_separator) or { return '.' }
+	pos := path.last_index(path_separator) or { return '.' }
 	if pos == 0 && path_separator == '/' {
 		return '/'
 	}
@@ -209,10 +209,10 @@ pub fn base(opath string) string {
 	}
 	if path.ends_with(path_separator) {
 		path2 := path[..path.len - 1]
-		pos := path2.last_index_opt(path_separator) or { return path2.clone() }
+		pos := path2.last_index(path_separator) or { return path2.clone() }
 		return path2[pos + 1..]
 	}
-	pos := path.last_index_opt(path_separator) or { return path.clone() }
+	pos := path.last_index(path_separator) or { return path.clone() }
 	return path[pos + 1..]
 }
 

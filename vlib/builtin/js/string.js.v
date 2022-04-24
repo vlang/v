@@ -655,7 +655,7 @@ pub fn (s string) replace_each(vals []string) string {
 		with_ = with_
 
 		for {
-			idx = s_.index_after(rep, idx)
+			idx = s_.index_after_int(rep, idx)
 			if idx == -1 {
 				break
 			}
@@ -718,8 +718,8 @@ pub fn (s string) replace_each(vals []string) string {
 	return b
 }
 
-// last_index returns the position of the last occurence of the input string.
-pub fn (s string) last_index(p string) int {
+// last_index_int returns the position of the last occurence of the input string.
+pub fn (s string) last_index_int(p string) int {
 	if p.len > s.len || p.len == 0 {
 		return -1
 	}
@@ -737,9 +737,9 @@ pub fn (s string) last_index(p string) int {
 	return -1
 }
 
-// lsat_index_opt is a wrapper around `last_index` that returns `none` if the input string can't be found.
-pub fn (s string) last_index_opt(p string) ?int {
-	idx := s.last_index(p)
+// lsat_index is a wrapper around `last_index_int` that returns `none` if the input string can't be found.
+pub fn (s string) last_index(p string) ?int {
+	idx := s.last_index_int(p)
 	if idx == -1 {
 		return none
 	}
@@ -753,7 +753,7 @@ pub fn (s string) trim_space() string {
 	return res
 }
 
-pub fn (s string) index_after(p string, start int) int {
+pub fn (s string) index_after_int(p string, start int) int {
 	if p.len > s.len {
 		return -1
 	}
@@ -783,9 +783,9 @@ pub fn (s string) index_after(p string, start int) int {
 	return -1
 }
 
-// index_after_opt is a wrapper around `index_after` that returns `none` if the input string can't be found.
-pub fn (s string) index_after_opt(p string, start int) ?int {
-	idx := s.index_after(p, start)
+// index_after is a wrapper around `index_after_int` that returns `none` if the input string can't be found.
+pub fn (s string) index_after(p string, start int) ?int {
+	idx := s.index_after_int(p, start)
 	if idx == -1 {
 		return none
 	}
@@ -824,8 +824,8 @@ pub fn (s string) title() string {
 	return title
 }
 
-// index_any returns the position of any of the characters in the input string - if found.
-pub fn (s string) index_any(chars string) int {
+// index_any_int returns the position of any of the characters in the input string - if found.
+pub fn (s string) index_any_int(chars string) int {
 	for i, ss in s {
 		for c in chars {
 			if c == ss {
@@ -836,8 +836,8 @@ pub fn (s string) index_any(chars string) int {
 	return -1
 }
 
-// index_any_opt is a wrapper around `index_any` that returns `none` if the input string can't be found.
-pub fn (s string) index_any_opt(chars string) ?int {
+// index_any is a wrapper around `index_any_int` that returns `none` if the input string can't be found.
+pub fn (s string) index_any(chars string) ?int {
 	idx := s.index_any(chars)
 	if idx == -1 {
 		return none
@@ -965,18 +965,18 @@ pub fn (s []string) join(sep string) string {
 
 // There's no better way to find length of JS String in bytes.
 #Object.defineProperty(string.prototype,"len", { get: function() {return new int(new TextEncoder().encode(this.str).length);}, set: function(l) {/* ignore */ } });
-// index returns the position of the first character of the input string.
+// index_int returns the position of the first character of the input string.
 // It will return `-1` if the input string can't be found.
-pub fn (s string) index(search string) int {
+pub fn (s string) index_int(search string) int {
 	res := 0
 	#res.val = s.str.indexOf(search)
 
 	return res
 }
 
-// index_opt is a wrapper around `index` that returns `none` if the input string can't be found.
-pub fn (s string) index_opt(search string) ?int {
-	idx := s.index(search)
+// index is a wrapper around `index_int` that returns `none` if the input string can't be found.
+pub fn (s string) index(search string) ?int {
+	idx := s.index_int(search)
 	if idx == -1 {
 		return none
 	}

@@ -1182,7 +1182,7 @@ fn (t Table) shorten_user_defined_typenames(originalname string, import_aliases 
 		// because it is an hack to format well the type when
 		// there is a []modul.name
 		if res.contains('[]') {
-			idx := res.index('.') or { -1 }
+			idx := res.index('.')
 			return res[idx + 1..]
 		}
 		// types defined by the user

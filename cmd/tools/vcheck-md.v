@@ -296,7 +296,7 @@ fn (mut ad AnchorData) add_links(line_number int, line string) {
 
 fn (mut ad AnchorData) add_link_targets(line_number int, line string) {
 	if line.trim_space().starts_with('#') {
-		if headline_start_pos := line.index_opt(' ') {
+		if headline_start_pos := line.index(' ') {
 			headline := line.substr(headline_start_pos + 1, line.len)
 			link := create_ref_link(headline)
 			ad.anchors[link] << Headline{

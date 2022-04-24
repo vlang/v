@@ -708,7 +708,7 @@ pub fn str_intp_g64(in_str string) string {
 // replace %% with the in_str
 [manualfree]
 pub fn str_intp_sub(base_str string, in_str string) string {
-	index := base_str.index_opt('%%') or {
+	index := base_str.index('%%') or {
 		eprintln('No strin interpolation %% parameteres')
 		exit(1)
 	}

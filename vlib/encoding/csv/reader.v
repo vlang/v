@@ -94,11 +94,11 @@ fn (mut r Reader) read_line() ?string {
 		return IError(&EndOfFileError{})
 	}
 	le := if r.is_mac_pre_osx_le { '\r' } else { '\n' }
-	mut i := r.data.index_after(le, r.row_pos)
+	mut i := r.data.index_after_int(le, r.row_pos)
 	if i == -1 {
 		if r.row_pos == 0 {
 			// check for pre osx mac line endings
-			i = r.data.index_after('\r', r.row_pos)
+			i = r.data.index_after_int('\r', r.row_pos)
 			if i != -1 {
 				r.is_mac_pre_osx_le = true
 			} else {
@@ -154,7 +154,7 @@ fn (mut r Reader) read_record() ?[]string {
 			keep_raw = false
 		}
 		if line.len == 0 || line[0] != `"` { // not quoted
-			j := line.index_opt(r.delimiter.ascii_str()) or {
+			j := line.index(r.delimiter.ascii_str()) or {
 				// last
 				fields << line[..line.len]
 				break

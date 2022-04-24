@@ -77,7 +77,7 @@ pub fn resolve_vmodroot(str string, dir string) ?string {
 // in `str` with the value of the env variable `$ENV_VAR_NAME`.
 pub fn resolve_env_value(str string, check_for_presence bool) ?string {
 	env_ident := "\$env('"
-	at := str.index_opt(env_ident) or {
+	at := str.index(env_ident) or {
 		return error('no "$env_ident' + '...\')" could be found in "$str".')
 	}
 	mut ch := u8(`.`)

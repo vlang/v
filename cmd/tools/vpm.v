@@ -253,7 +253,7 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 	for n in module_names {
 		url := n.trim_space()
 
-		first_cut_pos := url.last_index_opt('/') or {
+		first_cut_pos := url.last_index('/') or {
 			errors++
 			println('Errors while retrieving name for module "$url" :')
 			println(err)
@@ -262,7 +262,7 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 
 		mod_name := url.substr(first_cut_pos + 1, url.len)
 
-		second_cut_pos := url.substr(0, first_cut_pos).last_index_opt('/') or {
+		second_cut_pos := url.substr(0, first_cut_pos).last_index('/') or {
 			errors++
 			println('Errors while retrieving name for module "$url" :')
 			println(err)
