@@ -199,14 +199,15 @@ pub enum DOMKeyCode {
 
 pub struct Config {
 pub:
-	width         int
-	height        int
-	use_ortho     bool // unused, still here just for backwards compatibility
-	retina        bool
-	resizable     bool
-	user_data     voidptr
-	font_size     int
-	create_window bool
+	width         	  int
+	height        	  int
+	use_ortho	      bool // unused, still here just for backwards compatibility
+	retina   	      bool
+	resizable     	  bool
+	internal_handle   voidptr
+	user_data     	  voidptr
+	font_size     	  int
+	create_window 	  bool
 	// window_user_ptr voidptr
 	window_title      string
 	borderless_window bool
@@ -268,22 +269,23 @@ mut:
 	needs_refresh bool = true
 	ticks         int
 pub mut:
-	scale         f32 = 1.0
-	width         int
-	height        int
-	window        JS.Window    [noinit]
-	config        Config
-	user_data     voidptr
-	ui_mode       bool
-	frame         u64
-	mbtn_mask     u8
-	mouse_buttons MouseButtons
-	mouse_pos_x   int
-	mouse_pos_y   int
-	mouse_dx      int
-	mouse_dy      int
-	scroll_x      int
-	scroll_y      int
+	scale         	f32 = 1.0
+	width         	int
+	height        	int
+	window        	JS.Window    [noinit]
+	config        	Config
+	internal_handle voidptr
+	user_data     	voidptr
+	ui_mode       	bool
+	frame         	u64
+	mbtn_mask     	u8
+	mouse_buttons 	MouseButtons
+	mouse_pos_x   	int
+	mouse_pos_y   	int
+	mouse_dx      	int
+	mouse_dy      	int
+	scroll_x      	int
+	scroll_y      	int
 	//
 	key_modifiers     Modifier // the current key modifiers
 	key_repeat        bool     // whether the pressed key was an autorepeated one
@@ -320,7 +322,7 @@ fn get_context(canvas JS.HTMLCanvasElement) JS.CanvasRenderingContext2D {
 pub fn new_context(cfg Config) &Context {
 	mut g := &Context{}
 
-	g.user_data = cfg.user_data
+	g.internal_handle = cfg.internal_handle
 	g.width = cfg.width
 	g.height = cfg.height
 	g.ui_mode = cfg.ui_mode
@@ -328,8 +330,8 @@ pub fn new_context(cfg Config) &Context {
 	sz.height = g.height
 	sz.width = g.width
 	g.config = cfg
-	if isnil(cfg.user_data) {
-		g.user_data = g
+	if isnil(cfg.internal_handle) {
+		g.internal_handle = g
 	}
 	g.window = dom.window()
 	document := dom.document
@@ -346,11 +348,11 @@ pub fn new_context(cfg Config) &Context {
 				e := g.handle_mouse_event(event, .mouse_down)
 				if !isnil(g.config.event_fn) {
 					f := g.config.event_fn
-					f(e, g.config.user_data)
+					f(e, g.config.internal_handle)
 				}
 				if !isnil(g.config.click_fn) {
 					f := g.config.click_fn
-					f(e.mouse_x, e.mouse_y, e.mouse_button, g.config.user_data)
+					f(e.mouse_x, e.mouse_y, e.mouse_button, g.config.internal_handle)
 				}
 			}
 			else {}
@@ -363,11 +365,11 @@ pub fn new_context(cfg Config) &Context {
 				e := g.handle_mouse_event(event, .mouse_up)
 				if !isnil(g.config.event_fn) {
 					f := g.config.event_fn
-					f(e, g.config.user_data)
+					f(e, g.config.internal_handle)
 				}
 				if !isnil(g.config.unclick_fn) {
 					f := g.config.unclick_fn
-					f(e.mouse_x, e.mouse_y, e.mouse_button, g.config.user_data)
+					f(e.mouse_x, e.mouse_y, e.mouse_button, g.config.internal_handle)
 				}
 			}
 			else {}
@@ -379,11 +381,11 @@ pub fn new_context(cfg Config) &Context {
 				e := g.handle_mouse_event(event, .mouse_move)
 				if !isnil(g.config.event_fn) {
 					f := g.config.event_fn
-					f(e, g.config.user_data)
+					f(e, g.config.internal_handle)
 				}
 				if !isnil(g.config.move_fn) {
 					f := g.config.move_fn
-					f(e.mouse_x, e.mouse_y, g.config.user_data)
+					f(e.mouse_x, e.mouse_y, g.config.internal_handle)
 				}
 			}
 			else {}
@@ -396,11 +398,11 @@ pub fn new_context(cfg Config) &Context {
 				e := g.handle_mouse_event(event, .mouse_leave)
 				if !isnil(g.config.event_fn) {
 					f := g.config.event_fn
-					f(e, g.config.user_data)
+					f(e, g.config.internal_handle)
 				}
 				if !isnil(g.config.leave_fn) {
 					f := g.config.leave_fn
-					f(e, g.config.user_data)
+					f(e, g.config.internal_handle)
 				}
 			}
 			else {}
@@ -413,11 +415,11 @@ pub fn new_context(cfg Config) &Context {
 				e := g.handle_mouse_event(event, .mouse_enter)
 				if !isnil(g.config.event_fn) {
 					f := g.config.event_fn
-					f(e, g.config.user_data)
+					f(e, g.config.internal_handle)
 				}
 				if !isnil(g.config.enter_fn) {
 					f := g.config.enter_fn
-					f(e, g.config.user_data)
+					f(e, g.config.internal_handle)
 				}
 			}
 			else {}
@@ -432,12 +434,12 @@ pub fn new_context(cfg Config) &Context {
 
 				if !isnil(g.config.event_fn) {
 					f := g.config.event_fn
-					f(e, g.config.user_data)
+					f(e, g.config.internal_handle)
 				}
 				if !isnil(g.config.keydown_fn) {
 					f := g.config.keydown_fn
 					// todo: modifiers
-					f(e.key_code, .super, g.config.user_data)
+					f(e.key_code, .super, g.config.internal_handle)
 				}
 			}
 			else {}
@@ -490,7 +492,7 @@ fn gg_animation_frame_fn(mut g Context) {
 
 	if !isnil(g.config.frame_fn) {
 		f := g.config.frame_fn
-		f(g.user_data)
+		f(g.internal_handle)
 		g.needs_refresh = false
 	}
 
