@@ -1487,7 +1487,7 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast
 						expr.pos)
 				}
 			} else {
-				c.check_or_expr(expr.or_block, ret_type, expr.return_type.clear_flag(.optional))
+				c.check_or_expr(expr.or_block, ret_type, expr.return_type)
 			}
 			return ret_type.clear_flag(.optional)
 		} else if expr.or_block.kind == .block {
@@ -1512,12 +1512,20 @@ pub fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_re
 			c.error('to propagate the call, `$c.table.cur_fn.name` must return an optional type',
 				node.pos)
 		}
+		if !expr_return_type.has_flag(.optional) {
+			c.error('to propagate an option, the call must also return an optional type',
+				node.pos)
+		}
 		return
 	}
 	if node.kind == .propagate_result {
 		if !c.table.cur_fn.return_type.has_flag(.result) && c.table.cur_fn.name != 'main.main'
 			&& !c.inside_const {
 			c.error('to propagate the call, `$c.table.cur_fn.name` must return an result type',
+				node.pos)
+		}
+		if !expr_return_type.has_flag(.result) {
+			c.error('to propagate a result, the call must also return a result type',
 				node.pos)
 		}
 		return
@@ -1532,7 +1540,7 @@ pub fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_re
 		return
 	}
 	last_stmt := node.stmts[stmts_len - 1]
-	c.check_or_last_stmt(last_stmt, ret_type, expr_return_type)
+	c.check_or_last_stmt(last_stmt, ret_type, expr_return_type.clear_flag(.optional).clear_flag(.result))
 }
 
 fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_return_type ast.Type) {
