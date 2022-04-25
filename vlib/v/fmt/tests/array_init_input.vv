@@ -9,6 +9,10 @@ fn main() {
 
 fn wrapping_tests() {
 	my_arr := ['Lorem ipsum dolor sit amet, consectetur adipiscing', 'elit. Donec varius purus leo, vel maximus diam', 'finibus sed. Etiam eu urna ante. Nunc quis vehicula', 'velit. Sed at mauris et quam ornare tristique.']
+	multi_level := [
+		[1, 2, 3],
+		['Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec varius purus leo, vel maximus diam', 'finibus sed. Etiam eu urna ante. Nunc quis vehicula velit. Sed at mauris et quam ornare tristique.'],
+	]
 }
 
 fn array_init_without_commas() {

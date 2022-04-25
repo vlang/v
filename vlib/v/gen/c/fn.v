@@ -379,7 +379,10 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	defer {
 		g.tmp_count = ctmp
 	}
+	prev_inside_ternary := g.inside_ternary
+	g.inside_ternary = 0
 	g.stmts(node.stmts)
+	g.inside_ternary = prev_inside_ternary
 	if node.is_noreturn {
 		g.writeln('\twhile(1);')
 	}
@@ -637,11 +640,12 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	// see my comment in parser near anon_fn
 	if node.left is ast.AnonFn {
 		g.expr(node.left)
-	}
-	if node.left is ast.IndexExpr && node.name == '' {
+	} else if node.left is ast.IndexExpr && node.name == '' {
 		g.is_fn_index_call = true
 		g.expr(node.left)
 		g.is_fn_index_call = false
+	} else if node.left is ast.CallExpr && node.name == '' {
+		g.expr(node.left)
 	}
 	if node.should_be_skipped {
 		return
@@ -2040,6 +2044,12 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		g.expr(arg.expr)
 		g.write('->val')
 		return
+	} else if arg.expr is ast.ArrayInit {
+		if arg.expr.is_fixed {
+			if !arg.expr.has_it {
+				g.write('(${g.typ(arg.expr.typ)})')
+			}
+		}
 	}
 	g.expr_with_cast(arg.expr, arg_typ, expected_type)
 	if needs_closing {
