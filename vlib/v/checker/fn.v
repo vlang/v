@@ -578,6 +578,17 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		found = true
 		return ast.string_type
 	}
+	if !found && node.left is ast.CallExpr {
+		c.expr(node.left)
+		expr := node.left as ast.CallExpr
+		sym := c.table.sym(expr.return_type)
+		if sym.kind == .function {
+			info := sym.info as ast.FnType
+			node.return_type = info.func.return_type
+			found = true
+			func = info.func
+		}
+	}
 	// already prefixed (mod.fn) or C/builtin/main
 	if !found {
 		if f := c.table.find_fn(fn_name) {

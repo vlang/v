@@ -637,11 +637,12 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	// see my comment in parser near anon_fn
 	if node.left is ast.AnonFn {
 		g.expr(node.left)
-	}
-	if node.left is ast.IndexExpr && node.name == '' {
+	} else if node.left is ast.IndexExpr && node.name == '' {
 		g.is_fn_index_call = true
 		g.expr(node.left)
 		g.is_fn_index_call = false
+	} else if node.left is ast.CallExpr && node.name == '' {
+		g.expr(node.left)
 	}
 	if node.should_be_skipped {
 		return
