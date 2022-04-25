@@ -1675,7 +1675,9 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	c.inside_selector_expr = old_selector_expr
 	c.using_new_err_struct = using_new_err_struct_save
 	if typ == ast.void_type_idx {
-		c.error('`void` type has no fields', node.pos)
+		// This means that the field has an undefined type.
+		// This error was handled before.
+		// c.error('`void` type has no fields', node.pos)
 		return ast.void_type
 	}
 	node.expr_type = typ

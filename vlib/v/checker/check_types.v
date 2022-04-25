@@ -204,7 +204,9 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 		}
 		return
 	}
-	return error('cannot use `$got_typ_str` as `$expected_typ_str`')
+	if got != ast.void_type {
+		return error('cannot use `$got_typ_str` as `$expected_typ_str`')
+	}
 }
 
 // helper method to check if the type is of the same module.
