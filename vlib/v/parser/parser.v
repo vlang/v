@@ -2327,6 +2327,18 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				p.error_with_pos('unexpected $p.prev_tok', p.prev_tok.pos())
 			}
 			node = p.call_expr(language, mod)
+			if p.tok.kind == .lpar && p.prev_tok.line_nr == p.tok.line_nr {
+				p.next()
+				pos := p.tok.pos()
+				args := p.call_args()
+				p.check(.rpar)
+				node = ast.CallExpr{
+					left: node
+					args: args
+					pos: pos
+					scope: p.scope
+				}
+			}
 		}
 	} else if (p.peek_tok.kind == .lcbr || (p.peek_tok.kind == .lt && lit0_is_capital))
 		&& (!p.inside_match || (p.inside_select && prev_tok_kind == .arrow && lit0_is_capital))
