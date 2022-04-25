@@ -3648,8 +3648,8 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 		for mut expr is ast.ParExpr {
 			expr = expr.expr
 		}
-		if expr in [ast.BoolLiteral, ast.CallExpr, ast.CharLiteral, ast.FloatLiteral,
-			ast.IntegerLiteral, ast.InfixExpr, ast.StringLiteral, ast.StringInterLiteral] {
+		if expr in [ast.BoolLiteral, ast.CallExpr, ast.CharLiteral, ast.FloatLiteral, ast.IntegerLiteral,
+			ast.InfixExpr, ast.StringLiteral, ast.StringInterLiteral] {
 			c.error('cannot take the address of $expr', node.pos)
 		}
 		if mut node.right is ast.IndexExpr {
