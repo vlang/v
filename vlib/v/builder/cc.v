@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 module builder
 
-import math
 import os
 import v.cflag
 import v.pref
@@ -207,7 +206,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	if v.pref.os == .macos && os.exists('/opt/procursus') {
 		ccoptions.linker_flags << '-Wl,-rpath,/opt/procursus/lib'
 	}
-	mut user_darwin_version := math.inf(1)
+	mut user_darwin_version := 999_999_999
 	mut user_darwin_ppc := false
 	$if macos {
 		user_darwin_version = os.uname().release.split('.')[0].int()
@@ -260,8 +259,11 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		]
 	}
 	if ccoptions.is_cc_gcc {
-		if ccoptions.debug_mode && user_darwin_version > 9 {
-			debug_options = ['-g', '-no-pie']
+		if ccoptions.debug_mode {
+			debug_options = ['-g']
+			if user_darwin_version > 9 {
+				debug_options << '-no-pie'
+			}
 		}
 		optimization_options = ['-O3', '-fno-strict-aliasing', '-flto']
 	}
