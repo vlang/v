@@ -162,9 +162,10 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				c.expected_type = node.expected_type
 				low_expr := expr.low
 				high_expr := expr.high
+				final_cond_sym := c.table.final_sym(node.cond_type)
 				if low_expr is ast.IntegerLiteral {
 					if high_expr is ast.IntegerLiteral
-						&& (cond_type_sym.is_int() || cond_type_sym.info is ast.Enum) {
+						&& (final_cond_sym.is_int() || final_cond_sym.info is ast.Enum) {
 						low = low_expr.val.i64()
 						high = high_expr.val.i64()
 						if low > high {
@@ -174,7 +175,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 						c.error('mismatched range types', low_expr.pos)
 					}
 				} else if low_expr is ast.CharLiteral {
-					if high_expr is ast.CharLiteral && cond_type_sym.kind in [.u8, .char, .rune] {
+					if high_expr is ast.CharLiteral && final_cond_sym.kind in [.u8, .char, .rune] {
 						low = low_expr.val[0]
 						high = high_expr.val[0]
 						if low > high {
