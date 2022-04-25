@@ -19,6 +19,10 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		if expected == ast.voidptr_type {
 			return true
 		}
+		if expected == ast.bool_type && (got.is_any_kind_of_pointer() || got.is_int()) {
+			return true
+		}
+
 		if expected.is_any_kind_of_pointer() { //&& !got.is_any_kind_of_pointer() {
 			// Allow `int` as `&i8` etc in C code.
 			deref := expected.deref()
