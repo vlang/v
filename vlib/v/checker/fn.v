@@ -1946,6 +1946,14 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 		}
 		node.return_type = ast.bool_type
 	} else if method_name == 'index' {
+		if node.args.len != 1 {
+			c.error('`.index()` expected 1 argument, but got $node.args.len', node.pos)
+		} else if !left_sym.has_method('index') {
+			arg_typ := c.expr(node.args[0].expr)
+			c.check_expected_call_arg(arg_typ, elem_typ, node.language, node.args[0]) or {
+				c.error('$err.msg() in argument 1 to `.index()`', node.args[0].pos)
+			}
+		}
 		node.return_type = ast.int_type
 	} else if method_name in ['first', 'last', 'pop'] {
 		if node.args.len != 0 {
