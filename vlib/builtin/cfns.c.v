@@ -481,3 +481,6 @@ fn C.glTexImage2D()
 
 // used by ios for println
 fn C.WrappedNSLog(str &u8)
+
+// absolute value
+fn C.abs(number int) int
