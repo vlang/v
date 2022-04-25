@@ -78,7 +78,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 			g.inside_lambda = false
 			return
 		}
-		need_tmp_var := g.inside_call && !g.inside_struct_init
+		need_tmp_var := g.inside_call && !g.inside_struct_init && node.exprs.len == 0
 		mut stmt_str := ''
 		mut tmp_var := ''
 		if need_tmp_var {
