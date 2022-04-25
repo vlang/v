@@ -379,7 +379,10 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	defer {
 		g.tmp_count = ctmp
 	}
+	prev_inside_ternary := g.inside_ternary
+	g.inside_ternary = 0
 	g.stmts(node.stmts)
+	g.inside_ternary = prev_inside_ternary
 	if node.is_noreturn {
 		g.writeln('\twhile(1);')
 	}
