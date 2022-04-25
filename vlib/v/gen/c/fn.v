@@ -1777,7 +1777,10 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		}
 	} else {
 		g.writeln('pthread_t thread_$tmp;')
-		g.writeln('int ${tmp}_thr_res = pthread_create(&thread_$tmp, NULL, (void*)$wrapper_fn_name, $arg_tmp_var);')
+		g.writeln('pthread_attr_t thread_${tmp}_attributes;')
+		g.writeln('pthread_attr_init(&thread_${tmp}_attributes);')
+		g.writeln('pthread_attr_setstacksize(&thread_${tmp}_attributes, $g.pref.thread_stack_size);')
+		g.writeln('int ${tmp}_thr_res = pthread_create(&thread_$tmp, &thread_${tmp}_attributes, (void*)$wrapper_fn_name, $arg_tmp_var);')
 		g.writeln('if (${tmp}_thr_res) panic_error_number(tos3("`go ${name}()`: "), ${tmp}_thr_res);')
 		if !node.is_expr {
 			g.writeln('pthread_detach(thread_$tmp);')
