@@ -25,7 +25,9 @@ f64 to string with string format
 */
 
 // TODO: Investigate precision issues
-// f32_to_str_l return a string with the f32 converted in a string in decimal notation
+// f32_to_str_l returns `f` as a `string` in decimal notation with a maximum of 6 digits after the dot.
+//
+// Example: assert strconv.f32_to_str_l(34.1234567) == '34.12346'
 [manualfree]
 pub fn f32_to_str_l(f f32) string {
 	s := f32_to_str(f, 6)
@@ -34,6 +36,10 @@ pub fn f32_to_str_l(f f32) string {
 	return res
 }
 
+// f32_to_str_l_no_dot returns `f` as a `string` in decimal notation with a maximum of 6 digits after the dot.
+// The decimal digits after the dot can be omitted.
+//
+// Example: assert strconv.f32_to_str_l_no_dot(34.) == '34'
 [manualfree]
 pub fn f32_to_str_l_no_dot(f f32) string {
 	s := f32_to_str(f, 6)
@@ -42,6 +48,9 @@ pub fn f32_to_str_l_no_dot(f f32) string {
 	return res
 }
 
+// f64_to_str_l returns `f` as a `string` in decimal notation with a maximum of 18 digits after the dot.
+//
+// Example: assert strconv.f64_to_str_l(123.1234567891011121) == '123.12345678910111'
 [manualfree]
 pub fn f64_to_str_l(f f64) string {
 	s := f64_to_str(f, 18)
@@ -50,6 +59,10 @@ pub fn f64_to_str_l(f f64) string {
 	return res
 }
 
+// f64_to_str_l_no_dot returns `f` as a `string` in decimal notation with a maximum of 18 digits after the dot.
+// The decimal digits after the dot can be omitted.
+//
+// Example: assert strconv.f64_to_str_l_no_dot (34.) == '34'
 [manualfree]
 pub fn f64_to_str_l_no_dot(f f64) string {
 	s := f64_to_str(f, 18)
@@ -58,7 +71,10 @@ pub fn f64_to_str_l_no_dot(f f64) string {
 	return res
 }
 
-// f64_to_str_l return a string with the f64 converted in a string in decimal notation
+// fxx_to_str_l_parse returns a `string` in decimal notation converted from a
+// floating-point `string` in scientific notation.
+//
+// Example: assert strconv.fxx_to_str_l_parse('34.22e+00') == '34.22'
 [manualfree]
 pub fn fxx_to_str_l_parse(s string) string {
 	// check for +inf -inf Nan
@@ -181,7 +197,11 @@ pub fn fxx_to_str_l_parse(s string) string {
 	return unsafe { tos(res.data, r_i) }
 }
 
-// f64_to_str_l return a string with the f64 converted in a string in decimal notation
+// fxx_to_str_l_parse_no_dot returns a `string` in decimal notation converted from a
+// floating-point `string` in scientific notation.
+// The decimal digits after the dot can be omitted.
+//
+// Example: assert strconv.fxx_to_str_l_parse_no_dot ('34.e+01') == '340'
 [manualfree]
 pub fn fxx_to_str_l_parse_no_dot(s string) string {
 	// check for +inf -inf Nan
