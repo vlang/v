@@ -1156,7 +1156,7 @@ pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
 	mut name := '('
 	mut cname := 'multi_return'
 	for i, mr_typ in mr_typs {
-		mr_type_sym := t.sym(mr_typ)
+		mr_type_sym := t.sym(mktyp(mr_typ))
 		ref, cref := if mr_typ.is_ptr() { '&', 'ref_' } else { '', '' }
 		name += '$ref$mr_type_sym.name'
 		cname += '_$cref$mr_type_sym.cname'
