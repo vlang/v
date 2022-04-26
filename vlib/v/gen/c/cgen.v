@@ -195,6 +195,7 @@ mut:
 	referenced_fns      shared map[string]bool // functions that have been referenced
 	nr_closures         int
 	expected_cast_type  ast.Type // for match expr of sumtypes
+	or_expr_return_type ast.Type // or { 0, 1 } return type
 	anon_fn             bool
 	tests_inited        bool
 	has_main            bool
@@ -3861,7 +3862,12 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 }
 
 fn (mut g Gen) concat_expr(node ast.ConcatExpr) {
-	styp := g.typ(node.return_type)
+	mut styp := g.typ(node.return_type)
+	if g.inside_return {
+		styp = g.typ(g.fn_decl.return_type)
+	} else if g.inside_or_block {
+		styp = g.typ(g.or_expr_return_type)
+	}
 	sym := g.table.sym(node.return_type)
 	is_multi := sym.kind == .multi_return
 	if !is_multi {
@@ -4930,6 +4936,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 		g.writeln('if (${cvar_name}.state != 0) { /*or block*/ ')
 	}
 	if or_block.kind == .block {
+		g.or_expr_return_type = return_type.clear_flag(.optional)
 		if g.inside_or_block {
 			g.writeln('\terr = ${cvar_name}.err;')
 		} else {
@@ -4967,6 +4974,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 				g.writeln(';')
 			}
 		}
+		g.or_expr_return_type = ast.void_type
 	} else if or_block.kind == .propagate {
 		if g.file.mod.name == 'main' && (isnil(g.fn_decl) || g.fn_decl.is_main) {
 			// In main(), an `opt()?` call is sugar for `opt() or { panic(err) }`
