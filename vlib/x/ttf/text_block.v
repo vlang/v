@@ -20,7 +20,7 @@ pub struct Text_block {
 	cut_lines bool = true // force to cut the line if the length is over the text block width
 }
 
-fn (mut dev BitMap) get_justify_space_cw(txt string, w int, block_w int, space_cw int) f32 {
+pub fn (mut dev BitMap) get_justify_space_cw(txt string, w int, block_w int, space_cw int) f32 {
 	num_spaces := txt.count(' ')
 	if num_spaces < 1 {
 		return 0
