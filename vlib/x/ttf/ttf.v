@@ -771,7 +771,7 @@ fn (mut tf TTF_File) read_cmap(offset u32) {
 * CMAPS 0/4
 *
 ******************************************************************************/
-fn (mut tf TTF_File) map_code(char_code int) u16 {
+pub fn (mut tf TTF_File) map_code(char_code int) u16 {
 	mut index := 0
 	for i in 0 .. tf.cmaps.len {
 		mut cmap := tf.cmaps[i]
@@ -1006,13 +1006,13 @@ fn (mut tf TTF_File) read_kern_table() {
 	}
 }
 
-fn (mut tf TTF_File) reset_kern() {
+pub fn (mut tf TTF_File) reset_kern() {
 	for i in 0 .. tf.kern.len {
 		tf.kern[i].reset()
 	}
 }
 
-fn (mut tf TTF_File) next_kern(glyph_index int) (int, int) {
+pub fn (mut tf TTF_File) next_kern(glyph_index int) (int, int) {
 	mut x := 0
 	mut y := 0
 	for i in 0 .. tf.kern.len {

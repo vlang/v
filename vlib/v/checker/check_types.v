@@ -248,6 +248,20 @@ pub fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 		return true
 	}
 	got_sym, exp_sym := c.table.sym(got), c.table.sym(expected)
+	// multi return
+	if exp_sym.kind == .multi_return && got_sym.kind == .multi_return {
+		exp_types := exp_sym.mr_info().types
+		got_types := got_sym.mr_info().types.map(ast.mktyp(it))
+		if exp_types.len != got_types.len {
+			return false
+		}
+		for i in 0 .. exp_types.len {
+			if !c.check_types(got_types[i], exp_types[i]) {
+				return false
+			}
+		}
+		return true
+	}
 	// array/map as argument
 	if got_sym.kind in [.array, .map, .array_fixed] && exp_sym.kind == got_sym.kind {
 		if c.table.type_to_str(got) == c.table.type_to_str(expected).trim('&') {

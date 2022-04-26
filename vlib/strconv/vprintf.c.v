@@ -22,10 +22,18 @@ enum Char_parse_state {
 	reset_params
 }
 
+// v_printf prints a sprintf-like formated `string` to the terminal.
 pub fn v_printf(str string, pt ...voidptr) {
 	print(v_sprintf(str, ...pt))
 }
 
+// v_sprintf returns a sprintf-like formated `string`.
+//
+// Example:
+// ```v
+// x := 3.141516
+// assert strconv.v_sprintf('aaa %G', x) == 'aaa 3.141516'
+// ```
 [manualfree]
 pub fn v_sprintf(str string, pt ...voidptr) string {
 	mut res := strings.new_builder(pt.len * 16)
@@ -628,7 +636,7 @@ pub fn format_fl_old(f f64, p BF_param) string {
 }
 
 [manualfree]
-pub fn format_es_old(f f64, p BF_param) string {
+fn format_es_old(f f64, p BF_param) string {
 	unsafe {
 		mut s := ''
 		mut fs := f64_to_str_pad(if f > 0 { f } else { -f }, p.len1)
@@ -692,7 +700,7 @@ pub fn format_es_old(f f64, p BF_param) string {
 	}
 }
 
-pub fn remove_tail_zeros_old(s string) string {
+fn remove_tail_zeros_old(s string) string {
 	mut i := 0
 	mut last_zero_start := -1
 	mut dot_pos := -1
