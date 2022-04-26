@@ -19,6 +19,10 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		if expected == ast.voidptr_type {
 			return true
 		}
+		if expected == ast.bool_type && (got.is_any_kind_of_pointer() || got.is_int()) {
+			return true
+		}
+
 		if expected.is_any_kind_of_pointer() { //&& !got.is_any_kind_of_pointer() {
 			// Allow `int` as `&i8` etc in C code.
 			deref := expected.deref()
@@ -204,7 +208,9 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 		}
 		return
 	}
-	return error('cannot use `$got_typ_str` as `$expected_typ_str`')
+	if got != ast.void_type {
+		return error('cannot use `$got_typ_str` as `$expected_typ_str`')
+	}
 }
 
 // helper method to check if the type is of the same module.
@@ -242,6 +248,20 @@ pub fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 		return true
 	}
 	got_sym, exp_sym := c.table.sym(got), c.table.sym(expected)
+	// multi return
+	if exp_sym.kind == .multi_return && got_sym.kind == .multi_return {
+		exp_types := exp_sym.mr_info().types
+		got_types := got_sym.mr_info().types.map(ast.mktyp(it))
+		if exp_types.len != got_types.len {
+			return false
+		}
+		for i in 0 .. exp_types.len {
+			if !c.check_types(got_types[i], exp_types[i]) {
+				return false
+			}
+		}
+		return true
+	}
 	// array/map as argument
 	if got_sym.kind in [.array, .map, .array_fixed] && exp_sym.kind == got_sym.kind {
 		if c.table.type_to_str(got) == c.table.type_to_str(expected).trim('&') {
@@ -688,4 +708,39 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 	if c.table.register_fn_concrete_types(func.fkey(), inferred_types) {
 		c.need_recheck_generic_fns = true
 	}
+}
+
+pub fn (c &Checker) sizeof_integer(a ast.Type) int {
+	t := if a in ast.unsigned_integer_type_idxs { a.flip_signedness() } else { a }
+	r := match t {
+		ast.char_type_idx, ast.i8_type_idx {
+			1
+		}
+		ast.i16_type_idx {
+			2
+		}
+		ast.int_type_idx {
+			4
+		}
+		ast.rune_type_idx {
+			4
+		}
+		ast.i64_type_idx {
+			8
+		}
+		ast.isize_type_idx {
+			if c.pref.m64 { 8 } else { 4 }
+		}
+		ast.int_literal_type {
+			s := c.table.type_to_str(a)
+			panic('`$s` has unknown size')
+			0
+		}
+		else {
+			s := c.table.type_to_str(a)
+			panic('`$s` is not an integer')
+			0
+		}
+	}
+	return r
 }

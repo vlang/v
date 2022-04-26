@@ -1462,7 +1462,7 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 					|| f.line_len + expr.pos().len > fmt.max_len[3]
 			}
 		}
-		line_break := f.array_init_break[f.array_init_depth - 1]
+		mut line_break := f.array_init_break[f.array_init_depth - 1]
 		mut penalty := if line_break { 0 } else { 4 }
 		if penalty > 0 {
 			if i == 0
@@ -1480,14 +1480,26 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		}
 		single_line_expr := expr_is_single_line(expr)
 		if single_line_expr {
-			estr := f.node_str(expr)
-			if !is_new_line && !f.buffering && f.line_len + estr.len > fmt.max_len.last() {
+			mut estr := ''
+			if !is_new_line && !f.buffering && f.line_len + expr.pos().len > fmt.max_len.last() {
+				if inc_indent {
+					estr = f.node_str(expr)
+				}
 				f.writeln('')
 				is_new_line = true
 				if !inc_indent {
 					f.indent++
 					inc_indent = true
+					f.write_indent()
+					f.empty_line = false
+					estr = f.node_str(expr)
 				}
+				if i == 0 {
+					f.array_init_break[f.array_init_depth - 1] = true
+					line_break = true
+				}
+			} else {
+				estr = f.node_str(expr)
 			}
 			if !is_new_line && i > 0 {
 				f.write(' ')

@@ -384,18 +384,18 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, str_fn_nam
 	clean_interface_v_type_name = util.strip_main_name(clean_interface_v_type_name)
 	fn_builder.writeln('static string indent_${str_fn_name}($styp x, int indent_count) { /* gen_str_for_interface */')
 	for typ in info.types {
-		subtype := g.table.sym(typ)
+		sub_sym := g.table.sym(ast.mktyp(typ))
 		mut func_name := g.get_str_fn(typ)
-		sym_has_str_method, str_method_expects_ptr, _ := subtype.str_method_info()
-		if should_use_indent_func(subtype.kind) && !sym_has_str_method {
+		sym_has_str_method, str_method_expects_ptr, _ := sub_sym.str_method_info()
+		if should_use_indent_func(sub_sym.kind) && !sym_has_str_method {
 			func_name = 'indent_$func_name'
 		}
 
 		// str_intp
 		deref := if sym_has_str_method && str_method_expects_ptr { ' ' } else { '*' }
 		if typ == ast.string_type {
-			mut val := '${func_name}(${deref}($subtype.cname*)x._$subtype.cname'
-			if should_use_indent_func(subtype.kind) && !sym_has_str_method {
+			mut val := '${func_name}(${deref}($sub_sym.cname*)x._$sub_sym.cname'
+			if should_use_indent_func(sub_sym.kind) && !sym_has_str_method {
 				val += ', indent_count'
 			}
 			val += ')'
@@ -403,11 +403,11 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, str_fn_nam
 				{_SLIT("${clean_interface_v_type_name}(\'"), $c.si_s_code, {.d_s = $val}},
 				{_SLIT("\')"), 0, {.d_c = 0 }}
 			}))'
-			fn_builder.write_string('\tif (x._typ == _${styp}_${subtype.cname}_index)')
+			fn_builder.write_string('\tif (x._typ == _${styp}_${sub_sym.cname}_index)')
 			fn_builder.write_string(' return $res;')
 		} else {
-			mut val := '${func_name}(${deref}($subtype.cname*)x._$subtype.cname'
-			if should_use_indent_func(subtype.kind) && !sym_has_str_method {
+			mut val := '${func_name}(${deref}($sub_sym.cname*)x._$sub_sym.cname'
+			if should_use_indent_func(sub_sym.kind) && !sym_has_str_method {
 				val += ', indent_count'
 			}
 			val += ')'
@@ -415,7 +415,7 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, str_fn_nam
 				{_SLIT("${clean_interface_v_type_name}("), $c.si_s_code, {.d_s = $val}},
 				{_SLIT(")"), 0, {.d_c = 0 }}
 			}))'
-			fn_builder.write_string('\tif (x._typ == _${styp}_${subtype.cname}_index)')
+			fn_builder.write_string('\tif (x._typ == _${styp}_${sub_sym.cname}_index)')
 			fn_builder.write_string(' return $res;\n')
 		}
 	}

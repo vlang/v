@@ -242,8 +242,7 @@ const (
 			cookie: [&http.Cookie{
 				name: 'cookie-1'
 				value: 'v1'
-			},
-				&http.Cookie{
+			}, &http.Cookie{
 				name: 'cookie-2'
 				value: 'v2'
 			},
@@ -294,8 +293,7 @@ const (
 			header: {
 				'Set-Cookie': ['ASP.NET_SessionId=foo; path=/; HttpOnly']
 			}
-			cookies: [
-				&http.Cookie{
+			cookies: [&http.Cookie{
 				name: 'ASP.NET_SessionId'
 				value: 'foo'
 				path: '/'
@@ -307,8 +305,7 @@ const (
 			header: {
 				'Set-Cookie': ['samesitedefault=foo; SameSite']
 			}
-			cookies: [
-				&http.Cookie{
+			cookies: [&http.Cookie{
 				name: 'samesitedefault'
 				value: 'foo'
 				same_site: .same_site_default_mode
@@ -319,8 +316,7 @@ const (
 			header: {
 				'Set-Cookie': ['samesitelax=foo; SameSite=Lax']
 			}
-			cookies: [
-				&http.Cookie{
+			cookies: [&http.Cookie{
 				name: 'samesitelax'
 				value: 'foo'
 				same_site: .same_site_lax_mode
@@ -331,8 +327,7 @@ const (
 			header: {
 				'Set-Cookie': ['samesitestrict=foo; SameSite=Strict']
 			}
-			cookies: [
-				&http.Cookie{
+			cookies: [&http.Cookie{
 				name: 'samesitestrict'
 				value: 'foo'
 				same_site: .same_site_strict_mode
@@ -343,8 +338,7 @@ const (
 			header: {
 				'Set-Cookie': ['samesitenone=foo; SameSite=None']
 			}
-			cookies: [
-				&http.Cookie{
+			cookies: [&http.Cookie{
 				name: 'samesitenone'
 				value: 'foo'
 				same_site: .same_site_none_mode
@@ -357,8 +351,7 @@ const (
 			header: {
 				'Set-Cookie': ['special-1=a z']
 			}
-			cookies: [
-				&http.Cookie{
+			cookies: [&http.Cookie{
 				name: 'special-1'
 				value: 'a z'
 				raw: 'special-1=a z'
@@ -368,8 +361,7 @@ const (
 			header: {
 				'Set-Cookie': ['special-2=" z"']
 			}
-			cookies: [
-				&http.Cookie{
+			cookies: [&http.Cookie{
 				name: 'special-2'
 				value: ' z'
 				raw: 'special-2=" z"'
@@ -379,8 +371,7 @@ const (
 			header: {
 				'Set-Cookie': ['special-3="a "']
 			}
-			cookies: [
-				&http.Cookie{
+			cookies: [&http.Cookie{
 				name: 'special-3'
 				value: 'a '
 				raw: 'special-3="a "'
@@ -390,8 +381,7 @@ const (
 			header: {
 				'Set-Cookie': ['special-4=" "']
 			}
-			cookies: [
-				&http.Cookie{
+			cookies: [&http.Cookie{
 				name: 'special-4'
 				value: ' '
 				raw: 'special-4=" "'
@@ -401,8 +391,7 @@ const (
 			header: {
 				'Set-Cookie': ['special-5=a,z']
 			}
-			cookies: [
-				&http.Cookie{
+			cookies: [&http.Cookie{
 				name: 'special-5'
 				value: 'a,z'
 				raw: 'special-5=a,z'
@@ -412,8 +401,7 @@ const (
 			header: {
 				'Set-Cookie': ['special-6=",z"']
 			}
-			cookies: [
-				&http.Cookie{
+			cookies: [&http.Cookie{
 				name: 'special-6'
 				value: ',z'
 				raw: 'special-6=",z"'
@@ -423,8 +411,7 @@ const (
 			header: {
 				'Set-Cookie': ['special-7=","']
 			}
-			cookies: [
-				&http.Cookie{
+			cookies: [&http.Cookie{
 				name: 'special-7'
 				value: ','
 				raw: 'special-8=","'

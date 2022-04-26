@@ -299,14 +299,15 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		} else {
 			node.cond
 		}
+		field_accessor := if node.cond_type.is_ptr() { '->' } else { '.' }
 		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
 		g.write('for (int $i = 0; $i < ')
 		g.expr(cond)
-		g.writeln('.len; ++$i) {')
+		g.writeln('${field_accessor}len; ++$i) {')
 		if node.val_var != '_' {
-			g.write('\tbyte ${c_name(node.val_var)} = ')
+			g.write('\tu8 ${c_name(node.val_var)} = ')
 			g.expr(cond)
-			g.writeln('.str[$i];')
+			g.writeln('${field_accessor}str[$i];')
 		}
 	} else if node.kind == .struct_ {
 		cond_type_sym := g.table.sym(node.cond_type)
