@@ -331,7 +331,7 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 // String Functions
 //=============================================================================
 
-// f64_to_str return a string in scientific notation with max n_digit after the dot
+// f64_to_str returns `f` as a `string` in scientific notation with max `n_digit` digits after the dot.
 pub fn f64_to_str(f f64, n_digit int) string {
 	mut u1 := Uf64{}
 	u1.f = f
@@ -356,7 +356,7 @@ pub fn f64_to_str(f f64, n_digit int) string {
 	return d.get_string_64(neg, n_digit, 0)
 }
 
-// f64_to_str return a string in scientific notation with max n_digit after the dot
+// f64_to_str returns `f` as a `string` in scientific notation with max `n_digit` digits after the dot.
 pub fn f64_to_str_pad(f f64, n_digit int) string {
 	mut u1 := Uf64{}
 	u1.f = f

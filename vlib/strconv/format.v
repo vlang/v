@@ -89,6 +89,7 @@ pub mut:
 	rm_tail_zero bool       // remove the tail zeros from floats
 }
 
+// format_str returns a `string` formatted according to the options set in `p`.
 [manualfree]
 pub fn format_str(s string, p BF_param) string {
 	if p.len0 <= 0 {
