@@ -1318,7 +1318,11 @@ pub fn (mut g Gen) write_interface_typesymbol_declaration(sym ast.TypeSymbol) {
 	g.type_definitions.writeln('\tunion {')
 	g.type_definitions.writeln('\t\tvoid* _object;')
 	for variant in info.types {
-		vcname := g.table.sym(ast.mktyp(variant)).cname
+		mk_typ := ast.mktyp(variant)
+		if mk_typ != variant && mk_typ in info.types {
+			continue
+		}
+		vcname := g.table.sym(mk_typ).cname
 		g.type_definitions.writeln('\t\t$vcname* _$vcname;')
 	}
 	g.type_definitions.writeln('\t};')
