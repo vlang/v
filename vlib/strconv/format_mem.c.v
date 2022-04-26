@@ -9,7 +9,7 @@ module strconv
 
 import strings
 
-// strings.Builder version of format_str
+// format_str_sb is a `strings.Builder` version of `format_str`.
 pub fn format_str_sb(s string, p BF_param, mut sb strings.Builder) {
 	if p.len0 <= 0 {
 		sb.write_string(s)
@@ -40,7 +40,7 @@ const (
 	digit_pairs       = '00102030405060708090011121314151617181910212223242526272829203132333435363738393041424344454647484940515253545556575859506162636465666768696071727374757677787970818283848586878889809192939495969798999'
 )
 
-// format_dec_sb format a u64
+// format_dec_sb formats an u64 using a `strings.Builder`.
 [direct_array_access]
 pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 	mut n_char := dec_digits(d)
@@ -135,8 +135,9 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 	return
 }
 
+// f64_to_str_lnd1 formats a f64 to a `string` with `dec_digit` digits after the dot.
 [direct_array_access; manualfree]
-pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
+fn f64_to_str_lnd1(f f64, dec_digit int) string {
 	unsafe {
 		// we add the rounding value
 		s := f64_to_str(f + dec_round[dec_digit], 18)
@@ -311,7 +312,7 @@ pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 	}
 }
 
-// strings.Builder version of format_fl
+// format_fl is a `strings.Builder` version of format_fl.
 [direct_array_access; manualfree]
 pub fn format_fl(f f64, p BF_param) string {
 	unsafe {
@@ -388,6 +389,7 @@ pub fn format_fl(f f64, p BF_param) string {
 	}
 }
 
+// format_es returns a f64 as a `string` formatted according to the options set in `p`.
 [direct_array_access; manualfree]
 pub fn format_es(f f64, p BF_param) string {
 	unsafe {
@@ -458,6 +460,7 @@ pub fn format_es(f f64, p BF_param) string {
 	}
 }
 
+// remove_tail_zeros strips traling zeros from `s` and return the resulting `string`.
 [direct_array_access]
 pub fn remove_tail_zeros(s string) string {
 	unsafe {
