@@ -1,5 +1,5 @@
-import mymodules { add_xy }
-import mymodules.submodule { sub_xy }
+import v.examples.submodule.mymodules { add_xy }
+import v.examples.submodule.mymodules.submodule { sub_xy }
 
 fn main() {
 	println(add_xy(2, 3)) // expected: 5
