@@ -3861,10 +3861,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 }
 
 fn (mut g Gen) concat_expr(node ast.ConcatExpr) {
-	mut styp := g.typ(node.return_type)
-	if g.inside_return {
-		styp = g.typ(g.fn_decl.return_type)
-	}
+	styp := g.typ(node.return_type)
 	sym := g.table.sym(node.return_type)
 	is_multi := sym.kind == .multi_return
 	if !is_multi {
