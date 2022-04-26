@@ -346,8 +346,8 @@ fn draw_cube_glsl_i(mut app App) {
 		// y := f32(math.sin(r+time_ticks)*4.0)
 		spare_param := f32(index % 10)
 		app.inst_pos[index] = m4.Vec4{
-			e: [f32((x - cx - app.camera_x) * cube_size), y,
-				f32((z - cz - app.camera_z) * cube_size), spare_param]!
+			e: [f32((x - cx - app.camera_x) * cube_size), y, f32((z - cz - app.camera_z) * cube_size),
+				spare_param]!
 		}
 	}
 	range := gfx.Range{

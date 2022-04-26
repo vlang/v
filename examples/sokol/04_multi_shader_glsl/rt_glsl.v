@@ -189,12 +189,12 @@ fn init_cube_glsl_m(mut app App) {
 		10,
 		8,
 		10,
-		11
+		11,
 		/*
 		u16(14), 13, 12,    15, 14, 12,
         16, 17, 18,    16, 18, 19,
         22, 21, 20,    23, 22, 20
-		*/,
+		*/
 	]
 
 	mut index_buffer_desc := gfx.BufferDesc{
