@@ -17,7 +17,7 @@ fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
 			for right in node.inc.right {
 				if right is ast.CallExpr {
 					if right.or_block.stmts.len > 0 {
-						c.error('disallow using optional call in conditions of for_c_stmt',
+						c.error('optionals are not allowed in `for` statement condition',
 							right.pos)
 					}
 				}
