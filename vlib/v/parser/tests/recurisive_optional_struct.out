@@ -1,0 +1,7 @@
+./recurisive_optional_struct.vv:9:8: error: invalid recursive struct `NodeC`
+    7 | }
+    8 |
+    9 | struct NodeC {
+      |        ~~~~~
+   10 |     next NodeC
+   11 | }

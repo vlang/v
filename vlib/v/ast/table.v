@@ -1359,7 +1359,8 @@ pub fn (t &Table) has_deep_child_no_ref(ts &TypeSymbol, name string) bool {
 	if ts.info is Struct {
 		for field in ts.info.fields {
 			sym := t.sym(field.typ)
-			if !field.typ.is_ptr() && (sym.name == name || t.has_deep_child_no_ref(sym, name)) {
+			if !field.typ.is_ptr() && !field.typ.has_flag(.optional)
+				&& (sym.name == name || t.has_deep_child_no_ref(sym, name)) {
 				return true
 			}
 		}

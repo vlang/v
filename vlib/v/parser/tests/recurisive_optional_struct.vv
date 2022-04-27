@@ -1,0 +1,11 @@
+struct NodeA {
+	next ?NodeA
+}
+
+struct NodeB {
+	next &NodeB
+}
+
+struct NodeC {
+	next NodeC
+}
