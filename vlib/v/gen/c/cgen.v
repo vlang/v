@@ -5207,9 +5207,10 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 	// Make sure the sum type can be cast to this type (the types
 	// are the same), otherwise panic.
 	// g.insert_before('
-	styp := g.typ(node.typ)
-	sym := g.table.sym(node.typ)
-	mut expr_type_sym := g.table.sym(node.expr_type)
+	unwrapped_node_typ := g.unwrap_generic(node.typ)
+	styp := g.typ(unwrapped_node_typ)
+	sym := g.table.sym(unwrapped_node_typ)
+	mut expr_type_sym := g.table.sym(g.unwrap_generic(node.expr_type))
 	if mut expr_type_sym.info is ast.SumType {
 		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
 		g.write('/* as */ *($styp*)__as_cast(')
@@ -5223,9 +5224,8 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		g.write(')')
 		g.write(dot)
 		// g.write('typ, /*expected:*/$node.typ)')
-		sidx := g.type_sidx(node.typ)
-		expected_sym := g.table.sym(node.typ)
-		g.write('_typ, $sidx) /*expected idx: $sidx, name: $expected_sym.name */ ')
+		sidx := g.type_sidx(unwrapped_node_typ)
+		g.write('_typ, $sidx) /*expected idx: $sidx, name: $sym.name */ ')
 
 		// fill as cast name table
 		for variant in expr_type_sym.info.variants {
