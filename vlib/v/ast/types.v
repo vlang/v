@@ -127,7 +127,7 @@ pub fn (t Type) atomic_typename() string {
 	idx := t.idx()
 	match idx {
 		ast.u32_type_idx { return 'atomic_uint' }
-		ast.int_type_idx { return 'atomic_int' }
+		ast.int_type_idx { return '_Atomic int' }
 		ast.u64_type_idx { return 'atomic_ullong' }
 		ast.i64_type_idx { return 'atomic_llong' }
 		else { return 'unknown_atomic' }
@@ -1160,6 +1160,10 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 	if typ.has_flag(.shared_f) {
 		nr_muls--
 		res = 'shared ' + res
+	}
+	if typ.has_flag(.atomic_f) {
+		nr_muls--
+		res = 'atomic ' + res
 	}
 	if nr_muls > 0 && !typ.has_flag(.variadic) {
 		res = strings.repeat(`&`, nr_muls) + res

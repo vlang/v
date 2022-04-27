@@ -578,3 +578,8 @@ pub fn (b u8) repeat(count int) string {
 	}
 	return unsafe { ret.vstring_with_len(new_len) }
 }
+
+// for atomic ints, internal
+fn _Atomic__int_str(x int) string {
+	return x.str()
+}
