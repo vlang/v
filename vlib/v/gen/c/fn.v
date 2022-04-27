@@ -1915,6 +1915,13 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 				g.gowrappers.write_string(call_args_str)
 			} else {
 				for i in 0 .. expr.args.len {
+					expected_nr_muls := expr.expected_arg_types[i].nr_muls()
+					arg_nr_muls := expr.args[i].typ.nr_muls()
+					if arg_nr_muls > expected_nr_muls {
+						g.gowrappers.write_string('*'.repeat(arg_nr_muls - expected_nr_muls))
+					} else if arg_nr_muls < expected_nr_muls {
+						g.gowrappers.write_string('&'.repeat(expected_nr_muls - arg_nr_muls))
+					}
 					g.gowrappers.write_string('arg->arg${i + 1}')
 					if i != expr.args.len - 1 {
 						g.gowrappers.write_string(', ')
