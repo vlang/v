@@ -1,6 +1,3 @@
-import term
-import os
-import runtime
 import time
 
 struct App {
@@ -13,7 +10,7 @@ fn test_atomic() {
 	for i in 0 .. 10 {
 		go app.run()
 	}
-	time.sleep(2 * time.second)
+	time.sleep(200 * time.millisecond)
 	println('idx=$app.idx')
 	assert app.idx == 10
 }
