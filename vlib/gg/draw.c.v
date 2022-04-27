@@ -250,57 +250,47 @@ pub fn (ctx &Context) draw_rounded_rect_empty(x f32, y f32, w f32, h f32, radius
 	mut dx := f32(0)
 	mut dy := f32(0)
 
-	// left top quarter
-	sgl.begin_line_strip()
-	for i in 0 .. 31 {
-		if r == 0 {
-			break
+	if r != 0 {
+		// left top quarter
+		sgl.begin_line_strip()
+		for i in 0 .. 31 {
+			rad = f32(math.radians(i * 3))
+			dx = r * math.cosf(rad)
+			dy = r * math.sinf(rad)
+			sgl.v2f(ltx - dx, lty - dy)
 		}
-		rad = f32(math.radians(i * 3))
-		dx = r * math.cosf(rad)
-		dy = r * math.sinf(rad)
-		sgl.v2f(ltx - dx, lty - dy)
-	}
-	sgl.end()
+		sgl.end()
 
-	// right top quarter
-	sgl.begin_line_strip()
-	for i in 0 .. 31 {
-		if r == 0 {
-			break
+		// right top quarter
+		sgl.begin_line_strip()
+		for i in 0 .. 31 {
+			rad = f32(math.radians(i * 3))
+			dx = r * math.cosf(rad)
+			dy = r * math.sinf(rad)
+			sgl.v2f(rtx + dx, rty - dy)
 		}
-		rad = f32(math.radians(i * 3))
-		dx = r * math.cosf(rad)
-		dy = r * math.sinf(rad)
-		sgl.v2f(rtx + dx, rty - dy)
-	}
-	sgl.end()
+		sgl.end()
 
-	// right bottom quarter
-	sgl.begin_line_strip()
-	for i in 0 .. 31 {
-		if r == 0 {
-			break
+		// right bottom quarter
+		sgl.begin_line_strip()
+		for i in 0 .. 31 {
+			rad = f32(math.radians(i * 3))
+			dx = r * math.cosf(rad)
+			dy = r * math.sinf(rad)
+			sgl.v2f(rbx + dx, rby + dy)
 		}
-		rad = f32(math.radians(i * 3))
-		dx = r * math.cosf(rad)
-		dy = r * math.sinf(rad)
-		sgl.v2f(rbx + dx, rby + dy)
-	}
-	sgl.end()
+		sgl.end()
 
-	// left bottom quarter
-	sgl.begin_line_strip()
-	for i in 0 .. 31 {
-		if r == 0 {
-			break
+		// left bottom quarter
+		sgl.begin_line_strip()
+		for i in 0 .. 31 {
+			rad = f32(math.radians(i * 3))
+			dx = r * math.cosf(rad)
+			dy = r * math.sinf(rad)
+			sgl.v2f(lbx - dx, lby + dy)
 		}
-		rad = f32(math.radians(i * 3))
-		dx = r * math.cosf(rad)
-		dy = r * math.sinf(rad)
-		sgl.v2f(lbx - dx, lby + dy)
+		sgl.end()
 	}
-	sgl.end()
 
 	// Currently don't use 'gg.draw_line()' directly, it will repeatedly execute '*ctx.scale'.
 	sgl.begin_lines()
@@ -358,61 +348,51 @@ pub fn (ctx &Context) draw_rounded_rect_filled(x f32, y f32, w f32, h f32, radiu
 	mut dx := f32(0)
 	mut dy := f32(0)
 
-	// left top quarter
-	sgl.begin_triangle_strip()
-	for i in 0 .. 31 {
-		if r == 0 {
-			break
+	if r != 0 {
+		// left top quarter
+		sgl.begin_triangle_strip()
+		for i in 0 .. 31 {
+			rad = f32(math.radians(i * 3))
+			dx = r * math.cosf(rad)
+			dy = r * math.sinf(rad)
+			sgl.v2f(ltx - dx, lty - dy)
+			sgl.v2f(ltx, lty)
 		}
-		rad = f32(math.radians(i * 3))
-		dx = r * math.cosf(rad)
-		dy = r * math.sinf(rad)
-		sgl.v2f(ltx - dx, lty - dy)
-		sgl.v2f(ltx, lty)
-	}
-	sgl.end()
+		sgl.end()
 
-	// right top quarter
-	sgl.begin_triangle_strip()
-	for i in 0 .. 31 {
-		if r == 0 {
-			break
+		// right top quarter
+		sgl.begin_triangle_strip()
+		for i in 0 .. 31 {
+			rad = f32(math.radians(i * 3))
+			dx = r * math.cosf(rad)
+			dy = r * math.sinf(rad)
+			sgl.v2f(rtx + dx, rty - dy)
+			sgl.v2f(rtx, rty)
 		}
-		rad = f32(math.radians(i * 3))
-		dx = r * math.cosf(rad)
-		dy = r * math.sinf(rad)
-		sgl.v2f(rtx + dx, rty - dy)
-		sgl.v2f(rtx, rty)
-	}
-	sgl.end()
+		sgl.end()
 
-	// right bottom quarter
-	sgl.begin_triangle_strip()
-	for i in 0 .. 31 {
-		if r == 0 {
-			break
+		// right bottom quarter
+		sgl.begin_triangle_strip()
+		for i in 0 .. 31 {
+			rad = f32(math.radians(i * 3))
+			dx = r * math.cosf(rad)
+			dy = r * math.sinf(rad)
+			sgl.v2f(rbx + dx, rby + dy)
+			sgl.v2f(rbx, rby)
 		}
-		rad = f32(math.radians(i * 3))
-		dx = r * math.cosf(rad)
-		dy = r * math.sinf(rad)
-		sgl.v2f(rbx + dx, rby + dy)
-		sgl.v2f(rbx, rby)
-	}
-	sgl.end()
+		sgl.end()
 
-	// left bottom quarter
-	sgl.begin_triangle_strip()
-	for i in 0 .. 31 {
-		if r == 0 {
-			break
+		// left bottom quarter
+		sgl.begin_triangle_strip()
+		for i in 0 .. 31 {
+			rad = f32(math.radians(i * 3))
+			dx = r * math.cosf(rad)
+			dy = r * math.sinf(rad)
+			sgl.v2f(lbx - dx, lby + dy)
+			sgl.v2f(lbx, lby)
 		}
-		rad = f32(math.radians(i * 3))
-		dx = r * math.cosf(rad)
-		dy = r * math.sinf(rad)
-		sgl.v2f(lbx - dx, lby + dy)
-		sgl.v2f(lbx, lby)
+		sgl.end()
 	}
-	sgl.end()
 
 	// Separate drawing is to prevent transparent color overlap
 	// top rectangle
