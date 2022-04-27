@@ -18,5 +18,5 @@ pub fn max<T>(a T, b T) T {
 // abs returns the absolute value of `a`
 [inline]
 pub fn abs<T>(a T) T {
-	return if a > 0 { a } else { -a }
+	return if a < 0 { -a } else { a }
 }
