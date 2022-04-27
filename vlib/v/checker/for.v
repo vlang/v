@@ -13,6 +13,16 @@ fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
 	}
 	c.expr(node.cond)
 	if node.has_inc {
+		if node.inc is ast.AssignStmt {
+			for right in node.inc.right {
+				if right is ast.CallExpr {
+					if right.or_block.stmts.len > 0 {
+						c.error('disallow using optional call in conditions of for_c_stmt',
+							right.pos)
+					}
+				}
+			}
+		}
 		c.stmt(node.inc)
 	}
 	c.check_loop_label(node.label, node.pos)
