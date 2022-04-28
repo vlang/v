@@ -935,13 +935,13 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					return ast.void_type
 				} else if left_value_sym.kind == .sum_type {
 					if right_final.kind != .array {
-						if !c.table.is_sumtype_or_in_variant(left_value_type, right_type) {
+						if !c.table.is_sumtype_or_in_variant(left_value_type, ast.mktyp(right_type)) {
 							c.error('cannot append `$right_sym.name` to `$left_sym.name`',
 								right_pos)
 						}
 					} else {
 						right_value_type := c.table.value_type(right_type)
-						if !c.table.is_sumtype_or_in_variant(left_value_type, right_value_type) {
+						if !c.table.is_sumtype_or_in_variant(left_value_type, ast.mktyp(right_value_type)) {
 							c.error('cannot append `$right_sym.name` to `$left_sym.name`',
 								right_pos)
 						}
