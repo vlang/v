@@ -823,6 +823,7 @@ pub fn (t &TypeSymbol) is_builtin() bool {
 	return t.mod == 'builtin'
 }
 
+// type_size returns the size in bytes of `typ`, similarly to  C's `sizeof()`.
 pub fn (t &Table) type_size(typ Type) int {
 	if typ.has_flag(.optional) {
 		return t.type_size(ast.error_type_idx)
