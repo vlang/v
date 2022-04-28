@@ -97,7 +97,7 @@ pub fn (t Time) smonth() string {
 		return '---'
 	}
 	i := t.month - 1
-	return time.long_months[i][0..3]
+	return time.months_string[i * 3..(i + 1) * 3]
 }
 
 // unix_time returns Unix time.

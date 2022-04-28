@@ -4,7 +4,7 @@
 module time
 
 import strings
-import math { abs, ceil }
+import math
 
 // format returns a date string in "YYYY-MM-DD HH:MM" format (24h).
 pub fn (t Time) format() string {
@@ -223,13 +223,15 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string('${(t.hour + 1):02}')
 			}
 			'w' {
-				sb.write_string('${ceil((t.day + days_before[t.month - 1] + int(is_leap_year(t.year))) / 7):.0}')
+				sb.write_string('${math.ceil((t.day + days_before[t.month - 1] +
+					int(is_leap_year(t.year))) / 7):.0}')
 			}
 			'ww' {
-				sb.write_string('${ceil((t.day + days_before[t.month - 1] + int(is_leap_year(t.year))) / 7):02.0}')
+				sb.write_string('${math.ceil((t.day + days_before[t.month - 1] +
+					int(is_leap_year(t.year))) / 7):02.0}')
 			}
 			'wo' {
-				sb.write_string(ordinal_suffix(int(ceil((t.day + days_before[t.month - 1] +
+				sb.write_string(ordinal_suffix(int(math.ceil((t.day + days_before[t.month - 1] +
 					int(is_leap_year(t.year))) / 7))))
 			}
 			'Q' {
@@ -253,26 +255,32 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string('Anno Domini')
 			}
 			'Z' {
-				if offset() / seconds_per_hour >= 0 {
-					sb.write_string('+${(offset() / seconds_per_hour)}')
+				mut hours := offset() / seconds_per_hour
+				if hours >= 0 {
+					sb.write_string('+$hours')
 				} else {
-					sb.write_string('-${abs(offset() / seconds_per_hour)}')
+					hours = -hours
+					sb.write_string('-$hours')
 				}
 			}
 			'ZZ' {
 				// TODO update if minute differs?
-				if offset() / seconds_per_hour >= 0 {
-					sb.write_string('+${(offset() / seconds_per_hour):02}00')
+				mut hours := offset() / seconds_per_hour
+				if hours >= 0 {
+					sb.write_string('+${hours:02}00')
 				} else {
-					sb.write_string('-${abs(offset() / seconds_per_hour):02}00')
+					hours = -hours
+					sb.write_string('-${hours:02}00')
 				}
 			}
 			'ZZZ' {
 				// TODO update if minute differs?
-				if offset() / seconds_per_hour >= 0 {
-					sb.write_string('+${(offset() / seconds_per_hour):02}:00')
+				mut hours := offset() / seconds_per_hour
+				if hours >= 0 {
+					sb.write_string('+${hours:02}:00')
 				} else {
-					sb.write_string('-${abs(offset() / seconds_per_hour):02}:00')
+					hours = -hours
+					sb.write_string('-${hours:02}:00')
 				}
 			}
 			'a' {
