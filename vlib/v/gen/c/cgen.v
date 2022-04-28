@@ -3250,7 +3250,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if node.expr_type == 0 {
 		g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
 	}
-	if node.expr is ast.StringLiteral && node.field_name == "len" {
+	if node.expr is ast.StringLiteral && node.field_name == 'len' {
 		g.write(node.expr.val.len.str())
 		return
 	}
