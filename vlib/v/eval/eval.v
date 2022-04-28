@@ -117,7 +117,6 @@ pub fn (mut e Eval) register_symbols(mut files []&ast.File) {
 	for mut file in files {
 		file.idx = e.trace_file_paths.len
 		e.trace_file_paths << file.path
-		// eprintln('registering file: $file.path_base')
 		mod := file.mod.name
 		for mut stmt in file.stmts {
 			if mut stmt is ast.FnDecl {
@@ -205,7 +204,7 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 								}
 							}
 							else {
-								eprintln('unsupported expression')
+								e.error('unsupported expression')
 							}
 						}
 					}
@@ -223,9 +222,10 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 
 fn (e Eval) error(msg string) {
 	eprintln('> V interpeter backtrace:')
-	for idx, t in e.back_trace {
-		eprintln('  ${e.trace_file_paths[t.file_idx]}:${t.line + 1}:${e.trace_function_names[t.fn_idx]}')
-		// eprintln('${e.trace_file_paths[t.file_idx]}:${t.line + 1}:$t.fn_idx')
+	for t in e.back_trace {
+		file_path := e.trace_file_paths[t.file_idx] or { t.file_idx.str() }
+		fn_name := e.trace_function_names[t.fn_idx] or { t.fn_idx.str() }
+		eprintln('  $file_path:${t.line + 1}:$fn_name}')
 	}
 	util.verror('interpreter', msg)
 }

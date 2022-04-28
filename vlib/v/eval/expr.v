@@ -1,5 +1,6 @@
 module eval
 
+import v.pref
 import v.ast
 import v.util
 import math
@@ -134,30 +135,16 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 						do_if = true
 					} else {
 						if branch.cond is ast.Ident {
-							match branch.cond.name {
-								'windows' {
-									do_if = e.pref.os == .windows
-								}
-								'macos' {
-									do_if = e.pref.os == .macos
-								}
-								'linux' {
-									do_if = e.pref.os == .linux
-								}
-								'android' {
-									do_if = e.pref.os == .android
-								}
-								'freebsd' {
-									do_if = e.pref.os == .freebsd
-								}
-								'openbsd' {
-									do_if = e.pref.os == .openbsd
-								}
-								'prealloc' {
-									do_if = e.pref.prealloc
-								}
-								else {
-									e.error('unknown compile time if: $branch.cond.name')
+							if known_os := pref.os_from_string(branch.cond.name) {
+								do_if = e.pref.os == known_os
+							} else {
+								match branch.cond.name {
+									'prealloc' {
+										do_if = e.pref.prealloc
+									}
+									else {
+										e.error('unknown compile time if: $branch.cond.name')
+									}
 								}
 							}
 						} else if branch.cond is ast.PostfixExpr {
