@@ -3376,11 +3376,11 @@ fn (mut g JsGen) gen_string_literal(it ast.StringLiteral) {
 		g.writeln('return s; })()')
 	} else {
 		g.write('"')
-		for char in text {
-			if char == `\n` {
+		for ch in text {
+			if ch == `\n` {
 				g.write('\\n')
 			} else {
-				g.write('$char.ascii_str()')
+				g.write('$ch.ascii_str()')
 			}
 		}
 		g.write('"')
