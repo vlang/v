@@ -4,7 +4,6 @@ pub const (
 	days_str = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
     months_str = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
     accepted_format_tokens = [
-        ['M','D','s','m','h','k','H','N','Z','a','A','d','Q','w'],
         ['MM','DD','Do','YY','ss','kk','NN','mm','hh','HH','ZZ','dd','Qo','QQ','wo','ww'],
         ['MMM','DDD','ZZZ','ddd'],
         ['MMMM','DDDD','DDDo','dddd','YYYY']

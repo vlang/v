@@ -126,7 +126,7 @@ pub fn (t Time) custom_format(s string) string {
 			if i > s.len-j {
 				continue
 			}
-			if j == 1 || s[i..i + j] in accepted_format_tokens[j - 1]  {
+			if j == 1 || (j != 1 && s[i..i + j] in accepted_format_tokens[j - 2])  {
 				tokens << s[i..i + j]
 				i += (j - 1)
 				break
