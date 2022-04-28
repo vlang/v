@@ -3250,6 +3250,10 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if node.expr_type == 0 {
 		g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
 	}
+	if node.expr is ast.StringLiteral && node.field_name == "len" {
+		g.write(node.expr.val.len.str())
+		return
+	}
 	sym := g.table.sym(g.unwrap_generic(node.expr_type))
 	// if node expr is a root ident and an optional
 	mut is_optional := node.expr is ast.Ident && node.expr_type.has_flag(.optional)
@@ -3267,8 +3271,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		info := sym.info as ast.ArrayFixed
 		g.write('$info.size')
 		return
-	}
-	if sym.kind == .chan && (node.field_name == 'len' || node.field_name == 'closed') {
+	} else if sym.kind == .chan && (node.field_name == 'len' || node.field_name == 'closed') {
 		g.write('sync__Channel_${node.field_name}(')
 		g.expr(node.expr)
 		g.write(')')
