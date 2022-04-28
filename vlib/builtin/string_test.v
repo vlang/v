@@ -24,6 +24,11 @@ fn test_add() {
 	assert a.ends_with('3')
 }
 
+fn test_len_utf8() {
+	assert 'Vlang'.len_utf8() == 5
+	assert 'María'.len_utf8() == 5
+}
+
 fn test_ends_with() {
 	a := 'browser.v'
 	assert a.ends_with('.v')
