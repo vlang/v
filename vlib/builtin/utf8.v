@@ -134,17 +134,6 @@ fn utf8_len(c u8) int {
 	return b
 }
 
-// utf8_str_len returns the number of runes contained in the string.
-pub fn utf8_str_len(s string) int {
-	mut l := 0
-	mut i := 0
-	for i < s.len {
-		l++
-		i += ((0xe5000000 >> ((unsafe { s.str[i] } >> 3) & 0x1e)) & 3) + 1
-	}
-	return l
-}
-
 // Calculate string length for formatting, i.e. number of "characters"
 // This is simplified implementation. if you need specification compliant width,
 // use utf8.east_asian.display_width.
