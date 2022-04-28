@@ -17,7 +17,7 @@ fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
 			for right in node.inc.right {
 				if right is ast.CallExpr {
 					if right.or_block.stmts.len > 0 {
-						c.error('optionals are not allowed in `for` statement condition (yet)',
+						c.error('optionals are not allowed in `for statement increment` (yet)',
 							right.pos)
 					}
 				}
