@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module time
 
+import strings
 import math { abs, ceil }
 
 // format returns a date string in "YYYY-MM-DD HH:MM" format (24h).
@@ -135,165 +136,165 @@ pub fn (t Time) custom_format(s string) string {
 		}
 		i++
 	}
-	mut time_str := ''
+	mut sb := strings.new_builder(128)
 
 	for token in tokens {
 		match token {
 			'M' {
-				time_str += t.month.str()
+				sb.write_string(t.month.str())
 			}
 			'MM' {
-				time_str += '${t.month:02}'
+				sb.write_string('${t.month:02}')
 			}
 			'Mo' {
-				time_str += ordinal_suffix(t.month)
+				sb.write_string(ordinal_suffix(t.month))
 			}
 			'MMM' {
-				time_str += long_months[t.month - 1][0..3]
+				sb.write_string(long_months[t.month - 1][0..3])
 			}
 			'MMMM' {
-				time_str += long_months[t.month - 1]
+				sb.write_string(long_months[t.month - 1])
 			}
 			'D' {
-				time_str += t.day.str()
+				sb.write_string(t.day.str())
 			}
 			'DD' {
-				time_str += '${t.day:02}'
+				sb.write_string('${t.day:02}')
 			}
 			'Do' {
-				time_str += ordinal_suffix(t.day)
+				sb.write_string(ordinal_suffix(t.day))
 			}
 			'DDD' {
-				time_str += (t.day + days_before[t.month - 1] + int(is_leap_year(t.year))).str()
+				sb.write_string((t.day + days_before[t.month - 1] + int(is_leap_year(t.year))).str())
 			}
 			'DDDD' {
-				time_str += '${t.day + days_before[t.month - 1] + int(is_leap_year(t.year)):03}'
+				sb.write_string('${t.day + days_before[t.month - 1] + int(is_leap_year(t.year)):03}')
 			}
 			'DDDo' {
-				time_str += ordinal_suffix(t.day + days_before[t.month - 1] +
-					int(is_leap_year(t.year)))
+				sb.write_string(ordinal_suffix(t.day + days_before[t.month - 1] +
+					int(is_leap_year(t.year))))
 			}
 			'd' {
-				time_str += t.day_of_week().str()
+				sb.write_string(t.day_of_week().str())
 			}
 			'dd' {
-				time_str += long_days[t.day_of_week() - 1][0..2]
+				sb.write_string(long_days[t.day_of_week() - 1][0..2])
 			}
 			'ddd' {
-				time_str += long_days[t.day_of_week() - 1][0..3]
+				sb.write_string(long_days[t.day_of_week() - 1][0..3])
 			}
 			'dddd' {
-				time_str += long_days[t.day_of_week() - 1]
+				sb.write_string(long_days[t.day_of_week() - 1])
 			}
 			'YY' {
-				time_str += t.year.str()[2..4]
+				sb.write_string(t.year.str()[2..4])
 			}
 			'YYYY' {
-				time_str += t.year.str()
+				sb.write_string(t.year.str())
 			}
 			'H' {
-				time_str += t.hour.str()
+				sb.write_string(t.hour.str())
 			}
 			'HH' {
-				time_str += '${t.hour:02}'
+				sb.write_string('${t.hour:02}')
 			}
 			'h' {
-				time_str += (t.hour % 12).str()
+				sb.write_string((t.hour % 12).str())
 			}
 			'hh' {
-				time_str += '${(t.hour % 12):02}'
+				sb.write_string('${(t.hour % 12):02}')
 			}
 			'm' {
-				time_str += t.minute.str()
+				sb.write_string(t.minute.str())
 			}
 			'mm' {
-				time_str += '${t.minute:02}'
+				sb.write_string('${t.minute:02}')
 			}
 			's' {
-				time_str += t.second.str()
+				sb.write_string(t.second.str())
 			}
 			'ss' {
-				time_str += '${t.second:02}'
+				sb.write_string('${t.second:02}')
 			}
 			'k' {
-				time_str += (t.hour + 1).str()
+				sb.write_string((t.hour + 1).str())
 			}
 			'kk' {
-				time_str += '${(t.hour + 1):02}'
+				sb.write_string('${(t.hour + 1):02}')
 			}
 			'w' {
-				time_str += '${ceil((t.day + days_before[t.month - 1] + int(is_leap_year(t.year))) / 7):.0}'
+				sb.write_string('${ceil((t.day + days_before[t.month - 1] + int(is_leap_year(t.year))) / 7):.0}')
 			}
 			'ww' {
-				time_str += '${ceil((t.day + days_before[t.month - 1] + int(is_leap_year(t.year))) / 7):02.0}'
+				sb.write_string('${ceil((t.day + days_before[t.month - 1] + int(is_leap_year(t.year))) / 7):02.0}')
 			}
 			'wo' {
-				time_str += ordinal_suffix(int(ceil((t.day + days_before[t.month - 1] +
-					int(is_leap_year(t.year))) / 7)))
+				sb.write_string(ordinal_suffix(int(ceil((t.day + days_before[t.month - 1] +
+					int(is_leap_year(t.year))) / 7))))
 			}
 			'Q' {
-				time_str += '${(t.month % 4) + 1}'
+				sb.write_string('${(t.month % 4) + 1}')
 			}
 			'QQ' {
-				time_str += '${(t.month % 4) + 1:02}'
+				sb.write_string('${(t.month % 4) + 1:02}')
 			}
 			'Qo' {
-				time_str += ordinal_suffix((t.month % 4) + 1)
+				sb.write_string(ordinal_suffix((t.month % 4) + 1))
 			}
 			'c' {
-				time_str += '${t.day_of_week() + 1}'
+				sb.write_string('${t.day_of_week() + 1}')
 			}
 			'N' {
 				// TODO integrate BC
-				time_str += 'AD'
+				sb.write_string('AD')
 			}
 			'NN' {
 				// TODO integrate Before Christ
-				time_str += 'Anno Domini'
+				sb.write_string('Anno Domini')
 			}
 			'Z' {
 				if offset() / seconds_per_hour >= 0 {
-					time_str += '+${(offset() / seconds_per_hour)}'
+					sb.write_string('+${(offset() / seconds_per_hour)}')
 				} else {
-					time_str += '-${abs(offset() / seconds_per_hour)}'
+					sb.write_string('-${abs(offset() / seconds_per_hour)}')
 				}
 			}
 			'ZZ' {
 				// TODO update if minute differs?
 				if offset() / seconds_per_hour >= 0 {
-					time_str += '+${(offset() / seconds_per_hour):02}00'
+					sb.write_string('+${(offset() / seconds_per_hour):02}00')
 				} else {
-					time_str += '-${abs(offset() / seconds_per_hour):02}00'
+					sb.write_string('-${abs(offset() / seconds_per_hour):02}00')
 				}
 			}
 			'ZZZ' {
 				// TODO update if minute differs?
 				if offset() / seconds_per_hour >= 0 {
-					time_str += '+${(offset() / seconds_per_hour):02}:00'
+					sb.write_string('+${(offset() / seconds_per_hour):02}:00')
 				} else {
-					time_str += '-${abs(offset() / seconds_per_hour):02}:00'
+					sb.write_string('-${abs(offset() / seconds_per_hour):02}:00')
 				}
 			}
 			'a' {
 				if t.hour > 12 {
-					time_str += 'pm'
+					sb.write_string('pm')
 				} else {
-					time_str += 'am'
+					sb.write_string('am')
 				}
 			}
 			'A' {
 				if t.hour > 12 {
-					time_str += 'PM'
+					sb.write_string('PM')
 				} else {
-					time_str += 'AM'
+					sb.write_string('AM')
 				}
 			}
 			else {
-				time_str += token
+				sb.write_string(token)
 			}
 		}
 	}
-	return time_str
+	return sb.str()
 }
 
 // clean returns a date string in a following format:

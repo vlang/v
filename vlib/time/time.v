@@ -6,7 +6,7 @@ pub const (
 		'Sunday']
 	month_days             = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 	months_string          = 'JanFebMarAprMayJunJulAugSepOctNovDec'
-	long_months             = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+	long_months            = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
 		'August', 'September', 'October', 'November', 'December']
 	// The unsigned zero year for internal calculations.
 	// Must be 1 mod 400, and times before it will not compute correctly,
