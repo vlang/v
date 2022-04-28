@@ -520,6 +520,7 @@ pub:
 	attrs           []Attr
 	ctdefine_idx    int = -1 // the index in fn.attrs of `[if xyz]`, when such attribute exists
 pub mut:
+	idx               int // index in an external container; can be used to refer to the function in a more efficient way, just by its integer index
 	params            []Param
 	stmts             []Stmt
 	defer_stmts       []DeferStmt
@@ -707,6 +708,7 @@ pub:
 	is_generated  bool // true for `[generated] module xyz` files; turn off notices
 	is_translated bool // true for `[translated] module xyz` files; turn off some checks
 pub mut:
+	idx              int    // index in an external container; can be used to refer to the file in a more efficient way, just by its integer index
 	path             string // absolute path of the source file - '/projects/v/file.v'
 	path_base        string // file name - 'file.v' (useful for tracing)
 	scope            &Scope
