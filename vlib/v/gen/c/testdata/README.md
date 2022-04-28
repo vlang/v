@@ -1,8 +1,8 @@
 ## Purpose: tests data for the output of V's C code generator
 
-## TLDR: `v vlib/v/gen/c/coutput_test.v`
+## TLDR: `v run vlib/v/gen/c/coutput_test.v`
 
-coutput_test.v is a *test runner*, that checks whether the generated C 
+coutput_test.v is a *test runner*, that checks whether the generated C
 source code matches *all* expectations, specified in *.c.must_have files,
 in the folder vlib/v/gen/c/testdata/ .
 
