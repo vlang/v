@@ -702,13 +702,11 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				&& c.table.sym((left_sym.info as ast.Alias).parent_type).is_primitive() {
 				left_sym = c.table.sym((left_sym.info as ast.Alias).parent_type)
 			}
+
 			if c.pref.translated && node.op in [.plus, .minus, .mul]
-				&& left_type.is_any_kind_of_pointer()
-				&& (right_type.is_any_kind_of_pointer() || right_type.is_int()) {
+				&& left_type.is_any_kind_of_pointer() && right_type.is_any_kind_of_pointer() {
 				return_type = left_type
-			}
-			// Check if the alias type is not a primitive then allow using operator overloading for aliased `arrays` and `maps`
-			else if !c.pref.translated && left_sym.kind == .alias && left_sym.info is ast.Alias
+			} else if !c.pref.translated && left_sym.kind == .alias && left_sym.info is ast.Alias
 				&& !(c.table.sym((left_sym.info as ast.Alias).parent_type).is_primitive()) {
 				if left_sym.has_method(node.op.str()) {
 					if method := left_sym.find_method(node.op.str()) {
@@ -745,7 +743,8 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 				}
 			}
-			if left_sym.kind in [.array, .array_fixed, .map, .struct_] {
+
+			if !c.pref.translated && left_sym.kind in [.array, .array_fixed, .map, .struct_] {
 				if left_sym.has_method_with_generic_parent(node.op.str()) {
 					if method := left_sym.find_method_with_generic_parent(node.op.str()) {
 						return_type = method.return_type
@@ -762,7 +761,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
 					}
 				}
-			} else if right_sym.kind in [.array, .array_fixed, .map, .struct_] {
+			} else if !c.pref.translated && right_sym.kind in [.array, .array_fixed, .map, .struct_] {
 				if right_sym.has_method_with_generic_parent(node.op.str()) {
 					if method := right_sym.find_method_with_generic_parent(node.op.str()) {
 						return_type = method.return_type
