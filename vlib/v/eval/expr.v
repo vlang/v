@@ -24,13 +24,21 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 						e.error('c does not have methods')
 					}
 					match expr.name.all_after('C.') {
+						'read' {
+							return Int{C.read(args[0].int_val(), args[1] as voidptr, args[2].int_val()), 64}
+						}
 						'write' {
 							return Int{C.write(args[0].int_val(), args[1] as voidptr,
-								args[2].int_val()), 32}
+								args[2].int_val()), 64}
+						}
+						'malloc' {
+							return Ptr{
+								val: unsafe { C.malloc(args[0].int_val()) }
+							}
 						}
 						'calloc' {
 							return Ptr{
-								val: vcalloc(int(args[0].int_val() * args[1].int_val()))
+								val: unsafe { C.calloc(args[0].int_val(), args[1].int_val()) }
 							}
 						}
 						'getcwd' {
@@ -141,6 +149,9 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 								}
 								'freebsd' {
 									do_if = e.pref.os == .freebsd
+								}
+								'openbsd' {
+									do_if = e.pref.os == .openbsd
 								}
 								'prealloc' {
 									do_if = e.pref.prealloc
