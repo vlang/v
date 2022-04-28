@@ -2,17 +2,11 @@ module time
 
 pub const (
 	days_string            = 'MonTueWedThuFriSatSun'
-	days_str               = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
+	long_days              = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
 		'Sunday']
-	accepted_format_tokens = [
-		['MM', 'DD', 'Do', 'YY', 'ss', 'kk', 'NN', 'mm', 'hh', 'HH', 'ZZ', 'dd', 'Qo', 'QQ', 'wo',
-			'ww'],
-		['MMM', 'DDD', 'ZZZ', 'ddd'],
-		['MMMM', 'DDDD', 'DDDo', 'dddd', 'YYYY'],
-	]
 	month_days             = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 	months_string          = 'JanFebMarAprMayJunJulAugSepOctNovDec'
-	months_str             = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+	long_months             = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
 		'August', 'September', 'October', 'November', 'December']
 	// The unsigned zero year for internal calculations.
 	// Must be 1 mod 400, and times before it will not compute correctly,
@@ -40,8 +34,12 @@ pub const (
 		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30,
 		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
 	]
-	long_days              = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
-		'Sunday']
+	accepted_format_tokens = [
+		['MM', 'DD', 'Do', 'YY', 'ss', 'kk', 'NN', 'mm', 'hh', 'HH', 'ZZ', 'dd', 'Qo', 'QQ', 'wo',
+			'ww'],
+		['MMM', 'DDD', 'ZZZ', 'ddd'],
+		['MMMM', 'DDDD', 'DDDo', 'dddd', 'YYYY'],
+	]
 )
 
 // Time contains various time units for a point in time.
@@ -99,7 +97,7 @@ pub fn (t Time) smonth() string {
 		return '---'
 	}
 	i := t.month - 1
-	return time.months_str[i][0..3]
+	return time.long_months[i][0..3]
 }
 
 // unix_time returns Unix time.
@@ -237,7 +235,7 @@ pub fn (t Time) day_of_week() int {
 // weekday_str returns the current day as a string abbreviation.
 pub fn (t Time) weekday_str() string {
 	i := t.day_of_week() - 1
-	return time.days_str[i][0..3]
+	return time.long_days[i][0..3]
 }
 
 // weekday_str returns the current day as a string.

@@ -149,10 +149,10 @@ pub fn (t Time) custom_format(s string) string {
 				time_str += ordinal_suffix(t.month)
 			}
 			'MMM' {
-				time_str += months_str[t.month - 1][0..3]
+				time_str += long_months[t.month - 1][0..3]
 			}
 			'MMMM' {
-				time_str += months_str[t.month - 1]
+				time_str += long_months[t.month - 1]
 			}
 			'D' {
 				time_str += t.day.str()
@@ -177,13 +177,13 @@ pub fn (t Time) custom_format(s string) string {
 				time_str += t.day_of_week().str()
 			}
 			'dd' {
-				time_str += days_str[t.day_of_week() - 1][0..2]
+				time_str += long_days[t.day_of_week() - 1][0..2]
 			}
 			'ddd' {
-				time_str += days_str[t.day_of_week() - 1][0..3]
+				time_str += long_days[t.day_of_week() - 1][0..3]
 			}
 			'dddd' {
-				time_str += days_str[t.day_of_week() - 1]
+				time_str += long_days[t.day_of_week() - 1]
 			}
 			'YY' {
 				time_str += t.year.str()[2..4]
