@@ -1,10 +1,9 @@
 module time
 
 pub const (
+	days_string            = 'MonTueWedThuFriSatSun'
 	days_str               = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
 		'Sunday']
-	months_str             = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
-		'August', 'September', 'October', 'November', 'December']
 	accepted_format_tokens = [
 		['MM', 'DD', 'Do', 'YY', 'ss', 'kk', 'NN', 'mm', 'hh', 'HH', 'ZZ', 'dd', 'Qo', 'QQ', 'wo',
 			'ww'],
@@ -13,6 +12,8 @@ pub const (
 	]
 	month_days             = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 	months_string          = 'JanFebMarAprMayJunJulAugSepOctNovDec'
+	months_str             = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+		'August', 'September', 'October', 'November', 'December']
 	// The unsigned zero year for internal calculations.
 	// Must be 1 mod 400, and times before it will not compute correctly,
 	// but otherwise can be changed at will.
