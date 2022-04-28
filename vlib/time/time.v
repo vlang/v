@@ -1,7 +1,14 @@
 module time
 
 pub const (
-	days_string        = 'MonTueWedThuFriSatSun'
+	days_str = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    months_str = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+    accepted_format_tokens = [
+        ['M','D','s','m','h','k','H','N','Z','a','A','d','Q','w'],
+        ['MM','DD','Do','YY','ss','kk','NN','mm','hh','HH','ZZ','dd','Qo','QQ','wo','ww'],
+        ['MMM','DDD','ZZZ','ddd'],
+        ['MMMM','DDDD','DDDo','dddd','YYYY']
+    ]
 	month_days         = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 	months_string      = 'JanFebMarAprMayJunJulAugSepOctNovDec'
 	// The unsigned zero year for internal calculations.
@@ -83,13 +90,13 @@ pub enum FormatDelimiter {
 	no_delimiter
 }
 
-// smonth returns month name.
+// smonth returns month name abbreviation.
 pub fn (t Time) smonth() string {
 	if t.month <= 0 || t.month > 12 {
 		return '---'
 	}
 	i := t.month - 1
-	return time.months_string[i * 3..(i + 1) * 3]
+	return time.months_str[i][0..3]
 }
 
 // unix_time returns Unix time.
@@ -224,10 +231,10 @@ pub fn (t Time) day_of_week() int {
 	return day_of_week(t.year, t.month, t.day)
 }
 
-// weekday_str returns the current day as a string.
+// weekday_str returns the current day as a string abbreviation.
 pub fn (t Time) weekday_str() string {
 	i := t.day_of_week() - 1
-	return time.days_string[i * 3..(i + 1) * 3]
+	return time.days_str[i][0..3]
 }
 
 // weekday_str returns the current day as a string.
