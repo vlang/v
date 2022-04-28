@@ -2072,6 +2072,10 @@ pub fn (mut lx IndexExpr) recursive_mapset_is_setter(val bool) {
 		if lx.left.is_map {
 			lx.left.recursive_mapset_is_setter(val)
 		}
+	} else if mut lx.left is SelectorExpr {
+		if mut lx.left.expr is IndexExpr {
+			lx.left.expr.recursive_mapset_is_setter(val)
+		}
 	}
 }
 
