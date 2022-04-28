@@ -15,9 +15,10 @@ import v.depgraph
 import sync.pool
 
 const (
-	// Note: some of the words in c_reserved, are not reserved in C,
-	// but are in C++, or have special meaning in V, thus need escaping too.
-	// `small` should not be needed, but see: https://stackoverflow.com/questions/5874215/what-is-rpcndr-h
+	// Note: some of the words in c_reserved, are not reserved in C, but are
+	// in C++, or have special meaning in V, thus need escaping too. small`
+	// should not be needed, but see:
+	// https://stackoverflow.com/questions/5874215/what-is-rpcndr-h
 	c_reserved     = ['array', 'auto', 'bool', 'break', 'calloc', 'case', 'char', 'class', 'complex',
 		'const', 'continue', 'default', 'delete', 'do', 'double', 'else', 'enum', 'error', 'exit',
 		'export', 'extern', 'false', 'float', 'for', 'free', 'goto', 'if', 'inline', 'int', 'link',
@@ -1590,10 +1591,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	if !g.skip_stmt_pos {
 		g.set_current_pos_as_last_stmt_pos()
 	}
-	defer {
-	}
-	// println('g.stmt()')
-	// g.writeln('//// stmt start')
 	match node {
 		ast.EmptyStmt {}
 		ast.AsmStmt {
