@@ -635,13 +635,13 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 			}
 		}
 		ast.SelectorExpr {
+			node.expr = t.expr(mut node.expr)
 			if mut node.expr is ast.StringLiteral && node.field_name == 'len' {
 				return ast.IntegerLiteral{
 					val: node.expr.val.len.str()
 					pos: node.pos
 				}
 			}
-			node.expr = t.expr(mut node.expr)
 		}
 		ast.SizeOf {
 			node.expr = t.expr(mut node.expr)
