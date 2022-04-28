@@ -116,6 +116,13 @@ fn (mut app App) time() vweb.Result {
 In the future, Vweb will detect changes and recompile the website in the background
 while it's running.
 
+In the meantime, if you're using a *nix system, you can leverage `entr` to get a basic auto-reload environment going.
+
+```bash
+apt-get install entr # or brew install entr
+find *.v | entr -ncr v run blog.v
+```
+
 The `.text(string)` method returns a plain text document with the provided
 text, which isn't frequently used in websites.
 
