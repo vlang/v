@@ -2074,9 +2074,16 @@ pub fn (mut lx IndexExpr) recursive_mapset_is_setter(val bool) {
 		if lx.left.is_map {
 			lx.left.recursive_mapset_is_setter(val)
 		}
+	}
+}
+
+pub fn (mut lx IndexExpr) recursive_arraymap_set_is_setter() {
+	lx.is_setter = true
+	if mut lx.left is IndexExpr {
+		lx.left.recursive_arraymap_set_is_setter()
 	} else if mut lx.left is SelectorExpr {
 		if mut lx.left.expr is IndexExpr {
-			lx.left.expr.recursive_mapset_is_setter(val)
+			lx.left.expr.recursive_arraymap_set_is_setter()
 		}
 	}
 }
