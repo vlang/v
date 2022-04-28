@@ -68,6 +68,7 @@ pub fn utf32_decode_to_buffer(code u32, buf &u8) int {
 
 // utf8_str_len returns the number of runes contained in the string.
 [deprecated: 'use `string.len_utf8()` instead']
+[deprecated_after: '2022-05-28']
 pub fn utf8_str_len(s string) int {
 	mut l := 0
 	mut i := 0
