@@ -1,27 +1,30 @@
 module time
 
 pub const (
-	days_str = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-    months_str = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-    accepted_format_tokens = [
-        ['MM','DD','Do','YY','ss','kk','NN','mm','hh','HH','ZZ','dd','Qo','QQ','wo','ww'],
-        ['MMM','DDD','ZZZ','ddd'],
-        ['MMMM','DDDD','DDDo','dddd','YYYY']
-    ]
-	month_days         = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-	months_string      = 'JanFebMarAprMayJunJulAugSepOctNovDec'
+	days_str               = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
+		'Sunday']
+	months_str             = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+		'August', 'September', 'October', 'November', 'December']
+	accepted_format_tokens = [
+		['MM', 'DD', 'Do', 'YY', 'ss', 'kk', 'NN', 'mm', 'hh', 'HH', 'ZZ', 'dd', 'Qo', 'QQ', 'wo',
+			'ww'],
+		['MMM', 'DDD', 'ZZZ', 'ddd'],
+		['MMMM', 'DDDD', 'DDDo', 'dddd', 'YYYY'],
+	]
+	month_days             = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+	months_string          = 'JanFebMarAprMayJunJulAugSepOctNovDec'
 	// The unsigned zero year for internal calculations.
 	// Must be 1 mod 400, and times before it will not compute correctly,
 	// but otherwise can be changed at will.
-	absolute_zero_year = i64(-292277022399)
-	seconds_per_minute = 60
-	seconds_per_hour   = 60 * seconds_per_minute
-	seconds_per_day    = 24 * seconds_per_hour
-	seconds_per_week   = 7 * seconds_per_day
-	days_per_400_years = 365 * 400 + 97
-	days_per_100_years = 365 * 100 + 24
-	days_per_4_years   = 365 * 4 + 1
-	days_before        = [
+	absolute_zero_year     = i64(-292277022399)
+	seconds_per_minute     = 60
+	seconds_per_hour       = 60 * seconds_per_minute
+	seconds_per_day        = 24 * seconds_per_hour
+	seconds_per_week       = 7 * seconds_per_day
+	days_per_400_years     = 365 * 400 + 97
+	days_per_100_years     = 365 * 100 + 24
+	days_per_4_years       = 365 * 4 + 1
+	days_before            = [
 		0,
 		31,
 		31 + 28,
@@ -36,7 +39,7 @@ pub const (
 		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30,
 		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
 	]
-	long_days          = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
+	long_days              = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
 		'Sunday']
 )
 

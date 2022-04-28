@@ -2,7 +2,8 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module time
-import math {abs ceil}
+
+import math { abs, ceil }
 
 // format returns a date string in "YYYY-MM-DD HH:MM" format (24h).
 pub fn (t Time) format() string {
@@ -55,11 +56,11 @@ pub fn (t Time) md() string {
 }
 
 // appends ordinal suffix to a number
-fn ordinal_suffix (n int) string {
+fn ordinal_suffix(n int) string {
 	if n > 3 && n < 21 {
 		return '${n}th'
 	}
-	match n%10 {
+	match n % 10 {
 		1 {
 			return '${n}st'
 		}
@@ -121,12 +122,12 @@ fn ordinal_suffix (n int) string {
 // |  | ZZZ | -07:00 -06:00 ... +05:00 +06:00 |
 pub fn (t Time) custom_format(s string) string {
 	mut tokens := []string{}
-	for i:=0; i < s.len; {
+	for i := 0; i < s.len; {
 		for j := 4; j > 0; j-- {
-			if i > s.len-j {
+			if i > s.len - j {
 				continue
 			}
-			if j == 1 || (j != 1 && s[i..i + j] in accepted_format_tokens[j - 2])  {
+			if j == 1 || (j != 1 && s[i..i + j] in accepted_format_tokens[j - 2]) {
 				tokens << s[i..i + j]
 				i += (j - 1)
 				break
@@ -148,10 +149,10 @@ pub fn (t Time) custom_format(s string) string {
 				time_str += ordinal_suffix(t.month)
 			}
 			'MMM' {
-				time_str += months_str[t.month-1][0..3]
+				time_str += months_str[t.month - 1][0..3]
 			}
 			'MMMM' {
-				time_str += months_str[t.month-1]
+				time_str += months_str[t.month - 1]
 			}
 			'D' {
 				time_str += t.day.str()
@@ -163,25 +164,26 @@ pub fn (t Time) custom_format(s string) string {
 				time_str += ordinal_suffix(t.day)
 			}
 			'DDD' {
-				time_str += (t.day + time.days_before[t.month-1] + int(is_leap_year(t.year))).str()
+				time_str += (t.day + days_before[t.month - 1] + int(is_leap_year(t.year))).str()
 			}
 			'DDDD' {
-				time_str += '${t.day + time.days_before[t.month-1] + int(is_leap_year(t.year)):03}'
+				time_str += '${t.day + days_before[t.month - 1] + int(is_leap_year(t.year)):03}'
 			}
 			'DDDo' {
-				time_str += ordinal_suffix(t.day + time.days_before[t.month-1] + int(is_leap_year(t.year)))
+				time_str += ordinal_suffix(t.day + days_before[t.month - 1] +
+					int(is_leap_year(t.year)))
 			}
 			'd' {
 				time_str += t.day_of_week().str()
 			}
 			'dd' {
-				time_str += days_str[t.day_of_week()-1][0..2]
+				time_str += days_str[t.day_of_week() - 1][0..2]
 			}
 			'ddd' {
-				time_str += days_str[t.day_of_week()-1][0..3]
+				time_str += days_str[t.day_of_week() - 1][0..3]
 			}
 			'dddd' {
-				time_str += days_str[t.day_of_week()-1]
+				time_str += days_str[t.day_of_week() - 1]
 			}
 			'YY' {
 				time_str += t.year.str()[2..4]
@@ -196,10 +198,10 @@ pub fn (t Time) custom_format(s string) string {
 				time_str += '${t.hour:02}'
 			}
 			'h' {
-				time_str += (t.hour%12).str()
+				time_str += (t.hour % 12).str()
 			}
 			'hh' {
-				time_str += '${(t.hour%12):02}'
+				time_str += '${(t.hour % 12):02}'
 			}
 			'm' {
 				time_str += t.minute.str()
@@ -214,28 +216,29 @@ pub fn (t Time) custom_format(s string) string {
 				time_str += '${t.second:02}'
 			}
 			'k' {
-				time_str += (t.hour+1).str()
+				time_str += (t.hour + 1).str()
 			}
 			'kk' {
-				time_str += '${(t.hour+1):02}'
+				time_str += '${(t.hour + 1):02}'
 			}
 			'w' {
-				time_str += '${ceil((t.day + time.days_before[t.month-1] + int(is_leap_year(t.year)))/7):.0}'
+				time_str += '${ceil((t.day + days_before[t.month - 1] + int(is_leap_year(t.year))) / 7):.0}'
 			}
 			'ww' {
-				time_str += '${ceil((t.day + time.days_before[t.month-1] + int(is_leap_year(t.year)))/7):02.0}'
+				time_str += '${ceil((t.day + days_before[t.month - 1] + int(is_leap_year(t.year))) / 7):02.0}'
 			}
 			'wo' {
-				time_str += ordinal_suffix(int(ceil((t.day + time.days_before[t.month-1] + int(is_leap_year(t.year)))/7)))
+				time_str += ordinal_suffix(int(ceil((t.day + days_before[t.month - 1] +
+					int(is_leap_year(t.year))) / 7)))
 			}
 			'Q' {
-				time_str += '${(t.month%4) + 1}'
+				time_str += '${(t.month % 4) + 1}'
 			}
 			'QQ' {
-				time_str += '${(t.month%4) + 1:02}'
+				time_str += '${(t.month % 4) + 1:02}'
 			}
 			'Qo' {
-				time_str += ordinal_suffix((t.month%4) + 1)
+				time_str += ordinal_suffix((t.month % 4) + 1)
 			}
 			'c' {
 				time_str += '${t.day_of_week() + 1}'
@@ -249,37 +252,37 @@ pub fn (t Time) custom_format(s string) string {
 				time_str += 'Anno Domini'
 			}
 			'Z' {
-				if time.offset()/time.seconds_per_hour >= 0{
-					time_str += '+${(time.offset()/time.seconds_per_hour)}'
-				}else {
-					time_str += '-${abs(time.offset()/time.seconds_per_hour)}'
+				if offset() / seconds_per_hour >= 0 {
+					time_str += '+${(offset() / seconds_per_hour)}'
+				} else {
+					time_str += '-${abs(offset() / seconds_per_hour)}'
 				}
 			}
 			'ZZ' {
-				//TODO update if minute differs?
-				if time.offset()/time.seconds_per_hour >= 0{
-					time_str += '+${(time.offset()/time.seconds_per_hour):02}00'
-				}else {
-					time_str += '-${abs(time.offset()/time.seconds_per_hour):02}00'
+				// TODO update if minute differs?
+				if offset() / seconds_per_hour >= 0 {
+					time_str += '+${(offset() / seconds_per_hour):02}00'
+				} else {
+					time_str += '-${abs(offset() / seconds_per_hour):02}00'
 				}
 			}
 			'ZZZ' {
-				//TODO update if minute differs?
-				if time.offset()/time.seconds_per_hour >= 0{
-					time_str += '+${(time.offset()/time.seconds_per_hour):02}:00'
-				}else {
-					time_str += '-${abs(time.offset()/time.seconds_per_hour):02}:00'
+				// TODO update if minute differs?
+				if offset() / seconds_per_hour >= 0 {
+					time_str += '+${(offset() / seconds_per_hour):02}:00'
+				} else {
+					time_str += '-${abs(offset() / seconds_per_hour):02}:00'
 				}
 			}
 			'a' {
-				if t.hour>12 {
+				if t.hour > 12 {
 					time_str += 'pm'
 				} else {
 					time_str += 'am'
 				}
 			}
 			'A' {
-				if t.hour>12 {
+				if t.hour > 12 {
 					time_str += 'PM'
 				} else {
 					time_str += 'AM'
