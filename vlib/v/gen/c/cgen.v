@@ -16,7 +16,7 @@ import sync.pool
 
 const (
 	// Note: some of the words in c_reserved, are not reserved in C, but are
-	// in C++, or have special meaning in V, thus need escaping too. small`
+	// in C++, or have special meaning in V, thus need escaping too. `small`
 	// should not be needed, but see:
 	// https://stackoverflow.com/questions/5874215/what-is-rpcndr-h
 	c_reserved     = ['array', 'auto', 'bool', 'break', 'calloc', 'case', 'char', 'class', 'complex',
