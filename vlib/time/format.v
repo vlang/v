@@ -77,6 +77,13 @@ fn ordinal_suffix(n int) string {
 	}
 }
 
+const tokens_2 = ['MM', 'DD', 'Do', 'YY', 'ss', 'kk', 'NN', 'mm', 'hh', 'HH', 'ZZ', 'dd', 'Qo',
+	'QQ', 'wo', 'ww']
+
+const tokens_3 = ['MMM', 'DDD', 'ZZZ', 'ddd']
+
+const tokens_4 = ['MMMM', 'DDDD', 'DDDo', 'dddd', 'YYYY']
+
 // custom_format returns a date with custom format
 // |  | Token  | Output |
 // | :-----------  | -------: | :--------- |
@@ -128,7 +135,9 @@ pub fn (t Time) custom_format(s string) string {
 			if i > s.len - j {
 				continue
 			}
-			if j == 1 || (j != 1 && s[i..i + j] in accepted_format_tokens[j - 2]) {
+			if j == 1 || (j == 2 && s[i..i + j] in time.tokens_2)
+				|| (j == 3 && s[i..i + j] in time.tokens_3)
+				|| (j == 4 && s[i..i + j] in time.tokens_4) {
 				tokens << s[i..i + j]
 				i += (j - 1)
 				break
