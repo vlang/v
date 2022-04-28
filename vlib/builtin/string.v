@@ -295,6 +295,12 @@ pub fn (cp &char) vstring_literal_with_len(len int) string {
 	}
 }
 
+// len_utf8 returns the number of runes contained in the string `s`.
+[inline]
+pub fn (s string) len_utf8() int {
+	return utf8_str_len(s)
+}
+
 // clone_static returns an independent copy of a given array.
 // It should be used only in -autofree generated code.
 fn (a string) clone_static() string {

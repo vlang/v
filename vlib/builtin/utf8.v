@@ -134,7 +134,7 @@ fn utf8_len(c u8) int {
 	return b
 }
 
-// Calculate string length for in number of codepoints
+// utf8_str_len returns the number of runes contained in the string.
 pub fn utf8_str_len(s string) int {
 	mut l := 0
 	mut i := 0
