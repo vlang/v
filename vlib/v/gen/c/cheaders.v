@@ -102,6 +102,26 @@ static const char __closure_thunk[] = {
 #define __CLOSURE_UNWRAPPER_OFFSET 32
 #define __CLOSURE_WRAPPER_EXTRA_PARAM   void* _t
 #define __CLOSURE_WRAPPER_EXTRA_PARAM_COMMA ,
+#elif defined(__V_x86)
+static char __closure_thunk[] = {
+    0xe8, 0x00, 0x00, 0x00, 0x00,  // call 4
+    0x58,                          // pop  eax
+    0x8f, 0x40, 0xe3,              // pop  dword ptr [eax - 29] # <_orig_rbp>
+    0xff, 0x50, 0xef,              // call dword ptr [eax - 17] # <wrapper>
+    0xe8, 0x00, 0x00, 0x00, 0x00,  // call 4
+    0x58,                          // pop  eax
+    0xff, 0x50, 0xdf,              // call dword ptr [eax - 33] # <unwrapper>
+    0xe8, 0x00, 0x00, 0x00, 0x00,  // call 4
+    0x58,                          // pop  eax
+    0xff, 0x70, 0xce,              // push dword ptr [eax - 50] # <_orig_rbp>
+    0xc3                           // ret
+};
+
+#define __CLOSURE_WRAPPER_OFFSET 12
+#define __CLOSURE_UNWRAPPER_OFFSET 21
+#define __CLOSURE_WRAPPER_EXTRA_PARAM   void* _t
+#define __CLOSURE_WRAPPER_EXTRA_PARAM_COMMA ,
+
 #elif defined(__V_arm64)
 static char __closure_thunk[] = {
 	0x10, 0x00, 0x00, 0x10,  // adr x16, start
@@ -123,15 +143,15 @@ static char __closure_thunk[] = {
 #define __CLOSURE_WRAPPER_EXTRA_PARAM_COMMA
 #elif defined(__V_arm32)
 static char __closure_thunk[] = {
-    0x24, 0x00, 0x0f, 0xe5,   //  str r0, orig_r0
-    0x24, 0xe0, 0x0f, 0xe5,   //  str lr, orig_lr
-    0x1c, 0xc0, 0x1f, 0xe5,   //  ldr ip, wrapper
-    0x3c, 0xff, 0x2f, 0xe1,   //  blx ip
-    0x34, 0x00, 0x1f, 0xe5,   //  ldr r0, orig_r0
-    0x2c, 0xc0, 0x1f, 0xe5,   //  ldr ip, unwrapper
-    0x3c, 0xff, 0x2f, 0xe1,   //  blx ip
-    0x3c, 0xe0, 0x1f, 0xe5,   //  ldr lr, orig_lr
-    0x1e, 0xff, 0x2f, 0xe1    //  bx  lr
+    0x24, 0x00, 0x0f, 0xe5,  //  str r0, orig_r0
+    0x24, 0xe0, 0x0f, 0xe5,  //  str lr, orig_lr
+    0x1c, 0xc0, 0x1f, 0xe5,  //  ldr ip, wrapper
+    0x3c, 0xff, 0x2f, 0xe1,  //  blx ip
+    0x34, 0x00, 0x1f, 0xe5,  //  ldr r0, orig_r0
+    0x2c, 0xc0, 0x1f, 0xe5,  //  ldr ip, unwrapper
+    0x3c, 0xff, 0x2f, 0xe1,  //  blx ip
+    0x3c, 0xe0, 0x1f, 0xe5,  //  ldr lr, orig_lr
+    0x1e, 0xff, 0x2f, 0xe1   //  bx  lr
 };
 #define __CLOSURE_WRAPPER_OFFSET 16
 #define __CLOSURE_UNWRAPPER_OFFSET 28
