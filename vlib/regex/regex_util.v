@@ -14,7 +14,8 @@ import strings
 * Inits
 *
 ******************************************************************************/
-// regex create a regex object from the query string, retunr RE object and errors as re_err, err_pos
+// regex_base returns a regex object (`RE`) generated from `pattern` string and
+// detailed information in re_err, err_pos, if an error occurred.
 pub fn regex_base(pattern string) (RE, int, int) {
 	// init regex
 	mut re := RE{}

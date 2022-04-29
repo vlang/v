@@ -41,7 +41,7 @@ fn test_open_file() {
 	mut file := os.open_file(filename, 'w+', 0o666) or { panic(err) }
 	file.write_string(hello) or { panic(err) }
 	file.close()
-	assert hello.len == os.file_size(filename)
+	assert u64(hello.len) == os.file_size(filename)
 	read_hello := os.read_file(filename) or { panic('error reading file $filename') }
 	assert hello == read_hello
 	os.rm(filename) or { panic(err) }
@@ -58,7 +58,7 @@ fn test_open_file_binary() {
 	bytes := hello.bytes()
 	unsafe { file.write_ptr(bytes.data, bytes.len) }
 	file.close()
-	assert hello.len == os.file_size(filename)
+	assert u64(hello.len) == os.file_size(filename)
 	read_hello := os.read_bytes(filename) or { panic('error reading file $filename') }
 	assert bytes == read_hello
 	os.rm(filename) or { panic(err) }
@@ -100,7 +100,7 @@ fn test_create_file() ? {
 	filename := './test1.txt'
 	hello := 'hello world!'
 	create_and_write_to_file(filename, hello) ?
-	assert hello.len == os.file_size(filename)
+	assert u64(hello.len) == os.file_size(filename)
 	os.rm(filename) or { panic(err) }
 }
 
@@ -138,7 +138,7 @@ fn test_write_and_read_string_to_file() {
 	filename := './test1.txt'
 	hello := 'hello world!'
 	os.write_file(filename, hello) or { panic(err) }
-	assert hello.len == os.file_size(filename)
+	assert u64(hello.len) == os.file_size(filename)
 	read_hello := os.read_file(filename) or { panic('error reading file $filename') }
 	assert hello == read_hello
 	os.rm(filename) or { panic(err) }
@@ -157,7 +157,7 @@ fn test_write_and_read_bytes() {
 	// compare the length of the array with the file size (have to match).
 	unsafe { file_write.write_ptr(payload.data, 5) }
 	file_write.close()
-	assert payload.len == os.file_size(file_name)
+	assert u64(payload.len) == os.file_size(file_name)
 	mut file_read := os.open(os.real_path(file_name)) or {
 		eprintln('failed to open file $file_name')
 		return
@@ -792,7 +792,7 @@ fn test_truncate() ? {
 	mut f := os.create(filename) ?
 	f.write_string(hello) ?
 	f.close()
-	assert hello.len == os.file_size(filename)
+	assert u64(hello.len) == os.file_size(filename)
 	newlen := u64(40000)
 	os.truncate(filename, newlen) or { panic(err) }
 	assert newlen == os.file_size(filename)

@@ -217,16 +217,6 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					if is_noreturn_callexpr(last_expr.expr) {
 						continue
 					}
-					node_sym := c.table.sym(node.typ)
-					last_sym := c.table.sym(last_expr.typ)
-					if node_sym.kind == .multi_return && last_sym.kind == .multi_return {
-						node_types := node_sym.mr_info().types
-						last_types := last_sym.mr_info().types.map(ast.mktyp(it))
-						if node_types == last_types {
-							continue
-						}
-					}
-
 					c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(last_expr.typ)}`',
 						node.pos)
 				}

@@ -708,7 +708,8 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 				g.write(', _MOV(($elem_type_str[]){ ')
 			}
 			// if g.autofree
-			needs_clone := array_info.elem_type.idx() == ast.string_type_idx && !g.is_builtin_mod
+			needs_clone := !g.is_builtin_mod && array_info.elem_type.idx() == ast.string_type_idx
+				&& array_info.elem_type.nr_muls() == 0
 			if needs_clone {
 				g.write('string_clone(')
 			}

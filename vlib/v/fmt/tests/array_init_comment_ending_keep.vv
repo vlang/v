@@ -6,8 +6,7 @@ const (
 			header: {
 				'Set-Cookie': ['special-7=","']
 			}
-			cookies: [
-				&http.Cookie{
+			cookies: [&http.Cookie{
 				name: 'special-7'
 				value: ','
 				raw: 'special-8=","'

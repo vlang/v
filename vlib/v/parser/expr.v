@@ -423,7 +423,7 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 			right := p.expr(precedence - 1)
 			pos.update_last_line(p.prev_tok.line_nr)
 			if mut node is ast.IndexExpr {
-				node.recursive_mapset_is_setter(true)
+				node.recursive_arraymap_set_is_setter()
 			}
 			node = ast.InfixExpr{
 				left: node

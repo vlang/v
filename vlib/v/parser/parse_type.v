@@ -409,8 +409,11 @@ pub fn (mut p Parser) parse_type() ast.Type {
 			p.error_with_pos('cannot use `mut` on struct field type', p.tok.pos())
 		}
 	}
-	if p.tok.kind == .key_mut || is_shared || is_atomic {
+	if p.tok.kind == .key_mut || is_shared { // || is_atomic {
 		nr_muls++
+		p.next()
+	}
+	if is_atomic {
 		p.next()
 	}
 	if p.tok.kind == .mul {

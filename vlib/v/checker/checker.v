@@ -640,6 +640,18 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						rt := c.table.sym(right_type).name
 						c.error('negative value cannot be compared with `$rt`', node.left.pos)
 					}
+				} else if is_left_type_signed != is_right_type_signed
+					&& left_type != ast.int_literal_type_idx
+					&& right_type != ast.int_literal_type_idx {
+					ls := c.table.type_size(left_type)
+					rs := c.table.type_size(right_type)
+					// prevent e.g. `u32 == i16` but not `u16 == i32` as max_u16 fits in i32
+					// TODO u32 == i32, change < to <=
+					if (is_left_type_signed && ls < rs) || (is_right_type_signed && rs < ls) {
+						lt := c.table.sym(left_type).name
+						rt := c.table.sym(right_type).name
+						c.error('`$lt` cannot be compared with `$rt`', node.pos)
+					}
 				}
 			}
 		}
@@ -690,8 +702,11 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				&& c.table.sym((left_sym.info as ast.Alias).parent_type).is_primitive() {
 				left_sym = c.table.sym((left_sym.info as ast.Alias).parent_type)
 			}
-			// Check if the alias type is not a primitive then allow using operator overloading for aliased `arrays` and `maps`
-			if !c.pref.translated && left_sym.kind == .alias && left_sym.info is ast.Alias
+
+			if c.pref.translated && node.op in [.plus, .minus, .mul]
+				&& left_type.is_any_kind_of_pointer() && right_type.is_any_kind_of_pointer() {
+				return_type = left_type
+			} else if !c.pref.translated && left_sym.kind == .alias && left_sym.info is ast.Alias
 				&& !(c.table.sym((left_sym.info as ast.Alias).parent_type).is_primitive()) {
 				if left_sym.has_method(node.op.str()) {
 					if method := left_sym.find_method(node.op.str()) {
@@ -728,7 +743,8 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 				}
 			}
-			if left_sym.kind in [.array, .array_fixed, .map, .struct_] {
+
+			if !c.pref.translated && left_sym.kind in [.array, .array_fixed, .map, .struct_] {
 				if left_sym.has_method_with_generic_parent(node.op.str()) {
 					if method := left_sym.find_method_with_generic_parent(node.op.str()) {
 						return_type = method.return_type
@@ -745,7 +761,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
 					}
 				}
-			} else if right_sym.kind in [.array, .array_fixed, .map, .struct_] {
+			} else if !c.pref.translated && right_sym.kind in [.array, .array_fixed, .map, .struct_] {
 				if right_sym.has_method_with_generic_parent(node.op.str()) {
 					if method := right_sym.find_method_with_generic_parent(node.op.str()) {
 						return_type = method.return_type
@@ -918,13 +934,13 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					return ast.void_type
 				} else if left_value_sym.kind == .sum_type {
 					if right_final.kind != .array {
-						if !c.table.is_sumtype_or_in_variant(left_value_type, right_type) {
+						if !c.table.is_sumtype_or_in_variant(left_value_type, ast.mktyp(right_type)) {
 							c.error('cannot append `$right_sym.name` to `$left_sym.name`',
 								right_pos)
 						}
 					} else {
 						right_value_type := c.table.value_type(right_type)
-						if !c.table.is_sumtype_or_in_variant(left_value_type, right_value_type) {
+						if !c.table.is_sumtype_or_in_variant(left_value_type, ast.mktyp(right_value_type)) {
 							c.error('cannot append `$right_sym.name` to `$left_sym.name`',
 								right_pos)
 						}
@@ -1685,7 +1701,9 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	c.inside_selector_expr = old_selector_expr
 	c.using_new_err_struct = using_new_err_struct_save
 	if typ == ast.void_type_idx {
-		c.error('`void` type has no fields', node.pos)
+		// This means that the field has an undefined type.
+		// This error was handled before.
+		// c.error('`void` type has no fields', node.pos)
 		return ast.void_type
 	}
 	node.expr_type = typ
@@ -3710,8 +3728,8 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 		for mut expr is ast.ParExpr {
 			expr = expr.expr
 		}
-		if expr in [ast.BoolLiteral, ast.CallExpr, ast.CharLiteral, ast.FloatLiteral,
-			ast.IntegerLiteral, ast.InfixExpr, ast.StringLiteral, ast.StringInterLiteral] {
+		if expr in [ast.BoolLiteral, ast.CallExpr, ast.CharLiteral, ast.FloatLiteral, ast.IntegerLiteral,
+			ast.InfixExpr, ast.StringLiteral, ast.StringInterLiteral] {
 			c.error('cannot take the address of $expr', node.pos)
 		}
 		if mut node.right is ast.IndexExpr {
@@ -3788,7 +3806,9 @@ fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_ty
 	// if typ_sym.kind == .array && (!(ast.type_idx(index_type) in ast.number_type_idxs) &&
 	// index_type_sym.kind != .enum_) {
 	if typ_sym.kind in [.array, .array_fixed, .string] {
-		if !(index_type.is_int() || index_type_sym.kind == .enum_) {
+		if !(index_type.is_int() || index_type_sym.kind == .enum_
+			|| (index_type_sym.kind == .alias
+			&& (index_type_sym.info as ast.Alias).parent_type.is_int())) {
 			type_str := if typ_sym.kind == .string {
 				'non-integer string index `$index_type_sym.name`'
 			} else {

@@ -127,30 +127,7 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 		//	return expr.val.i64()
 		// }
 		ast.SizeOf {
-			xtype := expr.typ
-			if xtype.is_real_pointer() {
-				if c.pref.m64 {
-					return 8 // 64bit platform
-				}
-				return 4 // 32bit platform
-			}
-			if int(xtype) == xtype.idx() {
-				match xtype {
-					ast.char_type { return 1 }
-					ast.i8_type { return 1 }
-					ast.i16_type { return 2 }
-					ast.int_type { return 4 }
-					ast.i64_type { return 8 }
-					//
-					ast.byte_type { return 1 }
-					// ast.u8_type { return 1 }
-					ast.u16_type { return 2 }
-					ast.u32_type { return 4 }
-					ast.u64_type { return 8 }
-					else {}
-				}
-			}
-			return none
+			return c.table.type_size(expr.typ)
 		}
 		ast.FloatLiteral {
 			x := expr.val.f64()

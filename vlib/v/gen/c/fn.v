@@ -337,7 +337,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 					}
 					info := var.obj as ast.Var
 					if g.table.sym(info.typ).kind != .function {
-						g.writeln('${g.typ(info.typ)}$deref $var.name;')
+						g.writeln('${g.typ(info.typ)}$deref ${c_name(var.name)};')
 					}
 				}
 			}
@@ -379,7 +379,10 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	defer {
 		g.tmp_count = ctmp
 	}
+	prev_inside_ternary := g.inside_ternary
+	g.inside_ternary = 0
 	g.stmts(node.stmts)
+	g.inside_ternary = prev_inside_ternary
 	if node.is_noreturn {
 		g.writeln('\twhile(1);')
 	}
@@ -637,11 +640,12 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	// see my comment in parser near anon_fn
 	if node.left is ast.AnonFn {
 		g.expr(node.left)
-	}
-	if node.left is ast.IndexExpr && node.name == '' {
+	} else if node.left is ast.IndexExpr && node.name == '' {
 		g.is_fn_index_call = true
 		g.expr(node.left)
 		g.is_fn_index_call = false
+	} else if node.left is ast.CallExpr && node.name == '' {
+		g.expr(node.left)
 	}
 	if node.should_be_skipped {
 		return
@@ -1770,7 +1774,14 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		}
 	} else {
 		g.writeln('pthread_t thread_$tmp;')
-		g.writeln('int ${tmp}_thr_res = pthread_create(&thread_$tmp, NULL, (void*)$wrapper_fn_name, $arg_tmp_var);')
+		mut sthread_attributes := 'NULL'
+		if g.pref.os != .vinix {
+			g.writeln('pthread_attr_t thread_${tmp}_attributes;')
+			g.writeln('pthread_attr_init(&thread_${tmp}_attributes);')
+			g.writeln('pthread_attr_setstacksize(&thread_${tmp}_attributes, $g.pref.thread_stack_size);')
+			sthread_attributes = '&thread_${tmp}_attributes'
+		}
+		g.writeln('int ${tmp}_thr_res = pthread_create(&thread_$tmp, $sthread_attributes, (void*)$wrapper_fn_name, $arg_tmp_var);')
 		g.writeln('if (${tmp}_thr_res) panic_error_number(tos3("`go ${name}()`: "), ${tmp}_thr_res);')
 		if !node.is_expr {
 			g.writeln('pthread_detach(thread_$tmp);')
@@ -1908,6 +1919,13 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 				g.gowrappers.write_string(call_args_str)
 			} else {
 				for i in 0 .. expr.args.len {
+					expected_nr_muls := expr.expected_arg_types[i].nr_muls()
+					arg_nr_muls := expr.args[i].typ.nr_muls()
+					if arg_nr_muls > expected_nr_muls {
+						g.gowrappers.write_string('*'.repeat(arg_nr_muls - expected_nr_muls))
+					} else if arg_nr_muls < expected_nr_muls {
+						g.gowrappers.write_string('&'.repeat(expected_nr_muls - arg_nr_muls))
+					}
 					g.gowrappers.write_string('arg->arg${i + 1}')
 					if i != expr.args.len - 1 {
 						g.gowrappers.write_string(', ')
@@ -2037,6 +2055,12 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 		g.expr(arg.expr)
 		g.write('->val')
 		return
+	} else if arg.expr is ast.ArrayInit {
+		if arg.expr.is_fixed {
+			if !arg.expr.has_it {
+				g.write('(${g.typ(arg.expr.typ)})')
+			}
+		}
 	}
 	g.expr_with_cast(arg.expr, arg_typ, expected_type)
 	if needs_closing {

@@ -300,6 +300,7 @@ const c_common_macros = '
 #endif
 
 #ifdef __TINYC__
+	#define _Atomic volatile
 	#undef EMPTY_STRUCT_DECLARATION
 	#define EMPTY_STRUCT_DECLARATION voidptr _dummy_pad
 	#undef EMPTY_ARRAY_OF_ELEMS

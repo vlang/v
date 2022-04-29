@@ -919,7 +919,7 @@ fn test_u64_keys() {
 		m[i]++
 		assert m[i] == i + 1
 	}
-	assert m.len == end
+	assert u64(m.len) == end
 	keys := m.keys()
 	for i in u64(0) .. end {
 		assert keys[i] == i

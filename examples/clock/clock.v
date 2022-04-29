@@ -32,8 +32,7 @@ const (
 
 struct App {
 	minutes_tic []f32 = [f32(center - tw), tp, center + tw, tp, center + tw, tp, center + tw,
-	tp +
-	1 * th, center - tw, tp + 1 * th]
+	tp + 1 * th, center - tw, tp + 1 * th]
 	hours_tic []f32 = [f32(center - tw), tp, center + tw, tp, center + tw, tp, center + tw, tp + 2 * th,
 	center - tw, tp + 2 * th]
 	hours3_tic []f32 = [f32(center - tw), tp, center + tw, tp, center + tw, tp, center + tw, tp + 3 * th,
