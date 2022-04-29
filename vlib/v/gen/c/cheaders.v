@@ -198,19 +198,19 @@ const c_common_macros = '
 #define __IRQHANDLER __attribute__((interrupt))
 
 #define __V_architecture 0
-#if defined(__x86_64__)
+#if defined(__x86_64__) || defined(_M_AMD64)
 	#define __V_amd64  1
 	#undef __V_architecture
 	#define __V_architecture 1
 #endif
 
-#if defined(__aarch64__) || defined(__arm64__)
+#if defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64)
 	#define __V_arm64  1
 	#undef __V_architecture
 	#define __V_architecture 2
 #endif
 
-#if defined(__arm__)
+#if defined(__arm__) || defined(_M_ARM)
 	#define __V_arm32  1
 	#undef __V_architecture
 	#define __V_architecture 3
