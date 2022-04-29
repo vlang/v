@@ -80,8 +80,9 @@ fn test_closures_with_n_args() ? {
 			mut values := all_param_values[..i]
 			if typ == 'string' {
 				values = values.map("'$it'")
+			} else {
+				values = values.map('${typ}($it)')
 			}
-			values = values.map('${typ}($it)')
 
 			mut expected_val := if typ == 'string' {
 				s := all_param_values[..i].join('')
