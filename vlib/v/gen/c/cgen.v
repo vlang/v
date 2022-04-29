@@ -5135,7 +5135,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 				g.writeln('\treturn $err_obj;')
 			}
 		}
-	}  else if or_block.kind == .propagate_result {
+	} else if or_block.kind == .propagate_result {
 		if g.file.mod.name == 'main' && (isnil(g.fn_decl) || g.fn_decl.is_main) {
 			// In main(), an `opt()!` call is sugar for `opt() or { panic(err) }`
 			err_msg := 'IError_name_table[${cvar_name}.err._typ]._method_msg(${cvar_name}.err._object)'
