@@ -584,11 +584,6 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 				p.error_with_pos('duplicate method `$name`', method_start_pos)
 				return ast.InterfaceDecl{}
 			}
-			if language == .v && util.contains_capital(name) {
-				p.error_with_pos('interface methods cannot contain uppercase letters, use snake_case instead',
-					method_start_pos)
-				return ast.InterfaceDecl{}
-			}
 			// field_names << name
 			args2, _, is_variadic := p.fn_args() // TODO merge ast.Param and ast.Arg to avoid this
 			mut args := [
