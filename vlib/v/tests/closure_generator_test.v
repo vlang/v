@@ -107,7 +107,11 @@ fn test_big_closure_${typ}_${i}() {
 	c := fn [z] (${params.join(', ')}) $return_type {
 		mut sum := z")
 			for j in 0 .. i {
-				v_code.writeln('\t\tsum += ${return_type}(${param_names[j]})')
+				if return_type == 'string' {
+					v_code.writeln('\t\tsum += ${param_names[j]}')
+				} else {
+					v_code.writeln('\t\tsum += ${return_type}(${param_names[j]})')
+				}
 			}
 			v_code.writeln("
 		return sum

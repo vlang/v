@@ -511,24 +511,29 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 		}
 		sb.write_string('${g.typ(param.typ)} a${i + 1}')
 	}
-	sb.writeln(') {
-	void** closure_start = (void**)((char*)__RETURN_ADDRESS() - __CLOSURE_WRAPPER_OFFSET);
-	$arg_struct* args = closure_start[-5];')
-	for i in 0 .. node.decl.params.len {
-		sb.writeln('\targs->a${i + 1} = a${i + 1};')
+	sb.writeln(') {')
+	if node.decl.params.len > 0 {
+		sb.writeln('void** closure_start = (void**)((char*)__RETURN_ADDRESS() - __CLOSURE_WRAPPER_OFFSET);
+		$arg_struct* args = closure_start[-5];')
+		for i in 0 .. node.decl.params.len {
+			sb.writeln('\targs->a${i + 1} = a${i + 1};')
+		}
 	}
 
 	sb.writeln('}\n')
 
 	sb.writeln(' VV_LOCAL_SYMBOL $ret_styp ${node.decl.name}_unwrapper(void) {
 	void** closure_start = (void**)((char*)__RETURN_ADDRESS() - __CLOSURE_UNWRAPPER_OFFSET);
-	$arg_struct* args = closure_start[-5];
 	void* userdata = closure_start[-1];')
 	sb.write_string('\t${g.typ(node.decl.return_type)} (*fn)(')
 	for i, param in node.decl.params {
 		sb.write_string('${g.typ(param.typ)} a${i + 1}, ')
 	}
 	sb.writeln('void* userdata) = closure_start[-2];')
+
+	if node.decl.params.len > 0 {
+		sb.writeln('\t$arg_struct* args = closure_start[-5];')
+	}
 
 	if node.decl.return_type == ast.void_type_idx {
 		sb.write_string('\tfn(')
@@ -559,11 +564,13 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 			builder.writeln('\t$styp $var.name;')
 		}
 		builder.writeln('};\n')
-		builder.writeln('$arg_struct {')
-		for i, param in node.decl.params {
-			builder.writeln('\t${g.typ(param.typ)} a${i + 1};')
+		if node.decl.params.len > 0 {
+			builder.writeln('$arg_struct {')
+			for i, param in node.decl.params {
+				builder.writeln('\t${g.typ(param.typ)} a${i + 1};')
+			}
+			builder.writeln('};\n')
 		}
-		builder.writeln('};\n')
 	}
 	pos := g.out.len
 	was_anon_fn := g.anon_fn
