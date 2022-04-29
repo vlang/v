@@ -112,16 +112,7 @@ fn (mut app App) time() vweb.Result {
 
 <img width=662 src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/img/time.png?raw=true">
 
->You have to rebuild and restart the website every time you change the code.
-In the future, Vweb will detect changes and recompile the website in the background
-while it's running.
-
-In the meantime, if you're using a *nix system, you can leverage `entr` to get a basic auto-reload environment going.
-
-```bash
-apt-get install entr # or brew install entr
-find *.v | entr -ncr v run blog.v
-```
+>TIP: run the following command to live-reload the server: `v watch run blog.v`
 
 The `.text(string)` method returns a plain text document with the provided
 text, which isn't frequently used in websites.
