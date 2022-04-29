@@ -2,8 +2,12 @@ module time
 
 pub const (
 	days_string        = 'MonTueWedThuFriSatSun'
+	long_days          = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
+		'Sunday']
 	month_days         = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 	months_string      = 'JanFebMarAprMayJunJulAugSepOctNovDec'
+	long_months        = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
+		'September', 'October', 'November', 'December']
 	// The unsigned zero year for internal calculations.
 	// Must be 1 mod 400, and times before it will not compute correctly,
 	// but otherwise can be changed at will.
@@ -30,8 +34,6 @@ pub const (
 		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30,
 		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
 	]
-	long_days          = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
-		'Sunday']
 )
 
 // Time contains various time units for a point in time.
@@ -83,7 +85,7 @@ pub enum FormatDelimiter {
 	no_delimiter
 }
 
-// smonth returns month name.
+// smonth returns month name abbreviation.
 pub fn (t Time) smonth() string {
 	if t.month <= 0 || t.month > 12 {
 		return '---'
@@ -224,10 +226,10 @@ pub fn (t Time) day_of_week() int {
 	return day_of_week(t.year, t.month, t.day)
 }
 
-// weekday_str returns the current day as a string.
+// weekday_str returns the current day as a string abbreviation.
 pub fn (t Time) weekday_str() string {
 	i := t.day_of_week() - 1
-	return time.days_string[i * 3..(i + 1) * 3]
+	return time.long_days[i][0..3]
 }
 
 // weekday_str returns the current day as a string.
