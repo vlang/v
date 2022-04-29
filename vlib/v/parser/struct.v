@@ -515,7 +515,8 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	mut mut_pos := -1
 	mut ifaces := []ast.InterfaceEmbedding{}
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
-		if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital() {
+		if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
+			&& p.peek_tok.kind != .lpar {
 			iface_pos := p.tok.pos()
 			mut iface_name := p.tok.lit
 			iface_type := p.parse_type()
@@ -584,7 +585,8 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 				return ast.InterfaceDecl{}
 			}
 			if language == .v && util.contains_capital(name) {
-				p.error('interface methods cannot contain uppercase letters, use snake_case instead')
+				p.error_with_pos('interface methods cannot contain uppercase letters, use snake_case instead',
+					method_start_pos)
 				return ast.InterfaceDecl{}
 			}
 			// field_names << name
