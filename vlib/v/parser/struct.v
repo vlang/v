@@ -185,6 +185,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				is_field_volatile = true
 			}
 			is_embed := ((p.tok.lit.len > 1 && p.tok.lit[0].is_capital()
+				&& (p.peek_tok.line_nr != p.tok.line_nr || p.peek_tok.kind !in [.name, .amp])
 				&& (p.peek_tok.kind != .lsbr || p.peek_token(2).kind != .rsbr))
 				|| p.peek_tok.kind == .dot) && language == .v && p.peek_tok.kind != .key_fn
 			is_on_top := ast_fields.len == 0 && !(is_field_mut || is_field_global)
