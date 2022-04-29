@@ -564,7 +564,6 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 			builder.writeln('\t${g.typ(param.typ)} a${i + 1};')
 		}
 		builder.writeln('};\n')
-
 	}
 	pos := g.out.len
 	was_anon_fn := g.anon_fn
