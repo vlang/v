@@ -58,201 +58,127 @@ static inline void __sort_ptr(uintptr_t a[], bool b[], int l) {
 }
 '
 
-fn arm64_bytes(nargs int) string {
-	// start:
-	// ldr  x16,    start-0x08
-	// ldr  x<REG>, start-0x10
-	// br  x16
-	bytes := '0xd0, 0xff, 0xff, 0x58, 0x6<REG>, 0xff, 0xff, 0x58, 0x00, 0x02, 0x1f, 0xd6'
-	return bytes.replace('<REG>', nargs.str())
-}
-
-fn arm32_bytes(nargs int) string {
-	// start:
-	// ldr  r9,     start-0x4
-	// ldr  r<REG>, start-0x8
-	// bx   r9
-	bytes := '0x0c, 0x90, 0x1f, 0xe5, 0x14, 0x<REG>0, 0x1f, 0xe5, 0x19, 0xff, 0x2f, 0xe1'
-	return bytes.replace('<REG>', nargs.str())
-}
-
-// gen_amd64_bytecode generates the amd64 bytecode a closure with `nargs` parameters.
-// Note: `nargs` includes the last `userdata` parameter that will be passed to the original
-// function, and as such nargs must always be > 0
-fn amd64_bytes(nargs int) string {
-	match nargs {
-		1 {
-			return '0x48, 0x8b, 0x3d, 0xe9, 0xff, 0xff, 0xff, 0xff, 0x25, 0xeb, 0xff, 0xff, 0xff'
-		}
-		2 {
-			return '0x48, 0x8b, 0x35, 0xe9, 0xff, 0xff, 0xff, 0xff, 0x25, 0xeb, 0xff, 0xff, 0xff'
-		}
-		3 {
-			return '0x48, 0x8b, 0x15, 0xe9, 0xff, 0xff, 0xff, 0xff, 0x25, 0xeb, 0xff, 0xff, 0xff'
-		}
-		4 {
-			return '0x48, 0x8b, 0x0d, 0xe9, 0xff, 0xff, 0xff, 0xff, 0x25, 0xeb, 0xff, 0xff, 0xff'
-		}
-		5 {
-			return '0x4C, 0x8b, 0x05, 0xe9, 0xff, 0xff, 0xff, 0xff, 0x25, 0xeb, 0xff, 0xff, 0xff'
-		}
-		6 {
-			return '0x4C, 0x8b, 0x0d, 0xe9, 0xff, 0xff, 0xff, 0xff, 0x25, 0xeb, 0xff, 0xff, 0xff'
-		}
-		else {
-			// see https://godbolt.org/z/64e5TEf5n for similar assembly
-			mut sb := strings.new_builder(256)
-			s := (((u8(nargs) & 1) + 1) << 3).hex()
-			sb.write_string('0x48, 0x83, 0xec, 0x$s, ') // sub rsp,0x8  <OR>  sub rsp,0x10
-			sb.write_string('0xff, 0x35, 0xe6, 0xff, 0xff, 0xff, ') // push QWORD PTR [rip+0xffffffffffffffe6]
-
-			rsp_offset := u8(0x18 + ((u8(nargs - 7) >> 1) << 4)).hex()
-			for _ in 0 .. nargs - 7 {
-				sb.write_string('0xff, 0xb4, 0x24, 0x$rsp_offset, 0x00, 0x00, 0x00, ') // push QWORD PTR [rsp+$rsp_offset]
-			}
-			sb.write_string('0xff, 0x15, 0x${u8(256 - sb.len / 6 - 6 - 8).hex()}, 0xff, 0xff, 0xff, ') // call   QWORD PTR [rip+OFFSET]
-			sb.write_string('0x48, 0x81, 0xc4, 0x$rsp_offset, 0x00, 0x00, 0x00, ') // add rsp,$rsp_offset
-			sb.write_string('0xc3') // ret
-
-			return sb.str()
-		}
-	}
-}
-
-// Heavily based on Chris Wellons's work
+// Inspired from Chris Wellons's work
 // https://nullprogram.com/blog/2017/01/08/
 
 fn c_closure_helpers(pref &pref.Preferences) string {
-	if pref.os == .windows {
-		verror('closures are not implemented on Windows yet')
-	}
-	if pref.arch !in [.amd64, .arm64, .arm32] {
-		verror('closures are not implemented on this architecture yet: $pref.arch')
-	}
 	mut builder := strings.new_builder(2048)
 	if pref.os != .windows {
 		builder.writeln('#include <sys/mman.h>')
 	}
-	// TODO: support additional arguments by pushing them onto the stack
-	// https://en.wikipedia.org/wiki/Calling_convention
-	if pref.arch == .amd64 {
-		// TODO: the `amd64_bytes()` function above should work for an arbitrary* number of arguments,
-		// so we should just remove the table and call the function directly at runtime
-		builder.write_string('
-static unsigned char __closure_thunk[32][${amd64_bytes(31).len / 6 +
-			2}] = {
-	{ ${amd64_bytes(1)} },
-	{ ${amd64_bytes(2)} },
-	{ ${amd64_bytes(3)} },
-	{ ${amd64_bytes(4)} },
-	{ ${amd64_bytes(5)} },
-	{ ${amd64_bytes(6)} },
-	{ ${amd64_bytes(7)} },
-	{ ${amd64_bytes(8)} },
-	{ ${amd64_bytes(9)} },
-	{ ${amd64_bytes(10)} },
-	{ ${amd64_bytes(11)} },
-	{ ${amd64_bytes(12)} },
-	{ ${amd64_bytes(13)} },
-	{ ${amd64_bytes(14)} },
-	{ ${amd64_bytes(15)} },
-	{ ${amd64_bytes(16)} },
-	{ ${amd64_bytes(17)} },
-	{ ${amd64_bytes(18)} },
-	{ ${amd64_bytes(19)} },
-	{ ${amd64_bytes(20)} },
-	{ ${amd64_bytes(21)} },
-	{ ${amd64_bytes(22)} },
-	{ ${amd64_bytes(23)} },
-	{ ${amd64_bytes(24)} },
-	{ ${amd64_bytes(25)} },
-	{ ${amd64_bytes(26)} },
-	{ ${amd64_bytes(27)} },
-	{ ${amd64_bytes(28)} },
-	{ ${amd64_bytes(29)} },
-	{ ${amd64_bytes(30)} },
-	{ ${amd64_bytes(31)} },
-};
-')
-	} else if pref.arch == .arm64 {
-		builder.write_string('
-static unsigned char __closure_thunk[8][12] = {
-    {
-        ${arm64_bytes(0)}
-    }, {
-        ${arm64_bytes(1)}
-    }, {
-        ${arm64_bytes(2)}
-    }, {
-        ${arm64_bytes(3)}
-    }, {
-        ${arm64_bytes(4)}
-    }, {
-        ${arm64_bytes(5)}
-    }, {
-        ${arm64_bytes(6)}
-    }, {
-        ${arm64_bytes(7)}
-    },
-};
-')
-	} else if pref.arch == .arm32 {
-		builder.write_string('
-static unsigned char __closure_thunk[4][12] = {
-    {
-        ${arm32_bytes(0)}
-    }, {
-        ${arm32_bytes(1)}
-    }, {
-        ${arm32_bytes(2)}
-    }, {
-        ${arm32_bytes(3)}
-    },
-};
-')
-	}
+
 	builder.write_string('
-static void __closure_set_data(void *closure, void *data) {
-    void **p = closure;
-    p[-2] = data;
+#ifdef _MSC_VER
+	#define __RETURN_ADDRESS() _ReturnAddress()
+#else
+	#define __RETURN_ADDRESS() __builtin_extract_return_addr(__builtin_return_address(0))
+#endif
+
+#ifdef __V_amd64
+#ifdef _WIN32
+static const char __closure_thunk[] = {
+	0x48, 0x89, 0x0d, 0xc1, 0xff, 0xff, 0xff,  // mov   qword ptr [rip - 63], rcx   # <_orig_rcx>
+	0x8f, 0x05, 0xc3, 0xff, 0xff, 0xff,        // pop   qword ptr [rip - 61]        # <_orig_rbp>
+	0xff, 0x15, 0xd5, 0xff, 0xff, 0xff,        // call  qword ptr [rip - 43]        # <wrapper>
+	0x48, 0x8b, 0x0d, 0xae, 0xff, 0xff, 0xff,  // mov   rcx, qword ptr [rip - 82]   # <_orig_rcx>
+	0xff, 0x15, 0xc0, 0xff, 0xff, 0xff,        // call  qword ptr [rip - 64]        # <unwrapper>
+	0xff, 0x35, 0xaa, 0xff, 0xff, 0xff,        // push  qword ptr [rip - 86]        # <_orig_rbp>
+	0xc3                                       // ret
+};
+#else
+static const char __closure_thunk[] = {
+	0x48, 0x89, 0x3d, 0xc1, 0xff, 0xff, 0xff,  // mov   qword ptr [rip - 63], rdi   # <_orig_rdi>
+	0x8f, 0x05, 0xc3, 0xff, 0xff, 0xff,        // pop   qword ptr [rip - 61]        # <_orig_rbp>
+	0xff, 0x15, 0xd5, 0xff, 0xff, 0xff,        // call  qword ptr [rip - 43]        # <wrapper>
+	0x48, 0x8b, 0x3d, 0xae, 0xff, 0xff, 0xff,  // mov   rdi, qword ptr [rip - 82]   # <_orig_rdi>
+	0xff, 0x15, 0xc0, 0xff, 0xff, 0xff,        // call  qword ptr [rip - 64]        # <unwrapper>
+	0xff, 0x35, 0xaa, 0xff, 0xff, 0xff,        // push  qword ptr [rip - 86]        # <_orig_rbp>
+	0xc3                                       // ret
+};
+#endif
+#define __CLOSURE_WRAPPER_OFFSET 19
+#define __CLOSURE_UNWRAPPER_OFFSET 32
+#define __CLOSURE_WRAPPER_EXTRA_PARAM   void* _t,
+#elif defined(__V_arm64)
+static char __closure_thunk[] = {
+	0x09, 0x00, 0x00, 0x10,  // adr x9, 38           # <start>
+	0x28, 0x81, 0x1c, 0xf8,  // str x8, [x9, #-56]   # <_orig_x8>
+	0x3e, 0x01, 0x1d, 0xf8,  // str x30, [x9, #-48]  # <_orig_x30>
+	0xf0, 0xfe, 0xff, 0x58,  // ldr x16, 20          # <wrapper>
+	0x00, 0x02, 0x3f, 0xd6,  // blr x16
+	0x69, 0xff, 0xff, 0x10,  // adr x9, 38           # <start>
+	0x28, 0x81, 0x5c, 0xf8,  // ldr x8, [x9, #-56]   # <_orig_x8>
+	0x30, 0xfe, 0xff, 0x58,  // ldr x16, 18          # <unwrapper>
+	0x00, 0x02, 0x3f, 0xd6,  // blr x16
+	0xe9, 0xfe, 0xff, 0x10,  // adr x9, 38           # <start>
+	0x3e, 0x01, 0x5d, 0xf8,  // ldr x30, [x9, #-48]  # <_orig_x30>
+	0xc0, 0x03, 0x5f, 0xd6   // ret
+};
+#define __CLOSURE_WRAPPER_OFFSET 20
+#define __CLOSURE_UNWRAPPER_OFFSET 36
+#define __CLOSURE_WRAPPER_EXTRA_PARAM
+#endif
+
+static int _V_PAGE_SIZE = 4096; // pre-initialized to the most common value, in case _vinit is not called (in a DLL, for example)
+
+static inline void __closure_set_data(void* closure, void* data) {
+    void** p = closure;
+    p[-1] = data;
 }
 
-static void __closure_set_function(void *closure, void *f) {
-    void **p = closure;
-    p[-1] = f;
+static inline void __closure_set_function(void* closure, void* f) {
+    void** p = closure;
+    p[-2] = f;
 }
 
-static inline int __closure_check_nargs(int nargs) {
-	if (nargs > (int)_ARR_LEN(__closure_thunk)) {
-		_v_panic(_SLIT("Closure too large. Reduce the number of parameters, or pass the parameters by reference."));
-		VUNREACHABLE();
-	}
-	return nargs;
+static inline void __closure_set_wrapper(void* closure, void* f) {
+    void** p = closure;
+    p[-3] = f;
+}
+
+static inline void __closure_set_unwrapper(void* closure, void* f) {
+    void** p = closure;
+    p[-4] = f;
+}
+
+static inline void __closure_set_base_ptr(void* closure, void* bp) {
+    void** p = closure;
+    p[-5] = bp;
+}
+
+static void* __closure_create(void* fn, void* wrapper, void* unwrapper, void* data) {
+#ifdef _WIN32
+	SYSTEM_INFO si;
+	GetNativeSystemInfo(&si);
+	uint32_t page_size = si.dwPageSize;
+	char* p = VirtualAlloc(NULL, page_size * 2, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+	if (p == NULL) return 0;
+#else
+	uint32_t page_size = sysconf(_SC_PAGESIZE);
+	int prot = PROT_READ | PROT_WRITE;
+	int flags = MAP_ANONYMOUS | MAP_PRIVATE;
+	char* p = mmap(0, page_size * 2, prot, flags, -1, 0);
+	if (p == MAP_FAILED) return 0;
+#endif
+
+	void* closure = p + page_size;
+	memcpy(closure, __closure_thunk, sizeof(__closure_thunk));
+
+#ifdef _WIN32
+	DWORD _tmp;
+	VirtualProtect(closure, page_size, PAGE_EXECUTE_READ, &_tmp);
+#else
+	mprotect(closure, page_size, PROT_READ | PROT_EXEC);
+#endif
+
+	__closure_set_data(closure, data);
+	__closure_set_function(closure, fn);
+	__closure_set_wrapper(closure, wrapper);
+	__closure_set_unwrapper(closure, unwrapper);
+	__closure_set_base_ptr(closure, p);
+	return closure;
 }
 ')
-	if pref.os != .windows {
-		builder.write_string('
-static void * __closure_create(void *f, int nargs, void *userdata) {
-    long page_size = sysconf(_SC_PAGESIZE);
-    int prot = PROT_READ | PROT_WRITE;
-    int flags = MAP_ANONYMOUS | MAP_PRIVATE;
-    char *p = mmap(0, page_size * 2, prot, flags, -1, 0);
-    if (p == MAP_FAILED)
-        return 0;
-    void *closure = p + page_size;
-    memcpy(closure, __closure_thunk[nargs - 1], sizeof(__closure_thunk[0]));
-    mprotect(closure, page_size, PROT_READ | PROT_EXEC);
-    __closure_set_function(closure, f);
-    __closure_set_data(closure, userdata);
-    return closure;
-}
-
-static void __closure_destroy(void *closure) {
-    long page_size = sysconf(_SC_PAGESIZE);
-    munmap((char *)closure - page_size, page_size * 2);
-}
-')
-	}
 	return builder.str()
 }
 
@@ -278,6 +204,18 @@ const c_common_macros = '
 	#define __V_arm64  1
 	#undef __V_architecture
 	#define __V_architecture 2
+#endif
+
+#if defined(__arm__)
+	#define __V_arm32  1
+	#undef __V_architecture
+	#define __V_architecture 3
+#endif
+
+#if defined(__i386__) || defined(_M_IX86)
+	#define __V_x86    1
+	#undef __V_architecture
+	#define __V_architecture 6
 #endif
 
 // Using just __GNUC__ for detecting gcc, is not reliable because other compilers define it too:
@@ -328,11 +266,6 @@ const c_common_macros = '
 #ifndef __offsetof
 	#define __offsetof(PTYPE,FIELDNAME) ((size_t)((char *)&((PTYPE *)0)->FIELDNAME - (char *)0))
 #endif
-
-// returns the number of CPU registers that TYPE takes up
-#define _REG_WIDTH(T) (((sizeof(T) + sizeof(void*) - 1) & ~(sizeof(void*) - 1)) / sizeof(void*))
-// parameters of size <= 2 registers are spilled across those two registers; larger types are passed as one pointer to some stack location
-#define _REG_WIDTH_BOUNDED(T) (_REG_WIDTH(T) <= 2 ? _REG_WIDTH(T) : 1)
 
 #define OPTION_CAST(x) (x)
 
