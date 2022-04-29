@@ -501,6 +501,9 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 	sb.write_string(' VV_LOCAL_SYMBOL void ${node.decl.name}_wrapper(')
 	if is_big {
 		sb.write_string('__CLOSURE_WRAPPER_EXTRA_PARAM ')
+		if node.decl.params.len > 0 {
+			sb.write_string('__CLOSURE_WRAPPER_EXTRA_PARAM_COMMA ')
+		}
 	}
 	for i, param in node.decl.params {
 		if i > 0 {

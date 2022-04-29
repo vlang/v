@@ -70,6 +70,8 @@ fn c_closure_helpers(pref &pref.Preferences) string {
 	builder.write_string('
 #ifdef _MSC_VER
 	#define __RETURN_ADDRESS() _ReturnAddress()
+#elif defined(__TINYC__) && defined(_WIN32)
+	#define __RETURN_ADDRESS() __builtin_return_address(0)
 #else
 	#define __RETURN_ADDRESS() __builtin_extract_return_addr(__builtin_return_address(0))
 #endif
@@ -98,7 +100,8 @@ static const char __closure_thunk[] = {
 #endif
 #define __CLOSURE_WRAPPER_OFFSET 19
 #define __CLOSURE_UNWRAPPER_OFFSET 32
-#define __CLOSURE_WRAPPER_EXTRA_PARAM   void* _t,
+#define __CLOSURE_WRAPPER_EXTRA_PARAM   void* _t
+#define __CLOSURE_WRAPPER_EXTRA_PARAM_COMMA ,
 #elif defined(__V_arm64)
 static char __closure_thunk[] = {
 	0x09, 0x00, 0x00, 0x10,  // adr x9, 38           # <start>
@@ -117,6 +120,7 @@ static char __closure_thunk[] = {
 #define __CLOSURE_WRAPPER_OFFSET 20
 #define __CLOSURE_UNWRAPPER_OFFSET 36
 #define __CLOSURE_WRAPPER_EXTRA_PARAM
+#define __CLOSURE_WRAPPER_EXTRA_PARAM_COMMA
 #endif
 
 static int _V_PAGE_SIZE = 4096; // pre-initialized to the most common value, in case _vinit is not called (in a DLL, for example)
