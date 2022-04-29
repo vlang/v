@@ -61,8 +61,5 @@ fn util_error_propagation() ! {
 }
 
 fn test_return_on_error_propagation() {
-   	util_error_propagation() or {
-		assert err.msg() == 'abc'
-	}
+	util_error_propagation() or { assert err.msg() == 'abc' }
 }
-
