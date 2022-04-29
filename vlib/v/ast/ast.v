@@ -1487,7 +1487,8 @@ pub mut:
 pub enum OrKind {
 	absent
 	block
-	propagate
+	propagate_option
+	propagate_result
 }
 
 // `or { ... }`

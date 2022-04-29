@@ -535,7 +535,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		}
 		if p.tok.kind == .question {
 			p.next()
-			or_kind = .propagate
+			or_kind = .propagate_option
 		}
 		p.or_is_handled = false
 	}
@@ -627,7 +627,7 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 		}
 		if p.tok.kind == .question {
 			p.next()
-			or_kind = .propagate
+			or_kind = .propagate_option
 		}
 		p.or_is_handled = false
 	}

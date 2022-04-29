@@ -89,12 +89,15 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	if expected == ast.charptr_type && got == ast.char_type.ref() {
 		return true
 	}
-	if expected.has_flag(.optional) {
+	if expected.has_flag(.optional) || expected.has_flag(.result) {
 		sym := c.table.sym(got)
-		if sym.idx == ast.error_type_idx || got in [ast.none_type, ast.error_type] {
+		if ((sym.idx == ast.error_type_idx || got in [ast.none_type, ast.error_type])
+			&& expected.has_flag(.optional))
+			|| ((sym.idx == ast.error_type_idx || got == ast.error_type)
+			&& expected.has_flag(.result)) {
 			// IErorr
 			return true
-		} else if !c.check_basic(got, expected.clear_flag(.optional)) {
+		} else if !c.check_basic(got, expected.clear_flag(.optional).clear_flag(.result)) {
 			return false
 		}
 	}

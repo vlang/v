@@ -1,0 +1,7 @@
+vlib/v/checker/tests/propagate_option_with_result_err.vv:6:8: error: to propagate an option, the call must also return an optional type
+    4 | 
+    5 | fn bar() ?string {
+    6 |     foo() ?
+      |           ^
+    7 |     return ''
+    8 | }

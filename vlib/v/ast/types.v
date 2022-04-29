@@ -98,6 +98,7 @@ pub mut:
 // max of 8
 pub enum TypeFlag {
 	optional
+	result
 	variadic
 	generic
 	shared_f
@@ -472,6 +473,7 @@ pub const (
 pub const (
 	void_type          = new_type(void_type_idx)
 	ovoid_type         = new_type(void_type_idx).set_flag(.optional) // the return type of `fn () ?`
+	rvoid_type         = new_type(void_type_idx).set_flag(.result) // the return type of `fn () !`
 	voidptr_type       = new_type(voidptr_type_idx)
 	byteptr_type       = new_type(byteptr_type_idx)
 	charptr_type       = new_type(charptr_type_idx)
@@ -1227,6 +1229,9 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			if typ.has_flag(.optional) {
 				return '?'
 			}
+			if typ.has_flag(.result) {
+				return '!'
+			}
 			return 'void'
 		}
 		.thread {
@@ -1261,6 +1266,9 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 	}
 	if typ.has_flag(.optional) {
 		res = '?$res'
+	}
+	if typ.has_flag(.result) {
+		res = '!$res'
 	}
 	return res
 }

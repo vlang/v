@@ -1023,7 +1023,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					s.pos += 2
 					return s.new_token(.not_is, '', 3)
 				} else {
-					return s.new_token(.not, '', 1)
+					return s.new_token(.not, '!', 1)
 				}
 			}
 			`~` {

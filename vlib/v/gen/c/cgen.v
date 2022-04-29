@@ -73,7 +73,8 @@ mut:
 	embedded_data             strings.Builder // data to embed in the executable/binary
 	shared_types              strings.Builder // shared/lock types
 	shared_functions          strings.Builder // shared constructors
-	options                   strings.Builder // `Option_xxxx` types
+	options                   strings.Builder // `option_xxxx` types
+	out_results               strings.Builder // `result_xxxx` types
 	json_forward_decls        strings.Builder // json type forward decls
 	sql_buf                   strings.Builder // for writing exprs to args via `sqlite3_bind_int()` etc
 	file                      &ast.File
@@ -100,6 +101,7 @@ mut:
 	is_cc_msvc                bool   // g.pref.ccompiler == 'msvc'
 	vlines_path               string // set to the proper path for generating #line directives
 	optionals                 map[string]string // to avoid duplicates
+	results                   map[string]string // to avoid duplicates
 	done_optionals            shared []string   // to avoid duplicates
 	chan_pop_optionals        map[string]string // types for `x := <-ch or {...}`
 	chan_push_optionals       map[string]string // types for `ch <- x or {...}`
@@ -246,6 +248,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		pcs_declarations: strings.new_builder(100)
 		embedded_data: strings.new_builder(1000)
 		options: strings.new_builder(100)
+		out_results: strings.new_builder(100)
 		shared_types: strings.new_builder(100)
 		shared_functions: strings.new_builder(100)
 		json_forward_decls: strings.new_builder(100)
@@ -319,6 +322,9 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			for k, v in g.optionals {
 				global_g.optionals[k] = v
 			}
+			for k, v in g.results {
+				global_g.results[k] = v
+			}
 			for k, v in g.as_cast_type_names {
 				global_g.as_cast_type_names[k] = v
 			}
@@ -373,6 +379,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 
 	global_g.gen_jsons()
 	global_g.write_optionals()
+	global_g.write_results()
 	global_g.dump_expr_definitions() // this uses global_g.get_str_fn, so it has to go before the below for loop
 	for i := 0; i < global_g.str_types.len; i++ {
 		global_g.final_gen_str(global_g.str_types[i])
@@ -441,6 +448,8 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	b.write_string(g.shared_types.str())
 	b.writeln('\n// V Option_xxx definitions:')
 	b.write_string(g.options.str())
+	b.writeln('\n// V result_xxx definitions:')
+	b.write_string(g.out_results.str())
 	b.writeln('\n// V json forward decls:')
 	b.write_string(g.json_forward_decls.str())
 	b.writeln('\n// V definitions:')
@@ -535,6 +544,7 @@ fn cgen_process_one_file_cb(p &pool.PoolProcessor, idx int, wid int) &Gen {
 		hotcode_definitions: strings.new_builder(100)
 		embedded_data: strings.new_builder(1000)
 		options: strings.new_builder(100)
+		out_results: strings.new_builder(100)
 		shared_types: strings.new_builder(100)
 		shared_functions: strings.new_builder(100)
 		channel_definitions: strings.new_builder(100)
@@ -595,6 +605,7 @@ pub fn (mut g Gen) free_builders() {
 		g.shared_functions.free()
 		g.channel_definitions.free()
 		g.options.free()
+		g.out_results.free()
 		g.json_forward_decls.free()
 		g.enum_typedefs.free()
 		g.sql_buf.free()
@@ -884,6 +895,8 @@ fn (mut g Gen) typ(t ast.Type) string {
 	if t.has_flag(.optional) {
 		// Register an optional if it's not registered yet
 		return g.register_optional(t)
+	} else if t.has_flag(.result) {
+		return g.register_result(t)
 	} else {
 		return g.base_type(t)
 	}
@@ -965,6 +978,15 @@ fn (mut g Gen) optional_type_name(t ast.Type) (string, string) {
 	return styp, base
 }
 
+fn (mut g Gen) result_type_name(t ast.Type) (string, string) {
+	base := g.base_type(t)
+	mut styp := 'result_$base'
+	if t.is_ptr() {
+		styp = styp.replace('*', '_ptr')
+	}
+	return styp, base
+}
+
 fn (g Gen) optional_type_text(styp string, base string) string {
 	// replace void with something else
 	size := if base == 'void' {
@@ -982,9 +1004,32 @@ fn (g Gen) optional_type_text(styp string, base string) string {
 	return ret
 }
 
+fn (g Gen) result_type_text(styp string, base string) string {
+	// replace void with something else
+	size := if base == 'void' {
+		'u8'
+	} else if base.starts_with('anon_fn') {
+		'void*'
+	} else {
+		base
+	}
+	ret := 'struct $styp {
+	bool is_error;
+	IError err;
+	byte data[sizeof($size) > 0 ? sizeof($size) : 1];
+}'
+	return ret
+}
+
 fn (mut g Gen) register_optional(t ast.Type) string {
 	styp, base := g.optional_type_name(t)
 	g.optionals[base] = styp
+	return styp
+}
+
+fn (mut g Gen) register_result(t ast.Type) string {
+	styp, base := g.result_type_name(t)
+	g.results[base] = styp
 	return styp
 }
 
@@ -1000,6 +1045,18 @@ fn (mut g Gen) write_optionals() {
 		done << base
 		g.typedefs.writeln('typedef struct $styp $styp;')
 		g.options.write_string(g.optional_type_text(styp, base) + ';\n\n')
+	}
+}
+
+fn (mut g Gen) write_results() {
+	mut done := []string{}
+	for base, styp in g.results {
+		if base in done {
+			continue
+		}
+		done << base
+		g.typedefs.writeln('typedef struct $styp $styp;')
+		g.out_results.write_string(g.result_type_text(styp, base) + ';\n\n')
 	}
 }
 
@@ -1880,6 +1937,10 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					if method.return_type.has_flag(.optional) {
 						// Register an optional if it's not registered yet
 						g.register_optional(method.return_type)
+					}
+					if method.return_type.has_flag(.result) {
+						// Register a result if it's not registered yet
+						g.register_result(method.return_type)
 					}
 				}
 			}
@@ -3893,6 +3954,14 @@ fn (g &Gen) expr_is_multi_return_call(expr ast.Expr) bool {
 	return false
 }
 
+fn (mut g Gen) gen_result_error(target_type ast.Type, expr ast.Expr) {
+	styp := g.typ(target_type)
+	g.write('($styp){ .is_error=true, .err=')
+	g.expr(expr)
+	g.write(', .data={EMPTY_STRUCT_INITIALIZATION} }')
+}
+
+// NB: remove this when optional has no errors anymore
 fn (mut g Gen) gen_optional_error(target_type ast.Type, expr ast.Expr) {
 	styp := g.typ(target_type)
 	g.write('($styp){ .state=2, .err=')
@@ -3921,10 +3990,11 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	sym := g.table.sym(g.fn_decl.return_type)
 	fn_return_is_multi := sym.kind == .multi_return
 	fn_return_is_optional := g.fn_decl.return_type.has_flag(.optional)
+	fn_return_is_result := g.fn_decl.return_type.has_flag(.result)
 	mut has_semicolon := false
 	if node.exprs.len == 0 {
 		g.write_defer_stmts_when_needed()
-		if fn_return_is_optional {
+		if fn_return_is_optional || fn_return_is_result {
 			styp := g.typ(g.fn_decl.return_type)
 			g.writeln('return ($styp){0};')
 		} else {
@@ -3969,6 +4039,34 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			return
 		}
 	}
+	// handle promoting error/function returning 'result'
+	if fn_return_is_result {
+		ftyp := g.typ(node.types[0])
+		mut is_regular_result := ftyp == 'result'
+		if is_regular_result || node.types[0] == ast.error_type_idx {
+			if !isnil(g.fn_decl) && g.fn_decl.is_test {
+				test_error_var := g.new_tmp_var()
+				g.write('$ret_typ $test_error_var = ')
+				g.gen_result_error(g.fn_decl.return_type, node.exprs[0])
+				g.writeln(';')
+				g.write_defer_stmts_when_needed()
+				g.gen_failing_return_error_for_test_fn(node, test_error_var)
+				return
+			}
+			if use_tmp_var {
+				g.write('$ret_typ $tmpvar = ')
+			} else {
+				g.write('return ')
+			}
+			g.gen_result_error(g.fn_decl.return_type, node.exprs[0])
+			g.writeln(';')
+			if use_tmp_var {
+				g.write_defer_stmts_when_needed()
+				g.writeln('return $tmpvar;')
+			}
+			return
+		}
+	}
 	// regular cases
 	if fn_return_is_multi && node.exprs.len > 0 && !g.expr_is_multi_return_call(node.exprs[0]) {
 		if node.exprs.len == 1 && (node.exprs[0] is ast.IfExpr || node.exprs[0] is ast.MatchExpr) {
@@ -3983,7 +4081,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		typ_sym := g.table.sym(g.fn_decl.return_type)
 		mr_info := typ_sym.info as ast.MultiReturn
 		mut styp := ''
-		if fn_return_is_optional {
+		if fn_return_is_optional || fn_return_is_result {
 			g.writeln('$ret_typ $tmpvar;')
 			styp = g.base_type(g.fn_decl.return_type)
 			g.write('opt_ok(&($styp/*X*/[]) { ')
@@ -4054,7 +4152,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			}
 		}
 		g.write('}')
-		if fn_return_is_optional {
+		if fn_return_is_optional || fn_return_is_result {
 			g.writeln(' }, (Option*)(&$tmpvar), sizeof($styp));')
 			g.write_defer_stmts_when_needed()
 			g.write('return $tmpvar')
@@ -4063,7 +4161,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		if multi_unpack.len > 0 {
 			g.insert_before_stmt(multi_unpack)
 		}
-		if use_tmp_var && !fn_return_is_optional {
+		if use_tmp_var && !fn_return_is_optional && !fn_return_is_result {
 			if !has_semicolon {
 				g.writeln(';')
 			}
@@ -4104,6 +4202,35 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				}
 			}
 			g.writeln(' }, (Option*)(&$tmpvar), sizeof($styp));')
+			g.write_defer_stmts_when_needed()
+			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
+			g.writeln('return $tmpvar;')
+			return
+		}
+		expr_type_is_result := match expr0 {
+			ast.CallExpr {
+				expr0.return_type.has_flag(.result) && expr0.or_block.kind == .absent
+			}
+			else {
+				node.types[0].has_flag(.result)
+			}
+		}
+		if fn_return_is_result && !expr_type_is_result && return_sym.name != 'result' {
+			styp := g.base_type(g.fn_decl.return_type)
+			g.writeln('$ret_typ $tmpvar;')
+			g.write('result_ok(&($styp[]) { ')
+			if !g.fn_decl.return_type.is_ptr() && node.types[0].is_ptr() {
+				if !(node.exprs[0] is ast.Ident && !g.is_amp) {
+					g.write('*')
+				}
+			}
+			for i, expr in node.exprs {
+				g.expr_with_cast(expr, node.types[i], g.fn_decl.return_type.clear_flag(.result))
+				if i < node.exprs.len - 1 {
+					g.write(', ')
+				}
+			}
+			g.writeln(' }, (result*)(&$tmpvar), sizeof($styp));')
 			g.write_defer_stmts_when_needed()
 			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			g.writeln('return $tmpvar;')
@@ -4596,7 +4723,7 @@ fn (mut g Gen) write_init_function() {
 }
 
 const (
-	builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'IError', 'Option']
+	builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'IError', 'Option', 'result']
 )
 
 fn (mut g Gen) write_builtin_types() {
@@ -4933,7 +5060,11 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 		if return_type != 0 && g.table.sym(return_type).kind == .function {
 			mr_styp = 'voidptr'
 		}
-		g.writeln('if (${cvar_name}.state != 0) { /*or block*/ ')
+		if return_type.has_flag(.result) {
+			g.writeln('if (${cvar_name}.is_error) { /*or block*/ ')
+		} else {
+			g.writeln('if (${cvar_name}.state != 0) { /*or block*/ ')
+		}
 	}
 	if or_block.kind == .block {
 		g.or_expr_return_type = return_type.clear_flag(.optional)
@@ -4975,7 +5106,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			}
 		}
 		g.or_expr_return_type = ast.void_type
-	} else if or_block.kind == .propagate {
+	} else if or_block.kind == .propagate_option {
 		if g.file.mod.name == 'main' && (isnil(g.fn_decl) || g.fn_decl.is_main) {
 			// In main(), an `opt()?` call is sugar for `opt() or { panic(err) }`
 			err_msg := 'IError_name_table[${cvar_name}.err._typ]._method_msg(${cvar_name}.err._object)'
@@ -5001,6 +5132,35 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 				err_obj := g.new_tmp_var()
 				g.writeln('\t$styp $err_obj;')
 				g.writeln('\tmemcpy(&$err_obj, &$cvar_name, sizeof(Option));')
+				g.writeln('\treturn $err_obj;')
+			}
+		}
+	} else if or_block.kind == .propagate_result {
+		if g.file.mod.name == 'main' && (isnil(g.fn_decl) || g.fn_decl.is_main) {
+			// In main(), an `opt()!` call is sugar for `opt() or { panic(err) }`
+			err_msg := 'IError_name_table[${cvar_name}.err._typ]._method_msg(${cvar_name}.err._object)'
+			if g.pref.is_debug {
+				paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
+				g.writeln('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), $err_msg);')
+			} else {
+				g.writeln('\tpanic_result_not_set($err_msg);')
+			}
+		} else if !isnil(g.fn_decl) && g.fn_decl.is_test {
+			g.gen_failing_error_propagation_for_test_fn(or_block, cvar_name)
+		} else {
+			// In ordinary functions, `opt()!` call is sugar for:
+			// `opt() or { return err }`
+			// Since we *do* return, first we have to ensure that
+			// the defered statements are generated.
+			g.write_defer_stmts()
+			// Now that option types are distinct we need a cast here
+			if g.fn_decl.return_type == ast.void_type {
+				g.writeln('\treturn;')
+			} else {
+				styp := g.typ(g.fn_decl.return_type)
+				err_obj := g.new_tmp_var()
+				g.writeln('\t$styp $err_obj;')
+				g.writeln('\tmemcpy(&$err_obj, &$cvar_name, sizeof(result));')
 				g.writeln('\treturn $err_obj;')
 			}
 		}

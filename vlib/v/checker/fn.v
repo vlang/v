@@ -310,6 +310,16 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 		}
 	}
+	// same for result `fn (...) ! { ... }`
+	if node.return_type != ast.void_type && node.return_type.has_flag(.result)
+		&& (node.stmts.len == 0 || node.stmts.last() !is ast.Return) {
+		sym := c.table.sym(node.return_type)
+		if sym.kind == .void {
+			node.stmts << ast.Return{
+				pos: node.pos
+			}
+		}
+	}
 	c.fn_scope = node.scope
 	c.stmts(node.stmts)
 	node_has_top_return := has_top_return(node.stmts)
@@ -411,7 +421,7 @@ pub fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	c.expected_or_type = node.return_type.clear_flag(.optional)
 	c.stmts_ending_with_expression(node.or_block.stmts)
 	c.expected_or_type = ast.void_type
-	if node.or_block.kind == .propagate && !c.table.cur_fn.return_type.has_flag(.optional)
+	if node.or_block.kind == .propagate_option && !c.table.cur_fn.return_type.has_flag(.optional)
 		&& !c.inside_const {
 		if !c.table.cur_fn.is_main {
 			c.error('to propagate the optional call, `$c.table.cur_fn.name` must return an optional',
