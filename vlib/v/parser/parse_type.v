@@ -381,8 +381,7 @@ pub fn (mut p Parser) parse_type() ast.Type {
 	if p.tok.kind == .question {
 		p.next()
 		is_optional = true
-	}
-	if p.tok.kind == .not {
+	} else if p.tok.kind == .not {
 		p.next()
 		is_result = true
 	}
@@ -390,8 +389,7 @@ pub fn (mut p Parser) parse_type() ast.Type {
 		mut typ := ast.void_type
 		if is_optional {
 			typ = typ.set_flag(.optional)
-		}
-		if is_result {
+		} else if is_result {
 			typ = typ.set_flag(.result)
 		}
 		return typ
