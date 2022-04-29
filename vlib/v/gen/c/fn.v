@@ -337,7 +337,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 					}
 					info := var.obj as ast.Var
 					if g.table.sym(info.typ).kind != .function {
-						g.writeln('${g.typ(info.typ)}$deref $var.name;')
+						g.writeln('${g.typ(info.typ)}$deref ${c_name(var.name)};')
 					}
 				}
 			}
@@ -1777,7 +1777,14 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		}
 	} else {
 		g.writeln('pthread_t thread_$tmp;')
-		g.writeln('int ${tmp}_thr_res = pthread_create(&thread_$tmp, NULL, (void*)$wrapper_fn_name, $arg_tmp_var);')
+		mut sthread_attributes := 'NULL'
+		if g.pref.os != .vinix {
+			g.writeln('pthread_attr_t thread_${tmp}_attributes;')
+			g.writeln('pthread_attr_init(&thread_${tmp}_attributes);')
+			g.writeln('pthread_attr_setstacksize(&thread_${tmp}_attributes, $g.pref.thread_stack_size);')
+			sthread_attributes = '&thread_${tmp}_attributes'
+		}
+		g.writeln('int ${tmp}_thr_res = pthread_create(&thread_$tmp, $sthread_attributes, (void*)$wrapper_fn_name, $arg_tmp_var);')
 		g.writeln('if (${tmp}_thr_res) panic_error_number(tos3("`go ${name}()`: "), ${tmp}_thr_res);')
 		if !node.is_expr {
 			g.writeln('pthread_detach(thread_$tmp);')
@@ -1915,6 +1922,13 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 				g.gowrappers.write_string(call_args_str)
 			} else {
 				for i in 0 .. expr.args.len {
+					expected_nr_muls := expr.expected_arg_types[i].nr_muls()
+					arg_nr_muls := expr.args[i].typ.nr_muls()
+					if arg_nr_muls > expected_nr_muls {
+						g.gowrappers.write_string('*'.repeat(arg_nr_muls - expected_nr_muls))
+					} else if arg_nr_muls < expected_nr_muls {
+						g.gowrappers.write_string('&'.repeat(expected_nr_muls - arg_nr_muls))
+					}
 					g.gowrappers.write_string('arg->arg${i + 1}')
 					if i != expr.args.len - 1 {
 						g.gowrappers.write_string(', ')

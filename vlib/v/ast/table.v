@@ -44,6 +44,7 @@ pub mut:
 	mdeprecated_msg   map[string]string    // module deprecation message
 	mdeprecated_after map[string]time.Time // module deprecation date
 	builtin_pub_fns   map[string]bool
+	pointer_size      int
 }
 
 // used by vls to avoid leaks

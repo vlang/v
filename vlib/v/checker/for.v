@@ -13,6 +13,16 @@ fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
 	}
 	c.expr(node.cond)
 	if node.has_inc {
+		if node.inc is ast.AssignStmt {
+			for right in node.inc.right {
+				if right is ast.CallExpr {
+					if right.or_block.stmts.len > 0 {
+						c.error('optionals are not allowed in `for statement increment` (yet)',
+							right.pos)
+					}
+				}
+			}
+		}
 		c.stmt(node.inc)
 	}
 	c.check_loop_label(node.label, node.pos)
@@ -35,7 +45,8 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 	if node.is_range {
 		high_type := c.expr(node.high)
 		high_type_idx := high_type.idx()
-		if typ_idx in ast.integer_type_idxs && high_type_idx !in ast.integer_type_idxs {
+		if typ_idx in ast.integer_type_idxs && high_type_idx !in ast.integer_type_idxs
+			&& high_type_idx != ast.void_type_idx {
 			c.error('range types do not match', node.cond.pos())
 		} else if typ_idx in ast.float_type_idxs || high_type_idx in ast.float_type_idxs {
 			c.error('range type can not be float', node.cond.pos())

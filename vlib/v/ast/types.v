@@ -127,7 +127,7 @@ pub fn (t Type) atomic_typename() string {
 	idx := t.idx()
 	match idx {
 		ast.u32_type_idx { return 'atomic_uint' }
-		ast.int_type_idx { return 'atomic_int' }
+		ast.int_type_idx { return '_Atomic int' }
 		ast.u64_type_idx { return 'atomic_ullong' }
 		ast.i64_type_idx { return 'atomic_llong' }
 		else { return 'unknown_atomic' }
@@ -823,6 +823,97 @@ pub fn (t &TypeSymbol) is_builtin() bool {
 	return t.mod == 'builtin'
 }
 
+// type_size returns the size in bytes of `typ`, similarly to  C's `sizeof()`.
+pub fn (t &Table) type_size(typ Type) int {
+	if typ.has_flag(.optional) {
+		return t.type_size(ast.error_type_idx)
+	}
+	if typ.nr_muls() > 0 {
+		return t.pointer_size
+	}
+	sym := t.sym(typ)
+	match sym.kind {
+		.placeholder, .void, .none_ {
+			return 0
+		}
+		.voidptr, .byteptr, .charptr, .function, .usize, .isize, .any, .thread, .chan {
+			return t.pointer_size
+		}
+		.i8, .u8, .char, .bool {
+			return 1
+		}
+		.i16, .u16 {
+			return 2
+		}
+		.int, .u32, .rune, .f32, .enum_ {
+			return 4
+		}
+		.i64, .u64, .int_literal, .f64, .float_literal {
+			return 8
+		}
+		.alias {
+			return t.type_size((sym.info as Alias).parent_type)
+		}
+		.struct_, .string, .multi_return {
+			mut max_alignment := 0
+			mut total_size := 0
+			types := if sym.info is Struct {
+				sym.info.fields.map(it.typ)
+			} else {
+				(sym.info as MultiReturn).types
+			}
+			for ftyp in types {
+				field_size := t.type_size(ftyp)
+				alignment := if field_size > t.pointer_size { t.pointer_size } else { field_size }
+				if alignment > max_alignment {
+					max_alignment = alignment
+				}
+				total_size = round_up(total_size, alignment) + field_size
+			}
+			return round_up(total_size, max_alignment)
+		}
+		.sum_type, .interface_, .aggregate {
+			match sym.info {
+				SumType, Aggregate {
+					return (sym.info.fields.len + 2) * t.pointer_size
+				}
+				Interface {
+					mut res := (sym.info.fields.len + 2) * t.pointer_size
+					for etyp in sym.info.embeds {
+						res += t.type_size(etyp) - 2 * t.pointer_size
+					}
+					return res
+				}
+				else {
+					// unreachable
+					return 0
+				}
+			}
+		}
+		.array_fixed {
+			info := sym.info as ArrayFixed
+			return info.size * t.type_size(info.elem_type)
+		}
+		// TODO hardcoded:
+		.map {
+			return if t.pointer_size == 8 { 120 } else { 80 }
+		}
+		.array {
+			return if t.pointer_size == 8 { 32 } else { 24 }
+		}
+		.generic_inst {
+			return 0
+		}
+	}
+}
+
+// round_up rounds the number `n` up to the next multiple `multiple`.
+// Note: `multiple` must be a power of 2.
+[inline]
+fn round_up(n int, multiple int) int {
+	return (n + multiple - 1) & -multiple
+}
+
 // for debugging/errors only, perf is not an issue
 pub fn (k Kind) str() string {
 	return match k {
@@ -1160,6 +1251,10 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 	if typ.has_flag(.shared_f) {
 		nr_muls--
 		res = 'shared ' + res
+	}
+	if typ.has_flag(.atomic_f) {
+		nr_muls--
+		res = 'atomic ' + res
 	}
 	if nr_muls > 0 && !typ.has_flag(.variadic) {
 		res = strings.repeat(`&`, nr_muls) + res

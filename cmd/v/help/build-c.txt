@@ -257,7 +257,7 @@ see also `v help build`.
       Passing -no-std will remove that flag, and you can then use -cflags ''
       to pass the other options for your specific C compiler.
 
--assert aborts
+   -assert aborts
       Call abort() after an assertion failure. Debuggers usually
       install signal handlers for SIGABRT, so your program will stop and you
       will get a backtrace. If you are running your program outside of a
@@ -267,3 +267,14 @@ see also `v help build`.
       Call print_backtrace() after an assertion failure. Note that
       backtraces are not implemented yet on all combinations of
       platform/compiler.
+
+   -thread-stack-size 4194304
+      Set the thread stack size to 4MB. Use multiples of 4096.
+      The default is 8MB, which is enough for compiling V programs, with deeply
+      nested expressions (~40 levels).
+      It may need to be increased, if you are getting stack overflow errors for
+      deeply recursive programs like some of the stages of the V compiler itself,
+      that use relatively few threads.
+      It may be decreased, to reduce the memory footprint of programs that launch
+      hundreds/thousands of threads, but where each of the threads does not need
+      a big stack.

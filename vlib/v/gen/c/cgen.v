@@ -15,9 +15,10 @@ import v.depgraph
 import sync.pool
 
 const (
-	// Note: some of the words in c_reserved, are not reserved in C,
-	// but are in C++, or have special meaning in V, thus need escaping too.
-	// `small` should not be needed, but see: https://stackoverflow.com/questions/5874215/what-is-rpcndr-h
+	// Note: some of the words in c_reserved, are not reserved in C, but are
+	// in C++, or have special meaning in V, thus need escaping too. `small`
+	// should not be needed, but see:
+	// https://stackoverflow.com/questions/5874215/what-is-rpcndr-h
 	c_reserved     = ['array', 'auto', 'bool', 'break', 'calloc', 'case', 'char', 'class', 'complex',
 		'const', 'continue', 'default', 'delete', 'do', 'double', 'else', 'enum', 'error', 'exit',
 		'export', 'extern', 'false', 'float', 'for', 'free', 'goto', 'if', 'inline', 'int', 'link',
@@ -1590,10 +1591,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	if !g.skip_stmt_pos {
 		g.set_current_pos_as_last_stmt_pos()
 	}
-	defer {
-	}
-	// println('g.stmt()')
-	// g.writeln('//// stmt start')
 	match node {
 		ast.EmptyStmt {}
 		ast.AsmStmt {
@@ -3146,7 +3143,7 @@ fn (mut g Gen) char_literal(node ast.CharLiteral) {
 		return
 	}
 	// TODO: optimize use L-char instead of u32 when possible
-	if utf8_str_len(node.val) < node.val.len {
+	if node.val.len_utf8() < node.val.len {
 		g.write('((rune)0x$node.val.utf32_code().hex() /* `$node.val` */)')
 		return
 	}
@@ -3267,8 +3264,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		info := sym.info as ast.ArrayFixed
 		g.write('$info.size')
 		return
-	}
-	if sym.kind == .chan && (node.field_name == 'len' || node.field_name == 'closed') {
+	} else if sym.kind == .chan && (node.field_name == 'len' || node.field_name == 'closed') {
 		g.write('sync__Channel_${node.field_name}(')
 		g.expr(node.expr)
 		g.write(')')
@@ -5207,9 +5203,10 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 	// Make sure the sum type can be cast to this type (the types
 	// are the same), otherwise panic.
 	// g.insert_before('
-	styp := g.typ(node.typ)
-	sym := g.table.sym(node.typ)
-	mut expr_type_sym := g.table.sym(node.expr_type)
+	unwrapped_node_typ := g.unwrap_generic(node.typ)
+	styp := g.typ(unwrapped_node_typ)
+	sym := g.table.sym(unwrapped_node_typ)
+	mut expr_type_sym := g.table.sym(g.unwrap_generic(node.expr_type))
 	if mut expr_type_sym.info is ast.SumType {
 		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
 		g.write('/* as */ *($styp*)__as_cast(')
@@ -5223,9 +5220,8 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		g.write(')')
 		g.write(dot)
 		// g.write('typ, /*expected:*/$node.typ)')
-		sidx := g.type_sidx(node.typ)
-		expected_sym := g.table.sym(node.typ)
-		g.write('_typ, $sidx) /*expected idx: $sidx, name: $expected_sym.name */ ')
+		sidx := g.type_sidx(unwrapped_node_typ)
+		g.write('_typ, $sidx) /*expected idx: $sidx, name: $sym.name */ ')
 
 		// fill as cast name table
 		for variant in expr_type_sym.info.variants {

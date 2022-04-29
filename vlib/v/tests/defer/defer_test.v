@@ -154,3 +154,24 @@ fn num() int {
 	}
 	return ret
 }
+
+fn close(i int) {
+	eprintln('Close $i')
+}
+
+fn test_defer_with_reserved_words() {
+	if 1 == 1 {
+		single := 1
+		defer {
+			close(single)
+		}
+	}
+	if 2 == 2 {
+		double := 9
+		defer {
+			close(double)
+		}
+	}
+	eprintln('Done')
+	assert true
+}
