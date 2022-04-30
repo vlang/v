@@ -133,40 +133,50 @@ pub fn since(t Time) Duration {
 // and the current time.
 pub fn (t Time) relative() string {
 	znow := now()
-	secs := znow.unix - t.unix
-	if secs <= 30 {
-		// right now or in the future
-		// TODO handle time in the future
+	mut secs := znow.unix - t.unix
+	mut prefix := ''
+	mut suffix := ''
+	if secs < 0 {
+		secs *= -1
+		prefix = 'in '
+	} else {
+		suffix = ' ago'
+	}
+	if secs <= time.seconds_per_minute {
 		return 'now'
 	}
-	if secs < 60 {
-		return '1m'
-	}
-	if secs < 3600 {
-		m := secs / 60
+	if secs < time.seconds_per_hour {
+		m := secs / time.seconds_per_minute
 		if m == 1 {
-			return '1 minute ago'
+			return '${prefix}1 minute$suffix'
 		}
-		return '$m minutes ago'
+		return '$prefix$m minutes$suffix'
 	}
-	if secs < 3600 * 24 {
-		h := secs / 3600
+	if secs < time.seconds_per_hour * 24 {
+		h := secs / time.seconds_per_hour
 		if h == 1 {
-			return '1 hour ago'
+			return '${prefix}1 hour$suffix'
 		}
-		return '$h hours ago'
+		return '$prefix$h hours$suffix'
 	}
-	if secs < 3600 * 24 * 5 {
-		d := secs / 3600 / 24
+	if secs < time.seconds_per_hour * 24 * 7 {
+		d := secs / time.seconds_per_hour / 24
 		if d == 1 {
-			return '1 day ago'
+			return '${prefix}1 day$suffix'
 		}
-		return '$d days ago'
+		return '$prefix$d days$suffix'
 	}
-	if secs > 3600 * 24 * 10000 {
-		return ''
+	if secs < time.seconds_per_hour * 24 * 365 {
+		if prefix == 'in ' {
+			return 'on $t.md()'
+		}
+		return 'last $t.md()'
 	}
-	return t.md()
+	y := secs / time.seconds_per_hour / 24 / 365
+	if y == 1 {
+		return '${prefix}1 year$suffix'
+	}
+	return '$prefix$y years$suffix'
 }
 
 // relative_short returns a string saying how long ago a time occured as follows:
