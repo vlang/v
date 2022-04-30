@@ -5353,7 +5353,8 @@ fn (mut g Gen) enum_val(node ast.EnumVal) {
 	// && g.inside_switch
 	if g.pref.translated && node.typ.is_number() {
 		// Mostly in translated code, when C enums are used as ints in switches
-		g.write('/*enum val is_number $node.mod styp=$styp*/_const_main__$node.val')
+		sym := g.table.sym(node.typ)
+		g.write('/* $node enum val is_number $node.mod styp=$styp sym=$sym*/_const_main__$node.val')
 	} else {
 		g.write('${styp}__$node.val')
 	}
