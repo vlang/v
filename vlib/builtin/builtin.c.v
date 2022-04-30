@@ -64,6 +64,7 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 	vhalt()
 }
 
+// panic_optional_not_set prints given optional not set and exits the process
 [noreturn]
 pub fn panic_optional_not_set(s string) {
 	panic('optional not set ($s)')

@@ -85,6 +85,7 @@ const tokens_3 = ['MMM', 'DDD', 'ZZZ', 'ddd']
 const tokens_4 = ['MMMM', 'DDDD', 'DDDo', 'dddd', 'YYYY']
 
 // custom_format returns a date with custom format
+//
 // |  | Token  | Output |
 // | :-----------  | -------: | :--------- |
 // | Month   | M | 1 2 ... 11 12 |
