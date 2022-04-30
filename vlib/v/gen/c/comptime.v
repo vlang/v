@@ -698,6 +698,12 @@ fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_optional bool) ?str
 		'aarch64', 'arm64' {
 			return '__V_arm64'
 		}
+		'arm32' {
+			return '__V_arm32'
+		}
+		'i386' {
+			return '__V_x86'
+		}
 		// bitness:
 		'x64' {
 			return 'TARGET_IS_64BIT'
