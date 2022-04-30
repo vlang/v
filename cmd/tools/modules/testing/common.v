@@ -376,7 +376,9 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			}
 			if details.flaky && !testing.fail_flaky {
 				ts.append_message(.info, '   *FAILURE* of the known flaky test file $relative_file is ignored, since VTEST_FAIL_FLAKY is 0 . Retry count: $details.retry .')
-				goto test_passed_system
+				unsafe {
+					goto test_passed_system
+				}
 			}
 			ts.failed = true
 			ts.benchmark.fail()
@@ -416,7 +418,9 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			}
 			if details.flaky && !testing.fail_flaky {
 				ts.append_message(.info, '   *FAILURE* of the known flaky test file $relative_file is ignored, since VTEST_FAIL_FLAKY is 0 . Retry count: $details.retry .')
-				goto test_passed_system
+				unsafe {
+					goto test_passed_execute
+				}
 			}
 			ts.failed = true
 			ts.benchmark.fail()
