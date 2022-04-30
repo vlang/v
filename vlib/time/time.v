@@ -194,28 +194,44 @@ pub fn (t Time) relative() string {
 // `15842354871s -> ''`
 pub fn (t Time) relative_short() string {
 	znow := now()
-	secs := znow.unix - t.unix
-	if secs <= 30 {
-		// right now or in the future
-		// TODO handle time in the future
+	mut secs := znow.unix - t.unix
+	mut prefix := ''
+	mut suffix := ''
+	if secs < 0 {
+		secs *= -1
+		prefix = 'in '
+	} else {
+		suffix = ' ago'
+	}
+	if secs <= time.seconds_per_minute {
 		return 'now'
 	}
-	if secs < 60 {
-		return '1m'
+	if secs < time.seconds_per_hour {
+		m := secs / time.seconds_per_minute
+		if m == 1 {
+			return '${prefix}1m$suffix'
+		}
+		return '$prefix${m}m$suffix'
 	}
-	if secs < 3600 {
-		return '${secs / 60}m'
+	if secs < time.seconds_per_hour * 24 {
+		h := secs / time.seconds_per_hour
+		if h == 1 {
+			return '${prefix}1h$suffix'
+		}
+		return '$prefix${h}h$suffix'
 	}
-	if secs < 3600 * 24 {
-		return '${secs / 3600}h'
+	if secs < time.seconds_per_hour * 24 * 7 {
+		d := secs / time.seconds_per_hour / 24
+		if d == 1 {
+			return '${prefix}1d$suffix'
+		}
+		return '$prefix${d}d$suffix'
 	}
-	if secs < 3600 * 24 * 5 {
-		return '${secs / 3600 / 24}d'
+	y := secs / time.seconds_per_hour / 24 / 365
+	if y == 1 {
+		return '${prefix}1y$suffix'
 	}
-	if secs > 3600 * 24 * 10000 {
-		return ''
-	}
-	return t.md()
+	return '$prefix${y}y$suffix'
 }
 
 // day_of_week returns the current day of a given year, month, and day,
