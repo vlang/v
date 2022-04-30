@@ -199,6 +199,7 @@ pub mut:
 	nofloat             bool              // for low level code, like kernels: replaces f32 with u32 and f64 with u64
 	// checker settings:
 	checker_match_exhaustive_cutoff_limit int = 12
+	thread_stack_size                     int = 8388608 // Change with `-thread-stack-size 4194304`. Note: on macos it was 524288, which is too small for more complex programs with many nested callexprs.
 }
 
 pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
@@ -569,6 +570,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-error-limit', '-message-limit' {
 				res.message_limit = cmdline.option(current_args, arg, '5').int()
+				i++
+			}
+			'-thread-stack-size' {
+				res.thread_stack_size = cmdline.option(current_args, arg, res.thread_stack_size.str()).int()
 				i++
 			}
 			'-cc' {

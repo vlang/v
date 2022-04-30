@@ -45,10 +45,6 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 	args := p.call_args()
 	last_pos := p.tok.pos()
 	p.check(.rpar)
-	// ! in mutable methods
-	if p.tok.kind == .not {
-		p.next()
-	}
 	mut pos := first_pos.extend(last_pos)
 	mut or_stmts := []ast.Stmt{} // TODO remove unnecessary allocations by just using .absent
 	mut or_pos := p.tok.pos()
@@ -70,13 +66,14 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 		p.close_scope()
 		p.inside_or_expr = was_inside_or_expr
 	}
-	if p.tok.kind == .question {
+	if p.tok.kind in [.question, .not] {
+		is_not := p.tok.kind == .not
 		// `foo()?`
 		p.next()
 		if p.inside_defer {
 			p.error_with_pos('error propagation not allowed inside `defer` blocks', p.prev_tok.pos())
 		}
-		or_kind = .propagate
+		or_kind = if is_not { .propagate_result } else { .propagate_option }
 	}
 	if fn_name in p.imported_symbols {
 		fn_name = p.imported_symbols[fn_name]

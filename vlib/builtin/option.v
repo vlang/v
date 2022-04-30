@@ -121,6 +121,22 @@ fn opt_ok(data voidptr, mut option Option, size int) {
 	}
 }
 
+struct result {
+	is_error bool
+	err      IError = none__
+	// Data is trailing after err
+	// and is not included in here but in the
+	// derived Result_xxx types
+}
+
+fn result_ok(data voidptr, mut res result, size int) {
+	unsafe {
+		*res = result{}
+		// use err to get the end of ResultBase and then memcpy into it
+		vmemcpy(&u8(&res.err) + sizeof(IError), data, size)
+	}
+}
+
 pub fn (_ none) str() string {
 	return 'none'
 }

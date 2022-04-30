@@ -1,4 +1,4 @@
-vlib/v/checker/tests/unexpected_or.vv:6:17: error: unexpected `or` block, the function `ret_zero` does not return an optional
+vlib/v/checker/tests/unexpected_or.vv:6:17: error: unexpected `or` block, the function `ret_zero` does neither return an optional nor a result
     4 | 
     5 | fn main() {
     6 |     _ = ret_zero() or { 1 }

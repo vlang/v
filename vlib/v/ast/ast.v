@@ -520,6 +520,7 @@ pub:
 	attrs           []Attr
 	ctdefine_idx    int = -1 // the index in fn.attrs of `[if xyz]`, when such attribute exists
 pub mut:
+	idx               int // index in an external container; can be used to refer to the function in a more efficient way, just by its integer index
 	params            []Param
 	stmts             []Stmt
 	defer_stmts       []DeferStmt
@@ -707,6 +708,7 @@ pub:
 	is_generated  bool // true for `[generated] module xyz` files; turn off notices
 	is_translated bool // true for `[translated] module xyz` files; turn off some checks
 pub mut:
+	idx              int    // index in an external container; can be used to refer to the file in a more efficient way, just by its integer index
 	path             string // absolute path of the source file - '/projects/v/file.v'
 	path_base        string // file name - 'file.v' (useful for tracing)
 	scope            &Scope
@@ -1485,7 +1487,8 @@ pub mut:
 pub enum OrKind {
 	absent
 	block
-	propagate
+	propagate_option
+	propagate_result
 }
 
 // `or { ... }`
@@ -2071,6 +2074,17 @@ pub fn (mut lx IndexExpr) recursive_mapset_is_setter(val bool) {
 	if mut lx.left is IndexExpr {
 		if lx.left.is_map {
 			lx.left.recursive_mapset_is_setter(val)
+		}
+	}
+}
+
+pub fn (mut lx IndexExpr) recursive_arraymap_set_is_setter() {
+	lx.is_setter = true
+	if mut lx.left is IndexExpr {
+		lx.left.recursive_arraymap_set_is_setter()
+	} else if mut lx.left is SelectorExpr {
+		if mut lx.left.expr is IndexExpr {
+			lx.left.expr.recursive_arraymap_set_is_setter()
 		}
 	}
 }

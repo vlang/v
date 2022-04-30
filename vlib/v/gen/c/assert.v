@@ -159,7 +159,7 @@ fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 			if expr is ast.CTempVar {
 				if expr.orig is ast.CallExpr {
 					should_clone = false
-					if expr.orig.or_block.kind == .propagate {
+					if expr.orig.or_block.kind == .propagate_option {
 						should_clone = true
 					}
 					if expr.orig.is_method && expr.orig.args.len == 0

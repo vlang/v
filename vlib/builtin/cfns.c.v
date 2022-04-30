@@ -1,5 +1,7 @@
 module builtin
 
+// struct C.FILE {}
+
 // <string.h>
 fn C.memcpy(dest voidptr, const_src voidptr, n usize) voidptr
 
@@ -10,11 +12,13 @@ fn C.memmove(dest voidptr, const_src voidptr, n usize) voidptr
 fn C.memset(str voidptr, c int, n usize) voidptr
 
 [trusted]
-fn C.calloc(int, int) &byte
+fn C.calloc(int, int) &u8
 
-fn C.malloc(int) &byte
+fn C.atoi(&char) int
 
-fn C.realloc(a &byte, b int) &byte
+fn C.malloc(int) &u8
+
+fn C.realloc(a &u8, b int) &u8
 
 fn C.free(ptr voidptr)
 
@@ -119,6 +123,8 @@ fn C.rmdir(path &char) int
 fn C.chdir(path &char) int
 
 fn C.rewind(stream &C.FILE) int
+
+fn C.ftell(&C.FILE) int
 
 fn C.stat(&char, voidptr) int
 

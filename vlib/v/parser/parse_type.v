@@ -375,18 +375,24 @@ pub fn (mut p Parser) parse_sum_type_variants() []ast.TypeNode {
 pub fn (mut p Parser) parse_type() ast.Type {
 	// optional
 	mut is_optional := false
+	mut is_result := false
+	line_nr := p.tok.line_nr
 	optional_pos := p.tok.pos()
 	if p.tok.kind == .question {
-		line_nr := p.tok.line_nr
 		p.next()
 		is_optional = true
-		if p.tok.line_nr > line_nr {
-			mut typ := ast.void_type
-			if is_optional {
-				typ = typ.set_flag(.optional)
-			}
-			return typ
+	} else if p.tok.kind == .not {
+		p.next()
+		is_result = true
+	}
+	if (is_optional || is_result) && p.tok.line_nr > line_nr {
+		mut typ := ast.void_type
+		if is_optional {
+			typ = typ.set_flag(.optional)
+		} else if is_result {
+			typ = typ.set_flag(.result)
 		}
+		return typ
 	}
 	is_shared := p.tok.kind == .key_shared
 	is_atomic := p.tok.kind == .key_atomic
@@ -440,6 +446,9 @@ pub fn (mut p Parser) parse_type() ast.Type {
 	}
 	if is_optional {
 		typ = typ.set_flag(.optional)
+	}
+	if is_result {
+		typ = typ.set_flag(.result)
 	}
 	if is_shared {
 		typ = typ.set_flag(.shared_f)

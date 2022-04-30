@@ -89,12 +89,15 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	if expected == ast.charptr_type && got == ast.char_type.ref() {
 		return true
 	}
-	if expected.has_flag(.optional) {
+	if expected.has_flag(.optional) || expected.has_flag(.result) {
 		sym := c.table.sym(got)
-		if sym.idx == ast.error_type_idx || got in [ast.none_type, ast.error_type] {
+		if ((sym.idx == ast.error_type_idx || got in [ast.none_type, ast.error_type])
+			&& expected.has_flag(.optional))
+			|| ((sym.idx == ast.error_type_idx || got == ast.error_type)
+			&& expected.has_flag(.result)) {
 			// IErorr
 			return true
-		} else if !c.check_basic(got, expected.clear_flag(.optional)) {
+		} else if !c.check_basic(got, expected.clear_flag(.optional).clear_flag(.result)) {
 			return false
 		}
 	}
@@ -708,39 +711,4 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 	if c.table.register_fn_concrete_types(func.fkey(), inferred_types) {
 		c.need_recheck_generic_fns = true
 	}
-}
-
-pub fn (c &Checker) sizeof_integer(a ast.Type) int {
-	t := if a in ast.unsigned_integer_type_idxs { a.flip_signedness() } else { a }
-	r := match t {
-		ast.char_type_idx, ast.i8_type_idx {
-			1
-		}
-		ast.i16_type_idx {
-			2
-		}
-		ast.int_type_idx {
-			4
-		}
-		ast.rune_type_idx {
-			4
-		}
-		ast.i64_type_idx {
-			8
-		}
-		ast.isize_type_idx {
-			if c.pref.m64 { 8 } else { 4 }
-		}
-		ast.int_literal_type {
-			s := c.table.type_to_str(a)
-			panic('`$s` has unknown size')
-			0
-		}
-		else {
-			s := c.table.type_to_str(a)
-			panic('`$s` is not an integer')
-			0
-		}
-	}
-	return r
 }

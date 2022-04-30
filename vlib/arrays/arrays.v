@@ -24,7 +24,7 @@ pub fn min<T>(a []T) ?T {
 	return val
 }
 
-// max returns the maximum the maximum value in the array
+// max returns the maximum value in the array
 // Example: arrays.max([1,2,3,0,9]) // => 9
 pub fn max<T>(a []T) ?T {
 	if a.len == 0 {

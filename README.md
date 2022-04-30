@@ -64,11 +64,11 @@ language, very similar to the way it is right now.
 
 ### Linux, macOS, Windows, *BSD, Solaris, WSL, Android, etc.
 
-Usually installing V is quite simple if you have an environment that already has a 
-functional `git` installation. 
+Usually installing V is quite simple if you have an environment that already has a
+functional `git` installation.
 
 * *(* ***PLEASE NOTE:*** *If you run into any trouble or you have a different operating
-system or Linux distribution that doesn't install or work immediately, please see 
+system or Linux distribution that doesn't install or work immediately, please see
 [Installation Issues](https://github.com/vlang/v/discussions/categories/installation-issues)
 and search for your OS and problem. If you can't find your problem, please add it to an
 existing discussion if one exists for your OS, or create a new one if a main discussion

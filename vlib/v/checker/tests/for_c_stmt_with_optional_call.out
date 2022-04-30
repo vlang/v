@@ -1,0 +1,7 @@
+vlib/v/checker/tests/for_c_stmt_with_optional_call.vv:15:31: error: optionals are not allowed in `for statement increment` (yet)
+   13 |     for t := 0; t < tests; t++ {
+   14 |         mut v := []bool{len: nmax, init: false}
+   15 |         for x := 0; !v[x]; x = rand.intn(n) or { 0 } {
+      |                                     ~~~~~~~
+   16 |             v[x] = true
+   17 |             sum++
