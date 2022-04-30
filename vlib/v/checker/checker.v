@@ -38,8 +38,9 @@ pub const (
 	valid_comptime_not_user_defined  = all_valid_comptime_idents()
 	array_builtin_methods            = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice',
 		'sort', 'contains', 'index', 'wait', 'any', 'all', 'first', 'last', 'pop']
-	reserved_type_names              = ['bool', 'char', 'i8', 'i16', 'int', 'i64', 'byte', 'u16',
-		'u32', 'u64', 'f32', 'f64', 'map', 'string', 'rune']
+	// TODO: remove `byte` from this list when it is no longer supported
+	reserved_type_names              = ['byte', 'bool', 'char', 'i8', 'i16', 'int', 'i64', 'u8',
+		'u16', 'u32', 'u64', 'f32', 'f64', 'map', 'string', 'rune']
 	vroot_is_deprecated_message      = '@VROOT is deprecated, use @VMODROOT or @VEXEROOT instead'
 )
 
@@ -588,7 +589,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			if !c.inside_unsafe && !node.left.is_auto_deref_var() && !node.right.is_auto_deref_var() {
 				c.warn('pointer arithmetic is only allowed in `unsafe` blocks', left_right_pos)
 			}
-			if left_type == ast.voidptr_type {
+			if left_type == ast.voidptr_type && !c.pref.translated {
 				c.error('`$node.op` cannot be used with `voidptr`', left_pos)
 			}
 		}
@@ -3961,6 +3962,8 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 // with this value.
 pub fn (mut c Checker) enum_val(mut node ast.EnumVal) ast.Type {
 	mut typ_idx := if node.enum_name == '' {
+		// Get the type of the enum without enum name by looking at the expected type.
+		// e.g. `set_color(.green)`, V knows that `Green` is the expected type.
 		if c.expected_type == ast.void_type && c.expected_expr_type != ast.void_type {
 			c.expected_expr_type.idx()
 		} else {

@@ -1,5 +1,6 @@
 module sync
 
+// vtest flaky: true
 // vtest retry: 6
 
 // ATTENTION! Do not use this file as an example!

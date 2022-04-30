@@ -1087,7 +1087,7 @@ pub mut:
 	expr_type Type // from type
 }
 
-// an enum value, like OS.macos or .macos
+// An enum value, like OS.macos or .macos
 pub struct EnumVal {
 pub:
 	enum_name string

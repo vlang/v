@@ -85,9 +85,9 @@ pub fn merge_doc_comments(comments []DocComment) string {
 
 		mut is_horizontalrule := false
 		line_no_spaces := line_trimmed.replace(' ', '')
-		for char in ['-', '=', '*', '_', '~'] {
-			if line_no_spaces.starts_with(char.repeat(3))
-				&& line_no_spaces.count(char) == line_no_spaces.len {
+		for ch in ['-', '=', '*', '_', '~'] {
+			if line_no_spaces.starts_with(ch.repeat(3))
+				&& line_no_spaces.count(ch) == line_no_spaces.len {
 				is_horizontalrule = true
 				break
 			}

@@ -1,3 +1,4 @@
+// vtest flaky: true
 // vtest retry: 3
 
 fn f(n int) ?f64 {

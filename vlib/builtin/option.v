@@ -13,6 +13,7 @@ pub interface IError {
 	code() int
 }
 
+// str returns the message of IError
 pub fn (err IError) str() string {
 	return match err {
 		None__ {
@@ -52,10 +53,12 @@ pub:
 	code int
 }
 
+// msg returns the message of MessageError
 pub fn (err MessageError) msg() string {
 	return err.msg
 }
 
+// code returns the code of MessageError
 pub fn (err MessageError) code() int {
 	return err.code
 }

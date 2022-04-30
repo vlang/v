@@ -4219,7 +4219,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		if fn_return_is_result && !expr_type_is_result && return_sym.name != result_name {
 			styp := g.base_type(g.fn_decl.return_type)
 			g.writeln('$ret_typ $tmpvar;')
-			g.write('$result_name_ok(&($styp[]) { ')
+			g.write('${result_name}_ok(&($styp[]) { ')
 			if !g.fn_decl.return_type.is_ptr() && node.types[0].is_ptr() {
 				if !(node.exprs[0] is ast.Ident && !g.is_amp) {
 					g.write('*')
@@ -5354,7 +5354,8 @@ fn (mut g Gen) enum_val(node ast.EnumVal) {
 	// && g.inside_switch
 	if g.pref.translated && node.typ.is_number() {
 		// Mostly in translated code, when C enums are used as ints in switches
-		g.write('/*enum val is_number $node.mod styp=$styp*/_const_main__$node.val')
+		sym := g.table.sym(node.typ)
+		g.write('/* $node enum val is_number $node.mod styp=$styp sym=$sym*/_const_main__$node.val')
 	} else {
 		g.write('${styp}__$node.val')
 	}

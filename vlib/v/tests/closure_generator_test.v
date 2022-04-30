@@ -80,8 +80,9 @@ fn test_closures_with_n_args() ? {
 			mut values := all_param_values[..i]
 			if typ == 'string' {
 				values = values.map("'$it'")
+			} else {
+				values = values.map('${typ}($it)')
 			}
-			values = values.map('${typ}($it)')
 
 			mut expected_val := if typ == 'string' {
 				s := all_param_values[..i].join('')
@@ -107,7 +108,11 @@ fn test_big_closure_${typ}_${i}() {
 	c := fn [z] (${params.join(', ')}) $return_type {
 		mut sum := z")
 			for j in 0 .. i {
-				v_code.writeln('\t\tsum += ${return_type}(${param_names[j]})')
+				if return_type == 'string' {
+					v_code.writeln('\t\tsum += ${param_names[j]}')
+				} else {
+					v_code.writeln('\t\tsum += ${return_type}(${param_names[j]})')
+				}
 			}
 			v_code.writeln("
 		return sum

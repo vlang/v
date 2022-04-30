@@ -22,6 +22,7 @@ pub interface IError {
 	code() int
 }
 
+// str returns the message of IError
 pub fn (err IError) str() string {
 	return match err {
 		None__ {
@@ -50,10 +51,12 @@ pub fn (err IError) str() string {
 // Error is the empty default implementation of `IError`.
 pub struct Error {}
 
+// msg returns the message of Error
 pub fn (err Error) msg() string {
 	return ''
 }
 
+// code returns the code of Error
 pub fn (err Error) code() int {
 	return 0
 }
@@ -65,10 +68,12 @@ pub:
 	code int
 }
 
+// msg returns the message of the MessageError
 pub fn (err MessageError) msg() string {
 	return err.msg
 }
 
+// code returns the code of MessageError
 pub fn (err MessageError) code() int {
 	return err.code
 }
@@ -88,6 +93,7 @@ pub struct Option {
 	err   IError = none__
 }
 
+// str returns the Option type: ok, none, or error
 pub fn (o Option) str() string {
 	if o.state == 0 {
 		return 'Option{ ok }'

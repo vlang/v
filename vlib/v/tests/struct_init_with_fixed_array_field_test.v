@@ -12,8 +12,8 @@ mut:
 fn test_struct_init_with_fixed_array_field() {
 	s := 'xoxooxxxo'
 	mut board := [9]Piece{}
-	for i, char in s {
-		board[i] = match char {
+	for i, ch in s {
+		board[i] = match ch {
 			`x` { Piece.x }
 			`o` { Piece.o }
 			else { Piece.free }
