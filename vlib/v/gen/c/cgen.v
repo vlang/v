@@ -31,6 +31,7 @@ const (
 	cmp_str        = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
 	// when operands are switched
 	cmp_rev        = ['eq', 'ne', 'lt', 'gt', 'le', 'ge']
+	result_name    = '_result'
 )
 
 fn string_array_to_map(a []string) map[string]bool {
@@ -980,7 +981,7 @@ fn (mut g Gen) optional_type_name(t ast.Type) (string, string) {
 
 fn (mut g Gen) result_type_name(t ast.Type) (string, string) {
 	base := g.base_type(t)
-	mut styp := 'result_$base'
+	mut styp := '${c.result_name}_$base'
 	if t.is_ptr() {
 		styp = styp.replace('*', '_ptr')
 	}
@@ -4039,10 +4040,10 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			return
 		}
 	}
-	// handle promoting error/function returning 'result'
+	// handle promoting error/function returning result
 	if fn_return_is_result {
 		ftyp := g.typ(node.types[0])
-		mut is_regular_result := ftyp == 'result'
+		mut is_regular_result := ftyp == c.result_name
 		if is_regular_result || node.types[0] == ast.error_type_idx {
 			if !isnil(g.fn_decl) && g.fn_decl.is_test {
 				test_error_var := g.new_tmp_var()
@@ -4215,10 +4216,10 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				node.types[0].has_flag(.result)
 			}
 		}
-		if fn_return_is_result && !expr_type_is_result && return_sym.name != 'result' {
+		if fn_return_is_result && !expr_type_is_result && return_sym.name != c.result_name {
 			styp := g.base_type(g.fn_decl.return_type)
 			g.writeln('$ret_typ $tmpvar;')
-			g.write('result_ok(&($styp[]) { ')
+			g.write('${c.result_name}_ok(&($styp[]) { ')
 			if !g.fn_decl.return_type.is_ptr() && node.types[0].is_ptr() {
 				if !(node.exprs[0] is ast.Ident && !g.is_amp) {
 					g.write('*')
@@ -4230,7 +4231,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					g.write(', ')
 				}
 			}
-			g.writeln(' }, (result*)(&$tmpvar), sizeof($styp));')
+			g.writeln(' }, ($c.result_name*)(&$tmpvar), sizeof($styp));')
 			g.write_defer_stmts_when_needed()
 			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			g.writeln('return $tmpvar;')
@@ -4723,7 +4724,7 @@ fn (mut g Gen) write_init_function() {
 }
 
 const (
-	builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'IError', 'Option', 'result']
+	builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'IError', 'Option', result_name]
 )
 
 fn (mut g Gen) write_builtin_types() {
@@ -5160,7 +5161,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 				styp := g.typ(g.fn_decl.return_type)
 				err_obj := g.new_tmp_var()
 				g.writeln('\t$styp $err_obj;')
-				g.writeln('\tmemcpy(&$err_obj, &$cvar_name, sizeof(result));')
+				g.writeln('\tmemcpy(&$err_obj, &$cvar_name, sizeof($c.result_name));')
 				g.writeln('\treturn $err_obj;')
 			}
 		}
