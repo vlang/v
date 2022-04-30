@@ -3809,7 +3809,8 @@ fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_ty
 	if typ_sym.kind in [.array, .array_fixed, .string] {
 		if !(index_type.is_int() || index_type_sym.kind == .enum_
 			|| (index_type_sym.kind == .alias
-			&& (index_type_sym.info as ast.Alias).parent_type.is_int())) {
+			&& (index_type_sym.info as ast.Alias).parent_type.is_int())
+			|| (c.pref.translated && index_type.is_any_kind_of_pointer())) {
 			type_str := if typ_sym.kind == .string {
 				'non-integer string index `$index_type_sym.name`'
 			} else {
