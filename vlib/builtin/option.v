@@ -121,7 +121,7 @@ fn opt_ok(data voidptr, mut option Option, size int) {
 	}
 }
 
-struct v_result {
+struct _result {
 	is_error bool
 	err      IError = none__
 	// Data is trailing after err
@@ -129,9 +129,9 @@ struct v_result {
 	// derived Result_xxx types
 }
 
-fn v_result_ok(data voidptr, mut res v_result, size int) {
+fn _result_ok(data voidptr, mut res _result, size int) {
 	unsafe {
-		*res = v_result{}
+		*res = _result{}
 		// use err to get the end of ResultBase and then memcpy into it
 		vmemcpy(&u8(&res.err) + sizeof(IError), data, size)
 	}

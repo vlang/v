@@ -31,7 +31,7 @@ const (
 	cmp_str        = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
 	// when operands are switched
 	cmp_rev        = ['eq', 'ne', 'lt', 'gt', 'le', 'ge']
-	result_name    = 'v_result'
+	result_name    = '_result'
 )
 
 fn string_array_to_map(a []string) map[string]bool {
@@ -981,7 +981,7 @@ fn (mut g Gen) optional_type_name(t ast.Type) (string, string) {
 
 fn (mut g Gen) result_type_name(t ast.Type) (string, string) {
 	base := g.base_type(t)
-	mut styp := '$result_name_$base'
+	mut styp := '${result_name}_$base'
 	if t.is_ptr() {
 		styp = styp.replace('*', '_ptr')
 	}
