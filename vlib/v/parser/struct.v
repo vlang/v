@@ -517,7 +517,8 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	mut ifaces := []ast.InterfaceEmbedding{}
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
 		if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
-			&& p.peek_tok.kind != .lpar {
+			&& (p.peek_tok.line_nr != p.tok.line_nr
+			|| p.peek_tok.kind !in [.name, .amp, .lsbr, .lpar]) {
 			iface_pos := p.tok.pos()
 			mut iface_name := p.tok.lit
 			iface_type := p.parse_type()
