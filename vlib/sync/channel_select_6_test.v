@@ -1,3 +1,4 @@
+// vtest flaky: true
 // vtest retry: 15
 
 // This test case runs concurrent 3 instances of `do_select` that

@@ -19,6 +19,8 @@ pub const hide_oks = os.getenv('VTEST_HIDE_OK') == '1'
 
 pub const fail_fast = os.getenv('VTEST_FAIL_FAST') == '1'
 
+pub const fail_flaky = os.getenv('VTEST_FAIL_FLAKY') == '1'
+
 pub const test_only = os.getenv('VTEST_ONLY').split_any(',')
 
 pub const test_only_fn = os.getenv('VTEST_ONLY_FN').split_any(',')
@@ -362,7 +364,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			details := get_test_details(file)
 			os.setenv('VTEST_RETRY_MAX', '$details.retry', true)
 			for retry := 1; retry <= details.retry; retry++ {
-				ts.append_message(.info, '                 retrying $retry/$details.retry of $relative_file ...')
+				ts.append_message(.info, '  [stats]        retrying $retry/$details.retry of $relative_file ; known flaky: $details.flaky ...')
 				os.setenv('VTEST_RETRY', '$retry', true)
 				status = os.system(cmd)
 				if status == 0 {
@@ -371,6 +373,10 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 					}
 				}
 				time.sleep(500 * time.millisecond)
+			}
+			if details.flaky && !testing.fail_flaky {
+				ts.append_message(.info, '   *FAILURE* of the known flaky test file $relative_file is ignored, since VTEST_FAIL_FLAKY is 0 . Retry count: $details.retry .')
+				goto test_passed_system
 			}
 			ts.failed = true
 			ts.benchmark.fail()
@@ -399,7 +405,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			details := get_test_details(file)
 			os.setenv('VTEST_RETRY_MAX', '$details.retry', true)
 			for retry := 1; retry <= details.retry; retry++ {
-				ts.append_message(.info, '                 retrying $retry/$details.retry of $relative_file ...')
+				ts.append_message(.info, '                 retrying $retry/$details.retry of $relative_file ; known flaky: $details.flaky ...')
 				os.setenv('VTEST_RETRY', '$retry', true)
 				r = os.execute(cmd)
 				if r.exit_code == 0 {
@@ -407,6 +413,10 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 						goto test_passed_execute
 					}
 				}
+			}
+			if details.flaky && !testing.fail_flaky {
+				ts.append_message(.info, '   *FAILURE* of the known flaky test file $relative_file is ignored, since VTEST_FAIL_FLAKY is 0 . Retry count: $details.retry .')
+				goto test_passed_system
 			}
 			ts.failed = true
 			ts.benchmark.fail()
@@ -562,6 +572,7 @@ pub fn setup_new_vtmp_folder() string {
 pub struct TestDetails {
 pub mut:
 	retry int
+	flaky bool // when flaky tests fail, the whole run is still considered successfull, unless VTEST_FAIL_FLAKY is 1
 }
 
 pub fn get_test_details(file string) TestDetails {
@@ -570,6 +581,9 @@ pub fn get_test_details(file string) TestDetails {
 	for line in lines {
 		if line.starts_with('// vtest retry:') {
 			res.retry = line.all_after(':').trim_space().int()
+		}
+		if line.starts_with('// vtest flaky:') {
+			res.flaky = line.all_after(':').trim_space().bool()
 		}
 	}
 	return res
