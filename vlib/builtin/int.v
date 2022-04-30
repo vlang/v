@@ -17,17 +17,17 @@ pub fn ptr_str(ptr voidptr) string {
 	return buf1
 }
 
-// str returns string equivalent of isize
+// str returns string equivalent of x
 pub fn (x isize) str() string {
 	return i64(x).str()
 }
 
-// str returns string equivalent of usize
+// str returns string equivalent of x
 pub fn (x usize) str() string {
 	return u64(x).str()
 }
 
-// str returns string equivalent of char
+// str returns string equivalent of cptr
 pub fn (cptr &char) str() string {
 	return u64(cptr).hex()
 }
