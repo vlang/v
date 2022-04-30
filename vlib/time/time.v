@@ -220,7 +220,7 @@ pub fn (t Time) relative_short() string {
 		}
 		return '$prefix${h}h$suffix'
 	}
-	if secs < time.seconds_per_hour * 24 * 7 {
+	if secs < time.seconds_per_hour * 24 * 365 {
 		d := secs / time.seconds_per_hour / 24
 		if d == 1 {
 			return '${prefix}1d$suffix'
