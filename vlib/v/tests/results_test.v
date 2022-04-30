@@ -63,3 +63,13 @@ fn util_error_propagation() ! {
 fn test_return_on_error_propagation() {
 	util_error_propagation() or { assert err.msg() == 'abc' }
 }
+
+fn unsafe_return_error() !int {
+	unsafe {
+		return error('abc')
+	}
+}
+
+fn test_unsafe_return_error() {
+	unsafe_return_error() or { assert err.msg() == 'abc' }
+}
