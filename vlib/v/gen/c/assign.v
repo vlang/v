@@ -440,7 +440,7 @@ fn (mut g Gen) gen_assign_stmt(node_ ast.AssignStmt) {
 				} else if is_decl {
 					if is_fixed_array_init && !has_val {
 						if val is ast.ArrayInit {
-							g.array_init(val)
+							g.array_init(val, ident.name)
 						} else {
 							g.write('{0}')
 						}
@@ -451,7 +451,11 @@ fn (mut g Gen) gen_assign_stmt(node_ ast.AssignStmt) {
 						if val.is_auto_deref_var() {
 							g.write('*')
 						}
-						g.expr(val)
+						if val is ast.ArrayInit {
+							g.array_init(val, ident.name)
+						} else {
+							g.expr(val)
+						}
 						if is_auto_heap {
 							g.write('))')
 						}
