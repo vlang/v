@@ -93,6 +93,7 @@ pub mut:
 	is_pub   bool
 	language Language
 	idx      int
+	size     int
 }
 
 // max of 8
@@ -833,33 +834,37 @@ pub fn (t &Table) type_size(typ Type) int {
 	if typ.nr_muls() > 0 {
 		return t.pointer_size
 	}
-	sym := t.sym(typ)
+	mut sym := t.sym(typ)
+	if sym.size != -1 {
+		return sym.size
+	}
+	mut res := 0
 	match sym.kind {
-		.placeholder, .void, .none_ {
-			return 0
+		.placeholder, .void, .none_, .generic_inst {
+
 		}
 		.voidptr, .byteptr, .charptr, .function, .usize, .isize, .any, .thread, .chan {
-			return t.pointer_size
+			res = t.pointer_size
 		}
 		.i8, .u8, .char, .bool {
-			return 1
+			res = 1
 		}
 		.i16, .u16 {
-			return 2
+			res = 2
 		}
 		.int, .u32, .rune, .f32, .enum_ {
-			return 4
+			res = 4
 		}
 		.i64, .u64, .int_literal, .f64, .float_literal {
-			return 8
+			res = 8
 		}
 		.alias {
-			return t.type_size((sym.info as Alias).parent_type)
+			res = t.type_size((sym.info as Alias).parent_type)
 		}
 		.struct_, .string, .multi_return {
 			mut max_alignment := 0
 			mut total_size := 0
-			types := if sym.info is Struct {
+			types := if mut sym.info is Struct {
 				sym.info.fields.map(it.typ)
 			} else {
 				(sym.info as MultiReturn).types
@@ -872,41 +877,38 @@ pub fn (t &Table) type_size(typ Type) int {
 				}
 				total_size = round_up(total_size, alignment) + field_size
 			}
-			return round_up(total_size, max_alignment)
+			res = round_up(total_size, max_alignment)
 		}
 		.sum_type, .interface_, .aggregate {
-			match sym.info {
+			match mut sym.info {
 				SumType, Aggregate {
-					return (sym.info.fields.len + 2) * t.pointer_size
+					res = (sym.info.fields.len + 2) * t.pointer_size
 				}
 				Interface {
-					mut res := (sym.info.fields.len + 2) * t.pointer_size
+					res = (sym.info.fields.len + 2) * t.pointer_size
 					for etyp in sym.info.embeds {
 						res += t.type_size(etyp) - 2 * t.pointer_size
 					}
-					return res
 				}
 				else {
 					// unreachable
-					return 0
 				}
 			}
 		}
 		.array_fixed {
 			info := sym.info as ArrayFixed
-			return info.size * t.type_size(info.elem_type)
+			res = info.size * t.type_size(info.elem_type)
 		}
 		// TODO hardcoded:
 		.map {
-			return if t.pointer_size == 8 { 120 } else { 80 }
+			res = if t.pointer_size == 8 { 120 } else { 80 }
 		}
 		.array {
-			return if t.pointer_size == 8 { 32 } else { 24 }
-		}
-		.generic_inst {
-			return 0
+			res = if t.pointer_size == 8 { 32 } else { 24 }
 		}
 	}
+	sym.size = res
+	return res
 }
 
 // round_up rounds the number `n` up to the next multiple `multiple`.
@@ -981,6 +983,7 @@ pub mut:
 	is_typedef     bool // C. [typedef]
 	is_union       bool
 	is_heap        bool
+	is_minify      bool
 	is_generic     bool
 	generic_types  []Type
 	concrete_types []Type
@@ -1014,6 +1017,7 @@ pub:
 	vals             []string
 	is_flag          bool
 	is_multi_allowed bool
+	uses_exprs       bool
 }
 
 pub struct Alias {

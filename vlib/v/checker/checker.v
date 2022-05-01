@@ -3720,6 +3720,12 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 			if node.right.op == .amp {
 				c.error('unexpected `&`, expecting expression', node.right.pos)
 			}
+		} else if mut node.right is ast.SelectorExpr {
+			expr_sym := c.table.sym(node.right.expr_type)
+			if expr_sym.kind == .struct_ && (expr_sym.info as ast.Struct).is_minify {
+				c.error('cannot take address of field in struct `${c.table.type_to_str(node.right.expr_type)}`, which is tagged as `[minify]`',
+					node.pos.extend(node.right.pos))
+			}
 		}
 	}
 	// TODO: testing ref/deref strategy

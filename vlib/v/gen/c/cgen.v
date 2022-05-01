@@ -4801,6 +4801,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 					}
 				}
 
+				is_minify := sym.info.is_minify
 				g.type_definitions.writeln(pre_pragma)
 
 				if sym.info.is_union {
@@ -4835,7 +4836,26 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 						type_name := g.typ(field.typ)
 						field_name := c_name(field.name)
 						volatile_prefix := if field.is_volatile { 'volatile ' } else { '' }
-						g.type_definitions.writeln('\t$volatile_prefix$type_name $field_name;')
+						mut size_suffix := ''
+						if is_minify {
+							if field.typ == ast.bool_type_idx {
+								size_suffix = ' : 1'
+							} else {
+								field_sym := g.table.sym(field.typ)
+								if field_sym.info is ast.Enum {
+									if !field_sym.info.is_flag && !field_sym.info.uses_exprs {
+										mut bits_needed := 0
+										mut l := field_sym.info.vals.len
+										for l > 0 {
+											bits_needed++
+											l >>= 1
+										}
+										size_suffix = ' : ${bits_needed}'
+									}
+								}
+							}
+						}
+						g.type_definitions.writeln('\t$volatile_prefix$type_name $field_name$size_suffix;')
 					}
 				} else {
 					g.type_definitions.writeln('\tEMPTY_STRUCT_DECLARATION;')

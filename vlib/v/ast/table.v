@@ -828,6 +828,7 @@ pub fn (mut t Table) register_sym(sym TypeSymbol) int {
 	idx = t.type_symbols.len
 	t.type_symbols << &TypeSymbol{
 		...sym
+		size: if sym.size == 0 { -1 } else { sym.size }
 	}
 	t.type_symbols[idx].idx = idx
 	t.type_idxs[sym.name] = idx

@@ -25,6 +25,10 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				}
 			}
 		}
+		if struct_sym.info.is_minify {
+			node.fields.sort_with_compare(minify_sort_fn)
+			struct_sym.info.fields.sort_with_compare(minify_sort_fn)
+		}
 		for attr in node.attrs {
 			if attr.name == 'typedef' && node.language != .c {
 				c.error('`typedef` attribute can only be used with C structs', node.pos)
@@ -122,6 +126,46 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				node.pos)
 		}
 	}
+}
+
+fn minify_sort_fn(a &ast.StructField, b &ast.StructField) int {
+	if a.typ == b.typ {
+		return 0
+	}
+	// push all bool fields to the end of the struct
+	if a.typ == ast.bool_type_idx {
+		if b.typ == ast.bool_type_idx {
+			return 0
+		}
+		return 1
+	} else if b.typ == ast.bool_type_idx {
+		return -1
+	}
+
+	mut t := global_table
+	a_sym := t.sym(a.typ)
+	b_sym := t.sym(b.typ)
+
+	// push all non-flag enums to the end too, just before the bool fields
+	// TODO: support enums with custom field values as well
+	if a_sym.info is ast.Enum {
+		if !a_sym.info.is_flag && !a_sym.info.uses_exprs {
+			if b_sym.kind == .enum_ {
+				a_nr_vals := (a_sym.info as ast.Enum).vals.len
+				b_nr_vals := (b_sym.info as ast.Enum).vals.len
+				return if a_nr_vals > b_nr_vals { -1 } else if a_nr_vals < b_nr_vals { 1 } else { 0 }
+			}
+			return 1
+		}
+	} else if b_sym.info is ast.Enum {
+		if !b_sym.info.is_flag && !b_sym.info.uses_exprs {
+			return -1
+		}
+	}
+
+	a_size := t.type_size(a.typ)
+	b_size := t.type_size(b.typ)
+	return if a_size > b_size { -1 } else if a_size < b_size { 1 } else { 0 }
 }
 
 pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
