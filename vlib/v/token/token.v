@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module token
 
+[minify]
 pub struct Token {
 pub:
 	kind    Kind   // the token number/enum; for quick comparisons

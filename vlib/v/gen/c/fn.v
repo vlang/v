@@ -492,7 +492,8 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 	g.indent--
 	ps := g.table.pointer_size
 	is_big_cutoff := if g.pref.os == .windows || g.pref.arch == .arm32 { ps } else { ps * 2 }
-	is_big := g.table.type_size(node.decl.return_type) > is_big_cutoff
+	rt_size, _ := g.table.type_size(node.decl.return_type)
+	is_big := rt_size > is_big_cutoff
 	g.write('}, sizeof($ctx_struct)))')
 
 	mut sb := strings.new_builder(512)

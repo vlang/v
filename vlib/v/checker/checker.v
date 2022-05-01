@@ -54,7 +54,7 @@ fn all_valid_comptime_idents() []string {
 	return res
 }
 
-[heap]
+[heap; minify]
 pub struct Checker {
 	pref &pref.Preferences // Preferences shared from V struct
 pub mut:
@@ -644,8 +644,8 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				} else if is_left_type_signed != is_right_type_signed
 					&& left_type != ast.int_literal_type_idx
 					&& right_type != ast.int_literal_type_idx {
-					ls := c.table.type_size(left_type)
-					rs := c.table.type_size(right_type)
+					ls, _ := c.table.type_size(left_type)
+					rs, _ := c.table.type_size(right_type)
 					// prevent e.g. `u32 == i16` but not `u16 == i32` as max_u16 fits in i32
 					// TODO u32 == i32, change < to <=
 					if (is_left_type_signed && ls < rs) || (is_right_type_signed && rs < ls) {
@@ -3719,6 +3719,16 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 		if mut node.right is ast.PrefixExpr {
 			if node.right.op == .amp {
 				c.error('unexpected `&`, expecting expression', node.right.pos)
+			}
+		} else if mut node.right is ast.SelectorExpr {
+			right_sym := c.table.sym(right_type)
+			expr_sym := c.table.sym(node.right.expr_type)
+			if expr_sym.kind == .struct_ && (expr_sym.info as ast.Struct).is_minify
+				&& (node.right.typ == ast.bool_type_idx || (right_sym.kind == .enum_
+				&& !(right_sym.info as ast.Enum).is_flag
+				&& !(right_sym.info as ast.Enum).uses_exprs)) {
+				c.error('cannot take address of field in struct `${c.table.type_to_str(node.right.expr_type)}`, which is tagged as `[minify]`',
+					node.pos.extend(node.right.pos))
 			}
 		}
 	}

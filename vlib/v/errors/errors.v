@@ -10,6 +10,7 @@ pub enum Reporter {
 	gen
 }
 
+[minify]
 pub struct Error {
 pub:
 	message   string

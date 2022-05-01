@@ -15,6 +15,7 @@ const (
 	max_len = [0, 35, 60, 85, 93, 100]
 )
 
+[minify]
 pub struct Fmt {
 pub mut:
 	file               ast.File

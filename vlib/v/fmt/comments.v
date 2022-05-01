@@ -16,7 +16,7 @@ pub enum CommentsLevel {
 // - level:  either .keep (don't indent), or .indent (increment indentation)
 // - iembed: a /* ... */ block comment used inside expressions; // comments the whole line
 // - prev_line: the line number of the previous token to save linebreaks
-[params]
+[minify; params]
 pub struct CommentsOptions {
 	has_nl    bool = true
 	inline    bool

@@ -14,6 +14,7 @@ import v.errors
 import os
 import hash.fnv1a
 
+[minify]
 pub struct Parser {
 	pref &pref.Preferences
 mut:
@@ -3480,6 +3481,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	mut vals := []string{}
 	// mut default_exprs := []ast.Expr{}
 	mut fields := []ast.EnumField{}
+	mut uses_exprs := false
 	for p.tok.kind != .eof && p.tok.kind != .rcbr {
 		pos := p.tok.pos()
 		val := p.check_name()
@@ -3491,6 +3493,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			p.next()
 			expr = p.expr(0)
 			has_expr = true
+			uses_exprs = true
 		}
 		fields << ast.EnumField{
 			name: val
@@ -3538,6 +3541,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			vals: vals
 			is_flag: is_flag
 			is_multi_allowed: is_multi_allowed
+			uses_exprs: uses_exprs
 		}
 		is_pub: is_pub
 	})

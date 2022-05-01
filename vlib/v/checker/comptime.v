@@ -127,7 +127,8 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 		//	return expr.val.i64()
 		// }
 		ast.SizeOf {
-			return c.table.type_size(expr.typ)
+			s, _ := c.table.type_size(expr.typ)
+			return s
 		}
 		ast.FloatLiteral {
 			x := expr.val.f64()

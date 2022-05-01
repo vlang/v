@@ -88,7 +88,7 @@ const (
 		'cflags', 'path', 'arch']
 )
 
-[heap]
+[heap; minify]
 pub struct Preferences {
 pub mut:
 	os          OS // the OS to compile for
