@@ -81,12 +81,7 @@ fn calculate_date_from_offset(day_offset_ i64) (int, int, int) {
 		day_offset %= 365
 	}
 	if day_offset < 0 {
-		year--
-		if is_leap_year(year) {
-			day_offset += 366
-		} else {
-			day_offset += 365
-		}
+		day_offset +=  1
 	}
 	if is_leap_year(year) {
 		if day_offset > 31 + 29 - 1 {
