@@ -76,7 +76,7 @@ endif
 endif
 endif
 
-.PHONY: all clean fresh_vc fresh_tcc check_for_working_tcc
+.PHONY: all clean check fresh_vc fresh_tcc check_for_working_tcc
 
 ifdef prod
 VFLAGS+=-prod
@@ -164,3 +164,5 @@ selfcompile-static:
 install:
 	@echo 'Please use `sudo ./v symlink` instead.'
 
+check:
+	$(V) test-all

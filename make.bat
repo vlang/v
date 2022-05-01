@@ -39,7 +39,7 @@ if !shift_counter! LSS 1 (
     if "%~1" == "help" (
         if not ["%~2"] == [""] set "subcmd=%~2"& shift& set /a shift_counter+=1
     )
-    for %%z in (build clean cleanall help) do (
+    for %%z in (build clean cleanall check help) do (
         if "%~1" == "%%z" set target=%1& shift& set /a shift_counter+=1& goto :verifyopt
     )
 )
@@ -66,6 +66,12 @@ exit /b 2
 
 :init
 goto :!target!
+
+:check
+echo.
+echo Check everything
+v.exe test-all
+exit /b 0
 
 :cleanall
 call :clean
@@ -259,10 +265,11 @@ echo Compiler:
 echo     -msvc ^| -gcc ^| -tcc ^| -tcc32 ^| -clang    Set C compiler
 echo.
 echo Target:
-echo     build[default]                    Compiles V using the given C compiler
-echo     clean                             Clean build artifacts and debugging symbols
-echo     cleanall                         Cleanup entire ALL build artifacts and vc repository
-echo     help                              Display usage help for the given target
+echo     build[default]    Compiles V using the given C compiler
+echo     clean             Clean build artifacts and debugging symbols
+echo     cleanall          Cleanup entire ALL build artifacts and vc repository
+echo     check             Check that tests pass, and the repository is in a good shape for Pull Requests
+echo     help              Display help for the given target
 echo.
 echo Examples:
 echo     make.bat -msvc
@@ -304,8 +311,8 @@ echo Compiler:
 echo     -msvc ^| -gcc ^| -tcc ^| -tcc32 ^| -clang    Set C compiler
 echo.
 echo Options:
-echo    --local                           Use the local vc repository without
-echo                                      syncing with remote
+echo    --local     Use the local vc repository without
+echo                syncing with remote
 exit /b 0
 
 :bootstrap_tcc
