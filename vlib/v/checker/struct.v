@@ -169,9 +169,13 @@ fn minify_sort_fn(a &ast.StructField, b &ast.StructField) int {
 		}
 	}
 
-	a_size := t.type_size(a.typ)
-	b_size := t.type_size(b.typ)
-	return if a_size > b_size {
+	a_size, a_align := t.type_size(a.typ)
+	b_size, b_align := t.type_size(b.typ)
+	return if a_align > b_align {
+		-1
+	} else if a_align < b_align {
+		1
+	} else if a_size > b_size {
 		-1
 	} else if a_size < b_size {
 		1

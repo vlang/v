@@ -644,8 +644,8 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				} else if is_left_type_signed != is_right_type_signed
 					&& left_type != ast.int_literal_type_idx
 					&& right_type != ast.int_literal_type_idx {
-					ls := c.table.type_size(left_type)
-					rs := c.table.type_size(right_type)
+					ls, _ := c.table.type_size(left_type)
+					rs, _ := c.table.type_size(right_type)
 					// prevent e.g. `u32 == i16` but not `u16 == i32` as max_u16 fits in i32
 					// TODO u32 == i32, change < to <=
 					if (is_left_type_signed && ls < rs) || (is_right_type_signed && rs < ls) {

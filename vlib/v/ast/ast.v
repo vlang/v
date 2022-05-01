@@ -655,6 +655,7 @@ pub mut:
 
 // used for smartcasting only
 // struct fields change type in scopes
+[minify]
 pub struct ScopeStructField {
 pub:
 	struct_type Type // type of struct
@@ -695,6 +696,7 @@ pub mut:
 	end_comments []Comment
 }
 
+[minify]
 pub struct EmbeddedFile {
 pub:
 	rpath            string // used in the source code, as an ID/key to the embed
@@ -979,6 +981,7 @@ pub mut:
 	expected_type Type // for debugging only
 }
 
+[minify]
 pub struct SelectBranch {
 pub:
 	pos           token.Pos
@@ -1204,6 +1207,7 @@ pub mut:
 	expr Expr
 }
 
+[minify]
 pub struct GoExpr {
 pub:
 	pos token.Pos
@@ -1296,6 +1300,7 @@ pub mut:
 	high Expr
 }
 
+[minify]
 pub struct CastExpr {
 pub mut:
 	arg       Expr   // `n` in `string(buf, n)`
@@ -1572,6 +1577,7 @@ pub mut:
 	typ  Type
 }
 
+[minify]
 pub struct OffsetOf {
 pub:
 	struct_type Type

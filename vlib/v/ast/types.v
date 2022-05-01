@@ -94,7 +94,8 @@ pub mut:
 	is_pub   bool
 	language Language
 	idx      int
-	size     int
+	size     int = -1
+	align    int = -1
 }
 
 // max of 8
@@ -827,38 +828,43 @@ pub fn (t &TypeSymbol) is_builtin() bool {
 	return t.mod == 'builtin'
 }
 
-// type_size returns the size in bytes of `typ`, similarly to  C's `sizeof()`.
-pub fn (t &Table) type_size(typ Type) int {
+// type_size returns the size and alignment (in bytes) of `typ`, similarly to  C's `sizeof()` and `alignof()`.
+pub fn (t &Table) type_size(typ Type) (int, int) {
 	if typ.has_flag(.optional) {
 		return t.type_size(ast.error_type_idx)
 	}
 	if typ.nr_muls() > 0 {
-		return t.pointer_size
+		return t.pointer_size, t.pointer_size
 	}
 	mut sym := t.sym(typ)
 	if sym.size != -1 {
-		return sym.size
+		return sym.size, sym.align
 	}
-	mut res := 0
+	mut size := 0
+	mut align := 0
 	match sym.kind {
 		.placeholder, .void, .none_, .generic_inst {}
 		.voidptr, .byteptr, .charptr, .function, .usize, .isize, .any, .thread, .chan {
-			res = t.pointer_size
+			size = t.pointer_size
 		}
 		.i8, .u8, .char, .bool {
-			res = 1
+			size = 1
+			align = 1
 		}
 		.i16, .u16 {
-			res = 2
+			size = 2
+			align = 2
 		}
 		.int, .u32, .rune, .f32, .enum_ {
-			res = 4
+			size = 4
+			align = 4
 		}
 		.i64, .u64, .int_literal, .f64, .float_literal {
-			res = 8
+			size = 8
+			align = 8
 		}
 		.alias {
-			res = t.type_size((sym.info as Alias).parent_type)
+			size, align = t.type_size((sym.info as Alias).parent_type)
 		}
 		.struct_, .string, .multi_return {
 			mut max_alignment := 0
@@ -869,24 +875,27 @@ pub fn (t &Table) type_size(typ Type) int {
 				(sym.info as MultiReturn).types
 			}
 			for ftyp in types {
-				field_size := t.type_size(ftyp)
-				alignment := if field_size > t.pointer_size { t.pointer_size } else { field_size }
+				field_size, alignment := t.type_size(ftyp)
 				if alignment > max_alignment {
 					max_alignment = alignment
 				}
 				total_size = round_up(total_size, alignment) + field_size
 			}
-			res = round_up(total_size, max_alignment)
+			size = round_up(total_size, max_alignment)
+			align = max_alignment
 		}
 		.sum_type, .interface_, .aggregate {
 			match mut sym.info {
 				SumType, Aggregate {
-					res = (sym.info.fields.len + 2) * t.pointer_size
+					size = (sym.info.fields.len + 2) * t.pointer_size
+					align = t.pointer_size
 				}
 				Interface {
-					res = (sym.info.fields.len + 2) * t.pointer_size
+					size = (sym.info.fields.len + 2) * t.pointer_size
+					align = t.pointer_size
 					for etyp in sym.info.embeds {
-						res += t.type_size(etyp) - 2 * t.pointer_size
+						esize, _ := t.type_size(etyp)
+						size += esize - 2 * t.pointer_size
 					}
 				}
 				else {
@@ -896,18 +905,23 @@ pub fn (t &Table) type_size(typ Type) int {
 		}
 		.array_fixed {
 			info := sym.info as ArrayFixed
-			res = info.size * t.type_size(info.elem_type)
+			elem_size, elem_align := t.type_size(info.elem_type)
+			size = info.size * elem_size
+			align = elem_align
 		}
 		// TODO hardcoded:
 		.map {
-			res = if t.pointer_size == 8 { 120 } else { 80 }
+			size = if t.pointer_size == 8 { 120 } else { 80 }
+			align = t.pointer_size
 		}
 		.array {
-			res = if t.pointer_size == 8 { 32 } else { 24 }
+			size = if t.pointer_size == 8 { 32 } else { 24 }
+			align = t.pointer_size
 		}
 	}
-	sym.size = res
-	return res
+	sym.size = size
+	sym.align = align
+	return size, align
 }
 
 // round_up rounds the number `n` up to the next multiple `multiple`.
