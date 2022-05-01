@@ -9,7 +9,7 @@ import v.cflag
 import v.token
 import v.util
 
-[heap]
+[heap; minify]
 pub struct Table {
 mut:
 	parsing_type string // name of the type to enable recursive type parsing
@@ -86,6 +86,7 @@ pub fn (t &Table) panic(message string) {
 	t.panic_handler(t, message)
 }
 
+[minify]
 pub struct Fn {
 pub:
 	is_variadic     bool

@@ -23,6 +23,7 @@ const (
 	backslash    = `\\`
 )
 
+[minify]
 pub struct Scanner {
 pub mut:
 	file_path         string // '/path/to/file.v'

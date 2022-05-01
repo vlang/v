@@ -202,6 +202,7 @@ pub:
 	pos token.Pos
 }
 
+[minify]
 pub struct StringLiteral {
 pub:
 	val      string
@@ -246,6 +247,7 @@ pub enum GenericKindField {
 }
 
 // `foo.bar`
+[minify]
 pub struct SelectorExpr {
 pub:
 	pos        token.Pos
@@ -287,6 +289,7 @@ pub:
 	is_skipped bool      // module main can be skipped in single file programs
 }
 
+[minify]
 pub struct StructField {
 pub:
 	pos              token.Pos
@@ -333,6 +336,7 @@ pub mut:
 }
 
 // const declaration
+[minify]
 pub struct ConstDecl {
 pub:
 	is_pub bool
@@ -344,6 +348,7 @@ pub mut:
 	is_block     bool // const() block
 }
 
+[minify]
 pub struct StructDecl {
 pub:
 	pos           token.Pos
@@ -380,6 +385,7 @@ pub:
 	comments []Comment
 }
 
+[minify]
 pub struct InterfaceDecl {
 pub:
 	name          string
@@ -431,6 +437,7 @@ pub mut:
 //    ...a
 //    field1: 'hello'
 // }`
+[minify]
 pub struct StructInit {
 pub:
 	pos             token.Pos
@@ -484,6 +491,7 @@ pub mut:
 }
 
 // function or method declaration
+[minify]
 pub struct FnDecl {
 pub:
 	name            string // 'math.bits.normalize'
@@ -542,6 +550,7 @@ pub mut:
 }
 
 // break, continue
+[minify]
 pub struct BranchStmt {
 pub:
 	kind  token.Kind
@@ -550,6 +559,7 @@ pub:
 }
 
 // function or method call expr
+[minify]
 pub struct CallExpr {
 pub:
 	pos      token.Pos
@@ -589,6 +599,7 @@ pub struct AutofreeArgVar {
 }
 */
 // function call argument: `f(callarg)`
+[minify]
 pub struct CallArg {
 pub:
 	is_mut   bool
@@ -612,6 +623,7 @@ pub mut:
 	types []Type
 }
 
+[minify]
 pub struct Var {
 pub:
 	name            string
@@ -657,6 +669,7 @@ pub:
 	//        12 <- the current casted type (typ)
 }
 
+[minify]
 pub struct GlobalField {
 pub:
 	name        string
@@ -749,6 +762,7 @@ pub mut:
 
 // TODO: (joe) remove completely, use ident.obj
 // instead which points to the scope object
+[minify]
 pub struct IdentVar {
 pub mut:
 	typ         Type
@@ -771,6 +785,7 @@ pub enum IdentKind {
 }
 
 // A single identifier
+[minify]
 pub struct Ident {
 pub:
 	language Language
@@ -816,6 +831,7 @@ pub fn (i &Ident) var_info() IdentVar {
 
 // left op right
 // See: token.Kind.is_infix
+[minify]
 pub struct InfixExpr {
 pub:
 	op      token.Kind
@@ -846,6 +862,7 @@ pub mut:
 }
 
 // See: token.Kind.is_prefix
+[minify]
 pub struct PrefixExpr {
 pub:
 	op  token.Kind
@@ -857,6 +874,7 @@ pub mut:
 	is_option  bool // IfGuard
 }
 
+[minify]
 pub struct IndexExpr {
 pub:
 	pos token.Pos
@@ -874,6 +892,7 @@ pub mut:
 	is_gated  bool // #[] gated array
 }
 
+[minify]
 pub struct IfExpr {
 pub:
 	is_comptime   bool
@@ -921,6 +940,7 @@ pub mut:
 	scope    &Scope
 }
 
+[minify]
 pub struct MatchExpr {
 pub:
 	tok_kind token.Kind
@@ -1000,6 +1020,7 @@ pub mut:
 	scope &Scope
 }
 
+[minify]
 pub struct ForInStmt {
 pub:
 	key_var    string
@@ -1060,6 +1081,7 @@ pub:
 }
 */
 // variable assign statement
+[minify]
 pub struct AssignStmt {
 pub:
 	op           token.Kind // include: =,:=,+=,-=,*=,/= and so on; for a list of all the assign operators, see vlib/token/token.v
@@ -1099,6 +1121,7 @@ pub mut:
 }
 
 // enum field in enum declaration
+[minify]
 pub struct EnumField {
 pub:
 	name          string
@@ -1111,6 +1134,7 @@ pub mut:
 }
 
 // enum declaration
+[minify]
 pub struct EnumDecl {
 pub:
 	name             string
@@ -1161,6 +1185,7 @@ pub:
 // TODO: handle this differently
 // v1 excludes non current os ifdefs so
 // the defer's never get added in the first place
+[minify]
 pub struct DeferStmt {
 pub:
 	stmts []Stmt
@@ -1199,6 +1224,7 @@ pub:
 	pos  token.Pos
 }
 
+[minify]
 pub struct ArrayInit {
 pub:
 	pos           token.Pos   // `[]` in []Type{} position
@@ -1242,6 +1268,7 @@ pub mut:
 	elem_type Type
 }
 
+[minify]
 pub struct MapInit {
 pub:
 	pos       token.Pos
@@ -1257,6 +1284,7 @@ pub mut:
 }
 
 // s[10..20]
+[minify]
 pub struct RangeExpr {
 pub:
 	has_high bool
@@ -1279,6 +1307,7 @@ pub mut:
 	pos       token.Pos
 }
 
+[minify]
 pub struct AsmStmt {
 pub:
 	arch        pref.Arch
@@ -1296,6 +1325,7 @@ pub mut:
 	local_labels  []string // local to the assembly block
 }
 
+[minify]
 pub struct AsmTemplate {
 pub mut:
 	name         string
@@ -1460,6 +1490,7 @@ pub const (
 	}
 )
 
+[minify]
 pub struct AssertStmt {
 pub:
 	pos token.Pos
@@ -1511,6 +1542,7 @@ pub:
 */
 
 // deprecated
+[minify]
 pub struct Assoc {
 pub:
 	var_name string
@@ -1555,6 +1587,7 @@ pub mut:
 	expr Expr
 }
 
+[minify]
 pub struct TypeOf {
 pub:
 	pos token.Pos
@@ -1563,6 +1596,7 @@ pub mut:
 	expr_type Type
 }
 
+[minify]
 pub struct DumpExpr {
 pub:
 	pos token.Pos
@@ -1598,6 +1632,7 @@ pub mut:
 	val string
 }
 
+[minify]
 pub struct ComptimeSelector {
 pub:
 	has_parens bool // if $() is used, for vfmt
@@ -1609,6 +1644,7 @@ pub mut:
 	typ        Type
 }
 
+[minify]
 pub struct ComptimeCall {
 pub:
 	pos         token.Pos

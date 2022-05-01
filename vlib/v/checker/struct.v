@@ -153,7 +153,13 @@ fn minify_sort_fn(a &ast.StructField, b &ast.StructField) int {
 			if b_sym.kind == .enum_ {
 				a_nr_vals := (a_sym.info as ast.Enum).vals.len
 				b_nr_vals := (b_sym.info as ast.Enum).vals.len
-				return if a_nr_vals > b_nr_vals { -1 } else if a_nr_vals < b_nr_vals { 1 } else { 0 }
+				return if a_nr_vals > b_nr_vals {
+					-1
+				} else if a_nr_vals < b_nr_vals {
+					1
+				} else {
+					0
+				}
 			}
 			return 1
 		}
@@ -165,7 +171,13 @@ fn minify_sort_fn(a &ast.StructField, b &ast.StructField) int {
 
 	a_size := t.type_size(a.typ)
 	b_size := t.type_size(b.typ)
-	return if a_size > b_size { -1 } else if a_size < b_size { 1 } else { 0 }
+	return if a_size > b_size {
+		-1
+	} else if a_size < b_size {
+		1
+	} else {
+		0
+	}
 }
 
 pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {

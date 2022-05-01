@@ -4850,7 +4850,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 											bits_needed++
 											l >>= 1
 										}
-										size_suffix = ' : ${bits_needed}'
+										size_suffix = ' : $bits_needed'
 									}
 								}
 							}

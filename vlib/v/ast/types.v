@@ -80,6 +80,7 @@ pub fn pref_arch_to_table_language(pref_arch pref.Arch) Language {
 // Each TypeSymbol is entered into `Table.types`.
 // See also: Table.sym.
 
+[minify]
 pub struct TypeSymbol {
 pub:
 	parent_idx int
@@ -840,9 +841,7 @@ pub fn (t &Table) type_size(typ Type) int {
 	}
 	mut res := 0
 	match sym.kind {
-		.placeholder, .void, .none_, .generic_inst {
-
-		}
+		.placeholder, .void, .none_, .generic_inst {}
 		.voidptr, .byteptr, .charptr, .function, .usize, .isize, .any, .thread, .chan {
 			res = t.pointer_size
 		}
@@ -974,6 +973,7 @@ pub fn (kinds []Kind) str() string {
 	return kinds_str
 }
 
+[minify]
 pub struct Struct {
 pub:
 	attrs []Attr
@@ -997,6 +997,7 @@ pub mut:
 	concrete_types []Type // concrete types, e.g. <int, string>
 }
 
+[minify]
 pub struct Interface {
 pub mut:
 	types   []Type // all types that implement this interface
@@ -1020,6 +1021,7 @@ pub:
 	uses_exprs       bool
 }
 
+[minify]
 pub struct Alias {
 pub:
 	parent_type Type
@@ -1042,6 +1044,7 @@ pub mut:
 	elem_type Type
 }
 
+[minify]
 pub struct ArrayFixed {
 pub:
 	size      int
@@ -1067,6 +1070,7 @@ pub mut:
 	value_type Type
 }
 
+[minify]
 pub struct SumType {
 pub mut:
 	fields       []StructField
@@ -1313,6 +1317,7 @@ fn (t Table) shorten_user_defined_typenames(originalname string, import_aliases 
 	return res
 }
 
+[minify]
 pub struct FnSignatureOpts {
 	skip_receiver bool
 	type_only     bool
