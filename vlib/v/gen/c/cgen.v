@@ -4837,7 +4837,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 						field_name := c_name(field.name)
 						volatile_prefix := if field.is_volatile { 'volatile ' } else { '' }
 						mut size_suffix := ''
-						if is_minify {
+						if is_minify && !g.is_cc_msvc {
 							if field.typ == ast.bool_type_idx {
 								size_suffix = ' : 1'
 							} else {
