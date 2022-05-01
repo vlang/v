@@ -155,7 +155,7 @@ pub fn (t Time) relative() string {
 	} else {
 		suffix = ' ago'
 	}
-	if secs <= time.seconds_per_minute {
+	if secs < time.seconds_per_minute / 2 {
 		return 'now'
 	}
 	if secs < time.seconds_per_hour {
@@ -215,7 +215,7 @@ pub fn (t Time) relative_short() string {
 	} else {
 		suffix = ' ago'
 	}
-	if secs <= time.seconds_per_minute {
+	if secs < time.seconds_per_minute / 2 {
 		return 'now'
 	}
 	if secs < time.seconds_per_hour {
