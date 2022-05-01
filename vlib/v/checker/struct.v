@@ -327,6 +327,11 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 						node.pos)
 				}
 			}
+			mut info_fields_sorted := []ast.StructField{}
+			if node.is_short {
+				info_fields_sorted = info.fields.clone()
+				info_fields_sorted.sort(a.i < b.i)
+			}
 			mut inited_fields := []string{}
 			for i, mut field in node.fields {
 				mut field_info := ast.StructField{}
@@ -337,7 +342,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 						// We should just stop here.
 						break
 					}
-					field_info = info.fields[i]
+					field_info = info_fields_sorted[i]
 					field_name = field_info.name
 					node.fields[i].name = field_name
 				} else {

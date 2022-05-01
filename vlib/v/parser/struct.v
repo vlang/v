@@ -103,6 +103,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	mut end_comments := []ast.Comment{}
 	if !no_body {
 		p.check(.lcbr)
+		mut i := 0
 		for p.tok.kind != .rcbr {
 			mut comments := []ast.Comment{}
 			for p.tok.kind == .comment {
@@ -267,6 +268,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 					pos: field_pos
 					type_pos: type_pos
 					comments: comments
+					i: i
 					default_expr: default_expr
 					has_default_expr: has_default_expr
 					attrs: p.attrs
@@ -283,6 +285,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				pos: field_pos
 				type_pos: type_pos
 				comments: comments
+				i: i
 				default_expr: default_expr
 				has_default_expr: has_default_expr
 				attrs: p.attrs
@@ -292,12 +295,14 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				is_volatile: is_field_volatile
 			}
 			p.attrs = []
+			i++
 		}
 		p.top_level_statement_end()
 		last_line = p.tok.line_nr
 		p.check(.rcbr)
 	}
-	t := ast.TypeSymbol{
+	is_minify := attrs.contains('minify')
+	mut t := ast.TypeSymbol{
 		kind: .struct_
 		language: language
 		name: name
@@ -309,7 +314,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			is_typedef: attrs.contains('typedef')
 			is_union: is_union
 			is_heap: attrs.contains('heap')
-			is_minify: attrs.contains('minify')
+			is_minify: is_minify
 			is_generic: generic_types.len > 0
 			generic_types: generic_types
 			attrs: attrs

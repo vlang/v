@@ -295,6 +295,7 @@ pub:
 	pos              token.Pos
 	type_pos         token.Pos
 	comments         []Comment
+	i                int
 	has_default_expr bool
 	attrs            []Attr
 	is_pub           bool
