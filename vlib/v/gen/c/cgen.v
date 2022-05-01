@@ -2879,7 +2879,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			g.expr(node.expr)
 		}
 		ast.ArrayInit {
-			g.array_init(node)
+			g.array_init(node, '')
 		}
 		ast.AsCast {
 			g.as_cast(node)
