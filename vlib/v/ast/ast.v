@@ -1125,7 +1125,6 @@ pub mut:
 }
 
 // enum field in enum declaration
-[minify]
 pub struct EnumField {
 pub:
 	name          string
