@@ -129,6 +129,11 @@ const tokens_4 = ['MMMM', 'DDDD', 'DDDo', 'dddd', 'YYYY']
 // | **Offset**  | Z | -7 -6 ... +5 +6 |
 // |  | ZZ | -0700 -0600 ... +0500 +0600 |
 // |  | ZZZ | -07:00 -06:00 ... +05:00 +06:00 |
+//
+// Usage:
+// ```v
+// println(time.now().custom_format('MMMM Mo YY N kk:mm:ss A')) // output like: January 1st 22 AD 13:45:33 PM
+// ```
 pub fn (t Time) custom_format(s string) string {
 	mut tokens := []string{}
 	for i := 0; i < s.len; {

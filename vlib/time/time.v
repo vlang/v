@@ -131,6 +131,19 @@ pub fn since(t Time) Duration {
 
 // relative returns a string representation of the difference between t
 // and the current time.
+//
+// Sample outputs:
+// ```
+// // future
+// now
+// in 5 minutes
+// in 1 day
+// on Feb 17
+// // past
+// 2 hours ago
+// last Jan 15
+// 5 years ago
+// ```
 pub fn (t Time) relative() string {
 	znow := now()
 	mut secs := znow.unix - t.unix
@@ -181,8 +194,7 @@ pub fn (t Time) relative() string {
 
 // relative_short returns a string saying how long ago a time occured as follows:
 // 0-30 seconds: `"now"`; 30-60 seconds: `"1m"`; anything else is rounded to the
-// nearest minute, hour or day; anything higher than 10000 days (about 27 years)
-// years returns an empty string.
+// nearest minute, hour, day, or year
 // Some Examples:
 // `0s -> 'now'`;
 // `20s -> 'now'`;
