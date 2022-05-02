@@ -89,7 +89,8 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							// is interface
 							checked_type := c.unwrap_generic(left.typ)
 							skip_state = if c.table.does_type_implement_interface(checked_type,
-								got_type) {
+								got_type)
+							{
 								.eval
 							} else {
 								.skip

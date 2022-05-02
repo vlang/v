@@ -409,7 +409,13 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 				c.error('invalid `\$if` condition', cond.pos)
 			}
 			reversed := c.comptime_if_branch(cond.right, cond.pos)
-			return if reversed == .eval { .skip } else if reversed == .skip  { .eval } else { reversed }
+			return if reversed == .eval {
+				.skip
+			} else if reversed == .skip {
+				.eval
+			} else {
+				reversed
+			}
 		}
 		ast.PostfixExpr {
 			if cond.op != .question {
@@ -450,7 +456,11 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 					} else if cond.left is ast.TypeNode && cond.right is ast.ComptimeType {
 						left := cond.left as ast.TypeNode
 						checked_type := c.unwrap_generic(left.typ)
-						return if c.table.is_comptime_type(checked_type, cond.right) { .eval } else { .skip }
+						return if c.table.is_comptime_type(checked_type, cond.right) {
+							.eval
+						} else {
+							.skip
+						}
 					} else if cond.left in [ast.SelectorExpr, ast.TypeNode] {
 						// `$if method.@type is string`
 						c.expr(cond.left)
@@ -481,9 +491,17 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 						// until `v.eval` is stable, I can't think of a better way to do this
 						different := expr.str() != cond.right.str()
 						return if cond.op == .eq {
-							if different { ComptimeBranchSkipState.skip } else { ComptimeBranchSkipState.eval }
+							if different {
+								ComptimeBranchSkipState.skip
+							} else {
+								ComptimeBranchSkipState.eval
+							}
 						} else {
-							if different { ComptimeBranchSkipState.eval } else { ComptimeBranchSkipState.skip }
+							if different {
+								ComptimeBranchSkipState.eval
+							} else {
+								ComptimeBranchSkipState.skip
+							}
 						}
 					} else {
 						c.error('invalid `\$if` condition: ${cond.left.type_name()}1',
@@ -505,7 +523,11 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 				}
 				return if is_os_target_equal { .eval } else { .skip }
 			} else if cname in valid_comptime_if_compilers {
-				return if pref.cc_from_string(cname) == c.pref.ccompiler_type { .eval } else { .skip }
+				return if pref.cc_from_string(cname) == c.pref.ccompiler_type {
+					.eval
+				} else {
+					.skip
+				}
 			} else if cname in valid_comptime_if_platforms {
 				if cname == 'aarch64' {
 					c.note('use `arm64` instead of `aarch64`', pos)
@@ -533,8 +555,16 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 					'glibc' { return .unknown } // TODO
 					'threads' { return if c.table.gostmts > 0 { .eval } else { .skip } }
 					'prealloc' { return if c.pref.prealloc { .eval } else { .skip } }
-					'no_bounds_checking' { return if cname in c.pref.compile_defines_all { .eval } else { .skip } }
-					'freestanding' { return if c.pref.is_bare || c.pref.output_cross_c { .eval } else { .skip } }
+					'no_bounds_checking' { return if cname in c.pref.compile_defines_all {
+							.eval
+						} else {
+							.skip
+						} }
+					'freestanding' { return if c.pref.is_bare && !c.pref.output_cross_c {
+							.eval
+						} else {
+							.skip
+						} }
 					'interpreter' { return if c.pref.backend == .interpret { .eval } else { .skip } }
 					else { return .unknown }
 				}
