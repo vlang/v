@@ -2144,6 +2144,10 @@ fn (mut g Gen) write_fn_attrs(attrs []ast.Attr) string {
 				g.write('__NOINLINE ')
 			}
 			'weak' {
+				if attrs.any(it.name == 'export') {
+					// only the exported wrapper should be weak; otherwise x86_64-w64-mingw32-gcc complains
+					continue
+				}
 				// a `[weak]` tag tells the C compiler, that the next declaration will be weak, i.e. when linking,
 				// if there is another declaration of a symbol with the same name (a 'strong' one), it should be
 				// used instead, *without linker errors about duplicate symbols*.
