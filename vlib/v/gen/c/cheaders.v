@@ -366,6 +366,10 @@ const c_common_macros = '
 		#undef VWEAK
 		#define VWEAK
 	#endif
+	#if defined(__MINGW32__) || defined(__MINGW64__)
+		#undef VWEAK
+		#define VWEAK
+	#endif
 #endif
 
 #if !defined(VNORETURN)
