@@ -627,7 +627,9 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 							param_elem_info = param_elem_sym.info as ast.Array
 							param_elem_sym = c.table.sym(param_elem_info.elem_type)
 						} else {
-							to_set = arg_elem_info.elem_type
+							if param_elem_sym.name == gt_name {
+								typ = arg_elem_info.elem_type
+							}
 							break
 						}
 					}
@@ -644,7 +646,9 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 							param_elem_info = param_elem_sym.info as ast.ArrayFixed
 							param_elem_sym = c.table.sym(param_elem_info.elem_type)
 						} else {
-							to_set = arg_elem_info.elem_type
+							if param_elem_sym.name == gt_name {
+								typ = arg_elem_info.elem_type
+							}
 							break
 						}
 					}
@@ -658,6 +662,21 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 					if param_map_info.value_type.has_flag(.generic)
 						&& c.table.sym(param_map_info.value_type).name == gt_name {
 						typ = arg_map_info.value_type
+					}
+				} else if arg_sym.kind == .function && param_type_sym.kind == .function {
+					arg_type_func := (arg_sym.info as ast.FnType).func
+					param_type_func := (param_type_sym.info as ast.FnType).func
+					if param_type_func.params.len == arg_type_func.params.len {
+						for n, fn_param in param_type_func.params {
+							if fn_param.typ.has_flag(.generic)
+								&& c.table.sym(fn_param.typ).name == gt_name {
+								typ = arg_type_func.params[n].typ
+							}
+						}
+						if param_type_func.return_type.has_flag(.generic)
+							&& c.table.sym(param_type_func.return_type).name == gt_name {
+							typ = arg_type_func.return_type
+						}
 					}
 				} else if arg_sym.kind in [.struct_, .interface_, .sum_type] {
 					mut generic_types := []ast.Type{}

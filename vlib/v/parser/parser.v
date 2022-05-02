@@ -480,6 +480,27 @@ pub fn (p &Parser) peek_token_after_var_list() token.Token {
 	return tok
 }
 
+fn (p &Parser) is_array_type() bool {
+	mut i := 1
+	mut tok := p.tok
+	line_nr := p.tok.line_nr
+
+	for {
+		tok = p.peek_token(i)
+		if tok.line_nr != line_nr {
+			return false
+		}
+		if tok.kind in [.name, .amp] {
+			return true
+		}
+		i++
+		if tok.kind == .lsbr || tok.kind != .rsbr {
+			continue
+		}
+	}
+	return false
+}
+
 pub fn (mut p Parser) open_scope() {
 	p.scope = &ast.Scope{
 		parent: p.scope

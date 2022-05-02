@@ -518,9 +518,9 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	// Parse fields or methods
 	mut fields := []ast.StructField{cap: 20}
 	mut methods := []ast.FnDecl{cap: 20}
+	mut embeds := []ast.InterfaceEmbedding{}
 	mut is_mut := false
 	mut mut_pos := -1
-	mut ifaces := []ast.InterfaceEmbedding{}
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
 		if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
 			&& (p.peek_tok.line_nr != p.tok.line_nr
@@ -532,7 +532,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 				iface_name = p.table.sym(iface_type).name
 			}
 			comments := p.eat_comments()
-			ifaces << ast.InterfaceEmbedding{
+			embeds << ast.InterfaceEmbedding{
 				name: iface_name
 				typ: iface_type
 				pos: iface_pos
@@ -558,7 +558,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 				break
 			}
 			comments := p.eat_comments()
-			ifaces << ast.InterfaceEmbedding{
+			embeds << ast.InterfaceEmbedding{
 				name: from_mod_name
 				typ: from_mod_typ
 				pos: p.prev_tok.pos()
@@ -669,7 +669,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			}
 		}
 	}
-	info.embeds = ifaces.map(it.typ)
+	info.embeds = embeds.map(it.typ)
 	ts.info = info
 	p.top_level_statement_end()
 	p.check(.rcbr)
@@ -680,7 +680,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		typ: typ
 		fields: fields
 		methods: methods
-		embeds: ifaces
+		embeds: embeds
 		is_pub: is_pub
 		attrs: attrs
 		pos: pos

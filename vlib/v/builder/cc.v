@@ -661,10 +661,6 @@ pub fn (mut v Builder) cc() {
 		break
 	}
 	if v.pref.compress {
-		$if windows {
-			println('-compress does not work on Windows for now')
-			return
-		}
 		ret := os.system('strip $v.pref.out_name')
 		if ret != 0 {
 			println('strip failed')
@@ -685,7 +681,7 @@ pub fn (mut v Builder) cc() {
 				println('install upx\n' + 'for example, on Debian/Ubuntu run `sudo apt install upx`')
 			}
 			$if windows {
-				// :)
+				println('install upx')
 			}
 		}
 	}
