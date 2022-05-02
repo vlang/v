@@ -1,5 +1,12 @@
 module builtin
 
+// <execinfo.h>
+fn C.backtrace(a &voidptr, size int) int
+
+fn C.backtrace_symbols(a &voidptr, size int) &&char
+
+fn C.backtrace_symbols_fd(a &voidptr, size int, fd int)
+
 // These are just dummy implementations to appease gcc on musl/alpine							
 
 [export: 'backtrace_symbols']
