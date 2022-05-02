@@ -546,27 +546,45 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 				return .unknown
 			} else if cname in valid_comptime_if_other {
 				match cname {
-					'apk' { return if c.pref.is_apk { .eval } else { .skip } }
-					'js' { return if c.pref.backend.is_js() { .eval } else { .skip } }
-					'debug' { return if c.pref.is_debug { .eval } else { .skip } }
-					'prod' { return if c.pref.is_prod { .eval } else { .skip } }
-					'profile' { return if c.pref.is_prof { .eval } else { .skip } }
-					'test' { return if c.pref.is_test { .eval } else { .skip } }
-					'glibc' { return .unknown } // TODO
-					'threads' { return if c.table.gostmts > 0 { .eval } else { .skip } }
-					'prealloc' { return if c.pref.prealloc { .eval } else { .skip } }
-					'no_bounds_checking' { return if cname in c.pref.compile_defines_all {
-							.eval
-						} else {
-							.skip
-						} }
-					'freestanding' { return if c.pref.is_bare && !c.pref.output_cross_c {
-							.eval
-						} else {
-							.skip
-						} }
-					'interpreter' { return if c.pref.backend == .interpret { .eval } else { .skip } }
-					else { return .unknown }
+					'apk' {
+						return if c.pref.is_apk { .eval } else { .skip }
+					}
+					'js' {
+						return if c.pref.backend.is_js() { .eval } else { .skip }
+					}
+					'debug' {
+						return if c.pref.is_debug { .eval } else { .skip }
+					}
+					'prod' {
+						return if c.pref.is_prod { .eval } else { .skip }
+					}
+					'profile' {
+						return if c.pref.is_prof { .eval } else { .skip }
+					}
+					'test' {
+						return if c.pref.is_test { .eval } else { .skip }
+					}
+					'glibc' {
+						return .unknown
+					} // TODO
+					'threads' {
+						return if c.table.gostmts > 0 { .eval } else { .skip }
+					}
+					'prealloc' {
+						return if c.pref.prealloc { .eval } else { .skip }
+					}
+					'no_bounds_checking' {
+						return if cname in c.pref.compile_defines_all { .eval } else { .skip }
+					}
+					'freestanding' {
+						return if c.pref.is_bare && !c.pref.output_cross_c { .eval } else { .skip }
+					}
+					'interpreter' {
+						return if c.pref.backend == .interpret { .eval } else { .skip }
+					}
+					else {
+						return .unknown
+					}
 				}
 			} else if cname !in c.pref.compile_defines_all {
 				if cname == 'linux_or_macos' {
