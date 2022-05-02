@@ -513,7 +513,8 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) bool {
 					'prod' { return !c.pref.is_prod }
 					'profile' { return !c.pref.is_prof }
 					'test' { return !c.pref.is_test }
-					'glibc' { return false } // TODO
+					'glibc' { return !c.pref.is_glibc }
+					'musl' { return !c.pref.is_musl }
 					'threads' { return c.table.gostmts == 0 }
 					'prealloc' { return !c.pref.prealloc }
 					'no_bounds_checking' { return cname !in c.pref.compile_defines_all }
