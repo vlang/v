@@ -4377,7 +4377,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				if field.is_simple_define_const() {
 					// "Simple" expressions are not going to need multiple statements,
 					// only the ones which are inited later, so it's safe to use expr_string
-					g.const_decl_simple_define(name, g.expr_string(field_expr))
+					g.const_decl_simple_define(field.name, g.expr_string(field_expr))
 				} else {
 					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false)
 				}
@@ -4479,7 +4479,17 @@ fn (mut g Gen) const_decl_simple_define(name string, val string) {
 	// so that we don't pollute the binary with unnecessary global vars
 	// Do not do this when building a module, otherwise the consts
 	// will not be accessible.
-	g.definitions.write_string('#define _const_$name ')
+	mut x := util.no_dots(name)
+	if g.pref.translated && !g.is_builtin_mod && !util.module_is_builtin(name.all_before_last('.')) {
+		// Don't prepend "_const" to translated C consts,
+		// but only in user code, continue prepending "_const" to builtin consts.
+		if x.starts_with('main__') {
+			x = x['main__'.len..]
+		}
+	} else {
+		x = '_const_$x'
+	}
+	g.definitions.write_string('#define $x ')
 	g.definitions.writeln(val)
 }
 
