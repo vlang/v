@@ -13,7 +13,7 @@ fn test_generic_fn_infer_fn_type_argument() {
 
 	ret_r := fmap(to_r, items)
 	println('${ret_r.map(rune(it))}')
-	assert '${ret_r.map(rune(it))}' == "[`😺`, `😸`, `😹`, `😻`, `😾`]"
+	assert '${ret_r.map(rune(it))}' == '[`😺`, `😸`, `😹`, `😻`, `😾`]'
 
 	// returns random same number for every item in array
 	ret_f64 := fmap(to_f64, items)
