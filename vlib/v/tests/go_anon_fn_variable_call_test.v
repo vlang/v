@@ -1,3 +1,6 @@
+// vtest flaky: true
+// vtest retry: 3
+
 fn sum1(a int, b int) int {
 	sum_func1 := fn (a int, b int) int {
 		return a + b

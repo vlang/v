@@ -2,8 +2,12 @@ module time
 
 pub const (
 	days_string        = 'MonTueWedThuFriSatSun'
+	long_days          = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
+		'Sunday']
 	month_days         = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 	months_string      = 'JanFebMarAprMayJunJulAugSepOctNovDec'
+	long_months        = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
+		'September', 'October', 'November', 'December']
 	// The unsigned zero year for internal calculations.
 	// Must be 1 mod 400, and times before it will not compute correctly,
 	// but otherwise can be changed at will.
@@ -30,8 +34,6 @@ pub const (
 		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30,
 		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
 	]
-	long_days          = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
-		'Sunday']
 )
 
 // Time contains various time units for a point in time.
@@ -83,7 +85,7 @@ pub enum FormatDelimiter {
 	no_delimiter
 }
 
-// smonth returns month name.
+// smonth returns month name abbreviation.
 pub fn (t Time) smonth() string {
 	if t.month <= 0 || t.month > 12 {
 		return '---'
@@ -129,48 +131,70 @@ pub fn since(t Time) Duration {
 
 // relative returns a string representation of the difference between t
 // and the current time.
+//
+// Sample outputs:
+// ```
+// // future
+// now
+// in 5 minutes
+// in 1 day
+// on Feb 17
+// // past
+// 2 hours ago
+// last Jan 15
+// 5 years ago
+// ```
 pub fn (t Time) relative() string {
 	znow := now()
-	secs := znow.unix - t.unix
-	if secs <= 30 {
-		// right now or in the future
-		// TODO handle time in the future
+	mut secs := znow.unix - t.unix
+	mut prefix := ''
+	mut suffix := ''
+	if secs < 0 {
+		secs *= -1
+		prefix = 'in '
+	} else {
+		suffix = ' ago'
+	}
+	if secs < time.seconds_per_minute / 2 {
 		return 'now'
 	}
-	if secs < 60 {
-		return '1m'
-	}
-	if secs < 3600 {
-		m := secs / 60
+	if secs < time.seconds_per_hour {
+		m := secs / time.seconds_per_minute
 		if m == 1 {
-			return '1 minute ago'
+			return '${prefix}1 minute$suffix'
 		}
-		return '$m minutes ago'
+		return '$prefix$m minutes$suffix'
 	}
-	if secs < 3600 * 24 {
-		h := secs / 3600
+	if secs < time.seconds_per_hour * 24 {
+		h := secs / time.seconds_per_hour
 		if h == 1 {
-			return '1 hour ago'
+			return '${prefix}1 hour$suffix'
 		}
-		return '$h hours ago'
+		return '$prefix$h hours$suffix'
 	}
-	if secs < 3600 * 24 * 5 {
-		d := secs / 3600 / 24
+	if secs < time.seconds_per_hour * 24 * 7 {
+		d := secs / time.seconds_per_hour / 24
 		if d == 1 {
-			return '1 day ago'
+			return '${prefix}1 day$suffix'
 		}
-		return '$d days ago'
+		return '$prefix$d days$suffix'
 	}
-	if secs > 3600 * 24 * 10000 {
-		return ''
+	if secs < time.seconds_per_hour * 24 * 365 {
+		if prefix == 'in ' {
+			return 'on $t.md()'
+		}
+		return 'last $t.md()'
 	}
-	return t.md()
+	y := secs / time.seconds_per_hour / 24 / 365
+	if y == 1 {
+		return '${prefix}1 year$suffix'
+	}
+	return '$prefix$y years$suffix'
 }
 
 // relative_short returns a string saying how long ago a time occured as follows:
 // 0-30 seconds: `"now"`; 30-60 seconds: `"1m"`; anything else is rounded to the
-// nearest minute, hour or day; anything higher than 10000 days (about 27 years)
-// years returns an empty string.
+// nearest minute, hour, day, or year
 // Some Examples:
 // `0s -> 'now'`;
 // `20s -> 'now'`;
@@ -182,28 +206,44 @@ pub fn (t Time) relative() string {
 // `15842354871s -> ''`
 pub fn (t Time) relative_short() string {
 	znow := now()
-	secs := znow.unix - t.unix
-	if secs <= 30 {
-		// right now or in the future
-		// TODO handle time in the future
+	mut secs := znow.unix - t.unix
+	mut prefix := ''
+	mut suffix := ''
+	if secs < 0 {
+		secs *= -1
+		prefix = 'in '
+	} else {
+		suffix = ' ago'
+	}
+	if secs < time.seconds_per_minute / 2 {
 		return 'now'
 	}
-	if secs < 60 {
-		return '1m'
+	if secs < time.seconds_per_hour {
+		m := secs / time.seconds_per_minute
+		if m == 1 {
+			return '${prefix}1m$suffix'
+		}
+		return '$prefix${m}m$suffix'
 	}
-	if secs < 3600 {
-		return '${secs / 60}m'
+	if secs < time.seconds_per_hour * 24 {
+		h := secs / time.seconds_per_hour
+		if h == 1 {
+			return '${prefix}1h$suffix'
+		}
+		return '$prefix${h}h$suffix'
 	}
-	if secs < 3600 * 24 {
-		return '${secs / 3600}h'
+	if secs < time.seconds_per_hour * 24 * 365 {
+		d := secs / time.seconds_per_hour / 24
+		if d == 1 {
+			return '${prefix}1d$suffix'
+		}
+		return '$prefix${d}d$suffix'
 	}
-	if secs < 3600 * 24 * 5 {
-		return '${secs / 3600 / 24}d'
+	y := secs / time.seconds_per_hour / 24 / 365
+	if y == 1 {
+		return '${prefix}1y$suffix'
 	}
-	if secs > 3600 * 24 * 10000 {
-		return ''
-	}
-	return t.md()
+	return '$prefix${y}y$suffix'
 }
 
 // day_of_week returns the current day of a given year, month, and day,
@@ -224,10 +264,10 @@ pub fn (t Time) day_of_week() int {
 	return day_of_week(t.year, t.month, t.day)
 }
 
-// weekday_str returns the current day as a string.
+// weekday_str returns the current day as a string abbreviation.
 pub fn (t Time) weekday_str() string {
 	i := t.day_of_week() - 1
-	return time.days_string[i * 3..(i + 1) * 3]
+	return time.long_days[i][0..3]
 }
 
 // weekday_str returns the current day as a string.

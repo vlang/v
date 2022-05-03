@@ -8,6 +8,7 @@ pub type FNLinkLiveSymbols = fn (linkcb voidptr)
 
 pub type FNLiveReloadCB = fn (info &LiveReloadInfo)
 
+[minify]
 pub struct LiveReloadInfo {
 pub:
 	vexe             string  // full path to the v compiler

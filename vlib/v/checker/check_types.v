@@ -19,6 +19,10 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		if expected == ast.voidptr_type {
 			return true
 		}
+		if expected == ast.bool_type && (got.is_any_kind_of_pointer() || got.is_int()) {
+			return true
+		}
+
 		if expected.is_any_kind_of_pointer() { //&& !got.is_any_kind_of_pointer() {
 			// Allow `int` as `&i8` etc in C code.
 			deref := expected.deref()
@@ -85,12 +89,15 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	if expected == ast.charptr_type && got == ast.char_type.ref() {
 		return true
 	}
-	if expected.has_flag(.optional) {
+	if expected.has_flag(.optional) || expected.has_flag(.result) {
 		sym := c.table.sym(got)
-		if sym.idx == ast.error_type_idx || got in [ast.none_type, ast.error_type] {
+		if ((sym.idx == ast.error_type_idx || got in [ast.none_type, ast.error_type])
+			&& expected.has_flag(.optional))
+			|| ((sym.idx == ast.error_type_idx || got == ast.error_type)
+			&& expected.has_flag(.result)) {
 			// IErorr
 			return true
-		} else if !c.check_basic(got, expected.clear_flag(.optional)) {
+		} else if !c.check_basic(got, expected.clear_flag(.optional).clear_flag(.result)) {
 			return false
 		}
 	}
@@ -204,7 +211,9 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 		}
 		return
 	}
-	return error('cannot use `$got_typ_str` as `$expected_typ_str`')
+	if got != ast.void_type {
+		return error('cannot use `$got_typ_str` as `$expected_typ_str`')
+	}
 }
 
 // helper method to check if the type is of the same module.
@@ -242,6 +251,20 @@ pub fn (mut c Checker) check_basic(got ast.Type, expected ast.Type) bool {
 		return true
 	}
 	got_sym, exp_sym := c.table.sym(got), c.table.sym(expected)
+	// multi return
+	if exp_sym.kind == .multi_return && got_sym.kind == .multi_return {
+		exp_types := exp_sym.mr_info().types
+		got_types := got_sym.mr_info().types.map(ast.mktyp(it))
+		if exp_types.len != got_types.len {
+			return false
+		}
+		for i in 0 .. exp_types.len {
+			if !c.check_types(got_types[i], exp_types[i]) {
+				return false
+			}
+		}
+		return true
+	}
 	// array/map as argument
 	if got_sym.kind in [.array, .map, .array_fixed] && exp_sym.kind == got_sym.kind {
 		if c.table.type_to_str(got) == c.table.type_to_str(expected).trim('&') {
@@ -429,13 +452,13 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type ast.Type, right
 
 pub fn (mut c Checker) promote(left_type ast.Type, right_type ast.Type) ast.Type {
 	if left_type.is_any_kind_of_pointer() {
-		if right_type.is_int() {
+		if right_type.is_int() || c.pref.translated {
 			return left_type
 		} else {
 			return ast.void_type
 		}
 	} else if right_type.is_any_kind_of_pointer() {
-		if left_type.is_int() {
+		if left_type.is_int() || c.pref.translated {
 			return right_type
 		} else {
 			return ast.void_type
@@ -489,6 +512,8 @@ fn (c &Checker) promote_num(left_type ast.Type, right_type ast.Type) ast.Type {
 		return if idx_lo == ast.i64_type_idx { type_lo } else { type_hi }
 	} else if idx_hi - idx_lo < (ast.byte_type_idx - ast.i8_type_idx) {
 		return type_lo // conversion unsigned -> signed if signed type is larger
+	} else if c.pref.translated {
+		return type_hi
 	} else {
 		return ast.void_type // conversion signed -> unsigned not allowed
 	}
@@ -602,7 +627,9 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 							param_elem_info = param_elem_sym.info as ast.Array
 							param_elem_sym = c.table.sym(param_elem_info.elem_type)
 						} else {
-							to_set = arg_elem_info.elem_type
+							if param_elem_sym.name == gt_name {
+								typ = arg_elem_info.elem_type
+							}
 							break
 						}
 					}
@@ -619,7 +646,9 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 							param_elem_info = param_elem_sym.info as ast.ArrayFixed
 							param_elem_sym = c.table.sym(param_elem_info.elem_type)
 						} else {
-							to_set = arg_elem_info.elem_type
+							if param_elem_sym.name == gt_name {
+								typ = arg_elem_info.elem_type
+							}
 							break
 						}
 					}
@@ -633,6 +662,21 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 					if param_map_info.value_type.has_flag(.generic)
 						&& c.table.sym(param_map_info.value_type).name == gt_name {
 						typ = arg_map_info.value_type
+					}
+				} else if arg_sym.kind == .function && param_type_sym.kind == .function {
+					arg_type_func := (arg_sym.info as ast.FnType).func
+					param_type_func := (param_type_sym.info as ast.FnType).func
+					if param_type_func.params.len == arg_type_func.params.len {
+						for n, fn_param in param_type_func.params {
+							if fn_param.typ.has_flag(.generic)
+								&& c.table.sym(fn_param.typ).name == gt_name {
+								typ = arg_type_func.params[n].typ
+							}
+						}
+						if param_type_func.return_type.has_flag(.generic)
+							&& c.table.sym(param_type_func.return_type).name == gt_name {
+							typ = arg_type_func.return_type
+						}
 					}
 				} else if arg_sym.kind in [.struct_, .interface_, .sum_type] {
 					mut generic_types := []ast.Type{}

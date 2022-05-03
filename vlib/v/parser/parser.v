@@ -14,6 +14,7 @@ import v.errors
 import os
 import hash.fnv1a
 
+[minify]
 pub struct Parser {
 	pref &pref.Preferences
 mut:
@@ -479,6 +480,27 @@ pub fn (p &Parser) peek_token_after_var_list() token.Token {
 	return tok
 }
 
+fn (p &Parser) is_array_type() bool {
+	mut i := 1
+	mut tok := p.tok
+	line_nr := p.tok.line_nr
+
+	for {
+		tok = p.peek_token(i)
+		if tok.line_nr != line_nr {
+			return false
+		}
+		if tok.kind in [.name, .amp] {
+			return true
+		}
+		i++
+		if tok.kind == .lsbr || tok.kind != .rsbr {
+			continue
+		}
+	}
+	return false
+}
+
 pub fn (mut p Parser) open_scope() {
 	p.scope = &ast.Scope{
 		parent: p.scope
@@ -791,7 +813,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				spos := p.tok.pos()
 				name := p.check_name()
 				if name in p.label_names {
-					p.error_with_pos('duplicate label `$name`', spos)
+					return p.error_with_pos('duplicate label `$name`', spos)
 				}
 				p.label_names << name
 				p.next()
@@ -812,7 +834,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 							return stmt
 						}
 						else {
-							p.error_with_pos('unknown kind of For statement', for_pos)
+							return p.error_with_pos('unknown kind of For statement', for_pos)
 						}
 					}
 				}
@@ -2327,6 +2349,18 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				p.error_with_pos('unexpected $p.prev_tok', p.prev_tok.pos())
 			}
 			node = p.call_expr(language, mod)
+			if p.tok.kind == .lpar && p.prev_tok.line_nr == p.tok.line_nr {
+				p.next()
+				pos := p.tok.pos()
+				args := p.call_args()
+				p.check(.rpar)
+				node = ast.CallExpr{
+					left: node
+					args: args
+					pos: pos
+					scope: p.scope
+				}
+			}
 		}
 	} else if (p.peek_tok.kind == .lcbr || (p.peek_tok.kind == .lt && lit0_is_capital))
 		&& (!p.inside_match || (p.inside_select && prev_tok_kind == .arrow && lit0_is_capital))
@@ -2466,7 +2500,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 			// `a[start..end] ?`
 			if p.tok.kind == .question {
 				or_pos_high = p.tok.pos()
-				or_kind_high = .propagate
+				or_kind_high = .propagate_option
 				p.next()
 			}
 		}
@@ -2540,7 +2574,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 			// `a[start..end] ?`
 			if p.tok.kind == .question {
 				or_pos_low = p.tok.pos()
-				or_kind_low = .propagate
+				or_kind_low = .propagate_option
 				p.next()
 			}
 		}
@@ -2597,7 +2631,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 		// `a[i] ?`
 		if p.tok.kind == .question {
 			or_pos = p.tok.pos()
-			or_kind = .propagate
+			or_kind = .propagate_option
 			p.next()
 		}
 	}
@@ -2699,15 +2733,15 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			p.inside_or_expr = was_inside_or_expr
 		}
 		// `foo()?`
-		if p.tok.kind == .question {
+		if p.tok.kind in [.question, .not] {
+			is_not := p.tok.kind == .not
 			p.next()
 			if p.inside_defer {
 				p.error_with_pos('error propagation not allowed inside `defer` blocks',
 					p.prev_tok.pos())
 			}
-			or_kind = .propagate
+			or_kind = if is_not { .propagate_result } else { .propagate_option }
 		}
-		//
 		end_pos := p.prev_tok.pos()
 		pos := name_pos.extend(end_pos)
 		comments := p.eat_comments(same_line: true)
@@ -3468,6 +3502,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	mut vals := []string{}
 	// mut default_exprs := []ast.Expr{}
 	mut fields := []ast.EnumField{}
+	mut uses_exprs := false
 	for p.tok.kind != .eof && p.tok.kind != .rcbr {
 		pos := p.tok.pos()
 		val := p.check_name()
@@ -3479,6 +3514,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			p.next()
 			expr = p.expr(0)
 			has_expr = true
+			uses_exprs = true
 		}
 		fields << ast.EnumField{
 			name: val
@@ -3526,6 +3562,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			vals: vals
 			is_flag: is_flag
 			is_multi_allowed: is_multi_allowed
+			uses_exprs: uses_exprs
 		}
 		is_pub: is_pub
 	})

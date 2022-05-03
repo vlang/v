@@ -1183,7 +1183,7 @@ fn (mut g JsGen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 			if expr is ast.CTempVar {
 				if expr.orig is ast.CallExpr {
 					should_clone = false
-					if expr.orig.or_block.kind == .propagate {
+					if expr.orig.or_block.kind == .propagate_option {
 						should_clone = true
 					}
 					if expr.orig.is_method && expr.orig.args.len == 0
@@ -2426,8 +2426,8 @@ fn (mut g JsGen) match_expr(node ast.MatchExpr) {
 		g.inside_ternary = true
 	}
 
-	if node.cond in [ast.Ident, ast.SelectorExpr, ast.IntegerLiteral, ast.StringLiteral,
-		ast.FloatLiteral, ast.CallExpr, ast.EnumVal] {
+	if node.cond in [ast.Ident, ast.SelectorExpr, ast.IntegerLiteral, ast.StringLiteral, ast.FloatLiteral,
+		ast.CallExpr, ast.EnumVal] {
 		cond_var = CondExpr{node.cond}
 	} else {
 		s := g.new_tmp_var()
@@ -3376,11 +3376,11 @@ fn (mut g JsGen) gen_string_literal(it ast.StringLiteral) {
 		g.writeln('return s; })()')
 	} else {
 		g.write('"')
-		for char in text {
-			if char == `\n` {
+		for ch in text {
+			if ch == `\n` {
 				g.write('\\n')
 			} else {
-				g.write('$char.ascii_str()')
+				g.write('$ch.ascii_str()')
 			}
 		}
 		g.write('"')

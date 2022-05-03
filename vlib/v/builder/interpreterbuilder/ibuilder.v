@@ -19,6 +19,6 @@ pub fn interpret_v(mut b builder.Builder) {
 
 	util.timing_start('INTERPRET')
 	mut e := eval.new_eval(b.table, b.pref)
-	e.eval(b.parsed_files)
+	e.eval(mut b.parsed_files)
 	util.timing_measure('INTERPRET')
 }

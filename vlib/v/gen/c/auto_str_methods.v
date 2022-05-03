@@ -169,13 +169,18 @@ fn (mut g Gen) final_gen_str(typ StrType) {
 	}
 	g.generated_str_fns << typ
 	sym := g.table.sym(typ.typ)
-	if sym.has_method_with_generic_parent('str') && !typ.typ.has_flag(.optional) {
+	if sym.has_method_with_generic_parent('str') && !(typ.typ.has_flag(.optional)
+		|| typ.typ.has_flag(.result)) {
 		return
 	}
 	styp := typ.styp
 	str_fn_name := styp_to_str_fn_name(styp)
 	if typ.typ.has_flag(.optional) {
 		g.gen_str_for_option(typ.typ, styp, str_fn_name)
+		return
+	}
+	if typ.typ.has_flag(.result) {
+		g.gen_str_for_result(typ.typ, styp, str_fn_name)
 		return
 	}
 	match sym.info {
@@ -255,6 +260,39 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string)
 	g.auto_str_funcs.writeln('\t}')
 
 	g.auto_str_funcs.writeln('\treturn ${str_intp_sub('Option(%%)', 'res')};')
+	g.auto_str_funcs.writeln('}')
+}
+
+fn (mut g Gen) gen_str_for_result(typ ast.Type, styp string, str_fn_name string) {
+	$if trace_autostr ? {
+		eprintln('> gen_str_for_result: $typ.debug() | $styp | $str_fn_name')
+	}
+	parent_type := typ.clear_flag(.result)
+	sym := g.table.sym(parent_type)
+	sym_has_str_method, _, _ := sym.str_method_info()
+	parent_str_fn_name := g.get_str_fn(parent_type)
+
+	g.definitions.writeln('string ${str_fn_name}($styp it); // auto')
+	g.auto_str_funcs.writeln('string ${str_fn_name}($styp it) { return indent_${str_fn_name}(it, 0); }')
+	g.definitions.writeln('string indent_${str_fn_name}($styp it, int indent_count); // auto')
+	g.auto_str_funcs.writeln('string indent_${str_fn_name}($styp it, int indent_count) {')
+	g.auto_str_funcs.writeln('\tstring res;')
+	g.auto_str_funcs.writeln('\tif (!it.is_error) {')
+	if sym.kind == .string {
+		tmp_res := '${parent_str_fn_name}(*($sym.cname*)it.data)'
+		g.auto_str_funcs.writeln('\t\tres = ${str_intp_sq(tmp_res)};')
+	} else if should_use_indent_func(sym.kind) && !sym_has_str_method {
+		g.auto_str_funcs.writeln('\t\tres = indent_${parent_str_fn_name}(*($sym.cname*)it.data, indent_count);')
+	} else {
+		g.auto_str_funcs.writeln('\t\tres = ${parent_str_fn_name}(*($sym.cname*)it.data);')
+	}
+	g.auto_str_funcs.writeln('\t} else {')
+
+	tmp_str := str_intp_sub('error: %%', 'IError_str(it.err)')
+	g.auto_str_funcs.writeln('\t\tres = $tmp_str;')
+	g.auto_str_funcs.writeln('\t}')
+
+	g.auto_str_funcs.writeln('\treturn ${str_intp_sub('result(%%)', 'res')};')
 	g.auto_str_funcs.writeln('}')
 }
 
@@ -384,18 +422,18 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, str_fn_nam
 	clean_interface_v_type_name = util.strip_main_name(clean_interface_v_type_name)
 	fn_builder.writeln('static string indent_${str_fn_name}($styp x, int indent_count) { /* gen_str_for_interface */')
 	for typ in info.types {
-		subtype := g.table.sym(typ)
+		sub_sym := g.table.sym(ast.mktyp(typ))
 		mut func_name := g.get_str_fn(typ)
-		sym_has_str_method, str_method_expects_ptr, _ := subtype.str_method_info()
-		if should_use_indent_func(subtype.kind) && !sym_has_str_method {
+		sym_has_str_method, str_method_expects_ptr, _ := sub_sym.str_method_info()
+		if should_use_indent_func(sub_sym.kind) && !sym_has_str_method {
 			func_name = 'indent_$func_name'
 		}
 
 		// str_intp
 		deref := if sym_has_str_method && str_method_expects_ptr { ' ' } else { '*' }
 		if typ == ast.string_type {
-			mut val := '${func_name}(${deref}($subtype.cname*)x._$subtype.cname'
-			if should_use_indent_func(subtype.kind) && !sym_has_str_method {
+			mut val := '${func_name}(${deref}($sub_sym.cname*)x._$sub_sym.cname'
+			if should_use_indent_func(sub_sym.kind) && !sym_has_str_method {
 				val += ', indent_count'
 			}
 			val += ')'
@@ -403,11 +441,11 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, str_fn_nam
 				{_SLIT("${clean_interface_v_type_name}(\'"), $c.si_s_code, {.d_s = $val}},
 				{_SLIT("\')"), 0, {.d_c = 0 }}
 			}))'
-			fn_builder.write_string('\tif (x._typ == _${styp}_${subtype.cname}_index)')
+			fn_builder.write_string('\tif (x._typ == _${styp}_${sub_sym.cname}_index)')
 			fn_builder.write_string(' return $res;')
 		} else {
-			mut val := '${func_name}(${deref}($subtype.cname*)x._$subtype.cname'
-			if should_use_indent_func(subtype.kind) && !sym_has_str_method {
+			mut val := '${func_name}(${deref}($sub_sym.cname*)x._$sub_sym.cname'
+			if should_use_indent_func(sub_sym.kind) && !sym_has_str_method {
 				val += ', indent_count'
 			}
 			val += ')'
@@ -415,7 +453,7 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, str_fn_nam
 				{_SLIT("${clean_interface_v_type_name}("), $c.si_s_code, {.d_s = $val}},
 				{_SLIT(")"), 0, {.d_c = 0 }}
 			}))'
-			fn_builder.write_string('\tif (x._typ == _${styp}_${subtype.cname}_index)')
+			fn_builder.write_string('\tif (x._typ == _${styp}_${sub_sym.cname}_index)')
 			fn_builder.write_string(' return $res;\n')
 		}
 	}
@@ -506,6 +544,8 @@ fn (mut g Gen) fn_decl_str(info ast.FnType) string {
 	fn_str += ')'
 	if info.func.return_type == ast.ovoid_type {
 		fn_str += ' ?'
+	} else if info.func.return_type == ast.rvoid_type {
+		fn_str += ' !'
 	} else if info.func.return_type != ast.void_type {
 		x := util.strip_main_name(g.table.get_type_name(g.unwrap_generic(info.func.return_type)))
 		if info.func.return_type.has_flag(.optional) {

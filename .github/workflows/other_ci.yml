@@ -210,7 +210,7 @@ jobs:
 
       ## gitly
       - name: Install markdown
-        run: ./v install markdown
+        run: git clone https://github.com/vlang/markdown ~/.vmodules/markdown
       - name: Build Gitly
         run: |
           git clone --depth 1 https://github.com/vlang/gitly
@@ -221,6 +221,15 @@ jobs:
           ../v -o x tests/first_run.v
           ./x
           cd ..
+
+      ## libsodium
+      - name: Install libsodium-dev package
+        run: sudo apt-get install --quiet -y libsodium-dev
+      - name: Install the libsodium wrapper
+        run: git clone https://github.com/vlang/libsodium ~/.vmodules/libsodium
+      - name: Test libsodium
+        run: VJOBS=1 ./v -stats test ~/.vmodules/libsodium
+
 
       ## vex
       - name: Install Vex dependencies
@@ -233,18 +242,6 @@ jobs:
         run: ./v -gc boehm -skip-unused ~/.vmodules/nedpals/vex/examples/simple_example.v
       - name: Run Vex Tests
         run: ./v test ~/.vmodules/nedpals/vex
-
-      ## vpm modules
-      - name: Install UI through VPM
-        run: ./v install ui
-
-      ## libsodium
-      - name: Install libsodium-dev package
-        run: sudo apt-get install --quiet -y libsodium-dev
-      - name: Installl the libsodium wrapper through VPM
-        run: ./v install libsodium
-      - name: Test libsodium
-        run: VJOBS=1 ./v -stats test ~/.vmodules/libsodium
 
       ## Go2V
       - name: Clone & Build go2v
@@ -259,3 +256,7 @@ jobs:
         run: git clone --depth=1 https://github.com/vlang/pdf ~/.vmodules/pdf/
       - name: PDF examples should compile
         run: ./v should-compile-all ~/.vmodules/pdf/examples
+
+      ## vpm modules
+      - name: Install UI through VPM
+        run: ./v install ui

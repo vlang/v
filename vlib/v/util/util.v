@@ -36,7 +36,7 @@ const (
 	]
 )
 
-const builtin_module_names = ['builtin', 'strconv', 'strings', 'dlmalloc']
+const builtin_module_names = ['builtin', 'strconv', 'strings', 'dlmalloc', 'math']
 
 pub fn module_is_builtin(mod string) bool {
 	// NOTE: using util.builtin_module_parts here breaks -usecache on macos

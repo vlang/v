@@ -1,5 +1,7 @@
 module builtin
 
+// struct C.FILE {}
+
 // <string.h>
 fn C.memcpy(dest voidptr, const_src voidptr, n usize) voidptr
 
@@ -10,11 +12,13 @@ fn C.memmove(dest voidptr, const_src voidptr, n usize) voidptr
 fn C.memset(str voidptr, c int, n usize) voidptr
 
 [trusted]
-fn C.calloc(int, int) &byte
+fn C.calloc(int, int) &u8
 
-fn C.malloc(int) &byte
+fn C.atoi(&char) int
 
-fn C.realloc(a &byte, b int) &byte
+fn C.malloc(int) &u8
+
+fn C.realloc(a &u8, b int) &u8
 
 fn C.free(ptr voidptr)
 
@@ -35,13 +39,6 @@ fn C.isdigit(c int) bool
 // stdio.h
 fn C.popen(c &char, t &char) voidptr
 
-// <execinfo.h>
-fn C.backtrace(a &voidptr, size int) int
-
-fn C.backtrace_symbols(a &voidptr, size int) &&char
-
-fn C.backtrace_symbols_fd(a &voidptr, size int, fd int)
-
 // <libproc.h>
 pub fn proc_pidpath(int, voidptr, int) int
 
@@ -53,6 +50,7 @@ fn C.chmod(&char, u32) int
 fn C.printf(&char, ...voidptr) int
 
 fn C.puts(&char) int
+fn C.abs(f64) f64
 
 fn C.fputs(str &char, stream &C.FILE) int
 
@@ -118,6 +116,8 @@ fn C.rmdir(path &char) int
 fn C.chdir(path &char) int
 
 fn C.rewind(stream &C.FILE) int
+
+fn C.ftell(&C.FILE) int
 
 fn C.stat(&char, voidptr) int
 
@@ -481,3 +481,6 @@ fn C.glTexImage2D()
 
 // used by ios for println
 fn C.WrappedNSLog(str &u8)
+
+// absolute value
+fn C.abs(number int) int

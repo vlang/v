@@ -1557,3 +1557,15 @@ fn test_generic_mutable_arrays() {
 	mut arr := [1, 2, 3]
 	assert example(mut arr) == [1, 2, 3]
 }
+
+struct Ok {}
+
+fn test_inline_array_element_access() {
+	println([Ok{}][0])
+	a1 := [Ok{}][0]
+	assert a1 == Ok{}
+
+	println([1][0])
+	a2 := [1][0]
+	assert a2 == 1
+}

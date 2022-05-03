@@ -162,6 +162,7 @@ pub fn rmdir_all(path string) ? {
 }
 
 // is_dir_empty will return a `bool` whether or not `path` is empty.
+// Note that it will return `true` if `path` does not exist.
 [manualfree]
 pub fn is_dir_empty(path string) bool {
 	items := ls(path) or { return true }
@@ -367,7 +368,8 @@ pub fn expand_tilde_to_home(path string) string {
 	return path
 }
 
-// write_file writes `text` data to a file in `path`.
+// write_file writes `text` data to the file in `path`.
+// If `path` exists, the contents of `path` will be overwritten with the contents of `text`.
 pub fn write_file(path string, text string) ? {
 	mut f := create(path) ?
 	unsafe { f.write_full_buffer(text.str, usize(text.len)) ? }

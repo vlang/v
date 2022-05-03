@@ -88,7 +88,7 @@ const (
 		'cflags', 'path', 'arch']
 )
 
-[heap]
+[heap; minify]
 pub struct Preferences {
 pub mut:
 	os          OS // the OS to compile for
@@ -99,25 +99,35 @@ pub mut:
 	// verbosity           VerboseLevel
 	is_verbose bool
 	// nofmt            bool   // disable vfmt
-	is_test           bool     // `v test string_test.v`
-	is_script         bool     // single file mode (`v program.v`), main function can be skipped
-	is_vsh            bool     // v script (`file.vsh`) file, the `os` module should be made global
-	is_livemain       bool     // main program that contains live/hot code
-	is_liveshared     bool     // a shared library, that will be used in a -live main program
-	is_shared         bool     // an ordinary shared library, -shared, no matter if it is live or not
-	is_o              bool     // building an .o file
-	is_prof           bool     // benchmark every function
+	is_glibc          bool // if GLIBC will be linked
+	is_musl           bool // if MUSL will be linked
+	is_test           bool // `v test string_test.v`
+	is_script         bool // single file mode (`v program.v`), main function can be skipped
+	is_vsh            bool // v script (`file.vsh`) file, the `os` module should be made global
+	is_livemain       bool // main program that contains live/hot code
+	is_liveshared     bool // a shared library, that will be used in a -live main program
+	is_shared         bool // an ordinary shared library, -shared, no matter if it is live or not
+	is_o              bool // building an .o file
+	is_prof           bool // benchmark every function
+	is_prod           bool // use "-O2"
+	is_repl           bool
+	is_run            bool
+	is_debug          bool // turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
+	is_vlines         bool // turned on by -g (it slows down .tmp.c generation slightly).
+	is_stats          bool // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
+	is_fmt            bool
+	is_vet            bool
+	is_vweb           bool // skip _ var warning in templates
+	is_ios_simulator  bool
+	is_apk            bool     // build as Android .apk format
+	is_help           bool     // -h, -help or --help was passed
+	is_cstrict        bool     // turn on more C warnings; slightly slower
 	test_runner       string   // can be 'simple' (fastest, but much less detailed), 'tap', 'normal'
 	profile_file      string   // the profile results will be stored inside profile_file
 	profile_no_inline bool     // when true, [inline] functions would not be profiled
 	profile_fns       []string // when set, profiling will be off by default, but inside these functions (and what they call) it will be on.
 	translated        bool     // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
-	is_prod           bool     // use "-O2"
 	obfuscate         bool     // `v -obf program.v`, renames functions to "f_XXX"
-	is_repl           bool
-	is_run            bool
-	is_debug          bool // turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
-	is_vlines         bool // turned on by -g (it slows down .tmp.c generation slightly).
 	// Note: passing -cg instead of -g will set is_vlines to false and is_debug to true, thus making v generate cleaner C files,
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
 	sanitize               bool   // use Clang's new "-fsanitize" option
@@ -131,7 +141,6 @@ pub mut:
 	dump_c_flags           string // `-dump-c-flags file.txt` - let V store all C flags, passed to the backend C compiler in `file.txt`, one C flag/value per line.
 	use_cache              bool   // when set, use cached modules to speed up subsequent compilations, at the cost of slower initial ones (while the modules are cached)
 	retry_compilation      bool = true // retry the compilation with another C compiler, if tcc fails.
-	is_stats               bool   // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
 	// TODO Convert this into a []string
 	cflags string // Additional options which will be passed to the C compiler.
 	// For example, passing -cflags -Os will cause the C compiler to optimize the generated binaries for size.
@@ -146,10 +155,8 @@ pub mut:
 	// Disabling `free()` insertion results in better performance in some applications (e.g. compilers)
 	compress bool // when set, use `upx` to compress the generated executable
 	// generating_vh    bool
-	no_builtin       bool // Skip adding the `builtin` module implicitly. The generated C code may not compile.
-	enable_globals   bool // allow __global for low level code
-	is_fmt           bool
-	is_vet           bool
+	no_builtin       bool   // Skip adding the `builtin` module implicitly. The generated C code may not compile.
+	enable_globals   bool   // allow __global for low level code
 	is_bare          bool   // set by -freestanding
 	bare_builtin_dir string // Set by -bare-builtin-dir xyz/ . The xyz/ module should contain implementations of malloc, memset, etc, that are used by the rest of V's `builtin` module. That option is only useful with -freestanding (i.e. when is_bare is true).
 	no_preludes      bool   // Prevents V from generating preludes in resulting .c files
@@ -162,51 +169,69 @@ pub mut:
 	out_name_c       string // full os.real_path to the generated .tmp.c file; set by builder.
 	out_name         string
 	path             string // Path to file/folder to compile
-	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another ? { will NOT get here }`
+	//
 	run_only []string // VTEST_ONLY_FN and -run-only accept comma separated glob patterns.
 	// Only test_ functions that match these patterns will be run. -run-only is valid only for _test.v files.
-	compile_defines     []string    // just ['vfmt']
-	compile_defines_all []string    // contains both: ['vfmt','another']
-	run_args            []string    // `v run x.v 1 2 3` => `1 2 3`
-	printfn_list        []string    // a list of generated function names, whose source should be shown, for debugging
-	print_v_files       bool        // when true, just print the list of all parsed .v files then stop.
-	skip_running        bool        // when true, do no try to run the produced file (set by b.cc(), when -o x.c or -o x.js)
-	skip_warnings       bool        // like C's "-w", forces warnings to be ignored.
-	warn_impure_v       bool        // -Wimpure-v, force a warning for JS.fn()/C.fn(), outside of .js.v/.c.v files. TODO: turn to an error by default
-	warns_are_errors    bool        // -W, like C's "-Werror", treat *every* warning is an error
-	fatal_errors        bool        // unconditionally exit after the first error with exit(1)
-	reuse_tmpc          bool        // do not use random names for .tmp.c and .tmp.c.rsp files, and do not remove them
-	no_rsp              bool        // when true, pass C backend options directly on the CLI (do not use `.rsp` files for them, some older C compilers do not support them)
-	no_std              bool        // when true, do not pass -std=gnu99(linux)/-std=c99 to the C backend
+	//
+	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another ? { will NOT get here }`
+	compile_defines     []string // just ['vfmt']
+	compile_defines_all []string // contains both: ['vfmt','another']
+	//
+	run_args         []string // `v run x.v 1 2 3` => `1 2 3`
+	printfn_list     []string // a list of generated function names, whose source should be shown, for debugging
+	print_v_files    bool     // when true, just print the list of all parsed .v files then stop.
+	skip_running     bool     // when true, do no try to run the produced file (set by b.cc(), when -o x.c or -o x.js)
+	skip_warnings    bool     // like C's "-w", forces warnings to be ignored.
+	warn_impure_v    bool     // -Wimpure-v, force a warning for JS.fn()/C.fn(), outside of .js.v/.c.v files. TODO: turn to an error by default
+	warns_are_errors bool     // -W, like C's "-Werror", treat *every* warning is an error
+	fatal_errors     bool     // unconditionally exit after the first error with exit(1)
+	reuse_tmpc       bool     // do not use random names for .tmp.c and .tmp.c.rsp files, and do not remove them
+	no_rsp           bool     // when true, pass C backend options directly on the CLI (do not use `.rsp` files for them, some older C compilers do not support them)
+	no_std           bool     // when true, do not pass -std=gnu99(linux)/-std=c99 to the C backend
+	//
+	no_parallel       bool // do not use threads when compiling; slower, but more portable and sometimes less buggy
+	only_check_syntax bool // when true, just parse the files, then stop, before running checker
+	check_only        bool // same as only_check_syntax, but also runs the checker
+	experimental      bool // enable experimental features
+	skip_unused       bool // skip generating C code for functions, that are not used
+	show_timings      bool // show how much time each compiler stage took
+	//
 	use_color           ColorOutput // whether the warnings/errors should use ANSI color escapes.
-	no_parallel         bool
-	is_vweb             bool // skip _ var warning in templates
-	only_check_syntax   bool // when true, just parse the files, then stop, before running checker
-	check_only          bool // same as only_check_syntax, but also runs the checker
-	experimental        bool // enable experimental features
-	skip_unused         bool // skip generating C code for functions, that are not used
-	show_timings        bool // show how much time each compiler stage took
-	is_ios_simulator    bool
-	is_apk              bool     // build as Android .apk format
-	cleanup_files       []string // list of temporary *.tmp.c and *.tmp.c.rsp files. Cleaned up on successfull builds.
-	build_options       []string // list of options, that should be passed down to `build-module`, if needed for -usecache
+	cleanup_files       []string    // list of temporary *.tmp.c and *.tmp.c.rsp files. Cleaned up on successfull builds.
+	build_options       []string    // list of options, that should be passed down to `build-module`, if needed for -usecache
 	cache_manager       vcache.CacheManager
-	is_help             bool // -h, -help or --help was passed
 	gc_mode             GarbageCollectionMode = .no_gc // .no_gc, .boehm, .boehm_leak, ...
-	is_cstrict          bool                  // turn on more C warnings; slightly slower
-	assert_failure_mode AssertFailureMode // whether to call abort() or print_backtrace() after an assertion failure
+	assert_failure_mode AssertFailureMode     // whether to call abort() or print_backtrace() after an assertion failure
 	message_limit       int = 100 // the maximum amount of warnings/errors/notices that will be accumulated
-	nofloat             bool              // for low level code, like kernels: replaces f32 with u32 and f64 with u64
+	nofloat             bool // for low level code, like kernels: replaces f32 with u32 and f64 with u64
 	// checker settings:
 	checker_match_exhaustive_cutoff_limit int = 12
+	thread_stack_size                     int = 8388608 // Change with `-thread-stack-size 4194304`. Note: on macos it was 524288, which is too small for more complex programs with many nested callexprs.
 }
 
 pub fn parse_args(known_external_commands []string, args []string) (&Preferences, string) {
 	return parse_args_and_show_errors(known_external_commands, args, false)
 }
 
+[if linux]
+fn detect_musl(mut res Preferences) {
+	res.is_glibc = true
+	res.is_musl = false
+	if os.exists('/etc/alpine-release') {
+		res.is_musl = true
+		res.is_glibc = false
+		return
+	}
+	my_libs := os.walk_ext('/proc/self/map_files/', '').map(os.real_path(it))
+	if my_libs.any(it.contains('musl')) {
+		res.is_musl = true
+		res.is_glibc = false
+	}
+}
+
 pub fn parse_args_and_show_errors(known_external_commands []string, args []string, show_output bool) (&Preferences, string) {
 	mut res := &Preferences{}
+	detect_musl(mut res)
 	$if x64 {
 		res.m64 = true // follow V model by default
 	}
@@ -411,6 +436,16 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-no-retry-compilation' {
 				res.retry_compilation = false
 			}
+			'-musl' {
+				res.is_musl = true
+				res.is_glibc = false
+				res.build_options << arg
+			}
+			'-glibc' {
+				res.is_musl = false
+				res.is_glibc = true
+				res.build_options << arg
+			}
 			'-no-builtin' {
 				res.no_builtin = true
 				res.build_options << arg
@@ -571,9 +606,17 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.message_limit = cmdline.option(current_args, arg, '5').int()
 				i++
 			}
+			'-thread-stack-size' {
+				res.thread_stack_size = cmdline.option(current_args, arg, res.thread_stack_size.str()).int()
+				i++
+			}
 			'-cc' {
 				res.ccompiler = cmdline.option(current_args, '-cc', 'cc')
 				res.build_options << '$arg "$res.ccompiler"'
+				if res.ccompiler == 'musl-gcc' {
+					res.is_musl = true
+					res.is_glibc = false
+				}
 				i++
 			}
 			'-checker-match-exhaustive-cutoff-limit' {

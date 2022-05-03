@@ -441,6 +441,54 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 			g.expr(node.right)
 		}
 		g.write(')')
+	} else if right.unaliased_sym.kind == .array_fixed {
+		if left.sym.kind in [.sum_type, .interface_] {
+			if node.right is ast.ArrayInit {
+				if node.right.exprs.len > 0 {
+					mut infix_exprs := []ast.InfixExpr{}
+					for i in 0 .. node.right.exprs.len {
+						infix_exprs << ast.InfixExpr{
+							op: .key_is
+							left: node.left
+							left_type: node.left_type
+							right: node.right.exprs[i]
+							right_type: node.right.expr_types[i]
+						}
+					}
+					g.write('(')
+					g.infix_expr_in_sumtype_interface_array(infix_exprs)
+					g.write(')')
+					return
+				}
+			}
+		}
+		if node.right is ast.ArrayInit {
+			if node.right.exprs.len > 0 {
+				// `a in [1,2,3]!` optimization => `a == 1 || a == 2 || a == 3`
+				// avoids an allocation
+				g.write('(')
+				g.infix_expr_in_optimization(node.left, node.right)
+				g.write(')')
+				return
+			}
+		}
+		if right.sym.info is ast.Array {
+			elem_type := right.sym.info.elem_type
+			elem_type_ := g.unwrap(elem_type)
+			if elem_type_.sym.kind == .sum_type {
+				if node.left_type in elem_type_.sym.sumtype_info().variants {
+					new_node_left := ast.CastExpr{
+						arg: ast.EmptyExpr{}
+						typ: elem_type
+						expr: node.left
+						expr_type: node.left_type
+					}
+					g.gen_array_contains(node.right_type, node.right, new_node_left)
+					return
+				}
+			}
+		}
+		g.gen_array_contains(node.right_type, node.right, node.left)
 	} else if right.unaliased_sym.kind == .string {
 		g.write('string_contains(')
 		g.expr(node.right)
@@ -495,23 +543,32 @@ fn (mut g Gen) infix_expr_in_optimization(left ast.Expr, right ast.ArrayInit) {
 
 // infix_expr_is_op generates code for `is` and `!is`
 fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
-	sym := g.table.sym(node.left_type)
+	mut left_sym := g.table.sym(node.left_type)
+	is_aggregate := left_sym.kind == .aggregate
+	if is_aggregate {
+		parent_left_type := (left_sym.info as ast.Aggregate).sum_type
+		left_sym = g.table.sym(parent_left_type)
+	}
 	right_sym := g.table.sym(node.right_type)
-	if sym.kind == .interface_ && right_sym.kind == .interface_ {
+	if left_sym.kind == .interface_ && right_sym.kind == .interface_ {
 		g.gen_interface_is_op(node)
 		return
 	}
 
 	cmp_op := if node.op == .key_is { '==' } else { '!=' }
 	g.write('(')
-	g.expr(node.left)
+	if is_aggregate {
+		g.write('$node.left')
+	} else {
+		g.expr(node.left)
+	}
 	g.write(')')
 	if node.left_type.is_ptr() {
 		g.write('->')
 	} else {
 		g.write('.')
 	}
-	if sym.kind == .interface_ {
+	if left_sym.kind == .interface_ {
 		g.write('_typ $cmp_op ')
 		// `_Animal_Dog_index`
 		sub_type := match node.right {
@@ -526,9 +583,9 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 			}
 		}
 		sub_sym := g.table.sym(sub_type)
-		g.write('_${sym.cname}_${sub_sym.cname}_index')
+		g.write('_${left_sym.cname}_${sub_sym.cname}_index')
 		return
-	} else if sym.kind == .sum_type {
+	} else if left_sym.kind == .sum_type {
 		g.write('_typ $cmp_op ')
 	}
 	g.expr(node.right)
@@ -651,7 +708,8 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 				g.write(', _MOV(($elem_type_str[]){ ')
 			}
 			// if g.autofree
-			needs_clone := array_info.elem_type.idx() == ast.string_type_idx && !g.is_builtin_mod
+			needs_clone := !g.is_builtin_mod && array_info.elem_type.idx() == ast.string_type_idx
+				&& array_info.elem_type.nr_muls() == 0
 			if needs_clone {
 				g.write('string_clone(')
 			}

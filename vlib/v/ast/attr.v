@@ -14,6 +14,7 @@ pub enum AttrKind {
 }
 
 // e.g. `[unsafe]`
+[minify]
 pub struct Attr {
 pub:
 	name    string // [name]

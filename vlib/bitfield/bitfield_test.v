@@ -161,7 +161,7 @@ fn test_bf_from_str() {
 	output := bitfield.from_str(input)
 	mut result := 1
 	for i in 0 .. len {
-		if input[i] != u8(output.get_bit(i)) + 48 {
+		if input[i] != output.get_bit(i) + 48 {
 			result = 0
 		}
 	}

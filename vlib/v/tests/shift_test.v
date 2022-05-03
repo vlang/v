@@ -58,13 +58,13 @@ fn test_shift_operators() {
 	assert e == a
 	mut e3 := u64(1)
 	e3 <<= u32(i)
-	assert e3 == b
+	assert e3 == u64(b)
 	e3 >>= u32(i)
 	assert e == a
 	e3 <<= u64(i)
-	assert e3 == b
+	assert e3 == u64(b)
 	e3 >>= u64(i)
-	assert e3 == a
+	assert e3 == u64(a)
 	// Test shifts with custom int types
 	x := MyInt(2)
 	assert x << 2 == 8

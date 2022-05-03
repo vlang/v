@@ -20,6 +20,9 @@ fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
 					if is_noreturn_callexpr(stmt.expr) {
 						return true
 					}
+					if stmt.expr is ast.MatchExpr {
+						return true
+					}
 					if stmt.expr is ast.CallExpr {
 						if stmt.expr.is_method {
 							left_sym := g.table.sym(stmt.expr.receiver_type)
@@ -74,7 +77,12 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.expr(branch.cond)
 				g.write(' ? ')
 			}
+			prev_expected_cast_type := g.expected_cast_type
+			if node.is_expr && g.table.sym(node.typ).kind == .sum_type {
+				g.expected_cast_type = node.typ
+			}
 			g.stmts(branch.stmts)
+			g.expected_cast_type = prev_expected_cast_type
 		}
 		if node.branches.len == 1 {
 			g.write(': 0')
@@ -143,7 +151,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				} else {
 					mut is_auto_heap := false
 					if branch.stmts.len > 0 {
-						scope := g.file.scope.innermost(ast.Node(branch.stmts[branch.stmts.len - 1]).pos().pos)
+						scope := g.file.scope.innermost(ast.Node(branch.stmts.last()).pos().pos)
 						if v := scope.find_var(branch.cond.vars[0].name) {
 							is_auto_heap = v.is_auto_heap
 						}
@@ -195,11 +203,12 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			}
 		}
 		if needs_tmp_var {
+			prev_expected_cast_type := g.expected_cast_type
 			if node.is_expr && g.table.sym(node.typ).kind == .sum_type {
 				g.expected_cast_type = node.typ
 			}
 			g.stmts_with_tmp_var(branch.stmts, tmp)
-			g.expected_cast_type = 0
+			g.expected_cast_type = prev_expected_cast_type
 		} else {
 			// restore if_expr stmt header pos
 			stmt_pos := g.nth_stmt_pos(0)

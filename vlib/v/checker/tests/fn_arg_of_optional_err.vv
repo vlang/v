@@ -1,0 +1,7 @@
+fn optional_arg(x ?int) {
+	println('int type: $x')
+}
+
+fn main() {
+	optional_arg(1)
+}

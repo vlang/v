@@ -1,0 +1,5 @@
+vlib/v/checker/tests/fn_arg_of_optional_err.vv:1:19: error: optional type argument is not supported currently
+    1 | fn optional_arg(x ?int) {
+      |                   ^
+    2 |     println('int type: $x')
+    3 | }

@@ -5,7 +5,7 @@ module c
 import strings
 import v.ast
 
-fn (mut g Gen) array_init(node ast.ArrayInit) {
+fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 	array_type := g.unwrap(node.typ)
 	mut array_styp := ''
 	elem_type := g.unwrap(node.elem_type)
@@ -22,71 +22,71 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 		array_styp = g.typ(array_type.typ)
 		g.write('HEAP($array_styp, ')
 	}
+	len := node.exprs.len
 	if array_type.unaliased_sym.kind == .array_fixed {
-		if node.has_it {
-			g.inside_lambda = true
-			tmp := g.new_tmp_var()
-			mut s := g.go_before_stmt(0)
-			s_ends_with_ln := s.ends_with('\n')
-			s = s.trim_space()
-			ret_typ := g.typ(node.typ)
-			elem_typ := g.typ(node.elem_type)
-			g.empty_line = true
-			g.write('$ret_typ $tmp =')
-			g.write('{')
-			if node.has_val {
-				for i, expr in node.exprs {
-					if expr.is_auto_deref_var() {
-						g.write('*')
-					}
-					g.write('0')
-					if i != node.exprs.len - 1 {
-						g.write(', ')
-					}
-				}
-			} else if node.has_default {
-				g.write('0')
-				info := array_type.unaliased_sym.info as ast.ArrayFixed
-				for _ in 1 .. info.size {
-					g.write(', ')
-					g.write('0')
-				}
-			} else {
-				g.write('0')
-			}
-			g.write('}')
-			g.writeln(';')
-			g.writeln('{')
-			g.indent++
-			g.writeln('$elem_typ* pelem = ($elem_typ*)$tmp;')
-			g.writeln('int _len = (int)sizeof($tmp) / sizeof($elem_typ);')
-			g.writeln('for(int it=0; it<_len; it++, pelem++) {')
-			g.indent++
-			g.write('*pelem = ')
-			g.expr(node.default_expr)
-			g.writeln(';')
-			g.indent--
-			g.writeln('}')
-			g.indent--
-			g.writeln('}')
-			if s_ends_with_ln {
-				g.writeln(s)
-			} else {
-				g.write(s)
-			}
-			g.write(tmp)
-			g.inside_lambda = false
-			return
+		g.fixed_array_init(node, array_type, var_name)
+	} else if len == 0 {
+		// `[]int{len: 6, cap:10, init:22}`
+		g.array_init_with_fields(node, elem_type, is_amp, shared_styp, var_name)
+	} else {
+		// `[1, 2, 3]`
+		elem_styp := g.typ(elem_type.typ)
+		noscan := g.check_noscan(elem_type.typ)
+		if elem_type.unaliased_sym.kind == .function {
+			g.write('new_array_from_c_array($len, $len, sizeof(voidptr), _MOV((voidptr[$len]){')
+		} else if g.is_empty_struct(elem_type) {
+			g.write('new_array_from_c_array${noscan}($len, $len, sizeof(voidptr), _MOV(($elem_styp[$len]){')
+		} else {
+			g.write('new_array_from_c_array${noscan}($len, $len, sizeof($elem_styp), _MOV(($elem_styp[$len]){')
 		}
-		need_tmp_var := g.inside_call && !g.inside_struct_init
-		mut stmt_str := ''
-		mut tmp_var := ''
-		if need_tmp_var {
-			tmp_var = g.new_tmp_var()
-			stmt_str = g.go_before_stmt(0)
-			ret_typ := g.typ(node.typ)
-			g.empty_line = true
-			g.write('$ret_typ $tmp_var = ')
+		if len > 8 {
+			g.writeln('')
+			g.write('\t\t')
+		}
+		for i, expr in node.exprs {
+			if node.expr_types[i] == ast.string_type && expr !is ast.StringLiteral
+				&& expr !is ast.StringInterLiteral {
+				g.write('string_clone(')
+				g.expr(expr)
+				g.write(')')
+			} else {
+				g.expr_with_cast(expr, node.expr_types[i], node.elem_type)
+			}
+			if i != len - 1 {
+				if i > 0 && i & 7 == 0 { // i > 0 && i % 8 == 0
+					g.writeln(',')
+					g.write('\t\t')
+				} else {
+					g.write(', ')
+				}
+			}
+		}
+		g.write('}))')
+		if g.is_shared {
+			g.write('}, sizeof($shared_styp))')
+		} else if is_amp {
+			g.write(')')
+		}
+	}
+}
+
+fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name string) {
+	if node.has_it {
+		g.inside_lambda = true
+		mut tmp := g.new_tmp_var()
+		mut s := ''
+		if var_name.len != 0 {
+			tmp = var_name
+		} else {
+			s = g.go_before_stmt(0)
+		}
+		s_ends_with_ln := s.ends_with('\n')
+		s = s.trim_space()
+		ret_typ := g.typ(node.typ)
+		elem_typ := g.typ(node.elem_type)
+		g.empty_line = true
+		if var_name.len == 0 {
+			g.write('$ret_typ $tmp =')
 		}
 		g.write('{')
 		if node.has_val {
@@ -94,109 +94,108 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 				if expr.is_auto_deref_var() {
 					g.write('*')
 				}
-				g.expr(expr)
+				g.write('0')
 				if i != node.exprs.len - 1 {
 					g.write(', ')
 				}
 			}
 		} else if node.has_default {
-			g.expr(node.default_expr)
+			g.write('0')
 			info := array_type.unaliased_sym.info as ast.ArrayFixed
 			for _ in 1 .. info.size {
 				g.write(', ')
-				g.expr(node.default_expr)
+				g.write('0')
 			}
 		} else {
 			g.write('0')
 		}
 		g.write('}')
-		if need_tmp_var {
-			g.writeln(';')
-			g.write(stmt_str)
-			g.write(tmp_var)
-		}
-		return
-	}
-	elem_styp := g.typ(elem_type.typ)
-	noscan := g.check_noscan(elem_type.typ)
-	if node.exprs.len == 0 {
-		is_default_array := elem_type.unaliased_sym.kind == .array && node.has_default
-		is_default_map := elem_type.unaliased_sym.kind == .map && node.has_default
-		if node.has_it { // []int{len: 6, init: it * it} when variable it is used in init expression
-			g.inside_lambda = true
-			tmp := g.new_tmp_var()
-			mut s := g.go_before_stmt(0)
-			s_ends_with_ln := s.ends_with('\n')
-			s = s.trim_space()
-			ret_typ := g.typ(node.typ)
-			elem_typ := g.typ(node.elem_type)
-			g.empty_line = true
-			g.write('$ret_typ $tmp =')
-			if is_default_array {
-				g.write('__new_array_with_array_default${noscan}(')
-			} else if is_default_map {
-				g.write('__new_array_with_map_default${noscan}(')
-			} else {
-				g.write('__new_array_with_default${noscan}(')
-			}
-			if node.has_len {
-				g.expr(node.len_expr)
-				g.write(', ')
-			} else {
-				g.write('0, ')
-			}
-			if node.has_cap {
-				g.expr(node.cap_expr)
-				g.write(', ')
-			} else {
-				g.write('0, ')
-			}
-			if elem_type.unaliased_sym.kind == .function || g.is_empty_struct(elem_type) {
-				g.write('sizeof(voidptr), ')
-			} else {
-				g.write('sizeof($elem_styp), ')
-			}
-			if is_default_array {
-				g.write('($elem_styp[]){')
-				g.expr(node.default_expr)
-				g.write('}[0])')
-			} else if node.has_len && node.elem_type == ast.string_type {
-				g.write('&($elem_styp[]){')
-				g.write('_SLIT("")')
-				g.write('})')
-			} else if node.has_len && elem_type.unaliased_sym.kind in [.array, .map] {
-				g.write('(voidptr)&($elem_styp[]){')
-				g.write(g.type_default(node.elem_type))
-				g.write('}[0])')
-			} else {
-				g.write('0)')
-			}
-			if g.is_shared {
-				g.write('}, sizeof($shared_styp))')
-			} else if is_amp {
-				g.write(')')
-			}
-			g.writeln(';')
-			g.writeln('{')
-			g.indent++
-			g.writeln('$elem_typ* pelem = ($elem_typ*)${tmp}.data;')
-			g.writeln('for(int it=0; it<${tmp}.len; it++, pelem++) {')
-			g.indent++
-			g.write('*pelem = ')
-			g.expr(node.default_expr)
-			g.writeln(';')
-			g.indent--
-			g.writeln('}')
-			g.indent--
-			g.writeln('}')
+		g.writeln(';')
+		g.writeln('{')
+		g.indent++
+		g.writeln('$elem_typ* pelem = ($elem_typ*)$tmp;')
+		g.writeln('int _len = (int)sizeof($tmp) / sizeof($elem_typ);')
+		g.writeln('for(int it=0; it<_len; it++, pelem++) {')
+		g.indent++
+		g.write('*pelem = ')
+		g.expr(node.default_expr)
+		g.writeln(';')
+		g.indent--
+		g.writeln('}')
+		g.indent--
+		g.writeln('}')
+		if var_name.len == 0 {
 			if s_ends_with_ln {
 				g.writeln(s)
 			} else {
 				g.write(s)
 			}
 			g.write(tmp)
-			g.inside_lambda = false
-			return
+		}
+		g.inside_lambda = false
+		return
+	}
+	need_tmp_var := g.inside_call && !g.inside_struct_init && node.exprs.len == 0
+	mut stmt_str := ''
+	mut tmp_var := ''
+	if need_tmp_var {
+		tmp_var = g.new_tmp_var()
+		stmt_str = g.go_before_stmt(0)
+		ret_typ := g.typ(node.typ)
+		g.empty_line = true
+		g.write('$ret_typ $tmp_var = ')
+	}
+	g.write('{')
+	if node.has_val {
+		for i, expr in node.exprs {
+			if expr.is_auto_deref_var() {
+				g.write('*')
+			}
+			g.expr(expr)
+			if i != node.exprs.len - 1 {
+				g.write(', ')
+			}
+		}
+	} else if node.has_default {
+		g.expr(node.default_expr)
+		info := array_type.unaliased_sym.info as ast.ArrayFixed
+		for _ in 1 .. info.size {
+			g.write(', ')
+			g.expr(node.default_expr)
+		}
+	} else {
+		g.write('0')
+	}
+	g.write('}')
+	if need_tmp_var {
+		g.writeln(';')
+		g.write(stmt_str)
+		g.write(tmp_var)
+	}
+}
+
+// `[]int{len: 6, cap: 10, init: it * it}`
+fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp bool, shared_styp string, var_name string) {
+	elem_styp := g.typ(elem_type.typ)
+	noscan := g.check_noscan(elem_type.typ)
+	is_default_array := elem_type.unaliased_sym.kind == .array && node.has_default
+	is_default_map := elem_type.unaliased_sym.kind == .map && node.has_default
+	if node.has_it { // []int{len: 6, init: it * it} when variable it is used in init expression
+		g.inside_lambda = true
+		mut tmp := g.new_tmp_var()
+		mut s := ''
+		if var_name.len != 0 {
+			tmp = var_name
+		} else {
+			s = g.go_before_stmt(0)
+		}
+		s_ends_with_ln := s.ends_with('\n')
+		s = s.trim_space()
+		ret_typ := g.typ(node.typ)
+		elem_typ := g.typ(node.elem_type)
+		g.empty_line = true
+		if var_name.len == 0 {
+			g.write('$ret_typ $tmp =')
 		}
 		if is_default_array {
 			g.write('__new_array_with_array_default${noscan}(')
@@ -222,14 +221,10 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 		} else {
 			g.write('sizeof($elem_styp), ')
 		}
-		if is_default_array || is_default_map {
+		if is_default_array {
 			g.write('($elem_styp[]){')
 			g.expr(node.default_expr)
 			g.write('}[0])')
-		} else if node.has_default {
-			g.write('&($elem_styp[]){')
-			g.expr_with_cast(node.default_expr, node.default_type, node.elem_type)
-			g.write('})')
 		} else if node.has_len && node.elem_type == ast.string_type {
 			g.write('&($elem_styp[]){')
 			g.write('_SLIT("")')
@@ -246,39 +241,73 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 		} else if is_amp {
 			g.write(')')
 		}
+		g.writeln(';')
+		g.writeln('{')
+		g.indent++
+		g.writeln('$elem_typ* pelem = ($elem_typ*)${tmp}.data;')
+		g.writeln('for(int it=0; it<${tmp}.len; it++, pelem++) {')
+		g.indent++
+		g.write('*pelem = ')
+		g.expr(node.default_expr)
+		g.writeln(';')
+		g.indent--
+		g.writeln('}')
+		g.indent--
+		g.writeln('}')
+		if var_name.len == 0 {
+			if s_ends_with_ln {
+				g.writeln(s)
+			} else {
+				g.write(s)
+			}
+			g.write(tmp)
+		}
+		g.inside_lambda = false
 		return
 	}
-	len := node.exprs.len
-	if elem_type.unaliased_sym.kind == .function {
-		g.write('new_array_from_c_array($len, $len, sizeof(voidptr), _MOV((voidptr[$len]){')
-	} else if g.is_empty_struct(elem_type) {
-		g.write('new_array_from_c_array${noscan}($len, $len, sizeof(voidptr), _MOV(($elem_styp[$len]){')
+	if is_default_array {
+		g.write('__new_array_with_array_default${noscan}(')
+	} else if is_default_map {
+		g.write('__new_array_with_map_default${noscan}(')
 	} else {
-		g.write('new_array_from_c_array${noscan}($len, $len, sizeof($elem_styp), _MOV(($elem_styp[$len]){')
+		g.write('__new_array_with_default${noscan}(')
 	}
-	if len > 8 {
-		g.writeln('')
-		g.write('\t\t')
+	if node.has_len {
+		g.expr(node.len_expr)
+		g.write(', ')
+	} else {
+		g.write('0, ')
 	}
-	for i, expr in node.exprs {
-		if node.expr_types[i] == ast.string_type && expr !is ast.StringLiteral
-			&& expr !is ast.StringInterLiteral {
-			g.write('string_clone(')
-			g.expr(expr)
-			g.write(')')
-		} else {
-			g.expr_with_cast(expr, node.expr_types[i], node.elem_type)
-		}
-		if i != len - 1 {
-			if i > 0 && i & 7 == 0 { // i > 0 && i % 8 == 0
-				g.writeln(',')
-				g.write('\t\t')
-			} else {
-				g.write(', ')
-			}
-		}
+	if node.has_cap {
+		g.expr(node.cap_expr)
+		g.write(', ')
+	} else {
+		g.write('0, ')
 	}
-	g.write('}))')
+	if elem_type.unaliased_sym.kind == .function || g.is_empty_struct(elem_type) {
+		g.write('sizeof(voidptr), ')
+	} else {
+		g.write('sizeof($elem_styp), ')
+	}
+	if is_default_array || is_default_map {
+		g.write('($elem_styp[]){')
+		g.expr(node.default_expr)
+		g.write('}[0])')
+	} else if node.has_default {
+		g.write('&($elem_styp[]){')
+		g.expr_with_cast(node.default_expr, node.default_type, node.elem_type)
+		g.write('})')
+	} else if node.has_len && node.elem_type == ast.string_type {
+		g.write('&($elem_styp[]){')
+		g.write('_SLIT("")')
+		g.write('})')
+	} else if node.has_len && elem_type.unaliased_sym.kind in [.array, .map] {
+		g.write('(voidptr)&($elem_styp[]){')
+		g.write(g.type_default(node.elem_type))
+		g.write('}[0])')
+	} else {
+		g.write('0)')
+	}
 	if g.is_shared {
 		g.write('}, sizeof($shared_styp))')
 	} else if is_amp {

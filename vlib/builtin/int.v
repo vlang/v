@@ -17,14 +17,17 @@ pub fn ptr_str(ptr voidptr) string {
 	return buf1
 }
 
+// str returns string equivalent of x
 pub fn (x isize) str() string {
 	return i64(x).str()
 }
 
+// str returns string equivalent of x
 pub fn (x usize) str() string {
 	return u64(x).str()
 }
 
+// str returns string equivalent of cptr
 pub fn (cptr &char) str() string {
 	return u64(cptr).hex()
 }
@@ -577,4 +580,9 @@ pub fn (b u8) repeat(count int) string {
 		ret[new_len] = 0
 	}
 	return unsafe { ret.vstring_with_len(new_len) }
+}
+
+// for atomic ints, internal
+fn _Atomic__int_str(x int) string {
+	return x.str()
 }

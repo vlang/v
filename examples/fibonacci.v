@@ -22,7 +22,7 @@ fn main() {
 	mut a := i64(0)
 	mut b := i64(0)
 	mut c := i64(1)
-	println(a + c + c)
+	println(a + b + c)
 	for _ in 0 .. stop {
 		// Set a and b to the next term
 		a = b

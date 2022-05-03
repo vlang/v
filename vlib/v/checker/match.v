@@ -51,7 +51,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 				// currently the last statement in a match branch does not have an
 				// expected value set, so e.g. IfExpr.is_expr is not set.
 				// probably any mismatch will be caught by not producing a value instead
-				for st in branch.stmts[0..branch.stmts.len - 1] {
+				for st in branch.stmts[..branch.stmts.len - 1] {
 					// must not contain C statements
 					st.check_c_expr() or {
 						c.error('`match` expression branch has $err.msg()', st.pos)
@@ -64,7 +64,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 		}
 		// If the last statement is an expression, return its type
 		if branch.stmts.len > 0 {
-			mut stmt := branch.stmts[branch.stmts.len - 1]
+			mut stmt := branch.stmts.last()
 			if mut stmt is ast.ExprStmt {
 				if node.is_expr {
 					c.expected_type = node.expected_type
@@ -72,7 +72,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 				expr_type := c.expr(stmt.expr)
 				if first_iteration {
 					if node.is_expr && (node.expected_type.has_flag(.optional)
-						|| c.table.type_kind(node.expected_type) == .sum_type) {
+						|| c.table.type_kind(node.expected_type) in [.sum_type, .multi_return]) {
 						ret_type = node.expected_type
 					} else {
 						ret_type = expr_type
@@ -86,6 +86,14 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 							&& (ret_type.has_flag(.generic)
 							|| c.table.is_sumtype_or_in_variant(ret_type, expr_type)))
 							&& !is_noreturn {
+							expr_sym := c.table.sym(expr_type)
+							if expr_sym.kind == .multi_return && ret_sym.kind == .multi_return {
+								ret_types := ret_sym.mr_info().types
+								expr_types := expr_sym.mr_info().types.map(ast.mktyp(it))
+								if expr_types == ret_types {
+									continue
+								}
+							}
 							c.error('return type mismatch, it should be `$ret_sym.name`',
 								stmt.expr.pos())
 						}
@@ -154,9 +162,10 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				c.expected_type = node.expected_type
 				low_expr := expr.low
 				high_expr := expr.high
+				final_cond_sym := c.table.final_sym(node.cond_type)
 				if low_expr is ast.IntegerLiteral {
 					if high_expr is ast.IntegerLiteral
-						&& (cond_type_sym.is_int() || cond_type_sym.info is ast.Enum) {
+						&& (final_cond_sym.is_int() || final_cond_sym.info is ast.Enum) {
 						low = low_expr.val.i64()
 						high = high_expr.val.i64()
 						if low > high {
@@ -166,7 +175,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 						c.error('mismatched range types', low_expr.pos)
 					}
 				} else if low_expr is ast.CharLiteral {
-					if high_expr is ast.CharLiteral && cond_type_sym.kind in [.u8, .char, .rune] {
+					if high_expr is ast.CharLiteral && final_cond_sym.kind in [.u8, .char, .rune] {
 						low = low_expr.val[0]
 						high = high_expr.val[0]
 						if low > high {
@@ -282,6 +291,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 							kind: .aggregate
 							mod: c.mod
 							info: ast.Aggregate{
+								sum_type: node.cond_type
 								types: expr_types.map(it.typ)
 							}
 						})

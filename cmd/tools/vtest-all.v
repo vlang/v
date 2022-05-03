@@ -49,17 +49,26 @@ enum RunCommandKind {
 
 const expect_nothing = '<nothing>'
 
+const starts_with_nothing = '<nothing>'
+
+const ends_with_nothing = '<nothing>'
+
+const contains_nothing = '<nothing>'
+
 struct Command {
 mut:
-	line   string
-	label  string // when set, the label will be printed *before* cmd.line is executed
-	ecode  int
-	okmsg  string
-	errmsg string
-	rmfile string
-	runcmd RunCommandKind = .system
-	expect string = expect_nothing
-	output string
+	line        string
+	label       string // when set, the label will be printed *before* cmd.line is executed
+	ecode       int
+	okmsg       string
+	errmsg      string
+	rmfile      string
+	runcmd      RunCommandKind = .system
+	expect      string = expect_nothing
+	starts_with string = starts_with_nothing
+	ends_with   string = ends_with_nothing
+	contains    string = contains_nothing
+	output      string
 }
 
 fn get_all_commands() []Command {
@@ -81,11 +90,31 @@ fn get_all_commands() []Command {
 			runcmd: .execute
 			expect: 'Hello, World!\n'
 		}
+		if os.getenv('V_CI_MUSL').len == 0 {
+			for compiler_name in ['clang', 'gcc'] {
+				if _ := os.find_abs_path_of_executable(compiler_name) {
+					res << Command{
+						line: '$vexe -cc $compiler_name -gc boehm run examples/hello_world.v'
+						okmsg: '`v -cc $compiler_name -gc boehm run examples/hello_world.v` works'
+						runcmd: .execute
+						expect: 'Hello, World!\n'
+					}
+				}
+			}
+		}
 		res << Command{
 			line: '$vexe interpret examples/hello_world.v'
 			okmsg: 'V can interpret hello world.'
 			runcmd: .execute
 			expect: 'Hello, World!\n'
+		}
+		res << Command{
+			line: '$vexe interpret examples/hanoi.v'
+			okmsg: 'V can interpret hanoi.v'
+			runcmd: .execute
+			starts_with: 'Disc 1 from A to C...\n'
+			ends_with: 'Disc 1 from A to C...\n'
+			contains: 'Disc 7 from A to C...\n'
 		}
 		res << Command{
 			line: '$vexe -o - examples/hello_world.v | grep "#define V_COMMIT_HASH" > /dev/null'
@@ -210,9 +239,8 @@ fn get_all_commands() []Command {
 		rmfile: 'examples/tetris/tetris'
 	}
 	$if macos || linux {
-		ipath := '$vroot/thirdparty/stdatomic/nix'
 		res << Command{
-			line: '$vexe -o v.c cmd/v && cc -Werror -I ${os.quoted_path(ipath)} v.c -lpthread -lm && rm -rf a.out'
+			line: '$vexe -o v.c cmd/v && cc -Werror v.c -lpthread -lm && rm -rf a.out'
 			label: 'v.c should be buildable with no warnings...'
 			okmsg: 'v.c can be compiled without warnings. This is good :)'
 			rmfile: 'v.c'
@@ -241,23 +269,56 @@ fn (mut cmd Command) run() {
 	spent := sw.elapsed().milliseconds()
 	//
 	mut is_failed := false
+	mut is_failed_expected := false
+	mut is_failed_starts_with := false
+	mut is_failed_ends_with := false
+	mut is_failed_contains := false
 	if cmd.ecode != 0 {
 		is_failed = true
 	}
 	if cmd.expect != expect_nothing {
 		if cmd.output != cmd.expect {
 			is_failed = true
+			is_failed_expected = true
+		}
+	}
+	if cmd.starts_with != starts_with_nothing {
+		if !cmd.output.starts_with(cmd.starts_with) {
+			is_failed = true
+			is_failed_starts_with = true
+		}
+	}
+	if cmd.ends_with != ends_with_nothing {
+		if !cmd.output.ends_with(cmd.ends_with) {
+			is_failed = true
+			is_failed_ends_with = true
+		}
+	}
+	if cmd.contains != contains_nothing {
+		if !cmd.output.contains(cmd.contains) {
+			is_failed = true
+			is_failed_contains = true
 		}
 	}
 	//
 	run_label := if is_failed { term.failed('FAILED') } else { term_highlight('OK') }
 	println('> Running: "$cmd.line" took: $spent ms ... $run_label')
 	//
-	if is_failed && cmd.expect != expect_nothing {
-		if cmd.output != cmd.expect {
-			eprintln('> expected:\n$cmd.expect')
-			eprintln('>   output:\n$cmd.output')
-		}
+	if is_failed && is_failed_expected {
+		eprintln('> expected:\n$cmd.expect')
+		eprintln('>   output:\n$cmd.output')
+	}
+	if is_failed && is_failed_starts_with {
+		eprintln('> expected to start with:\n$cmd.starts_with')
+		eprintln('>                 output:\n${cmd.output#[..cmd.starts_with.len]}')
+	}
+	if is_failed && is_failed_ends_with {
+		eprintln('> expected to end with:\n$cmd.ends_with')
+		eprintln('>               output:\n${cmd.output#[-cmd.starts_with.len..]}')
+	}
+	if is_failed && is_failed_contains {
+		eprintln('> expected to contain:\n$cmd.contains')
+		eprintln('>              output:\n$cmd.output')
 	}
 	if vtest_nocleanup {
 		return

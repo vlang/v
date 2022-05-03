@@ -103,6 +103,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	mut end_comments := []ast.Comment{}
 	if !no_body {
 		p.check(.lcbr)
+		mut i := 0
 		for p.tok.kind != .rcbr {
 			mut comments := []ast.Comment{}
 			for p.tok.kind == .comment {
@@ -185,6 +186,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				is_field_volatile = true
 			}
 			is_embed := ((p.tok.lit.len > 1 && p.tok.lit[0].is_capital()
+				&& (p.peek_tok.line_nr != p.tok.line_nr || p.peek_tok.kind !in [.name, .amp])
 				&& (p.peek_tok.kind != .lsbr || p.peek_token(2).kind != .rsbr))
 				|| p.peek_tok.kind == .dot) && language == .v && p.peek_tok.kind != .key_fn
 			is_on_top := ast_fields.len == 0 && !(is_field_mut || is_field_global)
@@ -266,6 +268,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 					pos: field_pos
 					type_pos: type_pos
 					comments: comments
+					i: i
 					default_expr: default_expr
 					has_default_expr: has_default_expr
 					attrs: p.attrs
@@ -282,6 +285,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				pos: field_pos
 				type_pos: type_pos
 				comments: comments
+				i: i
 				default_expr: default_expr
 				has_default_expr: has_default_expr
 				attrs: p.attrs
@@ -291,12 +295,14 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				is_volatile: is_field_volatile
 			}
 			p.attrs = []
+			i++
 		}
 		p.top_level_statement_end()
 		last_line = p.tok.line_nr
 		p.check(.rcbr)
 	}
-	t := ast.TypeSymbol{
+	is_minify := attrs.contains('minify')
+	mut t := ast.TypeSymbol{
 		kind: .struct_
 		language: language
 		name: name
@@ -308,6 +314,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			is_typedef: attrs.contains('typedef')
 			is_union: is_union
 			is_heap: attrs.contains('heap')
+			is_minify: is_minify
 			is_generic: generic_types.len > 0
 			generic_types: generic_types
 			attrs: attrs
@@ -511,11 +518,13 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	// Parse fields or methods
 	mut fields := []ast.StructField{cap: 20}
 	mut methods := []ast.FnDecl{cap: 20}
+	mut embeds := []ast.InterfaceEmbedding{}
 	mut is_mut := false
 	mut mut_pos := -1
-	mut ifaces := []ast.InterfaceEmbedding{}
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
-		if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital() {
+		if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital()
+			&& (p.peek_tok.line_nr != p.tok.line_nr
+			|| p.peek_tok.kind !in [.name, .amp, .lsbr, .lpar]) {
 			iface_pos := p.tok.pos()
 			mut iface_name := p.tok.lit
 			iface_type := p.parse_type()
@@ -523,7 +532,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 				iface_name = p.table.sym(iface_type).name
 			}
 			comments := p.eat_comments()
-			ifaces << ast.InterfaceEmbedding{
+			embeds << ast.InterfaceEmbedding{
 				name: iface_name
 				typ: iface_type
 				pos: iface_pos
@@ -549,7 +558,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 				break
 			}
 			comments := p.eat_comments()
-			ifaces << ast.InterfaceEmbedding{
+			embeds << ast.InterfaceEmbedding{
 				name: from_mod_name
 				typ: from_mod_typ
 				pos: p.prev_tok.pos()
@@ -581,10 +590,6 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			}
 			if ts.has_method(name) {
 				p.error_with_pos('duplicate method `$name`', method_start_pos)
-				return ast.InterfaceDecl{}
-			}
-			if language == .v && util.contains_capital(name) {
-				p.error('interface methods cannot contain uppercase letters, use snake_case instead')
 				return ast.InterfaceDecl{}
 			}
 			// field_names << name
@@ -664,7 +669,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			}
 		}
 	}
-	info.embeds = ifaces.map(it.typ)
+	info.embeds = embeds.map(it.typ)
 	ts.info = info
 	p.top_level_statement_end()
 	p.check(.rcbr)
@@ -675,7 +680,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		typ: typ
 		fields: fields
 		methods: methods
-		embeds: ifaces
+		embeds: embeds
 		is_pub: is_pub
 		attrs: attrs
 		pos: pos

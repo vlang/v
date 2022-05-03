@@ -113,7 +113,7 @@ fn (bst &BSTree<T>) contains_helper(node &BSTreeNode<T>, value T) bool {
 
 // remove removes an element with `value` from the BST.
 pub fn (mut bst BSTree<T>) remove(value T) bool {
-	if bst.root == 0 {
+	if bst.is_empty() {
 		return false
 	}
 	return bst.remove_helper(mut bst.root, value, false)
@@ -153,6 +153,9 @@ fn (mut bst BSTree<T>) remove_helper(mut node BSTreeNode<T>, value T, left bool)
 
 // get_max_from_right returns the max element of the BST following the right branch.
 fn (bst &BSTree<T>) get_max_from_right(node &BSTreeNode<T>) &BSTreeNode<T> {
+	if node == 0 {
+		return new_none_node<T>(false)
+	}
 	right_node := node.right
 	if right_node == 0 || !right_node.is_init {
 		return node
@@ -162,6 +165,9 @@ fn (bst &BSTree<T>) get_max_from_right(node &BSTreeNode<T>) &BSTreeNode<T> {
 
 // get_min_from_left returns the min element of the BST by following the left branch.
 fn (bst &BSTree<T>) get_min_from_left(node &BSTreeNode<T>) &BSTreeNode<T> {
+	if node == 0 {
+		return new_none_node<T>(false)
+	}
 	left_node := node.left
 	if left_node == 0 || !left_node.is_init {
 		return node
@@ -251,6 +257,9 @@ fn (bst &BSTree<T>) get_node(node &BSTreeNode<T>, value T) &BSTreeNode<T> {
 // left_value, exist := bst.to_left(10)
 //```
 pub fn (bst &BSTree<T>) to_left(value T) ?T {
+	if bst.is_empty() {
+		return none
+	}
 	node := bst.get_node(bst.root, value)
 	if !node.is_init {
 		return none
@@ -267,6 +276,9 @@ pub fn (bst &BSTree<T>) to_left(value T) ?T {
 // left_value, exist := bst.to_right(10)
 //```
 pub fn (bst &BSTree<T>) to_right(value T) ?T {
+	if bst.is_empty() {
+		return none
+	}
 	node := bst.get_node(bst.root, value)
 	if !node.is_init {
 		return none
@@ -278,6 +290,9 @@ pub fn (bst &BSTree<T>) to_right(value T) ?T {
 // max return the max element inside the BST.
 // Time complexity O(N) if the BST is not balanced
 pub fn (bst &BSTree<T>) max() ?T {
+	if bst.is_empty() {
+		return none
+	}
 	max := bst.get_max_from_right(bst.root)
 	if !max.is_init {
 		return none
@@ -288,6 +303,9 @@ pub fn (bst &BSTree<T>) max() ?T {
 // min return the minimum element in the BST.
 // Time complexity O(N) if the BST is not balanced.
 pub fn (bst &BSTree<T>) min() ?T {
+	if bst.is_empty() {
+		return none
+	}
 	min := bst.get_min_from_left(bst.root)
 	if !min.is_init {
 		return none

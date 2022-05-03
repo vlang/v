@@ -1,5 +1,7 @@
 type ParseRes = Result<[]Token, ParseErr>
 
+struct Token {}
+
 struct ParseErr {}
 
 type Opt<T> = None<T> | Some<T>

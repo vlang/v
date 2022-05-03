@@ -116,6 +116,7 @@ fn test_remove_from_bst_two() {
 // check if we are able to get the max from the BST.
 fn test_get_max_in_bst() {
 	mut bst := BSTree<int>{}
+	assert (bst.max() or { -1 }) == -1
 	assert bst.insert(10)
 	assert bst.insert(20)
 	assert bst.insert(21)
@@ -127,6 +128,7 @@ fn test_get_max_in_bst() {
 // check if we are able to get the min from the BST.
 fn test_get_min_in_bst() {
 	mut bst := BSTree<int>{}
+	assert (bst.min() or { -1 }) == -1
 	assert bst.insert(10)
 	assert bst.insert(20)
 	assert bst.insert(21)

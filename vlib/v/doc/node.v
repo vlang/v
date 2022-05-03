@@ -62,13 +62,12 @@ pub fn (dc DocNode) merge_comments_without_examples() string {
 		if dc.comments[i].is_multi_line_example() {
 			i++
 			if i == dc.comments.len || !dc.comments[i].has_triple_backtick() {
-				eprintln('$dc.file_path:$dc.pos.line_nr: Expected code block after empty example line:')
+				eprintln('$dc.file_path:$dc.pos.line_nr: warning: expected code block after empty example line:')
 				eprintln('// ```')
 				if i < dc.comments.len {
 					eprintln('Found:')
 					eprintln('//' + dc.comments[i].text[1..])
 				}
-				exit(1)
 			}
 			i++
 			for i < dc.comments.len && !dc.comments[i].has_triple_backtick() {

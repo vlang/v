@@ -1,3 +1,4 @@
+// vtest flaky: true
 // vtest retry: 4
 import sync
 

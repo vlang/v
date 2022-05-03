@@ -17,13 +17,14 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 	mut upper_case := false // set upercase for the result string
 	mut typ := g.unwrap_generic(node.expr_types[i])
 	sym := g.table.sym(typ)
+
 	if sym.kind == .alias {
 		typ = (sym.info as ast.Alias).parent_type
 	}
 	mut remove_tail_zeros := false
 	fspec := node.fmts[i]
 	mut fmt_type := StrIntpType{}
-
+	g.write('/*$fspec $sym*/')
 	// upper cases
 	if (fspec - `A`) <= (`Z` - `A`) {
 		upper_case = true
@@ -156,7 +157,7 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int) {
 				if g.comptime_var_type_map.len > 0 || g.comptime_for_method.len > 0 {
 					exp_typ = expr.obj.typ
 				} else if expr.obj.smartcasts.len > 0 {
-					exp_typ = expr.obj.smartcasts.last()
+					exp_typ = g.unwrap_generic(expr.obj.smartcasts.last())
 					cast_sym := g.table.sym(exp_typ)
 					if cast_sym.info is ast.Aggregate {
 						exp_typ = cast_sym.info.types[g.aggregate_type_idx]

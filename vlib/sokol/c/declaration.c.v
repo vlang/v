@@ -10,6 +10,7 @@ pub const (
 #flag darwin -fobjc-arc
 #flag linux -lX11 -lGL -lXcursor -lXi -lpthread
 #flag freebsd -L/usr/local/lib -lX11 -lGL -lXcursor -lXi
+#flag openbsd -L/usr/X11R6/lib -lX11 -lGL -lXcursor -lXi
 #flag windows -lgdi32
 // METAL
 $if macos {
@@ -27,6 +28,7 @@ $if ios {
 // OPENGL
 #flag linux -DSOKOL_GLCORE33
 #flag freebsd -DSOKOL_GLCORE33
+#flag openbsd -DSOKOL_GLCORE33
 //#flag darwin -framework OpenGL -framework Cocoa -framework QuartzCore
 // D3D
 #flag windows -DSOKOL_GLCORE33
@@ -41,6 +43,7 @@ $if ios {
 #flag windows -DSOKOL_NO_ENTRY
 #flag windows -DSOKOL_WIN32_FORCE_MAIN
 #flag freebsd -DSOKOL_NO_ENTRY
+#flag openbsd -DSOKOL_NO_ENTRY
 #flag solaris -DSOKOL_NO_ENTRY
 // TODO end
 

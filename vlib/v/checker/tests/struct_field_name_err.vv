@@ -1,9 +1,8 @@
 struct Release {
+	Foo          string
+	Bar          &int
 	Architecture []string
-	Components   []string
 }
 
 fn main() {
-	r := Release{}
-	println(r)
 }

@@ -1,10 +1,10 @@
 FROM mstorsjo/llvm-mingw
 
-LABEL maintainer="Vitaly Takmazov <vitalyster@gmail.com>"
+LABEL maintainer="Delyan Angelov <delian66@gmail.com>"
 COPY . .
 RUN make
 RUN ./v -os windows -o v.c cmd/v
-RUN x86_64-w64-mingw32-gcc v.c -std=c99 -I ./thirdparty/stdatomic/win -w -municode -o v.exe
+RUN x86_64-w64-mingw32-gcc v.c -std=c99 -w -municode -o v.exe
 RUN file v.exe
 
 CMD [ "bash" ]

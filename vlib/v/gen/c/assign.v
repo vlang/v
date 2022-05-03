@@ -299,7 +299,7 @@ fn (mut g Gen) gen_assign_stmt(node_ ast.AssignStmt) {
 					g.write(' = ${styp}_${util.replace_op(extracted_op)}(')
 					method := g.table.find_method(left_sym, extracted_op) or {
 						// the checker will most likely have found this, already...
-						g.error('assignemnt operator `$extracted_op=` used but no `$extracted_op` method defined',
+						g.error('assignment operator `$extracted_op=` used but no `$extracted_op` method defined',
 							node.pos)
 						ast.Fn{}
 					}
@@ -314,11 +314,32 @@ fn (mut g Gen) gen_assign_stmt(node_ ast.AssignStmt) {
 				}
 				func := right_sym.info as ast.FnType
 				ret_styp := g.typ(func.func.return_type)
-				g.write('$ret_styp (*${g.get_ternary_name(ident.name)}) (')
+
+				mut call_conv := ''
+				mut msvc_call_conv := ''
+				for attr in func.func.attrs {
+					match attr.name {
+						'callconv' {
+							if g.is_cc_msvc {
+								msvc_call_conv = '__$attr.arg '
+							} else {
+								call_conv = '$attr.arg'
+							}
+						}
+						else {}
+					}
+				}
+				call_conv_attribute_suffix := if call_conv.len != 0 {
+					'__attribute__(($call_conv))'
+				} else {
+					''
+				}
+
+				g.write('$ret_styp ($msvc_call_conv*${g.get_ternary_name(ident.name)}) (')
 				def_pos := g.definitions.len
 				g.fn_decl_params(func.func.params, voidptr(0), false)
 				g.definitions.go_back(g.definitions.len - def_pos)
-				g.write(')')
+				g.write(')$call_conv_attribute_suffix')
 			} else {
 				if is_decl {
 					if is_inside_ternary {
@@ -419,7 +440,7 @@ fn (mut g Gen) gen_assign_stmt(node_ ast.AssignStmt) {
 				} else if is_decl {
 					if is_fixed_array_init && !has_val {
 						if val is ast.ArrayInit {
-							g.array_init(val)
+							g.array_init(val, ident.name)
 						} else {
 							g.write('{0}')
 						}
@@ -430,7 +451,11 @@ fn (mut g Gen) gen_assign_stmt(node_ ast.AssignStmt) {
 						if val.is_auto_deref_var() {
 							g.write('*')
 						}
-						g.expr(val)
+						if val is ast.ArrayInit {
+							g.array_init(val, ident.name)
+						} else {
+							g.expr(val)
+						}
 						if is_auto_heap {
 							g.write('))')
 						}

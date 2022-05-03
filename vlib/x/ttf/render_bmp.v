@@ -59,13 +59,13 @@ pub fn (mut bmp BitMap) clear() {
 }
 
 // transform matrix applied to the text
-fn (bmp &BitMap) trf_txt(p &Point) (int, int) {
+pub fn (bmp &BitMap) trf_txt(p &Point) (int, int) {
 	return int(p.x * bmp.tr_matrix[0] + p.y * bmp.tr_matrix[3] + bmp.tr_matrix[6]), int(
 		p.x * bmp.tr_matrix[1] + p.y * bmp.tr_matrix[4] + bmp.tr_matrix[7])
 }
 
 // transform matrix applied to the char
-fn (bmp &BitMap) trf_ch(p &Point) (int, int) {
+pub fn (bmp &BitMap) trf_ch(p &Point) (int, int) {
 	return int(p.x * bmp.ch_matrix[0] + p.y * bmp.ch_matrix[3] + bmp.ch_matrix[6]), int(
 		p.x * bmp.ch_matrix[1] + p.y * bmp.ch_matrix[4] + bmp.ch_matrix[7])
 }
@@ -778,7 +778,7 @@ pub fn (mut bmp BitMap) draw_glyph(index u16) (int, int) {
 			}
 		}
 
-		if count == int(glyph.contour_ends[c]) {
+		if count == glyph.contour_ends[c] {
 			// dprintln("count == glyph.contour_ends[count]")
 			if s == 2 { // final point was off-curve. connect to start
 

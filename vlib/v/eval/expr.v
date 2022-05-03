@@ -1,5 +1,6 @@
 module eval
 
+import v.pref
 import v.ast
 import v.util
 import math
@@ -24,13 +25,21 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 						e.error('c does not have methods')
 					}
 					match expr.name.all_after('C.') {
+						'read' {
+							return Int{C.read(args[0].int_val(), args[1] as voidptr, args[2].int_val()), 64}
+						}
 						'write' {
 							return Int{C.write(args[0].int_val(), args[1] as voidptr,
-								args[2].int_val()), 32}
+								args[2].int_val()), 64}
+						}
+						'malloc' {
+							return Ptr{
+								val: unsafe { C.malloc(args[0].int_val()) }
+							}
 						}
 						'calloc' {
 							return Ptr{
-								val: vcalloc(int(args[0].int_val() * args[1].int_val()))
+								val: unsafe { C.calloc(args[0].int_val(), args[1].int_val()) }
 							}
 						}
 						'getcwd' {
@@ -126,27 +135,16 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 						do_if = true
 					} else {
 						if branch.cond is ast.Ident {
-							match branch.cond.name {
-								'windows' {
-									do_if = e.pref.os == .windows
-								}
-								'macos' {
-									do_if = e.pref.os == .macos
-								}
-								'linux' {
-									do_if = e.pref.os == .linux
-								}
-								'android' {
-									do_if = e.pref.os == .android
-								}
-								'freebsd' {
-									do_if = e.pref.os == .freebsd
-								}
-								'prealloc' {
-									do_if = e.pref.prealloc
-								}
-								else {
-									e.error('unknown compile time if: $branch.cond.name')
+							if known_os := pref.os_from_string(branch.cond.name) {
+								do_if = e.pref.os == known_os
+							} else {
+								match branch.cond.name {
+									'prealloc' {
+										do_if = e.pref.prealloc
+									}
+									else {
+										e.error('unknown compile time if: $branch.cond.name')
+									}
 								}
 							}
 						} else if branch.cond is ast.PostfixExpr {
@@ -511,8 +509,13 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 
 			return res
 		}
-		else {
-			e.error('unhandled expression $expr.type_name()')
+		ast.AnonFn, ast.ArrayDecompose, ast.AsCast, ast.Assoc, ast.AtExpr, ast.CTempVar,
+		ast.ChanInit, ast.Comment, ast.ComptimeCall, ast.ComptimeSelector, ast.ComptimeType,
+		ast.ConcatExpr, ast.DumpExpr, ast.EmptyExpr, ast.EnumVal, ast.GoExpr, ast.IfGuardExpr,
+		ast.IndexExpr, ast.IsRefType, ast.Likely, ast.LockExpr, ast.MapInit, ast.MatchExpr,
+		ast.NodeError, ast.None, ast.OffsetOf, ast.OrExpr, ast.RangeExpr, ast.SelectExpr,
+		ast.SqlExpr, ast.TypeNode, ast.TypeOf, ast.UnsafeExpr {
+			e.error('unhandled expression ${typeof(expr).name}')
 		}
 	}
 	return empty

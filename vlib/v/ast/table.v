@@ -9,7 +9,7 @@ import v.cflag
 import v.token
 import v.util
 
-[heap]
+[heap; minify]
 pub struct Table {
 mut:
 	parsing_type string // name of the type to enable recursive type parsing
@@ -44,6 +44,7 @@ pub mut:
 	mdeprecated_msg   map[string]string    // module deprecation message
 	mdeprecated_after map[string]time.Time // module deprecation date
 	builtin_pub_fns   map[string]bool
+	pointer_size      int
 }
 
 // used by vls to avoid leaks
@@ -85,6 +86,7 @@ pub fn (t &Table) panic(message string) {
 	t.panic_handler(t, message)
 }
 
+[minify]
 pub struct Fn {
 pub:
 	is_variadic     bool
@@ -125,6 +127,7 @@ fn (f &Fn) method_equals(o &Fn) bool {
 		&& f.name == o.name
 }
 
+[minify]
 pub struct Param {
 pub:
 	pos         token.Pos
@@ -231,7 +234,7 @@ pub fn (t &Table) fn_type_signature(f &Fn) string {
 	return sig
 }
 
-// source_signature generates the signature of a function which looks like in the V source
+// fn_type_source_signature generates the signature of a function which looks like in the V source
 pub fn (t &Table) fn_type_source_signature(f &Fn) string {
 	mut sig := '('
 	for i, arg in f.params {
@@ -251,10 +254,14 @@ pub fn (t &Table) fn_type_source_signature(f &Fn) string {
 	sig += ')'
 	if f.return_type == ovoid_type {
 		sig += ' ?'
+	} else if f.return_type == rvoid_type {
+		sig += ' !'
 	} else if f.return_type != void_type {
 		return_type_sym := t.sym(f.return_type)
 		if f.return_type.has_flag(.optional) {
 			sig += ' ?$return_type_sym.name'
+		} else if f.return_type.has_flag(.result) {
+			sig += ' !$return_type_sym.name'
 		} else {
 			sig += ' $return_type_sym.name'
 		}
@@ -1156,7 +1163,7 @@ pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
 	mut name := '('
 	mut cname := 'multi_return'
 	for i, mr_typ in mr_typs {
-		mr_type_sym := t.sym(mr_typ)
+		mr_type_sym := t.sym(mktyp(mr_typ))
 		ref, cref := if mr_typ.is_ptr() { '&', 'ref_' } else { '', '' }
 		name += '$ref$mr_type_sym.name'
 		cname += '_$cref$mr_type_sym.cname'

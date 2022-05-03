@@ -1,0 +1,16 @@
+v missdoc 0.0.4
+-----------------------------------------------
+Usage: v missdoc [options] PATH [PATH]...
+
+Description: Prints all V functions in .v files under PATH/, that do not yet have documentation comments.
+
+Options:
+  -h, --help                Show this help text.
+  -t, --tags                Also print function tags if any is found.
+  -d, --deprecated          Include deprecated functions in output.
+  -p, --private             Include private functions in output.
+  --js                      Include JavaScript functions in output.
+  -n, --no-line-numbers     Exclude line numbers in output.
+  -e, --exclude <multiple strings>
+                            
+  -r, --relative-paths      Use relative paths in output.

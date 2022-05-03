@@ -14,5 +14,8 @@ Options:
   -v, -verbose
      Enable verbose logging.
 
+  -p
+     Report private functions with missing documentation too (by default, only the `pub fn` functions will be reported).
+
   -force
      (NB: vet development only!) Do not skip the vet regression tests.

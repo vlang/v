@@ -76,7 +76,7 @@ endif
 endif
 endif
 
-.PHONY: all clean fresh_vc fresh_tcc check_for_working_tcc
+.PHONY: all clean check fresh_vc fresh_tcc check_for_working_tcc
 
 ifdef prod
 VFLAGS+=-prod
@@ -84,13 +84,13 @@ endif
 
 all: latest_vc latest_tcc
 ifdef WIN32
-	$(CC) $(CFLAGS) -std=c99 -municode -w -I ./thirdparty/stdatomic/nix -o v1.exe $(VC)/$(VCFILE) $(LDFLAGS)
+	$(CC) $(CFLAGS) -std=c99 -municode -w -o v1.exe $(VC)/$(VCFILE) $(LDFLAGS)
 	v1.exe -no-parallel -o v2.exe $(VFLAGS) cmd/v
 	v2.exe -o $(V) $(VFLAGS) cmd/v
 	del v1.exe
 	del v2.exe
 else
-	$(CC) $(CFLAGS) -std=gnu99 -w -I ./thirdparty/stdatomic/nix -o v1.exe $(VC)/$(VCFILE) -lm -lpthread $(LDFLAGS)
+	$(CC) $(CFLAGS) -std=gnu99 -w -o v1.exe $(VC)/$(VCFILE) -lm -lpthread $(LDFLAGS)
 	./v1.exe -no-parallel -o v2.exe $(VFLAGS) cmd/v
 	./v2.exe -o $(V) $(VFLAGS) cmd/v
 	rm -rf v1.exe v2.exe
@@ -164,3 +164,5 @@ selfcompile-static:
 install:
 	@echo 'Please use `sudo ./v symlink` instead.'
 
+check:
+	$(V) test-all

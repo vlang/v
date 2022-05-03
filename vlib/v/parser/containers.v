@@ -65,11 +65,12 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		}
 		last_pos = p.tok.pos()
 		p.check(.rsbr)
-		if exprs.len == 1 && p.tok.kind in [.name, .amp, .lsbr] && p.tok.line_nr == line_nr {
+		if exprs.len == 1 && p.tok.line_nr == line_nr
+			&& (p.tok.kind in [.name, .amp] || (p.tok.kind == .lsbr && p.is_array_type())) {
 			// [100]u8
 			elem_type = p.parse_type()
 			if p.table.sym(elem_type).name == 'byte' {
-				p.error('`byte` has been deprecated in favor of `u8`: use `[10]u8` instead of `[10]byte`')
+				p.error('`byte` has been deprecated in favor of `u8`: use `[10]u8{}` instead of `[10]byte{}`')
 			}
 			last_pos = p.tok.pos()
 			is_fixed = true

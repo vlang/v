@@ -13,6 +13,16 @@ fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
 	}
 	c.expr(node.cond)
 	if node.has_inc {
+		if node.inc is ast.AssignStmt {
+			for right in node.inc.right {
+				if right is ast.CallExpr {
+					if right.or_block.stmts.len > 0 {
+						c.error('optionals are not allowed in `for statement increment` (yet)',
+							right.pos)
+					}
+				}
+			}
+		}
 		c.stmt(node.inc)
 	}
 	c.check_loop_label(node.label, node.pos)
@@ -28,14 +38,21 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 	typ_idx := typ.idx()
 	if node.key_var.len > 0 && node.key_var != '_' {
 		c.check_valid_snake_case(node.key_var, 'variable name', node.pos)
+		if node.key_var in reserved_type_names {
+			c.error('invalid use of reserved type `$node.key_var` as key name', node.pos)
+		}
 	}
 	if node.val_var.len > 0 && node.val_var != '_' {
 		c.check_valid_snake_case(node.val_var, 'variable name', node.pos)
+		if node.val_var in reserved_type_names {
+			c.error('invalid use of reserved type `$node.val_var` as value name', node.pos)
+		}
 	}
 	if node.is_range {
 		high_type := c.expr(node.high)
 		high_type_idx := high_type.idx()
-		if typ_idx in ast.integer_type_idxs && high_type_idx !in ast.integer_type_idxs {
+		if typ_idx in ast.integer_type_idxs && high_type_idx !in ast.integer_type_idxs
+			&& high_type_idx != ast.void_type_idx {
 			c.error('range types do not match', node.cond.pos())
 		} else if typ_idx in ast.float_type_idxs || high_type_idx in ast.float_type_idxs {
 			c.error('range type can not be float', node.cond.pos())
@@ -95,6 +112,9 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				node.scope.update_var_type(node.key_var, key_type)
 			}
 			mut value_type := c.table.value_type(typ)
+			if sym.kind == .string {
+				value_type = ast.byte_type
+			}
 			if value_type == ast.void_type || typ.has_flag(.optional) {
 				if typ != ast.void_type {
 					c.error('for in: cannot index `${c.table.type_to_str(typ)}`', node.cond.pos())

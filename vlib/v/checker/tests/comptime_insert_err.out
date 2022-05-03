@@ -1,0 +1,7 @@
+vlib/v/checker/tests/comptime_insert_err.vv:6:1: error: The file "@VEXEROOT/vlib/v/checker/tests/Non_Existant_File.cc", needed for insertion by module `main`, does not exist.
+    4 | // some more comments
+    5 | 
+    6 | #insert "@VEXEROOT/vlib/v/checker/tests/Non_Existant_File.cc"
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    7 | 
+    8 | fn main() {

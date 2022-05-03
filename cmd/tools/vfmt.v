@@ -61,9 +61,7 @@ fn main() {
 	if term_colors {
 		os.setenv('VCOLORS', 'always', true)
 	}
-	if foptions.is_verbose {
-		eprintln('vfmt foptions: $foptions')
-	}
+	foptions.vlog('vfmt foptions: $foptions')
 	if foptions.is_worker {
 		// -worker should be added by a parent vfmt process.
 		// We launch a sub process for each file because
@@ -109,9 +107,7 @@ fn main() {
 		mut worker_command_array := cli_args_no_files.clone()
 		worker_command_array << ['-worker', util.quote_path(fpath)]
 		worker_cmd := worker_command_array.join(' ')
-		if foptions.is_verbose {
-			eprintln('vfmt worker_cmd: $worker_cmd')
-		}
+		foptions.vlog('vfmt worker_cmd: $worker_cmd')
 		worker_result := os.execute(worker_cmd)
 		// Guard against a possibly crashing worker process.
 		if worker_result.exit_code != 0 {
@@ -151,43 +147,43 @@ fn main() {
 	}
 }
 
-fn (foptions &FormatOptions) format_file(file string) {
+fn setup_preferences_and_table() (&pref.Preferences, &ast.Table) {
+	table := ast.new_table()
 	mut prefs := pref.new_preferences()
 	prefs.is_fmt = true
+	prefs.skip_warnings = true
+	return prefs, table
+}
+
+fn (foptions &FormatOptions) vlog(msg string) {
 	if foptions.is_verbose {
-		eprintln('vfmt2 running fmt.fmt over file: $file')
+		eprintln(msg)
 	}
-	table := ast.new_table()
-	// checker := checker.new_checker(table, prefs)
+}
+
+fn (foptions &FormatOptions) format_file(file string) {
+	foptions.vlog('vfmt2 running fmt.fmt over file: $file')
+	prefs, table := setup_preferences_and_table()
 	file_ast := parser.parse_file(file, table, .parse_comments, prefs)
-	// checker.check(file_ast)
+	// checker.new_checker(table, prefs).check(file_ast)
 	formatted_content := fmt.fmt(file_ast, table, prefs, foptions.is_debug)
 	file_name := os.file_name(file)
 	ulid := rand.ulid()
 	vfmt_output_path := os.join_path(vtmp_folder, 'vfmt_${ulid}_$file_name')
 	os.write_file(vfmt_output_path, formatted_content) or { panic(err) }
-	if foptions.is_verbose {
-		eprintln('fmt.fmt worked and $formatted_content.len bytes were written to $vfmt_output_path .')
-	}
+	foptions.vlog('fmt.fmt worked and $formatted_content.len bytes were written to $vfmt_output_path .')
 	eprintln('$formatted_file_token$vfmt_output_path')
 }
 
 fn (foptions &FormatOptions) format_pipe() {
-	mut prefs := pref.new_preferences()
-	prefs.is_fmt = true
-	if foptions.is_verbose {
-		eprintln('vfmt2 running fmt.fmt over stdin')
-	}
+	foptions.vlog('vfmt2 running fmt.fmt over stdin')
+	prefs, table := setup_preferences_and_table()
 	input_text := os.get_raw_lines_joined()
-	table := ast.new_table()
-	// checker := checker.new_checker(table, prefs)
 	file_ast := parser.parse_text(input_text, '', table, .parse_comments, prefs)
-	// checker.check(file_ast)
+	// checker.new_checker(table, prefs).check(file_ast)
 	formatted_content := fmt.fmt(file_ast, table, prefs, foptions.is_debug)
 	print(formatted_content)
-	if foptions.is_verbose {
-		eprintln('fmt.fmt worked and $formatted_content.len bytes were written to stdout.')
-	}
+	foptions.vlog('fmt.fmt worked and $formatted_content.len bytes were written to stdout.')
 }
 
 fn print_compiler_options(compiler_params &pref.Preferences) {
@@ -234,9 +230,7 @@ fn (mut foptions FormatOptions) post_process_file(file string, formatted_file_pa
 			return
 		}
 		diff_cmd := foptions.find_diff_cmd()
-		if foptions.is_verbose {
-			eprintln('Using diff command: $diff_cmd')
-		}
+		foptions.vlog('Using diff command: $diff_cmd')
 		diff := diff.color_compare_files(diff_cmd, file, formatted_file_path)
 		if diff.len > 0 {
 			println(diff)
