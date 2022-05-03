@@ -416,8 +416,9 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	}
 	for attr in node.attrs {
 		if attr.name == 'export' {
+			weak := if node.attrs.any(it.name == 'weak') { 'VWEAK ' } else { '' }
 			g.writeln('// export alias: $attr.arg -> $name')
-			export_alias := '$type_name $fn_attrs${attr.arg}($arg_str)'
+			export_alias := '$weak$type_name $fn_attrs${attr.arg}($arg_str)'
 			g.definitions.writeln('VV_EXPORTED_SYMBOL $export_alias; // exported fn $node.name')
 			g.writeln('$export_alias {')
 			g.write('\treturn ${name}(')
@@ -2143,6 +2144,10 @@ fn (mut g Gen) write_fn_attrs(attrs []ast.Attr) string {
 				g.write('__NOINLINE ')
 			}
 			'weak' {
+				if attrs.any(it.name == 'export') {
+					// only the exported wrapper should be weak; otherwise x86_64-w64-mingw32-gcc complains
+					continue
+				}
 				// a `[weak]` tag tells the C compiler, that the next declaration will be weak, i.e. when linking,
 				// if there is another declaration of a symbol with the same name (a 'strong' one), it should be
 				// used instead, *without linker errors about duplicate symbols*.

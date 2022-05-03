@@ -45,10 +45,13 @@ $if dynamic_boehm ? {
 		#flag -DBUS_PAGE_FAULT=T_PAGEFLT
 		#flag -DGC_PTHREADS=1
 		$if !tinyc {
+			#flag -I@VEXEROOT/thirdparty/libgc/include
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
-		} $else {
+		}
+		$if tinyc {
 			#flag -I/usr/local/include
 			#flag $first_existing("/usr/local/lib/libgc.a", "/usr/lib/libgc.a")
+			#flag -lgc
 		}
 		#flag -lpthread
 	} $else $if openbsd {

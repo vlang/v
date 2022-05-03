@@ -564,9 +564,12 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 					'test' {
 						return if c.pref.is_test { .eval } else { .skip }
 					}
+					'musl' {
+						return .unknown
+					}
 					'glibc' {
 						return .unknown
-					} // TODO
+					}
 					'threads' {
 						return if c.table.gostmts > 0 { .eval } else { .skip }
 					}

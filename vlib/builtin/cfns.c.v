@@ -39,13 +39,6 @@ fn C.isdigit(c int) bool
 // stdio.h
 fn C.popen(c &char, t &char) voidptr
 
-// <execinfo.h>
-fn C.backtrace(a &voidptr, size int) int
-
-fn C.backtrace_symbols(a &voidptr, size int) &&char
-
-fn C.backtrace_symbols_fd(a &voidptr, size int, fd int)
-
 // <libproc.h>
 pub fn proc_pidpath(int, voidptr, int) int
 
