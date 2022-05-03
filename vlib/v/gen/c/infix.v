@@ -472,7 +472,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 				return
 			}
 		}
-		if right.sym.info is ast.Array {
+		if right.sym.info is ast.ArrayFixed {
 			elem_type := right.sym.info.elem_type
 			elem_type_ := g.unwrap(elem_type)
 			if elem_type_.sym.kind == .sum_type {
