@@ -554,7 +554,9 @@ pub fn print_backtrace() {
 		$if freestanding {
 			println(bare_backtrace())
 		} $else {
-			$if tinyc {
+			$if use_libbacktrace ? {
+				print_libbacktrace(2)
+			} $else $if tinyc {
 				C.tcc_backtrace(c'Backtrace')
 			} $else {
 				print_backtrace_skipping_top_frames(2)
