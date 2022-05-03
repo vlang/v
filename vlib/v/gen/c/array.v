@@ -700,50 +700,97 @@ fn (mut g Gen) gen_array_contains_methods() {
 			continue
 		}
 		done << t
-		mut left_type_str := g.typ(t)
-		fn_name := '${left_type_str}_contains'
-		left_info := left_final_sym.info as ast.Array
-		mut elem_type_str := g.typ(left_info.elem_type)
-		elem_sym := g.table.sym(left_info.elem_type)
-		if elem_sym.kind == .function {
-			left_type_str = 'Array_voidptr'
-			elem_type_str = 'voidptr'
+		if left_final_sym.kind == .array {
+			mut left_type_str := g.typ(t)
+			fn_name := '${left_type_str}_contains'
+			left_info := left_final_sym.info as ast.Array
+			mut elem_type_str := g.typ(left_info.elem_type)
+			elem_sym := g.table.sym(left_info.elem_type)
+			if elem_sym.kind == .function {
+				left_type_str = 'Array_voidptr'
+				elem_type_str = 'voidptr'
+			}
+			g.type_definitions.writeln('static bool ${fn_name}($left_type_str a, $elem_type_str v); // auto')
+			mut fn_builder := strings.new_builder(512)
+			fn_builder.writeln('static bool ${fn_name}($left_type_str a, $elem_type_str v) {')
+			fn_builder.writeln('\tfor (int i = 0; i < a.len; ++i) {')
+			if elem_sym.kind == .string {
+				fn_builder.writeln('\t\tif (fast_string_eq(((string*)a.data)[i], v)) {')
+			} else if elem_sym.kind == .array && left_info.elem_type.nr_muls() == 0 {
+				ptr_typ := g.equality_fn(left_info.elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq((($elem_type_str*)a.data)[i], v)) {')
+			} else if elem_sym.kind == .function {
+				fn_builder.writeln('\t\tif (((voidptr*)a.data)[i] == v) {')
+			} else if elem_sym.kind == .map && left_info.elem_type.nr_muls() == 0 {
+				ptr_typ := g.equality_fn(left_info.elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_map_eq((($elem_type_str*)a.data)[i], v)) {')
+			} else if elem_sym.kind == .struct_ && left_info.elem_type.nr_muls() == 0 {
+				ptr_typ := g.equality_fn(left_info.elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq((($elem_type_str*)a.data)[i], v)) {')
+			} else if elem_sym.kind == .interface_ && left_info.elem_type.nr_muls() == 0 {
+				ptr_typ := g.equality_fn(left_info.elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_interface_eq((($elem_type_str*)a.data)[i], v)) {')
+			} else if elem_sym.kind == .sum_type && left_info.elem_type.nr_muls() == 0 {
+				ptr_typ := g.equality_fn(left_info.elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_sumtype_eq((($elem_type_str*)a.data)[i], v)) {')
+			} else if elem_sym.kind == .alias && left_info.elem_type.nr_muls() == 0 {
+				ptr_typ := g.equality_fn(left_info.elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_alias_eq((($elem_type_str*)a.data)[i], v)) {')
+			} else {
+				fn_builder.writeln('\t\tif ((($elem_type_str*)a.data)[i] == v) {')
+			}
+			fn_builder.writeln('\t\t\treturn true;')
+			fn_builder.writeln('\t\t}')
+			fn_builder.writeln('\t}')
+			fn_builder.writeln('\treturn false;')
+			fn_builder.writeln('}')
+			g.auto_fn_definitions << fn_builder.str()
+		} else if left_final_sym.kind == .array_fixed {
+			mut left_type_str := g.typ(t)
+			fn_name := '${left_type_str}_contains'
+			left_info := left_final_sym.info as ast.ArrayFixed
+			mut elem_type_str := g.typ(left_info.elem_type)
+			elem_sym := g.table.sym(left_info.elem_type)
+			if elem_sym.kind == .function {
+				left_type_str = 'Array_voidptr'
+				elem_type_str = 'voidptr'
+			}
+			g.type_definitions.writeln('static bool ${fn_name}($left_type_str a, $elem_type_str v); // auto')
+			mut fn_builder := strings.new_builder(512)
+			fn_builder.writeln('static bool ${fn_name}($left_type_str a, $elem_type_str v) {')
+			fn_builder.writeln('\tfor (int i = 0; i < $left_info.size; ++i) {')
+			if elem_sym.kind == .string {
+				fn_builder.writeln('\t\tif (fast_string_eq(a[i], v)) {')
+			} else if elem_sym.kind == .array && left_info.elem_type.nr_muls() == 0 {
+				ptr_typ := g.equality_fn(left_info.elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq(a[i], v)) {')
+			} else if elem_sym.kind == .function {
+				fn_builder.writeln('\t\tif (a[i] == v) {')
+			} else if elem_sym.kind == .map && left_info.elem_type.nr_muls() == 0 {
+				ptr_typ := g.equality_fn(left_info.elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_map_eq(a[i], v)) {')
+			} else if elem_sym.kind == .struct_ && left_info.elem_type.nr_muls() == 0 {
+				ptr_typ := g.equality_fn(left_info.elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq(a[i], v)) {')
+			} else if elem_sym.kind == .interface_ && left_info.elem_type.nr_muls() == 0 {
+				ptr_typ := g.equality_fn(left_info.elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_interface_eq(a[i], v)) {')
+			} else if elem_sym.kind == .sum_type && left_info.elem_type.nr_muls() == 0 {
+				ptr_typ := g.equality_fn(left_info.elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_sumtype_eq(a[i], v)) {')
+			} else if elem_sym.kind == .alias && left_info.elem_type.nr_muls() == 0 {
+				ptr_typ := g.equality_fn(left_info.elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_alias_eq(a[i], v)) {')
+			} else {
+				fn_builder.writeln('\t\tif (a[i] == v) {')
+			}
+			fn_builder.writeln('\t\t\treturn true;')
+			fn_builder.writeln('\t\t}')
+			fn_builder.writeln('\t}')
+			fn_builder.writeln('\treturn false;')
+			fn_builder.writeln('}')
+			g.auto_fn_definitions << fn_builder.str()
 		}
-		g.type_definitions.writeln('static bool ${fn_name}($left_type_str a, $elem_type_str v); // auto')
-		mut fn_builder := strings.new_builder(512)
-		fn_builder.writeln('static bool ${fn_name}($left_type_str a, $elem_type_str v) {')
-		fn_builder.writeln('\tfor (int i = 0; i < a.len; ++i) {')
-		if elem_sym.kind == .string {
-			fn_builder.writeln('\t\tif (fast_string_eq(((string*)a.data)[i], v)) {')
-		} else if elem_sym.kind == .array && left_info.elem_type.nr_muls() == 0 {
-			ptr_typ := g.equality_fn(left_info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq((($elem_type_str*)a.data)[i], v)) {')
-		} else if elem_sym.kind == .function {
-			fn_builder.writeln('\t\tif (((voidptr*)a.data)[i] == v) {')
-		} else if elem_sym.kind == .map && left_info.elem_type.nr_muls() == 0 {
-			ptr_typ := g.equality_fn(left_info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_map_eq((($elem_type_str*)a.data)[i], v)) {')
-		} else if elem_sym.kind == .struct_ && left_info.elem_type.nr_muls() == 0 {
-			ptr_typ := g.equality_fn(left_info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq((($elem_type_str*)a.data)[i], v)) {')
-		} else if elem_sym.kind == .interface_ && left_info.elem_type.nr_muls() == 0 {
-			ptr_typ := g.equality_fn(left_info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_interface_eq((($elem_type_str*)a.data)[i], v)) {')
-		} else if elem_sym.kind == .sum_type && left_info.elem_type.nr_muls() == 0 {
-			ptr_typ := g.equality_fn(left_info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_sumtype_eq((($elem_type_str*)a.data)[i], v)) {')
-		} else if elem_sym.kind == .alias && left_info.elem_type.nr_muls() == 0 {
-			ptr_typ := g.equality_fn(left_info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_alias_eq((($elem_type_str*)a.data)[i], v)) {')
-		} else {
-			fn_builder.writeln('\t\tif ((($elem_type_str*)a.data)[i] == v) {')
-		}
-		fn_builder.writeln('\t\t\treturn true;')
-		fn_builder.writeln('\t\t}')
-		fn_builder.writeln('\t}')
-		fn_builder.writeln('\treturn false;')
-		fn_builder.writeln('}')
-		g.auto_fn_definitions << fn_builder.str()
 	}
 }
 
