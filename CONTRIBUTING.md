@@ -59,7 +59,7 @@ compiled with Clang, GCC, Visual Studio, and TCC.
 8. `v/gen/js` JavaScript backend. It simply walks the AST and generates JS code that can be
 executed on the browser or in NodeJS/Deno.
 
-9. `json.v` defines the json code generation. This file will be removed once V
+9. `v/gen/c/json.v` defines the json code generation. This file will be removed once V
 supports comptime code generation, and it will be possible to do this using the
 language's tools.
 
