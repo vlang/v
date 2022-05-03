@@ -708,6 +708,7 @@ fn (mut g Gen) gen_array_contains_methods() {
 			elem_type := (left_final_sym.info as ast.Array).elem_type
 			mut elem_type_str := g.typ(elem_type)
 			elem_kind := g.table.sym(elem_type).kind
+			elem_is_not_ptr := elem_type.nr_muls() == 0
 			if elem_kind == .function {
 				left_type_str = 'Array_voidptr'
 				elem_type_str = 'voidptr'
@@ -717,24 +718,24 @@ fn (mut g Gen) gen_array_contains_methods() {
 			fn_builder.writeln('\tfor (int i = 0; i < a.len; ++i) {')
 			if elem_kind == .string {
 				fn_builder.writeln('\t\tif (fast_string_eq(((string*)a.data)[i], v)) {')
-			} else if elem_kind == .array && elem_type.nr_muls() == 0 {
+			} else if elem_kind == .array && elem_is_not_ptr {
 				ptr_typ := g.equality_fn(elem_type)
 				fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq((($elem_type_str*)a.data)[i], v)) {')
 			} else if elem_kind == .function {
 				fn_builder.writeln('\t\tif (((voidptr*)a.data)[i] == v) {')
-			} else if elem_kind == .map && elem_type.nr_muls() == 0 {
+			} else if elem_kind == .map && elem_is_not_ptr {
 				ptr_typ := g.equality_fn(elem_type)
 				fn_builder.writeln('\t\tif (${ptr_typ}_map_eq((($elem_type_str*)a.data)[i], v)) {')
-			} else if elem_kind == .struct_ && elem_type.nr_muls() == 0 {
+			} else if elem_kind == .struct_ && elem_is_not_ptr {
 				ptr_typ := g.equality_fn(elem_type)
 				fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq((($elem_type_str*)a.data)[i], v)) {')
-			} else if elem_kind == .interface_ && elem_type.nr_muls() == 0 {
+			} else if elem_kind == .interface_ && elem_is_not_ptr {
 				ptr_typ := g.equality_fn(elem_type)
 				fn_builder.writeln('\t\tif (${ptr_typ}_interface_eq((($elem_type_str*)a.data)[i], v)) {')
-			} else if elem_kind == .sum_type && elem_type.nr_muls() == 0 {
+			} else if elem_kind == .sum_type && elem_is_not_ptr {
 				ptr_typ := g.equality_fn(elem_type)
 				fn_builder.writeln('\t\tif (${ptr_typ}_sumtype_eq((($elem_type_str*)a.data)[i], v)) {')
-			} else if elem_kind == .alias && elem_type.nr_muls() == 0 {
+			} else if elem_kind == .alias && elem_is_not_ptr {
 				ptr_typ := g.equality_fn(elem_type)
 				fn_builder.writeln('\t\tif (${ptr_typ}_alias_eq((($elem_type_str*)a.data)[i], v)) {')
 			} else {
@@ -746,6 +747,7 @@ fn (mut g Gen) gen_array_contains_methods() {
 			elem_type := left_info.elem_type
 			mut elem_type_str := g.typ(elem_type)
 			elem_kind := g.table.sym(elem_type).kind
+			elem_is_not_ptr := elem_type.nr_muls() == 0
 			if elem_kind == .function {
 				left_type_str = 'Array_voidptr'
 				elem_type_str = 'voidptr'
@@ -755,24 +757,24 @@ fn (mut g Gen) gen_array_contains_methods() {
 			fn_builder.writeln('\tfor (int i = 0; i < $size; ++i) {')
 			if elem_kind == .string {
 				fn_builder.writeln('\t\tif (fast_string_eq(a[i], v)) {')
-			} else if elem_kind == .array && elem_type.nr_muls() == 0 {
+			} else if elem_kind == .array && elem_is_not_ptr {
 				ptr_typ := g.equality_fn(left_info.elem_type)
 				fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq(a[i], v)) {')
 			} else if elem_kind == .function {
 				fn_builder.writeln('\t\tif (a[i] == v) {')
-			} else if elem_kind == .map && elem_type.nr_muls() == 0 {
+			} else if elem_kind == .map && elem_is_not_ptr {
 				ptr_typ := g.equality_fn(elem_type)
 				fn_builder.writeln('\t\tif (${ptr_typ}_map_eq(a[i], v)) {')
-			} else if elem_kind == .struct_ && elem_type.nr_muls() == 0 {
+			} else if elem_kind == .struct_ && elem_is_not_ptr {
 				ptr_typ := g.equality_fn(elem_type)
 				fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq(a[i], v)) {')
-			} else if elem_kind == .interface_ && elem_type.nr_muls() == 0 {
+			} else if elem_kind == .interface_ && elem_is_not_ptr {
 				ptr_typ := g.equality_fn(elem_type)
 				fn_builder.writeln('\t\tif (${ptr_typ}_interface_eq(a[i], v)) {')
-			} else if elem_kind == .sum_type && elem_type.nr_muls() == 0 {
+			} else if elem_kind == .sum_type && elem_is_not_ptr {
 				ptr_typ := g.equality_fn(elem_type)
 				fn_builder.writeln('\t\tif (${ptr_typ}_sumtype_eq(a[i], v)) {')
-			} else if elem_kind == .alias && elem_type.nr_muls() == 0 {
+			} else if elem_kind == .alias && elem_is_not_ptr {
 				ptr_typ := g.equality_fn(elem_type)
 				fn_builder.writeln('\t\tif (${ptr_typ}_alias_eq(a[i], v)) {')
 			} else {
