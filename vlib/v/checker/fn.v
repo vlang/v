@@ -1778,6 +1778,11 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast
 				c.error('type mismatch, `$arg_expr.name` must return a bool', arg_expr.pos)
 			}
 		}
+		ast.StringLiteral, ast.StringInterLiteral {
+			if !is_map {
+				c.error('type mismatch, should use e.g. `${node.name}(it > 2)`', arg_expr.pos)
+			}
+		}
 		else {}
 	}
 }
