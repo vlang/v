@@ -37,11 +37,6 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	name_pos := p.tok.pos()
 	p.check_for_impure_v(language, name_pos)
 	mut name := p.check_name()
-	// defer {
-	// if name.contains('App') {
-	// println('end of struct decl $name')
-	// }
-	// }
 	if name.len == 1 && name[0].is_capital() {
 		p.error_with_pos('single letter capital names are reserved for generic template types.',
 			name_pos)
@@ -325,9 +320,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		p.error_with_pos('invalid recursive struct `$orig_name`', name_pos)
 		return ast.StructDecl{}
 	}
-	mut ret := 0
-	// println('reg type symbol $name mod=$p.mod')
-	ret = p.table.register_sym(t)
+	mut ret := p.table.register_sym(t)
 	// allow duplicate c struct declarations
 	if ret == -1 && language != .c {
 		p.error_with_pos('cannot register struct `$name`, another type with this name exists',
