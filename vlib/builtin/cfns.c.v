@@ -316,7 +316,7 @@ fn C.ReadConsole(in_input_handle voidptr, out_buffer voidptr, in_chars_to_read u
 
 fn C.WriteConsole() voidptr
 
-fn C.WriteFile() voidptr
+fn C.WriteFile(hFile voidptr, lpBuffer voidptr, nNumberOfBytesToRead u32, lpNumberOfBytesRead C.LPDWORD, lpOverlapped voidptr) bool
 
 fn C._wchdir(dirname &u16)
 
