@@ -80,8 +80,8 @@ fn main() {
 
 		// mut start := (graph.keys()).first() // arbitrary, any node if you wish
 		mut top_sorting := []string{}
-
-		for i in graph.keys() // advantages of map {
+        // advantages of map ... getting all nodes
+		for i in graph.keys()  {
 			if visited[i] != true {
 				dfs_recursive(i, mut visited, graph, mut top_sorting)
 			}
