@@ -21,7 +21,12 @@ __global bt_state = init_bt_state()
 
 fn init_bt_state() &C.backtrace_state {
 	$if !tinyc {
-		filename := unsafe { &&char(g_main_argv)[0] }
+		mut filename := &char(0)
+		$if windows {
+			filename = unsafe { string_from_wide(&&u16(g_main_argv)[0]).str }
+		} $else {
+			filename = unsafe { &&char(g_main_argv)[0] }
+		}
 		return C.backtrace_create_state(filename, 1, bt_error_handler, 0)
 	}
 	return &C.backtrace_state(0)
