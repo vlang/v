@@ -228,10 +228,6 @@
 #define MINIZ_HAS_64BIT_REGISTERS 0
 #endif
 
-#if !defined(__WINDOWS__) && (defined(WIN32) || defined(WIN64) || defined(_MSC_VER) || defined(_WIN32))
-#define __WINDOWS__
-#endif
-  
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -4946,12 +4942,11 @@ static int mz_mkdir(const char *pDirname) {
 #define MZ_FFLUSH fflush
 #define MZ_FREOPEN(f, m, s) freopen(f, m, s)
 #define MZ_DELETE_FILE remove
-
-#if defined(__WINDOWS__)
+#if defined(_WIN32) || defined(_WIN64)
 #define MZ_MKDIR(d) _mkdir(d)
 #else
 #define MZ_MKDIR(d) mkdir(d, 0755)
-#endif   
+#endif
 
 #elif defined(__USE_LARGEFILE64) /* gcc, clang */
 #ifndef MINIZ_NO_TIME
@@ -10024,7 +10019,7 @@ const char *mz_zip_get_error_string(mz_zip_error mz_err) {
   case MZ_ZIP_VALIDATION_FAILED:
     return "validation failed";
   case MZ_ZIP_WRITE_CALLBACK_FAILED:
-    return "write calledback failed";
+    return "write callback failed";
   case MZ_ZIP_TOTAL_ERRORS:
     return "total errors";
   default:
