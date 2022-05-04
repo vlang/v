@@ -87,7 +87,7 @@ fn (mut p Process) win_spawn_process() int {
 		set_handle_info_ok1 := C.SetHandleInformation(wdata.child_stdout_read, C.HANDLE_FLAG_INHERIT,
 			0)
 		failed_cfn_report_error(set_handle_info_ok1, 'SetHandleInformation')
-		
+
 		// stderr
 		create_pipe_ok2 := C.CreatePipe(voidptr(&wdata.child_stderr_read), voidptr(&wdata.child_stderr_write),
 			voidptr(&sa), 0)
@@ -95,7 +95,7 @@ fn (mut p Process) win_spawn_process() int {
 		set_handle_info_ok2 := C.SetHandleInformation(wdata.child_stderr_read, C.HANDLE_FLAG_INHERIT,
 			0)
 		failed_cfn_report_error(set_handle_info_ok2, 'SetHandleInformation stderr')
-		
+
 		// stdin
 		create_pipe_ok3 := C.CreatePipe(voidptr(&wdata.child_stdin_read), voidptr(&wdata.child_stdin_write),
 			voidptr(&sa), 0)
@@ -103,7 +103,7 @@ fn (mut p Process) win_spawn_process() int {
 		set_handle_info_ok3 :=  C.SetHandleInformation(wdata.child_stdin_write, C.HANDLE_FLAG_INHERIT,
 			0)
 		failed_cfn_report_error(set_handle_info_ok3, 'SetHandleInformation stdin')
-		
+
 		start_info.h_std_input = wdata.child_stdin_write
 		start_info.h_std_output = wdata.child_stdout_write
 		start_info.h_std_error = wdata.child_stderr_write
@@ -196,7 +196,7 @@ fn (mut p Process) win_write_string(idx int, s string) {
 	buf := []u8{len: 4096}
 	mut bytes_written := int(0)
 	unsafe {
-		C.WriteFile(rhandle, buf, buf.cap, voidptr(&bytes_written), voidptr(0))
+		C.WriteFile(rhandle, &buf[0], buf.cap, voidptr(&bytes_written), voidptr(0))
 	}
 }
 
