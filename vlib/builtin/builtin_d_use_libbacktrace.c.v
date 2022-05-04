@@ -16,7 +16,14 @@ type BacktraceFullCallback = fn (data voidptr, pc voidptr, filename &char, linen
 fn C.backtrace_create_state(filename &char, threaded int, error_callback BacktraceErrorCallback, data voidptr) &C.backtrace_state
 fn C.backtrace_full(state &C.backtrace_state, skip int, cb BacktraceFullCallback, err_cb BacktraceErrorCallback, data voidptr) int
 
-__global bt_state = C.backtrace_create_state(0, 1, bt_error_handler, 0)
+__global bt_state = init_bt_state()
+
+fn init_bt_state() &C.backtrace_state {
+	$if !tinyc {
+		return C.backtrace_create_state(0, 1, bt_error_handler, 0)
+	}
+	return &C.backtrace_state(0)
+}
 
 // for bt_error_callback
 // struct BacktraceData {

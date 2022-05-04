@@ -554,12 +554,15 @@ pub fn print_backtrace() {
 		$if freestanding {
 			println(bare_backtrace())
 		} $else {
-			$if use_libbacktrace ? {
-				print_libbacktrace(2)
-			} $else $if tinyc {
+			$if tinyc {
 				C.tcc_backtrace(c'Backtrace')
 			} $else {
-				print_backtrace_skipping_top_frames(2)
+				// NOTE: TCC doesn't have the unwind library
+				$if use_libbacktrace ? {
+					print_libbacktrace(2)
+				} $else {
+					print_backtrace_skipping_top_frames(2)
+				}
 			}
 		}
 	}
