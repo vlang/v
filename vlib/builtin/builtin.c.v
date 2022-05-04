@@ -54,7 +54,7 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 				}
 				C.exit(1)
 			}
-			$if use_libbacktrace {
+			$if use_libbacktrace ? {
 				print_libbacktrace(1)
 			} $else {
 				print_backtrace_skipping_top_frames(1)
@@ -105,7 +105,7 @@ pub fn panic(s string) {
 				}
 				C.exit(1)
 			}
-			$if use_libbacktrace {
+			$if use_libbacktrace ? {
 				print_libbacktrace(1)
 			} $else {
 				print_backtrace_skipping_top_frames(1)
