@@ -1,0 +1,7 @@
+vlib/v/checker/tests/comptime_selector_expr_type_err.vv:12:27: cgen error: `a` has no field named `value`
+   10 |     for i in a {
+   11 |         $for field in Row.fields {
+   12 |             println('field $i: ' + a.$(field.name).str() )
+      |                                    ^
+   13 |         }
+   14 |     }

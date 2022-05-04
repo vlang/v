@@ -2660,7 +2660,7 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			return c.comptime_call(mut node)
 		}
 		ast.ComptimeSelector {
-			node.left_type = c.unwrap_generic(c.expr(node.left))
+			node.left_type = c.expr(node.left)
 			expr_type := c.unwrap_generic(c.expr(node.field_expr))
 			expr_sym := c.table.sym(expr_type)
 			if expr_type != ast.string_type {
