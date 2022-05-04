@@ -1,4 +1,4 @@
-vlib/v/checker/tests/fn_call_arg_mismatch_err_b.vv:2:6: error: cannot use `void` as `int` in argument 1 to `foo`
+vlib/v/checker/tests/fn_call_arg_mismatch_err_b.vv:2:6: error: `bar()` (no value) used as value in argument 1 to `foo`
     1 | fn main() {
     2 |     foo(bar())
       |         ~~~~~

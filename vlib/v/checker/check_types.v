@@ -222,6 +222,9 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 			}
 			return
 		}
+		if got == ast.void_type {
+			return error('`$arg.expr` (no value) used as value')
+		}
 		return error('cannot use `$got_typ_str` as `$expected_typ_str`')
 	}
 
