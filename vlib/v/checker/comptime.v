@@ -90,6 +90,30 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	return f.return_type
 }
 
+fn (mut c Checker) comptime_selector(mut node ast.ComptimeSelector) ast.Type {
+	node.left_type = c.expr(node.left)
+	expr_type := c.unwrap_generic(c.expr(node.field_expr))
+	expr_sym := c.table.sym(expr_type)
+	if expr_type != ast.string_type {
+		c.error('expected `string` instead of `$expr_sym.name` (e.g. `field.name`)', node.field_expr.pos())
+	}
+	if mut node.field_expr is ast.SelectorExpr {
+		left_pos := node.field_expr.expr.pos()
+		if c.comptime_fields_type.len == 0 {
+			c.error('compile time field access can only be used when iterating over `T.fields`',
+				left_pos)
+		}
+		expr_name := node.field_expr.expr.str()
+		if expr_name in c.comptime_fields_type {
+			return c.comptime_fields_type[expr_name]
+		}
+		c.error('unknown `\$for` variable `$expr_name`', left_pos)
+	} else {
+		c.error('expected selector expression e.g. `$(field.name)`', node.field_expr.pos())
+	}
+	return ast.void_type
+}
+
 fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 	typ := c.unwrap_generic(node.typ)
 	sym := c.table.sym(typ)
