@@ -12,7 +12,10 @@
 <!--
 [![Build Status][WorkflowBadge]][WorkflowUrl]
 -->
-[![Sponsor][SponsorBadge]][SponsorUrl] [![Patreon][PatreonBadge]][PatreonUrl] [![Discord][DiscordBadge]][DiscordUrl] [![Twitter][TwitterUrl]][TwitterBadge]
+[![Sponsor][SponsorBadge]][SponsorUrl]
+[![Patreon][PatreonBadge]][PatreonUrl]
+[![Discord][DiscordBadge]][DiscordUrl]
+[![Twitter][TwitterUrl]][TwitterBadge]
 
 </div>
 
