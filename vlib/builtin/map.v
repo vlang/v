@@ -86,8 +86,8 @@ mut:
 	// array allocated (with `cap` bytes) on first deletion
 	// has non-zero element when key deleted
 	all_deleted &u8
-	values      &u8
 	keys        &u8
+	values      &u8
 }
 
 [inline]
@@ -126,8 +126,8 @@ fn (d &DenseArray) has_index(i int) bool {
 [inline]
 fn (mut d DenseArray) expand() int {
 	old_cap := d.cap
-	old_value_size := d.value_bytes * old_cap
 	old_key_size := d.key_bytes * old_cap
+	old_value_size := d.value_bytes * old_cap
 	if d.cap == d.len {
 		d.cap += d.cap >> 3
 		unsafe {
@@ -626,6 +626,35 @@ pub fn (m &map) keys() array {
 		}
 	}
 	return keys
+}
+
+// Returns all values in the map.
+pub fn (m &map) values() array {
+	mut values := __new_array(m.len, 0, m.value_bytes)
+	mut item := unsafe { &u8(values.data) }
+
+	if m.key_values.deletes == 0 {
+		for i := 0; i < m.key_values.len; i++ {
+			unsafe {
+				pvalue := m.key_values.value(i)
+				m.clone_fn(item, pvalue)
+				item = item + m.value_bytes
+			}
+		}
+		return values
+	}
+
+	for i := 0; i < m.key_values.len; i++ {
+		if !m.key_values.has_index(i) {
+			continue
+		}
+		unsafe {
+			pvalue := m.key_values.value(i)
+			m.clone_fn(item, pvalue)
+			item = item + m.value_bytes
+		}
+	}
+	return values
 }
 
 // warning: only copies keys, does not clone

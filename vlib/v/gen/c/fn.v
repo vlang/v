@@ -1044,6 +1044,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	} else if final_left_sym.kind == .map {
 		if node.name == 'keys' {
 			name = 'map_keys'
+		} else if node.name == 'values' {
+			name = 'map_values'
 		}
 	}
 	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__')
