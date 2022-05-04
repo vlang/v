@@ -32,6 +32,12 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 				return true
 			}
 		}
+
+		// allow rune -> any int and vice versa
+		if (expected == ast.rune_type && got.is_int())
+			|| (got == ast.rune_type && expected.is_int()) {
+			return true
+		}
 		got_sym := c.table.sym(got)
 		expected_sym := c.table.sym(expected)
 		if got_sym.kind == .enum_ {
