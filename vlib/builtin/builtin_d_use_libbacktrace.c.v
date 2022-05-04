@@ -11,6 +11,7 @@ struct C.backtrace_state {
 }
 
 type BacktraceErrorCallback = fn (data voidptr, msg &char, errnum int) voidptr
+
 type BacktraceFullCallback = fn (data voidptr, pc voidptr, filename &char, lineno int, func &char) &int
 
 fn C.backtrace_create_state(filename &char, threaded int, error_callback BacktraceErrorCallback, data voidptr) &C.backtrace_state
@@ -31,8 +32,12 @@ fn init_bt_state() &C.backtrace_state {
 // }
 
 fn bt_print_callback(data voidptr, pc voidptr, filename_ptr &char, line int, fn_name_ptr &char) int {
-	filename := if isnil(filename_ptr) {'???'} else {unsafe{ filename_ptr.vstring() }}
-	fn_name := if isnil(fn_name_ptr) {'???'} else { (unsafe { fn_name_ptr.vstring() }).replace('__', '.') }
+	filename := if isnil(filename_ptr) { '???' } else { unsafe { filename_ptr.vstring() } }
+	fn_name := if isnil(fn_name_ptr) {
+		'???'
+	} else {
+		(unsafe { fn_name_ptr.vstring() }).replace('__', '.')
+	}
 	pc_64 := u64(pc)
 
 	println('0x${pc_64:x} $fn_name')
