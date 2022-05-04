@@ -46,8 +46,8 @@ fn close_valid_handle(p voidptr) {
 
 pub struct WProcess {
 pub mut:
-	proc_info    ProcessInformation
-	command_line [65536]u8
+	proc_info         ProcessInformation
+	command_line      [65536]u8
 	child_stdin_read  &u32
 	child_stdin_write &u32
 	//
@@ -100,7 +100,7 @@ fn (mut p Process) win_spawn_process() int {
 		create_pipe_ok3 := C.CreatePipe(voidptr(&wdata.child_stdin_read), voidptr(&wdata.child_stdin_write),
 			voidptr(&sa), 0)
 		failed_cfn_report_error(create_pipe_ok3, 'CreatePipe stdin')
-		set_handle_info_ok3 :=  C.SetHandleInformation(wdata.child_stdin_write, C.HANDLE_FLAG_INHERIT,
+		set_handle_info_ok3 := C.SetHandleInformation(wdata.child_stdin_write, C.HANDLE_FLAG_INHERIT,
 			0)
 		failed_cfn_report_error(set_handle_info_ok3, 'SetHandleInformation stdin')
 
