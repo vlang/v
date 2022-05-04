@@ -1,0 +1,4 @@
+The libbacktrace source is distributed here as an amalgamation (https://sqlite.org/amalgamation.html).
+This means that, rather than mirroring the entire libbacktrace repo here,
+a script was used to bundle all local includes together into a single C file,
+with additional platform specific files which is much easier to handle.

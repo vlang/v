@@ -1,11 +1,9 @@
 [has_globals]
 module builtin
 
-// TODO: not yet final. library needs to be amalgamated and packaged
-#flag @VEXEROOT/thirdparty/libbacktrace/.libs/libbacktrace.a
-
-#include "@VEXEROOT/thirdparty/libbacktrace/backtrace.h"
-#include "@VEXEROOT/thirdparty/libbacktrace/backtrace-supported.h"
+#flag -I@VEXEROOT/thirdparty/libbacktrace
+#flag @VEXEROOT/thirdparty/libbacktrace/backtrace.o
+#include <backtrace.h>
 
 // NOTE: Don't mark this as a [typedef] or it may cause compiler errors!
 struct C.backtrace_state {
@@ -18,7 +16,7 @@ type BacktraceFullCallback = fn (data voidptr, pc voidptr, filename &char, linen
 fn C.backtrace_create_state(filename &char, threaded int, error_callback BacktraceErrorCallback, data voidptr) &C.backtrace_state
 fn C.backtrace_full(state &C.backtrace_state, skip int, cb BacktraceFullCallback, err_cb BacktraceErrorCallback, data voidptr) int
 
-__global bt_state = C.backtrace_create_state(0, C.BACKTRACE_SUPPORTS_THREADS, bt_error_handler, 0)
+__global bt_state = C.backtrace_create_state(0, 1, bt_error_handler, 0)
 
 // for bt_error_callback
 // struct BacktraceData {
