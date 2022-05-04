@@ -65,5 +65,5 @@ fn print_libbacktrace(frames_to_skip int) {
 		return
 	}
 	// data := &BacktraceData{bt_state}
-	C.backtrace_full(bt_state, frames_to_skip + 1, bt_print_callback, bt_error_callback, 0)
+	C.backtrace_full(bt_state, frames_to_skip, bt_print_callback, bt_error_callback, 0)
 }
