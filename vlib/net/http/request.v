@@ -244,14 +244,13 @@ fn parse_request_line(s string) ?(Method, urllib.URL, Version) {
 //
 // a possible solution is to use the a list of QueryValue
 pub fn parse_form(body string) map[string]string {
-
 	mut form := map[string]string{}
 
-	if body.match_glob("{*}") {
+	if body.match_glob('{*}') {
 		form['json'] = body
 	} else {
 		words := body.split('&')
-		
+
 		for word in words {
 			kv := word.split_nth('=', 2)
 			if kv.len != 2 {
@@ -263,7 +262,6 @@ pub fn parse_form(body string) map[string]string {
 		}
 	}
 	return form
-
 	// }
 	// todo: parse form-data and application/json
 	// ...
