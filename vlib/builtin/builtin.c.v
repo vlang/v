@@ -54,7 +54,11 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 				}
 				C.exit(1)
 			}
-			print_backtrace_skipping_top_frames(1)
+			$if use_libbacktrace ? {
+				print_libbacktrace(1)
+			} $else {
+				print_backtrace_skipping_top_frames(1)
+			}
 			$if panics_break_into_debugger ? {
 				break_if_debugger_attached()
 			}
@@ -101,7 +105,11 @@ pub fn panic(s string) {
 				}
 				C.exit(1)
 			}
-			print_backtrace_skipping_top_frames(1)
+			$if use_libbacktrace ? {
+				print_libbacktrace(1)
+			} $else {
+				print_backtrace_skipping_top_frames(1)
+			}
 			$if panics_break_into_debugger ? {
 				break_if_debugger_attached()
 			}
@@ -557,8 +565,23 @@ pub fn print_backtrace() {
 			$if tinyc {
 				C.tcc_backtrace(c'Backtrace')
 			} $else {
-				print_backtrace_skipping_top_frames(2)
+				// NOTE: TCC doesn't have the unwind library
+				$if use_libbacktrace ? {
+					print_libbacktrace(1)
+				} $else {
+					print_backtrace_skipping_top_frames(2)
+				}
 			}
 		}
 	}
 }
+
+// NOTE: g_main_argc and g_main_argv are filled in right after C's main start.
+// They are used internally by V's builtin; for user code, it is much
+// more convenient to just use `os.args` instead.
+
+[markused]
+__global g_main_argc = int(0)
+
+[markused]
+__global g_main_argv = voidptr(0)
