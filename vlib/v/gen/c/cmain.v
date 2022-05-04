@@ -72,6 +72,8 @@ fn (mut g Gen) gen_c_main_function_header() {
 	} else {
 		g.writeln('int main(int ___argc, char** ___argv){')
 	}
+	g.writeln('\tg_main_argc = ___argc;')
+	g.writeln('\tg_main_argv = ___argv;')
 }
 
 fn (mut g Gen) gen_c_main_header() {

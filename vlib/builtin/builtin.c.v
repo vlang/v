@@ -575,3 +575,13 @@ pub fn print_backtrace() {
 		}
 	}
 }
+
+// NOTE: g_main_argc and g_main_argv are filled in right after C's main start.
+// They are used internally by V's builtin; for user code, it is much
+// more convenient to just use `os.args` instead.
+
+[markused]
+__global g_main_argc = int(0)
+
+[markused]
+__global g_main_argv = voidptr(0)
