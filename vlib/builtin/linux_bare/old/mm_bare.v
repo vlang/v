@@ -31,7 +31,7 @@ pub fn mm_free(addr &byte) Errno {
 	return sys_munmap(ap, size)
 }
 
-pub fn mem_copy(dest0 voidptr, src0 voidptr, n int) voidptr {
+pub fn mem_copy(dest0 voidptr, src0 voidptr, n isize) voidptr {
 	mut dest := &u8(dest0)
 	src := &u8(src0)
 	for i in 0 .. n {
@@ -41,7 +41,7 @@ pub fn mem_copy(dest0 voidptr, src0 voidptr, n int) voidptr {
 }
 
 [unsafe]
-pub fn malloc(n int) &byte {
+pub fn malloc(n isize) &byte {
 	if n < 0 {
 		panic('malloc(<0)')
 	}
