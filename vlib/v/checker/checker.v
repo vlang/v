@@ -648,7 +648,8 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					rs, _ := c.table.type_size(right_type)
 					// prevent e.g. `u32 == i16` but not `u16 == i32` as max_u16 fits in i32
 					// TODO u32 == i32, change < to <=
-					if (is_left_type_signed && ls < rs) || (is_right_type_signed && rs < ls) {
+					if !c.pref.translated && ((is_left_type_signed && ls < rs)
+						|| (is_right_type_signed && rs < ls)) {
 						lt := c.table.sym(left_type).name
 						rt := c.table.sym(right_type).name
 						c.error('`$lt` cannot be compared with `$rt`', node.pos)
@@ -1186,7 +1187,9 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 					}
 				}
 			} else if expr.obj is ast.ConstField && expr.name in c.const_names {
-				if !c.inside_unsafe {
+				if !c.inside_unsafe && !c.pref.translated {
+					// TODO fix this in c2v, do not allow modification of all consts
+					// in translated code
 					c.error('cannot modify constant `$expr.name`', expr.pos)
 				}
 			}
@@ -2660,7 +2663,7 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			return c.comptime_call(mut node)
 		}
 		ast.ComptimeSelector {
-			node.left_type = c.unwrap_generic(c.expr(node.left))
+			node.left_type = c.expr(node.left)
 			expr_type := c.unwrap_generic(c.expr(node.field_expr))
 			expr_sym := c.table.sym(expr_type)
 			if expr_type != ast.string_type {

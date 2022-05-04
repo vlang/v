@@ -56,11 +56,14 @@ to the AST.
 7. `v/gen/c` C backend. It simply walks the AST and generates C code that can be
 compiled with Clang, GCC, Visual Studio, and TCC.
 
-8. `json.v` defines the json code generation. This file will be removed once V
+8. `v/gen/js` JavaScript backend. It simply walks the AST and generates JS code that can be
+executed on the browser or in NodeJS/Deno.
+
+9. `v/gen/c/json.v` defines the json code generation. This file will be removed once V
 supports comptime code generation, and it will be possible to do this using the
 language's tools.
 
-9. `v/gen/native` is the directory with all the machine code generation logic. It
+10. `v/gen/native` is the directory with all the machine code generation logic. It
 defines a set of functions that translate assembly instructions to machine code
 and build the binary from scratch byte by byte. It manually builds all headers,
 segments, sections, symtable, relocations, etc. Right now it only has basic

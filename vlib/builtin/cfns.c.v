@@ -93,6 +93,8 @@ fn C._execve(cmd_path &char, args voidptr, envs voidptr) int
 
 fn C._execvp(cmd_path &char, args &&char) int
 
+fn C.strcmp(s1 &char, s2 &char) int
+
 [trusted]
 fn C.fork() int
 

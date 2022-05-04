@@ -43,6 +43,18 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 			// Allow fixed arrays as `&i8` etc
 			if expected_sym.is_number() {
 				return true
+			} else if expected.is_any_kind_of_pointer() {
+				return true
+			}
+		} else if expected_sym.kind == .array_fixed {
+			if got_sym.is_number() && got.is_any_kind_of_pointer() {
+				return true
+			} else if got_sym.kind == .array {
+				info := expected_sym.info as ast.ArrayFixed
+				info2 := got_sym.info as ast.Array
+				if c.check_types(info.elem_type, info2.elem_type) {
+					return true
+				}
 			}
 		}
 		if expected_sym.kind == .enum_ && got_sym.is_number() {
