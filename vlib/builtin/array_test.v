@@ -209,61 +209,82 @@ fn test_compare_ints() {
     assert compare_ints(a, a) == 0
 }
 */
-fn test_repeat() {
-	{
-		a := [0].repeat(5)
-		assert a.len == 5
-		assert a[0] == 0 && a[1] == 0 && a[2] == 0 && a[3] == 0 && a[4] == 0
+
+fn test_repeat_int() {
+	a := [1234].repeat(5)
+	dump(a)
+	assert a.len == 5
+	for x in a {
+		assert x == 1234
 	}
-	{
-		a := [1.1].repeat(10)
-		assert a[0] == 1.1
-		assert a[5] == 1.1
-		assert a[9] == 1.1
-	}
-	{
-		a := [i64(-123)].repeat(10)
-		assert a[0] == -123
-		assert a[5] == -123
-		assert a[9] == -123
-	}
-	{
-		a := [u64(123)].repeat(10)
-		assert a[0] == 123
-		assert a[5] == 123
-		assert a[9] == 123
-	}
-	{
-		a := [1.1].repeat(10)
-		assert a[0] == 1.1
-		assert a[5] == 1.1
-		assert a[9] == 1.1
-	}
-	{
-		a := [1, 2].repeat(2)
-		assert a[0] == 1
-		assert a[1] == 2
-		assert a[2] == 1
-		assert a[3] == 2
-	}
-	{
-		a := ['1', 'abc'].repeat(2)
-		assert a[0] == '1'
-		assert a[1] == 'abc'
-		assert a[2] == '1'
-		assert a[3] == 'abc'
-	}
-	{
-		mut a := ['1', 'abc'].repeat(0)
-		assert a.len == 0
-		a << 'abc'
-		assert a[0] == 'abc'
-	}
+}
+
+fn test_repeat_f64() {
+	a := [1.1].repeat(10)
+	dump(a)
+	assert a.len == 10
+	assert a[0] == 1.1
+	assert a[5] == 1.1
+	assert a[9] == 1.1
+}
+
+fn test_repeat_f32() {
+	a := [f32(1.1)].repeat(10)
+	dump(a)
+	assert a.len == 10
+	assert a[0] == f32(1.1)
+	assert a[5] == f32(1.1)
+	assert a[9] == f32(1.1)
+}
+
+fn test_repeat_i64() {
+	a := [i64(-123)].repeat(10)
+	dump(a)
+	assert a.len == 10
+	assert a[0] == -123
+	assert a[5] == -123
+	assert a[9] == -123
+}
+
+fn test_repeat_u64() {
+	a := [u64(123)].repeat(10)
+	assert a[0] == 123
+	assert a[5] == 123
+	assert a[9] == 123
+}
+
+fn test_repeat_several_ints() {
+	a := [1, 2].repeat(2)
+	dump(a)
+	assert a.len == 4
+	assert a[0] == 1
+	assert a[1] == 2
+	assert a[2] == 1
+	assert a[3] == 2
+}
+
+fn test_repeat_several_strings_2() {
+	a := ['1', 'abc'].repeat(2)
+	dump(a)
+	assert a.len == 4
+	assert a[0] == '1'
+	assert a[1] == 'abc'
+	assert a[2] == '1'
+	assert a[3] == 'abc'
+}
+
+fn test_repeat_several_strings_0() {
+	mut a := ['1', 'abc'].repeat(0)
+	dump(a)
+	assert a.len == 0
+	a << 'abc'
+	assert a[0] == 'abc'
 }
 
 fn test_deep_repeat() {
 	mut a3 := [[[1, 1], [2, 2], [3, 3]], [[4, 4], [5, 5], [6, 6]]]
 	r := a3.repeat(3)
+	dump(r)
 	a3[1][1][0] = 17
 	assert r == [
 		[[1, 1], [2, 2], [3, 3]],

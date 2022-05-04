@@ -276,7 +276,7 @@ __global total_m = i64(0)
 // malloc returns a `byteptr` pointing to the memory address of the allocated space.
 // unlike the `calloc` family of functions - malloc will not zero the memory block.
 [unsafe]
-pub fn malloc(n int) &u8 {
+pub fn malloc(n isize) &u8 {
 	if n <= 0 {
 		panic('malloc($n <= 0)')
 	}
@@ -319,7 +319,7 @@ pub fn malloc(n int) &u8 {
 }
 
 [unsafe]
-pub fn malloc_noscan(n int) &u8 {
+pub fn malloc_noscan(n isize) &u8 {
 	if n <= 0 {
 		panic('malloc_noscan($n <= 0)')
 	}
@@ -370,7 +370,7 @@ pub fn malloc_noscan(n int) &u8 {
 // previously allocated with `malloc`, `v_calloc` or `vcalloc`.
 // Please, see also realloc_data, and use it instead if possible.
 [unsafe]
-pub fn v_realloc(b &u8, n int) &u8 {
+pub fn v_realloc(b &u8, n isize) &u8 {
 	$if trace_realloc ? {
 		C.fprintf(C.stderr, c'v_realloc %6d\n', n)
 	}
@@ -441,7 +441,7 @@ pub fn realloc_data(old_data &u8, old_size int, new_size int) &u8 {
 // vcalloc dynamically allocates a zeroed `n` bytes block of memory on the heap.
 // vcalloc returns a `byteptr` pointing to the memory address of the allocated space.
 // Unlike `v_calloc` vcalloc checks for negative values given in `n`.
-pub fn vcalloc(n int) &u8 {
+pub fn vcalloc(n isize) &u8 {
 	if n < 0 {
 		panic('calloc($n < 0)')
 	} else if n == 0 {
@@ -462,7 +462,7 @@ pub fn vcalloc(n int) &u8 {
 
 // special versions of the above that allocate memory which is not scanned
 // for pointers (but is collected) when the Boehm garbage collection is used
-pub fn vcalloc_noscan(n int) &u8 {
+pub fn vcalloc_noscan(n isize) &u8 {
 	$if trace_vcalloc ? {
 		total_m += n
 		C.fprintf(C.stderr, c'vcalloc_noscan %6d total %10d\n', n, total_m)
