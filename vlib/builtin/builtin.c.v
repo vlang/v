@@ -567,7 +567,7 @@ pub fn print_backtrace() {
 			} $else {
 				// NOTE: TCC doesn't have the unwind library
 				$if use_libbacktrace ? {
-					print_libbacktrace(2)
+					print_libbacktrace(1)
 				} $else {
 					print_backtrace_skipping_top_frames(2)
 				}

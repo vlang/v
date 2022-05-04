@@ -44,10 +44,9 @@ fn bt_print_callback(data voidptr, pc voidptr, filename_ptr &char, line int, fn_
 	} else {
 		(unsafe { fn_name_ptr.vstring() }).replace('__', '.')
 	}
-	pc_64 := u64(pc)
-
-	println('0x${pc_64:x} $fn_name')
-	println('\tat $filename:$line')
+	// keep it for later
+	// pc_64 := u64(pc)
+	println('$filename:$line: by $fn_name')
 	return 0
 }
 
