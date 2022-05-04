@@ -471,7 +471,7 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 		// for example module import tests, or subtests, that are compiled/run by other parent tests
 		// in specific configurations, etc.
 		if fnormalised.contains('testdata/') || fnormalised.contains('modules/')
-			|| f.contains('preludes/') {
+			|| fnormalised.contains('preludes/') {
 			continue
 		}
 		$if windows {
@@ -489,7 +489,8 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 			skipped << skipped_f
 		}
 		for skip_prefix in oskipped {
-			if f.starts_with(skip_prefix) {
+			skip_folder := skip_prefix + '/'
+			if fnormalised.starts_with(skip_folder) {
 				continue next_file
 			}
 		}

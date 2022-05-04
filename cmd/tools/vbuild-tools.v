@@ -31,7 +31,7 @@ fn main() {
 	//
 	mut skips := []string{}
 	for stool in tools_in_subfolders {
-		skips << os.join_path(tfolder, stool)
+		skips << os.join_path(tfolder, stool).replace('\\', '/')
 	}
 	buildopts := args_string.all_before('build-tools')
 	mut session := testing.prepare_test_session(buildopts, folder, skips, main_label)
