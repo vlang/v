@@ -460,7 +460,7 @@ pub fn (p &Parser) peek_token(n int) token.Token {
 }
 
 // peek token in if guard `if x,y := opt()` after var_list `x,y`
-pub fn (p &Parser) peek_token_after_var_list() token.Token {
+fn (p &Parser) peek_token_after_var_list() token.Token {
 	mut n := 0
 	mut tok := p.tok
 	for {
