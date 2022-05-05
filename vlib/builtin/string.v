@@ -1521,42 +1521,42 @@ pub fn (c u8) is_space() bool {
 }
 
 // is_digit returns `true` if the byte is in range 0-9 and `false` otherwise.
-// Example: assert u8(`9`) == true
+// Example: assert u8(`9`).is_digit() == true
 [inline]
 pub fn (c u8) is_digit() bool {
 	return c >= `0` && c <= `9`
 }
 
 // is_hex_digit returns `true` if the byte is either in range 0-9, a-f or A-F and `false` otherwise.
-// Example: assert u8(`F`) == true
+// Example: assert u8(`F`).is_hex_digit() == true
 [inline]
 pub fn (c u8) is_hex_digit() bool {
 	return (c >= `0` && c <= `9`) || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)
 }
 
 // is_oct_digit returns `true` if the byte is in range 0-7 and `false` otherwise.
-// Example: assert u8(`7`) == true
+// Example: assert u8(`7`).is_oct_digit() == true
 [inline]
 pub fn (c u8) is_oct_digit() bool {
 	return c >= `0` && c <= `7`
 }
 
 // is_bin_digit returns `true` if the byte is a binary digit (0 or 1) and `false` otherwise.
-// Example: assert u8(`0`) == true
+// Example: assert u8(`0`).is_bin_digit() == true
 [inline]
 pub fn (c u8) is_bin_digit() bool {
 	return c == `0` || c == `1`
 }
 
 // is_letter returns `true` if the byte is in range a-z or A-Z and `false` otherwise.
-// Example: assert u8(`V`) == true
+// Example: assert u8(`V`).is_letter() == true
 [inline]
 pub fn (c u8) is_letter() bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
 }
 
 // is_alnum returns `true` if the byte is in range a-z, A-Z, 0-9 and `false` otherwise.
-// Example: assert u8(`V`) == true
+// Example: assert u8(`V`).is_alnum() == true
 [inline]
 pub fn (c u8) is_alnum() bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`)
