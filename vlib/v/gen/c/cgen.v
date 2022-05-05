@@ -1188,11 +1188,11 @@ fn (mut g Gen) write_chan_push_optional_fns() {
 		done << styp
 		g.register_optional(ast.void_type.set_flag(.optional))
 		g.channel_definitions.writeln('
-static inline ${option_name}_void __Option_${styp}_pushval($styp ch, $el_type e) {
+static inline ${c.option_name}_void __Option_${styp}_pushval($styp ch, $el_type e) {
 	if (sync__Channel_try_push_priv(ch, &e, false)) {
-		return (${option_name}_void){ .state = 2, .err = _v_error(_SLIT("channel closed")), .data = {EMPTY_STRUCT_INITIALIZATION} };
+		return (${c.option_name}_void){ .state = 2, .err = _v_error(_SLIT("channel closed")), .data = {EMPTY_STRUCT_INITIALIZATION} };
 	}
-	return (${option_name}_void){0};
+	return (${c.option_name}_void){0};
 }')
 	}
 }
@@ -4188,7 +4188,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				node.types[0].has_flag(.optional)
 			}
 		}
-		if fn_return_is_optional && !expr_type_is_opt && return_sym.name != option_name {
+		if fn_return_is_optional && !expr_type_is_opt && return_sym.name != c.option_name {
 			styp := g.base_type(g.fn_decl.return_type)
 			g.writeln('$ret_typ $tmpvar;')
 			g.write('opt_ok(&($styp[]) { ')
