@@ -352,8 +352,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	if is_method && rec.typ.has_flag(.generic) {
 		sym := p.table.sym(rec.typ)
 		if sym.info is ast.Struct {
-			rec_generic_names := sym.info.generic_types.map(p.table.sym(it).name)
-			for gname in rec_generic_names {
+			fn_generic_names := generic_names.clone()
+			generic_names = sym.info.generic_types.map(p.table.sym(it).name)
+			for gname in fn_generic_names {
 				if gname !in generic_names {
 					generic_names << gname
 				}
