@@ -13,6 +13,9 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 	got_is_ptr := got.is_ptr()
 	exp_is_ptr := expected.is_ptr()
 	if c.pref.translated {
+		if expected.is_int() && got.is_int() {
+			return true
+		}
 		if expected == ast.byteptr_type {
 			return true
 		}

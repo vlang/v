@@ -48,6 +48,7 @@ pub mut:
 	inside_const       bool
 	is_mbranch_expr    bool // match a { x...y { } }
 	fn_scope           &ast.Scope = voidptr(0)
+	wsinfix_depth      int
 }
 
 pub fn fmt(file ast.File, table &ast.Table, pref &pref.Preferences, is_debug bool) string {
@@ -2075,7 +2076,13 @@ fn split_up_infix(infix_str string, ignore_paren bool, is_cond_infix bool) ([]st
 	return conditions, penalties
 }
 
+const wsinfix_depth_max = 10
+
 fn (mut f Fmt) write_splitted_infix(conditions []string, penalties []int, ignore_paren bool, is_cond bool) {
+	f.wsinfix_depth++
+	defer {
+		f.wsinfix_depth--
+	}
 	for i, cnd in conditions {
 		c := cnd.trim_space()
 		if f.line_len + c.len < fmt.max_len[penalties[i]] {
@@ -2086,6 +2093,11 @@ fn (mut f Fmt) write_splitted_infix(conditions []string, penalties []int, ignore
 		} else {
 			is_paren_expr := (c[0] == `(` || (c.len > 5 && c[3] == `(`)) && c.ends_with(')')
 			final_len := ((f.indent + 1) * 4) + c.len
+			if f.wsinfix_depth > fmt.wsinfix_depth_max {
+				// limit indefinite recursion, by just giving up splitting:
+				f.write(c)
+				continue
+			}
 			if final_len > fmt.max_len.last() && is_paren_expr {
 				conds, pens := split_up_infix(c, true, is_cond)
 				f.write_splitted_infix(conds, pens, true, is_cond)
