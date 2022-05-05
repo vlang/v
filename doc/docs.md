@@ -5453,7 +5453,7 @@ V can bring in values at compile time from environment variables.
 These two comptime functions are very useful for displaying custom errors/warnings during
 compile time.
 
-Both receive as their only argument a literal string that contains the message to display:
+Both receive as their only argument a string literal that contains the message to display:
 
 ```v
 // x.v
