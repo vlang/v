@@ -9,7 +9,8 @@ import v.pref
 import v.token
 
 const (
-	supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig']
+	supported_comptime_calls = ['html', 'tmpl', 'env', 'embed_file', 'pkgconfig', 'compile_error',
+		'compile_warn']
 	comptime_types           = ['Map', 'Array', 'Int', 'Float', 'Struct', 'Interface', 'Enum',
 		'Sumtype']
 )
@@ -85,9 +86,9 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	err_node := ast.ComptimeCall{
 		scope: 0
 	}
+	start_pos := p.tok.pos()
 	p.check(.dollar)
-	start_pos := p.prev_tok.pos()
-	error_msg := 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()` and `\$vweb.html()` comptime functions are supported right now'
+	error_msg := 'only `\$tmpl()`, `\$env()`, `\$embed_file()`, `\$pkgconfig()`, `\$vweb.html()`, `\$compile_error` and `\$compile_warn` comptime functions are supported right now'
 	if p.peek_tok.kind == .dot {
 		name := p.check_name() // skip `vweb.html()` TODO
 		if name != 'vweb' {
@@ -96,7 +97,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		}
 		p.check(.dot)
 	}
-	method_name := p.check_name() // (.name)
+	method_name := p.check_name()
 	if method_name !in parser.supported_comptime_calls {
 		p.error(error_msg)
 		return err_node
@@ -105,8 +106,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	is_html := method_name == 'html'
 	// $env('ENV_VAR_NAME')
 	p.check(.lpar)
-	spos := p.tok.pos()
-	if method_name == 'env' {
+	if method_name in ['env', 'pkgconfig', 'compile_error', 'compile_warn'] {
 		s := p.tok.lit
 		p.check(.string)
 		p.check(.rpar)
@@ -114,22 +114,10 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			scope: 0
 			method_name: method_name
 			args_var: s
-			is_env: true
-			env_pos: spos
-			pos: spos.extend(p.prev_tok.pos())
-		}
-	}
-	if method_name == 'pkgconfig' {
-		s := p.tok.lit
-		p.check(.string)
-		p.check(.rpar)
-		return ast.ComptimeCall{
-			scope: 0
-			method_name: method_name
-			args_var: s
-			is_pkgconfig: true
-			env_pos: spos
-			pos: spos.extend(p.prev_tok.pos())
+			is_env: method_name == 'env'
+			is_pkgconfig: method_name == 'pkgconfig'
+			env_pos: start_pos
+			pos: start_pos.extend(p.prev_tok.pos())
 		}
 	}
 	literal_string_param := if is_html { '' } else { p.tok.lit }
@@ -152,7 +140,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		// Validate that the epath exists, and that it is actually a file.
 		if epath == '' {
 			p.error_with_pos('supply a valid relative or absolute file path to the file to embed',
-				spos)
+				start_pos)
 			return err_node
 		}
 		if !p.pref.is_fmt {
@@ -163,12 +151,12 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 				epath = os.real_path(os.join_path_single(os.dir(p.file_name), epath))
 				if !os.exists(epath) {
 					p.error_with_pos('"$epath" does not exist so it cannot be embedded',
-						spos)
+						start_pos)
 					return err_node
 				}
 				if !os.is_file(epath) {
 					p.error_with_pos('"$epath" is not a file so it cannot be embedded',
-						spos)
+						start_pos)
 					return err_node
 				}
 			} else {
