@@ -875,7 +875,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		mut final_param_sym := param_typ_sym
 		mut final_param_typ := param.typ
 		if func.is_variadic && param_typ_sym.info is ast.Array {
-			final_param_typ = param_typ_sym.array_info().elem_type
+			final_param_typ = param_typ_sym.info.elem_type
 			final_param_sym = c.table.sym(final_param_typ)
 		}
 		// Note: Casting to voidptr is used as an escape mechanism, so:
