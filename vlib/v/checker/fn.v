@@ -497,7 +497,6 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 		panic('unreachable')
 	} else if fn_name == 'json.encode' {
-		// do nothing
 	} else if fn_name == 'json.decode' && node.args.len > 0 {
 		if node.args.len != 2 {
 			c.error("json.decode expects 2 arguments, a type and a string (e.g `json.decode(T, '')`)",
