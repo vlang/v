@@ -57,7 +57,7 @@ fn C.fputs(str &char, stream &C.FILE) int
 fn C.fflush(&C.FILE) int
 
 // TODO define args in these functions
-fn C.fseek(stream &C.FILE, offset int, whence int) int
+fn C.fseek(stream &C.FILE, offset i64, whence int) int
 
 fn C.fopen(filename &char, mode &char) &C.FILE
 
@@ -119,7 +119,7 @@ fn C.chdir(path &char) int
 
 fn C.rewind(stream &C.FILE) int
 
-fn C.ftell(&C.FILE) int
+fn C.ftell(&C.FILE) i64
 
 fn C.stat(&char, voidptr) int
 
