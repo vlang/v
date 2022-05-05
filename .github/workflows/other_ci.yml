@@ -217,7 +217,7 @@ jobs:
           cd gitly
           ../v .
           # ./gitly -ci_run
-          ../v -autofree .
+          # ../v -autofree .
           ../v -o x tests/first_run.v
           ./x
           cd ..

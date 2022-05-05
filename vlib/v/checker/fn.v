@@ -938,6 +938,12 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				if arg_typ == ast.int_type && param_typ_sym.kind == .enum_ {
 					continue
 				}
+
+				if (arg_typ == ast.bool_type && param.typ.is_int())
+					|| (arg_typ.is_int() && param.typ == ast.bool_type) {
+					continue
+				}
+
 				// In C unsafe number casts are used all the time (e.g. `char*` where
 				// `int*` is expected etc), so just allow them all.
 				mut param_is_number := param.typ.is_number()
@@ -956,8 +962,10 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 					continue
 				}
 				// Allow `[32]i8` as `&i8` etc
-				if (arg_typ_sym.kind == .array_fixed && param_is_number)
-					|| (param_typ_sym.kind == .array_fixed && typ_is_number) {
+				if (arg_typ_sym.kind == .array_fixed && (param_is_number
+					|| param.typ.is_any_kind_of_pointer()))
+					|| (param_typ_sym.kind == .array_fixed && (typ_is_number
+					|| arg_typ.is_any_kind_of_pointer())) {
 					continue
 				}
 				// Allow `int` as `&i8`
@@ -1064,13 +1072,6 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	left_type := c.expr(node.left)
 	c.expected_type = left_type
 	mut is_generic := left_type.has_flag(.generic)
-	// x is Bar<T>, x.foo() -> x.foo<T>()
-	if is_generic && node.concrete_types.len == 0 {
-		rec_sym := c.table.sym(left_type)
-		if rec_sym.info is ast.Struct {
-			node.concrete_types = rec_sym.info.generic_types
-		}
-	}
 	node.left_type = left_type
 	// Set default values for .return_type & .receiver_type too,
 	// or there will be hard tRo diagnose 0 type panics in cgen.
@@ -1107,19 +1108,6 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		// and there already was an error before.
 		// c.error('`void` type has no methods', node.left.pos())
 		return ast.void_type
-	}
-	mut concrete_types := []ast.Type{}
-	for concrete_type in node.concrete_types {
-		if concrete_type.has_flag(.generic) {
-			concrete_types << c.unwrap_generic(concrete_type)
-		} else {
-			concrete_types << concrete_type
-		}
-	}
-	if concrete_types.len > 0 {
-		if c.table.register_fn_concrete_types(node.fkey(), concrete_types) {
-			c.need_recheck_generic_fns = true
-		}
 	}
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
@@ -1234,6 +1222,33 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 	}
 	if has_method {
+		// x is Bar<T>, x.foo() -> x.foo<T>()
+		rec_sym := c.table.sym(node.left_type)
+		rec_is_generic := left_type.has_flag(.generic)
+		if rec_sym.info is ast.Struct {
+			if rec_is_generic && node.concrete_types.len == 0 {
+				node.concrete_types = rec_sym.info.generic_types
+			} else if !rec_is_generic && rec_sym.info.concrete_types.len > 0
+				&& node.concrete_types.len > 0
+				&& rec_sym.info.concrete_types.len + node.concrete_types.len == method.generic_names.len {
+				t_concrete_types := node.concrete_types.clone()
+				node.concrete_types = rec_sym.info.concrete_types
+				node.concrete_types << t_concrete_types
+			}
+		}
+		mut concrete_types := []ast.Type{}
+		for concrete_type in node.concrete_types {
+			if concrete_type.has_flag(.generic) {
+				concrete_types << c.unwrap_generic(concrete_type)
+			} else {
+				concrete_types << concrete_type
+			}
+		}
+		if concrete_types.len > 0 {
+			if c.table.register_fn_concrete_types(node.fkey(), concrete_types) {
+				c.need_recheck_generic_fns = true
+			}
+		}
 		node.is_noreturn = method.is_noreturn
 		node.is_ctor_new = method.is_ctor_new
 		if !method.is_pub && !c.pref.is_test && method.mod != c.mod {
