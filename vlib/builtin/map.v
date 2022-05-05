@@ -634,12 +634,8 @@ pub fn (m &map) values() array {
 	mut item := unsafe { &u8(values.data) }
 
 	if m.key_values.deletes == 0 {
-		for i := 0; i < m.key_values.len; i++ {
-			unsafe {
-				pvalue := m.key_values.value(i)
-				m.clone_fn(item, pvalue)
-				item = item + m.value_bytes
-			}
+		unsafe {
+			vmemcpy(item, m.key_values.values, m.value_bytes * m.key_values.len)
 		}
 		return values
 	}
@@ -650,7 +646,7 @@ pub fn (m &map) values() array {
 		}
 		unsafe {
 			pvalue := m.key_values.value(i)
-			m.clone_fn(item, pvalue)
+			vmemcpy(item, pvalue, m.value_bytes)
 			item = item + m.value_bytes
 		}
 	}
