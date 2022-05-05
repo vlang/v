@@ -31,7 +31,7 @@ const currency_id = 'cconst'
 
 struct Price {
 	net         f64
-	currency_id string [json: currencyId] = '$currency_id'
+	currency_id string [json: currencyId] = currency_id
 }
 
 fn test_field_with_default_expr() ? {
