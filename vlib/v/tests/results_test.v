@@ -73,3 +73,11 @@ fn unsafe_return_error() !int {
 fn test_unsafe_return_error() {
 	unsafe_return_error() or { assert err.msg() == 'abc' }
 }
+
+fn return_reference_type(path string) !&string {
+	if path.len == 0 {
+		return error('vfopen called with ""')
+	}
+	str := ''
+	return &str
+}
