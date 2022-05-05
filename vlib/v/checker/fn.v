@@ -509,7 +509,8 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			sym := c.table.sym(expr.typ)
 			if c.table.known_type(sym.name) && sym.kind != .placeholder {
 				if sym.kind !in [.struct_, .sum_type, .map, .array] {
-					c.error('json.decode: expected sum type, struct, map or array, found $sym.kind', expr.pos)
+					c.error('json.decode: expected sum type, struct, map or array, found $sym.kind',
+						expr.pos)
 				}
 			} else {
 				c.error('json.decode: unknown type `$sym.name`', node.pos)
