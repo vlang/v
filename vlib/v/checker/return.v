@@ -24,6 +24,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 		return
 	}
 	exp_is_optional := expected_type.has_flag(.optional)
+	exp_is_result := expected_type.has_flag(.result)
 	mut expected_types := [expected_type]
 	if expected_type_sym.info is ast.MultiReturn {
 		expected_types = expected_type_sym.info.types
@@ -72,11 +73,13 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 			}
 		}
 	}
-	// allow `none` & `error` return types for function that returns optional
+	// allow `none` & `error` return types for function that returns option or result
 	option_type_idx := c.table.type_idxs['Option']
+	result_type_idx := c.table.type_idxs['_result']
 	got_types_0_idx := got_types[0].idx()
-	if exp_is_optional
-		&& got_types_0_idx in [ast.none_type_idx, ast.error_type_idx, option_type_idx] {
+	if (exp_is_optional
+		&& got_types_0_idx in [ast.none_type_idx, ast.error_type_idx, option_type_idx])
+		|| (exp_is_result && got_types_0_idx in [ast.error_type_idx, result_type_idx]) {
 		if got_types_0_idx == ast.none_type_idx && expected_type == ast.ovoid_type {
 			c.error('returning `none` in functions, that have a `?` result type is not allowed anymore, either `return error(message)` or just `return` instead',
 				node.pos)
