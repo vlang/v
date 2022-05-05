@@ -4,7 +4,6 @@ import os
 
 #flag -I @VEXEROOT/thirdparty/zip
 #include "zip.c"
-#include "zip.h"
 
 struct C.zip_t {
 }
