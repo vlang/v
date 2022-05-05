@@ -99,11 +99,11 @@ pub mut:
 	smartcast_cond_pos        token.Pos // match cond
 	ct_cond_stack             []ast.Expr
 mut:
-	stmt_level int // the nesting level inside each stmts list;
-	// .stmt_level is used to check for `evaluated but not used` ExprStmts like `1 << 1`
+	// `stmt_level` is used to check for `evaluated but not used` ExprStmts like `1 << 1`
 	// 1 for statements directly at each inner scope level;
 	// increases for `x := if cond { statement_list1} else {statement_list2}`;
 	// increases for `x := optfn() or { statement_list3 }`;
+	stmt_level int // the nesting level inside each stmts list;
 	files                            []ast.File
 	expr_level                       int // to avoid infinite recursion segfaults due to compiler bugs
 	cur_orm_ts                       ast.TypeSymbol
