@@ -316,7 +316,7 @@ fn test_bool_true() {
 	tok := sc.scan()
 	assert tok.kind == .bool_
 	assert tok.lit.len == 4
-	as{ert tok.lit.bytestr() == 'true'
+	assert tok.lit.bytestr() == 'true'
 }
 
 fn test_bool_false() {
