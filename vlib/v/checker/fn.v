@@ -505,13 +505,13 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 		expr := node.args[0].expr
 		if expr is ast.TypeNode {
-			sym := c.table.sym(expr.typ)
+			sym := c.table.sym(c.unwrap_generic(expr.typ))
 			if c.table.known_type(sym.name) && sym.kind != .placeholder {
 				mut kind := sym.kind
 				if sym.info is ast.Alias {
 					kind = c.table.sym(sym.info.parent_type).kind
 				}
-				if kind !in [.struct_, .sum_type, .map, .array, .any] {
+				if kind !in [.struct_, .sum_type, .map, .array] {
 					c.error('json.decode: expected sum type, struct, map or array, found $kind',
 						expr.pos)
 				}
