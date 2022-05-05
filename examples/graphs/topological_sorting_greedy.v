@@ -1,20 +1,15 @@
-/*
-The idea of this algorithm follow :
-https://www.gatevidyalay.com/topological-sort-topological-sorting/ (GREEDY)
-(no cycles are detected)
-
-https://en.wikipedia.org/wiki/Topological_sorting ... just the input data
-and the Kahn algorithm
-
-Author: CCS
-*/
+// The idea of this algorithm follow :
+// https://www.gatevidyalay.com/topological-sort-topological-sorting/ (GREEDY)
+// (no cycles are detected)
+// https://en.wikipedia.org/wiki/Topological_sorting ... just the input data
+// and the Kahn algorithm
+// Author: CCS
 
 // the idea is rude: https://www.gatevidyalay.com/topological-sort-topological-sorting/
 fn topog_sort_greedy(graph map[string][]string) []string {
 	n_nodes := graph.len // numbers of nodes of this graph
 	mut top_order := []string{} // a vector with sequence of nodes visited
-	// ad the end ...
-	mut count := 0 //
+	mut count := 0
 	/*
 	IDEA ( a greedy algorythm ):
 
@@ -30,7 +25,7 @@ fn topog_sort_greedy(graph map[string][]string) []string {
 	 Maybe it seems the Kahn's algorithm
 	*/
 	mut v_degree := in_degree(graph) // return: map [string] int
-	print('\n V Degree $v_degree')
+	print('V Degree $v_degree')
 	mut small_degree := min_degree(v_degree)
 	mut new_graph := remove_node_from_graph(small_degree, graph)
 	top_order << small_degree
@@ -38,7 +33,7 @@ fn topog_sort_greedy(graph map[string][]string) []string {
 
 	for (count < n_nodes) {
 		v_degree = in_degree(new_graph) // return: map [string] int
-		print('\n V Degree $v_degree')
+		print('\nV Degree $v_degree')
 		small_degree = min_degree(v_degree)
 		new_graph = remove_node_from_graph(small_degree, new_graph)
 
@@ -144,10 +139,8 @@ fn main() {
 		'10': []
 	}
 
-	print('\n A Topological Sort of G1:  ${topog_sort_greedy(graph_01)} \n')
-	print('\n A Topological Sort of G2:  ${topog_sort_greedy(graph_02)} \n')
-	print('\n A Topological Sort of G3:  ${topog_sort_greedy(graph_03)} \n')
+	println('\nA Topological Sort of G1:  ${topog_sort_greedy(graph_01)}')
+	println('\nA Topological Sort of G2:  ${topog_sort_greedy(graph_02)}')
+	println('\nA Topological Sort of G3:  ${topog_sort_greedy(graph_03)}')
 	// ['2', '9', '10', '11', '5', '8', '7', '3']
 }
-
-//**********************************************************************

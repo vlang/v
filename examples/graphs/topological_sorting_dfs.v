@@ -1,15 +1,10 @@
-/*
-https://en.wikipedia.org/wiki/Topological_sorting
-
-A DFS RECURSIVE ....
-An alternative algorithm for topological sorting is based on depth-first search. The algorithm loops through each node of the graph, in an arbitrary order, initiating a depth-first search that terminates when it hits any node that has already been visited since the beginning
-of the topological sort or the node has no outgoing edges (i.e. a leaf node)
-
-Discussion: https://www.gatevidyalay.com/topological-sort-topological-sorting/
-
-$ v run dfs_topological_ordering.v
-Author: CCS
-*/
+// https://en.wikipedia.org/wiki/Topological_sorting
+// A DFS RECURSIVE ALGORITHM ....
+// An alternative algorithm for topological sorting is based on depth-first search. The algorithm loops through each node of the graph, in an arbitrary order, initiating a depth-first search that terminates when it hits any node that has already been visited since the beginning
+// of the topological sort or the node has no outgoing edges (i.e. a leaf node)
+// Discussion: https://www.gatevidyalay.com/topological-sort-topological-sorting/
+// $ v run dfs_topological_ordering.v
+// Author: CCS
 
 // THE DFS RECURSIVE .... classical searchig for leaves nodes
 // the arguments are used in the function to avoid global variables....
@@ -72,7 +67,7 @@ fn main() {
 
 	mut graph := map[string][]string{} // the graph: adjacency matrix
 	for index, g_value in [graph_01, graph_02, graph_03] {
-		println('\n\n Topological sorting for the graph $index using a DFS recursive')
+		println('Topological sorting for the graph $index using a DFS recursive')
 		graph = g_value.clone() // graphs_sample[g].clone() // choice your SAMPLE
 
 		// mut n_nodes := graph.len
@@ -80,8 +75,8 @@ fn main() {
 
 		// mut start := (graph.keys()).first() // arbitrary, any node if you wish
 		mut top_sorting := []string{}
-        // advantages of map ... getting all nodes
-		for i in graph.keys()  {
+		// advantages of map ... getting all nodes
+		for i in graph.keys() {
 			if visited[i] != true {
 				dfs_recursive(i, mut visited, graph, mut top_sorting)
 			}
@@ -89,8 +84,7 @@ fn main() {
 
 		print('\n A topological sorting of graph $index : ')
 		// println(g_value)
-		print(top_sorting.reverse())
+		println(top_sorting.reverse())
+		println('')
 	} // End of for
 }
-
-//**********************************************************************
