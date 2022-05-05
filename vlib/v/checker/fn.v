@@ -511,7 +511,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				if sym.info is ast.Alias {
 					kind = c.table.sym(sym.info.parent_type).kind
 				}
-				if kind !in [.struct_, .sum_type, .map, .array] {
+				if kind !in [.struct_, .sum_type, .map, .array, .any] {
 					c.error('json.decode: expected sum type, struct, map or array, found $kind',
 						expr.pos)
 				}
