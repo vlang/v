@@ -5433,9 +5433,6 @@ numbers: [1, 2, 3]
 3
 ```
 
-
-
-
 #### `$env`
 
 ```v
@@ -5450,6 +5447,34 @@ fn main() {
 V can bring in values at compile time from environment variables.
 `$env('ENV_VAR')` can also be used in top-level `#flag` and `#include` statements:
 `#flag linux -I $env('JAVA_HOME')/include`.
+
+#### `$compile_error` and `$compile_warn`
+
+These two comptime functions are very useful for displaying custom errors/warnings during
+compile time.
+
+Both receive as their only argument a literal string that contains the message to display:
+
+```v
+// x.v
+module main
+
+$if linux {
+    $compile_error('Linux is not supported')
+}
+
+fn main() {
+}
+
+$ v run x.v
+x.v:4:5: error: Linux is not supported
+    2 |
+    3 | $if linux {
+    4 |     $compile_error('Linux is not supported')
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    5 | }
+    6 |
+```
 
 ### Environment specific files
 
