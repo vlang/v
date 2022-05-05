@@ -1798,7 +1798,7 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 	if node.call_expr.return_type == ast.void_type {
 		gohandle_name = if is_opt { '__v_thread_Option_void' } else { '__v_thread' }
 	} else {
-		opt := if is_opt { option_name } else { '' }
+		opt := if is_opt { '${option_name}_' } else { '' }
 		gohandle_name = '__v_thread_$opt${g.table.sym(g.unwrap_generic(node.call_expr.return_type)).cname}'
 	}
 	if g.pref.os == .windows {
