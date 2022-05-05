@@ -1,0 +1,13 @@
+import json
+
+struct St {
+	a string
+}
+
+fn main() {
+	json.decode(St, '{a: ""}') ? // OK
+	json.decode(St2, '{a: ""}') ? // BAD
+	json.decode(St) ? // BAD
+	json.decode(string, '""') ? // BAD
+	json.decode(St, 6) ? // BAD
+}

@@ -1,0 +1,27 @@
+vlib/v/checker/tests/json_decode.vv:9:7: error: json.decode: unknown type `St2`
+    7 | fn main() {
+    8 |     json.decode(St, '{a: ""}') ? // OK
+    9 |     json.decode(St2, '{a: ""}') ? // BAD
+      |          ~~~~~~~~~~~~~~~~~~~~~~
+   10 |     json.decode(St) ? // BAD
+   11 |     json.decode(string, '""') ? // BAD
+vlib/v/checker/tests/json_decode.vv:10:7: error: json.decode expects 2 arguments, a type and a string (e.g `json.decode(T, '')`)
+    8 |     json.decode(St, '{a: ""}') ? // OK
+    9 |     json.decode(St2, '{a: ""}') ? // BAD
+   10 |     json.decode(St) ? // BAD
+      |          ~~~~~~~~~~
+   11 |     json.decode(string, '""') ? // BAD
+   12 |     json.decode(St, 6) ? // BAD
+vlib/v/checker/tests/json_decode.vv:11:14: error: json.decode: expected sum type, struct, map or array, found string
+    9 |     json.decode(St2, '{a: ""}') ? // BAD
+   10 |     json.decode(St) ? // BAD
+   11 |     json.decode(string, '""') ? // BAD
+      |                 ~~~~~~
+   12 |     json.decode(St, 6) ? // BAD
+   13 | }
+vlib/v/checker/tests/json_decode.vv:12:7: error: json.decode: second argument needs to be a string
+   10 |     json.decode(St) ? // BAD
+   11 |     json.decode(string, '""') ? // BAD
+   12 |     json.decode(St, 6) ? // BAD
+      |          ~~~~~~~~~~~~~
+   13 | }
