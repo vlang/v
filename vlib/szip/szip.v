@@ -19,7 +19,7 @@ fn C.zip_close(&Zip)
 
 fn C.zip_entry_open(&Zip, &u8) int
 
-fn C.zip_entry_openbyindex(&Zip, int) int
+fn C.zip_entry_openbyindex(&Zip, usize) int
 
 fn C.zip_entry_close(&Zip) int
 
