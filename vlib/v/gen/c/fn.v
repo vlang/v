@@ -1282,7 +1282,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.call_args(node)
 			g.writeln(');')
 			tmp2 = g.new_tmp_var()
-			g.writeln('Option_$typ $tmp2 = ${fn_name}($json_obj);')
+			g.writeln('${option_name}_$typ $tmp2 = ${fn_name}($json_obj);')
 		}
 		if !g.is_autofree {
 			g.write('cJSON_Delete($json_obj); // del')
@@ -1798,7 +1798,7 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 	if node.call_expr.return_type == ast.void_type {
 		gohandle_name = if is_opt { '__v_thread_Option_void' } else { '__v_thread' }
 	} else {
-		opt := if is_opt { 'Option_' } else { '' }
+		opt := if is_opt { option_name } else { '' }
 		gohandle_name = '__v_thread_$opt${g.table.sym(g.unwrap_generic(node.call_expr.return_type)).cname}'
 	}
 	if g.pref.os == .windows {

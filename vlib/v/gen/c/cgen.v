@@ -32,6 +32,7 @@ const (
 	// when operands are switched
 	cmp_rev        = ['eq', 'ne', 'lt', 'gt', 'le', 'ge']
 	result_name    = '_result'
+	option_name    = '_option'
 )
 
 fn string_array_to_map(a []string) map[string]bool {
@@ -972,7 +973,7 @@ fn (mut g Gen) expr_string_surround(prepend string, expr ast.Expr, append string
 // if one location changes
 fn (mut g Gen) optional_type_name(t ast.Type) (string, string) {
 	base := g.base_type(t)
-	mut styp := 'Option_$base'
+	mut styp := '_option_$base'
 	if t.is_ptr() {
 		styp = styp.replace('*', '_ptr')
 	}
@@ -1187,11 +1188,11 @@ fn (mut g Gen) write_chan_push_optional_fns() {
 		done << styp
 		g.register_optional(ast.void_type.set_flag(.optional))
 		g.channel_definitions.writeln('
-static inline Option_void __Option_${styp}_pushval($styp ch, $el_type e) {
+static inline ${option_name}_void __Option_${styp}_pushval($styp ch, $el_type e) {
 	if (sync__Channel_try_push_priv(ch, &e, false)) {
-		return (Option_void){ .state = 2, .err = _v_error(_SLIT("channel closed")), .data = {EMPTY_STRUCT_INITIALIZATION} };
+		return (${option_name}_void){ .state = 2, .err = _v_error(_SLIT("channel closed")), .data = {EMPTY_STRUCT_INITIALIZATION} };
 	}
-	return (Option_void){0};
+	return (${option_name}_void){0};
 }')
 	}
 }
@@ -4011,11 +4012,11 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	ret_typ := g.typ(g.unwrap_generic(g.fn_decl.return_type))
 	mut use_tmp_var := g.defer_stmts.len > 0 || g.defer_profile_code.len > 0
 		|| g.cur_lock.lockeds.len > 0
-	// handle promoting none/error/function returning 'Option'
+	// handle promoting none/error/function returning _option'
 	if fn_return_is_optional {
 		optional_none := node.exprs[0] is ast.None
 		ftyp := g.typ(node.types[0])
-		mut is_regular_option := ftyp == 'Option'
+		mut is_regular_option := ftyp == '_option'
 		if optional_none || is_regular_option || node.types[0] == ast.error_type_idx {
 			if !isnil(g.fn_decl) && g.fn_decl.is_test {
 				test_error_var := g.new_tmp_var()
@@ -4187,7 +4188,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				node.types[0].has_flag(.optional)
 			}
 		}
-		if fn_return_is_optional && !expr_type_is_opt && return_sym.name != 'Option' {
+		if fn_return_is_optional && !expr_type_is_opt && return_sym.name != option_name {
 			styp := g.base_type(g.fn_decl.return_type)
 			g.writeln('$ret_typ $tmpvar;')
 			g.write('opt_ok(&($styp[]) { ')
@@ -4734,7 +4735,7 @@ fn (mut g Gen) write_init_function() {
 }
 
 const (
-	builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'IError', 'Option', result_name]
+	builtins = ['string', 'array', 'DenseArray', 'map', 'Error', 'IError', option_name, result_name]
 )
 
 fn (mut g Gen) write_builtin_types() {

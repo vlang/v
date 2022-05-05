@@ -73,7 +73,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 		}
 	}
 	// allow `none` & `error` return types for function that returns optional
-	option_type_idx := c.table.type_idxs['Option']
+	option_type_idx := c.table.type_idxs['_option']
 	got_types_0_idx := got_types[0].idx()
 	if exp_is_optional
 		&& got_types_0_idx in [ast.none_type_idx, ast.error_type_idx, option_type_idx] {
