@@ -935,6 +935,12 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				if arg_typ == ast.int_type && param_typ_sym.kind == .enum_ {
 					continue
 				}
+
+				if (arg_typ == ast.bool_type && param.typ.is_int())
+					|| (arg_typ.is_int() && param.typ == ast.bool_type) {
+					continue
+				}
+
 				// In C unsafe number casts are used all the time (e.g. `char*` where
 				// `int*` is expected etc), so just allow them all.
 				mut param_is_number := param.typ.is_number()
@@ -953,8 +959,10 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 					continue
 				}
 				// Allow `[32]i8` as `&i8` etc
-				if (arg_typ_sym.kind == .array_fixed && param_is_number)
-					|| (param_typ_sym.kind == .array_fixed && typ_is_number) {
+				if (arg_typ_sym.kind == .array_fixed && (param_is_number
+					|| param.typ.is_any_kind_of_pointer()))
+					|| (param_typ_sym.kind == .array_fixed && (typ_is_number
+					|| arg_typ.is_any_kind_of_pointer())) {
 					continue
 				}
 				// Allow `int` as `&i8`
