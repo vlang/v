@@ -1,0 +1,6 @@
+vlib/v/checker/tests/optional_in_dump_err.vv:10:7: error: create() returns an option, so it should have either an `or {}` block, or `?` at the end
+    8 |
+    9 | fn main() {
+   10 |     dump(create())
+      |          ~~~~~~~~
+   11 | }
