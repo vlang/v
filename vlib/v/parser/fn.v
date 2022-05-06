@@ -223,7 +223,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 					p.tok.pos())
 			}
 			'_fastcall' {
-				p.note_with_pos('teh tag [_fastcall] has been deprecated, it will be an error after 2022-06-01, use `[callconv: fastcall]` instead',
+				p.note_with_pos('the tag [_fastcall] has been deprecated, it will be an error after 2022-06-01, use `[callconv: fastcall]` instead',
 					p.tok.pos())
 			}
 			'callconv' {
