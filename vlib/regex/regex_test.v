@@ -276,7 +276,6 @@ cgroups_test_suite = [
 ]
 )
 
-
 struct Test_find_all {
 	src string
 	q string
@@ -356,6 +355,77 @@ find_all_test_suite = [
 		r"\+{3}.*\+{3}",
 		[0, 11, 18, 32, 33, 44],
 		['+++pippo+++', '+++ pippo2 +++', '+++ oggi+++']
+	}
+
+]
+)
+
+struct Test_split {
+	src string
+	q string
+	res []string // ['abc','def',...]
+}
+const (
+split_test_suite = [
+	Test_split{
+		"abcd 1234 efgh 1234 ghkl1234 ab34546df",
+		r"\d+",
+		['abcd ',' efgh ',' ghkl',' ab','df']
+	},
+	Test_split{
+		"abcd 1234 efgh 1234 ghkl1234 ab34546df",
+		r"\a+",
+		[' 1234 ',' 1234 ','1234 ','34546']
+	},
+	Test_split{
+		"oggi pippo è andato a casa di pluto ed ha trovato pippo",
+		r"p[iplut]+o",
+		['oggi ',' è andato a casa di ',' ed ha trovato ']
+	},
+	Test_split{
+		"oggi pibao è andato a casa di pbababao ed ha trovato pibabababao",
+		r"(pi?(ba)+o)",
+		['oggi ',' è andato a casa di ',' ed ha trovato ']
+	},
+	Test_split{
+		"Today is a good day and tomorrow will be for sure.",
+		r"[Tt]o\w+",
+		[' is a good day and ',' will be for sure.']
+	},
+	Test_split{
+		"pera\nurl = https://github.com/dario/pig.html\npippo",
+		r"url *= *https?://[\w./]+",
+		['pera\n','\npippo']
+	},
+	Test_split{
+		"pera\nurl = https://github.com/dario/pig.html\npippo",
+		r"url *= *https?://.*"+'\n',
+		['pera\n','pippo']
+	},
+	Test_split{
+		"#.#......##.#..#..##........##....###...##...######.......#.....#..#......#...#........###.#..#.",
+		r"#[.#]{4}##[.#]{4}##[.#]{4}###",
+		['#.#......##.#..#..##........#','##.......#.....#..#......#...#........###.#..#.']
+	},
+	Test_split{
+		"#.#......##.#..#..##........##....###...##...######.......#.....#..#......#...#........###.#..#.",
+		r".*#[.#]{4}##[.#]{4}##[.#]{4}###",
+		['##.......#.....#..#......#...#........###.#..#.']
+	},
+	Test_split{
+		"1234 Aa dddd Aaf 12334 Aa opopo Aaf",
+		r"Aa.+Aaf",
+		['1234 ',' 12334 ']
+	},
+	Test_split{
+		"@for something @endfor @for something else @endfor altro testo @for body @endfor uno due @for senza dire più @endfor pippo",
+		r"@for.+@endfor",
+		[' ',' altro testo ',' uno due ',' pippo']
+	},
+	Test_split{
+		"+++pippo+++\n elvo +++ pippo2 +++ +++ oggi+++",
+		r"\+{3}.*\+{3}",
+		['\n elvo ',' ']
 	}
 
 ]
@@ -466,6 +536,26 @@ fn test_regex(){
 		if res_str != to.res_str {
 			eprintln('err: find_all_str !!')
 			if debug { println("#$c exp: $to.res_str calculated: $res_str") }
+			assert false
+		}
+	}
+
+	// check split
+	for c,to in split_test_suite {
+		// debug print
+		if debug { println("#$c [$to.src] q[$to.q] ($to.res)") }
+
+		mut re := regex.regex_opt(to.q) or {
+			eprintln('err: $err')
+			assert false
+			continue
+		}
+
+		re.reset()
+		res := re.split(to.src)
+		if res != to.res {
+			eprintln('err: split !!')
+			if debug { println("#$c exp: $to.res calculated: $res") }
 			assert false
 		}
 	}
