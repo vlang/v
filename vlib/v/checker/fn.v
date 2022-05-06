@@ -1111,7 +1111,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	if left_sym.kind == .array && method_name in array_builtin_methods {
 		return c.array_builtin_method_call(mut node, left_type, c.table.sym(left_type))
 	} else if (left_sym.kind == .map || final_left_sym.kind == .map)
-		&& method_name in ['clone', 'keys', 'move', 'delete'] {
+		&& method_name in ['clone', 'keys', 'values', 'move', 'delete'] {
 		if left_sym.kind == .map {
 			return c.map_builtin_method_call(mut node, left_type, left_sym)
 		} else {
@@ -1820,12 +1820,16 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type ast.
 			}
 			ret_type = ret_type.clear_flag(.shared_f)
 		}
-		'keys' {
+		'keys', 'values' {
 			if node.args.len != 0 {
-				c.error('`.keys()` does not have any arguments', node.args[0].pos)
+				c.error('`.${method_name}()` does not have any arguments', node.args[0].pos)
 			}
 			info := left_sym.info as ast.Map
-			typ := c.table.find_or_register_array(info.key_type)
+			typ := if method_name == 'keys' {
+				c.table.find_or_register_array(info.key_type)
+			} else {
+				c.table.find_or_register_array(info.value_type)
+			}
 			ret_type = ast.Type(typ)
 		}
 		'delete' {
