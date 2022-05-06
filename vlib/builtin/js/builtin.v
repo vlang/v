@@ -104,6 +104,22 @@ pub fn (o Option) str() string {
 	return 'Option{ error: "$o.err" }'
 }
 
+pub struct _option {
+	state u8
+	err   IError = none__
+}
+
+// str returns the Option type: ok, none, or error
+pub fn (o _option) str() string {
+	if o.state == 0 {
+		return 'Option{ ok }'
+	}
+	if o.state == 1 {
+		return 'Option{ none }'
+	}
+	return 'Option{ error: "$o.err" }'
+}
+
 // trace_error prints to stderr a string and a backtrace of the error
 fn trace_error(x string) {
 	eprintln('> ${@FN} | $x')

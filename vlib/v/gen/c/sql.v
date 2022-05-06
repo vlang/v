@@ -77,11 +77,11 @@ fn (mut g Gen) sql_stmt_line(nd ast.SqlStmtLine, expr string) {
 	}
 
 	if node.kind == .create {
-		g.write('Option_void $res = orm__Connection_name_table[${expr}._typ]._method_')
+		g.write('${option_name}_void $res = orm__Connection_name_table[${expr}._typ]._method_')
 		g.sql_create_table(node, expr, table_name)
 		subs = true
 	} else if node.kind == .drop {
-		g.write('Option_void $res = orm__Connection_name_table[${expr}._typ]._method_')
+		g.write('${option_name}_void $res = orm__Connection_name_table[${expr}._typ]._method_')
 		g.writeln('drop(${expr}._object, _SLIT("$table_name"));')
 		subs = true
 	} else if node.kind == .insert {
@@ -90,10 +90,10 @@ fn (mut g Gen) sql_stmt_line(nd ast.SqlStmtLine, expr string) {
 		g.sql_insert(node, expr, table_name, arr, res, '', false, '')
 		dcheck = true
 	} else if node.kind == .update {
-		g.write('Option_void $res = orm__Connection_name_table[${expr}._typ]._method_')
+		g.write('${option_name}_void $res = orm__Connection_name_table[${expr}._typ]._method_')
 		g.sql_update(node, expr, table_name)
 	} else if node.kind == .delete {
-		g.write('Option_void $res = orm__Connection_name_table[${expr}._typ]._method_')
+		g.write('${option_name}_void $res = orm__Connection_name_table[${expr}._typ]._method_')
 		g.sql_delete(node, expr, table_name)
 	}
 	if !dcheck {
@@ -185,7 +185,7 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 		g.writeln('array_push(&$last_ids_arr, _MOV((orm__Primitive[]){orm__Connection_name_table[${expr}._typ]._method_last_id(${expr}._object)}));')
 	}
 
-	g.write('Option_void $res = orm__Connection_name_table[${expr}._typ]._method_')
+	g.write('${option_name}_void $res = orm__Connection_name_table[${expr}._typ]._method_')
 	g.write('insert(${expr}._object, _SLIT("$table_name"), (orm__QueryData){')
 
 	g.write('.fields = new_array_from_c_array($fields.len, $fields.len, sizeof(string),')
@@ -551,7 +551,7 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string) {
 	res := g.new_tmp_var()
 	table_name := g.get_table_name(node.table_expr)
 	g.sql_table_name = g.table.sym(node.table_expr.typ).name
-	g.write('Option_Array_Array_orm__Primitive _o$res = orm__Connection_name_table[${expr}._typ]._method_select(${expr}._object, ')
+	g.write('${option_name}_Array_Array_orm__Primitive _o$res = orm__Connection_name_table[${expr}._typ]._method_select(${expr}._object, ')
 	g.write('(orm__SelectConfig){')
 	g.write('.table = _SLIT("$table_name"),')
 	g.write('.is_count = $node.is_count,')

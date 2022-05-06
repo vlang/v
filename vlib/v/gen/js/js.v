@@ -23,6 +23,7 @@ const (
 		'int_literal', 'float_literal', 'bool', 'string', 'map', 'array', 'rune', 'any', 'voidptr']
 	shallow_equatables = [ast.Kind.i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .f32, .f64,
 		.int_literal, .float_literal, .bool, .string]
+	option_name        = '_option'
 )
 
 struct SourcemapHelper {
@@ -899,7 +900,7 @@ fn (mut g JsGen) expr(node_ ast.Expr) {
 			// TODO
 		}
 		ast.CharLiteral {
-			if utf8_str_len(node.val) < node.val.len {
+			if node.val.len_utf8() < node.val.len {
 				g.write("new rune('$node.val'.charCodeAt())")
 			} else {
 				g.write("new u8('$node.val')")
@@ -1870,7 +1871,7 @@ fn (mut g JsGen) gen_return_stmt(it ast.Return) {
 	if fn_return_is_optional {
 		optional_none := node.exprs[0] is ast.None
 		ftyp := g.typ(node.types[0])
-		mut is_regular_option := ftyp == 'Option'
+		mut is_regular_option := ftyp == js.option_name
 		if optional_none || is_regular_option || node.types[0] == ast.error_type_idx {
 			if !isnil(g.fn_decl) && g.fn_decl.is_test {
 				test_error_var := g.new_tmp_var()
@@ -1895,7 +1896,7 @@ fn (mut g JsGen) gen_return_stmt(it ast.Return) {
 		tmp := g.new_tmp_var()
 		g.write('const $tmp = new ')
 
-		g.writeln('Option({});')
+		g.writeln('${js.option_name}({});')
 		g.write('${tmp}.state = new u8(0);')
 		g.write('${tmp}.data = ')
 		if it.exprs.len == 1 {
