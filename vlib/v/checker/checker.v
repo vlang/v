@@ -2670,6 +2670,7 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 		}
 		ast.DumpExpr {
 			node.expr_type = c.expr(node.expr)
+			c.check_expr_opt_call(node.expr, node.expr_type)
 			etidx := node.expr_type.idx()
 			if etidx == ast.void_type_idx {
 				c.error('dump expression can not be void', node.expr.pos())

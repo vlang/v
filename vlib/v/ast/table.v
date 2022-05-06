@@ -997,7 +997,7 @@ pub fn (t &Table) thread_cname(return_type Type) string {
 	}
 	return_type_sym := t.sym(return_type)
 	suffix := if return_type.is_ptr() { '_ptr' } else { '' }
-	prefix := if return_type.has_flag(.optional) { 'Option_' } else { '' }
+	prefix := if return_type.has_flag(.optional) { '_option_' } else { '' }
 	return '__v_thread_$prefix$return_type_sym.cname$suffix'
 }
 

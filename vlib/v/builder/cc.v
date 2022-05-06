@@ -418,6 +418,21 @@ fn (v &Builder) all_args(ccoptions CcompilerOptions) []string {
 	}
 	all << ccoptions.args
 	all << ccoptions.o_args
+	$if windows {
+		// Adding default options for tcc, gcc and clang as done in msvc.v.
+		// This is done before pre_args is added so that it can be overwritten if needed.
+		// -Wl,-stack=16777216 == /F 16777216
+		// -Werror=implicit-function-declaration == /we4013
+		// /volatile:ms - there seems to be no equivalent,
+		// normally msvc should use /volatile:iso
+		// but it could have an impact on vinix if it is created with msvc.
+		if !ccoptions.is_cc_msvc {
+			all << '-Wl,-stack=16777216'
+			if !v.pref.is_cstrict {
+				all << '-Werror=implicit-function-declaration'
+			}
+		}
+	}
 	all << ccoptions.pre_args
 	all << ccoptions.source_args
 	all << ccoptions.post_args

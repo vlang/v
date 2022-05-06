@@ -6026,7 +6026,7 @@ a nested loop, and those do not risk violating memory-safety.
 
 ## Appendix I: Keywords
 
-V has 41 reserved keywords (3 are literals):
+V has 42 reserved keywords (3 are literals):
 
 ```v ignore
 as
@@ -6038,7 +6038,6 @@ const
 continue
 defer
 else
-embed
 enum
 false
 fn
@@ -6050,6 +6049,7 @@ import
 in
 interface
 is
+isreftype
 lock
 match
 module
@@ -6097,15 +6097,15 @@ This lists operators for [primitive types](#primitive-types) only.
 
 <<   left shift             integer << unsigned integer
 >>   right shift            integer >> unsigned integer
->>>  unsigned right shift	integer >> unsigned integer
+>>>  unsigned right shift   integer >> unsigned integer
 
 
 Precedence    Operator
-    5             *  /  %  <<  >> >>> &
-    4             +  -  |  ^
-    3             ==  !=  <  <=  >  >=
-    2             &&
-    1             ||
+    5            *  /  %  <<  >> >>> &
+    4            +  -  |  ^
+    3            ==  !=  <  <=  >  >=
+    2            &&
+    1            ||
 
 
 Assignment Operators

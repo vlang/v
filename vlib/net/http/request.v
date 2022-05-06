@@ -244,16 +244,22 @@ fn parse_request_line(s string) ?(Method, urllib.URL, Version) {
 //
 // a possible solution is to use the a list of QueryValue
 pub fn parse_form(body string) map[string]string {
-	words := body.split('&')
 	mut form := map[string]string{}
-	for word in words {
-		kv := word.split_nth('=', 2)
-		if kv.len != 2 {
-			continue
+
+	if body.match_glob('{*}') {
+		form['json'] = body
+	} else {
+		words := body.split('&')
+
+		for word in words {
+			kv := word.split_nth('=', 2)
+			if kv.len != 2 {
+				continue
+			}
+			key := urllib.query_unescape(kv[0]) or { continue }
+			val := urllib.query_unescape(kv[1]) or { continue }
+			form[key] = val
 		}
-		key := urllib.query_unescape(kv[0]) or { continue }
-		val := urllib.query_unescape(kv[1]) or { continue }
-		form[key] = val
 	}
 	return form
 	// }

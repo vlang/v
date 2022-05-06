@@ -95,6 +95,30 @@ fn test_parse_form() {
 		'a': 'b'
 		'c': ' d '
 	}
+	assert parse_form('{json}') == {
+		'json': '{json}'
+	}
+	assert parse_form('{
+    "_id": "76c",
+    "friends": [
+      {
+        "id": 0,
+        "name": "Mason Luna"
+      }
+    ],
+    "greeting": "Hello."
+  }') == {
+		'json': '{
+    "_id": "76c",
+    "friends": [
+      {
+        "id": 0,
+        "name": "Mason Luna"
+      }
+    ],
+    "greeting": "Hello."
+  }'
+	}
 }
 
 fn test_parse_multipart_form() {
