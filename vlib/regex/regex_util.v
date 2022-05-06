@@ -343,24 +343,24 @@ pub fn (mut re RE) find_all_str(in_txt string) []string {
 pub fn (mut re RE) split(in_txt string) []string {
 		pos := re.find_all(in_txt)
 
-		mut sections := []string{cap: pos.len/2+1}
+		mut sections := []string{cap: pos.len / 2 + 1}
 
 		if pos.len == 0 {
 				return [in_txt]
 		}
-		for i := 0;i<pos.len; i+=2 {
-			  if pos[i] == 0 {
-			  	  continue
-			  }
-			  if i==0{
-			  	  sections << in_txt[..pos[i]]
-			  } else {
-			  		sections << in_txt[pos[i-1]..pos[i]]
-			  }
+		for i := 0; i < pos.len; i += 2 {
+			if pos[i] == 0 {
+				continue
+			}
+			if i==0{
+				sections << in_txt[..pos[i]]
+			} else {
+				sections << in_txt[pos[i-1]..pos[i]]
+			}
 		}
 		if pos[pos.len-1] != in_txt.len {
-				sections << in_txt[pos[pos.len-1]..]
-	  }
+			sections << in_txt[pos[pos.len-1]..]
+	  	}
 		return sections
 }
 
