@@ -1751,34 +1751,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.defer_stmts << defer_stmt
 		}
 		ast.EnumDecl {
-			enum_name := util.no_dots(node.name)
-			is_flag := node.is_flag
-			g.enum_typedefs.writeln('typedef enum {')
-			mut cur_enum_expr := ''
-			mut cur_enum_offset := 0
-			for i, field in node.fields {
-				g.enum_typedefs.write_string('\t${enum_name}__$field.name')
-				if field.has_expr {
-					g.enum_typedefs.write_string(' = ')
-					expr_str := g.expr_string(field.expr)
-					g.enum_typedefs.write_string(expr_str)
-					cur_enum_expr = expr_str
-					cur_enum_offset = 0
-				} else if is_flag {
-					g.enum_typedefs.write_string(' = ')
-					cur_enum_expr = '1 << $i'
-					g.enum_typedefs.write_string((1 << i).str())
-					cur_enum_offset = 0
-				}
-				cur_value := if cur_enum_offset > 0 {
-					'$cur_enum_expr+$cur_enum_offset'
-				} else {
-					cur_enum_expr
-				}
-				g.enum_typedefs.writeln(', // $cur_value')
-				cur_enum_offset++
-			}
-			g.enum_typedefs.writeln('} $enum_name;\n')
+			g.enum_decl(node)
 		}
 		ast.ExprStmt {
 			g.write_v_source_line_info(node.pos)
@@ -3418,6 +3391,37 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 }
 
+fn (mut g Gen) enum_decl(node ast.EnumDecl) {
+	enum_name := util.no_dots(node.name)
+	is_flag := node.is_flag
+	g.enum_typedefs.writeln('typedef enum {')
+	mut cur_enum_expr := ''
+	mut cur_enum_offset := 0
+	for i, field in node.fields {
+		g.enum_typedefs.write_string('\t${enum_name}__$field.name')
+		if field.has_expr {
+			g.enum_typedefs.write_string(' = ')
+			expr_str := g.expr_string(field.expr)
+			g.enum_typedefs.write_string(expr_str)
+			cur_enum_expr = expr_str
+			cur_enum_offset = 0
+		} else if is_flag {
+			g.enum_typedefs.write_string(' = ')
+			cur_enum_expr = '1 << $i'
+			g.enum_typedefs.write_string((1 << i).str())
+			cur_enum_offset = 0
+		}
+		cur_value := if cur_enum_offset > 0 {
+			'$cur_enum_expr+$cur_enum_offset'
+		} else {
+			cur_enum_expr
+		}
+		g.enum_typedefs.writeln(', // $cur_value')
+		cur_enum_offset++
+	}
+	g.enum_typedefs.writeln('} $enum_name;\n')
+}
+
 fn (mut g Gen) enum_expr(node ast.Expr) {
 	match node {
 		ast.EnumVal {
@@ -4490,8 +4494,15 @@ fn (mut g Gen) const_decl_simple_define(name string, val string) {
 	} else {
 		x = '_const_$x'
 	}
-	g.definitions.write_string('#define $x ')
+	if g.pref.translated {
+		g.definitions.write_string('const int $x = ')
+	} else {
+		g.definitions.write_string('#define $x ')
+	}
 	g.definitions.writeln(val)
+	if g.pref.translated {
+		g.definitions.write_string(';')
+	}
 }
 
 fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ ast.Type, unwrap_option bool) {
