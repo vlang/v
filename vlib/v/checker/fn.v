@@ -1223,7 +1223,8 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		rec_sym := c.table.sym(node.left_type)
 		rec_is_generic := left_type.has_flag(.generic)
 		if rec_sym.info is ast.Struct {
-			if rec_is_generic && node.concrete_types.len == 0 {
+			if rec_is_generic && node.concrete_types.len == 0
+				&& method.generic_names.len == rec_sym.info.generic_types.len {
 				node.concrete_types = rec_sym.info.generic_types
 			} else if !rec_is_generic && rec_sym.info.concrete_types.len > 0
 				&& node.concrete_types.len > 0
