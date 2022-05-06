@@ -4155,7 +4155,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		}
 		g.write('}')
 		if fn_return_is_optional || fn_return_is_result {
-			g.writeln(' }, (Option*)(&$tmpvar), sizeof($styp));')
+			g.writeln(' }, ($option_name*)(&$tmpvar), sizeof($styp));')
 			g.write_defer_stmts_when_needed()
 			g.write('return $tmpvar')
 		}
