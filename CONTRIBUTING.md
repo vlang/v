@@ -35,35 +35,35 @@ The main files are:
 - Creates a parser object for each file and runs `parse()` on them.
 - The correct backend is called (C, JS, native), and a binary is compiled.
 
-2. `v/scanner` The scanner's job is to parse a list of characters and convert
+2. `vlib/v/scanner` The scanner's job is to parse a list of characters and convert
 them to tokens.
 
-3. `v/token` This is simply a list of all tokens, their string values, and a
+3. `vlib/v/token` This is simply a list of all tokens, their string values, and a
 couple of helper functions.
 
-4. `v/parser` The parser. It converts a list of tokens into an AST.
+4. `vlib/v/parser` The parser. It converts a list of tokens into an AST.
 In V, objects can be used before declaration, so unknown types are marked as
 unresolved. They are resolved later in the type checker.
 
-5. `v/table` V creates one table object that is shared by all parsers. It
+5. `vlib/v/table` V creates one table object that is shared by all parsers. It
 contains all types, consts, and functions, as well as several helpers to search
 for objects by name, register new objects, modify types' fields, etc.
 
-6. `v/checker` Type checker and resolver. It processes the AST and makes sure
+6. `vlib/v/checker` Type checker and resolver. It processes the AST and makes sure
 the types are correct. Unresolved types are resolved, type information is added
 to the AST.
 
-7. `v/gen/c` C backend. It simply walks the AST and generates C code that can be
+7. `vlib/v/gen/c` C backend. It simply walks the AST and generates C code that can be
 compiled with Clang, GCC, Visual Studio, and TCC.
 
-8. `v/gen/js` JavaScript backend. It simply walks the AST and generates JS code that can be
+8. `vlib/gen/js` JavaScript backend. It simply walks the AST and generates JS code that can be
 executed on the browser or in NodeJS/Deno.
 
-9. `v/gen/c/json.v` defines the json code generation. This file will be removed once V
+9. `vlib/gen/c/json.v` defines the json code generation. This file will be removed once V
 supports comptime code generation, and it will be possible to do this using the
 language's tools.
 
-10. `v/gen/native` is the directory with all the machine code generation logic. It
+10. `vlib/gen/native` is the directory with all the machine code generation logic. It
 defines a set of functions that translate assembly instructions to machine code
 and build the binary from scratch byte by byte. It manually builds all headers,
 segments, sections, symtable, relocations, etc. Right now it only has basic

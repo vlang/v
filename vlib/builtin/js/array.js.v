@@ -175,7 +175,6 @@ pub fn (mut a array) sort() {
 pub fn (a array) index(v string) int {
 	for i in 0 .. a.len {
 		#if (a.arr.get(i).toString() == v.toString())
-
 		{
 			return i
 		}

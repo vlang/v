@@ -497,7 +497,7 @@ pub fn (s string) replace_each(vals []string) string {
 
 // bool returns `true` if the string equals the word "true" it will return `false` otherwise.
 pub fn (s string) bool() bool {
-	return s == 'true' || s == 't' // TODO t for pg, remove
+	return s == 'true'
 }
 
 // int returns the value of the string as an integer `'1'.int() == 1`.
@@ -550,6 +550,15 @@ pub fn (s string) u64() u64 {
 	return strconv.common_parse_uint(s, 0, 64, false, false) or { 0 }
 }
 
+// parse_uint is like `parse_int` but for unsigned numbers
+//
+// This method directly exposes the `parse_int` function from `strconv`
+// as a method on `string`. For more advanced features,
+// consider calling `strconv.common_parse_int` directly.
+pub fn (s string) parse_uint(_base int, _bit_size int) ?u64 {
+	return strconv.parse_uint(s, _base, _bit_size)
+}
+
 // parse_int interprets a string s in the given base (0, 2 to 36) and
 // bit size (0 to 64) and returns the corresponding value i.
 //
@@ -566,15 +575,6 @@ pub fn (s string) u64() u64 {
 // This method directly exposes the `parse_uint` function from `strconv`
 // as a method on `string`. For more advanced features,
 // consider calling `strconv.common_parse_uint` directly.
-pub fn (s string) parse_uint(_base int, _bit_size int) ?u64 {
-	return strconv.parse_uint(s, _base, _bit_size)
-}
-
-// parse_uint is like `parse_int` but for unsigned numbers
-//
-// This method directly exposes the `parse_int` function from `strconv`
-// as a method on `string`. For more advanced features,
-// consider calling `strconv.common_parse_int` directly.
 pub fn (s string) parse_int(_base int, _bit_size int) ?i64 {
 	return strconv.parse_int(s, _base, _bit_size)
 }

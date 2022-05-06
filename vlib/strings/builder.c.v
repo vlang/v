@@ -48,14 +48,7 @@ pub fn (mut b Builder) write_runes(runes []rune) {
 	}
 }
 
-// write_b appends a single `data` byte to the accumulated buffer
-[deprecated: 'Use write_u8() instead']
-[deprecated_after: '2022-02-11']
-pub fn (mut b Builder) write_b(data u8) {
-	b << data
-}
-
-// write_byte appends a single `data` byte to the accumulated buffer
+// write_u8 appends a single `data` byte to the accumulated buffer
 pub fn (mut b Builder) write_u8(data u8) {
 	b << data
 }
@@ -72,6 +65,12 @@ pub fn (mut b Builder) write(data []u8) ?int {
 	}
 	b << data
 	return data.len
+}
+
+// reset clears the buffer contents
+pub fn (mut b Builder) reset() {
+	cap := b.cap
+	b = []u8{cap: cap}
 }
 
 // drain_builder writes all of the `other` builder content, then re-initialises
