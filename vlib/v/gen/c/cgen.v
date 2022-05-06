@@ -1566,7 +1566,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 						}
 						g.write('opt_ok2(&($styp[]) { ')
 						g.stmt(stmt)
-						g.writeln(' }, ($option_name*)(&$tmp_var), sizeof($styp));')
+						g.writeln(' }, ($c.option_name*)(&$tmp_var), sizeof($styp));')
 					}
 				}
 			} else {
@@ -4155,7 +4155,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		}
 		g.write('}')
 		if fn_return_is_optional || fn_return_is_result {
-			g.writeln(' }, ($option_name*)(&$tmpvar), sizeof($styp));')
+			g.writeln(' }, ($c.option_name*)(&$tmpvar), sizeof($styp));')
 			g.write_defer_stmts_when_needed()
 			g.write('return $tmpvar')
 		}
@@ -4203,7 +4203,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					g.write(', ')
 				}
 			}
-			g.writeln(' }, ($option_name*)(&$tmpvar), sizeof($styp));')
+			g.writeln(' }, ($c.option_name*)(&$tmpvar), sizeof($styp));')
 			g.write_defer_stmts_when_needed()
 			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			g.writeln('return $tmpvar;')
