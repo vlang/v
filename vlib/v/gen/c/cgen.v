@@ -1564,9 +1564,9 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 								styp = 'f64'
 							}
 						}
-						g.write('opt_ok(&($styp[]) { ')
+						g.write('opt_ok2(&($styp[]) { ')
 						g.stmt(stmt)
-						g.writeln(' }, (Option*)(&$tmp_var), sizeof($styp));')
+						g.writeln(' }, ($option_name*)(&$tmp_var), sizeof($styp));')
 					}
 				}
 			} else {
@@ -4086,7 +4086,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		if fn_return_is_optional || fn_return_is_result {
 			g.writeln('$ret_typ $tmpvar;')
 			styp = g.base_type(g.fn_decl.return_type)
-			g.write('opt_ok(&($styp/*X*/[]) { ')
+			g.write('opt_ok2(&($styp/*X*/[]) { ')
 		} else {
 			if use_tmp_var {
 				g.write('$ret_typ $tmpvar = ')
@@ -4191,7 +4191,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		if fn_return_is_optional && !expr_type_is_opt && return_sym.name != c.option_name {
 			styp := g.base_type(g.fn_decl.return_type)
 			g.writeln('$ret_typ $tmpvar;')
-			g.write('opt_ok(&($styp[]) { ')
+			g.write('opt_ok2(&($styp[]) { ')
 			if !g.fn_decl.return_type.is_ptr() && node.types[0].is_ptr() {
 				if !(node.exprs[0] is ast.Ident && !g.is_amp) {
 					g.write('*')
@@ -4203,7 +4203,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 					g.write(', ')
 				}
 			}
-			g.writeln(' }, (Option*)(&$tmpvar), sizeof($styp));')
+			g.writeln(' }, ($option_name*)(&$tmpvar), sizeof($styp));')
 			g.write_defer_stmts_when_needed()
 			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			g.writeln('return $tmpvar;')

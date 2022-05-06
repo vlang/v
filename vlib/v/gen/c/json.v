@@ -158,7 +158,7 @@ $enc_fn_dec {
 		// cJSON_delete
 		// p.cgen.fns << '$dec return opt_ok(res); \n}'
 		dec.writeln('\t${option_name}_$styp ret;')
-		dec.writeln('\topt_ok(&res, ($option_name*)&ret, sizeof(res));')
+		dec.writeln('\topt_ok2(&res, ($option_name*)&ret, sizeof(res));')
 		dec.writeln('\treturn ret;\n}')
 		enc.writeln('\treturn o;\n}')
 		g.definitions.writeln(dec.str())
