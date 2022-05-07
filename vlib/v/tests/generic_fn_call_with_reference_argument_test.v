@@ -16,7 +16,9 @@ fn (instance &ContainerType<T>) contains(typ Type<T>) bool {
 }
 
 fn test_generic_fn_call_with_reference_argument() {
-	con := ContainerType<int>{typ: &Type<int>{0}}
+	con := ContainerType<int>{
+		typ: &Type<int>{0}
+	}
 	ret := con.contains(con.typ)
 	println(con)
 	assert ret
