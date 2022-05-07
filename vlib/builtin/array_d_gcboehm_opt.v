@@ -210,7 +210,7 @@ fn (a &array) clone_to_depth_noscan(depth int) array {
 		}
 		return arr
 	} else {
-		if !isnil(a.data) {
+		if a.data != 0 {
 			unsafe { vmemcpy(&u8(arr.data), a.data, u64(a.cap) * u64(a.element_size)) }
 		}
 		return arr
@@ -227,7 +227,7 @@ fn (mut a array) push_noscan(val voidptr) {
 // `val` is array.data and user facing usage is `a << [1,2,3]`
 [unsafe]
 fn (mut a3 array) push_many_noscan(val voidptr, size int) {
-	if a3.data == val && !isnil(a3.data) {
+	if a3.data == val && a3.data != 0 {
 		// handle `arr << arr`
 		copy := a3.clone()
 		a3.ensure_cap_noscan(a3.len + size)
@@ -236,7 +236,7 @@ fn (mut a3 array) push_many_noscan(val voidptr, size int) {
 		}
 	} else {
 		a3.ensure_cap_noscan(a3.len + size)
-		if !isnil(a3.data) && !isnil(val) {
+		if a3.data != 0 && val != 0 {
 			unsafe { vmemcpy(a3.get_unsafe(a3.len), val, u64(a3.element_size) * u64(size)) }
 		}
 	}
