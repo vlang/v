@@ -249,7 +249,14 @@ pub fn (mut re RE) find_from(in_txt string, start int) (int, int) {
 	return -1, -1
 }
 
-// find_all find all the non overlapping occurrences of the match pattern
+// find_all find all the non overlapping occurrences of the match pattern and return the start and end index of the match
+//
+// Usage:
+// ```v
+// blurb := 'foobar boo steelbar toolbox foot tooooot'
+// mut re := regex.regex_opt('f|t[eo]+')?
+// res := re.find_all(blurb) // [0, 3, 12, 15, 20, 23, 28, 31, 33, 39]
+// ```
 [direct_array_access]
 pub fn (mut re RE) find_all(in_txt string) []int {
 	// old_flag := re.flag
