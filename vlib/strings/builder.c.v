@@ -12,7 +12,9 @@ pub type Builder = []u8
 // new_builder returns a new string builder, with an initial capacity of `initial_size`
 pub fn new_builder(initial_size int) Builder {
 	mut res := Builder([]u8{cap: initial_size})
-	unsafe { res.flags.set(.noslices) }
+	unsafe {
+		res.flags = .noslices
+	}
 	return res
 }
 
@@ -87,7 +89,7 @@ pub fn (mut b Builder) drain_builder(mut other Builder, other_new_cap int) {
 // Note: it can panic, if there are not enough bytes in the strings builder yet.
 [inline]
 pub fn (b &Builder) byte_at(n int) u8 {
-	return unsafe { (&[]u8(b))[n] }
+	return unsafe { &u8(b.data)[n] }
 }
 
 // write appends the string `s` to the buffer
@@ -145,14 +147,15 @@ pub fn (mut b Builder) go_back_to(pos int) {
 // writeln appends the string `s`, and then a newline character.
 [inline]
 pub fn (mut b Builder) writeln(s string) {
-	// for c in s {
-	// b.buf << c
-	// }
-	if s.len > 0 {
-		unsafe { b.push_many(s.str, s.len) }
+	new_len := b.len + s.len + 1
+	b.ensure_cap(new_len)
+	unsafe {
+		&u8(b.data)[new_len - 1] = u8(`\n`)
+		if s.len > 0 {
+			vmemcpy(&u8(b.data) + b.len, s.str, s.len)
+		}
+		b.len = new_len
 	}
-	// b.buf << []u8(s)  // TODO
-	b << u8(`\n`)
 }
 
 // last_n(5) returns 'world'
@@ -190,18 +193,13 @@ pub fn (mut b Builder) str() string {
 
 // ensure_cap ensures that the buffer has enough space for at least `n` bytes by growing the buffer if necessary
 pub fn (mut b Builder) ensure_cap(n int) {
-	// code adapted from vlib/builtin/array.v
 	if n <= b.cap {
 		return
 	}
-
-	new_data := vcalloc(n * b.element_size)
-	if b.data != voidptr(0) {
-		unsafe { vmemcpy(new_data, b.data, b.len * b.element_size) }
-		// TODO: the old data may be leaked when no GC is used (ref-counting?)
-		if b.flags.has(.noslices) {
-			unsafe { free(b.data) }
-		}
+	new_data := unsafe { malloc(u64(n) * u64(b.element_size)) }
+	if b.data != 0 {
+		unsafe { vmemcpy(new_data, b.data, b.len) }
+		unsafe { free(b.data) }
 	}
 	unsafe {
 		b.data = new_data
