@@ -2422,8 +2422,7 @@ V supports closures too.
 This means that anonymous functions can inherit variables from the scope they were created in.
 They must do so explicitly by listing all variables that are inherited.
 
-> Warning: currently works on Unix-based, x64 architectures only.
-Some work is in progress to make closures work on Windows, then other architectures.
+> Warning: currently works on x64 architectures only.
 
 ```v oksyntax
 my_int := 1
