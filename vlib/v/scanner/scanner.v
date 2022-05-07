@@ -584,12 +584,8 @@ pub fn (mut s Scanner) scan_remaining_text() {
 	}
 }
 
-pub fn (mut s Scanner) scan() token.Token {
-	return s.buffer_scan()
-}
-
 [direct_array_access]
-pub fn (mut s Scanner) buffer_scan() token.Token {
+pub fn (mut s Scanner) scan() token.Token {
 	for {
 		cidx := s.tidx
 		s.tidx++
@@ -634,13 +630,6 @@ fn (mut s Scanner) text_scan() token.Token {
 	// That optimization mostly matters for long sections
 	// of comments and string literals.
 	for {
-		// if s.comments_mode == .parse_comments {
-		// println('\nscan()')
-		// }
-		// if s.line_comment != '' {
-		// s.fgenln('// LC "$s.line_comment"')
-		// s.line_comment = ''
-		// }
 		if s.is_started {
 			s.pos++
 		} else {
@@ -1150,10 +1139,6 @@ fn (mut s Scanner) ident_string() string {
 			s.quote = q
 		}
 	}
-	// if s.file_path.contains('string_test') {
-	// println('\nident_string() at char=${s.text[s.pos].str()}')
-	// println('linenr=$s.line_nr quote=  $qquote ${qquote.str()}')
-	// }
 	mut n_cr_chars := 0
 	mut start := s.pos
 	start_char := s.text[start]
