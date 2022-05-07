@@ -122,7 +122,7 @@ pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref &pref
 		file_path: file_path
 		file_base: os.base(file_path)
 	}
-	s.init_scanner()
+	s.scan_all_tokens_in_buffer()
 	return s
 }
 
@@ -139,12 +139,8 @@ pub fn new_scanner(text string, comments_mode CommentsMode, pref &pref.Preferenc
 		file_path: 'internal_memory'
 		file_base: 'internal_memory'
 	}
-	s.init_scanner()
+	s.scan_all_tokens_in_buffer()
 	return s
-}
-
-fn (mut s Scanner) init_scanner() {
-	s.scan_all_tokens_in_buffer(s.comments_mode)
 }
 
 [unsafe]
@@ -556,7 +552,7 @@ fn (mut s Scanner) end_of_file() token.Token {
 	return s.new_eof_token()
 }
 
-pub fn (mut s Scanner) scan_all_tokens_in_buffer(mode CommentsMode) {
+pub fn (mut s Scanner) scan_all_tokens_in_buffer() {
 	mut timers := util.get_timers()
 	timers.measure_pause('PARSE')
 	util.timing_start('SCAN')
@@ -564,12 +560,9 @@ pub fn (mut s Scanner) scan_all_tokens_in_buffer(mode CommentsMode) {
 		util.timing_measure_cumulative('SCAN')
 		timers.measure_resume('PARSE')
 	}
-	oldmode := s.comments_mode
-	s.comments_mode = mode
 	// preallocate space for tokens
 	s.all_tokens = []token.Token{cap: s.text.len / 3}
 	s.scan_remaining_text()
-	s.comments_mode = oldmode
 	s.tidx = 0
 	$if debugscanner ? {
 		for t in s.all_tokens {
