@@ -236,7 +236,7 @@ fn (mut c Client) send_body(cfg Mail) ? {
 	sb.write_string('Date: $date\r\n')
 	sb.write_string('Subject: $cfg.subject\r\n')
 	if is_html {
-		sb.write_string('Content-Type: text/html; charset=ISO-8859-1')
+		sb.write_string('Content-Type: text/html; charset=UTF-8')
 	} else {
 		sb.write_string('Content-Type: text/plain; charset=UTF-8')
 	}
