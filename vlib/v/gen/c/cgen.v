@@ -5133,9 +5133,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 					g.inside_opt_data = true
 					g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_flag(.optional))
 					g.inside_opt_data = old_inside_opt_data
-					if g.inside_ternary == 0 {
-						g.writeln(';')
-					}
+					g.writeln(';')
 					g.stmt_path_pos.delete_last()
 				} else {
 					g.stmt(stmt)
