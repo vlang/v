@@ -50,8 +50,7 @@ pub fn (mut b Builder) write_runes(runes []rune) {
 
 // reset clears the buffer contents
 pub fn (mut b Builder) reset() {
-	cap := b.cap
-	b = []u8{cap: cap}
+	b = []u8{cap: b.cap}
 }
 
 // write_byte appends a single `data` byte to the accumulated buffer
