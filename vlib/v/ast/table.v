@@ -1519,6 +1519,9 @@ pub fn (t Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 // Even map[string]map[string]T can be resolved.
 // This is used for resolving the generic return type of CallExpr white `unwrap_generic` is used to resolve generic usage in FnDecl.
 pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_names []string, concrete_types []Type) ?Type {
+	if generic_names.len != concrete_types.len {
+		return none
+	}
 	mut sym := t.sym(generic_type)
 	if sym.name in generic_names {
 		index := generic_names.index(sym.name)

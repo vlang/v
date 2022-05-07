@@ -1222,7 +1222,9 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		// x is Bar<T>, x.foo() -> x.foo<T>()
 		rec_sym := c.table.sym(node.left_type)
 		rec_is_generic := left_type.has_flag(.generic)
+		mut rec_concrete_types := []ast.Type{}
 		if rec_sym.info is ast.Struct {
+			rec_concrete_types = rec_sym.info.concrete_types.clone()
 			if rec_is_generic && node.concrete_types.len == 0
 				&& method.generic_names.len == rec_sym.info.generic_types.len {
 				node.concrete_types = rec_sym.info.generic_types
@@ -1304,11 +1306,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				no_type_promotion = true
 			}
 		}
-		// if method_name == 'clone' {
-		// println('CLONE nr args=$method.args.len')
-		// }
-		// node.args << method.args[0].typ
-		// node.exp_arg_types << method.args[0].typ
+
 		for i, mut arg in node.args {
 			if i > 0 || exp_arg_typ == ast.Type(0) {
 				exp_arg_typ = if method.is_variadic && i >= method.params.len - 1 {
@@ -1341,8 +1339,13 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				final_arg_sym = c.table.sym(final_arg_typ)
 			}
 			if exp_arg_typ.has_flag(.generic) {
+				method_concrete_types := if method.generic_names.len == rec_concrete_types.len {
+					rec_concrete_types
+				} else {
+					concrete_types
+				}
 				if exp_utyp := c.table.resolve_generic_to_concrete(exp_arg_typ, method.generic_names,
-					concrete_types)
+					method_concrete_types)
 				{
 					exp_arg_typ = exp_utyp
 				} else {
@@ -1351,7 +1354,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 
 				if got_arg_typ.has_flag(.generic) {
 					if got_utyp := c.table.resolve_generic_to_concrete(got_arg_typ, method.generic_names,
-						concrete_types)
+						method_concrete_types)
 					{
 						got_arg_typ = got_utyp
 					} else {
