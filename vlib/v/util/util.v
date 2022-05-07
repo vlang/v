@@ -294,6 +294,9 @@ pub fn cached_read_source_file(path string) ?string {
 		cache = &SourceCache{}
 	}
 
+	$if trace_cached_read_source_file ? {
+		println('cached_read_source_file            $path')
+	}
 	if path.len == 0 {
 		unsafe { cache.sources.free() }
 		unsafe { free(cache) }
@@ -304,9 +307,15 @@ pub fn cached_read_source_file(path string) ?string {
 	// eprintln('>> cached_read_source_file path: $path')
 	if res := cache.sources[path] {
 		// eprintln('>> cached')
+		$if trace_cached_read_source_file_cached ? {
+			println('cached_read_source_file     cached $path')
+		}
 		return res
 	}
 	// eprintln('>> not cached | cache.sources.len: $cache.sources.len')
+	$if trace_cached_read_source_file_not_cached ? {
+		println('cached_read_source_file not cached $path')
+	}
 	raw_text := os.read_file(path) or { return error('failed to open $path') }
 	res := skip_bom(raw_text)
 	cache.sources[path] = res
