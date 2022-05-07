@@ -122,7 +122,7 @@ pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref &pref
 		file_path: file_path
 		file_base: os.base(file_path)
 	}
-	s.init_scanner()
+	s.scan_all_tokens_in_buffer()
 	return s
 }
 
@@ -139,12 +139,8 @@ pub fn new_scanner(text string, comments_mode CommentsMode, pref &pref.Preferenc
 		file_path: 'internal_memory'
 		file_base: 'internal_memory'
 	}
-	s.init_scanner()
+	s.scan_all_tokens_in_buffer()
 	return s
-}
-
-fn (mut s Scanner) init_scanner() {
-	s.scan_all_tokens_in_buffer(s.comments_mode)
 }
 
 [unsafe]
@@ -556,7 +552,7 @@ fn (mut s Scanner) end_of_file() token.Token {
 	return s.new_eof_token()
 }
 
-pub fn (mut s Scanner) scan_all_tokens_in_buffer(mode CommentsMode) {
+pub fn (mut s Scanner) scan_all_tokens_in_buffer() {
 	mut timers := util.get_timers()
 	timers.measure_pause('PARSE')
 	util.timing_start('SCAN')
@@ -564,12 +560,9 @@ pub fn (mut s Scanner) scan_all_tokens_in_buffer(mode CommentsMode) {
 		util.timing_measure_cumulative('SCAN')
 		timers.measure_resume('PARSE')
 	}
-	oldmode := s.comments_mode
-	s.comments_mode = mode
 	// preallocate space for tokens
 	s.all_tokens = []token.Token{cap: s.text.len / 3}
 	s.scan_remaining_text()
-	s.comments_mode = oldmode
 	s.tidx = 0
 	$if debugscanner ? {
 		for t in s.all_tokens {
@@ -591,12 +584,8 @@ pub fn (mut s Scanner) scan_remaining_text() {
 	}
 }
 
-pub fn (mut s Scanner) scan() token.Token {
-	return s.buffer_scan()
-}
-
 [direct_array_access]
-pub fn (mut s Scanner) buffer_scan() token.Token {
+pub fn (mut s Scanner) scan() token.Token {
 	for {
 		cidx := s.tidx
 		s.tidx++
@@ -641,13 +630,6 @@ fn (mut s Scanner) text_scan() token.Token {
 	// That optimization mostly matters for long sections
 	// of comments and string literals.
 	for {
-		// if s.comments_mode == .parse_comments {
-		// println('\nscan()')
-		// }
-		// if s.line_comment != '' {
-		// s.fgenln('// LC "$s.line_comment"')
-		// s.line_comment = ''
-		// }
 		if s.is_started {
 			s.pos++
 		} else {
@@ -1157,10 +1139,6 @@ fn (mut s Scanner) ident_string() string {
 			s.quote = q
 		}
 	}
-	// if s.file_path.contains('string_test') {
-	// println('\nident_string() at char=${s.text[s.pos].str()}')
-	// println('linenr=$s.line_nr quote=  $qquote ${qquote.str()}')
-	// }
 	mut n_cr_chars := 0
 	mut start := s.pos
 	start_char := s.text[start]
