@@ -40,7 +40,7 @@ fn test_sb() {
 	final_sb := sb.str()
 	assert final_sb == '1234'
 
-	sb.reset()
+	sb.clear()
 	assert sb.str() == ''
 	//}
 }
