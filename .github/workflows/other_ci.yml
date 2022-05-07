@@ -248,8 +248,8 @@ jobs:
         run: git clone --depth=1 https://github.com/vlang/go2v go2v/
       - name: Build go2v
         run: ./v go2v/
-      - name: Run tests for go2v
-        run: VJOBS=1 ./v -stats test go2v/
+      ##      - name: Run tests for go2v
+      ##        run: VJOBS=1 ./v -stats test go2v/
 
       ## vlang/pdf
       - name: Clone & Build vlang/pdf
