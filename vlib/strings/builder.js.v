@@ -18,11 +18,6 @@ pub fn new_builder(initial_size int) Builder {
 	return []u8{cap: initial_size}
 }
 
-[deprecated: 'Use write_u8() instead']
-pub fn (mut b Builder) write_b(data u8) {
-	b << data
-}
-
 pub fn (mut b Builder) write_byte(data byte) {
 	b << data
 }
