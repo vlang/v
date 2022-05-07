@@ -48,8 +48,8 @@ pub fn (mut b Builder) write_runes(runes []rune) {
 	}
 }
 
-// reset clears the buffer contents
-pub fn (mut b Builder) reset() {
+// clear clears the buffer contents
+pub fn (mut b Builder) clear() {
 	b = []u8{cap: b.cap}
 }
 

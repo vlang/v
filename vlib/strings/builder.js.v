@@ -22,7 +22,7 @@ pub fn (mut b Builder) write_byte(data byte) {
 	b << data
 }
 
-pub fn (mut b Builder) reset() {
+pub fn (mut b Builder) clear() {
 	b = []u8{cap: b.cap}
 }
 
