@@ -959,10 +959,10 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 					continue
 				}
 				// Allow `[32]i8` as `&i8` etc
-				if (arg_typ_sym.kind == .array_fixed && (param_is_number
-					|| param.typ.is_any_kind_of_pointer()))
-					|| (param_typ_sym.kind == .array_fixed && (typ_is_number
-					|| arg_typ.is_any_kind_of_pointer())) {
+				if ((arg_typ_sym.kind == .array_fixed || arg_typ_sym.kind == .array)
+					&& (param_is_number || param.typ.is_any_kind_of_pointer()))
+					|| ((param_typ_sym.kind == .array_fixed || param_typ_sym.kind == .array)
+					&& (typ_is_number || arg_typ.is_any_kind_of_pointer())) {
 					continue
 				}
 				// Allow `int` as `&i8`
