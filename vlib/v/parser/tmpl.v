@@ -88,13 +88,11 @@ fn insert_template_code(fn_name string, tmpl_str_start string, line string) stri
 	return rline
 }
 
-struct SingleQuote {}
-
-struct DoubleQuote {}
-
-struct Not {}
-
-type InString = DoubleQuote | Not | SingleQuote
+enum InString {
+	double_quote
+	single_quote
+	not
+}
 
 // replace `@` intelligently
 fn replace_at_symbol(line string) string {
@@ -115,7 +113,7 @@ fn replace_at_symbol(line string) string {
 		// @{}
 		if c2 == `{` {
 			mut cb_match := 1 // number of opening curly braces that must be closed
-			mut in_string := InString(Not{})
+			mut in_string := InString.not
 			inner_pos++
 
 			for inner_pos < rline.len {
@@ -123,25 +121,25 @@ fn replace_at_symbol(line string) string {
 				match c2 {
 					`'` {
 						in_string = match in_string {
-							SingleQuote { Not{} }
-							DoubleQuote { SingleQuote{} }
-							Not { SingleQuote{} }
+							.double_quote { InString.single_quote }
+							.single_quote { InString.not }
+							.not { InString.single_quote }
 						}
 					}
 					`"` {
 						in_string = match in_string {
-							SingleQuote { DoubleQuote{} }
-							DoubleQuote { Not{} }
-							Not { DoubleQuote{} }
+							.double_quote { InString.not }
+							.single_quote { InString.double_quote }
+							.not { InString.double_quote }
 						}
 					}
 					`{` {
-						if in_string is Not {
+						if in_string == InString.not {
 							cb_match += 1
 						}
 					}
 					`}` {
-						if in_string is Not {
+						if in_string == InString.not {
 							cb_match -= 1
 							if cb_match == 0 {
 								replace_at = true
