@@ -50,11 +50,9 @@ pub fn (mut b Builder) write_runes(runes []rune) {
 	}
 }
 
-// write_b appends a single `data` byte to the accumulated buffer
-[deprecated: 'Use write_u8() instead']
-[deprecated_after: '2022-02-11']
-pub fn (mut b Builder) write_b(data u8) {
-	b << data
+// clear clears the buffer contents
+pub fn (mut b Builder) clear() {
+	b = []u8{cap: b.cap}
 }
 
 // write_u8 appends a single `data` byte to the accumulated buffer
