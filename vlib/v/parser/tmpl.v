@@ -77,12 +77,128 @@ fn insert_template_code(fn_name string, tmpl_str_start string, line string) stri
 	// HTML, may include `@var`
 	// escaped by cgen, unless it's a `vweb.RawHtml` string
 	trailing_bs := parser.tmpl_str_end + 'sb_${fn_name}.write_u8(92)\n' + tmpl_str_start
-	round1 := ['\\', '\\\\', r"'", "\\'", r'@', r'$']
-	round2 := [r'$$', r'\@', r'.$', r'.@']
-	mut rline := line.replace_each(round1).replace_each(round2)
+	round1 := ['\\', '\\\\', r"'", "\\'"]
+	mut rline := line.replace_each(round1)
+	rline = replace_at_symbol(rline)
 
 	if rline.ends_with('\\') {
 		rline = rline[0..rline.len - 2] + trailing_bs
+	}
+
+	return rline
+}
+
+struct SingleQuote {}
+
+struct DoubleQuote {}
+
+struct Not {}
+
+type InString = DoubleQuote | Not | SingleQuote
+
+// replace `@` intelligently
+fn replace_at_symbol(line string) string {
+	mut pos := 0
+	mut rline := line
+	for pos < rline.len {
+		println('pos = $pos')
+		println('rline = $rline')
+
+		c1 := rline[pos]
+
+		if c1 != `@` || pos >= line.len {
+			pos++
+			continue
+		}
+
+		mut replace_at := false
+		mut inner_pos := pos + 1
+		mut c2 := rline[inner_pos]
+
+		// @{}
+		if c2 == `{` {
+			mut cb_match := 1 // number of opening curly braces that must be closed
+			mut in_string := InString(Not{})
+			inner_pos++
+
+			for inner_pos < rline.len {
+				c2 = rline[inner_pos]
+				match c2 {
+					`'` {
+						in_string = match in_string {
+							SingleQuote { Not{} }
+							DoubleQuote { SingleQuote{} }
+							Not { SingleQuote{} }
+						}
+					}
+					`"` {
+						in_string = match in_string {
+							SingleQuote { DoubleQuote{} }
+							DoubleQuote { Not{} }
+							Not { DoubleQuote{} }
+						}
+					}
+					`{` {
+						if in_string is Not {
+							cb_match += 1
+						}
+					}
+					`}` {
+						if in_string is Not {
+							cb_match -= 1
+							if cb_match == 0 {
+								replace_at = true
+								break
+							}
+						}
+					}
+					else {} // did I miss anything here?
+				}
+				inner_pos++
+			}
+		}
+
+		// @ident or @struct.ident
+		if (c2 >= `a` && c2 <= `z`) || (c2 >= `A` && c2 <= `Z`) || c2 == `_` {
+			replace_at = true
+			mut dot_allowed := false
+
+			// ensure that everything until space is valid ident
+			for inner_pos < rline.len {
+				c2 = rline[inner_pos]
+				if c2 == ` ` {
+					break
+				}
+
+				if (c2 < `a` || c2 > `z`) && (c2 < `A` || c2 > `Z`) && (c2 < `0` || c2 > `9`)
+					&& c2 != `_` {
+					match c2 {
+						`.` {
+							if dot_allowed {
+								dot_allowed = false
+							} else {
+								replace_at = false
+								break
+							}
+						}
+						else {
+							dot_allowed == true
+						}
+					}
+
+					replace_at = false
+					break
+				}
+				inner_pos++
+			}
+		}
+
+		// do replacement
+		if replace_at {
+			rline = rline[0..pos] + '$' + rline[pos + 1..]
+		}
+
+		pos++
 	}
 
 	return rline
