@@ -496,8 +496,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			}
 		}
 		panic('unreachable')
-	}
-	if fn_name == 'json.encode' {
+	} else if fn_name == 'json.encode' {
 	} else if fn_name == 'json.decode' && node.args.len > 0 {
 		if node.args.len != 2 {
 			c.error("json.decode expects 2 arguments, a type and a string (e.g `json.decode(T, '')`)",
@@ -506,12 +505,20 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 		expr := node.args[0].expr
 		if expr is ast.TypeNode {
-			sym := c.table.sym(expr.typ)
-			if !c.table.known_type(sym.name) {
+			sym := c.table.sym(c.unwrap_generic(expr.typ))
+			if c.table.known_type(sym.name) && sym.kind != .placeholder {
+				mut kind := sym.kind
+				if sym.info is ast.Alias {
+					kind = c.table.sym(sym.info.parent_type).kind
+				}
+				if kind !in [.struct_, .sum_type, .map, .array] {
+					c.error('json.decode: expected sum type, struct, map or array, found $kind',
+						expr.pos)
+				}
+			} else {
 				c.error('json.decode: unknown type `$sym.name`', node.pos)
 			}
 		} else {
-			// if expr !is ast.TypeNode {
 			typ := expr.type_name()
 			c.error('json.decode: first argument needs to be a type, got `$typ`', node.pos)
 			return ast.void_type
