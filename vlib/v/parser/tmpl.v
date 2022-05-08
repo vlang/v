@@ -101,9 +101,6 @@ fn replace_at_symbol(line string) string {
 	mut pos := 0
 	mut rline := line
 	for pos < rline.len {
-		println('pos = $pos')
-		println('rline = $rline')
-
 		c1 := rline[pos]
 
 		if c1 != `@` || pos >= line.len {
@@ -160,8 +157,9 @@ fn replace_at_symbol(line string) string {
 
 		// @ident or @struct.ident
 		if (c2 >= `a` && c2 <= `z`) || (c2 >= `A` && c2 <= `Z`) || c2 == `_` {
+			// println('rline = $rline')
 			replace_at = true
-			mut dot_allowed := false
+			mut dot_allowed := true
 
 			// ensure that everything until space is valid ident
 			for inner_pos < rline.len {
@@ -172,23 +170,19 @@ fn replace_at_symbol(line string) string {
 
 				if (c2 < `a` || c2 > `z`) && (c2 < `A` || c2 > `Z`) && (c2 < `0` || c2 > `9`)
 					&& c2 != `_` {
-					match c2 {
-						`.` {
-							if dot_allowed {
-								dot_allowed = false
-							} else {
-								replace_at = false
-								break
-							}
+					if c2 == `.` {
+						if dot_allowed {
+							dot_allowed = false
+						} else {
+							replace_at = false
+							break
 						}
-						else {
-							dot_allowed == true
-						}
+					} else {
+						dot_allowed == true
 					}
-
-					replace_at = false
-					break
 				}
+				// println('c2 = $c2')
+				// println('dot_allowed = $dot_allowed')
 				inner_pos++
 			}
 		}

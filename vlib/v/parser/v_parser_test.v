@@ -261,3 +261,33 @@ fn test_fn_is_html_open_tag() {
 	b = is_html_open_tag('style', s)
 	assert b == false
 }
+
+fn test_fn_replace_at_symbol() {
+	mut s := "@message"
+	mut b := replace_at_symbol(s)
+	assert b == r"$message"
+
+	s = "@_message"
+	b = replace_at_symbol(s)
+	assert b == r"$_message"
+
+	s = "@ms.id"
+	b = replace_at_symbol(s)
+	assert b == r"$ms.id"
+
+	s = "@ ms.id"
+	b = replace_at_symbol(s)
+	assert b == r"@ ms.id"
+
+	s = "@{if cond {'TRUE'} else {'FALSE'}}"
+	b = replace_at_symbol(s)
+	assert b == r"${if cond {'TRUE'} else {'FALSE'}}"
+
+	s = "@{if cond {'}}'} else {'{{'}}"
+	b = replace_at_symbol(s)
+	assert b == r"${if cond {'}}'} else {'{{'}}"
+
+	s = "@1.2.3"
+	b = replace_at_symbol(s)
+	assert b == "@1.2.3"
+}
