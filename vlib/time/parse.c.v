@@ -193,24 +193,46 @@ fn parse_iso8601_time(s string) ?(int, int, int, int, i64, bool) {
 	hour_ := 0
 	minute_ := 0
 	second_ := 0
-	microsecond_ := 0
+	mut microsecond_ := 0
+	mut nanosecond_ := 0
 	plus_min_z := `a`
 	offset_hour := 0
 	offset_minute := 0
-	mut count := unsafe {
-		C.sscanf(&char(s.str), c'%2d:%2d:%2d.%6d%c%2d:%2d', &hour_, &minute_, &second_,
-			&microsecond_, &char(&plus_min_z), &offset_hour, &offset_minute)
+	mut count := 0
+	count = unsafe {
+		C.sscanf(&char(s.str), c'%2d:%2d:%2d.%9d%c', &hour_, &minute_, &second_, &nanosecond_,
+			&char(&plus_min_z))
 	}
-	// Missread microsecond ([Sec Hour Minute].len == 3 < 4)
-	if count < 4 {
-		count = unsafe {
-			C.sscanf(&char(s.str), c'%2d:%2d:%2d%c%2d:%2d', &hour_, &minute_, &second_,
-				&char(&plus_min_z), &offset_hour, &offset_minute)
+	if count == 5 && plus_min_z == `Z` {
+		// normalise the nanoseconds:
+		mut ndigits := 0
+		if mut pos := s.index('.') {
+			pos++
+			for ; pos < s.len && s[pos].is_digit(); pos++ {
+				ndigits++
+			}
 		}
-		count++ // Increment count because skipped microsecond
-	}
-	if count < 4 {
-		return error_invalid_time(10)
+		for ndigits < 9 {
+			nanosecond_ *= 10
+			ndigits++
+		}
+		microsecond_ = nanosecond_ / 1000
+	} else {
+		count = unsafe {
+			C.sscanf(&char(s.str), c'%2d:%2d:%2d.%6d%c%2d:%2d', &hour_, &minute_, &second_,
+				&microsecond_, &char(&plus_min_z), &offset_hour, &offset_minute)
+		}
+		// Missread microsecond ([Sec Hour Minute].len == 3 < 4)
+		if count < 4 {
+			count = unsafe {
+				C.sscanf(&char(s.str), c'%2d:%2d:%2d%c%2d:%2d', &hour_, &minute_, &second_,
+					&char(&plus_min_z), &offset_hour, &offset_minute)
+			}
+			count++ // Increment count because skipped microsecond
+		}
+		if count < 4 {
+			return error_invalid_time(10)
+		}
 	}
 	is_local_time := plus_min_z == `a` && count == 4
 	is_utc := plus_min_z == `Z` && count == 5
