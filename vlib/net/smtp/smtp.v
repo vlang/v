@@ -227,7 +227,7 @@ fn (mut c Client) send_data() ? {
 
 fn (mut c Client) send_body(cfg Mail) ? {
 	is_html := cfg.body_type == .html
-	date := cfg.date.utc_string().trim_right(' UTC') // TODO
+	date := cfg.date.custom_format('ddd, D MMM YYYY HH:mm ZZ')
 	mut sb := strings.new_builder(200)
 	sb.write_string('From: $cfg.from\r\n')
 	sb.write_string('To: <$cfg.to>\r\n')
@@ -236,7 +236,9 @@ fn (mut c Client) send_body(cfg Mail) ? {
 	sb.write_string('Date: $date\r\n')
 	sb.write_string('Subject: $cfg.subject\r\n')
 	if is_html {
-		sb.write_string('Content-Type: text/html; charset=ISO-8859-1')
+		sb.write_string('Content-Type: text/html; charset=UTF-8')
+	} else {
+		sb.write_string('Content-Type: text/plain; charset=UTF-8')
 	}
 	sb.write_string('\r\n\r\n')
 	sb.write_string(cfg.body)
