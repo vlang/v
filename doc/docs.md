@@ -5455,7 +5455,7 @@ compile time.
 
 Both receive as their only argument a string literal that contains the message to display:
 
-```v
+```v failcompile nofmt
 // x.v
 module main
 
