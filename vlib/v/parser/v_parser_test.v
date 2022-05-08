@@ -263,21 +263,25 @@ fn test_fn_is_html_open_tag() {
 }
 
 fn test_fn_replace_at_symbol() {
-	mut s := "@message"
+	mut s := '@message'
 	mut b := replace_at_symbol(s)
-	assert b == r"$message"
+	assert b == r'$message'
 
-	s = "@_message"
+	s = '@_message'
 	b = replace_at_symbol(s)
-	assert b == r"$_message"
+	assert b == r'$_message'
 
-	s = "@ms.id"
+	s = '@ms.id'
 	b = replace_at_symbol(s)
-	assert b == r"$ms.id"
+	assert b == r'$ms.id'
 
-	s = "@ ms.id"
+	s = '@id1 @ id2'
 	b = replace_at_symbol(s)
-	assert b == r"@ ms.id"
+	assert b == r'$id1 @ id2'
+
+	s = '@ id1 @id2'
+	b = replace_at_symbol(s)
+	assert b == r'@ id1 $id2'
 
 	s = "@{if cond {'TRUE'} else {'FALSE'}}"
 	b = replace_at_symbol(s)
@@ -287,7 +291,11 @@ fn test_fn_replace_at_symbol() {
 	b = replace_at_symbol(s)
 	assert b == r"${if cond {'}}'} else {'{{'}}"
 
-	s = "@1.2.3"
+	s = '@1.2.3'
 	b = replace_at_symbol(s)
-	assert b == "@1.2.3"
+	assert b == s
+
+	s = '@ ms.id'
+	b = replace_at_symbol(s)
+	assert b == s
 }
