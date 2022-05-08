@@ -215,6 +215,9 @@ fn str_to_primitive(str string, typ int) ?orm.Primitive {
 		16 {
 			return orm.Primitive(str.i8() == 1)
 		}
+		18 {
+			return orm.Primitive(str == 't')
+		}
 		// i8
 		5 {
 			return orm.Primitive(str.i8())
