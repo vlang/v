@@ -1153,11 +1153,9 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		if !c.check_types(arg_type, info.elem_type) && !c.check_types(left_type, arg_type) {
 			c.error('cannot $method_name `$arg_sym.name` to `$left_sym.name`', arg_expr.pos())
 		}
-	} else if final_left_sym.kind == .array && method_name in ['first', 'last', 'pop'] {
-		if final_left_sym.info is ast.Array {
-			node.return_type = final_left_sym.info.elem_type
-			return node.return_type
-		}
+	} else if final_left_sym.info is ast.Array && method_name in ['first', 'last', 'pop'] {
+		node.return_type = final_left_sym.info.elem_type
+		return node.return_type
 	} else if c.pref.backend.is_js() && left_sym.name.starts_with('Promise<')
 		&& method_name == 'wait' {
 		info := left_sym.info as ast.Struct
@@ -1303,12 +1301,11 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		mut exp_arg_typ := ast.Type(0) // type of 1st arg for special builtin methods
 		mut param_is_mut := false
 		mut no_type_promotion := false
-		if left_sym.kind == .chan {
-			elem_typ := (left_sym.info as ast.Chan).elem_type
+		if left_sym.info is ast.Chan {
 			if method_name == 'try_push' {
-				exp_arg_typ = elem_typ.ref()
+				exp_arg_typ = left_sym.info.elem_type.ref()
 			} else if method_name == 'try_pop' {
-				exp_arg_typ = elem_typ
+				exp_arg_typ = left_sym.info.elem_type
 				param_is_mut = true
 				no_type_promotion = true
 			}
@@ -1317,7 +1314,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		for i, mut arg in node.args {
 			if i > 0 || exp_arg_typ == ast.Type(0) {
 				exp_arg_typ = if method.is_variadic && i >= method.params.len - 1 {
-					method.params[method.params.len - 1].typ
+					method.params.last().typ
 				} else {
 					method.params[i + 1].typ
 				}
@@ -1342,7 +1339,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			mut final_arg_sym := exp_arg_sym
 			mut final_arg_typ := exp_arg_typ
 			if method.is_variadic && exp_arg_sym.info is ast.Array {
-				final_arg_typ = exp_arg_sym.array_info().elem_type
+				final_arg_typ = exp_arg_sym.info.elem_type
 				final_arg_sym = c.table.sym(final_arg_typ)
 			}
 			if exp_arg_typ.has_flag(.generic) {
@@ -1370,7 +1367,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				}
 			}
 			param := if method.is_variadic && i >= method.params.len - 1 {
-				method.params[method.params.len - 1]
+				method.params.last()
 			} else {
 				method.params[i + 1]
 			}
@@ -1405,9 +1402,8 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					c.fail_if_unreadable(arg.expr, got_arg_typ, 'argument')
 				}
 			}
-			if left_sym.kind == .array && method_name == 'sort_with_compare' {
-				array_info := left_sym.info as ast.Array
-				elem_typ := array_info.elem_type
+			if left_sym.info is ast.Array && method_name == 'sort_with_compare' {
+				elem_typ := left_sym.info.elem_type
 				arg_sym := c.table.sym(arg.typ)
 				if arg_sym.kind == .function {
 					func_info := arg_sym.info as ast.FnType
@@ -1448,13 +1444,11 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				// }
 				param_typ_sym := c.table.sym(exp_arg_typ)
 				arg_typ_sym := c.table.sym(got_arg_typ)
-				if param_typ_sym.kind == .array && arg_typ_sym.kind == .array {
-					param_info := param_typ_sym.info as ast.Array
-					param_elem_type := c.table.unaliased_type(param_info.elem_type)
-					arg_info := arg_typ_sym.info as ast.Array
-					arg_elem_type := c.table.unaliased_type(arg_info.elem_type)
+				if param_typ_sym.info is ast.Array && arg_typ_sym.info is ast.Array {
+					param_elem_type := c.table.unaliased_type(param_typ_sym.info.elem_type)
+					arg_elem_type := c.table.unaliased_type(arg_typ_sym.info.elem_type)
 					if exp_arg_typ.nr_muls() == got_arg_typ.nr_muls()
-						&& param_info.nr_dims == arg_info.nr_dims
+						&& param_typ_sym.info.nr_dims == arg_typ_sym.info.nr_dims
 						&& param_elem_type == arg_elem_type {
 						continue
 					}
