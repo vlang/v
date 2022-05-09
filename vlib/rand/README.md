@@ -11,12 +11,12 @@ import rand
 ...
 
 // Optionally seed the default generator
-rand.seed(seed_data)
+rand.seed([u32(3110), 50714])
 
 ...
 
 // Use the top-level functions
-rand.u32n(max) ?
+rand.u32n(100) ?
 rand.int() // among others ...
 ```
 
@@ -39,7 +39,7 @@ rng.seed(seed.time_seed_array(pcg32.seed_len))
 ...
 
 // Use functions of your choice
-rng.u32n(max) ?
+rng.u32n(100) ?
 rng.int() // among others ...
 ```
 
@@ -89,7 +89,7 @@ A workaround (if you _must_ use the libc RNG) is to:
 
 # Notes
 
-Please note that [math interval](https://en.wikipedia.org/wiki/Interval_(mathematics)#Including_or_excluding_endpoints) notation is used throughout
+Please note that [math interval](<https://en.wikipedia.org/wiki/Interval_(mathematics)#Including_or_excluding_endpoints>) notation is used throughout
 the function documentation to denote what numbers ranges include.
 An example of `[0, max)` thus denotes a range with all posible values
 between `0` and `max` **including** 0 but **excluding** `max`.
