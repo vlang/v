@@ -2910,21 +2910,27 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			tt := c.table.type_to_str(to_type)
 			c.error('cannot cast `$ft` to `$tt` (alias to `$final_to_sym.name`)', node.pos)
 		}
-	} else if to_sym.kind == .struct_ && !to_type.is_ptr()
-		&& !(to_sym.info as ast.Struct).is_typedef {
-		// For now we ignore C typedef because of `C.Window(C.None)` in vlib/clipboard
-		if from_sym.kind == .struct_ && !from_type.is_ptr() {
-			c.warn('casting to struct is deprecated, use e.g. `Struct{...expr}` instead',
-				node.pos)
-			from_type_info := from_sym.info as ast.Struct
-			to_type_info := to_sym.info as ast.Struct
-			if !c.check_struct_signature(from_type_info, to_type_info) {
-				c.error('cannot convert struct `$from_sym.name` to struct `$to_sym.name`',
+	} else if to_sym.kind == .struct_ {
+		if !to_type.is_ptr() && !(to_sym.info as ast.Struct).is_typedef {
+			// For now we ignore C typedef because of `C.Window(C.None)` in vlib/clipboard
+			if from_sym.kind == .struct_ && !from_type.is_ptr() {
+				c.warn('casting to struct is deprecated, use e.g. `Struct{...expr}` instead',
 					node.pos)
+				from_type_info := from_sym.info as ast.Struct
+				to_type_info := to_sym.info as ast.Struct
+				if !c.check_struct_signature(from_type_info, to_type_info) {
+					c.error('cannot convert struct `$from_sym.name` to struct `$to_sym.name`',
+						node.pos)
+				}
+			} else {
+				ft := c.table.type_to_str(from_type)
+				c.error('cannot cast `$ft` to struct', node.pos)
 			}
-		} else {
+		} else if to_type.is_ptr() && final_from_sym.kind != .struct_ && !from_type.is_ptr()
+			&& !from_type.is_pointer() && !(node.expr is ast.IntegerLiteral
+			&& (node.expr as ast.IntegerLiteral).val.int() == 0) {
 			ft := c.table.type_to_str(from_type)
-			c.error('cannot cast `$ft` to struct', node.pos)
+			c.error('cannot cast `$ft` to referenced struct', node.pos)
 		}
 	} else if to_sym.kind == .interface_ {
 		if c.type_implements(from_type, to_type, node.pos) {

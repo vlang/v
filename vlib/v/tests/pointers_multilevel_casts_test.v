@@ -29,18 +29,18 @@ fn test_char_pointer_casts() {
 	}
 }
 
-fn test_struct_pointer_casts() {
-	unsafe {
-		ps := &Struct(9)
-		pps := &&Struct(10)
-		ppps := &&&Struct(11)
-		pppps := &&&&Struct(12)
-		assert voidptr(ps).str() == '0x9'
-		assert voidptr(pps).str() == '0xa'
-		assert voidptr(ppps).str() == '0xb'
-		assert voidptr(pppps).str() == '0xc'
-	}
-}
+// fn test_struct_pointer_casts() {
+// 	unsafe {
+// 		ps := &Struct(9)
+// 		pps := &&Struct(10)
+// 		ppps := &&&Struct(11)
+// 		pppps := &&&&Struct(12)
+// 		assert voidptr(ps).str() == '0x9'
+// 		assert voidptr(pps).str() == '0xa'
+// 		assert voidptr(ppps).str() == '0xb'
+// 		assert voidptr(pppps).str() == '0xc'
+// 	}
+// }
 
 fn test_struct_pointer_casts_with_field_selectors() {
 	ss := &Struct{

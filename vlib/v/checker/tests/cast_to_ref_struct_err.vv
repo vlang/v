@@ -1,0 +1,12 @@
+module main
+
+pub struct Row {
+pub mut:
+    id int
+}
+
+fn main() {
+		mut r := &Row(10)
+		r.id = 50
+		println(r)
+}
