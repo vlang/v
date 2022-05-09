@@ -496,8 +496,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			}
 		}
 		panic('unreachable')
-	} else if fn_name == 'json.encode' {
-	} else if fn_name == 'json.decode' && node.args.len > 0 {
+	} else if node.args.len > 0 && fn_name == 'json.decode' {
 		if node.args.len != 2 {
 			c.error("json.decode expects 2 arguments, a type and a string (e.g `json.decode(T, '')`)",
 				node.pos)
@@ -558,13 +557,11 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			c.table.fns[name_prefixed].usages++
 		}
 	}
-	if !found && node.left is ast.IndexExpr {
+	if !found && mut node.left is ast.IndexExpr {
 		c.expr(node.left)
-		expr := node.left as ast.IndexExpr
-		sym := c.table.sym(expr.left_type)
-		if sym.kind == .array {
-			info := sym.info as ast.Array
-			elem_sym := c.table.sym(info.elem_type)
+		sym := c.table.sym(node.left.left_type)
+		if sym.info is ast.Array {
+			elem_sym := c.table.sym(sym.info.elem_type)
 			if elem_sym.info is ast.FnType {
 				node.return_type = elem_sym.info.func.return_type
 				return elem_sym.info.func.return_type
@@ -572,18 +569,16 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				c.error('cannot call the element of the array, it is not a function',
 					node.pos)
 			}
-		} else if sym.kind == .map {
-			info := sym.info as ast.Map
-			value_sym := c.table.sym(info.value_type)
+		} else if sym.info is ast.Map {
+			value_sym := c.table.sym(sym.info.value_type)
 			if value_sym.info is ast.FnType {
 				node.return_type = value_sym.info.func.return_type
 				return value_sym.info.func.return_type
 			} else {
 				c.error('cannot call the value of the map, it is not a function', node.pos)
 			}
-		} else if sym.kind == .array_fixed {
-			info := sym.info as ast.ArrayFixed
-			elem_sym := c.table.sym(info.elem_type)
+		} else if sym.info is ast.ArrayFixed {
+			elem_sym := c.table.sym(sym.info.elem_type)
 			if elem_sym.info is ast.FnType {
 				node.return_type = elem_sym.info.func.return_type
 				return elem_sym.info.func.return_type
@@ -595,15 +590,13 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		found = true
 		return ast.string_type
 	}
-	if !found && node.left is ast.CallExpr {
+	if !found && mut node.left is ast.CallExpr {
 		c.expr(node.left)
-		expr := node.left as ast.CallExpr
-		sym := c.table.sym(expr.return_type)
-		if sym.kind == .function {
-			info := sym.info as ast.FnType
-			node.return_type = info.func.return_type
+		sym := c.table.sym(node.left.return_type)
+		if sym.info is ast.FnType {
+			node.return_type = sym.info.func.return_type
 			found = true
-			func = info.func
+			func = sym.info.func
 		}
 	}
 	// already prefixed (mod.fn) or C/builtin/main
@@ -730,8 +723,8 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		c.warn('function `$func.name` must be called from an `unsafe` block', node.pos)
 	}
 	node.is_keep_alive = func.is_keep_alive
-	if func.mod != 'builtin' && func.language == .v && func.no_body && !c.pref.translated
-		&& !c.file.is_translated && !func.is_unsafe {
+	if func.language == .v && func.no_body && !c.pref.translated && !c.file.is_translated
+		&& !func.is_unsafe && func.mod != 'builtin' {
 		c.error('cannot call a function that does not have a body', node.pos)
 	}
 	if node.concrete_types.len > 0 && func.generic_names.len > 0
@@ -757,7 +750,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		c.check_expected_arg_count(mut node, func) or { return func.return_type }
 	}
 	// println / eprintln / panic can print anything
-	if fn_name in ['println', 'print', 'eprintln', 'eprint', 'panic'] && node.args.len > 0 {
+	if node.args.len > 0 && fn_name in ['println', 'print', 'eprintln', 'eprint', 'panic'] {
 		c.inside_println_arg = true
 		c.expected_type = ast.string_type
 		node.args[0].typ = c.expr(node.args[0].expr)
@@ -788,7 +781,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		return func.return_type
 	}
 	// `return error(err)` -> `return err`
-	if fn_name == 'error' && node.args.len == 1 {
+	if node.args.len == 1 && fn_name == 'error' {
 		arg := node.args[0]
 		node.args[0].typ = c.expr(arg.expr)
 		if node.args[0].typ == ast.error_type {
