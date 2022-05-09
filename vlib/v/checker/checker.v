@@ -3656,6 +3656,7 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) 
 								node.obj.is_auto_heap = true
 							}
 						}
+						.sum_type, .interface_ {}
 						else {
 							node.obj.is_auto_heap = true
 						}
