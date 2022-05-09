@@ -26,13 +26,15 @@ rand.int() // among others ...
 // Import the rand module
 import rand
 import rand.seed
+
 // Import the module of the generator you want to use
 import rand.pcg32
 
 ...
 
 // Initialise the generator struct (note the `mut`)
-mut rng := pcg32.PCG32RNG{}
+mut rng := &rand.PRNG(pcg32.PCG32RNG{})
+
 // Optionally seed the generator
 rng.seed(seed.time_seed_array(pcg32.seed_len))
 
