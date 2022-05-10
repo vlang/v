@@ -44,6 +44,7 @@ fn calculate_and_measure(calc_label string, cb fn () big.Integer) string {
 	timed_println_extended(sw, 'a.bit_len(): ${a.bit_len():12}')
 
 	timed_println_extended(sw, 'before a.str()')
+	// s := a.hex() // hex is very fast since it does not need to do divisions at all
 	s := a.str()
 	timed_println_extended(sw, 'after  a.str()')
 	dump(s.len)
@@ -55,10 +56,10 @@ fn calculate_and_measure(calc_label string, cb fn () big.Integer) string {
 
 fn test_exponentiation() {
 	res1 := calculate_and_measure('f(x, y)', fn () big.Integer {
-		return f(big.integer_from_int(2), 123123)
+		return f(big.integer_from_int(2), 12312)
 	})
 	res2 := calculate_and_measure('big.int(x).pow(y)', fn () big.Integer {
-		return big.integer_from_i64(2).pow(123123)
+		return big.integer_from_i64(2).pow(12312)
 	})
 	assert res1 == res2
 }

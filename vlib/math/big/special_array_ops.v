@@ -123,15 +123,15 @@ fn karatsuba_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage 
 	// use storage for p_1 to avoid allocation and copy later
 	multiply_digit_array(a_h, b_h, mut storage)
 
-	mut p_3 := []u32{len: a_l.len + b_l.len + 1, init: 0}
+	mut p_3 := []u32{len: a_l.len + b_l.len + 1}
 	multiply_digit_array(a_l, b_l, mut p_3)
 
-	mut tmp_1 := []u32{len: math.max(a_h.len, a_l.len) + 1, init: 0}
-	mut tmp_2 := []u32{len: math.max(b_h.len, b_l.len) + 1, init: 0}
+	mut tmp_1 := []u32{len: math.max(a_h.len, a_l.len) + 1}
+	mut tmp_2 := []u32{len: math.max(b_h.len, b_l.len) + 1}
 	add_digit_array(a_h, a_l, mut tmp_1)
 	add_digit_array(b_h, b_l, mut tmp_2)
 
-	mut p_2 := []u32{len: operand_a.len + operand_b.len + 1, init: 0}
+	mut p_2 := []u32{len: operand_a.len + operand_b.len + 1}
 	multiply_digit_array(tmp_1, tmp_2, mut p_2)
 	subtract_in_place(mut p_2, storage) // p_1
 	subtract_in_place(mut p_2, p_3)
@@ -147,7 +147,7 @@ fn karatsuba_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage 
 
 [inline]
 fn pow2(k int) Integer {
-	mut ret := []u32{len: (k >> 5) + 1, init: 0}
+	mut ret := []u32{len: (k >> 5) + 1}
 	bit_set(mut ret, k)
 	return Integer{
 		signum: 1

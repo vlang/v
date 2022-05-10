@@ -134,7 +134,7 @@ pub fn integer_from_bytes(input []u8, config IntegerConfig) Integer {
 		return integer_from_int(0)
 	}
 	// pad input
-	mut padded_input := []u8{len: ((input.len + 3) & ~0x3) - input.len, cap: (input.len + 3) & ~0x3, init: 0x0}
+	mut padded_input := []u8{len: ((input.len + 3) & ~0x3) - input.len, cap: (input.len + 3) & ~0x3}
 	padded_input << input
 	mut digits := []u32{len: padded_input.len / 4}
 	// combine every 4 bytes into a u32 and insert into n.digits
@@ -585,7 +585,7 @@ pub fn (mut a Integer) set_bit(i u32, value bool) {
 pub fn (a Integer) bitwise_or(b Integer) Integer {
 	check_sign(a)
 	check_sign(b)
-	mut result := []u32{len: math.max(a.digits.len, b.digits.len), init: 0}
+	mut result := []u32{len: math.max(a.digits.len, b.digits.len)}
 	bitwise_or_digit_array(a.digits, b.digits, mut result)
 	return Integer{
 		digits: result
@@ -597,7 +597,7 @@ pub fn (a Integer) bitwise_or(b Integer) Integer {
 pub fn (a Integer) bitwise_and(b Integer) Integer {
 	check_sign(a)
 	check_sign(b)
-	mut result := []u32{len: math.max(a.digits.len, b.digits.len), init: 0}
+	mut result := []u32{len: math.max(a.digits.len, b.digits.len)}
 	bitwise_and_digit_array(a.digits, b.digits, mut result)
 	return Integer{
 		digits: result
@@ -608,7 +608,7 @@ pub fn (a Integer) bitwise_and(b Integer) Integer {
 // bitwise_not returns the "bitwise not" of the integer `a`.
 pub fn (a Integer) bitwise_not() Integer {
 	check_sign(a)
-	mut result := []u32{len: a.digits.len, init: 0}
+	mut result := []u32{len: a.digits.len}
 	bitwise_not_digit_array(a.digits, mut result)
 	return Integer{
 		digits: result
@@ -620,7 +620,7 @@ pub fn (a Integer) bitwise_not() Integer {
 pub fn (a Integer) bitwise_xor(b Integer) Integer {
 	check_sign(a)
 	check_sign(b)
-	mut result := []u32{len: math.max(a.digits.len, b.digits.len), init: 0}
+	mut result := []u32{len: math.max(a.digits.len, b.digits.len)}
 	bitwise_xor_digit_array(a.digits, b.digits, mut result)
 	return Integer{
 		digits: result
@@ -639,7 +639,7 @@ pub fn (a Integer) lshift(amount u32) Integer {
 	}
 	normalised_amount := amount & 31
 	digit_offset := int(amount >> 5)
-	mut new_array := []u32{len: a.digits.len + digit_offset, init: 0}
+	mut new_array := []u32{len: a.digits.len + digit_offset}
 	for index in 0 .. a.digits.len {
 		new_array[index + digit_offset] = a.digits[index]
 	}
@@ -666,7 +666,7 @@ pub fn (a Integer) rshift(amount u32) Integer {
 	if digit_offset >= a.digits.len {
 		return zero_int
 	}
-	mut new_array := []u32{len: a.digits.len - digit_offset, init: 0}
+	mut new_array := []u32{len: a.digits.len - digit_offset}
 	for index in 0 .. new_array.len {
 		new_array[index] = a.digits[index + digit_offset]
 	}
