@@ -257,36 +257,40 @@ pub fn zip_files(path_to_file []string, path_to_export_zip string) ? {
 	}
 }
 
-/*
-TODO add
-// zip all files in directory to zip file
-pub fn zip_folder(path_to_dir string, path_to_export_zip string) {
-
-	// get list files from directory
-	files := os.ls(path_to_dir) or { panic(err) }
+// zip_folder zips all files in directory `path_to_dir` *recursively* to the zip file at `path_to_zip`.
+// Empty folders will not be included.
+pub fn zip_folder(path_to_dir string, path_to_zip string) ? {
+	// get list of files from directory
+	path := path_to_dir.trim_right(os.path_separator)
+	mut files := []string{}
+	// NOTE os.walk_with_context does not include empty leaf directories
+	os.walk_with_context(path, &files, fn (mut files []string, path string) {
+		files << path
+	})
 
 	// open or create new zip
-	mut zip := szip.open(path_to_export_zip, .no_compression, .write) or { panic(err) }
+	mut zip := open(path_to_zip, .no_compression, .write) ?
 
 	// add all files from the directory to the archive
 	for file in files {
-		eprintln('Zipping $file to ${path_to_export_zip}...')
-		println(path_to_dir + file)
-
+		// strip each zip entry for the path prefix - this way
+		// all files in the archive can be made relative.
+		mut zip_file_entry := file.replace(path + os.path_separator, '')
+		// Normalize path on Windows \ -> /
+		$if windows {
+			zip_file_entry = zip_file_entry.replace(os.path_separator, '/')
+		}
 		// add file to zip
-		zip.open_entry(file) or { panic(err) }
-		file_as_byte := os.read_bytes(path_to_dir + '/'+ file) or { panic(err) }
-        zip.write_entry(file_as_byte) or { panic(err) }
+		zip.open_entry(zip_file_entry) ?
 
-        zip.close_entry()
+		file_as_byte := os.read_bytes(file) ?
+		zip.write_entry(file_as_byte) ?
+		zip.close_entry()
 	}
 
 	// close zip
 	zip.close()
-
-	eprintln('Successfully')
 }
-*/
 
 // total returns the number of all entries (files and directories) in the zip archive.
 pub fn (mut zentry Zip) total() ?int {
