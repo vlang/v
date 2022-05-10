@@ -56,10 +56,10 @@ fn calculate_and_measure(calc_label string, cb fn () big.Integer) string {
 
 fn test_exponentiation() {
 	res1 := calculate_and_measure('f(x, y)', fn () big.Integer {
-		return f(big.integer_from_int(2), 12312)
+		return f(big.integer_from_int(2), 66777)
 	})
 	res2 := calculate_and_measure('big.int(x).pow(y)', fn () big.Integer {
-		return big.integer_from_i64(2).pow(12312)
+		return big.integer_from_i64(2).pow(66777)
 	})
 	assert res1 == res2
 }
