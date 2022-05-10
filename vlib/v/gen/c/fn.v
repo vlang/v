@@ -288,15 +288,6 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	arg_start_pos := g.out.len
 	fargs, fargtypes, heap_promoted := g.fn_decl_params(node.params, node.scope, node.is_variadic)
 	if is_closure {
-		mut s := '$cur_closure_ctx *$c.closure_ctx'
-		if node.params.len > 0 {
-			s = ', ' + s
-		} else {
-			// remove generated `void`
-			g.out.cut_to(arg_start_pos)
-		}
-		g.definitions.write_string(s)
-		g.write(s)
 		g.nr_closures++
 	}
 	arg_str := g.out.after(arg_start_pos)
@@ -312,6 +303,9 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	}
 	g.definitions.writeln(');')
 	g.writeln(') {')
+	if is_closure {
+		g.writeln('$cur_closure_ctx* $closure_ctx = *(void**)(__RETURN_ADDRESS() - __CLOSURE_DATA_OFFSET);')
+	}
 	for i, is_promoted in heap_promoted {
 		if is_promoted {
 			g.writeln('${fargtypes[i]}* ${fargs[i]} = HEAP(${fargtypes[i]}, _v_toheap_${fargs[i]});')
@@ -485,7 +479,7 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 	ctx_struct := closure_ctx(node.decl)
 	// it may be possible to optimize `memdup` out if the closure never leaves current scope
 	// TODO in case of an assignment, this should only call "__closure_set_data" and "__closure_set_function" (and free the former data)
-	g.write('__closure_create($node.decl.name, ${node.decl.name}_wrapper, ($ctx_struct*) memdup(&($ctx_struct){')
+	g.write('__closure_create($node.decl.name, ($ctx_struct*) memdup(&($ctx_struct){')
 	g.indent++
 	for var in node.inherited_vars {
 		g.writeln('.$var.name = $var.name,')
@@ -493,38 +487,6 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 	g.indent--
 	g.write('}, sizeof($ctx_struct)))')
 
-	mut sb := strings.new_builder(512)
-	ret_styp := g.typ(node.decl.return_type)
-
-	sb.write_string(' VV_LOCAL_SYMBOL $ret_styp ${node.decl.name}_wrapper(')
-	for i, param in node.decl.params {
-		if i > 0 {
-			sb.write_string(', ')
-		}
-		sb.write_string('${g.typ(param.typ)} a${i + 1}')
-	}
-	sb.writeln(') {')
-	sb.writeln('\tvoid** closure_start = (void**)((char*)__RETURN_ADDRESS() - __CLOSURE_WRAPPER_OFFSET);
-	void* userdata = closure_start[-1];')
-	sb.write_string('\t$ret_styp (*fn)(')
-	for i, param in node.decl.params {
-		sb.write_string('${g.typ(param.typ)} a${i + 1}, ')
-	}
-	sb.writeln('void* userdata) = closure_start[-2];')
-
-	if node.decl.return_type == ast.void_type_idx {
-		sb.write_string('\tfn(')
-	} else {
-		sb.write_string('\treturn fn(')
-	}
-	for i in 0 .. node.decl.params.len {
-		sb.write_string('a${i + 1}, ')
-	}
-	sb.writeln('userdata);')
-
-	sb.writeln('}\n')
-
-	g.anon_fn_definitions << sb.str()
 	g.empty_line = false
 }
 

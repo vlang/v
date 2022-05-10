@@ -71,49 +71,49 @@ fn c_closure_helpers(pref &pref.Preferences) string {
 #ifdef _MSC_VER
 	#define __RETURN_ADDRESS() _ReturnAddress()
 #elif defined(__TINYC__) && defined(_WIN32)
-	#define __RETURN_ADDRESS() __builtin_return_address(0)
+	#define __RETURN_ADDRESS() (char*)__builtin_return_address(0)
 #else
-	#define __RETURN_ADDRESS() __builtin_extract_return_addr(__builtin_return_address(0))
+	#define __RETURN_ADDRESS() (char*)__builtin_extract_return_addr(__builtin_return_address(0))
 #endif
 
 #ifdef __V_amd64
 static const char __closure_thunk[] = {
 	0x8f, 0x05, 0xda, 0xff, 0xff, 0xff,  // pop   QWORD PTR [rip - 0x26] # <_orig_rbp>
-	0xff, 0x15, 0xdc, 0xff, 0xff, 0xff,  // call  QWORD PTR [rip - 0x24] # <wrapper>
+	0xff, 0x15, 0xe4, 0xff, 0xff, 0xff,  // call  QWORD PTR [rip - 0x1C] # <fn>
 	0xff, 0x25, 0xce, 0xff, 0xff, 0xff,  // jmp   QWORD PTR [rip - 0x32] # <orig_rbp>
 };
-#define __CLOSURE_WRAPPER_OFFSET 12
+#define __CLOSURE_DATA_OFFSET 20
 #elif defined(__V_x86)
 static char __closure_thunk[] = {
 	0xe8, 0x00, 0x00, 0x00, 0x00,  // call 4
 	0x59,                          // pop  ecx
 	0x8f, 0x41, 0xeb,              // pop  DWORD PTR [ecx - 21] # <_orig_rbp>
-	0xff, 0x51, 0xef,              // call DWORD PTR [ecx - 17] # <wrapper>
+	0xff, 0x51, 0xf3,              // call DWORD PTR [ecx - 13] # <fn>
 	0xe8, 0x00, 0x00, 0x00, 0x00,  // call 4
 	0x59,                          // pop  ecx
 	0xff, 0x61, 0xdf,              // jmp  DWORD PTR [ecx - 33] # <_orig_rbp>
 };
 
-#define __CLOSURE_WRAPPER_OFFSET 12
+#define __CLOSURE_DATA_OFFSET 16
 #elif defined(__V_arm64)
 static char __closure_thunk[] = {
 	0x10, 0x00, 0x00, 0x10,  // adr x16, start
 	0x1e, 0x02, 0x1e, 0xf8,  // str x30, _orig_x30
-	0x10, 0xff, 0xff, 0x58,  // ldr x16, wrapper
+	0x50, 0xff, 0xff, 0x58,  // ldr x16, fn
 	0x00, 0x02, 0x3f, 0xd6,  // blr x16
 	0x9e, 0xfe, 0xff, 0x58,  // ldr x30, _orig_x30
 	0xc0, 0x03, 0x5f, 0xd6   // ret
 };
-#define __CLOSURE_WRAPPER_OFFSET 16
+#define __CLOSURE_DATA_OFFSET 24
 #elif defined(__V_arm32)
 static char __closure_thunk[] = {
 	0x18, 0xe0, 0x0f, 0xe5,  //  str lr, orig_lr
-	0x18, 0xc0, 0x1f, 0xe5,  //  ldr ip, wrapper
+	0x14, 0xc0, 0x1f, 0xe5,  //  ldr ip, fn
 	0x3c, 0xff, 0x2f, 0xe1,  //  blx ip
 	0x24, 0xe0, 0x1f, 0xe5,  //  ldr lr, orig_lr
 	0x1e, 0xff, 0x2f, 0xe1   //  bx  lr
 };
-#define __CLOSURE_WRAPPER_OFFSET 12
+#define __CLOSURE_DATA_OFFSET 16
 #endif
 
 static int _V_PAGE_SIZE = 4096; // pre-initialized to the most common value, in case _vinit is not called (in a DLL, for example)
@@ -128,12 +128,7 @@ static inline void __closure_set_function(void* closure, void* f) {
     p[-2] = f;
 }
 
-static inline void __closure_set_wrapper(void* closure, void* f) {
-    void** p = closure;
-    p[-3] = f;
-}
-
-static void* __closure_create(void* fn, void* wrapper, void* data) {
+static void* __closure_create(void* fn, void* data) {
 #ifdef _WIN32
 	SYSTEM_INFO si;
 	GetNativeSystemInfo(&si);
@@ -160,7 +155,6 @@ static void* __closure_create(void* fn, void* wrapper, void* data) {
 
 	__closure_set_data(closure, data);
 	__closure_set_function(closure, fn);
-	__closure_set_wrapper(closure, wrapper);
 	return closure;
 }
 ')
