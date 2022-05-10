@@ -195,7 +195,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	is_closure := node.scope.has_inherited_vars()
 	mut cur_closure_ctx := ''
 	if is_closure {
-		cur_closure_ctx, _ = closure_ctx(node)
+		cur_closure_ctx = closure_ctx(node)
 		// declare the struct before its implementation
 		g.definitions.write_string(cur_closure_ctx)
 		g.definitions.writeln(';')
@@ -472,8 +472,8 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) ?string {
 
 const closure_ctx = '_V_closure_ctx'
 
-fn closure_ctx(node ast.FnDecl) (string, string) {
-	return 'struct _V_${node.name}_Ctx', 'struct _V_${node.name}_Args'
+fn closure_ctx(node ast.FnDecl) string {
+	return 'struct _V_${node.name}_Ctx'
 }
 
 fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
@@ -482,31 +482,21 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 		g.write(node.decl.name)
 		return
 	}
-	ctx_struct, arg_struct := closure_ctx(node.decl)
+	ctx_struct := closure_ctx(node.decl)
 	// it may be possible to optimize `memdup` out if the closure never leaves current scope
 	// TODO in case of an assignment, this should only call "__closure_set_data" and "__closure_set_function" (and free the former data)
-	g.write('__closure_create($node.decl.name, ${node.decl.name}_wrapper, ${node.decl.name}_unwrapper, ($ctx_struct*) memdup(&($ctx_struct){')
+	g.write('__closure_create($node.decl.name, ${node.decl.name}_wrapper, ($ctx_struct*) memdup(&($ctx_struct){')
 	g.indent++
 	for var in node.inherited_vars {
 		g.writeln('.$var.name = $var.name,')
 	}
 	g.indent--
-	ps := g.table.pointer_size
-	is_big_cutoff := if g.pref.os == .windows || g.pref.arch == .arm32 { ps } else { ps * 2 }
-	rt_size, _ := g.table.type_size(node.decl.return_type)
-	is_big := rt_size > is_big_cutoff
 	g.write('}, sizeof($ctx_struct)))')
 
 	mut sb := strings.new_builder(512)
 	ret_styp := g.typ(node.decl.return_type)
 
-	sb.write_string(' VV_LOCAL_SYMBOL void ${node.decl.name}_wrapper(')
-	if is_big {
-		sb.write_string('__CLOSURE_WRAPPER_EXTRA_PARAM ')
-		if node.decl.params.len > 0 {
-			sb.write_string('__CLOSURE_WRAPPER_EXTRA_PARAM_COMMA ')
-		}
-	}
+	sb.write_string(' VV_LOCAL_SYMBOL $ret_styp ${node.decl.name}_wrapper(')
 	for i, param in node.decl.params {
 		if i > 0 {
 			sb.write_string(', ')
@@ -514,28 +504,13 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 		sb.write_string('${g.typ(param.typ)} a${i + 1}')
 	}
 	sb.writeln(') {')
-	if node.decl.params.len > 0 {
-		sb.writeln('void** closure_start = (void**)((char*)__RETURN_ADDRESS() - __CLOSURE_WRAPPER_OFFSET);
-		$arg_struct* args = closure_start[-5];')
-		for i in 0 .. node.decl.params.len {
-			sb.writeln('\targs->a${i + 1} = a${i + 1};')
-		}
-	}
-
-	sb.writeln('}\n')
-
-	sb.writeln(' VV_LOCAL_SYMBOL $ret_styp ${node.decl.name}_unwrapper(void) {
-	void** closure_start = (void**)((char*)__RETURN_ADDRESS() - __CLOSURE_UNWRAPPER_OFFSET);
+	sb.writeln('\tvoid** closure_start = (void**)((char*)__RETURN_ADDRESS() - __CLOSURE_WRAPPER_OFFSET);
 	void* userdata = closure_start[-1];')
-	sb.write_string('\t${g.typ(node.decl.return_type)} (*fn)(')
+	sb.write_string('\t$ret_styp (*fn)(')
 	for i, param in node.decl.params {
 		sb.write_string('${g.typ(param.typ)} a${i + 1}, ')
 	}
 	sb.writeln('void* userdata) = closure_start[-2];')
-
-	if node.decl.params.len > 0 {
-		sb.writeln('\t$arg_struct* args = closure_start[-5];')
-	}
 
 	if node.decl.return_type == ast.void_type_idx {
 		sb.write_string('\tfn(')
@@ -543,10 +518,11 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 		sb.write_string('\treturn fn(')
 	}
 	for i in 0 .. node.decl.params.len {
-		sb.write_string('args->a${i + 1}, ')
+		sb.write_string('a${i + 1}, ')
 	}
-	sb.writeln('userdata);
-}')
+	sb.writeln('userdata);')
+
+	sb.writeln('}\n')
 
 	g.anon_fn_definitions << sb.str()
 	g.empty_line = false
@@ -559,20 +535,13 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 	node.has_gen = true
 	mut builder := strings.new_builder(256)
 	if node.inherited_vars.len > 0 {
-		ctx_struct, arg_struct := closure_ctx(node.decl)
+		ctx_struct := closure_ctx(node.decl)
 		builder.writeln('$ctx_struct {')
 		for var in node.inherited_vars {
 			styp := g.typ(var.typ)
 			builder.writeln('\t$styp $var.name;')
 		}
 		builder.writeln('};\n')
-		if node.decl.params.len > 0 {
-			builder.writeln('$arg_struct {')
-			for i, param in node.decl.params {
-				builder.writeln('\t${g.typ(param.typ)} a${i + 1};')
-			}
-			builder.writeln('};\n')
-		}
 	}
 	pos := g.out.len
 	was_anon_fn := g.anon_fn
