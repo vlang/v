@@ -3883,6 +3883,9 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		g.expr(node.expr)
 		g.write('))')
 	} else if sym.kind == .alias && g.table.final_sym(node.typ).kind == .array_fixed {
+		if node.expr is ast.ArrayInit && g.assign_op != .decl_assign {
+			g.write('(${g.typ(node.expr.typ)})')
+		}
 		g.expr(node.expr)
 	} else if node.expr_type == ast.bool_type && node.typ.is_int() {
 		styp := g.typ(node.typ)
