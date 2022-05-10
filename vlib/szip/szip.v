@@ -275,7 +275,7 @@ pub fn zip_folder(path_to_dir string, path_to_zip string) ? {
 	for file in files {
 		// strip each zip entry for the path prefix - this way
 		// all files in the archive can be made relative.
-		mut zip_file_entry := file.replace(path + os.path_separator, '')
+		mut zip_file_entry := file.trim_string_left(path + os.path_separator, '')
 		// Normalize path on Windows \ -> /
 		$if windows {
 			zip_file_entry = zip_file_entry.replace(os.path_separator, '/')
