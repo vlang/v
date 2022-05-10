@@ -304,7 +304,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	g.definitions.writeln(');')
 	g.writeln(') {')
 	if is_closure {
-		g.writeln('$cur_closure_ctx* $closure_ctx = *(void**)(__RETURN_ADDRESS() - __CLOSURE_DATA_OFFSET);')
+		g.writeln('$cur_closure_ctx* $c.closure_ctx = *(void**)(__RETURN_ADDRESS() - __CLOSURE_DATA_OFFSET);')
 	}
 	for i, is_promoted in heap_promoted {
 		if is_promoted {
