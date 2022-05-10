@@ -22,7 +22,24 @@ const (
 pub struct Integer {
 	digits []u32
 pub:
-	signum int
+	signum   int
+	is_const bool
+}
+
+[unsafe]
+fn (mut x Integer) free() {
+	if x.is_const {
+		return
+	}
+	unsafe { x.digits.free() }
+}
+
+fn (x Integer) clone() Integer {
+	return Integer{
+		digits: x.digits.clone()
+		signum: x.signum
+		is_const: false
+	}
 }
 
 fn int_signum(value int) int {
@@ -106,7 +123,9 @@ pub struct IntegerConfig {
 	signum int = 1
 }
 
-// integer_from_bytes creates a new `big.Integer` from the given byte array. By default, positive integers are assumed. If you want a negative integer, use in the following manner:
+// integer_from_bytes creates a new `big.Integer` from the given byte array.
+// By default, positive integers are assumed.
+// If you want a negative integer, use in the following manner:
 // `value := big.integer_from_bytes(bytes, signum: -1)`
 [direct_array_access]
 pub fn integer_from_bytes(input []u8, config IntegerConfig) Integer {
@@ -244,7 +263,7 @@ fn integer_from_regular_string(characters string, radix u32) Integer {
 	}
 
 	return Integer{
-		...result
+		digits: result.digits.clone()
 		signum: result.signum * signum
 	}
 }
@@ -255,7 +274,7 @@ pub fn (integer Integer) abs() Integer {
 		zero_int
 	} else {
 		Integer{
-			...integer
+			digits: integer.digits.clone()
 			signum: 1
 		}
 	}
@@ -267,7 +286,7 @@ pub fn (integer Integer) neg() Integer {
 		zero_int
 	} else {
 		Integer{
-			...integer
+			digits: integer.digits.clone()
 			signum: -integer.signum
 		}
 	}
@@ -276,10 +295,10 @@ pub fn (integer Integer) neg() Integer {
 pub fn (integer Integer) + (addend Integer) Integer {
 	// Quick exits
 	if integer.signum == 0 {
-		return addend
+		return addend.clone()
 	}
 	if addend.signum == 0 {
-		return integer
+		return integer.clone()
 	}
 	// Non-zero cases
 	return if integer.signum == addend.signum {
@@ -295,7 +314,7 @@ pub fn (integer Integer) - (subtrahend Integer) Integer {
 		return subtrahend.neg()
 	}
 	if subtrahend.signum == 0 {
-		return integer
+		return integer.clone()
 	}
 	// Non-zero cases
 	return if integer.signum == subtrahend.signum {
@@ -311,7 +330,7 @@ fn (integer Integer) add(addend Integer) Integer {
 	mut storage := []u32{len: math.max(a.len, b.len) + 1}
 	add_digit_array(a, b, mut storage)
 	return Integer{
-		...integer
+		signum: integer.signum
 		digits: storage
 	}
 }
@@ -336,10 +355,10 @@ pub fn (integer Integer) * (multiplicand Integer) Integer {
 		return zero_int
 	}
 	if integer == one_int {
-		return multiplicand
+		return multiplicand.clone()
 	}
 	if multiplicand == one_int {
-		return integer
+		return integer.clone()
 	}
 	// The final sign is the product of the signs
 	mut storage := []u32{len: integer.digits.len + multiplicand.digits.len}
@@ -360,7 +379,7 @@ pub fn (integer Integer) div_mod(divisor Integer) (Integer, Integer) {
 		return zero_int, zero_int
 	}
 	if divisor == one_int {
-		return integer, zero_int
+		return integer.clone(), zero_int
 	}
 	if divisor.signum == -1 {
 		q, r := integer.div_mod(divisor.neg())
@@ -405,7 +424,7 @@ pub fn (a Integer) pow(exponent u32) Integer {
 		return one_int
 	}
 	if exponent == 1 {
-		return a
+		return a.clone()
 	}
 	mut n := exponent
 	mut x := a
@@ -725,20 +744,25 @@ pub fn (integer Integer) radix_str(radix u32) string {
 
 fn (integer Integer) general_radix_str(radix u32) string {
 	divisor := integer_from_u32(radix)
-	mut rune_array := []rune{}
 
 	mut current := integer.abs()
+	mut new_current := zero_int
 	mut digit := zero_int
+	mut rune_array := []rune{cap: current.digits.len * 4}
 	for current.signum > 0 {
-		current, digit = current.div_mod(divisor)
+		new_current, digit = current.div_mod(divisor)
 		rune_array << big.digit_array[digit.int()]
+		unsafe { digit.free() }
+		unsafe { current.free() }
+		current = new_current
 	}
 	if integer.signum == -1 {
 		rune_array << `-`
 	}
 
 	rune_array.reverse_in_place()
-	return rune_array.string()
+	res := rune_array.string()
+	return res
 }
 
 // str returns the decimal string representation of the integer `a`.
