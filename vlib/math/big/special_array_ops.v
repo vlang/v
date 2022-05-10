@@ -4,6 +4,17 @@ import math
 import math.bits
 import strings
 
+[direct_array_access; inline]
+fn shrink_tail_zeros(mut a []u32) {
+	mut alen := a.len
+	for alen > 0 && a[alen - 1] == 0 {
+		alen--
+	}
+	unsafe {
+		a.len = alen
+	}
+}
+
 // suppose operand_a bigger than operand_b and both not null.
 // Both quotient and remaider are already allocated but of length 0
 fn newton_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, mut remainder []u32) {
@@ -47,9 +58,7 @@ fn newton_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient [
 	quotient = q.digits
 	remainder = r.digits
 
-	for remainder.len > 0 && remainder.last() == 0 {
-		remainder.delete_last()
-	}
+	shrink_tail_zeros(mut remainder)
 }
 
 [inline]
@@ -57,7 +66,7 @@ fn bit_length(a Integer) int {
 	return a.digits.len * 32 - bits.leading_zeros_32(a.digits.last())
 }
 
-[inline]
+[direct_array_access; inline]
 fn debug_u32_str(a []u32) string {
 	mut sb := strings.new_builder(30)
 	sb.write_string('[')
@@ -76,12 +85,11 @@ fn debug_u32_str(a []u32) string {
 // karatsuba algorithm for multiplication
 // possible optimisations:
 // - transform one or all the recurrences in loops
+[direct_array_access]
 fn karatsuba_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
 	// base case necessary to end recursion
 	if operand_a.len == 0 || operand_b.len == 0 {
-		for storage.len > 0 {
-			storage.delete_last()
-		}
+		storage.clear()
 		return
 	}
 
@@ -134,9 +142,7 @@ fn karatsuba_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage 
 	add_in_place(mut storage, p_2)
 	add_in_place(mut storage, p_3)
 
-	for storage.len > 0 && storage.last() == 0 {
-		storage.delete_last()
-	}
+	shrink_tail_zeros(mut storage)
 }
 
 [inline]
@@ -150,6 +156,7 @@ fn pow2(k int) Integer {
 }
 
 // optimized left shift of full u8(s) in place. byte_nb must be positive
+[direct_array_access]
 fn lshift_byte_in_place(mut a []u32, byte_nb int) {
 	a_len := a.len
 	// control or allocate capacity
@@ -166,7 +173,7 @@ fn lshift_byte_in_place(mut a []u32, byte_nb int) {
 
 // operand b can be greater than operand a
 // the capacity of both array is supposed to be sufficient
-[inline]
+[direct_array_access; inline]
 fn add_in_place(mut a []u32, b []u32) {
 	len_a := a.len
 	len_b := b.len
@@ -194,6 +201,7 @@ fn add_in_place(mut a []u32, b []u32) {
 }
 
 // a := a - b supposed a >= b
+[direct_array_access]
 fn subtract_in_place(mut a []u32, b []u32) {
 	len_a := a.len
 	len_b := b.len
@@ -221,8 +229,6 @@ fn subtract_in_place(mut a []u32, b []u32) {
 			carry = new_carry
 		}
 	} else { // if len.b > len.a return zero
-		for a.len > 0 {
-			a.delete_last()
-		}
+		a.clear()
 	}
 }
