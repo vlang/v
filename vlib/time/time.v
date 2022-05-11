@@ -351,7 +351,7 @@ pub fn (d Duration) hours() f64 {
 // m:s.mi<s>  // 2:33.015
 // s.mi<s>    // 33.015s
 // mi.mc<ms>  // 15.007ms
-// mc.ns<ns>  // 7.234ns
+// mc.ns<ns>  // 7.234us
 // ns<ns>     // 234ns
 // ```
 pub fn (d Duration) str() string {
@@ -384,7 +384,7 @@ pub fn (d Duration) str() string {
 		return '${ms}.${us:03}ms'
 	}
 	if us > 0 {
-		return '${us}.${ns:03}ns'
+		return '${us}.${ns:03}us'
 	}
 	return '${ns}ns'
 }
