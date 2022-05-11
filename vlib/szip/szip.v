@@ -5,6 +5,11 @@ import os
 #flag -I @VEXEROOT/thirdparty/zip
 #include "zip.c"
 
+[params]
+pub struct ZipFolderOptions {
+	omit_empty_folders bool
+}
+
 struct C.zip_t {
 }
 
@@ -257,36 +262,48 @@ pub fn zip_files(path_to_file []string, path_to_export_zip string) ? {
 	}
 }
 
-/*
-TODO add
-// zip all files in directory to zip file
-pub fn zip_folder(path_to_dir string, path_to_export_zip string) {
-
-	// get list files from directory
-	files := os.ls(path_to_dir) or { panic(err) }
+// zip_folder zips all entries in `folder` *recursively* to the zip file at `zip_file`.
+// Empty folders will be included, unless specified otherwise in `opt`.
+pub fn zip_folder(folder string, zip_file string, opt ZipFolderOptions) ? {
+	// get list of files from directory
+	path := folder.trim_right(os.path_separator)
+	mut files := []string{}
+	os.walk_with_context(path, &files, fn (mut files []string, file string) {
+		files << file
+	})
 
 	// open or create new zip
-	mut zip := szip.open(path_to_export_zip, .no_compression, .write) or { panic(err) }
+	mut zip := open(zip_file, .no_compression, .write) ?
+	// close zip
+	defer {
+		zip.close()
+	}
 
 	// add all files from the directory to the archive
 	for file in files {
-		eprintln('Zipping $file to ${path_to_export_zip}...')
-		println(path_to_dir + file)
-
-		// add file to zip
-		zip.open_entry(file) or { panic(err) }
-		file_as_byte := os.read_bytes(path_to_dir + '/'+ file) or { panic(err) }
-        zip.write_entry(file_as_byte) or { panic(err) }
-
-        zip.close_entry()
+		is_dir := os.is_dir(file)
+		if opt.omit_empty_folders && is_dir {
+			continue
+		}
+		// strip each zip entry for the path prefix - this way
+		// all files in the archive can be made relative.
+		mut zip_file_entry := file.trim_string_left(path + os.path_separator)
+		// Normalize path on Windows \ -> /
+		$if windows {
+			zip_file_entry = zip_file_entry.replace(os.path_separator, '/')
+		}
+		if is_dir {
+			zip_file_entry += '/' // Tells the implementation that the entry is a directory
+		}
+		// add file or directory (ends with "/") to zip
+		zip.open_entry(zip_file_entry) ?
+		if !is_dir {
+			file_as_byte := os.read_bytes(file) ?
+			zip.write_entry(file_as_byte) ?
+		}
+		zip.close_entry()
 	}
-
-	// close zip
-	zip.close()
-
-	eprintln('Successfully')
 }
-*/
 
 // total returns the number of all entries (files and directories) in the zip archive.
 pub fn (mut zentry Zip) total() ?int {

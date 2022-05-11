@@ -563,7 +563,7 @@ pub fn walk(path string, f fn (string)) {
 pub type FnWalkContextCB = fn (voidptr, string)
 
 // walk_with_context traverses the given directory `path`.
-// For each encountred file, it will call your `fcb` callback,
+// For each encountred file and directory, it will call your `fcb` callback,
 // passing it the arbitrary `context` in its first parameter,
 // and the path to the file in its second parameter.
 pub fn walk_with_context(path string, context voidptr, fcb FnWalkContextCB) {
@@ -580,10 +580,9 @@ pub fn walk_with_context(path string, context voidptr, fcb FnWalkContextCB) {
 	}
 	for file in files {
 		p := path + local_path_separator + file
+		fcb(context, p)
 		if is_dir(p) && !is_link(p) {
 			walk_with_context(p, context, fcb)
-		} else {
-			fcb(context, p)
 		}
 	}
 	return
