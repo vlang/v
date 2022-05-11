@@ -266,13 +266,13 @@ pub fn (t Time) day_of_week() int {
 	return day_of_week(t.year, t.month, t.day)
 }
 
-// weekday_str returns the current day as a string abbreviation.
+// weekday_str returns the current day as a string 3 letter abbreviation.
 pub fn (t Time) weekday_str() string {
 	i := t.day_of_week() - 1
 	return time.long_days[i][0..3]
 }
 
-// weekday_str returns the current day as a string.
+// long_weekday_str returns the current day as a string.
 pub fn (t Time) long_weekday_str() string {
 	i := t.day_of_week() - 1
 	return time.long_days[i]
