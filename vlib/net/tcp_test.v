@@ -31,18 +31,18 @@ fn one_shot_echo_server(mut l net.TcpListener, ch_started chan int) ? {
 }
 
 fn echo(address string) ? {
-	mut c := net.dial_tcp(address) ?
+	mut c := net.dial_tcp(address)?
 	defer {
 		c.close() or {}
 	}
 
-	println('local: ' + c.addr() ?.str())
-	println(' peer: ' + c.peer_addr() ?.str())
+	println('local: ' + c.addr()?.str())
+	println(' peer: ' + c.peer_addr()?.str())
 
 	data := 'Hello from vlib/net!'
-	c.write_string(data) ?
+	c.write_string(data)?
 	mut buf := []u8{len: 4096}
-	read := c.read(mut buf) ?
+	read := c.read(mut buf)?
 	assert read == data.len
 	for i := 0; i < read; i++ {
 		assert buf[i] == data[i]

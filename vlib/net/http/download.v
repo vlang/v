@@ -18,7 +18,7 @@ pub fn download_file(url string, out_file_path string) ? {
 	$if debug_http ? {
 		println('http.download_file saving $s.text.len bytes')
 	}
-	os.write_file(out_file_path, s.text) ?
+	os.write_file(out_file_path, s.text)?
 }
 
 // TODO: implement download_file_with_progress

@@ -2,7 +2,7 @@ module main
 
 struct Struc{
 mut:
-	f fn (s Another, i int) ?
+	f fn (s Another, i int)?
 }
 
 fn main() {}

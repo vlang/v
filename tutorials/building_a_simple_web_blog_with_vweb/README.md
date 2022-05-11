@@ -5,20 +5,20 @@ Hello,
 In this guide, we'll build a simple web blog in V.
 
 The benefits of using V for web:
+
 - A safe, fast, language with the development agility of Python or Ruby and
-the performance of C.
+  the performance of C.
 - Zero dependencies: everything you need for web development comes with the language
-in a 1 MB package.
+  in a 1 MB package.
 - Very small resulting binaries: the blog we'll create in this tutorial is about 150 KB.
-- Easy deployments: a single binary file that even  includes the precompiled templates.
+- Easy deployments: a single binary file that even includes the precompiled templates.
 - Runs on the cheapest hardware with minimum footprint: for most apps a $3 instance
-is enough.
+  is enough.
 - Fast development without any boilerplate.
 
-*Please note that V and Vweb are at a very early stage and are changing rapidly.*
+_Please note that V and Vweb are at a very early stage and are changing rapidly._
 
 The code is available <a href='https://github.com/vlang/v/tree/master/tutorials/code/blog'>here</a>.
-
 
 ### Installing V
 
@@ -32,16 +32,14 @@ sudo ./v symlink
 Now V should be globally available on your system.
 
 > On macOS use `v_macos.zip`, on Windows - `v_windows.zip`.
-If you use a BSD system, Solaris, Android, or simply want to install V
-from source, follow the simple instructions here:
-https://github.com/vlang/v#installing-v-from-source
-
+> If you use a BSD system, Solaris, Android, or simply want to install V
+> from source, follow the simple instructions here:
+> https://github.com/vlang/v#installing-v-from-source
 
 ### Install SQLite development dependency
 
 If you don't have it already installed, look at the
 [`sqlite` README](../../vlib/sqlite/README.md) for instructions.
-
 
 ### Creating a new Vweb project
 
@@ -94,7 +92,6 @@ with an MVC web framework, you can think of it as a controller. (Vweb is
 not an MVC framework however.) It embeds the vweb Context object, that's why we get access
 to methods like `.text()`.
 
-
 As you can see, there are no routing rules. The `index()` action handles the `/` request by default.
 Vweb often uses convention over configuration and adding a new action requires
 no routing rules either:
@@ -109,14 +106,12 @@ fn (mut app App) time() vweb.Result {
 }
 ```
 
-
 <img width=662 src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/img/time.png?raw=true">
 
->TIP: run the following command to live-reload the server: `v watch run blog.v`
+> TIP: run the following command to live-reload the server: `v watch run blog.v`
 
 The `.text(string)` method returns a plain text document with the provided
 text, which isn't frequently used in websites.
-
 
 ### HTML View
 
@@ -124,14 +119,14 @@ Let's return an HTML view instead. Create `index.html` in the same directory:
 
 ```html
 <html>
-<head>
-	<title>V Blog</title>
-</head>
-<body>
-	<b>@message</b>
-	<br>
-	<img src='https://vlang.io/img/v-logo.png' width=100>
-</body>
+  <head>
+    <title>V Blog</title>
+  </head>
+  <body>
+    <b>@message</b>
+    <br />
+    <img src="https://vlang.io/img/v-logo.png" width="100" />
+  </body>
 </html>
 ```
 
@@ -169,13 +164,12 @@ that's done by the `$vweb.html()` line.
 (`$` always means compile time actions in V.) offering the following benefits:
 
 - Great performance, since the templates don't need to be compiled
-on every request, like in almost every major web framework.
+  on every request, like in almost every major web framework.
 
-- Easier deployment, since all your HTML templates are  compiled
-into a single binary file together with the web application itself.
+- Easier deployment, since all your HTML templates are compiled
+  into a single binary file together with the web application itself.
 
 - All errors in the templates are guaranteed to be caught during compilation.
-
 
 ### Fetching data with V ORM
 
@@ -183,7 +177,6 @@ Now let's display some articles!
 
 We'll be using V's builtin ORM and a SQLite database.
 (V ORM will also support MySQL, Postgre, and SQL Server soon.)
-
 
 Add a SQLite handle to `App`:
 
@@ -199,13 +192,10 @@ pub mut:
 }
 ```
 
-
-
 In `fn main()` we'll connect to a database.
 Code in the `main()` function is run only once during app's startup, so we are going
 to have one DB connection for all requests. This improves the performance of the web application,
 since a DB connection doesn't have to be set up for each request.
-
 
 ```v oksyntax
 // blog.v
@@ -268,17 +258,16 @@ pub fn (app &App) index() vweb.Result {
 }
 ```
 
-
 Finally, let's update our view:
 
 ```html
 <body>
-	@for article in articles
-		<div>
-			<b>@article.title</b> <br>
-			@article.text
-		</div>
-	@end
+  @for article in articles
+  <div>
+    <b>@article.title</b> <br />
+    @article.text
+  </div>
+  @end
 </body>
 ```
 
@@ -323,23 +312,22 @@ article := app.retrieve_article(10) or {
 }
 ```
 
-
 ### Adding new articles
 
 Create `new.html`:
 
 ```html
 <html>
-<head>
-	<title>V Blog</title>
-</head>
-<body>
-	<form action='/new_article' method='post'>
-		<input type='text' placeholder='Title' name='title'> <br>
-		<textarea placeholder='Text' name='text'></textarea>
-		<input type='submit'>
-	</form>
-</body>
+  <head>
+    <title>V Blog</title>
+  </head>
+  <body>
+    <form action="/new_article" method="post">
+      <input type="text" placeholder="Title" name="title" /> <br />
+      <textarea placeholder="Text" name="text"></textarea>
+      <input type="submit" />
+    </form>
+  </body>
 </html>
 ```
 
@@ -373,7 +361,7 @@ not necessary).
 We need to update `index.html` to add a link to the "new article" page:
 
 ```html
-<a href='/new'>New article</a>
+<a href="/new">New article</a>
 ```
 
 Next we need to add the HTML endpoint to our code like we did with `index.html`:
@@ -386,7 +374,6 @@ pub fn (mut app App) new() vweb.Result {
 ```
 
 Re-running this code will now allow us to add new posts to our blog endpoint
-
 
 ### JSON endpoints
 
@@ -406,10 +393,10 @@ pub fn (mut app App) articles() vweb.Result {
 }
 ```
 
-
 <img width=662 src="https://github.com/vlang/v/blob/master/tutorials/building_a_simple_web_blog_with_vweb/img/articles_json.png?raw=true">
 
 ### Persistent data
+
 If one wants to persist data they need to use a file instead of memory SQLite Database.
 Replace the db setup code with this instead:
 
@@ -421,7 +408,6 @@ As we can see it attempts to open a file in the current directory named `blog.db
 If the database file doesn't exist it will create it. The second command will
 create the table `Article` if none exists already. Now every time the
 app is run you will see the articles created from the previous executions
-
 
 To be continued...
 

@@ -29,7 +29,7 @@ pub fn (mut con TcpConn) set_blocking(state bool) ? {
 		if !con.is_blocking {
 			t = 1
 		}
-		socket_error(C.ioctlsocket(con.sock.handle, fionbio, &t)) ?
+		socket_error(C.ioctlsocket(con.sock.handle, fionbio, &t))?
 	} $else {
 		mut flags := C.fcntl(con.sock.handle, C.F_GETFL, 0)
 		if state {
@@ -37,7 +37,7 @@ pub fn (mut con TcpConn) set_blocking(state bool) ? {
 		} else {
 			flags |= C.O_NONBLOCK
 		}
-		socket_error(C.fcntl(con.sock.handle, C.F_SETFL, flags)) ?
+		socket_error(C.fcntl(con.sock.handle, C.F_SETFL, flags))?
 	}
 }
 

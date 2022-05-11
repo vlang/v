@@ -73,5 +73,5 @@ pub fn (mut sse SSEConnection) send_message(message SSEMessage) ? {
 		sb.write_string('retry: $message.retry\n')
 	}
 	sb.write_string('\n')
-	sse.conn.write(sb) ?
+	sse.conn.write(sb)?
 }

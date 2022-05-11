@@ -142,11 +142,11 @@ fn main() {
 		exit(1)
 	}
 
-	opt.config = new_config(opt.root_path, toml_conf) ?
+	opt.config = new_config(opt.root_path, toml_conf)?
 
 	gen_in_path := arg_paths[0]
 	if arg_paths.len >= 1 {
-		generate_screenshots(mut opt, gen_in_path) ?
+		generate_screenshots(mut opt, gen_in_path)?
 	}
 	if arg_paths.len > 1 {
 		target_path := arg_paths[1]
@@ -199,7 +199,7 @@ fn generate_screenshots(mut opt Options, output_path string) ? {
 			if opt.verbose {
 				eprintln('Creating output path `$dst_path`')
 			}
-			os.mkdir_all(dst_path) ?
+			os.mkdir_all(dst_path)?
 		}
 
 		screenshot_path := os.join_path(dst_path, rel_out_path)
@@ -332,7 +332,7 @@ fn take_screenshots(opt Options, app AppConfig) ?[]string {
 // ensure_env returns nothing if everything is okay.
 fn ensure_env(opt Options) ? {
 	if !os.exists(tmp_dir) {
-		os.mkdir_all(tmp_dir) ?
+		os.mkdir_all(tmp_dir)?
 	}
 
 	if runtime_os !in supported_hosts {
@@ -355,9 +355,9 @@ fn vexe() string {
 
 fn new_config(root_path string, toml_config string) ?Config {
 	doc := if os.is_file(toml_config) {
-		toml.parse_file(toml_config) ?
+		toml.parse_file(toml_config)?
 	} else {
-		toml.parse_text(toml_config) ?
+		toml.parse_text(toml_config)?
 	}
 
 	path := os.real_path(root_path).trim_right('/')

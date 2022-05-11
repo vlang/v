@@ -3,8 +3,8 @@ fn tuple() ?(int, int) {
 }
 
 fn test_optional_multi_return() ? {
-	println(tuple() ?)
-	a, b := tuple() ?
+	println(tuple()?)
+	a, b := tuple()?
 	assert a == 1
 	assert b == 2
 }

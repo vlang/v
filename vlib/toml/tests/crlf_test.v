@@ -16,8 +16,8 @@ fn test_crlf_is_parsable_just_like_lf() ? {
 	crlf_content := '# a comment\r\ntitle = "TOML Example"\r\n[database]\r\nserver = "192.168.1.1"\r\nports = [ 8000, 8001, 8002 ]\r\n'
 	all := [crlf_content, crlf_content.replace('\r\n', '\n')]
 	for content in all {
-		res := toml.parse_text(content) ?
+		res := toml.parse_text(content)?
 		assert res.value('title') == toml.Any('TOML Example')
-		assert (res.value('database') as map[string]toml.Any)['server'] ? == toml.Any('192.168.1.1')
+		assert (res.value('database') as map[string]toml.Any)['server']? == toml.Any('192.168.1.1')
 	}
 }

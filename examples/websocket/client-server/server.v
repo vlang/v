@@ -6,7 +6,7 @@ import term
 // this server accepts client connections and broadcast all messages to other connected clients
 fn main() {
 	println('press ctrl-c to quit...')
-	start_server() ?
+	start_server()?
 }
 
 fn start_server() ? {
@@ -20,7 +20,7 @@ fn start_server() ? {
 			return false
 		}
 		return true
-	}) ?
+	})?
 
 	// on_message_ref, broadcast all incoming messages to all clients except the one sent it
 	s.on_message_ref(fn (mut ws websocket.Client, msg &websocket.Message, mut m websocket.Server) ? {

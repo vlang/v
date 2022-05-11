@@ -32,10 +32,10 @@ mut:
 fn main() {
 	window := dom.window()
 	document := dom.document
-	clear_btn := document.getElementById('clearButton'.str) ?
-	canvas_elem := document.getElementById('canvas'.str) ?
+	clear_btn := document.getElementById('clearButton'.str)?
+	canvas_elem := document.getElementById('canvas'.str)?
 	canvas := get_canvas(canvas_elem)
-	ctx := canvas.getContext('2d'.str, js_undefined()) ?
+	ctx := canvas.getContext('2d'.str, js_undefined())?
 	context := match ctx {
 		JS.CanvasRenderingContext2D {
 			ctx

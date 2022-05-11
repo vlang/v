@@ -348,19 +348,19 @@ fn animate(mut state State, time f64) {
 fn main() {
 	canvas, gl := get_webgl()
 
-	vertex_buffer := gl.createBuffer() ?
+	vertex_buffer := gl.createBuffer()?
 	gl.bindBuffer(dom.gl_array_buffer(), vertex_buffer)
 	gl.bufferData(dom.gl_array_buffer(), float32_array(vertices), dom.gl_static_draw())
 
-	color_buffer := gl.createBuffer() ?
+	color_buffer := gl.createBuffer()?
 	gl.bindBuffer(dom.gl_array_buffer(), color_buffer)
 	gl.bufferData(dom.gl_array_buffer(), float32_array(colors), dom.gl_static_draw())
 
-	index_buffer := gl.createBuffer() ?
+	index_buffer := gl.createBuffer()?
 	gl.bindBuffer(dom.gl_element_array_buffer(), index_buffer)
 	gl.bufferData(dom.gl_element_array_buffer(), uint16_array(indices), dom.gl_static_draw())
 
-	vert_shader := gl.createShader(dom.gl_vertex_shader()) ?
+	vert_shader := gl.createShader(dom.gl_vertex_shader())?
 	gl.shaderSource(vert_shader, vert_code.str)
 	gl.compileShader(vert_shader)
 
@@ -368,14 +368,14 @@ fn main() {
 		panic('An error occurred when compiling vertex shader: ${string(gl.getShaderInfoLog(vert_shader))}')
 	}
 
-	frag_shader := gl.createShader(dom.gl_fragment_shader()) ?
+	frag_shader := gl.createShader(dom.gl_fragment_shader())?
 	gl.shaderSource(frag_shader, frag_code.str)
 	gl.compileShader(frag_shader)
 	if !bool(JS.Boolean(gl.getShaderParameter(frag_shader, dom.gl_compile_status()))) {
 		panic('An error occurred when compiling fragment shader: ${string(gl.getShaderInfoLog(frag_shader))}')
 	}
 
-	shader_program := gl.createProgram() ?
+	shader_program := gl.createProgram()?
 	gl.attachShader(shader_program, vert_shader)
 	gl.attachShader(shader_program, frag_shader)
 	gl.linkProgram(shader_program)
@@ -384,9 +384,9 @@ fn main() {
 		panic('unable to initialize the shader program: ${string(gl.getProgramInfoLog(shader_program))}')
 	}
 
-	pmatrix := gl.getUniformLocation(shader_program, 'Pmatrix'.str) ?
-	vmatrix := gl.getUniformLocation(shader_program, 'Vmatrix'.str) ?
-	mmatrix := gl.getUniformLocation(shader_program, 'Mmatrix'.str) ?
+	pmatrix := gl.getUniformLocation(shader_program, 'Pmatrix'.str)?
+	vmatrix := gl.getUniformLocation(shader_program, 'Vmatrix'.str)?
+	mmatrix := gl.getUniformLocation(shader_program, 'Mmatrix'.str)?
 
 	gl.bindBuffer(dom.gl_array_buffer(), vertex_buffer)
 	position := gl.getAttribLocation(shader_program, 'position'.str)

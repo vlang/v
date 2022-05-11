@@ -979,7 +979,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 				fn_body.write_string('tos2((byteptr)$func)')
 			} else {
 				if field.typ.is_ptr() && sym.kind == .struct_ {
-					funcprefix += '(indent_count > 25) ? _SLIT("<probably circular>") : '
+					funcprefix += '(indent_count > 25)? _SLIT("<probably circular>") : '
 				}
 				// eprintln('>>> caller_should_free: ${caller_should_free:6s} | funcprefix: $funcprefix | func: $func')
 				if caller_should_free {

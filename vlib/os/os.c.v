@@ -40,7 +40,7 @@ fn C._chsize_s(voidptr, u64) int
 // read_bytes returns all bytes read from file in `path`.
 [manualfree]
 pub fn read_bytes(path string) ?[]u8 {
-	mut fp := vfopen(path, 'rb') ?
+	mut fp := vfopen(path, 'rb')?
 	defer {
 		C.fclose(fp)
 	}
@@ -71,7 +71,7 @@ pub fn read_bytes(path string) ?[]u8 {
 // read_file reads the file in `path` and returns the contents.
 pub fn read_file(path string) ?string {
 	mode := 'rb'
-	mut fp := vfopen(path, mode) ?
+	mut fp := vfopen(path, mode)?
 	defer {
 		C.fclose(fp)
 	}
@@ -1013,15 +1013,15 @@ pub fn is_atty(fd int) int {
 
 // write_file_array writes the data in `buffer` to a file in `path`.
 pub fn write_file_array(path string, buffer array) ? {
-	mut f := create(path) ?
-	unsafe { f.write_full_buffer(buffer.data, usize(buffer.len * buffer.element_size)) ? }
+	mut f := create(path)?
+	unsafe { f.write_full_buffer(buffer.data, usize(buffer.len * buffer.element_size))? }
 	f.close()
 }
 
 pub fn glob(patterns ...string) ?[]string {
 	mut matches := []string{}
 	for pattern in patterns {
-		native_glob_pattern(pattern, mut matches) ?
+		native_glob_pattern(pattern, mut matches)?
 	}
 	matches.sort()
 	return matches

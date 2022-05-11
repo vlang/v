@@ -190,10 +190,10 @@ pub fn (mut pc PkgConfig) extend(pcdep &PkgConfig) ?string {
 
 fn (mut pc PkgConfig) load_requires() ? {
 	for dep in pc.requires {
-		pc.load_require(dep) ?
+		pc.load_require(dep)?
 	}
 	for dep in pc.requires_private {
-		pc.load_require(dep) ?
+		pc.load_require(dep)?
 	}
 }
 
@@ -210,8 +210,8 @@ fn (mut pc PkgConfig) load_require(dep string) ? {
 	if !pcdep.parse(depfile) {
 		return error('required file "$depfile" could not be parsed')
 	}
-	pcdep.load_requires() ?
-	pc.extend(pcdep) ?
+	pcdep.load_requires()?
+	pc.extend(pcdep)?
 }
 
 fn (mut pc PkgConfig) add_path(path string) {
@@ -253,7 +253,7 @@ pub fn load(pkgname string, options Options) ?&PkgConfig {
 		return error('file "$file" could not be parsed')
 	}
 	if !options.norecurse {
-		pc.load_requires() ?
+		pc.load_requires()?
 	}
 	return pc
 }

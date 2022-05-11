@@ -12,16 +12,16 @@ fn test_len() ? {
 	assert list.len() == 0
 	list.push_back(1)
 	assert list.len() == 1
-	list.pop_back() ?
+	list.pop_back()?
 	assert list.len() == 0
 }
 
 fn test_first() ? {
 	mut list := DoublyLinkedList<int>{}
 	list.push_back(1)
-	assert list.first() ? == 1
+	assert list.first()? == 1
 	list.push_back(2)
-	assert list.first() ? == 1
+	assert list.first()? == 1
 	list = DoublyLinkedList<int>{}
 	list.first() or { return }
 	assert false
@@ -30,9 +30,9 @@ fn test_first() ? {
 fn test_last() ? {
 	mut list := DoublyLinkedList<int>{}
 	list.push_back(1)
-	assert list.last() ? == 1
+	assert list.last()? == 1
 	list.push_back(2)
-	assert list.last() ? == 2
+	assert list.last()? == 2
 	list = DoublyLinkedList<int>{}
 	list.last() or { return }
 	assert false
@@ -41,11 +41,11 @@ fn test_last() ? {
 fn test_push() ? {
 	mut list := DoublyLinkedList<int>{}
 	list.push_back(1)
-	assert list.last() ? == 1
+	assert list.last()? == 1
 	list.push_back(2)
-	assert list.last() ? == 2
+	assert list.last()? == 2
 	list.push_back(3)
-	assert list.last() ? == 3
+	assert list.last()? == 3
 }
 
 fn test_pop() ? {
@@ -53,10 +53,10 @@ fn test_pop() ? {
 	list.push_back(1)
 	list.push_back(2)
 	list.push_back(3)
-	assert list.pop_back() ? == 3
+	assert list.pop_back()? == 3
 	list.push_back(4)
-	assert list.pop_back() ? == 4
-	assert list.pop_back() ? == 2
+	assert list.pop_back()? == 4
+	assert list.pop_back()? == 2
 	list = DoublyLinkedList<int>{}
 	list.pop_back() or { return }
 	assert false
@@ -67,10 +67,10 @@ fn test_pop_front() ? {
 	list.push_back(1)
 	list.push_back(2)
 	list.push_back(3)
-	assert list.pop_front() ? == 1
+	assert list.pop_front()? == 1
 	list.push_back(4)
-	assert list.pop_front() ? == 2
-	assert list.pop_front() ? == 3
+	assert list.pop_front()? == 2
+	assert list.pop_front()? == 3
 	list = DoublyLinkedList<int>{}
 	list.pop_front() or { return }
 	assert false
@@ -82,14 +82,14 @@ fn test_insert() ? {
 	list.push_back(2)
 	list.push_back(3)
 	// [1, 2, 3]
-	list.insert(1, 111) ?
+	list.insert(1, 111)?
 	// [1, 111, 2, 3]
-	list.insert(3, 222) ?
+	list.insert(3, 222)?
 	// [1, 111, 2, 222, 3]
-	assert list.pop_back() ? == 3
-	assert list.pop_back() ? == 222
-	assert list.pop_front() ? == 1
-	assert list.pop_front() ? == 111
+	assert list.pop_back()? == 3
+	assert list.pop_back()? == 222
+	assert list.pop_front()? == 1
+	assert list.pop_front()? == 111
 }
 
 fn test_push_front() ? {
@@ -98,7 +98,7 @@ fn test_push_front() ? {
 	list.push_back(2)
 	list.push_back(3)
 	list.push_front(111)
-	assert list.first() ? == 111
+	assert list.first()? == 111
 }
 
 fn test_delete() ? {
@@ -107,12 +107,12 @@ fn test_delete() ? {
 	list.push_back(1)
 	list.push_back(2)
 	list.delete(1)
-	assert list.first() ? == 0
-	assert list.last() ? == 2
+	assert list.first()? == 0
+	assert list.last()? == 2
 	assert list.len() == 2
 	list.delete(1)
-	assert list.first() ? == 0
-	assert list.last() ? == 0
+	assert list.first()? == 0
+	assert list.last()? == 0
 	assert list.len() == 1
 	list.delete(0)
 	assert list.len() == 0
@@ -147,7 +147,7 @@ fn test_index() ? {
 	}
 
 	for i := 0; i < 10; i++ {
-		assert list.index(i * 10) ? == i
+		assert list.index(i * 10)? == i
 	}
 }
 

@@ -39,7 +39,7 @@ fn test_json_string_non_ascii() {
 fn test_utf8_strings_are_not_modified() ? {
 	original := '{"s":"Schilddrüsenerkrankungen"}'
 	// dump(original)
-	deresult := json2.raw_decode(original) ?
+	deresult := json2.raw_decode(original)?
 	// dump(deresult)
 	assert deresult.str() == original
 }
@@ -51,13 +51,13 @@ fn test_encoder_unescaped_utf32() ? {
 	}
 
 	mut sb := strings.new_builder(20)
-	enc.encode_value(jap_text, mut sb) ?
+	enc.encode_value(jap_text, mut sb)?
 
 	assert sb.str() == '"$jap_text"'
 	sb.go_back_to(0)
 
 	emoji_text := json2.Any('🐈')
-	enc.encode_value(emoji_text, mut sb) ?
+	enc.encode_value(emoji_text, mut sb)?
 	assert sb.str() == '"$emoji_text"'
 }
 
@@ -74,7 +74,7 @@ fn test_encoder_prettify() ? {
 		newline_spaces_count: 2
 	}
 	mut sb := strings.new_builder(20)
-	enc.encode_value(obj, mut sb) ?
+	enc.encode_value(obj, mut sb)?
 	assert sb.str() == '{
   "hello": "world",
   "arr": [

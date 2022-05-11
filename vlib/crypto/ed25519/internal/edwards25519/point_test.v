@@ -96,11 +96,11 @@ fn test_non_canonical_points() ? {
 		// t.Run(tt.name, func(t *testing.T) {
 		// p1, err := new(Point).SetBytes(decodeHex(tt.encoding))
 		mut p1 := Point{}
-		p1.set_bytes(hex.decode(tt.encoding) ?) ?
+		p1.set_bytes(hex.decode(tt.encoding)?)?
 
 		// p2, err := new(Point).SetBytes(decodeHex(tt.canonical))
 		mut p2 := Point{}
-		p2.set_bytes(hex.decode(tt.canonical) ?) ?
+		p2.set_bytes(hex.decode(tt.canonical)?)?
 
 		assert p1.equal(p2) == 1
 		assert p1.bytes() == p2.bytes()

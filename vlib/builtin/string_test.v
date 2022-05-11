@@ -145,15 +145,15 @@ fn test_ranges() {
 }
 
 fn ranges_propagate_first(s string) ?string {
-	return s[10..] ?
+	return s[10..]?
 }
 
 fn ranges_propagate_last(s string) ?string {
-	return s[..20] ?
+	return s[..20]?
 }
 
 fn ranges_propagate_both(s string) ?string {
-	return s[1..20] ?
+	return s[1..20]?
 }
 
 fn test_split_nth() {

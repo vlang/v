@@ -125,7 +125,7 @@ fn main() {
 	should_sync := fp.bool('cache-sync', `s`, false, 'Update the local cache')
 	context.is_bisect = fp.bool('bisect', `b`, false, 'Bisect mode. Use the current commit in the repo where oldv is.')
 	if !should_sync && !context.is_bisect {
-		fp.limit_free_args(1, 1) ?
+		fp.limit_free_args(1, 1)?
 	}
 	////
 	context.cleanup = fp.bool('clean', 0, false, 'Clean before running (slower).')

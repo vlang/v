@@ -85,15 +85,15 @@ fn find_file(search_paths []string, file string) ?string {
 }
 
 fn patch_atomic(outfile string, infile string) ? {
-	lines := os.read_file(infile) ?.split('\n')
+	lines := os.read_file(infile)?.split('\n')
 	outlines := lines.filter(!it.contains('atomic(const atomic&) = delete;'))
 	outtext := outlines.join('\n').replace('#include <bits/atomic_base.h>', '#include "bitsatomicbase.h"')
-	os.write_file(outfile, outtext) ?
+	os.write_file(outfile, outtext)?
 }
 
 fn patch_bitsatomicbase(outfile string, infile string) ? {
-	lines := os.read_file(infile) ?.split('\n')
+	lines := os.read_file(infile)?.split('\n')
 	outlines := lines.filter(!it.contains('__atomic_base(const __atomic_base&) = delete;'))
 	outtext := outlines.join('\n').replace('#include <bits/atomic_base.h>', '#include "bitsatomicbase.h"')
-	os.write_file(outfile, outtext) ?
+	os.write_file(outfile, outtext)?
 }

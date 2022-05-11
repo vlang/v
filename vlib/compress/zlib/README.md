@@ -10,8 +10,8 @@ import compress.zlib
 
 fn main() {
 	uncompressed := 'Hello world!'
-	compressed := zlib.compress(uncompressed.bytes()) ?
-	decompressed := zlib.decompress(compressed) ?
+	compressed := zlib.compress(uncompressed.bytes())?
+	decompressed := zlib.decompress(compressed)?
 	assert decompressed == uncompressed.bytes()
 }
 ```

@@ -15,7 +15,7 @@ fn main() {
 	short_v_name := vexe_name.all_before('.')
 	//
 	recompilation.must_be_enabled(vroot, 'Please install V from source, to use `$vexe_name self` .')
-	os.chdir(vroot) ?
+	os.chdir(vroot)?
 	os.setenv('VCOLORS', 'always', true)
 	args := os.args[1..].filter(it != 'self')
 	jargs := args.join(' ')

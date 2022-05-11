@@ -10,12 +10,12 @@ pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.Qu
 	query := orm.orm_select_gen(config, '"', true, '$', 1, where)
 	mut ret := [][]orm.Primitive{}
 
-	res := pg_stmt_worker(db, query, orm.QueryData{}, where) ?
+	res := pg_stmt_worker(db, query, orm.QueryData{}, where)?
 
 	for row in res {
 		mut row_data := []orm.Primitive{}
 		for i, val in row.vals {
-			field := str_to_primitive(val, config.types[i]) ?
+			field := str_to_primitive(val, config.types[i])?
 			row_data << field
 		}
 		ret << row_data
@@ -28,17 +28,17 @@ pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.Qu
 
 pub fn (db DB) insert(table string, data orm.QueryData) ? {
 	query := orm.orm_stmt_gen(table, '"', .insert, true, '$', 1, data, orm.QueryData{})
-	pg_stmt_worker(db, query, data, orm.QueryData{}) ?
+	pg_stmt_worker(db, query, data, orm.QueryData{})?
 }
 
 pub fn (db DB) update(table string, data orm.QueryData, where orm.QueryData) ? {
 	query := orm.orm_stmt_gen(table, '"', .update, true, '$', 1, data, where)
-	pg_stmt_worker(db, query, data, where) ?
+	pg_stmt_worker(db, query, data, where)?
 }
 
 pub fn (db DB) delete(table string, where orm.QueryData) ? {
 	query := orm.orm_stmt_gen(table, '"', .delete, true, '$', 1, orm.QueryData{}, where)
-	pg_stmt_worker(db, query, orm.QueryData{}, where) ?
+	pg_stmt_worker(db, query, orm.QueryData{}, where)?
 }
 
 pub fn (db DB) last_id() orm.Primitive {
@@ -51,12 +51,12 @@ pub fn (db DB) last_id() orm.Primitive {
 
 pub fn (db DB) create(table string, fields []orm.TableField) ? {
 	query := orm.orm_table_gen(table, '"', true, 0, fields, pg_type_from_v, false) or { return err }
-	pg_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{}) ?
+	pg_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})?
 }
 
 pub fn (db DB) drop(table string) ? {
 	query := 'DROP TABLE "$table";'
-	pg_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{}) ?
+	pg_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})?
 }
 
 // utils
@@ -267,7 +267,7 @@ fn str_to_primitive(str string, typ int) ?orm.Primitive {
 		}
 		orm.time {
 			if str.contains_any(' /:-') {
-				date_time_str := time.parse(str) ?
+				date_time_str := time.parse(str)?
 				return orm.Primitive(date_time_str)
 			}
 

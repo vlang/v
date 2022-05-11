@@ -2,61 +2,61 @@ module arrays
 
 fn test_min() ? {
 	a := [8, 2, 6, 4]
-	mut ri := min(a) ?
+	mut ri := min(a)?
 	assert ri == 2
-	ri = min(a[2..]) ?
+	ri = min(a[2..])?
 	assert ri == 4
 	b := [f32(5.1), 3.1, 1.1, 9.1]
-	mut rf := min(b) ?
+	mut rf := min(b)?
 	assert rf == f32(1.1)
-	rf = min(b[..2]) ?
+	rf = min(b[..2])?
 	assert rf == f32(3.1)
 	c := [u8(4), 9, 3, 1]
-	mut rb := min(c) ?
+	mut rb := min(c)?
 	assert rb == u8(1)
-	rb = min(c[..3]) ?
+	rb = min(c[..3])?
 	assert rb == u8(3)
 }
 
 fn test_max() ? {
 	a := [8, 2, 6, 4]
-	mut ri := max(a) ?
+	mut ri := max(a)?
 	assert ri == 8
-	ri = max(a[1..]) ?
+	ri = max(a[1..])?
 	assert ri == 6
 	b := [f32(5.1), 3.1, 1.1, 9.1]
-	mut rf := max(b) ?
+	mut rf := max(b)?
 	assert rf == f32(9.1)
-	rf = max(b[..3]) ?
+	rf = max(b[..3])?
 	assert rf == f32(5.1)
 	c := [u8(4), 9, 3, 1]
-	mut rb := max(c) ?
+	mut rb := max(c)?
 	assert rb == u8(9)
-	rb = max(c[2..]) ?
+	rb = max(c[2..])?
 	assert rb == u8(3)
 }
 
 fn test_idx_min() ? {
 	a := [8, 2, 6, 4]
-	ri := idx_min(a) ?
+	ri := idx_min(a)?
 	assert ri == 1
 	b := [f32(5.1), 3.1, 1.1, 9.1]
-	rf := idx_min(b) ?
+	rf := idx_min(b)?
 	assert rf == 2
 	c := [u8(4), 9, 3, 1]
-	rb := idx_min(c) ?
+	rb := idx_min(c)?
 	assert rb == 3
 }
 
 fn test_idx_max() ? {
 	a := [8, 2, 6, 4]
-	ri := idx_max(a) ?
+	ri := idx_max(a)?
 	assert ri == 0
 	b := [f32(5.1), 3.1, 1.1, 9.1]
-	rf := idx_max(b) ?
+	rf := idx_max(b)?
 	assert rf == 3
 	c := [u8(4), 9, 3, 1]
-	rb := idx_max(c) ?
+	rb := idx_max(c)?
 	assert rb == 1
 }
 
@@ -197,7 +197,7 @@ fn test_concat_string() {
 
 fn test_binary_search() ? {
 	a := [1, 3, 3, 4, 5, 6, 7, 8, 10]
-	assert binary_search(a, 3) ? == 1
+	assert binary_search(a, 3)? == 1
 	assert (binary_search(a, 0) or { -1 }) == -1
 }
 
@@ -205,18 +205,18 @@ fn test_lower_bound() ? {
 	a := [1, 3, 3, 4, 5, 6, 7, 8, 10]
 	b := []int{}
 	c := [1, 2, 3]
-	assert lower_bound(a, 2) ? == 3
+	assert lower_bound(a, 2)? == 3
 	assert (lower_bound(b, 4) or { -1 }) == -1
-	assert lower_bound(c, 3) ? == 3
+	assert lower_bound(c, 3)? == 3
 }
 
 fn test_upper_bound() ? {
 	a := [1, 3, 3, 4, 5, 6, 7, 8, 10]
 	b := []int{}
 	c := [1, 2, 3]
-	assert upper_bound(a, 9) ? == 8
+	assert upper_bound(a, 9)? == 8
 	assert (upper_bound(b, 4) or { -1 }) == -1
-	assert upper_bound(c, 2) ? == 2
+	assert upper_bound(c, 2)? == 2
 }
 
 fn test_rotate_right() {

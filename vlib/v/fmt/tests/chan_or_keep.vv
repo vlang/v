@@ -13,7 +13,7 @@ fn f(ch chan int) {
 }
 
 fn do_send(ch chan int, val int) ?int {
-	ch <- val ?
+	ch <- val?
 	return val + 1
 }
 

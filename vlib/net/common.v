@@ -20,10 +20,10 @@ pub const infinite_timeout = time.infinite
 fn shutdown(handle int) ? {
 	$if windows {
 		C.shutdown(handle, C.SD_BOTH)
-		socket_error(C.closesocket(handle)) ?
+		socket_error(C.closesocket(handle))?
 	} $else {
 		C.shutdown(handle, C.SHUT_RDWR)
-		socket_error(C.close(handle)) ?
+		socket_error(C.close(handle))?
 	}
 }
 
@@ -52,13 +52,13 @@ fn @select(handle int, test Select, timeout time.Duration) ?bool {
 
 	match test {
 		.read {
-			socket_error(C.@select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout)) ?
+			socket_error(C.@select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout))?
 		}
 		.write {
-			socket_error(C.@select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout)) ?
+			socket_error(C.@select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout))?
 		}
 		.except {
-			socket_error(C.@select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout)) ?
+			socket_error(C.@select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout))?
 		}
 	}
 
@@ -90,22 +90,26 @@ fn select_deadline(handle int, test Select, deadline time.Time) ?bool {
 
 // wait_for_common wraps the common wait code
 fn wait_for_common(handle int, deadline time.Time, timeout time.Duration, test Select) ? {
-	// Convert timeouts to deadlines
-	real_deadline := if timeout == net.infinite_timeout {
-		time.unix(0)
-	} else if timeout == 0 {
-		// No timeout set, so assume deadline
-		deadline
-	} else if timeout < 0 {
-		// TODO(emily): Do something nicer here :)
-		panic('invalid negative timeout')
-	} else {
-		// timeout
-		time.now().add(timeout)
+	if deadline.unix == 0 {
+		// do not accept negative timeout
+		if timeout < 0 {
+			return err_timed_out
+		}
+		ready := select_with_retry(handle, test, timeout)?
+		if ready {
+			return
+		}
+		return err_timed_out
 	}
-
-	ready := select_deadline(handle, test, real_deadline) ?
-
+	// Convert the deadline into a timeout
+	// and use that
+	d_timeout := deadline.unix - time.now().unix
+	if d_timeout < 0 {
+		// deadline is in the past so this has already
+		// timed out
+		return err_timed_out
+	}
+	ready := select_with_retry(handle, test, timeout)?
 	if ready {
 		return
 	}

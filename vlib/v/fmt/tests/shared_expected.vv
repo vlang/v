@@ -34,7 +34,7 @@ fn k() {
 		shared f := St{}
 		f
 	}
-	shared z := h() ?
+	shared z := h()?
 	shared p := v
 	v := rlock z {
 		z.a

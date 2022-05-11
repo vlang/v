@@ -154,7 +154,7 @@ pub fn fetch(config FetchConfig) ?Response {
 		in_memory_verification: config.in_memory_verification
 		allow_redirect: config.allow_redirect
 	}
-	res := req.do() ?
+	res := req.do()?
 	return res
 }
 
@@ -183,7 +183,7 @@ fn fetch_with_method(method Method, _config FetchConfig) ?Response {
 }
 
 fn build_url_from_fetch(config FetchConfig) ?string {
-	mut url := urllib.parse(config.url) ?
+	mut url := urllib.parse(config.url)?
 	if config.params.len == 0 {
 		return url.str()
 	}

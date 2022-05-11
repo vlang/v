@@ -31,7 +31,7 @@ fn (mut g JsGen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	} else if typ == ast.bool_type {
 		g.write('new string((')
 		g.expr(expr)
-		g.write(').valueOf() ? "true" : "false")')
+		g.write(').valueOf()? "true" : "false")')
 	} else if sym.kind == .none_ {
 		g.write('new string("<none>")')
 	} else if sym.kind == .enum_ {
@@ -100,7 +100,7 @@ fn (mut g JsGen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		g.expr(expr)
 	} else if typ == ast.bool_type {
 		g.expr(expr)
-		g.write('.valueOf() ? new string("true") : new string("false")')
+		g.write('.valueOf()? new string("true") : new string("false")')
 	} else if sym.kind == .none_ {
 		g.write('new string("<none>")')
 	} else if sym.kind == .enum_ {

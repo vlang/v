@@ -16,5 +16,5 @@ fn test_example() ? {
 fn test_example_2() ? {
 	assert true
 	assert true
-	example() ?
+	example()?
 }

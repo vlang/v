@@ -471,5 +471,5 @@ fn main() {
 		hide_cursor: true
 		frame_rate: 10
 	)
-	app.termui.run() ?
+	app.termui.run()?
 }

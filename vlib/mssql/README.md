@@ -50,7 +50,7 @@ fn test_example() ? {
 
 	mut conn := mssql.Connection{}
 
-	conn.connect(config.get_conn_str()) ?
+	conn.connect(config.get_conn_str())?
 
 	defer {
 		conn.close()
@@ -58,7 +58,7 @@ fn test_example() ? {
 
 	// get current db name
 	mut query := 'SELECT DB_NAME()'
-	mut res := conn.query(query) ?
+	mut res := conn.query(query)?
 	assert res == mssql.Result{
 		rows: [mssql.Row{
 			vals: ['master']

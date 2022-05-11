@@ -17,12 +17,12 @@ fn interp_test(expression string, expected string) ? {
 	//
 	tmpfile := os.join_path(tmpdir, 'input.v')
 	outfile := os.join_path(tmpdir, 'output.txt')
-	os.write_file(tmpfile, interpreter_wrap(expression)) ?
+	os.write_file(tmpfile, interpreter_wrap(expression))?
 	if os.system('${os.quoted_path(vexe)} interpret ${os.quoted_path(tmpfile)} > ${os.quoted_path(outfile)}') != 0 {
 		eprintln('>>> Failed to interpret V expression: |$expression|')
 		return error('v interp')
 	}
-	res := os.read_file(outfile) ?
+	res := os.read_file(outfile)?
 	output := res.trim_space()
 	if output != expected {
 		eprintln('>>> The output of the V expression, is not the same as the expected one')
@@ -49,7 +49,7 @@ fn test_interpreter() ? {
 	tests << InterpTest{'println(3*3)', '9'}
 	tests << InterpTest{'a := 3\nprintln(a*3)', '9'}
 	for test in tests {
-		interp_test(test.input, test.output) ?
+		interp_test(test.input, test.output)?
 		assert true
 	}
 }

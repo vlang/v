@@ -30,7 +30,7 @@ fn test_decode_a() ? {
 	for _, test_data in decode_values {
 		mut input := make_test_reader(test_data.decode_val)
 
-		res := decode(mut &input) ?
+		res := decode(mut &input)?
 		assert res == test_data.expected
 	}
 }

@@ -82,7 +82,7 @@ fn test_burnt_sushi_tomltest() ? {
 		if !hide_oks {
 			println('OK   [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
 		}
-		toml_doc := toml.parse_file(valid_test_file) ?
+		toml_doc := toml.parse_file(valid_test_file)?
 		valid++
 	}
 	println('$valid/$valid_test_files.len TOML files were parsed correctly')
@@ -95,12 +95,12 @@ fn test_burnt_sushi_tomltest() ? {
 		println('Testing value output of $valid_test_files.len valid TOML files using "$jq"...')
 
 		if os.exists(compare_work_dir_root) {
-			os.rmdir_all(compare_work_dir_root) ?
+			os.rmdir_all(compare_work_dir_root)?
 		}
-		os.mkdir_all(compare_work_dir_root) ?
+		os.mkdir_all(compare_work_dir_root)?
 
 		jq_normalize_path := os.join_path(compare_work_dir_root, 'normalize.jq')
-		os.write_file(jq_normalize_path, jq_normalize) ?
+		os.write_file(jq_normalize_path, jq_normalize)?
 
 		valid = 0
 		e = 0
@@ -126,25 +126,25 @@ fn test_burnt_sushi_tomltest() ? {
 			if !hide_oks {
 				println('OK   [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
 			}
-			toml_doc := toml.parse_file(valid_test_file) ?
+			toml_doc := toml.parse_file(valid_test_file)?
 
 			v_toml_json_path := os.join_path(compare_work_dir_root,
 				os.file_name(valid_test_file).all_before_last('.') + '.v.json')
 			bs_toml_json_path := os.join_path(compare_work_dir_root,
 				os.file_name(valid_test_file).all_before_last('.') + '.json')
 
-			os.write_file(v_toml_json_path, to_burntsushi(toml_doc.ast.table)) ?
+			os.write_file(v_toml_json_path, to_burntsushi(toml_doc.ast.table))?
 
-			bs_json := os.read_file(valid_test_file.all_before_last('.') + '.json') ?
+			bs_json := os.read_file(valid_test_file.all_before_last('.') + '.json')?
 
-			os.write_file(bs_toml_json_path, bs_json) ?
+			os.write_file(bs_toml_json_path, bs_json)?
 
 			v_normalized_json := run([jq, '-S', '-f "$jq_normalize_path"', v_toml_json_path]) or {
-				contents := os.read_file(v_toml_json_path) ?
+				contents := os.read_file(v_toml_json_path)?
 				panic(err.msg() + '\n$contents')
 			}
 			bs_normalized_json := run([jq, '-S', '-f "$jq_normalize_path"', bs_toml_json_path]) or {
-				contents := os.read_file(v_toml_json_path) ?
+				contents := os.read_file(v_toml_json_path)?
 				panic(err.msg() + '\n$contents')
 			}
 
@@ -177,7 +177,7 @@ fn test_burnt_sushi_tomltest() ? {
 			println('OK   [${i + 1}/$invalid_test_files.len] "$invalid_test_file"...')
 		}
 		if toml_doc := toml.parse_file(invalid_test_file) {
-			content_that_should_have_failed := os.read_file(invalid_test_file) ?
+			content_that_should_have_failed := os.read_file(invalid_test_file)?
 			println('     This TOML should have failed:\n${'-'.repeat(40)}\n$content_that_should_have_failed\n${'-'.repeat(40)}')
 			assert false
 		} else {
