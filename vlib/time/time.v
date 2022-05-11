@@ -34,7 +34,7 @@ pub const (
 		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30,
 		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
 	]
-	unix_epoch           = Time {1970,1,1,0,0,0,0,0,true}
+	unix_epoch         = Time{1970, 1, 1, 0, 0, 0, 0, 0, true}
 )
 
 // Time contains various time units for a point in time.
@@ -180,6 +180,12 @@ pub fn (t Time) relative() string {
 		}
 		return '$prefix$d days$suffix'
 	}
+	if secs < time.seconds_per_hour * 24 * 365 {
+		if prefix == 'in ' {
+			return 'on $t.md()'
+		}
+		return 'last $t.md()'
+	}
 	y := secs / time.seconds_per_hour / 24 / 365
 	if y == 1 {
 		return '${prefix}1 year$suffix'
@@ -190,7 +196,7 @@ pub fn (t Time) relative() string {
 // relative_short returns a string saying how long ago a time occured as follows:
 // 0-30 seconds: `"now"`; 30-60 seconds: `"1m"`; anything else is rounded to the
 // nearest minute, hour, day, or year
-// 
+//
 // Sample outputs:
 // ```
 // // future
@@ -297,13 +303,13 @@ pub fn (t Time) debug() string {
 pub type Duration = i64
 
 pub const (
-	nanosecond = Duration(1)
+	nanosecond  = Duration(1)
 	microsecond = Duration(1000 * nanosecond)
 	millisecond = Duration(1000 * microsecond)
-	second = Duration(1000 * millisecond)
-	minute = Duration(60 * second)
-	hour = Duration(60 * minute)
-	infinite = Duration(i64(9223372036854775807))
+	second      = Duration(1000 * millisecond)
+	minute      = Duration(60 * second)
+	hour        = Duration(60 * minute)
+	infinite    = Duration(i64(9223372036854775807))
 )
 
 // nanoseconds returns the duration as an integer number of nanoseconds.
@@ -313,12 +319,12 @@ pub fn (d Duration) nanoseconds() i64 {
 
 // microseconds returns the duration as an integer number of microseconds.
 pub fn (d Duration) microseconds() i64 {
-	return i64(d) / microsecond
+	return i64(d) / time.microsecond
 }
 
 // milliseconds returns the duration as an integer number of milliseconds.
 pub fn (d Duration) milliseconds() i64 {
-	return i64(d) / (microsecond * millisecond)
+	return i64(d) / time.millisecond
 }
 
 // The following functions return floating point numbers because it's common to
