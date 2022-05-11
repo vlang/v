@@ -192,14 +192,6 @@ pub fn (mut zentry Zip) write_entry(data []u8) ? {
 	}
 }
 
-// fwrite_entry compresses an input file.
-pub fn (mut zentry Zip) fwrite_entry(path string) ? {
-	res := C.zip_entry_fwrite(zentry, path.str)
-	if res != 0 {
-		return error('szip: failed to write "$path" entry')
-	}
-}
-
 // create_entry compresses a file for the current zip entry.
 pub fn (mut zentry Zip) create_entry(name string) ? {
 	res := C.zip_entry_fwrite(zentry, &char(name.str))
