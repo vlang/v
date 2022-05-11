@@ -69,11 +69,11 @@ fn c_closure_helpers(pref &pref.Preferences) string {
 
 	builder.write_string('
 #ifdef _MSC_VER
-	#define __RETURN_ADDRESS() _ReturnAddress()
+	#define __RETURN_ADDRESS() ((char*)_ReturnAddress())
 #elif defined(__TINYC__) && defined(_WIN32)
-	#define __RETURN_ADDRESS() (char*)__builtin_return_address(0)
+	#define __RETURN_ADDRESS() ((char*)__builtin_return_address(0))
 #else
-	#define __RETURN_ADDRESS() (char*)__builtin_extract_return_addr(__builtin_return_address(0))
+	#define __RETURN_ADDRESS() ((char*)__builtin_extract_return_addr(__builtin_return_address(0)))
 #endif
 
 #ifdef __V_amd64
