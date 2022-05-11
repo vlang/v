@@ -34,7 +34,6 @@ pub const (
 		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30,
 		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
 	]
-	unix_epoch         = Time{1970, 1, 1, 0, 0, 0, 0, 0, true}
 )
 
 // Time contains various time units for a point in time.
@@ -139,10 +138,10 @@ pub fn since(t Time) Duration {
 // now
 // in 5 minutes
 // in 1 day
-// in 1 year
+// on Feb 17
 // // past
 // 2 hours ago
-// 1 year ago
+// last Jan 15
 // 5 years ago
 // ```
 pub fn (t Time) relative() string {
