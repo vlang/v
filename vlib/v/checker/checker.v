@@ -492,7 +492,13 @@ pub fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 			c.error('sum type cannot hold an interface', variant.pos)
 		} else if sym.kind == .struct_ && sym.language == .js {
 			c.error('sum type cannot hold an JS struct', variant.pos)
+		} else if mut sym.info is ast.Struct {
+			if sym.info.is_generic && !variant.typ.has_flag(.generic) {
+				c.error('generic struct `$sym.name` must specify generic type names, e.g. Foo<T>',
+					variant.pos)
+			}
 		}
+
 		if sym.name.trim_string_left(sym.mod + '.') == node.name {
 			c.error('sum type cannot hold itself', variant.pos)
 		}
