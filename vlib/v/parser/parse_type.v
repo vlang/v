@@ -661,11 +661,17 @@ pub fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 	mut concrete_types := []ast.Type{}
 	mut is_instance := false
 	for p.tok.kind != .eof {
+		mut type_pos := p.tok.pos()
 		gt := p.parse_type()
+		type_pos = type_pos.extend(p.prev_tok.pos())
 		if !gt.has_flag(.generic) {
 			is_instance = true
 		}
 		gts := p.table.sym(gt)
+		if !is_instance && gts.name.len > 1 {
+			p.error_with_pos('generic struct parameter name needs to be exactly one char',
+				type_pos)
+		}
 		bs_name += gts.name
 		bs_cname += gts.cname
 		concrete_types << gt
