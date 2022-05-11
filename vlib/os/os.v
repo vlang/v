@@ -580,11 +580,9 @@ pub fn walk_with_context(path string, context voidptr, fcb FnWalkContextCB) {
 	}
 	for file in files {
 		p := path + local_path_separator + file
+		fcb(context, p)
 		if is_dir(p) && !is_link(p) {
-			fcb(context, p)
 			walk_with_context(p, context, fcb)
-		} else {
-			fcb(context, p)
 		}
 	}
 	return
