@@ -141,7 +141,32 @@ fn test_zip_folder() ? {
 	szip.extract_zip_to_dir(test_dir_zip, test_path3) ?
 	assert os.exists(test_path3_1)
 	assert os.exists(test_path3_2)
-	// assert os.exists(test_path3_3) <- omitted since the dir was empty at time of compression
+	assert os.exists(test_path3_3) // This is the empty dir
+	assert os.exists(test_path3_4)
+	assert (os.read_file(fpath4) ?) == '4'
+	assert (os.read_file(fpath5) ?) == '5'
+	assert (os.read_file(fpath6) ?) == '6'
+}
+
+fn test_zip_folder_omit_empty_directories() ? {
+	cleanup()
+	os.mkdir_all(test_path3_1) ?
+	os.mkdir_all(test_path3_2) ?
+	os.mkdir_all(test_path3_3) ?
+	os.mkdir_all(test_path3_4) ?
+	os.write_file(fpath4, '4') ?
+	os.write_file(fpath5, '5') ?
+	os.write_file(fpath6, '6') ?
+
+	szip.zip_folder(test_path3, test_dir_zip, omit_empty_folders: true) ?
+	assert os.exists(test_dir_zip)
+
+	os.rmdir_all(test_path3) ?
+	os.mkdir_all(test_path3) ?
+	szip.extract_zip_to_dir(test_dir_zip, test_path3) ?
+	assert os.exists(test_path3_1)
+	assert os.exists(test_path3_2)
+	assert !os.exists(test_path3_3) // This is the empty dir
 	assert os.exists(test_path3_4)
 	assert (os.read_file(fpath4) ?) == '4'
 	assert (os.read_file(fpath5) ?) == '5'

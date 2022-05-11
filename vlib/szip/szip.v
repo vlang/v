@@ -5,6 +5,11 @@ import os
 #flag -I @VEXEROOT/thirdparty/zip
 #include "zip.c"
 
+[params]
+pub struct ZipFolderOptions {
+	omit_empty_folders bool
+}
+
 struct C.zip_t {
 }
 
@@ -187,6 +192,14 @@ pub fn (mut zentry Zip) write_entry(data []u8) ? {
 	}
 }
 
+// fwrite_entry compresses an input file.
+pub fn (mut zentry Zip) fwrite_entry(path string) ? {
+	res := C.zip_entry_fwrite(zentry, path.str)
+	if res != 0 {
+		return error('szip: failed to write "$path" entry')
+	}
+}
+
 // create_entry compresses a file for the current zip entry.
 pub fn (mut zentry Zip) create_entry(name string) ? {
 	res := C.zip_entry_fwrite(zentry, &char(name.str))
@@ -257,39 +270,47 @@ pub fn zip_files(path_to_file []string, path_to_export_zip string) ? {
 	}
 }
 
-// zip_folder zips all files in directory `path_to_dir` *recursively* to the zip file at `path_to_zip`.
-// Empty folders will not be included.
-pub fn zip_folder(path_to_dir string, path_to_zip string) ? {
+// zip_folder zips all entries in directory `path_to_dir` *recursively* to the zip file at `path_to_zip`.
+// Empty folders will be included, unless specified otherwise in `opt`.
+pub fn zip_folder(path_to_dir string, path_to_zip string, opt ZipFolderOptions) ? {
 	// get list of files from directory
 	path := path_to_dir.trim_right(os.path_separator)
 	mut files := []string{}
-	// NOTE os.walk_with_context does not include empty leaf directories
-	os.walk_with_context(path, &files, fn (mut files []string, path string) {
-		files << path
+	os.walk_with_context(path, &files, fn (mut files []string, file string) {
+		files << file
 	})
 
 	// open or create new zip
 	mut zip := open(path_to_zip, .no_compression, .write) ?
+	// close zip
+	defer {
+		zip.close()
+	}
 
 	// add all files from the directory to the archive
 	for file in files {
+		is_dir := os.is_dir(file)
+		if opt.omit_empty_folders && is_dir {
+			continue
+		}
 		// strip each zip entry for the path prefix - this way
 		// all files in the archive can be made relative.
-		mut zip_file_entry := file.trim_string_left(path + os.path_separator, '')
+		mut zip_file_entry := file.trim_string_left(path + os.path_separator)
 		// Normalize path on Windows \ -> /
 		$if windows {
 			zip_file_entry = zip_file_entry.replace(os.path_separator, '/')
 		}
-		// add file to zip
+		if is_dir {
+			zip_file_entry += '/' // Tells the implementation that the entry is a directory
+		}
+		// add file or directory (ends with "/") to zip
 		zip.open_entry(zip_file_entry) ?
-
-		file_as_byte := os.read_bytes(file) ?
-		zip.write_entry(file_as_byte) ?
+		if !is_dir {
+			file_as_byte := os.read_bytes(file) ?
+			zip.write_entry(file_as_byte) ?
+		}
 		zip.close_entry()
 	}
-
-	// close zip
-	zip.close()
 }
 
 // total returns the number of all entries (files and directories) in the zip archive.
