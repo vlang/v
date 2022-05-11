@@ -245,6 +245,14 @@ fn test_mut_arg() {
 	assert a == 10
 }
 
+fn test_clear() {
+	mut m := map[string]int{}
+	m['one'] = 1
+	m['two'] = 2
+	m.clear()
+	assert m.len == 0
+}
+
 fn test_delete() {
 	mut m := map[string]int{}
 	m['one'] = 1

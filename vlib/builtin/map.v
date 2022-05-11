@@ -294,6 +294,14 @@ pub fn (mut m map) move() map {
 	return r
 }
 
+// clear clears the map without deallocating the allocated data.
+// It does it by setting the map length to `0`
+// Example: a.clear() // `a.len` and `a.key_values.len` is now 0
+pub fn (mut m map) clear() {
+	m.len = 0
+	m.key_values.len = 0
+}
+
 [inline]
 fn (m &map) key_to_index(pkey voidptr) (u32, u32) {
 	hash := m.hash_fn(pkey)
