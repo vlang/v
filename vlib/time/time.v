@@ -34,6 +34,7 @@ pub const (
 		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30,
 		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
 	]
+	unix_epoch           = Time {1970,1,1,0,0,0,0,0,true}
 )
 
 // Time contains various time units for a point in time.
@@ -138,10 +139,10 @@ pub fn since(t Time) Duration {
 // now
 // in 5 minutes
 // in 1 day
-// on Feb 17
+// in 1 year
 // // past
 // 2 hours ago
-// last Jan 15
+// 1 year ago
 // 5 years ago
 // ```
 pub fn (t Time) relative() string {
@@ -179,12 +180,6 @@ pub fn (t Time) relative() string {
 		}
 		return '$prefix$d days$suffix'
 	}
-	if secs < time.seconds_per_hour * 24 * 365 {
-		if prefix == 'in ' {
-			return 'on $t.md()'
-		}
-		return 'last $t.md()'
-	}
 	y := secs / time.seconds_per_hour / 24 / 365
 	if y == 1 {
 		return '${prefix}1 year$suffix'
@@ -195,15 +190,17 @@ pub fn (t Time) relative() string {
 // relative_short returns a string saying how long ago a time occured as follows:
 // 0-30 seconds: `"now"`; 30-60 seconds: `"1m"`; anything else is rounded to the
 // nearest minute, hour, day, or year
-// Some Examples:
-// `0s -> 'now'`;
-// `20s -> 'now'`;
-// `47s -> '1m'`;
-// `456s -> '7m'`;
-// `1234s -> '20m'`;
-// `16834s -> '4h'`;
-// `1687440s -> '33d'`;
-// `15842354871s -> ''`
+// 
+// Sample outputs:
+// ```
+// // future
+// now
+// in 5m
+// in 1d
+// // past
+// 2h ago
+// 5y ago
+// ```
 pub fn (t Time) relative_short() string {
 	znow := now()
 	mut secs := znow.unix - t.unix
@@ -291,7 +288,7 @@ pub fn days_in_month(month int, year int) ?int {
 	return res
 }
 
-// str returns time in the same format as `parse` expects ("YYYY-MM-DD HH:MM:SS").
+// debug returns detailed breakdown of time (`Time{ year: YYYY month: MM day: dd hour: HH: minute: mm second: ss microsecond: micros unix: unix }`)
 pub fn (t Time) debug() string {
 	return 'Time{ year: ${t.year:04} month: ${t.month:02} day: ${t.day:02} hour: ${t.hour:02} minute: ${t.minute:02} second: ${t.second:02} microsecond: ${t.microsecond:06} unix: ${t.unix:07} }'
 }
@@ -299,19 +296,15 @@ pub fn (t Time) debug() string {
 // A lot of these are taken from the Go library.
 pub type Duration = i64
 
-pub const nanosecond = Duration(1)
-
-pub const microsecond = Duration(1000 * nanosecond)
-
-pub const millisecond = Duration(1000 * microsecond)
-
-pub const second = Duration(1000 * millisecond)
-
-pub const minute = Duration(60 * second)
-
-pub const hour = Duration(60 * minute)
-
-pub const infinite = Duration(i64(9223372036854775807))
+pub const (
+	nanosecond = Duration(1)
+	microsecond = Duration(1000 * nanosecond)
+	millisecond = Duration(1000 * microsecond)
+	second = Duration(1000 * millisecond)
+	minute = Duration(60 * second)
+	hour = Duration(60 * minute)
+	infinite = Duration(i64(9223372036854775807))
+)
 
 // nanoseconds returns the duration as an integer number of nanoseconds.
 pub fn (d Duration) nanoseconds() i64 {
@@ -320,12 +313,12 @@ pub fn (d Duration) nanoseconds() i64 {
 
 // microseconds returns the duration as an integer number of microseconds.
 pub fn (d Duration) microseconds() i64 {
-	return i64(d) / 1000
+	return i64(d) / microsecond
 }
 
 // milliseconds returns the duration as an integer number of milliseconds.
 pub fn (d Duration) milliseconds() i64 {
-	return i64(d) / 1000000
+	return i64(d) / (microsecond * millisecond)
 }
 
 // The following functions return floating point numbers because it's common to
@@ -334,24 +327,33 @@ pub fn (d Duration) milliseconds() i64 {
 pub fn (d Duration) seconds() f64 {
 	sec := d / time.second
 	nsec := d % time.second
-	return f64(sec) + f64(nsec) / 1e9
+	return f64(sec) + f64(nsec) / time.second
 }
 
 // minutes returns the duration as a floating point number of minutes.
 pub fn (d Duration) minutes() f64 {
 	min := d / time.minute
 	nsec := d % time.minute
-	return f64(min) + f64(nsec) / (60 * 1e9)
+	return f64(min) + f64(nsec) / time.minute
 }
 
 // hours returns the duration as a floating point number of hours.
 pub fn (d Duration) hours() f64 {
 	hr := d / time.hour
 	nsec := d % time.hour
-	return f64(hr) + f64(nsec) / (60 * 60 * 1e9)
+	return f64(hr) + f64(nsec) / time.hour
 }
 
-// str pretty prints the duration.
+// str pretty prints the duration
+//
+// ```
+// h:m:s      // 5:02:33
+// m:s.mi<s>  // 2:33.015
+// s.mi<s>    // 33.015s
+// mi.mc<ms>  // 15.007ms
+// mc.ns<ns>  // 7.234ns
+// ns<ns>     // 234ns
+// ```
 pub fn (d Duration) str() string {
 	if d == time.infinite {
 		return 'inf'
@@ -382,7 +384,7 @@ pub fn (d Duration) str() string {
 		return '${ms}.${us:03}ms'
 	}
 	if us > 0 {
-		return '${us}.${ns:03}us'
+		return '${us}.${ns:03}ns'
 	}
 	return '${ns}ns'
 }

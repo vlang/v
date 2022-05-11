@@ -57,7 +57,7 @@ pub fn parse_rfc3339(s string) ?Time {
 	return error_invalid_time(9)
 }
 
-// parse returns time from a date string in "YYYY-MM-DD HH:MM:SS" format.
+// parse returns time from a date string in "YYYY-MM-DD HH:mm:ss" format.
 pub fn parse(s string) ?Time {
 	if s == '' {
 		return error_invalid_time(0)
