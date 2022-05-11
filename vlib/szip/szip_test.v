@@ -166,7 +166,7 @@ fn test_zip_folder_omit_empty_directories() ? {
 	szip.extract_zip_to_dir(test_dir_zip, test_path3) ?
 	assert os.exists(test_path3_1)
 	assert os.exists(test_path3_2)
-	assert !os.exists(test_path3_3) // This is the empty dir
+	assert !os.exists(test_path3_3) // This is the empty dir, should be omitted with `omit_empty_folders`
 	assert os.exists(test_path3_4)
 	assert (os.read_file(fpath4) ?) == '4'
 	assert (os.read_file(fpath5) ?) == '5'
