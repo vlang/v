@@ -262,18 +262,18 @@ pub fn zip_files(path_to_file []string, path_to_export_zip string) ? {
 	}
 }
 
-// zip_folder zips all entries in directory `path_to_dir` *recursively* to the zip file at `path_to_zip`.
+// zip_folder zips all entries in `folder` *recursively* to the zip file at `zip_file`.
 // Empty folders will be included, unless specified otherwise in `opt`.
-pub fn zip_folder(path_to_dir string, path_to_zip string, opt ZipFolderOptions) ? {
+pub fn zip_folder(folder string, zip_file string, opt ZipFolderOptions) ? {
 	// get list of files from directory
-	path := path_to_dir.trim_right(os.path_separator)
+	path := folder.trim_right(os.path_separator)
 	mut files := []string{}
 	os.walk_with_context(path, &files, fn (mut files []string, file string) {
 		files << file
 	})
 
 	// open or create new zip
-	mut zip := open(path_to_zip, .no_compression, .write) ?
+	mut zip := open(zip_file, .no_compression, .write) ?
 	// close zip
 	defer {
 		zip.close()
