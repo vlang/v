@@ -29,20 +29,20 @@ fn (z ZeroReader) read(mut buf []u8) ?int {
 
 fn test_sign_verify() ? {
 	// mut zero := ZeroReader{}
-	public, private := ed25519.generate_key() ?
+	public, private := ed25519.generate_key()?
 
 	message := 'test message'.bytes()
-	sig := ed25519.sign(private, message) ?
+	sig := ed25519.sign(private, message)?
 	res := ed25519.verify(public, message, sig) or { false }
 	assert res == true
 
 	wrongmessage := 'wrong message'.bytes()
-	res2 := ed25519.verify(public, wrongmessage, sig) ?
+	res2 := ed25519.verify(public, wrongmessage, sig)?
 	assert res2 == false
 }
 
 fn test_equal() ? {
-	public, private := ed25519.generate_key() ?
+	public, private := ed25519.generate_key()?
 
 	assert public.equal(public) == true
 
@@ -53,7 +53,7 @@ fn test_equal() ? {
 	}*/
 	assert private.equal(private) == true
 
-	otherpub, otherpriv := ed25519.generate_key() ?
+	otherpub, otherpriv := ed25519.generate_key()?
 	assert public.equal(otherpub) == false
 
 	assert private.equal(otherpriv) == false

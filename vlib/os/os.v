@@ -58,27 +58,27 @@ pub fn cp_all(src string, dst string, overwrite bool) ? {
 		}
 		if exists(adjusted_path) {
 			if overwrite {
-				rm(adjusted_path) ?
+				rm(adjusted_path)?
 			} else {
 				return error('Destination file path already exist')
 			}
 		}
-		cp(source_path, adjusted_path) ?
+		cp(source_path, adjusted_path)?
 		return
 	}
 	if !exists(dest_path) {
-		mkdir(dest_path) ?
+		mkdir(dest_path)?
 	}
 	if !is_dir(dest_path) {
 		return error('Destination path is not a valid directory')
 	}
-	files := ls(source_path) ?
+	files := ls(source_path)?
 	for file in files {
 		sp := join_path_single(source_path, file)
 		dp := join_path_single(dest_path, file)
 		if is_dir(sp) {
 			if !exists(dp) {
-				mkdir(dp) ?
+				mkdir(dp)?
 			}
 		}
 		cp_all(sp, dp, overwrite) or {
@@ -91,14 +91,14 @@ pub fn cp_all(src string, dst string, overwrite bool) ? {
 // mv_by_cp first copies the source file, and if it is copied successfully, deletes the source file.
 // may be used when you are not sure that the source and target are on the same mount/partition.
 pub fn mv_by_cp(source string, target string) ? {
-	cp(source, target) ?
-	rm(source) ?
+	cp(source, target)?
+	rm(source)?
 }
 
 // read_lines reads the file in `path` into an array of lines.
 [manualfree]
 pub fn read_lines(path string) ?[]string {
-	buf := read_file(path) ?
+	buf := read_file(path)?
 	res := buf.split_into_lines()
 	unsafe { buf.free() }
 	return res
@@ -146,7 +146,7 @@ pub fn sigint_to_signal_name(si int) string {
 // rmdir_all recursively removes the specified directory.
 pub fn rmdir_all(path string) ? {
 	mut ret_err := ''
-	items := ls(path) ?
+	items := ls(path)?
 	for item in items {
 		fullpath := join_path_single(path, item)
 		if is_dir(fullpath) && !is_link(fullpath) {
@@ -371,8 +371,8 @@ pub fn expand_tilde_to_home(path string) string {
 // write_file writes `text` data to the file in `path`.
 // If `path` exists, the contents of `path` will be overwritten with the contents of `text`.
 pub fn write_file(path string, text string) ? {
-	mut f := create(path) ?
-	unsafe { f.write_full_buffer(text.str, usize(text.len)) ? }
+	mut f := create(path)?
+	unsafe { f.write_full_buffer(text.str, usize(text.len))? }
 	f.close()
 }
 

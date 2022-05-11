@@ -506,7 +506,7 @@ pub fn is_writable_folder(folder string) ?bool {
 	tmp_folder_name := 'tmp_perm_check_pid_' + getpid().str()
 	tmp_perm_check := join_path_single(folder, tmp_folder_name)
 	write_file(tmp_perm_check, 'test') or { return error('cannot write to folder "$folder": $err') }
-	rm(tmp_perm_check) ?
+	rm(tmp_perm_check)?
 	return true
 }
 

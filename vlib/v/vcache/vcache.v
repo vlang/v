@@ -111,14 +111,14 @@ pub fn (mut cm CacheManager) exists(postfix string, key string) ?string {
 
 pub fn (mut cm CacheManager) save(postfix string, key string, content string) ?string {
 	fpath := cm.postfix_with_key2cpath(postfix, key)
-	os.write_file(fpath, content) ?
+	os.write_file(fpath, content)?
 	dlog(@FN, 'postfix: $postfix | key: $key | fpath: $fpath')
 	return fpath
 }
 
 pub fn (mut cm CacheManager) load(postfix string, key string) ?string {
-	fpath := cm.exists(postfix, key) ?
-	content := os.read_file(fpath) ?
+	fpath := cm.exists(postfix, key)?
+	content := os.read_file(fpath)?
 	dlog(@FN, 'postfix: $postfix | key: $key | fpath: $fpath')
 	return content
 }

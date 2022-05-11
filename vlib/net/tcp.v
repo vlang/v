@@ -49,11 +49,11 @@ pub fn (mut c TcpConn) close() ? {
 	$if trace_tcp ? {
 		eprintln('    TcpConn.close | c.sock.handle: ${c.sock.handle:6}')
 	}
-	c.sock.close() ?
+	c.sock.close()?
 }
 
 pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) ?int {
-	mut res := wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)) ?
+	mut res := wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0))?
 	$if trace_tcp ? {
 		eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
 	}
@@ -66,8 +66,8 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) ?int {
 	}
 	code := error_code()
 	if code == int(error_ewouldblock) {
-		c.wait_for_read() ?
-		res = wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)) ?
+		c.wait_for_read()?
+		res = wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0))?
 		$if trace_tcp ? {
 			eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
 		}
@@ -79,7 +79,7 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) ?int {
 		}
 		return socket_error(res)
 	} else {
-		wrap_error(code) ?
+		wrap_error(code)?
 	}
 	return none
 }
@@ -119,10 +119,10 @@ pub fn (mut c TcpConn) write_ptr(b &u8, len int) ?int {
 			if sent < 0 {
 				code := error_code()
 				if code == int(error_ewouldblock) {
-					c.wait_for_write() ?
+					c.wait_for_write()?
 					continue
 				} else {
-					wrap_error(code) ?
+					wrap_error(code)?
 				}
 			}
 			total_sent += sent
@@ -189,12 +189,12 @@ pub fn (c &TcpConn) peer_addr() ?Addr {
 		}
 	}
 	mut size := sizeof(Addr)
-	socket_error_message(C.getpeername(c.sock.handle, voidptr(&addr), &size), 'peer_addr failed') ?
+	socket_error_message(C.getpeername(c.sock.handle, voidptr(&addr), &size), 'peer_addr failed')?
 	return addr
 }
 
 pub fn (c &TcpConn) peer_ip() ?string {
-	return c.peer_addr() ?.str()
+	return c.peer_addr()?.str()
 }
 
 pub fn (c &TcpConn) addr() ?Addr {
@@ -226,8 +226,8 @@ pub fn listen_tcp(family AddrFamily, saddr string) ?&TcpListener {
 
 	// cast to the correct type
 	alen := addr.len()
-	socket_error_message(C.bind(s.handle, voidptr(&addr), alen), 'binding to $saddr failed') ?
-	socket_error_message(C.listen(s.handle, 128), 'listening on $saddr failed') ?
+	socket_error_message(C.bind(s.handle, voidptr(&addr), alen), 'binding to $saddr failed')?
+	socket_error_message(C.listen(s.handle, 128), 'listening on $saddr failed')?
 	return &TcpListener{
 		sock: s
 		accept_deadline: no_deadline
@@ -241,13 +241,13 @@ pub fn (mut l TcpListener) accept() ?&TcpConn {
 	}
 	mut new_handle := C.accept(l.sock.handle, 0, 0)
 	if new_handle <= 0 {
-		l.wait_for_accept() ?
+		l.wait_for_accept()?
 		new_handle = C.accept(l.sock.handle, 0, 0)
 		if new_handle == -1 || new_handle == 0 {
 			return error('accept failed')
 		}
 	}
-	new_sock := tcp_socket_from_handle(new_handle) ?
+	new_sock := tcp_socket_from_handle(new_handle)?
 	$if trace_tcp ? {
 		eprintln('    TcpListener.accept | << new_sock.handle: ${new_sock.handle:6}')
 	}
@@ -282,7 +282,7 @@ pub fn (mut c TcpListener) wait_for_accept() ? {
 }
 
 pub fn (mut c TcpListener) close() ? {
-	c.sock.close() ?
+	c.sock.close()?
 }
 
 pub fn (c &TcpListener) addr() ?Addr {
@@ -294,7 +294,7 @@ struct TcpSocket {
 }
 
 fn new_tcp_socket(family AddrFamily) ?TcpSocket {
-	handle := socket_error(C.socket(family, SocketType.tcp, 0)) ?
+	handle := socket_error(C.socket(family, SocketType.tcp, 0))?
 	mut s := TcpSocket{
 		handle: handle
 	}
@@ -308,14 +308,14 @@ fn new_tcp_socket(family AddrFamily) ?TcpSocket {
 
 	// TODO(emily):
 	// Move this to its own function on the socket
-	s.set_option_int(.reuse_addr, 1) ?
+	s.set_option_int(.reuse_addr, 1)?
 
 	$if !net_blocking_sockets ? {
 		$if windows {
 			t := u32(1) // true
-			socket_error(C.ioctlsocket(handle, fionbio, &t)) ?
+			socket_error(C.ioctlsocket(handle, fionbio, &t))?
 		} $else {
-			socket_error(C.fcntl(handle, C.F_SETFL, C.fcntl(handle, C.F_GETFL) | C.O_NONBLOCK)) ?
+			socket_error(C.fcntl(handle, C.F_SETFL, C.fcntl(handle, C.F_GETFL) | C.O_NONBLOCK))?
 		}
 	}
 	return s
@@ -329,16 +329,16 @@ fn tcp_socket_from_handle(sockfd int) ?TcpSocket {
 		eprintln('    tcp_socket_from_handle | s.handle: ${s.handle:6}')
 	}
 	// s.set_option_bool(.reuse_addr, true)?
-	s.set_option_int(.reuse_addr, 1) ?
+	s.set_option_int(.reuse_addr, 1)?
 	s.set_dualstack(true) or {
 		// Not ipv6, we dont care
 	}
 	$if !net_blocking_sockets ? {
 		$if windows {
 			t := u32(1) // true
-			socket_error(C.ioctlsocket(sockfd, fionbio, &t)) ?
+			socket_error(C.ioctlsocket(sockfd, fionbio, &t))?
 		} $else {
-			socket_error(C.fcntl(sockfd, C.F_SETFL, C.fcntl(sockfd, C.F_GETFL) | C.O_NONBLOCK)) ?
+			socket_error(C.fcntl(sockfd, C.F_SETFL, C.fcntl(sockfd, C.F_GETFL) | C.O_NONBLOCK))?
 		}
 	}
 	return s
@@ -353,17 +353,17 @@ pub fn (mut s TcpSocket) set_option_bool(opt SocketOption, value bool) ? {
 	// 	return err_option_wrong_type
 	// }
 	x := int(value)
-	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &x, sizeof(int))) ?
+	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &x, sizeof(int)))?
 }
 
 pub fn (mut s TcpSocket) set_dualstack(on bool) ? {
 	x := int(!on)
 	socket_error(C.setsockopt(s.handle, C.IPPROTO_IPV6, int(SocketOption.ipv6_only), &x,
-		sizeof(int))) ?
+		sizeof(int)))?
 }
 
 pub fn (mut s TcpSocket) set_option_int(opt SocketOption, value int) ? {
-	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &value, sizeof(int))) ?
+	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &value, sizeof(int)))?
 }
 
 fn (mut s TcpSocket) close() ? {
@@ -392,11 +392,11 @@ fn (mut s TcpSocket) connect(a Addr) ? {
 	// determine whether connect() completed successfully (SO_ERROR is zero) or
 	// unsuccessfully (SO_ERROR is one of the usual error codes  listed  here,
 	// ex‐ plaining the reason for the failure).
-	write_result := s.@select(.write, net.connect_timeout) ?
+	write_result := s.@select(.write, net.connect_timeout)?
 	if write_result {
 		err := 0
 		len := sizeof(err)
-		socket_error(C.getsockopt(s.handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)) ?
+		socket_error(C.getsockopt(s.handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len))?
 
 		if err != 0 {
 			return wrap_error(err)
@@ -406,7 +406,7 @@ fn (mut s TcpSocket) connect(a Addr) ? {
 	}
 
 	// Get the error
-	socket_error(C.connect(s.handle, voidptr(&a), a.len())) ?
+	socket_error(C.connect(s.handle, voidptr(&a), a.len()))?
 
 	// otherwise we timed out
 	return err_connect_timed_out

@@ -224,8 +224,8 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 			}
 		}
 		ast.InfixExpr {
-			left := c.eval_comptime_const_expr(expr.left, nlevel + 1) ?
-			right := c.eval_comptime_const_expr(expr.right, nlevel + 1) ?
+			left := c.eval_comptime_const_expr(expr.left, nlevel + 1)?
+			right := c.eval_comptime_const_expr(expr.right, nlevel + 1)?
 			if left is string && right is string {
 				match expr.op {
 					.plus {

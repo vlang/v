@@ -20,7 +20,7 @@ fn do(mut inter TheInterface) string {
 }
 
 fn test_fn_mut_arg_of_interface() ? {
-	mut inner := maker() ?
+	mut inner := maker()?
 	ret := do(mut inner)
 	println(ret)
 	assert ret == 'ok'

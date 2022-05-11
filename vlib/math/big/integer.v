@@ -144,7 +144,7 @@ pub fn integer_from_radix(all_characters string, radix u32) ?Integer {
 		return error('Radix must be between 2 and 36 (inclusive)')
 	}
 	characters := all_characters.to_lower()
-	validate_string(characters, radix) ?
+	validate_string(characters, radix)?
 	return match radix {
 		2 {
 			integer_from_special_string(characters, 1)

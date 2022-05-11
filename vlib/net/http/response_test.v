@@ -17,7 +17,7 @@ fn test_response_bytestr() ? {
 		lines := resp.bytestr().split_into_lines()
 		assert lines[0] == 'HTTP/1.1 302 Found'
 		// header order is not guaranteed
-		check_headers(['Location: /', 'Content-Length: 3'], lines[1..3]) ?
+		check_headers(['Location: /', 'Content-Length: 3'], lines[1..3])?
 		assert lines[3] == ''
 		assert lines[4] == 'Foo'
 	}

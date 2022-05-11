@@ -23,7 +23,7 @@ fn http_fetch_mock(_methods []string, _config FetchConfig) ?[]Response {
 	for method in methods {
 		lmethod := method.to_lower()
 		config.method = method_from_str(method)
-		res := fetch(FetchConfig{ ...config, url: url + lmethod }) ?
+		res := fetch(FetchConfig{ ...config, url: url + lmethod })?
 		// TODO
 		// body := json.decode(HttpbinResponseBody,res.text)?
 		result << res
@@ -80,7 +80,7 @@ fn test_http_fetch_with_headers() ? {
 		return
 	}
 	mut header := new_header()
-	header.add_custom('Test-Header', 'hello world') ?
+	header.add_custom('Test-Header', 'hello world')?
 	responses := http_fetch_mock([],
 		header: header
 	) or { panic(err) }

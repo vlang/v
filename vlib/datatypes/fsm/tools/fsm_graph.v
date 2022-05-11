@@ -13,7 +13,7 @@ pub fn read_file(file string) ?[]string {
 
 pub fn extract_transitions(line string) ?string {
 	mut result := '  '
-	first_comma := line.index(',') ?
+	first_comma := line.index(',')?
 	second_comma := line.index_after(',', first_comma + 1)
 
 	from := line[..first_comma]
@@ -32,11 +32,11 @@ pub fn get_transitions(line string) ?string {
 pub fn main() {
 	mut fp := flag.new_flag_parser(os.args)
 	file := fp.string('file', `f`, '', 'input V file with transitions to generate graph from.')
-	lines := read_file(file) ?
+	lines := read_file(file)?
 	println('digraph fsm {')
 	for line in lines {
 		if line.contains('add_transition') {
-			println(get_transitions(line) ?)
+			println(get_transitions(line)?)
 		}
 	}
 

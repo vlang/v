@@ -40,7 +40,7 @@ fn test_running_programs_compiled_with_the_js_backend() ? {
 	os.chdir(vroot) or {}
 	test_dir := 'vlib/v/gen/js/tests/testdata'
 	main_files := get_main_files_in_dir(test_dir)
-	fails := check_path(test_dir, main_files) ?
+	fails := check_path(test_dir, main_files)?
 	assert fails == 0
 }
 
@@ -57,14 +57,14 @@ fn check_path(dir string, tests []string) ?int {
 		program := path.replace(vroot + os.path_separator, '')
 		program_out := program.replace('.v', '.out')
 		if !os.exists(program_out) {
-			os.write_file(program_out, '') ?
+			os.write_file(program_out, '')?
 		}
 		print(program + ' ')
 		res := os.execute('${os.quoted_path(vexe)} -b js_node run ${os.quoted_path(program)}')
 		if res.exit_code < 0 {
 			panic(res.output)
 		}
-		mut expected := os.read_file(program_out) ?
+		mut expected := os.read_file(program_out)?
 		expected = clean_line_endings(expected)
 		found := clean_line_endings(res.output)
 		if expected != found {

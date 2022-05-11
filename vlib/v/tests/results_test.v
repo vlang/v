@@ -44,7 +44,7 @@ fn test_result_void_err() {
 }
 
 fn propagate() ! {
-	result_void(false) !
+	result_void(false)!
 }
 
 fn test_propagation() {
@@ -56,7 +56,7 @@ fn function_that_can_return_error() !int {
 }
 
 fn util_error_propagation() ! {
-	function_that_can_return_error() !
+	function_that_can_return_error()!
 	assert false
 }
 

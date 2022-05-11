@@ -99,7 +99,7 @@ fn test_iarna_toml_spec_tests() ? {
 			if !hide_oks {
 				println('OK   [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
 			}
-			toml_doc := toml.parse_file(valid_test_file) ?
+			toml_doc := toml.parse_file(valid_test_file)?
 			valid++
 		}
 		println('$valid/$valid_test_files.len TOML files were parsed correctly')
@@ -112,12 +112,12 @@ fn test_iarna_toml_spec_tests() ? {
 			println('Testing value output of $valid_test_files.len valid TOML files using "$jq"...')
 
 			if os.exists(compare_work_dir_root) {
-				os.rmdir_all(compare_work_dir_root) ?
+				os.rmdir_all(compare_work_dir_root)?
 			}
-			os.mkdir_all(compare_work_dir_root) ?
+			os.mkdir_all(compare_work_dir_root)?
 
 			jq_normalize_path := os.join_path(compare_work_dir_root, 'normalize.jq')
-			os.write_file(jq_normalize_path, jq_normalize) ?
+			os.write_file(jq_normalize_path, jq_normalize)?
 
 			valid = 0
 			e = 0
@@ -177,7 +177,7 @@ fn test_iarna_toml_spec_tests() ? {
 						run([python, '-c',
 							"'import sys, yaml, json; json.dump(yaml.load(sys.stdin, Loader=yaml.FullLoader), sys.stdout, indent=4)'",
 							'<', iarna_yaml_path, '>', converted_json_path]) or {
-							contents := os.read_file(iarna_yaml_path) ?
+							contents := os.read_file(iarna_yaml_path)?
 							// NOTE there's known errors with the python convertion method.
 							// For now we just ignore them as it's a broken tool - not a wrong test-case.
 							// Uncomment this print to see/check them.
@@ -193,26 +193,26 @@ fn test_iarna_toml_spec_tests() ? {
 				if !hide_oks {
 					println('OK   [${i + 1}/$valid_test_files.len] "$valid_test_file"...')
 				}
-				toml_doc := toml.parse_file(valid_test_file) ?
+				toml_doc := toml.parse_file(valid_test_file)?
 
 				v_toml_json_path := os.join_path(compare_work_dir_root, '${valid_test_file_name}.v.json')
 				iarna_toml_json_path := os.join_path(compare_work_dir_root, '${valid_test_file_name}.json')
 
-				os.write_file(v_toml_json_path, to_iarna(toml_doc.ast.table, converted_from_yaml)) ?
+				os.write_file(v_toml_json_path, to_iarna(toml_doc.ast.table, converted_from_yaml))?
 
 				if converted_json_path == '' {
 					converted_json_path = valid_test_file.all_before_last('.') + '.json'
 				}
-				iarna_json := os.read_file(converted_json_path) ?
-				os.write_file(iarna_toml_json_path, iarna_json) ?
+				iarna_json := os.read_file(converted_json_path)?
+				os.write_file(iarna_toml_json_path, iarna_json)?
 
 				v_normalized_json := run([jq, '-S', '-f "$jq_normalize_path"', v_toml_json_path]) or {
-					contents := os.read_file(v_toml_json_path) ?
+					contents := os.read_file(v_toml_json_path)?
 					panic(err.msg() + '\n$contents')
 				}
 				cmd := [jq, '-S', '-f "$jq_normalize_path"', iarna_toml_json_path]
 				iarna_normalized_json := run(cmd) or {
-					contents := os.read_file(v_toml_json_path) ?
+					contents := os.read_file(v_toml_json_path)?
 					panic(err.msg() + '\n$contents\n\ncmd: ${cmd.join(' ')}')
 				}
 
@@ -245,7 +245,7 @@ fn test_iarna_toml_spec_tests() ? {
 				println('OK   [${i + 1}/$invalid_test_files.len] "$invalid_test_file"...')
 			}
 			if toml_doc := toml.parse_file(invalid_test_file) {
-				content_that_should_have_failed := os.read_file(invalid_test_file) ?
+				content_that_should_have_failed := os.read_file(invalid_test_file)?
 				println('     This TOML should have failed:\n${'-'.repeat(40)}\n$content_that_should_have_failed\n${'-'.repeat(40)}')
 				assert false
 			} else {

@@ -477,7 +477,7 @@ fn parse_url(rawurl string, via_request bool) ?URL {
 	}
 	// Split off possible leading 'http:', 'mailto:', etc.
 	// Cannot contain escaped characters.
-	p := split_by_scheme(rawurl) ?
+	p := split_by_scheme(rawurl)?
 	url.scheme = p[0]
 	mut rest := p[1]
 	url.scheme = url.scheme.to_lower()
@@ -516,7 +516,7 @@ fn parse_url(rawurl string, via_request bool) ?URL {
 	if ((url.scheme != '' || !via_request) && !rest.starts_with('///')) && rest.starts_with('//') {
 		authority, r := split(rest[2..], `/`, false)
 		rest = r
-		a := parse_authority(authority) ?
+		a := parse_authority(authority)?
 		url.user = a.user
 		url.host = a.host
 	}
@@ -524,7 +524,7 @@ fn parse_url(rawurl string, via_request bool) ?URL {
 	// raw_path is a hint of the encoding of path. We don't want to set it if
 	// the default escaping of path is equivalent, to help make sure that people
 	// don't rely on it in general.
-	url.set_path(rest) ?
+	url.set_path(rest)?
 	return url
 }
 
@@ -538,10 +538,10 @@ fn parse_authority(authority string) ?ParseAuthorityRes {
 	mut host := ''
 	mut zuser := user('')
 	if i < 0 {
-		h := parse_host(authority) ?
+		h := parse_host(authority)?
 		host = h
 	} else {
-		h := parse_host(authority[i + 1..]) ?
+		h := parse_host(authority[i + 1..])?
 		host = h
 	}
 	if i < 0 {
@@ -555,14 +555,14 @@ fn parse_authority(authority string) ?ParseAuthorityRes {
 		return error(error_msg('parse_authority: invalid userinfo', ''))
 	}
 	if !userinfo.contains(':') {
-		u := unescape(userinfo, .encode_user_password) ?
+		u := unescape(userinfo, .encode_user_password)?
 		userinfo = u
 		zuser = user(userinfo)
 	} else {
 		mut username, mut password := split(userinfo, `:`, true)
-		u := unescape(username, .encode_user_password) ?
+		u := unescape(username, .encode_user_password)?
 		username = u
-		p := unescape(password, .encode_user_password) ?
+		p := unescape(password, .encode_user_password)?
 		password = p
 		zuser = user_password(username, password)
 	}
@@ -621,7 +621,7 @@ fn parse_host(host string) ?string {
 // set_path will return an error only if the provided path contains an invalid
 // escaping.
 pub fn (mut u URL) set_path(p string) ?bool {
-	u.path = unescape(p, .encode_path) ?
+	u.path = unescape(p, .encode_path)?
 	u.raw_path = if p == escape(u.path, .encode_path) { '' } else { p }
 	return true
 }
@@ -783,7 +783,7 @@ pub fn (u URL) str() string {
 // interpreted as a key set to an empty value.
 pub fn parse_query(query string) ?Values {
 	mut m := new_values()
-	parse_query_values(mut m, query) ?
+	parse_query_values(mut m, query)?
 	return m
 }
 
@@ -915,7 +915,7 @@ pub fn (u &URL) is_abs() bool {
 // may be relative or absolute. parse returns nil, err on parse
 // failure, otherwise its return value is the same as resolve_reference.
 pub fn (u &URL) parse(ref string) ?URL {
-	refurl := parse(ref) ?
+	refurl := parse(ref)?
 	return u.resolve_reference(refurl)
 }
 
@@ -934,7 +934,7 @@ pub fn (u &URL) resolve_reference(ref &URL) ?URL {
 		// The 'absoluteURI' or 'net_path' cases.
 		// We can ignore the error from set_path since we know we provided a
 		// validly-escaped path.
-		url.set_path(resolve_path(ref.escaped_path(), '')) ?
+		url.set_path(resolve_path(ref.escaped_path(), ''))?
 		return url
 	}
 	if ref.opaque != '' {
@@ -952,7 +952,7 @@ pub fn (u &URL) resolve_reference(ref &URL) ?URL {
 	// The 'abs_path' or 'rel_path' cases.
 	url.host = u.host
 	url.user = u.user
-	url.set_path(resolve_path(u.escaped_path(), ref.escaped_path())) ?
+	url.set_path(resolve_path(u.escaped_path(), ref.escaped_path()))?
 	return url
 }
 

@@ -85,6 +85,6 @@ pub fn lookup_module(mod string) ?string {
 
 // generate_from_mod generates a documentation from a specific module.
 pub fn generate_from_mod(module_name string, pub_only bool, with_comments bool) ?Doc {
-	mod_path := lookup_module(module_name) ?
+	mod_path := lookup_module(module_name)?
 	return generate(mod_path, pub_only, with_comments, .auto)
 }

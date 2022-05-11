@@ -11,10 +11,10 @@ fn main() {
 
 fn handle_case(case_nr int) ? {
 	uri := 'ws://localhost:9002/runCase?case=$case_nr&agent=v-client'
-	mut ws := websocket.new_client(uri) ?
+	mut ws := websocket.new_client(uri)?
 	ws.on_message(on_message)
-	ws.connect() ?
-	ws.listen() ?
+	ws.connect()?
+	ws.listen()?
 }
 
 fn on_message(mut ws websocket.Client, msg &websocket.Message) ? {

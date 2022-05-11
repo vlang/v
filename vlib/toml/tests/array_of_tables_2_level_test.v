@@ -25,10 +25,10 @@ name = "Born in the USA"
 const fprefix = os.join_path(os.dir(@FILE), 'testdata', os.file_name(@FILE).all_before_last('.'))
 
 fn test_nested_array_of_tables() ? {
-	mut toml_doc := toml.parse_text(toml_text) ?
+	mut toml_doc := toml.parse_text(toml_text)?
 
 	toml_json := to.json(toml_doc)
 	eprintln(toml_json)
 
-	assert toml_json == os.read_file(fprefix + '.out') ?
+	assert toml_json == os.read_file(fprefix + '.out')?
 }

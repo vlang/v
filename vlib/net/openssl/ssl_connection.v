@@ -40,7 +40,7 @@ pub fn (mut s SSLConn) shutdown() ? {
 				}
 				if err_res == .ssl_error_want_read {
 					for {
-						ready := @select(s.handle, .read, s.duration) ?
+						ready := @select(s.handle, .read, s.duration)?
 						if ready {
 							break
 						}
@@ -48,7 +48,7 @@ pub fn (mut s SSLConn) shutdown() ? {
 					continue
 				} else if err_res == .ssl_error_want_write {
 					for {
-						ready := @select(s.handle, .write, s.duration) ?
+						ready := @select(s.handle, .write, s.duration)?
 						if ready {
 							break
 						}
@@ -123,10 +123,10 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ? {
 	for {
 		res = C.SSL_connect(voidptr(s.ssl))
 		if res != 1 {
-			err_res := ssl_error(res, s.ssl) ?
+			err_res := ssl_error(res, s.ssl)?
 			if err_res == .ssl_error_want_read {
 				for {
-					ready := @select(s.handle, .read, s.duration) ?
+					ready := @select(s.handle, .read, s.duration)?
 					if ready {
 						break
 					}
@@ -134,7 +134,7 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ? {
 				continue
 			} else if err_res == .ssl_error_want_write {
 				for {
-					ready := @select(s.handle, .write, s.duration) ?
+					ready := @select(s.handle, .write, s.duration)?
 					if ready {
 						break
 					}
@@ -152,10 +152,10 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) ?int {
 	for {
 		res = C.SSL_read(voidptr(s.ssl), buf_ptr, len)
 		if res < 0 {
-			err_res := ssl_error(res, s.ssl) ?
+			err_res := ssl_error(res, s.ssl)?
 			if err_res == .ssl_error_want_read {
 				for {
-					ready := @select(s.handle, .read, s.duration) ?
+					ready := @select(s.handle, .read, s.duration)?
 					if ready {
 						break
 					}
@@ -163,7 +163,7 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) ?int {
 				continue
 			} else if err_res == .ssl_error_want_write {
 				for {
-					ready := @select(s.handle, .write, s.duration) ?
+					ready := @select(s.handle, .write, s.duration)?
 					if ready {
 						break
 					}
@@ -180,7 +180,7 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) ?int {
 }
 
 pub fn (mut s SSLConn) read(mut buffer []u8) ?int {
-	res := s.socket_read_into_ptr(&u8(buffer.data), buffer.len) ?
+	res := s.socket_read_into_ptr(&u8(buffer.data), buffer.len)?
 	return res
 }
 
@@ -194,17 +194,17 @@ pub fn (mut s SSLConn) write(bytes []u8) ?int {
 			remaining := bytes.len - total_sent
 			mut sent := C.SSL_write(voidptr(s.ssl), ptr, remaining)
 			if sent <= 0 {
-				err_res := ssl_error(sent, s.ssl) ?
+				err_res := ssl_error(sent, s.ssl)?
 				if err_res == .ssl_error_want_read {
 					for {
-						ready := @select(s.handle, .read, s.duration) ?
+						ready := @select(s.handle, .read, s.duration)?
 						if ready {
 							break
 						}
 					}
 				} else if err_res == .ssl_error_want_write {
 					for {
-						ready := @select(s.handle, .write, s.duration) ?
+						ready := @select(s.handle, .write, s.duration)?
 						if ready {
 							break
 						}
@@ -254,13 +254,13 @@ fn @select(handle int, test Select, timeout time.Duration) ?bool {
 
 	match test {
 		.read {
-			net.socket_error(C.@select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout)) ?
+			net.socket_error(C.@select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout))?
 		}
 		.write {
-			net.socket_error(C.@select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout)) ?
+			net.socket_error(C.@select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout))?
 		}
 		.except {
-			net.socket_error(C.@select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout)) ?
+			net.socket_error(C.@select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout))?
 		}
 	}
 

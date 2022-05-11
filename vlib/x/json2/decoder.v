@@ -142,8 +142,8 @@ fn new_parser(srce string, convert_type bool) Parser {
 
 fn (mut p Parser) decode() ?Any {
 	p.next()
-	p.next_with_err() ?
-	fi := p.decode_value() ?
+	p.next_with_err()?
+	fi := p.decode_value()?
 	if p.tok.kind != .eof {
 		return IError(InvalidTokenError{
 			token: p.tok
@@ -168,7 +168,7 @@ fn (mut p Parser) decode_value() ?Any {
 		.int_, .float {
 			tl := p.tok.lit.bytestr()
 			kind := p.tok.kind
-			p.next_with_err() ?
+			p.next_with_err()?
 			if p.convert_type {
 				$if !nofloat ? {
 					if kind == .float {
@@ -181,14 +181,14 @@ fn (mut p Parser) decode_value() ?Any {
 		}
 		.bool_ {
 			lit := p.tok.lit.bytestr()
-			p.next_with_err() ?
+			p.next_with_err()?
 			if p.convert_type {
 				return Any(lit.bool())
 			}
 			return Any(lit)
 		}
 		.null {
-			p.next_with_err() ?
+			p.next_with_err()?
 			if p.convert_type {
 				return Any(null)
 			}
@@ -196,7 +196,7 @@ fn (mut p Parser) decode_value() ?Any {
 		}
 		.str_ {
 			str := p.tok.lit.bytestr()
-			p.next_with_err() ?
+			p.next_with_err()?
 			return Any(str)
 		}
 		else {
@@ -211,13 +211,13 @@ fn (mut p Parser) decode_value() ?Any {
 [manualfree]
 fn (mut p Parser) decode_array() ?Any {
 	mut items := []Any{}
-	p.next_with_err() ?
+	p.next_with_err()?
 	p.n_level++
 	for p.tok.kind != .rsbr {
-		item := p.decode_value() ?
+		item := p.decode_value()?
 		items << item
 		if p.tok.kind == .comma {
-			p.next_with_err() ?
+			p.next_with_err()?
 			if p.tok.kind == .rsbr {
 				return IError(InvalidTokenError{
 					token: p.tok
@@ -230,14 +230,14 @@ fn (mut p Parser) decode_array() ?Any {
 			})
 		}
 	}
-	p.next_with_err() ?
+	p.next_with_err()?
 	p.n_level--
 	return Any(items)
 }
 
 fn (mut p Parser) decode_object() ?Any {
 	mut fields := map[string]Any{}
-	p.next_with_err() ?
+	p.next_with_err()?
 	p.n_level++
 	for p.tok.kind != .rcbr {
 		if p.tok.kind != .str_ {
@@ -248,7 +248,7 @@ fn (mut p Parser) decode_object() ?Any {
 		}
 
 		cur_key := p.tok.lit.bytestr()
-		p.next_with_err() ?
+		p.next_with_err()?
 		if p.tok.kind != .colon {
 			return IError(InvalidTokenError{
 				token: p.tok
@@ -256,18 +256,18 @@ fn (mut p Parser) decode_object() ?Any {
 			})
 		}
 
-		p.next_with_err() ?
-		fields[cur_key] = p.decode_value() ?
+		p.next_with_err()?
+		fields[cur_key] = p.decode_value()?
 		if p.tok.kind != .comma && p.tok.kind != .rcbr {
 			return IError(UnknownTokenError{
 				token: p.tok
 				kind: .object
 			})
 		} else if p.tok.kind == .comma {
-			p.next_with_err() ?
+			p.next_with_err()?
 		}
 	}
-	p.next_with_err() ?
+	p.next_with_err()?
 	p.n_level--
 	return Any(fields)
 }

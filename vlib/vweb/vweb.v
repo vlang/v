@@ -711,7 +711,7 @@ fn send_string(mut conn net.TcpConn, s string) ? {
 	$if trace_response ? {
 		eprintln('> send_string:\n$s\n')
 	}
-	conn.write(s.bytes()) ?
+	conn.write(s.bytes())?
 }
 
 // Do not delete.

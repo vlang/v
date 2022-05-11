@@ -20,10 +20,10 @@ pub const infinite_timeout = time.infinite
 fn shutdown(handle int) ? {
 	$if windows {
 		C.shutdown(handle, C.SD_BOTH)
-		socket_error(C.closesocket(handle)) ?
+		socket_error(C.closesocket(handle))?
 	} $else {
 		C.shutdown(handle, C.SHUT_RDWR)
-		socket_error(C.close(handle)) ?
+		socket_error(C.close(handle))?
 	}
 }
 
@@ -52,13 +52,13 @@ fn @select(handle int, test Select, timeout time.Duration) ?bool {
 
 	match test {
 		.read {
-			socket_error(C.@select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout)) ?
+			socket_error(C.@select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout))?
 		}
 		.write {
-			socket_error(C.@select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout)) ?
+			socket_error(C.@select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout))?
 		}
 		.except {
-			socket_error(C.@select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout)) ?
+			socket_error(C.@select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout))?
 		}
 	}
 
@@ -97,7 +97,7 @@ fn wait_for_common(handle int, deadline time.Time, timeout time.Duration, test S
 		if timeout < 0 {
 			return err_timed_out
 		}
-		ready := select_with_retry(handle, test, timeout) ?
+		ready := select_with_retry(handle, test, timeout)?
 		if ready {
 			return
 		}
@@ -111,7 +111,7 @@ fn wait_for_common(handle int, deadline time.Time, timeout time.Duration, test S
 		// timed out
 		return err_timed_out
 	}
-	ready := select_with_retry(handle, test, timeout) ?
+	ready := select_with_retry(handle, test, timeout)?
 	if ready {
 		return
 	}

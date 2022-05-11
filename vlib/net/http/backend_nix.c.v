@@ -33,13 +33,13 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 		cert = os.temp_dir() + '/v_cert' + now
 		cert_key = os.temp_dir() + '/v_cert_key' + now
 		if req.verify != '' {
-			os.write_file(verify, req.verify) ?
+			os.write_file(verify, req.verify)?
 		}
 		if req.cert != '' {
-			os.write_file(cert, req.cert) ?
+			os.write_file(cert, req.cert)?
 		}
 		if req.cert_key != '' {
-			os.write_file(cert_key, req.cert_key) ?
+			os.write_file(cert_key, req.cert_key)?
 		}
 	}
 	mut res := 0

@@ -20,7 +20,7 @@ const (
 
 fn d_const_generate() ?Element {
 	mut v := Element{}
-	v.set_bytes(edwards25519.d_bytes) ?
+	v.set_bytes(edwards25519.d_bytes)?
 	return v
 }
 
@@ -33,7 +33,7 @@ fn d2_const_generate() ?Element {
 // id_point_generate is the point at infinity.
 fn id_point_generate() ?Point {
 	mut p := Point{}
-	p.set_bytes(edwards25519.id_bytes) ?
+	p.set_bytes(edwards25519.id_bytes)?
 	return p
 }
 
@@ -41,7 +41,7 @@ fn id_point_generate() ?Point {
 // correspondence of this encoding with the values in RFC 8032.
 fn generator() ?Point {
 	mut p := Point{}
-	p.set_bytes(edwards25519.gen_bytes) ?
+	p.set_bytes(edwards25519.gen_bytes)?
 	return p
 }
 

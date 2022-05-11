@@ -13,7 +13,7 @@ fn create_and_call_anon_function() ? {
 		// filled with 0s => .ok was false, and that was treated
 		// as a failure, triggering or blocks.
 	}
-	should_not_call_block(x) ?
+	should_not_call_block(x)?
 	assert true
 }
 

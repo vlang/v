@@ -14,15 +14,15 @@ fn test_that_net_and_net_unix_can_be_imported_together_without_conflicts() ? {
 		l.close() or {}
 	}
 	//
-	mut c := unix.connect_stream(test_port) ?
+	mut c := unix.connect_stream(test_port)?
 	defer {
 		c.close() or {}
 	}
 	//
 	data := 'Hello from vlib/net!'
-	c.write_string(data) ?
+	c.write_string(data)?
 	mut buf := []u8{len: 100}
-	assert c.read(mut buf) ? == data.len
+	assert c.read(mut buf)? == data.len
 	eprintln('< client read back buf: |${buf[0..data.len].bytestr()}|')
 	assert buf[0..data.len] == data.bytes()
 }

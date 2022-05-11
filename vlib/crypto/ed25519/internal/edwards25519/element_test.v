@@ -188,9 +188,9 @@ fn test_sqrt_ratio() ? {
 		mut elw := Element{}
 		mut elg := Element{}
 
-		u := elu.set_bytes(hex.decode(tt.u) ?) ?
-		v := elv.set_bytes(hex.decode(tt.v) ?) ?
-		want := elw.set_bytes(hex.decode(tt.r) ?) ?
+		u := elu.set_bytes(hex.decode(tt.u)?)?
+		v := elv.set_bytes(hex.decode(tt.v)?)?
+		want := elw.set_bytes(hex.decode(tt.r)?)?
 		mut got, was_square := elg.sqrt_ratio(u, v)
 
 		assert got.equal(want) != 0
@@ -204,9 +204,9 @@ fn test_sqrt_ratio() ? {
 fn test_set_bytes_normal() ? {
 	for i in 0 .. 15 {
 		mut el := Element{}
-		mut random_inp := rand.bytes(32) ?
+		mut random_inp := rand.bytes(32)?
 
-		el = el.set_bytes(random_inp.clone()) ?
+		el = el.set_bytes(random_inp.clone())?
 		random_inp[random_inp.len - 1] &= (1 << 7) - 1
 		// assert f1(random_inp, el) == true
 
@@ -249,7 +249,7 @@ fn test_set_bytes_from_dalek_test_vectors() ? {
 	for _, mut tt in tests {
 		b := tt.fe.bytes()
 		mut el := Element{}
-		mut fe := el.set_bytes(tt.b) ?
+		mut fe := el.set_bytes(tt.b)?
 
 		assert b == tt.b
 		assert fe.equal(tt.fe) == 1
@@ -280,7 +280,7 @@ fn test_invert() ? {
 	assert one == r
 	bytes := rand.bytes(32) or { return err }
 
-	x.set_bytes(bytes) ?
+	x.set_bytes(bytes)?
 
 	xinv.invert(x)
 	r.multiply(x, xinv)
@@ -369,20 +369,20 @@ fn (mut v Element) from_big_integer(n big.Integer) ?Element {
 	}
 	mut bytes, _ := n.bytes()
 	swap_endianness(mut bytes) // SHOULD I SWAP IT?
-	v.set_bytes(bytes) ?
+	v.set_bytes(bytes)?
 
 	return v
 }
 
 fn (mut v Element) from_decimal_string(s string) ?Element {
-	num := big.integer_from_string(s) ?
+	num := big.integer_from_string(s)?
 
-	v = v.from_big_integer(num) ?
+	v = v.from_big_integer(num)?
 	return v
 }
 
 fn test_bytes_big_equivalence() ? {
-	mut inp := rand.bytes(32) ?
+	mut inp := rand.bytes(32)?
 	el := Element{}
 	mut fe := el.generate_element()
 	mut fe1 := el.generate_element()
@@ -407,12 +407,12 @@ fn test_bytes_big_equivalence() ? {
 fn test_decimal_constants() ? {
 	sqrtm1string := '19681161376707505956807079304988542015446066515923890162744021073123829784752'
 	mut el := Element{}
-	mut exp := el.from_decimal_string(sqrtm1string) ?
+	mut exp := el.from_decimal_string(sqrtm1string)?
 
 	assert sqrt_m1.equal(exp) == 1
 
 	dstring := '37095705934669439343138083508754565189542113879843219016388785533085940283555'
-	exp = el.from_decimal_string(dstring) ?
+	exp = el.from_decimal_string(dstring)?
 	mut d := d_const
 
 	assert d.equal(exp) == 1

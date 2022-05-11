@@ -10,7 +10,7 @@ fn f(ch chan f64) {
 }
 
 fn do_send(ch chan f64, val f64) ?f64 {
-	ch <- val ?
+	ch <- val?
 	return val + 1.0
 }
 

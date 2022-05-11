@@ -1167,7 +1167,7 @@ type NotZeroScalar = Scalar
 fn generate_notzero_scalar(size int) ?NotZeroScalar {
 	mut s := Scalar{}
 	for s == edwards25519.sc_zero {
-		s = generate_scalar(size) ?
+		s = generate_scalar(size)?
 	}
 	return NotZeroScalar(s)
 }
