@@ -1313,7 +1313,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 		pc1++
 	}
 
-	println("last_bsls_char_pc: $last_bsls_char_pc")
+	println('last_bsls_char_pc: $last_bsls_char_pc')
 	if last_bsls_char_pc >= 0 {
 		pc1 = last_bsls_char_pc + 1
 		mut is_last_bsls := true
