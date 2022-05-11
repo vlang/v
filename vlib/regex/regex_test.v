@@ -165,6 +165,12 @@ match_test_suite = [
     TestItem{"aba", r"a*(b*)*a",0,3},
     TestItem{"/*x*/", r"/\**(.*)\**/",0,5},
     TestItem{"/*x*/", r"/*(.*)*/",0,5},
+
+    // test last IST check
+    TestItem{"refs/remotes/origin/mastep", r"refs/remotes/origin/(.*)",0,26},
+    TestItem{"refs/remotes/origin/master", r"refs/remotes/origin/(.*)",0,26},
+    TestItem{"refs/remotes/origin/mastep", r"refs/remotes/origin/(\w*)",0,26},
+    TestItem{"refs/remotes/origin/master", r"refs/remotes/origin/(\w*)",0,26},
 ]
 )
 
