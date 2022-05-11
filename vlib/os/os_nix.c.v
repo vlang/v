@@ -367,6 +367,15 @@ pub fn execute(cmd string) Result {
 	}
 }
 
+// raw_execute does the same as `execute` on Unix platforms.
+// On Windows raw_execute starts the specified command, waits for it to complete, and returns its output.
+// It's marked as `unsafe` to help emphasize the problems that may arise by allowing, for example,
+// user provided escape sequences.
+[unsafe]
+pub fn raw_execute(cmd string) Result {
+	return execute(cmd)
+}
+
 [manualfree]
 pub fn (mut c Command) start() ? {
 	pcmd := c.path + ' 2>&1'
