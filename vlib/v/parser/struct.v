@@ -36,6 +36,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	}
 	name_pos := p.tok.pos()
 	p.check_for_impure_v(language, name_pos)
+	if p.disallow_declarations_in_script_mode() {
+		return ast.StructDecl{}
+	}
 	mut name := p.check_name()
 	// defer {
 	// if name.contains('App') {
@@ -471,6 +474,9 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	}
 	name_pos := p.tok.pos()
 	p.check_for_impure_v(language, name_pos)
+	if p.disallow_declarations_in_script_mode() {
+		return ast.InterfaceDecl{}
+	}
 	modless_name := p.check_name()
 	if modless_name == 'IError' && p.mod != 'builtin' {
 		p.error_with_pos('cannot register interface `IError`, it is builtin interface type',
