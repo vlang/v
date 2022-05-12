@@ -10,6 +10,7 @@ on:
 
 jobs:
   websocket_tests:
+    needs: [code-formatting]
     runs-on: ubuntu-20.04
     timeout-minutes: 121
     env:
@@ -29,7 +30,7 @@ jobs:
       - name: Run websockets tests
         run: ./v -g test vlib/net/websocket/
 
-  ## Autobahn integrations tests
+      ## Autobahn integrations tests
       - name: Run autobahn services
         run: docker-compose -f ${{github.workspace}}/vlib/net/websocket/tests/autobahn/docker-compose.yml up -d
 
@@ -87,4 +88,3 @@ jobs:
         with:
           name: client wss
           path: ${{github.workspace}}/reports_wss/clients/index.html
-
