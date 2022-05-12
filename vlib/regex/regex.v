@@ -1313,7 +1313,7 @@ fn (mut re RE) impl_compile(in_txt string) (int, int) {
 		pc1++
 	}
 
-	println('last_bsls_char_pc: $last_bsls_char_pc')
+	// println('last_bsls_char_pc: $last_bsls_char_pc')
 	if last_bsls_char_pc >= 0 {
 		pc1 = last_bsls_char_pc + 1
 		mut is_last_bsls := true
@@ -2232,7 +2232,7 @@ pub fn (mut re RE) match_base(in_txt &u8, in_txt_len int) (int, int) {
 						char_len: char_len
 						last_dot_pc: state.pc
 					}
-					// if we are mananging a \[something]* stay on the same char on return
+					// if we are managing a \[something]* stay on the same char on return
 					if re.prog[state.pc].rep_min == 0 {
 						dot_state.i -= char_len
 					}
