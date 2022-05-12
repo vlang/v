@@ -22,7 +22,7 @@ fn test_shared_lock() {
 	shared x := St{
 		a: 5
 	}
-	shared y := &St{
+	shared y := St{
 		a: 7
 	}
 	shared z := St{

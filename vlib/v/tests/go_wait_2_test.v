@@ -14,7 +14,7 @@ fn f(x int, y f64, shared s St) {
 }
 
 fn test_go_return() {
-	shared t := &St{}
+	shared t := St{}
 	r := go f(3, 4.0, shared t)
 	r.wait()
 	rlock t {

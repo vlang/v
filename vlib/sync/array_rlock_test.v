@@ -1,5 +1,5 @@
 fn test_shared_modification() {
-	shared foo := &[2, 0, 5]
+	shared foo := [2, 0, 5]
 	lock foo {
 		unsafe {
 			foo[1] = 3
@@ -19,7 +19,7 @@ fn test_shared_modification() {
 
 [direct_array_access]
 fn test_shared_direct_modification() {
-	shared foo := &[2, 0, 5]
+	shared foo := [2, 0, 5]
 	lock foo {
 		unsafe {
 			foo[1] = 3
