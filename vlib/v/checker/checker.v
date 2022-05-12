@@ -3026,6 +3026,9 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			ft := c.table.type_to_str(from_type)
 			c.error('cannot cast sumtype `$ft` to string, use `${snexpr}.str()` instead.',
 				node.pos)
+		} else if final_from_sym.kind == .function {
+			fnexpr := node.expr.str()
+			c.error('cannot cast function `$fnexpr` to string', node.pos)
 		} else if to_type != ast.string_type && from_type == ast.string_type
 			&& (!(to_sym.kind == .alias && final_to_sym.name == 'string')) {
 			mut error_msg := 'cannot cast a string to a type `$final_to_sym.name`, that is not an alias of string'
