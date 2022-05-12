@@ -493,9 +493,26 @@ pub fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 		} else if sym.kind == .struct_ && sym.language == .js {
 			c.error('sum type cannot hold an JS struct', variant.pos)
 		} else if mut sym.info is ast.Struct {
-			if sym.info.is_generic && !variant.typ.has_flag(.generic) {
-				c.error('generic struct `$sym.name` must specify generic type names, e.g. Foo<T>',
-					variant.pos)
+			if sym.info.is_generic {
+				if !variant.typ.has_flag(.generic) {
+					c.error('generic struct `$sym.name` must specify generic type names, e.g. Foo<T>',
+						variant.pos)
+				}
+				if node.generic_types.len == 0 {
+					c.error('generic sumtype `$node.name` must specify generic type names, e.g. Foo<T>',
+						node.name_pos)
+				} else {
+					for typ in sym.info.generic_types {
+						if typ !in node.generic_types {
+							sumtype_type_names := node.generic_types.map(c.table.type_to_str(it)).join(', ')
+							generic_sumtype_name := '$node.name<$sumtype_type_names>'
+							variant_type_names := sym.info.generic_types.map(c.table.type_to_str(it)).join(', ')
+							generic_variant_name := '$sym.name<$variant_type_names>'
+							c.error('generic type name `${c.table.sym(typ).name}` of generic struct `$generic_variant_name` is not mentioned in sumtype `$generic_sumtype_name`',
+								variant.pos)
+						}
+					}
+				}
 			}
 		}
 
