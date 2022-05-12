@@ -14,7 +14,6 @@ concurrency:
 
 jobs:
   ubuntu-tcc:
-    needs: [code-formatting]
     runs-on: ubuntu-20.04
     timeout-minutes: 121
     env:
@@ -91,7 +90,6 @@ jobs:
           ./v3 -o tetris  -usecache examples/tetris/tetris.v
 
   ubuntu-tcc-boehm-gc:
-    needs: [code-formatting]
     runs-on: ubuntu-20.04
     timeout-minutes: 121
     env:
@@ -146,7 +144,6 @@ jobs:
           [ "$(stat -c %s leaks.txt)" = "0" ]
 
   macos:
-    needs: [code-formatting]
     runs-on: macOS-latest
     timeout-minutes: 121
     env:
@@ -208,14 +205,14 @@ jobs:
           cd ved && ../v -o ved .
           ../v -autofree .
           cd ..
-      #      - name: Test c2v
-      #        run: |
-      #          git clone --depth 1 https://github.com/vlang/c2v
-      #          cd c2v && ../v -o c2v .
-      #          ../v .
-      #          ../v run tests/run_tests.vsh
-      #          ../v -experimental -w c2v_test.v
-      #          cd ..
+#      - name: Test c2v
+#        run: |
+#          git clone --depth 1 https://github.com/vlang/c2v
+#          cd c2v && ../v -o c2v .
+#          ../v .
+#          ../v run tests/run_tests.vsh
+#          ../v -experimental -w c2v_test.v
+#          cd ..
       - name: Build V UI examples
         run: |
           git clone --depth 1 https://github.com/vlang/ui
@@ -234,7 +231,6 @@ jobs:
           ./v3 -o tetris  -usecache examples/tetris/tetris.v
 
   ubuntu:
-    needs: [code-formatting]
     runs-on: ubuntu-20.04
     timeout-minutes: 121
     steps:
@@ -332,7 +328,6 @@ jobs:
   #        github-token: ${{ secrets.GITHUB_TOKEN }}
 
   ubuntu-clang:
-    needs: [code-formatting]
     runs-on: ubuntu-20.04
     timeout-minutes: 121
     env:
@@ -417,7 +412,6 @@ jobs:
           ls
 
   windows-gcc:
-    needs: [code-formatting]
     runs-on: windows-2019
     timeout-minutes: 121
     env:
@@ -478,7 +472,6 @@ jobs:
         run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
   windows-msvc:
-    needs: [code-formatting]
     runs-on: windows-2019
     timeout-minutes: 121
     env:
@@ -511,8 +504,8 @@ jobs:
         run: |
           ./v -cg cmd\tools\vtest-self.v
           ./v test-self
-      #    - name: Test
-      #      run: .\v.exe test-all
+  #    - name: Test
+  #      run: .\v.exe test-all
       - name: Test v->js
         run: ./v -o hi.js examples/hello_v_js.v && node hi.js
       - name: Test v binaries
@@ -523,7 +516,6 @@ jobs:
         run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
   windows-tcc:
-    needs: [code-formatting]
     runs-on: windows-2019
     timeout-minutes: 121
     env:
@@ -616,6 +608,7 @@ jobs:
         ##      - name: v2 self compilation
         ##        run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
+
   #  ubuntu-autofree-selfcompile:
   #    runs-on: ubuntu-20.04
   #    timeout-minutes: 121
@@ -627,6 +620,7 @@ jobs:
   #      run: make -j4
   #    - name: V self compilation with -autofree
   #      run: ./v -o v2 -autofree cmd/v && ./v2 -o v3 -autofree cmd/v && ./v3 -o v4 -autofree cmd/v
+
 
   #   ubuntu-musl:
   #     runs-on: ubuntu-20.04

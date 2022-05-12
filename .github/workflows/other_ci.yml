@@ -14,7 +14,6 @@ concurrency:
 
 jobs:
   no-gpl-by-accident:
-    needs: [code-formatting]
     runs-on: ubuntu-20.04
     timeout-minutes: 15
     steps:
@@ -24,9 +23,7 @@ jobs:
           ! grep -r --exclude="*.yml" "a GPL license" .
 
   code-formatting:
-    ### NOTE: code-formatting is run *BEFORE* everything else, to detect formatting problems earlier.
-    ### It uses a separate runner to minimize the chance of bottlenecking all the rest of the jobs.
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 15
     env:
       VFLAGS: -cc gcc
@@ -42,7 +39,6 @@ jobs:
         run: ./v test-fmt
 
   performance-regressions:
-    needs: [code-formatting]
     runs-on: ubuntu-20.04
     timeout-minutes: 15
     env:
@@ -67,7 +63,6 @@ jobs:
         run: cmd/tools/repeat --max_time 1501 --series 3 --count 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o v.c cmd/v' . ./vmaster
 
   misc-tooling:
-    needs: [code-formatting]
     runs-on: ubuntu-20.04
     timeout-minutes: 121
     env:
@@ -95,8 +90,7 @@ jobs:
         ##      run: ./v -cc g++-9 test-self
 
       - name: Ensure V can be compiled with -autofree
-        ## NB: this does not mean it runs, but at least keeps it from regressing
-        run: ./v -autofree -o v2 cmd/v
+        run: ./v -autofree -o v2 cmd/v  ## NB: this does not mean it runs, but at least keeps it from regressing
 
       - name: Shader examples can be build
         run: |
@@ -115,7 +109,6 @@ jobs:
           ./v should-compile-all examples/sokol/*.v examples/sokol/0?*/*.v
 
   parser-silent:
-    needs: [code-formatting]
     runs-on: ubuntu-20.04
     timeout-minutes: 121
     steps:
@@ -154,7 +147,6 @@ jobs:
           ./v test-parser -S examples/2048/2048_fuzz.v
 
   v-apps-compile:
-    needs: [code-formatting]
     runs-on: ubuntu-20.04
     timeout-minutes: 121
     steps:
@@ -237,6 +229,7 @@ jobs:
         run: git clone https://github.com/vlang/libsodium ~/.vmodules/libsodium
       - name: Test libsodium
         run: VJOBS=1 ./v -stats test ~/.vmodules/libsodium
+
 
       ## vex
       - name: Install Vex dependencies

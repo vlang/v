@@ -10,7 +10,6 @@ on:
 
 jobs:
   toml-module-pass-external-test-suites:
-    needs: [code-formatting]
     runs-on: ubuntu-18.04
     timeout-minutes: 30
     env:
@@ -23,6 +22,7 @@ jobs:
       VTEST_TOML_DO_LARGE_FILES: 1
       VTEST_TOML_DO_YAML_CONVERSION: 1
     steps:
+
       - uses: actions/checkout@v2
       - name: Install dependencies
         run: |

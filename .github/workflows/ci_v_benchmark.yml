@@ -10,27 +10,26 @@ on:
 
 jobs:
   run:
-    needs: [code-formatting]
     name: Run
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-      - name: Install google benchmark
-        run: |
+    - name: Checkout
+      uses: actions/checkout@v2
+    - name: Install google benchmark
+      run: |
           git clone https://github.com/google/benchmark.git
           cd benchmark
           cmake -E make_directory "build"
           cmake -E chdir "build" cmake -DBENCHMARK_DOWNLOAD_DEPENDENCIES=on -DCMAKE_BUILD_TYPE=Release ../
           sudo cmake --build "build" --config Release --target install
-      - name: Run V benchmark
-        run: |
-          make
-          sudo ./v symlink
-          git clone https://github.com/vincenzopalazzo/benchmarks.git
-          cd benchmarks
-          make vdep && make v
-      - uses: actions/upload-artifact@v3
-        with:
-          name: vlang-benchmark
-          path: benchmarks/vlang/*.json
+    - name: Run V benchmark
+      run: |
+        make
+        sudo ./v symlink
+        git clone https://github.com/vincenzopalazzo/benchmarks.git
+        cd benchmarks
+        make vdep && make v
+    - uses: actions/upload-artifact@v3
+      with:
+        name: vlang-benchmark
+        path: benchmarks/vlang/*.json

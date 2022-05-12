@@ -10,7 +10,6 @@ on:
 
 jobs:
   gg-regressions:
-    needs: [code-formatting]
     runs-on: ubuntu-18.04
     timeout-minutes: 10
     env:

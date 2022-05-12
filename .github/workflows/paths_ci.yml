@@ -13,12 +13,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+
   space-paths-linux:
-    needs: [code-formatting]
     runs-on: ubuntu-20.04
     timeout-minutes: 30
     env:
-      MY_V_PATH: "你好 my $path, @с интервали"
+      MY_V_PATH: '你好 my $path, @с интервали'
     steps:
       - uses: actions/checkout@v2
         with:
@@ -40,11 +40,10 @@ jobs:
           ./v test vlib/builtin vlib/os
 
   space-paths-macos:
-    needs: [code-formatting]
     runs-on: macOS-latest
     timeout-minutes: 30
     env:
-      MY_V_PATH: "你好 my $path, @с интервали"
+      MY_V_PATH: '你好 my $path, @с интервали'
     steps:
       - uses: actions/checkout@v2
         with:
@@ -69,11 +68,10 @@ jobs:
           ./v test vlib/builtin vlib/os
 
   space-paths-windows:
-    needs: [code-formatting]
     runs-on: windows-2022
     timeout-minutes: 30
     env:
-      MY_V_PATH: "path with some $punctuation, and some spaces"
+      MY_V_PATH: 'path with some $punctuation, and some spaces'
 
       ## NB: the following paths do not work for now:
       ##### MY_V_PATH: '你好 my $path, @с интервали'

@@ -10,7 +10,6 @@ on:
 
 jobs:
   ubuntu:
-    needs: [code-formatting]
     runs-on: ubuntu-20.04
     timeout-minutes: 30
     env:
@@ -49,7 +48,6 @@ jobs:
           ./v2 -o v3 cmd/v
 
   macos:
-    needs: [code-formatting]
     runs-on: macos-11
     timeout-minutes: 30
     env:

@@ -10,7 +10,6 @@ on:
 
 jobs:
   v-compiles-sdl-examples:
-    needs: [code-formatting]
     runs-on: ubuntu-18.04
     timeout-minutes: 30
     env:

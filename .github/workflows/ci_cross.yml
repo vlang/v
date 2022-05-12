@@ -9,8 +9,8 @@ on:
       - "**.md"
 
 jobs:
+
   macos-cross:
-    needs: [code-formatting]
     runs-on: macOS-latest
     timeout-minutes: 25
     env:
@@ -47,7 +47,6 @@ jobs:
           ./v -os android examples/toml.v
 
   linux-cross:
-    needs: [code-formatting]
     runs-on: ubuntu-20.04
     timeout-minutes: 25
     env:
@@ -99,8 +98,8 @@ jobs:
           # Test that V can compile non-graphic app to Android compatible code *without* using the -apk flag
           ./v -os android examples/toml.v
 
+
   windows-cross:
-    needs: [code-formatting]
     runs-on: windows-2019
     timeout-minutes: 25
     steps:

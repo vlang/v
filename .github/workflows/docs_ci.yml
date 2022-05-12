@@ -6,7 +6,6 @@ on: [push, pull_request]
 
 jobs:
   check-markdown:
-    needs: [code-formatting]
     runs-on: ubuntu-20.04
     timeout-minutes: 5
     steps:
@@ -19,7 +18,6 @@ jobs:
         ## thus real errors are easier to spot.
 
   report-missing-fn-doc:
-    needs: [code-formatting]
     runs-on: ubuntu-20.04
     timeout-minutes: 5
     env:
