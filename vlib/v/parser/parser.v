@@ -3672,6 +3672,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			generic_types: generic_types
 			attrs: p.attrs
 			pos: decl_pos
+			name_pos: name_pos
 			comments: comments
 		}
 	}

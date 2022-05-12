@@ -1166,6 +1166,7 @@ pub:
 	name          string
 	is_pub        bool
 	pos           token.Pos
+	name_pos      token.Pos
 	comments      []Comment
 	typ           Type
 	generic_types []Type
