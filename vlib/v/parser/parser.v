@@ -664,7 +664,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 			}
 			.dollar {
 				if p.peek_tok.kind == .eof {
-					return p.error("unexpected eof, expecting `if`")
+					return p.error('unexpected eof, expecting `if`')
 				}
 				if_expr := p.if_expr(true)
 				return ast.ExprStmt{
