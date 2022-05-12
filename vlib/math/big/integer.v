@@ -761,8 +761,7 @@ fn (integer Integer) general_radix_str(radix u32) string {
 	}
 
 	rune_array.reverse_in_place()
-	res := rune_array.string()
-	return res
+	return rune_array.string()
 }
 
 // str returns the decimal string representation of the integer `a`.
