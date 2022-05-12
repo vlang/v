@@ -90,26 +90,22 @@ fn select_deadline(handle int, test Select, deadline time.Time) ?bool {
 
 // wait_for_common wraps the common wait code
 fn wait_for_common(handle int, deadline time.Time, timeout time.Duration, test Select) ? {
-	if deadline.unix == 0 {
-		// do not accept negative timeout
-		if timeout < 0 {
-			return err_timed_out
-		}
-		ready := select_with_retry(handle, test, timeout)?
-		if ready {
-			return
-		}
-		return err_timed_out
+	// Convert timeouts to deadlines
+	real_deadline := if timeout == net.infinite_timeout {
+		time.unix(0)
+	} else if timeout == 0 {
+		// No timeout set, so assume deadline
+		deadline
+	} else if timeout < 0 {
+		// TODO(emily): Do something nicer here :)
+		panic('invalid negative timeout')
+	} else {
+		// timeout
+		time.now().add(timeout)
 	}
-	// Convert the deadline into a timeout
-	// and use that
-	d_timeout := deadline.unix - time.now().unix
-	if d_timeout < 0 {
-		// deadline is in the past so this has already
-		// timed out
-		return err_timed_out
-	}
-	ready := select_with_retry(handle, test, timeout)?
+
+	ready := select_deadline(handle, test, real_deadline)?
+
 	if ready {
 		return
 	}
