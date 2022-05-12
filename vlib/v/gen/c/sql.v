@@ -69,14 +69,16 @@ fn (mut g Gen) sql_stmt_line(nd ast.SqlStmtLine, expr string) {
 				if attr.name == 'skip' {
 					skip = true
 				}
-				if (attr.name == 'skip_insert' || attr.name == 'skip_insert_update') && node.kind == .insert {
+				if (attr.name == 'skip_insert' || attr.name == 'skip_insert_update')
+					&& node.kind == .insert {
 					skip_insert = true
 				}
-				if (attr.name == 'skip_update' || attr.name == 'skip_insert_update') && node.kind == .update {
+				if (attr.name == 'skip_update' || attr.name == 'skip_insert_update')
+					&& node.kind == .update {
 					skip_update = true
 				}
 			}
-			if !skip && !primary && !skip_insert && !skip_update{
+			if !skip && !primary && !skip_insert && !skip_update {
 				fields << f
 			}
 		}
@@ -265,14 +267,16 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 					if attr.name == 'skip' {
 						skip = true
 					}
-					if (attr.name == 'skip_insert' || attr.name == 'skip_insert_update') && node.kind == .insert {
+					if (attr.name == 'skip_insert' || attr.name == 'skip_insert_update')
+						&& node.kind == .insert {
 						skip_insert = true
 					}
-					if (attr.name == 'skip_update' || attr.name == 'skip_insert_update') && node.kind == .update {
+					if (attr.name == 'skip_update' || attr.name == 'skip_insert_update')
+						&& node.kind == .update {
 						skip_update = true
 					}
 				}
-				if !skip && !primary && !skip_insert && !skip_update{
+				if !skip && !primary && !skip_insert && !skip_update {
 					fff << f
 				}
 			}
