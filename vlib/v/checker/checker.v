@@ -1145,6 +1145,8 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	right_is_optional := right_type.has_flag(.optional)
 	if (left_is_optional && !right_is_optional) || (!left_is_optional && right_is_optional) {
 		c.error('unwrapped optional cannot be used in an infix expression', left_right_pos)
+	} else if left_is_optional && right_is_optional {
+		c.error('unwrapped optionals cannot be used in an infix expression', left_right_pos)
 	}
 	// Dual sides check (compatibility check)
 	if !(c.symmetric_check(left_type, right_type) && c.symmetric_check(right_type, left_type))
