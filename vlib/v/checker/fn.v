@@ -927,6 +927,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				}
 			}
 			if c.pref.translated || c.file.is_translated {
+
 				// TODO duplicated logic in check_types() (check_types.v)
 				// Allow enums to be used as ints and vice versa in translated code
 				if param.typ == ast.int_type && arg_typ_sym.kind == .enum_ {
@@ -943,11 +944,11 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 
 				// In C unsafe number casts are used all the time (e.g. `char*` where
 				// `int*` is expected etc), so just allow them all.
-				mut param_is_number := param.typ.is_number()
+				mut param_is_number := c.table.unaliased_type(param.typ).is_number()
 				if param.typ.is_ptr() {
 					param_is_number = param.typ.deref().is_number()
 				}
-				mut typ_is_number := arg_typ.is_number()
+				mut typ_is_number := c.table.unaliased_type(arg_typ).is_number()
 				if arg_typ.is_ptr() {
 					typ_is_number = arg_typ.deref().is_number()
 				}
@@ -960,9 +961,9 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				}
 				// Allow `[32]i8` as `&i8` etc
 				if ((arg_typ_sym.kind == .array_fixed || arg_typ_sym.kind == .array)
-					&& (param_is_number || param.typ.is_any_kind_of_pointer()))
+					&& (param_is_number || c.table.unaliased_type(param.typ).is_any_kind_of_pointer()))
 					|| ((param_typ_sym.kind == .array_fixed || param_typ_sym.kind == .array)
-					&& (typ_is_number || arg_typ.is_any_kind_of_pointer())) {
+					&& (typ_is_number || c.table.unaliased_type(arg_typ).is_any_kind_of_pointer())) {
 					continue
 				}
 				// Allow `int` as `&i8`
