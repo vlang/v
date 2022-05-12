@@ -504,7 +504,11 @@ pub fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 				} else {
 					for typ in sym.info.generic_types {
 						if typ !in node.generic_types {
-							c.error('generic type name `${c.table.sym(typ).name}` of generic struct `$sym.name` does not exist',
+							sumtype_type_names := node.generic_types.map(c.table.type_to_str(it)).join(', ')
+							generic_sumtype_name := '$node.name<$sumtype_type_names>'
+							variant_type_names := sym.info.generic_types.map(c.table.type_to_str(it)).join(', ')
+							generic_variant_name := '$sym.name<$variant_type_names>'
+							c.error('generic type name `${c.table.sym(typ).name}` of generic struct `$generic_variant_name` is not mentioned in sumtype `$generic_sumtype_name`',
 								variant.pos)
 						}
 					}
