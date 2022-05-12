@@ -24,7 +24,9 @@ jobs:
           ! grep -r --exclude="*.yml" "a GPL license" .
 
   code-formatting:
-    runs-on: ubuntu-20.04
+    ### NOTE: code-formatting is run *BEFORE* everything else, to detect formatting problems earlier.
+    ### It uses a separate runner to minimize the chance of bottlenecking all the rest of the jobs.
+    runs-on: ubuntu-18.04
     timeout-minutes: 15
     env:
       VFLAGS: -cc gcc
@@ -93,7 +95,8 @@ jobs:
         ##      run: ./v -cc g++-9 test-self
 
       - name: Ensure V can be compiled with -autofree
-        run: ./v -autofree -o v2 cmd/v ## NB: this does not mean it runs, but at least keeps it from regressing
+        ## NB: this does not mean it runs, but at least keeps it from regressing
+        run: ./v -autofree -o v2 cmd/v
 
       - name: Shader examples can be build
         run: |
