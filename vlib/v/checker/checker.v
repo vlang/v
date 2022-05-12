@@ -3533,6 +3533,7 @@ pub fn (mut c Checker) select_expr(mut node ast.SelectExpr) ast.Type {
 }
 
 pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) ast.Type {
+	expected_type := c.expected_type
 	if c.rlocked_names.len > 0 || c.locked_names.len > 0 {
 		c.error('nested `lock`/`rlock` not allowed', node.pos)
 	}
@@ -3556,16 +3557,17 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) ast.Type {
 		}
 	}
 	c.stmts(node.stmts)
-	c.rlocked_names = []
-	c.locked_names = []
 	// handle `x := rlock a { a.getval() }`
 	mut ret_type := ast.void_type
 	if node.stmts.len > 0 {
 		last_stmt := node.stmts.last()
 		if last_stmt is ast.ExprStmt {
-			ret_type = last_stmt.typ
+			c.expected_type = expected_type
+			ret_type = c.expr(last_stmt.expr)
 		}
 	}
+	c.rlocked_names = []
+	c.locked_names = []
 	if ret_type != ast.void_type {
 		node.is_expr = true
 	}

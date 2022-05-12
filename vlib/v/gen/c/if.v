@@ -78,7 +78,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.write(' ? ')
 			}
 			prev_expected_cast_type := g.expected_cast_type
-			if node.is_expr && g.table.sym(node.typ).kind == .sum_type {
+			if node.is_expr
+				&& (g.table.sym(node.typ).kind == .sum_type || node.typ.has_flag(.shared_f)) {
 				g.expected_cast_type = node.typ
 			}
 			g.stmts(branch.stmts)
@@ -204,7 +205,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		}
 		if needs_tmp_var {
 			prev_expected_cast_type := g.expected_cast_type
-			if node.is_expr && g.table.sym(node.typ).kind == .sum_type {
+			if node.is_expr
+				&& (g.table.sym(node.typ).kind == .sum_type || node.typ.has_flag(.shared_f)) {
 				g.expected_cast_type = node.typ
 			}
 			g.stmts_with_tmp_var(branch.stmts, tmp)
