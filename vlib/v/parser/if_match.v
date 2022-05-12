@@ -19,6 +19,10 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 	if is_comptime {
 		p.inside_ct_if_expr = true
 		p.next() // `$`
+		if p.tok.kind == .eof {
+			p.error("unexpected eof, expecting `if`")
+			return ast.IfExpr{}
+		}
 		pos = p.prev_tok.pos().extend(p.tok.pos())
 	}
 	mut branches := []ast.IfBranch{}

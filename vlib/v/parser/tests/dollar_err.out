@@ -1,0 +1,2 @@
+vlib/v/parser/tests/dollar_err.vv:2:1: error: unexpected eof, expecting `if`
+    1 | $
