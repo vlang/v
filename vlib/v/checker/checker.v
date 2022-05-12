@@ -491,11 +491,28 @@ pub fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 		} else if sym.kind == .interface_ && sym.language != .js {
 			c.error('sum type cannot hold an interface', variant.pos)
 		} else if sym.kind == .struct_ && sym.language == .js {
-			c.error('sum type cannot hold an JS struct', variant.pos)
+			c.error('sum type cannot hold a JS struct', variant.pos)
 		} else if mut sym.info is ast.Struct {
-			if sym.info.is_generic && !variant.typ.has_flag(.generic) {
-				c.error('generic struct `$sym.name` must specify generic type names, e.g. Foo<T>',
-					variant.pos)
+			if sym.info.is_generic {
+				if !variant.typ.has_flag(.generic) {
+					c.error('generic struct `$sym.name` must specify generic type names, e.g. Foo<T>',
+						variant.pos)
+				}
+				if node.generic_types.len == 0 {
+					c.error('generic sumtype `$node.name` must specify generic type names, e.g. Foo<T>',
+						node.name_pos)
+				} else {
+					for typ in sym.info.generic_types {
+						if typ !in node.generic_types {
+							sumtype_type_names := node.generic_types.map(c.table.type_to_str(it)).join(', ')
+							generic_sumtype_name := '$node.name<$sumtype_type_names>'
+							variant_type_names := sym.info.generic_types.map(c.table.type_to_str(it)).join(', ')
+							generic_variant_name := '$sym.name<$variant_type_names>'
+							c.error('generic type name `${c.table.sym(typ).name}` of generic struct `$generic_variant_name` is not mentioned in sumtype `$generic_sumtype_name`',
+								variant.pos)
+						}
+					}
+				}
 			}
 		}
 
@@ -3026,6 +3043,9 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			ft := c.table.type_to_str(from_type)
 			c.error('cannot cast sumtype `$ft` to string, use `${snexpr}.str()` instead.',
 				node.pos)
+		} else if final_from_sym.kind == .function {
+			fnexpr := node.expr.str()
+			c.error('cannot cast function `$fnexpr` to string', node.pos)
 		} else if to_type != ast.string_type && from_type == ast.string_type
 			&& (!(to_sym.kind == .alias && final_to_sym.name == 'string')) {
 			mut error_msg := 'cannot cast a string to a type `$final_to_sym.name`, that is not an alias of string'

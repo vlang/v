@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generic_sumtype_decl_err_b.vv:7:6: error: generic sumtype `Maybe` must specify generic type names, e.g. Foo<T>
+    5 | struct Nothing {}
+    6 |
+    7 | type Maybe = Nothing | Just<T>
+      |      ~~~~~
+    8 |
+    9 | fn main() {
