@@ -13,8 +13,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-
   alpine-docker-musl-gcc:
+    needs: [code-formatting]
     runs-on: ubuntu-20.04
     timeout-minutes: 121
     container:
@@ -46,6 +46,7 @@ jobs:
         run: ./v test-self
 
   ubuntu-docker-musl:
+    needs: [code-formatting]
     runs-on: ubuntu-20.04
     timeout-minutes: 121
     container:

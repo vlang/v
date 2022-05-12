@@ -3,8 +3,8 @@ name: Debug CI
 on: [workflow_dispatch]
 
 jobs:
-
   debug-msvc:
+    needs: [code-formatting]
     runs-on: windows-2019
     timeout-minutes: 121
     env:
