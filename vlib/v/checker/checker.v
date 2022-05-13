@@ -3864,40 +3864,25 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 	mut typ := c.expr(node.left)
 	mut typ_sym := c.table.final_sym(typ)
 	node.left_type = typ
-	for {
-		match typ_sym.kind {
-			.map {
-				node.is_map = true
-				break
-			}
-			.array {
-				node.is_array = true
-				if node.or_expr.kind != .absent && node.index is ast.RangeExpr {
-					c.error('custom error handling on range expressions for arrays is not supported yet.',
-						node.or_expr.pos)
-				}
-				break
-			}
-			.array_fixed {
-				node.is_farray = true
-				break
-			}
-			.any {
-				gname := typ_sym.name
-				typ = c.unwrap_generic(typ)
-				node.left_type = typ
-				typ_sym = c.table.final_sym(typ)
-				if typ.is_ptr() {
-					continue
-				} else {
-					c.error('generic type $gname does not support indexing, pass an array, or a reference instead, e.g. []$gname or &$gname',
-						node.pos)
-				}
-			}
-			else {
-				break
+	match typ_sym.kind {
+		.map {
+			node.is_map = true
+		}
+		.array {
+			node.is_array = true
+			if node.or_expr.kind != .absent && node.index is ast.RangeExpr {
+				c.error('custom error handling on range expressions for arrays is not supported yet.',
+					node.or_expr.pos)
 			}
 		}
+		.array_fixed {
+			node.is_farray = true
+		}
+		.any {
+			typ = c.unwrap_generic(typ)
+			typ_sym = c.table.final_sym(typ)
+		}
+		else {}
 	}
 	if typ_sym.kind !in [.array, .array_fixed, .string, .map] && !typ.is_ptr()
 		&& typ !in [ast.byteptr_type, ast.charptr_type] && !typ.has_flag(.variadic) {
