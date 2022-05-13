@@ -26,7 +26,7 @@ fn return_array(array_arg []string) []int { // array argument must not be freed
 }
 
 fn return_option(array_arg []string) ?Foo { // array argument must not be freed
-	s := get_foo() ? // escaping option must not be freed
+	s := get_foo()? // escaping option must not be freed
 	return s
 }
 

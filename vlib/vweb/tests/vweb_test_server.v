@@ -44,7 +44,7 @@ fn main() {
 		global_config: config
 	}
 	eprintln('>> webserver: started on http://localhost:$app.port/ , with maximum runtime of $app.timeout milliseconds.')
-	vweb.run_at(app, host: 'localhost', port: http_port, family: .ip) ?
+	vweb.run_at(app, host: 'localhost', port: http_port, family: .ip)?
 }
 
 // pub fn (mut app App) init_server() {

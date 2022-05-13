@@ -273,7 +273,7 @@ pub fn zip_folder(folder string, zip_file string, opt ZipFolderOptions) ? {
 	})
 
 	// open or create new zip
-	mut zip := open(zip_file, .no_compression, .write) ?
+	mut zip := open(zip_file, .no_compression, .write)?
 	// close zip
 	defer {
 		zip.close()
@@ -296,10 +296,10 @@ pub fn zip_folder(folder string, zip_file string, opt ZipFolderOptions) ? {
 			zip_file_entry += '/' // Tells the implementation that the entry is a directory
 		}
 		// add file or directory (ends with "/") to zip
-		zip.open_entry(zip_file_entry) ?
+		zip.open_entry(zip_file_entry)?
 		if !is_dir {
-			file_as_byte := os.read_bytes(file) ?
-			zip.write_entry(file_as_byte) ?
+			file_as_byte := os.read_bytes(file)?
+			zip.write_entry(file_as_byte)?
 		}
 		zip.close_entry()
 	}

@@ -49,10 +49,10 @@ fn temp_unix() ?Addr {
 	// close it
 	// remove it
 	// then reuse the filename
-	mut file, filename := util.temp_file() ?
+	mut file, filename := util.temp_file()?
 	file.close()
-	os.rm(filename) ?
-	addrs := resolve_addrs(filename, .unix, .udp) ?
+	os.rm(filename)?
+	addrs := resolve_addrs(filename, .unix, .udp)?
 	return addrs[0]
 }
 
@@ -161,7 +161,7 @@ pub fn resolve_addrs_fuzzy(addr string, @type SocketType) ?[]Addr {
 }
 
 pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
-	address, port := split_address(addr) ?
+	address, port := split_address(addr)?
 
 	if addr[0] == `:` {
 		match family {
@@ -191,10 +191,10 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
 
 	// This might look silly but is recommended by MSDN
 	$if windows {
-		socket_error(0 - C.getaddrinfo(&char(address.str), &char(sport.str), &hints, &results)) ?
+		socket_error(0 - C.getaddrinfo(&char(address.str), &char(sport.str), &hints, &results))?
 	} $else {
 		x := C.getaddrinfo(&char(address.str), &char(sport.str), &hints, &results)
-		wrap_error(x) ?
+		wrap_error(x)?
 	}
 
 	defer {

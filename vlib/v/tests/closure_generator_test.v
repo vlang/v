@@ -163,9 +163,9 @@ fn test_closure_return_${styp}_${i}() ? {
 	code := v_code.str()
 	println('Compiling V code (${code.count('\n')} lines) ...')
 	wrkdir := os.join_path(os.temp_dir(), 'vtests', 'closures')
-	os.mkdir_all(wrkdir) ?
-	os.chdir(wrkdir) ?
-	os.write_file('closure_return_test.v', code) ?
+	os.mkdir_all(wrkdir)?
+	os.chdir(wrkdir)?
+	os.write_file('closure_return_test.v', code)?
 	vexe := os.getenv('VEXE')
 	res := os.execute('${os.quoted_path(vexe)} -keepc -cg -showcc closure_return_test.v')
 	if res.exit_code != 0 {

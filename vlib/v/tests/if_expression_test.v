@@ -222,7 +222,7 @@ fn test_if_expr_with_optional() ? {
 	m := map[string]int{}
 	v := if a := m['a'] {
 		println('$a')
-		return_optional() ?
+		return_optional()?
 	} else {
 		2
 	}

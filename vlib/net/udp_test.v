@@ -48,7 +48,7 @@ fn echo() ? {
 
 	println('Got "$buf.bytestr()"')
 
-	c.close() ?
+	c.close()?
 }
 
 fn test_udp() {

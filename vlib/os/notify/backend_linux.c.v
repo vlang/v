@@ -84,18 +84,18 @@ fn (mut en EpollNotifier) ctl(fd int, op int, mask u32) ? {
 // add adds a file descriptor to the watch list
 fn (mut en EpollNotifier) add(fd int, events FdEventType, conf ...FdConfigFlags) ? {
 	mask := flags_to_mask(events, ...conf)
-	en.ctl(fd, C.EPOLL_CTL_ADD, mask) ?
+	en.ctl(fd, C.EPOLL_CTL_ADD, mask)?
 }
 
 // modify sets an existing entry in the watch list to the provided events and configuration
 fn (mut en EpollNotifier) modify(fd int, events FdEventType, conf ...FdConfigFlags) ? {
 	mask := flags_to_mask(events, ...conf)
-	en.ctl(fd, C.EPOLL_CTL_MOD, mask) ?
+	en.ctl(fd, C.EPOLL_CTL_MOD, mask)?
 }
 
 // remove removes a file descriptor from the watch list
 fn (mut en EpollNotifier) remove(fd int) ? {
-	en.ctl(fd, C.EPOLL_CTL_DEL, 0) ?
+	en.ctl(fd, C.EPOLL_CTL_DEL, 0)?
 }
 
 // wait waits to be notified of events on the watch list,

@@ -86,20 +86,20 @@ fn test_open_file_binary() {
 // }
 
 fn create_file(fpath string) ? {
-	mut f := os.create(fpath) ?
+	mut f := os.create(fpath)?
 	f.close()
 }
 
 fn create_and_write_to_file(fpath string, content string) ? {
-	mut f := os.create(fpath) ?
-	f.write_string(content) ?
+	mut f := os.create(fpath)?
+	f.write_string(content)?
 	f.close()
 }
 
 fn test_create_file() ? {
 	filename := './test1.txt'
 	hello := 'hello world!'
-	create_and_write_to_file(filename, hello) ?
+	create_and_write_to_file(filename, hello)?
 	assert u64(hello.len) == os.file_size(filename)
 	os.rm(filename) or { panic(err) }
 }
@@ -199,21 +199,21 @@ fn test_ls() {
 }
 
 fn create_tree() ? {
-	os.mkdir_all('myfolder/f1/f2/f3') ?
-	os.mkdir_all('myfolder/a1/a2/a3') ?
+	os.mkdir_all('myfolder/f1/f2/f3')?
+	os.mkdir_all('myfolder/a1/a2/a3')?
 	f3 := os.real_path('myfolder/f1/f2/f3')
 	assert os.is_dir(f3)
-	create_file('myfolder/f1/f2/f3/a.txt') ?
-	create_file('myfolder/f1/f2/f3/b.txt') ?
-	create_file('myfolder/f1/f2/f3/c.txt') ?
-	create_file('myfolder/f1/f2/f3/d.md') ?
-	create_file('myfolder/f1/0.txt') ?
-	create_file('myfolder/another.md') ?
-	create_file('myfolder/a1/a2/a3/x.txt') ?
-	create_file('myfolder/a1/a2/a3/y.txt') ?
-	create_file('myfolder/a1/a2/a3/z.txt') ?
-	create_file('myfolder/a1/1.txt') ?
-	create_file('myfolder/xyz.ini') ?
+	create_file('myfolder/f1/f2/f3/a.txt')?
+	create_file('myfolder/f1/f2/f3/b.txt')?
+	create_file('myfolder/f1/f2/f3/c.txt')?
+	create_file('myfolder/f1/f2/f3/d.md')?
+	create_file('myfolder/f1/0.txt')?
+	create_file('myfolder/another.md')?
+	create_file('myfolder/a1/a2/a3/x.txt')?
+	create_file('myfolder/a1/a2/a3/y.txt')?
+	create_file('myfolder/a1/a2/a3/z.txt')?
+	create_file('myfolder/a1/1.txt')?
+	create_file('myfolder/xyz.ini')?
 }
 
 fn remove_tree() {
@@ -227,7 +227,7 @@ fn normalise_paths(paths []string) []string {
 }
 
 fn test_walk_ext() ? {
-	create_tree() ?
+	create_tree()?
 	defer {
 		remove_tree()
 	}
@@ -255,7 +255,7 @@ fn test_walk_ext() ? {
 }
 
 fn test_walk_with_context() ? {
-	create_tree() ?
+	create_tree()?
 	defer {
 		remove_tree()
 	}
@@ -445,8 +445,8 @@ fn test_realpath_does_not_absolutize_non_existing_relative_paths() {
 fn test_realpath_absolutepath_symlink() ? {
 	file_name := 'tolink_file.txt'
 	symlink_name := 'symlink.txt'
-	create_file(file_name) ?
-	assert os.symlink(file_name, symlink_name) ?
+	create_file(file_name)?
+	assert os.symlink(file_name, symlink_name)?
 	rpath := os.real_path(symlink_name)
 	println(rpath)
 	assert os.is_abs_path(rpath)
@@ -509,7 +509,7 @@ fn test_make_symlink_check_is_link_and_remove_symlink_with_file() ? {
 	symlink := 'tsymlink'
 	os.rm(symlink) or {}
 	os.rm(file) or {}
-	create_file(file) ?
+	create_file(file)?
 	os.symlink(file, symlink) or { panic(err) }
 	assert os.is_link(symlink)
 	os.rm(symlink) or { panic(err) }
@@ -523,7 +523,7 @@ fn test_make_hardlink_check_is_link_and_remove_hardlink_with_file() ? {
 	symlink := 'tsymlink'
 	os.rm(symlink) or {}
 	os.rm(file) or {}
-	create_file(file) ?
+	create_file(file)?
 	os.link(file, symlink) or { panic(err) }
 	assert os.exists(symlink)
 	os.rm(symlink) or { panic(err) }
@@ -568,7 +568,7 @@ fn test_symlink() {
 
 fn test_is_executable_writable_readable() ? {
 	file_name := 'rwxfile.exe'
-	create_file(file_name) ?
+	create_file(file_name)?
 	$if !windows {
 		os.chmod(file_name, 0o600) or {} // mark as readable && writable, but NOT executable
 		assert os.is_writable(file_name)
@@ -731,7 +731,7 @@ fn test_posix_set_bit() ? {
 		assert true
 	} $else {
 		fpath := 'permtest'
-		create_file(fpath) ?
+		create_file(fpath)?
 		os.chmod(fpath, 0o0777) or { panic(err) }
 		c_fpath := &char(fpath.str)
 		mut s := C.stat{}
@@ -789,8 +789,8 @@ fn test_exists_in_system_path() {
 fn test_truncate() ? {
 	filename := './test_trunc.txt'
 	hello := 'hello world!'
-	mut f := os.create(filename) ?
-	f.write_string(hello) ?
+	mut f := os.create(filename)?
+	f.write_string(hello)?
 	f.close()
 	assert u64(hello.len) == os.file_size(filename)
 	newlen := u64(40000)
@@ -807,10 +807,10 @@ fn test_glob() ? {
 	os.mkdir('test_dir') or { panic(err) }
 	for i in 0 .. 4 {
 		if i == 3 {
-			create_file('test_dir/test0_another') ?
-			create_file('test_dir/test') ?
+			create_file('test_dir/test0_another')?
+			create_file('test_dir/test')?
 		} else {
-			create_file('test_dir/test' + i.str()) ?
+			create_file('test_dir/test' + i.str())?
 		}
 	}
 	files := os.glob('test_dir/t*') or { panic(err) }
@@ -853,7 +853,7 @@ fn test_execute() ? {
 	// The output of the next command contains a 0 byte in the middle.
 	// Nevertheless, the execute function *should* return a string that
 	// contains it.
-	os.write_file(print0script, 'C.printf(c"start%cMIDDLE%cfinish\nxx", 0, 0)\n') ?
+	os.write_file(print0script, 'C.printf(c"start%cMIDDLE%cfinish\nxx", 0, 0)\n')?
 	defer {
 		os.rm(print0script) or {}
 	}

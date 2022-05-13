@@ -6,7 +6,7 @@ import v.pref
 fn main() {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
-	os.chdir(vroot) ?
+	os.chdir(vroot)?
 	os.setenv('VCOLORS', 'always', true)
 	self_idx := os.args.index('tracev')
 	args := os.args[1..self_idx]

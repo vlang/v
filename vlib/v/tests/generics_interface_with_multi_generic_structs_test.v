@@ -33,7 +33,7 @@ mut:
 
 fn (mut it SkipIter<T>) next<T>() ?T {
 	for it.n > 0 {
-		it.iter.next() ?
+		it.iter.next()?
 		it.n--
 	}
 	return it.iter.next()

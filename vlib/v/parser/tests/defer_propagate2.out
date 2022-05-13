@@ -1,7 +1,7 @@
-vlib/v/parser/tests/defer_propagate2.vv:16:13: error: error propagation not allowed inside `defer` blocks
+vlib/v/parser/tests/defer_propagate2.vv:16:12: error: error propagation not allowed inside `defer` blocks
    14 |     dump(s.x)
    15 |     defer {
-   16 |         s.close() ?
-      |                   ^
+   16 |         s.close()?
+      |                  ^
    17 |     }
    18 |     return s.x

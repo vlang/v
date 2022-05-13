@@ -5,7 +5,7 @@ const (
 )
 
 fn get_val_from_chan(ch chan i64) ?i64 {
-	r := <-ch ?
+	r := <-ch?
 	return r
 }
 

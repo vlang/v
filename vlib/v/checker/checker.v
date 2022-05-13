@@ -4284,20 +4284,20 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) ? {
 			}
 		}
 		.array {
-			c.ensure_type_exists((sym.info as ast.Array).elem_type, pos) ?
+			c.ensure_type_exists((sym.info as ast.Array).elem_type, pos)?
 		}
 		.array_fixed {
-			c.ensure_type_exists((sym.info as ast.ArrayFixed).elem_type, pos) ?
+			c.ensure_type_exists((sym.info as ast.ArrayFixed).elem_type, pos)?
 		}
 		.map {
 			info := sym.info as ast.Map
-			c.ensure_type_exists(info.key_type, pos) ?
-			c.ensure_type_exists(info.value_type, pos) ?
+			c.ensure_type_exists(info.key_type, pos)?
+			c.ensure_type_exists(info.value_type, pos)?
 		}
 		.sum_type {
 			info := sym.info as ast.SumType
 			for concrete_typ in info.concrete_types {
-				c.ensure_type_exists(concrete_typ, pos) ?
+				c.ensure_type_exists(concrete_typ, pos)?
 			}
 		}
 		else {}

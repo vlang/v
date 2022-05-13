@@ -22,7 +22,7 @@ fn test_out_files() ? {
 	println(term.colorize(term.green, '> testing whether .out files match:'))
 	os.chdir(vroot) or {}
 	output_path := os.join_path(os.temp_dir(), 'coutput', 'out')
-	os.mkdir_all(output_path) ?
+	os.mkdir_all(output_path)?
 	defer {
 		os.rmdir_all(output_path) or {}
 	}
@@ -50,7 +50,7 @@ fn test_out_files() ? {
 			panic(res.output)
 		}
 		mut found := res.output.trim_right('\r\n').replace('\r\n', '\n')
-		mut expected := os.read_file(out_path) ?
+		mut expected := os.read_file(out_path)?
 		expected = expected.trim_right('\r\n').replace('\r\n', '\n')
 		if expected.contains('================ V panic ================') {
 			// panic include backtraces and absolute file paths, so can't do char by char comparison
@@ -93,7 +93,7 @@ fn test_c_must_have_files() ? {
 	println(term.colorize(term.green, '> testing whether `.c.must_have` files match:'))
 	os.chdir(vroot) or {}
 	output_path := os.join_path(os.temp_dir(), 'coutput', 'c_must_have')
-	os.mkdir_all(output_path) ?
+	os.mkdir_all(output_path)?
 	defer {
 		os.rmdir_all(output_path) or {}
 	}

@@ -20,7 +20,7 @@ const (
     tool_version = \'1.2.1\'
     version: \'0.2.42\'
     VERSION = "1.23.8"
-  
+
 Examples:
   Bump the patch version in v.mod if it exists
     v bump --patch

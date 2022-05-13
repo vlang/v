@@ -2,7 +2,7 @@ module notify
 
 import time
 
-// Backends should provide a `new() ?FdNotifier` function
+// Backends should provide a `new()?FdNotifier` function
 pub interface FdNotifier {
 mut:
 	add(fd int, events FdEventType, conf ...FdConfigFlags) ?

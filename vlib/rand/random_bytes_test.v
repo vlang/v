@@ -3,7 +3,7 @@ import rand
 fn test_rand_bytes() ? {
 	mut randoms := []string{}
 	for i in 0 .. 100 {
-		x := rand.bytes(i) ?.hex()
+		x := rand.bytes(i)?.hex()
 		if x.len > 0 {
 			randoms << x
 		}
@@ -25,7 +25,7 @@ fn test_prng_rand_bytes() ? {
 	mut randoms := []string{}
 	mut rng := rand.get_current_rng()
 	for i in 0 .. 100 {
-		x := rng.bytes(i) ?.hex()
+		x := rng.bytes(i)?.hex()
 		if x.len > 0 {
 			randoms << x
 		}

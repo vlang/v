@@ -90,7 +90,7 @@ pub fn open(path string) ?File {
 		}
 	}
 	*/
-	cfile := vfopen(path, 'rb') ?
+	cfile := vfopen(path, 'rb')?
 	fd := fileno(cfile)
 	return File{
 		cfile: cfile
@@ -124,7 +124,7 @@ pub fn create(path string) ?File {
 		}
 	}
 	*/
-	cfile := vfopen(path, 'wb') ?
+	cfile := vfopen(path, 'wb')?
 	fd := fileno(cfile)
 	return File{
 		cfile: cfile
@@ -165,7 +165,7 @@ pub fn (f &File) read(mut buf []u8) ?int {
 	if buf.len == 0 {
 		return 0
 	}
-	nbytes := fread(buf.data, 1, buf.len, f.cfile) ?
+	nbytes := fread(buf.data, 1, buf.len, f.cfile)?
 	return nbytes
 }
 
@@ -221,7 +221,7 @@ pub fn (mut f File) writeln(s string) ?int {
 // write_string writes the string `s` into the file
 // It returns how many bytes were actually written.
 pub fn (mut f File) write_string(s string) ?int {
-	unsafe { f.write_full_buffer(s.str, usize(s.len)) ? }
+	unsafe { f.write_full_buffer(s.str, usize(s.len))? }
 	return s.len
 }
 
@@ -415,14 +415,14 @@ pub fn (f &File) read_bytes_into(pos u64, mut buf []u8) ?int {
 		$if windows {
 			// Note: fseek errors if pos == os.file_size, which we accept
 			C._fseeki64(f.cfile, pos, C.SEEK_SET)
-			nbytes := fread(buf.data, 1, buf.len, f.cfile) ?
+			nbytes := fread(buf.data, 1, buf.len, f.cfile)?
 			$if debug {
 				C._fseeki64(f.cfile, 0, C.SEEK_SET)
 			}
 			return nbytes
 		} $else {
 			C.fseeko(f.cfile, pos, C.SEEK_SET)
-			nbytes := fread(buf.data, 1, buf.len, f.cfile) ?
+			nbytes := fread(buf.data, 1, buf.len, f.cfile)?
 			$if debug {
 				C.fseeko(f.cfile, 0, C.SEEK_SET)
 			}
@@ -431,7 +431,7 @@ pub fn (f &File) read_bytes_into(pos u64, mut buf []u8) ?int {
 	}
 	$if x32 {
 		C.fseek(f.cfile, pos, C.SEEK_SET)
-		nbytes := fread(buf.data, 1, buf.len, f.cfile) ?
+		nbytes := fread(buf.data, 1, buf.len, f.cfile)?
 		$if debug {
 			C.fseek(f.cfile, 0, C.SEEK_SET)
 		}
@@ -452,12 +452,12 @@ pub fn (f &File) read_from(pos u64, mut buf []u8) ?int {
 			C.fseeko(f.cfile, pos, C.SEEK_SET)
 		}
 
-		nbytes := fread(buf.data, 1, buf.len, f.cfile) ?
+		nbytes := fread(buf.data, 1, buf.len, f.cfile)?
 		return nbytes
 	}
 	$if x32 {
 		C.fseek(f.cfile, pos, C.SEEK_SET)
-		nbytes := fread(buf.data, 1, buf.len, f.cfile) ?
+		nbytes := fread(buf.data, 1, buf.len, f.cfile)?
 		return nbytes
 	}
 	return error('Could not read file')
@@ -511,7 +511,7 @@ pub fn (mut f File) read_struct<T>(mut t T) ? {
 	if tsize == 0 {
 		return error_size_of_type_0()
 	}
-	nbytes := fread(t, 1, tsize, f.cfile) ?
+	nbytes := fread(t, 1, tsize, f.cfile)?
 	if nbytes != tsize {
 		return error_with_code('incomplete struct read', nbytes)
 	}
@@ -530,17 +530,17 @@ pub fn (mut f File) read_struct_at<T>(mut t T, pos u64) ? {
 	$if x64 {
 		$if windows {
 			C._fseeki64(f.cfile, pos, C.SEEK_SET)
-			nbytes = fread(t, 1, tsize, f.cfile) ?
+			nbytes = fread(t, 1, tsize, f.cfile)?
 			C._fseeki64(f.cfile, 0, C.SEEK_END)
 		} $else {
 			C.fseeko(f.cfile, pos, C.SEEK_SET)
-			nbytes = fread(t, 1, tsize, f.cfile) ?
+			nbytes = fread(t, 1, tsize, f.cfile)?
 			C.fseeko(f.cfile, 0, C.SEEK_END)
 		}
 	}
 	$if x32 {
 		C.fseek(f.cfile, pos, C.SEEK_SET)
-		nbytes = fread(t, 1, tsize, f.cfile) ?
+		nbytes = fread(t, 1, tsize, f.cfile)?
 		C.fseek(f.cfile, 0, C.SEEK_END)
 	}
 	if nbytes != tsize {
@@ -558,7 +558,7 @@ pub fn (mut f File) read_raw<T>() ?T {
 		return error_size_of_type_0()
 	}
 	mut t := T{}
-	nbytes := fread(&t, 1, tsize, f.cfile) ?
+	nbytes := fread(&t, 1, tsize, f.cfile)?
 	if nbytes != tsize {
 		return error_with_code('incomplete struct read', nbytes)
 	}
@@ -581,7 +581,7 @@ pub fn (mut f File) read_raw_at<T>(pos u64) ?T {
 			if C._fseeki64(f.cfile, pos, C.SEEK_SET) != 0 {
 				return error(posix_get_error_msg(C.errno))
 			}
-			nbytes = fread(&t, 1, tsize, f.cfile) ?
+			nbytes = fread(&t, 1, tsize, f.cfile)?
 			if C._fseeki64(f.cfile, 0, C.SEEK_END) != 0 {
 				return error(posix_get_error_msg(C.errno))
 			}
@@ -589,7 +589,7 @@ pub fn (mut f File) read_raw_at<T>(pos u64) ?T {
 			if C.fseeko(f.cfile, pos, C.SEEK_SET) != 0 {
 				return error(posix_get_error_msg(C.errno))
 			}
-			nbytes = fread(&t, 1, tsize, f.cfile) ?
+			nbytes = fread(&t, 1, tsize, f.cfile)?
 			if C.fseeko(f.cfile, 0, C.SEEK_END) != 0 {
 				return error(posix_get_error_msg(C.errno))
 			}
@@ -599,7 +599,7 @@ pub fn (mut f File) read_raw_at<T>(pos u64) ?T {
 		if C.fseek(f.cfile, pos, C.SEEK_SET) != 0 {
 			return error(posix_get_error_msg(C.errno))
 		}
-		nbytes = fread(&t, 1, tsize, f.cfile) ?
+		nbytes = fread(&t, 1, tsize, f.cfile)?
 		if C.fseek(f.cfile, 0, C.SEEK_END) != 0 {
 			return error(posix_get_error_msg(C.errno))
 		}

@@ -119,7 +119,7 @@ pub fn change_test_runner(x &TestRunner) {
 
 // TODO: remove vtest_option_cludge, it is only here so that
 // `vlib/sync/channel_close_test.v` compiles with simpler runners,
-// that do not `import os` (which has other `fn() ?`). Without it,
+// that do not `import os` (which has other `fn()?`). Without it,
 // the C `Option_void` type is undefined -> C compilation error.
 fn vtest_option_cludge() ? {
 }

@@ -15,31 +15,31 @@ pub fn (mut conn Connection) connect(conn_str string) ?bool {
 	// Allocate environment handle
 	retcode = C.SQLAllocHandle(C.SQLSMALLINT(C.SQL_HANDLE_ENV), C.SQLHANDLE(C.SQL_NULL_HANDLE),
 		unsafe { &C.SQLHANDLE(&conn.henv) })
-	check_error(retcode, 'SQLAllocHandle(SQL_HANDLE_ENV)', C.SQLHANDLE(conn.henv), C.SQLSMALLINT(C.SQL_HANDLE_ENV)) ?
+	check_error(retcode, 'SQLAllocHandle(SQL_HANDLE_ENV)', C.SQLHANDLE(conn.henv), C.SQLSMALLINT(C.SQL_HANDLE_ENV))?
 
 	// Set the ODBC version environment attribute
 	retcode = C.SQLSetEnvAttr(conn.henv, C.SQLINTEGER(C.SQL_ATTR_ODBC_VERSION), &C.SQLPOINTER(C.SQL_OV_ODBC3),
 		C.SQLINTEGER(0))
 	check_error(retcode, 'SQLSetEnvAttr(SQL_ATTR_ODBC_VERSION)', C.SQLHANDLE(conn.henv),
-		C.SQLSMALLINT(C.SQL_HANDLE_ENV)) ?
+		C.SQLSMALLINT(C.SQL_HANDLE_ENV))?
 
 	// Allocate connection handle
 	retcode = C.SQLAllocHandle(C.SQLSMALLINT(C.SQL_HANDLE_DBC), C.SQLHANDLE(conn.henv),
 		unsafe { &C.SQLHANDLE(&conn.hdbc) })
-	check_error(retcode, 'SQLAllocHandle(SQL_HANDLE_DBC)', C.SQLHANDLE(conn.hdbc), C.SQLSMALLINT(C.SQL_HANDLE_DBC)) ?
+	check_error(retcode, 'SQLAllocHandle(SQL_HANDLE_DBC)', C.SQLHANDLE(conn.hdbc), C.SQLSMALLINT(C.SQL_HANDLE_DBC))?
 
 	// Set login timeout to 5 seconds
 	retcode = C.SQLSetConnectAttr(conn.hdbc, C.SQLINTEGER(C.SQL_LOGIN_TIMEOUT), C.SQLPOINTER(5),
 		C.SQLINTEGER(0))
 	check_error(retcode, 'SQLSetConnectAttr(SQL_LOGIN_TIMEOUT)', C.SQLHANDLE(conn.hdbc),
-		C.SQLSMALLINT(C.SQL_HANDLE_DBC)) ?
+		C.SQLSMALLINT(C.SQL_HANDLE_DBC))?
 
 	// Connect to data source
 	mut outstr := [1024]char{}
 	mut outstrlen := C.SQLSMALLINT(0)
 	retcode = C.SQLDriverConnect(conn.hdbc, C.SQLHWND(0), conn_str_c, C.SQLSMALLINT(C.SQL_NTS),
 		&C.SQLCHAR(&outstr[0]), C.SQLSMALLINT(sizeof(outstr)), &outstrlen, C.SQLUSMALLINT(C.SQL_DRIVER_NOPROMPT))
-	check_error(retcode, 'SQLDriverConnect()', C.SQLHANDLE(conn.hdbc), C.SQLSMALLINT(C.SQL_HANDLE_DBC)) ?
+	check_error(retcode, 'SQLDriverConnect()', C.SQLHANDLE(conn.hdbc), C.SQLSMALLINT(C.SQL_HANDLE_DBC))?
 	conn.conn_str = conn_str
 	return true
 }
@@ -61,17 +61,17 @@ pub fn (mut conn Connection) close() {
 
 // query executes a sql query
 pub fn (mut conn Connection) query(q string) ?Result {
-	mut hstmt := new_hstmt(conn.hdbc) ?
+	mut hstmt := new_hstmt(conn.hdbc)?
 	defer {
 		hstmt.close()
 	}
 
-	hstmt.exec(q) ?
+	hstmt.exec(q)?
 
-	affected := hstmt.retrieve_affected_rows() ?
+	affected := hstmt.retrieve_affected_rows()?
 
-	hstmt.prepare_read() ?
-	raw_rows := hstmt.read_rows() ?
+	hstmt.prepare_read()?
+	raw_rows := hstmt.read_rows()?
 
 	mut res := Result{
 		rows: []Row{}

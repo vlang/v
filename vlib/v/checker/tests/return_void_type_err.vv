@@ -3,5 +3,5 @@ fn hello(msg string) ? {
 }
 
 fn main() {
-	hello('test') ?
+	hello('test')?
 }

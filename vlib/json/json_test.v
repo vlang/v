@@ -19,7 +19,7 @@ fn test_simple() ? {
 	s := json.encode(x)
 	eprintln('Employee x: $s')
 	assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":2}'
-	y := json.decode(Employee, s) ?
+	y := json.decode(Employee, s)?
 	eprintln('Employee y: $y')
 	assert y.name == 'Peter'
 	assert y.age == 28
@@ -78,7 +78,7 @@ fn test_encode_decode_sumtype() ? {
 
 	assert enc == '{"title":"Super Mega Game","player":{"name":"Monke","_type":"Human"},"other":[{"tag":"Pen","_type":"Item"},{"tag":"Cookie","_type":"Item"},1,"Stool",{"_type":"Time","value":$t.unix_time()}]}'
 
-	dec := json.decode(SomeGame, enc) ?
+	dec := json.decode(SomeGame, enc)?
 	eprintln('Decoded Game: $dec')
 
 	assert game.title == dec.title
@@ -88,7 +88,7 @@ fn test_encode_decode_sumtype() ? {
 }
 
 fn bar<T>(payload string) ?Bar { // ?T doesn't work currently
-	result := json.decode(T, payload) ?
+	result := json.decode(T, payload)?
 	return result
 }
 
@@ -118,9 +118,9 @@ struct User {
 
 fn test_parse_user() ? {
 	s := '{"age": 10, "nums": [1,2,3], "type": 1, "lastName": "Johnson", "IsRegistered": true, "pet_animals": {"name": "Bob", "animal": "Dog"}}'
-	u2 := json.decode(User2, s) ?
+	u2 := json.decode(User2, s)?
 	println(u2)
-	u := json.decode(User, s) ?
+	u := json.decode(User, s)?
 	println(u)
 	assert u.age == 10
 	assert u.last_name == 'Johnson'
@@ -141,7 +141,7 @@ fn test_encode_decode_time() ? {
 	s := json.encode(user)
 	println(s)
 	assert s.contains('"reg_date":1608621780')
-	user2 := json.decode(User2, s) ?
+	user2 := json.decode(User2, s)?
 	assert user2.reg_date.str() == '2020-12-22 07:23:00'
 	println(user2)
 	println(user2.reg_date)
@@ -201,7 +201,7 @@ struct Country {
 }
 
 fn test_struct_in_struct() ? {
-	country := json.decode(Country, '{ "name": "UK", "cities": [{"name":"London"}, {"name":"Manchester"}]}') ?
+	country := json.decode(Country, '{ "name": "UK", "cities": [{"name":"London"}, {"name":"Manchester"}]}')?
 	assert country.name == 'UK'
 	assert country.cities.len == 2
 	assert country.cities[0].name == 'London'
@@ -229,7 +229,7 @@ fn test_parse_map() ? {
 		'three': 3
 		'four':  4
 	}
-	out := json.decode(map[string]int, '{"one":1,"two":2,"three":3,"four":4}') ?
+	out := json.decode(map[string]int, '{"one":1,"two":2,"three":3,"four":4}')?
 	println(out)
 	assert out == expected
 }
@@ -289,7 +289,7 @@ fn test_nested_type() ? {
 	out := json.encode(data)
 	println(out)
 	assert out == data_expected
-	data2 := json.decode(Data, data_expected) ?
+	data2 := json.decode(Data, data_expected)?
 	assert data2.countries.len == data.countries.len
 	for i in 0 .. 1 {
 		assert data2.countries[i].name == data.countries[i].name
@@ -323,7 +323,7 @@ fn test_generic_struct() ? {
 	foo_int := Foo<int>{'bar', 12}
 	foo_enc := json.encode(foo_int)
 	assert foo_enc == '{"name":"bar","data":12}'
-	foo_dec := json.decode(Foo<int>, foo_enc) ?
+	foo_dec := json.decode(Foo<int>, foo_enc)?
 	assert foo_dec.name == 'bar'
 	assert foo_dec.data == 12
 }
@@ -358,7 +358,7 @@ struct Message {
 }
 
 fn test_decode_alias_struct() ? {
-	msg := json.decode(Message, '{"id": "118499178790780929"}') ?
+	msg := json.decode(Message, '{"id": "118499178790780929"}')?
 	// hacky way of comparing aliased strings
 	assert msg.id.str() == '118499178790780929'
 }
@@ -376,19 +376,19 @@ struct List {
 }
 
 fn test_list() ? {
-	list := json.decode(List, '{"id": 1, "items": ["1", "2"]}') ?
+	list := json.decode(List, '{"id": 1, "items": ["1", "2"]}')?
 	assert list.id == 1
 	assert list.items == ['1', '2']
 }
 
 fn test_list_no_id() ? {
-	list := json.decode(List, '{"items": ["1", "2"]}') ?
+	list := json.decode(List, '{"items": ["1", "2"]}')?
 	assert list.id == 0
 	assert list.items == ['1', '2']
 }
 
 fn test_list_no_items() ? {
-	list := json.decode(List, '{"id": 1}') ?
+	list := json.decode(List, '{"id": 1}')?
 	assert list.id == 1
 	assert list.items == []
 }
@@ -400,7 +400,7 @@ struct Info {
 }
 
 fn test_decode_null_object() ? {
-	info := json.decode(Info, '{"id": 22, "items": null, "maps": null}') ?
+	info := json.decode(Info, '{"id": 22, "items": null, "maps": null}')?
 	assert info.id == 22
 	assert '$info.items' == '[]'
 	assert '$info.maps' == '{}'

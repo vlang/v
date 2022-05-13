@@ -62,5 +62,5 @@ fn foo() ?string {
 }
 
 fn test_opt_subexp_field() ? {
-	assert foo() ?.len == 2
+	assert foo()?.len == 2
 }

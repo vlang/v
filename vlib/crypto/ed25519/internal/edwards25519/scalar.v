@@ -1115,7 +1115,7 @@ fn generate_scalar(size int) ?Scalar {
 			// rand.Read(s.s[:16]) // read random bytes and fill buf
 			// using builtin rand.read([]buf)
 			rand.read(mut s.s[..16])
-			// buf := rand.read(s.s[..16].len) ?
+			// buf := rand.read(s.s[..16].len)?
 			// copy(mut s.s[..16], buf)
 
 			/*
@@ -1132,7 +1132,7 @@ fn generate_scalar(size int) ?Scalar {
 			// Read generates len(p) random bytes and writes them into p
 			// rand.Read(s.s[:16])
 			rand.read(mut s.s[..16])
-			// buf := rand.read(s.s[..16].len) ?
+			// buf := rand.read(s.s[..16].len)?
 			// copy(mut s.s[..16], buf)
 
 			/*
@@ -1148,7 +1148,7 @@ fn generate_scalar(size int) ?Scalar {
 			// of being out of the latter range).
 			// rand.Read(s.s[:])
 			rand.read(mut s.s[..])
-			// buf := crand.read(s.s.len) ?
+			// buf := crand.read(s.s.len)?
 			// copy(mut s.s[..], buf)
 
 			/*
@@ -1167,7 +1167,7 @@ type NotZeroScalar = Scalar
 fn generate_notzero_scalar(size int) ?NotZeroScalar {
 	mut s := Scalar{}
 	for s == edwards25519.sc_zero {
-		s = generate_scalar(size) ?
+		s = generate_scalar(size)?
 	}
 	return NotZeroScalar(s)
 }

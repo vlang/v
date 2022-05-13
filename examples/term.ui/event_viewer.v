@@ -43,5 +43,5 @@ fn main() {
 		use_alternate_buffer: false
 	)
 	println('V term.ui event viewer (press `esc` to exit)\n\n')
-	app.tui.run() ?
+	app.tui.run()?
 }
