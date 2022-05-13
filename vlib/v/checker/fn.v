@@ -958,11 +958,13 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				if param.typ == ast.voidptr_type_idx || arg_typ == ast.voidptr_type_idx {
 					continue
 				}
+				param_typ_sym_ := c.table.sym(c.table.unaliased_type(param.typ))
+				arg_typ_sym_ := c.table.sym(c.table.unaliased_type(arg_typ))
 				// Allow `[32]i8` as `&i8` etc
-				if ((arg_typ_sym.kind == .array_fixed || arg_typ_sym.kind == .array)
+				if ((arg_typ_sym_.kind == .array_fixed || arg_typ_sym_.kind == .array)
 					&& (param_is_number
 					|| c.table.unaliased_type(param.typ).is_any_kind_of_pointer()))
-					|| ((param_typ_sym.kind == .array_fixed || param_typ_sym.kind == .array)
+					|| ((param_typ_sym_.kind == .array_fixed || param_typ_sym_.kind == .array)
 					&& (typ_is_number || c.table.unaliased_type(arg_typ).is_any_kind_of_pointer())) {
 					continue
 				}
