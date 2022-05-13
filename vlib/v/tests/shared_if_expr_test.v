@@ -13,5 +13,8 @@ fn test_shared_if_expr() {
 			b
 		}
 	}
+	rlock a {
+		_ := if a == b { a } else { b }
+	}
 	assert d == [1, 2, 3, 5]
 }

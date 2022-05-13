@@ -3041,6 +3041,8 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) ast.Type {
 		}
 	}
 	c.stmts(node.stmts)
+	c.rlocked_names = []
+	c.locked_names = []
 	// handle `x := rlock a { a.getval() }`
 	mut ret_type := ast.void_type
 	if node.stmts.len > 0 {
@@ -3050,8 +3052,6 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) ast.Type {
 			ret_type = c.expr(last_stmt.expr)
 		}
 	}
-	c.rlocked_names = []
-	c.locked_names = []
 	if ret_type != ast.void_type {
 		node.is_expr = true
 	}

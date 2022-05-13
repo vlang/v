@@ -14,9 +14,9 @@ fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
 			if branch.cond is ast.IfGuardExpr || branch.stmts.len > 1 {
 				return true
 			}
-			if branch.stmts.len > 0 {
-				stmt := branch.stmts.last()
-				if stmt is ast.ExprStmt {
+			if branch.stmts.len == 1 {
+				if branch.stmts[0] is ast.ExprStmt {
+					stmt := branch.stmts[0] as ast.ExprStmt
 					if is_noreturn_callexpr(stmt.expr) {
 						return true
 					}
@@ -218,7 +218,6 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				&& (g.table.sym(node.typ).kind == .sum_type || node.typ.has_flag(.shared_f)) {
 				g.expected_cast_type = node.typ
 			}
-			g.tmp_var_types[tmp] = node.typ
 			g.stmts_with_tmp_var(branch.stmts, tmp)
 			g.expected_cast_type = prev_expected_cast_type
 		} else {
