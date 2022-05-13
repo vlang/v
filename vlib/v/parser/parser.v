@@ -663,6 +663,9 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 				return p.struct_decl()
 			}
 			.dollar {
+				if p.peek_tok.kind == .eof {
+					return p.error('unexpected eof')
+				}
 				if_expr := p.if_expr(true)
 				return ast.ExprStmt{
 					expr: if_expr
