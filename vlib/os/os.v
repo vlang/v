@@ -454,18 +454,6 @@ pub fn is_file(path string) bool {
 	return exists(path) && !is_dir(path)
 }
 
-// is_abs_path returns `true` if `path` is absolute.
-pub fn is_abs_path(path string) bool {
-	if path.len == 0 {
-		return false
-	}
-	$if windows {
-		return path[0] == `/` || // incase we're in MingGW bash
-		(path[0].is_letter() && path.len > 1 && path[1] == `:`)
-	}
-	return path[0] == `/`
-}
-
 // join_path returns a path as string from input string parameter(s).
 [manualfree]
 pub fn join_path(base string, dirs ...string) string {
