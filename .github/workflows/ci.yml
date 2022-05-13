@@ -33,6 +33,7 @@ jobs:
         run: |
           echo $VFLAGS
           make
+          ./v test-cleancode
           ./v -d debug_malloc -d debug_realloc -o v cmd/v
           ./v -cg -cstrict -o v cmd/v
           # Test v -realloc arena allocation
@@ -609,40 +610,40 @@ jobs:
         ##        run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
 
-  #  ubuntu-autofree-selfcompile:
-  #    runs-on: ubuntu-20.04
-  #    timeout-minutes: 121
-  #    env:
-  #      VFLAGS: -cc gcc
-  #    steps:
-  #    - uses: actions/checkout@v2
-  #    - name: Build V
-  #      run: make -j4
-  #    - name: V self compilation with -autofree
-  #      run: ./v -o v2 -autofree cmd/v && ./v2 -o v3 -autofree cmd/v && ./v3 -o v4 -autofree cmd/v
+#  ubuntu-autofree-selfcompile:
+#    runs-on: ubuntu-20.04
+#    timeout-minutes: 121
+#    env:
+#      VFLAGS: -cc gcc
+#    steps:
+#    - uses: actions/checkout@v2
+#    - name: Build V
+#      run: make -j4
+#    - name: V self compilation with -autofree
+#      run: ./v -o v2 -autofree cmd/v && ./v2 -o v3 -autofree cmd/v && ./v3 -o v4 -autofree cmd/v
 
 
-  #   ubuntu-musl:
-  #     runs-on: ubuntu-20.04
-  #     timeout-minutes: 121
-  #     env:
-  #       VFLAGS: -cc musl-gcc
-  #       V_CI_MUSL: 1
-  #     steps:
-  #     - uses: actions/checkout@v2
-  #     - uses: actions/setup-node@v1
-  #       with:
-  #         node-version: 12.x
-  #     - name: Install dependencies
-  #       run: |
-  #          sudo apt-get install --quiet -y musl musl-tools libssl-dev sqlite3 libsqlite3-dev valgrind
-  #     - name: Build v
-  #       run: echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
-  # #    - name: Test v binaries
-  # #      run: ./v build-vbinaries
-  # ##    - name: Test v->js
-  # ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
-  #     - name: quick debug
-  #       run: ./v -stats vlib/strconv/format_test.v
-  #     - name: Self tests
-  #       run: ./v test-self
+#   ubuntu-musl:
+#     runs-on: ubuntu-20.04
+#     timeout-minutes: 121
+#     env:
+#       VFLAGS: -cc musl-gcc
+#       V_CI_MUSL: 1
+#     steps:
+#     - uses: actions/checkout@v2
+#     - uses: actions/setup-node@v1
+#       with:
+#         node-version: 12.x
+#     - name: Install dependencies
+#       run: |
+#          sudo apt-get install --quiet -y musl musl-tools libssl-dev sqlite3 libsqlite3-dev valgrind
+#     - name: Build v
+#       run: echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
+# #    - name: Test v binaries
+# #      run: ./v build-vbinaries
+# ##    - name: Test v->js
+# ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+#     - name: quick debug
+#       run: ./v -stats vlib/strconv/format_test.v
+#     - name: Self tests
+#       run: ./v test-self
