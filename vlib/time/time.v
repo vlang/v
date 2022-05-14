@@ -16,9 +16,10 @@ pub const (
 	seconds_per_hour   = 60 * seconds_per_minute
 	seconds_per_day    = 24 * seconds_per_hour
 	seconds_per_week   = 7 * seconds_per_day
-	days_per_400_years = 365 * 400 + 97
-	days_per_100_years = 365 * 100 + 24
-	days_per_4_years   = 365 * 4 + 1
+	days_per_400_years = days_in_year * 400 + 97
+	days_per_100_years = days_in_year * 100 + 24
+	days_per_4_years   = days_in_year * 4 + 1
+	days_in_year       = 365
 	days_before        = [
 		0,
 		31,
@@ -179,13 +180,13 @@ pub fn (t Time) relative() string {
 		}
 		return '$prefix$d days$suffix'
 	}
-	if secs < time.seconds_per_hour * 24 * 365 {
+	if secs < time.seconds_per_hour * 24 * time.days_in_year {
 		if prefix == 'in ' {
 			return 'on $t.md()'
 		}
 		return 'last $t.md()'
 	}
-	y := secs / time.seconds_per_hour / 24 / 365
+	y := secs / time.seconds_per_hour / 24 / time.days_in_year
 	if y == 1 {
 		return '${prefix}1 year$suffix'
 	}
@@ -234,14 +235,14 @@ pub fn (t Time) relative_short() string {
 		}
 		return '$prefix${h}h$suffix'
 	}
-	if secs < time.seconds_per_hour * 24 * 365 {
+	if secs < time.seconds_per_hour * 24 * time.days_in_year {
 		d := secs / time.seconds_per_hour / 24
 		if d == 1 {
 			return '${prefix}1d$suffix'
 		}
 		return '$prefix${d}d$suffix'
 	}
-	y := secs / time.seconds_per_hour / 24 / 365
+	y := secs / time.seconds_per_hour / 24 / time.days_in_year
 	if y == 1 {
 		return '${prefix}1y$suffix'
 	}
