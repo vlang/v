@@ -556,17 +556,11 @@ fn (mut app App) set_theme(idx int) {
 }
 
 fn (mut app App) resize() {
-	mut s := gg.dpi_scale()
-	$if android {
-		s = app.gg.scale
-	}
+	mut s := app.gg.scale
 	if s == 0.0 {
 		s = 1.0
 	}
-	mut window_size := gg.window_size()
-	$if android {
-		window_size = app.gg.window_size()
-	}
+	window_size := app.gg.window_size()
 	w := window_size.width
 	h := window_size.height
 	m := f32(math.min(w, h))
