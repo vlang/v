@@ -11,9 +11,6 @@ const (
 	is_win = user_os() == 'windows'
 )
 
-// the path separator based on the operating system
-pub const path_sep = get_path_sep()
-
 // is_abs_path returns `true` if the given `path` is absolute.
 pub fn is_abs_path(path string) bool {
 	if path.len == 0 {
