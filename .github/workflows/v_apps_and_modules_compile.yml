@@ -1,12 +1,10 @@
 name: V Apps and Modules
 
 on:
-  push:
-    paths-ignore:
-      - "**.md"
-  pull_request:
-    paths-ignore:
-      - "**.md"
+  workflow_run:
+    workflows: ["Other CI"]
+    types:
+      - completed
 
 concurrency:
   group: build-other-${{ github.event.pull_request.number || github.sha }}

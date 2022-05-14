@@ -1,12 +1,10 @@
 name: Graphics CI
 
 on:
-  push:
-    paths-ignore:
-      - "**.md"
-  pull_request:
-    paths-ignore:
-      - "**.md"
+  workflow_run:
+    workflows: ["Other CI"]
+    types:
+      - completed
 
 jobs:
   gg-regressions:

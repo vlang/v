@@ -1,12 +1,10 @@
 name: Containers CI
 
 on:
-  push:
-    paths-ignore:
-      - "**.md"
-  pull_request:
-    paths-ignore:
-      - "**.md"
+  workflow_run:
+    workflows: ["Other CI"]
+    types:
+      - completed
 
 concurrency:
   group: build-containers-${{ github.event.pull_request.number || github.sha }}
