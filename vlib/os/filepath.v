@@ -52,10 +52,6 @@ fn win_volume_len(path string) int {
 	return 0
 }
 
-fn get_path_sep() string {
-	return if os.is_win { '\\' } else { '/' }
-}
-
 fn is_slash(b u8) bool {
 	return b == os.fslash || (os.is_win && b == os.bslash)
 }
