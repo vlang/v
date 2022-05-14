@@ -76,8 +76,6 @@ jobs:
   code-formatting-before-regression:
     runs-on: ubuntu-20.04
     timeout-minutes: 15
-    env:
-      VFLAGS: -cc gcc
     steps:
       - uses: actions/checkout@v2
       - name: Environment info
@@ -203,7 +201,6 @@ jobs:
           echo $VFLAGS
           .\make.bat -msvc
           .\v.exe self
-          .\v.exe test-cleancode
       ##      - name: Install dependencies
       ##        run: |
       ##          .\v.exe setup-freetype
