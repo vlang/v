@@ -2,7 +2,11 @@ name: Docs CI
 
 ### Run on *EVERY* commit. The documentation *SHOULD* stay valid, and
 ### the developers should receive early warning if they break it.
-on: [push, pull_request]
+on:
+  workflow_run:
+    workflows: ["Other CI"]
+    types:
+      - completed
 
 jobs:
   check-markdown:

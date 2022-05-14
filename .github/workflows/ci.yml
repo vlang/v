@@ -1,12 +1,10 @@
 name: Code CI
 
 on:
-  push:
-    paths-ignore:
-      - "**.md"
-  pull_request:
-    paths-ignore:
-      - "**.md"
+  workflow_run:
+    workflows: ["Other CI"]
+    types:
+      - completed
 
 concurrency:
   group: build-ci-${{ github.event.pull_request.number || github.sha }}
@@ -33,7 +31,6 @@ jobs:
         run: |
           echo $VFLAGS
           make
-          ./v test-cleancode
           ./v -d debug_malloc -d debug_realloc -o v cmd/v
           ./v -cg -cstrict -o v cmd/v
           # Test v -realloc arena allocation

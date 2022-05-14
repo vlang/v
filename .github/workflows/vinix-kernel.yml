@@ -1,14 +1,10 @@
 name: Build Vinix kernel
 
 on:
-  pull_request:
-    paths-ignore:
-      - "**.md"
-  push:
-    branches:
-      - master
-    paths-ignore:
-      - "**.md"
+  workflow_run:
+    workflows: ["Other CI"]
+    types:
+      - completed
 
 jobs:
   vinix-build:
