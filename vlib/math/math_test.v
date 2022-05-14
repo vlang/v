@@ -506,6 +506,13 @@ fn test_mod() {
 	assert (0.6447968302508578) == f
 }
 
+fn test_cbrt() {
+	cbrts := [2.0, 10, 56]
+	for idx, i in [8.0, 1000, 175_616] {
+		assert cbrt(i) == cbrts[idx]
+	}
+}
+
 fn test_exp() {
 	for i := 0; i < math.vf_.len; i++ {
 		f := exp(math.vf_[i])
