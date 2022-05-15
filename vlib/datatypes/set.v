@@ -34,16 +34,7 @@ pub fn (set Set<T>) clone() Set<T> {
 	return result
 }
 
-// remove removes the element from the set and returns it
-pub fn (mut set Set<T>) remove(i T) !T {
-	if set.is_empty() || !set.contains(i) {
-		return error("Set doesn't contain item")
-	}
-	set.elements.delete(i)
-	return i
-}
-
-// delete removes the element from the set if it exists otherwise nothing changes
+// delete removes the element from the set if it exists
 pub fn (mut set Set<T>) delete(i T) {
 	if set.is_empty() || !set.contains(i) {
 		return
