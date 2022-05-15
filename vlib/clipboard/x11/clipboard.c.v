@@ -138,6 +138,7 @@ enum AtomType {
 	text_html = 9
 }
 
+[heap]
 pub struct Clipboard {
 	display &C.Display
 mut:
