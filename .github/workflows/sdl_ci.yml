@@ -1,10 +1,12 @@
 name: sdl CI
 
 on:
-  workflow_run:
-    workflows: ["Other CI"]
-    types:
-      - completed
+  push:
+    paths-ignore:
+      - "**.md"
+  pull_request:
+    paths-ignore:
+      - "**.md"
 
 jobs:
   v-compiles-sdl-examples:

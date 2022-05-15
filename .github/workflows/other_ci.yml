@@ -2,8 +2,6 @@ name: Other CI
 
 on:
   push:
-    branches:
-      - master
     paths-ignore:
       - "**.md"
   pull_request:
@@ -16,7 +14,6 @@ concurrency:
 
 jobs:
   no-gpl-by-accident:
-    needs: [code-formatting]
     runs-on: ubuntu-20.04
     timeout-minutes: 15
     steps:
@@ -42,7 +39,6 @@ jobs:
         run: ./v test-fmt
 
   performance-regressions:
-    needs: [code-formatting]
     runs-on: ubuntu-20.04
     timeout-minutes: 15
     env:
@@ -67,7 +63,6 @@ jobs:
         run: cmd/tools/repeat --max_time 1501 --series 3 --count 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -show-timings -o v.c cmd/v' . ./vmaster
 
   misc-tooling:
-    needs: [code-formatting]
     runs-on: ubuntu-20.04
     timeout-minutes: 121
     env:
@@ -116,7 +111,6 @@ jobs:
           ./v should-compile-all examples/sokol/*.v examples/sokol/0?*/*.v
 
   parser-silent:
-    needs: [code-formatting]
     runs-on: ubuntu-20.04
     timeout-minutes: 121
     steps:
