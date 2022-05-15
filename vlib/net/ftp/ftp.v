@@ -66,7 +66,7 @@ mut:
 	buffer_size int
 }
 
-// new returns a stack-based `FTP` instance.
+// new returns an `FTP` instance.
 pub fn new() FTP {
 	mut f := FTP{
 		conn: 0
