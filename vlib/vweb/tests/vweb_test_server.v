@@ -35,7 +35,7 @@ fn main() {
 	assert timeout > 0
 	go exit_after_timeout(timeout)
 	//
-	shared config := Config{
+	shared config := &Config{
 		max_ping: 50
 	}
 	app := &App{

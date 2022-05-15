@@ -40,7 +40,7 @@ fn test_shared_array() {
 }
 
 fn test_shared_init_syntax() {
-	shared foo := {
+	shared foo := &{
 		'p':      17
 		'q':      -3
 		'qwertz': 10
@@ -50,7 +50,7 @@ fn test_shared_init_syntax() {
 		'cvbn': -7.25
 		'asd':  -0.0625
 	}
-	shared baz := map[string]int{}
+	shared baz := &map[string]int{}
 	shared qux := map[string]f64{}
 	shared quux := new_map()
 	lock foo {

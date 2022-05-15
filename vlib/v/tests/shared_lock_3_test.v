@@ -25,10 +25,10 @@ const (
 
 fn test_shared_lock() {
 	// object with separate read/write lock
-	shared x := St{
+	shared x := &St{
 		a: 5
 	}
-	shared z := St{
+	shared z := &St{
 		a: read_threads
 	}
 	for _ in 0 .. read_threads {

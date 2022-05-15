@@ -12,7 +12,7 @@ fn incr(shared foo []int, index int) {
 }
 
 fn test_shared_array() {
-	shared foo := [10, 20, 0]
+	shared foo := &[10, 20, 0]
 	go incr(shared foo, 0)
 	go incr(shared foo, 1)
 	go incr(shared foo, 0)
@@ -42,9 +42,9 @@ fn test_shared_array() {
 }
 
 fn test_shared_init_syntax() {
-	shared foo := [3, 5, 6, -12]
+	shared foo := &[3, 5, 6, -12]
 	shared bar := [-12.5, 23.125, 6.0625, 12.5]
-	shared baz := []int{len: 5, cap: 12}
+	shared baz := &[]int{len: 5, cap: 12}
 	shared qux := []f64{len: 7}
 	shared quux := new_array()
 	lock foo {

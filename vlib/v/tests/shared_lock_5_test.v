@@ -37,13 +37,13 @@ fn h(shared x St, shared y St, shared z St) {
 }
 
 fn test_shared_receiver_lock() {
-	shared x := St{
+	shared x := &St{
 		a: 5
 	}
-	shared y := St{
+	shared y := &St{
 		a: 7
 	}
-	shared z := St{
+	shared z := &St{
 		a: 1
 	}
 	t1 := go x.f(shared y, shared z)
