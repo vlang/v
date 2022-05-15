@@ -1,7 +1,7 @@
 module os
 
 fn test_is_abs_path() {
-	if is_win {
+	$if windows {
 		assert is_abs_path('/')
 		assert is_abs_path('\\')
 		assert !is_abs_path('\\\\')

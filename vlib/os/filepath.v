@@ -8,7 +8,6 @@ const (
 	fslash = `/`
 	bslash = `\\`
 	dot    = `.`
-	is_win = user_os() == 'windows'
 )
 
 // is_abs_path returns `true` if the given `path` is absolute.
@@ -16,7 +15,7 @@ pub fn is_abs_path(path string) bool {
 	if path.len == 0 {
 		return false
 	}
-	if os.is_win {
+	$if windows {
 		return is_device_path(path) || is_drive_rooted(path) || is_normal_path(path)
 	}
 	return path[0] == os.fslash
@@ -53,7 +52,10 @@ fn win_volume_len(path string) int {
 }
 
 fn is_slash(b u8) bool {
-	return b == os.fslash || (os.is_win && b == os.bslash)
+	$if windows {
+		return b == os.bslash || b == os.fslash
+	}
+	return b == os.fslash
 }
 
 fn is_device_path(path string) bool {
