@@ -2,13 +2,13 @@ module datatypes
 
 pub struct Set<T> {
 mut:
-	elements []T
+	elements map[T]T
 	idx      int
 }
 
 // str returns a string representation of the set
 pub fn (set Set<T>) str() string {
-	return set.elements.str()
+	return set.elements.keys().str()
 }
 
 // is_empty checks if the set is empty
@@ -24,17 +24,15 @@ pub fn (set Set<T>) len() int {
 // add inserts an item(s) into the set if not in set
 pub fn (mut set Set<T>) add(item ...T) {
 	for i in item {
-		if !set.contains(i) {
-			set.elements << i
-		}
+		set.elements[i] = i
 	}
 }
 
 // clone returns a copy of the set
 pub fn (set Set<T>) clone() Set<T> {
-	mut new_set := Set<T>{}
-	new_set.add(...set.elements)
-	return new_set
+	mut result := Set<T>{}
+	result.add(...set.elements.keys())
+	return result
 }
 
 // remove removes the element from the set and returns it
@@ -42,23 +40,21 @@ pub fn (mut set Set<T>) remove(i T) ?T {
 	if set.is_empty() || !set.contains(i) {
 		return error("Set doesn't contain item")
 	}
-	idx := set.elements.index(i)
-	item := set.elements[idx]
-	set.elements.delete(idx)
-	return item
+	set.elements.delete(i)
+	return i
 }
 
-// delete_if_exists removes the element from the set if it exists otherwise nothing changes
-pub fn (mut set Set<T>) delete_if_exists(i T) {
+// delete removes the element from the set if it exists otherwise nothing changes
+pub fn (mut set Set<T>) delete(i T) {
 	if set.is_empty() || !set.contains(i) {
 		return
 	}
-	set.elements.delete(set.elements.index(i))
+	set.elements.delete(i)
 }
 
 // contains determines if set includes item
 pub fn (set Set<T>) contains(i T) bool {
-	return set.elements.contains(i)
+	return i in set.elements
 }
 
 // difference returns the difference between this set and another. Will panic if type differs
@@ -66,13 +62,13 @@ pub fn (set Set<T>) difference(s Set<T>) ?Set<T> {
 	if !set.type_match(s) {
 		return error("Set types don't match")
 	}
-	mut diff := Set<T>{}
-	for item in set {
+	mut result := Set<T>{}
+	for item in set.elements.keys() {
 		if !s.contains(item) {
-			diff.add(item)
+			result.add(item)
 		}
 	}
-	return diff
+	return result
 }
 
 // union_with returns a set with all elements from both sets. Will panic if type differs
@@ -80,9 +76,9 @@ pub fn (set Set<T>) union_with(s Set<T>) ?Set<T> {
 	if !set.type_match(s) {
 		return error("Set types don't match")
 	}
-	mut u := s.clone()
-	u.add(...set.elements) // add won't add duplicates
-	return u
+	mut result := s.clone()
+	result.add(...set.elements.keys()) // add won't add duplicates
+	return result
 }
 
 // intersection returns the items that are in both sets. Will panic if type differs
@@ -90,21 +86,21 @@ pub fn (set Set<T>) intersection(s Set<T>) ?Set<T> {
 	if !set.type_match(s) {
 		return error("Set types don't match")
 	}
-	mut inter := Set<T>{}
+	mut result := Set<T>{}
 	if set.len() > s.len() {
-		for item in s {
+		for item in s.elements.keys() {
 			if set.contains(item) {
-				inter.add(item)
+				result.add(item)
 			}
 		}
 	} else {
-		for item in set {
+		for item in set.elements.keys() {
 			if s.contains(item) {
-				inter.add(item)
+				result.add(item)
 			}
 		}
 	}
-	return inter
+	return result
 }
 
 // equal returns if two sets are equal
@@ -121,17 +117,17 @@ pub fn (a Set<T>) == (b Set<T>) bool {
 }
 
 pub fn (a Set<T>) + (b Set<T>) Set<T> {
-	mut total := a.clone()
-	total.add(...b.elements)
-	return total
+	mut result := a.clone()
+	result.add(...b.elements.keys())
+	return result
 }
 
 pub fn (a Set<T>) - (b Set<T>) Set<T> {
-	mut new_set := a.clone()
-	for e in b {
-		new_set.delete_if_exists(e)
+	mut result := a.clone()
+	for e in b.elements.keys() {
+		result.delete(e)
 	}
-	return new_set
+	return result
 }
 
 // is_subset returns if every element of set is in other set
@@ -139,7 +135,7 @@ pub fn (set Set<T>) is_subset(s Set<T>) bool {
 	if !set.type_match(s) {
 		return false
 	}
-	for item in set {
+	for item in set.elements.keys() {
 		if !s.contains(item) {
 			return false
 		}
@@ -152,22 +148,12 @@ pub fn (set Set<T>) is_superset(s Set<T>) bool {
 	if !set.type_match(s) {
 		return false
 	}
-	for item in s {
+	for item in s.elements.keys() {
 		if !set.contains(item) {
 			return false
 		}
 	}
 	return true
-}
-
-fn (mut iter Set<T>) next() ?T {
-	if iter.idx >= iter.len() {
-		return error('Out of bounds')
-	}
-	defer {
-		iter.idx++
-	}
-	return iter.elements[iter.idx]
 }
 
 // is_proper_subset returns if every element of set is in other set, but not equal
