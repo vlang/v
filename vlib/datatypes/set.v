@@ -3,7 +3,6 @@ module datatypes
 pub struct Set<T> {
 mut:
 	elements map[T]T
-	idx      int
 }
 
 // str returns a string representation of the set
@@ -36,7 +35,7 @@ pub fn (set Set<T>) clone() Set<T> {
 }
 
 // remove removes the element from the set and returns it
-pub fn (mut set Set<T>) remove(i T) ?T {
+pub fn (mut set Set<T>) remove(i T) !T {
 	if set.is_empty() || !set.contains(i) {
 		return error("Set doesn't contain item")
 	}
@@ -58,7 +57,7 @@ pub fn (set Set<T>) contains(i T) bool {
 }
 
 // difference returns the difference between this set and another. Will panic if type differs
-pub fn (set Set<T>) difference(s Set<T>) ?Set<T> {
+pub fn (set Set<T>) difference(s Set<T>) !Set<T> {
 	if !set.type_match(s) {
 		return error("Set types don't match")
 	}
@@ -72,7 +71,7 @@ pub fn (set Set<T>) difference(s Set<T>) ?Set<T> {
 }
 
 // union_with returns a set with all elements from both sets. Will panic if type differs
-pub fn (set Set<T>) union_with(s Set<T>) ?Set<T> {
+pub fn (set Set<T>) union_with(s Set<T>) !Set<T> {
 	if !set.type_match(s) {
 		return error("Set types don't match")
 	}
@@ -82,7 +81,7 @@ pub fn (set Set<T>) union_with(s Set<T>) ?Set<T> {
 }
 
 // intersection returns the items that are in both sets. Will panic if type differs
-pub fn (set Set<T>) intersection(s Set<T>) ?Set<T> {
+pub fn (set Set<T>) intersection(s Set<T>) !Set<T> {
 	if !set.type_match(s) {
 		return error("Set types don't match")
 	}
