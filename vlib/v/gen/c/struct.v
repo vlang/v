@@ -46,18 +46,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			g.write('($styp){')
 		}
 	}
-	// mut fields := []string{}
-	mut inited_fields := map[string]int{} // TODO this is done in checker, move to ast node
-	/*
-	if node.fields.len == 0 && node.exprs.len > 0 {
-		// Get fields for {a,b} short syntax. Fields array wasn't set in the parser.
-		for f in info.fields {
-			fields << f.name
-		}
-	} else {
-		fields = node.fields
-	}
-	*/
+	mut inited_fields := map[string]int{}
 	if is_multiline {
 		g.indent++
 	}
@@ -149,8 +138,6 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			}
 			g.is_shared = old_is_shared2
 		}
-		// g.zero_struct_fields(info, inited_fields)
-		// nr_fields = info.fields.len
 		for mut field in info.fields {
 			if !field.typ.has_flag(.shared_f) {
 				g.is_shared = false
