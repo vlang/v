@@ -1851,6 +1851,21 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		return field.typ
 	}
 	if mut method := c.table.find_method(sym, field_name) {
+		receiver := method.params[0].typ
+		if receiver.nr_muls() > 0 {
+			if !c.inside_unsafe {
+				rec_sym := c.table.sym(receiver.set_nr_muls(0))
+				if !rec_sym.is_heap() {
+					suggestion := if rec_sym.kind == .struct_ {
+						'declaring `$rec_sym.name` as `[heap]`'
+					} else {
+						'wrapping the `$rec_sym.name` object in a `struct` declared as `[heap]`'
+					}
+					c.error('method `${c.table.type_to_str(receiver.idx())}.$method.name` cannot be used as a variable outside `unsafe` blocks as its receiver might refer to an object stored on stack. Consider ${suggestion}.',
+						node.expr.pos().extend(node.pos))
+				}
+			}
+		}
 		method.params = method.params[1..]
 		fn_type := ast.new_type(c.table.find_or_register_fn_type(c.mod, method, false,
 			true))
