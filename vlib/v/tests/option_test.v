@@ -99,12 +99,12 @@ fn foo_str() ?string {
 }
 
 fn propagate_optional(b bool) ?int {
-	a := err_call(b) ?
+	a := err_call(b)?
 	return a
 }
 
 fn propagate_different_type(b bool) ?bool {
-	err_call(b) ?
+	err_call(b)?
 	return true
 }
 
@@ -128,7 +128,7 @@ fn test_propagation() {
 }
 
 fn test_q() ? {
-	assert foo_ok() ? == 777
+	assert foo_ok()? == 777
 }
 
 fn or_return_val() int {

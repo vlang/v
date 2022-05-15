@@ -1,7 +1,7 @@
 vlib/v/checker/tests/unknown_type_in_anon_fn.vv:5:10: error: unknown type `Another`
     3 | struct Struc{
     4 | mut:
-    5 |     f fn (s Another, i int) ?
+    5 |     f fn (s Another, i int)?
       |             ~~~~~~~
     6 | }
     7 |

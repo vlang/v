@@ -1,7 +1,7 @@
 import os
 
 fn main() {
-	text := os.read_file(os.args[0]) ?
+	text := os.read_file(os.args[0])?
 	mut lines := text.split_into_lines()
 	lines.sort(a.split('/').last() < b.split('/').last())
 	println(lines.join('\n'))

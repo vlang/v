@@ -51,7 +51,7 @@ fn start_server(family net.AddrFamily, listen_port int) ? {
 			return false
 		}
 		return true
-	}) ?
+	})?
 	s.on_message(fn (mut ws websocket.Client, msg &websocket.Message) ? {
 		match msg.opcode {
 			.pong { ws.write_string('pong') or { panic(err) } }
@@ -70,9 +70,9 @@ fn ws_test(family net.AddrFamily, uri string) ? {
 	eprintln('connecting to $uri ...')
 
 	mut test_results := WebsocketTestResults{}
-	mut ws := websocket.new_client(uri) ?
+	mut ws := websocket.new_client(uri)?
 	ws.on_open(fn (mut ws websocket.Client) ? {
-		ws.pong() ?
+		ws.pong()?
 		assert true
 	})
 	ws.on_error(fn (mut ws websocket.Client, err string) ? {

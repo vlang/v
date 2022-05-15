@@ -5,6 +5,7 @@ import math
 // Compares the magnitude of the two unsigned integers represented the given
 // digit arrays. Returns -1 if a < b, 0 if a == b and +1 if a > b. Here
 // a is operand_a and b is operand_b (for brevity).
+[direct_array_access]
 fn compare_digit_array(operand_a []u32, operand_b []u32) int {
 	a_len := operand_a.len
 	b_len := operand_b.len
@@ -26,6 +27,7 @@ fn compare_digit_array(operand_a []u32, operand_b []u32) int {
 // Add the digits in operand_a and operand_b and stores the result in sum.
 // This function does not perform any allocation and assumes that the storage is
 // large enough. It may affect the last element, based on the presence of a carry
+[direct_array_access]
 fn add_digit_array(operand_a []u32, operand_b []u32, mut sum []u32) {
 	// Zero length cases
 	if operand_a.len == 0 {
@@ -70,6 +72,7 @@ fn add_digit_array(operand_a []u32, operand_b []u32, mut sum []u32) {
 // Subtracts operand_b from operand_a and stores the difference in storage.
 // It assumes operand_a contains the larger "integer" and that storage is
 // the same size as operand_a and is 0
+[direct_array_access]
 fn subtract_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
 	// Zero length cases
 	if operand_a.len == 0 {
@@ -104,9 +107,7 @@ fn subtract_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
 		storage[index] = u32(a_digit - b_digit)
 	}
 
-	for storage.len > 0 && storage.last() == 0 {
-		storage.delete_last()
-	}
+	shrink_tail_zeros(mut storage)
 }
 
 const karatsuba_multiplication_limit = 1_000_000
@@ -126,6 +127,7 @@ fn multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
 // Multiplies the unsigned (non-negative) integers represented in a and b and the product is
 // stored in storage. It assumes that storage has length equal to the sum of lengths
 // of a and b. Length refers to length of array, that is, digit count.
+[direct_array_access]
 fn simple_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
 	for b_index in 0 .. operand_b.len {
 		mut carry := u64(0)
@@ -139,27 +141,22 @@ fn simple_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u
 			storage[b_index + operand_a.len] = u32(carry)
 		}
 	}
-	for storage.len > 0 && storage.last() == 0 {
-		storage.delete_last()
-	}
+	shrink_tail_zeros(mut storage)
 }
 
 // Stores the product of the unsigned (non-negative) integer represented in a and the digit in value
 // in the storage array. It assumes storage is pre-initialised and populated with 0's
+[direct_array_access]
 fn multiply_array_by_digit(operand_a []u32, value u32, mut storage []u32) {
 	if value == 0 {
-		for storage.len > 0 {
-			storage.delete_last()
-		}
+		storage.clear()
 		return
 	}
 	if value == 1 {
 		for index in 0 .. operand_a.len {
 			storage[index] = operand_a[index]
 		}
-		for storage.len > 0 && storage.last() == 0 {
-			storage.delete_last()
-		}
+		shrink_tail_zeros(mut storage)
 		return
 	}
 	mut carry := u32(0)
@@ -175,15 +172,14 @@ fn multiply_array_by_digit(operand_a []u32, value u32, mut storage []u32) {
 			storage << carry
 		}
 	}
-	for storage.len > 0 && storage.last() == 0 {
-		storage.delete_last()
-	}
+	shrink_tail_zeros(mut storage)
 }
 
 // Divides the non-negative integer in a by non-negative integer b and store the two results
 // in quotient and remainder respectively. It is different from the rest of the functions
 // because it assumes that quotient and remainder are empty zero length arrays. They can be
 // made to have appropriate capacity though
+[direct_array_access]
 fn divide_digit_array(operand_a []u32, operand_b []u32, mut quotient []u32, mut remainder []u32) {
 	cmp_result := compare_digit_array(operand_a, operand_b)
 	// a == b => q, r = 1, 0
@@ -192,17 +188,13 @@ fn divide_digit_array(operand_a []u32, operand_b []u32, mut quotient []u32, mut 
 		for quotient.len > 1 {
 			quotient.delete_last()
 		}
-		for remainder.len > 0 {
-			remainder.delete_last()
-		}
+		remainder.clear()
 		return
 	}
 
 	// a < b => q, r = 0, a
 	if cmp_result < 0 {
-		for quotient.len > 0 {
-			quotient.delete_last()
-		}
+		quotient.clear()
 		for index in 0 .. operand_a.len {
 			remainder << operand_a[index]
 		}
@@ -217,6 +209,7 @@ fn divide_digit_array(operand_a []u32, operand_b []u32, mut quotient []u32, mut 
 
 // Performs division on the non-negative dividend in a by the single digit divisor b. It assumes
 // quotient and remainder are empty zero length arrays without previous allocation
+[direct_array_access]
 fn divide_array_by_digit(operand_a []u32, divisor u32, mut quotient []u32, mut remainder []u32) {
 	if operand_a.len == 1 {
 		// 1 digit for both dividend and divisor
@@ -245,13 +238,9 @@ fn divide_array_by_digit(operand_a []u32, divisor u32, mut quotient []u32, mut r
 		rem = dividend % divisor64
 	}
 	// Remove leading zeros from quotient
-	for quotient.len > 0 && quotient.last() == 0 {
-		quotient.delete_last()
-	}
+	shrink_tail_zeros(mut quotient)
 	remainder << u32(rem)
-	for remainder.len > 0 && remainder.last() == 0 {
-		remainder.delete_last()
-	}
+	shrink_tail_zeros(mut remainder)
 }
 
 const newton_division_limit = 10_000
@@ -268,6 +257,7 @@ fn divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient []u32, m
 // Shifts the contents of the original array by the given amount of bits to the left.
 // This function assumes that the amount is less than 32. The storage is expected to
 // allocated with zeroes.
+[direct_array_access]
 fn shift_digits_left(original []u32, amount u32, mut storage []u32) {
 	mut leftover := u32(0)
 	offset := 32 - amount
@@ -284,6 +274,7 @@ fn shift_digits_left(original []u32, amount u32, mut storage []u32) {
 // Shifts the contents of the original array by the given amount of bits to the right.
 // This function assumes that the amount is less than 32. The storage is expected to
 // be allocated with zeroes.
+[direct_array_access]
 fn shift_digits_right(original []u32, amount u32, mut storage []u32) {
 	mut moveover := u32(0)
 	mask := (u32(1) << amount) - 1
@@ -293,11 +284,10 @@ fn shift_digits_right(original []u32, amount u32, mut storage []u32) {
 		moveover = original[index] & mask
 		storage[index] = value
 	}
-	for storage.len > 0 && storage.last() == 0 {
-		storage.delete_last()
-	}
+	shrink_tail_zeros(mut storage)
 }
 
+[direct_array_access]
 fn bitwise_or_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
 	lower, upper, bigger := if operand_a.len < operand_b.len {
 		operand_a.len, operand_b.len, operand_b
@@ -310,21 +300,19 @@ fn bitwise_or_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
 	for index in lower .. upper {
 		storage[index] = bigger[index]
 	}
-	for storage.len > 0 && storage.last() == 0 {
-		storage.delete_last()
-	}
+	shrink_tail_zeros(mut storage)
 }
 
+[direct_array_access]
 fn bitwise_and_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
 	lower := math.min(operand_a.len, operand_b.len)
 	for index in 0 .. lower {
 		storage[index] = operand_a[index] & operand_b[index]
 	}
-	for storage.len > 0 && storage.last() == 0 {
-		storage.delete_last()
-	}
+	shrink_tail_zeros(mut storage)
 }
 
+[direct_array_access]
 fn bitwise_xor_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
 	lower, upper, bigger := if operand_a.len < operand_b.len {
 		operand_a.len, operand_b.len, operand_b
@@ -337,16 +325,13 @@ fn bitwise_xor_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) 
 	for index in lower .. upper {
 		storage[index] = bigger[index]
 	}
-	for storage.len > 0 && storage.last() == 0 {
-		storage.delete_last()
-	}
+	shrink_tail_zeros(mut storage)
 }
 
+[direct_array_access]
 fn bitwise_not_digit_array(original []u32, mut storage []u32) {
 	for index in 0 .. original.len {
 		storage[index] = ~original[index]
 	}
-	for storage.len > 0 && storage.last() == 0 {
-		storage.delete_last()
-	}
+	shrink_tail_zeros(mut storage)
 }

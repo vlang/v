@@ -23,7 +23,7 @@ pub fn parse_rfc3339(s string) ?Time {
 
 	// Check if sn is date only
 	if !parts[0].contains_any(' Z') && parts[0].contains('-') {
-		year, month, day := parse_iso8601_date(sn) ?
+		year, month, day := parse_iso8601_date(sn)?
 		t = new_time(Time{
 			year: year
 			month: month
@@ -34,7 +34,7 @@ pub fn parse_rfc3339(s string) ?Time {
 	// Check if sn is time only
 	if !parts[0].contains('-') && parts[0].contains(':') {
 		mut hour_, mut minute_, mut second_, mut microsecond_, mut unix_offset, mut is_local_time := 0, 0, 0, 0, i64(0), true
-		hour_, minute_, second_, microsecond_, unix_offset, is_local_time = parse_iso8601_time(parts[0]) ?
+		hour_, minute_, second_, microsecond_, unix_offset, is_local_time = parse_iso8601_time(parts[0])?
 		t = new_time(Time{
 			hour: hour_
 			minute: minute_
@@ -124,10 +124,10 @@ pub fn parse_iso8601(s string) ?Time {
 	if !(parts.len == 1 || parts.len == 2) {
 		return error_invalid_time(12)
 	}
-	year, month, day := parse_iso8601_date(parts[0]) ?
+	year, month, day := parse_iso8601_date(parts[0])?
 	mut hour_, mut minute_, mut second_, mut microsecond_, mut unix_offset, mut is_local_time := 0, 0, 0, 0, i64(0), true
 	if parts.len == 2 {
-		hour_, minute_, second_, microsecond_, unix_offset, is_local_time = parse_iso8601_time(parts[1]) ?
+		hour_, minute_, second_, microsecond_, unix_offset, is_local_time = parse_iso8601_time(parts[1])?
 	}
 	mut t := new_time(
 		year: year

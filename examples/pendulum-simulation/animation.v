@@ -6,7 +6,7 @@ import sim.anim
 import sim.args as simargs
 
 fn main() {
-	args := simargs.parse_args(extra_workers: 1) ? as simargs.ParallelArgs
+	args := simargs.parse_args(extra_workers: 1)? as simargs.ParallelArgs
 
 	mut app := anim.new_app(args)
 	mut workers := []thread{cap: args.workers}

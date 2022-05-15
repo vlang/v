@@ -162,7 +162,7 @@ fn (mut s Server) send_connect_event(mut c ServerClient) ?bool {
 		return true
 	}
 	fun := s.accept_client_callbacks[0]
-	res := fun(mut c) ?
+	res := fun(mut c)?
 	return res
 }
 

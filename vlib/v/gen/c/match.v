@@ -158,7 +158,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					}
 				}
 				if is_expr && tmp_var.len == 0 {
-					g.write(') ? ')
+					g.write(')? ')
 				} else {
 					g.writeln(') {')
 				}
@@ -403,7 +403,7 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 				}
 			}
 			if is_expr && tmp_var.len == 0 {
-				g.write(') ? ')
+				g.write(')? ')
 			} else {
 				g.writeln(') {')
 			}

@@ -26,11 +26,11 @@ vlib/v/checker/tests/infix_err.vv:11:7: error: `+` cannot be used with `?int`
       |       ^
    12 | _ = int(0) + g() // FIXME not detected
    13 | _ = g() + int(3)
-vlib/v/checker/tests/infix_err.vv:12:5: error: unwrapped optional cannot be used in an infix expression
+vlib/v/checker/tests/infix_err.vv:12:14: error: unwrapped optional cannot be used in an infix expression
    10 | 
    11 | _ = 4 + g()
    12 | _ = int(0) + g() // FIXME not detected
-      |     ~~~~~~~~~~~~
+      |              ~~~
    13 | _ = g() + int(3)
    14 | _ = g() + 3
 vlib/v/checker/tests/infix_err.vv:13:9: error: `+` cannot be used with `?int`

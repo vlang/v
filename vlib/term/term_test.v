@@ -58,8 +58,8 @@ fn test_header() {
 }
 
 fn test_get_cursor_position() ? {
-	original_position := term.get_cursor_position() ?
-	cursor_position_1 := term.get_cursor_position() ?
+	original_position := term.get_cursor_position()?
+	cursor_position_1 := term.get_cursor_position()?
 	assert original_position.x == cursor_position_1.x
 	assert original_position.y == cursor_position_1.y
 	//
@@ -67,13 +67,13 @@ fn test_get_cursor_position() ? {
 		x: 10
 		y: 11
 	)
-	cursor_position_2 := term.get_cursor_position() ?
+	cursor_position_2 := term.get_cursor_position()?
 	//
 	term.set_cursor_position(
 		x: 5
 		y: 6
 	)
-	cursor_position_3 := term.get_cursor_position() ?
+	cursor_position_3 := term.get_cursor_position()?
 	//
 	term.set_cursor_position(original_position)
 	eprintln('original_position: $original_position')

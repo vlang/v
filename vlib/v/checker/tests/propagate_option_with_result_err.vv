@@ -3,7 +3,7 @@ fn foo() !string {
 }
 
 fn bar() ?string {
-	foo() ?
+	foo()?
 	return ''
 }
 

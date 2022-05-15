@@ -27,6 +27,6 @@ pub fn (mut r Readline) read_line(prompt string) ?string {
 
 pub fn read_line(prompt string) ?string {
 	mut r := Readline{}
-	s := r.read_line(prompt) ?
+	s := r.read_line(prompt)?
 	return s
 }

@@ -25,14 +25,14 @@ fn echo_server(mut l unix.StreamListener) ? {
 }
 
 fn echo() ? {
-	mut c := unix.connect_stream(test_port) ?
+	mut c := unix.connect_stream(test_port)?
 	defer {
 		c.close() or {}
 	}
 	data := 'Hello from vlib/net!'
-	c.write_string(data) ?
+	c.write_string(data)?
 	mut buf := []u8{len: 4096}
-	read := c.read(mut buf) ?
+	read := c.read(mut buf)?
 	assert read == data.len
 	for i := 0; i < read; i++ {
 		assert buf[i] == data[i]

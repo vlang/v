@@ -68,21 +68,21 @@ fn run_individual_test(case BumpTestCase) ? {
 	test_file := os.join_path_single(temp_dir, case.file_name)
 
 	os.rm(test_file) or {}
-	os.write_file(test_file, case.contents) ?
+	os.write_file(test_file, case.contents)?
 	//
 	os.execute_or_exit('${os.quoted_path(vexe)} bump --patch ${os.quoted_path(test_file)}')
-	patch_lines := os.read_lines(test_file) ?
+	patch_lines := os.read_lines(test_file)?
 	assert patch_lines[case.line] == case.expected_patch
 
 	os.execute_or_exit('${os.quoted_path(vexe)} bump --minor ${os.quoted_path(test_file)}')
-	minor_lines := os.read_lines(test_file) ?
+	minor_lines := os.read_lines(test_file)?
 	assert minor_lines[case.line] == case.expected_minor
 
 	os.execute_or_exit('${os.quoted_path(vexe)} bump --major ${os.quoted_path(test_file)}')
-	major_lines := os.read_lines(test_file) ?
+	major_lines := os.read_lines(test_file)?
 	assert major_lines[case.line] == case.expected_major
 	//
-	os.rm(test_file) ?
+	os.rm(test_file)?
 }
 
 fn test_all_bump_cases() {

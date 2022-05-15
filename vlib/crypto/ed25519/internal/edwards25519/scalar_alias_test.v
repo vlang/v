@@ -25,8 +25,8 @@ fn negate_aliasing(mut v Scalar, x Scalar) Scalar {
 }
 
 fn test_check_aliasing_oneargs() ? {
-	x := generate_notzero_scalar(10) ?
-	mut v := generate_notzero_scalar(10) ?
+	x := generate_notzero_scalar(10)?
+	mut v := generate_notzero_scalar(10)?
 	out := check_aliasing_onearg(negate_aliasing, mut v, x)
 	assert out == true
 }
@@ -46,9 +46,9 @@ fn subtract_aliasing(mut v Scalar, x Scalar, y Scalar) Scalar {
 fn test_check_aliasing_twoargs() ? {
 	fn_with_twoargs := [add_aliasing, multiply_aliasing, subtract_aliasing]
 	for f in fn_with_twoargs {
-		mut v := generate_notzero_scalar(10) ?
-		x := generate_notzero_scalar(10) ?
-		y := generate_notzero_scalar(10) ?
+		mut v := generate_notzero_scalar(10)?
+		x := generate_notzero_scalar(10)?
+		y := generate_notzero_scalar(10)?
 		out := check_aliasing_twoargs(f, mut v, x, y)
 		assert out == true
 	}

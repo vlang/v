@@ -47,7 +47,7 @@ pub fn regex_opt(pattern string) ?RE {
 	re.group_data = []int{len: re.group_max, init: -1}
 
 	// compile the pattern
-	re.compile_opt(pattern) ?
+	re.compile_opt(pattern)?
 
 	return re
 }

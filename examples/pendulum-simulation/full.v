@@ -7,11 +7,11 @@ import sim.args as simargs
 import sim.img
 
 fn main() {
-	args := simargs.parse_args(extra_workers: 2) ? as simargs.ParallelArgs
+	args := simargs.parse_args(extra_workers: 2)? as simargs.ParallelArgs
 
 	img_settings := img.image_settings_from_grid(args.grid)
 
-	mut writer := img.ppm_writer_for_fname(args.filename, img_settings) ?
+	mut writer := img.ppm_writer_for_fname(args.filename, img_settings)?
 
 	mut app := anim.new_app(args)
 	mut workers := []thread{cap: args.workers + 1}

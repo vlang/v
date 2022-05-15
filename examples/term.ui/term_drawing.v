@@ -125,7 +125,7 @@ fn main() {
 	app.mouse_pos.x = 40
 	app.mouse_pos.y = 15
 	app.ui.clear()
-	app.ui.run() ?
+	app.ui.run()?
 }
 
 fn frame(x voidptr) {

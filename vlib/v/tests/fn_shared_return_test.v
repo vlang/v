@@ -29,7 +29,7 @@ fn test_shared_fn_return() {
 }
 
 fn shared_opt_propagate(good bool) ?f64 {
-	shared x := g(good) ?
+	shared x := g(good)?
 	ret := rlock x {
 		x.x
 	}

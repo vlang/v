@@ -11,15 +11,15 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 	query := orm.orm_select_gen(config, '`', false, '?', 0, where)
 	mut ret := [][]orm.Primitive{}
 	mut stmt := db.init_stmt(query)
-	stmt.prepare() ?
+	stmt.prepare()?
 
-	mysql_stmt_binder(mut stmt, where) ?
-	mysql_stmt_binder(mut stmt, data) ?
+	mysql_stmt_binder(mut stmt, where)?
+	mysql_stmt_binder(mut stmt, data)?
 	if data.data.len > 0 || where.data.len > 0 {
-		stmt.bind_params() ?
+		stmt.bind_params()?
 	}
 
-	mut status := stmt.execute() ?
+	mut status := stmt.execute()?
 	num_fields := stmt.get_field_count()
 	metadata := stmt.gen_metadata()
 	fields := stmt.fetch_fields(metadata)
@@ -66,23 +66,23 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 
 	lens := []u32{len: int(num_fields), init: 0}
 	stmt.bind_res(fields, vptr, lens, num_fields)
-	stmt.bind_result_buffer() ?
-	stmt.store_result() ?
+	stmt.bind_result_buffer()?
+	stmt.store_result()?
 
 	mut row := 0
 
 	for {
-		status = stmt.fetch_stmt() ?
+		status = stmt.fetch_stmt()?
 
 		if status == 1 || status == 100 {
 			break
 		}
 		row++
-		data_list := buffer_to_primitive(vptr, config.types) ?
+		data_list := buffer_to_primitive(vptr, config.types)?
 		ret << data_list
 	}
 
-	stmt.close() ?
+	stmt.close()?
 
 	return ret
 }
@@ -91,17 +91,17 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 
 pub fn (db Connection) insert(table string, data orm.QueryData) ? {
 	query := orm.orm_stmt_gen(table, '`', .insert, false, '?', 1, data, orm.QueryData{})
-	mysql_stmt_worker(db, query, data, orm.QueryData{}) ?
+	mysql_stmt_worker(db, query, data, orm.QueryData{})?
 }
 
 pub fn (db Connection) update(table string, data orm.QueryData, where orm.QueryData) ? {
 	query := orm.orm_stmt_gen(table, '`', .update, false, '?', 1, data, where)
-	mysql_stmt_worker(db, query, data, where) ?
+	mysql_stmt_worker(db, query, data, where)?
 }
 
 pub fn (db Connection) delete(table string, where orm.QueryData) ? {
 	query := orm.orm_stmt_gen(table, '`', .delete, false, '?', 1, orm.QueryData{}, where)
-	mysql_stmt_worker(db, query, orm.QueryData{}, where) ?
+	mysql_stmt_worker(db, query, orm.QueryData{}, where)?
 }
 
 pub fn (db Connection) last_id() orm.Primitive {
@@ -119,24 +119,24 @@ pub fn (db Connection) create(table string, fields []orm.TableField) ? {
 	query := orm.orm_table_gen(table, '`', false, 0, fields, mysql_type_from_v, false) or {
 		return err
 	}
-	mysql_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{}) ?
+	mysql_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})?
 }
 
 pub fn (db Connection) drop(table string) ? {
 	query := 'DROP TABLE `$table`;'
-	mysql_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{}) ?
+	mysql_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})?
 }
 
 fn mysql_stmt_worker(db Connection, query string, data orm.QueryData, where orm.QueryData) ? {
 	mut stmt := db.init_stmt(query)
-	stmt.prepare() ?
-	mysql_stmt_binder(mut stmt, data) ?
-	mysql_stmt_binder(mut stmt, where) ?
+	stmt.prepare()?
+	mysql_stmt_binder(mut stmt, data)?
+	mysql_stmt_binder(mut stmt, where)?
 	if data.data.len > 0 || where.data.len > 0 {
-		stmt.bind_params() ?
+		stmt.bind_params()?
 	}
-	stmt.execute() ?
-	stmt.close() ?
+	stmt.execute()?
+	stmt.close()?
 }
 
 fn mysql_stmt_binder(mut stmt Stmt, d orm.QueryData) ? {

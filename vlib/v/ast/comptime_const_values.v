@@ -19,7 +19,7 @@ pub fn empty_comptime_const_expr() ComptTimeConstValue {
 }
 
 pub fn (val ComptTimeConstValue) i8() ?i8 {
-	x := val.i64() ?
+	x := val.i64()?
 	if x > -129 && x < 128 {
 		return i8(x)
 	}
@@ -27,7 +27,7 @@ pub fn (val ComptTimeConstValue) i8() ?i8 {
 }
 
 pub fn (val ComptTimeConstValue) i16() ?i16 {
-	x := val.i64() ?
+	x := val.i64()?
 	if x > -32769 && x < 32768 {
 		return i16(x)
 	}
@@ -35,7 +35,7 @@ pub fn (val ComptTimeConstValue) i16() ?i16 {
 }
 
 pub fn (val ComptTimeConstValue) int() ?int {
-	x := val.i64() ?
+	x := val.i64()?
 	if x > -2147483649 && x < 2147483648 {
 		return int(x)
 	}
@@ -94,7 +94,7 @@ pub fn (val ComptTimeConstValue) i64() ?i64 {
 }
 
 pub fn (val ComptTimeConstValue) u8() ?u8 {
-	x := val.u64() ?
+	x := val.u64()?
 	if x < 256 {
 		return u8(x)
 	}
@@ -102,7 +102,7 @@ pub fn (val ComptTimeConstValue) u8() ?u8 {
 }
 
 pub fn (val ComptTimeConstValue) u16() ?u16 {
-	x := val.u64() ?
+	x := val.u64()?
 	if x < 65536 {
 		return u16(x)
 	}
@@ -110,7 +110,7 @@ pub fn (val ComptTimeConstValue) u16() ?u16 {
 }
 
 pub fn (val ComptTimeConstValue) u32() ?u32 {
-	x := val.u64() ?
+	x := val.u64()?
 	if x < 4294967296 {
 		return u32(x)
 	}
@@ -171,7 +171,7 @@ pub fn (val ComptTimeConstValue) u64() ?u64 {
 }
 
 pub fn (val ComptTimeConstValue) f32() ?f32 {
-	x := val.f64() ?
+	x := val.f64()?
 	return f32(x)
 }
 

@@ -207,7 +207,7 @@ fn (mut g JsGen) gen_str_default(sym ast.TypeSymbol, styp string, str_fn_name st
 
 	g.definitions.writeln('function ${str_fn_name}(it) {')
 	if convertor == 'bool' {
-		g.definitions.writeln('\tlet tmp1 = string__plus(new string("${styp}("), it.valueOf() ? new string("true") : new string("false"));')
+		g.definitions.writeln('\tlet tmp1 = string__plus(new string("${styp}("), it.valueOf()? new string("true") : new string("false"));')
 	} else {
 		g.definitions.writeln('\tlet tmp1 = string__plus(new string("${styp}("), new string(${typename_}_str(($convertor)it).str));')
 	}
@@ -766,7 +766,7 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 				fn_builder.write_string('tos2((byteptr)$func)')
 			} else {
 				if field.typ.is_ptr() && sym.kind == .struct_ {
-					fn_builder.write_string('(indent_count > 25) ? new string("<probably circular>") : ')
+					fn_builder.write_string('(indent_count > 25)? new string("<probably circular>") : ')
 				}
 				fn_builder.write_string(func)
 			}

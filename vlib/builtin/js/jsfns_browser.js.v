@@ -40,7 +40,7 @@ fn JS.moveBy(int, int)
 fn JS.moveTo(int, int)
 fn JS.msWriteProfilerMark(string)
 
-// fn JS.open(string, string, string, bool) ?Window
+// fn JS.open(string, string, string, bool)?Window
 // fn JS.postMessage(any, string, []Transferable)
 fn JS.print()
 fn JS.prompt(string, string) ?string

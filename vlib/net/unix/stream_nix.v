@@ -41,7 +41,7 @@ fn error_code() int {
 }
 
 fn new_stream_socket() ?StreamSocket {
-	sockfd := net.socket_error(C.socket(net.AddrFamily.unix, net.SocketType.tcp, 0)) ?
+	sockfd := net.socket_error(C.socket(net.AddrFamily.unix, net.SocketType.tcp, 0))?
 	mut s := StreamSocket{
 		handle: sockfd
 	}
@@ -73,12 +73,12 @@ fn (mut s StreamSocket) connect(a string) ? {
 		return
 	}
 	_ := error_code()
-	write_result := s.@select(.write, unix.connect_timeout) ?
+	write_result := s.@select(.write, unix.connect_timeout)?
 	if write_result {
 		// succeeded
 		return
 	}
-	except_result := s.@select(.except, unix.connect_timeout) ?
+	except_result := s.@select(.except, unix.connect_timeout)?
 	if except_result {
 		return net.err_connect_failed
 	}
@@ -90,7 +90,7 @@ pub fn listen_stream(sock string) ?&StreamListener {
 	if sock.len >= max_sun_path {
 		return error('Socket path too long! Max length: ${max_sun_path - 1} chars.')
 	}
-	mut s := new_stream_socket() ?
+	mut s := new_stream_socket()?
 	s.path = sock
 	mut addr := C.sockaddr_un{}
 	unsafe { C.memset(&addr, 0, sizeof(C.sockaddr_un)) }
@@ -98,19 +98,19 @@ pub fn listen_stream(sock string) ?&StreamListener {
 	unsafe { C.strncpy(&addr.sun_path[0], &char(sock.str), max_sun_path) }
 	size := C.SUN_LEN(&addr)
 	if os.exists(sock) {
-		os.rm(sock) ?
+		os.rm(sock)?
 	}
-	net.socket_error(C.bind(s.handle, voidptr(&addr), size)) ?
-	os.chmod(sock, 0o777) ?
-	net.socket_error(C.listen(s.handle, 128)) ?
+	net.socket_error(C.bind(s.handle, voidptr(&addr), size))?
+	os.chmod(sock, 0o777)?
+	net.socket_error(C.listen(s.handle, 128))?
 	return &StreamListener{
 		sock: s
 	}
 }
 
 pub fn connect_stream(path string) ?&StreamConn {
-	mut s := new_stream_socket() ?
-	s.connect(path) ?
+	mut s := new_stream_socket()?
+	s.connect(path)?
 	return &StreamConn{
 		sock: s
 		read_timeout: unix.unix_default_read_timeout
@@ -121,7 +121,7 @@ pub fn connect_stream(path string) ?&StreamConn {
 pub fn (mut l StreamListener) accept() ?&StreamConn {
 	mut new_handle := C.accept(l.sock.handle, 0, 0)
 	if new_handle <= 0 {
-		l.wait_for_accept() ?
+		l.wait_for_accept()?
 		new_handle = C.accept(l.sock.handle, 0, 0)
 		if new_handle == -1 || new_handle == 0 {
 			return error('accept failed')
@@ -161,12 +161,12 @@ pub fn (mut c StreamListener) wait_for_accept() ? {
 }
 
 pub fn (mut c StreamListener) close() ? {
-	os.rm(c.sock.path) ?
-	c.sock.close() ?
+	os.rm(c.sock.path)?
+	c.sock.close()?
 }
 
 pub fn (mut c StreamConn) close() ? {
-	c.sock.close() ?
+	c.sock.close()?
 }
 
 // write_ptr blocks and attempts to write all data
@@ -186,10 +186,10 @@ pub fn (mut c StreamConn) write_ptr(b &u8, len int) ?int {
 			if sent < 0 {
 				code := error_code()
 				if code == int(error_ewouldblock) {
-					c.wait_for_write() ?
+					c.wait_for_write()?
 					continue
 				} else {
-					net.wrap_error(code) ?
+					net.wrap_error(code)?
 				}
 			}
 			total_sent += sent
@@ -209,7 +209,7 @@ pub fn (mut c StreamConn) write_string(s string) ?int {
 }
 
 pub fn (mut c StreamConn) read_ptr(buf_ptr &u8, len int) ?int {
-	mut res := wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)) ?
+	mut res := wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0))?
 	$if trace_unix ? {
 		eprintln('<<< StreamConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
 	}
@@ -218,14 +218,14 @@ pub fn (mut c StreamConn) read_ptr(buf_ptr &u8, len int) ?int {
 	}
 	code := error_code()
 	if code == int(error_ewouldblock) {
-		c.wait_for_read() ?
-		res = wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)) ?
+		c.wait_for_read()?
+		res = wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0))?
 		$if trace_unix ? {
 			eprintln('<<< StreamConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
 		}
 		return net.socket_error(res)
 	} else {
-		net.wrap_error(code) ?
+		net.wrap_error(code)?
 	}
 	return net.socket_error(code)
 }

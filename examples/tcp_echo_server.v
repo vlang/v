@@ -9,11 +9,11 @@ import net
 // telnet 127.0.0.1 12345
 
 fn main() {
-	mut server := net.listen_tcp(.ip6, ':12345') ?
-	laddr := server.addr() ?
+	mut server := net.listen_tcp(.ip6, ':12345')?
+	laddr := server.addr()?
 	eprintln('Listen on $laddr ...')
 	for {
-		mut socket := server.accept() ?
+		mut socket := server.accept()?
 		go handle_client(mut socket)
 	}
 }

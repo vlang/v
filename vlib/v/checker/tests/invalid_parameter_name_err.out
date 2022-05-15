@@ -8,7 +8,7 @@ vlib/v/checker/tests/invalid_parameter_name_err.vv:4:24: error: invalid use of r
 vlib/v/checker/tests/invalid_parameter_name_err.vv:10:6: error: invalid use of reserved type `char` as a parameter name
     8 | interface Writer {
     9 | mut:
-   10 |     put(char u8) ?
+   10 |     put(char u8)?
       |         ~~~~
    11 | }
    12 |

@@ -927,9 +927,10 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						}
 					}
 				}
-			} else if left_type.has_flag(.optional) && right_type.has_flag(.optional) {
+			} else if left_type.has_flag(.optional) || right_type.has_flag(.optional) {
+				opt_comp_pos := if left_type.has_flag(.optional) { left_pos } else { right_pos }
 				c.error('unwrapped optional cannot be compared in an infix expression',
-					left_right_pos)
+					opt_comp_pos)
 			}
 		}
 		.left_shift {
@@ -1143,8 +1144,11 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	// TODO move this to symmetric_check? Right now it would break `return 0` for `fn()?int `
 	left_is_optional := left_type.has_flag(.optional)
 	right_is_optional := right_type.has_flag(.optional)
-	if (left_is_optional && !right_is_optional) || (!left_is_optional && right_is_optional) {
-		c.error('unwrapped optional cannot be used in an infix expression', left_right_pos)
+	if left_is_optional && right_is_optional {
+		c.error('unwrapped optionals cannot be used in an infix expression', left_right_pos)
+	} else if left_is_optional || right_is_optional {
+		opt_infix_pos := if left_is_optional { left_pos } else { right_pos }
+		c.error('unwrapped optional cannot be used in an infix expression', opt_infix_pos)
 	}
 	// Dual sides check (compatibility check)
 	if !(c.symmetric_check(left_type, right_type) && c.symmetric_check(right_type, left_type))
@@ -3533,6 +3537,7 @@ pub fn (mut c Checker) select_expr(mut node ast.SelectExpr) ast.Type {
 }
 
 pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) ast.Type {
+	expected_type := c.expected_type
 	if c.rlocked_names.len > 0 || c.locked_names.len > 0 {
 		c.error('nested `lock`/`rlock` not allowed', node.pos)
 	}
@@ -3556,16 +3561,17 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) ast.Type {
 		}
 	}
 	c.stmts(node.stmts)
-	c.rlocked_names = []
-	c.locked_names = []
 	// handle `x := rlock a { a.getval() }`
 	mut ret_type := ast.void_type
 	if node.stmts.len > 0 {
 		last_stmt := node.stmts.last()
 		if last_stmt is ast.ExprStmt {
-			ret_type = last_stmt.typ
+			c.expected_type = expected_type
+			ret_type = c.expr(last_stmt.expr)
 		}
 	}
+	c.rlocked_names = []
+	c.locked_names = []
 	if ret_type != ast.void_type {
 		node.is_expr = true
 	}
@@ -3864,40 +3870,25 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 	mut typ := c.expr(node.left)
 	mut typ_sym := c.table.final_sym(typ)
 	node.left_type = typ
-	for {
-		match typ_sym.kind {
-			.map {
-				node.is_map = true
-				break
-			}
-			.array {
-				node.is_array = true
-				if node.or_expr.kind != .absent && node.index is ast.RangeExpr {
-					c.error('custom error handling on range expressions for arrays is not supported yet.',
-						node.or_expr.pos)
-				}
-				break
-			}
-			.array_fixed {
-				node.is_farray = true
-				break
-			}
-			.any {
-				gname := typ_sym.name
-				typ = c.unwrap_generic(typ)
-				node.left_type = typ
-				typ_sym = c.table.final_sym(typ)
-				if typ.is_ptr() {
-					continue
-				} else {
-					c.error('generic type $gname does not support indexing, pass an array, or a reference instead, e.g. []$gname or &$gname',
-						node.pos)
-				}
-			}
-			else {
-				break
+	match typ_sym.kind {
+		.map {
+			node.is_map = true
+		}
+		.array {
+			node.is_array = true
+			if node.or_expr.kind != .absent && node.index is ast.RangeExpr {
+				c.error('custom error handling on range expressions for arrays is not supported yet.',
+					node.or_expr.pos)
 			}
 		}
+		.array_fixed {
+			node.is_farray = true
+		}
+		.any {
+			typ = c.unwrap_generic(typ)
+			typ_sym = c.table.final_sym(typ)
+		}
+		else {}
 	}
 	if typ_sym.kind !in [.array, .array_fixed, .string, .map] && !typ.is_ptr()
 		&& typ !in [ast.byteptr_type, ast.charptr_type] && !typ.has_flag(.variadic) {
@@ -4284,20 +4275,20 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) ? {
 			}
 		}
 		.array {
-			c.ensure_type_exists((sym.info as ast.Array).elem_type, pos) ?
+			c.ensure_type_exists((sym.info as ast.Array).elem_type, pos)?
 		}
 		.array_fixed {
-			c.ensure_type_exists((sym.info as ast.ArrayFixed).elem_type, pos) ?
+			c.ensure_type_exists((sym.info as ast.ArrayFixed).elem_type, pos)?
 		}
 		.map {
 			info := sym.info as ast.Map
-			c.ensure_type_exists(info.key_type, pos) ?
-			c.ensure_type_exists(info.value_type, pos) ?
+			c.ensure_type_exists(info.key_type, pos)?
+			c.ensure_type_exists(info.value_type, pos)?
 		}
 		.sum_type {
 			info := sym.info as ast.SumType
 			for concrete_typ in info.concrete_types {
-				c.ensure_type_exists(concrete_typ, pos) ?
+				c.ensure_type_exists(concrete_typ, pos)?
 			}
 		}
 		else {}

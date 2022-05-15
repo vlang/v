@@ -41,77 +41,77 @@ fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) ? {
 		}
 		ast.ArrayInit {
 			if val.has_cap {
-				p.check_undefined_variables(exprs, val.cap_expr) ?
+				p.check_undefined_variables(exprs, val.cap_expr)?
 			}
 			if val.has_len {
-				p.check_undefined_variables(exprs, val.len_expr) ?
+				p.check_undefined_variables(exprs, val.len_expr)?
 			}
 			if val.has_default {
-				p.check_undefined_variables(exprs, val.default_expr) ?
+				p.check_undefined_variables(exprs, val.default_expr)?
 			}
 			for expr in val.exprs {
-				p.check_undefined_variables(exprs, expr) ?
+				p.check_undefined_variables(exprs, expr)?
 			}
 		}
 		ast.CallExpr {
-			p.check_undefined_variables(exprs, val.left) ?
+			p.check_undefined_variables(exprs, val.left)?
 			for arg in val.args {
-				p.check_undefined_variables(exprs, arg.expr) ?
+				p.check_undefined_variables(exprs, arg.expr)?
 			}
 		}
 		ast.InfixExpr {
-			p.check_undefined_variables(exprs, val.left) ?
-			p.check_undefined_variables(exprs, val.right) ?
+			p.check_undefined_variables(exprs, val.left)?
+			p.check_undefined_variables(exprs, val.right)?
 		}
 		ast.IfExpr {
-			p.check_undefined_variables(exprs, val.left) ?
+			p.check_undefined_variables(exprs, val.left)?
 			for branch in val.branches {
-				p.check_undefined_variables(exprs, branch.cond) ?
+				p.check_undefined_variables(exprs, branch.cond)?
 				for stmt in branch.stmts {
 					if stmt is ast.ExprStmt {
-						p.check_undefined_variables(exprs, stmt.expr) ?
+						p.check_undefined_variables(exprs, stmt.expr)?
 					}
 				}
 			}
 		}
 		ast.MapInit {
 			for key in val.keys {
-				p.check_undefined_variables(exprs, key) ?
+				p.check_undefined_variables(exprs, key)?
 			}
 			for value in val.vals {
-				p.check_undefined_variables(exprs, value) ?
+				p.check_undefined_variables(exprs, value)?
 			}
 		}
 		ast.MatchExpr {
-			p.check_undefined_variables(exprs, val.cond) ?
+			p.check_undefined_variables(exprs, val.cond)?
 			for branch in val.branches {
 				for expr in branch.exprs {
-					p.check_undefined_variables(exprs, expr) ?
+					p.check_undefined_variables(exprs, expr)?
 				}
 				for stmt in branch.stmts {
 					if stmt is ast.ExprStmt {
-						p.check_undefined_variables(exprs, stmt.expr) ?
+						p.check_undefined_variables(exprs, stmt.expr)?
 					}
 				}
 			}
 		}
 		ast.ParExpr {
-			p.check_undefined_variables(exprs, val.expr) ?
+			p.check_undefined_variables(exprs, val.expr)?
 		}
 		ast.PostfixExpr {
-			p.check_undefined_variables(exprs, val.expr) ?
+			p.check_undefined_variables(exprs, val.expr)?
 		}
 		ast.PrefixExpr {
-			p.check_undefined_variables(exprs, val.right) ?
+			p.check_undefined_variables(exprs, val.right)?
 		}
 		ast.StringInterLiteral {
 			for expr_ in val.exprs {
-				p.check_undefined_variables(exprs, expr_) ?
+				p.check_undefined_variables(exprs, expr_)?
 			}
 		}
 		ast.StructInit {
 			for field in val.fields {
-				p.check_undefined_variables(exprs, field.expr) ?
+				p.check_undefined_variables(exprs, field.expr)?
 			}
 		}
 		else {}

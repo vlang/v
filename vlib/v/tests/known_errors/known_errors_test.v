@@ -7,7 +7,7 @@ const vroot = os.dir(vexe)
 const testdata_folder = 'vlib/v/tests/known_errors/testdata'
 
 fn test_known_errors_testdata_folder_exists() ? {
-	os.chdir(vroot) ?
+	os.chdir(vroot)?
 	assert os.is_dir(testdata_folder)
 }
 

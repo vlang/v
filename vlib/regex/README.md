@@ -540,7 +540,7 @@ After an initializer is used, the regex expression must be compiled with:
 
 ```v ignore
 // compile compiles the REgex returning an error if the compilation fails
-pub fn (re mut RE) compile_opt(in_txt string) ?
+pub fn (re mut RE) compile_opt(in_txt string)?
 ```
 
 ### Matching Functions

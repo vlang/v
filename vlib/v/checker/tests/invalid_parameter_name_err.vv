@@ -7,7 +7,7 @@ fn (mut b Buffer) put8(char u8) ? {
 
 interface Writer {
 mut:
-	put(char u8) ?
+	put(char u8)?
 }
 
 fn main() {

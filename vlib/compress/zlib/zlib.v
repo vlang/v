@@ -9,7 +9,7 @@ fn C.tdefl_compress_mem_to_heap(source_buf voidptr, source_buf_len usize, out_le
 fn C.tinfl_decompress_mem_to_heap(source_buf voidptr, source_buf_len usize, out_len &usize, flags int) voidptr
 
 // compresses an array of bytes using zlib and returns the compressed bytes in a new array
-// Example: compressed := zlib.compress(b) ?
+// Example: compressed := zlib.compress(b)?
 [manualfree]
 pub fn compress(data []u8) ?[]u8 {
 	if u64(data.len) > zlib.max_size {
@@ -36,7 +36,7 @@ pub fn compress(data []u8) ?[]u8 {
 }
 
 // decompresses an array of bytes using zlib and returns the decompressed bytes in a new array
-// Example: decompressed := zlib.decompress(b) ?
+// Example: decompressed := zlib.decompress(b)?
 [manualfree]
 pub fn decompress(data []u8) ?[]u8 {
 	mut out_len := usize(0)

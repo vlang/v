@@ -1,0 +1,15 @@
+fn main() {
+	mut a := [1, 2, 3]
+	mut b := [4, 5, 6]!
+
+	func(mut a)
+	func(mut b)
+}
+
+fn func<T>(mut t T) {
+	$if T is $Array {
+		for i in 0 .. t.len {
+			println(t[i])
+		}
+	}
+}

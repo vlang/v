@@ -30,7 +30,7 @@ pub fn auto_config(toml string) ?Config {
 			text: toml
 		}
 	}
-	config.validate() ?
+	config.validate()?
 	return config
 }
 
@@ -49,7 +49,7 @@ fn (c Config) validate() ? {
 // read_input returns either Config.text or the read file contents of Config.file_path
 // depending on which one is not empty.
 pub fn (c Config) read_input() ?string {
-	c.validate() ?
+	c.validate()?
 	mut text := c.text
 	if text == '' && os.is_file(c.file_path) {
 		text = os.read_file(c.file_path) or {

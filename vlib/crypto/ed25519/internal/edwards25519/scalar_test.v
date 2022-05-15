@@ -91,8 +91,8 @@ fn test_scalar_set_canonical_bytes() ? {
 
 fn test_scalar_set_canonical_bytes_round_trip() ? {
 	for i in 0 .. 10 {
-		mut sc1 := generate_scalar(2) ?
-		mut sc2 := generate_scalar(6) ?
+		mut sc1 := generate_scalar(2)?
+		mut sc2 := generate_scalar(6)?
 		sc2.set_canonical_bytes(sc1.bytes()) or { panic(err) }
 
 		assert sc1 == sc2
@@ -117,14 +117,14 @@ fn test_scalar_set_canonical_bytes_on_noncanonical_value() ? {
 
 fn test_scalar_set_uniform_bytes() ? {
 	// mod, _ := new(big.Integer).SetString("27742317777372353535851937790883648493", 10)
-	mut mod := big.integer_from_string('27742317777372353535851937790883648493') ?
+	mut mod := big.integer_from_string('27742317777372353535851937790883648493')?
 	// mod.Add(mod, new(big.Integer).Lsh(big.NewInt(1), 252))
 	mod = mod + big.integer_from_i64(1).lshift(252)
 
-	mut sc := generate_scalar(100) ?
-	inp := rand.bytes(64) ?
+	mut sc := generate_scalar(100)?
+	inp := rand.bytes(64)?
 
-	sc.set_uniform_bytes(inp[..]) ?
+	sc.set_uniform_bytes(inp[..])?
 	assert is_reduced(sc) == true
 
 	scbig := bigint_from_le_bytes(sc.s[..])
@@ -190,9 +190,9 @@ fn test_scalar_set_bytes_with_clamping() {
 }
 
 fn test_scalar_multiply_distributes_over_add() ? {
-	x := generate_scalar(100) ?
-	y := generate_scalar(100) ?
-	z := generate_scalar(100) ?
+	x := generate_scalar(100)?
+	y := generate_scalar(100)?
+	z := generate_scalar(100)?
 
 	// Compute t1 = (x+y)*z
 	mut t1 := Scalar{}

@@ -456,6 +456,8 @@ fn (mut g Gen) gen_assign_stmt(node_ ast.AssignStmt) {
 						}
 						if val is ast.ArrayInit {
 							g.array_init(val, ident.name)
+						} else if val_type.has_flag(.shared_f) {
+							g.expr_with_cast(val, val_type, var_type)
 						} else {
 							g.expr(val)
 						}

@@ -15,7 +15,7 @@ const vdir = @VEXEROOT
 fn main() {
 	dump(fast_dir)
 	dump(vdir)
-	os.chdir(fast_dir) ?
+	os.chdir(fast_dir)?
 	if !os.exists('$vdir/v') && !os.is_dir('$vdir/vlib') {
 		println('fast.html generator needs to be located in `v/cmd/tools/fast`')
 	}
@@ -32,11 +32,11 @@ fn main() {
 	// fetch the last commit's hash
 	commit := exec('git rev-parse HEAD')[..8]
 	if !os.exists('table.html') {
-		os.create('table.html') ?
+		os.create('table.html')?
 	}
-	mut table := os.read_file('table.html') ?
+	mut table := os.read_file('table.html')?
 	if os.exists('website/index.html') {
-		uploaded_index := os.read_file('website/index.html') ?
+		uploaded_index := os.read_file('website/index.html')?
 		if uploaded_index.contains('>$commit<') {
 			println('nothing to benchmark')
 			exit(1)
@@ -48,7 +48,7 @@ fn main() {
 
 	// build an optimized V
 	println('  Building vprod...')
-	os.chdir(vdir) ?
+	os.chdir(vdir)?
 	if os.args.contains('-noprod') {
 		exec('./v -o vprod cmd/v') // for faster debugging
 	} else {
@@ -82,8 +82,8 @@ fn main() {
 	commit_date := exec('git log -n1 --pretty="format:%at" $commit')
 	date := time.unix(commit_date.int())
 
-	os.chdir(fast_dir) ?
-	mut out := os.create('table.html') ?
+	os.chdir(fast_dir)?
+	mut out := os.create('table.html')?
 
 	// place the new row on top
 	html_message := message.replace_each(['<', '&lt;', '>', '&gt;'])
@@ -105,25 +105,25 @@ fn main() {
 		<td>${int(f64(vlines) / f64(diff1) * 1000.0)}</td>
 	</tr>\n' +
 		table.trim_space()
-	out.writeln(table) ?
+	out.writeln(table)?
 	out.close()
 
 	// regenerate index.html
-	header := os.read_file('header.html') ?
-	footer := os.read_file('footer.html') ?
-	mut res := os.create('index.html') ?
-	res.writeln(header) ?
-	res.writeln(table) ?
-	res.writeln(footer) ?
+	header := os.read_file('header.html')?
+	footer := os.read_file('footer.html')?
+	mut res := os.create('index.html')?
+	res.writeln(header)?
+	res.writeln(table)?
+	res.writeln(footer)?
 	res.close()
 
 	// upload the result to github pages
 	if os.args.contains('-upload') {
 		println('uploading...')
-		os.chdir('website') ?
+		os.chdir('website')?
 		os.execute_or_exit('git checkout gh-pages')
-		os.cp('../index.html', 'index.html') ?
-		os.rm('../index.html') ?
+		os.cp('../index.html', 'index.html')?
+		os.rm('../index.html')?
 		os.system('git commit -am "update benchmark"')
 		os.system('git push origin gh-pages')
 	}

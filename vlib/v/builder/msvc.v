@@ -119,7 +119,7 @@ fn find_windows_kit_root_by_reg(target_arch string) ?WindowsKit {
 
 fn new_windows_kit(kit_root string, target_arch string) ?WindowsKit {
 	kit_lib := kit_root + 'Lib'
-	files := os.ls(kit_lib) ?
+	files := os.ls(kit_lib)?
 	mut highest_path := ''
 	mut highest_int := 0
 	for f in files {

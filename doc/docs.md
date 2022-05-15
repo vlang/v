@@ -1303,7 +1303,7 @@ large_index := 999
 val := arr[large_index] or { panic('out of bounds') }
 println(val)
 // you can also do this, if you want to *propagate* the access error:
-val2 := arr[333] ?
+val2 := arr[333]?
 println(val2)
 ```
 
@@ -1893,7 +1893,7 @@ enum State {
 
 // write log file and return number of bytes written
 fn write_log(s State) ?int {
-	mut f := os.create('log.txt') ?
+	mut f := os.create('log.txt')?
 	defer {
 		f.close()
 	}
@@ -3419,7 +3419,7 @@ propagate the error:
 import net.http
 
 fn f(url string) ?string {
-	resp := http.get(url) ?
+	resp := http.get(url)?
 	return resp.text
 }
 ```
@@ -3937,7 +3937,7 @@ println(user.last_name)
 println(user.age)
 // You can also decode JSON arrays:
 sfoos := '[{"x":123},{"x":456}]'
-foos := json.decode([]Foo, sfoos) ?
+foos := json.decode([]Foo, sfoos)?
 println(foos[0].x)
 println(foos[1].x)
 ```
@@ -4042,8 +4042,8 @@ If a test function has an error return type, any propagated errors will fail the
 import strconv
 
 fn test_atoi() ? {
-	assert strconv.atoi('1') ? == 1
-	assert strconv.atoi('one') ? == 1 // test will fail
+	assert strconv.atoi('1')? == 1
+	assert strconv.atoi('one')? == 1 // test will fail
 }
 ```
 
@@ -4435,7 +4435,7 @@ struct Customer {
 	country   string [nonull]
 }
 
-db := sqlite.connect('customers.db') ?
+db := sqlite.connect('customers.db')?
 
 // you can create tables:
 // CREATE TABLE IF NOT EXISTS `Customer` (
@@ -5356,7 +5356,7 @@ Full list of builtin options:
 import os
 fn main() {
 	embedded_file := $embed_file('v.png')
-	os.write_file('exported.png', embedded_file.to_string()) ?
+	os.write_file('exported.png', embedded_file.to_string())?
 }
 ```
 
@@ -5380,7 +5380,7 @@ Currently only one compression type is supported: `zlib`
 import os
 fn main() {
 	embedded_file := $embed_file('v.png', .zlib) // compressed using zlib
-	os.write_file('exported.png', embedded_file.to_string()) ?
+	os.write_file('exported.png', embedded_file.to_string())?
 }
 ```
 
@@ -5833,7 +5833,7 @@ fn sh(cmd string){
 rmdir_all('build') or { }
 
 // Create build/, never fails as build/ does not exist
-mkdir('build') ?
+mkdir('build')?
 
 // Move *.v files to build/
 result := execute('mv *.v build/')
@@ -5844,7 +5844,7 @@ if result.exit_code != 0 {
 sh('ls')
 
 // Similar to:
-// files := ls('.') ?
+// files := ls('.')?
 // mut count := 0
 // if files.len > 0 {
 //     for file in files {

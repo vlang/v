@@ -13,11 +13,11 @@ mut connection := mysql.Connection{
 	dbname: 'mysql'
 }
 // Connect to server
-connection.connect() ?
+connection.connect()?
 // Change the default database
-connection.select_db('db_users') ?
+connection.select_db('db_users')?
 // Do a query
-get_users_query_result := connection.query('SELECT * FROM users') ?
+get_users_query_result := connection.query('SELECT * FROM users')?
 // Get the result as maps
 for user in get_users_query_result.maps() {
 	// Access the name of user

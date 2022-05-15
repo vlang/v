@@ -375,7 +375,7 @@ pub fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSym
 fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type ast.Type, right_type ast.Type) ast.Type {
 	if !left_type.is_int() {
 		left_sym := c.table.sym(left_type)
-		// maybe it's an int alias? TODO move this to is_int() ?
+		// maybe it's an int alias? TODO move this to is_int()?
 		if left_sym.kind == .alias && (left_sym.info as ast.Alias).parent_type.is_int() {
 			return left_type
 		}

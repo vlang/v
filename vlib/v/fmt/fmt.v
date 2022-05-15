@@ -2331,10 +2331,10 @@ pub fn (mut f Fmt) or_expr(node ast.OrExpr) {
 			f.write('}')
 		}
 		.propagate_option {
-			f.write(' ?')
+			f.write('?')
 		}
 		.propagate_result {
-			f.write(' !')
+			f.write('!')
 		}
 	}
 }

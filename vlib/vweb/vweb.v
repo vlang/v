@@ -639,7 +639,7 @@ fn (mut ctx Context) scan_static_directory(directory_path string, mount_path str
 // If `root` is set the mount path for the dir will be in '/'
 // Usage:
 // ```v
-// os.chdir( os.executable() ) ?
+// os.chdir( os.executable() )?
 // app.handle_static('assets', true)
 // ```
 pub fn (mut ctx Context) handle_static(directory_path string, root bool) bool {
@@ -711,7 +711,7 @@ fn send_string(mut conn net.TcpConn, s string) ? {
 	$if trace_response ? {
 		eprintln('> send_string:\n$s\n')
 	}
-	conn.write(s.bytes()) ?
+	conn.write(s.bytes())?
 }
 
 // Do not delete.
