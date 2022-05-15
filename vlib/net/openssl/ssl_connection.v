@@ -151,30 +151,34 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) ?int {
 	mut res := 0
 	for {
 		res = C.SSL_read(voidptr(s.ssl), buf_ptr, len)
-		if res < 0 {
+		if res >= 0 {
+		  return res
+		} else {		
 			err_res := ssl_error(res, s.ssl)?
-			if err_res == .ssl_error_want_read {
-				for {
+			match err_res {
+				.ssl_error_want_read {
 					ready := @select(s.handle, .read, s.duration)?
-					if ready {
-						break
+					if !ready {
+						return net.err_timed_out
 					}
 				}
-				continue
-			} else if err_res == .ssl_error_want_write {
-				for {
+
+				.ssl_error_want_write {
 					ready := @select(s.handle, .write, s.duration)?
-					if ready {
-						break
+					if !ready {
+						return net.err_timed_out
 					}
 				}
-				continue
-			} else if err_res == .ssl_error_zero_return {
-				return 0
-			}
-			return error('Could not read using SSL. ($err_res)')
+
+				.ssl_error_zero_return {
+					return 0
+				}
+
+				else {
+					return error('Could not read using SSL. ($err_res)')
+				}
+			}			
 		}
-		break
 	}
 	return res
 }
