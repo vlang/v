@@ -1,0 +1,12 @@
+struct Foo {
+	x int
+}
+
+fn (f Foo) hi() int {
+	return f.x
+}
+
+fn main() {
+	f := Foo{123}
+	_ = f.hi
+}
