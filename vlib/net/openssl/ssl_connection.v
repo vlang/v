@@ -152,8 +152,8 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) ?int {
 	for {
 		res = C.SSL_read(voidptr(s.ssl), buf_ptr, len)
 		if res >= 0 {
-		  return res
-		} else {		
+			return res
+		} else {
 			err_res := ssl_error(res, s.ssl)?
 			match err_res {
 				.ssl_error_want_read {
@@ -162,22 +162,19 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) ?int {
 						return net.err_timed_out
 					}
 				}
-
 				.ssl_error_want_write {
 					ready := @select(s.handle, .write, s.duration)?
 					if !ready {
 						return net.err_timed_out
 					}
 				}
-
 				.ssl_error_zero_return {
 					return 0
 				}
-
 				else {
 					return error('Could not read using SSL. ($err_res)')
 				}
-			}			
+			}
 		}
 	}
 	return res
