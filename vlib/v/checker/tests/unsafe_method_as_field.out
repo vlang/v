@@ -1,0 +1,7 @@
+vlib/v/checker/tests/unsafe_method_as_field.vv:23:7: error: method `Foo.ref` cannot be used as a variable outside `unsafe` blocks as its receiver might refer to an object stored on stack. Consider declaring `Foo` as `[heap]`.
+   21 |     f := Foo{}
+   22 |     _ := f.no_ref // no error
+   23 |     _ := f.ref // error
+      |          ~~~~~
+   24 |
+   25 |     b := Bar{}

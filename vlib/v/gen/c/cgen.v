@@ -3339,6 +3339,64 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				}
 			}
 		}
+	} else if m := g.table.find_method(sym, node.field_name) {
+		mut has_embeds := false
+		if sym.info in [ast.Struct, ast.Aggregate] {
+			if node.from_embed_types.len > 0 {
+				has_embeds = true
+			}
+		}
+		if !has_embeds {
+			receiver := m.params[0]
+			expr_styp := g.typ(node.expr_type.idx())
+			data_styp := g.typ(receiver.typ.idx())
+			mut sb := strings.new_builder(256)
+			name := '_V_closure_${expr_styp}_${m.name}_$node.pos.pos'
+			sb.write_string('${g.typ(m.return_type)} ${name}(')
+			for i in 1 .. m.params.len {
+				param := m.params[i]
+				if i != 1 {
+					sb.write_string(', ')
+				}
+				sb.write_string('${g.typ(param.typ)} a$i')
+			}
+			sb.writeln(') {')
+			sb.writeln('\t$data_styp* a0 = *($data_styp**)(__RETURN_ADDRESS() - __CLOSURE_DATA_OFFSET);')
+			if m.return_type != ast.void_type {
+				sb.write_string('\treturn ')
+			} else {
+				sb.write_string('\t')
+			}
+			sb.write_string('${expr_styp}_${m.name}(')
+			if !receiver.typ.is_ptr() {
+				sb.write_string('*')
+			}
+			for i in 0 .. m.params.len {
+				if i != 0 {
+					sb.write_string(', ')
+				}
+				sb.write_string('a$i')
+			}
+			sb.writeln(');')
+			sb.writeln('}')
+
+			g.anon_fn_definitions << sb.str()
+			g.nr_closures++
+
+			g.write('__closure_create($name, ')
+			if !receiver.typ.is_ptr() {
+				g.write('memdup(')
+			}
+			if !node.expr_type.is_ptr() {
+				g.write('&')
+			}
+			g.expr(node.expr)
+			if !receiver.typ.is_ptr() {
+				g.write(', sizeof($expr_styp))')
+			}
+			g.write(')')
+			return
+		}
 	}
 	n_ptr := node.expr_type.nr_muls() - 1
 	if n_ptr > 0 {
