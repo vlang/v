@@ -66,6 +66,7 @@ mut:
 	buffer_size int
 }
 
+// new returns a stack-based `FTP` instance.
 pub fn new() FTP {
 	mut f := FTP{
 		conn: 0
@@ -101,6 +102,7 @@ fn (mut zftp FTP) read() ?(int, string) {
 	return code, data
 }
 
+// connect establishes an FTP connection to the host at `ip` port 21.
 pub fn (mut zftp FTP) connect(ip string) ?bool {
 	zftp.conn = net.dial_tcp('$ip:21')?
 	zftp.reader = io.new_buffered_reader(reader: zftp.conn)
@@ -111,6 +113,7 @@ pub fn (mut zftp FTP) connect(ip string) ?bool {
 	return false
 }
 
+// login sends the "USER `user`" and "PASS `passwd`" commands to the remote host.
 pub fn (mut zftp FTP) login(user string, passwd string) ?bool {
 	zftp.write('USER $user') or {
 		$if debug {
@@ -138,11 +141,13 @@ pub fn (mut zftp FTP) login(user string, passwd string) ?bool {
 	return false
 }
 
+// close closes the FTP connection.
 pub fn (mut zftp FTP) close() ? {
 	zftp.write('QUIT')?
 	zftp.conn.close()?
 }
 
+// pwd returns the current working directory on the remote host for the logged in user.
 pub fn (mut zftp FTP) pwd() ?string {
 	zftp.write('PWD')?
 	_, data := zftp.read()?
@@ -153,6 +158,7 @@ pub fn (mut zftp FTP) pwd() ?string {
 	return data
 }
 
+// cd changes the current working directory to the specified remote directory `dir`.
 pub fn (mut zftp FTP) cd(dir string) ? {
 	zftp.write('CWD $dir') or { return }
 	mut code, mut data := zftp.read()?
@@ -201,6 +207,7 @@ fn (mut zftp FTP) pasv() ?&DTP {
 	return dtp
 }
 
+// dir returns a list of the files in the current working directory.
 pub fn (mut zftp FTP) dir() ?[]string {
 	mut dtp := zftp.pasv() or { return error('Cannot establish data connection') }
 	zftp.write('LIST')?
@@ -227,6 +234,7 @@ pub fn (mut zftp FTP) dir() ?[]string {
 	return dir
 }
 
+// get retrieves `file` from the remote host.
 pub fn (mut zftp FTP) get(file string) ?[]u8 {
 	mut dtp := zftp.pasv() or { return error('Cannot stablish data connection') }
 	zftp.write('RETR $file')?
