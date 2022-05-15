@@ -1850,6 +1850,12 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		node.typ = field.typ
 		return field.typ
 	}
+	if mut method := c.table.find_method(sym, field_name) {
+		method.params = method.params[1..]
+		fn_type := ast.new_type(c.table.find_or_register_fn_type(c.mod, method, false,
+			true))
+		return fn_type
+	}
 	if sym.kind !in [.struct_, .aggregate, .interface_, .sum_type] {
 		if sym.kind != .placeholder {
 			unwrapped_sym := c.table.sym(c.unwrap_generic(typ))
