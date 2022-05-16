@@ -1,0 +1,10 @@
+fn main() {
+	a := fn () {
+		if true {
+			println('a')
+		} else {
+			println('a')
+		}
+	}
+	a()
+}

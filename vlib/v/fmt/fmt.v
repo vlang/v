@@ -1951,7 +1951,8 @@ pub fn (mut f Fmt) if_expr(node ast.IfExpr) {
 }
 
 fn branch_is_single_line(b ast.IfBranch) bool {
-	if b.stmts.len == 1 && b.comments.len == 0 && stmt_is_single_line(b.stmts[0]) {
+	if b.stmts.len == 1 && b.comments.len == 0 && stmt_is_single_line(b.stmts[0])
+		&& b.pos.line_nr == b.stmts[0].pos.line_nr {
 		return true
 	}
 	return false
