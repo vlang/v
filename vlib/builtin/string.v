@@ -2002,3 +2002,8 @@ pub fn (name string) match_glob(pattern string) bool {
 	// Matched all of `pattern` to all of `name`
 	return true
 }
+
+// is_ascii returns true  if all characters belong to the US-ASCII set ([` `..`~`])
+pub fn (s string) is_ascii() bool {
+	return s.bytes().all(it >= u8(` `) && it <= u8(`~`))
+}
