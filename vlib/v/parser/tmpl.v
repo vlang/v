@@ -88,109 +88,24 @@ fn insert_template_code(fn_name string, tmpl_str_start string, line string) stri
 	return rline
 }
 
-enum InString {
-	double_quote
-	single_quote
-	not
+fn is_word_start(c byte) bool {
+	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_`
 }
 
 // replace `@` intelligently
 fn replace_at_symbol(line string) string {
-	mut pos := 0
 	mut rline := line
-	for pos < rline.len {
+	for pos := 0; pos < rline.len - 1; pos++ {
 		c1 := rline[pos]
+		c2 := rline[pos + 1]
 
 		if c1 != `@` || pos >= line.len {
-			pos++
 			continue
 		}
 
-		mut replace_at := false
-		mut inner_pos := pos + 1
-		mut c2 := rline[inner_pos]
-
-		// @{}
-		if c2 == `{` {
-			mut cb_match := 1 // number of opening curly braces that must be closed
-			mut in_string := InString.not
-			inner_pos++
-
-			for inner_pos < rline.len {
-				c2 = rline[inner_pos]
-				match c2 {
-					`'` {
-						in_string = match in_string {
-							.double_quote { InString.single_quote }
-							.single_quote { InString.not }
-							.not { InString.single_quote }
-						}
-					}
-					`"` {
-						in_string = match in_string {
-							.double_quote { InString.not }
-							.single_quote { InString.double_quote }
-							.not { InString.double_quote }
-						}
-					}
-					`{` {
-						if in_string == InString.not {
-							cb_match += 1
-						}
-					}
-					`}` {
-						if in_string == InString.not {
-							cb_match -= 1
-							if cb_match == 0 {
-								replace_at = true
-								break
-							}
-						}
-					}
-					else {} // did I miss anything here?
-				}
-				inner_pos++
-			}
-		}
-
-		// @ident or @struct.ident
-		if (c2 >= `a` && c2 <= `z`) || (c2 >= `A` && c2 <= `Z`) || c2 == `_` {
-			// println('rline = $rline')
-			replace_at = true
-			mut dot_allowed := true
-
-			// ensure that everything until space is valid ident
-			for inner_pos < rline.len {
-				c2 = rline[inner_pos]
-				if c2 == ` ` {
-					break
-				}
-
-				if (c2 < `a` || c2 > `z`) && (c2 < `A` || c2 > `Z`) && (c2 < `0` || c2 > `9`)
-					&& c2 != `_` {
-					if c2 == `.` {
-						if dot_allowed {
-							dot_allowed = false
-						} else {
-							replace_at = false
-							break
-						}
-					} else {
-						dot_allowed == true
-					}
-				}
-				// println('c2 = $c2')
-				// println('dot_allowed = $dot_allowed')
-				inner_pos++
-			}
-		}
-
-		// do replacement
-		if replace_at {
+		if (c1 == `@` && c2 == `{`) || (c1 == `@` && is_word_start(c2)) {
 			rline = rline[0..pos] + '$' + rline[pos + 1..]
 		}
-
-		pos++
 	}
 
 	return rline

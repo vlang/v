@@ -298,4 +298,25 @@ fn test_fn_replace_at_symbol() {
 	s = '@ ms.id'
 	b = replace_at_symbol(s)
 	assert b == s
+
+	s = '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/css/bootstrap.min.css">'
+	b = replace_at_symbol(s)
+	assert b == s
+
+	s = "<a href='@website.link'>@website.link</a>"
+	b = replace_at_symbol(s)
+	assert b == r"<a href='$website.link'>$website.link</a>"
+
+	s = "'mailto:example@@website.link'>Email</a>"
+	b = replace_at_symbol(s)
+	assert b == r"'mailto:example@$website.link'>Email</a>"
+
+	// panics!!
+	s = "href='@website.link'@"
+	b = replace_at_symbol(s)
+	assert b == r"href='$website.link'@"
+
+	s = "href='@website.link'@website.link"
+	b = replace_at_symbol(s)
+	assert b == r"href='$website.link'$website.link"
 }
