@@ -214,11 +214,17 @@ pub fn parse_request_head(mut reader io.BufferedReader) ?Request {
 	}
 	header.coerce(canonicalize: true)
 
+	mut request_cookies := map[string]string{}
+	for _, cookie in read_cookies(header.data, '') {
+		request_cookies[cookie.name] = cookie.value
+	}
+
 	return Request{
 		method: method
 		url: target.str()
 		header: header
 		version: version
+		cookies: request_cookies
 	}
 }
 
