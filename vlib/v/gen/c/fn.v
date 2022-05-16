@@ -1625,15 +1625,29 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		arr_sym := g.table.sym(varg_type)
 		mut arr_info := arr_sym.info as ast.Array
 		if varg_type.has_flag(.generic) {
-			if fn_def := g.table.find_fn(node.name) {
-				mut muttable := unsafe { &ast.Table(g.table) }
-				if utyp := muttable.resolve_generic_to_concrete(arr_info.elem_type, fn_def.generic_names,
-					node.concrete_types)
-				{
-					arr_info.elem_type = utyp
+			if node.is_method {
+				left_sym := g.table.sym(node.left_type)
+				if fn_def := left_sym.find_method_with_generic_parent(node.name) {
+					mut muttable := unsafe { &ast.Table(g.table) }
+					if utyp := muttable.resolve_generic_to_concrete(arr_info.elem_type,
+						fn_def.generic_names, node.concrete_types)
+					{
+						arr_info.elem_type = utyp
+					}
+				} else {
+					g.error('unable to find method $node.name', node.pos)
 				}
 			} else {
-				g.error('unable to find function $node.name', node.pos)
+				if fn_def := g.table.find_fn(node.name) {
+					mut muttable := unsafe { &ast.Table(g.table) }
+					if utyp := muttable.resolve_generic_to_concrete(arr_info.elem_type,
+						fn_def.generic_names, node.concrete_types)
+					{
+						arr_info.elem_type = utyp
+					}
+				} else {
+					g.error('unable to find function $node.name', node.pos)
+				}
 			}
 		}
 		elem_type := g.typ(arr_info.elem_type)
