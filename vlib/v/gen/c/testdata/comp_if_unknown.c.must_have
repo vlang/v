@@ -1,0 +1,5 @@
+#if defined(__GLIBC__)
+x = 2;
+#else
+x = 3;
+#endif

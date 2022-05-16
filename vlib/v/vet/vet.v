@@ -22,6 +22,7 @@ pub enum ErrorType {
 	trailing_space
 }
 
+[minify]
 pub struct Error {
 pub mut:
 	kind ErrorKind [required]

@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module token
 
+[minify]
 pub struct Token {
 pub:
 	kind    Kind   // the token number/enum; for quick comparisons
@@ -479,7 +480,7 @@ pub fn (tok Kind) is_relational() bool {
 
 [inline]
 pub fn (k Kind) is_start_of_type() bool {
-	return k in [.name, .lpar, .amp, .lsbr, .question, .key_shared]
+	return k in [.name, .lpar, .amp, .lsbr, .question, .key_shared, .not]
 }
 
 [inline]

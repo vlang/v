@@ -36,6 +36,6 @@ fn opt_bool_fn() ?bool {
 }
 
 fn test_any_called_with_opt_bool_fn() ? {
-	_ := [1, 2, 3].any(opt_bool_fn() ?)
+	_ := [1, 2, 3].any(opt_bool_fn()?)
 	assert true
 }

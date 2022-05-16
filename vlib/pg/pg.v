@@ -126,7 +126,7 @@ pub fn (db DB) close() {
 // converted to an int. If no row is found or on
 // command failure, an error is returned
 pub fn (db DB) q_int(query string) ?int {
-	rows := db.exec(query) ?
+	rows := db.exec(query)?
 	if rows.len == 0 {
 		return error('q_int "$query" not found')
 	}
@@ -143,7 +143,7 @@ pub fn (db DB) q_int(query string) ?int {
 // as a string. If no row is found or on
 // command failure, an error is returned
 pub fn (db DB) q_string(query string) ?string {
-	rows := db.exec(query) ?
+	rows := db.exec(query)?
 	if rows.len == 0 {
 		return error('q_string "$query" not found')
 	}
@@ -182,7 +182,7 @@ pub fn (db DB) exec_one(query string) ?Row {
 	if e != '' {
 		return error('pg exec error: "$e"')
 	}
-	row := rows_first_or_empty(res_to_rows(res)) ?
+	row := rows_first_or_empty(res_to_rows(res))?
 	return row
 }
 

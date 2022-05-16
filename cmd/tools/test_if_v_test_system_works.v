@@ -42,7 +42,7 @@ fn cleanup_tdir() {
 
 fn create_test(tname string, tcontent string) ?string {
 	tpath := os.join_path(tdir, tname)
-	os.write_file(tpath, tcontent) ?
+	os.write_file(tpath, tcontent)?
 	eprintln('>>>>>>>> tpath: $tpath | tcontent: $tcontent')
 	return tpath
 }
@@ -52,17 +52,17 @@ fn main() {
 		os.chdir(os.wd_at_startup) or {}
 	}
 	println('> vroot: $vroot | vexe: $vexe | tdir: $tdir')
-	ok_fpath := create_test('a_single_ok_test.v', 'fn test_ok(){ assert true }') ?
+	ok_fpath := create_test('a_single_ok_test.v', 'fn test_ok(){ assert true }')?
 	check_ok('"$vexe" "$ok_fpath"')
 	check_ok('"$vexe" test "$ok_fpath"')
 	check_ok('"$vexe" test "$tdir"')
-	fail_fpath := create_test('a_single_failing_test.v', 'fn test_fail(){ assert 1 == 2 }') ?
+	fail_fpath := create_test('a_single_failing_test.v', 'fn test_fail(){ assert 1 == 2 }')?
 	check_fail('"$vexe" "$fail_fpath"')
 	check_fail('"$vexe" test "$fail_fpath"')
 	check_fail('"$vexe" test "$tdir"')
 	rel_dir := os.join_path(tdir, rand.ulid())
-	os.mkdir(rel_dir) ?
-	os.chdir(rel_dir) ?
+	os.mkdir(rel_dir)?
+	os.chdir(rel_dir)?
 	check_ok('"$vexe" test "..${os.path_separator + os.base(ok_fpath)}"')
 	println('> all done')
 }

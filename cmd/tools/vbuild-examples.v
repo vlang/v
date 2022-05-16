@@ -12,7 +12,8 @@ const efolders = [
 fn main() {
 	args_string := os.args[1..].join(' ')
 	params := args_string.all_before('build-examples')
-	skip_prefixes := efolders.map(os.real_path(os.join_path_single(vroot, it)))
+	skip_prefixes := efolders.map(os.real_path(os.join_path_single(vroot, it)).replace('\\',
+		'/'))
 	res := testing.v_build_failing_skipped(params, 'examples', skip_prefixes, fn (mut session testing.TestSession) {
 		for x in efolders {
 			pathsegments := x.split_any('/')

@@ -26,7 +26,7 @@ fn new_app() App {
 fn main() {
 	app := new_app()
 	recompilation.must_be_enabled(app.vroot, 'Please install V from source, to use `v up` .')
-	os.chdir(app.vroot) ?
+	os.chdir(app.vroot)?
 	println('Updating V...')
 	app.update_from_master()
 	v_hash := version.githash(false)
@@ -34,13 +34,19 @@ fn main() {
 	// println(v_hash)
 	// println(current_hash)
 	if v_hash == current_hash {
+		println('V is already updated.')
 		app.show_current_v_version()
 		return
 	}
 	$if windows {
 		app.backup('cmd/tools/vup.exe')
 	}
-	app.recompile_v()
+	if !app.recompile_v() {
+		app.show_current_v_version()
+		eprintln('Recompiling V *failed*.')
+		eprintln('Try running `$get_make_cmd_name()` .')
+		exit(1)
+	}
 	app.recompile_vup()
 	app.show_current_v_version()
 }
@@ -66,7 +72,7 @@ fn (app App) update_from_master() {
 	}
 }
 
-fn (app App) recompile_v() {
+fn (app App) recompile_v() bool {
 	// Note: app.vexe is more reliable than just v (which may be a symlink)
 	opts := if app.is_prod { '-prod' } else { '' }
 	vself := '${os.quoted_path(app.vexe)} $opts self'
@@ -74,35 +80,35 @@ fn (app App) recompile_v() {
 	self_result := os.execute(vself)
 	if self_result.exit_code == 0 {
 		println(self_result.output.trim_space())
-		return
+		return true
 	} else {
 		app.vprintln('`$vself` failed, running `make`...')
 		app.vprintln(self_result.output.trim_space())
 	}
-	app.make(vself)
+	return app.make(vself)
 }
 
-fn (app App) recompile_vup() {
+fn (app App) recompile_vup() bool {
 	vup_result := os.execute('${os.quoted_path(app.vexe)} -g cmd/tools/vup.v')
 	if vup_result.exit_code != 0 {
 		eprintln('recompiling vup.v failed:')
 		eprintln(vup_result.output)
+		return false
 	}
+	return true
 }
 
-fn (app App) make(vself string) {
-	mut make := 'make'
-	$if windows {
-		make = 'make.bat'
-	}
+fn (app App) make(vself string) bool {
+	make := get_make_cmd_name()
 	make_result := os.execute(make)
 	if make_result.exit_code != 0 {
 		eprintln('> $make failed:')
 		eprintln('> make output:')
 		eprintln(make_result.output)
-		return
+		return false
 	}
 	app.vprintln(make_result.output)
+	return true
 }
 
 fn (app App) show_current_v_version() {
@@ -116,8 +122,7 @@ fn (app App) show_current_v_version() {
 				vversion += ', timestamp: ' + latest_v_commit_time.output.trim_space()
 			}
 		}
-		println('Current V version:')
-		println(vversion)
+		println('Current V version: $vversion')
 	}
 }
 
@@ -160,5 +165,13 @@ fn (app App) get_git() {
 		}
 	} $else { // Probably some kind of *nix, usually need to get using a package manager.
 		eprintln("error: Install `git` using your system's package manager")
+	}
+}
+
+fn get_make_cmd_name() string {
+	$if windows {
+		return 'make.bat'
+	} $else {
+		return 'make'
 	}
 }

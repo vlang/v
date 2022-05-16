@@ -46,7 +46,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		return
 	}
 	// For simpe if expressions we can use C's `?:`
-	// `if x > 0 { 1 } else { 2 }` => `(x > 0) ? (1) : (2)`
+	// `if x > 0 { 1 } else { 2 }` => `(x > 0)? (1) : (2)`
 	// For if expressions with multiple statements or another if expression inside, it's much
 	// easier to use a temp var, than do C tricks with commas, introduce special vars etc
 	// (as it used to be done).
@@ -78,7 +78,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.write(' ? ')
 			}
 			prev_expected_cast_type := g.expected_cast_type
-			if node.is_expr && g.table.sym(node.typ).kind == .sum_type {
+			if node.is_expr
+				&& (g.table.sym(node.typ).kind == .sum_type || node.typ.has_flag(.shared_f)) {
 				g.expected_cast_type = node.typ
 			}
 			g.stmts(branch.stmts)
@@ -204,7 +205,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		}
 		if needs_tmp_var {
 			prev_expected_cast_type := g.expected_cast_type
-			if node.is_expr && g.table.sym(node.typ).kind == .sum_type {
+			if node.is_expr
+				&& (g.table.sym(node.typ).kind == .sum_type || node.typ.has_flag(.shared_f)) {
 				g.expected_cast_type = node.typ
 			}
 			g.stmts_with_tmp_var(branch.stmts, tmp)

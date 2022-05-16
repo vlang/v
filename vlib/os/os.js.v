@@ -160,8 +160,8 @@ pub fn glob(patterns ...string) ?[]string {
 }
 
 pub fn write_file_array(path string, buffer array) ? {
-	mut f := create(path) ?
-	f.write_array(buffer) ?
+	mut f := create(path)?
+	f.write_array(buffer)?
 	f.close()
 }
 

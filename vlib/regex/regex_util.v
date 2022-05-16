@@ -249,7 +249,14 @@ pub fn (mut re RE) find_from(in_txt string, start int) (int, int) {
 	return -1, -1
 }
 
-// find_all find all the non overlapping occurrences of the match pattern
+// find_all find all the non overlapping occurrences of the match pattern and return the start and end index of the match
+//
+// Usage:
+// ```v
+// blurb := 'foobar boo steelbar toolbox foot tooooot'
+// mut re := regex.regex_opt('f|t[eo]+')?
+// res := re.find_all(blurb) // [0, 3, 12, 15, 20, 23, 28, 31, 33, 39]
+// ```
 [direct_array_access]
 pub fn (mut re RE) find_all(in_txt string) []int {
 	// old_flag := re.flag
@@ -284,6 +291,38 @@ pub fn (mut re RE) find_all(in_txt string) []int {
 	}
 	// re.flag = old_flag
 	return res
+}
+
+// split returns the sections of string around the regex
+//
+// Usage:
+// ```v
+// blurb := 'foobar boo steelbar toolbox foot tooooot'
+// mut re := regex.regex_opt('f|t[eo]+')?
+// res := re.split(blurb) // ['bar boo s', 'lbar ', 'lbox ', 't ', 't']
+// ```
+pub fn (mut re RE) split(in_txt string) []string {
+	pos := re.find_all(in_txt)
+
+	mut sections := []string{cap: pos.len / 2 + 1}
+
+	if pos.len == 0 {
+		return [in_txt]
+	}
+	for i := 0; i < pos.len; i += 2 {
+		if pos[i] == 0 {
+			continue
+		}
+		if i == 0 {
+			sections << in_txt[..pos[i]]
+		} else {
+			sections << in_txt[pos[i - 1]..pos[i]]
+		}
+	}
+	if pos[pos.len - 1] != in_txt.len {
+		sections << in_txt[pos[pos.len - 1]..]
+	}
+	return sections
 }
 
 // find_all_str find all the non overlapping occurrences of the match pattern, return a string list

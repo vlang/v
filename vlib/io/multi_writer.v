@@ -24,7 +24,7 @@ pub mut:
 // is returned immediately and writing to other writers stops.
 pub fn (mut m MultiWriter) write(buf []u8) ?int {
 	for mut w in m.writers {
-		n := w.write(buf) ?
+		n := w.write(buf)?
 		if n != buf.len {
 			return error('io: incomplete write to writer of MultiWriter')
 		}

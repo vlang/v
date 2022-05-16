@@ -1,0 +1,6 @@
+vlib/v/checker/tests/return_optional_of_multiple_results.vv:2:9: error: `?` is not needed, use `return test()`
+    1 | fn test() ?(&int, &int) {
+    2 |     return test() ?
+      |            ~~~~~~
+    3 | }
+    4 |

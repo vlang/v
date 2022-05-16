@@ -10,7 +10,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 	if node.index is ast.RangeExpr {
 		g.range_expr(node, node.index)
 	} else {
-		sym := g.table.final_sym(node.left_type)
+		sym := g.table.final_sym(g.unwrap_generic(node.left_type))
 		if sym.kind == .array {
 			g.index_of_array(node, sym)
 		} else if sym.kind == .array_fixed {
@@ -172,8 +172,7 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 	}
 	// `vals[i].field = x` is an exception and requires `array_get`:
 	// `(*(Val*)array_get(vals, i)).field = x;`
-	is_selector := node.left is ast.SelectorExpr
-	if g.is_assign_lhs && !is_selector && node.is_setter {
+	if g.is_assign_lhs && node.is_setter {
 		is_direct_array_access := (g.fn_decl != 0 && g.fn_decl.is_direct_arr) || node.is_direct
 		is_op_assign := g.assign_op != .assign && info.elem_type != ast.string_type
 		if is_direct_array_access {

@@ -39,6 +39,9 @@ fn test_sb() {
 	assert last_2 == '56'
 	final_sb := sb.str()
 	assert final_sb == '1234'
+
+	sb.clear()
+	assert sb.str() == ''
 	//}
 }
 

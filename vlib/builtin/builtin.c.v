@@ -54,7 +54,11 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 				}
 				C.exit(1)
 			}
-			print_backtrace_skipping_top_frames(1)
+			$if use_libbacktrace ? {
+				print_libbacktrace(1)
+			} $else {
+				print_backtrace_skipping_top_frames(1)
+			}
 			$if panics_break_into_debugger ? {
 				break_if_debugger_attached()
 			}
@@ -64,9 +68,18 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 	vhalt()
 }
 
+// panic_optional_not_set is called by V, when you use option error propagation in your main function.
+// It ends the program with a panic.
 [noreturn]
 pub fn panic_optional_not_set(s string) {
 	panic('optional not set ($s)')
+}
+
+// panic_optional_not_set is called by V, when you use result error propagation in your main function
+// It ends the program with a panic.
+[noreturn]
+pub fn panic_result_not_set(s string) {
+	panic('result not set ($s)')
 }
 
 // panic prints a nice error message, then exits the process with exit code of 1.
@@ -92,7 +105,11 @@ pub fn panic(s string) {
 				}
 				C.exit(1)
 			}
-			print_backtrace_skipping_top_frames(1)
+			$if use_libbacktrace ? {
+				print_libbacktrace(1)
+			} $else {
+				print_backtrace_skipping_top_frames(1)
+			}
 			$if panics_break_into_debugger ? {
 				break_if_debugger_attached()
 			}
@@ -267,7 +284,7 @@ __global total_m = i64(0)
 // malloc returns a `byteptr` pointing to the memory address of the allocated space.
 // unlike the `calloc` family of functions - malloc will not zero the memory block.
 [unsafe]
-pub fn malloc(n int) &u8 {
+pub fn malloc(n isize) &u8 {
 	if n <= 0 {
 		panic('malloc($n <= 0)')
 	}
@@ -310,7 +327,7 @@ pub fn malloc(n int) &u8 {
 }
 
 [unsafe]
-pub fn malloc_noscan(n int) &u8 {
+pub fn malloc_noscan(n isize) &u8 {
 	if n <= 0 {
 		panic('malloc_noscan($n <= 0)')
 	}
@@ -361,7 +378,7 @@ pub fn malloc_noscan(n int) &u8 {
 // previously allocated with `malloc`, `v_calloc` or `vcalloc`.
 // Please, see also realloc_data, and use it instead if possible.
 [unsafe]
-pub fn v_realloc(b &u8, n int) &u8 {
+pub fn v_realloc(b &u8, n isize) &u8 {
 	$if trace_realloc ? {
 		C.fprintf(C.stderr, c'v_realloc %6d\n', n)
 	}
@@ -432,7 +449,7 @@ pub fn realloc_data(old_data &u8, old_size int, new_size int) &u8 {
 // vcalloc dynamically allocates a zeroed `n` bytes block of memory on the heap.
 // vcalloc returns a `byteptr` pointing to the memory address of the allocated space.
 // Unlike `v_calloc` vcalloc checks for negative values given in `n`.
-pub fn vcalloc(n int) &u8 {
+pub fn vcalloc(n isize) &u8 {
 	if n < 0 {
 		panic('calloc($n < 0)')
 	} else if n == 0 {
@@ -453,7 +470,7 @@ pub fn vcalloc(n int) &u8 {
 
 // special versions of the above that allocate memory which is not scanned
 // for pointers (but is collected) when the Boehm garbage collection is used
-pub fn vcalloc_noscan(n int) &u8 {
+pub fn vcalloc_noscan(n isize) &u8 {
 	$if trace_vcalloc ? {
 		total_m += n
 		C.fprintf(C.stderr, c'vcalloc_noscan %6d total %10d\n', n, total_m)
@@ -548,8 +565,23 @@ pub fn print_backtrace() {
 			$if tinyc {
 				C.tcc_backtrace(c'Backtrace')
 			} $else {
-				print_backtrace_skipping_top_frames(2)
+				// NOTE: TCC doesn't have the unwind library
+				$if use_libbacktrace ? {
+					print_libbacktrace(1)
+				} $else {
+					print_backtrace_skipping_top_frames(2)
+				}
 			}
 		}
 	}
 }
+
+// NOTE: g_main_argc and g_main_argv are filled in right after C's main start.
+// They are used internally by V's builtin; for user code, it is much
+// more convenient to just use `os.args` instead.
+
+[markused]
+__global g_main_argc = int(0)
+
+[markused]
+__global g_main_argv = voidptr(0)

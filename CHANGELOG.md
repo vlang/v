@@ -2,6 +2,7 @@
 -*Not yet released, changelog is not full*
 - Introduce `isize` and `usize` types, deprecate `size_t` in favor of `usize`.
 - Add `datatypes` and `datatypes.fsm` modules.
+- Add `compile_error` and `compile_warn` comptime functions.
 
 -## V 0.2.4
 -*Not yet released, changelog is not full*

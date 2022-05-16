@@ -1,0 +1,15 @@
+module main
+
+pub struct Row {
+pub mut:
+	value string
+}
+
+fn main() {
+	a := []Row{}
+	for i in a {
+		$for field in Row.fields {
+			println('field $i: ' + a.$(field.name).str() )
+		}
+	}
+}

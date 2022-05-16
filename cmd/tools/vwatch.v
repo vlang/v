@@ -313,7 +313,7 @@ fn main() {
 	fp.description('Collect all .v files needed for a compilation, then re-run the compilation when any of the source changes.')
 	fp.arguments_description('[--silent] [--clear] [--ignore .db] [--add /path/to/a/file.v] [run] program.v')
 	fp.allow_unknown_args()
-	fp.limit_free_args_to_at_least(1) ?
+	fp.limit_free_args_to_at_least(1)?
 	context.is_worker = fp.bool('vwatchworker', 0, false, 'Internal flag. Used to distinguish vwatch manager and worker processes.')
 	context.silent = fp.bool('silent', `s`, false, 'Be more silent; do not print the watch timestamp before each re-run.')
 	context.clear_terminal = fp.bool('clear', `c`, false, 'Clears the terminal before each re-run.')

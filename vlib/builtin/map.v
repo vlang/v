@@ -86,8 +86,8 @@ mut:
 	// array allocated (with `cap` bytes) on first deletion
 	// has non-zero element when key deleted
 	all_deleted &u8
-	values      &u8
 	keys        &u8
+	values      &u8
 }
 
 [inline]
@@ -126,8 +126,8 @@ fn (d &DenseArray) has_index(i int) bool {
 [inline]
 fn (mut d DenseArray) expand() int {
 	old_cap := d.cap
-	old_value_size := d.value_bytes * old_cap
 	old_key_size := d.key_bytes * old_cap
+	old_value_size := d.value_bytes * old_cap
 	if d.cap == d.len {
 		d.cap += d.cap >> 3
 		unsafe {
@@ -292,6 +292,14 @@ pub fn (mut m map) move() map {
 		vmemset(m, 0, int(sizeof(map)))
 	}
 	return r
+}
+
+// clear clears the map without deallocating the allocated data.
+// It does it by setting the map length to `0`
+// Example: a.clear() // `a.len` and `a.key_values.len` is now 0
+pub fn (mut m map) clear() {
+	m.len = 0
+	m.key_values.len = 0
 }
 
 [inline]
@@ -626,6 +634,31 @@ pub fn (m &map) keys() array {
 		}
 	}
 	return keys
+}
+
+// Returns all values in the map.
+pub fn (m &map) values() array {
+	mut values := __new_array(m.len, 0, m.value_bytes)
+	mut item := unsafe { &u8(values.data) }
+
+	if m.key_values.deletes == 0 {
+		unsafe {
+			vmemcpy(item, m.key_values.values, m.value_bytes * m.key_values.len)
+		}
+		return values
+	}
+
+	for i := 0; i < m.key_values.len; i++ {
+		if !m.key_values.has_index(i) {
+			continue
+		}
+		unsafe {
+			pvalue := m.key_values.value(i)
+			vmemcpy(item, pvalue, m.value_bytes)
+			item = item + m.value_bytes
+		}
+	}
+	return values
 }
 
 // warning: only copies keys, does not clone

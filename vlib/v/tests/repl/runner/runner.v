@@ -52,7 +52,7 @@ pub fn run_repl_file(wd string, vexec string, file string) ?string {
 	rcmd := '${os.quoted_path(vexec)} repl -replfolder ${os.quoted_path(wd)} -replprefix "${fname}." < ${os.quoted_path(input_temporary_filename)}'
 	r := os.execute(rcmd)
 	if r.exit_code != 0 {
-		os.rm(input_temporary_filename) ?
+		os.rm(input_temporary_filename)?
 		return error('Could not execute: $rcmd')
 	}
 	result := r.output.replace('\r', '').replace('>>> ', '').replace('>>>', '').replace('... ',
@@ -63,7 +63,7 @@ pub fn run_repl_file(wd string, vexec string, file string) ?string {
 		dump(r.output)
 		dump(result)
 	}
-	os.rm(input_temporary_filename) ?
+	os.rm(input_temporary_filename)?
 	if result != output {
 		file_result := '${file}.result.txt'
 		file_expected := '${file}.expected.txt'

@@ -48,12 +48,12 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 
 // open tries to open a file for reading and returns back a read-only `File` object.
 pub fn open(path string) ?File {
-	f := open_file(path, 'r') ?
+	f := open_file(path, 'r')?
 	return f
 }
 
 pub fn create(path string) ?File {
-	f := open_file(path, 'w') ?
+	f := open_file(path, 'w')?
 	return f
 }
 
@@ -108,8 +108,8 @@ pub fn (mut f File) write(buf []u8) ?int {
 // writeln writes the string `s` into the file, and appends a \n character.
 // It returns how many bytes were written, including the \n character.
 pub fn (mut f File) writeln(s string) ?int {
-	mut nbytes := f.write(s.bytes()) ?
-	nbytes += f.write('\n'.bytes()) ?
+	mut nbytes := f.write(s.bytes())?
+	nbytes += f.write('\n'.bytes())?
 	return nbytes
 }
 
@@ -128,7 +128,7 @@ pub fn (mut f File) write_to(pos u64, buf []u8) ?int {
 // write_string writes the string `s` into the file
 // It returns how many bytes were actually written.
 pub fn (mut f File) write_string(s string) ?int {
-	nbytes := f.write(s.bytes()) ?
+	nbytes := f.write(s.bytes())?
 	return nbytes
 }
 

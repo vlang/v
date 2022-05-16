@@ -6,37 +6,37 @@ module time
 import strings
 import math
 
-// format returns a date string in "YYYY-MM-DD HH:MM" format (24h).
+// format returns a date string in "YYYY-MM-DD HH:mm" format (24h).
 pub fn (t Time) format() string {
 	return t.get_fmt_str(.hyphen, .hhmm24, .yyyymmdd)
 }
 
-// format_ss returns a date string in "YYYY-MM-DD HH:MM:SS" format (24h).
+// format_ss returns a date string in "YYYY-MM-DD HH:mm:ss" format (24h).
 pub fn (t Time) format_ss() string {
 	return t.get_fmt_str(.hyphen, .hhmmss24, .yyyymmdd)
 }
 
-// format_ss_milli returns a date string in "YYYY-MM-DD HH:MM:SS.123" format (24h).
+// format_ss_milli returns a date string in "YYYY-MM-DD HH:mm:ss.123" format (24h).
 pub fn (t Time) format_ss_milli() string {
 	return t.get_fmt_str(.hyphen, .hhmmss24_milli, .yyyymmdd)
 }
 
-// format_ss_micro returns a date string in "YYYY-MM-DD HH:MM:SS.123456" format (24h).
+// format_ss_micro returns a date string in "YYYY-MM-DD HH:mm:ss.123456" format (24h).
 pub fn (t Time) format_ss_micro() string {
 	return t.get_fmt_str(.hyphen, .hhmmss24_micro, .yyyymmdd)
 }
 
-// hhmm returns a date string in "HH:MM" format (24h).
+// hhmm returns a date string in "HH:mm" format (24h).
 pub fn (t Time) hhmm() string {
 	return t.get_fmt_time_str(.hhmm24)
 }
 
-// hhmmss returns a date string in "HH:MM:SS" format (24h).
+// hhmmss returns a date string in "HH:mm:ss" format (24h).
 pub fn (t Time) hhmmss() string {
 	return t.get_fmt_time_str(.hhmmss24)
 }
 
-// hhmm12 returns a date string in "HH:MM" format (12h).
+// hhmm12 returns a date string in "hh:mm" format (12h).
 pub fn (t Time) hhmm12() string {
 	return t.get_fmt_time_str(.hhmm12)
 }
@@ -77,57 +77,63 @@ fn ordinal_suffix(n int) string {
 	}
 }
 
-const tokens_2 = ['MM', 'DD', 'Do', 'YY', 'ss', 'kk', 'NN', 'mm', 'hh', 'HH', 'ZZ', 'dd', 'Qo',
-	'QQ', 'wo', 'ww']
-
-const tokens_3 = ['MMM', 'DDD', 'ZZZ', 'ddd']
-
-const tokens_4 = ['MMMM', 'DDDD', 'DDDo', 'dddd', 'YYYY']
+const (
+	tokens_2 = ['MM', 'DD', 'Do', 'YY', 'ss', 'kk', 'NN', 'mm', 'hh', 'HH', 'ZZ', 'dd', 'Qo', 'QQ',
+		'wo', 'ww']
+	tokens_3 = ['MMM', 'DDD', 'ZZZ', 'ddd']
+	tokens_4 = ['MMMM', 'DDDD', 'DDDo', 'dddd', 'YYYY']
+)
 
 // custom_format returns a date with custom format
+//
 // |  | Token  | Output |
-// | :-----------  | -------: | :--------- |
-// | Month   | M | 1 2 ... 11 12 |
+// | ----------:  | :------ | :--------- |
+// | **Month**   | M | 1 2 ... 11 12 |
 // |  | Mo | 1st 2nd ... 11th 12th |
 // |  | MM | 01 02 ... 11 12 |
 // |  | MMM | 	Jan Feb ... Nov Dec |
 // |  | MMMM | January February ... November December |
-// | Quarter  | Q | 1 2 3 4 |
+// | **Quarter**  | Q | 1 2 3 4 |
 // |  | QQ | 01 02 03 04 |
 // |  | Qo | 1st 2nd 3rd 4th |
-// | Day of Month  | D | 1 2 ... 30 31 |
+// | **Day of Month**  | D | 1 2 ... 30 31 |
 // |  | Do | 1st 2nd ... 30th 31st |
 // |  | DD | 01 02 ... 30 31 |
-// | Day of Year  | DDD | 1 2 ... 364 365 |
+// | **Day of Year**  | DDD | 1 2 ... 364 365 |
 // |  | DDDo | 1st 2nd ... 364th 365th |
 // |  | DDDD | 001 002 ... 364 365 |
-// | Day of Week  | d | 0 1 ... 5 6 (Sun-Sat) |
+// | **Day of Week**  | d | 0 1 ... 5 6 (Sun-Sat) |
 // |  | c | 1 2 ... 6 7 (Mon-Sun) |
 // |  | dd | Su Mo ... Fr Sa |
 // |  | ddd | Sun Mon ... Fri Sat |
 // |  | dddd | Sunday Monday ... Friday Saturday |
-// | Week of Year  | w | 1 2 ... 52 53 |
+// | **Week of Year**  | w | 1 2 ... 52 53 |
 // |  | wo | 1st 2nd ... 52nd 53rd |
 // |  | ww | 01 02 ... 52 53 |
-// | Year  | YY | 70 71 ... 29 30 |
+// | **Year**  | YY | 70 71 ... 29 30 |
 // |  | YYYY | 1970 1971 ... 2029 2030 |
-// | Era  | N | BC AD |
+// | **Era**  | N | BC AD |
 // |  | NN | Before Christ, Anno Domini |
-// | AM/PM  | A | AM PM |
+// | **AM/PM**  | A | AM PM |
 // |  | a | am pm |
-// | Hour  | H | 0 1 ... 22 23 |
+// | **Hour**  | H | 0 1 ... 22 23 |
 // |  | HH | 00 01 ... 22 23 |
 // |  | h | 1 2 ... 11 12 |
 // |  | hh | 01 02 ... 11 12 |
 // |  | k | 1 2 ... 23 24 |
 // |  | kk | 01 02 ... 23 24 |
-// | Minute  | m | 0 1 ... 58 59 |
+// | **Minute**  | m | 0 1 ... 58 59 |
 // |  | mm | 00 01 ... 58 59 |
-// | Second  | s | 0 1 ... 58 59 |
+// | **Second**  | s | 0 1 ... 58 59 |
 // |  | ss | 00 01 ... 58 59 |
-// | Offset  | Z | -7 -6 ... +5 +6 |
+// | **Offset**  | Z | -7 -6 ... +5 +6 |
 // |  | ZZ | -0700 -0600 ... +0500 +0600 |
 // |  | ZZZ | -07:00 -06:00 ... +05:00 +06:00 |
+//
+// Usage:
+// ```v
+// println(time.now().custom_format('MMMM Mo YY N kk:mm:ss A')) // output like: January 1st 22 AD 13:45:33 PM
+// ```
 pub fn (t Time) custom_format(s string) string {
 	mut tokens := []string{}
 	for i := 0; i < s.len; {
@@ -315,8 +321,8 @@ pub fn (t Time) custom_format(s string) string {
 }
 
 // clean returns a date string in a following format:
-// - a date string in "HH:MM" format (24h) for current day
-// - a date string in "MMM D HH:MM" format (24h) for date of current year
+// - a date string in "HH:mm" format (24h) for current day
+// - a date string in "MMM D HH:mm" format (24h) for date of current year
 // - a date string formatted with format function for other dates
 pub fn (t Time) clean() string {
 	znow := now()
@@ -332,8 +338,8 @@ pub fn (t Time) clean() string {
 }
 
 // clean12 returns a date string in a following format:
-// - a date string in "HH:MM" format (12h) for current day
-// - a date string in "MMM D HH:MM" format (12h) for date of current year
+// - a date string in "hh:mm" format (12h) for current day
+// - a date string in "MMM D hh:mm" format (12h) for date of current year
 // - a date string formatted with format function for other dates
 pub fn (t Time) clean12() string {
 	znow := now()

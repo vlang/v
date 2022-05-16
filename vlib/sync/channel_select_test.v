@@ -1,12 +1,22 @@
 module sync
 
+// vtest flaky: true
 // vtest retry: 6
 
 // ATTENTION! Do not use this file as an example!
 // For that, please look at `channel_select_2_test.v` or `channel_select_3_test.v`
 // This test case uses the implementation in `sync/channels.v` directly
 // in order to test it independently from the support in the core language
+import os
 import time
+
+fn test_should_run_flaky_test() {
+	if os.getenv('VTEST_RUN_FLAKY') != '1' {
+		eprintln('> skipping running flaky test, set VTEST_RUN_FLAKY to 1, to run it')
+		exit(0)
+	}
+	assert true
+}
 
 fn do_rec_i64(mut ch Channel) {
 	mut sum := i64(0)

@@ -4,12 +4,18 @@ import os
 
 #flag -I @VEXEROOT/thirdparty/zip
 #include "zip.c"
-#include "zip.h"
+
+[params]
+pub struct ZipFolderOptions {
+	omit_empty_folders bool
+}
 
 struct C.zip_t {
 }
 
 type Zip = C.zip_t
+
+pub type Fn_on_extract_entry = fn (&&char, &&char) int
 
 fn C.zip_open(&char, int, char) &Zip
 
@@ -17,7 +23,7 @@ fn C.zip_close(&Zip)
 
 fn C.zip_entry_open(&Zip, &u8) int
 
-fn C.zip_entry_openbyindex(&Zip, int) int
+fn C.zip_entry_openbyindex(&Zip, usize) int
 
 fn C.zip_entry_close(&Zip) int
 
@@ -41,9 +47,13 @@ fn C.zip_entry_noallocread(&Zip, voidptr, usize) int
 
 fn C.zip_entry_fread(&Zip, &char) int
 
-fn C.zip_total_entries(&Zip) int
+fn C.zip_entries_total(&Zip) int
 
-fn C.zip_extract_without_callback(&char, &char) int
+fn C.zip_extract(&char, &char, Fn_on_extract_entry, voidptr) int
+
+fn cb_zip_extract(filename &&char, arg &&char) int {
+	return 0
+}
 
 // CompressionLevel lists compression levels, see in "thirdparty/zip/miniz.h"
 pub enum CompressionLevel {
@@ -216,9 +226,6 @@ pub fn (mut zentry Zip) read_entry_buf(buf voidptr, in_bsize int) ?int {
 
 // extract_entry extracts the current zip entry into output file.
 pub fn (mut zentry Zip) extract_entry(path string) ? {
-	if !os.is_file(path) {
-		return error('szip: cannot open file for extracting, "$path" not exists')
-	}
 	res := C.zip_entry_fread(zentry, &char(path.str))
 	if res != 0 {
 		return error('szip: failed to extract entry')
@@ -230,7 +237,7 @@ pub fn extract_zip_to_dir(file string, dir string) ?bool {
 	if C.access(&char(dir.str), 0) == -1 {
 		return error('szip: cannot open directory for extracting, directory not exists')
 	}
-	res := C.zip_extract_without_callback(&char(file.str), &char(dir.str))
+	res := C.zip_extract(&char(file.str), &char(dir.str), cb_zip_extract, 0)
 	return res == 0
 }
 
@@ -255,40 +262,52 @@ pub fn zip_files(path_to_file []string, path_to_export_zip string) ? {
 	}
 }
 
-/*
-TODO add
-// zip all files in directory to zip file
-pub fn zip_folder(path_to_dir string, path_to_export_zip string) {
-
-	// get list files from directory
-	files := os.ls(path_to_dir) or { panic(err) }
+// zip_folder zips all entries in `folder` *recursively* to the zip file at `zip_file`.
+// Empty folders will be included, unless specified otherwise in `opt`.
+pub fn zip_folder(folder string, zip_file string, opt ZipFolderOptions) ? {
+	// get list of files from directory
+	path := folder.trim_right(os.path_separator)
+	mut files := []string{}
+	os.walk_with_context(path, &files, fn (mut files []string, file string) {
+		files << file
+	})
 
 	// open or create new zip
-	mut zip := szip.open(path_to_export_zip, .no_compression, .write) or { panic(err) }
+	mut zip := open(zip_file, .no_compression, .write)?
+	// close zip
+	defer {
+		zip.close()
+	}
 
 	// add all files from the directory to the archive
 	for file in files {
-		eprintln('Zipping $file to ${path_to_export_zip}...')
-		println(path_to_dir + file)
-
-		// add file to zip
-		zip.open_entry(file) or { panic(err) }
-		file_as_byte := os.read_bytes(path_to_dir + '/'+ file) or { panic(err) }
-        zip.write_entry(file_as_byte) or { panic(err) }
-
-        zip.close_entry()
+		is_dir := os.is_dir(file)
+		if opt.omit_empty_folders && is_dir {
+			continue
+		}
+		// strip each zip entry for the path prefix - this way
+		// all files in the archive can be made relative.
+		mut zip_file_entry := file.trim_string_left(path + os.path_separator)
+		// Normalize path on Windows \ -> /
+		$if windows {
+			zip_file_entry = zip_file_entry.replace(os.path_separator, '/')
+		}
+		if is_dir {
+			zip_file_entry += '/' // Tells the implementation that the entry is a directory
+		}
+		// add file or directory (ends with "/") to zip
+		zip.open_entry(zip_file_entry)?
+		if !is_dir {
+			file_as_byte := os.read_bytes(file)?
+			zip.write_entry(file_as_byte)?
+		}
+		zip.close_entry()
 	}
-
-	// close zip
-	zip.close()
-
-	eprintln('Successfully')
 }
-*/
 
 // total returns the number of all entries (files and directories) in the zip archive.
 pub fn (mut zentry Zip) total() ?int {
-	tentry := int(C.zip_total_entries(zentry))
+	tentry := int(C.zip_entries_total(zentry))
 	if tentry == -1 {
 		return error('szip: cannot count total entries')
 	}

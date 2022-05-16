@@ -156,7 +156,7 @@ pub fn stbi_write_tga(path string, w int, h int, comp int, buf &u8) ? {
 }
 
 // stbi_write_png write on path a JPG file
-// quality select teh compression quality of the JPG
+// quality select the compression quality of the JPG
 // quality is between 1 and 100. Higher quality looks better but results in a bigger image.
 pub fn stbi_write_jpg(path string, w int, h int, comp int, buf &u8, quality int) ? {
 	if 0 == C.stbi_write_jpg(&char(path.str), w, h, comp, buf, quality) {

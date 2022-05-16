@@ -9,9 +9,9 @@ fn main() {
 
 fn test_encode_int() ? {
 	a := 0x24 // should be 'd' in base58
-	assert encode_int(a) ? == 'd'
+	assert encode_int(a)? == 'd'
 
-	test_encode_int_walpha() ?
+	test_encode_int_walpha()?
 }
 
 fn test_encode_int_walpha() ? {
@@ -20,14 +20,14 @@ fn test_encode_int_walpha() ? {
 		panic(@MOD + '.' + @FN + ': this should never happen')
 	}
 	a := 0x24 // should be '_' in base58 with our custom alphabet
-	assert encode_int_walpha(a, abc) ? == '_'
+	assert encode_int_walpha(a, abc)? == '_'
 }
 
 fn test_decode_int() ? {
 	a := 'd'
-	assert decode_int(a) ? == 0x24
+	assert decode_int(a)? == 0x24
 
-	test_decode_int_walpha() ?
+	test_decode_int_walpha()?
 }
 
 fn test_decode_int_walpha() ? {
@@ -35,7 +35,7 @@ fn test_decode_int_walpha() ? {
 		panic(@MOD + '.' + @FN + ': this should never happen')
 	}
 	a := '_'
-	assert decode_int_walpha(a, abc) ? == 0x24
+	assert decode_int_walpha(a, abc)? == 0x24
 }
 
 fn test_encode_string() {
@@ -51,13 +51,13 @@ fn test_encode_string() {
 
 fn test_decode_string() ? {
 	a := 'TtaR6twpTGu8VpY'
-	assert decode(a) ? == 'lorem ipsum'
+	assert decode(a)? == 'lorem ipsum'
 
 	abc := new_alphabet('abcdefghij\$lmnopqrstuvwxyz0123456789_ABCDEFGHIJLMNOPQRSTUV') or {
 		panic(@MOD + '.' + @FN + ': this should never happen')
 	}
 	b := '0P7yfPSL0pQh2L5'
-	assert decode_walpha(b, abc) ? == 'lorem ipsum'
+	assert decode_walpha(b, abc)? == 'lorem ipsum'
 }
 
 fn test_fails() ? {

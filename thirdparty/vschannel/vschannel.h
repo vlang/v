@@ -20,6 +20,10 @@
 // Define here to be sure
 #define SP_PROT_TLS1_2_CLIENT 0x00000800
 
+#if !defined(VSCHANNEL_REALLOC)
+#define VSCHANNEL_REALLOC realloc
+#endif
+
 typedef struct TlsContext TlsContext;
 
 TlsContext new_tls_context();

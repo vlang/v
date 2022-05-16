@@ -9,6 +9,9 @@ import v.token
 
 pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	return p.check_expr(precedence) or {
+		if token.is_decl(p.tok.kind) && p.disallow_declarations_in_script_mode() {
+			return ast.empty_expr()
+		}
 		p.error_with_pos('invalid expression: unexpected $p.tok', p.tok.pos())
 	}
 }
@@ -535,7 +538,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		}
 		if p.tok.kind == .question {
 			p.next()
-			or_kind = .propagate
+			or_kind = .propagate_option
 		}
 		p.or_is_handled = false
 	}
@@ -627,7 +630,7 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 		}
 		if p.tok.kind == .question {
 			p.next()
-			or_kind = .propagate
+			or_kind = .propagate_option
 		}
 		p.or_is_handled = false
 	}

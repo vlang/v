@@ -66,6 +66,7 @@ mut:
 	buffer_size int
 }
 
+// new returns an `FTP` instance.
 pub fn new() FTP {
 	mut f := FTP{
 		conn: 0
@@ -82,7 +83,7 @@ fn (mut zftp FTP) write(data string) ?int {
 }
 
 fn (mut zftp FTP) read() ?(int, string) {
-	mut data := zftp.reader.read_line() ?
+	mut data := zftp.reader.read_line()?
 	$if debug {
 		println('FTP.v <<< $data')
 	}
@@ -92,7 +93,7 @@ fn (mut zftp FTP) read() ?(int, string) {
 	code := data[..3].int()
 	if data[3] == `-` {
 		for {
-			data = zftp.reader.read_line() ?
+			data = zftp.reader.read_line()?
 			if data[..3].int() == code && data[3] != `-` {
 				break
 			}
@@ -101,16 +102,18 @@ fn (mut zftp FTP) read() ?(int, string) {
 	return code, data
 }
 
+// connect establishes an FTP connection to the host at `ip` port 21.
 pub fn (mut zftp FTP) connect(ip string) ?bool {
-	zftp.conn = net.dial_tcp('$ip:21') ?
+	zftp.conn = net.dial_tcp('$ip:21')?
 	zftp.reader = io.new_buffered_reader(reader: zftp.conn)
-	code, _ := zftp.read() ?
+	code, _ := zftp.read()?
 	if code == ftp.connected {
 		return true
 	}
 	return false
 }
 
+// login sends the "USER `user`" and "PASS `passwd`" commands to the remote host.
 pub fn (mut zftp FTP) login(user string, passwd string) ?bool {
 	zftp.write('USER $user') or {
 		$if debug {
@@ -118,7 +121,7 @@ pub fn (mut zftp FTP) login(user string, passwd string) ?bool {
 		}
 		return false
 	}
-	mut code, _ := zftp.read() ?
+	mut code, _ := zftp.read()?
 	if code == ftp.logged_in {
 		return true
 	}
@@ -131,21 +134,23 @@ pub fn (mut zftp FTP) login(user string, passwd string) ?bool {
 		}
 		return false
 	}
-	code, _ = zftp.read() ?
+	code, _ = zftp.read()?
 	if code == ftp.logged_in {
 		return true
 	}
 	return false
 }
 
+// close closes the FTP connection.
 pub fn (mut zftp FTP) close() ? {
-	zftp.write('QUIT') ?
-	zftp.conn.close() ?
+	zftp.write('QUIT')?
+	zftp.conn.close()?
 }
 
+// pwd returns the current working directory on the remote host for the logged in user.
 pub fn (mut zftp FTP) pwd() ?string {
-	zftp.write('PWD') ?
-	_, data := zftp.read() ?
+	zftp.write('PWD')?
+	_, data := zftp.read()?
 	spl := data.split('"') // "
 	if spl.len >= 2 {
 		return spl[1]
@@ -153,9 +158,10 @@ pub fn (mut zftp FTP) pwd() ?string {
 	return data
 }
 
+// cd changes the current working directory to the specified remote directory `dir`.
 pub fn (mut zftp FTP) cd(dir string) ? {
 	zftp.write('CWD $dir') or { return }
-	mut code, mut data := zftp.read() ?
+	mut code, mut data := zftp.read()?
 	match int(code) {
 		ftp.denied {
 			$if debug {
@@ -163,7 +169,7 @@ pub fn (mut zftp FTP) cd(dir string) ? {
 			}
 		}
 		ftp.complete {
-			code, data = zftp.read() ?
+			code, data = zftp.read()?
 		}
 		else {}
 	}
@@ -189,30 +195,31 @@ fn new_dtp(msg string) ?&DTP {
 }
 
 fn (mut zftp FTP) pasv() ?&DTP {
-	zftp.write('PASV') ?
-	code, data := zftp.read() ?
+	zftp.write('PASV')?
+	code, data := zftp.read()?
 	$if debug {
 		println('pass: $data')
 	}
 	if code != ftp.passive_mode {
 		return error('pasive mode not allowed')
 	}
-	dtp := new_dtp(data) ?
+	dtp := new_dtp(data)?
 	return dtp
 }
 
+// dir returns a list of the files in the current working directory.
 pub fn (mut zftp FTP) dir() ?[]string {
 	mut dtp := zftp.pasv() or { return error('Cannot establish data connection') }
-	zftp.write('LIST') ?
-	code, _ := zftp.read() ?
+	zftp.write('LIST')?
+	code, _ := zftp.read()?
 	if code == ftp.denied {
 		return error('`LIST` denied')
 	}
 	if code != ftp.open_data_connection {
 		return error('Data channel empty')
 	}
-	list_dir := dtp.read() ?
-	result, _ := zftp.read() ?
+	list_dir := dtp.read()?
+	result, _ := zftp.read()?
 	if result != ftp.close_data_connection {
 		println('`LIST` not ok')
 	}
@@ -227,17 +234,18 @@ pub fn (mut zftp FTP) dir() ?[]string {
 	return dir
 }
 
+// get retrieves `file` from the remote host.
 pub fn (mut zftp FTP) get(file string) ?[]u8 {
 	mut dtp := zftp.pasv() or { return error('Cannot stablish data connection') }
-	zftp.write('RETR $file') ?
-	code, _ := zftp.read() ?
+	zftp.write('RETR $file')?
+	code, _ := zftp.read()?
 	if code == ftp.denied {
 		return error('Permission denied')
 	}
 	if code != ftp.open_data_connection {
 		return error('Data connection not ready')
 	}
-	blob := dtp.read() ?
+	blob := dtp.read()?
 	dtp.close()
 	return blob
 }

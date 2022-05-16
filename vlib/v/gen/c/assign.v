@@ -18,6 +18,9 @@ fn (mut g Gen) gen_assign_stmt(node_ ast.AssignStmt) {
 	mut return_type := ast.void_type
 	is_decl := node.op == .decl_assign
 	g.assign_op = node.op
+	defer {
+		g.assign_op = .unknown
+	}
 	op := if is_decl { token.Kind.assign } else { node.op }
 	right_expr := node.right[0]
 	match right_expr {
@@ -208,7 +211,11 @@ fn (mut g Gen) gen_assign_stmt(node_ ast.AssignStmt) {
 			} else if g.inside_for_c_stmt {
 				g.expr(val)
 			} else {
-				g.write('{$styp _ = ')
+				if left_sym.kind == .function {
+					g.write('{void* _ = ')
+				} else {
+					g.write('{$styp _ = ')
+				}
 				g.expr(val)
 				g.writeln(';}')
 			}
@@ -440,7 +447,7 @@ fn (mut g Gen) gen_assign_stmt(node_ ast.AssignStmt) {
 				} else if is_decl {
 					if is_fixed_array_init && !has_val {
 						if val is ast.ArrayInit {
-							g.array_init(val)
+							g.array_init(val, ident.name)
 						} else {
 							g.write('{0}')
 						}
@@ -451,7 +458,13 @@ fn (mut g Gen) gen_assign_stmt(node_ ast.AssignStmt) {
 						if val.is_auto_deref_var() {
 							g.write('*')
 						}
-						g.expr(val)
+						if val is ast.ArrayInit {
+							g.array_init(val, ident.name)
+						} else if val_type.has_flag(.shared_f) {
+							g.expr_with_cast(val, val_type, var_type)
+						} else {
+							g.expr(val)
+						}
 						if is_auto_heap {
 							g.write('))')
 						}

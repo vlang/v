@@ -9,7 +9,7 @@ fn __new_array_noscan(mylen int, cap int, elm_size int) array {
 	cap_ := if cap < mylen { mylen } else { cap }
 	arr := array{
 		element_size: elm_size
-		data: vcalloc_noscan(cap_ * elm_size)
+		data: vcalloc_noscan(u64(cap_) * u64(elm_size))
 		len: mylen
 		cap: cap_
 	}
@@ -20,7 +20,7 @@ fn __new_array_with_default_noscan(mylen int, cap int, elm_size int, val voidptr
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
-		data: vcalloc_noscan(cap_ * elm_size)
+		data: vcalloc_noscan(u64(cap_) * u64(elm_size))
 		len: mylen
 		cap: cap_
 	}
@@ -36,7 +36,7 @@ fn __new_array_with_array_default_noscan(mylen int, cap int, elm_size int, val a
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
-		data: vcalloc_noscan(cap_ * elm_size)
+		data: vcalloc_noscan(u64(cap_) * u64(elm_size))
 		len: mylen
 		cap: cap_
 	}
@@ -52,12 +52,12 @@ fn new_array_from_c_array_noscan(len int, cap int, elm_size int, c_array voidptr
 	cap_ := if cap < len { len } else { cap }
 	arr := array{
 		element_size: elm_size
-		data: vcalloc_noscan(cap_ * elm_size)
+		data: vcalloc_noscan(u64(cap_) * u64(elm_size))
 		len: len
 		cap: cap_
 	}
 	// TODO Write all memory functions (like memcpy) in V
-	unsafe { vmemcpy(arr.data, c_array, len * elm_size) }
+	unsafe { vmemcpy(arr.data, c_array, u64(len) * u64(elm_size)) }
 	return arr
 }
 
@@ -70,10 +70,10 @@ fn (mut a array) ensure_cap_noscan(required int) {
 	for required > cap {
 		cap *= 2
 	}
-	new_size := cap * a.element_size
+	new_size := u64(cap) * u64(a.element_size)
 	new_data := vcalloc_noscan(new_size)
 	if a.data != voidptr(0) {
-		unsafe { vmemcpy(new_data, a.data, a.len * a.element_size) }
+		unsafe { vmemcpy(new_data, a.data, u64(a.len) * u64(a.element_size)) }
 		// TODO: the old data may be leaked when no GC is used (ref-counting?)
 	}
 	a.data = new_data
@@ -91,9 +91,9 @@ fn (a array) repeat_to_depth_noscan(count int, depth int) array {
 	if count < 0 {
 		panic('array.repeat: count is negative: $count')
 	}
-	mut size := count * a.len * a.element_size
+	mut size := u64(count) * u64(a.len) * u64(a.element_size)
 	if size == 0 {
-		size = a.element_size
+		size = u64(a.element_size)
 	}
 	arr := array{
 		element_size: a.element_size
@@ -102,12 +102,18 @@ fn (a array) repeat_to_depth_noscan(count int, depth int) array {
 		cap: count * a.len
 	}
 	if a.len > 0 {
-		for i in 0 .. count {
-			if depth > 0 {
-				ary_clone := unsafe { a.clone_to_depth_noscan(depth) }
-				unsafe { vmemcpy(arr.get_unsafe(i * a.len), &u8(ary_clone.data), a.len * a.element_size) }
-			} else {
-				unsafe { vmemcpy(arr.get_unsafe(i * a.len), &u8(a.data), a.len * a.element_size) }
+		a_total_size := u64(a.len) * u64(a.element_size)
+		arr_step_size := u64(a.len) * u64(arr.element_size)
+		mut eptr := &u8(arr.data)
+		unsafe {
+			for _ in 0 .. count {
+				if depth > 0 {
+					ary_clone := a.clone_to_depth_noscan(depth)
+					vmemcpy(eptr, &u8(ary_clone.data), a_total_size)
+				} else {
+					vmemcpy(eptr, &u8(a.data), a_total_size)
+				}
+				eptr += arr_step_size
 			}
 		}
 	}
@@ -123,7 +129,7 @@ fn (mut a array) insert_noscan(i int, val voidptr) {
 	}
 	a.ensure_cap_noscan(a.len + 1)
 	unsafe {
-		vmemmove(a.get_unsafe(i + 1), a.get_unsafe(i), (a.len - i) * a.element_size)
+		vmemmove(a.get_unsafe(i + 1), a.get_unsafe(i), u64(a.len - i) * u64(a.element_size))
 		a.set_unsafe(i, val)
 	}
 	a.len++
@@ -141,8 +147,8 @@ fn (mut a array) insert_many_noscan(i int, val voidptr, size int) {
 	elem_size := a.element_size
 	unsafe {
 		iptr := a.get_unsafe(i)
-		vmemmove(a.get_unsafe(i + size), iptr, (a.len - i) * elem_size)
-		vmemcpy(iptr, val, size * elem_size)
+		vmemmove(a.get_unsafe(i + size), iptr, u64(a.len - i) * u64(elem_size))
+		vmemcpy(iptr, val, u64(size) * u64(elem_size))
 	}
 	a.len += size
 }
@@ -167,7 +173,7 @@ fn (mut a array) pop_noscan() voidptr {
 		}
 	}
 	new_len := a.len - 1
-	last_elem := unsafe { &u8(a.data) + new_len * a.element_size }
+	last_elem := unsafe { &u8(a.data) + u64(new_len) * u64(a.element_size) }
 	a.len = new_len
 	// Note: a.cap is not changed here *on purpose*, so that
 	// further << ops on that array will be more efficient.
@@ -184,7 +190,7 @@ fn (a array) clone_static_to_depth_noscan(depth int) array {
 // recursively clone given array - `unsafe` when called directly because depth is not checked
 [unsafe]
 fn (a &array) clone_to_depth_noscan(depth int) array {
-	mut size := a.cap * a.element_size
+	mut size := u64(a.cap) * u64(a.element_size)
 	if size == 0 {
 		size++
 	}
@@ -204,8 +210,8 @@ fn (a &array) clone_to_depth_noscan(depth int) array {
 		}
 		return arr
 	} else {
-		if !isnil(a.data) {
-			unsafe { vmemcpy(&u8(arr.data), a.data, a.cap * a.element_size) }
+		if a.data != 0 {
+			unsafe { vmemcpy(&u8(arr.data), a.data, u64(a.cap) * u64(a.element_size)) }
 		}
 		return arr
 	}
@@ -213,7 +219,7 @@ fn (a &array) clone_to_depth_noscan(depth int) array {
 
 fn (mut a array) push_noscan(val voidptr) {
 	a.ensure_cap_noscan(a.len + 1)
-	unsafe { vmemcpy(&u8(a.data) + a.element_size * a.len, val, a.element_size) }
+	unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * u64(a.len), val, a.element_size) }
 	a.len++
 }
 
@@ -221,17 +227,17 @@ fn (mut a array) push_noscan(val voidptr) {
 // `val` is array.data and user facing usage is `a << [1,2,3]`
 [unsafe]
 fn (mut a3 array) push_many_noscan(val voidptr, size int) {
-	if a3.data == val && !isnil(a3.data) {
+	if a3.data == val && a3.data != 0 {
 		// handle `arr << arr`
 		copy := a3.clone()
 		a3.ensure_cap_noscan(a3.len + size)
 		unsafe {
-			vmemcpy(a3.get_unsafe(a3.len), copy.data, a3.element_size * size)
+			vmemcpy(a3.get_unsafe(a3.len), copy.data, u64(a3.element_size) * u64(size))
 		}
 	} else {
 		a3.ensure_cap_noscan(a3.len + size)
-		if !isnil(a3.data) && !isnil(val) {
-			unsafe { vmemcpy(a3.get_unsafe(a3.len), val, a3.element_size * size) }
+		if a3.data != 0 && val != 0 {
+			unsafe { vmemcpy(a3.get_unsafe(a3.len), val, u64(a3.element_size) * u64(size)) }
 		}
 	}
 	a3.len += size
@@ -244,7 +250,7 @@ fn (a array) reverse_noscan() array {
 	}
 	mut arr := array{
 		element_size: a.element_size
-		data: vcalloc_noscan(a.cap * a.element_size)
+		data: vcalloc_noscan(u64(a.cap) * u64(a.element_size))
 		len: a.len
 		cap: a.cap
 	}

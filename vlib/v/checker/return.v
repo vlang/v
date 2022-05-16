@@ -24,6 +24,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 		return
 	}
 	exp_is_optional := expected_type.has_flag(.optional)
+	exp_is_result := expected_type.has_flag(.result)
 	mut expected_types := [expected_type]
 	if expected_type_sym.info is ast.MultiReturn {
 		expected_types = expected_type_sym.info.types
@@ -73,10 +74,12 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 		}
 	}
 	// allow `none` & `error` return types for function that returns optional
-	option_type_idx := c.table.type_idxs['Option']
+	option_type_idx := c.table.type_idxs['_option']
+	result_type_idx := c.table.type_idxs['_result']
 	got_types_0_idx := got_types[0].idx()
-	if exp_is_optional
-		&& got_types_0_idx in [ast.none_type_idx, ast.error_type_idx, option_type_idx] {
+	if (exp_is_optional
+		&& got_types_0_idx in [ast.none_type_idx, ast.error_type_idx, option_type_idx])
+		|| (exp_is_result && got_types_0_idx in [ast.error_type_idx, result_type_idx]) {
 		if got_types_0_idx == ast.none_type_idx && expected_type == ast.ovoid_type {
 			c.error('returning `none` in functions, that have a `?` result type is not allowed anymore, either `return error(message)` or just `return` instead',
 				node.pos)
@@ -132,7 +135,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 				pos)
 		}
 		if exp_type.is_ptr() && got_typ.is_ptr() {
-			mut r_expr := &node.exprs[i]
+			mut r_expr := &node.exprs[expr_idxs[i]]
 			if mut r_expr is ast.Ident {
 				if mut r_expr.obj is ast.Var {
 					mut obj := unsafe { &r_expr.obj }
@@ -158,7 +161,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 	if exp_is_optional && node.exprs.len > 0 {
 		expr0 := node.exprs[0]
 		if expr0 is ast.CallExpr {
-			if expr0.or_block.kind == .propagate && node.exprs.len == 1 {
+			if expr0.or_block.kind == .propagate_option && node.exprs.len == 1 {
 				c.error('`?` is not needed, use `return ${expr0.name}()`', expr0.pos)
 			}
 		}

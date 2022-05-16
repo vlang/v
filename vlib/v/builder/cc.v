@@ -418,6 +418,21 @@ fn (v &Builder) all_args(ccoptions CcompilerOptions) []string {
 	}
 	all << ccoptions.args
 	all << ccoptions.o_args
+	$if windows {
+		// Adding default options for tcc, gcc and clang as done in msvc.v.
+		// This is done before pre_args is added so that it can be overwritten if needed.
+		// -Wl,-stack=16777216 == /F 16777216
+		// -Werror=implicit-function-declaration == /we4013
+		// /volatile:ms - there seems to be no equivalent,
+		// normally msvc should use /volatile:iso
+		// but it could have an impact on vinix if it is created with msvc.
+		if !ccoptions.is_cc_msvc {
+			all << '-Wl,-stack=16777216'
+			if !v.pref.is_cstrict {
+				all << '-Werror=implicit-function-declaration'
+			}
+		}
+	}
 	all << ccoptions.pre_args
 	all << ccoptions.source_args
 	all << ccoptions.post_args
@@ -661,10 +676,6 @@ pub fn (mut v Builder) cc() {
 		break
 	}
 	if v.pref.compress {
-		$if windows {
-			println('-compress does not work on Windows for now')
-			return
-		}
 		ret := os.system('strip $v.pref.out_name')
 		if ret != 0 {
 			println('strip failed')
@@ -685,7 +696,7 @@ pub fn (mut v Builder) cc() {
 				println('install upx\n' + 'for example, on Debian/Ubuntu run `sudo apt install upx`')
 			}
 			$if windows {
-				// :)
+				println('install upx')
 			}
 		}
 	}

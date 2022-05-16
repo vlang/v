@@ -303,7 +303,7 @@ fn html_highlight(code string, tb &ast.Table) string {
 		} else if typ == .char {
 			'`$tok.lit`'
 		} else if typ == .comment {
-			if tok.lit[0] == 1 { '//${tok.lit[1..]}' } else { '//$tok.lit' }
+			if tok.lit != '' && tok.lit[0] == 1 { '//${tok.lit[1..]}' } else { '//$tok.lit' }
 		} else {
 			tok.lit
 		}

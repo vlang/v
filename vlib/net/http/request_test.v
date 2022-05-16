@@ -95,6 +95,30 @@ fn test_parse_form() {
 		'a': 'b'
 		'c': ' d '
 	}
+	assert parse_form('{json}') == {
+		'json': '{json}'
+	}
+	assert parse_form('{
+    "_id": "76c",
+    "friends": [
+      {
+        "id": 0,
+        "name": "Mason Luna"
+      }
+    ],
+    "greeting": "Hello."
+  }') == {
+		'json': '{
+    "_id": "76c",
+    "friends": [
+      {
+        "id": 0,
+        "name": "Mason Luna"
+      }
+    ],
+    "greeting": "Hello."
+  }'
+	}
 }
 
 fn test_parse_multipart_form() {
@@ -154,7 +178,7 @@ fn test_parse_large_body() ? {
 	body := 'A'.repeat(101) // greater than max_bytes
 	req := 'GET / HTTP/1.1\r\nContent-Length: $body.len\r\n\r\n$body'
 	mut reader_ := reader(req)
-	result := parse_request(mut reader_) ?
+	result := parse_request(mut reader_)?
 	assert result.data.len == body.len
 	assert result.data == body
 }

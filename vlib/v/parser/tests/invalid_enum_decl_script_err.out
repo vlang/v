@@ -1,0 +1,12 @@
+vlib/v/parser/tests/invalid_enum_decl_script_err.vv:1:1: notice: script mode started here
+    1 | mynum := 10
+      | ~~~~~
+    2 | 
+    3 | enum MyEnum {
+vlib/v/parser/tests/invalid_enum_decl_script_err.vv:3:1: error: all definitions must occur before code in script mode
+    1 | mynum := 10
+    2 | 
+    3 | enum MyEnum {
+      | ~~~~
+    4 |     aa
+    5 |     bb

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/propagate_result_with_option.vv:6:8: error: to propagate a result, the call must also return a result type
+    4 | 
+    5 | fn bar() !string {
+    6 |     foo() !
+      |           ^
+    7 |     return ''
+    8 | }

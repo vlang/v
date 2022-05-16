@@ -39,13 +39,6 @@ fn C.isdigit(c int) bool
 // stdio.h
 fn C.popen(c &char, t &char) voidptr
 
-// <execinfo.h>
-fn C.backtrace(a &voidptr, size int) int
-
-fn C.backtrace_symbols(a &voidptr, size int) &&char
-
-fn C.backtrace_symbols_fd(a &voidptr, size int, fd int)
-
 // <libproc.h>
 pub fn proc_pidpath(int, voidptr, int) int
 
@@ -78,6 +71,9 @@ fn C.fclose(stream &C.FILE) int
 
 fn C.pclose(stream &C.FILE) int
 
+fn C.strrchr(s &char, c int) &char
+fn C.strchr(s &char, c int) &char
+
 // process execution, os.process:
 [trusted]
 fn C.getpid() int
@@ -99,6 +95,8 @@ fn C.execvp(cmd_path &char, args &&char) int
 fn C._execve(cmd_path &char, args voidptr, envs voidptr) int
 
 fn C._execvp(cmd_path &char, args &&char) int
+
+fn C.strcmp(s1 &char, s2 &char) int
 
 [trusted]
 fn C.fork() int

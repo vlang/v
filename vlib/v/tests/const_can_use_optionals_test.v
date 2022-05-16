@@ -1,6 +1,6 @@
 const (
-	aaa = iopt() ?
-	bbb = sopt() ?
+	aaa = iopt()?
+	bbb = sopt()?
 )
 
 fn iopt() ?int {

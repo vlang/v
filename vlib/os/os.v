@@ -58,27 +58,27 @@ pub fn cp_all(src string, dst string, overwrite bool) ? {
 		}
 		if exists(adjusted_path) {
 			if overwrite {
-				rm(adjusted_path) ?
+				rm(adjusted_path)?
 			} else {
 				return error('Destination file path already exist')
 			}
 		}
-		cp(source_path, adjusted_path) ?
+		cp(source_path, adjusted_path)?
 		return
 	}
 	if !exists(dest_path) {
-		mkdir(dest_path) ?
+		mkdir(dest_path)?
 	}
 	if !is_dir(dest_path) {
 		return error('Destination path is not a valid directory')
 	}
-	files := ls(source_path) ?
+	files := ls(source_path)?
 	for file in files {
 		sp := join_path_single(source_path, file)
 		dp := join_path_single(dest_path, file)
 		if is_dir(sp) {
 			if !exists(dp) {
-				mkdir(dp) ?
+				mkdir(dp)?
 			}
 		}
 		cp_all(sp, dp, overwrite) or {
@@ -91,14 +91,14 @@ pub fn cp_all(src string, dst string, overwrite bool) ? {
 // mv_by_cp first copies the source file, and if it is copied successfully, deletes the source file.
 // may be used when you are not sure that the source and target are on the same mount/partition.
 pub fn mv_by_cp(source string, target string) ? {
-	cp(source, target) ?
-	rm(source) ?
+	cp(source, target)?
+	rm(source)?
 }
 
 // read_lines reads the file in `path` into an array of lines.
 [manualfree]
 pub fn read_lines(path string) ?[]string {
-	buf := read_file(path) ?
+	buf := read_file(path)?
 	res := buf.split_into_lines()
 	unsafe { buf.free() }
 	return res
@@ -146,7 +146,7 @@ pub fn sigint_to_signal_name(si int) string {
 // rmdir_all recursively removes the specified directory.
 pub fn rmdir_all(path string) ? {
 	mut ret_err := ''
-	items := ls(path) ?
+	items := ls(path)?
 	for item in items {
 		fullpath := join_path_single(path, item)
 		if is_dir(fullpath) && !is_link(fullpath) {
@@ -371,8 +371,8 @@ pub fn expand_tilde_to_home(path string) string {
 // write_file writes `text` data to the file in `path`.
 // If `path` exists, the contents of `path` will be overwritten with the contents of `text`.
 pub fn write_file(path string, text string) ? {
-	mut f := create(path) ?
-	unsafe { f.write_full_buffer(text.str, usize(text.len)) ? }
+	mut f := create(path)?
+	unsafe { f.write_full_buffer(text.str, usize(text.len))? }
 	f.close()
 }
 
@@ -452,18 +452,6 @@ pub fn exists_in_system_path(prog string) bool {
 // is_file returns a `bool` indicating whether the given `path` is a file.
 pub fn is_file(path string) bool {
 	return exists(path) && !is_dir(path)
-}
-
-// is_abs_path returns `true` if `path` is absolute.
-pub fn is_abs_path(path string) bool {
-	if path.len == 0 {
-		return false
-	}
-	$if windows {
-		return path[0] == `/` || // incase we're in MingGW bash
-		(path[0].is_letter() && path.len > 1 && path[1] == `:`)
-	}
-	return path[0] == `/`
 }
 
 // join_path returns a path as string from input string parameter(s).
@@ -563,7 +551,7 @@ pub fn walk(path string, f fn (string)) {
 pub type FnWalkContextCB = fn (voidptr, string)
 
 // walk_with_context traverses the given directory `path`.
-// For each encountred file, it will call your `fcb` callback,
+// For each encountred file and directory, it will call your `fcb` callback,
 // passing it the arbitrary `context` in its first parameter,
 // and the path to the file in its second parameter.
 pub fn walk_with_context(path string, context voidptr, fcb FnWalkContextCB) {
@@ -580,10 +568,9 @@ pub fn walk_with_context(path string, context voidptr, fcb FnWalkContextCB) {
 	}
 	for file in files {
 		p := path + local_path_separator + file
+		fcb(context, p)
 		if is_dir(p) && !is_link(p) {
 			walk_with_context(p, context, fcb)
-		} else {
-			fcb(context, p)
 		}
 	}
 	return

@@ -69,7 +69,7 @@ pub fn new_reader(data string, config ReaderConfig) &Reader {
 // read reads a row from the CSV data.
 // If successful, the result holds an array of each column's data.
 pub fn (mut r Reader) read() ?[]string {
-	l := r.read_record() ?
+	l := r.read_record()?
 	return l
 }
 
@@ -133,7 +133,7 @@ fn (mut r Reader) read_record() ?[]string {
 	mut i := -1
 	for {
 		if need_read {
-			l := r.read_line() ?
+			l := r.read_line()?
 			if l.len <= 0 {
 				if keep_raw {
 					line += '\n'

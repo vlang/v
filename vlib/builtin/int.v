@@ -17,14 +17,17 @@ pub fn ptr_str(ptr voidptr) string {
 	return buf1
 }
 
+// str returns string equivalent of x
 pub fn (x isize) str() string {
 	return i64(x).str()
 }
 
+// str returns string equivalent of x
 pub fn (x usize) str() string {
 	return u64(x).str()
 }
 
+// str returns string equivalent of cptr
 pub fn (cptr &char) str() string {
 	return u64(cptr).hex()
 }
@@ -553,7 +556,7 @@ pub fn (b []u8) bytestr() string {
 // it will produce an error if there are more than
 // four bytes in the array.
 pub fn (b []u8) byterune() ?rune {
-	r := b.utf8_to_utf32() ?
+	r := b.utf8_to_utf32()?
 	return rune(r)
 }
 

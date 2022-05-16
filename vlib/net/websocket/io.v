@@ -10,7 +10,7 @@ fn (mut ws Client) socket_read(mut buffer []u8) ?int {
 			return error('socket_read: trying to read a closed socket')
 		}
 		if ws.is_ssl {
-			r := ws.ssl_conn.read(mut buffer) ?
+			r := ws.ssl_conn.read(mut buffer)?
 			return r
 		} else {
 			for {
@@ -34,7 +34,7 @@ fn (mut ws Client) socket_read_ptr(buf_ptr &u8, len int) ?int {
 			return error('socket_read_ptr: trying to read a closed socket')
 		}
 		if ws.is_ssl {
-			r := ws.ssl_conn.socket_read_into_ptr(buf_ptr, len) ?
+			r := ws.ssl_conn.socket_read_into_ptr(buf_ptr, len)?
 			return r
 		} else {
 			for {
@@ -79,22 +79,22 @@ fn (mut ws Client) socket_write(bytes []u8) ?int {
 fn (mut ws Client) shutdown_socket() ? {
 	ws.debug_log('shutting down socket')
 	if ws.is_ssl {
-		ws.ssl_conn.shutdown() ?
+		ws.ssl_conn.shutdown()?
 	} else {
-		ws.conn.close() ?
+		ws.conn.close()?
 	}
 }
 
 // dial_socket connects tcp socket and initializes default configurations
 fn (mut ws Client) dial_socket() ?&net.TcpConn {
 	tcp_address := '$ws.uri.hostname:$ws.uri.port'
-	mut t := net.dial_tcp(tcp_address) ?
+	mut t := net.dial_tcp(tcp_address)?
 	optval := int(1)
-	t.sock.set_option_int(.keep_alive, optval) ?
+	t.sock.set_option_int(.keep_alive, optval)?
 	t.set_read_timeout(30 * time.second)
 	t.set_write_timeout(30 * time.second)
 	if ws.is_ssl {
-		ws.ssl_conn.connect(mut t, ws.uri.hostname) ?
+		ws.ssl_conn.connect(mut t, ws.uri.hostname)?
 	}
 	return t
 }

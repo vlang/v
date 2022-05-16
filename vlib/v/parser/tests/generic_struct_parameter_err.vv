@@ -1,0 +1,23 @@
+import datatypes { LinkedList }
+
+struct MyNode<T> {
+mut:
+	data T
+}
+
+struct MyContainer<T> {
+mut:
+	lst LinkedList<MyNode<T>>
+}
+
+fn (mut c MyContainer<T>) push(data T) {
+	node := MyNode<T>{
+		data: data
+	}
+	c.lst.push<T>(node)
+}
+
+fn main() {
+	mut c := MyContainer<string>{}
+	println(c)
+}

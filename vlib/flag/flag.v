@@ -71,7 +71,7 @@ pub fn (af []Flag) str() string {
 // That structure is created with `mut parser := flag.new_flag_parser(os.args)`,
 // The returned instance can be further customised by calling various methods,
 // for specifying the accepted options and their values. The user should finally
-// call `rest := parser.finalize() ?` to get the rest of the non optional arguments
+// call `rest := parser.finalize()?` to get the rest of the non optional arguments
 // (if there are any left).
 pub struct FlagParser {
 pub:

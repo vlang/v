@@ -26,16 +26,16 @@ vlib/v/checker/tests/generics_fn_arguments_count_err.vv:22:22: error: expected 2
       |                         ~~~~~~~~~~~~~~~~~~
    23 |     println(ret4)
    24 | }
-vlib/v/checker/tests/generics_fn_arguments_count_err.vv:2:15: error: no known default format for type `B`
+vlib/v/checker/tests/generics_fn_arguments_count_err.vv:2:11: error: no known default format for type `A`
     1 | fn get_name<A, B>(a A, b B) string {
     2 |     return '$a, $b'
-      |                  ^
+      |              ^
     3 | }
     4 |
-vlib/v/checker/tests/generics_fn_arguments_count_err.vv:8:15: error: no known default format for type `B`
+vlib/v/checker/tests/generics_fn_arguments_count_err.vv:8:11: error: no known default format for type `A`
     6 |
     7 | fn (f Foo) get_name<A, B>(a A, b B) string {
     8 |     return '$a, $b'
-      |                  ^
+      |              ^
     9 | }
    10 |

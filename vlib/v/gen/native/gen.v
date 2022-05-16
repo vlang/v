@@ -22,7 +22,7 @@ mut:
 	// XXX WHY gen_exit fn (expr ast.Expr)
 }
 
-[heap]
+[heap; minify]
 pub struct Gen {
 	out_name string
 	pref     &pref.Preferences // Preferences shared from V struct

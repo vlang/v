@@ -55,7 +55,7 @@ pub fn (flag Flag) get_bool() ?bool {
 // get_bool returns `true` if the flag specified in `name` is set.
 // get_bool returns an error if the `FlagType` is not boolean.
 pub fn (flags []Flag) get_bool(name string) ?bool {
-	flag := flags.get(name) ?
+	flag := flags.get(name)?
 	return flag.get_bool()
 }
 
@@ -100,14 +100,14 @@ pub fn (flag Flag) get_ints() ?[]int {
 // get_int returns the `int` value argument of the flag specified in `name`.
 // get_int returns an error if the `FlagType` is not integer.
 pub fn (flags []Flag) get_int(name string) ?int {
-	flag := flags.get(name) ?
+	flag := flags.get(name)?
 	return flag.get_int()
 }
 
 // get_ints returns the array of `int` value argument of the flag specified in `name`.
 // get_ints returns an error if the `FlagType` is not integer.
 pub fn (flags []Flag) get_ints(name string) ?[]int {
-	flag := flags.get(name) ?
+	flag := flags.get(name)?
 	return flag.get_ints()
 }
 
@@ -152,14 +152,14 @@ pub fn (flag Flag) get_floats() ?[]f64 {
 // get_float returns the `f64` value argument of the flag specified in `name`.
 // get_float returns an error if the `FlagType` is not floating point.
 pub fn (flags []Flag) get_float(name string) ?f64 {
-	flag := flags.get(name) ?
+	flag := flags.get(name)?
 	return flag.get_float()
 }
 
 // get_floats returns the array of `f64` value argument of the flag specified in `name`.
 // get_floats returns an error if the `FlagType` is not floating point.
 pub fn (flags []Flag) get_floats(name string) ?[]f64 {
-	flag := flags.get(name) ?
+	flag := flags.get(name)?
 	return flag.get_floats()
 }
 
@@ -198,14 +198,14 @@ pub fn (flag Flag) get_strings() ?[]string {
 // get_string returns the `string` value argument of the flag specified in `name`.
 // get_string returns an error if the `FlagType` is not string.
 pub fn (flags []Flag) get_string(name string) ?string {
-	flag := flags.get(name) ?
+	flag := flags.get(name)?
 	return flag.get_string()
 }
 
 // get_strings returns the `string` value argument of the flag specified in `name`.
 // get_strings returns an error if the `FlagType` is not string.
 pub fn (flags []Flag) get_strings(name string) ?[]string {
-	flag := flags.get(name) ?
+	flag := flags.get(name)?
 	return flag.get_strings()
 }
 
@@ -214,7 +214,7 @@ pub fn (flags []Flag) get_strings(name string) ?[]string {
 fn (mut flag Flag) parse(args []string, posix_mode bool) ?[]string {
 	if flag.matches(args, posix_mode) {
 		if flag.flag == .bool {
-			new_args := flag.parse_bool(args) ?
+			new_args := flag.parse_bool(args)?
 			return new_args
 		} else {
 			if flag.value.len > 0 && flag.flag != .int_array && flag.flag != .float_array
@@ -222,7 +222,7 @@ fn (mut flag Flag) parse(args []string, posix_mode bool) ?[]string {
 				return error('The argument `$flag.name` accept only one value!')
 			}
 
-			new_args := flag.parse_raw(args) ?
+			new_args := flag.parse_raw(args)?
 			return new_args
 		}
 	} else {

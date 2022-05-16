@@ -10,6 +10,13 @@ import v.pkgconfig
 
 fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	node.left_type = c.expr(node.left)
+	if node.method_name == 'compile_error' {
+		c.error(node.args_var, node.pos)
+		return ast.void_type
+	} else if node.method_name == 'compile_warn' {
+		c.warn(node.args_var, node.pos)
+		return ast.void_type
+	}
 	if node.is_env {
 		env_value := util.resolve_env_value("\$env('$node.args_var')", false) or {
 			c.error(err.msg(), node.env_pos)
@@ -90,6 +97,30 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	return f.return_type
 }
 
+fn (mut c Checker) comptime_selector(mut node ast.ComptimeSelector) ast.Type {
+	node.left_type = c.expr(node.left)
+	expr_type := c.unwrap_generic(c.expr(node.field_expr))
+	expr_sym := c.table.sym(expr_type)
+	if expr_type != ast.string_type {
+		c.error('expected `string` instead of `$expr_sym.name` (e.g. `field.name`)', node.field_expr.pos())
+	}
+	if mut node.field_expr is ast.SelectorExpr {
+		left_pos := node.field_expr.expr.pos()
+		if c.comptime_fields_type.len == 0 {
+			c.error('compile time field access can only be used when iterating over `T.fields`',
+				left_pos)
+		}
+		expr_name := node.field_expr.expr.str()
+		if expr_name in c.comptime_fields_type {
+			return c.comptime_fields_type[expr_name]
+		}
+		c.error('unknown `\$for` variable `$expr_name`', left_pos)
+	} else {
+		c.error('expected selector expression e.g. `$(field.name)`', node.field_expr.pos())
+	}
+	return ast.void_type
+}
+
 fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 	typ := c.unwrap_generic(node.typ)
 	sym := c.table.sym(typ)
@@ -127,7 +158,8 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 		//	return expr.val.i64()
 		// }
 		ast.SizeOf {
-			return c.table.type_size(expr.typ)
+			s, _ := c.table.type_size(expr.typ)
+			return s
 		}
 		ast.FloatLiteral {
 			x := expr.val.f64()
@@ -192,8 +224,8 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 			}
 		}
 		ast.InfixExpr {
-			left := c.eval_comptime_const_expr(expr.left, nlevel + 1) ?
-			right := c.eval_comptime_const_expr(expr.right, nlevel + 1) ?
+			left := c.eval_comptime_const_expr(expr.left, nlevel + 1)?
+			right := c.eval_comptime_const_expr(expr.right, nlevel + 1)?
 			if left is string && right is string {
 				match expr.op {
 					.plus {
@@ -380,19 +412,25 @@ fn (mut c Checker) evaluate_once_comptime_if_attribute(mut node ast.Attr) bool {
 		}
 	}
 	c.inside_ct_attr = true
-	node.ct_skip = c.comptime_if_branch(node.ct_expr, node.pos)
+	node.ct_skip = if c.comptime_if_branch(node.ct_expr, node.pos) == .skip { true } else { false }
 	c.inside_ct_attr = false
 	node.ct_evaled = true
 	return node.ct_skip
 }
 
+enum ComptimeBranchSkipState {
+	eval
+	skip
+	unknown
+}
+
 // comptime_if_branch checks the condition of a compile-time `if` branch. It returns `true`
 // if that branch's contents should be skipped (targets a different os for example)
-fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) bool {
+fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBranchSkipState {
 	// TODO: better error messages here
 	match cond {
 		ast.BoolLiteral {
-			return !cond.val
+			return if cond.val { .eval } else { .skip }
 		}
 		ast.ParExpr {
 			return c.comptime_if_branch(cond.expr, pos)
@@ -401,13 +439,20 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) bool {
 			if cond.op != .not {
 				c.error('invalid `\$if` condition', cond.pos)
 			}
-			return !c.comptime_if_branch(cond.right, cond.pos)
+			reversed := c.comptime_if_branch(cond.right, cond.pos)
+			return if reversed == .eval {
+				.skip
+			} else if reversed == .skip {
+				.eval
+			} else {
+				reversed
+			}
 		}
 		ast.PostfixExpr {
 			if cond.op != .question {
 				c.error('invalid \$if postfix operator', cond.pos)
 			} else if cond.expr is ast.Ident {
-				return cond.expr.name !in c.pref.compile_defines_all
+				return if cond.expr.name in c.pref.compile_defines_all { .eval } else { .skip }
 			} else {
 				c.error('invalid `\$if` condition', cond.pos)
 			}
@@ -417,12 +462,18 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) bool {
 				.and {
 					l := c.comptime_if_branch(cond.left, cond.pos)
 					r := c.comptime_if_branch(cond.right, cond.pos)
-					return l || r // skip (return true) if at least one should be skipped
+					if l == .unknown || r == .unknown {
+						return .unknown
+					}
+					return if l == .eval && r == .eval { .eval } else { .skip }
 				}
 				.logical_or {
 					l := c.comptime_if_branch(cond.left, cond.pos)
 					r := c.comptime_if_branch(cond.right, cond.pos)
-					return l && r // skip (return true) only if both should be skipped
+					if l == .unknown || r == .unknown {
+						return .unknown
+					}
+					return if l == .eval || r == .eval { .eval } else { .skip }
 				}
 				.key_is, .not_is {
 					if cond.left is ast.TypeNode && cond.right is ast.TypeNode {
@@ -432,15 +483,19 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) bool {
 							c.expr(cond.left)
 							// c.error('`$sym.name` is not an interface', cond.right.pos())
 						}
-						return false
+						return .unknown
 					} else if cond.left is ast.TypeNode && cond.right is ast.ComptimeType {
 						left := cond.left as ast.TypeNode
 						checked_type := c.unwrap_generic(left.typ)
-						return c.table.is_comptime_type(checked_type, cond.right)
+						return if c.table.is_comptime_type(checked_type, cond.right) {
+							.eval
+						} else {
+							.skip
+						}
 					} else if cond.left in [ast.SelectorExpr, ast.TypeNode] {
 						// `$if method.@type is string`
 						c.expr(cond.left)
-						return false
+						return .unknown
 					} else {
 						c.error('invalid `\$if` condition: expected a type or a selector expression or an interface check',
 							cond.left.pos())
@@ -455,7 +510,7 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) bool {
 						right_type := c.expr(cond.right)
 						expr := c.find_definition(cond.left) or {
 							c.error(err.msg(), cond.left.pos)
-							return false
+							return .unknown
 						}
 						if !c.check_types(right_type, left_type) {
 							left_name := c.table.type_to_str(left_type)
@@ -466,7 +521,19 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) bool {
 						// :)
 						// until `v.eval` is stable, I can't think of a better way to do this
 						different := expr.str() != cond.right.str()
-						return if cond.op == .eq { different } else { !different }
+						return if cond.op == .eq {
+							if different {
+								ComptimeBranchSkipState.skip
+							} else {
+								ComptimeBranchSkipState.eval
+							}
+						} else {
+							if different {
+								ComptimeBranchSkipState.eval
+							} else {
+								ComptimeBranchSkipState.skip
+							}
+						}
 					} else {
 						c.error('invalid `\$if` condition: ${cond.left.type_name()}1',
 							cond.pos)
@@ -480,51 +547,84 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) bool {
 		ast.Ident {
 			cname := cond.name
 			if cname in valid_comptime_if_os {
-				mut is_os_target_different := false
+				mut is_os_target_equal := true
 				if !c.pref.output_cross_c {
 					target_os := c.pref.os.str().to_lower()
-					is_os_target_different = cname != target_os
+					is_os_target_equal = cname == target_os
 				}
-				return is_os_target_different
+				return if is_os_target_equal { .eval } else { .skip }
 			} else if cname in valid_comptime_if_compilers {
-				return pref.cc_from_string(cname) != c.pref.ccompiler_type
+				return if pref.cc_from_string(cname) == c.pref.ccompiler_type {
+					.eval
+				} else {
+					.skip
+				}
 			} else if cname in valid_comptime_if_platforms {
 				if cname == 'aarch64' {
 					c.note('use `arm64` instead of `aarch64`', pos)
 				}
 				match cname {
-					'amd64' { return c.pref.arch != .amd64 }
-					'i386' { return c.pref.arch != .i386 }
-					'aarch64' { return c.pref.arch != .arm64 }
-					'arm64' { return c.pref.arch != .arm64 }
-					'arm32' { return c.pref.arch != .arm32 }
-					'rv64' { return c.pref.arch != .rv64 }
-					'rv32' { return c.pref.arch != .rv32 }
-					else { return false }
+					'amd64' { return if c.pref.arch == .amd64 { .eval } else { .skip } }
+					'i386' { return if c.pref.arch == .i386 { .eval } else { .skip } }
+					'aarch64' { return if c.pref.arch == .arm64 { .eval } else { .skip } }
+					'arm64' { return if c.pref.arch == .arm64 { .eval } else { .skip } }
+					'arm32' { return if c.pref.arch == .arm32 { .eval } else { .skip } }
+					'rv64' { return if c.pref.arch == .rv64 { .eval } else { .skip } }
+					'rv32' { return if c.pref.arch == .rv32 { .eval } else { .skip } }
+					else { return .unknown }
 				}
 			} else if cname in valid_comptime_if_cpu_features {
-				return false
+				return .unknown
 			} else if cname in valid_comptime_if_other {
 				match cname {
-					'apk' { return !c.pref.is_apk }
-					'js' { return !c.pref.backend.is_js() }
-					'debug' { return !c.pref.is_debug }
-					'prod' { return !c.pref.is_prod }
-					'profile' { return !c.pref.is_prof }
-					'test' { return !c.pref.is_test }
-					'glibc' { return false } // TODO
-					'threads' { return c.table.gostmts == 0 }
-					'prealloc' { return !c.pref.prealloc }
-					'no_bounds_checking' { return cname !in c.pref.compile_defines_all }
-					'freestanding' { return !c.pref.is_bare || c.pref.output_cross_c }
-					'interpreter' { c.pref.backend != .interpret }
-					else { return false }
+					'apk' {
+						return if c.pref.is_apk { .eval } else { .skip }
+					}
+					'js' {
+						return if c.pref.backend.is_js() { .eval } else { .skip }
+					}
+					'debug' {
+						return if c.pref.is_debug { .eval } else { .skip }
+					}
+					'prod' {
+						return if c.pref.is_prod { .eval } else { .skip }
+					}
+					'profile' {
+						return if c.pref.is_prof { .eval } else { .skip }
+					}
+					'test' {
+						return if c.pref.is_test { .eval } else { .skip }
+					}
+					'musl' {
+						return .unknown
+					}
+					'glibc' {
+						return .unknown
+					}
+					'threads' {
+						return if c.table.gostmts > 0 { .eval } else { .skip }
+					}
+					'prealloc' {
+						return if c.pref.prealloc { .eval } else { .skip }
+					}
+					'no_bounds_checking' {
+						return if cname in c.pref.compile_defines_all { .eval } else { .skip }
+					}
+					'freestanding' {
+						return if c.pref.is_bare && !c.pref.output_cross_c { .eval } else { .skip }
+					}
+					'interpreter' {
+						return if c.pref.backend == .interpret { .eval } else { .skip }
+					}
+					else {
+						return .unknown
+					}
 				}
 			} else if cname !in c.pref.compile_defines_all {
 				if cname == 'linux_or_macos' {
 					c.error('linux_or_macos is deprecated, use `\$if linux || macos {` instead',
 						cond.pos)
-					return false
+					return .unknown
 				}
 				// `$if some_var {}`, or `[if user_defined_tag] fn abc(){}`
 				typ := c.unwrap_generic(c.expr(cond))
@@ -533,11 +633,11 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) bool {
 					if !c.inside_ct_attr {
 						c.error('unknown var: `$cname`', pos)
 					}
-					return false
+					return .unknown
 				}
 				expr := c.find_obj_definition(cond.obj) or {
 					c.error(err.msg(), cond.pos)
-					return false
+					return .unknown
 				}
 				if !c.check_types(typ, ast.bool_type) {
 					type_name := c.table.type_to_str(typ)
@@ -545,21 +645,22 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) bool {
 				}
 				// :)
 				// until `v.eval` is stable, I can't think of a better way to do this
-				return !(expr as ast.BoolLiteral).val
+				return if (expr as ast.BoolLiteral).val { .eval } else { .skip }
 			}
 		}
 		ast.ComptimeCall {
 			if cond.is_pkgconfig {
 				mut m := pkgconfig.main([cond.args_var]) or {
 					c.error(err.msg(), cond.pos)
-					return true
+					return .skip
 				}
-				m.run() or { return true }
+				m.run() or { return .skip }
 			}
+			return .eval
 		}
 		else {
 			c.error('invalid `\$if` condition', pos)
 		}
 	}
-	return false
+	return .unknown
 }

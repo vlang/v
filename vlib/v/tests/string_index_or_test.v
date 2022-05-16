@@ -39,7 +39,7 @@ fn test_if_guard_good() {
 }
 
 fn get_propagate(s string, i int) ?string {
-	c := s[i] ?
+	c := s[i]?
 	return 'got `${c:c}`'
 }
 

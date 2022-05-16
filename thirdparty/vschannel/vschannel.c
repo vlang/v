@@ -877,7 +877,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, CHAR *
 		// increase buffer size if we need
 		int required_length = *length+(int)pDataBuffer->cbBuffer;
 		if( required_length > buff_size ) {
-			CHAR *a = realloc(*out, required_length);
+			CHAR *a = VSCHANNEL_REALLOC(*out, required_length);
 			if( a == NULL ) {
 				scRet = SEC_E_INTERNAL_ERROR;
 				return scRet;

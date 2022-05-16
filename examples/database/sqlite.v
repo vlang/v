@@ -1,7 +1,7 @@
 import sqlite
 
 fn main() {
-	db := sqlite.connect(':memory:') ?
+	db := sqlite.connect(':memory:')?
 	db.exec("create table users (id integer primary key, name text default '');")
 
 	db.exec("insert into users (name) values ('Sam')")

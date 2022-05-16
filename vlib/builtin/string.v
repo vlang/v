@@ -550,6 +550,15 @@ pub fn (s string) u64() u64 {
 	return strconv.common_parse_uint(s, 0, 64, false, false) or { 0 }
 }
 
+// parse_uint is like `parse_int` but for unsigned numbers
+//
+// This method directly exposes the `parse_int` function from `strconv`
+// as a method on `string`. For more advanced features,
+// consider calling `strconv.common_parse_int` directly.
+pub fn (s string) parse_uint(_base int, _bit_size int) ?u64 {
+	return strconv.parse_uint(s, _base, _bit_size)
+}
+
 // parse_int interprets a string s in the given base (0, 2 to 36) and
 // bit size (0 to 64) and returns the corresponding value i.
 //
@@ -566,15 +575,6 @@ pub fn (s string) u64() u64 {
 // This method directly exposes the `parse_uint` function from `strconv`
 // as a method on `string`. For more advanced features,
 // consider calling `strconv.common_parse_uint` directly.
-pub fn (s string) parse_uint(_base int, _bit_size int) ?u64 {
-	return strconv.parse_uint(s, _base, _bit_size)
-}
-
-// parse_uint is like `parse_int` but for unsigned numbers
-//
-// This method directly exposes the `parse_int` function from `strconv`
-// as a method on `string`. For more advanced features,
-// consider calling `strconv.common_parse_int` directly.
 pub fn (s string) parse_int(_base int, _bit_size int) ?i64 {
 	return strconv.parse_int(s, _base, _bit_size)
 }
@@ -1564,42 +1564,42 @@ pub fn (c u8) is_space() bool {
 }
 
 // is_digit returns `true` if the byte is in range 0-9 and `false` otherwise.
-// Example: assert u8(`9`) == true
+// Example: assert u8(`9`).is_digit() == true
 [inline]
 pub fn (c u8) is_digit() bool {
 	return c >= `0` && c <= `9`
 }
 
 // is_hex_digit returns `true` if the byte is either in range 0-9, a-f or A-F and `false` otherwise.
-// Example: assert u8(`F`) == true
+// Example: assert u8(`F`).is_hex_digit() == true
 [inline]
 pub fn (c u8) is_hex_digit() bool {
 	return (c >= `0` && c <= `9`) || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)
 }
 
 // is_oct_digit returns `true` if the byte is in range 0-7 and `false` otherwise.
-// Example: assert u8(`7`) == true
+// Example: assert u8(`7`).is_oct_digit() == true
 [inline]
 pub fn (c u8) is_oct_digit() bool {
 	return c >= `0` && c <= `7`
 }
 
 // is_bin_digit returns `true` if the byte is a binary digit (0 or 1) and `false` otherwise.
-// Example: assert u8(`0`) == true
+// Example: assert u8(`0`).is_bin_digit() == true
 [inline]
 pub fn (c u8) is_bin_digit() bool {
 	return c == `0` || c == `1`
 }
 
 // is_letter returns `true` if the byte is in range a-z or A-Z and `false` otherwise.
-// Example: assert u8(`V`) == true
+// Example: assert u8(`V`).is_letter() == true
 [inline]
 pub fn (c u8) is_letter() bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
 }
 
 // is_alnum returns `true` if the byte is in range a-z, A-Z, 0-9 and `false` otherwise.
-// Example: assert u8(`V`) == true
+// Example: assert u8(`V`).is_alnum() == true
 [inline]
 pub fn (c u8) is_alnum() bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`)

@@ -33,7 +33,7 @@ fn k() {
       shared f := St{}
 	  f
 	 }
-	 shared z := h() ?
+	 shared z := h()?
 	 shared p := v
 	 v := rlock  z {  z.a }
 	 rlock x; lock y, z; rlock p {
@@ -64,8 +64,7 @@ a: 5
  lock x { // wait for ongoing reads to finish, don't start new ones
 			 x.a = 17 // this value should never be read
 	time.sleep(50* time.millisecond)
-	x.a = if (i & 1) == 0 {
-7} else {5}
+	x.a = if (i & 1) ==  0 {    7 } else {  5  }
 	} // now new reads are possible again
 time.sleep(20*time.millisecond)
 	}

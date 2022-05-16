@@ -14,7 +14,7 @@ pub struct Null {
 
 // decode decodes a TOML `string` into the target type `T`.
 pub fn decode<T>(toml_txt string) ?T {
-	doc := parse_text(toml_txt) ?
+	doc := parse_text(toml_txt)?
 	mut typ := T{}
 	typ.from_toml(doc.to_any())
 	return typ
@@ -78,10 +78,10 @@ pub fn parse_file(path string) ?Doc {
 		input: input_config
 	}
 	parser_config := parser.Config{
-		scanner: scanner.new_scanner(scanner_config) ?
+		scanner: scanner.new_scanner(scanner_config)?
 	}
 	mut p := parser.new_parser(parser_config)
-	ast := p.parse() ?
+	ast := p.parse()?
 	return Doc{
 		ast: ast
 	}
@@ -96,10 +96,10 @@ pub fn parse_text(text string) ?Doc {
 		input: input_config
 	}
 	parser_config := parser.Config{
-		scanner: scanner.new_scanner(scanner_config) ?
+		scanner: scanner.new_scanner(scanner_config)?
 	}
 	mut p := parser.new_parser(parser_config)
-	ast := p.parse() ?
+	ast := p.parse()?
 	return Doc{
 		ast: ast
 	}
@@ -111,15 +111,15 @@ pub fn parse_text(text string) ?Doc {
 [deprecated: 'use parse_file or parse_text instead']
 [deprecated_after: '2022-06-18']
 pub fn parse(toml string) ?Doc {
-	mut input_config := input.auto_config(toml) ?
+	mut input_config := input.auto_config(toml)?
 	scanner_config := scanner.Config{
 		input: input_config
 	}
 	parser_config := parser.Config{
-		scanner: scanner.new_scanner(scanner_config) ?
+		scanner: scanner.new_scanner(scanner_config)?
 	}
 	mut p := parser.new_parser(parser_config)
-	ast := p.parse() ?
+	ast := p.parse()?
 	return Doc{
 		ast: ast
 	}

@@ -25,7 +25,7 @@ fn start_server() ? {
 			return false
 		}
 		return true
-	}) ?
+	})?
 	s.on_message(fn (mut ws websocket.Client, msg &websocket.Message) ? {
 		ws.write(msg.payload, msg.opcode) or { panic(err) }
 	})
@@ -41,7 +41,7 @@ fn start_server() ? {
 // start_client starts the websocket client, it writes a message to
 // the server and prints all the messages received
 fn start_client() ? {
-	mut ws := websocket.new_client('ws://localhost:30000') ?
+	mut ws := websocket.new_client('ws://localhost:30000')?
 	// mut ws := websocket.new_client('wss://echo.websocket.org:443')?
 	// use on_open_ref if you want to send any reference object
 	ws.on_open(fn (mut ws websocket.Client) ? {
@@ -64,7 +64,7 @@ fn start_client() ? {
 	})
 	// you can add any pointer reference to use in callback
 	// t := TestRef{count: 10}
-	// ws.on_message_ref(fn (mut ws websocket.Client, msg &websocket.Message, r &SomeRef)? {
+	// ws.on_message_ref(fn (mut ws websocket.Client, msg &websocket.Message, r &SomeRef) ? {
 	// // println('type: $msg.opcode payload:\n$msg.payload ref: $r')
 	// }, &r)
 	ws.connect() or { println('error on connect: $err') }

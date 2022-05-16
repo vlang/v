@@ -169,13 +169,18 @@ fn (mut g Gen) final_gen_str(typ StrType) {
 	}
 	g.generated_str_fns << typ
 	sym := g.table.sym(typ.typ)
-	if sym.has_method_with_generic_parent('str') && !typ.typ.has_flag(.optional) {
+	if sym.has_method_with_generic_parent('str') && !(typ.typ.has_flag(.optional)
+		|| typ.typ.has_flag(.result)) {
 		return
 	}
 	styp := typ.styp
 	str_fn_name := styp_to_str_fn_name(styp)
 	if typ.typ.has_flag(.optional) {
 		g.gen_str_for_option(typ.typ, styp, str_fn_name)
+		return
+	}
+	if typ.typ.has_flag(.result) {
+		g.gen_str_for_result(typ.typ, styp, str_fn_name)
 		return
 	}
 	match sym.info {
@@ -255,6 +260,39 @@ fn (mut g Gen) gen_str_for_option(typ ast.Type, styp string, str_fn_name string)
 	g.auto_str_funcs.writeln('\t}')
 
 	g.auto_str_funcs.writeln('\treturn ${str_intp_sub('Option(%%)', 'res')};')
+	g.auto_str_funcs.writeln('}')
+}
+
+fn (mut g Gen) gen_str_for_result(typ ast.Type, styp string, str_fn_name string) {
+	$if trace_autostr ? {
+		eprintln('> gen_str_for_result: $typ.debug() | $styp | $str_fn_name')
+	}
+	parent_type := typ.clear_flag(.result)
+	sym := g.table.sym(parent_type)
+	sym_has_str_method, _, _ := sym.str_method_info()
+	parent_str_fn_name := g.get_str_fn(parent_type)
+
+	g.definitions.writeln('string ${str_fn_name}($styp it); // auto')
+	g.auto_str_funcs.writeln('string ${str_fn_name}($styp it) { return indent_${str_fn_name}(it, 0); }')
+	g.definitions.writeln('string indent_${str_fn_name}($styp it, int indent_count); // auto')
+	g.auto_str_funcs.writeln('string indent_${str_fn_name}($styp it, int indent_count) {')
+	g.auto_str_funcs.writeln('\tstring res;')
+	g.auto_str_funcs.writeln('\tif (!it.is_error) {')
+	if sym.kind == .string {
+		tmp_res := '${parent_str_fn_name}(*($sym.cname*)it.data)'
+		g.auto_str_funcs.writeln('\t\tres = ${str_intp_sq(tmp_res)};')
+	} else if should_use_indent_func(sym.kind) && !sym_has_str_method {
+		g.auto_str_funcs.writeln('\t\tres = indent_${parent_str_fn_name}(*($sym.cname*)it.data, indent_count);')
+	} else {
+		g.auto_str_funcs.writeln('\t\tres = ${parent_str_fn_name}(*($sym.cname*)it.data);')
+	}
+	g.auto_str_funcs.writeln('\t} else {')
+
+	tmp_str := str_intp_sub('error: %%', 'IError_str(it.err)')
+	g.auto_str_funcs.writeln('\t\tres = $tmp_str;')
+	g.auto_str_funcs.writeln('\t}')
+
+	g.auto_str_funcs.writeln('\treturn ${str_intp_sub('result(%%)', 'res')};')
 	g.auto_str_funcs.writeln('}')
 }
 
@@ -506,6 +544,8 @@ fn (mut g Gen) fn_decl_str(info ast.FnType) string {
 	fn_str += ')'
 	if info.func.return_type == ast.ovoid_type {
 		fn_str += ' ?'
+	} else if info.func.return_type == ast.rvoid_type {
+		fn_str += ' !'
 	} else if info.func.return_type != ast.void_type {
 		x := util.strip_main_name(g.table.get_type_name(g.unwrap_generic(info.func.return_type)))
 		if info.func.return_type.has_flag(.optional) {
@@ -939,7 +979,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 				fn_body.write_string('tos2((byteptr)$func)')
 			} else {
 				if field.typ.is_ptr() && sym.kind == .struct_ {
-					funcprefix += '(indent_count > 25) ? _SLIT("<probably circular>") : '
+					funcprefix += '(indent_count > 25)? _SLIT("<probably circular>") : '
 				}
 				// eprintln('>>> caller_should_free: ${caller_should_free:6s} | funcprefix: $funcprefix | func: $func')
 				if caller_should_free {

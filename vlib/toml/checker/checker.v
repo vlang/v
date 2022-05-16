@@ -25,28 +25,28 @@ pub struct Checker {
 // check checks the `ast.Value` and all it's children
 // for common errors.
 pub fn (c Checker) check(n &ast.Value) ? {
-	walker.walk(c, n) ?
+	walker.walk(c, n)?
 }
 
 fn (c Checker) visit(value &ast.Value) ? {
 	match value {
 		ast.Bool {
-			c.check_boolean(value) ?
+			c.check_boolean(value)?
 		}
 		ast.Number {
-			c.check_number(value) ?
+			c.check_number(value)?
 		}
 		ast.Quoted {
-			c.check_quoted(value) ?
+			c.check_quoted(value)?
 		}
 		ast.DateTime {
-			c.check_date_time(value) ?
+			c.check_date_time(value)?
 		}
 		ast.Date {
-			c.check_date(value) ?
+			c.check_date(value)?
 		}
 		ast.Time {
-			c.check_time(value) ?
+			c.check_time(value)?
 		}
 		else {}
 	}
@@ -307,7 +307,7 @@ fn (c Checker) check_date_time(dt ast.DateTime) ? {
 				pos: dt.pos.pos
 				col: dt.pos.col
 			}
-		}) ?
+		})?
 		c.check_time(ast.Time{
 			text: split[1]
 			pos: token.Pos{
@@ -316,7 +316,7 @@ fn (c Checker) check_date_time(dt ast.DateTime) ? {
 				pos: dt.pos.pos + split[0].len
 				col: dt.pos.col + split[0].len
 			}
-		}) ?
+		})?
 		// Use V's builtin functionality to validate the string
 		time.parse_rfc3339(lit) or {
 			return error(@MOD + '.' + @STRUCT + '.' + @FN +
@@ -395,8 +395,8 @@ pub fn (c Checker) check_quoted(q ast.Quoted) ? {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' string values like "$lit" has unbalanced quote literals `q.quote` in ...${c.excerpt(q.pos)}...')
 	}
-	c.check_quoted_escapes(q) ?
-	c.check_utf8_validity(q) ?
+	c.check_quoted_escapes(q)?
+	c.check_utf8_validity(q)?
 }
 
 // check_quoted_escapes returns an error for any disallowed escape sequences.
@@ -415,7 +415,7 @@ pub fn (c Checker) check_quoted(q ast.Quoted) ? {
 // \UXXXXXXXX - Unicode         (U+XXXXXXXX)
 fn (c Checker) check_quoted_escapes(q ast.Quoted) ? {
 	// Setup a scanner in stack memory for easier navigation.
-	mut s := scanner.new_simple_text(q.text) ?
+	mut s := scanner.new_simple_text(q.text)?
 
 	// See https://toml.io/en/v1.0.0#string for more info on string types.
 	is_basic := q.quote == `\"`
@@ -539,7 +539,7 @@ fn (c Checker) check_unicode_escape(esc_unicode string) ? {
 	// if !sequence.is_upper() {
 	//	return error('Unicode escape sequence `$esc_unicode` is not in all uppercase.')
 	//}
-	validate_utf8_codepoint_string(sequence.to_upper()) ?
+	validate_utf8_codepoint_string(sequence.to_upper())?
 	if is_long_esc_type {
 		// Long escape type checks
 	} else {
@@ -552,7 +552,7 @@ fn (c Checker) check_unicode_escape(esc_unicode string) ? {
 pub fn (c Checker) check_comment(comment ast.Comment) ? {
 	lit := comment.text
 	// Setup a scanner in stack memory for easier navigation.
-	mut s := scanner.new_simple_text(lit) ?
+	mut s := scanner.new_simple_text(lit)?
 	for {
 		ch := s.next()
 		if ch == scanner.end_of_text {

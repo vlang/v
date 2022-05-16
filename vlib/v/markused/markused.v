@@ -35,6 +35,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		'tos3',
 		'isnil',
 		'opt_ok',
+		'opt_ok2',
 		'error',
 		// utf8_str_visible_length is used by c/str.v
 		'utf8_str_visible_length',

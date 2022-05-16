@@ -1,6 +1,7 @@
 import os
 import time
 
+// vtest flaky: true
 // vtest retry: 4
 
 /*

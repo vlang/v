@@ -41,14 +41,22 @@ fn test_type_size() ? {
 
 	mut t := b.table
 
-	assert sizeof(T01) == t.type_size(t.type_idxs['main.T01'] ?)
-	assert sizeof(T02) == t.type_size(t.type_idxs['main.T02'] ?)
-	assert sizeof(T03) == t.type_size(t.type_idxs['main.T03'] ?)
-	assert sizeof(T04) == t.type_size(t.type_idxs['main.T04'] ?)
-	assert sizeof(T05) == t.type_size(t.type_idxs['main.T05'] ?)
-	assert sizeof(T06) == t.type_size(t.type_idxs['main.T06'] ?)
-	assert sizeof(T07) == t.type_size(t.type_idxs['main.T07'] ?)
-	assert sizeof(T08) == t.type_size(t.type_idxs['main.T08'] ?)
+	size01, _ := t.type_size(t.type_idxs['main.T01']?)
+	assert sizeof(T01) == size01
+	size02, _ := t.type_size(t.type_idxs['main.T02']?)
+	assert sizeof(T02) == size02
+	size03, _ := t.type_size(t.type_idxs['main.T03']?)
+	assert sizeof(T03) == size03
+	size04, _ := t.type_size(t.type_idxs['main.T04']?)
+	assert sizeof(T04) == size04
+	size05, _ := t.type_size(t.type_idxs['main.T05']?)
+	assert sizeof(T05) == size05
+	size06, _ := t.type_size(t.type_idxs['main.T06']?)
+	assert sizeof(T06) == size06
+	size07, _ := t.type_size(t.type_idxs['main.T07']?)
+	assert sizeof(T07) == size07
+	size08, _ := t.type_size(t.type_idxs['main.T08']?)
+	assert sizeof(T08) == size08
 
 	println('done')
 }

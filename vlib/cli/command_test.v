@@ -52,7 +52,7 @@ fn test_if_command_has_default_version_subcommand_if_version_is_set() {
 }
 
 fn flag_should_be_set(cmd cli.Command) ? {
-	flag := cmd.flags.get_string('flag') ?
+	flag := cmd.flags.get_string('flag')?
 	assert flag == 'value'
 }
 
@@ -96,9 +96,9 @@ fn test_if_flag_gets_set_with_long_arg() {
 }
 
 fn flag_should_have_value_of_42(cmd cli.Command) ? {
-	flag := cmd.flags.get_string('flag') ?
+	flag := cmd.flags.get_string('flag')?
 	assert flag == 'value'
-	value := cmd.flags.get_int('value') ?
+	value := cmd.flags.get_int('value')?
 	assert value == 42
 }
 

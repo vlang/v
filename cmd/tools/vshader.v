@@ -172,7 +172,7 @@ fn compile_shaders(opt Options, input_path string) ? {
 		// Currently sokol-shdc allows for multiple --input flags
 		// - but it's only the last entry that's actually compiled/used
 		// Given this fact - we can only compile one '.glsl' file to one C '.h' header
-		compile_shader(co, shader_file) ?
+		compile_shader(co, shader_file)?
 	}
 }
 
@@ -233,10 +233,10 @@ fn collect(path string, mut list []string) {
 // tools can be setup or is already in place.
 fn ensure_external_tools(opt Options) ? {
 	if !os.exists(cache_dir) {
-		os.mkdir_all(cache_dir) ?
+		os.mkdir_all(cache_dir)?
 	}
 	if opt.force_update {
-		download_shdc(opt) ?
+		download_shdc(opt)?
 		return
 	}
 
@@ -250,7 +250,7 @@ fn ensure_external_tools(opt Options) ? {
 		return
 	}
 
-	download_shdc(opt) ?
+	download_shdc(opt)?
 }
 
 // shdc_exe returns an absolute path to the `sokol-shdc` tool.
@@ -277,26 +277,26 @@ fn download_shdc(opt Options) ? {
 		}
 	}
 	if os.exists(file) {
-		os.rm(file) ?
+		os.rm(file)?
 	}
 
-	mut dtmp_file, dtmp_path := util.temp_file(util.TempFileOptions{ path: os.dir(file) }) ?
+	mut dtmp_file, dtmp_path := util.temp_file(util.TempFileOptions{ path: os.dir(file) })?
 	dtmp_file.close()
 	if opt.verbose {
 		eprintln('$tool_name downloading sokol-shdc from $download_url')
 	}
 	http.download_file(download_url, dtmp_path) or {
-		os.rm(dtmp_path) ?
+		os.rm(dtmp_path)?
 		return error('$tool_name failed to download sokol-shdc needed for shader compiling: $err')
 	}
 	// Make it executable
-	os.chmod(dtmp_path, 0o775) ?
+	os.chmod(dtmp_path, 0o775)?
 	// Move downloaded file in place
-	os.mv(dtmp_path, file) ?
+	os.mv(dtmp_path, file)?
 	if runtime_os in ['linux', 'macos'] {
 		// Use the .exe file ending to minimize platform friction.
-		os.mv(file, shdc) ?
+		os.mv(file, shdc)?
 	}
 	// Update internal version file
-	os.write_file(shdc_version_file, update_to_shdc_version) ?
+	os.write_file(shdc_version_file, update_to_shdc_version)?
 }

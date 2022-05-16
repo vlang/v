@@ -94,7 +94,7 @@ pub fn (mut m Main) run() ?string {
 			res += pcdep.description
 		}
 		if pc != 0 {
-			pc.extend(pcdep) ?
+			pc.extend(pcdep)?
 		} else {
 			pc = pcdep
 		}

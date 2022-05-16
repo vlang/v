@@ -5,8 +5,8 @@ import os
 import flag
 
 const (
-	tool_name        = os.file_name(os.executable())
-	tool_version     = '0.0.3'
+	tool_name        = 'v missdoc'
+	tool_version     = '0.0.4'
 	tool_description = 'Prints all V functions in .v files under PATH/, that do not yet have documentation comments.'
 	work_dir_prefix  = normalise_path(os.real_path(os.wd_at_startup) + '/')
 )

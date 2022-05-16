@@ -35,10 +35,10 @@ pub fn (resp Response) bytestr() string {
 
 // Parse a raw HTTP response into a Response object
 pub fn parse_response(resp string) ?Response {
-	version, status_code, status_msg := parse_status_line(resp.all_before('\n')) ?
+	version, status_code, status_msg := parse_status_line(resp.all_before('\n'))?
 	// Build resp header map and separate the body
-	start_idx, end_idx := find_headers_range(resp) ?
-	header := parse_headers(resp.substr(start_idx, end_idx)) ?
+	start_idx, end_idx := find_headers_range(resp)?
+	header := parse_headers(resp.substr(start_idx, end_idx))?
 	mut text := resp.substr(end_idx, resp.len)
 	if header.get(.transfer_encoding) or { '' } == 'chunked' {
 		text = chunked.decode(text)
@@ -71,7 +71,7 @@ fn parse_status_line(line string) ?(string, int, string) {
 	for digit in digits {
 		strconv.atoi(digit) or { return error('HTTP version must contain only integers') }
 	}
-	return version, strconv.atoi(data[1]) ?, data[2]
+	return version, strconv.atoi(data[1])?, data[2]
 }
 
 // cookies parses the Set-Cookie headers into Cookie objects

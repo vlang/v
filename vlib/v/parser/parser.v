@@ -14,6 +14,7 @@ import v.errors
 import os
 import hash.fnv1a
 
+[minify]
 pub struct Parser {
 	pref &pref.Preferences
 mut:
@@ -92,6 +93,8 @@ mut:
 	codegen_text              string
 	struct_init_generic_types []ast.Type
 	if_cond_comments          []ast.Comment
+	script_mode               bool
+	script_mode_start_token   token.Token
 }
 
 __global codegen_files = []&ast.File{}
@@ -459,7 +462,7 @@ pub fn (p &Parser) peek_token(n int) token.Token {
 }
 
 // peek token in if guard `if x,y := opt()` after var_list `x,y`
-pub fn (p &Parser) peek_token_after_var_list() token.Token {
+fn (p &Parser) peek_token_after_var_list() token.Token {
 	mut n := 0
 	mut tok := p.tok
 	for {
@@ -477,6 +480,27 @@ pub fn (p &Parser) peek_token_after_var_list() token.Token {
 		}
 	}
 	return tok
+}
+
+fn (p &Parser) is_array_type() bool {
+	mut i := 1
+	mut tok := p.tok
+	line_nr := p.tok.line_nr
+
+	for {
+		tok = p.peek_token(i)
+		if tok.line_nr != line_nr {
+			return false
+		}
+		if tok.kind in [.name, .amp] {
+			return true
+		}
+		i++
+		if tok.kind == .lsbr || tok.kind != .rsbr {
+			continue
+		}
+	}
+	return false
 }
 
 pub fn (mut p Parser) open_scope() {
@@ -639,6 +663,9 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 				return p.struct_decl()
 			}
 			.dollar {
+				if p.peek_tok.kind == .eof {
+					return p.error('unexpected eof')
+				}
 				if_expr := p.if_expr(true)
 				return ast.ExprStmt{
 					expr: if_expr
@@ -663,12 +690,17 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 			else {
 				p.inside_fn = true
 				if p.pref.is_script && !p.pref.is_test {
+					p.script_mode = true
+					p.script_mode_start_token = p.tok
+
 					p.open_scope()
 					mut stmts := []ast.Stmt{}
 					for p.tok.kind != .eof {
 						stmts << p.stmt(false)
 					}
 					p.close_scope()
+
+					p.script_mode = false
 					return ast.FnDecl{
 						name: 'main.main'
 						short_name: 'main'
@@ -2478,7 +2510,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 			// `a[start..end] ?`
 			if p.tok.kind == .question {
 				or_pos_high = p.tok.pos()
-				or_kind_high = .propagate
+				or_kind_high = .propagate_option
 				p.next()
 			}
 		}
@@ -2552,7 +2584,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 			// `a[start..end] ?`
 			if p.tok.kind == .question {
 				or_pos_low = p.tok.pos()
-				or_kind_low = .propagate
+				or_kind_low = .propagate_option
 				p.next()
 			}
 		}
@@ -2609,7 +2641,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 		// `a[i] ?`
 		if p.tok.kind == .question {
 			or_pos = p.tok.pos()
-			or_kind = .propagate
+			or_kind = .propagate_option
 			p.next()
 		}
 	}
@@ -2711,15 +2743,15 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			p.inside_or_expr = was_inside_or_expr
 		}
 		// `foo()?`
-		if p.tok.kind == .question {
+		if p.tok.kind in [.question, .not] {
+			is_not := p.tok.kind == .not
 			p.next()
 			if p.inside_defer {
 				p.error_with_pos('error propagation not allowed inside `defer` blocks',
 					p.prev_tok.pos())
 			}
-			or_kind = .propagate
+			or_kind = if is_not { .propagate_result } else { .propagate_option }
 		}
-		//
 		end_pos := p.prev_tok.pos()
 		pos := name_pos.extend(end_pos)
 		comments := p.eat_comments(same_line: true)
@@ -3254,6 +3286,9 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		p.next()
 	}
 	const_pos := p.tok.pos()
+	if p.disallow_declarations_in_script_mode() {
+		return ast.ConstDecl{}
+	}
 	p.check(.key_const)
 	is_block := p.tok.kind == .lpar
 	if is_block {
@@ -3368,6 +3403,9 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	}
 	start_pos := p.tok.pos()
 	p.check(.key_global)
+	if p.disallow_declarations_in_script_mode() {
+		return ast.GlobalDecl{}
+	}
 	is_block := p.tok.kind == .lpar
 	if is_block {
 		p.next() // (
@@ -3463,6 +3501,9 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	}
 	p.check(.key_enum)
 	end_pos := p.tok.pos()
+	if p.disallow_declarations_in_script_mode() {
+		return ast.EnumDecl{}
+	}
 	enum_name := p.check_name()
 	if enum_name.len == 1 {
 		p.error_with_pos('single letter capital names are reserved for generic template types.',
@@ -3480,6 +3521,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	mut vals := []string{}
 	// mut default_exprs := []ast.Expr{}
 	mut fields := []ast.EnumField{}
+	mut uses_exprs := false
 	for p.tok.kind != .eof && p.tok.kind != .rcbr {
 		pos := p.tok.pos()
 		val := p.check_name()
@@ -3491,6 +3533,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			p.next()
 			expr = p.expr(0)
 			has_expr = true
+			uses_exprs = true
 		}
 		fields << ast.EnumField{
 			name: val
@@ -3538,6 +3581,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			vals: vals
 			is_flag: is_flag
 			is_multi_allowed: is_multi_allowed
+			uses_exprs: uses_exprs
 		}
 		is_pub: is_pub
 	})
@@ -3572,6 +3616,9 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	end_pos := p.tok.pos()
 	decl_pos := start_pos.extend(end_pos)
 	name_pos := p.tok.pos()
+	if p.disallow_declarations_in_script_mode() {
+		return ast.SumTypeDecl{}
+	}
 	name := p.check_name()
 	if name.len == 1 && name[0].is_capital() {
 		p.error_with_pos('single letter capital names are reserved for generic template types.',
@@ -3647,6 +3694,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			generic_types: generic_types
 			attrs: p.attrs
 			pos: decl_pos
+			name_pos: name_pos
 			comments: comments
 		}
 	}
@@ -3861,6 +3909,15 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 		is_unsafe: true
 		pos: pos
 	}
+}
+
+fn (mut p Parser) disallow_declarations_in_script_mode() bool {
+	if p.script_mode {
+		p.note_with_pos('script mode started here', p.script_mode_start_token.pos())
+		p.error_with_pos('all definitions must occur before code in script mode', p.tok.pos())
+		return true
+	}
+	return false
 }
 
 fn (mut p Parser) trace(fbase string, message string) {

@@ -50,7 +50,7 @@ pub fn (mut r Readline) read_line_utf8(prompt string) ?[]rune {
 // read_line does the same as `read_line_utf8` but returns user input as a `string`.
 // (As opposed to `[]rune` returned by `read_line_utf8`).
 pub fn (mut r Readline) read_line(prompt string) ?string {
-	s := r.read_line_utf8(prompt) ?
+	s := r.read_line_utf8(prompt)?
 	return s.string()
 }
 
@@ -65,7 +65,7 @@ pub fn (mut r Readline) read_line(prompt string) ?string {
 // persistent functionalities (e.g. history).
 pub fn read_line_utf8(prompt string) ?[]rune {
 	mut r := Readline{}
-	s := r.read_line_utf8(prompt) ?
+	s := r.read_line_utf8(prompt)?
 	return s
 }
 
@@ -75,6 +75,6 @@ pub fn read_line_utf8(prompt string) ?[]rune {
 // persistent functionalities (e.g. history).
 pub fn read_line(prompt string) ?string {
 	mut r := Readline{}
-	s := r.read_line(prompt) ?
+	s := r.read_line(prompt)?
 	return s
 }

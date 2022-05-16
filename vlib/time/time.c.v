@@ -96,15 +96,7 @@ pub fn ticks() i64 {
 	// # return (double)(* (uint64_t *) &elapsedNano) / 1000000;
 }
 
-/*
-// sleep makes the calling thread sleep for a given number of seconds.
-[deprecated: 'call time.sleep(n * time.second)']
-pub fn sleep(seconds int) {
-	wait(seconds * time.second)
-}
-*/
-
-// str returns time in the same format as `parse` expects ("YYYY-MM-DD HH:MM:SS").
+// str returns time in the same format as `parse` expects ("YYYY-MM-DD HH:mm:ss").
 pub fn (t Time) str() string {
 	// TODO Define common default format for
 	// `str` and `parse` and use it in both ways

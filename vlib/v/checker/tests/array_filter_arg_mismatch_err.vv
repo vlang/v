@@ -1,0 +1,25 @@
+module main
+
+pub struct Row {
+pub mut:
+	value int
+}
+
+fn main() {
+	mut list := [Row{
+		value: 1
+	}, Row{
+		value: 2
+	}, Row{
+		value: 3
+	}]
+
+	a1 := list.filter('it.value > 2')
+	println(a1)
+
+	a2 := list.any('it.value > 2')
+	println(a2)
+
+	a3 := list.all('it.value > 2')
+	println(a3)
+}

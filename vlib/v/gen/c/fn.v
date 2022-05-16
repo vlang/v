@@ -195,7 +195,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	is_closure := node.scope.has_inherited_vars()
 	mut cur_closure_ctx := ''
 	if is_closure {
-		cur_closure_ctx = closure_ctx_struct(node)
+		cur_closure_ctx = closure_ctx(node)
 		// declare the struct before its implementation
 		g.definitions.write_string(cur_closure_ctx)
 		g.definitions.writeln(';')
@@ -288,19 +288,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	arg_start_pos := g.out.len
 	fargs, fargtypes, heap_promoted := g.fn_decl_params(node.params, node.scope, node.is_variadic)
 	if is_closure {
-		mut s := '$cur_closure_ctx *$c.closure_ctx'
-		if node.params.len > 0 {
-			s = ', ' + s
-		} else {
-			// remove generated `void`
-			g.out.cut_to(arg_start_pos)
-		}
-		g.definitions.write_string(s)
-		g.write(s)
 		g.nr_closures++
-		if g.pref.os == .windows {
-			g.error('closures are not yet implemented on windows', node.pos)
-		}
 	}
 	arg_str := g.out.after(arg_start_pos)
 	if node.no_body || ((g.pref.use_cache && g.pref.build_mode != .build_module) && node.is_builtin
@@ -315,6 +303,9 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	}
 	g.definitions.writeln(');')
 	g.writeln(') {')
+	if is_closure {
+		g.writeln('$cur_closure_ctx* $c.closure_ctx = *(void**)(__RETURN_ADDRESS() - __CLOSURE_DATA_OFFSET);')
+	}
 	for i, is_promoted in heap_promoted {
 		if is_promoted {
 			g.writeln('${fargtypes[i]}* ${fargs[i]} = HEAP(${fargtypes[i]}, _v_toheap_${fargs[i]});')
@@ -419,8 +410,9 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	}
 	for attr in node.attrs {
 		if attr.name == 'export' {
+			weak := if node.attrs.any(it.name == 'weak') { 'VWEAK ' } else { '' }
 			g.writeln('// export alias: $attr.arg -> $name')
-			export_alias := '$type_name $fn_attrs${attr.arg}($arg_str)'
+			export_alias := '$weak$type_name $fn_attrs${attr.arg}($arg_str)'
 			g.definitions.writeln('VV_EXPORTED_SYMBOL $export_alias; // exported fn $node.name')
 			g.writeln('$export_alias {')
 			g.write('\treturn ${name}(')
@@ -474,7 +466,7 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) ?string {
 
 const closure_ctx = '_V_closure_ctx'
 
-fn closure_ctx_struct(node ast.FnDecl) string {
+fn closure_ctx(node ast.FnDecl) string {
 	return 'struct _V_${node.name}_Ctx'
 }
 
@@ -484,32 +476,17 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 		g.write(node.decl.name)
 		return
 	}
+	ctx_struct := closure_ctx(node.decl)
 	// it may be possible to optimize `memdup` out if the closure never leaves current scope
-	ctx_struct := closure_ctx_struct(node.decl)
 	// TODO in case of an assignment, this should only call "__closure_set_data" and "__closure_set_function" (and free the former data)
-
-	mut size_sb := strings.new_builder(node.decl.params.len * 50)
-	for param in node.decl.params {
-		size_sb.write_string('_REG_WIDTH_BOUNDED(${g.typ(param.typ)}) + ')
-	}
-	if g.pref.arch == .amd64 && node.decl.return_type != ast.void_type {
-		size_sb.write_string('(_REG_WIDTH(${g.typ(node.decl.return_type)}) > 2) + ')
-	}
-	size_sb.write_string('1')
-	args_size := size_sb.str()
-	g.writeln('')
-
-	// ensure that nargs maps to a known entry in the __closure_thunk array
-	// TODO make it a compile-time error (you can't call `sizeof()` inside preprocessor `#if`s)
-	// Note: this won't be necessary when (if) we have functions that return the machine code for
-	// an arbitrary number of arguments
-	g.write('__closure_create($node.decl.name, __closure_check_nargs($args_size), ($ctx_struct*) memdup(&($ctx_struct){')
+	g.write('__closure_create($node.decl.name, ($ctx_struct*) memdup(&($ctx_struct){')
 	g.indent++
 	for var in node.inherited_vars {
 		g.writeln('.$var.name = $var.name,')
 	}
 	g.indent--
 	g.write('}, sizeof($ctx_struct)))')
+
 	g.empty_line = false
 }
 
@@ -520,7 +497,7 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 	node.has_gen = true
 	mut builder := strings.new_builder(256)
 	if node.inherited_vars.len > 0 {
-		ctx_struct := closure_ctx_struct(node.decl)
+		ctx_struct := closure_ctx(node.decl)
 		builder.writeln('$ctx_struct {')
 		for var in node.inherited_vars {
 			styp := g.typ(var.typ)
@@ -671,9 +648,6 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	tmp_opt := if gen_or || gen_keep_alive { g.new_tmp_var() } else { '' }
 	if gen_or || gen_keep_alive {
 		mut ret_typ := node.return_type
-		if gen_or {
-			ret_typ = ret_typ.set_flag(.optional)
-		}
 		styp := g.typ(ret_typ)
 		if gen_or && !is_gen_or_and_assign_rhs {
 			cur_line = g.go_before_stmt(0)
@@ -695,7 +669,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		// if !g.is_autofree {
 		g.or_block(tmp_opt, node.or_block, node.return_type)
 		//}
-		unwrapped_typ := node.return_type.clear_flag(.optional)
+		unwrapped_typ := node.return_type.clear_flag(.optional).clear_flag(.result)
 		unwrapped_styp := g.typ(unwrapped_typ)
 		if unwrapped_typ == ast.void_type {
 			g.write('\n $cur_line')
@@ -1001,6 +975,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	} else if final_left_sym.kind == .map {
 		if node.name == 'keys' {
 			name = 'map_keys'
+		} else if node.name == 'values' {
+			name = 'map_values'
 		}
 	}
 	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__')
@@ -1239,7 +1215,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.call_args(node)
 			g.writeln(');')
 			tmp2 = g.new_tmp_var()
-			g.writeln('Option_$typ $tmp2 = ${fn_name}($json_obj);')
+			g.writeln('${option_name}_$typ $tmp2 = ${fn_name}($json_obj);')
 		}
 		if !g.is_autofree {
 			g.write('cJSON_Delete($json_obj); // del')
@@ -1649,15 +1625,29 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		arr_sym := g.table.sym(varg_type)
 		mut arr_info := arr_sym.info as ast.Array
 		if varg_type.has_flag(.generic) {
-			if fn_def := g.table.find_fn(node.name) {
-				mut muttable := unsafe { &ast.Table(g.table) }
-				if utyp := muttable.resolve_generic_to_concrete(arr_info.elem_type, fn_def.generic_names,
-					node.concrete_types)
-				{
-					arr_info.elem_type = utyp
+			if node.is_method {
+				left_sym := g.table.sym(node.left_type)
+				if fn_def := left_sym.find_method_with_generic_parent(node.name) {
+					mut muttable := unsafe { &ast.Table(g.table) }
+					if utyp := muttable.resolve_generic_to_concrete(arr_info.elem_type,
+						fn_def.generic_names, node.concrete_types)
+					{
+						arr_info.elem_type = utyp
+					}
+				} else {
+					g.error('unable to find method $node.name', node.pos)
 				}
 			} else {
-				g.error('unable to find function $node.name', node.pos)
+				if fn_def := g.table.find_fn(node.name) {
+					mut muttable := unsafe { &ast.Table(g.table) }
+					if utyp := muttable.resolve_generic_to_concrete(arr_info.elem_type,
+						fn_def.generic_names, node.concrete_types)
+					{
+						arr_info.elem_type = utyp
+					}
+				} else {
+					g.error('unable to find function $node.name', node.pos)
+				}
 			}
 		}
 		elem_type := g.typ(arr_info.elem_type)
@@ -1755,7 +1745,7 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 	if node.call_expr.return_type == ast.void_type {
 		gohandle_name = if is_opt { '__v_thread_Option_void' } else { '__v_thread' }
 	} else {
-		opt := if is_opt { 'Option_' } else { '' }
+		opt := if is_opt { '${option_name}_' } else { '' }
 		gohandle_name = '__v_thread_$opt${g.table.sym(g.unwrap_generic(node.call_expr.return_type)).cname}'
 	}
 	if g.pref.os == .windows {
@@ -2101,6 +2091,10 @@ fn (mut g Gen) write_fn_attrs(attrs []ast.Attr) string {
 				g.write('__NOINLINE ')
 			}
 			'weak' {
+				if attrs.any(it.name == 'export') {
+					// only the exported wrapper should be weak; otherwise x86_64-w64-mingw32-gcc complains
+					continue
+				}
 				// a `[weak]` tag tells the C compiler, that the next declaration will be weak, i.e. when linking,
 				// if there is another declaration of a symbol with the same name (a 'strong' one), it should be
 				// used instead, *without linker errors about duplicate symbols*.

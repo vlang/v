@@ -358,11 +358,11 @@ fn test_shuffle_partial() ? {
 	mut a := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 	mut b := a.clone()
 
-	rand.shuffle(mut a, start: 4) ?
+	rand.shuffle(mut a, start: 4)?
 	assert a[..4] == b[..4]
 
 	a = b.clone()
-	rand.shuffle(mut a, start: 3, end: 7) ?
+	rand.shuffle(mut a, start: 3, end: 7)?
 	assert a[..3] == b[..3]
 	assert a[7..] == b[7..]
 }
@@ -386,7 +386,7 @@ fn test_choose() ? {
 	lengths := [1, 3, 4, 5, 6, 7]
 	a := ['one', 'two', 'three', 'four', 'five', 'six', 'seven']
 	for length in lengths {
-		b := rand.choose(a, length) ?
+		b := rand.choose(a, length)?
 		assert b.len == length
 		for element in b {
 			assert element in a

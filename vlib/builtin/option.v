@@ -13,6 +13,7 @@ pub interface IError {
 	code() int
 }
 
+// str returns the message of IError
 pub fn (err IError) str() string {
 	return match err {
 		None__ {
@@ -52,10 +53,12 @@ pub:
 	code int
 }
 
+// msg returns the message of MessageError
 pub fn (err MessageError) msg() string {
 	return err.msg
 }
 
+// code returns the code of MessageError
 pub fn (err MessageError) code() int {
 	return err.code
 }
@@ -115,6 +118,39 @@ fn opt_ok(data voidptr, mut option Option, size int) {
 		*option = Option{}
 		// use err to get the end of OptionBase and then memcpy into it
 		vmemcpy(&u8(&option.err) + sizeof(IError), data, size)
+	}
+}
+
+// option is the base of V's internal optional return system.
+struct _option {
+	state u8
+	err   IError = none__
+	// Data is trailing after err
+	// and is not included in here but in the
+	// derived _option_xxx types
+}
+
+fn opt_ok2(data voidptr, mut option _option, size int) {
+	unsafe {
+		*option = _option{}
+		// use err to get the end of OptionBase and then memcpy into it
+		vmemcpy(&u8(&option.err) + sizeof(IError), data, size)
+	}
+}
+
+struct _result {
+	is_error bool
+	err      IError = none__
+	// Data is trailing after err
+	// and is not included in here but in the
+	// derived Result_xxx types
+}
+
+fn _result_ok(data voidptr, mut res _result, size int) {
+	unsafe {
+		*res = _result{}
+		// use err to get the end of ResultBase and then memcpy into it
+		vmemcpy(&u8(&res.err) + sizeof(IError), data, size)
 	}
 }
 

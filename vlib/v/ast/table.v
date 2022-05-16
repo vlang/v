@@ -9,7 +9,7 @@ import v.cflag
 import v.token
 import v.util
 
-[heap]
+[heap; minify]
 pub struct Table {
 mut:
 	parsing_type string // name of the type to enable recursive type parsing
@@ -86,6 +86,7 @@ pub fn (t &Table) panic(message string) {
 	t.panic_handler(t, message)
 }
 
+[minify]
 pub struct Fn {
 pub:
 	is_variadic     bool
@@ -126,6 +127,7 @@ fn (f &Fn) method_equals(o &Fn) bool {
 		&& f.name == o.name
 }
 
+[minify]
 pub struct Param {
 pub:
 	pos         token.Pos
@@ -232,7 +234,7 @@ pub fn (t &Table) fn_type_signature(f &Fn) string {
 	return sig
 }
 
-// source_signature generates the signature of a function which looks like in the V source
+// fn_type_source_signature generates the signature of a function which looks like in the V source
 pub fn (t &Table) fn_type_source_signature(f &Fn) string {
 	mut sig := '('
 	for i, arg in f.params {
@@ -252,10 +254,14 @@ pub fn (t &Table) fn_type_source_signature(f &Fn) string {
 	sig += ')'
 	if f.return_type == ovoid_type {
 		sig += ' ?'
+	} else if f.return_type == rvoid_type {
+		sig += ' !'
 	} else if f.return_type != void_type {
 		return_type_sym := t.sym(f.return_type)
 		if f.return_type.has_flag(.optional) {
 			sig += ' ?$return_type_sym.name'
+		} else if f.return_type.has_flag(.result) {
+			sig += ' !$return_type_sym.name'
 		} else {
 			sig += ' $return_type_sym.name'
 		}
@@ -991,7 +997,7 @@ pub fn (t &Table) thread_cname(return_type Type) string {
 	}
 	return_type_sym := t.sym(return_type)
 	suffix := if return_type.is_ptr() { '_ptr' } else { '' }
-	prefix := if return_type.has_flag(.optional) { 'Option_' } else { '' }
+	prefix := if return_type.has_flag(.optional) { '_option_' } else { '' }
 	return '__v_thread_$prefix$return_type_sym.cname$suffix'
 }
 
@@ -1513,6 +1519,9 @@ pub fn (t Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 // Even map[string]map[string]T can be resolved.
 // This is used for resolving the generic return type of CallExpr white `unwrap_generic` is used to resolve generic usage in FnDecl.
 pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_names []string, concrete_types []Type) ?Type {
+	if generic_names.len != concrete_types.len {
+		return none
+	}
 	mut sym := t.sym(generic_type)
 	if sym.name in generic_names {
 		index := generic_names.index(sym.name)

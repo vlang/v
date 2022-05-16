@@ -8,6 +8,8 @@ const github_job = os.getenv('GITHUB_JOB')
 
 const (
 	skip_test_files               = [
+		'cmd/tools/vdoc/html_tag_escape_test.v', /* can't locate local module: markdown */
+		'cmd/tools/vdoc/tests/vdoc_file_test.v', /* fails on Windows; order of output is not as expected */
 		'vlib/context/onecontext/onecontext_test.v',
 		'vlib/context/deadline_test.v' /* sometimes blocks */,
 		'vlib/mysql/mysql_orm_test.v' /* mysql not installed */,
@@ -112,8 +114,6 @@ const (
 		'vlib/context/value_test.v',
 		'vlib/orm/orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
-		'vlib/v/tests/closure_test.v',
-		'vlib/v/tests/closure_generator_test.v',
 		'vlib/net/websocket/ws_test.v',
 		'vlib/net/unix/unix_test.v',
 		'vlib/net/unix/use_net_and_net_unix_together_test.v',
@@ -139,7 +139,6 @@ const (
 		'do_not_remove',
 	]
 	skip_on_arm64                 = [
-		'vlib/v/tests/closure_generator_test.v',
 		'do_not_remove',
 	]
 	skip_on_non_amd64_or_arm64    = [
@@ -167,6 +166,7 @@ fn main() {
 	cmd_prefix := args_string.all_before('test-self')
 	title := 'testing vlib'
 	mut all_test_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.v')
+	all_test_files << os.walk_ext(os.join_path(vroot, 'cmd'), '_test.v')
 	test_js_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.js.v')
 	all_test_files << test_js_files
 	testing.eheader(title)

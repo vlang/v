@@ -5,7 +5,7 @@ module c
 import strings
 import v.ast
 
-fn (mut g Gen) array_init(node ast.ArrayInit) {
+fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 	array_type := g.unwrap(node.typ)
 	mut array_styp := ''
 	elem_type := g.unwrap(node.elem_type)
@@ -24,10 +24,10 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 	}
 	len := node.exprs.len
 	if array_type.unaliased_sym.kind == .array_fixed {
-		g.fixed_array_init(node, array_type)
+		g.fixed_array_init(node, array_type, var_name)
 	} else if len == 0 {
 		// `[]int{len: 6, cap:10, init:22}`
-		g.array_init_with_fields(node, elem_type, is_amp, shared_styp)
+		g.array_init_with_fields(node, elem_type, is_amp, shared_styp, var_name)
 	} else {
 		// `[1, 2, 3]`
 		elem_styp := g.typ(elem_type.typ)
@@ -70,17 +70,24 @@ fn (mut g Gen) array_init(node ast.ArrayInit) {
 	}
 }
 
-fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type) {
+fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type, var_name string) {
 	if node.has_it {
 		g.inside_lambda = true
-		tmp := g.new_tmp_var()
-		mut s := g.go_before_stmt(0)
+		mut tmp := g.new_tmp_var()
+		mut s := ''
+		if var_name.len != 0 {
+			tmp = var_name
+		} else {
+			s = g.go_before_stmt(0)
+		}
 		s_ends_with_ln := s.ends_with('\n')
 		s = s.trim_space()
 		ret_typ := g.typ(node.typ)
 		elem_typ := g.typ(node.elem_type)
 		g.empty_line = true
-		g.write('$ret_typ $tmp =')
+		if var_name.len == 0 {
+			g.write('$ret_typ $tmp =')
+		}
 		g.write('{')
 		if node.has_val {
 			for i, expr in node.exprs {
@@ -117,12 +124,14 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type) {
 		g.writeln('}')
 		g.indent--
 		g.writeln('}')
-		if s_ends_with_ln {
-			g.writeln(s)
-		} else {
-			g.write(s)
+		if var_name.len == 0 {
+			if s_ends_with_ln {
+				g.writeln(s)
+			} else {
+				g.write(s)
+			}
+			g.write(tmp)
 		}
-		g.write(tmp)
 		g.inside_lambda = false
 		return
 	}
@@ -166,21 +175,28 @@ fn (mut g Gen) fixed_array_init(node ast.ArrayInit, array_type Type) {
 }
 
 // `[]int{len: 6, cap: 10, init: it * it}`
-fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp bool, shared_styp string) {
+fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp bool, shared_styp string, var_name string) {
 	elem_styp := g.typ(elem_type.typ)
 	noscan := g.check_noscan(elem_type.typ)
 	is_default_array := elem_type.unaliased_sym.kind == .array && node.has_default
 	is_default_map := elem_type.unaliased_sym.kind == .map && node.has_default
 	if node.has_it { // []int{len: 6, init: it * it} when variable it is used in init expression
 		g.inside_lambda = true
-		tmp := g.new_tmp_var()
-		mut s := g.go_before_stmt(0)
+		mut tmp := g.new_tmp_var()
+		mut s := ''
+		if var_name.len != 0 {
+			tmp = var_name
+		} else {
+			s = g.go_before_stmt(0)
+		}
 		s_ends_with_ln := s.ends_with('\n')
 		s = s.trim_space()
 		ret_typ := g.typ(node.typ)
 		elem_typ := g.typ(node.elem_type)
 		g.empty_line = true
-		g.write('$ret_typ $tmp =')
+		if var_name.len == 0 {
+			g.write('$ret_typ $tmp =')
+		}
 		if is_default_array {
 			g.write('__new_array_with_array_default${noscan}(')
 		} else if is_default_map {
@@ -238,12 +254,14 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.writeln('}')
 		g.indent--
 		g.writeln('}')
-		if s_ends_with_ln {
-			g.writeln(s)
-		} else {
-			g.write(s)
+		if var_name.len == 0 {
+			if s_ends_with_ln {
+				g.writeln(s)
+			} else {
+				g.write(s)
+			}
+			g.write(tmp)
 		}
-		g.write(tmp)
 		g.inside_lambda = false
 		return
 	}
@@ -682,43 +700,86 @@ fn (mut g Gen) gen_array_contains_methods() {
 			continue
 		}
 		done << t
+		mut fn_builder := strings.new_builder(512)
 		mut left_type_str := g.typ(t)
 		fn_name := '${left_type_str}_contains'
-		left_info := left_final_sym.info as ast.Array
-		mut elem_type_str := g.typ(left_info.elem_type)
-		elem_sym := g.table.sym(left_info.elem_type)
-		if elem_sym.kind == .function {
-			left_type_str = 'Array_voidptr'
-			elem_type_str = 'voidptr'
-		}
-		g.type_definitions.writeln('static bool ${fn_name}($left_type_str a, $elem_type_str v); // auto')
-		mut fn_builder := strings.new_builder(512)
-		fn_builder.writeln('static bool ${fn_name}($left_type_str a, $elem_type_str v) {')
-		fn_builder.writeln('\tfor (int i = 0; i < a.len; ++i) {')
-		if elem_sym.kind == .string {
-			fn_builder.writeln('\t\tif (fast_string_eq(((string*)a.data)[i], v)) {')
-		} else if elem_sym.kind == .array && left_info.elem_type.nr_muls() == 0 {
-			ptr_typ := g.equality_fn(left_info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq((($elem_type_str*)a.data)[i], v)) {')
-		} else if elem_sym.kind == .function {
-			fn_builder.writeln('\t\tif (((voidptr*)a.data)[i] == v) {')
-		} else if elem_sym.kind == .map && left_info.elem_type.nr_muls() == 0 {
-			ptr_typ := g.equality_fn(left_info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_map_eq((($elem_type_str*)a.data)[i], v)) {')
-		} else if elem_sym.kind == .struct_ && left_info.elem_type.nr_muls() == 0 {
-			ptr_typ := g.equality_fn(left_info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq((($elem_type_str*)a.data)[i], v)) {')
-		} else if elem_sym.kind == .interface_ && left_info.elem_type.nr_muls() == 0 {
-			ptr_typ := g.equality_fn(left_info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_interface_eq((($elem_type_str*)a.data)[i], v)) {')
-		} else if elem_sym.kind == .sum_type && left_info.elem_type.nr_muls() == 0 {
-			ptr_typ := g.equality_fn(left_info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_sumtype_eq((($elem_type_str*)a.data)[i], v)) {')
-		} else if elem_sym.kind == .alias && left_info.elem_type.nr_muls() == 0 {
-			ptr_typ := g.equality_fn(left_info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_alias_eq((($elem_type_str*)a.data)[i], v)) {')
-		} else {
-			fn_builder.writeln('\t\tif ((($elem_type_str*)a.data)[i] == v) {')
+
+		if left_final_sym.kind == .array {
+			elem_type := (left_final_sym.info as ast.Array).elem_type
+			mut elem_type_str := g.typ(elem_type)
+			elem_kind := g.table.sym(elem_type).kind
+			elem_is_not_ptr := elem_type.nr_muls() == 0
+			if elem_kind == .function {
+				left_type_str = 'Array_voidptr'
+				elem_type_str = 'voidptr'
+			}
+			g.type_definitions.writeln('static bool ${fn_name}($left_type_str a, $elem_type_str v); // auto')
+			fn_builder.writeln('static bool ${fn_name}($left_type_str a, $elem_type_str v) {')
+			fn_builder.writeln('\tfor (int i = 0; i < a.len; ++i) {')
+			if elem_kind == .string {
+				fn_builder.writeln('\t\tif (fast_string_eq(((string*)a.data)[i], v)) {')
+			} else if elem_kind == .array && elem_is_not_ptr {
+				ptr_typ := g.equality_fn(elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq((($elem_type_str*)a.data)[i], v)) {')
+			} else if elem_kind == .function {
+				fn_builder.writeln('\t\tif (((voidptr*)a.data)[i] == v) {')
+			} else if elem_kind == .map && elem_is_not_ptr {
+				ptr_typ := g.equality_fn(elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_map_eq((($elem_type_str*)a.data)[i], v)) {')
+			} else if elem_kind == .struct_ && elem_is_not_ptr {
+				ptr_typ := g.equality_fn(elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq((($elem_type_str*)a.data)[i], v)) {')
+			} else if elem_kind == .interface_ && elem_is_not_ptr {
+				ptr_typ := g.equality_fn(elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_interface_eq((($elem_type_str*)a.data)[i], v)) {')
+			} else if elem_kind == .sum_type && elem_is_not_ptr {
+				ptr_typ := g.equality_fn(elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_sumtype_eq((($elem_type_str*)a.data)[i], v)) {')
+			} else if elem_kind == .alias && elem_is_not_ptr {
+				ptr_typ := g.equality_fn(elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_alias_eq((($elem_type_str*)a.data)[i], v)) {')
+			} else {
+				fn_builder.writeln('\t\tif ((($elem_type_str*)a.data)[i] == v) {')
+			}
+		} else if left_final_sym.kind == .array_fixed {
+			left_info := left_final_sym.info as ast.ArrayFixed
+			size := left_info.size
+			elem_type := left_info.elem_type
+			mut elem_type_str := g.typ(elem_type)
+			elem_kind := g.table.sym(elem_type).kind
+			elem_is_not_ptr := elem_type.nr_muls() == 0
+			if elem_kind == .function {
+				left_type_str = 'Array_voidptr'
+				elem_type_str = 'voidptr'
+			}
+			g.type_definitions.writeln('static bool ${fn_name}($left_type_str a, $elem_type_str v); // auto')
+			fn_builder.writeln('static bool ${fn_name}($left_type_str a, $elem_type_str v) {')
+			fn_builder.writeln('\tfor (int i = 0; i < $size; ++i) {')
+			if elem_kind == .string {
+				fn_builder.writeln('\t\tif (fast_string_eq(a[i], v)) {')
+			} else if elem_kind == .array && elem_is_not_ptr {
+				ptr_typ := g.equality_fn(left_info.elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq(a[i], v)) {')
+			} else if elem_kind == .function {
+				fn_builder.writeln('\t\tif (a[i] == v) {')
+			} else if elem_kind == .map && elem_is_not_ptr {
+				ptr_typ := g.equality_fn(elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_map_eq(a[i], v)) {')
+			} else if elem_kind == .struct_ && elem_is_not_ptr {
+				ptr_typ := g.equality_fn(elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq(a[i], v)) {')
+			} else if elem_kind == .interface_ && elem_is_not_ptr {
+				ptr_typ := g.equality_fn(elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_interface_eq(a[i], v)) {')
+			} else if elem_kind == .sum_type && elem_is_not_ptr {
+				ptr_typ := g.equality_fn(elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_sumtype_eq(a[i], v)) {')
+			} else if elem_kind == .alias && elem_is_not_ptr {
+				ptr_typ := g.equality_fn(elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_alias_eq(a[i], v)) {')
+			} else {
+				fn_builder.writeln('\t\tif (a[i] == v) {')
+			}
 		}
 		fn_builder.writeln('\t\t\treturn true;')
 		fn_builder.writeln('\t\t}')

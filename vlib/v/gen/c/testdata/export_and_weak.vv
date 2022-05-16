@@ -1,0 +1,20 @@
+// This file tests the ability to export functions to C with a fully custom name.
+
+// It also tests, that the exported functions will be exported as weak symbols,
+// if the user tagged them as such.
+
+[export: abcd]
+fn my_fn() int {
+	return 42
+}
+
+[export: wxyz]
+[weak]
+fn my_other_fn() int {
+	return 11
+}
+
+fn main() {
+	println(my_fn())
+	println(my_other_fn())
+}

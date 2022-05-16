@@ -365,7 +365,7 @@ pub fn new_header_from_map(kvs map[CommonHeader]string) Header {
 // new_custom_header_from_map creates a Header from string key value pairs
 pub fn new_custom_header_from_map(kvs map[string]string) ?Header {
 	mut h := new_header()
-	h.add_custom_map(kvs) ?
+	h.add_custom_map(kvs)?
 	return h
 }
 
@@ -379,7 +379,7 @@ pub fn (mut h Header) add(key CommonHeader, value string) {
 // add_custom appends a value to a custom header key. This function will
 // return an error if the key contains invalid header characters.
 pub fn (mut h Header) add_custom(key string, value string) ? {
-	is_valid(key) ?
+	is_valid(key)?
 	h.data[key] << value
 	h.add_key(key)
 }
@@ -394,7 +394,7 @@ pub fn (mut h Header) add_map(kvs map[CommonHeader]string) {
 // add_custom_map appends the value for each custom header key.
 pub fn (mut h Header) add_custom_map(kvs map[string]string) ? {
 	for k, v in kvs {
-		h.add_custom(k, v) ?
+		h.add_custom(k, v)?
 	}
 }
 
@@ -411,7 +411,7 @@ pub fn (mut h Header) set(key CommonHeader, value string) {
 // function will return an error if the key contains invalid header
 // characters.
 pub fn (mut h Header) set_custom(key string, value string) ? {
-	is_valid(key) ?
+	is_valid(key)?
 	h.data[key] = [value]
 	h.add_key(key)
 }
@@ -689,11 +689,11 @@ fn parse_headers(s string) ?Header {
 			last_value += ' ${line.trim(' \t')}'
 			continue
 		} else if last_key != '' {
-			h.add_custom(last_key, last_value) ?
+			h.add_custom(last_key, last_value)?
 		}
-		last_key, last_value = parse_header(line) ?
+		last_key, last_value = parse_header(line)?
 	}
-	h.add_custom(last_key, last_value) ?
+	h.add_custom(last_key, last_value)?
 	return h
 }
 

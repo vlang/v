@@ -3,6 +3,10 @@
 // that can be found in the LICENSE file.
 module http
 
+$if gcboehm ? {
+	#define VSCHANNEL_REALLOC GC_REALLOC
+}
+
 #flag windows -I @VEXEROOT/thirdparty/vschannel
 #flag -l ws2_32 -l crypt32 -l secur32 -l user32
 #include "vschannel.c"

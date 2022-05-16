@@ -92,6 +92,7 @@ pub fn (sk SymbolKind) str() string {
 	}
 }
 
+[minify]
 pub struct Doc {
 pub mut:
 	prefs     &pref.Preferences = new_vdoc_preferences()
@@ -121,6 +122,7 @@ pub mut:
 	platform            Platform
 }
 
+[minify]
 pub struct DocNode {
 pub mut:
 	name        string
@@ -511,7 +513,7 @@ pub fn generate(input_path string, pub_only bool, with_comments bool, platform P
 	doc.with_comments = with_comments
 	doc.filter_symbol_names = filter_symbol_names.filter(it.len != 0)
 	doc.prefs.os = if platform == .auto { pref.get_host_os() } else { pref.OS(int(platform)) }
-	doc.generate() ?
+	doc.generate()?
 	return doc
 }
 
@@ -524,6 +526,6 @@ pub fn generate_with_pos(input_path string, filename string, pos int) ?Doc {
 	doc.with_pos = true
 	doc.filename = filename
 	doc.pos = pos
-	doc.generate() ?
+	doc.generate()?
 	return doc
 }

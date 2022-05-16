@@ -1,5 +1,8 @@
 import time
 
+// vtest flaky: true
+// vtest retry: 3
+
 struct App {
 mut:
 	idx atomic int

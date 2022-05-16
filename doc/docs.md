@@ -1303,7 +1303,7 @@ large_index := 999
 val := arr[large_index] or { panic('out of bounds') }
 println(val)
 // you can also do this, if you want to *propagate* the access error:
-val2 := arr[333] ?
+val2 := arr[333]?
 println(val2)
 ```
 
@@ -1893,7 +1893,7 @@ enum State {
 
 // write log file and return number of bytes written
 fn write_log(s State) ?int {
-	mut f := os.create('log.txt') ?
+	mut f := os.create('log.txt')?
 	defer {
 		f.close()
 	}
@@ -2421,9 +2421,6 @@ fn main() {
 V supports closures too.
 This means that anonymous functions can inherit variables from the scope they were created in.
 They must do so explicitly by listing all variables that are inherited.
-
-> Warning: currently works on Unix-based, x64 architectures only.
-Some work is in progress to make closures work on Windows, then other architectures.
 
 ```v oksyntax
 my_int := 1
@@ -3422,7 +3419,7 @@ propagate the error:
 import net.http
 
 fn f(url string) ?string {
-	resp := http.get(url) ?
+	resp := http.get(url)?
 	return resp.text
 }
 ```
@@ -3940,7 +3937,7 @@ println(user.last_name)
 println(user.age)
 // You can also decode JSON arrays:
 sfoos := '[{"x":123},{"x":456}]'
-foos := json.decode([]Foo, sfoos) ?
+foos := json.decode([]Foo, sfoos)?
 println(foos[0].x)
 println(foos[1].x)
 ```
@@ -4045,8 +4042,8 @@ If a test function has an error return type, any propagated errors will fail the
 import strconv
 
 fn test_atoi() ? {
-	assert strconv.atoi('1') ? == 1
-	assert strconv.atoi('one') ? == 1 // test will fail
+	assert strconv.atoi('1')? == 1
+	assert strconv.atoi('one')? == 1 // test will fail
 }
 ```
 
@@ -4438,7 +4435,7 @@ struct Customer {
 	country   string [nonull]
 }
 
-db := sqlite.connect('customers.db') ?
+db := sqlite.connect('customers.db')?
 
 // you can create tables:
 // CREATE TABLE IF NOT EXISTS `Customer` (
@@ -5359,7 +5356,7 @@ Full list of builtin options:
 import os
 fn main() {
 	embedded_file := $embed_file('v.png')
-	os.write_file('exported.png', embedded_file.to_string()) ?
+	os.write_file('exported.png', embedded_file.to_string())?
 }
 ```
 
@@ -5383,7 +5380,7 @@ Currently only one compression type is supported: `zlib`
 import os
 fn main() {
 	embedded_file := $embed_file('v.png', .zlib) // compressed using zlib
-	os.write_file('exported.png', embedded_file.to_string()) ?
+	os.write_file('exported.png', embedded_file.to_string())?
 }
 ```
 
@@ -5434,9 +5431,6 @@ numbers: [1, 2, 3]
 3
 ```
 
-
-
-
 #### `$env`
 
 ```v
@@ -5451,6 +5445,34 @@ fn main() {
 V can bring in values at compile time from environment variables.
 `$env('ENV_VAR')` can also be used in top-level `#flag` and `#include` statements:
 `#flag linux -I $env('JAVA_HOME')/include`.
+
+#### `$compile_error` and `$compile_warn`
+
+These two comptime functions are very useful for displaying custom errors/warnings during
+compile time.
+
+Both receive as their only argument a string literal that contains the message to display:
+
+```v failcompile nofmt
+// x.v
+module main
+
+$if linux {
+    $compile_error('Linux is not supported')
+}
+
+fn main() {
+}
+
+$ v run x.v
+x.v:4:5: error: Linux is not supported
+    2 |
+    3 | $if linux {
+    4 |     $compile_error('Linux is not supported')
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    5 | }
+    6 |
+```
 
 ### Environment specific files
 
@@ -5811,7 +5833,7 @@ fn sh(cmd string){
 rmdir_all('build') or { }
 
 // Create build/, never fails as build/ does not exist
-mkdir('build') ?
+mkdir('build')?
 
 // Move *.v files to build/
 result := execute('mv *.v build/')
@@ -5822,7 +5844,7 @@ if result.exit_code != 0 {
 sh('ls')
 
 // Similar to:
-// files := ls('.') ?
+// files := ls('.')?
 // mut count := 0
 // if files.len > 0 {
 //     for file in files {
@@ -6026,7 +6048,7 @@ a nested loop, and those do not risk violating memory-safety.
 
 ## Appendix I: Keywords
 
-V has 41 reserved keywords (3 are literals):
+V has 42 reserved keywords (3 are literals):
 
 ```v ignore
 as
@@ -6038,7 +6060,6 @@ const
 continue
 defer
 else
-embed
 enum
 false
 fn
@@ -6050,6 +6071,7 @@ import
 in
 interface
 is
+isreftype
 lock
 match
 module
@@ -6097,15 +6119,15 @@ This lists operators for [primitive types](#primitive-types) only.
 
 <<   left shift             integer << unsigned integer
 >>   right shift            integer >> unsigned integer
->>>  unsigned right shift	integer >> unsigned integer
+>>>  unsigned right shift   integer >> unsigned integer
 
 
 Precedence    Operator
-    5             *  /  %  <<  >> >>> &
-    4             +  -  |  ^
-    3             ==  !=  <  <=  >  >=
-    2             &&
-    1             ||
+    5            *  /  %  <<  >> >>> &
+    4            +  -  |  ^
+    3            ==  !=  <  <=  >  >=
+    2            &&
+    1            ||
 
 
 Assignment Operators
