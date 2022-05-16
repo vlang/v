@@ -397,7 +397,6 @@ fn auto_complete_request(args []string) []string {
 		if part.starts_with('-') { // 'v [subcmd] -<tab>' or 'v [subcmd] --<tab>'-> flags.
 			get_flags := fn (base []string, flag string) []string {
 				mut results := []string{}
-				// starts with just '-'
 				for entry in base {
 					if entry.starts_with(flag) {
 						results << entry
