@@ -75,6 +75,10 @@ SUBCMD:
 )
 
 // Snooped from cmd/v/v.v, vlib/v/pref/pref.v
+// Flag entries in the array below should be entered as is:
+// * Short flags, e.g.: "-v", should be entered: '-v'
+// * Long flags, e.g.: "--version", should be entered: '--version'
+// * Single-dash flags, e.g.: "-version", should be entered: '-version'
 const (
 	auto_complete_commands      = [
 		// simple_cmd
@@ -229,33 +233,33 @@ const (
 		'--write',
 	]
 	auto_complete_flags_shader  = [
-		'help',
-		'h',
-		'force-update',
-		'u',
-		'verbose',
-		'v',
-		'slang',
-		'l',
-		'output',
-		'o',
+		'--help',
+		'-h',
+		'--force-update',
+		'-u',
+		'--verbose',
+		'-v',
+		'--slang',
+		'-l',
+		'--output',
+		'-o',
 	]
 	auto_complete_flags_missdoc = [
-		'help',
-		'h',
-		'tags',
-		't',
-		'deprecated',
-		'd',
-		'private',
-		'p',
-		'no-line-numbers',
-		'n',
-		'exclude',
-		'e',
-		'relative-paths',
-		'r',
-		'js',
+		'--help',
+		'-h',
+		'--tags',
+		'-t',
+		'--deprecated',
+		'-d',
+		'--private',
+		'-p',
+		'--no-line-numbers',
+		'-n',
+		'--exclude',
+		'-e',
+		'--relative-paths',
+		'-r',
+		'--js',
 	]
 	auto_complete_flags_self    = [
 		'-prod',
@@ -390,38 +394,18 @@ fn auto_complete_request(args []string) []string {
 			parent_command = parts[i]
 			break
 		}
-		if part.starts_with('-') { // 'v -<tab>' or 'v --<tab>'-> flags.
+		if part.starts_with('-') { // 'v [subcmd] -<tab>' or 'v [subcmd] --<tab>'-> flags.
 			get_flags := fn (base []string, flag string) []string {
-				if flag == '-' {
-					return base.map(fn (e string) string {
-						if e.len == 1 {
-							return '-' + e
-						} else {
-							return '--' + e
-						}
-					})
-				}
-				if flag == '--' {
-					mut m := base.map(fn (e string) string {
-						if e.len > 1 {
-							return '--' + e
-						}
-						return ''
-					})
-					return m.filter(it != '')
-				}
 				mut results := []string{}
-				if flag.starts_with('--') {
-					for entry in base {
-						if entry.len > 1 && entry.starts_with(flag.trim_left('-')) {
-							results << '--' + entry
-						}
+				// starts with just '-'
+				for entry in base {
+					if entry.starts_with(flag) {
+						results << entry
 					}
-				} else {
-					results << flag
 				}
 				return results
 			}
+
 			match parent_command {
 				'bin2v' { // 'v bin2v -<tab>'
 					list = get_flags(auto_complete_flags_bin2v, part)
