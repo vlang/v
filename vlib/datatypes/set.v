@@ -2,7 +2,7 @@ module datatypes
 
 pub struct Set<T> {
 mut:
-	elements map[T]T
+	elements map[T]bool
 }
 
 // str returns a string representation of the set
@@ -12,18 +12,18 @@ pub fn (set Set<T>) str() string {
 
 // is_empty checks if the set is empty
 pub fn (set Set<T>) is_empty() bool {
-	return set.elements.len == 0
+	return set.elements.keys().len == 0
 }
 
 // len returns the length of the set
 pub fn (set Set<T>) len() int {
-	return set.elements.len
+	return set.elements.keys().len
 }
 
 // add inserts an item(s) into the set if not in set
 pub fn (mut set Set<T>) add(item ...T) {
 	for i in item {
-		set.elements[i] = i
+		set.elements[i] = true
 	}
 }
 
