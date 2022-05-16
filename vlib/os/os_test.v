@@ -590,14 +590,6 @@ fn test_ext() {
 	assert os.file_ext('file') == ''
 }
 
-fn test_is_abs() {
-	assert os.is_abs_path('/home/user')
-	assert os.is_abs_path('v/vlib') == false
-	$if windows {
-		assert os.is_abs_path('C:\\Windows\\')
-	}
-}
-
 fn test_join() {
 	$if windows {
 		assert os.join_path('v', 'vlib', 'os') == 'v\\vlib\\os'
