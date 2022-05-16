@@ -125,13 +125,13 @@ static char __closure_thunk[] = {
 #define __CLOSURE_DATA_OFFSET 0xFFC
 #endif
 
-static inline void __closure_set_data(void* closure, void* data) {
-    void** p = closure - ASSUMED_PAGE_SIZE;
+static inline void __closure_set_data(char* closure, void* data) {
+    void** p = (void**)(closure - ASSUMED_PAGE_SIZE);
     p[0] = data;
 }
 
-static inline void __closure_set_function(void* closure, void* f) {
-    void** p = closure - ASSUMED_PAGE_SIZE;
+static inline void __closure_set_function(char* closure, void* f) {
+    void** p = (void**)(closure - ASSUMED_PAGE_SIZE);
     p[1] = f;
 }
 
@@ -146,7 +146,7 @@ static pthread_mutex_t _closure_mtx;
 #define _closure_mtx_lock() pthread_mutex_lock(&_closure_mtx)
 #define _closure_mtx_unlock() pthread_mutex_unlock(&_closure_mtx)
 #endif
-static void* _closure_ptr = 0;
+static char* _closure_ptr = 0;
 static int _closure_cap = 0;
 
 static void* __closure_create(void* fn, void* data) {
