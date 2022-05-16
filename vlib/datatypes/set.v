@@ -44,7 +44,7 @@ pub fn (mut set Set<T>) delete(i T) {
 
 // contains determines if set includes item
 pub fn (set Set<T>) contains(i T) bool {
-	return i in set.elements
+	return set.elements.keys().index(i)>=0
 }
 
 // difference returns the difference between this set and another. Will panic if type differs
@@ -95,8 +95,11 @@ pub fn (set Set<T>) intersection(s Set<T>) !Set<T> {
 
 // equal returns if two sets are equal
 pub fn (set Set<T>) equal(s Set<T>) bool {
+	if !set.type_match(s) {
+		return false
+	}
 	intersect := set.intersection(s) or { Set<T>{} }
-	if !set.type_match(s) || (set.len() != s.len() && intersect.len() != s.len()) {
+	if set.len() != s.len() && intersect.len() != s.len() {
 		return false
 	}
 	return true
