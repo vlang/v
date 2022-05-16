@@ -3396,7 +3396,21 @@ pub fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 			c.note('`[if $node.name]` is deprecated. Use `[if $node.name?]` instead',
 				node.pos)
 		} else {
-			c.error('undefined ident: `$node.name`', node.pos)
+			cname_mod := node.name.all_before('.')
+			if cname_mod.len != node.name.len {
+				mut const_names_in_mod := []string{}
+				for _, so in c.table.global_scope.objects {
+					if so is ast.ConstField {
+						if so.mod == cname_mod {
+							const_names_in_mod << so.name
+						}
+					}
+				}
+				c.error(util.new_suggestion(node.name, const_names_in_mod).say('undefined ident: `$node.name`'),
+					node.pos)
+			} else {
+				c.error('undefined ident: `$node.name`', node.pos)
+			}
 		}
 	}
 	if c.table.known_type(node.name) {

@@ -1,0 +1,6 @@
+vlib/v/checker/tests/misspelled_mod_const_should_have_suggestion.vv:3:21: error: undefined ident: `time.secondz`.
+Did you mean `time.second`?
+    1 | import time
+    2 | 
+    3 | time.sleep(1 * time.secondz)
+      |                     ~~~~~~~
