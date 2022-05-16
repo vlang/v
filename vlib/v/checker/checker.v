@@ -1851,14 +1851,6 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		return field.typ
 	}
 	if mut method := c.table.find_method(sym, field_name) {
-		if c.expected_type != 0 && c.expected_type != ast.none_type {
-			fn_type := ast.new_type(c.table.find_or_register_fn_type(c.mod, method, false,
-				true))
-			// if the expected type includes the receiver, don't hide it behind a closure
-			if c.check_types(fn_type, c.expected_type) {
-				return fn_type
-			}
-		}
 		receiver := method.params[0].typ
 		if receiver.nr_muls() > 0 {
 			if !c.inside_unsafe {
@@ -1875,7 +1867,6 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			}
 		}
 		method.params = method.params[1..]
-		node.has_hidden_receiver = true
 		fn_type := ast.new_type(c.table.find_or_register_fn_type(c.mod, method, false,
 			true))
 		return fn_type

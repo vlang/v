@@ -3347,10 +3347,6 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			}
 		}
 		if !has_embeds {
-			if !node.has_hidden_receiver {
-				g.write('${g.typ(node.expr_type.idx())}_$m.name')
-				return
-			}
 			receiver := m.params[0]
 			expr_styp := g.typ(node.expr_type.idx())
 			data_styp := g.typ(receiver.typ.idx())
