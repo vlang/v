@@ -75,10 +75,6 @@ SUBCMD:
 )
 
 // Snooped from cmd/v/v.v, vlib/v/pref/pref.v
-// Flag entries in the array below should be entered as is:
-// * Short flags, e.g.: "-v", should be entered: '-v'
-// * Long flags, e.g.: "--version", should be entered: '--version'
-// * Single-dash flags, e.g.: "-version", should be entered: '-version'
 const (
 	auto_complete_commands      = [
 		// simple_cmd
@@ -136,6 +132,10 @@ const (
 		'build-module',
 		'missdoc',
 	]
+	// Flag entries in the array below should be entered as is:
+	// * Short flags, e.g.: "-v", should be entered: '-v'
+	// * Long flags, e.g.: "--version", should be entered: '--version'
+	// * Single-dash flags, e.g.: "-version", should be entered: '-version'
 	auto_complete_flags         = [
 		'-apk',
 		'-show-timings',
