@@ -60,7 +60,11 @@ fn main() {
 			(aa % gcd) == big.zero_int,
 			(bb % gcd) == big.zero_int,
 		].all(it == true)
-		{ true } else { false }
+		{
+			true
+		} else {
+			false
+		}
 	}
 
 	cfgs := [
