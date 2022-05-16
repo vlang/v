@@ -132,7 +132,7 @@ const (
 		'build-module',
 		'missdoc',
 	]
-	// Flag entries in the array below should be entered as is:
+	// Entries in the flag arrays below should be entered as is:
 	// * Short flags, e.g.: "-v", should be entered: '-v'
 	// * Long flags, e.g.: "--version", should be entered: '--version'
 	// * Single-dash flags, e.g.: "-version", should be entered: '-version'
