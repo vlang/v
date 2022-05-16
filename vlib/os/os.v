@@ -345,28 +345,24 @@ pub fn user_os() string {
 								
 // user_names returns an array of the name of every user on the system.
 pub fn user_names() ?[]string {
-	mut result := Result{}
 	$if windows {
-		result = execute('wmic useraccount get name')
-	} $else {
-		// Single quotes must be used here. The awk command produces
-		// a different output with double quotes.
-		result = execute("awk -F: '{ print \$1 }' /etc/passwd")
-	}
-
-	if result.exit_code != 0 {
-		return error('Failed to get user names. Exited with code $result.exit_code: $result.output')
-	}
-
-	mut users := result.output.split_into_lines()
-	// it seems the windows command returns an empty line at the end
-	$if windows {
+		result := execute('wmic useraccount get name')
+		if result.exit_code != 0 {
+			return error('Failed to get user names. Exited with code $result.exit_code: $result.output')
+		}
+		mut users := result.output.split_into_lines()
+		// windows command prints an empty line at the end of output
 		users.delete(users.len - 1)
+		return users
+	} $else {
+		lines := read_lines('/etc/passwd')?
+		mut users := []string{cap: lines.len}
+		for line in lines {
+			end_name := line.index(':') or { line.len }
+			users << line[0..end_name]
+		}
+		return users
 	}
-	if _unlikely_(users.len == 0) {
-		return error('No users found on system.')
-	}
-	return users
 }
 
 // home_dir returns path to the user's home directory.
