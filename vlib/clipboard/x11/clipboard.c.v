@@ -292,6 +292,7 @@ fn (mut cb Clipboard) start_listener() {
 	mut sent_request := false
 	mut to_be_requested := Atom(0)
 	for {
+		time.sleep(1 * time.millisecond)
 		C.XNextEvent(cb.display, &event)
 		if unsafe { event.@type == 0 } {
 			println('error')
