@@ -556,7 +556,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 				}
 			}
 			if redefines.len > 0 {
-				eprintln('redefinition of function `$fn_name`')
+				eprintln('builder error: redefinition of function `$fn_name`')
 				for redefine in redefines {
 					eprintln(util.formatted_error('conflicting declaration:', redefine.fheader,
 						redefine.fpath, redefine.f.pos))
