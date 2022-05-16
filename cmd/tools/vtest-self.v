@@ -8,6 +8,8 @@ const github_job = os.getenv('GITHUB_JOB')
 
 const (
 	skip_test_files               = [
+		'cmd/tools/vdoc/html_tag_escape_test.v', /* can't locate local module: markdown */
+		'cmd/tools/vdoc/tests/vdoc_file_test.v', /* fails on Windows; order of output is not as expected */
 		'vlib/context/onecontext/onecontext_test.v',
 		'vlib/context/deadline_test.v' /* sometimes blocks */,
 		'vlib/mysql/mysql_orm_test.v' /* mysql not installed */,
@@ -164,6 +166,7 @@ fn main() {
 	cmd_prefix := args_string.all_before('test-self')
 	title := 'testing vlib'
 	mut all_test_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.v')
+	all_test_files << os.walk_ext(os.join_path(vroot, 'cmd'), '_test.v')
 	test_js_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.js.v')
 	all_test_files << test_js_files
 	testing.eheader(title)

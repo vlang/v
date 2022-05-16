@@ -69,7 +69,7 @@ fn main() {
 	testing.header('Testing...')
 	ts.test()
 	println(ts.benchmark.total_message('all V _test.v files'))
-	if ts.failed {
+	if ts.failed_cmds.len > 0 {
 		exit(1)
 	}
 }

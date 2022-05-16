@@ -211,7 +211,11 @@ fn (mut g Gen) gen_assign_stmt(node_ ast.AssignStmt) {
 			} else if g.inside_for_c_stmt {
 				g.expr(val)
 			} else {
-				g.write('{$styp _ = ')
+				if left_sym.kind == .function {
+					g.write('{void* _ = ')
+				} else {
+					g.write('{$styp _ = ')
+				}
 				g.expr(val)
 				g.writeln(';}')
 			}
