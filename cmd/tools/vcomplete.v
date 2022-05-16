@@ -114,7 +114,6 @@ const (
 		'help',
 		'new',
 		'init',
-		'complete',
 		'translate',
 		'self',
 		'search',
