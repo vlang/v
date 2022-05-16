@@ -95,3 +95,25 @@ fn test_methods_as_fields_ref() {
 	new := set_val(5)
 	assert old == new && old == 1
 }
+
+struct GG_Ctx {
+	frame_fn fn (voidptr) int
+}
+
+[heap]
+struct App {
+	msg string = 'hello'
+}
+
+fn (app &App) frame() int {
+	return app.msg.len
+}
+
+fn test_ctx_arg_expected() {
+	mut app := &App{}
+	mut ctx := &GG_Ctx{
+		frame_fn: app.frame
+	}
+	assert typeof(ctx.frame_fn).str() == 'fn (voidptr) int'
+	assert ctx.frame_fn(app) == 5
+}

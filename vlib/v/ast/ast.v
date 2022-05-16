@@ -256,13 +256,14 @@ pub:
 	mut_pos    token.Pos
 	next_token token.Kind
 pub mut:
-	expr             Expr // expr.field_name
-	expr_type        Type // type of `Foo` in `Foo.bar`
-	typ              Type // type of the entire thing (`Foo.bar`)
-	name_type        Type // T in `T.name` or typeof in `typeof(expr).name`
-	gkind_field      GenericKindField // `T.name` => ast.GenericKindField.name, `T.typ` => ast.GenericKindField.typ, or .unknown
-	scope            &Scope
-	from_embed_types []Type // holds the type of the embed that the method is called from
+	expr                Expr // expr.field_name
+	expr_type           Type // type of `Foo` in `Foo.bar`
+	typ                 Type // type of the entire thing (`Foo.bar`)
+	name_type           Type // T in `T.name` or typeof in `typeof(expr).name`
+	gkind_field         GenericKindField // `T.name` => ast.GenericKindField.name, `T.typ` => ast.GenericKindField.typ, or .unknown
+	scope               &Scope
+	from_embed_types    []Type // holds the type of the embed that the method is called from
+	has_hidden_receiver bool
 }
 
 // root_ident returns the origin ident where the selector started.
