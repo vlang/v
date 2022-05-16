@@ -958,6 +958,9 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				if param.typ == ast.voidptr_type_idx || arg_typ == ast.voidptr_type_idx {
 					continue
 				}
+				if param.typ.is_any_kind_of_pointer() && arg_typ.is_any_kind_of_pointer() {
+					continue
+				}
 				param_typ_sym_ := c.table.sym(c.table.unaliased_type(param.typ))
 				arg_typ_sym_ := c.table.sym(c.table.unaliased_type(arg_typ))
 				// Allow `[32]i8` as `&i8` etc
@@ -967,6 +970,17 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 					|| ((param_typ_sym_.kind == .array_fixed || param_typ_sym_.kind == .array)
 					&& (typ_is_number || c.table.unaliased_type(arg_typ).is_any_kind_of_pointer())) {
 					continue
+				}
+				// Allow `[N]anyptr` as `[N]anyptr`
+				if arg_typ_sym_.kind == .array && param_typ_sym_.kind == .array {
+					if (arg_typ_sym_.info as ast.Array).elem_type.is_any_kind_of_pointer()
+						&& (param_typ_sym_.info as ast.Array).elem_type.is_any_kind_of_pointer() {
+						continue
+					}
+				} else if arg_typ_sym_.kind == .array_fixed && param_typ_sym_.kind == .array_fixed {
+					if (arg_typ_sym_.info as ast.ArrayFixed).elem_type.is_any_kind_of_pointer()&& (param_typ_sym_.info as ast.ArrayFixed).elem_type.is_any_kind_of_pointer() {
+						continue
+					}
 				}
 				// Allow `int` as `&i8`
 				if param.typ.is_any_kind_of_pointer() && typ_is_number {
