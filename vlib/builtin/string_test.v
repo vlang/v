@@ -989,7 +989,7 @@ fn test_string_f32() {
 	assert '-123.456'.f32() - (-123.456) <= f32_epsilon
 }
 
-fn test_is_ascii() {
+fn test_string_is_ascii() {
 	assert ''.is_ascii() == true
 	assert ' '.is_ascii() == true
 	assert '~~'.is_ascii() == true
