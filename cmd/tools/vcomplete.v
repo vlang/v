@@ -76,7 +76,7 @@ SUBCMD:
 
 // Snooped from cmd/v/v.v, vlib/v/pref/pref.v
 const (
-	auto_complete_commands     = [
+	auto_complete_commands      = [
 		// simple_cmd
 		'ast',
 		'doc',
@@ -130,8 +130,9 @@ const (
 		'run',
 		'build',
 		'build-module',
+		'missdoc',
 	]
-	auto_complete_flags        = [
+	auto_complete_flags         = [
 		'-apk',
 		'-show-timings',
 		'-check-syntax',
@@ -190,7 +191,7 @@ const (
 		'-version',
 		'--version',
 	]
-	auto_complete_flags_doc    = [
+	auto_complete_flags_doc     = [
 		'-all',
 		'-f',
 		'-h',
@@ -209,7 +210,7 @@ const (
 		'-s',
 		'-l',
 	]
-	auto_complete_flags_fmt    = [
+	auto_complete_flags_fmt     = [
 		'-c',
 		'-diff',
 		'-l',
@@ -217,7 +218,7 @@ const (
 		'-debug',
 		'-verify',
 	]
-	auto_complete_flags_bin2v  = [
+	auto_complete_flags_bin2v   = [
 		'-h',
 		'--help',
 		'-m',
@@ -227,7 +228,7 @@ const (
 		'-w',
 		'--write',
 	]
-	auto_complete_flags_shader = [
+	auto_complete_flags_shader  = [
 		'help',
 		'h',
 		'force-update',
@@ -239,10 +240,27 @@ const (
 		'output',
 		'o',
 	]
-	auto_complete_flags_self   = [
+	auto_complete_flags_missdoc = [
+		'help',
+		'h',
+		'tags',
+		't',
+		'deprecated',
+		'd',
+		'private',
+		'p',
+		'no-line-numbers',
+		'n',
+		'exclude',
+		'e',
+		'relative-paths',
+		'r',
+		'js',
+	]
+	auto_complete_flags_self    = [
 		'-prod',
 	]
-	auto_complete_compilers    = [
+	auto_complete_compilers     = [
 		'cc',
 		'gcc',
 		'tcc',
@@ -372,12 +390,38 @@ fn auto_complete_request(args []string) []string {
 			parent_command = parts[i]
 			break
 		}
-		get_flags := fn (base []string, flag string) []string {
-			if flag.len == 1 { return base
-			 } else { return base.filter(it.starts_with(flag))
-			 }
-		}
-		if part.starts_with('-') { // 'v -<tab>' -> flags.
+		if part.starts_with('-') { // 'v -<tab>' or 'v --<tab>'-> flags.
+			get_flags := fn (base []string, flag string) []string {
+				if flag == '-' {
+					return base.map(fn (e string) string {
+						if e.len == 1 {
+							return '-' + e
+						} else {
+							return '--' + e
+						}
+					})
+				}
+				if flag == '--' {
+					mut m := base.map(fn (e string) string {
+						if e.len > 1 {
+							return '--' + e
+						}
+						return ''
+					})
+					return m.filter(it != '')
+				}
+				mut results := []string{}
+				if flag.starts_with('--') {
+					for entry in base {
+						if entry.len > 1 && entry.starts_with(flag.trim_left('-')) {
+							results << '--' + entry
+						}
+					}
+				} else {
+					results << flag
+				}
+				return results
+			}
 			match parent_command {
 				'bin2v' { // 'v bin2v -<tab>'
 					list = get_flags(auto_complete_flags_bin2v, part)
@@ -397,6 +441,9 @@ fn auto_complete_request(args []string) []string {
 				'shader' { // 'v shader -<tab>' -> flags.
 					list = get_flags(auto_complete_flags_shader, part)
 				}
+				'missdoc' { // 'v missdoc -<tab>' -> flags.
+					list = get_flags(auto_complete_flags_missdoc, part)
+				}
 				else {
 					for flag in auto_complete_flags {
 						if flag == part {
@@ -413,6 +460,11 @@ fn auto_complete_request(args []string) []string {
 						}
 					}
 				}
+			}
+			// Clear the list if the result is identical to the part examined
+			// (the flag must have already been completed)
+			if list.len == 1 && part == list[0] {
+				list.clear()
 			}
 		} else {
 			match part {
