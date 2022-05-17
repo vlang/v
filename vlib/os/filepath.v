@@ -122,7 +122,7 @@ pub fn norm_path(path string) string {
 }
 
 // clean_path returns the "cleaned" version of the given `path`
-// by turning turning forward slashes into back slashes
+// by turning forward slashes into back slashes
 // on a Windows system and eliminating:
 // - references to current directories (.)
 // - redundant separators
