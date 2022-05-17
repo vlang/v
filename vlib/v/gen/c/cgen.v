@@ -4756,6 +4756,9 @@ fn (mut g Gen) write_init_function() {
 	g.writeln('\tbuiltin_init();')
 	g.writeln('\tvinit_string_literals();')
 	//
+	if g.nr_closures > 0 {
+		g.writeln('\t_closure_mtx_init();')
+	}
 	for mod_name in g.table.modules {
 		g.writeln('\t{ // Initializations for module $mod_name :')
 		g.write(g.inits[mod_name].str())
