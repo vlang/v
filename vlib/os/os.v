@@ -342,7 +342,7 @@ pub fn user_os() string {
 	}
 	return 'unknown'
 }
-								
+
 // user_names returns an array of the name of every user on the system.
 pub fn user_names() ?[]string {
 	$if windows {
