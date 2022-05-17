@@ -56,6 +56,9 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 				&& (expected_sym.info as ast.ArrayFixed).elem_type.is_any_kind_of_pointer() {
 				return true
 			}
+			if c.check_types((got_sym.info as ast.ArrayFixed).elem_type, (expected_sym.info as ast.ArrayFixed).elem_type) {
+				return true
+			}
 		}
 
 		if got_sym.kind == .enum_ {
