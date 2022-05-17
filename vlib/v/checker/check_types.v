@@ -44,6 +44,20 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		}
 		got_sym := c.table.sym(got)
 		expected_sym := c.table.sym(expected)
+
+		// Allow `[N]anyptr` as `[N]anyptr`
+		if got_sym.kind == .array && expected_sym.kind == .array {
+			if (got_sym.info as ast.Array).elem_type.is_any_kind_of_pointer()
+				&& (expected_sym.info as ast.Array).elem_type.is_any_kind_of_pointer() {
+				return true
+			}
+		} else if got_sym.kind == .array_fixed && expected_sym.kind == .array_fixed {
+			if (got_sym.info as ast.ArrayFixed).elem_type.is_any_kind_of_pointer()
+				&& (expected_sym.info as ast.ArrayFixed).elem_type.is_any_kind_of_pointer() {
+				return true
+			}
+		}
+
 		if got_sym.kind == .enum_ {
 			// Allow ints as enums
 			if expected_sym.is_number() {
