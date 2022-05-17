@@ -130,6 +130,10 @@ pub:
 [markused]
 fn v_segmentation_fault_handler(signal int) {
 	eprintln('signal 11: segmentation fault')
-	print_backtrace()
+	$if use_libbacktrace ? {
+		eprint_libbacktrace(1)
+	} $else {
+		print_backtrace()
+	}
 	exit(128 + 11)
 }
