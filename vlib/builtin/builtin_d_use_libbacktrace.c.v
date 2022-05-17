@@ -33,11 +33,11 @@ fn init_bt_state() &C.backtrace_state {
 }
 
 // for bt_error_callback
-// struct BacktraceData {
-// 	state &C.backtrace_state
-// }
+struct BacktraceOptions {
+	stdin bool = true
+}
 
-fn bt_print_callback(data voidptr, pc voidptr, filename_ptr &char, line int, fn_name_ptr &char) int {
+fn bt_print_callback(data &BacktraceOptions, pc voidptr, filename_ptr &char, line int, fn_name_ptr &char) int {
 	filename := if isnil(filename_ptr) { '???' } else { unsafe { filename_ptr.vstring() } }
 	fn_name := if isnil(fn_name_ptr) {
 		'???'
@@ -46,7 +46,12 @@ fn bt_print_callback(data voidptr, pc voidptr, filename_ptr &char, line int, fn_
 	}
 	// keep it for later
 	// pc_64 := u64(pc)
-	println('$filename:$line: by $fn_name')
+	bt_str := '$filename:$line: by $fn_name'
+	if data.stdin {
+		println(bt_str)
+	} else {
+		eprintln(bt_str)
+	}
 	return 0
 }
 
@@ -81,6 +86,15 @@ fn print_libbacktrace(frames_to_skip int) {
 	$if no_backtrace ? {
 		return
 	}
-	// data := &BacktraceData{bt_state}
-	C.backtrace_full(bt_state, frames_to_skip, bt_print_callback, bt_error_callback, 0)
+	data := &BacktraceOptions{}
+	C.backtrace_full(bt_state, frames_to_skip, bt_print_callback, bt_error_callback, data)
+}
+
+[noinline]
+fn eprint_libbacktrace(frames_to_skip int) {
+	$if no_backtrace ? {
+		return
+	}
+	data := &BacktraceOptions{stdin: false}
+	C.backtrace_full(bt_state, frames_to_skip, bt_print_callback, bt_error_callback, data)
 }
