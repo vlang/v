@@ -95,6 +95,8 @@ fn eprint_libbacktrace(frames_to_skip int) {
 	$if no_backtrace ? {
 		return
 	}
-	data := &BacktraceOptions{stdin: false}
+	data := &BacktraceOptions{
+		stdin: false
+	}
 	C.backtrace_full(bt_state, frames_to_skip, bt_print_callback, bt_error_callback, data)
 }
