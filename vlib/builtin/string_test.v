@@ -989,6 +989,16 @@ fn test_string_f32() {
 	assert '-123.456'.f32() - (-123.456) <= f32_epsilon
 }
 
+fn test_string_is_ascii() {
+	assert ''.is_ascii() == true
+	assert ' '.is_ascii() == true
+	assert '~~'.is_ascii() == true
+	assert ' Az~'.is_ascii() == true
+	assert ' Aö~'.is_ascii() == false
+	assert '👋'.is_ascii() == false
+	assert 'a👋bc'.is_ascii() == false
+}
+
 fn test_string_with_zero_byte_escape() {
 	assert '\x00'.bytes() == [u8(0)]
 }
