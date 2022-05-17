@@ -194,7 +194,7 @@ jobs:
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
       - name: All code is formatted
-        run: ./v test-cleancode
+        run: VJOBS=1 ./v test-cleancode
       - name: Self tests
         run: VJOBS=1 ./v test-self
       - name: Build examples
