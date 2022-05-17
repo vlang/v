@@ -201,21 +201,25 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				g.write(')')
 			}
 			.struct_ {
-				ptr_typ := g.equality_fn(left.unaliased)
-				if node.op == .ne {
-					g.write('!')
+				if g.pref.translated {
+					g.gen_plain_infix_expr(node)
+				} else {
+					ptr_typ := g.equality_fn(left.unaliased)
+					if node.op == .ne {
+						g.write('!')
+					}
+					g.write('${ptr_typ}_struct_eq(')
+					if left.typ.is_ptr() {
+						g.write('*')
+					}
+					g.expr(node.left)
+					g.write(', ')
+					if right.typ.is_ptr() {
+						g.write('*')
+					}
+					g.expr(node.right)
+					g.write(')')
 				}
-				g.write('${ptr_typ}_struct_eq(')
-				if left.typ.is_ptr() {
-					g.write('*')
-				}
-				g.expr(node.left)
-				g.write(', ')
-				if right.typ.is_ptr() {
-					g.write('*')
-				}
-				g.expr(node.right)
-				g.write(')')
 			}
 			.sum_type {
 				ptr_typ := g.equality_fn(left.unaliased)
