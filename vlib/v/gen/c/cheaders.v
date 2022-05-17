@@ -136,6 +136,7 @@ static inline void __closure_set_function(char* closure, void* f) {
 }
 
 #ifdef _WIN32
+#include <synchapi.h>
 static SRWLOCK _closure_mtx;
 #define _closure_mtx_init() InitializeSRWLock(&_closure_mtx)
 #define _closure_mtx_lock() AcquireSRWLockExclusive(&_closure_mtx)
