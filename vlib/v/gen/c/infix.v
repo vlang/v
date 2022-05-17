@@ -116,6 +116,10 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		g.write(')')
 	} else if left.typ.idx() == right.typ.idx()
 		&& left.sym.kind in [.array, .array_fixed, .alias, .map, .struct_, .sum_type, .interface_] {
+		if g.pref.translated && !g.is_builtin_mod {
+			g.gen_plain_infix_expr(node)
+			return
+		}
 		match left.sym.kind {
 			.alias {
 				ptr_typ := g.equality_fn(left.typ)
@@ -201,25 +205,25 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				g.write(')')
 			}
 			.struct_ {
-				if g.pref.translated {
-					g.gen_plain_infix_expr(node)
-				} else {
-					ptr_typ := g.equality_fn(left.unaliased)
-					if node.op == .ne {
-						g.write('!')
-					}
-					g.write('${ptr_typ}_struct_eq(')
-					if left.typ.is_ptr() {
-						g.write('*')
-					}
-					g.expr(node.left)
-					g.write(', ')
-					if right.typ.is_ptr() {
-						g.write('*')
-					}
-					g.expr(node.right)
-					g.write(')')
+				// if g.pref.translated {
+				// g.gen_plain_infix_expr(node)
+				//} else {
+				ptr_typ := g.equality_fn(left.unaliased)
+				if node.op == .ne {
+					g.write('!')
 				}
+				g.write('${ptr_typ}_struct_eq(')
+				if left.typ.is_ptr() {
+					g.write('*')
+				}
+				g.expr(node.left)
+				g.write(', ')
+				if right.typ.is_ptr() {
+					g.write('*')
+				}
+				g.expr(node.right)
+				g.write(')')
+				//}
 			}
 			.sum_type {
 				ptr_typ := g.equality_fn(left.unaliased)
