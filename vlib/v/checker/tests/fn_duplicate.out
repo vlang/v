@@ -1,4 +1,4 @@
-builder error: redefinition of function `main.f`
+builder error: redefinition of function `f`
 vlib/v/checker/tests/fn_duplicate.vv:1:1: conflicting declaration: fn f()
     1 | fn f() {
       | ~~~~~~
