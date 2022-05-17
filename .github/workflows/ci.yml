@@ -55,6 +55,8 @@ jobs:
           echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+      - name: All code is formatted
+        run: ./v test-cleancode
       - name: Self tests
         run: ./v test-self
       # - name: Self tests (-cstrict)
@@ -126,6 +128,8 @@ jobs:
         run: |
           ./v -gc boehm cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+      - name: All code is formatted
+        run: ./v test-cleancode
       - name: Self tests with `-gc boehm` with V compiler using Boehm-GC itself
         run: ./v -gc boehm test-self
       - name: Test leak detector
@@ -189,6 +193,8 @@ jobs:
           echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+      - name: All code is formatted
+        run: ./v test-cleancode
       - name: Self tests
         run: VJOBS=1 ./v test-self
       - name: Build examples
@@ -281,6 +287,8 @@ jobs:
           echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+      - name: All code is formatted
+        run: ./v test-cleancode
       - name: Self tests
         run: ./v test-self
       - name: Self tests (-prod)
@@ -373,6 +381,8 @@ jobs:
           echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+      - name: All code is formatted
+        run: ./v test-cleancode
       - name: Self tests
         run: ./v test-self
       - name: Self tests (-prod)
@@ -443,6 +453,8 @@ jobs:
           echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+      - name: All code is formatted
+        run: ./v test-cleancode
       - name: Self tests
         run: .\v.exe test-self
         #    - name: Test
@@ -501,6 +513,9 @@ jobs:
           echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+### TODO: test-cleancode fails with msvc. Investigate why???
+##      - name: All code is formatted
+##        run: ./v test-cleancode
       - name: Self tests
         run: |
           ./v -cg cmd\tools\vtest-self.v
@@ -556,8 +571,8 @@ jobs:
         run: ./v doc -v clipboard
       - name: Test v build-tools
         run: ./v -W build-tools
-      - name: Test ./v doc clipboard
-        run: ./v doc clipboard
+      - name: All code is formatted
+        run: ./v test-cleancode
       - name: Self tests
         run: ./v test-self
       - name: Test v->js

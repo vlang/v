@@ -25,12 +25,13 @@ jobs:
           .\v.exe setup-freetype
           .\.github\workflows\windows-install-sqlite.bat
       - name: v doctor
-        run: |
-          ./v doctor
+        run: ./v doctor
       - name: Verify `v test` works
         run: |
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+      - name: All code is formatted
+        run: ./v test-cleancode
       - name: Self tests
         run: |
           ./v -cg cmd\tools\vtest-self.v
