@@ -382,7 +382,8 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 	if right.unaliased_sym.kind == .array {
 		if left.sym.kind in [.sum_type, .interface_] {
 			if node.right is ast.ArrayInit {
-				if node.right.exprs.len > 0 {
+				if node.right.exprs.len > 0
+					&& g.table.sym(node.right.expr_types[0]).kind !in [.sum_type, .interface_] {
 					mut infix_exprs := []ast.InfixExpr{}
 					for i in 0 .. node.right.exprs.len {
 						infix_exprs << ast.InfixExpr{
