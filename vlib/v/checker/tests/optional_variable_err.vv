@@ -1,0 +1,4 @@
+fn main() {
+	x := !bool(false)
+	println(x)
+}

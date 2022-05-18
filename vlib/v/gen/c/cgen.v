@@ -2243,10 +2243,6 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			g.write('*')
 		}
 	}
-	if expected_type.has_flag(.optional) && expr is ast.None {
-		g.gen_optional_error(expected_type, expr)
-		return
-	}
 	if expr is ast.IntegerLiteral {
 		if expected_type in [ast.u64_type, ast.u32_type, ast.u16_type] && expr.val[0] != `-` {
 			g.expr(expr)
