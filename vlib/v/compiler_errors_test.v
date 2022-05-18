@@ -11,8 +11,14 @@ const skip_files = [
 	'non_existing.vv', // minimize commit diff churn, do not remove
 ]
 
+const skip_on_cstrict = [
+	'vlib/v/checker/tests/missing_c_lib_header_1.vv',
+	'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv',
+]
+
 const skip_on_ubuntu_musl = [
 	'vlib/v/checker/tests/vweb_tmpl_used_var.vv',
+	'vlib/v/checker/tests/vweb_routing_checks.vv',
 ]
 
 const vexe = os.getenv('VEXE')
@@ -30,6 +36,8 @@ const should_autofix = os.getenv('VAUTOFIX') != ''
 const github_job = os.getenv('GITHUB_JOB')
 
 const v_ci_ubuntu_musl = os.getenv('V_CI_UBUNTU_MUSL').len > 0
+
+const v_ci_cstrict = os.getenv('V_CI_CSTRICT').len > 0
 
 struct TaskDescription {
 	vexe             string
@@ -197,6 +205,9 @@ fn (mut tasks Tasks) run() {
 	mut m_skip_files := skip_files.clone()
 	if v_ci_ubuntu_musl {
 		m_skip_files << skip_on_ubuntu_musl
+	}
+	if v_ci_cstrict {
+		m_skip_files << skip_on_cstrict
 	}
 	$if noskip ? {
 		m_skip_files = []
