@@ -237,7 +237,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	}
 	res.run_only = os.getenv('VTEST_ONLY_FN').split_any(',')
 	mut command := ''
-	mut command_pos := 0
+	mut command_pos := -1
 	// for i, arg in args {
 	for i := 0; i < args.len; i++ {
 		arg := args[i]
@@ -289,6 +289,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.is_help = true
 			}
 			'-v' {
+				if command_pos != -1 {
+					// a -v flag after the command, is intended for the command, not for V itself
+					continue
+				}
 				// `-v` flag is for setting verbosity, but without any args it prints the version, like Clang
 				if args.len > 1 {
 					res.is_verbose = true
