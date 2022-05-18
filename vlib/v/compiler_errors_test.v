@@ -78,14 +78,13 @@ fn test_all() {
 	module_tests := get_tests_in_dir(module_dir, true)
 	run_tests := get_tests_in_dir(run_dir, false)
 	skip_unused_dir_tests := get_tests_in_dir(skip_unused_dir, false)
-	// -prod is used for the parser and checker tests, so that warns are errors
 	mut tasks := Tasks{
 		vexe: vexe
 		label: 'all tests'
 	}
-	tasks.add('', parser_dir, '-prod', '.out', parser_tests, false)
-	tasks.add('', checker_dir, '-prod', '.out', checker_tests, false)
-	tasks.add('', scanner_dir, '-prod', '.out', scanner_tests, false)
+	tasks.add('', parser_dir, '', '.out', parser_tests, false)
+	tasks.add('', checker_dir, '', '.out', checker_tests, false)
+	tasks.add('', scanner_dir, '', '.out', scanner_tests, false)
 	tasks.add('', checker_dir, '-enable-globals run', '.run.out', ['globals_error.vv'],
 		false)
 	tasks.add('', global_run_dir, '-enable-globals run', '.run.out', global_run_tests,
@@ -264,8 +263,7 @@ fn (mut tasks Tasks) run() {
 			bench.ok()
 			assert true
 			if tasks.show_cmd {
-				eprintln(bstep_message(mut bench, benchmark.b_ok, '$task.cli_cmd $task.path',
-					task.took))
+				eprintln(bstep_message(mut bench, benchmark.b_ok, '$task.cli_cmd', task.took))
 			} else {
 				if github_job == '' {
 					// local mode:

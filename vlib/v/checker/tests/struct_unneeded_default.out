@@ -1,17 +1,17 @@
-vlib/v/checker/tests/struct_unneeded_default.vv:2:10: error: unnecessary default value of `0`: struct fields are zeroed by default
+vlib/v/checker/tests/struct_unneeded_default.vv:2:10: warning: unnecessary default value of `0`: struct fields are zeroed by default
     1 | struct Test {
     2 |     n int = 0
       |             ^
     3 |     s string = ''
     4 |     b bool = false
-vlib/v/checker/tests/struct_unneeded_default.vv:3:13: error: unnecessary default value of '': struct fields are zeroed by default
+vlib/v/checker/tests/struct_unneeded_default.vv:3:13: warning: unnecessary default value of '': struct fields are zeroed by default
     1 | struct Test {
     2 |     n int = 0
     3 |     s string = ''
       |                ~~
     4 |     b bool = false
     5 | }
-vlib/v/checker/tests/struct_unneeded_default.vv:4:11: error: unnecessary default value `false`: struct fields are zeroed by default
+vlib/v/checker/tests/struct_unneeded_default.vv:4:11: warning: unnecessary default value `false`: struct fields are zeroed by default
     2 |     n int = 0
     3 |     s string = ''
     4 |     b bool = false

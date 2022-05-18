@@ -1,3 +1,16 @@
+vlib/v/checker/tests/comptime_for.vv:2:7: warning: unused variable: `m`
+    1 | fn unknown() {
+    2 |     $for m in Huh.methods {}
+      |          ^
+    3 |     $for f in Huh.fields {}
+    4 |     $for f in T.fields {
+vlib/v/checker/tests/comptime_for.vv:3:7: warning: unused variable: `f`
+    1 | fn unknown() {
+    2 |     $for m in Huh.methods {}
+    3 |     $for f in Huh.fields {}
+      |          ^
+    4 |     $for f in T.fields {
+    5 |         $if f.typ is Huh {}
 vlib/v/checker/tests/comptime_for.vv:2:12: error: unknown type `Huh`
     1 | fn unknown() {
     2 |     $for m in Huh.methods {}
