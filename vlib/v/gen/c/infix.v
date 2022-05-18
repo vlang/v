@@ -402,11 +402,25 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 			}
 		}
 		if node.right is ast.ArrayInit {
+			elem_type := node.right.elem_type
+			elem_sym := g.table.sym(elem_type)
 			if node.right.exprs.len > 0 {
 				// `a in [1,2,3]` optimization => `a == 1 || a == 2 || a == 3`
 				// avoids an allocation
 				g.write('(')
-				g.infix_expr_in_optimization(node.left, node.right)
+				if elem_sym.kind == .sum_type && left.sym.kind != .sum_type {
+					if node.left_type in elem_sym.sumtype_info().variants {
+						new_node_left := ast.CastExpr{
+							arg: ast.EmptyExpr{}
+							typ: elem_type
+							expr: node.left
+							expr_type: node.left_type
+						}
+						g.infix_expr_in_optimization(new_node_left, node.right)
+					}
+				} else {
+					g.infix_expr_in_optimization(node.left, node.right)
+				}
 				g.write(')')
 				return
 			}

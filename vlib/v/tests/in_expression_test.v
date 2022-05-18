@@ -312,7 +312,10 @@ fn test_in_alias_array() {
 
 type TokenValue = rune | u64
 
-fn test_in_array_of_sumtype() {
-	val := TokenValue(`+`)
-	assert val in [TokenValue(`+`), TokenValue(`-`)]
+fn test_in_array_literal_of_sumtype() {
+	val1 := TokenValue(`+`)
+	assert val1 in [TokenValue(`+`), TokenValue(`-`)]
+
+	val2 := `+`
+	assert val2 in [TokenValue(`+`), TokenValue(`-`)]
 }
