@@ -223,7 +223,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 					p.tok.pos())
 			}
 			'_fastcall' {
-				p.note_with_pos('teh tag [_fastcall] has been deprecated, it will be an error after 2022-06-01, use `[callconv: fastcall]` instead',
+				p.note_with_pos('the tag [_fastcall] has been deprecated, it will be an error after 2022-06-01, use `[callconv: fastcall]` instead',
 					p.tok.pos())
 			}
 			'callconv' {
@@ -673,10 +673,10 @@ fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInf
 fn (mut p Parser) anon_fn() ast.AnonFn {
 	pos := p.tok.pos()
 	p.check(.key_fn)
-	if p.pref.is_script && p.tok.kind == .name {
-		p.error_with_pos('function declarations in script mode should be before all script statements',
-			p.tok.pos())
-		return ast.AnonFn{}
+	if p.tok.kind == .name {
+		if p.disallow_declarations_in_script_mode() {
+			return ast.AnonFn{}
+		}
 	}
 	old_inside_defer := p.inside_defer
 	p.inside_defer = false

@@ -155,7 +155,7 @@ fn test_finalize_returns_error_for_unknown_flags_short() {
 
 fn test_allow_to_build_usage_message() ? {
 	mut fp := flag.new_flag_parser([])
-	fp.limit_free_args(1, 4) ?
+	fp.limit_free_args(1, 4)?
 	fp.application('flag_tool')
 	fp.version('v0.0.0')
 	fp.description('some short information about this tool')
@@ -196,7 +196,7 @@ fn test_if_no_options_given_usage_message_does_not_contain_options() {
 
 fn test_free_args_could_be_limited() ? {
 	mut fp1 := flag.new_flag_parser(['a', 'b', 'c'])
-	fp1.limit_free_args(1, 4) ?
+	fp1.limit_free_args(1, 4)?
 	args := fp1.finalize() or {
 		assert false
 		return
@@ -208,7 +208,7 @@ fn test_free_args_could_be_limited() ? {
 
 fn test_error_for_to_few_free_args() ? {
 	mut fp1 := flag.new_flag_parser(['a', 'b', 'c'])
-	fp1.limit_free_args(5, 6) ?
+	fp1.limit_free_args(5, 6)?
 	args := fp1.finalize() or {
 		assert err.msg().starts_with('Expected at least 5 arguments')
 		return
@@ -218,7 +218,7 @@ fn test_error_for_to_few_free_args() ? {
 
 fn test_error_for_to_much_free_args() ? {
 	mut fp1 := flag.new_flag_parser(['a', 'b', 'c'])
-	fp1.limit_free_args(1, 2) ?
+	fp1.limit_free_args(1, 2)?
 	args := fp1.finalize() or {
 		assert err.msg().starts_with('Expected at most 2 arguments')
 		return
@@ -228,7 +228,7 @@ fn test_error_for_to_much_free_args() ? {
 
 fn test_could_expect_no_free_args() ? {
 	mut fp1 := flag.new_flag_parser(['a'])
-	fp1.limit_free_args(0, 0) ?
+	fp1.limit_free_args(0, 0)?
 	args := fp1.finalize() or {
 		assert err.msg().starts_with('Expected no arguments')
 		return
@@ -392,7 +392,7 @@ fn test_dashdash_acts_as_parser_full_stop() ? {
 	assert a == false
 	assert b == 5
 	assert c == 'default'
-	args := fp.finalize() ?
+	args := fp.finalize()?
 	assert args.len > 0
 	assert args[0] != '--'
 	assert args == ['-d', '-x', '-b', '4', '-a', '-c', 'hello', 'some', 'other', 'parameters']
@@ -402,7 +402,7 @@ fn test_dashdash_acts_as_parser_full_stop_dashdash_at_end() ? {
 	mut fp := flag.new_flag_parser(['-b', '5', '-b', '4', 'other', 'params', '--'])
 	b := fp.int_multi('an-int-flag', `b`, '')
 	assert b == [5, 4]
-	args := fp.finalize() ?
+	args := fp.finalize()?
 	assert args.len > 0
 }
 

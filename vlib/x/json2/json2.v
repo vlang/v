@@ -26,7 +26,7 @@ pub fn fast_raw_decode(src string) ?Any {
 
 // decode is a generic function that decodes a JSON string into the target type.
 pub fn decode<T>(src string) ?T {
-	res := raw_decode(src) ?
+	res := raw_decode(src)?
 	mut typ := T{}
 	typ.from_json(res)
 	return typ

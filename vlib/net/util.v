@@ -22,6 +22,6 @@ pub fn split_address(addr string) ?(string, u16) {
 	// TODO(emily): Maybe do some more checking here
 	// to validate ipv6 address sanity?
 
-	p := validate_port(port) ?
+	p := validate_port(port)?
 	return address, p
 }

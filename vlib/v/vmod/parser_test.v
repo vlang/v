@@ -15,7 +15,7 @@ fn test_ok() ? {
 }"
 	for s in [ok_source, ok_source.replace(apos, quote), ok_source.replace('\n', '\r\n'),
 		ok_source.replace('\n', '\r\n '), ok_source.replace('\n', '\n ')] {
-		content := vmod.decode(s) ?
+		content := vmod.decode(s)?
 		assert content.name == 'V'
 		assert content.description == 'The V programming language.'
 		assert content.version == '0.2.4'
@@ -24,7 +24,7 @@ fn test_ok() ? {
 		assert content.dependencies == []
 		assert content.unknown == {}
 	}
-	e := vmod.decode('Module{}') ?
+	e := vmod.decode('Module{}')?
 	assert e.name == ''
 	assert e.description == ''
 	assert e.version == ''

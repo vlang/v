@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generic_sumtype_decl_err_a.vv:7:24: error: generic struct `Just` must specify generic type names, e.g. Foo<T>
+    5 | struct Nothing {}
+    6 |
+    7 | type Maybe = Nothing | Just
+      |                        ~~~~
+    8 |
+    9 | fn main() {

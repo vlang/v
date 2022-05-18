@@ -21,22 +21,22 @@ pub struct Decoder {
 
 // decode decodes certain `ast.Value`'s and all it's children.
 pub fn (d Decoder) decode(mut n ast.Value) ? {
-	walker.walk_and_modify(d, mut n) ?
+	walker.walk_and_modify(d, mut n)?
 }
 
 fn (d Decoder) modify(mut value ast.Value) ? {
 	match value {
 		ast.Quoted {
 			mut v := &(value as ast.Quoted)
-			d.decode_quoted(mut v) ?
+			d.decode_quoted(mut v)?
 		}
 		ast.Number {
 			mut v := &(value as ast.Number)
-			d.decode_number(mut v) ?
+			d.decode_number(mut v)?
 		}
 		ast.DateTime {
 			mut v := &(value as ast.DateTime)
-			d.decode_date_time(mut v) ?
+			d.decode_date_time(mut v)?
 		}
 		else {}
 	}
@@ -49,7 +49,7 @@ fn (d Decoder) excerpt(tp token.Pos) string {
 
 // decode_quoted returns an error if `q` is not a valid quoted TOML string.
 fn (d Decoder) decode_quoted(mut q ast.Quoted) ? {
-	decode_quoted_escapes(mut q) ?
+	decode_quoted_escapes(mut q)?
 }
 
 // decode_number decodes the `n ast.Number` into valid TOML.
@@ -84,7 +84,7 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ? {
 		return
 	}
 
-	mut s := scanner.new_simple_text(q.text) ?
+	mut s := scanner.new_simple_text(q.text)?
 	q.text = q.text.replace('\\"', '"')
 
 	for {
@@ -226,7 +226,7 @@ fn decode_unicode_escape(esc_unicode string) ?(string, int, int) {
 	if unicode_point.len < 8 {
 		unicode_point = '0'.repeat(8 - unicode_point.len) + unicode_point
 	}
-	i64_val := strconv.parse_int(unicode_point, 16, 0) ?
+	i64_val := strconv.parse_int(unicode_point, 16, 0)?
 	rn := rune(i64_val)
 	return '$rn', int(i64_val), sequence_len
 }

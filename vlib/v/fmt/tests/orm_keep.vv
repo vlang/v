@@ -15,7 +15,7 @@ fn find_all_customers(db sqlite.DB) []Customer {
 }
 
 fn main() {
-	db := sqlite.connect('customers.db') ?
+	db := sqlite.connect('customers.db')?
 	// select count(*) from Customer
 	nr_customers := sql db {
 		select count from Customer

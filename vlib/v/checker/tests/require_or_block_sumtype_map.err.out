@@ -1,4 +1,4 @@
-vlib/v/checker/tests/require_or_block_sumtype_map.err.vv:8:8: error: `or {}` block required when indexing a map with sum type value
+vlib/v/checker/tests/require_or_block_sumtype_map.err.vv:8:8: warning: `or {}` block required when indexing a map with sum type value
     6 |         println(y)
     7 |     }
     8 |     _ := x['nonexisting']

@@ -1,0 +1,10 @@
+struct Just<T> {
+  value T
+}
+
+struct Nothing {}
+
+type Maybe<B> = Nothing | Just<T>
+
+fn main() {
+}

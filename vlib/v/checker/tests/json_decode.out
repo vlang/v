@@ -1,0 +1,34 @@
+vlib/v/checker/tests/json_decode.vv:11:7: error: json.decode: unknown type `St2`
+    9 | fn main() {
+   10 |     json.decode(St, '{a: ""}')? // OK
+   11 |     json.decode(St2, '{a: ""}')? // BAD
+      |          ~~~~~~~~~~~~~~~~~~~~~~
+   12 |     json.decode(St)? // BAD
+   13 |     json.decode(string, '""')? // BAD
+vlib/v/checker/tests/json_decode.vv:12:7: error: json.decode expects 2 arguments, a type and a string (e.g `json.decode(T, '')`)
+   10 |     json.decode(St, '{a: ""}')? // OK
+   11 |     json.decode(St2, '{a: ""}')? // BAD
+   12 |     json.decode(St)? // BAD
+      |          ~~~~~~~~~~
+   13 |     json.decode(string, '""')? // BAD
+   14 |     json.decode(Num, '5')? // BAD
+vlib/v/checker/tests/json_decode.vv:13:14: error: json.decode: expected sum type, struct, map or array, found string
+   11 |     json.decode(St2, '{a: ""}')? // BAD
+   12 |     json.decode(St)? // BAD
+   13 |     json.decode(string, '""')? // BAD
+      |                 ~~~~~~
+   14 |     json.decode(Num, '5')? // BAD
+   15 |     json.decode(St, 6)? // BAD
+vlib/v/checker/tests/json_decode.vv:14:14: error: json.decode: expected sum type, struct, map or array, found u8
+   12 |     json.decode(St)? // BAD
+   13 |     json.decode(string, '""')? // BAD
+   14 |     json.decode(Num, '5')? // BAD
+      |                 ~~~
+   15 |     json.decode(St, 6)? // BAD
+   16 | }
+vlib/v/checker/tests/json_decode.vv:15:7: error: json.decode: second argument needs to be a string
+   13 |     json.decode(string, '""')? // BAD
+   14 |     json.decode(Num, '5')? // BAD
+   15 |     json.decode(St, 6)? // BAD
+      |          ~~~~~~~~~~~~~
+   16 | }

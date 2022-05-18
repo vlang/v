@@ -116,6 +116,10 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 		g.write(')')
 	} else if left.typ.idx() == right.typ.idx()
 		&& left.sym.kind in [.array, .array_fixed, .alias, .map, .struct_, .sum_type, .interface_] {
+		if g.pref.translated && !g.is_builtin_mod {
+			g.gen_plain_infix_expr(node)
+			return
+		}
 		match left.sym.kind {
 			.alias {
 				ptr_typ := g.equality_fn(left.typ)
@@ -201,6 +205,9 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				g.write(')')
 			}
 			.struct_ {
+				// if g.pref.translated {
+				// g.gen_plain_infix_expr(node)
+				//} else {
 				ptr_typ := g.equality_fn(left.unaliased)
 				if node.op == .ne {
 					g.write('!')
@@ -216,6 +223,7 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				}
 				g.expr(node.right)
 				g.write(')')
+				//}
 			}
 			.sum_type {
 				ptr_typ := g.equality_fn(left.unaliased)
@@ -374,7 +382,8 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 	if right.unaliased_sym.kind == .array {
 		if left.sym.kind in [.sum_type, .interface_] {
 			if node.right is ast.ArrayInit {
-				if node.right.exprs.len > 0 {
+				if node.right.exprs.len > 0
+					&& g.table.sym(node.right.expr_types[0]).kind !in [.sum_type, .interface_] {
 					mut infix_exprs := []ast.InfixExpr{}
 					for i in 0 .. node.right.exprs.len {
 						infix_exprs << ast.InfixExpr{
@@ -393,11 +402,25 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 			}
 		}
 		if node.right is ast.ArrayInit {
+			elem_type := node.right.elem_type
+			elem_sym := g.table.sym(elem_type)
 			if node.right.exprs.len > 0 {
 				// `a in [1,2,3]` optimization => `a == 1 || a == 2 || a == 3`
 				// avoids an allocation
 				g.write('(')
-				g.infix_expr_in_optimization(node.left, node.right)
+				if elem_sym.kind == .sum_type && left.sym.kind != .sum_type {
+					if node.left_type in elem_sym.sumtype_info().variants {
+						new_node_left := ast.CastExpr{
+							arg: ast.EmptyExpr{}
+							typ: elem_type
+							expr: node.left
+							expr_type: node.left_type
+						}
+						g.infix_expr_in_optimization(new_node_left, node.right)
+					}
+				} else {
+					g.infix_expr_in_optimization(node.left, node.right)
+				}
 				g.write(')')
 				return
 			}

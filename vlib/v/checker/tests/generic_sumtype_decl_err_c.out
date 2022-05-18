@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generic_sumtype_decl_err_c.vv:7:27: error: generic type name `T` of generic struct `Just<T>` is not mentioned in sumtype `Maybe<B>`
+    5 | struct Nothing {}
+    6 |
+    7 | type Maybe<B> = Nothing | Just<T>
+      |                           ~~~~~~~
+    8 |
+    9 | fn main() {

@@ -22,7 +22,24 @@ const (
 pub struct Integer {
 	digits []u32
 pub:
-	signum int
+	signum   int
+	is_const bool
+}
+
+[unsafe]
+fn (mut x Integer) free() {
+	if x.is_const {
+		return
+	}
+	unsafe { x.digits.free() }
+}
+
+fn (x Integer) clone() Integer {
+	return Integer{
+		digits: x.digits.clone()
+		signum: x.signum
+		is_const: false
+	}
 }
 
 fn int_signum(value int) int {
@@ -106,15 +123,18 @@ pub struct IntegerConfig {
 	signum int = 1
 }
 
-// integer_from_bytes creates a new `big.Integer` from the given byte array. By default, positive integers are assumed. If you want a negative integer, use in the following manner:
+// integer_from_bytes creates a new `big.Integer` from the given byte array.
+// By default, positive integers are assumed.
+// If you want a negative integer, use in the following manner:
 // `value := big.integer_from_bytes(bytes, signum: -1)`
+[direct_array_access]
 pub fn integer_from_bytes(input []u8, config IntegerConfig) Integer {
 	// Thank you to Miccah (@mcastorina) for this implementation and relevant unit tests.
 	if input.len == 0 {
 		return integer_from_int(0)
 	}
 	// pad input
-	mut padded_input := []u8{len: ((input.len + 3) & ~0x3) - input.len, cap: (input.len + 3) & ~0x3, init: 0x0}
+	mut padded_input := []u8{len: ((input.len + 3) & ~0x3) - input.len, cap: (input.len + 3) & ~0x3}
 	padded_input << input
 	mut digits := []u32{len: padded_input.len / 4}
 	// combine every 4 bytes into a u32 and insert into n.digits
@@ -144,7 +164,7 @@ pub fn integer_from_radix(all_characters string, radix u32) ?Integer {
 		return error('Radix must be between 2 and 36 (inclusive)')
 	}
 	characters := all_characters.to_lower()
-	validate_string(characters, radix) ?
+	validate_string(characters, radix)?
 	return match radix {
 		2 {
 			integer_from_special_string(characters, 1)
@@ -158,6 +178,7 @@ pub fn integer_from_radix(all_characters string, radix u32) ?Integer {
 	}
 }
 
+[direct_array_access]
 fn validate_string(characters string, radix u32) ? {
 	sign_present := characters[0] == `+` || characters[0] == `-`
 
@@ -176,6 +197,7 @@ fn validate_string(characters string, radix u32) ? {
 	}
 }
 
+[direct_array_access]
 fn integer_from_special_string(characters string, chunk_size int) Integer {
 	sign_present := characters[0] == `+` || characters[0] == `-`
 
@@ -209,9 +231,7 @@ fn integer_from_special_string(characters string, chunk_size int) Integer {
 		big_digits << current
 	}
 
-	for big_digits.len > 0 && big_digits.last() == 0 {
-		big_digits.delete_last()
-	}
+	shrink_tail_zeros(mut big_digits)
 
 	return Integer{
 		digits: big_digits
@@ -219,6 +239,7 @@ fn integer_from_special_string(characters string, chunk_size int) Integer {
 	}
 }
 
+[direct_array_access]
 fn integer_from_regular_string(characters string, radix u32) Integer {
 	sign_present := characters[0] == `+` || characters[0] == `-`
 
@@ -242,7 +263,7 @@ fn integer_from_regular_string(characters string, radix u32) Integer {
 	}
 
 	return Integer{
-		...result
+		digits: result.digits.clone()
 		signum: result.signum * signum
 	}
 }
@@ -253,7 +274,7 @@ pub fn (integer Integer) abs() Integer {
 		zero_int
 	} else {
 		Integer{
-			...integer
+			digits: integer.digits.clone()
 			signum: 1
 		}
 	}
@@ -265,7 +286,7 @@ pub fn (integer Integer) neg() Integer {
 		zero_int
 	} else {
 		Integer{
-			...integer
+			digits: integer.digits.clone()
 			signum: -integer.signum
 		}
 	}
@@ -274,10 +295,10 @@ pub fn (integer Integer) neg() Integer {
 pub fn (integer Integer) + (addend Integer) Integer {
 	// Quick exits
 	if integer.signum == 0 {
-		return addend
+		return addend.clone()
 	}
 	if addend.signum == 0 {
-		return integer
+		return integer.clone()
 	}
 	// Non-zero cases
 	return if integer.signum == addend.signum {
@@ -293,7 +314,7 @@ pub fn (integer Integer) - (subtrahend Integer) Integer {
 		return subtrahend.neg()
 	}
 	if subtrahend.signum == 0 {
-		return integer
+		return integer.clone()
 	}
 	// Non-zero cases
 	return if integer.signum == subtrahend.signum {
@@ -309,7 +330,7 @@ fn (integer Integer) add(addend Integer) Integer {
 	mut storage := []u32{len: math.max(a.len, b.len) + 1}
 	add_digit_array(a, b, mut storage)
 	return Integer{
-		...integer
+		signum: integer.signum
 		digits: storage
 	}
 }
@@ -334,10 +355,10 @@ pub fn (integer Integer) * (multiplicand Integer) Integer {
 		return zero_int
 	}
 	if integer == one_int {
-		return multiplicand
+		return multiplicand.clone()
 	}
 	if multiplicand == one_int {
-		return integer
+		return integer.clone()
 	}
 	// The final sign is the product of the signs
 	mut storage := []u32{len: integer.digits.len + multiplicand.digits.len}
@@ -358,7 +379,7 @@ pub fn (integer Integer) div_mod(divisor Integer) (Integer, Integer) {
 		return zero_int, zero_int
 	}
 	if divisor == one_int {
-		return integer, zero_int
+		return integer.clone(), zero_int
 	}
 	if divisor.signum == -1 {
 		q, r := integer.div_mod(divisor.neg())
@@ -403,7 +424,7 @@ pub fn (a Integer) pow(exponent u32) Integer {
 		return one_int
 	}
 	if exponent == 1 {
-		return a
+		return a.clone()
 	}
 	mut n := exponent
 	mut x := a
@@ -440,6 +461,7 @@ pub fn (a Integer) mod_pow(exponent u32, divisor Integer) Integer {
 }
 
 // big_mod_power returns the integer `a` raised to the power of the integer `exponent` modulo the integer `divisor`.
+[direct_array_access]
 pub fn (a Integer) big_mod_pow(exponent Integer, divisor Integer) Integer {
 	if exponent.signum < 0 {
 		panic('Exponent needs to be non-negative.')
@@ -521,6 +543,7 @@ fn check_sign(a Integer) {
 }
 
 // get_bit checks whether the bit at the given index is set.
+[direct_array_access]
 pub fn (a Integer) get_bit(i u32) bool {
 	check_sign(a)
 	target_index := i / 32
@@ -562,7 +585,7 @@ pub fn (mut a Integer) set_bit(i u32, value bool) {
 pub fn (a Integer) bitwise_or(b Integer) Integer {
 	check_sign(a)
 	check_sign(b)
-	mut result := []u32{len: math.max(a.digits.len, b.digits.len), init: 0}
+	mut result := []u32{len: math.max(a.digits.len, b.digits.len)}
 	bitwise_or_digit_array(a.digits, b.digits, mut result)
 	return Integer{
 		digits: result
@@ -574,7 +597,7 @@ pub fn (a Integer) bitwise_or(b Integer) Integer {
 pub fn (a Integer) bitwise_and(b Integer) Integer {
 	check_sign(a)
 	check_sign(b)
-	mut result := []u32{len: math.max(a.digits.len, b.digits.len), init: 0}
+	mut result := []u32{len: math.max(a.digits.len, b.digits.len)}
 	bitwise_and_digit_array(a.digits, b.digits, mut result)
 	return Integer{
 		digits: result
@@ -585,7 +608,7 @@ pub fn (a Integer) bitwise_and(b Integer) Integer {
 // bitwise_not returns the "bitwise not" of the integer `a`.
 pub fn (a Integer) bitwise_not() Integer {
 	check_sign(a)
-	mut result := []u32{len: a.digits.len, init: 0}
+	mut result := []u32{len: a.digits.len}
 	bitwise_not_digit_array(a.digits, mut result)
 	return Integer{
 		digits: result
@@ -597,7 +620,7 @@ pub fn (a Integer) bitwise_not() Integer {
 pub fn (a Integer) bitwise_xor(b Integer) Integer {
 	check_sign(a)
 	check_sign(b)
-	mut result := []u32{len: math.max(a.digits.len, b.digits.len), init: 0}
+	mut result := []u32{len: math.max(a.digits.len, b.digits.len)}
 	bitwise_xor_digit_array(a.digits, b.digits, mut result)
 	return Integer{
 		digits: result
@@ -606,6 +629,7 @@ pub fn (a Integer) bitwise_xor(b Integer) Integer {
 }
 
 // lshift returns the integer `a` shifted left by `amount` bits.
+[direct_array_access]
 pub fn (a Integer) lshift(amount u32) Integer {
 	if a.signum == 0 {
 		return a
@@ -615,7 +639,7 @@ pub fn (a Integer) lshift(amount u32) Integer {
 	}
 	normalised_amount := amount & 31
 	digit_offset := int(amount >> 5)
-	mut new_array := []u32{len: a.digits.len + digit_offset, init: 0}
+	mut new_array := []u32{len: a.digits.len + digit_offset}
 	for index in 0 .. a.digits.len {
 		new_array[index + digit_offset] = a.digits[index]
 	}
@@ -629,6 +653,7 @@ pub fn (a Integer) lshift(amount u32) Integer {
 }
 
 // rshift returns the integer `a` shifted right by `amount` bits.
+[direct_array_access]
 pub fn (a Integer) rshift(amount u32) Integer {
 	if a.signum == 0 {
 		return a
@@ -641,7 +666,7 @@ pub fn (a Integer) rshift(amount u32) Integer {
 	if digit_offset >= a.digits.len {
 		return zero_int
 	}
-	mut new_array := []u32{len: a.digits.len - digit_offset, init: 0}
+	mut new_array := []u32{len: a.digits.len - digit_offset}
 	for index in 0 .. new_array.len {
 		new_array[index] = a.digits[index + digit_offset]
 	}
@@ -655,6 +680,7 @@ pub fn (a Integer) rshift(amount u32) Integer {
 }
 
 // binary_str returns the binary string representation of the integer `a`.
+[direct_array_access]
 pub fn (integer Integer) binary_str() string {
 	// We have the zero integer
 	if integer.signum == 0 {
@@ -676,6 +702,7 @@ pub fn (integer Integer) binary_str() string {
 }
 
 // hex returns the hexadecimal string representation of the integer `a`.
+[direct_array_access]
 pub fn (integer Integer) hex() string {
 	// We have the zero integer
 	if integer.signum == 0 {
@@ -717,13 +744,17 @@ pub fn (integer Integer) radix_str(radix u32) string {
 
 fn (integer Integer) general_radix_str(radix u32) string {
 	divisor := integer_from_u32(radix)
-	mut rune_array := []rune{}
 
 	mut current := integer.abs()
+	mut new_current := zero_int
 	mut digit := zero_int
+	mut rune_array := []rune{cap: current.digits.len * 4}
 	for current.signum > 0 {
-		current, digit = current.div_mod(divisor)
+		new_current, digit = current.div_mod(divisor)
 		rune_array << big.digit_array[digit.int()]
+		unsafe { digit.free() }
+		unsafe { current.free() }
+		current = new_current
 	}
 	if integer.signum == -1 {
 		rune_array << `-`
@@ -778,6 +809,7 @@ pub fn (a Integer) int() int {
 
 // bytes returns the a byte representation of the integer a, along with the signum int.
 // NOTE: The byte array returned is in big endian order.
+[direct_array_access]
 pub fn (a Integer) bytes() ([]u8, int) {
 	if a.signum == 0 {
 		return []u8{len: 0}, 0
@@ -923,11 +955,13 @@ fn gcd_binary(x Integer, y Integer) Integer {
 }
 
 // bit_len returns the number of bits required to represent the integer `a`.
-[direct_array_access; inline]
+[inline]
 pub fn (x Integer) bit_len() int {
 	if x.signum == 0 {
 		return 0
 	}
-
+	if x.digits.len == 0 {
+		return 0
+	}
 	return x.digits.len * 32 - bits.leading_zeros_32(x.digits.last())
 }

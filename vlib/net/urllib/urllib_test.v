@@ -36,8 +36,8 @@ fn test_escape_unescape() {
 }
 
 fn test_parse_query() ? {
-	q1 := urllib.parse_query('format=%22%25l%3A+%25c+%25t%22') ?
-	q2 := urllib.parse_query('format="%l:+%c+%t"') ?
+	q1 := urllib.parse_query('format=%22%25l%3A+%25c+%25t%22')?
+	q2 := urllib.parse_query('format="%l:+%c+%t"')?
 	// dump(q1)
 	// dump(q2)
 	assert q1.get('format') == '"%l: %c %t"'
@@ -45,21 +45,21 @@ fn test_parse_query() ? {
 }
 
 fn test_parse_query_orders() ? {
-	query_one := urllib.parse_query('https://someapi.com/endpoint?gamma=zalibaba&tau=1&alpha=alibaba&signature=alibaba123') ?
+	query_one := urllib.parse_query('https://someapi.com/endpoint?gamma=zalibaba&tau=1&alpha=alibaba&signature=alibaba123')?
 	qvalues := query_one.values()
 	assert qvalues == ['zalibaba', '1', 'alibaba', 'alibaba123']
 }
 
 fn test_parse_missing_host() ? {
 	// issue #10311
-	url := urllib.parse('http:///') ?
+	url := urllib.parse('http:///')?
 	assert url.str() == 'http://///'
 }
 
 // testing the case where the key as a null value
 // e.g ?key=
 fn test_parse_none_value() ? {
-	query_one := urllib.parse_query('gamma=zalibaba&tau=1&alpha=alibaba&signature=') ?
+	query_one := urllib.parse_query('gamma=zalibaba&tau=1&alpha=alibaba&signature=')?
 	qvalues := query_one.values()
 	qvalues_map := query_one.to_map()
 	assert qvalues == ['zalibaba', '1', 'alibaba']
@@ -75,7 +75,7 @@ fn test_parse_none_value() ? {
 // e.g https://www.vlang.dev?alibaba
 fn test_parse_empty_query_one() ? {
 	query_str := 'alibaba'
-	query_one := urllib.parse_query(query_str) ?
+	query_one := urllib.parse_query(query_str)?
 	qvalues := query_one.values()
 	qvalues_map := query_one.to_map()
 	query_encode := query_one.encode()
@@ -90,7 +90,7 @@ fn test_parse_empty_query_one() ? {
 // e.g https://www.vlang.dev?
 fn test_parse_empty_query_two() ? {
 	query_str := ''
-	query_one := urllib.parse_query(query_str) ?
+	query_one := urllib.parse_query(query_str)?
 	qvalues := query_one.values()
 	qvalues_map := query_one.to_map()
 	query_encode := query_one.encode()

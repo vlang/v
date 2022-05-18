@@ -21,7 +21,7 @@ fn new_0_parser() ?ParserV1 {
 }
 
 fn new_parser() ?Parser {
-	return Parser(new_0_parser() ?)
+	return Parser(new_0_parser()?)
 }
 
 struct Engine {
@@ -29,7 +29,7 @@ struct Engine {
 }
 
 fn test_cast_optional_to_interface() ? {
-	parser := new_parser() ?
+	parser := new_parser()?
 	assert parser.main.str == 'test'
 	eprintln(voidptr(parser.main))
 	e := Engine{

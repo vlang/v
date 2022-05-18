@@ -113,12 +113,12 @@ pub fn (mut p Parser) parse_map_type() ast.Type {
 	}
 	p.check(.lsbr)
 	key_type := p.parse_type()
-	key_sym := p.table.sym(key_type)
-	is_alias := key_sym.kind == .alias
 	if key_type.idx() == 0 {
 		// error is reported in parse_type
 		return 0
 	}
+	key_sym := p.table.sym(key_type)
+	is_alias := key_sym.kind == .alias
 	key_type_supported := key_type in [ast.string_type_idx, ast.voidptr_type_idx]
 		|| key_sym.kind in [.enum_, .placeholder, .any]
 		|| ((key_type.is_int() || key_type.is_float() || is_alias) && !key_type.is_ptr())
@@ -661,11 +661,17 @@ pub fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 	mut concrete_types := []ast.Type{}
 	mut is_instance := false
 	for p.tok.kind != .eof {
+		mut type_pos := p.tok.pos()
 		gt := p.parse_type()
+		type_pos = type_pos.extend(p.prev_tok.pos())
 		if !gt.has_flag(.generic) {
 			is_instance = true
 		}
 		gts := p.table.sym(gt)
+		if !is_instance && gts.name.len > 1 {
+			p.error_with_pos('generic struct parameter name needs to be exactly one char',
+				type_pos)
+		}
 		bs_name += gts.name
 		bs_cname += gts.cname
 		concrete_types << gt

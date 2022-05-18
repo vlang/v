@@ -1,13 +1,19 @@
-vlib/v/checker/tests/union_unsafe_fields.vv:10:9: error: reading a union field (or its address) requires `unsafe`
+vlib/v/checker/tests/union_unsafe_fields.vv:10:9: warning: reading a union field (or its address) requires `unsafe`
     8 |     mut u := Uf32{u: 3}
     9 |     u.f = 3.3 // ok
    10 |     _ := u.u
       |            ^
    11 |     return &u.f
    12 | }
-vlib/v/checker/tests/union_unsafe_fields.vv:11:12: error: reading a union field (or its address) requires `unsafe`
+vlib/v/checker/tests/union_unsafe_fields.vv:11:12: warning: reading a union field (or its address) requires `unsafe`
     9 |     u.f = 3.3 // ok
    10 |     _ := u.u
    11 |     return &u.f
       |               ^
+   12 | }
+vlib/v/checker/tests/union_unsafe_fields.vv:11:9: error: fn `f` expects you to return a non reference type `f32`, but you are returning `&f32` instead
+    9 |     u.f = 3.3 // ok
+   10 |     _ := u.u
+   11 |     return &u.f
+      |            ^
    12 | }

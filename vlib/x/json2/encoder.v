@@ -39,14 +39,14 @@ const escaped_chars = [(r'\b').bytes(), (r'\f').bytes(), (r'\n').bytes(),
 
 // encode_value encodes an `Any` value to the specific writer.
 pub fn (e &Encoder) encode_value(f Any, mut wr io.Writer) ? {
-	e.encode_value_with_level(f, 1, mut wr) ?
+	e.encode_value_with_level(f, 1, mut wr)?
 }
 
 fn (e &Encoder) encode_newline(level int, mut wr io.Writer) ? {
 	if e.newline != 0 {
-		wr.write([e.newline]) ?
+		wr.write([e.newline])?
 		for j := 0; j < level * e.newline_spaces_count; j++ {
-			wr.write(json2.space_bytes) ?
+			wr.write(json2.space_bytes)?
 		}
 	}
 }
@@ -54,62 +54,62 @@ fn (e &Encoder) encode_newline(level int, mut wr io.Writer) ? {
 fn (e &Encoder) encode_value_with_level(f Any, level int, mut wr io.Writer) ? {
 	match f {
 		string {
-			e.encode_string(f, mut wr) ?
+			e.encode_string(f, mut wr)?
 		}
 		bool {
 			if f == true {
-				wr.write(json2.true_in_bytes) ?
+				wr.write(json2.true_in_bytes)?
 			} else {
-				wr.write(json2.false_in_bytes) ?
+				wr.write(json2.false_in_bytes)?
 			}
 		}
 		int, u64, i64 {
-			wr.write(f.str().bytes()) ?
+			wr.write(f.str().bytes())?
 		}
 		f32, f64 {
 			$if !nofloat ? {
 				str_float := f.str().bytes()
-				wr.write(str_float) ?
+				wr.write(str_float)?
 				if str_float[str_float.len - 1] == `.` {
-					wr.write(json2.zero_in_bytes) ?
+					wr.write(json2.zero_in_bytes)?
 				}
 				return
 			}
-			wr.write(json2.zero_in_bytes) ?
+			wr.write(json2.zero_in_bytes)?
 		}
 		map[string]Any {
-			wr.write([u8(`{`)]) ?
+			wr.write([u8(`{`)])?
 			mut i := 0
 			for k, v in f {
-				e.encode_newline(level, mut wr) ?
-				e.encode_string(k, mut wr) ?
-				wr.write(json2.colon_bytes) ?
+				e.encode_newline(level, mut wr)?
+				e.encode_string(k, mut wr)?
+				wr.write(json2.colon_bytes)?
 				if e.newline != 0 {
-					wr.write(json2.space_bytes) ?
+					wr.write(json2.space_bytes)?
 				}
-				e.encode_value_with_level(v, level + 1, mut wr) ?
+				e.encode_value_with_level(v, level + 1, mut wr)?
 				if i < f.len - 1 {
-					wr.write(json2.comma_bytes) ?
+					wr.write(json2.comma_bytes)?
 				}
 				i++
 			}
-			e.encode_newline(level - 1, mut wr) ?
-			wr.write([u8(`}`)]) ?
+			e.encode_newline(level - 1, mut wr)?
+			wr.write([u8(`}`)])?
 		}
 		[]Any {
-			wr.write([u8(`[`)]) ?
+			wr.write([u8(`[`)])?
 			for i, v in f {
-				e.encode_newline(level, mut wr) ?
-				e.encode_value_with_level(v, level + 1, mut wr) ?
+				e.encode_newline(level, mut wr)?
+				e.encode_value_with_level(v, level + 1, mut wr)?
 				if i < f.len - 1 {
-					wr.write(json2.comma_bytes) ?
+					wr.write(json2.comma_bytes)?
 				}
 			}
-			e.encode_newline(level - 1, mut wr) ?
-			wr.write([u8(`]`)]) ?
+			e.encode_newline(level - 1, mut wr)?
+			wr.write([u8(`]`)])?
 		}
 		Null {
-			wr.write(json2.null_in_bytes) ?
+			wr.write(json2.null_in_bytes)?
 		}
 	}
 }
@@ -195,42 +195,42 @@ fn (e &Encoder) encode_string(s string, mut wr io.Writer) ? {
 		text: s
 	}
 	mut i := 0
-	wr.write(json2.quote_bytes) ?
+	wr.write(json2.quote_bytes)?
 	for char_len in char_lens {
 		if char_len == 1 {
 			chr := s[i]
 			if chr in important_escapable_chars {
 				for j := 0; j < important_escapable_chars.len; j++ {
 					if chr == important_escapable_chars[j] {
-						wr.write(json2.escaped_chars[j]) ?
+						wr.write(json2.escaped_chars[j])?
 						break
 					}
 				}
 			} else if chr == `"` || chr == `/` || chr == `\\` {
-				wr.write([u8(`\\`), chr]) ?
+				wr.write([u8(`\\`), chr])?
 			} else if int(chr) < 0x20 {
 				hex_code := chr.hex().bytes()
-				wr.write(json2.unicode_escape_chars) ? // \u
-				wr.write(json2.zero_in_bytes) ? // \u0
-				wr.write(json2.zero_in_bytes) ? // \u00
-				wr.write(hex_code) ? // \u00xxxx
+				wr.write(json2.unicode_escape_chars)? // \u
+				wr.write(json2.zero_in_bytes)? // \u0
+				wr.write(json2.zero_in_bytes)? // \u00
+				wr.write(hex_code)? // \u00xxxx
 			} else {
-				wr.write([u8(chr)]) ?
+				wr.write([u8(chr)])?
 			}
 		} else {
 			slice := s[i..i + char_len]
 			hex_code := slice.utf32_code().hex().bytes()
 			if !e.escape_unicode || hex_code.len < 4 {
 				// unescaped non-ASCII char
-				wr.write(slice.bytes()) ?
+				wr.write(slice.bytes())?
 			} else if hex_code.len == 4 {
 				// a unicode endpoint
-				wr.write(json2.unicode_escape_chars) ?
-				wr.write(hex_code) ?
+				wr.write(json2.unicode_escape_chars)?
+				wr.write(hex_code)?
 			} else {
 				// TODO: still figuring out what
 				// to do with more than 4 chars
-				wr.write(json2.space_bytes) ?
+				wr.write(json2.space_bytes)?
 			}
 			unsafe {
 				slice.free()
@@ -240,5 +240,5 @@ fn (e &Encoder) encode_string(s string, mut wr io.Writer) ? {
 		i += char_len
 	}
 
-	wr.write(json2.quote_bytes) ?
+	wr.write(json2.quote_bytes)?
 }

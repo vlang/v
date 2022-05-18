@@ -11,7 +11,7 @@ fn main() {
 	$if windows {
 		println('Setup freetype...')
 		vroot := os.dir(pref.vexe_path())
-		os.chdir(vroot) ?
+		os.chdir(vroot)?
 		if os.is_dir(freetype_folder) {
 			println('Thirdparty "freetype" is already installed.')
 		} else {

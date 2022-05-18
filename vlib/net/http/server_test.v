@@ -11,7 +11,7 @@ fn test_server_stop() ? {
 	server.stop()
 	assert server.status() == .stopped
 	assert watch.elapsed() < 100 * time.millisecond
-	t.wait() ?
+	t.wait()?
 	assert watch.elapsed() < 999 * time.millisecond
 }
 
@@ -26,7 +26,7 @@ fn test_server_close() ? {
 	server.close()
 	assert server.status() == .closed
 	assert watch.elapsed() < 100 * time.millisecond
-	t.wait() ?
+	t.wait()?
 	assert watch.elapsed() < 999 * time.millisecond
 }
 
@@ -71,19 +71,19 @@ fn test_server_custom_handler() ? {
 	for server.status() != .running {
 		time.sleep(10 * time.millisecond)
 	}
-	x := http.fetch(url: 'http://localhost:$cport/endpoint?abc=xyz', data: 'my data') ?
+	x := http.fetch(url: 'http://localhost:$cport/endpoint?abc=xyz', data: 'my data')?
 	assert x.text == 'my data, /endpoint?abc=xyz'
 	assert x.status_code == 200
 	assert x.http_version == '1.1'
-	y := http.fetch(url: 'http://localhost:$cport/another/endpoint', data: 'abcde') ?
+	y := http.fetch(url: 'http://localhost:$cport/another/endpoint', data: 'abcde')?
 	assert y.text == 'abcde, /another/endpoint'
 	assert y.status_code == 200
 	assert y.status() == .ok
 	assert y.http_version == '1.1'
 	//
-	http.fetch(url: 'http://localhost:$cport/something/else') ?
+	http.fetch(url: 'http://localhost:$cport/something/else')?
 	server.stop()
-	t.wait() ?
+	t.wait()?
 	assert handler.counter == 3
 	assert handler.oks == 2
 	assert handler.not_founds == 1

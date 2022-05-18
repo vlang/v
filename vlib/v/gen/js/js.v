@@ -2379,7 +2379,7 @@ fn (mut g JsGen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var M
 				}
 			}
 			if is_expr && tmp_var.len == 0 {
-				g.write(') ? ')
+				g.write(')? ')
 			} else {
 				g.writeln(') {')
 			}
@@ -2585,7 +2585,7 @@ fn (mut g JsGen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var M
 					}
 				}
 				if is_expr && tmp_var.len == 0 {
-					g.write(') ? ')
+					g.write(')? ')
 				} else {
 					g.writeln(') {')
 				}
@@ -2757,7 +2757,7 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 		return
 	}
 	// For simpe if expressions we can use C's `?:`
-	// `if x > 0 { 1 } else { 2 }` => `(x > 0) ? (1) : (2)`
+	// `if x > 0 { 1 } else { 2 }` => `(x > 0)? (1) : (2)`
 	// For if expressions with multiple statements or another if expression inside, it's much
 	// easier to use a temp var, than do C tricks with commas, introduce special vars etc
 	// (as it used to be done).

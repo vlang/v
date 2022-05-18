@@ -182,13 +182,17 @@ fn (mut vt Vet) vet_fn_documentation(lines []string, line string, lnumber int) {
 			fn_name := ident_fn_name(line)
 			mut grab := true
 			for j := lnumber - 1; j >= 0; j-- {
+				mut prev_prev_line := ''
+				if j - 1 >= 0 {
+					prev_prev_line = lines[j - 1]
+				}
 				prev_line := lines[j]
 				if prev_line.contains('}') { // We've looked back to the above scope, stop here
 					break
 				} else if prev_line.starts_with('// $fn_name ') {
 					grab = false
 					break
-				} else if prev_line.starts_with('// $fn_name') {
+				} else if prev_line.starts_with('// $fn_name') && !prev_prev_line.starts_with('//') {
 					grab = false
 					clean_line := line.all_before_last('{').trim(' ')
 					vt.warn('The documentation for "$clean_line" seems incomplete.', lnumber,

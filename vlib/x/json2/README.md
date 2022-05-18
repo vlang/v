@@ -10,10 +10,10 @@ import net.http
 
 fn main() {
 	// Decoding
-	resp := http.get('https://example.com') ?
+	resp := http.get('https://example.com')?
 
 	// raw decode
-	raw_person := json2.raw_decode(resp.text) ?
+	raw_person := json2.raw_decode(resp.text)?
 
 	// Casting `Any` type / Navigating
 	person := raw_person.as_map()

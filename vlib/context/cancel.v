@@ -171,7 +171,7 @@ fn parent_cancel_context(mut parent Context) ?&CancelContext {
 	if done.closed {
 		return none
 	}
-	mut p := parent.value(cancel_context_key) ?
+	mut p := parent.value(cancel_context_key)?
 	match mut p {
 		CancelContext {
 			pdone := p.done()

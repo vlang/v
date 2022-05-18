@@ -474,7 +474,7 @@ pub const (
 
 pub const (
 	void_type          = new_type(void_type_idx)
-	ovoid_type         = new_type(void_type_idx).set_flag(.optional) // the return type of `fn () ?`
+	ovoid_type         = new_type(void_type_idx).set_flag(.optional) // the return type of `fn ()?`
 	rvoid_type         = new_type(void_type_idx).set_flag(.result) // the return type of `fn () !`
 	voidptr_type       = new_type(voidptr_type_idx)
 	byteptr_type       = new_type(byteptr_type_idx)
@@ -1463,7 +1463,6 @@ pub fn (t &TypeSymbol) find_method_with_generic_parent(name string) ?Fn {
 									param.typ = pt
 								}
 							}
-							method.generic_names.clear()
 							return method
 						}
 						else {}

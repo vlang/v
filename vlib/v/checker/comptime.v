@@ -10,6 +10,13 @@ import v.pkgconfig
 
 fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	node.left_type = c.expr(node.left)
+	if node.method_name == 'compile_error' {
+		c.error(node.args_var, node.pos)
+		return ast.void_type
+	} else if node.method_name == 'compile_warn' {
+		c.warn(node.args_var, node.pos)
+		return ast.void_type
+	}
 	if node.is_env {
 		env_value := util.resolve_env_value("\$env('$node.args_var')", false) or {
 			c.error(err.msg(), node.env_pos)
@@ -217,8 +224,8 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 			}
 		}
 		ast.InfixExpr {
-			left := c.eval_comptime_const_expr(expr.left, nlevel + 1) ?
-			right := c.eval_comptime_const_expr(expr.right, nlevel + 1) ?
+			left := c.eval_comptime_const_expr(expr.left, nlevel + 1)?
+			right := c.eval_comptime_const_expr(expr.right, nlevel + 1)?
 			if left is string && right is string {
 				match expr.op {
 					.plus {

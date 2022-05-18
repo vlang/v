@@ -106,7 +106,7 @@ pub fn (mut rng PRNG) u32_in_range(min u32, max u32) ?u32 {
 	if max <= min {
 		return error('max must be greater than min')
 	}
-	return min + rng.u32n(max - min) ?
+	return min + rng.u32n(max - min)?
 }
 
 // u64_in_range returns a uniformly distributed pseudorandom 64-bit unsigned `u64` in range `[min, max)`.
@@ -115,7 +115,7 @@ pub fn (mut rng PRNG) u64_in_range(min u64, max u64) ?u64 {
 	if max <= min {
 		return error('max must be greater than min')
 	}
-	return min + rng.u64n(max - min) ?
+	return min + rng.u64n(max - min)?
 }
 
 // i8 returns a (possibly negative) pseudorandom 8-bit `i8`.
@@ -160,7 +160,7 @@ pub fn (mut rng PRNG) intn(max int) ?int {
 	if max <= 0 {
 		return error('max has to be positive.')
 	}
-	return int(rng.u32n(u32(max)) ?)
+	return int(rng.u32n(u32(max))?)
 }
 
 // i64n returns a pseudorandom int that lies in `[0, max)`.
@@ -169,7 +169,7 @@ pub fn (mut rng PRNG) i64n(max i64) ?i64 {
 	if max <= 0 {
 		return error('max has to be positive.')
 	}
-	return i64(rng.u64n(u64(max)) ?)
+	return i64(rng.u64n(u64(max))?)
 }
 
 // int_in_range returns a pseudorandom `int` in range `[min, max)`.
@@ -179,7 +179,7 @@ pub fn (mut rng PRNG) int_in_range(min int, max int) ?int {
 		return error('max must be greater than min')
 	}
 	// This supports negative ranges like [-10, -5) because the difference is positive
-	return min + rng.intn(max - min) ?
+	return min + rng.intn(max - min)?
 }
 
 // i64_in_range returns a pseudorandom `i64` in range `[min, max)`.
@@ -188,7 +188,7 @@ pub fn (mut rng PRNG) i64_in_range(min i64, max i64) ?i64 {
 	if max <= min {
 		return error('max must be greater than min')
 	}
-	return min + rng.i64n(max - min) ?
+	return min + rng.i64n(max - min)?
 }
 
 // f32 returns a pseudorandom `f32` value in range `[0, 1)`.
@@ -227,7 +227,7 @@ pub fn (mut rng PRNG) f32_in_range(min f32, max f32) ?f32 {
 	if max < min {
 		return error('max must be greater than or equal to min')
 	}
-	return min + rng.f32n(max - min) ?
+	return min + rng.f32n(max - min)?
 }
 
 // i64_in_range returns a pseudorandom `i64` in range `[min, max]`.
@@ -236,7 +236,7 @@ pub fn (mut rng PRNG) f64_in_range(min f64, max f64) ?f64 {
 	if max < min {
 		return error('max must be greater than or equal to min')
 	}
-	return min + rng.f64n(max - min) ?
+	return min + rng.f64n(max - min)?
 }
 
 // ulid generates an Unique Lexicographically sortable IDentifier.
@@ -298,7 +298,7 @@ fn (config ShuffleConfigStruct) validate_for<T>(a []T) ? {
 // shuffle all elements until the end.
 [direct_array_access]
 pub fn (mut rng PRNG) shuffle<T>(mut a []T, config ShuffleConfigStruct) ? {
-	config.validate_for(a) ?
+	config.validate_for(a)?
 	new_end := if config.end == 0 { a.len } else { config.end }
 	for i in config.start .. new_end {
 		x := rng.int_in_range(i, new_end) or { config.start }
@@ -313,7 +313,7 @@ pub fn (mut rng PRNG) shuffle<T>(mut a []T, config ShuffleConfigStruct) ? {
 // The permutation is done on a fresh clone of `a`, so `a` remains unchanged.
 pub fn (mut rng PRNG) shuffle_clone<T>(a []T, config ShuffleConfigStruct) ?[]T {
 	mut res := a.clone()
-	rng.shuffle(mut res, config) ?
+	rng.shuffle(mut res, config)?
 	return res
 }
 
@@ -327,9 +327,7 @@ pub fn (mut rng PRNG) choose<T>(array []T, k int) ?[]T {
 	}
 	mut results := []T{len: k}
 	mut indices := []int{len: n, init: it}
-	// TODO: see why exactly it is necessary to enfoce the type here in Checker.infer_fn_generic_types
-	// (v errors with: `inferred generic type T is ambiguous: got int, expected string`, when <int> is missing)
-	rng.shuffle<int>(mut indices) ?
+	rng.shuffle(mut indices)?
 	for i in 0 .. k {
 		results[i] = array[indices[i]]
 	}
@@ -544,7 +542,7 @@ pub fn ascii(len int) string {
 // optional and the entire array is shuffled by default. Leave the end as 0 to
 // shuffle all elements until the end.
 pub fn shuffle<T>(mut a []T, config ShuffleConfigStruct) ? {
-	default_rng.shuffle(mut a, config) ?
+	default_rng.shuffle(mut a, config)?
 }
 
 // shuffle_clone returns a random permutation of the elements in `a`.

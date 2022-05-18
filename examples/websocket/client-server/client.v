@@ -8,7 +8,7 @@ import term
 // it connects to the server who will broadcast your messages
 // to all other connected clients
 fn main() {
-	mut ws := start_client() ?
+	mut ws := start_client()?
 	println(term.green('client $ws.id ready'))
 	println('Write message and enter to send...')
 	for {
@@ -16,7 +16,7 @@ fn main() {
 		if line == '' {
 			break
 		}
-		ws.write_string(line) ?
+		ws.write_string(line)?
 	}
 	ws.close(1000, 'normal') or { println(term.red('panicing $err')) }
 	unsafe {
@@ -25,7 +25,7 @@ fn main() {
 }
 
 fn start_client() ?&websocket.Client {
-	mut ws := websocket.new_client('ws://localhost:30000') ?
+	mut ws := websocket.new_client('ws://localhost:30000')?
 	// mut ws := websocket.new_client('wss://echo.websocket.org:443')?
 	// use on_open_ref if you want to send any reference object
 	ws.on_open(fn (mut ws websocket.Client) ? {

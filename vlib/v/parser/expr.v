@@ -9,6 +9,9 @@ import v.token
 
 pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	return p.check_expr(precedence) or {
+		if token.is_decl(p.tok.kind) && p.disallow_declarations_in_script_mode() {
+			return ast.empty_expr()
+		}
 		p.error_with_pos('invalid expression: unexpected $p.tok', p.tok.pos())
 	}
 }

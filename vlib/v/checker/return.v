@@ -135,7 +135,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 				pos)
 		}
 		if exp_type.is_ptr() && got_typ.is_ptr() {
-			mut r_expr := &node.exprs[i]
+			mut r_expr := &node.exprs[expr_idxs[i]]
 			if mut r_expr is ast.Ident {
 				if mut r_expr.obj is ast.Var {
 					mut obj := unsafe { &r_expr.obj }

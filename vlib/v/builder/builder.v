@@ -124,8 +124,8 @@ pub fn (mut b Builder) middle_stages() ? {
 }
 
 pub fn (mut b Builder) front_and_middle_stages(v_files []string) ? {
-	b.front_stages(v_files) ?
-	b.middle_stages() ?
+	b.front_stages(v_files)?
+	b.middle_stages()?
 }
 
 // parse all deps from already parsed files
@@ -556,7 +556,9 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 				}
 			}
 			if redefines.len > 0 {
-				eprintln('redefinition of function `$fn_name`')
+				ferror := util.formatted_error('builder error:', 'redefinition of function `$fn_name`',
+					'', token.Pos{})
+				eprintln(ferror)
 				for redefine in redefines {
 					eprintln(util.formatted_error('conflicting declaration:', redefine.fheader,
 						redefine.fpath, redefine.f.pos))

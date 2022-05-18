@@ -18,14 +18,14 @@ fn make_pipe() ?(int, int) {
 fn test_level_trigger() ? {
 	// currently only linux is supported
 	$if linux {
-		mut notifier := notify.new() ?
-		reader, writer := make_pipe() ?
+		mut notifier := notify.new()?
+		reader, writer := make_pipe()?
 		defer {
 			os.fd_close(reader)
 			os.fd_close(writer)
 			notifier.close() or {}
 		}
-		notifier.add(reader, .read) ?
+		notifier.add(reader, .read)?
 
 		os.fd_write(writer, 'foobar')
 		mut n := &notifier
@@ -39,14 +39,14 @@ fn test_level_trigger() ? {
 fn test_edge_trigger() ? {
 	// currently only linux is supported
 	$if linux {
-		mut notifier := notify.new() ?
-		reader, writer := make_pipe() ?
+		mut notifier := notify.new()?
+		reader, writer := make_pipe()?
 		defer {
 			os.fd_close(reader)
 			os.fd_close(writer)
 			notifier.close() or {}
 		}
-		notifier.add(reader, .read, .edge_trigger) ?
+		notifier.add(reader, .read, .edge_trigger)?
 
 		mut n := &notifier
 
@@ -66,14 +66,14 @@ fn test_edge_trigger() ? {
 
 fn test_one_shot() ? {
 	$if linux {
-		mut notifier := notify.new() ?
-		reader, writer := make_pipe() ?
+		mut notifier := notify.new()?
+		reader, writer := make_pipe()?
 		defer {
 			os.fd_close(reader)
 			os.fd_close(writer)
 			notifier.close() or {}
 		}
-		notifier.add(reader, .read, .one_shot) ?
+		notifier.add(reader, .read, .one_shot)?
 
 		mut n := &notifier
 
@@ -84,20 +84,20 @@ fn test_one_shot() ? {
 		assert notifier.wait(0).len == 0
 
 		// rearm
-		notifier.modify(reader, .read) ?
+		notifier.modify(reader, .read)?
 		check_read_event(mut n, reader, 'barbaz')
 	}
 }
 
 fn test_hangup() ? {
 	$if linux {
-		mut notifier := notify.new() ?
-		reader, writer := make_pipe() ?
+		mut notifier := notify.new()?
+		reader, writer := make_pipe()?
 		defer {
 			os.fd_close(reader)
 			notifier.close() or {}
 		}
-		notifier.add(reader, .hangup) ?
+		notifier.add(reader, .hangup)?
 
 		assert notifier.wait(0).len == 0
 
@@ -113,18 +113,18 @@ fn test_hangup() ? {
 
 fn test_write() ? {
 	$if linux {
-		mut notifier := notify.new() ?
-		reader, writer := make_pipe() ?
+		mut notifier := notify.new()?
+		reader, writer := make_pipe()?
 		defer {
 			os.fd_close(reader)
 			os.fd_close(writer)
 			notifier.close() or {}
 		}
 
-		notifier.add(reader, .write) ?
+		notifier.add(reader, .write)?
 		assert notifier.wait(0).len == 0
 
-		notifier.add(writer, .write) ?
+		notifier.add(writer, .write)?
 		events := notifier.wait(0)
 		assert events.len == 1
 		assert events[0].fd == writer
@@ -134,8 +134,8 @@ fn test_write() ? {
 
 fn test_remove() ? {
 	$if linux {
-		mut notifier := notify.new() ?
-		reader, writer := make_pipe() ?
+		mut notifier := notify.new()?
+		reader, writer := make_pipe()?
 		defer {
 			os.fd_close(reader)
 			os.fd_close(writer)
@@ -144,12 +144,12 @@ fn test_remove() ? {
 
 		// level triggered - will keep getting events while
 		// there is data to read
-		notifier.add(reader, .read) ?
+		notifier.add(reader, .read)?
 		os.fd_write(writer, 'foobar')
 		assert notifier.wait(0).len == 1
 		assert notifier.wait(0).len == 1
 
-		notifier.remove(reader) ?
+		notifier.remove(reader)?
 		assert notifier.wait(0).len == 0
 	}
 }

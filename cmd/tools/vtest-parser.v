@@ -54,7 +54,7 @@ fn main() {
 		context.pref = &pref.Preferences{
 			output_mode: .silent
 		}
-		mut source := os.read_file(context.path) ?
+		mut source := os.read_file(context.path)?
 		source = source[..context.cut_index]
 
 		go fn (ms int) {

@@ -23,7 +23,7 @@ pub fn parse_rfc3339(s string) ?Time {
 
 	// Check if sn is date only
 	if !parts[0].contains_any(' Z') && parts[0].contains('-') {
-		year, month, day := parse_iso8601_date(sn) ?
+		year, month, day := parse_iso8601_date(sn)?
 		t = new_time(Time{
 			year: year
 			month: month
@@ -34,7 +34,7 @@ pub fn parse_rfc3339(s string) ?Time {
 	// Check if sn is time only
 	if !parts[0].contains('-') && parts[0].contains(':') {
 		mut hour_, mut minute_, mut second_, mut microsecond_, mut unix_offset, mut is_local_time := 0, 0, 0, 0, i64(0), true
-		hour_, minute_, second_, microsecond_, unix_offset, is_local_time = parse_iso8601_time(parts[0]) ?
+		hour_, minute_, second_, microsecond_, unix_offset, is_local_time = parse_iso8601_time(parts[0])?
 		t = new_time(Time{
 			hour: hour_
 			minute: minute_
@@ -57,7 +57,7 @@ pub fn parse_rfc3339(s string) ?Time {
 	return error_invalid_time(9)
 }
 
-// parse returns time from a date string in "YYYY-MM-DD HH:MM:SS" format.
+// parse returns time from a date string in "YYYY-MM-DD HH:mm:ss" format.
 pub fn parse(s string) ?Time {
 	if s == '' {
 		return error_invalid_time(0)
@@ -124,10 +124,10 @@ pub fn parse_iso8601(s string) ?Time {
 	if !(parts.len == 1 || parts.len == 2) {
 		return error_invalid_time(12)
 	}
-	year, month, day := parse_iso8601_date(parts[0]) ?
+	year, month, day := parse_iso8601_date(parts[0])?
 	mut hour_, mut minute_, mut second_, mut microsecond_, mut unix_offset, mut is_local_time := 0, 0, 0, 0, i64(0), true
 	if parts.len == 2 {
-		hour_, minute_, second_, microsecond_, unix_offset, is_local_time = parse_iso8601_time(parts[1]) ?
+		hour_, minute_, second_, microsecond_, unix_offset, is_local_time = parse_iso8601_time(parts[1])?
 	}
 	mut t := new_time(
 		year: year
@@ -193,24 +193,46 @@ fn parse_iso8601_time(s string) ?(int, int, int, int, i64, bool) {
 	hour_ := 0
 	minute_ := 0
 	second_ := 0
-	microsecond_ := 0
+	mut microsecond_ := 0
+	mut nanosecond_ := 0
 	plus_min_z := `a`
 	offset_hour := 0
 	offset_minute := 0
-	mut count := unsafe {
-		C.sscanf(&char(s.str), c'%2d:%2d:%2d.%6d%c%2d:%2d', &hour_, &minute_, &second_,
-			&microsecond_, &char(&plus_min_z), &offset_hour, &offset_minute)
+	mut count := 0
+	count = unsafe {
+		C.sscanf(&char(s.str), c'%2d:%2d:%2d.%9d%c', &hour_, &minute_, &second_, &nanosecond_,
+			&char(&plus_min_z))
 	}
-	// Missread microsecond ([Sec Hour Minute].len == 3 < 4)
-	if count < 4 {
-		count = unsafe {
-			C.sscanf(&char(s.str), c'%2d:%2d:%2d%c%2d:%2d', &hour_, &minute_, &second_,
-				&char(&plus_min_z), &offset_hour, &offset_minute)
+	if count == 5 && plus_min_z == `Z` {
+		// normalise the nanoseconds:
+		mut ndigits := 0
+		if mut pos := s.index('.') {
+			pos++
+			for ; pos < s.len && s[pos].is_digit(); pos++ {
+				ndigits++
+			}
 		}
-		count++ // Increment count because skipped microsecond
-	}
-	if count < 4 {
-		return error_invalid_time(10)
+		for ndigits < 9 {
+			nanosecond_ *= 10
+			ndigits++
+		}
+		microsecond_ = nanosecond_ / 1000
+	} else {
+		count = unsafe {
+			C.sscanf(&char(s.str), c'%2d:%2d:%2d.%6d%c%2d:%2d', &hour_, &minute_, &second_,
+				&microsecond_, &char(&plus_min_z), &offset_hour, &offset_minute)
+		}
+		// Missread microsecond ([Sec Hour Minute].len == 3 < 4)
+		if count < 4 {
+			count = unsafe {
+				C.sscanf(&char(s.str), c'%2d:%2d:%2d%c%2d:%2d', &hour_, &minute_, &second_,
+					&char(&plus_min_z), &offset_hour, &offset_minute)
+			}
+			count++ // Increment count because skipped microsecond
+		}
+		if count < 4 {
+			return error_invalid_time(10)
+		}
 	}
 	is_local_time := plus_min_z == `a` && count == 4
 	is_utc := plus_min_z == `Z` && count == 5

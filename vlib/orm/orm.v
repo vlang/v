@@ -363,7 +363,7 @@ pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len in
 		mut stmt := ''
 		mut ctyp := sql_from_v(sql_field_type(field)) or {
 			field_name = '${field_name}_id'
-			sql_from_v(7) ?
+			sql_from_v(7)?
 		}
 		if ctyp == '' {
 			return error('Unknown type ($field.typ) for field $field.name in struct $table')

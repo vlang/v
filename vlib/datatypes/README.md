@@ -26,4 +26,5 @@ println(stack)
 - [x] Stack (LIFO)
 - [x] Queue (FIFO)
 - [x] Min heap (priority queue)
+- [ ] Set
 - [ ] ...

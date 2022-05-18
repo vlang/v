@@ -69,154 +69,142 @@ fn c_closure_helpers(pref &pref.Preferences) string {
 
 	builder.write_string('
 #ifdef _MSC_VER
-	#define __RETURN_ADDRESS() _ReturnAddress()
+	#define __RETURN_ADDRESS() ((char*)_ReturnAddress())
 #elif defined(__TINYC__) && defined(_WIN32)
-	#define __RETURN_ADDRESS() __builtin_return_address(0)
+	#define __RETURN_ADDRESS() ((char*)__builtin_return_address(0))
 #else
-	#define __RETURN_ADDRESS() __builtin_extract_return_addr(__builtin_return_address(0))
+	#define __RETURN_ADDRESS() ((char*)__builtin_extract_return_addr(__builtin_return_address(0)))
 #endif
 
+#define ASSUMED_PAGE_SIZE 0x4000 // 16K
+#define _CLOSURE_SIZE (((3*sizeof(void*) > sizeof(__closure_thunk) ? 3*sizeof(void*) : sizeof(__closure_thunk)) + sizeof(void*) - 1) & ~(sizeof(void*) - 1))
+// equal to `max(3*sizeof(void*), sizeof(__closure_thunk))`, rounded up to the next multiple of `sizeof(void*)`
+
+// refer to https://godbolt.org/z/r7P3EYv6c for a complete assembly
 #ifdef __V_amd64
-#ifdef _WIN32
 static const char __closure_thunk[] = {
-	0x48, 0x89, 0x0d, 0xc1, 0xff, 0xff, 0xff,  // mov   qword ptr [rip - 63], rcx   # <_orig_rcx>
-	0x8f, 0x05, 0xc3, 0xff, 0xff, 0xff,        // pop   qword ptr [rip - 61]        # <_orig_rbp>
-	0xff, 0x15, 0xd5, 0xff, 0xff, 0xff,        // call  qword ptr [rip - 43]        # <wrapper>
-	0x48, 0x8b, 0x0d, 0xae, 0xff, 0xff, 0xff,  // mov   rcx, qword ptr [rip - 82]   # <_orig_rcx>
-	0xff, 0x15, 0xc0, 0xff, 0xff, 0xff,        // call  qword ptr [rip - 64]        # <unwrapper>
-	0xff, 0x35, 0xaa, 0xff, 0xff, 0xff,        // push  qword ptr [rip - 86]        # <_orig_rbp>
-	0xc3                                       // ret
+	0x8f, 0x05, 0x0a, 0xc0, 0xff, 0xff,  // pop   QWORD PTR [rip - return_addr]
+	0xff, 0x15, 0xfc, 0xbf, 0xff, 0xff,  // call  QWORD PTR [rip - fn]
+	0xff, 0x25, 0xfe, 0xbf, 0xff, 0xff   // jmp   QWORD PTR [rip - return_addr]
 };
-#else
-static const char __closure_thunk[] = {
-	0x48, 0x89, 0x3d, 0xc1, 0xff, 0xff, 0xff,  // mov   qword ptr [rip - 63], rdi   # <_orig_rdi>
-	0x8f, 0x05, 0xc3, 0xff, 0xff, 0xff,        // pop   qword ptr [rip - 61]        # <_orig_rbp>
-	0xff, 0x15, 0xd5, 0xff, 0xff, 0xff,        // call  qword ptr [rip - 43]        # <wrapper>
-	0x48, 0x8b, 0x3d, 0xae, 0xff, 0xff, 0xff,  // mov   rdi, qword ptr [rip - 82]   # <_orig_rdi>
-	0xff, 0x15, 0xc0, 0xff, 0xff, 0xff,        // call  qword ptr [rip - 64]        # <unwrapper>
-	0xff, 0x35, 0xaa, 0xff, 0xff, 0xff,        // push  qword ptr [rip - 86]        # <_orig_rbp>
-	0xc3                                       // ret
-};
-#endif
-#define __CLOSURE_WRAPPER_OFFSET 19
-#define __CLOSURE_UNWRAPPER_OFFSET 32
-#define __CLOSURE_WRAPPER_EXTRA_PARAM   void* _t
-#define __CLOSURE_WRAPPER_EXTRA_PARAM_COMMA ,
+#define __CLOSURE_DATA_OFFSET 0x400C
 #elif defined(__V_x86)
 static char __closure_thunk[] = {
-    0xe8, 0x00, 0x00, 0x00, 0x00,  // call 4
-    0x58,                          // pop  eax
-    0x8f, 0x40, 0xe3,              // pop  dword ptr [eax - 29] # <_orig_rbp>
-    0xff, 0x50, 0xef,              // call dword ptr [eax - 17] # <wrapper>
-    0xe8, 0x00, 0x00, 0x00, 0x00,  // call 4
-    0x58,                          // pop  eax
-    0xff, 0x50, 0xdf,              // call dword ptr [eax - 33] # <unwrapper>
-    0xe8, 0x00, 0x00, 0x00, 0x00,  // call 4
-    0x58,                          // pop  eax
-    0xff, 0x70, 0xce,              // push dword ptr [eax - 50] # <_orig_rbp>
-    0xc3                           // ret
+	0xe8, 0x00, 0x00, 0x00, 0x00,        // call 4
+	0x59,                                // pop  ecx
+	0x8f, 0x81, 0x03, 0xc0, 0xff, 0xff,  // pop  DWORD PTR [ecx - 0x3ffd] # <return_addr>
+	0xff, 0x91, 0xff, 0xbf, 0xff, 0xff,  // call DWORD PTR [ecx - 0x4001] # <fn>
+	0xe8, 0x00, 0x00, 0x00, 0x00,        // call 4
+	0x59,                                // pop  ecx
+	0xff, 0xa1, 0xf1, 0xbf, 0xff, 0xff   // jmp  DWORD PTR [ecx - 0x400f] # <return_addr>
 };
-
-#define __CLOSURE_WRAPPER_OFFSET 12
-#define __CLOSURE_UNWRAPPER_OFFSET 21
-#define __CLOSURE_WRAPPER_EXTRA_PARAM   void* _t
-#define __CLOSURE_WRAPPER_EXTRA_PARAM_COMMA ,
-
+#define __CLOSURE_DATA_OFFSET 0x4012
 #elif defined(__V_arm64)
 static char __closure_thunk[] = {
-	0x10, 0x00, 0x00, 0x10,  // adr x16, start
-	0x08, 0x82, 0x1c, 0xf8,  // str x8, _orig_x8
-	0x1e, 0x02, 0x1d, 0xf8,  // str x30, _orig_x30
-	0xf0, 0xfe, 0xff, 0x58,  // ldr x16, wrapper
+	0x90, 0x00, 0xfe, 0x10,  // adr x16, return_addr
+	0x1e, 0x02, 0x00, 0xf9,  // str x30, [x16]
+	0x10, 0x00, 0xfe, 0x58,  // ldr x16, fn
 	0x00, 0x02, 0x3f, 0xd6,  // blr x16
-	0x70, 0xff, 0xff, 0x10,  // adr x16, start
-	0x08, 0x82, 0x5c, 0xf8,  // ldr x8, _orig_x8
-	0x30, 0xfe, 0xff, 0x58,  // ldr x16, unwrapper
-	0x00, 0x02, 0x3f, 0xd6,  // blr x16
-	0xf0, 0xfe, 0xff, 0x10,  // adr x16, start
-	0x1e, 0x02, 0x5d, 0xf8,  // ldr x30, _orig_x30
+	0x1e, 0x00, 0xfe, 0x58,  // ldr x30, return_addr
 	0xc0, 0x03, 0x5f, 0xd6   // ret
 };
-#define __CLOSURE_WRAPPER_OFFSET 20
-#define __CLOSURE_UNWRAPPER_OFFSET 36
-#define __CLOSURE_WRAPPER_EXTRA_PARAM
-#define __CLOSURE_WRAPPER_EXTRA_PARAM_COMMA
+#define __CLOSURE_DATA_OFFSET 0x4010
 #elif defined(__V_arm32)
+// arm32 needs a small page size because its pc-relative addressing range is just ±4095 bytes
+#undef ASSUMED_PAGE_SIZE
+#define ASSUMED_PAGE_SIZE 4080
+#undef _CLOSURE_SIZE
+#define _CLOSURE_SIZE 28
 static char __closure_thunk[] = {
-    0x24, 0x00, 0x0f, 0xe5,  //  str r0, orig_r0
-    0x24, 0xe0, 0x0f, 0xe5,  //  str lr, orig_lr
-    0x1c, 0xc0, 0x1f, 0xe5,  //  ldr ip, wrapper
-    0x3c, 0xff, 0x2f, 0xe1,  //  blx ip
-    0x34, 0x00, 0x1f, 0xe5,  //  ldr r0, orig_r0
-    0x2c, 0xc0, 0x1f, 0xe5,  //  ldr ip, unwrapper
-    0x3c, 0xff, 0x2f, 0xe1,  //  blx ip
-    0x3c, 0xe0, 0x1f, 0xe5,  //  ldr lr, orig_lr
-    0x1e, 0xff, 0x2f, 0xe1   //  bx  lr
+	0xf0, 0xef, 0x0f, 0xe5,  //  str lr, return_addr
+	0xf8, 0xcf, 0x1f, 0xe5,  //  ldr ip, fn
+	0x3c, 0xff, 0x2f, 0xe1,  //  blx ip
+	0xfc, 0xef, 0x1f, 0xe5,  //  ldr lr, return_addr
+	0x1e, 0xff, 0x2f, 0xe1   //  bx  lr
 };
-#define __CLOSURE_WRAPPER_OFFSET 16
-#define __CLOSURE_UNWRAPPER_OFFSET 28
-#define __CLOSURE_WRAPPER_EXTRA_PARAM   void* _t
-#define __CLOSURE_WRAPPER_EXTRA_PARAM_COMMA ,
+#define __CLOSURE_DATA_OFFSET 0xFFC
 #endif
 
-static int _V_PAGE_SIZE = 4096; // pre-initialized to the most common value, in case _vinit is not called (in a DLL, for example)
-
-static inline void __closure_set_data(void* closure, void* data) {
-    void** p = closure;
-    p[-1] = data;
+static inline void __closure_set_data(char* closure, void* data) {
+    void** p = (void**)(closure - ASSUMED_PAGE_SIZE);
+    p[0] = data;
 }
 
-static inline void __closure_set_function(void* closure, void* f) {
-    void** p = closure;
-    p[-2] = f;
+static inline void __closure_set_function(char* closure, void* f) {
+    void** p = (void**)(closure - ASSUMED_PAGE_SIZE);
+    p[1] = f;
 }
 
-static inline void __closure_set_wrapper(void* closure, void* f) {
-    void** p = closure;
-    p[-3] = f;
+#ifdef _WIN32
+#include <synchapi.h>
+static SRWLOCK _closure_mtx;
+#define _closure_mtx_init() InitializeSRWLock(&_closure_mtx)
+#define _closure_mtx_lock() AcquireSRWLockExclusive(&_closure_mtx)
+#define _closure_mtx_unlock() ReleaseSRWLockExclusive(&_closure_mtx)
+#else
+static pthread_mutex_t _closure_mtx;
+#define _closure_mtx_init() pthread_mutex_init(&_closure_mtx, 0)
+#define _closure_mtx_lock() pthread_mutex_lock(&_closure_mtx)
+#define _closure_mtx_unlock() pthread_mutex_unlock(&_closure_mtx)
+#endif
+static char* _closure_ptr = 0;
+static int _closure_cap = 0;
+
+static void* __closure_create(void* fn, void* data) {
+	_closure_mtx_lock();
+	if (_closure_cap == 0) {
+#ifdef _WIN32
+		SYSTEM_INFO si;
+		GetNativeSystemInfo(&si);
+		uint32_t page_size = si.dwPageSize;
+		page_size = page_size * (((ASSUMED_PAGE_SIZE - 1) / page_size) + 1);
+		char* p = VirtualAlloc(NULL, page_size * 2, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+		if (p == NULL) return 0;
+#else
+		uint32_t page_size = sysconf(_SC_PAGESIZE);
+		page_size = page_size * (((ASSUMED_PAGE_SIZE - 1) / page_size) + 1);
+		int prot = PROT_READ | PROT_WRITE;
+		int flags = MAP_ANONYMOUS | MAP_PRIVATE;
+		char* p = mmap(0, page_size * 2, prot, flags, -1, 0);
+		if (p == MAP_FAILED) return 0;
+#endif
+		char* x = p + page_size;
+		int remaining = page_size / _CLOSURE_SIZE;
+		_closure_ptr = x;
+		_closure_cap = remaining;
+		while (remaining > 0) {
+			memcpy(x, __closure_thunk, sizeof(__closure_thunk));
+			remaining--;
+			x += _CLOSURE_SIZE;
+		}
+#ifdef _WIN32
+		DWORD _tmp;
+		VirtualProtect(_closure_ptr, page_size, PAGE_EXECUTE_READ, &_tmp);
+#else
+		mprotect(_closure_ptr, page_size, PROT_READ | PROT_EXEC);
+#endif
+	}
+	_closure_cap--;
+	void* closure = _closure_ptr;
+	_closure_ptr += _CLOSURE_SIZE;
+	__closure_set_data(closure, data);
+	__closure_set_function(closure, fn);
+	_closure_mtx_unlock();
+	return closure;
 }
 
-static inline void __closure_set_unwrapper(void* closure, void* f) {
-    void** p = closure;
-    p[-4] = f;
-}
-
-static inline void __closure_set_base_ptr(void* closure, void* bp) {
-    void** p = closure;
-    p[-5] = bp;
-}
-
-static void* __closure_create(void* fn, void* wrapper, void* unwrapper, void* data) {
+static void __closure_destroy(void *closure) {
 #ifdef _WIN32
 	SYSTEM_INFO si;
 	GetNativeSystemInfo(&si);
 	uint32_t page_size = si.dwPageSize;
-	char* p = VirtualAlloc(NULL, page_size * 2, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-	if (p == NULL) return 0;
+	page_size = page_size * (((ASSUMED_PAGE_SIZE - 1) / page_size) + 1);
+	VirtualFree(closure, page_size * 2, MEM_RELEASE);
 #else
-	uint32_t page_size = sysconf(_SC_PAGESIZE);
-	int prot = PROT_READ | PROT_WRITE;
-	int flags = MAP_ANONYMOUS | MAP_PRIVATE;
-	char* p = mmap(0, page_size * 2, prot, flags, -1, 0);
-	if (p == MAP_FAILED) return 0;
+    long page_size = sysconf(_SC_PAGESIZE);
+	page_size = page_size * (((ASSUMED_PAGE_SIZE - 1) / page_size) + 1);
+    munmap((char*)closure - page_size, page_size * 2);
 #endif
-
-	void* closure = p + page_size;
-	memcpy(closure, __closure_thunk, sizeof(__closure_thunk));
-
-#ifdef _WIN32
-	DWORD _tmp;
-	VirtualProtect(closure, page_size, PAGE_EXECUTE_READ, &_tmp);
-#else
-	mprotect(closure, page_size, PROT_READ | PROT_EXEC);
-#endif
-
-	__closure_set_data(closure, data);
-	__closure_set_function(closure, fn);
-	__closure_set_wrapper(closure, wrapper);
-	__closure_set_unwrapper(closure, unwrapper);
-	__closure_set_base_ptr(closure, p);
-	return closure;
 }
 ')
 	return builder.str()

@@ -495,5 +495,5 @@ fn main() {
 		hide_cursor: true
 		frame_rate: 60
 	)
-	app.tui.run() ?
+	app.tui.run()?
 }

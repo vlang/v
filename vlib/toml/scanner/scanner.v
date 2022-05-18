@@ -50,7 +50,7 @@ pub:
 pub fn new_scanner(config Config) ?&Scanner {
 	mut s := &Scanner{
 		config: config
-		text: config.input.read_input() ?
+		text: config.input.read_input()?
 	}
 	return s
 }
@@ -59,7 +59,7 @@ pub fn new_scanner(config Config) ?&Scanner {
 pub fn new_simple(config Config) ?Scanner {
 	return Scanner{
 		config: config
-		text: config.input.read_input() ?
+		text: config.input.read_input()?
 	}
 }
 
@@ -74,7 +74,7 @@ pub fn new_simple_text(text string) ?Scanner {
 	}
 	return Scanner{
 		config: config
-		text: config.input.read_input() ?
+		text: config.input.read_input()?
 	}
 }
 
@@ -89,14 +89,14 @@ pub fn new_simple_file(path string) ?Scanner {
 	}
 	return Scanner{
 		config: config
-		text: config.input.read_input() ?
+		text: config.input.read_input()?
 	}
 }
 
 // scan returns the next token from the input.
 [direct_array_access]
 pub fn (mut s Scanner) scan() ?token.Token {
-	s.validate_and_skip_headers() ?
+	s.validate_and_skip_headers()?
 
 	for {
 		c := s.next()
@@ -127,7 +127,7 @@ pub fn (mut s Scanner) scan() ?token.Token {
 		is_signed_inf := !is_signed_nan && is_sign && s.at() == `i` && peek_1 == `n`
 			&& peek_2 == `f`
 		if !s.is_left_of_assign && (is_nan || is_inf || is_signed_nan || is_signed_inf) {
-			num := s.extract_nan_or_inf_number() ?
+			num := s.extract_nan_or_inf_number()?
 			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified a special number "$num" ($num.len)')
 			return s.new_token(.number, num, num.len)
 		}
@@ -135,7 +135,7 @@ pub fn (mut s Scanner) scan() ?token.Token {
 		is_signed_number := is_sign && u8(s.at()).is_digit() && !u8(s.peek(-1)).is_digit()
 		is_digit := byte_c.is_digit()
 		if is_digit || is_signed_number {
-			num := s.extract_number() ?
+			num := s.extract_number()?
 			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified a number "$num" ($num.len)')
 			return s.new_token(.number, num, num.len)
 		}
@@ -197,12 +197,12 @@ pub fn (mut s Scanner) scan() ?token.Token {
 				return s.new_token(.assign, ascii, ascii.len)
 			}
 			`"`, `'` { // ... some string "/'
-				ident_string := s.extract_string() ?
+				ident_string := s.extract_string()?
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified quoted string `$ident_string`')
 				return s.new_token(.quoted, ident_string, ident_string.len)
 			}
 			`#` {
-				hash := s.ignore_line() ?
+				hash := s.ignore_line()?
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified comment hash "$hash" ($hash.len)')
 				return s.new_token(.hash, hash, hash.len + 1)
 			}
@@ -410,7 +410,7 @@ fn (mut s Scanner) extract_string() ?string {
 	is_multiline := s.text[s.pos + 1] == quote && s.text[s.pos + 2] == quote
 	// Check for escaped multiline quote
 	if is_multiline {
-		mls := s.extract_multiline_string() ?
+		mls := s.extract_multiline_string()?
 		return mls
 	}
 
@@ -658,7 +658,7 @@ pub fn (s Scanner) state() State {
 
 fn (mut s Scanner) validate_and_skip_headers() ? {
 	// UTF-16 / UTF-32 headers (BE/LE)
-	s.check_utf16_or_32_bom() ?
+	s.check_utf16_or_32_bom()?
 
 	// NICE-TO-HAVE-TODO Check other types of (UTF-?) headers and yield an error. TOML is UTF-8 only.
 
@@ -670,7 +670,7 @@ fn (mut s Scanner) validate_and_skip_headers() ? {
 	}
 
 	// Check after we've skipped UTF-8 BOM
-	s.check_utf16_or_32_bom() ?
+	s.check_utf16_or_32_bom()?
 }
 
 fn (mut s Scanner) check_utf16_or_32_bom() ? {

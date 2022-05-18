@@ -22,7 +22,8 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		if expected == ast.voidptr_type {
 			return true
 		}
-		if expected == ast.bool_type && (got.is_any_kind_of_pointer() || got.is_int()) {
+		if (expected == ast.bool_type && (got.is_any_kind_of_pointer() || got.is_int()))
+			|| ((expected.is_any_kind_of_pointer() || expected.is_int()) && got == ast.bool_type) {
 			return true
 		}
 
@@ -43,6 +44,23 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		}
 		got_sym := c.table.sym(got)
 		expected_sym := c.table.sym(expected)
+
+		// Allow `[N]anyptr` as `[N]anyptr`
+		if got_sym.kind == .array && expected_sym.kind == .array {
+			if (got_sym.info as ast.Array).elem_type.is_any_kind_of_pointer()
+				&& (expected_sym.info as ast.Array).elem_type.is_any_kind_of_pointer() {
+				return true
+			}
+		} else if got_sym.kind == .array_fixed && expected_sym.kind == .array_fixed {
+			if (got_sym.info as ast.ArrayFixed).elem_type.is_any_kind_of_pointer()
+				&& (expected_sym.info as ast.ArrayFixed).elem_type.is_any_kind_of_pointer() {
+				return true
+			}
+			if c.check_types((got_sym.info as ast.ArrayFixed).elem_type, (expected_sym.info as ast.ArrayFixed).elem_type) {
+				return true
+			}
+		}
+
 		if got_sym.kind == .enum_ {
 			// Allow ints as enums
 			if expected_sym.is_number() {
@@ -50,9 +68,7 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 			}
 		} else if got_sym.kind == .array_fixed {
 			// Allow fixed arrays as `&i8` etc
-			if expected_sym.is_number() {
-				return true
-			} else if expected.is_any_kind_of_pointer() {
+			if expected_sym.is_number() || expected.is_any_kind_of_pointer() {
 				return true
 			}
 		} else if expected_sym.kind == .array_fixed {
@@ -64,6 +80,14 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 				if c.check_types(info.elem_type, info2.elem_type) {
 					return true
 				}
+			}
+		} else if got_sym.kind == .array {
+			if expected_sym.is_number() || expected.is_any_kind_of_pointer() {
+				return true
+			}
+		} else if expected_sym.kind == .array {
+			if got_sym.is_number() && got.is_any_kind_of_pointer() {
+				return true
 			}
 		}
 		if expected_sym.kind == .enum_ && got_sym.is_number() {
@@ -368,7 +392,7 @@ pub fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSym
 fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type ast.Type, right_type ast.Type) ast.Type {
 	if !left_type.is_int() {
 		left_sym := c.table.sym(left_type)
-		// maybe it's an int alias? TODO move this to is_int() ?
+		// maybe it's an int alias? TODO move this to is_int()?
 		if left_sym.kind == .alias && (left_sym.info as ast.Alias).parent_type.is_int() {
 			return left_type
 		}

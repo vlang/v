@@ -6,37 +6,37 @@ module time
 import strings
 import math
 
-// format returns a date string in "YYYY-MM-DD HH:MM" format (24h).
+// format returns a date string in "YYYY-MM-DD HH:mm" format (24h).
 pub fn (t Time) format() string {
 	return t.get_fmt_str(.hyphen, .hhmm24, .yyyymmdd)
 }
 
-// format_ss returns a date string in "YYYY-MM-DD HH:MM:SS" format (24h).
+// format_ss returns a date string in "YYYY-MM-DD HH:mm:ss" format (24h).
 pub fn (t Time) format_ss() string {
 	return t.get_fmt_str(.hyphen, .hhmmss24, .yyyymmdd)
 }
 
-// format_ss_milli returns a date string in "YYYY-MM-DD HH:MM:SS.123" format (24h).
+// format_ss_milli returns a date string in "YYYY-MM-DD HH:mm:ss.123" format (24h).
 pub fn (t Time) format_ss_milli() string {
 	return t.get_fmt_str(.hyphen, .hhmmss24_milli, .yyyymmdd)
 }
 
-// format_ss_micro returns a date string in "YYYY-MM-DD HH:MM:SS.123456" format (24h).
+// format_ss_micro returns a date string in "YYYY-MM-DD HH:mm:ss.123456" format (24h).
 pub fn (t Time) format_ss_micro() string {
 	return t.get_fmt_str(.hyphen, .hhmmss24_micro, .yyyymmdd)
 }
 
-// hhmm returns a date string in "HH:MM" format (24h).
+// hhmm returns a date string in "HH:mm" format (24h).
 pub fn (t Time) hhmm() string {
 	return t.get_fmt_time_str(.hhmm24)
 }
 
-// hhmmss returns a date string in "HH:MM:SS" format (24h).
+// hhmmss returns a date string in "HH:mm:ss" format (24h).
 pub fn (t Time) hhmmss() string {
 	return t.get_fmt_time_str(.hhmmss24)
 }
 
-// hhmm12 returns a date string in "HH:MM" format (12h).
+// hhmm12 returns a date string in "hh:mm" format (12h).
 pub fn (t Time) hhmm12() string {
 	return t.get_fmt_time_str(.hhmm12)
 }
@@ -77,12 +77,12 @@ fn ordinal_suffix(n int) string {
 	}
 }
 
-const tokens_2 = ['MM', 'DD', 'Do', 'YY', 'ss', 'kk', 'NN', 'mm', 'hh', 'HH', 'ZZ', 'dd', 'Qo',
-	'QQ', 'wo', 'ww']
-
-const tokens_3 = ['MMM', 'DDD', 'ZZZ', 'ddd']
-
-const tokens_4 = ['MMMM', 'DDDD', 'DDDo', 'dddd', 'YYYY']
+const (
+	tokens_2 = ['MM', 'DD', 'Do', 'YY', 'ss', 'kk', 'NN', 'mm', 'hh', 'HH', 'ZZ', 'dd', 'Qo', 'QQ',
+		'wo', 'ww']
+	tokens_3 = ['MMM', 'DDD', 'ZZZ', 'ddd']
+	tokens_4 = ['MMMM', 'DDDD', 'DDDo', 'dddd', 'YYYY']
+)
 
 // custom_format returns a date with custom format
 //
@@ -321,8 +321,8 @@ pub fn (t Time) custom_format(s string) string {
 }
 
 // clean returns a date string in a following format:
-// - a date string in "HH:MM" format (24h) for current day
-// - a date string in "MMM D HH:MM" format (24h) for date of current year
+// - a date string in "HH:mm" format (24h) for current day
+// - a date string in "MMM D HH:mm" format (24h) for date of current year
 // - a date string formatted with format function for other dates
 pub fn (t Time) clean() string {
 	znow := now()
@@ -338,8 +338,8 @@ pub fn (t Time) clean() string {
 }
 
 // clean12 returns a date string in a following format:
-// - a date string in "HH:MM" format (12h) for current day
-// - a date string in "MMM D HH:MM" format (12h) for date of current year
+// - a date string in "hh:mm" format (12h) for current day
+// - a date string in "MMM D hh:mm" format (12h) for date of current year
 // - a date string formatted with format function for other dates
 pub fn (t Time) clean12() string {
 	znow := now()

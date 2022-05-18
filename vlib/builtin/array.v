@@ -601,7 +601,7 @@ pub fn (a &array) clone_to_depth(depth int) array {
 		}
 		return arr
 	} else {
-		if !isnil(a.data) {
+		if a.data != 0 {
 			unsafe { vmemcpy(&u8(arr.data), a.data, u64(a.cap) * u64(a.element_size)) }
 		}
 		return arr
@@ -637,16 +637,15 @@ fn (mut a array) push(val voidptr) {
 [unsafe]
 pub fn (mut a3 array) push_many(val voidptr, size int) {
 	a3.ensure_cap(a3.len + size)
-	if a3.data == val && !isnil(a3.data) {
+	if a3.data == val && a3.data != 0 {
 		// handle `arr << arr`
 		copy := a3.clone()
 		unsafe {
-			// vmemcpy(a.data, copy.data, copy.element_size * copy.len)
-			vmemcpy(a3.get_unsafe(a3.len), copy.data, u64(a3.element_size) * u64(size))
+			vmemcpy(&u8(a3.data) + u64(a3.element_size) * u64(a3.len), copy.data, u64(a3.element_size) * u64(size))
 		}
 	} else {
-		if !isnil(a3.data) && !isnil(val) {
-			unsafe { vmemcpy(a3.get_unsafe(a3.len), val, u64(a3.element_size) * u64(size)) }
+		if a3.data != 0 && val != 0 {
+			unsafe { vmemcpy(&u8(a3.data) + u64(a3.element_size) * u64(a3.len), val, u64(a3.element_size) * u64(size)) }
 		}
 	}
 	a3.len += size

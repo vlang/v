@@ -6,7 +6,7 @@ fn test1() ?int {
 fn test2() ?int {
 	mut a := 0
 	defer {
-		a = test1() ?
+		a = test1()?
 	}
 	return a
 

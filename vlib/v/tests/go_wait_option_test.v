@@ -39,8 +39,8 @@ fn test_opt_void_wait() {
 fn propagate(n int, m int) ?f64 {
 	h1 := go f(n)
 	h2 := go g(m)
-	r := h1.wait() ?
-	h2.wait() ?
+	r := h1.wait()?
+	h2.wait()?
 	return r
 }
 

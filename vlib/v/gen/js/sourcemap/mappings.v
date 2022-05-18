@@ -109,25 +109,25 @@ fn (mut m Mappings) export_mappings(mut output io.Writer) ? {
 			}
 		}
 
-		vlq.encode(i64(mapping.gen_column - previous_generated_column), mut &output) ?
+		vlq.encode(i64(mapping.gen_column - previous_generated_column), mut &output)?
 		previous_generated_column = mapping.gen_column
 		match mapping.source_position {
 			Empty {}
 			SourcePosition {
-				vlq.encode(i64(mapping.sources_ind - previous_source_index), mut &output) ?
+				vlq.encode(i64(mapping.sources_ind - previous_source_index), mut &output)?
 				previous_source_index = mapping.sources_ind
 				// lines are stored 0-based in SourceMap spec version 3
 				vlq.encode(i64(mapping.source_position.source_line - 1 - previous_source_line), mut
-					output) ?
+					output)?
 				previous_source_line = mapping.source_position.source_line - 1
 				vlq.encode(i64(mapping.source_position.source_column - previous_source_column), mut
-					output) ?
+					output)?
 				previous_source_column = mapping.source_position.source_column
 
 				match mapping.names_ind {
 					Empty {}
 					IndexNumber {
-						vlq.encode(i64(mapping.names_ind - previous_name_index), mut &output) ?
+						vlq.encode(i64(mapping.names_ind - previous_name_index), mut &output)?
 						previous_name_index = mapping.names_ind
 					}
 				}

@@ -1,0 +1,6 @@
+fn test() ?(&int, &int) {
+	return test() ?
+}
+
+fn main() {
+}

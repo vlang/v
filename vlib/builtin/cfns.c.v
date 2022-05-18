@@ -71,6 +71,9 @@ fn C.fclose(stream &C.FILE) int
 
 fn C.pclose(stream &C.FILE) int
 
+fn C.strrchr(s &char, c int) &char
+fn C.strchr(s &char, c int) &char
+
 // process execution, os.process:
 [trusted]
 fn C.getpid() int

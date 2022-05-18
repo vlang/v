@@ -8,6 +8,8 @@ const github_job = os.getenv('GITHUB_JOB')
 
 const (
 	skip_test_files               = [
+		'cmd/tools/vdoc/html_tag_escape_test.v', /* can't locate local module: markdown */
+		'cmd/tools/vdoc/tests/vdoc_file_test.v', /* fails on Windows; order of output is not as expected */
 		'vlib/context/onecontext/onecontext_test.v',
 		'vlib/context/deadline_test.v' /* sometimes blocks */,
 		'vlib/mysql/mysql_orm_test.v' /* mysql not installed */,
@@ -45,6 +47,7 @@ const (
 		'vlib/sqlite/sqlite_orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
+		'vlib/v/tests/orm_joined_tables_select_test.v',
 		'vlib/v/tests/sql_statement_inside_fn_call_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/vweb/request_test.v',
@@ -85,6 +88,7 @@ const (
 		'vlib/orm/orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
+		'vlib/v/tests/orm_joined_tables_select_test.v',
 		'vlib/v/tests/sql_statement_inside_fn_call_test.v',
 		'vlib/clipboard/clipboard_test.v',
 		'vlib/vweb/tests/vweb_test.v',
@@ -112,6 +116,7 @@ const (
 		'vlib/context/value_test.v',
 		'vlib/orm/orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
+		'vlib/v/tests/orm_joined_tables_select_test.v',
 		'vlib/net/websocket/ws_test.v',
 		'vlib/net/unix/unix_test.v',
 		'vlib/net/unix/use_net_and_net_unix_together_test.v',
@@ -164,6 +169,7 @@ fn main() {
 	cmd_prefix := args_string.all_before('test-self')
 	title := 'testing vlib'
 	mut all_test_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.v')
+	all_test_files << os.walk_ext(os.join_path(vroot, 'cmd'), '_test.v')
 	test_js_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.js.v')
 	all_test_files << test_js_files
 	testing.eheader(title)

@@ -8,6 +8,7 @@ module clipboard
 // Clipboard represents a system clipboard.
 //
 // System "copy" and "paste" actions utilize the clipboard for temporary storage.
+[heap]
 pub struct Clipboard {
 	pb             voidptr
 	last_cb_serial i64

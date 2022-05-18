@@ -1751,34 +1751,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.defer_stmts << defer_stmt
 		}
 		ast.EnumDecl {
-			enum_name := util.no_dots(node.name)
-			is_flag := node.is_flag
-			g.enum_typedefs.writeln('typedef enum {')
-			mut cur_enum_expr := ''
-			mut cur_enum_offset := 0
-			for i, field in node.fields {
-				g.enum_typedefs.write_string('\t${enum_name}__$field.name')
-				if field.has_expr {
-					g.enum_typedefs.write_string(' = ')
-					expr_str := g.expr_string(field.expr)
-					g.enum_typedefs.write_string(expr_str)
-					cur_enum_expr = expr_str
-					cur_enum_offset = 0
-				} else if is_flag {
-					g.enum_typedefs.write_string(' = ')
-					cur_enum_expr = '1 << $i'
-					g.enum_typedefs.write_string((1 << i).str())
-					cur_enum_offset = 0
-				}
-				cur_value := if cur_enum_offset > 0 {
-					'$cur_enum_expr+$cur_enum_offset'
-				} else {
-					cur_enum_expr
-				}
-				g.enum_typedefs.writeln(', // $cur_value')
-				cur_enum_offset++
-			}
-			g.enum_typedefs.writeln('} $enum_name;\n')
+			g.enum_decl(node)
 		}
 		ast.ExprStmt {
 			g.write_v_source_line_info(node.pos)
@@ -2265,7 +2238,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		deref_sym := g.table.sym(got_deref_type)
 		deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
 		got_is_opt := got_type.has_flag(.optional)
-		if deref_will_match || got_is_opt || expr.is_auto_deref_var() {
+		if deref_will_match || got_is_opt || expr.is_auto_deref_var()
+			|| expected_type.has_flag(.generic) {
 			g.write('*')
 		}
 	}
@@ -3365,6 +3339,68 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				}
 			}
 		}
+	} else if m := g.table.find_method(sym, node.field_name) {
+		mut has_embeds := false
+		if sym.info in [ast.Struct, ast.Aggregate] {
+			if node.from_embed_types.len > 0 {
+				has_embeds = true
+			}
+		}
+		if !has_embeds {
+			if !node.has_hidden_receiver {
+				g.write('${g.typ(node.expr_type.idx())}_$m.name')
+				return
+			}
+			receiver := m.params[0]
+			expr_styp := g.typ(node.expr_type.idx())
+			data_styp := g.typ(receiver.typ.idx())
+			mut sb := strings.new_builder(256)
+			name := '_V_closure_${expr_styp}_${m.name}_$node.pos.pos'
+			sb.write_string('${g.typ(m.return_type)} ${name}(')
+			for i in 1 .. m.params.len {
+				param := m.params[i]
+				if i != 1 {
+					sb.write_string(', ')
+				}
+				sb.write_string('${g.typ(param.typ)} a$i')
+			}
+			sb.writeln(') {')
+			sb.writeln('\t$data_styp* a0 = *($data_styp**)(__RETURN_ADDRESS() - __CLOSURE_DATA_OFFSET);')
+			if m.return_type != ast.void_type {
+				sb.write_string('\treturn ')
+			} else {
+				sb.write_string('\t')
+			}
+			sb.write_string('${expr_styp}_${m.name}(')
+			if !receiver.typ.is_ptr() {
+				sb.write_string('*')
+			}
+			for i in 0 .. m.params.len {
+				if i != 0 {
+					sb.write_string(', ')
+				}
+				sb.write_string('a$i')
+			}
+			sb.writeln(');')
+			sb.writeln('}')
+
+			g.anon_fn_definitions << sb.str()
+			g.nr_closures++
+
+			g.write('__closure_create($name, ')
+			if !receiver.typ.is_ptr() {
+				g.write('memdup(')
+			}
+			if !node.expr_type.is_ptr() {
+				g.write('&')
+			}
+			g.expr(node.expr)
+			if !receiver.typ.is_ptr() {
+				g.write(', sizeof($expr_styp))')
+			}
+			g.write(')')
+			return
+		}
 	}
 	n_ptr := node.expr_type.nr_muls() - 1
 	if n_ptr > 0 {
@@ -3416,6 +3452,37 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if sym.kind in [.interface_, .sum_type] {
 		g.write('))')
 	}
+}
+
+fn (mut g Gen) enum_decl(node ast.EnumDecl) {
+	enum_name := util.no_dots(node.name)
+	is_flag := node.is_flag
+	g.enum_typedefs.writeln('typedef enum {')
+	mut cur_enum_expr := ''
+	mut cur_enum_offset := 0
+	for i, field in node.fields {
+		g.enum_typedefs.write_string('\t${enum_name}__$field.name')
+		if field.has_expr {
+			g.enum_typedefs.write_string(' = ')
+			expr_str := g.expr_string(field.expr)
+			g.enum_typedefs.write_string(expr_str)
+			cur_enum_expr = expr_str
+			cur_enum_offset = 0
+		} else if is_flag {
+			g.enum_typedefs.write_string(' = ')
+			cur_enum_expr = '1 << $i'
+			g.enum_typedefs.write_string((1 << i).str())
+			cur_enum_offset = 0
+		}
+		cur_value := if cur_enum_offset > 0 {
+			'$cur_enum_expr+$cur_enum_offset'
+		} else {
+			cur_enum_expr
+		}
+		g.enum_typedefs.writeln(', // $cur_value')
+		cur_enum_offset++
+	}
+	g.enum_typedefs.writeln('} $enum_name;\n')
 }
 
 fn (mut g Gen) enum_expr(node ast.Expr) {
@@ -3878,6 +3945,9 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		g.expr(node.expr)
 		g.write('))')
 	} else if sym.kind == .alias && g.table.final_sym(node.typ).kind == .array_fixed {
+		if node.expr is ast.ArrayInit && g.assign_op != .decl_assign {
+			g.write('(${g.typ(node.expr.typ)})')
+		}
 		g.expr(node.expr)
 	} else if node.expr_type == ast.bool_type && node.typ.is_int() {
 		styp := g.typ(node.typ)
@@ -4490,8 +4560,15 @@ fn (mut g Gen) const_decl_simple_define(name string, val string) {
 	} else {
 		x = '_const_$x'
 	}
-	g.definitions.write_string('#define $x ')
+	if g.pref.translated {
+		g.definitions.write_string('const int $x = ')
+	} else {
+		g.definitions.write_string('#define $x ')
+	}
 	g.definitions.writeln(val)
+	if g.pref.translated {
+		g.definitions.write_string(';')
+	}
 }
 
 fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ ast.Type, unwrap_option bool) {
@@ -4679,6 +4756,9 @@ fn (mut g Gen) write_init_function() {
 	g.writeln('\tbuiltin_init();')
 	g.writeln('\tvinit_string_literals();')
 	//
+	if g.nr_closures > 0 {
+		g.writeln('\t_closure_mtx_init();')
+	}
 	for mod_name in g.table.modules {
 		g.writeln('\t{ // Initializations for module $mod_name :')
 		g.write(g.inits[mod_name].str())
@@ -5122,9 +5202,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 					g.inside_opt_data = true
 					g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_flag(.optional))
 					g.inside_opt_data = old_inside_opt_data
-					if g.inside_ternary == 0 {
-						g.writeln(';')
-					}
+					g.writeln(';')
 					g.stmt_path_pos.delete_last()
 				} else {
 					g.stmt(stmt)
