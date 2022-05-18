@@ -2,6 +2,7 @@ name: Code CI
 
 on:
   push:
+    branches: [master]
     paths-ignore:
       - "**.md"
   pull_request:
@@ -212,14 +213,14 @@ jobs:
           cd ved && ../v -o ved .
           ../v -autofree .
           cd ..
-#      - name: Test c2v
-#        run: |
-#          git clone --depth 1 https://github.com/vlang/c2v
-#          cd c2v && ../v -o c2v .
-#          ../v .
-#          ../v run tests/run_tests.vsh
-#          ../v -experimental -w c2v_test.v
-#          cd ..
+      #      - name: Test c2v
+      #        run: |
+      #          git clone --depth 1 https://github.com/vlang/c2v
+      #          cd c2v && ../v -o c2v .
+      #          ../v .
+      #          ../v run tests/run_tests.vsh
+      #          ../v -experimental -w c2v_test.v
+      #          cd ..
       - name: Build V UI examples
         run: |
           git clone --depth 1 https://github.com/vlang/ui
@@ -513,15 +514,15 @@ jobs:
           echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
-### TODO: test-cleancode fails with msvc. Investigate why???
-##      - name: All code is formatted
-##        run: ./v test-cleancode
+      ### TODO: test-cleancode fails with msvc. Investigate why???
+      ##      - name: All code is formatted
+      ##        run: ./v test-cleancode
       - name: Self tests
         run: |
           ./v -cg cmd\tools\vtest-self.v
           ./v test-self
-  #    - name: Test
-  #      run: .\v.exe test-all
+      #    - name: Test
+      #      run: .\v.exe test-all
       - name: Test v->js
         run: ./v -o hi.js examples/hello_v_js.v && node hi.js
       - name: Test v binaries
@@ -623,8 +624,6 @@ jobs:
         ##        run: ./v build-examples
         ##      - name: v2 self compilation
         ##        run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
-
-
 #  ubuntu-autofree-selfcompile:
 #    runs-on: ubuntu-20.04
 #    timeout-minutes: 121
@@ -636,7 +635,6 @@ jobs:
 #      run: make -j4
 #    - name: V self compilation with -autofree
 #      run: ./v -o v2 -autofree cmd/v && ./v2 -o v3 -autofree cmd/v && ./v3 -o v4 -autofree cmd/v
-
 
 #   ubuntu-musl:
 #     runs-on: ubuntu-20.04

@@ -2,6 +2,7 @@ name: Containers CI
 
 on:
   push:
+    branches: [master]
     paths-ignore:
       - "**.md"
   pull_request:
@@ -13,7 +14,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-
   alpine-docker-musl-gcc:
     runs-on: ubuntu-20.04
     timeout-minutes: 121

@@ -2,6 +2,7 @@ name: toml CI
 
 on:
   push:
+    branches: [master]
     paths-ignore:
       - "**.md"
   pull_request:
@@ -22,7 +23,6 @@ jobs:
       VTEST_TOML_DO_LARGE_FILES: 1
       VTEST_TOML_DO_YAML_CONVERSION: 1
     steps:
-
       - uses: actions/checkout@v2
       - name: Install dependencies
         run: |

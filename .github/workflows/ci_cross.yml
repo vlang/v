@@ -2,6 +2,7 @@ name: Cross CI
 
 on:
   push:
+    branches: [master]
     paths-ignore:
       - "**.md"
   pull_request:
@@ -9,7 +10,6 @@ on:
       - "**.md"
 
 jobs:
-
   macos-cross:
     runs-on: macOS-latest
     timeout-minutes: 25
@@ -97,7 +97,6 @@ jobs:
         run: |
           # Test that V can compile non-graphic app to Android compatible code *without* using the -apk flag
           ./v -os android examples/toml.v
-
 
   windows-cross:
     runs-on: windows-2019

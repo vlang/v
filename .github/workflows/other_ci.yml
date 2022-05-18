@@ -2,6 +2,7 @@ name: Other CI
 
 on:
   push:
+    branches: [master]
     paths-ignore:
       - "**.md"
   pull_request:
@@ -91,7 +92,7 @@ jobs:
         ##      run: ./v -cc g++-9 test-self
 
       - name: Ensure V can be compiled with -autofree
-        run: ./v -autofree -o v2 cmd/v  ## NB: this does not mean it runs, but at least keeps it from regressing
+        run: ./v -autofree -o v2 cmd/v ## NB: this does not mean it runs, but at least keeps it from regressing
 
       - name: Shader examples can be build
         continue-on-error: true
@@ -147,4 +148,3 @@ jobs:
           ./v test-parser -S examples/cli_fuzz.v
           ./v test-parser -S examples/regex_example_fuzz.v
           ./v test-parser -S examples/2048/2048_fuzz.v
-

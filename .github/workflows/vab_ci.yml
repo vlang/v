@@ -2,6 +2,7 @@ name: vab CI
 
 on:
   push:
+    branches: [master]
     paths-ignore:
       - "**.md"
   pull_request:
@@ -15,41 +16,41 @@ jobs:
     env:
       VAB_FLAGS: --api 30 --build-tools 29.0.0 -v 3
     steps:
-    - uses: actions/setup-java@v2
-      with:
-        distribution: 'adopt'
-        java-version: 8
+      - uses: actions/setup-java@v2
+        with:
+          distribution: "adopt"
+          java-version: 8
 
-    - uses: actions/checkout@v2
-    - name: Build V
-      run: make && sudo ./v symlink
+      - uses: actions/checkout@v2
+      - name: Build V
+        run: make && sudo ./v symlink
 
-    - name: Checkout vab
-      uses: actions/checkout@v2
-      with:
-        repository: vlang/vab
-        path: vab
+      - name: Checkout vab
+        uses: actions/checkout@v2
+        with:
+          repository: vlang/vab
+          path: vab
 
-    - name: Build vab
-      run: |
-        cd vab
-        v -g vab.v
-        sudo ln -s $(pwd)/vab /usr/local/bin/vab
+      - name: Build vab
+        run: |
+          cd vab
+          v -g vab.v
+          sudo ln -s $(pwd)/vab /usr/local/bin/vab
 
-    - name: Run tests
-      run: v test vab
+      - name: Run tests
+        run: v test vab
 
-    - name: Run vab --help
-      run: vab --help
+      - name: Run vab --help
+        run: vab --help
 
-    - name: Run vab doctor
-      run: vab doctor
+      - name: Run vab doctor
+        run: vab doctor
 
-    - name: Build graphical V examples as APK
-      run: |
-        declare -a v_examples=('flappylearning' '2048' 'fireworks' 'tetris' 'sokol/particles' 'sokol/drawing.v' 'sokol/freetype_raven.v' 'gg/polygons.v' 'gg/raven_text_rendering.v' 'gg/rectangles.v' 'gg/stars.v' 'gg/worker_thread.v')
-        mkdir apks
-        for example in "${v_examples[@]}"; do
-          safe_name=$(echo "$example" | sed 's%/%-%' | sed 's%\.%-%' )
-          vab examples/$example -o apks/$safe_name.apk
-        done
+      - name: Build graphical V examples as APK
+        run: |
+          declare -a v_examples=('flappylearning' '2048' 'fireworks' 'tetris' 'sokol/particles' 'sokol/drawing.v' 'sokol/freetype_raven.v' 'gg/polygons.v' 'gg/raven_text_rendering.v' 'gg/rectangles.v' 'gg/stars.v' 'gg/worker_thread.v')
+          mkdir apks
+          for example in "${v_examples[@]}"; do
+            safe_name=$(echo "$example" | sed 's%/%-%' | sed 's%\.%-%' )
+            vab examples/$example -o apks/$safe_name.apk
+          done

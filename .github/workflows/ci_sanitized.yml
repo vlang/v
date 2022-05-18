@@ -13,59 +13,60 @@ name: Sanitized CI
 
 on:
   push:
+    branches: [master]
     paths:
-      - '!**'
-      - 'cmd/tools/vtest*'
-      - 'cmd/tools/builders/**.v'
-      - 'vlib/builtin/**.v'
-      - 'vlib/strconv/**.v'
-      - 'vlib/strings/**.v'
-      - 'vlib/math/**.v'
-      - 'vlib/math/big/**.v'
-      - 'vlib/arrays/**.v'
-      - 'vlib/datatypes/**.v'
-      - 'vlib/os/**.v'
-      - 'vlib/sync/**.v'
-      - 'vlib/v/tests/**.v'
-      - 'vlib/v/ast/**.v'
-      - 'vlib/v/scanner/**.v'
-      - 'vlib/v/parser/**.v'
-      - 'vlib/v/checker/**.v'
-      - 'vlib/v/gen/c/**.v'
-      - 'vlib/v/builder/**.v'
-      - 'vlib/v/cflag/**.v'
-      - 'vlib/v/live/**.v'
-      - 'vlib/v/util/**.v'
-      - 'vlib/v/markused/**.v'
-      - 'vlib/v/preludes/**.v'
-      - 'vlib/v/embed_file/**.v'
+      - "!**"
+      - "cmd/tools/vtest*"
+      - "cmd/tools/builders/**.v"
+      - "vlib/builtin/**.v"
+      - "vlib/strconv/**.v"
+      - "vlib/strings/**.v"
+      - "vlib/math/**.v"
+      - "vlib/math/big/**.v"
+      - "vlib/arrays/**.v"
+      - "vlib/datatypes/**.v"
+      - "vlib/os/**.v"
+      - "vlib/sync/**.v"
+      - "vlib/v/tests/**.v"
+      - "vlib/v/ast/**.v"
+      - "vlib/v/scanner/**.v"
+      - "vlib/v/parser/**.v"
+      - "vlib/v/checker/**.v"
+      - "vlib/v/gen/c/**.v"
+      - "vlib/v/builder/**.v"
+      - "vlib/v/cflag/**.v"
+      - "vlib/v/live/**.v"
+      - "vlib/v/util/**.v"
+      - "vlib/v/markused/**.v"
+      - "vlib/v/preludes/**.v"
+      - "vlib/v/embed_file/**.v"
   pull_request:
     paths:
-      - '!**'
-      - 'cmd/tools/vtest*'
-      - 'cmd/tools/builders/**.v'
-      - 'vlib/builtin/**.v'
-      - 'vlib/strconv/**.v'
-      - 'vlib/strings/**.v'
-      - 'vlib/math/**.v'
-      - 'vlib/math/big/**.v'
-      - 'vlib/arrays/**.v'
-      - 'vlib/datatypes/**.v'
-      - 'vlib/os/**.v'
-      - 'vlib/sync/**.v'
-      - 'vlib/v/tests/**.v'
-      - 'vlib/v/ast/**.v'
-      - 'vlib/v/scanner/**.v'
-      - 'vlib/v/parser/**.v'
-      - 'vlib/v/checker/**.v'
-      - 'vlib/v/gen/c/**.v'
-      - 'vlib/v/builder/**.v'
-      - 'vlib/v/cflag/**.v'
-      - 'vlib/v/live/**.v'
-      - 'vlib/v/util/**.v'
-      - 'vlib/v/markused/**.v'
-      - 'vlib/v/preludes/**.v'
-      - 'vlib/v/embed_file/**.v'
+      - "!**"
+      - "cmd/tools/vtest*"
+      - "cmd/tools/builders/**.v"
+      - "vlib/builtin/**.v"
+      - "vlib/strconv/**.v"
+      - "vlib/strings/**.v"
+      - "vlib/math/**.v"
+      - "vlib/math/big/**.v"
+      - "vlib/arrays/**.v"
+      - "vlib/datatypes/**.v"
+      - "vlib/os/**.v"
+      - "vlib/sync/**.v"
+      - "vlib/v/tests/**.v"
+      - "vlib/v/ast/**.v"
+      - "vlib/v/scanner/**.v"
+      - "vlib/v/parser/**.v"
+      - "vlib/v/checker/**.v"
+      - "vlib/v/gen/c/**.v"
+      - "vlib/v/builder/**.v"
+      - "vlib/v/cflag/**.v"
+      - "vlib/v/live/**.v"
+      - "vlib/v/util/**.v"
+      - "vlib/v/markused/**.v"
+      - "vlib/v/preludes/**.v"
+      - "vlib/v/embed_file/**.v"
 
 concurrency:
   group: build-sanitized-${{ github.event.pull_request.number || github.sha }}
@@ -150,8 +151,7 @@ jobs:
       - name: Self tests (-fsanitize=address)
         run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags "-fsanitize=address,pointer-compare,pointer-subtract" test-self
       - name: Self tests (V compiled with -fsanitize=address)
-        run:
-          ./v -cflags -fsanitize=address -o v cmd/v &&
+        run: ./v -cflags -fsanitize=address -o v cmd/v &&
           ASAN_OPTIONS=detect_leaks=0 ./v -cc tcc test-self -asan-compiler
       - name: Build examples (V compiled with -fsanitize=address)
         run: ASAN_OPTIONS=detect_leaks=0 ./v build-examples
