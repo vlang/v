@@ -2460,6 +2460,9 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 		'flag' {
 			// #flag linux -lm
 			mut flag := node.main
+			if flag == 'flag' { // Checks for empty flag
+				c.error('no argument(s) provided for #flag', node.pos)
+			}
 			if flag.contains('@VROOT') {
 				// c.note(checker.vroot_is_deprecated_message, node.pos)
 				flag = util.resolve_vmodroot(flag.replace('@VROOT', '@VMODROOT'), c.file.path) or {
