@@ -3826,6 +3826,13 @@ pub fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what stri
 			c.fail_if_unreadable(expr.left, expr.left_type, what)
 			c.fail_if_unreadable(expr.right, expr.right_type, what)
 		}
+		ast.IfExpr {
+			for branch in expr.branches {
+				exprstmt := (branch.stmts.last() as ast.ExprStmt)
+				c.fail_if_unreadable(exprstmt.expr, exprstmt.typ, what)
+			}
+			return
+		}
 		else {
 			pos = expr.pos()
 		}

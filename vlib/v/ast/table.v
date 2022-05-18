@@ -1939,7 +1939,9 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 		}
 		Interface {
 			// resolve generic types inside methods
-			mut imethods := ts.info.methods.clone()
+			mut imethods := rlock ts.info.methods {
+				ts.info.methods.clone()
+			}
 			for mut method in imethods {
 				if unwrap_typ := t.resolve_generic_to_concrete(method.return_type, generic_names,
 					concrete_types)
@@ -1969,7 +1971,9 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 			info.concrete_types = final_concrete_types
 			info.parent_type = typ
 			info.fields = fields
-			info.methods = imethods
+			lock info.methods {
+				info.methods = imethods
+			}
 			new_idx := t.register_sym(
 				kind: .interface_
 				name: nrt
@@ -2105,7 +2109,9 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 								fields[i].typ = t_typ
 							}
 						}
-						mut imethods := parent_info.methods.clone()
+						mut imethods := rlock parent_info.methods {
+							parent_info.methods.clone()
+						}
 						for mut method in imethods {
 							method.generic_names.clear()
 							if pt := t.resolve_generic_to_concrete(method.return_type,

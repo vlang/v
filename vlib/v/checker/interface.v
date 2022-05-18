@@ -46,7 +46,9 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 				for m in isym_info.methods {
 					if !emnames_ds_info[m.name] {
 						emnames_ds_info[m.name] = true
-						decl_sym.info.methods << m.new_method_with_receiver_type(node.typ)
+						lock decl_sym.info.methods {
+							decl_sym.info.methods << m.new_method_with_receiver_type(node.typ)
+						}
 					}
 				}
 				for m in isym.methods {

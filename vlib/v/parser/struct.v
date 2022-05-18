@@ -661,7 +661,9 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 				receiver_type: typ
 			}
 			ts.register_method(tmethod)
-			info.methods << tmethod
+			lock info.methods {
+				info.methods << tmethod
+			}
 		} else {
 			// interface fields
 			field_pos := p.tok.pos()

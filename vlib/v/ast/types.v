@@ -1042,7 +1042,7 @@ pub struct Interface {
 pub mut:
 	types   []Type // all types that implement this interface
 	fields  []StructField
-	methods []Fn
+	methods shared []Fn
 	embeds  []Type
 	// `I1 is I2` conversions
 	conversions map[int][]Type
