@@ -79,7 +79,7 @@ pub fn (u Uint256) xor(v Uint256) Uint256 {
 pub fn (u Uint256) xor_128(v Uint128) Uint256 {
 	return Uint256{u.lo.xor(v), u.hi}
 }
-
+// add_256 - untested
 pub fn add_256(x Uint256, y Uint256, carry u64) (Uint256, u64) {
 	mut sum := Uint256{}
 	mut carry_out := u64(0)
@@ -87,7 +87,7 @@ pub fn add_256(x Uint256, y Uint256, carry u64) (Uint256, u64) {
 	sum.hi, carry_out = add_128(x.hi, y.hi, carry_out)
 	return sum, carry_out
 }
-
+// sub_256 - untested
 pub fn sub_256(x Uint256, y Uint256, borrow u64) (Uint256, u64) {
 	mut diff := Uint256{}
 	mut borrow_out := u64(0)
@@ -95,7 +95,7 @@ pub fn sub_256(x Uint256, y Uint256, borrow u64) (Uint256, u64) {
 	diff.hi, borrow_out = sub_128(x.hi, y.hi, borrow_out)
 	return diff, borrow_out
 }
-
+// mul_256 - untested
 pub fn mul_256(x Uint256, y Uint256) (Uint256, Uint256) {
 	mut hi := Uint256{}
 	mut lo := Uint256{}
@@ -116,17 +116,18 @@ pub fn mul_256(x Uint256, y Uint256) (Uint256, Uint256) {
 
 	return hi, lo
 }
-
+// add returns a Uint256 that is equal to u+v
 pub fn (u Uint256) add(v Uint256) Uint256 {
 	sum, _ := add_256(u, v, 0)
 	return sum
 }
-
+// overflowing_add - untested
 pub fn (u Uint256) overflowing_add(v Uint256) (Uint256, u64) {
 	sum, overflow := add_256(u, v, 0)
 	return sum, overflow
 }
 
+// add_128 returns a Uint256 that is equal to u+v, v being a Uint128
 pub fn (u Uint256) add_128(v Uint128) Uint256 {
 	lo, c0 := add_128(u.lo, v, 0)
 	return Uint256{lo, u.hi.add_64(c0)}
@@ -153,7 +154,7 @@ pub fn (u Uint256) mul_128(v Uint128) Uint256 {
 	hi, lo := mul_128(u.lo, v)
 	return Uint256{lo, hi.add(u.hi.mul(v))}
 }
-
+// quo_rem - untested
 pub fn (u Uint256) quo_rem(v Uint256) (Uint256, Uint256) {
 	if v.hi.is_zero() {
 		q, r := u.quo_rem_128(v.lo)
@@ -175,7 +176,7 @@ pub fn (u Uint256) quo_rem(v Uint256) (Uint256, Uint256) {
 	}
 	return q, r
 }
-
+// quo_rem_128 - untested
 pub fn (u Uint256) quo_rem_128(v Uint128) (Uint256, Uint128) {
 	if u.hi.cmp(v) < 0 {
 		lo, r := div_128(u.hi, u.lo, v)
@@ -186,7 +187,7 @@ pub fn (u Uint256) quo_rem_128(v Uint128) (Uint256, Uint128) {
 	lo, r2 := div_128(r, u.lo, v)
 	return Uint256{lo, hi}, r2
 }
-
+// quo_rem_64 - untested
 pub fn (u Uint256) quo_rem_64(v u64) (Uint256, u64) {
 	mut q := Uint256{}
 	mut r := u64(0)
@@ -221,32 +222,32 @@ pub fn (u Uint256) lsh(n_ u32) Uint256 {
 
 	return Uint256{Uint128{u.lo.lo << n, u.lo.hi << n | u.lo.lo >> (64 - n)}, Uint128{u.hi.lo << n | u.lo.hi >> (64 - n), u.hi.hi << n | u.hi.lo >> (64 - n)}}
 }
-
+// div - untested
 pub fn (u Uint256) div(v Uint256) Uint256 {
 	q, _ := u.quo_rem(v)
 	return q
 }
-
+// div_128 - untested
 pub fn (u Uint256) div_128(v Uint128) Uint256 {
 	q, _ := u.quo_rem_128(v)
 	return q
 }
-
+// div_64 - untested
 pub fn (u Uint256) div_64(v u64) Uint256 {
 	q, _ := u.quo_rem_64(v)
 	return q
 }
-
+// mod - untested
 pub fn (u Uint256) mod(v Uint256) Uint256 {
 	_, r := u.quo_rem(v)
 	return r
 }
-
+// mod_128 - untested
 pub fn (u Uint256) mod_128(v Uint128) Uint128 {
 	_, r := u.quo_rem_128(v)
 	return r
 }
-
+// mod_64 - untested
 pub fn (u Uint256) mod_64(v u64) u64 {
 	_, r := u.quo_rem_64(v)
 	return r
