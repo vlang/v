@@ -29,50 +29,50 @@ pub enum StrIntpType {
 }
 
 pub fn type_to_str(x StrIntpType) string {
-	match x {
-		.si_no_str { return 'no_str' }
-		.si_c { return 'c' }
-		.si_u8 { return 'u8' }
-		.si_i8 { return 'i8' }
-		.si_u16 { return 'u16' }
-		.si_i16 { return 'i16' }
-		.si_u32 { return 'u32' }
-		.si_i32 { return 'i32' }
-		.si_u64 { return 'u64' }
-		.si_i64 { return 'i64' }
-		.si_f32 { return 'f32' }
-		.si_f64 { return 'f64' }
-		.si_g32 { return 'f32' } // g32 format use f32 data
-		.si_g64 { return 'f64' } // g64 format use f64 data
-		.si_e32 { return 'f32' } // e32 format use f32 data
-		.si_e64 { return 'f64' } // e64 format use f64 data
-		.si_s { return 's' }
-		.si_p { return 'p' }
-		.si_vp { return 'vp' }
+	return match x {
+		.si_no_str { 'no_str' }
+		.si_c { 'c' }
+		.si_u8 { 'u8' }
+		.si_i8 { 'i8' }
+		.si_u16 { 'u16' }
+		.si_i16 { 'i16' }
+		.si_u32 { 'u32' }
+		.si_i32 { 'i32' }
+		.si_u64 { 'u64' }
+		.si_i64 { 'i64' }
+		.si_f32 { 'f32' }
+		.si_f64 { 'f64' }
+		.si_g32 { 'f32' } // g32 format use f32 data
+		.si_g64 { 'f64' } // g64 format use f64 data
+		.si_e32 { 'f32' } // e32 format use f32 data
+		.si_e64 { 'f64' } // e64 format use f64 data
+		.si_s { 's' }
+		.si_p { 'p' }
+		.si_vp { 'vp' }
 	}
 }
 
 pub fn data_str(x StrIntpType) string {
-	match x {
-		.si_no_str { return 'no_str' }
-		.si_c { return 'd_c' }
-		.si_u8 { return 'd_u8' }
-		.si_i8 { return 'd_i8' }
-		.si_u16 { return 'd_u16' }
-		.si_i16 { return 'd_i16' }
-		.si_u32 { return 'd_u32' }
-		.si_i32 { return 'd_i32' }
-		.si_u64 { return 'd_u64' }
-		.si_i64 { return 'd_i64' }
-		.si_f32 { return 'd_f32' }
-		.si_f64 { return 'd_f64' }
-		.si_g32 { return 'd_f32' } // g32 format use f32 data
-		.si_g64 { return 'd_f64' } // g64 format use f64 data
-		.si_e32 { return 'd_f32' } // e32 format use f32 data
-		.si_e64 { return 'd_f64' } // e64 format use f64 data
-		.si_s { return 'd_s' }
-		.si_p { return 'd_p' }
-		.si_vp { return 'd_vp' }
+	return match x {
+		.si_no_str { 'no_str' }
+		.si_c { 'd_c' }
+		.si_u8 { 'd_u8' }
+		.si_i8 { 'd_i8' }
+		.si_u16 { 'd_u16' }
+		.si_i16 { 'd_i16' }
+		.si_u32 { 'd_u32' }
+		.si_i32 { 'd_i32' }
+		.si_u64 { 'd_u64' }
+		.si_i64 { 'd_i64' }
+		.si_f32 { 'd_f32' }
+		.si_f64 { 'd_f64' }
+		.si_g32 { 'd_f32' } // g32 format use f32 data
+		.si_g64 { 'd_f64' } // g64 format use f64 data
+		.si_e32 { 'd_f32' } // e32 format use f32 data
+		.si_e64 { 'd_f64' } // e64 format use f64 data
+		.si_s { 'd_s' }
+		.si_p { 'd_p' }
+		.si_vp { 'd_vp' }
 	}
 }
 
