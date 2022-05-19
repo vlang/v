@@ -224,7 +224,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							left_type = left_type.set_nr_muls(1)
 						}
 					} else if left_type.has_flag(.shared_f) {
-						left_type = left_type.clear_flag(.shared_f)
+						left_type = left_type.clear_flag(.shared_f).deref()
 					}
 					if ident_var_info.share == .atomic_t {
 						left_type = left_type.set_flag(.atomic_f)
