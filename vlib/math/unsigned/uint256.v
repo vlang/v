@@ -32,7 +32,7 @@ pub fn (u Uint256) equals(v Uint256) bool {
 	return u.lo.equals(v.lo) && u.hi.equals(v.hi)
 }
 
-// equals_128 returns if the Uint256 value matches the Uint128 value
+// equals_128 checks if the Uint256 value matches the Uint128 value
 pub fn (u Uint256) equals_128(v Uint128) bool {
 	return u.lo.equals(v) && u.hi.is_zero()
 }
