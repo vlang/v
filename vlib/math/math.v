@@ -189,7 +189,7 @@ pub fn veryclose(a f64, b f64) bool {
 	return tolerance(a, b, 4e-16)
 }
 
-// alike returns if a and b are equal
+// alike checks if a and b are equal
 pub fn alike(a f64, b f64) bool {
 	if is_nan(a) && is_nan(b) {
 		return true
