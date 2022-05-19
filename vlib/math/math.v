@@ -155,7 +155,7 @@ pub fn signbit(x f64) bool {
 	return f64_bits(x) & sign_mask != 0
 }
 
-// tolerance returns if a and b are less than or equal to the tolerance value
+// tolerance checks if a and b are less than or equal to the tolerance value
 pub fn tolerance(a f64, b f64, tol f64) bool {
 	mut ee := tol
 	// Multiplying by ee here can underflow denormal values to zero.
