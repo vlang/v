@@ -6,85 +6,11 @@ import v.ast
 import v.util
 import strings
 
-pub enum StrIntpType {
-	si_no_str = 0 // no parameter to print only fix string
-	si_c
-	si_u8
-	si_i8
-	si_u16
-	si_i16
-	si_u32
-	si_i32
-	si_u64
-	si_i64
-	si_e32
-	si_e64
-	si_f32
-	si_f64
-	si_g32
-	si_g64
-	si_s
-	si_p
-	si_vp
-}
-
-pub fn type_to_str(x StrIntpType) string {
-	return match x {
-		.si_no_str { 'no_str' }
-		.si_c { 'c' }
-		.si_u8 { 'u8' }
-		.si_i8 { 'i8' }
-		.si_u16 { 'u16' }
-		.si_i16 { 'i16' }
-		.si_u32 { 'u32' }
-		.si_i32 { 'i32' }
-		.si_u64 { 'u64' }
-		.si_i64 { 'i64' }
-		.si_f32 { 'f32' }
-		.si_f64 { 'f64' }
-		.si_g32 { 'f32' } // g32 format use f32 data
-		.si_g64 { 'f64' } // g64 format use f64 data
-		.si_e32 { 'f32' } // e32 format use f32 data
-		.si_e64 { 'f64' } // e64 format use f64 data
-		.si_s { 's' }
-		.si_p { 'p' }
-		.si_vp { 'vp' }
-	}
-}
-
-pub fn data_str(x StrIntpType) string {
-	return match x {
-		.si_no_str { 'no_str' }
-		.si_c { 'd_c' }
-		.si_u8 { 'd_u8' }
-		.si_i8 { 'd_i8' }
-		.si_u16 { 'd_u16' }
-		.si_i16 { 'd_i16' }
-		.si_u32 { 'd_u32' }
-		.si_i32 { 'd_i32' }
-		.si_u64 { 'd_u64' }
-		.si_i64 { 'd_i64' }
-		.si_f32 { 'd_f32' }
-		.si_f64 { 'd_f64' }
-		.si_g32 { 'd_f32' } // g32 format use f32 data
-		.si_g64 { 'd_f64' } // g64 format use f64 data
-		.si_e32 { 'd_f32' } // e32 format use f32 data
-		.si_e64 { 'd_f64' } // e64 format use f64 data
-		.si_s { 'd_s' }
-		.si_p { 'd_p' }
-		.si_vp { 'd_vp' }
-	}
-}
-
 const (
 	// BUG: this const is not released from the memory! use a const for now
 	// si_s_code = "0x" + int(StrIntpType.si_s).hex() // code for a simple string
 	si_s_code = '0xfe10'
 )
-
-fn should_use_indent_func(kind ast.Kind) bool {
-	return kind in [.struct_, .alias, .array, .array_fixed, .map, .sum_type, .interface_]
-}
 
 fn (mut g Gen) gen_str_default(sym ast.TypeSymbol, styp string, str_fn_name string) {
 	$if trace_autostr ? {
@@ -1047,4 +973,32 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, field_type ast.Type, fn_name string
 		}
 		return method_str, caller_should_free
 	}
+}
+
+fn data_str(x StrIntpType) string {
+	return match x {
+		.si_no_str { 'no_str' }
+		.si_c { 'd_c' }
+		.si_u8 { 'd_u8' }
+		.si_i8 { 'd_i8' }
+		.si_u16 { 'd_u16' }
+		.si_i16 { 'd_i16' }
+		.si_u32 { 'd_u32' }
+		.si_i32 { 'd_i32' }
+		.si_u64 { 'd_u64' }
+		.si_i64 { 'd_i64' }
+		.si_f32 { 'd_f32' }
+		.si_f64 { 'd_f64' }
+		.si_g32 { 'd_f32' } // g32 format use f32 data
+		.si_g64 { 'd_f64' } // g64 format use f64 data
+		.si_e32 { 'd_f32' } // e32 format use f32 data
+		.si_e64 { 'd_f64' } // e64 format use f64 data
+		.si_s { 'd_s' }
+		.si_p { 'd_p' }
+		.si_vp { 'd_vp' }
+	}
+}
+
+fn should_use_indent_func(kind ast.Kind) bool {
+	return kind in [.struct_, .alias, .array, .array_fixed, .map, .sum_type, .interface_]
 }
