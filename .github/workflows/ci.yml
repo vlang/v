@@ -60,7 +60,7 @@ jobs:
       - name: Self tests
         run: ./v test-self
       # - name: Self tests (-cstrict)
-      #   run: ./v -cstrict test-self
+      #   run: V_CI_CSTRICT=1 ./v -cstrict test-self
       - name: Test time functions in a timezone UTC-12
         run: TZ=Etc/GMT+12 ./v test vlib/time/
       - name: Test time functions in a timezone UTC-3
@@ -294,7 +294,7 @@ jobs:
       - name: Self tests (-prod)
         run: ./v -o vprod -prod cmd/v && ./vprod test-self
       - name: Self tests (-cstrict)
-        run: ./v -cc gcc -cstrict test-self
+        run: V_CI_CSTRICT=1 ./v -cc gcc -cstrict test-self
       - name: Build examples
         run: ./v build-examples
       - name: Build tetris.v with -autofree
@@ -383,12 +383,16 @@ jobs:
           ./cmd/tools/test_if_v_test_system_works
       - name: All code is formatted
         run: ./v test-cleancode
+
       - name: Self tests
         run: ./v test-self
-      - name: Self tests (-prod)
-        run: ./v -o vprod -prod cmd/v && ./vprod test-self
+      - name: Self tests (vprod)
+        run: |
+          ./v -o vprod -prod cmd/v
+          ./vprod test-self
       - name: Self tests (-cstrict)
-        run: ./v -cstrict test-self
+        run: V_CI_CSTRICT=1 ./vprod -cstrict test-self
+
       - name: Build examples
         run: ./v build-examples
       - name: Build examples with -autofree
