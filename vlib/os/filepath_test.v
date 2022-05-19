@@ -103,7 +103,7 @@ fn test_abs_path() {
 		assert abs_path(r'C:\/\path\.\to\../files\file.v\.\\\.\') == r'C:\path\files\file.v'
 		assert abs_path(r'\\Host\share\files\..\..\.') == r'\\Host\share\'
 		assert abs_path(r'\\.\HardDiskvolume2\files\..\..\.') == r'\\.\HardDiskvolume2\'
-		assert abs_path(r'\\?\share.') == r'\\?\share'
+		assert abs_path(r'\\?\share') == r'\\?\share'
 		assert abs_path(r'\\.\') == r'\'
 		assert abs_path(r'G:/\..\\..\.\.\file.v\\.\.\\\\') == r'G:\file.v'
 		assert abs_path('files') == '${wd_w_sep}files'
