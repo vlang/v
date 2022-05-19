@@ -184,7 +184,7 @@ pub fn close(a f64, b f64) bool {
 	return tolerance(a, b, 1e-14)
 }
 
-// veryclose returns if a and b are within 4e-16 of each other
+// veryclose checks if a and b are within 4e-16 of each other
 pub fn veryclose(a f64, b f64) bool {
 	return tolerance(a, b, 4e-16)
 }
