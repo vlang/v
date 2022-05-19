@@ -389,6 +389,9 @@ fn (mut g Gen) gen_assign_stmt(node_ ast.AssignStmt) {
 							g.write('*')
 						}
 						g.expr(left)
+						if !is_decl && var_type.has_flag(.shared_f) {
+							g.write('->val') // don't reset the mutex, just change the value
+						}
 					}
 				}
 			}
@@ -432,7 +435,6 @@ fn (mut g Gen) gen_assign_stmt(node_ ast.AssignStmt) {
 				}
 				*/
 			}
-			g.is_shared = var_type.has_flag(.shared_f)
 			if !cloned {
 				if is_fixed_array_var {
 					// TODO Instead of the translated check, check if it's a pointer already
@@ -445,6 +447,7 @@ fn (mut g Gen) gen_assign_stmt(node_ ast.AssignStmt) {
 					g.expr(val)
 					g.write(', sizeof($typ_str))')
 				} else if is_decl {
+					g.is_shared = var_type.has_flag(.shared_f)
 					if is_fixed_array_init && !has_val {
 						if val is ast.ArrayInit {
 							g.array_init(val, ident.name)
@@ -476,11 +479,11 @@ fn (mut g Gen) gen_assign_stmt(node_ ast.AssignStmt) {
 						if op_overloaded {
 							g.op_arg(val, op_expected_right, val_type)
 						} else {
-							exp_type := if left.is_auto_deref_var() {
+							exp_type := if left.is_auto_deref_var() || var_type.has_flag(.shared_f) {
 								var_type.deref()
 							} else {
 								var_type
-							}
+							}.clear_flag(.shared_f) // don't reset the mutex, just change the value
 							g.expr_with_cast(val, val_type, exp_type)
 						}
 					}
