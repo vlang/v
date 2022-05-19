@@ -2312,6 +2312,10 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	mut to_sym := c.table.sym(to_type) // type to be used as cast
 	mut final_to_sym := c.table.final_sym(to_type)
 
+	if to_type.has_flag(.optional) {
+		c.error('casting to optional type is forbidden', node.pos)
+	}
+
 	if (to_sym.is_number() && from_sym.name == 'JS.Number')
 		|| (to_sym.is_number() && from_sym.name == 'JS.BigInt')
 		|| (to_sym.is_string() && from_sym.name == 'JS.String')
