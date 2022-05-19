@@ -14,23 +14,26 @@ pub mut:
 	hi Uint128 = uint128_zero // upper 128 bit half
 }
 
+// uint256_from_128 creates a new `unsigned.Uint256` from the given Uint128 value
 pub fn uint256_from_128(v Uint128) Uint256 {
 	return Uint256{v, uint128_zero}
 }
 
+// uint256_from_64 creates a new `unsigned.Uint256` from the given u64 value
 pub fn uint256_from_64(v u64) Uint256 {
 	return uint256_from_128(uint128_from_64(v))
 }
-
+// is_zero returns if specificied Uint256 is zero
 pub fn (u Uint256) is_zero() bool {
 	return u.lo.is_zero() && u.hi.is_zero()
 }
-
+// equals returns if the two Uint256 values match one another
 pub fn (u Uint256) equals(v Uint256) bool {
 	return u.lo.equals(v.lo) && u.hi.equals(v.hi)
 }
 
-pub fn (u Uint256) euqals_128(v Uint128) bool {
+// equals_128 returns if the Uint256 value matches the Uint128 value
+pub fn (u Uint256) equals_128(v Uint128) bool {
 	return u.lo.equals(v) && u.hi.is_zero()
 }
 
@@ -248,7 +251,7 @@ pub fn (u Uint256) mod_64(v u64) u64 {
 	_, r := u.quo_rem_64(v)
 	return r
 }
-
+// rotate_left performs a new Uint256 that has been left bit shifted
 pub fn (u Uint256) rotate_left(k int) Uint256 {
 	mut n := u32(k) & 255
 	if n < 64 {
@@ -282,25 +285,25 @@ pub fn (u Uint256) rotate_left(k int) Uint256 {
 
 	return Uint256{Uint128{u.lo.hi << n | u.lo.lo >> (64 - n), u.hi.lo << n | u.lo.hi >> (64 - n)}, Uint128{u.hi.hi << n | u.hi.lo >> (64 - n), u.lo.lo << n | u.hi.hi >> (64 - n)}}
 }
-
+// rotate_right performs a new Uint256 that has been right bit shifted
 pub fn (u Uint256) rotate_right(k int) Uint256 {
 	return u.rotate_left(-k)
 }
-
+// len returns the length of the binary value without the leading zeros
 pub fn (u Uint256) len() int {
 	if !u.hi.is_zero() {
 		return 128 + u.hi.len()
 	}
 	return u.lo.len()
 }
-
+// leading_zeros returns the number of 0s at the beginning of the binary value of the Uint256 value [0, 256]
 pub fn (u Uint256) leading_zeros() int {
 	if !u.hi.is_zero() {
 		return u.hi.leading_zeros()
 	}
 	return 128 + u.lo.leading_zeros()
 }
-
+// trailing_zeros returns the number of 0s at the end of the binary value of the Uint256 value [0,256]
 pub fn (u Uint256) trailing_zeros() int {
 	if !u.lo.is_zero() {
 		return u.lo.trailing_zeros()
@@ -308,11 +311,11 @@ pub fn (u Uint256) trailing_zeros() int {
 
 	return 128 + u.hi.trailing_zeros()
 }
-
+// ones_count returns the number of ones in the binary value of the Uint256 value
 pub fn (u Uint256) ones_count() int {
 	return u.lo.ones_count() + u.hi.ones_count()
 }
-
+// str returns the decimal representation of the unsigned integer
 pub fn (u_ Uint256) str() string {
 	mut u := u_
 	if u.hi.is_zero() {
@@ -339,6 +342,7 @@ pub fn (u_ Uint256) str() string {
 	return ''
 }
 
+// uint256_from_dec_str creates a new `unsigned.Uint256` from the given string if possible
 pub fn uint256_from_dec_str(value string) ?Uint256 {
 	mut res := unsigned.uint256_zero
 	for b_ in value.bytes() {

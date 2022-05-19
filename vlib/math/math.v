@@ -155,6 +155,7 @@ pub fn signbit(x f64) bool {
 	return f64_bits(x) & sign_mask != 0
 }
 
+// tolerance returns if a and b are less than or equal to the tolerance value
 pub fn tolerance(a f64, b f64, tol f64) bool {
 	mut ee := tol
 	// Multiplying by ee here can underflow denormal values to zero.
@@ -178,14 +179,17 @@ pub fn tolerance(a f64, b f64, tol f64) bool {
 	return d < ee
 }
 
+// close returns if a and b are within 1e-14 of each other
 pub fn close(a f64, b f64) bool {
 	return tolerance(a, b, 1e-14)
 }
 
+// veryclose returns if a and b are within 4e-16 of each other
 pub fn veryclose(a f64, b f64) bool {
 	return tolerance(a, b, 4e-16)
 }
 
+// alike returns if a and b are equal
 pub fn alike(a f64, b f64) bool {
 	if is_nan(a) && is_nan(b) {
 		return true
