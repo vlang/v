@@ -179,7 +179,7 @@ pub fn tolerance(a f64, b f64, tol f64) bool {
 	return d < ee
 }
 
-// close returns if a and b are within 1e-14 of each other
+// close checks if a and b are within 1e-14 of each other
 pub fn close(a f64, b f64) bool {
 	return tolerance(a, b, 1e-14)
 }
