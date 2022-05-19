@@ -10,7 +10,7 @@ import strings
 // TODO: replace with comptime code generation.
 // TODO: remove cJSON dependency.
 
-// OLD:
+// Old:
 // `User decode_User(string js) {`
 // now it's:
 // ```
@@ -159,10 +159,10 @@ $enc_fn_dec {
 			g.gen_struct_enc_dec(sym.info, styp, mut enc, mut dec)
 		}
 		// cJSON_delete
-		// p.cgen.fns << '$dec return opt_ok(res); \n}'
 		dec.writeln('\t${option_name}_$styp ret;')
 		dec.writeln('\topt_ok2(&res, ($option_name*)&ret, sizeof(res));')
 		dec.writeln('\treturn ret;\n}')
+		enc.writeln('\treturn o;\n}')
 		g.definitions.writeln(dec.str())
 		g.gowrappers.writeln(enc.str())
 	}
