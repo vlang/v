@@ -36,7 +36,7 @@ pub fn (u Uint256) equals(v Uint256) bool {
 pub fn (u Uint256) equals_128(v Uint128) bool {
 	return u.lo.equals(v) && u.hi.is_zero()
 }
-
+// cmp returns 1 if u is greater than v, -1 if u is less than v, or 0 if equal
 pub fn (u Uint256) cmp(v Uint256) int {
 	h := u.hi.cmp(v.hi)
 	if h != 0 {
@@ -44,38 +44,38 @@ pub fn (u Uint256) cmp(v Uint256) int {
 	}
 	return u.lo.cmp(v.lo)
 }
-
+// cmp_128 returns 1 if u is greater than v (Uint128), -1 if u is less than v, or 0 if equal
 pub fn (u Uint256) cmp_128(v Uint128) int {
 	if !u.hi.is_zero() {
 		return 1
 	}
 	return u.lo.cmp(v)
 }
-
+// not returns a binary negation of the Uint256 value
 pub fn (u Uint256) not() Uint256 {
 	return Uint256{u.lo.not(), u.hi.not()}
 }
-
+// and returns a Uint256 value that is the bitwise and of u and v
 pub fn (u Uint256) and(v Uint256) Uint256 {
 	return Uint256{u.lo.and(v.lo), u.hi.and(v.hi)}
 }
-
+// and_128 returns a Uint256 value that is the bitwise and of u and v, which is a Uint128
 pub fn (u Uint256) and_128(v Uint128) Uint256 {
 	return Uint256{u.lo.and(v), uint128_zero}
 }
-
+// or_ returns a Uint256 value that is the bitwise or of u and v
 pub fn (u Uint256) or_(v Uint256) Uint256 {
 	return Uint256{u.lo.or_(v.lo), u.hi.or_(v.hi)}
 }
-
+// or_128 returns a Uint256 value that is the bitwise or of u and v, which is a Uint128
 pub fn (u Uint256) or_128(v Uint128) Uint256 {
 	return Uint256{u.lo.or_(v), u.hi}
 }
-
+// xor returns a Uint256 value that is the bitwise xor of u and v
 pub fn (u Uint256) xor(v Uint256) Uint256 {
 	return Uint256{u.lo.xor(v.lo), u.hi.xor(v.hi)}
 }
-
+// xor_128 returns a Uint256 value that is the bitwise xor of u and v, which is a Uint128
 pub fn (u Uint256) xor_128(v Uint128) Uint256 {
 	return Uint256{u.lo.xor(v), u.hi}
 }
@@ -131,24 +131,24 @@ pub fn (u Uint256) add_128(v Uint128) Uint256 {
 	lo, c0 := add_128(u.lo, v, 0)
 	return Uint256{lo, u.hi.add_64(c0)}
 }
-
+// sub returns a Uint256 that is equal to u-v
 pub fn (u Uint256) sub(v Uint256) Uint256 {
 	diff, _ := sub_256(u, v, 0)
 	return diff
 }
-
+// sub_128 returns a Uint256 that is equal to u-v, v being a Uint128
 pub fn (u Uint256) sub_128(v Uint128) Uint256 {
 	lo, b0 := sub_128(u.lo, v, 0)
 	return Uint256{lo, u.hi.sub_64(b0)}
 }
-
+// mul returns a Uint256 that is eqal to u*v
 pub fn (u Uint256) mul(v Uint256) Uint256 {
 	mut hi, mut lo := mul_128(u.lo, v.lo)
 	hi = hi.add(u.hi.mul(v.lo))
 	hi = hi.add(u.lo.mul(v.hi))
 	return Uint256{lo, hi}
 }
-
+// mul_128 returns a Uint256 that is eqal to u*v, v being a Uint128
 pub fn (u Uint256) mul_128(v Uint128) Uint256 {
 	hi, lo := mul_128(u.lo, v)
 	return Uint256{lo, hi.add(u.hi.mul(v))}
@@ -194,7 +194,7 @@ pub fn (u Uint256) quo_rem_64(v u64) (Uint256, u64) {
 	q.lo.lo, r = bits.div_64(r, u.lo.lo, v)
 	return q, r
 }
-
+// rsh returns a new Uint256 that has been right bit shifted
 pub fn (u Uint256) rsh(n_ u32) Uint256 {
 	mut n := n_
 	if n > 128 {
@@ -207,7 +207,7 @@ pub fn (u Uint256) rsh(n_ u32) Uint256 {
 	}
 	return Uint256{Uint128{u.lo.lo >> n | u.lo.hi << (64 - n), u.lo.hi >> n | u.hi.lo << (64 - n)}, Uint128{u.hi.lo >> n | u.hi.hi << (64 - n), u.hi.hi >> n}}
 }
-
+// lsh returns a new Uint256 that has been left bit shifted
 pub fn (u Uint256) lsh(n_ u32) Uint256 {
 	mut n := n_
 	if n > 128 {
