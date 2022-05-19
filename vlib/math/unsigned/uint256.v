@@ -27,7 +27,7 @@ pub fn uint256_from_64(v u64) Uint256 {
 pub fn (u Uint256) is_zero() bool {
 	return u.lo.is_zero() && u.hi.is_zero()
 }
-// equals returns if the two Uint256 values match one another
+// equals checks if the two Uint256 values match one another
 pub fn (u Uint256) equals(v Uint256) bool {
 	return u.lo.equals(v.lo) && u.hi.equals(v.hi)
 }
