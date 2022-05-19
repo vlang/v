@@ -18,6 +18,7 @@ jobs:
     timeout-minutes: 121
     env:
       VFLAGS: -cc tcc -no-retry-compilation
+      V_CI_CSTRICT: 1
     steps:
       - uses: actions/checkout@v2
       - name: Install dependencies
