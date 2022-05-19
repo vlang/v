@@ -1694,6 +1694,7 @@ fn (mut f Fmt) write_generic_call_if_require(node ast.CallExpr) {
 				name = 'JS.' + name
 			}
 			f.write(name)
+			f.mark_import_as_used(name)
 			if i != node.concrete_types.len - 1 {
 				f.write(', ')
 			}
