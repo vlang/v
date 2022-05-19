@@ -32,8 +32,11 @@ mut:
 [unsafe]
 fn vmemory_block_new(prev &VMemoryBlock, at_least isize) &VMemoryBlock {
 	mut v := unsafe { &VMemoryBlock(C.calloc(1, sizeof(VMemoryBlock))) }
-	if prev != 0 {
-		v.id = prev.id + 1
+	// FIXME: the prev should be nullable?
+	unsafe {
+		if prev != 0 {
+			v.id = prev.id + 1
+		}
 	}
 	v.previous = prev
 	block_size := if at_least < prealloc_block_size { prealloc_block_size } else { at_least }
