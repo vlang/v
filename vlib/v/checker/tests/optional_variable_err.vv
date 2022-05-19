@@ -1,4 +1,3 @@
 fn main() {
-	x := !bool(false)
-	println(x)
+	_ := ?bool(false)
 }
