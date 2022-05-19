@@ -36,7 +36,7 @@ struct Price {
 
 fn test_field_with_default_expr() ? {
 	data := '[{"net":1},{"net":2,"currencyId":"cjson"}]'
-	prices := json.decode([]Price, data) ?
+	prices := json.decode([]Price, data)?
 	assert prices == [Price{
 		net: 1
 		currency_id: 'cconst'
