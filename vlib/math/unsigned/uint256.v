@@ -251,7 +251,7 @@ pub fn (u Uint256) mod_64(v u64) u64 {
 	_, r := u.quo_rem_64(v)
 	return r
 }
-// rotate_left performs a new Uint256 that has been left bit shifted
+// rotate_left returns a new Uint256 that has been left bit shifted
 pub fn (u Uint256) rotate_left(k int) Uint256 {
 	mut n := u32(k) & 255
 	if n < 64 {
