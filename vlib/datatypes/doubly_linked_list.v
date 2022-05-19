@@ -251,7 +251,7 @@ pub fn (mut list DoublyLinkedList<T>) delete(idx int) {
 pub fn (list DoublyLinkedList<T>) str() string {
 	mut result_array := []T{}
 	mut node := list.head
-	for node != 0 {
+	for unsafe { node != 0 } {
 		result_array << node.data
 		node = node.next
 	}

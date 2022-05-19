@@ -49,7 +49,7 @@ pub fn print_help_for_command(help_cmd Command) ? {
 		}
 		print(cmd.help_message())
 	} else {
-		if help_cmd.parent != 0 {
+		if unsafe { help_cmd.parent != 0 } {
 			print(help_cmd.parent.help_message())
 		}
 	}

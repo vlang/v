@@ -207,7 +207,7 @@ fn change_detection_loop(ocontext &Context) {
 }
 
 fn (mut context Context) kill_pgroup() {
-	if context.child_process == 0 {
+	if unsafe { context.child_process == 0 } {
 		return
 	}
 	if context.child_process.is_alive() {

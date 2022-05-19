@@ -18,7 +18,8 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 		} else if sym.kind == .map {
 			g.index_of_map(node, sym)
 		} else if sym.kind == .string && !node.left_type.is_ptr() {
-			is_direct_array_access := (unsafe { g.fn_decl != 0 } && g.fn_decl.is_direct_arr) || node.is_direct
+			is_direct_array_access := (unsafe { g.fn_decl != 0 } && g.fn_decl.is_direct_arr)
+				|| node.is_direct
 			if is_direct_array_access {
 				g.expr(node.left)
 				g.write('.str[ ')
@@ -174,7 +175,8 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 	// `vals[i].field = x` is an exception and requires `array_get`:
 	// `(*(Val*)array_get(vals, i)).field = x;`
 	if g.is_assign_lhs && node.is_setter {
-		is_direct_array_access := (unsafe { g.fn_decl != 0 } && g.fn_decl.is_direct_arr) || node.is_direct
+		is_direct_array_access := (unsafe { g.fn_decl != 0 } && g.fn_decl.is_direct_arr)
+			|| node.is_direct
 		is_op_assign := g.assign_op != .assign && info.elem_type != ast.string_type
 		if is_direct_array_access {
 			g.write('(($elem_type_str*)')
@@ -233,7 +235,8 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			}
 		}
 	} else {
-		is_direct_array_access := (unsafe { g.fn_decl != 0 } && g.fn_decl.is_direct_arr) || node.is_direct
+		is_direct_array_access := (unsafe { g.fn_decl != 0 } && g.fn_decl.is_direct_arr)
+			|| node.is_direct
 		// do not clone inside `opt_ok(opt_ok(&(string[]) {..})` before returns
 		needs_clone := info.elem_type == ast.string_type_idx && g.is_autofree && !(g.inside_return
 			&& g.fn_decl.return_type.has_flag(.optional)) && !g.is_assign_lhs

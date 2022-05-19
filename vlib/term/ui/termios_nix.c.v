@@ -44,7 +44,7 @@ fn restore_terminal_state_signal(_ os.Signal) {
 fn restore_terminal_state() {
 	termios_reset()
 	mut c := ctx_ptr
-	if c != 0 {
+	if unsafe { c != 0 } {
 		c.paused = true
 		load_title()
 	}
@@ -121,7 +121,7 @@ fn (mut ctx Context) termios_setup() ? {
 	os.signal_opt(.tstp, restore_terminal_state_signal) or {}
 	os.signal_opt(.cont, fn (_ os.Signal) {
 		mut c := ctx_ptr
-		if c != 0 {
+		if unsafe { c != 0 } {
 			c.termios_setup() or { panic(err) }
 			c.window_height, c.window_width = get_terminal_size()
 			mut event := &Event{
@@ -136,7 +136,7 @@ fn (mut ctx Context) termios_setup() ? {
 	for code in ctx.cfg.reset {
 		os.signal_opt(code, fn (_ os.Signal) {
 			mut c := ctx_ptr
-			if c != 0 {
+			if unsafe { c != 0 } {
 				c.cleanup()
 			}
 			exit(0)
@@ -145,7 +145,7 @@ fn (mut ctx Context) termios_setup() ? {
 
 	os.signal_opt(.winch, fn (_ os.Signal) {
 		mut c := ctx_ptr
-		if c != 0 {
+		if unsafe { c != 0 } {
 			c.window_height, c.window_width = get_terminal_size()
 
 			mut event := &Event{
@@ -200,7 +200,7 @@ fn termios_reset() {
 	C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, &ui.termios_at_startup)
 	print('\x1b[?1003l\x1b[?1006l\x1b[?25h')
 	c := ctx_ptr
-	if c != 0 && c.cfg.use_alternate_buffer {
+	if unsafe { c != 0 } && c.cfg.use_alternate_buffer {
 		print('\x1b[?1049l')
 	}
 	os.flush()
@@ -267,7 +267,7 @@ fn (mut ctx Context) parse_events() {
 				ctx.shift(1)
 			}
 		}
-		if event != 0 {
+		if unsafe { event != 0 } {
 			ctx.event(event)
 			nr_iters = 0
 		}

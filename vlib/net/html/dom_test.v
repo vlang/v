@@ -32,7 +32,7 @@ fn test_access_parent() {
 	mut dom := parse(generate_temp_html())
 	div_tags := dom.get_tag('div')
 	parent := div_tags[0].parent
-	assert parent != 0
+	assert unsafe { parent != 0 }
 	for div_tag in div_tags {
 		assert div_tag.parent == parent
 	}
