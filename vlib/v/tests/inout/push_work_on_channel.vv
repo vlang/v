@@ -22,7 +22,7 @@ fn main() {
 	_ := <-work_started
 
 	ch.close()
-	println('> main ch.close called')
+	// println('> main ch.close called') // the position of this is not deterministic
 
 	task.wait()
 	println('> main task was finished')
