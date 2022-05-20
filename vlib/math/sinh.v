@@ -33,7 +33,7 @@ pub fn sinh(x_ f64) f64 {
 	return temp
 }
 
-// cosh returns the hyperbolic cosine of x.
+// cosh returns the hyperbolic cosine of x in radians
 //
 // special cases are:
 // cosh(±0) = 1

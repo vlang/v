@@ -1,5 +1,6 @@
 module math
 
+// log_n returns log base b of x
 pub fn log_n(x f64, b f64) f64 {
 	y := log(x)
 	z := log(b)
@@ -24,6 +25,7 @@ pub fn log2(x f64) f64 {
 	return log(frac) * (1.0 / ln2) + f64(exp)
 }
 
+// log1p returns log(1+x)
 pub fn log1p(x f64) f64 {
 	y := 1.0 + x
 	z := y - 1.0
