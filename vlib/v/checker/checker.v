@@ -2150,25 +2150,25 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			c.inside_if_guard = true
 			node.expr_type = c.expr(node.expr)
 			c.inside_if_guard = old_inside_if_guard
-			if !node.expr_type.has_flag(.optional) {
-				mut no_opt := true
+			if !node.expr_type.has_flag(.optional) && !node.expr_type.has_flag(.result) {
+				mut no_opt_or_res := true
 				match mut node.expr {
 					ast.IndexExpr {
-						no_opt = false
+						no_opt_or_res = false
 						node.expr_type = node.expr_type.set_flag(.optional)
 						node.expr.is_option = true
 					}
 					ast.PrefixExpr {
 						if node.expr.op == .arrow {
-							no_opt = false
+							no_opt_or_res = false
 							node.expr_type = node.expr_type.set_flag(.optional)
 							node.expr.is_option = true
 						}
 					}
 					else {}
 				}
-				if no_opt {
-					c.error('expression should return an option', node.expr.pos())
+				if no_opt_or_res {
+					c.error('expression should either return an option or a result', node.expr.pos())
 				}
 			}
 			return ast.bool_type
@@ -2676,7 +2676,7 @@ pub fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 									}
 								}
 							} else {
-								typ = obj.expr.expr_type.clear_flag(.optional)
+								typ = obj.expr.expr_type.clear_flag(.optional).clear_flag(.result)
 							}
 						} else {
 							typ = c.expr(obj.expr)
