@@ -123,10 +123,10 @@ pub struct ResponseConfig {
 // function will add a Content-Length header if body is not empty.
 pub fn new_response(conf ResponseConfig) Response {
 	mut resp := Response{
-		body: if conf.body.len == 0 { conf.text } else { conf.body }
+		body: conf.body + conf.text
 		header: conf.header
 	}
-	if conf.body.len > 0 && !resp.header.contains(.content_length) {
+	if resp.body.len > 0 && !resp.header.contains(.content_length) {
 		resp.header.add(.content_length, resp.body.len.str())
 	}
 	resp.set_status(conf.status)
