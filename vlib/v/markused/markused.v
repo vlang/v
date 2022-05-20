@@ -13,6 +13,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 	defer {
 		util.timing_measure(@METHOD)
 	}
+	// Functions that must be generated and can't be skipped
 	mut all_fn_root_names := [
 		'main.main',
 		'__new_array',

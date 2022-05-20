@@ -4717,7 +4717,7 @@ fn (g &Gen) checker_bug(s string, pos token.Pos) {
 }
 
 fn (mut g Gen) write_init_function() {
-	if g.pref.no_builtin {
+	if g.pref.no_builtin || (g.pref.translated && g.pref.is_o) {
 		return
 	}
 	util.timing_start(@METHOD)
