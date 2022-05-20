@@ -299,8 +299,8 @@ pub fn (mut rng PRNG) normal_pair(conf config.NormalConfigStruct) ?(f64, f64) {
 	// See: https://doi.org/10.1137%2F1006063
 	// Also: https://en.wikipedia.org/wiki/Marsaglia_polar_method
 	for {
-		u := rand.f64_in_range(-1, 1) or { 0.0 }
-		v := rand.f64_in_range(-1, 1) or { 0.0 }
+		u := f64_in_range(-1, 1) or { 0.0 }
+		v := f64_in_range(-1, 1) or { 0.0 }
 
 		s := u * u + v * v
 		if s >= 1 || s == 0 {
@@ -347,7 +347,7 @@ pub fn (mut rng PRNG) shuffle<T>(mut a []T, config config.ShuffleConfigStruct) ?
 	config.validate_for(a)?
 	new_end := if config.end == 0 { a.len } else { config.end }
 	for i in config.start .. new_end {
-		x := rng.int_in_range(i, new_end) or { config.start }
+		x := rng.int_in_range(i, new_end) or { config.start + i }
 		// swap
 		a_i := a[i]
 		a[i] = a[x]
