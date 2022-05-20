@@ -109,11 +109,13 @@ pub fn norm_path(path string) string {
 	sb.write_string(new_path.join(path_separator))
 	res := sb.str()
 	if res.len == 0 {
-		return match true {
-			volume_len != 0 { volume }
-			!rooted { '.' }
-			else { path_separator }
+		if volume_len != 0 {
+			return volume
 		}
+		if !rooted {
+			return '.'
+		}
+		return path_separator
 	}
 	if volume_len != 0 {
 		return volume + res
