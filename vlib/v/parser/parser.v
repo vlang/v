@@ -693,6 +693,10 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 					p.script_mode = true
 					p.script_mode_start_token = p.tok
 
+					if p.table.known_fn('main.main') {
+						p.error('function `main` is already defined, put your script statements inside it')
+					}
+
 					p.open_scope()
 					mut stmts := []ast.Stmt{}
 					for p.tok.kind != .eof {
