@@ -132,11 +132,19 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				var_name = g.new_tmp_var()
 				guard_vars[i] = var_name // for `else`
 				g.tmp_count--
-				g.writeln('if (${var_name}.state == 0) {')
+				if branch.cond.expr_type.has_flag(.optional) {
+					g.writeln('if (${var_name}.state == 0) {')
+				} else if branch.cond.expr_type.has_flag(.result) {
+					g.writeln('if (!${var_name}.is_error) {')
+				}
 			} else {
 				g.write('if ($var_name = ')
 				g.expr(branch.cond.expr)
-				g.writeln(', ${var_name}.state == 0) {')
+				if branch.cond.expr_type.has_flag(.optional) {
+					g.writeln(', ${var_name}.state == 0) {')
+				} else if branch.cond.expr_type.has_flag(.result) {
+					g.writeln(', !${var_name}.is_error) {')
+				}
 			}
 			if short_opt || branch.cond.vars[0].name != '_' {
 				base_type := g.base_type(branch.cond.expr_type)
