@@ -14,7 +14,7 @@ mut:
 
 // is_empty checks if the linked list is empty
 pub fn (list LinkedList<T>) is_empty() bool {
-	return unsafe { list.len == 0 }
+	return list.len == 0
 }
 
 // len returns the length of the linked list
