@@ -96,6 +96,7 @@ pub fn exp2(x f64) f64 {
 	return expmulti(hi, lo, k)
 }
 
+// ldexp calculates frac*(2**exp)
 pub fn ldexp(frac f64, exp int) f64 {
 	return scalbn(frac, exp)
 }
@@ -146,6 +147,7 @@ pub fn frexp(x f64) (f64, int) {
 	return f64_from_bits(y), e_
 }
 
+// expm1 calculates e**x - 1
 // special cases are:
 // expm1(+inf) = +inf
 // expm1(-inf) = -1
@@ -176,7 +178,6 @@ pub fn expm1(x f64) f64 {
 	}
 }
 
-// exp1 returns e**r × 2**k where r = hi - lo and |r| ≤ ln(2)/2.
 fn expmulti(hi f64, lo f64, k int) f64 {
 	exp_p1 := 1.66666666666666657415e-01 // 0x3FC55555; 0x55555555
 	exp_p2 := -2.77777777770155933842e-03 // 0xBF66C16C; 0x16BEBD93

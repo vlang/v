@@ -1,6 +1,7 @@
 module math
 
 import math.internal
+// acosh returns the non negative area hyperbolic cosine of x
 
 pub fn acosh(x f64) f64 {
 	if x == 0.0 {
@@ -19,6 +20,7 @@ pub fn acosh(x f64) f64 {
 	}
 }
 
+// asinh returns the area hyperbolic sine of x
 pub fn asinh(x f64) f64 {
 	a := abs(x)
 	s := if x < 0 { -1.0 } else { 1.0 }
@@ -34,6 +36,7 @@ pub fn asinh(x f64) f64 {
 	}
 }
 
+// atanh returns the area hyperbolic tangent of x
 pub fn atanh(x f64) f64 {
 	a := abs(x)
 	s := if x < 0 { -1.0 } else { 1.0 }
