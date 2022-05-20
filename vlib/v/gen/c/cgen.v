@@ -2243,10 +2243,6 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			g.write('*')
 		}
 	}
-	if expected_type.has_flag(.optional) && expr is ast.None {
-		g.gen_optional_error(expected_type, expr)
-		return
-	}
 	if expr is ast.IntegerLiteral {
 		if expected_type in [ast.u64_type, ast.u32_type, ast.u16_type] && expr.val[0] != `-` {
 			g.expr(expr)
@@ -3347,6 +3343,10 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 			}
 		}
 		if !has_embeds {
+			if !node.has_hidden_receiver {
+				g.write('${g.typ(node.expr_type.idx())}_$m.name')
+				return
+			}
 			receiver := m.params[0]
 			expr_styp := g.typ(node.expr_type.idx())
 			data_styp := g.typ(receiver.typ.idx())
@@ -4752,6 +4752,9 @@ fn (mut g Gen) write_init_function() {
 	g.writeln('\tbuiltin_init();')
 	g.writeln('\tvinit_string_literals();')
 	//
+	if g.nr_closures > 0 {
+		g.writeln('\t_closure_mtx_init();')
+	}
 	for mod_name in g.table.modules {
 		g.writeln('\t{ // Initializations for module $mod_name :')
 		g.write(g.inits[mod_name].str())

@@ -1,18 +1,18 @@
-vlib/v/checker/tests/unsafe_required.vv:8:7: error: method `S1.f` must be called from an `unsafe` block
+vlib/v/checker/tests/unsafe_required.vv:8:7: warning: method `S1.f` must be called from an `unsafe` block
     6 | fn test_funcs() {
     7 |     s := S1{}
     8 |     s.f()
       |       ~~~
     9 | }
    10 |
-vlib/v/checker/tests/unsafe_required.vv:16:7: error: pointer indexing is only allowed in `unsafe` blocks
+vlib/v/checker/tests/unsafe_required.vv:16:7: warning: pointer indexing is only allowed in `unsafe` blocks
    14 |     _ = b[0] // OK
    15 |     c := &b
    16 |     _ = c[0]
       |          ~~~
    17 | 
    18 |     v := 4
-vlib/v/checker/tests/unsafe_required.vv:20:10: error: pointer indexing is only allowed in `unsafe` blocks
+vlib/v/checker/tests/unsafe_required.vv:20:10: warning: pointer indexing is only allowed in `unsafe` blocks
    18 |     v := 4
    19 |     p := &v
    20 |     _ = p[0]

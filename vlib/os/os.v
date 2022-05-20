@@ -343,6 +343,28 @@ pub fn user_os() string {
 	return 'unknown'
 }
 
+// user_names returns an array of the name of every user on the system.
+pub fn user_names() ?[]string {
+	$if windows {
+		result := execute('wmic useraccount get name')
+		if result.exit_code != 0 {
+			return error('Failed to get user names. Exited with code $result.exit_code: $result.output')
+		}
+		mut users := result.output.split_into_lines()
+		// windows command prints an empty line at the end of output
+		users.delete(users.len - 1)
+		return users
+	} $else {
+		lines := read_lines('/etc/passwd')?
+		mut users := []string{cap: lines.len}
+		for line in lines {
+			end_name := line.index(':') or { line.len }
+			users << line[0..end_name]
+		}
+		return users
+	}
+}
+
 // home_dir returns path to the user's home directory.
 pub fn home_dir() string {
 	$if windows {

@@ -125,7 +125,8 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 				is_stack_obj: true
 			})
 		} else if p.scope.known_var(val_var_name) {
-			return p.error('redefinition of value iteration variable `$val_var_name`')
+			return p.error_with_pos('redefinition of value iteration variable `$val_var_name`, use `for ($val_var_name in array) {` if you want to check for a condition instead',
+				val_var_pos)
 		}
 		p.check(.key_in)
 		if p.tok.kind == .name && p.tok.lit in [key_var_name, val_var_name] {

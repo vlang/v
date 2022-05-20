@@ -1,3 +1,17 @@
+vlib/v/checker/tests/mut_arg.vv:6:3: warning: automatic referencing/dereferencing is deprecated and will be removed soon (got: 0 references, expected: 1 references)
+    4 | }
+    5 | 
+    6 | f([3,4])
+      |   ~~~~~
+    7 | mut a := [1,2]
+    8 | f(a)
+vlib/v/checker/tests/mut_arg.vv:8:3: warning: automatic referencing/dereferencing is deprecated and will be removed soon (got: 0 references, expected: 1 references)
+    6 | f([3,4])
+    7 | mut a := [1,2]
+    8 | f(a)
+      |   ^
+    9 | 
+   10 | g(mut [3,4])
 vlib/v/checker/tests/mut_arg.vv:6:3: error: function `f` parameter `par` is `mut`, so use `mut [3, 4]` instead
     4 | }
     5 | 

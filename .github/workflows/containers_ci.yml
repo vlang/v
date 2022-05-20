@@ -42,6 +42,9 @@ jobs:
       - name: Build V
         run: CC=gcc make
 
+      - name: All code is formatted
+        run: ./v test-cleancode
+
       - name: Test V fixed tests
         run: ./v test-self
 
@@ -69,5 +72,9 @@ jobs:
           echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+
+      - name: All code is formatted
+        run: ./v test-cleancode
+
       - name: Test V fixed tests
         run: ./v test-self

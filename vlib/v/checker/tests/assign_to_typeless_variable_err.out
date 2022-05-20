@@ -1,3 +1,9 @@
+vlib/v/checker/tests/assign_to_typeless_variable_err.vv:2:3: warning: unused variable: `val`
+    1 | fn main() {
+    2 |   val := {}
+      |   ~~~
+    3 |   val = 1
+    4 | }
 vlib/v/checker/tests/assign_to_typeless_variable_err.vv:2:10: error: invalid empty map initialisation syntax, use e.g. map[string]int{} instead
     1 | fn main() {
     2 |   val := {}

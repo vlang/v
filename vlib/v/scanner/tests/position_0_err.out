@@ -1,4 +1,4 @@
-vlib/v/scanner/tests/position_0_err.vv:1:1: error: unused variable: `i`
+vlib/v/scanner/tests/position_0_err.vv:1:1: warning: unused variable: `i`
     1 | i := 'hello'
       | ^
     2 | x := 3

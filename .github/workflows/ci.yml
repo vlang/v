@@ -55,10 +55,12 @@ jobs:
           echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+      - name: All code is formatted
+        run: ./v test-cleancode
       - name: Self tests
         run: ./v test-self
       # - name: Self tests (-cstrict)
-      #   run: ./v -cstrict test-self
+      #   run: V_CI_CSTRICT=1 ./v -cstrict test-self
       - name: Test time functions in a timezone UTC-12
         run: TZ=Etc/GMT+12 ./v test vlib/time/
       - name: Test time functions in a timezone UTC-3
@@ -126,6 +128,8 @@ jobs:
         run: |
           ./v -gc boehm cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+      - name: All code is formatted
+        run: ./v test-cleancode
       - name: Self tests with `-gc boehm` with V compiler using Boehm-GC itself
         run: ./v -gc boehm test-self
       - name: Test leak detector
@@ -189,6 +193,8 @@ jobs:
           echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+      - name: All code is formatted
+        run: VJOBS=1 ./v test-cleancode
       - name: Self tests
         run: VJOBS=1 ./v test-self
       - name: Build examples
@@ -281,12 +287,14 @@ jobs:
           echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+      - name: All code is formatted
+        run: ./v test-cleancode
       - name: Self tests
         run: ./v test-self
       - name: Self tests (-prod)
         run: ./v -o vprod -prod cmd/v && ./vprod test-self
       - name: Self tests (-cstrict)
-        run: ./v -cc gcc -cstrict test-self
+        run: V_CI_CSTRICT=1 ./v -cc gcc -cstrict test-self
       - name: Build examples
         run: ./v build-examples
       - name: Build tetris.v with -autofree
@@ -373,12 +381,18 @@ jobs:
           echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+      - name: All code is formatted
+        run: ./v test-cleancode
+
       - name: Self tests
         run: ./v test-self
-      - name: Self tests (-prod)
-        run: ./v -o vprod -prod cmd/v && ./vprod test-self
+      - name: Self tests (vprod)
+        run: |
+          ./v -o vprod -prod cmd/v
+          ./vprod test-self
       - name: Self tests (-cstrict)
-        run: ./v -cstrict test-self
+        run: V_CI_CSTRICT=1 ./vprod -cstrict test-self
+
       - name: Build examples
         run: ./v build-examples
       - name: Build examples with -autofree
@@ -443,6 +457,8 @@ jobs:
           echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+      - name: All code is formatted
+        run: ./v test-cleancode
       - name: Self tests
         run: .\v.exe test-self
         #    - name: Test
@@ -501,6 +517,9 @@ jobs:
           echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+### TODO: test-cleancode fails with msvc. Investigate why???
+##      - name: All code is formatted
+##        run: ./v test-cleancode
       - name: Self tests
         run: |
           ./v -cg cmd\tools\vtest-self.v
@@ -556,8 +575,8 @@ jobs:
         run: ./v doc -v clipboard
       - name: Test v build-tools
         run: ./v -W build-tools
-      - name: Test ./v doc clipboard
-        run: ./v doc clipboard
+      - name: All code is formatted
+        run: ./v test-cleancode
       - name: Self tests
         run: ./v test-self
       - name: Test v->js

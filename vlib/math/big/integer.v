@@ -960,6 +960,8 @@ pub fn (x Integer) bit_len() int {
 	if x.signum == 0 {
 		return 0
 	}
-
+	if x.digits.len == 0 {
+		return 0
+	}
 	return x.digits.len * 32 - bits.leading_zeros_32(x.digits.last())
 }
