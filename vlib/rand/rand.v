@@ -4,6 +4,7 @@
 [has_globals]
 module rand
 
+import math
 import math.bits
 import rand.config
 import rand.constants
@@ -274,30 +275,75 @@ pub fn (mut rng PRNG) ascii(len int) string {
 	return internal_string_from_set(mut rng, rand.ascii_chars, len)
 }
 
-// Configuration struct for the shuffle functions.
-// The start index is inclusive and the end index is exclusive.
-// Set the end to 0 to shuffle until the end of the array.
-[params]
-pub struct ShuffleConfigStruct {
-pub:
-	start int
-	end   int
+// bernoulli returns true with a probability p. Note that 0 <= p <= 1.
+pub fn (mut rng PRNG) bernoulli(p f64) ?bool {
+	if p < 0 || p > 1 {
+		return error('$p is not a valid probability value.')
+	}
+	return rng.f64() <= p
 }
 
-fn (config ShuffleConfigStruct) validate_for<T>(a []T) ? {
-	if config.start < 0 || config.start >= a.len {
-		return error("argument 'config.start' must be in range [0, a.len)")
+// normal returns a normally distributed pseudorandom f64 in range `[0, 1)`.
+// NOTE: Use normal_pair() instead if you're generating a lot of normal variates.
+pub fn (mut rng PRNG) normal(conf config.NormalConfigStruct) ?f64 {
+	x, _ := rng.normal_pair(conf)?
+	return x
+}
+
+// normal_pair returns a pair of normally distributed pseudorandom f64 in range `[0, 1)`.
+pub fn (mut rng PRNG) normal_pair(conf config.NormalConfigStruct) ?(f64, f64) {
+	if conf.sigma <= 0 {
+		return error('Standard deviation must be positive')
 	}
-	if config.end < 0 || config.end > a.len {
-		return error("argument 'config.end' must be in range [0, a.len]")
+	// This is an implementation of the Marsaglia polar method
+	// See: https://doi.org/10.1137%2F1006063
+	// Also: https://en.wikipedia.org/wiki/Marsaglia_polar_method
+	for {
+		u := rand.f64_in_range(-1, 1) or { 0.0 }
+		v := rand.f64_in_range(-1, 1) or { 0.0 }
+
+		s := u * u + v * v
+		if s >= 1 || s == 0 {
+			continue
+		}
+		t := math.sqrt(-2 * math.log(s) / s)
+		x := conf.mu + conf.sigma * t * u
+		y := conf.mu + conf.sigma * t * v
+		return x, y
 	}
+	return error('Implementation error. Please file an issue.')
+}
+
+// binomial returns the number of successful trials out of n when the
+// probability of success for each trial is p.
+pub fn (mut rng PRNG) binomial(n int, p f64) ?int {
+	if p < 0 || p > 1 {
+		return error('$p is not a valid probability value.')
+	}
+	mut count := 0
+	for _ in 0 .. n {
+		if rng.bernoulli(p)! {
+			count++
+		}
+	}
+	return count
+}
+
+// exponential returns an exponentially distributed random number with the rate paremeter
+// lambda. It is expected that lambda is positive.
+pub fn (mut rng PRNG) exponential(lambda f64) f64 {
+	if lambda <= 0 {
+		panic('The rate (lambda) must be positive.')
+	}
+	// Use the inverse transform sampling method
+	return -math.log(rng.f64()) / lambda
 }
 
 // shuffle randomly permutates the elements in `a`. The range for shuffling is
 // optional and the entire array is shuffled by default. Leave the end as 0 to
 // shuffle all elements until the end.
 [direct_array_access]
-pub fn (mut rng PRNG) shuffle<T>(mut a []T, config ShuffleConfigStruct) ? {
+pub fn (mut rng PRNG) shuffle<T>(mut a []T, config config.ShuffleConfigStruct) ? {
 	config.validate_for(a)?
 	new_end := if config.end == 0 { a.len } else { config.end }
 	for i in config.start .. new_end {
@@ -311,7 +357,7 @@ pub fn (mut rng PRNG) shuffle<T>(mut a []T, config ShuffleConfigStruct) ? {
 
 // shuffle_clone returns a random permutation of the elements in `a`.
 // The permutation is done on a fresh clone of `a`, so `a` remains unchanged.
-pub fn (mut rng PRNG) shuffle_clone<T>(a []T, config ShuffleConfigStruct) ?[]T {
+pub fn (mut rng PRNG) shuffle_clone<T>(a []T, config config.ShuffleConfigStruct) ?[]T {
 	mut res := a.clone()
 	rng.shuffle(mut res, config)?
 	return res
@@ -541,13 +587,13 @@ pub fn ascii(len int) string {
 // shuffle randomly permutates the elements in `a`. The range for shuffling is
 // optional and the entire array is shuffled by default. Leave the end as 0 to
 // shuffle all elements until the end.
-pub fn shuffle<T>(mut a []T, config ShuffleConfigStruct) ? {
+pub fn shuffle<T>(mut a []T, config config.ShuffleConfigStruct) ? {
 	default_rng.shuffle(mut a, config)?
 }
 
 // shuffle_clone returns a random permutation of the elements in `a`.
 // The permutation is done on a fresh clone of `a`, so `a` remains unchanged.
-pub fn shuffle_clone<T>(a []T, config ShuffleConfigStruct) ?[]T {
+pub fn shuffle_clone<T>(a []T, config config.ShuffleConfigStruct) ?[]T {
 	return default_rng.shuffle_clone(a, config)
 }
 
@@ -562,4 +608,32 @@ pub fn choose<T>(array []T, k int) ?[]T {
 // This means the elements can repeat and the size of the sample may exceed the size of the array.
 pub fn sample<T>(array []T, k int) []T {
 	return default_rng.sample(array, k)
+}
+
+// bernoulli returns true with a probability p. Note that 0 <= p <= 1.
+pub fn bernoulli(p f64) ?bool {
+	return default_rng.bernoulli(p)
+}
+
+// normal returns a normally distributed pseudorandom f64 in range `[0, 1)`.
+// NOTE: Use normal_pair() instead if you're generating a lot of normal variates.
+pub fn normal(conf config.NormalConfigStruct) ?f64 {
+	return default_rng.normal(conf)
+}
+
+// normal_pair returns a pair of normally distributed pseudorandom f64 in range `[0, 1)`.
+pub fn normal_pair(conf config.NormalConfigStruct) ?(f64, f64) {
+	return default_rng.normal_pair(conf)
+}
+
+// binomial returns the number of successful trials out of n when the
+// probability of success for each trial is p.
+pub fn binomial(n int, p f64) ?int {
+	return default_rng.binomial(n, p)
+}
+
+// exponential returns an exponentially distributed random number with the rate paremeter
+// lambda. It is expected that lambda is positive.
+pub fn exponential(lambda f64) f64 {
+	return default_rng.exponential(lambda)
 }
