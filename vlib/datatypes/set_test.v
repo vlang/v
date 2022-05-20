@@ -27,7 +27,10 @@ fn test_difference() {
 	set_a.add(...[]int{len:10,init:it})
 	mut set_b := Set<int>{}
 	set_b.add(...[]int{len:10,init:it+5})
-	set_c := set_a.difference(set_b) or {panic('ERROR with difference')}
+	set_c := set_a.difference(set_b) or {
+		assert false
+		panic('ERROR with difference')
+	}
 	assert set_c.len() == 5
 }
 /*fn test_equal() {

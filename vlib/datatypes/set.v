@@ -48,13 +48,13 @@ pub fn (set Set<T>) contains(i T) bool {
 }
 
 // difference returns the difference between this set and another. Will panic if type differs
-pub fn (set Set<T>) difference(s Set<T>) !Set<T> {
-	if !set.type_match(s) {
+pub fn (s1 Set<T>) difference(s2 Set<T>) !Set<T> {
+	if !s1.type_match(s2) {
 		return error("Set types don't match")
 	}
 	mut result := Set<T>{}
-	for item in set.elements.keys() {
-		if !s.contains(item) {
+	for item in s1 .elements.keys() {
+		if !s2.contains(item) {
 			result.add(item)
 		}
 	}
@@ -62,30 +62,30 @@ pub fn (set Set<T>) difference(s Set<T>) !Set<T> {
 }
 
 // union_with returns a set with all elements from both sets. Will panic if type differs
-pub fn (set Set<T>) union_with(s Set<T>) !Set<T> {
-	if !set.type_match(s) {
+pub fn (s1 Set<T>) union_with(s2 Set<T>) !Set<T> {
+	if !s1.type_match(s2) {
 		return error("Set types don't match")
 	}
-	mut result := s.clone()
-	result.add(...set.elements.keys()) // add won't add duplicates
+	mut result := s2.clone()
+	result.add(...s1.elements.keys()) // add won't add duplicates
 	return result
 }
 
 // intersection returns the items that are in both sets. Will panic if type differs
-pub fn (set Set<T>) intersection(s Set<T>) !Set<T> {
-	if !set.type_match(s) {
+pub fn (s1 Set<T>) intersection(s2 Set<T>) !Set<T> {
+	if !s1.type_match(s2) {
 		return error("Set types don't match")
 	}
 	mut result := Set<T>{}
-	if set.len() > s.len() {
-		for item in s.elements.keys() {
-			if set.contains(item) {
+	if s1.len() > s2.len() {
+		for item in s2.elements.keys() {
+			if s1.contains(item) {
 				result.add(item)
 			}
 		}
 	} else {
-		for item in set.elements.keys() {
-			if s.contains(item) {
+		for item in s1.elements.keys() {
+			if s2.contains(item) {
 				result.add(item)
 			}
 		}
@@ -94,42 +94,42 @@ pub fn (set Set<T>) intersection(s Set<T>) !Set<T> {
 }
 
 // equal returns if two sets are equal
-pub fn (set Set<T>) equal(s Set<T>) bool {
-	if !set.type_match(s) {
+pub fn (s1 Set<T>) equal(s2 Set<T>) bool {
+	if !s1.type_match(s2) {
 		return false
 	}
-	intersect := set.intersection(s) or { Set<T>{} }
-	if set.len() != s.len() && intersect.len() != s.len() {
+	intersect := s1.intersection(s2) or { Set<T>{} }
+	if s1.len() != s2.len() && intersect.len() != s2.len() {
 		return false
 	}
 	return true
 }
 
-pub fn (a Set<T>) == (b Set<T>) bool {
-	return a.equal(b)
+pub fn (s1 Set<T>) == (s2 Set<T>) bool {
+	return s1.equal(s2)
 }
 
-pub fn (a Set<T>) + (b Set<T>) Set<T> {
-	mut result := a.clone()
-	result.add(...b.elements.keys())
+pub fn (s1 Set<T>) + (s2 Set<T>) Set<T> {
+	mut result := s1.clone()
+	result.add(...s2.elements.keys())
 	return result
 }
 
-pub fn (a Set<T>) - (b Set<T>) Set<T> {
-	mut result := a.clone()
-	for e in b.elements.keys() {
+pub fn (s1 Set<T>) - (s2 Set<T>) Set<T> {
+	mut result := s1.clone()
+	for e in s2.elements.keys() {
 		result.delete(e)
 	}
 	return result
 }
 
 // is_subset returns if every element of set is in other set
-pub fn (set Set<T>) is_subset(s Set<T>) bool {
-	if !set.type_match(s) {
+pub fn (s1 Set<T>) is_subset(s2 Set<T>) bool {
+	if !s1.type_match(s2) {
 		return false
 	}
-	for item in set.elements.keys() {
-		if !s.contains(item) {
+	for item in s1.elements.keys() {
+		if !s2.contains(item) {
 			return false
 		}
 	}
@@ -137,12 +137,12 @@ pub fn (set Set<T>) is_subset(s Set<T>) bool {
 }
 
 // is_superset returns if every element of other set is in this set
-pub fn (set Set<T>) is_superset(s Set<T>) bool {
-	if !set.type_match(s) {
+pub fn (s1 Set<T>) is_superset(s2 Set<T>) bool {
+	if !s1.type_match(s2) {
 		return false
 	}
-	for item in s.elements.keys() {
-		if !set.contains(item) {
+	for item in s2.elements.keys() {
+		if !s1.contains(item) {
 			return false
 		}
 	}
@@ -150,15 +150,15 @@ pub fn (set Set<T>) is_superset(s Set<T>) bool {
 }
 
 // is_proper_subset returns if every element of set is in other set, but not equal
-pub fn (set Set<T>) is_proper_subset(s Set<T>) bool {
-	return set != s && set.is_subset(s)
+pub fn (s1 Set<T>) is_proper_subset(s2 Set<T>) bool {
+	return s1 != s2 && s1.is_subset(s2)
 }
 
 // is_proper_superset returns if every element of other set is in this set, but not equal
-pub fn (set Set<T>) is_proper_superset(s Set<T>) bool {
-	return set != s && set.is_superset(s)
+pub fn (s1 Set<T>) is_proper_superset(s2 Set<T>) bool {
+	return s1 != s2 && s1.is_superset(s2)
 }
 
-fn (set Set<T>) type_match(s Set<T>) bool {
-	return typeof(set).name == typeof(s).name
+fn (s1 Set<T>) type_match(s2 Set<T>) bool {
+	return typeof(s1).name == typeof(s2).name
 }
