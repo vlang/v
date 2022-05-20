@@ -2,6 +2,7 @@ name: V Apps and Modules
 
 on:
   push:
+    branches: [master]
     paths-ignore:
       - "**.md"
   pull_request:

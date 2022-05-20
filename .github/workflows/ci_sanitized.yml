@@ -13,6 +13,7 @@ name: Sanitized CI
 
 on:
   push:
+    branches: [master]
     paths:
       - '!**'
       - 'cmd/tools/vtest*'

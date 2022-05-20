@@ -2,6 +2,7 @@ name: vlang benchmarks
 
 on:
   push:
+    branches: [master]
     paths-ignore:
       - "**.md"
   pull_request:
