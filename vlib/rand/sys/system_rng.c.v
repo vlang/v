@@ -4,6 +4,7 @@
 module sys
 
 import math.bits
+import rand.buffer
 import rand.seed
 
 // Implementation note:
@@ -36,10 +37,9 @@ fn calculate_iterations_for(bits int) int {
 
 // SysRNG is the PRNG provided by default in the libc implementiation that V uses.
 pub struct SysRNG {
+	buffer.PRNGBuffer
 mut:
-	seed       u32 = seed.time_seed_32()
-	buffer     int
-	bytes_left int
+	seed u32 = seed.time_seed_32()
 }
 
 // r.seed() sets the seed of the accepting SysRNG to the given data.
@@ -71,7 +71,7 @@ pub fn (mut r SysRNG) u8() u8 {
 		r.buffer >>= 8
 		return value
 	}
-	r.buffer = r.default_rand()
+	r.buffer = u64(r.default_rand())
 	r.bytes_left = sys.rand_bytesize - 1
 	value := u8(r.buffer)
 	r.buffer >>= 8

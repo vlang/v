@@ -3,12 +3,15 @@
 // that can be found in the LICENSE file.
 module splitmix64
 
+import rand
 import rand.seed
+import rand.buffer
 
 pub const seed_len = 2
 
 // SplitMix64RNG ported from http://xoshiro.di.unimi.it/splitmix64.c
 pub struct SplitMix64RNG {
+	buffer.PRNGBuffer
 mut:
 	state      u64 = seed.time_seed_64()
 	bytes_left int
