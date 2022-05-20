@@ -37,26 +37,26 @@ pub enum StrIntpType {
 }
 
 pub fn (x StrIntpType) str() string {
-	match x {
-		.si_no_str { return 'no_str' }
-		.si_c { return 'c' }
-		.si_u8 { return 'u8' }
-		.si_i8 { return 'i8' }
-		.si_u16 { return 'u16' }
-		.si_i16 { return 'i16' }
-		.si_u32 { return 'u32' }
-		.si_i32 { return 'i32' }
-		.si_u64 { return 'u64' }
-		.si_i64 { return 'i64' }
-		.si_f32 { return 'f32' }
-		.si_f64 { return 'f64' }
-		.si_g32 { return 'f32' } // g32 format use f32 data
-		.si_g64 { return 'f64' } // g64 format use f64 data
-		.si_e32 { return 'f32' } // e32 format use f32 data
-		.si_e64 { return 'f64' } // e64 format use f64 data
-		.si_s { return 's' }
-		.si_p { return 'p' }
-		.si_vp { return 'vp' }
+	return match x {
+		.si_no_str { 'no_str' }
+		.si_c { 'c' }
+		.si_u8 { 'u8' }
+		.si_i8 { 'i8' }
+		.si_u16 { 'u16' }
+		.si_i16 { 'i16' }
+		.si_u32 { 'u32' }
+		.si_i32 { 'i32' }
+		.si_u64 { 'u64' }
+		.si_i64 { 'i64' }
+		.si_f32 { 'f32' }
+		.si_f64 { 'f64' }
+		.si_g32 { 'f32' } // g32 format use f32 data
+		.si_g64 { 'f64' } // g64 format use f64 data
+		.si_e32 { 'f32' } // e32 format use f32 data
+		.si_e64 { 'f64' } // e64 format use f64 data
+		.si_s { 's' }
+		.si_p { 'p' }
+		.si_vp { 'vp' }
 	}
 }
 
