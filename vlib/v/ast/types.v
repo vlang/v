@@ -547,6 +547,15 @@ pub fn (t &Table) type_kind(typ Type) Kind {
 	return t.sym(typ).kind
 }
 
+pub fn (t &Table) type_is_for_pointer_arithmetic(typ Type) bool {
+	typ_sym := t.sym(typ)
+	if typ_sym.kind == .struct_ {
+		return false
+	} else {
+		return typ.is_any_kind_of_pointer() || typ.is_int_valptr()
+	}
+}
+
 pub enum Kind {
 	placeholder
 	void

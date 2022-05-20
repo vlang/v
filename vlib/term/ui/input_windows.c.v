@@ -21,7 +21,7 @@ mut:
 }
 
 fn restore_terminal_state() {
-	if ui.ctx_ptr != 0 {
+	if unsafe { ui.ctx_ptr != 0 } {
 		if ui.ctx_ptr.cfg.use_alternate_buffer {
 			// clear the terminal and set the cursor to the origin
 			print('\x1b[2J\x1b[3J')
@@ -84,7 +84,7 @@ pub fn init(cfg Config) &Context {
 	for code in ctx.cfg.reset {
 		os.signal_opt(code, fn (_ os.Signal) {
 			mut c := ui.ctx_ptr
-			if c != 0 {
+			if unsafe { c != 0 } {
 				c.cleanup()
 			}
 			exit(0)

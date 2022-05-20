@@ -53,7 +53,7 @@ pub fn (cmd Command) str() string {
 	res << '	cb execute: $cmd.execute'
 	res << '	cb pre_execute: $cmd.pre_execute'
 	res << '	cb post_execute: $cmd.post_execute'
-	if cmd.parent == 0 {
+	if unsafe { cmd.parent == 0 } {
 		res << '	parent: &Command(0)'
 	} else {
 		res << '	parent: &Command{$cmd.parent.name ...}'

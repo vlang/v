@@ -1,0 +1,7 @@
+vlib/v/checker/tests/checker_comparison_between_obj_and_int.vv:10:5: error: infix expr: cannot use `int literal` (right expression) as `Foo`  (you can use it inside an `unsafe` block)
+    8 | 
+    9 | fn insert_helper(mut node Foo) {
+   10 |     if node == 0 {
+      |        ~~~~~~~~~
+   11 |     }
+   12 | }

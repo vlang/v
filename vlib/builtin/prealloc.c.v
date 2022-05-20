@@ -32,9 +32,10 @@ mut:
 [unsafe]
 fn vmemory_block_new(prev &VMemoryBlock, at_least isize) &VMemoryBlock {
 	mut v := unsafe { &VMemoryBlock(C.calloc(1, sizeof(VMemoryBlock))) }
-	if prev != 0 {
+	if unsafe { prev != 0 } {
 		v.id = prev.id + 1
 	}
+
 	v.previous = prev
 	block_size := if at_least < prealloc_block_size { prealloc_block_size } else { at_least }
 	v.start = unsafe { C.malloc(block_size) }
@@ -79,7 +80,7 @@ fn prealloc_vcleanup() {
 		// The second loop however should *not* allocate at all.
 		mut nr_mallocs := i64(0)
 		mut mb := g_memory_block
-		for mb != 0 {
+		for unsafe { mb != 0 } {
 			nr_mallocs += mb.mallocs
 			eprintln('> freeing mb.id: ${mb.id:3} | cap: ${mb.cap:7} | rem: ${mb.remaining:7} | start: ${voidptr(mb.start)} | current: ${voidptr(mb.current)} | diff: ${u64(mb.current) - u64(mb.start):7} bytes | mallocs: $mb.mallocs')
 			mb = mb.previous

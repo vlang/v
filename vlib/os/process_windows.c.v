@@ -176,7 +176,7 @@ fn (mut p Process) win_write_string(idx int, s string) {
 
 fn (mut p Process) win_read_string(idx int, maxbytes int) (string, int) {
 	mut wdata := &WProcess(p.wdata)
-	if wdata == 0 {
+	if unsafe { wdata == 0 } {
 		return '', 0
 	}
 	mut rhandle := &u32(0)
@@ -207,7 +207,7 @@ fn (mut p Process) win_read_string(idx int, maxbytes int) (string, int) {
 
 fn (mut p Process) win_slurp(idx int) string {
 	mut wdata := &WProcess(p.wdata)
-	if wdata == 0 {
+	if unsafe { wdata == 0 } {
 		return ''
 	}
 	mut rhandle := &u32(0)
