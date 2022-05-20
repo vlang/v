@@ -4,7 +4,6 @@
 module time
 
 import strings
-import math
 
 // format returns a date string in "YYYY-MM-DD HH:mm" format (24h).
 pub fn (t Time) format() string {
@@ -238,15 +237,15 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string('${(t.hour + 1):02}')
 			}
 			'w' {
-				sb.write_string('${math.ceil((t.day + days_before[t.month - 1] +
+				sb.write_string('${mceil((t.day + days_before[t.month - 1] +
 					int(is_leap_year(t.year))) / 7):.0}')
 			}
 			'ww' {
-				sb.write_string('${math.ceil((t.day + days_before[t.month - 1] +
+				sb.write_string('${mceil((t.day + days_before[t.month - 1] +
 					int(is_leap_year(t.year))) / 7):02.0}')
 			}
 			'wo' {
-				sb.write_string(ordinal_suffix(int(math.ceil((t.day + days_before[t.month - 1] +
+				sb.write_string(ordinal_suffix(int(mceil((t.day + days_before[t.month - 1] +
 					int(is_leap_year(t.year))) / 7))))
 			}
 			'Q' {
@@ -438,4 +437,15 @@ pub fn (t Time) utc_string() string {
 	month_str := t.smonth()
 	utc_string := '$day_str, $t.day $month_str $t.year ${t.hour:02d}:${t.minute:02d}:${t.second:02d} UTC'
 	return utc_string
+}
+
+// mceil returns the least integer value greater than or equal to x.
+fn mceil(x f64) f64 {
+	if x > 0 {
+		return 1 + int(x)
+	}
+	if x < 0 {
+		return -int(-x)
+	}
+	return 0
 }
