@@ -114,8 +114,9 @@ fn test_parse() ? {
 	]
 	for url in urls {
 		_ := urllib.parse(url) or {
+			eprintln(err)
 			assert false
-			panic('FAILED parsing url')
+			return
 		}
 	}
 }
