@@ -580,7 +580,7 @@ fn get_all_modules() []string {
 		println('Failed to search vpm.vlang.io. Status code: $r.status_code')
 		exit(1)
 	}
-	s := r.text
+	s := r.body
 	mut read_len := 0
 	mut modules := []string{}
 	for read_len < s.len {
@@ -717,7 +717,7 @@ fn get_module_meta_info(name string) ?Mod {
 			errors << 'Error details: $err'
 			continue
 		}
-		if r.status_code == 404 || r.text.trim_space() == '404' {
+		if r.status_code == 404 || r.body.trim_space() == '404' {
 			errors << 'Skipping module "$name", since "$server_url" reported that "$name" does not exist.'
 			continue
 		}
@@ -725,7 +725,7 @@ fn get_module_meta_info(name string) ?Mod {
 			errors << 'Skipping module "$name", since "$server_url" responded with $r.status_code http status code. Please try again later.'
 			continue
 		}
-		s := r.text
+		s := r.body
 		if s.len > 0 && s[0] != `{` {
 			errors << 'Invalid json data'
 			errors << s.trim_space().limit(100) + ' ...'

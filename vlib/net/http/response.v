@@ -9,7 +9,8 @@ import strconv
 // Response represents the result of the request
 pub struct Response {
 pub mut:
-	text         string
+	body         string
+	text         string [deprecated: 'use Response.body instead'; deprecated_after: '2022-10-03']
 	header       Header
 	status_code  int
 	status_msg   string
@@ -30,7 +31,7 @@ pub fn (resp Response) bytes() []u8 {
 pub fn (resp Response) bytestr() string {
 	return 'HTTP/$resp.http_version $resp.status_code $resp.status_msg\r\n' + '${resp.header.render(
 		version: resp.version()
-	)}\r\n' + '$resp.text'
+	)}\r\n' + '$resp.body'
 }
 
 // Parse a raw HTTP response into a Response object
@@ -39,16 +40,17 @@ pub fn parse_response(resp string) ?Response {
 	// Build resp header map and separate the body
 	start_idx, end_idx := find_headers_range(resp)?
 	header := parse_headers(resp.substr(start_idx, end_idx))?
-	mut text := resp.substr(end_idx, resp.len)
+	mut body := resp.substr(end_idx, resp.len)
 	if header.get(.transfer_encoding) or { '' } == 'chunked' {
-		text = chunked.decode(text)
+		body = chunked.decode(body)
 	}
 	return Response{
 		http_version: version
 		status_code: status_code
 		status_msg: status_msg
 		header: header
-		text: text
+		body: body
+		text: body // TODO: remove as depreciated
 	}
 }
 
@@ -113,18 +115,19 @@ pub struct ResponseConfig {
 	version Version = .v1_1
 	status  Status  = .ok
 	header  Header
-	text    string
+	body    string
+	text    string  [deprecated: 'use ResponseConfig.body instead'; deprecated_after: '2022-10-03']
 }
 
 // new_response creates a Response object from the configuration. This
-// function will add a Content-Length header if text is not empty.
+// function will add a Content-Length header if body is not empty.
 pub fn new_response(conf ResponseConfig) Response {
 	mut resp := Response{
-		text: conf.text
+		body: if conf.body.len == 0 { conf.text } else { conf.body }
 		header: conf.header
 	}
-	if conf.text.len > 0 && !resp.header.contains(.content_length) {
-		resp.header.add(.content_length, conf.text.len.str())
+	if conf.body.len > 0 && !resp.header.contains(.content_length) {
+		resp.header.add(.content_length, resp.body.len.str())
 	}
 	resp.set_status(conf.status)
 	resp.set_version(conf.version)

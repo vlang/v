@@ -46,7 +46,7 @@ fn main() {
 		return
 	}
 
-	weather := json.decode(Weather, resp.text) or {
+	weather := json.decode(Weather, resp.body) or {
 		println('failed to decode weather json')
 		return
 	}

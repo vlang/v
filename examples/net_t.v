@@ -8,7 +8,7 @@ fn send_request(mut wg sync.WaitGroup) ?string {
 	finish := time.ticks()
 	println('Finish getting time ${finish - start} ms')
 	wg.done()
-	return data.text
+	return data.body
 }
 
 fn main() {

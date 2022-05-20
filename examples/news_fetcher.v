@@ -16,7 +16,7 @@ fn worker_fetch(p &pool.PoolProcessor, cursor int, worker_id int) voidptr {
 		println('failed to fetch data from /v0/item/${id}.json')
 		return pool.no_result
 	}
-	story := json.decode(Story, resp.text) or {
+	story := json.decode(Story, resp.body) or {
 		println('failed to decode a story')
 		return pool.no_result
 	}
@@ -30,7 +30,7 @@ fn main() {
 		println('failed to fetch data from /v0/topstories.json')
 		return
 	}
-	ids := json.decode([]int, resp.text) or {
+	ids := json.decode([]int, resp.body) or {
 		println('failed to decode topstories.json')
 		return
 	}#[0..10]
