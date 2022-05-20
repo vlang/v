@@ -81,6 +81,7 @@ fn return_reference_type(path string) !&string {
 	str := ''
 	return &str
 }
+
 fn read() !string {
 	return ''
 }
@@ -93,4 +94,3 @@ fn test_results_if_guard() {
 	}
 	assert false
 }
-
