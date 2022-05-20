@@ -56,7 +56,7 @@ pub fn decode(text string) string {
 	mut sb := strings.new_builder(100)
 	mut cscanner := ChunkScanner{
 		pos: 0
-		body: text
+		text: text
 	}
 	for {
 		csize := cscanner.read_chunk_size()
