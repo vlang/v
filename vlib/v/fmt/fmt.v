@@ -1653,7 +1653,6 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			// TODO fetch all available modules
 			if node.left.name in ['time', 'os', 'strings', 'math', 'json', 'base64']
 				&& !node.left.scope.known_var(node.left.name) {
-				println(node.left)
 				f.file.imports << ast.Import{
 					mod: node.left.name
 					alias: node.left.name
