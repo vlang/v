@@ -1651,7 +1651,8 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			// `time.now()` without `time imported` is processed as a method call with `time` being
 			// a `node.left` expression. Import `time` automatically.
 			// TODO fetch all available modules
-			if node.left.name in ['time', 'os', 'strings', 'math', 'json', 'base64'] {
+			if node.left.name in ['time', 'os', 'strings', 'math', 'json', 'base64']
+				&& !node.left.scope.known_var(node.left.name) {
 				f.file.imports << ast.Import{
 					mod: node.left.name
 					alias: node.left.name
