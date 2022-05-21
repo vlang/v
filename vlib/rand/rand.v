@@ -299,8 +299,8 @@ pub fn (mut rng PRNG) normal_pair(conf config.NormalConfigStruct) ?(f64, f64) {
 	// See: https://doi.org/10.1137%2F1006063
 	// Also: https://en.wikipedia.org/wiki/Marsaglia_polar_method
 	for {
-		u := f64_in_range(-1, 1) or { 0.0 }
-		v := f64_in_range(-1, 1) or { 0.0 }
+		u := rng.f64_in_range(-1, 1) or { 0.0 }
+		v := rng.f64_in_range(-1, 1) or { 0.0 }
 
 		s := u * u + v * v
 		if s >= 1 || s == 0 {
