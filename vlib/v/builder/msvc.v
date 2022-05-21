@@ -445,7 +445,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(path string, moduleflags 
 		oargs << env_ldflags
 	}
 	str_oargs := oargs.join(' ')
-	cmd := '"$msvc.full_cl_exe_path" /volatile:ms $str_oargs $defines $include_string /c "$cfile" /Fo"$obj_path"'
+	cmd := '"$msvc.full_cl_exe_path" /NOLOGO /volatile:ms $str_oargs $defines $include_string /c "$cfile" /Fo"$obj_path"'
 	// Note: the quotes above ARE balanced.
 	$if trace_thirdparty_obj_files ? {
 		println('>>> build_thirdparty_obj_file_with_msvc cmd: $cmd')
