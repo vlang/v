@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 module splitmix64
 
-import rand
 import rand.seed
 import rand.buffer
 

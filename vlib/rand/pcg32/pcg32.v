@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 module pcg32
 
-import rand
 import rand.seed
 import rand.buffer
 
