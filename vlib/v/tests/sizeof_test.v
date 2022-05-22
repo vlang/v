@@ -24,6 +24,6 @@ fn test_sizeof() {
 	assert sizeof(s.i) == 4
 	assert sizeof(flag.Flag) > 4
 
-	assert sizeof(c'hello') == 16
-	assert sizeof(r'hello') == 16
+	assert sizeof(c'hello') == 6
+	assert sizeof(r'hello') == 6
 }
