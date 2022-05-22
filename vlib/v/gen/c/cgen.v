@@ -5237,7 +5237,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 				styp := g.typ(g.fn_decl.return_type)
 				err_obj := g.new_tmp_var()
 				g.writeln('\t$styp $err_obj;')
-				g.writeln('\tmemcpy(&$err_obj, &$cvar_name, sizeof(Option));')
+				g.writeln('\tmemcpy(&$err_obj, &$cvar_name, sizeof(_option));')
 				g.writeln('\treturn $err_obj;')
 			}
 		}
