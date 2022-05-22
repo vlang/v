@@ -5449,8 +5449,12 @@ fn (mut g Gen) size_of(node ast.SizeOf) {
 	if sym.language == .v && sym.kind in [.placeholder, .any] {
 		g.error('unknown type `$sym.name`', node.pos)
 	}
-	styp := g.typ(node_typ)
-	g.write('sizeof(${util.no_dots(styp)})')
+	if node.expr is ast.StringLiteral {
+		g.write('sizeof("$node.expr.val")')
+	} else {
+		styp := g.typ(node_typ)
+		g.write('sizeof(${util.no_dots(styp)})')
+	}
 }
 
 fn (mut g Gen) enum_val(node ast.EnumVal) {
