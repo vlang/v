@@ -940,8 +940,12 @@ pub fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_re
 				node.pos)
 		}
 		if !expr_return_type.has_flag(.optional) {
-			c.error('to propagate an option, the call must also return an optional type',
-				node.pos)
+			if expr_return_type.has_flag(.result) {
+				c.warn('propagating a result like an option is deprecated, use `foo()!` instead of `foo()?`', node.pos)
+			} else {
+				c.error('to propagate an option, the call must also return an optional type',
+					node.pos)
+			}
 		}
 		return
 	}

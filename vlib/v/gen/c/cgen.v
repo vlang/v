@@ -5212,6 +5212,36 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			}
 		}
 		g.or_expr_return_type = ast.void_type
+	} else if or_block.kind == .propagate_result
+		|| (or_block.kind == .propagate_option && return_type.has_flag(.result)) {
+		if g.file.mod.name == 'main' && (isnil(g.fn_decl) || g.fn_decl.is_main) {
+			// In main(), an `opt()!` call is sugar for `opt() or { panic(err) }`
+			err_msg := 'IError_name_table[${cvar_name}.err._typ]._method_msg(${cvar_name}.err._object)'
+			if g.pref.is_debug {
+				paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
+				g.writeln('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), $err_msg);')
+			} else {
+				g.writeln('\tpanic_result_not_set($err_msg);')
+			}
+		} else if !isnil(g.fn_decl) && g.fn_decl.is_test {
+			g.gen_failing_error_propagation_for_test_fn(or_block, cvar_name)
+		} else {
+			// In ordinary functions, `opt()!` call is sugar for:
+			// `opt() or { return err }`
+			// Since we *do* return, first we have to ensure that
+			// the defered statements are generated.
+			g.write_defer_stmts()
+			// Now that option types are distinct we need a cast here
+			if g.fn_decl.return_type == ast.void_type {
+				g.writeln('\treturn;')
+			} else {
+				styp := g.typ(g.fn_decl.return_type)
+				err_obj := g.new_tmp_var()
+				g.writeln('\t$styp $err_obj;')
+				g.writeln('\tmemcpy(&$err_obj, &$cvar_name, sizeof($c.result_name));')
+				g.writeln('\treturn $err_obj;')
+			}
+		}
 	} else if or_block.kind == .propagate_option {
 		if g.file.mod.name == 'main' && (isnil(g.fn_decl) || g.fn_decl.is_main) {
 			// In main(), an `opt()?` call is sugar for `opt() or { panic(err) }`
@@ -5238,35 +5268,6 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 				err_obj := g.new_tmp_var()
 				g.writeln('\t$styp $err_obj;')
 				g.writeln('\tmemcpy(&$err_obj, &$cvar_name, sizeof(_option));')
-				g.writeln('\treturn $err_obj;')
-			}
-		}
-	} else if or_block.kind == .propagate_result {
-		if g.file.mod.name == 'main' && (isnil(g.fn_decl) || g.fn_decl.is_main) {
-			// In main(), an `opt()!` call is sugar for `opt() or { panic(err) }`
-			err_msg := 'IError_name_table[${cvar_name}.err._typ]._method_msg(${cvar_name}.err._object)'
-			if g.pref.is_debug {
-				paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
-				g.writeln('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), $err_msg);')
-			} else {
-				g.writeln('\tpanic_result_not_set($err_msg);')
-			}
-		} else if !isnil(g.fn_decl) && g.fn_decl.is_test {
-			g.gen_failing_error_propagation_for_test_fn(or_block, cvar_name)
-		} else {
-			// In ordinary functions, `opt()!` call is sugar for:
-			// `opt() or { return err }`
-			// Since we *do* return, first we have to ensure that
-			// the defered statements are generated.
-			g.write_defer_stmts()
-			// Now that option types are distinct we need a cast here
-			if g.fn_decl.return_type == ast.void_type {
-				g.writeln('\treturn;')
-			} else {
-				styp := g.typ(g.fn_decl.return_type)
-				err_obj := g.new_tmp_var()
-				g.writeln('\t$styp $err_obj;')
-				g.writeln('\tmemcpy(&$err_obj, &$cvar_name, sizeof($c.result_name));')
 				g.writeln('\treturn $err_obj;')
 			}
 		}
