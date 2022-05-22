@@ -1461,10 +1461,8 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 						continue
 					}
 				}
-				if got_arg_typ != ast.void_type {
-					c.error('$err.msg() in argument ${i + 1} to `${left_sym.name}.$method_name`',
-						arg.pos)
-				}
+				c.error('$err.msg() in argument ${i + 1} to `${left_sym.name}.$method_name`',
+					arg.pos)
 			}
 		}
 		if method.is_unsafe && !c.inside_unsafe {
