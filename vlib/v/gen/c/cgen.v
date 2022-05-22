@@ -5449,7 +5449,7 @@ fn (mut g Gen) size_of(node ast.SizeOf) {
 		g.error('unknown type `$sym.name`', node.pos)
 	}
 	if node.expr is ast.StringLiteral {
-		g.write('sizeof("${node.expr.val}")')
+		g.write('sizeof("$node.expr.val")')
 	} else {
 		styp := g.typ(node_typ)
 		g.write('sizeof(${util.no_dots(styp)})')
