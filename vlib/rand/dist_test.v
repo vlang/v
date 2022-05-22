@@ -1,6 +1,5 @@
 import math
 import rand
-import rand.dist
 
 const (
 	// The sample size to be used
@@ -20,7 +19,7 @@ fn test_bernoulli() {
 		for p in ps {
 			mut successes := 0
 			for _ in 0 .. count {
-				if dist.bernoulli(p) {
+				if rand.bernoulli(p) or { false } {
 					successes++
 				}
 			}
@@ -43,7 +42,7 @@ fn test_binomial() {
 				mut sum := 0
 				mut var := 0.0
 				for _ in 0 .. count {
-					x := dist.binomial(n, p)
+					x := rand.binomial(n, p) or { 0 }
 					sum += x
 					dist := (x - np)
 					var += dist * dist
@@ -68,7 +67,7 @@ fn test_normal_pair() {
 				mut sum := 0.0
 				mut var := 0.0
 				for _ in 0 .. count {
-					x, y := dist.normal_pair(mu: mu, sigma: sigma)
+					x, y := rand.normal_pair(mu: mu, sigma: sigma) or { 0.0, 0.0 }
 					sum += x + y
 					dist_x := x - mu
 					dist_y := y - mu
@@ -95,7 +94,7 @@ fn test_normal() {
 				mut sum := 0.0
 				mut var := 0.0
 				for _ in 0 .. count {
-					x := dist.normal(mu: mu, sigma: sigma)
+					x := rand.normal(mu: mu, sigma: sigma) or { 0.0 }
 					sum += x
 					dist := x - mu
 					var += dist * dist
@@ -120,7 +119,7 @@ fn test_exponential() {
 			mut sum := 0.0
 			mut var := 0.0
 			for _ in 0 .. count {
-				x := dist.exponential(lambda)
+				x := rand.exponential(lambda)
 				sum += x
 				dist := x - mu
 				var += dist * dist
