@@ -4,7 +4,6 @@
 [has_globals]
 module rand
 
-import math { log, sqrt }
 import math.bits
 import rand.config
 import rand.constants
@@ -306,7 +305,7 @@ pub fn (mut rng PRNG) normal_pair(conf config.NormalConfigStruct) ?(f64, f64) {
 		if s >= 1 || s == 0 {
 			continue
 		}
-		t := sqrt(-2 * log(s) / s)
+		t := msqrt(-2 * mlog(s) / s)
 		x := conf.mu + conf.sigma * t * u
 		y := conf.mu + conf.sigma * t * v
 		return x, y
@@ -336,7 +335,7 @@ pub fn (mut rng PRNG) exponential(lambda f64) f64 {
 		panic('The rate (lambda) must be positive.')
 	}
 	// Use the inverse transform sampling method
-	return -log(rng.f64()) / lambda
+	return -mlog(rng.f64()) / lambda
 }
 
 // shuffle randomly permutates the elements in `a`. The range for shuffling is
