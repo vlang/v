@@ -1,7 +1,20 @@
 vlib/v/checker/tests/fn_type_mismatch.vv:11:15: error: invalid array element: expected `fn (int, int) f32`, not `fn (f32, f32) f32`
-    9 | 
+    9 |
    10 | fn main() {
    11 |     fns := [add, div]
       |                  ~~~
    12 |     println(fns[0](10.0, 5.0))
    13 |     println(fns[1](10.0, 5.0))
+vlib/v/checker/tests/fn_type_mismatch.vv:12:17: error: cannot use `float literal` as `int` in argument 1 to ``
+   10 | fn main() {
+   11 |     fns := [add, div]
+   12 |     println(fns[0](10.0, 5.0))
+      |                    ~~~~
+   13 |     println(fns[1](10.0, 5.0))
+   14 | }
+vlib/v/checker/tests/fn_type_mismatch.vv:13:17: error: cannot use `float literal` as `int` in argument 1 to ``
+   11 |     fns := [add, div]
+   12 |     println(fns[0](10.0, 5.0))
+   13 |     println(fns[1](10.0, 5.0))
+      |                    ~~~~
+   14 | }
