@@ -7,32 +7,32 @@ import strings
 
 // format returns a date string in "YYYY-MM-DD HH:mm" format (24h).
 pub fn (t Time) format() string {
-	return t.get_fmt_str(.hyphen, .hhmm24, .yyyymmdd)
+	return '${t.year:04d}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}'
 }
 
 // format_ss returns a date string in "YYYY-MM-DD HH:mm:ss" format (24h).
 pub fn (t Time) format_ss() string {
-	return t.get_fmt_str(.hyphen, .hhmmss24, .yyyymmdd)
+	return '${t.year:04d}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}:${t.second:02d}'
 }
 
 // format_ss_milli returns a date string in "YYYY-MM-DD HH:mm:ss.123" format (24h).
 pub fn (t Time) format_ss_milli() string {
-	return t.get_fmt_str(.hyphen, .hhmmss24_milli, .yyyymmdd)
+	return '${t.year:04d}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${(t.microsecond / 1000):03d}'
 }
 
 // format_ss_micro returns a date string in "YYYY-MM-DD HH:mm:ss.123456" format (24h).
 pub fn (t Time) format_ss_micro() string {
-	return t.get_fmt_str(.hyphen, .hhmmss24_micro, .yyyymmdd)
+	return '${t.year:04d}-${t.month:02d}-${t.day:02d} ${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${t.microsecond:06d}'
 }
 
 // hhmm returns a date string in "HH:mm" format (24h).
 pub fn (t Time) hhmm() string {
-	return t.get_fmt_time_str(.hhmm24)
+	return '${t.hour:02d}:${t.minute:02d}'
 }
 
 // hhmmss returns a date string in "HH:mm:ss" format (24h).
 pub fn (t Time) hhmmss() string {
-	return t.get_fmt_time_str(.hhmmss24)
+	return '${t.hour:02d}:${t.minute:02d}:${t.second:02d}'
 }
 
 // hhmm12 returns a date string in "hh:mm" format (12h).
