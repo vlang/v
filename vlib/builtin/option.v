@@ -113,9 +113,9 @@ struct Option {
 	// derived Option_xxx types
 }
 
-fn opt_ok(data voidptr, mut option Option, size int) {
+fn opt_ok(data voidptr, mut option _option, size int) {
 	unsafe {
-		*option = Option{}
+		*option = _option{}
 		// use err to get the end of OptionBase and then memcpy into it
 		vmemcpy(&u8(&option.err) + sizeof(IError), data, size)
 	}
