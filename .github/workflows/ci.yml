@@ -594,7 +594,9 @@ jobs:
       - name: Build examples
         run: ./v build-examples
       - name: v2 self compilation
-        run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
+        run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v && .\v3.exe -o v4.exe cmd/v
+      - name: v2 self compilation with -gc boehm
+        run: .\v.exe -o v2.exe -gc boehm cmd/v && .\v2.exe -o v3.exe -gc boehm cmd/v && .\v3.exe -o v4.exe -gc boehm cmd/v
 
         ##      ## tcc32
         ##      - name: Build with make.bat -tcc32
