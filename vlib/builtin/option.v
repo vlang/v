@@ -113,14 +113,6 @@ struct Option {
 	// derived Option_xxx types
 }
 
-fn opt_ok(data voidptr, mut option _option, size int) {
-	unsafe {
-		*option = _option{}
-		// use err to get the end of OptionBase and then memcpy into it
-		vmemcpy(&u8(&option.err) + sizeof(IError), data, size)
-	}
-}
-
 // option is the base of V's internal optional return system.
 struct _option {
 	state u8
@@ -128,6 +120,14 @@ struct _option {
 	// Data is trailing after err
 	// and is not included in here but in the
 	// derived _option_xxx types
+}
+
+fn _option_ok(data voidptr, mut option _option, size int) {
+	unsafe {
+		*option = _option{}
+		// use err to get the end of OptionBase and then memcpy into it
+		vmemcpy(&u8(&option.err) + sizeof(IError), data, size)
+	}
 }
 
 fn opt_ok2(data voidptr, mut option _option, size int) {
