@@ -2,7 +2,6 @@ name: vab CI
 
 on:
   push:
-    branches: [master]
     paths-ignore:
       - "**.md"
   pull_request:
@@ -12,6 +11,7 @@ on:
 jobs:
   vab-compiles-v-examples:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     env:
       VAB_FLAGS: --api 30 --build-tools 29.0.0 -v 3

@@ -13,7 +13,6 @@ name: Sanitized CI
 
 on:
   push:
-    branches: [master]
     paths:
       - '!**'
       - 'cmd/tools/vtest*'
@@ -75,6 +74,7 @@ concurrency:
 jobs:
   tests-sanitize-undefined-clang:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 180
     env:
       VFLAGS: -cc clang
@@ -102,6 +102,7 @@ jobs:
 
   tests-sanitize-undefined-gcc:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 180
     env:
       VFLAGS: -cc gcc
@@ -128,6 +129,7 @@ jobs:
 
   tests-sanitize-address-clang:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 180
     env:
       VFLAGS: -cc clang
@@ -159,6 +161,7 @@ jobs:
 
   tests-sanitize-address-msvc:
     runs-on: windows-2019
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 180
     env:
       VFLAGS: -cc msvc
@@ -190,6 +193,7 @@ jobs:
 
   tests-sanitize-address-gcc:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 180
     env:
       VFLAGS: -cc gcc
@@ -221,6 +225,7 @@ jobs:
 
   tests-sanitize-memory-clang:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 180
     env:
       VFLAGS: -cc clang
