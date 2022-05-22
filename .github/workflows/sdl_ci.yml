@@ -11,6 +11,7 @@ on:
 jobs:
   v-compiles-sdl-examples:
     runs-on: ubuntu-18.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 30
     env:
       VFLAGS: -cc tcc

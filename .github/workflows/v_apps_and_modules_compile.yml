@@ -15,6 +15,7 @@ concurrency:
 jobs:
   v-apps-compile:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     steps:
       - uses: actions/checkout@v2

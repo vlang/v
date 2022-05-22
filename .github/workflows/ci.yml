@@ -15,6 +15,7 @@ concurrency:
 jobs:
   ubuntu-tcc:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     env:
       VFLAGS: -cc tcc -no-retry-compilation
@@ -94,6 +95,7 @@ jobs:
 
   ubuntu-tcc-boehm-gc:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     env:
       VFLAGS: -cc tcc -no-retry-compilation
@@ -150,6 +152,7 @@ jobs:
 
   macos:
     runs-on: macOS-latest
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     env:
       VFLAGS: -cc clang
@@ -239,6 +242,7 @@ jobs:
 
   ubuntu:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     steps:
       - uses: actions/checkout@v2
@@ -338,6 +342,7 @@ jobs:
 
   ubuntu-clang:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     env:
       VFLAGS: -cc clang
@@ -428,6 +433,7 @@ jobs:
 
   windows-gcc:
     runs-on: windows-2019
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     env:
       VFLAGS: -cc gcc
@@ -490,6 +496,7 @@ jobs:
 
   windows-msvc:
     runs-on: windows-2019
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     env:
       VFLAGS: -cc msvc
@@ -537,6 +544,7 @@ jobs:
 
   windows-tcc:
     runs-on: windows-2019
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     env:
       VFLAGS: -cc tcc -no-retry-compilation
@@ -631,6 +639,7 @@ jobs:
 
 #  ubuntu-autofree-selfcompile:
 #    runs-on: ubuntu-20.04
+#    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
 #    timeout-minutes: 121
 #    env:
 #      VFLAGS: -cc gcc
@@ -644,6 +653,7 @@ jobs:
 
 #   ubuntu-musl:
 #     runs-on: ubuntu-20.04
+#    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
 #     timeout-minutes: 121
 #     env:
 #       VFLAGS: -cc musl-gcc

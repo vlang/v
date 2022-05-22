@@ -12,6 +12,7 @@ jobs:
   run:
     name: Run
     runs-on: ubuntu-latest
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     steps:
     - name: Checkout
       uses: actions/checkout@v2
