@@ -594,7 +594,8 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			left_right_pos)
 	} else if left_type.is_ptr() {
 		for_ptr_op := c.table.type_is_for_pointer_arithmetic(left_type)
-		if left_sym.language == .v && !c.inside_unsafe && !for_ptr_op && right_type.is_int() {
+		if left_sym.language == .v && !c.pref.translated && !c.inside_unsafe && !for_ptr_op
+			&& right_type.is_int() {
 			sugg := ' (you can use it inside an `unsafe` block)'
 			c.error('infix expr: cannot use `$right_sym.name` (right expression) as `$left_sym.name` $sugg',
 				left_right_pos)
