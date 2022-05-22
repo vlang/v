@@ -59,14 +59,13 @@ $if dynamic_boehm ? {
 		#flag $first_existing("/usr/local/lib/libgc.a", "/usr/lib/libgc.a")
 		#flag -lpthread
 	} $else $if windows {
+		#flag -DGC_NOT_DLL=1
+		#flag -DGC_WIN32_THREADS=1
 		$if tinyc {
 			#flag -I@VEXEROOT/thirdparty/libgc/include
-			#flag -L@VEXEROOT/thirdparty/tcc/lib
-			#flag -lgc
+			#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a
+			#flag -luser32
 		} $else {
-			#flag -DGC_NOT_DLL=1
-			#flag -DGC_WIN32_THREADS=1
-			#flag -DGC_BUILTIN_ATOMIC=1
 			#flag -I@VEXEROOT/thirdparty/libgc/include
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}
