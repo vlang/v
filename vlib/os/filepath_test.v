@@ -146,6 +146,6 @@ fn test_file_extensions() {
 	assert file_extensions('.git') == []
 	assert file_extensions('/path/to/file.js.v///') == ['.js', '.v']
 	assert file_extensions('.ignore_me.v') == ['.v']
-	assert file_extensions(r'path/to/file.ext1.ext2.ext3...////') == ['.ext1', '.ext2', '.ext3']
+	assert file_extensions('path/to/file.ext1.ext2.ext3...////') == ['.ext1', '.ext2', '.ext3']
 	assert file_extensions('') == []
 }
