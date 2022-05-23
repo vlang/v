@@ -288,7 +288,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 			}
 		} else {
 			// Only wrap the contents in {} if we're inside a function, not on the top level scope
-			should_create_scope := g.fn_decl != 0
+			should_create_scope := unsafe { g.fn_decl != 0 }
 			if should_create_scope {
 				g.writeln('{')
 			}

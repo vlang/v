@@ -80,8 +80,12 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		// }
 		array_info := type_sym.array_info()
 		node.elem_type = array_info.elem_type
-		// clear optional flag incase of: `fn opt_arr ?[]int { return [] }`
-		return c.expected_type.clear_flag(.optional)
+		// clear optional flag incase of: `fn opt_arr() ?[]int { return [] }`
+		return if c.expected_type.has_flag(.shared_f) {
+			c.expected_type.clear_flag(.shared_f).deref()
+		} else {
+			c.expected_type
+		}.clear_flag(.optional)
 	}
 	// [1,2,3]
 	if node.exprs.len > 0 && node.elem_type == ast.void_type {

@@ -79,7 +79,6 @@ pub fn pref_arch_to_table_language(pref_arch pref.Arch) Language {
 // * Table.type_kind(typ) not TypeSymbol.kind.
 // Each TypeSymbol is entered into `Table.types`.
 // See also: Table.sym.
-
 [minify]
 pub struct TypeSymbol {
 pub:
@@ -546,6 +545,15 @@ pub fn (t &Table) type_kind(typ Type) Kind {
 		return Kind.placeholder
 	}
 	return t.sym(typ).kind
+}
+
+pub fn (t &Table) type_is_for_pointer_arithmetic(typ Type) bool {
+	typ_sym := t.sym(typ)
+	if typ_sym.kind == .struct_ {
+		return false
+	} else {
+		return typ.is_any_kind_of_pointer() || typ.is_int_valptr()
+	}
 }
 
 pub enum Kind {

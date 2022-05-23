@@ -27,6 +27,25 @@ fn test_simple() ? {
 	assert y.title == .worker
 }
 
+const currency_id = 'cconst'
+
+struct Price {
+	net         f64
+	currency_id string [json: currencyId] = currency_id
+}
+
+fn test_field_with_default_expr() ? {
+	data := '[{"net":1},{"net":2,"currencyId":"cjson"}]'
+	prices := json.decode([]Price, data)?
+	assert prices == [Price{
+		net: 1
+		currency_id: 'cconst'
+	}, Price{
+		net: 2
+		currency_id: 'cjson'
+	}]
+}
+
 fn test_decode_top_level_array() {
 	s := '[{"name":"Peter", "age": 29}, {"name":"Bob", "age":31}]'
 	x := json.decode([]Employee, s) or { panic(err) }
@@ -453,4 +472,12 @@ fn test_encode_sumtype_defined_ahead() {
 	ret := create_game_packet(&GamePacketData(GPScale{}))
 	println(ret)
 	assert ret == '{"value":0,"_type":"GPScale"}'
+}
+
+struct StByteArray {
+	ba []byte
+}
+
+fn test_byte_array() {
+	assert json.encode(StByteArray{ ba: [byte(1), 2, 3, 4, 5] }) == '{"ba":[1,2,3,4,5]}'
 }

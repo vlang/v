@@ -1,25 +1,25 @@
-vlib/v/checker/tests/enum_cast.vv:9:13: error: 12 does not represent a value of enum Color
+vlib/v/checker/tests/enum_cast.vv:9:13: warning: 12 does not represent a value of enum Color
     7 |     println(Color(0))
     8 |     println(Color(10))
     9 |     println(Color(12))
       |             ~~~~~~~~~
    10 |     println(Color(-10))
    11 |
-vlib/v/checker/tests/enum_cast.vv:10:13: error: -10 does not represent a value of enum Color
+vlib/v/checker/tests/enum_cast.vv:10:13: warning: -10 does not represent a value of enum Color
     8 |     println(Color(10))
     9 |     println(Color(12))
    10 |     println(Color(-10))
       |             ~~~~~~~~~~
    11 | 
    12 |     println(Permissions(0b101))
-vlib/v/checker/tests/enum_cast.vv:13:13: error: 10 does not represent a value of enum Permissions
+vlib/v/checker/tests/enum_cast.vv:13:13: warning: 10 does not represent a value of enum Permissions
    11 | 
    12 |     println(Permissions(0b101))
    13 |     println(Permissions(0b1010))
       |             ~~~~~~~~~~~~~~~~~~~
    14 |     println(Permissions(-1))
    15 | }
-vlib/v/checker/tests/enum_cast.vv:14:13: error: -1 does not represent a value of enum Permissions
+vlib/v/checker/tests/enum_cast.vv:14:13: warning: -1 does not represent a value of enum Permissions
    12 |     println(Permissions(0b101))
    13 |     println(Permissions(0b1010))
    14 |     println(Permissions(-1))

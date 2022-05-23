@@ -717,7 +717,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.checker_bug('CallExpr.receiver_type is 0 in method_call', node.pos)
 	}
 	mut unwrapped_rec_type := node.receiver_type
-	if g.cur_fn != 0 && g.cur_fn.generic_names.len > 0 { // in generic fn
+	if unsafe { g.cur_fn != 0 } && g.cur_fn.generic_names.len > 0 { // in generic fn
 		unwrapped_rec_type = g.unwrap_generic(node.receiver_type)
 	} else { // in non-generic fn
 		sym := g.table.sym(node.receiver_type)
@@ -941,7 +941,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if left_sym.kind == .map && node.name in ['clone', 'move'] {
 		receiver_type_name = 'map'
 	}
-	if final_left_sym.kind == .array
+	if final_left_sym.kind == .array && !(left_sym.kind == .alias && left_sym.has_method(node.name))
 		&& node.name in ['repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice', 'pointers'] {
 		if !(left_sym.info is ast.Alias && typ_sym.has_method(node.name)) {
 			// `array_Xyz_clone` => `array_clone`

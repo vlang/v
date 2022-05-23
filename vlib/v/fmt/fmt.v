@@ -1639,6 +1639,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	for arg in node.args {
 		f.comments(arg.comments)
 	}
+	mut is_method_newline := false
 	if node.is_method {
 		if node.name in ['map', 'filter', 'all', 'any'] {
 			f.in_lambda_depth++
@@ -1650,7 +1651,8 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			// `time.now()` without `time imported` is processed as a method call with `time` being
 			// a `node.left` expression. Import `time` automatically.
 			// TODO fetch all available modules
-			if node.left.name in ['time', 'os', 'strings', 'math', 'json', 'base64'] {
+			if node.left.name in ['time', 'os', 'strings', 'math', 'json', 'base64']
+				&& !node.left.scope.known_var(node.left.name) {
 				f.file.imports << ast.Import{
 					mod: node.left.name
 					alias: node.left.name
@@ -1658,6 +1660,11 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			}
 		}
 		f.expr(node.left)
+		is_method_newline = node.left.pos().last_line != node.name_pos.line_nr
+		if is_method_newline {
+			f.indent++
+			f.writeln('')
+		}
 		f.write('.' + node.name)
 	} else {
 		f.write_language_prefix(node.language)
@@ -1680,6 +1687,9 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	f.write(')')
 	f.or_expr(node.or_block)
 	f.comments(node.comments, has_nl: false)
+	if is_method_newline {
+		f.indent--
+	}
 }
 
 fn (mut f Fmt) write_generic_call_if_require(node ast.CallExpr) {
@@ -1694,6 +1704,7 @@ fn (mut f Fmt) write_generic_call_if_require(node ast.CallExpr) {
 				name = 'JS.' + name
 			}
 			f.write(name)
+			f.mark_import_as_used(name)
 			if i != node.concrete_types.len - 1 {
 				f.write(', ')
 			}

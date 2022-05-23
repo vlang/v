@@ -90,23 +90,9 @@ fn (mut g Gen) gen_c_main_header() {
 		g.writeln('#endif')
 	}
 	g.writeln('\t_vinit(___argc, (voidptr)___argv);')
-	if g.pref.is_prof {
-		g.writeln('')
-		g.writeln('\tatexit(vprint_profile_stats);')
-		g.writeln('')
-	}
+	g.gen_c_main_profile_hook()
 	if g.pref.is_livemain {
 		g.generate_hotcode_reloading_main_caller()
-	}
-	if g.pref.profile_file != '' {
-		if 'no_profile_startup' in g.pref.compile_defines {
-			g.writeln('vreset_profile_stats();')
-		}
-		if g.pref.profile_fns.len > 0 {
-			g.writeln('vreset_profile_stats();')
-			// v__profile_enabled will be set true *inside* the fns in g.pref.profile_fns:
-			g.writeln('v__profile_enabled = false;')
-		}
 	}
 }
 
@@ -143,8 +129,9 @@ sapp_desc sokol_main(int argc, char* argv[]) {
 	(void)argc; (void)argv;
 
 	_vinit(argc, (voidptr)argv);
-	main__main();
-')
+	')
+	g.gen_c_main_profile_hook()
+	g.writeln('\tmain__main();')
 	if g.is_autofree {
 		g.writeln('	// Wrap user provided cleanup/free functions for sokol to be able to call _vcleanup()
 	if (g_desc.cleanup_cb) {
@@ -186,6 +173,24 @@ pub fn (mut g Gen) gen_failing_return_error_for_test_fn(return_stmt ast.Return, 
 	g.writeln('\tlongjmp(g_jump_buffer, 1);')
 }
 
+pub fn (mut g Gen) gen_c_main_profile_hook() {
+	if g.pref.is_prof {
+		g.writeln('')
+		g.writeln('\tatexit(vprint_profile_stats);')
+		g.writeln('')
+	}
+	if g.pref.profile_file != '' {
+		if 'no_profile_startup' in g.pref.compile_defines {
+			g.writeln('vreset_profile_stats();')
+		}
+		if g.pref.profile_fns.len > 0 {
+			g.writeln('vreset_profile_stats();')
+			// v__profile_enabled will be set true *inside* the fns in g.pref.profile_fns:
+			g.writeln('v__profile_enabled = false;')
+		}
+	}
+}
+
 pub fn (mut g Gen) gen_c_main_for_tests() {
 	main_fn_start_pos := g.out.len
 	g.writeln('')
@@ -203,6 +208,7 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	}
 	g.writeln('\tmain__vtest_init();')
 	g.writeln('\t_vinit(___argc, (voidptr)___argv);')
+	g.gen_c_main_profile_hook()
 	//
 	mut all_tfuncs := g.get_all_test_function_names()
 	all_tfuncs = g.filter_only_matching_fn_names(all_tfuncs)

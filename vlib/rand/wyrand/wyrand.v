@@ -4,6 +4,7 @@
 module wyrand
 
 import hash
+import rand.buffer
 import rand.seed
 
 // Redefinition of some constants that we will need for pseudorandom number generation.
@@ -16,6 +17,7 @@ pub const seed_len = 2
 
 // WyRandRNG is a RNG based on the WyHash hashing algorithm.
 pub struct WyRandRNG {
+	buffer.PRNGBuffer
 mut:
 	state      u64 = seed.time_seed_64()
 	bytes_left int

@@ -16,6 +16,7 @@ jobs:
 
   alpine-docker-musl-gcc:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     container:
       # Alpine docker pre-built container
@@ -42,11 +43,15 @@ jobs:
       - name: Build V
         run: CC=gcc make
 
+      - name: All code is formatted
+        run: ./v test-cleancode
+
       - name: Test V fixed tests
         run: ./v test-self
 
   ubuntu-docker-musl:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     container:
       image: thevlang/vlang:ubuntu-build
@@ -69,5 +74,9 @@ jobs:
           echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+
+      - name: All code is formatted
+        run: ./v test-cleancode
+
       - name: Test V fixed tests
         run: ./v test-self

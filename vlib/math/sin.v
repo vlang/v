@@ -44,6 +44,7 @@ const (
 	}
 )
 
+// sin calculates the sine of the angle in radians
 pub fn sin(x f64) f64 {
 	p1 := 7.85398125648498535156e-1
 	p2 := 3.77489470793079817668e-8
@@ -82,6 +83,7 @@ pub fn sin(x f64) f64 {
 	}
 }
 
+// cos calculates the cosine of the angle in radians
 pub fn cos(x f64) f64 {
 	p1 := 7.85398125648498535156e-1
 	p2 := 3.77489470793079817668e-8
@@ -122,18 +124,19 @@ pub fn cos(x f64) f64 {
 	}
 }
 
-// cosf calculates cosine. (float32).
+// cosf calculates cosine in radians (float32).
 [inline]
 pub fn cosf(a f32) f32 {
 	return f32(cos(a))
 }
 
-// sinf calculates sine. (float32)
+// sinf calculates sine in radians (float32)
 [inline]
 pub fn sinf(a f32) f32 {
 	return f32(sin(a))
 }
 
+// sincos calculates the sine and cosine of the angle in radians
 pub fn sincos(x f64) (f64, f64) {
 	p1 := 7.85398125648498535156e-1
 	p2 := 3.77489470793079817668e-8

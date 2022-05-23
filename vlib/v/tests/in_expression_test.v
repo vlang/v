@@ -309,3 +309,13 @@ fn test_in_alias_array() {
 	assert Str('') in [Str(''), Str('a')]
 	assert Struct{} == Struct{}
 }
+
+type TokenValue = rune | u64
+
+fn test_in_array_literal_of_sumtype() {
+	val1 := TokenValue(`+`)
+	assert val1 in [TokenValue(`+`), TokenValue(`-`)]
+
+	val2 := `+`
+	assert val2 in [TokenValue(`+`), TokenValue(`-`)]
+}

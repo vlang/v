@@ -95,7 +95,7 @@ pub fn (mut s System) explode(x f32, y f32) {
 
 pub fn (mut s System) free() {
 	for p in s.pool {
-		if p == 0 {
+		if unsafe { p == 0 } {
 			print(ptr_str(p) + ' ouch')
 			continue
 		}
@@ -103,7 +103,7 @@ pub fn (mut s System) free() {
 	}
 	s.pool.clear()
 	for p in s.bin {
-		if p == 0 {
+		if unsafe { p == 0 } {
 			print(ptr_str(p) + ' ouch')
 			continue
 		}

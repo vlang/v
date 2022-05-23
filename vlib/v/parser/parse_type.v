@@ -113,12 +113,12 @@ pub fn (mut p Parser) parse_map_type() ast.Type {
 	}
 	p.check(.lsbr)
 	key_type := p.parse_type()
-	key_sym := p.table.sym(key_type)
-	is_alias := key_sym.kind == .alias
 	if key_type.idx() == 0 {
 		// error is reported in parse_type
 		return 0
 	}
+	key_sym := p.table.sym(key_type)
+	is_alias := key_sym.kind == .alias
 	key_type_supported := key_type in [ast.string_type_idx, ast.voidptr_type_idx]
 		|| key_sym.kind in [.enum_, .placeholder, .any]
 		|| ((key_type.is_int() || key_type.is_float() || is_alias) && !key_type.is_ptr())

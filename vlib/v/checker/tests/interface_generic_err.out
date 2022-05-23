@@ -1,3 +1,8 @@
+vlib/v/checker/tests/interface_generic_err.vv:8:1: warning: unused variable: `why`
+    6 | // no segfault without generic
+    7 | what := What{}
+    8 | why := Why(what)
+      | ~~~
 vlib/v/checker/tests/interface_generic_err.vv:7:9: error: generic struct init must specify type parameter, e.g. Foo<int>
     5 | 
     6 | // no segfault without generic

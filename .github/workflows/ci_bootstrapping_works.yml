@@ -11,6 +11,7 @@ on:
 jobs:
   ubuntu:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 30
     env:
       VFLAGS: -cc tcc -no-retry-compilation
@@ -49,6 +50,7 @@ jobs:
 
   macos:
     runs-on: macos-11
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 30
     env:
       VFLAGS: -cc clang

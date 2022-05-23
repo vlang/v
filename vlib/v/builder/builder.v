@@ -270,7 +270,7 @@ pub fn (b &Builder) import_graph() &depgraph.DepGraph {
 			deps << 'builtin'
 			if b.pref.backend == .c {
 				// TODO JavaScript backend doesn't handle os for now
-				if b.pref.is_vsh && p.mod.name !in ['os', 'dl'] {
+				if b.pref.is_vsh && p.mod.name !in ['os', 'dl', 'strings.textscanner'] {
 					deps << 'os'
 				}
 			}
@@ -556,7 +556,9 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 				}
 			}
 			if redefines.len > 0 {
-				eprintln('redefinition of function `$fn_name`')
+				ferror := util.formatted_error('builder error:', 'redefinition of function `$fn_name`',
+					'', token.Pos{})
+				eprintln(ferror)
 				for redefine in redefines {
 					eprintln(util.formatted_error('conflicting declaration:', redefine.fheader,
 						redefine.fpath, redefine.f.pos))

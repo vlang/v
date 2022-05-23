@@ -433,7 +433,7 @@ fn test_set_bit() {
 	assert a == b
 }
 
-fn test_bit_len() {
+fn test_bit_len() ? {
 	assert big.zero_int.bit_len() == 0
 	assert big.one_int.bit_len() == 1
 
@@ -441,7 +441,10 @@ fn test_bit_len() {
 
 	assert big.one_int.lshift(1239).bit_len() == 1240
 
-	assert big.integer_from_string('4338476092346017364013796407961305761039463198075691378460917856') or {
-		panic('Could not read from decimal')
-	}.bit_len() == 212
+	mut num := big.integer_from_string('4338476092346017364013796407961305761039463198075691378460917856')?
+	assert num.bit_len() == 212
+	for num.bit_len() > 0 {
+		num = num.rshift(8)
+		assert true
+	}
 }

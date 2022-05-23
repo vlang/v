@@ -4,6 +4,7 @@
 module pcg32
 
 import rand.seed
+import rand.buffer
 
 pub const seed_len = 4
 
@@ -11,11 +12,10 @@ pub const seed_len = 4
 // https://github.com/imneme/pcg-c-basic/blob/master/pcg_basic.c, and
 // https://github.com/imneme/pcg-c-basic/blob/master/pcg_basic.h
 pub struct PCG32RNG {
+	buffer.PRNGBuffer
 mut:
-	state      u64 = u64(0x853c49e6748fea9b) ^ seed.time_seed_64()
-	inc        u64 = u64(0xda3e39cb94b95bdb) ^ seed.time_seed_64()
-	bytes_left int
-	buffer     u32
+	state u64 = u64(0x853c49e6748fea9b) ^ seed.time_seed_64()
+	inc   u64 = u64(0xda3e39cb94b95bdb) ^ seed.time_seed_64()
 }
 
 // seed seeds the PCG32RNG with 4 `u32` values.

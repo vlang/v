@@ -41,7 +41,7 @@ pub fn print_manpage_for_command(man_cmd Command) ? {
 		}
 		print(cmd.manpage())
 	} else {
-		if man_cmd.parent != 0 {
+		if unsafe { man_cmd.parent != 0 } {
 			print(man_cmd.parent.manpage())
 		}
 	}
@@ -55,7 +55,7 @@ pub fn (cmd Command) manpage() string {
 	mdoc += '.Os\n.Sh NAME\n.Nm ${cmd.full_name().replace(' ', '-')}\n.Nd $cmd.description\n'
 	mdoc += '.Sh SYNOPSIS\n'
 	mdoc += '.Nm $cmd.root().name\n'
-	if cmd.parent != 0 {
+	if unsafe { cmd.parent != 0 } {
 		mut parents := []Command{}
 		if !cmd.parent.is_root() {
 			parents.prepend(cmd.parent)
@@ -96,7 +96,7 @@ pub fn (cmd Command) manpage() string {
 	}
 	if cmd.commands.len > 0 {
 		mdoc += '.Nm $cmd.root().name\n'
-		if cmd.parent != 0 {
+		if unsafe { cmd.parent != 0 } {
 			mut parents := []Command{}
 			if !cmd.parent.is_root() {
 				parents.prepend(cmd.parent)
@@ -158,7 +158,7 @@ pub fn (cmd Command) manpage() string {
 	if cmd.commands.len > 0 {
 		mdoc += '.Sh SEE ALSO\n'
 		mut cmds := []string{}
-		if cmd.parent != 0 {
+		if unsafe { cmd.parent != 0 } {
 			cmds << cmd.parent.full_name().replace(' ', '-')
 		}
 		for c in cmd.commands {

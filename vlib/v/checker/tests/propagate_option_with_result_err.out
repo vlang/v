@@ -1,4 +1,4 @@
-vlib/v/checker/tests/propagate_option_with_result_err.vv:6:7: error: to propagate an option, the call must also return an optional type
+vlib/v/checker/tests/propagate_option_with_result_err.vv:6:7: warning: propagating a result like an option is deprecated, use `foo()!` instead of `foo()?`
     4 | 
     5 | fn bar() ?string {
     6 |     foo()?

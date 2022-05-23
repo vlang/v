@@ -9,12 +9,13 @@ on:
       - "**.md"
 
 concurrency:
-  group: build-other-${{ github.event.pull_request.number || github.sha }}
+  group: build-v-apps-and-modules-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
   v-apps-compile:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     steps:
       - uses: actions/checkout@v2

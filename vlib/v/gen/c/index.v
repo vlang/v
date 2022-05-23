@@ -18,7 +18,8 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 		} else if sym.kind == .map {
 			g.index_of_map(node, sym)
 		} else if sym.kind == .string && !node.left_type.is_ptr() {
-			is_direct_array_access := (g.fn_decl != 0 && g.fn_decl.is_direct_arr) || node.is_direct
+			is_direct_array_access := (unsafe { g.fn_decl != 0 } && g.fn_decl.is_direct_arr)
+				|| node.is_direct
 			if is_direct_array_access {
 				g.expr(node.left)
 				g.write('.str[ ')
@@ -164,16 +165,18 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 	gen_or := node.or_expr.kind != .absent || node.is_option
 	left_is_ptr := node.left_type.is_ptr()
 	info := sym.info as ast.Array
-	mut elem_type_str := g.typ(info.elem_type)
 	elem_type := info.elem_type
 	elem_sym := g.table.sym(elem_type)
-	if elem_sym.kind == .function {
-		elem_type_str = 'voidptr'
+	elem_type_str := if elem_sym.kind == .function {
+		'voidptr'
+	} else {
+		g.typ(info.elem_type)
 	}
 	// `vals[i].field = x` is an exception and requires `array_get`:
 	// `(*(Val*)array_get(vals, i)).field = x;`
 	if g.is_assign_lhs && node.is_setter {
-		is_direct_array_access := (g.fn_decl != 0 && g.fn_decl.is_direct_arr) || node.is_direct
+		is_direct_array_access := (unsafe { g.fn_decl != 0 } && g.fn_decl.is_direct_arr)
+			|| node.is_direct
 		is_op_assign := g.assign_op != .assign && info.elem_type != ast.string_type
 		if is_direct_array_access {
 			g.write('(($elem_type_str*)')
@@ -232,7 +235,8 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 			}
 		}
 	} else {
-		is_direct_array_access := (g.fn_decl != 0 && g.fn_decl.is_direct_arr) || node.is_direct
+		is_direct_array_access := (unsafe { g.fn_decl != 0 } && g.fn_decl.is_direct_arr)
+			|| node.is_direct
 		// do not clone inside `opt_ok(opt_ok(&(string[]) {..})` before returns
 		needs_clone := info.elem_type == ast.string_type_idx && g.is_autofree && !(g.inside_return
 			&& g.fn_decl.return_type.has_flag(.optional)) && !g.is_assign_lhs
@@ -334,7 +338,7 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		g.expr(node.left)
 	}
 	g.write('[')
-	direct := g.fn_decl != 0 && g.fn_decl.is_direct_arr
+	direct := unsafe { g.fn_decl != 0 } && g.fn_decl.is_direct_arr
 	if (direct || node.index is ast.IntegerLiteral) || g.pref.translated {
 		g.expr(node.index)
 	} else {
@@ -355,10 +359,11 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 	info := sym.info as ast.Map
 	key_type_str := g.typ(info.key_type)
 	elem_type := info.value_type
-	mut elem_type_str := g.typ(elem_type)
 	elem_sym := g.table.sym(elem_type)
-	if elem_sym.kind == .function {
-		elem_type_str = 'voidptr'
+	elem_type_str := if elem_sym.kind == .function {
+		'voidptr'
+	} else {
+		g.typ(elem_type)
 	}
 	get_and_set_types := elem_sym.kind in [.struct_, .map]
 	if g.is_assign_lhs && !g.is_arraymap_set && !get_and_set_types {

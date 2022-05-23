@@ -6,85 +6,11 @@ import v.ast
 import v.util
 import strings
 
-pub enum StrIntpType {
-	si_no_str = 0 // no parameter to print only fix string
-	si_c
-	si_u8
-	si_i8
-	si_u16
-	si_i16
-	si_u32
-	si_i32
-	si_u64
-	si_i64
-	si_e32
-	si_e64
-	si_f32
-	si_f64
-	si_g32
-	si_g64
-	si_s
-	si_p
-	si_vp
-}
-
-pub fn type_to_str(x StrIntpType) string {
-	match x {
-		.si_no_str { return 'no_str' }
-		.si_c { return 'c' }
-		.si_u8 { return 'u8' }
-		.si_i8 { return 'i8' }
-		.si_u16 { return 'u16' }
-		.si_i16 { return 'i16' }
-		.si_u32 { return 'u32' }
-		.si_i32 { return 'i32' }
-		.si_u64 { return 'u64' }
-		.si_i64 { return 'i64' }
-		.si_f32 { return 'f32' }
-		.si_f64 { return 'f64' }
-		.si_g32 { return 'f32' } // g32 format use f32 data
-		.si_g64 { return 'f64' } // g64 format use f64 data
-		.si_e32 { return 'f32' } // e32 format use f32 data
-		.si_e64 { return 'f64' } // e64 format use f64 data
-		.si_s { return 's' }
-		.si_p { return 'p' }
-		.si_vp { return 'vp' }
-	}
-}
-
-pub fn data_str(x StrIntpType) string {
-	match x {
-		.si_no_str { return 'no_str' }
-		.si_c { return 'd_c' }
-		.si_u8 { return 'd_u8' }
-		.si_i8 { return 'd_i8' }
-		.si_u16 { return 'd_u16' }
-		.si_i16 { return 'd_i16' }
-		.si_u32 { return 'd_u32' }
-		.si_i32 { return 'd_i32' }
-		.si_u64 { return 'd_u64' }
-		.si_i64 { return 'd_i64' }
-		.si_f32 { return 'd_f32' }
-		.si_f64 { return 'd_f64' }
-		.si_g32 { return 'd_f32' } // g32 format use f32 data
-		.si_g64 { return 'd_f64' } // g64 format use f64 data
-		.si_e32 { return 'd_f32' } // e32 format use f32 data
-		.si_e64 { return 'd_f64' } // e64 format use f64 data
-		.si_s { return 'd_s' }
-		.si_p { return 'd_p' }
-		.si_vp { return 'd_vp' }
-	}
-}
-
 const (
 	// BUG: this const is not released from the memory! use a const for now
 	// si_s_code = "0x" + int(StrIntpType.si_s).hex() // code for a simple string
 	si_s_code = '0xfe10'
 )
-
-fn should_use_indent_func(kind ast.Kind) bool {
-	return kind in [.struct_, .alias, .array, .array_fixed, .map, .sum_type, .interface_]
-}
 
 fn (mut g Gen) gen_str_default(sym ast.TypeSymbol, styp string, str_fn_name string) {
 	$if trace_autostr ? {
@@ -910,7 +836,16 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 	fn_body.writeln('\tstring res = str_intp( ${info.fields.len * 4 + 3}, _MOV((StrIntpData[]){')
 	fn_body.writeln('\t\t{_SLIT("$clean_struct_v_type_name{\\n"), 0, {.d_c=0}},')
 	for i, field in info.fields {
-		mut ptr_amp := if field.typ.is_ptr() { '&' } else { '' }
+		ftyp_noshared := if field.typ.has_flag(.shared_f) {
+			field.typ.deref().clear_flag(.shared_f)
+		} else {
+			field.typ
+		}
+		mut ptr_amp := if ftyp_noshared.is_ptr() {
+			'&'
+		} else {
+			''
+		}
 		base_fmt := g.type_to_fmt(g.unwrap_generic(field.typ))
 
 		// manage prefix and quote symbol for the filed
@@ -933,7 +868,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 
 		// custom methods management
 		sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
-		sftyp := g.typ(field.typ)
+		sftyp := g.typ(ftyp_noshared)
 		mut field_styp := sftyp.replace('*', '')
 		field_styp_fn_name := if sym_has_str_method {
 			mut field_fn_name := '${field_styp}_str'
@@ -943,7 +878,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 			}
 			field_fn_name
 		} else {
-			g.get_str_fn(field.typ)
+			g.get_str_fn(ftyp_noshared)
 		}
 
 		// manage the fact hat with float we use always the g representation
@@ -960,7 +895,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 		if field.typ in ast.cptr_types {
 			func = '(voidptr) it.$field.name'
 			caller_should_free = false
-		} else if field.typ.is_ptr() {
+		} else if ftyp_noshared.is_ptr() {
 			// reference types can be "nil"
 			funcprefix += 'isnil(it.${c_name(field.name)})'
 			funcprefix += ' ? _SLIT("nil") : '
@@ -999,34 +934,35 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 	fn_body.writeln('\t}));')
 }
 
-fn struct_auto_str_func(sym &ast.TypeSymbol, field_type ast.Type, fn_name string, field_name string, has_custom_str bool, expects_ptr bool) (string, bool) {
+fn struct_auto_str_func(sym &ast.TypeSymbol, _field_type ast.Type, fn_name string, field_name string, has_custom_str bool, expects_ptr bool) (string, bool) {
 	$if trace_autostr ? {
 		eprintln('> struct_auto_str_func: $sym.name | field_type.debug() | $fn_name | $field_name | $has_custom_str | $expects_ptr')
 	}
+	field_type := if _field_type.has_flag(.shared_f) { _field_type.deref() } else { _field_type }
+	sufix := if field_type.has_flag(.shared_f) { '->val' } else { '' }
 	deref, _ := deref_kind(expects_ptr, field_type.is_ptr(), field_type)
 	if sym.kind == .enum_ {
 		return '${fn_name}(${deref}it.${c_name(field_name)})', true
 	} else if should_use_indent_func(sym.kind) {
-		obj := 'it.${c_name(field_name)}'
+		obj := '${deref}it.${c_name(field_name)}$sufix'
 		if has_custom_str {
-			return '${fn_name}($deref$obj)', true
+			return '${fn_name}($obj)', true
 		}
-		return 'indent_${fn_name}($deref$obj, indent_count + 1)', true
+		return 'indent_${fn_name}($obj, indent_count + 1)', true
 	} else if sym.kind in [.array, .array_fixed, .map, .sum_type] {
+		obj := '${deref}it.${c_name(field_name)}$sufix'
 		if has_custom_str {
-			return '${fn_name}(${deref}it.${c_name(field_name)})', true
+			return '${fn_name}($obj)', true
 		}
-		return 'indent_${fn_name}(${deref}it.${c_name(field_name)}, indent_count + 1)', true
+		return 'indent_${fn_name}($obj, indent_count + 1)', true
 	} else if sym.kind == .function {
 		return '${fn_name}()', true
+	} else if sym.kind == .chan {
+		return '${fn_name}(${deref}it.${c_name(field_name)}$sufix)', true
 	} else {
-		if sym.kind == .chan {
-			return '${fn_name}(${deref}it.${c_name(field_name)})', true
-		}
 		mut method_str := 'it.${c_name(field_name)}'
-		mut caller_should_free := false
 		if sym.kind == .bool {
-			method_str += ' ? _SLIT("true") : _SLIT("false")'
+			return '$method_str ? _SLIT("true") : _SLIT("false")', false
 		} else if (field_type.is_int_valptr() || field_type.is_float_valptr())
 			&& field_type.is_ptr() && !expects_ptr {
 			// ptr int can be "nil", so this needs to be casted to a string
@@ -1045,6 +981,34 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, field_type ast.Type, fn_name string
 			fmt_type := StrIntpType.si_i32
 			return 'str_intp(1, _MOV((StrIntpData[]){{_SLIT0, ${u32(fmt_type) | 0xfe00}, {.d_i32 = *$method_str }}}))', true
 		}
-		return method_str, caller_should_free
+		return method_str, false
 	}
+}
+
+fn data_str(x StrIntpType) string {
+	return match x {
+		.si_no_str { 'no_str' }
+		.si_c { 'd_c' }
+		.si_u8 { 'd_u8' }
+		.si_i8 { 'd_i8' }
+		.si_u16 { 'd_u16' }
+		.si_i16 { 'd_i16' }
+		.si_u32 { 'd_u32' }
+		.si_i32 { 'd_i32' }
+		.si_u64 { 'd_u64' }
+		.si_i64 { 'd_i64' }
+		.si_f32 { 'd_f32' }
+		.si_f64 { 'd_f64' }
+		.si_g32 { 'd_f32' } // g32 format use f32 data
+		.si_g64 { 'd_f64' } // g64 format use f64 data
+		.si_e32 { 'd_f32' } // e32 format use f32 data
+		.si_e64 { 'd_f64' } // e64 format use f64 data
+		.si_s { 'd_s' }
+		.si_p { 'd_p' }
+		.si_vp { 'd_vp' }
+	}
+}
+
+fn should_use_indent_func(kind ast.Kind) bool {
+	return kind in [.struct_, .alias, .array, .array_fixed, .map, .sum_type, .interface_]
 }

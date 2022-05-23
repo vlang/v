@@ -412,7 +412,7 @@ fn (g &JsGen) get_all_test_function_names() []string {
 }
 
 pub fn (mut g JsGen) enter_namespace(name string) {
-	if g.namespaces[name] == 0 {
+	if unsafe { g.namespaces[name] == 0 } {
 		// create a new namespace
 		ns := &Namespace{
 			name: name
@@ -521,7 +521,7 @@ pub fn (mut g JsGen) dec_indent() {
 
 [inline]
 pub fn (mut g JsGen) write(s string) {
-	if g.ns == 0 {
+	if unsafe { g.ns == 0 } {
 		verror('g.write: not in a namespace')
 	}
 	g.gen_indent()
@@ -530,7 +530,7 @@ pub fn (mut g JsGen) write(s string) {
 
 [inline]
 pub fn (mut g JsGen) writeln(s string) {
-	if g.ns == 0 {
+	if unsafe { g.ns == 0 } {
 		verror('g.writeln: not in a namespace')
 	}
 	g.gen_indent()
@@ -2449,7 +2449,8 @@ fn (mut g JsGen) match_expr(node ast.MatchExpr) {
 	typ := g.table.final_sym(node.cond_type)
 	if node.is_sum_type {
 		g.match_expr_sumtype(node, is_expr, cond_var, tmp_var)
-	} else if typ.kind == .enum_ && !g.inside_loop && node.branches.len > 5 && g.fn_decl != 0 { // do not optimize while in top-level
+	} else if typ.kind == .enum_ && !g.inside_loop && node.branches.len > 5
+		&& unsafe { g.fn_decl != 0 } { // do not optimize while in top-level
 		g.match_expr_switch(node, is_expr, cond_var, tmp_var, typ)
 	} else {
 		g.match_expr_classic(node, is_expr, cond_var, tmp_var)
@@ -3691,7 +3692,7 @@ fn (mut g JsGen) unwrap_generic(typ ast.Type) ast.Type {
 		non-mut to make sure no one else can accidentally mutates the table.
 		*/
 		mut muttable := unsafe { &ast.Table(g.table) }
-		if t_typ := muttable.resolve_generic_to_concrete(typ, if g.fn_decl != 0 {
+		if t_typ := muttable.resolve_generic_to_concrete(typ, if unsafe { g.fn_decl != 0 } {
 			g.fn_decl.generic_names
 		} else {
 			[]string{}

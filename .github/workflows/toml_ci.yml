@@ -11,6 +11,7 @@ on:
 jobs:
   toml-module-pass-external-test-suites:
     runs-on: ubuntu-18.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 30
     env:
       TOML_BS_TESTS_PATH: vlib/toml/tests/testdata/burntsushi/toml-test

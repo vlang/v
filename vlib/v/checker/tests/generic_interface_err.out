@@ -1,3 +1,8 @@
+vlib/v/checker/tests/generic_interface_err.vv:10:1: warning: unused variable: `i`
+    8 | 
+    9 | s := Struct{7}
+   10 | i := Interface(s)
+      | ^
 vlib/v/checker/tests/generic_interface_err.vv:9:6: error: generic struct init must specify type parameter, e.g. Foo<int>
     7 | }
     8 | 
