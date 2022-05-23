@@ -786,12 +786,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			c.warn('`error($arg)` can be shortened to just `$arg`', node.pos)
 		}
 	}
-	// TODO: typ optimize.. this node can get processed more than once
-	if node.expected_arg_types.len == 0 {
-		for param in func.params {
-			node.expected_arg_types << param.typ
-		}
-	}
+	c.set_node_expected_arg_types(mut node, func)
 	if !c.pref.backend.is_js() && node.args.len > 0 && func.params.len == 0 {
 		c.error('too many arguments in call to `$func.name` (non-js backend: $c.pref.backend)',
 			node.pos)
@@ -1472,12 +1467,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		if !c.table.cur_fn.is_deprecated && method.is_deprecated {
 			c.deprecate_fnmethod('method', '${left_sym.name}.$method.name', method, node)
 		}
-		// TODO: typ optimize.. this node can get processed more than once
-		if node.expected_arg_types.len == 0 {
-			for i in 1 .. method.params.len {
-				node.expected_arg_types << method.params[i].typ
-			}
-		}
+		c.set_node_expected_arg_types(mut node, method)
 		if is_method_from_embed {
 			node.receiver_type = node.from_embed_types.last().derive(method.params[0].typ)
 		} else if is_generic {
@@ -1612,6 +1602,15 @@ fn (mut c Checker) go_expr(mut node ast.GoExpr) ast.Type {
 		return c.table.find_or_register_promise(ret_type)
 	} else {
 		return c.table.find_or_register_thread(ret_type)
+	}
+}
+
+fn (mut c Checker) set_node_expected_arg_types(mut node ast.CallExpr, func &ast.Fn) {
+	if node.expected_arg_types.len == 0 {
+		start_idx := if func.is_method { 1 } else { 0 }
+		for i in start_idx .. func.params.len {
+			node.expected_arg_types << func.params[i].typ
+		}
 	}
 }
 
