@@ -139,6 +139,8 @@ pub mut:
 	show_callgraph         bool   // -show-callgraph, print the program callgraph, in a Graphviz DOT format to stdout
 	show_depgraph          bool   // -show-depgraph, print the program module dependency graph, in a Graphviz DOT format to stdout
 	dump_c_flags           string // `-dump-c-flags file.txt` - let V store all C flags, passed to the backend C compiler in `file.txt`, one C flag/value per line.
+	dump_modules           string // `-dump-modules modules.txt` - let V store all V modules, that were used by the compiled program in `modules.txt`, one module per line.
+	dump_files             string // `-dump-files files.txt` - let V store all V or .template file paths, that were used by the compiled program in `files.txt`, one path per line.
 	use_cache              bool   // when set, use cached modules to speed up subsequent compilations, at the cost of slower initial ones (while the modules are cached)
 	retry_compilation      bool = true // retry the compilation with another C compiler, if tcc fails.
 	// TODO Convert this into a []string
@@ -526,6 +528,14 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-dump-c-flags' {
 				res.dump_c_flags = cmdline.option(current_args, arg, '-')
+				i++
+			}
+			'-dump-modules' {
+				res.dump_modules = cmdline.option(current_args, arg, '-')
+				i++
+			}
+			'-dump-files' {
+				res.dump_files = cmdline.option(current_args, arg, '-')
 				i++
 			}
 			'-experimental' {

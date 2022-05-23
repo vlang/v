@@ -239,7 +239,15 @@ see also `v help build`.
 
    -dump-c-flags file.txt
       Write all C flags into `file.txt`, one flag per line.
-      If `file.txt` is `-`, then write the flags to stdout, one flag per line.
+      If `file.txt` is `-`, write to stdout instead.
+
+   -dump-modules file.txt
+      Write all module names used by the program in `file.txt`, one module per line.
+      If `file.txt` is `-`, write to stdout instead.
+
+   -dump-files file.txt
+      Write all used V file paths used by the program in `file.txt`, one module per line.
+      If `file.txt` is `-`, write to stdout instead.
 
    -no-rsp
       By default, V passes all C compiler options to the backend C compiler

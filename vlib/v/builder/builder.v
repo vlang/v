@@ -215,6 +215,9 @@ pub fn (mut b Builder) parse_imports() {
 		}
 		exit(0)
 	}
+	if b.pref.dump_files != '' {
+		b.dump_files(b.parsed_files.map(it.path))
+	}
 	b.rebuild_modules()
 }
 
@@ -241,6 +244,7 @@ pub fn (mut b Builder) resolve_deps() {
 	for node in deps_resolved.nodes {
 		mods << node.name
 	}
+	b.dump_modules(mods)
 	if b.pref.is_verbose {
 		eprintln('------ imported modules: ------')
 		eprintln(mods.str())
