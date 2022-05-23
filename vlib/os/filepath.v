@@ -285,5 +285,8 @@ fn is_normal_path(path string) bool {
 }
 
 fn trim_right_slashes(s string) string {
-	return $if windows { s.trim_right('\\/') } $else { s.trim_right(path_separator) }
+	$if windows {
+		return s.trim_right('\\/')
+	}
+	return s.trim_right(path_separator)
 }
