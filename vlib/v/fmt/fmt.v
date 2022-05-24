@@ -7,7 +7,6 @@ import strings
 import v.ast
 import v.util
 import v.pref
-import v.mathutil
 
 const (
 	bs      = '\\'
@@ -72,8 +71,16 @@ pub fn fmt(file ast.File, table &ast.Table, pref &pref.Preferences, is_debug boo
 	if res.len == 1 {
 		return f.out_imports.str().trim_space() + '\n'
 	}
-	bounded_import_pos := mathutil.min(res.len, f.import_pos)
-	return res[..bounded_import_pos] + f.out_imports.str() + res[bounded_import_pos..]
+	if res.len <= f.import_pos {
+		imp_str := f.out_imports.str().trim_space()
+		if imp_str.len > 0 {
+			return res + '\n' + imp_str + '\n'
+		} else {
+			return res
+		}
+	} else {
+		return res[..f.import_pos] + f.out_imports.str() + res[f.import_pos..]
+	}
 }
 
 pub fn (mut f Fmt) process_file_imports(file &ast.File) {
