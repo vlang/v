@@ -41,6 +41,7 @@ pub mut:
 	used_imports       []string          // to remove unused imports
 	import_syms_used   map[string]bool   // to remove unused import symbols.
 	mod2alias          map[string]string // for `import time as t`, will contain: 'time'=>'t'
+	mod2syms           map[string]string // import time { now } 'time.now'=>'now'
 	use_short_fn_args  bool
 	single_line_fields bool   // should struct fields be on a single line
 	it_name            string // the name to replace `it` with
@@ -82,6 +83,9 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 			f.mod2alias['${imp.mod}.$sym.name'] = sym.name
 			f.mod2alias['${imp.mod.all_after_last('.')}.$sym.name'] = sym.name
 			f.mod2alias[sym.name] = sym.name
+			f.mod2syms['${imp.mod}.$sym.name'] = sym.name
+			f.mod2syms['${imp.mod.all_after_last('.')}.$sym.name'] = sym.name
+			f.mod2syms[sym.name] = sym.name
 			f.import_syms_used[sym.name] = false
 		}
 	}
@@ -208,8 +212,8 @@ pub fn (mut f Fmt) short_module(name string) string {
 	if !name.contains('.') || name.starts_with('JS.') {
 		return name
 	}
-	if name in f.mod2alias {
-		return f.mod2alias[name]
+	if name in f.mod2syms {
+		return f.mod2syms[name]
 	}
 	if name.ends_with('>') {
 		generic_levels := name.trim_string_right('>').split('<')
