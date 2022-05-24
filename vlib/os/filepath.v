@@ -8,13 +8,13 @@ import strings.textscanner
 // therefore results may be different for certain operating systems.
 
 const (
-	fslash  = `/`
-	bslash  = `\\`
-	dot     = `.`
-	qmark   = `?`
-	dot_dot = '..'
-	empty   = ''
-	dot_str = '.'
+	fslash    = `/`
+	bslash    = `\\`
+	dot       = `.`
+	qmark     = `?`
+	dot_dot   = '..'
+	empty_str = ''
+	dot_str   = '.'
 )
 
 // is_abs_path returns `true` if the given `path` is absolute.
@@ -59,14 +59,14 @@ pub fn abs_path(path string) string {
 [direct_array_access]
 pub fn norm_path(path string) string {
 	if path.len == 0 {
-		return '.'
+		return os.dot_str
 	}
 	rooted := is_abs_path(path)
 	volume := get_volume(path)
 	volume_len := volume.len
 	cpath := clean_path(path[volume_len..])
 	if cpath.len == 0 && volume_len == 0 {
-		return '.'
+		return os.dot_str
 	}
 	spath := cpath.split(path_separator)
 	if os.dot_dot !in spath {
@@ -82,7 +82,7 @@ pub fn norm_path(path string) string {
 	mut backlink_count := 0
 	for i := spath_len - 1; i >= 0; i-- {
 		part := spath[i]
-		if part == os.empty {
+		if part == os.empty_str {
 			continue
 		}
 		if part == os.dot_dot {
@@ -113,7 +113,7 @@ pub fn norm_path(path string) string {
 			return volume
 		}
 		if !rooted {
-			return '.'
+			return os.dot_str
 		}
 		return path_separator
 	}
@@ -131,7 +131,7 @@ pub fn norm_path(path string) string {
 // - the last path separator
 fn clean_path(path string) string {
 	if path.len == 0 {
-		return ''
+		return os.empty_str
 	}
 	mut sb := strings.new_builder(path.len)
 	mut sc := textscanner.new(path)
@@ -201,11 +201,11 @@ fn win_volume_len(path string) int {
 
 fn get_volume(path string) string {
 	$if !windows {
-		return ''
+		return os.empty_str
 	}
 	volume := path[..win_volume_len(path)]
 	if volume.len == 0 {
-		return ''
+		return os.empty_str
 	}
 	if volume[0] == os.fslash {
 		return volume.replace('/', '\\')
