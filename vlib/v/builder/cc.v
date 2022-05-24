@@ -483,17 +483,6 @@ fn (mut v Builder) setup_output_name() {
 	v.ccoptions.o_args << '-o "$v.pref.out_name"'
 }
 
-fn (mut v Builder) dump_c_options(all_args []string) {
-	if v.pref.dump_c_flags != '' {
-		non_empty_args := all_args.filter(it != '').join('\n') + '\n'
-		if v.pref.dump_c_flags == '-' {
-			print(non_empty_args)
-		} else {
-			os.write_file(v.pref.dump_c_flags, non_empty_args) or { panic(err) }
-		}
-	}
-}
-
 pub fn (mut v Builder) cc() {
 	if os.executable().contains('vfmt') {
 		return
