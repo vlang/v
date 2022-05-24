@@ -72,7 +72,12 @@ pub fn fmt(file ast.File, table &ast.Table, pref &pref.Preferences, is_debug boo
 		return f.out_imports.str().trim_space() + '\n'
 	}
 	if res.len <= f.import_pos {
-		return res + '\n' + f.out_imports.str().trim_space() + '\n'
+		imp_str := f.out_imports.str().trim_space()
+		if imp_str.len > 0 {
+			return res + '\n' + imp_str + '\n'
+		} else {
+			return res
+		}
 	} else {
 		return res[..f.import_pos] + f.out_imports.str() + res[f.import_pos..]
 	}
