@@ -1,0 +1,723 @@
+<h1>V Documentation</h1>
+<p>(See <a href="https://modules.vlang.io/">https://modules.vlang.io/</a> for documentation of V&#39;s standard library)</p>
+<h2 id="introduction">Introduction</h2>
+<p>V is a statically typed compiled programming language designed for building maintainable software.</p>
+<p>It&#39;s similar to Go and its design has also been influenced by Oberon, Rust, Swift,
+Kotlin, and Python.</p>
+<p>V is a very simple language. Going through this documentation will take you about an hour,
+and by the end of it you will have pretty much learned the entire language.</p>
+<p>The language promotes writing simple and clear code with minimal abstraction.</p>
+<p>Despite being simple, V gives the developer a lot of power.
+Anything you can do in other languages, you can do in V.</p>
+<h2 id="install-from-source">Install from source</h2>
+<p>The major way to get the latest and greatest V, is to <strong>install it from source</strong>.
+It is <strong>easy</strong>, and it usually takes <strong>only a few seconds</strong>.</p>
+<h3 id="linux-macos-freebsd-etc-">Linux, macOS, FreeBSD, etc:</h3>
+<p>You need <code>git</code>, and a C compiler like <code>tcc</code>, <code>gcc</code> or <code>clang</code>, and <code>make</code>:</p>
+<pre><code class="lang-bash">git clone http<span class="hljs-variable">s:</span>//github.<span class="hljs-keyword">com</span>/vlang/v
+<span class="hljs-keyword">cd</span> v
+<span class="hljs-keyword">make</span>
+</code></pre>
+<p>See <a href="https://github.com/vlang/v/wiki/Installi>, and a C compiler like <code>tcc</code>, <code>gcc</code>, <code>clang</code> or <code>msvc</code>:</p>
+		<pre><code class="lang-bash">git clone http<span class="hljs-variable">s:</span>//github.<span class="hljs-keyword">com</span>/vlang/v
+				  <span class="hljs-keyword">cd</span> v
+					       <span class="hljs-keyword">make</span>.bat -tcc
+		</code></pre>
+		<p>NB: You can also pass one of <code>-gcc</code>, <code>-msvc</code>, <code>-clang</code> to <code>make.bat</code> instead,
+		if you do prefer to use a different C compiler, but -tcc is small, fast, and
+		easy to install (V will download a prebuilt binary automatically).</p>
+		<p>For C compiler downloads and more info, see
+		<a href="https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows">here</a>.</p>
+		<p>It is recommended to add this folder to the PATH of your environment variables.
+		This can be done with the command <code>v.exe symlink</code>.</p>
+		<p>NB: Some antivirus programs (like Symantec) a(like <code>v.exe</code>). One possible workaround in that situation is
+		copying <code>v.exe</code> to <code>vlang.exe</code> (so that the copy is newer), or whitelisting the
+		V folder in your antivirus program.</p>
+		<h3 id="android">Android</h3>
+		<p>Running V graphical apps on Android is also possible via <a href="https://github.com/vlang/vab">vab</a>.</p>
+		<p>V Android dependencies: <strong>V</strong>, <strong>Java JDK</strong> &gt;= 8, Android <strong>SDK + NDK</strong>.</p>
+		<ol>
+			<li>Install dependencies (see <a href="https://github.com/vlang/vabi>
+					<li>Run:<pre><code class="lang-bash">git clone https:<span class="hljs-regexp">//gi</span>thub.com<span class="hljs-regexp">/vlang/</span>vab &amp;&amp; cd vab &amp;&amp; v vab.v
+					.<span class="hljs-regexp">/vab --device auto run /</span>path<span class="hljs-regexp">/to/</span>v<span class="hljs-regexp">/examples/</span>sokol<span class="hljs-regexp">/particles</span>
+						</code></pre>
+						For more details and troubleshooting, please visit the <a href="https://github.com/vlang/vab">vab GitHub repository</a>.</li>
+		</ol>
+		<h2 id="table-of-contents">Table of Contents</h2>
+		<table>
+			    <tr><td width=33% valign=top>
+
+					    <em> <a href="#hello-world">Hello world</a>
+					    </em> <a href="#running-a-project-folder-with-several-files">Running a project folder</a>
+					    <em> <a href="#comments">Comments</a>
+					    </em> <a href="#functions">Functions</a>
+					        <em> <a href="#returning-multiple-values">Returning multiple values</a>
+							    </em> <a href="#hoistings">Hoistings</a>
+							    <em> <a href="#symbol-visibility">Symbol visibility</a>
+							    </em> <a href="#variables">Variables</a>
+							    <em> <a href="#v-types">V types</a>
+								        </em> <a href="#strings">Strings</a>
+									    <em> <a href="#numbers">Numbers</a>
+										        </em> <a href="#arrays">Arrays</a>
+											        <em> <a href="#multidimensional-arrays">Multidimensional arrays</a>
+													        </em> <a href="#array-methods">Array methods</a>
+														        <em> <a href="#array-slices">Array slices</a>
+																    </em> <a href="#fixed-size-arrays">Fixed size arrays</a>
+																        <em> <a href="#maps">Maps</a>
+																	</em> <a href="#module-imports">Module imports</a>
+																	<em> <a href="#statements--expressions">Statements &amp; expressions</a>
+																		    </em> <a href="#if">If</a>
+																		        <em> <a href="#in-operator">In operator</a>
+																				    </em> <a href="#for-loop">For loop</a>
+																				        <em> <a href="#match">Match</a>
+																						    </em> <a href="#defer">Defer</a>
+																						    <em> <a href="#structs">Structs</a>
+																							        </em> <a href="#default-field-values">Dhref="#unions">Unions</a>
+
+				    <td width=33% valign=top></td>
+
+					    </em>Closures</a>
+					    </em> <a href="#references">References</a>
+					    <em> <am> <a href="#dumping-expressions-at-runtime">Dumping expression    </em> <a href="#type-aliases">Type aliases</a>
+						        <em> <a>ime pseudo variables</a>
+								    <em> <a href="#compile-time-reflecibutes</a>
+										      <em> <a href="#goto">Goto</a>
+										      </em> <a href="#"></a>You have to type the path to V manually.</p>
+											      </blockquote>
+											      <p>Crints the value passed to it to standard output.</p>
+											      <p><code>fn main()</code> declaration can be skipped in one file programs.
+											      This is useful when writing small programs, &quot;scripts&quo one program.</p>
+											      <p>In other languages, you would have to use  files into a single program (named
+											      after your folder/project), and then it will execute the program with
+											      <code>--yourparam some_other_stuff</code> passed to it as CLI parameters.</p>
+											      <p>Yoan> - <span class="hljs-keyword"></span>
+											      }
+											      </code></pre>
+											      <p>Again, the type comes after the argument&#39;s name.</p>
+											      <p>Just s="hljs-function"><span class="hljs-title">println</span><span lass="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">public_function</span></span>() {
+											      }
+
+											      <span hljs-params">(large_number)</span></span>
+										      </code></pre>
+										      <p>In V, variables are
+										      immutable by default.
+										      To be able to change the value of the variable, you have to declare it with <code>mutable</span> <span class="hljs-string">`age`</span> is <span class="hljs-literal">not</span> declared.
+										      <span class="hljs-litera be swapped without an intermediary variable.</p>
+										      <pre><code cl0</span>
+										      mut <span class="hljs-selector-tag">b</span> := <span class="hljs-string">'$a, $b'</span>)</p>
+										      <p><code>``v failcompile nofmt
+										      fn main() {
+										          a := 10
+											     sed variable</code>a`
+											     }</p>
+											     <pre><code>
+											     Unlike most languages, </span> parent scope will cause <span class="hljs-selector-tag"js-selector-class">.parent</span><span class="hljs-selector-claent, the size is how many bytes it takes to reference any locatss"><span class="hljs-keyword">type</span> <span class="hljs-tipan class="hljs-keyword">int</span> → <span class="hljs-keyworomotion from <code>int</code> to <code>f32</code>, however, ise> are treated in a special way. They do
+																				 not lead to type promo- default for int literal
+																				 b := 14.7      // b is of type</code>f64<code>- default for float literal
+																				 c := u + a     // c is of type</code>int<code>- automatic promotion of</code>u<code>&#39;'</span>  <span class="hljs-comment">// slicing gives a string  in C</span>
+																																		 <span class="hljs-keyword">assert</span> windows_ntation where `#` is</span>
+																																			      <span class="hljs-comment">// a hex TF-8 representation</span>
+																																					   star_str := <span class="hljs-stringert</span> star_str == <span class="hljs-string">'★'</span>
+																																					   <span> arr.len == <span class="hljs-number">10</span>
+
+																																					   <span claass="hljs-keyword">the</span> `<span class="hljs-keyword">byte<comment"> // Output: 78</span>
+																																							 println(country[<span class="hlj to denote strings. For consistency, <code>vfmt</code> convertsnumber">195</span>
+																																							 <span class="hljs-keyword">assert</span> <spt</span>() == <span class="hljs-number">3850</span>
+																																							 <span classn</h3>
+																																							 <p>Basic interpolation syntax is pretty simple - use <co<span class="hljs-function"><span class="hljs-title">println</s be rendered as such, <code>e</code> and <code>E</code> specifylues
+																																							 like <code>infinity</code>, the lowercase version of the tcode> in exponents. Use a
+																																							 uppercase type to force the use of upmat_string#Format_placeholder_specification">Format Placeholderparams">(<span class="hljs-string">'[${x:10}]'</span>)</span></span>)</span></span> <span class="hljs-comment">// left-align w><span class="hljs-params">(<span class="hljs-string">'[${int(xenate strings</span>
+																																							 <span class="hljs-function"><span class="hrld"</span>
+																			 </code></pre>
+																			 <p>All operators in V must have value</p>
+																			 <pre><code class="lang-v">rocket := `���`
+																			 </code></pre>
+																			 <pmultibyte literals work too</span>
+																																							 assert `\u2605` == `★`
+																																							 assx85</span>]
+																																						 assert `\<span class="hljs-number">342</span>\<spanmbers">Numbers</h3>
+																																								       <pre><code class="lang-v"><span class="hljshljs-number">0o173</span>
+																																								       </code></pre>
+																																								       <p>If you want a differams">(nums)</span></span> <span class="hljs-comment">// `[1, 2,an>nums &lt;&lt; [5, 6, 7]
+																																							       println(nums) // <span class="hljs-string">"[1, 2, 3, 4, 5, 6, 7]"</span>
+										      </code></pre>
+										      <pre><code ut
+												 being reallocated. Usually, V takes care of this field autom<span class="hljs-function"><span class="hljs-title">println</scode.</p>
+												 <p>Note that the fields are read-only and can&#39;t buser can explicitly specify the type for the first element: <coit</code> are optional;
+												 <code>len</code> defaults to <code>0</cfied explicitly):</p>
+												 <pre><code class="lang-v"><span class="hlng">len:</span> <span class="hljs-number">5</span>, <span classn>{}
+												 </code></pre>
+												 <p>Setting the capacity improves performancen"><span class="hljs-title">println</span><span class="hljs-parcate</span>
+												 <span class="hljs-keyword">for</span> <span class=">init:</span> it}
+												 <span class="hljs-keyword">assert</span> counMyStructName</code>                     |
+											 | Channel      | <cod                         |
+												       | Shared       | <code>[]shared MySt    p1 Point
+													           p2 Point
+														   }
+
+														   type ObjectSumType = Line | Point
+														   "hljs-number">1</span>
+												 <span class="hljs-attr">    y:</span> <smension.</p>
+												 <p>2d array example:</p>
+												 <pre><code class="lang-v"p>
+												 <pre><code class="lang-v">nums := [<span class="hljs-number"an class="hljs-number">4</span>, <span class="hljs-number">5</san>]
+												 even := nums.filter(it % <span class="hljs-number">2</spanonymous functions</span>
+												 even_fn := nums.filter(fn (x <span cla>, <span class="hljs-string">'world'</span>]
+												 upper := words.<spap can also accept anonymous functions</span>
+												 upper_fn := wordser_fn) <span class="hljs-comment">// ['HELLO', 'WORLD']</span>
+												 n class="hljs-params">(nums.any(it == <span class="hljs-number"<code>a.insert(i, [3, 4, 5])</code> inserts several elements</lart, size)</code> removes <code>size</code> consecutive elementex, 1)</code></li>
+												 <li><code>a.delete_last()</code> removes thee>a.reverse_in_place()</code> reverses the order of elements in <code>a</code></li>
+												 <li><code>a.join(joiner)</code> concatenat>Sorting arrays of all kinds is very simple and intuitive. Spec class="hljs-number">3</span>, <span class="hljs-number">2</spaser{<span class="hljs-number">21</span>, <span class="hljs-stri&lt; <span class="hljs-selector-tag">b</span>.age) <span class=.name</span> &gt; <span class="hljs-selector-tag">b</span>.namethe sort order.
+																										  Useful for sorting on multiple fields at the sar{<span class="hljs-number">25</span>, <span class="hljs-string;User, <span class="hljs-selector-tag">b</span> &amp;User) int ame order</span>
+																										      <span class="hljs-comment">// return 1 when <span class="hljs-number">1</span>
+																										              }
+																											              <span cln class="hljs-keyword">if</span> <span class="hljs-selector-tag>nums := [<span class="hljs-number">0</span>, <span class="hljsnction"><span class="hljs-title">println</span><span class="hljs-params">(nums[..<span class="hljs-number">4</span>])</span></de class="lang-v">array_1 := <span class="hljs-string">[3, 5, 4e>cap == len</code> (see
+																														       <a href="#array-initialization"><code>to another
+																																memory location when the size increases thus becominan class="hljs-params">(a)</span></span> <span class="hljs-commspan class="hljs-number">9</span>
+																																<span class="hljs-comment">// `b` has been reallocated and is now independent from `a`</span>
+																																<span class="hljs-function"><span class="hljs-title">println<pan> &lt;&lt; <span class="hljs-number">3</span>
+																																<span class="han class="hljs-number">13</span> <span class="hljs-comment">// ="hljs-selector-tag">a</span> &lt;&lt; <span class="hljs-number 2, 2, 13, 2, 3, 4]`</span>
+																																<span class="hljs-function"><span co want to have an independent copy right away:</p>
+																																<pre><code c>].clone()
+																																<span class="hljs-selector-tag">b</span>[<span class">// NB: `b[0]` is NOT referring to `a[2]`, as it would have bed of the array towards the start,
+																																	     for example <code>-3</code> i><span class="hljs-params">(a#[-<span class="hljs-number">20</title">println</span><span class="hljs-params">(a#[<span classan class="hljs-params">(a#[<span class="hljs-number">20</span>.alls of array methods like <code>.filter()</code> and <code>.mayword">map</span>(it.to_upper())
+																																	     // [<span class="hljs-string">'PIPPO.JPG'</span>, <span class="hljs-string">'IMG_02.JPG'</spant</span>
+
+																																	     fnums2 := [<span class="hljs-number">1</span>, <spanxed size array to be copied to
+																																			      the newly created ordinary arrayan class="hljs-number">2</span>
+																																			      <span class="hljs-function"><spng">'one'</span>])</span></span> <span class="hljs-comment">// _key'</span>])</span></span> <span class="hljs-comment">// "0"</span>
+																																					   <span class="hljs-function"><span class="hljs-title">prijs-title">println</span><span class="hljs-params">(m.keys()</spone'</span>: <span class="hljs-number">1</span>
+																																					       <span class="hljs-string">'two'</span>: <span class="hljs-number">2</span>k to handle missing keys:</p>
+																																					       <pre><code class="lang-v">mm := <span class="hljs-keyword">map</span>[<span class="hljs-keyword"n also import specific functions and types from modules directllass="hljs-string">'Enter your name: '</span>)
+																																					           <span class=><span class="hljs-title">println</span><span class="hljs-paramh3 id="module-import-aliasing">Module import aliasing</h3>
+																																									     <p>A
+																																									     <span class="hljs-keyword">import</span> <span class="hljs-keyTime{
+																																															            year: <span class="hljs-number">2020</span>
+																																																         keyword">if</span> <span class="hljs-selector-tag">a</span> &ltpan class="hljs-string">'$a == $b'</span>)
+																																																	 }
+																																					       </code></pre>
+																																					       <p><code>if</code> statements are pretty straightforward and similad">is</span> automatically casted <span class="hljs-keyword">tolang-v"><span class="hljs-keyword">struct</span> MyStruct {
+																																					          n>} <span class="hljs-comment">// MyStruct will be converted to casted</span>
+																																						      println(x.<span class="hljs-built_in">bar</slt_in">bar</span> {
+																																						          MyStruct {
+																																							          <span class="hljs-coust mark the expression with the <code>mut</code> keyword
+																																									       to terd that wouldn&#39;t work
+																																									           println(x)
+																																										   }
+																																										   // same with match
+																																										   m class="hljs-number">4</span> !<span class="hljs-keyword">in</strue</span>
+																																											    println(<span class="hljs-string">'three'</span> !<span class="hljs-keyword">in</span> m) <span class="hljs-commeneyword: <code>for</code>, with several forms.</p>
+																																					       <h4 id="-for-in-"><code>for</code>/<code>in</code></h4>
+																																					       <p>This is the most common form. You can use it with an array, map or
+																																					       numeric range.</p>
+																																					       <h5 id="array-for-">Array <code>for</code></h5>
+																																					       <pre><code class="lang-v">numbers := [<span class="hljs-number">1</span>, <span class="hljs-number">2</span>, <span class="hljs-number"de>Option</code> can be iterated
+																																					       with a <code>for</code> loop.<:
+																																																				       idx <span class="hljs-keyword">int</span>
+																																																				       }
+
+																																																				       <span class= error('')
+																																																					         }
+																																																					         defer {
+																																																					             iter.idx++
+																																																					         }
+																																																					         <spanr</span> squared <span class="hljs-keyword">in</span> iter {
+																																																						   ="hljs-string">'two'</span>: <span class="hljs-number">2</span>
+																																																						   }
+																																																						   <span class="hljs-keyword">for</span> key, <span class="hljs-keyword">value</span> <span class="hljs-keyword">in</span> m {
+																																																						       println(<span class="hljs-string">'$key -&gt; $value'</span>)
+																																																						           <span class="hljs-comment">// Output: one -&gt; 1</span>
+																																																							       <span class="hljs-comment">//         two -&gt; 2</span>
+																																																							       an class="hljs-title">println</span><span class="hljs-params">(comment">// "5050"</span>
+																																			     </code></pre>
+																																			     <p>This form of the loo"hljs-number">2</span>
+																																				           <span class="hljs-keyword">if</span>or</code></h4>
+																																			   <pre><code class="lang-v"><span class="hljs-keyword">for</span> i := <span class="hljs-number">0</span>; i &lt;
+																																			       <span class="hljs-built_in">println</span>(i)
+																																			       }
+																																			       </code></p<span class="hljs-number">4</span>; true; i++ {
+																																			           println(i)
+																																				       <span class="hljs-keyword">for</span> {
+																																				               <span class="hljs-keyword">if</span> i &lt; <span class="hljs-number">7</sows'</span>
+																																					       <span class="hljs-built_in">print</span>(<span clasass="hljs-keyword">else</span> { <span class="hljs-built_in">pr matching branch is found, the following statement block will be run.
+																																					       The else branch will be run when no other branches matchch statement can also to be used as an <code>if - class="lang-v== <span class="hljs-number">4</span> { <span class="hljs-keywoe</span>') }
+																																																				}
+																																																				// '<span class="hljs-keyword">else</span> if2' js-number">2</span> &gt; <span class="hljs-number">4</span> { <an>('<span class="hljs-keyword">else</span>') }
+																																																				}
+																																																				// '<span claue(c Color) bool {
+																																																					      <span class="hljs-keyword">return</span>by using the shorthand <code>.variant_here</code> syntax. An <cspan class="hljs-string">'lowercase'</span> }
+																																																					          else { <span nges as <code>match</code> patterns. If the value falls within r.</p>
+																																																						  <p>Note: <code>match</code> as an expression is not usable in <code>for</code> loop and <code>if</code> statements.</p>
+																																																						  <h3 id="defer">Defer</h3>
+																																																						  <p>A defer statement defers the exec><span class="hljs-keyword">import</span> os
+
+																																																						  enum State {
+																																																						      normal
+																																																						          write_log
+																																																							      return_error
+																																																							      }
+
+																																																							      <span class="hljs-comm">if</span> s == .return_error {
+																																																							              <span class="hljs-comment">// the file will be closed after the `error()` function</ss="hljs-number">0</span>
+																																																								          }
+																																																									      <span class="hljs-built_in">println</span>(<span class="hljs-string">'$n bytes written'</span>)
+																																																									      }
+																																					       </code></pre>
+																																					       <h2 id="structs">Structs</h2>
+																																					       <pre><code code> is <code>&amp;Point</code>. It&#39;s a <a href="#references">reference</a> to <code>Point</code>.
+																																					       References are similar "hljs-selector-tag">a</span><span class="hljs-selector-class">.{ 1 }</span>
+																																					       <span class="hljs-comment">// mut b := &amp;fb  //="hljs-title">println</span><span class="hljs-params">(fc)</span></span> <span class="hljs-comment">// Foo{ x: 2 }</span>
+																																					       <spaAll struct fields are zeroed by default during the creation of the struct.
+																																						       Array and map fields are allocated.</p>
+																																						       <p>It&#39;s also possible to define custom default values.</p>
+																																						       <h3 id="req> p := Point{
+																																							           x: <span class="hljs-number">10</span>
+																																										       y: <span class="hljs-number">20</span>
+																																												       }
+																																												       p = Point{
+																																												           x: <span hods</h3>
+																																													   <pre><code class="lang-v"><span class="hljs-keyword">
+																																															     <p>V doesn&#39;t have classes, but you can define methods on tkeyword and the method name.
+																																															     Methods must be in the same module the fields and methods from
+																																															     the struct <code>Size</code>, whicd">output</span> :
+																																													   </code></pre><p>Button{
+																																													       Size: Size{
+																																													           n><span class="hljs-keyword">it </span>can also embed <span claass="hljs-symbol">If</span> you need to access embedded <span chljs-keyword">If</span> multiple embedded structs have methods e</span> <span class="hljs-title">outermost</span> <span class=pan class="hljs-title">Just</span> <span class="hljs-title">likord">in</span> <span class="hljs-number">0</span> .. arr<span class="hljs-selector-class">.len</span> {
+																																													           arr[i] *= <span class="hljs-number">2</span>
+																																														       }
+																																														       }
+
+																																														       mut nums := [<span clasomplex types such as arrays and maps may be modified.</p>
+																																													   <h4 i> <span class="hljs-title">{
+																																															       return</span> User{
+																																														               ..register</span>(user)
+																																														       println(user)
+																																					       </code></pre>
+																																					       <h3 id="variaent">// 5</span>
+																																	<span class="hljs-comment">// using array decomposition</span>
+																																	<span class="hljs-selector-tag">a</span> := [<</span>
+																																    fns := [sqr, cube]
+																																        println(fns[<span class="hljs-number">0</span>](<span class="hljs-number">10</span>)) <span
+																																							      ```v oksyntax
+																																							      mut i := <span class="hljs-number">1</span>
+																																							      func() == <span class="hljs-number">1</span>) // still <span class= := new_counter()
+																																									      println(c()) // 1
+																																									      println(c()) // 2
+																																									      println(cs="hljs-comment">// ...</span>
+																																							      }
+
+																																							      <span class="hljs-function">< struct by value
+																																								    or by reference.</p>
+																																															     <p>You can ensure that th int
+																																															         <span class="hljs-selector-tag">b</span> int
+																																																 }
+
+																																																 fn rgb class="hljs-number">0</span>, <span class="hljs-number">255</span>)
+																																															 )
+
+																																															 <span class="hljs-function"><span class="hljs-title">pspan> name.
+
+																																																	 <span class="hljs-meta">### Required module prefixor</span> example,
+																																																	 <span class="hljs-keyword">to</span> access side it. That restriction <span class="hljs-keyword">is</span> relaxed only <span class="hljs-keyword">for</span> the `main` < <span class="hljs-keyword">of</span> this rule, so you can type `println(pi)` inside the `math` <span class="hljs-keyword">module</span>,
+																																																	 <span class="hljs-keyword">and</span> vfmt will aup>--&gt;</p>
+																																															     <h2 id="builtin-functions">Builtin functions</h2>
+																																															     ing on stdout
+																																															     fn println(s string) // prints anything and a newrints a message and backtraces on stderr, and terminates the prg-expressions-at-runtime).
+
+																																															     ### println
+
+																																															     `println` is a simple Bob'</span>, age: <span class="hljs-number">20</span> }) <span r <span class="hljs-keyword">int</span>
+																																															         g <span class="hljs    <span class="hljs-keyword">return</span> '{$c.r, $c.g, $c.b}'
+																																																		}
+
+red := Color{
+    r: <span class="hljs-number">255</span>ss="hljs-number">1</span>) {
+		            <span class="hljs-keyword">return</span> dump(<span class="hljs-number">1</span>)
+					     }
+					      n>))
+					      }
+																															       </code></pre>
+																															       <p>You will get:</p>
+																															       <pre><code>[<span class="hljs-built_in">factorial</span>.v:<span class="hljs-number"js-built_in">factorial</span>(n - <span class="hljs-number">1</</span>(n - <span class="hljs-number">1</span>): <span class="hn value.</p>
+																																			<h2 id="modules">Modules</h2>
+																																				<p>Every file in thein&#39;.</p>
+																																				<p>V is a very modular language. Creating reusable modules is encouraged and is
+																																				quite easy to do.
+																																				To create a newhljs-keyword">in</span> your <span class="hljs-keyword">code</span>:
+
+																																				```v failcompile
+																																				<span class="hljs-keyword">import</spanents an interface by implementing its methods and fields.
+																																				There is no explicit declaration of intent, no &quot;implements&quoting</span>
+																																				}
+
+																																				<span class="hljs-comment">// =&gt; the method sint">// `pub fn (s Type) write(a string) string`</span>
+
+																																				pub <sp Type) write(a string) string`</span>
+
+																																				<span class="hljs-keyword">struct</span> MyStruct {}
+
+																																				<span class="hljs-comment">// MySclass="hljs-params">s Foo</span>) </span>{
+																																				    println(s.write(<span class="hljs-string">'Foo'</span>))
+																																				    }
+
+																																				    <span class="hljs-cmpe.1)
+																																						 interface Something {}</p>
+																																						 <p>fn announce(s Something) {peaks $s.speak()&#39;)
+																																						     } else {
+																																						             println(&#39;someth>SFoo</span></span> {}
+
+<span class="hljs-function"><span class<span class="hljs-function"><span class="hljs-keyword">fn</span>fn</span> </span>(sfb SFooBar) bar() {
+	         dump(<span class="hd">in</span> arr {
+				           dump(a)
+					           <span class="hljs-co">as</span> IBar
+								            dump(b)
+									                b.bar()
+											      s">Interface method definitions</h4>
+											      <p>Also unlike Go, an inte with the same name <code>speak</code>, as a method implemented by
+											      the struct, and you do <code>a.speak()</code>, <em>only</em> the interface method is called:</p>
+											      <pre><code class="lang-v">interface Adoptable {}
+
+											      fn (<span class="hljs-selector-tag">a</span> Adoptable) speak() string {
+											          return <span class="hljs-string">'adopt me!'</span>
+												  }
+
+												  struct Cat {}
+
+												  fn (c Cat) speak() string {
+												      return <span class="hljs-string">'meow!'</span>
+												      k()) == <span class="hljs-string">'adopt me!'</span> <span claskeyword">int</span>
+															   }
+
+<span class="hljs-comment">// ReaderWritss="hljs-comment">// Reader and all of the Writer methods/fieldss="hljs-keyword">string</span>)</span> <span class="hljs-keywoan> filter<span class="hljs-params">(s <span class="hljs-keyworord">of</span> course have passed <span class="hljs-keyword">itass="hljs-string">'Hello world'</span>, uppercase))
+											      </code></pre><p>And this works with anonymous functions as well:</p>
+											      <p>```v oksyntax
+											      println(filter(&#39;Hello world&#39;, fn (s string)hljs-built_in">red</span>
+<span class="hljs-comment">// V knows that `color` is a `Color`. No need to use `color = Color.greenin">println</span>(<span class="hljs-built_in">color</span>) <sljs-built_in">println</span>(<span class="hljs-string">'the coleld is added, it&#39;s handled everywhere in the code.</p>
+											      <p>Eclass="lang-v"><span class="hljs-class"><span class="hljs-keywo := int(Grocery.apple)
+																		g2 := int(Grocery.orange)
+																		g3 := int(Groc <span class="hljs-title">Cycle</span> {</span>
+												          one
+													      twos-keyword">for</span> _ in <span class="hljs-number">0</span> .hljs-literal">three</span>
+<span class="hljs-literal">one</span>
+<span class="hljs-literal">two</span>
+<span class="hljs-literal">three</span>
+<span class="hljs-literal">one</span>
+<span class="hljs-literal">two</span>
+<span class="hljs-literal">three</span>
+<span class="hljs-literal">one</span>
+																															       </code></pre><h3 ijs-keyword">node</span> <span class="hljs-title">values</span>
+																																			    , Empty{}}}
+																																			        tree := <span class="hljs-keyword">Node</span><<span class="hljs-number">0.4</span> + <span class="hljs-number">0.5</span> = <span class="hljs-number">1.4</span>
+																																						     }
+																																						     </code></hljs-title">main</span></span>() {
+																																						         <span class="hljs-keyworde>w</code> doesn&#39;t hold a <code>Mars</code> instance.
+																																								      A sa <span class="hljs-type">`Mars` </span>inside the <span class="hljs-keyword">body</span> <span class="hljs-keyword">of</span> ">if</span> the compiler smart casts it without a warning.
+																																							      Thatode>match</code> to determine the variant:</p>
+											      <pre><code classpan></span> {}
+
+											      <span class="hljs-class"><span class="hljs-keywyword">as</span> an alias for `ExistingType`,
+											      do `type NewType = ExistingType`.&lt;br/&gt;
+											      This is a <span class="hljs-keyword">special</span> <span class="hljs-keyword">case</span> <span class="hljs-keyword">of</span> a [sum type](#sum-types) declaratcode> is empty if <code>none</code> was returned.</p>
+											      <p>```v optionals
+
+											      There are four ways <span class="hljs-keyword">of</sptle">the</span> <span class="hljs-title">error</span>:</span>
+
+											      ttp.Response</code>. Because <code>?</code> follows the call, t, since the error cannot be propagated
+											      any further.</p>
+											      <p>The esp.text</p>
+											      <pre><code>
+											      ---
+											      The second <span class="hljs-function"><span class="hljs-keyword">method</span> <span class="hljs have a way to forcibly &quot;unwrap&quot; an optional (as othehing(s <span class="hljs-keyword">string</span>) ?<span class="= do_something(<span class="hljs-string">'foo'</span>) or { <sp">'bar'</span>) or { <span class="hljs-string">'default'</span>">if</span> resp := http.<span class="hljs-built_in">get</span>class="hljs-built_in">else</span> {
+											          <span class="hljs-built This provides an empty default implementation for both requirestring</span>
+													       }
+
+<span class="hljs-function"><span class="hljs-ord">fn</span> try_open<span class="hljs-params">(path <span class="hljs-keyword">string</span>)</span> ? {
+	         <span class="hd int
+		           title string
+		           body string
+		       }</p>
+		       <p>fn new_repo<T>(name := T.name // in this example getting the name of the type _id` can omit `&lt;T&gt;`, because the
+		       receiver argument `r` usn> T) int {
+		           <span class="hljs-keyword">if</span> <span class="hljs-selector-tag">a</span> &lt; <span class="hljs-selector-</span><span class="hljs-params">(compare(<span class="hljs-numarams">(compare(<span class="hljs-number">1</span>, <span class<span class="hljs-string">'0'</span>)</span></span>) <span classtring">'2'</span>)</span></span>) <span class="hljs-comment">//span>)</span></span>) <span class="hljs-comment">//          0span></span>) <span class="hljs-comment">//         -1</span>
+			   <ljs-function"><span class="hljs-keyword">fn</span> <span class=span></span>() {
+					     go p(<span class="hljs-number">3</span>, <span class="hljs-number">4</span>)
+							           <span class="hljs-comment">// p will be run in parallel thread</span>
+										}
+											      </code></pre>
+											      <p>Sometimes it is necessary to wait until a parallel thread has finished. This can
+											      be done by assigning a <em>handle</em> to tomment">//       ordinary function returning a value</span>
+												    pan>) <span class="hljs-comment">//   do some other calculation/span>) {
+													        println('<span class="hljs-keyword">task</span> $n('<span class="hljs-keyword">task</span> $id <span class="hljs-keyword">end</span>')
+														}
+
+														fn main() {
+														    mut threads := []threprintln('done')
+														    }
+
+														    <span class="hljs-comment">// Output:</span>nd</span>
+												    <span class="hljs-comment">// task 2 end</span>
+												    <spanan>(i <span class="hljs-keyword">int</span>) <span class="hljs-s := []thread <span class="hljs-keyword">int</span>{}
+															        <span49, 64, 81]</span>
+												    </code></pre>
+												    <h3 id="channels">Channels</h3<span class="hljs-keyword">chan</span> <span class="hljs-keyword">int</span>{} <span class="hljs-comment">// unbuffered - "synannels using the arrow operator. The same operator can be used ilt_in">cap</span>: <span class="hljs-number">1</span>}
+													    ch2 := ode>select</code> and
+												    <code>try_push()</code> - see below). Att.
+												    m := &lt;-ch or {
+												        println(&#39;channel has been closed&#31.0</span>
+													    }(ch)
+													        go fn (the_channel chan f64) {
+														        <span class="hljs-comment">// do something with p       }
+																         println(<span class="hljs-string">'&gt; c: $c was send on channel ch3'</span>)
+																			              }
+																				              <span class="hljs-number">500de>else { ... }</code> branch. <code>else</code> and <code>&lt;lt;- a`</span>
+																							   println(res)
+																							   l := ch.len <span class="hljs-commeh/pop()</code> methods will return immediately with one of the code> should not be used to make decisions.
+																							   Use <code>or</code>hanged between a thread and the calling thread via a shared varcontains a hidden <em>mutex</em> that allows locking concurrent
+																							       }
+																							       }
+
+																							       fn main() {
+																							           shared <span class="hljs-selector-tagass="hljs-comment">// read a.x</span>
+																										           }
+																											   }
+																											   </code></pre>
+																											   <p>nce.</p>
+																											   <h3 id="decoding-json">Decoding JSON</h3>
+																												   <pre><code crd">import</span> json
+
+																												   <span class="hljs-keyword">struct</spanequired], but is missing, it will be assumed</span>
+																												       <span cs="hljs-comment">// Use the `skip` attribute to skip certain fi
+																												       <span class="hljs-comment">// You can also decode JSON arrays:pan>].x)
+																												       <span class="hljs-built_in">println</span>(foos[<span 0}</span>
+																												       <span class="hljs-built_in">println</span>(json.encod>Asserts</h3>
+																												       <pre><code class="lang-v"><span class="hljs-funct v := [<span class="hljs-number">20</span>]
+																															 foo(<span class="hlused to detect programming errors. When an
+																																   assert fails it is ran
+																																   unexpected value. Assert statements can be used in any function.</p>
+																																   <h3 id="test-files">Test files</h3>
+																																   <pre><code class="in</span></span>() {
+																																		         println(hello())
+																																			 }
+																																   </code></pre>
+																																   <p>``an class="hljs-keyword">is</span>
+																																		  producing the correct output.ord">names</span> must <span class="hljs-keyword">begin</span> n class="hljs-keyword">in</span> <span class="hljs-keyword">tesrd">private</span> functions <span class="hljs-keyword">in</span>
+																																  the same module.
+																																  * <span class="hljs-keyword">External</spans-keyword">only</span>
+																																  the <span class="hljs-keyword">external</span>/<span class="hljs-keyword">public</span> API that a <spajs-keyword">are</span> part <span class="hljs-keyword">of</spanan class="hljs-keyword">module</span> <span class="hljs-keyword">like</span> the others, internal tests can
+																																		   be used <span clas> these special <span class="hljs-keyword">test</span> function other <span class="hljs-keyword">test</span> functions.
+																																								  * <span class="hljs-string">`testsuite_end`</span> which will be run *<span class="hljs-keyword">after</span>* all other <span class="hljs-keyword">test</span> functions.
+
+																																								  <span class="hljs-keyword">If</span> a <span class="hljs-keyword">test</span> <span class="hljs-keyword">function</span> has an <span class="hljs-keyword">error</span> <span class="hljs-keyword">return</span> <spljs-comment">## Memory management</span>
+
+																																		   V avoids doing unnecessary allocations <span class="hljs-keyword">in</span> the firsy insert
+																																		   <code>free()</code> calls for your data type at the enry manually. (See <a href="#attributes">attributes</a>).</p>
+																																   <p>import</span> strings
+
+																															   fn draw_text(s <span class="hljs-keyword">string</span>, x <span class="hljs-keyword">int</span>, y <s/code>, so they are cleaned up when
+																																   the function exits.</p>
+																																   <p>ss="hljs-built_in"> array </span>allocated on heap, will be freed as the function exits
+																															       println(number)
+																															           println(user)
+																																    has its stack segment that remains valid until the function returns.
+																																    No freeing is necessary, however, this also means that aode class="lang-v">struct MyStruct {
+																																								    n int
+																																								    }
+
+																																								    struct RefStr    }
+																																								    e := RefStruct{
+																																								            r: &amp;<span class="hljs-selcode>c</code> will be heap allocated.</p>
+																																   <p>Things become less-keyword">mut</span> q := MyStruct{
+																															           n: <span class="hlj>Here the call <code>q.f(&amp;w)</code> passes references to <cheap">Manual Control for Stack and Heap</h4>
+																																   <p>In the last example the V compiler could put <code>q</code> and <code>w</code> on the stack
+																																   because it assumed that in the call <code>q.f(&amp;w)</code> these references were only
+																																   used for reading and mods mentioned above. For this reason the <code>[heap]</code>
+																																   attr> {
+																																   <span class="hljs-keyword">mut</span>:
+																																       r &amp;MyStruct
+																																       / to erase invalid stack contents</span>
+																																       println(<span clasljs-keyword">fn</span> </span>(<span class="hljs-keyword">mut</his last step would not be required by the compiler but without it the reference
+																																				     inside <code>r</code> becomes invalid (the me.)</li>
+												 <li>Safety. (All queries are automatically sanitised to prevent SQL injection.)</li>
+												 <li>Compile time checks. (This prspan class="hljs-comment">//      `country` TEXT NOT NULL</spanass="hljs-comment">// select count(*) from customers</span>
+																	      nr_stomer.name'</span>)
+																	      }
+																	      <span class="hljs-comment">// by adding <span class="hljs-keyword">select</span> from Customer where idtomer</span>
+																			   new_customer := Customer{
+																			       name: <span class="hWriting Documentation</h2>
+																			       <p>The way it works is very similar  tense</em>.</p>
+																			       <p>An overview of the module must be placed inre><code class="lang-shell">v <span class="hljs-keyword">fmt</smt -w file.v</code> before pushing your code.</p>
+																			       <h3 id="v-shaader</code> to compile them for all supported target platforms.</p>
+																				       <pre><code class="lang-shell">v shader <span class="hljs-ru need to <a href="https://github.com/vlang/v/blob/c14c324/exam<h3 id="profiling">Profiling</h3>
+																							 <p>V has good support for proag">time</span>
+
+																							 <span class="hljs-selector-tag">fn</span> <spaspan>(<span class="hljs-string">'Hello world'</span>)
+																							     <span/span> a <span class="hljs-keyword">module</span> <span class="ove            Remove a <span class="hljs-keyword">module</span> that was installed <span class="hljs-keyword">from</span> VPM  <span class="hljs-keyword">update</span>            <span clapan class="hljs-class"><span class="hljs-keyword">module</span>//vpm.vlang.io/">VPM</a>:</p>
+																							     <pre><code class="lang-powershellv update</span>
+																							     </code></pre>
+																							     <p>To see all the modules you havrong></p>
+																							     <pre><code class="lang-powershell">&gt; v outdated
+																									       Mo file inside the toplevel folder of your module (iv new mymodulymodule
+																									        Input your <span class="hljs-keyword">project</span> <</span>: <span class="hljs-string">'mymodule'</span>
+																													 <span clap>
+																													 <pre><code>
+																													  Minimal <span class="hljs-built_in">file</span>pan class="hljs-keyword">module</span> mymodule
+
+ pub fn hello_init
+																																			      git <span class="hljs-keyword">add</span><span class="bas://vpm.vlang.io/new</a></p>
+																																			      <p> You will have to login with your github account and
+																																			       the module name you provided e.g. <code>mnt to write low-level code that can potentially
+																																			       corrupt memory t there could be
+																																			       memory-safety violations if there was a mistake>, <code>strlen</code> and <code>strncmp</code>.</li>
+																																			       </ul>
+																																			       <por: pointer indexing is only allowed in</code>unsafe<code>blocks
+																																			       unsafe {
+																																			           p[0] =</code>h<code>// OK
+																																				       p[1] =</code>i<code>}
+																																				       p++ // Error: pointer arithmetic is only allowed in</code>unsafe<code>blocks
+																																				       unsafe {
+																																				           p++ // OK
+																																					   }
+																																					   assert *p ==</code>ie supported <span class="hljs-keyword">in</span> the <span clasy Trees that rely <span class="hljs-keyword">on</span> <span clmber">0</span>`, understanding that it <span class="hljs-keywortype in bytes.</li>
+																																					   <li><code>__offsetof(Struct, field_name)</ckeyword">assert</span> <span class="hljs-title">sizeof</span><slass="hljs-function"><span class="hljs-keyword">assert</span> <</span>.sqlite3_stmt {
+																																					   }
+
+																																					   <span class="hljs-class"><span class=yword">char</span>, &amp;&amp;<span class="hljs-keyword">char</d">int</span>
+
+																																					   <span class="hljs-function"><span class="hljs-ke-keyword">int</span>
+
+																																					   <span class="hljs-function"><span class="pe of parameter and leave out the C. prefix</span>
+																																							<span class=s-keyword">int</span>
+
+																																							<span class="hljs-function"><span class=ite3_exec</span></span>(db &amp;C.sqlite3, sql &amp;<span classnt</span>, cvalues &amp;&amp;<span class="hljs-keyword">char</span class="hljs-number">0</span> .. howmany {
+																																							            print('| ${cstring_to_vstring(cnames[i])}: ${cstring_to_vstring(cvalp;<span class="hljs-keyword">char</span>(query.<span class="hljming scheme in C: <code>[module name]__[fn_name]</code>.</p>
+																																																		       <pare wrapper functions defined in
+																																																		       C headers named <code>atomic.hre intended to be used have to be declared. Example:</p>
+																																																		       <p>```omic</span>.<span class="hljs-keyword">h</span>"
+																																																		       </code></pre><trong_u32(&amp;u32, &amp;u32, u32) bool</p>
+																																																		       <p>const num_iteratse { cmp = atom }</code>
+																																						           if C.atomic_compare_exchange_strong_u32(&amp;atom, &amp;cmp, 23) {
+																																							               races_won_by_change++
+																																								               } else {
+																																									                   if cmp == 31 {
+																																											                       races_won_by_main++
+																																													               } else {
+																																														                   cmp17r) {
+																																																               cmp23 = 23
+																																																	               }
+																																																		           }
+																																																			       races_won_by_ch#exchanges: 10000000</code>)
+																																																		           println(&#39;races won by\n- </span> the spawned thread `<span class="javascript">change()</sumber">23</span></span>`. The replacement <span class="hljs-keyn <span class="hljs-keyword">is</span>
+																																																												 done exactly <span class="hljs-number">10000000</span> times. The last replacement willkeyword">not</span> allow <span class="hljs-built_in">global</sa `<span class="javascript">__global ( ... )</span>`
+																																																												 specificat="hljs-keyword">and</span> mutexes <span class="hljs-built_in"></span> purpose &amp;ndash; it will be called before `<span cla
+																																																																		        mtx   sync.RwMutex <span class="hljs-comment">// needs ini<span class="javascript">
+																																																																					    f1    = f64(<span class="hljs-numpan class="javascript"> map
+																																																																								         f2    f64 <span class="hljs-comment">// initialized to </span></span>`<span class="hljs-numberd use <code>lock</code> blocks for access.
+																																																																									 This is most approprp in this case, so you have to know what you are doing.</li>
+																																					   <lthreads becoming somewhat
+																																						     correlated, which is acceptable considering the performance penalty that using
+																																						     synchonization primitives would represent.</li>
+																																					   </ul>
+																																					   <h3 id="passing-c-compilation-flags">Passing C compilation flags</h3>
+																																					   <p>Add <code>#flag</code> directives to the top of your V files to provide C compilation flags like:</p>
+																																					   <ul>
+																																						   <li><code>-I</code> for adding C includd">to</span> <span class="hljs-keyword">change</span> the <span<span class="hljs-string">`-cflags`</span> <span class="hljs-ke of a pkg-config use <code>$pkgconfig(&#39;pkg&#39;)</code> as a compile time &quot;if&quot; condition to
+																																											    check if a pkg-confihe branch will be created. Use <code>$else</code> or <code>$elsxample, let<span class="hljs-symbol">'s</span> say that your C yword">mod</span> file inside the toplevel folder <span class="ady have v.<span class="hljs-keyword">mod</span> file). <span class="hljs-keyword">For</span>
+																																																								       example:
+																																																								       ```v ignore
+																																																								       Module {
+																																																								         ode>v oksyntax
+																																																									 #flag -I @VMODROOT/c
+																																																									 #flag @VMODROOT/c/implementer where the v.mod file is,
+																																																									 can use <code>#flag @VMODROOT/abc</m.</li>
+																																					   </ul>
+																																					   <p>The instructions above will make V look for ane, that used the module.
+																																					   If it does not find it, V assumes thater/vlib/v/tests/project_with_c_code_2">interoperate between C to V to C</a>.</p>
+																																					   <h3 id="c-types">C types</h3>
+																																					   <p>Ordinary zereturn pointers to internal libc memory), you can use <code>cstre(&amp;u16(cwidestring))</code> .</p>
+																																					   <p>V has these types for >.</p>
+																																					   <p><a href="https://github.com/vlang/v/blob/master/vlib/pes must be redeclared in V in
+																																						       order to access type members.</ps-keyword">struct</span> <span class="hljs-title">SomeCStruct</class"><span class="hljs-keyword">union</span> {</span>
+																																				              <code class="lang-v">struct C<span class="hljs-selector-class">.SomeCStruct</span> {
+																																						          implTraits  byte
+																																							      memPoolData u16
+																																							          <span class="hljs-comment">// These members are part of subinformation in it.
+																																									    V will enforce line numbers from the .v files in the stacktraces, that the
+																																									      executable will produce on pm.</li>
+																																								      <li><code>-show-c-output</code> - prints the output, thasier to keep opened in an editor/IDE.</li>
+																																								      </ul>
+																																								      <p>For best d the produced executable <code>yourprogram</code>.</p>
+																																								      <p>If yogenerated C source code for <em>just</em> a single C function,
+																																								      for example <code>main</code>, you can use: <code>-printfn main -o file.c</code>.</p>
+																																								      <p>To debug the V executable itself you org/software/gdb/">GDB</a> e.g. <code>lldb hello</code></li>
+																																						      </ol>
+																																						      <p><a href="https://github.com/vlang/v/wiki/Troubleshooting-(debugging">Troubleshooting (debugging) executables created wio hello.js</code></p>
+																																						      <p>For all supported options check the lal compilation</h2>
+																																					      <h3 id="compile-time-code">Compile time coden one branch</span>
+																																								      <span class="hljs-symbol">$</span><span  <span class="hljs-symbol">$</span><span class="hljs-keyword">class="hljs-comment">// $else-$if branches</span>
+																																									          <span cla       println(<span class="hljs-string">'clang'</span>)
+																																											      } >$</span><span class="hljs-keyword">else</span> {
+																																										              printmbol">$</span><span class="hljs-keyword">if</span> debug {
+																																										          omment">// v -prod ...</span>
+																																						       <span class="hljs-symbol">$</      println(<span class="hljs-string">'custom option'</span>)Right now it can be used to detect an OS, compiler, platform or compilation options.
+																																							       <code>$if debug</code> is a special option like <code>$if windows</code> or <code>$if x32</code>.
+																																							       If you  | <code>debug</code>, <code>prod</code>, <code>test</code>   2</code>          | <code>js</code>, <code>glibc</code>, <code>ode>, <code>no_backtrace</code>, <code>no_main</code> |
+																																							       | <code}</p>
+																																						      <pre><code>
+																																						      V can embed arbitrary <span class="hljs-keywod_file(<span class="hljs-symbol">&lt;path&gt;</span>)`
+																																											 compile pan> absolute <span class="hljs-built_in">or</span> relative <sloaded *the <span class="hljs-keyword">first</span> time* your al editor programs, without needing <span class="hljs-keyword">le</span> *will <span class="hljs-keyword">be</span> embedded inside* your
+																																															    <span class="hljs-built_in">executable</span>, incryword">return</span> the same data.
+
+																																															    `$embed_file` supports compported: `zlib`
+
+```v ignore
+import os
+fn main() {
+    embeddeds-string">'v.png'</span>, .zlib) // compressed using zlib
+        o)?
+	}
+																																						      </code></pre><h4 id="-tmpl-for-embedding-and-parsing-v-temin() {
+																																									       println(build())
+																																									       }</p>
+																																									       <pre><code>
+																																									       <span class="hljsword">If</span> <span class="hljs-literal">a</span> file has an only be compiled for that environment.
+
+- `.js.v` =&gt; will bonly when compiling on Windows, <span class="hljs-literal">or</span> with `-os windows`.
+								   - `_default.c.v` =&gt; will be used only <span class="hljs-keyword">if</span> there is <span class="hljs-literal">NOT</span> <span class="hljs-literal">a</span> mo
+															 *only* <span class="hljs-keyword">if</span> you do NOT pass `-=&gt; replaced <span class="hljs-keyword">with</span> the name the current V function
+																	     - `@METHOD` =&gt; replaced <span class="e.MethodName
+																					      - `@MOD` =&gt; replaced <span class="hljs-keyword"e <span class="hljs-keyword">of</span> the current V struct
+																					      - `s</span> a string).
+																					      - `@COLUMN` =&gt; replaced <span class="hljs-keyword">with</span> the column <span class="hljs-keyword">whith</span> the path to the V compiler
+																					      - `@VEXEROOT`  =&gt; willn class="hljs-keyword">as</span> a string).
+																					      - `@VHASH`  =&gt; ryword">as</span> a string).
+																					      - `@VMODROOT` =&gt; will be substit>where</span> the nearest v.mod file is (<span class="hljs-keywVMOD_FILE ) or { panic(err) }
+																																       eprintln(&#39;$vm.name $vm.versio/span> `-prod`. There are <span class="hljs-keyword">some</span
+																																									       *profile your code*, <span class="hljs-keyword">and</span> <spclass="hljs-symbol">'s</span> documentation: <span class="hljs-bad at predicting
+																																																								how their programs actually perform"</span>.
+																																																												    ns <span class="hljs-keyword">tagged</span> <span class="hljs-kns -
+																																																																		      omitting bounds checking. This may save a lot <span class="hljs-keyword">of</span> time <span class="hljs-keyword">in</spn class="hljs-keyword">is</span> very likely to be <span class=">with</span> less chance <span class="hljs-keyword">of</span> thing.
+
+`<span class="hljs-keyword">if</span> _unlikely_(bool esymbol">'Reflection</span> via codegen'&gt;
+
+## Compile-time relass="hljs-selector-tag">b</span><span class="hljs-selector-clapan class="hljs-number">2</span>}
+			    println(<span class="hljss="hljs-keyword">for</span> i := <span class="hljs-number">0</sand:</p>
+			    <pre><code class="lang-bash">v wrapper c_code<span cla="https://github.com/vlang/libsodium">https://github.com/vlang/o more build flags and include files either.</li>
+			    </ul>
+			    <h2 id=d">to</span> a V<span class="hljs-symbol">'s</span> <span classhljs-keyword">to</span> modify types <span class="hljs-keyword">while</span> the program <span class="hljs-keyword">is</span>  }
+				     // }
+				     // if count == 0 {
+				     //     println(&#39;No files&#39;)
+				     /pan> run directly after making it <span class="hljs-built_in">ely</span> <span class="hljs-title">to</span> <span class="hljs-title">the</span> <span class="hljs-title">following</span> <span> == <span class="hljs-keyword">int</span>(BitField.<span clad.<span class="hljs-keyword">read</span>
+										         assert <span classall</span>(.<span class="hljs-keyword">read</span> | .<span clad">read</span> | .<span class="hljs-keyword">write</span>)
+											     span class="hljs-keyword">fn</span> <span class="hljs-title">old_function</span></span>() {
+											     }
+
+											     <span class="hljs-comment">// It can also display a custom deprecation message</span>
+											     [depreca) {
+											         for {}
+												 }</p>
+												 <p>// The following struct must be allocatually yourself in it.
+												 [manualfree]
+												 fn custom_allocations() {
+												 }<&amp;   logical AND            bools
+												   ||   logical OR           
