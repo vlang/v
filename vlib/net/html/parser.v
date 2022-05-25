@@ -49,12 +49,10 @@ fn (parser Parser) builder_str() string {
 	return parser.lexical_attributes.lexeme_builder.after(0)
 }
 
-[if debug]
+[if debug_html ?]
 fn (mut parser Parser) print_debug(data string) {
-	$if debug {
-		if data.len > 0 {
-			parser.debug_file.writeln(data) or { panic(err) }
-		}
+	if data.len > 0 {
+		parser.debug_file.writeln(data) or { panic(err) }
 	}
 }
 
@@ -155,7 +153,8 @@ pub fn (mut parser Parser) split_parse(data string) {
 					parser.lexical_attributes.current_tag.attributes[lattr] = nval
 					parser.lexical_attributes.current_tag.last_attribute = ''
 				} else {
-					parser.lexical_attributes.current_tag.attributes[temp_lexeme.to_lower()] = '' // parser.print_debug(temp_lexeme)
+					parser.lexical_attributes.current_tag.attributes[temp_lexeme.to_lower()] = ''
+					// parser.print_debug(temp_lexeme)
 				}
 				parser.lexical_attributes.lexeme_builder.go_back_to(0)
 			} else {
