@@ -1,0 +1,19 @@
+import json
+
+struct Request {
+	a int
+}
+
+fn parse(s string) ?Request {
+	return json.decode(Request, s)
+}
+
+fn parse2(s string) ?Request {
+	req := json.decode(Request, s)?
+	return req
+}
+
+fn main() {
+	println(parse('{"a": 22} ')?)
+	println(parse2('{"a": 22} ')?)
+}
