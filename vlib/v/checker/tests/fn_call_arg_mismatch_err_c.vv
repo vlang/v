@@ -1,0 +1,29 @@
+module main
+
+import os
+
+fn list_files() ?[][]string {
+	mut unchecked_files := os.ls('utilities/modules')?
+	println(unchecked_files)
+	for files in unchecked_files {
+		println(files)
+		if os.is_file(files) == true {
+			println(files)
+		} else {
+			println(os.ls(os.chdir(files)?)?)
+		}
+		println(files)
+	}
+	mut modules := [['Module:', 'Path:', 'Description']]
+	return modules
+}
+
+fn main() {
+	mut data := [
+		['Module:', 'Path:', 'Description'],
+	]
+	mods := list_files() or { [['null', 'null', 'null']] }
+	for _, mod in mods {
+		data << mod
+	}
+}

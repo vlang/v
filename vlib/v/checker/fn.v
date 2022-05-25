@@ -897,15 +897,6 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 		c.check_expected_call_arg(arg_typ, c.unwrap_generic(param.typ), node.language,
 			call_arg) or {
-			// str method, allow type with str method if fn arg is string
-			// Passing an int or a string array produces a c error here
-			// Deleting this condition results in propper V error messages
-			// if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
-			// continue
-			// }
-			if arg_typ_sym.kind == .void && param_typ_sym.kind == .string {
-				continue
-			}
 			if param.typ.has_flag(.generic) {
 				continue
 			}
@@ -990,7 +981,6 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		if func.language != .c && !c.inside_unsafe && arg_typ.nr_muls() != param.typ.nr_muls()
 			&& !(call_arg.is_mut && param.is_mut) && !(!call_arg.is_mut && !param.is_mut)
 			&& param.typ !in [ast.byteptr_type, ast.charptr_type, ast.voidptr_type] {
-			// sym := c.table.sym(typ)
 			c.warn('automatic referencing/dereferencing is deprecated and will be removed soon (got: $arg_typ.nr_muls() references, expected: $param.typ.nr_muls() references)',
 				call_arg.pos)
 		}
