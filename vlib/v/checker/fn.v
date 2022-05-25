@@ -421,8 +421,8 @@ pub fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	c.expected_or_type = node.return_type.clear_flag(.optional)
 	c.stmts_ending_with_expression(node.or_block.stmts)
 	c.expected_or_type = ast.void_type
-	if node.or_block.kind == .propagate_option && !isnil(c.table.cur_fn) && !c.table.cur_fn.return_type.has_flag(.optional)
-		&& !c.inside_const {
+	if node.or_block.kind == .propagate_option && !isnil(c.table.cur_fn)
+		&& !c.table.cur_fn.return_type.has_flag(.optional) && !c.inside_const {
 		if !c.table.cur_fn.is_main {
 			c.error('to propagate the optional call, `$c.table.cur_fn.name` must return an optional',
 				node.or_block.pos)
@@ -1028,14 +1028,15 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 	}
 	// resolve return generics struct to concrete type
-	if func.generic_names.len > 0 && func.return_type.has_flag(.generic)
-		&& !isnil(c.table.cur_fn) && c.table.cur_fn.generic_names.len == 0 {
+	if func.generic_names.len > 0 && func.return_type.has_flag(.generic) && !isnil(c.table.cur_fn)
+		&& c.table.cur_fn.generic_names.len == 0 {
 		node.return_type = c.table.unwrap_generic_type(func.return_type, func.generic_names,
 			concrete_types)
 	} else {
 		node.return_type = func.return_type
 	}
-	if node.concrete_types.len > 0 && func.return_type != 0 && !isnil(c.table.cur_fn) && c.table.cur_fn.generic_names.len == 0 {
+	if node.concrete_types.len > 0 && func.return_type != 0 && !isnil(c.table.cur_fn)
+		&& c.table.cur_fn.generic_names.len == 0 {
 		if typ := c.table.resolve_generic_to_concrete(func.return_type, func.generic_names,
 			concrete_types)
 		{
@@ -1488,8 +1489,8 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		} else {
 			node.return_type = method.return_type
 		}
-		if node.concrete_types.len > 0 && method.return_type != 0
-			&& !isnil(c.table.cur_fn) && c.table.cur_fn.generic_names.len == 0 {
+		if node.concrete_types.len > 0 && method.return_type != 0 && !isnil(c.table.cur_fn)
+			&& c.table.cur_fn.generic_names.len == 0 {
 			if typ := c.table.resolve_generic_to_concrete(method.return_type, method.generic_names,
 				concrete_types)
 			{

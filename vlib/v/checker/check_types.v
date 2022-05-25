@@ -671,7 +671,8 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 					mut param_elem_sym := c.table.sym(param_elem_info.elem_type)
 					for {
 						if arg_elem_sym.kind == .array && param_elem_sym.kind == .array
-							&& !isnil(c.table.cur_fn) && param_elem_sym.name !in c.table.cur_fn.generic_names {
+							&& !isnil(c.table.cur_fn)
+							&& param_elem_sym.name !in c.table.cur_fn.generic_names {
 							arg_elem_info = arg_elem_sym.info as ast.Array
 							arg_elem_sym = c.table.sym(arg_elem_info.elem_type)
 							param_elem_info = param_elem_sym.info as ast.Array
@@ -690,7 +691,8 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 					mut param_elem_sym := c.table.sym(param_elem_info.elem_type)
 					for {
 						if arg_elem_sym.kind == .array_fixed && param_elem_sym.kind == .array_fixed
-							&& !isnil(c.table.cur_fn) && param_elem_sym.name !in c.table.cur_fn.generic_names {
+							&& !isnil(c.table.cur_fn)
+							&& param_elem_sym.name !in c.table.cur_fn.generic_names {
 							arg_elem_info = arg_elem_sym.info as ast.ArrayFixed
 							arg_elem_sym = c.table.sym(arg_elem_info.elem_type)
 							param_elem_info = param_elem_sym.info as ast.ArrayFixed

@@ -934,8 +934,8 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast
 
 pub fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return_type ast.Type) {
 	if node.kind == .propagate_option {
-		if !isnil(c.table.cur_fn) && !c.table.cur_fn.return_type.has_flag(.optional) && c.table.cur_fn.name != 'main.main'
-			&& !c.inside_const {
+		if !isnil(c.table.cur_fn) && !c.table.cur_fn.return_type.has_flag(.optional)
+			&& c.table.cur_fn.name != 'main.main' && !c.inside_const {
 			c.error('to propagate the call, `$c.table.cur_fn.name` must return an optional type',
 				node.pos)
 		}
@@ -951,8 +951,8 @@ pub fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_re
 		return
 	}
 	if node.kind == .propagate_result {
-		if !isnil(c.table.cur_fn) && !c.table.cur_fn.return_type.has_flag(.result) && c.table.cur_fn.name != 'main.main'
-			&& !c.inside_const {
+		if !isnil(c.table.cur_fn) && !c.table.cur_fn.return_type.has_flag(.result)
+			&& c.table.cur_fn.name != 'main.main' && !c.inside_const {
 			c.error('to propagate the call, `$c.table.cur_fn.name` must return an result type',
 				node.pos)
 		}
@@ -1071,7 +1071,8 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	match mut node.expr {
 		ast.Ident {
 			name := node.expr.name
-			valid_generic := util.is_generic_type_name(name) && !isnil(c.table.cur_fn) && name in c.table.cur_fn.generic_names
+			valid_generic := util.is_generic_type_name(name) && !isnil(c.table.cur_fn)
+				&& name in c.table.cur_fn.generic_names
 			if valid_generic {
 				name_type = ast.Type(c.table.find_type_idx(name)).set_flag(.generic)
 			}
@@ -2540,7 +2541,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	return to_type
 }
 
-fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {	
+fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 	match node.kind {
 		.fn_name {
 			if isnil(c.table.cur_fn) {
