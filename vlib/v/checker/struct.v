@@ -219,7 +219,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				&& node.generic_types.len != struct_sym.info.generic_types.len {
 				c.error('generic struct init expects $struct_sym.info.generic_types.len generic parameter, but got $node.generic_types.len',
 					node.pos)
-			} else if node.generic_types.len > 0 {
+			} else if node.generic_types.len > 0 && !isnil(c.table.cur_fn) {
 				for gtyp in node.generic_types {
 					gtyp_name := c.table.sym(gtyp).name
 					if gtyp_name !in c.table.cur_fn.generic_names {
@@ -247,7 +247,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 		}
 	}
 	// register generic struct type when current fn is generic fn
-	if c.table.cur_fn.generic_names.len > 0 {
+	if !isnil(c.table.cur_fn) && c.table.cur_fn.generic_names.len > 0 {
 		c.table.unwrap_generic_type(node.typ, c.table.cur_fn.generic_names, c.table.cur_concrete_types)
 	}
 	c.ensure_type_exists(node.typ, node.pos) or {}
@@ -291,7 +291,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				'it cannot be initialized with `$type_sym.name{}`', node.pos)
 		}
 	}
-	if type_sym.name.len == 1 && c.table.cur_fn.generic_names.len == 0 {
+	if type_sym.name.len == 1 && !isnil(c.table.cur_fn) && c.table.cur_fn.generic_names.len == 0 {
 		c.error('unknown struct `$type_sym.name`', node.pos)
 		return 0
 	}
