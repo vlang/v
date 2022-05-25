@@ -21,12 +21,10 @@ mut:
 	debug_file     os.File
 }
 
-[if debug]
+[if debug_html ?]
 fn (mut dom DocumentObjectModel) print_debug(data string) {
-	$if debug {
-		if data.len > 0 {
-			dom.debug_file.writeln(data) or { eprintln(err) }
-		}
+	if data.len > 0 {
+		dom.debug_file.writeln(data) or { eprintln(err) }
 	}
 }
 
