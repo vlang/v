@@ -1,0 +1,9 @@
+module x
+
+struct Ok<T> {
+	foo []T
+}
+
+fn test_fmt() {
+	r := Ok<[]Token>{[]}
+}
