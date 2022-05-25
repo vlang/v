@@ -24,4 +24,8 @@ fn test_mime() ? {
 	assert get_mime_type('md')? == 'text/markdown'
 	assert get_content_type('md')? == 'text/markdown; charset=utf-8'
 	assert get_default_ext('text/markdown')? == 'md'
+
+	assert exists('application/json') == true
+	assert exists('md') == true
+	assert exists('udfsbsfib') == false
 }

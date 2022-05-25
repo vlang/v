@@ -46,3 +46,12 @@ pub fn get_default_ext(str string) ?string {
 	mt, _ := mime_type(str)?
 	return mt.extensions[0]
 }
+
+// returns true if the given file extension or MIME type exists
+pub fn exists(str string) bool {
+	return if _ := mime_type(str) {
+		true
+	} else {
+		false
+	}
+}
