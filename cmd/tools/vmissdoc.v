@@ -6,7 +6,7 @@ import flag
 
 const (
 	tool_name        = 'v missdoc'
-	tool_version     = '0.0.4'
+	tool_version     = '0.0.5'
 	tool_description = 'Prints all V functions in .v files under PATH/, that do not yet have documentation comments.'
 	work_dir_prefix  = normalise_path(os.real_path(os.wd_at_startup) + '/')
 )
@@ -26,9 +26,10 @@ struct Options {
 	no_line_numbers bool
 	exclude         []string
 	relative_paths  bool
+	verify          bool
 }
 
-fn (opt Options) report_undocumented_functions_in_path(path string) {
+fn (opt Options) report_undocumented_functions_in_path(path string) int {
 	mut files := []string{}
 	collect(path, mut files, fn (npath string, mut accumulated_paths []string) {
 		if !npath.ends_with('.v') {
@@ -39,6 +40,7 @@ fn (opt Options) report_undocumented_functions_in_path(path string) {
 		}
 		accumulated_paths << npath
 	})
+	mut undocumented_fn_total := 0
 	for file in files {
 		if !opt.js && file.ends_with('.js.v') {
 			continue
@@ -46,11 +48,12 @@ fn (opt Options) report_undocumented_functions_in_path(path string) {
 		if opt.exclude.len > 0 && opt.exclude.any(file.contains(it)) {
 			continue
 		}
-		opt.report_undocumented_functions_in_file(file)
+		undocumented_fn_total += opt.report_undocumented_functions_in_file(file)
 	}
+	return undocumented_fn_total
 }
 
-fn (opt &Options) report_undocumented_functions_in_file(nfile string) {
+fn (opt &Options) report_undocumented_functions_in_file(nfile string) int {
 	file := os.real_path(nfile)
 	contents := os.read_file(file) or { panic(err) }
 	lines := contents.split('\n')
@@ -116,6 +119,7 @@ fn (opt &Options) report_undocumented_functions_in_file(nfile string) {
 			}
 		}
 	}
+	return info.len
 }
 
 fn normalise_path(path string) string {
@@ -164,16 +168,21 @@ fn main() {
 		collect_tags: fp.bool('tags', `t`, false, 'Also print function tags if any is found.')
 		exclude: fp.string_multi('exclude', `e`, '')
 		relative_paths: fp.bool('relative-paths', `r`, false, 'Use relative paths in output.')
+		verify: fp.bool('verify', 0, false, 'exit(1) if documentation is missing, 0 otherwise.')
 	}
 	if opt.show_help {
 		println(fp.usage())
 		exit(0)
 	}
+	mut total := 0
 	for path in os.args[1..] {
 		if os.is_file(path) {
-			opt.report_undocumented_functions_in_file(path)
+			total += opt.report_undocumented_functions_in_file(path)
 		} else {
-			opt.report_undocumented_functions_in_path(path)
+			total += opt.report_undocumented_functions_in_path(path)
 		}
+	}
+	if opt.verify && total > 0 {
+		exit(1)
 	}
 }
