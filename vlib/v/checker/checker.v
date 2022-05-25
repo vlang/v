@@ -1220,11 +1220,17 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	// <<<
 
 	if has_field {
-		if sym.mod != c.mod && !field.is_pub && sym.language != .c {
+		is_used_outside := sym.mod != c.mod
+		if is_used_outside && !field.is_pub && sym.language != .c {
 			unwrapped_sym := c.table.sym(c.unwrap_generic(typ))
 			c.error('field `${unwrapped_sym.name}.$field_name` is not public', node.pos)
 		}
 		field_sym := c.table.sym(field.typ)
+		if field.is_deprecated {
+			if is_used_outside || !field.deprecated_only_publicly {
+				c.error('field `.$field_name` is deprecated', node.pos)
+			}
+		}
 		if field_sym.kind in [.sum_type, .interface_] {
 			if !prevent_sum_type_unwrapping_once {
 				if scope_field := node.scope.find_struct_field(node.expr.str(), typ, field_name) {
