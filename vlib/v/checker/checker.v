@@ -1226,10 +1226,16 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			c.error('field `${unwrapped_sym.name}.$field_name` is not public', node.pos)
 		}
 		field_sym := c.table.sym(field.typ)
-		if field.is_deprecated {
-			if is_used_outside {
-				c.error('field `.$field_name` is deprecated', node.pos)
+		if field.is_deprecated && is_used_outside {
+			now := time.now()
+			mut after_time := now
+			if field.deprecated_after != '' {
+				after_time = time.parse_iso8601(field.deprecated_after) or {
+					c.error('invalid time format', field.pos)
+					now
+				}
 			}
+			c.deprecate('field', field_name, field.deprecation_msg, now, after_time, node.pos)
 		}
 		if field_sym.kind in [.sum_type, .interface_] {
 			if !prevent_sum_type_unwrapping_once {

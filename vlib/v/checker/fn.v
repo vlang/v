@@ -1619,7 +1619,7 @@ fn (mut c Checker) deprecate_fnmethod(kind string, name string, the_fn ast.Fn, n
 		if attr.name == 'deprecated_after' && attr.arg != '' {
 			after_time = time.parse_iso8601(attr.arg) or {
 				c.error('invalid time format', attr.pos)
-				time.now()
+				now
 			}
 		}
 	}

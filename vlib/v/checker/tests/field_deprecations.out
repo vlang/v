@@ -1,84 +1,42 @@
-vlib/v/checker/tests/module_with_structs_with_deprecated_fields/fields.v:15:9: error: field `.b` is deprecated
-   13 |     mut x := Xyz{}
-   14 |     dump(x.a) // no error
-   15 |     dump(x.b) // should generate an error
+vlib/v/checker/tests/field_deprecations.vv:23:9: notice: field `d` will be deprecated after 2999-03-01, and will become an error after 2999-08-28; d use Xyz.a instead
+   21 |     dump(x.c)
+   22 |     x.c = 11
+   23 |     dump(x.d)
       |            ^
-   16 |     dump(x.c) // should generate an error
-   17 |     dump(x.d) // should generate an error
-vlib/v/checker/tests/module_with_structs_with_deprecated_fields/fields.v:16:9: error: field `.c` is deprecated
-   14 |     dump(x.a) // no error
-   15 |     dump(x.b) // should generate an error
-   16 |     dump(x.c) // should generate an error
-      |            ^
-   17 |     dump(x.d) // should generate an error
-   18 |     dump(x.e) // should NOT be an error, because of deprecated_only_publicly
-vlib/v/checker/tests/module_with_structs_with_deprecated_fields/fields.v:17:9: error: field `.d` is deprecated
-   15 |     dump(x.b) // should generate an error
-   16 |     dump(x.c) // should generate an error
-   17 |     dump(x.d) // should generate an error
-      |            ^
-   18 |     dump(x.e) // should NOT be an error, because of deprecated_only_publicly
-   19 |     //
-vlib/v/checker/tests/module_with_structs_with_deprecated_fields/fields.v:21:4: error: field `.b` is deprecated
-   19 |     //
-   20 |     x.a = 1 // no error
-   21 |     x.b = 1 // should generate an error
-      |       ^
-   22 |     x.c = 1 // should generate an error
-   23 |     x.d = 1 // should generate an error
-vlib/v/checker/tests/module_with_structs_with_deprecated_fields/fields.v:22:4: error: field `.c` is deprecated
-   20 |     x.a = 1 // no error
-   21 |     x.b = 1 // should generate an error
-   22 |     x.c = 1 // should generate an error
-      |       ^
-   23 |     x.d = 1 // should generate an error
-   24 |     x.e = 1 // should NOT be an error, because of deprecated_only_publicly
-vlib/v/checker/tests/module_with_structs_with_deprecated_fields/fields.v:23:4: error: field `.d` is deprecated
-   21 |     x.b = 1 // should generate an error
-   22 |     x.c = 1 // should generate an error
-   23 |     x.d = 1 // should generate an error
-      |       ^
-   24 |     x.e = 1 // should NOT be an error, because of deprecated_only_publicly
+   24 |     x.d = 45
    25 | }
-vlib/v/checker/tests/field_deprecations.vv:18:9: error: field `.b` is deprecated
-   16 |     mut x := m.Xyz{}
-   17 |     dump(x.a)
-   18 |     dump(x.b)
-      |            ^
-   19 |     dump(x.c)
-   20 |     dump(x.d)
-vlib/v/checker/tests/field_deprecations.vv:19:9: error: field `.c` is deprecated
-   17 |     dump(x.a)
-   18 |     dump(x.b)
-   19 |     dump(x.c)
-      |            ^
-   20 |     dump(x.d)
-   21 |     dump(x.e)
-vlib/v/checker/tests/field_deprecations.vv:20:9: error: field `.d` is deprecated
-   18 |     dump(x.b)
-   19 |     dump(x.c)
-   20 |     dump(x.d)
-      |            ^
-   21 |     dump(x.e)
-   22 | }
-vlib/v/checker/tests/field_deprecations.vv:27:4: error: field `.d` is deprecated
-   25 |     mut a := Abc{}
-   26 |     a.x = 1
-   27 |     a.d = 1
+vlib/v/checker/tests/field_deprecations.vv:24:4: notice: field `d` will be deprecated after 2999-03-01, and will become an error after 2999-08-28; d use Xyz.a instead
+   22 |     x.c = 11
+   23 |     dump(x.d)
+   24 |     x.d = 45
       |       ^
-   28 |     a.z = 1
-   29 |     dump(a)
-vlib/v/checker/tests/field_deprecations.vv:30:12: error: field `.d` is deprecated
-   28 |     a.z = 1
-   29 |     dump(a)
-   30 |     println(a.d)
-      |               ^
-   31 |     x := a.d + 1
-   32 |     dump(x)
-vlib/v/checker/tests/field_deprecations.vv:31:9: error: field `.d` is deprecated
-   29 |     dump(a)
-   30 |     println(a.d)
-   31 |     x := a.d + 1
+   25 | }
+   26 |
+vlib/v/checker/tests/field_deprecations.vv:19:9: warning: field `b` has been deprecated
+   17 |     dump(x.a)
+   18 |     x.a = 123
+   19 |     dump(x.b)
       |            ^
-   32 |     dump(x)
-   33 | }
+   20 |     x.b = 456
+   21 |     dump(x.c)
+vlib/v/checker/tests/field_deprecations.vv:20:4: warning: field `b` has been deprecated
+   18 |     x.a = 123
+   19 |     dump(x.b)
+   20 |     x.b = 456
+      |       ^
+   21 |     dump(x.c)
+   22 |     x.c = 11
+vlib/v/checker/tests/field_deprecations.vv:21:9: error: field `c` has been deprecated since 2021-03-01; c use Xyz.a instead
+   19 |     dump(x.b)
+   20 |     x.b = 456
+   21 |     dump(x.c)
+      |            ^
+   22 |     x.c = 11
+   23 |     dump(x.d)
+vlib/v/checker/tests/field_deprecations.vv:22:4: error: field `c` has been deprecated since 2021-03-01; c use Xyz.a instead
+   20 |     x.b = 456
+   21 |     dump(x.c)
+   22 |     x.c = 11
+      |       ^
+   23 |     dump(x.d)
+   24 |     x.d = 45

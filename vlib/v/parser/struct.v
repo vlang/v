@@ -250,14 +250,14 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				for fa in p.attrs {
 					match fa.name {
 						'deprecated' {
-								// [deprecated: 'use a replacement']
-								is_field_deprecated = true
-								field_deprecation_msg = fa.arg
+							// [deprecated: 'use a replacement']
+							is_field_deprecated = true
+							field_deprecation_msg = fa.arg
 						}
 						'deprecated_after' {
-						        field_deprecated_after = fa.arg
+							field_deprecated_after = fa.arg
 						}
-						else{}
+						else {}
 					}
 				}
 			}
