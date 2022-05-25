@@ -12,6 +12,257 @@ const (
 	maximum_inline_sum_type_variants = 3
 )
 
+pub fn (mut p Parser) parse_type() ast.Type {
+	// optional
+	mut is_optional := false
+	mut is_result := false
+	line_nr := p.tok.line_nr
+	optional_pos := p.tok.pos()
+	if p.tok.kind == .question {
+		p.next()
+		is_optional = true
+	} else if p.tok.kind == .not {
+		p.next()
+		is_result = true
+	}
+	if (is_optional || is_result) && p.tok.line_nr > line_nr {
+		mut typ := ast.void_type
+		if is_optional {
+			typ = typ.set_flag(.optional)
+		} else if is_result {
+			typ = typ.set_flag(.result)
+		}
+		return typ
+	}
+	is_shared := p.tok.kind == .key_shared
+	is_atomic := p.tok.kind == .key_atomic
+	if is_shared {
+		p.register_auto_import('sync')
+	}
+	mut nr_muls := 0
+	if p.tok.kind == .key_mut {
+		if p.inside_fn_return {
+			p.error_with_pos('cannot use `mut` on fn return type', p.tok.pos())
+		} else if p.inside_struct_field_decl {
+			p.error_with_pos('cannot use `mut` on struct field type', p.tok.pos())
+		}
+	}
+	if p.tok.kind == .key_mut || is_shared { // || is_atomic {
+		nr_muls++
+		p.next()
+	}
+	if is_atomic {
+		p.next()
+	}
+	if p.tok.kind == .mul {
+		p.error('use `&Type` instead of `*Type` when declaring references')
+		return 0
+	}
+	mut nr_amps := 0
+	// &Type
+	for p.tok.kind == .amp {
+		nr_amps++
+		nr_muls++
+		p.next()
+	}
+	language := p.parse_language()
+	mut typ := ast.void_type
+	is_array := p.tok.kind == .lsbr
+	if p.tok.kind != .lcbr {
+		pos := p.tok.pos()
+		typ = p.parse_any_type(language, nr_muls > 0, true)
+		if typ.idx() == 0 {
+			// error is set in parse_type
+			return 0
+		}
+		if typ == ast.void_type {
+			p.error_with_pos('use `?` instead of `?void`', pos)
+			return 0
+		}
+		sym := p.table.sym(typ)
+		if is_optional && sym.info is ast.SumType && (sym.info as ast.SumType).is_anon {
+			p.error_with_pos('an inline sum type cannot be optional', optional_pos.extend(p.prev_tok.pos()))
+		}
+	}
+	if is_optional {
+		typ = typ.set_flag(.optional)
+	}
+	if is_result {
+		typ = typ.set_flag(.result)
+	}
+	if is_shared {
+		typ = typ.set_flag(.shared_f)
+	}
+	if is_atomic {
+		typ = typ.set_flag(.atomic_f)
+	}
+	if nr_muls > 0 {
+		typ = typ.set_nr_muls(nr_muls)
+		if is_array && nr_amps > 0 {
+			p.error('V arrays are already references behind the scenes,
+there is no need to use a reference to an array (e.g. use `[]string` instead of `&[]string`).
+If you need to modify an array in a function, use a mutable argument instead: `fn foo(mut s []string) {}`.')
+			return 0
+		}
+	}
+	return typ
+}
+
+pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot bool) ast.Type {
+	mut name := p.tok.lit
+	if language == .c {
+		name = 'C.$name'
+	} else if language == .js {
+		name = 'JS.$name'
+	} else if p.peek_tok.kind == .dot && check_dot {
+		// `module.Type`
+		mut mod := name
+		mut mod_pos := p.tok.pos()
+		p.next()
+		p.check(.dot)
+		mut mod_last_part := mod
+		for p.peek_tok.kind == .dot {
+			mod_pos = mod_pos.extend(p.tok.pos())
+			mod_last_part = p.tok.lit
+			mod += '.$mod_last_part'
+			p.next()
+			p.check(.dot)
+		}
+		if !p.known_import(mod) && !p.pref.is_fmt {
+			mut msg := 'unknown module `$mod`'
+			if mod.len > mod_last_part.len && p.known_import(mod_last_part) {
+				msg += '; did you mean `$mod_last_part`?'
+			}
+			p.error_with_pos(msg, mod_pos)
+			return 0
+		}
+		if mod in p.imports {
+			p.register_used_import(mod)
+			mod = p.imports[mod]
+		}
+		// prefix with full module
+		name = '${mod}.$p.tok.lit'
+		if p.tok.lit.len > 0 && !p.tok.lit[0].is_capital() {
+			p.error('imported types must start with a capital letter')
+			return 0
+		}
+	} else if p.expr_mod != '' && !p.inside_generic_params { // p.expr_mod is from the struct and not from the generic parameter
+		name = p.expr_mod + '.' + name
+	} else if name in p.imported_symbols {
+		name = p.imported_symbols[name]
+	} else if !p.builtin_mod && name.len > 1 && name !in p.table.type_idxs {
+		// `Foo` in module `mod` means `mod.Foo`
+		name = p.mod + '.' + name
+	}
+	match p.tok.kind {
+		.key_fn {
+			// func
+			return p.parse_fn_type('')
+		}
+		.lsbr, .nilsbr {
+			// array
+			return p.parse_array_type(p.tok.kind)
+		}
+		else {
+			if p.tok.kind == .lpar && !p.inside_sum_type {
+				// multiple return
+				if is_ptr {
+					p.error('parse_type: unexpected `&` before multiple returns')
+					return 0
+				}
+				return p.parse_multi_return_type()
+			}
+			if ((p.peek_tok.kind == .dot && p.peek_token(3).kind == .pipe)
+				|| p.peek_tok.kind == .pipe) && !p.inside_sum_type && !p.inside_receiver_param {
+				return p.parse_inline_sum_type()
+			}
+			if name == 'map' {
+				return p.parse_map_type()
+			}
+			if name == 'chan' {
+				return p.parse_chan_type()
+			}
+			if name == 'thread' {
+				return p.parse_thread_type()
+			}
+			mut ret := ast.Type(0)
+			if name == '' {
+				// This means the developer is using some wrong syntax like `x: int` instead of `x int`
+				p.error('expecting type declaration')
+			} else {
+				match name {
+					'voidptr' {
+						ret = ast.voidptr_type
+					}
+					'byteptr' {
+						ret = ast.byteptr_type
+					}
+					'charptr' {
+						ret = ast.charptr_type
+					}
+					'i8' {
+						ret = ast.i8_type
+					}
+					'i16' {
+						ret = ast.i16_type
+					}
+					'int' {
+						ret = ast.int_type
+					}
+					'i64' {
+						ret = ast.i64_type
+					}
+					'u8' {
+						ret = ast.byte_type
+					}
+					'u16' {
+						ret = ast.u16_type
+					}
+					'u32' {
+						ret = ast.u32_type
+					}
+					'u64' {
+						ret = ast.u64_type
+					}
+					'f32' {
+						ret = ast.f32_type
+					}
+					'f64' {
+						ret = ast.f64_type
+					}
+					'string' {
+						ret = ast.string_type
+					}
+					'char' {
+						ret = ast.char_type
+					}
+					'bool' {
+						ret = ast.bool_type
+					}
+					'float_literal' {
+						ret = ast.float_literal_type
+					}
+					'int_literal' {
+						ret = ast.int_literal_type
+					}
+					else {
+						p.next()
+						if name.len == 1 && name[0].is_capital() {
+							return p.parse_generic_type(name)
+						}
+						if p.tok.kind == .lt {
+							return p.parse_generic_inst_type(name)
+						}
+						return p.find_type_or_add_placeholder(name, language)
+					}
+				}
+			}
+			p.next()
+			return ret
+		}
+	}
+}
+
 pub fn (mut p Parser) parse_array_type(expecting token.Kind) ast.Type {
 	p.check(expecting)
 	// fixed array
@@ -370,257 +621,6 @@ pub fn (mut p Parser) parse_sum_type_variants() []ast.TypeNode {
 		p.check(.pipe)
 	}
 	return types
-}
-
-pub fn (mut p Parser) parse_type() ast.Type {
-	// optional
-	mut is_optional := false
-	mut is_result := false
-	line_nr := p.tok.line_nr
-	optional_pos := p.tok.pos()
-	if p.tok.kind == .question {
-		p.next()
-		is_optional = true
-	} else if p.tok.kind == .not {
-		p.next()
-		is_result = true
-	}
-	if (is_optional || is_result) && p.tok.line_nr > line_nr {
-		mut typ := ast.void_type
-		if is_optional {
-			typ = typ.set_flag(.optional)
-		} else if is_result {
-			typ = typ.set_flag(.result)
-		}
-		return typ
-	}
-	is_shared := p.tok.kind == .key_shared
-	is_atomic := p.tok.kind == .key_atomic
-	if is_shared {
-		p.register_auto_import('sync')
-	}
-	mut nr_muls := 0
-	if p.tok.kind == .key_mut {
-		if p.inside_fn_return {
-			p.error_with_pos('cannot use `mut` on fn return type', p.tok.pos())
-		} else if p.inside_struct_field_decl {
-			p.error_with_pos('cannot use `mut` on struct field type', p.tok.pos())
-		}
-	}
-	if p.tok.kind == .key_mut || is_shared { // || is_atomic {
-		nr_muls++
-		p.next()
-	}
-	if is_atomic {
-		p.next()
-	}
-	if p.tok.kind == .mul {
-		p.error('use `&Type` instead of `*Type` when declaring references')
-		return 0
-	}
-	mut nr_amps := 0
-	// &Type
-	for p.tok.kind == .amp {
-		nr_amps++
-		nr_muls++
-		p.next()
-	}
-	language := p.parse_language()
-	mut typ := ast.void_type
-	is_array := p.tok.kind == .lsbr
-	if p.tok.kind != .lcbr {
-		pos := p.tok.pos()
-		typ = p.parse_any_type(language, nr_muls > 0, true)
-		if typ.idx() == 0 {
-			// error is set in parse_type
-			return 0
-		}
-		if typ == ast.void_type {
-			p.error_with_pos('use `?` instead of `?void`', pos)
-			return 0
-		}
-		sym := p.table.sym(typ)
-		if is_optional && sym.info is ast.SumType && (sym.info as ast.SumType).is_anon {
-			p.error_with_pos('an inline sum type cannot be optional', optional_pos.extend(p.prev_tok.pos()))
-		}
-	}
-	if is_optional {
-		typ = typ.set_flag(.optional)
-	}
-	if is_result {
-		typ = typ.set_flag(.result)
-	}
-	if is_shared {
-		typ = typ.set_flag(.shared_f)
-	}
-	if is_atomic {
-		typ = typ.set_flag(.atomic_f)
-	}
-	if nr_muls > 0 {
-		typ = typ.set_nr_muls(nr_muls)
-		if is_array && nr_amps > 0 {
-			p.error('V arrays are already references behind the scenes,
-there is no need to use a reference to an array (e.g. use `[]string` instead of `&[]string`).
-If you need to modify an array in a function, use a mutable argument instead: `fn foo(mut s []string) {}`.')
-			return 0
-		}
-	}
-	return typ
-}
-
-pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_dot bool) ast.Type {
-	mut name := p.tok.lit
-	if language == .c {
-		name = 'C.$name'
-	} else if language == .js {
-		name = 'JS.$name'
-	} else if p.peek_tok.kind == .dot && check_dot {
-		// `module.Type`
-		mut mod := name
-		mut mod_pos := p.tok.pos()
-		p.next()
-		p.check(.dot)
-		mut mod_last_part := mod
-		for p.peek_tok.kind == .dot {
-			mod_pos = mod_pos.extend(p.tok.pos())
-			mod_last_part = p.tok.lit
-			mod += '.$mod_last_part'
-			p.next()
-			p.check(.dot)
-		}
-		if !p.known_import(mod) && !p.pref.is_fmt {
-			mut msg := 'unknown module `$mod`'
-			if mod.len > mod_last_part.len && p.known_import(mod_last_part) {
-				msg += '; did you mean `$mod_last_part`?'
-			}
-			p.error_with_pos(msg, mod_pos)
-			return 0
-		}
-		if mod in p.imports {
-			p.register_used_import(mod)
-			mod = p.imports[mod]
-		}
-		// prefix with full module
-		name = '${mod}.$p.tok.lit'
-		if p.tok.lit.len > 0 && !p.tok.lit[0].is_capital() {
-			p.error('imported types must start with a capital letter')
-			return 0
-		}
-	} else if p.expr_mod != '' && !p.inside_generic_params { // p.expr_mod is from the struct and not from the generic parameter
-		name = p.expr_mod + '.' + name
-	} else if name in p.imported_symbols {
-		name = p.imported_symbols[name]
-	} else if !p.builtin_mod && name.len > 1 && name !in p.table.type_idxs {
-		// `Foo` in module `mod` means `mod.Foo`
-		name = p.mod + '.' + name
-	}
-	match p.tok.kind {
-		.key_fn {
-			// func
-			return p.parse_fn_type('')
-		}
-		.lsbr, .nilsbr {
-			// array
-			return p.parse_array_type(p.tok.kind)
-		}
-		else {
-			if p.tok.kind == .lpar && !p.inside_sum_type {
-				// multiple return
-				if is_ptr {
-					p.error('parse_type: unexpected `&` before multiple returns')
-					return 0
-				}
-				return p.parse_multi_return_type()
-			}
-			if ((p.peek_tok.kind == .dot && p.peek_token(3).kind == .pipe)
-				|| p.peek_tok.kind == .pipe) && !p.inside_sum_type && !p.inside_receiver_param {
-				return p.parse_inline_sum_type()
-			}
-			if name == 'map' {
-				return p.parse_map_type()
-			}
-			if name == 'chan' {
-				return p.parse_chan_type()
-			}
-			if name == 'thread' {
-				return p.parse_thread_type()
-			}
-			mut ret := ast.Type(0)
-			if name == '' {
-				// This means the developer is using some wrong syntax like `x: int` instead of `x int`
-				p.error('expecting type declaration')
-			} else {
-				match name {
-					'voidptr' {
-						ret = ast.voidptr_type
-					}
-					'byteptr' {
-						ret = ast.byteptr_type
-					}
-					'charptr' {
-						ret = ast.charptr_type
-					}
-					'i8' {
-						ret = ast.i8_type
-					}
-					'i16' {
-						ret = ast.i16_type
-					}
-					'int' {
-						ret = ast.int_type
-					}
-					'i64' {
-						ret = ast.i64_type
-					}
-					'u8' {
-						ret = ast.byte_type
-					}
-					'u16' {
-						ret = ast.u16_type
-					}
-					'u32' {
-						ret = ast.u32_type
-					}
-					'u64' {
-						ret = ast.u64_type
-					}
-					'f32' {
-						ret = ast.f32_type
-					}
-					'f64' {
-						ret = ast.f64_type
-					}
-					'string' {
-						ret = ast.string_type
-					}
-					'char' {
-						ret = ast.char_type
-					}
-					'bool' {
-						ret = ast.bool_type
-					}
-					'float_literal' {
-						ret = ast.float_literal_type
-					}
-					'int_literal' {
-						ret = ast.int_literal_type
-					}
-					else {
-						p.next()
-						if name.len == 1 && name[0].is_capital() {
-							return p.parse_generic_type(name)
-						}
-						if p.tok.kind == .lt {
-							return p.parse_generic_inst_type(name)
-						}
-						return p.find_type_or_add_placeholder(name, language)
-					}
-				}
-			}
-			p.next()
-			return ret
-		}
-	}
 }
 
 pub fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Language) ast.Type {
