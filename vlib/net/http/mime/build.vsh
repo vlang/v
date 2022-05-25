@@ -2,7 +2,6 @@ import net.http
 import json
 
 struct MimeType {
-	str          string
 	source       string
 	extensions   []string
 	compressible bool
