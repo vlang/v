@@ -3630,20 +3630,24 @@ fn (mut g Gen) map_init(node ast.MapInit) {
 	}
 	if size > 0 {
 		if value_sym.kind == .function {
-			g.write('new_map_init${noscan}($hash_fn, $key_eq_fn, $clone_fn, $free_fn, $size, sizeof($key_typ_str), sizeof(voidptr), _MOV(($key_typ_str[$size]){')
+			g.writeln('new_map_init${noscan}($hash_fn, $key_eq_fn, $clone_fn, $free_fn, $size, sizeof($key_typ_str), sizeof(voidptr),')
 		} else {
-			g.write('new_map_init${noscan}($hash_fn, $key_eq_fn, $clone_fn, $free_fn, $size, sizeof($key_typ_str), sizeof($value_typ_str), _MOV(($key_typ_str[$size]){')
+			g.writeln('new_map_init${noscan}($hash_fn, $key_eq_fn, $clone_fn, $free_fn, $size, sizeof($key_typ_str), sizeof($value_typ_str),')
 		}
+		g.writeln('\t\t_MOV(($key_typ_str[$size]){')
 		for expr in node.keys {
+			g.write('\t\t\t')
 			g.expr(expr)
-			g.write(', ')
+			g.writeln(', ')
 		}
+		g.writeln('\t\t}),')
 		if value_sym.kind == .function {
-			g.write('}), _MOV((voidptr[$size]){')
+			g.writeln('\t\t_MOV((voidptr[$size]){')
 		} else {
-			g.write('}), _MOV(($value_typ_str[$size]){')
+			g.writeln('\t\t_MOV(($value_typ_str[$size]){')
 		}
 		for i, expr in node.vals {
+			g.write('\t\t\t')
 			if expr.is_auto_deref_var() {
 				g.write('*')
 			}
@@ -3652,12 +3656,14 @@ fn (mut g Gen) map_init(node ast.MapInit) {
 			} else {
 				g.expr(expr)
 			}
-			g.write(', ')
+			g.writeln(', ')
 		}
-		g.write('}))')
+		g.writeln('\t\t})')
+		g.writeln('\t)')
 	} else {
 		g.write('new_map${noscan}(sizeof($key_typ_str), sizeof($value_typ_str), $hash_fn, $key_eq_fn, $clone_fn, $free_fn)')
 	}
+	g.writeln('')
 	if g.is_shared {
 		g.write('}, sizeof($shared_styp))')
 	} else if is_amp {
