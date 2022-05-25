@@ -111,8 +111,8 @@ pub fn find_index_entry_by_path(start voidptr, path string, algo string) &EmbedF
 			x++
 		}
 	}
-	$if debug_embed_file_in_prod ? {
-		eprintln('>> v.embed_file find_index_entry_by_path ${ptr_str(start)}, id: $x.id, path: "$path", algo: "$algo" => ${ptr_str(x)}')
+	$if force_embed_file ? {
+		eprintln('>> v.embed_file (forced embedding) find_index_entry_by_path ${ptr_str(start)}, id: $x.id, path: "$path", algo: "$algo" => ${ptr_str(x)}')
 	}
 	return x
 }

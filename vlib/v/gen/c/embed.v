@@ -6,7 +6,7 @@ import v.ast
 import v.pref
 
 fn (mut g Gen) embed_file_is_prod_mode() bool {
-	if g.pref.is_prod || 'debug_embed_file_in_prod' in g.pref.compile_defines {
+	if g.pref.is_prod || 'force_embed_file' in g.pref.compile_defines {
 		return true
 	}
 	return false
