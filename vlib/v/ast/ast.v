@@ -308,7 +308,6 @@ pub:
 	is_deprecated    bool
 	deprecation_msg  string
 	deprecated_after string
-	deprecated_only_publicly bool
 pub mut:
 	default_expr     Expr
 	default_expr_typ Type

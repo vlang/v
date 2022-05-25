@@ -1227,7 +1227,7 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		}
 		field_sym := c.table.sym(field.typ)
 		if field.is_deprecated {
-			if is_used_outside || !field.deprecated_only_publicly {
+			if is_used_outside {
 				c.error('field `.$field_name` is deprecated', node.pos)
 			}
 		}
