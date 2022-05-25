@@ -165,7 +165,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		}
 		p.register_auto_import('v.preludes.embed_file')
 		if embed_compression_type == 'zlib'
-			&& (p.pref.is_prod || 'debug_embed_file_in_prod' in p.pref.compile_defines) {
+			&& (p.pref.is_prod || 'force_embed_file' in p.pref.compile_defines) {
 			p.register_auto_import('v.preludes.embed_file.zlib')
 		}
 		return ast.ComptimeCall{
