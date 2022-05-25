@@ -249,7 +249,7 @@ pub fn (mut f Fmt) short_module(name string) string {
 		}
 	}
 	if aname == '' {
-		return symname
+		return '$tprefix$symname'
 	}
 	return '$tprefix${aname}.$symname'
 }
