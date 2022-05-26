@@ -13,16 +13,14 @@ import v.util.version
 import v.errors
 import v.pkgconfig
 
-const int_min = int(0x80000000)
-
-const int_max = int(0x7FFFFFFF)
-
-// prevent stack overflows by restricting too deep recursion:
-const expr_level_cutoff_limit = 40
-
-const stmt_level_cutoff_limit = 40
-
-const iface_level_cutoff_limit = 100
+const (
+	int_min                  = int(0x80000000)
+	int_max                  = int(0x7FFFFFFF)
+	// prevent stack overflows by restricting too deep recursion:
+	expr_level_cutoff_limit  = 40
+	stmt_level_cutoff_limit  = 40
+	iface_level_cutoff_limit = 100
+)
 
 pub const (
 	valid_comptime_if_os             = ['windows', 'ios', 'macos', 'mach', 'darwin', 'hpux', 'gnu',
@@ -58,28 +56,27 @@ fn all_valid_comptime_idents() []string {
 pub struct Checker {
 	pref &pref.Preferences // Preferences shared from V struct
 pub mut:
-	table              &ast.Table
-	file               &ast.File = 0
-	nr_errors          int
-	nr_warnings        int
-	nr_notices         int
-	errors             []errors.Error
-	warnings           []errors.Warning
-	notices            []errors.Notice
-	error_lines        []int // to avoid printing multiple errors for the same line
-	expected_type      ast.Type
-	expected_or_type   ast.Type // fn() or { 'this type' } eg. string. expected or block type
-	expected_expr_type ast.Type // if/match is_expr: expected_type
-	mod                string   // current module name
-	const_decl         string
-	const_deps         []string
-	const_names        []string
-	global_names       []string
-	locked_names       []string // vars that are currently locked
-	rlocked_names      []string // vars that are currently read-locked
-	in_for_count       int      // if checker is currently in a for loop
-	// checked_ident  string // to avoid infinite checker loops
-	should_abort              bool // when too many errors/warnings/notices are accumulated, .should_abort becomes true. It is checked in statement/expression loops, so the checker can return early, instead of wasting time.
+	table                     &ast.Table
+	file                      &ast.File = 0
+	nr_errors                 int
+	nr_warnings               int
+	nr_notices                int
+	errors                    []errors.Error
+	warnings                  []errors.Warning
+	notices                   []errors.Notice
+	error_lines               []int // to avoid printing multiple errors for the same line
+	expected_type             ast.Type
+	expected_or_type          ast.Type // fn() or { 'this type' } eg. string. expected or block type
+	expected_expr_type        ast.Type // if/match is_expr: expected_type
+	mod                       string   // current module name
+	const_decl                string
+	const_deps                []string
+	const_names               []string
+	global_names              []string
+	locked_names              []string // vars that are currently locked
+	rlocked_names             []string // vars that are currently read-locked
+	in_for_count              int      // if checker is currently in a for loop
+	should_abort              bool     // when too many errors/warnings/notices are accumulated, .should_abort becomes true. It is checked in statement/expression loops, so the checker can return early, instead of wasting time.
 	returns                   bool
 	scope_returns             bool
 	is_builtin_mod            bool // true inside the 'builtin', 'os' or 'strconv' modules; TODO: remove the need for special casing this
@@ -203,7 +200,7 @@ pub fn (mut c Checker) check(ast_file_ &ast.File) {
 			return
 		}
 	}
-	//
+
 	c.stmt_level = 0
 	for mut stmt in ast_file.stmts {
 		if stmt is ast.GlobalDecl {
@@ -214,7 +211,7 @@ pub fn (mut c Checker) check(ast_file_ &ast.File) {
 			return
 		}
 	}
-	//
+
 	c.stmt_level = 0
 	for mut stmt in ast_file.stmts {
 		if stmt !is ast.ConstDecl && stmt !is ast.GlobalDecl && stmt !is ast.ExprStmt {
@@ -225,7 +222,7 @@ pub fn (mut c Checker) check(ast_file_ &ast.File) {
 			return
 		}
 	}
-	//
+
 	c.check_scope_vars(c.file.scope)
 }
 
@@ -1892,7 +1889,6 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 					}
 				}
 			}
-			// println('adding flag "$flag"')
 			c.table.parse_cflag(flag, c.mod, c.pref.compile_defines_all) or {
 				c.error(err.msg(), node.pos)
 			}
@@ -2107,10 +2103,7 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			return c.chan_init(mut node)
 		}
 		ast.CharLiteral {
-			// return int_literal, not rune, so that we can do "bytes << `A`" without a cast etc
-			// return ast.int_literal_type
 			return ast.rune_type
-			// return ast.byte_type
 		}
 		ast.Comment {
 			return ast.void_type
@@ -2155,10 +2148,7 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			return c.go_expr(mut node)
 		}
 		ast.Ident {
-			// c.checked_ident = node.name
-			res := c.ident(mut node)
-			// c.checked_ident = ''
-			return res
+			return c.ident(mut node)
 		}
 		ast.IfExpr {
 			return c.if_expr(mut node)
@@ -2715,13 +2705,6 @@ pub fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 						typ: typ
 						is_optional: is_optional
 					}
-					// if typ == ast.t_type {
-					// sym := c.table.sym(c.cur_generic_type)
-					// println('IDENT T unresolved $node.name typ=$sym.name')
-					// Got a var with type T, return current generic type
-					// typ = c.cur_generic_type
-					// }
-					// } else {
 					if !is_sum_type_cast {
 						obj.typ = typ
 					}
@@ -3288,9 +3271,6 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 
 fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_type ast.Type, pos token.Pos, range_index bool, is_gated bool) {
 	index_type_sym := c.table.sym(index_type)
-	// println('index expr left=$typ_sym.name $node.pos.line_nr')
-	// if typ_sym.kind == .array && (!(ast.type_idx(index_type) in ast.number_type_idxs) &&
-	// index_type_sym.kind != .enum_) {
 	if typ_sym.kind in [.array, .array_fixed, .string] {
 		if !(index_type.is_int() || index_type_sym.kind == .enum_
 			|| (index_type_sym.kind == .alias
