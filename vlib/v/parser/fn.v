@@ -24,7 +24,6 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 	mut or_kind := ast.OrKind.absent
 	if fn_name == 'json.decode' {
 		p.expecting_type = true // Makes name_expr() parse the type `User` in `json.decode(User, txt)`
-		or_kind = .block
 	}
 
 	old_expr_mod := p.expr_mod
@@ -399,6 +398,11 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		return_type = p.parse_type()
 		p.inside_fn_return = false
 		return_type_pos = return_type_pos.extend(p.prev_tok.pos())
+	}
+	if p.tok.kind == .comma {
+		mr_pos := return_type_pos.extend(p.peek_tok.pos())
+		p.error_with_pos('multiple return types in function declaration must use parentheses, .e.g (int, string)',
+			mr_pos)
 	}
 	mut type_sym_method_idx := 0
 	no_body := p.tok.kind != .lcbr

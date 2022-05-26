@@ -934,8 +934,8 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast
 
 pub fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return_type ast.Type) {
 	if node.kind == .propagate_option {
-		if !c.table.cur_fn.return_type.has_flag(.optional) && c.table.cur_fn.name != 'main.main'
-			&& !c.inside_const {
+		if !isnil(c.table.cur_fn) && !c.table.cur_fn.return_type.has_flag(.optional)
+			&& c.table.cur_fn.name != 'main.main' && !c.inside_const {
 			c.error('to propagate the call, `$c.table.cur_fn.name` must return an optional type',
 				node.pos)
 		}
@@ -951,8 +951,8 @@ pub fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_re
 		return
 	}
 	if node.kind == .propagate_result {
-		if !c.table.cur_fn.return_type.has_flag(.result) && c.table.cur_fn.name != 'main.main'
-			&& !c.inside_const {
+		if !isnil(c.table.cur_fn) && !c.table.cur_fn.return_type.has_flag(.result)
+			&& c.table.cur_fn.name != 'main.main' && !c.inside_const {
 			c.error('to propagate the call, `$c.table.cur_fn.name` must return an result type',
 				node.pos)
 		}
@@ -1071,7 +1071,8 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	match mut node.expr {
 		ast.Ident {
 			name := node.expr.name
-			valid_generic := util.is_generic_type_name(name) && name in c.table.cur_fn.generic_names
+			valid_generic := util.is_generic_type_name(name) && !isnil(c.table.cur_fn)
+				&& name in c.table.cur_fn.generic_names
 			if valid_generic {
 				name_type = ast.Type(c.table.find_type_idx(name)).set_flag(.generic)
 			}
@@ -1220,11 +1221,23 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	// <<<
 
 	if has_field {
-		if sym.mod != c.mod && !field.is_pub && sym.language != .c {
+		is_used_outside := sym.mod != c.mod
+		if is_used_outside && !field.is_pub && sym.language != .c {
 			unwrapped_sym := c.table.sym(c.unwrap_generic(typ))
 			c.error('field `${unwrapped_sym.name}.$field_name` is not public', node.pos)
 		}
 		field_sym := c.table.sym(field.typ)
+		if field.is_deprecated && is_used_outside {
+			now := time.now()
+			mut after_time := now
+			if field.deprecated_after != '' {
+				after_time = time.parse_iso8601(field.deprecated_after) or {
+					c.error('invalid time format', field.pos)
+					now
+				}
+			}
+			c.deprecate('field', field_name, field.deprecation_msg, now, after_time, node.pos)
+		}
 		if field_sym.kind in [.sum_type, .interface_] {
 			if !prevent_sum_type_unwrapping_once {
 				if scope_field := node.scope.find_struct_field(node.expr.str(), typ, field_name) {
@@ -1452,7 +1465,7 @@ fn (mut c Checker) stmt(node_ ast.Stmt) {
 			c.inside_const = false
 		}
 		ast.DeferStmt {
-			if node.idx_in_fn < 0 {
+			if node.idx_in_fn < 0 && !isnil(c.table.cur_fn) {
 				node.idx_in_fn = c.table.cur_fn.defer_stmts.len
 				c.table.cur_fn.defer_stmts << unsafe { &node }
 			}
@@ -1541,7 +1554,7 @@ fn (mut c Checker) stmt(node_ ast.Stmt) {
 				c.warn('`goto` requires `unsafe` (consider using labelled break/continue)',
 					node.pos)
 			}
-			if node.name !in c.table.cur_fn.label_names {
+			if !isnil(c.table.cur_fn) && node.name !in c.table.cur_fn.label_names {
 				c.error('unknown label `$node.name`', node.pos)
 			}
 			// TODO: check label doesn't bypass variable declarations
@@ -1981,7 +1994,7 @@ fn (mut c Checker) stmts_ending_with_expression(stmts []ast.Stmt) {
 }
 
 pub fn (mut c Checker) unwrap_generic(typ ast.Type) ast.Type {
-	if typ.has_flag(.generic) {
+	if typ.has_flag(.generic) && !isnil(c.table.cur_fn) {
 		if t_typ := c.table.resolve_generic_to_concrete(typ, c.table.cur_fn.generic_names,
 			c.table.cur_concrete_types)
 		{
@@ -2531,9 +2544,15 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 	match node.kind {
 		.fn_name {
+			if isnil(c.table.cur_fn) {
+				return ast.void_type
+			}
 			node.val = c.table.cur_fn.name.all_after_last('.')
 		}
 		.method_name {
+			if isnil(c.table.cur_fn) {
+				return ast.void_type
+			}
 			fname := c.table.cur_fn.name.all_after_last('.')
 			if c.table.cur_fn.is_method {
 				node.val = c.table.type_to_str(c.table.cur_fn.receiver.typ).all_after_last('.') +
@@ -2543,6 +2562,9 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 			}
 		}
 		.mod_name {
+			if isnil(c.table.cur_fn) {
+				return ast.void_type
+			}
 			node.val = c.table.cur_fn.mod
 		}
 		.struct_name {

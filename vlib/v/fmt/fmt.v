@@ -7,7 +7,6 @@ import strings
 import v.ast
 import v.util
 import v.pref
-import v.mathutil
 
 const (
 	bs      = '\\'
@@ -41,6 +40,7 @@ pub mut:
 	used_imports       []string          // to remove unused imports
 	import_syms_used   map[string]bool   // to remove unused import symbols.
 	mod2alias          map[string]string // for `import time as t`, will contain: 'time'=>'t'
+	mod2syms           map[string]string // import time { now } 'time.now'=>'now'
 	use_short_fn_args  bool
 	single_line_fields bool   // should struct fields be on a single line
 	it_name            string // the name to replace `it` with
@@ -71,8 +71,16 @@ pub fn fmt(file ast.File, table &ast.Table, pref &pref.Preferences, is_debug boo
 	if res.len == 1 {
 		return f.out_imports.str().trim_space() + '\n'
 	}
-	bounded_import_pos := mathutil.min(res.len, f.import_pos)
-	return res[..bounded_import_pos] + f.out_imports.str() + res[bounded_import_pos..]
+	if res.len <= f.import_pos {
+		imp_str := f.out_imports.str().trim_space()
+		if imp_str.len > 0 {
+			return res + '\n' + imp_str + '\n'
+		} else {
+			return res
+		}
+	} else {
+		return res[..f.import_pos] + f.out_imports.str() + res[f.import_pos..]
+	}
 }
 
 pub fn (mut f Fmt) process_file_imports(file &ast.File) {
@@ -82,6 +90,9 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 			f.mod2alias['${imp.mod}.$sym.name'] = sym.name
 			f.mod2alias['${imp.mod.all_after_last('.')}.$sym.name'] = sym.name
 			f.mod2alias[sym.name] = sym.name
+			f.mod2syms['${imp.mod}.$sym.name'] = sym.name
+			f.mod2syms['${imp.mod.all_after_last('.')}.$sym.name'] = sym.name
+			f.mod2syms[sym.name] = sym.name
 			f.import_syms_used[sym.name] = false
 		}
 	}
@@ -208,8 +219,8 @@ pub fn (mut f Fmt) short_module(name string) string {
 	if !name.contains('.') || name.starts_with('JS.') {
 		return name
 	}
-	if name in f.mod2alias {
-		return f.mod2alias[name]
+	if name in f.mod2syms {
+		return f.mod2syms[name]
 	}
 	if name.ends_with('>') {
 		generic_levels := name.trim_string_right('>').split('<')
@@ -238,7 +249,7 @@ pub fn (mut f Fmt) short_module(name string) string {
 		}
 	}
 	if aname == '' {
-		return symname
+		return '$tprefix$symname'
 	}
 	return '$tprefix${aname}.$symname'
 }
