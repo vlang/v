@@ -156,7 +156,7 @@ fn (stmt Stmt) sqlite_select_column(idx int, typ int) ?orm.Primitive {
 	return primitive
 }
 
-// Convert type int to sql type string 
+// Convert type int to sql type string
 fn sqlite_type_from_v(typ int) ?string {
 	return if typ in orm.nums || typ < 0 || typ in orm.num64 || typ == orm.time {
 		'INTEGER'

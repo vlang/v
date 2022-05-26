@@ -1,7 +1,7 @@
 // import os
-// import pg
 // import term
 import time
+// import pg
 import sqlite
 
 struct Module {
@@ -31,9 +31,12 @@ struct TestTime {
 	create time.Time
 }
 
-fn test_orm_sqlite() {
+fn test_orm() {
 	db := sqlite.connect(':memory:') or { panic(err) }
-	db.exec('drop table if exists User')
+	// db.exec('drop table if exists User')
+
+	// db := pg.connect(host: 'localhost', port: 5432, user: 'louis', password: 'abc', dbname: 'orm') or { panic(err) }
+
 	sql db {
 		create table Module
 	}
@@ -242,7 +245,7 @@ fn test_orm_sqlite() {
 	//
 	offset_const := 2
 	z := sql db {
-		select from User limit 2 offset offset_const
+		select from User order by id limit 2 offset offset_const
 	}
 	assert z.len == 2
 	assert z[0].id == 3
@@ -264,6 +267,7 @@ fn test_orm_sqlite() {
 	}
 	assert updated_oldest.age == 31
 
+	// Remove this when pg is used
 	db.exec('insert into User (name, age) values (NULL, 31)')
 	null_user := sql db {
 		select from User where id == 5
@@ -336,11 +340,18 @@ fn test_orm_sqlite() {
 	sql db {
 		update Module set created = t where id == 1
 	}
+
 	updated_time_mod := sql db {
 		select from Module where id == 1
 	}
+
 	// Note: usually updated_time_mod.created != t, because t has
 	// its microseconds set, while the value retrieved from the DB
 	// has them zeroed, because the db field resolution is seconds.
 	assert updated_time_mod.created.format_ss() == t.format_ss()
+
+	sql db {
+		drop table Module
+		drop table TestTime
+	}
 }
