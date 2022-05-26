@@ -65,8 +65,8 @@ pub fn norm_path(path string) string {
 	volume := get_volume(path)
 	volume_len := volume.len
 	cpath := clean_path(path[volume_len..])
-	if cpath.len == 0 && volume_len == 0 {
-		return os.dot_str
+	if cpath == os.dot_str && volume_len == 0 {
+		return cpath
 	}
 	spath := cpath.split(path_separator)
 	if os.dot_dot !in spath {
@@ -123,6 +123,79 @@ pub fn norm_path(path string) string {
 	return res
 }
 
+// existing_path returns the existing part of the given `path`.
+[direct_array_access]
+pub fn existing_path(path string) string {
+	if path.len == 0 {
+		return os.empty_str
+	}
+	if exists(path) {
+		volume := get_volume(path)
+		volume_len := volume.len
+		cpath := clean_path(path[volume_len..])
+		if volume_len == 0 {
+			return cpath
+		}
+		if cpath.len != 0 {
+			return volume + cpath
+		}
+		return volume
+	}
+	parts := logical_path_parts(path)
+	for i, part in parts {
+		if !exists(part) {
+			if i - 1 < 0 {
+				return os.empty_str
+			}
+			return parts[i - 1]
+		}
+	}
+	return os.empty_str
+}
+
+// logical_path_parts returns the logical parts of the given `path`.
+[direct_array_access]
+fn logical_path_parts(path string) []string {
+	if path.len == 0 {
+		return []
+	}
+	volume := get_volume(path)
+	volume_len := volume.len
+	cpath := clean_path(path[volume_len..])
+	if cpath == os.dot_str && volume_len == 0 {
+		return [cpath]
+	}
+	full_path := if volume_len != 0 { volume + cpath } else { cpath }
+	rooted := is_abs_path(full_path)
+	mut parts := []string{}
+	if volume_len != 0 {
+		if rooted {
+			parts << volume + path_separator
+		} else {
+			parts << volume
+		}
+	}
+	if rooted && volume_len == 0 {
+		parts << path_separator
+	}
+	spath := cpath.split(path_separator)
+	for i, part in spath {
+		if part == os.empty_str {
+			continue
+		}
+		if parts.len == 0 {
+			parts << part
+			continue
+		}
+		if rooted && i == 1 {
+			parts << parts[i - 1] + part
+			continue
+		}
+		parts << parts[i - 1] + path_separator + part
+	}
+	return parts
+}
+
 // clean_path returns the "cleaned" version of the given `path`
 // by turning forward slashes into back slashes
 // on a Windows system and eliminating:
@@ -162,6 +235,9 @@ fn clean_path(path string) string {
 		sb.write_u8(u8(sc.current()))
 	}
 	res := sb.str()
+	if res == os.empty_str {
+		return os.dot_str
+	}
 	// eliminate the last path separator
 	if res.len > 1 && is_slash(res[res.len - 1]) {
 		return res[..res.len - 1]
