@@ -259,6 +259,8 @@ const (
 		'--relative-paths',
 		'-r',
 		'--js',
+		'--verify',
+		'--diff',
 	]
 	auto_complete_flags_self    = [
 		'-prod',
