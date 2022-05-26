@@ -8,9 +8,13 @@ import net.conv
 
 pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ?[][]orm.Primitive {
 	query := orm.orm_select_gen(config, '"', true, '$', 1, where)
+
+	res := pg_stmt_worker(db, query, where, data)?
+
 	mut ret := [][]orm.Primitive{}
 
-	res := pg_stmt_worker(db, query, orm.QueryData{}, where)?
+	if config.is_count {
+	}
 
 	for row in res {
 		mut row_data := []orm.Primitive{}
@@ -166,7 +170,9 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats 
 		}
 		time.Time {
 			types << u32(Oid.t_int4)
-			vals << &char(&int(data.unix))
+			unix := int(data.unix)
+			num := conv.htn32(unsafe { &u32(&unix) })
+			vals << &char(&num)
 			lens << int(sizeof(u32))
 			formats << 1
 		}
@@ -178,19 +184,22 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats 
 
 fn pg_type_from_v(typ int) ?string {
 	str := match typ {
-		6, 10 {
+		orm.type_idx['i8'], orm.type_idx['i16'], orm.type_idx['byte'], orm.type_idx['u16'] {
 			'SMALLINT'
 		}
-		7, 11, orm.time {
+		orm.type_idx['bool'] {
+			'BOOLEAN'
+		}
+		orm.type_idx['int'], orm.type_idx['u32'], orm.time {
 			'INT'
 		}
-		8, 12 {
+		orm.type_idx['i64'], orm.type_idx['u64'] {
 			'BIGINT'
 		}
-		13 {
+		orm.float[0] {
 			'REAL'
 		}
-		14 {
+		orm.float[1] {
 			'DOUBLE PRECISION'
 		}
 		orm.string {
@@ -212,54 +221,51 @@ fn pg_type_from_v(typ int) ?string {
 fn str_to_primitive(str string, typ int) ?orm.Primitive {
 	match typ {
 		// bool
-		16 {
-			return orm.Primitive(str.i8() == 1)
-		}
-		18 {
+		orm.type_idx['bool'] {
 			return orm.Primitive(str == 't')
 		}
 		// i8
-		5 {
+		orm.type_idx['i8'] {
 			return orm.Primitive(str.i8())
 		}
 		// i16
-		6 {
+		orm.type_idx['i16'] {
 			return orm.Primitive(str.i16())
 		}
 		// int
-		7 {
+		orm.type_idx['int'] {
 			return orm.Primitive(str.int())
 		}
 		// i64
-		8 {
+		orm.type_idx['i64'] {
 			return orm.Primitive(str.i64())
 		}
 		// byte
-		9 {
+		orm.type_idx['byte'] {
 			data := str.i8()
 			return orm.Primitive(*unsafe { &u8(&data) })
 		}
 		// u16
-		10 {
+		orm.type_idx['u16'] {
 			data := str.i16()
 			return orm.Primitive(*unsafe { &u16(&data) })
 		}
 		// u32
-		11 {
+		orm.type_idx['u32'] {
 			data := str.int()
 			return orm.Primitive(*unsafe { &u32(&data) })
 		}
 		// u64
-		12 {
+		orm.type_idx['u64'] {
 			data := str.i64()
 			return orm.Primitive(*unsafe { &u64(&data) })
 		}
 		// f32
-		13 {
+		orm.type_idx['f32'] {
 			return orm.Primitive(str.f32())
 		}
 		// f64
-		14 {
+		orm.type_idx['f64'] {
 			return orm.Primitive(str.f64())
 		}
 		orm.string {

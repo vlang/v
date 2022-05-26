@@ -6,6 +6,7 @@ import time
 // sql expr
 
 pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ?[][]orm.Primitive {
+	// 1. Create query and bind necessary data
 	query := orm.orm_select_gen(config, '`', true, '?', 1, where)
 	stmt := db.new_init_stmt(query)?
 	mut c := 1
@@ -19,6 +20,7 @@ pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.Qu
 	mut ret := [][]orm.Primitive{}
 
 	if config.is_count {
+		// 2. Get count of returned values & add it to ret array
 		step := stmt.step()
 		if step !in [sqlite_row, sqlite_ok, sqlite_done] {
 			return db.error_message(step, query)
@@ -28,6 +30,7 @@ pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.Qu
 		return ret
 	}
 	for {
+		// 2. Parse returned values
 		step := stmt.step()
 		if step == sqlite_done {
 			break
@@ -83,6 +86,7 @@ pub fn (db DB) drop(table string) ? {
 
 // helper
 
+// Executes query and bind prepared statement data directly
 fn sqlite_stmt_worker(db DB, query string, data orm.QueryData, where orm.QueryData) ? {
 	stmt := db.new_init_stmt(query)?
 	mut c := 1
@@ -92,6 +96,7 @@ fn sqlite_stmt_worker(db DB, query string, data orm.QueryData, where orm.QueryDa
 	stmt.finalize()
 }
 
+// Binds all values of d in the prepared statement
 fn sqlite_stmt_binder(stmt Stmt, d orm.QueryData, query string, mut c &int) ? {
 	for data in d.data {
 		err := bind(stmt, c, data)
@@ -103,6 +108,7 @@ fn sqlite_stmt_binder(stmt Stmt, d orm.QueryData, query string, mut c &int) ? {
 	}
 }
 
+// Universal bind function
 fn bind(stmt Stmt, c &int, data orm.Primitive) int {
 	mut err := 0
 	match data {
@@ -128,6 +134,7 @@ fn bind(stmt Stmt, c &int, data orm.Primitive) int {
 	return err
 }
 
+// Selects column in result and converts it to an orm.Primitive
 fn (stmt Stmt) sqlite_select_column(idx int, typ int) ?orm.Primitive {
 	mut primitive := orm.Primitive(0)
 
@@ -149,6 +156,7 @@ fn (stmt Stmt) sqlite_select_column(idx int, typ int) ?orm.Primitive {
 	return primitive
 }
 
+// Convert type int to sql type string
 fn sqlite_type_from_v(typ int) ?string {
 	return if typ in orm.nums || typ < 0 || typ in orm.num64 || typ == orm.time {
 		'INTEGER'
