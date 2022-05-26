@@ -283,6 +283,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	global_g.init()
 	global_g.timers.show('cgen init')
 	global_g.tests_inited = false
+	global_g.file = files.last()
 	if !pref.no_parallel {
 		mut pp := pool.new_pool_processor(callback: cgen_process_one_file_cb)
 		pp.set_shared_context(global_g) // TODO: make global_g shared
@@ -2886,7 +2887,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 					g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.mtx = {0}, .val =')
 				}
 			}
-			last_stmt_pos := g.stmt_path_pos.last()
+			last_stmt_pos := if g.stmt_path_pos.len > 0 { g.stmt_path_pos.last() } else { 0 }
 			g.call_expr(node)
 			// if g.fileis('1.strings') {
 			// println('before:' + node.autofree_pregen)
