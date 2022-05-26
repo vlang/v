@@ -3361,7 +3361,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 				sb.write_string('${g.typ(param.typ)} a$i')
 			}
 			sb.writeln(') {')
-			sb.writeln('\t$data_styp* a0 = *($data_styp**)(__RETURN_ADDRESS() - __CLOSURE_DATA_OFFSET);')
+			sb.writeln('\t$data_styp* a0 = __CLOSURE_GET_DATA();')
 			if m.return_type != ast.void_type {
 				sb.write_string('\treturn ')
 			} else {
