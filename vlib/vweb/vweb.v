@@ -182,7 +182,8 @@ pub fn (mut ctx Context) file(f_path string) Result {
 		ctx.server_error(500)
 		return Result{}
 	}
-	if content_type := mime.get_mime_type(ext) {
+	content_type := mime.get_mime_type(ext)
+	if content_type.len > 0 {
 		ctx.send_response_to_client(content_type, data)
 	} else {
 		eprintln('no MIME type found for extension $ext')
@@ -599,7 +600,7 @@ pub fn (mut ctx Context) serve_static(url string, file_path string) {
 	ctx.static_files[url] = file_path
 	// ctx.static_mime_types[url] = mime_type
 	ext := os.file_ext(file_path)
-	ctx.static_mime_types[url] = mime.get_mime_type(ext) or { 'text/plain' }
+	ctx.static_mime_types[url] = mime.get_mime_type(ext)
 }
 
 // Returns the ip address from the current user
