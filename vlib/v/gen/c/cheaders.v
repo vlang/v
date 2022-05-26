@@ -84,12 +84,12 @@ static int _V_page_size = 0x4000; // 16K
 // refer to https://godbolt.org/z/r7P3EYv6c for a complete assembly
 #ifdef __V_amd64
 static const char __closure_thunk[] = {
-	0x4c, 0x8b, 0x1d, 0xf9, 0xbf, 0xff, 0xff,  // mov  r11, QWORD PTR [rip - userdata]
-	0xff, 0x25, 0xfb, 0xbf, 0xff, 0xff,        // jmp  QWORD PTR [rip - fn]
+	0xF3, 0x44, 0x0F, 0x7E, 0x3D, 0xF7, 0xBF, 0xFF, 0xFF,  // movq  xmm15, QWORD PTR [rip - userdata]
+	0xFF, 0x25, 0xF9, 0xBF, 0xFF, 0xFF                     // jmp  QWORD PTR [rip - fn]
 };
 static char __CLOSURE_GET_DATA_BYTES[] = {
-	0x4c, 0x89, 0xd8,  // mov rax, r11
-	0xC3               // ret
+	0x66, 0x4C, 0x0F, 0x7E, 0xF8,  // movq rax, xmm15
+	0xC3                           // ret
 };
 #define __CLOSURE_DATA_OFFSET 0x400C
 #elif defined(__V_x86)
