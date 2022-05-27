@@ -2381,9 +2381,10 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		&& !p.inside_match_case && (!p.inside_if || p.inside_select)
 		&& (!p.inside_for || p.inside_select) && !known_var {
 		return p.struct_init(p.mod + '.' + p.tok.lit, false) // short_syntax: false
-	} else if p.peek_tok.kind == .lcbr && p.inside_if && lit0_is_capital && !known_var
-		&& language == .v {
-		// if a == Foo{} {...}
+	} else if p.peek_tok.kind == .lcbr
+		&& ((p.inside_if && lit0_is_capital && !known_var && language == .v)
+		|| (p.inside_match_case && p.tok.kind == .name && p.peek_tok.pos - p.tok.pos == p.tok.len)) {
+		// `if a == Foo{} {...}` or `match foo { Foo{} {...} }`
 		return p.struct_init(p.mod + '.' + p.tok.lit, false)
 	} else if p.peek_tok.kind == .dot && (lit0_is_capital && !known_var && language == .v) {
 		// T.name
