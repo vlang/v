@@ -154,6 +154,17 @@ pub fn existing_path(path string) string {
 }
 
 // logical_path_parts returns the logical parts of the given `path`.
+// Examples:
+// on a unix-based system:
+// ```v
+// assert os.logical_path_parts('/path/to/file.v') == ['/', '/path', '/path/to', '/path/to/file.v']
+// assert os.logical_path_parts('path/to/file.v') == ['path', 'path/to', 'path/to/file.v']
+// ```
+// on a Windows system:
+// ```v
+// assert os.logical_path_parts(r'C:\path\to\file.v') == ['C:\\', 'C:\\path', r'C:\path\to', r'C:\path\to\file.v']
+// assert os.logical_path_parts(r'C:path\to\file.v') == ['C:', 'C:path', 'C:path\\to', r'C:path\to\file.v']
+// ```
 [direct_array_access]
 fn logical_path_parts(path string) []string {
 	if path.len == 0 {
