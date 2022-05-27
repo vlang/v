@@ -376,7 +376,7 @@ fn vpm_update(m []string) {
 	}
 	mut errors := 0
 	for modulename in module_names {
-		zname := url_to_module_name( modulename )
+		zname := url_to_module_name(modulename)
 		final_module_path := valid_final_path_of_existing_module(modulename) or { continue }
 		os.chdir(final_module_path) or {}
 		println('Updating module "$zname" in "$final_module_path" ...')
@@ -581,11 +581,11 @@ fn mod_name_info(mod_name string) ModNameInfo {
 	return info
 }
 
-fn url_to_module_name( modulename string ) string {
+fn url_to_module_name(modulename string) string {
 	mut res := if mod := get_mod_by_url(modulename) { mod.name } else { modulename }
-	if res.ends_with('.git') { 
-		res = res.replace('.git', '') 
-    }
+	if res.ends_with('.git') {
+		res = res.replace('.git', '')
+	}
 	return res
 }
 
