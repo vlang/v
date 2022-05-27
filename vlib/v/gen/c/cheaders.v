@@ -197,8 +197,9 @@ void __closure_init() {
 	DWORD _tmp;
 	VirtualProtect(_closure_ptr, page_size, PAGE_READWRITE, &_tmp);
 	memcpy(_closure_ptr, __CLOSURE_GET_DATA_BYTES, sizeof(__CLOSURE_GET_DATA_BYTES));
-	closure_ptr += (sizeof(__CLOSURE_GET_DATA_BYTES) + sizeof(void*) - 1) & ~(sizeof(void*) - 1);
 	VirtualProtect(_closure_ptr, page_size, PAGE_EXECUTE_READ, &_tmp);
+	__CLOSURE_GET_DATA = (void*)_closure_ptr;
+	_closure_ptr += _CLOSURE_SIZE;
 	_closure_cap--;
 }
 #else
