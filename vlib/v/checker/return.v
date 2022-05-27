@@ -91,7 +91,9 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 	}
 	if expected_types.len > 0 && expected_types.len != got_types.len {
 		arg := if expected_types.len == 1 { 'argument' } else { 'arguments' }
-		c.error('expected $expected_types.len $arg, but got $got_types.len', node.pos)
+		midx := imax(0, imin(expected_types.len, expr_idxs.len - 1))
+		mismatch_pos := node.exprs[expr_idxs[midx]].pos()
+		c.error('expected $expected_types.len $arg, but got $got_types.len', mismatch_pos)
 		return
 	}
 	for i, exp_type in expected_types {
@@ -329,4 +331,12 @@ fn is_noreturn_callexpr(expr ast.Expr) bool {
 		return expr.is_noreturn
 	}
 	return false
+}
+
+fn imin(a int, b int) int {
+	return if a < b { a } else { b }
+}
+
+fn imax(a int, b int) int {
+	return if a < b { b } else { a }
 }
