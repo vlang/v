@@ -42,10 +42,6 @@ mut:
 	err      IError
 }
 
-pub fn undoc_fn() {
-	// Added
-}
-
 // with_cancel returns a copy of parent with a new done channel. The returned
 // context's done channel is closed when the returned cancel function is called
 // or when the parent context's done channel is closed, whichever happens first.
