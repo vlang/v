@@ -145,7 +145,7 @@ pub fn existing_path(path string) string {
 	for i, part in parts {
 		if !exists(part) {
 			if i - 1 < 0 {
-				return os.empty_str
+				break
 			}
 			return parts[i - 1]
 		}
