@@ -74,6 +74,9 @@ fn (mut g Gen) gen_c_main_function_header() {
 	}
 	g.writeln('\tg_main_argc = ___argc;')
 	g.writeln('\tg_main_argv = ___argv;')
+	if g.nr_closures > 0 {
+		g.writeln('__closure_init();')
+	}
 }
 
 fn (mut g Gen) gen_c_main_header() {
