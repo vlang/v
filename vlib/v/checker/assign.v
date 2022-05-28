@@ -305,7 +305,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				}
 			}
 		}
-		left_type_unwrapped := c.unwrap_generic(left_type)
+		left_type_unwrapped := c.unwrap_generic(ast.mktyp(left_type))
 		right_type_unwrapped := c.unwrap_generic(right_type)
 		if right_type_unwrapped == 0 {
 			// right type was a generic `T`
