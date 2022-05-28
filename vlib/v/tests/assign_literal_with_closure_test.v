@@ -10,7 +10,8 @@ fn sma(period int) fn (f64) f64 {
 		}
 
 		sum += input - storage[i]
-		storage[i], i = input, (i + 1) % period
+		storage[i] = input
+		i = (i + 1) % period
 		return sum / f64(storage.len)
 	}
 }
