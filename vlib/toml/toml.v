@@ -201,26 +201,39 @@ pub fn (d Doc) reflect<T>() T {
 // quoted keys are supported as `a."b.c"` or `a.'b.c'`.
 // Arrays can be queried with `a[0].b[1].[2]`.
 pub fn (d Doc) value(key string) Any {
-	key_split := parse_dotted_key(key) or { return Any(Null{}) }
+	key_split := parse_dotted_key(key) or { return toml.null }
 	return d.value_(d.ast.table, key_split)
+}
+
+pub const null = Any(Null{})
+
+pub fn (d Doc) value_opt(key string) ?Any {
+	key_split := parse_dotted_key(key) or { return error('invalid dotted key') }
+	x := d.value_(d.ast.table, key_split)
+	if x is Null {
+		return error('no value for key')
+	}
+	return x
 }
 
 // value_ returns the value found at `key` in the map `values` as `Any` type.
 fn (d Doc) value_(value ast.Value, key []string) Any {
-	assert key.len > 0
+	if key.len == 0 {
+		return toml.null
+	}
 	mut ast_value := ast.Value(ast.Null{})
 	k, index := parse_array_key(key[0])
 
 	if k == '' {
 		a := value as []ast.Value
-		ast_value = a[index] or { return Any(Null{}) }
+		ast_value = a[index] or { return toml.null }
 	}
 
 	if value is map[string]ast.Value {
-		ast_value = value[k] or { return Any(Null{}) }
+		ast_value = value[k] or { return toml.null }
 		if index > -1 {
 			a := ast_value as []ast.Value
-			ast_value = a[index] or { return Any(Null{}) }
+			ast_value = a[index] or { return toml.null }
 		}
 	}
 
@@ -298,11 +311,11 @@ pub fn ast_to_any(value ast.Value) Any {
 			return aa
 		}
 		else {
-			return Any(Null{})
+			return toml.null
 		}
 	}
 
-	return Any(Null{})
+	return toml.null
 	// TODO decide this
 	// panic(@MOD + '.' + @STRUCT + '.' + @FN + ' can\'t convert "$value"')
 	// return Any('')

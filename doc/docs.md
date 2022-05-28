@@ -5905,6 +5905,19 @@ fn main() {
 }
 ```
 
+Struct field deprecations:
+```v oksyntax
+module abc
+
+// Note that only *direct* accesses to Xyz.d in *other modules*, will produce deprecation notices/warnings:
+pub struct Xyz {
+pub mut:
+	a int
+	d int [deprecated: 'use Xyz.a instead'; deprecated_after: '2999-03-01'] // produce a notice, the deprecation date is in the far future
+}
+```
+
+Function/method deprecations:
 ```v
 // Calling this function will result in a deprecation warning
 [deprecated]

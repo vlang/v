@@ -141,6 +141,16 @@ fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
 			return p.check_cross_variables(exprs, val.left)
 				|| p.check_cross_variables(exprs, val.right)
 		}
+		ast.ParExpr {
+			return p.check_cross_variables(exprs, val.expr)
+		}
+		ast.CallExpr {
+			for arg in val.args {
+				if p.check_cross_variables(exprs, arg.expr) {
+					return true
+				}
+			}
+		}
 		ast.PrefixExpr {
 			return p.check_cross_variables(exprs, val.right)
 		}

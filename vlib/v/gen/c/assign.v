@@ -762,6 +762,22 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 				g.gen_cross_tmp_variable(left, val.right)
 			}
 		}
+		ast.ParExpr {
+			g.write('(')
+			g.gen_cross_tmp_variable(left, val.expr)
+			g.write(')')
+		}
+		ast.CallExpr {
+			fn_name := val.name.replace('.', '__')
+			g.write('${fn_name}(')
+			for i, arg in val.args {
+				g.gen_cross_tmp_variable(left, arg.expr)
+				if i != val.args.len - 1 {
+					g.write(', ')
+				}
+			}
+			g.write(')')
+		}
 		ast.PrefixExpr {
 			g.write(val.op.str())
 			g.gen_cross_tmp_variable(left, val.right)

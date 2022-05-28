@@ -24,7 +24,6 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 	mut or_kind := ast.OrKind.absent
 	if fn_name == 'json.decode' {
 		p.expecting_type = true // Makes name_expr() parse the type `User` in `json.decode(User, txt)`
-		or_kind = .block
 	}
 
 	old_expr_mod := p.expr_mod
