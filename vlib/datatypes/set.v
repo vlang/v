@@ -43,8 +43,8 @@ pub fn (mut set Set<T>) delete(i T) {
 }
 
 // contains determines if set includes item
-pub fn (set Set<T>) contains(i T) bool {
-	return set.elements.keys().index(i)>=0
+pub fn (set Set<T>) contains(item T) bool {
+	return set.elements.keys().index(item) >= 0
 }
 
 // difference returns the difference between this set and another. Will panic if type differs
@@ -53,7 +53,7 @@ pub fn (s1 Set<T>) difference(s2 Set<T>) !Set<T> {
 		return error("Set types don't match")
 	}
 	mut result := Set<T>{}
-	for item in s1 .elements.keys() {
+	for item in s1.elements.keys() {
 		if !s2.contains(item) {
 			result.add(item)
 		}

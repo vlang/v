@@ -1,6 +1,6 @@
 module datatypes
 
-fn test_is_empty() {
+/*fn test_is_empty() {
 	mut set := Set<int>{}
 	assert set.is_empty() == true
 	set.add(1)
@@ -33,6 +33,19 @@ fn test_difference() {
 	}
 	assert set_c.len() == 5
 }
+fn test_union_with() {
+	mut set_a := Set<int>{}
+	set_a.add(...[]int{len:10,init:it})
+	mut set_b := Set<int>{}
+	set_b.add(...[]int{len:10,init:it+5})
+	set_c := set_a.union_with(set_b) or { Set<int>{} }
+	assert set_c.len() == 15
+	set_a.delete(0)
+	set_a.delete(1)
+	assert (set_a+set_b).len() == 13
+}*/
+
+/*****************************/
 /*fn test_equal() {
 	mut set_a := Set<int>{}
 	set_a.add(...[]int{len:10,init:it})
@@ -59,26 +72,18 @@ fn test_difference() {
 	assert set_a.equal(set_b) == true
 }*/
 
-fn test_union_with() {
-	mut set_a := Set<int>{}
-	set_a.add(...[]int{len:10,init:it})
-	mut set_b := Set<int>{}
-	set_b.add(...[]int{len:10,init:it+5})
-	set_c := set_a.union_with(set_b) or { Set<int>{} }
-	assert set_c.len() == 15
-	set_a.delete(0)
-	set_a.delete(1)
-	assert (set_a+set_b).len() == 13
-}
-/*fn test_intersection(){
+fn test_intersection(){
 	mut colors := Set<string>{}
 	colors.add(...['orange','green','red','blue'])
 	mut fruit := Set<string>{}
 	fruit.add(...['orange','apple','banana'])
-	set_c := colors.intersection(fruit) or {panic('Problem with intersection')}
+	set_c := colors.intersection(fruit) or {
+		assert false
+		panic('Problem with intersection')
+	}
 	assert set_c.len() == 1
 	assert set_c.contains('orange') == true
-}*/
+}
 
 /*fn test_is_subset() {
 	mut parent :=  Set<f64>{}
