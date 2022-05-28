@@ -872,6 +872,82 @@ fn (mut g Gen) add_reg(a Register, b Register) {
 	g.println('add $a, $b')
 }
 
+fn (mut g Gen) inc_reg(r Register) {
+	g.write8(0x48)
+	g.write8(0x83)
+	
+	match r {
+		.rax {
+			g.write8(0xc0)
+		}
+		.rcx {
+			g.write8(0xc1)
+		}
+		.rdx {
+			g.write8(0xc2)
+		}
+		.rbx {
+			g.write8(0xc3)
+		}
+		.rsp {
+			g.write8(0xc4)
+		}
+		.rbp {
+			g.write8(0xc5)
+		}
+		.rsi {
+			g.write8(0xc6)
+		}
+		.rdi {
+			g.write8(0xc7)
+		}
+		else {
+			panic('unhandled inc $r, \$1')
+		}
+	}
+	g.write8(0x01)
+
+	g.println('add $r, \$1')
+}
+
+fn (mut g Gen) dec_reg(r Register) {
+	g.write8(0x48)
+	g.write8(0x83)
+	
+	match r {
+		.rax {
+			g.write8(0xe8)
+		}
+		.rcx {
+			g.write8(0xe9)
+		}
+		.rdx {
+			g.write8(0xea)
+		}
+		.rbx {
+			g.write8(0xeb)
+		}
+		.rsp {
+			g.write8(0xec)
+		}
+		.rbp {
+			g.write8(0xed)
+		}
+		.rsi {
+			g.write8(0xee)
+		}
+		.rdi {
+			g.write8(0xef)
+		}
+		else {
+			panic('unhandled inc $r, \$1')
+		}
+	}
+	g.write8(0x01)
+
+	g.println('sub $r, \$1')
+}
+
 fn (mut g Gen) mov_reg(a Register, b Register) {
 	if a == .rax && b == .rsi {
 		g.write([u8(0x48), 0x89, 0xf0])
