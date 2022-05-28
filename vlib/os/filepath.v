@@ -130,16 +130,7 @@ pub fn existing_path(path string) string {
 		return os.empty_str
 	}
 	if exists(path) {
-		volume := get_volume(path)
-		volume_len := volume.len
-		cpath := clean_path(path[volume_len..])
-		if volume_len == 0 {
-			return cpath
-		}
-		if cpath.len != 0 {
-			return volume + cpath
-		}
-		return volume
+		return path
 	}
 	parts := logical_path_parts(path)
 	for i, part in parts {
