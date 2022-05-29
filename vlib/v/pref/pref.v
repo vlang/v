@@ -111,7 +111,8 @@ pub mut:
 	is_prof           bool // benchmark every function
 	is_prod           bool // use "-O2"
 	is_repl           bool
-	is_run            bool
+	is_run            bool // compile and run a v program, passing arguments to it, and deleting the executable afterwards
+	is_crun           bool // similar to run, but does not recompile the executable, if there were no changes to the sources
 	is_debug          bool // turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
 	is_vlines         bool // turned on by -g (it slows down .tmp.c generation slightly).
 	is_stats          bool // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
@@ -706,7 +707,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					if command == '' {
 						command = arg
 						command_pos = i
-						if command == 'run' {
+						if command in ['run', 'crun'] {
 							break
 						}
 					} else if is_source_file(command) && is_source_file(arg)
@@ -734,6 +735,12 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	if res.is_debug {
 		res.parse_define('debug')
 	}
+	if command == 'crun' {
+		res.is_crun = true
+	}
+	if command == 'run' {
+		res.is_run = true
+	}
 	if command == 'run' && res.is_prod && os.is_atty(1) > 0 {
 		eprintln_cond(show_output, "Note: building an optimized binary takes much longer. It shouldn't be used with `v run`.")
 		eprintln_cond(show_output, 'Use `v run` without optimization, or build an optimized binary with -prod first, then run it separately.')
@@ -744,8 +751,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		eprintln('Cannot save output binary in a .v file.')
 		exit(1)
 	}
-	if command == 'run' {
-		res.is_run = true
+	if res.is_run || res.is_crun {
 		if command_pos + 2 > args.len {
 			eprintln('v run: no v files listed')
 			exit(1)
@@ -798,7 +804,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		// `v build.vsh gcc` is the same as `v run build.vsh gcc`,
 		// i.e. compiling, then running the script, passing the args
 		// after it to the script:
-		res.is_run = true
+		res.is_crun = true
 		res.path = command
 		res.run_args = args[command_pos + 1..]
 	} else if command == 'interpret' {

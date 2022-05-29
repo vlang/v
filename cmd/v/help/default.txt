@@ -7,6 +7,7 @@ Examples:
    v hello.v                 Compile the file `hello.v` and output it as `hello` or `hello.exe`.
    v run hello.v             Same as above but also run the produced executable immediately after compilation.
    v -cg run hello.v         Same as above, but make debugging easier (in case your program crashes).
+   v crun hello.v            Same as above, but do not recompile, if the executable already exists, and is newer than the sources.
    v -o h.c hello.v          Translate `hello.v` to `h.c`. Do not compile further.
    v -o - hello.v            Translate `hello.v` and output the C source code to stdout. Do not compile further.
 
@@ -20,7 +21,10 @@ V supports the following commands:
    init              Setup the file structure for an already existing V project.
 
 * Ordinary development:
-   run               Compile and run a V program.
+   run               Compile and run a V program. Delete the executable after the run.
+   crun              Compile and run a V program without deleting the executable.
+                     If you run the same program a second time, without changing the source files,
+                     V will just run the executable, without recompilation. Suitable for scripting.
    test              Run all test files in the provided directory.
    fmt               Format the V code provided.
    vet               Report suspicious code constructs.
