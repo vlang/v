@@ -54,6 +54,7 @@ pub mut:
 	all_tokens                  []token.Token // *only* used in comments_mode: .toplevel_comments, contains all tokens
 	tidx                        int
 	eofs                        int
+	inter_cbr_count             int
 	pref                        &pref.Preferences
 	error_details               []string
 	errors                      []errors.Error
@@ -657,6 +658,7 @@ fn (mut s Scanner) text_scan() token.Token {
 			return s.end_of_file()
 		}
 		// handle each char
+		prevc := s.text[s.pos - 1]
 		c := s.text[s.pos]
 		nextc := s.look_ahead(1)
 		// name or keyword
@@ -803,7 +805,11 @@ fn (mut s Scanner) text_scan() token.Token {
 			`{` {
 				// Skip { in `${` in strings
 				if s.is_inside_string {
-					continue
+					if prevc == `$` {
+						continue
+					} else {
+						s.inter_cbr_count++
+					}
 				}
 				return s.new_token(.lcbr, '', 1)
 			}
@@ -817,7 +823,7 @@ fn (mut s Scanner) text_scan() token.Token {
 			`}` {
 				// s = `hello $name !`
 				// s = `hello ${name} !`
-				if s.is_enclosed_inter {
+				if s.is_enclosed_inter && s.inter_cbr_count == 0 {
 					if s.pos < s.text.len - 1 {
 						s.pos++
 					} else {
@@ -832,6 +838,9 @@ fn (mut s Scanner) text_scan() token.Token {
 					ident_string := s.ident_string()
 					return s.new_token(.string, ident_string, ident_string.len + 2) // + two quotes
 				} else {
+					if s.inter_cbr_count > 0 {
+						s.inter_cbr_count--
+					}
 					return s.new_token(.rcbr, '', 1)
 				}
 			}
