@@ -303,7 +303,13 @@ pub fn (x Expr) str() string {
 		}
 		CallExpr {
 			sargs := args2str(x.args)
-			propagate_suffix := if x.or_block.kind == .propagate_option { ' ?' } else { '' }
+			propagate_suffix := if x.or_block.kind == .propagate_option {
+				'?'
+			} else if x.or_block.kind == .propagate_result {
+				'!'
+			} else {
+				''
+			}
 			if x.is_method {
 				return '${x.left.str()}.${x.name}($sargs)$propagate_suffix'
 			}
