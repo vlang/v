@@ -658,7 +658,6 @@ fn (mut s Scanner) text_scan() token.Token {
 			return s.end_of_file()
 		}
 		// handle each char
-		prevc := s.text[s.pos - 1]
 		c := s.text[s.pos]
 		nextc := s.look_ahead(1)
 		// name or keyword
@@ -805,7 +804,7 @@ fn (mut s Scanner) text_scan() token.Token {
 			`{` {
 				// Skip { in `${` in strings
 				if s.is_inside_string {
-					if prevc == `$` {
+					if s.text[s.pos - 1] == `$` {
 						continue
 					} else {
 						s.inter_cbr_count++
