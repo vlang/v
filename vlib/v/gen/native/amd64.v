@@ -135,6 +135,24 @@ fn (mut g Gen) cmp_reg(reg Register, reg2 Register) {
 	g.println('cmp $reg, $reg2')
 }
 
+// cmp $reg, 0
+fn (mut g Gen) cmp_zero(reg Register) {
+	g.write8(0x48)
+	g.write8(0x39)
+
+	match reg {
+		.rax {
+			g.write8(0x04)
+			g.write8(0x25)
+		}
+		else {
+			panic('unhandled cmp $reg, 0')
+		}
+	}
+
+	g.write32(0)
+}
+
 fn (mut g Gen) cmp_var_reg(var_name string, reg Register) {
 	g.write8(0x48) // 83 for 1 byte?
 	g.write8(0x39)
@@ -225,6 +243,26 @@ fn (mut g Gen) jmp(addr i64) {
 	g.write8(offset)
 }
 */
+
+fn (mut g Gen) mov32(reg Register, val int) {
+	match reg {
+		.rax {
+			g.write8(0xb8)
+		}
+		.rdi {
+			g.write8(0xbf)
+		}
+		.rcx {
+			g.write8(0xb9)
+		}
+		else {
+			panic('unhandled mov32 $reg')
+		}
+	}
+	g.write32(val)
+	g.println('mov32 $reg, $val')
+}
+
 fn (mut g Gen) mov64(reg Register, val i64) {
 	match reg {
 		.eax {
@@ -272,6 +310,21 @@ fn (mut g Gen) mov64(reg Register, val i64) {
 	g.println('mov64 $reg, $val')
 }
 
+fn (mut g Gen) movabs(reg Register, val i64) {
+	match reg {
+		.rsi {
+			g.write8(0x48)
+			g.write8(0xbe)
+		}
+		else {
+			panic('unhandled movabs $reg, $val')
+		}
+	}
+
+	g.write64(val)
+	g.println('movabs $reg, $val')
+}
+
 fn (mut g Gen) mov_reg_to_var(var_offset int, reg Register) {
 	// 89 7d fc     mov DWORD PTR [rbp-0x4],edi
 	match reg {
@@ -291,6 +344,27 @@ fn (mut g Gen) mov_reg_to_var(var_offset int, reg Register) {
 	}
 	g.write8(0xff - var_offset + 1)
 	g.println('mov DWORD PTR[rbp-$var_offset.hex2()],$reg')
+}
+
+fn (mut g Gen) lea_var_to_reg(reg Register, var_offset int) {
+	match reg {
+		.rax, .rbx, .rsi {
+			g.write8(0x48)
+		}
+		else {}
+	}
+	g.write8(0x8d)
+	match reg {
+		.eax, .rax { g.write8(0x45) }
+		.edi, .rdi { g.write8(0x7d) }
+		.rsi { g.write8(0x75) }
+		.rdx { g.write8(0x55) }
+		.rbx { g.write8(0x5d) }
+		.rcx { g.write8(0x4d) }
+		else { g.n_error('lea_var_to_reg $reg') }
+	}
+	g.write8(0xff - var_offset + 1)
+	g.println('lea $reg, [rbp-$var_offset.hex2()]')
 }
 
 fn (mut g Gen) mov_var_to_reg(reg Register, var_offset int) {
@@ -473,6 +547,21 @@ pub fn (mut g Gen) allocate_string(s string, opsize int, typ RelocType) int {
 	return str_pos
 }
 
+pub fn (mut g Gen) var_zero(vo int, size int) {
+	g.mov32(.rcx, size)
+	g.lea_var_to_reg(.rdi, vo)
+	g.write8(0xb0)
+	g.write8(0x00)
+	g.println('mov al, 0')
+	g.rep_stosb()
+}
+
+pub fn (mut g Gen) rep_stosb() {
+	g.write8(0xf3)
+	g.write8(0xaa)
+	g.println('rep stosb')
+}
+
 pub fn (mut g Gen) cld_repne_scasb() {
 	g.write8(0xfc)
 	g.println('cld')
@@ -500,6 +589,19 @@ pub fn (mut g Gen) xor(r Register, v int) {
 	}
 }
 
+pub fn (mut g Gen) test_reg(r Register) {
+	match r {
+		.rdi {
+			g.write8(0x48)
+			g.write8(0x85)
+			g.write8(0xff)
+			g.println('test rdi, rdi')
+		}
+		else {
+			panic('unhandled test $r, $r')
+		}
+	}
+}
 // return length in .rax of string pointed by given register
 pub fn (mut g Gen) inline_strlen(r Register) {
 	g.mov_reg(.rdi, r)
@@ -676,8 +778,11 @@ fn (mut g Gen) learel(reg Register, val int) {
 		.rsi {
 			g.write8(0x35)
 		}
+		.rcx {
+			g.write8(0x0d)
+		}
 		else {
-			g.n_error('learel must use rsi or rax')
+			g.n_error('learel must use rsi, rcx or rax')
 		}
 	}
 	g.write32(val)
@@ -823,6 +928,20 @@ fn (mut g Gen) mul_reg(a Register, b Register) {
 	g.println('mul $a')
 }
 
+fn (mut g Gen) imul_reg(r Register) {
+	match r {
+		.rsi {
+			g.write8(0x48)
+			g.write8(0xf7)
+			g.write8(0xee)
+			g.println('imul $r')
+		}
+		else {
+			panic('unhandled imul $r')
+		}
+	}
+}
+
 fn (mut g Gen) div_reg(a Register, b Register) {
 	if a != .rax {
 		panic('div always operates on rax')
@@ -846,11 +965,24 @@ fn (mut g Gen) div_reg(a Register, b Register) {
 	g.println('div $a')
 }
 
+fn (mut g Gen) mod_reg(a Register, b Register) {
+	g.div_reg(a, b)
+	g.mov_reg(.rdx, .rax)
+}
+
 fn (mut g Gen) sub_reg(a Register, b Register) {
 	if a == .rax && b == .rbx {
 		g.write8(0x48)
 		g.write8(0x29)
 		g.write8(0xd8)
+	} else if a == .rdx && b == .rax {
+		g.write8(0x48)
+		g.write8(0x29)
+		g.write8(0xc2)
+	} else if a == .rdi && b == .rax {
+		g.write8(0x48)
+		g.write8(0x29)
+		g.write8(0xc7)
 	} else {
 		panic('unhandled add $a, $b')
 	}
@@ -866,86 +998,14 @@ fn (mut g Gen) add_reg(a Register, b Register) {
 		g.write8(0x48)
 		g.write8(0x01)
 		g.write8(0xf8)
+	} else if a == .rax && b == .rax {
+		g.write8(0x48)
+		g.write8(0x01)
+		g.write8(0xc0)
 	} else {
 		panic('unhandled add $a, $b')
 	}
 	g.println('add $a, $b')
-}
-
-fn (mut g Gen) inc_reg(r Register) {
-	g.write8(0x48)
-	g.write8(0x83)
-	
-	match r {
-		.rax {
-			g.write8(0xc0)
-		}
-		.rcx {
-			g.write8(0xc1)
-		}
-		.rdx {
-			g.write8(0xc2)
-		}
-		.rbx {
-			g.write8(0xc3)
-		}
-		.rsp {
-			g.write8(0xc4)
-		}
-		.rbp {
-			g.write8(0xc5)
-		}
-		.rsi {
-			g.write8(0xc6)
-		}
-		.rdi {
-			g.write8(0xc7)
-		}
-		else {
-			panic('unhandled inc $r, \$1')
-		}
-	}
-	g.write8(0x01)
-
-	g.println('add $r, \$1')
-}
-
-fn (mut g Gen) dec_reg(r Register) {
-	g.write8(0x48)
-	g.write8(0x83)
-	
-	match r {
-		.rax {
-			g.write8(0xe8)
-		}
-		.rcx {
-			g.write8(0xe9)
-		}
-		.rdx {
-			g.write8(0xea)
-		}
-		.rbx {
-			g.write8(0xeb)
-		}
-		.rsp {
-			g.write8(0xec)
-		}
-		.rbp {
-			g.write8(0xed)
-		}
-		.rsi {
-			g.write8(0xee)
-		}
-		.rdi {
-			g.write8(0xef)
-		}
-		else {
-			panic('unhandled inc $r, \$1')
-		}
-	}
-	g.write8(0x01)
-
-	g.println('sub $r, \$1')
 }
 
 fn (mut g Gen) mov_reg(a Register, b Register) {
@@ -982,10 +1042,38 @@ fn (mut g Gen) mov_reg(a Register, b Register) {
 		g.write8(0x48)
 		g.write8(0x89)
 		g.write8(0xc6)
+	} else if a == .rdi && b == .rdx {
+		g.write8(0x48)
+		g.write8(0x89)
+		g.write8(0xd7)
+	} else if a == .rdi && b == .rax {
+		g.write8(0x48)
+		g.write8(0x89)
+		g.write8(0xc7)
 	} else {
 		g.n_error('unhandled mov_reg combination for $a $b')
 	}
 	g.println('mov $a, $b')
+}
+
+fn (mut g Gen) sar8(r Register, val u8) {
+	g.write8(0x48)
+	g.write8(0xc1)
+
+	match r {
+		.rax {
+			g.write8(0xf8)
+		}
+		.rdx {
+			g.write8(0xfa)
+		}
+
+		else {
+			panic('unhandled sar $r, $val')
+		}
+	}
+	g.write8(val)
+	g.println('sar $r, $val')
 }
 
 // generates `mov rbp, rsp`
@@ -1744,9 +1832,32 @@ pub fn (mut g Gen) allocate_var(name string, size int, initial_val int) int {
 	g.write8(0xff - n + 1)
 	g.stack_var_pos += size
 	g.var_offset[name] = g.stack_var_pos
+
 	// Generate the value assigned to the variable
-	g.write32(initial_val)
+	match size {
+		1 {
+			g.write8(initial_val)
+		}
+		4 {
+			g.write32(initial_val)
+		}
+		8 {
+			g.write32(initial_val) // fixme: 64-bit segfaulting
+		}
+		else {
+			g.n_error('allocate_var: bad size $size')
+		}
+	}
+
 	// println('allocate_var(size=$size, initial_val=$initial_val)')
 	g.println('mov [rbp-$n.hex2()], $initial_val ; Allocate var `$name`')
 	return g.stack_var_pos
+}
+
+fn (mut g Gen) convert_int_to_string(r Register, buffer int) {
+	if r != .rax {
+		g.mov_reg(.rax, r)
+	}
+
+	// TODO
 }

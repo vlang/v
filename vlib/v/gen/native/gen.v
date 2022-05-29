@@ -299,6 +299,12 @@ fn (mut g Gen) gen_typeof_expr(it ast.TypeOf, newline bool) {
 	g.learel(.rax, g.allocate_string('$r$nl', 3, .rel32))
 }
 
+fn (mut g Gen) gen_var_to_string(reg Register, vo int) {
+	buffer := g.allocate_array('itoa-buffer', 1, 32) // 32 characters should be enough
+	g.convert_int_to_string(reg, buffer)
+	g.lea_var_to_reg(reg, buffer)
+}
+
 pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, name string) {
 	newline := name in ['println', 'eprintln']
 	fd := if name in ['eprint', 'eprintln'] { 2 } else { 1 }
@@ -315,17 +321,12 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, name string) {
 			g.gen_print_reg(.rax, 3, fd)
 		}
 		ast.Ident {
-			vo := g.try_var_offset(expr.name)
-			if vo != -1 {
-				g.n_error('Printing idents is not yet supported in the native backend')
-				// g.mov_var_to_reg(.rsi, vo)
-				// g.mov_reg(.rax, .rsi)
-				// g.learel(.rax, vo * 8)
-				// g.relpc(.rax, .rsi)
-				// g.learel(.rax, g.allocate_string('$vo\n', 3, .rel32))
-				// g.expr(expr)
-			}
+			vo := g.get_var_offset(expr.name)
+			g.gen_var_to_string(.rax, vo)
 			g.gen_print_reg(.rax, 3, fd)
+			if newline {
+				g.gen_print('\n', fd)
+			}
 		}
 		ast.IntegerLiteral {
 			g.learel(.rax, g.allocate_string('$expr.val\n', 3, .rel32))
@@ -775,7 +776,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.PostfixExpr {
 			g.postfix_expr(node)
 		}
-		ast.StringLiteral {}
+		ast.StringLiteral {
+			g.allocate_string(node.val, 3, .rel32)
+		}
 		ast.StructInit {}
 		ast.GoExpr {
 			g.v_error('native backend doesnt support threads yet', node.pos)
