@@ -272,6 +272,9 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 			p.next()
 			p.check(.lpar)
 			expr := p.expr(0)
+			if p.tok.kind == .comma && p.peek_tok.kind == .rpar {
+				p.next()
+			}
 			p.check(.rpar)
 			node = ast.DumpExpr{
 				expr: expr
