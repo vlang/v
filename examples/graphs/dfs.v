@@ -35,7 +35,7 @@ fn depth_first_search_path(graph map[string][]string, start string, target strin
 	mut path := []string{} // ONE PATH with SUCCESS = array
 	mut stack := []string{} // a stack ... many nodes
 	// all_nodes := graph.keys() // get a key of this map
-	mut visited := visited_init( graph ) // a map fully with false in all vertex
+	mut visited := visited_init(graph) // a map fully with false in all vertex
 	// false ... not visited yet: {'A': false, 'B': false, 'C': false, 'D': false, 'E': false}
 
 	stack << start // first push on the stack
@@ -101,4 +101,5 @@ fn build_path_reverse(graph map[string][]string, start string, final string, vis
 	}
 	return path
 }
-/*******************************************************/
+
+//*****************************************************

@@ -22,7 +22,7 @@ fn breadth_first_search_path(graph map[string][]string, start string, target str
 	// all_nodes := graph.keys() // get a key of this map
 	// a map to store all the nodes visited to avoid cycles
 	// start all them with False, not visited yet
-	mut visited := visited_init ( graph ) // a map fully
+	mut visited := visited_init(graph) // a map fully
 	// false ==> not visited yet: {'A': false, 'B': false, 'C': false, 'D': false, 'E': false}
 	queue << start // first arrival
 	for queue.len != 0 {
@@ -50,7 +50,6 @@ fn breadth_first_search_path(graph map[string][]string, start string, target str
 	return path
 }
 
-
 // classical removing of a node from the start of a queue
 fn departure(mut queue []string) string {
 	mut x := queue[0]
@@ -68,7 +67,6 @@ fn visited_init(a_graph map[string][]string) map[string]bool {
 	}
 	return temp
 }
-
 
 // Based in the current node that is final, search for its parent, already visited, up to the root or start node
 fn build_path_reverse(graph map[string][]string, start string, final string, visited map[string]bool) []string {
@@ -89,4 +87,5 @@ fn build_path_reverse(graph map[string][]string, start string, final string, vis
 	}
 	return path
 }
-/* ====================================================== */
+
+//======================================================
