@@ -58,7 +58,7 @@ pub fn (s1 Set<T>) difference(s2 Set<T>) !Set<T> {
 			result.add(item)
 		}
 	}
-	return result
+	return &result
 }
 
 // union_with returns a set with all elements from both sets. Will panic if type differs
