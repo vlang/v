@@ -114,7 +114,7 @@ fn print_solution(path []int, g [][]int) {
 // check structure from: https://www.geeksforgeeks.org/dijkstras-shortest-path-algorithm-greedy-algo-7/
 // s: source for all nodes
 // Two results are obtained ... cost and paths
-fn prim_mst(g [][]int, s int)  {
+fn prim_mst(g [][]int, s int) // end function {
 	mut pq_queue := []NODE{} // creating a priority queue
 	push_pq(mut pq_queue, s, 0) // goes s with priority 0
 	mut n := g.len
@@ -152,7 +152,7 @@ fn prim_mst(g [][]int, s int)  {
 	// print('\n \n Previous node of shortest path: ${path}')
 	// print_paths_dist(path , dist)
 	print_solution(path, g)
-} // end function
+}
 
 /*
 Solution Expected graph_02

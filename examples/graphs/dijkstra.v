@@ -103,7 +103,7 @@ fn print_solution<T>(dist []T) {
 }
 
 // print all  paths and their cost or weight
-fn print_paths_dist<T>(path []T, dist []T) {
+fn print_paths_dist<T>(path []T, dist []T) // end function {
 	print('\n Read the nodes from right to left (a path): \n')
 
 	for node in 1 .. (path.len) {
@@ -115,12 +115,12 @@ fn print_paths_dist<T>(path []T, dist []T) {
 		}
 		print('\t PATH COST: ${dist[node]}')
 	}
-}  // end function
+}
 
 // check structure from: https://www.geeksforgeeks.org/dijkstras-shortest-path-algorithm-greedy-algo-7/
 // s: source for all nodes
 // Two results are obtained ... cost and paths
-fn dijkstra(g [][]int, s int) {
+fn dijkstra(g [][]int, s int) // end function {
 	mut pq_queue := []NODE{} // creating a priority queue
 	push_pq(mut pq_queue, s, 0) // goes s with priority 0
 	mut n := g.len
@@ -156,8 +156,7 @@ fn dijkstra(g [][]int, s int) {
 	print_solution(dist)
 	// print('\n \n Previous node of shortest path: ${path}')
 	print_paths_dist(path, dist)
-	
-}  // end function
+}
 
 /*
 Solution Expected
