@@ -42,6 +42,7 @@ fn test_clean_path() {
 	}
 	assert clean_path('./../.././././//') == '../..'
 	assert clean_path('') == ''
+	assert clean_path('.') == ''
 	assert clean_path('./path/to/file.v//./') == 'path/to/file.v'
 	assert clean_path('./') == ''
 	assert clean_path('/.') == '/'
