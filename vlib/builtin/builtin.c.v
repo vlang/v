@@ -268,11 +268,15 @@ fn _write_buf_to_fd(fd int, buf &u8, buf_len int) {
 	if buf_len <= 0 {
 		return
 	}
+	mut stream := voidptr(C.stdout)
+	if fd == 2 {
+		stream = voidptr(C.stderr)
+	}
 	unsafe {
 		mut ptr := buf
-		mut remaining_bytes := buf_len
+		mut remaining_bytes := isize(buf_len)
 		for remaining_bytes > 0 {
-			x := C.write(fd, ptr, remaining_bytes)
+			x := isize(C.fwrite(ptr, 1, remaining_bytes, stream))
 			ptr += x
 			remaining_bytes -= x
 		}
