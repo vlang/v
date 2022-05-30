@@ -133,7 +133,10 @@ pub fn existing_path(path string) ?string {
 	if exists(path) {
 		return path
 	}
-	mut volume_len := $if windows { win_volume_len(path) } $else { 0 }
+	mut volume_len := 0
+	$if windows {
+		volume_len = win_volume_len(path)
+	}
 	if volume_len > 0 && is_slash(path[volume_len - 1]) {
 		volume_len++
 	}
