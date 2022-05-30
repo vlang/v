@@ -32,12 +32,14 @@ pub fn init(cfg Config) &Context {
 fn save_title() {
 	// restore the previously saved terminal title
 	print('\x1b[22;0t')
+	flush_stdout()
 }
 
 [inline]
 fn load_title() {
 	// restore the previously saved terminal title
 	print('\x1b[23;0t')
+	flush_stdout()
 }
 
 pub fn (mut ctx Context) run() ? {
