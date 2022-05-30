@@ -65,8 +65,8 @@ pub fn norm_path(path string) string {
 	volume := get_volume(path)
 	volume_len := volume.len
 	cpath := clean_path(path[volume_len..])
-	if cpath == os.dot_str && volume_len == 0 {
-		return cpath
+	if cpath.len == 0 && volume_len == 0 {
+		return os.dot_str
 	}
 	spath := cpath.split(path_separator)
 	if os.dot_dot !in spath {
@@ -124,78 +124,46 @@ pub fn norm_path(path string) string {
 }
 
 // existing_path returns the existing part of the given `path`.
-[direct_array_access]
-pub fn existing_path(path string) string {
+// An error is returned if there is no existing part of the given `path`.
+pub fn existing_path(path string) ?string {
+	err := error('path does not exist')
 	if path.len == 0 {
-		return os.empty_str
+		return err
 	}
 	if exists(path) {
 		return path
 	}
-	parts := logical_path_parts(path)
-	for i, part in parts {
-		if !exists(part) {
-			if i - 1 < 0 {
+	mut volume_len := $if windows { win_volume_len(path) } $else { 0 }
+	if volume_len > 0 && is_slash(path[volume_len - 1]) {
+		volume_len++
+	}
+	mut sc := textscanner.new(path[volume_len..])
+	mut recent_path := path[..volume_len]
+	for sc.next() != -1 {
+		curr := u8(sc.current())
+		peek := sc.peek()
+		back := sc.peek_back()
+		if is_curr_dir_ref(back, curr, peek) {
+			continue
+		}
+		range := sc.ilen - sc.remaining() + volume_len
+		if is_slash(curr) && !is_slash(u8(peek)) {
+			recent_path = path[..range]
+			continue
+		}
+		if !is_slash(curr) && (peek == -1 || is_slash(u8(peek))) {
+			curr_path := path[..range]
+			if exists(curr_path) {
+				recent_path = curr_path
+				continue
+			}
+			if recent_path.len == 0 {
 				break
 			}
-			return parts[i - 1]
+			return recent_path
 		}
 	}
-	return os.empty_str
-}
-
-// logical_path_parts returns the logical parts of the given `path`.
-// Examples:
-// on a unix-based system:
-// ```v
-// assert os.logical_path_parts('/path/to/file.v') == ['/', '/path', '/path/to', '/path/to/file.v']
-// assert os.logical_path_parts('path/to/file.v') == ['path', 'path/to', 'path/to/file.v']
-// ```
-// on a Windows system:
-// ```v
-// assert os.logical_path_parts(r'C:\path\to\file.v') == ['C:\\', 'C:\\path', r'C:\path\to', r'C:\path\to\file.v']
-// assert os.logical_path_parts(r'C:path\to\file.v') == ['C:', 'C:path', 'C:path\\to', r'C:path\to\file.v']
-// ```
-[direct_array_access]
-fn logical_path_parts(path string) []string {
-	if path.len == 0 {
-		return []
-	}
-	volume := get_volume(path)
-	volume_len := volume.len
-	cpath := clean_path(path[volume_len..])
-	if cpath == os.dot_str && volume_len == 0 {
-		return [cpath]
-	}
-	full_path := if volume_len != 0 { volume + cpath } else { cpath }
-	rooted := is_abs_path(full_path)
-	mut parts := []string{}
-	if volume_len != 0 {
-		if rooted {
-			parts << volume + path_separator
-		} else {
-			parts << volume
-		}
-	}
-	if rooted && volume_len == 0 {
-		parts << path_separator
-	}
-	spath := cpath.split(path_separator)
-	for i, part in spath {
-		if part == os.empty_str {
-			continue
-		}
-		if parts.len == 0 {
-			parts << part
-			continue
-		}
-		if rooted && i == 1 {
-			parts << parts[i - 1] + part
-			continue
-		}
-		parts << parts[i - 1] + path_separator + part
-	}
-	return parts
+	return err
 }
 
 // clean_path returns the "cleaned" version of the given `path`
@@ -219,8 +187,7 @@ fn clean_path(path string) string {
 			continue
 		}
 		// skip reference to current dir (.)
-		if (back == -1 || is_slash(u8(back))) && curr == os.dot
-			&& (peek == -1 || is_slash(u8(peek))) {
+		if is_curr_dir_ref(back, curr, peek) {
 			// skip if the next byte is a path separator
 			if peek != -1 && is_slash(u8(peek)) {
 				sc.skip_n(1)
@@ -237,9 +204,6 @@ fn clean_path(path string) string {
 		sb.write_u8(u8(sc.current()))
 	}
 	res := sb.str()
-	if res == os.empty_str {
-		return os.dot_str
-	}
 	// eliminate the last path separator
 	if res.len > 1 && is_slash(res[res.len - 1]) {
 		return res[..res.len - 1]
@@ -323,4 +287,14 @@ fn is_normal_path(path string) bool {
 	}
 	return (plen == 1 && is_slash(path[0])) || (plen >= 2 && is_slash(path[0])
 		&& !is_slash(path[1]))
+}
+
+// is_curr_dir_ref returns `true` if the 3 given integer construct
+// a reference to a current directory (.).
+// NOTE: a negative integer means that no byte is present
+fn is_curr_dir_ref(byte_one int, byte_two int, byte_three int) bool {
+	if u8(byte_two) != os.dot {
+		return false
+	}
+	return (byte_one < 0 || is_slash(u8(byte_one))) && (byte_three < 0 || is_slash(u8(byte_three)))
 }
