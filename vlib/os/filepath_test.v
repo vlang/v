@@ -36,6 +36,7 @@ fn test_clean_path() {
 		assert clean_path(r'\./path/dir\\file.exe') == r'\path\dir\file.exe'
 		assert clean_path(r'.') == ''
 		assert clean_path(r'./') == ''
+		assert clean_path('') == ''
 		assert clean_path(r'\./') == '\\'
 		assert clean_path(r'//\/\/////') == '\\'
 		return
