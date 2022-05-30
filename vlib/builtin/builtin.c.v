@@ -275,8 +275,13 @@ fn _write_buf_to_fd(fd int, buf &u8, buf_len int) {
 	unsafe {
 		mut ptr := buf
 		mut remaining_bytes := isize(buf_len)
+		mut x := isize(0)
 		for remaining_bytes > 0 {
-			x := isize(C.fwrite(ptr, 1, remaining_bytes, stream))
+			$if vinix {
+				x = C.write(fd, ptr, remaining_bytes)
+			} $else {
+				x = isize(C.fwrite(ptr, 1, remaining_bytes, stream))
+			}
 			ptr += x
 			remaining_bytes -= x
 		}
