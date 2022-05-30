@@ -34,16 +34,16 @@ fn test_clean_path() {
 		assert clean_path(r'\/\//\/') == '\\'
 		assert clean_path(r'./path\\dir/\\./\/\\/file.v\.\\\.') == r'path\dir\file.v'
 		assert clean_path(r'\./path/dir\\file.exe') == r'\path\dir\file.exe'
-		assert clean_path(r'.') == '.'
-		assert clean_path(r'./') == '.'
+		assert clean_path(r'.') == ''
+		assert clean_path(r'./') == ''
 		assert clean_path(r'\./') == '\\'
 		assert clean_path(r'//\/\/////') == '\\'
 		return
 	}
 	assert clean_path('./../.././././//') == '../..'
-	assert clean_path('.') == '.'
+	assert clean_path('') == ''
 	assert clean_path('./path/to/file.v//./') == 'path/to/file.v'
-	assert clean_path('./') == '.'
+	assert clean_path('./') == ''
 	assert clean_path('/.') == '/'
 	assert clean_path('//path/./to/.///files/file.v///') == '/path/to/files/file.v'
 	assert clean_path('path/./to/.///files/.././file.v///') == 'path/to/files/../file.v'
@@ -131,43 +131,22 @@ fn test_abs_path() {
 fn test_existing_path() {
 	wd := getwd()
 	$if windows {
-		assert existing_path('') == ''
-		assert existing_path('..') == '..'
-		assert existing_path('.') == '.'
-		assert existing_path(wd) == wd
-		assert existing_path('$wd\\does/not/exist\\.\\') == wd
-		assert existing_path('$wd\\\\/\\.\\.\\/.') == wd
+		assert existing_path('') or { '' } == ''
+		assert existing_path('..') or { '' } == '..'
+		assert existing_path('.') or { '' } == '.'
+		assert existing_path(wd) or { '' } == wd
+		assert existing_path('\\') or { '' } == '\\'
+		assert existing_path('$wd\\.\\\\does/not/exist\\.\\') or { '' } == '$wd\\.\\\\'
+		assert existing_path('$wd\\\\/\\.\\.\\/.') or { '' } == '$wd\\\\/\\.\\.\\/.'
+		assert existing_path('$wd\\././/\\/oh') or { '' } == '$wd\\././/\\/'
 		return
 	}
-	assert existing_path('') == ''
-	assert existing_path('..') == '..'
-	assert existing_path('.') == '.'
-	assert existing_path(wd) == wd
-	assert existing_path('$wd/does/.///not/exist///.//') == wd
-	assert existing_path('$wd/does/././/.//') == wd
-}
-
-fn test_logical_path_parts() {
-	$if windows {
-		assert logical_path_parts('.') == ['.']
-		assert logical_path_parts('..') == ['..']
-		assert logical_path_parts('\\') == ['\\']
-		assert logical_path_parts('\\\\') == ['\\']
-		assert logical_path_parts(r'\dir\text.txt\./\.') == ['\\', '\\dir', '\\dir\\text.txt']
-		assert logical_path_parts(r'C:\path/to/file.v') == ['C:\\', 'C:\\path', r'C:\path\to',
-			r'C:\path\to\file.v']
-		assert logical_path_parts(r'\\.\C:\path\.\to\file.v') == [r'\\.\C:\', r'\\.\C:\path',
-			r'\\.\C:\path\to', r'\\.\C:\path\to\file.v']
-		return
-	}
-	assert logical_path_parts('/path/to/.///file.v/.') == ['/', '/path', '/path/to',
-		'/path/to/file.v']
-	assert logical_path_parts('path/../dir//./') == ['path', 'path/..', 'path/../dir']
-	assert logical_path_parts('path/to/dir/files/file.v.///.') == ['path', 'path/to', 'path/to/dir',
-		'path/to/dir/files', 'path/to/dir/files/file.v.']
-	assert logical_path_parts('.') == ['.']
-	assert logical_path_parts('..') == ['..']
-	assert logical_path_parts('/') == ['/']
-	assert logical_path_parts('////./') == ['/']
-	assert logical_path_parts('./') == ['.']
+	assert existing_path('') or { '' } == ''
+	assert existing_path('..') or { '' } == '..'
+	assert existing_path('.') or { '' } == '.'
+	assert existing_path(wd) or { '' } == wd
+	assert existing_path('/') or { '' } == '/'
+	assert existing_path('$wd/does/.///not/exist///.//') or { '' } == '$wd/'
+	assert existing_path('$wd//././/.//') or { '' } == '$wd//././/.//'
+	assert existing_path('$wd//././/.//oh') or { '' } == '$wd//././/.//'
 }
