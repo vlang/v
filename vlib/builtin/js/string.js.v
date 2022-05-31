@@ -206,11 +206,10 @@ pub fn (s string) hash() int {
 // int returns the value of the string as an integer `'1'.int() == 1`.
 pub fn (s string) int() int {
 	res := int(0)
-	#console.log(s, typeof(s));
 	#if (typeof(s) == "string") { res.val = parseInt(s) }
 	#else { res.val = parseInt(s.str) }
-	return res 
-	
+
+	return res
 }
 
 // i64 returns the value of the string as i64 `'1'.i64() == i64(1)`.
