@@ -2,11 +2,18 @@ module fontstash
 
 #flag -I @VEXEROOT/thirdparty/fontstash
 #define FONTSTASH_IMPLEMENTATION
-$if gcboehm ? {
+$if gcmkirchner ? {
 	#define FONTSTASH_MALLOC GC_MALLOC
 	#define FONTSTASH_REALLOC GC_REALLOC
 	#define FONTSTASH_FREE GC_FREE
 }
+
+$if gcmkirchner ? {
+	#define FONTSTASH_MALLOC GC_MALLOC
+	#define FONTSTASH_REALLOC GC_REALLOC
+	#define FONTSTASH_FREE GC_FREE
+}
+
 #include "fontstash.h"
 #flag darwin -I/usr/local/Cellar/freetype/2.10.2/include/freetype2
 

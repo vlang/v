@@ -672,6 +672,9 @@ fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_optional bool) ?str
 		'gcboehm' {
 			return '_VGCBOEHM'
 		}
+		'gcmkirchner' {
+			return '_VGCM'
+		}
 		'debug' {
 			return '_VDEBUG'
 		}

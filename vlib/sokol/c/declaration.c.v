@@ -56,6 +56,13 @@ $if gcboehm ? {
 	#define SOKOL_FREE GC_FREE
 }
 
+$if gcmkirchner ? {
+	#define SOKOL_MALLOC GC_MALLOC
+	#define SOKOL_CALLOC(n,m) GC_MALLOC((n)*(m))
+	#define SOKOL_REALLOC GC_REALLOC
+	#define SOKOL_FREE GC_FREE
+}
+
 #include "sokol_v.pre.h"
 #include "sokol_app.h"
 #define SOKOL_IMPL

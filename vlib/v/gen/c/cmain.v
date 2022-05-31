@@ -92,6 +92,11 @@ fn (mut g Gen) gen_c_main_header() {
 		}
 		g.writeln('#endif')
 	}
+	if g.pref.gc_mode in [.mgc] {
+		//g.writeln('void *bos = __builtin_frame_address(0);')
+		println('GC START')
+		g.writeln('gc_start(&gc, ___argc);')
+	}
 	g.writeln('\t_vinit(___argc, (voidptr)___argv);')
 	g.gen_c_main_profile_hook()
 	if g.pref.is_livemain {

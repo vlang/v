@@ -308,6 +308,10 @@ pub fn malloc(n isize) &u8 {
 		unsafe {
 			res = C.GC_MALLOC(n)
 		}
+	} $else $if gcmkirchner ? {
+		unsafe {
+			res = C.GC_MALLOC(n)
+		}
 	} $else $if freestanding {
 		// todo: is this safe to call malloc there? We export __malloc as malloc and it uses dlmalloc behind the scenes
 		// so theoretically it is safe
@@ -357,6 +361,10 @@ pub fn malloc_noscan(n isize) &u8 {
 				res = C.GC_MALLOC(n)
 			}
 		}
+	} $else $if gcmkirchner ? {
+		unsafe {
+			res = C.GC_MALLOC(n)
+		}
 	} $else $if freestanding {
 		res = unsafe { __malloc(usize(n)) }
 	} $else {
@@ -390,6 +398,8 @@ pub fn v_realloc(b &u8, n isize) &u8 {
 		}
 		return new_ptr
 	} $else $if gcboehm ? {
+		new_ptr = unsafe { C.GC_REALLOC(b, n) }
+	} $else $if gcmkirchner ? {
 		new_ptr = unsafe { C.GC_REALLOC(b, n) }
 	} $else {
 		new_ptr = unsafe { C.realloc(b, n) }
@@ -437,6 +447,8 @@ pub fn realloc_data(old_data &u8, old_size int, new_size int) &u8 {
 	mut nptr := &u8(0)
 	$if gcboehm ? {
 		nptr = unsafe { C.GC_REALLOC(old_data, new_size) }
+	} $else $if gcmkirchner ? {
+		nptr = unsafe { C.GC_REALLOC(old_data, new_size) }
 	} $else {
 		nptr = unsafe { C.realloc(old_data, new_size) }
 	}
@@ -463,6 +475,8 @@ pub fn vcalloc(n isize) &u8 {
 		return unsafe { prealloc_calloc(n) }
 	} $else $if gcboehm ? {
 		return unsafe { &u8(C.GC_MALLOC(n)) }
+	} $else $if gcmkirchner ? {
+		return unsafe { &u8(C.GC_MALLOC(n)) }
 	} $else {
 		return unsafe { C.calloc(1, n) }
 	}
@@ -477,7 +491,7 @@ pub fn vcalloc_noscan(n isize) &u8 {
 	}
 	$if prealloc {
 		return unsafe { prealloc_calloc(n) }
-	} $else $if gcboehm ? {
+	} $else $if gcboehm ? || gcmkirchner ? {
 		$if vplayground ? {
 			if n > 10000 {
 				panic('allocating more than 10 KB is not allowed in the playground')
@@ -501,7 +515,7 @@ pub fn vcalloc_noscan(n isize) &u8 {
 pub fn free(ptr voidptr) {
 	$if prealloc {
 		return
-	} $else $if gcboehm ? {
+	} $else $if gcboehm ? || gcmkirchner ? {
 		// It is generally better to leave it to Boehm's gc to free things.
 		// Calling C.GC_FREE(ptr) was tried initially, but does not work
 		// well with programs that do manual management themselves.

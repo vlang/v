@@ -726,6 +726,10 @@ pub fn (mut g Gen) init() {
 	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
 		g.comptime_definitions.writeln('#define _VGCBOEHM (1)')
 	}
+	if g.pref.gc_mode in [.mgc] {
+		//g.comptime_definitions.writeln('#define _VGCBOEHM (1)')
+		g.comptime_definitions.writeln('#define _VGCM (1)')
+	}
 	if g.pref.is_debug || 'debug' in g.pref.compile_defines {
 		g.comptime_definitions.writeln('#define _VDEBUG (1)')
 	}

@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module http
 
-$if gcboehm ? {
+$if gcboehm ? || gcmkirchner ? {
 	#define VSCHANNEL_REALLOC GC_REALLOC
 }
 
