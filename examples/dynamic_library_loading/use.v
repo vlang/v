@@ -6,7 +6,7 @@ import dl
 type FNAdder = fn (int, int) int
 
 fn main() {
-	library_file_path := os.join_path(os.getwd(), dl.get_libname('library'))
+	library_file_path := os.join_path(os.getwd(), dl.get_libname('modules/library/library'))
 	handle := dl.open_opt(library_file_path, dl.rtld_lazy)?
 	eprintln('handle: ${ptr_str(handle)}')
 	f := FNAdder(dl.sym_opt(handle, 'add_1')?)
