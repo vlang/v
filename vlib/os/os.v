@@ -173,6 +173,12 @@ pub fn is_dir_empty(path string) bool {
 
 // file_ext will return the part after the last occurence of `.` in `path`.
 // The `.` is included.
+// Examples:
+// ```v
+// assert os.file_ext('file.v') == '.v'
+// assert os.file_ext('.ignore_me') == ''
+// assert os.file_ext('.') == ''
+// ```
 pub fn file_ext(path string) string {
 	if path.len < 2 {
 		return empty_str
