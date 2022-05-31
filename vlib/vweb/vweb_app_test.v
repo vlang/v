@@ -25,18 +25,6 @@ fn test_a_vweb_application_compiles() {
 	vweb.run(&App{}, 18081)
 }
 
-/*
-/TODO
-pub fn (mut app App) init_server_old() {
-	app.db = sqlite.connect('blog.db') or { panic(err) }
-	app.db.create_table('article', [
-		'id integer primary key',
-		"title text default ''",
-		"text text default ''",
-	])
-}
-*/
-
 pub fn (mut app App) before_request() {
 	app.user_id = app.get_cookie('id') or { '0' }
 }

@@ -11,7 +11,7 @@ fn (h ExampleHandler) handle(req Request) Response {
 		})
 	}
 	mut status_code := 200
-	res.text = match req.url {
+	res.body = match req.url {
 		'/foo' {
 			'bar\n'
 		}

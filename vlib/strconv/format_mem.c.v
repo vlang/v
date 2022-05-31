@@ -137,7 +137,7 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 
 // f64_to_str_lnd1 formats a f64 to a `string` with `dec_digit` digits after the dot.
 [direct_array_access; manualfree]
-fn f64_to_str_lnd1(f f64, dec_digit int) string {
+pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
 	unsafe {
 		// we add the rounding value
 		s := f64_to_str(f + dec_round[dec_digit], 18)

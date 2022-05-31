@@ -7,6 +7,6 @@ fn main() {
 		return
 	}
 
-	t := time.unix(resp.text.int())
+	t := time.unix(resp.body.int())
 	println(t.format())
 }

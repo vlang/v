@@ -164,6 +164,7 @@ pub mut:
 	bare_builtin_dir string // Set by -bare-builtin-dir xyz/ . The xyz/ module should contain implementations of malloc, memset, etc, that are used by the rest of V's `builtin` module. That option is only useful with -freestanding (i.e. when is_bare is true).
 	no_preludes      bool   // Prevents V from generating preludes in resulting .c files
 	custom_prelude   string // Contents of custom V prelude that will be prepended before code in resulting .c files
+	cmain            string // The name of the generated C main function. Useful with framework like code, that uses macros to re-define `main`, like SDL2 does. When set, V will always generate `int THE_NAME(int ___argc, char** ___argv){`, *no matter* the platform.
 	lookup_path      []string
 	output_cross_c   bool // true, when the user passed `-os cross`
 	output_es5       bool
@@ -691,6 +692,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					exit(1)
 				}
 				res.custom_prelude = prelude
+				i++
+			}
+			'-cmain' {
+				res.cmain = cmdline.option(current_args, '-cmain', '')
 				i++
 			}
 			else {

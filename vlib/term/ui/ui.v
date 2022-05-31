@@ -116,6 +116,7 @@ pub fn (mut ctx Context) clear() {
 [inline]
 pub fn (mut ctx Context) set_window_title(s string) {
 	print('\x1b]0;$s\x07')
+	flush_stdout()
 }
 
 // draw_point draws a point at position `x`,`y`.

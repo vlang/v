@@ -2345,6 +2345,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				arg = p.expr(0) // len
 				has_arg = true
 			}
+			if p.tok.kind == .comma && p.peek_tok.kind == .rpar {
+				p.next()
+			}
 			end_pos := p.tok.pos()
 			p.check(.rpar)
 			node = ast.CastExpr{
