@@ -8,7 +8,7 @@ by CCS
 PS: all the pre-requisites of Dijkstra are considered
 
 $ v   run file_name.v
-// Creating a executable
+Creating a executable
 $ v  run file_name.v  -o an_executable.EXE
 $ ./an_executable.EXE
 
@@ -23,7 +23,7 @@ the queue. A heap is not used in this case.
 // a structure
 struct NODE {
 mut:
-	data     int // number of node
+	data     int // number of nodes
 	priority int // Lower values priority indicate ==> higher priority
 }
 
@@ -45,7 +45,8 @@ fn push_pq<T>(mut prior_queue []T, data int, priority int) {
 		temp << prior_queue[i]
 		i++
 	}
-	prior_queue = temp.clone() // I am not sure if it the right way
+	prior_queue = temp.clone()
+	// I am not sure if it the right way
 	// IS IT THE RIGHT WAY?
 }
 
@@ -109,12 +110,10 @@ fn print_solution(path []int, g [][]int) {
 	print('\n Minimum Cost Spanning Tree: $sum\n\n')
 }
 
-//=================
-
 // check structure from: https://www.geeksforgeeks.org/dijkstras-shortest-path-algorithm-greedy-algo-7/
 // s: source for all nodes
 // Two results are obtained ... cost and paths
-fn prim_mst(g [][]int, s int)  {
+fn prim_mst(g [][]int, s int) {
 	mut pq_queue := []NODE{} // creating a priority queue
 	push_pq(mut pq_queue, s, 0) // goes s with priority 0
 	mut n := g.len
@@ -152,7 +151,7 @@ fn prim_mst(g [][]int, s int)  {
 	// print('\n \n Previous node of shortest path: ${path}')
 	// print_paths_dist(path , dist)
 	print_solution(path, g)
-} // end function
+}
 
 /*
 Solution Expected graph_02
@@ -228,4 +227,4 @@ fn main() {
 	println('\n BYE -- OK')
 }
 
-//**********************************************************************
+//********************************************************************

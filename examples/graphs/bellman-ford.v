@@ -8,7 +8,7 @@ https://www.geeksforgeeks.org/bellman-ford-algorithm-dp-23/
 For Portugese reference
 http://rascunhointeligente.blogspot.com/2010/10/o-algoritmo-de-bellman-ford-um.html
 
-code by CCS
+By CCS
 */
 
 const large = 999999 // almost inifinity
@@ -52,8 +52,7 @@ fn print_sol(dist []int) {
 // The main function that finds shortest distances from src
 // to all other vertices using Bellman-Ford algorithm.  The
 // function also detects negative weight cycle
-fn bellman_ford<T>(graph [][]T, src int)   {
-	
+fn bellman_ford<T>(graph [][]T, src int) {
 	mut edges := build_map_edges_from_graph(graph)
 	// this function was done to adapt a graph representation
 	// by a adjacency matrix, to list of adjacency (using a MAP)
@@ -97,7 +96,7 @@ fn bellman_ford<T>(graph [][]T, src int)   {
 		}
 	}
 	print_sol(dist)
-  }
+}
 
 fn main() {
 	// adjacency matrix = cost or weight
@@ -160,3 +159,5 @@ fn main() {
 	}
 	println('\n BYE -- OK')
 }
+
+//=================================================

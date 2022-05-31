@@ -115,7 +115,7 @@ fn print_paths_dist<T>(path []T, dist []T) {
 		}
 		print('\t PATH COST: ${dist[node]}')
 	}
-}  // end function
+}
 
 // check structure from: https://www.geeksforgeeks.org/dijkstras-shortest-path-algorithm-greedy-algo-7/
 // s: source for all nodes
@@ -156,8 +156,7 @@ fn dijkstra(g [][]int, s int) {
 	print_solution(dist)
 	// print('\n \n Previous node of shortest path: ${path}')
 	print_paths_dist(path, dist)
-	
-}  // end function
+}
 
 /*
 Solution Expected
@@ -239,4 +238,4 @@ fn main() {
 	println('\n BYE -- OK')
 }
 
-//**********************************************************************
+//********************************************************************
