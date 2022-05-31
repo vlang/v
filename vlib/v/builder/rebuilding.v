@@ -211,7 +211,7 @@ fn (mut b Builder) handle_usecache(vexe string) {
 			// strconv is already imported inside builtin, so skip generating its object file
 			// TODO: incase we have other modules with the same name, make sure they are vlib
 			// is this even doign anything?
-			if imp in ['strconv', 'strings', 'dlmalloc'] {
+			if util.module_is_builtin(imp) {
 				continue
 			}
 			if imp in built_modules {
