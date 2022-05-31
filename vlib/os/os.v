@@ -174,7 +174,13 @@ pub fn is_dir_empty(path string) bool {
 // file_ext will return the part after the last occurence of `.` in `path`.
 // The `.` is included.
 pub fn file_ext(path string) string {
-	pos := path.last_index('.') or { return '' }
+	if path.len < 2 {
+		return empty_str
+	}
+	pos := path.last_index(dot_str) or { return empty_str }
+	if pos + 1 >= path.len || pos == 0 {
+		return empty_str
+	}
 	return path[pos..]
 }
 
