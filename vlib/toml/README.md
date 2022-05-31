@@ -79,6 +79,10 @@ To query for a value that might not be in the document you
 can use the `.default_to(...)` function to provide a
 default value.
 
+For cases where a default value might not be appropiate or
+to check if a value exists you can use `doc.value_opt('query')?`
+instead.
+
 ```v
 import toml
 
@@ -100,8 +104,15 @@ assert doc.value('table.array[0].a').string() == 'A'
 // Provides a default value
 assert doc.value('non.existing').default_to(false).bool() == false
 
+// Check if value exist
+// doc.value_opt('should.exist') or { ... }
+// or
+if value := doc.value_opt('table.array[1].b') {
+	assert value.string() == 'B'
+}
+
 // You can pass parts of the TOML document around
-// and still use .value() to get the values
+// and still use .value()/.value_opt() to get the values
 arr := doc.value('table.array')
 assert arr.value('[1].b').string() == 'B'
 ```
