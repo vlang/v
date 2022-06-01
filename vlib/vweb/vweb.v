@@ -7,7 +7,6 @@ import os
 import io
 import net
 import net.http
-import net.http.mime
 import net.urllib
 import time
 import json
@@ -20,18 +19,18 @@ pub type RawHtml = string
 pub struct Result {}
 
 pub const (
-	methods_with_form  = [http.Method.post, .put, .patch]
-	headers_close      = http.new_custom_header_from_map({
+	methods_with_form = [http.Method.post, .put, .patch]
+	headers_close     = http.new_custom_header_from_map({
 		'Server':                           'VWeb'
 		http.CommonHeader.connection.str(): 'close'
 	}) or { panic('should never fail') }
 
-	http_302           = http.new_response(
+	http_302          = http.new_response(
 		status: .found
 		text: '302 Found'
 		header: headers_close
 	)
-	http_400           = http.new_response(
+	http_400          = http.new_response(
 		status: .bad_request
 		text: '400 Bad Request'
 		header: http.new_header(
@@ -39,7 +38,7 @@ pub const (
 			value: 'text/plain'
 		).join(headers_close)
 	)
-	http_404           = http.new_response(
+	http_404          = http.new_response(
 		status: .not_found
 		text: '404 Not Found'
 		header: http.new_header(
@@ -47,7 +46,7 @@ pub const (
 			value: 'text/plain'
 		).join(headers_close)
 	)
-	http_500           = http.new_response(
+	http_500          = http.new_response(
 		status: .internal_server_error
 		text: '500 Internal Server Error'
 		header: http.new_header(
@@ -55,6 +54,84 @@ pub const (
 			value: 'text/plain'
 		).join(headers_close)
 	)
+	mime_types        = {
+		'.aac':    'audio/aac'
+		'.abw':    'application/x-abiword'
+		'.arc':    'application/x-freearc'
+		'.avi':    'video/x-msvideo'
+		'.azw':    'application/vnd.amazon.ebook'
+		'.bin':    'application/octet-stream'
+		'.bmp':    'image/bmp'
+		'.bz':     'application/x-bzip'
+		'.bz2':    'application/x-bzip2'
+		'.cda':    'application/x-cdf'
+		'.csh':    'application/x-csh'
+		'.css':    'text/css'
+		'.csv':    'text/csv'
+		'.doc':    'application/msword'
+		'.docx':   'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+		'.eot':    'application/vnd.ms-fontobject'
+		'.epub':   'application/epub+zip'
+		'.gz':     'application/gzip'
+		'.gif':    'image/gif'
+		'.htm':    'text/html'
+		'.html':   'text/html'
+		'.ico':    'image/vnd.microsoft.icon'
+		'.ics':    'text/calendar'
+		'.jar':    'application/java-archive'
+		'.jpeg':   'image/jpeg'
+		'.jpg':    'image/jpeg'
+		'.js':     'text/javascript'
+		'.json':   'application/json'
+		'.jsonld': 'application/ld+json'
+		'.mid':    'audio/midi audio/x-midi'
+		'.midi':   'audio/midi audio/x-midi'
+		'.mjs':    'text/javascript'
+		'.mp3':    'audio/mpeg'
+		'.mp4':    'video/mp4'
+		'.mpeg':   'video/mpeg'
+		'.mpkg':   'application/vnd.apple.installer+xml'
+		'.odp':    'application/vnd.oasis.opendocument.presentation'
+		'.ods':    'application/vnd.oasis.opendocument.spreadsheet'
+		'.odt':    'application/vnd.oasis.opendocument.text'
+		'.oga':    'audio/ogg'
+		'.ogv':    'video/ogg'
+		'.ogx':    'application/ogg'
+		'.opus':   'audio/opus'
+		'.otf':    'font/otf'
+		'.png':    'image/png'
+		'.pdf':    'application/pdf'
+		'.php':    'application/x-httpd-php'
+		'.ppt':    'application/vnd.ms-powerpoint'
+		'.pptx':   'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+		'.rar':    'application/vnd.rar'
+		'.rtf':    'application/rtf'
+		'.sh':     'application/x-sh'
+		'.svg':    'image/svg+xml'
+		'.swf':    'application/x-shockwave-flash'
+		'.tar':    'application/x-tar'
+		'.tif':    'image/tiff'
+		'.tiff':   'image/tiff'
+		'.ts':     'video/mp2t'
+		'.ttf':    'font/ttf'
+		'.txt':    'text/plain'
+		'.vsd':    'application/vnd.visio'
+		'.wav':    'audio/wav'
+		'.weba':   'audio/webm'
+		'.webm':   'video/webm'
+		'.webp':   'image/webp'
+		'.woff':   'font/woff'
+		'.woff2':  'font/woff2'
+		'.xhtml':  'application/xhtml+xml'
+		'.xls':    'application/vnd.ms-excel'
+		'.xlsx':   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+		'.xml':    'application/xml'
+		'.xul':    'application/vnd.mozilla.xul+xml'
+		'.zip':    'application/zip'
+		'.3gp':    'video/3gpp'
+		'.3g2':    'video/3gpp2'
+		'.7z':     'application/x-7z-compressed'
+	}
 	max_http_post_size = 1024 * 1024
 	default_port       = 8080
 )
@@ -182,12 +259,12 @@ pub fn (mut ctx Context) file(f_path string) Result {
 		ctx.server_error(500)
 		return Result{}
 	}
-	content_type := mime.get_mime_type(ext)
-	if content_type.len > 0 {
-		ctx.send_response_to_client(content_type, data)
-	} else {
+	content_type := vweb.mime_types[ext]
+	if content_type.len == O {
 		eprintln('no MIME type found for extension $ext')
 		ctx.server_error(500)
+	} else {
+		ctx.send_response_to_client(content_type, data)
 	}
 	return Result{}
 }
@@ -549,7 +626,7 @@ fn (mut ctx Context) scan_static_directory(directory_path string, mount_path str
 				ext := os.file_ext(file)
 				// Rudimentary guard against adding files not in mime_types.
 				// Use serve_static directly to add non-standard mime types.
-				if mime.exists(ext) {
+				if ext in vweb.mime_types {
 					ctx.serve_static(mount_path + '/' + file, full_path)
 				}
 			}
@@ -600,7 +677,7 @@ pub fn (mut ctx Context) serve_static(url string, file_path string) {
 	ctx.static_files[url] = file_path
 	// ctx.static_mime_types[url] = mime_type
 	ext := os.file_ext(file_path)
-	ctx.static_mime_types[url] = mime.get_mime_type(ext)
+	ctx.static_mime_types[url] = vweb.mime_types[ext]
 }
 
 // Returns the ip address from the current user
