@@ -1825,7 +1825,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.global_decl(node)
 		}
 		ast.GotoLabel {
-			g.writeln('${c_name(node.name)}: ')
+			g.writeln('${c_name(node.name)}: {}')
 		}
 		ast.GotoStmt {
 			g.write_v_source_line_info(node.pos)
