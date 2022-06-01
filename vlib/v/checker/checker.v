@@ -3403,6 +3403,9 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			typ = value_type
 		}
 	}
+	if node.or_expr.stmts.len > 0 && node.or_expr.stmts.last() is ast.ExprStmt {
+		c.expected_or_type = typ
+	}
 	c.stmts_ending_with_expression(node.or_expr.stmts)
 	c.check_expr_opt_call(node, typ)
 	return typ
