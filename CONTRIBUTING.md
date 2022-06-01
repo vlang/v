@@ -203,4 +203,4 @@ to create a copy of the compiler rather than replacing it with `v self`.
 | `trace_thirdparty_obj_files` | Prints details about built thirdparty obj files |
 | `trace_usecache` | Prints details when -usecache is used |
 | `trace_embed_file` | Prints details when $embed_file is used |
-| `force_embed_file` | Force embedding of file(s) with `$embed_file('somefile')` |
+| `embed_only_metadata` | Embed only the metadata for the file(s) with `$embed_file('somefile')`; faster; for development, *not* distribution |

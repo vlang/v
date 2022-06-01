@@ -801,12 +801,7 @@ pub fn (mut g Gen) finish() {
 	if g.pref.is_livemain || g.pref.is_liveshared {
 		g.generate_hotcode_reloader_code()
 	}
-	if g.embedded_files.len > 0 {
-		if g.embed_file_is_prod_mode() {
-			g.gen_embedded_data()
-		}
-		g.gen_embedded_metadata()
-	}
+	g.handle_embedded_files_finish()
 	if g.pref.is_test {
 		g.gen_c_main_for_tests()
 	} else {

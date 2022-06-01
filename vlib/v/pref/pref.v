@@ -965,6 +965,7 @@ pub fn get_host_arch() Arch {
 
 fn (mut prefs Preferences) parse_define(define string) {
 	define_parts := define.split('=')
+	prefs.diagnose_deprecated_defines(define_parts)
 	if !(prefs.is_debug && define == 'debug') {
 		prefs.build_options << '-d $define'
 	}
@@ -991,4 +992,10 @@ fn (mut prefs Preferences) parse_define(define string) {
 	}
 	println('V error: Unknown define argument: ${define}. Expected at most one `=`.')
 	exit(1)
+}
+
+fn (mut prefs Preferences) diagnose_deprecated_defines(define_parts []string) {
+	if define_parts[0] == 'force_embed_file' {
+		eprintln('-d force_embed_file was deprecated in 2022/06/01. Now \$embed_file(file) always embeds the file, unless you pass `-d embed_only_metadata`.')
+	}
 }
