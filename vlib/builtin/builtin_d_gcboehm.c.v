@@ -3,16 +3,16 @@ module builtin
 $if dynamic_boehm ? {
 	$if windows {
 		$if tinyc {
-			#flag -I@VEXEROOT/thirdparty/libgc/include
-			#flag -L@VEXEROOT/thirdparty/tcc/lib
+			#flag -I @VEXEROOT/thirdparty/libgc/include
+			#flag -L @VEXEROOT/thirdparty/tcc/lib
 			#flag -lgc
 		} $else $if msvc {
 			#flag -DGC_BUILTIN_ATOMIC=1
-			#flag -I@VEXEROOT/thirdparty/libgc/include
+			#flag -I @VEXEROOT/thirdparty/libgc/include
 		} $else {
 			#flag -DGC_WIN32_THREADS=1
 			#flag -DGC_BUILTIN_ATOMIC=1
-			#flag -I@VEXEROOT/thirdparty/libgc
+			#flag -I @VEXEROOT/thirdparty/libgc
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}
 	} $else {
@@ -31,7 +31,7 @@ $if dynamic_boehm ? {
 	#flag -DGC_BUILTIN_ATOMIC=1
 	$if macos || linux {
 		#flag -DGC_PTHREADS=1
-		#flag -I@VEXEROOT/thirdparty/libgc/include
+		#flag -I @VEXEROOT/thirdparty/libgc/include
 		$if (prod && !tinyc && !debug) || !(amd64 || arm64 || i386 || arm32) {
 			// TODO: replace the architecture check with a `!$exists("@VEXEROOT/thirdparty/tcc/lib/libgc.a")` comptime call
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
@@ -45,7 +45,7 @@ $if dynamic_boehm ? {
 		#flag -DBUS_PAGE_FAULT=T_PAGEFLT
 		#flag -DGC_PTHREADS=1
 		$if !tinyc {
-			#flag -I@VEXEROOT/thirdparty/libgc/include
+			#flag -I @VEXEROOT/thirdparty/libgc/include
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}
 		$if tinyc {
@@ -62,11 +62,11 @@ $if dynamic_boehm ? {
 		#flag -DGC_NOT_DLL=1
 		#flag -DGC_WIN32_THREADS=1
 		$if tinyc {
-			#flag -I@VEXEROOT/thirdparty/libgc/include
+			#flag -I @VEXEROOT/thirdparty/libgc/include
 			#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a
 			#flag -luser32
 		} $else {
-			#flag -I@VEXEROOT/thirdparty/libgc/include
+			#flag -I @VEXEROOT/thirdparty/libgc/include
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}
 	} $else $if $pkgconfig('bdw-gc') {

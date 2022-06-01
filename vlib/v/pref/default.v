@@ -86,7 +86,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	rpath_name := os.file_name(rpath)
 	p.building_v = !p.is_repl && (rpath_name == 'v' || rpath_name == 'vfmt.v')
 	if p.gc_mode == .unknown {
-		if p.building_v {
+		if p.backend != .c || p.building_v || p.is_bare || p.ccompiler == 'msvc' {
 			p.gc_mode = .no_gc
 		} else {
 			// enable the GC by default
