@@ -667,9 +667,14 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 					return p.error('unexpected eof')
 				}
 				if_expr := p.if_expr(true)
-				return ast.ExprStmt{
+				cur_stmt := ast.ExprStmt{
 					expr: if_expr
 					pos: if_expr.pos
+				}
+				if comptime_if_expr_contains_top_stmt(if_expr) {
+					return cur_stmt
+				} else {
+					return p.other_stmts(cur_stmt)
 				}
 			}
 			.hash {
@@ -688,39 +693,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 				return p.comment_stmt()
 			}
 			else {
-				p.inside_fn = true
-				if p.pref.is_script && !p.pref.is_test {
-					p.script_mode = true
-					p.script_mode_start_token = p.tok
-
-					if p.table.known_fn('main.main') {
-						p.error('function `main` is already defined, put your script statements inside it')
-					}
-
-					p.open_scope()
-					mut stmts := []ast.Stmt{}
-					for p.tok.kind != .eof {
-						stmts << p.stmt(false)
-					}
-					p.close_scope()
-
-					p.script_mode = false
-					return ast.FnDecl{
-						name: 'main.main'
-						short_name: 'main'
-						mod: 'main'
-						is_main: true
-						stmts: stmts
-						file: p.file_name
-						return_type: ast.void_type
-						scope: p.scope
-						label_names: p.label_names
-					}
-				} else if p.pref.is_fmt {
-					return p.stmt(false)
-				} else {
-					return p.error('bad top level statement ' + p.tok.str())
-				}
+				return p.other_stmts(ast.empty_stmt())
 			}
 		}
 		if p.should_abort {
@@ -730,6 +703,66 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 	// TODO remove dummy return statement
 	// the compiler complains if it's not there
 	return ast.empty_stmt()
+}
+
+fn comptime_if_expr_contains_top_stmt(if_expr ast.IfExpr) bool {
+	for branch in if_expr.branches {
+		for stmt in branch.stmts {
+			if stmt is ast.ExprStmt {
+				if stmt.expr is ast.IfExpr {
+					if !comptime_if_expr_contains_top_stmt(stmt.expr) {
+						return false
+					}
+				} else if stmt.expr is ast.CallExpr {
+					return false
+				}
+			} else if stmt is ast.AssignStmt {
+				return false
+			} else if stmt is ast.HashStmt {
+				return true
+			}
+		}
+	}
+	return true
+}
+
+fn (mut p Parser) other_stmts(cur_stmt ast.Stmt) ast.Stmt {
+	p.inside_fn = true
+	if p.pref.is_script && !p.pref.is_test {
+		p.script_mode = true
+		p.script_mode_start_token = p.tok
+
+		if p.table.known_fn('main.main') {
+			p.error('function `main` is already defined, put your script statements inside it')
+		}
+
+		p.open_scope()
+		mut stmts := []ast.Stmt{}
+		if cur_stmt != ast.empty_stmt() {
+			stmts << cur_stmt
+		}
+		for p.tok.kind != .eof {
+			stmts << p.stmt(false)
+		}
+		p.close_scope()
+
+		p.script_mode = false
+		return ast.FnDecl{
+			name: 'main.main'
+			short_name: 'main'
+			mod: 'main'
+			is_main: true
+			stmts: stmts
+			file: p.file_name
+			return_type: ast.void_type
+			scope: p.scope
+			label_names: p.label_names
+		}
+	} else if p.pref.is_fmt {
+		return p.stmt(false)
+	} else {
+		return p.error('bad top level statement ' + p.tok.str())
+	}
 }
 
 // TODO [if vfmt]
