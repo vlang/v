@@ -85,7 +85,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			g.stmts(branch.stmts)
 			g.expected_cast_type = prev_expected_cast_type
 		}
-		if node.branches.len == 1 {
+		if node.branches.len == 1 && !node.is_expr {
 			g.write(': 0')
 		}
 		g.write(')')
