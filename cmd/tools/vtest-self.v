@@ -66,6 +66,7 @@ const (
 	]
 	skip_with_werror              = [
 		'do_not_remove',
+		'vlib/v/embed_file/tests/embed_file_test.v',
 	]
 	skip_with_asan_compiler       = [
 		'do_not_remove',
