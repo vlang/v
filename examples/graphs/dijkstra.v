@@ -57,13 +57,13 @@ fn push_pq<T>(mut prior_queue []T, data int, priority int) {
 }
 
 // Change the priority of a value/node ... exist a value, change its priority
-fn updating_priority<T>(mut prior_queue []T, search_data int, NEW_priority int) {
+fn updating_priority<T>(mut prior_queue []T, search_data int, new_priority int) {
 	mut i := 0
 	mut lenght_pq := prior_queue.len
 
 	for i < lenght_pq {
 		if search_data == prior_queue[i].data {
-			prior_queue[i] = NODE{search_data, NEW_priority} // do the copy in the right place	
+			prior_queue[i] = NODE{search_data, new_priority} // do the copy in the right place	
 			break
 		}
 		i++
