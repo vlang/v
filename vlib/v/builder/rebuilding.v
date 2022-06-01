@@ -257,7 +257,11 @@ fn (mut b Builder) handle_usecache(vexe string) {
 }
 
 pub fn (mut b Builder) should_rebuild() bool {
-	if !os.is_file(b.pref.out_name) {
+	mut exe_name := b.pref.out_name
+	$if windows {
+		exe_name = exe_name + '.exe'
+	}
+	if !os.is_file(exe_name) {
 		return true
 	}
 	if !b.pref.is_crun {
@@ -273,9 +277,9 @@ pub fn (mut b Builder) should_rebuild() bool {
 	}
 	v_program_files.sort() // ensure stable keys for the dependencies cache
 	b.crun_cache_keys = v_program_files
-	b.crun_cache_keys << b.pref.out_name
+	b.crun_cache_keys << exe_name
 	// just check the timestamps for now:
-	exe_stamp := os.file_last_mod_unix(b.pref.out_name)
+	exe_stamp := os.file_last_mod_unix(exe_name)
 	source_stamp := most_recent_timestamp(v_program_files)
 	if exe_stamp <= source_stamp {
 		return true
