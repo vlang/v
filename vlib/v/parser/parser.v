@@ -713,7 +713,7 @@ fn comptime_if_expr_contains_top_stmt(if_expr ast.IfExpr) bool {
 					if !comptime_if_expr_contains_top_stmt(stmt.expr) {
 						return false
 					}
-				} else if stmt.expr !is ast.ComptimeCall {
+				} else if stmt.expr is ast.CallExpr {
 					return false
 				}
 			} else if stmt is ast.AssignStmt {
