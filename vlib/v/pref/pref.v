@@ -24,6 +24,7 @@ pub enum AssertFailureMode {
 }
 
 pub enum GarbageCollectionMode {
+	unknown
 	no_gc
 	boehm_full // full garbage collection mode
 	boehm_incr // incremental garbage colletion mode
@@ -204,7 +205,7 @@ pub mut:
 	cleanup_files       []string    // list of temporary *.tmp.c and *.tmp.c.rsp files. Cleaned up on successfull builds.
 	build_options       []string    // list of options, that should be passed down to `build-module`, if needed for -usecache
 	cache_manager       vcache.CacheManager
-	gc_mode             GarbageCollectionMode = .no_gc // .no_gc, .boehm, .boehm_leak, ...
+	gc_mode             GarbageCollectionMode = .unknown // .no_gc, .boehm, .boehm_leak, ...
 	assert_failure_mode AssertFailureMode     // whether to call abort() or print_backtrace() after an assertion failure
 	message_limit       int = 100 // the maximum amount of warnings/errors/notices that will be accumulated
 	nofloat             bool // for low level code, like kernels: replaces f32 with u32 and f64 with u64
@@ -324,11 +325,20 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.nofloat = true
 				res.compile_defines_all << 'nofloat' // so that `$if nofloat? {` works
 			}
+			'-nogc' {
+				res.gc_mode = .no_gc
+			}
 			'-gc' {
 				gc_mode := cmdline.option(current_args, '-gc', '')
 				match gc_mode {
-					'', 'none' {
+					'none' {
 						res.gc_mode = .no_gc
+					}
+					'', 'boehm' {
+						res.gc_mode = .boehm_full_opt // default mode
+						res.parse_define('gcboehm')
+						res.parse_define('gcboehm_full')
+						res.parse_define('gcboehm_opt')
 					}
 					'boehm_full' {
 						res.gc_mode = .boehm_full
@@ -350,12 +360,6 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 						res.gc_mode = .boehm_incr_opt
 						res.parse_define('gcboehm')
 						res.parse_define('gcboehm_incr')
-						res.parse_define('gcboehm_opt')
-					}
-					'boehm' {
-						res.gc_mode = .boehm_full_opt // default mode
-						res.parse_define('gcboehm')
-						res.parse_define('gcboehm_full')
 						res.parse_define('gcboehm_opt')
 					}
 					'boehm_leak' {
