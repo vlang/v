@@ -180,7 +180,7 @@ pub fn is_dir_empty(path string) bool {
 // assert os.file_ext('.') == ''
 // ```
 pub fn file_ext(path string) string {
-	if path.len < 2 {
+	if path.len < 3 {
 		return empty_str
 	}
 	pos := path.last_index(dot_str) or { return empty_str }
