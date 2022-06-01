@@ -554,7 +554,9 @@ voidptr memdup(voidptr src, int sz);
 
 	#include <io.h> // _waccess
 	#include <direct.h> // _wgetcwd
+	#ifdef V_USE_SIGNAL_H
 	#include <signal.h> // signal and SIGSEGV for segmentation fault handler
+	#endif
 
 	#ifdef _MSC_VER
 		// On MSVC these are the same (as long as /volatile:ms is passed)
