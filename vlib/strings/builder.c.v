@@ -172,12 +172,9 @@ pub fn (b &Builder) after(n int) string {
 }
 
 // str returns a copy of all of the accumulated buffer content.
-// Note: after a call to b.str(), the builder b should not be
-// used again, you need to call b.free() first, or just leave
-// it to be freed by -autofree when it goes out of scope.
-// The returned string *owns* its own separate copy of the
-// accumulated data that was in the string builder, before the
-// .str() call.
+// Note: after a call to b.str(), the builder b will be empty, and could be used again.
+// The returned string *owns* its own separate copy of the accumulated data that was in
+// the string builder, before the .str() call.
 pub fn (mut b Builder) str() string {
 	b << u8(0)
 	bcopy := unsafe { &u8(memdup_noscan(b.data, b.len)) }
@@ -208,7 +205,8 @@ pub fn (mut b Builder) ensure_cap(n int) {
 	}
 }
 
-// free is for manually freeing the contents of the buffer
+// free frees the memory block, used for the buffer.
+// Note: do not use the builder, after a call to free().
 [unsafe]
 pub fn (mut b Builder) free() {
 	if b.data != 0 {
