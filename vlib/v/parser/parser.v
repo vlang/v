@@ -91,11 +91,11 @@ mut:
 	script_mode               bool
 	script_mode_start_token   token.Token
 pub mut:
-	scanner &scanner.Scanner
-	errors                    []errors.Error
-	warnings                  []errors.Warning
-	notices                   []errors.Notice
-	vet_errors                []vet.Error
+	scanner    &scanner.Scanner
+	errors     []errors.Error
+	warnings   []errors.Warning
+	notices    []errors.Notice
+	vet_errors []vet.Error
 }
 
 __global codegen_files = []&ast.File{}
