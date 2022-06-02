@@ -260,7 +260,7 @@ pub fn (mut ctx Context) file(f_path string) Result {
 		return Result{}
 	}
 	content_type := vweb.mime_types[ext]
-	if content_type == '' {
+	if content_type.len == O {
 		eprintln('no MIME type found for extension $ext')
 		ctx.server_error(500)
 	} else {
