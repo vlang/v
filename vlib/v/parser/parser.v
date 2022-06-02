@@ -23,7 +23,6 @@ mut:
 	file_name_dir     string       // "/home/user"
 	unique_prefix     string       // a hash of p.file_name, used for making anon fn generation unique
 	file_backend_mode ast.Language // .c for .c.v|.c.vv|.c.vsh files; .js for .js.v files, .amd64/.rv32/other arches for .amd64.v/.rv32.v/etc. files, .v otherwise.
-	scanner           &scanner.Scanner
 	comments_mode     scanner.CommentsMode = .skip_comments
 	// see comment in parse_file
 	tok                       token.Token
@@ -78,10 +77,6 @@ mut:
 	returns                   bool
 	is_stmt_ident             bool // true while the beginning of a statement is an ident/selector
 	expecting_type            bool // `is Type`, expecting type
-	errors                    []errors.Error
-	warnings                  []errors.Warning
-	notices                   []errors.Notice
-	vet_errors                []vet.Error
 	cur_fn_name               string
 	label_names               []string
 	name_error                bool // indicates if the token is not a name or the name is on another line
@@ -95,6 +90,12 @@ mut:
 	if_cond_comments          []ast.Comment
 	script_mode               bool
 	script_mode_start_token   token.Token
+pub mut:
+	scanner &scanner.Scanner
+	errors                    []errors.Error
+	warnings                  []errors.Warning
+	notices                   []errors.Notice
+	vet_errors                []vet.Error
 }
 
 __global codegen_files = []&ast.File{}
