@@ -47,12 +47,5 @@ pub fn decompress(data []u8, flags int) ?[]u8 {
 	if u64(out_len) > compress.max_size {
 		return error('decompressed data is too large ($out_len > $compress.max_size)')
 	}
-	decompressed := unsafe {
-		address.vbytes(int(out_len))
-	}
-	copy := decompressed.clone()
-	unsafe {
-		free(address)
-	}
-	return copy
+	return unsafe { address.vbytes(int(out_len)) }
 }
