@@ -533,33 +533,37 @@ fn (mut g Gen) write_defer_stmts_when_needed() {
 }
 
 fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic bool) ([]string, []string, []bool) {
-	mut fargs := []string{}
-	mut fargtypes := []string{}
+	mut fparams := []string{}
+	mut fparamtypes := []string{}
 	mut heap_promoted := []bool{}
 	if params.len == 0 {
 		// in C, `()` is untyped, unlike `(void)`
 		g.write('void')
 	}
-	for i, arg in params {
-		mut caname := if arg.name == '_' { g.new_tmp_declaration_name() } else { c_name(arg.name) }
-		typ := g.unwrap_generic(arg.typ)
-		arg_type_sym := g.table.sym(typ)
-		mut arg_type_name := g.typ(typ) // util.no_dots(arg_type_sym.name)
-		if arg_type_sym.kind == .function {
-			info := arg_type_sym.info as ast.FnType
+	for i, param in params {
+		mut caname := if param.name == '_' {
+			g.new_tmp_declaration_name()
+		} else {
+			c_name(param.name)
+		}
+		typ := g.unwrap_generic(param.typ)
+		param_type_sym := g.table.sym(typ)
+		mut param_type_name := g.typ(typ) // util.no_dots(param_type_sym.name)
+		if param_type_sym.kind == .function {
+			info := param_type_sym.info as ast.FnType
 			func := info.func
 			g.write('${g.typ(func.return_type)} (*$caname)(')
 			g.definitions.write_string('${g.typ(func.return_type)} (*$caname)(')
 			g.fn_decl_params(func.params, voidptr(0), func.is_variadic)
 			g.write(')')
 			g.definitions.write_string(')')
-			fargs << caname
-			fargtypes << arg_type_name
+			fparams << caname
+			fparamtypes << param_type_name
 		} else {
 			mut heap_prom := false
 			if scope != voidptr(0) {
-				if arg.name != '_' {
-					if v := scope.find_var(arg.name) {
+				if param.name != '_' {
+					if v := scope.find_var(param.name) {
 						if !v.is_stack_obj && v.is_auto_heap {
 							heap_prom = true
 						}
@@ -567,17 +571,17 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 				}
 			}
 			var_name_prefix := if heap_prom { '_v_toheap_' } else { '' }
-			const_prefix := if arg.typ.is_any_kind_of_pointer() && !arg.is_mut
-				&& arg.name.starts_with('const_') {
+			const_prefix := if param.typ.is_any_kind_of_pointer() && !param.is_mut
+				&& param.name.starts_with('const_') {
 				'const '
 			} else {
 				''
 			}
-			s := '$const_prefix$arg_type_name $var_name_prefix$caname'
+			s := '$const_prefix$param_type_name $var_name_prefix$caname'
 			g.write(s)
 			g.definitions.write_string(s)
-			fargs << caname
-			fargtypes << arg_type_name
+			fparams << caname
+			fparamtypes << param_type_name
 			heap_promoted << heap_prom
 		}
 		if i < params.len - 1 {
@@ -586,10 +590,10 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 		}
 	}
 	if g.pref.translated && is_variadic {
-		g.write(', ...')
-		g.definitions.write_string(', ...')
+		g.write(', ... ')
+		g.definitions.write_string(', ... ')
 	}
-	return fargs, fargtypes, heap_promoted
+	return fparams, fparamtypes, heap_promoted
 }
 
 fn (mut g Gen) get_anon_fn_type_name(mut node ast.AnonFn, var_name string) string {
@@ -1660,15 +1664,27 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			g.expr(args[args.len - 1].expr)
 		} else {
 			if variadic_count > 0 {
-				noscan := g.check_noscan(arr_info.elem_type)
-				g.write('new_array_from_c_array${noscan}($variadic_count, $variadic_count, sizeof($elem_type), _MOV(($elem_type[$variadic_count]){')
-				for j in arg_nr .. args.len {
-					g.ref_or_deref_arg(args[j], arr_info.elem_type, node.language)
-					if j < args.len - 1 {
-						g.write(', ')
+				if g.pref.translated || g.file.is_translated {
+					// Handle passing e.g. C string literals to `...` C varargs:
+					// void DEH_snprintf(char *buffer, size_t len, const char *fmt, ...)
+					// deh_snprintf(buffer, 9, c'STCFN%.3d', j++)
+					for j in arg_nr .. args.len {
+						g.expr(args[j].expr)
+						if j < args.len - 1 {
+							g.write(', ')
+						}
 					}
+				} else {
+					noscan := g.check_noscan(arr_info.elem_type)
+					g.write('new_array_from_c_array${noscan}($variadic_count, $variadic_count, sizeof($elem_type), _MOV(($elem_type[$variadic_count]){')
+					for j in arg_nr .. args.len {
+						g.ref_or_deref_arg(args[j], arr_info.elem_type, node.language)
+						if j < args.len - 1 {
+							g.write(', ')
+						}
+					}
+					g.write('}))')
 				}
-				g.write('}))')
 			} else {
 				g.write('__new_array(0, 0, sizeof($elem_type))')
 			}

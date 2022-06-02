@@ -213,8 +213,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					}
 				}
 			}
-			if (c.pref.translated || c.file.is_translated) && node.is_variadic
-				&& node.params.len == 1 && param.typ.is_ptr() {
+			//&& node.params.len == 1 && param.typ.is_ptr() {
+			if (c.pref.translated || c.file.is_translated) && node.is_variadic && param.typ.is_ptr() {
 				// TODO c2v hack to fix `(const char *s, ...)`
 				param.typ = ast.int_type.ref()
 			}
