@@ -1,9 +1,9 @@
-module zlib
+module gzip
 
 import compress
 
-// compresses an array of bytes using zlib and returns the compressed bytes in a new array
-// Example: compressed := zlib.compress(b)?
+// compresses an array of bytes using gzip and returns the compressed bytes in a new array
+// Example: compressed := gzip.compress(b)?
 [manualfree]
 pub fn compress(data []u8) ?[]u8 {
 	if u64(data.len) > compress.max_size {
@@ -11,8 +11,7 @@ pub fn compress(data []u8) ?[]u8 {
 	}
 	mut out_len := usize(0)
 
-	// flags = TDEFL_WRITE_ZLIB_HEADER (0x01000)
-	address := C.tdefl_compress_mem_to_heap(data.data, data.len, &out_len, 0x01000)
+	address := C.tdefl_compress_mem_to_heap(data.data, data.len, &out_len, 0)
 	if address == 0 {
 		return error('compression failed')
 	}
@@ -35,8 +34,7 @@ pub fn compress(data []u8) ?[]u8 {
 pub fn decompress(data []u8) ?[]u8 {
 	mut out_len := usize(0)
 
-	// flags = TINFL_FLAG_PARSE_ZLIB_HEADER (0x1)
-	address := C.tinfl_decompress_mem_to_heap(data.data, data.len, &out_len, 0x1)
+	address := C.tinfl_decompress_mem_to_heap(data.data, data.len, &out_len, 0)
 	if address == 0 {
 		return error('decompression failed')
 	}
