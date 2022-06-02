@@ -24,14 +24,7 @@ pub fn compress(data []u8, flags int) ?[]u8 {
 	if u64(out_len) > compress.max_size {
 		return error('compressed data is too large ($out_len > $compress.max_size)')
 	}
-	compressed := unsafe {
-		address.vbytes(int(out_len))
-	}
-	copy := compressed.clone()
-	unsafe {
-		free(address)
-	}
-	return copy
+	return unsafe { address.vbytes(int(out_len)) }
 }
 
 // decompresses an array of bytes based on providing flags and returns the decompressed bytes in a new array
