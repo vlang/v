@@ -242,7 +242,7 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 	} else {
 		got_typ_sym := c.table.sym(got)
 		expected_typ_sym := c.table.sym(expected_)
-	
+
 		// Check on Generics types, there are some case where we have the following case
 		// `&Type<int> == &Type<>`. This is a common case we are implementing a function
 		// with generic parameters like `compare(bst Bst<T> node) {}`
