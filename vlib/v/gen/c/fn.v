@@ -750,7 +750,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 
 		left_is_shared := node.left_type.has_flag(.shared_f)
-		left_cc_type := g.cc_type(node.left_type, false)
+		left_cc_type := g.cc_type(g.table.unaliased_type(node.left_type), false)
 		left_type_name := util.no_dots(left_cc_type)
 		g.write('${c_name(left_type_name)}_name_table[')
 		if node.left.is_auto_deref_var() && node.left_type.nr_muls() > 1 {
