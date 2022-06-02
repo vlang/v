@@ -443,16 +443,8 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 				pos: pos
 				is_stmt: true
 			}
-		} else if p.tok.kind.is_infix() {
-			if p.tok.kind.is_prefix() && p.tok.line_nr != p.prev_tok.line_nr {
-				// return early for deref assign `*x = 2` goes to prefix expr
-				if p.tok.kind == .mul && p.peek_token(2).kind == .assign {
-					return node
-				}
-				// added 10/2020: LATER this will be parsed as PrefixExpr instead
-				p.warn_with_pos('move infix `$p.tok.kind` operator before new line (if infix intended) or use brackets for a prefix expression',
-					p.tok.pos())
-			}
+		} else if p.tok.kind.is_infix() && !(p.tok.kind in [.minus, .amp, .mul]
+			&& p.tok.line_nr != p.prev_tok.line_nr) {
 			// continue on infix expr
 			node = p.infix_expr(node)
 			// return early `if bar is SumType as b {`
