@@ -131,12 +131,12 @@ jobs:
       - name: Build go2v
         continue-on-error: true
         run: |
-          echo "Clone go2v"
+          echo "Clone Go2V"
           clone --depth=1 https://github.com/vlang/go2v go2v/
-          echo "Build go2v"
+          echo "Build Go2V"
           ./v go2v/
-          ## echo "Run tests for go2v"
-          ## VJOBS=1 ./v -stats test go2v/
+          echo "Run Go2V tests"
+          VJOBS=1 ./v -stats test go2v/
 
       - name: Build vlang/pdf
         continue-on-error: true
