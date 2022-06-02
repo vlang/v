@@ -804,7 +804,6 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 			}
 		}
 	}
-	styp := c.table.type_to_str(utyp)
 	if utyp.idx() == interface_type.idx() {
 		// same type -> already casted to the interface
 		return true
@@ -813,6 +812,7 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 		// `none` "implements" the Error interface
 		return true
 	}
+	styp := c.table.type_to_str(utyp)
 	if typ_sym.kind == .interface_ && inter_sym.kind == .interface_ && !styp.starts_with('JS.')
 		&& !inter_sym.name.starts_with('JS.') {
 		c.error('cannot implement interface `$inter_sym.name` with a different interface `$styp`',
@@ -986,7 +986,6 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 				if type_fits || is_noreturn {
 					return
 				}
-				expected_type_name := c.table.type_to_str(ret_type.clear_flag(.optional))
 				if stmt.typ == ast.void_type {
 					if stmt.expr is ast.IfExpr {
 						for branch in stmt.expr.branches {
@@ -999,10 +998,12 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 						}
 						return
 					}
+					expected_type_name := c.table.type_to_str(ret_type.clear_flag(.optional))
 					c.error('`or` block must provide a default value of type `$expected_type_name`, or return/continue/break or call a [noreturn] function like panic(err) or exit(1)',
 						stmt.expr.pos())
 				} else {
 					type_name := c.table.type_to_str(last_stmt_typ)
+					expected_type_name := c.table.type_to_str(ret_type.clear_flag(.optional))
 					c.error('wrong return type `$type_name` in the `or {}` block, expected `$expected_type_name`',
 						stmt.expr.pos())
 				}
