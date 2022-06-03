@@ -2679,6 +2679,7 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 }
 
 fn (mut g Gen) autofree_variable(v ast.Var) {
+	// filter out invalid variables
 	if v.typ == 0 {
 		return
 	}
