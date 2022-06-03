@@ -4660,6 +4660,10 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		extern := if cextern { 'extern ' } else { '' }
 		modifier := if field.is_volatile { ' volatile ' } else { '' }
 		g.definitions.write_string('$extern$visibility_kw$modifier$styp $attributes $field.name')
+		if cextern {
+			g.definitions.writeln('; // global5')
+			continue
+		}
 		if field.has_expr || cinit {
 			if g.pref.translated {
 				g.definitions.write_string(' = ${g.expr_string(field.expr)}')
