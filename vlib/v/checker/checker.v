@@ -742,7 +742,7 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 			return '', pos
 		}
 		else {
-			if !expr.is_lit() {
+			if !expr.is_pure_literal() {
 				c.error('unexpected expression `$expr.type_name()`', expr.pos())
 				return '', pos
 			}
@@ -3058,7 +3058,7 @@ fn (mut c Checker) find_obj_definition(obj ast.ScopeObject) ?ast.Expr {
 	if mut expr is ast.Ident {
 		return c.find_definition(expr)
 	}
-	if !expr.is_lit() {
+	if !expr.is_pure_literal() {
 		return error('definition of `$name` is unknown at compile time')
 	}
 	return expr
