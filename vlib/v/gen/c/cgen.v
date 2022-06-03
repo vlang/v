@@ -3961,9 +3961,9 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		g.expr(node.expr)
 	} else if node.expr_type == ast.bool_type && node.typ.is_int() {
 		styp := g.typ(node.typ)
-		g.write('($styp)(')
+		g.write('($styp[]){(')
 		g.expr(node.expr)
-		g.write(')')
+		g.write(')?1:0}[0]')
 	} else {
 		styp := g.typ(node.typ)
 		if (g.pref.translated || g.file.is_translated) && sym.kind == .function {
