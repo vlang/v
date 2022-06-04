@@ -66,10 +66,10 @@ pub mut:
 	notices                   []errors.Notice
 	error_lines               []int // to avoid printing multiple errors for the same line
 	expected_type             ast.Type
-	expected_or_type          ast.Type // fn() or { 'this type' } eg. string. expected or block type
-	expected_expr_type        ast.Type // if/match is_expr: expected_type
-	mod                       string   // current module name
-	const_decl                string
+	expected_or_type          ast.Type        // fn() or { 'this type' } eg. string. expected or block type
+	expected_expr_type        ast.Type        // if/match is_expr: expected_type
+	mod                       string          // current module name
+	const_var                 &ast.ConstField = voidptr(0) // the current constant, when checking const declarations
 	const_deps                []string
 	const_names               []string
 	global_names              []string
@@ -142,7 +142,7 @@ pub fn new_checker(table &ast.Table, pref &pref.Preferences) &Checker {
 fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
 	c.expected_type = ast.void_type
 	c.expected_or_type = ast.void_type
-	c.const_decl = ''
+	c.const_var = voidptr(0)
 	c.in_for_count = 0
 	c.returns = false
 	c.scope_returns = false
@@ -1327,8 +1327,9 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 		c.const_names << field.name
 	}
 	for i, mut field in node.fields {
-		c.const_decl = field.name
 		c.const_deps << field.name
+		prev_const_var := c.const_var
+		c.const_var = unsafe { field }
 		mut typ := c.check_expr_opt_call(field.expr, c.expr(field.expr))
 		if ct_value := c.eval_comptime_const_expr(field.expr, 0) {
 			field.comptime_expr_value = ct_value
@@ -1338,6 +1339,7 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 		}
 		node.fields[i].typ = ast.mktyp(typ)
 		c.const_deps = []
+		c.const_var = prev_const_var
 	}
 }
 
@@ -2620,8 +2622,23 @@ pub fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		if !name.contains('.') && node.mod != 'builtin' {
 			name = '${node.mod}.$node.name'
 		}
-		if name == c.const_decl && !c.pref.translated {
-			// TODO allow references, do not just check by name
+		// detect cycles, while allowing for references to the same constant,
+		// used inside its initialisation like: `struct Abc { x &Abc } ... const a = [ Abc{0}, Abc{unsafe{&a[0]}} ]!`
+		// see vlib/v/tests/const_fixed_array_containing_references_to_itself_test.v
+		if unsafe { c.const_var != 0 } && name == c.const_var.name {
+			if mut c.const_var.expr is ast.ArrayInit {
+				if c.const_var.expr.is_fixed && c.expected_type.nr_muls() > 0 {
+					elem_typ := c.expected_type.deref()
+					node.kind = .constant
+					node.name = c.const_var.name
+					node.info = ast.IdentVar{
+						typ: elem_typ
+					}
+					// c.const_var.typ = elem_typ
+					node.obj = c.const_var
+					return c.expected_type
+				}
+			}
 			c.error('cycle in constant `$c.const_decl`', node.pos)
 			return ast.void_type
 		}
