@@ -193,14 +193,6 @@ pub fn (ctx Context) init_server() {
 // Probably you can use it for check user session cookie or add header.
 pub fn (ctx Context) before_request() {}
 
-pub struct Cookie {
-	name      string
-	value     string
-	expires   time.Time
-	secure    bool
-	http_only bool
-}
-
 // vweb intern function
 [manualfree]
 pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bool {
@@ -311,7 +303,7 @@ pub fn (mut ctx Context) not_found() Result {
 }
 
 // Sets a cookie
-pub fn (mut ctx Context) set_cookie(cookie Cookie) {
+pub fn (mut ctx Context) set_cookie(cookie http.Cookie) {
 	mut cookie_data := []string{}
 	mut secure := if cookie.secure { 'Secure;' } else { '' }
 	secure += if cookie.http_only { ' HttpOnly' } else { ' ' }

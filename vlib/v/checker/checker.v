@@ -2620,7 +2620,8 @@ pub fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		if !name.contains('.') && node.mod != 'builtin' {
 			name = '${node.mod}.$node.name'
 		}
-		if name == c.const_decl {
+		if name == c.const_decl && !c.pref.translated {
+			// TODO allow references, do not just check by name
 			c.error('cycle in constant `$c.const_decl`', node.pos)
 			return ast.void_type
 		}
