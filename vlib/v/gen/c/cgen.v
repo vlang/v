@@ -5644,18 +5644,26 @@ fn (mut g Gen) interface_table() string {
 					field_styp := g.typ(field.typ)
 					if _ := st_sym.find_field(field.name) {
 						cast_struct.writeln('\t\t.$cname = ($field_styp*)((char*)x + __offsetof_ptr(x, $cctype, $cname)),')
+					} else if st_sym.kind == .array
+						&& field.name in ['element_size', 'data', 'offset', 'len', 'cap', 'flags'] {
+						// Manaully checking, we already knows array contains above fields
+						cast_struct.writeln('\t\t.$cname = ($field_styp*)((char*)x + __offsetof_ptr(x, $cctype, $cname)),')
 					} else {
 						// the field is embedded in another struct
 						cast_struct.write_string('\t\t.$cname = ($field_styp*)((char*)x')
 						if st == ast.voidptr_type {
 							cast_struct.write_string('/*.... ast.voidptr_type */')
 						} else {
-							for embed_type in st_sym.struct_info().embeds {
-								embed_sym := g.table.sym(embed_type)
-								if _ := embed_sym.find_field(field.name) {
-									cast_struct.write_string(' + __offsetof_ptr(x, $cctype, $embed_sym.embed_name()) + __offsetof_ptr(x, $embed_sym.cname, $cname)')
-									break
+							if st_sym.kind == .struct_ {
+								for embed_type in st_sym.struct_info().embeds {
+									embed_sym := g.table.sym(embed_type)
+									if _ := embed_sym.find_field(field.name) {
+										cast_struct.write_string(' + __offsetof_ptr(x, $cctype, $embed_sym.embed_name()) + __offsetof_ptr(x, $embed_sym.cname, $cname)')
+										break
+									}
 								}
+							} else if st_sym.kind == .array {
+								dump(st_sym.array_info())
 							}
 						}
 						cast_struct.writeln('),')
