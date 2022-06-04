@@ -1,8 +1,8 @@
 interface Source {
-	len int
+    len int
 }
 
 fn main() {
-	println(Source('test').len)
-	println(Source([`a`]).len)
+    println(Source('test').len)
+    println(Source([`a`]).len) 
 }
