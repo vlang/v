@@ -110,6 +110,10 @@ const (
 	skip_on_non_linux             = [
 		'do_not_remove',
 	]
+	skip_on_windows_msvc          = [
+		'do_not_remove',
+		'vlib/v/tests/const_fixed_array_containing_references_to_itself_test.v', // error C2099: initializer is not a constant
+	]
 	skip_on_windows               = [
 		'vlib/context/cancel_test.v',
 		'vlib/context/deadline_test.v',
@@ -265,6 +269,9 @@ fn main() {
 	}
 	$if windows {
 		tsession.skip_files << skip_on_windows
+		$if msvc {
+			tsession.skip_files << skip_on_windows_msvc
+		}
 	}
 	$if !windows {
 		tsession.skip_files << skip_on_non_windows
