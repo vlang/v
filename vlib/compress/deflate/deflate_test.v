@@ -1,4 +1,4 @@
-module gzip
+module deflate
 
 fn test_gzip() ? {
 	uncompressed := 'Hello world!'
