@@ -5662,8 +5662,6 @@ fn (mut g Gen) interface_table() string {
 										break
 									}
 								}
-							} else if st_sym.kind == .array {
-								dump(st_sym.array_info())
 							}
 						}
 						cast_struct.writeln('),')
