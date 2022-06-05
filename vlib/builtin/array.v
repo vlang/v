@@ -614,7 +614,7 @@ fn (mut a array) set_unsafe(i int, val voidptr) {
 	unsafe { vmemcpy(&u8(a.data) + u64(a.element_size) * u64(i), val, a.element_size) }
 }
 
-// Private function. Used to implement assigment to the array element.
+// Private function. Used to implement assignment to the array element.
 fn (mut a array) set(i int, val voidptr) {
 	$if !no_bounds_checking ? {
 		if i < 0 || i >= a.len {
