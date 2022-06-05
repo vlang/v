@@ -1,4 +1,4 @@
-// [rfc1952](https://datatracker.ietf.org/doc/html/rfc1952) compliant 
+// [rfc1952](https://datatracker.ietf.org/doc/html/rfc1952) compliant
 // gzip compression/decompression
 
 module gzip
