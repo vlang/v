@@ -12,11 +12,11 @@ pub fn compress(data []u8) ?[]u8 {
 	compressed := compress.compress(data, 0)?
 	// header
 	mut result := [
-		u8(0x1f),
-		0x8b, // magic numbers
+		u8(0x1f), // magic numbers (1F 8B)
+		0x8b,
 		0x08, // deflate
 		0x00, // header flags
-		0x00, // 4-byte timestamp, 0 = no timestamp
+		0x00, // 4-byte timestamp, 0 = no timestamp (00 00 00 00)
 		0x00,
 		0x00,
 		0x00,
@@ -41,7 +41,7 @@ pub fn compress(data []u8) ?[]u8 {
 }
 
 // decompresses an array of bytes using zlib and returns the decompressed bytes in a new array
-// Example: decompressed := zlib.decompress(b)?
+// Example: decompressed := gzip.decompress(b)?
 pub fn decompress(data []u8) ?[]u8 {
 	if data.len < 18 {
 		return error('data is too short, not gzip compressed?')
