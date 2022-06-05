@@ -1590,3 +1590,14 @@ fn test_inline_array_element_access() {
 	a2 := [1][0]
 	assert a2 == 1
 }
+
+//
+
+fn f(x int, y int) []int {
+	return [x, y]
+}
+
+fn test_2d_array_init_with_it() {
+	a := [][]int{len: 6, init: f(it, 2 * it)}
+	assert a == [[0, 0], [1, 2], [2, 4], [3, 6], [4, 8], [5, 10]]
+}
