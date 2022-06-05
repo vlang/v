@@ -67,36 +67,37 @@ pub fn decompress(data []u8) ?[]u8 {
 
 	// if data[4] & 0b0000_0001 {} // FTEXT
 	if data[4] & 0b0000_0100 > 0 { // FEXTRA, extra data
-		// TODO: bounds checks
 		xlen := data[header_length]
 		header_length += xlen + 1
 	}
 	if data[4] & 0b0000_1000 > 0 { // FNAME, file name
 		// filename is zero-terminated, so skip until we hit a zero byte
-		// TODO: add bounds check so this doesn't panic
-		for data[header_length] != 0x00 {
+		for header_length < data.len && data[header_length] != 0x00 {
 			header_length++
 		}
 		header_length++
 	}
 	if data[4] & 0b0001_0000 > 0 { // FCOMMENT
 		// comment is zero-terminated, so skip until we hit a zero byte
-		// TODO: add bounds check so this doesn't panic
-		for data[header_length] != 0x00 {
+		for header_length < data.len && data[header_length] != 0x00 {
 			header_length++
 		}
 		header_length++
 	}
 	if data[4] & 0b0000_0010 > 0 { // FHCRC, flag header crc
-		// this operates at the end of the header
+		if header_length + 12 > data.len {
+			return error('data too short')
+		}
 		checksum_header := crc32.sum(data[..header_length])
-		// TODO: bounds check
-		checksum_header_expected := ((u32(data[header_length]) << 24) | (u32(data[header_length + 1]) << 16) | (u32(data[
-			header_length + 2]) << 8) | data[header_length + 3])
+		checksum_header_expected := (u32(data[header_length]) << 24) | (u32(data[header_length + 1]) << 16) | (u32(data[
+			header_length + 2]) << 8) | data[header_length + 3]
 		if checksum_header != checksum_header_expected {
 			return error('header checksum verification failed')
 		}
 		header_length += 4
+	}
+	if header_length + 8 > data.len {
+		return error('data too short')
 	}
 
 	decompressed := compress.decompress(data[header_length..data.len - 8], 0)?
