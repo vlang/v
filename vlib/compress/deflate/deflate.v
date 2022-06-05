@@ -1,4 +1,4 @@
-module gzip
+module deflate
 
 import compress
 
