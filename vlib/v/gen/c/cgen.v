@@ -3925,8 +3925,8 @@ fn (mut g Gen) ident(node ast.Ident) {
 			// `p_mobjthinker` => `P_MobjThinker`
 			if f := g.table.find_fn(node.name) {
 				// TODO PERF fn lookup for each fn call in translated mode
-				if f.attrs.contains('c') {
-					name = f.attrs[0].arg
+				if cattr := f.attrs.find_first('c') {
+					name = cattr.arg
 				}
 			}
 		}
@@ -3970,8 +3970,8 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			// TODO handle the type in fn casts, not just exprs
 			/*
 			info := sym.info as ast.FnType
-			if info.func.attrs.contains('c') {
-				// name = f.attrs[0].arg
+			if cattr := info.func.attrs.find_first('c') {
+				name = cattr.arg
 			}
 			*/
 		}
@@ -4398,11 +4398,11 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 			}
 		}
 		name := c_name(field.name)
-		const_name := if node.attrs.contains('export') && !g.is_builtin_mod {
-			// TODO this only works for the first const in the group for now
-			node.attrs[0].arg
-		} else {
-			'_const_' + name
+		mut const_name := '_const_' + name
+		if !g.is_builtin_mod {
+			if cattr := node.attrs.find_first('export') {
+				const_name = cattr.arg
+			}
 		}
 		field_expr := field.expr
 		match field.expr {

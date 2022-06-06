@@ -54,6 +54,25 @@ pub fn (attrs []Attr) contains(str string) bool {
 	return attrs.any(it.name == str)
 }
 
+pub fn (attrs []Attr) find_first(aname string) ?Attr {
+	for a in attrs {
+		if a.name == aname {
+			return a
+		}
+	}
+	return none
+}
+
+pub fn (attrs []Attr) find_last(aname string) ?Attr {
+	for idx := attrs.len - 1; idx > -1; idx-- {
+		a := attrs[idx]
+		if a.name == aname {
+			return a
+		}
+	}
+	return none
+}
+
 pub fn (attrs []Attr) find_comptime_define() ?int {
 	for idx in 0 .. attrs.len {
 		if attrs[idx].kind == .comptime_define {

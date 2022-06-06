@@ -446,20 +446,16 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) ?string {
 		name = g.generic_fn_name(g.cur_concrete_types, name, true)
 	}
 
-	if (g.pref.translated || g.file.is_translated) && node.attrs.contains('c') {
-		// This fixes unknown symbols errors when building separate .c => .v files
-		// into .o files
-		//
-		// example:
-		// [c: 'P_TryMove']
-		// fn p_trymove(thing &Mobj_t, x int, y int) bool
-		//
-		// =>
-		//
-		// bool P_TryMove(main__Mobj_t* thing, int x, int y);
-		//
-		// In fn_call every time `p_trymove` is called, `P_TryMove` will be generated instead.
-		name = node.attrs[0].arg
+	if g.pref.translated || g.file.is_translated {
+		if cattr := node.attrs.find_first('c') {
+			// This fixes unknown symbols errors when building separate .c => .v files into .o files
+			// example:
+			// [c: 'P_TryMove'] fn p_trymove(thing &Mobj_t, x int, y int) bool
+			// translates to:
+			// bool P_TryMove(main__Mobj_t* thing, int x, int y);
+			// In fn_call every time `p_trymove` is called, `P_TryMove` will be generated instead.
+			name = cattr.arg
+		}
 	}
 	return name
 }
@@ -1239,8 +1235,8 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		// every time `p_trymove` is called, `P_TryMove` must be generated instead.
 		if f := g.table.find_fn(node.name) {
 			// TODO PERF fn lookup for each fn call in translated mode
-			if f.attrs.contains('c') {
-				name = f.attrs[0].arg
+			if cattr := f.attrs.find_first('c') {
+				name = cattr.arg
 			}
 		}
 	}
