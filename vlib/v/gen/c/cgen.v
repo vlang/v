@@ -5742,7 +5742,7 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 
 			for method in methods {
 				mut name := method.name
-				if inter_info.parent_type.has_flag(.generic) {
+				if method.generic_names.len > 0 && inter_info.parent_type.has_flag(.generic) {
 					parent_sym := g.table.sym(inter_info.parent_type)
 					match parent_sym.info {
 						ast.Struct, ast.Interface, ast.SumType {
@@ -5759,7 +5759,7 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 				}
 				// .speak = Cat_speak
 				if st_sym.info is ast.Struct {
-					if st_sym.info.parent_type.has_flag(.generic) {
+					if method.generic_names.len > 0 && st_sym.info.parent_type.has_flag(.generic) {
 						name = g.generic_fn_name(st_sym.info.concrete_types, method.name,
 							false)
 					}
