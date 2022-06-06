@@ -506,7 +506,12 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 		expr := node.args[0].expr
 		if expr is ast.TypeNode {
-			sym := c.table.sym(c.unwrap_generic(expr.typ))
+			mut unwrapped_typ := c.unwrap_generic(expr.typ)
+			if c.table.sym(expr.typ).kind == .struct_ && expr.typ.has_flag(.generic) {
+				unwrapped_typ = c.table.unwrap_generic_type(expr.typ, c.table.cur_fn.generic_names,
+					c.table.cur_concrete_types)
+			}
+			sym := c.table.sym(unwrapped_typ)
 			if c.table.known_type(sym.name) && sym.kind != .placeholder {
 				mut kind := sym.kind
 				if sym.info is ast.Alias {
