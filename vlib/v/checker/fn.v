@@ -898,7 +898,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			continue
 		}
 		if param.typ.is_ptr() && !param.is_mut && !call_arg.typ.is_real_pointer()
-			&& call_arg.expr.is_literal() && func.language == .v {
+			&& call_arg.expr.is_literal() && func.language == .v && !c.pref.translated {
 			c.error('literal argument cannot be passed as reference parameter `${c.table.type_to_str(param.typ)}`',
 				call_arg.pos)
 		}
@@ -1438,7 +1438,8 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				}
 				continue
 			}
-			if param.typ.is_ptr() && !arg.typ.is_real_pointer() && arg.expr.is_literal() {
+			if param.typ.is_ptr() && !arg.typ.is_real_pointer() && arg.expr.is_literal()
+				&& !c.pref.translated {
 				c.error('literal argument cannot be passed as reference parameter `${c.table.type_to_str(param.typ)}`',
 					arg.pos)
 			}
