@@ -368,7 +368,7 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	if !has_main_mod_file {
 		c.error('project must include a `main` module or be a shared library (compile with `v -shared`)',
 			token.Pos{})
-	} else if !has_main_fn {
+	} else if !has_main_fn && !c.pref.is_o {
 		c.error('function `main` must be declared in the main module', token.Pos{})
 	}
 }
