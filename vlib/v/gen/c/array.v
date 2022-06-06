@@ -345,10 +345,15 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	}
 	left_type := if node.left_type.has_flag(.shared_f) {
 		node.left_type.clear_flag(.shared_f).deref()
+	} else if node.left_type.is_ptr() {
+		node.left_type.deref()
 	} else {
 		node.left_type
 	}
 	g.write('${g.typ(left_type)} ${tmp}_orig = ')
+	if node.left_type.is_ptr() {
+		g.write('*')
+	}
 	g.expr(node.left)
 	if node.left_type.has_flag(.shared_f) {
 		g.write('->val')
