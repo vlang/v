@@ -928,6 +928,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 					return
 				}
 			}
+		} else if node.left is ast.None {
+			// none.str()
+			g.gen_expr_to_string(node.left, ast.none_type)
+			return
 		}
 		g.get_str_fn(rec_type)
 	} else if node.name == 'free' {
