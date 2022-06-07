@@ -39,6 +39,7 @@ pub fn new_cache_manager(opts []string) CacheManager {
 	if vcache_basepath == '' {
 		vcache_basepath = os.join_path(os.vmodules_dir(), 'cache')
 	}
+	nlog(@FN, 'vcache_basepath: $vcache_basepath | opts:\n     $opts')
 	dlog(@FN, 'vcache_basepath: $vcache_basepath | opts:\n     $opts')
 	if !os.is_dir(vcache_basepath) {
 		os.mkdir_all(vcache_basepath) or { panic(err) }
@@ -125,6 +126,15 @@ pub fn (mut cm CacheManager) load(postfix string, key string) ?string {
 
 [if trace_usecache ?]
 pub fn dlog(fname string, s string) {
+	xlog(fname, s)
+}
+
+[if trace_usecache_n ?]
+fn nlog(fname string, s string) {
+	xlog(fname, s)
+}
+
+fn xlog(fname string, s string) {
 	pid := unsafe { mypid() }
 	if fname[0] != `|` {
 		eprintln('> VCache | pid: $pid | CacheManager.$fname $s')
