@@ -94,3 +94,14 @@ fn test_find_between_pair_family() {
 		assert '$e1' == '$e2'
 	}
 }
+
+fn test_split_capital() {
+	assert strings.split_capital('') == []
+	assert strings.split_capital('abc') == ['abc']
+	assert strings.split_capital('X') == ['X']
+	assert strings.split_capital('XX') == ['X', 'X']
+	assert strings.split_capital('XYZ') == ['X', 'Y', 'Z']
+	assert strings.split_capital('JohnWilliams') == ['John', 'Williams']
+	assert strings.split_capital('JDStar') == ['J', 'D', 'Star']
+	assert strings.split_capital('cpDumpRotarySpring') == ['cp', 'Dump', 'Rotary', 'Spring']
+}
