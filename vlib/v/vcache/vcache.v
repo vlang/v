@@ -39,7 +39,7 @@ pub fn new_cache_manager(opts []string) CacheManager {
 	if vcache_basepath == '' {
 		vcache_basepath = os.join_path(os.vmodules_dir(), 'cache')
 	}
-	nlog(@FN, 'vcache_basepath: $vcache_basepath | opts:\n     $opts')
+	nlog(@FN, 'vcache_basepath: $vcache_basepath\n         opts: $opts\n      os.args: ${os.args.join(' ')}')
 	dlog(@FN, 'vcache_basepath: $vcache_basepath | opts:\n     $opts')
 	if !os.is_dir(vcache_basepath) {
 		os.mkdir_all(vcache_basepath) or { panic(err) }
