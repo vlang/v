@@ -89,6 +89,7 @@ pub mut:
 	inside_defer              bool // true inside `defer {}` blocks
 	inside_fn_arg             bool // `a`, `b` in `a.f(b)`
 	inside_ct_attr            bool // true inside `[if expr]`
+	inside_x_is_type          bool // true inside the Type expression of `if x is Type {`
 	inside_comptime_for_field bool
 	skip_flags                bool      // should `#flag` and `#include` be skipped
 	fn_level                  int       // 0 for the top level, 1 for `fn abc() {}`, 2 for a nested fn, etc
@@ -156,6 +157,7 @@ fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
 	c.inside_defer = false
 	c.inside_fn_arg = false
 	c.inside_ct_attr = false
+	c.inside_x_is_type = false
 	c.skip_flags = false
 	c.fn_level = 0
 	c.expr_level = 0
@@ -1605,9 +1607,10 @@ fn (mut c Checker) assert_stmt(node ast.AssertStmt) {
 
 fn (mut c Checker) block(node ast.Block) {
 	if node.is_unsafe {
+		prev_unsafe := c.inside_unsafe
 		c.inside_unsafe = true
 		c.stmts(node.stmts)
-		c.inside_unsafe = false
+		c.inside_unsafe = prev_unsafe
 	} else {
 		c.stmts(node.stmts)
 	}
@@ -2021,7 +2024,9 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			c.error('incorrect use of compile-time type', node.pos)
 		}
 		ast.EmptyExpr {
+			print_backtrace()
 			c.error('checker.expr(): unhandled EmptyExpr', token.Pos{})
+			return ast.void_type
 		}
 		ast.CTempVar {
 			return node.typ
@@ -2269,6 +2274,11 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			return c.struct_init(mut node)
 		}
 		ast.TypeNode {
+			if !c.inside_x_is_type && node.typ.has_flag(.generic) && unsafe { c.table.cur_fn != 0 }
+				&& c.table.cur_fn.generic_names.len == 0 {
+				c.error('unexpected generic variable in non-generic function `$c.table.cur_fn.name`',
+					node.pos)
+			}
 			return node.typ
 		}
 		ast.TypeOf {
