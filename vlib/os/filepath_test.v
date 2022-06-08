@@ -152,3 +152,28 @@ fn test_existing_path() {
 	assert existing_path('$wd//././/.//') or { '' } == '$wd//././/.//'
 	assert existing_path('$wd//././/.//oh') or { '' } == '$wd//././/.//'
 }
+
+fn test_windows_volume() {
+	$if windows {
+		assert windows_volume('C:/path\\to/file.v') or { '' } == 'C:'
+		assert windows_volume('D:\\.\\') or { '' } == 'D:'
+		assert windows_volume('G:') or { '' } == 'G:'
+		assert windows_volume('G') or { '' } == ''
+		assert windows_volume(r'\\Host\share\files\file.v') or { '' } == r'\\Host\share'
+		assert windows_volume('\\\\Host\\') or { '' } == ''
+		assert windows_volume(r'\\.\BootPartition2\\files\.\\') or { '' } == r'\\.\BootPartition2'
+		assert windows_volume(r'\/.\BootPartition2\\files\.\\') or { '' } == r'\/.\BootPartition2'
+		assert windows_volume(r'\\\.\BootPartition2\\files\.\\') or { '' } == ''
+		assert windows_volume('') or { '' } == ''
+		assert windows_volume('\\') or { '' } == ''
+		assert windows_volume('/') or { '' } == ''
+		return
+	}
+	assert windows_volume('C:/path\\to/file.v') or { '' } == ''
+	assert windows_volume('D:\\.\\') or { '' } == ''
+	assert windows_volume('G:') or { '' } == ''
+	assert windows_volume(r'\\Host\share\files\file.v') or { '' } == ''
+	assert windows_volume(r'\\.\BootPartition2\\files\.\\') or { '' } == ''
+	assert windows_volume(r'\\\.\BootPartition2\\files\.\\') or { '' } == ''
+	assert windows_volume('') or { '' } == ''
+}
