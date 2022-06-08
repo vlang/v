@@ -29,9 +29,15 @@ fn test_stderr() {
 	eprintln('2(World)')
 }
 
+fn test_idents() {
+	x := 5
+	// println(x) uncomment again when int-to-string conversion is working
+}
+
 fn main() {
 	test_stdout()
 	test_stderr()
 	test_numbers()
 	test_oof()
+	test_idents()
 }
