@@ -222,6 +222,26 @@ fn gg_init_sokol_window(user_data voidptr) {
 	ctx.timage_pip = sgl.make_pipeline(&pipdesc)
 	//
 	if ctx.config.init_fn != voidptr(0) {
+		$if android {
+			// NOTE on Android sokol can emit resize events *before* the init function is
+			// called (Android has to initialize a lot more through the Activity system to
+			// reach a valid coontext) and thus the user's code will miss the resize event.
+			// To prevent this we emit a custom window resize event, if the screen size has
+			// changed meanwhile.
+			win_size := ctx.window_size()
+			if ctx.width != win_size.width || ctx.height != win_size.height {
+				ctx.width = win_size.width
+				ctx.height = win_size.height
+				if ctx.config.resized_fn != voidptr(0) {
+					e := Event{
+						typ: .resized
+						window_width: ctx.width
+						window_height: ctx.height
+					}
+					ctx.config.resized_fn(&e, ctx.user_data)
+				}
+			}
+		}
 		ctx.config.init_fn(ctx.user_data)
 	}
 	// Create images now that we can do that after sg is inited
