@@ -65,8 +65,8 @@ pub fn norm_path(path string) string {
 	rooted := is_abs_path(path)
 	// get the volume name from the path
 	// if the current operating system is Windows
-	mut volume := windows_volume(path) or { os.empty_str }
-	volume_len := volume.len
+	volume_len := win_volume_len(path)
+	mut volume := path[..volume_len]
 	if volume_len != 0 && volume.contains(os.fslash_str) {
 		volume = volume.replace(os.fslash_str, path_separator)
 	}
@@ -223,6 +223,9 @@ fn clean_path(path string) string {
 // win_volume_len returns the length of the
 // Windows volume/drive from the given `path`.
 fn win_volume_len(path string) int {
+	$if !windows {
+		return 0
+	}
 	plen := path.len
 	if plen < 2 {
 		return 0
