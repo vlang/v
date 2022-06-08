@@ -164,7 +164,7 @@ fn test_windows_volume() {
 		assert windows_volume(r'\\.\BootPartition2\\files\.\\') == r'\\.\BootPartition2'
 		assert windows_volume(r'\/.\BootPartition2\\files\.\\') == r'\/.\BootPartition2'
 		assert windows_volume(r'\\\.\BootPartition2\\files\.\\') == ''
-		assert windows_volume('')  == ''
+		assert windows_volume('') == ''
 		assert windows_volume('\\') == ''
 		assert windows_volume('/') == ''
 		return
