@@ -8,13 +8,14 @@ import strings.textscanner
 // therefore results may be different for certain operating systems.
 
 const (
-	fslash    = `/`
-	bslash    = `\\`
-	dot       = `.`
-	qmark     = `?`
-	dot_dot   = '..'
-	empty_str = ''
-	dot_str   = '.'
+	fslash     = `/`
+	bslash     = `\\`
+	dot        = `.`
+	qmark      = `?`
+	fslash_str = '/'
+	dot_dot    = '..'
+	empty_str  = ''
+	dot_str    = '.'
 )
 
 // is_abs_path returns `true` if the given `path` is absolute.
@@ -62,8 +63,13 @@ pub fn norm_path(path string) string {
 		return os.dot_str
 	}
 	rooted := is_abs_path(path)
-	volume := get_volume(path)
-	volume_len := volume.len
+	// get the volume name from the path
+	// if the current operating system is Windows
+	volume_len := win_volume_len(path)
+	mut volume := path[..volume_len]
+	if volume_len != 0 && volume.contains(os.fslash_str) {
+		volume = volume.replace(os.fslash_str, path_separator)
+	}
 	cpath := clean_path(path[volume_len..])
 	if cpath.len == 0 && volume_len == 0 {
 		return os.dot_str
@@ -217,6 +223,9 @@ fn clean_path(path string) string {
 // win_volume_len returns the length of the
 // Windows volume/drive from the given `path`.
 fn win_volume_len(path string) int {
+	$if !windows {
+		return 0
+	}
 	plen := path.len
 	if plen < 2 {
 		return 0
@@ -242,20 +251,6 @@ fn win_volume_len(path string) int {
 		}
 	}
 	return 0
-}
-
-fn get_volume(path string) string {
-	$if !windows {
-		return os.empty_str
-	}
-	volume := path[..win_volume_len(path)]
-	if volume.len == 0 {
-		return os.empty_str
-	}
-	if volume[0] == os.fslash {
-		return volume.replace('/', '\\')
-	}
-	return volume
 }
 
 fn is_slash(b u8) bool {
