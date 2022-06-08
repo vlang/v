@@ -55,7 +55,14 @@ pub fn new_cache_manager(opts []string) CacheManager {
 		os.write_file(readme_file, readme_content) or { panic(err) }
 		dlog(@FN, 'created readme_file:\n    $readme_file')
 	}
-	original_vopts := opts.join('|')
+	mut deduped_opts := map[string]bool{}
+	for o in opts {
+		deduped_opts[o] = true
+	}
+	deduped_opts_keys := deduped_opts.keys().filter(it != '' && !it.starts_with("['gcboehm', "))
+	// TODO: do not filter the gcboehm options here, instead just start `v build-module vlib/builtin` without the -d gcboehm etc.
+	// Note: the current approach of filtering the gcboehm keys may interfere with (potential) other gc modes.
+	original_vopts := deduped_opts_keys.join('|')
 	return CacheManager{
 		basepath: vcache_basepath
 		vopts: original_vopts

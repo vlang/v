@@ -17,7 +17,7 @@ jobs:
   alpine-docker-musl-gcc:
     runs-on: ubuntu-20.04
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
-    timeout-minutes: 121
+    timeout-minutes: 181
     container:
       # Alpine docker pre-built container
       image: thevlang/vlang:alpine-build
@@ -58,7 +58,7 @@ jobs:
       env:
         V_CI_MUSL: 1
         V_CI_UBUNTU_MUSL: 1
-        VFLAGS: -cc musl-gcc
+        VFLAGS: -cc musl-gcc -gc none
       volumes:
         - ${{github.workspace}}:/opt/vlang
 
