@@ -167,13 +167,5 @@ fn test_windows_volume() {
 		assert windows_volume('') == ''
 		assert windows_volume('\\') == ''
 		assert windows_volume('/') == ''
-		return
 	}
-	assert windows_volume('C:/path\\to/file.v') == ''
-	assert windows_volume('D:\\.\\') == ''
-	assert windows_volume('G:') == ''
-	assert windows_volume(r'\\Host\share\files\file.v') == ''
-	assert windows_volume(r'\\.\BootPartition2\\files\.\\') == ''
-	assert windows_volume(r'\\\.\BootPartition2\\files\.\\') == ''
-	assert windows_volume('') == ''
 }
