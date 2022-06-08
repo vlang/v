@@ -9,10 +9,7 @@ module os
 // assert os.windows_volume('D:') == 'D:'
 // assert os.windows_volume(r'\\Host\share\files\file.v') == r'\\Host\share'
 // ```
-pub fn windows_volume(path string) ?string {
-	$if !windows {
-		return error(@FN + '() is only supported on a Windows system')
-	}
+pub fn windows_volume(path string) string {
 	volume_len := win_volume_len(path)
 	if volume_len == 0 {
 		return empty_str
