@@ -232,10 +232,6 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 			return
 		}
 	}
-	got_typ_sym := c.table.sym(got)
-	got_typ_str := c.table.type_to_str(got.clear_flag(.variadic))
-	expected_typ_sym := c.table.sym(expected_)
-	expected_typ_str := c.table.type_to_str(expected.clear_flag(.variadic))
 
 	if c.check_types(got, expected) {
 		if language != .v || expected.is_ptr() == got.is_ptr() || arg.is_mut
@@ -244,6 +240,9 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 			return
 		}
 	} else {
+		got_typ_sym := c.table.sym(got)
+		expected_typ_sym := c.table.sym(expected_)
+
 		// Check on Generics types, there are some case where we have the following case
 		// `&Type<int> == &Type<>`. This is a common case we are implementing a function
 		// with generic parameters like `compare(bst Bst<T> node) {}`
@@ -251,6 +250,7 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 			// Check if we are making a comparison between two different types of
 			// the same type like `Type<int> and &Type<>`
 			if (got.is_ptr() != expected.is_ptr()) || !c.check_same_module(got, expected) {
+				got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
 				return error('cannot use `$got_typ_str` as `$expected_typ_str`')
 			}
 			return
@@ -258,12 +258,20 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 		if got == ast.void_type {
 			return error('`$arg.expr` (no value) used as value')
 		}
+		got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
 		return error('cannot use `$got_typ_str` as `$expected_typ_str`')
 	}
 
 	if got != ast.void_type {
+		got_typ_str, expected_typ_str := c.get_string_names_of(got, expected)
 		return error('cannot use `$got_typ_str` as `$expected_typ_str`')
 	}
+}
+
+fn (c Checker) get_string_names_of(got ast.Type, expected ast.Type) (string, string) {
+	got_typ_str := c.table.type_to_str(got.clear_flag(.variadic))
+	expected_typ_str := c.table.type_to_str(expected.clear_flag(.variadic))
+	return got_typ_str, expected_typ_str
 }
 
 // helper method to check if the type is of the same module.

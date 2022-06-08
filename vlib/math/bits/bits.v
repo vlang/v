@@ -139,6 +139,13 @@ pub fn ones_count_64(x u64) int {
 	return int(y) & ((1 << 7) - 1)
 }
 
+const (
+	n8  = u8(8)
+	n16 = u16(16)
+	n32 = u32(32)
+	n64 = u64(64)
+)
+
 // --- RotateLeft ---
 // rotate_left_8 returns the value of x rotated left by (k mod 8) bits.
 // To rotate x right by k bits, call rotate_left_8(x, -k).
@@ -146,9 +153,8 @@ pub fn ones_count_64(x u64) int {
 // This function's execution time does not depend on the inputs.
 [inline]
 pub fn rotate_left_8(x u8, k int) u8 {
-	n := u8(8)
-	s := u8(k) & (n - u8(1))
-	return (x << s) | (x >> (n - s))
+	s := u8(k) & (bits.n8 - u8(1))
+	return (x << s) | (x >> (bits.n8 - s))
 }
 
 // rotate_left_16 returns the value of x rotated left by (k mod 16) bits.
@@ -157,9 +163,8 @@ pub fn rotate_left_8(x u8, k int) u8 {
 // This function's execution time does not depend on the inputs.
 [inline]
 pub fn rotate_left_16(x u16, k int) u16 {
-	n := u16(16)
-	s := u16(k) & (n - u16(1))
-	return (x << s) | (x >> (n - s))
+	s := u16(k) & (bits.n16 - u16(1))
+	return (x << s) | (x >> (bits.n16 - s))
 }
 
 // rotate_left_32 returns the value of x rotated left by (k mod 32) bits.
@@ -168,9 +173,8 @@ pub fn rotate_left_16(x u16, k int) u16 {
 // This function's execution time does not depend on the inputs.
 [inline]
 pub fn rotate_left_32(x u32, k int) u32 {
-	n := u32(32)
-	s := u32(k) & (n - u32(1))
-	return (x << s) | (x >> (n - s))
+	s := u32(k) & (bits.n32 - u32(1))
+	return (x << s) | (x >> (bits.n32 - s))
 }
 
 // rotate_left_64 returns the value of x rotated left by (k mod 64) bits.
@@ -179,9 +183,8 @@ pub fn rotate_left_32(x u32, k int) u32 {
 // This function's execution time does not depend on the inputs.
 [inline]
 pub fn rotate_left_64(x u64, k int) u64 {
-	n := u64(64)
-	s := u64(k) & (n - u64(1))
-	return (x << s) | (x >> (n - s))
+	s := u64(k) & (bits.n64 - u64(1))
+	return (x << s) | (x >> (bits.n64 - s))
 }
 
 // --- Reverse ---

@@ -45,6 +45,8 @@ pub mut:
 	mdeprecated_after map[string]time.Time // module deprecation date
 	builtin_pub_fns   map[string]bool
 	pointer_size      int
+	// cache for type_to_str_using_aliases
+	cached_type_to_str map[u64]string
 }
 
 // used by vls to avoid leaks

@@ -25,7 +25,7 @@ fn http_fetch_mock(_methods []string, _config FetchConfig) ?[]Response {
 		config.method = method_from_str(method)
 		res := fetch(FetchConfig{ ...config, url: url + lmethod })?
 		// TODO
-		// body := json.decode(HttpbinResponseBody,res.text)?
+		// body := json.decode(HttpbinResponseBody,res.body)?
 		result << res
 	}
 	return result
@@ -49,7 +49,7 @@ fn test_http_fetch_with_data() {
 		data: 'hello world'
 	) or { panic(err) }
 	for response in responses {
-		payload := json.decode(HttpbinResponseBody, response.text) or { panic(err) }
+		payload := json.decode(HttpbinResponseBody, response.body) or { panic(err) }
 		assert payload.data == 'hello world'
 	}
 }
@@ -65,7 +65,7 @@ fn test_http_fetch_with_params() {
 		}
 	) or { panic(err) }
 	for response in responses {
-		// payload := json.decode(HttpbinResponseBody,response.text) or {
+		// payload := json.decode(HttpbinResponseBody,response.body) or {
 		// panic(err)
 		// }
 		assert response.status() == .ok
@@ -85,7 +85,7 @@ fn test_http_fetch_with_headers() ? {
 		header: header
 	) or { panic(err) }
 	for response in responses {
-		// payload := json.decode(HttpbinResponseBody,response.text) or {
+		// payload := json.decode(HttpbinResponseBody,response.body) or {
 		// panic(err)
 		// }
 		assert response.status() == .ok

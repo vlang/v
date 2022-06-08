@@ -14,4 +14,4 @@ For more general build help, see also `v help build`.
    -os <os>, -target-os <os>
       Change the target OS that V compiles for.
 
-      The supported targets for the native backend are: `macos`, `linux`
+      The supported targets for the native backend are: `macos`, `linux` and 'windows'

@@ -17,7 +17,7 @@ import v.dotgraph
 
 pub struct Builder {
 pub:
-	compiled_dir string // contains os.real_path() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
+	compiled_dir string // contains os.real_path() of the dir of the final file being compiled, or the dir itself when doing `v .`
 	module_path  string
 pub mut:
 	checker             &checker.Checker
@@ -40,6 +40,7 @@ pub mut:
 	mod_invalidates_paths map[string][]string // changes in mod `os`, invalidate only .v files, that do `import os`
 	mod_invalidates_mods  map[string][]string // changes in mod `os`, force invalidation of mods, that do `import os`
 	path_invalidates_mods map[string][]string // changes in a .v file from `os`, invalidates `os`
+	crun_cache_keys       []string // target executable + top level source files; filled in by Builder.should_rebuild
 }
 
 pub fn new_builder(pref &pref.Preferences) Builder {

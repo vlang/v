@@ -1127,8 +1127,17 @@ pub fn (t &Table) clean_generics_type_str(typ Type) string {
 
 // import_aliases is a map of imported symbol aliases 'module.Type' => 'Type'
 pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]string) string {
+	cache_key := (u64(import_aliases.len) << 32) | u64(typ)
+	if cached_res := t.cached_type_to_str[cache_key] {
+		return cached_res
+	}
 	sym := t.sym(typ)
 	mut res := sym.name
+	mut mt := unsafe { &Table(t) }
+	defer {
+		// Note, that this relies on `res = value return res` if you want to return early!
+		mt.cached_type_to_str[cache_key] = res
+	}
 	// Note, that the duplication of code in some of the match branches here
 	// is VERY deliberate. DO NOT be tempted to use `else {}` instead, because
 	// that strongly reduces the usefullness of the exhaustive checking that
@@ -1147,7 +1156,8 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 		}
 		.array {
 			if typ == ast.array_type {
-				return 'array'
+				res = 'array'
+				return res
 			}
 			if typ.has_flag(.variadic) {
 				res = t.type_to_str_using_aliases(t.value_type(typ), import_aliases)
@@ -1202,7 +1212,8 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 		}
 		.map {
 			if int(typ) == ast.map_type_idx {
-				return 'map'
+				res = 'map'
+				return res
 			}
 			info := sym.info as Map
 			key_str := t.type_to_str_using_aliases(info.key_type, import_aliases)
@@ -1257,12 +1268,15 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 		}
 		.void {
 			if typ.has_flag(.optional) {
-				return '?'
+				res = '?'
+				return res
 			}
 			if typ.has_flag(.result) {
-				return '!'
+				res = '!'
+				return res
 			}
-			return 'void'
+			res = 'void'
+			return res
 		}
 		.thread {
 			rtype := sym.thread_info().return_type

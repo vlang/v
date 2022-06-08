@@ -120,7 +120,7 @@ fn test_http_client_index() ? {
 	x := http.get('http://$localserver/') or { panic(err) }
 	assert_common_http_headers(x)?
 	assert x.header.get(.content_type)? == 'text/plain'
-	assert x.text == 'Welcome to VWeb'
+	assert x.body == 'Welcome to VWeb'
 }
 
 fn test_http_client_404() ? {
@@ -139,34 +139,34 @@ fn test_http_client_simple() ? {
 	x := http.get('http://$localserver/simple') or { panic(err) }
 	assert_common_http_headers(x)?
 	assert x.header.get(.content_type)? == 'text/plain'
-	assert x.text == 'A simple result'
+	assert x.body == 'A simple result'
 }
 
 fn test_http_client_html_page() ? {
 	x := http.get('http://$localserver/html_page') or { panic(err) }
 	assert_common_http_headers(x)?
 	assert x.header.get(.content_type)? == 'text/html'
-	assert x.text == '<h1>ok</h1>'
+	assert x.body == '<h1>ok</h1>'
 }
 
 fn test_http_client_settings_page() ? {
 	x := http.get('http://$localserver/bilbo/settings') or { panic(err) }
 	assert_common_http_headers(x)?
-	assert x.text == 'username: bilbo'
+	assert x.body == 'username: bilbo'
 	//
 	y := http.get('http://$localserver/kent/settings') or { panic(err) }
 	assert_common_http_headers(y)?
-	assert y.text == 'username: kent'
+	assert y.body == 'username: kent'
 }
 
 fn test_http_client_user_repo_settings_page() ? {
 	x := http.get('http://$localserver/bilbo/gostamp/settings') or { panic(err) }
 	assert_common_http_headers(x)?
-	assert x.text == 'username: bilbo | repository: gostamp'
+	assert x.body == 'username: bilbo | repository: gostamp'
 	//
 	y := http.get('http://$localserver/kent/golang/settings') or { panic(err) }
 	assert_common_http_headers(y)?
-	assert y.text == 'username: kent | repository: golang'
+	assert y.body == 'username: kent | repository: golang'
 	//
 	z := http.get('http://$localserver/missing/golang/settings') or { panic(err) }
 	assert z.status() == .not_found
@@ -188,8 +188,8 @@ fn test_http_client_json_post() ? {
 		eprintln('/json_echo endpoint response: $x')
 	}
 	assert x.header.get(.content_type)? == 'application/json'
-	assert x.text == json_for_ouser
-	nuser := json.decode(User, x.text) or { User{} }
+	assert x.body == json_for_ouser
+	nuser := json.decode(User, x.body) or { User{} }
 	assert '$ouser' == '$nuser'
 	//
 	x = http.post_json('http://$localserver/json', json_for_ouser) or { panic(err) }
@@ -197,8 +197,8 @@ fn test_http_client_json_post() ? {
 		eprintln('/json endpoint response: $x')
 	}
 	assert x.header.get(.content_type)? == 'application/json'
-	assert x.text == json_for_ouser
-	nuser2 := json.decode(User, x.text) or { User{} }
+	assert x.body == json_for_ouser
+	nuser2 := json.decode(User, x.body) or { User{} }
 	assert '$ouser' == '$nuser2'
 }
 
@@ -225,7 +225,7 @@ $contents\r
 	$if debug_net_socket_client ? {
 		eprintln('/form_echo endpoint response: $x')
 	}
-	assert x.text == contents
+	assert x.body == contents
 }
 
 fn test_http_client_shutdown_does_not_work_without_a_cookie() {
@@ -234,7 +234,7 @@ fn test_http_client_shutdown_does_not_work_without_a_cookie() {
 		return
 	}
 	assert x.status() == .not_found
-	assert x.text == '404 Not Found'
+	assert x.body == '404 Not Found'
 }
 
 fn testsuite_end() {
@@ -251,7 +251,7 @@ fn testsuite_end() {
 		return
 	}
 	assert x.status() == .ok
-	assert x.text == 'good bye'
+	assert x.body == 'good bye'
 }
 
 // utility code:

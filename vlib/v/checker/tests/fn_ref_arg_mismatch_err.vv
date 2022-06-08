@@ -1,0 +1,18 @@
+module main
+
+struct Foo<T> { }
+
+fn (f &Foo<T>) foo(a &T) {
+	println(a)
+}
+
+fn bar<T>(a &T) {
+	println(a)
+}
+
+fn main() {
+	foo := Foo<int>{}
+	foo.foo(12)
+
+	bar<int>(12)
+}

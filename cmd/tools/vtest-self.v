@@ -66,6 +66,7 @@ const (
 	]
 	skip_with_werror              = [
 		'do_not_remove',
+		'vlib/v/embed_file/tests/embed_file_test.v',
 	]
 	skip_with_asan_compiler       = [
 		'do_not_remove',
@@ -108,6 +109,10 @@ const (
 	]
 	skip_on_non_linux             = [
 		'do_not_remove',
+	]
+	skip_on_windows_msvc          = [
+		'do_not_remove',
+		'vlib/v/tests/const_fixed_array_containing_references_to_itself_test.v', // error C2099: initializer is not a constant
 	]
 	skip_on_windows               = [
 		'vlib/context/cancel_test.v',
@@ -264,6 +269,9 @@ fn main() {
 	}
 	$if windows {
 		tsession.skip_files << skip_on_windows
+		$if msvc {
+			tsession.skip_files << skip_on_windows_msvc
+		}
 	}
 	$if !windows {
 		tsession.skip_files << skip_on_non_windows

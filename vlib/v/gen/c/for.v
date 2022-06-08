@@ -70,7 +70,21 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 		}
 		g.write('; ')
 		if node.has_inc {
-			g.stmt(node.inc)
+			mut processed := false
+			if node.inc is ast.ExprStmt {
+				if node.inc.expr is ast.ConcatExpr {
+					for inc_expr_idx, inc_expr in node.inc.expr.vals {
+						g.expr(inc_expr)
+						if inc_expr_idx < node.inc.expr.vals.len - 1 {
+							g.write(', ')
+						}
+					}
+					processed = true
+				}
+			}
+			if !processed {
+				g.stmt(node.inc)
+			}
 		}
 		g.writeln(') {')
 		g.is_vlines_enabled = true

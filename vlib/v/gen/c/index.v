@@ -484,7 +484,7 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 			if !node.is_option {
 				g.or_block(tmp_opt, node.or_expr, elem_type)
 			}
-			g.write('\n$cur_line*($elem_type_str*)${tmp_opt}.data')
+			g.write('\n${cur_line}(*($elem_type_str*)${tmp_opt}.data)')
 		}
 	}
 }

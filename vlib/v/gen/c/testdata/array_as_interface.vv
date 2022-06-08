@@ -1,0 +1,8 @@
+interface Source {
+    len int
+}
+
+fn main() {
+    println(Source('test').len)
+    println(Source([`a`]).len) 
+}

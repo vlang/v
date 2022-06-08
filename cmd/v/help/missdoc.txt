@@ -1,4 +1,4 @@
-v missdoc 0.0.4
+v missdoc 0.1.0
 -----------------------------------------------
 Usage: v missdoc [options] PATH [PATH]...
 
@@ -12,5 +12,25 @@ Options:
   --js                      Include JavaScript functions in output.
   -n, --no-line-numbers     Exclude line numbers in output.
   -e, --exclude <multiple strings>
-                            
+
   -r, --relative-paths      Use relative paths in output.
+  --verify                  exit(1) if documentation is missing, 0 otherwise.
+  --diff                    exit(1) and show difference between two PATH inputs, return 0 otherwise.
+  --version                 output version information and exit
+
+-----------------------------------------------
+
+PATH can be both files and directories.
+
+The `--verify` flag is useful for use in CI setups for checking if a V project
+has all it's functions and methods documented:
+```
+v missdoc --verify path/to/code
+```
+
+The `--diff` flag is useful if your project is not yet fully documented
+but you want to ensure that no new functions or methods are introduced
+between commits or branches:
+```
+v missdoc --diff current/code new/code
+```

@@ -13,7 +13,7 @@ fn main() {
 	resp := http.get('https://example.com')?
 
 	// raw decode
-	raw_person := json2.raw_decode(resp.text)?
+	raw_person := json2.raw_decode(resp.body)?
 
 	// Casting `Any` type / Navigating
 	person := raw_person.as_map()

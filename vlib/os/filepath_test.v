@@ -36,11 +36,13 @@ fn test_clean_path() {
 		assert clean_path(r'\./path/dir\\file.exe') == r'\path\dir\file.exe'
 		assert clean_path(r'.') == ''
 		assert clean_path(r'./') == ''
+		assert clean_path('') == ''
 		assert clean_path(r'\./') == '\\'
 		assert clean_path(r'//\/\/////') == '\\'
 		return
 	}
 	assert clean_path('./../.././././//') == '../..'
+	assert clean_path('') == ''
 	assert clean_path('.') == ''
 	assert clean_path('./path/to/file.v//./') == 'path/to/file.v'
 	assert clean_path('./') == ''
@@ -126,4 +128,27 @@ fn test_abs_path() {
 	assert abs_path('/path/to/file.v/../..') == '/path'
 	assert abs_path('path/../file.v/..') == wd
 	assert abs_path('///') == '/'
+}
+
+fn test_existing_path() {
+	wd := getwd()
+	$if windows {
+		assert existing_path('') or { '' } == ''
+		assert existing_path('..') or { '' } == '..'
+		assert existing_path('.') or { '' } == '.'
+		assert existing_path(wd) or { '' } == wd
+		assert existing_path('\\') or { '' } == '\\'
+		assert existing_path('$wd\\.\\\\does/not/exist\\.\\') or { '' } == '$wd\\.\\\\'
+		assert existing_path('$wd\\\\/\\.\\.\\/.') or { '' } == '$wd\\\\/\\.\\.\\/.'
+		assert existing_path('$wd\\././/\\/oh') or { '' } == '$wd\\././/\\/'
+		return
+	}
+	assert existing_path('') or { '' } == ''
+	assert existing_path('..') or { '' } == '..'
+	assert existing_path('.') or { '' } == '.'
+	assert existing_path(wd) or { '' } == wd
+	assert existing_path('/') or { '' } == '/'
+	assert existing_path('$wd/does/.///not/exist///.//') or { '' } == '$wd/'
+	assert existing_path('$wd//././/.//') or { '' } == '$wd//././/.//'
+	assert existing_path('$wd//././/.//oh') or { '' } == '$wd//././/.//'
 }

@@ -115,7 +115,7 @@ fn (d DebugHandler) handle(req Request) Response {
 		eprintln('[$time.now()] $req.method $req.url - 200')
 	}
 	mut r := Response{
-		text: req.data
+		body: req.data
 		header: req.header
 	}
 	r.set_status(.ok)

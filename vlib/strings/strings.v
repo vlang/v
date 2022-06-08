@@ -126,3 +126,24 @@ pub fn find_between_pair_string(input string, start string, end string) string {
 	}
 	return ''
 }
+
+// split_capital returns an array containing the contents of `s` split by capital letters.
+// Example: assert strings.split_capital('XYZ') == ['X', 'Y', 'Z']
+// Example: assert strings.split_capital('XYStar') == ['X', 'Y', 'Star']
+pub fn split_capital(s string) []string {
+	mut res := []string{}
+	mut word_start := 0
+	for idx, c in s {
+		if c >= `A` && c <= `Z` {
+			if word_start != idx {
+				res << s#[word_start..idx]
+			}
+			word_start = idx
+			continue
+		}
+	}
+	if word_start != s.len {
+		res << s#[word_start..]
+	}
+	return res
+}

@@ -9,8 +9,14 @@
 module md5
 
 import math.bits
-import encoding.binary
 
+[direct_array_access; inline]
+fn get_le_u32(b []u8, start int) u32 {
+	return u32(b[start]) | (u32(b[1 + start]) << u32(8)) | (u32(b[2 + start]) << u32(16)) | (u32(b[
+		3 + start]) << u32(24))
+}
+
+[direct_array_access]
 fn block_generic(mut dig Digest, p []u8) {
 	// load state
 	mut a := dig.s[0]
@@ -19,8 +25,6 @@ fn block_generic(mut dig Digest, p []u8) {
 	mut d := dig.s[3]
 
 	for i := 0; i <= p.len - block_size; i += block_size {
-		mut q := p[i..]
-		q = q[..block_size]
 		// save current state
 		aa := a
 		bb := b
@@ -28,22 +32,22 @@ fn block_generic(mut dig Digest, p []u8) {
 		dd := d
 
 		// load input block
-		x0 := binary.little_endian_u32(q[4 * 0x0..])
-		x1 := binary.little_endian_u32(q[4 * 0x1..])
-		x2 := binary.little_endian_u32(q[4 * 0x2..])
-		x3 := binary.little_endian_u32(q[4 * 0x3..])
-		x4 := binary.little_endian_u32(q[4 * 0x4..])
-		x5 := binary.little_endian_u32(q[4 * 0x5..])
-		x6 := binary.little_endian_u32(q[4 * 0x6..])
-		x7 := binary.little_endian_u32(q[4 * 0x7..])
-		x8 := binary.little_endian_u32(q[4 * 0x8..])
-		x9 := binary.little_endian_u32(q[4 * 0x9..])
-		xa := binary.little_endian_u32(q[4 * 0xa..])
-		xb := binary.little_endian_u32(q[4 * 0xb..])
-		xc := binary.little_endian_u32(q[4 * 0xc..])
-		xd := binary.little_endian_u32(q[4 * 0xd..])
-		xe := binary.little_endian_u32(q[4 * 0xe..])
-		xf := binary.little_endian_u32(q[4 * 0xf..])
+		x0 := get_le_u32(p, 4 * 0x0 + i)
+		x1 := get_le_u32(p, 4 * 0x1 + i)
+		x2 := get_le_u32(p, 4 * 0x2 + i)
+		x3 := get_le_u32(p, 4 * 0x3 + i)
+		x4 := get_le_u32(p, 4 * 0x4 + i)
+		x5 := get_le_u32(p, 4 * 0x5 + i)
+		x6 := get_le_u32(p, 4 * 0x6 + i)
+		x7 := get_le_u32(p, 4 * 0x7 + i)
+		x8 := get_le_u32(p, 4 * 0x8 + i)
+		x9 := get_le_u32(p, 4 * 0x9 + i)
+		xa := get_le_u32(p, 4 * 0xa + i)
+		xb := get_le_u32(p, 4 * 0xb + i)
+		xc := get_le_u32(p, 4 * 0xc + i)
+		xd := get_le_u32(p, 4 * 0xd + i)
+		xe := get_le_u32(p, 4 * 0xe + i)
+		xf := get_le_u32(p, 4 * 0xf + i)
 
 		// round 1
 		a = b + bits.rotate_left_32((((c ^ d) & b) ^ d) + a + x0 + u32(0xd76aa478), 7)

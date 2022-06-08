@@ -41,7 +41,7 @@ fn (mut handler MyHttpHandler) handle(req http.Request) http.Response {
 	handler.counter++
 	// eprintln('$time.now() | counter: $handler.counter | $req.method $req.url\n$req.header\n$req.data - 200 OK\n')
 	mut r := http.Response{
-		text: req.data + ', $req.url'
+		body: req.data + ', $req.url'
 		header: req.header
 	}
 	match req.url.all_before('?') {
@@ -72,11 +72,11 @@ fn test_server_custom_handler() ? {
 		time.sleep(10 * time.millisecond)
 	}
 	x := http.fetch(url: 'http://localhost:$cport/endpoint?abc=xyz', data: 'my data')?
-	assert x.text == 'my data, /endpoint?abc=xyz'
+	assert x.body == 'my data, /endpoint?abc=xyz'
 	assert x.status_code == 200
 	assert x.http_version == '1.1'
 	y := http.fetch(url: 'http://localhost:$cport/another/endpoint', data: 'abcde')?
-	assert y.text == 'abcde, /another/endpoint'
+	assert y.body == 'abcde, /another/endpoint'
 	assert y.status_code == 200
 	assert y.status() == .ok
 	assert y.http_version == '1.1'
