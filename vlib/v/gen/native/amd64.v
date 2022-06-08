@@ -602,6 +602,7 @@ pub fn (mut g Gen) test_reg(r Register) {
 		}
 	}
 }
+
 // return length in .rax of string pointed by given register
 pub fn (mut g Gen) inline_strlen(r Register) {
 	g.mov_reg(.rdi, r)
@@ -1067,7 +1068,6 @@ fn (mut g Gen) sar8(r Register, val u8) {
 		.rdx {
 			g.write8(0xfa)
 		}
-
 		else {
 			panic('unhandled sar $r, $val')
 		}

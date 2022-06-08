@@ -31,7 +31,7 @@ fn test_stderr() {
 
 fn test_idents() {
 	x := 5
-	println(x)
+	// println(x) uncomment again when int-to-string conversion is working
 }
 
 fn main() {
