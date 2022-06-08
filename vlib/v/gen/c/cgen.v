@@ -4408,13 +4408,8 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 		match field.expr {
 			ast.ArrayInit {
 				if field.expr.is_fixed {
-					styp := g.typ(field.expr.typ)
-					if g.pref.build_mode != .build_module {
-						val := g.expr_string(field.expr)
-						g.definitions.writeln('$styp $const_name = $val; // fixed array const')
-					} else {
-						g.definitions.writeln('$styp $const_name; // fixed array const')
-					}
+					g.const_decl_init_later(field.mod, const_name, field.expr, field.typ,
+						false)
 				} else {
 					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false)
 				}
@@ -4570,22 +4565,22 @@ fn (mut g Gen) const_decl_simple_define(name string, val string) {
 	} else {
 		x = '_const_$x'
 	}
-	if g.pref.translated {
-		g.definitions.write_string('const int $x = ')
-	} else {
-		g.definitions.write_string('#define $x ')
-	}
-	g.definitions.writeln(val)
-	if g.pref.translated {
-		g.definitions.write_string(';')
-	}
+	// if g.pref.translated {
+	// 	g.definitions.writeln('const int $x = $val;')
+	// } else {
+	g.definitions.writeln('#define $x $val')
+	// }
 }
 
 fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ ast.Type, unwrap_option bool) {
 	// Initialize more complex consts in `void _vinit/2{}`
 	// (C doesn't allow init expressions that can't be resolved at compile time).
 	mut styp := g.typ(typ)
-	cname := if g.pref.translated && !g.is_builtin_mod { name } else { '_const_$name' }
+	cname := if (g.pref.translated && !g.is_builtin_mod) || name.starts_with('_const_') {
+		name
+	} else {
+		'_const_$name'
+	}
 	g.definitions.writeln('$styp $cname; // inited later')
 	if cname == '_const_os__args' {
 		if g.pref.os == .windows {
@@ -4594,6 +4589,16 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 			g.init.writeln('\t_const_os__args = os__init_os_args(___argc, (byte**)___argv);')
 		}
 	} else {
+		if expr is ast.ArrayInit {
+			if expr.is_fixed {
+				g.init.writeln('\t{')
+				val := g.expr_string(expr)
+				g.init.writeln('\t\t$styp tmp = $val;')
+				g.init.writeln('\t\tvmemcpy(&$cname, &tmp, sizeof($styp));')
+				g.init.writeln('\t}')
+				return
+			}
+		}
 		if unwrap_option {
 			g.init.writeln('{')
 			g.init.writeln(g.expr_string_surround('\t$cname = *($styp*)', expr, '.data;'))
