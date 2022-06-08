@@ -2,7 +2,6 @@ module os
 
 // windows_volume returns the volume name from the given `path` on a Windows system.
 // An empty string is returned if no Windows volume is present.
-// NOTE: An error is returned if the current operating system is not Windows.
 // Examples (on a Windows system):
 // ```v
 // assert os.windows_volume(r'C:\path\to\file.v') == 'C:'
