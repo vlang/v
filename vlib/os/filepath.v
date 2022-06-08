@@ -8,13 +8,14 @@ import strings.textscanner
 // therefore results may be different for certain operating systems.
 
 const (
-	fslash    = `/`
-	bslash    = `\\`
-	dot       = `.`
-	qmark     = `?`
-	dot_dot   = '..'
-	empty_str = ''
-	dot_str   = '.'
+	fslash     = `/`
+	bslash     = `\\`
+	dot        = `.`
+	qmark      = `?`
+	fslash_str = '/'
+	dot_dot    = '..'
+	empty_str  = ''
+	dot_str    = '.'
 )
 
 // is_abs_path returns `true` if the given `path` is absolute.
@@ -62,8 +63,13 @@ pub fn norm_path(path string) string {
 		return os.dot_str
 	}
 	rooted := is_abs_path(path)
-	volume := get_volume(path)
+	// get the volume name from the path
+	// if the current operating system is Windows
+	mut volume := windows_volume(path) or { os.empty_str }
 	volume_len := volume.len
+	if volume_len != 0 && volume.contains(os.fslash_str) {
+		volume = volume.replace(os.fslash_str, path_separator)
+	}
 	cpath := clean_path(path[volume_len..])
 	if cpath.len == 0 && volume_len == 0 {
 		return os.dot_str
@@ -169,6 +175,26 @@ pub fn existing_path(path string) ?string {
 	return err
 }
 
+// windows_volume returns the volume name from the given `path` on a Windows system.
+// An empty string is returned if no Windows volume is present.
+// NOTE: An error is returned if the current operating system is not Windows.
+// Examples (on a Windows system):
+// ```v
+// assert os.windows_volume('C:\path\to\file.v') == 'C:'
+// assert os.windows_volume('D:') == 'D:'
+// assert os.windows_volume('\\Host\share\files\file.v') == '\\Host\share'
+// ```
+pub fn windows_volume(path string) ?string {
+	$if !windows {
+		return error(@FN + '() is only supported on a Windows system')
+	}
+	volume_len := win_volume_len(path)
+	if volume_len == 0 {
+		return os.empty_str
+	}
+	return path[..volume_len]
+}
+
 // clean_path returns the "cleaned" version of the given `path`
 // by turning forward slashes into back slashes
 // on a Windows system and eliminating:
@@ -242,20 +268,6 @@ fn win_volume_len(path string) int {
 		}
 	}
 	return 0
-}
-
-fn get_volume(path string) string {
-	$if !windows {
-		return os.empty_str
-	}
-	volume := path[..win_volume_len(path)]
-	if volume.len == 0 {
-		return os.empty_str
-	}
-	if volume[0] == os.fslash {
-		return volume.replace('/', '\\')
-	}
-	return volume
 }
 
 fn is_slash(b u8) bool {
