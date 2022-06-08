@@ -321,11 +321,15 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, name string) {
 			g.gen_print_reg(.rax, 3, fd)
 		}
 		ast.Ident {
-			vo := g.get_var_offset(expr.name)
-			g.gen_var_to_string(.rax, vo)
-			g.gen_print_reg(.rax, 3, fd)
-			if newline {
-				g.gen_print('\n', fd)
+			vo := g.try_var_offset(expr.name)
+
+			if vo != -1 {
+				g.gen_var_to_string(.rax, vo)
+				if newline {
+					g.gen_print('\n', fd)
+				}
+			} else {
+				g.gen_print_reg(.rax, 3, fd)
 			}
 		}
 		ast.IntegerLiteral {
