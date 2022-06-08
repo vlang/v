@@ -95,9 +95,9 @@ fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 	}
 	if res.exit_code != 0 && v.pref.gc_mode != .no_gc && res.output.contains('libgc.a') {
 		$if windows {
-			verror('Your V installation appears to be out-of-date. Please remove `thirdparty/tcc/` and run `.\\make.bat`')
+			verror(r'Your V installation may be out-of-date. Try removing `thirdparty\tcc\` and running `.\make.bat`')
 		} $else {
-			verror('Your V installation appears to be out-of-date. Please remove `thirdparty/tcc/` and run `make`')
+			verror('Your V installation may be out-of-date. Try removing `thirdparty/tcc/` and running `make`')
 		}
 	}
 	for emsg_marker in [builder.c_verror_message_marker, 'error: include file '] {
