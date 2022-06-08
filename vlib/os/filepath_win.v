@@ -5,9 +5,9 @@ module os
 // NOTE: An error is returned if the current operating system is not Windows.
 // Examples (on a Windows system):
 // ```v
-// assert os.windows_volume('C:\path\to\file.v') == 'C:'
+// assert os.windows_volume(r'C:\path\to\file.v') == 'C:'
 // assert os.windows_volume('D:') == 'D:'
-// assert os.windows_volume('\\Host\share\files\file.v') == '\\Host\share'
+// assert os.windows_volume(r'\\Host\share\files\file.v') == '\\Host\share'
 // ```
 pub fn windows_volume(path string) ?string {
 	$if !windows {
