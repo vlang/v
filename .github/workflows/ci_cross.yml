@@ -45,7 +45,7 @@ jobs:
       - name: Compile to raw Android (non-graphic) compatible
         run: |
           # Test that V can compile non-graphic app to Android compatible code *without* using the -apk flag
-          ./v -os android -nogc examples/toml.v
+          ./v -os android -gc none examples/toml.v
 
   linux-cross:
     runs-on: ubuntu-20.04
@@ -98,7 +98,7 @@ jobs:
       - name: toml.v can be compiled to raw Android C
         run: |
           # Test that V can compile non-graphic app to Android compatible code *without* using the -apk flag
-          ./v -os android -nogc examples/toml.v
+          ./v -os android -gc none examples/toml.v
 
 
   windows-cross:

@@ -88,7 +88,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	if p.gc_mode == .unknown {
 		if p.backend != .c || p.building_v || p.is_bare || p.ccompiler == 'msvc' {
 			p.gc_mode = .no_gc
-			p.build_options << '-nogc'
+			p.build_options << ['-gc', 'none']
 		} else {
 			// enable the GC by default
 			p.gc_mode = .boehm_full_opt

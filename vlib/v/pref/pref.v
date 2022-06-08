@@ -325,9 +325,6 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.nofloat = true
 				res.compile_defines_all << 'nofloat' // so that `$if nofloat? {` works
 			}
-			'-nogc' {
-				res.gc_mode = .no_gc
-			}
 			'-gc' {
 				gc_mode := cmdline.option(current_args, '-gc', '')
 				match gc_mode {

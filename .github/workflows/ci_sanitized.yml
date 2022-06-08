@@ -228,7 +228,7 @@ jobs:
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 180
     env:
-      VFLAGS: -cc clang
+      VFLAGS: -cc clang -gc none
       VJOBS: 1
       VTEST_SHOW_START: 1
     steps:
