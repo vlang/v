@@ -7,7 +7,7 @@ module os
 // ```v
 // assert os.windows_volume(r'C:\path\to\file.v') == 'C:'
 // assert os.windows_volume('D:') == 'D:'
-// assert os.windows_volume(r'\\Host\share\files\file.v') == '\\Host\share'
+// assert os.windows_volume(r'\\Host\share\files\file.v') == r'\\Host\share'
 // ```
 pub fn windows_volume(path string) ?string {
 	$if !windows {
