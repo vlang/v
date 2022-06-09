@@ -1193,14 +1193,14 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		method = m
 		has_method = true
 	} else {
-		if left_sym.kind in [.struct_, .sum_type, .interface_] {
+		if final_left_sym.kind in [.struct_, .sum_type, .interface_] {
 			mut parent_type := ast.void_type
-			if left_sym.info is ast.Struct {
-				parent_type = left_sym.info.parent_type
-			} else if left_sym.info is ast.SumType {
-				parent_type = left_sym.info.parent_type
-			} else if left_sym.info is ast.Interface {
-				parent_type = left_sym.info.parent_type
+			if final_left_sym.info is ast.Struct {
+				parent_type = final_left_sym.info.parent_type
+			} else if final_left_sym.info is ast.SumType {
+				parent_type = final_left_sym.info.parent_type
+			} else if final_left_sym.info is ast.Interface {
+				parent_type = final_left_sym.info.parent_type
 			}
 			if parent_type != 0 {
 				type_sym := c.table.sym(parent_type)
@@ -1214,7 +1214,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		if !has_method {
 			has_method = true
 			mut embed_types := []ast.Type{}
-			method, embed_types = c.table.find_method_from_embeds(left_sym, method_name) or {
+			method, embed_types = c.table.find_method_from_embeds(final_left_sym, method_name) or {
 				if err.msg() != '' {
 					c.error(err.msg(), node.pos)
 				}
@@ -1226,14 +1226,14 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				node.from_embed_types = embed_types
 			}
 		}
-		if left_sym.kind == .aggregate {
+		if final_left_sym.kind == .aggregate {
 			// the error message contains the problematic type
 			unknown_method_msg = err.msg()
 		}
 	}
 	if has_method {
 		// x is Bar<T>, x.foo() -> x.foo<T>()
-		rec_sym := c.table.sym(node.left_type)
+		rec_sym := c.table.final_sym(node.left_type)
 		rec_is_generic := left_type.has_flag(.generic)
 		mut rec_concrete_types := []ast.Type{}
 		if rec_sym.info is ast.Struct {

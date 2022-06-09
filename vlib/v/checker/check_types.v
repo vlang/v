@@ -619,7 +619,7 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 			mut to_set := ast.void_type
 			// resolve generic struct receiver
 			if node.is_method && param.typ.has_flag(.generic) {
-				sym := c.table.sym(node.receiver_type)
+				sym := c.table.final_sym(node.receiver_type)
 				match sym.info {
 					ast.Struct, ast.Interface, ast.SumType {
 						if !isnil(c.table.cur_fn) && c.table.cur_fn.generic_names.len > 0 { // in generic fn
