@@ -17,10 +17,10 @@ struct Employee {
 fn test_simple() ? {
 	x := Employee{'Peter', 28, 95000.5, .worker}
 	s := json.encode(x)
-	eprintln('Employee x: $s')
+	// eprintln('Employee x: $s')
 	assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":2}'
 	y := json.decode(Employee, s)?
-	eprintln('Employee y: $y')
+	// eprintln('Employee y: $y')
 	assert y.name == 'Peter'
 	assert y.age == 28
 	assert y.salary == 95000.5
@@ -90,15 +90,15 @@ fn test_encode_decode_sumtype() ? {
 			t,
 		]
 	}
-	eprintln('Game: $game')
+	// eprintln('Game: $game')
 
 	enc := json.encode(game)
-	eprintln('Encoded Game: $enc')
+	// eprintln('Encoded Game: $enc')
 
 	assert enc == '{"title":"Super Mega Game","player":{"name":"Monke","_type":"Human"},"other":[{"tag":"Pen","_type":"Item"},{"tag":"Cookie","_type":"Item"},1,"Stool",{"_type":"Time","value":$t.unix_time()}]}'
 
 	dec := json.decode(SomeGame, enc)?
-	eprintln('Decoded Game: $dec')
+	// eprintln('Decoded Game: $dec')
 
 	assert game.title == dec.title
 	assert game.player == dec.player
@@ -138,9 +138,9 @@ struct User {
 fn test_parse_user() ? {
 	s := '{"age": 10, "nums": [1,2,3], "type": 1, "lastName": "Johnson", "IsRegistered": true, "pet_animals": {"name": "Bob", "animal": "Dog"}}'
 	u2 := json.decode(User2, s)?
-	println(u2)
+	// println(u2)
 	u := json.decode(User, s)?
-	println(u)
+	// println(u)
 	assert u.age == 10
 	assert u.last_name == 'Johnson'
 	assert u.is_registered == true
@@ -158,12 +158,12 @@ fn test_encode_decode_time() ? {
 		reg_date: time.new_time(year: 2020, month: 12, day: 22, hour: 7, minute: 23)
 	}
 	s := json.encode(user)
-	println(s)
+	// println(s)
 	assert s.contains('"reg_date":1608621780')
 	user2 := json.decode(User2, s)?
 	assert user2.reg_date.str() == '2020-12-22 07:23:00'
-	println(user2)
-	println(user2.reg_date)
+	// println(user2)
+	// println(user2.reg_date)
 }
 
 fn (mut u User) foo() string {
@@ -181,7 +181,7 @@ fn test_encode_user() {
 	}
 	expected := '{"age":10,"nums":[1,2,3],"lastName":"Johnson","IsRegistered":true,"type":0,"pet_animals":"foo"}'
 	out := json.encode(usr)
-	println(out)
+	// println(out)
 	assert out == expected
 	// Test json.encode on mutable pointers
 	assert usr.foo() == expected
@@ -194,7 +194,7 @@ struct Color {
 
 fn test_raw_json_field() {
 	color := json.decode(Color, '{"space": "YCbCr", "point": {"Y": 123}}') or {
-		println('text')
+		// println('text')
 		return
 	}
 	assert color.point == '{"Y":123}'
@@ -203,7 +203,7 @@ fn test_raw_json_field() {
 
 fn test_bad_raw_json_field() {
 	color := json.decode(Color, '{"space": "YCbCr"}') or {
-		println('text')
+		// println('text')
 		return
 	}
 	assert color.point == ''
@@ -225,7 +225,7 @@ fn test_struct_in_struct() ? {
 	assert country.cities.len == 2
 	assert country.cities[0].name == 'London'
 	assert country.cities[1].name == 'Manchester'
-	println(country.cities)
+	// println(country.cities)
 }
 
 fn test_encode_map() {
@@ -237,7 +237,7 @@ fn test_encode_map() {
 		'four':  4
 	}
 	out := json.encode(numbers)
-	println(out)
+	// println(out)
 	assert out == expected
 }
 
@@ -249,7 +249,7 @@ fn test_parse_map() ? {
 		'four':  4
 	}
 	out := json.decode(map[string]int, '{"one":1,"two":2,"three":3,"four":4}')?
-	println(out)
+	// println(out)
 	assert out == expected
 }
 
@@ -306,7 +306,7 @@ fn test_nested_type() ? {
 		}
 	}
 	out := json.encode(data)
-	println(out)
+	// println(out)
 	assert out == data_expected
 	data2 := json.decode(Data, data_expected)?
 	assert data2.countries.len == data.countries.len
@@ -351,7 +351,7 @@ fn test_errors() {
 	invalid_array := fn () {
 		data := '{"countries":[{"cities":[{"name":"London"},{"name":"Manchester"}],"name":"UK"},{"cities":{"name":"Donlon"},"name":"KU"}],"users":{"Foo":{"age":10,"nums":[1,2,3],"lastName":"Johnson","IsRegistered":true,"type":0,"pet_animals":"little foo"},"Boo":{"age":20,"nums":[5,3,1],"lastName":"Smith","IsRegistered":false,"type":4,"pet_animals":"little boo"}},"extra":{"2":{"n1":2,"n2":4,"n3":8,"n4":16},"3":{"n1":3,"n2":9,"n3":27,"n4":81}}}'
 		json.decode(Data, data) or {
-			println(err)
+			// println(err)
 			assert err.msg().starts_with('Json element is not an array:')
 			return
 		}
@@ -360,7 +360,7 @@ fn test_errors() {
 	invalid_object := fn () {
 		data := '{"countries":[{"cities":[{"name":"London"},{"name":"Manchester"}],"name":"UK"},{"cities":[{"name":"Donlon"},{"name":"Termanches"}],"name":"KU"}],"users":[{"age":10,"nums":[1,2,3],"lastName":"Johnson","IsRegistered":true,"type":0,"pet_animals":"little foo"},{"age":20,"nums":[5,3,1],"lastName":"Smith","IsRegistered":false,"type":4,"pet_animals":"little boo"}],"extra":{"2":{"n1":2,"n2":4,"n3":8,"n4":16},"3":{"n1":3,"n2":9,"n3":27,"n4":81}}}'
 		json.decode(Data, data) or {
-			println(err)
+			// println(err)
 			assert err.msg().starts_with('Json element is not an object:')
 			return
 		}
@@ -425,6 +425,13 @@ fn test_decode_null_object() ? {
 	assert '$info.maps' == '{}'
 }
 
+fn test_decode_missing_maps_field() ? {
+	info := json.decode(Info, '{"id": 22, "items": null}')?
+	assert info.id == 22
+	assert '$info.items' == '[]'
+	assert '$info.maps' == '{}'
+}
+
 struct Foo2 {
 	name string
 }
@@ -470,7 +477,7 @@ fn create_game_packet(data &GamePacketData) string {
 
 fn test_encode_sumtype_defined_ahead() {
 	ret := create_game_packet(&GamePacketData(GPScale{}))
-	println(ret)
+	// println(ret)
 	assert ret == '{"value":0,"_type":"GPScale"}'
 }
 

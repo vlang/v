@@ -93,6 +93,13 @@ fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 		}
 		return
 	}
+	if res.exit_code != 0 && v.pref.gc_mode != .no_gc && res.output.contains('libgc.a') {
+		$if windows {
+			verror(r'Your V installation may be out-of-date. Try removing `thirdparty\tcc\` and running `.\make.bat`')
+		} $else {
+			verror('Your V installation may be out-of-date. Try removing `thirdparty/tcc/` and running `make`')
+		}
+	}
 	for emsg_marker in [builder.c_verror_message_marker, 'error: include file '] {
 		if res.output.contains(emsg_marker) {
 			emessage := res.output.all_after(emsg_marker).all_before('\n').all_before('\r').trim_right('\r\n')

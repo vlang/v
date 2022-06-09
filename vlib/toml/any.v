@@ -281,24 +281,35 @@ pub fn (a []Any) to_toml() string {
 // quoted keys are supported as `a."b.c"` or `a.'b.c'`.
 // Arrays can be queried with `a[0].b[1].[2]`.
 pub fn (a Any) value(key string) Any {
-	key_split := parse_dotted_key(key) or { return Any(Null{}) }
+	key_split := parse_dotted_key(key) or { return null }
 	return a.value_(a, key_split)
+}
+
+pub fn (a Any) value_opt(key string) ?Any {
+	key_split := parse_dotted_key(key) or { return error('invalid dotted key') }
+	x := a.value_(a, key_split)
+	if x is Null {
+		return error('no value for key')
+	}
+	return x
 }
 
 // value_ returns the `Any` value found at `key`.
 fn (a Any) value_(value Any, key []string) Any {
-	assert key.len > 0
-	mut any_value := Any(Null{})
+	if key.len == 0 {
+		return null
+	}
+	mut any_value := null
 	k, index := parse_array_key(key[0])
 	if k == '' {
 		arr := value as []Any
-		any_value = arr[index] or { return Any(Null{}) }
+		any_value = arr[index] or { return null }
 	}
 	if value is map[string]Any {
-		any_value = value[k] or { return Any(Null{}) }
+		any_value = value[k] or { return null }
 		if index > -1 {
 			arr := any_value as []Any
-			any_value = arr[index] or { return Any(Null{}) }
+			any_value = arr[index] or { return null }
 		}
 	}
 	if key.len <= 1 {

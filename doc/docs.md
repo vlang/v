@@ -1295,6 +1295,16 @@ mm := map[string]int{}
 val := mm['bad_key'] or { panic('key not found') }
 ```
 
+You can also check, if a key is present, and get its value, if it was present, in one go:
+```v
+m := {
+	'abc': 'def'
+}
+if v := m['abc'] {
+	println('the map value for that key is: $v')
+}
+```
+
 The same optional check applies to arrays:
 
 ```v

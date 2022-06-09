@@ -8,13 +8,14 @@ import strings.textscanner
 // therefore results may be different for certain operating systems.
 
 const (
-	fslash    = `/`
-	bslash    = `\\`
-	dot       = `.`
-	qmark     = `?`
-	dot_dot   = '..'
-	empty_str = ''
-	dot_str   = '.'
+	fslash     = `/`
+	bslash     = `\\`
+	dot        = `.`
+	qmark      = `?`
+	fslash_str = '/'
+	dot_dot    = '..'
+	empty_str  = ''
+	dot_str    = '.'
 )
 
 // is_abs_path returns `true` if the given `path` is absolute.
@@ -62,8 +63,13 @@ pub fn norm_path(path string) string {
 		return os.dot_str
 	}
 	rooted := is_abs_path(path)
-	volume := get_volume(path)
-	volume_len := volume.len
+	// get the volume name from the path
+	// if the current operating system is Windows
+	volume_len := win_volume_len(path)
+	mut volume := path[..volume_len]
+	if volume_len != 0 && volume.contains(os.fslash_str) {
+		volume = volume.replace(os.fslash_str, path_separator)
+	}
 	cpath := clean_path(path[volume_len..])
 	if cpath.len == 0 && volume_len == 0 {
 		return os.dot_str
@@ -123,6 +129,52 @@ pub fn norm_path(path string) string {
 	return res
 }
 
+// existing_path returns the existing part of the given `path`.
+// An error is returned if there is no existing part of the given `path`.
+pub fn existing_path(path string) ?string {
+	err := error('path does not exist')
+	if path.len == 0 {
+		return err
+	}
+	if exists(path) {
+		return path
+	}
+	mut volume_len := 0
+	$if windows {
+		volume_len = win_volume_len(path)
+	}
+	if volume_len > 0 && is_slash(path[volume_len - 1]) {
+		volume_len++
+	}
+	mut sc := textscanner.new(path[volume_len..])
+	mut recent_path := path[..volume_len]
+	for sc.next() != -1 {
+		curr := u8(sc.current())
+		peek := sc.peek()
+		back := sc.peek_back()
+		if is_curr_dir_ref(back, curr, peek) {
+			continue
+		}
+		range := sc.ilen - sc.remaining() + volume_len
+		if is_slash(curr) && !is_slash(u8(peek)) {
+			recent_path = path[..range]
+			continue
+		}
+		if !is_slash(curr) && (peek == -1 || is_slash(u8(peek))) {
+			curr_path := path[..range]
+			if exists(curr_path) {
+				recent_path = curr_path
+				continue
+			}
+			if recent_path.len == 0 {
+				break
+			}
+			return recent_path
+		}
+	}
+	return err
+}
+
 // clean_path returns the "cleaned" version of the given `path`
 // by turning forward slashes into back slashes
 // on a Windows system and eliminating:
@@ -144,8 +196,7 @@ fn clean_path(path string) string {
 			continue
 		}
 		// skip reference to current dir (.)
-		if (back == -1 || is_slash(u8(back))) && curr == os.dot
-			&& (peek == -1 || is_slash(u8(peek))) {
+		if is_curr_dir_ref(back, curr, peek) {
 			// skip if the next byte is a path separator
 			if peek != -1 && is_slash(u8(peek)) {
 				sc.skip_n(1)
@@ -172,6 +223,9 @@ fn clean_path(path string) string {
 // win_volume_len returns the length of the
 // Windows volume/drive from the given `path`.
 fn win_volume_len(path string) int {
+	$if !windows {
+		return 0
+	}
 	plen := path.len
 	if plen < 2 {
 		return 0
@@ -197,20 +251,6 @@ fn win_volume_len(path string) int {
 		}
 	}
 	return 0
-}
-
-fn get_volume(path string) string {
-	$if !windows {
-		return os.empty_str
-	}
-	volume := path[..win_volume_len(path)]
-	if volume.len == 0 {
-		return os.empty_str
-	}
-	if volume[0] == os.fslash {
-		return volume.replace('/', '\\')
-	}
-	return volume
 }
 
 fn is_slash(b u8) bool {
@@ -245,4 +285,14 @@ fn is_normal_path(path string) bool {
 	}
 	return (plen == 1 && is_slash(path[0])) || (plen >= 2 && is_slash(path[0])
 		&& !is_slash(path[1]))
+}
+
+// is_curr_dir_ref returns `true` if the 3 given integer construct
+// a reference to a current directory (.).
+// NOTE: a negative integer means that no byte is present
+fn is_curr_dir_ref(byte_one int, byte_two int, byte_three int) bool {
+	if u8(byte_two) != os.dot {
+		return false
+	}
+	return (byte_one < 0 || is_slash(u8(byte_one))) && (byte_three < 0 || is_slash(u8(byte_three)))
 }

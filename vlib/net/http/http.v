@@ -161,7 +161,7 @@ pub fn fetch(config FetchConfig) ?Response {
 // get_text sends a GET HTTP request to the URL and returns the text content of the response
 pub fn get_text(url string) string {
 	resp := fetch(url: url, method: .get) or { return '' }
-	return resp.text
+	return resp.body
 }
 
 // url_encode_form_data converts mapped data to an URL encoded string

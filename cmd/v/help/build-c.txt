@@ -25,7 +25,20 @@ see also `v help build`.
 
    -cstrict
       Turn on additional C warnings. This slows down compilation
-      slightly (~10% for gcc), but sometimes provides better diagnosis.
+      slightly (~10% for gcc), but sometimes provides better error diagnosis.
+
+   -cmain <MainFunctionName>
+      Useful with framework like code, that uses macros to re-define `main`, like SDL2 does for example.
+      With that option, V will always generate:
+        `int MainFunctionName(int ___argc, char** ___argv) {` , for the program entry point function, *no matter* the OS.
+      Without it, on non Windows systems, it will generate:
+        `int main(int ___argc, char** ___argv) {`
+        ... and on Windows, it will generate:
+          a) `int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, LPWSTR cmd_line, int show_cmd){`
+          when you are compiling applications that `import gg`.
+        ... or it will generate:
+          b) `int wmain(int ___argc, wchar_t* ___argv[], wchar_t* ___envp[]){`
+          when you are compiling console apps.
 
    -showcc
       Prints the C command that is used to build the program.

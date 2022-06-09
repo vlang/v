@@ -625,12 +625,13 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 			ast.Ident {
 				left_typ := node.left_types[i]
 				left_sym := g.table.sym(left_typ)
+				anon_ctx := if g.anon_fn { '$closure_ctx->' } else { '' }
 				if left_sym.kind == .function {
 					g.write_fn_ptr_decl(left_sym.info as ast.FnType, '_var_$left.pos.pos')
-					g.writeln(' = ${c_name(left.name)};')
+					g.writeln(' = $anon_ctx${c_name(left.name)};')
 				} else {
 					styp := g.typ(left_typ)
-					g.writeln('$styp _var_$left.pos.pos = ${c_name(left.name)};')
+					g.writeln('$styp _var_$left.pos.pos = $anon_ctx${c_name(left.name)};')
 				}
 			}
 			ast.IndexExpr {
@@ -761,6 +762,22 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 				g.write(val.op.str())
 				g.gen_cross_tmp_variable(left, val.right)
 			}
+		}
+		ast.ParExpr {
+			g.write('(')
+			g.gen_cross_tmp_variable(left, val.expr)
+			g.write(')')
+		}
+		ast.CallExpr {
+			fn_name := val.name.replace('.', '__')
+			g.write('${fn_name}(')
+			for i, arg in val.args {
+				g.gen_cross_tmp_variable(left, arg.expr)
+				if i != val.args.len - 1 {
+					g.write(', ')
+				}
+			}
+			g.write(')')
 		}
 		ast.PrefixExpr {
 			g.write(val.op.str())

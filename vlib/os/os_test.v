@@ -585,9 +585,19 @@ fn test_is_executable_writable_readable() ? {
 	os.rm(file_name) or { panic(err) }
 }
 
-fn test_ext() {
+fn test_file_ext() {
 	assert os.file_ext('file.v') == '.v'
+	assert os.file_ext('file.js.v') == '.v'
+	assert os.file_ext('file.ext1.ext2.ext3') == '.ext3'
+	assert os.file_ext('.ignore_me.v') == '.v'
 	assert os.file_ext('file') == ''
+	assert os.file_ext('.git') == ''
+	assert os.file_ext('file.') == ''
+	assert os.file_ext('.') == ''
+	assert os.file_ext('..') == ''
+	assert os.file_ext('file...') == ''
+	assert os.file_ext('.file.') == ''
+	assert os.file_ext('..file..') == ''
 }
 
 fn test_join() {

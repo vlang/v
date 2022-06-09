@@ -305,7 +305,6 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 					return int(rc)
 				}
 			}
-			break
 		}
 		r.line = line
 		if r.line == '\n' {
@@ -388,13 +387,13 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 				'#include ',
 				'for ',
 				'or ',
-				'insert',
-				'delete',
-				'prepend',
-				'sort',
-				'clear',
-				'trim',
-				'as',
+				'insert(',
+				'delete(',
+				'prepend(',
+				'sort(',
+				'clear(',
+				'trim(',
+				' as ',
 			]
 			mut is_statement := false
 			if filter_line.count('=') % 2 == 1 {

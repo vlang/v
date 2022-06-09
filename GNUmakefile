@@ -28,6 +28,9 @@ endif
 ifeq ($(_SYS),Linux)
 LINUX := 1
 TCCOS := linux
+ifneq ($(shell ldd /bin/ls | grep musl),)
+TCCOS := linuxmusl
+endif
 endif
 
 ifeq ($(_SYS),Darwin)
@@ -113,7 +116,7 @@ endif
 
 check_for_working_tcc:
 	@$(TMPTCC)/tcc.exe --version > /dev/null 2> /dev/null || echo "The executable '$(TMPTCC)/tcc.exe' does not work."
-	
+
 fresh_vc:
 	rm -rf $(VC)
 	$(GITFASTCLONE) $(VCREPO) $(VC)

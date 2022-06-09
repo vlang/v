@@ -24,6 +24,7 @@ pub enum AssertFailureMode {
 }
 
 pub enum GarbageCollectionMode {
+	unknown
 	no_gc
 	boehm_full // full garbage collection mode
 	boehm_incr // incremental garbage colletion mode
@@ -111,7 +112,8 @@ pub mut:
 	is_prof           bool // benchmark every function
 	is_prod           bool // use "-O2"
 	is_repl           bool
-	is_run            bool
+	is_run            bool // compile and run a v program, passing arguments to it, and deleting the executable afterwards
+	is_crun           bool // similar to run, but does not recompile the executable, if there were no changes to the sources
 	is_debug          bool // turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
 	is_vlines         bool // turned on by -g (it slows down .tmp.c generation slightly).
 	is_stats          bool // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
@@ -163,6 +165,7 @@ pub mut:
 	bare_builtin_dir string // Set by -bare-builtin-dir xyz/ . The xyz/ module should contain implementations of malloc, memset, etc, that are used by the rest of V's `builtin` module. That option is only useful with -freestanding (i.e. when is_bare is true).
 	no_preludes      bool   // Prevents V from generating preludes in resulting .c files
 	custom_prelude   string // Contents of custom V prelude that will be prepended before code in resulting .c files
+	cmain            string // The name of the generated C main function. Useful with framework like code, that uses macros to re-define `main`, like SDL2 does. When set, V will always generate `int THE_NAME(int ___argc, char** ___argv){`, *no matter* the platform.
 	lookup_path      []string
 	output_cross_c   bool // true, when the user passed `-os cross`
 	output_es5       bool
@@ -202,7 +205,7 @@ pub mut:
 	cleanup_files       []string    // list of temporary *.tmp.c and *.tmp.c.rsp files. Cleaned up on successfull builds.
 	build_options       []string    // list of options, that should be passed down to `build-module`, if needed for -usecache
 	cache_manager       vcache.CacheManager
-	gc_mode             GarbageCollectionMode = .no_gc // .no_gc, .boehm, .boehm_leak, ...
+	gc_mode             GarbageCollectionMode = .unknown // .no_gc, .boehm, .boehm_leak, ...
 	assert_failure_mode AssertFailureMode     // whether to call abort() or print_backtrace() after an assertion failure
 	message_limit       int = 100 // the maximum amount of warnings/errors/notices that will be accumulated
 	nofloat             bool // for low level code, like kernels: replaces f32 with u32 and f64 with u64
@@ -325,8 +328,14 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-gc' {
 				gc_mode := cmdline.option(current_args, '-gc', '')
 				match gc_mode {
-					'', 'none' {
+					'none' {
 						res.gc_mode = .no_gc
+					}
+					'', 'boehm' {
+						res.gc_mode = .boehm_full_opt // default mode
+						res.parse_define('gcboehm')
+						res.parse_define('gcboehm_full')
+						res.parse_define('gcboehm_opt')
 					}
 					'boehm_full' {
 						res.gc_mode = .boehm_full
@@ -348,12 +357,6 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 						res.gc_mode = .boehm_incr_opt
 						res.parse_define('gcboehm')
 						res.parse_define('gcboehm_incr')
-						res.parse_define('gcboehm_opt')
-					}
-					'boehm' {
-						res.gc_mode = .boehm_full_opt // default mode
-						res.parse_define('gcboehm')
-						res.parse_define('gcboehm_full')
 						res.parse_define('gcboehm_opt')
 					}
 					'boehm_leak' {
@@ -686,6 +689,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.custom_prelude = prelude
 				i++
 			}
+			'-cmain' {
+				res.cmain = cmdline.option(current_args, '-cmain', '')
+				i++
+			}
 			else {
 				if command == 'build' && is_source_file(arg) {
 					eprintln('Use `v $arg` instead.')
@@ -701,7 +708,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					if command == '' {
 						command = arg
 						command_pos = i
-						if command == 'run' {
+						if command in ['run', 'crun'] {
 							break
 						}
 					} else if is_source_file(command) && is_source_file(arg)
@@ -729,6 +736,12 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	if res.is_debug {
 		res.parse_define('debug')
 	}
+	if command == 'crun' {
+		res.is_crun = true
+	}
+	if command == 'run' {
+		res.is_run = true
+	}
 	if command == 'run' && res.is_prod && os.is_atty(1) > 0 {
 		eprintln_cond(show_output, "Note: building an optimized binary takes much longer. It shouldn't be used with `v run`.")
 		eprintln_cond(show_output, 'Use `v run` without optimization, or build an optimized binary with -prod first, then run it separately.')
@@ -739,8 +752,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		eprintln('Cannot save output binary in a .v file.')
 		exit(1)
 	}
-	if command == 'run' {
-		res.is_run = true
+	if res.is_run || res.is_crun {
 		if command_pos + 2 > args.len {
 			eprintln('v run: no v files listed')
 			exit(1)
@@ -793,7 +805,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		// `v build.vsh gcc` is the same as `v run build.vsh gcc`,
 		// i.e. compiling, then running the script, passing the args
 		// after it to the script:
-		res.is_run = true
+		res.is_crun = true
 		res.path = command
 		res.run_args = args[command_pos + 1..]
 	} else if command == 'interpret' {
@@ -960,6 +972,7 @@ pub fn get_host_arch() Arch {
 
 fn (mut prefs Preferences) parse_define(define string) {
 	define_parts := define.split('=')
+	prefs.diagnose_deprecated_defines(define_parts)
 	if !(prefs.is_debug && define == 'debug') {
 		prefs.build_options << '-d $define'
 	}
@@ -986,4 +999,10 @@ fn (mut prefs Preferences) parse_define(define string) {
 	}
 	println('V error: Unknown define argument: ${define}. Expected at most one `=`.')
 	exit(1)
+}
+
+fn (mut prefs Preferences) diagnose_deprecated_defines(define_parts []string) {
+	if define_parts[0] == 'force_embed_file' {
+		eprintln('-d force_embed_file was deprecated in 2022/06/01. Now \$embed_file(file) always embeds the file, unless you pass `-d embed_only_metadata`.')
+	}
 }

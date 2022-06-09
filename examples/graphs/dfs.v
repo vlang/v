@@ -1,4 +1,4 @@
-// Author: ccs
+// Author: CCS
 // I follow literally code in C, done many years ago
 
 fn main() {
@@ -35,8 +35,7 @@ fn depth_first_search_path(graph map[string][]string, start string, target strin
 	mut path := []string{} // ONE PATH with SUCCESS = array
 	mut stack := []string{} // a stack ... many nodes
 	// all_nodes := graph.keys() // get a key of this map
-	n_nodes := graph.len // numbers of nodes of this graph
-	mut visited := a_map_nodes_bool(n_nodes) // a map fully
+	mut visited := visited_init(graph) // a map fully with false in all vertex
 	// false ... not visited yet: {'A': false, 'B': false, 'C': false, 'D': false, 'E': false}
 
 	stack << start // first push on the stack
@@ -72,14 +71,15 @@ fn depth_first_search_path(graph map[string][]string, start string, target strin
 	return path
 }
 
-// Creating a map for nodes not VISITED visited ...
-// starting by false ===> means this node was not visited yet
-fn a_map_nodes_bool(size int) map[string]bool {
-	mut my_map := map[string]bool{} // look this map ...
-	for i in 0 .. size {
-		my_map[u8(65 + i).ascii_str()] = false
+// Creating aa map to initialize with of visited nodes .... all with false in the init
+// so these nodes are NOT VISITED YET
+fn visited_init(a_graph map[string][]string) map[string]bool {
+	mut array_of_keys := a_graph.keys() // get all keys of this map
+	mut temp := map[string]bool{} // attention in these initializations with maps
+	for i in array_of_keys {
+		temp[i] = false
 	}
-	return my_map
+	return temp
 }
 
 // Based in the current node that is final, search for his parent, that is already visited, up to the root or start node
@@ -101,3 +101,5 @@ fn build_path_reverse(graph map[string][]string, start string, final string, vis
 	}
 	return path
 }
+
+//*****************************************************

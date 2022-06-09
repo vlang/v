@@ -25,20 +25,14 @@ jobs:
     - name: Build V
       run: make && sudo ./v symlink
 
-    - name: Checkout vab
-      uses: actions/checkout@v2
-      with:
-        repository: vlang/vab
-        path: vab
-
-    - name: Build vab
+    - name: Install vab
       run: |
-        cd vab
-        v -g vab.v
-        sudo ln -s $(pwd)/vab /usr/local/bin/vab
+        v install vab
+        v -g ~/.vmodules/vab
+        sudo ln -s ~/.vmodules/vab/vab /usr/local/bin/vab
 
     - name: Run tests
-      run: v test vab
+      run: v test ~/.vmodules/vab
 
     - name: Run vab --help
       run: vab --help

@@ -213,8 +213,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					}
 				}
 			}
-			if (c.pref.translated || c.file.is_translated) && node.is_variadic
-				&& node.params.len == 1 && param.typ.is_ptr() {
+			//&& node.params.len == 1 && param.typ.is_ptr() {
+			if (c.pref.translated || c.file.is_translated) && node.is_variadic && param.typ.is_ptr() {
 				// TODO c2v hack to fix `(const char *s, ...)`
 				param.typ = ast.int_type.ref()
 			}
@@ -506,7 +506,12 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 		expr := node.args[0].expr
 		if expr is ast.TypeNode {
-			sym := c.table.sym(c.unwrap_generic(expr.typ))
+			mut unwrapped_typ := c.unwrap_generic(expr.typ)
+			if c.table.sym(expr.typ).kind == .struct_ && expr.typ.has_flag(.generic) {
+				unwrapped_typ = c.table.unwrap_generic_type(expr.typ, c.table.cur_fn.generic_names,
+					c.table.cur_concrete_types)
+			}
+			sym := c.table.sym(unwrapped_typ)
 			if c.table.known_type(sym.name) && sym.kind != .placeholder {
 				mut kind := sym.kind
 				if sym.info is ast.Alias {
@@ -897,6 +902,11 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			}
 			continue
 		}
+		if param.typ.is_ptr() && !param.is_mut && !call_arg.typ.is_real_pointer()
+			&& call_arg.expr.is_literal() && func.language == .v && !c.pref.translated {
+			c.error('literal argument cannot be passed as reference parameter `${c.table.type_to_str(param.typ)}`',
+				call_arg.pos)
+		}
 		c.check_expected_call_arg(arg_typ, c.unwrap_generic(param.typ), node.language,
 			call_arg) or {
 			if param.typ.has_flag(.generic) {
@@ -1183,14 +1193,14 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		method = m
 		has_method = true
 	} else {
-		if left_sym.kind in [.struct_, .sum_type, .interface_] {
+		if final_left_sym.kind in [.struct_, .sum_type, .interface_] {
 			mut parent_type := ast.void_type
-			if left_sym.info is ast.Struct {
-				parent_type = left_sym.info.parent_type
-			} else if left_sym.info is ast.SumType {
-				parent_type = left_sym.info.parent_type
-			} else if left_sym.info is ast.Interface {
-				parent_type = left_sym.info.parent_type
+			if final_left_sym.info is ast.Struct {
+				parent_type = final_left_sym.info.parent_type
+			} else if final_left_sym.info is ast.SumType {
+				parent_type = final_left_sym.info.parent_type
+			} else if final_left_sym.info is ast.Interface {
+				parent_type = final_left_sym.info.parent_type
 			}
 			if parent_type != 0 {
 				type_sym := c.table.sym(parent_type)
@@ -1204,7 +1214,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		if !has_method {
 			has_method = true
 			mut embed_types := []ast.Type{}
-			method, embed_types = c.table.find_method_from_embeds(left_sym, method_name) or {
+			method, embed_types = c.table.find_method_from_embeds(final_left_sym, method_name) or {
 				if err.msg() != '' {
 					c.error(err.msg(), node.pos)
 				}
@@ -1216,14 +1226,14 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				node.from_embed_types = embed_types
 			}
 		}
-		if left_sym.kind == .aggregate {
+		if final_left_sym.kind == .aggregate {
 			// the error message contains the problematic type
 			unknown_method_msg = err.msg()
 		}
 	}
 	if has_method {
 		// x is Bar<T>, x.foo() -> x.foo<T>()
-		rec_sym := c.table.sym(node.left_type)
+		rec_sym := c.table.final_sym(node.left_type)
 		rec_is_generic := left_type.has_flag(.generic)
 		mut rec_concrete_types := []ast.Type{}
 		if rec_sym.info is ast.Struct {
@@ -1432,6 +1442,11 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					}
 				}
 				continue
+			}
+			if param.typ.is_ptr() && !arg.typ.is_real_pointer() && arg.expr.is_literal()
+				&& !c.pref.translated {
+				c.error('literal argument cannot be passed as reference parameter `${c.table.type_to_str(param.typ)}`',
+					arg.pos)
 			}
 			c.check_expected_call_arg(got_arg_typ, exp_arg_typ, node.language, arg) or {
 				// str method, allow type with str method if fn arg is string

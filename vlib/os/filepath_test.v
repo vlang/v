@@ -36,11 +36,13 @@ fn test_clean_path() {
 		assert clean_path(r'\./path/dir\\file.exe') == r'\path\dir\file.exe'
 		assert clean_path(r'.') == ''
 		assert clean_path(r'./') == ''
+		assert clean_path('') == ''
 		assert clean_path(r'\./') == '\\'
 		assert clean_path(r'//\/\/////') == '\\'
 		return
 	}
 	assert clean_path('./../.././././//') == '../..'
+	assert clean_path('') == ''
 	assert clean_path('.') == ''
 	assert clean_path('./path/to/file.v//./') == 'path/to/file.v'
 	assert clean_path('./') == ''
@@ -126,4 +128,44 @@ fn test_abs_path() {
 	assert abs_path('/path/to/file.v/../..') == '/path'
 	assert abs_path('path/../file.v/..') == wd
 	assert abs_path('///') == '/'
+}
+
+fn test_existing_path() {
+	wd := getwd()
+	$if windows {
+		assert existing_path('') or { '' } == ''
+		assert existing_path('..') or { '' } == '..'
+		assert existing_path('.') or { '' } == '.'
+		assert existing_path(wd) or { '' } == wd
+		assert existing_path('\\') or { '' } == '\\'
+		assert existing_path('$wd\\.\\\\does/not/exist\\.\\') or { '' } == '$wd\\.\\\\'
+		assert existing_path('$wd\\\\/\\.\\.\\/.') or { '' } == '$wd\\\\/\\.\\.\\/.'
+		assert existing_path('$wd\\././/\\/oh') or { '' } == '$wd\\././/\\/'
+		return
+	}
+	assert existing_path('') or { '' } == ''
+	assert existing_path('..') or { '' } == '..'
+	assert existing_path('.') or { '' } == '.'
+	assert existing_path(wd) or { '' } == wd
+	assert existing_path('/') or { '' } == '/'
+	assert existing_path('$wd/does/.///not/exist///.//') or { '' } == '$wd/'
+	assert existing_path('$wd//././/.//') or { '' } == '$wd//././/.//'
+	assert existing_path('$wd//././/.//oh') or { '' } == '$wd//././/.//'
+}
+
+fn test_windows_volume() {
+	$if windows {
+		assert windows_volume('C:/path\\to/file.v') == 'C:'
+		assert windows_volume('D:\\.\\') == 'D:'
+		assert windows_volume('G:') == 'G:'
+		assert windows_volume('G') == ''
+		assert windows_volume(r'\\Host\share\files\file.v') == r'\\Host\share'
+		assert windows_volume('\\\\Host\\') == ''
+		assert windows_volume(r'\\.\BootPartition2\\files\.\\') == r'\\.\BootPartition2'
+		assert windows_volume(r'\/.\BootPartition2\\files\.\\') == r'\/.\BootPartition2'
+		assert windows_volume(r'\\\.\BootPartition2\\files\.\\') == ''
+		assert windows_volume('') == ''
+		assert windows_volume('\\') == ''
+		assert windows_volume('/') == ''
+	}
 }

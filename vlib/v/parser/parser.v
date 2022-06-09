@@ -23,7 +23,6 @@ mut:
 	file_name_dir     string       // "/home/user"
 	unique_prefix     string       // a hash of p.file_name, used for making anon fn generation unique
 	file_backend_mode ast.Language // .c for .c.v|.c.vv|.c.vsh files; .js for .js.v files, .amd64/.rv32/other arches for .amd64.v/.rv32.v/etc. files, .v otherwise.
-	scanner           &scanner.Scanner
 	comments_mode     scanner.CommentsMode = .skip_comments
 	// see comment in parse_file
 	tok                       token.Token
@@ -78,10 +77,6 @@ mut:
 	returns                   bool
 	is_stmt_ident             bool // true while the beginning of a statement is an ident/selector
 	expecting_type            bool // `is Type`, expecting type
-	errors                    []errors.Error
-	warnings                  []errors.Warning
-	notices                   []errors.Notice
-	vet_errors                []vet.Error
 	cur_fn_name               string
 	label_names               []string
 	name_error                bool // indicates if the token is not a name or the name is on another line
@@ -95,6 +90,12 @@ mut:
 	if_cond_comments          []ast.Comment
 	script_mode               bool
 	script_mode_start_token   token.Token
+pub mut:
+	scanner    &scanner.Scanner
+	errors     []errors.Error
+	warnings   []errors.Warning
+	notices    []errors.Notice
+	vet_errors []vet.Error
 }
 
 __global codegen_files = []&ast.File{}
@@ -667,9 +668,14 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 					return p.error('unexpected eof')
 				}
 				if_expr := p.if_expr(true)
-				return ast.ExprStmt{
+				cur_stmt := ast.ExprStmt{
 					expr: if_expr
 					pos: if_expr.pos
+				}
+				if comptime_if_expr_contains_top_stmt(if_expr) {
+					return cur_stmt
+				} else {
+					return p.other_stmts(cur_stmt)
 				}
 			}
 			.hash {
@@ -688,39 +694,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 				return p.comment_stmt()
 			}
 			else {
-				p.inside_fn = true
-				if p.pref.is_script && !p.pref.is_test {
-					p.script_mode = true
-					p.script_mode_start_token = p.tok
-
-					if p.table.known_fn('main.main') {
-						p.error('function `main` is already defined, put your script statements inside it')
-					}
-
-					p.open_scope()
-					mut stmts := []ast.Stmt{}
-					for p.tok.kind != .eof {
-						stmts << p.stmt(false)
-					}
-					p.close_scope()
-
-					p.script_mode = false
-					return ast.FnDecl{
-						name: 'main.main'
-						short_name: 'main'
-						mod: 'main'
-						is_main: true
-						stmts: stmts
-						file: p.file_name
-						return_type: ast.void_type
-						scope: p.scope
-						label_names: p.label_names
-					}
-				} else if p.pref.is_fmt {
-					return p.stmt(false)
-				} else {
-					return p.error('bad top level statement ' + p.tok.str())
-				}
+				return p.other_stmts(ast.empty_stmt())
 			}
 		}
 		if p.should_abort {
@@ -730,6 +704,66 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 	// TODO remove dummy return statement
 	// the compiler complains if it's not there
 	return ast.empty_stmt()
+}
+
+fn comptime_if_expr_contains_top_stmt(if_expr ast.IfExpr) bool {
+	for branch in if_expr.branches {
+		for stmt in branch.stmts {
+			if stmt is ast.ExprStmt {
+				if stmt.expr is ast.IfExpr {
+					if !comptime_if_expr_contains_top_stmt(stmt.expr) {
+						return false
+					}
+				} else if stmt.expr is ast.CallExpr {
+					return false
+				}
+			} else if stmt is ast.AssignStmt {
+				return false
+			} else if stmt is ast.HashStmt {
+				return true
+			}
+		}
+	}
+	return true
+}
+
+fn (mut p Parser) other_stmts(cur_stmt ast.Stmt) ast.Stmt {
+	p.inside_fn = true
+	if p.pref.is_script && !p.pref.is_test {
+		p.script_mode = true
+		p.script_mode_start_token = p.tok
+
+		if p.table.known_fn('main.main') {
+			p.error('function `main` is already defined, put your script statements inside it')
+		}
+
+		p.open_scope()
+		mut stmts := []ast.Stmt{}
+		if cur_stmt != ast.empty_stmt() {
+			stmts << cur_stmt
+		}
+		for p.tok.kind != .eof {
+			stmts << p.stmt(false)
+		}
+		p.close_scope()
+
+		p.script_mode = false
+		return ast.FnDecl{
+			name: 'main.main'
+			short_name: 'main'
+			mod: 'main'
+			is_main: true
+			stmts: stmts
+			file: p.file_name
+			return_type: ast.void_type
+			scope: p.scope
+			label_names: p.label_names
+		}
+	} else if p.pref.is_fmt {
+		return p.stmt(false)
+	} else {
+		return p.error('bad top level statement ' + p.tok.str())
+	}
 }
 
 // TODO [if vfmt]
@@ -2345,6 +2379,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				arg = p.expr(0) // len
 				has_arg = true
 			}
+			if p.tok.kind == .comma && p.peek_tok.kind == .rpar {
+				p.next()
+			}
 			end_pos := p.tok.pos()
 			p.check(.rpar)
 			node = ast.CastExpr{
@@ -2381,9 +2418,10 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		&& !p.inside_match_case && (!p.inside_if || p.inside_select)
 		&& (!p.inside_for || p.inside_select) && !known_var {
 		return p.struct_init(p.mod + '.' + p.tok.lit, false) // short_syntax: false
-	} else if p.peek_tok.kind == .lcbr && p.inside_if && lit0_is_capital && !known_var
-		&& language == .v {
-		// if a == Foo{} {...}
+	} else if p.peek_tok.kind == .lcbr
+		&& ((p.inside_if && lit0_is_capital && !known_var && language == .v)
+		|| (p.inside_match_case && p.tok.kind == .name && p.peek_tok.pos - p.tok.pos == p.tok.len)) {
+		// `if a == Foo{} {...}` or `match foo { Foo{} {...} }`
 		return p.struct_init(p.mod + '.' + p.tok.lit, false)
 	} else if p.peek_tok.kind == .dot && (lit0_is_capital && !known_var && language == .v) {
 		// T.name

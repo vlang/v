@@ -50,7 +50,11 @@ fn (mut g Gen) gen_vlines_reset() {
 	}
 }
 
-fn (mut g Gen) gen_c_main_function_header() {
+fn (mut g Gen) gen_c_main_function_only_header() {
+	if g.pref.cmain != '' {
+		g.writeln('int ${g.pref.cmain}(int ___argc, char** ___argv){')
+		return
+	}
 	if g.pref.os == .windows {
 		if g.is_gui_app() {
 			$if msvc {
@@ -65,15 +69,22 @@ fn (mut g Gen) gen_c_main_function_header() {
 			g.writeln('\tcmd_line_to_argv CommandLineToArgvW = (cmd_line_to_argv)GetProcAddress(shell32_module, "CommandLineToArgvW");')
 			g.writeln('\tint ___argc;')
 			g.writeln('\twchar_t** ___argv = CommandLineToArgvW(full_cmd_line, &___argc);')
-		} else {
-			// Console application
-			g.writeln('int wmain(int ___argc, wchar_t* ___argv[], wchar_t* ___envp[]){')
+			return
 		}
-	} else {
-		g.writeln('int main(int ___argc, char** ___argv){')
+		// Console application
+		g.writeln('int wmain(int ___argc, wchar_t* ___argv[], wchar_t* ___envp[]){')
+		return
 	}
+	g.writeln('int main(int ___argc, char** ___argv){')
+}
+
+fn (mut g Gen) gen_c_main_function_header() {
+	g.gen_c_main_function_only_header()
 	g.writeln('\tg_main_argc = ___argc;')
 	g.writeln('\tg_main_argv = ___argv;')
+	if g.nr_closures > 0 {
+		g.writeln('__closure_init();')
+	}
 }
 
 fn (mut g Gen) gen_c_main_header() {

@@ -7,9 +7,9 @@ fn vlang_time(mut wg sync.WaitGroup) ?string {
 	data := http.get('https://vlang.io/utc_now')?
 	finish := time.ticks()
 	println('Finish getting time ${finish - start} ms')
-	println(data.text)
+	println(data.body)
 	wg.done()
-	return data.text
+	return data.body
 }
 
 fn remote_ip(mut wg sync.WaitGroup) ?string {
@@ -17,9 +17,9 @@ fn remote_ip(mut wg sync.WaitGroup) ?string {
 	data := http.get('https://api.ipify.org')?
 	finish := time.ticks()
 	println('Finish getting ip ${finish - start} ms')
-	println(data.text)
+	println(data.body)
 	wg.done()
-	return data.text
+	return data.body
 }
 
 fn main() {

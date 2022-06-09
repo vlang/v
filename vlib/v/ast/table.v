@@ -45,6 +45,8 @@ pub mut:
 	mdeprecated_after map[string]time.Time // module deprecation date
 	builtin_pub_fns   map[string]bool
 	pointer_size      int
+	// cache for type_to_str_using_aliases
+	cached_type_to_str map[u64]string
 }
 
 // used by vls to avoid leaks
@@ -1945,12 +1947,12 @@ pub fn (mut t Table) replace_generic_type(typ Type, generic_types []Type) {
 
 // generic struct instantiations to concrete types
 pub fn (mut t Table) generic_insts_to_concrete() {
-	for mut typ in t.type_symbols {
-		if typ.kind == .generic_inst {
-			info := typ.info as GenericInst
+	for mut sym in t.type_symbols {
+		if sym.kind == .generic_inst {
+			info := sym.info as GenericInst
 			parent := t.type_symbols[info.parent_idx]
 			if parent.kind == .placeholder {
-				typ.kind = .placeholder
+				sym.kind = .placeholder
 				continue
 			}
 			match parent.info {
@@ -1980,15 +1982,15 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 						parent_info.concrete_types = info.concrete_types.clone()
 						parent_info.fields = fields
 						parent_info.parent_type = new_type(info.parent_idx).set_flag(.generic)
-						typ.info = Struct{
+						sym.info = Struct{
 							...parent_info
 							is_generic: false
 							concrete_types: info.concrete_types.clone()
 							fields: fields
 							parent_type: new_type(info.parent_idx).set_flag(.generic)
 						}
-						typ.is_pub = true
-						typ.kind = parent.kind
+						sym.is_pub = true
+						sym.kind = parent.kind
 
 						parent_sym := t.sym(parent_info.parent_type)
 						for method in parent_sym.methods {
@@ -2032,7 +2034,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 									param.typ = pt
 								}
 							}
-							typ.register_method(method)
+							sym.register_method(method)
 						}
 						mut all_methods := parent.methods
 						for imethod in imethods {
@@ -2042,7 +2044,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 								}
 							}
 						}
-						typ.info = Interface{
+						sym.info = Interface{
 							...parent_info
 							is_generic: false
 							concrete_types: info.concrete_types.clone()
@@ -2050,9 +2052,9 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 							methods: imethods
 							parent_type: new_type(info.parent_idx).set_flag(.generic)
 						}
-						typ.is_pub = true
-						typ.kind = parent.kind
-						typ.methods = all_methods
+						sym.is_pub = true
+						sym.kind = parent.kind
+						sym.methods = all_methods
 					} else {
 						util.verror('generic error', 'the number of generic types of interface `$parent.name` is inconsistent with the concrete types')
 					}
@@ -2076,8 +2078,8 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 						}
 						for i in 0 .. variants.len {
 							if variants[i].has_flag(.generic) {
-								sym := t.sym(variants[i])
-								if sym.kind == .struct_ && variants[i].idx() != info.parent_idx {
+								t_sym := t.sym(variants[i])
+								if t_sym.kind == .struct_ && variants[i].idx() != info.parent_idx {
 									variants[i] = t.unwrap_generic_type(variants[i], generic_names,
 										info.concrete_types)
 								} else {
@@ -2089,7 +2091,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 								}
 							}
 						}
-						typ.info = SumType{
+						sym.info = SumType{
 							...parent_info
 							is_generic: false
 							concrete_types: info.concrete_types.clone()
@@ -2097,8 +2099,8 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 							variants: variants
 							parent_type: new_type(info.parent_idx).set_flag(.generic)
 						}
-						typ.is_pub = true
-						typ.kind = parent.kind
+						sym.is_pub = true
+						sym.kind = parent.kind
 					} else {
 						util.verror('generic error', 'the number of generic types of sumtype `$parent.name` is inconsistent with the concrete types')
 					}

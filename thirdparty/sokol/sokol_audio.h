@@ -1611,7 +1611,12 @@ _SOKOL_PRIVATE bool _saudio_backend_init(void) {
     fmtex.Format.nAvgBytesPerSec = fmtex.Format.nSamplesPerSec * fmtex.Format.nBlockAlign;
     fmtex.Format.cbSize = 22;   /* WORD + DWORD + GUID */
     fmtex.Samples.wValidBitsPerSample = 32;
-    fmtex.dwChannelMask = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT;
+    if (_saudio.num_channels == 1) {
+        fmtex.dwChannelMask = SPEAKER_FRONT_CENTER;
+    }
+    else {
+        fmtex.dwChannelMask = SPEAKER_FRONT_LEFT|SPEAKER_FRONT_RIGHT;
+    }
     fmtex.SubFormat = _saudio_KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
     dur = (REFERENCE_TIME)
         (((double)_saudio.buffer_frames) / (((double)_saudio.sample_rate) * (1.0/10000000.0)));

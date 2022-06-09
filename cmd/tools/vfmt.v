@@ -183,6 +183,7 @@ fn (foptions &FormatOptions) format_pipe() {
 	// checker.new_checker(table, prefs).check(file_ast)
 	formatted_content := fmt.fmt(file_ast, table, prefs, foptions.is_debug)
 	print(formatted_content)
+	flush_stdout()
 	foptions.vlog('fmt.fmt worked and $formatted_content.len bytes were written to stdout.')
 }
 
@@ -279,6 +280,7 @@ fn (mut foptions FormatOptions) post_process_file(file string, formatted_file_pa
 		return
 	}
 	print(formatted_fc)
+	flush_stdout()
 }
 
 fn (f FormatOptions) str() string {

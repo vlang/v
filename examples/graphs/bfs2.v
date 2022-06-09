@@ -1,4 +1,4 @@
-// Author: ccs
+// Author: CCS
 // I follow literally code in C, done many years ago
 fn main() {
 	// Adjacency matrix as a map	
@@ -20,10 +20,9 @@ fn breadth_first_search_path(graph map[string][]string, start string, target str
 	mut path := []string{} // ONE PATH with SUCCESS = array
 	mut queue := []string{} // a queue ... many paths
 	// all_nodes := graph.keys() // get a key of this map
-	n_nodes := graph.len // numbers of nodes of this graph
 	// a map to store all the nodes visited to avoid cycles
 	// start all them with False, not visited yet
-	mut visited := a_map_nodes_bool(n_nodes) // a map fully
+	mut visited := visited_init(graph) // a map fully
 	// false ==> not visited yet: {'A': false, 'B': false, 'C': false, 'D': false, 'E': false}
 	queue << start // first arrival
 	for queue.len != 0 {
@@ -51,24 +50,22 @@ fn breadth_first_search_path(graph map[string][]string, start string, target str
 	return path
 }
 
-// Creating a map for VISITED nodes ...
-// starting by false ===> means this node was not visited yet
-fn a_map_nodes_bool(size int) map[string]bool {
-	mut my_map := map[string]bool{} // look this map ...
-	base := u8(65)
-	mut key := base.ascii_str()
-	for i in 0 .. size {
-		key = u8(base + i).ascii_str()
-		my_map[key] = false
-	}
-	return my_map
-}
-
 // classical removing of a node from the start of a queue
 fn departure(mut queue []string) string {
 	mut x := queue[0]
 	queue.delete(0)
 	return x
+}
+
+// Creating aa map to initialize with of visited nodes .... all with false in the init
+// so these nodes are NOT VISITED YET
+fn visited_init(a_graph map[string][]string) map[string]bool {
+	mut array_of_keys := a_graph.keys() // get all keys of this map
+	mut temp := map[string]bool{} // attention in these initializations with maps
+	for i in array_of_keys {
+		temp[i] = false
+	}
+	return temp
 }
 
 // Based in the current node that is final, search for its parent, already visited, up to the root or start node
@@ -90,3 +87,5 @@ fn build_path_reverse(graph map[string][]string, start string, final string, vis
 	}
 	return path
 }
+
+//======================================================
