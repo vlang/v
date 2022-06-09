@@ -14,7 +14,6 @@ jobs:
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     env:
-      VFLAGS: -gc none
       VAB_FLAGS: --api 30 --build-tools 29.0.0 -v 3
     steps:
     - uses: actions/setup-java@v2
