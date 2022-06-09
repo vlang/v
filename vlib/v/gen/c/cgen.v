@@ -4667,7 +4667,8 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		if field.has_expr || cinit {
 			if g.pref.translated {
 				g.definitions.write_string(' = ${g.expr_string(field.expr)}')
-			} else if (field.expr.is_literal() && should_init) || cinit {
+			} else if (field.expr.is_literal() && should_init) || cinit
+				|| (field.expr is ast.ArrayInit && (field.expr as ast.ArrayInit).is_fixed) {
 				// Simple literals can be initialized right away in global scope in C.
 				// e.g. `int myglobal = 10;`
 				g.definitions.write_string(' = ${g.expr_string(field.expr)}')
