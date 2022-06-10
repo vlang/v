@@ -536,7 +536,7 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 	start := g.pos()
 	start_label := g.labels.new_label()
 	g.labels.addrs[start_label] = start
-	g.println("; label $start_label")
+	g.println('; label $start_label')
 	mut jump_addr := i64(0)
 	if node.has_cond {
 		cond := node.cond
@@ -574,7 +574,7 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 		id: end_label
 		pos: int(jump_addr)
 	}
-	g.println("; jump to label $end_label")
+	g.println('; jump to label $end_label')
 	g.labels.branches << BranchLabel{
 		start: start_label
 		end: end_label
@@ -586,7 +586,7 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 	g.labels.branches.pop()
 	g.jmp(int(0xffffffff - (g.pos() + 5 - start) + 1))
 	g.labels.addrs[end_label] = g.pos()
-	g.println("; jump to label $end_label")
+	g.println('; jump to label $end_label')
 
 	// loop back
 }
@@ -604,7 +604,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		start := g.pos() // label-begin:
 		start_label := g.labels.new_label()
 		g.labels.addrs[start_label] = start
-		g.println("; label $start_label")
+		g.println('; label $start_label')
 		g.mov_var_to_reg(.rbx, i) // rbx = iterator value
 		g.expr(node.high) // final value
 		g.cmp_reg(.rbx, .rax) // rbx = iterator, rax = max value
@@ -614,7 +614,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 			id: end_label
 			pos: jump_addr
 		}
-		g.println("; jump to label $end_label")
+		g.println('; jump to label $end_label')
 		g.labels.branches << BranchLabel{
 			start: start_label
 			end: end_label
@@ -624,7 +624,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		g.labels.branches.pop()
 		g.jmp(int(0xffffffff - (g.pos() + 5 - start) + 1))
 		g.labels.addrs[end_label] = g.pos()
-		g.println("; label $end_label")
+		g.println('; label $end_label')
 		/*
 		} else if node.kind == .array {
 	} else if node.kind == .array_fixed {
@@ -721,7 +721,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				id: label
 				pos: pos
 			}
-			g.println("; jump to label $label")
+			g.println('; jump to label $label')
 		}
 		ast.AsmStmt {
 			g.gen_asm_stmt(node)

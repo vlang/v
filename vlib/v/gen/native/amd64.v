@@ -1589,11 +1589,11 @@ fn (mut g Gen) gen_assert(assert_node ast.AssertStmt) {
 		id: label
 		pos: cjmp_addr
 	}
-	g.println("; jump to label $label")
+	g.println('; jump to label $label')
 	g.expr(assert_node.expr)
 	g.trap()
 	g.labels.addrs[label] = g.pos()
-	g.println("; label $label")
+	g.println('; label $label')
 }
 
 fn (mut g Gen) cjmp_notop(op token.Kind) int {
@@ -1692,32 +1692,50 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	if node.is_comptime {
 		g.n_error('ignored comptime')
 	}
-	if node.has_else {
-		g.n_error('else statements not yet supported')
-	}
 	if node.branches.len == 0 {
 		return
 	}
+	mut endif_label := 0
+	has_endif := node.branches.len > 1
+	if has_endif {
+		endif_label = g.labels.new_label()
+	}
 	for idx in 0 .. node.branches.len {
 		branch := node.branches[idx]
-		if branch.cond is ast.BoolLiteral {
-			if branch.cond.val {
-				g.stmts(branch.stmts)
+		if idx == node.branches.len - 1 && node.has_else {
+			g.stmts(branch.stmts)
+		} else {
+			if branch.cond is ast.BoolLiteral {
+				if branch.cond.val {
+					g.stmts(branch.stmts)
+				}
+				continue
 			}
-			continue
+			infix_expr := branch.cond as ast.InfixExpr
+			label := g.labels.new_label()
+			cjmp_addr := g.condition(infix_expr, false)
+			g.labels.patches << LabelPatch{
+				id: label
+				pos: cjmp_addr
+			}
+			g.println('; jump to label $label')
+			g.stmts(branch.stmts)
+			if has_endif {
+				jump_addr := g.jmp(0)
+				g.labels.patches << LabelPatch{
+					id: endif_label
+					pos: jump_addr
+				}
+				g.println('; jump to label $endif_label')
+			}
+			// println('after if g.pos=$g.pos() jneaddr=$cjmp_addr')
+			g.labels.addrs[label] = g.pos()
+			g.println('; label $label')
 		}
-		infix_expr := branch.cond as ast.InfixExpr
-		label := g.labels.new_label()
-		cjmp_addr := g.condition(infix_expr, false)
-		g.labels.patches << LabelPatch{
-			id: label
-			pos: cjmp_addr
-		}
-		g.println("; jump to label $label")
-		g.stmts(branch.stmts)
-		// println('after if g.pos=$g.pos() jneaddr=$cjmp_addr')
-		g.labels.addrs[label] = g.pos()
-		g.println("; label $label")
+	}
+	if has_endif {
+		g.labels.addrs[endif_label] = g.pos()
+		g.println('; label $endif_label')
 	}
 }
 
@@ -1749,7 +1767,7 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	start := g.pos()
 	start_label := g.labels.new_label()
 	g.labels.addrs[start_label] = start
-	g.println("; label $start_label")
+	g.println('; label $start_label')
 	match infix_expr.left {
 		ast.Ident {
 			match infix_expr.right {
@@ -1787,7 +1805,7 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 		id: end_label
 		pos: jump_addr
 	}
-	g.println("; jump to label $end_label")
+	g.println('; jump to label $end_label')
 	g.labels.branches << BranchLabel{
 		start: start_label
 		end: end_label
@@ -1799,7 +1817,7 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	g.jmp(int(0xffffffff - (g.pos() + 5 - start) + 1))
 	// Update the jump addr to current pos
 	g.labels.addrs[end_label] = g.pos()
-	g.println("; label $end_label")
+	g.println('; label $end_label')
 	g.println('jmp after for')
 }
 
@@ -1832,7 +1850,7 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 	}
 	// g.leave()
 	g.labels.addrs[0] = g.pos()
-	g.println("; label 0: return")
+	g.println('; label 0: return')
 	g.add8(.rsp, g.stackframe_size)
 	g.pop(.rbp)
 	g.ret()
