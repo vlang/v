@@ -136,6 +136,10 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		]
 	}
 
+	if pref.gc_mode != .no_gc {
+		all_fn_root_names << 'memdup_uncollectable'
+	}
+
 	is_noscan_whitelisted := pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt]
 
 	for k, mut mfn in all_fns {
