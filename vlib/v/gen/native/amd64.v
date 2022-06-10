@@ -1589,9 +1589,11 @@ fn (mut g Gen) gen_assert(assert_node ast.AssertStmt) {
 		id: label
 		pos: cjmp_addr
 	}
+	g.println("; jump to label $label")
 	g.expr(assert_node.expr)
 	g.trap()
 	g.labels.addrs[label] = g.pos()
+	g.println("; label $label")
 }
 
 fn (mut g Gen) cjmp_notop(op token.Kind) int {
@@ -1711,9 +1713,11 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			id: label
 			pos: cjmp_addr
 		}
+		g.println("; jump to label $label")
 		g.stmts(branch.stmts)
 		// println('after if g.pos=$g.pos() jneaddr=$cjmp_addr')
 		g.labels.addrs[label] = g.pos()
+		g.println("; label $label")
 	}
 }
 
@@ -1745,6 +1749,7 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	start := g.pos()
 	start_label := g.labels.new_label()
 	g.labels.addrs[start_label] = start
+	g.println("; label $start_label")
 	match infix_expr.left {
 		ast.Ident {
 			match infix_expr.right {
@@ -1782,16 +1787,19 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 		id: end_label
 		pos: jump_addr
 	}
+	g.println("; jump to label $end_label")
 	g.labels.branches << BranchLabel{
 		start: start_label
 		end: end_label
 	}
 	g.stmts(node.stmts)
+	g.labels.branches.pop()
 	// Go back to `cmp ...`
 	// Diff between `jmp 00 00 00 00 X` and `cmp`
 	g.jmp(int(0xffffffff - (g.pos() + 5 - start) + 1))
 	// Update the jump addr to current pos
 	g.labels.addrs[end_label] = g.pos()
+	g.println("; label $end_label")
 	g.println('jmp after for')
 }
 
@@ -1824,6 +1832,7 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 	}
 	// g.leave()
 	g.labels.addrs[0] = g.pos()
+	g.println("; label 0: return")
 	g.add8(.rsp, g.stackframe_size)
 	g.pop(.rbp)
 	g.ret()
