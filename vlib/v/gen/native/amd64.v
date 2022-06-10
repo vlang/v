@@ -1743,6 +1743,8 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	infix_expr := node.cond as ast.InfixExpr
 	mut jump_addr := 0 // location of `jne *00 00 00 00*`
 	start := g.pos()
+	start_label := g.labels.new_label()
+	g.labels.addrs[start_label] = start
 	match infix_expr.left {
 		ast.Ident {
 			match infix_expr.right {
@@ -1775,12 +1777,21 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 			g.n_error('unhandled infix.left')
 		}
 	}
+	end_label := g.labels.new_label()
+	g.labels.patches << LabelPatch{
+		id: end_label
+		pos: jump_addr
+	}
+	g.labels.branches << BranchLabel{
+		start: start_label
+		end: end_label
+	}
 	g.stmts(node.stmts)
 	// Go back to `cmp ...`
 	// Diff between `jmp 00 00 00 00 X` and `cmp`
 	g.jmp(int(0xffffffff - (g.pos() + 5 - start) + 1))
 	// Update the jump addr to current pos
-	g.write32_at(jump_addr, int(g.pos() - jump_addr - 4)) // 4 is for "00 00 00 00"
+	g.labels.addrs[end_label] = g.pos()
 	g.println('jmp after for')
 }
 

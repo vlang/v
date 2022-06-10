@@ -75,11 +75,17 @@ mut:
 	return_ids []int = [0] // array is for defer
 	addrs      []i64 = [i64(0)]
 	patches    []LabelPatch
+	branches   []BranchLabel
 }
 
 struct LabelPatch {
 	id  int
 	pos int
+}
+
+struct BranchLabel {
+	start int
+	end   int
 }
 
 fn (mut l LabelTable) new_label() int {
@@ -528,6 +534,8 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 		g.stmts([node.init])
 	}
 	start := g.pos()
+	start_label := g.labels.new_label()
+	g.labels.addrs[start_label] = start
 	mut jump_addr := i64(0)
 	if node.has_cond {
 		cond := node.cond
@@ -560,12 +568,22 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 		// dump(node.cond)
 		g.expr(node.cond)
 	}
+	end_label := g.labels.new_label()
+	g.labels.patches << LabelPatch{
+		id: end_label
+		pos: int(jump_addr)
+	}
+	g.labels.branches << BranchLabel{
+		start: start_label
+		end: end_label
+	}
 	g.stmts(node.stmts)
 	if node.has_inc {
 		g.stmts([node.inc])
 	}
+	g.labels.branches.pop()
 	g.jmp(int(0xffffffff - (g.pos() + 5 - start) + 1))
-	g.write32_at(jump_addr, int(g.pos() - jump_addr - 4))
+	g.labels.addrs[end_label] = g.pos()
 
 	// loop back
 }
@@ -581,14 +599,26 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		g.expr(node.cond)
 		g.mov_reg_to_var(i, .rax) // i = node.cond // initial value
 		start := g.pos() // label-begin:
+		start_label := g.labels.new_label()
+		g.labels.addrs[start_label] = start
 		g.mov_var_to_reg(.rbx, i) // rbx = iterator value
 		g.expr(node.high) // final value
 		g.cmp_reg(.rbx, .rax) // rbx = iterator, rax = max value
 		jump_addr := g.cjmp(.jge) // leave loop if i is beyond end
+		end_label := g.labels.new_label()
+		g.labels.patches << LabelPatch{
+			id: end_label
+			pos: jump_addr
+		}
+		g.labels.branches << BranchLabel{
+			start: start_label
+			end: end_label
+		}
 		g.stmts(node.stmts)
 		g.inc_var(node.val_var)
+		g.labels.branches.pop()
 		g.jmp(int(0xffffffff - (g.pos() + 5 - start) + 1))
-		g.write32_at(jump_addr, int(g.pos() - jump_addr - 4))
+		g.labels.addrs[end_label] = g.pos()
 		/*
 		} else if node.kind == .array {
 	} else if node.kind == .array_fixed {
