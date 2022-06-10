@@ -35,6 +35,7 @@ mut:
 	inside_vlib_file          bool // true for all vlib/ files
 	inside_test_file          bool // when inside _test.v or _test.vv file
 	inside_if                 bool
+	inside_comptime_if        bool
 	inside_if_expr            bool
 	inside_if_cond            bool
 	inside_ct_if_expr         bool
@@ -2419,7 +2420,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		&& (!p.inside_for || p.inside_select) && !known_var {
 		return p.struct_init(p.mod + '.' + p.tok.lit, false) // short_syntax: false
 	} else if p.peek_tok.kind == .lcbr
-		&& ((p.inside_if && lit0_is_capital && !known_var && language == .v)
+		&& ((p.inside_if && lit0_is_capital && p.tok.lit.len > 1 && !known_var && language == .v)
 		|| (p.inside_match_case && p.tok.kind == .name && p.peek_tok.pos - p.tok.pos == p.tok.len)) {
 		// `if a == Foo{} {...}` or `match foo { Foo{} {...} }`
 		return p.struct_init(p.mod + '.' + p.tok.lit, false)
