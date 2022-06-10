@@ -30,6 +30,7 @@ jobs:
           # libxcursor-dev libxi-dev : V gfx deps
           # mesa-common-dev          : For headless rendering
           # freeglut3-dev            : Fixes graphic apps compilation with tcc
+          sudo apt-get update
           sudo apt-get install imagemagick openimageio-tools mesa-common-dev libxcursor-dev libxi-dev freeglut3-dev
           wget https://raw.githubusercontent.com/tremby/imgur.sh/c98345d/imgur.sh
           chmod +x ./imgur.sh
