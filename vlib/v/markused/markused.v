@@ -29,6 +29,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		'new_array_from_c_array',
 		'v_fixed_index',
 		'memdup',
+		'memdup_uncollectable',
 		'vstrlen',
 		'__as_cast',
 		'tos',
@@ -134,10 +135,6 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 			'vsnprintf',
 			'vsprintf',
 		]
-	}
-
-	if pref.gc_mode != .no_gc {
-		all_fn_root_names << 'memdup_uncollectable'
 	}
 
 	is_noscan_whitelisted := pref.gc_mode in [.boehm_full_opt, .boehm_incr_opt]
