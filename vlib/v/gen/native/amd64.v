@@ -1158,6 +1158,9 @@ fn (mut g Gen) patch_labels() {
 			g.n_error('label addr = 0')
 			return
 		}
+		// Update jmp or cjmp address.
+		// The value is the relative address, difference between current position and the location
+		// after `jxx 00 00 00 00`
 		g.write32_at(label.pos, int(addr - label.pos - 4))
 	}
 }
@@ -1580,10 +1583,15 @@ fn (mut g Gen) gen_assert(assert_node ast.AssertStmt) {
 	} else {
 		g.n_error('Unsupported expression in assert')
 	}
+	label := g.labels.new_label()
 	cjmp_addr = g.condition(ine, true)
+	g.labels.patches << LabelPatch{
+		id: label
+		pos: cjmp_addr
+	}
 	g.expr(assert_node.expr)
 	g.trap()
-	g.write32_at(cjmp_addr, int(g.pos() - cjmp_addr - 4)) // 4 is for "00 00 00 00"
+	g.labels.addrs[label] = g.pos()
 }
 
 fn (mut g Gen) cjmp_notop(op token.Kind) int {
@@ -1697,13 +1705,15 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			continue
 		}
 		infix_expr := branch.cond as ast.InfixExpr
+		label := g.labels.new_label()
 		cjmp_addr := g.condition(infix_expr, false)
+		g.labels.patches << LabelPatch{
+			id: label
+			pos: cjmp_addr
+		}
 		g.stmts(branch.stmts)
-		// Now that we know where we need to jump if the condition is false, update the `jne` call.
-		// The value is the relative address, difference between current position and the location
-		// after `jne 00 00 00 00`
 		// println('after if g.pos=$g.pos() jneaddr=$cjmp_addr')
-		g.write32_at(cjmp_addr, int(g.pos() - cjmp_addr - 4)) // 4 is for "00 00 00 00"
+		g.labels.addrs[label] = g.pos()
 	}
 }
 
