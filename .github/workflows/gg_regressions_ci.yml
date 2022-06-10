@@ -21,10 +21,13 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Build local v
-        run: make -j4
+        run: make
+
+      - uses: openrndr/setup-opengl@v1.1
 
       - name: Setup dependencies
         run: |
+          # imagemagick              : convert, mogrify
           # xvfb                     : xvfb (installed by openrndr/setup-opengl@v1.1)
           # openimageio-tools        : idiff
           # libxcursor-dev libxi-dev : V gfx deps
@@ -33,13 +36,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install imagemagick openimageio-tools mesa-common-dev libxcursor-dev libxi-dev freeglut3-dev
           wget https://raw.githubusercontent.com/tremby/imgur.sh/c98345d/imgur.sh
+          git clone https://github.com/Larpon/gg-regression-images gg-regression-images
           chmod +x ./imgur.sh
-
-      - uses: openrndr/setup-opengl@v1.1
-      - uses: actions/checkout@v2
-        with:
-          repository: Larpon/gg-regression-images
-          path: gg-regression-images
 
       - name: Sample and compare
         id: compare
@@ -52,4 +50,5 @@ jobs:
         if: steps.compare.outcome != 'success'
         run: |
           ./imgur.sh /tmp/fail.png
+          ./imgur.sh /tmp/diff.png
           exit 1
