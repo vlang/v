@@ -153,7 +153,8 @@ const (
 		'-enable-globals',
 		'-autofree',
 		'-compress',
-		'-freestanding',
+		'-freestanding'
+		'-no-parallel',
 		'-no-preludes',
 		'-prof',
 		'-profile',
