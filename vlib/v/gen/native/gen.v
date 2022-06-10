@@ -47,6 +47,7 @@ mut:
 	nlines               int
 	callpatches          []CallPatch
 	strs                 []String
+	labels               &LabelTable
 }
 
 enum RelocType {
@@ -66,6 +67,25 @@ struct String {
 struct CallPatch {
 	name string
 	pos  int
+}
+
+struct LabelTable {
+mut:
+	label_id   int
+	return_ids []int = [0] // array is for defer
+	addrs      []i64 = [i64(0)]
+	patches    []LabelPatch
+}
+
+struct LabelPatch {
+	id  int
+	pos int
+}
+
+fn (mut l LabelTable) new_label() int {
+	l.label_id++
+	l.addrs << 0
+	return l.label_id
 }
 
 enum Size {
@@ -108,6 +128,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 			eprintln('No available backend for this configuration. Use `-a arm64` or `-a amd64`.')
 			exit(1)
 		}
+		labels: 0
 	}
 	g.code_gen.g = g
 	g.generate_header()
@@ -458,11 +479,13 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	}
 	g.stack_var_pos = 0
 	g.register_function_address(node.name)
+	g.labels = &LabelTable{}
 	if g.pref.arch == .arm64 {
 		g.fn_decl_arm64(node)
 	} else {
 		g.fn_decl_amd64(node)
 	}
+	g.patch_labels()
 }
 
 pub fn (mut g Gen) register_function_address(name string) {
@@ -654,10 +677,14 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					g.n_error('unknown return type $e0.type_name()')
 				}
 			}
-			// intel specific
-			g.add8(.rsp, g.stackframe_size)
-			g.pop(.rbp)
-			g.ret()
+
+			// jump to return label
+			label := g.labels.return_ids.last()
+			pos := g.jmp(0)
+			g.labels.patches << LabelPatch{
+				id: label
+				pos: pos
+			}
 		}
 		ast.AsmStmt {
 			g.gen_asm_stmt(node)

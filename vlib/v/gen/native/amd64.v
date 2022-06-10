@@ -206,10 +206,12 @@ fn (mut g Gen) cjmp(op JumpOp) int {
 	return int(pos)
 }
 
-fn (mut g Gen) jmp(addr int) {
+fn (mut g Gen) jmp(addr int) int {
 	g.write8(0xe9)
+	pos := g.pos()
 	g.write32(addr) // 0xffffff
 	g.println('jmp')
+	return int(pos)
 }
 
 fn abs(a i64) i64 {
@@ -1149,6 +1151,17 @@ fn (mut g Gen) patch_calls() {
 	}
 }
 
+fn (mut g Gen) patch_labels() {
+	for label in g.labels.patches {
+		addr := g.labels.addrs[label.id]
+		if addr == 0 {
+			g.n_error('label addr = 0')
+			return
+		}
+		g.write32_at(label.pos, int(addr - label.pos - 4))
+	}
+}
+
 fn (mut g Gen) delay_fn_call(name string) {
 	pos := g.buf.len
 	g.callpatches << CallPatch{name, pos}
@@ -1789,6 +1802,7 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 		return
 	}
 	// g.leave()
+	g.labels.addrs[0] = g.pos()
 	g.add8(.rsp, g.stackframe_size)
 	g.pop(.rbp)
 	g.ret()
