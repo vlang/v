@@ -84,6 +84,7 @@ struct LabelPatch {
 }
 
 struct BranchLabel {
+	name  string
 	start int
 	end   int
 }
@@ -535,8 +536,6 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 	}
 	start := g.pos()
 	start_label := g.labels.new_label()
-	g.labels.addrs[start_label] = start
-	g.println('; label $start_label')
 	mut jump_addr := i64(0)
 	if node.has_cond {
 		cond := node.cond
@@ -576,10 +575,13 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 	}
 	g.println('; jump to label $end_label')
 	g.labels.branches << BranchLabel{
+		name: node.label
 		start: start_label
 		end: end_label
 	}
 	g.stmts(node.stmts)
+	g.labels.addrs[start_label] = g.pos()
+	g.println('; label $start_label')
 	if node.has_inc {
 		g.stmts([node.inc])
 	}
@@ -603,8 +605,6 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		g.mov_reg_to_var(i, .rax) // i = node.cond // initial value
 		start := g.pos() // label-begin:
 		start_label := g.labels.new_label()
-		g.labels.addrs[start_label] = start
-		g.println('; label $start_label')
 		g.mov_var_to_reg(.rbx, i) // rbx = iterator value
 		g.expr(node.high) // final value
 		g.cmp_reg(.rbx, .rax) // rbx = iterator, rax = max value
@@ -616,10 +616,13 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		}
 		g.println('; jump to label $end_label')
 		g.labels.branches << BranchLabel{
+			name: node.label
 			start: start_label
 			end: end_label
 		}
 		g.stmts(node.stmts)
+		g.labels.addrs[start_label] = g.pos()
+		g.println('; label $start_label')
 		g.inc_var(node.val_var)
 		g.labels.branches.pop()
 		g.jmp(int(0xffffffff - (g.pos() + 5 - start) + 1))
@@ -651,6 +654,26 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.Block {
 			g.stmts(node.stmts)
+		}
+		ast.BranchStmt {
+			label_name := node.label
+			for i := g.labels.branches.len - 1; i >= 0; i-- {
+				branch := g.labels.branches[i]
+				if label_name == '' || label_name == branch.name {
+					label := if node.kind == .key_break {
+						branch.end
+					} else { // continue
+						branch.start
+					}
+					jump_addr := g.jmp(0)
+					g.labels.patches << LabelPatch{
+						id: label
+						pos: jump_addr
+					}
+					g.println('; jump to $label: $node.kind')
+					break
+				}
+			}
 		}
 		ast.ConstDecl {}
 		ast.ExprStmt {

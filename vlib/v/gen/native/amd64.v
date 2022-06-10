@@ -1757,9 +1757,21 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 		}
 		// infinite loop
 		start := g.pos()
+		start_label := g.labels.new_label()
+		g.labels.addrs[start_label] = start
+		g.println('; label $start_label')
+		end_label := g.labels.new_label()
+		g.labels.branches << BranchLabel{
+			name: node.label
+			start: start_label
+			end: end_label
+		}
 		g.stmts(node.stmts)
+		g.labels.branches.pop()
 		g.jmp(int(0xffffffff - (g.pos() + 5 - start) + 1))
 		g.println('jmp after infinite for')
+		g.labels.addrs[end_label] = g.pos()
+		g.println('; label $end_label')
 		return
 	}
 	infix_expr := node.cond as ast.InfixExpr
@@ -1807,6 +1819,7 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	}
 	g.println('; jump to label $end_label')
 	g.labels.branches << BranchLabel{
+		name: node.label
 		start: start_label
 		end: end_label
 	}
