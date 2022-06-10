@@ -3393,7 +3393,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 
 			g.write('__closure_create($name, ')
 			if !receiver.typ.is_ptr() {
-				g.write('memdup(')
+				g.write('memdup_uncollectable(')
 			}
 			if !node.expr_type.is_ptr() {
 				g.write('&')

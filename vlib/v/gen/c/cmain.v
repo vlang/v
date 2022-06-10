@@ -94,6 +94,7 @@ fn (mut g Gen) gen_c_main_header() {
 		if g.pref.gc_mode == .boehm_leak {
 			g.writeln('\tGC_set_find_leak(1);')
 		}
+		g.writeln('\tGC_set_pages_executable(0);')
 		g.writeln('\tGC_INIT();')
 		if g.pref.gc_mode in [.boehm_incr, .boehm_incr_opt] {
 			g.writeln('\tGC_enable_incremental();')
@@ -211,6 +212,7 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 		if g.pref.gc_mode == .boehm_leak {
 			g.writeln('\tGC_set_find_leak(1);')
 		}
+		g.writeln('\tGC_set_pages_executable(0);')
 		g.writeln('\tGC_INIT();')
 		if g.pref.gc_mode in [.boehm_incr, .boehm_incr_opt] {
 			g.writeln('\tGC_enable_incremental();')
