@@ -329,6 +329,7 @@ fn (mut g Gen) gen_typeof_expr(it ast.TypeOf, newline bool) {
 
 fn (mut g Gen) gen_var_to_string(reg Register, vo int) {
 	buffer := g.allocate_array('itoa-buffer', 1, 32) // 32 characters should be enough
+	g.mov_var_to_reg(reg, vo)
 	g.convert_int_to_string(reg, buffer)
 	g.lea_var_to_reg(reg, buffer)
 }
@@ -353,6 +354,7 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, name string) {
 
 			if vo != -1 {
 				g.gen_var_to_string(.rax, vo)
+				g.gen_print_reg(.rax, 3, fd)
 				if newline {
 					g.gen_print('\n', fd)
 				}
