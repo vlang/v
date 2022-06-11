@@ -47,6 +47,7 @@ mut:
 	nlines               int
 	callpatches          []CallPatch
 	strs                 []String
+	labels               &LabelTable
 }
 
 enum RelocType {
@@ -66,6 +67,32 @@ struct String {
 struct CallPatch {
 	name string
 	pos  int
+}
+
+struct LabelTable {
+mut:
+	label_id   int
+	return_ids []int = [0] // array is for defer
+	addrs      []i64 = [i64(0)] // register address of label here
+	patches    []LabelPatch // push placeholders
+	branches   []BranchLabel
+}
+
+struct LabelPatch {
+	id  int
+	pos int
+}
+
+struct BranchLabel {
+	name  string
+	start int
+	end   int
+}
+
+fn (mut l LabelTable) new_label() int {
+	l.label_id++
+	l.addrs << 0
+	return l.label_id
 }
 
 enum Size {
@@ -108,6 +135,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 			eprintln('No available backend for this configuration. Use `-a arm64` or `-a amd64`.')
 			exit(1)
 		}
+		labels: 0
 	}
 	g.code_gen.g = g
 	g.generate_header()
@@ -458,11 +486,13 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	}
 	g.stack_var_pos = 0
 	g.register_function_address(node.name)
+	g.labels = &LabelTable{}
 	if g.pref.arch == .arm64 {
 		g.fn_decl_arm64(node)
 	} else {
 		g.fn_decl_amd64(node)
 	}
+	g.patch_labels()
 }
 
 pub fn (mut g Gen) register_function_address(name string) {
@@ -505,6 +535,7 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 		g.stmts([node.init])
 	}
 	start := g.pos()
+	start_label := g.labels.new_label()
 	mut jump_addr := i64(0)
 	if node.has_cond {
 		cond := node.cond
@@ -537,12 +568,27 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 		// dump(node.cond)
 		g.expr(node.cond)
 	}
+	end_label := g.labels.new_label()
+	g.labels.patches << LabelPatch{
+		id: end_label
+		pos: int(jump_addr)
+	}
+	g.println('; jump to label $end_label')
+	g.labels.branches << BranchLabel{
+		name: node.label
+		start: start_label
+		end: end_label
+	}
 	g.stmts(node.stmts)
+	g.labels.addrs[start_label] = g.pos()
+	g.println('; label $start_label')
 	if node.has_inc {
 		g.stmts([node.inc])
 	}
+	g.labels.branches.pop()
 	g.jmp(int(0xffffffff - (g.pos() + 5 - start) + 1))
-	g.write32_at(jump_addr, int(g.pos() - jump_addr - 4))
+	g.labels.addrs[end_label] = g.pos()
+	g.println('; jump to label $end_label')
 
 	// loop back
 }
@@ -558,14 +604,30 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		g.expr(node.cond)
 		g.mov_reg_to_var(i, .rax) // i = node.cond // initial value
 		start := g.pos() // label-begin:
+		start_label := g.labels.new_label()
 		g.mov_var_to_reg(.rbx, i) // rbx = iterator value
 		g.expr(node.high) // final value
 		g.cmp_reg(.rbx, .rax) // rbx = iterator, rax = max value
 		jump_addr := g.cjmp(.jge) // leave loop if i is beyond end
+		end_label := g.labels.new_label()
+		g.labels.patches << LabelPatch{
+			id: end_label
+			pos: jump_addr
+		}
+		g.println('; jump to label $end_label')
+		g.labels.branches << BranchLabel{
+			name: node.label
+			start: start_label
+			end: end_label
+		}
 		g.stmts(node.stmts)
+		g.labels.addrs[start_label] = g.pos()
+		g.println('; label $start_label')
 		g.inc_var(node.val_var)
+		g.labels.branches.pop()
 		g.jmp(int(0xffffffff - (g.pos() + 5 - start) + 1))
-		g.write32_at(jump_addr, int(g.pos() - jump_addr - 4))
+		g.labels.addrs[end_label] = g.pos()
+		g.println('; label $end_label')
 		/*
 		} else if node.kind == .array {
 	} else if node.kind == .array_fixed {
@@ -592,6 +654,26 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.Block {
 			g.stmts(node.stmts)
+		}
+		ast.BranchStmt {
+			label_name := node.label
+			for i := g.labels.branches.len - 1; i >= 0; i-- {
+				branch := g.labels.branches[i]
+				if label_name == '' || label_name == branch.name {
+					label := if node.kind == .key_break {
+						branch.end
+					} else { // continue
+						branch.start
+					}
+					jump_addr := g.jmp(0)
+					g.labels.patches << LabelPatch{
+						id: label
+						pos: jump_addr
+					}
+					g.println('; jump to $label: $node.kind')
+					break
+				}
+			}
 		}
 		ast.ConstDecl {}
 		ast.ExprStmt {
@@ -654,10 +736,15 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					g.n_error('unknown return type $e0.type_name()')
 				}
 			}
-			// intel specific
-			g.add8(.rsp, g.stackframe_size)
-			g.pop(.rbp)
-			g.ret()
+
+			// jump to return label
+			label := g.labels.return_ids.last()
+			pos := g.jmp(0)
+			g.labels.patches << LabelPatch{
+				id: label
+				pos: pos
+			}
+			g.println('; jump to label $label')
 		}
 		ast.AsmStmt {
 			g.gen_asm_stmt(node)
