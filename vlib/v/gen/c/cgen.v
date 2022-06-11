@@ -251,7 +251,6 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		comptime_definitions: strings.new_builder(100)
 		definitions: strings.new_builder(100)
 		gowrappers: strings.new_builder(100)
-		stringliterals: strings.new_builder(100)
 		auto_str_funcs: strings.new_builder(100)
 		dump_funcs: strings.new_builder(100)
 		pcs_declarations: strings.new_builder(100)
@@ -4441,8 +4440,11 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 			}
 			ast.StringLiteral {
 				val := g.expr_string(field.expr)
-				g.definitions.writeln('string $const_name; // a string literal, inited later')
-				g.stringliterals.writeln('\t$const_name = $val;')
+				g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
+					mod: field.mod
+					def: 'string $const_name; // a string literal, inited later'
+					init: '\t$const_name = $val;'
+				}
 			}
 			ast.CallExpr {
 				if field.expr.return_type.has_flag(.optional) {
@@ -4822,9 +4824,6 @@ fn (mut g Gen) write_init_function() {
 	if g.nr_closures > 0 {
 		g.writeln('\t_closure_mtx_init();')
 	}
-	// write stringliteral init
-	g.writeln(g.stringliterals.str())
-	// write module init
 	for mod_name in g.table.modules {
 		g.writeln('\t{ // Initializations for module $mod_name :')
 		// write globals and consts init later
