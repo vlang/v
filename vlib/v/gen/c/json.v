@@ -152,7 +152,7 @@ $enc_fn_dec {
 		dec.writeln('\topt_ok2(&res, ($option_name*)&ret, sizeof(res));')
 		dec.writeln('\treturn ret;\n}')
 		enc.writeln('\treturn o;\n}')
-		g.definitions.writeln(dec.str())
+		g.gowrappers.writeln(dec.str())
 		g.gowrappers.writeln(enc.str())
 	}
 }
