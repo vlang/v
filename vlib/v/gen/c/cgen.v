@@ -217,8 +217,9 @@ mut:
 struct GlobalConstDef {
 	mod       string   // module name
 	def       string   // definition
-	init      string   // init later
-	dep_names []string // dependence variable names
+	init      string   // init later (in _vinit)
+	dep_names []string // the names of all the consts, that this const depends on
+	order     int      // -1 for simple defines, string literals, anonymous function names, extern declarations etc
 }
 
 pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
@@ -4444,6 +4445,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 					mod: field.mod
 					def: 'string $const_name; // a string literal, inited later'
 					init: '\t$const_name = $val;'
+					order: -1
 				}
 			}
 			ast.CallExpr {
@@ -4564,6 +4566,7 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, field_name string
 				mod: mod
 				def: '$styp $cname; // str inited later'
 				init: '\t$cname = _SLIT("$escaped_val");'
+				order: -1
 			}
 			if g.is_autofree {
 				g.cleanups[mod].writeln('\tstring_free(&$cname);')
@@ -4602,11 +4605,13 @@ fn (mut g Gen) const_decl_simple_define(mod string, name string, val string) {
 		g.global_const_defs[util.no_dots(name)] = GlobalConstDef{
 			mod: mod
 			def: 'const int $x = $val;'
+			order: -1
 		}
 	} else {
 		g.global_const_defs[util.no_dots(name)] = GlobalConstDef{
 			mod: mod
 			def: '#define $x $val'
+			order: -1
 		}
 	}
 }
@@ -4692,6 +4697,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			g.global_const_defs[util.no_dots(fn_type_name)] = GlobalConstDef{
 				mod: node.mod
 				def: '$fn_type_name = ${g.table.sym(field.typ).name}; // global2'
+				order: -1
 			}
 			continue
 		}
@@ -4705,6 +4711,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
 				mod: node.mod
 				def: def_builder.str()
+				order: -1
 			}
 			continue
 		}
@@ -5117,11 +5124,15 @@ fn (mut g Gen) sort_globals_consts() {
 	g.sorted_global_const_names.clear()
 	mut dep_graph := depgraph.new_dep_graph()
 	for var_name, var_info in g.global_const_defs {
-		dep_graph.add(var_name, var_info.dep_names)
+		dep_graph.add_with_value(var_name, var_info.dep_names, var_info.order)
 	}
 	dep_graph_sorted := dep_graph.resolve()
-	for node in dep_graph_sorted.nodes {
-		g.sorted_global_const_names << node.name
+	for order in [-1, 0] {
+		for node in dep_graph_sorted.nodes {
+			if node.value == order {
+				g.sorted_global_const_names << node.name
+			}
+		}
 	}
 }
 
