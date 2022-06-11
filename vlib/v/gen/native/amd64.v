@@ -211,6 +211,7 @@ fn (mut g Gen) jmp(addr int) int {
 	pos := g.pos()
 	g.write32(addr) // 0xffffff
 	g.println('jmp')
+	// return the position of jump address for placeholder
 	return int(pos)
 }
 

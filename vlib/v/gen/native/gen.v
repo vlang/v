@@ -73,8 +73,8 @@ struct LabelTable {
 mut:
 	label_id   int
 	return_ids []int = [0] // array is for defer
-	addrs      []i64 = [i64(0)]
-	patches    []LabelPatch
+	addrs      []i64 = [i64(0)] // register address of label here
+	patches    []LabelPatch // push placeholders
 	branches   []BranchLabel
 }
 
