@@ -215,6 +215,7 @@ mut:
 
 // global or const variable definition string
 struct GlobalConstDef {
+	mod       string   // module name
 	def       string   // definition
 	init      string   // init later
 	dep_names []string // dependence variable names
@@ -4429,6 +4430,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 					styp := g.typ(field.expr.typ)
 					val := g.expr_string(field.expr)
 					g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
+						mod: field.mod
 						def: '$styp $const_name = $val; // fixed array const'
 						dep_names: g.dependent_var_names(field_expr)
 					}
@@ -4439,6 +4441,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 			ast.StringLiteral {
 				val := g.expr_string(field.expr)
 				g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
+					mod: field.mod
 					def: 'string $const_name; // a string literal, inited later'
 					init: '\t$const_name = $val;'
 				}
@@ -4477,7 +4480,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				if field.is_simple_define_const() {
 					// "Simple" expressions are not going to need multiple statements,
 					// only the ones which are inited later, so it's safe to use expr_string
-					g.const_decl_simple_define(field.name, g.expr_string(field_expr))
+					g.const_decl_simple_define(field.mod, field.name, g.expr_string(field_expr))
 				} else {
 					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false)
 				}
@@ -4494,13 +4497,13 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, field_name string
 	}
 	match ct_value {
 		i8 {
-			g.const_decl_write_precomputed(styp, cname, field_name, ct_value.str())
+			g.const_decl_write_precomputed(mod, styp, cname, field_name, ct_value.str())
 		}
 		i16 {
-			g.const_decl_write_precomputed(styp, cname, field_name, ct_value.str())
+			g.const_decl_write_precomputed(mod, styp, cname, field_name, ct_value.str())
 		}
 		int {
-			g.const_decl_write_precomputed(styp, cname, field_name, ct_value.str())
+			g.const_decl_write_precomputed(mod, styp, cname, field_name, ct_value.str())
 		}
 		i64 {
 			if typ == ast.i64_type {
@@ -4512,32 +4515,32 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, field_name string
 				// with -cstrict. Add checker errors for overflows instead,
 				// so V can catch them earlier, instead of relying on the
 				// C compiler for that.
-				g.const_decl_simple_define(name, ct_value.str())
+				g.const_decl_simple_define(mod, name, ct_value.str())
 				return true
 			}
 			if typ == ast.u64_type {
-				g.const_decl_write_precomputed(styp, cname, field_name, ct_value.str() + 'U')
+				g.const_decl_write_precomputed(mod, styp, cname, field_name, ct_value.str() + 'U')
 			} else {
-				g.const_decl_write_precomputed(styp, cname, field_name, ct_value.str())
+				g.const_decl_write_precomputed(mod, styp, cname, field_name, ct_value.str())
 			}
 		}
 		u8 {
-			g.const_decl_write_precomputed(styp, cname, field_name, ct_value.str())
+			g.const_decl_write_precomputed(mod, styp, cname, field_name, ct_value.str())
 		}
 		u16 {
-			g.const_decl_write_precomputed(styp, cname, field_name, ct_value.str())
+			g.const_decl_write_precomputed(mod, styp, cname, field_name, ct_value.str())
 		}
 		u32 {
-			g.const_decl_write_precomputed(styp, cname, field_name, ct_value.str())
+			g.const_decl_write_precomputed(mod, styp, cname, field_name, ct_value.str())
 		}
 		u64 {
-			g.const_decl_write_precomputed(styp, cname, field_name, ct_value.str() + 'U')
+			g.const_decl_write_precomputed(mod, styp, cname, field_name, ct_value.str() + 'U')
 		}
 		f32 {
-			g.const_decl_write_precomputed(styp, cname, field_name, ct_value.str())
+			g.const_decl_write_precomputed(mod, styp, cname, field_name, ct_value.str())
 		}
 		f64 {
-			g.const_decl_write_precomputed(styp, cname, field_name, ct_value.str())
+			g.const_decl_write_precomputed(mod, styp, cname, field_name, ct_value.str())
 		}
 		rune {
 			rune_code := u32(ct_value)
@@ -4546,9 +4549,9 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, field_name string
 					return false
 				}
 				escval := util.smart_quote(u8(rune_code).ascii_str(), false)
-				g.const_decl_write_precomputed(styp, cname, field_name, "'$escval'")
+				g.const_decl_write_precomputed(mod, styp, cname, field_name, "'$escval'")
 			} else {
-				g.const_decl_write_precomputed(styp, cname, field_name, u32(ct_value).str())
+				g.const_decl_write_precomputed(mod, styp, cname, field_name, u32(ct_value).str())
 			}
 		}
 		string {
@@ -4558,6 +4561,7 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, field_name string
 			// `error C2099: initializer is not a constant` errors in MSVC,
 			// so fall back to the delayed initialisation scheme:
 			g.global_const_defs[util.no_dots(field_name)] = GlobalConstDef{
+				mod: mod
 				def: '$styp $cname; // str inited later'
 				init: '\t$cname = _SLIT("$escaped_val");'
 			}
@@ -4572,13 +4576,14 @@ fn (mut g Gen) const_decl_precomputed(mod string, name string, field_name string
 	return true
 }
 
-fn (mut g Gen) const_decl_write_precomputed(styp string, cname string, field_name string, ct_value string) {
+fn (mut g Gen) const_decl_write_precomputed(mod string, styp string, cname string, field_name string, ct_value string) {
 	g.global_const_defs[util.no_dots(field_name)] = GlobalConstDef{
+		mod: mod
 		def: '$styp $cname = $ct_value; // precomputed'
 	}
 }
 
-fn (mut g Gen) const_decl_simple_define(name string, val string) {
+fn (mut g Gen) const_decl_simple_define(mod string, name string, val string) {
 	// Simple expressions should use a #define
 	// so that we don't pollute the binary with unnecessary global vars
 	// Do not do this when building a module, otherwise the consts
@@ -4595,10 +4600,12 @@ fn (mut g Gen) const_decl_simple_define(name string, val string) {
 	}
 	if g.pref.translated {
 		g.global_const_defs[util.no_dots(name)] = GlobalConstDef{
+			mod: mod
 			def: 'const int $x = $val;'
 		}
 	} else {
 		g.global_const_defs[util.no_dots(name)] = GlobalConstDef{
+			mod: mod
 			def: '#define $x $val'
 		}
 	}
@@ -4626,6 +4633,7 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 		}
 	}
 	g.global_const_defs[util.no_dots(name)] = GlobalConstDef{
+		mod: mod
 		def: '$styp $cname; // inited later'
 		init: init.str()
 	}
@@ -4682,6 +4690,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			g.gen_anon_fn_decl(mut anon_fn_expr)
 			fn_type_name := g.get_anon_fn_type_name(mut anon_fn_expr, field.name)
 			g.global_const_defs[util.no_dots(fn_type_name)] = GlobalConstDef{
+				mod: node.mod
 				def: '$fn_type_name = ${g.table.sym(field.typ).name}; // global2'
 			}
 			continue
@@ -4694,6 +4703,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		if cextern {
 			def_builder.writeln('; // global5')
 			g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
+				mod: node.mod
 				def: def_builder.str()
 			}
 			continue
@@ -4723,6 +4733,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		}
 		def_builder.writeln('; // global4')
 		g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
+			mod: node.mod
 			def: def_builder.str()
 			init: init
 			dep_names: g.dependent_var_names(field.expr)
@@ -4813,16 +4824,16 @@ fn (mut g Gen) write_init_function() {
 	if g.nr_closures > 0 {
 		g.writeln('\t_closure_mtx_init();')
 	}
-	// write globals and consts init later
-	for var_name in g.sorted_global_const_names {
-		if var := g.global_const_defs[var_name] {
-			if var.init.len > 0 {
-				g.writeln(var.init)
-			}
-		}
-	}
 	for mod_name in g.table.modules {
 		g.writeln('\t{ // Initializations for module $mod_name :')
+		// write globals and consts init later
+		for var_name in g.sorted_global_const_names {
+			if var := g.global_const_defs[var_name] {
+				if var.mod == mod_name && var.init.len > 0 {
+					g.writeln(var.init)
+				}
+			}
+		}
 		init_fn_name := '${mod_name}.init'
 		if initfn := g.table.find_fn(init_fn_name) {
 			if initfn.return_type == ast.void_type && initfn.params.len == 0 {
