@@ -68,6 +68,16 @@ fn (mut g Gen) inc(reg Register) {
 	g.println('inc $reg')
 }
 
+fn (mut g Gen) neg(reg Register) {
+	g.write8(0x48)
+	g.write8(0xf7)
+	match reg {
+		.rax { g.write8(0xd8) }
+		else { panic('unhandled neg $reg') }
+	}
+	g.println('neg $reg')
+}
+
 fn (mut g Gen) cmp(reg Register, size Size, val i64) {
 	// Second byte depends on the size of the value
 	match size {
@@ -1955,8 +1965,8 @@ fn (mut g Gen) convert_int_to_string(r Register, buffer int) {
 		g.mov_reg(.rax, r)
 	}
 
+	// check if value in rax is zero
 	g.cmp_zero(.rax)
-
 	skip_zero_label := g.labels.new_label()
 	skip_zero_cjmp_addr := g.cjmp(.jne)
 	g.labels.patches << LabelPatch{
@@ -1977,6 +1987,21 @@ fn (mut g Gen) convert_int_to_string(r Register, buffer int) {
 
 	g.labels.addrs[skip_zero_label] = g.pos()
 	g.println('; label $skip_zero_label')
+
+	// detect if value in rax is negative
+	g.cmp_zero(.rax)
+	skip_minus_label := g.labels.new_label()
+	skip_minus_cjmp_addr := g.cjmp(.jge)
+	g.labels.patches << LabelPatch{
+		id: skip_minus_label
+		pos: skip_minus_cjmp_addr
+	}
+	g.println('; jump to label $skip_minus_label')
+
+	// add a `-` sign as the first character
+	g.mov_int_to_var(buffer, ._8, '-'[0])
+	g.neg(.rax)
+	g.labels.addrs[skip_minus_label] = g.pos()
 
 	// TODO: convert non-zero integer to string
 

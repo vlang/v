@@ -33,7 +33,7 @@ fn test_idents() {
 	x := 0
 	println(x)
 
-	// y := 5
+	// y := -5
 	// println(y)
 }
 
