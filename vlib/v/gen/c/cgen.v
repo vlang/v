@@ -64,7 +64,6 @@ mut:
 	cleanup                   strings.Builder
 	cleanups                  map[string]strings.Builder // contents of `void _vcleanup(){}`
 	gowrappers                strings.Builder // all go callsite wrappers
-	stringliterals            strings.Builder // all string literals (they depend on tos3() beeing defined
 	auto_str_funcs            strings.Builder // function bodies of all auto generated _str funcs
 	dump_funcs                strings.Builder // function bodies of all auto generated _str funcs
 	pcs_declarations          strings.Builder // -prof profile counter declarations for each function
@@ -305,7 +304,6 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			global_g.alias_definitions.write(g.alias_definitions) or { panic(err) }
 			global_g.definitions.write(g.definitions) or { panic(err) }
 			global_g.gowrappers.write(g.gowrappers) or { panic(err) }
-			global_g.stringliterals.write(g.stringliterals) or { panic(err) }
 			global_g.auto_str_funcs.write(g.auto_str_funcs) or { panic(err) }
 			global_g.dump_funcs.write(g.auto_str_funcs) or { panic(err) }
 			global_g.comptime_definitions.write(g.comptime_definitions) or { panic(err) }
@@ -496,15 +494,9 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		b.writeln('\n// V channel code:')
 		b.write_string(g.channel_definitions.str())
 	}
-	if g.stringliterals.len > 0 {
-		b.writeln('\n// V stringliterals:')
-		b.write_string(g.stringliterals.str())
-	}
 	if g.auto_str_funcs.len > 0 {
-		// if g.pref.build_mode != .build_module {
 		b.writeln('\n// V auto str functions:')
 		b.write_string(g.auto_str_funcs.str())
-		// }
 	}
 	if g.dump_funcs.len > 0 {
 		b.writeln('\n// V dump functions:')
@@ -606,7 +598,6 @@ pub fn (mut g Gen) free_builders() {
 		g.definitions.free()
 		g.cleanup.free()
 		g.gowrappers.free()
-		g.stringliterals.free()
 		g.auto_str_funcs.free()
 		g.dump_funcs.free()
 		g.comptime_definitions.free()
