@@ -68,6 +68,16 @@ fn (mut g Gen) inc(reg Register) {
 	g.println('inc $reg')
 }
 
+fn (mut g Gen) neg(reg Register) {
+	g.write8(0x48)
+	g.write8(0xf7)
+	match reg {
+		.rax { g.write8(0xd8) }
+		else { panic('unhandled neg $reg') }
+	}
+	g.println('neg $reg')
+}
+
 fn (mut g Gen) cmp(reg Register, size Size, val i64) {
 	// Second byte depends on the size of the value
 	match size {
@@ -137,20 +147,23 @@ fn (mut g Gen) cmp_reg(reg Register, reg2 Register) {
 
 // cmp $reg, 0
 fn (mut g Gen) cmp_zero(reg Register) {
-	g.write8(0x48)
-	g.write8(0x39)
-
 	match reg {
 		.rax {
-			g.write8(0x04)
-			g.write8(0x25)
+			g.write8(0x48)
+			g.write8(0x83)
+			g.write8(0xf8)
+		}
+		.eax {
+			g.write8(0x83)
+			g.write8(0xf8)
 		}
 		else {
-			panic('unhandled cmp $reg, 0')
+			g.n_error('unhandled cmp $reg, 0')
 		}
 	}
 
-	g.write32(0)
+	g.write8(0x00)
+	g.println('cmp $reg, 0')
 }
 
 fn (mut g Gen) cmp_var_reg(var_name string, reg Register) {
@@ -347,6 +360,23 @@ fn (mut g Gen) mov_reg_to_var(var_offset int, reg Register) {
 	}
 	g.write8(0xff - var_offset + 1)
 	g.println('mov DWORD PTR[rbp-$var_offset.hex2()],$reg')
+}
+
+fn (mut g Gen) mov_int_to_var(var_offset int, size Size, integer int) {
+	var_addr := 0xff - var_offset + 1
+
+	match size {
+		._8 {
+			g.write8(0xc6)
+			g.write8(0x45)
+			g.write8(var_addr)
+			g.write8(u8(integer))
+			g.println('mov BYTE PTR[rbp-$var_offset.hex2()], $integer')
+		}
+		else {
+			g.n_error('unhandled mov int')
+		}
+	}
 }
 
 fn (mut g Gen) lea_var_to_reg(reg Register, var_offset int) {
@@ -1935,5 +1965,46 @@ fn (mut g Gen) convert_int_to_string(r Register, buffer int) {
 		g.mov_reg(.rax, r)
 	}
 
-	// TODO
+	// check if value in rax is zero
+	g.cmp_zero(.rax)
+	skip_zero_label := g.labels.new_label()
+	skip_zero_cjmp_addr := g.cjmp(.jne)
+	g.labels.patches << LabelPatch{
+		id: skip_zero_label
+		pos: skip_zero_cjmp_addr
+	}
+	g.println('; jump to label $skip_zero_label')
+
+	// handle zeros seperately
+	g.mov_int_to_var(buffer, ._8, '0'[0])
+	end_label := g.labels.new_label()
+	end_jmp_addr := g.jmp(0)
+	g.labels.patches << LabelPatch{
+		id: end_label
+		pos: end_jmp_addr
+	}
+	g.println('; jump to label $end_label')
+
+	g.labels.addrs[skip_zero_label] = g.pos()
+	g.println('; label $skip_zero_label')
+
+	// detect if value in rax is negative
+	g.cmp_zero(.rax)
+	skip_minus_label := g.labels.new_label()
+	skip_minus_cjmp_addr := g.cjmp(.jge)
+	g.labels.patches << LabelPatch{
+		id: skip_minus_label
+		pos: skip_minus_cjmp_addr
+	}
+	g.println('; jump to label $skip_minus_label')
+
+	// add a `-` sign as the first character
+	g.mov_int_to_var(buffer, ._8, '-'[0])
+	g.neg(.rax)
+	g.labels.addrs[skip_minus_label] = g.pos()
+
+	// TODO: convert non-zero integer to string
+
+	g.labels.addrs[end_label] = g.pos()
+	g.println('; label $end_label')
 }
