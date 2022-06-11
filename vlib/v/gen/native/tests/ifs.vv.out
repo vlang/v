@@ -4,4 +4,8 @@ var(3) > 1
 1 < 3
 1 == 1
 1 != 3
+start else
+ok
+ok
+end else
 end

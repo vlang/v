@@ -40,7 +40,6 @@ fn test_add() {
 	}
 }
 
-/*
 fn test_elses() {
 	println('start else')
 	if 1 < 2 {
@@ -55,11 +54,10 @@ fn test_elses() {
 	}
 	println('end else')
 }
-*/
 
 fn main() {
 	println('start')
 	test_add()
-	// test_elses()
+	test_elses()
 	println('end')
 }

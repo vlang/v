@@ -12,6 +12,7 @@ fn test_macho() {
 		code_gen: native.Amd64{
 			g: 0
 		}
+		labels: 0
 	}
 	g.generate_macho_header()
 	g.generate_macho_footer()
