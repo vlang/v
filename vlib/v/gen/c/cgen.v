@@ -4641,12 +4641,24 @@ fn (mut g Gen) const_decl_init_later(line_nr int, mod string, name string, expr 
 			init.writeln(g.expr_string_surround('\t$cname = ', expr, ';'))
 		}
 	}
+	mut order := 0
+	mut line := 0
+	if expr is ast.CallExpr {
+		// TODO: analyse the function *bodies* too, to know if and what consts are used in them,
+		// in order to fill in dep_names properly, and to detect initialisation cycles statically
+		// in the checker.
+		// For now, just keep the source code order for `const c = f()`,
+		// so that programs importing `rand` and `cmd/tools/vshader.v` could run properly:
+		order = 1
+		line = line_nr
+	}
 	g.global_const_defs[util.no_dots(name)] = GlobalConstDef{
 		mod: mod
 		def: '$styp $cname; // inited later'
 		init: init.str()
 		dep_names: g.dependent_var_names(expr)
-		line: line_nr
+		order: order
+		line: line
 	}
 	if g.is_autofree {
 		sym := g.table.sym(typ)
