@@ -4632,6 +4632,7 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 		mod: mod
 		def: '$styp $cname; // inited later'
 		init: init.str()
+		dep_names: if mod.starts_with('rand') { []string{} } else { g.dependent_var_names(expr) }
 	}
 	if g.is_autofree {
 		sym := g.table.sym(typ)
