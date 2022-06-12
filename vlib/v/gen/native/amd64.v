@@ -59,12 +59,9 @@ fn byt(n int, s int) u8 {
 }
 
 fn (mut g Gen) inc(reg Register) {
-	g.write16(0xff49)
-	match reg {
-		.rcx { g.write8(0xc1) }
-		.r12 { g.write8(0xc4) }
-		else { panic('unhandled inc $reg') }
-	}
+	g.write8(0x48)
+	g.write8(0xff)
+	g.write8(0xc0 + int(reg))
 	g.println('inc $reg')
 }
 
@@ -381,7 +378,7 @@ fn (mut g Gen) mov_int_to_var(var_offset int, size Size, integer int) {
 
 fn (mut g Gen) lea_var_to_reg(reg Register, var_offset int) {
 	match reg {
-		.rax, .rbx, .rsi {
+		.rax, .rbx, .rsi, .rdi {
 			g.write8(0x48)
 		}
 		else {}
@@ -443,6 +440,11 @@ fn (mut g Gen) syscall() {
 	g.write8(0x0f)
 	g.write8(0x05)
 	g.println('syscall')
+}
+
+fn (mut g Gen) cdq() {
+	g.write8(0x99)
+	g.println('cdq')
 }
 
 pub fn (mut g Gen) ret() {
@@ -509,8 +511,7 @@ pub fn (mut g Gen) add(reg Register, val int) {
 pub fn (mut g Gen) add8(reg Register, val int) {
 	g.write8(0x48)
 	g.write8(0x83)
-	// g.write8(0xe8 + reg) // TODO rax is different?
-	g.write8(0xc4)
+	g.write8(0xc0 + int(reg))
 	g.write8(val)
 	g.println('add8 $reg,$val.hex2()')
 }
@@ -930,6 +931,9 @@ fn (mut g Gen) mov(reg Register, val int) {
 			.r12 {
 				g.write8(0x41)
 				g.write8(0xbc) // r11 is 0xbb etc
+			}
+			.rbx {
+				g.write8(0xbb)
 			}
 			else {
 				g.n_error('unhandled mov $reg')
@@ -1988,6 +1992,9 @@ fn (mut g Gen) convert_int_to_string(r Register, buffer int) {
 	g.labels.addrs[skip_zero_label] = g.pos()
 	g.println('; label $skip_zero_label')
 
+	// load a pointer to the string to rdi
+	g.lea_var_to_reg(.rdi, buffer)
+
 	// detect if value in rax is negative
 	g.cmp_zero(.rax)
 	skip_minus_label := g.labels.new_label()
@@ -2000,10 +2007,47 @@ fn (mut g Gen) convert_int_to_string(r Register, buffer int) {
 
 	// add a `-` sign as the first character
 	g.mov_int_to_var(buffer, ._8, '-'[0])
-	g.neg(.rax)
+	g.neg(.rax) // negate our integer to make it positive
+	g.inc(.rdi) // increment rdi to skip the `-` character
 	g.labels.addrs[skip_minus_label] = g.pos()
+	g.println('; label $skip_minus_label')
 
-	// TODO: convert non-zero integer to string
+	loop_start := g.pos()
+
+	// g.push(.rax)
+
+	g.mov(.rdx, 0)
+	g.mov(.rbx, 10)
+	g.div_reg(.rax, .rbx)
+	g.add8(.rdx, '0'[0])
+
+	g.write8(0x66)
+	g.write8(0x89)
+	g.write8(0x17)
+	g.println('mov BYTE PTR [rdi], rdx')
+
+	// TODO: convert non-zero, multi-digit integers to string
+	/*
+	g.pop(.rax)
+	g.inc(.rdi)
+	g.mov(.rbx, 10)
+	
+	g.cdq()
+	
+	g.write8(0x48)
+	g.write8(0xf7)
+	g.write8(0xfb)
+	g.println("idiv rbx")
+
+	g.cmp_zero(.rax)
+	loop_label := g.labels.new_label()
+	loop_addr := g.cjmp(.jne)
+	g.labels.patches << LabelPatch{
+		id: skip_minus_label
+		pos: skip_minus_cjmp_addr
+	}
+	g.labels.addrs[loop_label] = loop_start
+	*/
 
 	g.labels.addrs[end_label] = g.pos()
 	g.println('; label $end_label')

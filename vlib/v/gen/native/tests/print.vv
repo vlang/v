@@ -33,8 +33,11 @@ fn test_idents() {
 	x := 0
 	println(x)
 
-	// y := -5
-	// println(y)
+	y := 5
+	println(y)
+
+	z := -8
+	println(z)
 }
 
 fn main() {
