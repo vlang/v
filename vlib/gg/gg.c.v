@@ -511,10 +511,17 @@ pub fn (ctx &Context) end() {
 }
 
 pub struct FPSConfig {
+pub mut:
 	x           int
 	y           int
+	width       int
+	height      int
+	show        bool // do not show by default, use `-d show_fps` or set it manually in your app to override with: `app.gg.fps.show = true`
 	text_config gx.TextCfg = gx.TextCfg{
 		color: gx.yellow
+		size: 20
+		align: .center
+		vertical_align: .middle
 	}
 	background_color gx.Color = gx.Color{
 		r: 0
@@ -522,22 +529,26 @@ pub struct FPSConfig {
 		b: 0
 		a: 128
 	}
-	show bool // do not show by default, use `-d show_fps` or set it manually in your app to override with: `app.gg.fps.show = true`
 }
 
 pub fn (ctx &Context) show_fps() {
 	if !ctx.font_inited {
 		return
 	}
+	frame_duration := sapp.frame_duration()
 	sgl.defaults()
 	sgl.matrix_mode_projection()
 	sgl.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
-	frame_duration := sapp.frame_duration()
-	fps_text := '${1 / frame_duration:2.0f}'
 	ctx.set_cfg(ctx.fps.text_config)
-	fps_width, fps_height := ctx.text_size('00') // maximum size; prevents blinking on variable width fonts
-	ctx.draw_rect_filled(ctx.fps.x, ctx.fps.y, fps_width + 5, fps_height + 7, ctx.fps.background_color)
-	ctx.draw_text(ctx.fps.x + 2, ctx.fps.y + 1, fps_text, ctx.fps.text_config)
+	if ctx.fps.width == 0 {
+		mut fps := unsafe { &ctx.fps }
+		fps.width, fps.height = ctx.text_size('00') // maximum size; prevents blinking on variable width fonts
+	}
+	fps_text := int(0.5 + 1.0 / frame_duration).str()
+	ctx.draw_rect_filled(ctx.fps.x, ctx.fps.y, ctx.fps.width + 2, ctx.fps.height + 4,
+		ctx.fps.background_color)
+	ctx.draw_text(ctx.fps.x + ctx.fps.width / 2 + 1, ctx.fps.y + ctx.fps.height / 2 + 2,
+		fps_text, ctx.fps.text_config)
 }
 
 fn (mut ctx Context) set_scale() {
