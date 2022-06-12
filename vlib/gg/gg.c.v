@@ -142,6 +142,7 @@ pub mut:
 	pressed_keys      [key_code_max]bool // an array representing all currently pressed keys
 	pressed_keys_edge [key_code_max]bool // true when the previous state of pressed_keys,
 	// *before* the current event was different
+	fps FPSConfig
 }
 
 fn gg_init_sokol_window(user_data voidptr) {
@@ -490,6 +491,13 @@ pub fn (ctx &Context) begin() {
 
 // end finishes drawing for the context.
 pub fn (ctx &Context) end() {
+	$if show_fps ? {
+		ctx.show_fps()
+	} $else {
+		if ctx.fps.show {
+			ctx.show_fps()
+		}
+	}
 	gfx.begin_default_pass(ctx.clear_pass, sapp.width(), sapp.height())
 	sgl.draw()
 	gfx.end_pass()
@@ -500,6 +508,33 @@ pub fn (ctx &Context) end() {
 		wait_events()
 	}
 	*/
+}
+
+pub struct FPSConfig {
+	x           int
+	y           int
+	text_config gx.TextCfg = gx.TextCfg{
+		color: gx.yellow
+	}
+	background_color gx.Color = gx.Color{
+		r: 0
+		g: 0
+		b: 0
+		a: 128
+	}
+	show bool // do not show by default, use `-d show_fps` or set it manually in your app to override with: `app.gg.fps.show = true`
+}
+
+pub fn (ctx &Context) show_fps() {
+	if !ctx.font_inited {
+		return
+	}
+	frame_duration := sapp.frame_duration()
+	fps_text := '${1 / frame_duration:2.0f}'
+	ctx.set_cfg(ctx.fps.text_config)
+	fps_width, fps_height := ctx.text_size('00') // maximum size; prevents blinking on variable width fonts
+	ctx.draw_rect_filled(ctx.fps.x, ctx.fps.y, fps_width + 5, fps_height + 7, ctx.fps.background_color)
+	ctx.draw_text(ctx.fps.x + 2, ctx.fps.y + 1, fps_text, ctx.fps.text_config)
 }
 
 fn (mut ctx Context) set_scale() {
