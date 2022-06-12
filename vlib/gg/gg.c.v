@@ -529,6 +529,9 @@ pub fn (ctx &Context) show_fps() {
 	if !ctx.font_inited {
 		return
 	}
+	sgl.defaults()
+	sgl.matrix_mode_projection()
+	sgl.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
 	frame_duration := sapp.frame_duration()
 	fps_text := '${1 / frame_duration:2.0f}'
 	ctx.set_cfg(ctx.fps.text_config)
