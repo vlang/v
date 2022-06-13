@@ -210,6 +210,7 @@ mut:
 	generated_free_methods map[int]bool
 	autofree_scope_stmts   []string
 	use_segfault_handler   bool = true
+	test_function_names    []string
 }
 
 // global or const variable definition string
@@ -368,6 +369,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			global_g.pcs << g.pcs
 			global_g.json_types << g.json_types
 			global_g.hotcode_fn_names << g.hotcode_fn_names
+			global_g.test_function_names << g.test_function_names
 			unsafe { g.free_builders() }
 			for k, v in g.autofree_methods {
 				global_g.autofree_methods[k] = v
@@ -5538,24 +5540,21 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 	}
 }
 
-fn (g &Gen) get_all_test_function_names() []string {
+fn (g Gen) get_all_test_function_names() []string {
 	mut tfuncs := []string{}
 	mut tsuite_begin := ''
 	mut tsuite_end := ''
-	for _, f in g.table.fns {
-		if !f.is_test {
+	for name in g.test_function_names {
+		if name.ends_with('.testsuite_begin') {
+			tsuite_begin = name
 			continue
 		}
-		if f.name.ends_with('.testsuite_begin') {
-			tsuite_begin = f.name
+		if name.contains('.test_') {
+			tfuncs << name
 			continue
 		}
-		if f.name.contains('.test_') {
-			tfuncs << f.name
-			continue
-		}
-		if f.name.ends_with('.testsuite_end') {
-			tsuite_end = f.name
+		if name.ends_with('.testsuite_end') {
+			tsuite_end = name
 			continue
 		}
 	}
