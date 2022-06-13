@@ -232,17 +232,24 @@ fn abs(a i64) i64 {
 fn (mut g Gen) tmp_jle(addr i64) {
 	// Calculate the relative offset to jump to
 	// (`addr` is absolute address)
-	offset := 0xff - int(abs(addr - g.buf.len)) - 1
+	offset := 0xff - g.abs_to_rel_addr(addr)
 	g.write8(0x7e)
 	g.write8(offset)
 	g.println('jle')
 }
 
 fn (mut g Gen) jl(addr i64) {
-	offset := 0xff - int(abs(addr - g.buf.len)) - 1
+	offset := 0xff - g.abs_to_rel_addr(addr)
 	g.write8(0x7c)
 	g.write8(offset)
 	g.println('jl')
+}
+
+fn (mut g Gen) jg(addr i64) {
+	offset := 0xff - g.abs_to_rel_addr(addr)
+	g.write16(u16(JumpOp.jne))
+	g.write32(offset)
+	g.println('jne')
 }
 
 fn (g &Gen) abs_to_rel_addr(addr i64) int {
@@ -2012,9 +2019,11 @@ fn (mut g Gen) convert_int_to_string(r Register, buffer int) {
 	g.labels.addrs[skip_minus_label] = g.pos()
 	g.println('; label $skip_minus_label')
 
+	loop_label := g.labels.new_label()
 	loop_start := g.pos()
+	g.println('; label $loop_label')
 
-	// g.push(.rax)
+	g.push(.rax)
 
 	g.mov(.rdx, 0)
 	g.mov(.rbx, 10)
@@ -2026,28 +2035,24 @@ fn (mut g Gen) convert_int_to_string(r Register, buffer int) {
 	g.write8(0x17)
 	g.println('mov BYTE PTR [rdi], rdx')
 
-	// TODO: convert non-zero, multi-digit integers to string
-	/*
 	g.pop(.rax)
-	g.inc(.rdi)
 	g.mov(.rbx, 10)
-	
 	g.cdq()
-	
 	g.write8(0x48)
 	g.write8(0xf7)
 	g.write8(0xfb)
-	g.println("idiv rbx")
+	g.println('idiv rbx')
 
+	g.inc(.rdi)
 	g.cmp_zero(.rax)
-	loop_label := g.labels.new_label()
-	loop_addr := g.cjmp(.jne)
+
+	loop_cjmp_addr := g.cjmp(.jg)
 	g.labels.patches << LabelPatch{
-		id: skip_minus_label
-		pos: skip_minus_cjmp_addr
+		id: loop_label
+		pos: loop_cjmp_addr
 	}
+	g.println('; jump to label $skip_minus_label')
 	g.labels.addrs[loop_label] = loop_start
-	*/
 
 	g.labels.addrs[end_label] = g.pos()
 	g.println('; label $end_label')

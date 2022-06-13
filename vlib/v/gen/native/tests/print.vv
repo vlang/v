@@ -38,6 +38,12 @@ fn test_idents() {
 
 	z := -8
 	println(z)
+
+	a := 123
+	println(a)
+
+	b := -456
+	println(b)
 }
 
 fn main() {
