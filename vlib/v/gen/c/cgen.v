@@ -5502,7 +5502,6 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 }
 
 fn (g Gen) get_all_test_function_names() []string {
-	println(g.test_function_names)
 	mut tfuncs := []string{}
 	mut tsuite_begin := ''
 	mut tsuite_end := ''
