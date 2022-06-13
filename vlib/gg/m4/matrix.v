@@ -568,17 +568,17 @@ pub fn rotate(angle f32, w Vec4) Mat4 {
 * Graphic
 *
 *********************************************************************/
-// Get a matrix translated by a vector w
+// Get a matrix translated by a vector w, only xyz are evaluated.
 pub fn (x Mat4) translate(w Vec4) Mat4 {
-	unsafe {
-		return Mat4{ e: [
-				x.e[0],	x.e[1], x.e[2 ], 	x.e[3 ] ,
-				x.e[4], x.e[5],	x.e[6 ], 	x.e[7 ] ,
-				x.e[8], x.e[9], x.e[10], 	x.e[11] ,
-				x.e[12] + w.e[0], 	x.e[13] + w.e[1], x.e[14] + w.e[2], x.e[15],
-				]!
-		}
-	}
+    unsafe {
+        return Mat4{ e: [
+                x.e[0], x.e[1], x.e[2 ], x.e[3 ]  + w.e[0],
+                x.e[4], x.e[5], x.e[6 ], x.e[7 ]  + w.e[1],
+                x.e[8], x.e[9], x.e[10], x.e[11]  + w.e[2],
+                x.e[12],x.e[13],x.e[14], x.e[15],
+                ]!
+        }
+    }
 }
 
 // Get a scale matrix, the scale vector is w, only xyz are evaluated.
