@@ -135,6 +135,16 @@ fn (mut g Gen) cmp_reg(reg Register, reg2 Register) {
 				}
 			}
 		}
+		.rdi {
+			match reg2 {
+				.rsi {
+					g.write([u8(0x48), 0x39, 0xf7])
+				}
+				else {
+					g.n_error('Cannot compare $reg and $reg2')
+				}
+			}
+		}
 		else {
 			g.n_error('Cannot compare $reg and $reg2')
 		}
@@ -243,13 +253,6 @@ fn (mut g Gen) jl(addr i64) {
 	g.write8(0x7c)
 	g.write8(offset)
 	g.println('jl')
-}
-
-fn (mut g Gen) jg(addr i64) {
-	offset := 0xff - g.abs_to_rel_addr(addr)
-	g.write16(u16(JumpOp.jne))
-	g.write32(offset)
-	g.println('jne')
 }
 
 fn (g &Gen) abs_to_rel_addr(addr i64) int {
@@ -603,9 +606,18 @@ pub fn (mut g Gen) rep_stosb() {
 	g.println('rep stosb')
 }
 
-pub fn (mut g Gen) cld_repne_scasb() {
+pub fn (mut g Gen) std() {
+	g.write8(0xfd)
+	g.println('std')
+}
+
+pub fn (mut g Gen) cld() {
 	g.write8(0xfc)
 	g.println('cld')
+}
+
+pub fn (mut g Gen) cld_repne_scasb() {
+	g.cld()
 	g.write8(0xf2)
 	g.write8(0xae)
 	g.println('repne scasb')
@@ -1095,6 +1107,18 @@ fn (mut g Gen) mov_reg(a Register, b Register) {
 		g.write8(0x48)
 		g.write8(0x89)
 		g.write8(0xc7)
+	} else if a == .r12 && b == .rdi {
+		g.write8(0x49)
+		g.write8(0x89)
+		g.write8(0xfc)
+	} else if a == .rdi && b == .r12 {
+		g.write8(0x4c)
+		g.write8(0x89)
+		g.write8(0xe7)
+	} else if a == .rsi && b == .rdi {
+		g.write8(0x48)
+		g.write8(0x89)
+		g.write8(0xfe)
 	} else {
 		g.n_error('unhandled mov_reg combination for $a $b')
 	}
@@ -2019,6 +2043,8 @@ fn (mut g Gen) convert_int_to_string(r Register, buffer int) {
 	g.labels.addrs[skip_minus_label] = g.pos()
 	g.println('; label $skip_minus_label')
 
+	g.mov_reg(.r12, .rdi) // copy the buffer position to rcx
+
 	loop_label := g.labels.new_label()
 	loop_start := g.pos()
 	g.println('; label $loop_label')
@@ -2035,6 +2061,7 @@ fn (mut g Gen) convert_int_to_string(r Register, buffer int) {
 	g.write8(0x17)
 	g.println('mov BYTE PTR [rdi], rdx')
 
+	// divide the integer in rax by 10 for next iteration
 	g.pop(.rax)
 	g.mov(.rbx, 10)
 	g.cdq()
@@ -2043,9 +2070,11 @@ fn (mut g Gen) convert_int_to_string(r Register, buffer int) {
 	g.write8(0xfb)
 	g.println('idiv rbx')
 
+	// go to the next character
 	g.inc(.rdi)
-	g.cmp_zero(.rax)
 
+	// if the number in rax still isn't zero, repeat
+	g.cmp_zero(.rax)
 	loop_cjmp_addr := g.cjmp(.jg)
 	g.labels.patches << LabelPatch{
 		id: loop_label
@@ -2054,6 +2083,58 @@ fn (mut g Gen) convert_int_to_string(r Register, buffer int) {
 	g.println('; jump to label $skip_minus_label')
 	g.labels.addrs[loop_label] = loop_start
 
+	// after all was converted, reverse the string
+	g.reverse_string(.r12)
+
 	g.labels.addrs[end_label] = g.pos()
 	g.println('; label $end_label')
+}
+
+fn (mut g Gen) reverse_string(reg Register) {
+	if reg != .rdi {
+		g.mov_reg(.rdi, reg)
+	}
+
+	g.mov(.eax, 0)
+
+	g.write8(0x48)
+	g.write8(0x8d)
+	g.write8(0x48)
+	g.write8(0xff)
+	g.println('lea rcx, [rax-0x1]')
+
+	g.mov_reg(.rsi, .rdi)
+
+	g.write8(0xf2)
+	g.write8(0xae)
+	g.println('repnz scas al, BYTE PTR es:[rdi]')
+
+	g.sub8(.rdi, 0x2)
+	g.cmp_reg(.rdi, .rsi)
+
+	g.write8(0x7e)
+	g.write8(0x0a)
+	g.println('jle 0x1e')
+
+	g.write8(0x86)
+	g.write8(0x07)
+	g.println('xchg BYTE PTR [rdi], al')
+
+	g.write8(0x86)
+	g.write8(0x06)
+	g.println('xchg BYTE PTR [rsi], al')
+
+	g.std()
+
+	g.write8(0xaa)
+	g.println('stos BYTE PTR es:[rdi], al')
+
+	g.cld()
+
+	g.write8(0xac)
+	g.println('lods al, BYTE PTR ds:[rsi]')
+
+	g.write8(0xeb)
+	g.write8(0xf1)
+	g.println('jmp 0xf')
 }
