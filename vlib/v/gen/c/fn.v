@@ -32,6 +32,9 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	if node.should_be_skipped {
 		return
 	}
+	if node.is_test {
+		g.test_function_names << node.name
+	}
 	if node.ninstances == 0 && node.generic_names.len > 0 {
 		$if trace_generics ? {
 			eprintln('skipping generic fn with no concrete instances: $node.mod $node.name')
