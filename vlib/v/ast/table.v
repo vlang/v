@@ -2119,25 +2119,11 @@ pub fn (t &Table) is_comptime_type(x Type, y ComptimeType) bool {
 			return x_kind == .map
 		}
 		.int {
-			return x_kind in [
-				.i8,
-				.i16,
-				.int,
-				.i64,
-				.u8,
-				.u16,
-				.u32,
-				.u64,
-				.usize,
-				.int_literal,
-			]
+			return x_kind in [.i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .usize, .isize,
+				.int_literal]
 		}
 		.float {
-			return x_kind in [
-				.f32,
-				.f64,
-				.float_literal,
-			]
+			return x_kind in [.f32, .f64, .float_literal]
 		}
 		.struct_ {
 			return x_kind == .struct_
