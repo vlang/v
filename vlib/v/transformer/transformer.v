@@ -637,7 +637,7 @@ pub fn (mut t Transformer) expr(mut node ast.Expr) ast.Expr {
 		ast.SelectorExpr {
 			node.expr = t.expr(mut node.expr)
 			if mut node.expr is ast.StringLiteral && node.field_name == 'len' {
-				if !node.expr.val.contains('\\') {
+				if !node.expr.val.contains('\\') || node.expr.is_raw {
 					return ast.IntegerLiteral{
 						val: node.expr.val.len.str()
 						pos: node.pos
