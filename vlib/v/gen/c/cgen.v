@@ -4359,44 +4359,6 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	}
 }
 
-fn (mut g Gen) dependent_var_names(expr ast.Expr) []string {
-	mut vars := []string{}
-	match expr {
-		ast.Ident {
-			if expr.kind in [.global, .constant] {
-				vars << util.no_dots(expr.name)
-			}
-		}
-		ast.ArrayInit {
-			for elem_expr in expr.exprs {
-				vars << g.dependent_var_names(elem_expr)
-			}
-		}
-		ast.StructInit {
-			for field in expr.fields {
-				vars << g.dependent_var_names(field.expr)
-			}
-		}
-		ast.InfixExpr {
-			vars << g.dependent_var_names(expr.left)
-			vars << g.dependent_var_names(expr.right)
-		}
-		ast.PostfixExpr {
-			vars << g.dependent_var_names(expr.expr)
-		}
-		ast.PrefixExpr {
-			vars << g.dependent_var_names(expr.right)
-		}
-		ast.CallExpr {
-			for arg in expr.args {
-				vars << g.dependent_var_names(arg.expr)
-			}
-		}
-		else {}
-	}
-	return vars
-}
-
 fn (mut g Gen) const_decl(node ast.ConstDecl) {
 	g.inside_const = true
 	defer {
@@ -4427,7 +4389,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 					g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
 						mod: field.mod
 						def: '$styp $const_name = $val; // fixed array const'
-						dep_names: g.dependent_var_names(field_expr)
+						dep_names: g.table.dependent_names_in_expr(field_expr)
 						// line: field.pos.line_nr
 					}
 				} else {
@@ -4658,7 +4620,7 @@ fn (mut g Gen) const_decl_init_later(line_nr int, mod string, name string, expr 
 		mod: mod
 		def: '$styp $cname; // inited later'
 		init: init.str()
-		dep_names: g.dependent_var_names(expr)
+		dep_names: g.table.dependent_names_in_expr(expr)
 		order: order
 		line: line
 	}
@@ -4765,7 +4727,7 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			mod: node.mod
 			def: def_builder.str()
 			init: init
-			dep_names: g.dependent_var_names(field.expr)
+			dep_names: g.table.dependent_names_in_expr(field.expr)
 			// line: node.pos.line_nr
 		}
 	}
