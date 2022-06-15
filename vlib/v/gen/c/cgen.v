@@ -4791,11 +4791,15 @@ fn (mut g Gen) write_init_function() {
 		g.writeln('\t_closure_mtx_init();')
 	}
 	for mod_name in g.table.modules {
-		g.writeln('\t// Initializations for module $mod_name')
+		mut is_empty := true
 		// write globals and consts init later
 		for var_name in g.sorted_global_const_names {
 			if var := g.global_const_defs[var_name] {
 				if var.mod == mod_name && var.init.len > 0 {
+					if is_empty {
+						is_empty = false
+						g.writeln('\t// Initializations for module $mod_name')
+					}
 					g.writeln(var.init)
 				}
 			}
@@ -4803,6 +4807,9 @@ fn (mut g Gen) write_init_function() {
 		init_fn_name := '${mod_name}.init'
 		if initfn := g.table.find_fn(init_fn_name) {
 			if initfn.return_type == ast.void_type && initfn.params.len == 0 {
+				if is_empty {
+					g.writeln('\t// Initializations for module $mod_name')
+				}
 				mod_c_name := util.no_dots(mod_name)
 				init_fn_c_name := '${mod_c_name}__init'
 				g.writeln('\t${init_fn_c_name}();')
