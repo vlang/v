@@ -4791,7 +4791,7 @@ fn (mut g Gen) write_init_function() {
 		g.writeln('\t_closure_mtx_init();')
 	}
 	for mod_name in g.table.modules {
-		g.writeln('\t{ // Initializations for module $mod_name :')
+		g.writeln('\t// Initializations for module $mod_name')
 		// write globals and consts init later
 		for var_name in g.sorted_global_const_names {
 			if var := g.global_const_defs[var_name] {
@@ -4808,7 +4808,6 @@ fn (mut g Gen) write_init_function() {
 				g.writeln('\t${init_fn_c_name}();')
 			}
 		}
-		g.writeln('\t}')
 	}
 	g.writeln('}')
 	if g.pref.printfn_list.len > 0 && '_vinit' in g.pref.printfn_list {
