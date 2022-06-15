@@ -1631,18 +1631,17 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		g.set_current_pos_as_last_stmt_pos()
 	}
 	match node {
-		ast.EmptyStmt {}
 		ast.AsmStmt {
 			g.write_v_source_line_info(node.pos)
-			g.gen_asm_stmt(node)
+			g.asm_stmt(node)
 		}
 		ast.AssertStmt {
 			g.write_v_source_line_info(node.pos)
-			g.gen_assert_stmt(node)
+			g.assert_stmt(node)
 		}
 		ast.AssignStmt {
 			g.write_v_source_line_info(node.pos)
-			g.gen_assign_stmt(node)
+			g.assign_stmt(node)
 		}
 		ast.Block {
 			g.write_v_source_line_info(node.pos)
@@ -1883,7 +1882,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				}
 			}
 		}
-		ast.Import {}
 		ast.InterfaceDecl {
 			// definitions are sorted and added in write_types
 			ts := g.table.sym(node.typ)
@@ -1907,7 +1905,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// g.cur_mod = node.name
 			g.cur_mod = node
 		}
-		ast.NodeError {}
 		ast.Return {
 			g.return_stmt(node)
 		}
@@ -1952,6 +1949,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				g.writeln('// TypeDecl')
 			}
 		}
+		else {}
 	}
 	if !g.skip_stmt_pos { // && g.stmt_path_pos.len > 0 {
 		g.stmt_path_pos.delete_last()
@@ -2279,7 +2277,7 @@ fn (mut g Gen) gen_attrs(attrs []ast.Attr) {
 	}
 }
 
-fn (mut g Gen) gen_asm_stmt(stmt ast.AsmStmt) {
+fn (mut g Gen) asm_stmt(stmt ast.AsmStmt) {
 	g.write('__asm__')
 	if stmt.is_volatile {
 		g.write(' volatile')

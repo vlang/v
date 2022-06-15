@@ -5,7 +5,7 @@ module c
 
 import v.ast
 
-fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
+fn (mut g Gen) assert_stmt(original_assert_statement ast.AssertStmt) {
 	if !original_assert_statement.is_used {
 		return
 	}
