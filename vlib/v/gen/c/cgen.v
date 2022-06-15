@@ -1729,6 +1729,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln('${g.defer_flag_var(defer_stmt)} = true;')
 			g.defer_stmts << defer_stmt
 		}
+		ast.EmptyStmt {}
 		ast.EnumDecl {
 			g.enum_decl(node)
 		}
@@ -1882,6 +1883,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				}
 			}
 		}
+		ast.Import {}
 		ast.InterfaceDecl {
 			// definitions are sorted and added in write_types
 			ts := g.table.sym(node.typ)
@@ -1905,6 +1907,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// g.cur_mod = node.name
 			g.cur_mod = node
 		}
+		ast.NodeError {}
 		ast.Return {
 			g.return_stmt(node)
 		}
@@ -1949,7 +1952,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				g.writeln('// TypeDecl')
 			}
 		}
-		else {}
 	}
 	if !g.skip_stmt_pos { // && g.stmt_path_pos.len > 0 {
 		g.stmt_path_pos.delete_last()
