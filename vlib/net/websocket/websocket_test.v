@@ -14,7 +14,11 @@ pub mut:
 // They have their own specialized CI runner.
 const github_job = os.getenv('GITHUB_JOB')
 
-const should_skip = github_job != '' && github_job != 'websocket_tests'
+const should_skip = get_should_skip()
+
+fn get_should_skip() bool {
+	return github_job != '' && github_job != 'websocket_tests'
+}
 
 // tests with internal ws servers
 fn test_ws_ipv6() {

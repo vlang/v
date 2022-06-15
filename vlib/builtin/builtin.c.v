@@ -388,6 +388,49 @@ pub fn malloc_noscan(n isize) &u8 {
 	return res
 }
 
+// malloc_uncollectable dynamically allocates a `n` bytes block of memory
+// on the heap, which will NOT be garbage-collected (but its contents will).
+[unsafe]
+pub fn malloc_uncollectable(n isize) &u8 {
+	if n <= 0 {
+		panic('malloc_uncollectable($n <= 0)')
+	}
+	$if vplayground ? {
+		if n > 10000 {
+			panic('allocating more than 10 KB at once is not allowed in the V playground')
+		}
+		if total_m > 50 * 1024 * 1024 {
+			panic('allocating more than 50 MB is not allowed in the V playground')
+		}
+	}
+	$if trace_malloc ? {
+		total_m += n
+		C.fprintf(C.stderr, c'malloc_uncollectable %6d total %10d\n', n, total_m)
+		// print_backtrace()
+	}
+	mut res := &u8(0)
+	$if prealloc {
+		return unsafe { prealloc_malloc(n) }
+	} $else $if gcboehm ? {
+		unsafe {
+			res = C.GC_MALLOC_UNCOLLECTABLE(n)
+		}
+	} $else $if freestanding {
+		res = unsafe { __malloc(usize(n)) }
+	} $else {
+		res = unsafe { C.malloc(n) }
+	}
+	if res == 0 {
+		panic('malloc_uncollectable($n) failed')
+	}
+	$if debug_malloc ? {
+		// Fill in the memory with something != 0 i.e. `M`, so it is easier to spot
+		// when the calling code wrongly relies on it being zeroed.
+		unsafe { C.memset(res, 0x4D, n) }
+	}
+	return res
+}
+
 // v_realloc resizes the memory block `b` with `n` bytes.
 // The `b byteptr` must be a pointer to an existing memory block
 // previously allocated with `malloc`, `v_calloc` or `vcalloc`.
@@ -551,6 +594,21 @@ pub fn memdup_noscan(src voidptr, sz int) voidptr {
 	}
 	unsafe {
 		mem := malloc_noscan(sz)
+		return C.memcpy(mem, src, sz)
+	}
+}
+
+// memdup_uncollectable dynamically allocates a `sz` bytes block of memory
+// on the heap, which will NOT be garbage-collected (but its contents will).
+// memdup_uncollectable then copies the contents of `src` into the allocated
+// space and returns a pointer to the newly allocated space.
+[unsafe]
+pub fn memdup_uncollectable(src voidptr, sz int) voidptr {
+	if sz == 0 {
+		return vcalloc(1)
+	}
+	unsafe {
+		mem := malloc_uncollectable(sz)
 		return C.memcpy(mem, src, sz)
 	}
 }

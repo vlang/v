@@ -117,9 +117,10 @@ pub mut:
 	source_fn      voidptr // set in the checker, while processing fn declarations
 	usages         int
 	generic_names  []string
-	attrs          []Attr // all fn attributes
-	is_conditional bool   // true for `[if abc]fn(){}`
-	ctdefine_idx   int    // the index of the attribute, containing the compile time define [if mytag]
+	dep_names      []string // globals or consts dependent names
+	attrs          []Attr   // all fn attributes
+	is_conditional bool     // true for `[if abc]fn(){}`
+	ctdefine_idx   int      // the index of the attribute, containing the compile time define [if mytag]
 }
 
 fn (f &Fn) method_equals(o &Fn) bool {
@@ -2118,25 +2119,11 @@ pub fn (t &Table) is_comptime_type(x Type, y ComptimeType) bool {
 			return x_kind == .map
 		}
 		.int {
-			return x_kind in [
-				.i8,
-				.i16,
-				.int,
-				.i64,
-				.u8,
-				.u16,
-				.u32,
-				.u64,
-				.usize,
-				.int_literal,
-			]
+			return x_kind in [.i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .usize, .isize,
+				.int_literal]
 		}
 		.float {
-			return x_kind in [
-				.f32,
-				.f64,
-				.float_literal,
-			]
+			return x_kind in [.f32, .f64, .float_literal]
 		}
 		.struct_ {
 			return x_kind == .struct_
@@ -2154,4 +2141,91 @@ pub fn (t &Table) is_comptime_type(x Type, y ComptimeType) bool {
 			return x_kind == .enum_
 		}
 	}
+}
+
+pub fn (t &Table) dependent_names_in_expr(expr Expr) []string {
+	mut names := []string{}
+	match expr {
+		Ident {
+			if expr.kind in [.global, .constant] {
+				names << util.no_dots(expr.name)
+			}
+		}
+		ArrayInit {
+			for elem_expr in expr.exprs {
+				names << t.dependent_names_in_expr(elem_expr)
+			}
+		}
+		StructInit {
+			for field in expr.fields {
+				names << t.dependent_names_in_expr(field.expr)
+			}
+		}
+		InfixExpr {
+			names << t.dependent_names_in_expr(expr.left)
+			names << t.dependent_names_in_expr(expr.right)
+		}
+		PostfixExpr {
+			names << t.dependent_names_in_expr(expr.expr)
+		}
+		PrefixExpr {
+			names << t.dependent_names_in_expr(expr.right)
+		}
+		CallExpr {
+			for arg in expr.args {
+				names << t.dependent_names_in_expr(arg.expr)
+			}
+			if func := t.find_fn(expr.name) {
+				names << func.dep_names
+			}
+		}
+		IfExpr {
+			for branch in expr.branches {
+				names << t.dependent_names_in_expr(branch.cond)
+				for stmt in branch.stmts {
+					names << t.dependent_names_in_stmt(stmt)
+				}
+			}
+		}
+		MatchExpr {
+			names << t.dependent_names_in_expr(expr.cond)
+			for branch in expr.branches {
+				for stmt in branch.stmts {
+					names << t.dependent_names_in_stmt(stmt)
+				}
+			}
+		}
+		else {}
+	}
+	return names
+}
+
+pub fn (t &Table) dependent_names_in_stmt(stmt Stmt) []string {
+	mut names := []string{}
+	match stmt {
+		AssignStmt {
+			for expr in stmt.left {
+				names << t.dependent_names_in_expr(expr)
+			}
+			for expr in stmt.right {
+				names << t.dependent_names_in_expr(expr)
+			}
+		}
+		ExprStmt {
+			names << t.dependent_names_in_expr(stmt.expr)
+		}
+		ForInStmt {
+			names << t.dependent_names_in_expr(stmt.cond)
+			for stmt_ in stmt.stmts {
+				names << t.dependent_names_in_stmt(stmt_)
+			}
+		}
+		Return {
+			for expr in stmt.exprs {
+				names << t.dependent_names_in_expr(expr)
+			}
+		}
+		else {}
+	}
+	return names
 }

@@ -27,6 +27,9 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 	mut prev_guard := false
 	for p.tok.kind in [.key_if, .key_else] {
 		p.inside_if = true
+		if is_comptime {
+			p.inside_comptime_if = true
+		}
 		start_pos := if is_comptime { p.prev_tok.pos().extend(p.tok.pos()) } else { p.tok.pos() }
 		if p.tok.kind == .key_else {
 			comments << p.eat_comments()
@@ -40,6 +43,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 				// else {
 				has_else = true
 				p.inside_if = false
+				p.inside_comptime_if = false
 				end_pos := p.prev_tok.pos()
 				body_pos := p.tok.pos()
 				p.open_scope()
@@ -141,6 +145,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		end_pos := p.prev_tok.pos()
 		body_pos := p.tok.pos()
 		p.inside_if = false
+		p.inside_comptime_if = false
 		p.open_scope()
 		stmts := p.parse_block_no_scope(false)
 		branches << ast.IfBranch{

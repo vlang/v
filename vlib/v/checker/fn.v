@@ -334,6 +334,16 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	node.source_file = c.file
+
+	if c.table.known_fn(node.name) {
+		mut dep_names := []string{}
+		for stmt in node.stmts {
+			dep_names << c.table.dependent_names_in_stmt(stmt)
+		}
+		if dep_names.len > 0 {
+			c.table.fns[node.name].dep_names = dep_names
+		}
+	}
 }
 
 // check_same_type_ignoring_pointers util function to check if the Types are the same, including all

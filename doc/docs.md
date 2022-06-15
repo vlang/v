@@ -4114,17 +4114,16 @@ fn (data &MyType) free() {
 Just as the compiler frees C data types with C's `free()`, it will statically insert
 `free()` calls for your data type at the end of each variable's lifetime.
 
+Autofree can be enabled with an `-autofree` flag.
+
 For developers willing to have more low level control, autofree can be disabled with
 `-manualfree`, or by adding a `[manualfree]` on each function that wants manage its
 memory manually. (See [attributes](#attributes)).
 
-_Note: right now autofree is hidden behind the -autofree flag. It will be enabled by
-default in V 0.3. If autofree is not used, V programs will leak memory._
 
 Note 2: Autofree is still WIP. Until it stabilises and becomes the default, please
-compile your long running processes with `-gc boehm`, which will use the
-Boehm-Demers-Weiser conservative garbage collector, to free the memory, that your
-programs leak, at runtime.
+avoid using it. Right now allocations are handled by a minimal and well performing GC
+until V's autofree engine is production ready.
 
 ### Examples
 

@@ -55,7 +55,7 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 				p.error_with_pos("deprecated map syntax, use syntax like `{'age': 20}`",
 					p.tok.pos())
 			} else {
-				if p.inside_if && p.is_generic_name() && p.peek_tok.kind != .dot {
+				if p.inside_comptime_if && p.is_generic_name() && p.peek_tok.kind != .dot {
 					// $if T is string {}
 					p.expecting_type = true
 				}

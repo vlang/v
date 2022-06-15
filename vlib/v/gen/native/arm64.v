@@ -77,6 +77,19 @@ fn (mut g Gen) mov_arm(reg Arm64Register, val u64) {
 	*/
 }
 
+fn (mut g Gen) neg_arm(r Arm64Register) {
+	g.neg_regs_arm(r, r)
+}
+
+fn (mut g Gen) neg_regs_arm(a Arm64Register, b Arm64Register) {
+	if int(a) < 0x0f && int(b) < 0x0f {
+		g.write32(0xe2600000 | int(a) << 16 | int(b) << 12)
+		g.println('neg $a, $b')
+	} else {
+		g.n_error('unhandled neg $a, $b')
+	}
+}
+
 pub fn (mut g Gen) fn_decl_arm64(node ast.FnDecl) {
 	g.gen_arm64_helloworld()
 	// TODO

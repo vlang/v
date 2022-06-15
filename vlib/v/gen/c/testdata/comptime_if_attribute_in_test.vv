@@ -1,0 +1,4 @@
+[if customflag ?]
+fn test_abcdef() {
+	println('this should not be in the c code')
+}

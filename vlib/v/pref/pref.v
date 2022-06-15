@@ -733,9 +733,6 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 		}
 	}
-	if res.is_debug {
-		res.parse_define('debug')
-	}
 	if command == 'crun' {
 		res.is_crun = true
 	}

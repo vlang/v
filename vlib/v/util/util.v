@@ -176,10 +176,19 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		if is_verbose {
 			println('Compiling $tool_name with: "$compilation_command"')
 		}
-		tool_compilation := os.execute_or_exit(compilation_command)
-		if tool_compilation.exit_code != 0 {
-			eprintln('cannot compile `$tool_source`: \n$tool_compilation.output')
-			exit(1)
+
+		retry_max_count := 3
+		for i in 0 .. retry_max_count {
+			tool_compilation := os.execute(compilation_command)
+			if tool_compilation.exit_code == 0 {
+				break
+			} else {
+				if i == retry_max_count - 1 {
+					eprintln('cannot compile `$tool_source`: \n$tool_compilation.output')
+					exit(1)
+				}
+				time.sleep(20 * time.millisecond)
+			}
 		}
 	}
 	$if windows {

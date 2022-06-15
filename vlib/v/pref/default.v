@@ -92,10 +92,15 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		} else {
 			// enable the GC by default
 			p.gc_mode = .boehm_full_opt
+			// NOTE: these are added to p.compile_defines[_all]
+			// more than once when building modules for usecache
 			p.parse_define('gcboehm')
 			p.parse_define('gcboehm_full')
 			p.parse_define('gcboehm_opt')
 		}
+	}
+	if p.is_debug {
+		p.parse_define('debug')
 	}
 	if p.os == ._auto {
 		// No OS specifed? Use current system

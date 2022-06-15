@@ -40,9 +40,16 @@ pub fn compress(data []u8) ?[]u8 {
 	return result
 }
 
+[params]
+pub struct DecompressParams {
+	verify_header_checksum bool = true
+	verify_length          bool = true
+	verify_checksum        bool = true
+}
+
 // decompresses an array of bytes using zlib and returns the decompressed bytes in a new array
 // Example: decompressed := gzip.decompress(b)?
-pub fn decompress(data []u8) ?[]u8 {
+pub fn decompress(data []u8, params DecompressParams) ?[]u8 {
 	if data.len < 18 {
 		return error('data is too short, not gzip compressed?')
 	} else if data[0] != 0x1f || data[1] != 0x8b {
@@ -91,7 +98,7 @@ pub fn decompress(data []u8) ?[]u8 {
 		checksum_header := crc32.sum(data[..header_length])
 		checksum_header_expected := (u32(data[header_length]) << 24) | (u32(data[header_length + 1]) << 16) | (u32(data[
 			header_length + 2]) << 8) | data[header_length + 3]
-		if checksum_header != checksum_header_expected {
+		if params.verify_header_checksum && checksum_header != checksum_header_expected {
 			return error('header checksum verification failed')
 		}
 		header_length += 4
@@ -102,12 +109,12 @@ pub fn decompress(data []u8) ?[]u8 {
 
 	decompressed := compress.decompress(data[header_length..data.len - 8], 0)?
 	length_expected := (u32(data[data.len - 4]) << 24) | (u32(data[data.len - 3]) << 16) | (u32(data[data.len - 2]) << 8) | data[data.len - 1]
-	if decompressed.len != length_expected {
+	if params.verify_length && decompressed.len != length_expected {
 		return error('length verification failed, got $decompressed.len, expected $length_expected')
 	}
 	checksum := crc32.sum(decompressed)
 	checksum_expected := (u32(data[data.len - 8]) << 24) | (u32(data[data.len - 7]) << 16) | (u32(data[data.len - 6]) << 8) | data[data.len - 5]
-	if checksum != checksum_expected {
+	if params.verify_checksum && checksum != checksum_expected {
 		return error('checksum verification failed')
 	}
 	return decompressed
