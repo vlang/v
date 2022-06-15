@@ -1630,18 +1630,17 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		g.set_current_pos_as_last_stmt_pos()
 	}
 	match node {
-		ast.EmptyStmt {}
 		ast.AsmStmt {
 			g.write_v_source_line_info(node.pos)
-			g.gen_asm_stmt(node)
+			g.asm_stmt(node)
 		}
 		ast.AssertStmt {
 			g.write_v_source_line_info(node.pos)
-			g.gen_assert_stmt(node)
+			g.assert_stmt(node)
 		}
 		ast.AssignStmt {
 			g.write_v_source_line_info(node.pos)
-			g.gen_assign_stmt(node)
+			g.assign_stmt(node)
 		}
 		ast.Block {
 			g.write_v_source_line_info(node.pos)
@@ -1729,6 +1728,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln('${g.defer_flag_var(defer_stmt)} = true;')
 			g.defer_stmts << defer_stmt
 		}
+		ast.EmptyStmt {}
 		ast.EnumDecl {
 			g.enum_decl(node)
 		}
@@ -2278,7 +2278,7 @@ fn (mut g Gen) gen_attrs(attrs []ast.Attr) {
 	}
 }
 
-fn (mut g Gen) gen_asm_stmt(stmt ast.AsmStmt) {
+fn (mut g Gen) asm_stmt(stmt ast.AsmStmt) {
 	g.write('__asm__')
 	if stmt.is_volatile {
 		g.write(' volatile')
