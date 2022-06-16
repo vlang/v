@@ -335,7 +335,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 	node.source_file = c.file
 
-	if c.table.known_fn(node.name) {
+	if c.table.known_fn(node.name) && node.name != 'main.main' {
 		mut dep_names := []string{}
 		for stmt in node.stmts {
 			dep_names << c.table.dependent_names_in_stmt(stmt)
