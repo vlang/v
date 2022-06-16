@@ -93,7 +93,8 @@ fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 		}
 		return
 	}
-	if res.exit_code != 0 && v.pref.gc_mode != .no_gc && res.output.contains('libgc.a') {
+	if res.exit_code != 0 && v.pref.gc_mode != .no_gc && res.output.contains('libgc.a')
+		&& !v.pref.is_o {
 		$if windows {
 			verror(r'Your V installation may be out-of-date. Try removing `thirdparty\tcc\` and running `.\make.bat`')
 		} $else {
