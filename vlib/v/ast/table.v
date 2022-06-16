@@ -2146,30 +2146,10 @@ pub fn (t &Table) is_comptime_type(x Type, y ComptimeType) bool {
 pub fn (t &Table) dependent_names_in_expr(expr Expr) []string {
 	mut names := []string{}
 	match expr {
-		Ident {
-			if expr.kind in [.global, .constant] {
-				names << util.no_dots(expr.name)
-			}
-		}
 		ArrayInit {
 			for elem_expr in expr.exprs {
 				names << t.dependent_names_in_expr(elem_expr)
 			}
-		}
-		StructInit {
-			for field in expr.fields {
-				names << t.dependent_names_in_expr(field.expr)
-			}
-		}
-		InfixExpr {
-			names << t.dependent_names_in_expr(expr.left)
-			names << t.dependent_names_in_expr(expr.right)
-		}
-		PostfixExpr {
-			names << t.dependent_names_in_expr(expr.expr)
-		}
-		PrefixExpr {
-			names << t.dependent_names_in_expr(expr.right)
 		}
 		CallExpr {
 			for arg in expr.args {
@@ -2177,6 +2157,15 @@ pub fn (t &Table) dependent_names_in_expr(expr Expr) []string {
 			}
 			if func := t.find_fn(expr.name) {
 				names << func.dep_names
+			}
+		}
+		CastExpr {
+			names << t.dependent_names_in_expr(expr.expr)
+			names << t.dependent_names_in_expr(expr.arg)
+		}
+		Ident {
+			if expr.kind in [.global, .constant] {
+				names << util.no_dots(expr.name)
 			}
 		}
 		IfExpr {
@@ -2187,12 +2176,35 @@ pub fn (t &Table) dependent_names_in_expr(expr Expr) []string {
 				}
 			}
 		}
+		InfixExpr {
+			names << t.dependent_names_in_expr(expr.left)
+			names << t.dependent_names_in_expr(expr.right)
+		}
+		MapInit {
+			for val in expr.vals {
+				names << t.dependent_names_in_expr(val)
+			}
+		}
 		MatchExpr {
 			names << t.dependent_names_in_expr(expr.cond)
 			for branch in expr.branches {
 				for stmt in branch.stmts {
 					names << t.dependent_names_in_stmt(stmt)
 				}
+			}
+		}
+		ParExpr {
+			names << t.dependent_names_in_expr(expr.expr)
+		}
+		PostfixExpr {
+			names << t.dependent_names_in_expr(expr.expr)
+		}
+		PrefixExpr {
+			names << t.dependent_names_in_expr(expr.right)
+		}
+		StructInit {
+			for field in expr.fields {
+				names << t.dependent_names_in_expr(field.expr)
 			}
 		}
 		else {}
@@ -2216,6 +2228,19 @@ pub fn (t &Table) dependent_names_in_stmt(stmt Stmt) []string {
 		}
 		ForInStmt {
 			names << t.dependent_names_in_expr(stmt.cond)
+			for stmt_ in stmt.stmts {
+				names << t.dependent_names_in_stmt(stmt_)
+			}
+		}
+		ForStmt {
+			for stmt_ in stmt.stmts {
+				names << t.dependent_names_in_stmt(stmt_)
+			}
+		}
+		ForCStmt {
+			names << t.dependent_names_in_stmt(stmt.init)
+			names << t.dependent_names_in_expr(stmt.cond)
+			names << t.dependent_names_in_stmt(stmt.inc)
 			for stmt_ in stmt.stmts {
 				names << t.dependent_names_in_stmt(stmt_)
 			}

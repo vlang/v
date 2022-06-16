@@ -4595,7 +4595,7 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 	g.global_const_defs[util.no_dots(name)] = GlobalConstDef{
 		mod: mod
 		def: '$styp $cname; // inited later'
-		init: init.str()
+		init: init.str().trim_right('\n')
 		dep_names: g.table.dependent_names_in_expr(expr)
 	}
 	if g.is_autofree {
