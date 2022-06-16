@@ -321,7 +321,8 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 			if node.is_short {
 				exp_len := info.fields.len
 				got_len := node.fields.len
-				if exp_len != got_len {
+				if exp_len != got_len && !c.pref.translated {
+					// XTODO remove !translated check
 					amount := if exp_len < got_len { 'many' } else { 'few' }
 					c.error('too $amount fields in `$type_sym.name` literal (expecting $exp_len, got $got_len)',
 						node.pos)
