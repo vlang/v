@@ -654,6 +654,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				}
 				i++
 			}
+			'-is_o' {
+				res.is_o = true
+			}
 			'-b', '-backend' {
 				sbackend := cmdline.option(current_args, arg, 'c')
 				res.build_options << '$arg $sbackend'
