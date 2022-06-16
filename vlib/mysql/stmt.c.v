@@ -210,14 +210,14 @@ pub fn (mut stmt Stmt) bind(typ int, buffer voidptr, buf_len u32) {
 	}
 }
 
-pub fn (mut stmt Stmt) bind_res(fields &C.MYSQL_FIELD, dataptr []&char, lens []u32, num_fields int) {
+pub fn (mut stmt Stmt) bind_res(fields &C.MYSQL_FIELD, dataptr []&u8, lens []u32, num_fields int) {
 	for i in 0 .. num_fields {
 		len := FieldType(unsafe { fields[i].@type }).get_len()
 		stmt.res << C.MYSQL_BIND{
 			buffer_type: unsafe { fields[i].@type }
 			buffer: dataptr[i]
 			length: &lens[i]
-			buffer_length: &len
+			buffer_length: len
 		}
 	}
 }
