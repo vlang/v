@@ -636,6 +636,9 @@ fn (mut a array) push(val voidptr) {
 // `val` is array.data and user facing usage is `a << [1,2,3]`
 [unsafe]
 pub fn (mut a3 array) push_many(val voidptr, size int) {
+	if size == 0 {
+		return
+	}
 	a3.ensure_cap(a3.len + size)
 	if a3.data == val && a3.data != 0 {
 		// handle `arr << arr`
