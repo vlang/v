@@ -60,8 +60,7 @@ fn (opt Options) collect_undocumented_functions_in_dir(directory string) []Undoc
 fn (opt &Options) collect_undocumented_functions_in_file(nfile string) []UndocumentedFN {
 	file := os.real_path(nfile)
 	contents := os.read_file(file) or { panic(err) }
-	lines := contents.split('\n').filter(!(it.trim_space().starts_with('[')
-		&& it.trim_space().ends_with(']')))
+	lines := contents.split('\n')
 	mut list := []UndocumentedFN{}
 	mut comments := []string{}
 	mut tags := []string{}
