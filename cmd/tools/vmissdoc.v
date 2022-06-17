@@ -63,38 +63,28 @@ fn (opt &Options) collect_undocumented_functions_in_file(nfile string) []Undocum
 	lines := contents.split('\n').filter(!(it.trim_space().starts_with('[')
 		&& it.trim_space().ends_with(']')))
 	mut list := []UndocumentedFN{}
+	mut comments := []string{}
+	mut tags := []string{}
 	for i, line in lines {
-		if line.starts_with('pub fn') || (opt.private && (line.starts_with('fn ')
+		if line.starts_with("//") {
+			comments << line
+		} else if line.trim_space().starts_with('[') {
+			tags << collect_tags(line)
+		} else if line.starts_with('pub fn') || (opt.private && (line.starts_with('fn ')
 			&& !(line.starts_with('fn C.') || line.starts_with('fn main')))) {
-			// println('Match: $line')
-			if i > 0 && lines.len > 0 {
-				mut line_above := lines[i - 1]
-				if !line_above.starts_with('//') {
-					mut tags := []string{}
-					mut grab := true
-					for j := i - 1; j >= 0; j-- {
-						prev_line := lines[j]
-						if prev_line.contains('}') { // We've looked back to the above scope, stop here
-							break
-						} else if prev_line.starts_with('[') {
-							tags << collect_tags(prev_line)
-							continue
-						} else if prev_line.starts_with('//') { // Single-line comment
-							grab = false
-							break
-						}
-					}
-					if grab {
-						clean_line := line.all_before_last(' {')
-						list << UndocumentedFN{
-							line: i + 1
-							signature: clean_line
-							tags: tags
-							file: file
-						}
-					}
+			if comments.len == 0 {
+				list << UndocumentedFN{
+					line: i + 1
+					signature: line
+					tags: tags
+					file: file
 				}
 			}
+			tags = []
+			comments = []
+		} else {
+			tags = []
+			comments = []
 		}
 	}
 	return list
