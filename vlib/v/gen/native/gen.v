@@ -72,10 +72,10 @@ struct CallPatch {
 
 struct LabelTable {
 mut:
-	label_id   int
-	addrs      []i64 = [i64(0)] // register address of label here
-	patches    []LabelPatch // push placeholders
-	branches   []BranchLabel
+	label_id int
+	addrs    []i64 = [i64(0)] // register address of label here
+	patches  []LabelPatch // push placeholders
+	branches []BranchLabel
 }
 
 struct LabelPatch {

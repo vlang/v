@@ -1917,7 +1917,7 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 		offset += 4
 		g.mov_reg_to_var(offset, native.fn_arg_registers[i])
 	}
-	// define defer vars 
+	// define defer vars
 	for i in 0 .. node.defer_stmts.len {
 		name := '_defer$i'
 		g.allocate_var(name, 8, 0)
