@@ -10,7 +10,7 @@ const (
 
 type SourceMapJson = map[string]json2.Any
 
-struct SourceMap {
+pub struct SourceMap {
 pub mut:
 	version                int               [json: version]
 	file                   string            [json: file]
