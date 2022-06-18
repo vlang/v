@@ -3040,6 +3040,9 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				g.writeln('sync__RwMutex_lock(&$node.auto_locked->mtx);')
 			}
 			g.inside_map_postfix = true
+			if node.is_c2v_prefix {
+				g.write(node.op.str())
+			}
 			if node.expr.is_auto_deref_var() {
 				g.write('(*')
 				g.expr(node.expr)
@@ -3048,7 +3051,9 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				g.expr(node.expr)
 			}
 			g.inside_map_postfix = false
-			g.write(node.op.str())
+			if !node.is_c2v_prefix {
+				g.write(node.op.str())
+			}
 			if node.auto_locked != '' {
 				g.writeln(';')
 				g.write('sync__RwMutex_unlock(&$node.auto_locked->mtx)')

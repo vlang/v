@@ -2387,6 +2387,9 @@ pub fn (mut f Fmt) postfix_expr(node ast.PostfixExpr) {
 	} else {
 		f.write('$node.op')
 	}
+	if node.is_c2v_prefix {
+		f.write('$')
+	}
 }
 
 pub fn (mut f Fmt) prefix_expr(node ast.PrefixExpr) {
