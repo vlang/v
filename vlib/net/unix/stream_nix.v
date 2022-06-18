@@ -11,14 +11,14 @@ const (
 	msg_nosignal               = 0x4000
 )
 
-struct StreamSocket {
+pub struct StreamSocket {
 pub:
 	handle int
 mut:
 	path string
 }
 
-struct StreamConn {
+pub struct StreamConn {
 pub mut:
 	sock StreamSocket
 mut:
@@ -28,7 +28,7 @@ mut:
 	write_timeout  time.Duration
 }
 
-struct StreamListener {
+pub struct StreamListener {
 pub mut:
 	sock StreamSocket
 mut:
