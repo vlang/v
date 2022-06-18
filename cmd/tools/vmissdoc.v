@@ -65,16 +65,18 @@ fn (opt &Options) collect_undocumented_functions_in_file(nfile string) []Undocum
 	mut comments := []string{}
 	mut tags := []string{}
 	for i, line in lines {
-		if line.starts_with("//") {
+		if line.starts_with('//') {
 			comments << line
 		} else if line.trim_space().starts_with('[') {
 			tags << collect_tags(line)
-		} else if line.starts_with('pub fn') || (opt.private && (line.starts_with('fn ')
-			&& !(line.starts_with('fn C.') || line.starts_with('fn main')))) {
+		} else if line.starts_with('pub fn')
+			|| (opt.private && (line.starts_with('fn ') && !(line.starts_with('fn C.')
+			|| line.starts_with('fn main')))) {
 			if comments.len == 0 {
+				clean_line := line.all_before_last(' {')
 				list << UndocumentedFN{
 					line: i + 1
-					signature: line
+					signature: clean_line
 					tags: tags
 					file: file
 				}
