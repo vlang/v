@@ -48,6 +48,7 @@ mut:
 	callpatches          []CallPatch
 	strs                 []String
 	labels               &LabelTable
+	defer_stmts          []ast.DeferStmt
 }
 
 enum RelocType {
@@ -72,7 +73,6 @@ struct CallPatch {
 struct LabelTable {
 mut:
 	label_id   int
-	return_ids []int = [0] // array is for defer
 	addrs      []i64 = [i64(0)] // register address of label here
 	patches    []LabelPatch // push placeholders
 	branches   []BranchLabel
@@ -489,6 +489,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	g.stack_var_pos = 0
 	g.register_function_address(node.name)
 	g.labels = &LabelTable{}
+	g.defer_stmts.clear()
 	if g.pref.arch == .arm64 {
 		g.fn_decl_arm64(node)
 	} else {
@@ -678,6 +679,12 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			}
 		}
 		ast.ConstDecl {}
+		ast.DeferStmt {
+			defer_var := g.get_var_offset('_defer$g.defer_stmts.len')
+			g.mov_int_to_var(defer_var, ._8, 1)
+			g.defer_stmts << node
+			g.defer_stmts[g.defer_stmts.len - 1].idx_in_fn = g.defer_stmts.len - 1
+		}
 		ast.ExprStmt {
 			g.expr(node.expr)
 		}
@@ -714,6 +721,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// dump(node)
 			// dump(node.types)
 			mut s := '?' //${node.exprs[0].val.str()}'
+			// TODO: void return
 			e0 := node.exprs[0]
 			match e0 {
 				ast.IntegerLiteral {
@@ -740,7 +748,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			}
 
 			// jump to return label
-			label := g.labels.return_ids.last()
+			label := 0
 			pos := g.jmp(0)
 			g.labels.patches << LabelPatch{
 				id: label
