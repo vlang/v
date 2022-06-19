@@ -299,6 +299,9 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	if v.pref.sanitize {
 		ccoptions.args << '-fsanitize=leak'
 	}
+	if v.pref.is_o {
+		ccoptions.args << '-c'
+	}
 	//
 	ccoptions.shared_postfix = '.so'
 	$if macos {
