@@ -31,7 +31,7 @@ enum Direction {
 	push
 }
 
-struct Channel {
+pub struct Channel {
 	ringbuf   &u8 // queue for buffered channels
 	statusbuf &u8 // flags to synchronize write/read in ringbuf
 	objsize   u32

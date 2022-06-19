@@ -14,7 +14,7 @@ pub mut:
 	deps  []string
 }
 
-struct DepGraph {
+pub struct DepGraph {
 pub mut:
 	acyclic bool
 	nodes   []DepGraphNode

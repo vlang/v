@@ -261,7 +261,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 		&& c.table.cur_concrete_types.len == 0 {
 		pos := type_sym.name.last_index('.') or { -1 }
 		first_letter := type_sym.name[pos + 1]
-		if !first_letter.is_capital() {
+		if !first_letter.is_capital() && type_sym.kind != .placeholder {
 			c.error('cannot initialize builtin type `$type_sym.name`', node.pos)
 		}
 	}
