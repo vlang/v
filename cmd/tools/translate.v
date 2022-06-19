@@ -25,6 +25,7 @@ fn main() {
 		println('Compiling c2v ...')
 		res2 := os.execute('v -d trace_verbose -g -o c2v -experimental -w .')
 		if res2.exit_code != 0 {
+			eprintln(res2.output)
 			eprintln('Failed to compile C2V. This should never happen, please report it via GitHub.')
 			exit(2)
 		}
@@ -38,9 +39,9 @@ fn main() {
 	os.chdir(os.wd_at_startup)?
 	res := os.execute('$c2v_bin $passed_args')
 	if res.exit_code != 0 {
-		eprintln('C2V failed to translate this file. This should never happen, please report it via GitHub.')
+		eprintln(res.output)
+		eprintln('C2V failed to translate. Please report it via GitHub.')
 		exit(4)
 	}
-	println('Success!')
 	// println(res.output)
 }
