@@ -498,6 +498,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-translated' {
 				res.translated = true
+				res.gc_mode = .no_gc // no gc in c2v'ed code, at least for now
 			}
 			'-m32', '-m64' {
 				res.m64 = arg[2] == `6`
