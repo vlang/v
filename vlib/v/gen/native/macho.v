@@ -123,12 +123,11 @@ fn (mut g Gen) macho_segment64_text() []int {
 	mut patch := []int{}
 	g.macho_add_loadcommand(native.lc_segment_64, 152)
 	g.write_string_with_padding('__TEXT', 16) // section name
-	g.write64(0x100000000) // vmaddr
-	// patch << g.buf.len
-	g.write64(g.get_pagesize() * 2) //  + codesize) // vmsize
+	g.write64(native.base_addr) // vmaddr
+
+	g.write64(g.get_pagesize() * 2) // vmsize
 	g.write64(0) // fileoff
-	// patch << g.buf.len
-	g.write64(0x4000 + 63) // + codesize) // filesize
+	g.write64(g.get_pagesize() + 63) // filesize
 
 	g.write32(5) // maxprot
 	g.write32(5) // initprot
@@ -137,8 +136,7 @@ fn (mut g Gen) macho_segment64_text() []int {
 
 	g.write_string_with_padding('__text', 16) // section name
 	g.write_string_with_padding('__TEXT', 16) // segment name
-	// g.write64(0x0000000100001000) // vmaddr
-	g.write64(0x100004000) // vmaddr
+	g.write64(native.base_addr + g.get_pagesize()) // vmaddr
 	if g.pref.arch == .arm64 {
 		g.write64(0) // vmsize
 	} else {
