@@ -205,7 +205,7 @@ fn pg_type_from_v(typ int) ?string {
 		orm.string {
 			'TEXT'
 		}
-		-1 {
+		orm.serial {
 			'SERIAL'
 		}
 		else {

@@ -467,10 +467,15 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 			if mut node is ast.IndexExpr {
 				node.recursive_mapset_is_setter(true)
 			}
+			is_c2v_prefix := p.peek_tok.kind == .dollar
 			node = ast.PostfixExpr{
 				op: p.tok.kind
 				expr: node
 				pos: p.tok.pos()
+				is_c2v_prefix: is_c2v_prefix
+			}
+			if is_c2v_prefix {
+				p.next()
 			}
 			p.next()
 			// return node // TODO bring back, only allow ++/-- in exprs in translated code

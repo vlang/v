@@ -298,7 +298,7 @@ jobs:
       - name: Self tests (-prod)
         run: ./v -o vprod -prod cmd/v && ./vprod test-self
       - name: Self tests (-cstrict)
-        run: V_CI_CSTRICT=1 ./v -cc gcc -cstrict test-self
+        run: VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 ./v -cc gcc -cstrict test-self
       - name: Build examples
         run: ./v build-examples
       - name: Build tetris.v with -autofree
@@ -396,7 +396,7 @@ jobs:
           ./v -o vprod -prod cmd/v
           ./vprod test-self
       - name: Self tests (-cstrict)
-        run: V_CI_CSTRICT=1 ./vprod -cstrict test-self
+        run: VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 ./vprod -cstrict test-self
 
       - name: Build examples
         run: ./v build-examples

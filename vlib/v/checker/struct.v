@@ -261,7 +261,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 		&& c.table.cur_concrete_types.len == 0 {
 		pos := type_sym.name.last_index_int('.')
 		first_letter := type_sym.name[pos + 1]
-		if !first_letter.is_capital() {
+		if !first_letter.is_capital() && type_sym.kind != .placeholder {
 			c.error('cannot initialize builtin type `$type_sym.name`', node.pos)
 		}
 	}
@@ -321,7 +321,8 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 			if node.is_short {
 				exp_len := info.fields.len
 				got_len := node.fields.len
-				if exp_len != got_len {
+				if exp_len != got_len && !c.pref.translated {
+					// XTODO remove !translated check
 					amount := if exp_len < got_len { 'many' } else { 'few' }
 					c.error('too $amount fields in `$type_sym.name` literal (expecting $exp_len, got $got_len)',
 						node.pos)

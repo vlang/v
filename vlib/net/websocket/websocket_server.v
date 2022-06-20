@@ -25,7 +25,7 @@ pub mut:
 }
 
 // ServerClient represents a connected client
-struct ServerClient {
+pub struct ServerClient {
 pub:
 	resource_name string // resource that the client access
 	client_key    string // unique key of client

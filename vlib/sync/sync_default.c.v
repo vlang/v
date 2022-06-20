@@ -60,7 +60,7 @@ struct RwMutexAttr {
 }
 
 [heap]
-struct Semaphore {
+pub struct Semaphore {
 	sem C.sem_t
 }
 

@@ -862,8 +862,9 @@ pub mut:
 // ++, --
 pub struct PostfixExpr {
 pub:
-	op  token.Kind
-	pos token.Pos
+	op            token.Kind
+	pos           token.Pos
+	is_c2v_prefix bool // for `--x` (`x--$`), only for translated code until c2v can handle it
 pub mut:
 	expr        Expr
 	auto_locked string

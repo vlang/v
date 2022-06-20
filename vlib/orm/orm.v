@@ -20,6 +20,7 @@ pub const (
 	]
 	string   = ast.string_type_idx
 	time     = -2
+	serial   = -1
 	type_idx = {
 		'i8':     ast.i8_type_idx
 		'i16':    ast.i16_type_idx

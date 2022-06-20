@@ -3040,6 +3040,9 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				g.writeln('sync__RwMutex_lock(&$node.auto_locked->mtx);')
 			}
 			g.inside_map_postfix = true
+			if node.is_c2v_prefix {
+				g.write(node.op.str())
+			}
 			if node.expr.is_auto_deref_var() {
 				g.write('(*')
 				g.expr(node.expr)
@@ -3048,7 +3051,9 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 				g.expr(node.expr)
 			}
 			g.inside_map_postfix = false
-			g.write(node.op.str())
+			if !node.is_c2v_prefix {
+				g.write(node.op.str())
+			}
 			if node.auto_locked != '' {
 				g.writeln(';')
 				g.write('sync__RwMutex_unlock(&$node.auto_locked->mtx)')
@@ -4595,7 +4600,7 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, expr ast.Expr, typ
 	g.global_const_defs[util.no_dots(name)] = GlobalConstDef{
 		mod: mod
 		def: '$styp $cname; // inited later'
-		init: init.str()
+		init: init.str().trim_right('\n')
 		dep_names: g.table.dependent_names_in_expr(expr)
 	}
 	if g.is_autofree {
@@ -4791,11 +4796,15 @@ fn (mut g Gen) write_init_function() {
 		g.writeln('\t_closure_mtx_init();')
 	}
 	for mod_name in g.table.modules {
-		g.writeln('\t{ // Initializations for module $mod_name :')
+		mut is_empty := true
 		// write globals and consts init later
 		for var_name in g.sorted_global_const_names {
 			if var := g.global_const_defs[var_name] {
 				if var.mod == mod_name && var.init.len > 0 {
+					if is_empty {
+						is_empty = false
+						g.writeln('\t// Initializations for module $mod_name')
+					}
 					g.writeln(var.init)
 				}
 			}
@@ -4803,12 +4812,14 @@ fn (mut g Gen) write_init_function() {
 		init_fn_name := '${mod_name}.init'
 		if initfn := g.table.find_fn(init_fn_name) {
 			if initfn.return_type == ast.void_type && initfn.params.len == 0 {
+				if is_empty {
+					g.writeln('\t// Initializations for module $mod_name')
+				}
 				mod_c_name := util.no_dots(mod_name)
 				init_fn_c_name := '${mod_c_name}__init'
 				g.writeln('\t${init_fn_c_name}();')
 			}
 		}
-		g.writeln('\t}')
 	}
 	g.writeln('}')
 	if g.pref.printfn_list.len > 0 && '_vinit' in g.pref.printfn_list {

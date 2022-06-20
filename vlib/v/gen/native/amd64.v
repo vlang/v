@@ -1903,7 +1903,7 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 	g.push(.rbp)
 	g.mov_rbp_rsp()
-	locals_count := node.scope.objects.len + node.params.len
+	locals_count := node.scope.objects.len + node.params.len + node.defer_stmts.len
 	g.stackframe_size = (locals_count * 8) + 0x10
 	g.sub8(.rsp, g.stackframe_size)
 
@@ -1916,6 +1916,11 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 		// `mov DWORD PTR [rbp-0x4],edi`
 		offset += 4
 		g.mov_reg_to_var(offset, native.fn_arg_registers[i])
+	}
+	// define defer vars
+	for i in 0 .. node.defer_stmts.len {
+		name := '_defer$i'
+		g.allocate_var(name, 8, 0)
 	}
 	//
 	g.stmts(node.stmts)
@@ -1930,6 +1935,24 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 	// g.leave()
 	g.labels.addrs[0] = g.pos()
 	g.println('; label 0: return')
+	if g.defer_stmts.len != 0 {
+		// save return value
+		g.push(.rax)
+		for defer_stmt in g.defer_stmts.reverse() {
+			defer_var := g.get_var_offset('_defer$defer_stmt.idx_in_fn')
+			g.mov_var_to_reg(.rax, defer_var)
+			g.cmp_zero(.rax)
+			label := g.labels.new_label()
+			jump_addr := g.cjmp(.je)
+			g.labels.patches << LabelPatch{
+				id: label
+				pos: jump_addr
+			}
+			g.stmts(defer_stmt.stmts)
+			g.labels.addrs[label] = g.pos()
+		}
+		g.pop(.rax)
+	}
 	g.add8(.rsp, g.stackframe_size)
 	g.pop(.rbp)
 	g.ret()

@@ -38,7 +38,7 @@ mut:
 }
 
 [heap]
-struct Semaphore {
+pub struct Semaphore {
 	mtx  C.SRWLOCK
 	cond C.CONDITION_VARIABLE
 mut:

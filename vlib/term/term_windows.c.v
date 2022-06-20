@@ -3,14 +3,14 @@ module term
 import os
 
 [typedef]
-struct C.COORD {
+pub struct C.COORD {
 mut:
 	X i16
 	Y i16
 }
 
 [typedef]
-struct C.SMALL_RECT {
+pub struct C.SMALL_RECT {
 mut:
 	Left   u16
 	Top    u16
@@ -21,7 +21,7 @@ mut:
 // win: CONSOLE_SCREEN_BUFFER_INFO
 // https://docs.microsoft.com/en-us/windows/console/console-screen-buffer-info-str
 [typedef]
-struct C.CONSOLE_SCREEN_BUFFER_INFO {
+pub struct C.CONSOLE_SCREEN_BUFFER_INFO {
 mut:
 	dwSize              C.COORD
 	dwCursorPosition    C.COORD
@@ -30,14 +30,14 @@ mut:
 	dwMaximumWindowSize C.COORD
 }
 
-union C.uChar {
+pub union C.uChar {
 mut:
 	UnicodeChar rune
 	AsciiChar   u8
 }
 
 [typedef]
-struct C.CHAR_INFO {
+pub struct C.CHAR_INFO {
 mut:
 	Char       C.uChar
 	Attributes u16

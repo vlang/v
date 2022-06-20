@@ -3724,6 +3724,10 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) ? {
 		return
 	}
 	sym := c.table.sym(typ)
+	if !c.is_builtin_mod && sym.kind == .struct_ && sym.mod != c.mod && !sym.is_pub {
+		c.error('type `$sym.name` is private', pos)
+		return
+	}
 	match sym.kind {
 		.placeholder {
 			if sym.language == .v && !sym.name.starts_with('C.') {

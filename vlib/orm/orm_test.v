@@ -1,7 +1,8 @@
 // import os
 // import term
-import time
+// import mysql
 // import pg
+import time
 import sqlite
 
 struct Module {
@@ -33,9 +34,17 @@ struct TestTime {
 
 fn test_orm() {
 	db := sqlite.connect(':memory:') or { panic(err) }
-	// db.exec('drop table if exists User')
+	db.exec('drop table if exists User')
 
 	// db := pg.connect(host: 'localhost', port: 5432, user: 'louis', password: 'abc', dbname: 'orm') or { panic(err) }
+	/*
+	mut db := mysql.Connection{
+		host: '127.0.0.1'
+		username: 'root'
+		password: 'pw'
+		dbname: 'v'
+	}
+	db.connect() or { panic(err) }*/
 
 	sql db {
 		create table Module
@@ -268,7 +277,7 @@ fn test_orm() {
 	assert updated_oldest.age == 31
 
 	// Remove this when pg is used
-	db.exec('insert into User (name, age) values (NULL, 31)')
+	// db.exec('insert into User (name, age) values (NULL, 31)')
 	null_user := sql db {
 		select from User where id == 5
 	}
@@ -319,6 +328,7 @@ fn test_orm() {
 	}
 
 	assert data.len == 1
+	assert tnow.unix == data[0].create.unix
 
 	mod := Module{}
 
