@@ -57,10 +57,10 @@ fn (mut g Gen) macho_segment64_pagezero() {
 	g.write32(0) // flags
 }
 
-fn (mut g Gen) macho_add_loadcommand(typ int, size int) {
+fn (mut g Gen) macho_add_loadcommand(typ u32, size int) {
 	g.macho_ncmds++
 	g.macho_cmdsize += size
-	g.write32(typ)
+	g.write32(int(typ))
 	g.write32(size)
 }
 
