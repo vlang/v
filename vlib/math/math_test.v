@@ -222,6 +222,16 @@ fn test_nan() {
 	assert nan_f32 != nan_f32
 }
 
+fn test_angle_diff() {
+	for pair in [
+		[pi, pi_2, -pi_2],
+		[pi_2 * 3.0, pi_2, -pi],
+		[pi / 6.0, two_thirds * pi, pi_2],
+	] {
+		assert angle_diff(pair[0], pair[1]) == pair[2]
+	}
+}
+
 fn test_acos() {
 	for i := 0; i < math.vf_.len; i++ {
 		a := math.vf_[i] / 10
