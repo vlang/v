@@ -342,7 +342,7 @@ pub fn (mut g Gen) generate_macho_footer() {
 	g.write8(0)
 	for o in g.size_pos {
 		n := g.read32_at(o)
-		eprintln('$n + $delta')
+		// eprintln('$n + $delta')
 		g.write32_at(o, n + delta)
 	}
 	g.write64(0)
@@ -354,8 +354,7 @@ pub fn (mut g Gen) generate_macho_footer() {
 	} else {
 		call_delta := int(g.main_fn_addr - g.code_start_pos)
 		if (call_delta % 4) != 0 || call_delta < 0 {
-			// invalid delta
-			g.n_error('Invalid delta to entrypoint')
+			g.n_error('Invalid entrypoint->main delta ($call_delta)')
 		} else {
 			blop := (0x94 << 24) | (call_delta / 4)
 			g.write32_at(g.code_start_pos, int(blop))
