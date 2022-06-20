@@ -151,7 +151,7 @@ jobs:
           [ "$(stat -c %s leaks.txt)" = "0" ]
 
   macos:
-    runs-on: macOS-latest
+    runs-on: macOS-12
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     env:

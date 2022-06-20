@@ -76,6 +76,9 @@ fn (mut g Gen) neg(reg Register) {
 }
 
 fn (mut g Gen) cmp(reg Register, size Size, val i64) {
+	if g.pref.arch != .amd64 {
+		panic('cmp')
+	}
 	// Second byte depends on the size of the value
 	match size {
 		._8 {
@@ -349,6 +352,9 @@ fn (mut g Gen) movabs(reg Register, val i64) {
 }
 
 fn (mut g Gen) mov_reg_to_var(var_offset int, reg Register) {
+	if g.pref.arch != .amd64 {
+		panic('invalid arch for mov_reg_to_var')
+	}
 	// 89 7d fc     mov DWORD PTR [rbp-0x4],edi
 	match reg {
 		.rax {
@@ -458,8 +464,14 @@ fn (mut g Gen) cdq() {
 }
 
 pub fn (mut g Gen) ret() {
-	g.write8(0xc3)
-	g.println('ret')
+	if g.pref.arch == .amd64 {
+		g.write8(0xc3)
+		g.println('ret')
+	} else if g.pref.arch == .arm64 {
+		g.write32(0xd65f03c0)
+	} else {
+		panic('invalid arch')
+	}
 }
 
 pub fn (mut g Gen) push(reg Register) {
@@ -1958,9 +1970,11 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 	g.ret()
 }
 
+/*
 pub fn (mut x Amd64) allocate_var(name string, size int, initial_val int) {
 	// do nothing as interface call is crashing
 }
+*/
 
 pub fn (mut g Gen) allocate_array(name string, size int, items int) int {
 	pos := g.allocate_var(name, size, items)
@@ -1969,6 +1983,10 @@ pub fn (mut g Gen) allocate_array(name string, size int, items int) int {
 }
 
 pub fn (mut g Gen) allocate_var(name string, size int, initial_val int) int {
+	if g.pref.arch == .arm64 {
+		// TODO
+		return 0
+	}
 	// `a := 3`  => `mov DWORD [rbp-0x4],0x3`
 	match size {
 		1 {

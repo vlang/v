@@ -49,6 +49,9 @@ mut:
 	strs                 []String
 	labels               &LabelTable
 	defer_stmts          []ast.DeferStmt
+	// macho specific
+	macho_ncmds   int
+	macho_cmdsize int
 }
 
 enum RelocType {
@@ -112,6 +115,20 @@ fn get_backend(arch pref.Arch) ?CodeGen {
 		.amd64 {
 			return Amd64{
 				g: 0
+			}
+		}
+		._auto {
+			$if amd64 {
+				return Amd64{
+					g: 0
+				}
+			} $else $if arm64 {
+				return Arm64{
+					g: 0
+				}
+			} $else {
+				eprintln('-native only have amd64 and arm64 codegens')
+				exit(1)
 			}
 		}
 		else {}
