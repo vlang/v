@@ -37,11 +37,9 @@ fn main() {
 	passed_args := util.args_quote_paths(os.args[2..])
 	// println(passed_args)
 	os.chdir(os.wd_at_startup)?
-	res := os.execute('$c2v_bin $passed_args')
-	if res.exit_code != 0 {
-		eprintln(res.output)
-		eprintln('C2V failed to translate. Please report it via GitHub.')
+	res := os.system('$c2v_bin $passed_args')
+	if res != 0 {
+		eprintln('C2V failed to translate the C files. Please report it via GitHub.')
 		exit(4)
 	}
-	// println(res.output)
 }
