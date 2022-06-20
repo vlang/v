@@ -1977,7 +1977,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	// TODO remove translated
 	if p.tok.kind in [.assign, .decl_assign] || p.tok.kind.is_assign() {
 		return p.partial_assign_stmt(left, left_comments)
-	} else if !p.pref.translated && !p.is_translated && !p.pref.is_fmt
+	} else if !p.pref.translated && !p.is_translated && !p.pref.is_fmt && !p.pref.is_vet
 		&& tok.kind !in [.key_if, .key_match, .key_lock, .key_rlock, .key_select] {
 		for node in left {
 			if (is_top_level || p.tok.kind != .rcbr) && node !is ast.CallExpr
