@@ -23,7 +23,7 @@ fn main() {
 	if !os.exists(c2v_bin) {
 		os.chdir(c2v_dir)?
 		println('Compiling c2v ...')
-		res2 := os.execute('v -d trace_verbose -g -o c2v -experimental -w .')
+		res2 := os.execute('v -keepc -g -experimental -o c2v .')
 		if res2.exit_code != 0 {
 			eprintln(res2.output)
 			eprintln('Failed to compile C2V. This should never happen, please report it via GitHub.')
