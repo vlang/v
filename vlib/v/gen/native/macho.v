@@ -246,11 +246,10 @@ pub fn (mut g Gen) generate_macho_header() {
 }
 
 fn (mut g Gen) get_pagesize() int {
-	return if g.pref.arch == .arm64 {
-		0x4000 // 16KB
-	} else {
-		0x1000 // 4KB
+	if g.pref.arch == .arm64 {
+		return 0x4000 // 16KB
 	}
+	return 0x1000 // 4KB
 }
 
 fn (mut g Gen) write_nulls(len int) {
