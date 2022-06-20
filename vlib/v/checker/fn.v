@@ -134,13 +134,11 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			return
 		}
 		// make sure interface does not implement its own interface methods
-		if sym.kind == .interface_ && sym.has_method(node.name) {
-			if mut sym.info is ast.Interface {
-				// if the method is in info.methods then it is an interface method
-				if sym.info.has_method(node.name) {
-					c.error('interface `$sym.name` cannot implement its own interface method `$node.name`',
-						node.pos)
-				}
+		if mut sym.info is ast.Interface && sym.has_method(node.name) {
+			// if the method is in info.methods then it is an interface method
+			if sym.info.has_method(node.name) {
+				c.error('interface `$sym.name` cannot implement its own interface method `$node.name`',
+					node.pos)
 			}
 		}
 		if mut sym.info is ast.Struct {
@@ -186,28 +184,25 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 			if !param.typ.is_ptr() { // value parameter, i.e. on stack - check for `[heap]`
 				arg_typ_sym := c.table.sym(param.typ)
-				if arg_typ_sym.kind == .struct_ {
-					info := arg_typ_sym.info as ast.Struct
-					if info.is_heap { // set auto_heap to promote value parameter
+				if arg_typ_sym.info is ast.Struct {
+					if arg_typ_sym.info.is_heap { // set auto_heap to promote value parameter
 						mut v := node.scope.find_var(param.name) or { continue }
 						v.is_auto_heap = true
 					}
-					if info.generic_types.len > 0 && !param.typ.has_flag(.generic)
-						&& info.concrete_types.len == 0 {
+					if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
+						&& arg_typ_sym.info.concrete_types.len == 0 {
 						c.error('generic struct in fn declaration must specify the generic type names, e.g. Foo<T>',
 							param.type_pos)
 					}
-				} else if arg_typ_sym.kind == .interface_ {
-					info := arg_typ_sym.info as ast.Interface
-					if info.generic_types.len > 0 && !param.typ.has_flag(.generic)
-						&& info.concrete_types.len == 0 {
+				} else if arg_typ_sym.info is ast.Interface {
+					if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
+						&& arg_typ_sym.info.concrete_types.len == 0 {
 						c.error('generic interface in fn declaration must specify the generic type names, e.g. Foo<T>',
 							param.type_pos)
 					}
-				} else if arg_typ_sym.kind == .sum_type {
-					info := arg_typ_sym.info as ast.SumType
-					if info.generic_types.len > 0 && !param.typ.has_flag(.generic)
-						&& info.concrete_types.len == 0 {
+				} else if arg_typ_sym.info is ast.SumType {
+					if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
+						&& arg_typ_sym.info.concrete_types.len == 0 {
 						c.error('generic sumtype in fn declaration must specify the generic type names, e.g. Foo<T>',
 							param.type_pos)
 					}
