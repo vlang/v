@@ -42,7 +42,7 @@ mut:
 	// arm64 specific stuff for code generation
 }
 
-pub fn (mut x Arm64) allocate_var(name string, size int, initial_val int) {
+fn (mut x Arm64) allocate_var(name string, size int, initial_val int) {
 	eprintln('TODO: allocating var on arm64 ($name) = $size = $initial_val')
 }
 
@@ -55,7 +55,7 @@ fn (mut g Gen) mov_arm(reg Arm64Register, val u64) {
 	// g.write32(0x777777)
 	r := int(reg)
 	if r >= 0 && r <= 16 {
-		g.write32(int(u32(0xd2800000 + int(r) + (int(val) << 5))))
+		g.write32(int(u32(0xd2800000 + u32(r) + (u32(val) << 5))))
 		g.println('mov x$r, $val')
 	} else {
 		g.n_error('mov_arm unsupported values')
@@ -87,9 +87,98 @@ fn (mut g Gen) neg_regs_arm(a Arm64Register, b Arm64Register) {
 	}
 }
 
+fn (mut g Gen) sub_sp(v int) {
+	if g.pref.arch != .arm64 {
+		g.n_error('sub_sp is arm64-specifig')
+		return
+	}
+	// this is for 0x20 only
+	if v < 0 {
+		g.write32(i32(0x910083ff)) // add sp, X
+	} else {
+		g.write32(i32(0xd10083ff)) // sub sp, X
+	}
+}
+
 pub fn (mut g Gen) fn_decl_arm64(node ast.FnDecl) {
 	g.gen_arm64_helloworld()
-	// TODO
+	/*
+	0x100003f6c      ff8300d1       sub sp, sp, 0x20           ; [00] -r-x section size 52 named 0.__TEXT.__text
+            0x100003f70      fd7b01a9       stp x29, x30, [sp, 0x10]
+            0x100003f74      fd430091       add x29, sp, 0x10
+            0x100003f78      bfc31fb8       stur wzr, [x29, -4]
+            0x100003f7c      68008052       mov w8, 3
+            0x100003f80      e80b00b9       str w8, [sp, 8]
+            0x100003f84      00000090       adrp x0, 0x100003000
+            0x100003f88      00b03e91       add x0, x0, 0xfac
+            0x100003f8c      05000094       bl sym.imp.puts            ;[1]
+            0x100003f90      e00b40b9       ldr w0, [sp, 8]            ; 5
+            0x100003f94      fd7b41a9       ldp x29, x30, [sp, 0x10]
+            0x100003f98      ff830091       add sp, sp, 0x20
+            0x100003f9c      c0035fd6       ret
+	*/
+
+	/*
+	/*
+	g.push(.rbp)
+	g.mov_rbp_rsp()
+*/
+	locals_count := node.scope.objects.len + node.params.len + node.defer_stmts.len
+	g.stackframe_size = (locals_count * 8) + 0x10
+//	g.sub8(.rsp, g.stackframe_size)
+	g.sub_sp(32)
+
+	// Copy values from registers to local vars (calling convention)
+	mut offset := 0
+	for i in 0 .. node.params.len {
+		name := node.params[i].name
+		// TODO optimize. Right now 2 mov's are used instead of 1.
+		g.allocate_var(name, 4, 0)
+		// `mov DWORD PTR [rbp-0x4],edi`
+		offset += 4
+		g.mov_reg_to_var(offset, native.fn_arg_registers[i])
+	}
+	// define defer vars
+	for i in 0 .. node.defer_stmts.len {
+		name := '_defer$i'
+		g.allocate_var(name, 8, 0)
+	}
+	//
+	g.stmts(node.stmts)
+	is_main := node.name == 'main.main'
+	if is_main {
+		// println('end of main: gen exit')
+		zero := ast.IntegerLiteral{}
+		g.gen_exit(zero)
+		g.ret()
+		return
+	}
+	// g.leave()
+	g.labels.addrs[0] = g.pos()
+	g.println('; label 0: return')
+/*
+	if g.defer_stmts.len != 0 {
+		// save return value
+		g.push(.rax)
+		for defer_stmt in g.defer_stmts.reverse() {
+			defer_var := g.get_var_offset('_defer$defer_stmt.idx_in_fn')
+			g.mov_var_to_reg(.rax, defer_var)
+			g.cmp_zero(.rax)
+			label := g.labels.new_label()
+			jump_addr := g.cjmp(.je)
+			g.labels.patches << LabelPatch{
+				id: label
+				pos: jump_addr
+			}
+			g.stmts(defer_stmt.stmts)
+			g.labels.addrs[label] = g.pos()
+		}
+		//g.pop(.rax)
+	}
+*/
+	g.sub_sp(-32)
+	g.ret()
+	*/
 }
 
 pub fn (mut g Gen) call_fn_arm64(node ast.CallExpr) {

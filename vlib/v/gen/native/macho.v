@@ -4,24 +4,24 @@
 module native
 
 const (
-	s_attr_some_instructions = 0x00000400
+	s_attr_some_instructions = 0x0400
 	s_attr_pure_instructions = 0x80000000
-	s_attr_ext_reloc         = 0x00000200
-	s_attr_loc_reloc         = 0x00000100
-	//
+	s_attr_ext_reloc         = 0x0200
+	s_attr_loc_reloc         = 0x0100
 	macho_symcmd_size        = 0x18
 	macho_d_size             = 0x50
 	mh_object                = 1
 	mh_execute               = 2
+	lc_dyld_chained_fixups   = 0x80000034
+	lc_dyld_exports_trie     = 0x80000033
+	lc_dyld_info_only        = 0x80000022
 	lc_dysymtab              = 0xb
 	lc_load_dylib            = 0xc
 	lc_load_dylinker         = 0xe
 	lc_main                  = 0x80000028
 	lc_segment_64            = 0x19
-	lc_dyld_chained_fixups   = 0x80000034
-	lc_dyld_exports_trie     = 0x80000033
 	lc_symtab                = 0x2
-	lc_dyld_info_only        = 0x80000022
+	base_addr                = i64(0x1_0000_0000)
 )
 
 struct Symbol {
@@ -47,11 +47,10 @@ fn (mut g Gen) macho_segment64_pagezero() {
 	g.macho_add_loadcommand(native.lc_segment_64, 72)
 	g.write_string_with_padding('__PAGEZERO', 16) // section name
 	g.write64(0) // vmaddr
-	// g.write64(g.get_pagesize()) // vmsize
-	g.write64(0x0000000100000000)
+	// XXX g.write64(g.get_pagesize()) // vmsize
+	g.write64(native.base_addr) // vmsize
 	g.write64(0) // fileoff
 	g.write64(0) // filesize
-
 	g.write32(0) // maxprot
 	g.write32(0) // initprot
 	g.write32(0) // nsects
@@ -86,8 +85,7 @@ fn (mut g Gen) macho_segment64_linkedit() {
 	g.write_string_with_padding('__LINKEDIT', 16)
 
 	// g.size_pos << g.buf.len
-	baddr := i64(0x100000000)
-	g.write64(baddr + g.get_pagesize()) // vmaddr
+	g.write64(native.base_addr + g.get_pagesize()) // vmaddr
 	g.write64(g.get_pagesize()) // vmsize
 	g.write64(g.get_pagesize()) // fileoff
 	g.write64(0) // filesize
@@ -128,7 +126,7 @@ fn (mut g Gen) macho_segment64_text() []int {
 	g.write64(0x100000000) // vmaddr
 	// patch << g.buf.len
 	g.write64(g.get_pagesize() * 2) //  + codesize) // vmsize
-	g.write64(0x00000000) // fileoff
+	g.write64(0) // fileoff
 	// patch << g.buf.len
 	g.write64(0x4000 + 63) // + codesize) // filesize
 
@@ -140,7 +138,7 @@ fn (mut g Gen) macho_segment64_text() []int {
 	g.write_string_with_padding('__text', 16) // section name
 	g.write_string_with_padding('__TEXT', 16) // segment name
 	// g.write64(0x0000000100001000) // vmaddr
-	g.write64(0x0000000100004000) // vmaddr
+	g.write64(0x100004000) // vmaddr
 	if g.pref.arch == .arm64 {
 		g.write64(0) // vmsize
 	} else {
@@ -179,10 +177,10 @@ fn (mut g Gen) macho_symtab() {
 	g.write32(56) // export_size
 
 	g.macho_add_loadcommand(native.lc_symtab, 24)
-	g.write32(0x1000)
-	g.write32(0)
-	g.write32(0x1000)
-	g.write32(0)
+	g.write32(0x1000) // symoff
+	g.write32(0) // nsyms
+	g.write32(0x1000) // stroff
+	g.write32(0) // strsize
 
 	g.macho_add_loadcommand(native.lc_dysymtab, 0x50)
 	g.write32(0) // ilocalsym
@@ -263,11 +261,11 @@ pub fn (mut g Gen) generate_macho_object_header() {
 	if g.pref.arch == .arm64 {
 		g.write32(0xfeedfacf) // MH_MAGIC_64
 		g.write32(0x0100000c) // CPU_TYPE_ARM64
-		g.write32(0x00000000) // CPU_SUBTYPE_ARM64_ALL
+		g.write32(0) // CPU_SUBTYPE_ARM64_ALL
 	} else {
 		g.write32(0xfeedfacf) // MH_MAGIC_64
 		g.write32(0x01000007) // CPU_TYPE_X64
-		g.write32(0x00000003) // CPU_SUBTYPE_X64
+		g.write32(3) // CPU_SUBTYPE_X64
 	}
 	g.write32(native.mh_object) // MH_OBJECT
 	text_offset := 0x138
@@ -472,8 +470,7 @@ fn (mut g Gen) sym_string_table() int {
 					// that should be .rel32, not windows-specific
 					g.write32_at(s.pos, pos)
 				} else {
-					baddr := i64(0x100000000)
-					g.write64_at(s.pos, g.buf.len + baddr)
+					g.write64_at(s.pos, g.buf.len + native.base_addr)
 				}
 			}
 		}
