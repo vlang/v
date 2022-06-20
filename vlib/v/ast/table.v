@@ -1342,7 +1342,7 @@ pub fn (t &Table) is_sumtype_or_in_variant(parent Type, typ Type) bool {
 	if typ == 0 {
 		return false
 	}
-	if t.type_kind(typ) == .sum_type && parent.idx() == typ.idx()
+	if t.sym(typ).kind == .sum_type && parent.idx() == typ.idx()
 		&& parent.nr_muls() == typ.nr_muls() {
 		return true
 	}
