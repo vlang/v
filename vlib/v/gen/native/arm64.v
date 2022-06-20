@@ -54,11 +54,8 @@ fn (mut g Gen) mov_arm(reg Arm64Register, val u64) {
 	// println(x & ~(m << 16))
 	// g.write32(0x777777)
 	r := int(reg)
-	if r == 0 && val == 1 {
-		g.write32(0xd2800020)
-		g.println('mov x0, 1')
-	} else if r >= 0 && r <= 16 {
-		g.write32(int(u32(0xd2800000 + int(r) + int(val)) << 5))
+	if r >= 0 && r <= 16 {
+		g.write32(int(u32(0xd2800000 + int(r) + (int(val) << 5))))
 		g.println('mov x$r, $val')
 	} else {
 		g.n_error('mov_arm unsupported values')
@@ -82,8 +79,8 @@ fn (mut g Gen) neg_arm(r Arm64Register) {
 }
 
 fn (mut g Gen) neg_regs_arm(a Arm64Register, b Arm64Register) {
-	if int(a) < 0x0f && int(b) < 0x0f {
-		g.write32(0xe2600000 | int(a) << 16 | int(b) << 12)
+	if u32(a) < 0x0f && u32(b) < 0x0f {
+		g.write32(int(0xe2600000 | (u32(a) << 16) | u32(b) << 12))
 		g.println('neg $a, $b')
 	} else {
 		g.n_error('unhandled neg $a, $b')
@@ -143,6 +140,11 @@ fn (mut g Gen) gen_arm64_helloworld() {
 		g.mov_arm(.x8, 64) // write (linux-arm64)
 		g.svc()
 	} else {
+		g.mov_arm(.x0, 1)
+		g.adr(.x1, 0x10 + 4)
+		g.mov_arm(.x2, 13)
+		g.mov_arm(.x16, 4) // write
+		g.svc()
 		g.mov_arm(.x0, 0)
 		g.mov_arm(.x16, 1)
 		g.svc()
@@ -167,8 +169,13 @@ fn (mut g Gen) bl() {
 }
 
 fn (mut g Gen) svc() {
-	g.write32(0xd4001001)
-	g.println('svc 0x80')
+	if g.pref.os == .linux {
+		g.write32(0xd4001001)
+		g.println('svc 0x80')
+	} else {
+		g.write32(0xd4000001)
+		g.println('svc 0')
+	}
 }
 
 pub fn (mut c Arm64) gen_exit(mut g Gen, expr ast.Expr) {

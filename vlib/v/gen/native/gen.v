@@ -49,6 +49,9 @@ mut:
 	strs                 []String
 	labels               &LabelTable
 	defer_stmts          []ast.DeferStmt
+	// macho specific
+	macho_ncmds   int
+	macho_cmdsize int
 }
 
 enum RelocType {
