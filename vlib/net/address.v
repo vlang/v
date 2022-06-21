@@ -205,7 +205,7 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
 	// convert them into an array
 	mut addresses := []Addr{}
 
-	for result := results; !isnil(result); result = result.ai_next {
+	for result := unsafe { results }; !isnil(result); result = result.ai_next {
 		match AddrFamily(result.ai_family) {
 			.ip {
 				new_addr := Addr{

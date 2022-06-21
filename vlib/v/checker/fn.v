@@ -877,7 +877,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				c.fail_if_unreadable(call_arg.expr, arg_typ, 'argument')
 			}
 		}
-		mut final_param_sym := param_typ_sym
+		mut final_param_sym := unsafe { param_typ_sym }
 		mut final_param_typ := param.typ
 		if func.is_variadic && param_typ_sym.info is ast.Array {
 			final_param_typ = param_typ_sym.info.elem_type
@@ -1349,7 +1349,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				c.error('when forwarding a variadic variable, it must be the final argument',
 					arg.pos)
 			}
-			mut final_arg_sym := exp_arg_sym
+			mut final_arg_sym := unsafe { exp_arg_sym }
 			mut final_arg_typ := exp_arg_typ
 			if method.is_variadic && exp_arg_sym.info is ast.Array {
 				final_arg_typ = exp_arg_sym.info.elem_type
