@@ -40,7 +40,7 @@ pub:
 //
 // See also: get_cached_image_by_idx
 // See also: remove_cached_image_by_idx
-pub fn (mut ctx Context) cache_image(img Image) int {
+pub fn (mut ctx Context) cache_image(img &Image) int {
 	ctx.image_cache << img
 	image_idx := ctx.image_cache.len - 1
 	ctx.image_cache[image_idx].id = image_idx

@@ -272,7 +272,7 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 		if got_typ_sym.symbol_name_except_generic() == expected_typ_sym.symbol_name_except_generic() {
 			// Check if we are making a comparison between two different types of
 			// the same type like `Type[int] and &Type[]`
-			if (got.is_ptr() != expected.is_ptr())
+			if (got.nr_muls() != expected.nr_muls())
 				|| !c.check_same_module(got, expected)
 				|| (!got.is_ptr() && !expected.is_ptr()
 				&& got_typ_sym.name != expected_typ_sym.name) {
@@ -294,7 +294,7 @@ fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type, lan
 	}
 }
 
-fn (c Checker) get_string_names_of(got ast.Type, expected ast.Type) (string, string) {
+fn (c &Checker) get_string_names_of(got ast.Type, expected ast.Type) (string, string) {
 	got_typ_str := c.table.type_to_str(got.clear_flag(.variadic))
 	expected_typ_str := c.table.type_to_str(expected.clear_flag(.variadic))
 	return got_typ_str, expected_typ_str
@@ -303,7 +303,7 @@ fn (c Checker) get_string_names_of(got ast.Type, expected ast.Type) (string, str
 // helper method to check if the type is of the same module.
 // FIXME(vincenzopalazzo) This is a work around to the issue
 // explained in the https://github.com/vlang/v/pull/13718#issuecomment-1074517800
-fn (c Checker) check_same_module(got ast.Type, expected ast.Type) bool {
+fn (c &Checker) check_same_module(got ast.Type, expected ast.Type) bool {
 	clean_got_typ := c.table.clean_generics_type_str(got.clear_flag(.variadic)).all_before('<')
 	clean_expected_typ := c.table.clean_generics_type_str(expected.clear_flag(.variadic)).all_before('<')
 	if clean_got_typ == clean_expected_typ {

@@ -22,6 +22,6 @@ fn main() {
 	_ := f.no_ref // no error
 	_ := f.ref // error
 
-	b := Bar{}
+	b := &Bar{}
 	_ := b.ref // no error
 }

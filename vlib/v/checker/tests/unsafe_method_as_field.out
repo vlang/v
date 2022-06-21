@@ -4,4 +4,4 @@ vlib/v/checker/tests/unsafe_method_as_field.vv:23:7: error: method `Foo.ref` can
    23 |     _ := f.ref // error
       |          ~~~~~
    24 |
-   25 |     b := Bar{}
+   25 |     b := &Bar{}

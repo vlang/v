@@ -1,0 +1,21 @@
+[heap]
+struct Foo {
+	a int
+}
+
+fn (f Foo) geta() int {
+	return f.a
+}
+
+fn getf() Foo {
+	return Foo{9}
+}
+
+fn geta2(f Foo) int {
+	return f.a
+}
+
+fn main() {
+	f := Foo{3}
+	assert f.a == 3
+}

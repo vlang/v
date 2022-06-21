@@ -296,10 +296,8 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 								if left.obj.is_auto_deref {
 									left.obj.is_used = true
 								}
-								if !left_type.is_ptr() {
-									if c.table.sym(left_type).is_heap() {
-										left.obj.is_auto_heap = true
-									}
+								if c.table.sym(left_type).is_heap() && !left_type.is_ptr() {
+									c.error('`[heap]` structs must be a reference', right.pos())
 								}
 								if left_type in ast.unsigned_integer_type_idxs {
 									if mut right is ast.IntegerLiteral {

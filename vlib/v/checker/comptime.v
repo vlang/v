@@ -81,11 +81,8 @@ fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
 	if node.is_vweb {
 		// TODO assoc parser bug
 		save_cur_fn := c.table.cur_fn
-		pref_ := *c.pref
-		pref2 := &pref.Preferences{
-			...pref_
-			is_vweb: true
-		}
+		mut pref2 := &*c.pref // fix this with .clone()
+		pref2.is_vweb = true // fix this with update syntax
 		mut c2 := new_checker(c.table, pref2)
 		c2.comptime_call_pos = node.pos.pos
 		c2.check(node.vweb_tmpl)

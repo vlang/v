@@ -233,7 +233,7 @@ mut:
 	top            &Chunk = unsafe { nil }
 	footprint      usize
 	max_footprint  usize
-	seg            Segment
+	seg            &Segment
 	trim_check     u32
 	least_addr     voidptr
 	release_checks usize
@@ -251,7 +251,7 @@ pub fn new(system_allocator Allocator) Dlmalloc {
 		top: unsafe { nil }
 		footprint: 0
 		max_footprint: 0
-		seg: Segment{unsafe { nil }, 0, unsafe { nil }, 0}
+		seg: &Segment{unsafe { nil }, 0, unsafe { nil }, 0}
 		trim_check: 0
 		least_addr: unsafe { nil }
 		release_checks: 0
@@ -731,7 +731,7 @@ fn (mut dl Dlmalloc) release_unused_segments() usize {
 	unsafe {
 		mut released := usize(0)
 		mut nsegs := usize(0)
-		mut pred := &dl.seg
+		mut pred := dl.seg
 		mut sp := pred.next
 		for !isnil(sp) {
 			base := sp.base
@@ -779,7 +779,7 @@ fn (mut dl Dlmalloc) release_unused_segments() usize {
 
 [unsafe]
 fn (dl &Dlmalloc) has_segment_link(ptr &Segment) bool {
-	mut sp := &dl.seg
+	mut sp := dl.seg
 	for !isnil(sp) {
 		if ptr.holds(sp) {
 			return true
@@ -1095,7 +1095,7 @@ fn (mut dl Dlmalloc) sys_alloc(size usize) voidptr {
 			tsize_ := tsize - top_foot_size()
 			dl.init_top(&Chunk(tbase), tsize_)
 		} else {
-			mut sp := &dl.seg
+			mut sp := dl.seg
 			for !isnil(sp) && voidptr(tbase) != voidptr(sp.top()) {
 				sp = sp.next
 			}
@@ -1111,7 +1111,7 @@ fn (mut dl Dlmalloc) sys_alloc(size usize) voidptr {
 				} else {
 					dl.least_addr = dl.least_addr
 				}
-				sp = &dl.seg
+				sp = dl.seg
 				for !isnil(sp) && sp.base != voidptr(usize(tbase) + tsize) {
 					sp = sp.next
 				}
@@ -1348,7 +1348,7 @@ fn (mut dl Dlmalloc) add_segment(tbase voidptr, tsize usize, flags u32) {
 
 [unsafe]
 fn (mut dl Dlmalloc) segment_holding(ptr voidptr) &Segment {
-	mut sp := &dl.seg
+	mut sp := dl.seg
 	for !isnil(sp) {
 		if sp.base <= ptr && ptr < sp.top() {
 			return sp

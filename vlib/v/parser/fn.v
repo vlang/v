@@ -578,9 +578,9 @@ run them via `v file.v` instead',
 		receiver: ast.StructField{
 			name: rec.name
 			typ: rec.typ
+			pos: rec.pos
 		}
 		generic_names: generic_names
-		receiver_pos: rec.pos
 		is_method: is_method
 		method_type_pos: rec.type_pos
 		method_idx: type_sym_method_idx

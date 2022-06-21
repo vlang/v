@@ -4,6 +4,7 @@ mut:
 	n int
 }
 
+[heap]
 struct St {
 	Abc
 }
@@ -11,7 +12,7 @@ struct St {
 struct Qwe {
 mut:
 	f f64
-	a Abc
+	a &Abc
 }
 
 struct Rtz {
@@ -47,7 +48,7 @@ fn test_embed_in_ref_struct() {
 fn test_field_in_ref_struct() {
 	x := &Qwe{
 		f: 12.25
-		a: Abc{
+		a: &Abc{
 			n: 23
 		}
 	}

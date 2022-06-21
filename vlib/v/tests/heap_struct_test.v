@@ -4,14 +4,16 @@ mut:
 	n int
 }
 
+[heap]
 struct St {
 	Abc
 }
 
+[heap]
 struct Qwe {
 mut:
 	f f64
-	a Abc
+	a &Abc
 }
 
 fn pass_abc(q &Abc) &Abc {
@@ -27,21 +29,21 @@ fn pass_qwe(q &Qwe) &Qwe {
 }
 
 fn get_ref_structs() (&Abc, &St, &Qwe) {
-	a := Abc{
+	a := &Abc{
 		n: 3
 	}
-	b := St{Abc{
+	b := &St{&Abc{
 		n: 7
 	}}
-	x := Qwe{
+	x := &Qwe{
 		f: 12.25
-		a: Abc{
+		a: &Abc{
 			n: 23
 		}
 	}
-	aa := pass_abc(&a)
-	bb := pass_st(&b)
-	xx := pass_qwe(&x)
+	aa := pass_abc(a)
+	bb := pass_st(b)
+	xx := pass_qwe(x)
 	return aa, bb, xx
 }
 
@@ -61,14 +63,14 @@ fn test_ref_struct() {
 	assert d == 16.0
 }
 
-fn return_heap_obj_value_as_ref(qpast Qwe) &Qwe {
-	return &qpast
+fn return_heap_obj_value_as_ref(qpast &Qwe) &Qwe {
+	return qpast.clone()
 }
 
 fn test_value_ref_heap_struct() {
-	mut x := Qwe{
+	mut x := &Qwe{
 		f: -13.25
-		a: Abc{
+		a: &Abc{
 			n: -129
 		}
 	}
@@ -131,4 +133,21 @@ fn test_value_as_ref() {
 	assert x == 23.0625
 	assert *y == -31.75
 	assert d == 16.0
+}
+
+fn test_clone() {
+	mut a := &Abc{
+		n: 5
+	}
+	assert a.n == 5
+	a.n = 4
+	mut b := a.clone()
+	assert a.n == 4
+	assert b.n == 4
+	b.n = 3
+	assert a.n == 4
+	assert b.n == 3
+	a.n = 2
+	assert a.n == 2
+	assert b.n == 3
 }

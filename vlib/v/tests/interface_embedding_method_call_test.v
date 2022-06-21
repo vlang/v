@@ -52,7 +52,7 @@ pub fn (mut b Button) init(window &Window) {
 	b.window = window
 }
 
-pub fn (b Button) draw() {
+pub fn (b &Button) draw() {
 	g := b.window.initables
 	println(g.len)
 	assert g.len == 1

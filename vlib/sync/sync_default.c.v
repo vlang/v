@@ -202,7 +202,7 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 	return false
 }
 
-pub fn (sem Semaphore) destroy() {
+pub fn (sem &Semaphore) destroy() {
 	res := C.sem_destroy(&sem.sem)
 	if res == 0 {
 		return

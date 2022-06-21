@@ -5,7 +5,7 @@ import v.ast
 
 fn test_macho() {
 	os.chdir(os.temp_dir()) or {}
-	mut g := native.Gen{
+	mut g := &native.Gen{
 		pref: &pref.Preferences{
 			arch: .amd64
 		}

@@ -17,7 +17,7 @@ mut:
 	items           []voidptr
 	results         []voidptr
 	ntask           u32 // reading/writing to this should be atomic
-	waitgroup       sync.WaitGroup
+	waitgroup       &sync.WaitGroup
 	shared_context  voidptr
 	thread_contexts []voidptr
 }
@@ -46,6 +46,9 @@ pub fn new_pool_processor(context PoolProcessorConfig) &PoolProcessor {
 		panic('You need to pass a valid callback to new_pool_processor.')
 	}
 	mut pool := PoolProcessor{
+		waitgroup: &sync.WaitGroup{
+			sem: &sync.Semaphore{}
+		}
 		items: []
 		results: []
 		shared_context: unsafe { nil }

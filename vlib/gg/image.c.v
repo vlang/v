@@ -26,10 +26,10 @@ pub mut:
 
 // create_image creates an `Image` from `file`.
 // TODO return !Image
-pub fn (ctx &Context) create_image(file string) Image {
+pub fn (mut ctx Context) create_image(file string) &Image {
 	// println('\ncreate_image("$file")')
 	if !os.exists(file) {
-		return Image{}
+		return &Image{}
 	}
 	$if macos {
 		if ctx.native_rendering {
@@ -47,8 +47,8 @@ pub fn (ctx &Context) create_image(file string) Image {
 	if !gfx.is_valid() {
 		// Sokol is not initialized yet, add stbi object to a queue/cache
 		// ctx.image_queue << file
-		stb_img := stbi.load(file) or { return Image{} }
-		img := Image{
+		stb_img := stbi.load(file) or { return &Image{} }
+		img := &Image{
 			width: stb_img.width
 			height: stb_img.height
 			nr_channels: stb_img.nr_channels
@@ -121,7 +121,7 @@ pub fn (ctx &Context) draw_image(x f32, y f32, width f32, height f32, img_ &Imag
 // ... where buf is a pointer to the actual pixel data for the image.
 // Note: you still need to call app.gg.draw_image after that, to actually draw it.
 pub fn (mut ctx Context) new_streaming_image(w int, h int, channels int, sicfg StreamingImageConfig) int {
-	mut img := Image{}
+	mut img := &Image{}
 	img.width = w
 	img.height = h
 	img.nr_channels = channels // 4 bytes per pixel for .rgba8, see pixel_format
@@ -170,12 +170,12 @@ pub fn (mut img Image) update_pixel_data(buf &u8) {
 // `width` x `height` dimension.
 //
 // TODO copypasta
-pub fn (mut ctx Context) create_image_with_size(file string, width int, height int) Image {
+pub fn (mut ctx Context) create_image_with_size(file string, width int, height int) &Image {
 	if !gfx.is_valid() {
 		// Sokol is not initialized yet, add stbi object to a queue/cache
 		// ctx.image_queue << file
-		stb_img := stbi.load(file) or { return Image{} }
-		img := Image{
+		stb_img := stbi.load(file) or { return &Image{} }
+		img := &Image{
 			width: width
 			height: height
 			nr_channels: stb_img.nr_channels
@@ -197,13 +197,13 @@ pub fn (mut ctx Context) create_image_with_size(file string, width int, height i
 // create_image creates an `Image` from `file`.
 //
 // TODO remove this
-fn create_image(file string) Image {
+fn create_image(file string) &Image {
 	if !os.exists(file) {
 		println('gg.create_image(): file not found: ${file}')
-		return Image{} // none
+		return &Image{} // none
 	}
-	stb_img := stbi.load(file) or { return Image{} }
-	mut img := Image{
+	stb_img := stbi.load(file) or { return &Image{} }
+	mut img := &Image{
 		width: stb_img.width
 		height: stb_img.height
 		nr_channels: stb_img.nr_channels
@@ -220,9 +220,9 @@ fn create_image(file string) Image {
 // memory buffer `buf` of size `bufsize`.
 //
 // See also: create_image_from_byte_array
-pub fn (mut ctx Context) create_image_from_memory(buf &u8, bufsize int) Image {
-	stb_img := stbi.load_from_memory(buf, bufsize) or { return Image{} }
-	mut img := Image{
+pub fn (mut ctx Context) create_image_from_memory(buf &u8, bufsize int) &Image {
+	stb_img := stbi.load_from_memory(buf, bufsize) or { return &Image{} }
+	mut img := &Image{
 		width: stb_img.width
 		height: stb_img.height
 		nr_channels: stb_img.nr_channels
@@ -239,7 +239,7 @@ pub fn (mut ctx Context) create_image_from_memory(buf &u8, bufsize int) Image {
 // byte array `b`.
 //
 // See also: create_image_from_memory
-pub fn (mut ctx Context) create_image_from_byte_array(b []u8) Image {
+pub fn (mut ctx Context) create_image_from_byte_array(b []u8) &Image {
 	return ctx.create_image_from_memory(b.data, b.len)
 }
 

@@ -7,7 +7,7 @@ pub mut:
 fn test_string_index_in_for_mut_in() {
 	h := ['yore', 'yaya']
 
-	mut grid := Grid{
+	mut grid := &Grid{
 		header: h
 	}
 	wrap_text(mut grid)

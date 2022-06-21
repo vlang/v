@@ -27,15 +27,17 @@ fn C.atomic_compare_exchange_weak_u32(voidptr, voidptr, u32) bool
 [heap]
 pub struct WaitGroup {
 mut:
-	task_count u32       // current task count - reading/writing should be atomic
-	wait_count u32       // current wait count - reading/writing should be atomic
-	sem        Semaphore // This blocks wait() until tast_countreleased by add()
+	task_count u32        // current task count - reading/writing should be atomic
+	wait_count u32        // current wait count - reading/writing should be atomic
+	sem        &Semaphore // This blocks wait() until tast_countreleased by add()
 }
 
 pub fn new_waitgroup() &WaitGroup {
-	mut wg := WaitGroup{}
+	mut wg := &WaitGroup{
+		sem: &Semaphore{}
+	}
 	wg.init()
-	return &wg
+	return wg
 }
 
 pub fn (mut wg WaitGroup) init() {

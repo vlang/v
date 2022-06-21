@@ -246,7 +246,7 @@ fn (t Tree) two_dimension_comment(node [][]ast.Comment) &Node {
 }
 
 // ast file root node
-fn (t Tree) ast_file(node ast.File) &Node {
+fn (t Tree) ast_file(node &ast.File) &Node {
 	mut obj := new_object()
 	obj.add_terse('ast_type', t.string_node('ast.File'))
 	obj.add_terse('path', t.string_node(node.path))
@@ -300,7 +300,7 @@ fn (t Tree) mod(node ast.Module) &Node {
 	return obj
 }
 
-fn (t Tree) scope(scope ast.Scope) &Node {
+fn (t Tree) scope(scope &ast.Scope) &Node {
 	mut obj := new_object()
 	obj.add_terse('ast_type', t.string_node('Scope'))
 	obj.add_terse('parent', t.string_node(ptr_str(scope.parent)))
@@ -541,7 +541,6 @@ fn (t Tree) fn_decl(node ast.FnDecl) &Node {
 	obj.add('is_keep_alive', t.bool_node(node.is_keep_alive))
 	obj.add_terse('is_unsafe', t.bool_node(node.is_unsafe))
 	obj.add_terse('receiver', t.struct_field(node.receiver))
-	obj.add('receiver_pos', t.pos(node.receiver_pos))
 	obj.add_terse('is_method', t.bool_node(node.is_method))
 	obj.add('method_type_pos', t.pos(node.method_type_pos))
 	obj.add('method_idx', t.number_node(node.method_idx))

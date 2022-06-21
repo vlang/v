@@ -3,12 +3,12 @@ vlib/v/checker/tests/struct_init_update_type_err.vv:13:6: error: expected struct
    12 |     _ := Foo{
    13 |         ...i
       |            ^
-   14 |         name: 'f2'
-   15 |     }
-vlib/v/checker/tests/struct_init_update_type_err.vv:18:6: error: expected struct, found `&int`
-   16 |     p := &i
-   17 |     _ = Foo{
-   18 |         ...p
+   12 |         name: 'f2'
+   13 |     }
+vlib/v/checker/tests/struct_init_update_type_err.vv:16:6: error: expected struct, found `&int`
+   14 |     p := &i
+   15 |     _ = Foo{
+   16 |         ...p
       |            ^
    19 |     }
    20 |     f2 := Foo2{}

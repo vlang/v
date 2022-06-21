@@ -24,9 +24,9 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			if embed_sym.kind != .struct_ {
 				c.error('`${embed_sym.name}` is not a struct', embed.pos)
 			} else {
-				info := embed_sym.info as ast.Struct
-				if info.is_heap && !embed.typ.is_ptr() {
-					struct_sym.info.is_heap = true
+				if embed_sym.is_heap() && !struct_sym.is_heap() {
+					c.error('`[heap]` structs cannot be embedded in non-`[heap]` structs, consider marking `${node.name}` with `[heap]`',
+						embed.pos)
 				}
 			}
 			// Ensure each generic type of the embed was declared in the struct's definition
@@ -89,17 +89,16 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				}
 			}
 			if field.typ != 0 {
+				field_sym := c.table.sym(field.typ)
 				if !field.typ.is_ptr() {
 					if c.table.unaliased_type(field.typ) == struct_typ_idx {
 						c.error('field `${field.name}` is part of `${node.name}`, they can not both have the same type',
 							field.type_pos)
 					}
-				}
-			}
-			if sym.kind == .struct_ {
-				info := sym.info as ast.Struct
-				if info.is_heap && !field.typ.is_ptr() {
-					struct_sym.info.is_heap = true
+					if field_sym.is_heap() && !struct_sym.is_heap() {
+						c.error('`[heap]` structs must be a reference: `&${field_sym.name}`',
+							field.type_pos)
+					}
 				}
 				for ct in info.concrete_types {
 					ct_sym := c.table.sym(ct)
@@ -597,8 +596,8 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 					continue
 				}
 				if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !node.has_update_expr
-					&& !c.pref.translated && !c.file.is_translated {
-					c.warn('reference field `${type_sym.name}.${field.name}` must be initialized',
+					&& !c.pref.translated && !c.file.is_translated && !sym.is_heap() {
+					c.error('reference field `${type_sym.name}.${field.name}` must be initialized',
 						node.pos)
 					continue
 				}
@@ -662,6 +661,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 	}
 	if node.has_update_expr {
 		update_type := c.expr(node.update_expr)
+		update_sym := c.table.final_sym(update_type)
 		node.update_expr_type = update_type
 		if node.update_expr is ast.ComptimeSelector {
 			c.error('cannot use struct update syntax in compile time expressions', node.update_expr_pos)
@@ -669,14 +669,13 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 			s := c.table.type_to_str(update_type)
 			c.error('expected struct, found `${s}`', node.update_expr.pos())
 		} else if update_type != node.typ {
-			from_sym := c.table.sym(update_type)
 			to_sym := c.table.sym(node.typ)
-			from_info := from_sym.info as ast.Struct
+			from_info := update_sym.info as ast.Struct
 			to_info := to_sym.info as ast.Struct
 			// TODO this check is too strict
 			if !c.check_struct_signature(from_info, to_info)
 				|| !c.check_struct_signature_init_fields(from_info, to_info, node) {
-				c.error('struct `${from_sym.name}` is not compatible with struct `${to_sym.name}`',
+				c.error('struct `${update_sym.name}` is not compatible with struct `${to_sym.name}`',
 					node.update_expr.pos())
 			}
 		}

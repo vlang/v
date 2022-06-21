@@ -123,9 +123,15 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				} else if multi_sym.kind == .array_fixed {
 					c.error('fixed array cannot be used in multi-return', node.return_type_pos)
 				}
+				if multi_sym.is_heap() && !multi_type.is_ptr() {
+					c.error('`[heap]` structs must be a reference: `&${multi_sym.name}`',
+						node.return_type_pos)
+				}
 			}
 		} else if return_sym.kind == .array_fixed {
 			c.error('fixed array cannot be returned by function', node.return_type_pos)
+		} else if return_sym.is_heap() && !node.return_type.is_ptr() {
+			c.error('`[heap]` structs must be a reference: `&${return_sym.name}`', node.return_type_pos)
 		}
 		// Ensure each generic type of the parameter was declared in the function's definition
 		if node.return_type.has_flag(.generic) {
@@ -159,6 +165,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('method overrides built-in sum type method', node.pos)
 		} else if sym.kind == .multi_return {
 			c.error('cannot define method on multi-value', node.method_type_pos)
+		} else if sym.is_heap() && node.name == 'clone' {
+			c.error('method overrides built-in `[heap]` method', node.pos)
 		}
 		if sym.name.len == 1 {
 			// One letter types are reserved for generics.
@@ -202,6 +210,9 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('method index: ${node.method_idx} >= sym.methods.len: ${sym.methods.len}',
 				node.pos)
 		}
+		if sym.is_heap() && !node.receiver.typ.is_ptr() {
+			c.error('`[heap]` structs must be a reference: `&${sym.name}`', node.receiver.pos)
+		}
 	}
 	if node.language == .v {
 		// Make sure all types are valid
@@ -216,9 +227,11 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 			arg_typ_sym := c.table.sym(param.typ)
 			if arg_typ_sym.info is ast.Struct {
-				if !param.typ.is_ptr() && arg_typ_sym.info.is_heap { // set auto_heap to promote value parameter
-					mut v := node.scope.find_var(param.name) or { continue }
-					v.is_auto_heap = true
+				if !param.typ.is_ptr() {
+					if arg_typ_sym.is_heap() {
+						c.error('`[heap]` structs must be a reference: `&${arg_typ_sym.name}`',
+							param.type_pos)
+					}
 				}
 				if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
 					&& arg_typ_sym.info.concrete_types.len == 0 {
@@ -299,7 +312,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				} else {
 					parent_sym := c.table.final_sym(node.receiver.typ)
 					if node.rec_mut {
-						c.error('receiver cannot be `mut` for operator overloading', node.receiver_pos)
+						c.error('receiver cannot be `mut` for operator overloading', node.receiver.pos)
 					} else if node.params[1].is_mut {
 						c.error('argument cannot be `mut` for operator overloading', node.pos)
 					} else if !c.check_same_type_ignoring_pointers(node.receiver.typ,
@@ -1406,6 +1419,12 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		if !c.check_types(arg_type, info.elem_type) && !c.check_types(left_type, arg_type) {
 			c.error('cannot ${method_name} `${arg_sym.name}` to `${left_sym.name}`', arg_expr.pos())
 		}
+	} else if final_left_sym.is_heap() && method_name == 'clone' {
+		if node.args.len != 0 {
+			c.error('`[heap].clone()` does not accept any arguments', node.pos)
+		}
+		node.return_type = left_type
+		return left_type
 	} else if final_left_sym.info is ast.Array && method_name in ['first', 'last', 'pop'] {
 		return c.array_builtin_method_call(mut node, left_type, final_left_sym)
 	} else if c.pref.backend.is_js() && left_sym.name.starts_with('Promise[')

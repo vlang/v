@@ -1,0 +1,28 @@
+vlib/v/checker/tests/heap_no_ref.vv:6:5: error: `[heap]` structs must be a reference: `&Foo`
+    4 | }
+    5 | 
+    6 | fn (f Foo) geta() int {
+      |     ~~~~~
+    7 |     return f.a
+    8 | }
+vlib/v/checker/tests/heap_no_ref.vv:10:11: error: `[heap]` structs must be a reference: `&Foo`
+    8 | }
+    9 | 
+   10 | fn getf() Foo {
+      |           ~~~
+   11 |     return Foo{9}
+   12 | }
+vlib/v/checker/tests/heap_no_ref.vv:14:12: error: `[heap]` structs must be a reference: `&Foo`
+   12 | }
+   13 | 
+   14 | fn geta2(f Foo) int {
+      |            ~~~
+   15 |     return f.a
+   16 | }
+vlib/v/checker/tests/heap_no_ref.vv:19:7: error: `[heap]` structs must be a reference
+   17 | 
+   18 | fn main() {
+   19 |     f := Foo{3}
+      |          ~~~~~~
+   20 |     assert f.a == 3
+   21 | }

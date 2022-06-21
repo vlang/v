@@ -67,10 +67,10 @@ fn (p Pipe) is_out() bool {
 struct App {
 mut:
 	gg               &gg.Context = unsafe { nil }
-	background       gg.Image
-	bird             gg.Image
-	pipetop          gg.Image
-	pipebottom       gg.Image
+	background       &gg.Image
+	bird             &gg.Image
+	pipetop          &gg.Image
+	pipebottom       &gg.Image
 	pipes            []Pipe
 	birds            []Bird
 	score            int
@@ -254,10 +254,10 @@ fn (app &App) display() {
 				app.bird)
 		}
 	}
-	app.gg.draw_text_def(10, 25, 'Score: ${app.score}')
-	app.gg.draw_text_def(10, 50, 'Max Score: ${app.max_score}')
-	app.gg.draw_text_def(10, 75, 'Generation: ${app.generation}')
-	app.gg.draw_text_def(10, 100, 'Alive: ${app.alives} / ${app.nv.population}')
+	app.gg.draw_text_def(10, 25, 'Score: $app.score')
+	app.gg.draw_text_def(10, 50, 'Max Score: $app.max_score')
+	app.gg.draw_text_def(10, 75, 'Generation: $app.generation')
+	app.gg.draw_text_def(10, 100, 'Alive: $app.alives / $app.nv.population')
 }
 
 fn (app &App) draw() {

@@ -4657,14 +4657,12 @@ references to `q` and `w` are only *borrowed* to `f()`.
 
 Things become different if `f()` is doing something with a reference itself:
 
-```v
+```v failcompile
 struct RefStruct {
 mut:
 	r &MyStruct
 }
 
-// see discussion below
-[heap]
 struct MyStruct {
 	n int
 }
@@ -4682,11 +4680,11 @@ fn (mut r RefStruct) g() {
 	s := MyStruct{
 		n: 7
 	}
-	r.f(&s) // reference to `s` inside `r` is passed back to `main() `
+	r.f(&s) // reference to `s` inside `r` is passed back to `main()`
 }
 
 fn (mut r RefStruct) f(s &MyStruct) {
-	r.r = s // would trigger error without `[heap]`
+	r.r = s // triggers error without `[heap]` on `MyStruct`
 }
 ```
 
@@ -4697,12 +4695,14 @@ the compiler would complain about the assignment in `f()` because `s` *"might
 refer to an object stored on stack"*. The assumption made in `g()` that the call
 `r.f(&s)` would only borrow the reference to `s` is wrong.
 
-A solution to this dilemma is the `[heap]` [attribute](#attributes) at the declaration of
-`struct MyStruct`. It instructs the compiler to *always* allocate `MyStruct`-objects
-on the heap. This way the reference to `s` remains valid even after `g()` returns.
-The compiler takes into consideration that `MyStruct` objects are always heap
-allocated when checking `f()` and allows assigning the reference to `s` to the
-`r.r` field.
+A solution to this dilemma is the `[heap]` attribute at the declaration of
+`struct MyStruct`. It causes an error whenever `MyStruct`-objects are not
+allocated on the heap with `&MyStruct{}`. This way the reference to `s` remains
+valid even after `g()` returns. The compiler takes into consideration that
+`MyStruct` objects are always heap allocated when checking `f()` and allows
+assigning the reference to `s` to the `r.r` field.
+
+`[heap]` structs can be cloned with `.clone()`.
 
 There is a pattern often seen in other programming languages:
 
@@ -4773,7 +4773,7 @@ fn use_stack() {
 }
 
 fn main() {
-	m := MyStruct{}
+	m := MyStruct{} // `m` is on the stack
 	mut r := RefStruct{
 		r: &m
 	}
@@ -4783,7 +4783,7 @@ fn main() {
 }
 
 fn (mut r RefStruct) g() {
-	s := &MyStruct{ // `s` explicitly refers to a heap object
+	s := &MyStruct{ // `s` refers to a heap object here
 		n: 7
 	}
 	// change `&MyStruct` -> `MyStruct` above and `r.f(s)` -> `r.f(&s)` below
@@ -4797,8 +4797,7 @@ fn (mut r RefStruct) f(s &MyStruct) {
 ```
 
 Here the compiler check is suppressed by the `unsafe` block. To make `s` be heap
-allocated even without `[heap]` attribute the `struct` literal is prefixed with
-an ampersand: `&MyStruct{...}`.
+allocated, the `struct` literal is prefixed with an ampersand: `&MyStruct{...}`.
 
 This last step would not be required by the compiler but without it the reference
 inside `r` becomes invalid (the memory area pointed to will be overwritten by

@@ -33,7 +33,7 @@ mut:
 	caller_name     string
 	dot_caller_name string
 	is_caller_used  bool
-	dg              dotgraph.DotGraph
+	dg              &dotgraph.DotGraph
 }
 
 fn (mut m Mapper) dot_normalise_node_name(name string) string {

@@ -184,7 +184,7 @@ pub fn (s &Scope) has_inherited_vars() bool {
 	return false
 }
 
-pub fn (sc Scope) show(depth int, max_depth int) string {
+pub fn (sc &Scope) show(depth int, max_depth int) string {
 	mut out := ''
 	mut indent := ''
 	for _ in 0 .. depth * 4 {
@@ -209,6 +209,6 @@ pub fn (sc Scope) show(depth int, max_depth int) string {
 	return out
 }
 
-pub fn (sc Scope) str() string {
+pub fn (sc &Scope) str() string {
 	return sc.show(0, 0)
 }

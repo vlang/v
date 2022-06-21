@@ -17,7 +17,7 @@ pub mut:
 }
 
 // str returns the string representation of the root node.
-pub fn (r Root) str() string {
+pub fn (r &Root) str() string {
 	mut s := typeof(r).name + '{\n'
 	s += '  input:  ${r.input}\n'
 	s += '  table:  ${r.table}\n'

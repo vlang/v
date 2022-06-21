@@ -251,8 +251,8 @@ pub fn query_image_defaults(desc &Image) ImageDesc {
 }
 
 [inline]
-pub fn query_shader_defaults(desc &Shader) ShaderDesc {
-	return C.sg_query_shader_defaults(unsafe { &ShaderDesc(voidptr(desc)) })
+pub fn query_shader_defaults(desc &Shader) &ShaderDesc {
+	return &(ShaderDesc(C.sg_query_shader_defaults(unsafe { &ShaderDesc(voidptr(desc)) })))
 }
 
 [inline]

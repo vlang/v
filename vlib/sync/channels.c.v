@@ -36,10 +36,10 @@ pub struct Channel {
 	statusbuf &u8 = unsafe { nil } // flags to synchronize write/read in ringbuf
 	objsize   u32
 mut: // atomic
-	writesem           Semaphore // to wake thread that wanted to write, but buffer was full
-	readsem            Semaphore // to wake thread that wanted to read, but buffer was empty
-	writesem_im        Semaphore
-	readsem_im         Semaphore
+	writesem           &Semaphore // to wake thread that wanted to write, but buffer was full
+	readsem            &Semaphore // to wake thread that wanted to read, but buffer was empty
+	writesem_im        &Semaphore
+	readsem_im         &Semaphore
 	write_adr          C.atomic_uintptr_t // if != NULL the next obj can be written here without wait
 	read_adr           C.atomic_uintptr_t // if != NULL an obj can be read from here without wait
 	adr_read           C.atomic_uintptr_t // used to identify origin of writesem
@@ -73,6 +73,10 @@ fn new_channel_st(n u32, st u32) &Channel {
 	rbuf := if n > 0 { unsafe { malloc(int(n * st)) } } else { &u8(0) }
 	sbuf := if n > 0 { vcalloc_noscan(int(n * 2)) } else { &u8(0) }
 	mut ch := Channel{
+		writesem: &Semaphore{}
+		readsem: &Semaphore{}
+		writesem_im: &Semaphore{}
+		readsem_im: &Semaphore{}
 		objsize: st
 		cap: n
 		write_free: n
@@ -96,6 +100,10 @@ fn new_channel_st_noscan(n u32, st u32) &Channel {
 		rbuf := if n > 0 { unsafe { malloc_noscan(int(n * st)) } } else { &u8(0) }
 		sbuf := if n > 0 { vcalloc_noscan(int(n * 2)) } else { &u8(0) }
 		mut ch := Channel{
+			writesem: &Semaphore{}
+			readsem: &Semaphore{}
+			writesem_im: &Semaphore{}
+			readsem_im: &Semaphore{}
 			objsize: st
 			cap: n
 			write_free: n
@@ -552,10 +560,10 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 		assert dir.len == objrefs.len
 	}
 	mut subscr := []Subscription{len: channels.len}
-	mut sem := unsafe { Semaphore{} }
+	mut sem := unsafe { &Semaphore{} }
 	sem.init(0)
 	for i, ch in channels {
-		subscr[i].sem = unsafe { &sem }
+		subscr[i].sem = unsafe { sem }
 		if dir[i] == .push {
 			mut null16 := u16(0)
 			for !C.atomic_compare_exchange_weak_u16(&ch.write_sub_mtx, &null16, u16(1)) {

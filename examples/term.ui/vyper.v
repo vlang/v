@@ -390,7 +390,7 @@ fn (mut a App) move_snake(direction Orientation) {
 }
 
 // check_capture determine if the snake overlaps with the rat
-fn (a App) check_capture() bool {
+fn (a &App) check_capture() bool {
 	snake_pos := a.snake.get_head().pos
 	rat_pos := a.rat.pos
 	return snake_pos.x <= rat_pos.x + block_size && snake_pos.x + block_size >= rat_pos.x

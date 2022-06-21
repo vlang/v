@@ -4,14 +4,16 @@ import sync.stdatomic
 
 pub struct Once {
 mut:
-	m RwMutex
+	m &RwMutex
 pub:
 	count u64
 }
 
 // new_once return a new Once struct.
 pub fn new_once() &Once {
-	mut once := &Once{}
+	mut once := &Once{
+		m: new_rwmutex()
+	}
 	once.m.init()
 	return once
 }

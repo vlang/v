@@ -142,7 +142,9 @@ mut:
 }
 
 fn basepoint_naf_table() NafLookupTable8 {
-	mut bnft := &BasepointNaftablePrecomp{}
+	mut bnft := &BasepointNaftablePrecomp{
+		initonce: sync.new_once()
+	}
 	bnft.initonce.do_with_param(fn (mut o BasepointNaftablePrecomp) {
 		o.table.from_p3(new_generator_point())
 	}, bnft)

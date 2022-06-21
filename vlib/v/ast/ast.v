@@ -531,7 +531,6 @@ pub:
 	is_markused        bool        // true, when an explict `[markused]` tag was put on a fn; `-skip-unused` will not remove that fn
 	is_file_translated bool        // true, when the file it resides in is `[translated]`
 	receiver           StructField // TODO this is not a struct field
-	receiver_pos       token.Pos   // `(u User)` in `fn (u User) name()` position
 	is_method          bool
 	method_type_pos    token.Pos // `User` in ` fn (u User)` position
 	method_idx         int
@@ -1708,7 +1707,7 @@ pub:
 	left        Expr
 	//
 	is_vweb   bool
-	vweb_tmpl File
+	vweb_tmpl &File
 	//
 	is_embed bool
 	//

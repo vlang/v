@@ -44,13 +44,13 @@ fn (mut stack Stack) push(item int) {
 
 struct BTree {
 mut:
-	all_tags     []Tag
+	all_tags     []&Tag
 	node_pointer int
 	childrens    [][]int
 	parents      []int
 }
 
-fn (mut btree BTree) add_children(tag Tag) int {
+fn (mut btree BTree) add_children(tag &Tag) int {
 	btree.all_tags << tag
 	if btree.all_tags.len > 1 {
 		for btree.childrens.len <= btree.node_pointer {
@@ -80,7 +80,7 @@ fn (btree BTree) get_parent() int {
 }
 
 [inline]
-fn (btree BTree) get_stored() Tag {
+fn (btree BTree) get_stored() &Tag {
 	return btree.all_tags[btree.node_pointer]
 }
 

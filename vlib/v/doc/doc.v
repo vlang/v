@@ -99,11 +99,11 @@ pub struct Doc {
 pub mut:
 	prefs     &pref.Preferences = new_vdoc_preferences()
 	base_path string
-	table     &ast.Table      = ast.new_table()
-	checker   checker.Checker = checker.Checker{
-		table: 0
-		pref: 0
-	}
+	table     &ast.Table       = ast.new_table()
+	checker   &checker.Checker = &checker.Checker{
+	table: 0
+	pref: 0
+}
 	fmt                 fmt.Fmt
 	filename            string
 	pos                 int
@@ -310,7 +310,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 }
 
 // file_ast reads the contents of `ast.File` and returns a map of `DocNode`s.
-pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
+pub fn (mut d Doc) file_ast(file_ast &ast.File) map[string]DocNode {
 	mut contents := map[string]DocNode{}
 	stmts := file_ast.stmts
 	d.fmt.file = file_ast
@@ -398,7 +398,7 @@ pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 
 // file_ast_with_pos has the same function as the `file_ast` but
 // instead returns a list of variables in a given offset-based position.
-pub fn (mut d Doc) file_ast_with_pos(file_ast ast.File, pos int) map[string]DocNode {
+pub fn (mut d Doc) file_ast_with_pos(file_ast &ast.File, pos int) map[string]DocNode {
 	lscope := file_ast.scope.innermost(pos)
 	mut contents := map[string]DocNode{}
 	for name, val in lscope.objects {
@@ -439,7 +439,7 @@ pub fn (mut d Doc) generate() ? {
 	if d.with_comments {
 		comments_mode = .parse_comments
 	}
-	mut file_asts := []ast.File{}
+	mut file_asts := []&ast.File{}
 	for i, file_path in v_files {
 		if i == 0 {
 			d.parent_mod_name = get_parent_mod(d.base_path) or { '' }
@@ -451,7 +451,7 @@ pub fn (mut d Doc) generate() ? {
 
 // file_asts has the same function as the `file_ast` function but
 // accepts an array of `ast.File` and throws an error if necessary.
-pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
+pub fn (mut d Doc) file_asts(file_asts []&ast.File) ? {
 	mut fname_has_set := false
 	d.orig_mod_name = file_asts[0].mod.name
 	for i, file_ast in file_asts {

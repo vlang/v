@@ -4,7 +4,7 @@ import sync.stdatomic
 
 pub struct ManyTimes {
 mut:
-	m RwMutex
+	m &RwMutex
 pub:
 	times u64 = 1
 	count u64
@@ -13,6 +13,7 @@ pub:
 // new_many_times return a new ManyTimes struct.
 pub fn new_many_times(times u64) &ManyTimes {
 	mut many_times := &ManyTimes{
+		m: new_rwmutex()
 		times: times
 	}
 	many_times.m.init()

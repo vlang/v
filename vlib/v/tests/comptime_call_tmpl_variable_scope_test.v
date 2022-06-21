@@ -5,7 +5,7 @@ struct MyHeapStruct {
 
 // make sure dereferencing of heap stucts works in selector expr (in tmpl),
 fn test_heap_struct_dereferencing_in_selector_expr() {
-	a := MyHeapStruct{
+	a := &MyHeapStruct{
 		name: 'my_heap_struct_a'
 	}
 	b := 2

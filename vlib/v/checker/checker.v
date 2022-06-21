@@ -3652,8 +3652,7 @@ fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
 				} else {
 					match type_sym.kind {
 						.struct_ {
-							info := type_sym.info as ast.Struct
-							if !info.is_heap {
+							if !type_sym.is_heap() {
 								node.obj.is_auto_heap = true
 							}
 						}

@@ -9,7 +9,7 @@ pub mut:
 fn main() {
 	h := 'yo'
 
-	mut grid := Grid{
+	mut grid := &Grid{
 		header: h
 	}
 	wrap_text(mut grid)

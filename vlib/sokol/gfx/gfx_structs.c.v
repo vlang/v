@@ -162,7 +162,6 @@ pub fn (b &Bindings) append_index_buffer(data voidptr, element_size int, element
 	return C.sg_append_buffer(b.index_buffer, &range)
 }
 
-[heap]
 struct C.sg_shader_desc {
 pub mut:
 	_start_canary u32
@@ -177,46 +176,63 @@ pub type ShaderDesc = C.sg_shader_desc
 
 pub fn (mut desc C.sg_shader_desc) set_vert_src(src string) &ShaderDesc {
 	desc.vs.source = &char(src.str)
-	return desc
+	unsafe {
+		return desc
+	}
 }
 
 pub fn (mut desc C.sg_shader_desc) set_frag_src(src string) &ShaderDesc {
 	desc.fs.source = &char(src.str)
-	return desc
+	unsafe {
+		return desc
+	}
 }
 
 pub fn (mut desc C.sg_shader_desc) set_vert_image(index int, name string) &ShaderDesc {
 	desc.vs.images[index].name = &char(name.str)
 	desc.vs.images[index].image_type = ._2d
-	return desc
+	unsafe {
+		return desc
+	}
 }
 
 pub fn (mut desc C.sg_shader_desc) set_frag_image(index int, name string) &ShaderDesc {
 	desc.fs.images[index].name = &char(name.str)
 	desc.fs.images[index].image_type = ._2d
-	return desc
+	unsafe {
+		return desc
+	}
 }
 
 pub fn (mut desc C.sg_shader_desc) set_vert_uniform_block_size(block_index int, size usize) &ShaderDesc {
 	desc.vs.uniform_blocks[block_index].size = size
-	return desc
+	unsafe {
+		return desc
+	}
 }
 
 pub fn (mut desc C.sg_shader_desc) set_frag_uniform_block_size(block_index int, size usize) &ShaderDesc {
 	desc.fs.uniform_blocks[block_index].size = size
-	return desc
+	unsafe {
+		return desc
+	}
 }
 
 pub fn (mut desc C.sg_shader_desc) set_vert_uniform(block_index int, uniform_index int, name string, @type UniformType, array_count int) &ShaderDesc {
 	desc.vs.uniform_blocks[block_index].uniforms[uniform_index].name = &char(name.str)
 	desc.vs.uniform_blocks[block_index].uniforms[uniform_index].@type = @type
-	return desc
+
+	unsafe {
+		return desc
+	}
 }
 
 pub fn (mut desc C.sg_shader_desc) set_frag_uniform(block_index int, uniform_index int, name string, @type UniformType, array_count int) &ShaderDesc {
 	desc.fs.uniform_blocks[block_index].uniforms[uniform_index].name = &char(name.str)
 	desc.fs.uniform_blocks[block_index].uniforms[uniform_index].@type = @type
-	return desc
+	unsafe {
+		return desc
+	}
 }
 
 pub fn (desc &ShaderDesc) make_shader() Shader {

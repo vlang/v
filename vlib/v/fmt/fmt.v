@@ -18,7 +18,7 @@ const (
 [minify]
 pub struct Fmt {
 pub mut:
-	file               ast.File
+	file               &ast.File
 	table              &ast.Table        = unsafe { nil }
 	pref               &pref.Preferences = unsafe { nil }
 	is_debug           bool
@@ -61,7 +61,7 @@ pub struct FmtOptions {
 	source_text string
 }
 
-pub fn fmt(file ast.File, table &ast.Table, pref_ &pref.Preferences, is_debug bool, options FmtOptions) string {
+pub fn fmt(file &ast.File, table &ast.Table, pref_ &pref.Preferences, is_debug bool, options FmtOptions) string {
 	mut f := Fmt{
 		file: file
 		table: table
