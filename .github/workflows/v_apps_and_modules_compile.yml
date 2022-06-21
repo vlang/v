@@ -67,7 +67,6 @@ jobs:
           ~/.vmodules/vsl/bin/test --use-cblas --use-gc boehm
 
       - name: Build VTL
-        continue-on-error: true
         run: |
           echo "Clone VTL"
           git clone --depth 1 https://github.com/vlang/vtl ~/.vmodules/vtl
