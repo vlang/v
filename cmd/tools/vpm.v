@@ -12,7 +12,7 @@ import vhelp
 import v.vmod
 
 const (
-	default_vpm_server_urls   = ['https://vpm.vlang.io']
+	default_vpm_server_urls   = ['https://vpm.vlang.io', 'https://vpm.url4e.com']
 	valid_vpm_commands        = ['help', 'search', 'install', 'update', 'upgrade', 'outdated',
 		'list', 'remove', 'show']
 	excluded_dirs             = ['cache', 'vlib']
