@@ -4,6 +4,7 @@
 module main
 
 import os
+import rand
 import os.cmdline
 import net.http
 import net.urllib
@@ -13,6 +14,7 @@ import v.vmod
 
 const (
 	default_vpm_server_urls   = ['https://vpm.vlang.io', 'https://vpm.url4e.com']
+	vpm_server_urls           = rand.shuffle_clone(default_vpm_server_urls) or { [] } // ensure that all queries are distributed fairly
 	valid_vpm_commands        = ['help', 'search', 'install', 'update', 'upgrade', 'outdated',
 		'list', 'remove', 'show']
 	excluded_dirs             = ['cache', 'vlib']
@@ -664,7 +666,7 @@ fn get_working_server_url() string {
 	server_urls := if settings.server_urls.len > 0 {
 		settings.server_urls
 	} else {
-		default_vpm_server_urls
+		vpm_server_urls
 	}
 	for url in server_urls {
 		verbose_println('Trying server url: $url')
@@ -725,7 +727,8 @@ fn get_module_meta_info(name string) ?Mod {
 		return mod
 	}
 	mut errors := []string{}
-	for server_url in default_vpm_server_urls {
+
+	for server_url in vpm_server_urls {
 		modurl := server_url + '/jsmod/$name'
 		verbose_println('Retrieving module metadata from: "$modurl" ...')
 		r := http.get(modurl) or {
