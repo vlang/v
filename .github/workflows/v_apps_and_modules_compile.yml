@@ -25,34 +25,94 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --quiet -y libgc-dev
-          sudo apt-get install --quiet -y libsodium-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
-          sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
-
-      - name: Install UI through VPM
-        continue-on-error: true
-        run: |
-          echo "Official VPM modules should be installable"
-          ./v install ui
+          sudo apt-get install --quiet -y libgc-dev   libsodium-dev libssl-dev sqlite3 libsqlite3-dev    valgrind    libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
+          sudo apt-get install --quiet -y --no-install-recommends gfortran liblapacke-dev libopenblas-dev
 
       - name: Build V Language Server (VLS)
-        continue-on-error: true
         run: |
           echo "Clone VLS"
-          git clone --depth 1 https://github.com/vlang/vls
+          git clone --depth 1 https://github.com/vlang/vls /tmp/vls
           echo "Build VLS"
-          pushd vls; v cmd/vls ; popd
+          v /tmp/vls/cmd/vls
           echo "Build VLS with -prod"
-          pushd vls; v -prod cmd/vls; popd
+          v -prod /tmp/vls/cmd/vls
           echo "Build VLS with -gc boehm -skip-unused"
-          pushd vls; v -gc boehm -skip-unused cmd/vls; popd
+          v -gc boehm -skip-unused /tmp/vls/cmd/vls
+
+      - name: Build V Coreutils
+        run: |
+          echo "Clone Coreutils"
+          git clone --depth 1 https://github.com/vlang/coreutils /tmp/coreutils
+          echo "Build Coreutils"
+          cd /tmp/coreutils; make
+
+      - name: Build VAB
+        run: |
+          echo "Install VAB"
+          v install vab
+          echo "Build vab"
+          v ~/.vmodules/vab
+          echo "Build vab with -gc boehm -skip-unused"
+          v -gc boehm -skip-unused ~/.vmodules/vab
+
+      - name: Build Gitly
+        run: |
+          echo "Install markdown"
+          v install markdown
+          echo "Clone Gitly"
+          git clone https://github.com/vlang/gitly /tmp/gitly
+          echo "Build Gitly"
+          v /tmp/gitly
+          echo "Build Gitly with -autofree"
+          v -autofree /tmp/gitly
+          echo "Run first_run.v"
+          v run /tmp/gitly/tests/first_run.v
+          # /tmp/gitly/gitly -ci_run
+
+      - name: Build libsodium
+        run: |
+          echo "Install the libsodium wrapper"
+          v install libsodium
+          echo "Test libsodium"
+          VJOBS=1 v test ~/.vmodules/libsodium
+
+      - name: Build VEX
+        run: |
+          echo "Install Vex"
+          v install nedpals.vex
+          echo "Compile all of the Vex examples"
+          v should-compile-all ~/.vmodules/nedpals/vex/examples
+          echo "Compile the simple Vex example with -gc boehm -skip-unused"
+          v -gc boehm -skip-unused ~/.vmodules/nedpals/vex/examples/simple_example.v
+          echo "Run Vex Tests"
+          v test ~/.vmodules/nedpals/vex
+
+      - name: Build go2v
+        run: |
+          echo "Clone Go2V"
+          git clone --depth=1 https://github.com/vlang/go2v /tmp/go2v/
+          echo "Build Go2V"
+          v /tmp/go2v/
+          echo "Run Go2V tests"
+          VJOBS=1 v -stats test /tmp/go2v/
+
+      - name: Build vlang/pdf
+        run: |
+          v install pdf
+          echo "PDF examples should compile"
+          v should-compile-all ~/.vmodules/pdf/examples
+
+      - name: Install UI through VPM
+        run: |
+          echo "Official VPM modules should be installable"
+          v install ui
+          echo "Examples of UI should compile"
+          v ~/.vmodules/ui/examples/build_examples.vsh
 
       - name: Build VSL
-        continue-on-error: true
         run: |
-          git clone --depth 1 https://github.com/vlang/vsl ~/.vmodules/vsl
-          sudo apt-get install --quiet -y --no-install-recommends gfortran liblapacke-dev libopenblas-dev libgc-dev
+          echo "Install VSL"
+          v install vsl
           echo "Execute Tests using Pure V Backend"
           ~/.vmodules/vsl/bin/test
           echo "Execute Tests using Pure V Backend with Pure V Math"
@@ -63,12 +123,10 @@ jobs:
           ~/.vmodules/vsl/bin/test --use-cblas --use-gc boehm
 
       - name: Build VTL
-        continue-on-error: true
         run: |
-          echo "Clone VTL"
-          git clone --depth 1 https://github.com/vlang/vtl ~/.vmodules/vtl
+          echo "Install VTL"
+          v install vtl
           echo "Install dependencies"
-          sudo apt-get install --quiet -y --no-install-recommends gfortran liblapacke-dev libopenblas-dev libgc-dev
           echo "Execute Tests using Pure V Backend"
           ~/.vmodules/vtl/bin/test
           echo "Execute Tests using Pure V Backend with Pure V Math"
@@ -77,70 +135,3 @@ jobs:
           ~/.vmodules/vtl/bin/test --use-gc boehm
           echo "Execute Tests using Pure V Backend with Pure V Math and Garbage Collection enabled"
           ~/.vmodules/vtl/bin/test --use-cblas --use-gc boehm
-
-      - name: Build VAB
-        continue-on-error: true
-        run: |
-          echo "Clone vab"
-          git clone --depth 1 https://github.com/vlang/vab
-          echo "Build vab"
-          cd vab; ../v ./vab.v ; cd ..
-          echo "Build vab with -gc boehm -skip-unused"
-          cd vab; ../v -gc boehm -skip-unused ./vab.v ; cd ..
-
-      - name: Build Gitly
-        continue-on-error: true
-        run: |
-          echo "Clone markdown"
-          git clone https://github.com/vlang/markdown ~/.vmodules/markdown
-          echo "Clone Gitly"
-          git clone --depth 1 https://github.com/vlang/gitly
-          cd gitly
-          echo "Build Gitly"
-          ../v .
-          echo "Build Gitly with -autofree"
-          ../v -autofree .
-          echo "Run first_run.v"
-          ../v run tests/first_run.v
-          # ./gitly -ci_run
-
-      - name: Build libsodium
-        continue-on-error: true
-        run: |
-          echo "Install libsodium-dev package"
-          sudo apt-get install --quiet -y libsodium-dev
-          echo "Clone the libsodium wrapper"
-          git clone https://github.com/vlang/libsodium ~/.vmodules/libsodium
-          echo "Test libsodium"
-          VJOBS=1 ./v -stats test ~/.vmodules/libsodium
-
-      - name: Build VEX
-        continue-on-error: true
-        run: |
-          echo "Install Vex dependencies"
-          sudo apt-get install --quiet -y libsodium-dev libssl-dev sqlite3 libsqlite3-dev
-          echo "Clone Vex"
-          mkdir -p ~/.vmodules/nedpals; git clone https://github.com/nedpals/vex ~/.vmodules/nedpals/vex
-          echo "Compile all of the Vex examples"
-          ./v should-compile-all ~/.vmodules/nedpals/vex/examples
-          echo "Compile the simple Vex example with -gc boehm -skip-unused"
-          ./v -gc boehm -skip-unused ~/.vmodules/nedpals/vex/examples/simple_example.v
-          echo "Run Vex Tests"
-          ./v test ~/.vmodules/nedpals/vex
-
-      - name: Build go2v
-        continue-on-error: true
-        run: |
-          echo "Clone Go2V"
-          clone --depth=1 https://github.com/vlang/go2v go2v/
-          echo "Build Go2V"
-          ./v go2v/
-          echo "Run Go2V tests"
-          VJOBS=1 ./v -stats test go2v/
-
-      - name: Build vlang/pdf
-        continue-on-error: true
-        run: |
-          git clone --depth=1 https://github.com/vlang/pdf ~/.vmodules/pdf/
-          echo "PDF examples should compile"
-          ./v should-compile-all ~/.vmodules/pdf/examples
