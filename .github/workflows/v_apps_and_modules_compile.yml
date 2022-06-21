@@ -46,6 +46,13 @@ jobs:
           echo "Build VLS with -gc boehm -skip-unused"
           pushd vls; v -gc boehm -skip-unused cmd/vls; popd
 
+      - name: Build V Coreutils
+        run: |
+          echo "Clone Coreutils"
+          git clone --depth 1 https://github.com/vlang/coreutils
+          echo "Build Coreutils"
+          pushd coreutils; make; popd
+
       - name: Build VSL
         run: |
           git clone --depth 1 https://github.com/vlang/vsl ~/.vmodules/vsl
