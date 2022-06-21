@@ -90,7 +90,7 @@ fn (mut p Parser) hash() ast.HashStmt {
 
 fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	err_node := ast.ComptimeCall{
-		vweb_tmpl: 0 // delete this
+		vweb_tmpl: 0
 		scope: 0
 	}
 	start_pos := p.tok.pos()
@@ -119,7 +119,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		p.check(.string)
 		p.check(.rpar)
 		return ast.ComptimeCall{
-			vweb_tmpl: 0 // delete this
+			vweb_tmpl: 0
 			scope: 0
 			method_name: method_name
 			args_var: s
@@ -165,7 +165,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 			p.register_auto_import('v.preludes.embed_file.zlib')
 		}
 		return ast.ComptimeCall{
-			vweb_tmpl: 0 // delete this
+			vweb_tmpl: 0
 			scope: 0
 			is_embed: true
 			embed_file: ast.EmbeddedFile{
@@ -202,7 +202,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 		if !os.exists(path) {
 			if p.pref.is_fmt {
 				return ast.ComptimeCall{
-					vweb_tmpl: 0 // delete this
+					vweb_tmpl: 0
 					scope: 0
 					is_vweb: true
 					method_name: method_name
@@ -354,7 +354,7 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 			p.check(.lcbr)
 		}
 		return ast.ComptimeCall{
-			vweb_tmpl: 0 // delete this
+			vweb_tmpl: 0
 			left: left
 			method_name: method_name
 			method_pos: method_pos

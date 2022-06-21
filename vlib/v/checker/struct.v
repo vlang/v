@@ -596,7 +596,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 					continue
 				}
 				if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !node.has_update_expr
-					&& !c.pref.translated && !c.file.is_translated && !sym.is_heap() {
+					&& !c.pref.translated && !c.file.is_translated {
 					c.error('reference field `${type_sym.name}.${field.name}` must be initialized',
 						node.pos)
 					continue
