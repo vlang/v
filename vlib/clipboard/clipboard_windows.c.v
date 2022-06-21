@@ -55,7 +55,7 @@ fn C.DestroyWindow(hwnd C.HWND)
 //
 // System "copy" and "paste" actions utilize the clipboard for temporary storage.
 [heap]
-struct Clipboard {
+pub struct Clipboard {
 	max_retries int
 	retry_delay int
 mut:
