@@ -174,7 +174,7 @@ fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
 }
 
 pub fn (mut c Checker) check(ast_file_ &ast.File) {
-	mut ast_file := ast_file_
+	mut ast_file := unsafe { ast_file_ }
 	c.reset_checker_state_at_start_of_new_file()
 	c.change_current_file(ast_file)
 	for i, ast_import in ast_file.imports {

@@ -157,6 +157,13 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					}
 				}
 			}
+			if mut left is ast.Ident && mut right is ast.Ident {
+				if !c.inside_unsafe && left_type.is_ptr() && left.is_mut() && right_type.is_ptr()
+					&& !right.is_mut() {
+					c.error('`$right.name` is immutable, cannot have a mutable reference to it',
+						right.pos)
+				}
+			}
 		} else {
 			// Make sure the variable is mutable
 			c.fail_if_immutable(left)
