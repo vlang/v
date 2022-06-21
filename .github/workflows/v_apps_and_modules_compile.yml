@@ -30,11 +30,6 @@ jobs:
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
           sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
 
-      - name: Install UI through VPM
-        run: |
-          echo "Official VPM modules should be installable"
-          v install ui
-
       - name: Build V Language Server (VLS)
         run: |
           echo "Clone VLS"
@@ -140,3 +135,9 @@ jobs:
           git clone --depth=1 https://github.com/vlang/pdf ~/.vmodules/pdf/
           echo "PDF examples should compile"
           v should-compile-all ~/.vmodules/pdf/examples
+
+      - name: Install UI through VPM
+        continue-on-error: true
+        run: |
+          echo "Official VPM modules should be installable"
+          v install ui
