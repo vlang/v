@@ -31,13 +31,11 @@ jobs:
           sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
 
       - name: Install UI through VPM
-        continue-on-error: true
         run: |
           echo "Official VPM modules should be installable"
           ./v install ui
 
       - name: Build V Language Server (VLS)
-        continue-on-error: true
         run: |
           echo "Clone VLS"
           git clone --depth 1 https://github.com/vlang/vls
@@ -49,7 +47,6 @@ jobs:
           pushd vls; v -gc boehm -skip-unused cmd/vls; popd
 
       - name: Build VSL
-        continue-on-error: true
         run: |
           git clone --depth 1 https://github.com/vlang/vsl ~/.vmodules/vsl
           sudo apt-get install --quiet -y --no-install-recommends gfortran liblapacke-dev libopenblas-dev libgc-dev
@@ -63,7 +60,6 @@ jobs:
           ~/.vmodules/vsl/bin/test --use-cblas --use-gc boehm
 
       - name: Build VTL
-        continue-on-error: true
         run: |
           echo "Clone VTL"
           git clone --depth 1 https://github.com/vlang/vtl ~/.vmodules/vtl
@@ -79,7 +75,6 @@ jobs:
           ~/.vmodules/vtl/bin/test --use-cblas --use-gc boehm
 
       - name: Build VAB
-        continue-on-error: true
         run: |
           echo "Clone vab"
           git clone --depth 1 https://github.com/vlang/vab
@@ -89,7 +84,6 @@ jobs:
           cd vab; ../v -gc boehm -skip-unused ./vab.v ; cd ..
 
       - name: Build Gitly
-        continue-on-error: true
         run: |
           echo "Clone markdown"
           git clone https://github.com/vlang/markdown ~/.vmodules/markdown
@@ -105,7 +99,6 @@ jobs:
           # ./gitly -ci_run
 
       - name: Build libsodium
-        continue-on-error: true
         run: |
           echo "Install libsodium-dev package"
           sudo apt-get install --quiet -y libsodium-dev
@@ -115,7 +108,6 @@ jobs:
           VJOBS=1 ./v -stats test ~/.vmodules/libsodium
 
       - name: Build VEX
-        continue-on-error: true
         run: |
           echo "Install Vex dependencies"
           sudo apt-get install --quiet -y libsodium-dev libssl-dev sqlite3 libsqlite3-dev
@@ -129,7 +121,6 @@ jobs:
           ./v test ~/.vmodules/nedpals/vex
 
       - name: Build go2v
-        continue-on-error: true
         run: |
           echo "Clone Go2V"
           clone --depth=1 https://github.com/vlang/go2v go2v/
@@ -139,7 +130,6 @@ jobs:
           VJOBS=1 ./v -stats test go2v/
 
       - name: Build vlang/pdf
-        continue-on-error: true
         run: |
           git clone --depth=1 https://github.com/vlang/pdf ~/.vmodules/pdf/
           echo "PDF examples should compile"
