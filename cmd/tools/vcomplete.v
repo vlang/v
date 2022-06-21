@@ -263,6 +263,11 @@ const (
 		'--verify',
 		'--diff',
 	]
+	auto_complete_flags_bump    = [
+		'--patch',
+		'--minor',
+		'--major',
+	]
 	auto_complete_flags_self    = [
 		'-prod',
 	]
@@ -428,6 +433,9 @@ fn auto_complete_request(args []string) []string {
 				}
 				'missdoc' { // 'v missdoc -<tab>' -> flags.
 					list = get_flags(auto_complete_flags_missdoc, part)
+				}
+				'bump' { // 'v bump -<tab>' -> flags.
+					list = get_flags(auto_complete_flags_bump, part)
 				}
 				else {
 					for flag in auto_complete_flags {
