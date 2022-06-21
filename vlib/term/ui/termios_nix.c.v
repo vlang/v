@@ -43,7 +43,7 @@ fn restore_terminal_state_signal(_ os.Signal) {
 
 fn restore_terminal_state() {
 	termios_reset()
-	mut c := ctx_ptr
+	mut c := unsafe { ctx_ptr }
 	if unsafe { c != 0 } {
 		c.paused = true
 		load_title()
@@ -125,7 +125,7 @@ fn (mut ctx Context) termios_setup() ? {
 	C.atexit(restore_terminal_state)
 	os.signal_opt(.tstp, restore_terminal_state_signal) or {}
 	os.signal_opt(.cont, fn (_ os.Signal) {
-		mut c := ctx_ptr
+		mut c := unsafe { ctx_ptr }
 		if unsafe { c != 0 } {
 			c.termios_setup() or { panic(err) }
 			c.window_height, c.window_width = get_terminal_size()
@@ -140,7 +140,7 @@ fn (mut ctx Context) termios_setup() ? {
 	}) or {}
 	for code in ctx.cfg.reset {
 		os.signal_opt(code, fn (_ os.Signal) {
-			mut c := ctx_ptr
+			mut c := unsafe { ctx_ptr }
 			if unsafe { c != 0 } {
 				c.cleanup()
 			}
@@ -149,7 +149,7 @@ fn (mut ctx Context) termios_setup() ? {
 	}
 
 	os.signal_opt(.winch, fn (_ os.Signal) {
-		mut c := ctx_ptr
+		mut c := unsafe { ctx_ptr }
 		if unsafe { c != 0 } {
 			c.window_height, c.window_width = get_terminal_size()
 
