@@ -25,10 +25,8 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --quiet -y libgc-dev
-          sudo apt-get install --quiet -y libsodium-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
-          sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
+          sudo apt-get install --quiet -y libgc-dev   libsodium-dev libssl-dev sqlite3 libsqlite3-dev    valgrind    libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
+          sudo apt-get install --quiet -y --no-install-recommends gfortran liblapacke-dev libopenblas-dev
 
       - name: Build V Language Server (VLS)
         run: |
@@ -48,36 +46,6 @@ jobs:
           echo "Build Coreutils"
           cd /tmp/coreutils; make
 
-      - name: Build VSL
-        run: |
-          echo "Install VSL"
-          v install vsl
-          echo "Install dependencies"
-          sudo apt-get install --quiet -y --no-install-recommends gfortran liblapacke-dev libopenblas-dev libgc-dev
-          echo "Execute Tests using Pure V Backend"
-          ~/.vmodules/vsl/bin/test
-          echo "Execute Tests using Pure V Backend with Pure V Math"
-          ~/.vmodules/vsl/bin/test --use-cblas
-          echo "Execute Tests using Pure V Backend and Garbage Collection enabled"
-          ~/.vmodules/vsl/bin/test --use-gc boehm
-          echo "Execute Tests using Pure V Backend with Pure V Math and Garbage Collection enabled"
-          ~/.vmodules/vsl/bin/test --use-cblas --use-gc boehm
-
-      - name: Build VTL
-        run: |
-          echo "Install VTL"
-          v install vtl
-          echo "Install dependencies"
-          sudo apt-get install --quiet -y --no-install-recommends gfortran liblapacke-dev libopenblas-dev libgc-dev
-          echo "Execute Tests using Pure V Backend"
-          ~/.vmodules/vtl/bin/test
-          echo "Execute Tests using Pure V Backend with Pure V Math"
-          ~/.vmodules/vtl/bin/test --use-cblas
-          echo "Execute Tests using Pure V Backend and Garbage Collection enabled"
-          ~/.vmodules/vtl/bin/test --use-gc boehm
-          echo "Execute Tests using Pure V Backend with Pure V Math and Garbage Collection enabled"
-          ~/.vmodules/vtl/bin/test --use-cblas --use-gc boehm
-
       - name: Build VAB
         run: |
           echo "Install VAB"
@@ -92,7 +60,7 @@ jobs:
           echo "Install markdown"
           v install markdown
           echo "Clone Gitly"
-          git clone --depth 1 https://github.com/vlang/gitly /tmp/gitly
+          git clone https://github.com/vlang/gitly /tmp/gitly
           echo "Build Gitly"
           v /tmp/gitly
           echo "Build Gitly with -autofree"
@@ -103,8 +71,6 @@ jobs:
 
       - name: Build libsodium
         run: |
-          echo "Install libsodium-dev package"
-          sudo apt-get install --quiet -y libsodium-dev
           echo "Install the libsodium wrapper"
           v install libsodium
           echo "Test libsodium"
@@ -112,8 +78,6 @@ jobs:
 
       - name: Build VEX
         run: |
-          echo "Install Vex dependencies"
-          sudo apt-get install --quiet -y libsodium-dev libssl-dev sqlite3 libsqlite3-dev
           echo "Install Vex"
           v install nedpals.vex
           echo "Compile all of the Vex examples"
@@ -139,9 +103,35 @@ jobs:
           v should-compile-all ~/.vmodules/pdf/examples
 
       - name: Install UI through VPM
-        continue-on-error: true
         run: |
           echo "Official VPM modules should be installable"
           v install ui
           echo "Examples of UI should compile"
           v ~/.vmodules/ui/examples/build_examples.vsh
+
+      - name: Build VSL
+        run: |
+          echo "Install VSL"
+          v install vsl
+          echo "Execute Tests using Pure V Backend"
+          ~/.vmodules/vsl/bin/test
+          echo "Execute Tests using Pure V Backend with Pure V Math"
+          ~/.vmodules/vsl/bin/test --use-cblas
+          echo "Execute Tests using Pure V Backend and Garbage Collection enabled"
+          ~/.vmodules/vsl/bin/test --use-gc boehm
+          echo "Execute Tests using Pure V Backend with Pure V Math and Garbage Collection enabled"
+          ~/.vmodules/vsl/bin/test --use-cblas --use-gc boehm
+
+      - name: Build VTL
+        run: |
+          echo "Install VTL"
+          v install vtl
+          echo "Install dependencies"
+          echo "Execute Tests using Pure V Backend"
+          ~/.vmodules/vtl/bin/test
+          echo "Execute Tests using Pure V Backend with Pure V Math"
+          ~/.vmodules/vtl/bin/test --use-cblas
+          echo "Execute Tests using Pure V Backend and Garbage Collection enabled"
+          ~/.vmodules/vtl/bin/test --use-gc boehm
+          echo "Execute Tests using Pure V Backend with Pure V Math and Garbage Collection enabled"
+          ~/.vmodules/vtl/bin/test --use-cblas --use-gc boehm
