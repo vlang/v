@@ -1,4 +1,4 @@
-vlib/v/checker/tests/assign_immutable_reference_var_err.vv:8:11: error: `x` is immutable, cannot have a mutable reference to it
+vlib/v/checker/tests/assign_immutable_reference_var_err.vv:8:11: error: `x` is immutable, cannot have a mutable reference to an immutable object
     6 |
     7 | fn y(x &Foo) {
     8 |     mut m := x
