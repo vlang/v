@@ -17,7 +17,16 @@ The language promotes writing simple and clear code with minimal abstraction.
 Despite being simple, V gives the developer a lot of power.
 Anything you can do in other languages, you can do in V.
 
-## Install from source
+## Installation
+### Install using binaries 
+The easiest way to get the latest stable version of V is using the prebuild binaries for respective platform 
+|  Operating System | Pre-build binaries | 
+|---|---|
+| Windows | [download](https://github.com/vlang/v/releases/latest/download/v_windows.zip)  |  
+| Linux  | [download](https://github.com/vlang/v/releases/latest/download/v_linux.zip)   |      
+| macOS  | [download](https://github.com/vlang/v/releases/latest/download/v_macos.zip)  |    
+
+### Install from source
 The major way to get the latest and greatest V, is to __install it from source__.
 It is __easy__, and it usually takes __only a few seconds__.
 
