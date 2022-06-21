@@ -86,7 +86,6 @@ jobs:
           v -gc boehm -skip-unused /tmp/vab
 
       - name: Build Gitly
-        continue-on-error: true
         run: |
           echo "Clone markdown"
           git clone https://github.com/vlang/markdown ~/.vmodules/markdown
