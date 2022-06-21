@@ -27,7 +27,7 @@ jobs:
 
     - name: Install vab
       run: |
-        v install vab
+        git clone --depth 1 https://github.com/vlang/vab ~/.vmodules/vab
         v -g ~/.vmodules/vab
         sudo ln -s ~/.vmodules/vab/vab /usr/local/bin/vab
 
