@@ -169,6 +169,7 @@ pub fn new(input_path string) Doc {
 		indent: 0
 		is_debug: false
 		table: d.table
+		file: 0
 	}
 	d.checker = checker.new_checker(d.table, d.prefs)
 	return d

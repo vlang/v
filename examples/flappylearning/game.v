@@ -176,6 +176,7 @@ fn (mut app App) update() {
 fn main() {
 	mut app := &App{
 		gg: 0
+		background: 0
 	}
 	mut font_path := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))
 	$if android {

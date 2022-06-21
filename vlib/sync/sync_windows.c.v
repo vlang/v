@@ -208,5 +208,5 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 	return res != 0
 }
 
-pub fn (s Semaphore) destroy() {
+pub fn (s &Semaphore) destroy() {
 }
