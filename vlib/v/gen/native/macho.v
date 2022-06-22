@@ -192,11 +192,7 @@ fn (mut g Gen) macho_symtab() {
 	g.macho_add_loadcommand(native.lc_symtab, 24)
 	g.write32(0x1000) // symoff
 	g.write32(0) // nsyms
-	if g.pref.arch == .amd64 {
-		g.write32(0x1000) // stroff
-	} else {
-		g.write32(0x1000) // stroff
-	}
+	g.write32(0x1000) // stroff
 	g.write32(0) // strsize
 
 	g.macho_add_loadcommand(native.lc_dysymtab, 0x50)
