@@ -13,7 +13,7 @@ fn main() {
 	if !os.exists(c2v_dir) {
 		println('C2V is not installed. Cloning C2V to $c2v_dir ...')
 		os.chdir(vmodules)?
-		res := os.execute('git clone --depth 1 git@github.com:/vlang/c2v.git')
+		res := os.execute('git clone https://github.com/vlang/c2v')
 		if res.exit_code != 0 {
 			eprintln('Failed to download C2V.')
 			exit(1)
