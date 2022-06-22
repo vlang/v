@@ -18,7 +18,7 @@ and various expressions.
 
 ```c
 #include <stdio.h>
-#include <math.h>
+#include <stdbool.h>
 
 bool is_prime(int x) {
     for (int i = 2; i <= x / 2; i++) {
@@ -35,7 +35,6 @@ int main() {
     }
     return 0;
 }
-
 ```
 
 We can translate the C file to V by simply running
