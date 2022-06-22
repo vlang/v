@@ -94,8 +94,8 @@ fn (mut g Gen) macho_segment64_linkedit() {
 	} else {
 		// g.size_pos << g.buf.len
 		// g.write64(native.base_addr + g.get_pagesize()) // vmaddr
-		g.write64(g.get_pagesize()) // vmaddr
-		g.write64(0x1000) // g.get_pagesize()) // vmsize
+		g.write64(g.get_pagesize()-0x1000) // vmaddr
+		g.write64(0) // g.get_pagesize()) // vmsize
 		g.write64(g.get_pagesize()) // fileoff
 	}
 	g.write64(0) // filesize
@@ -246,7 +246,9 @@ pub fn (mut g Gen) generate_macho_header() {
 	g.macho_segment64_pagezero()
 
 	g.size_pos = g.macho_segment64_text()
-	g.macho_segment64_linkedit()
+	if g.pref.arch == .amd64 {
+		g.macho_segment64_linkedit()
+	}
 	// g.macho_chained_fixups()
 	g.macho_symtab()
 	g.macho_dylibs()
