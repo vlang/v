@@ -100,7 +100,7 @@ fn (mut g Gen) macho_segment64_linkedit() {
 	}
 	g.write64(0) // filesize
 	g.write32(7) // maxprot
-	g.write32(5) // initprot
+	g.write32(3) // initprot // must be writeable
 	g.write32(0) // nsects
 	g.write32(0) // flags
 }
