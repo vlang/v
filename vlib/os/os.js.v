@@ -12,6 +12,8 @@ pub const (
 	args           = []string{}
 )
 
+const executable_suffixes = ['']
+
 fn get_path_delimiter() string {
 	delimiter := ':'
 	$if js_node {

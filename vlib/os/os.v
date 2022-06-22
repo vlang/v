@@ -458,12 +458,8 @@ pub fn find_abs_path_of_executable(exepath string) ?string {
 	if exepath == '' {
 		return error('expected non empty `exepath`')
 	}
-	suffixes := $if windows {
-		['.exe', '.bat']
-	} $else {
-		['']
-	}
-	for suffix in suffixes {
+
+	for suffix in executable_suffixes {
 		fexepath := exepath + suffix
 		if is_abs_path(fexepath) {
 			return real_path(fexepath)
