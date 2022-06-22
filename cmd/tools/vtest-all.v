@@ -26,6 +26,7 @@ fn main() {
 	spent := sw.elapsed().milliseconds()
 	oks := commands.filter(it.ecode == 0)
 	fails := commands.filter(it.ecode != 0)
+	flush_stdout()
 	println('')
 	println(term.header_left(term_highlight('Summary of `v test-all`:'), '-'))
 	println(term_highlight('Total runtime: $spent ms'))
@@ -37,6 +38,7 @@ fn main() {
 		msg := if fcmd.errmsg != '' { fcmd.errmsg } else { fcmd.line }
 		println(term.failed('>      Failed:') + ' $msg')
 	}
+	flush_stdout()
 	if fails.len > 0 {
 		exit(1)
 	}

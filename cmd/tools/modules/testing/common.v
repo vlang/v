@@ -561,6 +561,7 @@ pub fn eheader(msg string) {
 
 pub fn header(msg string) {
 	println(term.header_left(msg, '-'))
+	flush_stdout()
 }
 
 pub fn setup_new_vtmp_folder() string {
