@@ -751,6 +751,17 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	typ := ast.new_type(idx)
 	p.inside_defer = old_inside_defer
 	// name := p.table.get_type_name(typ)
+	if inherited_vars.len > 0 && args.len > 0 {
+		for arg in args {
+			for var in inherited_vars {
+				if arg.name == var.name {
+					p.error_with_pos('the parameter name `$arg.name` conflicts with the captured value name',
+						arg.pos)
+					break
+				}
+			}
+		}
+	}
 	return ast.AnonFn{
 		decl: ast.FnDecl{
 			name: name
