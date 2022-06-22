@@ -27,7 +27,7 @@
 - Easy to develop: V compiles itself in less than a second
 - Performance: as fast as C (V's main backend compiles to human-readable C)
 - Safety: no null, no globals, no undefined behavior, immutability by default
-- C to V translation
+- C to V translation ([Translating DOOM demo video](https://www.youtube.com/watch?v=6oXrz3oRoEg))
 - Hot code reloading
 - [Innovative memory management](https://vlang.io/#memory) ([demo video](https://www.youtube.com/watch?v=gmB8ea8uLsM))
 - [Cross-platform UI library](https://github.com/vlang/ui)
