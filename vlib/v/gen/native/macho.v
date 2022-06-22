@@ -94,7 +94,7 @@ fn (mut g Gen) macho_segment64_linkedit() {
 	} else {
 		// g.size_pos << g.buf.len
 		// g.write64(native.base_addr + g.get_pagesize()) // vmaddr
-		g.write64(g.get_pagesize()-0x1000) // vmaddr
+		g.write64(g.get_pagesize() - 0x1000) // vmaddr
 		g.write64(0) // g.get_pagesize()) // vmsize
 		g.write64(g.get_pagesize()) // fileoff
 	}
