@@ -10,6 +10,8 @@ https://www.youtube.com/watch?v=6oXrz3oRoEg
 
 Let's start.
 
+### A simple C program
+
 First, We have a simple C program that prints prime numbers. It's a small program, 
 but it has some of the most widely used language features:
 function definitions, control flow via for loops and if conditions, a libc function call,
@@ -77,6 +79,7 @@ translated code all blocks are explicitely marked with brackets.
 
 C2V successfully converts C's bool type to V's bool.
 
+### Wrapper generation
 
 C2V also has a wrapper generation mode.
 
@@ -128,7 +131,7 @@ clean wrapper functions that can be called with `usersapi.create_user()` instead
 
 Perhaps in the future C2V will translate C strings (char pointers) to V strings as well.
 
-
+### Translating DOOM
 
 All right, this works, and it's nice, but these are very trivial examples.
 Let's try something a lot more fun, like the DOOM game.
@@ -139,19 +142,20 @@ of the tools but also to have something to test via CI to avoid regressions.
 During V's release we had lots of various examples, now for C2V we have DOOM.
 This is the primary test of C2V.
 
-
-
 DOOM is a very complex project that uses some really tricky elements of the C language.
 And making sure C2V can always handle DOOM not only serves as a good C2V test but also
 as a test of the V compiler itself, since it can run entire DOOM in pure V.
-
-
 
 First let's download the DOOM source and build it to make sure everything works.
 The original 1997 open source release doesn't work nicely on modern OSs, so the community
 has been working on different forks. I'll be using Chocolate Doom, it's one of the most
 popular forks, and its goal is to be as close to the original as possible
 (they even keep the original bugs).
+
+
+```bash
+git clone https://github.com/vlang/doom
+```
 
 The main difference in this fork is using SDL for cross platform rendering, so we'll need
 to install SDL2 before we can build it.
@@ -163,7 +167,6 @@ into a single executable.
 To build the C version:
 
 ```bash
-git clone https://github.com/vlang/doom
 cd doom/chocolate-doom
 cmake .
 make chocolate-doom
@@ -192,27 +195,19 @@ This creates a new directory `src/doom/doom_v/`.
 
 And we can use any name we want, there's a c2v configuration file.
 
-`ls -alh  src/doom/doom_v`
+`ll  src/doom/doom_v`
 
 It has a bunch of files translated from C to V. 
 
 We can open any file, for example g_game.c and verify that it is indeed DOOM code
 translated from C to V. It's also been nicely formatted by vfmt.
 
-
 Now let's build it.
-
-
-
-
-
 
 
 ```bash
 cd src/doom
-
 sh build_doom_v.sh
-
 ```
 
 I'll explain what we have in the shell script a bit later.
@@ -226,11 +221,6 @@ There's a slight rendering bug at the bottom, but it can be cleaned up by pressi
 and forcing a re-render.
 
 There's a bug somewhere in C2V, it has just been released and needs some fixes.
-
-
-
-
-
 
 
 Now let's look at those shell scripts and see how we built the V translation of DOOM.
@@ -295,12 +285,7 @@ some V specific code, like a reversed V array.
 Let's rebuild it and run again. As expected, we're getting our array printed every time an
 enemy moves.
 
-
-
-
-
-
-
+### Replacing C with V file by file
 
 We translated the entire project. But sometimes it may be better to do more gradual transition
 from C to V. For example, if you want to move your project from C to V, you might prefer doing
@@ -327,12 +312,16 @@ processes. From C to V via C2V and then From V back to C again via the V compile
 In fact we can actually look at the generated C code after all the translation and compare it
 to the original. Very clean and barely changed:
 
+![image](https://user-images.githubusercontent.com/687996/175178560-58e04248-bcb3-4e33-aebd-ad66bb94a887.png)
+
 Both C2V and V generate clean human readable code.
 
-https://twitter.com/v_language/status/1531816534011682821
 
 The comments and C defines are missing right now, that's obviously something very nice to have,
 so they will be translated as well.
+
+
+### Conclusion
 
 
 C2V has just been released on June 22th 2022, so it's going to mature with the help of 
