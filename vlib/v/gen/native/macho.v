@@ -307,7 +307,7 @@ pub fn (mut g Gen) generate_macho_object_header() {
 	g.write64(0x25) // size
 	g.write32(text_offset) // offset
 	if g.pref.arch == .arm64 {
-		g.write32(0x4) // alignment
+		g.write32(4) // alignment
 	} else {
 		g.write32(0) // alignment
 	}
