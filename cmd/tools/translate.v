@@ -7,15 +7,15 @@ import v.util
 
 fn main() {
 	vmodules := os.vmodules_dir()
-	c2v_dir := os.join_path(vmodules, 'c2v_alpha')
+	c2v_dir := os.join_path(vmodules, 'c2v')
 	c2v_bin := os.join_path(c2v_dir, 'c2v')
 	// Git clone c2v
 	if !os.exists(c2v_dir) {
 		println('C2V is not installed. Cloning C2V to $c2v_dir ...')
 		os.chdir(vmodules)?
-		res := os.execute('git clone --depth 1 git@github.com:/vlang/c2v_alpha.git')
+		res := os.execute('git clone --depth 1 git@github.com:/vlang/c2v.git')
 		if res.exit_code != 0 {
-			eprintln('Failed to download C2V. Perhaps it is not released yet? Is it June 20 yet?')
+			eprintln('Failed to download C2V.')
 			exit(1)
 		}
 	}
