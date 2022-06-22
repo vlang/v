@@ -464,15 +464,15 @@ pub fn find_abs_path_of_executable(exepath string) ?string {
 		['']
 	}
 	for suffix in suffixes {
-		exepath += suffix
-		if is_abs_path(exepath) {
-			return real_path(exepath)
+		fexepath := exepath + suffix
+		if is_abs_path(fexepath) {
+			return real_path(fexepath)
 		}
 		mut res := ''
 		path := getenv('PATH')
 		paths := path.split(path_delimiter)
 		for p in paths {
-			found_abs_path := join_path_single(p, exepath)
+			found_abs_path := join_path_single(p, fexepath)
 			if exists(found_abs_path) && is_executable(found_abs_path) {
 				res = found_abs_path
 				break
