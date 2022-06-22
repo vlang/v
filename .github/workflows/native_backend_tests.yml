@@ -20,7 +20,17 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2
-      - name: Build V
-        run: make
+
+      - name: Build V with make.bat
+        if: ${{ startsWith(matrix.os, 'windows') }}
+        run: |
+          .\make.bat
+          .\v.exe symlink -githubci
+      - name: Build V with make
+        if: ${{ !startsWith(matrix.os, 'windows') }}
+        run: |
+          make
+          ./v symlink -githubci
+
       - name: Test the native backend
-        run: ./v test vlib/v/gen/native/
+        run: v test vlib/v/gen/native/
