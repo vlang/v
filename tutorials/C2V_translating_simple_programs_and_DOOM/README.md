@@ -47,6 +47,9 @@ It will create `primes.v` with the following contents:
 
 
 ```v
+[translated]
+module main
+
 fn is_prime(x int) bool {
 	for i := 2; i <= x / 2; i++ {
 		if x % i == 0 {
