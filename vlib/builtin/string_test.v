@@ -448,9 +448,9 @@ fn test_contains_any() {
 }
 
 fn test_contains_only() {
-	assert "23885".contains_only("0123456789")
-	assert "23gg885".contains_only("01g23456789")
-	assert !"hello;".contains_only("hello")
+	assert '23885'.contains_only('0123456789')
+	assert '23gg885'.contains_only('01g23456789')
+	assert !'hello;'.contains_only('hello')
 	assert !''.contains_only('')
 }
 
