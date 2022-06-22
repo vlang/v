@@ -1130,6 +1130,23 @@ pub fn (s string) contains_any(chars string) bool {
 	return false
 }
 
+// contains_only returns `true` if the string contains only the chars in `chars`.
+pub fn (s string) contains_only(chars string) bool {
+	if chars.len == 0 {
+		return false
+	}
+	for i in s {
+		mut tt := false
+		for j in chars {
+			tt = tt || j == i
+		}
+		if !tt {
+			return false
+		}
+	}
+	return true
+}
+
 // contains_any_substr returns `true` if the string contains any of the strings in `substrs`.
 pub fn (s string) contains_any_substr(substrs []string) bool {
 	if substrs.len == 0 {
