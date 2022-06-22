@@ -1135,12 +1135,8 @@ pub fn (s string) contains_only(chars string) bool {
 	if chars.len == 0 {
 		return false
 	}
-	for i in s {
-		mut tt := false
-		for j in chars {
-			tt = tt || j == i
-		}
-		if !tt {
+	for ch in s {
+		if ch !in chars.bytes() {
 			return false
 		}
 	}
