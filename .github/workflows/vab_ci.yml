@@ -71,4 +71,4 @@ jobs:
       run: vab doctor
 
     - name: Check `v -os android` *without* -apk flag
-      run: .github\workflows\android_cross_compile.vsh
+      run: .github/workflows/android_cross_compile.vsh
