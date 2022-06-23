@@ -107,7 +107,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 </td><td width=33% valign=top>
 
 * [Functions 2](#functions-2)
-    * [Pure functions by default](#pure-functions-by-default)
+    * [Immutable function args by default](#immutable-function-args-by-default)
     * [Mutable arguments](#mutable-arguments)
     * [Variable number of arguments](#variable-number-of-arguments)
     * [Anonymous & higher-order functions](#anonymous--higher-order-functions)
@@ -343,8 +343,7 @@ the expression `T(v)` converts the value `v` to the
 type `T`.
 
 Unlike most other languages, V only allows defining variables in functions.
-Global (module level) variables are not allowed. There's no global state in V
-(see [Pure functions by default](#pure-functions-by-default) for details).
+Global (module level) variables are not allowed. There's no global state in V.
 
 For consistency across different code bases, all variable and function names
 must use the `snake_case` style, as opposed to type names, which must use `PascalCase`.
@@ -2279,13 +2278,13 @@ Note that the embedded struct arguments are not necessarily stored in the order 
 
 ## Functions 2
 
-### Pure functions by default
+### Immutable function args by default, mutable args have to be marked on call
 
-V functions are pure by default, meaning that their return values are a function of their
-arguments only, and their evaluation has no side effects (besides I/O).
+In V function args are immutable by default, mutable args have to be marked on call.
+Since there are also no globals, that means that functions' return values are a function of their
+arguments only, and their evaluation has no side effects (unless the function uses I/O).
 
-This is achieved by a lack of global variables and all function arguments being
-immutable by default, even when [references](#references) are passed.
+Function arguments are immutable by default even when [references](#references) are passed.
 
 V is not a purely functional language however.
 
@@ -3601,8 +3600,8 @@ println(compare(1.1, 1.2)) //         -1
 
 ## Concurrency
 ### Spawning Concurrent Tasks
-V's model of concurrency is very similar to Go's. To run `foo()` concurrently in
-a different thread, just call it with `go foo()`:
+V's model of concurrency is going to be very similar to Go's. For now, `go foo()` runs `foo()` concurrently in
+a different thread:
 
 ```v
 import math
@@ -3617,6 +3616,9 @@ fn main() {
 	// p will be run in parallel thread
 }
 ```
+
+> In V 0.4 `go foo()` will be automatically renamed via vfmt to `spawn foo()`, and there will be a way to launch
+a coroutine (a lightweight thread managed by the runtime). 
 
 Sometimes it is necessary to wait until a parallel thread has finished. This can
 be done by assigning a *handle* to the started thread and calling the `wait()` method
