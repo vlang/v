@@ -2278,22 +2278,23 @@ Note that the embedded struct arguments are not necessarily stored in the order 
 
 ## Functions 2
 
-### Immutable function args by default, mutable args have to be marked on call
+### Immutable function args by default
 
-In V function args are immutable by default, mutable args have to be marked on call.
-Since there are also no globals, that means that functions' return values are a function of their
-arguments only, and their evaluation has no side effects (unless the function uses I/O).
+In V function arguments are immutable by default.
 
-Function arguments are immutable by default even when [references](#references) are passed.
+Since there are also no globals, that means that the return values of the functions,
+are a function of their arguments only, and their evaluation has no side effects
+(unless the function uses I/O).
 
-V is not a purely functional language however.
+Function arguments are immutable by default, even when [references](#references) are passed.
+
+Note that V is not a purely functional language however.
 
 There is a compiler flag to enable global variables (`-enable-globals`), but this is
 intended for low-level applications like kernels and drivers.
 
 ### Mutable arguments
-
-It is possible to modify function arguments by using the keyword `mut`:
+It is possible to modify function arguments by declaring them with the keyword `mut`:
 
 ```v
 struct User {
@@ -2312,7 +2313,7 @@ user.register()
 println(user.is_registered) // "true"
 ```
 
-In this example, the receiver (which is simply the first argument) is marked as mutable,
+In this example, the receiver (which is just the first argument) is explicitly marked as mutable,
 so `register()` can change the user object. The same works with non-receiver arguments:
 
 ```v
@@ -3600,8 +3601,8 @@ println(compare(1.1, 1.2)) //         -1
 
 ## Concurrency
 ### Spawning Concurrent Tasks
-V's model of concurrency is going to be very similar to Go's. For now, `go foo()` runs `foo()` concurrently in
-a different thread:
+V's model of concurrency is going to be very similar to Go's.
+For now, `go foo()` runs `foo()` concurrently in a different thread:
 
 ```v
 import math
@@ -3617,8 +3618,8 @@ fn main() {
 }
 ```
 
-> In V 0.4 `go foo()` will be automatically renamed via vfmt to `spawn foo()`, and there will be a way to launch
-a coroutine (a lightweight thread managed by the runtime). 
+> In V 0.4 `go foo()` will be automatically renamed via vfmt to `spawn foo()`,
+and there will be a way to launch a coroutine (a lightweight thread managed by the runtime).
 
 Sometimes it is necessary to wait until a parallel thread has finished. This can
 be done by assigning a *handle* to the started thread and calling the `wait()` method
