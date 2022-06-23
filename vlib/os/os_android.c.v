@@ -1,5 +1,8 @@
 module os
 
+#include <asset_manager.h>
+#include <asset_manager_jni.h>
+
 pub enum AssetMode {
 	buffer = C.AASSET_MODE_BUFFER // Caller plans to ask for a read-only buffer with all data.
 	random = C.AASSET_MODE_RANDOM // Read chunks, and seek forward and backward.
