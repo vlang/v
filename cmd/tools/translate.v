@@ -5,10 +5,15 @@ module main
 import os
 import v.util
 
+const vexe = os.getenv('VEXE')
+
 fn main() {
 	vmodules := os.vmodules_dir()
 	c2v_dir := os.join_path(vmodules, 'c2v')
-	c2v_bin := os.join_path(c2v_dir, 'c2v')
+	mut c2v_bin := os.join_path(c2v_dir, 'c2v')
+	$if windows {
+		c2v_bin += '.exe'
+	}
 	// Git clone c2v
 	if !os.exists(c2v_dir) {
 		println('C2V is not installed. Cloning C2V to $c2v_dir ...')
@@ -23,15 +28,15 @@ fn main() {
 	if !os.exists(c2v_bin) {
 		os.chdir(c2v_dir)?
 		println('Compiling c2v ...')
-		res2 := os.execute('v -keepc -g -experimental -o c2v .')
+		res2 := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(c2v_bin)} -keepc -g -experimental .')
 		if res2.exit_code != 0 {
 			eprintln(res2.output)
-			eprintln('Failed to compile C2V. This should never happen, please report it via GitHub.')
+			eprintln('Failed to compile C2V. This should not happen. Please report it via GitHub.')
 			exit(2)
 		}
 	}
 	if os.args.len < 3 {
-		eprintln('Wrong number of args. Use `v translate file.c`.')
+		eprintln('Wrong number of arguments. Use `v translate file.c` .')
 		exit(3)
 	}
 	passed_args := util.args_quote_paths(os.args[2..])
