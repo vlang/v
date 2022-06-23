@@ -2280,7 +2280,8 @@ Note that the embedded struct arguments are not necessarily stored in the order 
 
 ### Immutable function args by default
 
-In V function arguments are immutable by default.
+In V function arguments are immutable by default, and mutable args have to be
+marked on call.
 
 Since there are also no globals, that means that the return values of the functions,
 are a function of their arguments only, and their evaluation has no side effects
