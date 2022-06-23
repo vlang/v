@@ -16,6 +16,7 @@ fn send_mail(starttls bool) {
 		username: os.getenv('VSMTP_TEST_USER')
 		password: os.getenv('VSMTP_TEST_PASS')
 		starttls: starttls
+		conn: 0
 	}
 	if client_cfg.username == '' && client_cfg.password == '' {
 		eprintln('Please set VSMTP_TEST_USER and VSMTP_TEST_PASS before running this test')
@@ -114,6 +115,7 @@ fn test_smtp_implicit_ssl() {
 		username: ''
 		password: ''
 		ssl: true
+		conn: 0
 	}
 
 	mut client := smtp.new_client(client_cfg) or {

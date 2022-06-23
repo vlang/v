@@ -10,7 +10,7 @@ fn y(x &Foo) {
 }
 
 fn main() {
-	x := Foo{123}
+	x := &Foo{123}
 	y(x)
 	println(x)
 }
