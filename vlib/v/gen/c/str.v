@@ -111,7 +111,9 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		is_var_mut := expr.is_auto_deref_var()
 		str_fn_name := g.get_str_fn(typ)
 		if is_ptr && !is_var_mut {
-			g.write('str_intp(1, _MOV((StrIntpData[]){{_SLIT("&"), $si_s_code ,{.d_s=')
+			g.write('str_intp(1, _MOV((StrIntpData[]){{_SLIT("&"), $si_s_code ,{.d_s = isnil(')
+			g.expr(expr)
+			g.write(') ? _SLIT("nil") : ')
 		}
 		g.write('${str_fn_name}(')
 		if str_method_expects_ptr && !is_ptr {
