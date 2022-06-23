@@ -469,6 +469,9 @@ pub fn find_abs_path_of_executable(exepath string) ?string {
 		paths := path.split(path_delimiter)
 		for p in paths {
 			found_abs_path := join_path_single(p, fexepath)
+			$if trace_find_abs_path_of_executable ? {
+				dump(found_abs_path)
+			}
 			if exists(found_abs_path) && is_executable(found_abs_path) {
 				res = found_abs_path
 				break

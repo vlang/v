@@ -14,7 +14,7 @@ fn C.CreateHardLinkW(&u16, &u16, C.SECURITY_ATTRIBUTES) int
 
 fn C._getpid() int
 
-const executable_suffixes = ['.exe', '.bat']
+const executable_suffixes = ['.exe', '.bat', '']
 
 pub const (
 	path_separator = '\\'

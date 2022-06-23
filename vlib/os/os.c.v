@@ -404,7 +404,7 @@ pub fn is_executable(path string) bool {
 		// 04 Read-only
 		// 06 Read and write
 		p := real_path(path)
-		return exists(p) && p.ends_with('.exe')
+		return exists(p) && (p.ends_with('.exe') || p.ends_with('.bat'))
 	}
 	$if solaris {
 		statbuf := C.stat{}
