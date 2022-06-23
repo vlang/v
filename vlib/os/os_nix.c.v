@@ -17,6 +17,8 @@ pub const (
 	path_delimiter = ':'
 )
 
+const executable_suffixes = ['']
+
 const (
 	stdin_value  = 0
 	stdout_value = 1

@@ -452,27 +452,34 @@ fn error_failed_to_find_executable() IError {
 	return IError(&ExecutableNotFoundError{})
 }
 
-// find_exe_path walks the environment PATH, just like most shell do, it returns
+// find_abs_path_of_executable walks the environment PATH, just like most shell do, it returns
 // the absolute path of the executable if found
 pub fn find_abs_path_of_executable(exepath string) ?string {
 	if exepath == '' {
 		return error('expected non empty `exepath`')
 	}
-	if is_abs_path(exepath) {
-		return real_path(exepath)
-	}
-	mut res := ''
-	path := getenv('PATH')
-	paths := path.split(path_delimiter)
-	for p in paths {
-		found_abs_path := join_path_single(p, exepath)
-		if exists(found_abs_path) && is_executable(found_abs_path) {
-			res = found_abs_path
-			break
+
+	for suffix in executable_suffixes {
+		fexepath := exepath + suffix
+		if is_abs_path(fexepath) {
+			return real_path(fexepath)
 		}
-	}
-	if res.len > 0 {
-		return real_path(res)
+		mut res := ''
+		path := getenv('PATH')
+		paths := path.split(path_delimiter)
+		for p in paths {
+			found_abs_path := join_path_single(p, fexepath)
+			$if trace_find_abs_path_of_executable ? {
+				dump(found_abs_path)
+			}
+			if exists(found_abs_path) && is_executable(found_abs_path) {
+				res = found_abs_path
+				break
+			}
+		}
+		if res.len > 0 {
+			return real_path(res)
+		}
 	}
 	return error_failed_to_find_executable()
 }
