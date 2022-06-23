@@ -796,8 +796,8 @@ fn (mut app App) on_key_down(key gg.KeyCode) {
 		.t { app.next_theme() }
 		else {}
 	}
-	if app.state in [.play, .freeplay]{
-		if !app.is_ai_mode{
+	if app.state in [.play, .freeplay] {
+		if !app.is_ai_mode {
 			match key {
 				.w, .up { app.move(.up) }
 				.a, .left { app.move(.left) }
