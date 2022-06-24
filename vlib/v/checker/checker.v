@@ -3515,6 +3515,12 @@ pub fn (mut c Checker) chan_init(mut node ast.ChanInit) ast.Type {
 	if node.typ != 0 {
 		info := c.table.sym(node.typ).chan_info()
 		node.elem_type = info.elem_type
+		if node.elem_type != 0 {
+			elem_sym := c.table.sym(node.elem_type)
+			if elem_sym.kind == .placeholder {
+				c.error('unknown type `$elem_sym.name`', node.pos)
+			}
+		}
 		if node.has_cap {
 			c.check_array_init_para_type('cap', node.cap_expr, node.pos)
 		}
