@@ -2500,6 +2500,14 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			c.error(error_msg, node.pos)
 		}
 	}
+	if from_sym.language == .v && !from_type.is_ptr()
+		&& final_from_sym.kind in [.sum_type, .interface_]
+		&& final_to_sym.kind !in [.sum_type, .interface_] {
+		ft := c.table.type_to_str(from_type)
+		tt := c.table.type_to_str(to_type)
+		c.error('cannot cast `$ft` to `$tt`, please use `as` instead, .e.g `expr as Ident`',
+			node.pos)
+	}
 
 	if node.has_arg {
 		c.expr(node.arg)

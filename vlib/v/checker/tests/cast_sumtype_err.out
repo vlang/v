@@ -1,0 +1,6 @@
+vlib/v/checker/tests/cast_sumtype_err.vv:7:14: error: cannot cast `Test` to `int`, please use `as` instead, .e.g `expr as Ident`
+    5 | fn main() {
+    6 |     data := Test(12)
+    7 |     eprintln(int(data))
+      |              ~~~~~~~~~
+    8 | }
