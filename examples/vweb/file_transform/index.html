@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Test file uploading data transformation</title>
+</head>
+<body>
+
+<h2>File Upload and Data Transformation</h2>
+
+Upload the <b>sample_input.txt</b> located in this example folder. 
+<br>
+<br> 
+V will apply data transformation, adding the first two columns into a third column, and return the results as a download. <br>
+<br>
+
+For example:
+<table style="color:blue;">
+	<tr>
+	  	<td>10</td>
+	  	<td>13</td>
+	</tr>
+	<tr>
+		<td>20</td>
+		<td>54</td>
+	</tr>
+	<tr>
+		<td>30</td>
+		<td>82</td>
+	</tr>
+	<tr>
+		<td>40</td>
+		<td>11</td>
+	</tr>
+	<tr>
+		<td>50</td>
+		<td>47</td>
+	</tr>
+  </table>
+<br>
+Becomes...
+<br>
+<table style="color:blue;">
+	<tr>
+	  	<td>10</td>
+	  	<td>13</td>
+		<td>23</td>
+	</tr>
+	<tr>
+		<td>20</td>
+		<td>54</td>
+		<td>74</td>
+	</tr>
+	<tr>
+		<td>30</td>
+		<td>82</td>
+		<td>112</td>
+	</tr>
+	<tr>
+		<td>40</td>
+		<td>11</td>
+		<td>51</td>
+	</tr>
+	<tr>
+		<td>50</td>
+		<td>47</td>
+		<td>97</td>
+	</tr>
+  </table>
+
+<hr>
+
+File form:
+<form method="POST" enctype="multipart/form-data" action="http://localhost:8082/upload">
+	<input type="file" name="upfile"/>
+	<input type="submit" value="Upload & Transform"/>
+</form>
+
+</body>
+</html>
