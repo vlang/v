@@ -658,6 +658,10 @@ pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_radius f32, thickness f
 		return
 	}
 
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
+
 	mut a1 := start_angle
 	mut a2 := end_angle
 
@@ -719,6 +723,10 @@ pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_radius f32, thickness f
 pub fn (ctx &Context) draw_arc_filled(x f32, y f32, inner_radius f32, thickness f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
 	if start_angle == end_angle || inner_radius <= 0.0 {
 		return
+	}
+
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
 	}
 
 	mut a1 := start_angle
