@@ -1,0 +1,8 @@
+module main
+
+type Test = int | u32 | f32
+
+fn main() {
+    data := Test(12)
+    eprintln(int(data))
+}
