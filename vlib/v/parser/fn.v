@@ -401,7 +401,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	}
 	if p.tok.kind == .comma {
 		mr_pos := return_type_pos.extend(p.peek_tok.pos())
-		p.error_with_pos('multiple return types in function declaration must use parentheses, .e.g (int, string)',
+		p.error_with_pos('multiple return types in function declaration must use parentheses, e.g. (int, string)',
 			mr_pos)
 	}
 	mut type_sym_method_idx := 0
