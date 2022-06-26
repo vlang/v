@@ -1,9 +1,10 @@
 fn main(){
-	mut a := 22
+	mut array := [3]int{}
+	mut arrayptr := &int(array)
 
 	for _ in 0..3 {
 		unsafe {
-			*(a++) = 0
+			*(arrayptr++) = 0
 		}
 	}
 }

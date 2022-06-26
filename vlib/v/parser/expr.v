@@ -456,7 +456,7 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 			// detect `f(x++)`, `a[x++]`
 			if p.peek_tok.kind in [.rpar, .rsbr] {
 				if !p.inside_ct_if_expr {
-					p.error_with_pos('`$p.tok.kind` operator can only be used as a statement',
+					p.warn_with_pos('`$p.tok.kind` operator can only be used as a statement',
 						p.tok.pos())
 				}
 			}
