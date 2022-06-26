@@ -19,11 +19,11 @@ const (
 [heap]
 struct App {
 mut:
-	tui    &ui.Context = 0
+	tui    &ui.Context = unsafe { 0 }
 	mode   Mode        = Mode.menu
 	width  int
 	height int
-	game   &Game = 0
+	game   &Game = unsafe { 0 }
 	dt     f32
 	ticks  i64
 }
