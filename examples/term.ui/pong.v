@@ -242,7 +242,7 @@ fn (mut b Ball) update(dt f32) {
 [heap]
 struct Game {
 mut:
-	app     &App = 0
+	app     &App = unsafe { 0 }
 	players []Player
 	ball    Ball
 }

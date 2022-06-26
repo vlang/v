@@ -16,7 +16,7 @@ pub mut:
 	children           []&Tag
 	attributes         map[string]string // attributes will be like map[name]value
 	last_attribute     string
-	parent             &Tag = 0
+	parent             &Tag = unsafe { 0 }
 	position_in_parent int
 	closed             bool
 	close_type         CloseTagType = .in_name

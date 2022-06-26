@@ -259,7 +259,7 @@ fn (mut r Rat) randomize() {
 [heap]
 struct App {
 mut:
-	termui &termui.Context = 0
+	termui &termui.Context = unsafe { 0 }
 	snake  Snake
 	rat    Rat
 	width  int
