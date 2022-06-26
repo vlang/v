@@ -7,17 +7,6 @@ mut:
 	elements []T
 }
 
-/*
-// checks whether the set is empty.
-fn (mut set Set<T>) is_empty(s Set<T>) bool {
-	return s.elements.len == 0
-}
-
-fn (mut set Set<T>) is_element_of(element T, s Set<T>) bool {
-	element in s.elements
-}
-*/
-
 // checks the element is exists.
 fn (mut set Set<T>) exists(element T) bool {
 	return element in set.elements
