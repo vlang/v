@@ -9,7 +9,7 @@ const pbytes = 4
 
 struct AppState {
 mut:
-	gg          &gg.Context = 0
+	gg          &gg.Context = unsafe { 0 }
 	istream_idx int
 	pixels      [pheight][pwidth]u32
 }

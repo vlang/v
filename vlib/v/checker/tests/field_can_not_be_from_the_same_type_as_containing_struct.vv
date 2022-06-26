@@ -1,7 +1,7 @@
 type Foo = Bar
 
 struct Bar {
-	pfield &Foo = 0
+	pfield &Foo = unsafe { 0 }
 	field  Foo  = Bar{}
 }
 

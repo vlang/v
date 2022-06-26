@@ -549,7 +549,7 @@ pub mut:
 	end_comments  []Comment // comments *after* header declarations. E.g.: `fn C.C_func(x int) int // Comment`
 	next_comments []Comment // comments that are one line after the decl; used for InterfaceDecl
 	//
-	source_file &File = 0
+	source_file &File = unsafe { 0 }
 	scope       &Scope
 	label_names []string
 	pos         token.Pos // function declaration position

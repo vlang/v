@@ -8,7 +8,7 @@ pub struct Transformer {
 	pref &pref.Preferences
 pub mut:
 	index &IndexState
-	table &ast.Table = 0
+	table &ast.Table = unsafe { 0 }
 mut:
 	is_assert bool
 }
