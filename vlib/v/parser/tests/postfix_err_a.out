@@ -1,0 +1,7 @@
+vlib/v/parser/tests/postfix_err_a.vv:5:8: error: `++` operator can only be used as a statement
+    3 | fn test_postfix() {
+    4 |     mut x := 1
+    5 |     _ = (x++)
+      |           ~~
+    6 |     x--, x-- // OK
+    7 |     f(x++)

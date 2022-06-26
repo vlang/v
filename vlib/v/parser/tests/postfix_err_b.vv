@@ -1,0 +1,9 @@
+fn main(){
+	mut a := 22
+
+	for _ in 0..3 {
+		unsafe {
+			*(a++) = 0
+		}
+	}
+}
