@@ -58,3 +58,10 @@ fn test_equal() {
 	second_set.add('foo')
 	assert second_set.equal(first_set)
 }
+
+fn test_is_empty() {
+	mut set := Set<string>{}
+	assert set.is_empty()
+	set.add('foo')
+	assert set.is_empty() == false
+}

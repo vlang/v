@@ -80,3 +80,8 @@ fn (mut l Set<T>) equal(r Set<T>) bool {
 	}
 	return true
 }
+
+// checks whether the set is empty.
+fn (mut set Set<T>) is_empty() bool {
+	return set.elements.len == 0
+}
