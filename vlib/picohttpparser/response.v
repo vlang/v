@@ -6,7 +6,7 @@ pub:
 	date      &u8 = unsafe { 0 }
 	buf_start &u8 = unsafe { 0 }
 pub mut:
-	buf &u8 = 0
+	buf &u8 = unsafe { 0 }
 }
 
 [inline]
