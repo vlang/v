@@ -551,6 +551,16 @@ pub fn (ctx &Context) draw_circle_with_segments(x f32, y f32, radius f32, segmen
 	sgl.end()
 }
 
+// draw_polygon_filled draws the a polygon.
+// `x`,`y` defines the center of the polygon.
+// `size` defines the size of the polygon.
+// `edge` defines the edge of the polygon.
+// `c` is the fill color.
+[inline]
+pub fn (ctx &Context) draw_polygon_filled(x f32, y f32, size f32, edge int, c gx.Color) {
+	ctx.draw_circle_with_segments(x, y, size, edge, c)
+}
+
 // draw_circle_line draws the outline of a circle with a specific number of segments.
 // `x`,`y` defines the center of the circle.
 // `radius` defines the radius of the circle.
