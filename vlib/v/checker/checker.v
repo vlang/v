@@ -57,7 +57,7 @@ pub struct Checker {
 	pref &pref.Preferences // Preferences shared from V struct
 pub mut:
 	table                     &ast.Table
-	file                      &ast.File = 0
+	file                      &ast.File = unsafe { 0 }
 	nr_errors                 int
 	nr_warnings               int
 	nr_notices                int

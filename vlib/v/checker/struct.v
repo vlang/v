@@ -101,6 +101,12 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				}
 				// Check for unnecessary inits like ` = 0` and ` = ''`
 				if field.typ.is_ptr() {
+					if field.default_expr is ast.IntegerLiteral {
+						if !c.inside_unsafe && !c.is_builtin_mod && field.default_expr.val == '0' {
+							c.warn('default value of `0` for references can only be used inside `unsafe`',
+								field.default_expr.pos)
+						}
+					}
 					continue
 				}
 				if field.default_expr is ast.IntegerLiteral {
