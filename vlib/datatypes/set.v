@@ -4,14 +4,14 @@ pub struct Set<T> {
 	// maximum number of values that Set<T> can hold.
 	capacity int
 mut:
-	elements map[T]int
+	elements map[T]u8
 }
 
 // creates a new set structure, initially empty but capable of holding up to n elements.
 pub fn new_set_with_capacity<T>(capacity int) Set<T> {
 	return Set<T>{
 		capacity: capacity
-		elements: map[T]int{}
+		elements: map[T]u8{}
 	}
 }
 
@@ -28,7 +28,7 @@ fn (mut set Set<T>) add(element T) {
 		}
 	}
 	if element !in set.elements {
-		set.elements[element] = set.size() + 1
+		set.elements[element] = u8(set.size() + 1)
 	}
 }
 
