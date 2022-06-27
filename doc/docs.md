@@ -5707,8 +5707,6 @@ For more examples, see [github.com/vlang/v/tree/master/vlib/v/tests/assembly/asm
 
 ## Translating C to V
 
-TODO: translating C to V will be available in V 0.3.
-
 V can translate your C code to human readable V code and generate V wrappers on top of C libraries.
 
 
