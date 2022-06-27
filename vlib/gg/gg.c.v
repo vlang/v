@@ -127,7 +127,6 @@ pub mut:
 	font_inited bool
 	ui_mode     bool // do not redraw everything 60 times/second, but only when the user requests
 	frame       u64  // the current frame counted from the start of the application; always increasing
-	//
 	mbtn_mask     u8
 	mouse_buttons MouseButtons // typed version of mbtn_mask; easier to use for user programs
 	mouse_pos_x   int
@@ -136,7 +135,6 @@ pub mut:
 	mouse_dy      int
 	scroll_x      int
 	scroll_y      int
-	//
 	key_modifiers     Modifier // the current key modifiers
 	key_repeat        bool     // whether the pressed key was an autorepeated one
 	pressed_keys      [key_code_max]bool // an array representing all currently pressed keys
@@ -205,7 +203,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 			ctx.font_inited = true
 		}
 	}
-	//
+	
 	mut pipdesc := gfx.PipelineDesc{
 		label: c'alpha_image'
 	}
@@ -221,7 +219,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 	pipdesc.colors[0] = color_state
 
 	ctx.timage_pip = sgl.make_pipeline(&pipdesc)
-	//
+	
 	if ctx.config.init_fn != voidptr(0) {
 		$if android {
 			// NOTE on Android sokol can emit resize events *before* the init function is
