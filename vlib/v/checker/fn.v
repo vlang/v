@@ -1165,8 +1165,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			c.error('cannot $method_name `$arg_sym.name` to `$left_sym.name`', arg_expr.pos())
 		}
 	} else if final_left_sym.info is ast.Array && method_name in ['first', 'last', 'pop'] {
-		node.return_type = final_left_sym.info.elem_type
-		return node.return_type
+		return c.array_builtin_method_call(mut node, left_type, final_left_sym)
 	} else if c.pref.backend.is_js() && left_sym.name.starts_with('Promise<')
 		&& method_name == 'wait' {
 		info := left_sym.info as ast.Struct
