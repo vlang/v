@@ -120,8 +120,21 @@ fn (mut g Gen) cmp_reg(reg Register, reg2 Register) {
 	match reg {
 		.rax {
 			match reg2 {
+				.rdx {
+					g.write([u8(0x48), 0x39, 0xd0])
+				}
 				.rbx {
 					g.write([u8(0x48), 0x39, 0xd8])
+				}
+				else {
+					g.n_error('Cannot compare $reg and $reg2')
+				}
+			}
+		}
+		.rdx {
+			match reg2 {
+				.rax {
+					g.write([u8(0x48), 0x39, 0xc2])
 				}
 				else {
 					g.n_error('Cannot compare $reg and $reg2')
@@ -217,7 +230,7 @@ enum JumpOp {
 	jne = 0x850f
 	jg = 0x8f0f
 	jge = 0x8d0f
-	lt = 0x8c0f
+	jl = 0x8c0f
 	jle = 0x8e0f
 }
 
@@ -236,6 +249,22 @@ fn (mut g Gen) jmp(addr int) int {
 	g.println('jmp')
 	// return the position of jump address for placeholder
 	return int(pos)
+}
+
+enum SetOp {
+	e = 0x940f
+	ne = 0x950f
+	g = 0x9f0f
+	ge = 0x9d0f
+	l = 0x9c0f
+	le = 0x9e0f
+}
+
+// SETcc al
+fn (mut g Gen) cset(op SetOp) {
+	g.write16(u16(op))
+	g.write8(0xc0)
+	g.println('set$op al')
 }
 
 fn abs(a i64) i64 {
@@ -1501,25 +1530,75 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 	}
 }
 
-fn (mut g Gen) infix_expr(node ast.InfixExpr) {
-	// TODO
-	if node.left is ast.InfixExpr {
-		g.n_error('only simple expressions are supported right now (not more than 2 operands)')
-	}
-	match node.left {
-		ast.Ident {
-			g.mov_var_to_reg(.eax, g.get_var_offset(node.left.name))
+fn (mut g Gen) cset_op(op token.Kind) {
+	match op {
+		.gt {
+			g.cset(.g)
 		}
-		else {}
+		.lt {
+			g.cset(.l)
+		}
+		.ne {
+			g.cset(.ne)
+		}
+		.eq {
+			g.cset(.e)
+		}
+		.ge {
+			g.cset(.ge)
+		}
+		.le {
+			g.cset(.le)
+		}
+		else {
+			g.cset(.ne)
+		}
 	}
-	if node.right is ast.Ident {
-		var_offset := g.get_var_offset(node.right.name)
-		match node.op {
-			.plus { g.add8_var(.eax, var_offset) }
-			.mul { g.mul8_var(.eax, var_offset) }
-			.div { g.div8_var(.eax, var_offset) }
-			.minus { g.sub8_var(.eax, var_offset) }
-			else {}
+}
+
+fn (mut g Gen) infix_expr(node ast.InfixExpr) {
+	if node.left is ast.Ident && node.right is ast.Ident {
+		left := node.left as ast.Ident
+		right := node.right as ast.Ident
+		g.mov_var_to_reg(.eax, g.get_var_offset(left.name))
+		var_offset := g.get_var_offset(right.name)
+		for {
+			match node.op {
+				.plus { g.add8_var(.eax, var_offset) }
+				.mul { g.mul8_var(.eax, var_offset) }
+				.div { g.div8_var(.eax, var_offset) }
+				.minus { g.sub8_var(.eax, var_offset) }
+				else { break }
+			}
+			return
+		}
+	}
+	g.expr(node.left)
+	mut label := 0
+	g.push(.rax)
+	if node.op in [.logical_or, .and] {
+		label = g.labels.new_label()
+		g.cmp_zero(.rax)
+		jump_addr := g.cjmp(if node.op == .logical_or { .jne } else { .je })
+		g.labels.patches << LabelPatch{
+			id: label
+			pos: jump_addr
+		}
+	}
+	g.expr(node.right)
+	g.pop(.rdx)
+	// left: rdx, right: rax
+	match node.op {
+		.logical_or, .and {
+			g.labels.addrs[label] = g.pos()
+		}
+		.eq, .ne, .gt, .lt, .ge, .le {
+			g.cmp_reg(.rdx, .rax)
+			g.mov64(.rax, 0)
+			g.cset_op(node.op)
+		}
+		else {
+			g.n_error('`$node.op` expression is not supported right now')
 		}
 	}
 }
@@ -1700,7 +1779,7 @@ fn (mut g Gen) cjmp_op(op token.Kind) int {
 			g.cjmp(.jg)
 		}
 		.lt {
-			g.cjmp(.lt)
+			g.cjmp(.jl)
 		}
 		.ne {
 			g.cjmp(.jne)
@@ -1715,6 +1794,12 @@ fn (mut g Gen) cjmp_op(op token.Kind) int {
 }
 
 fn (mut g Gen) condition(infix_expr ast.InfixExpr, neg bool) int {
+	// if infix_expr.op !in [.eq, .ne, .gt, .lt, .ge, .le] {
+	g.expr(infix_expr)
+	g.cmp_zero(.rax)
+	return g.cjmp(if neg { .jne } else { .je })
+	//}
+	/*
 	match infix_expr.left {
 		ast.IntegerLiteral {
 			match infix_expr.right {
@@ -1763,7 +1848,7 @@ fn (mut g Gen) condition(infix_expr ast.InfixExpr, neg bool) int {
 	}
 
 	// mut cjmp_addr := 0 // location of `jne *00 00 00 00*`
-	return if neg { g.cjmp_op(infix_expr.op) } else { g.cjmp_notop(infix_expr.op) }
+	return if neg { g.cjmp_op(infix_expr.op) } else { g.cjmp_notop(infix_expr.op) }*/
 }
 
 fn (mut g Gen) if_expr(node ast.IfExpr) {
