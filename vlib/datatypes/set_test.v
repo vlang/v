@@ -1,4 +1,4 @@
-module set
+module datatypes
 
 fn test_create() {
 	mut set := create<string>()
