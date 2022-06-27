@@ -1,10 +1,25 @@
-module datatypes
+module set
 
 import rand
 
 pub struct Set<T> {
+	// maximum number of values that Set<T> can hold.
+	capacity int
 mut:
 	elements []T
+}
+
+// creates a new, initially empty set structure.
+pub fn create<T>() Set<T> {
+	return Set<T>{}
+}
+
+// creates a new set structure, initially empty but capable of holding up to n elements.
+pub fn create_with_capacity<T>(capacity int) Set<T> {
+	return Set<T>{
+		capacity: capacity
+		elements: []T{cap: capacity}
+	}
 }
 
 // checks the element is exists.
@@ -14,6 +29,11 @@ fn (mut set Set<T>) exists(element T) bool {
 
 // adds the element to set, if it is not present already.
 fn (mut set Set<T>) add(element T) {
+	if set.capacity > 0 {
+		if set.size() == set.capacity {
+			set.elements = set.elements.filter(it != set.elements[0])
+		}
+	}
 	if element !in set.elements {
 		set.elements << element
 	}
