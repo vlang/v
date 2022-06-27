@@ -2238,7 +2238,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	if p.tok.lit == 'chan' {
 		first_pos := p.tok.pos()
 		mut last_pos := first_pos
+		mut elem_type_pos := p.peek_tok.pos()
 		chan_type := p.parse_chan_type()
+		elem_type_pos = elem_type_pos.extend(p.prev_tok.pos())
 		mut has_cap := false
 		mut cap_expr := ast.empty_expr()
 		p.check(.lcbr)
@@ -2265,6 +2267,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		}
 		return ast.ChanInit{
 			pos: first_pos.extend(last_pos)
+			elem_type_pos: elem_type_pos
 			has_cap: has_cap
 			cap_expr: cap_expr
 			typ: chan_type
