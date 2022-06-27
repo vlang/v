@@ -45,7 +45,10 @@ fn (mut set Set<T>) pick() ?T {
 	if set.is_empty() {
 		error('Set is empty')
 	}
-	return set.elements.keys()[0]
+	for k, _ in set.elements {
+		return k
+	}
+	return error('')
 }
 
 // returns the set consisting of all elements except for the arbitrary element.
@@ -71,13 +74,8 @@ fn (mut l Set<T>) equal(r Set<T>) bool {
 	if l.elements.len != r.elements.len {
 		return false
 	}
-	for element in r.elements.keys() {
-		if element !in l.elements.keys() {
-			return false
-		}
-	}
-	for element in l.elements.keys() {
-		if element !in r.elements.keys() {
+	for e, _ in r.elements {
+		if e !in l.elements {
 			return false
 		}
 	}
