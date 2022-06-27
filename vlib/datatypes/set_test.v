@@ -17,9 +17,10 @@ fn test_exists() {
 
 fn test_remove() {
 	mut set := Set<string>{}
+	set.remove('foo')
 	set.add('foo')
 	assert set.exists('foo')
-	set.remove('foo') or { return }
+	set.remove('foo')
 	assert set.exists('foo') == false
 }
 

@@ -32,11 +32,8 @@ fn (mut set Set<T>) add(element T) {
 	}
 }
 
-// removes the element from set, if it is present.
-fn (mut set Set<T>) remove(element T) ? {
-	if element !in set.elements {
-		error("Element doesn't exist in set")
-	}
+// removes the element from set
+fn (mut set Set<T>) remove(element T) {
 	set.elements.delete(element)
 }
 
