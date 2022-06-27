@@ -42,13 +42,10 @@ fn (mut set Set<T>) remove(element T) ? {
 
 // returns an arbitrary element of set, if set is not empty
 fn (mut set Set<T>) pick() ?T {
-	if set.is_empty() {
-		error('Set is empty')
-	}
 	for k, _ in set.elements {
 		return k
 	}
-	return error('')
+	return error('Set is empty')
 }
 
 // returns the set consisting of all elements except for the arbitrary element.
