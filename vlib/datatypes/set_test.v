@@ -5,6 +5,7 @@ fn test_new_set_with_capacity() {
 	set.add('foo')
 	set.add('bar')
 	assert set.size() == 1
+	assert set.exists('foo') == false
 	assert set.exists('bar')
 }
 
@@ -34,7 +35,7 @@ fn test_size() {
 fn test_pop() {
 	mut set := Set<string>{}
 	set.add('foo')
-	set.pop() or { println('Pop failed') }
+	set.pop() or { return }
 	assert set.exists('foo') == false
 }
 
@@ -49,7 +50,7 @@ fn test_rest() {
 	mut set := Set<string>{}
 	set.add('foo')
 	set.add('bar')
-	array := set.rest() or { panic("Don't panic, it's organic!") }
+	array := set.rest() or { return }
 	assert array.len == 1
 }
 
