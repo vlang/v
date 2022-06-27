@@ -628,6 +628,9 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 		ast.PrefixExpr {
 			to_lock, pos = c.fail_if_immutable(expr.right)
 		}
+		ast.PostfixExpr {
+			to_lock, pos = c.fail_if_immutable(expr.expr)
+		}
 		ast.SelectorExpr {
 			if expr.expr_type == 0 {
 				return '', pos
