@@ -1,13 +1,7 @@
 module datatypes
 
-fn test_create() {
-	mut set := create<string>()
-	set.add('foo')
-	set.add('bar')
-}
-
-fn test_create_with_capacity() {
-	mut set := create_with_capacity<string>(1)
+fn test_new_set_with_capacity() {
+	mut set := new_set_with_capacity<string>(1)
 	set.add('foo')
 	set.add('bar')
 	assert set.size() == 1
@@ -25,7 +19,7 @@ fn test_remove() {
 	mut set := Set<string>{}
 	set.add('foo')
 	assert set.exists('foo')
-	set.remove('foo')
+	set.remove('foo') or { return }
 	assert set.exists('foo') == false
 }
 

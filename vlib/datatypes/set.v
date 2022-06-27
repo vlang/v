@@ -7,16 +7,8 @@ mut:
 	elements map[T]int
 }
 
-// creates a new, initially empty set structure.
-pub fn create<T>() Set<T> {
-	return Set<T>{
-		capacity: 0
-		elements: map[T]int{}
-	}
-}
-
 // creates a new set structure, initially empty but capable of holding up to n elements.
-pub fn create_with_capacity<T>(capacity int) Set<T> {
+pub fn new_set_with_capacity<T>(capacity int) Set<T> {
 	return Set<T>{
 		capacity: capacity
 		elements: map[T]int{}
@@ -41,14 +33,14 @@ fn (mut set Set<T>) add(element T) {
 }
 
 // removes the element from set, if it is present.
-fn (mut set Set<T>) remove(element T) {
+fn (mut set Set<T>) remove(element T) ? {
 	if element !in set.elements {
-		error("Item doesn't exist in set")
+		error("Element doesn't exist in set")
 	}
 	set.elements.delete(element)
 }
 
-// returns an arbitrary element of set
+// returns an arbitrary element of set, if set is not empty
 fn (mut set Set<T>) pick() ?T {
 	if set.is_empty() {
 		error('Set is empty')
@@ -58,30 +50,27 @@ fn (mut set Set<T>) pick() ?T {
 
 // returns the set consisting of all elements except for the arbitrary element.
 fn (mut set Set<T>) rest() ?[]T {
-	if set.is_empty() {
-		error('Set is empty')
-	}
-	element := set.pick() or { return error('Failed to retrieve an arbitrary element') }
+	element := set.pick()?
 	return set.elements.keys().filter(it != element)
 }
 
 // returns an arbitrary element and deleting it from set.
 fn (mut set Set<T>) pop() ?T {
-	if set.is_empty() {
-		error('Set is empty')
-	}
-	element := set.pick() or { return error('Failed to retrieve an arbitrary element') }
+	element := set.pick()?
 	set.elements.delete(element)
 	return element
 }
 
-// delete all elements of S.
+// delete all elements of set.
 fn (mut set Set<T>) clear() {
 	set.elements = map[T]int{}
 }
 
 // checks whether the two given sets are equal (i.e. contain all and only the same elements).
 fn (mut l Set<T>) equal(r Set<T>) bool {
+	if l.elements.len != r.elements.len {
+		return false
+	}
 	for element in r.elements.keys() {
 		if element !in l.elements.keys() {
 			return false
@@ -102,5 +91,5 @@ fn (mut set Set<T>) is_empty() bool {
 
 // returns the number of elements.
 fn (mut set Set<T>) size() int {
-	return set.elements.keys().len
+	return set.elements.len
 }
