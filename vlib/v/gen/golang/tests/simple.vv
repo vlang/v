@@ -1,0 +1,43 @@
+module main
+
+#import "fmt"
+
+//fn println(x any){
+fn println(x string){
+#fmt.Println(x)
+}
+
+struct Foo {
+	x int
+	s string
+}
+
+fn is_prime(x int) bool {
+	for i := 2; i <= x/2; i++ {
+		if x % i == 0 {
+			return false
+		}
+	}
+
+	return true
+}
+
+fn main() {
+	x := 10
+	if x % 2 == 0 {
+		println('even')
+	}
+	//println(x.str())
+	println('hello world!')
+	
+	foo := Foo{}
+	q := foo.x
+	_ = q
+	w := q>2 && 3<q
+	_ = w
+
+	numbers := [1,2,3]
+	for number in numbers {
+		_ = number
+	}
+}
