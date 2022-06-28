@@ -1107,7 +1107,7 @@ pub fn (mut f Gen) interface_decl(node ast.InterfaceDecl) {
 
 pub fn (mut f Gen) interface_field(field ast.StructField) {
 	mut ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
-	end_pos := field.pos.pos + field.pos.len
+	// end_pos := field.pos.pos + field.pos.len
 	f.write('\t$field.name $ft')
 	f.writeln('')
 	f.mark_types_import_as_used(field.typ)
@@ -1278,7 +1278,7 @@ pub fn (mut f Gen) fn_type_decl(node ast.FnTypeDecl) {
 
 pub fn (mut f Gen) sum_type_decl(node ast.SumTypeDecl) {
 	f.attrs(node.attrs)
-	start_pos := f.out.len
+	// start_pos := f.out.len
 	if node.is_pub {
 		f.write('pub ')
 	}
@@ -1339,16 +1339,16 @@ pub fn (mut f Gen) array_init(node ast.ArrayInit) {
 	// `[1,2,3]`
 	sym := f.table.sym(node.typ)
 	f.write('$sym.name{')
-	mut inc_indent := false
+	// mut inc_indent := false
 	mut last_line_nr := node.pos.line_nr // to have the same newlines between array elements
 	if node.pre_cmnts.len > 0 {
 		if node.pre_cmnts[0].pos.line_nr > last_line_nr {
 			f.writeln('')
 		}
 	}
-	mut set_comma := false
-	for i, expr in node.exprs {
-		pos := expr.pos()
+	// mut set_comma := false
+	for expr in node.exprs {
+		// pos := expr.pos()
 		f.expr(expr)
 		f.write(',')
 	}
@@ -1395,8 +1395,7 @@ pub fn (mut f Gen) at_expr(node ast.AtExpr) {
 }
 
 pub fn (mut f Gen) call_expr(node ast.CallExpr) {
-	for arg in node.args {
-	}
+	// for arg in node.args {}
 	mut is_method_newline := false
 	if node.is_method {
 		if node.name in ['map', 'filter', 'all', 'any'] {
@@ -1598,10 +1597,10 @@ pub fn (mut f Gen) ident(node ast.Ident) {
 	} else if node.kind == .blank_ident {
 		f.write('_')
 	} else {
-		mut is_local := false
+		// mut is_local := false
 		if !isnil(f.fn_scope) {
 			if _ := f.fn_scope.find_var(node.name) {
-				is_local = true
+				// is_local = true
 			}
 		}
 		name := f.short_module(node.name)
@@ -1616,8 +1615,8 @@ pub fn (mut f Gen) if_expr(node ast.IfExpr) {
 		&& branch_is_single_line(node.branches[0]) && branch_is_single_line(node.branches[1])
 		&& (node.is_expr || f.is_assign || f.is_struct_init || f.single_line_fields)
 	f.single_line_if = is_ternary
-	start_pos := f.out.len
-	start_len := f.line_len
+	// start_pos := f.out.len
+	// start_len := f.line_len
 	for {
 		for i, branch in node.branches {
 			if i == 0 {
@@ -1706,8 +1705,8 @@ pub fn (mut f Gen) infix_expr(node ast.InfixExpr) {
 	if node.op == .left_shift {
 		f.is_assign = true // To write ternary if on a single line
 	}
-	start_pos := f.out.len
-	start_len := f.line_len
+	// start_pos := f.out.len
+	// start_len := f.line_len
 	f.expr(node.left)
 	is_one_val_array_init := node.op in [.key_in, .not_in] && node.right is ast.ArrayInit
 		&& (node.right as ast.ArrayInit).exprs.len == 1
@@ -1792,8 +1791,8 @@ fn (mut f Gen) write_splitted_infix(conditions []string, penalties []int, ignore
 	}
 	for i, cnd in conditions {
 		c := cnd.trim_space()
-		is_paren_expr := (c[0] == `(` || (c.len > 5 && c[3] == `(`)) && c.ends_with(')')
-		final_len := ((f.indent + 1) * 4) + c.len
+		// is_paren_expr := (c[0] == `(` || (c.len > 5 && c[3] == `(`)) && c.ends_with(')')
+		// final_len := ((f.indent + 1) * 4) + c.len
 		if i == 0 {
 			f.remove_new_line()
 		}
@@ -1997,8 +1996,8 @@ pub fn (mut f Gen) or_expr(node ast.OrExpr) {
 			} else if node.stmts.len == 1 && stmt_is_single_line(node.stmts[0]) {
 				// the control stmts (return/break/continue...) print a newline inside them,
 				// so, since this'll all be on one line, trim any possible whitespace
-				str := f.node_str(node.stmts[0]).trim_space()
-				single_line := ' or { $str }'
+				// str := f.node_str(node.stmts[0]).trim_space()
+				// single_line := ' or { $str }'
 			}
 			// Make it multiline if the blocks has at least two stmts
 			// or a single line would be too long

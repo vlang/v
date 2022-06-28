@@ -27,12 +27,12 @@ pub fn (mut f Gen) struct_decl(node ast.StructDecl) {
 		return
 	}
 	mut field_types := []string{cap: node.fields.len}
-	for i, field in node.fields {
+	for field in node.fields {
 		ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
 		field_types << ft
-		attrs_len := inline_attrs_len(field.attrs)
-		end_pos := field.pos.pos + field.pos.len
-		mut comments_len := 0 // Length of comments between field name and type
+		// attrs_len := inline_attrs_len(field.attrs)
+		// end_pos := field.pos.pos + field.pos.len
+		// mut comments_len := 0 // Length of comments between field name and type
 		// field_aligns.add_info(comments_len + field.name.len, ft.len, field.pos.line_nr)
 		if field.has_default_expr {
 			// default_expr_aligns.add_info(attrs_len, field_types[i].len, field.pos.line_nr,
@@ -45,9 +45,9 @@ pub fn (mut f Gen) struct_decl(node ast.StructDecl) {
 		styp := f.table.type_to_str_using_aliases(embed.typ, f.mod2alias)
 		f.writeln('\t$styp')
 	}
-	mut field_align_i := 0
-	mut comment_align_i := 0
-	mut default_expr_align_i := 0
+	// mut field_align_i := 0
+	// mut comment_align_i := 0
+	// mut default_expr_align_i := 0
 	mut inc_indent := false // for correct indents with multi line default exprs
 	for i, field in node.fields {
 		if i == node.mut_pos {
@@ -72,10 +72,10 @@ pub fn (mut f Gen) struct_decl(node ast.StructDecl) {
 				f.writeln('')
 			}
 		}
-		end_pos := field.pos.pos + field.pos.len
+		// end_pos := field.pos.pos + field.pos.len
 		volatile_prefix := if field.is_volatile { 'volatile ' } else { '' }
 		f.write('\t$volatile_prefix$field.name ')
-		before_len := f.line_len
+		// before_len := f.line_len
 		// mut field_align := field_aligns[field_align_i]
 		// if field_align.line_nr < field.pos.line_nr {
 		// field_align_i++
@@ -84,7 +84,7 @@ pub fn (mut f Gen) struct_decl(node ast.StructDecl) {
 		// f.write(strings.repeat(` `, field_align.max_len - field.name.len - comments_len))
 		f.write(field_types[i])
 		f.mark_types_import_as_used(field.typ)
-		attrs_len := inline_attrs_len(field.attrs)
+		// attrs_len := inline_attrs_len(field.attrs)
 		has_attrs := field.attrs.len > 0
 		if has_attrs {
 			// f.write(strings.repeat(` `, field_align.max_type_len - field_types[i].len))
@@ -163,7 +163,7 @@ pub fn (mut f Gen) struct_init(node ast.StructInit) {
 				f.write(' ')
 			}
 		}
-		fields_start := f.out.len
+		// fields_start := f.out.len
 		fields_loop: for {
 			if !single_line_fields {
 				if use_short_args && f.out[f.out.len - 1] == ` ` {
