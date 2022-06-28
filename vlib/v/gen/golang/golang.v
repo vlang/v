@@ -294,8 +294,6 @@ pub fn (mut f Gen) imports(imports []ast.Import) {
 		}
 		already_imported[import_text] = true
 		f.out_imports.writeln(import_text)
-		f.import_comments(imp.comments, inline: true)
-		f.import_comments(imp.next_comments)
 		num_imports++
 	}
 	if num_imports > 0 {
@@ -541,9 +539,7 @@ pub fn (mut f Gen) expr(node_ ast.Expr) {
 		ast.CharLiteral {
 			f.char_literal(node)
 		}
-		ast.Comment {
-			f.comment(node, inline: true)
-		}
+		ast.Comment {}
 		ast.ComptimeCall {
 			f.comptime_call(node)
 		}
@@ -738,7 +734,6 @@ pub fn (mut f Gen) assign_stmt(node ast.AssignStmt) {
 			f.write(', ')
 		}
 	}
-	f.comments(node.end_comments, has_nl: false, inline: true, level: .keep)
 	if !f.single_line_if {
 		f.writeln('')
 	}
@@ -822,13 +817,6 @@ pub fn (mut f Gen) const_decl(node ast.ConstDecl) {
 		if i > align_infos[align_idx].last_idx {
 			align_idx++
 		}
-		if field.comments.len > 0 {
-			if f.should_insert_newline_before_node(ast.Expr(field.comments[0]), prev_field) {
-				f.writeln('')
-			}
-			f.comments(field.comments, inline: true)
-			prev_field = ast.Expr(field.comments.last())
-		}
 		if node.is_block && f.should_insert_newline_before_node(field, prev_field) {
 			f.writeln('')
 		}
@@ -837,7 +825,6 @@ pub fn (mut f Gen) const_decl(node ast.ConstDecl) {
 		f.write(strings.repeat(` `, align_infos[align_idx].max - field.name.len))
 		f.write('= ')
 		f.expr(field.expr)
-		f.comments(field.end_comments, inline: true)
 		if node.is_block && field.end_comments.len == 0 {
 			f.writeln('')
 		} else {
@@ -846,13 +833,11 @@ pub fn (mut f Gen) const_decl(node ast.ConstDecl) {
 			if node.end_comments.len > 0 && node.end_comments[0].text.contains('\n') {
 				f.writeln('\n')
 			}
-			f.comments(node.end_comments, inline: true)
 		}
 		prev_field = field
 	}
 
 	if node.is_block {
-		f.comments_after_last_field(node.end_comments)
 	} else if node.end_comments.len == 0 {
 		// If no single line comments after the const expr is present
 		f.writeln('')
@@ -875,7 +860,6 @@ pub fn (mut f Gen) defer_stmt(node ast.DeferStmt) {
 }
 
 pub fn (mut f Gen) expr_stmt(node ast.ExprStmt) {
-	f.comments(node.comments)
 	f.expr(node.expr)
 	if !f.single_line_if {
 		f.writeln('')
@@ -893,16 +877,13 @@ pub fn (mut f Gen) enum_decl(node ast.EnumDecl) {
 		return
 	}
 	f.writeln('enum $name {')
-	f.comments(node.comments, inline: true, level: .indent)
 	for field in node.fields {
 		f.write('\t$field.name')
 		if field.has_expr {
 			f.write(' = ')
 			f.expr(field.expr)
 		}
-		f.comments(field.comments, inline: true, has_nl: false, level: .indent)
 		f.writeln('')
-		f.comments(field.next_comments, inline: false, has_nl: true, level: .indent)
 	}
 	f.writeln('}\n')
 }
@@ -1036,7 +1017,6 @@ pub fn (mut f Gen) global_decl(node ast.GlobalDecl) {
 		}
 	}
 	for field in node.fields {
-		f.comments(field.comments, inline: true)
 		f.write('$field.name ')
 		f.write(strings.repeat(` `, max - field.name.len))
 		if field.has_expr {
@@ -1050,7 +1030,6 @@ pub fn (mut f Gen) global_decl(node ast.GlobalDecl) {
 		}
 		f.mark_types_import_as_used(field.typ)
 	}
-	f.comments_after_last_field(node.end_comments)
 	if node.is_block {
 		f.indent--
 		f.writeln(')')
@@ -1090,10 +1069,8 @@ pub fn (mut f Gen) interface_decl(node ast.InterfaceDecl) {
 	if node.fields.len > 0 || node.methods.len > 0 || node.pos.line_nr < node.pos.last_line {
 		f.writeln('')
 	}
-	f.comments_before_field(node.pre_comments)
 	for embed in node.embeds {
 		f.write('\t$embed.name')
-		f.comments(embed.comments, inline: true, has_nl: false, level: .indent)
 		f.writeln('')
 	}
 	immut_fields := if node.mut_pos < 0 { node.fields } else { node.fields[..node.mut_pos] }
@@ -1131,24 +1108,15 @@ pub fn (mut f Gen) interface_decl(node ast.InterfaceDecl) {
 pub fn (mut f Gen) interface_field(field ast.StructField) {
 	mut ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
 	end_pos := field.pos.pos + field.pos.len
-	before_comments := field.comments.filter(it.pos.pos < field.pos.pos)
-	between_comments := field.comments[before_comments.len..].filter(it.pos.pos < end_pos)
-	after_type_comments := field.comments[(before_comments.len + between_comments.len)..]
 	f.write('\t$field.name $ft')
-	if after_type_comments.len > 0 {
-		f.comments(after_type_comments, level: .indent)
-	} else {
-		f.writeln('')
-	}
+	f.writeln('')
 	f.mark_types_import_as_used(field.typ)
 }
 
 pub fn (mut f Gen) interface_method(method ast.FnDecl) {
 	f.write('\t')
 	f.write(method.stringify(f.table, f.cur_mod, f.mod2alias).after('fn '))
-	f.comments(method.comments, inline: true, has_nl: false, level: .indent)
 	f.writeln('')
-	f.comments(method.next_comments, inline: false, has_nl: true, level: .indent)
 	for param in method.params {
 		f.mark_types_import_as_used(param.typ)
 	}
@@ -1168,7 +1136,6 @@ pub fn (mut f Gen) module_stmt(mod ast.Module) {
 }
 
 pub fn (mut f Gen) return_stmt(node ast.Return) {
-	f.comments(node.comments)
 	f.write('return')
 	if node.exprs.len > 0 {
 		f.write(' ')
@@ -1253,7 +1220,6 @@ pub fn (mut f Gen) alias_type_decl(node ast.AliasTypeDecl) {
 	ptype := f.table.type_to_str_using_aliases(node.parent_type, f.mod2alias)
 	f.write('type $node.name = $ptype')
 
-	f.comments(node.comments, has_nl: false)
 	f.mark_types_import_as_used(node.parent_type)
 }
 
@@ -1307,7 +1273,6 @@ pub fn (mut f Gen) fn_type_decl(node ast.FnTypeDecl) {
 		f.write(' !')
 	}
 
-	f.comments(node.comments, has_nl: false)
 	f.writeln('')
 }
 
@@ -1431,7 +1396,6 @@ pub fn (mut f Gen) at_expr(node ast.AtExpr) {
 
 pub fn (mut f Gen) call_expr(node ast.CallExpr) {
 	for arg in node.args {
-		f.comments(arg.comments)
 	}
 	mut is_method_newline := false
 	if node.is_method {
@@ -1468,7 +1432,6 @@ pub fn (mut f Gen) call_expr(node ast.CallExpr) {
 	f.call_args(node.args)
 	f.write(')')
 	f.or_expr(node.or_block)
-	f.comments(node.comments, has_nl: false)
 	if is_method_newline {
 		f.indent--
 	}
@@ -1659,15 +1622,9 @@ pub fn (mut f Gen) if_expr(node ast.IfExpr) {
 		for i, branch in node.branches {
 			if i == 0 {
 				// first `if`
-				f.comments(branch.comments)
 			} else {
 				// `else`, close previous branch
-				if branch.comments.len > 0 {
-					f.writeln('}')
-					f.comments(branch.comments)
-				} else {
-					f.write('} ')
-				}
+				f.write('} ')
 				f.write('${dollar}else ')
 			}
 			if i < node.branches.len - 1 || !node.has_else {
@@ -1700,15 +1657,11 @@ pub fn (mut f Gen) if_expr(node ast.IfExpr) {
 	f.single_line_if = false
 	if node.post_comments.len > 0 {
 		f.writeln('')
-		f.comments(node.post_comments,
-			has_nl: false
-			prev_line: node.branches.last().body_pos.last_line
-		)
 	}
 }
 
 fn branch_is_single_line(b ast.IfBranch) bool {
-	if b.stmts.len == 1 && b.comments.len == 0 && stmt_is_single_line(b.stmts[0])
+	if b.stmts.len == 1 && stmt_is_single_line(b.stmts[0])
 		&& b.pos.line_nr == b.stmts[0].pos.line_nr {
 		return true
 	}
@@ -1918,14 +1871,12 @@ pub fn (mut f Gen) map_init(node ast.MapInit) {
 			f.write('{}')
 		} else {
 			f.writeln('{')
-			f.comments(node.pre_cmnts, level: .indent)
 			f.write('}')
 		}
 		return
 	}
 	f.writeln('{')
 	f.indent++
-	f.comments(node.pre_cmnts)
 	mut max_field_len := 0
 	mut skeys := []string{}
 	for key in node.keys {
@@ -1946,7 +1897,6 @@ pub fn (mut f Gen) map_init(node ast.MapInit) {
 			// when the values are struct values, and the code will no longer parse properly
 			f.write(',')
 		}
-		f.comments(node.comments[i], prev_line: node.vals[i].pos().last_line, has_nl: false)
 		f.writeln('')
 	}
 	f.indent--
@@ -1962,7 +1912,6 @@ fn (mut f Gen) match_branch(branch ast.MatchBranch, single_line bool) {
 			f.write(estr)
 			if j < branch.ecmnts.len && branch.ecmnts[j].len > 0 {
 				f.write(' ')
-				f.comments(branch.ecmnts[j], iembed: true)
 			}
 			if j < branch.exprs.len - 1 {
 				f.write(', ')
@@ -1989,7 +1938,6 @@ fn (mut f Gen) match_branch(branch ast.MatchBranch, single_line bool) {
 			f.writeln('}')
 		}
 	}
-	f.comments(branch.post_comments, inline: true)
 }
 
 pub fn (mut f Gen) match_expr(node ast.MatchExpr) {
@@ -2000,7 +1948,6 @@ pub fn (mut f Gen) match_expr(node ast.MatchExpr) {
 	}
 	f.writeln(' {')
 	f.indent++
-	f.comments(node.comments)
 	mut single_line := true
 	for branch in node.branches {
 		if branch.stmts.len > 1 || branch.pos.line_nr < branch.pos.last_line {
@@ -2139,7 +2086,6 @@ pub fn (mut f Gen) select_expr(node ast.SelectExpr) {
 	f.indent++
 	for branch in node.branches {
 		if branch.comment.text != '' {
-			f.comment(branch.comment, inline: true)
 			f.writeln('')
 		}
 		if branch.is_else {
@@ -2158,9 +2104,6 @@ pub fn (mut f Gen) select_expr(node ast.SelectExpr) {
 			f.stmts(branch.stmts)
 		}
 		f.writeln('}')
-		if branch.post_comments.len > 0 {
-			f.comments(branch.post_comments, inline: true)
-		}
 	}
 	f.indent--
 	f.write('}')
