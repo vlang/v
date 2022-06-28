@@ -3667,8 +3667,8 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	}
 	name := p.check_name()
 	if name.len == 1 && name[0].is_capital() {
-		p.error_with_pos('single letter capital names are reserved for generic template types.',
-			decl_pos)
+		p.error_with_pos('single letter capital names are reserved for generic template types',
+			name_pos)
 		return ast.FnTypeDecl{}
 	}
 	if name in p.imported_symbols {
