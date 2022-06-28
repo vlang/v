@@ -1,48 +1,33 @@
 module datatypes
 
 pub struct Set<T> {
-	// maximum number of values that Set<T> can hold.
-	capacity int
 mut:
 	elements map[T]u8
 }
 
-// creates a new set structure, initially empty but capable of holding up to n elements.
-pub fn new_set_with_capacity<T>(capacity int) Set<T> {
-	return Set<T>{
-		capacity: capacity
-		elements: map[T]u8{}
-	}
-}
-
 // checks the element is exists.
-fn (mut set Set<T>) exists(element T) bool {
+fn (set Set<T>) exists(element T) bool {
 	return element in set.elements
 }
 
 // adds the element to set, if it is not present already.
 fn (mut set Set<T>) add(element T) {
-	if set.capacity > 0 {
-		if set.size() == set.capacity {
-			set.elements.delete(set.elements.keys()[0])
-		}
-	}
 	if element !in set.elements {
 		set.elements[element] = u8(set.size() + 1)
 	}
 }
 
-// removes the element from set
+// removes the element from set.
 fn (mut set Set<T>) remove(element T) {
 	set.elements.delete(element)
 }
 
-// returns an arbitrary element of set, if set is not empty
+// returns an arbitrary element of set, if set is not empty.
 fn (mut set Set<T>) pick() ?T {
 	for k, _ in set.elements {
 		return k
 	}
-	return error('Set is empty')
+	return error('Set is empty.')
 }
 
 // returns the set consisting of all elements except for the arbitrary element.

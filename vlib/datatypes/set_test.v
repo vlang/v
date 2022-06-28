@@ -1,14 +1,5 @@
 module datatypes
 
-fn test_new_set_with_capacity() {
-	mut set := new_set_with_capacity<string>(1)
-	set.add('foo')
-	set.add('bar')
-	assert set.size() == 1
-	assert set.exists('foo') == false
-	assert set.exists('bar')
-}
-
 fn test_exists() {
 	mut set := Set<string>{}
 	set.add('foo')
