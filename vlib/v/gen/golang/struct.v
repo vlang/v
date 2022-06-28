@@ -3,7 +3,7 @@
 // that can be found in the LICENSE file.
 module golang
 
-import strings
+// import strings
 import v.ast
 import v.mathutil as mu
 
