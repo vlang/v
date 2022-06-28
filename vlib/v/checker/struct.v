@@ -377,6 +377,10 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				expected_type = field_info.typ
 				c.expected_type = expected_type
 				expr_type = c.expr(field.expr)
+				if expr_type == ast.void_type {
+					c.error('cannot assign `void` expression to field `$field_info.name`',
+						field.pos)
+				}
 				if !field_info.typ.has_flag(.optional) {
 					expr_type = c.check_expr_opt_call(field.expr, expr_type)
 				}
