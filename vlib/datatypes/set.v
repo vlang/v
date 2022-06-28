@@ -45,7 +45,7 @@ fn (mut set Set<T>) pop() ?T {
 
 // delete all elements of set.
 fn (mut set Set<T>) clear() {
-	set.elements = map[T]int{}
+	set.elements = map[T]u8{}
 }
 
 // checks whether the two given sets are equal (i.e. contain all and only the same elements).
@@ -69,4 +69,64 @@ fn (mut set Set<T>) is_empty() bool {
 // returns the number of elements.
 fn (mut set Set<T>) size() int {
 	return set.elements.len
+}
+
+// returns a copy of the set.
+fn (mut set Set<T>) copy() Set<T> {
+	return Set<T>{
+		elements: set.elements.clone()
+	}
+}
+
+// updates the set from the array
+fn (mut set Set<T>) update(elements []T) {
+	for element in elements {
+		set.add(element)
+	}
+}
+
+// returns the union of sets.
+fn (mut l Set<T>) union_(r Set<T>) Set<T> {
+	mut set := l
+	for e, _ in r.elements {
+		set.add(e)
+	}
+	return set
+}
+
+// returns the intersection of sets.
+fn (mut l Set<T>) intersection(r Set<T>) Set<T> {
+	mut set := l
+	for e, _ in l.elements {
+		if !r.exists(e) {
+			set.remove(e)
+		}
+	}
+	for e, _ in r.elements {
+		if !l.exists(e) {
+			set.remove(e)
+		}
+	}
+	return set
+}
+
+// returns the difference of sets.
+fn (mut l Set<T>) difference(r Set<T>) Set<T> {
+	mut set := l
+	for e, _ in l.elements {
+		if r.exists(e) {
+			set.remove(e)
+		}
+	}
+	return set
+}
+
+// returns true if the set is a subset.
+fn (mut l Set<T>) subset(r Set<T>) bool {
+	for e, _ in r.elements {
+		if e !in l.elements {
+			return false
+		}
+	}
+	return true
 }
