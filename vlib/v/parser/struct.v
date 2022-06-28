@@ -493,6 +493,11 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		return ast.InterfaceDecl{}
 	}
 	modless_name := p.check_name()
+	if modless_name.len == 1 && modless_name[0].is_capital() {
+		p.error_with_pos('single letter capital names are reserved for generic template types.',
+			name_pos)
+		return ast.InterfaceDecl{}
+	}
 	if modless_name == 'IError' && p.mod != 'builtin' {
 		p.error_with_pos('cannot register interface `IError`, it is builtin interface type',
 			name_pos)
