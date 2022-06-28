@@ -2508,7 +2508,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		&& final_to_sym.kind !in [.sum_type, .interface_] {
 		ft := c.table.type_to_str(from_type)
 		tt := c.table.type_to_str(to_type)
-		c.error('cannot cast `$ft` to `$tt`, please use `as` instead, e.g. `expr as Ident`',
+		kind_name := if from_sym.kind == .sum_type { 'sum type' } else { 'interface' }
+		c.error('cannot cast `$ft` $kind_name value to `$tt`, use `$node.expr as $tt` instead',
 			node.pos)
 	}
 
