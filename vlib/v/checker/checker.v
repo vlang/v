@@ -3687,6 +3687,11 @@ fn (mut c Checker) warn_or_error(message string, pos token.Pos, warn bool) {
 	}
 	if !warn {
 		if c.pref.fatal_errors {
+			ferror := util.formatted_error('error:', message, c.file.path, pos)
+			eprintln(ferror)
+			if details.len > 0 {
+				eprintln('Details: $details')
+			}
 			exit(1)
 		}
 		c.nr_errors++

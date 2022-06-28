@@ -1824,10 +1824,12 @@ pub fn (mut p Parser) note(s string) {
 }
 
 pub fn (mut p Parser) error_with_pos(s string, pos token.Pos) ast.NodeError {
+	mut kind := 'error:'
 	if p.pref.fatal_errors {
+		ferror := util.formatted_error(kind, s, p.file_name, pos)
+		eprintln(ferror)
 		exit(1)
 	}
-	mut kind := 'error:'
 	if p.pref.output_mode == .stdout && !p.pref.check_only {
 		if p.pref.is_verbose {
 			print_backtrace()
@@ -1864,10 +1866,12 @@ pub fn (mut p Parser) error_with_pos(s string, pos token.Pos) ast.NodeError {
 }
 
 pub fn (mut p Parser) error_with_error(error errors.Error) {
+	mut kind := 'error:'
 	if p.pref.fatal_errors {
+		ferror := util.formatted_error(kind, error.message, error.file_path, error.pos)
+		eprintln(ferror)
 		exit(1)
 	}
-	mut kind := 'error:'
 	if p.pref.output_mode == .stdout && !p.pref.check_only {
 		if p.pref.is_verbose {
 			print_backtrace()
