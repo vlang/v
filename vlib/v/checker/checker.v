@@ -3529,7 +3529,7 @@ pub fn (mut c Checker) chan_init(mut node ast.ChanInit) ast.Type {
 		if node.elem_type != 0 {
 			elem_sym := c.table.sym(node.elem_type)
 			if elem_sym.kind == .placeholder {
-				c.error('unknown type `$elem_sym.name`', node.pos)
+				c.error('unknown type `$elem_sym.name`', node.elem_type_pos)
 			}
 		}
 		if node.has_cap {
