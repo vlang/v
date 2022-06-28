@@ -63,12 +63,10 @@ struct JwtPayload {
 	iat  int
 }
 
-
 fn main() {
 	token := make_token()
 	println(token)
 }
-
 
 fn make_token() string {
 	secret := 'your-256-bit-secret'
@@ -79,8 +77,7 @@ fn make_token() string {
 		sha256.sum, sha256.block_size).bytestr().bytes())
 
 	jwt := '${header}.${payload}.$signature'
-	
+
 	return jwt
 }
-
 ```
