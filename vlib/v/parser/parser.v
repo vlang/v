@@ -3364,6 +3364,9 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 				pos)
 		}
 		full_name := p.prepend_mod(name)
+		if p.tok.kind == .comma {
+			p.error_with_pos('const declaration do not support multiple assign yet', p.tok.pos())
+		}
 		p.check(.assign)
 		end_comments << p.eat_comments()
 		if p.tok.kind == .key_fn {
