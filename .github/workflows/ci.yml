@@ -26,7 +26,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
-          sudo apt-get install --quiet -y golang-go
           ## The following is needed for examples/wkhtmltopdf.v
           wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
           sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
@@ -85,8 +84,6 @@ jobs:
         run: ./v tutorials/building_a_simple_web_blog_with_vweb/code/blog
       - name: Build cmd/tools/fast
         run: cd cmd/tools/fast && ../../../v fast.v && ./fast
-      - name: Test Go backend
-        run: ./v vlib/v/gen/golang/tests/golang_test.v
       - name: V self compilation with -usecache
         run: |
           unset VFLAGS
