@@ -21,9 +21,6 @@ enum Register {
 	rbp
 	rsi
 	rdi
-	eax
-	edi
-	edx
 	r8
 	r9
 	r10
@@ -32,6 +29,9 @@ enum Register {
 	r13
 	r14
 	r15
+	eax
+	edi
+	edx
 }
 
 const (
@@ -496,14 +496,6 @@ pub fn (mut g Gen) pop(reg Register) {
 	g.println('pop $reg')
 }
 
-pub fn (mut g Gen) sub32(reg Register, val int) {
-	g.write8(0x48)
-	g.write8(0x81)
-	g.write8(0xe8 + int(reg)) // TODO rax is different?
-	g.write32(val)
-	g.println('sub32 $reg,$val.hex2()')
-}
-
 pub fn (mut g Gen) sub8(reg Register, val int) {
 	g.write8(0x48)
 	g.write8(0x83)
@@ -514,18 +506,24 @@ pub fn (mut g Gen) sub8(reg Register, val int) {
 
 pub fn (mut g Gen) sub(reg Register, val int) {
 	g.write8(0x48)
-	g.write8(0x81)
-	g.write8(0xe8 + int(reg)) // TODO rax is different?
+	if reg == .rax {
+		g.write8(0x2d)
+	} else {
+		g.write8(0x81)
+		g.write8(0xe8 + int(reg))
+	}
 	g.write32(val)
-	g.println('add $reg,$val.hex2()')
+	g.println('sub $reg,$val.hex2()')
 }
 
 pub fn (mut g Gen) add(reg Register, val int) {
-	if reg != .rax {
-		panic('add only works with .rax')
-	}
 	g.write8(0x48)
-	g.write8(0x05)
+	if reg == .rax {
+		g.write8(0x05)
+	} else {
+		g.write8(0x81)
+		g.write8(0xc0 + int(reg))
+	}
 	g.write32(val)
 	g.println('add $reg,$val.hex2()')
 }
@@ -1078,59 +1076,11 @@ fn (mut g Gen) add_reg(a Register, b Register) {
 }
 
 fn (mut g Gen) mov_reg(a Register, b Register) {
-	if a == .rax && b == .rsi {
-		g.write([u8(0x48), 0x89, 0xf0])
-	} else if a == .rbp && b == .rsp {
-		g.write8(0x48)
+	if int(a) <= int(Register.r15) && int(b) <= int(Register.r15) {
+		g.write8(0x48 + if int(a) >= int(Register.r8) { 1 } else { 0 } +
+			if int(b) >= int(Register.r8) { 4 } else { 0 })
 		g.write8(0x89)
-	} else if a == .rdx && b == .rax {
-		g.write8(0x48)
-		g.write8(0x89)
-		g.write8(0xc2)
-	} else if a == .rax && b == .rcx {
-		g.write8(0x48)
-		g.write8(0x89)
-		g.write8(0xc8)
-	} else if a == .rax && b == .rdi {
-		g.write8(0x48)
-		g.write8(0x89)
-		g.write8(0xf8)
-	} else if a == .rcx && b == .rdi {
-		g.write8(0x48)
-		g.write8(0x89)
-		g.write8(0xf9)
-	} else if a == .rcx && b == .rax {
-		g.write8(0x48)
-		g.write8(0x89)
-		g.write8(0xc1)
-	} else if a == .rdi && b == .rsi {
-		g.write8(0x48)
-		g.write8(0x89)
-		g.write8(0xf7)
-	} else if a == .rsi && b == .rax {
-		g.write8(0x48)
-		g.write8(0x89)
-		g.write8(0xc6)
-	} else if a == .rdi && b == .rdx {
-		g.write8(0x48)
-		g.write8(0x89)
-		g.write8(0xd7)
-	} else if a == .rdi && b == .rax {
-		g.write8(0x48)
-		g.write8(0x89)
-		g.write8(0xc7)
-	} else if a == .r12 && b == .rdi {
-		g.write8(0x49)
-		g.write8(0x89)
-		g.write8(0xfc)
-	} else if a == .rdi && b == .r12 {
-		g.write8(0x4c)
-		g.write8(0x89)
-		g.write8(0xe7)
-	} else if a == .rsi && b == .rdi {
-		g.write8(0x48)
-		g.write8(0x89)
-		g.write8(0xfe)
+		g.write8(0xc0 + int(a) % 8 + int(b) % 8 * 8)
 	} else {
 		g.n_error('unhandled mov_reg combination for $a $b')
 	}
@@ -1154,14 +1104,6 @@ fn (mut g Gen) sar8(r Register, val u8) {
 	}
 	g.write8(val)
 	g.println('sar $r, $val')
-}
-
-// generates `mov rbp, rsp`
-fn (mut g Gen) mov_rbp_rsp() {
-	g.write8(0x48)
-	g.write8(0x89)
-	g.write8(0xe5)
-	g.println('mov rbp, rsp')
 }
 
 pub fn (mut g Gen) call_fn(node ast.CallExpr) {
@@ -1288,7 +1230,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 						g.mov_reg_to_var(dest, .rax)
 					}
 					.decl_assign {
-						g.allocate_var(name, 8, right.val.int())
+						g.allocate_var(name, 4, right.val.int())
 					}
 					.assign {
 						// dump(g.typ(node.left_types[i]))
@@ -1914,10 +1856,9 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 
 fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 	g.push(.rbp)
-	g.mov_rbp_rsp()
-	locals_count := node.scope.objects.len + node.params.len + node.defer_stmts.len
-	g.stackframe_size = (locals_count * 8) + 0x10
-	g.sub8(.rsp, g.stackframe_size)
+	g.mov_reg(.rbp, .rsp)
+	local_alloc_pos := g.pos()
+	g.sub(.rsp, 0)
 
 	// Copy values from registers to local vars (calling convention)
 	mut offset := 0
@@ -1936,6 +1877,7 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 	}
 	//
 	g.stmts(node.stmts)
+	g.println('; stack frame size: $g.stack_var_pos')
 	is_main := node.name == 'main.main'
 	if is_main {
 		// println('end of main: gen exit')
@@ -1965,7 +1907,8 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 		}
 		g.pop(.rax)
 	}
-	g.add8(.rsp, g.stackframe_size)
+	g.write32_at(local_alloc_pos + 3, g.stack_var_pos)
+	g.mov_reg(.rsp, .rbp)
 	g.pop(.rbp)
 	g.ret()
 }
@@ -2014,6 +1957,7 @@ pub fn (mut g Gen) allocate_var(name string, size int, initial_val int) int {
 	g.write8(0xff - n + 1)
 	g.stack_var_pos += size
 	g.var_offset[name] = g.stack_var_pos
+	g.var_size[name] = size
 
 	// Generate the value assigned to the variable
 	match size {

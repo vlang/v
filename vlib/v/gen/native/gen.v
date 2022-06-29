@@ -32,7 +32,6 @@ mut:
 	buf                  []u8
 	sect_header_name_pos int
 	offset               i64
-	stackframe_size      int
 	file_size_pos        i64
 	main_fn_addr         i64
 	code_start_pos       i64 // location of the start of the assembly instructions
