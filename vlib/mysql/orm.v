@@ -255,8 +255,11 @@ fn mysql_type_from_v(typ int) ?string {
 		orm.type_idx['i16'], orm.type_idx['u16'] {
 			'SMALLINT'
 		}
-		orm.type_idx['int'], orm.type_idx['u32'], orm.time {
+		orm.type_idx['int'], orm.type_idx['u32'] {
 			'INT'
+		}
+		orm.time {
+			'datetime(3)'
 		}
 		orm.type_idx['i64'], orm.type_idx['u64'] {
 			'BIGINT'
