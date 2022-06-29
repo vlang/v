@@ -1766,7 +1766,9 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 		node.ct_conds = c.ct_cond_stack.clone()
 	}
 	if c.pref.backend.is_js() || c.pref.backend == .golang {
-		if !c.file.path.ends_with('.js.v') && !c.file.path.ends_with('.go.v') {
+		// consider the the best way to handle the .go.vv files
+		if !c.file.path.ends_with('.js.v') && !c.file.path.ends_with('.go.v')
+			&& !c.file.path.ends_with('.go.vv') {
 			c.error('hash statements are only allowed in backend specific files such "x.js.v" and "x.go.v"',
 				node.pos)
 		}
