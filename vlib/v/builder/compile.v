@@ -91,7 +91,7 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	} else if b.pref.backend == .golang {
 		go_basename := $if windows { 'go.exe' } $else { 'go' }
 		os.find_abs_path_of_executable(go_basename) or {
-			panic('Could not find `$go_basename` in system path. Do you have Node.js installed?')
+			panic('Could not find `$go_basename` in system path. Do you have Go installed?')
 		}
 	} else {
 		compiled_file
