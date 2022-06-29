@@ -83,21 +83,24 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 		exit(0)
 	}
 	compiled_file := os.real_path(b.pref.out_name)
-	mut run_args := []string{cap: b.pref.run_args.len + 1}
 	run_file := if b.pref.backend.is_js() {
-		run_args << compiled_file
 		node_basename := $if windows { 'node.exe' } $else { 'node' }
 		os.find_abs_path_of_executable(node_basename) or {
 			panic('Could not find `$node_basename` in system path. Do you have Node.js installed?')
 		}
 	} else if b.pref.backend == .golang {
-		run_args << ['run', compiled_file]
 		go_basename := $if windows { 'go.exe' } $else { 'go' }
 		os.find_abs_path_of_executable(go_basename) or {
 			panic('Could not find `$go_basename` in system path. Do you have Node.js installed?')
 		}
 	} else {
 		compiled_file
+	}
+	mut run_args := []string{cap: b.pref.run_args.len + 1}
+	if b.pref.backend.is_js() {
+		run_args << compiled_file
+	} else if b.pref.backend == .golang {
+		run_args << ['run', compiled_file]
 	}
 	run_args << b.pref.run_args
 	mut run_process := os.new_process(run_file)
