@@ -82,8 +82,7 @@
 - Go2V translator has been started by the community, and can already translate simple programs.
 - An early version of the Go backend (`v -b go -o file.go file.v`).
 
-
--## V 0.2.4
+## V 0.2.4
 *30 Aug 2021*
 - Introduce `isize` and `usize` types, deprecate `size_t` in favor of `usize`.
 - Add `datatypes` and `datatypes.fsm` modules.
