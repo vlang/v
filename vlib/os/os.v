@@ -622,8 +622,13 @@ pub fn log(s string) {
 	println('os.log: ' + s)
 }
 
+[params]
+pub struct MkdirParams {
+	mode u32 = 0o777 // note that the actual mode is affected by the process's umask
+}
+
 // mkdir_all will create a valid full path of all directories given in `path`.
-pub fn mkdir_all(opath string) ? {
+pub fn mkdir_all(opath string, params MkdirParams) ? {
 	path := opath.replace('/', path_separator)
 	mut p := if path.starts_with(path_separator) { path_separator } else { '' }
 	path_parts := path.trim_left(path_separator).split(path_separator)
@@ -632,7 +637,7 @@ pub fn mkdir_all(opath string) ? {
 		if exists(p) && is_dir(p) {
 			continue
 		}
-		mkdir(p) or { return error('folder: $p, error: $err') }
+		mkdir(p, params) or { return error('folder: $p, error: $err') }
 	}
 }
 
