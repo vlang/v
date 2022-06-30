@@ -178,7 +178,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 	defer {
 		f.is_struct_init = struct_init_save
 	}
-
+	f.mark_types_import_as_used(node.typ)
 	type_sym := f.table.sym(node.typ)
 	// f.write('<old name: $type_sym.name>')
 	mut name := type_sym.name
