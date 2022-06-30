@@ -1,6 +1,6 @@
 // import os
 // import term
-// import mysql
+import mysql
 // import pg
 import time
 import sqlite
@@ -33,18 +33,18 @@ struct TestTime {
 }
 
 fn test_orm() {
-	db := sqlite.connect(':memory:') or { panic(err) }
-	db.exec('drop table if exists User')
+	// db := sqlite.connect(':memory:') or { panic(err) }
+	// db.exec('drop table if exists User')
 
 	// db := pg.connect(host: 'localhost', port: 5432, user: 'louis', password: 'abc', dbname: 'orm') or { panic(err) }
-	/*
+	
 	mut db := mysql.Connection{
 		host: '127.0.0.1'
 		username: 'root'
 		password: 'pw'
 		dbname: 'v'
 	}
-	db.connect() or { panic(err) }*/
+	db.connect() or { panic(err) }
 
 	sql db {
 		create table Module
