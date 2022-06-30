@@ -6,6 +6,7 @@
 - [ ] Parallel C compilation
 - [ ] `recover()` from panics
 - [ ] vfmt: fix common errors automatically (make vars mutable and vice versa, add missing imports)
+- [ ] merge v.c and v_win.c
 - [ ] Recursive structs via optionals: `struct Node { next ?Node }`
 - [ ] Handle function pointers safely, remove `if function == 0 {`
 - [ ] Bundle OpenSSL like GC
