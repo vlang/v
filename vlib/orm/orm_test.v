@@ -3,7 +3,7 @@
 import mysql
 // import pg
 import time
-import sqlite
+// import sqlite
 
 struct Module {
 	id           int       [primary; sql: serial]
