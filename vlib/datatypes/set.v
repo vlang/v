@@ -12,9 +12,7 @@ fn (set Set<T>) exists(element T) bool {
 
 // adds the element to set, if it is not present already.
 fn (mut set Set<T>) add(element T) {
-	if element !in set.elements {
-		set.elements[element] = u8(set.size() + 1)
-	}
+	set.elements[element] = 1
 }
 
 // removes the element from set.
