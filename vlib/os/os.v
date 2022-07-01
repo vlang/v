@@ -317,9 +317,6 @@ pub fn get_raw_lines_joined() string {
 // user_os returns current user operating system name.
 pub fn user_os() string {
 	$if linux {
-		if getenv('TERMUX_VERSION') != '' {
-			return 'termux'
-		}
 		return 'linux'
 	}
 	$if macos {
@@ -357,6 +354,9 @@ pub fn user_os() string {
 	}
 	$if vinix {
 		return 'vinix'
+	}
+	if getenv('TERMUX_VERSION') != '' {
+		return 'termux'
 	}
 	return 'unknown'
 }
