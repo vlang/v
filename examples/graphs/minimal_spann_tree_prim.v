@@ -10,7 +10,7 @@ PS: all the pre-requisites of Dijkstra are considered
 $ v run file_name.v
 
 Creating a executable
-$ v -o an_executable.EXE run file_name.v  
+$ v -o an_executable.EXE run file_name.v
 $ ./an_executable.EXE
 
 Code based from : Data Structures and Algorithms Made Easy: Data Structures and Algorithmic Puzzles, Fifth Edition (English Edition)
@@ -56,7 +56,7 @@ fn updating_priority<T>(mut prior_queue []T, search_data int, new_priority int) 
 
 	for i < lenght_pq {
 		if search_data == prior_queue[i].data {
-			prior_queue[i] = NODE{search_data, NEW_priority} // do the copy in the right place	
+			prior_queue[i] = NODE{search_data, new_priority} // do the copy in the right place	
 			break
 		}
 		i++
