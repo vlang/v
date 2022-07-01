@@ -88,7 +88,7 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 		os.find_abs_path_of_executable(node_basename) or {
 			panic('Could not find `$node_basename` in system path. Do you have Node.js installed?')
 		}
-	} else if b.pref.backend == .golang {
+	} else if b.pref.backend == .@go {
 		go_basename := $if windows { 'go.exe' } $else { 'go' }
 		os.find_abs_path_of_executable(go_basename) or {
 			panic('Could not find `$go_basename` in system path. Do you have Go installed?')
@@ -99,7 +99,7 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	mut run_args := []string{cap: b.pref.run_args.len + 1}
 	if b.pref.backend.is_js() {
 		run_args << compiled_file
-	} else if b.pref.backend == .golang {
+	} else if b.pref.backend == .@go {
 		run_args << ['run', compiled_file]
 	}
 	run_args << b.pref.run_args
@@ -195,6 +195,9 @@ pub fn (v Builder) get_builtin_files() []string {
 			if v.pref.backend.is_js() {
 				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin',
 					'js'))
+			} else if v.pref.backend == .@go {
+				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin',
+					'go'))
 			} else {
 				builtin_files << v.v_files_from_dir(os.join_path(location, 'builtin'))
 			}

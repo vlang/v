@@ -523,7 +523,8 @@ pub fn (mut v Builder) cc() {
 	// whether to just create a .c or .js file and exit, for example: `v -o v.c cmd.v`
 	ends_with_c := v.pref.out_name.ends_with('.c')
 	ends_with_js := v.pref.out_name.ends_with('.js')
-	if ends_with_c || ends_with_js {
+	ends_with_go := v.pref.out_name.ends_with('.go')
+	if ends_with_c || ends_with_js || ends_with_go {
 		v.pref.skip_running = true
 		msg_mv := 'os.mv_by_cp $v.out_name_c => $v.pref.out_name'
 		util.timing_start(msg_mv)

@@ -1,4 +1,4 @@
-module golangbuilder
+module gobuilder
 
 import os
 import v.pref
@@ -9,17 +9,25 @@ import v.gen.golang
 pub fn start() {
 	mut args_and_flags := util.join_env_vflags_and_os_args()[1..]
 	prefs, _ := pref.parse_args([], args_and_flags)
-	builder.compile('build', prefs, compile_golang)
+	builder.compile('build', prefs, compile_go)
 }
 
-pub fn compile_golang(mut b builder.Builder) {
-	// v.files << v.v_files_from_dir(os.join_path(v.pref.vlib_path,'builtin','bare'))
-	files := [b.pref.path]
+pub fn compile_go(mut b builder.Builder) {
+	mut files := b.get_builtin_files()
+	files << b.get_user_files()
 	b.set_module_lookup_paths()
-	build_golang(mut b, files, b.pref.out_name)
+	if b.pref.is_verbose {
+		println('all .v files:')
+		println(files)
+	}
+	mut name := b.pref.out_name
+	if !name.ends_with('.go') {
+		name += '.go'
+	}
+	build_go(mut b, files, name)
 }
 
-pub fn build_golang(mut b builder.Builder, v_files []string, out_file string) {
+pub fn build_go(mut b builder.Builder, v_files []string, out_file string) {
 	if b.pref.os == .windows {
 		if !b.pref.is_shared && b.pref.build_mode != .build_module
 			&& !b.pref.out_name.ends_with('.exe') {

@@ -203,6 +203,9 @@ pub fn (mut p Parser) set_path(path string) {
 		'js' {
 			p.file_backend_mode = .js
 		}
+		'go' {
+			p.file_backend_mode = .@go
+		}
 		else {
 			arch := pref.arch_from_string(actual_language) or { pref.Arch._auto }
 			p.file_backend_mode = ast.pref_arch_to_table_language(arch)
@@ -3096,7 +3099,7 @@ fn (mut p Parser) module_decl() ast.Module {
 	mut module_pos := token.Pos{}
 	mut name_pos := token.Pos{}
 	mut mod_node := ast.Module{}
-	is_skipped := p.tok.kind != .key_module
+	mut is_skipped := p.tok.kind != .key_module
 	if is_skipped {
 		// the attributes were for something else != module, like a struct/fn/type etc.
 		module_attrs = []
@@ -3133,6 +3136,13 @@ fn (mut p Parser) module_decl() ast.Module {
 	full_name := util.qualify_module(p.pref, name, p.file_name)
 	p.mod = full_name
 	p.builtin_mod = p.mod == 'builtin'
+	dump(p.builtin_mod)
+	dump(p.file_backend_mode)
+	dump(p.language)
+	// NOTE: Not so sure about that
+	if p.builtin_mod && p.file_backend_mode == .@go {
+		is_skipped = true
+	}
 	mod_node = ast.Module{
 		name: full_name
 		short_name: name

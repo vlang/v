@@ -438,7 +438,7 @@ pub fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 
 pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.Type {
 	fn_name := node.name
-	if fn_name == 'main' {
+	if fn_name == 'main' && node.language != .@go {
 		c.error('the `main` function cannot be called in the program', node.pos)
 	}
 	mut has_generic := false // foo<T>() instead of foo<int>()
@@ -1292,8 +1292,9 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		} else {
 			c.fail_if_unreadable(node.left, left_type, 'receiver')
 		}
-		if left_sym.language != .js && (!left_sym.is_builtin() && method.mod != 'builtin')
-			&& method.language == .v && method.no_body {
+		if left_sym.language != .js && left_sym.language != .@go
+			&& (!left_sym.is_builtin() && method.mod != 'builtin') && method.language == .v
+			&& method.no_body {
 			c.error('cannot call a method that does not have a body', node.pos)
 		}
 		if node.concrete_types.len > 0 && method.generic_names.len > 0

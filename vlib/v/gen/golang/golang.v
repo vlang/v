@@ -10,9 +10,10 @@ import v.pref
 import os
 
 const (
-	bs      = '\\'
+	bs            = '\\'
 	// when to break a line dependant on penalty
-	max_len = [0, 35, 60, 85, 93, 100]
+	max_len       = [0, 35, 60, 85, 93, 100]
+	v_builtin_fns = ['println', 'print', 'eprintln', 'eprint', 'exit', 'panic']
 )
 
 pub struct Gen {
@@ -867,6 +868,7 @@ pub fn (mut f Gen) expr_stmt(node ast.ExprStmt) {
 }
 
 pub fn (mut f Gen) enum_decl(node ast.EnumDecl) {
+	// TODO(hunam6): transform to custom type + iota
 	f.attrs(node.attrs)
 	if node.is_pub {
 		f.write('pub ')
@@ -889,8 +891,15 @@ pub fn (mut f Gen) enum_decl(node ast.EnumDecl) {
 }
 
 pub fn (mut f Gen) fn_decl(node ast.FnDecl) {
-	f.attrs(node.attrs)
-	f.write(node.stringify(f.table, f.cur_mod, f.mod2alias).replace('fn ', 'func '))
+	v_fn_signature := node.stringify(f.table, f.cur_mod, f.mod2alias)
+	before_name_idx := v_fn_signature.index('fn') or { 0 } + 3 // will never equal 0
+	after_name_idx := v_fn_signature.index('(') or { 0 } // will never equal 0
+	mut name := v_fn_signature[before_name_idx..after_name_idx]
+	if v_fn_signature[..3] == 'pub' && name !in golang.v_builtin_fns {
+		name = name.capitalize()
+	}
+
+	f.write('func $name${v_fn_signature[after_name_idx..]}')
 	f.fn_body(node)
 }
 
@@ -1124,6 +1133,7 @@ pub fn (mut f Gen) interface_method(method ast.FnDecl) {
 }
 
 pub fn (mut f Gen) module_stmt(mod ast.Module) {
+	dump(mod)
 	f.set_current_module_name(mod.name)
 	if mod.is_skipped {
 		return

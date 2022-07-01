@@ -523,7 +523,7 @@ pub:
 	method_idx      int
 	rec_mut         bool // is receiver mutable
 	rec_share       ShareType
-	language        Language  // V, C, JS
+	language        Language  // V, C, JS, Go
 	file_mode       Language  // whether *the file*, where a function was a '.c.v', '.js.v' etc.
 	no_body         bool      // just a definition `fn C.malloc()`
 	is_builtin      bool      // this function is defined in builtin/strconv

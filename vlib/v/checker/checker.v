@@ -1765,14 +1765,14 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 	if c.ct_cond_stack.len > 0 {
 		node.ct_conds = c.ct_cond_stack.clone()
 	}
-	if c.pref.backend.is_js() || c.pref.backend == .golang {
+	if c.pref.backend.is_js() || c.pref.backend == .@go {
 		// consider the the best way to handle the .go.vv files
 		if !c.file.path.ends_with('.js.v') && !c.file.path.ends_with('.go.v')
 			&& !c.file.path.ends_with('.go.vv') {
 			c.error('hash statements are only allowed in backend specific files such "x.js.v" and "x.go.v"',
 				node.pos)
 		}
-		if c.mod == 'main' && c.pref.backend != .golang {
+		if c.mod == 'main' && c.pref.backend != .@go {
 			c.error('hash statements are not allowed in the main module. Place them in a separate module.',
 				node.pos)
 		}
