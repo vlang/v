@@ -29,6 +29,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		'new_array_from_c_array',
 		'v_fixed_index',
 		'memdup',
+		'memdup_uncollectable',
 		'vstrlen',
 		'__as_cast',
 		'tos',

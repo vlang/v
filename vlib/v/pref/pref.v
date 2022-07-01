@@ -24,6 +24,7 @@ pub enum AssertFailureMode {
 }
 
 pub enum GarbageCollectionMode {
+	unknown
 	no_gc
 	boehm_full // full garbage collection mode
 	boehm_incr // incremental garbage colletion mode
@@ -50,6 +51,7 @@ pub enum Backend {
 	js_freestanding // The JavaScript freestanding backend
 	native // The Native backend
 	interpret // Interpret the ast
+	golang // Go backend
 }
 
 pub fn (b Backend) is_js() bool {
@@ -111,7 +113,8 @@ pub mut:
 	is_prof           bool // benchmark every function
 	is_prod           bool // use "-O2"
 	is_repl           bool
-	is_run            bool
+	is_run            bool // compile and run a v program, passing arguments to it, and deleting the executable afterwards
+	is_crun           bool // similar to run, but does not recompile the executable, if there were no changes to the sources
 	is_debug          bool // turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
 	is_vlines         bool // turned on by -g (it slows down .tmp.c generation slightly).
 	is_stats          bool // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
@@ -203,7 +206,7 @@ pub mut:
 	cleanup_files       []string    // list of temporary *.tmp.c and *.tmp.c.rsp files. Cleaned up on successfull builds.
 	build_options       []string    // list of options, that should be passed down to `build-module`, if needed for -usecache
 	cache_manager       vcache.CacheManager
-	gc_mode             GarbageCollectionMode = .no_gc // .no_gc, .boehm, .boehm_leak, ...
+	gc_mode             GarbageCollectionMode = .unknown // .no_gc, .boehm, .boehm_leak, ...
 	assert_failure_mode AssertFailureMode     // whether to call abort() or print_backtrace() after an assertion failure
 	message_limit       int = 100 // the maximum amount of warnings/errors/notices that will be accumulated
 	nofloat             bool // for low level code, like kernels: replaces f32 with u32 and f64 with u64
@@ -326,8 +329,14 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-gc' {
 				gc_mode := cmdline.option(current_args, '-gc', '')
 				match gc_mode {
-					'', 'none' {
+					'none' {
 						res.gc_mode = .no_gc
+					}
+					'', 'boehm' {
+						res.gc_mode = .boehm_full_opt // default mode
+						res.parse_define('gcboehm')
+						res.parse_define('gcboehm_full')
+						res.parse_define('gcboehm_opt')
 					}
 					'boehm_full' {
 						res.gc_mode = .boehm_full
@@ -349,12 +358,6 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 						res.gc_mode = .boehm_incr_opt
 						res.parse_define('gcboehm')
 						res.parse_define('gcboehm_incr')
-						res.parse_define('gcboehm_opt')
-					}
-					'boehm' {
-						res.gc_mode = .boehm_full_opt // default mode
-						res.parse_define('gcboehm')
-						res.parse_define('gcboehm_full')
 						res.parse_define('gcboehm_opt')
 					}
 					'boehm_leak' {
@@ -496,6 +499,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-translated' {
 				res.translated = true
+				res.gc_mode = .no_gc // no gc in c2v'ed code, at least for now
 			}
 			'-m32', '-m64' {
 				res.m64 = arg[2] == `6`
@@ -652,6 +656,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				}
 				i++
 			}
+			'-is_o' {
+				res.is_o = true
+			}
 			'-b', '-backend' {
 				sbackend := cmdline.option(current_args, arg, 'c')
 				res.build_options << '$arg $sbackend'
@@ -706,7 +713,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					if command == '' {
 						command = arg
 						command_pos = i
-						if command == 'run' {
+						if command in ['run', 'crun'] {
 							break
 						}
 					} else if is_source_file(command) && is_source_file(arg)
@@ -731,8 +738,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 		}
 	}
-	if res.is_debug {
-		res.parse_define('debug')
+	if command == 'crun' {
+		res.is_crun = true
+	}
+	if command == 'run' {
+		res.is_run = true
 	}
 	if command == 'run' && res.is_prod && os.is_atty(1) > 0 {
 		eprintln_cond(show_output, "Note: building an optimized binary takes much longer. It shouldn't be used with `v run`.")
@@ -744,8 +754,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		eprintln('Cannot save output binary in a .v file.')
 		exit(1)
 	}
-	if command == 'run' {
-		res.is_run = true
+	if res.is_run || res.is_crun {
 		if command_pos + 2 > args.len {
 			eprintln('v run: no v files listed')
 			exit(1)
@@ -798,7 +807,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		// `v build.vsh gcc` is the same as `v run build.vsh gcc`,
 		// i.e. compiling, then running the script, passing the args
 		// after it to the script:
-		res.is_run = true
+		res.is_crun = true
 		res.path = command
 		res.run_args = args[command_pos + 1..]
 	} else if command == 'interpret' {
@@ -913,6 +922,7 @@ pub fn backend_from_string(s string) ?Backend {
 	match s {
 		'c' { return .c }
 		'js' { return .js_node }
+		'go' { return .golang }
 		'js_node' { return .js_node }
 		'js_browser' { return .js_browser }
 		'js_freestanding' { return .js_freestanding }
@@ -965,6 +975,7 @@ pub fn get_host_arch() Arch {
 
 fn (mut prefs Preferences) parse_define(define string) {
 	define_parts := define.split('=')
+	prefs.diagnose_deprecated_defines(define_parts)
 	if !(prefs.is_debug && define == 'debug') {
 		prefs.build_options << '-d $define'
 	}
@@ -991,4 +1002,10 @@ fn (mut prefs Preferences) parse_define(define string) {
 	}
 	println('V error: Unknown define argument: ${define}. Expected at most one `=`.')
 	exit(1)
+}
+
+fn (mut prefs Preferences) diagnose_deprecated_defines(define_parts []string) {
+	if define_parts[0] == 'force_embed_file' {
+		eprintln('-d force_embed_file was deprecated in 2022/06/01. Now \$embed_file(file) always embeds the file, unless you pass `-d embed_only_metadata`.')
+	}
 }

@@ -193,14 +193,6 @@ pub fn (ctx Context) init_server() {
 // Probably you can use it for check user session cookie or add header.
 pub fn (ctx Context) before_request() {}
 
-pub struct Cookie {
-	name      string
-	value     string
-	expires   time.Time
-	secure    bool
-	http_only bool
-}
-
 // vweb intern function
 [manualfree]
 pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bool {
@@ -260,7 +252,7 @@ pub fn (mut ctx Context) file(f_path string) Result {
 		return Result{}
 	}
 	content_type := vweb.mime_types[ext]
-	if content_type == '' {
+	if content_type.len == 0 {
 		eprintln('no MIME type found for extension $ext')
 		ctx.server_error(500)
 	} else {
@@ -311,7 +303,7 @@ pub fn (mut ctx Context) not_found() Result {
 }
 
 // Sets a cookie
-pub fn (mut ctx Context) set_cookie(cookie Cookie) {
+pub fn (mut ctx Context) set_cookie(cookie http.Cookie) {
 	mut cookie_data := []string{}
 	mut secure := if cookie.secure { 'Secure;' } else { '' }
 	secure += if cookie.http_only { ' HttpOnly' } else { ' ' }
@@ -621,7 +613,7 @@ fn (mut ctx Context) scan_static_directory(directory_path string, mount_path str
 		for file in files {
 			full_path := os.join_path(directory_path, file)
 			if os.is_dir(full_path) {
-				ctx.scan_static_directory(full_path, mount_path + '/' + file)
+				ctx.scan_static_directory(full_path, mount_path + file)
 			} else if file.contains('.') && !file.starts_with('.') && !file.ends_with('.') {
 				ext := os.file_ext(file)
 				// Rudimentary guard against adding files not in mime_types.

@@ -244,8 +244,8 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 			ast.PrefixExpr {}
 			ast.SelectorExpr {
 				if op == .decl_assign {
-					return p.error_with_pos('struct fields can only be declared during the initialization',
-						lx.pos)
+					return p.error_with_pos('use assignment `=` instead of declaration `:=` when modifying struct fields',
+						pos)
 				}
 			}
 			else {

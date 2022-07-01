@@ -142,6 +142,7 @@ pub mut:
 	pressed_keys      [key_code_max]bool // an array representing all currently pressed keys
 	pressed_keys_edge [key_code_max]bool // true when the previous state of pressed_keys,
 	// *before* the current event was different
+	fps FPSConfig
 }
 
 fn gg_init_sokol_window(user_data voidptr) {
@@ -222,6 +223,26 @@ fn gg_init_sokol_window(user_data voidptr) {
 	ctx.timage_pip = sgl.make_pipeline(&pipdesc)
 	//
 	if ctx.config.init_fn != voidptr(0) {
+		$if android {
+			// NOTE on Android sokol can emit resize events *before* the init function is
+			// called (Android has to initialize a lot more through the Activity system to
+			// reach a valid coontext) and thus the user's code will miss the resize event.
+			// To prevent this we emit a custom window resize event, if the screen size has
+			// changed meanwhile.
+			win_size := ctx.window_size()
+			if ctx.width != win_size.width || ctx.height != win_size.height {
+				ctx.width = win_size.width
+				ctx.height = win_size.height
+				if ctx.config.resized_fn != voidptr(0) {
+					e := Event{
+						typ: .resized
+						window_width: ctx.width
+						window_height: ctx.height
+					}
+					ctx.config.resized_fn(&e, ctx.user_data)
+				}
+			}
+		}
 		ctx.config.init_fn(ctx.user_data)
 	}
 	// Create images now that we can do that after sg is inited
@@ -470,6 +491,13 @@ pub fn (ctx &Context) begin() {
 
 // end finishes drawing for the context.
 pub fn (ctx &Context) end() {
+	$if show_fps ? {
+		ctx.show_fps()
+	} $else {
+		if ctx.fps.show {
+			ctx.show_fps()
+		}
+	}
 	gfx.begin_default_pass(ctx.clear_pass, sapp.width(), sapp.height())
 	sgl.draw()
 	gfx.end_pass()
@@ -480,6 +508,47 @@ pub fn (ctx &Context) end() {
 		wait_events()
 	}
 	*/
+}
+
+pub struct FPSConfig {
+pub mut:
+	x           int
+	y           int
+	width       int
+	height      int
+	show        bool // do not show by default, use `-d show_fps` or set it manually in your app to override with: `app.gg.fps.show = true`
+	text_config gx.TextCfg = gx.TextCfg{
+		color: gx.yellow
+		size: 20
+		align: .center
+		vertical_align: .middle
+	}
+	background_color gx.Color = gx.Color{
+		r: 0
+		g: 0
+		b: 0
+		a: 128
+	}
+}
+
+pub fn (ctx &Context) show_fps() {
+	if !ctx.font_inited {
+		return
+	}
+	frame_duration := sapp.frame_duration()
+	sgl.defaults()
+	sgl.matrix_mode_projection()
+	sgl.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
+	ctx.set_cfg(ctx.fps.text_config)
+	if ctx.fps.width == 0 {
+		mut fps := unsafe { &ctx.fps }
+		fps.width, fps.height = ctx.text_size('00') // maximum size; prevents blinking on variable width fonts
+	}
+	fps_text := int(0.5 + 1.0 / frame_duration).str()
+	ctx.draw_rect_filled(ctx.fps.x, ctx.fps.y, ctx.fps.width + 2, ctx.fps.height + 4,
+		ctx.fps.background_color)
+	ctx.draw_text(ctx.fps.x + ctx.fps.width / 2 + 1, ctx.fps.y + ctx.fps.height / 2 + 2,
+		fps_text, ctx.fps.text_config)
 }
 
 fn (mut ctx Context) set_scale() {

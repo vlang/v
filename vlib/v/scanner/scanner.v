@@ -26,20 +26,19 @@ const (
 [minify]
 pub struct Scanner {
 pub mut:
-	file_path         string // '/path/to/file.v'
-	file_base         string // 'file.v'
-	text              string // the whole text of the file
-	pos               int    // current position in the file, first character is s.text[0]
-	line_nr           int    // current line number
-	last_nl_pos       int = -1 // for calculating column
-	is_crlf           bool   // special check when computing columns
-	is_inside_string  bool   // set to true in a string, *at the start* of an $var or ${expr}
-	is_inter_start    bool   // for hacky string interpolation TODO simplify
-	is_inter_end      bool
-	is_enclosed_inter bool
-	line_comment      string
-	last_lt           int = -1 // position of latest <
-	// prev_tok                 TokenKind
+	file_path                   string // '/path/to/file.v'
+	file_base                   string // 'file.v'
+	text                        string // the whole text of the file
+	pos                         int    // current position in the file, first character is s.text[0]
+	line_nr                     int    // current line number
+	last_nl_pos                 int = -1 // for calculating column
+	is_crlf                     bool   // special check when computing columns
+	is_inside_string            bool   // set to true in a string, *at the start* of an $var or ${expr}
+	is_inter_start              bool   // for hacky string interpolation TODO simplify
+	is_inter_end                bool
+	is_enclosed_inter           bool
+	line_comment                string
+	last_lt                     int = -1 // position of latest <
 	is_started                  bool
 	is_print_line_on_error      bool
 	is_print_colored_error      bool
@@ -240,15 +239,15 @@ fn (s Scanner) num_lit(start int, end int) string {
 	unsafe {
 		txt := s.text.str
 		mut b := malloc_noscan(end - start + 1) // add a byte for the endstring 0
-		mut i1 := 0
-		for i := start; i < end; i++ {
+		mut i_no_sep := 0
+		for i in start .. end {
 			if txt[i] != scanner.num_sep {
-				b[i1] = txt[i]
-				i1++
+				b[i_no_sep] = txt[i]
+				i_no_sep++
 			}
 		}
-		b[i1] = 0 // C string compatibility
-		return b.vstring_with_len(i1)
+		b[i_no_sep] = 0 // C string compatibility
+		return b.vstring_with_len(i_no_sep)
 	}
 }
 
@@ -1053,7 +1052,6 @@ fn (mut s Scanner) text_scan() token.Token {
 						}
 						return s.new_token(.comment, comment, comment.len + 2)
 					}
-					// s.fgenln('// ${s.prev_tok.str()} "$s.line_comment"')
 					// Skip the comment (return the next token)
 					continue
 				} else if nextc == `*` { // Multiline comments
@@ -1548,6 +1546,10 @@ pub fn (mut s Scanner) error(msg string) {
 		exit(1)
 	} else {
 		if s.pref.fatal_errors {
+			eprintln(util.formatted_error('error:', msg, s.file_path, pos))
+			if details.len > 0 {
+				eprintln(details)
+			}
 			exit(1)
 		}
 		if s.pref.message_limit >= 0 && s.errors.len >= s.pref.message_limit {

@@ -3,9 +3,7 @@
 // that can be found in the LICENSE file.
 module builder
 
-import time
 import os
-import rand
 import v.pref
 import v.util
 import v.checker
@@ -13,6 +11,19 @@ import v.checker
 pub type FnBackend = fn (mut b Builder)
 
 pub fn compile(command string, pref &pref.Preferences, backend_cb FnBackend) {
+	check_if_output_folder_is_writable(pref)
+	// Construct the V object from command line arguments
+	mut b := new_builder(pref)
+	if b.should_rebuild() {
+		b.rebuild(backend_cb)
+	}
+	b.exit_on_invalid_syntax()
+	// running does not require the parsers anymore
+	unsafe { b.myfree() }
+	b.run_compiled_executable_and_exit()
+}
+
+fn check_if_output_folder_is_writable(pref &pref.Preferences) {
 	odir := os.dir(pref.out_name)
 	// When pref.out_name is just the name of an executable, i.e. `./v -o executable main.v`
 	// without a folder component, just use the current folder instead:
@@ -24,56 +35,6 @@ pub fn compile(command string, pref &pref.Preferences, backend_cb FnBackend) {
 		// An early error here, is better than an unclear C error later:
 		verror(err.msg())
 	}
-	// Construct the V object from command line arguments
-	mut b := new_builder(pref)
-	if pref.is_verbose {
-		println('builder.compile() pref:')
-		// println(pref)
-	}
-	mut sw := time.new_stopwatch()
-	backend_cb(mut b)
-	mut timers := util.get_timers()
-	timers.show_remaining()
-	if pref.is_stats {
-		compilation_time_micros := 1 + sw.elapsed().microseconds()
-		scompilation_time_ms := util.bold('${f64(compilation_time_micros) / 1000.0:6.3f}')
-		mut all_v_source_lines, mut all_v_source_bytes := 0, 0
-		for pf in b.parsed_files {
-			all_v_source_lines += pf.nr_lines
-			all_v_source_bytes += pf.nr_bytes
-		}
-		mut sall_v_source_lines := all_v_source_lines.str()
-		mut sall_v_source_bytes := all_v_source_bytes.str()
-		sall_v_source_lines = util.bold('${sall_v_source_lines:10s}')
-		sall_v_source_bytes = util.bold('${sall_v_source_bytes:10s}')
-		println('        V  source  code size: $sall_v_source_lines lines, $sall_v_source_bytes bytes')
-		//
-		mut slines := b.stats_lines.str()
-		mut sbytes := b.stats_bytes.str()
-		slines = util.bold('${slines:10s}')
-		sbytes = util.bold('${sbytes:10s}')
-		println('generated  target  code size: $slines lines, $sbytes bytes')
-		//
-		vlines_per_second := int(1_000_000.0 * f64(all_v_source_lines) / f64(compilation_time_micros))
-		svlines_per_second := util.bold(vlines_per_second.str())
-		println('compilation took: $scompilation_time_ms ms, compilation speed: $svlines_per_second vlines/s')
-	}
-	b.exit_on_invalid_syntax()
-	// running does not require the parsers anymore
-	unsafe { b.myfree() }
-	if pref.is_test || pref.is_run {
-		b.run_compiled_executable_and_exit()
-	}
-}
-
-pub fn (mut b Builder) get_vtmp_filename(base_file_name string, postfix string) string {
-	vtmp := util.get_vtmp_folder()
-	mut uniq := ''
-	if !b.pref.reuse_tmpc {
-		uniq = '.$rand.u64()'
-	}
-	fname := os.file_name(os.real_path(base_file_name)) + '$uniq$postfix'
-	return os.real_path(os.join_path(vtmp, fname))
 }
 
 // Temporary, will be done by -autofree
@@ -118,47 +79,52 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	if b.pref.os == .ios {
 		panic('Running iOS apps is not supported yet.')
 	}
+	if !(b.pref.is_test || b.pref.is_run || b.pref.is_crun) {
+		exit(0)
+	}
+	compiled_file := os.real_path(b.pref.out_name)
+	run_file := if b.pref.backend.is_js() {
+		node_basename := $if windows { 'node.exe' } $else { 'node' }
+		os.find_abs_path_of_executable(node_basename) or {
+			panic('Could not find `$node_basename` in system path. Do you have Node.js installed?')
+		}
+	} else if b.pref.backend == .golang {
+		go_basename := $if windows { 'go.exe' } $else { 'go' }
+		os.find_abs_path_of_executable(go_basename) or {
+			panic('Could not find `$go_basename` in system path. Do you have Go installed?')
+		}
+	} else {
+		compiled_file
+	}
+	mut run_args := []string{cap: b.pref.run_args.len + 1}
+	if b.pref.backend.is_js() {
+		run_args << compiled_file
+	} else if b.pref.backend == .golang {
+		run_args << ['run', compiled_file]
+	}
+	run_args << b.pref.run_args
+	mut run_process := os.new_process(run_file)
+	run_process.set_args(run_args)
 	if b.pref.is_verbose {
+		println('running $run_process.filename with arguments $run_process.args')
 	}
-	if b.pref.is_test || b.pref.is_run {
-		compiled_file := os.real_path(b.pref.out_name)
-		run_file := if b.pref.backend.is_js() {
-			node_basename := $if windows { 'node.exe' } $else { 'node' }
-			os.find_abs_path_of_executable(node_basename) or {
-				panic('Could not find `node` in system path. Do you have Node.js installed?')
-			}
-		} else {
-			compiled_file
-		}
-		mut run_args := []string{cap: b.pref.run_args.len + 1}
-		if b.pref.backend.is_js() {
-			run_args << compiled_file
-		}
-		run_args << b.pref.run_args
-		mut run_process := os.new_process(run_file)
-		run_process.set_args(run_args)
-		if b.pref.is_verbose {
-			println('running $run_process.filename with arguments $run_process.args')
-		}
-		// Ignore sigint and sigquit while running the compiled file,
-		// so ^C doesn't prevent v from deleting the compiled file.
-		// See also https://git.musl-libc.org/cgit/musl/tree/src/process/system.c
-		prev_int_handler := os.signal_opt(.int, eshcb) or { serror('set .int', err) }
-		mut prev_quit_handler := os.SignalHandler(eshcb)
-		$if !windows { // There's no sigquit on windows
-			prev_quit_handler = os.signal_opt(.quit, eshcb) or { serror('set .quit', err) }
-		}
-		run_process.wait()
-		os.signal_opt(.int, prev_int_handler) or { serror('restore .int', err) }
-		$if !windows {
-			os.signal_opt(.quit, prev_quit_handler) or { serror('restore .quit', err) }
-		}
-		ret := run_process.code
-		run_process.close()
-		b.cleanup_run_executable_after_exit(compiled_file)
-		exit(ret)
+	// Ignore sigint and sigquit while running the compiled file,
+	// so ^C doesn't prevent v from deleting the compiled file.
+	// See also https://git.musl-libc.org/cgit/musl/tree/src/process/system.c
+	prev_int_handler := os.signal_opt(.int, eshcb) or { serror('set .int', err) }
+	mut prev_quit_handler := os.SignalHandler(eshcb)
+	$if !windows { // There's no sigquit on windows
+		prev_quit_handler = os.signal_opt(.quit, eshcb) or { serror('set .quit', err) }
 	}
-	exit(0)
+	run_process.wait()
+	os.signal_opt(.int, prev_int_handler) or { serror('restore .int', err) }
+	$if !windows {
+		os.signal_opt(.quit, prev_quit_handler) or { serror('restore .quit', err) }
+	}
+	ret := run_process.code
+	run_process.close()
+	b.cleanup_run_executable_after_exit(compiled_file)
+	exit(ret)
 }
 
 fn eshcb(_ os.Signal) {
@@ -171,6 +137,9 @@ fn serror(reason string, e IError) {
 }
 
 fn (mut v Builder) cleanup_run_executable_after_exit(exefile string) {
+	if v.pref.is_crun {
+		return
+	}
 	if v.pref.reuse_tmpc {
 		v.pref.vrun_elog('keeping executable: $exefile , because -keepc was passed')
 		return

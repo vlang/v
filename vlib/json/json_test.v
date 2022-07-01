@@ -425,6 +425,13 @@ fn test_decode_null_object() ? {
 	assert '$info.maps' == '{}'
 }
 
+fn test_decode_missing_maps_field() ? {
+	info := json.decode(Info, '{"id": 22, "items": null}')?
+	assert info.id == 22
+	assert '$info.items' == '[]'
+	assert '$info.maps' == '{}'
+}
+
 struct Foo2 {
 	name string
 }

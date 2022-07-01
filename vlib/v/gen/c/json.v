@@ -53,22 +53,11 @@ fn (mut g Gen) gen_jsons() {
 
 		mut init_styp := '$styp res'
 		if sym.kind == .struct_ {
-			mut skips := 0
-			info := sym.info as ast.Struct
-			for field in info.fields {
-				for attr in field.attrs {
-					if attr.name == 'skip' {
-						skips++
-					}
-				}
-			}
-			if skips > 0 {
-				init_styp += ' = '
-				init_styp += g.expr_string(ast.Expr(ast.StructInit{
-					typ: utyp
-					typ_str: styp
-				}))
-			}
+			init_styp += ' = '
+			init_styp += g.expr_string(ast.Expr(ast.StructInit{
+				typ: utyp
+				typ_str: styp
+			}))
 		}
 
 		dec.writeln('
@@ -163,7 +152,7 @@ $enc_fn_dec {
 		dec.writeln('\topt_ok2(&res, ($option_name*)&ret, sizeof(res));')
 		dec.writeln('\treturn ret;\n}')
 		enc.writeln('\treturn o;\n}')
-		g.definitions.writeln(dec.str())
+		g.gowrappers.writeln(dec.str())
 		g.gowrappers.writeln(enc.str())
 	}
 }
@@ -398,41 +387,35 @@ fn (mut g Gen) gen_struct_enc_dec(type_info ast.TypeInfo, styp string, mut enc s
 			if is_js_prim(field_type) {
 				tmp := g.new_tmp_var()
 				gen_js_get(styp, tmp, name, mut dec, is_required)
-				if field.has_default_expr {
-					dec.writeln('\tif (jsonroot_$tmp) {')
-				}
-				dec.writeln('\tres.${c_name(field.name)} = $dec_name (jsonroot_$tmp);')
+				dec.writeln('\tif (jsonroot_$tmp) {')
+				dec.writeln('\t\tres.${c_name(field.name)} = ${dec_name}(jsonroot_$tmp);')
 				if field.has_default_expr {
 					dec.writeln('\t} else {')
-					dec.writeln('\tres.${c_name(field.name)} = ${g.expr_string(field.default_expr)};')
-					dec.writeln('\t}')
+					dec.writeln('\t\tres.${c_name(field.name)} = ${g.expr_string(field.default_expr)};')
 				}
+				dec.writeln('\t}')
 			} else if field_sym.kind == .enum_ {
 				tmp := g.new_tmp_var()
 				gen_js_get(styp, tmp, name, mut dec, is_required)
-				if field.has_default_expr {
-					dec.writeln('\tif (jsonroot_$tmp) {')
-				}
-				dec.writeln('\tres.${c_name(field.name)} = json__decode_u64(jsonroot_$tmp);')
+				dec.writeln('\tif (jsonroot_$tmp) {')
+				dec.writeln('\t\tres.${c_name(field.name)} = json__decode_u64(jsonroot_$tmp);')
 				if field.has_default_expr {
 					dec.writeln('\t} else {')
-					dec.writeln('\tres.${c_name(field.name)} = ${g.expr_string(field.default_expr)};')
-					dec.writeln('\t}')
+					dec.writeln('\t\tres.${c_name(field.name)} = ${g.expr_string(field.default_expr)};')
 				}
+				dec.writeln('\t}')
 			} else if field_sym.name == 'time.Time' {
 				// time struct requires special treatment
 				// it has to be decoded from a unix timestamp number
 				tmp := g.new_tmp_var()
 				gen_js_get(styp, tmp, name, mut dec, is_required)
-				if field.has_default_expr {
-					dec.writeln('\tif (jsonroot_$tmp) {')
-				}
-				dec.writeln('\tres.${c_name(field.name)} = time__unix(json__decode_u64(jsonroot_$tmp));')
+				dec.writeln('\tif (jsonroot_$tmp) {')
+				dec.writeln('\t\tres.${c_name(field.name)} = time__unix(json__decode_u64(jsonroot_$tmp));')
 				if field.has_default_expr {
 					dec.writeln('\t} else {')
-					dec.writeln('\tres.${c_name(field.name)} = ${g.expr_string(field.default_expr)};')
-					dec.writeln('\t}')
+					dec.writeln('\t\tres.${c_name(field.name)} = ${g.expr_string(field.default_expr)};')
 				}
+				dec.writeln('\t}')
 			} else if field_sym.kind == .alias {
 				alias := field_sym.info as ast.Alias
 				parent_type := g.typ(alias.parent_type)
@@ -440,41 +423,35 @@ fn (mut g Gen) gen_struct_enc_dec(type_info ast.TypeInfo, styp string, mut enc s
 				if is_js_prim(parent_type) {
 					tmp := g.new_tmp_var()
 					gen_js_get(styp, tmp, name, mut dec, is_required)
-					if field.has_default_expr {
-						dec.writeln('\tif (jsonroot_$tmp) {')
-					}
-					dec.writeln('\tres.${c_name(field.name)} = $parent_dec_name (jsonroot_$tmp);')
+					dec.writeln('\tif (jsonroot_$tmp) {')
+					dec.writeln('\t\tres.${c_name(field.name)} = $parent_dec_name (jsonroot_$tmp);')
 					if field.has_default_expr {
 						dec.writeln('\t} else {')
-						dec.writeln('\tres.${c_name(field.name)} = ${g.expr_string(field.default_expr)};')
-						dec.writeln('\t}')
+						dec.writeln('\t\tres.${c_name(field.name)} = ${g.expr_string(field.default_expr)};')
 					}
+					dec.writeln('\t}')
 				} else {
 					g.gen_json_for_type(field.typ)
 					tmp := g.new_tmp_var()
 					gen_js_get_opt(dec_name, field_type, styp, tmp, name, mut dec, is_required)
-					if field.has_default_expr {
-						dec.writeln('\tif (jsonroot_$tmp) {')
-					}
-					dec.writeln('\tres.${c_name(field.name)} = *($field_type*) ${tmp}.data;')
+					dec.writeln('\tif (jsonroot_$tmp) {')
+					dec.writeln('\t\tres.${c_name(field.name)} = *($field_type*) ${tmp}.data;')
 					if field.has_default_expr {
 						dec.writeln('\t} else {')
-						dec.writeln('\tres.${c_name(field.name)} = ${g.expr_string(field.default_expr)};')
-						dec.writeln('\t}')
+						dec.writeln('\t\tres.${c_name(field.name)} = ${g.expr_string(field.default_expr)};')
 					}
+					dec.writeln('\t}')
 				}
 			} else {
 				tmp := g.new_tmp_var()
 				gen_js_get_opt(dec_name, field_type, styp, tmp, name, mut dec, is_required)
-				if field.has_default_expr {
-					dec.writeln('\tif (jsonroot_$tmp) {')
-				}
-				dec.writeln('\tres.${c_name(field.name)} = *($field_type*) ${tmp}.data;')
+				dec.writeln('\tif (jsonroot_$tmp) {')
+				dec.writeln('\t\tres.${c_name(field.name)} = *($field_type*) ${tmp}.data;')
 				if field.has_default_expr {
 					dec.writeln('\t} else {')
-					dec.writeln('\tres.${c_name(field.name)} = ${g.expr_string(field.default_expr)};')
-					dec.writeln('\t}')
+					dec.writeln('\t\tres.${c_name(field.name)} = ${g.expr_string(field.default_expr)};')
 				}
+				dec.writeln('\t}')
 			}
 		}
 		// Encoding
@@ -505,7 +482,7 @@ fn (mut g Gen) gen_struct_enc_dec(type_info ast.TypeInfo, styp string, mut enc s
 fn gen_js_get(styp string, tmp string, name string, mut dec strings.Builder, is_required bool) {
 	dec.writeln('\tcJSON *jsonroot_$tmp = js_get(root, "$name");')
 	if is_required {
-		dec.writeln('\tif(jsonroot_$tmp == 0) {')
+		dec.writeln('\tif (jsonroot_$tmp == 0) {')
 		dec.writeln('\t\treturn (${option_name}_$styp){ .state = 2, .err = _v_error(_SLIT("expected field \'$name\' is missing")), .data = {0} };')
 		dec.writeln('\t}')
 	}
@@ -513,9 +490,12 @@ fn gen_js_get(styp string, tmp string, name string, mut dec strings.Builder, is_
 
 fn gen_js_get_opt(dec_name string, field_type string, styp string, tmp string, name string, mut dec strings.Builder, is_required bool) {
 	gen_js_get(styp, tmp, name, mut dec, is_required)
-	dec.writeln('\t${option_name}_$field_type $tmp = $dec_name (jsonroot_$tmp);')
-	dec.writeln('\tif(${tmp}.state != 0) {')
-	dec.writeln('\t\treturn (${option_name}_$styp){ .state = ${tmp}.state, .err = ${tmp}.err, .data = {0} };')
+	dec.writeln('\t${option_name}_$field_type $tmp;')
+	dec.writeln('\tif (jsonroot_$tmp) {')
+	dec.writeln('\t\t$tmp = ${dec_name}(jsonroot_$tmp);')
+	dec.writeln('\t\tif (${tmp}.state != 0) {')
+	dec.writeln('\t\t\treturn (${option_name}_$styp){ .state = ${tmp}.state, .err = ${tmp}.err, .data = {0} };')
+	dec.writeln('\t\t}')
 	dec.writeln('\t}')
 }
 

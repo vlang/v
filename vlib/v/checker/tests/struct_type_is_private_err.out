@@ -1,0 +1,11 @@
+vlib/v/checker/tests/struct_type_is_private_err.vv:1:8: warning: module 'sqlite' is imported but never used
+    1 | import sqlite
+      |        ~~~~~~
+    2 | 
+    3 | fn main(){
+vlib/v/checker/tests/struct_type_is_private_err.vv:4:10: error: struct `C.sqlite3` was declared as private to module `sqlite`, so it can not be used inside module `main`
+    2 | 
+    3 | fn main(){
+    4 |     _ := &C.sqlite3{}
+      |             ~~~~~~~~~
+    5 | }

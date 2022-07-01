@@ -47,6 +47,11 @@ mut:
 	nlines               int
 	callpatches          []CallPatch
 	strs                 []String
+	labels               &LabelTable
+	defer_stmts          []ast.DeferStmt
+	// macho specific
+	macho_ncmds   int
+	macho_cmdsize int
 }
 
 enum RelocType {
@@ -68,6 +73,31 @@ struct CallPatch {
 	pos  int
 }
 
+struct LabelTable {
+mut:
+	label_id int
+	addrs    []i64 = [i64(0)] // register address of label here
+	patches  []LabelPatch // push placeholders
+	branches []BranchLabel
+}
+
+struct LabelPatch {
+	id  int
+	pos int
+}
+
+struct BranchLabel {
+	name  string
+	start int
+	end   int
+}
+
+fn (mut l LabelTable) new_label() int {
+	l.label_id++
+	l.addrs << 0
+	return l.label_id
+}
+
 enum Size {
 	_8
 	_16
@@ -85,6 +115,20 @@ fn get_backend(arch pref.Arch) ?CodeGen {
 		.amd64 {
 			return Amd64{
 				g: 0
+			}
+		}
+		._auto {
+			$if amd64 {
+				return Amd64{
+					g: 0
+				}
+			} $else $if arm64 {
+				return Arm64{
+					g: 0
+				}
+			} $else {
+				eprintln('-native only have amd64 and arm64 codegens')
+				exit(1)
 			}
 		}
 		else {}
@@ -108,6 +152,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 			eprintln('No available backend for this configuration. Use `-a arm64` or `-a amd64`.')
 			exit(1)
 		}
+		labels: 0
 	}
 	g.code_gen.g = g
 	g.generate_header()
@@ -299,6 +344,13 @@ fn (mut g Gen) gen_typeof_expr(it ast.TypeOf, newline bool) {
 	g.learel(.rax, g.allocate_string('$r$nl', 3, .rel32))
 }
 
+fn (mut g Gen) gen_var_to_string(reg Register, vo int) {
+	buffer := g.allocate_array('itoa-buffer', 1, 32) // 32 characters should be enough
+	g.mov_var_to_reg(reg, vo)
+	g.convert_int_to_string(reg, buffer)
+	g.lea_var_to_reg(reg, buffer)
+}
+
 pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, name string) {
 	newline := name in ['println', 'eprintln']
 	fd := if name in ['eprint', 'eprintln'] { 2 } else { 1 }
@@ -316,16 +368,16 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, name string) {
 		}
 		ast.Ident {
 			vo := g.try_var_offset(expr.name)
+
 			if vo != -1 {
-				g.n_error('Printing idents is not yet supported in the native backend')
-				// g.mov_var_to_reg(.rsi, vo)
-				// g.mov_reg(.rax, .rsi)
-				// g.learel(.rax, vo * 8)
-				// g.relpc(.rax, .rsi)
-				// g.learel(.rax, g.allocate_string('$vo\n', 3, .rel32))
-				// g.expr(expr)
+				g.gen_var_to_string(.rax, vo)
+				g.gen_print_reg(.rax, 3, fd)
+				if newline {
+					g.gen_print('\n', fd)
+				}
+			} else {
+				g.gen_print_reg(.rax, 3, fd)
 			}
-			g.gen_print_reg(.rax, 3, fd)
 		}
 		ast.IntegerLiteral {
 			g.learel(.rax, g.allocate_string('$expr.val\n', 3, .rel32))
@@ -453,11 +505,14 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	}
 	g.stack_var_pos = 0
 	g.register_function_address(node.name)
+	g.labels = &LabelTable{}
+	g.defer_stmts.clear()
 	if g.pref.arch == .arm64 {
 		g.fn_decl_arm64(node)
 	} else {
 		g.fn_decl_amd64(node)
 	}
+	g.patch_labels()
 }
 
 pub fn (mut g Gen) register_function_address(name string) {
@@ -500,6 +555,7 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 		g.stmts([node.init])
 	}
 	start := g.pos()
+	start_label := g.labels.new_label()
 	mut jump_addr := i64(0)
 	if node.has_cond {
 		cond := node.cond
@@ -532,12 +588,27 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 		// dump(node.cond)
 		g.expr(node.cond)
 	}
+	end_label := g.labels.new_label()
+	g.labels.patches << LabelPatch{
+		id: end_label
+		pos: int(jump_addr)
+	}
+	g.println('; jump to label $end_label')
+	g.labels.branches << BranchLabel{
+		name: node.label
+		start: start_label
+		end: end_label
+	}
 	g.stmts(node.stmts)
+	g.labels.addrs[start_label] = g.pos()
+	g.println('; label $start_label')
 	if node.has_inc {
 		g.stmts([node.inc])
 	}
+	g.labels.branches.pop()
 	g.jmp(int(0xffffffff - (g.pos() + 5 - start) + 1))
-	g.write32_at(jump_addr, int(g.pos() - jump_addr - 4))
+	g.labels.addrs[end_label] = g.pos()
+	g.println('; jump to label $end_label')
 
 	// loop back
 }
@@ -553,14 +624,30 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		g.expr(node.cond)
 		g.mov_reg_to_var(i, .rax) // i = node.cond // initial value
 		start := g.pos() // label-begin:
+		start_label := g.labels.new_label()
 		g.mov_var_to_reg(.rbx, i) // rbx = iterator value
 		g.expr(node.high) // final value
 		g.cmp_reg(.rbx, .rax) // rbx = iterator, rax = max value
 		jump_addr := g.cjmp(.jge) // leave loop if i is beyond end
+		end_label := g.labels.new_label()
+		g.labels.patches << LabelPatch{
+			id: end_label
+			pos: jump_addr
+		}
+		g.println('; jump to label $end_label')
+		g.labels.branches << BranchLabel{
+			name: node.label
+			start: start_label
+			end: end_label
+		}
 		g.stmts(node.stmts)
+		g.labels.addrs[start_label] = g.pos()
+		g.println('; label $start_label')
 		g.inc_var(node.val_var)
+		g.labels.branches.pop()
 		g.jmp(int(0xffffffff - (g.pos() + 5 - start) + 1))
-		g.write32_at(jump_addr, int(g.pos() - jump_addr - 4))
+		g.labels.addrs[end_label] = g.pos()
+		g.println('; label $end_label')
 		/*
 		} else if node.kind == .array {
 	} else if node.kind == .array_fixed {
@@ -588,7 +675,33 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.Block {
 			g.stmts(node.stmts)
 		}
+		ast.BranchStmt {
+			label_name := node.label
+			for i := g.labels.branches.len - 1; i >= 0; i-- {
+				branch := g.labels.branches[i]
+				if label_name == '' || label_name == branch.name {
+					label := if node.kind == .key_break {
+						branch.end
+					} else { // continue
+						branch.start
+					}
+					jump_addr := g.jmp(0)
+					g.labels.patches << LabelPatch{
+						id: label
+						pos: jump_addr
+					}
+					g.println('; jump to $label: $node.kind')
+					break
+				}
+			}
+		}
 		ast.ConstDecl {}
+		ast.DeferStmt {
+			defer_var := g.get_var_offset('_defer$g.defer_stmts.len')
+			g.mov_int_to_var(defer_var, ._8, 1)
+			g.defer_stmts << node
+			g.defer_stmts[g.defer_stmts.len - 1].idx_in_fn = g.defer_stmts.len - 1
+		}
 		ast.ExprStmt {
 			g.expr(node.expr)
 		}
@@ -625,6 +738,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// dump(node)
 			// dump(node.types)
 			mut s := '?' //${node.exprs[0].val.str()}'
+			// TODO: void return
 			e0 := node.exprs[0]
 			match e0 {
 				ast.IntegerLiteral {
@@ -649,10 +763,15 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					g.n_error('unknown return type $e0.type_name()')
 				}
 			}
-			// intel specific
-			g.add8(.rsp, g.stackframe_size)
-			g.pop(.rbp)
-			g.ret()
+
+			// jump to return label
+			label := 0
+			pos := g.jmp(0)
+			g.labels.patches << LabelPatch{
+				id: label
+				pos: pos
+			}
+			g.println('; jump to label $label')
 		}
 		ast.AsmStmt {
 			g.gen_asm_stmt(node)
@@ -775,7 +894,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.PostfixExpr {
 			g.postfix_expr(node)
 		}
-		ast.StringLiteral {}
+		ast.StringLiteral {
+			g.allocate_string(node.val, 3, .rel32)
+		}
 		ast.StructInit {}
 		ast.GoExpr {
 			g.v_error('native backend doesnt support threads yet', node.pos)

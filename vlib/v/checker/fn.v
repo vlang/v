@@ -134,13 +134,11 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			return
 		}
 		// make sure interface does not implement its own interface methods
-		if sym.kind == .interface_ && sym.has_method(node.name) {
-			if mut sym.info is ast.Interface {
-				// if the method is in info.methods then it is an interface method
-				if sym.info.has_method(node.name) {
-					c.error('interface `$sym.name` cannot implement its own interface method `$node.name`',
-						node.pos)
-				}
+		if mut sym.info is ast.Interface && sym.has_method(node.name) {
+			// if the method is in info.methods then it is an interface method
+			if sym.info.has_method(node.name) {
+				c.error('interface `$sym.name` cannot implement its own interface method `$node.name`',
+					node.pos)
 			}
 		}
 		if mut sym.info is ast.Struct {
@@ -186,35 +184,32 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 			if !param.typ.is_ptr() { // value parameter, i.e. on stack - check for `[heap]`
 				arg_typ_sym := c.table.sym(param.typ)
-				if arg_typ_sym.kind == .struct_ {
-					info := arg_typ_sym.info as ast.Struct
-					if info.is_heap { // set auto_heap to promote value parameter
+				if arg_typ_sym.info is ast.Struct {
+					if arg_typ_sym.info.is_heap { // set auto_heap to promote value parameter
 						mut v := node.scope.find_var(param.name) or { continue }
 						v.is_auto_heap = true
 					}
-					if info.generic_types.len > 0 && !param.typ.has_flag(.generic)
-						&& info.concrete_types.len == 0 {
+					if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
+						&& arg_typ_sym.info.concrete_types.len == 0 {
 						c.error('generic struct in fn declaration must specify the generic type names, e.g. Foo<T>',
 							param.type_pos)
 					}
-				} else if arg_typ_sym.kind == .interface_ {
-					info := arg_typ_sym.info as ast.Interface
-					if info.generic_types.len > 0 && !param.typ.has_flag(.generic)
-						&& info.concrete_types.len == 0 {
+				} else if arg_typ_sym.info is ast.Interface {
+					if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
+						&& arg_typ_sym.info.concrete_types.len == 0 {
 						c.error('generic interface in fn declaration must specify the generic type names, e.g. Foo<T>',
 							param.type_pos)
 					}
-				} else if arg_typ_sym.kind == .sum_type {
-					info := arg_typ_sym.info as ast.SumType
-					if info.generic_types.len > 0 && !param.typ.has_flag(.generic)
-						&& info.concrete_types.len == 0 {
+				} else if arg_typ_sym.info is ast.SumType {
+					if arg_typ_sym.info.generic_types.len > 0 && !param.typ.has_flag(.generic)
+						&& arg_typ_sym.info.concrete_types.len == 0 {
 						c.error('generic sumtype in fn declaration must specify the generic type names, e.g. Foo<T>',
 							param.type_pos)
 					}
 				}
 			}
-			if (c.pref.translated || c.file.is_translated) && node.is_variadic
-				&& node.params.len == 1 && param.typ.is_ptr() {
+			//&& node.params.len == 1 && param.typ.is_ptr() {
+			if (c.pref.translated || c.file.is_translated) && node.is_variadic && param.typ.is_ptr() {
 				// TODO c2v hack to fix `(const char *s, ...)`
 				param.typ = ast.int_type.ref()
 			}
@@ -334,6 +329,16 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	node.source_file = c.file
+
+	if c.table.known_fn(node.name) && node.name != 'main.main' {
+		mut dep_names := []string{}
+		for stmt in node.stmts {
+			dep_names << c.table.dependent_names_in_stmt(stmt)
+		}
+		if dep_names.len > 0 {
+			c.table.fns[node.name].dep_names = dep_names
+		}
+	}
 }
 
 // check_same_type_ignoring_pointers util function to check if the Types are the same, including all
@@ -506,7 +511,12 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 		expr := node.args[0].expr
 		if expr is ast.TypeNode {
-			sym := c.table.sym(c.unwrap_generic(expr.typ))
+			mut unwrapped_typ := c.unwrap_generic(expr.typ)
+			if c.table.sym(expr.typ).kind == .struct_ && expr.typ.has_flag(.generic) {
+				unwrapped_typ = c.table.unwrap_generic_type(expr.typ, c.table.cur_fn.generic_names,
+					c.table.cur_concrete_types)
+			}
+			sym := c.table.sym(unwrapped_typ)
 			if c.table.known_type(sym.name) && sym.kind != .placeholder {
 				mut kind := sym.kind
 				if sym.info is ast.Alias {
@@ -867,7 +877,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				c.fail_if_unreadable(call_arg.expr, arg_typ, 'argument')
 			}
 		}
-		mut final_param_sym := param_typ_sym
+		mut final_param_sym := unsafe { param_typ_sym }
 		mut final_param_typ := param.typ
 		if func.is_variadic && param_typ_sym.info is ast.Array {
 			final_param_typ = param_typ_sym.info.elem_type
@@ -896,6 +906,11 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				}
 			}
 			continue
+		}
+		if param.typ.is_ptr() && !param.is_mut && !call_arg.typ.is_real_pointer()
+			&& call_arg.expr.is_literal() && func.language == .v && !c.pref.translated {
+			c.error('literal argument cannot be passed as reference parameter `${c.table.type_to_str(param.typ)}`',
+				call_arg.pos)
 		}
 		c.check_expected_call_arg(arg_typ, c.unwrap_generic(param.typ), node.language,
 			call_arg) or {
@@ -1150,8 +1165,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			c.error('cannot $method_name `$arg_sym.name` to `$left_sym.name`', arg_expr.pos())
 		}
 	} else if final_left_sym.info is ast.Array && method_name in ['first', 'last', 'pop'] {
-		node.return_type = final_left_sym.info.elem_type
-		return node.return_type
+		return c.array_builtin_method_call(mut node, left_type, final_left_sym)
 	} else if c.pref.backend.is_js() && left_sym.name.starts_with('Promise<')
 		&& method_name == 'wait' {
 		info := left_sym.info as ast.Struct
@@ -1183,14 +1197,14 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		method = m
 		has_method = true
 	} else {
-		if left_sym.kind in [.struct_, .sum_type, .interface_] {
+		if final_left_sym.kind in [.struct_, .sum_type, .interface_] {
 			mut parent_type := ast.void_type
-			if left_sym.info is ast.Struct {
-				parent_type = left_sym.info.parent_type
-			} else if left_sym.info is ast.SumType {
-				parent_type = left_sym.info.parent_type
-			} else if left_sym.info is ast.Interface {
-				parent_type = left_sym.info.parent_type
+			if final_left_sym.info is ast.Struct {
+				parent_type = final_left_sym.info.parent_type
+			} else if final_left_sym.info is ast.SumType {
+				parent_type = final_left_sym.info.parent_type
+			} else if final_left_sym.info is ast.Interface {
+				parent_type = final_left_sym.info.parent_type
 			}
 			if parent_type != 0 {
 				type_sym := c.table.sym(parent_type)
@@ -1204,7 +1218,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		if !has_method {
 			has_method = true
 			mut embed_types := []ast.Type{}
-			method, embed_types = c.table.find_method_from_embeds(left_sym, method_name) or {
+			method, embed_types = c.table.find_method_from_embeds(final_left_sym, method_name) or {
 				if err.msg() != '' {
 					c.error(err.msg(), node.pos)
 				}
@@ -1216,14 +1230,14 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				node.from_embed_types = embed_types
 			}
 		}
-		if left_sym.kind == .aggregate {
+		if final_left_sym.kind == .aggregate {
 			// the error message contains the problematic type
 			unknown_method_msg = err.msg()
 		}
 	}
 	if has_method {
 		// x is Bar<T>, x.foo() -> x.foo<T>()
-		rec_sym := c.table.sym(node.left_type)
+		rec_sym := c.table.final_sym(node.left_type)
 		rec_is_generic := left_type.has_flag(.generic)
 		mut rec_concrete_types := []ast.Type{}
 		if rec_sym.info is ast.Struct {
@@ -1334,7 +1348,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				c.error('when forwarding a variadic variable, it must be the final argument',
 					arg.pos)
 			}
-			mut final_arg_sym := exp_arg_sym
+			mut final_arg_sym := unsafe { exp_arg_sym }
 			mut final_arg_typ := exp_arg_typ
 			if method.is_variadic && exp_arg_sym.info is ast.Array {
 				final_arg_typ = exp_arg_sym.info.elem_type
@@ -1432,6 +1446,11 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					}
 				}
 				continue
+			}
+			if param.typ.is_ptr() && !arg.typ.is_real_pointer() && arg.expr.is_literal()
+				&& !c.pref.translated {
+				c.error('literal argument cannot be passed as reference parameter `${c.table.type_to_str(param.typ)}`',
+					arg.pos)
 			}
 			c.check_expected_call_arg(got_arg_typ, exp_arg_typ, node.language, arg) or {
 				// str method, allow type with str method if fn arg is string

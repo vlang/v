@@ -43,7 +43,7 @@ fn restore_terminal_state_signal(_ os.Signal) {
 
 fn restore_terminal_state() {
 	termios_reset()
-	mut c := ctx_ptr
+	mut c := unsafe { ctx_ptr }
 	if unsafe { c != 0 } {
 		c.paused = true
 		load_title()
@@ -79,6 +79,7 @@ fn (mut ctx Context) termios_setup() ? {
 
 	if ctx.cfg.window_title != '' {
 		print('\x1b]0;$ctx.cfg.window_title\x07')
+		flush_stdout()
 	}
 
 	if !ctx.cfg.skip_init_checks {
@@ -90,6 +91,7 @@ fn (mut ctx Context) termios_setup() ? {
 		// feature-test the SU spec
 		sx, sy := get_cursor_position()
 		print('$bsu$esu')
+		flush_stdout()
 		ex, ey := get_cursor_position()
 		if sx == ex && sy == ey {
 			// the terminal either ignored or handled the sequence properly, enable SU
@@ -108,11 +110,14 @@ fn (mut ctx Context) termios_setup() ? {
 	C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, &termios)
 	// enable mouse input
 	print('\x1b[?1003h\x1b[?1006h')
+	flush_stdout()
 	if ctx.cfg.use_alternate_buffer {
 		// switch to the alternate buffer
 		print('\x1b[?1049h')
+		flush_stdout()
 		// clear the terminal and set the cursor to the origin
 		print('\x1b[2J\x1b[3J\x1b[1;1H')
+		flush_stdout()
 	}
 	ctx.window_height, ctx.window_width = get_terminal_size()
 
@@ -120,7 +125,7 @@ fn (mut ctx Context) termios_setup() ? {
 	C.atexit(restore_terminal_state)
 	os.signal_opt(.tstp, restore_terminal_state_signal) or {}
 	os.signal_opt(.cont, fn (_ os.Signal) {
-		mut c := ctx_ptr
+		mut c := unsafe { ctx_ptr }
 		if unsafe { c != 0 } {
 			c.termios_setup() or { panic(err) }
 			c.window_height, c.window_width = get_terminal_size()
@@ -135,7 +140,7 @@ fn (mut ctx Context) termios_setup() ? {
 	}) or {}
 	for code in ctx.cfg.reset {
 		os.signal_opt(code, fn (_ os.Signal) {
-			mut c := ctx_ptr
+			mut c := unsafe { ctx_ptr }
 			if unsafe { c != 0 } {
 				c.cleanup()
 			}
@@ -144,7 +149,7 @@ fn (mut ctx Context) termios_setup() ? {
 	}
 
 	os.signal_opt(.winch, fn (_ os.Signal) {
-		mut c := ctx_ptr
+		mut c := unsafe { ctx_ptr }
 		if unsafe { c != 0 } {
 			c.window_height, c.window_width = get_terminal_size()
 
@@ -162,6 +167,7 @@ fn (mut ctx Context) termios_setup() ? {
 
 fn get_cursor_position() (int, int) {
 	print('\033[6n')
+	flush_stdout()
 	mut s := ''
 	unsafe {
 		buf := malloc_noscan(25)
@@ -183,8 +189,10 @@ fn supports_truecolor() bool {
 	}
 	// set the bg color to some arbirtrary value (#010203), assumed not to be the default
 	print('\x1b[48:2:1:2:3m')
+	flush_stdout()
 	// andquery the current color
 	print('\x1bP\$qm\x1b\\')
+	flush_stdout()
 	mut s := ''
 	unsafe {
 		buf := malloc_noscan(25)
@@ -199,6 +207,7 @@ fn termios_reset() {
 	// C.TCSANOW ??
 	C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, &ui.termios_at_startup)
 	print('\x1b[?1003l\x1b[?1006l\x1b[?25h')
+	flush_stdout()
 	c := ctx_ptr
 	if unsafe { c != 0 } && c.cfg.use_alternate_buffer {
 		print('\x1b[?1049l')

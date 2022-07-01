@@ -1,7 +1,7 @@
 module io
 
 // BufferedReader provides a buffered interface for a reader
-struct BufferedReader {
+pub struct BufferedReader {
 mut:
 	reader Reader
 	buf    []u8

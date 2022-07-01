@@ -2,6 +2,8 @@ module builder
 
 import os
 import hash
+import time
+import rand
 import strings
 import v.util
 import v.pref
@@ -11,11 +13,27 @@ pub fn (mut b Builder) rebuild_modules() {
 	if !b.pref.use_cache || b.pref.build_mode == .build_module {
 		return
 	}
+	all_files := b.parsed_files.map(it.path)
+	$if trace_invalidations ? {
+		eprintln('> rebuild_modules all_files: $all_files')
+	}
+	invalidations := b.find_invalidated_modules_by_files(all_files)
+	$if trace_invalidations ? {
+		eprintln('> rebuild_modules invalidations: $invalidations')
+	}
+	if invalidations.len > 0 {
+		vexe := pref.vexe_path()
+		for imp in invalidations {
+			b.v_build_module(vexe, imp)
+		}
+	}
+}
+
+pub fn (mut b Builder) find_invalidated_modules_by_files(all_files []string) []string {
 	util.timing_start('${@METHOD} source_hashing')
 	mut new_hashes := map[string]string{}
 	mut old_hashes := map[string]string{}
 	mut sb_new_hashes := strings.new_builder(1024)
-	all_files := b.parsed_files.map(it.path)
 	//
 	mut cm := vcache.new_cache_manager(all_files)
 	sold_hashes := cm.load('.hashes', 'all_files') or { ' ' }
@@ -31,8 +49,7 @@ pub fn (mut b Builder) rebuild_modules() {
 		old_hashes[cpath] = chash
 	}
 	// eprintln('old_hashes: $old_hashes')
-	for p in b.parsed_files {
-		cpath := p.path
+	for cpath in all_files {
 		ccontent := util.read_file(cpath) or { '' }
 		chash := hash.sum64_string(ccontent, 7).hex_full()
 		new_hashes[cpath] = chash
@@ -48,6 +65,7 @@ pub fn (mut b Builder) rebuild_modules() {
 	cm.save('.hashes', 'all_files', snew_hashes) or {}
 	util.timing_measure('${@METHOD} source_hashing')
 
+	mut invalidations := []string{}
 	if new_hashes != old_hashes {
 		util.timing_start('${@METHOD} rebuilding')
 		// eprintln('> b.mod_invalidates_paths: $b.mod_invalidates_paths')
@@ -148,13 +166,13 @@ pub fn (mut b Builder) rebuild_modules() {
 		}
 		if invalidated_mod_paths.len > 0 {
 			impaths := invalidated_mod_paths.keys()
-			vexe := pref.vexe_path()
 			for imp in impaths {
-				b.v_build_module(vexe, imp)
+				invalidations << imp
 			}
 		}
 		util.timing_measure('${@METHOD} rebuilding')
 	}
+	return invalidations
 }
 
 fn (mut b Builder) v_build_module(vexe string, imp_path string) {
@@ -211,7 +229,7 @@ fn (mut b Builder) handle_usecache(vexe string) {
 			// strconv is already imported inside builtin, so skip generating its object file
 			// TODO: incase we have other modules with the same name, make sure they are vlib
 			// is this even doign anything?
-			if imp in ['strconv', 'strings', 'dlmalloc'] {
+			if util.module_is_builtin(imp) {
 				continue
 			}
 			if imp in built_modules {
@@ -236,4 +254,115 @@ fn (mut b Builder) handle_usecache(vexe string) {
 		}
 	}
 	b.ccoptions.post_args << libs
+}
+
+pub fn (mut b Builder) should_rebuild() bool {
+	mut exe_name := b.pref.out_name
+	$if windows {
+		exe_name = exe_name + '.exe'
+	}
+	if !os.is_file(exe_name) {
+		return true
+	}
+	if !b.pref.is_crun {
+		return true
+	}
+	mut v_program_files := []string{}
+	is_file := os.is_file(b.pref.path)
+	is_dir := os.is_dir(b.pref.path)
+	if is_file {
+		v_program_files << b.pref.path
+	} else if is_dir {
+		v_program_files << b.v_files_from_dir(b.pref.path)
+	}
+	v_program_files.sort() // ensure stable keys for the dependencies cache
+	b.crun_cache_keys = v_program_files
+	b.crun_cache_keys << exe_name
+	// just check the timestamps for now:
+	exe_stamp := os.file_last_mod_unix(exe_name)
+	source_stamp := most_recent_timestamp(v_program_files)
+	if exe_stamp <= source_stamp {
+		return true
+	}
+	////////////////////////////////////////////////////////////////////////////
+	// The timestamps for the top level files were found ok,
+	// however we want to *also* make sure that a full rebuild will be done
+	// if any of the dependencies (if we know them) are changed.
+	mut cm := vcache.new_cache_manager(b.crun_cache_keys)
+	// always rebuild, when the compilation options changed between 2 sequential cruns:
+	sbuild_options := cm.load('.build_options', '.crun') or { return true }
+	if sbuild_options != b.pref.build_options.join('\n') {
+		return true
+	}
+	sdependencies := cm.load('.dependencies', '.crun') or {
+		// empty/wiped out cache, we do not know what the dependencies are, so just
+		// rebuild, which will fill in the dependencies cache for the next crun
+		return true
+	}
+	dependencies := sdependencies.split('\n')
+	// we have already compiled these source files, and have their dependencies
+	dependencies_stamp := most_recent_timestamp(dependencies)
+	if dependencies_stamp < exe_stamp {
+		return false
+	}
+	return true
+}
+
+fn most_recent_timestamp(files []string) i64 {
+	mut res := i64(0)
+	for f in files {
+		f_stamp := os.file_last_mod_unix(f)
+		if res <= f_stamp {
+			res = f_stamp
+		}
+	}
+	return res
+}
+
+pub fn (mut b Builder) rebuild(backend_cb FnBackend) {
+	mut sw := time.new_stopwatch()
+	backend_cb(mut b)
+	if b.pref.is_crun {
+		// save the dependencies after the first compilation, they will be used for subsequent ones:
+		mut cm := vcache.new_cache_manager(b.crun_cache_keys)
+		dependency_files := b.parsed_files.map(it.path)
+		cm.save('.dependencies', '.crun', dependency_files.join('\n')) or {}
+		cm.save('.build_options', '.crun', b.pref.build_options.join('\n')) or {}
+	}
+	mut timers := util.get_timers()
+	timers.show_remaining()
+	if b.pref.is_stats {
+		compilation_time_micros := 1 + sw.elapsed().microseconds()
+		scompilation_time_ms := util.bold('${f64(compilation_time_micros) / 1000.0:6.3f}')
+		mut all_v_source_lines, mut all_v_source_bytes := 0, 0
+		for pf in b.parsed_files {
+			all_v_source_lines += pf.nr_lines
+			all_v_source_bytes += pf.nr_bytes
+		}
+		mut sall_v_source_lines := all_v_source_lines.str()
+		mut sall_v_source_bytes := all_v_source_bytes.str()
+		sall_v_source_lines = util.bold('${sall_v_source_lines:10s}')
+		sall_v_source_bytes = util.bold('${sall_v_source_bytes:10s}')
+		println('        V  source  code size: $sall_v_source_lines lines, $sall_v_source_bytes bytes')
+		//
+		mut slines := b.stats_lines.str()
+		mut sbytes := b.stats_bytes.str()
+		slines = util.bold('${slines:10s}')
+		sbytes = util.bold('${sbytes:10s}')
+		println('generated  target  code size: $slines lines, $sbytes bytes')
+		//
+		vlines_per_second := int(1_000_000.0 * f64(all_v_source_lines) / f64(compilation_time_micros))
+		svlines_per_second := util.bold(vlines_per_second.str())
+		println('compilation took: $scompilation_time_ms ms, compilation speed: $svlines_per_second vlines/s')
+	}
+}
+
+pub fn (mut b Builder) get_vtmp_filename(base_file_name string, postfix string) string {
+	vtmp := util.get_vtmp_folder()
+	mut uniq := ''
+	if !b.pref.reuse_tmpc {
+		uniq = '.$rand.u64()'
+	}
+	fname := os.file_name(os.real_path(base_file_name)) + '$uniq$postfix'
+	return os.real_path(os.join_path(vtmp, fname))
 }

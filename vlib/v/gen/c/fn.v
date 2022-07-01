@@ -32,6 +32,9 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	if node.should_be_skipped {
 		return
 	}
+	if node.is_test {
+		g.test_function_names << node.name
+	}
 	if node.ninstances == 0 && node.generic_names.len > 0 {
 		$if trace_generics ? {
 			eprintln('skipping generic fn with no concrete instances: $node.mod $node.name')
@@ -446,20 +449,16 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) ?string {
 		name = g.generic_fn_name(g.cur_concrete_types, name, true)
 	}
 
-	if (g.pref.translated || g.file.is_translated) && node.attrs.contains('c') {
-		// This fixes unknown symbols errors when building separate .c => .v files
-		// into .o files
-		//
-		// example:
-		// [c: 'P_TryMove']
-		// fn p_trymove(thing &Mobj_t, x int, y int) bool
-		//
-		// =>
-		//
-		// bool P_TryMove(main__Mobj_t* thing, int x, int y);
-		//
-		// In fn_call every time `p_trymove` is called, `P_TryMove` will be generated instead.
-		name = node.attrs[0].arg
+	if g.pref.translated || g.file.is_translated {
+		if cattr := node.attrs.find_first('c') {
+			// This fixes unknown symbols errors when building separate .c => .v files into .o files
+			// example:
+			// [c: 'P_TryMove'] fn p_trymove(thing &Mobj_t, x int, y int) bool
+			// translates to:
+			// bool P_TryMove(main__Mobj_t* thing, int x, int y);
+			// In fn_call every time `p_trymove` is called, `P_TryMove` will be generated instead.
+			name = cattr.arg
+		}
 	}
 	return name
 }
@@ -479,7 +478,7 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 	ctx_struct := closure_ctx(node.decl)
 	// it may be possible to optimize `memdup` out if the closure never leaves current scope
 	// TODO in case of an assignment, this should only call "__closure_set_data" and "__closure_set_function" (and free the former data)
-	g.write('__closure_create($node.decl.name, ($ctx_struct*) memdup(&($ctx_struct){')
+	g.write('__closure_create($node.decl.name, ($ctx_struct*) memdup_uncollectable(&($ctx_struct){')
 	g.indent++
 	for var in node.inherited_vars {
 		g.writeln('.$var.name = $var.name,')
@@ -533,33 +532,37 @@ fn (mut g Gen) write_defer_stmts_when_needed() {
 }
 
 fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic bool) ([]string, []string, []bool) {
-	mut fargs := []string{}
-	mut fargtypes := []string{}
+	mut fparams := []string{}
+	mut fparamtypes := []string{}
 	mut heap_promoted := []bool{}
 	if params.len == 0 {
 		// in C, `()` is untyped, unlike `(void)`
 		g.write('void')
 	}
-	for i, arg in params {
-		mut caname := if arg.name == '_' { g.new_tmp_declaration_name() } else { c_name(arg.name) }
-		typ := g.unwrap_generic(arg.typ)
-		arg_type_sym := g.table.sym(typ)
-		mut arg_type_name := g.typ(typ) // util.no_dots(arg_type_sym.name)
-		if arg_type_sym.kind == .function {
-			info := arg_type_sym.info as ast.FnType
+	for i, param in params {
+		mut caname := if param.name == '_' {
+			g.new_tmp_declaration_name()
+		} else {
+			c_name(param.name)
+		}
+		typ := g.unwrap_generic(param.typ)
+		param_type_sym := g.table.sym(typ)
+		mut param_type_name := g.typ(typ) // util.no_dots(param_type_sym.name)
+		if param_type_sym.kind == .function {
+			info := param_type_sym.info as ast.FnType
 			func := info.func
 			g.write('${g.typ(func.return_type)} (*$caname)(')
 			g.definitions.write_string('${g.typ(func.return_type)} (*$caname)(')
 			g.fn_decl_params(func.params, voidptr(0), func.is_variadic)
 			g.write(')')
 			g.definitions.write_string(')')
-			fargs << caname
-			fargtypes << arg_type_name
+			fparams << caname
+			fparamtypes << param_type_name
 		} else {
 			mut heap_prom := false
 			if scope != voidptr(0) {
-				if arg.name != '_' {
-					if v := scope.find_var(arg.name) {
+				if param.name != '_' {
+					if v := scope.find_var(param.name) {
 						if !v.is_stack_obj && v.is_auto_heap {
 							heap_prom = true
 						}
@@ -567,17 +570,17 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 				}
 			}
 			var_name_prefix := if heap_prom { '_v_toheap_' } else { '' }
-			const_prefix := if arg.typ.is_any_kind_of_pointer() && !arg.is_mut
-				&& arg.name.starts_with('const_') {
+			const_prefix := if param.typ.is_any_kind_of_pointer() && !param.is_mut
+				&& param.name.starts_with('const_') {
 				'const '
 			} else {
 				''
 			}
-			s := '$const_prefix$arg_type_name $var_name_prefix$caname'
+			s := '$const_prefix$param_type_name $var_name_prefix$caname'
 			g.write(s)
 			g.definitions.write_string(s)
-			fargs << caname
-			fargtypes << arg_type_name
+			fparams << caname
+			fparamtypes << param_type_name
 			heap_promoted << heap_prom
 		}
 		if i < params.len - 1 {
@@ -586,10 +589,10 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 		}
 	}
 	if g.pref.translated && is_variadic {
-		g.write(', ...')
-		g.definitions.write_string(', ...')
+		g.write(', ... ')
+		g.definitions.write_string(', ... ')
 	}
-	return fargs, fargtypes, heap_promoted
+	return fparams, fparamtypes, heap_promoted
 }
 
 fn (mut g Gen) get_anon_fn_type_name(mut node ast.AnonFn, var_name string) string {
@@ -750,7 +753,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 
 		left_is_shared := node.left_type.has_flag(.shared_f)
-		left_cc_type := g.cc_type(node.left_type, false)
+		left_cc_type := g.cc_type(g.table.unaliased_type(node.left_type), false)
 		left_type_name := util.no_dots(left_cc_type)
 		g.write('${c_name(left_type_name)}_name_table[')
 		if node.left.is_auto_deref_var() && node.left_type.nr_muls() > 1 {
@@ -928,6 +931,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 					return
 				}
 			}
+		} else if node.left is ast.None {
+			// none.str()
+			g.gen_expr_to_string(node.left, ast.none_type)
+			return
 		}
 		g.get_str_fn(rec_type)
 	} else if node.name == 'free' {
@@ -1235,8 +1242,8 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		// every time `p_trymove` is called, `P_TryMove` must be generated instead.
 		if f := g.table.find_fn(node.name) {
 			// TODO PERF fn lookup for each fn call in translated mode
-			if f.attrs.contains('c') {
-				name = f.attrs[0].arg
+			if cattr := f.attrs.find_first('c') {
+				name = cattr.arg
 			}
 		}
 	}
@@ -1660,15 +1667,27 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			g.expr(args[args.len - 1].expr)
 		} else {
 			if variadic_count > 0 {
-				noscan := g.check_noscan(arr_info.elem_type)
-				g.write('new_array_from_c_array${noscan}($variadic_count, $variadic_count, sizeof($elem_type), _MOV(($elem_type[$variadic_count]){')
-				for j in arg_nr .. args.len {
-					g.ref_or_deref_arg(args[j], arr_info.elem_type, node.language)
-					if j < args.len - 1 {
-						g.write(', ')
+				if g.pref.translated || g.file.is_translated {
+					// Handle passing e.g. C string literals to `...` C varargs:
+					// void DEH_snprintf(char *buffer, size_t len, const char *fmt, ...)
+					// deh_snprintf(buffer, 9, c'STCFN%.3d', j++)
+					for j in arg_nr .. args.len {
+						g.expr(args[j].expr)
+						if j < args.len - 1 {
+							g.write(', ')
+						}
 					}
+				} else {
+					noscan := g.check_noscan(arr_info.elem_type)
+					g.write('new_array_from_c_array${noscan}($variadic_count, $variadic_count, sizeof($elem_type), _MOV(($elem_type[$variadic_count]){')
+					for j in arg_nr .. args.len {
+						g.ref_or_deref_arg(args[j], arr_info.elem_type, node.language)
+						if j < args.len - 1 {
+							g.write(', ')
+						}
+					}
+					g.write('}))')
 				}
-				g.write('}))')
 			} else {
 				g.write('__new_array(0, 0, sizeof($elem_type))')
 			}
@@ -1974,17 +1993,17 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 
 [inline]
 fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang ast.Language) {
-	arg_is_ptr := expected_type.is_ptr() || expected_type.idx() in ast.pointer_type_idxs
-	expr_is_ptr := arg.typ.is_ptr() || arg.typ.idx() in ast.pointer_type_idxs
+	exp_is_ptr := expected_type.is_ptr() || expected_type.idx() in ast.pointer_type_idxs
+	arg_is_ptr := arg.typ.is_ptr() || arg.typ.idx() in ast.pointer_type_idxs
 	if expected_type == 0 {
 		g.checker_bug('ref_or_deref_arg expected_type is 0', arg.pos)
 	}
 	exp_sym := g.table.sym(expected_type)
 	arg_typ := g.unwrap_generic(arg.typ)
 	mut needs_closing := false
-	if arg.is_mut && !arg_is_ptr {
+	if arg.is_mut && !exp_is_ptr {
 		g.write('&/*mut*/')
-	} else if arg_is_ptr && !expr_is_ptr {
+	} else if exp_is_ptr && !arg_is_ptr {
 		if arg.is_mut {
 			arg_sym := g.table.sym(arg_typ)
 			if exp_sym.kind == .array {

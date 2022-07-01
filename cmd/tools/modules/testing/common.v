@@ -123,6 +123,7 @@ pub fn (mut ts TestSession) print_messages() {
 			// progress mode, the last line is rewritten many times:
 			if is_ok && !ts.silent_mode {
 				print('\r$empty\r$msg')
+				flush_stdout()
 			} else {
 				// the last \n is needed, so SKIP/FAIL messages
 				// will not get overwritten by the OK ones
@@ -560,6 +561,7 @@ pub fn eheader(msg string) {
 
 pub fn header(msg string) {
 	println(term.header_left(msg, '-'))
+	flush_stdout()
 }
 
 pub fn setup_new_vtmp_folder() string {

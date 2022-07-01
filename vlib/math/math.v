@@ -42,6 +42,15 @@ pub fn degrees(radians f64) f64 {
 	return radians * (180.0 / pi)
 }
 
+// angle_diff calculates the difference between angles in radians
+[inline]
+pub fn angle_diff(radian_a f64, radian_b f64) f64 {
+	mut delta := fmod(radian_b - radian_a, tau)
+	delta = fmod(delta + 1.5 * tau, tau)
+	delta -= .5 * tau
+	return delta
+}
+
 [params]
 pub struct DigitParams {
 	base    int = 10

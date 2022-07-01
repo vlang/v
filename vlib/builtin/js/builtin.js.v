@@ -14,6 +14,14 @@ $if js_freestanding {
 	#globalPrint = globalThis.print
 }
 
+pub fn flush_stdout() {
+	// needed for parity with builtin.c.v
+}
+
+pub fn flush_stderr() {
+	// needed for parity with builtin.c.v
+}
+
 pub fn println(s string) {
 	$if js_freestanding {
 		#globalPrint(s.str)

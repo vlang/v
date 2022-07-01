@@ -16,6 +16,7 @@ module term
 // y is the y coordinate
 pub fn set_cursor_position(c Coord) {
 	print('\x1b[$c.y;$c.x' + 'H')
+	flush_stdout()
 }
 
 // n is number of cells
@@ -25,6 +26,7 @@ pub fn set_cursor_position(c Coord) {
 // direction: D is backward / West
 pub fn move(n int, direction string) {
 	print('\x1b[$n$direction')
+	flush_stdout()
 }
 
 pub fn cursor_up(n int) {
@@ -50,6 +52,7 @@ pub fn cursor_back(n int) {
 
 pub fn erase_display(t string) {
 	print('\x1b[' + t + 'J')
+	flush_stdout()
 }
 
 pub fn erase_toend() {
@@ -63,6 +66,7 @@ pub fn erase_tobeg() {
 // clears entire screen and returns cursor to top left-corner
 pub fn erase_clear() {
 	print('\033[H\033[J')
+	flush_stdout()
 }
 
 pub fn erase_del_clear() {
@@ -75,6 +79,7 @@ pub fn erase_del_clear() {
 // Note: Cursor position does not change
 pub fn erase_line(t string) {
 	print('\x1b[' + t + 'K')
+	flush_stdout()
 }
 
 pub fn erase_line_toend() {
@@ -92,11 +97,13 @@ pub fn erase_line_clear() {
 // Will make cursor appear if not visible
 pub fn show_cursor() {
 	print('\x1b[?25h')
+	flush_stdout()
 }
 
 // Will make cursor invisible
 pub fn hide_cursor() {
 	print('\x1b[?25l')
+	flush_stdout()
 }
 
 // clear_previous_line - useful for progressbars.
@@ -105,4 +112,5 @@ pub fn hide_cursor() {
 // the previous content.
 pub fn clear_previous_line() {
 	print('\r\x1b[1A\x1b[2K')
+	flush_stdout()
 }

@@ -401,7 +401,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	}
 	if p.tok.kind == .comma {
 		mr_pos := return_type_pos.extend(p.peek_tok.pos())
-		p.error_with_pos('multiple return types in function declaration must use parentheses, .e.g (int, string)',
+		p.error_with_pos('multiple return types in function declaration must use parentheses, e.g. (int, string)',
 			mr_pos)
 	}
 	mut type_sym_method_idx := 0
@@ -751,6 +751,17 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	typ := ast.new_type(idx)
 	p.inside_defer = old_inside_defer
 	// name := p.table.get_type_name(typ)
+	if inherited_vars.len > 0 && args.len > 0 {
+		for arg in args {
+			for var in inherited_vars {
+				if arg.name == var.name {
+					p.error_with_pos('the parameter name `$arg.name` conflicts with the captured value name',
+						arg.pos)
+					break
+				}
+			}
+		}
+	}
 	return ast.AnonFn{
 		decl: ast.FnDecl{
 			name: name

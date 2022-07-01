@@ -85,6 +85,23 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	}
 	rpath_name := os.file_name(rpath)
 	p.building_v = !p.is_repl && (rpath_name == 'v' || rpath_name == 'vfmt.v')
+	if p.gc_mode == .unknown {
+		if p.backend != .c || p.building_v || p.is_bare || p.ccompiler == 'msvc' {
+			p.gc_mode = .no_gc
+			p.build_options << ['-gc', 'none']
+		} else {
+			// enable the GC by default
+			p.gc_mode = .boehm_full_opt
+			// NOTE: these are added to p.compile_defines[_all]
+			// more than once when building modules for usecache
+			p.parse_define('gcboehm')
+			p.parse_define('gcboehm_full')
+			p.parse_define('gcboehm_opt')
+		}
+	}
+	if p.is_debug {
+		p.parse_define('debug')
+	}
 	if p.os == ._auto {
 		// No OS specifed? Use current system
 		p.os = get_host_os()

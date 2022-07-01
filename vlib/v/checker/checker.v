@@ -24,8 +24,8 @@ const (
 
 pub const (
 	valid_comptime_if_os             = ['windows', 'ios', 'macos', 'mach', 'darwin', 'hpux', 'gnu',
-		'qnx', 'linux', 'freebsd', 'openbsd', 'netbsd', 'bsd', 'dragonfly', 'android', 'solaris',
-		'haiku', 'serenity', 'vinix']
+		'qnx', 'linux', 'freebsd', 'openbsd', 'netbsd', 'bsd', 'dragonfly', 'android', 'termux',
+		'solaris', 'haiku', 'serenity', 'vinix']
 	valid_comptime_compression_types = ['none', 'zlib']
 	valid_comptime_if_compilers      = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
 	valid_comptime_if_platforms      = ['amd64', 'i386', 'aarch64', 'arm64', 'arm32', 'rv64', 'rv32']
@@ -57,7 +57,7 @@ pub struct Checker {
 	pref &pref.Preferences // Preferences shared from V struct
 pub mut:
 	table                     &ast.Table
-	file                      &ast.File = 0
+	file                      &ast.File = unsafe { 0 }
 	nr_errors                 int
 	nr_warnings               int
 	nr_notices                int
@@ -66,10 +66,10 @@ pub mut:
 	notices                   []errors.Notice
 	error_lines               []int // to avoid printing multiple errors for the same line
 	expected_type             ast.Type
-	expected_or_type          ast.Type // fn() or { 'this type' } eg. string. expected or block type
-	expected_expr_type        ast.Type // if/match is_expr: expected_type
-	mod                       string   // current module name
-	const_decl                string
+	expected_or_type          ast.Type        // fn() or { 'this type' } eg. string. expected or block type
+	expected_expr_type        ast.Type        // if/match is_expr: expected_type
+	mod                       string          // current module name
+	const_var                 &ast.ConstField = voidptr(0) // the current constant, when checking const declarations
 	const_deps                []string
 	const_names               []string
 	global_names              []string
@@ -89,6 +89,7 @@ pub mut:
 	inside_defer              bool // true inside `defer {}` blocks
 	inside_fn_arg             bool // `a`, `b` in `a.f(b)`
 	inside_ct_attr            bool // true inside `[if expr]`
+	inside_x_is_type          bool // true inside the Type expression of `if x is Type {`
 	inside_comptime_for_field bool
 	skip_flags                bool      // should `#flag` and `#include` be skipped
 	fn_level                  int       // 0 for the top level, 1 for `fn abc() {}`, 2 for a nested fn, etc
@@ -142,7 +143,7 @@ pub fn new_checker(table &ast.Table, pref &pref.Preferences) &Checker {
 fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
 	c.expected_type = ast.void_type
 	c.expected_or_type = ast.void_type
-	c.const_decl = ''
+	c.const_var = voidptr(0)
 	c.in_for_count = 0
 	c.returns = false
 	c.scope_returns = false
@@ -156,6 +157,7 @@ fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
 	c.inside_defer = false
 	c.inside_fn_arg = false
 	c.inside_ct_attr = false
+	c.inside_x_is_type = false
 	c.skip_flags = false
 	c.fn_level = 0
 	c.expr_level = 0
@@ -172,7 +174,7 @@ fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
 }
 
 pub fn (mut c Checker) check(ast_file_ &ast.File) {
-	mut ast_file := ast_file_
+	mut ast_file := unsafe { ast_file_ }
 	c.reset_checker_state_at_start_of_new_file()
 	c.change_current_file(ast_file)
 	for i, ast_import in ast_file.imports {
@@ -368,7 +370,7 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	if !has_main_mod_file {
 		c.error('project must include a `main` module or be a shared library (compile with `v -shared`)',
 			token.Pos{})
-	} else if !has_main_fn {
+	} else if !has_main_fn && !c.pref.is_o {
 		c.error('function `main` must be declared in the main module', token.Pos{})
 	}
 }
@@ -626,6 +628,9 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 		ast.PrefixExpr {
 			to_lock, pos = c.fail_if_immutable(expr.right)
 		}
+		ast.PostfixExpr {
+			to_lock, pos = c.fail_if_immutable(expr.expr)
+		}
 		ast.SelectorExpr {
 			if expr.expr_type == 0 {
 				return '', pos
@@ -742,7 +747,7 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 			return '', pos
 		}
 		else {
-			if !expr.is_lit() {
+			if !expr.is_pure_literal() {
 				c.error('unexpected expression `$expr.type_name()`', expr.pos())
 				return '', pos
 			}
@@ -804,7 +809,6 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 			}
 		}
 	}
-	styp := c.table.type_to_str(utyp)
 	if utyp.idx() == interface_type.idx() {
 		// same type -> already casted to the interface
 		return true
@@ -813,6 +817,7 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 		// `none` "implements" the Error interface
 		return true
 	}
+	styp := c.table.type_to_str(utyp)
 	if typ_sym.kind == .interface_ && inter_sym.kind == .interface_ && !styp.starts_with('JS.')
 		&& !inter_sym.name.starts_with('JS.') {
 		c.error('cannot implement interface `$inter_sym.name` with a different interface `$styp`',
@@ -986,7 +991,6 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 				if type_fits || is_noreturn {
 					return
 				}
-				expected_type_name := c.table.type_to_str(ret_type.clear_flag(.optional))
 				if stmt.typ == ast.void_type {
 					if stmt.expr is ast.IfExpr {
 						for branch in stmt.expr.branches {
@@ -999,10 +1003,12 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 						}
 						return
 					}
+					expected_type_name := c.table.type_to_str(ret_type.clear_flag(.optional))
 					c.error('`or` block must provide a default value of type `$expected_type_name`, or return/continue/break or call a [noreturn] function like panic(err) or exit(1)',
 						stmt.expr.pos())
 				} else {
 					type_name := c.table.type_to_str(last_stmt_typ)
+					expected_type_name := c.table.type_to_str(ret_type.clear_flag(.optional))
 					c.error('wrong return type `$type_name` in the `or {}` block, expected `$expected_type_name`',
 						stmt.expr.pos())
 				}
@@ -1326,8 +1332,9 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 		c.const_names << field.name
 	}
 	for i, mut field in node.fields {
-		c.const_decl = field.name
 		c.const_deps << field.name
+		prev_const_var := c.const_var
+		c.const_var = unsafe { field }
 		mut typ := c.check_expr_opt_call(field.expr, c.expr(field.expr))
 		if ct_value := c.eval_comptime_const_expr(field.expr, 0) {
 			field.comptime_expr_value = ct_value
@@ -1337,6 +1344,7 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 		}
 		node.fields[i].typ = ast.mktyp(typ)
 		c.const_deps = []
+		c.const_var = prev_const_var
 	}
 }
 
@@ -1602,9 +1610,10 @@ fn (mut c Checker) assert_stmt(node ast.AssertStmt) {
 
 fn (mut c Checker) block(node ast.Block) {
 	if node.is_unsafe {
+		prev_unsafe := c.inside_unsafe
 		c.inside_unsafe = true
 		c.stmts(node.stmts)
-		c.inside_unsafe = false
+		c.inside_unsafe = prev_unsafe
 	} else {
 		c.stmts(node.stmts)
 	}
@@ -1756,12 +1765,14 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 	if c.ct_cond_stack.len > 0 {
 		node.ct_conds = c.ct_cond_stack.clone()
 	}
-	if c.pref.backend.is_js() {
-		if !c.file.path.ends_with('.js.v') {
-			c.error('hash statements are only allowed in backend specific files such "x.js.v"',
+	if c.pref.backend.is_js() || c.pref.backend == .golang {
+		// consider the the best way to handle the .go.vv files
+		if !c.file.path.ends_with('.js.v') && !c.file.path.ends_with('.go.v')
+			&& !c.file.path.ends_with('.go.vv') {
+			c.error('hash statements are only allowed in backend specific files such "x.js.v" and "x.go.v"',
 				node.pos)
 		}
-		if c.mod == 'main' {
+		if c.mod == 'main' && c.pref.backend != .golang {
 			c.error('hash statements are not allowed in the main module. Place them in a separate module.',
 				node.pos)
 		}
@@ -2018,7 +2029,9 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			c.error('incorrect use of compile-time type', node.pos)
 		}
 		ast.EmptyExpr {
+			print_backtrace()
 			c.error('checker.expr(): unhandled EmptyExpr', token.Pos{})
+			return ast.void_type
 		}
 		ast.CTempVar {
 			return node.typ
@@ -2266,6 +2279,11 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			return c.struct_init(mut node)
 		}
 		ast.TypeNode {
+			if !c.inside_x_is_type && node.typ.has_flag(.generic) && unsafe { c.table.cur_fn != 0 }
+				&& c.table.cur_fn.generic_names.len == 0 {
+				c.error('unexpected generic variable in non-generic function `$c.table.cur_fn.name`',
+					node.pos)
+			}
 			return node.typ
 		}
 		ast.TypeOf {
@@ -2487,6 +2505,15 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			c.error(error_msg, node.pos)
 		}
 	}
+	if from_sym.language == .v && !from_type.is_ptr()
+		&& final_from_sym.kind in [.sum_type, .interface_]
+		&& final_to_sym.kind !in [.sum_type, .interface_] {
+		ft := c.table.type_to_str(from_type)
+		tt := c.table.type_to_str(to_type)
+		kind_name := if from_sym.kind == .sum_type { 'sum type' } else { 'interface' }
+		c.error('cannot cast `$ft` $kind_name value to `$tt`, use `$node.expr as $tt` instead',
+			node.pos)
+	}
 
 	if node.has_arg {
 		c.expr(node.arg)
@@ -2619,7 +2646,23 @@ pub fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		if !name.contains('.') && node.mod != 'builtin' {
 			name = '${node.mod}.$node.name'
 		}
-		if name == c.const_decl {
+		// detect cycles, while allowing for references to the same constant,
+		// used inside its initialisation like: `struct Abc { x &Abc } ... const a = [ Abc{0}, Abc{unsafe{&a[0]}} ]!`
+		// see vlib/v/tests/const_fixed_array_containing_references_to_itself_test.v
+		if unsafe { c.const_var != 0 } && name == c.const_var.name {
+			if mut c.const_var.expr is ast.ArrayInit {
+				if c.const_var.expr.is_fixed && c.expected_type.nr_muls() > 0 {
+					elem_typ := c.expected_type.deref()
+					node.kind = .constant
+					node.name = c.const_var.name
+					node.info = ast.IdentVar{
+						typ: elem_typ
+					}
+					// c.const_var.typ = elem_typ
+					node.obj = c.const_var
+					return c.expected_type
+				}
+			}
 			c.error('cycle in constant `$c.const_decl`', node.pos)
 			return ast.void_type
 		}
@@ -3057,7 +3100,7 @@ fn (mut c Checker) find_obj_definition(obj ast.ScopeObject) ?ast.Expr {
 	if mut expr is ast.Ident {
 		return c.find_definition(expr)
 	}
-	if !expr.is_lit() {
+	if !expr.is_pure_literal() {
 		return error('definition of `$name` is unknown at compile time')
 	}
 	return expr
@@ -3403,6 +3446,9 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			typ = value_type
 		}
 	}
+	if node.or_expr.stmts.len > 0 && node.or_expr.stmts.last() is ast.ExprStmt {
+		c.expected_or_type = typ
+	}
 	c.stmts_ending_with_expression(node.or_expr.stmts)
 	c.check_expr_opt_call(node, typ)
 	return typ
@@ -3483,6 +3529,12 @@ pub fn (mut c Checker) chan_init(mut node ast.ChanInit) ast.Type {
 	if node.typ != 0 {
 		info := c.table.sym(node.typ).chan_info()
 		node.elem_type = info.elem_type
+		if node.elem_type != 0 {
+			elem_sym := c.table.sym(node.elem_type)
+			if elem_sym.kind == .placeholder {
+				c.error('unknown type `$elem_sym.name`', node.elem_type_pos)
+			}
+		}
 		if node.has_cap {
 			c.check_array_init_para_type('cap', node.cap_expr, node.pos)
 		}
@@ -3638,6 +3690,11 @@ fn (mut c Checker) warn_or_error(message string, pos token.Pos, warn bool) {
 	}
 	if !warn {
 		if c.pref.fatal_errors {
+			ferror := util.formatted_error('error:', message, c.file.path, pos)
+			eprintln(ferror)
+			if details.len > 0 {
+				eprintln('Details: $details')
+			}
 			exit(1)
 		}
 		c.nr_errors++
@@ -3692,6 +3749,11 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) ? {
 		return
 	}
 	sym := c.table.sym(typ)
+	if !c.is_builtin_mod && sym.kind == .struct_ && !sym.is_pub && sym.mod != c.mod {
+		c.error('struct `$sym.name` was declared as private to module `$sym.mod`, so it can not be used inside module `$c.mod`',
+			pos)
+		return
+	}
 	match sym.kind {
 		.placeholder {
 			if sym.language == .v && !sym.name.starts_with('C.') {

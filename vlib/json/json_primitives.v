@@ -8,7 +8,7 @@ module json
 #include "cJSON.h"
 #define js_get(object, key) cJSON_GetObjectItemCaseSensitive((object), (key))
 
-struct C.cJSON {
+pub struct C.cJSON {
 	valueint    int
 	valuedouble f64
 	valuestring &char

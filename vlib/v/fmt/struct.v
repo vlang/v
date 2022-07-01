@@ -5,7 +5,6 @@ module fmt
 
 import strings
 import v.ast
-import v.mathutil as mu
 
 pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	f.attrs(node.attrs)
@@ -88,15 +87,21 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			// keep one empty line between fields (exclude one after mut:, pub:, ...)
 			mut before_last_line := node.fields[i - 1].pos.line_nr
 			if node.fields[i - 1].comments.len > 0 {
-				before_last_line = mu.max(before_last_line, node.fields[i - 1].comments.last().pos.last_line)
+				if before_last_line < node.fields[i - 1].comments.last().pos.last_line {
+					before_last_line = node.fields[i - 1].comments.last().pos.last_line
+				}
 			}
 			if node.fields[i - 1].has_default_expr {
-				before_last_line = mu.max(before_last_line, node.fields[i - 1].default_expr.pos().last_line)
+				if before_last_line < node.fields[i - 1].default_expr.pos().last_line {
+					before_last_line = node.fields[i - 1].default_expr.pos().last_line
+				}
 			}
 
 			mut next_first_line := field.pos.line_nr
 			if field.comments.len > 0 {
-				next_first_line = mu.min(next_first_line, field.comments[0].pos.line_nr)
+				if next_first_line > field.comments[0].pos.line_nr {
+					next_first_line = field.comments[0].pos.line_nr
+				}
 			}
 			if next_first_line - before_last_line > 1 {
 				f.writeln('')
@@ -178,7 +183,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 	defer {
 		f.is_struct_init = struct_init_save
 	}
-
+	f.mark_types_import_as_used(node.typ)
 	type_sym := f.table.sym(node.typ)
 	// f.write('<old name: $type_sym.name>')
 	mut name := type_sym.name

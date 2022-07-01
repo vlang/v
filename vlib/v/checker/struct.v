@@ -101,6 +101,12 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				}
 				// Check for unnecessary inits like ` = 0` and ` = ''`
 				if field.typ.is_ptr() {
+					if field.default_expr is ast.IntegerLiteral {
+						if !c.inside_unsafe && !c.is_builtin_mod && field.default_expr.val == '0' {
+							c.warn('default value of `0` for references can only be used inside `unsafe`',
+								field.default_expr.pos)
+						}
+					}
 					continue
 				}
 				if field.default_expr is ast.IntegerLiteral {
@@ -261,7 +267,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 		&& c.table.cur_concrete_types.len == 0 {
 		pos := type_sym.name.last_index('.') or { -1 }
 		first_letter := type_sym.name[pos + 1]
-		if !first_letter.is_capital() {
+		if !first_letter.is_capital() && type_sym.kind != .placeholder {
 			c.error('cannot initialize builtin type `$type_sym.name`', node.pos)
 		}
 	}
@@ -321,7 +327,8 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 			if node.is_short {
 				exp_len := info.fields.len
 				got_len := node.fields.len
-				if exp_len != got_len {
+				if exp_len != got_len && !c.pref.translated {
+					// XTODO remove !translated check
 					amount := if exp_len < got_len { 'many' } else { 'few' }
 					c.error('too $amount fields in `$type_sym.name` literal (expecting $exp_len, got $got_len)',
 						node.pos)
@@ -370,6 +377,9 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				expected_type = field_info.typ
 				c.expected_type = expected_type
 				expr_type = c.expr(field.expr)
+				if expr_type == ast.void_type {
+					c.error('`$field.expr` (no value) used as value', field.pos)
+				}
 				if !field_info.typ.has_flag(.optional) {
 					expr_type = c.check_expr_opt_call(field.expr, expr_type)
 				}

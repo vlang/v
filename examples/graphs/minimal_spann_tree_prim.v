@@ -7,9 +7,10 @@ by CCS
 
 PS: all the pre-requisites of Dijkstra are considered
 
-$ v   run file_name.v
-// Creating a executable
-$ v  run file_name.v  -o an_executable.EXE
+$ v run file_name.v
+
+Creating a executable
+$ v -o an_executable.EXE run file_name.v  
 $ ./an_executable.EXE
 
 Code based from : Data Structures and Algorithms Made Easy: Data Structures and Algorithmic Puzzles, Fifth Edition (English Edition)
@@ -23,7 +24,7 @@ the queue. A heap is not used in this case.
 // a structure
 struct NODE {
 mut:
-	data     int // number of node
+	data     int // number of nodes
 	priority int // Lower values priority indicate ==> higher priority
 }
 
@@ -46,11 +47,10 @@ fn push_pq<T>(mut prior_queue []T, data int, priority int) {
 		i++
 	}
 	prior_queue = temp.clone() // I am not sure if it the right way
-	// IS IT THE RIGHT WAY?
 }
 
 // Change the priority of a value/node ... exist a value, change its priority
-fn updating_priority<T>(mut prior_queue []T, search_data int, NEW_priority int) {
+fn updating_priority<T>(mut prior_queue []T, search_data int, new_priority int) {
 	mut i := 0
 	mut lenght_pq := prior_queue.len
 
@@ -63,9 +63,9 @@ fn updating_priority<T>(mut prior_queue []T, search_data int, NEW_priority int) 
 		// all the list was examined
 		if i >= lenght_pq {
 			// print('\n Priority Queue:  ${prior_queue}')		
-			// print('\n These data ${search_data} and ${NEW_priority} do not exist ... PRIORITY QUEUE problem\n')
+			// print('\n These data ${search_data} and ${new_priority} do not exist ... PRIORITY QUEUE problem\n')
 			// if it does not find ... then push it
-			push_pq(mut prior_queue, search_data, NEW_priority)
+			push_pq(mut prior_queue, search_data, new_priority)
 			// exit(1) // panic(s string)
 		}
 	} // end for
@@ -109,12 +109,10 @@ fn print_solution(path []int, g [][]int) {
 	print('\n Minimum Cost Spanning Tree: $sum\n\n')
 }
 
-//=================
-
 // check structure from: https://www.geeksforgeeks.org/dijkstras-shortest-path-algorithm-greedy-algo-7/
 // s: source for all nodes
 // Two results are obtained ... cost and paths
-fn prim_mst(g [][]int, s int)  {
+fn prim_mst(g [][]int, s int) {
 	mut pq_queue := []NODE{} // creating a priority queue
 	push_pq(mut pq_queue, s, 0) // goes s with priority 0
 	mut n := g.len
@@ -152,7 +150,7 @@ fn prim_mst(g [][]int, s int)  {
 	// print('\n \n Previous node of shortest path: ${path}')
 	// print_paths_dist(path , dist)
 	print_solution(path, g)
-}// end function
+}
 
 /*
 Solution Expected graph_02
@@ -194,9 +192,6 @@ fn main() {
     |  /     \  |
     (3)-------(4)
          9
-	*/
-
-	/*
 	Let us create following weighted graph
  From https://www.geeksforgeeks.org/kruskals-minimum-spanning-tree-algorithm-greedy-algo-2/?ref=lbp
                    10
@@ -227,5 +222,3 @@ fn main() {
 	}
 	println('\n BYE -- OK')
 }
-
-//**********************************************************************

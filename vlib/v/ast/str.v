@@ -363,6 +363,8 @@ pub fn (x Expr) str() string {
 				}
 				if i < x.branches.len - 1 || !x.has_else {
 					parts << ' ${dollar}if ' + branch.cond.str() + ' { '
+				} else if x.has_else && i == x.branches.len - 1 {
+					parts << '{ '
 				}
 				for stmt in branch.stmts {
 					parts << stmt.str()

@@ -1,0 +1,5 @@
+vlib/v/parser/tests/type_decl_name_err.vv:1:6: error: single letter capital names are reserved for generic template types
+    1 | type A = int | string
+      |      ^
+    2 |
+    3 | fn main() {

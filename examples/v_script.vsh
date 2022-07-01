@@ -1,8 +1,12 @@
-#!/usr/local/bin/v run
+#!/usr/local/bin/v
 
 // The shebang above associates the file to V on Unix-like systems,
 // so it can be run just by specifying the path to the file
 // once it's made executable using `chmod +x`.
+
+// Note that you can also use: `#!/usr/bin/env -S v crun`, if your system supports the -S flag to env
+// The benefit is that in this case, v could be anywhere in your path, while /usr/bin/env is guaranteed
+// to be present on most Unix systems in that exact place.
 
 for _ in 0 .. 3 {
 	println('V script')

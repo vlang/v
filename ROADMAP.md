@@ -1,34 +1,12 @@
-## [Version 0.3](https://github.com/vlang/v/projects/5)
-- [ ] [make `-autofree` the default](https://github.com/vlang/v/issues/6989)
-- [x] [gc option]
-- [ ] [coroutines](https://github.com/vlang/v/discussions/11582)
-- [x] channels
-- [x] lock{}
-- [x] thread safe arrays
-- [ ] [thread safe maps](https://github.com/vlang/v/discussions/11729)
-- [ ] [C2V translator](https://github.com/vlang/v/issues/6985)
-- [ ] doom.v
-- [x] rune type
-- [x] replace `ustring` with `[]rune`
-- [x] fix `byte.str()`
-- [x] maps with non-string keys
-- [x] iOS/Android support
-- [ ] parallel parser
-- [ ] parallel checker
-- [x] parallel cgen
-- [ ] parallel C compilation
+## [Version 0.4]
+- [ ] [Coroutines](https://github.com/vlang/v/discussions/11582)
+- [ ] [Thread safe maps](https://github.com/vlang/v/discussions/11729)
+- [ ] Parallel parser
+- [ ] Parallel checker
+- [ ] Parallel C compilation
 - [ ] `recover()` from panics
-- [x] IO streams
-- [x] struct embedding
-- [x] interface embedding
-- [x] interfaces: allow struct fields (not just methods)
 - [ ] vfmt: fix common errors automatically (make vars mutable and vice versa, add missing imports)
-- [ ] method expressions with an explicit receiver as the first argument
-- [x] short generics syntax (`foo(5)` instead of `foo<int>(5)`)
-- [ ] fix all remaining generics issues
 - [ ] merge v.c and v_win.c
-- [x] more advanced errors, not just `error('message')`
-- [ ] VLS for autocomplete, refactoring, go to definition etc
 - [ ] Recursive structs via optionals: `struct Node { next ?Node }`
-- [ ] Remove `foo = 0` for `&Foo`
 - [ ] Handle function pointers safely, remove `if function == 0 {`
+- [ ] Bundle OpenSSL like GC

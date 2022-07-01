@@ -9,7 +9,9 @@ import v.util
 import v.pkgconfig
 
 fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
-	node.left_type = c.expr(node.left)
+	if node.left !is ast.EmptyExpr {
+		node.left_type = c.expr(node.left)
+	}
 	if node.method_name == 'compile_error' {
 		c.error(node.args_var, node.pos)
 		return ast.void_type

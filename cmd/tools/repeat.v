@@ -200,8 +200,13 @@ fn (mut context Context) parse_options() ? {
 	}
 }
 
+fn flushed_print(s string) {
+	print(s)
+	flush_stdout()
+}
+
 fn (mut context Context) clear_line() {
-	print(context.cline)
+	flushed_print(context.cline)
 }
 
 fn (mut context Context) expand_all_commands(commands []string) []string {
@@ -247,7 +252,7 @@ fn (mut context Context) run() {
 			println('Series: ${si:4}/${context.series:-4}, command: $cmd')
 			if context.warmup > 0 && run_warmups < context.commands.len {
 				for i in 1 .. context.warmup + 1 {
-					print('${context.cgoback}warming up run: ${i:4}/${context.warmup:-4} for ${cmd:-50s} took ${duration:6} ms ...')
+					flushed_print('${context.cgoback}warming up run: ${i:4}/${context.warmup:-4} for ${cmd:-50s} took ${duration:6} ms ...')
 					mut sw := time.new_stopwatch()
 					res := os.execute(cmd)
 					if res.exit_code != 0 {
@@ -260,9 +265,9 @@ fn (mut context Context) run() {
 			context.clear_line()
 			for i in 1 .. (context.count + 1) {
 				avg := f64(sum) / f64(i)
-				print('${context.cgoback}Average: ${avg:9.3f}ms | run: ${i:4}/${context.count:-4} | took ${duration:6} ms')
+				flushed_print('${context.cgoback}Average: ${avg:9.3f}ms | run: ${i:4}/${context.count:-4} | took ${duration:6} ms')
 				if context.show_output {
-					print(' | result: ${oldres:s}')
+					flushed_print(' | result: ${oldres:s}')
 				}
 				mut sw := time.new_stopwatch()
 				res := scripting.exec(cmd) or { continue }
@@ -288,7 +293,7 @@ fn (mut context Context) run() {
 			context.results[icmd].atiming = new_aints(context.results[icmd].timings, context.nmins,
 				context.nmaxs)
 			context.clear_line()
-			print(context.cgoback)
+			flushed_print(context.cgoback)
 			mut m := map[string][]int{}
 			ioutputs := context.results[icmd].outputs
 			for o in ioutputs {
@@ -358,7 +363,7 @@ fn (mut context Context) show_diff_summary() {
 		println('context: $context')
 	}
 	if int(base) > context.fail_on_maxtime {
-		print(performance_regression_label)
+		flushed_print(performance_regression_label)
 		println('average time: ${base:6.1f} ms > $context.fail_on_maxtime ms threshold.')
 		exit(2)
 	}
@@ -367,7 +372,7 @@ fn (mut context Context) show_diff_summary() {
 	}
 	fail_threshold_max := f64(context.fail_on_regress_percent)
 	if first_cmd_percentage > fail_threshold_max {
-		print(performance_regression_label)
+		flushed_print(performance_regression_label)
 		println('${first_cmd_percentage:5.1f}% > ${fail_threshold_max:5.1f}% threshold.')
 		exit(3)
 	}

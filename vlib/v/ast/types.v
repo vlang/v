@@ -505,16 +505,32 @@ pub const (
 	int_literal_type   = new_type(int_literal_type_idx)
 	thread_type        = new_type(thread_type_idx)
 	error_type         = new_type(error_type_idx)
-	charptr_types      = [charptr_type, new_type(char_type_idx).set_nr_muls(1)]
-	byteptr_types      = [byteptr_type, new_type(byte_type_idx).set_nr_muls(1)]
-	voidptr_types      = [voidptr_type, new_type(voidptr_type_idx).set_nr_muls(1)]
+	charptr_types      = new_charptr_types()
+	byteptr_types      = new_byteptr_types()
+	voidptr_types      = new_voidptr_types()
 	cptr_types         = merge_types(voidptr_types, byteptr_types, charptr_types)
 )
+
+fn new_charptr_types() []Type {
+	return [ast.charptr_type, new_type(ast.char_type_idx).set_nr_muls(1)]
+}
+
+fn new_byteptr_types() []Type {
+	return [ast.byteptr_type, new_type(ast.byte_type_idx).set_nr_muls(1)]
+}
+
+fn new_voidptr_types() []Type {
+	return [ast.voidptr_type, new_type(ast.voidptr_type_idx).set_nr_muls(1)]
+}
 
 pub fn merge_types(params ...[]Type) []Type {
 	mut res := []Type{cap: params.len}
 	for types in params {
-		res << types
+		for t in types {
+			if t !in res {
+				res << t
+			}
+		}
 	}
 	return res
 }
@@ -1127,8 +1143,17 @@ pub fn (t &Table) clean_generics_type_str(typ Type) string {
 
 // import_aliases is a map of imported symbol aliases 'module.Type' => 'Type'
 pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]string) string {
+	cache_key := (u64(import_aliases.len) << 32) | u64(typ)
+	if cached_res := t.cached_type_to_str[cache_key] {
+		return cached_res
+	}
 	sym := t.sym(typ)
 	mut res := sym.name
+	mut mt := unsafe { &Table(t) }
+	defer {
+		// Note, that this relies on `res = value return res` if you want to return early!
+		mt.cached_type_to_str[cache_key] = res
+	}
 	// Note, that the duplication of code in some of the match branches here
 	// is VERY deliberate. DO NOT be tempted to use `else {}` instead, because
 	// that strongly reduces the usefullness of the exhaustive checking that
@@ -1147,7 +1172,8 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 		}
 		.array {
 			if typ == ast.array_type {
-				return 'array'
+				res = 'array'
+				return res
 			}
 			if typ.has_flag(.variadic) {
 				res = t.type_to_str_using_aliases(t.value_type(typ), import_aliases)
@@ -1202,7 +1228,8 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 		}
 		.map {
 			if int(typ) == ast.map_type_idx {
-				return 'map'
+				res = 'map'
+				return res
 			}
 			info := sym.info as Map
 			key_str := t.type_to_str_using_aliases(info.key_type, import_aliases)
@@ -1257,12 +1284,15 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 		}
 		.void {
 			if typ.has_flag(.optional) {
-				return '?'
+				res = '?'
+				return res
 			}
 			if typ.has_flag(.result) {
-				return '!'
+				res = '!'
+				return res
 			}
-			return 'void'
+			res = 'void'
+			return res
 		}
 		.thread {
 			rtype := sym.thread_info().return_type

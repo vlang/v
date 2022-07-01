@@ -94,6 +94,7 @@ fn (mut g Gen) gen_c_main_header() {
 		if g.pref.gc_mode == .boehm_leak {
 			g.writeln('\tGC_set_find_leak(1);')
 		}
+		g.writeln('\tGC_set_pages_executable(0);')
 		g.writeln('\tGC_INIT();')
 		if g.pref.gc_mode in [.boehm_incr, .boehm_incr_opt] {
 			g.writeln('\tGC_enable_incremental();')
@@ -137,10 +138,23 @@ void (_vsokol_cleanup_userdata_cb)(void* user_data) {
 	}
 	g.writeln('// The sokol_main entry point on Android
 sapp_desc sokol_main(int argc, char* argv[]) {
-	(void)argc; (void)argv;
+	(void)argc; (void)argv;')
 
-	_vinit(argc, (voidptr)argv);
+	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
+		g.writeln('#if defined(_VGCBOEHM)')
+		if g.pref.gc_mode == .boehm_leak {
+			g.writeln('\tGC_set_find_leak(1);')
+		}
+		g.writeln('\tGC_set_pages_executable(0);')
+		g.writeln('\tGC_INIT();')
+		if g.pref.gc_mode in [.boehm_incr, .boehm_incr_opt] {
+			g.writeln('\tGC_enable_incremental();')
+		}
+		g.writeln('#endif')
+	}
+	g.writeln('\t_vinit(argc, (voidptr)argv);
 	')
+
 	g.gen_c_main_profile_hook()
 	g.writeln('\tmain__main();')
 	if g.is_autofree {
@@ -211,6 +225,7 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 		if g.pref.gc_mode == .boehm_leak {
 			g.writeln('\tGC_set_find_leak(1);')
 		}
+		g.writeln('\tGC_set_pages_executable(0);')
 		g.writeln('\tGC_INIT();')
 		if g.pref.gc_mode in [.boehm_incr, .boehm_incr_opt] {
 			g.writeln('\tGC_enable_incremental();')

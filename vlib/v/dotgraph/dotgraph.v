@@ -3,7 +3,7 @@ module dotgraph
 import strings
 
 [heap]
-struct DotGraph {
+pub struct DotGraph {
 mut:
 	sb strings.Builder
 }

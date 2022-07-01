@@ -107,7 +107,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 </td><td width=33% valign=top>
 
 * [Functions 2](#functions-2)
-    * [Pure functions by default](#pure-functions-by-default)
+    * [Immutable function args by default](#immutable-function-args-by-default)
     * [Mutable arguments](#mutable-arguments)
     * [Variable number of arguments](#variable-number-of-arguments)
     * [Anonymous & higher-order functions](#anonymous--higher-order-functions)
@@ -343,8 +343,7 @@ the expression `T(v)` converts the value `v` to the
 type `T`.
 
 Unlike most other languages, V only allows defining variables in functions.
-Global (module level) variables are not allowed. There's no global state in V
-(see [Pure functions by default](#pure-functions-by-default) for details).
+Global (module level) variables are not allowed. There's no global state in V.
 
 For consistency across different code bases, all variable and function names
 must use the `snake_case` style, as opposed to type names, which must use `PascalCase`.
@@ -616,7 +615,7 @@ Also note: in most cases, it's best to leave the format type empty. Floats will 
 default as `g`, integers will be rendered by default as `d`, and `s` is almost always redundant.
 There are only three cases where specifying a type is recommended:
 
-- format strings are parsed at compile time, so specifing a type can help detect errors then
+- format strings are parsed at compile time, so specifying a type can help detect errors then
 - format strings default to using lowercase letters for hex digits and the `e` in exponents. Use a
   uppercase type to force the use of uppercase hex digits and an uppercase `E` in exponents.
 - format strings are the most convenient way to get hex, binary or octal strings from an integer.
@@ -2279,22 +2278,24 @@ Note that the embedded struct arguments are not necessarily stored in the order 
 
 ## Functions 2
 
-### Pure functions by default
+### Immutable function args by default
 
-V functions are pure by default, meaning that their return values are a function of their
-arguments only, and their evaluation has no side effects (besides I/O).
+In V function arguments are immutable by default, and mutable args have to be
+marked on call.
 
-This is achieved by a lack of global variables and all function arguments being
-immutable by default, even when [references](#references) are passed.
+Since there are also no globals, that means that the return values of the functions,
+are a function of their arguments only, and their evaluation has no side effects
+(unless the function uses I/O).
 
-V is not a purely functional language however.
+Function arguments are immutable by default, even when [references](#references) are passed.
+
+Note that V is not a purely functional language however.
 
 There is a compiler flag to enable global variables (`-enable-globals`), but this is
 intended for low-level applications like kernels and drivers.
 
 ### Mutable arguments
-
-It is possible to modify function arguments by using the keyword `mut`:
+It is possible to modify function arguments by declaring them with the keyword `mut`:
 
 ```v
 struct User {
@@ -2313,7 +2314,7 @@ user.register()
 println(user.is_registered) // "true"
 ```
 
-In this example, the receiver (which is simply the first argument) is marked as mutable,
+In this example, the receiver (which is just the first argument) is explicitly marked as mutable,
 so `register()` can change the user object. The same works with non-receiver arguments:
 
 ```v
@@ -3601,8 +3602,8 @@ println(compare(1.1, 1.2)) //         -1
 
 ## Concurrency
 ### Spawning Concurrent Tasks
-V's model of concurrency is very similar to Go's. To run `foo()` concurrently in
-a different thread, just call it with `go foo()`:
+V's model of concurrency is going to be very similar to Go's.
+For now, `go foo()` runs `foo()` concurrently in a different thread:
 
 ```v
 import math
@@ -3617,6 +3618,9 @@ fn main() {
 	// p will be run in parallel thread
 }
 ```
+
+> In V 0.4 `go foo()` will be automatically renamed via vfmt to `spawn foo()`,
+and there will be a way to launch a coroutine (a lightweight thread managed by the runtime).
 
 Sometimes it is necessary to wait until a parallel thread has finished. This can
 be done by assigning a *handle* to the started thread and calling the `wait()` method
@@ -4114,17 +4118,16 @@ fn (data &MyType) free() {
 Just as the compiler frees C data types with C's `free()`, it will statically insert
 `free()` calls for your data type at the end of each variable's lifetime.
 
+Autofree can be enabled with an `-autofree` flag.
+
 For developers willing to have more low level control, autofree can be disabled with
 `-manualfree`, or by adding a `[manualfree]` on each function that wants manage its
 memory manually. (See [attributes](#attributes)).
 
-_Note: right now autofree is hidden behind the -autofree flag. It will be enabled by
-default in V 0.3. If autofree is not used, V programs will leak memory._
 
 Note 2: Autofree is still WIP. Until it stabilises and becomes the default, please
-compile your long running processes with `-gc boehm`, which will use the
-Boehm-Demers-Weiser conservative garbage collector, to free the memory, that your
-programs leak, at runtime.
+avoid using it. Right now allocations are handled by a minimal and well performing GC
+until V's autofree engine is production ready.
 
 ### Examples
 
@@ -5704,8 +5707,6 @@ For more examples, see [github.com/vlang/v/tree/master/vlib/v/tests/assembly/asm
 
 ## Translating C to V
 
-TODO: translating C to V will be available in V 0.3.
-
 V can translate your C code to human readable V code and generate V wrappers on top of C libraries.
 
 
@@ -5807,7 +5808,12 @@ or
 ```shell
 v -os linux .
 ```
+NB: Cross-compiling a windows binary on a linux machine requires the GNU C compiler for 
+MinGW-w64 (targeting Win64) to first be installed.
 
+```shell
+sudo apt-get install gcc-mingw-w64-x86-64
+```
 (Cross compiling for macOS is temporarily not possible.)
 
 If you don't have any C dependencies, that's all you need to do. This works even

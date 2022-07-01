@@ -1,0 +1,13 @@
+vlib/v/checker/tests/fn_ref_arg_mismatch_err.vv:15:10: error: literal argument cannot be passed as reference parameter `&T`
+   13 | fn main() {
+   14 |     foo := Foo<int>{}
+   15 |     foo.foo(12)
+      |             ~~
+   16 |
+   17 |     bar<int>(12)
+vlib/v/checker/tests/fn_ref_arg_mismatch_err.vv:17:11: error: literal argument cannot be passed as reference parameter `&T`
+   15 |     foo.foo(12)
+   16 |
+   17 |     bar<int>(12)
+      |              ~~
+   18 | }

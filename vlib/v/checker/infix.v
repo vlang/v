@@ -12,7 +12,14 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	mut left_type := c.expr(node.left)
 	node.left_type = left_type
 	c.expected_type = left_type
+
+	if node.op == .key_is {
+		c.inside_x_is_type = true
+	}
 	mut right_type := c.expr(node.right)
+	if node.op == .key_is {
+		c.inside_x_is_type = false
+	}
 	node.right_type = right_type
 	if left_type.is_number() && !left_type.is_ptr()
 		&& right_type in [ast.int_literal_type, ast.float_literal_type] {

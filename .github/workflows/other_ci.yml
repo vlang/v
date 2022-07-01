@@ -89,7 +89,6 @@ jobs:
       - name: g++ version
         run: g++-9 --version
       - name: V self compilation with g++
-        continue-on-error: true
         run: ./v -cc g++-9 -no-std -cflags -std=c++11 -o v2 cmd/v && ./v2 -cc g++-9 -no-std -cflags -std=c++11 -o v3 cmd/v
         ##    - name: Running tests with g++
         ##      run: ./v -cc g++-9 test-self
@@ -98,7 +97,6 @@ jobs:
         run: ./v -autofree -o v2 cmd/v  ## NB: this does not mean it runs, but at least keeps it from regressing
 
       - name: Shader examples can be build
-        continue-on-error: true
         run: |
           wget https://github.com/floooh/sokol-tools-bin/raw/33d2e4cc26088c6c28eaef5467990f8940d15aab/bin/linux/sokol-shdc
           chmod +x ./sokol-shdc

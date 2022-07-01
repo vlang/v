@@ -549,7 +549,7 @@ pub mut:
 	end_comments  []Comment // comments *after* header declarations. E.g.: `fn C.C_func(x int) int // Comment`
 	next_comments []Comment // comments that are one line after the decl; used for InterfaceDecl
 	//
-	source_file &File = 0
+	source_file &File = unsafe { 0 }
 	scope       &Scope
 	label_names []string
 	pos         token.Pos // function declaration position
@@ -862,8 +862,9 @@ pub mut:
 // ++, --
 pub struct PostfixExpr {
 pub:
-	op  token.Kind
-	pos token.Pos
+	op            token.Kind
+	pos           token.Pos
+	is_c2v_prefix bool // for `--x` (`x--$`), only for translated code until c2v can handle it
 pub mut:
 	expr        Expr
 	auto_locked string
@@ -1270,8 +1271,9 @@ pub mut:
 
 pub struct ChanInit {
 pub:
-	pos     token.Pos
-	has_cap bool
+	pos           token.Pos
+	elem_type_pos token.Pos
+	has_cap       bool
 pub mut:
 	cap_expr  Expr
 	typ       Type
@@ -1825,9 +1827,9 @@ pub fn (expr Expr) is_expr() bool {
 	return true
 }
 
-pub fn (expr Expr) is_lit() bool {
+pub fn (expr Expr) is_pure_literal() bool {
 	return match expr {
-		BoolLiteral, CharLiteral, StringLiteral, IntegerLiteral { true }
+		BoolLiteral, CharLiteral, FloatLiteral, StringLiteral, IntegerLiteral { true }
 		else { false }
 	}
 }
