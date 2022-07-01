@@ -288,6 +288,10 @@ https://github.com/vlang/vinix
 
 <img src="https://github.com/vlang/vinix/raw/main/screenshot.png?raw=true">
 
+## Acknowledgement
+
+V thanks Fabrice Bellard for his work on the [TCC - Tiny C Compiler](https://bellard.org/tcc/)
+
 ## Troubleshooting
 
 Please see the [Troubleshooting](https://github.com/vlang/v/wiki/Troubleshooting) section on our [wiki page](https://github.com/vlang/v/wiki)
