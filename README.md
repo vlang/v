@@ -288,6 +288,10 @@ https://github.com/vlang/vinix
 
 <img src="https://github.com/vlang/vinix/raw/main/screenshot.png?raw=true">
 
+## Acknowledgement
+
+V thanks Fabrice Bellard for his original work on the [TCC - Tiny C Compiler](https://bellard.org/tcc/). Note the TCC website is old; the current TCC repository can be found [here](https://repo.or.cz/w/tinycc.git).  V utilizes pre-built TCC binaries located at [https://github.com/vlang/tccbin/](https://github.com/vlang/tccbin/).
+
 ## Troubleshooting
 
 Please see the [Troubleshooting](https://github.com/vlang/v/wiki/Troubleshooting) section on our [wiki page](https://github.com/vlang/v/wiki)
