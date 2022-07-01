@@ -790,7 +790,7 @@ fn (mut b Builder) cc_linux_cross() {
 		verror(res.output)
 		return
 	}
-	println(b.pref.out_name + ' has been successfully compiled')
+	println(out_name + ' has been successfully compiled')
 }
 
 fn (mut c Builder) cc_windows_cross() {
