@@ -35,7 +35,7 @@ pub enum Language {
 	v
 	c
 	js
-	@go
+	golang
 	amd64 // aka x86_64
 	i386
 	arm64 // 64-bit arm

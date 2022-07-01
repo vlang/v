@@ -204,7 +204,7 @@ pub fn (mut p Parser) set_path(path string) {
 			p.file_backend_mode = .js
 		}
 		'go' {
-			p.file_backend_mode = .@go
+			p.file_backend_mode = .golang
 		}
 		else {
 			arch := pref.arch_from_string(actual_language) or { pref.Arch._auto }
@@ -3136,11 +3136,8 @@ fn (mut p Parser) module_decl() ast.Module {
 	full_name := util.qualify_module(p.pref, name, p.file_name)
 	p.mod = full_name
 	p.builtin_mod = p.mod == 'builtin'
-	dump(p.builtin_mod)
-	dump(p.file_backend_mode)
-	dump(p.language)
 	// NOTE: Not so sure about that
-	if p.builtin_mod && p.file_backend_mode == .@go {
+	if p.builtin_mod && p.file_backend_mode == .golang {
 		is_skipped = true
 	}
 	mod_node = ast.Module{
