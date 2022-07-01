@@ -750,10 +750,10 @@ fn (mut b Builder) cc_linux_cross() {
 	cc_args << '-c "$b.out_name_c"'
 	cc_args << libs
 	b.dump_c_options(cc_args)
-	mut cc_name := 'cc '
+	mut cc_name := 'cc'
 	mut out_name := b.pref.out_name
 	$if windows {
-		cc_name = 'clang.exe '
+		cc_name = 'clang.exe'
 		out_name = out_name.trim_string_right('.exe')
 	}
 	cc_cmd := '${os.quoted_path(cc_name)} ' + cc_args.join(' ')
@@ -774,9 +774,9 @@ fn (mut b Builder) cc_linux_cross() {
 	linker_args << cflags.c_options_only_object_files()
 	// -ldl
 	b.dump_c_options(linker_args)
-	mut ldlld := '$sysroot/ld.lld '
+	mut ldlld := '$sysroot/ld.lld'
 	$if windows {
-		ldlld = 'ld.lld.exe '
+		ldlld = 'ld.lld.exe'
 	}
 	linker_cmd := '${os.quoted_path(ldlld)} ' + linker_args.join(' ')
 	// s = s.replace('SYSROOT', sysroot) // TODO $ inter bug
