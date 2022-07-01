@@ -5808,7 +5808,12 @@ or
 ```shell
 v -os linux .
 ```
+NB: Cross-compiling a windows binary on a linux machine requires the GNU C compiler for 
+MinGW-w64 (targeting Win64) to first be installed.
 
+```shell
+sudo apt-get install gcc-mingw-w64-x86-64
+```
 (Cross compiling for macOS is temporarily not possible.)
 
 If you don't have any C dependencies, that's all you need to do. This works even
