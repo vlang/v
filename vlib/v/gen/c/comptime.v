@@ -636,6 +636,10 @@ fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_optional bool) ?str
 		'android' {
 			return '__ANDROID__'
 		}
+		'termux' {
+			// Note: termux is running on Android natively
+			return '__ANDROID__'
+		}
 		'solaris' {
 			return '__sun'
 		}
