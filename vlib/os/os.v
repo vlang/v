@@ -343,9 +343,9 @@ pub fn user_os() string {
 	$if android {
 		return 'android'
 	}
-	// $if termux {
-	//	return 'termux'
-	// }
+	$if termux {
+		return 'termux'
+	}
 	$if solaris {
 		return 'solaris'
 	}
