@@ -233,6 +233,16 @@ pub fn (mut tf TTF_File) read_glyph_dim(index u16) (int, int, int, int) {
 	return x_min, x_max, y_min, y_max
 }
 
+pub fn (mut tf TTF_File) get_ttf_widths() []int {
+	count := tf.glyph_count()
+	mut widths := []int
+	for i in 0..count {
+		x_min, x_max, _, _ := tf.read_glyph_dim(i)
+		widths << (x_max - x_min)
+	}
+	return widths
+}
+
 pub fn (mut tf TTF_File) read_glyph(index u16) Glyph {
 	index_int := int(index) // index.str()
 	if index_int in tf.glyph_cache {
