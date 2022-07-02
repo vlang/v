@@ -64,9 +64,9 @@ fn test_is_empty() {
 fn test_union() {
 	mut first_set := Set<string>{}
 	mut second_set := Set<string>{}
-	first_set.update(['b', 'c', 'd'])
-	second_set.update(['a', 'e'])
-	mut third_set := first_set.union_(second_set)
+	first_set.add_all(['b', 'c', 'd'])
+	second_set.add_all(['a', 'e'])
+	mut third_set := first_set.@union(second_set)
 	assert third_set.exists('a')
 	assert third_set.exists('b')
 	assert third_set.exists('c')
@@ -76,13 +76,9 @@ fn test_union() {
 
 fn test_intersection() {
 	mut first_set := Set<string>{}
-	first_set.add('foo')
-	first_set.add('bar')
-	first_set.add('baz')
+	first_set.add_all(['foo', 'bar', 'baz'])
 	mut second_set := Set<string>{}
-	second_set.add('bar')
-	second_set.add('baz')
-	second_set.add('boo')
+	second_set.add_all(['bar', 'baz', 'boo'])
 	mut third_set := first_set.intersection(second_set)
 	assert third_set.exists('foo') == false
 	assert third_set.exists('bar')
@@ -93,12 +89,8 @@ fn test_intersection() {
 fn test_difference() {
 	mut first_set := Set<string>{}
 	mut second_set := Set<string>{}
-	first_set.add('foo')
-	first_set.add('bar')
-	first_set.add('baz')
-	second_set.add('bar')
-	second_set.add('baz')
-	second_set.add('boo')
+	first_set.add_all(['foo', 'bar', 'baz'])
+	second_set.add_all(['bar', 'baz', 'boo'])
 	mut third_set := first_set.difference(second_set)
 	assert third_set.exists('foo')
 	assert third_set.exists('bar') == false
@@ -107,12 +99,8 @@ fn test_difference() {
 	first_set.clear()
 	second_set.clear()
 	third_set.clear()
-	first_set.add('bar')
-	first_set.add('baz')
-	first_set.add('boo')
-	second_set.add('foo')
-	second_set.add('bar')
-	second_set.add('baz')
+	first_set.add_all(['bar', 'baz', 'boo'])
+	second_set.add_all(['foo', 'bar', 'baz'])
 	third_set = first_set.difference(second_set)
 	assert third_set.exists('foo') == false
 	assert third_set.exists('bar') == false
@@ -122,8 +110,8 @@ fn test_difference() {
 
 fn test_subset() {
 	mut set := Set<string>{}
-	set.update(['a', 'b', 'c'])
+	set.add_all(['a', 'b', 'c'])
 	mut subset := Set<string>{}
-	subset.update(['b', 'c'])
+	subset.add_all(['b', 'c'])
 	assert set.subset(subset)
 }

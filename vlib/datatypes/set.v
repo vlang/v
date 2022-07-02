@@ -20,7 +20,7 @@ fn (mut set Set<T>) remove(element T) {
 	set.elements.delete(element)
 }
 
-// returns an arbitrary element of set, if set is not empty.
+// pick returns an arbitrary element of set, if set is not empty.
 fn (mut set Set<T>) pick() ?T {
 	for k, _ in set.elements {
 		return k
@@ -28,13 +28,13 @@ fn (mut set Set<T>) pick() ?T {
 	return error('Set is empty.')
 }
 
-// returns the set consisting of all elements except for the arbitrary element.
+// rest returns the set consisting of all elements except for the arbitrary element.
 fn (mut set Set<T>) rest() ?[]T {
 	element := set.pick()?
 	return set.elements.keys().filter(it != element)
 }
 
-// returns an arbitrary element and deleting it from set.
+// pop returns an arbitrary element and deleting it from set.
 fn (mut set Set<T>) pop() ?T {
 	element := set.pick()?
 	set.elements.delete(element)
@@ -64,27 +64,27 @@ fn (mut set Set<T>) is_empty() bool {
 	return set.size() == 0
 }
 
-// returns the number of elements.
+// size returns the number of elements.
 fn (mut set Set<T>) size() int {
 	return set.elements.len
 }
 
-// returns a copy of the set.
+// copy returns a copy of all the elements in the set.
 fn (mut set Set<T>) copy() Set<T> {
 	return Set<T>{
 		elements: set.elements.clone()
 	}
 }
 
-// updates the set from the array
-fn (mut set Set<T>) update(elements []T) {
+// add_all adds the whole `elements` array to the set
+fn (mut set Set<T>) add_all(elements []T) {
 	for element in elements {
 		set.add(element)
 	}
 }
 
-// returns the union of sets.
-fn (mut l Set<T>) union_(r Set<T>) Set<T> {
+// @union returns the union of the two sets.
+fn (mut l Set<T>) @union(r Set<T>) Set<T> {
 	mut set := l
 	for e, _ in r.elements {
 		set.add(e)
@@ -92,7 +92,7 @@ fn (mut l Set<T>) union_(r Set<T>) Set<T> {
 	return set
 }
 
-// returns the intersection of sets.
+// intersection returns the intersection of sets.
 fn (mut l Set<T>) intersection(r Set<T>) Set<T> {
 	mut set := l
 	for e, _ in l.elements {
@@ -108,7 +108,7 @@ fn (mut l Set<T>) intersection(r Set<T>) Set<T> {
 	return set
 }
 
-// returns the difference of sets.
+// difference returns the difference of sets.
 fn (mut l Set<T>) difference(r Set<T>) Set<T> {
 	mut set := l
 	for e, _ in l.elements {
@@ -119,7 +119,7 @@ fn (mut l Set<T>) difference(r Set<T>) Set<T> {
 	return set
 }
 
-// returns true if the set is a subset.
+// subset returns true if the set `r` is a subset of the set `l`.
 fn (mut l Set<T>) subset(r Set<T>) bool {
 	for e, _ in r.elements {
 		if e !in l.elements {
