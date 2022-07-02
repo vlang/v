@@ -363,6 +363,10 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 		mut unique_len := 0
 		// mut fkey := ''
 		mut field_name := sql_field_name(field)
+		mut ctyp := sql_from_v(sql_field_type(field)) or {
+			field_name = '${field_name}_id'
+			sql_from_v(7)?
+		}
 		for attr in field.attrs {
 			match attr.name {
 				'primary' {
@@ -387,6 +391,12 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 				'skip' {
 					is_skip = true
 				}
+				'sql_type' {
+					if attr.kind != .string {
+						return error("sql_type attribute need be string. Try [sql_type: '$attr.arg'] instead of [sql_type: $attr.arg]")
+					}
+					ctyp = attr.arg
+				}
 				/*'fkey' {
 					if attr.arg != '' {
 						if attr.kind == .string {
@@ -402,10 +412,6 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 			continue
 		}
 		mut stmt := ''
-		mut ctyp := sql_from_v(sql_field_type(field)) or {
-			field_name = '${field_name}_id'
-			sql_from_v(7)?
-		}
 		if ctyp == '' {
 			return error('Unknown type ($field.typ) for field $field.name in struct $table')
 		}
