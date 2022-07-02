@@ -200,7 +200,7 @@ fn (mut tf TTF_File) get_glyph_offset(index u32) u32 {
 	return offset + tf.tables['glyf'].offset
 }
 
-fn (mut tf TTF_File) glyph_count() u16 {
+pub fn (mut tf TTF_File) glyph_count() u16 {
 	assert 'maxp' in tf.tables
 	old_pos := tf.pos
 	tf.pos = tf.tables['maxp'].offset + 4
