@@ -64,7 +64,7 @@ fn (mut set Set<T>) is_empty() bool {
 	return set.size() == 0
 }
 
-// size returns the number of elements.
+// size returns the number of elements in the set.
 fn (mut set Set<T>) size() int {
 	return set.elements.len
 }
