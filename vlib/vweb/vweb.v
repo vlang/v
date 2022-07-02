@@ -613,7 +613,7 @@ fn (mut ctx Context) scan_static_directory(directory_path string, mount_path str
 		for file in files {
 			full_path := os.join_path(directory_path, file)
 			if os.is_dir(full_path) {
-				ctx.scan_static_directory(full_path, mount_path + file)
+				ctx.scan_static_directory(full_path, mount_path + '/' + file)
 			} else if file.contains('.') && !file.starts_with('.') && !file.ends_with('.') {
 				ext := os.file_ext(file)
 				// Rudimentary guard against adding files not in mime_types.

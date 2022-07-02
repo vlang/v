@@ -1993,17 +1993,17 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 
 [inline]
 fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang ast.Language) {
-	arg_is_ptr := expected_type.is_ptr() || expected_type.idx() in ast.pointer_type_idxs
-	expr_is_ptr := arg.typ.is_ptr() || arg.typ.idx() in ast.pointer_type_idxs
+	exp_is_ptr := expected_type.is_ptr() || expected_type.idx() in ast.pointer_type_idxs
+	arg_is_ptr := arg.typ.is_ptr() || arg.typ.idx() in ast.pointer_type_idxs
 	if expected_type == 0 {
 		g.checker_bug('ref_or_deref_arg expected_type is 0', arg.pos)
 	}
 	exp_sym := g.table.sym(expected_type)
 	arg_typ := g.unwrap_generic(arg.typ)
 	mut needs_closing := false
-	if arg.is_mut && !arg_is_ptr {
+	if arg.is_mut && !exp_is_ptr {
 		g.write('&/*mut*/')
-	} else if arg_is_ptr && !expr_is_ptr {
+	} else if exp_is_ptr && !arg_is_ptr {
 		if arg.is_mut {
 			arg_sym := g.table.sym(arg_typ)
 			if exp_sym.kind == .array {

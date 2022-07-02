@@ -170,7 +170,7 @@ fn read_wav_file_samples(fpath string) ?[]f32 {
 		}
 		//
 		if ch.chunk_type == [u8(`d`), `a`, `t`, `a`]! {
-			if rf == 0 {
+			if unsafe { rf == 0 } {
 				return error('`data` chunk should be after `fmt ` chunk')
 			}
 			// eprintln('`fmt ` chunk: $rf\n`data` chunk: $ch')

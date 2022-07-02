@@ -1,0 +1,5 @@
+vlib/v/parser/tests/interface_name_err.vv:1:11: error: single letter capital names are reserved for generic template types.
+    1 | interface A {
+      |           ^
+    2 |     a int
+    3 |     b() int

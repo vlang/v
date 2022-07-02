@@ -24,8 +24,8 @@ const (
 
 pub const (
 	valid_comptime_if_os             = ['windows', 'ios', 'macos', 'mach', 'darwin', 'hpux', 'gnu',
-		'qnx', 'linux', 'freebsd', 'openbsd', 'netbsd', 'bsd', 'dragonfly', 'android', 'solaris',
-		'haiku', 'serenity', 'vinix']
+		'qnx', 'linux', 'freebsd', 'openbsd', 'netbsd', 'bsd', 'dragonfly', 'android', 'termux',
+		'solaris', 'haiku', 'serenity', 'vinix']
 	valid_comptime_compression_types = ['none', 'zlib']
 	valid_comptime_if_compilers      = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
 	valid_comptime_if_platforms      = ['amd64', 'i386', 'aarch64', 'arm64', 'arm32', 'rv64', 'rv32']
@@ -1765,12 +1765,14 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 	if c.ct_cond_stack.len > 0 {
 		node.ct_conds = c.ct_cond_stack.clone()
 	}
-	if c.pref.backend.is_js() {
-		if !c.file.path.ends_with('.js.v') {
-			c.error('hash statements are only allowed in backend specific files such "x.js.v"',
+	if c.pref.backend.is_js() || c.pref.backend == .golang {
+		// consider the the best way to handle the .go.vv files
+		if !c.file.path.ends_with('.js.v') && !c.file.path.ends_with('.go.v')
+			&& !c.file.path.ends_with('.go.vv') {
+			c.error('hash statements are only allowed in backend specific files such "x.js.v" and "x.go.v"',
 				node.pos)
 		}
-		if c.mod == 'main' {
+		if c.mod == 'main' && c.pref.backend != .golang {
 			c.error('hash statements are not allowed in the main module. Place them in a separate module.',
 				node.pos)
 		}
@@ -2508,7 +2510,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		&& final_to_sym.kind !in [.sum_type, .interface_] {
 		ft := c.table.type_to_str(from_type)
 		tt := c.table.type_to_str(to_type)
-		c.error('cannot cast `$ft` to `$tt`, please use `as` instead, e.g. `expr as Ident`',
+		kind_name := if from_sym.kind == .sum_type { 'sum type' } else { 'interface' }
+		c.error('cannot cast `$ft` $kind_name value to `$tt`, use `$node.expr as $tt` instead',
 			node.pos)
 	}
 
@@ -3529,7 +3532,7 @@ pub fn (mut c Checker) chan_init(mut node ast.ChanInit) ast.Type {
 		if node.elem_type != 0 {
 			elem_sym := c.table.sym(node.elem_type)
 			if elem_sym.kind == .placeholder {
-				c.error('unknown type `$elem_sym.name`', node.pos)
+				c.error('unknown type `$elem_sym.name`', node.elem_type_pos)
 			}
 		}
 		if node.has_cap {
@@ -3687,6 +3690,11 @@ fn (mut c Checker) warn_or_error(message string, pos token.Pos, warn bool) {
 	}
 	if !warn {
 		if c.pref.fatal_errors {
+			ferror := util.formatted_error('error:', message, c.file.path, pos)
+			eprintln(ferror)
+			if details.len > 0 {
+				eprintln('Details: $details')
+			}
 			exit(1)
 		}
 		c.nr_errors++
@@ -3741,8 +3749,9 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) ? {
 		return
 	}
 	sym := c.table.sym(typ)
-	if !c.is_builtin_mod && sym.kind == .struct_ && sym.mod != c.mod && !sym.is_pub {
-		c.error('type `$sym.name` is private', pos)
+	if !c.is_builtin_mod && sym.kind == .struct_ && !sym.is_pub && sym.mod != c.mod {
+		c.error('struct `$sym.name` was declared as private to module `$sym.mod`, so it can not be used inside module `$c.mod`',
+			pos)
 		return
 	}
 	match sym.kind {

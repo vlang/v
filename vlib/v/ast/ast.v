@@ -1271,8 +1271,9 @@ pub mut:
 
 pub struct ChanInit {
 pub:
-	pos     token.Pos
-	has_cap bool
+	pos           token.Pos
+	elem_type_pos token.Pos
+	has_cap       bool
 pub mut:
 	cap_expr  Expr
 	typ       Type

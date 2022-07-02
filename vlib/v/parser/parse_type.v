@@ -150,8 +150,7 @@ pub fn (mut p Parser) parse_map_type() ast.Type {
 }
 
 pub fn (mut p Parser) parse_chan_type() ast.Type {
-	if p.peek_tok.kind != .name && p.peek_tok.kind != .key_mut && p.peek_tok.kind != .amp
-		&& p.peek_tok.kind != .lsbr {
+	if p.peek_tok.kind !in [.name, .key_mut, .amp, .lsbr] {
 		p.next()
 		return ast.chan_type
 	}
@@ -171,8 +170,7 @@ pub fn (mut p Parser) parse_thread_type() ast.Type {
 	if is_opt {
 		p.next()
 	}
-	if p.peek_tok.kind != .name && p.peek_tok.kind != .key_mut && p.peek_tok.kind != .amp
-		&& p.peek_tok.kind != .lsbr {
+	if p.peek_tok.kind !in [.name, .key_mut, .amp, .lsbr] {
 		p.next()
 		if is_opt {
 			mut ret_type := ast.void_type

@@ -176,5 +176,9 @@ fn rebuild(prefs &pref.Preferences) {
 		.interpret {
 			util.launch_tool(prefs.is_verbose, 'builders/interpret_builder', os.args[1..])
 		}
+		.golang {
+			println('using Go WIP backend...')
+			util.launch_tool(prefs.is_verbose, 'builders/golang_builder', os.args[1..])
+		}
 	}
 }

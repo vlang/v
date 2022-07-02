@@ -57,7 +57,11 @@ $if gcboehm ? {
 }
 
 #include "sokol_v.pre.h"
-#include "sokol_app.h"
+// To allow for thirdparty initializing window / acceleration contexts
+// but still be able to use sokol.gfx e.g. SDL+sokol_gfx
+$if !no_sokol_app ? {
+	#include "sokol_app.h"
+}
 #define SOKOL_IMPL
 #define SOKOL_NO_DEPRECATED
 #include "sokol_gfx.h"

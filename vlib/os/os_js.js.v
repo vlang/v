@@ -1,6 +1,6 @@
 module os
 
-pub fn mkdir(path string) ?bool {
+pub fn mkdir(path string, params MkdirParams) ?bool {
 	$if js_node {
 		if path == '.' {
 			return true
