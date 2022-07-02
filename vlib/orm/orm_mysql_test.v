@@ -19,7 +19,6 @@ struct TestCustomWrongSqlType {
 }
 
 fn test_orm() {
-
 	mut db := mysql.Connection{
 		host: '127.0.0.1'
 		username: 'root'
@@ -46,28 +45,36 @@ fn test_orm() {
 		panic(err)
 	}
 
-	information_schema_custom_sql := [{
-		'DATA_TYPE':   'bigint'
-		'COLUMN_TYPE': 'bigint unsigned'
-	}, {
-		'DATA_TYPE':   'text'
-		'COLUMN_TYPE': 'text'
-	}, {
-		'DATA_TYPE':   'varchar'
-		'COLUMN_TYPE': 'varchar(191)'
-	}, {
-		'DATA_TYPE':   'datetime'
-		'COLUMN_TYPE': 'datetime(3)'
-	}, {
-		'DATA_TYPE':   'mediumint'
-		'COLUMN_TYPE': 'mediumint'
-	}, {
-		'DATA_TYPE':   'datetime'
-		'COLUMN_TYPE': 'datetime'
-	}, {
-		'DATA_TYPE':   'datetime'
-		'COLUMN_TYPE': 'datetime'
-	}]
+	information_schema_custom_sql := [
+		{
+			'DATA_TYPE':   'bigint'
+			'COLUMN_TYPE': 'bigint unsigned'
+		},
+		{
+			'DATA_TYPE':   'text'
+			'COLUMN_TYPE': 'text'
+		},
+		{
+			'DATA_TYPE':   'varchar'
+			'COLUMN_TYPE': 'varchar(191)'
+		},
+		{
+			'DATA_TYPE':   'datetime'
+			'COLUMN_TYPE': 'datetime(3)'
+		},
+		{
+			'DATA_TYPE':   'mediumint'
+			'COLUMN_TYPE': 'mediumint'
+		},
+		{
+			'DATA_TYPE':   'datetime'
+			'COLUMN_TYPE': 'datetime'
+		},
+		{
+			'DATA_TYPE':   'datetime'
+			'COLUMN_TYPE': 'datetime'
+		},
+	]
 
 	assert result_custom_sql.maps() == information_schema_custom_sql
 
