@@ -90,6 +90,8 @@ pub mut:
 	kern                    []Kern0Table
 	// cache
 	glyph_cache map[int]Glyph
+	// font widths array scale for PDF export
+	width_scale f32 = 1.0
 }
 
 pub fn (mut tf TTF_File) init() {
@@ -103,6 +105,9 @@ pub fn (mut tf TTF_File) init() {
 	tf.length = tf.glyph_count()
 	dprintln('Number of symbols: $tf.length')
 	dprintln('*****************************')
+	dprintln("Unit per em: ${tf.units_per_em}")
+	dprintln("advance_width_max: ${tf.advance_width_max}")
+	
 }
 
 /******************************************************************************
@@ -159,7 +164,7 @@ pub fn (mut tf TTF_File) get_horizontal_metrics(glyph_index u16) (int, int) {
 		tf.pos = offset
 		advance_width = tf.get_u16()
 		left_side_bearing = tf.get_i16()
-		// dprintln("Found h_metric aw: $advance_width lsb: $left_side_bearing")
+		// dprintln("${glyph_index} aw:${advance_width} lsb:${left_side_bearing}")
 	} else {
 		// read the last entry of the hMetrics array
 		tf.pos = offset + (tf.num_of_long_hor_metrics - 1) * 4
@@ -240,7 +245,7 @@ pub fn (mut tf TTF_File) get_ttf_widths() ([]int, int, int) {
 	count := int(tf.glyph_count())
 	mut min_code := 0xFFFF + 1
 	mut max_code := 0
-	for i in 0..255 {
+	for i in 0..300 {
 		glyph_index := tf.map_code(i)
 		if glyph_index == 0 {
 			continue
@@ -267,12 +272,19 @@ pub fn (mut tf TTF_File) get_ttf_widths() ([]int, int, int) {
 		
 
 		x_min,x_max,_,_ := tf.read_glyph_dim(glyph_index)
-		w,l := tf.get_horizontal_metrics(u16(i))
-		w1 := x_max - x_min
-		
+		aw,lsb := tf.get_horizontal_metrics(u16(glyph_index))
+		w := x_max - x_min
+		rsb := aw - (lsb + w)
 
-		widths[pos] = w1
-		println("${i:c}|$glyph_index [$pos] =>  width: ${x_max-x_min} ${w}|${w1} l:${l} ")
+		pp1 := x_min - lsb
+    	pp2 := pp1 + aw
+
+		w1 := w + lsb + rsb
+		
+		widths[pos] = int(w1 / tf.width_scale)
+		if i >= int(`A`) && i <= int(`Z`) {
+			println("${i:c}|$glyph_index [$pos] =>  width:${x_max-x_min} aw:${aw}|w1:${w1} lsb:${lsb} rsb:${rsb} pp1:${pp1} pp2:${pp2}")
+		}
 	}
 
 	println("Widths: ${widths.len}")
