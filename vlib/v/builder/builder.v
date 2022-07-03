@@ -312,7 +312,7 @@ pub fn (b Builder) v_files_from_dir(dir string) []string {
 	if res.len == 0 {
 		// Perhaps the .v files are stored in /src/ ?
 		src_path := os.join_path(dir, 'src')
-		if os.exists(src_path) {
+		if os.is_dir(src_path) {
 			if b.pref.is_verbose {
 				println('v_files_from_dir ("$src_path") (/src/)')
 			}
