@@ -3244,6 +3244,11 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 			ast.InfixExpr, ast.StringLiteral, ast.StringInterLiteral] {
 			c.error('cannot take the address of $expr', node.pos)
 		}
+		if mut node.right is ast.Ident {
+			if node.right.kind == .constant && !c.inside_unsafe && c.pref.experimental {
+				c.warn('cannot take an address of const outside `unsafe`', node.right.pos)
+			}
+		}
 		if mut node.right is ast.IndexExpr {
 			typ_sym := c.table.sym(node.right.left_type)
 			mut is_mut := false

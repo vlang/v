@@ -308,7 +308,19 @@ pub fn (b Builder) v_files_from_dir(dir string) []string {
 	if b.pref.is_verbose {
 		println('v_files_from_dir ("$dir")')
 	}
-	return b.pref.should_compile_filtered_files(dir, files)
+	res := b.pref.should_compile_filtered_files(dir, files)
+	if res.len == 0 {
+		// Perhaps the .v files are stored in /src/ ?
+		src_path := os.join_path(dir, 'src')
+		if os.exists(src_path) {
+			if b.pref.is_verbose {
+				println('v_files_from_dir ("$src_path") (/src/)')
+			}
+			files = os.ls(src_path) or { panic(err) }
+			return b.pref.should_compile_filtered_files(src_path, files)
+		}
+	}
+	return res
 }
 
 pub fn (b Builder) log(s string) {
