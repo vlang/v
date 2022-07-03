@@ -66,7 +66,7 @@ pub fn (mut pool PoolProcessor) set_max_jobs(njobs int) {
 
 // work_on_items receives a list of items of type T,
 // then starts a work pool of pool.njobs threads, each running
-// pool.thread_cb in a loop, untill all items in the list,
+// pool.thread_cb in a loop, until all items in the list,
 // are processed.
 // When pool.njobs is 0, the number of jobs is determined
 // by the number of available cores on the system.
