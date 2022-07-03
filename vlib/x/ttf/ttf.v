@@ -259,16 +259,16 @@ pub fn (mut tf TTF_File) get_ttf_widths() ([]int, int, int) {
 	for i in min_code..max_code {
 		pos := i - min_code
 		glyph_index := tf.map_code(i)
-		/*
+		
 		if glyph_index == 0 || i == 32 {
 			widths[pos] = space_cw
 			continue
 		}
-		*/
+		
 
 		x_min,x_max,_,_ := tf.read_glyph_dim(glyph_index)
 		w,l := tf.get_horizontal_metrics(u16(i))
-		w1 := x_max - x_min + l
+		w1 := x_max - x_min
 		
 
 		widths[pos] = w1
@@ -557,12 +557,16 @@ fn (mut tf TTF_File) get_ufword() u16 {
 }
 
 fn (mut tf TTF_File) get_i16() i16 {
-	return i16(tf.get_u16())
+	//return i16(tf.get_u16())
+	mut res :=  u32(tf.get_u16())
+	if (res & 0x8000) > 0 {
+		res -= (u32(1) << 16)
+	}
+	return i16(res)
 }
 
 fn (mut tf TTF_File) get_fword() i16 {
-	// return tf.get_i16()
-	return i16(tf.get_u16())
+	return tf.get_i16()
 }
 
 fn (mut tf TTF_File) get_u32() u32 {
@@ -573,7 +577,11 @@ fn (mut tf TTF_File) get_u32() u32 {
 }
 
 fn (mut tf TTF_File) get_i32() int {
-	return int(tf.get_u32())
+	mut res :=u64(tf.get_u32())
+	if (res & 0x8000_0000) > 0 {
+		res -= (u64(1) << 32)
+	}
+	return int(res)
 }
 
 fn (mut tf TTF_File) get_2dot14() f32 {
