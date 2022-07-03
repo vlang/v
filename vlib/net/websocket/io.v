@@ -34,8 +34,15 @@ fn (mut ws Client) socket_read_ptr(buf_ptr &u8, len int) ?int {
 			return error('socket_read_ptr: trying to read a closed socket')
 		}
 		if ws.is_ssl {
-			r := ws.ssl_conn.socket_read_into_ptr(buf_ptr, len)?
-			return r
+			for {
+				r := ws.ssl_conn.socket_read_into_ptr(buf_ptr, len) or {
+					if err.code() == net.err_timed_out_code {
+						continue
+					}
+					return err
+				}
+				return r
+			}
 		} else {
 			for {
 				r := ws.conn.read_ptr(buf_ptr, len) or {
