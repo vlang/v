@@ -54,7 +54,7 @@
 - Advanced CI tests for the graphics module. Graphical apps are run on GitHub Actions instances, their output is saved to an image, uploaded, and compared to the expected result.
 - More bug fixes in generics.
 - Bug fixes in aliases. They can now fully replace the types they alias.
-- `[minify] struct attribute for struct minification.
+- `[minify]` struct attribute for struct minification.
 - `for in` now works with fixed arrays.
 - The parser was made a bit faster by skipping `vfmt` code when not in `vfmt` mode (by using `-d vfmt`).
 - Lots of vfmt improvements, especially with comments.
