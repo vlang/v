@@ -272,37 +272,37 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	mut has_main_mod_file := false
 	mut has_main_fn := false
 	unsafe {
-	mut files_from_main_module := []&ast.File{}
-	for i in 0 .. ast_files.len {
-		mut file := ast_files[i]
-		c.timers.start('checker_check $file.path')
-		c.check(file)
-		if file.mod.name == 'main' {
-			files_from_main_module << file
-			has_main_mod_file = true
-			if c.file_has_main_fn(file) {
+		mut files_from_main_module := []&ast.File{}
+		for i in 0 .. ast_files.len {
+			mut file := ast_files[i]
+			c.timers.start('checker_check $file.path')
+			c.check(file)
+			if file.mod.name == 'main' {
+				files_from_main_module << file
+				has_main_mod_file = true
+				if c.file_has_main_fn(file) {
+					has_main_fn = true
+				}
+			}
+			c.timers.show('checker_check $file.path')
+		}
+		if has_main_mod_file && !has_main_fn && files_from_main_module.len > 0 {
+			if c.pref.is_script && !c.pref.is_test {
+				// files_from_main_module contain preludes at the start
+				mut the_main_file := files_from_main_module.last()
+				the_main_file.stmts << ast.FnDecl{
+					name: 'main.main'
+					mod: 'main'
+					is_main: true
+					file: the_main_file.path
+					return_type: ast.void_type
+					scope: &ast.Scope{
+						parent: 0
+					}
+				}
 				has_main_fn = true
 			}
 		}
-		c.timers.show('checker_check $file.path')
-	}
-	if has_main_mod_file && !has_main_fn && files_from_main_module.len > 0 {
-		if c.pref.is_script && !c.pref.is_test {
-			// files_from_main_module contain preludes at the start
-			mut the_main_file := files_from_main_module.last()
-			the_main_file.stmts << ast.FnDecl{
-				name: 'main.main'
-				mod: 'main'
-				is_main: true
-				file: the_main_file.path
-				return_type: ast.void_type
-				scope: &ast.Scope{
-					parent: 0
-				}
-			}
-			has_main_fn = true
-		}
-	}
 	}
 	c.timers.start('checker_post_process_generic_fns')
 	last_file := c.file
