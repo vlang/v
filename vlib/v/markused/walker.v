@@ -353,7 +353,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			}
 		}
 		ast.None {}
-		ast.Nil{}
+		ast.Nil {}
 		ast.ParExpr {
 			w.expr(node.expr)
 		}

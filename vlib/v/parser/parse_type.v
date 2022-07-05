@@ -423,6 +423,13 @@ pub fn (mut p Parser) parse_type() ast.Type {
 		nr_muls++
 		p.next()
 	}
+	// Anon structs
+	if p.tok.kind == .key_struct {
+		p.struct_decl(true)
+		p.next()
+		return p.table.find_type_idx('anon_struct') // TODO
+	}
+
 	language := p.parse_language()
 	mut typ := ast.void_type
 	is_array := p.tok.kind == .lsbr

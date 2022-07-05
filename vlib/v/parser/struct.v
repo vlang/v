@@ -7,7 +7,7 @@ import v.ast
 import v.token
 import v.util
 
-fn (mut p Parser) struct_decl() ast.StructDecl {
+fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	p.top_level_statement_start()
 	// save attributes, they will be changed later in fields
 	attrs := p.attrs
@@ -39,7 +39,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	if p.disallow_declarations_in_script_mode() {
 		return ast.StructDecl{}
 	}
-	mut name := p.check_name()
+	mut name := if is_anon { '' } else { p.check_name()}
 	if name.len == 1 && name[0].is_capital() {
 		p.error_with_pos('single letter capital names are reserved for generic template types.',
 			name_pos)
@@ -322,7 +322,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		p.check(.rcbr)
 	}
 	is_minify := attrs.contains('minify')
-	mut t := ast.TypeSymbol{
+	mut sym := ast.TypeSymbol{
 		kind: .struct_
 		language: language
 		name: name
@@ -341,11 +341,11 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		}
 		is_pub: is_pub
 	}
-	if p.table.has_deep_child_no_ref(&t, name) {
+	if p.table.has_deep_child_no_ref(&sym, name) {
 		p.error_with_pos('invalid recursive struct `$orig_name`', name_pos)
 		return ast.StructDecl{}
 	}
-	mut ret := p.table.register_sym(t)
+	mut ret := p.table.register_sym(sym)
 	// allow duplicate c struct declarations
 	if ret == -1 && language != .c {
 		p.error_with_pos('cannot register struct `$name`, another type with this name exists',

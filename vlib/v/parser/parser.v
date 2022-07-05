@@ -620,7 +620,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 						return p.fn_decl()
 					}
 					.key_struct, .key_union {
-						return p.struct_decl()
+						return p.struct_decl(false)
 					}
 					.key_interface {
 						return p.interface_decl()
@@ -662,7 +662,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 				return p.fn_decl()
 			}
 			.key_struct {
-				return p.struct_decl()
+				return p.struct_decl(false)
 			}
 			.dollar {
 				if p.peek_tok.kind == .eof {
@@ -689,7 +689,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 				return p.enum_decl()
 			}
 			.key_union {
-				return p.struct_decl()
+				return p.struct_decl(false)
 			}
 			.comment {
 				return p.comment_stmt()
