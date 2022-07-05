@@ -1,0 +1,3 @@
+fn main() {
+    println(*[]&int{len: 1}[0])
+}

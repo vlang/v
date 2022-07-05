@@ -271,9 +271,10 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	// c.files = ast_files
 	mut has_main_mod_file := false
 	mut has_main_fn := false
+	unsafe {
 	mut files_from_main_module := []&ast.File{}
 	for i in 0 .. ast_files.len {
-		mut file := unsafe { ast_files[i] }
+		mut file := ast_files[i]
 		c.timers.start('checker_check $file.path')
 		c.check(file)
 		if file.mod.name == 'main' {
@@ -301,6 +302,7 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 			}
 			has_main_fn = true
 		}
+	}
 	}
 	c.timers.start('checker_post_process_generic_fns')
 	last_file := c.file

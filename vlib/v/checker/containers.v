@@ -56,6 +56,13 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			&& c.table.cur_fn.generic_names.len == 0 {
 			c.error('generic struct cannot use in non-generic function', node.pos)
 		}
+
+		// &int{} check
+		if node.elem_type.is_any_kind_of_pointer() && !c.inside_unsafe
+			&& (node.has_len || node.has_cap) {
+			c.warn('arrays of references need to be initialized right away (unless used inside `unsafe`)',
+				node.pos)
+		}
 		return node.typ
 	}
 	if node.is_fixed {

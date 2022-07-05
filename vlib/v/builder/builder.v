@@ -251,17 +251,19 @@ pub fn (mut b Builder) resolve_deps() {
 		eprintln(mods.str())
 		eprintln('-------------------------------')
 	}
-	mut reordered_parsed_files := []&ast.File{}
-	for m in mods {
-		for pf in b.parsed_files {
-			if m == pf.mod.name {
-				reordered_parsed_files << pf
-				// eprintln('pf.mod.name: $pf.mod.name | pf.path: $pf.path')
+	unsafe {
+		mut reordered_parsed_files := []&ast.File{}
+		for m in mods {
+			for pf in b.parsed_files {
+				if m == pf.mod.name {
+					reordered_parsed_files << pf
+					// eprintln('pf.mod.name: $pf.mod.name | pf.path: $pf.path')
+				}
 			}
 		}
+		b.table.modules = mods
+		b.parsed_files = reordered_parsed_files
 	}
-	b.table.modules = mods
-	b.parsed_files = reordered_parsed_files
 }
 
 // graph of all imported modules

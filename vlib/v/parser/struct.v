@@ -39,7 +39,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	if p.disallow_declarations_in_script_mode() {
 		return ast.StructDecl{}
 	}
-	mut name := if is_anon { '' } else { p.check_name()}
+	mut name := if is_anon { '' } else { p.check_name() }
 	if name.len == 1 && name[0].is_capital() {
 		p.error_with_pos('single letter capital names are reserved for generic template types.',
 			name_pos)

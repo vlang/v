@@ -99,7 +99,7 @@ pub mut:
 	vet_errors []vet.Error
 }
 
-__global codegen_files = []&ast.File{}
+__global codegen_files = unsafe { []&ast.File{} }
 
 // for tests
 pub fn parse_stmt(text string, table &ast.Table, scope &ast.Scope) ast.Stmt {
@@ -425,17 +425,19 @@ pub fn parse_files(paths []string, table &ast.Table, pref &pref.Preferences) []&
 		}
 		*/
 	}
-	mut files := []&ast.File{cap: paths.len}
-	for path in paths {
-		timers.start('parse_file $path')
-		files << parse_file(path, table, .skip_comments, pref)
-		timers.show('parse_file $path')
+	unsafe {
+		mut files := []&ast.File{cap: paths.len}
+		for path in paths {
+			timers.start('parse_file $path')
+			files << parse_file(path, table, .skip_comments, pref)
+			timers.show('parse_file $path')
+		}
+		if codegen_files.len > 0 {
+			files << codegen_files
+			codegen_files.clear()
+		}
+		return files
 	}
-	if codegen_files.len > 0 {
-		files << codegen_files
-		codegen_files.clear()
-	}
-	return files
 }
 
 // codegen allows you to generate V code, so that it can be parsed,

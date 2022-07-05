@@ -1,0 +1,7 @@
+vlib/v/checker/tests/sum.vv:2:14: warning: arrays of references need to be initialized right away (unless used inside `unsafe`)
+    1 | fn main() {
+    2 |     println(*[]&int{len: 1}[0])
+      |              ~~~~~~~
+    3 | }
+    4 |
+

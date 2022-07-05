@@ -81,17 +81,19 @@ pub fn (mut pool PoolProcessor) work_on_pointers(items []voidptr) {
 	if pool.njobs > 0 {
 		njobs = pool.njobs
 	}
-	pool.thread_contexts = []voidptr{len: items.len}
-	pool.results = []voidptr{len: items.len}
-	pool.items = []voidptr{cap: items.len}
-	pool.items << items
-	pool.waitgroup.add(njobs)
-	for i := 0; i < njobs; i++ {
-		if njobs > 1 {
-			go process_in_thread(mut pool, i)
-		} else {
-			// do not run concurrently, just use the same thread:
-			process_in_thread(mut pool, i)
+	unsafe {
+		pool.thread_contexts = []voidptr{len: items.len}
+		pool.results = []voidptr{len: items.len}
+		pool.items = []voidptr{cap: items.len}
+		pool.items << items
+		pool.waitgroup.add(njobs)
+		for i := 0; i < njobs; i++ {
+			if njobs > 1 {
+				go process_in_thread(mut pool, i)
+			} else {
+				// do not run concurrently, just use the same thread:
+				process_in_thread(mut pool, i)
+			}
 		}
 	}
 	pool.waitgroup.wait()
@@ -136,11 +138,13 @@ pub fn (pool &PoolProcessor) get_results<T>() []T {
 
 // get_results_ref - get a list of type safe results in the main thread.
 pub fn (pool &PoolProcessor) get_results_ref<T>() []&T {
-	mut res := []&T{cap: pool.results.len}
-	for i in 0 .. pool.results.len {
-		res << &T(pool.results[i])
+	unsafe {
+		mut res := []&T{cap: pool.results.len}
+		for i in 0 .. pool.results.len {
+			res << &T(pool.results[i])
+		}
+		return res
 	}
-	return res
 }
 
 // set_shared_context - can be called during the setup so that you can

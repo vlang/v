@@ -4896,14 +4896,16 @@ fn (mut g Gen) write_sorted_types() {
 	defer {
 		g.type_definitions.writeln('// #end sorted_symbols')
 	}
-	mut symbols := []&ast.TypeSymbol{cap: g.table.type_symbols.len} // structs that need to be sorted
-	for sym in g.table.type_symbols {
-		if sym.name !in c.builtins {
-			symbols << sym
+	unsafe {
+		mut symbols := []&ast.TypeSymbol{cap: g.table.type_symbols.len} // structs that need to be sorted
+		for sym in g.table.type_symbols {
+			if sym.name !in c.builtins {
+				symbols << sym
+			}
 		}
+		sorted_symbols := g.sort_structs(symbols)
+		g.write_types(sorted_symbols)
 	}
-	sorted_symbols := g.sort_structs(symbols)
-	g.write_types(sorted_symbols)
 }
 
 fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
@@ -5186,11 +5188,13 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 			'\nif you feel this is an error, please create a new issue here: https://github.com/vlang/v/issues and tag @joe-conigliaro')
 	}
 	// sort types
-	mut sorted_symbols := []&ast.TypeSymbol{cap: dep_graph_sorted.nodes.len}
-	for node in dep_graph_sorted.nodes {
-		sorted_symbols << g.table.sym_by_idx(g.table.type_idxs[node.name])
+	unsafe {
+		mut sorted_symbols := []&ast.TypeSymbol{cap: dep_graph_sorted.nodes.len}
+		for node in dep_graph_sorted.nodes {
+			sorted_symbols << g.table.sym_by_idx(g.table.type_idxs[node.name])
+		}
+		return sorted_symbols
 	}
-	return sorted_symbols
 }
 
 [inline]
