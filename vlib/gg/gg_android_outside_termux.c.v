@@ -6,7 +6,7 @@ import sokol.sapp
 #include <android/configuration.h>
 
 fn C.AConfiguration_new() voidptr
-fn C.AConfiguration_fromAssetManager(voidptr, os.AssetManager)
+fn C.AConfiguration_fromAssetManager(voidptr, voidptr)
 fn C.AConfiguration_getDensity(voidptr) u32
 fn C.AConfiguration_delete(voidptr)
 
