@@ -27,9 +27,11 @@ mut:
 	open_callbacks    []OpenEventHandler    // all callbacks on_open
 	close_callbacks   []CloseEventHandler   // all callbacks on_close
 pub:
-	is_ssl bool   // true if secure socket is used
-	uri    Uri    // uri of current connection
-	id     string // unique id of client
+	is_ssl        bool   // true if secure socket is used
+	uri           Uri    // uri of current connection
+	id            string // unique id of client
+	read_timeout  i64
+	write_timeout i64
 pub mut:
 	header            http.Header  // headers that will be passed when connecting
 	conn              &net.TcpConn // underlying TCP socket connection
@@ -73,8 +75,14 @@ pub enum OPCode {
 	pong = 0x0A
 }
 
+[params]
+pub struct ClientOpt {
+	read_timeout  i64 = 30 * time.second
+	write_timeout i64 = 30 * time.second
+}
+
 // new_client instance a new websocket client
-pub fn new_client(address string) ?&Client {
+pub fn new_client(address string, opt ClientOpt) ?&Client {
 	uri := parse_uri(address)?
 	return &Client{
 		conn: 0
@@ -88,6 +96,8 @@ pub fn new_client(address string) ?&Client {
 		state: .closed
 		id: rand.uuid_v4()
 		header: http.new_header()
+		read_timeout: opt.read_timeout
+		write_timeout: opt.write_timeout
 	}
 }
 
@@ -97,9 +107,6 @@ pub fn (mut ws Client) connect() ? {
 	ws.set_state(.connecting)
 	ws.logger.info('connecting to host $ws.uri')
 	ws.conn = ws.dial_socket()?
-	// Todo: make setting configurable
-	ws.conn.set_read_timeout(time.second * 30)
-	ws.conn.set_write_timeout(time.second * 30)
 	ws.handshake()?
 	ws.set_state(.open)
 	ws.logger.info('successfully connected to host $ws.uri')
