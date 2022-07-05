@@ -222,7 +222,10 @@ pub fn (db DB) error_message(code int, query string) IError {
 // In case you don't expect any result, but still want an error code
 // e.g. INSERT INTO ... VALUES (...)
 pub fn (db DB) exec_none(query string) int {
-	_, code := db.exec(query)
+	stmt := &C.sqlite3_stmt(0)
+	C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
+	code := C.sqlite3_step(stmt)
+	C.sqlite3_finalize(stmt)
 	return code
 }
 
