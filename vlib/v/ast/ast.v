@@ -42,6 +42,7 @@ pub type Expr = AnonFn
 	| LockExpr
 	| MapInit
 	| MatchExpr
+	| Nil
 	| NodeError
 	| None
 	| OffsetOf
@@ -237,6 +238,11 @@ pub:
 pub struct BoolLiteral {
 pub:
 	val bool
+	pos token.Pos
+}
+
+pub struct Nil {
+pub:
 	pos token.Pos
 }
 
@@ -1774,7 +1780,7 @@ pub fn (expr Expr) pos() token.Pos {
 		EnumVal, DumpExpr, FloatLiteral, GoExpr, Ident, IfExpr, IntegerLiteral, IsRefType, Likely,
 		LockExpr, MapInit, MatchExpr, None, OffsetOf, OrExpr, ParExpr, PostfixExpr, PrefixExpr,
 		RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral,
-		StructInit, TypeNode, TypeOf, UnsafeExpr, ComptimeType {
+		StructInit, TypeNode, TypeOf, UnsafeExpr, ComptimeType, Nil {
 			return expr.pos
 		}
 		IndexExpr {

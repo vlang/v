@@ -108,6 +108,7 @@ pub enum Kind {
 	key_match
 	key_module
 	key_mut
+	key_nil
 	key_shared
 	key_lock
 	key_rlock
@@ -313,6 +314,7 @@ fn build_token_str() []string {
 	s[Kind.key_match] = 'match'
 	s[Kind.key_select] = 'select'
 	s[Kind.key_none] = 'none'
+	s[Kind.key_nil] = 'nil'
 	s[Kind.key_offsetof] = '__offsetof'
 	s[Kind.key_is] = 'is'
 	// The following kinds are not for tokens returned by the V scanner.
@@ -617,6 +619,7 @@ pub fn kind_to_string(k Kind) string {
 		.key_unsafe { 'key_unsafe' }
 		.keyword_end { 'keyword_end' }
 		._end_ { '_end_' }
+		.key_nil { 'key_nil' }
 	}
 }
 

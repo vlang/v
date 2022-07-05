@@ -132,6 +132,10 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 		.key_select {
 			node = p.select_expr()
 		}
+		.key_nil {
+			node = ast.Nil{pos:p.tok.pos()}
+			p.next()
+		}
 		.number {
 			node = p.parse_number_literal()
 		}

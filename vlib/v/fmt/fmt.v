@@ -622,6 +622,9 @@ pub fn (mut f Fmt) expr(node_ ast.Expr) {
 		ast.None {
 			f.write('none')
 		}
+		ast.Nil {
+			f.write('nil')
+		}
 		ast.OffsetOf {
 			f.offset_of(node)
 		}

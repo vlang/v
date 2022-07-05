@@ -3020,6 +3020,9 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			g.match_expr(node)
 		}
 		ast.NodeError {}
+		ast.Nil {
+			g.write('((void*)0)')
+		}
 		ast.None {
 			g.write('_const_none__')
 		}

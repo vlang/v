@@ -2213,6 +2213,12 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 		ast.MatchExpr {
 			return c.match_expr(mut node)
 		}
+		ast.Nil {
+			if !c.inside_unsafe {
+				c.error('`nil` is only allowed in `unsafe` code', node.pos)
+			}
+			return ast.nil_type
+		}
 		ast.PostfixExpr {
 			return c.postfix_expr(mut node)
 		}
