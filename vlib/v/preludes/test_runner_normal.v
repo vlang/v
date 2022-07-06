@@ -33,13 +33,15 @@ mut:
 }
 
 fn new_normal_test_runner() &TestRunner {
-	mut tr := &NormalTestRunner{}
-	tr.use_color = term.can_show_color_on_stderr()
-	tr.use_relative_paths = match os.getenv('VERROR_PATHS') {
-		'absolute' { false }
-		else { true }
+	unsafe {
+		mut tr := &NormalTestRunner{}
+		tr.use_color = term.can_show_color_on_stderr()
+		tr.use_relative_paths = match os.getenv('VERROR_PATHS') {
+			'absolute' { false }
+			else { true }
+		}
+		return tr
 	}
-	return tr
 }
 
 fn (mut runner NormalTestRunner) free() {
