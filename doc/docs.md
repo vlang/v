@@ -1499,6 +1499,10 @@ if x.bar is MyStruct {
 	// x.bar is automatically casted
 	println(x.bar)
 }
+else if x.bar is MyStruct2 as new_var {
+	// you can use `as` to create aliases
+	println(new_var)
+}
 match x.bar {
 	MyStruct {
 		// x.bar is automatically casted
