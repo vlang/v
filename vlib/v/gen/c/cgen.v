@@ -2078,7 +2078,11 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr
 			g.write('&')
 		}
 	}
-	g.expr(expr)
+	if got_styp == 'none' && !g.cur_fn.return_type.has_flag(.optional) {
+		g.write('(none){EMPTY_STRUCT_INITIALIZATION}')
+	} else {
+		g.expr(expr)
+	}
 	g.write(')'.repeat(rparen_n))
 }
 
