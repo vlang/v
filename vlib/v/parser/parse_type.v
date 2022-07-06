@@ -578,7 +578,7 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 						ret = ast.i64_type
 					}
 					'u8' {
-						ret = ast.byte_type
+						ret = ast.u8_type
 					}
 					'u16' {
 						ret = ast.u16_type

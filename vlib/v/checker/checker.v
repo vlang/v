@@ -2274,7 +2274,7 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 		ast.StringLiteral {
 			if node.language == .c {
 				// string literal starts with "c": `C.printf(c'hello')`
-				return ast.byte_type.set_nr_muls(1)
+				return ast.u8_type.set_nr_muls(1)
 			}
 			return c.string_lit(mut node)
 		}
@@ -2464,7 +2464,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	}
 
 	if to_type == ast.string_type {
-		if from_type in [ast.byte_type, ast.bool_type] {
+		if from_type in [ast.u8_type, ast.bool_type] {
 			snexpr := node.expr.str()
 			ft := c.table.type_to_str(from_type)
 			c.error('cannot cast type `$ft` to string, use `${snexpr}.str()` instead.',
