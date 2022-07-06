@@ -56,7 +56,9 @@ fn normalise_fname(name string) string {
 }
 
 fn (mut runner NormalTestRunner) start(ntests int) {
-	runner.all_assertsions = []&VAssertMetaInfo{cap: 1000}
+	unsafe {
+		runner.all_assertsions = []&VAssertMetaInfo{cap: 1000}
+	}
 }
 
 fn (mut runner NormalTestRunner) finish() {
