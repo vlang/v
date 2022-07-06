@@ -58,9 +58,8 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		}
 
 		// &int{} check
-		if node.elem_type.is_any_kind_of_pointer() && !c.inside_unsafe
-			&& (node.has_len || node.has_cap) {
-			c.warn('arrays of references need to be initialized right away (unless used inside `unsafe`)',
+		if node.elem_type.is_any_kind_of_pointer() && !c.inside_unsafe && node.has_len {
+			c.warn('arrays of references need to be initialized right away, therefore `len:` cannot be used (unless inside `unsafe`)',
 				node.pos)
 		}
 		return node.typ

@@ -1,4 +1,4 @@
-vlib/v/checker/tests/ptr_array_init.vv:2:14: warning: arrays of references need to be initialized right away (unless used inside `unsafe`)
+vlib/v/checker/tests/ptr_array_init.vv:2:14: warning: arrays of references need to be initialized right away, therefore `len:` cannot be used (unless inside `unsafe`)
     1 | fn main() {
     2 |     println(*[]&int{len: 1}[0])
       |              ~~~~~~~
