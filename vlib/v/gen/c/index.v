@@ -31,14 +31,14 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					tmp_opt := g.new_tmp_var()
 					cur_line := g.go_before_stmt(0)
 					g.out.write_string(util.tabs(g.indent))
-					opt_elem_type := g.typ(ast.byte_type.set_flag(.optional))
+					opt_elem_type := g.typ(ast.u8_type.set_flag(.optional))
 					g.write('$opt_elem_type $tmp_opt = string_at_with_check(')
 					g.expr(node.left)
 					g.write(', ')
 					g.expr(node.index)
 					g.writeln(');')
 					if !node.is_option {
-						g.or_block(tmp_opt, node.or_expr, ast.byte_type)
+						g.or_block(tmp_opt, node.or_expr, ast.u8_type)
 					}
 					g.write('\n$cur_line*(byte*)&${tmp_opt}.data')
 				} else {

@@ -3229,8 +3229,8 @@ fn (mut g JsGen) greater_typ(left ast.Type, right ast.Type) ast.Type {
 		if ast.i16_type_idx in lr {
 			return ast.Type(ast.i16_type_idx)
 		}
-		if ast.byte_type_idx in lr {
-			return ast.Type(ast.byte_type_idx)
+		if ast.u8_type_idx in lr {
+			return ast.Type(ast.u8_type_idx)
 		}
 		if ast.i8_type_idx in lr {
 			return ast.Type(ast.i8_type_idx)
