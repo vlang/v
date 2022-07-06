@@ -138,13 +138,11 @@ pub fn (pool &PoolProcessor) get_results<T>() []T {
 
 // get_results_ref - get a list of type safe results in the main thread.
 pub fn (pool &PoolProcessor) get_results_ref<T>() []&T {
-	unsafe {
-		mut res := []&T{cap: pool.results.len}
-		for i in 0 .. pool.results.len {
-			res << &T(pool.results[i])
-		}
-		return res
+	mut res := []&T{cap: pool.results.len}
+	for i in 0 .. pool.results.len {
+		res << &T(pool.results[i])
 	}
+	return res
 }
 
 // set_shared_context - can be called during the setup so that you can

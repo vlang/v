@@ -949,26 +949,24 @@ pub fn open_append(path string) ?File {
 // Note: this function will NOT return when successfull, since
 // the child process will take control over execution.
 pub fn execvp(cmdpath string, cmdargs []string) ? {
-	unsafe {
-		mut cargs := []&char{}
-		cargs << &char(cmdpath.str)
-		for i in 0 .. cmdargs.len {
-			cargs << &char(cmdargs[i].str)
-		}
-		cargs << &char(0)
-		mut res := int(0)
-		$if windows {
-			res = C._execvp(&char(cmdpath.str), cargs.data)
-		} $else {
-			res = C.execvp(&char(cmdpath.str), cargs.data)
-		}
-		if res == -1 {
-			return error_with_code(posix_get_error_msg(C.errno), C.errno)
-		}
-
-		// just in case C._execvp returned ... that happens on windows ...
-		exit(res)
+	mut cargs := []&char{}
+	cargs << &char(cmdpath.str)
+	for i in 0 .. cmdargs.len {
+		cargs << &char(cmdargs[i].str)
 	}
+	cargs << &char(0)
+	mut res := int(0)
+	$if windows {
+		res = C._execvp(&char(cmdpath.str), cargs.data)
+	} $else {
+		res = C.execvp(&char(cmdpath.str), cargs.data)
+	}
+	if res == -1 {
+		return error_with_code(posix_get_error_msg(C.errno), C.errno)
+	}
+
+	// just in case C._execvp returned ... that happens on windows ...
+	exit(res)
 }
 
 // execve - loads and executes a new child process, *in place* of the current process.
@@ -978,29 +976,27 @@ pub fn execvp(cmdpath string, cmdargs []string) ? {
 // Note: this function will NOT return when successfull, since
 // the child process will take control over execution.
 pub fn execve(cmdpath string, cmdargs []string, envs []string) ? {
-	unsafe {
-		mut cargv := []&char{}
-		mut cenvs := []&char{}
-		cargv << &char(cmdpath.str)
-		for i in 0 .. cmdargs.len {
-			cargv << &char(cmdargs[i].str)
-		}
-		for i in 0 .. envs.len {
-			cenvs << &char(envs[i].str)
-		}
-		cargv << &char(0)
-		cenvs << &char(0)
-		mut res := int(0)
-		$if windows {
-			res = C._execve(&char(cmdpath.str), cargv.data, cenvs.data)
-		} $else {
-			res = C.execve(&char(cmdpath.str), cargv.data, cenvs.data)
-		}
-		// Note: normally execve does not return at all.
-		// If it returns, then something went wrong...
-		if res == -1 {
-			return error_with_code(posix_get_error_msg(C.errno), C.errno)
-		}
+	mut cargv := []&char{}
+	mut cenvs := []&char{}
+	cargv << &char(cmdpath.str)
+	for i in 0 .. cmdargs.len {
+		cargv << &char(cmdargs[i].str)
+	}
+	for i in 0 .. envs.len {
+		cenvs << &char(envs[i].str)
+	}
+	cargv << &char(0)
+	cenvs << &char(0)
+	mut res := int(0)
+	$if windows {
+		res = C._execve(&char(cmdpath.str), cargv.data, cenvs.data)
+	} $else {
+		res = C.execve(&char(cmdpath.str), cargv.data, cenvs.data)
+	}
+	// Note: normally execve does not return at all.
+	// If it returns, then something went wrong...
+	if res == -1 {
+		return error_with_code(posix_get_error_msg(C.errno), C.errno)
 	}
 }
 
