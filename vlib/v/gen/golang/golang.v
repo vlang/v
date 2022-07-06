@@ -597,6 +597,7 @@ pub fn (mut f Gen) expr(node_ ast.Expr) {
 		ast.MatchExpr {
 			f.match_expr(node)
 		}
+		ast.Nil {}
 		ast.None {
 			f.write('none')
 		}

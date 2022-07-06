@@ -959,6 +959,7 @@ fn (mut g JsGen) expr(node_ ast.Expr) {
 		ast.LockExpr {
 			g.gen_lock_expr(node)
 		}
+		ast.Nil {}
 		ast.NodeError {}
 		ast.None {
 			g.write('none__')
