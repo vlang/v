@@ -1020,6 +1020,7 @@ pub mut:
 	is_union       bool
 	is_heap        bool
 	is_minify      bool
+	is_anon        bool
 	is_generic     bool
 	generic_types  []Type
 	concrete_types []Type
