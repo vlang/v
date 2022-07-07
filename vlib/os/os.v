@@ -355,9 +355,6 @@ pub fn user_os() string {
 	$if vinix {
 		return 'vinix'
 	}
-	if getenv('TERMUX_VERSION') != '' {
-		return 'termux'
-	}
 	return 'unknown'
 }
 
