@@ -533,7 +533,7 @@ fn (e Eval) type_to_size(typ ast.Type) u64 {
 		ast.i8_type_idx, ast.i16_type_idx, ast.int_type_idx, ast.i64_type_idx {
 			return u64(math.exp2(f64(typ - 2))) // this formula converts the type number to the bitsize
 		}
-		ast.byte_type_idx, ast.u16_type_idx, ast.u32_type_idx, ast.u64_type_idx {
+		ast.u8_type_idx, ast.u16_type_idx, ast.u32_type_idx, ast.u64_type_idx {
 			return u64(math.exp2(f64(typ - 6))) // this formula converts the type number to the bitsize
 		}
 		ast.int_literal_type_idx, ast.float_literal_type_idx {

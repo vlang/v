@@ -39,7 +39,12 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	if p.disallow_declarations_in_script_mode() {
 		return ast.StructDecl{}
 	}
-	mut name := if is_anon { '' } else { p.check_name() }
+	mut name := if is_anon {
+		p.anon_struct_counter++
+		'_VAnonStruct$p.anon_struct_counter'
+	} else {
+		p.check_name()
+	}
 	if name.len == 1 && name[0].is_capital() {
 		p.error_with_pos('single letter capital names are reserved for generic template types.',
 			name_pos)
@@ -61,7 +66,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		return ast.StructDecl{}
 	}
 	if language == .v && !p.builtin_mod && !p.is_translated && name.len > 0 && !name[0].is_capital()
-		&& !p.pref.translated && !p.is_translated {
+		&& !p.pref.translated && !p.is_translated && !is_anon {
 		p.error_with_pos('struct name `$name` must begin with capital letter', name_pos)
 		return ast.StructDecl{}
 	}
@@ -324,6 +329,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			is_generic: generic_types.len > 0
 			generic_types: generic_types
 			attrs: attrs
+			is_anon: is_anon
 		}
 		is_pub: is_pub
 	}

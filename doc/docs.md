@@ -1498,6 +1498,10 @@ x := Abc{
 if x.bar is MyStruct {
 	// x.bar is automatically casted
 	println(x.bar)
+} else if x.bar is MyStruct2 {
+	new_var := x.bar as MyStruct2
+	// ... or you can use `as` to create a type cast an alias manually:
+	println(new_var)
 }
 match x.bar {
 	MyStruct {
