@@ -91,6 +91,7 @@ mut:
 	if_cond_comments          []ast.Comment
 	script_mode               bool
 	script_mode_start_token   token.Token
+	anon_struct_counter       int
 pub mut:
 	scanner    &scanner.Scanner
 	errors     []errors.Error
@@ -3144,15 +3145,11 @@ fn (mut p Parser) module_decl() ast.Module {
 		name_pos: name_pos
 	}
 	if !is_skipped {
+		p.table.module_attrs[p.mod] = module_attrs
 		for ma in module_attrs {
 			match ma.name {
-				'deprecated' {
-					// [deprecated: 'use a replacement']
-					p.table.mark_module_as_deprecated(p.mod, ma.arg)
-				}
-				'deprecated_after' {
-					// [deprecated_after: '2027-12-30']
-					p.table.mark_module_as_deprecated_after(p.mod, ma.arg)
+				'deprecated', 'deprecated_after' {
+					p.table.module_deprecated[p.mod] = true
 				}
 				'manualfree' {
 					p.is_manualfree = true

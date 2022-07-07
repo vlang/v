@@ -2,7 +2,6 @@ module checker
 
 import v.ast
 import v.pref
-import time
 import v.util
 import v.token
 
@@ -725,7 +724,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		c.error('function `$func.name` is private', node.pos)
 	}
 	if !isnil(c.table.cur_fn) && !c.table.cur_fn.is_deprecated && func.is_deprecated {
-		c.deprecate_fnmethod('function', func.name, func, node)
+		c.deprecate('function', func.name, func.attrs, node.pos)
 	}
 	if func.is_unsafe && !c.inside_unsafe
 		&& (func.language != .c || (func.name[2] in [`m`, `s`] && func.mod == 'builtin')) {
@@ -1479,7 +1478,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				node.pos)
 		}
 		if !isnil(c.table.cur_fn) && !c.table.cur_fn.is_deprecated && method.is_deprecated {
-			c.deprecate_fnmethod('method', '${left_sym.name}.$method.name', method, node)
+			c.deprecate('method', '${left_sym.name}.$method.name', method.attrs, node.pos)
 		}
 		c.set_node_expected_arg_types(mut node, method)
 		if is_method_from_embed {
@@ -1626,49 +1625,6 @@ fn (mut c Checker) set_node_expected_arg_types(mut node ast.CallExpr, func &ast.
 			node.expected_arg_types << func.params[i].typ
 		}
 	}
-}
-
-fn (mut c Checker) deprecate_fnmethod(kind string, name string, the_fn ast.Fn, node ast.CallExpr) {
-	mut deprecation_message := ''
-	now := time.now()
-	mut after_time := now
-	for attr in the_fn.attrs {
-		if attr.name == 'deprecated' && attr.arg != '' {
-			deprecation_message = attr.arg
-		}
-		if attr.name == 'deprecated_after' && attr.arg != '' {
-			after_time = time.parse_iso8601(attr.arg) or {
-				c.error('invalid time format', attr.pos)
-				now
-			}
-		}
-	}
-	c.deprecate(kind, name, deprecation_message, now, after_time, node.pos)
-}
-
-fn (mut c Checker) deprecate(kind string, name string, deprecation_message string, now time.Time, after_time time.Time, pos token.Pos) {
-	start_message := '$kind `$name`'
-	error_time := after_time.add_days(180)
-	if error_time < now {
-		c.error(semicolonize('$start_message has been deprecated since $after_time.ymmdd()',
-			deprecation_message), pos)
-	} else if after_time < now {
-		c.warn(semicolonize('$start_message has been deprecated since $after_time.ymmdd(), it will be an error after $error_time.ymmdd()',
-			deprecation_message), pos)
-	} else if after_time == now {
-		c.warn(semicolonize('$start_message has been deprecated', deprecation_message),
-			pos)
-	} else {
-		c.note(semicolonize('$start_message will be deprecated after $after_time.ymmdd(), and will become an error after $error_time.ymmdd()',
-			deprecation_message), pos)
-	}
-}
-
-fn semicolonize(main string, details string) string {
-	if details == '' {
-		return main
-	}
-	return '$main; $details'
 }
 
 fn (mut c Checker) post_process_generic_fns() {

@@ -6,6 +6,7 @@ module parser
 import v.ast
 import v.token
 import v.util
+import os
 
 fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	p.top_level_statement_start()
@@ -39,7 +40,12 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	if p.disallow_declarations_in_script_mode() {
 		return ast.StructDecl{}
 	}
-	mut name := if is_anon { '' } else { p.check_name() }
+	mut name := if is_anon {
+		p.anon_struct_counter++
+		'_VAnonStruct$p.anon_struct_counter'
+	} else {
+		p.check_name()
+	}
 	if name.len == 1 && name[0].is_capital() {
 		p.error_with_pos('single letter capital names are reserved for generic template types.',
 			name_pos)
@@ -61,7 +67,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		return ast.StructDecl{}
 	}
 	if language == .v && !p.builtin_mod && !p.is_translated && name.len > 0 && !name[0].is_capital()
-		&& !p.pref.translated && !p.is_translated {
+		&& !p.pref.translated && !p.is_translated && !is_anon {
 		p.error_with_pos('struct name `$name` must begin with capital letter', name_pos)
 		return ast.StructDecl{}
 	}
@@ -180,8 +186,6 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			field_start_pos := p.tok.pos()
 			mut is_field_volatile := false
 			mut is_field_deprecated := false
-			mut field_deprecation_msg := ''
-			mut field_deprecated_after := ''
 			if p.tok.kind == .key_volatile {
 				p.next()
 				is_field_volatile = true
@@ -248,16 +252,8 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				// attrs are stored in `p.attrs`
 				p.attributes()
 				for fa in p.attrs {
-					match fa.name {
-						'deprecated' {
-							// [deprecated: 'use a replacement']
-							is_field_deprecated = true
-							field_deprecation_msg = fa.arg
-						}
-						'deprecated_after' {
-							field_deprecated_after = fa.arg
-						}
-						else {}
+					if fa.name == 'deprecated' {
+						is_field_deprecated = true
 					}
 				}
 			}
@@ -291,8 +287,6 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 					is_global: is_field_global
 					is_volatile: is_field_volatile
 					is_deprecated: is_field_deprecated
-					deprecation_msg: field_deprecation_msg
-					deprecated_after: field_deprecated_after
 				}
 			}
 			// save embeds as table fields too, it will be used in generation phase
@@ -311,8 +305,6 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				is_global: is_field_global
 				is_volatile: is_field_volatile
 				is_deprecated: is_field_deprecated
-				deprecation_msg: field_deprecation_msg
-				deprecated_after: field_deprecated_after
 			}
 			p.attrs = []
 			i++
@@ -338,6 +330,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			is_generic: generic_types.len > 0
 			generic_types: generic_types
 			attrs: attrs
+			is_anon: is_anon
 		}
 		is_pub: is_pub
 	}
@@ -348,6 +341,15 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	mut ret := p.table.register_sym(sym)
 	// allow duplicate c struct declarations
 	if ret == -1 && language != .c {
+		if _ := p.table.find_fn('main.main') {
+			if '.' in os.args {
+				p.error_with_pos('multiple `main` functions detected, and you ran `v .`
+perhaps there are multiple V programs in this directory, and you need to
+run them via `v file.v` instead',
+					name_pos)
+				return ast.StructDecl{}
+			}
+		}
 		p.error_with_pos('cannot register struct `$name`, another type with this name exists',
 			name_pos)
 		return ast.StructDecl{}

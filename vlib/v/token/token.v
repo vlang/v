@@ -743,3 +743,20 @@ pub fn kind_from_string(s string) ?Kind {
 		else { error('unknown') }
 	}
 }
+
+pub fn assign_op_to_infix_op(op Kind) Kind {
+	return match op {
+		.plus_assign { .plus }
+		.minus_assign { .minus }
+		.mult_assign { .mul }
+		.div_assign { .div }
+		.xor_assign { .xor }
+		.mod_assign { .mod }
+		.or_assign { .pipe }
+		.and_assign { .amp }
+		.right_shift_assign { .right_shift }
+		.unsigned_right_shift_assign { .unsigned_right_shift }
+		.left_shift_assign { .left_shift }
+		else { ._end_ }
+	}
+}

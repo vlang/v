@@ -6,6 +6,20 @@ import v.util
 import math
 import strconv
 
+fn (o Object) as_i64() !i64 {
+	match o {
+		i64 {
+			return o
+		}
+		Int {
+			return o.val
+		}
+		else {
+			return error('can not cast object to i64')
+		}
+	}
+}
+
 pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 	match expr {
 		ast.CallExpr {
