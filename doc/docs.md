@@ -38,7 +38,7 @@ git clone https://github.com/vlang/v
 cd v
 make.bat -tcc
 ```
-NB: You can also pass one of `-gcc`, `-msvc`, `-clang`, `-icc` to `make.bat` instead,
+NB: You can also pass one of `-gcc`, `-msvc`, `-clang`, to `make.bat` instead,
 if you do prefer to use a different C compiler, but -tcc is small, fast, and
 easy to install (V will download a prebuilt binary automatically).
 
