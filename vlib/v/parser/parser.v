@@ -2498,18 +2498,15 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			start_pos := p.tok.pos()
 			mut to_typ := p.parse_type()
 			p.check(.lpar)
-			mut expr := ast.empty_expr()
-			mut arg := ast.empty_expr()
-			mut has_arg := false
-			expr = p.expr(0)
+			expr := p.expr(0)
 			end_pos := p.tok.pos()
 			p.check(.rpar)
 			node = ast.CastExpr{
 				typ: to_typ
 				typname: p.table.sym(to_typ).name
 				expr: expr
-				arg: arg
-				has_arg: has_arg
+				arg: ast.empty_expr()
+				has_arg: false
 				pos: start_pos.extend(end_pos)
 			}
 			p.expr_mod = ''
