@@ -487,5 +487,8 @@ fn C.glTexImage2D()
 // used by ios for println
 fn C.WrappedNSLog(str &u8)
 
+// used by Android for (e)println to output to the Android log system / logcat
+pub fn C.android_print(voidptr, &char, ...voidptr)
+
 // absolute value
 fn C.abs(number int) int

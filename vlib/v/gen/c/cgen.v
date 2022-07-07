@@ -1751,7 +1751,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// }
 			if g.inside_ternary == 0 && !g.inside_if_optional && !g.inside_match_optional
 				&& !node.is_expr && node.expr !is ast.IfExpr {
-				g.writeln(';')
+				if node.expr is ast.MatchExpr {
+					g.writeln('')
+				} else {
+					g.writeln(';')
+				}
 			}
 		}
 		ast.FnDecl {

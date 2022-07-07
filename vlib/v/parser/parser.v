@@ -2493,6 +2493,24 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				typ: typ
 				pos: type_pos
 			}
+		} else if !known_var && language == .v && (p.table.known_type(p.tok.lit) || lit0_is_capital)
+			&& p.peek_tok.kind == .pipe {
+			start_pos := p.tok.pos()
+			mut to_typ := p.parse_type()
+			p.check(.lpar)
+			expr := p.expr(0)
+			end_pos := p.tok.pos()
+			p.check(.rpar)
+			node = ast.CastExpr{
+				typ: to_typ
+				typname: p.table.sym(to_typ).name
+				expr: expr
+				arg: ast.empty_expr()
+				has_arg: false
+				pos: start_pos.extend(end_pos)
+			}
+			p.expr_mod = ''
+			return node
 		}
 
 		ident := p.parse_ident(language)
