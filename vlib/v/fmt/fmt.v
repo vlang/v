@@ -500,7 +500,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.sql_stmt(node)
 		}
 		ast.StructDecl {
-			f.struct_decl(node)
+			f.struct_decl(node, false)
 		}
 		ast.TypeDecl {
 			f.type_decl(node)

@@ -310,15 +310,13 @@ pub:
 	is_mut           bool
 	is_global        bool
 	is_volatile      bool
-	//
 	is_deprecated    bool
-	deprecation_msg  string
-	deprecated_after string
 pub mut:
 	default_expr     Expr
 	default_expr_typ Type
 	name             string
 	typ              Type
+	anon_struct_decl StructDecl // only if the field is an anonymous struct
 }
 
 pub fn (f &StructField) equals(o &StructField) bool {

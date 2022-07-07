@@ -26,10 +26,14 @@ library installed on your system.
 
 # Performance Tips
 
-When performing a large amount of database calls (i.e. INSERTS), significant performance increase
-can be obtained by issuing to sqlite the following pragma commands.
+When performing a large amount of database calls (i.e. INSERTS), significant
+performance increase can be obtained by controlling the synchronization and journal modes.
 
-```
-db.exec('pragma synchronous = off;')
-db.exec('pragma journal_mode = MEMORY;')
+For instance:
+```v
+import sqlite
+
+db := sqlite.connect('foo.db') or { panic(err) }
+db.synchronization_mode(sqlite.SyncMode.off)
+db.journal_mode(sqlite.JournalMode.memory)
 ```

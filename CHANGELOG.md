@@ -1,9 +1,15 @@
 ## V 0.3.1
 *Not released yet*
+- Anonymous structs.
 - V can now find code in the `src/` directory. This allows making V repos much cleaner.
 - `os.mkdir()` now has an optional `mode` paramter.
 - Full termux support via `$if termux {`.
 - Go backend fixes.
+- More type checks.
+- New keyword/type: `nil`. Only to be used inside `unsafe`. Replaces `voidptr(0)`.
+- DOOM is now translated/compiled and launched on CI servers. A screenshot of the running game
+  is made via `vgret` and is compared to the expected result.
+- VLS performance improvements, especially on Windows.
 
 ## V 0.3
 *30 Jun 2022*

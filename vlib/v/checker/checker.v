@@ -1234,15 +1234,7 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		}
 		field_sym := c.table.sym(field.typ)
 		if field.is_deprecated && is_used_outside {
-			now := time.now()
-			mut after_time := now
-			if field.deprecated_after != '' {
-				after_time = time.parse_iso8601(field.deprecated_after) or {
-					c.error('invalid time format', field.pos)
-					now
-				}
-			}
-			c.deprecate('field', field_name, field.deprecation_msg, now, after_time, node.pos)
+			c.deprecate('field', field_name, field.attrs, node.pos)
 		}
 		if field_sym.kind in [.sum_type, .interface_] {
 			if !prevent_sum_type_unwrapping_once {
@@ -1943,10 +1935,8 @@ fn (mut c Checker) import_stmt(node ast.Import) {
 		}
 		c.error('module `$node.mod` has no constant or function `$sym.name`', sym.pos)
 	}
-	if after_time := c.table.mdeprecated_after[node.mod] {
-		now := time.now()
-		deprecation_message := c.table.mdeprecated_msg[node.mod]
-		c.deprecate('module', node.mod, deprecation_message, now, after_time, node.pos)
+	if c.table.module_deprecated[node.mod] {
+		c.deprecate('module', node.mod, c.table.module_attrs[node.mod], node.pos)
 	}
 }
 
@@ -3865,4 +3855,43 @@ pub fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what stri
 		c.error('you have to create a handle and `rlock` it to use a `shared` element as non-mut $what',
 			pos)
 	}
+}
+
+fn (mut c Checker) deprecate(kind string, name string, attrs []ast.Attr, pos token.Pos) {
+	mut deprecation_message := ''
+	now := time.now()
+	mut after_time := now
+	for attr in attrs {
+		if attr.name == 'deprecated' && attr.arg != '' {
+			deprecation_message = attr.arg
+		}
+		if attr.name == 'deprecated_after' && attr.arg != '' {
+			after_time = time.parse_iso8601(attr.arg) or {
+				c.error('invalid time format', attr.pos)
+				now
+			}
+		}
+	}
+	start_message := '$kind `$name`'
+	error_time := after_time.add_days(180)
+	if error_time < now {
+		c.error(semicolonize('$start_message has been deprecated since $after_time.ymmdd()',
+			deprecation_message), pos)
+	} else if after_time < now {
+		c.warn(semicolonize('$start_message has been deprecated since $after_time.ymmdd(), it will be an error after $error_time.ymmdd()',
+			deprecation_message), pos)
+	} else if after_time == now {
+		c.warn(semicolonize('$start_message has been deprecated', deprecation_message),
+			pos)
+	} else {
+		c.note(semicolonize('$start_message will be deprecated after $after_time.ymmdd(), and will become an error after $error_time.ymmdd()',
+			deprecation_message), pos)
+	}
+}
+
+fn semicolonize(main string, details string) string {
+	if details == '' {
+		return main
+	}
+	return '$main; $details'
 }
