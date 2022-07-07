@@ -105,9 +105,8 @@ pub fn (mut tf TTF_File) init() {
 	tf.length = tf.glyph_count()
 	dprintln('Number of symbols: $tf.length')
 	dprintln('*****************************')
-	dprintln("Unit per em: ${tf.units_per_em}")
-	dprintln("advance_width_max: ${tf.advance_width_max}")
-	
+	dprintln('Unit per em: $tf.units_per_em')
+	dprintln('advance_width_max: $tf.advance_width_max')
 }
 
 /******************************************************************************
@@ -241,11 +240,11 @@ pub fn (mut tf TTF_File) read_glyph_dim(index u16) (int, int, int, int) {
 pub fn (mut tf TTF_File) get_ttf_widths() ([]int, int, int) {
 	mut space_cw, _ := tf.get_horizontal_metrics(u16(` `))
 	div_space_cw := int((f32(space_cw) * 0.3))
-	
+
 	count := int(tf.glyph_count())
 	mut min_code := 0xFFFF + 1
 	mut max_code := 0
-	for i in 0..300 {
+	for i in 0 .. 300 {
 		glyph_index := tf.map_code(i)
 		if glyph_index == 0 {
 			continue
@@ -258,29 +257,28 @@ pub fn (mut tf TTF_File) get_ttf_widths() ([]int, int, int) {
 			min_code = i
 		}
 	}
-	dprintln("min_code: $min_code max_code: $max_code")
-	mut widths := []int{len:max_code - min_code + 1, init:0}
+	dprintln('min_code: $min_code max_code: $max_code')
+	mut widths := []int{len: max_code - min_code + 1, init: 0}
 
-	for i in min_code..max_code {
+	for i in min_code .. max_code {
 		pos := i - min_code
 		glyph_index := tf.map_code(i)
-		
+
 		if glyph_index == 0 || i == 32 {
 			widths[pos] = space_cw
 			continue
 		}
-		
 
-		x_min,x_max,_,_ := tf.read_glyph_dim(glyph_index)
-		aw,lsb := tf.get_horizontal_metrics(u16(glyph_index))
+		x_min, x_max, _, _ := tf.read_glyph_dim(glyph_index)
+		aw, lsb := tf.get_horizontal_metrics(u16(glyph_index))
 		w := x_max - x_min
 		rsb := aw - (lsb + w)
 
 		pp1 := x_min - lsb
-    	pp2 := pp1 + aw
+		pp2 := pp1 + aw
 
 		w1 := w + lsb + rsb
-		
+
 		widths[pos] = int(w1 / tf.width_scale)
 		/*
 		if i >= int(`A`) && i <= int(`Z`) {
@@ -289,8 +287,8 @@ pub fn (mut tf TTF_File) get_ttf_widths() ([]int, int, int) {
 		*/
 	}
 
-	dprintln("Widths: ${widths.len}")
-	return widths, min_code, max_code 
+	dprintln('Widths: $widths.len')
+	return widths, min_code, max_code
 }
 
 pub fn (mut tf TTF_File) read_glyph(index u16) Glyph {
@@ -571,8 +569,8 @@ fn (mut tf TTF_File) get_ufword() u16 {
 }
 
 fn (mut tf TTF_File) get_i16() i16 {
-	//return i16(tf.get_u16())
-	mut res :=  u32(tf.get_u16())
+	// return i16(tf.get_u16())
+	mut res := u32(tf.get_u16())
 	if (res & 0x8000) > 0 {
 		res -= (u32(1) << 16)
 	}
@@ -591,7 +589,7 @@ fn (mut tf TTF_File) get_u32() u32 {
 }
 
 fn (mut tf TTF_File) get_i32() int {
-	mut res :=u64(tf.get_u32())
+	mut res := u64(tf.get_u32())
 	if (res & 0x8000_0000) > 0 {
 		res -= (u64(1) << 32)
 	}
