@@ -10,7 +10,7 @@ see also `v help build`.
       Change the C compiler V invokes to the specified compiler.
       The C compiler is required to support C99.
       Officially supported/tested C compilers include:
-      `clang`, `gcc`, `tcc`, `icc`, `mingw-w64` and `msvc`.
+      `clang`, `gcc`, `tcc`, `mingw-w64` and `msvc`.
 
    -cflags <flag>
       Pass the provided flag as is to the C compiler.
