@@ -239,9 +239,9 @@ pub fn (mut tf TTF_File) read_glyph_dim(index u16) (int, int, int, int) {
 
 pub fn (mut tf TTF_File) get_ttf_widths() ([]int, int, int) {
 	mut space_cw, _ := tf.get_horizontal_metrics(u16(` `))
-	div_space_cw := int((f32(space_cw) * 0.3))
+	// div_space_cw := int((f32(space_cw) * 0.3))
 
-	count := int(tf.glyph_count())
+	// count := int(tf.glyph_count())
 	mut min_code := 0xFFFF + 1
 	mut max_code := 0
 	for i in 0 .. 300 {
@@ -274,8 +274,8 @@ pub fn (mut tf TTF_File) get_ttf_widths() ([]int, int, int) {
 		w := x_max - x_min
 		rsb := aw - (lsb + w)
 
-		pp1 := x_min - lsb
-		pp2 := pp1 + aw
+		// pp1 := x_min - lsb
+		// pp2 := pp1 + aw
 
 		w1 := w + lsb + rsb
 
