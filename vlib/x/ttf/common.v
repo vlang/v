@@ -36,7 +36,7 @@ pub enum Style {
 * DEBUG Utility
 *
 ******************************************************************************/
-const debug_flag = true
+const debug_flag = false
 
 fn dprintln(txt string) {
 	if ttf.debug_flag {

@@ -250,7 +250,7 @@ pub fn (mut tf TTF_File) get_ttf_widths() ([]int, int, int) {
 		if glyph_index == 0 {
 			continue
 		}
-		// println("$i = glyph_index: $glyph_index ${i:c}")
+		// dprintln("$i = glyph_index: $glyph_index ${i:c}")
 		if i > max_code {
 			max_code = i
 		}
@@ -258,7 +258,7 @@ pub fn (mut tf TTF_File) get_ttf_widths() ([]int, int, int) {
 			min_code = i
 		}
 	}
-	println("min_code: $min_code max_code: $max_code")
+	dprintln("min_code: $min_code max_code: $max_code")
 	mut widths := []int{len:max_code - min_code + 1, init:0}
 
 	for i in min_code..max_code {
@@ -282,12 +282,14 @@ pub fn (mut tf TTF_File) get_ttf_widths() ([]int, int, int) {
 		w1 := w + lsb + rsb
 		
 		widths[pos] = int(w1 / tf.width_scale)
+		/*
 		if i >= int(`A`) && i <= int(`Z`) {
-			println("${i:c}|$glyph_index [$pos] =>  width:${x_max-x_min} aw:${aw}|w1:${w1} lsb:${lsb} rsb:${rsb} pp1:${pp1} pp2:${pp2}")
+			dprintln("${i:c}|$glyph_index [$pos] =>  width:${x_max-x_min} aw:${aw}|w1:${w1} lsb:${lsb} rsb:${rsb} pp1:${pp1} pp2:${pp2}")
 		}
+		*/
 	}
 
-	println("Widths: ${widths.len}")
+	dprintln("Widths: ${widths.len}")
 	return widths, min_code, max_code 
 }
 
