@@ -6,6 +6,7 @@ module parser
 import v.ast
 import v.token
 import v.util
+import os
 
 fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	p.top_level_statement_start()
@@ -354,6 +355,15 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	mut ret := p.table.register_sym(sym)
 	// allow duplicate c struct declarations
 	if ret == -1 && language != .c {
+		if _ := p.table.find_fn('main.main') {
+			if '.' in os.args {
+				p.error_with_pos('multiple `main` functions detected, and you ran `v .`
+perhaps there are multiple V programs in this directory, and you need to
+run them via `v file.v` instead',
+					name_pos)
+				return ast.StructDecl{}
+			}
+		}
 		p.error_with_pos('cannot register struct `$name`, another type with this name exists',
 			name_pos)
 		return ast.StructDecl{}
