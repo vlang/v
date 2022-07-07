@@ -423,6 +423,13 @@ pub fn (mut p Parser) parse_type() ast.Type {
 		nr_muls++
 		p.next()
 	}
+	// Anon structs
+	if p.tok.kind == .key_struct {
+		struct_decl := p.struct_decl(true)
+		// Find the registered anon struct type, it was registered above in `p.struct_decl()`
+		return p.table.find_type_idx(struct_decl.name)
+	}
+
 	language := p.parse_language()
 	mut typ := ast.void_type
 	is_array := p.tok.kind == .lsbr
@@ -571,7 +578,7 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 						ret = ast.i64_type
 					}
 					'u8' {
-						ret = ast.byte_type
+						ret = ast.u8_type
 					}
 					'u16' {
 						ret = ast.u16_type

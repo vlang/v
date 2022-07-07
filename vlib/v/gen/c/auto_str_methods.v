@@ -401,7 +401,7 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_
 	mut clean_sum_type_v_type_name := ''
 	if info.is_anon {
 		variant_names := info.variants.map(util.strip_main_name(g.table.sym(it).name))
-		clean_sum_type_v_type_name = '(${variant_names.join(' | ')})'
+		clean_sum_type_v_type_name = '${variant_names.join('|')}'
 	} else {
 		clean_sum_type_v_type_name = styp.replace('__', '.')
 		if styp.ends_with('*') {
@@ -761,7 +761,7 @@ fn (mut g Gen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 }
 
 fn (g &Gen) type_to_fmt(typ ast.Type) StrIntpType {
-	if typ == ast.byte_type_idx {
+	if typ == ast.u8_type_idx {
 		return .si_u8
 	}
 	if typ == ast.char_type_idx {

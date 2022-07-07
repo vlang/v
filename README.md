@@ -164,7 +164,7 @@ docker run --rm -it vlang:latest
 
 </details>
 
-### Testing and running the examples
+## Testing and running the examples
 
 Make sure V can compile itself:
 

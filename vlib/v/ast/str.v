@@ -387,6 +387,9 @@ pub fn (x Expr) str() string {
 			}
 			return 'map{ ${pairs.join(' ')} }'
 		}
+		Nil {
+			return 'nil'
+		}
 		ParExpr {
 			return '($x.expr)'
 		}
