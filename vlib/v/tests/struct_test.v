@@ -413,6 +413,7 @@ fn test_struct_update() {
 	assert c2.name == 'test'
 }
 
+/*
 // Test anon structs
 struct Book {
 	x Foo
@@ -424,3 +425,4 @@ struct Book {
 }
 
 fn test_anon() {}
+*/

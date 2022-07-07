@@ -26,11 +26,14 @@ library installed on your system.
 
 # Performance Tips
 
-When performing a large amount of database calls (i.e. INSERTS), significant performance increase can be obtained by controlling the synchronization and journal modes.
+When performing a large amount of database calls (i.e. INSERTS), significant
+performance increase can be obtained by controlling the synchronization and journal modes.
 
-For instance,
+For instance:
 ```v
-db := sqlite.connect('foo.db') or {panic(err)}
+import sqlite
+
+db := sqlite.connect('foo.db') or { panic(err) }
 db.synchronization_mode(sqlite.SyncMode.off)
 db.journal_mode(sqlite.JournalMode.memory)
 ```
