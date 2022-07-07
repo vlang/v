@@ -34,7 +34,6 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 	for i, field in node.fields {
 		ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
 		// Handle anon structs recursively
-		sym := f.table.sym(field.typ)
 		field_types << ft
 		attrs_len := inline_attrs_len(field.attrs)
 		end_pos := field.pos.pos + field.pos.len
