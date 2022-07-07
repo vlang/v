@@ -147,7 +147,7 @@ mut:
 	debug_mode  bool
 	is_cc_tcc   bool
 	is_cc_gcc   bool
-	is_cc_icc	bool
+	is_cc_icc   bool
 	is_cc_msvc  bool
 	is_cc_clang bool
 	//
