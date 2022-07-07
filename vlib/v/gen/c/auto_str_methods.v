@@ -401,7 +401,7 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_
 	mut clean_sum_type_v_type_name := ''
 	if info.is_anon {
 		variant_names := info.variants.map(util.strip_main_name(g.table.sym(it).name))
-		clean_sum_type_v_type_name = '(${variant_names.join(' | ')})'
+		clean_sum_type_v_type_name = '${variant_names.join('|')}'
 	} else {
 		clean_sum_type_v_type_name = styp.replace('__', '.')
 		if styp.ends_with('*') {
