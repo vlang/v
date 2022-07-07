@@ -413,16 +413,18 @@ fn test_struct_update() {
 	assert c2.name == 'test'
 }
 
-/*
 // Test anon structs
 struct Book {
-	x Foo
-	title string
-	author struct {
+	x      Foo
+	author struct  {
 		name string
-		age int
+		age  int
 	}
+
+	title string
 }
 
-fn test_anon() {}
-*/
+fn test_anon() {
+	// book := Book{author:struct{'sdf', 23}}
+	// println(book.author.age)
+}

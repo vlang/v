@@ -26,7 +26,17 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	defer {
 		g.write(')')
 	}
-	if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
+
+	mut is_anon := false
+	if sym.kind == .struct_ {
+		mut info := sym.info as ast.Struct
+
+		is_anon = info.is_anon
+	}
+	if is_anon {
+		// No name needed for anon structs, C figures it out on its own.
+		g.writeln('{')
+	} else if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
 		mut shared_typ := node.typ.set_flag(.shared_f)
 		shared_styp = g.typ(shared_typ)
 		g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.mtx = {0}, .val =($styp){')

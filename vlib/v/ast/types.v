@@ -1121,7 +1121,7 @@ pub mut:
 	parent_type    Type
 }
 
-// human readable type name
+// human readable type name, also used by vfmt
 pub fn (t &Table) type_to_str(typ Type) string {
 	return t.type_to_str_using_aliases(typ, map[string]string{})
 }

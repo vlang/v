@@ -199,6 +199,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			mut typ := ast.Type(0)
 			mut type_pos := token.Pos{}
 			mut field_pos := token.Pos{}
+			mut anon_struct_decl := ast.StructDecl{}
 			if is_embed {
 				// struct embedding
 				type_pos = p.tok.pos()
@@ -237,7 +238,16 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 					}
 				}
 				p.inside_struct_field_decl = true
-				typ = p.parse_type()
+				if p.tok.kind == .key_struct {
+					// Anon structs
+					if p.tok.kind == .key_struct {
+						anon_struct_decl = p.struct_decl(true)
+						// Find the registered anon struct type, it was registered above in `p.struct_decl()`
+						typ = p.table.find_type_idx(anon_struct_decl.name)
+					}
+				} else {
+					typ = p.parse_type()
+				}
 				p.inside_struct_field_decl = false
 				if typ.idx() == 0 {
 					// error is set in parse_type
@@ -287,6 +297,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 					is_global: is_field_global
 					is_volatile: is_field_volatile
 					is_deprecated: is_field_deprecated
+					anon_struct_decl: anon_struct_decl
 				}
 			}
 			// save embeds as table fields too, it will be used in generation phase
