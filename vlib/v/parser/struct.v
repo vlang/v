@@ -180,8 +180,6 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 			field_start_pos := p.tok.pos()
 			mut is_field_volatile := false
 			mut is_field_deprecated := false
-			mut field_deprecation_msg := ''
-			mut field_deprecated_after := ''
 			if p.tok.kind == .key_volatile {
 				p.next()
 				is_field_volatile = true
@@ -248,16 +246,8 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				// attrs are stored in `p.attrs`
 				p.attributes()
 				for fa in p.attrs {
-					match fa.name {
-						'deprecated' {
-							// [deprecated: 'use a replacement']
-							is_field_deprecated = true
-							field_deprecation_msg = fa.arg
-						}
-						'deprecated_after' {
-							field_deprecated_after = fa.arg
-						}
-						else {}
+					if fa.name == 'deprecated' {
+						is_field_deprecated = true
 					}
 				}
 			}
@@ -291,8 +281,6 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 					is_global: is_field_global
 					is_volatile: is_field_volatile
 					is_deprecated: is_field_deprecated
-					deprecation_msg: field_deprecation_msg
-					deprecated_after: field_deprecated_after
 				}
 			}
 			// save embeds as table fields too, it will be used in generation phase
@@ -311,8 +299,6 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 				is_global: is_field_global
 				is_volatile: is_field_volatile
 				is_deprecated: is_field_deprecated
-				deprecation_msg: field_deprecation_msg
-				deprecated_after: field_deprecated_after
 			}
 			p.attrs = []
 			i++

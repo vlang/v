@@ -109,7 +109,7 @@ pub enum TypeFlag {
 
 /*
 To save precious TypeFlag bits the 4 possible ShareTypes are coded in the two
-	bits `shared` and `atomic_or_rw` (see sharetype_from_flags() below).
+bits `shared` and `atomic_or_rw` (see sharetype_from_flags() below).
 */
 pub enum ShareType {
 	mut_t
