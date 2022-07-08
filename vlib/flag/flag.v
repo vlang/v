@@ -242,20 +242,28 @@ fn (mut fs FlagParser) parse_value(longhand string, shorthand u8) []string {
 			if i + 1 >= fs.args.len {
 				return []
 			}
-			nextarg := fs.args[i + 1]
-			if nextarg.len > 2 {
-				nextarg_rest := nextarg[..2]
-				if nextarg_rest == '--' {
-					// It could be end of input (--) or another argument (--abc).
-					// Both are invalid so die.
-					unsafe { nextarg_rest.free() }
-					return []
+			mut j := i
+			for true {
+				// Check for index out of bounds
+				// i.e. next arg greater than # arguments (less one)
+				// as first arg is '-param' or '--param')
+				if j + 1 > fs.args.len - 1 {
+					break
 				}
-				unsafe { nextarg_rest.free() }
+				nextarg := fs.args[j + 1]
+				if nextarg.len > 0 {
+					if nextarg.starts_with('-') {
+						// Start of another argumnet (- or --)
+						break
+					}
+				} else {
+					break
+				}
+
+				found_entries << fs.args[j + 1]
+				to_delete << j
+				j++
 			}
-			found_entries << fs.args[i + 1]
-			to_delete << i
-			to_delete << i + 1
 			should_skip_one = true
 			continue
 		}
