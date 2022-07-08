@@ -425,6 +425,9 @@ struct Book {
 }
 
 fn test_anon() {
-	// book := Book{author:struct{'sdf', 23}}
-	// println(book.author.age)
+	empty_book := Book{} // author:struct{'sdf', 23}}
+	assert empty_book.author.age == 0
+	assert empty_book.author.name == ''
+
+	println(empty_book.author.age)
 }

@@ -5390,8 +5390,13 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 			}
 			if has_none_zero {
 				init_str += '}'
-				type_name := g.typ(typ)
-				init_str = '($type_name)' + init_str
+				type_name := if info.is_anon {
+					// No name needed for anon structs, C figures it out on its own.
+					''
+				} else {
+					'(${g.typ(typ)})'
+				}
+				init_str = type_name + init_str
 			} else {
 				init_str += '0}'
 			}
