@@ -159,11 +159,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 				}
 			}
 		}
-		if g.inside_call {
-			g.write(')')
-		} else {
-			g.write(');')
-		}
+		g.write(')')
 		return
 	}
 	mut j := 0
