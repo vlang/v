@@ -4052,7 +4052,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 
 	if node.exprs.len > 0 {
 		// skip `return $vweb.html()`
-		if node.exprs[0] is ast.ComptimeCall {
+		if node.exprs[0] is ast.ComptimeCall && (node.exprs[0] as ast.ComptimeCall).is_vweb {
 			g.expr(node.exprs[0])
 			g.writeln(';')
 			return
