@@ -808,8 +808,7 @@ fn test_round() {
 	}
 }
 
-fn fn_test_round_sig()
-{
+fn fn_test_round_sig() {
 	assert round_sig(4.3239437319748394, -1) == 4.3239437319748394
 	assert round_sig(4.3239437319748394, 0) == 4.0000000000000000
 	assert round_sig(4.3239437319748394, 1) == 4.3000000000000000
