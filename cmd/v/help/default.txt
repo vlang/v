@@ -32,6 +32,7 @@ V supports the following commands:
    vlib-docs         Generate and open the documentation of all the vlib modules.
    repl              Run the REPL.
    watch             Re-compile/re-run a source file, each time it is changed.
+   where             Find and print the location of current project declarations. 
 
 * Installation/self updating:
    symlink           Create a symbolic link for V.

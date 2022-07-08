@@ -1,0 +1,37 @@
+Usage:
+  v where [symbol_type] [symbol_name] [params]
+
+Examples:
+  v where fn main
+  v where struct User
+  v where fn say_hello -mod Person
+  v where fn area -m-of Square
+  v where interface callable -dir some -dir other
+
+--------------------------------------------------------------------------------
+Prints the location of the searched symbols in the scope of the current project.
+--------------------------------------------------------------------------------
+
+symbol_name can be:
+  const
+  enum
+  fn                    (by default if omit [symbol_type])
+  interface
+  struct
+  var
+
+params:
+  -mod  [mod_name]      Restrict to search only within of the given module,
+                        if not provided, search in entire project.
+  -dir  [dirs_name]     Restrict to search within the given folder/s,
+                        if not provided, search in entire project scope.
+  -vis  [visibility]    Can be: all, pub, pri (all by default if not provided).
+                        Restrict to search symbols with the given visibility.
+  -mut  [mutability]    Can be: any, yes, not (any by default if not provided).
+                        Restrict to search symbols with the given mutability.
+  -m-of [struct_name]   (just for fn symbol_name).
+                        Restrict to search fn as method of the given struct.
+
+Note: 
+  This tool is heavily inspired by the vdoc tool and its design. 
+  However, this is for a more specific use, and consequently less sophisticated.
