@@ -36,11 +36,11 @@ pub mut:
 	header            http.Header  // headers that will be passed when connecting
 	conn              &net.TcpConn // underlying TCP socket connection
 	nonce_size        int = 16 // size of nounce used for masking
-	panic_on_callback bool     // set to true of callbacks can panic
-	state             State    // current state of connection
-	logger            &log.Log // logger used to log messages
-	resource_name     string   // name of current resource
-	last_pong_ut      i64      // last time in unix time we got a pong message
+	panic_on_callback bool        // set to true of callbacks can panic
+	state             State       // current state of connection
+	logger            &log.Logger // logger used to log messages
+	resource_name     string      // name of current resource
+	last_pong_ut      i64         // last time in unix time we got a pong message
 }
 
 // Flag represents different types of headers in websocket handshake
@@ -79,6 +79,9 @@ pub enum OPCode {
 pub struct ClientOpt {
 	read_timeout  i64 = 30 * time.second
 	write_timeout i64 = 30 * time.second
+	logger        &log.Logger = &log.Logger(&log.Log{
+		level: .info
+	})
 }
 
 // new_client instance a new websocket client
@@ -89,9 +92,7 @@ pub fn new_client(address string, opt ClientOpt) ?&Client {
 		is_server: false
 		ssl_conn: openssl.new_ssl_conn()
 		is_ssl: address.starts_with('wss')
-		logger: &log.Log{
-			level: .info
-		}
+		logger: opt.logger
 		uri: uri
 		state: .closed
 		id: rand.uuid_v4()
