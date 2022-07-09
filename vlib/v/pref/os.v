@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module pref
 
+import os
+
 pub enum OS {
 	_auto // Reserved so .macos cannot be misunderstood as auto
 	ios
@@ -132,6 +134,10 @@ pub fn get_host_os() OS {
 	}
 	$if haiku {
 		return .haiku
+	}
+	// without this workaround Termux thinks it is js_node
+	if os.getenv('TERMUX_VERSION') != '' {
+		return .termux
 	}
 	$if js_node {
 		return .js_node
