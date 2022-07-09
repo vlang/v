@@ -37,8 +37,8 @@ pub mut:
 [params]
 pub struct ServerOpt {
 	logger &log.Logger = &log.Logger(&log.Log{
-		level: .info
-	})
+	level: .info
+})
 }
 
 // new_server instance a new websocket server on provided port and route

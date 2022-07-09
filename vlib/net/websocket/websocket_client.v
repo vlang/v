@@ -40,7 +40,7 @@ pub mut:
 	state             State       // current state of connection
 	logger            &log.Logger // logger used to log messages
 	resource_name     string      // name of current resource
-	last_pong_ut      i64         // last time in unix time we got a pong message
+	last_pong_ut      i64 // last time in unix time we got a pong message
 }
 
 // Flag represents different types of headers in websocket handshake
@@ -80,8 +80,8 @@ pub struct ClientOpt {
 	read_timeout  i64 = 30 * time.second
 	write_timeout i64 = 30 * time.second
 	logger        &log.Logger = &log.Logger(&log.Log{
-		level: .info
-	})
+	level: .info
+})
 }
 
 // new_client instance a new websocket client
