@@ -108,35 +108,12 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 		if node.or_expr.stmts.len == 0 {
 			c.error('Or block needs to return a default value', node.or_expr.pos)
 		}
-		for i, s in node.or_expr.stmts {
-			if i == node.or_expr.stmts.len - 1 {
-				if s is ast.Return {
-					if s.exprs.len != 1 {
-						c.error('Too many return values, expected 1', s.pos)
-					} else {
-						t := c.expr(s.exprs[0])
-						if !c.check_types(t, node.typ) {
-							c.error('Unexpected expr type `${c.table.get_type_name(t)}`, expected expr type of `${c.table.get_type_name(node.typ)}`',
-								s.pos)
-						} else {
-							node.err_impl = s.exprs[0]
-						}
-					}
-				} else if node.or_expr.stmts.len == 1 && s is ast.ExprStmt {
-					t := c.expr(s.expr)
-					if !c.check_types(t, node.typ) {
-						c.error('Unexpected expr type `${c.table.get_type_name(t)}`, expected expr type of `${c.table.get_type_name(node.typ)}`',
-							s.pos)
-					} else {
-						node.err_impl = s.expr
-					}
-				} else {
-					c.error('Expected return statement', s.pos)
-				}
-			} else {
-				c.stmt(s)
-			}
+		if node.or_expr.stmts.len > 0 && node.or_expr.stmts.last() is ast.ExprStmt {
+			c.expected_or_type = node.typ
 		}
+		c.stmts_ending_with_expression(node.or_expr.stmts)
+		c.check_expr_opt_call(node, node.typ)
+		c.expected_or_type = ast.void_type
 	}
 	return node.typ
 }

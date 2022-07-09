@@ -644,26 +644,14 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 	mut tmp_left := g.new_tmp_var()
 	g.writeln('${g.typ(node.typ)} $tmp_left;')
 
-	g.writeln('if (_o${res}.state != 0) { /* Error */')
-	g.indent++
-	g.writeln('IError err = _o${res}.err;')
-
-	mut stmts := node.or_expr.stmts[..node.or_expr.stmts.len - 1]
-	for s in stmts {
-		g.stmt(s)
+	if node.or_expr.kind == .block {
+		g.or_block(tmp_left, node.or_expr, node.typ)
 	}
-
-	g.write('$tmp_left = ')
-	g.expr(node.err_impl)
-	g.writeln(';')
-	g.indent--
-	g.writeln('} else {')
-	g.indent++
 
 	g.writeln('Array_Array_orm__Primitive $res = (*(Array_Array_orm__Primitive*)_o${res}.data);')
 
 	if node.is_count {
-		g.writeln('$tmp_left *((*(orm__Primitive*) array_get((*(Array_orm__Primitive*)array_get($res, 0)), 0))._int);')
+		g.writeln('$tmp_left = *((*(orm__Primitive*) array_get((*(Array_orm__Primitive*)array_get($res, 0)), 0))._int);')
 	} else {
 		tmp := g.new_tmp_var()
 		styp := g.typ(node.typ)
@@ -788,9 +776,8 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 			g.writeln(';')
 		}
 		g.indent--
-		g.writeln('}')
-		g.writeln('$left $tmp_left;')
 	}
+	g.writeln('$left $tmp_left;')
 }
 
 fn (mut g Gen) parse_db_type(expr ast.Expr) SqlType {

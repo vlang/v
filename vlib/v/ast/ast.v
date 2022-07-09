@@ -1746,7 +1746,6 @@ pub:
 	pos        token.Pos
 pub mut:
 	typ         Type
-	err_impl    Expr
 	db_expr     Expr // `db` in `sql db {`
 	where_expr  Expr
 	order_expr  Expr
