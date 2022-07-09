@@ -222,6 +222,16 @@ fn test_nan() {
 	assert nan_f32 != nan_f32
 }
 
+fn test_angle_diff() {
+	for pair in [
+		[pi, pi_2, -pi_2],
+		[pi_2 * 3.0, pi_2, -pi],
+		[pi / 6.0, two_thirds * pi, pi_2],
+	] {
+		assert angle_diff(pair[0], pair[1]) == pair[2]
+	}
+}
+
 fn test_acos() {
 	for i := 0; i < math.vf_.len; i++ {
 		a := math.vf_[i] / 10
@@ -504,6 +514,13 @@ fn test_mod() {
 	// verify precision of result for extreme inputs
 	f := mod(5.9790119248836734e+200, 1.1258465975523544)
 	assert (0.6447968302508578) == f
+}
+
+fn test_cbrt() {
+	cbrts := [2.0, 10, 56]
+	for idx, i in [8.0, 1000, 175_616] {
+		assert cbrt(i) == cbrts[idx]
+	}
 }
 
 fn test_exp() {

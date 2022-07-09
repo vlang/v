@@ -32,7 +32,7 @@ pub enum BodyType {
 pub struct Client {
 mut:
 	conn     net.TcpConn
-	ssl_conn &openssl.SSLConn = 0
+	ssl_conn &openssl.SSLConn = unsafe { 0 }
 	reader   io.BufferedReader
 pub:
 	server   string
@@ -228,13 +228,20 @@ fn (mut c Client) send_data() ? {
 fn (mut c Client) send_body(cfg Mail) ? {
 	is_html := cfg.body_type == .html
 	date := cfg.date.custom_format('ddd, D MMM YYYY HH:mm ZZ')
+	nonascii_subject := cfg.subject.bytes().any(it < u8(` `) || it > u8(`~`))
 	mut sb := strings.new_builder(200)
 	sb.write_string('From: $cfg.from\r\n')
 	sb.write_string('To: <$cfg.to>\r\n')
 	sb.write_string('Cc: <$cfg.cc>\r\n')
 	sb.write_string('Bcc: <$cfg.bcc>\r\n')
 	sb.write_string('Date: $date\r\n')
-	sb.write_string('Subject: $cfg.subject\r\n')
+	if nonascii_subject {
+		// handle UTF-8 subjects according RFC 1342
+		sb.write_string('Subject: =?utf-8?B?' + base64.encode_str(cfg.subject) + '?=\r\n')
+	} else {
+		sb.write_string('Subject: $cfg.subject\r\n')
+	}
+
 	if is_html {
 		sb.write_string('Content-Type: text/html; charset=UTF-8')
 	} else {

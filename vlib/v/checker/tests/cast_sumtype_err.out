@@ -1,0 +1,13 @@
+vlib/v/checker/tests/cast_sumtype_err.vv:8:11: error: cannot cast `Test` sum type value to `int`, use `data as int` instead
+    6 | fn main() {
+    7 |     data := Test(12)
+    8 |     eprintln(int(data))
+      |              ~~~~~~~~~
+    9 |
+   10 |     foo := Bar('123.45')
+vlib/v/checker/tests/cast_sumtype_err.vv:11:10: error: cannot cast `Bar` sum type value to `f32`, use `foo as f32` instead
+    9 |
+   10 |     foo := Bar('123.45')
+   11 |     println(f32(foo))
+      |             ~~~~~~~~
+   12 | }

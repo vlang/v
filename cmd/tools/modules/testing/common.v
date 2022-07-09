@@ -37,7 +37,6 @@ pub mut:
 	vroot         string
 	vtmp_dir      string
 	vargs         string
-	failed        bool
 	fail_fast     bool
 	benchmark     benchmark.Benchmark
 	rm_binaries   bool = true
@@ -124,6 +123,7 @@ pub fn (mut ts TestSession) print_messages() {
 			// progress mode, the last line is rewritten many times:
 			if is_ok && !ts.silent_mode {
 				print('\r$empty\r$msg')
+				flush_stdout()
 			} else {
 				// the last \n is needed, so SKIP/FAIL messages
 				// will not get overwritten by the OK ones
@@ -288,7 +288,7 @@ pub fn (mut ts TestSession) test() {
 fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	mut ts := &TestSession(p.get_shared_context())
 	if ts.fail_fast {
-		if ts.failed {
+		if ts.failed_cmds.len > 0 {
 			return pool.no_result
 		}
 	}
@@ -380,7 +380,6 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 					goto test_passed_system
 				}
 			}
-			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
 			ts.add_failed_cmd(cmd)
@@ -396,7 +395,6 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 		mut r := os.execute(cmd)
 		if r.exit_code < 0 {
-			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
 			ts.append_message(.fail, tls_bench.step_message_fail(normalised_relative_file))
@@ -422,7 +420,6 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 					goto test_passed_execute
 				}
 			}
-			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
 			ending_newline := if r.output.ends_with('\n') { '\n' } else { '' }
@@ -510,7 +507,7 @@ pub fn v_build_failing_skipped(zargs string, folder string, oskipped []string, c
 	cb(mut session)
 	session.test()
 	eprintln(session.benchmark.total_message(finish_label))
-	return session.failed
+	return session.failed_cmds.len > 0
 }
 
 pub fn build_v_cmd_failed(cmd string) bool {
@@ -564,6 +561,7 @@ pub fn eheader(msg string) {
 
 pub fn header(msg string) {
 	println(term.header_left(msg, '-'))
+	flush_stdout()
 }
 
 pub fn setup_new_vtmp_folder() string {

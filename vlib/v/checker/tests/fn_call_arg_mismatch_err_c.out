@@ -1,0 +1,7 @@
+vlib/v/checker/tests/fn_call_arg_mismatch_err_c.vv:13:18: error: `os.chdir(files)?` (no value) used as value in argument 1 to `os.ls`
+   11 |             println(files)
+   12 |         } else {
+   13 |             println(os.ls(os.chdir(files)?)?)
+      |                           ~~~~~~~~~~~~~~~~
+   14 |         }
+   15 |         println(files)

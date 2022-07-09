@@ -9,7 +9,9 @@ import v.util
 import v.pkgconfig
 
 fn (mut c Checker) comptime_call(mut node ast.ComptimeCall) ast.Type {
-	node.left_type = c.expr(node.left)
+	if node.left !is ast.EmptyExpr {
+		node.left_type = c.expr(node.left)
+	}
 	if node.method_name == 'compile_error' {
 		c.error(node.args_var, node.pos)
 		return ast.void_type
@@ -203,7 +205,7 @@ fn (mut c Checker) eval_comptime_const_expr(expr ast.Expr, nlevel int) ?ast.Comp
 				return cast_expr_value.i64() or { return none }
 			}
 			//
-			if expr.typ == ast.byte_type {
+			if expr.typ == ast.u8_type {
 				return cast_expr_value.u8() or { return none }
 			}
 			if expr.typ == ast.u16_type {

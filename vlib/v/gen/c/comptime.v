@@ -159,11 +159,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 				}
 			}
 		}
-		if g.inside_call {
-			g.write(')')
-		} else {
-			g.write(');')
-		}
+		g.write(')')
 		return
 	}
 	mut j := 0
@@ -288,7 +284,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 			}
 		} else {
 			// Only wrap the contents in {} if we're inside a function, not on the top level scope
-			should_create_scope := g.fn_decl != 0
+			should_create_scope := unsafe { g.fn_decl != 0 }
 			if should_create_scope {
 				g.writeln('{')
 			}
@@ -635,6 +631,10 @@ fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_optional bool) ?str
 		}
 		'android' {
 			return '__ANDROID__'
+		}
+		'termux' {
+			// Note: termux is running on Android natively so __ANDROID__ will also be defined
+			return '__TERMUX__'
 		}
 		'solaris' {
 			return '__sun'

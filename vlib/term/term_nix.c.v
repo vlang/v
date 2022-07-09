@@ -52,6 +52,7 @@ pub fn get_cursor_position() ?Coord {
 	unsafe { C.tcsetattr(0, C.TCSANOW, &state) }
 
 	print('\e[6n')
+	flush_stdout()
 
 	mut x := 0
 	mut y := 0
@@ -87,6 +88,7 @@ pub fn set_terminal_title(title string) bool {
 	print('\033]0')
 	print(title)
 	print('\007')
+	flush_stdout()
 	return true
 }
 
@@ -94,4 +96,5 @@ pub fn set_terminal_title(title string) bool {
 pub fn clear() {
 	print('\x1b[2J')
 	print('\x1b[H')
+	flush_stdout()
 }

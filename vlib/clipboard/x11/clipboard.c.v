@@ -138,6 +138,7 @@ enum AtomType {
 	text_html = 9
 }
 
+[heap]
 pub struct Clipboard {
 	display &C.Display
 mut:
@@ -291,6 +292,7 @@ fn (mut cb Clipboard) start_listener() {
 	mut sent_request := false
 	mut to_be_requested := Atom(0)
 	for {
+		time.sleep(1 * time.millisecond)
 		C.XNextEvent(cb.display, &event)
 		if unsafe { event.@type == 0 } {
 			println('error')

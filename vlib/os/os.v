@@ -173,8 +173,20 @@ pub fn is_dir_empty(path string) bool {
 
 // file_ext will return the part after the last occurence of `.` in `path`.
 // The `.` is included.
+// Examples:
+// ```v
+// assert os.file_ext('file.v') == '.v'
+// assert os.file_ext('.ignore_me') == ''
+// assert os.file_ext('.') == ''
+// ```
 pub fn file_ext(path string) string {
-	pos := path.last_index('.') or { return '' }
+	if path.len < 3 {
+		return empty_str
+	}
+	pos := path.last_index(dot_str) or { return empty_str }
+	if pos + 1 >= path.len || pos == 0 {
+		return empty_str
+	}
 	return path[pos..]
 }
 
@@ -328,6 +340,9 @@ pub fn user_os() string {
 	$if android {
 		return 'android'
 	}
+	$if termux {
+		return 'termux'
+	}
 	$if solaris {
 		return 'solaris'
 	}
@@ -340,7 +355,32 @@ pub fn user_os() string {
 	$if vinix {
 		return 'vinix'
 	}
+	if getenv('TERMUX_VERSION') != '' {
+		return 'termux'
+	}
 	return 'unknown'
+}
+
+// user_names returns an array of the name of every user on the system.
+pub fn user_names() ?[]string {
+	$if windows {
+		result := execute('wmic useraccount get name')
+		if result.exit_code != 0 {
+			return error('Failed to get user names. Exited with code $result.exit_code: $result.output')
+		}
+		mut users := result.output.split_into_lines()
+		// windows command prints an empty line at the end of output
+		users.delete(users.len - 1)
+		return users
+	} $else {
+		lines := read_lines('/etc/passwd')?
+		mut users := []string{cap: lines.len}
+		for line in lines {
+			end_name := line.index(':') or { line.len }
+			users << line[0..end_name]
+		}
+		return users
+	}
 }
 
 // home_dir returns path to the user's home directory.
@@ -418,27 +458,34 @@ fn error_failed_to_find_executable() IError {
 	return IError(&ExecutableNotFoundError{})
 }
 
-// find_exe_path walks the environment PATH, just like most shell do, it returns
+// find_abs_path_of_executable walks the environment PATH, just like most shell do, it returns
 // the absolute path of the executable if found
 pub fn find_abs_path_of_executable(exepath string) ?string {
 	if exepath == '' {
 		return error('expected non empty `exepath`')
 	}
-	if is_abs_path(exepath) {
-		return real_path(exepath)
-	}
-	mut res := ''
-	path := getenv('PATH')
-	paths := path.split(path_delimiter)
-	for p in paths {
-		found_abs_path := join_path_single(p, exepath)
-		if exists(found_abs_path) && is_executable(found_abs_path) {
-			res = found_abs_path
-			break
+
+	for suffix in executable_suffixes {
+		fexepath := exepath + suffix
+		if is_abs_path(fexepath) {
+			return real_path(fexepath)
 		}
-	}
-	if res.len > 0 {
-		return real_path(res)
+		mut res := ''
+		path := getenv('PATH')
+		paths := path.split(path_delimiter)
+		for p in paths {
+			found_abs_path := join_path_single(p, fexepath)
+			$if trace_find_abs_path_of_executable ? {
+				dump(found_abs_path)
+			}
+			if exists(found_abs_path) && is_executable(found_abs_path) {
+				res = found_abs_path
+				break
+			}
+		}
+		if res.len > 0 {
+			return real_path(res)
+		}
 	}
 	return error_failed_to_find_executable()
 }
@@ -452,18 +499,6 @@ pub fn exists_in_system_path(prog string) bool {
 // is_file returns a `bool` indicating whether the given `path` is a file.
 pub fn is_file(path string) bool {
 	return exists(path) && !is_dir(path)
-}
-
-// is_abs_path returns `true` if `path` is absolute.
-pub fn is_abs_path(path string) bool {
-	if path.len == 0 {
-		return false
-	}
-	$if windows {
-		return path[0] == `/` || // incase we're in MingGW bash
-		(path[0].is_letter() && path.len > 1 && path[1] == `:`)
-	}
-	return path[0] == `/`
 }
 
 // join_path returns a path as string from input string parameter(s).
@@ -593,8 +628,13 @@ pub fn log(s string) {
 	println('os.log: ' + s)
 }
 
+[params]
+pub struct MkdirParams {
+	mode u32 = 0o777 // note that the actual mode is affected by the process's umask
+}
+
 // mkdir_all will create a valid full path of all directories given in `path`.
-pub fn mkdir_all(opath string) ? {
+pub fn mkdir_all(opath string, params MkdirParams) ? {
 	path := opath.replace('/', path_separator)
 	mut p := if path.starts_with(path_separator) { path_separator } else { '' }
 	path_parts := path.trim_left(path_separator).split(path_separator)
@@ -603,7 +643,7 @@ pub fn mkdir_all(opath string) ? {
 		if exists(p) && is_dir(p) {
 			continue
 		}
-		mkdir(p) or { return error('folder: $p, error: $err') }
+		mkdir(p, params) or { return error('folder: $p, error: $err') }
 	}
 }
 

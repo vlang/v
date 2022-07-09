@@ -1,5 +1,6 @@
 module math
 
+// hypot returns the hypotenuse of the triangle give two sides
 pub fn hypot(x f64, y f64) f64 {
 	if is_inf(x, 0) || is_inf(y, 0) {
 		return inf(1)

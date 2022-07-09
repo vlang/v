@@ -1,3 +1,31 @@
+vlib/v/checker/tests/goto_label.vv:7:8: warning: `goto` requires `unsafe` (consider using labelled break/continue)
+    5 |     goto a1
+    6 |     _ = fn(){
+    7 |         goto f1
+      |              ~~
+    8 |         goto f2
+    9 |         goto a1
+vlib/v/checker/tests/goto_label.vv:8:8: warning: `goto` requires `unsafe` (consider using labelled break/continue)
+    6 |     _ = fn(){
+    7 |         goto f1
+    8 |         goto f2
+      |              ~~
+    9 |         goto a1
+   10 |         a1:
+vlib/v/checker/tests/goto_label.vv:9:8: warning: `goto` requires `unsafe` (consider using labelled break/continue)
+    7 |         goto f1
+    8 |         goto f2
+    9 |         goto a1
+      |              ~~
+   10 |         a1:
+   11 |         goto a1
+vlib/v/checker/tests/goto_label.vv:11:8: warning: `goto` requires `unsafe` (consider using labelled break/continue)
+    9 |         goto a1
+   10 |         a1:
+   11 |         goto a1
+      |              ~~
+   12 |     }
+   13 |     f2:
 vlib/v/checker/tests/goto_label.vv:5:7: error: unknown label `a1`
     3 |     goto f2
     4 |     f1:
@@ -19,20 +47,6 @@ vlib/v/checker/tests/goto_label.vv:8:8: error: unknown label `f2`
       |              ~~
     9 |         goto a1
    10 |         a1:
-vlib/v/checker/tests/goto_label.vv:9:8: error: `goto` requires `unsafe` (consider using labelled break/continue)
-    7 |         goto f1
-    8 |         goto f2
-    9 |         goto a1
-      |              ~~
-   10 |         a1:
-   11 |         goto a1
-vlib/v/checker/tests/goto_label.vv:11:8: error: `goto` requires `unsafe` (consider using labelled break/continue)
-    9 |         goto a1
-   10 |         a1:
-   11 |         goto a1
-      |              ~~
-   12 |     }
-   13 |     f2:
 vlib/v/checker/tests/goto_label.vv:14:7: error: unknown label `a1`
    12 |     }
    13 |     f2:

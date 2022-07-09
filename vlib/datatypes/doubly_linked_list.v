@@ -3,18 +3,18 @@ module datatypes
 struct DoublyListNode<T> {
 mut:
 	data T
-	next &DoublyListNode<T> = 0
-	prev &DoublyListNode<T> = 0
+	next &DoublyListNode<T> = unsafe { 0 }
+	prev &DoublyListNode<T> = unsafe { 0 }
 }
 
 pub struct DoublyLinkedList<T> {
 mut:
-	head &DoublyListNode<T> = 0
-	tail &DoublyListNode<T> = 0
+	head &DoublyListNode<T> = unsafe { 0 }
+	tail &DoublyListNode<T> = unsafe { 0 }
 	// Internal iter pointer for allowing safe modification
 	// of the list while iterating. TODO: use an option
 	// instead of a pointer to determine it is initialized.
-	iter &DoublyListIter<T> = 0
+	iter &DoublyListIter<T> = unsafe { 0 }
 	len  int
 }
 
@@ -251,7 +251,7 @@ pub fn (mut list DoublyLinkedList<T>) delete(idx int) {
 pub fn (list DoublyLinkedList<T>) str() string {
 	mut result_array := []T{}
 	mut node := list.head
-	for node != 0 {
+	for unsafe { node != 0 } {
 		result_array << node.data
 		node = node.next
 	}
@@ -280,5 +280,5 @@ pub fn (mut list DoublyLinkedList<T>) next() ?T {
 
 struct DoublyListIter<T> {
 mut:
-	node &DoublyListNode<T> = 0
+	node &DoublyListNode<T> = unsafe { 0 }
 }

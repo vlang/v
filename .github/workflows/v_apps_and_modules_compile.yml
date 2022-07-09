@@ -1,0 +1,140 @@
+name: V Apps and Modules
+
+on:
+  push:
+    paths-ignore:
+      - "**.md"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+
+concurrency:
+  group: build-v-apps-and-modules-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  v-apps-compile:
+    runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    timeout-minutes: 121
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build V
+        run: make && sudo ./v symlink
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --quiet -y libgc-dev   libsodium-dev libssl-dev sqlite3 libsqlite3-dev    valgrind    libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
+          sudo apt-get install --quiet -y --no-install-recommends gfortran liblapacke-dev libopenblas-dev ## for vsl/vtl
+          sudo apt-get install --quiet -y --no-install-recommends sassc ## needed by gitly
+
+      - name: Build V Language Server (VLS)
+        run: |
+          echo "Clone VLS"
+          git clone --depth 1 https://github.com/vlang/vls /tmp/vls
+          echo "Build VLS"
+          v /tmp/vls/cmd/vls
+          echo "Build VLS with -prod"
+          v -prod /tmp/vls/cmd/vls
+          echo "Build VLS with -gc boehm -skip-unused"
+          v -gc boehm -skip-unused /tmp/vls/cmd/vls
+
+      - name: Build V Coreutils
+        run: |
+          echo "Clone Coreutils"
+          git clone --depth 1 https://github.com/vlang/coreutils /tmp/coreutils
+          echo "Build Coreutils"
+          cd /tmp/coreutils; make
+
+      - name: Build VAB
+        run: |
+          echo "Install VAB"
+          v install vab
+          echo "Build vab"
+          v ~/.vmodules/vab
+          echo "Build vab with -gc boehm -skip-unused"
+          v -gc boehm -skip-unused ~/.vmodules/vab
+
+      - name: Build Gitly
+        run: |
+          echo "Install markdown"
+          v install markdown
+          echo "Clone Gitly"
+          git clone https://github.com/vlang/gitly /tmp/gitly
+          echo "Build Gitly"
+          v /tmp/gitly
+          echo "Build Gitly with -autofree"
+          v -autofree /tmp/gitly
+          echo "Compile gitly.css from gitly.scss"
+          sassc /tmp/gitly/static/css/gitly.scss > /tmp/gitly/static/css/gitly.css
+          echo "Run first_run.v"
+          v run /tmp/gitly/tests/first_run.v
+          # /tmp/gitly/gitly -ci_run
+
+      - name: Build libsodium
+        run: |
+          echo "Install the libsodium wrapper"
+          v install libsodium
+          echo "Test libsodium"
+          VJOBS=1 v test ~/.vmodules/libsodium
+
+      - name: Build VEX
+        run: |
+          echo "Install Vex"
+          v install nedpals.vex
+          echo "Compile all of the Vex examples"
+          v should-compile-all ~/.vmodules/nedpals/vex/examples
+          echo "Compile the simple Vex example with -gc boehm -skip-unused"
+          v -gc boehm -skip-unused ~/.vmodules/nedpals/vex/examples/simple_example.v
+          echo "Run Vex Tests"
+          v test ~/.vmodules/nedpals/vex
+
+      - name: Build go2v
+        run: |
+          echo "Clone Go2V"
+          git clone --depth=1 https://github.com/vlang/go2v /tmp/go2v/
+          echo "Build Go2V"
+          v /tmp/go2v/
+          echo "Run Go2V tests"
+          VJOBS=1 v -stats test /tmp/go2v/
+
+      - name: Build vlang/pdf
+        run: |
+          v install pdf
+          echo "PDF examples should compile"
+          v should-compile-all ~/.vmodules/pdf/examples
+
+      - name: Install UI through VPM
+        run: |
+          echo "Official VPM modules should be installable"
+          v install ui
+          echo "Examples of UI should compile"
+          v ~/.vmodules/ui/examples/build_examples.vsh
+
+      - name: Build VSL
+        run: |
+          echo "Install VSL"
+          v install vsl
+          echo "Execute Tests using Pure V Backend"
+          ~/.vmodules/vsl/bin/test
+          echo "Execute Tests using Pure V Backend with Pure V Math"
+          ~/.vmodules/vsl/bin/test --use-cblas
+          echo "Execute Tests using Pure V Backend and Garbage Collection enabled"
+          ~/.vmodules/vsl/bin/test --use-gc boehm
+          echo "Execute Tests using Pure V Backend with Pure V Math and Garbage Collection enabled"
+          ~/.vmodules/vsl/bin/test --use-cblas --use-gc boehm
+
+      - name: Build VTL
+        run: |
+          echo "Install VTL"
+          v install vtl
+          echo "Install dependencies"
+          echo "Execute Tests using Pure V Backend"
+          ~/.vmodules/vtl/bin/test
+          echo "Execute Tests using Pure V Backend with Pure V Math"
+          ~/.vmodules/vtl/bin/test --use-cblas
+          echo "Execute Tests using Pure V Backend and Garbage Collection enabled"
+          ~/.vmodules/vtl/bin/test --use-gc boehm
+          echo "Execute Tests using Pure V Backend with Pure V Math and Garbage Collection enabled"
+          ~/.vmodules/vtl/bin/test --use-cblas --use-gc boehm

@@ -16,7 +16,7 @@ on:
     paths:
       - '!**'
       - 'cmd/tools/vtest*'
-      - 'cmd/tools/builders/**.v'	  
+      - 'cmd/tools/builders/**.v'
       - 'vlib/builtin/**.v'
       - 'vlib/strconv/**.v'
       - 'vlib/strings/**.v'
@@ -43,7 +43,7 @@ on:
     paths:
       - '!**'
       - 'cmd/tools/vtest*'
-      - 'cmd/tools/builders/**.v'	  
+      - 'cmd/tools/builders/**.v'
       - 'vlib/builtin/**.v'
       - 'vlib/strconv/**.v'
       - 'vlib/strings/**.v'
@@ -74,6 +74,7 @@ concurrency:
 jobs:
   tests-sanitize-undefined-clang:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 180
     env:
       VFLAGS: -cc clang
@@ -91,7 +92,9 @@ jobs:
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
           sudo apt-get install clang
       - name: Build V
-        run: make -j4 && ./v -cg -cstrict -o v cmd/v
+        run: make && ./v -cg -cstrict -o v cmd/v
+      - name: Ensure code is well formatted
+        run: ./v test-cleancode
       - name: Self tests (-fsanitize=undefined)
         run: ./v -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-self
       - name: Build examples (V compiled with -fsanitize=undefined)
@@ -99,6 +102,7 @@ jobs:
 
   tests-sanitize-undefined-gcc:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 180
     env:
       VFLAGS: -cc gcc
@@ -115,7 +119,9 @@ jobs:
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
       - name: Build V
-        run: make -j4 && ./v -cg -cstrict -o v cmd/v
+        run: make && ./v -cg -cstrict -o v cmd/v
+      - name: Ensure code is well formatted
+        run: ./v test-cleancode
       - name: Self tests (-fsanitize=undefined)
         run: ./v -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-self
       - name: Build examples (V compiled with -fsanitize=undefined)
@@ -123,6 +129,7 @@ jobs:
 
   tests-sanitize-address-clang:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 180
     env:
       VFLAGS: -cc clang
@@ -140,7 +147,9 @@ jobs:
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
           sudo apt-get install clang
       - name: Build V
-        run: make -j4 && ./v -cg -cstrict -o v cmd/v
+        run: make && ./v -cg -cstrict -o v cmd/v
+      - name: Ensure code is well formatted
+        run: ./v test-cleancode
       - name: Self tests (-fsanitize=address)
         run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags "-fsanitize=address,pointer-compare,pointer-subtract" test-self
       - name: Self tests (V compiled with -fsanitize=address)
@@ -152,6 +161,7 @@ jobs:
 
   tests-sanitize-address-msvc:
     runs-on: windows-2019
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 180
     env:
       VFLAGS: -cc msvc
@@ -168,6 +178,11 @@ jobs:
           echo $VFLAGS
           .\make.bat -msvc
           .\v.exe self
+      - name: Ensure code is well formatted
+        run: |
+          .\v.exe fmt -verify vlib/builtin/ vlib/v/scanner/ vlib/v/parser/ vlib/v/gen/
+      ## TODO: check to see why `v test-cleancode` does not work with msvc on windows
+
       ##      - name: Install dependencies
       ##        run: |
       ##          .\v.exe setup-freetype
@@ -178,6 +193,7 @@ jobs:
 
   tests-sanitize-address-gcc:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 180
     env:
       VFLAGS: -cc gcc
@@ -195,7 +211,9 @@ jobs:
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
           sudo apt-get install clang
       - name: Build V
-        run: make -j4 && ./v -cg -cstrict -o v cmd/v
+        run: make && ./v -cg -cstrict -o v cmd/v
+      - name: Ensure code is well formatted
+        run: ./v test-cleancode
       - name: Self tests (-fsanitize=address)
         run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags -fsanitize=address test-self
       - name: Self tests (V compiled with -fsanitize=address)
@@ -207,9 +225,10 @@ jobs:
 
   tests-sanitize-memory-clang:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 180
     env:
-      VFLAGS: -cc clang
+      VFLAGS: -cc clang -gc none
       VJOBS: 1
       VTEST_SHOW_START: 1
     steps:
@@ -224,11 +243,14 @@ jobs:
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
           sudo apt-get install clang
       - name: Build V
-        run: make -j4 && ./v -cc clang -cg -cstrict -o v cmd/v
+        run: make && ./v -cc clang -cg -cstrict -o v cmd/v
+      - name: Ensure code is well formatted
+        run: ./v test-cleancode
       - name: Self tests (-fsanitize=memory)
         run: ./v -cflags -fsanitize=memory test-self
       - name: Self tests (V compiled with -fsanitize=memory)
-        run:
-          ./v -cflags -fsanitize=memory -o v cmd/v && ./v -cc tcc test-self -msan-compiler
+        run: |
+          ./v -cflags -fsanitize=memory -o v cmd/v
+          ./v -cc tcc test-self -msan-compiler
       - name: Build examples (V compiled with -fsanitize=memory)
         run: ./v build-examples

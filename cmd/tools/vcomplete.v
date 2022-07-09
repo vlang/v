@@ -76,7 +76,7 @@ SUBCMD:
 
 // Snooped from cmd/v/v.v, vlib/v/pref/pref.v
 const (
-	auto_complete_commands     = [
+	auto_complete_commands      = [
 		// simple_cmd
 		'ast',
 		'doc',
@@ -114,7 +114,6 @@ const (
 		'help',
 		'new',
 		'init',
-		'complete',
 		'translate',
 		'self',
 		'search',
@@ -130,8 +129,13 @@ const (
 		'run',
 		'build',
 		'build-module',
+		'missdoc',
 	]
-	auto_complete_flags        = [
+	// Entries in the flag arrays below should be entered as is:
+	// * Short flags, e.g.: "-v", should be entered: '-v'
+	// * Long flags, e.g.: "--version", should be entered: '--version'
+	// * Single-dash flags, e.g.: "-version", should be entered: '-version'
+	auto_complete_flags         = [
 		'-apk',
 		'-show-timings',
 		'-check-syntax',
@@ -150,6 +154,7 @@ const (
 		'-autofree',
 		'-compress',
 		'-freestanding',
+		'-no-parallel',
 		'-no-preludes',
 		'-prof',
 		'-profile',
@@ -190,7 +195,7 @@ const (
 		'-version',
 		'--version',
 	]
-	auto_complete_flags_doc    = [
+	auto_complete_flags_doc     = [
 		'-all',
 		'-f',
 		'-h',
@@ -209,7 +214,7 @@ const (
 		'-s',
 		'-l',
 	]
-	auto_complete_flags_fmt    = [
+	auto_complete_flags_fmt     = [
 		'-c',
 		'-diff',
 		'-l',
@@ -217,7 +222,7 @@ const (
 		'-debug',
 		'-verify',
 	]
-	auto_complete_flags_bin2v  = [
+	auto_complete_flags_bin2v   = [
 		'-h',
 		'--help',
 		'-m',
@@ -227,22 +232,46 @@ const (
 		'-w',
 		'--write',
 	]
-	auto_complete_flags_shader = [
-		'help',
-		'h',
-		'force-update',
-		'u',
-		'verbose',
-		'v',
-		'slang',
-		'l',
-		'output',
-		'o',
+	auto_complete_flags_shader  = [
+		'--help',
+		'-h',
+		'--force-update',
+		'-u',
+		'--verbose',
+		'-v',
+		'--slang',
+		'-l',
+		'--output',
+		'-o',
 	]
-	auto_complete_flags_self   = [
+	auto_complete_flags_missdoc = [
+		'--help',
+		'-h',
+		'--tags',
+		'-t',
+		'--deprecated',
+		'-d',
+		'--private',
+		'-p',
+		'--no-line-numbers',
+		'-n',
+		'--exclude',
+		'-e',
+		'--relative-paths',
+		'-r',
+		'--js',
+		'--verify',
+		'--diff',
+	]
+	auto_complete_flags_bump    = [
+		'--patch',
+		'--minor',
+		'--major',
+	]
+	auto_complete_flags_self    = [
 		'-prod',
 	]
-	auto_complete_compilers    = [
+	auto_complete_compilers     = [
 		'cc',
 		'gcc',
 		'tcc',
@@ -372,12 +401,17 @@ fn auto_complete_request(args []string) []string {
 			parent_command = parts[i]
 			break
 		}
-		get_flags := fn (base []string, flag string) []string {
-			if flag.len == 1 { return base
-			 } else { return base.filter(it.starts_with(flag))
-			 }
-		}
-		if part.starts_with('-') { // 'v -<tab>' -> flags.
+		if part.starts_with('-') { // 'v [subcmd] -<tab>' or 'v [subcmd] --<tab>'-> flags.
+			get_flags := fn (base []string, flag string) []string {
+				mut results := []string{}
+				for entry in base {
+					if entry.starts_with(flag) {
+						results << entry
+					}
+				}
+				return results
+			}
+
 			match parent_command {
 				'bin2v' { // 'v bin2v -<tab>'
 					list = get_flags(auto_complete_flags_bin2v, part)
@@ -397,6 +431,12 @@ fn auto_complete_request(args []string) []string {
 				'shader' { // 'v shader -<tab>' -> flags.
 					list = get_flags(auto_complete_flags_shader, part)
 				}
+				'missdoc' { // 'v missdoc -<tab>' -> flags.
+					list = get_flags(auto_complete_flags_missdoc, part)
+				}
+				'bump' { // 'v bump -<tab>' -> flags.
+					list = get_flags(auto_complete_flags_bump, part)
+				}
 				else {
 					for flag in auto_complete_flags {
 						if flag == part {
@@ -413,6 +453,11 @@ fn auto_complete_request(args []string) []string {
 						}
 					}
 				}
+			}
+			// Clear the list if the result is identical to the part examined
+			// (the flag must have already been completed)
+			if list.len == 1 && part == list[0] {
+				list.clear()
 			}
 		} else {
 			match part {

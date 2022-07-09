@@ -2,57 +2,56 @@ name: Periodic
 
 on:
   schedule:
-    - cron:  '0 */2 * * *'
+    - cron: '0 */6 * * *'
 
 jobs:
   network-tests-ubuntu:
     runs-on: ubuntu-20.04
     timeout-minutes: 30
     env:
-        V_CI_PERIODIC: 1
+      V_CI_PERIODIC: 1
     steps:
-    - uses: actions/checkout@v2
-    - name: Install dependencies
-      run: sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
-    - name: Build v
-      run: make -j4
-    - name: Symlink V
-      run:  sudo ./v symlink
-##    - name: Run network tests
-##      run: ./v -d network test vlib/net
+      - uses: actions/checkout@v2
+      - name: Install dependencies 1
+        run: sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev
+      - name: Build v
+        run: make
+      - name: Symlink V
+        run: sudo ./v symlink
+        ## - name: Run network tests
+        ##   run: ./v -d network test vlib/net
 
 
   network-tests-macos:
     runs-on: macOS-latest
     timeout-minutes: 30
     env:
-        V_CI_PERIODIC: 1
+      V_CI_PERIODIC: 1
     steps:
-    - uses: actions/checkout@v2
-    - name: Setup openssl library path
-      run: export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
-    - name: Build V
-      run:  make -j4
-    - name: Symlink V
-      run:  sudo ./v symlink
-    - name: Ensure thirdparty/cJSON/cJSON.o is compiled, before running tests.
-      run:  ./v examples/json.v
-##    - name: Run network tests
-##      run: ./v -d network test vlib/net
-
+      - uses: actions/checkout@v2
+      - name: Setup openssl library path
+        run: export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
+      - name: Build V
+        run: make
+      - name: Symlink V
+        run: sudo ./v symlink
+      - name: Ensure thirdparty/cJSON/cJSON.o is compiled, before running tests.
+        run: ./v examples/json.v
+        ## - name: Run network tests
+        ##   run: ./v -d network test vlib/net
 
   network-windows-msvc:
     runs-on: windows-2019
     timeout-minutes: 30
     env:
-        V_CI_PERIODIC: 1
-        VFLAGS: -cc msvc
+      V_CI_PERIODIC: 1
+      VFLAGS: -cc msvc
     steps:
-    - uses: actions/checkout@v2
-    - name: Build
-      run: |
-        echo %VFLAGS%
-        echo $VFLAGS
-        .\make.bat -msvc
-##    - name: Run network tests
-##      run: .\v.exe -d network test vlib/net
+      - uses: actions/checkout@v2
+      - name: Build
+        run: |
+          echo %VFLAGS%
+          echo $VFLAGS
+          .\make.bat -msvc
+          ## - name: Run network tests
+          ##   run: .\v.exe -d network test vlib/net

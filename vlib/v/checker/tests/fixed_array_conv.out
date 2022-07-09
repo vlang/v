@@ -1,3 +1,10 @@
+vlib/v/checker/tests/fixed_array_conv.vv:6:5: warning: cannot cast a fixed array (use e.g. `&arr[0]` instead)
+    4 | mut ip := &int(0)
+    5 | ip = arr
+    6 | _ = &int(arr)
+      |     ~~~~~~~~~
+    7 | _ = p
+    8 | _ = ip
 vlib/v/checker/tests/fixed_array_conv.vv:3:3: error: mismatched types `voidptr` and `[2]int`
     1 | arr := [2,3]!
     2 | mut p := voidptr(0)
@@ -12,13 +19,6 @@ vlib/v/checker/tests/fixed_array_conv.vv:5:4: error: mismatched types `&int` and
       |    ^
     6 | _ = &int(arr)
     7 | _ = p
-vlib/v/checker/tests/fixed_array_conv.vv:6:5: error: cannot cast a fixed array (use e.g. `&arr[0]` instead)
-    4 | mut ip := &int(0)
-    5 | ip = arr
-    6 | _ = &int(arr)
-      |     ~~~~~~~~~
-    7 | _ = p
-    8 | _ = ip
 vlib/v/checker/tests/fixed_array_conv.vv:11:13: error: cannot use `[2]int` as `voidptr` in argument 1 to `memdup`
     9 | 
    10 | unsafe {

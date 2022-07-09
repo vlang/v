@@ -346,10 +346,7 @@ pub fn (mut v Builder) cc_msvc() {
 	defines := sflags.defines
 	other_flags := sflags.other_flags
 	// Include the base paths
-	a << '-I "$r.ucrt_include_path"'
-	a << '-I "$r.vs_include_path"'
-	a << '-I "$r.um_include_path"'
-	a << '-I "$r.shared_include_path"'
+	a << r.include_paths()
 	a << defines
 	a << inc_paths
 	a << other_flags
@@ -358,9 +355,7 @@ pub fn (mut v Builder) cc_msvc() {
 	a << '/link'
 	a << '/NOLOGO'
 	a << '/OUT:"$v.pref.out_name"'
-	a << '/LIBPATH:"$r.ucrt_lib_path"'
-	a << '/LIBPATH:"$r.um_lib_path"'
-	a << '/LIBPATH:"$r.vs_lib_path"'
+	a << r.library_paths()
 	if !all_cflags.contains('/DEBUG') {
 		// only use /DEBUG, if the user *did not* provide its own:
 		a << '/DEBUG:FULL' // required for prod builds to generate a PDB file
@@ -375,6 +370,7 @@ pub fn (mut v Builder) cc_msvc() {
 	if env_ldflags != '' {
 		a << env_ldflags
 	}
+	v.dump_c_options(a)
 	args := a.join(' ')
 	// write args to a file so that we dont smash createprocess
 	os.write_file(out_name_cmd_line, args) or {
@@ -420,17 +416,18 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(path string, moduleflags 
 	}
 	println('$obj_path not found, building it (with msvc)...')
 	cfile := '${path_without_o_postfix}.c'
-	// println('cfile: $cfile')
 	flags := msvc_string_flags(moduleflags)
 	inc_dirs := flags.inc_paths.join(' ')
 	defines := flags.defines.join(' ')
-	include_string := '-I "$msvc.ucrt_include_path" -I "$msvc.vs_include_path" -I "$msvc.um_include_path" -I "$msvc.shared_include_path" $inc_dirs'
+	//
 	mut oargs := []string{}
 	env_cflags := os.getenv('CFLAGS')
 	mut all_cflags := '$env_cflags $v.pref.cflags'
 	if all_cflags != ' ' {
 		oargs << all_cflags
 	}
+	oargs << '/NOLOGO'
+	oargs << '/volatile:ms'
 	//
 	if v.pref.is_prod {
 		oargs << '/O2'
@@ -440,12 +437,18 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(path string, moduleflags 
 		oargs << '/MDd'
 		oargs << '/D_DEBUG'
 	}
+	oargs << defines
+	oargs << msvc.include_paths()
+	oargs << inc_dirs
+	oargs << '/c "$cfile"'
+	oargs << '/Fo"$obj_path"'
 	env_ldflags := os.getenv('LDFLAGS')
 	if env_ldflags != '' {
 		oargs << env_ldflags
 	}
+	v.dump_c_options(oargs)
 	str_oargs := oargs.join(' ')
-	cmd := '"$msvc.full_cl_exe_path" /volatile:ms $str_oargs $defines $include_string /c "$cfile" /Fo"$obj_path"'
+	cmd := '"$msvc.full_cl_exe_path" $str_oargs'
 	// Note: the quotes above ARE balanced.
 	$if trace_thirdparty_obj_files ? {
 		println('>>> build_thirdparty_obj_file_with_msvc cmd: $cmd')
@@ -510,7 +513,7 @@ pub fn msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 	}
 	mut lpaths := []string{}
 	for l in lib_paths {
-		lpaths << '/LIBPATH:"' + os.real_path(l) + '"'
+		lpaths << '/LIBPATH:"${os.real_path(l)}"'
 	}
 	return MsvcStringFlags{
 		real_libs: real_libs
@@ -519,4 +522,35 @@ pub fn msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 		defines: defines
 		other_flags: other_flags
 	}
+}
+
+fn (r MsvcResult) include_paths() []string {
+	mut res := []string{cap: 4}
+	if r.ucrt_include_path != '' {
+		res << '-I "$r.ucrt_include_path"'
+	}
+	if r.vs_include_path != '' {
+		res << '-I "$r.vs_include_path"'
+	}
+	if r.um_include_path != '' {
+		res << '-I "$r.um_include_path"'
+	}
+	if r.shared_include_path != '' {
+		res << '-I "$r.shared_include_path"'
+	}
+	return res
+}
+
+fn (r MsvcResult) library_paths() []string {
+	mut res := []string{cap: 3}
+	if r.ucrt_lib_path != '' {
+		res << '/LIBPATH:"$r.ucrt_lib_path"'
+	}
+	if r.um_lib_path != '' {
+		res << '/LIBPATH:"$r.um_lib_path"'
+	}
+	if r.vs_lib_path != '' {
+		res << '/LIBPATH:"$r.vs_lib_path"'
+	}
+	return res
 }

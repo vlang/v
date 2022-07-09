@@ -357,7 +357,7 @@ fn (mut c Chunk) set_size_and_pinuse_of_free_chunk(size usize) {
 }
 
 fn (mut c Chunk) set_free_with_pinuse(size usize, n_ &Chunk) {
-	mut n := n_
+	mut n := unsafe { n_ }
 	n.clear_pinuse()
 	c.set_size_and_pinuse_of_free_chunk(size)
 }
@@ -480,7 +480,7 @@ fn (mut dl Dlmalloc) unlink_chunk(chunk &Chunk, size usize) {
 
 [unsafe]
 fn (mut dl Dlmalloc) unlink_small_chunk(chunk_ &Chunk, size usize) {
-	mut chunk := chunk_
+	mut chunk := unsafe { chunk_ }
 	mut f := chunk.prev
 	mut b := chunk.next
 	idx := small_index(size)
@@ -563,8 +563,8 @@ fn (mut dl Dlmalloc) unlink_large_chunk(chunk_ &TreeChunk) {
 
 [unsafe]
 fn (mut dl Dlmalloc) unlink_first_small_chunk(head_ &Chunk, next_ &Chunk, idx u32) {
-	mut next := next_
-	mut head := head_
+	mut next := unsafe { next_ }
+	mut head := unsafe { head_ }
 	println('Unlink first small')
 	mut ptr := next.prev
 	if voidptr(head) == voidptr(ptr) {
@@ -815,7 +815,7 @@ fn (mut dl Dlmalloc) insert_chunk(chunk &Chunk, size usize) {
 
 [unsafe]
 fn (mut dl Dlmalloc) insert_small_chunk(chunk_ &Chunk, size usize) {
-	mut chunk := chunk_
+	mut chunk := unsafe { chunk_ }
 	idx := small_index(size)
 	unsafe {
 		mut head := dl.smallbin_at(idx)
@@ -837,8 +837,8 @@ fn (mut dl Dlmalloc) insert_small_chunk(chunk_ &Chunk, size usize) {
 
 [unsafe]
 fn (mut dl Dlmalloc) insert_large_chunk(chunk_ &TreeChunk, size usize) {
-	mut chunk := chunk_
 	unsafe {
+		mut chunk := chunk_
 		idx := dl.compute_tree_index(size)
 		mut h := dl.treebin_at(idx)
 
@@ -1527,7 +1527,7 @@ fn (mut dl Dlmalloc) try_realloc_chunk(p_ &Chunk, nb usize, can_move bool) &Chun
 
 [unsafe]
 fn (mut dl Dlmalloc) mmap_resize(oldp_ &Chunk, nb usize, can_move bool) &Chunk {
-	mut oldp := oldp_
+	mut oldp := unsafe { oldp_ }
 	oldsize := oldp.size()
 	if is_small(nb) {
 		return voidptr(0)
@@ -1568,7 +1568,7 @@ fn (dl &Dlmalloc) mmap_align(a usize) usize {
 
 [unsafe]
 fn (mut dl Dlmalloc) dispose_chunk(p_ &Chunk, psize_ usize) {
-	mut p := p_
+	mut p := unsafe { p_ }
 	mut psize := psize_
 	unsafe {
 		mut next := p.plus_offset(psize)

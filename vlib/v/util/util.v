@@ -37,12 +37,8 @@ const (
 	]
 )
 
-const builtin_module_names = ['builtin', 'strconv', 'strings', 'dlmalloc', 'math']
-
 pub fn module_is_builtin(mod string) bool {
-	// NOTE: using util.builtin_module_parts here breaks -usecache on macos
-	return mod in util.builtin_module_names
-	// return mod in util.builtin_module_parts
+	return mod in util.builtin_module_parts
 }
 
 pub fn tabs(n int) string {
@@ -180,10 +176,19 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		if is_verbose {
 			println('Compiling $tool_name with: "$compilation_command"')
 		}
-		tool_compilation := os.execute_or_exit(compilation_command)
-		if tool_compilation.exit_code != 0 {
-			eprintln('cannot compile `$tool_source`: \n$tool_compilation.output')
-			exit(1)
+
+		retry_max_count := 3
+		for i in 0 .. retry_max_count {
+			tool_compilation := os.execute(compilation_command)
+			if tool_compilation.exit_code == 0 {
+				break
+			} else {
+				if i == retry_max_count - 1 {
+					eprintln('cannot compile `$tool_source`: \n$tool_compilation.output')
+					exit(1)
+				}
+				time.sleep(20 * time.millisecond)
+			}
 		}
 	}
 	$if windows {
@@ -488,7 +493,7 @@ pub fn get_vtmp_folder() string {
 	uid := os.getuid()
 	vtmp = os.join_path_single(os.temp_dir(), 'v_$uid')
 	if !os.exists(vtmp) || !os.is_dir(vtmp) {
-		os.mkdir_all(vtmp) or { panic(err) }
+		os.mkdir_all(vtmp, mode: 0o700) or { panic(err) } // keep directory private
 	}
 	os.setenv('VTMP', vtmp, true)
 	return vtmp

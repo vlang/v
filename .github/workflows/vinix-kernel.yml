@@ -13,6 +13,9 @@ on:
 jobs:
   vinix-build:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    env:
+      VFLAGS: -gc none
     steps:
       - uses: actions/checkout@v2
 

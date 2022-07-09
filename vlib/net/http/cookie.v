@@ -68,10 +68,11 @@ pub fn read_cookies(h map[string][]string, filter string) []&Cookie {
 		mut line := line_.trim_space()
 		mut part := ''
 		for line.len > 0 {
-			if line.index_any(';') > 0 {
-				line_parts := line.split(';')
+			mut semicolon_position := line.index_any(';') // Store the position of the next semicolon
+			if semicolon_position > 0 { // So, there is a semicolon, let's parse until that position
+				line_parts := line[..semicolon_position].split(';') // split the line only until that semicolon
+				line = line[(semicolon_position + 1)..] // and then skip everything before the semicolon
 				part = line_parts[0]
-				line = line_parts[1]
 			} else {
 				part = line
 				line = ''

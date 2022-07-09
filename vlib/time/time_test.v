@@ -267,3 +267,9 @@ fn test_recursive_local_call() {
 fn test_strftime() {
 	assert '1980 July 11' == time_to_test.strftime('%Y %B %d')
 }
+
+fn test_add_seconds_to_time() {
+	now_tm := time.now()
+	future_tm := now_tm.add_seconds(60)
+	assert now_tm.unix < future_tm.unix
+}

@@ -1,6 +1,10 @@
 fn main() {
 	a := 'Vlang'.len
 	b := r'Vlang\n'.len
+	c := 'Vlang\n'.len
+	d := 'Vlang$a'.len
 	println(a)
 	println(b)
+	println(c)
+	println(d)
 }

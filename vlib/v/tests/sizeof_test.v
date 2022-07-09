@@ -23,4 +23,8 @@ fn test_sizeof() {
 	s := S2{}
 	assert sizeof(s.i) == 4
 	assert sizeof(flag.Flag) > 4
+
+	assert sizeof(c'hello') == 6
+	assert sizeof(r'hello') == 16
+	assert sizeof('hello') == 16
 }

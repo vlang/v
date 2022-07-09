@@ -113,12 +113,12 @@ pub fn (mut p Parser) parse_map_type() ast.Type {
 	}
 	p.check(.lsbr)
 	key_type := p.parse_type()
-	key_sym := p.table.sym(key_type)
-	is_alias := key_sym.kind == .alias
 	if key_type.idx() == 0 {
 		// error is reported in parse_type
 		return 0
 	}
+	key_sym := p.table.sym(key_type)
+	is_alias := key_sym.kind == .alias
 	key_type_supported := key_type in [ast.string_type_idx, ast.voidptr_type_idx]
 		|| key_sym.kind in [.enum_, .placeholder, .any]
 		|| ((key_type.is_int() || key_type.is_float() || is_alias) && !key_type.is_ptr())
@@ -150,8 +150,7 @@ pub fn (mut p Parser) parse_map_type() ast.Type {
 }
 
 pub fn (mut p Parser) parse_chan_type() ast.Type {
-	if p.peek_tok.kind != .name && p.peek_tok.kind != .key_mut && p.peek_tok.kind != .amp
-		&& p.peek_tok.kind != .lsbr {
+	if p.peek_tok.kind !in [.name, .key_mut, .amp, .lsbr] {
 		p.next()
 		return ast.chan_type
 	}
@@ -171,8 +170,7 @@ pub fn (mut p Parser) parse_thread_type() ast.Type {
 	if is_opt {
 		p.next()
 	}
-	if p.peek_tok.kind != .name && p.peek_tok.kind != .key_mut && p.peek_tok.kind != .amp
-		&& p.peek_tok.kind != .lsbr {
+	if p.peek_tok.kind !in [.name, .key_mut, .amp, .lsbr] {
 		p.next()
 		if is_opt {
 			mut ret_type := ast.void_type
@@ -198,7 +196,7 @@ pub fn (mut p Parser) parse_multi_return_type() ast.Type {
 	p.check(.lpar)
 	mut mr_types := []ast.Type{}
 	mut has_generic := false
-	for p.tok.kind != .eof {
+	for p.tok.kind !in [.eof, .rpar] {
 		mr_type := p.parse_type()
 		if mr_type.idx() == 0 {
 			break
@@ -425,6 +423,13 @@ pub fn (mut p Parser) parse_type() ast.Type {
 		nr_muls++
 		p.next()
 	}
+	// Anon structs
+	if p.tok.kind == .key_struct {
+		struct_decl := p.struct_decl(true)
+		// Find the registered anon struct type, it was registered above in `p.struct_decl()`
+		return p.table.find_type_idx(struct_decl.name)
+	}
+
 	language := p.parse_language()
 	mut typ := ast.void_type
 	is_array := p.tok.kind == .lsbr
@@ -573,7 +578,7 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 						ret = ast.i64_type
 					}
 					'u8' {
-						ret = ast.byte_type
+						ret = ast.u8_type
 					}
 					'u16' {
 						ret = ast.u16_type

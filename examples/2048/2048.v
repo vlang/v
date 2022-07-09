@@ -7,7 +7,7 @@ import time
 
 struct App {
 mut:
-	gg          &gg.Context = 0
+	gg          &gg.Context = unsafe { 0 }
 	touch       TouchInfo
 	ui          Ui
 	theme       &Theme = themes[0]
@@ -18,7 +18,7 @@ mut:
 	state       GameState  = .play
 	tile_format TileFormat = .normal
 	moves       int
-	perf        &Perf = 0
+	perf        &Perf = unsafe { 0 }
 	is_ai_mode  bool
 }
 
@@ -556,11 +556,11 @@ fn (mut app App) set_theme(idx int) {
 }
 
 fn (mut app App) resize() {
-	mut s := gg.dpi_scale()
+	mut s := app.gg.scale
 	if s == 0.0 {
 		s = 1.0
 	}
-	window_size := gg.window_size()
+	window_size := app.gg.window_size()
 	w := window_size.width
 	h := window_size.height
 	m := f32(math.min(w, h))
@@ -787,7 +787,7 @@ fn (mut app App) undo() {
 fn (mut app App) on_key_down(key gg.KeyCode) {
 	// these keys are independent from the game state:
 	match key {
-		.a { app.is_ai_mode = !app.is_ai_mode }
+		.c { app.is_ai_mode = !app.is_ai_mode }
 		.escape { app.gg.quit() }
 		.n, .r { app.new_game() }
 		.backspace { app.undo() }
@@ -797,12 +797,14 @@ fn (mut app App) on_key_down(key gg.KeyCode) {
 		else {}
 	}
 	if app.state in [.play, .freeplay] {
-		match key {
-			.w, .up { app.move(.up) }
-			.a, .left { app.move(.left) }
-			.s, .down { app.move(.down) }
-			.d, .right { app.move(.right) }
-			else {}
+		if !app.is_ai_mode {
+			match key {
+				.w, .up { app.move(.up) }
+				.a, .left { app.move(.left) }
+				.s, .down { app.move(.down) }
+				.d, .right { app.move(.right) }
+				else {}
+			}
 		}
 	}
 	if app.state == .victory {

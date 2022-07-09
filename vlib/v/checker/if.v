@@ -274,11 +274,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 		}
 	}
 	// if only untyped literals were given default to int/f64
-	if node.typ == ast.int_literal_type {
-		node.typ = ast.int_type
-	} else if node.typ == ast.float_literal_type {
-		node.typ = ast.f64_type
-	}
+	node.typ = ast.mktyp(node.typ)
 	if expr_required && !node.has_else {
 		d := if node.is_comptime { '$' } else { '' }
 		c.error('`$if_kind` expression needs `${d}else` clause', node.pos)

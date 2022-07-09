@@ -1,15 +1,21 @@
 struct Point {
-    mut:
-        x int
-        y int
+mut:
+	x int
+	y int
 }
 
-fn (a Point) +(b Point) int {
-    return a.x + b.x
+fn (a Point) + (b Point) int {
+	return a.x + b.x
 }
 
 fn main() {
-    mut one := Point {x:1, y:2}
-    mut two := Point {x:5, y:1}
-    two = one + two
+	mut one := Point{
+		x: 1
+		y: 2
+	}
+	mut two := Point{
+		x: 5
+		y: 1
+	}
+	two = one + two
 }

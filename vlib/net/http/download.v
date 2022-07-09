@@ -16,9 +16,9 @@ pub fn download_file(url string, out_file_path string) ? {
 		return error('received http code $s.status_code')
 	}
 	$if debug_http ? {
-		println('http.download_file saving $s.text.len bytes')
+		println('http.download_file saving $s.body.len bytes')
 	}
-	os.write_file(out_file_path, s.text)?
+	os.write_file(out_file_path, s.body)?
 }
 
 // TODO: implement download_file_with_progress

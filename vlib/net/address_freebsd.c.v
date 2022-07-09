@@ -5,7 +5,7 @@ module net
 
 const max_unix_path = 104
 
-struct C.addrinfo {
+pub struct C.addrinfo {
 mut:
 	ai_family    int
 	ai_socktype  int
@@ -17,7 +17,7 @@ mut:
 	ai_next      voidptr
 }
 
-struct C.sockaddr_in6 {
+pub struct C.sockaddr_in6 {
 mut:
 	// 1 + 1 + 2 + 4 + 16 + 4 = 28;
 	sin6_len      u8     // 1
@@ -28,7 +28,7 @@ mut:
 	sin6_scope_id u32    // 4
 }
 
-struct C.sockaddr_in {
+pub struct C.sockaddr_in {
 mut:
 	sin_len    u8
 	sin_family u8
@@ -37,7 +37,7 @@ mut:
 	sin_zero   [8]char
 }
 
-struct C.sockaddr_un {
+pub struct C.sockaddr_un {
 mut:
 	sun_len    u8
 	sun_family u8
@@ -45,7 +45,7 @@ mut:
 }
 
 [_pack: '1']
-struct Ip6 {
+pub struct Ip6 {
 	port      u16
 	flow_info u32
 	addr      [16]u8
@@ -53,7 +53,7 @@ struct Ip6 {
 }
 
 [_pack: '1']
-struct Ip {
+pub struct Ip {
 	port u16
 	addr [4]u8
 	// Pad to size so that socket functions
@@ -64,12 +64,12 @@ struct Ip {
 	sin_pad [8]u8
 }
 
-struct Unix {
+pub struct Unix {
 	path [max_unix_path]char
 }
 
 [_pack: '1']
-struct Addr {
+pub struct Addr {
 pub:
 	len  u8
 	f    u8

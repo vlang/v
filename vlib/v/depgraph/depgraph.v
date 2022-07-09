@@ -9,14 +9,16 @@ import v.dotgraph
 
 struct DepGraphNode {
 pub mut:
-	name string
-	deps []string
+	name  string
+	value i64
+	deps  []string
 }
 
-struct DepGraph {
+pub struct DepGraph {
 pub mut:
 	acyclic bool
 	nodes   []DepGraphNode
+	values  map[string]i64
 }
 
 struct OrderedDepMap {
@@ -43,7 +45,6 @@ pub fn (mut o OrderedDepMap) add(name string, deps []string) {
 	for dep in deps {
 		if dep !in d {
 			d << dep
-		} else {
 		}
 	}
 	o.set(name, d)
@@ -95,6 +96,17 @@ pub fn (mut graph DepGraph) add(mod string, deps []string) {
 		deps: deps.clone()
 	}
 	graph.nodes << new_node
+	graph.values[mod] = 0
+}
+
+pub fn (mut graph DepGraph) add_with_value(mod string, deps []string, value i64) {
+	new_node := DepGraphNode{
+		name: mod
+		value: value
+		deps: deps.clone()
+	}
+	graph.nodes << new_node
+	graph.values[mod] = value
 }
 
 pub fn (graph &DepGraph) resolve() &DepGraph {
@@ -119,14 +131,14 @@ pub fn (graph &DepGraph) resolve() &DepGraph {
 			mut g := new_dep_graph()
 			g.acyclic = false
 			for name in node_deps.keys {
-				g.add(name, node_names.get(name))
+				g.add_with_value(name, node_names.get(name), graph.values[name])
 			}
 			return g
 		}
 		for name in ready_set {
 			node_deps.delete(name)
 			resolved_deps := node_names.get(name)
-			resolved.add(name, resolved_deps)
+			resolved.add_with_value(name, resolved_deps, graph.values[name])
 		}
 		for name in node_deps.keys {
 			node_deps.apply_diff(name, ready_set)

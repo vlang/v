@@ -2,7 +2,7 @@ module stats
 
 import math
 
-// Measure of Occurance
+// freq calculates the Measure of Occurance
 // Frequency of a given number
 // Based on
 // https://www.mathsisfun.com/data/frequency-distribution.html
@@ -19,8 +19,8 @@ pub fn freq<T>(data []T, val T) int {
 	return count
 }
 
-// Measure of Central Tendancy
-// Mean of the given input array
+// mean calculates the average
+// of the given input array, sum(data)/data.len
 // Based on
 // https://www.mathsisfun.com/data/central-measures.html
 pub fn mean<T>(data []T) T {
@@ -34,8 +34,8 @@ pub fn mean<T>(data []T) T {
 	return sum / T(data.len)
 }
 
-// Measure of Central Tendancy
-// Geometric Mean of the given input array
+// geometric_mean calculates the central tendency
+// of the given input array, product(data)**1/data.len
 // Based on
 // https://www.mathsisfun.com/numbers/geometric-mean.html
 pub fn geometric_mean<T>(data []T) T {
@@ -49,8 +49,8 @@ pub fn geometric_mean<T>(data []T) T {
 	return math.pow(sum, 1.0 / T(data.len))
 }
 
-// Measure of Central Tendancy
-// Harmonic Mean of the given input array
+// harmonic_mean calculates the reciprocal of the average of reciprocals
+// of the given input array
 // Based on
 // https://www.mathsisfun.com/numbers/harmonic-mean.html
 pub fn harmonic_mean<T>(data []T) T {
@@ -64,8 +64,7 @@ pub fn harmonic_mean<T>(data []T) T {
 	return T(data.len) / sum
 }
 
-// Measure of Central Tendancy
-// Median of the given input array ( input array is assumed to be sorted )
+// median returns the middlemost value of the given input array ( input array is assumed to be sorted )
 // Based on
 // https://www.mathsisfun.com/data/central-measures.html
 pub fn median<T>(sorted_data []T) T {
@@ -80,8 +79,7 @@ pub fn median<T>(sorted_data []T) T {
 	}
 }
 
-// Measure of Central Tendancy
-// Mode of the given input array
+// mode calculates the highest occuring value of the given input array
 // Based on
 // https://www.mathsisfun.com/data/central-measures.html
 pub fn mode<T>(data []T) T {
@@ -101,7 +99,7 @@ pub fn mode<T>(data []T) T {
 	return data[max]
 }
 
-// Root Mean Square of the given input array
+// rms, Root Mean Square, calculates the sqrt of the mean of the squares of the given input array
 // Based on
 // https://en.wikipedia.org/wiki/Root_mean_square
 pub fn rms<T>(data []T) T {
@@ -115,8 +113,8 @@ pub fn rms<T>(data []T) T {
 	return math.sqrt(sum / T(data.len))
 }
 
-// Measure of Dispersion / Spread
-// Population Variance of the given input array
+// population_variance is the Measure of Dispersion / Spread
+// of the given input array
 // Based on
 // https://www.mathsisfun.com/data/standard-deviation.html
 [inline]
@@ -128,8 +126,8 @@ pub fn population_variance<T>(data []T) T {
 	return population_variance_mean<T>(data, data_mean)
 }
 
-// Measure of Dispersion / Spread
-// Population Variance of the given input array
+// population_variance_mean is the Measure of Dispersion / Spread
+// of the given input array, with the provided mean
 // Based on
 // https://www.mathsisfun.com/data/standard-deviation.html
 pub fn population_variance_mean<T>(data []T, mean T) T {
@@ -143,8 +141,7 @@ pub fn population_variance_mean<T>(data []T, mean T) T {
 	return sum / T(data.len)
 }
 
-// Measure of Dispersion / Spread
-// Sample Variance of the given input array
+// sample_variance calculates the spread of dataset around the mean
 // Based on
 // https://www.mathsisfun.com/data/standard-deviation.html
 [inline]
@@ -156,8 +153,7 @@ pub fn sample_variance<T>(data []T) T {
 	return sample_variance_mean<T>(data, data_mean)
 }
 
-// Measure of Dispersion / Spread
-// Sample Variance of the given input array
+// sample_variance calculates the spread of dataset around the provided mean
 // Based on
 // https://www.mathsisfun.com/data/standard-deviation.html
 pub fn sample_variance_mean<T>(data []T, mean T) T {
@@ -171,8 +167,7 @@ pub fn sample_variance_mean<T>(data []T, mean T) T {
 	return sum / T(data.len - 1)
 }
 
-// Measure of Dispersion / Spread
-// Population Standard Deviation of the given input array
+// population_stddev calculates how spread out the dataset is
 // Based on
 // https://www.mathsisfun.com/data/standard-deviation.html
 [inline]
@@ -183,8 +178,7 @@ pub fn population_stddev<T>(data []T) T {
 	return math.sqrt(population_variance<T>(data))
 }
 
-// Measure of Dispersion / Spread
-// Population Standard Deviation of the given input array
+// population_stddev_mean calculates how spread out the dataset is, with the provide mean
 // Based on
 // https://www.mathsisfun.com/data/standard-deviation.html
 [inline]
@@ -219,8 +213,7 @@ pub fn sample_stddev_mean<T>(data []T, mean T) T {
 	return T(math.sqrt(f64(sample_variance_mean<T>(data, mean))))
 }
 
-// Measure of Dispersion / Spread
-// Mean Absolute Deviation of the given input array
+// absdev calculates the average distance between each data point and the mean
 // Based on
 // https://en.wikipedia.org/wiki/Average_absolute_deviation
 [inline]
@@ -232,8 +225,7 @@ pub fn absdev<T>(data []T) T {
 	return absdev_mean<T>(data, data_mean)
 }
 
-// Measure of Dispersion / Spread
-// Mean Absolute Deviation of the given input array
+// absdev_mean calculates the average distance between each data point and the provided mean
 // Based on
 // https://en.wikipedia.org/wiki/Average_absolute_deviation
 pub fn absdev_mean<T>(data []T, mean T) T {
@@ -247,7 +239,7 @@ pub fn absdev_mean<T>(data []T, mean T) T {
 	return sum / T(data.len)
 }
 
-// Sum of squares
+// tts, Sum of squares, calculates the sum over all squared differences between values and overall mean
 [inline]
 pub fn tss<T>(data []T) T {
 	if data.len == 0 {
@@ -257,7 +249,7 @@ pub fn tss<T>(data []T) T {
 	return tss_mean<T>(data, data_mean)
 }
 
-// Sum of squares about the mean
+// tts_mean, Sum of squares, calculates the sum over all squared differences between values and the provided mean
 pub fn tss_mean<T>(data []T, mean T) T {
 	if data.len == 0 {
 		return T(0)
@@ -269,7 +261,7 @@ pub fn tss_mean<T>(data []T, mean T) T {
 	return tss
 }
 
-// Minimum of the given input array
+// min finds the minimum value from the dataset
 pub fn min<T>(data []T) T {
 	if data.len == 0 {
 		return T(0)
@@ -283,7 +275,7 @@ pub fn min<T>(data []T) T {
 	return min
 }
 
-// Maximum of the given input array
+// max finds the maximum value from the dataset
 pub fn max<T>(data []T) T {
 	if data.len == 0 {
 		return T(0)
@@ -297,7 +289,7 @@ pub fn max<T>(data []T) T {
 	return max
 }
 
-// Minimum and maximum of the given input array
+// minmax finds the minimum and maximum value from the dataset
 pub fn minmax<T>(data []T) (T, T) {
 	if data.len == 0 {
 		return T(0), T(0)
@@ -315,7 +307,7 @@ pub fn minmax<T>(data []T) (T, T) {
 	return min, max
 }
 
-// Minimum of the given input array
+// min_index finds the first index of the minimum value
 pub fn min_index<T>(data []T) int {
 	if data.len == 0 {
 		return 0
@@ -331,7 +323,7 @@ pub fn min_index<T>(data []T) int {
 	return min_index
 }
 
-// Maximum of the given input array
+// max_index finds the first index of the maximum value
 pub fn max_index<T>(data []T) int {
 	if data.len == 0 {
 		return 0
@@ -347,7 +339,7 @@ pub fn max_index<T>(data []T) int {
 	return max_index
 }
 
-// Minimum and maximum of the given input array
+// minmax_index finds the first index of the minimum and maximum value
 pub fn minmax_index<T>(data []T) (int, int) {
 	if data.len == 0 {
 		return 0, 0
@@ -369,7 +361,7 @@ pub fn minmax_index<T>(data []T) (int, int) {
 	return min_index, max_index
 }
 
-// Measure of Dispersion / Spread
+// range calculates the difference between the min and max
 // Range ( Maximum - Minimum ) of the given input array
 // Based on
 // https://www.mathsisfun.com/data/range.html
@@ -381,6 +373,8 @@ pub fn range<T>(data []T) T {
 	return max - min
 }
 
+// covariance calculates directional association between datasets
+// positive value denotes variables move in same direction and negative denotes variables move in opposite directions
 [inline]
 pub fn covariance<T>(data1 []T, data2 []T) T {
 	mean1 := mean<T>(data1)
@@ -388,7 +382,7 @@ pub fn covariance<T>(data1 []T, data2 []T) T {
 	return covariance_mean<T>(data1, data2, mean1, mean2)
 }
 
-// Compute the covariance of a dataset using
+// covariance_mean computes the covariance of a dataset with means provided
 // the recurrence relation
 pub fn covariance_mean<T>(data1 []T, data2 []T, mean1 T, mean2 T) T {
 	n := int(math.min(data1.len, data2.len))
@@ -404,13 +398,16 @@ pub fn covariance_mean<T>(data1 []T, data2 []T, mean1 T, mean2 T) T {
 	return covariance
 }
 
+// lag1_autocorrelation_mean calculates the correlation between values that are one time period apart
+// of a dataset, based on the mean
 [inline]
 pub fn lag1_autocorrelation<T>(data []T) T {
 	data_mean := mean<T>(data)
 	return lag1_autocorrelation_mean<T>(data, data_mean)
 }
 
-// Compute the lag-1 autocorrelation of a dataset using
+// lag1_autocorrelation_mean calculates the correlation between values that are one time period apart
+// of a dataset, using
 // the recurrence relation
 pub fn lag1_autocorrelation_mean<T>(data []T, mean T) T {
 	if data.len == 0 {
@@ -427,6 +424,7 @@ pub fn lag1_autocorrelation_mean<T>(data []T, mean T) T {
 	return q / v
 }
 
+// kurtosis calculates the measure of the 'tailedness' of the data by finding mean and standard of deviation
 [inline]
 pub fn kurtosis<T>(data []T) T {
 	data_mean := mean<T>(data)
@@ -434,7 +432,7 @@ pub fn kurtosis<T>(data []T) T {
 	return kurtosis_mean_stddev<T>(data, data_mean, sd)
 }
 
-// Takes a dataset and finds the kurtosis
+// kurtosis_mean_stddev calculates the measure of the 'tailedness' of the data
 // using the fourth moment the deviations, normalized by the sd
 pub fn kurtosis_mean_stddev<T>(data []T, mean T, sd T) T {
 	mut avg := T(0) // find the fourth moment the deviations, normalized by the sd
@@ -449,6 +447,7 @@ pub fn kurtosis_mean_stddev<T>(data []T, mean T, sd T) T {
 	return avg - T(3.0)
 }
 
+// skew calculates the mean and standard of deviation to find the skew from the data
 [inline]
 pub fn skew<T>(data []T) T {
 	data_mean := mean<T>(data)
@@ -456,6 +455,7 @@ pub fn skew<T>(data []T) T {
 	return skew_mean_stddev<T>(data, data_mean, sd)
 }
 
+// skew_mean_stddev calculates the skewness of data
 pub fn skew_mean_stddev<T>(data []T, mean T, sd T) T {
 	mut skew := T(0) // find the sum of the cubed deviations, normalized by the sd.
 	/*

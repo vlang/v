@@ -353,6 +353,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			}
 		}
 		ast.None {}
+		ast.Nil {}
 		ast.ParExpr {
 			w.expr(node.expr)
 		}
@@ -378,6 +379,11 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		}
 		ast.SelectorExpr {
 			w.expr(node.expr)
+			if node.expr_type != 0 {
+				if method := w.table.find_method(w.table.sym(node.expr_type), node.field_name) {
+					w.fn_by_name(method.fkey())
+				}
+			}
 		}
 		ast.SqlExpr {
 			w.expr(node.db_expr)

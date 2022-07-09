@@ -287,13 +287,13 @@ fn vweb_tmpl_${fn_name}() string {
 				}
 			}
 			.js {
-				if line.contains('//V_TEMPLATE') {
-					source.writeln(insert_template_code(fn_name, tmpl_str_start, line))
-				} else {
-					// replace `$` to `\$` at first to escape JavaScript template literal syntax
-					source.writeln(line.replace(r'$', r'\$').replace(r'$$', r'@').replace(r'.$',
-						r'.@').replace(r"'", r"\'"))
-				}
+				// if line.contains('//V_TEMPLATE') {
+				source.writeln(insert_template_code(fn_name, tmpl_str_start, line))
+				//} else {
+				// replace `$` to `\$` at first to escape JavaScript template literal syntax
+				// source.writeln(line.replace(r'$', r'\$').replace(r'$$', r'@').replace(r'.$',
+				// r'.@').replace(r"'", r"\'"))
+				//}
 				continue
 			}
 			.css {

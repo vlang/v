@@ -25,7 +25,20 @@ see also `v help build`.
 
    -cstrict
       Turn on additional C warnings. This slows down compilation
-      slightly (~10% for gcc), but sometimes provides better diagnosis.
+      slightly (~10% for gcc), but sometimes provides better error diagnosis.
+
+   -cmain <MainFunctionName>
+      Useful with framework like code, that uses macros to re-define `main`, like SDL2 does for example.
+      With that option, V will always generate:
+        `int MainFunctionName(int ___argc, char** ___argv) {` , for the program entry point function, *no matter* the OS.
+      Without it, on non Windows systems, it will generate:
+        `int main(int ___argc, char** ___argv) {`
+        ... and on Windows, it will generate:
+          a) `int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, LPWSTR cmd_line, int show_cmd){`
+          when you are compiling applications that `import gg`.
+        ... or it will generate:
+          b) `int wmain(int ___argc, wchar_t* ___argv[], wchar_t* ___envp[]){`
+          when you are compiling console apps.
 
    -showcc
       Prints the C command that is used to build the program.
@@ -95,9 +108,11 @@ see also `v help build`.
 
       The compiler is known to also work, and has support for these operating
       systems also (although we do not test it as regularly as for the above):
-            `android`, `ios`,
+            `vinix`,
+            `ios`,
+            `android`, `termux`, 
             `freebsd`, `openbsd`, `netbsd`, `dragonfly`,
-            `solaris`, `serenity`, `haiku`, `vinix`,
+            `solaris`, `serenity`, `haiku`,
             `wasm32`, `wasm32-wasi`, `wasm32-emscripten`
 
       Note that V has the concept of platform files, i.e. files ending
@@ -239,7 +254,15 @@ see also `v help build`.
 
    -dump-c-flags file.txt
       Write all C flags into `file.txt`, one flag per line.
-      If `file.txt` is `-`, then write the flags to stdout, one flag per line.
+      If `file.txt` is `-`, write to stdout instead.
+
+   -dump-modules file.txt
+      Write all module names used by the program in `file.txt`, one module per line.
+      If `file.txt` is `-`, write to stdout instead.
+
+   -dump-files file.txt
+      Write all used V file paths used by the program in `file.txt`, one module per line.
+      If `file.txt` is `-`, write to stdout instead.
 
    -no-rsp
       By default, V passes all C compiler options to the backend C compiler

@@ -599,7 +599,7 @@ fn parse_host(host string) ?string {
 			return host1 + host2 + host3
 		}
 		if idx := host.last_index(':') {
-			colon_port = host[idx..]
+			colon_port = host[idx..i]
 			if !valid_optional_port(colon_port) {
 				return error(error_msg('parse_host: invalid port $colon_port after host ',
 					''))

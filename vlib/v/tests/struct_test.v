@@ -412,3 +412,22 @@ fn test_struct_update() {
 	assert c2.capital.name == 'city'
 	assert c2.name == 'test'
 }
+
+// Test anon structs
+struct Book {
+	x      Foo
+	author struct  {
+		name string
+		age  int
+	}
+
+	title string
+}
+
+fn test_anon() {
+	empty_book := Book{} // author:struct{'sdf', 23}}
+	assert empty_book.author.age == 0
+	assert empty_book.author.name == ''
+
+	println(empty_book.author.age)
+}

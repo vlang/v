@@ -379,35 +379,39 @@ const (
 )
 
 fn (mut s TcpSocket) connect(a Addr) ? {
-	res := C.connect(s.handle, voidptr(&a), a.len())
-	if res == 0 {
-		return
-	}
-
-	// The  socket  is  nonblocking and the connection cannot be completed
-	// immediately.  (UNIX domain sockets failed with EAGAIN instead.)
-	// It is possible to select(2) or poll(2) for completion by selecting
-	// the socket for  writing.   After  select(2) indicates  writability,
-	// use getsockopt(2) to read the SO_ERROR option at level SOL_SOCKET to
-	// determine whether connect() completed successfully (SO_ERROR is zero) or
-	// unsuccessfully (SO_ERROR is one of the usual error codes  listed  here,
-	// ex‐ plaining the reason for the failure).
-	write_result := s.@select(.write, net.connect_timeout)?
-	if write_result {
-		err := 0
-		len := sizeof(err)
-		socket_error(C.getsockopt(s.handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len))?
-
-		if err != 0 {
-			return wrap_error(err)
+	$if !net_blocking_sockets ? {
+		res := C.connect(s.handle, voidptr(&a), a.len())
+		if res == 0 {
+			return
 		}
-		// Succeeded
-		return
+
+		// The  socket  is  nonblocking and the connection cannot be completed
+		// immediately.  (UNIX domain sockets failed with EAGAIN instead.)
+		// It is possible to select(2) or poll(2) for completion by selecting
+		// the socket for  writing.   After  select(2) indicates  writability,
+		// use getsockopt(2) to read the SO_ERROR option at level SOL_SOCKET to
+		// determine whether connect() completed successfully (SO_ERROR is zero) or
+		// unsuccessfully (SO_ERROR is one of the usual error codes  listed  here,
+		// ex‐ plaining the reason for the failure).
+		write_result := s.@select(.write, net.connect_timeout)?
+		if write_result {
+			err := 0
+			len := sizeof(err)
+			socket_error(C.getsockopt(s.handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len))?
+
+			if err != 0 {
+				return wrap_error(err)
+			}
+			// Succeeded
+			return
+		}
+
+		// Get the error
+		socket_error(C.connect(s.handle, voidptr(&a), a.len()))?
+
+		// otherwise we timed out
+		return err_connect_timed_out
+	} $else {
+		socket_error(C.connect(s.handle, voidptr(&a), a.len()))?
 	}
-
-	// Get the error
-	socket_error(C.connect(s.handle, voidptr(&a), a.len()))?
-
-	// otherwise we timed out
-	return err_connect_timed_out
 }

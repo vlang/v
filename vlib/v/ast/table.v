@@ -4,7 +4,6 @@
 [has_globals]
 module ast
 
-import time
 import v.cflag
 import v.token
 import v.util
@@ -36,15 +35,17 @@ pub mut:
 	panic_handler      FnPanicHandler = default_table_panic_handler
 	panic_userdata     voidptr        = voidptr(0) // can be used to pass arbitrary data to panic_handler;
 	panic_npanics      int
-	cur_fn             &FnDecl = 0 // previously stored in Checker.cur_fn and Gen.cur_fn
+	cur_fn             &FnDecl = unsafe { 0 } // previously stored in Checker.cur_fn and Gen.cur_fn
 	cur_concrete_types []Type  // current concrete types, e.g. <int, string>
 	gostmts            int     // how many `go` statements there were in the parsed files.
 	// When table.gostmts > 0, __VTHREADS__ is defined, which can be checked with `$if threads {`
 	enum_decls        map[string]EnumDecl
-	mdeprecated_msg   map[string]string    // module deprecation message
-	mdeprecated_after map[string]time.Time // module deprecation date
+	module_deprecated map[string]bool
+	module_attrs      map[string][]Attr // module attributes
 	builtin_pub_fns   map[string]bool
 	pointer_size      int
+	// cache for type_to_str_using_aliases
+	cached_type_to_str map[u64]string
 }
 
 // used by vls to avoid leaks
@@ -115,9 +116,10 @@ pub mut:
 	source_fn      voidptr // set in the checker, while processing fn declarations
 	usages         int
 	generic_names  []string
-	attrs          []Attr // all fn attributes
-	is_conditional bool   // true for `[if abc]fn(){}`
-	ctdefine_idx   int    // the index of the attribute, containing the compile time define [if mytag]
+	dep_names      []string // globals or consts dependent names
+	attrs          []Attr   // all fn attributes
+	is_conditional bool     // true for `[if abc]fn(){}`
+	ctdefine_idx   int      // the index of the attribute, containing the compile time define [if mytag]
 }
 
 fn (f &Fn) method_equals(o &Fn) bool {
@@ -314,15 +316,6 @@ pub fn (t &Table) find_fn(name string) ?Fn {
 pub fn (t &Table) known_fn(name string) bool {
 	t.find_fn(name) or { return false }
 	return true
-}
-
-pub fn (mut t Table) mark_module_as_deprecated(mname string, message string) {
-	t.mdeprecated_msg[mname] = message
-	t.mdeprecated_after[mname] = time.now()
-}
-
-pub fn (mut t Table) mark_module_as_deprecated_after(mname string, after_date string) {
-	t.mdeprecated_after[mname] = time.parse_iso8601(after_date) or { time.now() }
 }
 
 pub fn (mut t Table) register_fn(new_fn Fn) {
@@ -1256,7 +1249,7 @@ pub fn (t &Table) value_type(typ Type) Type {
 		return string_type
 	}
 	if sym.kind in [.byteptr, .string] {
-		return byte_type
+		return u8_type
 	}
 	if typ.is_ptr() {
 		// byte* => byte
@@ -1339,7 +1332,7 @@ pub fn (t &Table) is_sumtype_or_in_variant(parent Type, typ Type) bool {
 	if typ == 0 {
 		return false
 	}
-	if t.type_kind(typ) == .sum_type && parent.idx() == typ.idx()
+	if t.sym(typ).kind == .sum_type && parent.idx() == typ.idx()
 		&& parent.nr_muls() == typ.nr_muls() {
 		return true
 	}
@@ -1433,7 +1426,7 @@ pub fn (mut t Table) bitsize_to_type(bit_size int) Type {
 			if bit_size % 8 != 0 { // there is no way to do `i2131(32)` so this should never be reached
 				t.panic('compiler bug: bitsizes must be multiples of 8')
 			}
-			return new_type(t.find_or_register_array_fixed(byte_type, bit_size / 8, empty_expr()))
+			return new_type(t.find_or_register_array_fixed(u8_type, bit_size / 8, empty_expr()))
 		}
 	}
 }
@@ -1945,12 +1938,12 @@ pub fn (mut t Table) replace_generic_type(typ Type, generic_types []Type) {
 
 // generic struct instantiations to concrete types
 pub fn (mut t Table) generic_insts_to_concrete() {
-	for mut typ in t.type_symbols {
-		if typ.kind == .generic_inst {
-			info := typ.info as GenericInst
+	for mut sym in t.type_symbols {
+		if sym.kind == .generic_inst {
+			info := sym.info as GenericInst
 			parent := t.type_symbols[info.parent_idx]
 			if parent.kind == .placeholder {
-				typ.kind = .placeholder
+				sym.kind = .placeholder
 				continue
 			}
 			match parent.info {
@@ -1980,15 +1973,15 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 						parent_info.concrete_types = info.concrete_types.clone()
 						parent_info.fields = fields
 						parent_info.parent_type = new_type(info.parent_idx).set_flag(.generic)
-						typ.info = Struct{
+						sym.info = Struct{
 							...parent_info
 							is_generic: false
 							concrete_types: info.concrete_types.clone()
 							fields: fields
 							parent_type: new_type(info.parent_idx).set_flag(.generic)
 						}
-						typ.is_pub = true
-						typ.kind = parent.kind
+						sym.is_pub = true
+						sym.kind = parent.kind
 
 						parent_sym := t.sym(parent_info.parent_type)
 						for method in parent_sym.methods {
@@ -2032,7 +2025,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 									param.typ = pt
 								}
 							}
-							typ.register_method(method)
+							sym.register_method(method)
 						}
 						mut all_methods := parent.methods
 						for imethod in imethods {
@@ -2042,7 +2035,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 								}
 							}
 						}
-						typ.info = Interface{
+						sym.info = Interface{
 							...parent_info
 							is_generic: false
 							concrete_types: info.concrete_types.clone()
@@ -2050,9 +2043,9 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 							methods: imethods
 							parent_type: new_type(info.parent_idx).set_flag(.generic)
 						}
-						typ.is_pub = true
-						typ.kind = parent.kind
-						typ.methods = all_methods
+						sym.is_pub = true
+						sym.kind = parent.kind
+						sym.methods = all_methods
 					} else {
 						util.verror('generic error', 'the number of generic types of interface `$parent.name` is inconsistent with the concrete types')
 					}
@@ -2076,8 +2069,8 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 						}
 						for i in 0 .. variants.len {
 							if variants[i].has_flag(.generic) {
-								sym := t.sym(variants[i])
-								if sym.kind == .struct_ && variants[i].idx() != info.parent_idx {
+								t_sym := t.sym(variants[i])
+								if t_sym.kind == .struct_ && variants[i].idx() != info.parent_idx {
 									variants[i] = t.unwrap_generic_type(variants[i], generic_names,
 										info.concrete_types)
 								} else {
@@ -2089,7 +2082,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 								}
 							}
 						}
-						typ.info = SumType{
+						sym.info = SumType{
 							...parent_info
 							is_generic: false
 							concrete_types: info.concrete_types.clone()
@@ -2097,8 +2090,8 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 							variants: variants
 							parent_type: new_type(info.parent_idx).set_flag(.generic)
 						}
-						typ.is_pub = true
-						typ.kind = parent.kind
+						sym.is_pub = true
+						sym.kind = parent.kind
 					} else {
 						util.verror('generic error', 'the number of generic types of sumtype `$parent.name` is inconsistent with the concrete types')
 					}
@@ -2116,25 +2109,11 @@ pub fn (t &Table) is_comptime_type(x Type, y ComptimeType) bool {
 			return x_kind == .map
 		}
 		.int {
-			return x_kind in [
-				.i8,
-				.i16,
-				.int,
-				.i64,
-				.u8,
-				.u16,
-				.u32,
-				.u64,
-				.usize,
-				.int_literal,
-			]
+			return x_kind in [.i8, .i16, .int, .i64, .u8, .u16, .u32, .u64, .usize, .isize,
+				.int_literal]
 		}
 		.float {
-			return x_kind in [
-				.f32,
-				.f64,
-				.float_literal,
-			]
+			return x_kind in [.f32, .f64, .float_literal]
 		}
 		.struct_ {
 			return x_kind == .struct_
@@ -2152,4 +2131,116 @@ pub fn (t &Table) is_comptime_type(x Type, y ComptimeType) bool {
 			return x_kind == .enum_
 		}
 	}
+}
+
+pub fn (t &Table) dependent_names_in_expr(expr Expr) []string {
+	mut names := []string{}
+	match expr {
+		ArrayInit {
+			for elem_expr in expr.exprs {
+				names << t.dependent_names_in_expr(elem_expr)
+			}
+		}
+		CallExpr {
+			for arg in expr.args {
+				names << t.dependent_names_in_expr(arg.expr)
+			}
+			if func := t.find_fn(expr.name) {
+				names << func.dep_names
+			}
+		}
+		CastExpr {
+			names << t.dependent_names_in_expr(expr.expr)
+			names << t.dependent_names_in_expr(expr.arg)
+		}
+		Ident {
+			if expr.kind in [.global, .constant] {
+				names << util.no_dots(expr.name)
+			}
+		}
+		IfExpr {
+			for branch in expr.branches {
+				names << t.dependent_names_in_expr(branch.cond)
+				for stmt in branch.stmts {
+					names << t.dependent_names_in_stmt(stmt)
+				}
+			}
+		}
+		InfixExpr {
+			names << t.dependent_names_in_expr(expr.left)
+			names << t.dependent_names_in_expr(expr.right)
+		}
+		MapInit {
+			for val in expr.vals {
+				names << t.dependent_names_in_expr(val)
+			}
+		}
+		MatchExpr {
+			names << t.dependent_names_in_expr(expr.cond)
+			for branch in expr.branches {
+				for stmt in branch.stmts {
+					names << t.dependent_names_in_stmt(stmt)
+				}
+			}
+		}
+		ParExpr {
+			names << t.dependent_names_in_expr(expr.expr)
+		}
+		PostfixExpr {
+			names << t.dependent_names_in_expr(expr.expr)
+		}
+		PrefixExpr {
+			names << t.dependent_names_in_expr(expr.right)
+		}
+		StructInit {
+			for field in expr.fields {
+				names << t.dependent_names_in_expr(field.expr)
+			}
+		}
+		else {}
+	}
+	return names
+}
+
+pub fn (t &Table) dependent_names_in_stmt(stmt Stmt) []string {
+	mut names := []string{}
+	match stmt {
+		AssignStmt {
+			for expr in stmt.left {
+				names << t.dependent_names_in_expr(expr)
+			}
+			for expr in stmt.right {
+				names << t.dependent_names_in_expr(expr)
+			}
+		}
+		ExprStmt {
+			names << t.dependent_names_in_expr(stmt.expr)
+		}
+		ForInStmt {
+			names << t.dependent_names_in_expr(stmt.cond)
+			for stmt_ in stmt.stmts {
+				names << t.dependent_names_in_stmt(stmt_)
+			}
+		}
+		ForStmt {
+			for stmt_ in stmt.stmts {
+				names << t.dependent_names_in_stmt(stmt_)
+			}
+		}
+		ForCStmt {
+			names << t.dependent_names_in_stmt(stmt.init)
+			names << t.dependent_names_in_expr(stmt.cond)
+			names << t.dependent_names_in_stmt(stmt.inc)
+			for stmt_ in stmt.stmts {
+				names << t.dependent_names_in_stmt(stmt_)
+			}
+		}
+		Return {
+			for expr in stmt.exprs {
+				names << t.dependent_names_in_expr(expr)
+			}
+		}
+		else {}
+	}
+	return names
 }

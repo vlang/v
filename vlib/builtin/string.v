@@ -1130,6 +1130,23 @@ pub fn (s string) contains_any(chars string) bool {
 	return false
 }
 
+// contains_only returns `true`, if the string contains only the characters in `chars`.
+pub fn (s string) contains_only(chars string) bool {
+	if chars.len == 0 {
+		return false
+	}
+	for ch in s {
+		mut res := 0
+		for i := 0; i < chars.len && res == 0; i++ {
+			res += int(ch == unsafe { chars.str[i] })
+		}
+		if res == 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // contains_any_substr returns `true` if the string contains any of the strings in `substrs`.
 pub fn (s string) contains_any_substr(substrs []string) bool {
 	if substrs.len == 0 {
@@ -2001,4 +2018,9 @@ pub fn (name string) match_glob(pattern string) bool {
 	}
 	// Matched all of `pattern` to all of `name`
 	return true
+}
+
+// is_ascii returns true  if all characters belong to the US-ASCII set ([` `..`~`])
+pub fn (s string) is_ascii() bool {
+	return !s.bytes().any(it < u8(` `) || it > u8(`~`))
 }

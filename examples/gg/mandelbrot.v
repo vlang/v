@@ -7,7 +7,11 @@ const pwidth = 800
 
 const pheight = 600
 
+const chunk_height = 2 // the image is recalculated in chunks, each chunk processed in a separate thread
+
 const zoom_factor = 1.1
+
+const max_iterations = 255
 
 struct ViewRect {
 mut:
@@ -17,22 +21,48 @@ mut:
 	y_max f64
 }
 
+fn (v &ViewRect) width() f64 {
+	return v.x_max - v.x_min
+}
+
+fn (v &ViewRect) height() f64 {
+	return v.y_max - v.y_min
+}
+
 struct AppState {
 mut:
-	gg      &gg.Context = 0
+	gg      &gg.Context = unsafe { 0 }
 	iidx    int
-	pixels  []u32    = []u32{len: pwidth * pheight}
-	npixels []u32    = []u32{len: pwidth * pheight} // all drawing happens here, results are copied at the end
-	view    ViewRect = ViewRect{-2.7610033817025625, 1.1788897130338223, -1.824584023871934, 2.1153096311072788}
+	pixels  &u32     = unsafe { vcalloc(pwidth * pheight * sizeof(u32)) }
+	npixels &u32     = unsafe { vcalloc(pwidth * pheight * sizeof(u32)) } // all drawing happens here, results are swapped at the end
+	view    ViewRect = ViewRect{-3.0773593290970673, 1.4952456603855397, -2.019938598189011, 2.3106642054225945}
+	scale   int      = 1
 	ntasks  int      = runtime.nr_jobs()
 }
 
 const colors = [gx.black, gx.blue, gx.red, gx.green, gx.yellow, gx.orange, gx.purple, gx.white,
-	gx.indigo, gx.violet, gx.black]
+	gx.indigo, gx.violet, gx.black, gx.blue, gx.orange, gx.yellow, gx.green].map(u32(it.abgr8()))
+
+struct MandelChunk {
+	cview ViewRect
+	ymin  f64
+	ymax  f64
+}
 
 fn (mut state AppState) update() {
-	mut sw := time.new_stopwatch()
+	mut chunk_channel := chan MandelChunk{cap: state.ntasks}
+	mut chunk_ready_channel := chan bool{cap: 1000}
+	mut threads := []thread{cap: state.ntasks}
+	defer {
+		chunk_channel.close()
+		threads.wait()
+	}
+	for t in 0 .. state.ntasks {
+		threads << go state.worker(t, chunk_channel, chunk_ready_channel)
+	}
+	//
 	mut oview := ViewRect{}
+	mut sw := time.new_stopwatch()
 	for {
 		sw.restart()
 		cview := state.view
@@ -40,39 +70,61 @@ fn (mut state AppState) update() {
 			time.sleep(5 * time.millisecond)
 			continue
 		}
-		sheight := pheight / state.ntasks
-		mut threads := []thread{}
-		for start := 0; start < pheight; start += sheight {
-			threads << go state.recalc_lines(cview, start, start + sheight)
+		// schedule chunks, describing the work:
+		mut nchunks := 0
+		for start := 0; start < pheight; start += chunk_height {
+			chunk_channel <- MandelChunk{
+				cview: cview
+				ymin: start
+				ymax: start + chunk_height
+			}
+			nchunks++
 		}
-		threads.wait()
-		state.pixels = state.npixels
-		println('$state.ntasks threads; $sw.elapsed().milliseconds() ms / frame')
+		// wait for all chunks to be processed:
+		for _ in 0 .. nchunks {
+			_ := <-chunk_ready_channel
+		}
+		// everything is done, swap the buffer pointers
+		state.pixels, state.npixels = state.npixels, state.pixels
+		println('${state.ntasks:2} threads; ${sw.elapsed().milliseconds():3} ms / frame; scale: ${state.scale:4}')
 		oview = cview
 	}
 }
 
-fn (mut state AppState) recalc_lines(cview ViewRect, ymin f64, ymax f64) {
-	for y_pixel := ymin; y_pixel < ymax && y_pixel < pheight; y_pixel++ {
-		y0 := (y_pixel / pheight) * (cview.y_max - cview.y_min) + cview.y_min
-		for x_pixel := 0.0; x_pixel < pwidth; x_pixel++ {
-			x0 := (x_pixel / pwidth) * (cview.x_max - cview.x_min) + cview.x_min
-			mut x, mut y := x0, y0
-			mut iter := 0
-			for ; iter < 80; iter++ {
-				x, y = x * x - y * y + x0, 2 * x * y + y0
-				if x * x + y * y > 4 {
-					break
+[direct_array_access]
+fn (mut state AppState) worker(id int, input chan MandelChunk, ready chan bool) {
+	for {
+		chunk := <-input or { break }
+		yscale := chunk.cview.height() / pheight
+		xscale := chunk.cview.width() / pwidth
+		mut x, mut y, mut iter := 0.0, 0.0, 0
+		mut y0 := chunk.ymin * yscale + chunk.cview.y_min
+		mut x0 := chunk.cview.x_min
+		for y_pixel := chunk.ymin; y_pixel < chunk.ymax && y_pixel < pheight; y_pixel++ {
+			yrow := unsafe { &state.npixels[int(y_pixel * pwidth)] }
+			y0 += yscale
+			x0 = chunk.cview.x_min
+			for x_pixel := 0; x_pixel < pwidth; x_pixel++ {
+				x0 += xscale
+				x, y = x0, y0
+				for iter = 0; iter < max_iterations; iter++ {
+					x, y = x * x - y * y + x0, 2 * x * y + y0
+					if x * x + y * y > 4 {
+						break
+					}
+				}
+				unsafe {
+					yrow[x_pixel] = colors[iter & 15]
 				}
 			}
-			state.npixels[int(y_pixel) * pwidth + int(x_pixel)] = u32(colors[iter % 8].abgr8())
 		}
+		ready <- true
 	}
 }
 
 fn (mut state AppState) draw() {
 	mut istream_image := state.gg.get_cached_image_by_idx(state.iidx)
-	istream_image.update_pixel_data(&state.pixels[0])
+	istream_image.update_pixel_data(state.pixels)
 	size := gg.window_size()
 	state.gg.draw_image(0, 0, size.width, size.height, istream_image)
 }
@@ -84,6 +136,7 @@ fn (mut state AppState) zoom(zoom_factor f64) {
 	state.view.x_max = c_x + zoom_factor * d_x
 	state.view.y_min = c_y - zoom_factor * d_y
 	state.view.y_max = c_y + zoom_factor * d_y
+	state.scale += if zoom_factor < 1 { 1 } else { -1 }
 }
 
 fn (mut state AppState) center(s_x f64, s_y f64) {
@@ -110,8 +163,8 @@ fn graphics_frame(mut state AppState) {
 fn graphics_click(x f32, y f32, btn gg.MouseButton, mut state AppState) {
 	if btn == .right {
 		size := gg.window_size()
-		m_x := (x / size.width) * (state.view.x_max - state.view.x_min) + state.view.x_min
-		m_y := (y / size.height) * (state.view.y_max - state.view.y_min) + state.view.y_min
+		m_x := (x / size.width) * state.view.width() + state.view.x_min
+		m_y := (y / size.height) * state.view.height() + state.view.y_min
 		state.center(m_x, m_y)
 	}
 }
@@ -119,8 +172,8 @@ fn graphics_click(x f32, y f32, btn gg.MouseButton, mut state AppState) {
 fn graphics_move(x f32, y f32, mut state AppState) {
 	if state.gg.mouse_buttons.has(.left) {
 		size := gg.window_size()
-		d_x := (f64(state.gg.mouse_dx) / size.width) * (state.view.x_max - state.view.x_min)
-		d_y := (f64(state.gg.mouse_dy) / size.height) * (state.view.y_max - state.view.y_min)
+		d_x := (f64(state.gg.mouse_dx) / size.width) * state.view.width()
+		d_y := (f64(state.gg.mouse_dy) / size.height) * state.view.height()
 		state.view.x_min -= d_x
 		state.view.x_max -= d_x
 		state.view.y_min -= d_y
@@ -133,12 +186,12 @@ fn graphics_scroll(e &gg.Event, mut state AppState) {
 }
 
 fn graphics_keydown(code gg.KeyCode, mod gg.Modifier, mut state AppState) {
-	s_x := (state.view.x_max - state.view.x_min) / 5
-	s_y := (state.view.y_max - state.view.y_min) / 5
+	s_x := state.view.width() / 5
+	s_y := state.view.height() / 5
 	// movement
 	mut d_x, mut d_y := 0.0, 0.0
 	if code == .enter {
-		println('> $state.view.x_min | $state.view.x_max | $state.view.y_min | $state.view.y_max')
+		println('> ViewRect{$state.view.x_min, $state.view.x_max, $state.view.y_min, $state.view.y_max}')
 	}
 	if state.gg.pressed_keys[int(gg.KeyCode.left)] {
 		d_x -= s_x

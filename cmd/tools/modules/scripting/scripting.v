@@ -24,6 +24,7 @@ pub fn cprint(omessage string) {
 		message = term.cyan(message)
 	}
 	print(message)
+	flush_stdout()
 }
 
 pub fn cprint_strong(omessage string) {
@@ -32,16 +33,19 @@ pub fn cprint_strong(omessage string) {
 		message = term.bright_green(message)
 	}
 	print(message)
+	flush_stdout()
 }
 
 pub fn cprintln(omessage string) {
 	cprint(omessage)
 	println('')
+	flush_stdout()
 }
 
 pub fn cprintln_strong(omessage string) {
 	cprint_strong(omessage)
 	println('')
+	flush_stdout()
 }
 
 pub fn verbose_trace(label string, message string) {

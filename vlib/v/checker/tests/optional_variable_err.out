@@ -1,0 +1,5 @@
+vlib/v/checker/tests/optional_variable_err.vv:2:7: error: casting to optional type is forbidden
+    1 | fn main() {
+    2 |     _ := ?bool(false)
+      |          ~~~~~~~~~~~~
+    3 | }

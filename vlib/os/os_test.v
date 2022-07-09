@@ -200,7 +200,7 @@ fn test_ls() {
 
 fn create_tree() ? {
 	os.mkdir_all('myfolder/f1/f2/f3')?
-	os.mkdir_all('myfolder/a1/a2/a3')?
+	os.mkdir_all('myfolder/a1/a2/a3', mode: 0o700)?
 	f3 := os.real_path('myfolder/f1/f2/f3')
 	assert os.is_dir(f3)
 	create_file('myfolder/f1/f2/f3/a.txt')?
@@ -585,17 +585,19 @@ fn test_is_executable_writable_readable() ? {
 	os.rm(file_name) or { panic(err) }
 }
 
-fn test_ext() {
+fn test_file_ext() {
 	assert os.file_ext('file.v') == '.v'
+	assert os.file_ext('file.js.v') == '.v'
+	assert os.file_ext('file.ext1.ext2.ext3') == '.ext3'
+	assert os.file_ext('.ignore_me.v') == '.v'
 	assert os.file_ext('file') == ''
-}
-
-fn test_is_abs() {
-	assert os.is_abs_path('/home/user')
-	assert os.is_abs_path('v/vlib') == false
-	$if windows {
-		assert os.is_abs_path('C:\\Windows\\')
-	}
+	assert os.file_ext('.git') == ''
+	assert os.file_ext('file.') == ''
+	assert os.file_ext('.') == ''
+	assert os.file_ext('..') == ''
+	assert os.file_ext('file...') == ''
+	assert os.file_ext('.file.') == ''
+	assert os.file_ext('..file..') == ''
 }
 
 fn test_join() {

@@ -15,6 +15,7 @@ concurrency:
 jobs:
   ubuntu-tcc:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     env:
       VFLAGS: -cc tcc -no-retry-compilation
@@ -33,6 +34,7 @@ jobs:
         run: |
           echo $VFLAGS
           make
+          ./v test-cleancode
           ./v -d debug_malloc -d debug_realloc -o v cmd/v
           ./v -cg -cstrict -o v cmd/v
           # Test v -realloc arena allocation
@@ -54,10 +56,12 @@ jobs:
           echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+      - name: All code is formatted
+        run: ./v test-cleancode
       - name: Self tests
         run: ./v test-self
       # - name: Self tests (-cstrict)
-      #   run: ./v -cstrict test-self
+      #   run: V_CI_CSTRICT=1 ./v -cstrict test-self
       - name: Test time functions in a timezone UTC-12
         run: TZ=Etc/GMT+12 ./v test vlib/time/
       - name: Test time functions in a timezone UTC-3
@@ -91,6 +95,7 @@ jobs:
 
   ubuntu-tcc-boehm-gc:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     env:
       VFLAGS: -cc tcc -no-retry-compilation
@@ -125,6 +130,8 @@ jobs:
         run: |
           ./v -gc boehm cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+      - name: All code is formatted
+        run: ./v test-cleancode
       - name: Self tests with `-gc boehm` with V compiler using Boehm-GC itself
         run: ./v -gc boehm test-self
       - name: Test leak detector
@@ -144,7 +151,8 @@ jobs:
           [ "$(stat -c %s leaks.txt)" = "0" ]
 
   macos:
-    runs-on: macOS-latest
+    runs-on: macOS-12
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     env:
       VFLAGS: -cc clang
@@ -188,6 +196,8 @@ jobs:
           echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+      - name: All code is formatted
+        run: VJOBS=1 ./v test-cleancode
       - name: Self tests
         run: VJOBS=1 ./v test-self
       - name: Build examples
@@ -232,6 +242,7 @@ jobs:
 
   ubuntu:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     steps:
       - uses: actions/checkout@v2
@@ -280,12 +291,14 @@ jobs:
           echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+      - name: All code is formatted
+        run: ./v test-cleancode
       - name: Self tests
         run: ./v test-self
       - name: Self tests (-prod)
         run: ./v -o vprod -prod cmd/v && ./vprod test-self
       - name: Self tests (-cstrict)
-        run: ./v -cc gcc -cstrict test-self
+        run: VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 ./v -cc gcc -cstrict test-self
       - name: Build examples
         run: ./v build-examples
       - name: Build tetris.v with -autofree
@@ -329,6 +342,7 @@ jobs:
 
   ubuntu-clang:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     env:
       VFLAGS: -cc clang
@@ -372,12 +386,18 @@ jobs:
           echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+      - name: All code is formatted
+        run: ./v test-cleancode
+
       - name: Self tests
         run: ./v test-self
-      - name: Self tests (-prod)
-        run: ./v -o vprod -prod cmd/v && ./vprod test-self
+      - name: Self tests (vprod)
+        run: |
+          ./v -o vprod -prod cmd/v
+          ./vprod test-self
       - name: Self tests (-cstrict)
-        run: ./v -cstrict test-self
+        run: VTEST_JUST_ESSENTIAL=1 V_CI_CSTRICT=1 ./vprod -cstrict test-self
+
       - name: Build examples
         run: ./v build-examples
       - name: Build examples with -autofree
@@ -413,6 +433,7 @@ jobs:
 
   windows-gcc:
     runs-on: windows-2019
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     env:
       VFLAGS: -cc gcc
@@ -442,6 +463,8 @@ jobs:
           echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+      - name: All code is formatted
+        run: ./v test-cleancode
       - name: Self tests
         run: .\v.exe test-self
         #    - name: Test
@@ -473,6 +496,7 @@ jobs:
 
   windows-msvc:
     runs-on: windows-2019
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     env:
       VFLAGS: -cc msvc
@@ -500,6 +524,9 @@ jobs:
           echo $VFLAGS
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
+### TODO: test-cleancode fails with msvc. Investigate why???
+##      - name: All code is formatted
+##        run: ./v test-cleancode
       - name: Self tests
         run: |
           ./v -cg cmd\tools\vtest-self.v
@@ -517,6 +544,7 @@ jobs:
 
   windows-tcc:
     runs-on: windows-2019
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     env:
       VFLAGS: -cc tcc -no-retry-compilation
@@ -555,8 +583,8 @@ jobs:
         run: ./v doc -v clipboard
       - name: Test v build-tools
         run: ./v -W build-tools
-      - name: Test ./v doc clipboard
-        run: ./v doc clipboard
+      - name: All code is formatted
+        run: ./v test-cleancode
       - name: Self tests
         run: ./v test-self
       - name: Test v->js
@@ -566,7 +594,9 @@ jobs:
       - name: Build examples
         run: ./v build-examples
       - name: v2 self compilation
-        run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
+        run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v && .\v3.exe -o v4.exe cmd/v
+      - name: v2 self compilation with -gc boehm
+        run: .\v.exe -o v2.exe -gc boehm cmd/v && .\v2.exe -o v3.exe -gc boehm cmd/v && .\v3.exe -o v4.exe -gc boehm cmd/v
 
         ##      ## tcc32
         ##      - name: Build with make.bat -tcc32
@@ -609,40 +639,42 @@ jobs:
         ##        run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
 
-  #  ubuntu-autofree-selfcompile:
-  #    runs-on: ubuntu-20.04
-  #    timeout-minutes: 121
-  #    env:
-  #      VFLAGS: -cc gcc
-  #    steps:
-  #    - uses: actions/checkout@v2
-  #    - name: Build V
-  #      run: make -j4
-  #    - name: V self compilation with -autofree
-  #      run: ./v -o v2 -autofree cmd/v && ./v2 -o v3 -autofree cmd/v && ./v3 -o v4 -autofree cmd/v
+#  ubuntu-autofree-selfcompile:
+#    runs-on: ubuntu-20.04
+#    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+#    timeout-minutes: 121
+#    env:
+#      VFLAGS: -cc gcc
+#    steps:
+#    - uses: actions/checkout@v2
+#    - name: Build V
+#      run: make -j4
+#    - name: V self compilation with -autofree
+#      run: ./v -o v2 -autofree cmd/v && ./v2 -o v3 -autofree cmd/v && ./v3 -o v4 -autofree cmd/v
 
 
-  #   ubuntu-musl:
-  #     runs-on: ubuntu-20.04
-  #     timeout-minutes: 121
-  #     env:
-  #       VFLAGS: -cc musl-gcc
-  #       V_CI_MUSL: 1
-  #     steps:
-  #     - uses: actions/checkout@v2
-  #     - uses: actions/setup-node@v1
-  #       with:
-  #         node-version: 12.x
-  #     - name: Install dependencies
-  #       run: |
-  #          sudo apt-get install --quiet -y musl musl-tools libssl-dev sqlite3 libsqlite3-dev valgrind
-  #     - name: Build v
-  #       run: echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
-  # #    - name: Test v binaries
-  # #      run: ./v build-vbinaries
-  # ##    - name: Test v->js
-  # ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
-  #     - name: quick debug
-  #       run: ./v -stats vlib/strconv/format_test.v
-  #     - name: Self tests
-  #       run: ./v test-self
+#   ubuntu-musl:
+#     runs-on: ubuntu-20.04
+#    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+#     timeout-minutes: 121
+#     env:
+#       VFLAGS: -cc musl-gcc
+#       V_CI_MUSL: 1
+#     steps:
+#     - uses: actions/checkout@v2
+#     - uses: actions/setup-node@v1
+#       with:
+#         node-version: 12.x
+#     - name: Install dependencies
+#       run: |
+#          sudo apt-get install --quiet -y musl musl-tools libssl-dev sqlite3 libsqlite3-dev valgrind
+#     - name: Build v
+#       run: echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
+# #    - name: Test v binaries
+# #      run: ./v build-vbinaries
+# ##    - name: Test v->js
+# ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+#     - name: quick debug
+#       run: ./v -stats vlib/strconv/format_test.v
+#     - name: Self tests
+#       run: ./v test-self

@@ -50,7 +50,11 @@ fn (mut g Gen) gen_vlines_reset() {
 	}
 }
 
-fn (mut g Gen) gen_c_main_function_header() {
+fn (mut g Gen) gen_c_main_function_only_header() {
+	if g.pref.cmain != '' {
+		g.writeln('int ${g.pref.cmain}(int ___argc, char** ___argv){')
+		return
+	}
 	if g.pref.os == .windows {
 		if g.is_gui_app() {
 			$if msvc {
@@ -65,15 +69,22 @@ fn (mut g Gen) gen_c_main_function_header() {
 			g.writeln('\tcmd_line_to_argv CommandLineToArgvW = (cmd_line_to_argv)GetProcAddress(shell32_module, "CommandLineToArgvW");')
 			g.writeln('\tint ___argc;')
 			g.writeln('\twchar_t** ___argv = CommandLineToArgvW(full_cmd_line, &___argc);')
-		} else {
-			// Console application
-			g.writeln('int wmain(int ___argc, wchar_t* ___argv[], wchar_t* ___envp[]){')
+			return
 		}
-	} else {
-		g.writeln('int main(int ___argc, char** ___argv){')
+		// Console application
+		g.writeln('int wmain(int ___argc, wchar_t* ___argv[], wchar_t* ___envp[]){')
+		return
 	}
+	g.writeln('int main(int ___argc, char** ___argv){')
+}
+
+fn (mut g Gen) gen_c_main_function_header() {
+	g.gen_c_main_function_only_header()
 	g.writeln('\tg_main_argc = ___argc;')
 	g.writeln('\tg_main_argv = ___argv;')
+	if g.nr_closures > 0 {
+		g.writeln('__closure_init();')
+	}
 }
 
 fn (mut g Gen) gen_c_main_header() {
@@ -83,6 +94,7 @@ fn (mut g Gen) gen_c_main_header() {
 		if g.pref.gc_mode == .boehm_leak {
 			g.writeln('\tGC_set_find_leak(1);')
 		}
+		g.writeln('\tGC_set_pages_executable(0);')
 		g.writeln('\tGC_INIT();')
 		if g.pref.gc_mode in [.boehm_incr, .boehm_incr_opt] {
 			g.writeln('\tGC_enable_incremental();')
@@ -90,23 +102,9 @@ fn (mut g Gen) gen_c_main_header() {
 		g.writeln('#endif')
 	}
 	g.writeln('\t_vinit(___argc, (voidptr)___argv);')
-	if g.pref.is_prof {
-		g.writeln('')
-		g.writeln('\tatexit(vprint_profile_stats);')
-		g.writeln('')
-	}
+	g.gen_c_main_profile_hook()
 	if g.pref.is_livemain {
 		g.generate_hotcode_reloading_main_caller()
-	}
-	if g.pref.profile_file != '' {
-		if 'no_profile_startup' in g.pref.compile_defines {
-			g.writeln('vreset_profile_stats();')
-		}
-		if g.pref.profile_fns.len > 0 {
-			g.writeln('vreset_profile_stats();')
-			// v__profile_enabled will be set true *inside* the fns in g.pref.profile_fns:
-			g.writeln('v__profile_enabled = false;')
-		}
 	}
 }
 
@@ -140,11 +138,25 @@ void (_vsokol_cleanup_userdata_cb)(void* user_data) {
 	}
 	g.writeln('// The sokol_main entry point on Android
 sapp_desc sokol_main(int argc, char* argv[]) {
-	(void)argc; (void)argv;
+	(void)argc; (void)argv;')
 
-	_vinit(argc, (voidptr)argv);
-	main__main();
-')
+	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
+		g.writeln('#if defined(_VGCBOEHM)')
+		if g.pref.gc_mode == .boehm_leak {
+			g.writeln('\tGC_set_find_leak(1);')
+		}
+		g.writeln('\tGC_set_pages_executable(0);')
+		g.writeln('\tGC_INIT();')
+		if g.pref.gc_mode in [.boehm_incr, .boehm_incr_opt] {
+			g.writeln('\tGC_enable_incremental();')
+		}
+		g.writeln('#endif')
+	}
+	g.writeln('\t_vinit(argc, (voidptr)argv);
+	')
+
+	g.gen_c_main_profile_hook()
+	g.writeln('\tmain__main();')
 	if g.is_autofree {
 		g.writeln('	// Wrap user provided cleanup/free functions for sokol to be able to call _vcleanup()
 	if (g_desc.cleanup_cb) {
@@ -186,6 +198,24 @@ pub fn (mut g Gen) gen_failing_return_error_for_test_fn(return_stmt ast.Return, 
 	g.writeln('\tlongjmp(g_jump_buffer, 1);')
 }
 
+pub fn (mut g Gen) gen_c_main_profile_hook() {
+	if g.pref.is_prof {
+		g.writeln('')
+		g.writeln('\tatexit(vprint_profile_stats);')
+		g.writeln('')
+	}
+	if g.pref.profile_file != '' {
+		if 'no_profile_startup' in g.pref.compile_defines {
+			g.writeln('vreset_profile_stats();')
+		}
+		if g.pref.profile_fns.len > 0 {
+			g.writeln('vreset_profile_stats();')
+			// v__profile_enabled will be set true *inside* the fns in g.pref.profile_fns:
+			g.writeln('v__profile_enabled = false;')
+		}
+	}
+}
+
 pub fn (mut g Gen) gen_c_main_for_tests() {
 	main_fn_start_pos := g.out.len
 	g.writeln('')
@@ -195,6 +225,7 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 		if g.pref.gc_mode == .boehm_leak {
 			g.writeln('\tGC_set_find_leak(1);')
 		}
+		g.writeln('\tGC_set_pages_executable(0);')
 		g.writeln('\tGC_INIT();')
 		if g.pref.gc_mode in [.boehm_incr, .boehm_incr_opt] {
 			g.writeln('\tGC_enable_incremental();')
@@ -203,6 +234,7 @@ pub fn (mut g Gen) gen_c_main_for_tests() {
 	}
 	g.writeln('\tmain__vtest_init();')
 	g.writeln('\t_vinit(___argc, (voidptr)___argv);')
+	g.gen_c_main_profile_hook()
 	//
 	mut all_tfuncs := g.get_all_test_function_names()
 	all_tfuncs = g.filter_only_matching_fn_names(all_tfuncs)

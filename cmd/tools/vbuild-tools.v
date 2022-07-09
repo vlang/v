@@ -43,7 +43,7 @@ fn main() {
 	// eprintln('> session.skip_files: $session.skip_files')
 	session.test()
 	eprintln(session.benchmark.total_message(finish_label))
-	if session.failed {
+	if session.failed_cmds.len > 0 {
 		exit(1)
 	}
 	//

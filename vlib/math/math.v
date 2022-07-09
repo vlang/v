@@ -42,6 +42,15 @@ pub fn degrees(radians f64) f64 {
 	return radians * (180.0 / pi)
 }
 
+// angle_diff calculates the difference between angles in radians
+[inline]
+pub fn angle_diff(radian_a f64, radian_b f64) f64 {
+	mut delta := fmod(radian_b - radian_a, tau)
+	delta = fmod(delta + 1.5 * tau, tau)
+	delta -= .5 * tau
+	return delta
+}
+
 [params]
 pub struct DigitParams {
 	base    int = 10
@@ -155,6 +164,7 @@ pub fn signbit(x f64) bool {
 	return f64_bits(x) & sign_mask != 0
 }
 
+// tolerance checks if a and b difference are less than or equal to the tolerance value
 pub fn tolerance(a f64, b f64, tol f64) bool {
 	mut ee := tol
 	// Multiplying by ee here can underflow denormal values to zero.
@@ -178,14 +188,17 @@ pub fn tolerance(a f64, b f64, tol f64) bool {
 	return d < ee
 }
 
+// close checks if a and b are within 1e-14 of each other
 pub fn close(a f64, b f64) bool {
 	return tolerance(a, b, 1e-14)
 }
 
+// veryclose checks if a and b are within 4e-16 of each other
 pub fn veryclose(a f64, b f64) bool {
 	return tolerance(a, b, 4e-16)
 }
 
+// alike checks if a and b are equal
 pub fn alike(a f64, b f64) bool {
 	if is_nan(a) && is_nan(b) {
 		return true

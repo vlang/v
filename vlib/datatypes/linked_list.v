@@ -3,12 +3,12 @@ module datatypes
 pub struct ListNode<T> {
 mut:
 	data T
-	next &ListNode<T> = 0
+	next &ListNode<T> = unsafe { 0 }
 }
 
 pub struct LinkedList<T> {
 mut:
-	head &ListNode<T> = 0
+	head &ListNode<T> = unsafe { 0 }
 	len  int
 }
 
@@ -29,11 +29,11 @@ pub fn (list LinkedList<T>) first() ?T {
 
 // last returns the last element of the linked list
 pub fn (list LinkedList<T>) last() ?T {
-	if list.head == 0 {
+	if unsafe { list.head == 0 } {
 		return error('Linked list is empty')
 	} else {
 		mut node := list.head
-		for node.next != 0 {
+		for unsafe { node.next != 0 } {
 			node = node.next
 		}
 		return node.data
@@ -42,12 +42,12 @@ pub fn (list LinkedList<T>) last() ?T {
 
 // index returns the element at the given index of the linked list
 pub fn (list LinkedList<T>) index(idx int) ?T {
-	if list.head == 0 {
+	if unsafe { list.head == 0 } {
 		return error('Linked list is empty')
 	} else {
 		mut node := list.head
 		mut iterations := 0
-		for node.next != 0 && iterations < idx {
+		for unsafe { node.next != 0 } && iterations < idx {
 			node = node.next
 			iterations++
 		}
@@ -64,12 +64,12 @@ pub fn (mut list LinkedList<T>) push(item T) {
 	new_node := &ListNode<T>{
 		data: item
 	}
-	if list.head == 0 {
+	if unsafe { list.head == 0 } {
 		// first node case
 		list.head = new_node
 	} else {
 		mut node := list.head
-		for node.next != 0 {
+		for unsafe { node.next != 0 } {
 			node = node.next
 		}
 		node.next = new_node
@@ -79,17 +79,17 @@ pub fn (mut list LinkedList<T>) push(item T) {
 
 // pop removes the last element of the linked list
 pub fn (mut list LinkedList<T>) pop() ?T {
-	if list.head == 0 {
+	if unsafe { list.head == 0 } {
 		return error('Linked list is empty')
 	}
 	mut node := list.head
 	mut to_return := node.data
-	if node.next == 0 {
+	if unsafe { node.next == 0 } {
 		// first node case
 		// set to null
 		list.head = voidptr(0)
 	} else {
-		for node.next.next != 0 {
+		for unsafe { node.next.next != 0 } {
 			node = node.next
 		}
 		to_return = node.next.data
@@ -102,7 +102,7 @@ pub fn (mut list LinkedList<T>) pop() ?T {
 
 // shift removes the first element of the linked list
 pub fn (mut list LinkedList<T>) shift() ?T {
-	if list.head == 0 {
+	if unsafe { list.head == 0 } {
 		return error('Linked list is empty')
 	} else {
 		list.len -= 1
@@ -149,7 +149,7 @@ pub fn (mut list LinkedList<T>) prepend(item T) {
 pub fn (list LinkedList<T>) str() string {
 	mut result_array := []T{}
 	mut node := list.head
-	for node != 0 {
+	for unsafe { node != 0 } {
 		result_array << node.data
 		node = node.next
 	}

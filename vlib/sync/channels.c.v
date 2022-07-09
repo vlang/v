@@ -31,7 +31,7 @@ enum Direction {
 	push
 }
 
-struct Channel {
+pub struct Channel {
 	ringbuf   &u8 // queue for buffered channels
 	statusbuf &u8 // flags to synchronize write/read in ringbuf
 	objsize   u32
@@ -645,7 +645,7 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 			unsafe {
 				*subscr[i].prev = subscr[i].nxt
 			}
-			if subscr[i].nxt != 0 {
+			if unsafe { subscr[i].nxt != 0 } {
 				subscr[i].nxt.prev = subscr[i].prev
 				// just in case we have missed a semaphore during restore
 				subscr[i].nxt.sem.post()
@@ -659,7 +659,7 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 			unsafe {
 				*subscr[i].prev = subscr[i].nxt
 			}
-			if subscr[i].nxt != 0 {
+			if unsafe { subscr[i].nxt != 0 } {
 				subscr[i].nxt.prev = subscr[i].prev
 				subscr[i].nxt.sem.post()
 			}

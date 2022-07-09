@@ -6,8 +6,9 @@ module parser
 import v.ast
 import v.token
 import v.util
+import os
 
-fn (mut p Parser) struct_decl() ast.StructDecl {
+fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	p.top_level_statement_start()
 	// save attributes, they will be changed later in fields
 	attrs := p.attrs
@@ -39,12 +40,12 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	if p.disallow_declarations_in_script_mode() {
 		return ast.StructDecl{}
 	}
-	mut name := p.check_name()
-	// defer {
-	// if name.contains('App') {
-	// println('end of struct decl $name')
-	// }
-	// }
+	mut name := if is_anon {
+		p.anon_struct_counter++
+		'_VAnonStruct$p.anon_struct_counter'
+	} else {
+		p.check_name()
+	}
 	if name.len == 1 && name[0].is_capital() {
 		p.error_with_pos('single letter capital names are reserved for generic template types.',
 			name_pos)
@@ -66,7 +67,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		return ast.StructDecl{}
 	}
 	if language == .v && !p.builtin_mod && !p.is_translated && name.len > 0 && !name[0].is_capital()
-		&& !p.pref.translated && !p.is_translated {
+		&& !p.pref.translated && !p.is_translated && !is_anon {
 		p.error_with_pos('struct name `$name` must begin with capital letter', name_pos)
 		return ast.StructDecl{}
 	}
@@ -184,6 +185,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			}
 			field_start_pos := p.tok.pos()
 			mut is_field_volatile := false
+			mut is_field_deprecated := false
 			if p.tok.kind == .key_volatile {
 				p.next()
 				is_field_volatile = true
@@ -197,6 +199,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			mut typ := ast.Type(0)
 			mut type_pos := token.Pos{}
 			mut field_pos := token.Pos{}
+			mut anon_struct_decl := ast.StructDecl{}
 			if is_embed {
 				// struct embedding
 				type_pos = p.tok.pos()
@@ -235,7 +238,16 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 					}
 				}
 				p.inside_struct_field_decl = true
-				typ = p.parse_type()
+				if p.tok.kind == .key_struct {
+					// Anon structs
+					if p.tok.kind == .key_struct {
+						anon_struct_decl = p.struct_decl(true)
+						// Find the registered anon struct type, it was registered above in `p.struct_decl()`
+						typ = p.table.find_type_idx(anon_struct_decl.name)
+					}
+				} else {
+					typ = p.parse_type()
+				}
 				p.inside_struct_field_decl = false
 				if typ.idx() == 0 {
 					// error is set in parse_type
@@ -249,6 +261,11 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			if p.tok.kind == .lsbr {
 				// attrs are stored in `p.attrs`
 				p.attributes()
+				for fa in p.attrs {
+					if fa.name == 'deprecated' {
+						is_field_deprecated = true
+					}
+				}
 			}
 			mut default_expr := ast.empty_expr()
 			mut has_default_expr := false
@@ -279,6 +296,8 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 					is_mut: is_embed || is_field_mut
 					is_global: is_field_global
 					is_volatile: is_field_volatile
+					is_deprecated: is_field_deprecated
+					anon_struct_decl: anon_struct_decl
 				}
 			}
 			// save embeds as table fields too, it will be used in generation phase
@@ -296,6 +315,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				is_mut: is_embed || is_field_mut
 				is_global: is_field_global
 				is_volatile: is_field_volatile
+				is_deprecated: is_field_deprecated
 			}
 			p.attrs = []
 			i++
@@ -305,7 +325,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		p.check(.rcbr)
 	}
 	is_minify := attrs.contains('minify')
-	mut t := ast.TypeSymbol{
+	mut sym := ast.TypeSymbol{
 		kind: .struct_
 		language: language
 		name: name
@@ -321,18 +341,26 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			is_generic: generic_types.len > 0
 			generic_types: generic_types
 			attrs: attrs
+			is_anon: is_anon
 		}
 		is_pub: is_pub
 	}
-	if p.table.has_deep_child_no_ref(&t, name) {
+	if p.table.has_deep_child_no_ref(&sym, name) {
 		p.error_with_pos('invalid recursive struct `$orig_name`', name_pos)
 		return ast.StructDecl{}
 	}
-	mut ret := 0
-	// println('reg type symbol $name mod=$p.mod')
-	ret = p.table.register_sym(t)
+	mut ret := p.table.register_sym(sym)
 	// allow duplicate c struct declarations
 	if ret == -1 && language != .c {
+		if _ := p.table.find_fn('main.main') {
+			if '.' in os.args {
+				p.error_with_pos('multiple `main` functions detected, and you ran `v .`
+perhaps there are multiple V programs in this directory, and you need to
+run them via `v file.v` instead',
+					name_pos)
+				return ast.StructDecl{}
+			}
+		}
 		p.error_with_pos('cannot register struct `$name`, another type with this name exists',
 			name_pos)
 		return ast.StructDecl{}
@@ -478,6 +506,11 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		return ast.InterfaceDecl{}
 	}
 	modless_name := p.check_name()
+	if modless_name.len == 1 && modless_name[0].is_capital() {
+		p.error_with_pos('single letter capital names are reserved for generic template types.',
+			name_pos)
+		return ast.InterfaceDecl{}
+	}
 	if modless_name == 'IError' && p.mod != 'builtin' {
 		p.error_with_pos('cannot register interface `IError`, it is builtin interface type',
 			name_pos)

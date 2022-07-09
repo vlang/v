@@ -11,6 +11,7 @@ on:
 jobs:
   vab-compiles-v-examples:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 121
     env:
       VAB_FLAGS: --api 30 --build-tools 29.0.0 -v 3
@@ -24,20 +25,14 @@ jobs:
     - name: Build V
       run: make && sudo ./v symlink
 
-    - name: Checkout vab
-      uses: actions/checkout@v2
-      with:
-        repository: vlang/vab
-        path: vab
-
-    - name: Build vab
+    - name: Install vab
       run: |
-        cd vab
-        v -g vab.v
-        sudo ln -s $(pwd)/vab /usr/local/bin/vab
+        v install vab
+        v -g ~/.vmodules/vab
+        sudo ln -s ~/.vmodules/vab/vab /usr/local/bin/vab
 
     - name: Run tests
-      run: v test vab
+      run: v test ~/.vmodules/vab
 
     - name: Run vab --help
       run: vab --help
@@ -53,3 +48,27 @@ jobs:
           safe_name=$(echo "$example" | sed 's%/%-%' | sed 's%\.%-%' )
           vab examples/$example -o apks/$safe_name.apk
         done
+
+  v-compiles-os-android:
+    runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build V
+      run: make && sudo ./v symlink
+
+    - name: Install vab
+      run: |
+        v install vab
+        v -g ~/.vmodules/vab
+        sudo ln -s ~/.vmodules/vab/vab /usr/local/bin/vab
+
+    - name: Run vab --help
+      run: vab --help
+
+    - name: Run vab doctor
+      run: vab doctor
+
+    - name: Check `v -os android` *without* -apk flag
+      run: .github/workflows/android_cross_compile.vsh

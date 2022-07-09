@@ -12,13 +12,17 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 	}
 	sym := c.table.sym(node.table_expr.typ)
 	c.ensure_type_exists(node.table_expr.typ, node.pos) or { return ast.void_type }
+	old_ts := c.cur_orm_ts
 	c.cur_orm_ts = *sym
+	defer {
+		c.cur_orm_ts = old_ts
+	}
 	if sym.info !is ast.Struct {
 		c.error('The table symbol `$sym.name` has to be a struct', node.table_expr.pos)
 		return ast.void_type
 	}
 	info := sym.info as ast.Struct
-	fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, sym.name)
+	mut fields := c.fetch_and_verify_orm_fields(info, node.table_expr.pos, sym.name)
 	mut sub_structs := map[int]ast.SqlExpr{}
 	for f in fields.filter((c.table.type_symbols[int(it.typ)].kind == .struct_
 		|| (c.table.sym(it.typ).kind == .array
@@ -77,6 +81,13 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 
 		sub_structs[int(typ)] = n
 	}
+	if node.is_count {
+		fields = [
+			ast.StructField{
+				typ: ast.int_type
+			},
+		]
+	}
 	node.fields = fields
 	node.sub_structs = sub_structs.move()
 	if node.has_where {
@@ -114,7 +125,11 @@ fn (mut c Checker) sql_stmt_line(mut node ast.SqlStmtLine) ast.Type {
 	}
 	c.ensure_type_exists(node.table_expr.typ, node.pos) or { return ast.void_type }
 	table_sym := c.table.sym(node.table_expr.typ)
+	old_ts := c.cur_orm_ts
 	c.cur_orm_ts = *table_sym
+	defer {
+		c.cur_orm_ts = old_ts
+	}
 	if table_sym.info !is ast.Struct {
 		c.error('unknown type `$table_sym.name`', node.pos)
 		return ast.void_type

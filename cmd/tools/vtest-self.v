@@ -6,8 +6,86 @@ import v.pref
 
 const github_job = os.getenv('GITHUB_JOB')
 
+const just_essential = os.getenv('VTEST_JUST_ESSENTIAL') != ''
+
 const (
+	essential_list                = [
+		'cmd/tools/vvet/vet_test.v',
+		'vlib/arrays/arrays_test.v',
+		'vlib/bitfield/bitfield_test.v',
+		//
+		'vlib/builtin/int_test.v',
+		'vlib/builtin/array_test.v',
+		'vlib/builtin/float_test.v',
+		'vlib/builtin/byte_test.v',
+		'vlib/builtin/rune_test.v',
+		'vlib/builtin/builtin_test.v',
+		'vlib/builtin/map_of_floats_test.v',
+		'vlib/builtin/string_int_test.v',
+		'vlib/builtin/utf8_test.v',
+		'vlib/builtin/map_test.v',
+		'vlib/builtin/string_test.v',
+		'vlib/builtin/sorting_test.v',
+		'vlib/builtin/gated_array_string_test.v',
+		'vlib/builtin/array_shrinkage_test.v',
+		'vlib/builtin/isnil_test.v',
+		'vlib/builtin/string_match_glob_test.v',
+		'vlib/builtin/string_strip_margin_test.v',
+		//
+		'vlib/cli/command_test.v',
+		'vlib/crypto/md5/md5_test.v',
+		'vlib/dl/dl_test.v',
+		'vlib/encoding/base64/base64_test.v',
+		'vlib/encoding/utf8/encoding_utf8_test.v',
+		'vlib/encoding/utf8/utf8_util_test.v',
+		'vlib/flag/flag_test.v',
+		'vlib/json/json_decode_test.v',
+		'vlib/math/math_test.v',
+		'vlib/net/tcp_test.v',
+		'vlib/net/http/http_test.v',
+		'vlib/net/http/server_test.v',
+		'vlib/net/http/request_test.v',
+		'vlib/io/io_test.v',
+		'vlib/io/os_file_reader_test.v',
+		'vlib/os/process_test.v',
+		'vlib/os/file_test.v',
+		'vlib/os/notify/notify_test.v',
+		'vlib/os/filepath_test.v',
+		'vlib/os/environment_test.v',
+		'vlib/os/glob_test.v',
+		'vlib/os/os_test.v',
+		'vlib/rand/random_numbers_test.v',
+		'vlib/rand/wyrand/wyrand_test.v',
+		'vlib/runtime/runtime_test.v',
+		'vlib/semver/semver_test.v',
+		'vlib/sync/stdatomic/atomic_test.v',
+		'vlib/sync/thread_test.v',
+		'vlib/sync/waitgroup_test.v',
+		'vlib/sync/pool/pool_test.v',
+		'vlib/strings/builder_test.v',
+		'vlib/strconv/atof_test.v',
+		'vlib/strconv/atoi_test.v',
+		'vlib/strconv/f32_f64_to_string_test.v',
+		'vlib/strconv/format_test.v',
+		'vlib/strconv/number_to_base_test.v',
+		'vlib/time/time_test.v',
+		'vlib/toml/tests/toml_test.v',
+		'vlib/v/compiler_errors_test.v',
+		'vlib/v/doc/doc_test.v',
+		'vlib/v/eval/interpret_test.v',
+		'vlib/v/fmt/fmt_keep_test.v',
+		'vlib/v/fmt/fmt_test.v',
+		'vlib/v/gen/c/coutput_test.v',
+		'vlib/v/gen/js/program_test.v',
+		'vlib/v/gen/native/macho_test.v',
+		'vlib/v/gen/native/tests/native_test.v',
+		'vlib/v/pkgconfig/pkgconfig_test.v',
+		'vlib/v/tests/inout/compiler_test.v',
+		'vlib/x/json2/json2_test.v',
+	]
 	skip_test_files               = [
+		'cmd/tools/vdoc/html_tag_escape_test.v', /* can't locate local module: markdown */
+		'cmd/tools/vdoc/tests/vdoc_file_test.v', /* fails on Windows; order of output is not as expected */
 		'vlib/context/onecontext/onecontext_test.v',
 		'vlib/context/deadline_test.v' /* sometimes blocks */,
 		'vlib/mysql/mysql_orm_test.v' /* mysql not installed */,
@@ -45,6 +123,7 @@ const (
 		'vlib/sqlite/sqlite_orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
+		'vlib/v/tests/orm_joined_tables_select_test.v',
 		'vlib/v/tests/sql_statement_inside_fn_call_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/vweb/request_test.v',
@@ -63,6 +142,7 @@ const (
 	]
 	skip_with_werror              = [
 		'do_not_remove',
+		'vlib/v/embed_file/tests/embed_file_test.v',
 	]
 	skip_with_asan_compiler       = [
 		'do_not_remove',
@@ -85,6 +165,7 @@ const (
 		'vlib/orm/orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
+		'vlib/v/tests/orm_joined_tables_select_test.v',
 		'vlib/v/tests/sql_statement_inside_fn_call_test.v',
 		'vlib/clipboard/clipboard_test.v',
 		'vlib/vweb/tests/vweb_test.v',
@@ -105,6 +186,10 @@ const (
 	skip_on_non_linux             = [
 		'do_not_remove',
 	]
+	skip_on_windows_msvc          = [
+		'do_not_remove',
+		'vlib/v/tests/const_fixed_array_containing_references_to_itself_test.v', // error C2099: initializer is not a constant
+	]
 	skip_on_windows               = [
 		'vlib/context/cancel_test.v',
 		'vlib/context/deadline_test.v',
@@ -112,6 +197,7 @@ const (
 		'vlib/context/value_test.v',
 		'vlib/orm/orm_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
+		'vlib/v/tests/orm_joined_tables_select_test.v',
 		'vlib/net/websocket/ws_test.v',
 		'vlib/net/unix/unix_test.v',
 		'vlib/net/unix/use_net_and_net_unix_together_test.v',
@@ -164,8 +250,14 @@ fn main() {
 	cmd_prefix := args_string.all_before('test-self')
 	title := 'testing vlib'
 	mut all_test_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.v')
+	all_test_files << os.walk_ext(os.join_path(vroot, 'cmd'), '_test.v')
 	test_js_files := os.walk_ext(os.join_path(vroot, 'vlib'), '_test.js.v')
 	all_test_files << test_js_files
+
+	if just_essential {
+		rooted_essential_list := essential_list.map(os.join_path(vroot, it))
+		all_test_files = all_test_files.filter(rooted_essential_list.contains(it))
+	}
 	testing.eheader(title)
 	mut tsession := testing.new_test_session(cmd_prefix, true)
 	tsession.files << all_test_files.filter(!it.contains('testdata' + os.path_separator))
@@ -258,6 +350,9 @@ fn main() {
 	}
 	$if windows {
 		tsession.skip_files << skip_on_windows
+		$if msvc {
+			tsession.skip_files << skip_on_windows_msvc
+		}
 	}
 	$if !windows {
 		tsession.skip_files << skip_on_non_windows

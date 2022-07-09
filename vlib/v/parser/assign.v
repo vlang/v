@@ -141,6 +141,16 @@ fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
 			return p.check_cross_variables(exprs, val.left)
 				|| p.check_cross_variables(exprs, val.right)
 		}
+		ast.ParExpr {
+			return p.check_cross_variables(exprs, val.expr)
+		}
+		ast.CallExpr {
+			for arg in val.args {
+				if p.check_cross_variables(exprs, arg.expr) {
+					return true
+				}
+			}
+		}
 		ast.PrefixExpr {
 			return p.check_cross_variables(exprs, val.right)
 		}
@@ -198,7 +208,6 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 							is_volatile = true
 						}
 					}
-					r0 := right[0]
 					mut v := ast.Var{
 						name: lx.name
 						expr: if left.len == right.len { right[i] } else { ast.empty_expr() }
@@ -208,6 +217,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 						is_stack_obj: p.inside_for
 					}
 					if p.pref.autofree {
+						r0 := right[0]
 						if r0 is ast.CallExpr {
 							// Set correct variable position (after the or block)
 							// so that autofree doesn't free it in cgen before
@@ -234,14 +244,11 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 			ast.PrefixExpr {}
 			ast.SelectorExpr {
 				if op == .decl_assign {
-					return p.error_with_pos('struct fields can only be declared during the initialization',
-						lx.pos)
+					return p.error_with_pos('use assignment `=` instead of declaration `:=` when modifying struct fields',
+						pos)
 				}
 			}
-			else {
-				// TODO: parexpr ( check vars)
-				// else { p.error_with_pos('unexpected `${typeof(lx)}`', lx.pos()) }
-			}
+			else {}
 		}
 	}
 	if op == .decl_assign {

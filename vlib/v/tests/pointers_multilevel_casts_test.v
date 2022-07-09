@@ -56,7 +56,7 @@ fn test_struct_pointer_casts_with_field_selectors() {
 		// &Struct cast and selecting .x
 		assert true
 	}
-	if &&Struct(pss) != 0 {
+	if unsafe { &&Struct(pss) != 0 } {
 		// &&Struct
 		assert true
 	}

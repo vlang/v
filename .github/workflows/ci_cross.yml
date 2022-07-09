@@ -12,6 +12,7 @@ jobs:
 
   macos-cross:
     runs-on: macOS-latest
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 25
     env:
       VFLAGS: -cc clang
@@ -41,13 +42,9 @@ jobs:
           ./v -os windows cmd/v
           ./v -os windows examples/2048/2048.v
 
-      - name: Compile to raw Android (non-graphic) compatible
-        run: |
-          # Test that V can compile non-graphic app to Android compatible code *without* using the -apk flag
-          ./v -os android examples/toml.v
-
   linux-cross:
     runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 25
     env:
       VFLAGS: -cc tcc -no-retry-compilation
@@ -62,6 +59,7 @@ jobs:
           sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev
           sudo apt-get install --quiet -y mingw-w64 wine-stable winetricks
           ## sudo apt-get install --quiet -y wine32
+
       - name: Turn off the wine crash dialog
         run: winetricks nocrashdialog
 
@@ -93,14 +91,9 @@ jobs:
           ./v -os windows examples/2048/2048.v
           ls -lart examples/2048/2048.exe
 
-      - name: toml.v can be compiled to raw Android C
-        run: |
-          # Test that V can compile non-graphic app to Android compatible code *without* using the -apk flag
-          ./v -os android examples/toml.v
-
-
   windows-cross:
     runs-on: windows-2019
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v2

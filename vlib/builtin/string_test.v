@@ -447,6 +447,13 @@ fn test_contains_any() {
 	assert !''.contains_any('')
 }
 
+fn test_contains_only() {
+	assert '23885'.contains_only('0123456789')
+	assert '23gg885'.contains_only('01g23456789')
+	assert !'hello;'.contains_only('hello')
+	assert !''.contains_only('')
+}
+
 fn test_contains_any_substr() {
 	s := 'Some random text'
 	assert s.contains_any_substr(['false', 'not', 'rand'])
@@ -987,6 +994,16 @@ fn test_string_f32() {
 	assert '123'.f32() - 123 < f32_epsilon
 	assert '-123'.f32() - (-123) < f32_epsilon
 	assert '-123.456'.f32() - (-123.456) <= f32_epsilon
+}
+
+fn test_string_is_ascii() {
+	assert ''.is_ascii() == true
+	assert ' '.is_ascii() == true
+	assert '~~'.is_ascii() == true
+	assert ' Az~'.is_ascii() == true
+	assert ' Aö~'.is_ascii() == false
+	assert '👋'.is_ascii() == false
+	assert 'a👋bc'.is_ascii() == false
 }
 
 fn test_string_with_zero_byte_escape() {

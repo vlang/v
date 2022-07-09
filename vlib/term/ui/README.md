@@ -13,7 +13,6 @@ mut:
 }
 
 fn event(e &tui.Event, x voidptr) {
-	println(e)
 	if e.typ == .key_down && e.code == .escape {
 		exit(0)
 	}

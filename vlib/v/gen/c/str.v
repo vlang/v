@@ -19,29 +19,18 @@ fn (mut g Gen) string_literal(node ast.StringLiteral) {
 // `sb.writeln('a='); sb.writeln(a.str())`
 fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 	node := call_expr.args[0].expr as ast.StringInterLiteral
-	// sb_name := g.cur_call_expr.left
-	// g.go_before_stmt(0)
 	g.writeln('// sb inter opt')
 	is_nl := call_expr.name == 'writeln'
-	// println('optimize sb $call_expr.name')
 	for i, val in node.vals {
 		escaped_val := cescape_nonascii(util.smart_quote(val, false))
-		// if val == '' {
-		// break
-		// continue
-		// }
 		g.write('strings__Builder_write_string(&')
 		g.expr(call_expr.left)
 		g.write(', _SLIT("')
 		g.write(escaped_val)
 		g.writeln('"));')
-		//
 		if i >= node.exprs.len {
 			break
 		}
-		// if node.expr_types.len <= i || node.exprs.len <= i {
-		// continue
-		// }
 		if is_nl && i == node.exprs.len - 1 {
 			g.write('strings__Builder_writeln(&')
 		} else {
@@ -59,7 +48,6 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 		g.writeln('));')
 	}
 	g.writeln('')
-	// println(node.vals)
 	return
 }
 
@@ -111,7 +99,9 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		is_var_mut := expr.is_auto_deref_var()
 		str_fn_name := g.get_str_fn(typ)
 		if is_ptr && !is_var_mut {
-			g.write('str_intp(1, _MOV((StrIntpData[]){{_SLIT("&"), $si_s_code ,{.d_s=')
+			g.write('str_intp(1, _MOV((StrIntpData[]){{_SLIT("&"), $si_s_code ,{.d_s = isnil(')
+			g.expr(expr)
+			g.write(') ? _SLIT("nil") : ')
 		}
 		g.write('${str_fn_name}(')
 		if str_method_expects_ptr && !is_ptr {
@@ -134,7 +124,6 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		g.write(')')
 		if is_ptr && !is_var_mut {
 			g.write('}}}))')
-			// g.write(')')
 		}
 	} else {
 		str_fn_name := g.get_str_fn(typ)

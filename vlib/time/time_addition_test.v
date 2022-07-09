@@ -5,13 +5,13 @@ fn test_add_to_day_in_the_previous_century() ? {
 	aa := a.add_days(180)
 	dump(a.debug())
 	dump(aa.debug())
-	assert aa.ymmdd() == '1900-06-29'
+	assert aa.ymmdd() == '1900-06-30'
 }
 
 fn test_add_to_day_in_the_past() ? {
 	a := time.parse_iso8601('1990-03-01')?
 	aa := a.add_days(180)
-	assert aa.ymmdd() == '1990-08-27'
+	assert aa.ymmdd() == '1990-08-28'
 }
 
 fn test_add_to_day_in_the_recent_past() ? {

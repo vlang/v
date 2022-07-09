@@ -9,7 +9,7 @@ pub const (
 		ast.i8_type_idx,
 		ast.i16_type_idx,
 		ast.int_type_idx,
-		ast.byte_type_idx,
+		ast.u8_type_idx,
 		ast.u16_type_idx,
 		ast.u32_type_idx,
 		ast.bool_type_idx,
@@ -20,12 +20,13 @@ pub const (
 	]
 	string   = ast.string_type_idx
 	time     = -2
+	serial   = -1
 	type_idx = {
 		'i8':     ast.i8_type_idx
 		'i16':    ast.i16_type_idx
 		'int':    ast.int_type_idx
 		'i64':    ast.i64_type_idx
-		'byte':   ast.byte_type_idx
+		'u8':     ast.u8_type_idx
 		'u16':    ast.u16_type_idx
 		'u32':    ast.u32_type_idx
 		'u64':    ast.u64_type_idx
@@ -102,6 +103,10 @@ fn (kind OrderType) to_str() string {
 	}
 }
 
+// Examples for QueryData in SQL: abc == 3 && b == 'test'
+// => fields[abc, b]; data[3, 'test']; types[index of int, index of string]; kinds[.eq, .eq]; is_and[true];
+// Every field, data, type & kind of operation in the expr share the same index in the arrays
+// is_and defines how they're addicted to each other either and or or
 pub struct QueryData {
 pub:
 	fields []string
@@ -128,6 +133,17 @@ pub:
 	attrs       []StructAttribute
 }
 
+// table - Table name
+// is_count - Either the data will be returned or an integer with the count
+// has_where - Select all or use a where expr
+// has_order - Order the results
+// order - Name of the column which will be ordered
+// order_type - Type of order (asc, desc)
+// has_limit - Limits the output data
+// primary - Name of the primary field
+// has_offset - Add an offset to the result
+// fields - Fields to select
+// types - Types to select
 pub struct SelectConfig {
 pub:
 	table      string
@@ -143,6 +159,14 @@ pub:
 	types      []int
 }
 
+// Interfaces gets called from the backend and can be implemented
+// Since the orm supports arrays aswell, they have to be returned too.
+// A row is represented as []Primitive, where the data is connected to the fields of the struct by their
+// index. The indices are mapped with the SelectConfig.field array. This is the mapping for a struct.
+// To have an array, there has to be an array of structs, basically [][]Primitive
+//
+// Every function without last_id() returns an optional, which returns an error if present
+// last_id returns the last inserted id of the db
 pub interface Connection {
 	@select(config SelectConfig, data QueryData, where QueryData) ?[][]Primitive
 	insert(table string, data QueryData) ?
@@ -153,7 +177,12 @@ pub interface Connection {
 	last_id() Primitive
 }
 
-pub fn orm_stmt_gen(table string, para string, kind StmtKind, num bool, qm string, start_pos int, data QueryData, where QueryData) string {
+// Generates an sql stmt, from universal parameter
+// q - The quotes character, which can be different in every type, so it's variable
+// num - Stmt uses nums at prepared statements (? or ?1)
+// qm - Character for prepared statment, qm because of quotation mark like in sqlite
+// start_pos - When num is true, it's the start position of the counter
+pub fn orm_stmt_gen(table string, q string, kind StmtKind, num bool, qm string, start_pos int, data QueryData, where QueryData) string {
 	mut str := ''
 
 	mut c := start_pos
@@ -163,7 +192,7 @@ pub fn orm_stmt_gen(table string, para string, kind StmtKind, num bool, qm strin
 			mut values := []string{}
 
 			for _ in 0 .. data.fields.len {
-				// loop over the length of data.field and generate ?0, ?1 or just ? based on the $num parameter for value placeholders
+				// loop over the length of data.field and generate ?0, ?1 or just ? based on the $num qmeter for value placeholders
 				if num {
 					values << '$qm$c'
 					c++
@@ -172,16 +201,16 @@ pub fn orm_stmt_gen(table string, para string, kind StmtKind, num bool, qm strin
 				}
 			}
 
-			str += 'INSERT INTO $para$table$para ('
-			str += data.fields.map('$para$it$para').join(', ')
+			str += 'INSERT INTO $q$table$q ('
+			str += data.fields.map('$q$it$q').join(', ')
 			str += ') VALUES ('
 			str += values.join(', ')
 			str += ')'
 		}
 		.update {
-			str += 'UPDATE $para$table$para SET '
+			str += 'UPDATE $q$table$q SET '
 			for i, field in data.fields {
-				str += '$para$field$para = '
+				str += '$q$field$q = '
 				if data.data.len > i {
 					d := data.data[i]
 					if d is InfixType {
@@ -217,12 +246,12 @@ pub fn orm_stmt_gen(table string, para string, kind StmtKind, num bool, qm strin
 			str += ' WHERE '
 		}
 		.delete {
-			str += 'DELETE FROM $para$table$para WHERE '
+			str += 'DELETE FROM $q$table$q WHERE '
 		}
 	}
 	if kind == .update || kind == .delete {
 		for i, field in where.fields {
-			str += '$para$field$para ${where.kinds[i].to_str()} $qm'
+			str += '$q$field$q ${where.kinds[i].to_str()} $qm'
 			if num {
 				str += '$c'
 				c++
@@ -236,28 +265,32 @@ pub fn orm_stmt_gen(table string, para string, kind StmtKind, num bool, qm strin
 	return str
 }
 
-pub fn orm_select_gen(orm SelectConfig, para string, num bool, qm string, start_pos int, where QueryData) string {
+// Generates an sql select stmt, from universal parameter
+// orm - See SelectConfig
+// q, num, qm, start_pos - see orm_stmt_gen
+// where - See QueryData
+pub fn orm_select_gen(orm SelectConfig, q string, num bool, qm string, start_pos int, where QueryData) string {
 	mut str := 'SELECT '
 
 	if orm.is_count {
 		str += 'COUNT(*)'
 	} else {
 		for i, field in orm.fields {
-			str += '$para$field$para'
+			str += '$q$field$q'
 			if i < orm.fields.len - 1 {
 				str += ', '
 			}
 		}
 	}
 
-	str += ' FROM $para$orm.table$para'
+	str += ' FROM $q$orm.table$q'
 
 	mut c := start_pos
 
 	if orm.has_where {
 		str += ' WHERE '
 		for i, field in where.fields {
-			str += '$para$field$para ${where.kinds[i].to_str()} $qm'
+			str += '$q$field$q ${where.kinds[i].to_str()} $qm'
 			if num {
 				str += '$c'
 				c++
@@ -276,7 +309,7 @@ pub fn orm_select_gen(orm SelectConfig, para string, num bool, qm string, start_
 	// ordering is *slow*, especially if there are no indexes!
 	if orm.has_order {
 		str += ' ORDER BY '
-		str += '$para$orm.order$para '
+		str += '$q$orm.order$q '
 		str += orm.order_type.to_str()
 	}
 
@@ -300,11 +333,19 @@ pub fn orm_select_gen(orm SelectConfig, para string, num bool, qm string, start_
 	return str
 }
 
-pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len int, fields []TableField, sql_from_v fn (int) ?string, alternative bool) ?string {
-	mut str := 'CREATE TABLE IF NOT EXISTS $para$table$para ('
+// Generates an sql table stmt, from universal parameter
+// table - Table name
+// q - see orm_stmt_gen
+// defaults - enables default values in stmt
+// def_unique_len - sets default unique length for texts
+// fields - See TableField
+// sql_from_v - Function which maps type indices to sql type names
+// alternative - Needed for msdb
+pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, fields []TableField, sql_from_v fn (int) ?string, alternative bool) ?string {
+	mut str := 'CREATE TABLE IF NOT EXISTS $q$table$q ('
 
 	if alternative {
-		str = 'IF NOT EXISTS (SELECT * FROM sysobjects WHERE name=$para$table$para and xtype=${para}U$para) CREATE TABLE $para$table$para ('
+		str = 'IF NOT EXISTS (SELECT * FROM sysobjects WHERE name=$q$table$q and xtype=${q}U$q) CREATE TABLE $q$table$q ('
 	}
 
 	mut fs := []string{}
@@ -368,7 +409,7 @@ pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len in
 		if ctyp == '' {
 			return error('Unknown type ($field.typ) for field $field.name in struct $table')
 		}
-		stmt = '$para$field_name$para $ctyp'
+		stmt = '$q$field_name$q $ctyp'
 		if defaults && field.default_val != '' {
 			stmt += ' DEFAULT $field.default_val'
 		}
@@ -376,7 +417,7 @@ pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len in
 			stmt += ' NOT NULL'
 		}
 		if is_unique {
-			mut f := 'UNIQUE($para$field_name$para'
+			mut f := 'UNIQUE($q$field_name$q'
 			if ctyp == 'TEXT' && def_unique_len > 0 {
 				if unique_len > 0 {
 					f += '($unique_len)'
@@ -396,18 +437,19 @@ pub fn orm_table_gen(table string, para string, defaults bool, def_unique_len in
 		for k, v in unique {
 			mut tmp := []string{}
 			for f in v {
-				tmp << '$para$f$para'
+				tmp << '$q$f$q'
 			}
 			fs << '/* $k */UNIQUE(${tmp.join(', ')})'
 		}
 	}
-	fs << 'PRIMARY KEY($para$primary$para)'
+	fs << 'PRIMARY KEY($q$primary$q)'
 	fs << unique_fields
 	str += fs.join(', ')
 	str += ');'
 	return str
 }
 
+// Get's the sql field type
 fn sql_field_type(field TableField) int {
 	mut typ := field.typ
 	if field.is_time {
@@ -426,6 +468,7 @@ fn sql_field_type(field TableField) int {
 	return typ
 }
 
+// Get's the sql field name
 fn sql_field_name(field TableField) string {
 	mut name := field.name
 	for attr in field.attrs {

@@ -39,6 +39,15 @@ pub fn build_native(mut b builder.Builder, v_files []string, out_file string) {
 	}
 	b.front_and_middle_stages(nvf) or { return }
 	util.timing_start('Native GEN')
+	if b.pref.arch == ._auto {
+		$if amd64 {
+			b.pref.arch = .amd64
+		} $else $if arm64 {
+			b.pref.arch = .arm64
+		} $else {
+			eprintln('Error: Only arm64 and amd64 are supported by V')
+		}
+	}
 	b.stats_lines, b.stats_bytes = native.gen(b.parsed_files, b.table, out_file, b.pref)
 	util.timing_measure('Native GEN')
 }

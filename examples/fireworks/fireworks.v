@@ -6,8 +6,8 @@ import rand
 
 struct App {
 mut:
-	gg      &gg.Context       = 0
-	ui      &objects.UIParams = 0
+	gg      &gg.Context       = unsafe { 0 }
+	ui      &objects.UIParams = unsafe { 0 }
 	rockets []objects.Rocket
 	frames  [][]objects.Rocket
 	// i thought about using a fixed fifo queue for the frames but the array

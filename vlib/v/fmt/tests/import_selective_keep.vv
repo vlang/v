@@ -1,12 +1,16 @@
 import math.complex { Complex }
 import gg { MouseButton }
 import time { Duration }
+import modtest { Test }
 
 fn keep_imported_enum_map_key() {
 	bm := map[MouseButton]string{}
 }
 
+fn generic<T>() {}
+
 fn main() {
 	_ := Duration(10) // keep cast type
 	assert *(&f64(&byte(&num) + __offsetof(Complex, re))) == 1.0
+	generic<Test>()
 }

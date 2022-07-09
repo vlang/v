@@ -29,9 +29,27 @@ fn test_stderr() {
 	eprintln('2(World)')
 }
 
+fn test_idents() {
+	x := 0
+	println(x)
+
+	y := 5
+	println(y)
+
+	z := -8
+	println(z)
+
+	a := 123
+	println(a)
+
+	b := -456
+	println(b)
+}
+
 fn main() {
 	test_stdout()
 	test_stderr()
 	test_numbers()
 	test_oof()
+	test_idents()
 }

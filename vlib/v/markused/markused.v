@@ -13,6 +13,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 	defer {
 		util.timing_measure(@METHOD)
 	}
+	// Functions that must be generated and can't be skipped
 	mut all_fn_root_names := [
 		'main.main',
 		'__new_array',
@@ -28,14 +29,16 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		'new_array_from_c_array',
 		'v_fixed_index',
 		'memdup',
+		'memdup_uncollectable',
 		'vstrlen',
 		'__as_cast',
 		'tos',
 		'tos2',
 		'tos3',
 		'isnil',
-		'opt_ok',
 		'opt_ok2',
+		'_option_ok',
+		'_result_ok',
 		'error',
 		// utf8_str_visible_length is used by c/str.v
 		'utf8_str_visible_length',

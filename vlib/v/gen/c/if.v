@@ -29,7 +29,8 @@ fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
 							if left_sym.kind in [.array, .array_fixed, .map] {
 								return true
 							}
-						} else if stmt.expr.or_block.kind != .absent {
+						}
+						if stmt.expr.or_block.kind != .absent {
 							return true
 						}
 					}
@@ -78,13 +79,14 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.write(' ? ')
 			}
 			prev_expected_cast_type := g.expected_cast_type
-			if node.is_expr && g.table.sym(node.typ).kind == .sum_type {
+			if node.is_expr
+				&& (g.table.sym(node.typ).kind == .sum_type || node.typ.has_flag(.shared_f)) {
 				g.expected_cast_type = node.typ
 			}
 			g.stmts(branch.stmts)
 			g.expected_cast_type = prev_expected_cast_type
 		}
-		if node.branches.len == 1 {
+		if node.branches.len == 1 && !node.is_expr {
 			g.write(': 0')
 		}
 		g.write(')')
@@ -131,11 +133,19 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				var_name = g.new_tmp_var()
 				guard_vars[i] = var_name // for `else`
 				g.tmp_count--
-				g.writeln('if (${var_name}.state == 0) {')
+				if branch.cond.expr_type.has_flag(.optional) {
+					g.writeln('if (${var_name}.state == 0) {')
+				} else if branch.cond.expr_type.has_flag(.result) {
+					g.writeln('if (!${var_name}.is_error) {')
+				}
 			} else {
 				g.write('if ($var_name = ')
 				g.expr(branch.cond.expr)
-				g.writeln(', ${var_name}.state == 0) {')
+				if branch.cond.expr_type.has_flag(.optional) {
+					g.writeln(', ${var_name}.state == 0) {')
+				} else if branch.cond.expr_type.has_flag(.result) {
+					g.writeln(', !${var_name}.is_error) {')
+				}
 			}
 			if short_opt || branch.cond.vars[0].name != '_' {
 				base_type := g.base_type(branch.cond.expr_type)
@@ -204,7 +214,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		}
 		if needs_tmp_var {
 			prev_expected_cast_type := g.expected_cast_type
-			if node.is_expr && g.table.sym(node.typ).kind == .sum_type {
+			if node.is_expr
+				&& (g.table.sym(node.typ).kind == .sum_type || node.typ.has_flag(.shared_f)) {
 				g.expected_cast_type = node.typ
 			}
 			g.stmts_with_tmp_var(branch.stmts, tmp)

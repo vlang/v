@@ -4,6 +4,7 @@
 module main
 
 import os
+import rand
 import os.cmdline
 import net.http
 import net.urllib
@@ -12,7 +13,8 @@ import vhelp
 import v.vmod
 
 const (
-	default_vpm_server_urls   = ['https://vpm.vlang.io']
+	default_vpm_server_urls   = ['https://vpm.vlang.io', 'https://vpm.url4e.com']
+	vpm_server_urls           = rand.shuffle_clone(default_vpm_server_urls) or { [] } // ensure that all queries are distributed fairly
 	valid_vpm_commands        = ['help', 'search', 'install', 'update', 'upgrade', 'outdated',
 		'list', 'remove', 'show']
 	excluded_dirs             = ['cache', 'vlib']
@@ -208,24 +210,24 @@ fn vpm_install_from_vpm(module_names []string) {
 			println('VPM needs `$vcs` to be installed.')
 			continue
 		}
-		mod_name_as_path := mod.name.replace('.', os.path_separator).replace('-', '_').to_lower()
-		final_module_path := os.real_path(os.join_path(settings.vmodules_path, mod_name_as_path))
-		if os.exists(final_module_path) {
+		//
+		minfo := mod_name_info(mod.name)
+		if os.exists(minfo.final_module_path) {
 			vpm_update([name])
 			continue
 		}
-		println('Installing module "$name" from "$mod.url" to "$final_module_path" ...')
+		println('Installing module "$name" from "$mod.url" to "$minfo.final_module_path" ...')
 		vcs_install_cmd := supported_vcs_install_cmds[vcs]
-		cmd := '$vcs_install_cmd "$mod.url" "$final_module_path"'
+		cmd := '$vcs_install_cmd "$mod.url" "$minfo.final_module_path"'
 		verbose_println('      command: $cmd')
 		cmdres := os.execute(cmd)
 		if cmdres.exit_code != 0 {
 			errors++
-			println('Failed installing module "$name" to "$final_module_path" .')
+			println('Failed installing module "$name" to "$minfo.final_module_path" .')
 			print_failed_cmd(cmd, cmdres)
 			continue
 		}
-		resolve_dependencies(name, final_module_path, module_names)
+		resolve_dependencies(name, minfo.final_module_path, module_names)
 	}
 	if errors > 0 {
 		exit(1)
@@ -270,7 +272,7 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 		}
 
 		repo_name := url.substr(second_cut_pos + 1, first_cut_pos)
-		mut name := repo_name + os.path_separator + mod_name
+		mut name := os.join_path(repo_name, mod_name)
 		mod_name_as_path := name.replace('-', '_').to_lower()
 		mut final_module_path := os.real_path(os.join_path(settings.vmodules_path, mod_name_as_path))
 		if os.exists(final_module_path) {
@@ -297,20 +299,19 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 		if os.exists(vmod_path) {
 			data := os.read_file(vmod_path) or { return }
 			vmod := parse_vmod(data)
-			mod_path := os.real_path(os.join_path(settings.vmodules_path, vmod.name.replace('.',
-				os.path_separator)))
-			println('Relocating module from "$name" to "$vmod.name" ( "$mod_path" ) ...')
-			if os.exists(mod_path) {
-				println('Warning module "$mod_path" already exsits!')
-				println('Removing module "$mod_path" ...')
-				os.rmdir_all(mod_path) or {
+			minfo := mod_name_info(vmod.name)
+			println('Relocating module from "$name" to "$vmod.name" ( "$minfo.final_module_path" ) ...')
+			if os.exists(minfo.final_module_path) {
+				println('Warning module "$minfo.final_module_path" already exsits!')
+				println('Removing module "$minfo.final_module_path" ...')
+				os.rmdir_all(minfo.final_module_path) or {
 					errors++
-					println('Errors while removing "$mod_path" :')
+					println('Errors while removing "$minfo.final_module_path" :')
 					println(err)
 					continue
 				}
 			}
-			os.mv(final_module_path, mod_path) or {
+			os.mv(final_module_path, minfo.final_module_path) or {
 				errors++
 				println('Errors while relocating module "$name" :')
 				println(err)
@@ -323,7 +324,7 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 				continue
 			}
 			println('Module "$name" relocated to "$vmod.name" successfully.')
-			final_module_path = mod_path
+			final_module_path = minfo.final_module_path
 			name = vmod.name
 		}
 		resolve_dependencies(name, final_module_path, module_names)
@@ -377,10 +378,7 @@ fn vpm_update(m []string) {
 	}
 	mut errors := 0
 	for modulename in module_names {
-		mut zname := modulename
-		if mod := get_mod_by_url(modulename) {
-			zname = mod.name
-		}
+		zname := url_to_module_name(modulename)
 		final_module_path := valid_final_path_of_existing_module(modulename) or { continue }
 		os.chdir(final_module_path) or {}
 		println('Updating module "$zname" in "$final_module_path" ...')
@@ -503,26 +501,21 @@ fn vpm_remove(module_names []string) {
 }
 
 fn valid_final_path_of_existing_module(modulename string) ?string {
-	mut name := modulename
-	if mod := get_mod_by_url(name) {
-		name = mod.name
-	}
-	mod_name_as_path := name.replace('.', os.path_separator).replace('-', '_').to_lower()
-	name_of_vmodules_folder := os.join_path(settings.vmodules_path, mod_name_as_path)
-	final_module_path := os.real_path(name_of_vmodules_folder)
-	if !os.exists(final_module_path) {
-		println('No module with name "$name" exists at $name_of_vmodules_folder')
+	name := if mod := get_mod_by_url(modulename) { mod.name } else { modulename }
+	minfo := mod_name_info(name)
+	if !os.exists(minfo.final_module_path) {
+		println('No module with name "$minfo.mname_normalised" exists at $minfo.final_module_path')
 		return none
 	}
-	if !os.is_dir(final_module_path) {
-		println('Skipping "$name_of_vmodules_folder", since it is not a folder.')
+	if !os.is_dir(minfo.final_module_path) {
+		println('Skipping "$minfo.final_module_path", since it is not a folder.')
 		return none
 	}
-	vcs_used_in_dir(final_module_path) or {
-		println('Skipping "$name_of_vmodules_folder", since it does not use a supported vcs.')
+	vcs_used_in_dir(minfo.final_module_path) or {
+		println('Skipping "$minfo.final_module_path", since it does not use a supported vcs.')
 		return none
 	}
-	return final_module_path
+	return minfo.final_module_path
 }
 
 fn ensure_vmodules_dir_exist() {
@@ -573,6 +566,31 @@ fn get_installed_modules() []string {
 	return modules
 }
 
+struct ModNameInfo {
+mut:
+	mname             string // The-user.The-mod , *never* The-user.The-mod.git
+	mname_normalised  string // the_user.the_mod
+	mname_as_path     string // the_user/the_mod
+	final_module_path string // ~/.vmodules/the_user/the_mod
+}
+
+fn mod_name_info(mod_name string) ModNameInfo {
+	mut info := ModNameInfo{}
+	info.mname = if mod_name.ends_with('.git') { mod_name.replace('.git', '') } else { mod_name }
+	info.mname_normalised = info.mname.replace('-', '_').to_lower()
+	info.mname_as_path = info.mname_normalised.replace('.', os.path_separator)
+	info.final_module_path = os.real_path(os.join_path(settings.vmodules_path, info.mname_as_path))
+	return info
+}
+
+fn url_to_module_name(modulename string) string {
+	mut res := if mod := get_mod_by_url(modulename) { mod.name } else { modulename }
+	if res.ends_with('.git') {
+		res = res.replace('.git', '')
+	}
+	return res
+}
+
 fn get_all_modules() []string {
 	url := get_working_server_url()
 	r := http.get(url) or { panic(err) }
@@ -580,7 +598,7 @@ fn get_all_modules() []string {
 		println('Failed to search vpm.vlang.io. Status code: $r.status_code')
 		exit(1)
 	}
-	s := r.text
+	s := r.body
 	mut read_len := 0
 	mut modules := []string{}
 	for read_len < s.len {
@@ -648,7 +666,7 @@ fn get_working_server_url() string {
 	server_urls := if settings.server_urls.len > 0 {
 		settings.server_urls
 	} else {
-		default_vpm_server_urls
+		vpm_server_urls
 	}
 	for url in server_urls {
 		verbose_println('Trying server url: $url')
@@ -709,7 +727,8 @@ fn get_module_meta_info(name string) ?Mod {
 		return mod
 	}
 	mut errors := []string{}
-	for server_url in default_vpm_server_urls {
+
+	for server_url in vpm_server_urls {
 		modurl := server_url + '/jsmod/$name'
 		verbose_println('Retrieving module metadata from: "$modurl" ...')
 		r := http.get(modurl) or {
@@ -717,7 +736,7 @@ fn get_module_meta_info(name string) ?Mod {
 			errors << 'Error details: $err'
 			continue
 		}
-		if r.status_code == 404 || r.text.trim_space() == '404' {
+		if r.status_code == 404 || r.body.trim_space() == '404' {
 			errors << 'Skipping module "$name", since "$server_url" reported that "$name" does not exist.'
 			continue
 		}
@@ -725,7 +744,7 @@ fn get_module_meta_info(name string) ?Mod {
 			errors << 'Skipping module "$name", since "$server_url" responded with $r.status_code http status code. Please try again later.'
 			continue
 		}
-		s := r.text
+		s := r.body
 		if s.len > 0 && s[0] != `{` {
 			errors << 'Invalid json data'
 			errors << s.trim_space().limit(100) + ' ...'

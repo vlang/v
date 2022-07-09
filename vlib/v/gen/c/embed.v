@@ -5,11 +5,20 @@ import rand
 import v.ast
 import v.pref
 
-fn (mut g Gen) embed_file_is_prod_mode() bool {
-	if g.pref.is_prod || 'debug_embed_file_in_prod' in g.pref.compile_defines {
-		return true
+fn (mut g Gen) should_really_embed_file() bool {
+	if 'embed_only_metadata' in g.pref.compile_defines {
+		return false
 	}
-	return false
+	return true
+}
+
+fn (mut g Gen) handle_embedded_files_finish() {
+	if g.embedded_files.len > 0 {
+		if g.should_really_embed_file() {
+			g.gen_embedded_data()
+		}
+		g.gen_embedded_metadata()
+	}
 }
 
 // gen_embed_file_struct generates C code for `$embed_file('...')` calls.
@@ -17,7 +26,7 @@ fn (mut g Gen) gen_embed_file_init(mut node ast.ComptimeCall) {
 	$if trace_embed_file ? {
 		eprintln('> gen_embed_file_init $node.embed_file.apath')
 	}
-	if g.embed_file_is_prod_mode() {
+	if g.should_really_embed_file() {
 		file_bytes := os.read_bytes(node.embed_file.apath) or {
 			panic('unable to read file: "$node.embed_file.rpath')
 		}
@@ -84,13 +93,13 @@ fn (mut g Gen) gen_embedded_metadata() {
 		ef_idx := emfile.hash()
 		g.embedded_data.writeln('\t\tcase ${ef_idx}U: {')
 		g.embedded_data.writeln('\t\t\tres.path = ${ctoslit(emfile.rpath)};')
-		if g.embed_file_is_prod_mode() {
+		if g.should_really_embed_file() {
 			// apath is not needed in production and may leak information
 			g.embedded_data.writeln('\t\t\tres.apath = ${ctoslit('')};')
 		} else {
 			g.embedded_data.writeln('\t\t\tres.apath = ${ctoslit(emfile.apath)};')
 		}
-		if g.embed_file_is_prod_mode() {
+		if g.should_really_embed_file() {
 			// use function generated in Gen.gen_embedded_data()
 			if emfile.is_compressed {
 				g.embedded_data.writeln('\t\t\tres.compression_type = ${ctoslit(emfile.compression_type)};')
@@ -104,7 +113,7 @@ fn (mut g Gen) gen_embedded_metadata() {
 		}
 		g.embedded_data.writeln('\t\t\tres.free_compressed = 0;')
 		g.embedded_data.writeln('\t\t\tres.free_uncompressed = 0;')
-		if g.embed_file_is_prod_mode() {
+		if g.should_really_embed_file() {
 			g.embedded_data.writeln('\t\t\tres.len = $emfile.len;')
 		} else {
 			file_size := os.file_size(emfile.apath)

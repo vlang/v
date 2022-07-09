@@ -157,6 +157,13 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					}
 				}
 			}
+			if mut left is ast.Ident && mut right is ast.Ident {
+				if !c.inside_unsafe && left_type.is_ptr() && left.is_mut() && right_type.is_ptr()
+					&& !right.is_mut() {
+					c.error('`$right.name` is immutable, cannot have a mutable reference to an immutable object',
+						right.pos)
+				}
+			}
 		} else {
 			// Make sure the variable is mutable
 			c.fail_if_immutable(left)
@@ -224,7 +231,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							left_type = left_type.set_nr_muls(1)
 						}
 					} else if left_type.has_flag(.shared_f) {
-						left_type = left_type.clear_flag(.shared_f)
+						left_type = left_type.clear_flag(.shared_f).deref()
 					}
 					if ident_var_info.share == .atomic_t {
 						left_type = left_type.set_flag(.atomic_f)
@@ -305,7 +312,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				}
 			}
 		}
-		left_type_unwrapped := c.unwrap_generic(left_type)
+		left_type_unwrapped := c.unwrap_generic(ast.mktyp(left_type))
 		right_type_unwrapped := c.unwrap_generic(right_type)
 		if right_type_unwrapped == 0 {
 			// right type was a generic `T`
