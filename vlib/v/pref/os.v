@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module pref
 
+import os
+
 pub enum OS {
 	_auto // Reserved so .macos cannot be misunderstood as auto
 	ios
@@ -91,13 +93,13 @@ pub fn (o OS) str() string {
 }
 
 pub fn get_host_os() OS {
+	if os.getenv('TERMUX_VERSION') != '' {
+		return .termux
+	}
+	$if android {
+		return .android
+	}
 	$if linux {
-		$if android {
-			$if termux {
-				return .termux
-			}
-			return .android
-		}
 		return .linux
 	}
 	$if ios {
