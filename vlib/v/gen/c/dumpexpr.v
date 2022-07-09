@@ -14,13 +14,13 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 	}
 	dump_fn_name := '_v_dump_expr_$node.cname' + (if node.expr_type.is_ptr() { '_ptr' } else { '' })
 	g.write(' ${dump_fn_name}(${ctoslit(fpath)}, $line, $sexpr, ')
-	
+
 	old_inside_call := g.inside_call
 	g.inside_call = true
 	defer {
-	   g.inside_call = old_inside_call
+		g.inside_call = old_inside_call
 	}
-	
+
 	g.expr(node.expr)
 	g.write(' )')
 }
