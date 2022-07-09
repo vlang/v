@@ -93,13 +93,13 @@ pub fn (o OS) str() string {
 }
 
 pub fn get_host_os() OS {
+	if os.getenv('TERMUX_VERSION') != '' {
+		return .termux
+	}
+	$if android {
+		return .android
+	}
 	$if linux {
-		$if android {
-			$if termux {
-				return .termux
-			}
-			return .android
-		}
 		return .linux
 	}
 	$if ios {
@@ -134,10 +134,6 @@ pub fn get_host_os() OS {
 	}
 	$if haiku {
 		return .haiku
-	}
-	// without this workaround Termux thinks it is js_node
-	if os.getenv('TERMUX_VERSION') != '' {
-		return .termux
 	}
 	$if js_node {
 		return .js_node
