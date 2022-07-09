@@ -159,8 +159,8 @@ pub fn eprintln(s string) {
 		C.fflush(C.stdout)
 		C.fflush(C.stderr)
 		// eprintln is used in panics, so it should not fail at all
-		$if android {
-			C.fprintf(C.stderr, c'%.*s\n', s.len, s.str)
+		$if android && !termux {
+			C.android_print(C.stderr, c'%.*s\n', s.len, s.str)
 		}
 		_writeln_to_fd(2, s)
 		C.fflush(C.stderr)
@@ -182,8 +182,8 @@ pub fn eprint(s string) {
 	} $else {
 		C.fflush(C.stdout)
 		C.fflush(C.stderr)
-		$if android {
-			C.fprintf(C.stderr, c'%.*s', s.len, s.str)
+		$if android && !termux {
+			C.android_print(C.stderr, c'%.*s', s.len, s.str)
 		}
 		_write_buf_to_fd(2, s.str, s.len)
 		C.fflush(C.stderr)
@@ -211,11 +211,9 @@ pub fn flush_stderr() {
 // print prints a message to stdout. Unlike `println` stdout is not automatically flushed.
 [manualfree]
 pub fn print(s string) {
-	$if android {
-		C.fprintf(C.stdout, c'%.*s', s.len, s.str) // logcat
-	}
-	// no else if for android termux support
-	$if ios {
+	$if android && !termux {
+		C.android_print(C.stdout, c'%.*s\n', s.len, s.str)
+	} $else $if ios {
 		// TODO: Implement a buffer as NSLog doesn't have a "print"
 		C.WrappedNSLog(s.str)
 	} $else $if freestanding {
@@ -232,12 +230,10 @@ pub fn println(s string) {
 		println('println(NIL)')
 		return
 	}
-	$if android {
-		C.fprintf(C.stdout, c'%.*s\n', s.len, s.str) // logcat
+	$if android && !termux {
+		C.android_print(C.stdout, c'%.*s\n', s.len, s.str)
 		return
-	}
-	// no else if for android termux support
-	$if ios {
+	} $else $if ios {
 		C.WrappedNSLog(s.str)
 		return
 	} $else $if freestanding {

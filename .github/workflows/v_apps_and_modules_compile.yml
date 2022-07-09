@@ -26,7 +26,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --quiet -y libgc-dev   libsodium-dev libssl-dev sqlite3 libsqlite3-dev    valgrind    libfreetype6-dev libxi-dev libxcursor-dev libgl-dev xfonts-75dpi xfonts-base
-          sudo apt-get install --quiet -y --no-install-recommends gfortran liblapacke-dev libopenblas-dev
+          sudo apt-get install --quiet -y --no-install-recommends gfortran liblapacke-dev libopenblas-dev ## for vsl/vtl
+          sudo apt-get install --quiet -y --no-install-recommends sassc ## needed by gitly
 
       - name: Build V Language Server (VLS)
         run: |
@@ -65,6 +66,8 @@ jobs:
           v /tmp/gitly
           echo "Build Gitly with -autofree"
           v -autofree /tmp/gitly
+          echo "Compile gitly.css from gitly.scss"
+          sassc /tmp/gitly/static/css/gitly.scss > /tmp/gitly/static/css/gitly.css
           echo "Run first_run.v"
           v run /tmp/gitly/tests/first_run.v
           # /tmp/gitly/gitly -ci_run

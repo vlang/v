@@ -1,6 +1,7 @@
 module eval
 
 import v.ast
+import v.token
 
 pub fn (mut e Eval) stmts(stmts []ast.Stmt) {
 	e.open_scope()
@@ -40,6 +41,16 @@ pub fn (mut e Eval) stmt(stmt ast.Stmt) {
 						e.set(left, rights[i], false, stmt.left_types[i])
 					}
 				}
+				.plus_assign, .minus_assign, .mult_assign, .div_assign, .xor_assign, .mod_assign,
+				.or_assign, .and_assign, .right_shift_assign, .unsigned_right_shift_assign,
+				.left_shift_assign {
+					infix_op := token.assign_op_to_infix_op(stmt.op)
+					for i, left in stmt.left {
+						res := e.infix_expr(e.expr(left, stmt.left_types[i]), rights[i],
+							infix_op, stmt.left_types[i])
+						e.set(left, res, false, stmt.left_types[i])
+					}
+				}
 				else {
 					e.error('unknown assign statment: $stmt.op')
 				}
@@ -64,8 +75,15 @@ pub fn (mut e Eval) stmt(stmt ast.Stmt) {
 			if !underscore {
 				e.set(ast.Ident{ name: stmt.val_var, scope: 0 }, Int{-1, 32}, true, stmt.val_type)
 			}
-			for i in (e.expr(stmt.cond, ast.int_type_idx) as Int).val .. (e.expr(stmt.high,
-				ast.int_type_idx) as Int).val {
+			fstart := e.expr(stmt.cond, ast.int_type_idx).as_i64() or {
+				e.error('invalid integer for start of range')
+				0
+			}
+			fend := e.expr(stmt.high, ast.int_type_idx).as_i64() or {
+				e.error('invalid integer for end of range')
+				0
+			}
+			for i in fstart .. fend {
 				if !underscore {
 					e.set(ast.Ident{ name: stmt.val_var, scope: 0 }, Int{i, 32}, false,
 						stmt.val_type)

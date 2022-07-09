@@ -5,12 +5,12 @@ module checker
 import v.ast
 
 pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
-	if node.language == .v && !c.is_builtin_mod {
-		c.check_valid_pascal_case(node.name, 'struct name', node.pos)
-	}
 	mut struct_sym, struct_typ_idx := c.table.find_sym_and_type_idx(node.name)
 	mut has_generic_types := false
 	if mut struct_sym.info is ast.Struct {
+		if node.language == .v && !c.is_builtin_mod && !struct_sym.info.is_anon {
+			c.check_valid_pascal_case(node.name, 'struct name', node.pos)
+		}
 		for embed in node.embeds {
 			if embed.typ.has_flag(.generic) {
 				has_generic_types = true
