@@ -14,7 +14,7 @@
 - `[skip]` field will be skipped
 - `[skip_insert]` field will be skipped for insert queries
 - `[skip_update]` field will be skipped for update queries
-- `[skip_insert_update]` field will be skipped or both inser and update queries
+- `[skip_insert_update]` field will be skipped or both insert and update queries
 - `[sql: type]` where `type` is a V type such as `int` or `f64`, or special type `serial`
 - `[sql: 'name']` sets a custom column name for the field
 
