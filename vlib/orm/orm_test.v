@@ -1,9 +1,10 @@
 // import os
 // import term
-// import mysql
+import mysql
 import pg
 import time
 import sqlite
+import orm
 
 struct Module {
 	id           int       [primary; sql: serial]
@@ -449,4 +450,57 @@ fn test_pg_orm_attributes() {
 		select from CategoryGroup where slug == 'local-development'
 	}
 	assert updated_local_dev[0].updated_at != cat_local_dev[0].updated_at
+}
+
+
+fn test_mysql_orm_attributes() {
+	mut db := mysql.Connection{
+		host: '127.0.0.1'
+		port: 3306
+		username: 'root'
+		password: ''
+		dbname: 'mysql'
+	}
+	db.connect() or { panic(err) }
+	mysql_db := orm.Connection(db)
+
+	db.query('drop table if exists category_groups') or { panic(err) }
+
+	db.query(
+		'CREATE TABLE category_groups (
+			id int NOT NULL AUTO_INCREMENT,
+			uuid varchar(36) NOT NULL DEFAULT "",
+			label varchar(100) NOT NULL,
+			slug varchar(100) NOT NULL,
+			description text NULL,
+			active boolean NOT NULL DEFAULT true,
+			created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (id)
+		);'
+	) or { panic(err) }
+
+	staging := CategoryGroup{
+		label: 'Staging Development'
+		slug: 'staging-dev'
+		description: 'Some description about staging dev'
+		active: false
+	}
+
+	sql db {
+		insert staging into CategoryGroup
+	}
+
+	c := sql db {
+		select count from CategoryGroup
+	}
+	assert c == 1
+
+	sql db {
+		create table Module
+	}
+
+	cat_staging := sql db {
+		select from Module where id == 1
+	}
 }
