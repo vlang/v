@@ -34,15 +34,15 @@ struct TestTime {
 }
 
 [table: 'category_groups']
-struct CategoryGroup{
-	id int [primary; sql: serial]
-	uuid string [skip_insert]
-	label string [required]
-	slug string [required; unique]
+struct CategoryGroup {
+	id          int       [primary; sql: serial]
+	uuid        string    [skip_insert]
+	label       string    [required]
+	slug        string    [required; unique]
 	description string
-	active bool [required]
-	created_at time.Time [skip_insert]
-	updated_at time.Time [skip_insert_update]
+	active      bool      [required]
+	created_at  time.Time [skip_insert]
+	updated_at  time.Time [skip_insert_update]
 }
 
 fn test_orm() {
@@ -391,8 +391,7 @@ fn test_pg_orm_attributes() {
 
 	// Create the category group table with accompanying function and trigger
 	// to auto update the update_at timestamp
-	pg_db.exec(
-		'CREATE TABLE category_groups (
+	pg_db.exec('CREATE TABLE category_groups (
 			id serial NOT NULL,
 			uuid uuid NOT NULL DEFAULT gen_random_uuid(),
 			"label" varchar(100) NOT NULL,
@@ -411,8 +410,9 @@ fn test_pg_orm_attributes() {
 		$$ language "plpgsql";
 		CREATE TRIGGER category_groups_updtime
 		BEFORE UPDATE ON category_groups
-		FOR EACH ROW EXECUTE PROCEDURE update_udta_column();'
-	) or { panic(err) }
+		FOR EACH ROW EXECUTE PROCEDURE update_udta_column();') or {
+		panic(err)
+	}
 
 	local_dev := CategoryGroup{
 		label: 'Local Development'
@@ -452,7 +452,6 @@ fn test_pg_orm_attributes() {
 	assert updated_local_dev[0].updated_at != cat_local_dev[0].updated_at
 }
 
-
 fn test_mysql_orm_attributes() {
 	mut db := mysql.Connection{
 		host: '127.0.0.1'
@@ -466,8 +465,7 @@ fn test_mysql_orm_attributes() {
 
 	db.query('drop table if exists category_groups') or { panic(err) }
 
-	db.query(
-		'CREATE TABLE category_groups (
+	db.query('CREATE TABLE category_groups (
 			id int NOT NULL AUTO_INCREMENT,
 			uuid varchar(36) NOT NULL DEFAULT "",
 			label varchar(100) NOT NULL,
@@ -477,8 +475,9 @@ fn test_mysql_orm_attributes() {
 			created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY (id)
-		);'
-	) or { panic(err) }
+		);') or {
+		panic(err)
+	}
 
 	staging := CategoryGroup{
 		label: 'Staging Development'
