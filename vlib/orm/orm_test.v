@@ -1,7 +1,7 @@
 // import os
 // import term
 // import mysql
-// import pg
+import pg
 import time
 import sqlite
 
@@ -30,6 +30,18 @@ struct Foo {
 struct TestTime {
 	id     int       [primary; sql: serial]
 	create time.Time
+}
+
+[table: 'category_groups']
+struct CategoryGroup{
+	id int [primary; sql: serial]
+	uuid string [skip_insert]
+	label string [required]
+	slug string [required; unique]
+	description string
+	active bool [required]
+	created_at time.Time [skip_insert]
+	updated_at time.Time [skip_insert_update]
 }
 
 fn test_orm() {
@@ -364,4 +376,77 @@ fn test_orm() {
 		drop table Module
 		drop table TestTime
 	}
+}
+
+fn test_pg_orm_attributes() {
+	mut pg_db := pg.connect(
+		host: 'localhost'
+		user: 'postgres'
+		password: ''
+		dbname: 'postgres'
+	) or { panic(err) }
+
+	pg_db.exec('drop table if exists category_groups') or { panic(err) }
+
+	// Create the category group table with accompanying function and trigger
+	// to auto update the update_at timestamp
+	pg_db.exec(
+		'CREATE TABLE category_groups (
+			id serial NOT NULL,
+			uuid uuid NOT NULL DEFAULT gen_random_uuid(),
+			"label" varchar(100) NOT NULL,
+			slug varchar(100) NOT NULL,
+			description text NULL,
+			active bool NOT NULL DEFAULT true,
+			created_at timestamp(0) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at timestamp(0) NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE OR REPLACE FUNCTION update_udta_column()
+		RETURNS TRIGGER AS $$
+		BEGIN
+		    NEW.updated_at = now();
+		    RETURN NEW;
+		END;
+		$$ language "plpgsql";
+		CREATE TRIGGER category_groups_updtime
+		BEFORE UPDATE ON category_groups
+		FOR EACH ROW EXECUTE PROCEDURE update_udta_column();'
+	) or { panic(err) }
+
+	local_dev := CategoryGroup{
+		label: 'Local Development'
+		slug: 'local-development'
+		description: 'Some description about local dev'
+		active: false
+	}
+
+	sql pg_db {
+		insert local_dev into CategoryGroup
+	}
+
+	c := sql pg_db {
+		select count from CategoryGroup
+	}
+	assert c == 1
+
+	cat_local_dev := sql pg_db {
+		select from CategoryGroup where slug == 'local-development'
+	}
+
+	assert cat_local_dev[0].uuid != ''
+	assert cat_local_dev[0].created_at.str() != ''
+	assert cat_local_dev[0].updated_at.str() != ''
+
+	// Required to ensure timestamps are different by a second
+	// otherwise test will fail
+	time.sleep(time.second)
+
+	sql pg_db {
+		update CategoryGroup set active = true where slug == 'local-development'
+	}
+
+	updated_local_dev := sql pg_db {
+		select from CategoryGroup where slug == 'local-development'
+	}
+	assert updated_local_dev[0].updated_at != cat_local_dev[0].updated_at
 }
