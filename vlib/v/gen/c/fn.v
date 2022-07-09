@@ -603,9 +603,10 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	if node.should_be_skipped {
 		return
 	}
+	old_inside_call := g.inside_call
 	g.inside_call = true
 	defer {
-		g.inside_call = false
+		g.inside_call = old_inside_call
 	}
 	gen_keep_alive := node.is_keep_alive && node.return_type != ast.void_type
 		&& g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt]

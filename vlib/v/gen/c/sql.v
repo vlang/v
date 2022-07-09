@@ -74,7 +74,6 @@ fn (mut g Gen) sql_stmt_line(nd ast.SqlStmtLine, expr string, or_expr ast.OrExpr
 		node.fields = fields.clone()
 		unsafe { fields.free() }
 	}
-
 	if node.kind == .create {
 		g.write('${option_name}_void $res = orm__Connection_name_table[${expr}._typ]._method_')
 		g.sql_create_table(node, expr, table_name)
@@ -95,14 +94,7 @@ fn (mut g Gen) sql_stmt_line(nd ast.SqlStmtLine, expr string, or_expr ast.OrExpr
 		g.sql_delete(node, expr, table_name)
 	}
 	if or_expr.kind == .block {
-		g.writeln('if (${res}.state != 0) { /* or_block */')
-		g.indent++
-		g.writeln('IError err = ${res}.err;')
-		for s in or_expr.stmts {
-			g.stmt(s)
-		}
-		g.indent--
-		g.writeln('}')
+		g.or_block(res, or_expr, ast.int_type)
 	}
 	if subs {
 		for _, sub in node.sub_structs {
@@ -772,12 +764,14 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 		if node.is_array {
 			g.write('_array')
 		}
+		dump(g.inside_call)
 		if !g.inside_call {
 			g.writeln(';')
 		}
 		g.indent--
 	}
 	g.writeln('$left $tmp_left;')
+	g.writeln('// >>>>>>>>>>>>>>>> left: $left tmp_left: $tmp_left')
 }
 
 fn (mut g Gen) parse_db_type(expr ast.Expr) SqlType {
