@@ -17,6 +17,7 @@ pub enum OS {
 	js_browser
 	js_freestanding
 	android
+	termux // like android, but compiling/running natively on the devices
 	solaris
 	serenity
 	vinix
@@ -47,6 +48,7 @@ pub fn os_from_string(os_str string) ?OS {
 		'serenity' { return .serenity }
 		'vinix' { return .vinix }
 		'android' { return .android }
+		'termux' { return .termux }
 		'haiku' { return .haiku }
 		'raw' { return .raw }
 		'nix' { return .linux }
@@ -75,6 +77,7 @@ pub fn (o OS) str() string {
 		.js_freestanding { return 'JavaScript' }
 		.js_browser { return 'JavaScript(Browser)' }
 		.android { return 'Android' }
+		.termux { return 'Termux' }
 		.solaris { return 'Solaris' }
 		.serenity { return 'SerenityOS' }
 		.vinix { return 'Vinix' }
@@ -88,10 +91,13 @@ pub fn (o OS) str() string {
 }
 
 pub fn get_host_os() OS {
-	$if android {
-		return .android
-	}
 	$if linux {
+		$if android {
+			$if termux {
+				return .termux
+			}
+			return .android
+		}
 		return .linux
 	}
 	$if ios {

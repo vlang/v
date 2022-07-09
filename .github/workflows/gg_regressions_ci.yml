@@ -10,12 +10,13 @@ on:
 
 jobs:
   gg-regressions:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 10
     env:
       VFLAGS: -cc tcc
       DISPLAY: :99
+      LIBGL_ALWAYS_SOFTWARE: true
     steps:
       - name: Checkout V
         uses: actions/checkout@v2
@@ -23,18 +24,16 @@ jobs:
       - name: Build local v
         run: make
 
-      - uses: openrndr/setup-opengl@v1.1
-
       - name: Setup dependencies
         run: |
           # imagemagick              : convert, mogrify
-          # xvfb                     : xvfb (installed by openrndr/setup-opengl@v1.1)
+          # xvfb                     : xvfb
           # openimageio-tools        : idiff
           # libxcursor-dev libxi-dev : V gfx deps
-          # mesa-common-dev          : For headless rendering
+          # libgl1-mesa-dri          : For headless rendering / software DRI driver (LIBGL_ALWAYS_SOFTWARE=true)
           # freeglut3-dev            : Fixes graphic apps compilation with tcc
           sudo apt-get update
-          sudo apt-get install imagemagick openimageio-tools mesa-common-dev libxcursor-dev libxi-dev freeglut3-dev
+          sudo apt-get install imagemagick openimageio-tools libgl1-mesa-dri xvfb libxcursor-dev libxi-dev freeglut3-dev
           wget https://raw.githubusercontent.com/tremby/imgur.sh/c98345d/imgur.sh
           git clone https://github.com/Larpon/gg-regression-images gg-regression-images
           chmod +x ./imgur.sh
@@ -44,6 +43,7 @@ jobs:
         continue-on-error: true
         run: |
           Xvfb $DISPLAY -screen 0 1280x1024x24 &
+          sleep 1 # give xvfb time to start
           ./v gret -t ./gg-regression-images/vgret.v_examples.toml -v ./gg-sample_images ./gg-regression-images
 
       - name: Upload regression to imgur

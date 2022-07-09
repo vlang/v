@@ -86,7 +86,12 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	run_file := if b.pref.backend.is_js() {
 		node_basename := $if windows { 'node.exe' } $else { 'node' }
 		os.find_abs_path_of_executable(node_basename) or {
-			panic('Could not find `node` in system path. Do you have Node.js installed?')
+			panic('Could not find `$node_basename` in system path. Do you have Node.js installed?')
+		}
+	} else if b.pref.backend == .golang {
+		go_basename := $if windows { 'go.exe' } $else { 'go' }
+		os.find_abs_path_of_executable(go_basename) or {
+			panic('Could not find `$go_basename` in system path. Do you have Go installed?')
 		}
 	} else {
 		compiled_file
@@ -94,6 +99,8 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	mut run_args := []string{cap: b.pref.run_args.len + 1}
 	if b.pref.backend.is_js() {
 		run_args << compiled_file
+	} else if b.pref.backend == .golang {
+		run_args << ['run', compiled_file]
 	}
 	run_args << b.pref.run_args
 	mut run_process := os.new_process(run_file)

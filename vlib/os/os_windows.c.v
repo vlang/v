@@ -203,7 +203,7 @@ pub fn is_dir(path string) bool {
 }
 */
 // mkdir creates a new directory with the specified path.
-pub fn mkdir(path string) ?bool {
+pub fn mkdir(path string, params MkdirParams) ?bool {
 	if path == '.' {
 		return true
 	}

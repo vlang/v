@@ -22,7 +22,7 @@ The major way to get the latest and greatest V, is to __install it from source__
 It is __easy__, and it usually takes __only a few seconds__.
 
 ### Linux, macOS, FreeBSD, etc:
-You need `git`, and a C compiler like `tcc`, `gcc` or `clang`, and `make`:
+You need `git`, and a C compiler like `tcc`, `gcc`, `icc` or `clang`, and `make`:
 ```bash
 git clone https://github.com/vlang/v
 cd v
@@ -38,7 +38,7 @@ git clone https://github.com/vlang/v
 cd v
 make.bat -tcc
 ```
-NB: You can also pass one of `-gcc`, `-msvc`, `-clang` to `make.bat` instead,
+NB: You can also pass one of `-gcc`, `-msvc`, `-clang`, to `make.bat` instead,
 if you do prefer to use a different C compiler, but -tcc is small, fast, and
 easy to install (V will download a prebuilt binary automatically).
 
@@ -1498,6 +1498,10 @@ x := Abc{
 if x.bar is MyStruct {
 	// x.bar is automatically casted
 	println(x.bar)
+} else if x.bar is MyStruct2 {
+	new_var := x.bar as MyStruct2
+	// ... or you can use `as` to create a type cast an alias manually:
+	println(new_var)
 }
 match x.bar {
 	MyStruct {
@@ -5808,7 +5812,12 @@ or
 ```shell
 v -os linux .
 ```
+NB: Cross-compiling a windows binary on a linux machine requires the GNU C compiler for 
+MinGW-w64 (targeting Win64) to first be installed.
 
+```shell
+sudo apt-get install gcc-mingw-w64-x86-64
+```
 (Cross compiling for macOS is temporarily not possible.)
 
 If you don't have any C dependencies, that's all you need to do. This works even

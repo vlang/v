@@ -500,7 +500,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.sql_stmt(node)
 		}
 		ast.StructDecl {
-			f.struct_decl(node)
+			f.struct_decl(node, false)
 		}
 		ast.TypeDecl {
 			f.type_decl(node)
@@ -621,6 +621,9 @@ pub fn (mut f Fmt) expr(node_ ast.Expr) {
 		}
 		ast.None {
 			f.write('none')
+		}
+		ast.Nil {
+			f.write('nil')
 		}
 		ast.OffsetOf {
 			f.offset_of(node)

@@ -5,9 +5,8 @@ module fmt
 
 import strings
 import v.ast
-import v.mathutil as mu
 
-pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
+pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 	f.attrs(node.attrs)
 	if node.is_pub {
 		f.write('pub ')
@@ -19,7 +18,9 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	}
 	f.write_language_prefix(node.language)
 	name := node.name.after('.') // strip prepended module
-	f.write(name)
+	if !is_anon {
+		f.write(name)
+	}
 	f.write_generic_types(node.generic_types)
 	if node.fields.len == 0 && node.embeds.len == 0 && node.pos.line_nr == node.pos.last_line {
 		f.writeln(' {}')
@@ -29,8 +30,10 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	mut comment_aligns := []AlignInfo{}
 	mut default_expr_aligns := []AlignInfo{}
 	mut field_types := []string{cap: node.fields.len}
+	// Calculate the alignments first
 	for i, field in node.fields {
 		ft := f.no_cur_mod(f.table.type_to_str_using_aliases(field.typ, f.mod2alias))
+		// Handle anon structs recursively
 		field_types << ft
 		attrs_len := inline_attrs_len(field.attrs)
 		end_pos := field.pos.pos + field.pos.len
@@ -69,6 +72,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			f.comments(comments, level: .indent)
 		}
 	}
+	// Now handle each field
 	mut field_align_i := 0
 	mut comment_align_i := 0
 	mut default_expr_align_i := 0
@@ -88,15 +92,21 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			// keep one empty line between fields (exclude one after mut:, pub:, ...)
 			mut before_last_line := node.fields[i - 1].pos.line_nr
 			if node.fields[i - 1].comments.len > 0 {
-				before_last_line = mu.max(before_last_line, node.fields[i - 1].comments.last().pos.last_line)
+				if before_last_line < node.fields[i - 1].comments.last().pos.last_line {
+					before_last_line = node.fields[i - 1].comments.last().pos.last_line
+				}
 			}
 			if node.fields[i - 1].has_default_expr {
-				before_last_line = mu.max(before_last_line, node.fields[i - 1].default_expr.pos().last_line)
+				if before_last_line < node.fields[i - 1].default_expr.pos().last_line {
+					before_last_line = node.fields[i - 1].default_expr.pos().last_line
+				}
 			}
 
 			mut next_first_line := field.pos.line_nr
 			if field.comments.len > 0 {
-				next_first_line = mu.min(next_first_line, field.comments[0].pos.line_nr)
+				if next_first_line > field.comments[0].pos.line_nr {
+					next_first_line = field.comments[0].pos.line_nr
+				}
 			}
 			if next_first_line - before_last_line > 1 {
 				f.writeln('')
@@ -120,7 +130,21 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			field_align = field_aligns[field_align_i]
 		}
 		f.write(strings.repeat(` `, field_align.max_len - field.name.len - comments_len))
-		f.write(field_types[i])
+		// Handle anon structs recursively
+		mut field_is_anon := false
+		sym := f.table.sym(field.typ)
+		if sym.kind == .struct_ {
+			info := sym.info as ast.Struct
+			field_is_anon = info.is_anon
+		}
+		if field_is_anon {
+			f.indent++
+			f.struct_decl(field.anon_struct_decl, true)
+			f.indent--
+		} else {
+			// If it's not an anon struct, just write the type of the field
+			f.write(field_types[i])
+		}
 		f.mark_types_import_as_used(field.typ)
 		attrs_len := inline_attrs_len(field.attrs)
 		has_attrs := field.attrs.len > 0
@@ -169,7 +193,11 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		}
 	}
 	f.comments_after_last_field(node.end_comments)
-	f.writeln('}\n')
+	if is_anon {
+		f.write('}')
+	} else {
+		f.writeln('}\n')
+	}
 }
 
 pub fn (mut f Fmt) struct_init(node ast.StructInit) {
@@ -178,7 +206,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 	defer {
 		f.is_struct_init = struct_init_save
 	}
-
+	f.mark_types_import_as_used(node.typ)
 	type_sym := f.table.sym(node.typ)
 	// f.write('<old name: $type_sym.name>')
 	mut name := type_sym.name

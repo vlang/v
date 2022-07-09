@@ -42,7 +42,9 @@ fn init_time_base() C.mach_timebase_info_data_t {
 fn sys_mono_now_darwin() u64 {
 	tm := C.mach_absolute_time()
 	if time.time_base.denom == 0 {
-		C.mach_timebase_info(&time.time_base)
+		unsafe {
+			C.mach_timebase_info(&time.time_base)
+		}
 	}
 	return (tm - time.start_time) * time.time_base.numer / time.time_base.denom
 }
@@ -53,7 +55,9 @@ fn sys_mono_now_darwin() u64 {
 fn vpc_now_darwin() u64 {
 	tm := C.mach_absolute_time()
 	if time.time_base.denom == 0 {
-		C.mach_timebase_info(&time.time_base)
+		unsafe {
+			C.mach_timebase_info(&time.time_base)
+		}
 	}
 	return (tm - time.start_time) * time.time_base.numer / time.time_base.denom
 }

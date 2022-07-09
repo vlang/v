@@ -251,17 +251,19 @@ pub fn (mut b Builder) resolve_deps() {
 		eprintln(mods.str())
 		eprintln('-------------------------------')
 	}
-	mut reordered_parsed_files := []&ast.File{}
-	for m in mods {
-		for pf in b.parsed_files {
-			if m == pf.mod.name {
-				reordered_parsed_files << pf
-				// eprintln('pf.mod.name: $pf.mod.name | pf.path: $pf.path')
+	unsafe {
+		mut reordered_parsed_files := []&ast.File{}
+		for m in mods {
+			for pf in b.parsed_files {
+				if m == pf.mod.name {
+					reordered_parsed_files << pf
+					// eprintln('pf.mod.name: $pf.mod.name | pf.path: $pf.path')
+				}
 			}
 		}
+		b.table.modules = mods
+		b.parsed_files = reordered_parsed_files
 	}
-	b.table.modules = mods
-	b.parsed_files = reordered_parsed_files
 }
 
 // graph of all imported modules
@@ -308,7 +310,19 @@ pub fn (b Builder) v_files_from_dir(dir string) []string {
 	if b.pref.is_verbose {
 		println('v_files_from_dir ("$dir")')
 	}
-	return b.pref.should_compile_filtered_files(dir, files)
+	res := b.pref.should_compile_filtered_files(dir, files)
+	if res.len == 0 {
+		// Perhaps the .v files are stored in /src/ ?
+		src_path := os.join_path(dir, 'src')
+		if os.is_dir(src_path) {
+			if b.pref.is_verbose {
+				println('v_files_from_dir ("$src_path") (/src/)')
+			}
+			files = os.ls(src_path) or { panic(err) }
+			return b.pref.should_compile_filtered_files(src_path, files)
+		}
+	}
+	return res
 }
 
 pub fn (b Builder) log(s string) {

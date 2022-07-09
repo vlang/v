@@ -21,7 +21,7 @@
 
 ## Key Features of V
 
-- Simplicity: the language can be learned in less than an hour
+- Simplicity: the language can be learned in over a weekend
 - Fast compilation: ≈110k loc/s with a Clang backend,
     ≈1 million loc/s with native and tcc backends *(Intel i5-7500, SSD, no optimization)* ([demo video](https://www.youtube.com/watch?v=pvP6wmcl_Sc))
 - Easy to develop: V compiles itself in less than a second
@@ -164,7 +164,7 @@ docker run --rm -it vlang:latest
 
 </details>
 
-### Testing and running the examples
+## Testing and running the examples
 
 Make sure V can compile itself:
 
@@ -287,6 +287,10 @@ Vinix is an OS/kernel that already runs bash, GCC, V, and nano.
 https://github.com/vlang/vinix
 
 <img src="https://github.com/vlang/vinix/raw/main/screenshot.png?raw=true">
+
+## Acknowledgement
+
+V thanks Fabrice Bellard for his original work on the [TCC - Tiny C Compiler](https://bellard.org/tcc/). Note the TCC website is old; the current TCC repository can be found [here](https://repo.or.cz/w/tinycc.git).  V utilizes pre-built TCC binaries located at [https://github.com/vlang/tccbin/](https://github.com/vlang/tccbin/).
 
 ## Troubleshooting
 

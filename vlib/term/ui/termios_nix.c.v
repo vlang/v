@@ -10,7 +10,7 @@ import time
 #include <sys/ioctl.h>
 #include <signal.h>
 
-struct C.winsize {
+pub struct C.winsize {
 	ws_row u16
 	ws_col u16
 }
