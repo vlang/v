@@ -640,10 +640,10 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 
 	if node.or_expr.kind == .block {
 		g.or_block(tmp_left, node.or_expr, node.typ)
+		g.writeln('else {')
+		g.indent++
 	}
 
-	g.writeln('else {')
-	g.indent++
 	g.writeln('Array_Array_orm__Primitive $res = (*(Array_Array_orm__Primitive*)_o${res}.data);')
 
 	if node.is_count {
@@ -768,16 +768,18 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 		if node.is_array {
 			g.write('_array')
 		}
-		dump(g.inside_call)
-		if !g.inside_call {
-			g.writeln(';')
+		g.writeln(';')
+		g.indent--
+		if node.or_expr.kind == .block {
+			g.writeln('}')
+			g.indent--
 		}
-		g.indent--
-		g.writeln('}')
-		g.indent--
 	}
-	g.writeln('$left *(${g.typ(node.typ)}*) ${tmp_left}.data;')
-	g.writeln('// >>>>>>>>>>>>>>>> left: $left tmp_left: $tmp_left')
+	g.write('$left *(${g.typ(node.typ)}*) ${tmp_left}.data')
+	dump(g.inside_call)
+	if !g.inside_call {
+		g.writeln(';')
+	}
 }
 
 fn (mut g Gen) parse_db_type(expr ast.Expr) SqlType {
