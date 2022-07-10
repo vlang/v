@@ -648,6 +648,10 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 
 	if node.is_count {
 		g.writeln('*(${g.typ(node.typ)}*) ${tmp_left}.data = *((*(orm__Primitive*) array_get((*(Array_orm__Primitive*)array_get($res, 0)), 0))._int);')
+		if node.or_expr.kind == .block {
+			g.indent--
+			g.writeln('}')
+		}
 	} else {
 		tmp := g.new_tmp_var()
 		styp := g.typ(node.typ)
@@ -769,10 +773,9 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 			g.write('_array')
 		}
 		g.writeln(';')
-		g.indent--
 		if node.or_expr.kind == .block {
-			g.writeln('}')
 			g.indent--
+			g.writeln('}')
 		}
 	}
 	g.write('$left *(${g.typ(node.typ)}*) ${tmp_left}.data')
