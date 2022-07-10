@@ -1248,7 +1248,8 @@ pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 }
 
 pub fn (mut f Fmt) sql_stmt_line(node ast.SqlStmtLine) {
-	table_name := util.strip_mod_name(f.table.sym(node.table_expr.typ).name)
+	sym := f.table.sym(node.table_expr.typ)
+	table_name := if sym.mod != 'main' { sym.name } else { util.strip_mod_name(sym.name) }
 	f.mark_types_import_as_used(node.table_expr.typ)
 	f.write('\t')
 	match node.kind {
@@ -2495,7 +2496,8 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 	f.expr(node.db_expr)
 	f.writeln(' {')
 	f.write('\tselect ')
-	table_name := util.strip_mod_name(f.table.sym(node.table_expr.typ).name)
+	sym := f.table.sym(node.table_expr.typ)
+	table_name := if sym.mod != 'main' { sym.name } else { util.strip_mod_name(sym.name) }
 	if node.is_count {
 		f.write('count ')
 	} else {
