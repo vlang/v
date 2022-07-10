@@ -1900,7 +1900,13 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			}
 		}
 		else {
-			if node.kind != 'define' {
+			if node.kind == 'define' {
+				if !c.is_builtin_mod && !c.file.path.ends_with('.c.v')
+					&& !c.file.path.contains('vlib/') {
+					c.error("#define can only be used in vlib (V's standard library) and *.c.v files",
+						node.pos)
+				}
+			} else {
 				c.error('expected `#define`, `#flag`, `#include`, `#insert` or `#pkgconfig` not $node.val',
 					node.pos)
 			}
