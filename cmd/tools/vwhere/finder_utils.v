@@ -1,6 +1,7 @@
 import os
 import term
 import v.pref
+import regex
 
 // Symbol type to search
 enum Symbol {
@@ -10,6 +11,7 @@ enum Symbol {
 	@enum
 	@const
 	var
+	regexp
 }
 
 // Visibility of the symbols to search
@@ -35,6 +37,7 @@ const (
 		'enum':      .@enum
 		'const':     .@const
 		'var':       .var
+		'regexp':    .regexp
 	}
 	visibilities = {
 		'all': Visibility.all
@@ -46,11 +49,12 @@ const (
 		'yes': .yes
 		'not': .not
 	}
-	vexe      = pref.vexe_path()
-	vroot     = os.dir(vexe)
-	vmod_dir  = os.vmodules_dir()
-	vmod_path = os.vmodules_paths()
-	color_out = term.can_show_color_on_stdout()
+	vexe        = pref.vexe_path()
+	vroot       = os.dir(vexe)
+	vmod_dir    = os.vmodules_dir()
+	vmod_paths  = os.vmodules_paths()[1..]
+	current_dir = os.abs_path('.')
+	color_out   = term.can_show_color_on_stdout()
 )
 
 fn (mut cfg Symbol) set_from_str(str_in string) {
@@ -125,4 +129,68 @@ fn maybe_color(term_color fn (string) string, str string) string {
 	} else {
 		return str
 	}
+}
+
+fn collect_v_files(path string) ?[]string {
+	if path.len == 0 {
+		return error('path cannot be empty')
+	}
+	if !os.is_dir(path) {
+		return error('path does not exist or is not a directory')
+	}
+	mut all_files := []string{}
+	mut entries := os.ls(path)?
+	mut local_path_separator := os.path_separator
+	if path.ends_with(os.path_separator) {
+		local_path_separator = ''
+	}
+	for entry in entries {
+		file := path + local_path_separator + entry
+		if os.is_dir(file) && !os.is_link(file) {
+			all_files << collect_v_files(file)?
+		} else if os.exists(file) && (file.ends_with('.v') || file.ends_with('.vsh')) {
+			all_files << file
+		}
+	}
+	return all_files
+}
+
+fn search_within_file(file string, query string, v Visibility, m Mutability) int {
+	mut re := regex.regex_opt(query) or { panic(err) }
+	lines := os.read_lines(file) or { panic(err) }
+	mut n_line := 1
+	for line in lines {
+		if re.matches_string(line) {
+			words := line.split(' ')
+			match v {
+				.all {}
+				.@pub {
+					if 'pub' !in words {
+						continue
+					}
+				}
+				.pri {
+					if 'pub' in words {
+						continue
+					}
+				}
+			}
+			match m {
+				.any {}
+				.yes {
+					if 'mut' !in words {
+						continue
+					}
+				}
+				.not {
+					if 'mut' in words {
+						continue
+					}
+				}
+			}
+			return n_line
+		}
+		n_line++
+	}
+	return 0
 }

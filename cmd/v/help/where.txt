@@ -13,18 +13,19 @@ Prints the location of the searched symbols in the scope of the current project.
 --------------------------------------------------------------------------------
 
 symbol_name can be:
-  const
-  enum
   fn                    (by default if omit [symbol_type])
-  interface
   struct
+  interface
+  enum
+  const
   var
+  regexp
 
 params:
   -mod  [mod_name]      Restrict to search only within of the given module,
                         if not provided, search in entire project.
   -dir  [dirs_name]     Restrict to search within the given folder/s,
-                        if not provided, search in entire project scope.
+                        if not provided, search in entire v scope.
   -vis  [visibility]    Can be: all, pub, pri (all by default if not provided).
                         Restrict to search symbols with the given visibility.
   -mut  [mutability]    Can be: any, yes, not (any by default if not provided).

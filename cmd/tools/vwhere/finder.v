@@ -44,8 +44,41 @@ fn (mut fdr Finder) configure_from_arguments() {
 }
 
 fn (mut fdr Finder) search_for_matches() {
-	// fdr.matches << Match{'./un/lugar/en/tu/pc.v', 35}
-	// fdr.matches << Match{'./un/lugar/en/mi/laptop.v', 13}
+	mut paths_to_search := []string{}
+	if fdr.dirs.len == 0 && fdr.modul == '' {
+		paths_to_search << [current_dir, vmod_dir]
+		if vroot !in paths_to_search {
+			paths_to_search << vroot
+		}
+		paths_to_search << vmod_paths
+	} else if fdr.dirs.len == 0 && fdr.modul != '' {
+		paths_to_search << if fdr.modul == 'main' { current_dir } else { fdr.modul }
+	} else if fdr.dirs.len != 0 && fdr.modul == '' {
+		paths_to_search << fdr.dirs
+	} else {
+		paths_to_search << if fdr.modul == 'main' { current_dir } else { fdr.modul }
+		paths_to_search << fdr.dirs
+	}
+	mut files_to_search := []string{}
+	for path in paths_to_search {
+		println(path)
+		files_to_search << collect_v_files(path) or { panic(err) }
+	}
+	sp := r'\s*'
+	sy := '$fdr.symbol$sp'
+	st := if fdr.mth_of != '' { '($sp[a-z].*$sp$fdr.mth_of)$sp' } else { '.*' }
+	na := '$fdr.name'
+
+	query := if fdr.symbol == .regexp { '$na' } else { '.*$sy$st${na}.*' }
+	println(query)
+
+	for file in files_to_search {
+		println(file)
+		line := search_within_file(file, query, fdr.visib, fdr.mutab)
+		if line != 0 {
+			fdr.matches << Match{file, line}
+		}
+	}
 }
 
 fn (fdr Finder) show_results() {
@@ -68,9 +101,9 @@ fn (fdr Finder) str() string {
 	n := maybe_color(term.bright_blue, '$fdr.name')
 
 	mm := if fdr.modul != '' { maybe_color(term.bright_blue, '$fdr.modul') } else { '' }
-	dd := if fdr.dirs.len != 0 { 
+	dd := if fdr.dirs.len != 0 {
 		fdr.dirs.map(maybe_color(term.bright_blue, it))
-	} else { 
+	} else {
 		fdr.dirs
 	}
 
