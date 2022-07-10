@@ -86,7 +86,7 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int) (u64, string) {
 		} else {
 			match typ {
 				ast.i8_type { fmt_type = .si_i8 }
-				ast.byte_type { fmt_type = .si_u8 }
+				ast.u8_type { fmt_type = .si_u8 }
 				ast.i16_type { fmt_type = .si_i16 }
 				ast.u16_type { fmt_type = .si_u16 }
 				ast.i64_type { fmt_type = .si_i64 }

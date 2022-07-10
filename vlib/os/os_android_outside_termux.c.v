@@ -1,7 +1,8 @@
 module os
 
-#include <asset_manager.h>
-#include <asset_manager_jni.h>
+#include <android/asset_manager.h>
+#include <android/asset_manager_jni.h>
+#include <android/native_activity.h>
 
 pub enum AssetMode {
 	buffer = C.AASSET_MODE_BUFFER // Caller plans to ask for a read-only buffer with all data.
@@ -10,7 +11,9 @@ pub enum AssetMode {
 	unknown = C.AASSET_MODE_UNKNOWN // No specific information about how data will be accessed.
 }
 
+// See https://developer.android.com/ndk/reference/struct/a-native-activity for more info.
 struct C.ANativeActivity {
+pub:
 	assetManager     &AssetManager // Pointer to the Asset Manager instance for the application.
 	clazz            voidptr       // (jobject) The NativeActivity object handle.
 	env              voidptr       // (JNIEnv *) JNI context for the main thread of the app.
@@ -63,8 +66,8 @@ pub fn (a &Asset) get_length() int {
 
 fn C.AAsset_getLength64(&C.AAsset) i64
 
-// get_length_64 returns the total size of the asset data.
-// get_length_64 returns  the size using a 64-bit number insted of 32-bit as `get_length`.
+// get_length_64 returns the total size of the asset data using
+// a 64-bit number insted of 32-bit as `get_length`.
 pub fn (a &Asset) get_length_64() i64 {
 	return C.AAsset_getLength64(a)
 }
@@ -85,14 +88,14 @@ pub fn (a &Asset) close() {
 }
 
 // read_apk_asset returns all the data located at `path`.
-// `path` is expected to be relative to the `assets`
+// `path` is expected to be relative to the APK/AAB `assets` directory.
 pub fn read_apk_asset(path string) ![]u8 {
 	$if apk {
 		act := &NativeActivity(C.sapp_android_get_native_activity())
 		if isnil(act) {
 			return error('could not get reference to Android activity')
 		}
-		asset_manager := &AssetManager(act.assetManager)
+		asset_manager := act.assetManager
 		asset := asset_manager.open(path, .streaming)!
 		len := asset.get_length()
 		buf := []u8{len: len}

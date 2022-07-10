@@ -1,0 +1,6 @@
+vlib/v/checker/tests/undefined_ident_in_ref_selector.vv:6:10: error: undefined ident: `line`
+    4 |
+    5 | fn read() int {
+    6 |     return &line.len
+      |             ~~~~
+    7 | }

@@ -645,7 +645,7 @@ fn (mut g JsGen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) 
 }
 
 fn (g &JsGen) type_to_fmt(typ ast.Type) StrIntpType {
-	if typ == ast.byte_type_idx {
+	if typ == ast.u8_type_idx {
 		return .si_u8
 	}
 	if typ == ast.char_type_idx {

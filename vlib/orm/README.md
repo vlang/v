@@ -12,7 +12,7 @@
 - `[unique]` sets the field as unique
 - `[unique: 'foo']` adds the field to a unique group
 - `[skip]` field will be skipped
-- `[sql: type]` sets the type which is used in sql (special type `serial`)
+- `[sql: type]` where `type` is a V type such as `int` or `f64`, or special type `serial`
 - `[sql: 'name']` sets a custom column name for the field
 
 ## Usage

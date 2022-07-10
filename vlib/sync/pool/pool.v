@@ -81,17 +81,19 @@ pub fn (mut pool PoolProcessor) work_on_pointers(items []voidptr) {
 	if pool.njobs > 0 {
 		njobs = pool.njobs
 	}
-	pool.thread_contexts = []voidptr{len: items.len}
-	pool.results = []voidptr{len: items.len}
-	pool.items = []voidptr{cap: items.len}
-	pool.items << items
-	pool.waitgroup.add(njobs)
-	for i := 0; i < njobs; i++ {
-		if njobs > 1 {
-			go process_in_thread(mut pool, i)
-		} else {
-			// do not run concurrently, just use the same thread:
-			process_in_thread(mut pool, i)
+	unsafe {
+		pool.thread_contexts = []voidptr{len: items.len}
+		pool.results = []voidptr{len: items.len}
+		pool.items = []voidptr{cap: items.len}
+		pool.items << items
+		pool.waitgroup.add(njobs)
+		for i := 0; i < njobs; i++ {
+			if njobs > 1 {
+				go process_in_thread(mut pool, i)
+			} else {
+				// do not run concurrently, just use the same thread:
+				process_in_thread(mut pool, i)
+			}
 		}
 	}
 	pool.waitgroup.wait()

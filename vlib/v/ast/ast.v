@@ -42,6 +42,7 @@ pub type Expr = AnonFn
 	| LockExpr
 	| MapInit
 	| MatchExpr
+	| Nil
 	| NodeError
 	| None
 	| OffsetOf
@@ -240,6 +241,11 @@ pub:
 	pos token.Pos
 }
 
+pub struct Nil {
+pub:
+	pos token.Pos
+}
+
 pub enum GenericKindField {
 	unknown
 	name
@@ -304,15 +310,13 @@ pub:
 	is_mut           bool
 	is_global        bool
 	is_volatile      bool
-	//
 	is_deprecated    bool
-	deprecation_msg  string
-	deprecated_after string
 pub mut:
 	default_expr     Expr
 	default_expr_typ Type
 	name             string
 	typ              Type
+	anon_struct_decl StructDecl // only if the field is an anonymous struct
 }
 
 pub fn (f &StructField) equals(o &StructField) bool {
@@ -1774,7 +1778,7 @@ pub fn (expr Expr) pos() token.Pos {
 		EnumVal, DumpExpr, FloatLiteral, GoExpr, Ident, IfExpr, IntegerLiteral, IsRefType, Likely,
 		LockExpr, MapInit, MatchExpr, None, OffsetOf, OrExpr, ParExpr, PostfixExpr, PrefixExpr,
 		RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral,
-		StructInit, TypeNode, TypeOf, UnsafeExpr, ComptimeType {
+		StructInit, TypeNode, TypeOf, UnsafeExpr, ComptimeType, Nil {
 			return expr.pos
 		}
 		IndexExpr {
@@ -2247,7 +2251,7 @@ pub fn (expr Expr) is_literal() bool {
 		CastExpr {
 			return !expr.has_arg && expr.expr.is_literal()
 				&& (expr.typ.is_ptr() || expr.typ.is_pointer()
-				|| expr.typ in [i8_type, i16_type, int_type, i64_type, byte_type, u16_type, u32_type, u64_type, f32_type, f64_type, char_type, bool_type, rune_type])
+				|| expr.typ in [i8_type, i16_type, int_type, i64_type, u8_type, u16_type, u32_type, u64_type, f32_type, f64_type, char_type, bool_type, rune_type])
 		}
 		SizeOf, IsRefType {
 			return expr.is_type || expr.expr.is_literal()
