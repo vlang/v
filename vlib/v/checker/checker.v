@@ -2771,6 +2771,14 @@ pub fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		}
 		if mut obj := c.file.global_scope.find(name) {
 			match mut obj {
+				ast.GlobalField {
+					node.kind = .global
+					node.info = ast.IdentVar{
+						typ: obj.typ
+					}
+					node.obj = obj
+					return obj.typ
+				}
 				ast.ConstField {
 					if !(obj.is_pub || obj.mod == c.mod || c.pref.is_test) {
 						c.error('constant `$obj.name` is private', node.pos)
