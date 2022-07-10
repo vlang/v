@@ -1031,6 +1031,11 @@ fn (mut p Parser) closure_vars() []ast.Param {
 		p.check(.name)
 		var_name := p.prev_tok.lit
 		mut var := p.scope.parent.find_var(var_name) or {
+			if p.table.global_scope.known_global(var_name) {
+				p.error_with_pos('no need to capture global variable `$var_name` in closure',
+					p.prev_tok.pos())
+				continue
+			}
 			p.error_with_pos('undefined ident: `$var_name`', p.prev_tok.pos())
 			continue
 		}
