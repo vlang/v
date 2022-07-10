@@ -350,6 +350,9 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		return ast.StructDecl{}
 	}
 	mut ret := p.table.register_sym(sym)
+	if is_anon {
+		p.table.register_anon_struct(name, ret)
+	}
 	// allow duplicate c struct declarations
 	if ret == -1 && language != .c {
 		if _ := p.table.find_fn('main.main') {

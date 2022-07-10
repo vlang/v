@@ -350,7 +350,8 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 	g.type_definitions.writeln(pre_pragma)
 
 	if is_anon {
-		g.type_definitions.writeln('struct {')
+		g.type_definitions.write_string('\t$name ')
+		return
 	} else if s.is_union {
 		g.type_definitions.writeln('union $name {')
 	} else {

@@ -447,3 +447,11 @@ fn test_anon() {
 	assert book2.author.age == 24
 	println(book2.author.name)
 }
+
+fn test_anon_auto_stringify() {
+	b := Book{}
+	s := b.str()
+	assert s.contains('author: ')
+	assert s.contains('name: ')
+	assert s.contains('age: 0')
+}

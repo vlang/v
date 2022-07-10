@@ -1037,7 +1037,12 @@ fn (mut g Gen) write_results() {
 		}
 		done << base
 		g.typedefs.writeln('typedef struct $styp $styp;')
+		dump(g.result_type_text(styp, base))
 		g.out_results.write_string(g.result_type_text(styp, base) + ';\n\n')
+	}
+	for k, _ in g.table.anon_struct_names {
+		ck := c_name(k)
+		g.typedefs.writeln('typedef struct $ck $ck;')
 	}
 }
 
