@@ -22,9 +22,9 @@ symbol_name can be:
   regexp
 
 params:
-  -mod  [mod_name]      Restrict to search only within of the given module,
-                        if not provided, search in entire project.
-  -dir  [dir_path]      Restrict to search non recursive within the given 
+  -mod  [mod_name]      Restrict to search recursively only within of the given 
+                        module, if not provided search in entire v scope.
+  -dir  [dir_path]      Restrict to search non recursively within the given 
                         folder/s, if not provided, search in entire v scope.
   -vis  [visibility]    Can be: all, pub, pri (all by default if not provided).
                         Restrict to search symbols with the given visibility.

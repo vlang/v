@@ -29,8 +29,7 @@ enum Mutability {
 }
 
 const (
-	allowed_params = ['']
-	symbols        = {
+	symbols = {
 		'fn':        Symbol.@fn
 		'struct':    .@struct
 		'interface': .@interface
@@ -161,7 +160,9 @@ fn search_within_file(file string, query string, is_const bool) (int, string) {
 	mut const_found := if is_const { false } else { true }
 	mut n_line := 1
 	for line in lines {
-		if line.contains('const') {const_found = true}
+		if line.contains('const') {
+			const_found = true
+		}
 		if re.matches_string(line) && const_found {
 			return n_line, line.replace(' {', '')
 		}

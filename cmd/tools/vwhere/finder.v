@@ -32,7 +32,7 @@ fn (mut fdr Finder) configure_from_arguments() {
 			fdr.name = args[1]
 			fdr.visib.set_from_str(cmdline.option(args, '-vis', '${Visibility.all}'))
 			fdr.mutab.set_from_str(cmdline.option(args, '-mut', '${Mutability.any}'))
-			if fdr.symbol !in [.var, .@const] && fdr.mutab != .any {
+			if fdr.symbol != .var && fdr.mutab != .any {
 				make_and_print_error('-mut $fdr.mutab just can be setted with symbol_type:',
 					['var'], '$fdr.symbol')
 			}
@@ -74,6 +74,8 @@ fn (mut fdr Finder) search_for_matches() {
 
 	// Build regex query
 	sp := r'\s*'
+	op := r'\('
+	cp := r'\)'
 	vi := match fdr.visib {
 		.all { '.*' }
 		.@pub { '.*pub$sp' }
@@ -84,26 +86,25 @@ fn (mut fdr Finder) search_for_matches() {
 		.yes { 'mut$sp' }
 		.not { '(?!mut)$sp' }
 	}
-	sy := '$fdr.symbol$sp'
-	st := if fdr.mth_of != '' { '($sp[a-z].*$sp$fdr.mth_of)$sp' } else { '.*' }
-	na := '$fdr.name'
+	sy := '$fdr.symbol'
+	st := if fdr.mth_of != '' { '$op$sp[a-z].*$sp$fdr.mth_of$cp$sp' } else { '.*' }
+	na := '[ |\t]$fdr.name'
 
 	query := match fdr.symbol {
 		.regexp {
-			'$vi$na'
+			if fdr.visib == .all { '$mu$na' } else { '$vi$mu$na' }
 		}
 		.var {
 			if fdr.visib == .all { '$mu$na$sp:=.*' } else { '$vi$mu$na$sp:=.*' }
 		}
 		.@const {
-			'$vi$na$sp=.*'
+			'$vi$na $sp=.*'
+		}
+		.@fn {
+			'$vi$sy$st$na$sp${op}.*${cp}.*'
 		}
 		else {
-			if fdr.visib == .all && fdr.mutab == .any {
-				'$vi$sy$st${na}.*'
-			} else {
-				'$vi$mu$sy$st${na}.*'
-			}
+			'$vi$sy$na .*' // for struct, enum and interface
 		}
 	}
 	is_const := fdr.symbol == .@const
@@ -130,7 +131,7 @@ fn (fdr Finder) show_results() {
 fn (fdr Finder) str() string {
 	v := maybe_color(term.bright_red, '$fdr.visib')
 	m := maybe_color(term.bright_red, '$fdr.mutab')
-	st := if fdr.mth_of != '' { '( $fdr.mth_of)' } else { '' }
+	st := if fdr.mth_of != '' { ' ( $fdr.mth_of)' } else { '' }
 	s := maybe_color(term.bright_magenta, '$fdr.symbol')
 	n := maybe_color(term.bright_blue, '$fdr.name')
 
@@ -151,7 +152,7 @@ fn (fdr Finder) str() string {
 		'module $mm searching within directories: $dd'
 	}
 
-	return '\nFind: $s $st $n | visibility: $v mutability: $m\nwithin $dm '
+	return '\nFind: $s$st $n | visibility: $v mutability: $m\nwithin $dm '
 }
 
 // Match is one result of the search_for_matches() process
