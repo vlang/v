@@ -32,11 +32,15 @@ fn (mut fdr Finder) configure_from_arguments() {
 			fdr.name = args[1]
 			fdr.visib.set_from_str(cmdline.option(args, '-vis', '${Visibility.all}'))
 			fdr.mutab.set_from_str(cmdline.option(args, '-mut', '${Mutability.any}'))
+			if fdr.symbol !in [.var, .@const] && fdr.mutab != .any {
+				make_and_print_error('-mut $fdr.mutab just can be setted with symbol_type:',
+					['var'], '$fdr.symbol')
+			}
 			fdr.modul = cmdline.option(args, '-mod', '')
 			fdr.mth_of = cmdline.option(args, '-m-of', '')
-			if fdr.symbol != .@fn && fdr.mth_of != '' {
-				make_and_print_error('-m-of $fdr.mth_of just can be setted with symbol_type fn',
-					[], '$fdr.symbol')
+			if fdr.symbol !in [.@fn, .regexp] && fdr.mth_of != '' {
+				make_and_print_error('-m-of $fdr.mth_of just can be setted with symbol_types:',
+					['fn', 'regexp'], '$fdr.symbol')
 			}
 			fdr.dirs = cmdline.options(args, '-dir')
 		}
@@ -44,6 +48,8 @@ fn (mut fdr Finder) configure_from_arguments() {
 }
 
 fn (mut fdr Finder) search_for_matches() {
+	// Define where search
+	mut recursive := true
 	mut paths_to_search := []string{}
 	if fdr.dirs.len == 0 && fdr.modul == '' {
 		paths_to_search << [current_dir, vmod_dir]
@@ -54,29 +60,57 @@ fn (mut fdr Finder) search_for_matches() {
 	} else if fdr.dirs.len == 0 && fdr.modul != '' {
 		paths_to_search << if fdr.modul == 'main' { current_dir } else { fdr.modul }
 	} else if fdr.dirs.len != 0 && fdr.modul == '' {
+		recursive = false
 		paths_to_search << fdr.dirs
 	} else {
+		recursive = false
 		paths_to_search << if fdr.modul == 'main' { current_dir } else { fdr.modul }
 		paths_to_search << fdr.dirs
 	}
 	mut files_to_search := []string{}
 	for path in paths_to_search {
-		println(path)
-		files_to_search << collect_v_files(path) or { panic(err) }
+		files_to_search << collect_v_files(path, recursive) or { panic(err) }
 	}
+
+	// Build regex query
 	sp := r'\s*'
+	vi := match fdr.visib {
+		.all { '.*' }
+		.@pub { '.*pub$sp' }
+		.pri { '(?!.*pub)$sp' } // Thank you @btiffin#4552
+	}
+	mu := match fdr.mutab {
+		.any { '.*' }
+		.yes { 'mut$sp' }
+		.not { '(?!mut)$sp' }
+	}
 	sy := '$fdr.symbol$sp'
 	st := if fdr.mth_of != '' { '($sp[a-z].*$sp$fdr.mth_of)$sp' } else { '.*' }
 	na := '$fdr.name'
 
-	query := if fdr.symbol == .regexp { '$na' } else { '.*$sy$st${na}.*' }
-	println(query)
-
+	query := match fdr.symbol {
+		.regexp {
+			'$vi$na'
+		}
+		.var {
+			if fdr.visib == .all { '$mu$na$sp:=.*' } else { '$vi$mu$na$sp:=.*' }
+		}
+		.@const {
+			'$vi$na$sp=.*'
+		}
+		else {
+			if fdr.visib == .all && fdr.mutab == .any {
+				'$vi$sy$st${na}.*'
+			} else {
+				'$vi$mu$sy$st${na}.*'
+			}
+		}
+	}
+	is_const := fdr.symbol == .@const
 	for file in files_to_search {
-		println(file)
-		line := search_within_file(file, query, fdr.visib, fdr.mutab)
-		if line != 0 {
-			fdr.matches << Match{file, line}
+		n_line, line := search_within_file(file, query, is_const)
+		if n_line != 0 {
+			fdr.matches << Match{file, n_line, line}
 		}
 	}
 }
@@ -124,10 +158,12 @@ fn (fdr Finder) str() string {
 struct Match {
 	path string [required]
 	line int    [required]
+	text string [required]
 }
 
 fn (mtc Match) show() {
 	path := maybe_color(term.bright_magenta, mtc.path)
 	line := maybe_color(term.bright_yellow, '$mtc.line')
-	println('$path line: $line\n')
+	text := maybe_color(term.bright_green, '$mtc.text')
+	println('$path\n$line : [ $text ]\n')
 }

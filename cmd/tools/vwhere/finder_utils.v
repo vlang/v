@@ -131,7 +131,7 @@ fn maybe_color(term_color fn (string) string, str string) string {
 	}
 }
 
-fn collect_v_files(path string) ?[]string {
+fn collect_v_files(path string, recursive bool) ?[]string {
 	if path.len == 0 {
 		return error('path cannot be empty')
 	}
@@ -146,8 +146,8 @@ fn collect_v_files(path string) ?[]string {
 	}
 	for entry in entries {
 		file := path + local_path_separator + entry
-		if os.is_dir(file) && !os.is_link(file) {
-			all_files << collect_v_files(file)?
+		if os.is_dir(file) && !os.is_link(file) && recursive {
+			all_files << collect_v_files(file, recursive)?
 		} else if os.exists(file) && (file.ends_with('.v') || file.ends_with('.vsh')) {
 			all_files << file
 		}
@@ -155,42 +155,17 @@ fn collect_v_files(path string) ?[]string {
 	return all_files
 }
 
-fn search_within_file(file string, query string, v Visibility, m Mutability) int {
+fn search_within_file(file string, query string, is_const bool) (int, string) {
 	mut re := regex.regex_opt(query) or { panic(err) }
 	lines := os.read_lines(file) or { panic(err) }
+	mut const_found := if is_const { false } else { true }
 	mut n_line := 1
 	for line in lines {
-		if re.matches_string(line) {
-			words := line.split(' ')
-			match v {
-				.all {}
-				.@pub {
-					if 'pub' !in words {
-						continue
-					}
-				}
-				.pri {
-					if 'pub' in words {
-						continue
-					}
-				}
-			}
-			match m {
-				.any {}
-				.yes {
-					if 'mut' !in words {
-						continue
-					}
-				}
-				.not {
-					if 'mut' in words {
-						continue
-					}
-				}
-			}
-			return n_line
+		if line.contains('const') {const_found = true}
+		if re.matches_string(line) && const_found {
+			return n_line, line.replace(' {', '')
 		}
 		n_line++
 	}
-	return 0
+	return 0, ''
 }

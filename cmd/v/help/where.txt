@@ -24,8 +24,8 @@ symbol_name can be:
 params:
   -mod  [mod_name]      Restrict to search only within of the given module,
                         if not provided, search in entire project.
-  -dir  [dirs_name]     Restrict to search within the given folder/s,
-                        if not provided, search in entire v scope.
+  -dir  [dir_path]      Restrict to search non recursive within the given 
+                        folder/s, if not provided, search in entire v scope.
   -vis  [visibility]    Can be: all, pub, pri (all by default if not provided).
                         Restrict to search symbols with the given visibility.
   -mut  [mutability]    Can be: any, yes, not (any by default if not provided).
@@ -34,5 +34,5 @@ params:
                         Restrict to search fn as method of the given struct.
 
 Note: 
-  This tool is heavily inspired by the vdoc tool and its design. 
-  However, this is for a more specific use, and consequently less sophisticated.
+  This tool is inspired by the vdoc tool and its design. However, this is 
+  for a more specific use, and can be improved. 
