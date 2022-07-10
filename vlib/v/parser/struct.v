@@ -385,12 +385,12 @@ run them via `v file.v` instead',
 	}
 }
 
-fn (mut p Parser) struct_init(typ_str string, short_syntax bool) ast.StructInit {
-	first_pos := (if short_syntax && p.prev_tok.kind == .lcbr { p.prev_tok } else { p.tok }).pos()
+fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind) ast.StructInit {
+	first_pos := (if kind == .short_syntax && p.prev_tok.kind == .lcbr { p.prev_tok } else { p.tok }).pos()
 	p.struct_init_generic_types = []ast.Type{}
-	typ := if short_syntax { ast.void_type } else { p.parse_type() }
+	typ := if kind == .short_syntax { ast.void_type } else { p.parse_type() }
 	p.expr_mod = ''
-	if !short_syntax {
+	if kind != .short_syntax {
 		p.check(.lcbr)
 	}
 	pre_comments := p.eat_comments()
@@ -459,7 +459,7 @@ fn (mut p Parser) struct_init(typ_str string, short_syntax bool) ast.StructInit 
 			}
 		}
 	}
-	if !short_syntax {
+	if kind != .short_syntax {
 		p.check(.rcbr)
 	}
 	p.is_amp = saved_is_amp
@@ -472,9 +472,10 @@ fn (mut p Parser) struct_init(typ_str string, short_syntax bool) ast.StructInit 
 		update_expr_comments: update_expr_comments
 		has_update_expr: has_update_expr
 		name_pos: first_pos
-		pos: first_pos.extend(if short_syntax { p.tok.pos() } else { p.prev_tok.pos() })
-		is_short: no_keys
-		is_short_syntax: short_syntax
+		pos: first_pos.extend(if kind == .short_syntax { p.tok.pos() } else { p.prev_tok.pos() })
+		no_keys: no_keys
+		is_short_syntax: kind == .short_syntax
+		is_anon: kind == .anon
 		pre_comments: pre_comments
 		generic_types: p.struct_init_generic_types
 	}

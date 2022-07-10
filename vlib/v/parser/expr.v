@@ -325,6 +325,11 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 			node = p.map_init()
 			p.check(.rcbr)
 		}
+		.key_struct {
+			// Anonymous struct
+			p.next()
+			return p.struct_init('', .anon)
+		}
 		.key_fn {
 			if p.expecting_type {
 				// Anonymous function type

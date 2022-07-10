@@ -22,16 +22,17 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	if is_amp {
 		g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
 	}
-	g.write('(')
-	defer {
-		g.write(')')
-	}
-
 	mut is_anon := false
 	if sym.kind == .struct_ {
 		mut info := sym.info as ast.Struct
 
 		is_anon = info.is_anon
+	}
+	if !is_anon {
+		g.write('(')
+		defer {
+			g.write(')')
+		}
 	}
 	if is_anon {
 		// No name needed for anon structs, C figures it out on its own.
