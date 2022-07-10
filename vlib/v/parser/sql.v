@@ -6,6 +6,8 @@ module parser
 import v.ast
 
 fn (mut p Parser) sql_expr() ast.Expr {
+	tmp_inside_match := p.inside_match
+	p.inside_match = true
 	// `sql db {`
 	pos := p.tok.pos()
 	p.check_name()
@@ -92,7 +94,9 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		typ = table_type
 	}
 	p.check(.rcbr)
+	p.inside_match = false
 	or_expr := p.parse_sql_or_block()
+	p.inside_match = tmp_inside_match
 	return ast.SqlExpr{
 		is_count: is_count
 		typ: typ

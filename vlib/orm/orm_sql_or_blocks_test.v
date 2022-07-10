@@ -43,6 +43,40 @@ fn test_sql_or_block_for_insert() ? {
 	}
 }
 
+fn test_sql_or_block_for_select() ? {
+	db := sqlite.connect(db_path)?
+
+	eprintln('> selecting user with id 1...')
+	single := sql db {
+		select from User where id == 1
+	} or {
+		eprintln('could not select user, err: $err')
+		User{0, ''}
+	}
+
+	assert single.id == 1
+
+	failed := sql db {
+		select from User where id == 0
+	} or {
+		eprintln('could not select user, err: $err')
+		User{0, ''}
+	}
+
+	assert failed.id == 0
+	assert failed.name == ''
+
+	eprintln('> selecting users...')
+	multiple := sql db {
+		select from User
+	} or {
+		eprintln('could not users, err: $err')
+		[]User{}
+	}
+
+	assert multiple.len == 1
+}
+
 fn test_finish() ? {
 	eprintln('done')
 	assert true

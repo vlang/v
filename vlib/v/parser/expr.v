@@ -47,9 +47,7 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 		}
 		.name, .question {
 			if p.tok.lit == 'sql' && p.peek_tok.kind == .name {
-				p.inside_match = true // reuse the same var for perf instead of inside_sql TODO rename
 				node = p.sql_expr()
-				p.inside_match = false
 			} else if p.tok.lit == 'map' && p.peek_tok.kind == .lcbr && !(p.builtin_mod
 				&& p.file_base in ['map.v', 'map_d_gcboehm_opt.v']) {
 				p.error_with_pos("deprecated map syntax, use syntax like `{'age': 20}`",
