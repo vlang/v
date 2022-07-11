@@ -3305,6 +3305,9 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 			s := c.table.type_to_str(right_type)
 			c.error('invalid indirect of `$s`', node.pos)
 		}
+		if right_type.is_voidptr() {
+			c.error('cannot dereference to void', node.pos)
+		}
 	}
 	if node.op == .bit_not && !right_type.is_int() && !c.pref.translated && !c.file.is_translated {
 		c.error('operator ~ only defined on int types', node.pos)
