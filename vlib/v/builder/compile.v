@@ -144,8 +144,10 @@ fn (mut v Builder) cleanup_run_executable_after_exit(exefile string) {
 		v.pref.vrun_elog('keeping executable: $exefile , because -keepc was passed')
 		return
 	}
-	v.pref.vrun_elog('remove run executable: $exefile')
-	os.rm(exefile) or {}
+	if !v.executable_exists {
+		v.pref.vrun_elog('remove run executable: $exefile')
+		os.rm(exefile) or {}
+	}
 }
 
 // 'strings' => 'VROOT/vlib/strings'
