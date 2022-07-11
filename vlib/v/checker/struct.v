@@ -267,7 +267,8 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 		&& c.table.cur_concrete_types.len == 0 {
 		pos := type_sym.name.last_index('.') or { -1 }
 		first_letter := type_sym.name[pos + 1]
-		if !first_letter.is_capital() && type_sym.kind != .placeholder {
+		if !first_letter.is_capital() && type_sym.kind != .placeholder
+			&& !type_sym.name.starts_with('main._VAnonStruct') {
 			c.error('cannot initialize builtin type `$type_sym.name`', node.pos)
 		}
 	}
@@ -324,7 +325,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 			} else {
 				info = type_sym.info as ast.Struct
 			}
-			if node.is_short {
+			if node.no_keys {
 				exp_len := info.fields.len
 				got_len := node.fields.len
 				if exp_len != got_len && !c.pref.translated {
@@ -335,7 +336,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				}
 			}
 			mut info_fields_sorted := []ast.StructField{}
-			if node.is_short {
+			if node.no_keys {
 				info_fields_sorted = info.fields.clone()
 				info_fields_sorted.sort(a.i < b.i)
 			}
@@ -343,7 +344,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 			for i, mut field in node.fields {
 				mut field_info := ast.StructField{}
 				mut field_name := ''
-				if node.is_short {
+				if node.no_keys {
 					if i >= info.fields.len {
 						// It doesn't make sense to check for fields that don't exist.
 						// We should just stop here.
@@ -496,7 +497,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				}
 				*/
 				// Check for `[required]` struct attr
-				if field.attrs.contains('required') && !node.is_short && !node.has_update_expr {
+				if field.attrs.contains('required') && !node.no_keys && !node.has_update_expr {
 					mut found := false
 					for init_field in node.fields {
 						if field.name == init_field.name {

@@ -1039,6 +1039,10 @@ fn (mut g Gen) write_results() {
 		g.typedefs.writeln('typedef struct $styp $styp;')
 		g.out_results.write_string(g.result_type_text(styp, base) + ';\n\n')
 	}
+	for k, _ in g.table.anon_struct_names {
+		ck := c_name(k)
+		g.typedefs.writeln('typedef struct $ck $ck;')
+	}
 }
 
 fn (mut g Gen) find_or_register_shared(t ast.Type, base string) string {

@@ -28,6 +28,7 @@ const (
 		'doctor',
 		'fmt',
 		'gret',
+		'ls',
 		'missdoc',
 		'repl',
 		'self',

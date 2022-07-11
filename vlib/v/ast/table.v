@@ -46,6 +46,7 @@ pub mut:
 	pointer_size      int
 	// cache for type_to_str_using_aliases
 	cached_type_to_str map[u64]string
+	anon_struct_names  map[string]int // anon struct name -> struct sym idx
 }
 
 // used by vls to avoid leaks
@@ -832,6 +833,11 @@ pub fn (mut t Table) register_sym(sym TypeSymbol) int {
 [inline]
 pub fn (mut t Table) register_enum_decl(enum_decl EnumDecl) {
 	t.enum_decls[enum_decl.name] = enum_decl
+}
+
+[inline]
+pub fn (mut t Table) register_anon_struct(name string, sym_idx int) {
+	t.anon_struct_names[name] = sym_idx
 }
 
 pub fn (t &Table) known_type(name string) bool {
