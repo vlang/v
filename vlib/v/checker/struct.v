@@ -35,10 +35,6 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			}
 		}
 		for i, field in node.fields {
-			if field.typ == ast.any_type {
-				c.error('struct field cannot be the `any` type, use generics instead',
-					field.type_pos)
-			}
 			c.ensure_type_exists(field.typ, field.type_pos) or { return }
 			if field.typ.has_flag(.generic) {
 				has_generic_types = true

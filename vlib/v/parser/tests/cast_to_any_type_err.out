@@ -1,0 +1,6 @@
+vlib/v/parser/tests/cast_to_any_type_err.vv:2:7: error: cannot use `any` type here, it can only be used in js backend
+    1 | fn main() {
+    2 |     a := any(22)
+      |          ~~~
+    3 |     println(a)
+    4 | }
