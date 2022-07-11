@@ -70,7 +70,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 	}
 	mut executable_name := pref.out_name
 	$if windows {
-		executable_name = executable_name + '.exe'
+		executable_name += '.exe'
 	}
 	return Builder{
 		pref: pref
