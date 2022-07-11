@@ -84,7 +84,7 @@ fn (mut g Gen) sql_stmt_line(nd ast.SqlStmtLine, expr string, or_expr ast.OrExpr
 		subs = true
 	} else if node.kind == .insert {
 		arr := g.new_tmp_var()
-		g.writeln('Array_orm__Primitive $arr = new_array_from_c_array(0, 0, sizeof(orm__Primitive), NULL);')
+		g.writeln('Array_orm__Primitive $arr = __new_array_with_default_noscan(0, 0, sizeof(orm__Primitive), 0);')
 		g.sql_insert(node, expr, table_name, arr, res, '', false, '', or_expr)
 	} else if node.kind == .update {
 		g.write('${option_name}_void $res = orm__Connection_name_table[${expr}._typ]._method_')
@@ -223,9 +223,9 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 		g.write('NULL')
 	}
 	g.write('),')
-	g.write('.types = new_array_from_c_array(0, 0, sizeof(int), NULL),')
-	g.write('.kinds = new_array_from_c_array(0, 0, sizeof(orm__OperationKind), NULL),')
-	g.write('.is_and = new_array_from_c_array(0, 0, sizeof(bool), NULL),')
+	g.write('.types = __new_array_with_default_noscan(0, 0, sizeof(int), 0),')
+	g.write('.kinds = __new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
+	g.write('.is_and = __new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
 	g.writeln('});')
 
 	if arrs.len > 0 {
@@ -270,18 +270,18 @@ fn (mut g Gen) sql_update(node ast.SqlStmtLine, expr string, table_name string) 
 	// println(expr)
 	// println(node)
 	g.write('update(${expr}._object, _SLIT("$table_name"), (orm__QueryData){')
-	g.write('.kinds = new_array_from_c_array(0, 0, sizeof(orm__OperationKind), NULL),')
-	g.write('.is_and = new_array_from_c_array(0, 0, sizeof(bool), NULL),')
-	g.write('.types = new_array_from_c_array(0, 0, sizeof(int), NULL),')
-	g.write('.fields = new_array_from_c_array($node.updated_columns.len, $node.updated_columns.len, sizeof(string),')
+	g.write('.kinds = __new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
+	g.write('.is_and = __new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
+	g.write('.types = __new_array_with_default_noscan(0, 0, sizeof(int), 0),')
 	if node.updated_columns.len > 0 {
+		g.write('.fields = new_array_from_c_array($node.updated_columns.len, $node.updated_columns.len, sizeof(string),')
 		g.write(' _MOV((string[$node.updated_columns.len]){')
 		for field in node.updated_columns {
 			g.write('_SLIT("$field"),')
 		}
 		g.write('})')
 	} else {
-		g.write('NULL')
+		g.write('.fields = __new_array_with_default_noscan($node.updated_columns.len, $node.updated_columns.len, sizeof(string), 0')
 	}
 	g.write('),')
 	g.write('.data = new_array_from_c_array($node.update_exprs.len, $node.update_exprs.len, sizeof(orm__Primitive),')
@@ -449,16 +449,16 @@ fn (mut g Gen) sql_gen_where_data(where_expr ast.Expr) {
 	mut data := []ast.Expr{}
 	mut is_and := []bool{}
 	g.sql_where_data(where_expr, mut fields, mut kinds, mut data, mut is_and)
-	g.write('.types = new_array_from_c_array(0, 0, sizeof(int), NULL),')
-	g.write('.fields = new_array_from_c_array($fields.len, $fields.len, sizeof(string),')
+	g.write('.types = __new_array_with_default_noscan(0, 0, sizeof(int), 0),')
 	if fields.len > 0 {
+		g.write('.fields = new_array_from_c_array($fields.len, $fields.len, sizeof(string),')
 		g.write(' _MOV((string[$fields.len]){')
 		for field in fields {
 			g.write('_SLIT("$field"),')
 		}
 		g.write('})')
 	} else {
-		g.write('NULL')
+		g.write('.fields = __new_array_with_default_noscan($fields.len, $fields.len, sizeof(string), 0')
 	}
 	g.write('),')
 
@@ -472,27 +472,27 @@ fn (mut g Gen) sql_gen_where_data(where_expr ast.Expr) {
 	}
 	g.write('),')
 
-	g.write('.kinds = new_array_from_c_array($kinds.len, $kinds.len, sizeof(orm__OperationKind),')
 	if kinds.len > 0 {
+		g.write('.kinds = new_array_from_c_array($kinds.len, $kinds.len, sizeof(orm__OperationKind),')
 		g.write(' _MOV((orm__OperationKind[$kinds.len]){')
 		for k in kinds {
 			g.write('$k,')
 		}
 		g.write('})')
 	} else {
-		g.write('NULL')
+		g.write('.kinds = __new_array_with_default_noscan($kinds.len, $kinds.len, sizeof(orm__OperationKind), 0')
 	}
 	g.write('),')
 
-	g.write('.is_and = new_array_from_c_array($is_and.len, $is_and.len, sizeof(bool),')
 	if is_and.len > 0 {
+		g.write('.is_and = new_array_from_c_array($is_and.len, $is_and.len, sizeof(bool),')
 		g.write(' _MOV((bool[$is_and.len]){')
 		for b in is_and {
 			g.write('$b, ')
 		}
 		g.write('})')
 	} else {
-		g.write('NULL')
+		g.write('.is_and = __new_array_with_default_noscan($is_and.len, $is_and.len, sizeof(bool), 0')
 	}
 	g.write('),}')
 }
@@ -611,18 +611,18 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 		exprs << node.offset_expr
 	}
 	g.write('(orm__QueryData) {')
-	g.write('.types = new_array_from_c_array(0, 0, sizeof(int), NULL),')
-	g.write('.kinds = new_array_from_c_array(0, 0, sizeof(orm__OperationKind), NULL),')
-	g.write('.is_and = new_array_from_c_array(0, 0, sizeof(bool), NULL),')
-	g.write('.data = new_array_from_c_array($exprs.len, $exprs.len, sizeof(orm__Primitive),')
+	g.write('.types = __new_array_with_default_noscan(0, 0, sizeof(int), 0),')
+	g.write('.kinds = __new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
+	g.write('.is_and = __new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
 	if exprs.len > 0 {
+		g.write('.data = new_array_from_c_array($exprs.len, $exprs.len, sizeof(orm__Primitive),')
 		g.write(' _MOV((orm__Primitive[$exprs.len]){')
 		for e in exprs {
 			g.sql_expr_to_orm_primitive(e)
 		}
 		g.write('})')
 	} else {
-		g.write('NULL')
+		g.write('.data = __new_array_with_default_noscan($exprs.len, $exprs.len, sizeof(orm__Primitive), 0')
 	}
 	g.write(')},')
 
