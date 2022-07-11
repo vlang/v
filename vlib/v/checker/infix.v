@@ -174,6 +174,12 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					} else {
 						return_type = left_type
 					}
+				} else if left_final.has_method(node.op.str()) {
+					if method := left_final.find_method(node.op.str()) {
+						return_type = method.return_type
+					} else {
+						return_type = left_type
+					}
 				} else {
 					left_name := c.table.type_to_str(left_type)
 					right_name := c.table.type_to_str(right_type)
@@ -188,6 +194,12 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				&& !(c.table.sym((right_sym.info as ast.Alias).parent_type).is_primitive()) {
 				if right_sym.has_method(node.op.str()) {
 					if method := right_sym.find_method(node.op.str()) {
+						return_type = method.return_type
+					} else {
+						return_type = right_type
+					}
+				} else if right_final.has_method(node.op.str()) {
+					if method := right_final.find_method(node.op.str()) {
 						return_type = method.return_type
 					} else {
 						return_type = right_type
