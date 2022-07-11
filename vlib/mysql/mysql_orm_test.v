@@ -99,9 +99,9 @@ fn test_orm() {
 	mut db := mysql.Connection{
 		host: 'localhost'
 		port: 3306
-		username: 'hitalo'
-		password: 'password'
-		dbname: 'v'
+		username: 'root'
+		password: ''
+		dbname: 'mysql'
 	}
 
 	db.connect() or {
