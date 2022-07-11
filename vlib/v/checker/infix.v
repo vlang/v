@@ -598,26 +598,28 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		c.error('unwrapped optional cannot be used in an infix expression', opt_infix_pos)
 	}
 	// Dual sides check (compatibility check)
-	if !(c.symmetric_check(left_type, right_type) && c.symmetric_check(right_type, left_type))
-		&& !c.pref.translated && !c.file.is_translated && !node.left.is_auto_deref_var()
-		&& !node.right.is_auto_deref_var() {
-		// for type-unresolved consts
-		if left_type == ast.void_type || right_type == ast.void_type {
-			return ast.void_type
-		}
-		if left_type.nr_muls() > 0 && right_type.is_int() {
-			// pointer arithmetic is fine, it is checked in other places
-			return return_type
-		}
-		c.error('infix expr: cannot use `$right_sym.name` (right expression) as `$left_sym.name`',
-			left_right_pos)
-	} else if left_type.is_ptr() {
-		for_ptr_op := c.table.type_is_for_pointer_arithmetic(left_type)
-		if left_sym.language == .v && !c.pref.translated && !c.inside_unsafe && !for_ptr_op
-			&& right_type.is_int() {
-			sugg := ' (you can use it inside an `unsafe` block)'
-			c.error('infix expr: cannot use `$right_sym.name` (right expression) as `$left_sym.name` $sugg',
+	if node.left !is ast.ComptimeCall && node.right !is ast.ComptimeCall {
+		if !(c.symmetric_check(left_type, right_type) && c.symmetric_check(right_type, left_type))
+			&& !c.pref.translated && !c.file.is_translated && !node.left.is_auto_deref_var()
+			&& !node.right.is_auto_deref_var() {
+			// for type-unresolved consts
+			if left_type == ast.void_type || right_type == ast.void_type {
+				return ast.void_type
+			}
+			if left_type.nr_muls() > 0 && right_type.is_int() {
+				// pointer arithmetic is fine, it is checked in other places
+				return return_type
+			}
+			c.error('infix expr: cannot use `$right_sym.name` (right expression) as `$left_sym.name`',
 				left_right_pos)
+		} else if left_type.is_ptr() {
+			for_ptr_op := c.table.type_is_for_pointer_arithmetic(left_type)
+			if left_sym.language == .v && !c.pref.translated && !c.inside_unsafe && !for_ptr_op
+				&& right_type.is_int() {
+				sugg := ' (you can use it inside an `unsafe` block)'
+				c.error('infix expr: cannot use `$right_sym.name` (right expression) as `$left_sym.name` $sugg',
+					left_right_pos)
+			}
 		}
 	}
 	/*
