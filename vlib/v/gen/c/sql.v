@@ -779,7 +779,6 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 		}
 	}
 	g.write('$left *(${g.typ(node.typ)}*) ${tmp_left}.data')
-	dump(g.inside_call)
 	if !g.inside_call {
 		g.writeln(';')
 	}
