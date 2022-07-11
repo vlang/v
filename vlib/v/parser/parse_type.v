@@ -609,7 +609,7 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 					}
 					'any' {
 						if p.file_backend_mode != .js && p.mod != 'builtin' {
-							p.error('cannot use `any` type here, it can only be used in js backend')
+							p.error('cannot use `any` type here, `any` will be implemented in V 0.4')
 						}
 						ret = ast.any_type
 					}
