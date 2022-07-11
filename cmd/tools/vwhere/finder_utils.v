@@ -1,3 +1,5 @@
+module main
+
 import os
 import term
 import v.pref
