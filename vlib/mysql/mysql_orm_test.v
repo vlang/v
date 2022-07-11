@@ -96,7 +96,7 @@ fn test_mysql_orm() {
 
 
 fn test_orm() {
-	mut mdb := mysql.Connection{
+	mut db := mysql.Connection{
 		host: 'localhost'
 		port: 3306
 		username: 'root'
