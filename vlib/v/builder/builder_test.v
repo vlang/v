@@ -3,17 +3,7 @@ module main
 import os
 import arrays
 
-const (
-	test_path          = 'v_run_check'
-	original_file_list = [
-		'.git',
-		'.editorconfig',
-		'.gitattributes',
-		'${test_path}.v',
-		'v.mod',
-		'.gitignore',
-	]
-)
+const test_path = 'v_run_check'
 
 fn arrays_are_equivalent(a []string, b []string) bool {
 	if a.len != b.len {
@@ -46,9 +36,8 @@ fn test_conditional_executable_removal() ? {
 		executable += '.exe'
 	}
 
+	original_file_list := os.ls(dir)?
 	new_file_list := arrays.concat(original_file_list, executable)
-
-	assert arrays_are_equivalent(os.ls(dir)?, original_file_list)
 
 	assert os.execute('${os.quoted_path(@VEXE)} run .').output == 'Hello World!\n'
 
