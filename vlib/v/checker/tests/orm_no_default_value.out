@@ -4,4 +4,4 @@ vlib/v/checker/tests/orm_no_default_value.vv:11:4: error: Or block needs to retu
    11 |     } or {
       |       ~~~~
    12 |     }
-   13 |
+   13 | }
