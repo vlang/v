@@ -133,7 +133,11 @@ fn (upd VlsUpdater) get_last_updated_at() ?time.Time {
 }
 
 fn (upd VlsUpdater) download_prebuilt() ? {
-	last_updated_at := upd.get_last_updated_at() or { time.now() }
+	mut has_last_updated_at := true
+	last_updated_at := upd.get_last_updated_at() or {
+		has_last_updated_at = false
+		time.now()
+	}
 	defer {
 		os.rmdir_all(vls_cache_folder) or {}
 	}
@@ -182,7 +186,7 @@ fn (upd VlsUpdater) download_prebuilt() ? {
 		asset_last_updated_at = time.parse_rfc3339(created_at.str()) or { asset_last_updated_at }
 	}
 
-	if !upd.is_force && asset_last_updated_at <= last_updated_at {
+	if has_last_updated_at && !upd.is_force && asset_last_updated_at <= last_updated_at {
 		upd.log("VLS was already updated to it's latest version.")
 		return
 	}
