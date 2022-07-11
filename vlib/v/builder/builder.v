@@ -41,6 +41,7 @@ pub mut:
 	mod_invalidates_mods  map[string][]string // changes in mod `os`, force invalidation of mods, that do `import os`
 	path_invalidates_mods map[string][]string // changes in a .v file from `os`, invalidates `os`
 	crun_cache_keys       []string // target executable + top level source files; filled in by Builder.should_rebuild
+	executable_exists     bool     // if the executable already exists, don't remove new executable after `v run`
 }
 
 pub fn new_builder(pref &pref.Preferences) Builder {
@@ -67,6 +68,10 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 	if pref.show_callgraph || pref.show_depgraph {
 		dotgraph.start_digraph()
 	}
+	mut executable_name := pref.out_name
+	$if windows {
+		executable_name = executable_name + '.exe'
+	}
 	return Builder{
 		pref: pref
 		table: table
@@ -74,6 +79,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 		transformer: transformer.new_transformer_with_table(table, pref)
 		compiled_dir: compiled_dir
 		cached_msvc: msvc
+		executable_exists: os.is_file(executable_name)
 	}
 }
 
