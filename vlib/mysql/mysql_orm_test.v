@@ -47,7 +47,7 @@ fn test_mysql_orm() {
 		},
 		orm.TableField{
 			name: 'name'
-			typ: 18
+			typ: 20
 			attrs: []
 		},
 		orm.TableField{
@@ -65,11 +65,11 @@ fn test_mysql_orm() {
 		table: 'Test'
 		has_where: true
 		fields: ['id', 'name', 'age']
-		types: [7, 18, 8]
+		types: [7, 20, 8]
 	}, orm.QueryData{}, orm.QueryData{
 		fields: ['name', 'age']
 		data: [orm.Primitive('Louis'), i64(101)]
-		types: [18, 8]
+		types: [20, 8]
 		is_and: [true, true]
 		kinds: [.eq, .eq]
 	}) or { panic(err) }
@@ -99,9 +99,9 @@ fn test_orm() {
 	mut db := mysql.Connection{
 		host: 'localhost'
 		port: 3306
-		username: 'root'
-		password: ''
-		dbname: 'mysql'
+		username: 'hitalo'
+		password: 'password'
+		dbname: 'v'
 	}
 
 	db.connect() or {
