@@ -28,6 +28,8 @@ fn C.cJSON_PrintUnformatted(&C.cJSON) &char
 
 fn C.cJSON_Print(&C.cJSON) &char
 
+fn C.cJSON_free(voidptr)
+
 pub fn decode(typ voidptr, s string) ?voidptr {
 	// compiler implementation
 	return 0
@@ -221,6 +223,10 @@ fn json_print(json &C.cJSON) string {
 fn json_print_pretty(json &C.cJSON) string {
 	s := C.cJSON_Print(json)
 	return unsafe { tos(&u8(s), C.strlen(&char(s))) }
+}
+
+pub fn free_str(s string) {
+	C.cJSON_free(s.str)
 }
 
 // /  cjson wrappers

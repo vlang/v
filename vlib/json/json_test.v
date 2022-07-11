@@ -488,3 +488,10 @@ struct StByteArray {
 fn test_byte_array() {
 	assert json.encode(StByteArray{ ba: [byte(1), 2, 3, 4, 5] }) == '{"ba":[1,2,3,4,5]}'
 }
+
+fn test_free_str() {
+	e1 := Employee{'Peter', 28, 95000.5, .worker}
+	s1 := json.encode(e1)
+	assert s1 == '{"name":"Peter","age":28,"salary":95000.5,"title":2}'
+	json.free_str(s1)
+}
