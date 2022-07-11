@@ -664,14 +664,19 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 		g.expr(node.right)
 		g.write(')')
 	} else {
-		method := g.table.find_method(left.sym, node.op.str()) or {
+		mut method := ast.Fn{}
+		mut method_name := ''
+		if left.sym.has_method(node.op.str()) {
+			method = left.sym.find_method(node.op.str()) or { ast.Fn{} }
+			method_name = left.sym.cname + '_' + util.replace_op(node.op.str())
+		} else if left.unaliased_sym.has_method(node.op.str()) {
+			method = left.unaliased_sym.find_method(node.op.str()) or { ast.Fn{} }
+			method_name = left.unaliased_sym.cname + '_' + util.replace_op(node.op.str())
+		} else {
 			g.gen_plain_infix_expr(node)
 			return
 		}
-		left_styp := g.typ(left.typ.set_nr_muls(0))
-		g.write(left_styp)
-		g.write('_')
-		g.write(util.replace_op(node.op.str()))
+		g.write(method_name)
 		g.write('(')
 		g.op_arg(node.left, method.params[0].typ, left.typ)
 		g.write(', ')
