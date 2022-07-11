@@ -39,17 +39,17 @@ fn test_conditional_executable_removal() ? {
 	original_file_list := os.ls(dir)?
 	new_file_list := arrays.concat(original_file_list, executable)
 
-	assert os.execute('${os.quoted_path(@VEXE)} run .').output == 'Hello World!\n'
+	assert os.execute('${os.quoted_path(@VEXE)} run .').output.trim_space() == 'Hello World!'
 
 	assert arrays_are_equivalent(os.ls(dir)?, original_file_list)
 
 	assert os.execute('${os.quoted_path(@VEXE)} .').output == ''
 
-	assert os.execute('./$executable').output == 'Hello World!\n'
+	assert os.execute('./$executable').output.trim_space() == 'Hello World!'
 
 	assert arrays_are_equivalent(os.ls(dir)?, new_file_list)
 
-	assert os.execute('${os.quoted_path(@VEXE)} run .').output == 'Hello World!\n'
+	assert os.execute('${os.quoted_path(@VEXE)} run .').output.trim_space() == 'Hello World!'
 
 	assert arrays_are_equivalent(os.ls(dir)?, new_file_list)
 }
