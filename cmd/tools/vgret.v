@@ -34,6 +34,7 @@
 //
 import os
 import flag
+import time
 import toml
 
 const (
@@ -55,10 +56,11 @@ Examples:
 )
 
 const (
-	supported_hosts = ['linux']
+	supported_hosts           = ['linux']
+	supported_capture_methods = ['gg_record', 'generic_screenshot']
 	// External tool executables
-	v_exe           = os.getenv('VEXE')
-	idiff_exe       = os.find_abs_path_of_executable('idiff') or { '' }
+	v_exe                     = os.getenv('VEXE')
+	idiff_exe                 = os.find_abs_path_of_executable('idiff') or { '' }
 )
 
 const (
@@ -82,9 +84,16 @@ mut:
 
 struct CaptureOptions {
 mut:
-	method string = 'gg_record'
-	flags  []string
-	env    map[string]string
+	method  string = 'gg_record'
+	wait_ms int // used by "generic_screenshot" to wait X milliseconds *after* execution of the app
+	flags   []string
+	env     map[string]string
+}
+
+fn (co CaptureOptions) validate() ! {
+	if co.method !in supported_capture_methods {
+		return error('capture method "$co.method" is not supported. Supported methods are: $supported_capture_methods')
+	}
 }
 
 struct AppConfig {
@@ -158,11 +167,11 @@ fn main() {
 		os.mkdir_all(tmp_dir)?
 	}
 
-	opt.config = new_config(opt.root_path, toml_conf)?
+	opt.config = new_config(opt.root_path, toml_conf) or { panic(err) }
 
 	gen_in_path := arg_paths[0]
 	if arg_paths.len >= 1 {
-		generate_screenshots(mut opt, gen_in_path)?
+		generate_screenshots(mut opt, gen_in_path) or { panic(err) }
 	}
 	if arg_paths.len > 1 {
 		target_path := arg_paths[1]
@@ -182,7 +191,7 @@ fn main() {
 	}
 }
 
-fn generate_screenshots(mut opt Options, output_path string) ? {
+fn generate_screenshots(mut opt Options, output_path string) ! {
 	path := opt.config.path
 
 	dst_path := output_path.trim_right('/')
@@ -202,16 +211,18 @@ fn generate_screenshots(mut opt Options, output_path string) ? {
 			rel_out_path = file
 		}
 
-		opt.verbose_eprintln('Compiling shaders (if needed) for `$file`')
-		sh_result := opt.verbose_execute('${os.quoted_path(v_exe)} shader ${os.quoted_path(app_path)}')
-		if sh_result.exit_code != 0 {
-			opt.verbose_eprintln('Skipping shader compile for `$file` v shader failed with:\n$sh_result.output')
-			continue
+		if app_config.capture.method == 'gg_record' {
+			opt.verbose_eprintln('Compiling shaders (if needed) for `$file`')
+			sh_result := opt.verbose_execute('${os.quoted_path(v_exe)} shader ${os.quoted_path(app_path)}')
+			if sh_result.exit_code != 0 {
+				opt.verbose_eprintln('Skipping shader compile for `$file` v shader failed with:\n$sh_result.output')
+				continue
+			}
 		}
 
 		if !os.exists(dst_path) {
 			opt.verbose_eprintln('Creating output path `$dst_path`')
-			os.mkdir_all(dst_path)?
+			os.mkdir_all(dst_path) or { return error('Failed making directory `$dst_path`') }
 		}
 
 		screenshot_path := os.join_path(dst_path, rel_out_path)
@@ -298,39 +309,80 @@ fn compare_screenshots(opt Options, output_path string, target_path string) ? {
 	}
 }
 
-fn take_screenshots(opt Options, app AppConfig) ?[]string {
+fn take_screenshots(opt Options, app AppConfig) ![]string {
 	out_path := app.screenshots_path
 	if !opt.compare_only {
 		opt.verbose_eprintln('Taking screenshot(s) of `$app.path` to `$out_path`')
-		if app.capture.method == 'gg_record' {
-			for k, v in app.capture.env {
-				rv := v.replace('\$OUT_PATH', out_path)
-				opt.verbose_eprintln('Setting ENV `$k` = $rv ...')
-				os.setenv('$k', rv, true)
-			}
+		match app.capture.method {
+			'gg_record' {
+				for k, v in app.capture.env {
+					rv := v.replace('\$OUT_PATH', out_path)
+					opt.verbose_eprintln('Setting ENV `$k` = $rv ...')
+					os.setenv('$k', rv, true)
+				}
 
-			mut flags := app.capture.flags.join(' ')
-			result := opt.verbose_execute('${os.quoted_path(v_exe)} $flags -d gg_record run ${os.quoted_path(app.abs_path)}')
-			if result.exit_code != 0 {
-				return error('Failed taking screenshot of `$app.abs_path`:\n$result.output')
+				mut flags := app.capture.flags.join(' ')
+				result := opt.verbose_execute('${os.quoted_path(v_exe)} $flags -d gg_record run ${os.quoted_path(app.abs_path)}')
+				if result.exit_code != 0 {
+					return error('Failed taking screenshot of `$app.abs_path`:\n$result.output')
+				}
+			}
+			'generic_screenshot' {
+				for k, v in app.capture.env {
+					rv := v.replace('\$OUT_PATH', out_path)
+					opt.verbose_eprintln('Setting ENV `$k` = $rv ...')
+					os.setenv('$k', rv, true)
+				}
+
+				existing_screenshots := get_app_screenshots(out_path, app)!
+
+				mut flags := app.capture.flags
+
+				mut p_app := os.new_process(app.abs_path)
+				p_app.set_args(flags)
+				p_app.run()
+
+				if !p_app.is_alive() {
+					output := p_app.stdout_read() + '\n' + p_app.stderr_read()
+					return error('Failed starting app `$app.abs_path` (before screenshot):\n$output')
+				}
+				if app.capture.wait_ms > 0 {
+					time.sleep(app.capture.wait_ms * time.millisecond)
+				}
+				// Use ImageMagick's `import` tool to take the screenshot
+				out_file := os.join_path(out_path, os.file_name(app.path) +
+					'_screenshot_${existing_screenshots.len:02}.png')
+				result := opt.verbose_execute('import -window root "$out_file"')
+				if result.exit_code != 0 {
+					p_app.signal_kill()
+					return error('Failed taking screenshot of `$app.abs_path` to "$out_file":\n$result.output')
+				}
+				p_app.signal_kill()
+			}
+			else {
+				return error('Unsupported capture method "$app.capture.method"')
 			}
 		}
 	}
+	return get_app_screenshots(out_path, app)!
+}
+
+fn get_app_screenshots(path string, app AppConfig) ![]string {
 	mut screenshots := []string{}
-	shots := os.ls(out_path) or { return error('Failed listing dir `$out_path`') }
+	shots := os.ls(path) or { return error('Failed listing dir `$path`') }
 	for shot in shots {
 		if shot.starts_with(os.file_name(app.path).all_before_last('.')) {
-			screenshots << os.join_path(out_path, shot)
+			screenshots << os.join_path(path, shot)
 		}
 	}
 	return screenshots
 }
 
-fn new_config(root_path string, toml_config string) ?Config {
+fn new_config(root_path string, toml_config string) !Config {
 	doc := if os.is_file(toml_config) {
-		toml.parse_file(toml_config)?
+		toml.parse_file(toml_config) or { return error(err.msg()) }
 	} else {
-		toml.parse_text(toml_config)?
+		toml.parse_text(toml_config) or { return error(err.msg()) }
 	}
 
 	path := os.real_path(root_path).trim_right('/')
@@ -343,6 +395,7 @@ fn new_config(root_path string, toml_config string) ?Config {
 	}
 	capture_method := doc.value('capture.method').default_to('gg_record').string()
 	capture_flags := doc.value('capture.flags').default_to(empty_toml_array).array().as_strings()
+	capture_wait_ms := doc.value('capture.wait_ms').default_to(0).int()
 	capture_env := doc.value('capture.env').default_to(empty_toml_map).as_map()
 	mut env_map := map[string]string{}
 	for k, v in capture_env {
@@ -350,6 +403,7 @@ fn new_config(root_path string, toml_config string) ?Config {
 	}
 	default_capture := CaptureOptions{
 		method: capture_method
+		wait_ms: capture_wait_ms
 		flags: capture_flags
 		env: env_map
 	}
@@ -371,6 +425,7 @@ fn new_config(root_path string, toml_config string) ?Config {
 
 		mut merged_capture := CaptureOptions{}
 		merged_capture.method = app_any.value('capture.method').default_to(default_capture.method).string()
+		merged_capture.wait_ms = app_any.value('capture.wait_ms').default_to(default_capture.wait_ms).int()
 		merged_capture_flags := app_any.value('capture.flags').default_to(empty_toml_array).array().as_strings()
 		if merged_capture_flags.len > 0 {
 			merged_capture.flags = merged_capture_flags
@@ -386,6 +441,8 @@ fn new_config(root_path string, toml_config string) ?Config {
 		for k, v in merge_env_map {
 			merged_capture.env[k] = v
 		}
+
+		merged_capture.validate()!
 
 		app_config := AppConfig{
 			compare: merged_compare

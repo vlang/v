@@ -91,6 +91,7 @@ mut:
 	if_cond_comments          []ast.Comment
 	script_mode               bool
 	script_mode_start_token   token.Token
+	anon_struct_counter       int
 pub mut:
 	scanner    &scanner.Scanner
 	errors     []errors.Error
@@ -99,7 +100,7 @@ pub mut:
 	vet_errors []vet.Error
 }
 
-__global codegen_files = []&ast.File{}
+__global codegen_files = unsafe { []&ast.File{} }
 
 // for tests
 pub fn parse_stmt(text string, table &ast.Table, scope &ast.Scope) ast.Stmt {
@@ -425,17 +426,19 @@ pub fn parse_files(paths []string, table &ast.Table, pref &pref.Preferences) []&
 		}
 		*/
 	}
-	mut files := []&ast.File{cap: paths.len}
-	for path in paths {
-		timers.start('parse_file $path')
-		files << parse_file(path, table, .skip_comments, pref)
-		timers.show('parse_file $path')
+	unsafe {
+		mut files := []&ast.File{cap: paths.len}
+		for path in paths {
+			timers.start('parse_file $path')
+			files << parse_file(path, table, .skip_comments, pref)
+			timers.show('parse_file $path')
+		}
+		if codegen_files.len > 0 {
+			files << codegen_files
+			codegen_files.clear()
+		}
+		return files
 	}
-	if codegen_files.len > 0 {
-		files << codegen_files
-		codegen_files.clear()
-	}
-	return files
 }
 
 // codegen allows you to generate V code, so that it can be parsed,
@@ -620,7 +623,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 						return p.fn_decl()
 					}
 					.key_struct, .key_union {
-						return p.struct_decl()
+						return p.struct_decl(false)
 					}
 					.key_interface {
 						return p.interface_decl()
@@ -662,7 +665,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 				return p.fn_decl()
 			}
 			.key_struct {
-				return p.struct_decl()
+				return p.struct_decl(false)
 			}
 			.dollar {
 				if p.peek_tok.kind == .eof {
@@ -689,7 +692,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 				return p.enum_decl()
 			}
 			.key_union {
-				return p.struct_decl()
+				return p.struct_decl(false)
 			}
 			.comment {
 				return p.comment_stmt()
@@ -2425,12 +2428,12 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		&& (!p.inside_match || (p.inside_select && prev_tok_kind == .arrow && lit0_is_capital))
 		&& !p.inside_match_case && (!p.inside_if || p.inside_select)
 		&& (!p.inside_for || p.inside_select) && !known_var {
-		return p.struct_init(p.mod + '.' + p.tok.lit, false) // short_syntax: false
+		return p.struct_init(p.mod + '.' + p.tok.lit, .normal) // short_syntax: false
 	} else if p.peek_tok.kind == .lcbr
 		&& ((p.inside_if && lit0_is_capital && p.tok.lit.len > 1 && !known_var && language == .v)
 		|| (p.inside_match_case && p.tok.kind == .name && p.peek_tok.pos - p.tok.pos == p.tok.len)) {
 		// `if a == Foo{} {...}` or `match foo { Foo{} {...} }`
-		return p.struct_init(p.mod + '.' + p.tok.lit, false)
+		return p.struct_init(p.mod + '.' + p.tok.lit, .normal)
 	} else if p.peek_tok.kind == .dot && (lit0_is_capital && !known_var && language == .v) {
 		// T.name
 		if p.is_generic_name() {
@@ -2490,6 +2493,24 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				typ: typ
 				pos: type_pos
 			}
+		} else if !known_var && language == .v && (p.table.known_type(p.tok.lit) || lit0_is_capital)
+			&& p.peek_tok.kind == .pipe {
+			start_pos := p.tok.pos()
+			mut to_typ := p.parse_type()
+			p.check(.lpar)
+			expr := p.expr(0)
+			end_pos := p.tok.pos()
+			p.check(.rpar)
+			node = ast.CastExpr{
+				typ: to_typ
+				typname: p.table.sym(to_typ).name
+				expr: expr
+				arg: ast.empty_expr()
+				has_arg: false
+				pos: start_pos.extend(end_pos)
+			}
+			p.expr_mod = ''
+			return node
 		}
 
 		ident := p.parse_ident(language)
@@ -3142,15 +3163,11 @@ fn (mut p Parser) module_decl() ast.Module {
 		name_pos: name_pos
 	}
 	if !is_skipped {
+		p.table.module_attrs[p.mod] = module_attrs
 		for ma in module_attrs {
 			match ma.name {
-				'deprecated' {
-					// [deprecated: 'use a replacement']
-					p.table.mark_module_as_deprecated(p.mod, ma.arg)
-				}
-				'deprecated_after' {
-					// [deprecated_after: '2027-12-30']
-					p.table.mark_module_as_deprecated_after(p.mod, ma.arg)
+				'deprecated', 'deprecated_after' {
+					p.table.module_deprecated[p.mod] = true
 				}
 				'manualfree' {
 					p.is_manualfree = true

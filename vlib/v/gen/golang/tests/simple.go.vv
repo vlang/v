@@ -4,7 +4,7 @@ module main
 
 //fn println(x any){
 fn println(x string){
-#fmt.Println(x)
+	#fmt.Println(x)
 }
 
 struct Foo {

@@ -8,9 +8,7 @@ import v.ast
 import v.util
 import v.token
 
-const (
-	maximum_inline_sum_type_variants = 3
-)
+const maximum_inline_sum_type_variants = 3
 
 pub fn (mut p Parser) parse_array_type(expecting token.Kind) ast.Type {
 	p.check(expecting)
@@ -74,7 +72,6 @@ pub fn (mut p Parser) parse_array_type(expecting token.Kind) ast.Type {
 		if fixed_size <= 0 {
 			p.error_with_pos('fixed size cannot be zero or negative', size_expr.pos())
 		}
-		// sym := p.table.sym(elem_type)
 		idx := p.table.find_or_register_array_fixed(elem_type, fixed_size, size_expr)
 		if elem_type.has_flag(.generic) {
 			return ast.new_type(idx).set_flag(.generic)
@@ -225,7 +222,6 @@ pub fn (mut p Parser) parse_multi_return_type() ast.Type {
 
 // given anon name based off signature when `name` is blank
 pub fn (mut p Parser) parse_fn_type(name string) ast.Type {
-	// p.warn('parse fn')
 	p.check(.key_fn)
 
 	for attr in p.attrs {
@@ -371,7 +367,7 @@ pub fn (mut p Parser) parse_sum_type_variants() []ast.TypeNode {
 }
 
 pub fn (mut p Parser) parse_type() ast.Type {
-	// optional
+	// optional or result
 	mut is_optional := false
 	mut is_result := false
 	line_nr := p.tok.line_nr
@@ -405,7 +401,7 @@ pub fn (mut p Parser) parse_type() ast.Type {
 			p.error_with_pos('cannot use `mut` on struct field type', p.tok.pos())
 		}
 	}
-	if p.tok.kind == .key_mut || is_shared { // || is_atomic {
+	if p.tok.kind == .key_mut || is_shared {
 		nr_muls++
 		p.next()
 	}
@@ -423,6 +419,13 @@ pub fn (mut p Parser) parse_type() ast.Type {
 		nr_muls++
 		p.next()
 	}
+	// Anon structs
+	if p.tok.kind == .key_struct {
+		struct_decl := p.struct_decl(true)
+		// Find the registered anon struct type, it was registered above in `p.struct_decl()`
+		return p.table.find_type_idx(struct_decl.name)
+	}
+
 	language := p.parse_language()
 	mut typ := ast.void_type
 	is_array := p.tok.kind == .lsbr
@@ -504,7 +507,8 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 			p.error('imported types must start with a capital letter')
 			return 0
 		}
-	} else if p.expr_mod != '' && !p.inside_generic_params { // p.expr_mod is from the struct and not from the generic parameter
+	} else if p.expr_mod != '' && !p.inside_generic_params {
+		// p.expr_mod is from the struct and not from the generic parameter
 		name = p.expr_mod + '.' + name
 	} else if name in p.imported_symbols {
 		name = p.imported_symbols[name]
@@ -571,7 +575,7 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 						ret = ast.i64_type
 					}
 					'u8' {
-						ret = ast.byte_type
+						ret = ast.u8_type
 					}
 					'u16' {
 						ret = ast.u16_type
@@ -603,6 +607,12 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 					'int_literal' {
 						ret = ast.int_literal_type
 					}
+					'any' {
+						if p.file_backend_mode != .js && p.mod != 'builtin' {
+							p.error('cannot use `any` type here, `any` will be implemented in V 0.4')
+						}
+						ret = ast.any_type
+					}
 					else {
 						p.next()
 						if name.len == 1 && name[0].is_capital() {
@@ -629,7 +639,6 @@ pub fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Lan
 	}
 	// not found - add placeholder
 	idx = p.table.add_placeholder_type(name, language)
-	// println('NOT FOUND: $name - adding placeholder - $idx')
 	return ast.new_type(idx)
 }
 

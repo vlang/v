@@ -85,7 +85,7 @@ fn departure_priority<T>(mut prior_queue []T) int {
 // give a NODE v, return a list with all adjacents
 // Take care, only positive EDGES
 fn all_adjacents<T>(g [][]T, v int) []int {
-	mut temp := []int{} //
+	mut temp := []int{}
 	for i in 0 .. (g.len) {
 		if g[v][i] > 0 {
 			temp << i
@@ -147,7 +147,7 @@ fn dijkstra(g [][]int, s int) {
 			if dist[w] > new_dist {
 				dist[w] = new_dist
 				updating_priority(mut pq_queue, w, dist[w])
-				path[w] = v //
+				path[w] = v
 			}
 		}
 	}

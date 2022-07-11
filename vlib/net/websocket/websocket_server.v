@@ -9,7 +9,7 @@ import rand
 // Server represents a websocket server connection
 pub struct Server {
 mut:
-	logger                  &log.Log // logger used to log
+	logger                  &log.Logger           // logger used to log
 	ls                      &net.TcpListener      // listener used to get incoming connection to socket
 	accept_client_callbacks []AcceptClientFn      // accept client callback functions
 	message_callbacks       []MessageEventHandler // new message callback functions
@@ -34,15 +34,20 @@ pub mut:
 	client &Client
 }
 
+[params]
+pub struct ServerOpt {
+	logger &log.Logger = &log.Logger(&log.Log{
+	level: .info
+})
+}
+
 // new_server instance a new websocket server on provided port and route
-pub fn new_server(family net.AddrFamily, port int, route string) &Server {
+pub fn new_server(family net.AddrFamily, port int, route string, opt ServerOpt) &Server {
 	return &Server{
 		ls: 0
 		family: family
 		port: port
-		logger: &log.Log{
-			level: .info
-		}
+		logger: opt.logger
 		state: .closed
 	}
 }

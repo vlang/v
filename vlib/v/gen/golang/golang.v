@@ -597,6 +597,7 @@ pub fn (mut f Gen) expr(node_ ast.Expr) {
 		ast.MatchExpr {
 			f.match_expr(node)
 		}
+		ast.Nil {}
 		ast.None {
 			f.write('none')
 		}
@@ -678,7 +679,7 @@ fn expr_is_single_line(expr ast.Expr) bool {
 			}
 		}
 		ast.StructInit {
-			if !expr.is_short && (expr.fields.len > 0 || expr.pre_comments.len > 0) {
+			if !expr.no_keys && (expr.fields.len > 0 || expr.pre_comments.len > 0) {
 				return false
 			}
 		}
@@ -1579,18 +1580,18 @@ pub fn (mut f Gen) enum_val(node ast.EnumVal) {
 }
 
 pub fn (mut f Gen) ident(node ast.Ident) {
-	if node.info is ast.IdentVar {
-		if node.info.is_mut {
-			f.write(node.info.share.str() + ' ')
-		}
-		var_info := node.var_info()
-		if var_info.is_static {
-			f.write('static ')
-		}
-		if var_info.is_volatile {
-			f.write('volatile ')
-		}
-	}
+	// if node.info is ast.IdentVar {
+	// 	if node.info.is_mut {
+	// 		f.write(node.info.share.str() + ' ')
+	// 	}
+	// 	var_info := node.var_info()
+	// 	if var_info.is_static {
+	// 		f.write('static ')
+	// 	}
+	// 	if var_info.is_volatile {
+	// 		f.write('volatile ')
+	// 	}
+	// }
 	f.write_language_prefix(node.language)
 	if node.name == 'it' && f.it_name != '' && f.in_lambda_depth == 0 { // allow `it` in lambdas
 		f.write(f.it_name)
@@ -1708,18 +1709,32 @@ pub fn (mut f Gen) infix_expr(node ast.InfixExpr) {
 	// start_pos := f.out.len
 	// start_len := f.line_len
 	f.expr(node.left)
+	left_type_sym := f.table.final_sym(node.left_type)
+	is_array_push := left_type_sym.kind == .array && node.op == .left_shift
 	is_one_val_array_init := node.op in [.key_in, .not_in] && node.right is ast.ArrayInit
 		&& (node.right as ast.ArrayInit).exprs.len == 1
 	if is_one_val_array_init {
 		// `var in [val]` => `var == val`
 		op := if node.op == .key_in { ' == ' } else { ' != ' }
 		f.write(op)
+	} else if is_array_push {
+		f.write(' = ')
 	} else {
 		f.write(' $node.op.str() ')
 	}
 	if is_one_val_array_init {
 		// `var in [val]` => `var == val`
 		f.expr((node.right as ast.ArrayInit).exprs[0])
+	} else if is_array_push {
+		f.write('append(')
+		f.expr(node.left)
+		f.write(', ')
+		f.expr(node.right)
+		right_type_sym := f.table.final_sym(node.right_type)
+		if right_type_sym.kind == .array {
+			f.write('...')
+		}
+		f.write(')')
 	} else {
 		f.expr(node.right)
 	}
@@ -2191,18 +2206,8 @@ pub fn (mut f Gen) char_literal(node ast.CharLiteral) {
 }
 
 pub fn (mut f Gen) string_literal(node ast.StringLiteral) {
-	use_double_quote := true
 	if node.is_raw {
-		f.write('r')
-	} else if node.language == ast.Language.c {
-		f.write('c')
-	}
-	if node.is_raw {
-		if use_double_quote {
-			f.write('"$node.val"')
-		} else {
-			f.write("'$node.val'")
-		}
+		f.write('`$node.val`')
 	} else {
 		unescaped_val := node.val.replace('$golang.bs$golang.bs', '\x01').replace_each([
 			"$golang.bs'",
@@ -2210,40 +2215,19 @@ pub fn (mut f Gen) string_literal(node ast.StringLiteral) {
 			'$golang.bs"',
 			'"',
 		])
-		if use_double_quote {
-			s := unescaped_val.replace_each(['\x01', '$golang.bs$golang.bs', '"', '$golang.bs"'])
-			f.write('"$s"')
-		} else {
-			s := unescaped_val.replace_each(['\x01', '$golang.bs$golang.bs', "'", "$golang.bs'"])
-			f.write("'$s'")
-		}
+		s := unescaped_val.replace_each(['\x01', '$golang.bs$golang.bs', '"', '$golang.bs"'])
+		f.write('"$s"')
 	}
 }
 
 pub fn (mut f Gen) string_inter_literal(node ast.StringInterLiteral) {
-	mut quote := "'"
-	for val in node.vals {
-		if val.contains('\\"') {
-			quote = '"'
-			break
-		}
-		if val.contains("\\'") {
-			quote = "'"
-			break
-		}
-		if val.contains('"') {
-			quote = "'"
-		}
-		if val.contains("'") {
-			quote = '"'
-		}
-	}
+	mut quote := '"'
 	// TODO: this code is very similar to ast.Expr.str()
 	// serkonda7: it can not fully be replaced tho as ´f.expr()´ and `ast.Expr.str()`
 	//	work too different for the various exprs that are interpolated
 	f.write(quote)
 	for i, val in node.vals {
-		f.write(val)
+		f.write(val.replace("$golang.bs'", "'"))
 		if i >= node.exprs.len {
 			break
 		}

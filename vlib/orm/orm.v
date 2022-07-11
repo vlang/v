@@ -9,7 +9,7 @@ pub const (
 		ast.i8_type_idx,
 		ast.i16_type_idx,
 		ast.int_type_idx,
-		ast.byte_type_idx,
+		ast.u8_type_idx,
 		ast.u16_type_idx,
 		ast.u32_type_idx,
 		ast.bool_type_idx,
@@ -26,7 +26,7 @@ pub const (
 		'i16':    ast.i16_type_idx
 		'int':    ast.int_type_idx
 		'i64':    ast.i64_type_idx
-		'byte':   ast.byte_type_idx
+		'u8':     ast.u8_type_idx
 		'u16':    ast.u16_type_idx
 		'u32':    ast.u32_type_idx
 		'u64':    ast.u64_type_idx

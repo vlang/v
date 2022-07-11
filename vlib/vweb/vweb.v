@@ -384,6 +384,9 @@ pub struct RunParams {
 // Example: vweb.run_at(app, 'localhost', 8099)
 [manualfree]
 pub fn run_at<T>(global_app &T, params RunParams) ? {
+	if params.port <= 0 || params.port > 65535 {
+		return error('invalid port number `$params.port`, it should be between 1 and 65535')
+	}
 	mut l := net.listen_tcp(params.family, '$params.host:$params.port') or {
 		ecode := err.code()
 		return error('failed to listen $ecode $err')
@@ -613,7 +616,7 @@ fn (mut ctx Context) scan_static_directory(directory_path string, mount_path str
 		for file in files {
 			full_path := os.join_path(directory_path, file)
 			if os.is_dir(full_path) {
-				ctx.scan_static_directory(full_path, mount_path + file)
+				ctx.scan_static_directory(full_path, mount_path.trim_right('/') + '/' + file)
 			} else if file.contains('.') && !file.starts_with('.') && !file.ends_with('.') {
 				ext := os.file_ext(file)
 				// Rudimentary guard against adding files not in mime_types.

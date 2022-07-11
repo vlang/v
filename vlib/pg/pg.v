@@ -188,13 +188,16 @@ pub fn (db DB) exec_one(query string) ?Row {
 
 // exec_param_many executes a query with the provided parameters
 pub fn (db DB) exec_param_many(query string, params []string) ?[]Row {
-	mut param_vals := []&char{len: params.len}
-	for i in 0 .. params.len {
-		param_vals[i] = params[i].str
-	}
+	unsafe {
+		mut param_vals := []&char{len: params.len}
+		for i in 0 .. params.len {
+			param_vals[i] = params[i].str
+		}
 
-	res := C.PQexecParams(db.conn, query.str, params.len, 0, param_vals.data, 0, 0, 0)
-	return db.handle_error_or_result(res, 'exec_param_many')
+		res := C.PQexecParams(db.conn, query.str, params.len, 0, param_vals.data, 0, 0,
+			0)
+		return db.handle_error_or_result(res, 'exec_param_many')
+	}
 }
 
 pub fn (db DB) exec_param2(query string, param string, param2 string) ?[]Row {

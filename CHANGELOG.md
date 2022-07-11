@@ -1,3 +1,17 @@
+## V 0.3.1
+*Not released yet*
+- Anonymous structs.
+- V can now find code in the `src/` directory. This allows making V repos much cleaner.
+- `os.mkdir()` now has an optional `mode` paramter.
+- Full termux support via `$if termux {`.
+- Go backend fixes.
+- More type checks.
+- New keyword/type: `nil`. Only to be used inside `unsafe`. Replaces `voidptr(0)`.
+- DOOM is now translated/compiled and launched on CI servers. A screenshot of the running game
+  is made via `vgret` and is compared to the expected result.
+- VLS performance improvements, especially on Windows.
+- Add `v ls` tool for installing, for updating, and for launching VLS (V Language Server)
+
 ## V 0.3
 *30 Jun 2022*
 - C to V translation via C2V: `v translate file.c`. (Demo video: [Translating DOOM from C to V, building it in under a second and running it!](https://www.youtube.com/watch?v=6oXrz3oRoEg))
@@ -37,7 +51,7 @@
 - Static GC (no longer a dynamic lib dependency).
 - New various algorithms for random number generation: MT19937RNG, etc  (module `rand`).
 - Fix immutability bugs that allowed to bypass compiler immutability checks and modify const/immutable values.
-- Lots of fixes in the JSON serializer. 
+- Lots of fixes in the JSON serializer.
 - Heap allocated only structs marked with `[heap]`.
 - Significantly improve lots of error messages, make them more clear, suggest hints.
 - Bug fixes and new features in the pure V `regex` module.
@@ -47,7 +61,7 @@
 - Advanced CI tests for the graphics module. Graphical apps are run on GitHub Actions instances, their output is saved to an image, uploaded, and compared to the expected result.
 - More bug fixes in generics.
 - Bug fixes in aliases. They can now fully replace the types they alias.
-- `[minify] struct attribute for struct minification.
+- `[minify]` struct attribute for struct minification.
 - `for in` now works with fixed arrays.
 - The parser was made a bit faster by skipping `vfmt` code when not in `vfmt` mode (by using `-d vfmt`).
 - Lots of vfmt improvements, especially with comments.
@@ -77,7 +91,7 @@
 - `strings.Builder` optimizations and new methods.
 - Autofree fixes (still not production ready, hidden behind the `-autofree` flag).
 - Lots of Android fixes in V and in vab.
-- Lots of commits to the native backend (amd64/arm64). 
+- Lots of commits to the native backend (amd64/arm64).
 - V interpreter fixes. (Still at an early stage.)
 - Go2V translator has been started by the community, and can already translate simple programs.
 - An early version of the Go backend (`v -b go -o file.go file.v`).

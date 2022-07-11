@@ -123,7 +123,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 		mut expr := ast.empty_expr()
 		if p.tok.kind == .name && p.peek_tok.kind == .colon {
 			// `foo(key:val, key2:val2)`
-			expr = p.struct_init('void_type', true) // short_syntax:true
+			expr = p.struct_init('void_type', .short_syntax)
 		} else {
 			expr = p.expr(0)
 		}
@@ -1031,6 +1031,11 @@ fn (mut p Parser) closure_vars() []ast.Param {
 		p.check(.name)
 		var_name := p.prev_tok.lit
 		mut var := p.scope.parent.find_var(var_name) or {
+			if p.table.global_scope.known_global(var_name) {
+				p.error_with_pos('no need to capture global variable `$var_name` in closure',
+					p.prev_tok.pos())
+				continue
+			}
 			p.error_with_pos('undefined ident: `$var_name`', p.prev_tok.pos())
 			continue
 		}
