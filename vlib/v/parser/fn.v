@@ -800,7 +800,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 
 	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn, .lsbr]
 		|| (p.peek_tok.kind == .comma && (p.table.known_type(argname) || is_generic_type))
-		|| p.peek_tok.kind == .dot || p.peek_tok.kind == .rpar
+		|| p.peek_tok.kind == .dot || p.peek_tok.kind == .rpar || p.fn_language == .c
 		|| (p.tok.kind == .key_mut && (p.peek_token(2).kind == .comma
 		|| p.peek_token(2).kind == .rpar || (p.peek_tok.kind == .name
 		&& p.peek_token(2).kind == .dot)))
@@ -815,7 +815,13 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 			is_shared := p.tok.kind == .key_shared
 			is_atomic := p.tok.kind == .key_atomic
 			is_mut := p.tok.kind == .key_mut || is_shared || is_atomic
+			mut name := ''
 			if is_mut {
+				p.next()
+			}
+			if p.fn_language == .c && p.tok.kind == .name
+				&& p.peek_tok.kind !in [.comma, .rpar, .dot] {
+				name = p.tok.lit
 				p.next()
 			}
 			if p.tok.kind == .ellipsis {
@@ -875,7 +881,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 			}
 			args << ast.Param{
 				pos: pos
-				name: ''
+				name: name
 				is_mut: is_mut
 				typ: arg_type
 				type_pos: pos

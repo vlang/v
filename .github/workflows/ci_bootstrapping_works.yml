@@ -1,21 +1,17 @@
 name: Bootstraping works
 
 on:
-  push:
-    paths-ignore:
-      - "**.md"
-  pull_request:
-    paths-ignore:
-      - "**.md"
+  schedule:
+    - cron: '0 */6 * * *'
 
 jobs:
   ubuntu:
-    runs-on: ubuntu-20.04
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    runs-on: ubuntu-latest
+    if: github.event.ref == 'refs/heads/master' && github.event.repository.full_name == 'vlang/v'
     timeout-minutes: 30
     env:
       VFLAGS: -cc tcc -no-retry-compilation
-      B_CFLAGS: -g -std=gnu11 -w
+      B_CFLAGS: -g -std=c99 -w
       B_LFLAGS: -lm -lpthread
     steps:
       - uses: actions/checkout@v2
@@ -49,12 +45,12 @@ jobs:
           ./v2 -o v3 cmd/v
 
   macos:
-    runs-on: macos-11
-    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    runs-on: macos-latest
+    if: github.event.ref == 'refs/heads/master' && github.event.repository.full_name == 'vlang/v'
     timeout-minutes: 30
     env:
       VFLAGS: -cc clang
-      B_CFLAGS: -g -std=gnu11 -w
+      B_CFLAGS: -g -std=c99 -w
       B_LFLAGS: -lm -lpthread
     steps:
       - uses: actions/checkout@v2
