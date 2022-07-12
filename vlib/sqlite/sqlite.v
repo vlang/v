@@ -41,6 +41,7 @@ struct C.sqlite3 {
 struct C.sqlite3_stmt {
 }
 
+[heap]
 struct Stmt {
 	stmt &C.sqlite3_stmt
 	db   &DB
@@ -51,6 +52,7 @@ struct SQLError {
 }
 
 //
+[heap]
 pub struct DB {
 pub mut:
 	is_open bool
@@ -58,7 +60,7 @@ mut:
 	conn &C.sqlite3
 }
 
-pub fn (db DB) str() string {
+pub fn (db &DB) str() string {
 	return 'sqlite.DB{ conn: ' + ptr_str(db.conn) + ' }'
 }
 
@@ -149,23 +151,25 @@ fn get_int_from_stmt(stmt &C.sqlite3_stmt) int {
 
 // Returns last insert rowid
 // https://www.sqlite.org/c3ref/last_insert_rowid.html
-pub fn (db DB) last_insert_rowid() i64 {
+pub fn (db &DB) last_insert_rowid() i64 {
 	return C.sqlite3_last_insert_rowid(db.conn)
 }
 
 // Returns a single cell with value int.
-pub fn (db DB) q_int(query string) int {
+pub fn (db &DB) q_int(query string) int {
 	stmt := &C.sqlite3_stmt(0)
+	defer {
+		C.sqlite3_finalize(stmt)
+	}
 	C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
 	C.sqlite3_step(stmt)
 
 	res := C.sqlite3_column_int(stmt, 0)
-	C.sqlite3_finalize(stmt)
 	return res
 }
 
 // Returns a single cell with value string.
-pub fn (db DB) q_string(query string) string {
+pub fn (db &DB) q_string(query string) string {
 	stmt := &C.sqlite3_stmt(0)
 	defer {
 		C.sqlite3_finalize(stmt)
@@ -179,8 +183,12 @@ pub fn (db DB) q_string(query string) string {
 
 // Execute the query on db, return an array of all the results, alongside any result code.
 // Result codes: https://www.sqlite.org/rescode.html
-pub fn (db DB) exec(query string) ([]Row, int) {
+[manualfree]
+pub fn (db &DB) exec(query string) ([]Row, int) {
 	stmt := &C.sqlite3_stmt(0)
+	defer {
+		C.sqlite3_finalize(stmt)
+	}
 	C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
 	nr_cols := C.sqlite3_column_count(stmt)
 	mut res := 0
@@ -203,14 +211,17 @@ pub fn (db DB) exec(query string) ([]Row, int) {
 		}
 		rows << row
 	}
-	C.sqlite3_finalize(stmt)
 	return rows, res
 }
 
 // Execute a query, handle error code
 // Return the first row from the resulting table
-pub fn (db DB) exec_one(query string) ?Row {
+[manualfree]
+pub fn (db &DB) exec_one(query string) ?Row {
 	rows, code := db.exec(query)
+	defer {
+		unsafe { rows.free() }
+	}
 	if rows.len == 0 {
 		return IError(&SQLError{
 			msg: 'No rows'
@@ -222,21 +233,25 @@ pub fn (db DB) exec_one(query string) ?Row {
 			code: code
 		})
 	}
-	return rows[0]
+	res := rows[0]
+	return res
 }
 
-pub fn (db DB) error_message(code int, query string) IError {
-	msg := unsafe { cstring_to_vstring(&char(C.sqlite3_errmsg(db.conn))) }
-	return IError(&SQLError{
-		msg: '$msg ($code) ($query)'
+[manualfree]
+pub fn (db &DB) error_message(code int, query string) IError {
+	errmsg := unsafe { cstring_to_vstring(&char(C.sqlite3_errmsg(db.conn))) }
+	msg := '$errmsg ($code) ($query)'
+	unsafe { errmsg.free() }
+	return SQLError{
+		msg: msg
 		code: code
-	})
+	}
 }
 
 // Execute a query returning only the result code.
 // In case you don't expect any row results, but still want a result code.
 // e.g. INSERT INTO ... VALUES (...)
-pub fn (db DB) exec_none(query string) int {
+pub fn (db &DB) exec_none(query string) int {
 	stmt := &C.sqlite3_stmt(0)
 	C.sqlite3_prepare_v2(db.conn, &char(query.str), query.len, &stmt, 0)
 	code := C.sqlite3_step(stmt)
@@ -246,14 +261,14 @@ pub fn (db DB) exec_none(query string) int {
 
 /*
 TODO
-pub fn (db DB) exec_param(query string, param string) []Row {
+pub fn (db &DB) exec_param(query string, param string) []Row {
 }
 */
 
 // Issue a "create table if not exists" command to the db.
 // Creates table named 'table_name', with columns generated from 'columns' array.
 // Default columns type will be TEXT.
-pub fn (db DB) create_table(table_name string, columns []string) {
+pub fn (db &DB) create_table(table_name string, columns []string) {
 	db.exec('create table if not exists $table_name (' + columns.join(',\n') + ')')
 }
 
@@ -261,7 +276,7 @@ pub fn (db DB) create_table(table_name string, columns []string) {
 // Sleeps for a specified amount of time when a table is locked. The handler
 // will sleep multiple times until at least "ms" milliseconds of sleeping have accumulated.
 // (see https://www.sqlite.org/c3ref/busy_timeout.html)
-pub fn (db DB) busy_timeout(ms int) int {
+pub fn (db &DB) busy_timeout(ms int) int {
 	return C.sqlite3_busy_timeout(db.conn, ms)
 }
 
@@ -270,7 +285,7 @@ pub fn (db DB) busy_timeout(ms int) int {
 // off: No syncs at all. (fastest)
 // normal: Sync after each sequence of critical disk operations.
 // full: Sync after each critical disk operation (slowest).
-pub fn (db DB) synchronization_mode(sync_mode SyncMode) {
+pub fn (db &DB) synchronization_mode(sync_mode SyncMode) {
 	if sync_mode == .off {
 		db.exec('pragma synchronous = OFF;')
 	} else if sync_mode == .full {
@@ -286,7 +301,7 @@ pub fn (db DB) synchronization_mode(sync_mode SyncMode) {
 // delete: At the conclusion of a transaction, journal file is deleted.
 // truncate: Journal file is truncated to a length of zero bytes.
 // persist: Journal file is left in place, but the header is overwritten to indicate journal is no longer valid.
-pub fn (db DB) journal_mode(journal_mode JournalMode) {
+pub fn (db &DB) journal_mode(journal_mode JournalMode) {
 	if journal_mode == .off {
 		db.exec('pragma journal_mode = OFF;')
 	} else if journal_mode == .delete {
