@@ -2,8 +2,9 @@ module main
 
 import os
 import term
-import v.pref
 import regex
+import v.pref
+import os.cmdline
 
 // Symbol type to search
 enum Symbol {
@@ -31,6 +32,10 @@ enum Mutability {
 }
 
 const (
+	args    = os.args[2..]
+	verbose = '-v' in cmdline.only_options(args)
+	header  = '-h' in cmdline.only_options(args)
+	format  = '-f' in cmdline.only_options(args)
 	symbols = {
 		'fn':        Symbol.@fn
 		'struct':    .@struct
@@ -104,8 +109,7 @@ fn invalid_option(invalid ParamOption, arg string) {
 
 fn valid_args_quantity_or_show_help() {
 	if true in [
-		os.args.len < 3,
-		'-h' in os.args,
+		args.len < 1,
 		'-help' in os.args,
 		'--help' in os.args,
 		os.args[1..] == ['where', 'help'],

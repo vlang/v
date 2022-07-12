@@ -18,7 +18,6 @@ mut:
 }
 
 fn (mut fdr Finder) configure_from_arguments() {
-	args := os.args[2..]
 	match args.len {
 		1 {
 			fdr.name = args[0]
@@ -99,7 +98,7 @@ fn (mut fdr Finder) search_for_matches() {
 			'.*$sy$sp$na${sp}.*' // for struct, enum and interface
 		}
 	}
-	println(query)
+	// println(query)
 	is_const := fdr.symbol == .@const
 	for file in files_to_search {
 		n_line, line := search_within_file(file, query, is_const, fdr.visib, fdr.mutab)
@@ -110,11 +109,16 @@ fn (mut fdr Finder) search_for_matches() {
 }
 
 fn (fdr Finder) show_results() {
-	print(fdr)
-	if fdr.matches.len < 1 {
+	if fdr.matches.len < 1 && (verbose || header) {
+		print(fdr)
 		println(maybe_color(term.bright_yellow, 'No Matches found'))
-	} else {
+	} else if verbose || header {
+		print(fdr)
 		println(maybe_color(term.bright_green, '$fdr.matches.len matches Found\n'))
+		for result in fdr.matches {
+			result.show()
+		}
+	} else {
 		for result in fdr.matches {
 			result.show()
 		}
@@ -159,5 +163,9 @@ fn (mtc Match) show() {
 	path := maybe_color(term.bright_magenta, mtc.path)
 	line := maybe_color(term.bright_yellow, '$mtc.line')
 	text := maybe_color(term.bright_green, '$mtc.text')
-	println('$path\n$line : [ $text ]\n')
+	if verbose || format {
+		println('$path\n$line : [ $text ]\n')
+	} else {
+		println('$path:$line: $text')
+	}
 }

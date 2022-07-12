@@ -32,6 +32,10 @@ params:
                         Restrict to search symbols with the given mutability.
   -m-of [struct_name]   (just for fn symbol_name).
                         Restrict to search fn as method of the given struct.
+flags:
+  -h                    Include header
+  -f                    Format output (each match uses 3 lines)
+  -v                    For both above
 
 Note: 
   This tool is inspired by the vdoc tool and its design. However, this is 
