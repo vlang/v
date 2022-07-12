@@ -72,44 +72,37 @@ fn (mut fdr Finder) search_for_matches() {
 		files_to_search << collect_v_files(path, recursive) or { panic(err) }
 	}
 
-	// Build regex query
+	// Auxiliar rgx
 	sp := r'\s*'
 	op := r'\('
 	cp := r'\)'
-	vi := match fdr.visib {
-		.all { '.*' }
-		.@pub { '.*pub$sp' }
-		.pri { '(?!.*pub)$sp' } // Thank you @btiffin#4552
-	}
-	mu := match fdr.mutab {
-		.any { '.*' }
-		.yes { 'mut$sp' }
-		.not { '(?!mut)$sp' }
-	}
+
+	// Build regex query
 	sy := '$fdr.symbol'
-	st := if fdr.mth_of != '' { '$op$sp[a-z].*$sp$fdr.mth_of$cp$sp' } else { '.*' }
-	na := '[ |\t]$fdr.name'
+	st := if fdr.mth_of != '' { '$sp$op$sp[a-z].*$sp$fdr.mth_of$cp$sp' } else { '.*' }
+	na := '$fdr.name'
 
 	query := match fdr.symbol {
-		.regexp {
-			if fdr.visib == .all { '$mu$na' } else { '$vi$mu$na' }
+		.@fn {
+			'.*$sy$st$na$sp${op}.*${cp}.*'
 		}
 		.var {
-			if fdr.visib == .all { '$mu$na$sp:=.*' } else { '$vi$mu$na$sp:=.*' }
+			'.*$na$sp:=.*'
 		}
 		.@const {
-			'$vi$na $sp=.*'
+			'.*$na$sp=.*'
 		}
-		.@fn {
-			'$vi$sy$st$na$sp${op}.*${cp}.*'
+		.regexp {
+			'$na'
 		}
 		else {
-			'$vi$sy$na .*' // for struct, enum and interface
+			'.*$sy$sp$na${sp}.*' // for struct, enum and interface
 		}
 	}
+	println(query)
 	is_const := fdr.symbol == .@const
 	for file in files_to_search {
-		n_line, line := search_within_file(file, query, is_const)
+		n_line, line := search_within_file(file, query, is_const, fdr.visib, fdr.mutab)
 		if n_line != 0 {
 			fdr.matches << Match{file, n_line, line}
 		}
@@ -131,13 +124,13 @@ fn (fdr Finder) show_results() {
 fn (fdr Finder) str() string {
 	v := maybe_color(term.bright_red, '$fdr.visib')
 	m := maybe_color(term.bright_red, '$fdr.mutab')
-	st := if fdr.mth_of != '' { ' ( $fdr.mth_of)' } else { '' }
+	st := if fdr.mth_of != '' { ' ( _ $fdr.mth_of)' } else { '' }
 	s := maybe_color(term.bright_magenta, '$fdr.symbol')
-	n := maybe_color(term.bright_blue, '$fdr.name')
+	n := maybe_color(term.bright_cyan, '$fdr.name')
 
-	mm := if fdr.modul != '' { maybe_color(term.bright_blue, '$fdr.modul') } else { '' }
+	mm := if fdr.modul != '' { maybe_color(term.blue, '$fdr.modul') } else { '' }
 	dd := if fdr.dirs.len != 0 {
-		fdr.dirs.map(maybe_color(term.bright_blue, it))
+		fdr.dirs.map(maybe_color(term.blue, it))
 	} else {
 		fdr.dirs
 	}

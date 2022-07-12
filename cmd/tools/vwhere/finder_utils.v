@@ -156,16 +156,43 @@ fn collect_v_files(path string, recursive bool) ?[]string {
 	return all_files
 }
 
-fn search_within_file(file string, query string, is_const bool) (int, string) {
+fn search_within_file(file string, query string, is_const bool, v Visibility, m Mutability) (int, string) {
 	mut re := regex.regex_opt(query) or { panic(err) }
 	lines := os.read_lines(file) or { panic(err) }
 	mut const_found := if is_const { false } else { true }
 	mut n_line := 1
 	for line in lines {
-		if line.contains('const') {
+		if line.starts_with('const') {
 			const_found = true
 		}
 		if re.matches_string(line) && const_found {
+			words := line.split(' ').map(it.trim('\t'))
+			match v {
+				.all {}
+				.@pub {
+					if 'pub' !in words {
+						continue
+					}
+				}
+				.pri {
+					if 'pub' in words {
+						continue
+					}
+				}
+			}
+			match m {
+				.any {}
+				.yes {
+					if 'mut' !in words {
+						continue
+					}
+				}
+				.not {
+					if 'mut' in words {
+						continue
+					}
+				}
+			}
 			return n_line, line.replace(' {', '')
 		}
 		n_line++
