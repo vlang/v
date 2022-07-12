@@ -37,7 +37,8 @@ fn test_conditional_executable_removal() ? {
 	}
 
 	original_file_list := os.ls(dir)?
-	new_file_list := arrays.concat(original_file_list, executable)
+	mut new_file_list := original_file_list.clone()
+	new_file_list << executable
 
 	assert os.execute('${os.quoted_path(@VEXE)} run .').output.trim_space() == 'Hello World!'
 
