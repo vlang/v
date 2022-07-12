@@ -4,18 +4,6 @@ import os
 
 const test_path = 'v_run_check'
 
-fn arrays_are_equivalent(a []string, b []string) bool {
-	if a.len != b.len {
-		return false
-	}
-	for item in a {
-		if item !in b {
-			return false
-		}
-	}
-	return true
-}
-
 fn test_conditional_executable_removal() ? {
 	// Setup the sample project
 	dir := os.join_path(os.temp_dir(), test_path)
@@ -35,21 +23,23 @@ fn test_conditional_executable_removal() ? {
 		executable += '.exe'
 	}
 
-	original_file_list := os.ls(dir)?
-	mut new_file_list := original_file_list.clone()
-	new_file_list << executable
+	original_file_list_ := os.ls(dir)?
+	dump(original_file_list_)
+	assert executable !in original_file_list_
 
 	assert os.execute('${os.quoted_path(@VEXE)} run .').output.trim_space() == 'Hello World!'
+	after_run_file_list := os.ls(dir)?
+	dump(after_run_file_list)
+	assert executable !in after_run_file_list
 
-	assert arrays_are_equivalent(os.ls(dir)?, original_file_list)
-
-	assert os.execute('${os.quoted_path(@VEXE)} .').output == ''
-
+	assert os.execute('${os.quoted_path(@VEXE)} .').exit_code == 0
 	assert os.execute('./$executable').output.trim_space() == 'Hello World!'
-
-	assert arrays_are_equivalent(os.ls(dir)?, new_file_list)
+	after_compilation__ := os.ls(dir)?
+	dump(after_compilation__)
+	assert executable in after_compilation__
 
 	assert os.execute('${os.quoted_path(@VEXE)} run .').output.trim_space() == 'Hello World!'
-
-	assert arrays_are_equivalent(os.ls(dir)?, new_file_list)
+	after_second_run___ := os.ls(dir)?
+	dump(after_second_run___)
+	assert executable in after_second_run___
 }
