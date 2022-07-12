@@ -1,7 +1,6 @@
 module main
 
 import os
-import arrays
 
 const test_path = 'v_run_check'
 
