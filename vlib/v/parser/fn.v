@@ -819,8 +819,8 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 			if is_mut {
 				p.next()
 			}
-			if p.fn_language == .c && p.tok.kind == .name && p.tok.lit.len > 0
-				&& !p.tok.lit[0].is_capital() && p.peek_tok.kind !in [.comma, .rpar, .dot] {
+			if p.fn_language == .c && p.tok.kind == .name
+				&& p.peek_tok.kind !in [.comma, .rpar, .dot] {
 				name = p.tok.lit
 				p.next()
 			}
