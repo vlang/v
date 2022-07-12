@@ -406,7 +406,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 					return ast.void_type
 				} else if left_value_sym.kind == .sum_type {
-					if right_final_sym.kind != .array {
+					if right_sym.kind != .array {
 						if !c.table.is_sumtype_or_in_variant(left_value_type, ast.mktyp(right_type)) {
 							c.error('cannot append `$right_sym.name` to `$left_sym.name`',
 								right_pos)

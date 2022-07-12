@@ -695,8 +695,9 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 		tmp_var := g.new_tmp_var()
 		array_info := left.unaliased_sym.info as ast.Array
 		noscan := g.check_noscan(array_info.elem_type)
-		//&& array_info.elem_type != g.unwrap_generic(node.right_type)
-		if right.unaliased_sym.kind == .array && array_info.elem_type != right.typ {
+		if right.unaliased_sym.kind == .array && array_info.elem_type != right.typ
+			&& !(right.sym.kind == .alias
+			&& g.table.sumtype_has_variant(array_info.elem_type, node.right_type, false)) {
 			// push an array => PUSH_MANY, but not if pushing an array to 2d array (`[][]int << []int`)
 			g.write('_PUSH_MANY${noscan}(')
 			mut expected_push_many_atype := left.typ
