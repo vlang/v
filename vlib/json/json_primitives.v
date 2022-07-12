@@ -218,14 +218,14 @@ fn json_parse(s string) &C.cJSON {
 fn json_print(json &C.cJSON) string {
 	s := C.cJSON_PrintUnformatted(json)
 	r := unsafe { tos_clone(&u8(s)) }
-    C.cJSON_free(s)
+	C.cJSON_free(s)
 	return r
 }
 
 fn json_print_pretty(json &C.cJSON) string {
 	s := C.cJSON_Print(json)
 	r := unsafe { tos_clone(&u8(s)) }
-    C.cJSON_free(s)
+	C.cJSON_free(s)
 	return r
 }
 
