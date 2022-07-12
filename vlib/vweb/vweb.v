@@ -233,7 +233,6 @@ pub fn (mut ctx Context) text(s string) Result {
 pub fn (mut ctx Context) json<T>(j T) Result {
 	json_s := json.encode(j)
 	ctx.send_response_to_client('application/json', json_s)
-	json.free_str(json_s)
 	return Result{}
 }
 
@@ -241,7 +240,6 @@ pub fn (mut ctx Context) json<T>(j T) Result {
 pub fn (mut ctx Context) json_pretty<T>(j T) Result {
 	json_s := json.encode_pretty(j)
 	ctx.send_response_to_client('application/json', json_s)
-	json.free_str(json_s)
 	return Result{}
 }
 
