@@ -11,6 +11,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 	mut decl_sym := c.table.sym(node.typ)
 	is_js := node.language == .js
 	if mut decl_sym.info is ast.Interface {
+		mut has_generic_types := false
 		if node.embeds.len > 0 {
 			all_embeds := c.expand_iface_embeds(node, 0, node.embeds)
 			// eprintln('> node.name: $node.name | node.embeds.len: $node.embeds.len | all_embeds: $all_embeds.len')
@@ -31,6 +32,9 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 			}
 			for embed in all_embeds {
 				isym := c.table.sym(embed.typ)
+				if embed.typ.has_flag(.generic) {
+					has_generic_types = true
+				}
 				if isym.kind != .interface_ {
 					c.error('interface `$node.name` tries to embed `$isym.name`, but `$isym.name` is not an interface, but `$isym.kind`',
 						embed.pos)
@@ -109,9 +113,15 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 					c.error('method $method.name returns non JS type', method.pos)
 				}
 			}
+			if method.return_type.has_flag(.generic) {
+				has_generic_types = true
+			}
 			for j, param in method.params {
 				if j == 0 && is_js {
 					continue // no need to check first param
+				}
+				if param.typ.has_flag(.generic) {
+					has_generic_types = true
 				}
 				c.ensure_type_exists(param.typ, param.pos) or { return }
 				if param.name in reserved_type_names {
@@ -145,6 +155,9 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 				c.check_valid_snake_case(field.name, 'field name', field.pos)
 			}
 			c.ensure_type_exists(field.typ, field.pos) or { return }
+			if field.typ.has_flag(.generic) {
+				has_generic_types = true
+			}
 			if is_js {
 				tsym := c.table.sym(field.typ)
 				if !tsym.is_js_compatible() {
@@ -160,6 +173,10 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 					c.error('field name `$field.name` duplicate', field.pos)
 				}
 			}
+		}
+		if node.generic_types.len == 0 && has_generic_types {
+			c.error('generic interface declaration must specify the generic type names, e.g. Foo<T>',
+				node.pos)
 		}
 	}
 }
