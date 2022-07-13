@@ -13,4 +13,4 @@
 - [x] Anonymous structs
 - [ ] -usecache on by default
 - [ ] -skip-unused on by default
-
+- [ ] `any` type
