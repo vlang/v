@@ -3,11 +3,11 @@ module main
 import os
 import term
 import v.pref
-import os.cmdline
 
 // Symbol type to search
 enum Symbol {
 	@fn
+	method
 	@struct
 	@interface
 	@enum
@@ -31,12 +31,13 @@ enum Mutability {
 }
 
 const (
-	args    = os.args[2..]
-	verbose = '-v' in cmdline.only_options(args)
-	header  = '-h' in cmdline.only_options(args)
-	format  = '-f' in cmdline.only_options(args)
+	// args    = os.args[2..]
+	// verbose = '-v' in cmdline.only_options(args)
+	// header  = '-h' in cmdline.only_options(args)
+	// format  = '-f' in cmdline.only_options(args)
 	symbols = {
 		'fn':        Symbol.@fn
+		'method':    .method
 		'struct':    .@struct
 		'interface': .@interface
 		'enum':      .@enum
@@ -55,7 +56,7 @@ const (
 		'not': .not
 	}
 	vexe        = pref.vexe_path()
-	vroot       = os.dir(vexe)
+	vroot       = os.join_path(os.dir(vexe), 'vlib')
 	vmod_dir    = os.vmodules_dir()
 	vmod_paths  = os.vmodules_paths()[1..]
 	current_dir = os.abs_path('.')
@@ -106,7 +107,7 @@ fn invalid_option(invalid ParamOption, arg string) {
 	}
 }
 
-fn valid_args_quantity_or_show_help() {
+fn valid_args_quantity_or_show_help(args []string) {
 	if true in [
 		args.len < 1,
 		'-help' in os.args,
@@ -157,4 +158,16 @@ fn collect_v_files(path string, recursive bool) ?[]string {
 		}
 	}
 	return all_files
+}
+
+fn resolve_module(path string) ?string {
+	if os.is_dir(path) {
+		return path
+	} else if os.is_dir(os.join_path(vmod_dir, path)) {
+		return os.join_path(vmod_dir, path)
+	} else if os.is_dir(os.join_path(vroot, path)) {
+		return os.join_path(vroot, path)
+	} else {
+		return error('Path: $path not found')
+	}
 }

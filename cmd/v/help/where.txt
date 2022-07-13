@@ -4,8 +4,8 @@ Usage:
 Examples:
   v where fn main
   v where struct User
-  v where fn say_hello -mod Person
-  v where fn area -m-of Square
+  v where method Square.area
+  v where fn pow -mod math
   v where interface callable -dir some -dir other
 
 --------------------------------------------------------------------------------
@@ -14,6 +14,7 @@ Prints the location of the searched symbols in the scope of the current project.
 
 symbol_name can be:
   fn                    (by default if omit [symbol_type])
+  method                require Struct.method notation
   struct
   interface
   enum
@@ -30,12 +31,10 @@ params:
                         Restrict to search symbols with the given visibility.
   -mut  [mutability]    Can be: any, yes, not (any by default if not provided).
                         Restrict to search symbols with the given mutability.
-  -m-of [struct_name]   (just for fn symbol_name).
-                        Restrict to search fn as method of the given struct.
 flags:
-  -h                    Include header
+  -h                    include Header
   -f                    Format output (each match uses 3 lines)
-  -v                    For both above
+  -v                    for both above (more Verbose)
 
 Note: 
   This tool is inspired by the vdoc tool and its design. However, this is 

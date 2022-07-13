@@ -8,17 +8,17 @@ import os.cmdline
 // Finder is entity that contains all the logic
 struct Finder {
 mut:
-	symbol  Symbol
-	visib   Visibility
-	mutab   Mutability
-	name    string
-	modul   string
-	mth_of  string
-	dirs    []string
-	matches []Match
+	symbol   Symbol
+	visib    Visibility
+	mutab    Mutability
+	name     string
+	modul    string
+	receiver string
+	dirs     []string
+	matches  []Match
 }
 
-fn (mut fdr Finder) configure_from_arguments() {
+fn (mut fdr Finder) configure_from_arguments(args []string) {
 	match args.len {
 		1 {
 			fdr.name = args[0]
@@ -29,7 +29,17 @@ fn (mut fdr Finder) configure_from_arguments() {
 		}
 		else {
 			fdr.symbol.set_from_str(args[0])
-			fdr.name = args[1]
+			if fdr.symbol == .method && !args[1].contains('.') {
+				make_and_print_error('method require a special notation:', [
+					'Receiver.method',
+				], '$fdr.name')
+			} else if fdr.symbol == .method {
+				temp_args := args[1].split('.')
+				fdr.receiver = temp_args[0]
+				fdr.name = temp_args[1]
+			} else {
+				fdr.name = args[1]
+			}
 			fdr.visib.set_from_str(cmdline.option(args, '-vis', '${Visibility.all}'))
 			fdr.mutab.set_from_str(cmdline.option(args, '-mut', '${Mutability.any}'))
 			if fdr.symbol != .var && fdr.mutab != .any {
@@ -37,11 +47,6 @@ fn (mut fdr Finder) configure_from_arguments() {
 					['var'], '$fdr.symbol')
 			}
 			fdr.modul = cmdline.option(args, '-mod', '')
-			fdr.mth_of = cmdline.option(args, '-m-of', '')
-			if fdr.symbol !in [.@fn, .regexp] && fdr.mth_of != '' {
-				make_and_print_error('-m-of $fdr.mth_of just can be setted with symbol_types:',
-					['fn', 'regexp'], '$fdr.symbol')
-			}
 			fdr.dirs = cmdline.options(args, '-dir')
 		}
 	}
@@ -58,19 +63,27 @@ fn (mut fdr Finder) search_for_matches() {
 		}
 		paths_to_search << vmod_paths
 	} else if fdr.dirs.len == 0 && fdr.modul != '' {
-		paths_to_search << if fdr.modul == 'main' { current_dir } else { fdr.modul }
+		paths_to_search << if fdr.modul == 'main' { current_dir } else { resolve_module(fdr.modul) or {
+				panic(err)} }
 	} else if fdr.dirs.len != 0 && fdr.modul == '' {
 		recursive = false
-		paths_to_search << fdr.dirs
+		paths_to_search << fdr.dirs.map(resolve_module(it) or { panic(err) })
 	} else {
 		recursive = false
-		paths_to_search << if fdr.modul == 'main' { current_dir } else { fdr.modul }
-		paths_to_search << fdr.dirs
+		paths_to_search << if fdr.modul == 'main' { current_dir } else { resolve_module(fdr.modul) or {
+				panic(err)} }
+		paths_to_search << fdr.dirs.map(resolve_module(it) or { panic(err) })
 	}
+	// for p in paths_to_search {
+	// 	println(p)
+	// }
 	mut files_to_search := []string{}
 	for path in paths_to_search {
 		files_to_search << collect_v_files(path, recursive) or { panic(err) }
 	}
+	// for f in files_to_search {
+	// 	println(f)
+	// }
 
 	// Auxiliar rgx
 	sp := r'\s*'
@@ -79,12 +92,15 @@ fn (mut fdr Finder) search_for_matches() {
 
 	// Build regex query
 	sy := '$fdr.symbol'
-	st := if fdr.mth_of != '' { '$sp$op$sp[a-z].*$sp$fdr.mth_of$cp$sp' } else { '.*' }
+	st := if fdr.receiver != '' { '$sp$op$sp[a-z].*$sp$fdr.receiver$cp$sp' } else { '.*' }
 	na := '$fdr.name'
 
 	query := match fdr.symbol {
 		.@fn {
-			'.*$sy$st$na$sp${op}.*${cp}.*'
+			'.*$sy$sp$na$sp${op}.*${cp}.*'
+		}
+		.method {
+			'.*fn$st$na$sp${op}.*${cp}.*'
 		}
 		.var {
 			'.*$na$sp:=.*'
@@ -129,16 +145,16 @@ fn (mut fdr Finder) search_within_file(file string, query string) {
 			}
 		}
 		if re.matches_string(line) && (const_found || line.contains('const')) {
-			words := line.split(' ').map(it.trim('\t'))
+			words := line.split(' ').filter(it != '').map(it.trim('\t'))
 			match fdr.visib {
 				.all {}
 				.@pub {
-					if 'pub' !in words {
+					if 'pub' !in words && fdr.symbol != .@const {
 						continue
 					}
 				}
 				.pri {
-					if 'pub' in words {
+					if 'pub' in words && fdr.symbol != .@const {
 						continue
 					}
 				}
@@ -156,13 +172,16 @@ fn (mut fdr Finder) search_within_file(file string, query string) {
 					}
 				}
 			}
-			fdr.matches << Match{file, n_line, line.replace(' {', '').trim('\t')}
+			fdr.matches << Match{file, n_line, words.join(' ').trim(' {')}
+		}
+		if line.starts_with(')') && fdr.symbol == .@const {
+			const_found = false
 		}
 		n_line++
 	}
 }
 
-fn (fdr Finder) show_results() {
+fn (fdr Finder) show_results(verbose bool, header bool, format bool) {
 	if fdr.matches.len < 1 && (verbose || header) {
 		print(fdr)
 		println(maybe_color(term.bright_yellow, 'No Matches found'))
@@ -170,11 +189,11 @@ fn (fdr Finder) show_results() {
 		print(fdr)
 		println(maybe_color(term.bright_green, '$fdr.matches.len matches Found\n'))
 		for result in fdr.matches {
-			result.show()
+			result.show(verbose, format)
 		}
 	} else {
 		for result in fdr.matches {
-			result.show()
+			result.show(verbose, format)
 		}
 	}
 }
@@ -182,7 +201,7 @@ fn (fdr Finder) show_results() {
 fn (fdr Finder) str() string {
 	v := maybe_color(term.bright_red, '$fdr.visib')
 	m := maybe_color(term.bright_red, '$fdr.mutab')
-	st := if fdr.mth_of != '' { ' ( _ $fdr.mth_of)' } else { '' }
+	st := if fdr.receiver != '' { ' ( _ $fdr.receiver)' } else { '' }
 	s := maybe_color(term.bright_magenta, '$fdr.symbol')
 	n := maybe_color(term.bright_cyan, '$fdr.name')
 
@@ -213,7 +232,7 @@ struct Match {
 	text string [required]
 }
 
-fn (mtc Match) show() {
+fn (mtc Match) show(verbose bool, format bool) {
 	path := maybe_color(term.bright_magenta, mtc.path)
 	line := maybe_color(term.bright_yellow, '$mtc.line')
 	text := maybe_color(term.bright_green, '$mtc.text')
