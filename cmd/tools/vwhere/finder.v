@@ -2,6 +2,7 @@ module main
 
 import os
 import term
+import regex
 import os.cmdline
 
 // Finder is entity that contains all the logic
@@ -89,7 +90,7 @@ fn (mut fdr Finder) search_for_matches() {
 			'.*$na$sp:=.*'
 		}
 		.@const {
-			'.*$na$sp=.*'
+			'.*$na$sp = .*'
 		}
 		.regexp {
 			'$na'
@@ -99,12 +100,65 @@ fn (mut fdr Finder) search_for_matches() {
 		}
 	}
 	// println(query)
-	is_const := fdr.symbol == .@const
 	for file in files_to_search {
-		n_line, line := search_within_file(file, query, is_const, fdr.visib, fdr.mutab)
-		if n_line != 0 {
-			fdr.matches << Match{file, n_line, line}
+		fdr.search_within_file(file, query)
+	}
+}
+
+fn (mut fdr Finder) search_within_file(file string, query string) {
+	mut re := regex.regex_opt(query) or { panic(err) }
+	lines := os.read_lines(file) or { panic(err) }
+	mut const_found := if fdr.symbol == .@const { false } else { true }
+	mut n_line := 1
+	for line in lines {
+		match fdr.visib {
+			.all {
+				if line.contains('const (') {
+					const_found = true
+				}
+			}
+			.@pub {
+				if line.contains('pub const (') {
+					const_found = true
+				}
+			}
+			.pri {
+				if line.contains('const (') && !line.contains('pub') {
+					const_found = true
+				}
+			}
 		}
+		if re.matches_string(line) && (const_found || line.contains('const')) {
+			words := line.split(' ').map(it.trim('\t'))
+			match fdr.visib {
+				.all {}
+				.@pub {
+					if 'pub' !in words {
+						continue
+					}
+				}
+				.pri {
+					if 'pub' in words {
+						continue
+					}
+				}
+			}
+			match fdr.mutab {
+				.any {}
+				.yes {
+					if 'mut' !in words {
+						continue
+					}
+				}
+				.not {
+					if 'mut' in words {
+						continue
+					}
+				}
+			}
+			fdr.matches << Match{file, n_line, line.replace(' {', '').trim('\t')}
+		}
+		n_line++
 	}
 }
 
