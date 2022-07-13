@@ -94,7 +94,6 @@ fn test_mysql_orm() {
 	}
 }
 
-
 fn test_orm() {
 	mut db := mysql.Connection{
 		host: 'localhost'
