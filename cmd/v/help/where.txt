@@ -24,8 +24,8 @@ symbol_name can be:
 
 params:
   -mod  [mod_name]      Restrict to search recursively only within of the given 
-                        module, if not provided search in entire v scope,
-                        RECOMMENDATION: use -mod main
+                        module, if not provided search in entire v scope
+                        (use -mod main to search inside all your project).
   -dir  [dir_path]      Restrict to search non recursively within the given 
                         folder/s, if not provided, search in entire v scope.
   -vis  [visibility]    Can be: all, pub, pri (all by default if not provided).

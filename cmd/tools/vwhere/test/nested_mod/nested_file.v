@@ -1,4 +1,4 @@
-module nested
+module nested_mod
 
 pub const (
 	a = 30
