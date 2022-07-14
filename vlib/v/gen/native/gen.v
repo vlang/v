@@ -135,7 +135,7 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) LocalVar|GlobalVar|Register {
 			}
 		}
 		else {
-			g.n_error('unsupported variable type')
+			g.n_error('unsupported variable type type:$obj name:$ident.name')
 		}
 	}
 }
@@ -451,7 +451,7 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, name string) {
 			vo := g.try_var_offset(expr.name)
 
 			if vo != -1 {
-				g.gen_var_to_string(.rax, expr)
+				g.gen_var_to_string(.rax, expr as ast.Ident)
 				g.gen_print_reg(.rax, 3, fd)
 				if newline {
 					g.gen_print('\n', fd)
@@ -646,7 +646,7 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 				match cond.left {
 					ast.Ident {
 						lit := cond.right as ast.IntegerLiteral
-						g.cmp_var(cond.left, lit.val.int())
+						g.cmp_var(cond.left as ast.Ident, lit.val.int())
 						match cond.op {
 							.gt {
 								jump_addr = g.cjmp(.jle)
@@ -950,7 +950,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.FloatLiteral {}
 		ast.Ident {
 			// XXX this is intel specific
-			g.mov_var_to_reg(.rax, node)
+			g.mov_var_to_reg(.rax, node as ast.Ident)
 		}
 		ast.IfExpr {
 			if node.is_comptime {

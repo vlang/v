@@ -182,10 +182,10 @@ fn (mut g Gen) cmp_var_reg(var Var, reg Register, config VarConfig) {
 			var_object := g.get_var_from_ident(var)
 			match var_object {
 				LocalVar {
-					g.cmp_var_reg(var_object, reg, config)
+					g.cmp_var_reg(var_object as LocalVar, reg, config)
 				}
 				GlobalVar {
-					g.cmp_var_reg(var_object, reg, config)
+					g.cmp_var_reg(var_object as GlobalVar, reg, config)
 				}
 				Register {
 					// TODO
@@ -214,10 +214,10 @@ fn (mut g Gen) cmp_var(var Var, val int, config VarConfig) {
 			var_object := g.get_var_from_ident(var)
 			match var_object {
 				LocalVar {
-					g.cmp_var(var_object, val, config)
+					g.cmp_var(var_object as LocalVar, val, config)
 				}
 				GlobalVar {
-					g.cmp_var(var_object, val, config)
+					g.cmp_var(var_object as GlobalVar, val, config)
 				}
 				Register {
 					// TODO
@@ -247,10 +247,10 @@ fn (mut g Gen) dec_var(var Var, config VarConfig) {
 			var_object := g.get_var_from_ident(var)
 			match var_object {
 				LocalVar {
-					g.dec_var(var_object, config)
+					g.dec_var(var_object as LocalVar, config)
 				}
 				GlobalVar {
-					g.dec_var(var_object, config)
+					g.dec_var(var_object as GlobalVar, config)
 				}
 				Register {
 					// TODO
@@ -279,10 +279,10 @@ fn (mut g Gen) inc_var(var Var, config VarConfig) {
 			var_object := g.get_var_from_ident(var)
 			match var_object {
 				LocalVar {
-					g.inc_var(var_object, config)
+					g.inc_var(var_object as LocalVar, config)
 				}
 				GlobalVar {
-					g.inc_var(var_object, config)
+					g.inc_var(var_object as GlobalVar, config)
 				}
 				Register {
 					// TODO
@@ -458,10 +458,10 @@ fn (mut g Gen) mov_reg_to_var(var Var, reg Register, config VarConfig) {
 			var_object := g.get_var_from_ident(var)
 			match var_object {
 				LocalVar {
-					g.mov_reg_to_var(var_object, reg, config)
+					g.mov_reg_to_var(var_object as LocalVar, reg, config)
 				}
 				GlobalVar {
-					g.mov_reg_to_var(var_object, reg, config)
+					g.mov_reg_to_var(var_object as GlobalVar, reg, config)
 				}
 				Register {
 					// TODO
@@ -518,10 +518,10 @@ fn (mut g Gen) mov_int_to_var(var Var, integer int, config VarConfig) {
 			var_object := g.get_var_from_ident(var)
 			match var_object {
 				LocalVar {
-					g.mov_int_to_var(var_object, integer, config)
+					g.mov_int_to_var(var_object as LocalVar, integer, config)
 				}
 				GlobalVar {
-					g.mov_int_to_var(var_object, integer, config)
+					g.mov_int_to_var(var_object as GlobalVar, integer, config)
 				}
 				Register {
 					// TODO
@@ -541,8 +541,17 @@ fn (mut g Gen) mov_int_to_var(var Var, integer int, config VarConfig) {
 					g.write8(u8(integer))
 					g.println('mov BYTE PTR[rbp-$offset.hex2()], $integer')
 				}
+				ast.i64_type_idx, ast.u64_type_idx, ast.isize_type_idx, ast.usize_type_idx,
+				ast.int_literal_type_idx {
+					g.write8(0x48)
+					g.write8(0xc7)
+					g.write8(0x45)
+					g.write8(var_addr)
+					g.write32(integer)
+					g.println('mov QWORD PTR[rbp-$offset.hex2()], $integer')
+				}
 				else {
-					g.n_error('unhandled mov int')
+					g.n_error('unhandled mov int type: $typ')
 				}
 			}
 		}
@@ -579,10 +588,10 @@ fn (mut g Gen) mov_var_to_reg(reg Register, var Var, config VarConfig) {
 			var_object := g.get_var_from_ident(var)
 			match var_object {
 				LocalVar {
-					g.mov_var_to_reg(reg, var_object, config)
+					g.mov_var_to_reg(reg, var_object as LocalVar, config)
 				}
 				GlobalVar {
-					g.mov_var_to_reg(reg, var_object, config)
+					g.mov_var_to_reg(reg, var_object as GlobalVar, config)
 				}
 				Register {
 					// TODO
@@ -1014,7 +1023,7 @@ pub fn (mut g Gen) gen_amd64_exit(expr ast.Expr) {
 			g.n_error('native exit builtin: Unsupported call $right')
 		}
 		ast.Ident {
-			g.mov_var_to_reg(.edi, expr)
+			g.mov_var_to_reg(.edi, expr as ast.Ident)
 		}
 		ast.IntegerLiteral {
 			g.mov(.edi, expr.val.int())
@@ -1359,7 +1368,7 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 					println('i=$i fn name= $name offset=$var_offset')
 					println(int(native.fn_arg_registers[i]))
 				}
-				g.mov_var_to_reg(native.fn_arg_registers[i], expr)
+				g.mov_var_to_reg(native.fn_arg_registers[i], expr as ast.Ident)
 			}
 			else {
 				g.v_error('unhandled call_fn (name=$name) node: $expr.type_name()', node.pos)
@@ -1490,30 +1499,30 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 				match node.op {
 					.plus_assign {
 						g.mov_var_to_reg(.rax, ident)
-						g.mov_var_to_reg(.rbx, right)
+						g.mov_var_to_reg(.rbx, right as ast.Ident)
 						g.add_reg(.rax, .rbx)
 						g.mov_reg_to_var(ident, .rax)
 					}
 					.minus_assign {
 						g.mov_var_to_reg(.rax, ident)
-						g.mov_var_to_reg(.rbx, right)
+						g.mov_var_to_reg(.rbx, right as ast.Ident)
 						g.sub_reg(.rax, .rbx)
 						g.mov_reg_to_var(ident, .rax)
 					}
 					.div_assign {
 						// this should be called when `a /= b` but it's not :?
 						g.mov_var_to_reg(.rax, ident)
-						g.mov_var_to_reg(.rbx, right)
+						g.mov_var_to_reg(.rbx, right as ast.Ident)
 						g.div_reg(.rax, .rbx)
 						g.mov_reg_to_var(ident, .rax)
 					}
 					.decl_assign {
 						g.allocate_var(name, g.get_sizeof_ident(ident), 0)
-						g.mov_var_to_reg(.rbx, right)
+						g.mov_var_to_reg(.rbx, right as ast.Ident)
 						g.mov_reg_to_var(ident, .rax)
 					}
 					.assign {
-						g.mov_var_to_reg(.rbx, right)
+						g.mov_var_to_reg(.rbx, right as ast.Ident)
 						g.mov_reg_to_var(ident, .rax)
 					}
 					else {
@@ -1637,7 +1646,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	}
 	match node.left {
 		ast.Ident {
-			g.mov_var_to_reg(.eax, node.left)
+			g.mov_var_to_reg(.eax, node.left as ast.Ident)
 		}
 		else {}
 	}
@@ -1874,7 +1883,7 @@ fn (mut g Gen) condition(infix_expr ast.InfixExpr, neg bool) int {
 				ast.IntegerLiteral {
 					// var < 4
 					lit := infix_expr.right as ast.IntegerLiteral
-					g.cmp_var(infix_expr.left, lit.val.int())
+					g.cmp_var(infix_expr.left as ast.Ident, lit.val.int())
 				}
 				ast.Ident {
 					// var < var2
@@ -1991,12 +2000,12 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 		ast.Ident {
 			match infix_expr.right {
 				ast.Ident {
-					g.mov_var_to_reg(.rax, infix_expr.right)
-					g.cmp_var_reg(infix_expr.left, .rax)
+					g.mov_var_to_reg(.rax, infix_expr.right as ast.Ident)
+					g.cmp_var_reg(infix_expr.left as ast.Ident, .rax)
 				}
 				ast.IntegerLiteral {
 					lit := infix_expr.right as ast.IntegerLiteral
-					g.cmp_var(infix_expr.left, lit.val.int())
+					g.cmp_var(infix_expr.left as ast.Ident, lit.val.int())
 				}
 				else {
 					g.n_error('unhandled expression type')
