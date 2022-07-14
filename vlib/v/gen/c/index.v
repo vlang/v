@@ -327,15 +327,27 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 	elem_sym := g.table.sym(elem_type)
 	is_fn_index_call := g.is_fn_index_call && elem_sym.info is ast.FnType
 
-	if is_fn_index_call {
-		g.write('(*')
-	}
-	if node.left_type.is_ptr() {
-		g.write('(*')
+	if node.left is ast.ArrayInit {
+		tmp := g.new_tmp_var()
+		line := g.go_before_stmt(0).trim_space()
+		styp := g.typ(node.left_type)
+		g.empty_line = true
+		g.write('$styp $tmp = ')
 		g.expr(node.left)
-		g.write(')')
+		g.writeln(';')
+		g.write(line)
+		g.write(tmp)
 	} else {
-		g.expr(node.left)
+		if is_fn_index_call {
+			g.write('(*')
+		}
+		if node.left_type.is_ptr() {
+			g.write('(*')
+			g.expr(node.left)
+			g.write(')')
+		} else {
+			g.expr(node.left)
+		}
 	}
 	g.write('[')
 	direct := unsafe { g.fn_decl != 0 } && g.fn_decl.is_direct_arr
