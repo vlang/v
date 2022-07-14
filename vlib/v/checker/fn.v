@@ -207,7 +207,16 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					}
 				}
 			}
-			//&& node.params.len == 1 && param.typ.is_ptr() {
+			if param.typ.has_flag(.generic) {
+				generic_names := c.table.generic_type_names(param.typ)
+				for name in generic_names {
+					if name !in node.generic_names {
+						fn_generic_names := node.generic_names.join(', ')
+						c.error('generic type name `$name` is not mentioned in fn `$node.name<$fn_generic_names>`',
+							param.type_pos)
+					}
+				}
+			}
 			if (c.pref.translated || c.file.is_translated) && node.is_variadic && param.typ.is_ptr() {
 				// TODO c2v hack to fix `(const char *s, ...)`
 				param.typ = ast.int_type.ref()

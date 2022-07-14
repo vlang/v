@@ -1686,6 +1686,70 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 	return none
 }
 
+fn generic_names_push_with_filter(mut to_names []string, from_names []string) {
+	for name in from_names {
+		if name !in to_names {
+			to_names << name
+		}
+	}
+}
+
+pub fn (mut t Table) generic_type_names(generic_type Type) []string {
+	mut names := []string{}
+	mut sym := t.sym(generic_type)
+	if sym.name.len == 1 && sym.name[0].is_capital() {
+		names << sym.name
+		return names
+	}
+	match mut sym.info {
+		Array {
+			mut elem_type := sym.info.elem_type
+			mut elem_sym := t.sym(elem_type)
+			mut dims := 1
+			for mut elem_sym.info is Array {
+				elem_type = elem_sym.info.elem_type
+				elem_sym = t.sym(elem_type)
+				dims++
+			}
+			names << t.generic_type_names(elem_type)
+		}
+		ArrayFixed {
+			names << t.generic_type_names(sym.info.elem_type)
+		}
+		Chan {
+			names << t.generic_type_names(sym.info.elem_type)
+		}
+		FnType {
+			mut func := sym.info.func
+			if func.return_type.has_flag(.generic) {
+				names << t.generic_type_names(func.return_type)
+			}
+			func.params = func.params.clone()
+			for mut param in func.params {
+				if param.typ.has_flag(.generic) {
+					generic_names_push_with_filter(mut names, t.generic_type_names(param.typ))
+				}
+			}
+		}
+		MultiReturn {
+			for ret_type in sym.info.types {
+				generic_names_push_with_filter(mut names, t.generic_type_names(ret_type))
+			}
+		}
+		Map {
+			names << t.generic_type_names(sym.info.key_type)
+			generic_names_push_with_filter(mut names, t.generic_type_names(sym.info.value_type))
+		}
+		Struct, Interface, SumType {
+			if sym.info.is_generic {
+				names << sym.info.generic_types.map(t.sym(it).name)
+			}
+		}
+		else {}
+	}
+	return names
+}
+
 pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concrete_types []Type) Type {
 	mut final_concrete_types := []Type{}
 	mut fields := []StructField{}
