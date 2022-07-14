@@ -2130,6 +2130,30 @@ Private fields are available only inside the same [module](#modules), any attemp
 to directly access them from another module will cause an error during compilation.
 Public immutable fields are readonly everywhere.
 
+### Anonymous structs
+
+V supports anonymous structs: structs that don't have to be declared separately
+with a struct name.
+
+```
+struct Book {
+	author struct  {
+		name string
+		age  int
+	}
+	title string
+}
+
+book := Book{
+	author: struct {
+		name: 'Samantha Black'
+		age: 24
+	}
+}
+assert book.author.name == 'Samantha Black'
+assert book.author.age == 24
+```
+
 ### Methods
 
 ```v
