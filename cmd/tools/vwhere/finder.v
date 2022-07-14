@@ -23,16 +23,12 @@ fn (mut fdr Finder) configure_from_arguments(args []string) {
 		1 {
 			fdr.name = args[0]
 		}
-		2 {
-			fdr.symbol.set_from_str(args[0])
-			fdr.name = args[1]
-		}
 		else {
 			fdr.symbol.set_from_str(args[0])
 			if fdr.symbol == .method && !args[1].contains('.') {
 				make_and_print_error('method require a special notation:', [
 					'Receiver.method',
-				], '$fdr.name')
+				], '${args[1]}')
 			} else if fdr.symbol == .method {
 				temp_args := args[1].split('.')
 				fdr.receiver = temp_args[0]
@@ -40,7 +36,15 @@ fn (mut fdr Finder) configure_from_arguments(args []string) {
 			} else {
 				fdr.name = args[1]
 			}
+			if fdr.name.contains('-') {
+				make_and_print_error('It seems you forgot positional arg name:', [], fdr.name)
+			}
 			fdr.visib.set_from_str(cmdline.option(args, '-vis', '${Visibility.all}'))
+			if fdr.symbol == .var && fdr.visib != .all {
+				make_and_print_error('-vis $fdr.visib just can be setted with symbol_type:',
+					['fn', 'method', 'const', 'struct', 'enum', 'interface', 'regexp'],
+					'$fdr.symbol')
+			}
 			fdr.mutab.set_from_str(cmdline.option(args, '-mut', '${Mutability.any}'))
 			if fdr.symbol != .var && fdr.mutab != .any {
 				make_and_print_error('-mut $fdr.mutab just can be setted with symbol_type:',
@@ -58,8 +62,8 @@ fn (mut fdr Finder) search_for_matches() {
 	mut paths_to_search := []string{}
 	if fdr.dirs.len == 0 && fdr.modul == '' {
 		paths_to_search << [current_dir, vmod_dir]
-		if vroot !in paths_to_search {
-			paths_to_search << vroot
+		if vlib_dir !in paths_to_search {
+			paths_to_search << vlib_dir
 		}
 		paths_to_search << vmod_paths
 	} else if fdr.dirs.len == 0 && fdr.modul != '' {
@@ -181,7 +185,7 @@ fn (mut fdr Finder) search_within_file(file string, query string) {
 	}
 }
 
-fn (fdr Finder) show_results(verbose bool, header bool, format bool) {
+fn (fdr Finder) show_results() {
 	if fdr.matches.len < 1 && (verbose || header) {
 		print(fdr)
 		println(maybe_color(term.bright_yellow, 'No Matches found'))
@@ -189,11 +193,11 @@ fn (fdr Finder) show_results(verbose bool, header bool, format bool) {
 		print(fdr)
 		println(maybe_color(term.bright_green, '$fdr.matches.len matches Found\n'))
 		for result in fdr.matches {
-			result.show(verbose, format)
+			result.show()
 		}
 	} else {
 		for result in fdr.matches {
-			result.show(verbose, format)
+			result.show()
 		}
 	}
 }
@@ -232,7 +236,7 @@ struct Match {
 	text string [required]
 }
 
-fn (mtc Match) show(verbose bool, format bool) {
+fn (mtc Match) show() {
 	path := maybe_color(term.bright_magenta, mtc.path)
 	line := maybe_color(term.bright_yellow, '$mtc.line')
 	text := maybe_color(term.bright_green, '$mtc.text')
