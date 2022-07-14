@@ -14,6 +14,7 @@
 - `[skip]` field will be skipped
 - `[sql: type]` where `type` is a V type such as `int` or `f64`, or special type `serial`
 - `[sql: 'name']` sets a custom column name for the field
+- `[sql_type: 'SQL TYPE']` sets the sql type which is used in sql
 
 ## Usage
 
