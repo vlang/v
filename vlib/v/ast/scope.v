@@ -103,6 +103,11 @@ pub fn (s &Scope) known_var(name string) bool {
 	return true
 }
 
+pub fn (s &Scope) known_global(name string) bool {
+	s.find_global(name) or { return false }
+	return true
+}
+
 pub fn (s &Scope) known_const(name string) bool {
 	s.find_const(name) or { return false }
 	return true

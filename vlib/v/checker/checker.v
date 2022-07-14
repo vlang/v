@@ -1900,7 +1900,13 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			}
 		}
 		else {
-			if node.kind != 'define' {
+			if node.kind == 'define' {
+				if !c.is_builtin_mod && !c.file.path.ends_with('.c.v')
+					&& !c.file.path.contains('vlib' + os.path_separator) {
+					c.error("#define can only be used in vlib (V's standard library) and *.c.v files",
+						node.pos)
+				}
+			} else {
 				c.error('expected `#define`, `#flag`, `#include`, `#insert` or `#pkgconfig` not $node.val',
 					node.pos)
 			}
@@ -2771,6 +2777,14 @@ pub fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		}
 		if mut obj := c.file.global_scope.find(name) {
 			match mut obj {
+				ast.GlobalField {
+					node.kind = .global
+					node.info = ast.IdentVar{
+						typ: obj.typ
+					}
+					node.obj = obj
+					return obj.typ
+				}
 				ast.ConstField {
 					if !(obj.is_pub || obj.mod == c.mod || c.pref.is_test) {
 						c.error('constant `$obj.name` is private', node.pos)
@@ -3290,6 +3304,9 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 		if !right_type.is_pointer() && !c.pref.translated && !c.file.is_translated {
 			s := c.table.type_to_str(right_type)
 			c.error('invalid indirect of `$s`', node.pos)
+		}
+		if right_type.is_voidptr() {
+			c.error('cannot dereference to void', node.pos)
 		}
 	}
 	if node.op == .bit_not && !right_type.is_int() && !c.pref.translated && !c.file.is_translated {

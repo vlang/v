@@ -452,8 +452,9 @@ pub struct StructInit {
 pub:
 	pos             token.Pos
 	name_pos        token.Pos
-	is_short        bool // Foo{val1, val2}
-	is_short_syntax bool // foo(field1: val1, field2: val2)
+	no_keys         bool // `Foo{val1, val2}`
+	is_short_syntax bool // `foo(field1: val1, field2: val2)`
+	is_anon         bool //  `x: struct{ foo: bar }`
 pub mut:
 	unresolved           bool
 	pre_comments         []Comment
@@ -467,6 +468,12 @@ pub mut:
 	fields               []StructInitField
 	embeds               []StructInitEmbed
 	generic_types        []Type
+}
+
+pub enum StructInitKind {
+	normal
+	short_syntax
+	anon
 }
 
 // import statement

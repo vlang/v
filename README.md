@@ -286,7 +286,8 @@ Vinix is an OS/kernel that already runs bash, GCC, V, and nano.
 
 https://github.com/vlang/vinix
 
-<img src="https://github.com/vlang/vinix/raw/main/screenshot.png?raw=true">
+<img src="https://github.com/vlang/vinix/blob/main/screenshot0.png?raw=true">
+<img src="https://github.com/vlang/vinix/blob/main/screenshot1.png?raw=true">
 
 ## Acknowledgement
 

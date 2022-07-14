@@ -1039,6 +1039,10 @@ fn (mut g Gen) write_results() {
 		g.typedefs.writeln('typedef struct $styp $styp;')
 		g.out_results.write_string(g.result_type_text(styp, base) + ';\n\n')
 	}
+	for k, _ in g.table.anon_struct_names {
+		ck := c_name(k)
+		g.typedefs.writeln('typedef struct $ck $ck;')
+	}
 }
 
 fn (mut g Gen) find_or_register_shared(t ast.Type, base string) string {
@@ -5356,8 +5360,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 			mut has_none_zero := false
 			mut init_str := '{'
 			info := sym.info as ast.Struct
-			typ_is_shared_f := typ.has_flag(.shared_f)
-			if sym.language == .v && !typ_is_shared_f {
+			if sym.language == .v {
 				for field in info.fields {
 					field_sym := g.table.sym(field.typ)
 					if field.has_default_expr
@@ -5388,21 +5391,24 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 					}
 				}
 			}
+			typ_is_shared_f := typ.has_flag(.shared_f)
 			if has_none_zero {
 				init_str += '}'
-				type_name := if info.is_anon {
-					// No name needed for anon structs, C figures it out on its own.
-					''
-				} else {
-					'(${g.typ(typ)})'
+				if !typ_is_shared_f {
+					type_name := if info.is_anon {
+						// No name needed for anon structs, C figures it out on its own.
+						''
+					} else {
+						'(${g.typ(typ)})'
+					}
+					init_str = type_name + init_str
 				}
-				init_str = type_name + init_str
 			} else {
 				init_str += '0}'
 			}
-			if typ.has_flag(.shared_f) {
+			if typ_is_shared_f {
 				styp := '__shared__${g.table.sym(typ).cname}'
-				return '($styp*)__dup${styp}(&($styp){.mtx = {0}, .val =$init_str}, sizeof($styp))'
+				return '($styp*)__dup${styp}(&($styp){.mtx = {0}, .val = $init_str}, sizeof($styp))'
 			} else {
 				return init_str
 			}
