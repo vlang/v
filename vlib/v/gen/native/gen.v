@@ -390,11 +390,11 @@ fn (mut g Gen) get_type_size(typ ast.Type) int {
 			ast.isize_type_idx { 8 }
 			ast.usize_type_idx { 8 }
 			ast.int_literal_type_idx { 8 }
-			ast.char_type_idx { 1 }
-			ast.rune_type_idx { 4 }
 			ast.f32_type_idx { 4 }
 			ast.f64_type_idx { 8 }
 			ast.float_literal_type_idx { 8 }
+			ast.char_type_idx { 1 }
+			ast.rune_type_idx { 4 }
 			else { 8 }
 		}
 	}
