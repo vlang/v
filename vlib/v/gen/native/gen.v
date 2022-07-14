@@ -37,6 +37,7 @@ mut:
 	code_start_pos       i64 // location of the start of the assembly instructions
 	fn_addr              map[string]i64
 	var_offset           map[string]int // local var stack offset
+	var_alloc_size       map[string]int // local var allocation size
 	stack_var_pos        int
 	debug_pos            int
 	errors               []errors.Error
@@ -102,6 +103,41 @@ enum Size {
 	_16
 	_32
 	_64
+}
+
+// you can use these structs manually if you don't have ast.Ident
+struct LocalVar {
+	offset int // offset from the base pointer
+	typ    ast.Type
+	name   string
+}
+
+struct GlobalVar {}
+
+[params]
+struct VarConfig {
+	offset int      // offset from the variable
+	typ    ast.Type // type of the value you want to process e.g. struct fields.
+}
+
+type Var = GlobalVar | LocalVar | ast.Ident
+
+fn (mut g Gen) get_var_from_ident(ident ast.Ident) LocalVar|GlobalVar|Register {
+	obj := ident.obj
+	match obj {
+		ast.Var {
+			offset := g.get_var_offset(obj.name)
+			typ := obj.typ
+			return LocalVar{
+				offset: offset
+				typ: typ
+				name: obj.name
+			}
+		}
+		else {
+			g.n_error('unsupported variable type')
+		}
+	}
 }
 
 fn get_backend(arch pref.Arch) ?CodeGen {
@@ -362,8 +398,25 @@ fn (mut g Gen) get_type_size(typ ast.Type) int {
 	if typ in ast.pointer_type_idxs {
 		return 8
 	}
-	g.n_error('unknown type size')
+	// g.n_error('unknown type size')
 	return 8
+}
+
+fn (mut g Gen) get_sizeof_ident(ident ast.Ident) int {
+	typ := match ident.obj {
+		ast.AsmRegister { ast.i64_type_idx }
+		ast.ConstField { ident.obj.typ }
+		ast.GlobalField { ident.obj.typ }
+		ast.Var { ident.obj.typ }
+	}
+	if typ != 0 {
+		return g.get_type_size(typ)
+	}
+	size := g.var_alloc_size[ident.name] or {
+		g.n_error('unknown variable `$ident`')
+		return 0
+	}
+	return size
 }
 
 fn (mut g Gen) gen_typeof_expr(it ast.TypeOf, newline bool) {
@@ -372,9 +425,9 @@ fn (mut g Gen) gen_typeof_expr(it ast.TypeOf, newline bool) {
 	g.learel(.rax, g.allocate_string('$r$nl', 3, .rel32))
 }
 
-fn (mut g Gen) gen_var_to_string(reg Register, vo int, size int) {
+fn (mut g Gen) gen_var_to_string(reg Register, var Var, config VarConfig) {
 	buffer := g.allocate_array('itoa-buffer', 1, 32) // 32 characters should be enough
-	g.mov_var_to_reg(reg, vo, size)
+	g.mov_var_to_reg(reg, var, config)
 	g.convert_int_to_string(reg, buffer)
 	g.lea_var_to_reg(reg, buffer)
 }
@@ -396,10 +449,9 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, name string) {
 		}
 		ast.Ident {
 			vo := g.try_var_offset(expr.name)
-			size := g.get_type_size(expr.var_info().typ)
 
 			if vo != -1 {
-				g.gen_var_to_string(.rax, vo, size)
+				g.gen_var_to_string(.rax, expr)
 				g.gen_print_reg(.rax, 3, fd)
 				if newline {
 					g.gen_print('\n', fd)
@@ -594,8 +646,7 @@ fn (mut g Gen) gen_forc_stmt(node ast.ForCStmt) {
 				match cond.left {
 					ast.Ident {
 						lit := cond.right as ast.IntegerLiteral
-						g.cmp_var(cond.left.name, g.get_type_size(cond.left.var_info().typ),
-							lit.val.int())
+						g.cmp_var(cond.left, lit.val.int())
 						match cond.op {
 							.gt {
 								jump_addr = g.cjmp(.jle)
@@ -652,10 +703,10 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		// for a in node.cond .. node.high {
 		i := g.allocate_var(node.val_var, 8, 0) // iterator variable
 		g.expr(node.cond)
-		g.mov_reg_to_var(i, 8, .rax) // i = node.cond // initial value
+		g.mov_reg_to_var(LocalVar{i, ast.i64_type_idx, node.val_var}, .rax) // i = node.cond // initial value
 		start := g.pos() // label-begin:
 		start_label := g.labels.new_label()
-		g.mov_var_to_reg(.rbx, i, 8) // rbx = iterator value
+		g.mov_var_to_reg(.rbx, LocalVar{i, ast.i64_type_idx, node.val_var}) // rbx = iterator value
 		g.expr(node.high) // final value
 		g.cmp_reg(.rbx, .rax) // rbx = iterator, rax = max value
 		jump_addr := g.cjmp(.jge) // leave loop if i is beyond end
@@ -673,7 +724,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		g.stmts(node.stmts)
 		g.labels.addrs[start_label] = g.pos()
 		g.println('; label $start_label')
-		g.inc_var(node.val_var, 8)
+		g.inc_var(LocalVar{i, ast.i64_type_idx, node.val_var})
 		g.labels.branches.pop()
 		g.jmp(int(0xffffffff - (g.pos() + 5 - start) + 1))
 		g.labels.addrs[end_label] = g.pos()
@@ -727,8 +778,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.ConstDecl {}
 		ast.DeferStmt {
-			defer_var := g.get_var_offset('_defer$g.defer_stmts.len')
-			g.mov_int_to_var(defer_var, 8, 1)
+			name := '_defer$g.defer_stmts.len'
+			defer_var := g.get_var_offset(name)
+			g.mov_int_to_var(LocalVar{defer_var, ast.i64_type_idx, name}, 1)
 			g.defer_stmts << node
 			g.defer_stmts[g.defer_stmts.len - 1].idx_in_fn = g.defer_stmts.len - 1
 		}
@@ -897,13 +949,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.FloatLiteral {}
 		ast.Ident {
-			offset := g.try_var_offset(node.obj.name) // i := 0
-			if offset == -1 {
-				g.n_error('invalid ident $node.obj.name')
-			}
-			// offset := g.get_var_offset(node.name)
 			// XXX this is intel specific
-			g.mov_var_to_reg(.rax, offset, g.get_type_size(node.var_info().typ))
+			g.mov_var_to_reg(.rax, node)
 		}
 		ast.IfExpr {
 			if node.is_comptime {
@@ -948,14 +995,12 @@ fn (mut g Gen) postfix_expr(node ast.PostfixExpr) {
 		return
 	}
 	ident := node.expr as ast.Ident
-	var_name := ident.name
-	size := g.get_type_size(ident.var_info().typ)
 	match node.op {
 		.inc {
-			g.inc_var(var_name, size)
+			g.inc_var(ident)
 		}
 		.dec {
-			g.dec_var(var_name, size)
+			g.dec_var(ident)
 		}
 		else {}
 	}
