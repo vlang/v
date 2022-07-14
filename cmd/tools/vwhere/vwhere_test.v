@@ -60,7 +60,7 @@ fn test_create_finder() {
 }
 
 fn test_find_mut_var() {
-	args := ['var', 'p_2','-mut', 'yes', '-dir', test_dir]
+	args := ['var', 'p_2', '-mut', 'yes', '-dir', test_dir]
 	mut fdr := Finder{}
 	fdr.configure_from_arguments(args)
 	fdr.search_for_matches()
@@ -74,7 +74,7 @@ fn test_find_mut_var() {
 }
 
 fn test_find_non_mut_var() {
-	args := ['var', 'p_1','-mut', 'not', '-dir', test_dir]
+	args := ['var', 'p_1', '-mut', 'not', '-dir', test_dir]
 	mut fdr := Finder{}
 	fdr.configure_from_arguments(args)
 	fdr.search_for_matches()
