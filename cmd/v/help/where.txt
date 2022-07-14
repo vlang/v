@@ -1,5 +1,5 @@
 Usage:
-  v where [symbol_type] [symbol_name] [params]
+  v where symbol_type symbol_name [params]
 
 Examples:
   v where fn main
@@ -13,7 +13,7 @@ Prints the location of the searched symbols in the scope of the current project.
 --------------------------------------------------------------------------------
 
 symbol_name can be:
-  fn                    (by default if omit [symbol_type])
+  fn                    by default if omit symbol_type (don't omit preferably)
   method                require Struct.method notation
   struct
   interface
@@ -24,7 +24,8 @@ symbol_name can be:
 
 params:
   -mod  [mod_name]      Restrict to search recursively only within of the given 
-                        module, if not provided search in entire v scope.
+                        module, if not provided search in entire v scope,
+                        RECOMMENDATION: use -mod main
   -dir  [dir_path]      Restrict to search non recursively within the given 
                         folder/s, if not provided, search in entire v scope.
   -vis  [visibility]    Can be: all, pub, pri (all by default if not provided).
