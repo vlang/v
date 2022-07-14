@@ -112,24 +112,6 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 		}
 	}
 	node.return_type = ret_type
-	cond_var := c.get_base_name(&node.cond)
-	if cond_var != '' {
-		mut cond_is_auto_heap := false
-		for branch in node.branches {
-			if v := branch.scope.find_var(cond_var) {
-				if v.is_auto_heap {
-					cond_is_auto_heap = true
-					break
-				}
-			}
-		}
-		if cond_is_auto_heap {
-			for branch in node.branches {
-				mut v := branch.scope.find_var(cond_var) or { continue }
-				v.is_auto_heap = true
-			}
-		}
-	}
 	return ret_type
 }
 
@@ -182,7 +164,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 	for branch_i, _ in node.branches {
 		mut branch := node.branches[branch_i]
 		mut expr_types := []ast.TypeNode{}
-		for k, mut expr in branch.exprs {
+		for expr in branch.exprs {
 			mut key := ''
 			// TODO: investigate why enums are different here:
 			if expr !is ast.EnumVal {
@@ -276,13 +258,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				// Current solution is to move expr.pos() to its own statement
 				// c.type_implements(expr_type, c.expected_type, expr.pos())
 				expr_pos := expr.pos()
-				if c.type_implements(expr_type, c.expected_type, expr_pos) {
-					if !expr_type.is_ptr() && !expr_type.is_pointer() && !c.inside_unsafe {
-						if expr_type_sym.kind != .interface_ {
-							c.mark_as_referenced(mut &branch.exprs[k], true)
-						}
-					}
-				}
+				c.type_implements(expr_type, c.expected_type, expr_pos)
 			} else if cond_type_sym.info is ast.SumType {
 				if expr_type !in cond_type_sym.info.variants {
 					expr_str := c.table.type_to_str(expr_type)

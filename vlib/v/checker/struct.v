@@ -128,8 +128,7 @@ fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 					if sym.kind == .interface_ && interface_implemented {
 						if !c.inside_unsafe && !default_expr_type.is_real_pointer() {
 							if c.table.sym(default_expr_type).kind != .interface_ {
-								c.mark_as_referenced(mut &node.fields[i].default_expr,
-									true)
+								// todo: mark as reference
 							}
 						}
 					} else {
@@ -500,12 +499,7 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 					c.error('allocate on the heap for use in other functions', field.pos)
 				}
 				if field_type_sym.kind == .interface_ {
-					if c.type_implements(expr_type, field_info.typ, field.pos) {
-						if !c.inside_unsafe && expr_type_sym.kind != .interface_
-							&& !expr_type.is_real_pointer() {
-							c.mark_as_referenced(mut &field.expr, true)
-						}
-					}
+					c.type_implements(expr_type, field_info.typ, field.pos)
 				} else if expr_type != ast.void_type && expr_type_sym.kind != .placeholder
 					&& !field_info.typ.has_flag(.generic) {
 					c.check_expected(c.unwrap_generic(expr_type), c.unwrap_generic(field_info.typ)) or {
@@ -527,37 +521,6 @@ fn (mut c Checker) struct_init(mut node ast.StructInit, is_field_zero_struct_ini
 				}
 				node.fields[i].typ = expr_type
 				node.fields[i].expected_type = field_info.typ
-
-				if expr_type.is_ptr() && expected_type.is_ptr() {
-					if mut field.expr is ast.Ident {
-						if mut field.expr.obj is ast.Var {
-							mut obj := unsafe { &field.expr.obj }
-							if c.fn_scope != unsafe { nil } {
-								obj = c.fn_scope.find_var(obj.name) or { obj }
-							}
-							if obj.is_stack_obj && !c.inside_unsafe {
-								sym := c.table.sym(obj.typ.set_nr_muls(0))
-								if !sym.is_heap() && !c.pref.translated && !c.file.is_translated {
-									suggestion := if sym.kind == .struct_ {
-										'declaring `${sym.name}` as `[heap]`'
-									} else {
-										'wrapping the `${sym.name}` object in a `struct` declared as `[heap]`'
-									}
-									c.error('`${field.expr.name}` cannot be assigned outside `unsafe` blocks as it might refer to an object stored on stack. Consider ${suggestion}.',
-										field.expr.pos)
-								}
-							}
-						}
-					}
-				}
-				if field_info.typ in ast.unsigned_integer_type_idxs {
-					if mut field.expr is ast.IntegerLiteral {
-						if field.expr.val[0] == `-` {
-							c.error('cannot assign negative value to unsigned integer type',
-								field.expr.pos)
-						}
-					}
-				}
 			}
 			// Check uninitialized refs/sum types
 			// The variable `fields` contains two parts, the first part is the same as info.fields,

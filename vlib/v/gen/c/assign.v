@@ -178,7 +178,6 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 	}
 
 	for i, mut left in node.left {
-		mut is_auto_heap := false
 		mut var_type := node.left_types[i]
 		mut val_type := node.right_types[i]
 		val := node.right[i]
@@ -235,7 +234,6 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						left.obj.typ = var_type
 					}
 				}
-				is_auto_heap = left.obj.is_auto_heap
 			}
 		} else if mut left is ast.ComptimeSelector {
 			key_str := g.get_comptime_selector_key_type(left)
@@ -504,9 +502,6 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 						if !is_used_var_styp {
 							g.write('${styp} ')
 						}
-						if is_auto_heap {
-							g.write('*')
-						}
 					}
 				}
 				if left in [ast.Ident, ast.SelectorExpr] {
@@ -591,9 +586,6 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.write('{0}')
 						}
 					} else {
-						if is_auto_heap {
-							g.write('HEAP(${styp}, (')
-						}
 						if val.is_auto_deref_var() {
 							g.write('*')
 						}
@@ -605,9 +597,6 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							g.expr_with_cast(val, val_type, var_type)
 						} else {
 							g.expr(val)
-						}
-						if is_auto_heap {
-							g.write('))')
 						}
 					}
 				} else {
@@ -654,7 +643,6 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 	g.expr(node.right[0])
 	g.writeln(';')
 	for i, lx in node.left {
-		mut is_auto_heap := false
 		mut ident := ast.Ident{
 			scope: 0
 		}
@@ -662,9 +650,6 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 			ident = lx
 			if lx.kind == .blank_ident {
 				continue
-			}
-			if lx.obj is ast.Var {
-				is_auto_heap = lx.obj.is_auto_heap
 			}
 		}
 		styp := if ident.name in g.defer_vars { '' } else { g.typ(node.left_types[i]) }
@@ -675,19 +660,10 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 			g.write('*')
 		}
 		g.expr(lx)
-		noscan := if is_auto_heap { g.check_noscan(return_type) } else { '' }
 		if g.is_arraymap_set {
-			if is_auto_heap {
-				g.writeln('HEAP${noscan}(${styp}, ${mr_var_name}.arg${i}) });')
-			} else {
-				g.writeln('${mr_var_name}.arg${i} });')
-			}
+			g.writeln('${mr_var_name}.arg${i} });')
 		} else {
-			if is_auto_heap {
-				g.writeln(' = HEAP${noscan}(${styp}, ${mr_var_name}.arg${i});')
-			} else {
-				g.writeln(' = ${mr_var_name}.arg${i};')
-			}
+			g.writeln(' = ${mr_var_name}.arg${i};')
 		}
 	}
 	if g.is_arraymap_set {

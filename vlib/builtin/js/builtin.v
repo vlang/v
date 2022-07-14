@@ -78,7 +78,7 @@ pub fn (err MessageError) code() int {
 	return err.code
 }
 
-pub const none__ = IError(&None__{})
+pub const none__ = IError(None__{})
 
 struct None__ {
 	Error

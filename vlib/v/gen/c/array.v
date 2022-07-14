@@ -7,20 +7,11 @@ import v.ast
 
 fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 	array_type := g.unwrap(node.typ)
-	mut array_styp := ''
 	elem_type := g.unwrap(node.elem_type)
 	mut shared_styp := '' // only needed for shared &[]{...}
-	is_amp := g.is_amp
-	g.is_amp = false
-	if is_amp {
-		g.go_back(1) // delete the `&` already generated in `prefix_expr()
-	}
 	if g.is_shared {
 		shared_styp = g.typ(array_type.typ.set_flag(.shared_f))
 		g.writeln('(${shared_styp}*)__dup_shared_array(&(${shared_styp}){.mtx = {0}, .val =')
-	} else if is_amp {
-		array_styp = g.typ(array_type.typ)
-		g.write('HEAP(${array_styp}, ')
 	}
 	len := node.exprs.len
 	if array_type.unaliased_sym.kind == .array_fixed {
@@ -30,7 +21,7 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 		}
 	} else if len == 0 {
 		// `[]int{len: 6, cap:10, init:22}`
-		g.array_init_with_fields(node, elem_type, is_amp, shared_styp, var_name)
+		g.array_init_with_fields(node, elem_type, shared_styp, var_name)
 	} else {
 		// `[1, 2, 3]`
 		elem_styp := g.typ(elem_type.typ)
@@ -65,8 +56,6 @@ fn (mut g Gen) array_init(node ast.ArrayInit, var_name string) {
 		g.write('}))')
 		if g.is_shared {
 			g.write('}, sizeof(${shared_styp}))')
-		} else if is_amp {
-			g.write(')')
 		}
 	}
 }
@@ -190,7 +179,7 @@ fn (mut g Gen) struct_has_array_or_map_field(elem_typ ast.Type) bool {
 }
 
 // `[]int{len: 6, cap: 10, init: it * it}`
-fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp bool, shared_styp string, var_name string) {
+fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, shared_styp string, var_name string) {
 	elem_styp := g.typ(elem_type.typ)
 	noscan := g.check_noscan(elem_type.typ)
 	is_default_array := elem_type.unaliased_sym.kind == .array && node.has_default
@@ -261,8 +250,6 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		}
 		if g.is_shared {
 			g.write('}, sizeof(${shared_styp}))')
-		} else if is_amp {
-			g.write(')')
 		}
 		g.writeln(';')
 		g.writeln('{')
@@ -368,8 +355,6 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 	}
 	if g.is_shared {
 		g.write('}, sizeof(${shared_styp}))')
-	} else if is_amp {
-		g.write(')')
 	}
 }
 

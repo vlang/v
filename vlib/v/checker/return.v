@@ -148,26 +148,13 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 		}
 		if node.exprs[expr_idxs[i]] !is ast.ComptimeCall {
 			got_typ_sym := c.table.sym(got_typ)
-			exp_typ_sym := c.table.sym(exp_type)
-			pos := node.exprs[expr_idxs[i]].pos()
-			if c.check_types(got_typ, exp_type) {
-				if exp_type.is_unsigned() && got_typ.is_int_literal() {
-					if node.exprs[expr_idxs[i]] is ast.IntegerLiteral {
-						var := (node.exprs[expr_idxs[i]] as ast.IntegerLiteral).val
-						if var[0] == `-` {
-							c.note('cannot use a negative value as value of type `${c.table.type_to_str(exp_type)}` in return argument',
-								pos)
-						}
-					}
-				}
-			} else {
-				if exp_typ_sym.kind == .interface_ {
-					if c.type_implements(got_typ, exp_type, node.pos) {
-						if !got_typ.is_ptr() && !got_typ.is_pointer()
-							&& got_typ_sym.kind != .interface_ && !c.inside_unsafe {
-							c.mark_as_referenced(mut &node.exprs[expr_idxs[i]], true)
-						}
-					}
+			mut exp_typ_sym := c.table.sym(exp_type)
+			if exp_typ_sym.kind == .interface_ {
+				c.type_implements(got_typ, exp_type, node.pos)
+				continue
+			}
+			if got_typ_sym.kind == .function && exp_typ_sym.kind == .function {
+				if (got_typ_sym.info as ast.FnType).is_anon {
 					continue
 				}
 				// `fn foo() !int { return Err{} }`
@@ -211,29 +198,6 @@ fn (mut c Checker) return_stmt(mut node ast.Return) {
 			}
 			c.error('fn `${c.table.cur_fn.name}` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
-		}
-		if exp_type.is_ptr() && got_typ.is_ptr() {
-			mut r_expr := &node.exprs[expr_idxs[i]]
-			if mut r_expr is ast.Ident {
-				if mut r_expr.obj is ast.Var {
-					mut obj := unsafe { &r_expr.obj }
-					if c.fn_scope != unsafe { nil } {
-						obj = c.fn_scope.find_var(r_expr.obj.name) or { obj }
-					}
-					if obj.is_stack_obj && !c.inside_unsafe {
-						type_sym := c.table.sym(obj.typ.set_nr_muls(0))
-						if !type_sym.is_heap() && !c.pref.translated && !c.file.is_translated {
-							suggestion := if type_sym.kind == .struct_ {
-								'declaring `${type_sym.name}` as `[heap]`'
-							} else {
-								'wrapping the `${type_sym.name}` object in a `struct` declared as `[heap]`'
-							}
-							c.error('`${r_expr.name}` cannot be returned outside `unsafe` blocks as it might refer to an object stored on stack. Consider ${suggestion}.',
-								r_expr.pos)
-						}
-					}
-				}
-			}
 		}
 	}
 	if exp_is_option && node.exprs.len > 0 {

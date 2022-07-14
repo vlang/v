@@ -2811,9 +2811,10 @@ fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		}
 	} else if to_sym.kind == .interface_ {
 		if c.type_implements(from_type, to_type, node.pos) {
-			if !from_type.is_ptr() && !from_type.is_pointer() && from_sym.kind != .interface_
-				&& !c.inside_unsafe {
-				c.mark_as_referenced(mut &node.expr, true)
+			if (from_type.is_ptr() || from_type.is_pointer()) && from_sym.kind != .interface_
+				&& !c.inside_unsafe && !from_sym.is_heap() {
+				c.error('interfaces must be initialized with a non-pointer value or with a struct declared as `[heap]`',
+					node.pos)
 			}
 			if (to_sym.info as ast.Interface).is_generic {
 				inferred_type := c.resolve_generic_interface(from_type, to_type, node.pos)
@@ -3624,58 +3625,6 @@ pub fn (mut c Checker) is_comptime_var(node ast.Expr) bool {
 		&& (node as ast.Ident).info is ast.IdentVar && (node as ast.Ident).kind == .variable && ((node as ast.Ident).obj as ast.Var).is_comptime_field
 }
 
-fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) {
-	match mut node {
-		ast.Ident {
-			if mut node.obj is ast.Var {
-				mut obj := unsafe { &node.obj }
-				if c.fn_scope != unsafe { nil } {
-					obj = c.fn_scope.find_var(node.obj.name) or { obj }
-				}
-				if obj.typ == 0 {
-					return
-				}
-				type_sym := c.table.sym(obj.typ.set_nr_muls(0))
-				if obj.is_stack_obj && !type_sym.is_heap() && !c.pref.translated
-					&& !c.file.is_translated {
-					suggestion := if type_sym.kind == .struct_ {
-						'declaring `${type_sym.name}` as `[heap]`'
-					} else {
-						'wrapping the `${type_sym.name}` object in a `struct` declared as `[heap]`'
-					}
-					mischief := if as_interface { 'used as interface object' } else { 'referenced' }
-					c.error('`${node.name}` cannot be ${mischief} outside `unsafe` blocks as it might be stored on stack. Consider ${suggestion}.',
-						node.pos)
-				} else if type_sym.kind == .array_fixed {
-					c.error('cannot reference fixed array `${node.name}` outside `unsafe` blocks as it is supposed to be stored on stack',
-						node.pos)
-				} else {
-					match type_sym.kind {
-						.struct_ {
-							if !type_sym.is_heap() {
-								node.obj.is_auto_heap = true
-							}
-						}
-						.sum_type, .interface_ {}
-						else {
-							node.obj.is_auto_heap = true
-						}
-					}
-				}
-			}
-		}
-		ast.SelectorExpr {
-			if !node.expr_type.is_ptr() {
-				c.mark_as_referenced(mut &node.expr, as_interface)
-			}
-		}
-		ast.IndexExpr {
-			c.mark_as_referenced(mut &node.left, as_interface)
-		}
-		else {}
-	}
-}
-
 fn (mut c Checker) get_base_name(node &ast.Expr) string {
 	match node {
 		ast.Ident {
@@ -3766,14 +3715,8 @@ fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 				}
 			}
 		}
-		if !c.inside_fn_arg && !c.inside_unsafe {
-			c.mark_as_referenced(mut &node.right, false)
-		}
 		return right_type.ref()
 	} else if node.op == .amp && node.right !is ast.CastExpr {
-		if !c.inside_fn_arg && !c.inside_unsafe {
-			c.mark_as_referenced(mut &node.right, false)
-		}
 		if node.right.is_auto_deref_var() {
 			return right_type
 		} else {

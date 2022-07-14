@@ -220,16 +220,20 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 							is_volatile = true
 						}
 					}
+					r0 := right[0]
 					mut v := ast.Var{
 						name: lx.name
 						expr: if left.len == right.len { right[i] } else { ast.empty_expr }
 						share: share
 						is_mut: lx.is_mut || p.inside_for
 						pos: lx.pos
-						is_stack_obj: p.inside_for
+						is_stack_obj: if r0 is ast.PrefixExpr {
+							r0.op != .amp
+						} else {
+							true
+						}
 					}
 					if p.pref.autofree {
-						r0 := right[0]
 						if r0 is ast.CallExpr {
 							// Set correct variable position (after the or block)
 							// so that autofree doesn't free it in cgen before

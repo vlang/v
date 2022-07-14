@@ -71,7 +71,7 @@ pub fn (err &MessageError) free() {
 	unsafe { err.msg.free() }
 }
 
-const none__ = IError(&None__{})
+const none__ = IError(None__{})
 
 struct None__ {
 	Error

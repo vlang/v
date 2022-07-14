@@ -291,7 +291,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 		g.write(fn_header)
 	}
 	arg_start_pos := g.out.len
-	fargs, fargtypes, heap_promoted := g.fn_decl_params(node.params, node.scope, node.is_variadic)
+	fargs, fargtypes := g.fn_decl_params(node.params, node.scope, node.is_variadic)
 	if is_closure {
 		g.nr_closures++
 	}
@@ -311,12 +311,6 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	if is_closure {
 		g.writeln('${cur_closure_ctx}* ${c.closure_ctx} = __CLOSURE_GET_DATA();')
 	}
-	for i, is_promoted in heap_promoted {
-		if is_promoted {
-			g.writeln('${fargtypes[i]}* ${fargs[i]} = HEAP(${fargtypes[i]}, _v_toheap_${fargs[i]});')
-		}
-	}
-	g.indent++
 	for defer_stmt in node.defer_stmts {
 		g.writeln('bool ${g.defer_flag_var(defer_stmt)} = false;')
 		for var in defer_stmt.defer_vars {
@@ -327,11 +321,6 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 				if var.name !in g.defer_vars {
 					g.defer_vars << var.name
 					mut deref := ''
-					if v := var.scope.find_var(var.name) {
-						if v.is_auto_heap {
-							deref = '*'
-						}
-					}
 					info := var.obj as ast.Var
 					if g.table.sym(info.typ).kind != .function {
 						g.writeln('${g.typ(info.typ)}${deref} ${c_name(var.name)};')
@@ -551,10 +540,9 @@ fn (mut g Gen) write_defer_stmts_when_needed() {
 	}
 }
 
-fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic bool) ([]string, []string, []bool) {
+fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic bool) ([]string, []string) {
 	mut fparams := []string{}
 	mut fparamtypes := []string{}
-	mut heap_promoted := []bool{}
 	if params.len == 0 {
 		// in C, `()` is untyped, unlike `(void)`
 		g.write('void')
@@ -582,29 +570,17 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 			fparams << caname
 			fparamtypes << param_type_name
 		} else {
-			mut heap_prom := false
-			if scope != unsafe { nil } {
-				if param.name != '_' {
-					if v := scope.find_var(param.name) {
-						if !v.is_stack_obj && v.is_auto_heap {
-							heap_prom = true
-						}
-					}
-				}
-			}
-			var_name_prefix := if heap_prom { '_v_toheap_' } else { '' }
 			const_prefix := if param.typ.is_any_kind_of_pointer() && !param.is_mut
 				&& param.name.starts_with('const_') {
 				'const '
 			} else {
 				''
 			}
-			s := '${const_prefix}${param_type_name} ${var_name_prefix}${caname}'
+			s := '${const_prefix}${param_type_name} ${caname}'
 			g.write(s)
 			g.definitions.write_string(s)
 			fparams << caname
 			fparamtypes << param_type_name
-			heap_promoted << heap_prom
 		}
 		if i < params.len - 1 {
 			g.write(', ')
@@ -615,7 +591,7 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 		g.write(', ... ')
 		g.definitions.write_string(', ... ')
 	}
-	return fparams, fparamtypes, heap_promoted
+	return fparams, fparamtypes
 }
 
 fn (mut g Gen) get_anon_fn_type_name(mut node ast.AnonFn, var_name string) string {

@@ -30,12 +30,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		return
 	}
 	mut sym := g.table.final_sym(g.unwrap_generic(node.typ))
-	is_amp := g.is_amp
 	is_multiline := node.fields.len > 5
-	g.is_amp = false // reset the flag immediately so that other struct inits in this expr are handled correctly
-	if is_amp {
-		g.go_back(1) // delete the `&` already generated in `prefix_expr()
-	}
 	mut is_anon := false
 	if mut sym.info is ast.Struct {
 		is_anon = sym.info.is_anon
@@ -53,8 +48,6 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		mut shared_typ := node.typ.set_flag(.shared_f)
 		shared_styp = g.typ(shared_typ)
 		g.writeln('(${shared_styp}*)__dup${shared_styp}(&(${shared_styp}){.mtx = {0}, .val =(${styp}){')
-	} else if is_amp || g.inside_cast_in_heap > 0 {
-		g.write('(${styp}*)memdup(&(${styp}){')
 	} else if node.typ.is_ptr() {
 		basetyp := g.typ(node.typ.set_nr_muls(0))
 		if is_multiline {
@@ -299,8 +292,6 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	g.write('}')
 	if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
 		g.write('}, sizeof(${shared_styp}))')
-	} else if is_amp || g.inside_cast_in_heap > 0 {
-		g.write(', sizeof(${styp}))')
 	}
 }
 

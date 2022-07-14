@@ -379,13 +379,12 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 					scope: 0
 				}
 			}
-			is_stack_obj := !param.typ.has_flag(.shared_f) && (param.is_mut || param.typ.is_ptr())
 			p.scope.register(ast.Var{
 				name: param.name
 				typ: param.typ
 				is_mut: param.is_mut
 				is_auto_deref: param.is_mut || param.is_auto_rec
-				is_stack_obj: is_stack_obj
+				is_stack_obj: !param.typ.has_flag(.shared_f)
 				pos: param.pos
 				is_used: true
 				is_arg: true
@@ -726,7 +725,6 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		} else if p.scope.known_var(arg.name) {
 			p.error_with_pos('redefinition of parameter `${arg.name}`', arg.pos)
 		}
-		is_stack_obj := !arg.typ.has_flag(.shared_f) && (arg.is_mut || arg.typ.is_ptr())
 		p.scope.register(ast.Var{
 			name: arg.name
 			typ: arg.typ
@@ -734,7 +732,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			pos: arg.pos
 			is_used: true
 			is_arg: true
-			is_stack_obj: is_stack_obj
+			is_stack_obj: !arg.typ.has_flag(.shared_f)
 		})
 	}
 	mut same_line := p.tok.line_nr == p.prev_tok.line_nr

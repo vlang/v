@@ -161,12 +161,6 @@ fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 					c.expected_type = elem_type
 					c.type_implements(typ, elem_type, expr.pos())
 				}
-				if !typ.is_ptr() && !typ.is_pointer() && !c.inside_unsafe {
-					typ_sym := c.table.sym(typ)
-					if typ_sym.kind != .interface_ {
-						c.mark_as_referenced(mut &expr, true)
-					}
-				}
 				continue
 			} else if expecting_sumtype_array {
 				if i == 0 {

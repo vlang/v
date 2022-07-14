@@ -1118,19 +1118,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 		}
 		// Handle expected interface
 		if final_param_sym.kind == .interface_ {
-			if c.type_implements(arg_typ, final_param_typ, call_arg.expr.pos()) {
-				if !arg_typ.is_ptr() && !arg_typ.is_pointer() && !c.inside_unsafe
-					&& arg_typ_sym.kind != .interface_ {
-					c.mark_as_referenced(mut &call_arg.expr, true)
-				}
-			}
-
-			if arg_typ !in [ast.voidptr_type, ast.nil_type]
-				&& !c.check_multiple_ptr_match(arg_typ, param.typ, param, call_arg) {
-				got_typ_str, expected_typ_str := c.get_string_names_of(arg_typ, param.typ)
-				c.error('cannot use `${got_typ_str}` as `${expected_typ_str}` in argument ${i + 1} to `${fn_name}`',
-					call_arg.pos)
-			}
+			c.type_implements(arg_typ, final_param_typ, call_arg.expr.pos())
 			continue
 		}
 		if param.typ.is_ptr() && !param.is_mut && !call_arg.typ.is_real_pointer()
@@ -1270,12 +1258,7 @@ fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.
 					utyp := c.unwrap_generic(typ)
 					unwrap_sym := c.table.sym(unwrap_typ)
 					if unwrap_sym.kind == .interface_ {
-						if c.type_implements(utyp, unwrap_typ, call_arg.expr.pos()) {
-							if !utyp.is_ptr() && !utyp.is_pointer() && !c.inside_unsafe
-								&& c.table.sym(utyp).kind != .interface_ {
-								c.mark_as_referenced(mut &call_arg.expr, true)
-							}
-						}
+						c.type_implements(utyp, unwrap_typ, call_arg.expr.pos())
 						continue
 					}
 					c.check_expected_call_arg(utyp, unwrap_typ, node.language, call_arg) or {
@@ -1769,22 +1752,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			}
 			// Handle expected interface
 			if final_arg_sym.kind == .interface_ {
-				if c.type_implements(got_arg_typ, final_arg_typ, arg.expr.pos()) {
-					if !got_arg_typ.is_ptr() && !got_arg_typ.is_pointer() && !c.inside_unsafe {
-						got_arg_typ_sym := c.table.sym(got_arg_typ)
-						if got_arg_typ_sym.kind != .interface_ {
-							c.mark_as_referenced(mut &arg.expr, true)
-						}
-					}
-				}
-
-				if got_arg_typ !in [ast.voidptr_type, ast.nil_type]
-					&& !c.check_multiple_ptr_match(got_arg_typ, param.typ, param, arg) {
-					got_typ_str, expected_typ_str := c.get_string_names_of(got_arg_typ,
-						param.typ)
-					c.error('cannot use `${got_typ_str}` as `${expected_typ_str}` in argument ${i +
-						1} to `${method_name}`', arg.pos)
-				}
+				c.type_implements(got_arg_typ, final_arg_typ, arg.expr.pos())
 				continue
 			}
 			if final_arg_sym.kind == .none_ && param.typ.has_flag(.generic) {

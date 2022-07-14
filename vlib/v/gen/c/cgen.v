@@ -93,7 +93,6 @@ mut:
 	is_assign_lhs             bool // inside left part of assign expr (for array_set(), etc)
 	is_void_expr_stmt         bool // ExprStmt whos result is discarded
 	is_arraymap_set           bool // map or array set value state
-	is_amp                    bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&u8(0)` etc
 	is_sql                    bool // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
 	is_shared                 bool // for initialization of hidden mutex in `[rw]shared` literals
 	is_vlines_enabled         bool // is it safe to generate #line directives when -g is passed
@@ -2261,38 +2260,24 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	if got_sym.info !is ast.Interface && exp_sym.info is ast.Interface
 		&& got_type.idx() != expected_type.idx() && !expected_type.has_flag(.option)
 		&& !expected_type.has_flag(.result) {
-		if expr is ast.StructInit && !got_type.is_ptr() {
-			g.inside_cast_in_heap++
-			got_styp := g.cc_type(got_type.ref(), true)
-			// TODO: why does cc_type even add this in the first place?
-			exp_styp := exp_sym.cname
-			mut fname := 'I_${got_styp}_to_Interface_${exp_styp}'
-			if exp_sym.info.is_generic {
-				fname = g.generic_fn_name(exp_sym.info.concrete_types, fname)
-			}
-			g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, exp_styp, true,
-				false, got_styp)
-			g.inside_cast_in_heap--
+		got_styp := g.cc_type(got_type, true)
+		got_is_shared := got_type.has_flag(.shared_f)
+		exp_styp := if got_is_shared { '__shared__${exp_sym.cname}' } else { exp_sym.cname }
+		// If it's shared, we need to use the other caster:
+		mut fname := if got_is_shared {
+			'I___shared__${got_styp}_to_shared_Interface_${exp_styp}'
 		} else {
-			got_styp := g.cc_type(got_type, true)
-			got_is_shared := got_type.has_flag(.shared_f)
-			exp_styp := if got_is_shared { '__shared__${exp_sym.cname}' } else { exp_sym.cname }
-			// If it's shared, we need to use the other caster:
-			mut fname := if got_is_shared {
-				'I___shared__${got_styp}_to_shared_Interface_${exp_styp}'
-			} else {
-				'I_${got_styp}_to_Interface_${exp_styp}'
-			}
-			lock g.referenced_fns {
-				g.referenced_fns[fname] = true
-			}
-			fname = '/*${exp_sym}*/${fname}'
-			if exp_sym.info.is_generic {
-				fname = g.generic_fn_name(exp_sym.info.concrete_types, fname)
-			}
-			g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, exp_styp, got_is_ptr,
-				false, got_styp)
+			'I_${got_styp}_to_Interface_${exp_styp}'
 		}
+		lock g.referenced_fns {
+			g.referenced_fns[fname] = true
+		}
+		fname = '/*${exp_sym}*/${fname}'
+		if exp_sym.info.is_generic {
+			fname = g.generic_fn_name(exp_sym.info.concrete_types, fname, false)
+		}
+		g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, exp_styp, got_is_ptr,
+			got_styp)
 		return
 	}
 	// cast to sum type
@@ -2932,11 +2917,7 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 		if v.typ == ast.error_type && !v.is_autofree_tmp {
 			return
 		}
-		if v.is_auto_heap {
-			af.writeln('\t${free_fn_name}(${c_name(v.name)}); // autofreed heap var ${g.cur_mod.name} ${g.is_builtin_mod}')
-		} else {
-			af.writeln('\t${free_fn_name}(&${c_name(v.name)}); // autofreed var ${g.cur_mod.name} ${g.is_builtin_mod}')
-		}
+		af.writeln('\t${free_fn_name}(&${c_name(v.name)}); // autofreed var ${g.cur_mod.name} ${g.is_builtin_mod}')
 	}
 	g.autofree_scope_stmts << af.str()
 }
@@ -3235,11 +3216,9 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 		}
 		ast.PrefixExpr {
 			gen_or := node.op == .arrow && (node.or_block.kind != .absent || node.is_option)
-			if node.op == .amp {
-				g.is_amp = true
-			}
+			is_amp := node.op == .amp
+			styp := g.typ(node.right_type)
 			if node.op == .arrow {
-				styp := g.typ(node.right_type)
 				right_sym := g.table.sym(node.right_type)
 				mut right_inf := right_sym.info as ast.Chan
 				elem_type := right_inf.elem_type
@@ -3272,12 +3251,16 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 					}
 				}
 			} else {
-				if !(g.is_amp && node.right.is_auto_deref_var()) {
+				if is_amp {
+					g.write('HEAP(${styp}, ')
+				} else {
 					g.write(node.op.str())
 				}
 				g.expr(node.right)
+				if is_amp {
+					g.write(')')
+				}
 			}
-			g.is_amp = false
 		}
 		ast.RangeExpr {
 			// Only used in IndexExpr
@@ -3834,19 +3817,10 @@ fn (mut g Gen) map_init(node ast.MapInit) {
 	hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_sym)
 	size := node.vals.len
 	mut shared_styp := '' // only needed for shared &[]{...}
-	mut styp := ''
-	is_amp := g.is_amp
-	g.is_amp = false
-	if is_amp {
-		g.go_back(1) // delete the `&` already generated in `prefix_expr()
-	}
 	if g.is_shared {
 		mut shared_typ := node.typ.set_flag(.shared_f)
 		shared_styp = g.typ(shared_typ)
 		g.writeln('(${shared_styp}*)__dup_shared_map(&(${shared_styp}){.mtx = {0}, .val =')
-	} else if is_amp {
-		styp = g.typ(node.typ)
-		g.write('(${styp}*)memdup(ADDR(${styp}, ')
 	}
 	noscan_key := g.check_noscan(node.key_type)
 	noscan_value := g.check_noscan(node.value_type)
@@ -3897,8 +3871,6 @@ fn (mut g Gen) map_init(node ast.MapInit) {
 	g.writeln('')
 	if g.is_shared {
 		g.write('}, sizeof(${shared_styp}))')
-	} else if is_amp {
-		g.write('), sizeof(${styp}))')
 	}
 }
 
@@ -4087,7 +4059,6 @@ fn (mut g Gen) ident(node ast.Ident) {
 			g.write('_const_')
 		}
 	}
-	mut is_auto_heap := false
 	if node.info is ast.IdentVar {
 		if node.obj is ast.Var {
 			if !g.is_assign_lhs && node.obj.is_comptime_field {
@@ -4136,17 +4107,12 @@ fn (mut g Gen) ident(node ast.Ident) {
 			return
 		}
 		if node.obj is ast.Var {
-			is_auto_heap = node.obj.is_auto_heap
-				&& (!g.is_assign_lhs || g.assign_op != .decl_assign)
-			if is_auto_heap {
-				g.write('(*(')
-			}
 			if node.obj.smartcasts.len > 0 {
 				obj_sym := g.table.sym(node.obj.typ)
 				if !prevent_sum_type_unwrapping_once {
 					for _ in node.obj.smartcasts {
 						g.write('(')
-						if obj_sym.kind == .sum_type && !is_auto_heap {
+						if obj_sym.kind == .sum_type {
 							g.write('*')
 						}
 					}
@@ -4163,7 +4129,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 									is_ptr = true
 								}
 							}
-							dot := if is_ptr || is_auto_heap { '->' } else { '.' }
+							dot := if is_ptr { '->' } else { '.' }
 							if cast_sym.info is ast.Aggregate {
 								sym := g.table.sym(cast_sym.info.types[g.aggregate_type_idx])
 								g.write('${dot}_${sym.cname}')
@@ -4172,9 +4138,6 @@ fn (mut g Gen) ident(node ast.Ident) {
 							}
 						}
 						g.write(')')
-					}
-					if is_auto_heap {
-						g.write('))')
 					}
 					return
 				}
@@ -4203,9 +4166,6 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 	}
 	g.write(g.get_ternary_name(name))
-	if is_auto_heap {
-		g.write('))')
-	}
 }
 
 fn (mut g Gen) cast_expr(node ast.CastExpr) {
@@ -4746,7 +4706,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.writeln('${ret_typ} ${tmpvar};')
 			g.write('_option_ok(&(${styp}[]) { ')
 			if !fn_ret_type.is_ptr() && node.types[0].is_ptr() {
-				if !(node.exprs[0] is ast.Ident && !g.is_amp) {
+				if node.exprs[0] !is ast.Ident {
 					g.write('*')
 				}
 			}
@@ -4775,7 +4735,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			g.writeln('${ret_typ} ${tmpvar};')
 			g.write('_result_ok(&(${styp}[]) { ')
 			if !fn_ret_type.is_ptr() && node.types[0].is_ptr() {
-				if !(node.exprs[0] is ast.Ident && !g.is_amp) {
+				if node.exprs[0] !is ast.Ident {
 					g.write('*')
 				}
 			}
@@ -5294,9 +5254,6 @@ fn (mut g Gen) assoc(node ast.Assoc) {
 		}
 	}
 	g.write('}')
-	if g.is_amp {
-		g.write(', sizeof(${styp}))')
-	}
 }
 
 [noreturn]
@@ -6438,7 +6395,7 @@ static inline __shared__${interface_name} ${shared_fn_name}(__shared__${cctype}*
 						...params[0]
 						typ: st.set_nr_muls(1)
 					}
-					fargs, _, _ := g.fn_decl_params(params, unsafe { nil }, false)
+					fargs, _ := g.fn_decl_params(params, unsafe { nil }, false)
 					mut parameter_name := g.out.cut_last(g.out.len - params_start_pos)
 
 					if st.is_ptr() {

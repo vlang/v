@@ -283,32 +283,18 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 					g.expr(branch.cond.expr)
 					g.writeln(';')
 				} else {
-					mut is_auto_heap := false
-					if branch.stmts.len > 0 {
-						scope := g.file.scope.innermost(ast.Node(branch.stmts.last()).pos().pos)
-						if v := scope.find_var(branch.cond.vars[0].name) {
-							is_auto_heap = v.is_auto_heap
-						}
-					}
 					if branch.cond.vars.len == 1 {
 						left_var_name := c_name(branch.cond.vars[0].name)
-						if is_auto_heap {
-							g.writeln('\t${base_type}* ${left_var_name} = HEAP(${base_type}, *(${base_type}*)${var_name}.data);')
-						} else {
-							g.writeln('\t${base_type} ${left_var_name} = *(${base_type}*)${var_name}.data;')
-						}
+						g.writeln('\t${base_type} ${left_var_name} = *(${base_type}*)${var_name}.data;')
 					} else if branch.cond.vars.len > 1 {
-						sym := g.table.sym(branch.cond.expr_type)
-						if sym.info is ast.MultiReturn {
-							if sym.info.types.len == branch.cond.vars.len {
-								for vi, var in branch.cond.vars {
-									var_typ := g.typ(sym.info.types[vi])
-									left_var_name := c_name(var.name)
-									if is_auto_heap {
-										g.writeln('\t${var_typ}* ${left_var_name} = (HEAP(${base_type}, *(${base_type}*)${var_name}.data).arg${vi});')
-									} else {
-										g.writeln('\t${var_typ} ${left_var_name} = (*(${base_type}*)${var_name}.data).arg${vi};')
-									}
+						for vi, var in branch.cond.vars {
+							left_var_name := c_name(var.name)
+							sym := g.table.sym(branch.cond.expr_type)
+							if sym.kind == .multi_return {
+								mr_info := sym.info as ast.MultiReturn
+								if mr_info.types.len == branch.cond.vars.len {
+									var_typ := g.typ(mr_info.types[vi])
+									g.writeln('\t${var_typ} ${left_var_name} = (*(${base_type}*)${var_name}.data).arg${vi};')
 								}
 							}
 						}

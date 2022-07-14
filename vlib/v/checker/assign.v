@@ -206,28 +206,6 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			// 	c.error('cannot assign a `none` value to a non-option variable', right.pos())
 			// }
 		}
-		if right_type.is_ptr() && left_type.is_ptr() {
-			if mut right is ast.Ident {
-				if mut right.obj is ast.Var {
-					mut obj := unsafe { &right.obj }
-					if c.fn_scope != unsafe { nil } {
-						obj = c.fn_scope.find_var(right.obj.name) or { obj }
-					}
-					if obj.is_stack_obj && !c.inside_unsafe {
-						type_sym := c.table.sym(obj.typ.set_nr_muls(0))
-						if !type_sym.is_heap() && !c.pref.translated && !c.file.is_translated {
-							suggestion := if type_sym.kind == .struct_ {
-								'declaring `${type_sym.name}` as `[heap]`'
-							} else {
-								'wrapping the `${type_sym.name}` object in a `struct` declared as `[heap]`'
-							}
-							c.error('`${right.name}` cannot be assigned outside `unsafe` blocks as it might refer to an object stored on stack. Consider ${suggestion}.',
-								right.pos)
-						}
-					}
-				}
-			}
-		}
 		// Do not allow `a := 0; b := 0; a = &b`
 		if !is_decl && left is ast.Ident && !is_blank_ident && !left_type.is_real_pointer()
 			&& right_type.is_real_pointer() && !right_type.has_flag(.shared_f) {
@@ -641,12 +619,7 @@ fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			}
 		}
 		if left_sym.kind == .interface_ {
-			if c.type_implements(right_type, left_type, right.pos()) {
-				if !right_type.is_ptr() && !right_type.is_pointer() && right_sym.kind != .interface_
-					&& !c.inside_unsafe {
-					c.mark_as_referenced(mut &node.right[i], true)
-				}
-			}
+			c.type_implements(right_type, left_type, right.pos())
 		}
 	}
 	// this needs to run after the assign stmt left exprs have been run through checker
