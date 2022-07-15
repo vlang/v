@@ -60,6 +60,7 @@ mut:
 	alias_definitions         strings.Builder // alias fixed array of non-builtin
 	hotcode_definitions       strings.Builder // -live declarations & functions
 	channel_definitions       strings.Builder // channel related code
+	thread_definitions        strings.Builder // thread defines
 	comptime_definitions      strings.Builder // custom defines, given by -d/-define flags on the CLI
 	cleanup                   strings.Builder
 	cleanups                  map[string]strings.Builder // contents of `void _vcleanup(){}`
@@ -249,6 +250,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		alias_definitions: strings.new_builder(100)
 		hotcode_definitions: strings.new_builder(100)
 		channel_definitions: strings.new_builder(100)
+		thread_definitions: strings.new_builder(100)
 		comptime_definitions: strings.new_builder(100)
 		definitions: strings.new_builder(100)
 		gowrappers: strings.new_builder(100)
@@ -344,6 +346,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			global_g.json_forward_decls.write(g.json_forward_decls) or { panic(err) }
 			global_g.enum_typedefs.write(g.enum_typedefs) or { panic(err) }
 			global_g.channel_definitions.write(g.channel_definitions) or { panic(err) }
+			global_g.thread_definitions.write(g.thread_definitions) or { panic(err) }
 			global_g.sql_buf.write(g.sql_buf) or { panic(err) }
 
 			global_g.cleanups[g.file.mod.name].write(g.cleanup) or { panic(err) } // strings.Builder.write never fails; it is like that in the source
@@ -450,6 +453,8 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	b.write_string(g.includes.str())
 	b.writeln('\n// Enum definitions:')
 	b.write_string(g.enum_typedefs.str())
+	b.writeln('\n// Thread definitions:')
+	b.write_string(g.thread_definitions.str())
 	b.writeln('\n// V type definitions:')
 	b.write_string(g.type_definitions.str())
 	b.writeln('\n// V alias definitions:')
@@ -557,6 +562,7 @@ fn cgen_process_one_file_cb(p &pool.PoolProcessor, idx int, wid int) &Gen {
 		shared_types: strings.new_builder(100)
 		shared_functions: strings.new_builder(100)
 		channel_definitions: strings.new_builder(100)
+		thread_definitions: strings.new_builder(100)
 		json_forward_decls: strings.new_builder(100)
 		enum_typedefs: strings.new_builder(100)
 		sql_buf: strings.new_builder(100)
@@ -609,6 +615,7 @@ pub fn (mut g Gen) free_builders() {
 		g.shared_types.free()
 		g.shared_functions.free()
 		g.channel_definitions.free()
+		g.thread_definitions.free()
 		g.options.free()
 		g.out_results.free()
 		g.json_forward_decls.free()
@@ -4943,18 +4950,18 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 			ast.Thread {
 				if g.pref.os == .windows {
 					if name == '__v_thread' {
-						g.type_definitions.writeln('typedef HANDLE $name;')
+						g.thread_definitions.writeln('typedef HANDLE $name;')
 					} else {
 						// Windows can only return `u32` (no void*) from a thread, so the
 						// V gohandle must maintain a pointer to the return value
-						g.type_definitions.writeln('typedef struct {')
-						g.type_definitions.writeln('\tvoid* ret_ptr;')
-						g.type_definitions.writeln('\tHANDLE handle;')
-						g.type_definitions.writeln('} $name;')
+						g.thread_definitions.writeln('typedef struct {')
+						g.thread_definitions.writeln('\tvoid* ret_ptr;')
+						g.thread_definitions.writeln('\tHANDLE handle;')
+						g.thread_definitions.writeln('} $name;')
 					}
 				} else {
 					if !g.pref.is_bare && !g.pref.no_builtin {
-						g.type_definitions.writeln('typedef pthread_t $name;')
+						g.thread_definitions.writeln('typedef pthread_t $name;')
 					}
 				}
 			}
