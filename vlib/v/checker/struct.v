@@ -303,6 +303,13 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 			c.error('unknown struct: $type_sym.name', node.pos)
 			return ast.void_type
 		}
+		.any {
+			// `T{ foo: 22 }`
+			for mut field in node.fields {
+				field.typ = c.expr(field.expr)
+				field.expected_type = field.typ
+			}
+		}
 		// string & array are also structs but .kind of string/array
 		.struct_, .string, .array, .alias {
 			mut info := ast.Struct{}
