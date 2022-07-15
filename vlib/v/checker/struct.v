@@ -304,6 +304,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 			return ast.void_type
 		}
 		.any {
+			// `T{ foo: 22 }`
 			for mut field in node.fields {
 				field.typ = c.expr(field.expr)
 				field.expected_type = field.typ
