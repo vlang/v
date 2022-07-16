@@ -622,6 +622,11 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			is_mut = true
 			mut_pos = fields.len
 		}
+		if p.peek_tok.kind == .lt {
+			p.error_with_pos("no need to add generic type names in generic interface's method",
+				p.peek_tok.pos())
+			return ast.InterfaceDecl{}
+		}
 		if p.peek_tok.kind == .lpar {
 			method_start_pos := p.tok.pos()
 			line_nr := p.tok.line_nr
