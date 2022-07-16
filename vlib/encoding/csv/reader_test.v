@@ -287,12 +287,12 @@ struct Test {
 }
 
 fn test_decode_to_struct() {
-	text := 'id,bonus,amount\n\r1,bomb,1\n\r2,rocket,1\n\r3,lightning,2'
+	text := 'id,bonus,amount\r\n1,bomb,1\r\n2,rocket,1\r\n3,lightning,2\r\n'
 	arr := csv.decode<Test>(text)
 	for i, val in arr {
 		if i == 0 {
 			assert val.id == 1
-			assert val.bomus == 'bomb'
+			assert val.bonus == 'bomb'
 			assert val.amount == 1
 		} else if i == 1 {
 			assert val.id == 2
