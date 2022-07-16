@@ -58,6 +58,10 @@ pub fn (conn Connection) query(q string) ?Result {
 	return Result{res}
 }
 
+pub fn (conn Connection) use_result() {
+	C.mysql_use_result(conn.conn)
+}
+
 // real_query - make an SQL query and receive the results.
 // `real_query()` can be used for statements containing binary data.
 // (Binary data may contain the `\0` character, which `query()`
