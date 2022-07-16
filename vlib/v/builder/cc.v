@@ -147,6 +147,7 @@ mut:
 	debug_mode  bool
 	is_cc_tcc   bool
 	is_cc_gcc   bool
+	is_cc_icc   bool
 	is_cc_msvc  bool
 	is_cc_clang bool
 	//
@@ -240,6 +241,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	//
 	ccoptions.is_cc_tcc = ccompiler.contains('tcc') || ccoptions.guessed_compiler == 'tcc'
 	ccoptions.is_cc_gcc = ccompiler.contains('gcc') || ccoptions.guessed_compiler == 'gcc'
+	ccoptions.is_cc_icc = ccompiler.contains('icc') || ccoptions.guessed_compiler == 'icc'
 	ccoptions.is_cc_msvc = ccompiler.contains('msvc') || ccoptions.guessed_compiler == 'msvc'
 	ccoptions.is_cc_clang = ccompiler.contains('clang') || ccoptions.guessed_compiler == 'clang'
 	// For C++ we must be very tolerant
@@ -274,6 +276,15 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 			}
 		}
 		optimization_options = ['-O3', '-fno-strict-aliasing', '-flto']
+	}
+	if ccoptions.is_cc_icc {
+		if ccoptions.debug_mode {
+			debug_options = ['-g']
+			if user_darwin_version > 9 {
+				debug_options << '-no-pie'
+			}
+		}
+		optimization_options = ['-Ofast', '-fno-strict-aliasing']
 	}
 	//
 	if ccoptions.debug_mode {
@@ -750,7 +761,13 @@ fn (mut b Builder) cc_linux_cross() {
 	cc_args << '-c "$b.out_name_c"'
 	cc_args << libs
 	b.dump_c_options(cc_args)
-	cc_cmd := '${os.quoted_path('cc')} ' + cc_args.join(' ')
+	mut cc_name := 'cc'
+	mut out_name := b.pref.out_name
+	$if windows {
+		cc_name = 'clang.exe'
+		out_name = out_name.trim_string_right('.exe')
+	}
+	cc_cmd := '${os.quoted_path(cc_name)} ' + cc_args.join(' ')
 	if b.pref.show_cc {
 		println(cc_cmd)
 	}
@@ -761,14 +778,17 @@ fn (mut b Builder) cc_linux_cross() {
 		return
 	}
 	mut linker_args := ['-L$sysroot/usr/lib/x86_64-linux-gnu/', '-L$sysroot/lib/x86_64-linux-gnu',
-		'--sysroot=$sysroot', '-v', '-o $b.pref.out_name', '-m elf_x86_64',
+		'--sysroot=$sysroot', '-v', '-o $out_name', '-m elf_x86_64',
 		'-dynamic-linker /lib/x86_64-linux-gnu/ld-linux-x86-64.so.2',
 		'$sysroot/crt1.o $sysroot/crti.o $obj_file', '-lc', '-lcrypto', '-lssl', '-lpthread',
 		'$sysroot/crtn.o', '-lm']
 	linker_args << cflags.c_options_only_object_files()
 	// -ldl
 	b.dump_c_options(linker_args)
-	ldlld := '$sysroot/ld.lld'
+	mut ldlld := '$sysroot/ld.lld'
+	$if windows {
+		ldlld = 'ld.lld.exe'
+	}
 	linker_cmd := '${os.quoted_path(ldlld)} ' + linker_args.join(' ')
 	// s = s.replace('SYSROOT', sysroot) // TODO $ inter bug
 	// s = s.replace('-o hi', '-o ' + c.pref.out_name)
@@ -781,7 +801,7 @@ fn (mut b Builder) cc_linux_cross() {
 		verror(res.output)
 		return
 	}
-	println(b.pref.out_name + ' has been successfully compiled')
+	println(out_name + ' has been successfully compiled')
 }
 
 fn (mut c Builder) cc_windows_cross() {

@@ -209,7 +209,7 @@ fn buffer_to_primitive(data_list []&u8, types []int) ?[]orm.Primitive {
 			orm.type_idx['i64'] {
 				primitive = *(unsafe { &i64(data) })
 			}
-			orm.type_idx['byte'] {
+			orm.type_idx['u8'] {
 				primitive = *(unsafe { &u8(data) })
 			}
 			orm.type_idx['u16'] {
@@ -249,7 +249,7 @@ fn buffer_to_primitive(data_list []&u8, types []int) ?[]orm.Primitive {
 
 fn mysql_type_from_v(typ int) ?string {
 	str := match typ {
-		orm.type_idx['i8'], orm.type_idx['byte'] {
+		orm.type_idx['i8'], orm.type_idx['u8'] {
 			'TINYINT'
 		}
 		orm.type_idx['i16'], orm.type_idx['u16'] {

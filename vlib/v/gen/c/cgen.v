@@ -60,6 +60,7 @@ mut:
 	alias_definitions         strings.Builder // alias fixed array of non-builtin
 	hotcode_definitions       strings.Builder // -live declarations & functions
 	channel_definitions       strings.Builder // channel related code
+	thread_definitions        strings.Builder // thread defines
 	comptime_definitions      strings.Builder // custom defines, given by -d/-define flags on the CLI
 	cleanup                   strings.Builder
 	cleanups                  map[string]strings.Builder // contents of `void _vcleanup(){}`
@@ -249,6 +250,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		alias_definitions: strings.new_builder(100)
 		hotcode_definitions: strings.new_builder(100)
 		channel_definitions: strings.new_builder(100)
+		thread_definitions: strings.new_builder(100)
 		comptime_definitions: strings.new_builder(100)
 		definitions: strings.new_builder(100)
 		gowrappers: strings.new_builder(100)
@@ -344,6 +346,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			global_g.json_forward_decls.write(g.json_forward_decls) or { panic(err) }
 			global_g.enum_typedefs.write(g.enum_typedefs) or { panic(err) }
 			global_g.channel_definitions.write(g.channel_definitions) or { panic(err) }
+			global_g.thread_definitions.write(g.thread_definitions) or { panic(err) }
 			global_g.sql_buf.write(g.sql_buf) or { panic(err) }
 
 			global_g.cleanups[g.file.mod.name].write(g.cleanup) or { panic(err) } // strings.Builder.write never fails; it is like that in the source
@@ -450,6 +453,8 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	b.write_string(g.includes.str())
 	b.writeln('\n// Enum definitions:')
 	b.write_string(g.enum_typedefs.str())
+	b.writeln('\n// Thread definitions:')
+	b.write_string(g.thread_definitions.str())
 	b.writeln('\n// V type definitions:')
 	b.write_string(g.type_definitions.str())
 	b.writeln('\n// V alias definitions:')
@@ -557,6 +562,7 @@ fn cgen_process_one_file_cb(p &pool.PoolProcessor, idx int, wid int) &Gen {
 		shared_types: strings.new_builder(100)
 		shared_functions: strings.new_builder(100)
 		channel_definitions: strings.new_builder(100)
+		thread_definitions: strings.new_builder(100)
 		json_forward_decls: strings.new_builder(100)
 		enum_typedefs: strings.new_builder(100)
 		sql_buf: strings.new_builder(100)
@@ -609,6 +615,7 @@ pub fn (mut g Gen) free_builders() {
 		g.shared_types.free()
 		g.shared_functions.free()
 		g.channel_definitions.free()
+		g.thread_definitions.free()
 		g.options.free()
 		g.out_results.free()
 		g.json_forward_decls.free()
@@ -1038,6 +1045,10 @@ fn (mut g Gen) write_results() {
 		done << base
 		g.typedefs.writeln('typedef struct $styp $styp;')
 		g.out_results.write_string(g.result_type_text(styp, base) + ';\n\n')
+	}
+	for k, _ in g.table.anon_struct_names {
+		ck := c_name(k)
+		g.typedefs.writeln('typedef struct $ck $ck;')
 	}
 }
 
@@ -1751,7 +1762,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// }
 			if g.inside_ternary == 0 && !g.inside_if_optional && !g.inside_match_optional
 				&& !node.is_expr && node.expr !is ast.IfExpr {
-				g.writeln(';')
+				if node.expr is ast.MatchExpr {
+					g.writeln('')
+				} else {
+					g.writeln(';')
+				}
 			}
 		}
 		ast.FnDecl {
@@ -2078,7 +2093,11 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr
 			g.write('&')
 		}
 	}
-	g.expr(expr)
+	if got_styp == 'none' && !g.cur_fn.return_type.has_flag(.optional) {
+		g.write('(none){EMPTY_STRUCT_INITIALIZATION}')
+	} else {
+		g.expr(expr)
+	}
 	g.write(')'.repeat(rparen_n))
 }
 
@@ -3020,6 +3039,9 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			g.match_expr(node)
 		}
 		ast.NodeError {}
+		ast.Nil {
+			g.write('((void*)0)')
+		}
 		ast.None {
 			g.write('_const_none__')
 		}
@@ -4041,7 +4063,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 
 	if node.exprs.len > 0 {
 		// skip `return $vweb.html()`
-		if node.exprs[0] is ast.ComptimeCall {
+		if node.exprs[0] is ast.ComptimeCall && (node.exprs[0] as ast.ComptimeCall).is_vweb {
 			g.expr(node.exprs[0])
 			g.writeln(';')
 			return
@@ -4893,14 +4915,16 @@ fn (mut g Gen) write_sorted_types() {
 	defer {
 		g.type_definitions.writeln('// #end sorted_symbols')
 	}
-	mut symbols := []&ast.TypeSymbol{cap: g.table.type_symbols.len} // structs that need to be sorted
-	for sym in g.table.type_symbols {
-		if sym.name !in c.builtins {
-			symbols << sym
+	unsafe {
+		mut symbols := []&ast.TypeSymbol{cap: g.table.type_symbols.len} // structs that need to be sorted
+		for sym in g.table.type_symbols {
+			if sym.name !in c.builtins {
+				symbols << sym
+			}
 		}
+		sorted_symbols := g.sort_structs(symbols)
+		g.write_types(sorted_symbols)
 	}
-	sorted_symbols := g.sort_structs(symbols)
-	g.write_types(sorted_symbols)
 }
 
 fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
@@ -4918,96 +4942,7 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 		mut name := sym.cname
 		match sym.info {
 			ast.Struct {
-				if sym.info.is_generic {
-					continue
-				}
-				if name.contains('_T_') {
-					g.typedefs.writeln('typedef struct $name $name;')
-				}
-				// TODO avoid buffer manip
-				start_pos := g.type_definitions.len
-
-				mut pre_pragma := ''
-				mut post_pragma := ''
-
-				for attr in sym.info.attrs {
-					match attr.name {
-						'_pack' {
-							pre_pragma += '#pragma pack(push, $attr.arg)\n'
-							post_pragma += '#pragma pack(pop)'
-						}
-						else {}
-					}
-				}
-
-				is_minify := sym.info.is_minify
-				g.type_definitions.writeln(pre_pragma)
-
-				if sym.info.is_union {
-					g.type_definitions.writeln('union $name {')
-				} else {
-					g.type_definitions.writeln('struct $name {')
-				}
-				if sym.info.fields.len > 0 || sym.info.embeds.len > 0 {
-					for field in sym.info.fields {
-						// Some of these structs may want to contain
-						// optionals that may not be defined at this point
-						// if this is the case then we are going to
-						// buffer manip out in front of the struct
-						// write the optional in and then continue
-						// FIXME: for parallel cgen (two different files using the same optional in struct fields)
-						if field.typ.has_flag(.optional) {
-							// Dont use g.typ() here becuase it will register
-							// optional and we dont want that
-							styp, base := g.optional_type_name(field.typ)
-							lock g.done_optionals {
-								if base !in g.done_optionals {
-									g.done_optionals << base
-									last_text := g.type_definitions.after(start_pos).clone()
-									g.type_definitions.go_back_to(start_pos)
-									g.typedefs.writeln('typedef struct $styp $styp;')
-									g.type_definitions.writeln('${g.optional_type_text(styp,
-										base)};')
-									g.type_definitions.write_string(last_text)
-								}
-							}
-						}
-						type_name := g.typ(field.typ)
-						field_name := c_name(field.name)
-						volatile_prefix := if field.is_volatile { 'volatile ' } else { '' }
-						mut size_suffix := ''
-						if is_minify && !g.is_cc_msvc {
-							if field.typ == ast.bool_type_idx {
-								size_suffix = ' : 1'
-							} else {
-								field_sym := g.table.sym(field.typ)
-								if field_sym.info is ast.Enum {
-									if !field_sym.info.is_flag && !field_sym.info.uses_exprs {
-										mut bits_needed := 0
-										mut l := field_sym.info.vals.len
-										for l > 0 {
-											bits_needed++
-											l >>= 1
-										}
-										size_suffix = ' : $bits_needed'
-									}
-								}
-							}
-						}
-						g.type_definitions.writeln('\t$volatile_prefix$type_name $field_name$size_suffix;')
-					}
-				} else {
-					g.type_definitions.writeln('\tEMPTY_STRUCT_DECLARATION;')
-				}
-				// g.type_definitions.writeln('} $name;\n')
-				//
-				ti_attrs := if sym.info.attrs.contains('packed') {
-					'__attribute__((__packed__))'
-				} else {
-					''
-				}
-				g.type_definitions.writeln('}$ti_attrs;\n')
-				g.type_definitions.writeln(post_pragma)
+				g.struct_decl(sym.info, name, false)
 			}
 			ast.Alias {
 				// ast.Alias { TODO
@@ -5015,18 +4950,18 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 			ast.Thread {
 				if g.pref.os == .windows {
 					if name == '__v_thread' {
-						g.type_definitions.writeln('typedef HANDLE $name;')
+						g.thread_definitions.writeln('typedef HANDLE $name;')
 					} else {
 						// Windows can only return `u32` (no void*) from a thread, so the
 						// V gohandle must maintain a pointer to the return value
-						g.type_definitions.writeln('typedef struct {')
-						g.type_definitions.writeln('\tvoid* ret_ptr;')
-						g.type_definitions.writeln('\tHANDLE handle;')
-						g.type_definitions.writeln('} $name;')
+						g.thread_definitions.writeln('typedef struct {')
+						g.thread_definitions.writeln('\tvoid* ret_ptr;')
+						g.thread_definitions.writeln('\tHANDLE handle;')
+						g.thread_definitions.writeln('} $name;')
 					}
 				} else {
 					if !g.pref.is_bare && !g.pref.no_builtin {
-						g.type_definitions.writeln('typedef pthread_t $name;')
+						g.thread_definitions.writeln('typedef pthread_t $name;')
 					}
 				}
 			}
@@ -5183,11 +5118,13 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 			'\nif you feel this is an error, please create a new issue here: https://github.com/vlang/v/issues and tag @joe-conigliaro')
 	}
 	// sort types
-	mut sorted_symbols := []&ast.TypeSymbol{cap: dep_graph_sorted.nodes.len}
-	for node in dep_graph_sorted.nodes {
-		sorted_symbols << g.table.sym_by_idx(g.table.type_idxs[node.name])
+	unsafe {
+		mut sorted_symbols := []&ast.TypeSymbol{cap: dep_graph_sorted.nodes.len}
+		for node in dep_graph_sorted.nodes {
+			sorted_symbols << g.table.sym_by_idx(g.table.type_idxs[node.name])
+		}
+		return sorted_symbols
 	}
-	return sorted_symbols
 }
 
 [inline]
@@ -5430,8 +5367,7 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 			mut has_none_zero := false
 			mut init_str := '{'
 			info := sym.info as ast.Struct
-			typ_is_shared_f := typ.has_flag(.shared_f)
-			if sym.language == .v && !typ_is_shared_f {
+			if sym.language == .v {
 				for field in info.fields {
 					field_sym := g.table.sym(field.typ)
 					if field.has_default_expr
@@ -5462,16 +5398,24 @@ fn (mut g Gen) type_default(typ_ ast.Type) string {
 					}
 				}
 			}
+			typ_is_shared_f := typ.has_flag(.shared_f)
 			if has_none_zero {
 				init_str += '}'
-				type_name := g.typ(typ)
-				init_str = '($type_name)' + init_str
+				if !typ_is_shared_f {
+					type_name := if info.is_anon {
+						// No name needed for anon structs, C figures it out on its own.
+						''
+					} else {
+						'(${g.typ(typ)})'
+					}
+					init_str = type_name + init_str
+				}
 			} else {
 				init_str += '0}'
 			}
-			if typ.has_flag(.shared_f) {
+			if typ_is_shared_f {
 				styp := '__shared__${g.table.sym(typ).cname}'
-				return '($styp*)__dup${styp}(&($styp){.mtx = {0}, .val =$init_str}, sizeof($styp))'
+				return '($styp*)__dup${styp}(&($styp){.mtx = {0}, .val = $init_str}, sizeof($styp))'
 			} else {
 				return init_str
 			}

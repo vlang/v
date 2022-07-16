@@ -1,0 +1,84 @@
+module main
+
+import gg
+import gx
+
+struct App {
+mut:
+	gg       &gg.Context = unsafe { 0 }
+	rotation f32 = f32(0)
+	edge     int = 3
+}
+
+[console]
+fn main() {
+	println('rotation: left arrow key, right arrow key')
+	println('center polygon edge: up arrow key, down arrow key')
+
+	mut app := &App{}
+
+	app.gg = gg.new_context(
+		window_title: 'Simple Polygons'
+		width: 500
+		height: 500
+		bg_color: gx.black
+		event_fn: event
+		frame_fn: render
+		user_data: app
+	)
+
+	app.gg.run()
+}
+
+fn render(app &App) {
+	app.gg.begin()
+
+	color := gx.Color{
+		r: 175
+		g: 0
+		b: 0
+		a: 200
+	}
+	mut edge := 3
+	for i := 0; i <= 5; i++ {
+		for j := 0; j <= 5; j++ {
+			if i == 0 || j == 0 || i == 5 || j == 5 {
+				app.gg.draw_polygon_filled(50 + 80 * i, 50 + 80 * j, 30, edge, app.rotation,
+					color)
+				edge++
+			}
+		}
+	}
+
+	app.gg.draw_polygon_filled(250, 250, 150, app.edge, app.rotation, color)
+
+	app.gg.end()
+}
+
+fn event(e &gg.Event, mut app App) {
+	match e.typ {
+		.key_down {
+			match e.key_code {
+				.up {
+					app.edge++
+				}
+				.down {
+					if app.edge > 3 {
+						app.edge--
+					}
+				}
+				.right {
+					app.rotation++
+				}
+				.left {
+					app.rotation--
+				}
+				.escape {
+					app.gg.quit()
+				}
+				else {}
+			}
+		}
+		else {}
+	}
+}

@@ -22,11 +22,22 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	if is_amp {
 		g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
 	}
-	g.write('(')
-	defer {
-		g.write(')')
+	mut is_anon := false
+	if sym.kind == .struct_ {
+		mut info := sym.info as ast.Struct
+
+		is_anon = info.is_anon
 	}
-	if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
+	if !is_anon {
+		g.write('(')
+		defer {
+			g.write(')')
+		}
+	}
+	if is_anon {
+		// No name needed for anon structs, C figures it out on its own.
+		g.writeln('{')
+	} else if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
 		mut shared_typ := node.typ.set_flag(.shared_f)
 		shared_styp = g.typ(shared_typ)
 		g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.mtx = {0}, .val =($styp){')
@@ -310,4 +321,116 @@ fn (mut g Gen) is_empty_struct(t Type) bool {
 			return false
 		}
 	}
+}
+
+fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
+	if s.is_generic {
+		return
+	}
+	if name.contains('_T_') {
+		g.typedefs.writeln('typedef struct $name $name;')
+	}
+	// TODO avoid buffer manip
+	start_pos := g.type_definitions.len
+
+	mut pre_pragma := ''
+	mut post_pragma := ''
+
+	for attr in s.attrs {
+		match attr.name {
+			'_pack' {
+				pre_pragma += '#pragma pack(push, $attr.arg)\n'
+				post_pragma += '#pragma pack(pop)'
+			}
+			else {}
+		}
+	}
+
+	is_minify := s.is_minify
+	g.type_definitions.writeln(pre_pragma)
+
+	if is_anon {
+		g.type_definitions.write_string('\t$name ')
+		return
+	} else if s.is_union {
+		g.type_definitions.writeln('union $name {')
+	} else {
+		g.type_definitions.writeln('struct $name {')
+	}
+	if s.fields.len > 0 || s.embeds.len > 0 {
+		for field in s.fields {
+			// Some of these structs may want to contain
+			// optionals that may not be defined at this point
+			// if this is the case then we are going to
+			// buffer manip out in front of the struct
+			// write the optional in and then continue
+			// FIXME: for parallel cgen (two different files using the same optional in struct fields)
+			if field.typ.has_flag(.optional) {
+				// Dont use g.typ() here becuase it will register
+				// optional and we dont want that
+				styp, base := g.optional_type_name(field.typ)
+				lock g.done_optionals {
+					if base !in g.done_optionals {
+						g.done_optionals << base
+						last_text := g.type_definitions.after(start_pos).clone()
+						g.type_definitions.go_back_to(start_pos)
+						g.typedefs.writeln('typedef struct $styp $styp;')
+						g.type_definitions.writeln('${g.optional_type_text(styp, base)};')
+						g.type_definitions.write_string(last_text)
+					}
+				}
+			}
+			type_name := g.typ(field.typ)
+			field_name := c_name(field.name)
+			volatile_prefix := if field.is_volatile { 'volatile ' } else { '' }
+			mut size_suffix := ''
+			if is_minify && !g.is_cc_msvc {
+				if field.typ == ast.bool_type_idx {
+					size_suffix = ' : 1'
+				} else {
+					field_sym := g.table.sym(field.typ)
+					if field_sym.info is ast.Enum {
+						if !field_sym.info.is_flag && !field_sym.info.uses_exprs {
+							mut bits_needed := 0
+							mut l := field_sym.info.vals.len
+							for l > 0 {
+								bits_needed++
+								l >>= 1
+							}
+							size_suffix = ' : $bits_needed'
+						}
+					}
+				}
+			}
+			field_sym := g.table.sym(field.typ)
+			mut field_is_anon := false
+			if field_sym.info is ast.Struct {
+				if field_sym.info.is_anon {
+					field_is_anon = true
+					// Recursively generate code for this anon struct (this is the field's type)
+					g.struct_decl(field_sym.info, field_sym.cname, true)
+					// Now the field's name
+					g.type_definitions.writeln(' $field_name$size_suffix;')
+				}
+			}
+			if !field_is_anon {
+				g.type_definitions.writeln('\t$volatile_prefix$type_name $field_name$size_suffix;')
+			}
+		}
+	} else {
+		g.type_definitions.writeln('\tEMPTY_STRUCT_DECLARATION;')
+	}
+	// g.type_definitions.writeln('} $name;\n')
+	//
+	ti_attrs := if s.attrs.contains('packed') {
+		'__attribute__((__packed__))'
+	} else {
+		''
+	}
+	g.type_definitions.write_string('}$ti_attrs')
+	if !is_anon {
+		g.type_definitions.write_string(';')
+	}
+	g.type_definitions.writeln('\n')
+	g.type_definitions.writeln(post_pragma)
 }

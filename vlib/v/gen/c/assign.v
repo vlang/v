@@ -508,9 +508,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Type) {
 	// multi return
 	// TODO Handle in if_expr
-	is_opt := return_type.has_flag(.optional)
+	is_opt := return_type.has_flag(.optional) || return_type.has_flag(.result)
 	mr_var_name := 'mr_$node.pos.pos'
-	mr_styp := g.typ(return_type.clear_flag(.optional))
+	mr_styp := g.typ(return_type.clear_flag(.optional).clear_flag(.result))
 	g.write('$mr_styp $mr_var_name = ')
 	g.expr(node.right[0])
 	g.writeln(';')

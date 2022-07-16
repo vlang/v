@@ -7,7 +7,8 @@ import v.token
 
 pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	mut elem_type := ast.void_type
-	// []string - was set in parser
+	// `x := []string{}` (the type was set in the parser)
+	// TODO type is not set for fixed arrays
 	if node.typ != ast.void_type {
 		if node.elem_type != 0 {
 			elem_sym := c.table.sym(node.elem_type)
@@ -54,13 +55,23 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		c.ensure_type_exists(node.elem_type, node.elem_type_pos) or {}
 		if node.typ.has_flag(.generic) && !isnil(c.table.cur_fn)
 			&& c.table.cur_fn.generic_names.len == 0 {
-			c.error('generic struct cannot use in non-generic function', node.pos)
+			c.error('generic struct cannot be used in non-generic function', node.pos)
+		}
+
+		// &int{} check
+		if node.elem_type.is_any_kind_of_pointer() && !c.inside_unsafe && node.has_len {
+			c.warn('arrays of references need to be initialized right away, therefore `len:` cannot be used (unless inside `unsafe`)',
+				node.pos)
 		}
 		return node.typ
 	}
 	if node.is_fixed {
 		c.ensure_sumtype_array_has_default_value(node)
 		c.ensure_type_exists(node.elem_type, node.elem_type_pos) or {}
+		if node.elem_type.is_any_kind_of_pointer() && !c.inside_unsafe && !c.is_builtin_mod {
+			c.warn('fixed arrays of references need to be initialized right away (unless inside `unsafe`)',
+				node.pos)
+		}
 	}
 	// a = []
 	if node.exprs.len == 0 {

@@ -32,6 +32,7 @@ V supports the following commands:
    vlib-docs         Generate and open the documentation of all the vlib modules.
    repl              Run the REPL.
    watch             Re-compile/re-run a source file, each time it is changed.
+   where             Find and print the location of current project declarations. 
 
 * Installation/self updating:
    symlink           Create a symbolic link for V.
@@ -51,7 +52,7 @@ V supports the following commands:
 
 * Others:
    doctor            Display some useful info about your system to help reporting bugs.
-   translate         Translate C code to V (coming soon in 0.3).
+   translate         Translate C code to V.
    tracev            Produce a tracing version of the v compiler.
                      Use `tracev yourfile.v` when the compiler panics.
                      NB: `tracev` is much slower and more verbose than ordinary `v`

@@ -4,7 +4,6 @@
 [has_globals]
 module ast
 
-import time
 import v.cflag
 import v.token
 import v.util
@@ -41,12 +40,13 @@ pub mut:
 	gostmts            int     // how many `go` statements there were in the parsed files.
 	// When table.gostmts > 0, __VTHREADS__ is defined, which can be checked with `$if threads {`
 	enum_decls        map[string]EnumDecl
-	mdeprecated_msg   map[string]string    // module deprecation message
-	mdeprecated_after map[string]time.Time // module deprecation date
+	module_deprecated map[string]bool
+	module_attrs      map[string][]Attr // module attributes
 	builtin_pub_fns   map[string]bool
 	pointer_size      int
 	// cache for type_to_str_using_aliases
 	cached_type_to_str map[u64]string
+	anon_struct_names  map[string]int // anon struct name -> struct sym idx
 }
 
 // used by vls to avoid leaks
@@ -317,15 +317,6 @@ pub fn (t &Table) find_fn(name string) ?Fn {
 pub fn (t &Table) known_fn(name string) bool {
 	t.find_fn(name) or { return false }
 	return true
-}
-
-pub fn (mut t Table) mark_module_as_deprecated(mname string, message string) {
-	t.mdeprecated_msg[mname] = message
-	t.mdeprecated_after[mname] = time.now()
-}
-
-pub fn (mut t Table) mark_module_as_deprecated_after(mname string, after_date string) {
-	t.mdeprecated_after[mname] = time.parse_iso8601(after_date) or { time.now() }
 }
 
 pub fn (mut t Table) register_fn(new_fn Fn) {
@@ -844,6 +835,11 @@ pub fn (mut t Table) register_enum_decl(enum_decl EnumDecl) {
 	t.enum_decls[enum_decl.name] = enum_decl
 }
 
+[inline]
+pub fn (mut t Table) register_anon_struct(name string, sym_idx int) {
+	t.anon_struct_names[name] = sym_idx
+}
+
 pub fn (t &Table) known_type(name string) bool {
 	return t.find_type_idx(name) != 0 || t.parsing_type == name
 }
@@ -1259,7 +1255,7 @@ pub fn (t &Table) value_type(typ Type) Type {
 		return string_type
 	}
 	if sym.kind in [.byteptr, .string] {
-		return byte_type
+		return u8_type
 	}
 	if typ.is_ptr() {
 		// byte* => byte
@@ -1436,7 +1432,7 @@ pub fn (mut t Table) bitsize_to_type(bit_size int) Type {
 			if bit_size % 8 != 0 { // there is no way to do `i2131(32)` so this should never be reached
 				t.panic('compiler bug: bitsizes must be multiples of 8')
 			}
-			return new_type(t.find_or_register_array_fixed(byte_type, bit_size / 8, empty_expr()))
+			return new_type(t.find_or_register_array_fixed(u8_type, bit_size / 8, empty_expr()))
 		}
 	}
 }
@@ -1688,6 +1684,70 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 		else {}
 	}
 	return none
+}
+
+fn generic_names_push_with_filter(mut to_names []string, from_names []string) {
+	for name in from_names {
+		if name !in to_names {
+			to_names << name
+		}
+	}
+}
+
+pub fn (mut t Table) generic_type_names(generic_type Type) []string {
+	mut names := []string{}
+	mut sym := t.sym(generic_type)
+	if sym.name.len == 1 && sym.name[0].is_capital() {
+		names << sym.name
+		return names
+	}
+	match mut sym.info {
+		Array {
+			mut elem_type := sym.info.elem_type
+			mut elem_sym := t.sym(elem_type)
+			mut dims := 1
+			for mut elem_sym.info is Array {
+				elem_type = elem_sym.info.elem_type
+				elem_sym = t.sym(elem_type)
+				dims++
+			}
+			names << t.generic_type_names(elem_type)
+		}
+		ArrayFixed {
+			names << t.generic_type_names(sym.info.elem_type)
+		}
+		Chan {
+			names << t.generic_type_names(sym.info.elem_type)
+		}
+		FnType {
+			mut func := sym.info.func
+			if func.return_type.has_flag(.generic) {
+				names << t.generic_type_names(func.return_type)
+			}
+			func.params = func.params.clone()
+			for mut param in func.params {
+				if param.typ.has_flag(.generic) {
+					generic_names_push_with_filter(mut names, t.generic_type_names(param.typ))
+				}
+			}
+		}
+		MultiReturn {
+			for ret_type in sym.info.types {
+				generic_names_push_with_filter(mut names, t.generic_type_names(ret_type))
+			}
+		}
+		Map {
+			names << t.generic_type_names(sym.info.key_type)
+			generic_names_push_with_filter(mut names, t.generic_type_names(sym.info.value_type))
+		}
+		Struct, Interface, SumType {
+			if sym.info.is_generic {
+				names << sym.info.generic_types.map(t.sym(it).name)
+			}
+		}
+		else {}
+	}
+	return names
 }
 
 pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concrete_types []Type) Type {
