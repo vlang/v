@@ -31,6 +31,8 @@ pub fn decode<T>(data string) []T {
 						t_val.$(field.name) = f32(strconv.atof64(items[col]) or { f32(0.0) })
 					} $else $if field.typ is f64 {
 						t_val.$(field.name) = strconv.atof64(items[col]) or { f64(0.0) }
+					} $else $if field.typ is bool {
+						t_val.$(field.name) = string_to_bool(items[col])
 					}
 				}
 			}
@@ -40,6 +42,19 @@ pub fn decode<T>(data string) []T {
 	}
 
 	return result
+}
+
+fn string_to_bool(val string) bool {
+	l_val := val.to_lower().trim_space()
+	i_val := val.int()
+	if l_val == 'true' {
+		return true
+	}
+	if i_val == 1 {
+		return true
+	}
+
+	return false
 }
 
 fn get_column(name string, columns []string) int {
