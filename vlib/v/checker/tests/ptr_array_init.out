@@ -1,0 +1,12 @@
+vlib/v/checker/tests/ptr_array_init.vv:2:11: warning: arrays of references need to be initialized right away, therefore `len:` cannot be used (unless inside `unsafe`)
+    1 | fn main() {
+    2 |     println(*[]&int{len: 1}[0])
+      |              ~~~~~~~
+    3 |     println([1]&int{})
+    4 | }
+vlib/v/checker/tests/ptr_array_init.vv:3:10: warning: fixed arrays of references need to be initialized right away (unless inside `unsafe`)
+    1 | fn main() {
+    2 |     println(*[]&int{len: 1}[0])
+    3 |     println([1]&int{})
+      |             ~~~~~~~~~
+    4 | }

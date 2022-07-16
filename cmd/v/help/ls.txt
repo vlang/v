@@ -1,0 +1,18 @@
+Usage:
+  v ls [options] [ARGS]
+
+Description:
+  Installs, updates, and executes the V language server program
+
+Options:
+  --json                Print the output as JSON.
+  --silent              Disables output printing.
+  --install             Installs the language server. You may also use this flag to re-download or force update your existing installation.
+  --update              Updates the installed language server.
+  --check               Checks if the language server is installed.
+  --force               Force install or update the language server.
+  --source              Clone and build the language server from source.
+  --ls                  Pass the arguments to the language server.
+  -p, --path <string>   Path to the language server executable.
+  -h, --help            Show this updater's help text. To show the help text for the language server's, pass the `--ls` flag before it.
+  --version             output version information and exit

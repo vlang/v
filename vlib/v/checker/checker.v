@@ -24,8 +24,8 @@ const (
 
 pub const (
 	valid_comptime_if_os             = ['windows', 'ios', 'macos', 'mach', 'darwin', 'hpux', 'gnu',
-		'qnx', 'linux', 'freebsd', 'openbsd', 'netbsd', 'bsd', 'dragonfly', 'android', 'solaris',
-		'haiku', 'serenity', 'vinix']
+		'qnx', 'linux', 'freebsd', 'openbsd', 'netbsd', 'bsd', 'dragonfly', 'android', 'termux',
+		'solaris', 'haiku', 'serenity', 'vinix']
 	valid_comptime_compression_types = ['none', 'zlib']
 	valid_comptime_if_compilers      = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
 	valid_comptime_if_platforms      = ['amd64', 'i386', 'aarch64', 'arm64', 'arm32', 'rv64', 'rv32']
@@ -271,35 +271,37 @@ pub fn (mut c Checker) check_files(ast_files []&ast.File) {
 	// c.files = ast_files
 	mut has_main_mod_file := false
 	mut has_main_fn := false
-	mut files_from_main_module := []&ast.File{}
-	for i in 0 .. ast_files.len {
-		mut file := unsafe { ast_files[i] }
-		c.timers.start('checker_check $file.path')
-		c.check(file)
-		if file.mod.name == 'main' {
-			files_from_main_module << file
-			has_main_mod_file = true
-			if c.file_has_main_fn(file) {
-				has_main_fn = true
-			}
-		}
-		c.timers.show('checker_check $file.path')
-	}
-	if has_main_mod_file && !has_main_fn && files_from_main_module.len > 0 {
-		if c.pref.is_script && !c.pref.is_test {
-			// files_from_main_module contain preludes at the start
-			mut the_main_file := files_from_main_module.last()
-			the_main_file.stmts << ast.FnDecl{
-				name: 'main.main'
-				mod: 'main'
-				is_main: true
-				file: the_main_file.path
-				return_type: ast.void_type
-				scope: &ast.Scope{
-					parent: 0
+	unsafe {
+		mut files_from_main_module := []&ast.File{}
+		for i in 0 .. ast_files.len {
+			mut file := ast_files[i]
+			c.timers.start('checker_check $file.path')
+			c.check(file)
+			if file.mod.name == 'main' {
+				files_from_main_module << file
+				has_main_mod_file = true
+				if c.file_has_main_fn(file) {
+					has_main_fn = true
 				}
 			}
-			has_main_fn = true
+			c.timers.show('checker_check $file.path')
+		}
+		if has_main_mod_file && !has_main_fn && files_from_main_module.len > 0 {
+			if c.pref.is_script && !c.pref.is_test {
+				// files_from_main_module contain preludes at the start
+				mut the_main_file := files_from_main_module.last()
+				the_main_file.stmts << ast.FnDecl{
+					name: 'main.main'
+					mod: 'main'
+					is_main: true
+					file: the_main_file.path
+					return_type: ast.void_type
+					scope: &ast.Scope{
+						parent: 0
+					}
+				}
+				has_main_fn = true
+			}
 		}
 	}
 	c.timers.start('checker_post_process_generic_fns')
@@ -1124,6 +1126,7 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		// This means that the field has an undefined type.
 		// This error was handled before.
 		// c.error('`void` type has no fields', node.pos)
+		node.expr_type = ast.void_type
 		return ast.void_type
 	}
 	node.expr_type = typ
@@ -1231,15 +1234,7 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		}
 		field_sym := c.table.sym(field.typ)
 		if field.is_deprecated && is_used_outside {
-			now := time.now()
-			mut after_time := now
-			if field.deprecated_after != '' {
-				after_time = time.parse_iso8601(field.deprecated_after) or {
-					c.error('invalid time format', field.pos)
-					now
-				}
-			}
-			c.deprecate('field', field_name, field.deprecation_msg, now, after_time, node.pos)
+			c.deprecate('field', field_name, field.attrs, node.pos)
 		}
 		if field_sym.kind in [.sum_type, .interface_] {
 			if !prevent_sum_type_unwrapping_once {
@@ -1765,12 +1760,14 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 	if c.ct_cond_stack.len > 0 {
 		node.ct_conds = c.ct_cond_stack.clone()
 	}
-	if c.pref.backend.is_js() {
-		if !c.file.path.ends_with('.js.v') {
-			c.error('hash statements are only allowed in backend specific files such "x.js.v"',
+	if c.pref.backend.is_js() || c.pref.backend == .golang {
+		// consider the the best way to handle the .go.vv files
+		if !c.file.path.ends_with('.js.v') && !c.file.path.ends_with('.go.v')
+			&& !c.file.path.ends_with('.go.vv') {
+			c.error('hash statements are only allowed in backend specific files such "x.js.v" and "x.go.v"',
 				node.pos)
 		}
-		if c.mod == 'main' {
+		if c.mod == 'main' && c.pref.backend != .golang {
 			c.error('hash statements are not allowed in the main module. Place them in a separate module.',
 				node.pos)
 		}
@@ -1903,7 +1900,13 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			}
 		}
 		else {
-			if node.kind != 'define' {
+			if node.kind == 'define' {
+				if !c.is_builtin_mod && !c.file.path.ends_with('.c.v')
+					&& !c.file.path.contains('vlib' + os.path_separator) {
+					c.error("#define can only be used in vlib (V's standard library) and *.c.v files",
+						node.pos)
+				}
+			} else {
 				c.error('expected `#define`, `#flag`, `#include`, `#insert` or `#pkgconfig` not $node.val',
 					node.pos)
 			}
@@ -1938,10 +1941,8 @@ fn (mut c Checker) import_stmt(node ast.Import) {
 		}
 		c.error('module `$node.mod` has no constant or function `$sym.name`', sym.pos)
 	}
-	if after_time := c.table.mdeprecated_after[node.mod] {
-		now := time.now()
-		deprecation_message := c.table.mdeprecated_msg[node.mod]
-		c.deprecate('module', node.mod, deprecation_message, now, after_time, node.pos)
+	if c.table.module_deprecated[node.mod] {
+		c.deprecate('module', node.mod, c.table.module_attrs[node.mod], node.pos)
 	}
 }
 
@@ -2210,6 +2211,12 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 		ast.MatchExpr {
 			return c.match_expr(mut node)
 		}
+		ast.Nil {
+			if !c.inside_unsafe {
+				c.error('`nil` is only allowed in `unsafe` code', node.pos)
+			}
+			return ast.nil_type
+		}
 		ast.PostfixExpr {
 			return c.postfix_expr(mut node)
 		}
@@ -2263,7 +2270,7 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 		ast.StringLiteral {
 			if node.language == .c {
 				// string literal starts with "c": `C.printf(c'hello')`
-				return ast.byte_type.set_nr_muls(1)
+				return ast.u8_type.set_nr_muls(1)
 			}
 			return c.string_lit(mut node)
 		}
@@ -2453,7 +2460,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	}
 
 	if to_type == ast.string_type {
-		if from_type in [ast.byte_type, ast.bool_type] {
+		if from_type in [ast.u8_type, ast.bool_type] {
 			snexpr := node.expr.str()
 			ft := c.table.type_to_str(from_type)
 			c.error('cannot cast type `$ft` to string, use `${snexpr}.str()` instead.',
@@ -2508,7 +2515,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		&& final_to_sym.kind !in [.sum_type, .interface_] {
 		ft := c.table.type_to_str(from_type)
 		tt := c.table.type_to_str(to_type)
-		c.error('cannot cast `$ft` to `$tt`, please use `as` instead, e.g. `expr as Ident`',
+		kind_name := if from_sym.kind == .sum_type { 'sum type' } else { 'interface' }
+		c.error('cannot cast `$ft` $kind_name value to `$tt`, use `$node.expr as $tt` instead',
 			node.pos)
 	}
 
@@ -2769,6 +2777,14 @@ pub fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		}
 		if mut obj := c.file.global_scope.find(name) {
 			match mut obj {
+				ast.GlobalField {
+					node.kind = .global
+					node.info = ast.IdentVar{
+						typ: obj.typ
+					}
+					node.obj = obj
+					return obj.typ
+				}
 				ast.ConstField {
 					if !(obj.is_pub || obj.mod == c.mod || c.pref.is_test) {
 						c.error('constant `$obj.name` is private', node.pos)
@@ -3241,6 +3257,11 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 			ast.InfixExpr, ast.StringLiteral, ast.StringInterLiteral] {
 			c.error('cannot take the address of $expr', node.pos)
 		}
+		if mut node.right is ast.Ident {
+			if node.right.kind == .constant && !c.inside_unsafe && c.pref.experimental {
+				c.warn('cannot take an address of const outside `unsafe`', node.right.pos)
+			}
+		}
 		if mut node.right is ast.IndexExpr {
 			typ_sym := c.table.sym(node.right.left_type)
 			mut is_mut := false
@@ -3283,6 +3304,9 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 		if !right_type.is_pointer() && !c.pref.translated && !c.file.is_translated {
 			s := c.table.type_to_str(right_type)
 			c.error('invalid indirect of `$s`', node.pos)
+		}
+		if right_type.is_voidptr() {
+			c.error('cannot dereference to void', node.pos)
 		}
 	}
 	if node.op == .bit_not && !right_type.is_int() && !c.pref.translated && !c.file.is_translated {
@@ -3529,7 +3553,7 @@ pub fn (mut c Checker) chan_init(mut node ast.ChanInit) ast.Type {
 		if node.elem_type != 0 {
 			elem_sym := c.table.sym(node.elem_type)
 			if elem_sym.kind == .placeholder {
-				c.error('unknown type `$elem_sym.name`', node.pos)
+				c.error('unknown type `$elem_sym.name`', node.elem_type_pos)
 			}
 		}
 		if node.has_cap {
@@ -3687,6 +3711,11 @@ fn (mut c Checker) warn_or_error(message string, pos token.Pos, warn bool) {
 	}
 	if !warn {
 		if c.pref.fatal_errors {
+			ferror := util.formatted_error('error:', message, c.file.path, pos)
+			eprintln(ferror)
+			if details.len > 0 {
+				eprintln('Details: $details')
+			}
 			exit(1)
 		}
 		c.nr_errors++
@@ -3741,8 +3770,9 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) ? {
 		return
 	}
 	sym := c.table.sym(typ)
-	if !c.is_builtin_mod && sym.kind == .struct_ && sym.mod != c.mod && !sym.is_pub {
-		c.error('type `$sym.name` is private', pos)
+	if !c.is_builtin_mod && sym.kind == .struct_ && !sym.is_pub && sym.mod != c.mod {
+		c.error('struct `$sym.name` was declared as private to module `$sym.mod`, so it can not be used inside module `$c.mod`',
+			pos)
 		return
 	}
 	match sym.kind {
@@ -3842,4 +3872,43 @@ pub fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what stri
 		c.error('you have to create a handle and `rlock` it to use a `shared` element as non-mut $what',
 			pos)
 	}
+}
+
+fn (mut c Checker) deprecate(kind string, name string, attrs []ast.Attr, pos token.Pos) {
+	mut deprecation_message := ''
+	now := time.now()
+	mut after_time := now
+	for attr in attrs {
+		if attr.name == 'deprecated' && attr.arg != '' {
+			deprecation_message = attr.arg
+		}
+		if attr.name == 'deprecated_after' && attr.arg != '' {
+			after_time = time.parse_iso8601(attr.arg) or {
+				c.error('invalid time format', attr.pos)
+				now
+			}
+		}
+	}
+	start_message := '$kind `$name`'
+	error_time := after_time.add_days(180)
+	if error_time < now {
+		c.error(semicolonize('$start_message has been deprecated since $after_time.ymmdd()',
+			deprecation_message), pos)
+	} else if after_time < now {
+		c.warn(semicolonize('$start_message has been deprecated since $after_time.ymmdd(), it will be an error after $error_time.ymmdd()',
+			deprecation_message), pos)
+	} else if after_time == now {
+		c.warn(semicolonize('$start_message has been deprecated', deprecation_message),
+			pos)
+	} else {
+		c.note(semicolonize('$start_message will be deprecated after $after_time.ymmdd(), and will become an error after $error_time.ymmdd()',
+			deprecation_message), pos)
+	}
+}
+
+fn semicolonize(main string, details string) string {
+	if details == '' {
+		return main
+	}
+	return '$main; $details'
 }

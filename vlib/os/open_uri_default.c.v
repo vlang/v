@@ -8,7 +8,7 @@ pub fn open_uri(uri string) ? {
 		} $else $if freebsd || openbsd {
 			vopen_uri_cmd = 'xdg-open'
 		} $else $if linux {
-			providers := ['xdg-open', 'x-www-browser', 'www-browser', 'wslview']
+			providers := ['xdg-open', 'x-www-browser', 'www-browser', 'wslview', 'exo-open']
 			// There are multiple possible providers to open a browser on linux
 			// One of them is xdg-open, another is x-www-browser, then there's www-browser, etc.
 			// Look for one that exists and run it

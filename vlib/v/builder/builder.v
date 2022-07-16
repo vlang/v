@@ -41,6 +41,7 @@ pub mut:
 	mod_invalidates_mods  map[string][]string // changes in mod `os`, force invalidation of mods, that do `import os`
 	path_invalidates_mods map[string][]string // changes in a .v file from `os`, invalidates `os`
 	crun_cache_keys       []string // target executable + top level source files; filled in by Builder.should_rebuild
+	executable_exists     bool     // if the executable already exists, don't remove new executable after `v run`
 }
 
 pub fn new_builder(pref &pref.Preferences) Builder {
@@ -67,6 +68,10 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 	if pref.show_callgraph || pref.show_depgraph {
 		dotgraph.start_digraph()
 	}
+	mut executable_name := pref.out_name
+	$if windows {
+		executable_name += '.exe'
+	}
 	return Builder{
 		pref: pref
 		table: table
@@ -74,6 +79,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 		transformer: transformer.new_transformer_with_table(table, pref)
 		compiled_dir: compiled_dir
 		cached_msvc: msvc
+		executable_exists: os.is_file(executable_name)
 	}
 }
 
@@ -251,17 +257,19 @@ pub fn (mut b Builder) resolve_deps() {
 		eprintln(mods.str())
 		eprintln('-------------------------------')
 	}
-	mut reordered_parsed_files := []&ast.File{}
-	for m in mods {
-		for pf in b.parsed_files {
-			if m == pf.mod.name {
-				reordered_parsed_files << pf
-				// eprintln('pf.mod.name: $pf.mod.name | pf.path: $pf.path')
+	unsafe {
+		mut reordered_parsed_files := []&ast.File{}
+		for m in mods {
+			for pf in b.parsed_files {
+				if m == pf.mod.name {
+					reordered_parsed_files << pf
+					// eprintln('pf.mod.name: $pf.mod.name | pf.path: $pf.path')
+				}
 			}
 		}
+		b.table.modules = mods
+		b.parsed_files = reordered_parsed_files
 	}
-	b.table.modules = mods
-	b.parsed_files = reordered_parsed_files
 }
 
 // graph of all imported modules
@@ -308,7 +316,19 @@ pub fn (b Builder) v_files_from_dir(dir string) []string {
 	if b.pref.is_verbose {
 		println('v_files_from_dir ("$dir")')
 	}
-	return b.pref.should_compile_filtered_files(dir, files)
+	res := b.pref.should_compile_filtered_files(dir, files)
+	if res.len == 0 {
+		// Perhaps the .v files are stored in /src/ ?
+		src_path := os.join_path(dir, 'src')
+		if os.is_dir(src_path) {
+			if b.pref.is_verbose {
+				println('v_files_from_dir ("$src_path") (/src/)')
+			}
+			files = os.ls(src_path) or { panic(err) }
+			return b.pref.should_compile_filtered_files(src_path, files)
+		}
+	}
+	return res
 }
 
 pub fn (b Builder) log(s string) {

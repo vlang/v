@@ -51,6 +51,7 @@ pub enum Backend {
 	js_freestanding // The JavaScript freestanding backend
 	native // The Native backend
 	interpret // Interpret the ast
+	golang // Go backend
 }
 
 pub fn (b Backend) is_js() bool {
@@ -921,6 +922,7 @@ pub fn backend_from_string(s string) ?Backend {
 	match s {
 		'c' { return .c }
 		'js' { return .js_node }
+		'go' { return .golang }
 		'js_node' { return .js_node }
 		'js_browser' { return .js_browser }
 		'js_freestanding' { return .js_freestanding }

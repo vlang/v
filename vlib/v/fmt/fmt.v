@@ -500,7 +500,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.sql_stmt(node)
 		}
 		ast.StructDecl {
-			f.struct_decl(node)
+			f.struct_decl(node, false)
 		}
 		ast.TypeDecl {
 			f.type_decl(node)
@@ -622,6 +622,9 @@ pub fn (mut f Fmt) expr(node_ ast.Expr) {
 		ast.None {
 			f.write('none')
 		}
+		ast.Nil {
+			f.write('nil')
+		}
 		ast.OffsetOf {
 			f.offset_of(node)
 		}
@@ -700,7 +703,7 @@ fn expr_is_single_line(expr ast.Expr) bool {
 			}
 		}
 		ast.StructInit {
-			if !expr.is_short && (expr.fields.len > 0 || expr.pre_comments.len > 0) {
+			if !expr.no_keys && (expr.fields.len > 0 || expr.pre_comments.len > 0) {
 				return false
 			}
 		}
