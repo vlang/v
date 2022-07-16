@@ -141,7 +141,15 @@ fn main() {
 	if prefs.is_help {
 		invoke_help_and_exit(args)
 	}
-	eprintln('v $command: unknown command')
+
+	other_commands := ['run', 'crun', 'build', 'build-module', 'help', 'version', 'new', 'init',
+		'install', 'list', 'outdated', 'remove', 'search', 'show', 'update', 'upgrade', 'vlib-docs',
+		'interpret', 'translate']
+	mut all_commands := []string{}
+	all_commands << external_tools
+	all_commands << other_commands
+	all_commands.sort()
+	eprintln(util.new_suggestion(command, all_commands).say('v: unknown command `$command`'))
 	eprintln('Run ${term.highlight_command('v help')} for usage.')
 	exit(1)
 }
