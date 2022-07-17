@@ -46,11 +46,12 @@ pub fn decode<T>(data string) []T {
 
 fn string_to_bool(val string) bool {
 	l_val := val.to_lower().trim_space()
-	i_val := val.int()
 	if l_val == 'true' {
 		return true
 	}
-	if i_val == 1 {
+
+	i_val := val.int()
+	if i_val != 0 {
 		return true
 	}
 
