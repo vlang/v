@@ -88,6 +88,8 @@ pub mut:
 	metric_data_format      i16
 	num_of_long_hor_metrics u16
 	kern                    []Kern0Table
+	// panose
+	panose_array []u8 = []u8{len: 12, init: 0}
 	// cache
 	glyph_cache map[int]Glyph
 	// font widths array scale for PDF export
@@ -102,6 +104,7 @@ pub fn (mut tf TTF_File) init() {
 	tf.read_cmap_table()
 	tf.read_hhea_table()
 	tf.read_kern_table()
+	tf.read_panose_table()
 	tf.length = tf.glyph_count()
 	dprintln('Number of symbols: $tf.length')
 	dprintln('*****************************')
@@ -1086,6 +1089,43 @@ pub fn (mut tf TTF_File) next_kern(glyph_index int) (int, int) {
 		y = y + tmp_y
 	}
 	return x, y
+}
+
+/******************************************************************************
+*
+* Panose table
+*
+******************************************************************************/
+fn (mut tf TTF_File) read_panose_table() {
+	dprintln('*** READ PANOSE TABLE ***')
+	if 'OS/2' !in tf.tables {
+		return
+	}
+	table_offset := tf.tables['OS/2'].offset
+	tf.pos = table_offset
+	// dprintln('READING! PANOSE offset:${tf.tables['OS/2']}')
+	version := tf.get_u16()
+	dprintln('Panose version: ${version:04x}')
+	tf.pos += 2 * 14 // move to Panose class + 10 byte array	
+	mut count := 0
+
+	// get family
+	family_class := tf.get_i16()
+	tf.panose_array[count] = u8(family_class >> 8)
+	count++
+	tf.panose_array[count] = u8(family_class & 0xFF)
+	count++
+	dprintln('family_class: ${family_class:04x}')
+
+	// get panose data
+	for _ in 0 .. 10 {
+		tf.panose_array[count] = tf.get_u8()
+		count++
+	}
+
+	// family_class1 := (i16(tf.panose_array[0]) << 8) + i16(tf.panose_array[1])
+	// dprintln("family_class: ${family_class1:04x}")
+	// dprintln("Panose array: ${tf.panose_array}")
 }
 
 /******************************************************************************
