@@ -357,6 +357,11 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 			}
 		}
 		else {
+			if p.tok.kind == .key_struct && p.peek_tok.kind == .lcbr {
+				// Anonymous struct
+				p.next()
+				return p.struct_init('', .anon)
+			}
 			if p.tok.kind != .eof && !(p.tok.kind == .rsbr && p.inside_asm) {
 				// eof should be handled where it happens
 				return none

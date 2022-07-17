@@ -332,6 +332,11 @@ pub fn (typ Type) is_pointer() bool {
 }
 
 [inline]
+pub fn (typ Type) is_voidptr() bool {
+	return typ.idx() == ast.voidptr_type_idx
+}
+
+[inline]
 pub fn (typ Type) is_real_pointer() bool {
 	return typ.is_ptr() || typ.is_pointer()
 }

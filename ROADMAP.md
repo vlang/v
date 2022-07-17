@@ -10,7 +10,7 @@
 - [ ] Recursive structs via optionals: `struct Node { next ?Node }`
 - [ ] Handle function pointers safely, remove `if function == 0 {`
 - [ ] Bundle OpenSSL like GC
-- [ ] Anonymous structs
+- [x] Anonymous structs
 - [ ] -usecache on by default
 - [ ] -skip-unused on by default
-
+- [ ] `any` type

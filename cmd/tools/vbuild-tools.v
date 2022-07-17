@@ -11,7 +11,7 @@ import v.util
 // should be compiled (v folder).
 // To implement that, these folders are initially skipped, then added
 // as a whole *after the testing.prepare_test_session call*.
-const tools_in_subfolders = ['vdoc', 'vvet', 'vast']
+const tools_in_subfolders = ['vdoc', 'vvet', 'vast', 'vwhere']
 
 // non_packaged_tools are tools that should not be packaged with
 // prebuild versions of V, to keep the size smaller.

@@ -1,0 +1,35 @@
+vlib/v/checker/tests/generic_fn_decl_err.vv:19:29: error: generic type name `P` is not mentioned in fn `create1<U>`
+   17 | }
+   18 |
+   19 | fn (r Db) create1<U>(u U, p P) {
+      |                             ^
+   20 |     println('Yo')
+   21 | }
+vlib/v/checker/tests/generic_fn_decl_err.vv:23:29: error: generic type name `P` is not mentioned in fn `create2<U>`
+   21 | }
+   22 |
+   23 | fn (r Db) create2<U>(u U, p &P) {
+      |                             ~~
+   24 |     println('Yo')
+   25 | }
+vlib/v/checker/tests/generic_fn_decl_err.vv:27:29: error: generic type name `P` is not mentioned in fn `create3<U>`
+   25 | }
+   26 |
+   27 | fn (r Db) create3<U>(u U, p []P) {
+      |                             ~~~
+   28 |     println('Yo')
+   29 | }
+vlib/v/checker/tests/generic_fn_decl_err.vv:31:27: error: generic type name `P` is not mentioned in fn `create4<U>`
+   29 | }
+   30 |
+   31 | fn (r Db) create4<U>(u U) P {
+      |                           ^
+   32 |     return P{}
+   33 | }
+vlib/v/checker/tests/generic_fn_decl_err.vv:35:27: error: generic type name `P` is not mentioned in fn `create5<U>`
+   33 | }
+   34 |
+   35 | fn (r Db) create5<U>(u U) []P {
+      |                           ~~~
+   36 |     return [P{}]
+   37 | }

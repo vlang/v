@@ -279,3 +279,29 @@ fn test_field_double_quotes() {
 	}
 	assert row_count == 3
 }
+
+struct Test {
+mut:
+	id     int
+	bonus  string
+	amount int
+	yes    bool
+}
+
+fn test_decode_to_struct() {
+	text := 'id,bonus,amount,yes\r\n1,bomb,1,true\r\n2,rocket,1,false,\r\n3,lightning,2,2\r\n'
+	arr := csv.decode<Test>(text)
+	assert arr[0].id == 1
+	assert arr[0].bonus == 'bomb'
+	assert arr[0].amount == 1
+	assert arr[0].yes == true
+	assert arr[1].id == 2
+	assert arr[1].bonus == 'rocket'
+	assert arr[1].amount == 1
+	assert arr[1].yes == false
+	assert arr[2].id == 3
+	assert arr[2].bonus == 'lightning'
+	assert arr[2].amount == 2
+	assert arr[2].yes == true
+	assert arr.len == 3
+}

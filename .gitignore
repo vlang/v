@@ -105,3 +105,6 @@ thirdparty/stdatomic/nix/cpp/*.h
 
 # ignore VLS log
 vls.log
+
+# ignore v2go tmperror files
+*.tmperr

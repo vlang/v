@@ -384,6 +384,9 @@ pub struct RunParams {
 // Example: vweb.run_at(app, 'localhost', 8099)
 [manualfree]
 pub fn run_at<T>(global_app &T, params RunParams) ? {
+	if params.port <= 0 || params.port > 65535 {
+		return error('invalid port number `$params.port`, it should be between 1 and 65535')
+	}
 	mut l := net.listen_tcp(params.family, '$params.host:$params.port') or {
 		ecode := err.code()
 		return error('failed to listen $ecode $err')
