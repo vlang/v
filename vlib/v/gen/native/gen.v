@@ -34,7 +34,6 @@ mut:
 	main_fn_addr         i64
 	code_start_pos       i64 // location of the start of the assembly instructions
 	fn_addr              map[string]i64
-	builtin_addr         map[string]i64
 	var_offset           map[string]int // local var stack offset
 	var_alloc_size       map[string]int // local var allocation size
 	stack_var_pos        int
@@ -48,6 +47,7 @@ mut:
 	strs                 []String
 	labels               &LabelTable
 	defer_stmts          []ast.DeferStmt
+	builtins             map[string]BuiltinFn
 	// macho specific
 	macho_ncmds   int
 	macho_cmdsize int
@@ -193,7 +193,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 	}
 	g.code_gen.g = g
 	g.generate_header()
-	g.generate_builtins()
+	g.init_builtins()
 	for file in files {
 		/*
 		if file.warnings.len > 0 {
@@ -205,6 +205,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 		}
 		g.stmts(file.stmts)
 	}
+	g.generate_builtins()
 	g.generate_footer()
 	return g.nlines, g.buf.len
 }

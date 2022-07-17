@@ -662,20 +662,29 @@ fn (mut g Gen) mov_var_to_reg(reg Register, var Var, config VarConfig) {
 	}
 }
 
-fn (mut g Gen) call(addr int) {
-	if g.pref.arch == .arm64 {
-		g.bl()
-		return
-	}
+fn (mut g Gen) call_addr_at(addr int, at i64) i64 {
 	// Need to calculate the difference between current position (position after the e8 call)
 	// and the function to call.
 	// +5 is to get the posistion "e8 xx xx xx xx"
 	// Not sure about the -1.
-	rel := 0xffffffff - (g.buf.len + 5 - addr - 1)
+	return 0xffffffff - (at + 5 - addr - 1)
+}
+
+fn (mut g Gen) call(addr int) i64 {
+	if g.pref.arch == .arm64 {
+		g.bl()
+		return 0
+	}
+
+	rel := g.call_addr_at(addr, g.pos())
+	c_addr := g.pos()
 	// println('call addr=$addr.hex2() rel_addr=$rel.hex2() pos=$g.buf.len')
 	g.write8(0xe8)
-	g.write32(rel)
+
+	g.write32(int(rel))
 	g.println('call $addr')
+
+	return c_addr
 }
 
 fn (mut g Gen) syscall() {
@@ -1404,11 +1413,10 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 	g.println('call `${name}()`')
 }
 
-fn (mut g Gen) call_builtin_amd64(name string) {
-	builtin := g.builtin_addr[name] or { panic('undefined builtin function $name') }
-	addr := g.builtin_addr[name]
-	g.call(int(addr))
+fn (mut g Gen) call_builtin_amd64(name string) i64 {
+	call_addr := g.call(0)
 	g.println('call builtin `$name`')
+	return call_addr
 }
 
 fn (mut g Gen) patch_calls() {
