@@ -1,0 +1,14 @@
+vlib/v/checker/tests/generics_struct_decl_no_mention_err.vv:4:2: error: generic type name `T` is not mentioned in struct `Foo<U>`
+    2 |
+    3 | struct Foo<U> {
+    4 |     Bar<T>
+      |     ~~~~~~
+    5 |     foo U
+    6 |     bar P
+vlib/v/checker/tests/generics_struct_decl_no_mention_err.vv:6:6: error: generic type name `P` is not mentioned in struct `Foo<U>`
+    4 |     Bar<T>
+    5 |     foo U
+    6 |     bar P
+      |         ^
+    7 | }
+    8 |
