@@ -662,20 +662,29 @@ fn (mut g Gen) mov_var_to_reg(reg Register, var Var, config VarConfig) {
 	}
 }
 
-fn (mut g Gen) call(addr int) {
-	if g.pref.arch == .arm64 {
-		g.bl()
-		return
-	}
+fn (mut g Gen) call_addr_at(addr int, at i64) i64 {
 	// Need to calculate the difference between current position (position after the e8 call)
 	// and the function to call.
 	// +5 is to get the posistion "e8 xx xx xx xx"
 	// Not sure about the -1.
-	rel := 0xffffffff - (g.buf.len + 5 - addr - 1)
+	return 0xffffffff - (at + 5 - addr - 1)
+}
+
+fn (mut g Gen) call(addr int) i64 {
+	if g.pref.arch == .arm64 {
+		g.bl()
+		return 0
+	}
+
+	rel := g.call_addr_at(addr, g.pos())
+	c_addr := g.pos()
 	// println('call addr=$addr.hex2() rel_addr=$rel.hex2() pos=$g.buf.len')
 	g.write8(0xe8)
-	g.write32(rel)
+
+	g.write32(int(rel))
 	g.println('call $addr')
+
+	return c_addr
 }
 
 fn (mut g Gen) syscall() {
@@ -813,8 +822,29 @@ fn (mut g Gen) mul8_var(reg Register, var_offset int) {
 }
 
 fn (mut g Gen) leave() {
-	g.write8(0xc9)
-	g.println('leave')
+	g.println('; label 0: return')
+	if g.defer_stmts.len != 0 {
+		// save return value
+		g.push(.rax)
+		for defer_stmt in g.defer_stmts.reverse() {
+			name := '_defer$defer_stmt.idx_in_fn'
+			defer_var := g.get_var_offset(name)
+			g.mov_var_to_reg(.rax, LocalVar{defer_var, ast.i64_type_idx, name})
+			g.cmp_zero(.rax)
+			label := g.labels.new_label()
+			jump_addr := g.cjmp(.je)
+			g.labels.patches << LabelPatch{
+				id: label
+				pos: jump_addr
+			}
+			g.stmts(defer_stmt.stmts)
+			g.labels.addrs[label] = g.pos()
+		}
+		g.pop(.rax)
+	}
+	g.mov_reg(.rsp, .rbp)
+	g.pop(.rbp)
+	g.ret()
 }
 
 // returns label's relative address
@@ -1341,11 +1371,7 @@ fn (mut g Gen) sar8(r Register, val u8) {
 	g.println('sar $r, $val')
 }
 
-pub fn (mut g Gen) call_fn(node ast.CallExpr) {
-	if g.pref.arch == .arm64 {
-		g.call_fn_arm64(node)
-		return
-	}
+pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 	name := node.name
 	mut n := name
 	if !n.contains('.') {
@@ -1385,6 +1411,12 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 		g.call(int(addr))
 	}
 	g.println('call `${name}()`')
+}
+
+fn (mut g Gen) call_builtin_amd64(name string) i64 {
+	call_addr := g.call(0)
+	g.println('call builtin `$name`')
+	return call_addr
 }
 
 fn (mut g Gen) patch_calls() {
@@ -2083,31 +2115,22 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 		g.ret()
 		return
 	}
-	// g.leave()
 	g.labels.addrs[0] = g.pos()
-	g.println('; label 0: return')
-	if g.defer_stmts.len != 0 {
-		// save return value
-		g.push(.rax)
-		for defer_stmt in g.defer_stmts.reverse() {
-			name := '_defer$defer_stmt.idx_in_fn'
-			defer_var := g.get_var_offset(name)
-			g.mov_var_to_reg(.rax, LocalVar{defer_var, ast.i64_type_idx, name})
-			g.cmp_zero(.rax)
-			label := g.labels.new_label()
-			jump_addr := g.cjmp(.je)
-			g.labels.patches << LabelPatch{
-				id: label
-				pos: jump_addr
-			}
-			g.stmts(defer_stmt.stmts)
-			g.labels.addrs[label] = g.pos()
-		}
-		g.pop(.rax)
-	}
-	g.mov_reg(.rsp, .rbp)
-	g.pop(.rbp)
-	g.ret()
+	g.leave()
+}
+
+pub fn (mut g Gen) builtin_decl_amd64(builtin BuiltinFn) {
+	g.push(.rbp)
+	g.mov_reg(.rbp, .rsp)
+	local_alloc_pos := g.pos()
+	g.sub(.rsp, 0)
+
+	builtin.body(builtin, g)
+	g.println('; stack frame size: $g.stack_var_pos')
+	g.write32_at(local_alloc_pos + 3, g.stack_var_pos)
+
+	g.labels.addrs[0] = g.pos()
+	g.leave()
 }
 
 /*
@@ -2177,9 +2200,13 @@ pub fn (mut g Gen) allocate_var(name string, size int, initial_val int) int {
 	return g.stack_var_pos
 }
 
-fn (mut g Gen) convert_int_to_string(r Register, buffer int) {
-	if r != .rax {
-		g.mov_reg(.rax, r)
+fn (mut g Gen) convert_int_to_string(r1 Register, r2 Register) {
+	if r1 != .rax {
+		g.mov_reg(.rax, r1)
+	}
+
+	if r2 != .rdi {
+		g.mov_reg(.rdi, r2)
 	}
 
 	// check if value in rax is zero
@@ -2193,7 +2220,13 @@ fn (mut g Gen) convert_int_to_string(r Register, buffer int) {
 	g.println('; jump to label $skip_zero_label')
 
 	// handle zeros seperately
-	g.mov_int_to_var(LocalVar{buffer, ast.u8_type_idx, ''}, '0'[0])
+	// g.mov_int_to_var(LocalVar{buffer, ast.u8_type_idx, ''}, '0'[0])
+
+	g.write8(0xc6)
+	g.write8(0x07)
+	g.write8(0x30)
+	g.println("mov BYTE PTR [rdi], '0'")
+
 	end_label := g.labels.new_label()
 	end_jmp_addr := g.jmp(0)
 	g.labels.patches << LabelPatch{
@@ -2206,7 +2239,7 @@ fn (mut g Gen) convert_int_to_string(r Register, buffer int) {
 	g.println('; label $skip_zero_label')
 
 	// load a pointer to the string to rdi
-	g.lea_var_to_reg(.rdi, buffer)
+	// g.lea_var_to_reg(.rdi, buffer)
 
 	// detect if value in rax is negative
 	g.cmp_zero(.rax)
@@ -2219,13 +2252,17 @@ fn (mut g Gen) convert_int_to_string(r Register, buffer int) {
 	g.println('; jump to label $skip_minus_label')
 
 	// add a `-` sign as the first character
-	g.mov_int_to_var(LocalVar{buffer, ast.u8_type_idx, ''}, '-'[0])
+	g.write8(0xc6)
+	g.write8(0x07)
+	g.write8(0x2d)
+	g.println("mov BYTE PTR [rdi], '-'")
+
 	g.neg(.rax) // negate our integer to make it positive
 	g.inc(.rdi) // increment rdi to skip the `-` character
 	g.labels.addrs[skip_minus_label] = g.pos()
 	g.println('; label $skip_minus_label')
 
-	g.mov_reg(.r12, .rdi) // copy the buffer position to rcx
+	g.mov_reg(.r12, .rdi) // copy the buffer position to r12
 
 	loop_label := g.labels.new_label()
 	loop_start := g.pos()
@@ -2266,7 +2303,9 @@ fn (mut g Gen) convert_int_to_string(r Register, buffer int) {
 	g.labels.addrs[loop_label] = loop_start
 
 	// after all was converted, reverse the string
-	g.reverse_string(.r12)
+	reg := g.get_builtin_arg_reg('reverse_string', 0)
+	g.mov_reg(reg, .r12)
+	g.call_builtin('reverse_string')
 
 	g.labels.addrs[end_label] = g.pos()
 	g.println('; label $end_label')
