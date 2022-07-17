@@ -13,8 +13,6 @@ import v.errors
 import v.pref
 import term
 
-pub const builtins = ['assert', 'print', 'eprint', 'println', 'eprintln', 'exit', 'C.syscall']
-
 interface CodeGen {
 mut:
 	g &Gen
@@ -36,6 +34,7 @@ mut:
 	main_fn_addr         i64
 	code_start_pos       i64 // location of the start of the assembly instructions
 	fn_addr              map[string]i64
+	builtin_addr         map[string]i64
 	var_offset           map[string]int // local var stack offset
 	var_alloc_size       map[string]int // local var allocation size
 	stack_var_pos        int
@@ -194,6 +193,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 	}
 	g.code_gen.g = g
 	g.generate_header()
+	g.generate_builtins()
 	for file in files {
 		/*
 		if file.warnings.len > 0 {
@@ -428,11 +428,26 @@ fn (mut g Gen) gen_typeof_expr(it ast.TypeOf, newline bool) {
 	g.learel(.rax, g.allocate_string('$r$nl', 3, .rel32))
 }
 
+fn (mut g Gen) call_fn(node ast.CallExpr) {
+	if g.pref.arch == .arm64 {
+		g.call_fn_arm64(node)
+	} else {
+		g.call_fn_amd64(node)
+	}
+}
+
 fn (mut g Gen) gen_var_to_string(reg Register, var Var, config VarConfig) {
-	buffer := g.allocate_array('itoa-buffer', 1, 32) // 32 characters should be enough
-	g.mov_var_to_reg(reg, var, config)
-	g.convert_int_to_string(reg, buffer)
-	g.lea_var_to_reg(reg, buffer)
+	if config.typ.is_int() || config.typ == 0 { // TODO: fix config.typ == 0
+		buffer := g.allocate_array('itoa-buffer', 1, 32) // 32 characters should be enough
+
+		g.mov_var_to_reg(g.get_builtin_arg_reg('int_to_string', 0), var, config)
+		g.lea_var_to_reg(g.get_builtin_arg_reg('int_to_string', 1), buffer)
+		g.call_builtin('int_to_string')
+
+		g.lea_var_to_reg(reg, buffer)
+	} else {
+		g.n_error('int-to-string conversion only implemented for integer types, got $config.typ')
+	}
 }
 
 pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, name string) {
