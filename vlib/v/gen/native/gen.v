@@ -142,6 +142,20 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) LocalVar|GlobalVar|Register {
 	}
 }
 
+fn (mut g Gen) get_type_from_var(var Var) ast.Type {
+	match var {
+		ast.Ident {
+			return g.get_type_from_var(g.get_var_from_ident(var) as LocalVar)
+		}
+		LocalVar {
+			return var.typ
+		}
+		GlobalVar {
+			g.n_error('cannot get type from GlobalVar yet')
+		}
+	}
+}
+
 fn get_backend(arch pref.Arch) ?CodeGen {
 	match arch {
 		.arm64 {
@@ -438,16 +452,15 @@ fn (mut g Gen) call_fn(node ast.CallExpr) {
 }
 
 fn (mut g Gen) gen_var_to_string(reg Register, var Var, config VarConfig) {
-	if config.typ.is_int() || config.typ == 0 { // TODO: fix config.typ == 0
+	typ := g.get_type_from_var(var)
+	if typ.is_int() {
 		buffer := g.allocate_array('itoa-buffer', 1, 32) // 32 characters should be enough
-
 		g.mov_var_to_reg(g.get_builtin_arg_reg('int_to_string', 0), var, config)
 		g.lea_var_to_reg(g.get_builtin_arg_reg('int_to_string', 1), buffer)
 		g.call_builtin('int_to_string')
-
 		g.lea_var_to_reg(reg, buffer)
 	} else {
-		g.n_error('int-to-string conversion only implemented for integer types, got $config.typ')
+		g.n_error('int-to-string conversion not implemented for type $typ')
 	}
 }
 
