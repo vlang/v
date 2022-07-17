@@ -54,7 +54,6 @@ pub:
 	fullscreen                   bool  // whether the window should be created in fullscreen mode
 	alpha                        bool  // whether the framebuffer should have an alpha channel (ignored on some platforms)
 	window_title                 &char // the window title as UTF-8 encoded string
-	user_cursor                  bool  // if true, user is expected to manage cursor image in SAPP_EVENTTYPE_UPDATE_CURSOR
 	enable_clipboard             bool  // enable clipboard access, default is false
 	clipboard_size               int   // max size of clipboard content in bytes
 	enable_dragndrop             bool  // enable file dropping (drag'n'drop), default is false

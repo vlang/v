@@ -44,6 +44,9 @@ fn C.sapp_show_mouse(visible bool)
 // return true if the mouse cursor is shown
 fn C.sapp_mouse_shown() bool
 
+// set mouse cursor
+fn C.sapp_set_mouse_cursor(cursor MouseCursor)
+
 // lock or unlock the mouse cursor
 fn C.sapp_lock_mouse(locked bool)
 
