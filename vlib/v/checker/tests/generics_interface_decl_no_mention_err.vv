@@ -1,0 +1,10 @@
+fn main() {}
+
+interface Foo<U> {
+	Bar<T>
+	foo(u U, p P)
+	bar(u U) []P
+}
+
+interface Bar<T> {
+}

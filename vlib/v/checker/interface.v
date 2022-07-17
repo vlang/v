@@ -40,6 +40,18 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 						embed.pos)
 					continue
 				}
+				// Ensure each generic type of the embed was declared in the interface's definition
+				if node.generic_types.len > 0 && embed.typ.has_flag(.generic) {
+					embed_generic_names := c.table.generic_type_names(embed.typ)
+					node_generic_names := node.generic_types.map(c.table.type_to_str(it))
+					for name in embed_generic_names {
+						if name !in node_generic_names {
+							interface_generic_names := node_generic_names.join(', ')
+							c.error('generic type name `$name` is not mentioned in interface `$node.name<$interface_generic_names>`',
+								embed.pos)
+						}
+					}
+				}
 				isym_info := isym.info as ast.Interface
 				for f in isym_info.fields {
 					if !efnames_ds_info[f.name] {
@@ -115,6 +127,18 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 			}
 			if method.return_type.has_flag(.generic) {
 				has_generic_types = true
+				// Ensure each generic type of the method was declared in the interface's definition
+				if node.generic_types.len > 0 {
+					method_generic_names := c.table.generic_type_names(method.return_type)
+					node_generic_names := node.generic_types.map(c.table.type_to_str(it))
+					for name in method_generic_names {
+						if name !in node_generic_names {
+							interface_generic_names := node_generic_names.join(', ')
+							c.error('generic type name `$name` is not mentioned in interface `$node.name<$interface_generic_names>`',
+								method.return_type_pos)
+						}
+					}
+				}
 			}
 			for j, param in method.params {
 				if j == 0 && is_js {
@@ -127,6 +151,18 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 				if param.name in reserved_type_names {
 					c.error('invalid use of reserved type `$param.name` as a parameter name',
 						param.pos)
+				}
+				// Ensure each generic type of the method was declared in the interface's definition
+				if node.generic_types.len > 0 && param.typ.has_flag(.generic) {
+					method_generic_names := c.table.generic_type_names(param.typ)
+					node_generic_names := node.generic_types.map(c.table.type_to_str(it))
+					for name in method_generic_names {
+						if name !in node_generic_names {
+							interface_generic_names := node_generic_names.join(', ')
+							c.error('generic type name `$name` is not mentioned in interface `$node.name<$interface_generic_names>`',
+								param.type_pos)
+						}
+					}
 				}
 				if is_js {
 					ptyp := c.table.sym(param.typ)
