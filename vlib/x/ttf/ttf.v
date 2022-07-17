@@ -89,8 +89,7 @@ pub mut:
 	num_of_long_hor_metrics u16
 	kern                    []Kern0Table
 	// panose
-	panose_array            []u8 = []u8{len:12, init:0}
-
+	panose_array []u8 = []u8{len: 12, init: 0}
 	// cache
 	glyph_cache map[int]Glyph
 	// font widths array scale for PDF export
@@ -1109,17 +1108,17 @@ fn (mut tf TTF_File) read_panose_table() {
 	dprintln('Panose version: ${version:04x}')
 	tf.pos += 2 * 14 // move to Panose class + 10 byte array	
 	mut count := 0
-	
+
 	// get family
 	family_class := tf.get_i16()
 	tf.panose_array[count] = u8(family_class >> 8)
 	count++
 	tf.panose_array[count] = u8(family_class & 0xFF)
 	count++
-	dprintln("family_class: ${family_class:04x}")
+	dprintln('family_class: ${family_class:04x}')
 
 	// get panose data
-	for _ in 0..10 { 
+	for _ in 0 .. 10 {
 		tf.panose_array[count] = tf.get_u8()
 		count++
 	}
