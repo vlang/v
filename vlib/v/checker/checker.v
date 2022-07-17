@@ -556,9 +556,15 @@ pub fn (mut c Checker) expand_iface_embeds(idecl &ast.InterfaceDecl, level int, 
 	return ares
 }
 
+[params]
+struct ImmutableCheckConfig {
+	restrict_to_const bool
+	modify_const_error_msg_prefix string = 'cannot modify constant'
+}
+
 // returns name and position of variable that needs write lock
 // also sets `is_changed` to true (TODO update the name to reflect this?)
-fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
+fn (mut c Checker) fail_if_immutable(expr_ ast.Expr, conf ImmutableCheckConfig) (string, token.Pos) {
 	mut to_lock := '' // name of variable that needs lock
 	mut pos := token.Pos{} // and its position
 	mut explicit_lock_needed := false
@@ -572,7 +578,7 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 			return '', pos
 		}
 		ast.Ident {
-			if mut expr.obj is ast.Var {
+			if mut expr.obj is ast.Var && !conf.restrict_to_const {
 				if !expr.obj.is_mut && !c.pref.translated && !c.file.is_translated
 					&& !c.inside_unsafe {
 					c.error('`$expr.name` is immutable, declare it with `mut` to make it mutable',
@@ -598,7 +604,7 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 				if !c.inside_unsafe && !c.pref.translated {
 					// TODO fix this in c2v, do not allow modification of all consts
 					// in translated code
-					c.error('cannot modify constant `$expr.name`', expr.pos)
+					c.error('$conf.modify_const_error_msg_prefix `$expr.name`', expr.pos)
 				}
 			}
 		}
@@ -746,6 +752,9 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 			return '', pos
 		}
 		ast.InfixExpr {
+			return '', pos
+		}
+		ast.UnsafeExpr {
 			return '', pos
 		}
 		else {
