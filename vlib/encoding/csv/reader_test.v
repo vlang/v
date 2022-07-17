@@ -281,6 +281,7 @@ fn test_field_double_quotes() {
 }
 
 struct Test {
+mut:
 	id     int
 	bonus  string
 	amount int
