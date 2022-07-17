@@ -1,7 +1,0 @@
-vlib/v/checker/tests/generic_fn_decl_err_a.vv:17:28: error: generic type name `P` is not mentioned in fn `create<U>`
-   15 | }
-   16 |
-   17 | fn (r Db) create<U>(u U, p P) {
-      |                            ^
-   18 |     println('Yo')
-   19 | }
