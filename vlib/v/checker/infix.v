@@ -420,6 +420,16 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 					return ast.void_type
 				}
+
+				if right_type.is_any_kind_of_pointer() {
+					c.fail_if_immutable(
+						node.right,
+						restrict_to_const: true,
+						modify_const_error_msg_prefix: 'cannot append constant `$right_sym.name` to `$left_sym.name`'
+					)
+					return ast.void_type
+				}
+
 				// []T << T or []T << []T
 				unwrapped_right_type := c.unwrap_generic(right_type)
 				if c.check_types(unwrapped_right_type, left_value_type) {
