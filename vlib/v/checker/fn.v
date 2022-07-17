@@ -108,6 +108,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		} else if return_sym.kind == .array_fixed {
 			c.error('fixed array cannot be returned by function', node.return_type_pos)
 		}
+		// Ensure each generic type of the parameter was declared in the function's definition
 		if node.return_type.has_flag(.generic) {
 			generic_names := c.table.generic_type_names(node.return_type)
 			for name in generic_names {
@@ -217,6 +218,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					}
 				}
 			}
+			// Ensure each generic type of the parameter was declared in the function's definition
 			if param.typ.has_flag(.generic) {
 				generic_names := c.table.generic_type_names(param.typ)
 				for name in generic_names {
