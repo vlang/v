@@ -97,6 +97,12 @@ pub fn show_mouse(visible bool) {
 	C.sapp_show_mouse(visible)
 }
 
+// set mouse cursor
+[inline]
+pub fn set_mouse_cursor(cursor MouseCursor) {
+	C.sapp_set_mouse_cursor(cursor)
+}
+
 // show or hide the mouse cursor
 [inline]
 pub fn mouse_shown() bool {
