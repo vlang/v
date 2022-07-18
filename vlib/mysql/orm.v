@@ -82,7 +82,7 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 					.type_long {
 						mysql_bind.buffer_type = C.MYSQL_TYPE_LONG
 					}
-					.type_time, .type_date, .type_datetime  {
+					.type_time, .type_date, .type_datetime {
 						mysql_bind.buffer_type = C.MYSQL_TYPE_BLOB
 						mysql_bind.buffer_length = FieldType.type_blob.get_len()
 					}
