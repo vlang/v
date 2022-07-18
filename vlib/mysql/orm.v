@@ -57,7 +57,7 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 				dataptr << unsafe { malloc(2) }
 			}
 			else {
-				dataptr << &u8(0)
+				return error('\'${FieldType(f.@type)}\' is not yet implemented. Please create a new issue at https://github.com/vlang/v/issues/new')
 			}
 		}
 	}
