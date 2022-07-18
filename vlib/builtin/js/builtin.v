@@ -14,10 +14,6 @@ pub fn panic(s string) {
 
 // IError holds information about an error instance
 pub interface IError {
-	// >> Hack to allow old style custom error implementations
-	// TODO: remove once deprecation period for `IError` methods has ended
-	msg string
-	code int // <<
 	msg() string
 	code() int
 }
