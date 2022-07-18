@@ -47,8 +47,8 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 			.type_double {
 				dataptr << unsafe { malloc(8) }
 			}
-			.type_datetime {
-				dataptr << unsafe { malloc(512) }
+			.type_time, .type_date, .type_datetime {
+				dataptr << unsafe { malloc(sizeof(C.MYSQL_TIME)) }
 			}
 			.type_string, .type_blob {
 				dataptr << unsafe { malloc(512) }
@@ -80,10 +80,9 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 			orm.time {
 				match FieldType(f.@type) {
 					.type_long {
-						println(C.MYSQL_TYPE_INT24)
 						mysql_bind.buffer_type = C.MYSQL_TYPE_LONG
 					}
-					.type_datetime {
+					.type_time, .type_date, .type_datetime  {
 						mysql_bind.buffer_type = C.MYSQL_TYPE_BLOB
 						mysql_bind.buffer_length = FieldType.type_blob.get_len()
 					}
@@ -340,7 +339,7 @@ fn mysql_type_from_v(typ int) ?string {
 fn (db Connection) factory_orm_primitive_converted_from_sql(table string, data orm.QueryData) ?[]orm.Primitive {
 	mut map_val := db.get_table_data_type_map(table)?
 
-	// adabt v type to sql time
+	// adapt v type to sql time
 	mut converted_data := []orm.Primitive{}
 	for i, field in data.fields {
 		match data.data[i].type_name() {
