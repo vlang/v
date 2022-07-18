@@ -3879,27 +3879,27 @@ fn (mut g Gen) ident(node ast.Ident) {
 			g.write('${name}.val')
 			return
 		}
-		v := node.obj
-		if v is ast.Var {
-			is_auto_heap = v.is_auto_heap && (!g.is_assign_lhs || g.assign_op != .decl_assign)
+		obj := node.obj
+		if obj is ast.Var {
+			is_auto_heap = obj.is_auto_heap && (!g.is_assign_lhs || g.assign_op != .decl_assign)
 			if is_auto_heap {
 				g.write('(*(')
 			}
-			if v.smartcasts.len > 0 {
-				v_sym := g.table.sym(v.typ)
+			if obj.smartcasts.len > 0 {
+				obj_sym := g.table.sym(obj.typ)
 				if !prevent_sum_type_unwrapping_once {
-					for _ in v.smartcasts {
+					for _ in obj.smartcasts {
 						g.write('(')
-						if v_sym.kind == .sum_type && !is_auto_heap {
+						if obj_sym.kind == .sum_type && !is_auto_heap {
 							g.write('*')
 						}
 					}
-					for i, typ in v.smartcasts {
+					for i, typ in obj.smartcasts {
 						cast_sym := g.table.sym(g.unwrap_generic(typ))
 						mut is_ptr := false
 						if i == 0 {
 							g.write(name)
-							if v.orig_type.is_ptr() {
+							if obj.orig_type.is_ptr() {
 								is_ptr = true
 							}
 						}
@@ -3918,16 +3918,16 @@ fn (mut g Gen) ident(node ast.Ident) {
 					return
 				}
 			}
-			if v.is_inherited {
+			if obj.is_inherited {
 				g.write(closure_ctx + '->')
 			}
 		}
 	} else if node_info is ast.IdentFn {
 		if g.pref.translated || g.file.is_translated {
 			// `p_mobjthinker` => `P_MobjThinker`
-			if f := g.table.find_fn(node.name) {
+			if func := g.table.find_fn(node.name) {
 				// TODO PERF fn lookup for each fn call in translated mode
-				if cattr := f.attrs.find_first('c') {
+				if cattr := func.attrs.find_first('c') {
 					name = cattr.arg
 				}
 			}
