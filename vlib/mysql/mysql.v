@@ -58,6 +58,14 @@ pub fn (conn Connection) query(q string) ?Result {
 	return Result{res}
 }
 
+// use_result - reads the result of a query
+// used after invoking mysql_real_query() or mysql_query(),
+// for every statement that successfully produces a result set
+// (SELECT, SHOW, DESCRIBE, EXPLAIN, CHECK TABLE, and so forth).
+// This reads the result of a query directly from the server
+// without storing it in a temporary table or local buffer, 
+// mysql_use_result is faster and uses much less memory than C.mysql_store_result().
+// You must mysql_free_result() after you are done with the result set.
 pub fn (conn Connection) use_result() {
 	C.mysql_use_result(conn.conn)
 }
