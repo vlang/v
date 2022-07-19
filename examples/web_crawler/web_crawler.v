@@ -11,7 +11,7 @@ fn main() {
 		return
 	}
 	// html.parse() parses and returns the DOM from the given text.
-	mut doc := html.parse(resp.text)
+	mut doc := html.parse(resp.body)
 	// html.DocumentObjectModel.get_tag_by_attribute_value() retrieves all the tags in the document that has the given attribute name and value.
 	tags := doc.get_tag_by_attribute_value('class', 'list_article_item')
 	for tag in tags {
