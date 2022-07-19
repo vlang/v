@@ -57,7 +57,8 @@ const vls_manifest_path = os.join_path(vls_folder, 'vls.config.json')
 
 const vls_src_folder = os.join_path(vls_folder, 'src')
 
-const server_not_found_err = error_with_code('Language server is not installed nor found.', 101)
+const server_not_found_err = error_with_code('Language server is not installed nor found.',
+	101)
 
 const json_enc = json2.Encoder{
 	newline: `\n`
@@ -382,12 +383,8 @@ fn (upd VlsUpdater) log(msg string) {
 fn (upd VlsUpdater) error_details(err IError) {
 	match err.code() {
 		101 {
-			eprintln('\n' + [
-				"- If you are using this for the first time, please run\n  `v ls --install` first to download and install VLS.",
-				'- If you are using a custom version of VLS, check if\n  the specified path exists and is a valid executable.',
-				'- If you have an existing installation of VLS, be sure\n  to remove "vls.config.json" and "bin" located inside\n  "\$HOME_DIR/.vls" and re-install.',
-				'\nIf none of the options listed have solved your issue,\nplease report it at https://github.com/vlang/v/issues\n'
-			].join('\n'))
+			eprintln('\n' +
+				['- If you are using this for the first time, please run\n  `v ls --install` first to download and install VLS.', '- If you are using a custom version of VLS, check if\n  the specified path exists and is a valid executable.', '- If you have an existing installation of VLS, be sure\n  to remove "vls.config.json" and "bin" located inside\n  "\$HOME_DIR/.vls" and re-install.', '\nIf none of the options listed have solved your issue,\nplease report it at https://github.com/vlang/v/issues\n'].join('\n'))
 		}
 		else {}
 	}
