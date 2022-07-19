@@ -2091,7 +2091,7 @@ Public immutable fields are readonly everywhere.
 V supports anonymous structs: structs that don't have to be declared separately
 with a struct name.
 
-```
+```v
 struct Book {
 	author struct  {
 		name string
