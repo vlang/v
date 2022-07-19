@@ -311,8 +311,6 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 				if left_sym.kind == .interface_ {
 					if right_sym.kind != .interface_ {
 						c.type_implements(right_type, expr_type, node.pos)
-					} else {
-						return
 					}
 				} else if !c.check_types(right_type, expr_type) && left_sym.kind != .sum_type {
 					expect_str := c.table.type_to_str(right_type)
