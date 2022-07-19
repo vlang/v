@@ -3331,15 +3331,22 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 							g.write('*')
 						}
 						cast_sym := g.table.sym(g.unwrap_generic(typ))
-						if i != 0 {
-							dot := if field.typ.is_ptr() { '->' } else { '.' }
-							sum_type_deref_field += ')$dot'
-						}
-						if cast_sym.info is ast.Aggregate {
-							agg_sym := g.table.sym(cast_sym.info.types[g.aggregate_type_idx])
-							sum_type_deref_field += '_$agg_sym.cname'
+						if field_sym.kind == .interface_ && cast_sym.kind == .interface_ {
+							ptr := '*'.repeat(field.typ.nr_muls())
+							dot := if node.expr_type.is_ptr() { '->' } else { '.' }
+							g.write('I_${field_sym.cname}_as_I_${cast_sym.cname}($ptr$node.expr$dot$node.field_name))')
+							return
 						} else {
-							sum_type_deref_field += '_$cast_sym.cname'
+							if i != 0 {
+								dot := if field.typ.is_ptr() { '->' } else { '.' }
+								sum_type_deref_field += ')$dot'
+							}
+							if cast_sym.info is ast.Aggregate {
+								agg_sym := g.table.sym(cast_sym.info.types[g.aggregate_type_idx])
+								sum_type_deref_field += '_$agg_sym.cname'
+							} else {
+								sum_type_deref_field += '_$cast_sym.cname'
+							}
 						}
 					}
 				}
