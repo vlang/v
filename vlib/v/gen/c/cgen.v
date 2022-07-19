@@ -3845,7 +3845,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 		return
 	}
 	mut name := c_name(node.name)
-	if node.kind == .constant { // && !node.name.starts_with('g_') {
+	if node.kind == .constant {
 		if g.pref.translated && !g.is_builtin_mod
 			&& !util.module_is_builtin(node.name.all_before_last('.')) {
 			// Don't prepend "_const" to translated C consts,
@@ -3861,45 +3861,43 @@ fn (mut g Gen) ident(node ast.Ident) {
 			g.write('_const_')
 		}
 	}
-	// TODO: temporary, remove this
-	node_info := node.info
 	mut is_auto_heap := false
-	if node_info is ast.IdentVar {
+	if node.info is ast.IdentVar {
 		// x ?int
 		// `x = 10` => `x.data = 10` (g.right_is_opt == false)
 		// `x = new_opt()` => `x = new_opt()` (g.right_is_opt == true)
 		// `println(x)` => `println(*(int*)x.data)`
-		if node_info.is_optional && !(g.is_assign_lhs && g.right_is_opt) {
+		if node.info.is_optional && !(g.is_assign_lhs && g.right_is_opt) {
 			g.write('/*opt*/')
-			styp := g.base_type(node_info.typ)
+			styp := g.base_type(node.info.typ)
 			g.write('(*($styp*)${name}.data)')
 			return
 		}
-		if !g.is_assign_lhs && node_info.share == .shared_t {
+		if !g.is_assign_lhs && node.info.share == .shared_t {
 			g.write('${name}.val')
 			return
 		}
-		v := node.obj
-		if v is ast.Var {
-			is_auto_heap = v.is_auto_heap && (!g.is_assign_lhs || g.assign_op != .decl_assign)
+		if node.obj is ast.Var {
+			is_auto_heap = node.obj.is_auto_heap
+				&& (!g.is_assign_lhs || g.assign_op != .decl_assign)
 			if is_auto_heap {
 				g.write('(*(')
 			}
-			if v.smartcasts.len > 0 {
-				v_sym := g.table.sym(v.typ)
+			if node.obj.smartcasts.len > 0 {
+				obj_sym := g.table.sym(node.obj.typ)
 				if !prevent_sum_type_unwrapping_once {
-					for _ in v.smartcasts {
+					for _ in node.obj.smartcasts {
 						g.write('(')
-						if v_sym.kind == .sum_type && !is_auto_heap {
+						if obj_sym.kind == .sum_type && !is_auto_heap {
 							g.write('*')
 						}
 					}
-					for i, typ in v.smartcasts {
+					for i, typ in node.obj.smartcasts {
 						cast_sym := g.table.sym(g.unwrap_generic(typ))
 						mut is_ptr := false
 						if i == 0 {
 							g.write(name)
-							if v.orig_type.is_ptr() {
+							if node.obj.orig_type.is_ptr() {
 								is_ptr = true
 							}
 						}
@@ -3918,16 +3916,16 @@ fn (mut g Gen) ident(node ast.Ident) {
 					return
 				}
 			}
-			if v.is_inherited {
+			if node.obj.is_inherited {
 				g.write(closure_ctx + '->')
 			}
 		}
-	} else if node_info is ast.IdentFn {
+	} else if node.info is ast.IdentFn {
 		if g.pref.translated || g.file.is_translated {
 			// `p_mobjthinker` => `P_MobjThinker`
-			if f := g.table.find_fn(node.name) {
+			if func := g.table.find_fn(node.name) {
 				// TODO PERF fn lookup for each fn call in translated mode
-				if cattr := f.attrs.find_first('c') {
+				if cattr := func.attrs.find_first('c') {
 					name = cattr.arg
 				}
 			}
