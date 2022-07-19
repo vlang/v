@@ -20,8 +20,11 @@
 
 ```v ignore
 struct Foo {
-    id   int    [primary; sql: serial]
-    name string [nonull]
+    id          int         [primary; sql: serial]
+    name        string      [nonull]
+    created_at  time.Time   [sql_type: 'DATETIME']
+    updated_at  string      [sql_type: 'DATETIME']
+    deleted_at  time.Time
 }
 ```
 
@@ -45,7 +48,10 @@ sql db {
 
 ```v ignore
 var := Foo{
-    name: 'abc'
+    name:       'abc'
+    created_at: time.now()
+    updated_at: time.now().str()
+    deleted_at: time.now()
 }
 
 sql db {

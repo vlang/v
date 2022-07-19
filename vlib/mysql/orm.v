@@ -24,7 +24,6 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 	num_fields := stmt.get_field_count()
 	metadata := stmt.gen_metadata()
 	fields := stmt.fetch_fields(metadata)
-
 	mut dataptr := []&u8{}
 
 	for i in 0 .. num_fields {
@@ -48,26 +47,60 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 			.type_double {
 				dataptr << unsafe { malloc(8) }
 			}
+			.type_time, .type_date, .type_datetime, .type_time2, .type_datetime2 {
+				dataptr << unsafe { malloc(sizeof(C.MYSQL_TIME)) }
+			}
 			.type_string, .type_blob {
 				dataptr << unsafe { malloc(512) }
 			}
+			.type_var_string {
+				dataptr << unsafe { malloc(2) }
+			}
 			else {
-				dataptr << &u8(0)
+				return error('\'${FieldType(f.@type)}\' is not yet implemented. Please create a new issue at https://github.com/vlang/v/issues/new')
 			}
 		}
 	}
 
 	lens := []u32{len: int(num_fields), init: 0}
 	stmt.bind_res(fields, dataptr, lens, num_fields)
-	stmt.bind_result_buffer()?
-	stmt.store_result()?
 
 	mut row := 0
 	mut types := config.types
+	mut field_types := []FieldType{}
 	if config.is_count {
 		types = [orm.type_idx['u64']]
 	}
 
+	for i, mut mysql_bind in stmt.res {
+		f := unsafe { fields[i] }
+		field_types << FieldType(f.@type)
+		match types[i] {
+			orm.string {
+				mysql_bind.buffer_type = C.MYSQL_TYPE_BLOB
+				mysql_bind.buffer_length = FieldType.type_blob.get_len()
+			}
+			orm.time {
+				match FieldType(f.@type) {
+					.type_long {
+						mysql_bind.buffer_type = C.MYSQL_TYPE_LONG
+					}
+					.type_time, .type_date, .type_datetime {
+						mysql_bind.buffer_type = C.MYSQL_TYPE_BLOB
+						mysql_bind.buffer_length = FieldType.type_blob.get_len()
+					}
+					.type_string, .type_blob {}
+					else {
+						return error('Unknown type ${f.@type}')
+					}
+				}
+			}
+			else {}
+		}
+	}
+
+	stmt.bind_result_buffer()?
+	stmt.store_result()?
 	for {
 		status = stmt.fetch_stmt()?
 
@@ -76,7 +109,7 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 		}
 		row++
 
-		data_list := buffer_to_primitive(dataptr, types)?
+		data_list := buffer_to_primitive(dataptr, types, field_types)?
 		ret << data_list
 	}
 
@@ -88,8 +121,19 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 // sql stmt
 
 pub fn (db Connection) insert(table string, data orm.QueryData) ? {
-	query := orm.orm_stmt_gen(table, '`', .insert, false, '?', 1, data, orm.QueryData{})
-	mysql_stmt_worker(db, query, data, orm.QueryData{})?
+	mut converted_primitive_array := db.factory_orm_primitive_converted_from_sql(table,
+		data)?
+
+	converted_data := orm.QueryData{
+		fields: data.fields
+		data: converted_primitive_array
+		types: []
+		kinds: []
+		is_and: []
+	}
+
+	query := orm.orm_stmt_gen(table, '`', .insert, false, '?', 1, converted_data, orm.QueryData{})
+	mysql_stmt_worker(db, query, converted_data, orm.QueryData{})?
 }
 
 pub fn (db Connection) update(table string, data orm.QueryData, where orm.QueryData) ? {
@@ -191,7 +235,7 @@ fn stmt_binder_match(mut stmt Stmt, data orm.Primitive) {
 	}
 }
 
-fn buffer_to_primitive(data_list []&u8, types []int) ?[]orm.Primitive {
+fn buffer_to_primitive(data_list []&u8, types []int, field_types []FieldType) ?[]orm.Primitive {
 	mut res := []orm.Primitive{}
 
 	for i, data in data_list {
@@ -234,8 +278,17 @@ fn buffer_to_primitive(data_list []&u8, types []int) ?[]orm.Primitive {
 				primitive = unsafe { cstring_to_vstring(&char(data)) }
 			}
 			orm.time {
-				timestamp := *(unsafe { &int(data) })
-				primitive = time.unix(timestamp)
+				match field_types[i] {
+					.type_long {
+						timestamp := *(unsafe { &int(data) })
+						primitive = time.unix(timestamp)
+					}
+					.type_datetime {
+						string_time := unsafe { cstring_to_vstring(&char(data)) }
+						primitive = time.parse(string_time)?
+					}
+					else {}
+				}
 			}
 			else {
 				return error('Unknown type ${types[i]}')
@@ -284,4 +337,41 @@ fn mysql_type_from_v(typ int) ?string {
 		return error('Unknown type $typ')
 	}
 	return str
+}
+
+fn (db Connection) factory_orm_primitive_converted_from_sql(table string, data orm.QueryData) ?[]orm.Primitive {
+	mut map_val := db.get_table_data_type_map(table)?
+
+	// adapt v type to sql time
+	mut converted_data := []orm.Primitive{}
+	for i, field in data.fields {
+		match data.data[i].type_name() {
+			'time.Time' {
+				if map_val[field] == 'datetime' {
+					converted_data << orm.Primitive((data.data[i] as time.Time).str())
+				} else {
+					converted_data << data.data[i]
+				}
+			}
+			else {
+				converted_data << data.data[i]
+			}
+		}
+	}
+	return converted_data
+}
+
+fn (db Connection) get_table_data_type_map(table string) ?map[string]string {
+	data_type_querys := "SELECT COLUMN_NAME, DATA_TYPE  FROM INFORMATION_SCHEMA.COLUMNS  WHERE TABLE_NAME = '$table'"
+	mut map_val := map[string]string{}
+
+	results := db.query(data_type_querys)?
+	db.use_result()
+
+	for row in results.rows() {
+		map_val[row.vals[0]] = row.vals[1]
+	}
+
+	unsafe { results.free() }
+	return map_val
 }
