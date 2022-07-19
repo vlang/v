@@ -2903,7 +2903,11 @@ pub fn (mut c Checker) concat_expr(mut node ast.ConcatExpr) ast.Type {
 // smartcast takes the expression with the current type which should be smartcasted to the target type in the given scope
 fn (mut c Checker) smartcast(expr_ ast.Expr, cur_type ast.Type, to_type_ ast.Type, mut scope ast.Scope) {
 	sym := c.table.sym(cur_type)
-	to_type := if sym.kind == .interface_ { to_type_.ref() } else { to_type_ }
+	to_type := if sym.kind == .interface_ && c.table.sym(to_type_).kind != .interface_ {
+		to_type_.ref()
+	} else {
+		to_type_
+	}
 	mut expr := unsafe { expr_ }
 	match mut expr {
 		ast.SelectorExpr {

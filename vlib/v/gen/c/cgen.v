@@ -3894,19 +3894,24 @@ fn (mut g Gen) ident(node ast.Ident) {
 					}
 					for i, typ in node.obj.smartcasts {
 						cast_sym := g.table.sym(g.unwrap_generic(typ))
-						mut is_ptr := false
-						if i == 0 {
-							g.write(name)
-							if node.obj.orig_type.is_ptr() {
-								is_ptr = true
-							}
-						}
-						dot := if is_ptr || is_auto_heap { '->' } else { '.' }
-						if cast_sym.info is ast.Aggregate {
-							sym := g.table.sym(cast_sym.info.types[g.aggregate_type_idx])
-							g.write('${dot}_$sym.cname')
+						if obj_sym.kind == .interface_ && cast_sym.kind == .interface_ {
+							ptr := '*'.repeat(node.obj.typ.nr_muls())
+							g.write('I_${obj_sym.cname}_as_I_${cast_sym.cname}($ptr$node.name)')
 						} else {
-							g.write('${dot}_$cast_sym.cname')
+							mut is_ptr := false
+							if i == 0 {
+								g.write(name)
+								if node.obj.orig_type.is_ptr() {
+									is_ptr = true
+								}
+							}
+							dot := if is_ptr || is_auto_heap { '->' } else { '.' }
+							if cast_sym.info is ast.Aggregate {
+								sym := g.table.sym(cast_sym.info.types[g.aggregate_type_idx])
+								g.write('${dot}_$sym.cname')
+							} else {
+								g.write('${dot}_$cast_sym.cname')
+							}
 						}
 						g.write(')')
 					}

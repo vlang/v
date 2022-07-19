@@ -34,8 +34,8 @@ mut:
 
 fn (mut w Window) init() {
 	for wd in w.initables {
-		if mut wd is Container {
-			mut c := wd as Container
+		if wd is Container {
+			mut c := unsafe { wd }
 			c.layout()
 		}
 	}
