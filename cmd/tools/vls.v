@@ -431,6 +431,17 @@ fn main() {
 	fp.application('v ls')
 	fp.description('Installs, updates, and executes the V language server program')
 	fp.version('0.1')
+
+	// just to make sure whenever user wants to
+	// interact directly with the executable
+	// instead of the usual `v ls` command
+	if fp.args.len >= 2 && fp.args[0..2] == [os.executable(), 'ls'] {
+		// skip the executable here, the next skip_executable
+		// outside the if statement will skip the `ls` part
+		fp.skip_executable()
+	}
+
+	// skip the executable or the `ls` part
 	fp.skip_executable()
 
 	upd.parse(mut fp) or {
