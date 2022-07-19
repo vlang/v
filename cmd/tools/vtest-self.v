@@ -164,6 +164,7 @@ const (
 		'vlib/sqlite/sqlite_test.v',
 		'vlib/sqlite/sqlite_orm_test.v',
 		'vlib/orm/orm_test.v',
+		'vlib/orm/orm_sql_or_blocks_test.v',
 		'vlib/v/tests/orm_sub_struct_test.v',
 		'vlib/v/tests/orm_sub_array_struct_test.v',
 		'vlib/v/tests/orm_joined_tables_select_test.v',
