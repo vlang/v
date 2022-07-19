@@ -67,7 +67,7 @@ jobs:
           echo "Build Gitly with -autofree"
           v -autofree /tmp/gitly
           echo "Compile gitly.css from gitly.scss"
-          sassc /tmp/gitly/static/css/gitly.scss > /tmp/gitly/static/css/gitly.css
+          sassc /tmp/gitly/src/static/css/gitly.scss > /tmp/gitly/src/static/css/gitly.css
           echo "Run first_run.v"
           v run /tmp/gitly/tests/first_run.v
           # /tmp/gitly/gitly -ci_run
