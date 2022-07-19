@@ -130,7 +130,7 @@
     --- optionally update shader uniform data with:
 
             sg_apply_uniforms(sg_shader_stage stage, int ub_index, const sg_range* data)
-            
+
         Read the section 'UNIFORM DATA LAYOUT' to learn about the expected memory layout
         of the uniform data passed into sg_apply_uniforms().
 
@@ -338,7 +338,7 @@
             with context information provided by sokol_app.h
 
     See the documention block of the sg_desc struct below for more information.
-    
+
 
     UNIFORM DATA LAYOUT:
     ====================
@@ -370,7 +370,7 @@
           SG_UNIFORMLAYOUT_STD140)
         - a list of the uniform block members types in the correct order they
           appear on the CPU side
-        
+
     For example if the GLSL shader has the following uniform declarations:
 
         uniform mat4 mvp;
@@ -414,7 +414,7 @@
     CROSS-BACKEND COMMON UNIFORM DATA LAYOUT
     ========================================
     For cross-platform / cross-3D-backend code it is important that the same uniform block
-    layout on the CPU side can be used for all sokol-gfx backends. To achieve this, 
+    layout on the CPU side can be used for all sokol-gfx backends. To achieve this,
     a common subset of the std140 layout must be used:
 
     - The uniform block layout hint in sg_shader_desc must be explicitely set to
@@ -440,7 +440,7 @@
         - ivec4 => 16
         - mat4  => 16
     - Arrays are only allowed for the following types: vec4, int4, mat4.
-          
+
     Note that the HLSL cbuffer layout rules are slightly different from the
     std140 layout rules, this means that the cbuffer declarations in HLSL code
     must be tweaked so that the layout is compatible with std140.
@@ -454,7 +454,7 @@
     --- The GL backends need to know about the internal structure of uniform
         blocks, and the texture sampler-name and -type. The uniform layout details
         are  described in the UNIFORM DATA LAYOUT section above.
-        
+
             // uniform block structure and texture image definition in sg_shader_desc:
             sg_shader_desc desc = {
                 // uniform block description (size and internal structure)
@@ -1321,35 +1321,35 @@ typedef enum sg_uniform_type {
 
 /*
     sg_uniform_layout
-    
+
     A hint for the interior memory layout of uniform blocks. This is
     only really relevant for the GL backend where the internal layout
     of uniform blocks must be known to sokol-gfx. For all other backends the
     internal memory layout of uniform blocks doesn't matter, sokol-gfx
     will just pass uniform data as a single memory blob to the
     3D backend.
-    
+
     SG_UNIFORMLAYOUT_NATIVE (default)
         Native layout means that a 'backend-native' memory layout
         is used. For the GL backend this means that uniforms
         are packed tightly in memory (e.g. there are no padding
         bytes).
-        
+
     SG_UNIFORMLAYOUT_STD140
         The memory layout is a subset of std140. Arrays are only
         allowed for the FLOAT4, INT4 and MAT4. Alignment is as
         is as follows:
-        
+
             FLOAT, INT:         4 byte alignment
             FLOAT2, INT2:       8 byte alignment
             FLOAT3, INT3:       16 byte alignment(!)
             FLOAT4, INT4:       16 byte alignment
             MAT4:               16 byte alignment
             FLOAT4[], INT4[]:   16 byte alignment
-            
+
         The overall size of the uniform block must be a multiple
         of 16.
-        
+
     For more information search for 'UNIFORM DATA LAYOUT' in the documentation block
     at the start of the header.
 */
@@ -1360,7 +1360,7 @@ typedef enum sg_uniform_layout {
     _SG_UNIFORMLAYOUT_NUM,
     _SG_UNIFORMLAYOUT_FORCE_U32 = 0x7FFFFFFF
 } sg_uniform_layout;
- 
+
 /*
     sg_cull_mode
 
@@ -13910,7 +13910,7 @@ _SOKOL_PRIVATE const char* _sg_validate_string(_sg_validate_error_t err) {
         case _SG_VALIDATE_SHADERDESC_UB_SIZE_MISMATCH:      return "size of uniform block members doesn't match uniform block size";
         case _SG_VALIDATE_SHADERDESC_UB_ARRAY_COUNT:        return "uniform array count must be >= 1";
         case _SG_VALIDATE_SHADERDESC_UB_STD140_ARRAY_TYPE:  return "uniform arrays only allowed for FLOAT4, INT4, MAT4 in std140 layout";
-        
+
         case _SG_VALIDATE_SHADERDESC_NO_CONT_IMGS:          return "shader images must occupy continuous slots";
         case _SG_VALIDATE_SHADERDESC_IMG_NAME:              return "GL backend requires uniform block member names";
         case _SG_VALIDATE_SHADERDESC_ATTR_NAMES:            return "GLES2 backend requires vertex attribute names";
@@ -14015,10 +14015,12 @@ _SOKOL_PRIVATE void _sg_validate(bool cond, _sg_validate_error_t err) {
 
 _SOKOL_PRIVATE bool _sg_validate_end(void) {
     if (_sg.validate_error != _SG_VALIDATE_SUCCESS) {
+    	// __v_ start
         #if !defined(SOKOL_VALIDATE_NON_FATAL)
             SOKOL_LOG("^^^^  SOKOL-GFX VALIDATION FAILED, TERMINATING ^^^^");
-            SOKOL_ASSERT(false);
+//            SOKOL_ASSERT(false);
         #endif
+    	// __v_ end
         return false;
     }
     else {
