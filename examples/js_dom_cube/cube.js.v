@@ -197,7 +197,7 @@ const (
 	amortization = 0.95
 )
 
-fn get_webgl() (&JS.HTMLCanvasElement, JS.WebGLRenderingContext) {
+fn get_webgl() (JS.HTMLCanvasElement, JS.WebGLRenderingContext) {
 	JS.console.log(dom.document)
 	elem := dom.document.getElementById('myCanvas'.str) or { panic('cannot get canvas') }
 	match elem {
