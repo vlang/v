@@ -225,7 +225,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 }
 
 pub fn (mut g Gen) typ(a int) &ast.TypeSymbol {
-	return g.table.type_symbols[a]
+	return g.table.syms[a]
 }
 
 pub fn (mut g Gen) generate_header() {

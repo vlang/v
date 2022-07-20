@@ -607,7 +607,7 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 				g.unwrap_generic(node.right.typ)
 			}
 			ast.None {
-				g.table.type_idxs['None__']
+				g.table.idxs['None__']
 			}
 			else {
 				ast.Type(0)

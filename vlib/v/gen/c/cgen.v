@@ -410,14 +410,14 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	g.timers.start('cgen common')
 	// to make sure type idx's are the same in cached mods
 	if g.pref.build_mode == .build_module {
-		for idx, sym in g.table.type_symbols {
+		for idx, sym in g.table.syms {
 			if idx == 0 {
 				continue
 			}
 			g.definitions.writeln('int _v_type_idx_${sym.cname}();')
 		}
 	} else if g.pref.use_cache {
-		for idx, sym in g.table.type_symbols {
+		for idx, sym in g.table.syms {
 			if idx == 0 {
 				continue
 			}
@@ -763,7 +763,7 @@ pub fn (mut g Gen) init() {
 			i++
 		}
 		// methods
-		for type_sym in g.table.type_symbols {
+		for type_sym in g.table.syms {
 			if type_sym.mod != 'main' {
 				continue
 			}
@@ -802,7 +802,7 @@ pub fn (mut g Gen) finish() {
 pub fn (mut g Gen) write_typeof_functions() {
 	g.writeln('')
 	g.writeln('// >> typeof() support for sum types / interfaces')
-	for ityp, sym in g.table.type_symbols {
+	for ityp, sym in g.table.syms {
 		if sym.kind == .sum_type {
 			sum_info := sym.info as ast.SumType
 			if sum_info.is_generic {
@@ -1228,7 +1228,7 @@ fn (g &Gen) type_sidx(t ast.Type) string {
 
 //
 pub fn (mut g Gen) write_typedef_types() {
-	for sym in g.table.type_symbols {
+	for sym in g.table.syms {
 		if sym.name in c.builtins {
 			continue
 		}
@@ -1289,24 +1289,24 @@ static inline void __${sym.cname}_pushval($sym.cname ch, $el_stype val) {
 			}
 		}
 	}
-	for sym in g.table.type_symbols {
+	for sym in g.table.syms {
 		if sym.kind == .alias && sym.name !in c.builtins {
 			g.write_alias_typesymbol_declaration(sym)
 		}
 	}
-	for sym in g.table.type_symbols {
+	for sym in g.table.syms {
 		if sym.kind == .function && sym.name !in c.builtins {
 			g.write_fn_typesymbol_declaration(sym)
 		}
 	}
 	// Generating interfaces after all the common types have been defined
 	// to prevent generating interface struct before definition of field types
-	for sym in g.table.type_symbols {
+	for sym in g.table.syms {
 		if sym.kind == .interface_ && sym.name !in c.builtins {
 			g.write_interface_typedef(sym)
 		}
 	}
-	for sym in g.table.type_symbols {
+	for sym in g.table.syms {
 		if sym.kind == .interface_ && sym.name !in c.builtins {
 			g.write_interface_typesymbol_declaration(sym)
 		}
@@ -1314,7 +1314,7 @@ static inline void __${sym.cname}_pushval($sym.cname ch, $el_stype val) {
 }
 
 pub fn (mut g Gen) write_alias_typesymbol_declaration(sym ast.TypeSymbol) {
-	parent := g.table.type_symbols[sym.parent_idx]
+	parent := g.table.syms[sym.parent_idx]
 	is_c_parent := parent.name.len > 2 && parent.name[0] == `C` && parent.name[1] == `.`
 	mut is_typedef := false
 	mut is_fixed_array_of_non_builtin := false
@@ -1436,7 +1436,7 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
 pub fn (mut g Gen) write_multi_return_types() {
 	g.typedefs.writeln('\n// BEGIN_multi_return_typedefs')
 	g.type_definitions.writeln('\n// BEGIN_multi_return_structs')
-	for sym in g.table.type_symbols {
+	for sym in g.table.syms {
 		if sym.kind != .multi_return {
 			continue
 		}
@@ -4903,7 +4903,7 @@ fn (mut g Gen) write_builtin_types() {
 	// builtin types need to be on top
 	// everything except builtin will get sorted
 	for builtin_name in c.builtins {
-		sym := g.table.sym_by_idx(g.table.type_idxs[builtin_name])
+		sym := g.table.sym_by_idx(g.table.idxs[builtin_name])
 		if sym.kind == .interface_ {
 			g.write_interface_typedef(sym)
 			g.write_interface_typesymbol_declaration(sym)
@@ -4923,8 +4923,8 @@ fn (mut g Gen) write_sorted_types() {
 		g.type_definitions.writeln('// #end sorted_symbols')
 	}
 	unsafe {
-		mut symbols := []&ast.TypeSymbol{cap: g.table.type_symbols.len} // structs that need to be sorted
-		for sym in g.table.type_symbols {
+		mut symbols := []&ast.TypeSymbol{cap: g.table.syms.len} // structs that need to be sorted
+		for sym in g.table.syms {
 			if sym.name !in c.builtins {
 				symbols << sym
 			}
@@ -5128,7 +5128,7 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 	unsafe {
 		mut sorted_symbols := []&ast.TypeSymbol{cap: dep_graph_sorted.nodes.len}
 		for node in dep_graph_sorted.nodes {
-			sorted_symbols << g.table.sym_by_idx(g.table.type_idxs[node.name])
+			sorted_symbols << g.table.sym_by_idx(g.table.idxs[node.name])
 		}
 		return sorted_symbols
 	}
@@ -5574,7 +5574,7 @@ fn (g Gen) has_been_referenced(fn_name string) bool {
 fn (mut g Gen) interface_table() string {
 	mut sb := strings.new_builder(100)
 	mut conversion_functions := strings.new_builder(100)
-	for isym in g.table.type_symbols {
+	for isym in g.table.syms {
 		if isym.kind != .interface_ {
 			continue
 		}

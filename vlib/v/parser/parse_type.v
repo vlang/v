@@ -512,7 +512,7 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 		name = p.expr_mod + '.' + name
 	} else if name in p.imported_symbols {
 		name = p.imported_symbols[name]
-	} else if !p.builtin_mod && name.len > 1 && name !in p.table.type_idxs {
+	} else if !p.builtin_mod && name.len > 1 && name !in p.table.idxs {
 		// `Foo` in module `mod` means `mod.Foo`
 		name = p.mod + '.' + name
 	}
@@ -703,7 +703,7 @@ pub fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 			return ast.new_type(gt_idx)
 		}
 		gt_idx = p.table.add_placeholder_type(bs_name, .v)
-		mut parent_idx := p.table.type_idxs[name]
+		mut parent_idx := p.table.idxs[name]
 		if parent_idx == 0 {
 			parent_idx = p.table.add_placeholder_type(name, .v)
 		}
