@@ -3601,6 +3601,11 @@ fn p(a f64, b f64) { // ordinary function without return value
 fn main() {
 	go p(3, 4)
 	// p will be run in parallel thread
+	// It can also be written as follows
+	// go fn (a f64, b f64) {
+	//	c := math.sqrt(a * a + b * b)
+	//	println(c)
+	// }(3, 4)
 }
 ```
 
