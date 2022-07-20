@@ -383,8 +383,23 @@ fn (upd VlsUpdater) log(msg string) {
 fn (upd VlsUpdater) error_details(err IError) {
 	match err.code() {
 		101 {
-			eprintln('\n' +
-				['- If you are using this for the first time, please run\n  `v ls --install` first to download and install VLS.', '- If you are using a custom version of VLS, check if\n  the specified path exists and is a valid executable.', '- If you have an existing installation of VLS, be sure\n  to remove "vls.config.json" and "bin" located inside\n  "\$HOME_DIR/.vls" and re-install.', '\nIf none of the options listed have solved your issue,\nplease report it at https://github.com/vlang/v/issues\n'].join('\n'))
+			mut vls_dir_shortened := '\$HOME/.vls'
+			$if windows {
+				vls_dir_shortened = '%USERPROFILE%\\.vls'
+			}
+
+			eprintln('
+- If you are using this for the first time, please run
+  `v ls --install` first to download and install VLS.
+- If you are using a custom version of VLS, check if
+  the specified path exists and is a valid executable.
+- If you have an existing installation of VLS, be sure
+  to remove "vls.config.json" and "bin" located inside
+  "$vls_dir_shortened" and re-install.
+
+  If none of the options listed have solved your issue,
+  please report it at https://github.com/vlang/v/issues
+')
 		}
 		else {}
 	}
