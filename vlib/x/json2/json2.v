@@ -7,9 +7,12 @@ pub const (
 	null = Null{}
 )
 
-pub interface Serializable {
+pub interface Decodable {
 	from_json(f Any)
-	to_json() string
+}
+
+pub interface Encodable {
+	json_str() string
 }
 
 // Decodes a JSON string into an `Any` type. Returns an option.
