@@ -16,6 +16,7 @@ import net.http
 import runtime
 import crypto.sha256
 import time
+import json
 
 enum UpdateSource {
 	github_releases
@@ -380,7 +381,7 @@ fn (upd VlsUpdater) log(msg string) {
 	}
 }
 
-fn (upd VlsUpdater) error_details(err IError) {
+fn (upd VlsUpdater) error_details(err IError) string {
 	match err.code() {
 		101 {
 			mut vls_dir_shortened := '\$HOME/.vls'
@@ -388,7 +389,7 @@ fn (upd VlsUpdater) error_details(err IError) {
 				vls_dir_shortened = '%USERPROFILE%\\.vls'
 			}
 
-			eprintln('
+			return '
 - If you are using this for the first time, please run
   `v ls --install` first to download and install VLS.
 - If you are using a custom version of VLS, check if
@@ -399,9 +400,11 @@ fn (upd VlsUpdater) error_details(err IError) {
 
   If none of the options listed have solved your issue,
   please report it at https://github.com/vlang/v/issues
-')
+'
 		}
-		else {}
+		else {
+			return ''
+		}
 	}
 }
 
@@ -411,13 +414,13 @@ fn (upd VlsUpdater) cli_error(err IError) {
 		.text {
 			eprintln('v ls error: $err.msg() ($err.code())')
 			if err !is none {
-				upd.error_details(err)
+				eprintln(upd.error_details(err))
 			}
 
 			print_backtrace()
 		}
 		.json {
-			print('{"error":{"message":"$err.msg()","code":"$err.code()"}}')
+			print('{"error":{"message":${json.encode(err.msg())},"code":"$err.code()","details":${json.encode(upd.error_details(err).trim_space())}}}')
 			flush_stdout()
 		}
 		.silent {}
