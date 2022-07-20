@@ -1,5 +1,5 @@
 Module {
-	name: 'v'
+	name: 'vweb_orm_jwt'
 	description: ''
 	version: ''
 	license: ''
