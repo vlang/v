@@ -2,7 +2,6 @@ module main
 
 import vweb
 import databases
-import zztkm.vdotenv
 
 const (
 	http_port = 8081
@@ -13,7 +12,6 @@ struct App {
 }
 
 fn main() {
-	vdotenv.load()
 	mut db := databases.create_db_connection() or { panic(err) }
 
 	sql db {
