@@ -4691,7 +4691,6 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 				mod: node.mod
 				def: '$fn_type_name = ${g.table.sym(field.typ).name}; // global2'
 				order: -1
-				// line: node.pos.line_nr
 			}
 			continue
 		}
@@ -4706,7 +4705,6 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 				mod: node.mod
 				def: def_builder.str()
 				order: -1
-				// line: node.pos.line_nr
 			}
 			continue
 		}
@@ -4739,7 +4737,6 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			def: def_builder.str()
 			init: init
 			dep_names: g.table.dependent_names_in_expr(field.expr)
-			// line: node.pos.line_nr
 		}
 	}
 }
