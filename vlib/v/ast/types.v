@@ -471,7 +471,7 @@ pub const (
 	number_type_idxs           = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, u8_type_idx,
 		char_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx, usize_type_idx,
 		f32_type_idx, f64_type_idx, int_literal_type_idx, float_literal_type_idx, rune_type_idx]
-	pointer_type_idxs          = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx]
+	pointer_type_idxs          = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx, nil_type_idx]
 	string_type_idxs           = [string_type_idx]
 )
 
