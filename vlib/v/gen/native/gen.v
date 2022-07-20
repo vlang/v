@@ -13,8 +13,6 @@ import v.errors
 import v.pref
 import term
 
-pub const builtins = ['assert', 'print', 'eprint', 'println', 'eprintln', 'exit', 'C.syscall']
-
 interface CodeGen {
 mut:
 	g &Gen
@@ -49,6 +47,7 @@ mut:
 	strs                 []String
 	labels               &LabelTable
 	defer_stmts          []ast.DeferStmt
+	builtins             map[string]BuiltinFn
 	// macho specific
 	macho_ncmds   int
 	macho_cmdsize int
@@ -143,6 +142,20 @@ fn (mut g Gen) get_var_from_ident(ident ast.Ident) LocalVar|GlobalVar|Register {
 	}
 }
 
+fn (mut g Gen) get_type_from_var(var Var) ast.Type {
+	match var {
+		ast.Ident {
+			return g.get_type_from_var(g.get_var_from_ident(var) as LocalVar)
+		}
+		LocalVar {
+			return var.typ
+		}
+		GlobalVar {
+			g.n_error('cannot get type from GlobalVar yet')
+		}
+	}
+}
+
 fn get_backend(arch pref.Arch) ?CodeGen {
 	match arch {
 		.arm64 {
@@ -194,6 +207,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 	}
 	g.code_gen.g = g
 	g.generate_header()
+	g.init_builtins()
 	for file in files {
 		/*
 		if file.warnings.len > 0 {
@@ -205,6 +219,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 		}
 		g.stmts(file.stmts)
 	}
+	g.generate_builtins()
 	g.generate_footer()
 	return g.nlines, g.buf.len
 }
@@ -428,11 +443,25 @@ fn (mut g Gen) gen_typeof_expr(it ast.TypeOf, newline bool) {
 	g.learel(.rax, g.allocate_string('$r$nl', 3, .rel32))
 }
 
+fn (mut g Gen) call_fn(node ast.CallExpr) {
+	if g.pref.arch == .arm64 {
+		g.call_fn_arm64(node)
+	} else {
+		g.call_fn_amd64(node)
+	}
+}
+
 fn (mut g Gen) gen_var_to_string(reg Register, var Var, config VarConfig) {
-	buffer := g.allocate_array('itoa-buffer', 1, 32) // 32 characters should be enough
-	g.mov_var_to_reg(reg, var, config)
-	g.convert_int_to_string(reg, buffer)
-	g.lea_var_to_reg(reg, buffer)
+	typ := g.get_type_from_var(var)
+	if typ.is_int() {
+		buffer := g.allocate_array('itoa-buffer', 1, 32) // 32 characters should be enough
+		g.mov_var_to_reg(g.get_builtin_arg_reg('int_to_string', 0), var, config)
+		g.lea_var_to_reg(g.get_builtin_arg_reg('int_to_string', 1), buffer)
+		g.call_builtin('int_to_string')
+		g.lea_var_to_reg(reg, buffer)
+	} else {
+		g.n_error('int-to-string conversion not implemented for type $typ')
+	}
 }
 
 pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, name string) {

@@ -2091,12 +2091,13 @@ Public immutable fields are readonly everywhere.
 V supports anonymous structs: structs that don't have to be declared separately
 with a struct name.
 
-```
+```v
 struct Book {
 	author struct  {
 		name string
 		age  int
 	}
+
 	title string
 }
 
@@ -3415,7 +3416,7 @@ import net.http
 
 fn f(url string) ?string {
 	resp := http.get(url)?
-	return resp.text
+	return resp.body
 }
 ```
 
@@ -3430,7 +3431,7 @@ The body of `f` is essentially a condensed version of:
 
 ```v ignore
     resp := http.get(url) or { return err }
-    return resp.text
+    return resp.body
 ```
 
 ---
@@ -3474,7 +3475,7 @@ The fourth method is to use `if` unwrapping:
 import net.http
 
 if resp := http.get('https://google.com') {
-	println(resp.text) // resp is a http.Response, not an optional
+	println(resp.body) // resp is a http.Response, not an optional
 } else {
 	println(err)
 }

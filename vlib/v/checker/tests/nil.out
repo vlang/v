@@ -1,0 +1,7 @@
+vlib/v/checker/tests/nil.vv:3:18: error: use of untyped nil in assignment
+    1 | fn main() {
+    2 |     unsafe {
+    3 |         value := nil
+      |                  ~~~
+    4 |         println(value)
+    5 |     }

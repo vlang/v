@@ -243,8 +243,8 @@ pub fn new(system_allocator Allocator) Dlmalloc {
 	return Dlmalloc{
 		smallmap: 0
 		treemap: 0
-		smallbins: [(dlmalloc.n_small_bins + 1) * 2]&Chunk{}
-		treebins: [dlmalloc.n_tree_bins]&TreeChunk{}
+		smallbins: unsafe { [(dlmalloc.n_small_bins + 1) * 2]&Chunk{} }
+		treebins: unsafe { [dlmalloc.n_tree_bins]&TreeChunk{} }
 		dvsize: 0
 		topsize: 0
 		dv: voidptr(0)

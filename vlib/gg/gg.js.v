@@ -294,7 +294,7 @@ pub mut:
 	// *before* the current event was different
 }
 
-fn get_canvas(elem JS.HTMLElement) &JS.HTMLCanvasElement {
+fn get_canvas(elem JS.HTMLElement) JS.HTMLCanvasElement {
 	match elem {
 		JS.HTMLCanvasElement {
 			return elem
