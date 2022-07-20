@@ -29,7 +29,7 @@ fn C.wkhtmltopdf_create_global_settings() &C.wkhtmltopdf_global_settings
 
 fn C.wkhtmltopdf_destroy_global_settings(global_settings &C.wkhtmltopdf_global_settings)
 
-fn wkhtmltopdf_set_global_setting(global_settings &C.wkhtmltopdf_global_settings, name &char, value &char) bool
+fn C.wkhtmltopdf_set_global_setting(global_settings &C.wkhtmltopdf_global_settings, name &char, value &char) bool
 
 fn C.wkhtmltopdf_create_object_settings() &C.wkhtmltopdf_object_settings
 

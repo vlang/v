@@ -19,7 +19,7 @@ import math
 pub struct BitMap {
 pub mut:
 	tf       &TTF_File
-	buf      &u8 = 0 // pointer to the memory buffer
+	buf      &u8 = unsafe { 0 } // pointer to the memory buffer
 	buf_size int // allocated buf size in bytes
 	width    int = 1 // width of the buffer
 	height   int = 1 // height of the buffer

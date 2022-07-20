@@ -3,7 +3,7 @@ module pkgconfig
 import flag
 import strings
 
-struct Main {
+pub struct Main {
 pub mut:
 	opt         &MainOptions
 	res         string

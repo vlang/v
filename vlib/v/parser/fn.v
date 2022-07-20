@@ -123,7 +123,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 		mut expr := ast.empty_expr()
 		if p.tok.kind == .name && p.peek_tok.kind == .colon {
 			// `foo(key:val, key2:val2)`
-			expr = p.struct_init('void_type', true) // short_syntax:true
+			expr = p.struct_init('void_type', .short_syntax)
 		} else {
 			expr = p.expr(0)
 		}
@@ -401,7 +401,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	}
 	if p.tok.kind == .comma {
 		mr_pos := return_type_pos.extend(p.peek_tok.pos())
-		p.error_with_pos('multiple return types in function declaration must use parentheses, .e.g (int, string)',
+		p.error_with_pos('multiple return types in function declaration must use parentheses, e.g. (int, string)',
 			mr_pos)
 	}
 	mut type_sym_method_idx := 0
@@ -751,6 +751,17 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	typ := ast.new_type(idx)
 	p.inside_defer = old_inside_defer
 	// name := p.table.get_type_name(typ)
+	if inherited_vars.len > 0 && args.len > 0 {
+		for arg in args {
+			for var in inherited_vars {
+				if arg.name == var.name {
+					p.error_with_pos('the parameter name `$arg.name` conflicts with the captured value name',
+						arg.pos)
+					break
+				}
+			}
+		}
+	}
 	return ast.AnonFn{
 		decl: ast.FnDecl{
 			name: name
@@ -789,7 +800,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 
 	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn, .lsbr]
 		|| (p.peek_tok.kind == .comma && (p.table.known_type(argname) || is_generic_type))
-		|| p.peek_tok.kind == .dot || p.peek_tok.kind == .rpar
+		|| p.peek_tok.kind == .dot || p.peek_tok.kind == .rpar || p.fn_language == .c
 		|| (p.tok.kind == .key_mut && (p.peek_token(2).kind == .comma
 		|| p.peek_token(2).kind == .rpar || (p.peek_tok.kind == .name
 		&& p.peek_token(2).kind == .dot)))
@@ -804,7 +815,13 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 			is_shared := p.tok.kind == .key_shared
 			is_atomic := p.tok.kind == .key_atomic
 			is_mut := p.tok.kind == .key_mut || is_shared || is_atomic
+			mut name := ''
 			if is_mut {
+				p.next()
+			}
+			if p.fn_language == .c && p.tok.kind == .name
+				&& p.peek_tok.kind !in [.comma, .rpar, .dot] {
+				name = p.tok.lit
 				p.next()
 			}
 			if p.tok.kind == .ellipsis {
@@ -813,6 +830,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 			}
 			pos := p.tok.pos()
 			mut arg_type := p.parse_type()
+			type_pos := pos.extend(p.prev_tok.pos())
 			if arg_type == 0 {
 				// error is added in parse_type
 				return []ast.Param{}, false, false
@@ -864,10 +882,10 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 			}
 			args << ast.Param{
 				pos: pos
-				name: ''
+				name: name
 				is_mut: is_mut
 				typ: arg_type
-				type_pos: pos
+				type_pos: type_pos
 			}
 			arg_no++
 			if arg_no > 1024 {
@@ -923,6 +941,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 			}
 			pos := p.tok.pos()
 			mut typ := p.parse_type()
+			type_pos[0] = pos.extend(p.prev_tok.pos())
 			if typ == 0 {
 				// error is added in parse_type
 				return []ast.Param{}, false, false
@@ -1020,6 +1039,11 @@ fn (mut p Parser) closure_vars() []ast.Param {
 		p.check(.name)
 		var_name := p.prev_tok.lit
 		mut var := p.scope.parent.find_var(var_name) or {
+			if p.table.global_scope.known_global(var_name) {
+				p.error_with_pos('no need to capture global variable `$var_name` in closure',
+					p.prev_tok.pos())
+				continue
+			}
 			p.error_with_pos('undefined ident: `$var_name`', p.prev_tok.pos())
 			continue
 		}

@@ -12,15 +12,19 @@
 - `[unique]` sets the field as unique
 - `[unique: 'foo']` adds the field to a unique group
 - `[skip]` field will be skipped
-- `[sql: type]` sets the type which is used in sql (special type `serial`)
+- `[sql: type]` where `type` is a V type such as `int` or `f64`, or special type `serial`
 - `[sql: 'name']` sets a custom column name for the field
+- `[sql_type: 'SQL TYPE']` sets the sql type which is used in sql
 
 ## Usage
 
 ```v ignore
 struct Foo {
-    id   int    [primary; sql: serial]
-    name string [nonull]
+    id          int         [primary; sql: serial]
+    name        string      [nonull]
+    created_at  time.Time   [sql_type: 'DATETIME']
+    updated_at  string      [sql_type: 'DATETIME']
+    deleted_at  time.Time
 }
 ```
 
@@ -44,7 +48,10 @@ sql db {
 
 ```v ignore
 var := Foo{
-    name: 'abc'
+    name:       'abc'
+    created_at: time.now()
+    updated_at: time.now().str()
+    deleted_at: time.now()
 }
 
 sql db {

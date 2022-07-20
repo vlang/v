@@ -1,0 +1,130 @@
+name: C2V apps
+
+on:
+  push:
+    paths-ignore:
+      - "**.md"
+      - "doc/**"
+      - "examples/**"
+      - "tutorials/**"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+      - "doc/**"
+      - "examples/**"
+      - "tutorials/**"
+
+concurrency:
+  group: build-c2v-apps-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  doom-compiles:
+    runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build V
+        run: make && ./v symlink -githubci
+
+      - name: Build C2V
+        run: |
+          echo "Clone C2V"
+          mkdir -p ~/code/
+          git clone --depth 1 https://github.com/vlang/c2v ~/code/c2v
+          ln -s ~/code/c2v ~/.vmodules/c2v
+          v -g ~/.vmodules/c2v/
+          ~/.vmodules/c2v/c2v || true
+
+      - name: Install Doom Dependencies
+        run: |
+          sudo apt-get update -y -qq
+          sudo apt-get install libsdl2-dev libsdl2-mixer-dev libsdl2-net-dev libpng-dev libsamplerate0-dev
+
+      - name: Build original Chocolate Doom
+        run: |
+          git clone --quiet --depth 1 https://github.com/vlang/doom ~/code/doom
+          cd ~/code/doom/chocolate-doom
+          cmake -DCMAKE_BUILD_TYPE=Debug .
+          make chocolate-doom
+
+      - name: Translate the whole game in project/folder mode and compile it
+        run: |
+          cd ~/code/doom
+          touch ~/DOOM1.WAD
+          WAD_FILE=~/DOOM1.WAD ~/code/doom/build_whole_project.sh
+
+  doom-regressions:
+    runs-on: ubuntu-20.04
+    if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
+    timeout-minutes: 10
+    env:
+      VFLAGS: -cc tcc
+      DISPLAY: :99
+      LIBGL_ALWAYS_SOFTWARE: true
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build V
+        run: make && ./v symlink -githubci
+
+      - name: Setup dependencies
+        run: |
+          sudo apt-get update -y -qq
+
+          # c2v / DOOM dependencies
+          sudo apt-get install libsdl2-dev libsdl2-mixer-dev libsdl2-net-dev libpng-dev libsamplerate0-dev
+
+          # vgret dependencies
+          # imagemagick              : convert, mogrify, import
+          # xvfb                     : For starting X11 Virtual FrameBuffers
+          # openimageio-tools        : idiff
+          # libgl1-mesa-dri          : For headless rendering / software DRI driver (LIBGL_ALWAYS_SOFTWARE=true)
+          # freeglut3-dev            : Fixes graphic apps compilation with tcc
+          sudo apt-get install imagemagick openimageio-tools freeglut3-dev libgl1-mesa-dri xvfb
+
+          # Fetch the free ~4MB DOOM1.WAD from the link at https://doomwiki.org/wiki/DOOM1.WAD
+          wget https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad -O ~/doom1.wad
+
+          # Get imgur upload script
+          wget https://raw.githubusercontent.com/tremby/imgur.sh/c98345d/imgur.sh
+          chmod +x ./imgur.sh
+
+          # Get regression images to test against
+          git clone https://github.com/Larpon/doom-regression-images
+
+      - name: Build C2V
+        run: |
+          echo "Clone C2V"
+          mkdir -p ~/code/
+          git clone --depth 1 https://github.com/vlang/c2v ~/code/c2v
+          ln -s ~/code/c2v ~/.vmodules/c2v
+          v -g ~/.vmodules/c2v/
+          ~/.vmodules/c2v/c2v || true
+
+      - name: Build original Chocolate Doom
+        run: |
+          git clone --quiet --depth 1 https://github.com/vlang/doom ~/code/doom
+          cd ~/code/doom/chocolate-doom
+          cmake -DCMAKE_BUILD_TYPE=Debug .
+          make chocolate-doom
+
+      - name: Translate the whole game in project/folder mode
+        run: |
+          cd ~/code/doom
+          WAD_FILE=~/doom1.wad ~/code/doom/build_whole_project.sh
+
+      - name: Sample and compare with vgret
+        id: compare
+        continue-on-error: true
+        run: |
+          Xvfb $DISPLAY -screen 0 640x480x24 &
+          sleep 1 # give xvfb time to start
+          v gret -r ~/code/doom -t ./doom-regression-images/vgret.doom.toml -v ./doom-sample_images ./doom-regression-images
+
+      - name: Upload regression to imgur
+        if: steps.compare.outcome != 'success'
+        run: |
+          ./imgur.sh /tmp/fail.png
+          ./imgur.sh /tmp/diff.png
+          exit 1

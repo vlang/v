@@ -1546,6 +1546,10 @@ pub fn (mut s Scanner) error(msg string) {
 		exit(1)
 	} else {
 		if s.pref.fatal_errors {
+			eprintln(util.formatted_error('error:', msg, s.file_path, pos))
+			if details.len > 0 {
+				eprintln(details)
+			}
 			exit(1)
 		}
 		if s.pref.message_limit >= 0 && s.errors.len >= s.pref.message_limit {

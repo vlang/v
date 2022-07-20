@@ -42,7 +42,7 @@ fn (mut l Layer) populate(nb_neurons int, nb_inputs int) {
 	}
 }
 
-struct Network {
+pub struct Network {
 mut:
 	layers []Layer
 }

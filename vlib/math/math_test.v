@@ -222,6 +222,16 @@ fn test_nan() {
 	assert nan_f32 != nan_f32
 }
 
+fn test_angle_diff() {
+	for pair in [
+		[pi, pi_2, -pi_2],
+		[pi_2 * 3.0, pi_2, -pi],
+		[pi / 6.0, two_thirds * pi, pi_2],
+	] {
+		assert angle_diff(pair[0], pair[1]) == pair[2]
+	}
+}
+
 fn test_acos() {
 	for i := 0; i < math.vf_.len; i++ {
 		a := math.vf_[i] / 10
@@ -796,6 +806,17 @@ fn test_round() {
 		f := round(vfround_sc_[i][0])
 		assert alike(vfround_sc_[i][1], f)
 	}
+}
+
+fn fn_test_round_sig() {
+	assert round_sig(4.3239437319748394, -1) == 4.3239437319748394
+	assert round_sig(4.3239437319748394, 0) == 4.0000000000000000
+	assert round_sig(4.3239437319748394, 1) == 4.3000000000000000
+	assert round_sig(4.3239437319748394, 2) == 4.3200000000000000
+	assert round_sig(4.3239437319748394, 3) == 4.3240000000000000
+	assert round_sig(4.3239437319748394, 6) == 4.3239440000000000
+	assert round_sig(4.3239437319748394, 12) == 4.323943731975
+	assert round_sig(4.3239437319748394, 17) == 4.3239437319748394
 }
 
 fn test_sin() {

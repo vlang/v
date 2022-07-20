@@ -291,7 +291,7 @@ struct C.sg_context {
 
 pub type Context = C.sg_context
 
-struct C.sg_range {
+pub struct C.sg_range {
 pub mut:
 	ptr  voidptr
 	size usize
@@ -400,7 +400,7 @@ pub fn (mut b Buffer) free() {
 	C.sg_destroy_buffer(*b)
 }
 
-struct C.sg_image_desc {
+pub struct C.sg_image_desc {
 pub mut:
 	_start_canary  u32
 	@type          ImageType
@@ -438,7 +438,7 @@ pub mut:
 
 pub type ImageDesc = C.sg_image_desc
 
-struct C.sg_image_info {
+pub struct C.sg_image_info {
 pub mut:
 	slot            SlotInfo // resource pool slot info
 	upd_frame_index u32      // frame index of last sg_update_image()
@@ -448,7 +448,7 @@ pub mut:
 
 pub type ImageInfo = C.sg_image_info
 
-struct C.sg_image {
+pub struct C.sg_image {
 pub:
 	id u32
 }
@@ -463,7 +463,7 @@ pub const sg_cubeface_num = 6
 
 pub const sg_max_mipmaps = 16
 
-struct C.sg_image_data {
+pub struct C.sg_image_data {
 pub mut:
 	subimage [sg_cubeface_num][sg_max_mipmaps]Range
 }
@@ -485,7 +485,7 @@ pub:
 
 pub type Features = C.sg_features
 
-struct C.sg_limits {
+pub struct C.sg_limits {
 pub:
 	max_image_size_2d      u32 // max width/height of SG_IMAGETYPE_2D images
 	max_image_size_cube    u32 // max width/height of SG_IMAGETYPE_CUBE images
@@ -497,7 +497,7 @@ pub:
 
 pub type Limits = C.sg_limits
 
-struct C.sg_layout_desc {
+pub struct C.sg_layout_desc {
 pub mut:
 	buffers [8]BufferLayoutDesc
 	attrs   [16]VertexAttrDesc
@@ -505,7 +505,7 @@ pub mut:
 
 pub type LayoutDesc = C.sg_layout_desc
 
-struct C.sg_buffer_layout_desc {
+pub struct C.sg_buffer_layout_desc {
 pub mut:
 	stride    int
 	step_func VertexStep
@@ -514,7 +514,7 @@ pub mut:
 
 pub type BufferLayoutDesc = C.sg_buffer_layout_desc
 
-struct C.sg_vertex_attr_desc {
+pub struct C.sg_vertex_attr_desc {
 pub mut:
 	buffer_index int
 	offset       int
@@ -583,7 +583,7 @@ pub fn (mut action C.sg_color_attachment_action) set_color_values(r, g, b, a f32
     action.val[3] = a
 }
 */
-struct C.sg_depth_attachment_action {
+pub struct C.sg_depth_attachment_action {
 pub mut:
 	action Action
 	value  f32
@@ -591,7 +591,7 @@ pub mut:
 
 pub type DepthAttachmentAction = C.sg_depth_attachment_action
 
-struct C.sg_stencil_attachment_action {
+pub struct C.sg_stencil_attachment_action {
 pub mut:
 	action Action
 	value  u8
@@ -599,7 +599,7 @@ pub mut:
 
 pub type StencilAttachmentAction = C.sg_stencil_attachment_action
 
-struct C.sg_pixelformat_info {
+pub struct C.sg_pixelformat_info {
 pub:
 	sample bool // pixel format can be sampled in shaders
 	filter bool // pixel format can be sampled with filtering

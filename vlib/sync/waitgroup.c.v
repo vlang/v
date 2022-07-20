@@ -25,7 +25,7 @@ fn C.atomic_compare_exchange_weak_u32(voidptr, voidptr, u32) bool
 //
 // [init_with=new_waitgroup] // TODO: implement support for init_with struct attribute, and disallow WaitGroup{} from outside the sync.new_waitgroup() function.
 [heap]
-struct WaitGroup {
+pub struct WaitGroup {
 mut:
 	task_count u32       // current task count - reading/writing should be atomic
 	wait_count u32       // current wait count - reading/writing should be atomic

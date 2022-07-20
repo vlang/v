@@ -14,6 +14,8 @@ fn C.CreateHardLinkW(&u16, &u16, C.SECURITY_ATTRIBUTES) int
 
 fn C._getpid() int
 
+const executable_suffixes = ['.exe', '.bat', '.cmd', '']
+
 pub const (
 	path_separator = '\\'
 	path_delimiter = ';'
@@ -201,7 +203,7 @@ pub fn is_dir(path string) bool {
 }
 */
 // mkdir creates a new directory with the specified path.
-pub fn mkdir(path string) ?bool {
+pub fn mkdir(path string, params MkdirParams) ?bool {
 	if path == '.' {
 		return true
 	}

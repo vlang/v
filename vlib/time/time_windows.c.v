@@ -15,7 +15,7 @@ struct C.tm {
 	tm_sec  int
 }
 
-struct C._FILETIME {
+pub struct C._FILETIME {
 	dwLowDateTime  u32
 	dwHighDateTime u32
 }

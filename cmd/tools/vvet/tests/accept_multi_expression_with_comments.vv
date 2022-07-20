@@ -1,0 +1,7 @@
+fn abc() int {
+	return if true {
+		0x4000 // 16KB
+	} else {
+		0x1000 // 4KB
+	}
+}

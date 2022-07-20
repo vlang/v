@@ -109,7 +109,7 @@ pub enum TypeFlag {
 
 /*
 To save precious TypeFlag bits the 4 possible ShareTypes are coded in the two
-	bits `shared` and `atomic_or_rw` (see sharetype_from_flags() below).
+bits `shared` and `atomic_or_rw` (see sharetype_from_flags() below).
 */
 pub enum ShareType {
 	mut_t
@@ -332,6 +332,11 @@ pub fn (typ Type) is_pointer() bool {
 }
 
 [inline]
+pub fn (typ Type) is_voidptr() bool {
+	return typ.idx() == ast.voidptr_type_idx
+}
+
+[inline]
 pub fn (typ Type) is_real_pointer() bool {
 	return typ.is_ptr() || typ.is_pointer()
 }
@@ -378,12 +383,12 @@ pub fn (typ Type) is_unsigned() bool {
 
 pub fn (typ Type) flip_signedness() Type {
 	return match typ {
-		ast.i8_type { ast.byte_type }
+		ast.i8_type { ast.u8_type }
 		ast.i16_type { ast.u16_type }
 		ast.int_type { ast.u32_type }
 		ast.isize_type { ast.usize_type }
 		ast.i64_type { ast.u64_type }
-		ast.byte_type { ast.i8_type }
+		ast.u8_type { ast.i8_type }
 		ast.u16_type { ast.i16_type }
 		ast.u32_type { ast.int_type }
 		ast.usize_type { ast.isize_type }
@@ -422,7 +427,7 @@ pub const (
 	int_type_idx           = 7
 	i64_type_idx           = 8
 	isize_type_idx         = 9
-	byte_type_idx          = 10
+	u8_type_idx            = 10
 	u16_type_idx           = 11
 	u32_type_idx           = 12
 	u64_type_idx           = 13
@@ -442,32 +447,30 @@ pub const (
 	int_literal_type_idx   = 27
 	thread_type_idx        = 28
 	error_type_idx         = 29
-		// u8_type_idx            = 30
+	nil_type_idx           = 30
 )
 
 // Note: builtin_type_names must be in the same order as the idx consts above
 pub const builtin_type_names = ['void', 'voidptr', 'byteptr', 'charptr', 'i8', 'i16', 'int', 'i64',
 	'isize', 'u8', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'char', 'bool', 'none', 'string',
-	'rune', 'array', 'map', 'chan', 'any', 'float_literal', 'int_literal', 'thread', 'Error', 'u8']
+	'rune', 'array', 'map', 'chan', 'any', 'float_literal', 'int_literal', 'thread', 'Error', 'nil']
 
 pub const builtin_type_names_matcher = build_builtin_type_names_matcher()
 
 pub const (
-	integer_type_idxs          = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx,
-		byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx, usize_type_idx,
+	integer_type_idxs          = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, u8_type_idx,
+		u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx, usize_type_idx,
 		int_literal_type_idx, rune_type_idx]
 	signed_integer_type_idxs   = [char_type_idx, i8_type_idx, i16_type_idx, int_type_idx,
 		i64_type_idx, isize_type_idx]
-	unsigned_integer_type_idxs = [byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx,
+	unsigned_integer_type_idxs = [u8_type_idx, u16_type_idx, u32_type_idx, u64_type_idx,
 		usize_type_idx]
 	// C will promote any type smaller than int to int in an expression
-	int_promoted_type_idxs     = [char_type_idx, i8_type_idx, i16_type_idx, byte_type_idx,
-		u16_type_idx]
+	int_promoted_type_idxs     = [char_type_idx, i8_type_idx, i16_type_idx, u8_type_idx, u16_type_idx]
 	float_type_idxs            = [f32_type_idx, f64_type_idx, float_literal_type_idx]
-	number_type_idxs           = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx,
-		byte_type_idx, char_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx,
-		usize_type_idx, f32_type_idx, f64_type_idx, int_literal_type_idx, float_literal_type_idx,
-		rune_type_idx]
+	number_type_idxs           = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, u8_type_idx,
+		char_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx, usize_type_idx,
+		f32_type_idx, f64_type_idx, int_literal_type_idx, float_literal_type_idx, rune_type_idx]
 	pointer_type_idxs          = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx]
 	string_type_idxs           = [string_type_idx]
 )
@@ -484,8 +487,7 @@ pub const (
 	i16_type           = new_type(i16_type_idx)
 	i64_type           = new_type(i64_type_idx)
 	isize_type         = new_type(isize_type_idx)
-	byte_type          = new_type(byte_type_idx)
-	// u8_type            = new_type(u8_type_idx)
+	u8_type            = new_type(u8_type_idx)
 	u16_type           = new_type(u16_type_idx)
 	u32_type           = new_type(u32_type_idx)
 	u64_type           = new_type(u64_type_idx)
@@ -509,6 +511,7 @@ pub const (
 	byteptr_types      = new_byteptr_types()
 	voidptr_types      = new_voidptr_types()
 	cptr_types         = merge_types(voidptr_types, byteptr_types, charptr_types)
+	nil_type           = new_type(nil_type_idx)
 )
 
 fn new_charptr_types() []Type {
@@ -516,7 +519,7 @@ fn new_charptr_types() []Type {
 }
 
 fn new_byteptr_types() []Type {
-	return [ast.byteptr_type, new_type(ast.byte_type_idx).set_nr_muls(1)]
+	return [ast.byteptr_type, new_type(ast.u8_type_idx).set_nr_muls(1)]
 }
 
 fn new_voidptr_types() []Type {
@@ -809,7 +812,7 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		}
 	)
 	t.register_sym(kind: .interface_, name: 'IError', cname: 'IError', mod: 'builtin')
-	t.register_sym(kind: .u8, name: 'zu8', cname: 'zu8', mod: 'builtin')
+	t.register_sym(kind: .voidptr, name: 'nil', cname: 'nil', mod: 'builtin')
 }
 
 [inline]
@@ -1022,6 +1025,7 @@ pub mut:
 	is_union       bool
 	is_heap        bool
 	is_minify      bool
+	is_anon        bool
 	is_generic     bool
 	generic_types  []Type
 	concrete_types []Type
@@ -1122,7 +1126,7 @@ pub mut:
 	parent_type    Type
 }
 
-// human readable type name
+// human readable type name, also used by vfmt
 pub fn (t &Table) type_to_str(typ Type) string {
 	return t.type_to_str_using_aliases(typ, map[string]string{})
 }
@@ -1265,7 +1269,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			} else if sym.info is SumType && (sym.info as SumType).is_anon {
 				variant_names := sym.info.variants.map(t.shorten_user_defined_typenames(t.sym(it).name,
 					import_aliases))
-				res = '${variant_names.join(' | ')}'
+				res = '${variant_names.join('|')}'
 			} else {
 				res = t.shorten_user_defined_typenames(res, import_aliases)
 			}

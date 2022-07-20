@@ -8,7 +8,7 @@ https://www.geeksforgeeks.org/bellman-ford-algorithm-dp-23/
 For Portugese reference
 http://rascunhointeligente.blogspot.com/2010/10/o-algoritmo-de-bellman-ford-um.html
 
-By CCS
+code by CCS
 */
 
 const large = 999999 // almost inifinity
@@ -159,5 +159,3 @@ fn main() {
 	}
 	println('\n BYE -- OK')
 }
-
-//=================================================

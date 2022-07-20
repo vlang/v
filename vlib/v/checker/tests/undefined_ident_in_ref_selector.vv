@@ -1,0 +1,7 @@
+module main
+
+fn main() {}
+
+fn read() int {
+	return &line.len
+}

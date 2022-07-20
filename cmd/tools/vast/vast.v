@@ -1358,6 +1358,7 @@ fn (t Tree) postfix_expr(node ast.PostfixExpr) &Node {
 	obj.add_terse('expr', t.expr(node.expr))
 	obj.add('auto_locked', t.string_node(node.auto_locked))
 	obj.add('pos', t.pos(node.pos))
+	obj.add('is_c2v_prefix', t.bool_node(node.is_c2v_prefix))
 	return obj
 }
 
@@ -1515,7 +1516,9 @@ fn (t Tree) struct_init(node ast.StructInit) &Node {
 	mut obj := new_object()
 	obj.add_terse('ast_type', t.string_node('StructInit'))
 	obj.add_terse('typ', t.type_node(node.typ))
-	obj.add_terse('is_short', t.bool_node(node.is_short))
+	obj.add_terse('no_keys', t.bool_node(node.no_keys))
+	obj.add_terse('is_short_syntax', t.bool_node(node.is_short_syntax))
+	obj.add_terse('is_anon', t.bool_node(node.is_anon))
 	obj.add_terse('unresolved', t.bool_node(node.unresolved))
 	obj.add_terse('has_update_expr', t.bool_node(node.has_update_expr))
 	obj.add_terse('update_expr', t.expr(node.update_expr))

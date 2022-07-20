@@ -30,9 +30,9 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		node.left_type = right_type
 	}
 	mut right_sym := c.table.sym(right_type)
-	right_final := c.table.final_sym(right_type)
+	right_final_sym := c.table.final_sym(right_type)
 	mut left_sym := c.table.sym(left_type)
-	left_final := c.table.final_sym(left_type)
+	left_final_sym := c.table.final_sym(left_type)
 	left_pos := node.left.pos()
 	right_pos := node.right.pos()
 	left_right_pos := left_pos.extend(right_pos)
@@ -116,10 +116,10 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			}
 		}
 		.key_in, .not_in {
-			match right_final.kind {
+			match right_final_sym.kind {
 				.array {
 					if left_sym.kind !in [.sum_type, .interface_] {
-						elem_type := right_final.array_info().elem_type
+						elem_type := right_final_sym.array_info().elem_type
 						c.check_expected(left_type, elem_type) or {
 							c.error('left operand to `$node.op` does not match the array element type: $err.msg()',
 								left_right_pos)
@@ -127,7 +127,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 				}
 				.map {
-					map_info := right_final.map_info()
+					map_info := right_final_sym.map_info()
 					c.check_expected(left_type, map_info.key_type) or {
 						c.error('left operand to `$node.op` does not match the map key type: $err.msg()',
 							left_right_pos)
@@ -136,7 +136,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 				.array_fixed {
 					if left_sym.kind !in [.sum_type, .interface_] {
-						elem_type := right_final.array_fixed_info().elem_type
+						elem_type := right_final_sym.array_fixed_info().elem_type
 						c.check_expected(left_type, elem_type) or {
 							c.error('left operand to `$node.op` does not match the fixed array element type: $err.msg()',
 								left_right_pos)
@@ -174,6 +174,12 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					} else {
 						return_type = left_type
 					}
+				} else if left_final_sym.has_method(node.op.str()) {
+					if method := left_final_sym.find_method(node.op.str()) {
+						return_type = method.return_type
+					} else {
+						return_type = left_type
+					}
 				} else {
 					left_name := c.table.type_to_str(left_type)
 					right_name := c.table.type_to_str(right_type)
@@ -188,6 +194,12 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				&& !(c.table.sym((right_sym.info as ast.Alias).parent_type).is_primitive()) {
 				if right_sym.has_method(node.op.str()) {
 					if method := right_sym.find_method(node.op.str()) {
+						return_type = method.return_type
+					} else {
+						return_type = right_type
+					}
+				} else if right_final_sym.has_method(node.op.str()) {
+					if method := right_final_sym.find_method(node.op.str()) {
 						return_type = method.return_type
 					} else {
 						return_type = right_type
@@ -369,7 +381,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			}
 		}
 		.left_shift {
-			if left_final.kind == .array {
+			if left_final_sym.kind == .array {
 				if !node.is_stmt {
 					c.error('array append cannot be used in an expression', node.pos)
 				}
@@ -379,7 +391,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				left_value_type := c.table.value_type(c.unwrap_generic(left_type))
 				left_value_sym := c.table.sym(c.unwrap_generic(left_value_type))
 				if left_value_sym.kind == .interface_ {
-					if right_final.kind != .array {
+					if right_final_sym.kind != .array {
 						// []Animal << Cat
 						if c.type_implements(right_type, left_value_type, right_pos) {
 							if !right_type.is_ptr() && !right_type.is_pointer() && !c.inside_unsafe
@@ -394,7 +406,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					}
 					return ast.void_type
 				} else if left_value_sym.kind == .sum_type {
-					if right_final.kind != .array {
+					if right_sym.kind != .array {
 						if !c.table.is_sumtype_or_in_variant(left_value_type, ast.mktyp(right_type)) {
 							c.error('cannot append `$right_sym.name` to `$left_sym.name`',
 								right_pos)
@@ -586,26 +598,28 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		c.error('unwrapped optional cannot be used in an infix expression', opt_infix_pos)
 	}
 	// Dual sides check (compatibility check)
-	if !(c.symmetric_check(left_type, right_type) && c.symmetric_check(right_type, left_type))
-		&& !c.pref.translated && !c.file.is_translated && !node.left.is_auto_deref_var()
-		&& !node.right.is_auto_deref_var() {
-		// for type-unresolved consts
-		if left_type == ast.void_type || right_type == ast.void_type {
-			return ast.void_type
-		}
-		if left_type.nr_muls() > 0 && right_type.is_int() {
-			// pointer arithmetic is fine, it is checked in other places
-			return return_type
-		}
-		c.error('infix expr: cannot use `$right_sym.name` (right expression) as `$left_sym.name`',
-			left_right_pos)
-	} else if left_type.is_ptr() {
-		for_ptr_op := c.table.type_is_for_pointer_arithmetic(left_type)
-		if left_sym.language == .v && !c.pref.translated && !c.inside_unsafe && !for_ptr_op
-			&& right_type.is_int() {
-			sugg := ' (you can use it inside an `unsafe` block)'
-			c.error('infix expr: cannot use `$right_sym.name` (right expression) as `$left_sym.name` $sugg',
+	if node.left !is ast.ComptimeCall && node.right !is ast.ComptimeCall {
+		if !(c.symmetric_check(left_type, right_type) && c.symmetric_check(right_type, left_type))
+			&& !c.pref.translated && !c.file.is_translated && !node.left.is_auto_deref_var()
+			&& !node.right.is_auto_deref_var() {
+			// for type-unresolved consts
+			if left_type == ast.void_type || right_type == ast.void_type {
+				return ast.void_type
+			}
+			if left_type.nr_muls() > 0 && right_type.is_int() {
+				// pointer arithmetic is fine, it is checked in other places
+				return return_type
+			}
+			c.error('infix expr: cannot use `$right_sym.name` (right expression) as `$left_sym.name`',
 				left_right_pos)
+		} else if left_type.is_ptr() {
+			for_ptr_op := c.table.type_is_for_pointer_arithmetic(left_type)
+			if left_sym.language == .v && !c.pref.translated && !c.inside_unsafe && !for_ptr_op
+				&& right_type.is_int() {
+				sugg := ' (you can use it inside an `unsafe` block)'
+				c.error('infix expr: cannot use `$right_sym.name` (right expression) as `$left_sym.name` $sugg',
+					left_right_pos)
+			}
 		}
 	}
 	/*

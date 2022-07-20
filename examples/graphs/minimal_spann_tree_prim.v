@@ -7,9 +7,10 @@ by CCS
 
 PS: all the pre-requisites of Dijkstra are considered
 
-$ v   run file_name.v
+$ v run file_name.v
+
 Creating a executable
-$ v  run file_name.v  -o an_executable.EXE
+$ v -o an_executable.EXE run file_name.v
 $ ./an_executable.EXE
 
 Code based from : Data Structures and Algorithms Made Easy: Data Structures and Algorithmic Puzzles, Fifth Edition (English Edition)
@@ -45,9 +46,7 @@ fn push_pq<T>(mut prior_queue []T, data int, priority int) {
 		temp << prior_queue[i]
 		i++
 	}
-	prior_queue = temp.clone()
-	// I am not sure if it the right way
-	// IS IT THE RIGHT WAY?
+	prior_queue = temp.clone() // I am not sure if it the right way
 }
 
 // Change the priority of a value/node ... exist a value, change its priority
@@ -82,7 +81,7 @@ fn departure_priority<T>(mut prior_queue []T) int {
 // give a NODE v, return a list with all adjacents
 // Take care, only positive EDGES
 fn all_adjacents<T>(g [][]T, v int) []int {
-	mut temp := []int{} //
+	mut temp := []int{}
 	for i in 0 .. (g.len) {
 		if g[v][i] > 0 {
 			temp << i
@@ -193,9 +192,6 @@ fn main() {
     |  /     \  |
     (3)-------(4)
          9
-	*/
-
-	/*
 	Let us create following weighted graph
  From https://www.geeksforgeeks.org/kruskals-minimum-spanning-tree-algorithm-greedy-algo-2/?ref=lbp
                    10
@@ -226,5 +222,3 @@ fn main() {
 	}
 	println('\n BYE -- OK')
 }
-
-//********************************************************************

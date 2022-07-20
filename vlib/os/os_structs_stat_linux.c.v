@@ -1,6 +1,6 @@
 module os
 
-struct C.stat {
+pub struct C.stat {
 	st_dev     u64 // 8
 	st_ino     u64 // 8
 	st_nlink   u64 // 8

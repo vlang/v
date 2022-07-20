@@ -132,6 +132,12 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 		.key_select {
 			node = p.select_expr()
 		}
+		.key_nil {
+			node = ast.Nil{
+				pos: p.tok.pos()
+			}
+			p.next()
+		}
 		.number {
 			node = p.parse_number_literal()
 		}
@@ -351,6 +357,11 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 			}
 		}
 		else {
+			if p.tok.kind == .key_struct && p.peek_tok.kind == .lcbr {
+				// Anonymous struct
+				p.next()
+				return p.struct_init('', .anon)
+			}
 			if p.tok.kind != .eof && !(p.tok.kind == .rsbr && p.inside_asm) {
 				// eof should be handled where it happens
 				return none
@@ -457,7 +468,7 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 			if p.peek_tok.kind in [.rpar, .rsbr] {
 				if !p.inside_ct_if_expr {
 					p.warn_with_pos('`$p.tok.kind` operator can only be used as a statement',
-						p.peek_tok.pos())
+						p.tok.pos())
 				}
 			}
 			if p.tok.kind in [.inc, .dec] && p.prev_tok.line_nr != p.tok.line_nr {
@@ -467,10 +478,15 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 			if mut node is ast.IndexExpr {
 				node.recursive_mapset_is_setter(true)
 			}
+			is_c2v_prefix := p.peek_tok.kind == .dollar
 			node = ast.PostfixExpr{
 				op: p.tok.kind
 				expr: node
 				pos: p.tok.pos()
+				is_c2v_prefix: is_c2v_prefix
+			}
+			if is_c2v_prefix {
+				p.next()
 			}
 			p.next()
 			// return node // TODO bring back, only allow ++/-- in exprs in translated code

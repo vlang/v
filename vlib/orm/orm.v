@@ -9,7 +9,7 @@ pub const (
 		ast.i8_type_idx,
 		ast.i16_type_idx,
 		ast.int_type_idx,
-		ast.byte_type_idx,
+		ast.u8_type_idx,
 		ast.u16_type_idx,
 		ast.u32_type_idx,
 		ast.bool_type_idx,
@@ -20,12 +20,13 @@ pub const (
 	]
 	string   = ast.string_type_idx
 	time     = -2
+	serial   = -1
 	type_idx = {
 		'i8':     ast.i8_type_idx
 		'i16':    ast.i16_type_idx
 		'int':    ast.int_type_idx
 		'i64':    ast.i64_type_idx
-		'byte':   ast.byte_type_idx
+		'u8':     ast.u8_type_idx
 		'u16':    ast.u16_type_idx
 		'u32':    ast.u32_type_idx
 		'u64':    ast.u64_type_idx
@@ -362,6 +363,10 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 		mut unique_len := 0
 		// mut fkey := ''
 		mut field_name := sql_field_name(field)
+		mut ctyp := sql_from_v(sql_field_type(field)) or {
+			field_name = '${field_name}_id'
+			sql_from_v(7)?
+		}
 		for attr in field.attrs {
 			match attr.name {
 				'primary' {
@@ -386,6 +391,12 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 				'skip' {
 					is_skip = true
 				}
+				'sql_type' {
+					if attr.kind != .string {
+						return error("sql_type attribute need be string. Try [sql_type: '$attr.arg'] instead of [sql_type: $attr.arg]")
+					}
+					ctyp = attr.arg
+				}
 				/*'fkey' {
 					if attr.arg != '' {
 						if attr.kind == .string {
@@ -401,10 +412,6 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 			continue
 		}
 		mut stmt := ''
-		mut ctyp := sql_from_v(sql_field_type(field)) or {
-			field_name = '${field_name}_id'
-			sql_from_v(7)?
-		}
 		if ctyp == '' {
 			return error('Unknown type ($field.typ) for field $field.name in struct $table')
 		}

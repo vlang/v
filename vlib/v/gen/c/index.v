@@ -31,14 +31,14 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					tmp_opt := g.new_tmp_var()
 					cur_line := g.go_before_stmt(0)
 					g.out.write_string(util.tabs(g.indent))
-					opt_elem_type := g.typ(ast.byte_type.set_flag(.optional))
+					opt_elem_type := g.typ(ast.u8_type.set_flag(.optional))
 					g.write('$opt_elem_type $tmp_opt = string_at_with_check(')
 					g.expr(node.left)
 					g.write(', ')
 					g.expr(node.index)
 					g.writeln(');')
 					if !node.is_option {
-						g.or_block(tmp_opt, node.or_expr, ast.byte_type)
+						g.or_block(tmp_opt, node.or_expr, ast.u8_type)
 					}
 					g.write('\n$cur_line*(byte*)&${tmp_opt}.data')
 				} else {
@@ -327,15 +327,27 @@ fn (mut g Gen) index_of_fixed_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 	elem_sym := g.table.sym(elem_type)
 	is_fn_index_call := g.is_fn_index_call && elem_sym.info is ast.FnType
 
-	if is_fn_index_call {
-		g.write('(*')
-	}
-	if node.left_type.is_ptr() {
-		g.write('(*')
+	if node.left is ast.ArrayInit {
+		tmp := g.new_tmp_var()
+		line := g.go_before_stmt(0).trim_space()
+		styp := g.typ(node.left_type)
+		g.empty_line = true
+		g.write('$styp $tmp = ')
 		g.expr(node.left)
-		g.write(')')
+		g.writeln(';')
+		g.write(line)
+		g.write(tmp)
 	} else {
-		g.expr(node.left)
+		if is_fn_index_call {
+			g.write('(*')
+		}
+		if node.left_type.is_ptr() {
+			g.write('(*')
+			g.expr(node.left)
+			g.write(')')
+		} else {
+			g.expr(node.left)
+		}
 	}
 	g.write('[')
 	direct := unsafe { g.fn_decl != 0 } && g.fn_decl.is_direct_arr

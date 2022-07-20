@@ -8,7 +8,7 @@ module json
 #include "cJSON.h"
 #define js_get(object, key) cJSON_GetObjectItemCaseSensitive((object), (key))
 
-struct C.cJSON {
+pub struct C.cJSON {
 	valueint    int
 	valuedouble f64
 	valuestring &char
@@ -27,6 +27,8 @@ fn C.cJSON_Parse(&char) &C.cJSON
 fn C.cJSON_PrintUnformatted(&C.cJSON) &char
 
 fn C.cJSON_Print(&C.cJSON) &char
+
+fn C.cJSON_free(voidptr)
 
 pub fn decode(typ voidptr, s string) ?voidptr {
 	// compiler implementation
@@ -215,12 +217,16 @@ fn json_parse(s string) &C.cJSON {
 // json_string := json_print(encode_User(user))
 fn json_print(json &C.cJSON) string {
 	s := C.cJSON_PrintUnformatted(json)
-	return unsafe { tos(&u8(s), C.strlen(&char(s))) }
+	r := unsafe { tos_clone(&u8(s)) }
+	C.cJSON_free(s)
+	return r
 }
 
 fn json_print_pretty(json &C.cJSON) string {
 	s := C.cJSON_Print(json)
-	return unsafe { tos(&u8(s), C.strlen(&char(s))) }
+	r := unsafe { tos_clone(&u8(s)) }
+	C.cJSON_free(s)
+	return r
 }
 
 // /  cjson wrappers

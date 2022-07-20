@@ -235,12 +235,12 @@ fn (mut p Process) win_slurp(idx int) string {
 	}
 	soutput := read_data.str()
 	unsafe { read_data.free() }
-	if idx == 1 {
-		close_valid_handle(&wdata.child_stdout_read)
-	}
-	if idx == 2 {
-		close_valid_handle(&wdata.child_stderr_read)
-	}
+	//	if idx == 1 {
+	//		close_valid_handle(&wdata.child_stdout_read)
+	//	}
+	//	if idx == 2 {
+	//		close_valid_handle(&wdata.child_stderr_read)
+	//	}
 	return soutput
 }
 

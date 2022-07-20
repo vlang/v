@@ -208,7 +208,6 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 							is_volatile = true
 						}
 					}
-					r0 := right[0]
 					mut v := ast.Var{
 						name: lx.name
 						expr: if left.len == right.len { right[i] } else { ast.empty_expr() }
@@ -218,6 +217,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 						is_stack_obj: p.inside_for
 					}
 					if p.pref.autofree {
+						r0 := right[0]
 						if r0 is ast.CallExpr {
 							// Set correct variable position (after the or block)
 							// so that autofree doesn't free it in cgen before
@@ -248,10 +248,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 						pos)
 				}
 			}
-			else {
-				// TODO: parexpr ( check vars)
-				// else { p.error_with_pos('unexpected `${typeof(lx)}`', lx.pos()) }
-			}
+			else {}
 		}
 	}
 	if op == .decl_assign {

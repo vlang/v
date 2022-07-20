@@ -198,6 +198,9 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'examples/sokol/sounds/wav_player.v'
 			skip_files << 'examples/sokol/sounds/simple_sin_tones.v'
 		}
+		$if !macos {
+			skip_files << 'examples/macos_tray/tray.v'
+		}
 	}
 	vargs := _vargs.replace('-progress', '').replace('-progress', '')
 	vexe := pref.vexe_path()
@@ -561,6 +564,7 @@ pub fn eheader(msg string) {
 
 pub fn header(msg string) {
 	println(term.header_left(msg, '-'))
+	flush_stdout()
 }
 
 pub fn setup_new_vtmp_folder() string {

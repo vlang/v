@@ -16,7 +16,7 @@ import os
 const cclen = 10
 
 // Termios stores the terminal options on Linux.
-struct C.termios {
+pub struct C.termios {
 mut:
 	c_iflag int
 	c_oflag int

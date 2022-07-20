@@ -28,5 +28,3 @@ v__embed_file__EmbedFileData my_source = _v_embed_file_metadata(
 res.path = _SLIT("embed.vv");
 res.apath = _SLIT("");
 res.uncompressed = v__embed_file__find_index_entry_by_path((voidptr)_v_embed_file_index, _SLIT("embed.vv"), _SLIT("none"))->data;
-
-// Initializations for module v.embed_file :

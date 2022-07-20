@@ -89,7 +89,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 					p.scope_register_it_as_index()
 					default_expr = p.expr(0)
 					has_it = if var := p.scope.find_var('it') {
-						mut variable := var
+						mut variable := unsafe { var }
 						is_used := variable.is_used
 						variable.is_used = true
 						is_used
@@ -148,7 +148,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 					p.scope_register_it_as_index()
 					default_expr = p.expr(0)
 					has_it = if var := p.scope.find_var('it') {
-						mut variable := var
+						mut variable := unsafe { var }
 						is_used := variable.is_used
 						variable.is_used = true
 						is_used

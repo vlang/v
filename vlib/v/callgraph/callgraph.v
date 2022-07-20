@@ -27,9 +27,9 @@ struct Mapper {
 mut:
 	pref            &pref.Preferences
 	table           &ast.Table
-	file            &ast.File   = 0
-	node            &ast.Node   = 0
-	fn_decl         &ast.FnDecl = 0
+	file            &ast.File   = unsafe { 0 }
+	node            &ast.Node   = unsafe { 0 }
+	fn_decl         &ast.FnDecl = unsafe { 0 }
 	caller_name     string
 	dot_caller_name string
 	is_caller_used  bool

@@ -15,6 +15,7 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 
 	mysql_stmt_binder(mut stmt, where)?
 	mysql_stmt_binder(mut stmt, data)?
+
 	if data.data.len > 0 || where.data.len > 0 {
 		stmt.bind_params()?
 	}
@@ -23,54 +24,83 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 	num_fields := stmt.get_field_count()
 	metadata := stmt.gen_metadata()
 	fields := stmt.fetch_fields(metadata)
-
-	mut dataptr := []Prims{}
+	mut dataptr := []&u8{}
 
 	for i in 0 .. num_fields {
 		f := unsafe { fields[i] }
 		match FieldType(f.@type) {
 			.type_tiny {
-				dataptr << u8(0)
+				dataptr << unsafe { malloc(1) }
 			}
 			.type_short {
-				dataptr << u16(0)
+				dataptr << unsafe { malloc(2) }
 			}
 			.type_long {
-				dataptr << u32(0)
+				dataptr << unsafe { malloc(4) }
 			}
 			.type_longlong {
-				dataptr << u64(0)
+				dataptr << unsafe { malloc(8) }
 			}
 			.type_float {
-				dataptr << f32(0)
+				dataptr << unsafe { malloc(4) }
 			}
 			.type_double {
-				dataptr << f64(0)
+				dataptr << unsafe { malloc(8) }
 			}
-			.type_string {
-				dataptr << ''
+			.type_time, .type_date, .type_datetime, .type_time2, .type_datetime2 {
+				dataptr << unsafe { malloc(sizeof(C.MYSQL_TIME)) }
+			}
+			.type_string, .type_blob {
+				dataptr << unsafe { malloc(512) }
+			}
+			.type_var_string {
+				dataptr << unsafe { malloc(2) }
 			}
 			else {
-				dataptr << u8(0)
+				return error('\'${FieldType(f.@type)}\' is not yet implemented. Please create a new issue at https://github.com/vlang/v/issues/new')
 			}
 		}
 	}
 
-	mut vptr := []&char{}
-
-	for d in dataptr {
-		vptr << d.get_data_ptr()
-	}
-
-	unsafe { dataptr.free() }
-
 	lens := []u32{len: int(num_fields), init: 0}
-	stmt.bind_res(fields, vptr, lens, num_fields)
-	stmt.bind_result_buffer()?
-	stmt.store_result()?
+	stmt.bind_res(fields, dataptr, lens, num_fields)
 
 	mut row := 0
+	mut types := config.types
+	mut field_types := []FieldType{}
+	if config.is_count {
+		types = [orm.type_idx['u64']]
+	}
 
+	for i, mut mysql_bind in stmt.res {
+		f := unsafe { fields[i] }
+		field_types << FieldType(f.@type)
+		match types[i] {
+			orm.string {
+				mysql_bind.buffer_type = C.MYSQL_TYPE_BLOB
+				mysql_bind.buffer_length = FieldType.type_blob.get_len()
+			}
+			orm.time {
+				match FieldType(f.@type) {
+					.type_long {
+						mysql_bind.buffer_type = C.MYSQL_TYPE_LONG
+					}
+					.type_time, .type_date, .type_datetime {
+						mysql_bind.buffer_type = C.MYSQL_TYPE_BLOB
+						mysql_bind.buffer_length = FieldType.type_blob.get_len()
+					}
+					.type_string, .type_blob {}
+					else {
+						return error('Unknown type ${f.@type}')
+					}
+				}
+			}
+			else {}
+		}
+	}
+
+	stmt.bind_result_buffer()?
+	stmt.store_result()?
 	for {
 		status = stmt.fetch_stmt()?
 
@@ -78,7 +108,8 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 			break
 		}
 		row++
-		data_list := buffer_to_primitive(vptr, config.types)?
+
+		data_list := buffer_to_primitive(dataptr, types, field_types)?
 		ret << data_list
 	}
 
@@ -90,8 +121,19 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 // sql stmt
 
 pub fn (db Connection) insert(table string, data orm.QueryData) ? {
-	query := orm.orm_stmt_gen(table, '`', .insert, false, '?', 1, data, orm.QueryData{})
-	mysql_stmt_worker(db, query, data, orm.QueryData{})?
+	mut converted_primitive_array := db.factory_orm_primitive_converted_from_sql(table,
+		data)?
+
+	converted_data := orm.QueryData{
+		fields: data.fields
+		data: converted_primitive_array
+		types: []
+		kinds: []
+		is_and: []
+	}
+
+	query := orm.orm_stmt_gen(table, '`', .insert, false, '?', 1, converted_data, orm.QueryData{})
+	mysql_stmt_worker(db, query, converted_data, orm.QueryData{})?
 }
 
 pub fn (db Connection) update(table string, data orm.QueryData, where orm.QueryData) ? {
@@ -184,7 +226,8 @@ fn stmt_binder_match(mut stmt Stmt, data orm.Primitive) {
 			stmt.bind_text(data)
 		}
 		time.Time {
-			stmt.bind_int(&int(data.unix))
+			unix := int(data.unix)
+			stmt_binder_match(mut stmt, unix)
 		}
 		orm.InfixType {
 			stmt_binder_match(mut stmt, data.right)
@@ -192,51 +235,60 @@ fn stmt_binder_match(mut stmt Stmt, data orm.Primitive) {
 	}
 }
 
-fn buffer_to_primitive(data_list []&char, types []int) ?[]orm.Primitive {
+fn buffer_to_primitive(data_list []&u8, types []int, field_types []FieldType) ?[]orm.Primitive {
 	mut res := []orm.Primitive{}
 
 	for i, data in data_list {
 		mut primitive := orm.Primitive(0)
 		match types[i] {
-			5 {
-				primitive = *(&i8(data))
+			orm.type_idx['i8'] {
+				primitive = *(unsafe { &i8(data) })
 			}
-			6 {
-				primitive = *(&i16(data))
+			orm.type_idx['i16'] {
+				primitive = *(unsafe { &i16(data) })
 			}
-			7, -1 {
-				primitive = *(&int(data))
+			orm.type_idx['int'], orm.serial {
+				primitive = *(unsafe { &int(data) })
 			}
-			8 {
-				primitive = *(&i64(data))
+			orm.type_idx['i64'] {
+				primitive = *(unsafe { &i64(data) })
 			}
-			9 {
-				primitive = *(&u8(data))
+			orm.type_idx['u8'] {
+				primitive = *(unsafe { &u8(data) })
 			}
-			10 {
-				primitive = *(&u16(data))
+			orm.type_idx['u16'] {
+				primitive = *(unsafe { &u16(data) })
 			}
-			11 {
-				primitive = *(&u32(data))
+			orm.type_idx['u32'] {
+				primitive = *(unsafe { &u32(data) })
 			}
-			12 {
-				primitive = *(&u64(data))
+			orm.type_idx['u64'] {
+				primitive = *(unsafe { &u64(data) })
 			}
-			13 {
-				primitive = *(&f32(data))
+			orm.type_idx['f32'] {
+				primitive = *(unsafe { &f32(data) })
 			}
-			14 {
-				primitive = *(&f64(data))
+			orm.type_idx['f64'] {
+				primitive = *(unsafe { &f64(data) })
 			}
-			15 {
-				primitive = *(&bool(data))
+			orm.type_idx['bool'] {
+				primitive = *(unsafe { &bool(data) })
 			}
 			orm.string {
 				primitive = unsafe { cstring_to_vstring(&char(data)) }
 			}
 			orm.time {
-				timestamp := *(&int(data))
-				primitive = time.unix(timestamp)
+				match field_types[i] {
+					.type_long {
+						timestamp := *(unsafe { &int(data) })
+						primitive = time.unix(timestamp)
+					}
+					.type_datetime {
+						string_time := unsafe { cstring_to_vstring(&char(data)) }
+						primitive = time.parse(string_time)?
+					}
+					else {}
+				}
 			}
 			else {
 				return error('Unknown type ${types[i]}')
@@ -250,29 +302,32 @@ fn buffer_to_primitive(data_list []&char, types []int) ?[]orm.Primitive {
 
 fn mysql_type_from_v(typ int) ?string {
 	str := match typ {
-		5, 9, 16 {
+		orm.type_idx['i8'], orm.type_idx['u8'] {
 			'TINYINT'
 		}
-		6, 10 {
+		orm.type_idx['i16'], orm.type_idx['u16'] {
 			'SMALLINT'
 		}
-		7, 11, orm.time {
+		orm.type_idx['int'], orm.type_idx['u32'], orm.time {
 			'INT'
 		}
-		8, 12 {
+		orm.type_idx['i64'], orm.type_idx['u64'] {
 			'BIGINT'
 		}
-		13 {
+		orm.type_idx['f32'] {
 			'FLOAT'
 		}
-		14 {
+		orm.type_idx['f64'] {
 			'DOUBLE'
 		}
 		orm.string {
 			'TEXT'
 		}
-		-1 {
+		orm.serial {
 			'SERIAL'
+		}
+		orm.type_idx['bool'] {
+			'BOOLEAN'
 		}
 		else {
 			''
@@ -284,13 +339,39 @@ fn mysql_type_from_v(typ int) ?string {
 	return str
 }
 
-fn (p Prims) get_data_ptr() &char {
-	return match p {
-		string {
-			p.str
-		}
-		else {
-			&char(&p)
+fn (db Connection) factory_orm_primitive_converted_from_sql(table string, data orm.QueryData) ?[]orm.Primitive {
+	mut map_val := db.get_table_data_type_map(table)?
+
+	// adapt v type to sql time
+	mut converted_data := []orm.Primitive{}
+	for i, field in data.fields {
+		match data.data[i].type_name() {
+			'time.Time' {
+				if map_val[field] == 'datetime' {
+					converted_data << orm.Primitive((data.data[i] as time.Time).str())
+				} else {
+					converted_data << data.data[i]
+				}
+			}
+			else {
+				converted_data << data.data[i]
+			}
 		}
 	}
+	return converted_data
+}
+
+fn (db Connection) get_table_data_type_map(table string) ?map[string]string {
+	data_type_querys := "SELECT COLUMN_NAME, DATA_TYPE  FROM INFORMATION_SCHEMA.COLUMNS  WHERE TABLE_NAME = '$table'"
+	mut map_val := map[string]string{}
+
+	results := db.query(data_type_querys)?
+	db.use_result()
+
+	for row in results.rows() {
+		map_val[row.vals[0]] = row.vals[1]
+	}
+
+	unsafe { results.free() }
+	return map_val
 }

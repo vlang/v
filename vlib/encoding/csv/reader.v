@@ -38,7 +38,7 @@ fn (err InvalidLineEndingError) msg() string {
 	return 'encoding.csv: could not find any valid line endings'
 }
 
-struct Reader {
+pub struct Reader {
 	// not used yet
 	// has_header        bool
 	// headings          []string

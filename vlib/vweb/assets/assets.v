@@ -10,7 +10,7 @@ const (
 	unknown_asset_type_error = 'vweb.assets: unknown asset type'
 )
 
-struct AssetManager {
+pub struct AssetManager {
 mut:
 	css []Asset
 	js  []Asset

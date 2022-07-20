@@ -91,7 +91,7 @@ mut:
 struct WebhookServer {
 	vweb.Context
 mut:
-	gen_vc &GenVC = 0 // initialized in init_server
+	gen_vc &GenVC = unsafe { 0 } // initialized in init_server
 }
 
 // storage for flag options

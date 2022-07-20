@@ -171,7 +171,7 @@ fn main() {
 		width: win_width
 		height: win_height
 		create_window: true
-		window_title: 'V Tetris' //
+		window_title: 'V Tetris'
 		user_data: game
 		frame_fn: frame
 		event_fn: on_event

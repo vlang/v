@@ -4,21 +4,24 @@
 module native
 
 const (
-	s_attr_some_instructions = 0x00000400
+	s_attr_some_instructions = 0x0400
 	s_attr_pure_instructions = 0x80000000
-	s_attr_ext_reloc         = 0x00000200
-	s_attr_loc_reloc         = 0x00000100
-	//
+	s_attr_ext_reloc         = 0x0200
+	s_attr_loc_reloc         = 0x0100
 	macho_symcmd_size        = 0x18
 	macho_d_size             = 0x50
 	mh_object                = 1
 	mh_execute               = 2
+	lc_dyld_chained_fixups   = 0x80000034
+	lc_dyld_exports_trie     = 0x80000033
+	lc_dyld_info_only        = 0x80000022
 	lc_dysymtab              = 0xb
 	lc_load_dylib            = 0xc
 	lc_load_dylinker         = 0xe
 	lc_main                  = 0x80000028
 	lc_segment_64            = 0x19
 	lc_symtab                = 0x2
+	base_addr                = i64(0x1_0000_0000)
 )
 
 struct Symbol {
@@ -41,31 +44,63 @@ struct Reloc {
 }
 
 fn (mut g Gen) macho_segment64_pagezero() {
-	g.write32(native.lc_segment_64) // LC_SEGMENT_64
-	g.write32(72) // cmdsize
+	g.macho_add_loadcommand(native.lc_segment_64, 72)
 	g.write_string_with_padding('__PAGEZERO', 16) // section name
 	g.write64(0) // vmaddr
-	g.write64(0x1000) // vmsize
+	if g.pref.arch == .amd64 {
+		g.write64(g.get_pagesize()) // vmsize
+	} else {
+		g.write64(native.base_addr) // vmsize
+	}
 	g.write64(0) // fileoff
 	g.write64(0) // filesize
-
 	g.write32(0) // maxprot
 	g.write32(0) // initprot
 	g.write32(0) // nsects
 	g.write32(0) // flags
 }
 
+fn (mut g Gen) macho_add_loadcommand(typ u32, size int) {
+	g.macho_ncmds++
+	g.macho_cmdsize += size
+	g.write32(int(typ))
+	g.write32(size)
+}
+
+fn (mut g Gen) macho_patch_header() {
+	g.write32_at(0x10, g.macho_ncmds)
+	g.write32_at(0x14, g.macho_cmdsize)
+}
+
+// probably unnecessary
+fn (mut g Gen) macho_chained_fixups() {
+	g.macho_add_loadcommand(native.lc_dyld_chained_fixups, 16)
+	g.write32(0x4000) // dataoff
+	g.write32(56) // datasize
+
+	g.macho_add_loadcommand(native.lc_dyld_exports_trie, 16)
+	g.write32(0x4000) // dataoff
+	g.write32(56) // datasize
+}
+
 fn (mut g Gen) macho_segment64_linkedit() {
-	g.write32(native.lc_segment_64)
-	g.write32(0x48) // cmdsize
+	g.macho_add_loadcommand(native.lc_segment_64, 0x48)
 	g.write_string_with_padding('__LINKEDIT', 16)
 
-	g.write64(0x3000) // vmaddr
-	g.write64(0x1000) // vmsize
-	g.write64(0x1000) // fileoff
+	if g.pref.arch == .amd64 {
+		g.write64(0x3000) // vmaddr
+		g.write64(0x1000) // vmsize
+		g.write64(0x1000) // fileoff
+	} else {
+		// g.size_pos << g.buf.len
+		// g.write64(native.base_addr + g.get_pagesize()) // vmaddr
+		g.write64(g.get_pagesize() - 0x1000) // vmaddr
+		g.write64(0) // g.get_pagesize()) // vmsize
+		g.write64(g.get_pagesize()) // fileoff
+	}
 	g.write64(0) // filesize
 	g.write32(7) // maxprot
-	g.write32(3) // initprot
+	g.write32(3) // initprot // must be writeable
 	g.write32(0) // nsects
 	g.write32(0) // flags
 }
@@ -85,22 +120,24 @@ fn (mut g Gen) macho_header(ncmds int, bintype int) int {
 	cmdsize_offset := g.buf.len
 	g.write32(0) // size of load commands
 
-	g.write32(0) // flags
+	if g.pref.arch == .arm64 {
+		g.write32(0x00200085)
+	} else {
+		g.write32(0) // flags
+	}
 	g.write32(0) // reserved
 	return cmdsize_offset
 }
 
 fn (mut g Gen) macho_segment64_text() []int {
 	mut patch := []int{}
-	g.write32(native.lc_segment_64) // LC_SEGMENT_64
-	g.write32(152) // 152
+	g.macho_add_loadcommand(native.lc_segment_64, 152)
 	g.write_string_with_padding('__TEXT', 16) // section name
-	g.write64(0x100000000) // vmaddr
-	patch << g.buf.len
-	g.write64(0x00001000) // + codesize) // vmsize
-	g.write64(0x00000000) // filesize
-	patch << g.buf.len
-	g.write64(0x00001000) // + codesize) // filesize
+	g.write64(native.base_addr) // vmaddr
+
+	g.write64(g.get_pagesize() * 2) // vmsize
+	g.write64(0) // fileoff
+	g.write64(g.get_pagesize() + 63) // filesize
 
 	g.write32(7) // maxprot
 	g.write32(5) // initprot
@@ -109,16 +146,27 @@ fn (mut g Gen) macho_segment64_text() []int {
 
 	g.write_string_with_padding('__text', 16) // section name
 	g.write_string_with_padding('__TEXT', 16) // segment name
-	g.write64(0x0000000100001000) // vmaddr
-	patch << g.buf.len
-	g.write64(0) // vmsize
-	g.write32(4096) // offset
-	g.write32(0) // align
+	if g.pref.arch == .arm64 {
+		g.write64(native.base_addr + g.get_pagesize()) // vmaddr
+		g.write64(0) // vmsize
+		g.write32(0) // offset
+		g.write32(4) // align
+	} else {
+		g.write64(native.base_addr + g.get_pagesize()) // vmaddr
+		patch << g.buf.len
+		g.write64(0) // vmsize
+		g.write32(g.get_pagesize()) // offset
+		g.write32(0) // align
+	}
 
 	g.write32(0) // reloff
 	g.write32(0) // nreloc
 
-	g.write32(0) // flags
+	if g.pref.arch == .amd64 {
+		g.write32(0) // flags
+	} else {
+		g.write32(0x80000400) // flags
+	}
 	g.write32(0)
 
 	g.write32(0) // reserved1
@@ -127,16 +175,27 @@ fn (mut g Gen) macho_segment64_text() []int {
 }
 
 fn (mut g Gen) macho_symtab() {
-	g.write32(native.lc_symtab)
-	g.write32(24)
-	g.write32(0x1000)
-	g.write32(0)
-	g.write32(0x1000)
-	g.write32(0)
+	if g.pref.arch == .arm64 {
+		g.macho_add_loadcommand(native.lc_dyld_info_only, 48)
+		g.write32(0) // rebase_off
+		g.write32(0) // rebase_size
+		g.write32(0) // bind_off
+		g.write32(0) // bind_size
+		g.write32(0) // weak_bind_off
+		g.write32(0) // weak_bind_size
+		g.write32(0) // lazy_bind_off
+		g.write32(0) // lazy_bind_size
+		g.write32(g.get_pagesize()) // export_off
+		g.write32(56) // export_size
+	}
 
-	// lc_dysymtab
-	g.write32(native.lc_dysymtab)
-	g.write32(0x50)
+	g.macho_add_loadcommand(native.lc_symtab, 24)
+	g.write32(0x1000) // symoff
+	g.write32(0) // nsyms
+	g.write32(0x1000) // stroff
+	g.write32(0) // strsize
+
+	g.macho_add_loadcommand(native.lc_dysymtab, 0x50)
 	g.write32(0) // ilocalsym
 	g.write32(0) // nlocalsym
 	g.write32(0) // iextdefsym
@@ -158,47 +217,57 @@ fn (mut g Gen) macho_symtab() {
 }
 
 fn (mut g Gen) macho_dylibs() {
-	g.write32(native.lc_load_dylinker)
-	g.write32(32) // cmdsize (must be aligned to int32)
+	g.macho_add_loadcommand(native.lc_load_dylinker, 32)
 	g.write32(12) // offset
 	g.write_string_with_padding('/usr/lib/dyld', 16)
 	g.write32(0) // padding // can be removed
 
-	g.write32(native.lc_load_dylib)
-	g.write32(56) // cmdsize
+	g.macho_add_loadcommand(native.lc_load_dylib, 56)
 	g.write32(24) // offset
 	g.write32(0) // ts
-	g.write32(1) // ver
-	g.write32(1) // compat
+	// g.write32(0x051f6403) // g.write32(1) // current version
+	g.write32(0x10000) // current version
+	g.write32(0x10000) // compatibility version
 	g.write_string_with_padding('/usr/lib/libSystem.B.dylib', 32)
 }
 
 fn (mut g Gen) macho_main(addr int) {
-	g.write32(int(native.lc_main)) // LC_MAIN
-	g.write32(24) // cmdsize
+	g.macho_add_loadcommand(native.lc_main, 24)
 	g.write32(addr) // entrypoint
 	g.write32(0) // initial_stacksize
 }
 
 pub fn (mut g Gen) generate_macho_header() {
-	g.code_start_pos = 0x1000
-	g.debug_pos = 0x1000
-	cmdsize_offset := g.macho_header(8, native.mh_execute)
+	pagesize := g.get_pagesize()
+	g.code_start_pos = pagesize
+	g.debug_pos = pagesize
+	ncmds := 0 // 9+ 2 -2 -3 -1
+	cmdsize_offset := g.macho_header(ncmds, native.mh_execute)
 	g.macho_segment64_pagezero()
 
 	g.size_pos = g.macho_segment64_text()
-	g.macho_segment64_linkedit()
+	if g.pref.arch == .amd64 {
+		g.macho_segment64_linkedit()
+	}
+	// g.macho_chained_fixups()
 	g.macho_symtab()
 	g.macho_dylibs()
-	g.macho_main(0x1000)
+	g.macho_main(pagesize)
 
 	g.write32_at(cmdsize_offset, g.buf.len - 24)
-	g.write_nulls(0x1000 - g.buf.len)
+	g.write_nulls(pagesize - g.buf.len)
 	g.call(0)
 }
 
+fn (mut g Gen) get_pagesize() int {
+	if g.pref.arch == .arm64 {
+		return 0x4000 // 16KB
+	}
+	return 0x1000 // 4KB
+}
+
 fn (mut g Gen) write_nulls(len int) {
-	pad := 0x1000 - g.buf.len
+	pad := g.get_pagesize() - g.buf.len
 	for _ in 0 .. pad {
 		g.write8(0)
 	}
@@ -208,11 +277,11 @@ pub fn (mut g Gen) generate_macho_object_header() {
 	if g.pref.arch == .arm64 {
 		g.write32(0xfeedfacf) // MH_MAGIC_64
 		g.write32(0x0100000c) // CPU_TYPE_ARM64
-		g.write32(0x00000000) // CPU_SUBTYPE_ARM64_ALL
+		g.write32(0) // CPU_SUBTYPE_ARM64_ALL
 	} else {
 		g.write32(0xfeedfacf) // MH_MAGIC_64
 		g.write32(0x01000007) // CPU_TYPE_X64
-		g.write32(0x00000003) // CPU_SUBTYPE_X64
+		g.write32(3) // CPU_SUBTYPE_X64
 	}
 	g.write32(native.mh_object) // MH_OBJECT
 	text_offset := 0x138
@@ -239,7 +308,11 @@ pub fn (mut g Gen) generate_macho_object_header() {
 	g.write64(0) // address
 	g.write64(0x25) // size
 	g.write32(text_offset) // offset
-	g.write32(0x4) // alignment
+	if g.pref.arch == .arm64 {
+		g.write32(4) // alignment
+	} else {
+		g.write32(0) // alignment
+	}
 	g.write32(0x160) // relocation offset
 	g.write32(0x1) // # of relocations
 	g.write32(int(native.s_attr_some_instructions | native.s_attr_pure_instructions))
@@ -249,7 +322,6 @@ pub fn (mut g Gen) generate_macho_object_header() {
 	/// ???
 	g.write32(0x32)
 	g.write32(0x18)
-
 	g.write32(0x01)
 	g.write32(0x000a0000) // minOS 10.0
 	g.write32(0)
@@ -257,8 +329,7 @@ pub fn (mut g Gen) generate_macho_object_header() {
 	// lc_symtab
 	g.sym_table_command()
 	//
-	g.write32(native.lc_dysymtab)
-	g.write32(native.macho_d_size)
+	g.macho_add_loadcommand(native.lc_dysymtab, native.macho_d_size)
 	g.write32(0)
 	g.write32(2)
 	g.write32(2)
@@ -291,13 +362,26 @@ pub fn (mut g Gen) generate_macho_footer() {
 	g.write8(0)
 	for o in g.size_pos {
 		n := g.read32_at(o)
+		// eprintln('$n + $delta')
 		g.write32_at(o, n + delta)
 	}
 	g.write64(0)
-	// this is amd64-specific
-	call_delta := int(g.main_fn_addr - g.code_start_pos) - 5
-	g.write32_at(g.code_start_pos + 1, call_delta)
-	g.create_executable()
+	g.macho_patch_header()
+	if g.pref.arch == .amd64 {
+		call_delta := int(g.main_fn_addr - g.code_start_pos) - 5
+		g.write32_at(g.code_start_pos + 1, call_delta)
+		g.create_executable()
+	} else {
+		call_delta := int(g.main_fn_addr - g.code_start_pos)
+		if (call_delta % 4) != 0 || call_delta < 0 {
+			g.n_error('Invalid entrypoint->main delta ($call_delta)')
+		} else {
+			blop := (0x94 << 24) | (call_delta / 4)
+			g.write32_at(g.code_start_pos, int(blop))
+			g.write_nulls(g.get_pagesize() - g.buf.len)
+			g.create_executable()
+		}
+	}
 }
 
 fn (mut g Gen) sym_table_command() {
@@ -338,8 +422,7 @@ fn (mut g Gen) sym_table_command() {
 		name: 'ltmp1'
 		is_ext: false
 	}
-	g.write32(native.lc_symtab)
-	g.write32(native.macho_symcmd_size)
+	g.macho_add_loadcommand(native.lc_symtab, native.macho_symcmd_size)
 	sym_table_offset := 0x168
 	g.write32(sym_table_offset)
 	g_syms_len := 4
@@ -406,8 +489,7 @@ fn (mut g Gen) sym_string_table() int {
 					// that should be .rel32, not windows-specific
 					g.write32_at(s.pos, pos)
 				} else {
-					baddr := i64(0x100000000)
-					g.write64_at(s.pos, g.buf.len + baddr)
+					g.write64_at(s.pos, g.buf.len + native.base_addr)
 				}
 			}
 		}

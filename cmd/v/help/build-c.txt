@@ -108,9 +108,11 @@ see also `v help build`.
 
       The compiler is known to also work, and has support for these operating
       systems also (although we do not test it as regularly as for the above):
-            `android`, `ios`,
+            `vinix`,
+            `ios`,
+            `android`, `termux`, 
             `freebsd`, `openbsd`, `netbsd`, `dragonfly`,
-            `solaris`, `serenity`, `haiku`, `vinix`,
+            `solaris`, `serenity`, `haiku`,
             `wasm32`, `wasm32-wasi`, `wasm32-emscripten`
 
       Note that V has the concept of platform files, i.e. files ending

@@ -75,6 +75,35 @@ pub fn round(x f64) f64 {
 	return y
 }
 
+// Returns the rounded float, with sig_digits of precision.
+// i.e `assert round_sig(4.3239437319748394,6) == 4.323944`
+pub fn round_sig(x f64, sig_digits int) f64 {
+	mut ret_str := '$x'
+
+	match sig_digits {
+		0 { ret_str = '${x:0.0f}' }
+		1 { ret_str = '${x:0.1f}' }
+		2 { ret_str = '${x:0.2f}' }
+		3 { ret_str = '${x:0.3f}' }
+		4 { ret_str = '${x:0.4f}' }
+		5 { ret_str = '${x:0.5f}' }
+		6 { ret_str = '${x:0.6f}' }
+		7 { ret_str = '${x:0.7f}' }
+		8 { ret_str = '${x:0.8f}' }
+		9 { ret_str = '${x:0.9f}' }
+		10 { ret_str = '${x:0.10f}' }
+		11 { ret_str = '${x:0.11f}' }
+		12 { ret_str = '${x:0.12f}' }
+		13 { ret_str = '${x:0.13f}' }
+		14 { ret_str = '${x:0.14f}' }
+		15 { ret_str = '${x:0.15f}' }
+		16 { ret_str = '${x:0.16f}' }
+		else { ret_str = '$x' }
+	}
+
+	return ret_str.f64()
+}
+
 // round_to_even returns the nearest integer, rounding ties to even.
 //
 // special cases are:

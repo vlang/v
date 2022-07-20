@@ -51,6 +51,7 @@ pub enum Backend {
 	js_freestanding // The JavaScript freestanding backend
 	native // The Native backend
 	interpret // Interpret the ast
+	golang // Go backend
 }
 
 pub fn (b Backend) is_js() bool {
@@ -498,6 +499,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-translated' {
 				res.translated = true
+				res.gc_mode = .no_gc // no gc in c2v'ed code, at least for now
 			}
 			'-m32', '-m64' {
 				res.m64 = arg[2] == `6`
@@ -653,6 +655,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					res.out_name = os.join_path(os.getwd(), res.out_name)
 				}
 				i++
+			}
+			'-is_o' {
+				res.is_o = true
 			}
 			'-b', '-backend' {
 				sbackend := cmdline.option(current_args, arg, 'c')
@@ -917,6 +922,7 @@ pub fn backend_from_string(s string) ?Backend {
 	match s {
 		'c' { return .c }
 		'js' { return .js_node }
+		'go' { return .golang }
 		'js_node' { return .js_node }
 		'js_browser' { return .js_browser }
 		'js_freestanding' { return .js_freestanding }

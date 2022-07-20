@@ -17,55 +17,11 @@ The language promotes writing simple and clear code with minimal abstraction.
 Despite being simple, V gives the developer a lot of power.
 Anything you can do in other languages, you can do in V.
 
-## Install from source
-The major way to get the latest and greatest V, is to __install it from source__.
-It is __easy__, and it usually takes __only a few seconds__.
+## Installing V from source
+The best way to get the latest and greatest V, is to install it from source.
+It is easy, and it takes only a few seconds:
 
-### Linux, macOS, FreeBSD, etc:
-You need `git`, and a C compiler like `tcc`, `gcc` or `clang`, and `make`:
-```bash
-git clone https://github.com/vlang/v
-cd v
-make
-```
-See [here](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Linux-and-macOS)
-for how to install the development tools.
-
-### Windows:
-You need `git`, and a C compiler like `tcc`, `gcc`, `clang` or `msvc`:
-```bash
-git clone https://github.com/vlang/v
-cd v
-make.bat -tcc
-```
-NB: You can also pass one of `-gcc`, `-msvc`, `-clang` to `make.bat` instead,
-if you do prefer to use a different C compiler, but -tcc is small, fast, and
-easy to install (V will download a prebuilt binary automatically).
-
-For C compiler downloads and more info, see
-[here](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows).
-
-It is recommended to add this folder to the PATH of your environment variables.
-This can be done with the command `v.exe symlink`.
-
-NB: Some antivirus programs (like Symantec) are paranoid about executables with
-1 letter names (like `v.exe`). One possible workaround in that situation is
-copying `v.exe` to `vlang.exe` (so that the copy is newer), or whitelisting the
-V folder in your antivirus program.
-
-### Android
-Running V graphical apps on Android is also possible via [vab](https://github.com/vlang/vab).
-
-V Android dependencies: **V**, **Java JDK** >= 8, Android **SDK + NDK**.
-
-  1. Install dependencies (see [vab](https://github.com/vlang/vab))
-  2. Connect your Android device
-  3. Run:
-  ```bash
-  git clone https://github.com/vlang/vab && cd vab && v vab.v
-  ./vab --device auto run /path/to/v/examples/sokol/particles
-  ```
-For more details and troubleshooting, please visit the [vab GitHub repository](https://github.com/vlang/vab).
+[https://github.com/vlang/v#installing-v](https://github.com/vlang/v#installing-v---from-source-preferred-method)
 
 ## Table of Contents
 
@@ -107,7 +63,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 </td><td width=33% valign=top>
 
 * [Functions 2](#functions-2)
-    * [Pure functions by default](#pure-functions-by-default)
+    * [Immutable function args by default](#immutable-function-args-by-default)
     * [Mutable arguments](#mutable-arguments)
     * [Variable number of arguments](#variable-number-of-arguments)
     * [Anonymous & higher-order functions](#anonymous--higher-order-functions)
@@ -343,8 +299,7 @@ the expression `T(v)` converts the value `v` to the
 type `T`.
 
 Unlike most other languages, V only allows defining variables in functions.
-Global (module level) variables are not allowed. There's no global state in V
-(see [Pure functions by default](#pure-functions-by-default) for details).
+Global (module level) variables are not allowed. There's no global state in V.
 
 For consistency across different code bases, all variable and function names
 must use the `snake_case` style, as opposed to type names, which must use `PascalCase`.
@@ -616,7 +571,7 @@ Also note: in most cases, it's best to leave the format type empty. Floats will 
 default as `g`, integers will be rendered by default as `d`, and `s` is almost always redundant.
 There are only three cases where specifying a type is recommended:
 
-- format strings are parsed at compile time, so specifing a type can help detect errors then
+- format strings are parsed at compile time, so specifying a type can help detect errors then
 - format strings default to using lowercase letters for hex digits and the `e` in exponents. Use a
   uppercase type to force the use of uppercase hex digits and an uppercase `E` in exponents.
 - format strings are the most convenient way to get hex, binary or octal strings from an integer.
@@ -1499,6 +1454,10 @@ x := Abc{
 if x.bar is MyStruct {
 	// x.bar is automatically casted
 	println(x.bar)
+} else if x.bar is MyStruct2 {
+	new_var := x.bar as MyStruct2
+	// ... or you can use `as` to create a type cast an alias manually:
+	println(new_var)
 }
 match x.bar {
 	MyStruct {
@@ -2127,6 +2086,31 @@ Private fields are available only inside the same [module](#modules), any attemp
 to directly access them from another module will cause an error during compilation.
 Public immutable fields are readonly everywhere.
 
+### Anonymous structs
+
+V supports anonymous structs: structs that don't have to be declared separately
+with a struct name.
+
+```v
+struct Book {
+	author struct  {
+		name string
+		age  int
+	}
+
+	title string
+}
+
+book := Book{
+	author: struct {
+		name: 'Samantha Black'
+		age: 24
+	}
+}
+assert book.author.name == 'Samantha Black'
+assert book.author.age == 24
+```
+
 ### Methods
 
 ```v
@@ -2279,22 +2263,24 @@ Note that the embedded struct arguments are not necessarily stored in the order 
 
 ## Functions 2
 
-### Pure functions by default
+### Immutable function args by default
 
-V functions are pure by default, meaning that their return values are a function of their
-arguments only, and their evaluation has no side effects (besides I/O).
+In V function arguments are immutable by default, and mutable args have to be
+marked on call.
 
-This is achieved by a lack of global variables and all function arguments being
-immutable by default, even when [references](#references) are passed.
+Since there are also no globals, that means that the return values of the functions,
+are a function of their arguments only, and their evaluation has no side effects
+(unless the function uses I/O).
 
-V is not a purely functional language however.
+Function arguments are immutable by default, even when [references](#references) are passed.
+
+Note that V is not a purely functional language however.
 
 There is a compiler flag to enable global variables (`-enable-globals`), but this is
 intended for low-level applications like kernels and drivers.
 
 ### Mutable arguments
-
-It is possible to modify function arguments by using the keyword `mut`:
+It is possible to modify function arguments by declaring them with the keyword `mut`:
 
 ```v
 struct User {
@@ -2313,7 +2299,7 @@ user.register()
 println(user.is_registered) // "true"
 ```
 
-In this example, the receiver (which is simply the first argument) is marked as mutable,
+In this example, the receiver (which is just the first argument) is explicitly marked as mutable,
 so `register()` can change the user object. The same works with non-receiver arguments:
 
 ```v
@@ -3430,7 +3416,7 @@ import net.http
 
 fn f(url string) ?string {
 	resp := http.get(url)?
-	return resp.text
+	return resp.body
 }
 ```
 
@@ -3445,7 +3431,7 @@ The body of `f` is essentially a condensed version of:
 
 ```v ignore
     resp := http.get(url) or { return err }
-    return resp.text
+    return resp.body
 ```
 
 ---
@@ -3489,7 +3475,7 @@ The fourth method is to use `if` unwrapping:
 import net.http
 
 if resp := http.get('https://google.com') {
-	println(resp.text) // resp is a http.Response, not an optional
+	println(resp.body) // resp is a http.Response, not an optional
 } else {
 	println(err)
 }
@@ -3601,8 +3587,8 @@ println(compare(1.1, 1.2)) //         -1
 
 ## Concurrency
 ### Spawning Concurrent Tasks
-V's model of concurrency is very similar to Go's. To run `foo()` concurrently in
-a different thread, just call it with `go foo()`:
+V's model of concurrency is going to be very similar to Go's.
+For now, `go foo()` runs `foo()` concurrently in a different thread:
 
 ```v
 import math
@@ -3617,6 +3603,9 @@ fn main() {
 	// p will be run in parallel thread
 }
 ```
+
+> In V 0.4 `go foo()` will be automatically renamed via vfmt to `spawn foo()`,
+and there will be a way to launch a coroutine (a lightweight thread managed by the runtime).
 
 Sometimes it is necessary to wait until a parallel thread has finished. This can
 be done by assigning a *handle* to the started thread and calling the `wait()` method
@@ -5703,8 +5692,6 @@ For more examples, see [github.com/vlang/v/tree/master/vlib/v/tests/assembly/asm
 
 ## Translating C to V
 
-TODO: translating C to V will be available in V 0.3.
-
 V can translate your C code to human readable V code and generate V wrappers on top of C libraries.
 
 
@@ -5806,7 +5793,12 @@ or
 ```shell
 v -os linux .
 ```
+NB: Cross-compiling a windows binary on a linux machine requires the GNU C compiler for 
+MinGW-w64 (targeting Win64) to first be installed.
 
+```shell
+sudo apt-get install gcc-mingw-w64-x86-64
+```
 (Cross compiling for macOS is temporarily not possible.)
 
 If you don't have any C dependencies, that's all you need to do. This works even

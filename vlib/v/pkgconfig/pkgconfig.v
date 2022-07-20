@@ -70,7 +70,7 @@ fn (mut pc PkgConfig) parse_list(s string) []string {
 }
 
 fn (mut pc PkgConfig) parse_line(s string) string {
-	mut r := s.trim_space()
+	mut r := s.split('#')[0]
 	for r.contains('\${') {
 		tok0 := r.index('\${') or { break }
 		mut tok1 := r[tok0..].index('}') or { break }

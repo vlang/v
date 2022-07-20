@@ -401,7 +401,7 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_
 	mut clean_sum_type_v_type_name := ''
 	if info.is_anon {
 		variant_names := info.variants.map(util.strip_main_name(g.table.sym(it).name))
-		clean_sum_type_v_type_name = '(${variant_names.join(' | ')})'
+		clean_sum_type_v_type_name = '${variant_names.join('|')}'
 	} else {
 		clean_sum_type_v_type_name = styp.replace('__', '.')
 		if styp.ends_with('*') {
@@ -586,8 +586,16 @@ fn (mut g Gen) gen_str_for_array(info ast.Array, styp string, str_fn_name string
 			// Note: we need to take account of whether the user has defined
 			// `fn (x T) str() {` or `fn (x &T) str() {`, and convert accordingly
 			deref, deref_label := deref_kind(str_method_expects_ptr, is_elem_ptr, typ)
-			g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _SLIT("$deref_label"));')
-			g.auto_str_funcs.writeln('\t\tstring x = ${elem_str_fn_name}( $deref it);')
+			if is_elem_ptr {
+				g.auto_str_funcs.writeln('\t\tstring x = _SLIT("nil");')
+				g.auto_str_funcs.writeln('\t\tif (it != 0) {')
+				g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write_string(&sb, _SLIT("$deref_label"));')
+				g.auto_str_funcs.writeln('\t\t\tx = ${elem_str_fn_name}(${deref}it);')
+				g.auto_str_funcs.writeln('\t\t}')
+			} else {
+				g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, _SLIT("$deref_label"));')
+				g.auto_str_funcs.writeln('\t\tstring x = ${elem_str_fn_name}(${deref}it);')
+			}
 		}
 	}
 	g.auto_str_funcs.writeln('\t\tstrings__Builder_write_string(&sb, x);')
@@ -753,7 +761,7 @@ fn (mut g Gen) gen_str_for_map(info ast.Map, styp string, str_fn_name string) {
 }
 
 fn (g &Gen) type_to_fmt(typ ast.Type) StrIntpType {
-	if typ == ast.byte_type_idx {
+	if typ == ast.u8_type_idx {
 		return .si_u8
 	}
 	if typ == ast.char_type_idx {

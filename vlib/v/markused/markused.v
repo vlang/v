@@ -186,6 +186,14 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 			all_fn_root_names << k
 			continue
 		}
+		if pref.is_prof {
+			if k.starts_with('time.vpc_now') || k.starts_with('v.profile.') {
+				// needed for -profile
+				all_fn_root_names << k
+				continue
+			}
+		}
+
 		if method_receiver_typename == '&sync.Channel' {
 			all_fn_root_names << k
 			continue

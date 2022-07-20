@@ -26,6 +26,7 @@ fn main() {
 	spent := sw.elapsed().milliseconds()
 	oks := commands.filter(it.ecode == 0)
 	fails := commands.filter(it.ecode != 0)
+	flush_stdout()
 	println('')
 	println(term.header_left(term_highlight('Summary of `v test-all`:'), '-'))
 	println(term_highlight('Total runtime: $spent ms'))
@@ -37,6 +38,7 @@ fn main() {
 		msg := if fcmd.errmsg != '' { fcmd.errmsg } else { fcmd.line }
 		println(term.failed('>      Failed:') + ' $msg')
 	}
+	flush_stdout()
 	if fails.len > 0 {
 		exit(1)
 	}
@@ -82,6 +84,16 @@ fn get_all_commands() []Command {
 		line: '$vexe -o hhww.c examples/hello_world.v'
 		okmsg: 'V can output a .c file, without compiling further.'
 		rmfile: 'hhww.c'
+	}
+	res << Command{
+		line: '$vexe -skip-unused examples/hello_world.v'
+		okmsg: 'V can compile hello world with -skip-unused.'
+		rmfile: 'examples/hello_world'
+	}
+	res << Command{
+		line: '$vexe -skip-unused -profile - examples/hello_world.v'
+		okmsg: 'V can compile hello world with both -skip-unused and -profile .'
+		rmfile: 'examples/hello_world'
 	}
 	$if linux || macos {
 		res << Command{

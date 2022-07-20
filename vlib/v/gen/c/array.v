@@ -858,10 +858,18 @@ fn (mut g Gen) gen_array_index_methods() {
 			fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq(*pelem, v)) {')
 		} else if elem_sym.kind == .interface_ {
 			ptr_typ := g.equality_fn(info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_interface_eq(*pelem, v)) {')
+			if info.elem_type.is_ptr() {
+				fn_builder.writeln('\t\tif (${ptr_typ}_interface_eq(**pelem, *v)) {')
+			} else {
+				fn_builder.writeln('\t\tif (${ptr_typ}_interface_eq(*pelem, v)) {')
+			}
 		} else if elem_sym.kind == .sum_type {
 			ptr_typ := g.equality_fn(info.elem_type)
-			fn_builder.writeln('\t\tif (${ptr_typ}_sumtype_eq(*pelem, v)) {')
+			if info.elem_type.is_ptr() {
+				fn_builder.writeln('\t\tif (${ptr_typ}_sumtype_eq(**pelem, *v)) {')
+			} else {
+				fn_builder.writeln('\t\tif (${ptr_typ}_sumtype_eq(*pelem, v)) {')
+			}
 		} else if elem_sym.kind == .alias {
 			ptr_typ := g.equality_fn(info.elem_type)
 			fn_builder.writeln('\t\tif (${ptr_typ}_alias_eq(*pelem, v)) {')

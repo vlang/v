@@ -1,6 +1,6 @@
 module ui
 
-struct C.termios {
+pub struct C.termios {
 mut:
 	c_iflag int
 	c_oflag int

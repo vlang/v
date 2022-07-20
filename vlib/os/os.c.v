@@ -404,7 +404,7 @@ pub fn is_executable(path string) bool {
 		// 04 Read-only
 		// 06 Read and write
 		p := real_path(path)
-		return exists(p) && p.ends_with('.exe')
+		return exists(p) && (p.ends_with('.exe') || p.ends_with('.bat') || p.ends_with('.cmd'))
 	}
 	$if solaris {
 		statbuf := C.stat{}
@@ -964,6 +964,7 @@ pub fn execvp(cmdpath string, cmdargs []string) ? {
 	if res == -1 {
 		return error_with_code(posix_get_error_msg(C.errno), C.errno)
 	}
+
 	// just in case C._execvp returned ... that happens on windows ...
 	exit(res)
 }
