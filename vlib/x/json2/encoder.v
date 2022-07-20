@@ -192,13 +192,7 @@ pub fn (f Any) str() string {
 // json_str returns the JSON string representation of the `Any` type.
 [manualfree]
 pub fn (f Any) json_str() string {
-	mut sb := strings.new_builder(4096)
-	defer {
-		unsafe { sb.free() }
-	}
-	mut enc := Encoder{}
-	enc.encode_value(f, mut sb) or { return '' }
-	return sb.str()
+	return encode(f)
 }
 
 // prettify_json_str returns the pretty-formatted JSON string representation of the `Any` type.
