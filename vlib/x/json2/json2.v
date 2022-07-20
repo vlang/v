@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module json2
 
+import strings
+
 pub const (
 	null = Null{}
 )
@@ -36,8 +38,12 @@ pub fn decode<T>(src string) ?T {
 }
 
 // encode is a generic function that encodes a type into a JSON string.
-pub fn encode<T>(typ T) string {
-	return typ.to_json()
+pub fn encode<T>(val T) string {
+	mut sb := strings.new_builder(64)
+	default_encoder.encode_value(val, mut sb) or {
+		default_encoder.encode_value<Null>(null, mut sb) or {}
+	}
+	return sb.str()
 }
 
 // as_map uses `Any` as a map.
