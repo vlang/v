@@ -1189,7 +1189,7 @@ fn (mut dl Dlmalloc) tmalloc_large(size usize) voidptr {
 		mut t := *dl.treebin_at(idx)
 		if !isnil(t) {
 			mut sizebits := size << leftshift_for_tree_index(idx)
-			mut rst := voidptr(0)
+			mut rst := voidptr(u64(0))
 			for {
 				csize := t.chunk().size()
 				if csize >= size && csize - size < rsize {
@@ -1412,7 +1412,7 @@ pub fn (mut dl Dlmalloc) memalign(alignment_ usize, bytes usize) voidptr {
 			// we've allocated enough total room so that this is always possible
 			br_ := (usize(mem) + alignment - 1) & (~alignment + 1)
 			br := chunk_from_mem(voidptr(br_))
-			mut pos := voidptr(0)
+			mut pos := voidptr(u64(0))
 			if usize(br) - usize(p) > min_chunk_size() {
 				pos = voidptr(br)
 			} else {
