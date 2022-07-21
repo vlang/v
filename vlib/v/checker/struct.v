@@ -320,7 +320,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 	}
 	if type_sym.name.len == 1 && !isnil(c.table.cur_fn) && c.table.cur_fn.generic_names.len == 0 {
 		c.error('unknown struct `$type_sym.name`', node.pos)
-		return 0
+		return ast.void_type
 	}
 	match type_sym.kind {
 		.placeholder {
