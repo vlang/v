@@ -113,7 +113,7 @@ mut:
 	// Index of the rotation (0-3)
 	rotation_idx int
 	// gg context for drawing
-	gg          &gg.Context = voidptr(0)
+	gg          &gg.Context = unsafe { nil }
 	font_loaded bool
 	show_ghost  bool = true
 	// frame/time counters:

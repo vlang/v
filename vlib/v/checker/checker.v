@@ -69,7 +69,7 @@ pub mut:
 	expected_or_type          ast.Type        // fn() or { 'this type' } eg. string. expected or block type
 	expected_expr_type        ast.Type        // if/match is_expr: expected_type
 	mod                       string          // current module name
-	const_var                 &ast.ConstField = voidptr(0) // the current constant, when checking const declarations
+	const_var                 &ast.ConstField = unsafe { nil } // the current constant, when checking const declarations
 	const_deps                []string
 	const_names               []string
 	global_names              []string
@@ -112,7 +112,7 @@ mut:
 	timers                           &util.Timers = util.get_timers()
 	comptime_fields_default_type     ast.Type
 	comptime_fields_type             map[string]ast.Type
-	fn_scope                         &ast.Scope = voidptr(0)
+	fn_scope                         &ast.Scope = unsafe { nil }
 	main_fn_decl_node                ast.FnDecl
 	match_exhaustive_cutoff_limit    int = 10
 	is_last_stmt                     bool
@@ -143,7 +143,7 @@ pub fn new_checker(table &ast.Table, pref &pref.Preferences) &Checker {
 fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
 	c.expected_type = ast.void_type
 	c.expected_or_type = ast.void_type
-	c.const_var = voidptr(0)
+	c.const_var = unsafe { nil }
 	c.in_for_count = 0
 	c.returns = false
 	c.scope_returns = false
@@ -3162,7 +3162,7 @@ pub fn (mut c Checker) mark_as_referenced(mut node ast.Expr, as_interface bool) 
 		ast.Ident {
 			if mut node.obj is ast.Var {
 				mut obj := unsafe { &node.obj }
-				if c.fn_scope != voidptr(0) {
+				if c.fn_scope != unsafe { nil } {
 					obj = c.fn_scope.find_var(node.obj.name) or { obj }
 				}
 				if obj.typ == 0 {
