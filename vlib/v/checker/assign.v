@@ -220,9 +220,14 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							c.error('invalid use of reserved type `$left.name` as a variable name',
 								left.pos)
 						}
-						if right is ast.Nil {
-							// `x := unsafe { nil }` is allowed
-							c.error('use of untyped nil in assignment (use `unsafe`)',
+						if right is ast.Nil && !c.inside_unsafe {
+							// `x := unsafe { nil }` is allowed,
+							// as well as:
+							// `unsafe {
+							//    x := nil
+							//    println(x)
+							// }`
+							c.error('use of untyped nil in assignment (use `unsafe` | $c.inside_unsafe)',
 								right.pos())
 						}
 					}
