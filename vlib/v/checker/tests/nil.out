@@ -1,7 +1,6 @@
-vlib/v/checker/tests/nil.vv:3:18: error: use of untyped nil in assignment (use `unsafe`)
+vlib/v/checker/tests/nil.vv:2:11: error: `nil` is only allowed in `unsafe` code
     1 | fn main() {
-    2 |     unsafe {
-    3 |         value := nil
-      |                  ~~~
-    4 |         println(value)
-    5 |     }
+    2 |     value := nil
+      |              ~~~
+    3 |     println(value)
+    4 | }
