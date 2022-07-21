@@ -675,7 +675,7 @@ pub fn (mut ctx Context) mount_static_folder_at(directory_path string, mount_pat
 	return true
 }
 
-// TODO - test 
+// TODO - test
 // Serves a file static
 // `url` is the access path on the site, `file_path` is the real path to the file, `mime_type` is the file type
 pub fn (mut ctx Context) serve_static(url string, file_path string) {
