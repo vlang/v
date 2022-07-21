@@ -5074,9 +5074,25 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 		mut field_deps := []string{}
 		match sym.info {
 			ast.ArrayFixed {
-				dep := g.table.final_sym(sym.info.elem_type).name
-				if dep in type_names {
-					field_deps << dep
+				mut skip := false
+				// allow: `struct Node{ children [4]&Node }`
+				// skip adding the struct as a dependency to the fixed array: [4]&Node -> Node
+				// the struct must depend on the fixed array for definition order: Node -> [4]&Node
+				// NOTE: Is there is a simpler way to do this?
+				elem_sym := g.table.final_sym(sym.info.elem_type)
+				if elem_sym.info is ast.Struct && sym.info.elem_type.is_ptr() {
+					for field in elem_sym.info.fields {
+						if sym.idx == field.typ.idx() {
+							skip = true
+							break
+						}
+					}
+				}
+				if !skip {
+					dep := g.table.final_sym(sym.info.elem_type).name
+					if dep in type_names {
+						field_deps << dep
+					}
 				}
 			}
 			ast.Struct {
