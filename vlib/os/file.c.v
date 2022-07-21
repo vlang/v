@@ -133,7 +133,7 @@ pub fn create(path string) ?File {
 	}
 }
 
-// stdin - return an os.File for stdin, so that you can use .get_line on it too.
+// stdin - return an os.File for stdin
 pub fn stdin() File {
 	return File{
 		fd: 0
