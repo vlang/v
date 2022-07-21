@@ -102,9 +102,9 @@ fn testsuite_end() {
 }
 
 fn test_bind() {
-    $if !network ? {
-        return
-    }
+	$if !network ? {
+		return
+	}
 	conn := net.dial_tcp_with_bind('vlang.io:80', '127.0.0.1:0')
 	conn.close()
 }
