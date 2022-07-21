@@ -151,7 +151,9 @@ fn (mut g Gen) final_gen_str(typ StrType) {
 			g.gen_str_for_thread(sym.info, styp, str_fn_name)
 		}
 		else {
-			verror('could not generate string method `$str_fn_name` for type `$styp`')
+			if sym.name != 'nil' {
+				verror('could not generate string method `$str_fn_name` for type `$styp`')
+			}
 		}
 	}
 }

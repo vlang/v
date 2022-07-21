@@ -4709,10 +4709,21 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			continue
 		}
 		if field.has_expr || cinit {
+			// `__global x = unsafe { nil }` should still use the simple direct initialisation, `g_main_argv` needs it.
+			mut is_simple_unsafe_expr := false
+			if field.expr is ast.UnsafeExpr {
+				if field.expr.expr is ast.Nil {
+					is_simple_unsafe_expr = true
+				}
+				if field.expr.expr.is_literal() {
+					is_simple_unsafe_expr = true
+				}
+			}
 			if g.pref.translated {
 				def_builder.write_string(' = ${g.expr_string(field.expr)}')
 			} else if (field.expr.is_literal() && should_init) || cinit
-				|| (field.expr is ast.ArrayInit && (field.expr as ast.ArrayInit).is_fixed) {
+				|| (field.expr is ast.ArrayInit && (field.expr as ast.ArrayInit).is_fixed)
+				|| is_simple_unsafe_expr {
 				// Simple literals can be initialized right away in global scope in C.
 				// e.g. `int myglobal = 10;`
 				def_builder.write_string(' = ${g.expr_string(field.expr)}')
