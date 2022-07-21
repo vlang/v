@@ -45,6 +45,37 @@ pub fn dial_tcp(address string) ?&TcpConn {
 	return error('dial_tcp failed for address $address')
 }
 
+// bind local address and dail.
+pub fn dial_tcp_with_bind(saddr string, laddr string) ?&TcpConn {
+	addrs := resolve_addrs_fuzzy(saddr, .tcp) or {
+		return error('$err.msg(); could not resolve address $saddr in dial_tcp_with_bind')
+	}
+
+	// Very simple dialer
+	for addr in addrs {
+		mut s := new_tcp_socket(addr.family()) or {
+			return error('$err.msg(); could not create new tcp socket in dial_tcp_with_bind')
+		}
+		s.bind(laddr) or {
+			s.close() or { continue }
+			continue
+		}
+		s.connect(addr) or {
+			// Connection failed
+			s.close() or { continue }
+			continue
+		}
+
+		return &TcpConn{
+			sock: s
+			read_timeout: net.tcp_default_read_timeout
+			write_timeout: net.tcp_default_write_timeout
+		}
+	}
+	// failed
+	return error('dial_tcp_with_bind failed for address $saddr')
+}
+
 pub fn (mut c TcpConn) close() ? {
 	$if trace_tcp ? {
 		eprintln('    TcpConn.close | c.sock.handle: ${c.sock.handle:6}')
@@ -364,6 +395,22 @@ pub fn (mut s TcpSocket) set_dualstack(on bool) ? {
 
 pub fn (mut s TcpSocket) set_option_int(opt SocketOption, value int) ? {
 	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &value, sizeof(int)))?
+}
+
+// bind a local rddress for TcpSocket
+pub fn (mut s TcpSocket) bind(addr string) ? {
+	addrs := resolve_addrs(addr, AddrFamily.ip, .tcp) or {
+		return error('$err.msg(); could not resolve address $addr')
+	}
+
+	// TODO(logic to pick here)
+	a := addrs[0]
+
+	// cast to the correct type
+	alen := a.len()
+	socket_error_message(C.bind(s.handle, voidptr(&a), alen), 'binding to $addr failed') or {
+		return err
+	}
 }
 
 fn (mut s TcpSocket) close() ? {

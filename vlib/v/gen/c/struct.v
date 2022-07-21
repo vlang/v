@@ -70,26 +70,10 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		}
 		inited_fields[field.name] = i
 		if sym.kind != .struct_ {
-			field_name := if sym.language == .v { c_name(field.name) } else { field.name }
-			g.write('.$field_name = ')
 			if field.typ == 0 {
 				g.checker_bug('struct init, field.typ is 0', field.pos)
 			}
-			field_type_sym := g.table.sym(field.typ)
-			mut cloned := false
-			if g.is_autofree && !field.typ.is_ptr() && field_type_sym.kind in [.array, .string] {
-				g.write('/*clone1*/')
-				if g.gen_clone_assignment(field.expr, field.typ, false) {
-					cloned = true
-				}
-			}
-			if !cloned {
-				if (field.expected_type.is_ptr() && !field.expected_type.has_flag(.shared_f))
-					&& !(field.typ.is_ptr() || field.typ.is_pointer()) && !field.typ.is_number() {
-					g.write('/* autoref */&')
-				}
-				g.expr_with_cast(field.expr, field.typ, field.expected_type)
-			}
+			g.struct_init_field(field, sym.language)
 			if i != node.fields.len - 1 {
 				if is_multiline {
 					g.writeln(',')
@@ -167,44 +151,10 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			}
 			if field.name in inited_fields {
 				sfield := node.fields[inited_fields[field.name]]
-				field_name := if sym.language == .v { c_name(field.name) } else { field.name }
 				if sfield.typ == 0 {
 					continue
 				}
-				g.write('.$field_name = ')
-				field_type_sym := g.table.sym(sfield.typ)
-				mut cloned := false
-				if g.is_autofree && !sfield.typ.is_ptr() && field_type_sym.kind in [.array, .string] {
-					g.write('/*clone1*/')
-					if g.gen_clone_assignment(sfield.expr, sfield.typ, false) {
-						cloned = true
-					}
-				}
-				if !cloned {
-					inside_cast_in_heap := g.inside_cast_in_heap
-					g.inside_cast_in_heap = 0 // prevent use of pointers in child structs
-
-					if field_type_sym.kind == .array_fixed && sfield.expr is ast.Ident {
-						fixed_array_info := field_type_sym.info as ast.ArrayFixed
-						g.write('{')
-						for i in 0 .. fixed_array_info.size {
-							g.expr(sfield.expr)
-							g.write('[$i]')
-							if i != fixed_array_info.size - 1 {
-								g.write(', ')
-							}
-						}
-						g.write('}')
-					} else {
-						if (sfield.expected_type.is_ptr()
-							&& !sfield.expected_type.has_flag(.shared_f)) && !(sfield.typ.is_ptr()
-							|| sfield.typ.is_pointer()) && !sfield.typ.is_number() {
-							g.write('/* autoref */&')
-						}
-						g.expr_with_cast(sfield.expr, sfield.typ, sfield.expected_type)
-					}
-					g.inside_cast_in_heap = inside_cast_in_heap // restore value for further struct inits
-				}
+				g.struct_init_field(sfield, sym.language)
 				if is_multiline {
 					g.writeln(',')
 				} else {
@@ -433,4 +383,42 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 	}
 	g.type_definitions.writeln('\n')
 	g.type_definitions.writeln(post_pragma)
+}
+
+fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Language) {
+	field_name := if language == .v { c_name(sfield.name) } else { sfield.name }
+	g.write('.$field_name = ')
+	field_type_sym := g.table.sym(sfield.typ)
+	mut cloned := false
+	if g.is_autofree && !sfield.typ.is_ptr() && field_type_sym.kind in [.array, .string] {
+		g.write('/*clone1*/')
+		if g.gen_clone_assignment(sfield.expr, sfield.typ, false) {
+			cloned = true
+		}
+	}
+	if !cloned {
+		inside_cast_in_heap := g.inside_cast_in_heap
+		g.inside_cast_in_heap = 0 // prevent use of pointers in child structs
+
+		if field_type_sym.kind == .array_fixed && sfield.expr is ast.Ident {
+			fixed_array_info := field_type_sym.info as ast.ArrayFixed
+			g.write('{')
+			for i in 0 .. fixed_array_info.size {
+				g.expr(sfield.expr)
+				g.write('[$i]')
+				if i != fixed_array_info.size - 1 {
+					g.write(', ')
+				}
+			}
+			g.write('}')
+		} else {
+			if sfield.typ != ast.nil_type
+				&& (sfield.expected_type.is_ptr() && !sfield.expected_type.has_flag(.shared_f))
+				&& !(sfield.typ.is_ptr() || sfield.typ.is_pointer()) && !sfield.typ.is_number() {
+				g.write('/* autoref */&')
+			}
+			g.expr_with_cast(sfield.expr, sfield.typ, sfield.expected_type)
+		}
+		g.inside_cast_in_heap = inside_cast_in_heap // restore value for further struct inits
+	}
 }

@@ -174,7 +174,7 @@ v self
 
 ```bash
 $ v
-V 0.2.x
+V 0.3.x
 Use Ctrl-C or `exit` to exit
 
 >>> println('hello world')

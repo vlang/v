@@ -830,6 +830,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 			}
 			pos := p.tok.pos()
 			mut arg_type := p.parse_type()
+			type_pos := pos.extend(p.prev_tok.pos())
 			if arg_type == 0 {
 				// error is added in parse_type
 				return []ast.Param{}, false, false
@@ -884,7 +885,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 				name: name
 				is_mut: is_mut
 				typ: arg_type
-				type_pos: pos
+				type_pos: type_pos
 			}
 			arg_no++
 			if arg_no > 1024 {
@@ -940,6 +941,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 			}
 			pos := p.tok.pos()
 			mut typ := p.parse_type()
+			type_pos[0] = pos.extend(p.prev_tok.pos())
 			if typ == 0 {
 				// error is added in parse_type
 				return []ast.Param{}, false, false

@@ -16,6 +16,7 @@ import net.http
 import runtime
 import crypto.sha256
 import time
+import json
 
 enum UpdateSource {
 	github_releases
@@ -56,6 +57,9 @@ const vls_cache_folder = os.join_path(vls_folder, '.cache')
 const vls_manifest_path = os.join_path(vls_folder, 'vls.config.json')
 
 const vls_src_folder = os.join_path(vls_folder, 'src')
+
+const server_not_found_err = error_with_code('Language server is not installed nor found.',
+	101)
 
 const json_enc = json2.Encoder{
 	newline: `\n`
@@ -281,6 +285,10 @@ fn (upd VlsUpdater) find_ls_path() ?string {
 	if 'server_path' in manifest {
 		server_path := manifest['server_path']?
 		if server_path is string {
+			if server_path.len == 0 {
+				return none
+			}
+
 			return server_path
 		}
 	}
@@ -323,7 +331,7 @@ fn (mut upd VlsUpdater) parse(mut fp flag.FlagParser) ? {
 		if upd.setup_kind != .none_ {
 			return error('Cannot use --install or --update when --path is supplied.')
 		} else if !os.is_executable(ls_path) {
-			return error('Provided executable is not valid.')
+			return server_not_found_err
 		}
 
 		upd.ls_path = ls_path
@@ -345,7 +353,7 @@ fn (mut upd VlsUpdater) parse(mut fp flag.FlagParser) ? {
 
 				upd.ls_path = ls_path
 			} else if upd.setup_kind == .none_ {
-				return error('Language server is not installed nor found.')
+				return server_not_found_err
 			}
 		}
 
@@ -373,15 +381,46 @@ fn (upd VlsUpdater) log(msg string) {
 	}
 }
 
+fn (upd VlsUpdater) error_details(err IError) string {
+	match err.code() {
+		101 {
+			mut vls_dir_shortened := '\$HOME/.vls'
+			$if windows {
+				vls_dir_shortened = '%USERPROFILE%\\.vls'
+			}
+
+			return '
+- If you are using this for the first time, please run
+  `v ls --install` first to download and install VLS.
+- If you are using a custom version of VLS, check if
+  the specified path exists and is a valid executable.
+- If you have an existing installation of VLS, be sure
+  to remove "vls.config.json" and "bin" located inside
+  "$vls_dir_shortened" and re-install.
+
+  If none of the options listed have solved your issue,
+  please report it at https://github.com/vlang/v/issues
+'
+		}
+		else {
+			return ''
+		}
+	}
+}
+
 [noreturn]
 fn (upd VlsUpdater) cli_error(err IError) {
 	match upd.output {
 		.text {
 			eprintln('v ls error: $err.msg() ($err.code())')
+			if err !is none {
+				eprintln(upd.error_details(err))
+			}
+
 			print_backtrace()
 		}
 		.json {
-			print('{"error":{"message":"$err.msg()","code":"$err.code()"}}')
+			print('{"error":{"message":${json.encode(err.msg())},"code":"$err.code()","details":${json.encode(upd.error_details(err).trim_space())}}}')
 			flush_stdout()
 		}
 		.silent {}
@@ -431,6 +470,17 @@ fn main() {
 	fp.application('v ls')
 	fp.description('Installs, updates, and executes the V language server program')
 	fp.version('0.1')
+
+	// just to make sure whenever user wants to
+	// interact directly with the executable
+	// instead of the usual `v ls` command
+	if fp.args.len >= 2 && fp.args[0..2] == [os.executable(), 'ls'] {
+		// skip the executable here, the next skip_executable
+		// outside the if statement will skip the `ls` part
+		fp.skip_executable()
+	}
+
+	// skip the executable or the `ls` part
 	fp.skip_executable()
 
 	upd.parse(mut fp) or {

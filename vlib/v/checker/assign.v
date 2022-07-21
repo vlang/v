@@ -220,6 +220,9 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							c.error('invalid use of reserved type `$left.name` as a variable name',
 								left.pos)
 						}
+						if right is ast.Nil {
+							c.error('use of untyped nil in assignment', right.pos())
+						}
 					}
 					mut ident_var_info := left.info as ast.IdentVar
 					if ident_var_info.share == .shared_t {

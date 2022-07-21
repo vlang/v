@@ -8,6 +8,8 @@ module json
 #include "cJSON.h"
 #define js_get(object, key) cJSON_GetObjectItemCaseSensitive((object), (key))
 
+pub const used = 1
+
 pub struct C.cJSON {
 	valueint    int
 	valuedouble f64
@@ -16,7 +18,7 @@ pub struct C.cJSON {
 
 fn C.cJSON_IsTrue(&C.cJSON) bool
 
-fn C.cJSON_CreateNumber(int) &C.cJSON
+fn C.cJSON_CreateNumber(f64) &C.cJSON
 
 fn C.cJSON_CreateBool(bool) &C.cJSON
 
@@ -30,16 +32,21 @@ fn C.cJSON_Print(&C.cJSON) &char
 
 fn C.cJSON_free(voidptr)
 
+// decode tries to decode the provided JSON string, into a V structure.
+// If it can not do that, it returns an error describing the reason for
+// the parsing failure.
 pub fn decode(typ voidptr, s string) ?voidptr {
 	// compiler implementation
 	return 0
 }
 
+// encode serialises the provided V value as a JSON string, optimised for shortness.
 pub fn encode(x voidptr) string {
 	// compiler implementation
 	return ''
 }
 
+// encode_pretty serialises the provided V value as a JSON string, in a formatted way, optimised for viewing by humans.
 pub fn encode_pretty(x voidptr) string {
 	// compiler implementation
 	return ''

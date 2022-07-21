@@ -38,6 +38,8 @@ fn C.mysql_real_connect(mysql &C.MYSQL, host &char, user &char, passwd &char, db
 
 fn C.mysql_query(mysql &C.MYSQL, q &u8) int
 
+fn C.mysql_use_result(mysql &C.MYSQL)
+
 fn C.mysql_real_query(mysql &C.MYSQL, q &u8, len u32) int
 
 fn C.mysql_select_db(mysql &C.MYSQL, db &u8) int

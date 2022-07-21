@@ -1,0 +1,6 @@
+fn main() {
+    unsafe {
+        value := nil
+        println(value)
+    }
+}

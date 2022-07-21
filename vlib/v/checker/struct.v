@@ -24,6 +24,18 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 					struct_sym.info.is_heap = true
 				}
 			}
+			// Ensure each generic type of the embed was declared in the struct's definition
+			if node.generic_types.len > 0 && embed.typ.has_flag(.generic) {
+				embed_generic_names := c.table.generic_type_names(embed.typ)
+				node_generic_names := node.generic_types.map(c.table.type_to_str(it))
+				for name in embed_generic_names {
+					if name !in node_generic_names {
+						struct_generic_names := node_generic_names.join(', ')
+						c.error('generic type name `$name` is not mentioned in struct `$node.name<$struct_generic_names>`',
+							embed.pos)
+					}
+				}
+			}
 		}
 		if struct_sym.info.is_minify {
 			node.fields.sort_with_compare(minify_sort_fn)
@@ -119,6 +131,18 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 					if field.default_expr.val == false {
 						c.warn('unnecessary default value `false`: struct fields are zeroed by default',
 							field.default_expr.pos)
+					}
+				}
+			}
+			// Ensure each generic type of the field was declared in the struct's definition
+			if node.generic_types.len > 0 && field.typ.has_flag(.generic) {
+				field_generic_names := c.table.generic_type_names(field.typ)
+				node_generic_names := node.generic_types.map(c.table.type_to_str(it))
+				for name in field_generic_names {
+					if name !in node_generic_names {
+						struct_generic_names := node_generic_names.join(', ')
+						c.error('generic type name `$name` is not mentioned in struct `$node.name<$struct_generic_names>`',
+							field.type_pos)
 					}
 				}
 			}
@@ -302,6 +326,13 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 		.placeholder {
 			c.error('unknown struct: $type_sym.name', node.pos)
 			return ast.void_type
+		}
+		.any {
+			// `T{ foo: 22 }`
+			for mut field in node.fields {
+				field.typ = c.expr(field.expr)
+				field.expected_type = field.typ
+			}
 		}
 		// string & array are also structs but .kind of string/array
 		.struct_, .string, .array, .alias {

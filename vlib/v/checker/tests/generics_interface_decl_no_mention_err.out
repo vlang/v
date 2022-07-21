@@ -1,0 +1,21 @@
+vlib/v/checker/tests/generics_interface_decl_no_mention_err.vv:4:2: error: generic type name `T` is not mentioned in interface `Foo<U>`
+    2 |
+    3 | interface Foo<U> {
+    4 |     Bar<T>
+      |     ~~~
+    5 |     foo(u U, p P)
+    6 |     bar(u U) []P
+vlib/v/checker/tests/generics_interface_decl_no_mention_err.vv:5:13: error: generic type name `P` is not mentioned in interface `Foo<U>`
+    3 | interface Foo<U> {
+    4 |     Bar<T>
+    5 |     foo(u U, p P)
+      |                ^
+    6 |     bar(u U) []P
+    7 | }
+vlib/v/checker/tests/generics_interface_decl_no_mention_err.vv:6:11: error: generic type name `P` is not mentioned in interface `Foo<U>`
+    4 |     Bar<T>
+    5 |     foo(u U, p P)
+    6 |     bar(u U) []P
+      |              ~~~
+    7 | }
+    8 |

@@ -1,5 +1,6 @@
 import orm
 import mysql
+import time
 
 struct TestCustomSqlType {
 	id      int    [primary; sql: serial]
@@ -17,6 +18,15 @@ struct TestCustomWrongSqlType {
 	custom1 string [sql_type: 'VARCHAR']
 	custom2 string [sql_type: 'money']
 	custom3 string [sql_type: 'xml']
+}
+
+struct TestTimeType {
+mut:
+	id         int       [primary; sql: serial]
+	username   string
+	created_at time.Time [sql_type: 'DATETIME']
+	updated_at string    [sql_type: 'DATETIME']
+	deleted_at time.Time
 }
 
 fn test_mysql_orm() {
@@ -77,6 +87,8 @@ fn test_mysql_orm() {
 	id := res[0][0]
 	name := res[0][1]
 	age := res[0][2]
+
+	mdb.close()
 
 	assert id is int
 	if id is int {
@@ -153,9 +165,57 @@ fn test_orm() {
 		},
 	]
 
-	assert result_custom_sql.maps() == information_schema_custom_sql
-
 	sql db {
 		drop table TestCustomSqlType
 	}
+	db.close()
+
+	assert result_custom_sql.maps() == information_schema_custom_sql
+}
+
+fn test_orm_time_type() ? {
+	mut db := mysql.Connection{
+		host: 'localhost'
+		port: 3306
+		username: 'root'
+		password: ''
+		dbname: 'mysql'
+	}
+
+	db.connect() or {
+		println(err)
+		panic(err)
+	}
+
+	today := time.parse('2022-07-16 15:13:27')?
+
+	model := TestTimeType{
+		username: 'hitalo'
+		created_at: today
+		updated_at: today.str()
+		deleted_at: today
+	}
+
+	sql db {
+		create table TestTimeType
+	}
+
+	sql db {
+		insert model into TestTimeType
+	}
+
+	results := sql db {
+		select from TestTimeType where username == 'hitalo'
+	}
+
+	sql db {
+		drop table TestTimeType
+	}
+
+	db.close()
+
+	assert results[0].username == model.username
+	assert results[0].created_at == model.created_at
+	assert results[0].updated_at == model.updated_at
+	assert results[0].deleted_at == model.deleted_at
 }
