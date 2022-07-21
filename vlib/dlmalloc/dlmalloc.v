@@ -498,7 +498,7 @@ fn (mut dl Dlmalloc) unlink_large_chunk(chunk_ &TreeChunk) {
 	unsafe {
 		mut chunk := chunk_
 		mut xp := &TreeChunk(chunk.parent)
-		mut r := &TreeChunk(unsafe { nil })
+		mut r := &TreeChunk(nil)
 		if voidptr(chunk.next()) != voidptr(chunk) {
 			mut f := chunk.prev()
 			r = chunk.next()
@@ -523,7 +523,7 @@ fn (mut dl Dlmalloc) unlink_large_chunk(chunk_ &TreeChunk) {
 					rp = cp
 				}
 				r = *rp
-				*rp = &TreeChunk(unsafe { nil })
+				*rp = &TreeChunk(nil)
 			}
 		}
 
@@ -635,7 +635,7 @@ pub fn (mut dl Dlmalloc) free_(mem voidptr) {
 				dl.top = p
 				p.head = tsize | dlmalloc.pinuse
 				if voidptr(p) == voidptr(dl.dv) {
-					dl.dv = unsafe { nil }
+					dl.dv = nil
 					dl.dvsize = 0
 				}
 
@@ -748,7 +748,7 @@ fn (mut dl Dlmalloc) release_unused_segments() usize {
 				if !p.inuse() && chunk_top >= top {
 					mut tp := &TreeChunk(p)
 					if voidptr(p) == voidptr(dl.dv) {
-						dl.dv = unsafe { nil }
+						dl.dv = nil
 						dl.dvsize = 0
 					} else {
 						dl.unlink_large_chunk(tp)
@@ -843,8 +843,8 @@ fn (mut dl Dlmalloc) insert_large_chunk(chunk_ &TreeChunk, size usize) {
 		mut h := dl.treebin_at(idx)
 
 		chunk.index = idx
-		chunk.child[0] = unsafe { nil }
-		chunk.child[1] = unsafe { nil }
+		chunk.child[0] = nil
+		chunk.child[1] = nil
 
 		mut chunkc := chunk.chunk()
 		if !dl.treemap_is_marked(idx) {
@@ -879,7 +879,7 @@ fn (mut dl Dlmalloc) insert_large_chunk(chunk_ &TreeChunk, size usize) {
 					tc.prev = chunkc
 					chunkc.prev = f
 					chunkc.next = tc
-					chunk.parent = unsafe { nil }
+					chunk.parent = nil
 					break
 				}
 			}
@@ -988,7 +988,7 @@ fn (mut dl Dlmalloc) malloc_real(size usize) voidptr {
 				}
 			}
 		} else if size >= dl.max_request {
-			return unsafe { nil }
+			return nil
 		} else {
 			nb = pad_request(size)
 			if dl.treemap != 0 {
@@ -1013,7 +1013,7 @@ fn (mut dl Dlmalloc) malloc_real(size usize) voidptr {
 			} else {
 				dvs := dl.dvsize
 				dl.dvsize = 0
-				dl.dv = unsafe { nil }
+				dl.dv = nil
 				p.set_inuse_and_pinuse(dvs)
 			}
 			ret := p.to_mem()
@@ -1183,13 +1183,13 @@ fn (mut dl Dlmalloc) tmalloc_small(size usize) voidptr {
 [unsafe]
 fn (mut dl Dlmalloc) tmalloc_large(size usize) voidptr {
 	unsafe {
-		mut v := &TreeChunk(unsafe { nil })
+		mut v := &TreeChunk(nil)
 		mut rsize := ~size + 1
 		idx := dl.compute_tree_index(size)
 		mut t := *dl.treebin_at(idx)
 		if !isnil(t) {
 			mut sizebits := size << leftshift_for_tree_index(idx)
-			mut rst := unsafe { nil }
+			mut rst := nil
 			for {
 				csize := t.chunk().size()
 				if csize >= size && csize - size < rsize {
@@ -1232,7 +1232,7 @@ fn (mut dl Dlmalloc) tmalloc_large(size usize) voidptr {
 		}
 
 		if isnil(v) || (dl.dvsize >= size && !(rsize < dl.dvsize - size)) {
-			return unsafe { nil }
+			return nil
 		}
 
 		mut vc := v.chunk()
@@ -1412,7 +1412,7 @@ pub fn (mut dl Dlmalloc) memalign(alignment_ usize, bytes usize) voidptr {
 			// we've allocated enough total room so that this is always possible
 			br_ := (usize(mem) + alignment - 1) & (~alignment + 1)
 			br := chunk_from_mem(voidptr(br_))
-			mut pos := unsafe { nil }
+			mut pos := nil
 			if usize(br) - usize(p) > min_chunk_size() {
 				pos = voidptr(br)
 			} else {
@@ -1469,7 +1469,7 @@ fn (mut dl Dlmalloc) try_realloc_chunk(p_ &Chunk, nb usize, can_move bool) &Chun
 			return p
 		} else if voidptr(next) == voidptr(dl.top) {
 			if oldsize + dl.topsize <= nb {
-				return unsafe { nil }
+				return nil
 			}
 
 			newsize := oldsize + dl.topsize
@@ -1483,7 +1483,7 @@ fn (mut dl Dlmalloc) try_realloc_chunk(p_ &Chunk, nb usize, can_move bool) &Chun
 		} else if voidptr(next) == voidptr(dl.dv) {
 			dvs := dl.dvsize
 			if oldsize + dvs < nb {
-				return unsafe { nil }
+				return nil
 			}
 
 			dsize := oldsize + dvs - nb
@@ -1499,13 +1499,13 @@ fn (mut dl Dlmalloc) try_realloc_chunk(p_ &Chunk, nb usize, can_move bool) &Chun
 				newsize := oldsize + dvs
 				p.set_inuse(newsize)
 				dl.dvsize = 0
-				dl.dv = unsafe { nil }
+				dl.dv = nil
 			}
 			return p
 		} else if !next.cinuse() {
 			nextsize := next.size()
 			if oldsize + nextsize < nb {
-				return unsafe { nil }
+				return nil
 			}
 			rsize := oldsize + nextsize - nb
 			dl.unlink_chunk(next, nextsize)
@@ -1520,7 +1520,7 @@ fn (mut dl Dlmalloc) try_realloc_chunk(p_ &Chunk, nb usize, can_move bool) &Chun
 			}
 			return p
 		} else {
-			return unsafe { nil }
+			return nil
 		}
 	}
 }
@@ -1604,7 +1604,7 @@ fn (mut dl Dlmalloc) dispose_chunk(p_ &Chunk, psize_ usize) {
 				dl.top = p
 				p.head = tsize | dlmalloc.pinuse
 				if voidptr(p) == voidptr(dl.dv) {
-					dl.dv = unsafe { nil }
+					dl.dv = nil
 					dl.dvsize = 0
 				}
 				return
