@@ -2,6 +2,7 @@ module help
 
 // TODO: move this file outside internal, and merge it with cmd/tools/modules/vhelp/vhelp.v .
 import os
+import term
 import v.pref
 
 const (
@@ -31,6 +32,14 @@ pub fn print_and_exit(topic string) {
 		eprintln(help.unknown_topic)
 		eprintln(known_topics(topicdir))
 		exit(1)
+	}
+	reader := os.find_abs_path_of_executable('less') or {
+		os.find_abs_path_of_executable('more') or { '' }
+	}
+	_, h := term.get_terminal_size()
+	if reader != '' && content.count('\n') > h {
+		code := os.system('$reader $target_topic')
+		exit(code)
 	}
 	println(content)
 	exit(0)
