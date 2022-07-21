@@ -1,6 +1,7 @@
 # vweb - the V Web Server #
 
-A simple yet powerful web server with built-in routing, parameter handling, templating, and other features.
+A simple yet powerful web server with built-in routing, parameter handling, templating, and other
+features.
 The [gitly](https://gitly.org/) site is based on vweb.
 
 
@@ -10,11 +11,13 @@ The [gitly](https://gitly.org/) site is based on vweb.
 
 - **Very fast** performance of C on the web.
 - **Small binary** hello world website is <100 KB.
-- **Easy to deploy** just one binary file that also includes all templates. No need to install any dependencies.
+- **Easy to deploy** just one binary file that also includes all templates. No need to install any
+dependencies.
 - **Templates are precompiled** all errors are visible at compilation time, not at runtime.
 
 ### Examples ###
-There are some examples that can be explored [here](https://github.com/vlang/v/tree/master/examples/vweb).
+There are some examples 
+that can be explored [here](https://github.com/vlang/v/tree/master/examples/vweb).
 
 And others like:
 - [vweb_orm_jwt](https://github.com/vlang/v/tree/master/examples/vweb_orm_jwt) (back-end)
@@ -57,7 +60,8 @@ pub fn (app App) post() {
 @end
 ```
 
-`$vweb.html()` compiles an HTML template into V during compilation, and embeds the resulting code into the current action.
+`$vweb.html()` compiles an HTML template into V during compilation, and embeds the resulting code
+into the current action.
 
 That means that the template automatically has access to that action's entire environment.
 
@@ -104,7 +108,7 @@ fn (mut app App) world() vweb.Result {
 	return app.text('World')
 }
 ```
-####- HTTP verbs
+####- HTTP verbs ####
 To use any HTTP verbs (or methods, as they are properly called), 
 such as `[post]`, `[get]`, `[put]`, `[patch]` or `[delete]`
 you can simply add the attribute before the function definition.
@@ -123,8 +127,10 @@ fn (mut app App) create_product() vweb.Result {
 }
 ```
 ####- Parameters
-Parameters are passed direcly in endpoint route using colon sign `:` and received using the same name at function
-To pass a parameter to an endpoint, you simply define it inside an attribute, e. g. `['/hello/:user]`.
+Parameters are passed direcly in endpoint route using colon sign `:` and received using the same
+name at function
+To pass a parameter to an endpoint, you simply define it inside an attribute, e. g. 
+`['/hello/:user]`.
 After it is defined in the attribute, you have to add it as a function parameter.
 
 **Example:**
@@ -155,7 +161,7 @@ pub fn (mut app App) before_request() {
 }
 ```
 ### Redirect ###
-Used when you want be redirected for one page
+Used when you want be redirected to an url
 **Examples:**
 ```v ignore
 pub fn (mut app App) before_request() {
@@ -170,26 +176,12 @@ pub fn (mut app App) articles() vweb.Result {
     }
     return app.text("patatoes")
 }
-
 ```
 
 ### Responses ###
-####- get_header
-**Example:**
-```v ignore
-['/user/get_all'; get]
-pub fn (mut app App) controller_get_all_user() vweb.Result {
-    token := app.get_header('token')
-    return app.text(token)
-}
-```
-####- get_cookie
-**Example:**
-```v ignore
 
-```
-
-####- set_status
+####- set_status ####
+Sets the response status
 **Example:**
 ```v ignore
 ['/user/get_all'; get]
@@ -209,7 +201,8 @@ pub fn (mut app App) controller_get_all_user() vweb.Result {
 }
 ```
 
-####- html
+####- html ####
+Response HTTP_OK with payload with content-type `text/html`
 **Example:**
 ```v ignore
 pub fn (mut app App) html_page() vweb.Result {
@@ -217,7 +210,8 @@ pub fn (mut app App) html_page() vweb.Result {
 }
 ```
 
-####- text
+####- text ####
+Response HTTP_OK with payload with content-type `text/plain`
 **Example:**
 ```v ignore
 pub fn (mut app App) simple() vweb.Result {
@@ -225,7 +219,8 @@ pub fn (mut app App) simple() vweb.Result {
 }
 ```
 
-####- json
+####- json ####
+Response HTTP_OK with payload with content-type `application/json`
 **Examples:**
 ```v ignore
 ['/articles'; get]
@@ -252,7 +247,8 @@ pub fn (mut app App) controller_create_user() vweb.Result {
 }
 ```
 
-####- json_pretty
+####- json_pretty ####
+Response HTTP_OK with a pretty-printed JSON result
 **Example:**
 ```v ignore
 fn (mut app App) time_json_pretty() {
@@ -260,16 +256,13 @@ fn (mut app App) time_json_pretty() {
         'time': time.now().format()
     })
 }
-
 ```
 
-####- file
-**Example:**
-```v ignore
+####- file ####
+Response HTTP_OK with file as payload
 
-```
-
-####- ok
+####- ok ####
+Response HTTP_OK with payload
 **Example:**
 ```v ignore
 ['/form_echo'; post]
@@ -279,16 +272,17 @@ pub fn (mut app App) form_echo() vweb.Result {
 }
 ```
 
-####- server_error
+####- server_error ####
+Response a server error
 **Example:**
 ```v ignore
 fn (mut app App) sse() vweb.Result {
     return app.server_error(501)
 }
-
 ```
 
-####- not_found
+####- not_found ####
+Response HTTP_NOT_FOUND with payload
 **Example:**
 ```v ignore
 ['/:user/:repo/settings']
@@ -302,35 +296,150 @@ pub fn (mut app App) user_repo_settings(username string, repository string) vweb
 
 ### Requests ###
 
-####- add_header
+####- get_header
+Returns the header data from the key
 **Example:**
 ```v ignore
-
+['/user/get_all'; get]
+pub fn (mut app App) controller_get_all_user() vweb.Result {
+    token := app.get_header('token')
+    return app.text(token)
+}
+```
+####- get_cookie
+Sets a cookie
+**Example:**
+```v ignore
+pub fn (mut app App) before_request() {
+    app.user_id = app.get_cookie('id') or { '0' }
+}
 ```
 
-
-####- set_cookie
+####- add_header ####
+Adds an header to the response with key and val
 **Example:**
 ```v ignore
+['/upload'; post]
+pub fn (mut app App) upload() vweb.Result {
+    fdata := app.files['upfile']
 
+    data_rows := fdata[0].data.split('\n')
+
+    mut output_data := ''
+
+    for elem in data_rows {
+        delim_row := elem.split('\t')
+        output_data += '${delim_row[0]}\t${delim_row[1]}\t'
+        output_data += '${delim_row[0].int() + delim_row[1].int()}\n'
+	}
+
+    output_data = output_data.all_before_last('\n')
+
+    app.add_header('Content-Disposition', 'attachment; filename=results.txt')
+    app.send_response_to_client('application/octet-stream', output_data)
+
+    return $vweb.html()
+}
 ```
 
-
-####- set_content_type
+####- set_cookie ####
+Sets a cookie
 **Example:**
 ```v ignore
-
+pub fn (mut app App) cookie() vweb.Result {
+    app.set_cookie(name: 'cookie', value: 'test')
+    return app.text('Response Headers\n$app.header')
+}
 ```
 
-
-####- set_cookie_with_expire_date
+####- set_cookie_with_expire_date ####
+Sets a cookie with a `expire_data`
 **Example:**
 ```v ignore
+pub fn (mut app App) cookie() vweb.Result {
+    key := 'cookie'
+    value := 'test'
+    duration := time.Duration(2 * time.minute ) // add 2 minutes
+    expire_date := time.now().add(duration)
 
+    app.set_cookie_with_expire_date(key, value, expire_date)
+    return app.text('Response Headers\n$app.header')
+}
 ```
 
-####- add_header
+####- set_content_type ####
+Sets the response content type
 **Example:**
 ```v ignore
+['/form_echo'; post]
+pub fn (mut app App) form_echo() vweb.Result {
+    app.set_content_type(app.req.header.get(.content_type) or { '' })
+    return app.ok(app.form['foo'])
+}
+```
 
+### Template ###
+
+####-handle_static  ####
+handle_static is used to mark a folder (relative to the current working folder) as one that 
+contains only static resources (css files, images etc).
+
+If `root` is set the mount path for the dir will be in '/'
+
+**Example:**
+```v ignore
+fn main() {
+    mut app := &App{}
+    app.serve_static('/favicon.ico', 'favicon.ico')
+    // Automatically make available known static mime types found in given directory.
+    os.chdir(os.dir(os.executable()))?
+    app.handle_static('assets', true)
+    vweb.run(app, port)
+}
+```
+
+####-mount_static_folder_at  ####
+makes all static files in `directory_path` and inside it, available at http://server/mount_path.
+
+For example: suppose you have called .mount_static_folder_at('/var/share/myassets', '/assets'),
+and you have a file /var/share/myassets/main.css .
+=> That file will be available at URL: http://server/assets/main.css .
+
+
+####-serve_static  ####
+Serves a file static.
+`url` is the access path on the site, `file_path` is the real path to the file, `mime_type` is the
+file type
+
+**Example:**
+```v ignore
+fn main() {
+    mut app := &App{}
+    app.serve_static('/favicon.ico', 'favicon.ico')
+    app.mount_static_folder_at(os.resource_abs_path('.'), '/')
+    vweb.run(app, 8081)
+}
+```
+
+### Others ###
+####-ip  ####
+Returns the ip address from the current user
+
+**Example:**
+```v ignore
+pub fn (mut app App) ip() vweb.Result {
+    ip := app.ip()
+    return app.text('ip: $ip')
+}
+```
+
+####-error  ####
+Set a string to the form error
+
+**Example:**
+```v ignore
+pub fn (mut app App) error() vweb.Result {
+    app.error('here as an error')
+    println(app.form_error) //'vweb error: here as an error'
+}
 ```

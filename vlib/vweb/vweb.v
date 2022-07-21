@@ -193,6 +193,7 @@ pub fn (ctx Context) init_server() {
 // Probably you can use it for check user session cookie or add header.
 pub fn (ctx Context) before_request() {}
 
+// TODO - test
 // vweb intern function
 [manualfree]
 pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bool {
@@ -243,6 +244,7 @@ pub fn (mut ctx Context) json_pretty<T>(j T) Result {
 	return Result{}
 }
 
+// TODO - test
 // Response HTTP_OK with file as payload
 pub fn (mut ctx Context) file(f_path string) Result {
 	ext := os.file_ext(f_path)
@@ -267,6 +269,7 @@ pub fn (mut ctx Context) ok(s string) Result {
 	return Result{}
 }
 
+// TODO - test
 // Response a server error
 pub fn (mut ctx Context) server_error(ecode int) Result {
 	$if debug {
@@ -302,6 +305,7 @@ pub fn (mut ctx Context) not_found() Result {
 	return Result{}
 }
 
+// TODO - test
 // Sets a cookie
 pub fn (mut ctx Context) set_cookie(cookie http.Cookie) {
 	mut cookie_data := []string{}
@@ -320,6 +324,7 @@ pub fn (mut ctx Context) set_content_type(typ string) {
 	ctx.content_type = typ
 }
 
+// TODO - test
 // Sets a cookie with a `expire_data`
 pub fn (mut ctx Context) set_cookie_with_expire_date(key string, val string, expire_date time.Time) {
 	ctx.add_header('Set-Cookie', '$key=$val;  Secure; HttpOnly; expires=$expire_date.utc_string()')
@@ -345,6 +350,7 @@ pub fn (ctx &Context) get_cookie(key string) ?string { // TODO refactor
 	return error('Cookie not found')
 }
 
+// TODO - test
 // Sets the response status
 pub fn (mut ctx Context) set_status(code int, desc string) {
 	if code < 100 || code > 599 {
@@ -354,11 +360,13 @@ pub fn (mut ctx Context) set_status(code int, desc string) {
 	}
 }
 
+// TODO - test
 // Adds an header to the response with key and val
 pub fn (mut ctx Context) add_header(key string, val string) {
 	ctx.header.add_custom(key, val) or {}
 }
 
+// TODO - test
 // Returns the header data from the key
 pub fn (ctx &Context) get_header(key string) string {
 	return ctx.req.header.get_custom(key) or { '' }
@@ -651,6 +659,7 @@ pub fn (mut ctx Context) handle_static(directory_path string, root bool) bool {
 	return true
 }
 
+// TODO - test
 // mount_static_folder_at - makes all static files in `directory_path` and inside it, available at http://server/mount_path
 // For example: suppose you have called .mount_static_folder_at('/var/share/myassets', '/assets'),
 // and you have a file /var/share/myassets/main.css .
@@ -666,6 +675,7 @@ pub fn (mut ctx Context) mount_static_folder_at(directory_path string, mount_pat
 	return true
 }
 
+// TODO - test 
 // Serves a file static
 // `url` is the access path on the site, `file_path` is the real path to the file, `mime_type` is the file type
 pub fn (mut ctx Context) serve_static(url string, file_path string) {
