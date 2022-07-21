@@ -222,7 +222,8 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						}
 						if right is ast.Nil {
 							// `x := unsafe { nil }` is allowed
-							c.error('use of untyped nil in assignment', right.pos())
+							c.error('use of untyped nil in assignment (use `unsafe`)',
+								right.pos())
 						}
 					}
 					mut ident_var_info := left.info as ast.IdentVar

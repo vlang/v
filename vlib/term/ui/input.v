@@ -206,35 +206,35 @@ pub struct Config {
 
 [inline]
 fn (ctx &Context) init() {
-	if ctx.cfg.init_fn != voidptr(0) {
+	if ctx.cfg.init_fn != unsafe { nil } {
 		ctx.cfg.init_fn(ctx.cfg.user_data)
 	}
 }
 
 [inline]
 fn (ctx &Context) frame() {
-	if ctx.cfg.frame_fn != voidptr(0) {
+	if ctx.cfg.frame_fn != unsafe { nil } {
 		ctx.cfg.frame_fn(ctx.cfg.user_data)
 	}
 }
 
 [inline]
 fn (ctx &Context) cleanup() {
-	if ctx.cfg.cleanup_fn != voidptr(0) {
+	if ctx.cfg.cleanup_fn != unsafe { nil } {
 		ctx.cfg.cleanup_fn(ctx.cfg.user_data)
 	}
 }
 
 [inline]
 fn (ctx &Context) fail(error string) {
-	if ctx.cfg.fail_fn != voidptr(0) {
+	if ctx.cfg.fail_fn != unsafe { nil } {
 		ctx.cfg.fail_fn(error)
 	}
 }
 
 [inline]
 fn (ctx &Context) event(event &Event) {
-	if ctx.cfg.event_fn != voidptr(0) {
+	if ctx.cfg.event_fn != unsafe { nil } {
 		ctx.cfg.event_fn(event, ctx.cfg.user_data)
 	}
 }

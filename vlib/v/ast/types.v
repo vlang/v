@@ -812,7 +812,7 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		}
 	)
 	t.register_sym(kind: .interface_, name: 'IError', cname: 'IError', mod: 'builtin')
-	t.register_sym(kind: .voidptr, name: 'nil', cname: 'nil', mod: 'builtin')
+	t.register_sym(kind: .voidptr, name: 'nil', cname: 'voidptr', mod: 'builtin')
 }
 
 [inline]
