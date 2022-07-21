@@ -38,8 +38,8 @@ pub fn print_and_exit(topic string) {
 	}
 	_, h := term.get_terminal_size()
 	if reader != '' && content.count('\n') > h {
-		code := os.system('$reader $target_topic')
-		exit(code)
+		os.system('${os.quoted_path(reader)} $target_topic')
+		exit(0)
 	}
 	println(content)
 	exit(0)
