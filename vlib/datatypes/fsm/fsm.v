@@ -14,7 +14,7 @@ mut:
 struct Transition {
 mut:
 	to                string
-	condition_handler ConditionFn = voidptr(0)
+	condition_handler ConditionFn = unsafe { nil }
 }
 
 pub struct StateMachine {

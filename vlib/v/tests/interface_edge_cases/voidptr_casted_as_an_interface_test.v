@@ -15,7 +15,7 @@ fn f(i &IAbc) string {
 }
 
 fn test_voidptr_casted_as_an_interface_reference() {
-	mut pi := &IAbc(voidptr(0))
+	mut pi := &IAbc(unsafe { nil })
 	dump(pi)
 	assert f(pi) == '&IAbc(0x0)'
 	//

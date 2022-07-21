@@ -1,7 +1,7 @@
 // void* arithmetic is not allowed in MSVC, so ban it
 fn test_voidptr() {
 	unsafe {
-		mut p := voidptr(0)
+		mut p := nil
 		_ = p + 1
 		p++
 		p += 3
@@ -14,4 +14,4 @@ fn test_voidptr() {
 	}
 }
 
-struct Foo{}
+struct Foo {}

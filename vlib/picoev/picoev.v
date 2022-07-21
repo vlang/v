@@ -57,7 +57,7 @@ pub:
 	port         int = 8080
 	cb           fn (voidptr, picohttpparser.Request, mut picohttpparser.Response)
 	err_cb       fn (voidptr, picohttpparser.Request, mut picohttpparser.Response, IError) = default_err_cb
-	user_data    voidptr = voidptr(0)
+	user_data    voidptr = unsafe { nil }
 	timeout_secs int     = 8
 	max_headers  int     = 100
 }

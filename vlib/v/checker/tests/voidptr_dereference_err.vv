@@ -1,5 +1,5 @@
 fn main() {
-	mut a := voidptr(0)
+	mut a := unsafe { nil }
 	mut b := 123
 	a = &b
 	println(*a)

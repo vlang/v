@@ -488,7 +488,7 @@ fn (mut m map) get_and_set(key voidptr, zero voidptr) voidptr {
 		// Key not found, insert key with zero-value
 		m.set(key, zero)
 	}
-	return voidptr(0)
+	return unsafe { nil }
 }
 
 // If `key` matches the key of an element in the container,

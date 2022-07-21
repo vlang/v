@@ -33,7 +33,7 @@ pub mut:
 	used_vweb_types    []Type // vweb context types, filled in by checker, when pref.skip_unused = true;
 	used_maps          int    // how many times maps were used, filled in by checker, when pref.skip_unused = true;
 	panic_handler      FnPanicHandler = default_table_panic_handler
-	panic_userdata     voidptr        = voidptr(0) // can be used to pass arbitrary data to panic_handler;
+	panic_userdata     voidptr        = unsafe { nil } // can be used to pass arbitrary data to panic_handler;
 	panic_npanics      int
 	cur_fn             &FnDecl = unsafe { 0 } // previously stored in Checker.cur_fn and Gen.cur_fn
 	cur_concrete_types []Type  // current concrete types, e.g. <int, string>

@@ -44,7 +44,7 @@ pub mut:
 	in_lambda_depth    int
 	inside_const       bool
 	is_mbranch_expr    bool // match a { x...y { } }
-	fn_scope           &ast.Scope = voidptr(0)
+	fn_scope           &ast.Scope = unsafe { nil }
 	wsinfix_depth      int
 	nlines             int
 }
