@@ -370,3 +370,26 @@ fn test_tell() ? {
 		assert pos == size - 5
 	}
 }
+
+fn test_reopen() ? {
+	mut f := os.open_file(tfile, 'w')?
+	f.write_string('Hello World!\nGood\r morning.')?
+	f.close()
+
+	mut stdin := os.stdin()
+	stdin.reopen(tfile, 'r')?
+	line := os.get_line()
+	assert line == 'Hello World!'
+}
+
+fn test_eof() ? {
+	mut f := os.open_file(tfile, 'w')?
+	f.write_string('Hello World!\n')?
+	f.close()
+
+	f = os.open(tfile)?
+	f.read_bytes(10)
+	assert !f.eof()
+	f.read_bytes(100)
+	assert f.eof()
+}
