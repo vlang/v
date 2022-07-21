@@ -1,0 +1,5 @@
+struct Dummy<T> {
+	arbitrary_field T = T{}
+}
+
+fn main() {}
