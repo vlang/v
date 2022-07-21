@@ -274,18 +274,14 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 					g.stmts(branch.stmts[..len - 1])
 					g.write('\t$tmp_var = ')
 					g.stmt(last)
-					if !g.out.last_n(3).trim_space().ends_with(';') {
-						g.writeln(';')
-					}
+					g.writeln(';')
 					g.writeln('}')
 					g.indent--
 				} else {
 					g.indent++
 					g.write('$styp $tmp_var = ')
 					g.stmt(last)
-					if !g.out.last_n(3).trim_space().ends_with(';') {
-						g.writeln(';')
-					}
+					g.writeln(';')
 					g.indent--
 				}
 			}
