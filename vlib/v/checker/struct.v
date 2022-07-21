@@ -457,7 +457,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 					if mut field.expr is ast.Ident {
 						if mut field.expr.obj is ast.Var {
 							mut obj := unsafe { &field.expr.obj }
-							if c.fn_scope != voidptr(0) {
+							if c.fn_scope != unsafe { nil } {
 								obj = c.fn_scope.find_var(obj.name) or { obj }
 							}
 							if obj.is_stack_obj && !c.inside_unsafe {

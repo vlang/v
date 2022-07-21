@@ -173,7 +173,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			if mut right is ast.Ident {
 				if mut right.obj is ast.Var {
 					mut obj := unsafe { &right.obj }
-					if c.fn_scope != voidptr(0) {
+					if c.fn_scope != unsafe { nil } {
 						obj = c.fn_scope.find_var(right.obj.name) or { obj }
 					}
 					if obj.is_stack_obj && !c.inside_unsafe {
@@ -221,6 +221,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 								left.pos)
 						}
 						if right is ast.Nil {
+							// `x := unsafe { nil }` is allowed
 							c.error('use of untyped nil in assignment', right.pos())
 						}
 					}

@@ -17,6 +17,10 @@ pub fn ptr_str(ptr voidptr) string {
 	return buf1
 }
 
+// pub fn nil_str(x voidptr) string {
+// return 'nil'
+//}
+
 // str returns string equivalent of x
 pub fn (x isize) str() string {
 	return i64(x).str()

@@ -10,5 +10,6 @@ fn test_cast() {
 	_ := f32(0)
 	_ := table.Type(0)
 	_ := ast.Expr(sum_expr())
+	_ := voidptr(0)
 }
 

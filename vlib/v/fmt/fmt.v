@@ -46,8 +46,9 @@ pub mut:
 	it_name            string // the name to replace `it` with
 	in_lambda_depth    int
 	inside_const       bool
+	inside_unsafe      bool
 	is_mbranch_expr    bool // match a { x...y { } }
-	fn_scope           &ast.Scope = voidptr(0)
+	fn_scope           &ast.Scope = unsafe { nil }
 	wsinfix_depth      int
 }
 
@@ -438,7 +439,13 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.assign_stmt(node)
 		}
 		ast.Block {
-			f.block(node)
+			if node.is_unsafe {
+				f.inside_unsafe = true
+				f.block(node)
+				f.inside_unsafe = false
+			} else {
+				f.block(node)
+			}
 		}
 		ast.BranchStmt {
 			f.branch_stmt(node)
@@ -675,7 +682,9 @@ pub fn (mut f Fmt) expr(node_ ast.Expr) {
 			f.type_of(node)
 		}
 		ast.UnsafeExpr {
+			f.inside_unsafe = true
 			f.unsafe_expr(node)
+			f.inside_unsafe = false
 		}
 		ast.ComptimeType {
 			match node.kind {
@@ -1755,7 +1764,21 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 }
 
 pub fn (mut f Fmt) cast_expr(node ast.CastExpr) {
-	f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias) + '(')
+	typ := f.table.type_to_str_using_aliases(node.typ, f.mod2alias)
+	if typ == 'voidptr' {
+		// `voidptr(0)` => `nil`
+		if node.expr is ast.IntegerLiteral {
+			if node.expr.val == '0' {
+				if f.inside_unsafe {
+					f.write('nil')
+				} else {
+					f.write('unsafe { nil }')
+				}
+				return
+			}
+		}
+	}
+	f.write('${typ}(')
 	f.mark_types_import_as_used(node.typ)
 	f.expr(node.expr)
 	if node.has_arg {
