@@ -210,7 +210,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 					}
 					mut v := ast.Var{
 						name: lx.name
-						expr: if left.len == right.len { right[i] } else { ast.empty_expr() }
+						expr: if left.len == right.len { right[i] } else { ast.empty_expr }
 						share: share
 						is_mut: lx.is_mut || p.inside_for
 						pos: lx.pos

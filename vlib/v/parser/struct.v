@@ -267,7 +267,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 					}
 				}
 			}
-			mut default_expr := ast.empty_expr()
+			mut default_expr := ast.empty_expr
 			mut has_default_expr := false
 			if !is_embed {
 				if p.tok.kind == .assign {
@@ -402,12 +402,12 @@ fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind) ast.Struc
 	no_keys := p.peek_tok.kind != .colon && p.tok.kind != .rcbr && p.tok.kind != .ellipsis // `Vec{a,b,c}
 	saved_is_amp := p.is_amp
 	p.is_amp = false
-	mut update_expr := ast.empty_expr()
+	mut update_expr := ast.empty_expr
 	mut update_expr_comments := []ast.Comment{}
 	mut has_update_expr := false
 	for p.tok.kind !in [.rcbr, .rpar, .eof] {
 		mut field_name := ''
-		mut expr := ast.empty_expr()
+		mut expr := ast.empty_expr
 		mut field_pos := token.Pos{}
 		mut first_field_pos := token.Pos{}
 		mut comments := []ast.Comment{}

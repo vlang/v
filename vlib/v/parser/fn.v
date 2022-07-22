@@ -120,7 +120,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 			p.next()
 			array_decompose = true
 		}
-		mut expr := ast.empty_expr()
+		mut expr := ast.empty_expr
 		if p.tok.kind == .name && p.peek_tok.kind == .colon {
 			// `foo(key:val, key2:val2)`
 			expr = p.struct_init('void_type', .short_syntax)

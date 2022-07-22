@@ -146,30 +146,23 @@ pub fn (cty ComptimeType) str() string {
 	}
 }
 
-pub struct EmptyExpr {
-	x int
-}
-
-pub fn empty_expr() Expr {
-	return EmptyExpr{}
-}
+pub type EmptyExpr = u8
 
 pub struct EmptyStmt {
 pub:
 	pos token.Pos
 }
 
-pub fn empty_stmt() Stmt {
-	return EmptyStmt{}
-}
-
 pub struct EmptyNode {
-	x int
+pub:
+	pos token.Pos
 }
 
-pub fn empty_node() Node {
-	return EmptyNode{}
-}
+pub const empty_expr = Expr(EmptyExpr(0))
+
+pub const empty_stmt = Stmt(EmptyStmt{})
+
+pub const empty_node = Node(EmptyNode{})
 
 // `{stmts}` or `unsafe {stmts}`
 pub struct Block {

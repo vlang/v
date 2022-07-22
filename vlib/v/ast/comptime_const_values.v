@@ -15,7 +15,7 @@ pub type ComptTimeConstValue = EmptyExpr
 	| u8
 
 pub fn empty_comptime_const_expr() ComptTimeConstValue {
-	return EmptyExpr{}
+	return EmptyExpr(0)
 }
 
 pub fn (val ComptTimeConstValue) i8() ?i8 {

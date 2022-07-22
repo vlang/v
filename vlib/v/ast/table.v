@@ -1432,7 +1432,7 @@ pub fn (mut t Table) bitsize_to_type(bit_size int) Type {
 			if bit_size % 8 != 0 { // there is no way to do `i2131(32)` so this should never be reached
 				t.panic('compiler bug: bitsizes must be multiples of 8')
 			}
-			return new_type(t.find_or_register_array_fixed(u8_type, bit_size / 8, empty_expr()))
+			return new_type(t.find_or_register_array_fixed(u8_type, bit_size / 8, empty_expr))
 		}
 	}
 }

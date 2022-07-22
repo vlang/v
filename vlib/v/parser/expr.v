@@ -10,7 +10,7 @@ import v.token
 pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	return p.check_expr(precedence) or {
 		if token.is_decl(p.tok.kind) && p.disallow_declarations_in_script_mode() {
-			return ast.empty_expr()
+			return ast.empty_expr
 		}
 		p.error_with_pos('invalid expression: unexpected $p.tok', p.tok.pos())
 	}
@@ -18,7 +18,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 
 pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 	p.trace_parser('expr($precedence)')
-	mut node := ast.empty_expr()
+	mut node := ast.empty_expr
 	is_stmt_ident := p.is_stmt_ident
 	p.is_stmt_ident = false
 	if !p.pref.is_fmt {
@@ -509,7 +509,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	if p.inside_if_cond {
 		p.if_cond_comments << p.eat_comments()
 	}
-	mut right := ast.empty_expr()
+	mut right := ast.empty_expr
 	prev_expecting_type := p.expecting_type
 	if op in [.key_is, .not_is] {
 		p.expecting_type = true

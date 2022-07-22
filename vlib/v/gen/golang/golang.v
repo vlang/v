@@ -390,7 +390,7 @@ pub fn (mut f Gen) node_str(node ast.Node) string {
 //=== General Stmt-related methods and helpers ===//
 
 pub fn (mut f Gen) stmts(stmts []ast.Stmt) {
-	mut prev_stmt := if stmts.len > 0 { stmts[0] } else { ast.empty_stmt() }
+	mut prev_stmt := if stmts.len > 0 { stmts[0] } else { ast.empty_stmt }
 	f.indent++
 	for stmt in stmts {
 		if !f.pref.building_v && f.should_insert_newline_before_node(stmt, prev_stmt) {

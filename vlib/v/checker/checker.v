@@ -3103,7 +3103,7 @@ fn (mut c Checker) find_obj_definition(obj ast.ScopeObject) ?ast.Expr {
 	match obj {
 		ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister { name = obj.name }
 	}
-	mut expr := ast.empty_expr()
+	mut expr := ast.empty_expr
 	if obj is ast.Var {
 		if obj.is_mut {
 			return error('`$name` is mut and may have changed since its definition')
