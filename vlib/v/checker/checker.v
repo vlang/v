@@ -125,6 +125,7 @@ mut:
 	inside_decl_rhs                  bool
 	inside_if_guard                  bool // true inside the guard condition of `if x := opt() {}`
 	comptime_call_pos                int  // needed for correctly checking use before decl for templates
+	goto_labels                      map[string]int // to check for unused goto labels
 }
 
 pub fn new_checker(table &ast.Table, pref &pref.Preferences) &Checker {
@@ -226,6 +227,7 @@ pub fn (mut c Checker) check(ast_file_ &ast.File) {
 	}
 
 	c.check_scope_vars(c.file.scope)
+	c.check_unused_labels()
 }
 
 pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
@@ -1562,19 +1564,11 @@ fn (mut c Checker) stmt(node_ ast.Stmt) {
 		ast.GlobalDecl {
 			c.global_decl(mut node)
 		}
-		ast.GotoLabel {}
+		ast.GotoLabel {
+			c.goto_label(node)
+		}
 		ast.GotoStmt {
-			if c.inside_defer {
-				c.error('goto is not allowed in defer statements', node.pos)
-			}
-			if !c.inside_unsafe {
-				c.warn('`goto` requires `unsafe` (consider using labelled break/continue)',
-					node.pos)
-			}
-			if !isnil(c.table.cur_fn) && node.name !in c.table.cur_fn.label_names {
-				c.error('unknown label `$node.name`', node.pos)
-			}
-			// TODO: check label doesn't bypass variable declarations
+			c.goto_stmt(node)
 		}
 		ast.HashStmt {
 			c.hash_stmt(mut node)
@@ -3892,6 +3886,36 @@ pub fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what stri
 	if typ.has_flag(.shared_f) {
 		c.error('you have to create a handle and `rlock` it to use a `shared` element as non-mut $what',
 			pos)
+	}
+}
+
+fn (mut c Checker) goto_label(node ast.GotoLabel) {
+	// Register a goto label
+	if c.goto_labels[node.name] == 0 {
+		c.goto_labels[node.name] = 0
+	}
+}
+
+pub fn (mut c Checker) goto_stmt(node ast.GotoStmt) {
+	if c.inside_defer {
+		c.error('goto is not allowed in defer statements', node.pos)
+	}
+	if !c.inside_unsafe {
+		c.warn('`goto` requires `unsafe` (consider using labelled break/continue)', node.pos)
+	}
+	if !isnil(c.table.cur_fn) && node.name !in c.table.cur_fn.label_names {
+		c.error('unknown label `$node.name`', node.pos)
+	}
+	c.goto_labels[node.name]++ // Register a label use
+	// TODO: check label doesn't bypass variable declarations
+}
+
+fn (mut c Checker) check_unused_labels() {
+	for label, nr_uses in c.goto_labels {
+		if nr_uses == 0 {
+			// TODO show label's location
+			c.warn('label `$label` defined and not used', token.Pos{})
+		}
 	}
 }
 
