@@ -1339,12 +1339,20 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 		}
 		node.fields[i].typ = ast.mktyp(typ)
 		if mut field.expr is ast.IfExpr {
-			stmts := field.expr.branches[0].stmts
-			if stmts.len > 0 && stmts.last() is ast.ExprStmt
-				&& (stmts.last() as ast.ExprStmt).typ != ast.void_type {
-				field.expr.is_expr = true
-				field.expr.typ = (stmts.last() as ast.ExprStmt).typ
-				field.typ = field.expr.typ
+			if field.expr.branches.len == 2 {
+				first_stmts := field.expr.branches[0].stmts
+				second_stmts := field.expr.branches[1].stmts
+				if first_stmts.len > 0 && first_stmts.last() is ast.ExprStmt
+					&& (first_stmts.last() as ast.ExprStmt).typ != ast.void_type {
+					field.expr.is_expr = true
+					field.expr.typ = (first_stmts.last() as ast.ExprStmt).typ
+					field.typ = field.expr.typ
+				} else if second_stmts.len > 0 && second_stmts.last() is ast.ExprStmt
+					&& (second_stmts.last() as ast.ExprStmt).typ != ast.void_type {
+					field.expr.is_expr = true
+					field.expr.typ = (second_stmts.last() as ast.ExprStmt).typ
+					field.typ = field.expr.typ
+				}
 			}
 		}
 		c.const_deps = []
