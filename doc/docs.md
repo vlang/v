@@ -1272,6 +1272,8 @@ val2 := arr[333]?
 println(val2)
 ```
 
+Maps are ordered by insertion, like dictionaries in Python. The order is a guaranteed language feature. This may change in the future.
+
 ## Module imports
 
 For information about creating a module, see [Modules](#modules).
