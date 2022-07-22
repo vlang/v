@@ -374,7 +374,7 @@ pub fn (mut t Transformer) expr_stmt_if_expr(mut node ast.IfExpr) ast.Expr {
 	/*
 	FIXME: optimization causes cgen error `g.expr(): unhandled EmptyExpr`
 	if original.branches.len == 0 { // no remain branches to walk through
-		return ast.EmptyExpr{}
+		return ast.empty_expr
 	}*/
 	if node.branches.len == 1 && node.branches[0].cond.type_name() == 'unknown v.ast.Expr' {
 		node.branches[0].cond = ast.BoolLiteral{
@@ -484,7 +484,7 @@ pub fn (mut t Transformer) for_stmt(mut node ast.ForStmt) ast.Stmt {
 	match node.cond {
 		ast.BoolLiteral {
 			if !(node.cond as ast.BoolLiteral).val { // for false { ... } should be eleminated
-				return ast.EmptyStmt{}
+				return ast.empty_stmt
 			}
 		}
 		else {

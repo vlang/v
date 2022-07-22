@@ -419,7 +419,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 				if elem_sym.kind == .sum_type && left.sym.kind != .sum_type {
 					if node.left_type in elem_sym.sumtype_info().variants {
 						new_node_left := ast.CastExpr{
-							arg: ast.EmptyExpr{}
+							arg: ast.empty_expr
 							typ: elem_type
 							expr: node.left
 							expr_type: node.left_type
@@ -439,7 +439,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 			if elem_type_.sym.kind == .sum_type {
 				if node.left_type in elem_type_.sym.sumtype_info().variants {
 					new_node_left := ast.CastExpr{
-						arg: ast.EmptyExpr{}
+						arg: ast.empty_expr
 						typ: elem_type
 						expr: node.left
 						expr_type: node.left_type
@@ -509,7 +509,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 			if elem_type_.sym.kind == .sum_type {
 				if node.left_type in elem_type_.sym.sumtype_info().variants {
 					new_node_left := ast.CastExpr{
-						arg: ast.EmptyExpr{}
+						arg: ast.empty_expr
 						typ: elem_type
 						expr: node.left
 						expr_type: node.left_type

@@ -177,7 +177,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			}
 		}
 		if node.is_fixed {
-			idx := c.table.find_or_register_array_fixed(elem_type, node.exprs.len, ast.empty_expr())
+			idx := c.table.find_or_register_array_fixed(elem_type, node.exprs.len, ast.empty_expr)
 			if elem_type.has_flag(.generic) {
 				node.typ = ast.new_type(idx).set_flag(.generic)
 			} else {
