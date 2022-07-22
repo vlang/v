@@ -3915,6 +3915,7 @@ fn (mut c Checker) check_unused_labels() {
 		if nr_uses == 0 {
 			// TODO show label's location
 			c.warn('label `$label` defined and not used', token.Pos{})
+			c.goto_labels[label]++ // so that this warning is not shown again
 		}
 	}
 }

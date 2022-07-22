@@ -158,7 +158,7 @@ fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
 					lnumber := sline64.f_line_number
 					lineinfo = '$file_name:$lnumber'
 				} else {
-					addr:
+					// addr:
 					lineinfo = '?? : address = 0x${(&frame_addr):x}'
 				}
 				sfunc := unsafe { tos3(fname) }
