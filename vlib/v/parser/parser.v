@@ -2732,6 +2732,63 @@ fn (mut p Parser) scope_register_ab() {
 	})
 }
 
+fn (mut p Parser) dot_expr_method_call(left ast.Expr, field_name string, name_pos token.Pos, concrete_types []ast.Type, concrete_list_pos token.Pos) ast.Expr {
+	p.next()
+	args := p.call_args()
+	p.check(.rpar)
+	mut or_stmts := []ast.Stmt{}
+	mut or_kind := ast.OrKind.absent
+	mut or_pos := p.tok.pos()
+	if p.tok.kind == .key_orelse {
+		was_inside_or_expr := p.inside_or_expr
+		p.inside_or_expr = true
+		p.next()
+		p.open_scope()
+		p.scope.register(ast.Var{
+			name: 'err'
+			typ: ast.error_type
+			pos: p.tok.pos()
+			is_used: true
+			is_stack_obj: true
+		})
+		or_kind = .block
+		or_stmts = p.parse_block_no_scope(false)
+		or_pos = or_pos.extend(p.prev_tok.pos())
+		p.close_scope()
+		p.inside_or_expr = was_inside_or_expr
+	}
+	// `foo()?`
+	if p.tok.kind in [.question, .not] {
+		is_not := p.tok.kind == .not
+		p.next()
+		if p.inside_defer {
+			p.error_with_pos('error propagation not allowed inside `defer` blocks', p.prev_tok.pos())
+		}
+		or_kind = if is_not { .propagate_result } else { .propagate_option }
+	}
+	end_pos := p.prev_tok.pos()
+	pos := name_pos.extend(end_pos)
+	comments := p.eat_comments(same_line: true)
+	mcall_expr := ast.CallExpr{
+		left: left
+		name: field_name
+		args: args
+		name_pos: name_pos
+		pos: pos
+		is_method: true
+		concrete_types: concrete_types
+		concrete_list_pos: concrete_list_pos
+		or_block: ast.OrExpr{
+			stmts: or_stmts
+			kind: or_kind
+			pos: or_pos
+		}
+		scope: p.scope
+		comments: comments
+	}
+	return mcall_expr
+}
+
 fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	p.next()
 	if p.tok.kind == .dollar {
@@ -2754,6 +2811,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	if p.tok.kind == .not && p.peek_tok.kind == .lpar {
 		p.next()
 	}
+
 	// Method call
 	// TODO move to fn.v call_expr()
 	mut concrete_types := []ast.Type{}
@@ -2770,66 +2828,16 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			p.table.register_fn_concrete_types(field_name, concrete_types)
 		}
 	}
+
 	if p.tok.kind == .lpar {
-		p.next()
-		args := p.call_args()
-		p.check(.rpar)
-		mut or_stmts := []ast.Stmt{}
-		mut or_kind := ast.OrKind.absent
-		mut or_pos := p.tok.pos()
-		if p.tok.kind == .key_orelse {
-			was_inside_or_expr := p.inside_or_expr
-			p.inside_or_expr = true
-			p.next()
-			p.open_scope()
-			p.scope.register(ast.Var{
-				name: 'err'
-				typ: ast.error_type
-				pos: p.tok.pos()
-				is_used: true
-				is_stack_obj: true
-			})
-			or_kind = .block
-			or_stmts = p.parse_block_no_scope(false)
-			or_pos = or_pos.extend(p.prev_tok.pos())
-			p.close_scope()
-			p.inside_or_expr = was_inside_or_expr
-		}
-		// `foo()?`
-		if p.tok.kind in [.question, .not] {
-			is_not := p.tok.kind == .not
-			p.next()
-			if p.inside_defer {
-				p.error_with_pos('error propagation not allowed inside `defer` blocks',
-					p.prev_tok.pos())
+		defer {
+			if is_filter || field_name == 'sort' {
+				p.close_scope()
 			}
-			or_kind = if is_not { .propagate_result } else { .propagate_option }
 		}
-		end_pos := p.prev_tok.pos()
-		pos := name_pos.extend(end_pos)
-		comments := p.eat_comments(same_line: true)
-		mcall_expr := ast.CallExpr{
-			left: left
-			name: field_name
-			args: args
-			name_pos: name_pos
-			pos: pos
-			is_method: true
-			concrete_types: concrete_types
-			concrete_list_pos: concrete_list_pos
-			or_block: ast.OrExpr{
-				stmts: or_stmts
-				kind: or_kind
-				pos: or_pos
-			}
-			scope: p.scope
-			comments: comments
-		}
-		if is_filter || field_name == 'sort' {
-			p.close_scope()
-		}
-		return mcall_expr
+		return p.dot_expr_method_call(left, field_name, name_pos, concrete_types, concrete_list_pos)
 	}
+
 	mut is_mut := false
 	mut mut_pos := token.Pos{}
 	if p.inside_match || p.inside_if_expr || p.inside_for {
