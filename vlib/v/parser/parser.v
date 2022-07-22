@@ -2526,6 +2526,40 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	return node
 }
 
+enum OrBlockErrVarMode {
+	no_err_var
+	with_err_var
+}
+
+fn (mut p Parser) or_block(err_var_mode OrBlockErrVarMode) ([]ast.Stmt, token.Pos) {
+	was_inside_or_expr := p.inside_or_expr
+	defer {
+		p.inside_or_expr = was_inside_or_expr
+	}
+	p.inside_or_expr = true
+
+	mut pos := p.tok.pos()
+	p.next()
+	p.open_scope()
+	defer {
+		p.close_scope()
+	}
+
+	if err_var_mode == .with_err_var {
+		p.scope.register(ast.Var{
+			name: 'err'
+			typ: ast.error_type
+			pos: p.tok.pos()
+			is_used: true
+			is_stack_obj: true
+		})
+	}
+
+	stmts := p.parse_block_no_scope(false)
+	pos = pos.extend(p.prev_tok.pos())
+	return stmts, pos
+}
+
 fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 	// left == `a` in `a[0]`
 	start_pos := p.tok.pos()
@@ -2551,15 +2585,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 		if !p.or_is_handled {
 			// a[..end] or {...}
 			if p.tok.kind == .key_orelse {
-				was_inside_or_expr := p.inside_or_expr
-				p.inside_or_expr = true
-				or_pos_high = p.tok.pos()
-				p.next()
-				p.open_scope()
-				or_stmts_high = p.parse_block_no_scope(false)
-				or_pos_high = or_pos_high.extend(p.prev_tok.pos())
-				p.close_scope()
-				p.inside_or_expr = was_inside_or_expr
+				or_stmts_high, or_pos_high = p.or_block(.no_err_var)
 				return ast.IndexExpr{
 					left: left
 					pos: pos_high
@@ -2624,15 +2650,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 		if !p.or_is_handled {
 			// a[start..end] or {...}
 			if p.tok.kind == .key_orelse {
-				was_inside_or_expr := p.inside_or_expr
-				p.inside_or_expr = true
-				or_pos_low = p.tok.pos()
-				p.next()
-				p.open_scope()
-				or_stmts_low = p.parse_block_no_scope(false)
-				or_pos_low = or_pos_low.extend(p.prev_tok.pos())
-				p.close_scope()
-				p.inside_or_expr = was_inside_or_expr
+				or_stmts_low, or_pos_low = p.or_block(.no_err_var)
 				return ast.IndexExpr{
 					left: left
 					pos: pos_low
@@ -2688,15 +2706,7 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 	if !p.or_is_handled {
 		// a[i] or { ... }
 		if p.tok.kind == .key_orelse {
-			was_inside_or_expr := p.inside_or_expr
-			p.inside_or_expr = true
-			or_pos = p.tok.pos()
-			p.next()
-			p.open_scope()
-			or_stmts = p.parse_block_no_scope(false)
-			or_pos = or_pos.extend(p.prev_tok.pos())
-			p.close_scope()
-			p.inside_or_expr = was_inside_or_expr
+			or_stmts, or_pos = p.or_block(.no_err_var)
 			return ast.IndexExpr{
 				left: left
 				index: expr
@@ -2796,22 +2806,8 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		mut or_kind := ast.OrKind.absent
 		mut or_pos := p.tok.pos()
 		if p.tok.kind == .key_orelse {
-			was_inside_or_expr := p.inside_or_expr
-			p.inside_or_expr = true
-			p.next()
-			p.open_scope()
-			p.scope.register(ast.Var{
-				name: 'err'
-				typ: ast.error_type
-				pos: p.tok.pos()
-				is_used: true
-				is_stack_obj: true
-			})
 			or_kind = .block
-			or_stmts = p.parse_block_no_scope(false)
-			or_pos = or_pos.extend(p.prev_tok.pos())
-			p.close_scope()
-			p.inside_or_expr = was_inside_or_expr
+			or_stmts, or_pos = p.or_block(.with_err_var)
 		}
 		// `foo()?`
 		if p.tok.kind in [.question, .not] {

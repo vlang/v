@@ -49,21 +49,8 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 	mut or_pos := p.tok.pos()
 	if p.tok.kind == .key_orelse {
 		// `foo() or {}``
-		was_inside_or_expr := p.inside_or_expr
-		p.inside_or_expr = true
-		p.next()
-		p.open_scope()
-		p.scope.register(ast.Var{
-			name: 'err'
-			typ: ast.error_type
-			pos: p.tok.pos()
-			is_used: true
-		})
 		or_kind = .block
-		or_stmts = p.parse_block_no_scope(false)
-		or_pos = or_pos.extend(p.prev_tok.pos())
-		p.close_scope()
-		p.inside_or_expr = was_inside_or_expr
+		or_stmts, or_pos = p.or_block(.with_err_var)
 	}
 	if p.tok.kind in [.question, .not] {
 		is_not := p.tok.kind == .not
