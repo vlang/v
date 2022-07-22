@@ -838,7 +838,15 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				c.error('too many arguments in call to `$func.name`', node.pos)
 			}
 		}
-		c.expected_type = param.typ
+		if func.is_variadic && i >= func.params.len - 1 {
+			param_sym := c.table.sym(param.typ)
+			if param_sym.kind == .array {
+				info := param_sym.array_info()
+				c.expected_type = info.elem_type
+			}
+		} else {
+			c.expected_type = param.typ
+		}
 
 		e_sym := c.table.sym(c.expected_type)
 		if call_arg.expr is ast.MapInit && e_sym.kind == .struct_ {
