@@ -227,7 +227,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(last_expr.typ)}`',
 						node.pos)
 				}
-			} else {
+			} else if !node.is_comptime {
 				c.error('`$if_kind` expression requires an expression as the last statement of every branch',
 					branch.pos)
 			}
