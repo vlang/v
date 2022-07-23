@@ -24,7 +24,6 @@ fn C.freopen(&char, &char, &C.FILE) &C.FILE
 
 fn C._wfreopen(&u16, &u16, &C.FILE) &C.FILE
 
-
 fn fix_windows_path(path string) string {
 	mut p := path
 	$if windows {
