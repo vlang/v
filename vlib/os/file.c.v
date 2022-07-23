@@ -22,6 +22,9 @@ fn C.getc(&C.FILE) int
 
 fn C.freopen(&char, &char, &C.FILE) &C.FILE
 
+fn C._wfreopen(&u16, &u16, &C.FILE) &C.FILE
+
+
 fn fix_windows_path(path string) string {
 	mut p := path
 	$if windows {
@@ -178,8 +181,8 @@ pub fn (mut f File) reopen(path string, mode string) ? {
 	p := fix_windows_path(path)
 	mut cfile := &C.FILE(0)
 	$if windows {
-		cfile = C._wfreopen(p.to_wide(), &char(mode.str), f.cfile)
-	} else {
+		cfile = C._wfreopen(p.to_wide(), mode.to_wide(), f.cfile)
+	} $else {
 		cfile = C.freopen(&char(p.str), &char(mode.str), f.cfile)
 	}
 	if isnil(cfile) {
