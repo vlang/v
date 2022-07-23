@@ -176,7 +176,12 @@ pub fn (f &File) eof() bool {
 // reopen allows a `File` to be reused. It is mostly useful for reopening standard input and output.
 pub fn (mut f File) reopen(path string, mode string) ? {
 	p := fix_windows_path(path)
-	cfile := C.freopen(&char(p.str), &char(mode.str), f.cfile)
+	mut cfile := &C.FILE(0)
+	$if windows {
+		cfile = C._wfreopen(p.to_wide(), &char(mode.str), f.cfile)
+	} else {
+		cfile = C.freopen(&char(p.str), &char(mode.str), f.cfile)
+	}
 	if isnil(cfile) {
 		return error('Failed to reopen file "$path"')
 	}
