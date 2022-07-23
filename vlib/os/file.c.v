@@ -168,6 +168,7 @@ pub fn stderr() File {
 	}
 }
 
+// eof returns true, when the end of file has been reached
 pub fn (f &File) eof() bool {
 	return C.feof(f.cfile) != 0
 }
