@@ -187,7 +187,7 @@ pub const (
 
 	keywords        = build_keys()
 
-	matcher         = new_keywords_matcher<Kind>(keywords)
+	matcher         = new_keywords_matcher_trie_string<Kind>(keywords)
 )
 
 // build_keys genereates a map with keywords' string values:
@@ -351,7 +351,7 @@ pub fn (t Kind) is_assign() bool {
 // note: used for some code generation, so no quoting
 [inline]
 pub fn (t Kind) str() string {
-	return token.token_str[int(t)]
+	return token.token_str[int(t)] or { 'unknown' }
 }
 
 pub fn (t Token) str() string {
