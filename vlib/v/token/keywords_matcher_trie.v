@@ -79,7 +79,7 @@ pub fn (root &TrieNode) find(word string) int {
 	return -1
 }
 
-pub fn new_keywords_matcher_trie<T>(kw_map map[string]T) &TrieNode {
+pub fn new_keywords_matcher<T>(kw_map map[string]T) &TrieNode {
 	mut root := new_trie_node('')
 	for k, v in kw_map {
 		root.add_word(k, v, 0)

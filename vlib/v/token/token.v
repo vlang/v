@@ -187,7 +187,7 @@ pub const (
 
 	keywords        = build_keys()
 
-	matcher         = new_keywords_matcher_trie_string<Kind>(keywords)
+	matcher         = new_keywords_matcher<Kind>(keywords)
 )
 
 // build_keys genereates a map with keywords' string values:
