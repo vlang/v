@@ -101,10 +101,10 @@ fn testsuite_end() {
 	eprintln('\ndone')
 }
 
-fn test_bind() {
+fn test_bind() ? {
 	$if !network ? {
 		return
 	}
-	conn := net.dial_tcp_with_bind('vlang.io:80', '127.0.0.1:0')
-	conn.close()
+	mut conn := net.dial_tcp_with_bind('vlang.io:80', '127.0.0.1:0')?
+	conn.close()?
 }
