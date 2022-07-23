@@ -1,6 +1,6 @@
 module main
 
-fn string_none() string | none {
+fn string_none() string|none {
 	return none
 }
 

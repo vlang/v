@@ -151,7 +151,9 @@ fn (mut g Gen) final_gen_str(typ StrType) {
 			g.gen_str_for_thread(sym.info, styp, str_fn_name)
 		}
 		else {
-			verror('could not generate string method `$str_fn_name` for type `$styp`')
+			if sym.name != 'nil' {
+				verror('could not generate string method `$str_fn_name` for type `$styp`')
+			}
 		}
 	}
 }
@@ -401,7 +403,7 @@ fn (mut g Gen) gen_str_for_union_sum_type(info ast.SumType, styp string, str_fn_
 	mut clean_sum_type_v_type_name := ''
 	if info.is_anon {
 		variant_names := info.variants.map(util.strip_main_name(g.table.sym(it).name))
-		clean_sum_type_v_type_name = '(${variant_names.join(' | ')})'
+		clean_sum_type_v_type_name = '${variant_names.join('|')}'
 	} else {
 		clean_sum_type_v_type_name = styp.replace('__', '.')
 		if styp.ends_with('*') {

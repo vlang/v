@@ -24,7 +24,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	}
 	table_pos := p.tok.pos()
 	table_type := p.parse_type() // `User`
-	mut where_expr := ast.empty_expr()
+	mut where_expr := ast.empty_expr
 	has_where := p.tok.kind == .name && p.tok.lit == 'where'
 	mut query_one := false // one object is returned, not an array
 	if has_where {
@@ -47,11 +47,11 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		}
 	}
 	mut has_limit := false
-	mut limit_expr := ast.empty_expr()
+	mut limit_expr := ast.empty_expr
 	mut has_offset := false
-	mut offset_expr := ast.empty_expr()
+	mut offset_expr := ast.empty_expr
 	mut has_order := false
-	mut order_expr := ast.empty_expr()
+	mut order_expr := ast.empty_expr
 	mut has_desc := false
 	if p.tok.kind == .name && p.tok.lit == 'order' {
 		p.check_name() // `order`
@@ -232,7 +232,7 @@ fn (mut p Parser) parse_sql_stmt_line() ast.SqlStmtLine {
 	}
 
 	mut table_pos := p.tok.pos()
-	mut where_expr := ast.empty_expr()
+	mut where_expr := ast.empty_expr
 	if kind == .insert {
 		table_pos = p.tok.pos()
 		table_type = p.parse_type()

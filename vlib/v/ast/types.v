@@ -109,7 +109,7 @@ pub enum TypeFlag {
 
 /*
 To save precious TypeFlag bits the 4 possible ShareTypes are coded in the two
-	bits `shared` and `atomic_or_rw` (see sharetype_from_flags() below).
+bits `shared` and `atomic_or_rw` (see sharetype_from_flags() below).
 */
 pub enum ShareType {
 	mut_t
@@ -332,6 +332,11 @@ pub fn (typ Type) is_pointer() bool {
 }
 
 [inline]
+pub fn (typ Type) is_voidptr() bool {
+	return typ.idx() == ast.voidptr_type_idx
+}
+
+[inline]
 pub fn (typ Type) is_real_pointer() bool {
 	return typ.is_ptr() || typ.is_pointer()
 }
@@ -466,7 +471,7 @@ pub const (
 	number_type_idxs           = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, u8_type_idx,
 		char_type_idx, u16_type_idx, u32_type_idx, u64_type_idx, isize_type_idx, usize_type_idx,
 		f32_type_idx, f64_type_idx, int_literal_type_idx, float_literal_type_idx, rune_type_idx]
-	pointer_type_idxs          = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx]
+	pointer_type_idxs          = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx, nil_type_idx]
 	string_type_idxs           = [string_type_idx]
 )
 
@@ -807,7 +812,7 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		}
 	)
 	t.register_sym(kind: .interface_, name: 'IError', cname: 'IError', mod: 'builtin')
-	t.register_sym(kind: .voidptr, name: 'nil', cname: 'nil', mod: 'builtin')
+	t.register_sym(kind: .voidptr, name: 'nil', cname: 'voidptr', mod: 'builtin')
 }
 
 [inline]
@@ -1121,7 +1126,7 @@ pub mut:
 	parent_type    Type
 }
 
-// human readable type name
+// human readable type name, also used by vfmt
 pub fn (t &Table) type_to_str(typ Type) string {
 	return t.type_to_str_using_aliases(typ, map[string]string{})
 }
@@ -1264,7 +1269,7 @@ pub fn (t &Table) type_to_str_using_aliases(typ Type, import_aliases map[string]
 			} else if sym.info is SumType && (sym.info as SumType).is_anon {
 				variant_names := sym.info.variants.map(t.shorten_user_defined_typenames(t.sym(it).name,
 					import_aliases))
-				res = '${variant_names.join(' | ')}'
+				res = '${variant_names.join('|')}'
 			} else {
 				res = t.shorten_user_defined_typenames(res, import_aliases)
 			}

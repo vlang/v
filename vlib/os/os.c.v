@@ -264,7 +264,7 @@ pub fn vfopen(path string, mode string) ?&C.FILE {
 	if path.len == 0 {
 		return error('vfopen called with ""')
 	}
-	mut fp := voidptr(0)
+	mut fp := unsafe { nil }
 	$if windows {
 		fp = C._wfopen(path.to_wide(), mode.to_wide())
 	} $else {

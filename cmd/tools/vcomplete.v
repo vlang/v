@@ -95,6 +95,7 @@ const (
 		'doctor',
 		'fmt',
 		'gret',
+		'ls',
 		'repl',
 		'self',
 		'setup-freetype',

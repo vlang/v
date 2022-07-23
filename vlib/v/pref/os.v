@@ -93,13 +93,13 @@ pub fn (o OS) str() string {
 }
 
 pub fn get_host_os() OS {
+	if os.getenv('TERMUX_VERSION') != '' {
+		return .termux
+	}
+	$if android {
+		return .android
+	}
 	$if linux {
-		$if android {
-			if os.getenv('TERMUX_VERSION') != '' {
-				return .termux
-			}
-			return .android
-		}
 		return .linux
 	}
 	$if ios {

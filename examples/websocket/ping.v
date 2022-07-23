@@ -1,15 +1,12 @@
 module main
 
 import time
-import os
 import net.websocket
 
 fn main() {
-	println('press enter to quit...\n')
 	go start_server()
 	time.sleep(100 * time.millisecond)
-	go start_client()
-	os.get_line()
+	start_client()?
 }
 
 // start_server starts the websocket server, it receives messages

@@ -21,7 +21,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	mut has_type := false
 	mut has_default := false
 	mut has_it := false
-	mut default_expr := ast.empty_expr()
+	mut default_expr := ast.empty_expr
 	if p.tok.kind == .rsbr {
 		last_pos = p.tok.pos()
 		// []typ => `[]` and `typ` must be on the same line
@@ -125,8 +125,8 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	}
 	mut has_len := false
 	mut has_cap := false
-	mut len_expr := ast.empty_expr()
-	mut cap_expr := ast.empty_expr()
+	mut len_expr := ast.empty_expr
+	mut cap_expr := ast.empty_expr
 	if p.tok.kind == .lcbr && exprs.len == 0 && array_type != ast.void_type {
 		// `[]int{ len: 10, cap: 100}` syntax
 		p.next()

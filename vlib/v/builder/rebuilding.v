@@ -259,7 +259,7 @@ fn (mut b Builder) handle_usecache(vexe string) {
 pub fn (mut b Builder) should_rebuild() bool {
 	mut exe_name := b.pref.out_name
 	$if windows {
-		exe_name = exe_name + '.exe'
+		exe_name += '.exe'
 	}
 	if !os.is_file(exe_name) {
 		return true

@@ -46,8 +46,9 @@ pub mut:
 	it_name            string // the name to replace `it` with
 	in_lambda_depth    int
 	inside_const       bool
+	inside_unsafe      bool
 	is_mbranch_expr    bool // match a { x...y { } }
-	fn_scope           &ast.Scope = voidptr(0)
+	fn_scope           &ast.Scope = unsafe { nil }
 	wsinfix_depth      int
 }
 
@@ -410,7 +411,7 @@ pub fn (mut f Fmt) node_str(node ast.Node) string {
 //=== General Stmt-related methods and helpers ===//
 
 pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
-	mut prev_stmt := if stmts.len > 0 { stmts[0] } else { ast.empty_stmt() }
+	mut prev_stmt := if stmts.len > 0 { stmts[0] } else { ast.empty_stmt }
 	f.indent++
 	for stmt in stmts {
 		if !f.pref.building_v && f.should_insert_newline_before_node(stmt, prev_stmt) {
@@ -438,7 +439,13 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.assign_stmt(node)
 		}
 		ast.Block {
-			f.block(node)
+			if node.is_unsafe {
+				f.inside_unsafe = true
+				f.block(node)
+				f.inside_unsafe = false
+			} else {
+				f.block(node)
+			}
 		}
 		ast.BranchStmt {
 			f.branch_stmt(node)
@@ -500,7 +507,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.sql_stmt(node)
 		}
 		ast.StructDecl {
-			f.struct_decl(node)
+			f.struct_decl(node, false)
 		}
 		ast.TypeDecl {
 			f.type_decl(node)
@@ -675,7 +682,9 @@ pub fn (mut f Fmt) expr(node_ ast.Expr) {
 			f.type_of(node)
 		}
 		ast.UnsafeExpr {
+			f.inside_unsafe = true
 			f.unsafe_expr(node)
+			f.inside_unsafe = false
 		}
 		ast.ComptimeType {
 			match node.kind {
@@ -703,7 +712,7 @@ fn expr_is_single_line(expr ast.Expr) bool {
 			}
 		}
 		ast.StructInit {
-			if !expr.is_short && (expr.fields.len > 0 || expr.pre_comments.len > 0) {
+			if !expr.no_keys && (expr.fields.len > 0 || expr.pre_comments.len > 0) {
 				return false
 			}
 		}
@@ -1755,7 +1764,21 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 }
 
 pub fn (mut f Fmt) cast_expr(node ast.CastExpr) {
-	f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias) + '(')
+	typ := f.table.type_to_str_using_aliases(node.typ, f.mod2alias)
+	if typ == 'voidptr' {
+		// `voidptr(0)` => `nil`
+		if node.expr is ast.IntegerLiteral {
+			if node.expr.val == '0' {
+				if f.inside_unsafe {
+					f.write('nil')
+				} else {
+					f.write('unsafe { nil }')
+				}
+				return
+			}
+		}
+	}
+	f.write('${typ}(')
 	f.mark_types_import_as_used(node.typ)
 	f.expr(node.expr)
 	if node.has_arg {

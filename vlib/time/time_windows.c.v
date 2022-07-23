@@ -110,7 +110,7 @@ pub fn (t Time) local() Time {
 		millisecond: u16(t.microsecond / 1000)
 	}
 	st_local := SystemTime{}
-	C.SystemTimeToTzSpecificLocalTime(voidptr(0), &st_utc, &st_local)
+	C.SystemTimeToTzSpecificLocalTime(unsafe { nil }, &st_utc, &st_local)
 	t_local := Time{
 		year: st_local.year
 		month: st_local.month
@@ -133,7 +133,7 @@ fn win_now() Time {
 	st_utc := SystemTime{}
 	C.FileTimeToSystemTime(&ft_utc, &st_utc)
 	st_local := SystemTime{}
-	C.SystemTimeToTzSpecificLocalTime(voidptr(0), &st_utc, &st_local)
+	C.SystemTimeToTzSpecificLocalTime(unsafe { nil }, &st_utc, &st_local)
 	t := Time{
 		year: st_local.year
 		month: st_local.month

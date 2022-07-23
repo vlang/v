@@ -146,30 +146,23 @@ pub fn (cty ComptimeType) str() string {
 	}
 }
 
-pub struct EmptyExpr {
-	x int
-}
-
-pub fn empty_expr() Expr {
-	return EmptyExpr{}
-}
+pub type EmptyExpr = u8
 
 pub struct EmptyStmt {
 pub:
 	pos token.Pos
 }
 
-pub fn empty_stmt() Stmt {
-	return EmptyStmt{}
-}
-
 pub struct EmptyNode {
-	x int
+pub:
+	pos token.Pos
 }
 
-pub fn empty_node() Node {
-	return EmptyNode{}
-}
+pub const empty_expr = Expr(EmptyExpr(0))
+
+pub const empty_stmt = Stmt(EmptyStmt{})
+
+pub const empty_node = Node(EmptyNode{})
 
 // `{stmts}` or `unsafe {stmts}`
 pub struct Block {
@@ -310,15 +303,13 @@ pub:
 	is_mut           bool
 	is_global        bool
 	is_volatile      bool
-	//
 	is_deprecated    bool
-	deprecation_msg  string
-	deprecated_after string
 pub mut:
 	default_expr     Expr
 	default_expr_typ Type
 	name             string
 	typ              Type
+	anon_struct_decl StructDecl // only if the field is an anonymous struct
 }
 
 pub fn (f &StructField) equals(o &StructField) bool {
@@ -454,8 +445,9 @@ pub struct StructInit {
 pub:
 	pos             token.Pos
 	name_pos        token.Pos
-	is_short        bool // Foo{val1, val2}
-	is_short_syntax bool // foo(field1: val1, field2: val2)
+	no_keys         bool // `Foo{val1, val2}`
+	is_short_syntax bool // `foo(field1: val1, field2: val2)`
+	is_anon         bool //  `x: struct{ foo: bar }`
 pub mut:
 	unresolved           bool
 	pre_comments         []Comment
@@ -469,6 +461,12 @@ pub mut:
 	fields               []StructInitField
 	embeds               []StructInitEmbed
 	generic_types        []Type
+}
+
+pub enum StructInitKind {
+	normal
+	short_syntax
+	anon
 }
 
 // import statement

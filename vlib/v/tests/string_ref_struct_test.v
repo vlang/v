@@ -9,3 +9,9 @@ fn test_string_ref_struct() {
 	println(n.left)
 	assert '$n.left' == '&nil'
 }
+
+fn test_string_ref_struct_with_nil_instead_of_0() {
+	n := Node{123, unsafe { nil }, unsafe { nil }}
+	println(n.left)
+	assert '$n.left' == '&nil'
+}

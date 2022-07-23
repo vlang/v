@@ -20,7 +20,6 @@ pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.Qu
 	mut ret := [][]orm.Primitive{}
 
 	if config.is_count {
-		eprintln(config)
 		// 2. Get count of returned values & add it to ret array
 		step := stmt.step()
 		if step !in [sqlite_row, sqlite_ok, sqlite_done] {

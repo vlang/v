@@ -527,14 +527,14 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 			func := info.func
 			g.write('${g.typ(func.return_type)} (*$caname)(')
 			g.definitions.write_string('${g.typ(func.return_type)} (*$caname)(')
-			g.fn_decl_params(func.params, voidptr(0), func.is_variadic)
+			g.fn_decl_params(func.params, unsafe { nil }, func.is_variadic)
 			g.write(')')
 			g.definitions.write_string(')')
 			fparams << caname
 			fparamtypes << param_type_name
 		} else {
 			mut heap_prom := false
-			if scope != voidptr(0) {
+			if scope != unsafe { nil } {
 				if param.name != '_' {
 					if v := scope.find_var(param.name) {
 						if !v.is_stack_obj && v.is_auto_heap {

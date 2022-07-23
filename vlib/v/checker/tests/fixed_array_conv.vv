@@ -1,5 +1,5 @@
-arr := [2,3]!
-mut p := voidptr(0)
+arr := [2, 3]!
+mut p := unsafe { nil }
 p = arr
 mut ip := &int(0)
 ip = arr
@@ -10,5 +10,5 @@ _ = ip
 unsafe {
 	_ = memdup(arr, 1)
 	_ = tos(arr, 1)
-	fn (p &int){}(arr)
+	fn (p &int) {}(arr)
 }

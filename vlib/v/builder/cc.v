@@ -147,6 +147,7 @@ mut:
 	debug_mode  bool
 	is_cc_tcc   bool
 	is_cc_gcc   bool
+	is_cc_icc   bool
 	is_cc_msvc  bool
 	is_cc_clang bool
 	//
@@ -240,6 +241,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	//
 	ccoptions.is_cc_tcc = ccompiler.contains('tcc') || ccoptions.guessed_compiler == 'tcc'
 	ccoptions.is_cc_gcc = ccompiler.contains('gcc') || ccoptions.guessed_compiler == 'gcc'
+	ccoptions.is_cc_icc = ccompiler.contains('icc') || ccoptions.guessed_compiler == 'icc'
 	ccoptions.is_cc_msvc = ccompiler.contains('msvc') || ccoptions.guessed_compiler == 'msvc'
 	ccoptions.is_cc_clang = ccompiler.contains('clang') || ccoptions.guessed_compiler == 'clang'
 	// For C++ we must be very tolerant
@@ -274,6 +276,15 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 			}
 		}
 		optimization_options = ['-O3', '-fno-strict-aliasing', '-flto']
+	}
+	if ccoptions.is_cc_icc {
+		if ccoptions.debug_mode {
+			debug_options = ['-g']
+			if user_darwin_version > 9 {
+				debug_options << '-no-pie'
+			}
+		}
+		optimization_options = ['-Ofast', '-fno-strict-aliasing']
 	}
 	//
 	if ccoptions.debug_mode {

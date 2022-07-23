@@ -212,26 +212,26 @@ pub:
 	borderless_window bool
 	always_on_top     bool
 	bg_color          gx.Color
-	init_fn           FNCb   = voidptr(0)
-	frame_fn          FNCb   = voidptr(0)
-	native_frame_fn   FNCb   = voidptr(0)
-	cleanup_fn        FNCb   = voidptr(0)
-	fail_fn           FNFail = voidptr(0)
+	init_fn           FNCb   = unsafe { nil }
+	frame_fn          FNCb   = unsafe { nil }
+	native_frame_fn   FNCb   = unsafe { nil }
+	cleanup_fn        FNCb   = unsafe { nil }
+	fail_fn           FNFail = unsafe { nil }
 	//
-	event_fn FNEvent = voidptr(0)
-	quit_fn  FNEvent = voidptr(0)
+	event_fn FNEvent = unsafe { nil }
+	quit_fn  FNEvent = unsafe { nil }
 	//
-	keydown_fn FNKeyDown = voidptr(0)
-	keyup_fn   FNKeyUp   = voidptr(0)
-	char_fn    FNChar    = voidptr(0)
+	keydown_fn FNKeyDown = unsafe { nil }
+	keyup_fn   FNKeyUp   = unsafe { nil }
+	char_fn    FNChar    = unsafe { nil }
 	//
-	move_fn    FNMove    = voidptr(0)
-	click_fn   FNClick   = voidptr(0)
-	unclick_fn FNUnClick = voidptr(0)
-	leave_fn   FNEvent   = voidptr(0)
-	enter_fn   FNEvent   = voidptr(0)
-	resized_fn FNEvent   = voidptr(0)
-	scroll_fn  FNEvent   = voidptr(0)
+	move_fn    FNMove    = unsafe { nil }
+	click_fn   FNClick   = unsafe { nil }
+	unclick_fn FNUnClick = unsafe { nil }
+	leave_fn   FNEvent   = unsafe { nil }
+	enter_fn   FNEvent   = unsafe { nil }
+	resized_fn FNEvent   = unsafe { nil }
+	scroll_fn  FNEvent   = unsafe { nil }
 	// wait_events       bool // set this to true for UIs, to save power
 	fullscreen    bool
 	scale         f32 = 1.0
@@ -294,7 +294,7 @@ pub mut:
 	// *before* the current event was different
 }
 
-fn get_canvas(elem JS.HTMLElement) &JS.HTMLCanvasElement {
+fn get_canvas(elem JS.HTMLElement) JS.HTMLCanvasElement {
 	match elem {
 		JS.HTMLCanvasElement {
 			return elem
