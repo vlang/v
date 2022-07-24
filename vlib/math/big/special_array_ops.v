@@ -164,7 +164,7 @@ fn toom3_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u3
 
 	// The pieces of the calculation need to be worked on as proper big.Integers
 	// because the intermediate results can be negative. After recombination, the
-	// corrent result will be positive.
+	// final result will be positive.
 
 	// Slices of a and b
 	a0 := Integer{
