@@ -2,7 +2,7 @@ module token
 
 pub struct TrieNode {
 mut:
-	children       [123]&TrieNode
+	children       [256]&TrieNode
 	is_end_of_word bool
 	kind           Kind
 	prefix         string
@@ -79,10 +79,65 @@ pub fn (root &TrieNode) find(word string) int {
 	return -1
 }
 
-pub fn new_keywords_matcher<T>(kw_map map[string]T) &TrieNode {
-	mut root := new_trie_node('')
-	for k, v in kw_map {
-		root.add_word(k, v, 0)
+[heap]
+pub struct KeywordsMatcherTrie {
+mut:
+	nodes   []&TrieNode
+	min_len int = 999999
+	max_len int
+}
+
+[direct_array_access]
+pub fn (km &KeywordsMatcherTrie) find(word string) int {
+	wlen := word.len
+	if wlen < km.min_len {
+		return -1
 	}
-	return root
+	if wlen > km.max_len {
+		return -1
+	}
+	node := km.nodes[wlen]
+	if node == unsafe { nil } {
+		return -1
+	}
+	return node.find(word)
+}
+
+[direct_array_access]
+pub fn (mut km KeywordsMatcherTrie) add_word(word string, kind Kind) {
+	wlen := word.len
+	if km.max_len < wlen {
+		km.max_len = wlen
+	}
+	if km.min_len > wlen {
+		km.min_len = wlen
+	}
+	if km.nodes[wlen] == unsafe { nil } {
+		km.nodes[wlen] = new_trie_node('')
+	}
+	km.nodes[wlen].add_word(word, kind, 0)
+}
+
+pub fn new_keywords_matcher_trie<T>(kw_map map[string]T) KeywordsMatcherTrie {
+	mut km := KeywordsMatcherTrie{
+		nodes: []&TrieNode{cap: 20}
+	}
+	for _ in 0 .. 20 {
+		km.nodes << &TrieNode(0)
+	}
+	for k, v in kw_map {
+		km.add_word(k, v)
+	}
+	// dump(km.min_len)
+	// dump(km.max_len)
+	// for idx,x in km.nodes { if x != unsafe { nil } { eprintln('>> idx: $idx | ${ptr_str(x)}') } }
+	return km
+}
+
+pub fn new_keywords_matcher_from_array_trie(names []string) KeywordsMatcherTrie {
+	mut m := map[string]int{}
+	for i, name in names {
+		m[name] = i
+	}
+	return new_keywords_matcher_trie<int>(m)
 }
