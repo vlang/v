@@ -2,7 +2,7 @@ module token
 
 pub struct TrieNode {
 mut:
-	children       [256]&TrieNode
+	children       [123]&TrieNode
 	is_end_of_word bool
 	kind           Kind
 	prefix         string
