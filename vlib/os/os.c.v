@@ -510,7 +510,7 @@ pub fn get_raw_line() string {
 				if !res || bytes_read == 0 {
 					break
 				}
-				if *pos == `\n` || *pos == `\r` {
+				if *pos == `\n` {
 					offset++
 					break
 				}
