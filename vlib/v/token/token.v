@@ -351,7 +351,11 @@ pub fn (t Kind) is_assign() bool {
 // note: used for some code generation, so no quoting
 [inline]
 pub fn (t Kind) str() string {
-	return token.token_str[int(t)] or { 'unknown' }
+	idx := int(t)
+	if idx < 0 || token.token_str.len <= idx {
+		return 'unknown'
+	}
+	return token.token_str[idx]
 }
 
 pub fn (t Token) str() string {
