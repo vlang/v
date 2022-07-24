@@ -30,6 +30,13 @@ pub fn (mut app App) controller_create_user() vweb.Result {
 
 ['/user/get_all'; get]
 pub fn (mut app App) controller_get_all_user() vweb.Result {
+	token := app.get_header('token')
+
+	if !auth_verify(token) {
+		app.set_status(401, '')
+		return app.text('Not valid token')
+	}
+
 	response := app.service_get_all_user() or {
 		app.set_status(400, '')
 		return app.text('$err')
