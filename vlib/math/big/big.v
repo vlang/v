@@ -16,4 +16,9 @@ pub const (
 		signum: 1
 		is_const: true
 	}
+	three_int = Integer{
+		digits: [u32(3)]
+		signum: 1
+		is_const: true
+	}
 )

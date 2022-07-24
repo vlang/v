@@ -24,9 +24,9 @@ fn test_add_in_place() {
 	assert a == [u32(0x17ff72ad), 0x1439]
 }
 
-fn test_lshift_byte_in_place() {
+fn test_lshift_digits_in_place() {
 	mut a := [u32(5), 6, 7, 8]
-	lshift_byte_in_place(mut a, 2)
+	lshift_digits_in_place(mut a, 2)
 	assert a == [u32(0), 0, 5, 6, 7, 8]
 }
 
