@@ -666,7 +666,8 @@ fn (mut s Scanner) text_scan() token.Token {
 			// Check if not .eof to prevent panic
 			next_char := s.look_ahead(1)
 			kind := token.scanner_matcher.find(name)
-			if kind != -1 {
+			// '$type' '$struct'... will be recognized as ident (not keyword token)
+			if kind != -1 && !(s.is_inter_start && next_char == s.quote) {
 				return s.new_token(token.Kind(kind), name, name.len)
 			}
 			// 'asdf $b' => "b" is the last name in the string, dont start parsing string
