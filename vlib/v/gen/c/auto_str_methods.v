@@ -846,6 +846,15 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 	fn_body.writeln('\tstring res = str_intp( ${info.fields.len * 4 + 3}, _MOV((StrIntpData[]){')
 	fn_body.writeln('\t\t{_SLIT("$clean_struct_v_type_name{\\n"), 0, {.d_c=0}},')
 	for i, field in info.fields {
+		// Skip `str:skip` fields
+		if attr := field.attrs.find_first('str') {
+			if attr.arg == 'skip' {
+				fn_body.writeln('{_SLIT(""), 0, {.d_c=0}},')
+				fn_body.writeln('{_SLIT(""), 0, {.d_c=0}},')
+				continue
+			}
+		}
+
 		ftyp_noshared := if field.typ.has_flag(.shared_f) {
 			field.typ.deref().clear_flag(.shared_f)
 		} else {
