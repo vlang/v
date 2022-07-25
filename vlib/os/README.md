@@ -18,32 +18,32 @@ The following example shows an attack strategy on the left and an improved varia
 
 <table>
 <tr>
-<th>
+<td>
 Possibility for TOCTOU attack
 
 ```v
 if os.is_writable("file"){
 
-        // >> time to make a quick attack (e.g. symlink /etc/passwd to >file<) <<
+    // >> time to make a quick attack (e.g. symlink /etc/passwd to >file<) <<
 
-	mut f := create(path string) ?
+    mut f := create(path string) ?
         // <do something with file>
-	f.close()
+    f.close()
 }
 ```
-</th>
-<th>TOCTOU not possible
+</td>
+<td>TOCTOU not possible
 
 ```v
 mut f := create(path string) or {
-	println("file not writable")
+    println("file not writable")
 }
 
-// <do someting with file; file is locked>
+// >> do someting with file; file is locked <<
 
 f.close()
 ```
-</th>
+</td>
 </tr>
 </table>
 
