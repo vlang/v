@@ -228,6 +228,27 @@ pub fn base(opath string) string {
 	return path[pos + 1..]
 }
 
+// path_base returns the path containing the last element of path.
+// Trailing path separators are removed before extracting the last element.
+// If the path is empty, base returns ".". If the path consists entirely of separators, base returns a
+// single separator.
+pub fn path_base(opath string) string {
+	if opath == '' {
+		return '.'
+	}
+	path := opath.replace_each(['/', path_separator, r'\', path_separator])
+	if path == path_separator {
+		return path_separator
+	}
+	if path.ends_with(path_separator) {
+		path2 := path[..path.len - 1]
+		pos := path2.last_index(path_separator) or { return path2.clone() }
+		return path2[..pos + 1]
+	}
+	pos := path.last_index(path_separator) or { return path.clone() }
+	return path[..pos + 1]
+}
+
 // file_name will return all characters found after the last occurence of `path_separator`.
 // file extension is included.
 pub fn file_name(opath string) string {

@@ -655,6 +655,21 @@ fn test_base() {
 	assert os.base('filename') == 'filename'
 }
 
+fn test_path_base() {
+	$if windows {
+		assert os.path_base('v\\vlib\\os') == 'v\\vlib\\'
+		assert os.path_base('v\\vlib\\os\\') == 'v\\vlib\\'
+		assert os.path_base('v/vlib/os') == 'v\\vlib\\'
+		assert os.path_base('v/vlib/os/') == 'v\\vlib\\'
+	} $else {
+		assert os.path_base('v/vlib/os') == 'v/vlib/'
+		assert os.path_base('v/vlib/os/') == 'v/vlib/'
+		assert os.path_base('v\\vlib\\os') == 'v/vlib/'
+		assert os.path_base('v\\vlib\\os\\') == 'v/vlib/'
+	}
+	assert os.path_base('filename') == 'filename'
+}
+
 fn test_file_name() {
 	$if windows {
 		assert os.file_name('v\\vlib\\os\\os.v') == 'os.v'
