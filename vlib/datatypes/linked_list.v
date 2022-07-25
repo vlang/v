@@ -3,12 +3,12 @@ module datatypes
 pub struct ListNode<T> {
 mut:
 	data T
-	next &ListNode<T> = 0
+	next &ListNode<T> = unsafe { 0 }
 }
 
 pub struct LinkedList<T> {
 mut:
-	head &ListNode<T> = 0
+	head &ListNode<T> = unsafe { 0 }
 	len  int
 }
 
@@ -87,14 +87,14 @@ pub fn (mut list LinkedList<T>) pop() ?T {
 	if unsafe { node.next == 0 } {
 		// first node case
 		// set to null
-		list.head = voidptr(0)
+		list.head = unsafe { nil }
 	} else {
 		for unsafe { node.next.next != 0 } {
 			node = node.next
 		}
 		to_return = node.next.data
 		// set to null
-		node.next = voidptr(0)
+		node.next = unsafe { nil }
 	}
 	list.len -= 1
 	return to_return

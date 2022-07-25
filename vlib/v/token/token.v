@@ -108,6 +108,7 @@ pub enum Kind {
 	key_match
 	key_module
 	key_mut
+	key_nil
 	key_shared
 	key_lock
 	key_rlock
@@ -185,9 +186,9 @@ pub const (
 	token_str       = build_token_str()
 
 	keywords        = build_keys()
-
-	matcher         = new_keywords_matcher<Kind>(keywords)
 )
+
+pub const scanner_matcher = new_keywords_matcher_trie<Kind>(keywords)
 
 // build_keys genereates a map with keywords' string values:
 // Keywords['return'] == .key_return
@@ -313,6 +314,7 @@ fn build_token_str() []string {
 	s[Kind.key_match] = 'match'
 	s[Kind.key_select] = 'select'
 	s[Kind.key_none] = 'none'
+	s[Kind.key_nil] = 'nil'
 	s[Kind.key_offsetof] = '__offsetof'
 	s[Kind.key_is] = 'is'
 	// The following kinds are not for tokens returned by the V scanner.
@@ -349,7 +351,11 @@ pub fn (t Kind) is_assign() bool {
 // note: used for some code generation, so no quoting
 [inline]
 pub fn (t Kind) str() string {
-	return token.token_str[int(t)]
+	idx := int(t)
+	if idx < 0 || token.token_str.len <= idx {
+		return 'unknown'
+	}
+	return token.token_str[idx]
 }
 
 pub fn (t Token) str() string {
@@ -617,6 +623,7 @@ pub fn kind_to_string(k Kind) string {
 		.key_unsafe { 'key_unsafe' }
 		.keyword_end { 'keyword_end' }
 		._end_ { '_end_' }
+		.key_nil { 'key_nil' }
 	}
 }
 
@@ -738,5 +745,22 @@ pub fn kind_from_string(s string) ?Kind {
 		'keyword_end' { .keyword_end }
 		'_end_' { ._end_ }
 		else { error('unknown') }
+	}
+}
+
+pub fn assign_op_to_infix_op(op Kind) Kind {
+	return match op {
+		.plus_assign { .plus }
+		.minus_assign { .minus }
+		.mult_assign { .mul }
+		.div_assign { .div }
+		.xor_assign { .xor }
+		.mod_assign { .mod }
+		.or_assign { .pipe }
+		.and_assign { .amp }
+		.right_shift_assign { .right_shift }
+		.unsigned_right_shift_assign { .unsigned_right_shift }
+		.left_shift_assign { .left_shift }
+		else { ._end_ }
 	}
 }

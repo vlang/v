@@ -190,7 +190,8 @@ fn (mut p Process) win_read_string(idx int, maxbytes int) (string, int) {
 		return '', 0
 	}
 	mut bytes_avail := int(0)
-	if !C.PeekNamedPipe(rhandle, voidptr(0), int(0), voidptr(0), &bytes_avail, voidptr(0)) {
+	if !C.PeekNamedPipe(rhandle, unsafe { nil }, int(0), unsafe { nil }, &bytes_avail,
+		unsafe { nil }) {
 		return '', 0
 	}
 	if bytes_avail == 0 {
@@ -235,12 +236,12 @@ fn (mut p Process) win_slurp(idx int) string {
 	}
 	soutput := read_data.str()
 	unsafe { read_data.free() }
-	if idx == 1 {
-		close_valid_handle(&wdata.child_stdout_read)
-	}
-	if idx == 2 {
-		close_valid_handle(&wdata.child_stderr_read)
-	}
+	//	if idx == 1 {
+	//		close_valid_handle(&wdata.child_stdout_read)
+	//	}
+	//	if idx == 2 {
+	//		close_valid_handle(&wdata.child_stderr_read)
+	//	}
 	return soutput
 }
 

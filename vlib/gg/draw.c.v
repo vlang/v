@@ -521,7 +521,35 @@ pub fn (ctx &Context) draw_circle_empty(x f32, y f32, radius f32, c gx.Color) {
 // `radius` defines the radius of the circle.
 // `c` is the fill color.
 pub fn (ctx &Context) draw_circle_filled(x f32, y f32, radius f32, c gx.Color) {
-	ctx.draw_circle_with_segments(x, y, radius, radius_to_segments(radius), c)
+	ctx.draw_polygon_filled(x, y, radius, radius_to_segments(radius), 0, c)
+}
+
+// draw_polygon_filled draws a filled polygon.
+// `x`,`y` defines the center of the polygon.
+// `size` defines the size of the polygon.
+// `edge` defines edge number of the polygon.
+// `rotation` defines rotation of the polygon.
+// `c` is the fill color.
+pub fn (ctx &Context) draw_polygon_filled(x f32, y f32, size f32, edge int, rotation f32, c gx.Color) {
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
+	sgl.c4b(c.r, c.g, c.b, c.a)
+	nx := x * ctx.scale
+	ny := y * ctx.scale
+	nr := size * ctx.scale
+	mut theta := f32(0)
+	mut xx := f32(0)
+	mut yy := f32(0)
+	sgl.begin_triangle_strip()
+	for i := 0; i < edge + 1; i++ {
+		theta = 2.0 * f32(math.pi) * f32(i) / f32(edge)
+		xx = nr * math.cosf(theta + f32(math.radians(rotation)))
+		yy = nr * math.sinf(theta + f32(math.radians(rotation)))
+		sgl.v2f(xx + nx, yy + ny)
+		sgl.v2f(nx, ny)
+	}
+	sgl.end()
 }
 
 // draw_circle_with_segments draws a filled circle with a specific number of segments.
@@ -530,25 +558,7 @@ pub fn (ctx &Context) draw_circle_filled(x f32, y f32, radius f32, c gx.Color) {
 // `segments` affects how smooth/round the circle is.
 // `c` is the fill color.
 pub fn (ctx &Context) draw_circle_with_segments(x f32, y f32, radius f32, segments int, c gx.Color) {
-	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
-	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
-	nx := x * ctx.scale
-	ny := y * ctx.scale
-	nr := radius * ctx.scale
-	mut theta := f32(0)
-	mut xx := f32(0)
-	mut yy := f32(0)
-	sgl.begin_triangle_strip()
-	for i := 0; i < segments + 1; i++ {
-		theta = 2.0 * f32(math.pi) * f32(i) / f32(segments)
-		xx = nr * math.cosf(theta)
-		yy = nr * math.sinf(theta)
-		sgl.v2f(xx + nx, yy + ny)
-		sgl.v2f(nx, ny)
-	}
-	sgl.end()
+	ctx.draw_polygon_filled(x, y, radius, segments, 0, c)
 }
 
 // draw_circle_line draws the outline of a circle with a specific number of segments.
@@ -658,6 +668,10 @@ pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_radius f32, thickness f
 		return
 	}
 
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
+
 	mut a1 := start_angle
 	mut a2 := end_angle
 
@@ -719,6 +733,10 @@ pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_radius f32, thickness f
 pub fn (ctx &Context) draw_arc_filled(x f32, y f32, inner_radius f32, thickness f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
 	if start_angle == end_angle || inner_radius <= 0.0 {
 		return
+	}
+
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
 	}
 
 	mut a1 := start_angle

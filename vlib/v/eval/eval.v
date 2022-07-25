@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module eval
 
+import os
 import v.ast
 import v.pref
 import v.util
@@ -66,7 +67,7 @@ pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 		e.error('mismatched parameter length for $func.name: got `$args.len`, expected `$func.params.len`')
 	}
 
-	if func.name in ['print', 'println', 'eprint', 'eprintln'] {
+	if func.name in ['print', 'println', 'eprint', 'eprintln', 'panic'] {
 		s := args[0].string() // stringify because println accepts anything as argument
 		match func.name {
 			'print' {
@@ -80,6 +81,9 @@ pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 			}
 			'eprintln' {
 				eprintln(s)
+			}
+			'panic' {
+				e.panic(s)
 			}
 			else {}
 		}
@@ -222,10 +226,27 @@ pub fn (mut e Eval) register_symbol(stmt ast.Stmt, mod string, file string) {
 
 fn (e Eval) error(msg string) {
 	eprintln('> V interpeter backtrace:')
-	for t in e.back_trace {
-		file_path := e.trace_file_paths[t.file_idx] or { t.file_idx.str() }
-		fn_name := e.trace_function_names[t.fn_idx] or { t.fn_idx.str() }
-		eprintln('  $file_path:${t.line + 1}:$fn_name}')
-	}
+	e.print_backtrace()
 	util.verror('interpreter', msg)
+}
+
+fn (e Eval) panic(s string) {
+	eprintln('V panic: $s')
+	eprintln('V hash: ${@VHASH}')
+	e.print_backtrace()
+	exit(1)
+}
+
+fn (e Eval) print_backtrace() {
+	for i := e.back_trace.len - 1; i >= 0; i-- {
+		t := e.back_trace[i]
+		file_path := if path := e.trace_file_paths[t.file_idx] {
+			os.real_path(path)
+		} else {
+			t.file_idx.str()
+		}
+		fn_name := e.trace_function_names[t.fn_idx] or { t.fn_idx.str() }
+		word := if i == e.back_trace.len - 1 { 'at' } else { 'by' }
+		eprintln('$file_path:${t.line + 1}: $word $fn_name')
+	}
 }

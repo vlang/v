@@ -959,6 +959,9 @@ fn (mut g JsGen) expr(node_ ast.Expr) {
 		ast.LockExpr {
 			g.gen_lock_expr(node)
 		}
+		ast.Nil {
+			g.write('null')
+		}
 		ast.NodeError {}
 		ast.None {
 			g.write('none__')
@@ -1121,7 +1124,7 @@ fn (mut g JsGen) gen_ctemp_var(tvar ast.CTempVar) {
 
 fn (mut g JsGen) gen_assert_metainfo(node ast.AssertStmt) string {
 	mod_path := g.file.path
-	fn_name := if g.fn_decl == voidptr(0) || g.fn_decl.is_anon { 'anon' } else { g.fn_decl.name }
+	fn_name := if g.fn_decl == unsafe { nil } || g.fn_decl.is_anon { 'anon' } else { g.fn_decl.name }
 	line_nr := node.pos.line_nr
 	src := node.expr.str()
 	metaname := 'v_assert_meta_info_$g.new_tmp_var()'
@@ -1241,7 +1244,7 @@ fn (mut g JsGen) gen_assert_stmt(mut node ast.AssertStmt) {
 	}
 	g.writeln('} else {')
 	g.inc_indent()
-	fname := if g.fn_decl == voidptr(0) || g.fn_decl.is_anon { 'anon' } else { g.fn_decl.name }
+	fname := if g.fn_decl == unsafe { nil } || g.fn_decl.is_anon { 'anon' } else { g.fn_decl.name }
 	g.writeln('builtin__eprintln(new string("$mod_path:${node.pos.line_nr + 1}: FAIL: fn ${fname}(): assert $s_assertion"));')
 	g.writeln('builtin__exit(1);')
 	g.dec_indent()
@@ -3226,8 +3229,8 @@ fn (mut g JsGen) greater_typ(left ast.Type, right ast.Type) ast.Type {
 		if ast.i16_type_idx in lr {
 			return ast.Type(ast.i16_type_idx)
 		}
-		if ast.byte_type_idx in lr {
-			return ast.Type(ast.byte_type_idx)
+		if ast.u8_type_idx in lr {
+			return ast.Type(ast.u8_type_idx)
 		}
 		if ast.i8_type_idx in lr {
 			return ast.Type(ast.i8_type_idx)

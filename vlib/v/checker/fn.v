@@ -2,7 +2,6 @@ module checker
 
 import v.ast
 import v.pref
-import time
 import v.util
 import v.token
 
@@ -109,6 +108,17 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		} else if return_sym.kind == .array_fixed {
 			c.error('fixed array cannot be returned by function', node.return_type_pos)
 		}
+		// Ensure each generic type of the parameter was declared in the function's definition
+		if node.return_type.has_flag(.generic) {
+			generic_names := c.table.generic_type_names(node.return_type)
+			for name in generic_names {
+				if name !in node.generic_names {
+					fn_generic_names := node.generic_names.join(', ')
+					c.error('generic type name `$name` is not mentioned in fn `$node.name<$fn_generic_names>`',
+						node.return_type_pos)
+				}
+			}
+		}
 	} else {
 		for mut a in node.attrs {
 			if a.kind == .comptime_define {
@@ -208,7 +218,17 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					}
 				}
 			}
-			//&& node.params.len == 1 && param.typ.is_ptr() {
+			// Ensure each generic type of the parameter was declared in the function's definition
+			if param.typ.has_flag(.generic) {
+				generic_names := c.table.generic_type_names(param.typ)
+				for name in generic_names {
+					if name !in node.generic_names {
+						fn_generic_names := node.generic_names.join(', ')
+						c.error('generic type name `$name` is not mentioned in fn `$node.name<$fn_generic_names>`',
+							param.type_pos)
+					}
+				}
+			}
 			if (c.pref.translated || c.file.is_translated) && node.is_variadic && param.typ.is_ptr() {
 				// TODO c2v hack to fix `(const char *s, ...)`
 				param.typ = ast.int_type.ref()
@@ -725,7 +745,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		c.error('function `$func.name` is private', node.pos)
 	}
 	if !isnil(c.table.cur_fn) && !c.table.cur_fn.is_deprecated && func.is_deprecated {
-		c.deprecate_fnmethod('function', func.name, func, node)
+		c.deprecate('function', func.name, func.attrs, node.pos)
 	}
 	if func.is_unsafe && !c.inside_unsafe
 		&& (func.language != .c || (func.name[2] in [`m`, `s`] && func.mod == 'builtin')) {
@@ -818,7 +838,15 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				c.error('too many arguments in call to `$func.name`', node.pos)
 			}
 		}
-		c.expected_type = param.typ
+		if func.is_variadic && i >= func.params.len - 1 {
+			param_sym := c.table.sym(param.typ)
+			if param_sym.kind == .array {
+				info := param_sym.array_info()
+				c.expected_type = info.elem_type
+			}
+		} else {
+			c.expected_type = param.typ
+		}
 
 		e_sym := c.table.sym(c.expected_type)
 		if call_arg.expr is ast.MapInit && e_sym.kind == .struct_ {
@@ -1165,8 +1193,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			c.error('cannot $method_name `$arg_sym.name` to `$left_sym.name`', arg_expr.pos())
 		}
 	} else if final_left_sym.info is ast.Array && method_name in ['first', 'last', 'pop'] {
-		node.return_type = final_left_sym.info.elem_type
-		return node.return_type
+		return c.array_builtin_method_call(mut node, left_type, final_left_sym)
 	} else if c.pref.backend.is_js() && left_sym.name.starts_with('Promise<')
 		&& method_name == 'wait' {
 		info := left_sym.info as ast.Struct
@@ -1480,7 +1507,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				node.pos)
 		}
 		if !isnil(c.table.cur_fn) && !c.table.cur_fn.is_deprecated && method.is_deprecated {
-			c.deprecate_fnmethod('method', '${left_sym.name}.$method.name', method, node)
+			c.deprecate('method', '${left_sym.name}.$method.name', method.attrs, node.pos)
 		}
 		c.set_node_expected_arg_types(mut node, method)
 		if is_method_from_embed {
@@ -1627,49 +1654,6 @@ fn (mut c Checker) set_node_expected_arg_types(mut node ast.CallExpr, func &ast.
 			node.expected_arg_types << func.params[i].typ
 		}
 	}
-}
-
-fn (mut c Checker) deprecate_fnmethod(kind string, name string, the_fn ast.Fn, node ast.CallExpr) {
-	mut deprecation_message := ''
-	now := time.now()
-	mut after_time := now
-	for attr in the_fn.attrs {
-		if attr.name == 'deprecated' && attr.arg != '' {
-			deprecation_message = attr.arg
-		}
-		if attr.name == 'deprecated_after' && attr.arg != '' {
-			after_time = time.parse_iso8601(attr.arg) or {
-				c.error('invalid time format', attr.pos)
-				now
-			}
-		}
-	}
-	c.deprecate(kind, name, deprecation_message, now, after_time, node.pos)
-}
-
-fn (mut c Checker) deprecate(kind string, name string, deprecation_message string, now time.Time, after_time time.Time, pos token.Pos) {
-	start_message := '$kind `$name`'
-	error_time := after_time.add_days(180)
-	if error_time < now {
-		c.error(semicolonize('$start_message has been deprecated since $after_time.ymmdd()',
-			deprecation_message), pos)
-	} else if after_time < now {
-		c.warn(semicolonize('$start_message has been deprecated since $after_time.ymmdd(), it will be an error after $error_time.ymmdd()',
-			deprecation_message), pos)
-	} else if after_time == now {
-		c.warn(semicolonize('$start_message has been deprecated', deprecation_message),
-			pos)
-	} else {
-		c.note(semicolonize('$start_message will be deprecated after $after_time.ymmdd(), and will become an error after $error_time.ymmdd()',
-			deprecation_message), pos)
-	}
-}
-
-fn semicolonize(main string, details string) string {
-	if details == '' {
-		return main
-	}
-	return '$main; $details'
 }
 
 fn (mut c Checker) post_process_generic_fns() {
@@ -1925,7 +1909,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 					'\ne.g. `users.sort(a.id < b.id)`', node.pos)
 			}
 		} else if !(c.table.sym(elem_typ).has_method('<')
-			|| c.table.unalias_num_type(elem_typ) in [ast.int_type, ast.int_type.ref(), ast.string_type, ast.string_type.ref(), ast.i8_type, ast.i16_type, ast.i64_type, ast.byte_type, ast.rune_type, ast.u16_type, ast.u32_type, ast.u64_type, ast.f32_type, ast.f64_type, ast.char_type, ast.bool_type, ast.float_literal_type, ast.int_literal_type]) {
+			|| c.table.unalias_num_type(elem_typ) in [ast.int_type, ast.int_type.ref(), ast.string_type, ast.string_type.ref(), ast.i8_type, ast.i16_type, ast.i64_type, ast.u8_type, ast.rune_type, ast.u16_type, ast.u32_type, ast.u64_type, ast.f32_type, ast.f64_type, ast.char_type, ast.bool_type, ast.float_literal_type, ast.int_literal_type]) {
 			c.error('custom sorting condition must be supplied for type `${c.table.type_to_str(elem_typ)}`',
 				node.pos)
 		}

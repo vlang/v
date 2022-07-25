@@ -42,7 +42,7 @@ pub fn new_cache_manager(opts []string) CacheManager {
 	nlog(@FN, 'vcache_basepath: $vcache_basepath\n         opts: $opts\n      os.args: ${os.args.join(' ')}')
 	dlog(@FN, 'vcache_basepath: $vcache_basepath | opts:\n     $opts')
 	if !os.is_dir(vcache_basepath) {
-		os.mkdir_all(vcache_basepath) or { panic(err) }
+		os.mkdir_all(vcache_basepath, mode: 0o700) or { panic(err) } // keep directory private
 		dlog(@FN, 'created folder:\n    $vcache_basepath')
 	}
 	readme_file := os.join_path(vcache_basepath, 'README.md')
@@ -90,7 +90,6 @@ pub fn (mut cm CacheManager) key2cpath(key string) string {
 		cpath = os.join_path(cprefix_folder, khash)
 		if !os.is_dir(cprefix_folder) {
 			os.mkdir_all(cprefix_folder) or { panic(err) }
-			os.chmod(cprefix_folder, 0o777) or { panic(err) }
 		}
 		dlog(@FN, 'new hk')
 		dlog(@FN, '       key: $key')

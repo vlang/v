@@ -1,7 +1,6 @@
 module websocket
 
 import net
-import time
 
 // socket_read reads from socket into the provided buffer
 fn (mut ws Client) socket_read(mut buffer []u8) ?int {
@@ -13,15 +12,8 @@ fn (mut ws Client) socket_read(mut buffer []u8) ?int {
 			r := ws.ssl_conn.read(mut buffer)?
 			return r
 		} else {
-			for {
-				r := ws.conn.read(mut buffer) or {
-					if err.code() == net.err_timed_out_code {
-						continue
-					}
-					return err
-				}
-				return r
-			}
+			r := ws.conn.read(mut buffer)?
+			return r
 		}
 	}
 	return none
@@ -37,15 +29,8 @@ fn (mut ws Client) socket_read_ptr(buf_ptr &u8, len int) ?int {
 			r := ws.ssl_conn.socket_read_into_ptr(buf_ptr, len)?
 			return r
 		} else {
-			for {
-				r := ws.conn.read_ptr(buf_ptr, len) or {
-					if err.code() == net.err_timed_out_code {
-						continue
-					}
-					return err
-				}
-				return r
-			}
+			r := ws.conn.read_ptr(buf_ptr, len)?
+			return r
 		}
 	}
 	return none
@@ -91,8 +76,8 @@ fn (mut ws Client) dial_socket() ?&net.TcpConn {
 	mut t := net.dial_tcp(tcp_address)?
 	optval := int(1)
 	t.sock.set_option_int(.keep_alive, optval)?
-	t.set_read_timeout(30 * time.second)
-	t.set_write_timeout(30 * time.second)
+	t.set_read_timeout(ws.read_timeout)
+	t.set_write_timeout(ws.write_timeout)
 	if ws.is_ssl {
 		ws.ssl_conn.connect(mut t, ws.uri.hostname)?
 	}

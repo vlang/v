@@ -1,0 +1,6 @@
+vlib/v/checker/tests/struct_field_with_default_err.vv:2:22: error: unknown struct `T`
+    1 | struct Dummy<T> {
+    2 |     arbitrary_field T = T{}
+      |                         ~~~
+    3 | }
+    4 |

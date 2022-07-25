@@ -160,7 +160,7 @@ fn get_reg_sys_env_handle() ?voidptr {
 	$if windows { // wrap for cross-compile compat
 		// open the registry key
 		reg_key_path := 'Environment'
-		reg_env_key := voidptr(0) // or HKEY (HANDLE)
+		reg_env_key := unsafe { nil } // or HKEY (HANDLE)
 		if C.RegOpenKeyEx(os.hkey_current_user, reg_key_path.to_wide(), 0, 1 | 2, &reg_env_key) != 0 {
 			return error('Could not open "$reg_key_path" in the registry')
 		}

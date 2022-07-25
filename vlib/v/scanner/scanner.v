@@ -665,7 +665,7 @@ fn (mut s Scanner) text_scan() token.Token {
 			// tmp hack to detect . in ${}
 			// Check if not .eof to prevent panic
 			next_char := s.look_ahead(1)
-			kind := token.matcher.find(name)
+			kind := token.scanner_matcher.find(name)
 			if kind != -1 {
 				return s.new_token(token.Kind(kind), name, name.len)
 			}
@@ -1546,6 +1546,10 @@ pub fn (mut s Scanner) error(msg string) {
 		exit(1)
 	} else {
 		if s.pref.fatal_errors {
+			eprintln(util.formatted_error('error:', msg, s.file_path, pos))
+			if details.len > 0 {
+				eprintln(details)
+			}
 			exit(1)
 		}
 		if s.pref.message_limit >= 0 && s.errors.len >= s.pref.message_limit {

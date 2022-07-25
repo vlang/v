@@ -113,7 +113,7 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		return true
 	}
 	if exp_idx == ast.voidptr_type_idx || exp_idx == ast.byteptr_type_idx
-		|| (expected.is_ptr() && expected.deref().idx() == ast.byte_type_idx) {
+		|| (expected.is_ptr() && expected.deref().idx() == ast.u8_type_idx) {
 		if got.is_ptr() || got.is_pointer() {
 			return true
 		}
@@ -126,7 +126,7 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		}
 	}
 	if got_idx == ast.voidptr_type_idx || got_idx == ast.byteptr_type_idx
-		|| (got_idx == ast.byte_type_idx && got.is_ptr()) {
+		|| (got_idx == ast.u8_type_idx && got.is_ptr()) {
 		if expected.is_ptr() || expected.is_pointer() {
 			return true
 		}
@@ -150,9 +150,9 @@ pub fn (mut c Checker) check_types(got ast.Type, expected ast.Type) bool {
 		return false
 	}
 	if got.is_number() && expected.is_number() {
-		if got == ast.rune_type && expected == ast.byte_type {
+		if got == ast.rune_type && expected == ast.u8_type {
 			return true
-		} else if expected == ast.rune_type && got == ast.byte_type {
+		} else if expected == ast.rune_type && got == ast.u8_type {
 			return true
 		}
 		if c.promote_num(expected, got) != expected {
@@ -215,11 +215,11 @@ pub fn (mut c Checker) check_expected_call_arg(got ast.Type, expected_ ast.Type,
 		}
 		muls_got := got.nr_muls()
 		muls_expected := expected.nr_muls()
-		if idx_got == ast.byteptr_type_idx && idx_expected == ast.byte_type_idx
+		if idx_got == ast.byteptr_type_idx && idx_expected == ast.u8_type_idx
 			&& muls_got + 1 == muls_expected {
 			return
 		}
-		if idx_expected == ast.byteptr_type_idx && idx_got == ast.byte_type_idx
+		if idx_expected == ast.byteptr_type_idx && idx_got == ast.u8_type_idx
 			&& muls_expected + 1 == muls_got {
 			return
 		}
@@ -478,7 +478,7 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type ast.Type, right
 						ast.int_type { 31 }
 						ast.i64_type { 63 }
 						//
-						ast.byte_type { 7 }
+						ast.u8_type { 7 }
 						// ast.u8_type { 7 }
 						ast.u16_type { 15 }
 						ast.u32_type { 31 }
@@ -567,12 +567,12 @@ fn (c &Checker) promote_num(left_type ast.Type, right_type ast.Type) ast.Type {
 		} else { // f64, float_literal
 			return type_hi
 		}
-	} else if idx_lo >= ast.byte_type_idx { // both operands are unsigned
+	} else if idx_lo >= ast.u8_type_idx { // both operands are unsigned
 		return type_hi
 	} else if idx_lo >= ast.i8_type_idx
 		&& (idx_hi <= ast.isize_type_idx || idx_hi == ast.rune_type_idx) { // both signed
 		return if idx_lo == ast.i64_type_idx { type_lo } else { type_hi }
-	} else if idx_hi - idx_lo < (ast.byte_type_idx - ast.i8_type_idx) {
+	} else if idx_hi - idx_lo < (ast.u8_type_idx - ast.i8_type_idx) {
 		return type_lo // conversion unsigned -> signed if signed type is larger
 	} else if c.pref.translated {
 		return type_hi

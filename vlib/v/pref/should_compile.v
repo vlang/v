@@ -121,6 +121,10 @@ fn fname_without_platform_postfix(file string) string {
 		'_',
 		'android.c.v',
 		'_',
+		'termux.c.v',
+		'_',
+		'android_outside_termux.c.v',
+		'_',
 		'freebsd.c.v',
 		'_',
 		'openbsd.c.v',
@@ -178,10 +182,6 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 	if prefs.os != .ios && (file.ends_with('_ios.c.v') || file.ends_with('_ios.v')) {
 		return false
 	}
-	//
-	if prefs.os != .android && file.ends_with('_android.c.v') {
-		return false
-	}
 	if prefs.os != .freebsd && file.ends_with('_freebsd.c.v') {
 		return false
 	}
@@ -201,6 +201,30 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 		return false
 	}
 	if prefs.os != .vinix && file.ends_with('_vinix.c.v') {
+		return false
+	}
+	if prefs.os in [.android, .termux] {
+		// Note: Termux is running natively on Android devices, but the compilers there (clang) usually do not have access
+		// to the Android SDK. The code here ensures that you can have `_termux.c.v` and `_android_outside_termux.c.v` postfixes,
+		// to target both the cross compilation case (where the SDK headers are used and available), and the Termux case,
+		// where the Android SDK is not used.
+		if file.ends_with('_android.c.v') {
+			// common case, should compile for both cross android and termux
+			// eprintln('prefs.os: $prefs.os | file: $file | common')
+			return true
+		}
+		if file.ends_with('_android_outside_termux.c.v') {
+			// compile code that targets Android, but NOT Termux (i.e. the SDK is available)
+			// eprintln('prefs.os: $prefs.os | file: $file | android_outside_termux')
+			return prefs.os == .android
+		}
+		if file.ends_with('_termux.c.v') {
+			// compile Termux specific code
+			// eprintln('prefs.os: $prefs.os | file: $file | termux specific')
+			return prefs.os == .termux
+		}
+	} else if file.ends_with('_android.c.v') || file.ends_with('_termux.c.v')
+		|| file.ends_with('_android_outside_termux.c.v') {
 		return false
 	}
 	return true

@@ -419,7 +419,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 				if elem_sym.kind == .sum_type && left.sym.kind != .sum_type {
 					if node.left_type in elem_sym.sumtype_info().variants {
 						new_node_left := ast.CastExpr{
-							arg: ast.EmptyExpr{}
+							arg: ast.empty_expr
 							typ: elem_type
 							expr: node.left
 							expr_type: node.left_type
@@ -439,7 +439,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 			if elem_type_.sym.kind == .sum_type {
 				if node.left_type in elem_type_.sym.sumtype_info().variants {
 					new_node_left := ast.CastExpr{
-						arg: ast.EmptyExpr{}
+						arg: ast.empty_expr
 						typ: elem_type
 						expr: node.left
 						expr_type: node.left_type
@@ -509,7 +509,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 			if elem_type_.sym.kind == .sum_type {
 				if node.left_type in elem_type_.sym.sumtype_info().variants {
 					new_node_left := ast.CastExpr{
-						arg: ast.EmptyExpr{}
+						arg: ast.empty_expr
 						typ: elem_type
 						expr: node.left
 						expr_type: node.left_type
@@ -664,14 +664,19 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 		g.expr(node.right)
 		g.write(')')
 	} else {
-		method := g.table.find_method(left.sym, node.op.str()) or {
+		mut method := ast.Fn{}
+		mut method_name := ''
+		if left.sym.has_method(node.op.str()) {
+			method = left.sym.find_method(node.op.str()) or { ast.Fn{} }
+			method_name = left.sym.cname + '_' + util.replace_op(node.op.str())
+		} else if left.unaliased_sym.has_method(node.op.str()) {
+			method = left.unaliased_sym.find_method(node.op.str()) or { ast.Fn{} }
+			method_name = left.unaliased_sym.cname + '_' + util.replace_op(node.op.str())
+		} else {
 			g.gen_plain_infix_expr(node)
 			return
 		}
-		left_styp := g.typ(left.typ.set_nr_muls(0))
-		g.write(left_styp)
-		g.write('_')
-		g.write(util.replace_op(node.op.str()))
+		g.write(method_name)
 		g.write('(')
 		g.op_arg(node.left, method.params[0].typ, left.typ)
 		g.write(', ')
@@ -690,8 +695,9 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 		tmp_var := g.new_tmp_var()
 		array_info := left.unaliased_sym.info as ast.Array
 		noscan := g.check_noscan(array_info.elem_type)
-		//&& array_info.elem_type != g.unwrap_generic(node.right_type)
-		if right.unaliased_sym.kind == .array && array_info.elem_type != right.typ {
+		if right.unaliased_sym.kind == .array && array_info.elem_type != right.typ
+			&& !(right.sym.kind == .alias
+			&& g.table.sumtype_has_variant(array_info.elem_type, node.right_type, false)) {
 			// push an array => PUSH_MANY, but not if pushing an array to 2d array (`[][]int << []int`)
 			g.write('_PUSH_MANY${noscan}(')
 			mut expected_push_many_atype := left.typ

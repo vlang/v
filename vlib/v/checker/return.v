@@ -104,7 +104,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 			c.error('cannot use `${c.table.type_to_str(got_typ)}` as type `${c.table.type_to_str(exp_type)}` in return argument',
 				pos)
 		}
-		if !c.check_types(got_typ, exp_type) {
+		if node.exprs[expr_idxs[i]] !is ast.ComptimeCall && !c.check_types(got_typ, exp_type) {
 			got_typ_sym := c.table.sym(got_typ)
 			mut exp_typ_sym := c.table.sym(exp_type)
 			if exp_typ_sym.kind == .interface_ {
@@ -144,7 +144,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 			if mut r_expr is ast.Ident {
 				if mut r_expr.obj is ast.Var {
 					mut obj := unsafe { &r_expr.obj }
-					if c.fn_scope != voidptr(0) {
+					if c.fn_scope != unsafe { nil } {
 						obj = c.fn_scope.find_var(r_expr.obj.name) or { obj }
 					}
 					if obj.is_stack_obj && !c.inside_unsafe {

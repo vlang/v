@@ -113,7 +113,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			}
 			mut value_type := c.table.value_type(typ)
 			if sym.kind == .string {
-				value_type = ast.byte_type
+				value_type = ast.u8_type
 			}
 			if value_type == ast.void_type || typ.has_flag(.optional) {
 				if typ != ast.void_type {

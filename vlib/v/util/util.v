@@ -493,7 +493,7 @@ pub fn get_vtmp_folder() string {
 	uid := os.getuid()
 	vtmp = os.join_path_single(os.temp_dir(), 'v_$uid')
 	if !os.exists(vtmp) || !os.is_dir(vtmp) {
-		os.mkdir_all(vtmp) or { panic(err) }
+		os.mkdir_all(vtmp, mode: 0o700) or { panic(err) } // keep directory private
 	}
 	os.setenv('VTMP', vtmp, true)
 	return vtmp

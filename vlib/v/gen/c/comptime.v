@@ -159,11 +159,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 				}
 			}
 		}
-		if g.inside_call {
-			g.write(')')
-		} else {
-			g.write(');')
-		}
+		g.write(')')
 		return
 	}
 	mut j := 0
@@ -238,6 +234,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 			}
 		}
 	}
+	tmp_var := g.new_tmp_var()
 	line := if node.is_expr {
 		stmt_str := g.go_before_stmt(0)
 		g.write(util.tabs(g.indent))
@@ -269,21 +266,23 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 			len := branch.stmts.len
 			if len > 0 {
 				last := branch.stmts.last() as ast.ExprStmt
+				styp := g.typ(node.typ)
 				if len > 1 {
-					tmp := g.new_tmp_var()
-					styp := g.typ(last.typ)
 					g.indent++
-					g.writeln('$styp $tmp;')
+					g.writeln('$styp $tmp_var;')
 					g.writeln('{')
 					g.stmts(branch.stmts[..len - 1])
-					g.write('\t$tmp = ')
+					g.write('\t$tmp_var = ')
 					g.stmt(last)
+					g.writeln(';')
 					g.writeln('}')
 					g.indent--
-					g.writeln('$line $tmp;')
 				} else {
-					g.write('$line ')
+					g.indent++
+					g.write('$styp $tmp_var = ')
 					g.stmt(last)
+					g.writeln(';')
+					g.indent--
 				}
 			}
 		} else {
@@ -302,6 +301,9 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 		g.defer_ifdef = ''
 	}
 	g.writeln('#endif')
+	if node.is_expr {
+		g.write('$line $tmp_var')
+	}
 }
 
 // returns the value of the bool comptime expression
@@ -635,6 +637,10 @@ fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_optional bool) ?str
 		}
 		'android' {
 			return '__ANDROID__'
+		}
+		'termux' {
+			// Note: termux is running on Android natively so __ANDROID__ will also be defined
+			return '__TERMUX__'
 		}
 		'solaris' {
 			return '__sun'

@@ -1,5 +1,5 @@
 fn multi_voidptr_ret() (voidptr, bool) {
-	return voidptr(0), true
+	return unsafe { nil }, true
 }
 
 fn multi_byteptr_ret() (&u8, bool) {

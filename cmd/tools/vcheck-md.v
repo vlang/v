@@ -58,7 +58,7 @@ fn main() {
 	if term_colors {
 		os.setenv('VCOLORS', 'always', true)
 	}
-	os.mkdir_all(vcheckfolder) or {}
+	os.mkdir_all(vcheckfolder, mode: 0o700) or {} // keep directory private
 	defer {
 		os.rmdir_all(vcheckfolder) or {}
 	}

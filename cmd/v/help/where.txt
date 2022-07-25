@@ -1,0 +1,42 @@
+Usage:
+  v where symbol_type symbol_name [params]
+
+Examples:
+  v where fn main
+  v where struct User
+  v where method Square.area
+  v where fn pow -mod math
+  v where interface callable -dir some -dir other
+
+--------------------------------------------------------------------------------
+Prints the location of the searched symbols in the scope of the current project.
+--------------------------------------------------------------------------------
+
+symbol_name can be:
+  fn                    by default if omit symbol_type (don't omit preferably)
+  method                require Struct.method notation
+  struct
+  interface
+  enum
+  const
+  var
+  regexp
+
+params:
+  -mod  [mod_name]      Restrict to search recursively only within of the given 
+                        module, if not provided search in entire v scope
+                        (use -mod main to search inside all your project).
+  -dir  [dir_path]      Restrict to search non recursively within the given 
+                        folder/s, if not provided, search in entire v scope.
+  -vis  [visibility]    Can be: all, pub, pri (all by default if not provided).
+                        Restrict to search symbols with the given visibility.
+  -mut  [mutability]    Can be: any, yes, not (any by default if not provided).
+                        Restrict to search symbols with the given mutability.
+flags:
+  -h                    include Header
+  -f                    Format output (each match uses 3 lines)
+  -v                    for both above (more Verbose)
+
+Note: 
+  This tool is inspired by the vdoc tool and its design. However, this is 
+  for a more specific use, and can be improved. 

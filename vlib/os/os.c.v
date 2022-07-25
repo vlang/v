@@ -264,7 +264,7 @@ pub fn vfopen(path string, mode string) ?&C.FILE {
 	if path.len == 0 {
 		return error('vfopen called with ""')
 	}
-	mut fp := voidptr(0)
+	mut fp := unsafe { nil }
 	$if windows {
 		fp = C._wfopen(path.to_wide(), mode.to_wide())
 	} $else {
@@ -404,7 +404,7 @@ pub fn is_executable(path string) bool {
 		// 04 Read-only
 		// 06 Read and write
 		p := real_path(path)
-		return exists(p) && p.ends_with('.exe')
+		return exists(p) && (p.ends_with('.exe') || p.ends_with('.bat') || p.ends_with('.cmd'))
 	}
 	$if solaris {
 		statbuf := C.stat{}
@@ -510,7 +510,7 @@ pub fn get_raw_line() string {
 				if !res || bytes_read == 0 {
 					break
 				}
-				if *pos == `\n` || *pos == `\r` {
+				if *pos == `\n` {
 					offset++
 					break
 				}
@@ -964,6 +964,7 @@ pub fn execvp(cmdpath string, cmdargs []string) ? {
 	if res == -1 {
 		return error_with_code(posix_get_error_msg(C.errno), C.errno)
 	}
+
 	// just in case C._execvp returned ... that happens on windows ...
 	exit(res)
 }

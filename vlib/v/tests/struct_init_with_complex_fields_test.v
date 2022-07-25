@@ -4,7 +4,7 @@ type Fnc = fn ()
 
 struct Foo {
 	Bar
-	fnc_fn Fnc = voidptr(0)
+	fnc_fn Fnc = unsafe { nil }
 }
 
 struct App {

@@ -81,7 +81,7 @@ fn test_derive() {
 }
 
 fn test_flip_signedness() {
-	assert ast.i8_type.flip_signedness() == ast.byte_type
+	assert ast.i8_type.flip_signedness() == ast.u8_type
 	assert ast.u16_type.flip_signedness() == ast.i16_type
 	assert ast.isize_type.flip_signedness() == ast.usize_type
 }

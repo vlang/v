@@ -158,7 +158,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					ret_styp := g.typ(val.decl.return_type)
 					g.write('$ret_styp (*$ident.name) (')
 					def_pos := g.definitions.len
-					g.fn_decl_params(val.decl.params, voidptr(0), false)
+					g.fn_decl_params(val.decl.params, unsafe { nil }, false)
 					g.definitions.go_back(g.definitions.len - def_pos)
 					g.write(') = ')
 				} else {
@@ -344,7 +344,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 
 				g.write('$ret_styp ($msvc_call_conv*${g.get_ternary_name(ident.name)}) (')
 				def_pos := g.definitions.len
-				g.fn_decl_params(func.func.params, voidptr(0), false)
+				g.fn_decl_params(func.func.params, unsafe { nil }, false)
 				g.definitions.go_back(g.definitions.len - def_pos)
 				g.write(')$call_conv_attribute_suffix')
 			} else {
@@ -508,9 +508,9 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Type) {
 	// multi return
 	// TODO Handle in if_expr
-	is_opt := return_type.has_flag(.optional)
+	is_opt := return_type.has_flag(.optional) || return_type.has_flag(.result)
 	mr_var_name := 'mr_$node.pos.pos'
-	mr_styp := g.typ(return_type.clear_flag(.optional))
+	mr_styp := g.typ(return_type.clear_flag(.optional).clear_flag(.result))
 	g.write('$mr_styp $mr_var_name = ')
 	g.expr(node.right[0])
 	g.writeln(';')

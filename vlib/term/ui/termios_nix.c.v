@@ -10,7 +10,7 @@ import time
 #include <sys/ioctl.h>
 #include <signal.h>
 
-struct C.winsize {
+pub struct C.winsize {
 	ws_row u16
 	ws_col u16
 }
@@ -233,7 +233,7 @@ fn (mut ctx Context) termios_loop() {
 		}
 		if !ctx.paused {
 			sw.restart()
-			if ctx.cfg.event_fn != voidptr(0) {
+			if ctx.cfg.event_fn != unsafe { nil } {
 				unsafe {
 					len := C.read(C.STDIN_FILENO, &u8(ctx.read_buf.data) + ctx.read_buf.len,
 						ctx.read_buf.cap - ctx.read_buf.len)

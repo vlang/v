@@ -39,6 +39,7 @@ pub enum Platform {
 	dragonfly
 	js // for interoperability in prefs.OS
 	android
+	termux // like android, but note that termux is running on devices natively, not cross compiling from other platforms
 	solaris
 	serenity
 	vinix
@@ -64,6 +65,7 @@ pub fn platform_from_string(platform_str string) ?Platform {
 		'serenity' { return .serenity }
 		'vinix' { return .vinix }
 		'android' { return .android }
+		'termux' { return .termux }
 		'haiku' { return .haiku }
 		'nix' { return .linux }
 		'' { return .auto }

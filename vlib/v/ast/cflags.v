@@ -26,7 +26,7 @@ pub fn (mut t Table) parse_cflag(cflg string, mod string, ctimedefines []string)
 	}
 	mut fos := ''
 	mut allowed_os_overrides := ['linux', 'darwin', 'freebsd', 'openbsd', 'windows', 'mingw',
-		'solaris']
+		'solaris', 'android', 'termux']
 	allowed_os_overrides << ctimedefines
 	for os_override in allowed_os_overrides {
 		if !flag.starts_with(os_override) {

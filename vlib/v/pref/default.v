@@ -158,7 +158,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	}
 
 	$if prealloc {
-		if !p.no_parallel {
+		if !p.no_parallel && p.is_verbose {
 			eprintln('disabling parallel cgen, since V was built with -prealloc')
 		}
 		p.no_parallel = true

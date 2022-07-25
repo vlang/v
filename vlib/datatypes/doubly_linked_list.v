@@ -3,18 +3,18 @@ module datatypes
 struct DoublyListNode<T> {
 mut:
 	data T
-	next &DoublyListNode<T> = 0
-	prev &DoublyListNode<T> = 0
+	next &DoublyListNode<T> = unsafe { 0 }
+	prev &DoublyListNode<T> = unsafe { 0 }
 }
 
 pub struct DoublyLinkedList<T> {
 mut:
-	head &DoublyListNode<T> = 0
-	tail &DoublyListNode<T> = 0
+	head &DoublyListNode<T> = unsafe { 0 }
+	tail &DoublyListNode<T> = unsafe { 0 }
 	// Internal iter pointer for allowing safe modification
 	// of the list while iterating. TODO: use an option
 	// instead of a pointer to determine it is initialized.
-	iter &DoublyListIter<T> = 0
+	iter &DoublyListIter<T> = unsafe { 0 }
 	len  int
 }
 
@@ -89,12 +89,12 @@ pub fn (mut list DoublyLinkedList<T>) pop_back() ?T {
 	if list.len == 1 {
 		// head == tail
 		value := list.tail.data
-		list.head = voidptr(0)
-		list.tail = voidptr(0)
+		list.head = unsafe { nil }
+		list.tail = unsafe { nil }
 		return value
 	}
 	value := list.tail.data
-	list.tail.prev.next = voidptr(0) // unlink tail
+	list.tail.prev.next = unsafe { nil } // unlink tail
 	list.tail = list.tail.prev
 	return value
 }
@@ -110,12 +110,12 @@ pub fn (mut list DoublyLinkedList<T>) pop_front() ?T {
 	if list.len == 1 {
 		// head == tail
 		value := list.head.data
-		list.head = voidptr(0)
-		list.tail = voidptr(0)
+		list.head = unsafe { nil }
+		list.tail = unsafe { nil }
 		return value
 	}
 	value := list.head.data
-	list.head.next.prev = voidptr(0) // unlink head
+	list.head.next.prev = unsafe { nil } // unlink head
 	list.head = list.head.next
 	return value
 }
@@ -261,15 +261,15 @@ pub fn (list DoublyLinkedList<T>) str() string {
 // next implements the iter interface to use DoublyLinkedList with
 // V's for loop syntax.
 pub fn (mut list DoublyLinkedList<T>) next() ?T {
-	if list.iter == voidptr(0) {
+	if list.iter == unsafe { nil } {
 		// initialize new iter object
 		list.iter = &DoublyListIter<T>{
 			node: list.head
 		}
 		return list.next()
 	}
-	if list.iter.node == voidptr(0) {
-		list.iter = voidptr(0)
+	if list.iter.node == unsafe { nil } {
+		list.iter = unsafe { nil }
 		return none
 	}
 	defer {
@@ -280,5 +280,5 @@ pub fn (mut list DoublyLinkedList<T>) next() ?T {
 
 struct DoublyListIter<T> {
 mut:
-	node &DoublyListNode<T> = 0
+	node &DoublyListNode<T> = unsafe { 0 }
 }

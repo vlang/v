@@ -45,6 +45,37 @@ pub fn dial_tcp(address string) ?&TcpConn {
 	return error('dial_tcp failed for address $address')
 }
 
+// bind local address and dail.
+pub fn dial_tcp_with_bind(saddr string, laddr string) ?&TcpConn {
+	addrs := resolve_addrs_fuzzy(saddr, .tcp) or {
+		return error('$err.msg(); could not resolve address $saddr in dial_tcp_with_bind')
+	}
+
+	// Very simple dialer
+	for addr in addrs {
+		mut s := new_tcp_socket(addr.family()) or {
+			return error('$err.msg(); could not create new tcp socket in dial_tcp_with_bind')
+		}
+		s.bind(laddr) or {
+			s.close() or { continue }
+			continue
+		}
+		s.connect(addr) or {
+			// Connection failed
+			s.close() or { continue }
+			continue
+		}
+
+		return &TcpConn{
+			sock: s
+			read_timeout: net.tcp_default_read_timeout
+			write_timeout: net.tcp_default_write_timeout
+		}
+	}
+	// failed
+	return error('dial_tcp_with_bind failed for address $saddr')
+}
+
 pub fn (mut c TcpConn) close() ? {
 	$if trace_tcp ? {
 		eprintln('    TcpConn.close | c.sock.handle: ${c.sock.handle:6}')
@@ -366,6 +397,22 @@ pub fn (mut s TcpSocket) set_option_int(opt SocketOption, value int) ? {
 	socket_error(C.setsockopt(s.handle, C.SOL_SOCKET, int(opt), &value, sizeof(int)))?
 }
 
+// bind a local rddress for TcpSocket
+pub fn (mut s TcpSocket) bind(addr string) ? {
+	addrs := resolve_addrs(addr, AddrFamily.ip, .tcp) or {
+		return error('$err.msg(); could not resolve address $addr')
+	}
+
+	// TODO(logic to pick here)
+	a := addrs[0]
+
+	// cast to the correct type
+	alen := a.len()
+	socket_error_message(C.bind(s.handle, voidptr(&a), alen), 'binding to $addr failed') or {
+		return err
+	}
+}
+
 fn (mut s TcpSocket) close() ? {
 	return shutdown(s.handle)
 }
@@ -379,35 +426,39 @@ const (
 )
 
 fn (mut s TcpSocket) connect(a Addr) ? {
-	res := C.connect(s.handle, voidptr(&a), a.len())
-	if res == 0 {
-		return
-	}
-
-	// The  socket  is  nonblocking and the connection cannot be completed
-	// immediately.  (UNIX domain sockets failed with EAGAIN instead.)
-	// It is possible to select(2) or poll(2) for completion by selecting
-	// the socket for  writing.   After  select(2) indicates  writability,
-	// use getsockopt(2) to read the SO_ERROR option at level SOL_SOCKET to
-	// determine whether connect() completed successfully (SO_ERROR is zero) or
-	// unsuccessfully (SO_ERROR is one of the usual error codes  listed  here,
-	// ex‐ plaining the reason for the failure).
-	write_result := s.@select(.write, net.connect_timeout)?
-	if write_result {
-		err := 0
-		len := sizeof(err)
-		socket_error(C.getsockopt(s.handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len))?
-
-		if err != 0 {
-			return wrap_error(err)
+	$if !net_blocking_sockets ? {
+		res := C.connect(s.handle, voidptr(&a), a.len())
+		if res == 0 {
+			return
 		}
-		// Succeeded
-		return
+
+		// The  socket  is  nonblocking and the connection cannot be completed
+		// immediately.  (UNIX domain sockets failed with EAGAIN instead.)
+		// It is possible to select(2) or poll(2) for completion by selecting
+		// the socket for  writing.   After  select(2) indicates  writability,
+		// use getsockopt(2) to read the SO_ERROR option at level SOL_SOCKET to
+		// determine whether connect() completed successfully (SO_ERROR is zero) or
+		// unsuccessfully (SO_ERROR is one of the usual error codes  listed  here,
+		// ex‐ plaining the reason for the failure).
+		write_result := s.@select(.write, net.connect_timeout)?
+		if write_result {
+			err := 0
+			len := sizeof(err)
+			socket_error(C.getsockopt(s.handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len))?
+
+			if err != 0 {
+				return wrap_error(err)
+			}
+			// Succeeded
+			return
+		}
+
+		// Get the error
+		socket_error(C.connect(s.handle, voidptr(&a), a.len()))?
+
+		// otherwise we timed out
+		return err_connect_timed_out
+	} $else {
+		socket_error(C.connect(s.handle, voidptr(&a), a.len()))?
 	}
-
-	// Get the error
-	socket_error(C.connect(s.handle, voidptr(&a), a.len()))?
-
-	// otherwise we timed out
-	return err_connect_timed_out
 }

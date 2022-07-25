@@ -184,7 +184,7 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats 
 
 fn pg_type_from_v(typ int) ?string {
 	str := match typ {
-		orm.type_idx['i8'], orm.type_idx['i16'], orm.type_idx['byte'], orm.type_idx['u16'] {
+		orm.type_idx['i8'], orm.type_idx['i16'], orm.type_idx['u8'], orm.type_idx['u16'] {
 			'SMALLINT'
 		}
 		orm.type_idx['bool'] {
@@ -240,8 +240,8 @@ fn str_to_primitive(str string, typ int) ?orm.Primitive {
 		orm.type_idx['i64'] {
 			return orm.Primitive(str.i64())
 		}
-		// byte
-		orm.type_idx['byte'] {
+		// u8
+		orm.type_idx['u8'] {
 			data := str.i8()
 			return orm.Primitive(*unsafe { &u8(&data) })
 		}

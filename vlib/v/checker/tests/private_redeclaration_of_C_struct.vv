@@ -1,0 +1,9 @@
+import module_with_redeclaration as mr
+import sokol.audio
+
+const used = mr.used
+
+fn main() {
+	sd := C.saudio_desc{}
+	audio.setup(sd)
+}
