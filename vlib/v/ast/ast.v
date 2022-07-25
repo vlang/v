@@ -2276,11 +2276,3 @@ pub fn type_can_start_with_token(tok &token.Token) bool {
 	}
 	return false
 }
-
-fn build_builtin_type_names_matcher() token.KeywordsMatcher {
-	mut m := map[string]int{}
-	for i, name in builtin_type_names {
-		m[name] = i
-	}
-	return token.new_keywords_matcher<int>(m)
-}

@@ -13,6 +13,7 @@ module ast
 
 import strings
 import v.pref
+import v.token
 
 pub type Type = int
 
@@ -455,7 +456,7 @@ pub const builtin_type_names = ['void', 'voidptr', 'byteptr', 'charptr', 'i8', '
 	'isize', 'u8', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'char', 'bool', 'none', 'string',
 	'rune', 'array', 'map', 'chan', 'any', 'float_literal', 'int_literal', 'thread', 'Error', 'nil']
 
-pub const builtin_type_names_matcher = build_builtin_type_names_matcher()
+pub const builtin_type_names_matcher = token.new_keywords_matcher_from_array_trie(builtin_type_names)
 
 pub const (
 	integer_type_idxs          = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, u8_type_idx,
