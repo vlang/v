@@ -15,6 +15,7 @@
 - `[sql: type]` where `type` is a V type such as `int` or `f64`, or special type `serial`
 - `[sql: 'name']` sets a custom column name for the field
 - `[sql_type: 'SQL TYPE']` sets the sql type which is used in sql
+- `[default: 'sql defaults']` sets the default value or function when create a new table
 
 ## Usage
 
@@ -89,4 +90,54 @@ result := sql db {
 result := sql db {
     select from Foo where id > 1 order by id
 }
+```
+
+### Example
+```v ignore
+import pg
+
+struct Member {
+	id         string [default: 'gen_random_uuid()'; primary; sql_type: 'uuid']
+	name       string
+	created_at string [default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
+}
+
+fn main() {
+	db := pg.connect(pg.Config{
+		host: 'localhost'
+		port: 5432
+		user: 'user'
+		password: 'password'
+		dbname: 'dbname'
+	}) or {
+		println(err)
+		return
+	}
+
+	defer {
+		db.close()
+	}
+
+	sql db {
+		create table Member
+	}
+
+	new_member := Member{
+		name: 'John Doe'
+	}
+
+	sql db {
+		insert new_member into Member
+	}
+
+	selected_member := sql db {
+		select from Member where name == 'John Doe' limit 1
+	}
+
+	sql db {
+		update Member set name = 'Hitalo' where id == selected_member.id
+	}
+}
+
+
 ```

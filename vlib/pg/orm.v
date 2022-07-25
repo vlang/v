@@ -31,17 +31,17 @@ pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.Qu
 // sql stmt
 
 pub fn (db DB) insert(table string, data orm.QueryData) ? {
-	query := orm.orm_stmt_gen(table, '"', .insert, true, '$', 1, data, orm.QueryData{})
-	pg_stmt_worker(db, query, data, orm.QueryData{})?
+	query, converted_data := orm.orm_stmt_gen(table, '"', .insert, true, '$', 1, data, orm.QueryData{})
+	pg_stmt_worker(db, query, converted_data, orm.QueryData{})?
 }
 
 pub fn (db DB) update(table string, data orm.QueryData, where orm.QueryData) ? {
-	query := orm.orm_stmt_gen(table, '"', .update, true, '$', 1, data, where)
+	query, _ := orm.orm_stmt_gen(table, '"', .update, true, '$', 1, data, where)
 	pg_stmt_worker(db, query, data, where)?
 }
 
 pub fn (db DB) delete(table string, where orm.QueryData) ? {
-	query := orm.orm_stmt_gen(table, '"', .delete, true, '$', 1, orm.QueryData{}, where)
+	query, _ := orm.orm_stmt_gen(table, '"', .delete, true, '$', 1, orm.QueryData{}, where)
 	pg_stmt_worker(db, query, orm.QueryData{}, where)?
 }
 
@@ -163,10 +163,13 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats 
 			formats << 1
 		}
 		string {
-			types << u32(Oid.t_text)
-			vals << data.str
-			lens << data.len
-			formats << 0
+			// If paramTypes is NULL, or any particular element in the array is zero, 
+			// the server infers a data type for the parameter symbol in the same way 
+			// it would do for an untyped literal string.
+				vals << data.str
+				lens << data.len
+				types << &u8(0)
+				formats << 0
 		}
 		time.Time {
 			types << u32(Oid.t_int4)
