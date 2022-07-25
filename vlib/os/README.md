@@ -52,7 +52,7 @@ f.close()
 </tr>
 </table>
 
-<b> Proven affected functions </b>
+<b> Proven affected functions </b></br>
 The following functions should be used with care and only when used correctly.
 
 * os.is_readable()
