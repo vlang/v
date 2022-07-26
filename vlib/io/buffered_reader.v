@@ -36,20 +36,20 @@ pub fn new_buffered_reader(o BufferedReaderConfig) &BufferedReader {
 }
 
 // read fufills the Reader interface
-pub fn (mut r BufferedReader) read(mut buf []u8) ?int {
+pub fn (mut r BufferedReader) read(mut buf []u8) !int {
 	if r.end_of_stream {
-		return none
+		return error('unexpected end of the stream')
 	}
 	// read data out of the buffer if we dont have any
 	if r.needs_fill() {
 		if !r.fill_buffer() {
 			// end of stream
-			return none
+			return error('unexpected end of the stream')
 		}
 	}
 	read := copy(mut buf, r.buf[r.offset..r.len])
 	if read == 0 {
-		return none
+		return error('invalid copy of buffer')
 	}
 	r.offset += read
 	return read

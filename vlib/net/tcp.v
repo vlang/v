@@ -132,8 +132,10 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) ?int {
 	return none
 }
 
-pub fn (c TcpConn) read(mut buf []u8) ?int {
-	return c.read_ptr(buf.data, buf.len)
+pub fn (c TcpConn) read(mut buf []u8) !int {
+	return c.read_ptr(buf.data, buf.len) or {
+		return error('unexpected error in `read_ptr` function')
+	}
 }
 
 pub fn (mut c TcpConn) read_deadline() ?time.Time {

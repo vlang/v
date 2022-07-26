@@ -7,7 +7,7 @@ pub interface Reader {
 	// A type that implements this should return
 	// `none` on end of stream (EOF) instead of just returning 0
 mut:
-	read(mut buf []u8) ?int
+	read(mut buf []u8) !int
 }
 
 const (
@@ -50,7 +50,7 @@ pub fn read_any(mut r Reader) ?[]u8 {
 	mut b := []u8{len: io.read_all_len}
 	mut read := 0
 	for {
-		new_read := r.read(mut b[read..]) or { break }
+		new_read := r.read(mut b[read..]) or { return none }
 		read += new_read
 		if new_read == 0 {
 			break

@@ -9,10 +9,10 @@ fn (mut ws Client) socket_read(mut buffer []u8) ?int {
 			return error('socket_read: trying to read a closed socket')
 		}
 		if ws.is_ssl {
-			r := ws.ssl_conn.read(mut buffer)?
+			r := ws.ssl_conn.read(mut buffer) or { return none }
 			return r
 		} else {
-			r := ws.conn.read(mut buffer)?
+			r := ws.conn.read(mut buffer) or { return none }
 			return r
 		}
 	}

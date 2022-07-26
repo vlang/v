@@ -192,11 +192,13 @@ pub fn (mut f File) reopen(path string, mode string) ? {
 }
 
 // read implements the Reader interface.
-pub fn (f &File) read(mut buf []u8) ?int {
+pub fn (f &File) read(mut buf []u8) !int {
 	if buf.len == 0 {
-		return 0
+		return error('empty buffer')
 	}
-	nbytes := fread(buf.data, 1, buf.len, f.cfile)?
+	nbytes := fread(buf.data, 1, buf.len, f.cfile) or {
+		return error('unexpected error from fread')
+	}
 	return nbytes
 }
 
