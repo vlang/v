@@ -372,22 +372,28 @@ fn test_tell() ? {
 }
 
 fn test_reopen() ? {
-	mut f := os.open_file(tfile, 'w')?
-	f.write_string('Hello World!\nGood\r morning.')?
-	f.close()
+	os.write_file(tfile, 'Hello World!\nGood\r morning.')?
 
 	mut stdin := os.stdin()
 	stdin.reopen(tfile, 'r')?
-	line := os.get_line()
-	assert line == 'Hello World!'
+
+	mut lines := []string{}
+	for {
+		line := os.get_line()
+		println('line as bytes: ${line.bytes().hex():-30}, string: \n$line')
+		lines << line
+		if line == '' {
+			break
+		}
+	}
+	dump(lines.len)
+	assert lines[0] == 'Hello World!'
 }
 
 fn test_eof() ? {
-	mut f := os.open_file(tfile, 'w')?
-	f.write_string('Hello World!\n')?
-	f.close()
+	os.write_file(tfile, 'Hello World!\n')?
 
-	f = os.open(tfile)?
+	mut f := os.open(tfile)?
 	f.read_bytes(10)
 	assert !f.eof()
 	f.read_bytes(100)
