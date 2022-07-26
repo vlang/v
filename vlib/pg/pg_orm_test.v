@@ -30,13 +30,23 @@ mut:
 	deleted_at time.Time
 }
 
+struct TestDefaultAtribute {
+	id         string    [default: 'gen_random_uuid()'; primary; sql_type: 'uuid']
+	name       string
+	created_at string    [default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
+}
+
 fn test_pg_orm() {
 	mut db := pg.connect(
 		host: 'localhost'
 		user: 'postgres'
-		password: ''
+		password: 'password'
 		dbname: 'postgres'
 	) or { panic(err) }
+
+	defer{
+		db.close()
+	}
 
 	db.create('Test', [
 		orm.TableField{
@@ -185,9 +195,33 @@ fn test_pg_orm() {
 		drop table TestTimeType
 	}
 
-	db.close()
 	assert results[0].username == model.username
 	assert results[0].created_at == model.created_at
 	assert results[0].updated_at == model.updated_at
 	assert results[0].deleted_at == model.deleted_at
+
+	/** test default attribute
+	*/
+	sql db {
+		create table TestDefaultAtribute
+	}
+
+	mut result_defaults := db.exec("
+		SELECT column_default
+		FROM INFORMATION_SCHEMA.COLUMNS
+		WHERE TABLE_NAME = 'TestDefaultAtribute'
+		ORDER BY ORDINAL_POSITION
+	") or {
+		println(err)
+		panic(err)
+	}
+	mut information_schema_defaults_results := []string{}
+
+	for defaults in result_defaults {
+		information_schema_defaults_results << defaults.vals[0]
+	}
+	sql db {
+		drop table TestDefaultAtribute
+	}
+	assert ['gen_random_uuid()', '', 'CURRENT_TIMESTAMP'] == information_schema_defaults_results
 }
