@@ -1412,6 +1412,10 @@ fn (mut s Scanner) ident_char() string {
 		if u.len != 1 {
 			if escaped_hex || escaped_unicode {
 				s.error('invalid character literal `$orig` => `$c` ($u) (escape sequence did not refer to a singular rune)')
+			} else if u.len == 0 {
+				s.add_error_detail_with_pos('use quotes for strings, backticks for characters',
+					lspos)
+				s.error('invalid empty character literal `$orig`')
 			} else {
 				s.add_error_detail_with_pos('use quotes for strings, backticks for characters',
 					lspos)
