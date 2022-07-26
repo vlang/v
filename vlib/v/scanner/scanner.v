@@ -1415,7 +1415,7 @@ fn (mut s Scanner) ident_char() string {
 			} else if u.len == 0 {
 				s.add_error_detail_with_pos('use quotes for strings, backticks for characters',
 					lspos)
-				s.error('invalid character literal `$orig` => `$c` ($u) (empty literal)')
+				s.error('invalid empty character literal `$orig`')
 			} else {
 				s.add_error_detail_with_pos('use quotes for strings, backticks for characters',
 					lspos)
