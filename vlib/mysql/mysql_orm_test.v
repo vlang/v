@@ -30,6 +30,12 @@ mut:
 	deleted_at time.Time
 }
 
+struct TestDefaultAtribute {
+	id         string [primary; sql: serial]
+	name       string
+	created_at string [default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
+}
+
 fn test_mysql_orm() {
 	mut db := mysql.Connection{
 		host: 'localhost'
@@ -39,6 +45,9 @@ fn test_mysql_orm() {
 		dbname: 'mysql'
 	}
 	db.connect() or { panic(err) }
+	defer {
+		db.close()
+	}
 	db.create('Test', [
 		orm.TableField{
 			name: 'id'
@@ -88,7 +97,6 @@ fn test_mysql_orm() {
 	name := res[0][1]
 	age := res[0][2]
 
-
 	assert id is int
 	if id is int {
 		assert id == 1
@@ -104,11 +112,6 @@ fn test_mysql_orm() {
 		assert age == 101
 	}
 
-	db.connect() or {
-		println(err)
-		panic(err)
-	}
-	
 	/** test orm sql type
 	* - verify if all type create by attribute sql_type has created
 	*/
@@ -196,10 +199,38 @@ fn test_mysql_orm() {
 		drop table TestTimeType
 	}
 
-	db.close()
-
 	assert results[0].username == model.username
 	assert results[0].created_at == model.created_at
 	assert results[0].updated_at == model.updated_at
 	assert results[0].deleted_at == model.deleted_at
+
+	/** test default attribute
+	*/
+	sql db {
+		create table TestDefaultAtribute
+	}
+
+	mut result_defaults := db.query("
+		SELECT COLUMN_DEFAULT
+		FROM INFORMATION_SCHEMA.COLUMNS
+		WHERE TABLE_NAME = 'TestDefaultAtribute'
+		ORDER BY ORDINAL_POSITION
+	") or {
+		println(err)
+		panic(err)
+	}
+	mut information_schema_defaults_results := []string{}
+
+	sql db {
+		drop table TestDefaultAtribute
+	}
+
+	information_schema_column_default_sql := [{
+		'COLUMN_DEFAULT': ''
+	}, {
+		'COLUMN_DEFAULT': ''
+	}, {
+		'COLUMN_DEFAULT': 'CURRENT_TIMESTAMP'
+	}]
+	assert information_schema_column_default_sql == result_defaults.maps()
 }

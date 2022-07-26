@@ -160,7 +160,7 @@ pub fn (db Connection) last_id() orm.Primitive {
 
 // table
 pub fn (db Connection) create(table string, fields []orm.TableField) ? {
-	query := orm.orm_table_gen(table, '`', false, 0, fields, mysql_type_from_v, false) or {
+	query := orm.orm_table_gen(table, '`', true, 0, fields, mysql_type_from_v, false) or {
 		return err
 	}
 	mysql_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})?
