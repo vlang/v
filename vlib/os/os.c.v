@@ -395,6 +395,8 @@ pub fn exists(path string) bool {
 }
 
 // is_executable returns `true` if `path` is executable.
+// Warning: `is_executable()` is known to cause a TOCTOU vulnerability when used incorrectly
+// (for more information: https://github.com/vlang/v/blob/master/vlib/os/README.md)
 pub fn is_executable(path string) bool {
 	$if windows {
 		// Note: https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/access-waccess?view=vs-2019
@@ -419,6 +421,8 @@ pub fn is_executable(path string) bool {
 }
 
 // is_writable returns `true` if `path` is writable.
+// Warning: `is_writable()` is known to cause a TOCTOU vulnerability when used incorrectly
+// (for more information: https://github.com/vlang/v/blob/master/vlib/os/README.md)
 [manualfree]
 pub fn is_writable(path string) bool {
 	$if windows {
@@ -434,6 +438,8 @@ pub fn is_writable(path string) bool {
 }
 
 // is_readable returns `true` if `path` is readable.
+// Warning: `is_readable()` is known to cause a TOCTOU vulnerability when used incorrectly
+// (for more information: https://github.com/vlang/v/blob/master/vlib/os/README.md)
 [manualfree]
 pub fn is_readable(path string) bool {
 	$if windows {
@@ -723,6 +729,8 @@ pub fn is_dir(path string) bool {
 }
 
 // is_link returns a boolean indicating whether `path` is a link.
+// Warning: `is_link()` is known to cause a TOCTOU vulnerability when used incorrectly
+// (for more information: https://github.com/vlang/v/blob/master/vlib/os/README.md)
 pub fn is_link(path string) bool {
 	$if windows {
 		path_ := path.replace('/', '\\')
