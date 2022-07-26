@@ -102,7 +102,6 @@ fn test_pg_orm() {
 		kinds: [.eq, .eq]
 		is_and: [true]
 	}) or { panic(err) }
-	println('res $res')
 
 	id := res[0][0]
 	name := res[0][1]
@@ -122,16 +121,10 @@ fn test_pg_orm() {
 	if age is i64 {
 		assert age == 101
 	}
-}
 
-fn test_orm() {
-	println('text-------------------')
-	mut db := pg.connect(
-		host: 'localhost'
-		user: 'postgres'
-		password: ''
-		dbname: 'postgres'
-	) or { panic(err) }
+	/** test orm sql type
+	* - verify if all type create by attribute sql_type has created
+	*/
 
 	sql db {
 		create table TestCustomSqlType
@@ -146,8 +139,6 @@ fn test_orm() {
 		println(err)
 		panic(err)
 	}
-	println('result_custom_sql: $result_custom_sql')
-	println('result_custom_sql')
 	mut information_schema_data_types_results := []string{}
 	information_schema_custom_sql := ['integer', 'text', 'character varying',
 		'timestamp without time zone', 'uuid']
@@ -158,20 +149,18 @@ fn test_orm() {
 	sql db {
 		drop table TestCustomSqlType
 	}
-	db.close()
 
 	assert information_schema_data_types_results == information_schema_custom_sql
-}
 
-fn test_orm_time_type() ? {
-	mut db := pg.connect(
-		host: 'localhost'
-		user: 'postgres'
-		password: ''
-		dbname: 'postgres'
-	) or { panic(err) }
-
-	today := time.parse('2022-07-16 15:13:27')?
+	/** test_orm_time_type
+	* - test time.Time v type with sql_type: 'TIMESTAMP'
+	* - test string v type with sql_type: 'TIMESTAMP'
+	* - test time.Time v type without
+	*/
+	today := time.parse('2022-07-16 15:13:27') or {
+		println(err)
+		panic(err)
+	}
 
 	model := TestTimeType{
 		username: 'hitalo'
