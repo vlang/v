@@ -51,6 +51,10 @@ fn (stmt Stmt) get_f64(idx int) f64 {
 
 fn (stmt Stmt) get_text(idx int) string {
 	b := &char(C.sqlite3_column_text(stmt.stmt, idx))
+
+	if b == &char(0) {
+		return ''
+	}
 	return unsafe { b.vstring() }
 }
 

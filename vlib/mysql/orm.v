@@ -124,7 +124,7 @@ pub fn (db Connection) insert(table string, data orm.QueryData) ? {
 	mut converted_primitive_array := db.factory_orm_primitive_converted_from_sql(table,
 		data)?
 
-	converted_data := orm.QueryData{
+	converted_primitive_data := orm.QueryData{
 		fields: data.fields
 		data: converted_primitive_array
 		types: []
@@ -132,17 +132,19 @@ pub fn (db Connection) insert(table string, data orm.QueryData) ? {
 		is_and: []
 	}
 
-	query := orm.orm_stmt_gen(table, '`', .insert, false, '?', 1, converted_data, orm.QueryData{})
+	query, converted_data := orm.orm_stmt_gen(table, '`', .insert, false, '?', 1, converted_primitive_data,
+		orm.QueryData{})
 	mysql_stmt_worker(db, query, converted_data, orm.QueryData{})?
 }
 
 pub fn (db Connection) update(table string, data orm.QueryData, where orm.QueryData) ? {
-	query := orm.orm_stmt_gen(table, '`', .update, false, '?', 1, data, where)
+	query, _ := orm.orm_stmt_gen(table, '`', .update, false, '?', 1, data, where)
 	mysql_stmt_worker(db, query, data, where)?
 }
 
 pub fn (db Connection) delete(table string, where orm.QueryData) ? {
-	query := orm.orm_stmt_gen(table, '`', .delete, false, '?', 1, orm.QueryData{}, where)
+	query, _ := orm.orm_stmt_gen(table, '`', .delete, false, '?', 1, orm.QueryData{},
+		where)
 	mysql_stmt_worker(db, query, orm.QueryData{}, where)?
 }
 
@@ -158,7 +160,7 @@ pub fn (db Connection) last_id() orm.Primitive {
 
 // table
 pub fn (db Connection) create(table string, fields []orm.TableField) ? {
-	query := orm.orm_table_gen(table, '`', false, 0, fields, mysql_type_from_v, false) or {
+	query := orm.orm_table_gen(table, '`', true, 0, fields, mysql_type_from_v, false) or {
 		return err
 	}
 	mysql_stmt_worker(db, query, orm.QueryData{}, orm.QueryData{})?

@@ -2,7 +2,7 @@ import orm
 import v.ast
 
 fn test_orm_stmt_gen_update() {
-	query := orm.orm_stmt_gen('Test', "'", .update, true, '?', 0, orm.QueryData{
+	query, _ := orm.orm_stmt_gen('Test', "'", .update, true, '?', 0, orm.QueryData{
 		fields: ['test', 'a']
 		data: []
 		types: []
@@ -17,7 +17,7 @@ fn test_orm_stmt_gen_update() {
 }
 
 fn test_orm_stmt_gen_insert() {
-	query := orm.orm_stmt_gen('Test', "'", .insert, true, '?', 0, orm.QueryData{
+	query, _ := orm.orm_stmt_gen('Test', "'", .insert, true, '?', 0, orm.QueryData{
 		fields: ['test', 'a']
 		data: []
 		types: []
@@ -27,7 +27,7 @@ fn test_orm_stmt_gen_insert() {
 }
 
 fn test_orm_stmt_gen_delete() {
-	query := orm.orm_stmt_gen('Test', "'", .delete, true, '?', 0, orm.QueryData{
+	query, _ := orm.orm_stmt_gen('Test', "'", .delete, true, '?', 0, orm.QueryData{
 		fields: ['test', 'a']
 		data: []
 		types: []

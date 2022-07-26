@@ -51,17 +51,18 @@ pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.Qu
 // sql stmt
 
 pub fn (db DB) insert(table string, data orm.QueryData) ? {
-	query := orm.orm_stmt_gen(table, '`', .insert, true, '?', 1, data, orm.QueryData{})
-	sqlite_stmt_worker(db, query, data, orm.QueryData{})?
+	query, converted_data := orm.orm_stmt_gen(table, '`', .insert, true, '?', 1, data,
+		orm.QueryData{})
+	sqlite_stmt_worker(db, query, converted_data, orm.QueryData{})?
 }
 
 pub fn (db DB) update(table string, data orm.QueryData, where orm.QueryData) ? {
-	query := orm.orm_stmt_gen(table, '`', .update, true, '?', 1, data, where)
+	query, _ := orm.orm_stmt_gen(table, '`', .update, true, '?', 1, data, where)
 	sqlite_stmt_worker(db, query, data, where)?
 }
 
 pub fn (db DB) delete(table string, where orm.QueryData) ? {
-	query := orm.orm_stmt_gen(table, '`', .delete, true, '?', 1, orm.QueryData{}, where)
+	query, _ := orm.orm_stmt_gen(table, '`', .delete, true, '?', 1, orm.QueryData{}, where)
 	sqlite_stmt_worker(db, query, orm.QueryData{}, where)?
 }
 
