@@ -38,7 +38,7 @@ fn test_count_10_times_1_cycle_should_not_be_10_cycles_without_sync() {
 
 fn test_atomic_count_plus_one_u64() {
 	mut c := u64(0)
-	assert add_u64(&c, 1) == 1
+	assert stdatomic.add_u64(&c, 1) == 1
 }
 
 fn test_atomic_count_plus_one_i64() {
