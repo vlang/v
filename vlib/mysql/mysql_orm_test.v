@@ -31,15 +31,14 @@ mut:
 }
 
 fn test_mysql_orm() {
-	mut mdb := mysql.Connection{
+	mut db := mysql.Connection{
 		host: 'localhost'
 		port: 3306
 		username: 'root'
 		password: ''
 		dbname: 'mysql'
 	}
-	mdb.connect() or { panic(err) }
-	db := orm.Connection(mdb)
+	db.connect() or { panic(err) }
 	db.create('Test', [
 		orm.TableField{
 			name: 'id'
@@ -89,7 +88,6 @@ fn test_mysql_orm() {
 	name := res[0][1]
 	age := res[0][2]
 
-	mdb.close()
 
 	assert id is int
 	if id is int {
@@ -105,22 +103,15 @@ fn test_mysql_orm() {
 	if age is i64 {
 		assert age == 101
 	}
-}
-
-fn test_orm() {
-	mut db := mysql.Connection{
-		host: 'localhost'
-		port: 3306
-		username: 'root'
-		password: ''
-		dbname: 'mysql'
-	}
 
 	db.connect() or {
 		println(err)
 		panic(err)
 	}
-
+	
+	/** test orm sql type
+	* - verify if all type create by attribute sql_type has created
+	*/
 	sql db {
 		create table TestCustomSqlType
 	}
@@ -169,26 +160,18 @@ fn test_orm() {
 	sql db {
 		drop table TestCustomSqlType
 	}
-	db.close()
 
 	assert result_custom_sql.maps() == information_schema_custom_sql
-}
 
-fn test_orm_time_type() ? {
-	mut db := mysql.Connection{
-		host: 'localhost'
-		port: 3306
-		username: 'root'
-		password: ''
-		dbname: 'mysql'
-	}
-
-	db.connect() or {
+	/** test_orm_time_type
+	* - test time.Time v type with sql_type: 'TIMESTAMP'
+	* - test string v type with sql_type: 'TIMESTAMP'
+	* - test time.Time v type without
+	*/
+	today := time.parse('2022-07-16 15:13:27') or {
 		println(err)
 		panic(err)
 	}
-
-	today := time.parse('2022-07-16 15:13:27')?
 
 	model := TestTimeType{
 		username: 'hitalo'
