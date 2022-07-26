@@ -1,6 +1,7 @@
 import orm
 import mysql
 import time
+import v.ast
 
 struct TestCustomSqlType {
 	id      int    [primary; sql: serial]
@@ -42,7 +43,7 @@ fn test_mysql_orm() {
 	db.create('Test', [
 		orm.TableField{
 			name: 'id'
-			typ: 7
+			typ: ast.int_type_idx
 			attrs: [
 				StructAttribute{
 					name: 'primary'
@@ -57,12 +58,12 @@ fn test_mysql_orm() {
 		},
 		orm.TableField{
 			name: 'name'
-			typ: 20
+			typ: ast.string_type_idx
 			attrs: []
 		},
 		orm.TableField{
 			name: 'age'
-			typ: 7
+			typ: ast.int_type_idx
 		},
 	]) or { panic(err) }
 
@@ -75,11 +76,11 @@ fn test_mysql_orm() {
 		table: 'Test'
 		has_where: true
 		fields: ['id', 'name', 'age']
-		types: [7, 20, 8]
+		types: [ast.int_type_idx, ast.string_type_idx, ast.i64_type_idx]
 	}, orm.QueryData{}, orm.QueryData{
 		fields: ['name', 'age']
 		data: [orm.Primitive('Louis'), i64(101)]
-		types: [20, 8]
+		types: [ast.string_type_idx, ast.i64_type_idx]
 		is_and: [true, true]
 		kinds: [.eq, .eq]
 	}) or { panic(err) }

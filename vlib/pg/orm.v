@@ -167,18 +167,17 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats 
 			// If paramTypes is NULL, or any particular element in the array is zero,
 			// the server infers a data type for the parameter symbol in the same way
 			// it would do for an untyped literal string.
+			types << &u8(0)
 			vals << data.str
 			lens << data.len
-			types << &u8(0)
 			formats << 0
 		}
 		time.Time {
-			types << u32(Oid.t_int4)
-			unix := int(data.unix)
-			num := conv.htn32(unsafe { &u32(&unix) })
-			vals << &char(&num)
-			lens << int(sizeof(u32))
-			formats << 1
+			datetime := ((d as time.Time).format_ss() as string)
+			types << &u8(0)
+			vals << datetime.str
+			lens << datetime.len
+			formats << 0
 		}
 		orm.InfixType {
 			pg_stmt_match(mut types, mut vals, mut lens, mut formats, data.right)
@@ -194,8 +193,11 @@ fn pg_type_from_v(typ int) ?string {
 		orm.type_idx['bool'] {
 			'BOOLEAN'
 		}
-		orm.type_idx['int'], orm.type_idx['u32'], orm.time {
+		orm.type_idx['int'], orm.type_idx['u32'] {
 			'INT'
+		}
+		orm.time {
+			'TIMESTAMP'
 		}
 		orm.type_idx['i64'], orm.type_idx['u64'] {
 			'BIGINT'
