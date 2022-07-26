@@ -1,9 +1,9 @@
 struct Foo {
-	name string
 	age  int    [str: skip]
+	name string
 }
 
 fn main() {
-	x := Foo{'Peter', 25}
+	x := Foo{25, 'Peter'}
 	println(x)
 }
