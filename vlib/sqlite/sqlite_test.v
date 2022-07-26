@@ -33,6 +33,7 @@ fn test_sqlite() {
 fn test_can_access_sqlite_result_consts() {
 	assert sqlite.sqlite_ok == 0
 	assert sqlite.sqlite_error == 1
+	// assert sqlite.misuse == 21
 	assert sqlite.sqlite_row == 100
 	assert sqlite.sqlite_done == 101
 }
