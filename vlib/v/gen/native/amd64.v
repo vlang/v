@@ -515,7 +515,7 @@ fn (mut g Gen) mov_reg_to_var(var Var, reg Register, config VarConfig) {
 					g.write16(0x8966)
 					'WORD'
 				}
-				ast.i8_type_idx, ast.u8_type_idx, ast.char_type_idx {
+				ast.i8_type_idx, ast.u8_type_idx, ast.char_type_idx, ast.bool_type_idx {
 					g.write8(0x88)
 					'BYTE'
 				}
@@ -663,7 +663,7 @@ fn (mut g Gen) mov_var_to_reg(reg Register, var Var, config VarConfig) {
 					g.write([u8(0x48), 0x0f, 0xbe])
 					'movsx', 'BYTE'
 				}
-				ast.u8_type_idx, ast.char_type_idx {
+				ast.u8_type_idx, ast.char_type_idx, ast.bool_type_idx {
 					// movzx rax, BYTE PTR [rbp-0x8]
 					g.write([u8(0x48), 0x0f, 0xb6])
 					'movzx', 'BYTE'
@@ -1693,7 +1693,20 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 			}
 			else {
 				// dump(node)
-				g.v_error('unhandled assign_stmt expression: $right.type_name()', right.pos())
+				size := g.get_type_size(node.left_types[i])
+				if size !in [1,2,4,8] || node.op !in [.assign, .decl_assign] {
+					g.v_error('unhandled assign_stmt expression: $right.type_name()', right.pos())
+				}
+				if node.op == .decl_assign {
+					g.allocate_var(name, size, 0)
+				}
+				g.expr(right)
+				var := g.get_var_from_ident(ident)
+				match var {
+					LocalVar { g.mov_reg_to_var(var as LocalVar, .rax) }
+					GlobalVar { g.mov_reg_to_var(var as GlobalVar, .rax) }
+					Register { g.mov_reg(var as Register, .rax) }
+				}
 			}
 		}
 		// }

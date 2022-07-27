@@ -416,8 +416,11 @@ fn (mut g Gen) get_type_size(typ ast.Type) int {
 	if typ in ast.pointer_type_idxs {
 		return 8
 	}
+	if typ == ast.bool_type_idx {
+		return 1
+	}
 	// g.n_error('unknown type size')
-	return 8
+	return 0
 }
 
 fn (mut g Gen) get_sizeof_ident(ident ast.Ident) int {
@@ -965,7 +968,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.BoolLiteral {
 			g.mov64(.rax, if node.val { 1 } else { 0 })
-			eprintln('bool literal')
 		}
 		ast.CallExpr {
 			if node.name == 'C.syscall' {
