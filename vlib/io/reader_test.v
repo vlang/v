@@ -9,7 +9,7 @@ mut:
 
 fn (mut b Buf) read(mut buf []u8) !int {
 	if !(b.i < b.bytes.len) {
-		return error('index out of range')
+		return IError(Eof{})
 	}
 	n := copy(mut buf, b.bytes[b.i..])
 	b.i += n
@@ -46,7 +46,7 @@ mut:
 
 fn (mut s StringReader) read(mut buf []u8) !int {
 	if s.place >= s.text.len {
-		return error('index out of range')
+		return IError(Eof{})
 	}
 	read := copy(mut buf, s.text[s.place..].bytes())
 	s.place += read

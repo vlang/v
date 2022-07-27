@@ -1,5 +1,24 @@
 module io
 
+/// Eof error means that we reach the end of the stream.
+pub struct Eof {
+	Error
+}
+
+// NotExpected is a generic error that means that we receave a not expecte error.
+pub struct NotExpected {
+	cause string
+	code  int
+}
+
+fn (err NotExpected) msg() string {
+	return err.cause
+}
+
+fn (err NotExpected) code() int {
+	return err.code
+}
+
 // Reader represents a stream of data that can be read
 pub interface Reader {
 	// read reads up to buf.len bytes and places

@@ -10,7 +10,7 @@ mut:
 
 fn (mut s StringReader) read(mut buf []u8) !int {
 	if s.place >= s.text.len {
-		return error('out of index')
+		return IError(io.Eof{})
 	}
 	max_bytes := 100
 	end := if s.place + max_bytes >= s.text.len { s.text.len } else { s.place + max_bytes }

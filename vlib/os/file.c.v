@@ -1,5 +1,7 @@
 module os
 
+import io
+
 pub struct File {
 mut:
 	cfile voidptr // Using void* instead of FILE*
@@ -194,10 +196,13 @@ pub fn (mut f File) reopen(path string, mode string) ? {
 // read implements the Reader interface.
 pub fn (f &File) read(mut buf []u8) !int {
 	if buf.len == 0 {
-		return error('empty buffer')
+		return IError(io.Eof{})
 	}
 	nbytes := fread(buf.data, 1, buf.len, f.cfile) or {
-		return error('unexpected error from fread')
+		return IError(io.NotExpected{
+			cause: 'unexpected error from fread'
+			code: -1
+		})
 	}
 	return nbytes
 }
