@@ -509,7 +509,7 @@ pub fn (s string) replace_char(rep u8, with u8, repeat int) string {
 	}
 	// TODO Allocating ints is expensive. Should be a stack array
 	// - string.replace()
-	mut idxs := []int{cap:s.len}
+	mut idxs := []int{cap: s.len}
 	defer {
 		unsafe { idxs.free() }
 	}
@@ -561,7 +561,7 @@ pub fn (s string) replace_char(rep u8, with u8, repeat int) string {
 // Example: assert '\t\tpop rax\t; pop rax'.normalize_tabs(2) == '    pop rax  ; pop rax'
 [inline]
 pub fn (s string) normalize_tabs(tab_len int) string {
-	return s.replace_char(`\t`,` `,tab_len)
+	return s.replace_char(`\t`, ` `, tab_len)
 }
 
 // bool returns `true` if the string equals the word "true" it will return `false` otherwise.
