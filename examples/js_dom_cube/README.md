@@ -24,7 +24,6 @@ You can put `start` and `build` at script in jason leaf.
 `path './package.json'`
 ```json
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "npm run build && node server.js",
     "build":"v -b js_browser cube.js.v"
   },
