@@ -88,14 +88,37 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		// brackets needed otherwise '?' will apply to everything on the left
 		g.write('(')
 	}
-	typ := g.table.final_sym(node.cond_type)
 	if node.is_sum_type {
 		g.match_expr_sumtype(node, is_expr, cond_var, tmp_var)
-	} else if typ.kind == .enum_ && g.loop_depth == 0 && node.branches.len > 5
-		&& unsafe { g.fn_decl != 0 } { // do not optimize while in top-level
-		g.match_expr_switch(node, is_expr, cond_var, tmp_var, typ)
 	} else {
-		g.match_expr_classic(node, is_expr, cond_var, tmp_var)
+		cond_fsym := g.table.final_sym(node.cond_type)
+		mut can_be_a_switch := true
+		all_branches: for branch in node.branches {
+			for expr in branch.exprs {
+				match expr {
+					ast.BoolLiteral, ast.IntegerLiteral, ast.CharLiteral, ast.EnumVal {
+						continue
+					}
+					else {
+						//// ast.Ident, ast.StringLiteral, ast.Ident, ast.RangeExpr can not used in switch cases in C
+						// eprintln('>>>> node.cond: $node.cond | branch expr: ${typeof(expr)} | expr: $expr')
+						can_be_a_switch = false
+						break all_branches
+					}
+				}
+			}
+		}
+		// eprintln('> can_be_a_switch: $can_be_a_switch')
+		if can_be_a_switch && !is_expr && cond_fsym.is_int() && g.loop_depth == 0
+			&& g.fn_decl != unsafe { nil } {
+			g.match_expr_switch(node, is_expr, cond_var, tmp_var, cond_fsym)
+		} else if cond_fsym.kind == .enum_ && g.loop_depth == 0 && node.branches.len > 5
+			&& g.fn_decl != unsafe { nil } {
+			// do not optimize while in top-level
+			g.match_expr_switch(node, is_expr, cond_var, tmp_var, cond_fsym)
+		} else {
+			g.match_expr_classic(node, is_expr, cond_var, tmp_var)
+		}
 	}
 	g.set_current_pos_as_last_stmt_pos()
 	g.write(cur_line)
@@ -183,9 +206,13 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 	}
 }
 
-fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string, enum_typ ast.TypeSymbol) {
-	cname := '${enum_typ.cname}__'
-	mut covered_enum := []string{cap: (enum_typ.info as ast.Enum).vals.len} // collects missing enum variant branches to avoid cstrict errors
+fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string, cond_fsym ast.TypeSymbol) {
+	cname := '${cond_fsym.cname}__'
+	mut covered_enum_cap := 0
+	if cond_fsym.info is ast.Enum {
+		covered_enum_cap = (cond_fsym.info as ast.Enum).vals.len
+	}
+	mut covered_enum := []string{cap: covered_enum_cap} // collects missing enum variant branches to avoid cstrict errors
 	mut range_branches := []ast.MatchBranch{cap: node.branches.len} // branches have RangeExpr cannot emit as switch case branch, we handle it in default branch
 	mut default_generated := false
 	g.empty_line = true
@@ -193,12 +220,14 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 	g.indent++
 	for branch in node.branches {
 		if branch.is_else {
-			for val in (enum_typ.info as ast.Enum).vals {
-				if val !in covered_enum {
-					g.writeln('case $cname$val:')
+			if cond_fsym.info is ast.Enum {
+				for val in (cond_fsym.info as ast.Enum).vals {
+					if val !in covered_enum {
+						g.writeln('case $cname$val:')
+					}
 				}
 			}
-			g.writeln('default:')
+			g.write('default: ')
 			default_generated = true
 			if range_branches.len > 0 {
 				g.indent++
@@ -233,8 +262,10 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 						}
 					}
 					g.writeln(') {')
-					g.stmts_with_tmp_var(range_branch.stmts, tmp_var)
-					g.writeln('\tbreak;')
+					ends_with_return := g.stmts_with_tmp_var(range_branch.stmts, tmp_var)
+					if !ends_with_return {
+						g.writeln('\tbreak;')
+					}
 					g.writeln('}')
 				}
 				g.indent--
@@ -247,8 +278,12 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 			for expr in branch.exprs {
 				if expr is ast.EnumVal {
 					covered_enum << expr.val
-					g.write('case ')
-					g.expr(expr)
+				}
+				g.write('case ')
+				g.expr(expr)
+				if branch.stmts.len > 0 {
+					g.write(': ')
+				} else {
 					g.writeln(': ')
 				}
 			}
@@ -258,14 +293,16 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 		if is_expr && tmp_var.len > 0 && g.table.sym(node.return_type).kind == .sum_type {
 			g.expected_cast_type = node.return_type
 		}
-		g.stmts_with_tmp_var(branch.stmts, tmp_var)
+		ends_with_return := g.stmts_with_tmp_var(branch.stmts, tmp_var)
 		g.expected_cast_type = 0
-		g.writeln('\tbreak;')
-		g.writeln('}')
+		if !ends_with_return {
+			g.writeln('\tbreak;')
+		}
 		g.indent--
+		g.writeln('}')
 	}
 	if range_branches.len > 0 && !default_generated {
-		g.writeln('default:')
+		g.write('default: ')
 		g.indent++
 		for range_branch in range_branches {
 			g.write('if (')
@@ -298,8 +335,10 @@ fn (mut g Gen) match_expr_switch(node ast.MatchExpr, is_expr bool, cond_var stri
 				}
 			}
 			g.writeln(') {')
-			g.stmts_with_tmp_var(range_branch.stmts, tmp_var)
-			g.writeln('\tbreak;')
+			ends_with_return := g.stmts_with_tmp_var(range_branch.stmts, tmp_var)
+			if !ends_with_return {
+				g.writeln('\tbreak;')
+			}
 			g.writeln('}')
 		}
 		g.indent--
