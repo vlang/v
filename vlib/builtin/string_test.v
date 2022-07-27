@@ -385,7 +385,6 @@ fn test_replace_char() {
 	assert '\rHello!\r'.replace_char(`\r`, `\n`, 1) == '\nHello!\n'
 	assert 'Hello!'.replace_char(`l`, `e`, 4) == 'Heeeeeeeeeo!'
 	assert '1141'.replace_char(`1`, `8`, 2) == '8888488'
-
 }
 
 fn test_normalize_tabs() {
