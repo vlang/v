@@ -102,7 +102,7 @@ $ npm run build
 
 
 ### V server
-```v
+```v ignore
 module main
 
 import vweb
