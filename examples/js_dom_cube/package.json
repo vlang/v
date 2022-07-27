@@ -1,0 +1,15 @@
+{
+  "name": "js_dom_draw",
+  "version": "1.0.0",
+  "description": "Drawing with mouse events using DOM API. Adopted from MDN examples.",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "npm run build && node server.js.v",
+    "build":"v -b js_browser cube.js.v"
+  },
+  "author": "",
+  "license": "ISC",
+  "keywords": [],
+  "dependencies": {}
+}
