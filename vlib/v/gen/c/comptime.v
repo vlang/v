@@ -93,6 +93,9 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		for val in vals {
 		}
 		*/
+		if g.inside_call && m.return_type == ast.void_type {
+			g.error('method `${m.name}()` (no value) used as value', node.pos)
+		}
 		expand_strs := if node.args.len > 0 && m.params.len - 1 >= node.args.len {
 			arg := node.args[node.args.len - 1]
 			param := m.params[node.args.len]
