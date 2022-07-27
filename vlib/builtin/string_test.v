@@ -343,6 +343,16 @@ fn test_replace() {
 	assert v.replace('  ', ' ') == 'a  b c d'
 }
 
+fn test_replace_char() {
+	assert 'azert'.replace_char(`z`,`s`,2) == 'assert'
+	assert '\rHello!\r'.replace_char(`\r`,`\n`,1) == '\nHello!\n'
+	assert 'Hello!'.replace_char(`l`,`e`,4) == 'Heeeeeeeeeo!'
+	assert '1141'.replace_char(`1`,`8`,2) == '8888488'
+
+	assert '\t\tHello!'.normalize_tabs(4) == '        Hello!'
+	assert '\t\tHello!\t; greeting'.normalize_tabs(1) == '  Hello! ; greeting'
+}
+
 fn test_replace_each() {
 	s := 'hello man man :)'
 	q := s.replace_each([
