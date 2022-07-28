@@ -1977,9 +1977,9 @@ fn (mut g Gen) cjmp_op(op token.Kind) int {
 	}
 }
 
-fn (mut g Gen) condition(infix_expr ast.InfixExpr, neg bool) int {
+fn (mut g Gen) condition(expr ast.Expr, neg bool) int {
 	// if infix_expr.op !in [.eq, .ne, .gt, .lt, .ge, .le] {
-	g.expr(infix_expr)
+	g.expr(expr)
 	g.cmp_zero(.rax)
 	return g.cjmp(if neg { .jne } else { .je })
 	//}
@@ -2058,9 +2058,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				}
 				continue
 			}
-			infix_expr := branch.cond as ast.InfixExpr
+			expr := branch.cond
 			label := g.labels.new_label()
-			cjmp_addr := g.condition(infix_expr, false)
+			cjmp_addr := g.condition(expr, false)
 			g.labels.patches << LabelPatch{
 				id: label
 				pos: cjmp_addr

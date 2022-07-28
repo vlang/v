@@ -40,9 +40,9 @@ fn test_add() {
 		println('1 > 3 ERROR')
 		// TODO assert here
 	}
-/*	if get_bool() {
+	if get_bool() {
 		println('bool is true')
-	}*/
+	}
 }
 
 fn do_not_call() bool {
