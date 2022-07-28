@@ -1,5 +1,21 @@
 import os
 
+const tfolder = os.join_path(os.temp_dir(), 'v', 'tests', 'os_file_test')
+
+const tfile = os.join_path_single(tfolder, 'test_file')
+
+fn testsuite_begin() ? {
+	os.rmdir_all(tfolder) or {}
+	assert !os.is_dir(tfolder)
+	os.mkdir_all(tfolder)?
+	os.chdir(tfolder)?
+	assert os.is_dir(tfolder)
+}
+
+fn testsuite_end() ? {
+	os.rmdir_all(tfolder) or {}
+}
+
 struct Point {
 	x f64
 	y f64
@@ -39,25 +55,6 @@ const (
 	another_color      = Color.red
 	another_permission = Permissions.read | .write
 )
-
-const (
-	tfolder = os.join_path_single(os.temp_dir(), 'os_file_test')
-	tfile   = os.join_path_single(tfolder, 'test_file')
-)
-
-fn testsuite_begin() ? {
-	os.rmdir_all(tfolder) or {}
-	assert !os.is_dir(tfolder)
-	os.mkdir_all(tfolder)?
-	os.chdir(tfolder)?
-	assert os.is_dir(tfolder)
-}
-
-fn testsuite_end() ? {
-	os.chdir(os.wd_at_startup)?
-	os.rmdir_all(tfolder)?
-	assert !os.is_dir(tfolder)
-}
 
 // test_read_bytes_into_newline_text tests reading text from a file with newlines.
 // This test simulates reading a larger text file step by step into a buffer and
