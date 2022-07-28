@@ -172,7 +172,8 @@ pub fn stderr() File {
 
 // eof returns true, when the end of file has been reached
 pub fn (f &File) eof() bool {
-	return C.feof(f.cfile) != 0
+	cfile := &C.FILE(f.cfile)
+	return C.feof(cfile) != 0
 }
 
 // reopen allows a `File` to be reused. It is mostly useful for reopening standard input and output.
