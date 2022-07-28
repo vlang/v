@@ -589,6 +589,12 @@ pub fn (node Stmt) str() string {
 		EnumDecl {
 			return 'enum $node.name { $node.fields.len fields }'
 		}
+		ForStmt {
+			if node.is_inf {
+				return 'for {'
+			}
+			return 'for $node.cond {'
+		}
 		Module {
 			return 'module $node.name'
 		}
@@ -596,6 +602,16 @@ pub fn (node Stmt) str() string {
 			mut out := 'import $node.mod'
 			if node.alias.len > 0 {
 				out += ' as $node.alias'
+			}
+			return out
+		}
+		Return {
+			mut out := 'return'
+			for i, val in node.exprs {
+				out += ' $val'
+				if i < node.exprs.len - 1 {
+					out += ','
+				}
 			}
 			return out
 		}
