@@ -100,7 +100,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 						continue
 					}
 					else {
-						//// ast.Ident, ast.StringLiteral, ast.Ident, ast.RangeExpr can not used in switch cases in C
+						// ast.StringLiteral, ast.Ident, ast.RangeExpr can not used in switch cases in C
 						// eprintln('>>>> node.cond: $node.cond | branch expr: ${typeof(expr)} | expr: $expr')
 						can_be_a_switch = false
 						break all_branches
