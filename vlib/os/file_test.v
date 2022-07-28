@@ -372,22 +372,34 @@ fn test_tell() ? {
 }
 
 fn test_reopen() ? {
-	os.write_file(tfile, 'Hello World!\nGood\r morning.')?
+	tfile1 := os.join_path_single(tfolder, 'tfile1')
+	tfile2 := os.join_path_single(tfolder, 'tfile2')
+	os.write_file(tfile1, 'Hello World!\nGood\r morning.\nBye.')?
+	os.write_file(tfile2, 'Another file\nAnother line.\nBye.')?
+	assert os.file_size(tfile1) > 0
+	assert os.file_size(tfile2) > 0
 
-	mut stdin := os.stdin()
-	stdin.reopen(tfile, 'r')?
+	mut line_buffer := []u8{len: 1024}
+
+	mut f2 := os.open(tfile2)?
+	x := f2.read_bytes_into_newline(mut line_buffer)?
+	assert line_buffer#[..x].bytestr() == 'Another file\n'
+
+	// Note: after this call, f2 should be using the file tfile1:
+	f2.reopen(tfile1, 'r')?
 
 	mut lines := []string{}
 	for {
-		line := os.get_line()
-		println('line as bytes: ${line.bytes().hex():-30}, string: \n$line')
-		lines << line
-		if line == '' {
+		llen := f2.read_bytes_into_newline(mut line_buffer)?
+		if llen == 0 {
 			break
 		}
+		line := line_buffer#[..llen].bytestr()
+		println('llen: $llen | line_buffer: ${line_buffer#[..llen].hex():-30}, string: \n$line')
+		lines << line
 	}
-	dump(lines.len)
-	assert lines[0] == 'Hello World!'
+	assert lines.first() == 'Hello World!\n'
+	assert lines.last() == 'Bye.'
 }
 
 fn test_eof() ? {
