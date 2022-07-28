@@ -87,6 +87,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			p.open_scope()
 			is_guard = true
 			mut vars := []ast.IfGuardVar{}
+			mut var_names := []string{}
 			for {
 				mut var := ast.IfGuardVar{}
 				mut is_mut := false
@@ -97,6 +98,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 				var.is_mut = is_mut
 				var.pos = p.tok.pos()
 				var.name = p.check_name()
+				var_names << var.name
 
 				if p.scope.known_var(var.name) {
 					p.error_with_pos('redefinition of `$var.name`', var.pos)
@@ -115,7 +117,10 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 				p.error_with_pos('if guard condition expression is illegal, it should return optional',
 					expr.pos())
 			}
-
+			p.check_undefined_variables_by_names(var_names, expr) or {
+				p.error_with_pos(err.msg(), pos)
+				break
+			}
 			cond = ast.IfGuardExpr{
 				vars: vars
 				expr: expr
