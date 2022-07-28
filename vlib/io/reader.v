@@ -24,7 +24,7 @@ pub interface Reader {
 	// read reads up to buf.len bytes and places
 	// them into buf.
 	// A type that implements this should return
-	// `none` on end of stream (EOF) instead of just returning 0
+	// `io.Eof` on end of stream (EOF) instead of just returning 0
 mut:
 	read(mut buf []u8) !int
 }

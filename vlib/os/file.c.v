@@ -1,6 +1,23 @@
 module os
 
-import io
+/// Eof error means that we reach the end of the file.
+pub struct Eof {
+	Error
+}
+
+// NotExpected is a generic error that means that we receave a not expecte error.
+pub struct NotExpected {
+	cause string
+	code  int
+}
+
+fn (err NotExpected) msg() string {
+	return err.cause
+}
+
+fn (err NotExpected) code() int {
+	return err.code
+}
 
 pub struct File {
 mut:
@@ -196,10 +213,10 @@ pub fn (mut f File) reopen(path string, mode string) ? {
 // read implements the Reader interface.
 pub fn (f &File) read(mut buf []u8) !int {
 	if buf.len == 0 {
-		return IError(io.Eof{})
+		return IError(Eof{})
 	}
 	nbytes := fread(buf.data, 1, buf.len, f.cfile) or {
-		return IError(io.NotExpected{
+		return IError(NotExpected{
 			cause: 'unexpected error from fread'
 			code: -1
 		})
