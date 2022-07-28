@@ -1,5 +1,21 @@
 import os
 
+const tfolder = os.join_path(os.temp_dir(), 'v', 'tests', 'os_file_test')
+
+const tfile = os.join_path_single(tfolder, 'test_file')
+
+fn testsuite_begin() ? {
+	os.rmdir_all(tfolder) or {}
+	assert !os.is_dir(tfolder)
+	os.mkdir_all(tfolder)?
+	os.chdir(tfolder)?
+	assert os.is_dir(tfolder)
+}
+
+fn testsuite_end() ? {
+	os.rmdir_all(tfolder) or {}
+}
+
 struct Point {
 	x f64
 	y f64
@@ -39,25 +55,6 @@ const (
 	another_color      = Color.red
 	another_permission = Permissions.read | .write
 )
-
-const (
-	tfolder = os.join_path_single(os.temp_dir(), 'os_file_test')
-	tfile   = os.join_path_single(tfolder, 'test_file')
-)
-
-fn testsuite_begin() ? {
-	os.rmdir_all(tfolder) or {}
-	assert !os.is_dir(tfolder)
-	os.mkdir_all(tfolder)?
-	os.chdir(tfolder)?
-	assert os.is_dir(tfolder)
-}
-
-fn testsuite_end() ? {
-	os.chdir(os.wd_at_startup)?
-	os.rmdir_all(tfolder)?
-	assert !os.is_dir(tfolder)
-}
 
 // test_read_bytes_into_newline_text tests reading text from a file with newlines.
 // This test simulates reading a larger text file step by step into a buffer and
@@ -369,4 +366,43 @@ fn test_tell() ? {
 		// dump(pos)
 		assert pos == size - 5
 	}
+}
+
+fn test_reopen() ? {
+	tfile1 := os.join_path_single(tfolder, 'tfile1')
+	tfile2 := os.join_path_single(tfolder, 'tfile2')
+	os.write_file(tfile1, 'Hello World!\nGood\r morning.\nBye 1.')?
+	os.write_file(tfile2, 'Another file\nAnother line.\nBye 2.')?
+	assert os.file_size(tfile1) > 0
+	assert os.file_size(tfile2) > 0
+
+	mut line_buffer := []u8{len: 1024}
+
+	mut f2 := os.open(tfile2)?
+	x := f2.read_bytes_into_newline(mut line_buffer)?
+	assert !f2.eof()
+	assert x > 0
+	assert line_buffer#[..x].bytestr() == 'Another file\n'
+
+	// Note: after this call, f2 should be using the file `tfile1`:
+	f2.reopen(tfile1, 'r')?
+	assert !f2.eof()
+
+	z := f2.read(mut line_buffer)?
+	assert f2.eof()
+	assert z > 0
+	content := line_buffer#[..z].bytestr()
+	// dump(content)
+	assert content.starts_with('Hello World')
+	assert content.ends_with('Bye 1.')
+}
+
+fn test_eof() ? {
+	os.write_file(tfile, 'Hello World!\n')?
+
+	mut f := os.open(tfile)?
+	f.read_bytes(10)
+	assert !f.eof()
+	f.read_bytes(100)
+	assert f.eof()
 }

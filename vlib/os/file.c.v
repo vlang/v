@@ -1,6 +1,7 @@
 module os
 
 pub struct File {
+mut:
 	cfile voidptr // Using void* instead of FILE*
 pub:
 	fd int
@@ -18,6 +19,18 @@ fn C.fseeko(&C.FILE, u64, int) int
 fn C._fseeki64(&C.FILE, u64, int) int
 
 fn C.getc(&C.FILE) int
+
+fn C.freopen(&char, &char, &C.FILE) &C.FILE
+
+fn C._wfreopen(&u16, &u16, &C.FILE) &C.FILE
+
+fn fix_windows_path(path string) string {
+	mut p := path
+	$if windows {
+		p = path.replace('/', '\\')
+	}
+	return p
+}
 
 // open_file can be used to open or create a file with custom flags and permissions and returns a `File` object.
 pub fn open_file(path string, mode string, options ...int) ?File {
@@ -55,10 +68,7 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 			permission = 0x0100 | 0x0080
 		}
 	}
-	mut p := path
-	$if windows {
-		p = path.replace('/', '\\')
-	}
+	p := fix_windows_path(path)
 	fd := C.open(&char(p.str), flags, permission)
 	if fd == -1 {
 		return error(posix_get_error_msg(C.errno))
@@ -158,6 +168,26 @@ pub fn stderr() File {
 		cfile: C.stderr
 		is_opened: true
 	}
+}
+
+// eof returns true, when the end of file has been reached
+pub fn (f &File) eof() bool {
+	return C.feof(f.cfile) != 0
+}
+
+// reopen allows a `File` to be reused. It is mostly useful for reopening standard input and output.
+pub fn (mut f File) reopen(path string, mode string) ? {
+	p := fix_windows_path(path)
+	mut cfile := &C.FILE(0)
+	$if windows {
+		cfile = C._wfreopen(p.to_wide(), mode.to_wide(), f.cfile)
+	} $else {
+		cfile = C.freopen(&char(p.str), &char(mode.str), f.cfile)
+	}
+	if isnil(cfile) {
+		return error('Failed to reopen file "$path"')
+	}
+	f.cfile = cfile
 }
 
 // read implements the Reader interface.
