@@ -2,7 +2,7 @@
 *Not released yet*
 - Anonymous structs.
 - V can now find code in the `src/` directory. This allows making V repos much cleaner.
-- `os.mkdir()` now has an optional `mode` paramter.
+- `os.mkdir()` now has an optional `mode` parameter.
 - Full termux support via `$if termux {`.
 - Go backend fixes.
 - More type checks.
