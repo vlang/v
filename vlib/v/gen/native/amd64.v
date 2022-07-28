@@ -1694,8 +1694,9 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 			else {
 				// dump(node)
 				size := g.get_type_size(node.left_types[i])
-				if size !in [1,2,4,8] || node.op !in [.assign, .decl_assign] {
-					g.v_error('unhandled assign_stmt expression: $right.type_name()', right.pos())
+				if size !in [1, 2, 4, 8] || node.op !in [.assign, .decl_assign] {
+					g.v_error('unhandled assign_stmt expression: $right.type_name()',
+						right.pos())
 				}
 				if node.op == .decl_assign {
 					g.allocate_var(name, size, 0)

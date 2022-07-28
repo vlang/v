@@ -856,28 +856,33 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// dump(node.types)
 			mut s := '?' //${node.exprs[0].val.str()}'
 			// TODO: void return
-			e0 := node.exprs[0]
-			match e0 {
-				ast.IntegerLiteral {
-					g.mov64(.rax, e0.val.int())
-				}
-				ast.InfixExpr {
-					g.infix_expr(e0)
-				}
-				ast.CastExpr {
-					g.mov64(.rax, e0.expr.str().int())
-					// do the job
-				}
-				ast.StringLiteral {
-					s = e0.val.str()
-					g.expr(node.exprs[0])
-					g.mov64(.rax, g.allocate_string(s, 2, .abs64))
-				}
-				ast.Ident {
-					g.expr(e0)
-				}
-				else {
-					g.n_error('unknown return type $e0.type_name()')
+			if e0 := node.exprs[0] {
+				match e0 {
+					ast.IntegerLiteral {
+						g.mov64(.rax, e0.val.int())
+					}
+					ast.InfixExpr {
+						g.infix_expr(e0)
+					}
+					ast.CastExpr {
+						g.mov64(.rax, e0.expr.str().int())
+						// do the job
+					}
+					ast.StringLiteral {
+						s = e0.val.str()
+						g.expr(node.exprs[0])
+						g.mov64(.rax, g.allocate_string(s, 2, .abs64))
+					}
+					ast.Ident {
+						g.expr(e0)
+					}
+					else {
+						size := g.get_type_size(node.types[0])
+						if size !in [1, 2, 4, 8] {
+							g.n_error('unknown return type $e0.type_name()')
+						}
+						g.expr(e0)
+					}
 				}
 			}
 
