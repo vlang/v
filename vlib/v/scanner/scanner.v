@@ -940,7 +940,7 @@ fn (mut s Scanner) text_scan() token.Token {
 							typs.all(it.len > 0
 								&& ((it[0].is_capital() && it[1..].bytes().all(it.is_alnum()
 								|| it == `_`))
-								|| ast.builtin_type_names_matcher.find(it) > 0))
+								|| ast.builtin_type_names_matcher.matches(it)))
 						} else {
 							false
 						}

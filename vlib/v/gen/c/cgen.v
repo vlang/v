@@ -5330,7 +5330,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 [inline]
 fn c_name(name_ string) string {
 	name := util.no_dots(name_)
-	if -1 != c.c_reserved_chk.find(name) {
+	if c.c_reserved_chk.matches(name) {
 		return '_v_$name'
 	}
 	return name
