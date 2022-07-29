@@ -26,7 +26,7 @@ const (
 		'short', 'signed', 'sizeof', 'static', 'string', 'struct', 'switch', 'typedef', 'typename',
 		'union', 'unix', 'unsigned', 'void', 'volatile', 'while', 'template', 'true', 'small',
 		'stdout', 'stdin', 'stderr']
-	c_reserved_map = string_array_to_map(c_reserved)
+	c_reserved_chk = token.new_keywords_matcher_from_array_trie(c_reserved)
 	// same order as in token.Kind
 	cmp_str        = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
 	// when operands are switched
@@ -5330,7 +5330,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 [inline]
 fn c_name(name_ string) string {
 	name := util.no_dots(name_)
-	if name in c.c_reserved_map {
+	if -1 != c.c_reserved_chk.find(name) {
 		return '_v_$name'
 	}
 	return name
