@@ -71,7 +71,7 @@ Everything, including HTML templates, is in one binary file. That's all you need
 
 ## Getting Started ##
 
-To start with vweb, you have to import the module `vweb` and define a struct to hold vweb.Context.
+To start with vweb, you have to import the module `vweb` and define a struct to hold vweb.Context
 (and any other variables your program will need).
 The web server can be started by calling `vweb.run(&App{}, port)` or `vweb.run(&App{}, RunParams)`.
 
