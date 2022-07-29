@@ -712,8 +712,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	no_body := p.tok.kind != .lcbr
 	same_line = p.tok.line_nr == p.prev_tok.line_nr
 	if no_body && same_line {
-		p.error_with_pos('unexpected $p.tok after anonymous function signature, expecting `{`',
-			p.tok.pos())
+		p.unexpected(got: '$p.tok after anonymous function signature', expecting: '`{`')
 	}
 	mut label_names := []string{}
 	mut func := ast.Fn{
