@@ -379,7 +379,7 @@ pub fn (mut p Parser) parse_type() ast.Type {
 		p.next()
 		is_result = true
 	}
-	if (is_optional || is_result) && p.tok.line_nr > line_nr {
+	if (is_optional || is_result) && (p.tok.line_nr > line_nr || p.tok.kind in [.comma, .rpar]) {
 		mut typ := ast.void_type
 		if is_optional {
 			typ = typ.set_flag(.optional)
