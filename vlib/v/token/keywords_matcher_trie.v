@@ -5,7 +5,7 @@ module token
 // See the module description for more details.
 [heap]
 pub struct KeywordsMatcherTrie {
-mut:
+pub mut:
 	nodes   []&TrieNode
 	min_len int = 999999
 	max_len int
@@ -13,9 +13,9 @@ mut:
 
 // TrieNode is a single node from a trie, used by KeywordsMatcherTrie
 pub struct TrieNode {
-mut:
+pub mut:
 	children [123]&TrieNode
-	value    int // when positive, it is a leaf node representing a match
+	value    int = -1 // when != -1, it is a leaf node representing a match
 }
 
 // find tries to find the given `word` in the set of all previously added words
@@ -36,6 +36,11 @@ pub fn (km &KeywordsMatcherTrie) find(word string) int {
 		return -1
 	}
 	return node.find(word)
+}
+
+[inline]
+pub fn (km &KeywordsMatcherTrie) matches(word string) bool {
+	return km.find(word) != -1
 }
 
 // add_word adds the given word to the KeywordsMatcherTrie instance. It associates a non
@@ -92,13 +97,14 @@ pub fn new_trie_node() &TrieNode {
 
 // show displays the information in `node`, in a more compact/readable format (recursively)
 pub fn (node &TrieNode) show(level int) {
-	mut non_nil_children := 0
-	for x in node.children {
+	mut non_nil_children := []int{}
+	for idx, x in node.children {
 		if x != unsafe { nil } {
-			non_nil_children++
+			non_nil_children << idx
 		}
 	}
-	eprintln('> level: ${level:2} | value: ${node.value:12} | non_nil_children: ${non_nil_children:2}')
+	children := non_nil_children.map(u8(it).ascii_str())
+	eprintln('> level: ${level:2} | value: ${node.value:12} | non_nil_children: ${non_nil_children.len:2} | $children')
 	for x in node.children {
 		if x != unsafe { nil } {
 			x.show(level + 1)
@@ -134,7 +140,7 @@ pub fn (root &TrieNode) find(word string) int {
 		// eprintln('> match_keyword: `${word:20}` | node: ${ptr_str(node)} | idx: ${idx:3}')
 		if idx == wlen {
 			k := node.value
-			if k > 0 {
+			if k != -1 {
 				// node.show(0)
 				return k
 			}
