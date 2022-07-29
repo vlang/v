@@ -1595,6 +1595,42 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				arg.typ = targ
 				earg_types << targ
 
+				param := if info.func.is_variadic && i >= info.func.params.len - 1 {
+					info.func.params.last()
+				} else {
+					info.func.params[i]
+				}
+				param_share := param.typ.share()
+				if param_share == .shared_t && (c.locked_names.len > 0 || c.rlocked_names.len > 0) {
+					c.error('method with `shared` arguments cannot be called inside `lock`/`rlock` block',
+						arg.pos)
+				}
+				if arg.is_mut {
+					to_lock, pos := c.fail_if_immutable(arg.expr)
+					if !param.is_mut {
+						tok := arg.share.str()
+						c.error('`$node.name` parameter `$param.name` is not `$tok`, `$tok` is not needed`',
+							arg.expr.pos())
+					} else {
+						if param_share != arg.share {
+							c.error('wrong shared type `$arg.share.str()`, expected: `$param_share.str()`',
+								arg.expr.pos())
+						}
+						if to_lock != '' && param_share != .shared_t {
+							c.error('$to_lock is `shared` and must be `lock`ed to be passed as `mut`',
+								pos)
+						}
+					}
+				} else {
+					if param.is_mut {
+						tok := arg.share.str()
+						c.error('method `$node.name` parameter `$param.name` is `$tok`, so use `$tok $arg.expr` instead',
+							arg.expr.pos())
+					} else {
+						c.fail_if_unreadable(arg.expr, targ, 'argument')
+					}
+				}
+
 				if i < info.func.params.len {
 					exp_arg_typ := info.func.params[i].typ
 					c.check_expected_call_arg(targ, c.unwrap_generic(exp_arg_typ), node.language,
