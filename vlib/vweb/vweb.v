@@ -389,7 +389,7 @@ pub struct RunParams {
 }
 
 // run_at - start a new VWeb server, listening only on a specific address `host`, at the specified `port`
-// Example: vweb.run_at(app, 'localhost', 8099)
+// Example: vweb.run_at(new_app(), vweb.RunParams{ host: 'localhost' port: 8099 family: .ip }) or { panic(err) }
 [manualfree]
 pub fn run_at<T>(global_app &T, params RunParams) ? {
 	if params.port <= 0 || params.port > 65535 {

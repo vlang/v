@@ -73,7 +73,7 @@ Everything, including HTML templates, is in one binary file. That's all you need
 
 To start with vweb, you have to import the module `vweb` and define a struct to hold vweb.Context.
 (and any other variables your program will need).
-The web server can be started by calling `vweb.run(&App{}, port)`.
+The web server can be started by calling `vweb.run(&App{}, port)` or  `vweb.run(&App{}, RunParams)`.
 
 **Example:**
 
@@ -86,6 +86,12 @@ struct App {
 
 fn main() {
 	vweb.run(&App{}, 8080)
+	// // or
+	// vweb.run_at(new_app(), vweb.RunParams{
+	// 	host: 'localhost'
+	// 	port: 8099
+	// 	family: .ip
+	// }) or { panic(err) }
 }
 ```
 
