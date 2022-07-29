@@ -1,5 +1,7 @@
 module builtin
 
+#flag -DGC_THREADS=1
+
 $if dynamic_boehm ? {
 	$if windows {
 		$if tinyc {
@@ -27,10 +29,9 @@ $if dynamic_boehm ? {
 		}
 	}
 } $else {
-	#flag -DGC_THREADS=1
 	#flag -DGC_BUILTIN_ATOMIC=1
+
 	$if macos || linux {
-		#flag -DGC_PTHREADS=1
 		#flag -I @VEXEROOT/thirdparty/libgc/include
 		$if (!macos && prod && !tinyc && !debug) || !(amd64 || arm64 || i386 || arm32) {
 			// TODO: replace the architecture check with a `!$exists("@VEXEROOT/thirdparty/tcc/lib/libgc.a")` comptime call
@@ -43,7 +44,6 @@ $if dynamic_boehm ? {
 	} $else $if freebsd {
 		// Tested on FreeBSD 13.0-RELEASE-p3, with clang, gcc and tcc:
 		#flag -DBUS_PAGE_FAULT=T_PAGEFLT
-		#flag -DGC_PTHREADS=1
 		$if !tinyc {
 			#flag -I @VEXEROOT/thirdparty/libgc/include
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
