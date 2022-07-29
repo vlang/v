@@ -158,20 +158,20 @@ fn rw_callback(loop &C.picoev_loop, fd int, events int, context voidptr) {
 			if pret > 0 { // Success
 				break
 			} else if pret == -1 { // Parse error
-				p.err_cb(mut p.user_data, req, mut &res, error('ParseError'))
+				p.err_cb(p.user_data, req, mut &res, error('ParseError'))
 				return
 			}
 
 			assert pret == -2
 			// request is incomplete, continue the loop
 			if p.idx[fd] == sizeof(buf) {
-				p.err_cb(mut p.user_data, req, mut &res, error('RequestIsTooLongError'))
+				p.err_cb(p.user_data, req, mut &res, error('RequestIsTooLongError'))
 				return
 			}
 		}
 
 		// Callback (should call .end() itself)
-		p.cb(mut p.user_data, req, mut &res)
+		p.cb(p.user_data, req, mut &res)
 	}
 }
 
@@ -180,7 +180,7 @@ fn accept_callback(loop &C.picoev_loop, fd int, events int, cb_arg voidptr) {
 	newfd := C.accept(fd, 0, 0)
 	if newfd != -1 {
 		setup_sock(newfd) or {
-			p.err_cb(mut p.user_data, picohttpparser.Request{}, mut &picohttpparser.Response{},
+			p.err_cb(p.user_data, picohttpparser.Request{}, mut &picohttpparser.Response{},
 				err)
 		}
 		C.picoev_add(voidptr(loop), newfd, int(Event.read), p.timeout_secs, rw_callback,
@@ -221,7 +221,7 @@ pub fn new(config Config) &Picoev {
 	listen_res := C.listen(fd, C.SOMAXCONN)
 	assert listen_res == 0
 	setup_sock(fd) or {
-		config.err_cb(mut config.user_data, picohttpparser.Request{}, mut &picohttpparser.Response{},
+		config.err_cb(config.user_data, picohttpparser.Request{}, mut &picohttpparser.Response{},
 			err)
 	}
 
