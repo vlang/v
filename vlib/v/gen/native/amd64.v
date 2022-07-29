@@ -2125,7 +2125,7 @@ pub fn (mut g Gen) builtin_decl_amd64(builtin BuiltinFn) {
 	local_alloc_pos := g.pos()
 	g.sub(.rsp, 0)
 
-	builtin.body(builtin, g)
+	builtin.body(builtin, mut g)
 	g.println('; stack frame size: $g.stack_var_pos')
 	g.write32_at(local_alloc_pos + 3, g.stack_var_pos)
 
