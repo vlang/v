@@ -2039,7 +2039,6 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			c.error('incorrect use of compile-time type', node.pos)
 		}
 		ast.EmptyExpr {
-			print_backtrace()
 			c.error('checker.expr(): unhandled EmptyExpr', token.Pos{})
 			return ast.void_type
 		}
@@ -2754,6 +2753,9 @@ pub fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 							} else {
 								typ = obj.expr.expr_type.clear_flag(.optional).clear_flag(.result)
 							}
+						} else if obj.expr is ast.EmptyExpr {
+							c.error('invalid variable `$node.name`', node.pos)
+							typ = ast.void_type
 						} else {
 							typ = c.expr(obj.expr)
 						}
