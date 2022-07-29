@@ -216,7 +216,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				} else {
 					if is_decl {
 						c.check_valid_snake_case(left.name, 'variable name', left.pos)
-						if left.name in reserved_type_names {
+						if reserved_type_names_chk.matches(left.name) {
 							c.error('invalid use of reserved type `$left.name` as a variable name',
 								left.pos)
 						}

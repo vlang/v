@@ -185,7 +185,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		// Make sure all types are valid
 		for mut param in node.params {
 			c.ensure_type_exists(param.typ, param.type_pos) or { return }
-			if param.name in reserved_type_names {
+			if reserved_type_names_chk.matches(param.name) {
 				c.error('invalid use of reserved type `$param.name` as a parameter name',
 					param.pos)
 			}

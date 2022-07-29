@@ -38,13 +38,13 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 	typ_idx := typ.idx()
 	if node.key_var.len > 0 && node.key_var != '_' {
 		c.check_valid_snake_case(node.key_var, 'variable name', node.pos)
-		if node.key_var in reserved_type_names {
+		if reserved_type_names_chk.matches(node.key_var) {
 			c.error('invalid use of reserved type `$node.key_var` as key name', node.pos)
 		}
 	}
 	if node.val_var.len > 0 && node.val_var != '_' {
 		c.check_valid_snake_case(node.val_var, 'variable name', node.pos)
-		if node.val_var in reserved_type_names {
+		if reserved_type_names_chk.matches(node.val_var) {
 			c.error('invalid use of reserved type `$node.val_var` as value name', node.pos)
 		}
 	}
