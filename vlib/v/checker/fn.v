@@ -1609,7 +1609,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					to_lock, pos := c.fail_if_immutable(arg.expr)
 					if !param.is_mut {
 						tok := arg.share.str()
-						c.error('`$node.name` parameter `$param.name` is not `$tok`, `$tok` is not needed`',
+						c.error('`$node.name` parameter ${i + 1} is not `$tok`, `$tok` is not needed`',
 							arg.expr.pos())
 					} else {
 						if param_share != arg.share {
@@ -1624,7 +1624,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				} else {
 					if param.is_mut {
 						tok := arg.share.str()
-						c.error('method `$node.name` parameter `$param.name` is `$tok`, so use `$tok $arg.expr` instead',
+						c.error('method `$node.name` parameter ${i + 1} is `$tok`, so use `$tok $arg.expr` instead',
 							arg.expr.pos())
 					} else {
 						c.fail_if_unreadable(arg.expr, targ, 'argument')

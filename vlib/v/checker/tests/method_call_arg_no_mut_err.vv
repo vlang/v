@@ -1,6 +1,6 @@
 module main
 
-type Fkt = fn (mut a Alarm)
+type Fkt = fn (mut Alarm)
 
 struct Alarm {
 	x int
