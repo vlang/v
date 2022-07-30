@@ -2039,6 +2039,7 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			c.error('incorrect use of compile-time type', node.pos)
 		}
 		ast.EmptyExpr {
+			print_backtrace()
 			c.error('checker.expr(): unhandled EmptyExpr', token.Pos{})
 			return ast.void_type
 		}
