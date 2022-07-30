@@ -1841,13 +1841,15 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 			} else {
 				'${node.method_name}($inner_args)'
 			}
-			f.write('${node.left}.$$method_expr')
+			f.expr(node.left)
+			f.write('.$$method_expr')
 		}
 	}
 }
 
 pub fn (mut f Fmt) comptime_selector(node ast.ComptimeSelector) {
-	f.write('${node.left}.\$($node.field_expr)')
+	f.expr(node.left)
+	f.write('.\$($node.field_expr)')
 }
 
 pub fn (mut f Fmt) concat_expr(node ast.ConcatExpr) {
