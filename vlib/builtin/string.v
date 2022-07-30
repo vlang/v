@@ -1736,6 +1736,18 @@ pub fn (s string) all_after_last(sub string) string {
 	return s[pos + sub.len..]
 }
 
+// all_after_first returns the contents after the first occurence of `sub` in the string.
+// If the substring is not found, it returns the full input string.
+// Example: assert '23:34:45.234'.all_after_first(':') == '34:45.234'
+// Example: assert 'abcd'.all_after_first('z') == 'abcd'
+pub fn (s string) all_after_first(sub string) string {
+	pos := s.index_(sub)
+	if pos == -1 {
+		return s.clone()
+	}
+	return s[pos + sub.len..]
+}
+
 // after returns the contents after the last occurence of `sub` in the string.
 // If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.after(':') == '45.234'

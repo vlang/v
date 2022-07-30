@@ -1202,7 +1202,7 @@ pub fn (mut f Fmt) interface_field(field ast.StructField) {
 
 pub fn (mut f Fmt) interface_method(method ast.FnDecl) {
 	f.write('\t')
-	f.write(method.stringify(f.table, f.cur_mod, f.mod2alias).after('fn '))
+	f.write(method.stringify(f.table, f.cur_mod, f.mod2alias).all_after_first('fn '))
 	f.comments(method.comments, inline: true, has_nl: false, level: .indent)
 	f.writeln('')
 	f.comments(method.next_comments, inline: false, has_nl: true, level: .indent)
