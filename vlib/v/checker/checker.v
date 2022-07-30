@@ -2756,6 +2756,9 @@ pub fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 							} else {
 								typ = obj.expr.expr_type.clear_flag(.optional).clear_flag(.result)
 							}
+						} else if obj.expr is ast.EmptyExpr {
+							c.error('invalid variable `$node.name`', node.pos)
+							typ = ast.void_type
 						} else {
 							typ = c.expr(obj.expr)
 						}
