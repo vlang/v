@@ -241,6 +241,17 @@ Again, the type comes after the argument's name.
 Just like in Go and C, functions cannot be overloaded.
 This simplifies the code and improves maintainability and readability.
 
+An alternative syntax to declare is to use Function literal :
+
+```v
+fn main() {
+	add:= fn(x int, y int) int {
+		return x + y
+	}
+}
+```
+
+
 ### Hoistings
 
 Functions can be used before their declaration:
