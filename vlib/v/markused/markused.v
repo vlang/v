@@ -294,11 +294,21 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		for vgt in table.used_vweb_types {
 			sym_app := table.sym(vgt)
 			for m in sym_app.methods {
-				if m.return_type == typ_vweb_result {
-					pvgt := vgt.set_nr_muls(1)
-					// eprintln('vgt: $vgt | pvgt: $pvgt | sym_app.name: $sym_app.name | m.name: $m.name')
-					all_fn_root_names << '${int(pvgt)}.$m.name'
+				mut skip := true
+				if m.name == 'before_request' {
+					// TODO: handle expansion of method calls in generic functions in a more universal way
+					skip = false
 				}
+				if m.return_type == typ_vweb_result {
+					skip = false
+				}
+				//
+				if skip {
+					continue
+				}
+				pvgt := vgt.set_nr_muls(1)
+				// eprintln('vgt: $vgt | pvgt: $pvgt | sym_app.name: $sym_app.name | m.name: $m.name')
+				all_fn_root_names << '${int(pvgt)}.$m.name'
 			}
 		}
 	}
