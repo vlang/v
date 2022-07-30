@@ -66,14 +66,14 @@ struct Picoev {
 	loop         &C.picoev_loop
 	cb           fn (voidptr, picohttpparser.Request, mut picohttpparser.Response)
 	err_cb       fn (voidptr, picohttpparser.Request, mut picohttpparser.Response, IError)
+	user_data    voidptr
 	timeout_secs int
 	max_headers  int
 mut:
-	user_data voidptr
-	date      &u8
-	buf       &u8
-	idx       [1024]int
-	out       &u8
+	date &u8
+	buf  &u8
+	idx  [1024]int
+	out  &u8
 }
 
 [inline]
