@@ -341,7 +341,7 @@ pub fn (t &Table) promote_num(left_type Type, right_type Type, is_translated boo
 	}
 }
 
-pub fn (t &Table) check_expected_call_arg(got Type, expected_ Type, language Language, arg CallArg) ? {
+pub fn (t &Table) check_expected_call_arg(got Type, expected_ Type, language Language, arg CallArg, is_translated bool) ? {
 	if got == 0 {
 		return error('unexpected 0 type')
 	}
@@ -407,7 +407,7 @@ pub fn (t &Table) check_expected_call_arg(got Type, expected_ Type, language Lan
 		}
 	}
 
-	if t.check_types(got, expected, false) {
+	if t.check_types(got, expected, is_translated) {
 		if language != .v || expected.is_ptr() == got.is_ptr() || arg.is_mut
 			|| arg.expr.is_auto_deref_var() || got.has_flag(.shared_f)
 			|| t.sym(expected_).kind !in [.array, .map] {

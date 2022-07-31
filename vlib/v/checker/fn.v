@@ -941,7 +941,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				call_arg.pos)
 		}
 		c.table.check_expected_call_arg(arg_typ, c.unwrap_generic(param.typ), node.language,
-			call_arg) or {
+			call_arg, c.pref.translated) or {
 			if param.typ.has_flag(.generic) {
 				continue
 			}
@@ -1060,7 +1060,8 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 						}
 						continue
 					}
-					c.table.check_expected_call_arg(utyp, unwrap_typ, node.language, call_arg) or {
+					c.table.check_expected_call_arg(utyp, unwrap_typ, node.language, call_arg,
+						c.pref.translated) or {
 						if c.comptime_fields_type.len > 0 {
 							continue
 						}
@@ -1481,7 +1482,8 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				c.error('literal argument cannot be passed as reference parameter `${c.table.type_to_str(param.typ)}`',
 					arg.pos)
 			}
-			c.table.check_expected_call_arg(got_arg_typ, exp_arg_typ, node.language, arg) or {
+			c.table.check_expected_call_arg(got_arg_typ, exp_arg_typ, node.language, arg,
+				c.pref.translated) or {
 				// str method, allow type with str method if fn arg is string
 				// Passing an int or a string array produces a c error here
 				// Deleting this condition results in propper V error messages
@@ -1635,7 +1637,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				if i < info.func.params.len {
 					exp_arg_typ := info.func.params[i].typ
 					c.table.check_expected_call_arg(targ, c.unwrap_generic(exp_arg_typ),
-						node.language, arg) or {
+						node.language, arg, c.pref.translated) or {
 						if targ != ast.void_type {
 							c.error('$err.msg() in argument ${i + 1} to `${left_sym.name}.$method_name`',
 								arg.pos)
@@ -1885,7 +1887,8 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type ast.
 			}
 			info := left_sym.info as ast.Map
 			arg_type := c.expr(node.args[0].expr)
-			c.table.check_expected_call_arg(arg_type, info.key_type, node.language, node.args[0]) or {
+			c.table.check_expected_call_arg(arg_type, info.key_type, node.language, node.args[0],
+				c.pref.translated) or {
 				c.error('$err.msg() in argument 1 to `Map.delete`', node.args[0].pos)
 			}
 		}
@@ -2020,7 +2023,8 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			c.error('`.contains()` expected 1 argument, but got $node.args.len', node.pos)
 		} else if !left_sym.has_method('contains') {
 			arg_typ := c.expr(node.args[0].expr)
-			c.table.check_expected_call_arg(arg_typ, elem_typ, node.language, node.args[0]) or {
+			c.table.check_expected_call_arg(arg_typ, elem_typ, node.language, node.args[0],
+				c.pref.translated) or {
 				c.error('$err.msg() in argument 1 to `.contains()`', node.args[0].pos)
 			}
 		}
@@ -2030,7 +2034,8 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			c.error('`.index()` expected 1 argument, but got $node.args.len', node.pos)
 		} else if !left_sym.has_method('index') {
 			arg_typ := c.expr(node.args[0].expr)
-			c.table.check_expected_call_arg(arg_typ, elem_typ, node.language, node.args[0]) or {
+			c.table.check_expected_call_arg(arg_typ, elem_typ, node.language, node.args[0],
+				c.pref.translated) or {
 				c.error('$err.msg() in argument 1 to `.index()`', node.args[0].pos)
 			}
 		}
