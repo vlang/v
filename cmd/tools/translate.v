@@ -16,6 +16,7 @@ fn main() {
 	}
 	// Git clone c2v
 	if !os.exists(c2v_dir) {
+		os.mkdir_all(vmodules)?
 		println('C2V is not installed. Cloning C2V to $c2v_dir ...')
 		os.chdir(vmodules)?
 		res := os.execute('git clone https://github.com/vlang/c2v')
