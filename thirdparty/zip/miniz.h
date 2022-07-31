@@ -6457,11 +6457,10 @@ mz_bool mz_zip_reader_locate_file_v2(mz_zip_archive *pZip, const char *pName,
   return mz_zip_set_error(pZip, MZ_ZIP_FILE_NOT_FOUND);
 }
 
-mz_bool mz_zip_reader_extract_to_mem_no_alloc(mz_zip_archive *pZip,
-                                              mz_uint file_index, void *pBuf,
-                                              size_t buf_size, mz_uint flags,
-                                              void *pUser_read_buf,
-                                              size_t user_read_buf_size) {
+static mz_bool mz_zip_reader_extract_to_mem_no_alloc1(
+    mz_zip_archive *pZip, mz_uint file_index, void *pBuf, size_t buf_size,
+    mz_uint flags, void *pUser_read_buf, size_t user_read_buf_size,
+    const mz_zip_archive_file_stat *st) {
   int status = TINFL_STATUS_DONE;
   mz_uint64 needed_size, cur_file_ofs, comp_remaining,
       out_buf_ofs = 0, read_buf_size, read_buf_ofs = 0, read_buf_avail;
@@ -6477,11 +6476,13 @@ mz_bool mz_zip_reader_extract_to_mem_no_alloc(mz_zip_archive *pZip,
       ((user_read_buf_size) && (!pUser_read_buf)) || (!pZip->m_pRead))
     return mz_zip_set_error(pZip, MZ_ZIP_INVALID_PARAMETER);
 
-  if (!mz_zip_reader_file_stat(pZip, file_index, &file_stat))
+  if (st) {
+    file_stat = *st;
+  } else if (!mz_zip_reader_file_stat(pZip, file_index, &file_stat))
     return MZ_FALSE;
 
   /* A directory or zero length file */
-  if (file_stat.m_is_directory || (!file_stat.m_comp_size))
+  if ((file_stat.m_is_directory) || (!file_stat.m_comp_size))
     return MZ_TRUE;
 
   /* Encryption and patch files are not supported. */
@@ -6616,6 +6617,16 @@ mz_bool mz_zip_reader_extract_to_mem_no_alloc(mz_zip_archive *pZip,
   return status == TINFL_STATUS_DONE;
 }
 
+mz_bool mz_zip_reader_extract_to_mem_no_alloc(mz_zip_archive *pZip,
+                                              mz_uint file_index, void *pBuf,
+                                              size_t buf_size, mz_uint flags,
+                                              void *pUser_read_buf,
+                                              size_t user_read_buf_size) {
+  return mz_zip_reader_extract_to_mem_no_alloc1(pZip, file_index, pBuf,
+                                                buf_size, flags, pUser_read_buf,
+                                                user_read_buf_size, NULL);
+}
+
 mz_bool mz_zip_reader_extract_file_to_mem_no_alloc(
     mz_zip_archive *pZip, const char *pFilename, void *pBuf, size_t buf_size,
     mz_uint flags, void *pUser_read_buf, size_t user_read_buf_size) {
@@ -6643,22 +6654,18 @@ mz_bool mz_zip_reader_extract_file_to_mem(mz_zip_archive *pZip,
 
 void *mz_zip_reader_extract_to_heap(mz_zip_archive *pZip, mz_uint file_index,
                                     size_t *pSize, mz_uint flags) {
-  mz_uint64 comp_size, uncomp_size, alloc_size;
-  const mz_uint8 *p = mz_zip_get_cdh(pZip, file_index);
+  mz_zip_archive_file_stat file_stat;
+  mz_uint64 alloc_size;
   void *pBuf;
 
   if (pSize)
     *pSize = 0;
 
-  if (!p) {
-    mz_zip_set_error(pZip, MZ_ZIP_INVALID_PARAMETER);
+  if (!mz_zip_reader_file_stat(pZip, file_index, &file_stat))
     return NULL;
-  }
 
-  comp_size = MZ_READ_LE32(p + MZ_ZIP_CDH_COMPRESSED_SIZE_OFS);
-  uncomp_size = MZ_READ_LE32(p + MZ_ZIP_CDH_DECOMPRESSED_SIZE_OFS);
-
-  alloc_size = (flags & MZ_ZIP_FLAG_COMPRESSED_DATA) ? comp_size : uncomp_size;
+  alloc_size = (flags & MZ_ZIP_FLAG_COMPRESSED_DATA) ? file_stat.m_comp_size
+                                                     : file_stat.m_uncomp_size;
   if (((sizeof(size_t) == sizeof(mz_uint32))) && (alloc_size > 0x7FFFFFFF)) {
     mz_zip_set_error(pZip, MZ_ZIP_INTERNAL_ERROR);
     return NULL;
@@ -6670,8 +6677,9 @@ void *mz_zip_reader_extract_to_heap(mz_zip_archive *pZip, mz_uint file_index,
     return NULL;
   }
 
-  if (!mz_zip_reader_extract_to_mem(pZip, file_index, pBuf, (size_t)alloc_size,
-                                    flags)) {
+  if (!mz_zip_reader_extract_to_mem_no_alloc1(pZip, file_index, pBuf,
+                                              (size_t)alloc_size, flags, NULL,
+                                              0, &file_stat)) {
     pZip->m_pFree(pZip->m_pAlloc_opaque, pBuf);
     return NULL;
   }

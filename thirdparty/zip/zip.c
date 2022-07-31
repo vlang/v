@@ -583,20 +583,15 @@ static ssize_t zip_file_move(MZ_FILE *m_pFile, const mz_uint64 to,
     return ZIP_ECAPSIZE;
   }
   if (MZ_FSEEK64(m_pFile, from, SEEK_SET)) {
-    MZ_FCLOSE(m_pFile);
     return ZIP_EFSEEK;
   }
-
   if (fread(move_buf, 1, length, m_pFile) != length) {
-    MZ_FCLOSE(m_pFile);
     return ZIP_EFREAD;
   }
   if (MZ_FSEEK64(m_pFile, to, SEEK_SET)) {
-    MZ_FCLOSE(m_pFile);
     return ZIP_EFSEEK;
   }
   if (fwrite(move_buf, 1, length, m_pFile) != length) {
-    MZ_FCLOSE(m_pFile);
     return ZIP_EFWRITE;
   }
   return (ssize_t)length;
@@ -662,7 +657,7 @@ static int zip_central_dir_move(mz_zip_internal_state *pState, int begin,
     d_size = (mz_uint32)(next - deleted);
   }
 
-  if (l_size == 0) {
+  if (next && l_size == 0) {
     memmove(pState->m_central_dir.m_p, next, r_size);
     pState->m_central_dir.m_p = MZ_REALLOC(pState->m_central_dir.m_p, r_size);
     {
@@ -674,7 +669,7 @@ static int zip_central_dir_move(mz_zip_internal_state *pState, int begin,
     }
   }
 
-  if (l_size * r_size != 0) {
+  if (next && l_size * r_size != 0) {
     memmove(deleted, next, r_size);
     {
       int i;
@@ -697,12 +692,12 @@ static int zip_central_dir_delete(mz_zip_internal_state *pState,
   int end = 0;
   int d_num = 0;
   while (i < entry_num) {
-    while ((!deleted_entry_index_array[i]) && (i < entry_num)) {
+    while ((i < entry_num) && (!deleted_entry_index_array[i])) {
       i++;
     }
     begin = i;
 
-    while ((deleted_entry_index_array[i]) && (i < entry_num)) {
+    while ((i < entry_num) && (deleted_entry_index_array[i])) {
       i++;
     }
     end = i;
@@ -711,14 +706,14 @@ static int zip_central_dir_delete(mz_zip_internal_state *pState,
 
   i = 0;
   while (i < entry_num) {
-    while ((!deleted_entry_index_array[i]) && (i < entry_num)) {
+    while ((i < entry_num) && (!deleted_entry_index_array[i])) {
       i++;
     }
     begin = i;
     if (begin == entry_num) {
       break;
     }
-    while ((deleted_entry_index_array[i]) && (i < entry_num)) {
+    while ((i < entry_num) && (deleted_entry_index_array[i])) {
       i++;
     }
     end = i;
@@ -764,13 +759,13 @@ static ssize_t zip_entries_delete_mark(struct zip_t *zip,
   }
 
   while (i < entry_num) {
-    while ((entry_mark[i].type == MZ_KEEP) && (i < entry_num)) {
+    while ((i < entry_num) && (entry_mark[i].type == MZ_KEEP)) {
       writen_num += entry_mark[i].lf_length;
       read_num = writen_num;
       i++;
     }
 
-    while ((entry_mark[i].type == MZ_DELETE) && (i < entry_num)) {
+    while ((i < entry_num) && (entry_mark[i].type == MZ_DELETE)) {
       deleted_entry_flag_array[i] = MZ_TRUE;
       read_num += entry_mark[i].lf_length;
       deleted_length += entry_mark[i].lf_length;
@@ -778,7 +773,7 @@ static ssize_t zip_entries_delete_mark(struct zip_t *zip,
       deleted_entry_num++;
     }
 
-    while ((entry_mark[i].type == MZ_MOVE) && (i < entry_num)) {
+    while ((i < entry_num) && (entry_mark[i].type == MZ_MOVE)) {
       move_length += entry_mark[i].lf_length;
       mz_uint8 *p = &MZ_ZIP_ARRAY_ELEMENT(
           &pState->m_central_dir, mz_uint8,
@@ -1191,7 +1186,7 @@ int zip_entry_close(struct zip_t *zip) {
   mz_uint32 extra_size = 0;
   mz_uint8 extra_data[MZ_ZIP64_MAX_CENTRAL_EXTRA_FIELD_SIZE];
   mz_uint8 local_dir_footer[MZ_ZIP_DATA_DESCRIPTER_SIZE64];
-  mz_uint32 local_dir_footer_size = MZ_ZIP_DATA_DESCRIPTER_SIZE32;
+  mz_uint32 local_dir_footer_size = MZ_ZIP_DATA_DESCRIPTER_SIZE64;
 
   if (!zip) {
     // zip_t handler is not initialized
@@ -1226,7 +1221,6 @@ int zip_entry_close(struct zip_t *zip) {
   MZ_WRITE_LE32(local_dir_footer + 4, zip->entry.uncomp_crc32);
   MZ_WRITE_LE64(local_dir_footer + 8, zip->entry.comp_size);
   MZ_WRITE_LE64(local_dir_footer + 16, zip->entry.uncomp_size);
-  local_dir_footer_size = MZ_ZIP_DATA_DESCRIPTER_SIZE64;
 
   if (pzip->m_pWrite(pzip->m_pIO_opaque, zip->entry.offset, local_dir_footer,
                      local_dir_footer_size) != local_dir_footer_size) {
