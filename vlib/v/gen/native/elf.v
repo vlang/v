@@ -42,14 +42,14 @@ const (
 	elf_p_align           = 0x1000
 
 	// elf symbol bining
-	elf_stb_local         = i8(0)
-	elf_stb_global        = i8(1)
+	elf_stb_local         = u8(0)
+	elf_stb_global        = u8(1)
 
 	// elf symbol types
-	elf_stt_notype        = i8(0)
-	elf_stt_object        = i8(1)
-	elf_stt_func          = i8(2)
-	elf_stt_section       = i8(3)
+	elf_stt_notype        = u8(0)
+	elf_stt_object        = u8(1)
+	elf_stt_func          = u8(2)
+	elf_stt_section       = u8(3)
 
 	// elf symbol visibility
 	elf_stv_default       = i8(0)
@@ -86,8 +86,6 @@ fn (mut p ProgramHeader) set_addr(addr i64) {
 }
 
 fn (mut g Gen) gen_program_header64(p ProgramHeader) {
-	p_offset := g.pos()
-
 	g.write32(p.typ) // p_type
 	g.println('; p_type')
 	g.write32(p.flags) // p_flags
@@ -143,10 +141,10 @@ mut:
 	size  i64 // Symbol size
 }
 
-fn (mut g Gen) create_symbol_table(str_name string, info i8, bind i8, other i8, value i64, size i64) SymbolTable {
+fn (mut g Gen) create_symbol_table(str_name string, info u8, bind u8, other i8, value i64, size i64) SymbolTable {
 	return SymbolTable{
 		str_name: str_name
-		info: info | bind << 4
+		info: i8(info | bind << 4)
 		other: other
 		value: value
 		size: size
