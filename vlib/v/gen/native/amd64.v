@@ -850,6 +850,57 @@ fn (mut g Gen) mul8_var(reg Register, var_offset int) {
 	g.println('mul8 $reg,DWORD PTR[rbp-$var_offset.hex2()]')
 }
 
+fn (mut g Gen) bitand_reg(a Register, b Register) {
+	g.write8(0x48 + if int(a) >= int(Register.r8) { 1 } else { 0 } +
+		if int(b) >= int(Register.r8) { 4 } else { 0 })
+	g.write8(0x21)
+	g.write8(0xc0 + int(a) % 8 + int(b) % 8 * 8)
+}
+
+fn (mut g Gen) bitor_reg(a Register, b Register) {
+	g.write8(0x48 + if int(a) >= int(Register.r8) { 1 } else { 0 } +
+		if int(b) >= int(Register.r8) { 4 } else { 0 })
+	g.write8(0x09)
+	g.write8(0xc0 + int(a) % 8 + int(b) % 8 * 8)
+}
+
+fn (mut g Gen) bitxor_reg(a Register, b Register) {
+	g.write8(0x48 + if int(a) >= int(Register.r8) { 1 } else { 0 } +
+		if int(b) >= int(Register.r8) { 4 } else { 0 })
+	g.write8(0x31)
+	g.write8(0xc0 + int(a) % 8 + int(b) % 8 * 8)
+}
+
+fn (mut g Gen) shl_reg(a Register, b Register) {
+	if b != .rcx {
+		g.mov_reg(.rcx, b)
+	}
+	g.write8(if int(a) >= int(Register.r8) { 0x49 } else { 0x48 })
+	g.write8(0xd3)
+	g.write8(0xe0 + int(a) % 8)
+	g.println('shl $a, $b')
+}
+
+fn (mut g Gen) sar_reg(a Register, b Register) {
+	if b != .rcx {
+		g.mov_reg(.rcx, b)
+	}
+	g.write8(if int(a) > 7 { 0x49 } else { 0x48 })
+	g.write8(0xd3)
+	g.write8(0xf8 + int(a) % 8)
+	g.println('shl $a, $b')
+}
+
+fn (mut g Gen) shr_reg(a Register, b Register) {
+	if b != .rcx {
+		g.mov_reg(.rcx, b)
+	}
+	g.write8(if int(a) > 7 { 0x49 } else { 0x48 })
+	g.write8(0xd3)
+	g.write8(0xe8 + int(a) % 8)
+	g.println('shl $a, $b')
+}
+
 fn (mut g Gen) leave() {
 	g.println('; label 0: return')
 	if g.defer_stmts.len != 0 {
@@ -1757,32 +1808,76 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			return
 		}
 	}
-	g.expr(node.left)
 	mut label := 0
-	g.push(.rax)
 	if node.op in [.logical_or, .and] {
-		label = g.labels.new_label()
+		g.expr(node.left)
+		label := g.labels.new_label()
 		g.cmp_zero(.rax)
 		jump_addr := g.cjmp(if node.op == .logical_or { .jne } else { .je })
 		g.labels.patches << LabelPatch{
 			id: label
 			pos: jump_addr
 		}
-	}
-	g.expr(node.right)
-	g.pop(.rdx)
-	// left: rdx, right: rax
-	match node.op {
-		.logical_or, .and {
-			g.labels.addrs[label] = g.pos()
+		g.expr(node.right)
+		g.labels.addrs[label] = g.pos()
+		return
+	} else {
+		g.expr(node.right)
+		// optimize for ast.Ident
+		match node.left {
+			ast.Ident {
+				g.mov_reg(.rdx, .rax)
+				g.mov_var_to_reg(.rax, node.left as ast.Ident)
+			}
+			else {
+				g.push(.rax)
+				g.expr(node.left)
+				g.pop(match node.op {
+					.left_shift, .right_shift, .unsigned_right_shift { .rcx }
+					else { .rdx }
+				})
+			}
 		}
-		.eq, .ne, .gt, .lt, .ge, .le {
-			g.cmp_reg(.rdx, .rax)
-			g.mov64(.rax, 0)
-			g.cset_op(node.op)
+		if left_type !in ast.ingeger_type_idxs && left_type != ast.bool_type_idx {
+			g.n_error('unsupported type for `$node.op`: $left_type')
 		}
-		else {
-			g.n_error('`$node.op` expression is not supported right now')
+		// left: rax, right: rdx
+		match node.op {
+			.eq, .ne, .gt, .lt, .ge, .le {
+				g.cmp_reg(.rax, .rdx)
+				g.mov64(.rax, 0)
+				g.cset_op(node.op)
+			}
+			.plus {
+				g.add_reg(.rax, .rdx)
+			}
+			.minus {
+				g.sub_reg(.rax, .rdx)
+			}
+			.mul {}
+			.div {}
+			.mod {}
+			.amp {
+				g.bitand_reg(.rax, .rdx)
+			}
+			.pipe {
+				g.bitor_reg(.rax, .rdx)
+			}
+			.xor {
+				g.bitxor_reg(.rax, .rdx)
+			}
+			.left_shift {
+				g.shl_reg(.rax, .rcx)
+			}
+			.right_shift {
+				g.sar_reg(.rax, .rcx)
+			}
+			.unsigned_right_shift {
+				g.shr_reg(.rax, .rcx)
+			}
+			else {
+				g.n_error('`$node.op` expression is not supported right now')
+			}
 		}
 	}
 }
