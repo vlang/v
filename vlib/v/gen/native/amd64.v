@@ -1808,7 +1808,6 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			return
 		}
 	}
-	mut label := 0
 	if node.op in [.logical_or, .and] {
 		g.expr(node.left)
 		label := g.labels.new_label()
@@ -1838,8 +1837,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 				})
 			}
 		}
-		if node.left_type !in ast.ingeger_type_idxs && left_type != ast.bool_type_idx {
-			g.n_error('unsupported type for `$node.op`: $left_type')
+		if node.left_type !in ast.integer_type_idxs && node.left_type != ast.bool_type_idx {
+			g.n_error('unsupported type for `$node.op`: $node.left_type')
 		}
 		// left: rax, right: rdx
 		match node.op {
