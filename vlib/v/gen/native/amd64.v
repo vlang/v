@@ -1833,12 +1833,12 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 				g.push(.rax)
 				g.expr(node.left)
 				g.pop(match node.op {
-					.left_shift, .right_shift, .unsigned_right_shift { .rcx }
+					.left_shift, .right_shift, .unsigned_right_shift, .div, .mod { .rcx }
 					else { .rdx }
 				})
 			}
 		}
-		if left_type !in ast.ingeger_type_idxs && left_type != ast.bool_type_idx {
+		if node.left_type !in ast.ingeger_type_idxs && left_type != ast.bool_type_idx {
 			g.n_error('unsupported type for `$node.op`: $left_type')
 		}
 		// left: rax, right: rdx
@@ -1854,9 +1854,39 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			.minus {
 				g.sub_reg(.rax, .rdx)
 			}
-			.mul {}
-			.div {}
-			.mod {}
+			.mul {
+				g.write32(0xc2af0f48)
+				g.println('imul rax, rdx')
+			}
+			.div {
+				if node.left_type in ast.unsigned_integer_type_idxs {
+					g.write8(0xba)
+					g.write32(0)
+					g.println('mov edx, 0')
+					g.write([u8(0x48), 0xf7, 0xf1])
+					g.println('div rcx')
+				} else {
+					g.write16(0x9948)
+					g.println('cqo')
+					g.write([u8(0x48), 0xf7, 0xf9])
+					g.println('idiv rcx')
+				}
+			}
+			.mod {
+				if node.left_type in ast.unsigned_integer_type_idxs {
+					g.write8(0xba)
+					g.write32(0)
+					g.println('mov edx, 0')
+					g.write([u8(0x48), 0xf7, 0xf1])
+					g.println('div rcx')
+				} else {
+					g.write16(0x9948)
+					g.println('cqo')
+					g.write([u8(0x48), 0xf7, 0xf9])
+					g.println('idiv rcx')
+				}
+				g.mov_reg(.rax, .rdx)
+			}
 			.amp {
 				g.bitand_reg(.rax, .rdx)
 			}
