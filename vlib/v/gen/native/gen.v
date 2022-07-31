@@ -122,7 +122,7 @@ struct VarConfig {
 
 type Var = GlobalVar | LocalVar | ast.Ident
 
-fn (mut g Gen) get_var_from_ident(ident ast.Ident) LocalVar | GlobalVar | Register {
+fn (mut g Gen) get_var_from_ident(ident ast.Ident) LocalVar|GlobalVar|Register {
 	mut obj := ident.obj
 	if obj !in [ast.Var, ast.ConstField, ast.GlobalField, ast.AsmRegister] {
 		obj = ident.scope.find(ident.name) or { g.n_error('unknown variable $ident.name') }
