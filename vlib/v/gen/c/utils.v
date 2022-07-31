@@ -16,8 +16,8 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 		// `resolve_generic_to_concrete`. `g.table` is made non-mut to make sure
 		// no one else can accidentally mutates the table.
 		unsafe {
-			mut muttable := &ast.Table(g.table)
-			if t_typ := muttable.resolve_generic_to_concrete(typ, if g.cur_fn != nil {
+			mut mut_table := &ast.Table(g.table)
+			if t_typ := mut_table.resolve_generic_to_concrete(typ, if g.cur_fn != nil {
 				g.cur_fn.generic_names
 			} else {
 				[]string{}
