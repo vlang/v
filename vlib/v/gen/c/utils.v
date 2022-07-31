@@ -7,7 +7,7 @@ import v.ast
 
 fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 	if typ.has_flag(.generic) {
-		// `resolve_generic_to_concrete` should not mutate the table.
+		// NOTE: `resolve_generic_to_concrete` should not mutate the table.
 		//
 		// It mutates if the generic type is for example `[]T` and the concrete
 		// type is an array type that has not been registered yet.
