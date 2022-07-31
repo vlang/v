@@ -1,7 +1,6 @@
 module binary
 
 // Big Endian Tests
-
 fn test_big_endian_u16() {
 	assert big_endian_u16([u8(0), 1]) == u16(1)
 	assert big_endian_u16([u8(5), 4]) == u16(0x0504)
@@ -116,15 +115,19 @@ fn test_big_endian_u64() {
 fn test_big_endian_u64_at() {
 	assert big_endian_u64_at([u8(0), 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0], 1) == u64(1)
 	assert big_endian_u64_at([u8(0), 5, 4, 9, 1, 7, 3, 6, 8, 0, 0, 0, 0, 0, 0, 0], 1) == u64(0x0504090107030608)
-	assert big_endian_u64_at([u8(0), 0xf8, 0xa2, 0x9e, 0x21, 0x7f, 0x9f, 0x8e, 0x8f, 0, 0, 0, 0, 0, 0, 0], 1) == u64(0xf8a29e217f9f8e8f)
-	assert big_endian_u64_at([u8(0), 0xf8, 0xa2, 0x9e, 0x21, 0x7f, 0x9f, 0x8e, 0x8f, 0, 0, 0, 0, 0, 0, 0], 1) != u64(0x8f8e9f7f219ea2f8)
+	assert big_endian_u64_at([u8(0), 0xf8, 0xa2, 0x9e, 0x21, 0x7f, 0x9f, 0x8e, 0x8f, 0, 0, 0, 0,
+		0, 0, 0], 1) == u64(0xf8a29e217f9f8e8f)
+	assert big_endian_u64_at([u8(0), 0xf8, 0xa2, 0x9e, 0x21, 0x7f, 0x9f, 0x8e, 0x8f, 0, 0, 0, 0,
+		0, 0, 0], 1) != u64(0x8f8e9f7f219ea2f8)
 }
 
 fn test_big_endian_u64_end() {
 	assert big_endian_u64_end([u8(0), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]) == u64(1)
 	assert big_endian_u64_end([u8(0), 0, 0, 0, 0, 0, 0, 0, 5, 4, 9, 1, 7, 3, 6, 8]) == u64(0x0504090107030608)
-	assert big_endian_u64_end([u8(0), 0, 0, 0, 0, 0, 0, 0, 0xf8, 0xa2, 0x9e, 0x21, 0x7f, 0x9f, 0x8e, 0x8f]) == u64(0xf8a29e217f9f8e8f)
-	assert big_endian_u64_end([u8(0), 0, 0, 0, 0, 0, 0, 0, 0xf8, 0xa2, 0x9e, 0x21, 0x7f, 0x9f, 0x8e, 0x8f]) != u64(0x8f8e9f7f219ea2f8)
+	assert big_endian_u64_end([u8(0), 0, 0, 0, 0, 0, 0, 0, 0xf8, 0xa2, 0x9e, 0x21, 0x7f, 0x9f,
+		0x8e, 0x8f]) == u64(0xf8a29e217f9f8e8f)
+	assert big_endian_u64_end([u8(0), 0, 0, 0, 0, 0, 0, 0, 0xf8, 0xa2, 0x9e, 0x21, 0x7f, 0x9f,
+		0x8e, 0x8f]) != u64(0x8f8e9f7f219ea2f8)
 }
 
 fn test_big_endian_put_u64() {

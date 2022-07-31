@@ -107,7 +107,8 @@ pub fn big_endian_u64(b []u8) u64 {
 pub fn big_endian_u64_at(b []u8, o int) u64 {
 	_ = b[o] // bounds check
 	_ = b[o + 7] // bounds check
-	return u64(b[o + 7]) | (u64(b[o + 6]) << u64(8)) | (u64(b[o + 5]) << u64(16)) | (u64(b[o + 4]) << u64(24)) | (u64(b[o + 3]) << u64(32)) | (u64(b[o + 2]) << u64(40)) | (u64(b[o + 1]) << u64(48)) | (u64(b[o]) << u64(56))
+	return u64(b[o + 7]) | (u64(b[o + 6]) << u64(8)) | (u64(b[o + 5]) << u64(16)) | (u64(b[o + 4]) << u64(24)) | (u64(b[
+		o + 3]) << u64(32)) | (u64(b[o + 2]) << u64(40)) | (u64(b[o + 1]) << u64(48)) | (u64(b[o]) << u64(56))
 }
 
 // big_endian_u64 creates a u64 from the last eight bytes in the array b in big endian order.

@@ -71,8 +71,10 @@ fn test_little_endian_u32() {
 fn test_little_endian_u32_at() {
 	assert little_endian_u32_at([u8(1), 0, 0, 0, 0, 0, 0, 0], 1) == u32(0)
 	assert little_endian_u32_at([u8(5), 4, 9, 1, 7, 3, 6, 8], 1) == u32(0x07010904)
-	assert little_endian_u32_at([u8(0xf8), 0xa2, 0x9e, 0x21, 0x7f, 0x9f, 0x8e, 0x8f], 1) == u32(0x7f219ea2)
-	assert little_endian_u32_at([u8(0xf8), 0xa2, 0x9e, 0x21, 0x7f, 0x9f, 0x8e, 0x8f], 1) != u32(0xa29e217f)
+	assert little_endian_u32_at([u8(0xf8), 0xa2, 0x9e, 0x21, 0x7f, 0x9f, 0x8e, 0x8f],
+		1) == u32(0x7f219ea2)
+	assert little_endian_u32_at([u8(0xf8), 0xa2, 0x9e, 0x21, 0x7f, 0x9f, 0x8e, 0x8f],
+		1) != u32(0xa29e217f)
 }
 
 fn test_little_endian_u32_end() {
@@ -128,17 +130,23 @@ fn test_little_endian_u64() {
 }
 
 fn test_little_endian_u64_at() {
-	assert little_endian_u64_at([u8(1), 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1], 1) == u64(0)
-	assert little_endian_u64_at([u8(0), 5, 4, 9, 1, 7, 3, 6, 8, 0, 0, 0, 0, 0, 0, 0], 1) == u64(0x0806030701090405)
-	assert little_endian_u64_at([u8(0), 0xf8, 0xa2, 0x9e, 0x21, 0x7f, 0x9f, 0x8e, 0x8f, 0, 0, 0, 0, 0, 0, 0], 1) == u64(0x8f8e9f7f219ea2f8)
-	assert little_endian_u64_at([u8(0), 0xf8, 0xa2, 0x9e, 0x21, 0x7f, 0x9f, 0x8e, 0x8f, 0, 0, 0, 0, 0, 0, 0], 1) != u64(0xf8a29e217f9f8e8f)
+	assert little_endian_u64_at([u8(1), 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1],
+		1) == u64(0)
+	assert little_endian_u64_at([u8(0), 5, 4, 9, 1, 7, 3, 6, 8, 0, 0, 0, 0, 0, 0, 0],
+		1) == u64(0x0806030701090405)
+	assert little_endian_u64_at([u8(0), 0xf8, 0xa2, 0x9e, 0x21, 0x7f, 0x9f, 0x8e, 0x8f, 0, 0, 0,
+		0, 0, 0, 0], 1) == u64(0x8f8e9f7f219ea2f8)
+	assert little_endian_u64_at([u8(0), 0xf8, 0xa2, 0x9e, 0x21, 0x7f, 0x9f, 0x8e, 0x8f, 0, 0, 0,
+		0, 0, 0, 0], 1) != u64(0xf8a29e217f9f8e8f)
 }
 
 fn test_little_endian_u64_end() {
 	assert little_endian_u64_end([u8(1), 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0]) == u64(0)
 	assert little_endian_u64_end([u8(0), 0, 0, 0, 0, 0, 0, 0, 5, 4, 9, 1, 7, 3, 6, 8]) == u64(0x0806030701090405)
-	assert little_endian_u64_end([u8(0), 0, 0, 0, 0, 0, 0, 0, 0xf8, 0xa2, 0x9e, 0x21, 0x7f, 0x9f, 0x8e, 0x8f]) == u64(0x8f8e9f7f219ea2f8)
-	assert little_endian_u64_end([u8(0), 0, 0, 0, 0, 0, 0, 0, 0xf8, 0xa2, 0x9e, 0x21, 0x7f, 0x9f, 0x8e, 0x8f]) != u64(0xf8a29e217f9f8e8f)
+	assert little_endian_u64_end([u8(0), 0, 0, 0, 0, 0, 0, 0, 0xf8, 0xa2, 0x9e, 0x21, 0x7f, 0x9f,
+		0x8e, 0x8f]) == u64(0x8f8e9f7f219ea2f8)
+	assert little_endian_u64_end([u8(0), 0, 0, 0, 0, 0, 0, 0, 0xf8, 0xa2, 0x9e, 0x21, 0x7f, 0x9f,
+		0x8e, 0x8f]) != u64(0xf8a29e217f9f8e8f)
 }
 
 fn test_little_endian_put_u64() {
