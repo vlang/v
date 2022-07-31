@@ -269,7 +269,8 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			} else {
 				unaliased_left_type := c.table.unalias_num_type(left_type)
 				unalias_right_type := c.table.unalias_num_type(right_type)
-				mut promoted_type := c.promote(unaliased_left_type, unalias_right_type)
+				mut promoted_type := c.table.promote(unaliased_left_type, unalias_right_type,
+					c.pref.translated)
 				// substract pointers is allowed in unsafe block
 				is_allowed_pointer_arithmetic := left_type.is_any_kind_of_pointer()
 					&& right_type.is_any_kind_of_pointer() && node.op == .minus
@@ -422,13 +423,15 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 				// []T << T or []T << []T
 				unwrapped_right_type := c.unwrap_generic(right_type)
-				if c.check_types(unwrapped_right_type, left_value_type) {
+				if c.table.check_types(unwrapped_right_type, left_value_type, c.pref.translated) {
 					// []&T << T is wrong: we check for that, !(T.is_ptr()) && ?(&T).is_ptr()
 					if !(!unwrapped_right_type.is_ptr() && left_value_type.is_ptr()
 						&& left_value_type.share() == .mut_t) {
 						return ast.void_type
 					}
-				} else if c.check_types(unwrapped_right_type, c.unwrap_generic(left_type)) {
+				} else if c.table.check_types(unwrapped_right_type, c.unwrap_generic(left_type),
+					c.pref.translated)
+				{
 					return ast.void_type
 				}
 				c.error('cannot append `$right_sym.name` to `$left_sym.name`', right_pos)
@@ -522,7 +525,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			if left_sym.kind == .chan {
 				chan_info := left_sym.chan_info()
 				elem_type := chan_info.elem_type
-				if !c.check_types(right_type, elem_type) {
+				if !c.table.check_types(right_type, elem_type, c.pref.translated) {
 					c.error('cannot push `$right_sym.name` on `$left_sym.name`', right_pos)
 				}
 				if chan_info.is_mut {
@@ -599,8 +602,9 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	}
 	// Dual sides check (compatibility check)
 	if node.left !is ast.ComptimeCall && node.right !is ast.ComptimeCall {
-		if !(c.symmetric_check(left_type, right_type) && c.symmetric_check(right_type, left_type))
-			&& !c.pref.translated && !c.file.is_translated && !node.left.is_auto_deref_var()
+		if !(c.table.symmetric_check(left_type, right_type)
+			&& c.table.symmetric_check(right_type, left_type)) && !c.pref.translated
+			&& !c.file.is_translated && !node.left.is_auto_deref_var()
 			&& !node.right.is_auto_deref_var() {
 			// for type-unresolved consts
 			if left_type == ast.void_type || right_type == ast.void_type {

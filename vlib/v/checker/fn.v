@@ -940,7 +940,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			c.error('literal argument cannot be passed as reference parameter `${c.table.type_to_str(param.typ)}`',
 				call_arg.pos)
 		}
-		c.check_expected_call_arg(arg_typ, c.unwrap_generic(param.typ), node.language,
+		c.table.check_expected_call_arg(arg_typ, c.unwrap_generic(param.typ), node.language,
 			call_arg) or {
 			if param.typ.has_flag(.generic) {
 				continue
@@ -1060,7 +1060,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 						}
 						continue
 					}
-					c.check_expected_call_arg(utyp, unwrap_typ, node.language, call_arg) or {
+					c.table.check_expected_call_arg(utyp, unwrap_typ, node.language, call_arg) or {
 						if c.comptime_fields_type.len > 0 {
 							continue
 						}
@@ -1189,7 +1189,8 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		arg_expr := if method_name == 'insert' { node.args[1].expr } else { node.args[0].expr }
 		arg_type := c.expr(arg_expr)
 		arg_sym := c.table.sym(arg_type)
-		if !c.check_types(arg_type, info.elem_type) && !c.check_types(left_type, arg_type) {
+		if !c.table.check_types(arg_type, info.elem_type, c.pref.translated)
+			&& !c.table.check_types(left_type, arg_type, c.pref.translated) {
 			c.error('cannot $method_name `$arg_sym.name` to `$left_sym.name`', arg_expr.pos())
 		}
 	} else if final_left_sym.info is ast.Array && method_name in ['first', 'last', 'pop'] {
@@ -1480,7 +1481,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				c.error('literal argument cannot be passed as reference parameter `${c.table.type_to_str(param.typ)}`',
 					arg.pos)
 			}
-			c.check_expected_call_arg(got_arg_typ, exp_arg_typ, node.language, arg) or {
+			c.table.check_expected_call_arg(got_arg_typ, exp_arg_typ, node.language, arg) or {
 				// str method, allow type with str method if fn arg is string
 				// Passing an int or a string array produces a c error here
 				// Deleting this condition results in propper V error messages
@@ -1633,8 +1634,8 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 
 				if i < info.func.params.len {
 					exp_arg_typ := info.func.params[i].typ
-					c.check_expected_call_arg(targ, c.unwrap_generic(exp_arg_typ), node.language,
-						arg) or {
+					c.table.check_expected_call_arg(targ, c.unwrap_generic(exp_arg_typ),
+						node.language, arg) or {
 						if targ != ast.void_type {
 							c.error('$err.msg() in argument ${i + 1} to `${left_sym.name}.$method_name`',
 								arg.pos)
@@ -1884,7 +1885,7 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type ast.
 			}
 			info := left_sym.info as ast.Map
 			arg_type := c.expr(node.args[0].expr)
-			c.check_expected_call_arg(arg_type, info.key_type, node.language, node.args[0]) or {
+			c.table.check_expected_call_arg(arg_type, info.key_type, node.language, node.args[0]) or {
 				c.error('$err.msg() in argument 1 to `Map.delete`', node.args[0].pos)
 			}
 		}
@@ -2019,7 +2020,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			c.error('`.contains()` expected 1 argument, but got $node.args.len', node.pos)
 		} else if !left_sym.has_method('contains') {
 			arg_typ := c.expr(node.args[0].expr)
-			c.check_expected_call_arg(arg_typ, elem_typ, node.language, node.args[0]) or {
+			c.table.check_expected_call_arg(arg_typ, elem_typ, node.language, node.args[0]) or {
 				c.error('$err.msg() in argument 1 to `.contains()`', node.args[0].pos)
 			}
 		}
@@ -2029,7 +2030,7 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			c.error('`.index()` expected 1 argument, but got $node.args.len', node.pos)
 		} else if !left_sym.has_method('index') {
 			arg_typ := c.expr(node.args[0].expr)
-			c.check_expected_call_arg(arg_typ, elem_typ, node.language, node.args[0]) or {
+			c.table.check_expected_call_arg(arg_typ, elem_typ, node.language, node.args[0]) or {
 				c.error('$err.msg() in argument 1 to `.index()`', node.args[0].pos)
 			}
 		}

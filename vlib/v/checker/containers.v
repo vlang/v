@@ -331,14 +331,16 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 			c.expected_type = val0_type
 			val_type := c.expr(val)
 			node.val_types << val_type
-			if !c.check_types(key_type, key0_type) || (i == 0 && key_type.is_number()
-				&& key0_type.is_number() && key0_type != ast.mktyp(key_type)) {
+			if !c.table.check_types(key_type, key0_type, c.pref.translated)
+				|| (i == 0 && key_type.is_number() && key0_type.is_number()
+				&& key0_type != ast.mktyp(key_type)) {
 				msg := c.expected_msg(key_type, key0_type)
 				c.error('invalid map key: $msg', key.pos())
 				same_key_type = false
 			}
-			if !c.check_types(val_type, val0_type) || (i == 0 && val_type.is_number()
-				&& val0_type.is_number() && val0_type != ast.mktyp(val_type)) {
+			if !c.table.check_types(val_type, val0_type, c.pref.translated)
+				|| (i == 0 && val_type.is_number() && val0_type.is_number()
+				&& val0_type != ast.mktyp(val_type)) {
 				msg := c.expected_msg(val_type, val0_type)
 				c.error('invalid map value: $msg', val.pos())
 			}

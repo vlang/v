@@ -991,7 +991,7 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 				c.expected_or_type = ret_type.clear_flag(.optional)
 				last_stmt_typ := c.expr(stmt.expr)
 				c.expected_or_type = ast.void_type
-				type_fits := c.check_types(last_stmt_typ, ret_type)
+				type_fits := c.table.check_types(last_stmt_typ, ret_type, c.pref.translated)
 					&& last_stmt_typ.nr_muls() == ret_type.nr_muls()
 				is_noreturn := is_noreturn_callexpr(stmt.expr)
 				if type_fits || is_noreturn {
@@ -1052,7 +1052,7 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 				if is_noreturn_callexpr(stmt.expr) {
 					return
 				}
-				if c.check_types(stmt.typ, expr_return_type) {
+				if c.table.check_types(stmt.typ, expr_return_type, c.pref.translated) {
 					return
 				}
 				// opt_returning_string() or { ... 123 }
@@ -1255,7 +1255,7 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 			fn_type := ast.new_type(c.table.find_or_register_fn_type(c.mod, method, false,
 				true))
 			// if the expected type includes the receiver, don't hide it behind a closure
-			if c.check_types(fn_type, c.expected_type) {
+			if c.table.check_types(fn_type, c.expected_type, c.pref.translated) {
 				return fn_type
 			}
 		}
@@ -2313,7 +2313,7 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 		}
 		ast.Likely {
 			ltype := c.expr(node.expr)
-			if !c.check_types(ltype, ast.bool_type) {
+			if !c.table.check_types(ltype, ast.bool_type, c.pref.translated) {
 				ltype_sym := c.table.sym(ltype)
 				lname := if node.is_likely { '_likely_' } else { '_unlikely_' }
 				c.error('`${lname}()` expects a boolean expression, instead it got `$ltype_sym.name`',
@@ -2384,7 +2384,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	if to_sym.kind == .sum_type {
 		if from_type in [ast.int_literal_type, ast.float_literal_type] {
 			xx := if from_type == ast.int_literal_type { ast.int_type } else { ast.f64_type }
-			node.expr_type = c.promote_num(node.expr_type, xx)
+			node.expr_type = c.table.promote_num(node.expr_type, xx, c.pref.translated)
 			from_type = node.expr_type
 		}
 		if !c.table.sumtype_has_variant(to_type, from_type, false) && !to_type.has_flag(.optional) {
@@ -2393,8 +2393,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			c.error('cannot cast `$ft` to `$tt`', node.pos)
 		}
 	} else if mut to_sym.info is ast.Alias && !(final_to_sym.kind == .struct_ && to_type.is_ptr()) {
-		if !c.check_types(from_type, to_sym.info.parent_type) && !(final_to_sym.is_int()
-			&& final_from_sym.kind in [.enum_, .bool, .i8, .char]) {
+		if !c.table.check_types(from_type, to_sym.info.parent_type, c.pref.translated)
+			&& !(final_to_sym.is_int() && final_from_sym.kind in [.enum_, .bool, .i8, .char]) {
 			ft := c.table.type_to_str(from_type)
 			tt := c.table.type_to_str(to_type)
 			c.error('cannot cast `$ft` to `$tt` (alias to `$final_to_sym.name`)', node.pos)
@@ -3464,7 +3464,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			info := typ_sym.info as ast.Map
 			c.expected_type = info.key_type
 			index_type := c.expr(node.index)
-			if !c.check_types(index_type, info.key_type) {
+			if !c.table.check_types(index_type, info.key_type, c.pref.translated) {
 				err := c.expected_msg(index_type, info.key_type)
 				c.error('invalid key: $err', node.pos)
 			}

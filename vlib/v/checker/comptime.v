@@ -514,7 +514,7 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 							c.error(err.msg(), cond.left.pos)
 							return .unknown
 						}
-						if !c.check_types(right_type, left_type) {
+						if !c.table.check_types(right_type, left_type, c.pref.translated) {
 							left_name := c.table.type_to_str(left_type)
 							right_name := c.table.type_to_str(right_type)
 							c.error('mismatched types `$left_name` and `$right_name`',
@@ -641,7 +641,7 @@ fn (mut c Checker) comptime_if_branch(cond ast.Expr, pos token.Pos) ComptimeBran
 					c.error(err.msg(), cond.pos)
 					return .unknown
 				}
-				if !c.check_types(typ, ast.bool_type) {
+				if !c.table.check_types(typ, ast.bool_type, c.pref.translated) {
 					type_name := c.table.type_to_str(typ)
 					c.error('non-bool type `$type_name` used as \$if condition', cond.pos)
 				}

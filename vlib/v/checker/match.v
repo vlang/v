@@ -79,7 +79,8 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					}
 					stmt.typ = expr_type
 				} else if node.is_expr && ret_type.idx() != expr_type.idx() {
-					if !c.check_types(ret_type, expr_type) && !c.check_types(expr_type, ret_type) {
+					if !c.table.check_types(ret_type, expr_type, c.pref.translated)
+						&& !c.table.check_types(expr_type, ret_type, c.pref.translated) {
 						ret_sym := c.table.sym(ret_type)
 						is_noreturn := is_noreturn_callexpr(stmt.expr)
 						if !(node.is_expr && ret_sym.kind == .sum_type
@@ -254,7 +255,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				expr_str := c.table.type_to_str(expr_type)
 				expect_str := c.table.type_to_str(node.cond_type)
 				c.error('cannot match alias type `$expect_str` with `$expr_str`', expr.pos())
-			} else if !c.check_types(expr_type, node.cond_type) {
+			} else if !c.table.check_types(expr_type, node.cond_type, c.pref.translated) {
 				expr_str := c.table.type_to_str(expr_type)
 				expect_str := c.table.type_to_str(node.cond_type)
 				c.error('cannot match `$expect_str` with `$expr_str`', expr.pos())

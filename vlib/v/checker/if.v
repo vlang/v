@@ -187,7 +187,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						node.typ = c.expected_type
 					}
 				}
-				if !c.check_types(last_expr.typ, node.typ) {
+				if !c.table.check_types(last_expr.typ, node.typ, c.pref.translated) {
 					if node.typ == ast.void_type {
 						// first branch of if expression
 						node.is_expr = true
@@ -312,7 +312,8 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 					if right_sym.kind != .interface_ {
 						c.type_implements(right_type, expr_type, node.pos)
 					}
-				} else if !c.check_types(right_type, expr_type) && left_sym.kind != .sum_type {
+				} else if !c.table.check_types(right_type, expr_type, c.pref.translated)
+					&& left_sym.kind != .sum_type {
 					expect_str := c.table.type_to_str(right_type)
 					expr_str := c.table.type_to_str(expr_type)
 					c.error('cannot use type `$expect_str` as type `$expr_str`', node.pos)
