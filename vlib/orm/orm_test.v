@@ -32,6 +32,13 @@ struct TestTime {
 	create time.Time
 }
 
+struct Task {
+mut:
+	id     u32    [primary; serial; sql: serial]
+	title  string
+	status string
+}
+
 fn test_orm() {
 	db := sqlite.connect(':memory:') or { panic(err) }
 	db.exec('drop table if exists User')
@@ -363,5 +370,38 @@ fn test_orm() {
 	sql db {
 		drop table Module
 		drop table TestTime
+	}
+
+	task_models := [
+		Task{
+			title: 'a'
+			status: 'pending'
+		},
+		Task{
+			title: 'b'
+			status: 'done'
+		},
+	]
+
+	for task_model in task_models {
+		sql db {
+			insert task_model into Task
+		}
+	}
+
+	results := sql db {
+		select from Task where (title == 'b' && status == 'done') || id == 1 order by id
+	}
+
+	assert results.len == 2
+	assert results[0].id == 1
+	assert results[1].id == 2
+	assert results[0].title == 'a'
+	assert results[1].title == 'b'
+	assert results[0].status == 'pending'
+	assert results[1].status == 'done'
+
+	sql db {
+		drop table Task
 	}
 }

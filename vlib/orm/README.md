@@ -26,6 +26,7 @@ struct Foo {
     created_at  time.Time   [sql_type: 'DATETIME']
     updated_at  string      [sql_type: 'DATETIME']
     deleted_at  time.Time
+    status  	string
 }
 ```
 
@@ -50,6 +51,7 @@ sql db {
 ```v ignore
 var := Foo{
     name:       'abc'
+    status:     'pending'
     created_at: time.now()
     updated_at: time.now().str()
     deleted_at: time.now()
@@ -79,6 +81,11 @@ sql db {
 ```v ignore
 result := sql db {
     select from Foo where id == 1
+}
+```
+```v ignore
+result := sql db {
+    select from Foo where (name == 'b' && status == 'done') || id == 1 order by id
 }
 ```
 ```v ignore
