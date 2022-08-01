@@ -552,7 +552,7 @@ fn (mut s Scanner) end_of_file() token.Token {
 	return s.new_eof_token()
 }
 
-pub fn (mut s Scanner) scan_all_tokens_in_buffer() {
+fn (mut s Scanner) scan_all_tokens_in_buffer() {
 	mut timers := util.get_timers()
 	timers.measure_pause('PARSE')
 	util.timing_start('SCAN')
@@ -571,7 +571,7 @@ pub fn (mut s Scanner) scan_all_tokens_in_buffer() {
 	}
 }
 
-pub fn (mut s Scanner) scan_remaining_text() {
+fn (mut s Scanner) scan_remaining_text() {
 	for {
 		t := s.text_scan()
 		if s.comments_mode == .skip_comments && t.kind == .comment {
