@@ -516,7 +516,7 @@ fn (mut g Gen) gen_section_data(sections []Section) {
 				g.write32(data.typ)
 				g.write(data.name)
 
-				for i in 0 .. ((g.pos() % 4) + 1) {
+				for _ in 0 .. ((g.pos() % 4) + 1) {
 					g.write8(0) // align by 4 bytes + null terminator
 				}
 
