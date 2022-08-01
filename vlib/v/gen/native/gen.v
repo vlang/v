@@ -32,6 +32,7 @@ mut:
 	offset               i64
 	file_size_pos        i64
 	main_fn_addr         i64
+	start_symbol_addr    i64
 	code_start_pos       i64 // location of the start of the assembly instructions
 	fn_addr              map[string]i64
 	var_offset           map[string]int // local var stack offset
