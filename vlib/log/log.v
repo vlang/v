@@ -69,6 +69,7 @@ mut:
 	warn(s string)
 	info(s string)
 	debug(s string)
+	set_level(level Level)
 }
 
 // Log represents a logging object

@@ -84,6 +84,7 @@ fn test_logger_mutable_reference() {
 	println(@FN + ' start')
 	// get log as Logger and use it
 	mut logger := new_log_as_logger()
+	logger.set_level(.debug)
 	assert typeof(logger).name == '&log.Logger'
 	go logger_mutable_statements(mut logger)
 	delay() // wait to finish
