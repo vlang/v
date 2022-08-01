@@ -3,9 +3,15 @@
 // that can be found in the LICENSE file.
 module json
 
-#flag -I @VEXEROOT/thirdparty/cJSON
-#flag @VEXEROOT/thirdparty/cJSON/cJSON.o
+$if $pkgconfig('libcjson') {
+	#pkgconfig libcjson
+} $else {
+	#flag -I @VEXEROOT/thirdparty/cJSON
+	#flag @VEXEROOT/thirdparty/cJSON/cJSON.o
+}
+
 #include "cJSON.h"
+
 #define js_get(object, key) cJSON_GetObjectItemCaseSensitive((object), (key))
 
 pub const used = 1

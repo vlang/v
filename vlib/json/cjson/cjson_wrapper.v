@@ -8,8 +8,13 @@ module cjson
 // that has NULL leaves for example, which is currently not convenient/easy to do with just the
 // high level `json.encode(value)` API that V has.
 
-#flag -I @VEXEROOT/thirdparty/cJSON
-#flag @VEXEROOT/thirdparty/cJSON/cJSON.o
+$if $pkgconfig('libcjson') {
+	#pkgconfig libcjson
+} $else {
+	#flag -I @VEXEROOT/thirdparty/cJSON
+	#flag @VEXEROOT/thirdparty/cJSON/cJSON.o
+}
+
 #include "cJSON.h"
 
 [typedef]
