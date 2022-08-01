@@ -114,6 +114,7 @@ pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref &pref
 	mut s := &Scanner{
 		pref: pref
 		text: raw_text
+		all_tokens: []token.Token{cap: raw_text.len / 3}
 		is_print_line_on_error: true
 		is_print_colored_error: true
 		is_print_rel_paths_on_error: true
@@ -131,6 +132,7 @@ pub fn new_scanner(text string, comments_mode CommentsMode, pref &pref.Preferenc
 	mut s := &Scanner{
 		pref: pref
 		text: text
+		all_tokens: []token.Token{cap: text.len / 3}
 		is_print_line_on_error: true
 		is_print_colored_error: true
 		is_print_rel_paths_on_error: true
@@ -560,8 +562,6 @@ pub fn (mut s Scanner) scan_all_tokens_in_buffer() {
 		util.timing_measure_cumulative('SCAN')
 		timers.measure_resume('PARSE')
 	}
-	// preallocate space for tokens
-	s.all_tokens = []token.Token{cap: s.text.len / 3}
 	s.scan_remaining_text()
 	s.tidx = 0
 	$if debugscanner ? {
