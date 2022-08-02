@@ -3995,6 +3995,20 @@ assert fails it is reported to *stderr*, and the values on each side of a compar
 (such as `<`, `==`) will be printed when possible. This is useful to easily find an
 unexpected value. Assert statements can be used in any function.
 
+### Asserts with an extra message
+
+This form of the `assert` statement, will print the extra message when it fails. Note, that
+you can use any string expression there - string literals, functions returning a string,
+strings that interpolate variables, etc.
+
+```v
+fn test_assertion_with_extra_message_failure() {
+	for i in 0 .. 100 {
+		assert i * 2 - 45 < 75 + 10, 'assertion failed for i: $i'
+	}
+}
+```
+
 ### Test files
 
 ```v
