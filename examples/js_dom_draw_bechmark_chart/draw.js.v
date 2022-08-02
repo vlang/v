@@ -74,8 +74,10 @@ fn main() {
 	}
 	mut state := DrawState{context, false, 0, 0}
 
-	attribute_names := ['sqlite_memory_insert_times', 'sqlite_file_insert_times'/*,
-		'postgres_insert_times', 'mysql_insert_times'*/]
+	attribute_names := ['sqlite_memory_insert_times', 'sqlite_file_insert_times' /*
+	,
+		'postgres_insert_times', 'mysql_insert_times'
+	*/]
 	chart_colors := ['gray', 'black', 'red', 'orange', 'purple']
 
 	for idx, name in attribute_names {
