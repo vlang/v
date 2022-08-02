@@ -11,6 +11,7 @@
   is made via `vgret` and is compared to the expected result.
 - VLS performance improvements, especially on Windows.
 - Add `v ls` tool for installing, for updating, and for launching VLS (V Language Server)
+- Support `assert condition, extra_message`, where the `extra_message` will be evaluated and shown if the assertion fails.
 
 ## V 0.3
 *30 Jun 2022*

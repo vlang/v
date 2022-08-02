@@ -1,0 +1,6 @@
+vlib/v/tests/skip_unused/assert_with_extra_message_works_test.vv:7: fn test_interpolation_with_assert_that_has_extra_message
+   > assert 'abc$i' != 'abc77', my_failure_message(i)
+     Left value: abc77
+    Right value: abc77
+        Message: the assert failed :-|, i: 77
+

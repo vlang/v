@@ -877,8 +877,19 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			mut pos := p.tok.pos()
 			expr := p.expr(0)
 			pos.update_last_line(p.prev_tok.line_nr)
+			mut extra := ast.empty_expr
+			mut extra_pos := p.tok.pos()
+			if p.tok.kind == .comma {
+				p.next()
+				extra_pos = p.tok.pos()
+				extra = p.expr(0)
+				// dump(extra)
+				extra_pos = extra_pos.extend(p.tok.pos())
+			}
 			return ast.AssertStmt{
 				expr: expr
+				extra: extra
+				extra_pos: extra_pos
 				pos: pos.extend(p.tok.pos())
 				is_used: p.inside_test_file || !p.pref.is_prod
 			}

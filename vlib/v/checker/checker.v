@@ -1612,6 +1612,14 @@ fn (mut c Checker) assert_stmt(node ast.AssertStmt) {
 		c.error('assert can be used only with `bool` expressions, but found `$atype_name` instead',
 			node.pos)
 	}
+	if node.extra !is ast.EmptyExpr {
+		extra_type := c.expr(node.extra)
+		if extra_type != ast.string_type {
+			extra_type_name := c.table.sym(extra_type).name
+			c.error('assert allows only a single string as its second argument, but found `$extra_type_name` instead',
+				node.extra_pos)
+		}
+	}
 	c.fail_if_unreadable(node.expr, ast.bool_type_idx, 'assertion')
 	c.expected_type = cur_exp_typ
 }

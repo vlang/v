@@ -54,6 +54,8 @@ pub:
 	rlabel  string // the right side of the infix expressions as source
 	lvalue  string // the stringified *actual value* of the left side of a failed assertion
 	rvalue  string // the stringified *actual value* of the right side of a failed assertion
+	message string // the value of the `message` from `assert cond, message`
+	has_msg bool   // false for assertions like `assert cond`, true for `assert cond, 'oh no'`
 }
 
 // free frees the memory occupied by the assertion meta data. It is called automatically by
@@ -69,6 +71,7 @@ pub fn (ami &VAssertMetaInfo) free() {
 		ami.rlabel.free()
 		ami.lvalue.free()
 		ami.rvalue.free()
+		ami.message.free()
 	}
 }
 
@@ -80,6 +83,9 @@ fn __print_assert_failure(i &VAssertMetaInfo) {
 			eprintln('  right value: $i.rlabel')
 		} else {
 			eprintln('  right value: $i.rlabel = $i.rvalue')
+		}
+		if i.has_msg {
+			eprintln('      message: $i.message')
 		}
 	}
 }

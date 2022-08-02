@@ -1,0 +1,20 @@
+vlib/v/checker/tests/assert_extra_message.vv:12:24: error: assert allows only a single string as its second argument, but found `void` instead
+   10 |     assert 2 == 6 / 3, 'math works'
+   11 |     assert 10 == i - 120, 'i: $i'
+   12 |     assert 10 == i - 120, abc(i)
+      |                           ~~~~~~
+   13 |     assert 10 == i - 120, multy(i)
+   14 |     assert 10 == i - 120, 456
+vlib/v/checker/tests/assert_extra_message.vv:13:24: error: assert allows only a single string as its second argument, but found `(int, string)` instead
+   11 |     assert 10 == i - 120, 'i: $i'
+   12 |     assert 10 == i - 120, abc(i)
+   13 |     assert 10 == i - 120, multy(i)
+      |                           ~~~~~~~~
+   14 |     assert 10 == i - 120, 456
+   15 | }
+vlib/v/checker/tests/assert_extra_message.vv:14:24: error: assert allows only a single string as its second argument, but found `int literal` instead
+   12 |     assert 10 == i - 120, abc(i)
+   13 |     assert 10 == i - 120, multy(i)
+   14 |     assert 10 == i - 120, 456
+      |                           ~~~
+   15 | }
