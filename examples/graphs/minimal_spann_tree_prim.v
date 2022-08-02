@@ -56,16 +56,16 @@ fn updating_priority<T>(mut prior_queue []T, search_data int, new_priority int) 
 
 	for i < lenght_pq {
 		if search_data == prior_queue[i].data {
-			prior_queue[i] = NODE{search_data, new_priority} // do the copy in the right place	
+			prior_queue[i] = NODE{search_data, new_priority} // do the copy in the right place
 			break
 		}
 		i++
 		// all the list was examined
 		if i >= lenght_pq {
-			// print('\n Priority Queue:  ${prior_queue}')		
+			// print('\n Priority Queue:  ${prior_queue}')
 			// print('\n These data ${search_data} and ${new_priority} do not exist ... PRIORITY QUEUE problem\n')
 			// if it does not find ... then push it
-			push_pq(mut prior_queue, search_data, new_priority)
+			push_pq<T>(mut prior_queue, search_data, new_priority)
 			// exit(1) // panic(s string)
 		}
 	} // end for
