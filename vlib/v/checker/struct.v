@@ -86,18 +86,17 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			}
 			if field.has_default_expr {
 				c.expected_type = field.typ
-				mut field_expr_type := c.expr(field.default_expr)
+				default_expr_type := c.expr(field.default_expr)
 				if !field.typ.has_flag(.optional) {
-					c.check_expr_opt_call(field.default_expr, field_expr_type)
+					c.check_expr_opt_call(field.default_expr, default_expr_type)
 				}
-				struct_sym.info.fields[i].default_expr_typ = field_expr_type
-				c.check_expected(field_expr_type, field.typ) or {
+				struct_sym.info.fields[i].default_expr_typ = default_expr_type
+				c.check_expected(default_expr_type, field.typ) or {
 					if sym.kind == .interface_
-						&& c.type_implements(field_expr_type, field.typ, field.pos) {
-						if !field_expr_type.is_ptr() && !field_expr_type.is_pointer()
+						&& c.type_implements(default_expr_type, field.typ, field.pos) {
+						if !default_expr_type.is_ptr() && !default_expr_type.is_pointer()
 							&& !c.inside_unsafe {
-							field_expr_type_sym := c.table.sym(field_expr_type)
-							if field_expr_type_sym.kind != .interface_ {
+							if c.table.sym(default_expr_type).kind != .interface_ {
 								c.mark_as_referenced(mut &node.fields[i].default_expr,
 									true)
 							}
