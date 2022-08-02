@@ -519,8 +519,15 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 }
 
 fn (mut g Gen) gen_array_sort_call(node ast.CallExpr, compare_fn string) {
-	deref_field := if node.left_type.is_ptr() || node.left_type.is_pointer() { '->' } else { '.' }
-	// eprintln('> qsort: pointer $node.left_type | deref: `$deref`')
+	mut deref_field := if node.left_type.is_ptr() || node.left_type.is_pointer() {
+		'->'
+	} else {
+		'.'
+	}
+	if node.left_type.has_flag(.shared_f) {
+		deref_field += 'val.'
+	}
+	// eprintln('> qsort: pointer $node.left_type | deref_field: `$deref_field`')
 	g.empty_line = true
 	g.write('qsort(')
 	g.expr(node.left)
