@@ -1,6 +1,11 @@
 module compress
 
-#flag -I @VEXEROOT/thirdparty/zip
+$if $pkgconfig('miniz') {
+	#pkgconfig miniz
+} $else {
+	#flag -I @VEXEROOT/thirdparty/zip
+}
+
 #include "miniz.h"
 
 pub const max_size = u64(1 << 31)
