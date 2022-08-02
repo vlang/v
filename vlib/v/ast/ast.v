@@ -1510,9 +1510,11 @@ pub const (
 [minify]
 pub struct AssertStmt {
 pub:
-	pos token.Pos
+	pos       token.Pos
+	extra_pos token.Pos
 pub mut:
 	expr    Expr
+	extra   Expr
 	is_used bool // asserts are used in _test.v files, as well as in non -prod builds of all files
 }
 

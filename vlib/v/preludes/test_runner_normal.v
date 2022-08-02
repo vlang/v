@@ -154,6 +154,15 @@ fn (mut runner NormalTestRunner) assert_fail(i &VAssertMetaInfo) {
 	} else {
 		eprintln('    $final_src')
 	}
+	if i.has_msg {
+		mut mtitle := '        Message:'
+		mut mvalue := '$i.message'
+		if runner.use_color {
+			mvalue = term.yellow(mvalue)
+			mtitle = term.gray(mtitle)
+		}
+		eprintln('$mtitle $mvalue')
+	}
 	eprintln('')
 	runner.all_assertsions << i
 }
