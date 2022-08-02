@@ -88,7 +88,7 @@ pub fn mode<T>(data []T) T {
 	}
 	mut freqs := []int{}
 	for v in data {
-		freqs << freq(data, v)
+		freqs << freq<T>(data, v)
 	}
 	mut max := 0
 	for i := 0; i < freqs.len; i++ {
@@ -234,7 +234,7 @@ pub fn absdev_mean<T>(data []T, mean T) T {
 	}
 	mut sum := T(0)
 	for v in data {
-		sum += math.abs(v - mean)
+		sum += math.abs<T>(v - mean)
 	}
 	return sum / T(data.len)
 }

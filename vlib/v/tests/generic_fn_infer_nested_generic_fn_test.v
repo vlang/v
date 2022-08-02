@@ -34,9 +34,9 @@ fn walk<T>(path string, mut array []T) {
 	for file in files {
 		p := path + os.path_separator + file
 		if os.is_dir(p) && !os.is_link(p) {
-			walk(p, mut array)
+			walk<T>(p, mut array)
 		} else if os.exists(p) {
-			parse_json(p, mut array)
+			parse_json<T>(p, mut array)
 		}
 	}
 }

@@ -757,6 +757,12 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		&& !func.is_unsafe && func.mod != 'builtin' {
 		c.error('cannot call a function that does not have a body', node.pos)
 	}
+	if func.generic_names.len > 0 && node.concrete_types.len == 0 && !has_generic
+		&& !isnil(c.table.cur_fn) && c.table.cur_fn.generic_names.len > 0
+		&& func.name != c.table.cur_fn.name {
+		c.error('generic fn call inside generic fn must specify the generic type names, e.g. foo<T>()',
+			node.pos)
+	}
 	if node.concrete_types.len > 0 && func.generic_names.len > 0
 		&& node.concrete_types.len != func.generic_names.len {
 		plural := if func.generic_names.len == 1 { '' } else { 's' }

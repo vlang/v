@@ -67,7 +67,7 @@ mut:
 // insert give the possibility to insert an element in the BST.
 pub fn (mut bst BSTree<T>) insert(value T) bool {
 	if bst.is_empty() {
-		bst.root = new_root_node(value)
+		bst.root = new_root_node<T>(value)
 		return true
 	}
 	return bst.insert_helper(mut bst.root, value)
@@ -79,13 +79,13 @@ fn (mut bst BSTree<T>) insert_helper(mut node BSTreeNode<T>, value T) bool {
 		if unsafe { node.right != 0 } && node.right.is_init {
 			return bst.insert_helper(mut node.right, value)
 		}
-		node.right = new_node(node, value)
+		node.right = new_node<T>(node, value)
 		return true
 	} else if node.value > value {
 		if unsafe { node.left != 0 } && node.left.is_init {
 			return bst.insert_helper(mut node.left, value)
 		}
-		node.left = new_node(node, value)
+		node.left = new_node<T>(node, value)
 		return true
 	}
 	return false

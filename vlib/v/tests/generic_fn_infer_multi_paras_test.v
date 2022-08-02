@@ -26,7 +26,7 @@ fn get_keys_and_values<T>(mut keys []string, mut values []string, mut data T) ([
 fn awesome<T>(mut data T) {
 	mut keys := []string{}
 	mut values := []string{}
-	keys, values, data = get_keys_and_values(mut keys, mut values, mut data)
+	keys, values, data = get_keys_and_values<T>(mut keys, mut values, mut data)
 	println(keys)
 	assert keys == ['lang', 'page', 'var_one', 'var_two']
 	println(values)

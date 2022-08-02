@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generics_fn_called_inside_of_generic_fn.vv:9:2: error: generic fn call inside generic fn must specify the generic type names, e.g. foo<T>()
+    7 | fn shuffle<T>(mut a []T) ? {
+    8 |     println('FN: ${@FN:20} | T: ${typeof(a).name}')
+    9 |     shuffle_impl(mut a)?
+      |     ~~~~~~~~~~~~~~~~~~~
+   10 | }
+   11 |
