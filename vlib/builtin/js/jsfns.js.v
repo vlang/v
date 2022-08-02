@@ -25,6 +25,7 @@ pub interface JS.String {
 	length JS.Number
 	charAt(index JS.Number) JS.String
 	charCodeAt(index JS.Number) JS.Number
+	replace(a JS.String, b JS.String) JS.String
 	toUpperCase() JS.String
 	toLowerCase() JS.String
 	concat(a JS.String) JS.String

@@ -312,6 +312,10 @@ pub interface JS.Element {
 	closest(selector JS.String) ?JS.Element
 	getAttribute(qualifiedName JS.String) ?JS.String
 	getAttributeNS(namespace JS.String, localName JS.String) ?JS.String
+	setAttribute(name JS.String, value JS.Any)
+	setAttributeNode(attribute JS.Attr)
+	setAttributeNodeNS(attributeNode JS.Attr)
+	setAttributeNS(namespace JS.String, name JS.String, value JS.String)
 	getAttributeNames() JS.Array
 	getClientRects() JS.DOMRectList
 	getBoundingClientRect() JS.DOMRect
