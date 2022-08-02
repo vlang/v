@@ -2207,7 +2207,7 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 	g.println('; stack frame size: $g.stack_var_pos')
 	g.write32_at(local_alloc_pos + 3, g.stack_var_pos)
 	is_main := node.name == 'main.main'
-	if is_main {
+	if is_main && g.pref.os != .linux {
 		// println('end of main: gen exit')
 		zero := ast.IntegerLiteral{}
 		g.gen_exit(zero)
