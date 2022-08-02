@@ -345,8 +345,12 @@ pub fn (mut rng PRNG) exponential(lambda f64) f64 {
 pub fn (mut rng PRNG) shuffle<T>(mut a []T, config config.ShuffleConfigStruct) ? {
 	config.validate_for(a)?
 	new_end := if config.end == 0 { a.len } else { config.end }
-	for i in config.start .. new_end {
-		x := rng.int_in_range(i, new_end) or { config.start + i }
+
+	// We implement the Fisher-Yates shuffle:
+	// https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle#The_modern_algorithm
+
+	for i in config.start .. new_end - 2 {
+		x := rng.int_in_range(i, new_end) or { i }
 		// swap
 		a_i := a[i]
 		a[i] = a[x]
@@ -358,7 +362,7 @@ pub fn (mut rng PRNG) shuffle<T>(mut a []T, config config.ShuffleConfigStruct) ?
 // The permutation is done on a fresh clone of `a`, so `a` remains unchanged.
 pub fn (mut rng PRNG) shuffle_clone<T>(a []T, config config.ShuffleConfigStruct) ?[]T {
 	mut res := a.clone()
-	rng.shuffle(mut res, config)?
+	rng.shuffle<T>(mut res, config)?
 	return res
 }
 
@@ -587,26 +591,26 @@ pub fn ascii(len int) string {
 // optional and the entire array is shuffled by default. Leave the end as 0 to
 // shuffle all elements until the end.
 pub fn shuffle<T>(mut a []T, config config.ShuffleConfigStruct) ? {
-	default_rng.shuffle(mut a, config)?
+	default_rng.shuffle<T>(mut a, config)?
 }
 
 // shuffle_clone returns a random permutation of the elements in `a`.
 // The permutation is done on a fresh clone of `a`, so `a` remains unchanged.
 pub fn shuffle_clone<T>(a []T, config config.ShuffleConfigStruct) ?[]T {
-	return default_rng.shuffle_clone(a, config)
+	return default_rng.shuffle_clone<T>(a, config)
 }
 
 // choose samples k elements from the array without replacement.
 // This means the indices cannot repeat and it restricts the sample size to be less than or equal to the size of the given array.
 // Note that if the array has repeating elements, then the sample may have repeats as well.
 pub fn choose<T>(array []T, k int) ?[]T {
-	return default_rng.choose(array, k)
+	return default_rng.choose<T>(array, k)
 }
 
 // sample samples k elements from the array with replacement.
 // This means the elements can repeat and the size of the sample may exceed the size of the array.
 pub fn sample<T>(array []T, k int) []T {
-	return default_rng.sample(array, k)
+	return default_rng.sample<T>(array, k)
 }
 
 // bernoulli returns true with a probability p. Note that 0 <= p <= 1.
