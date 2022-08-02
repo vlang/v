@@ -100,7 +100,7 @@ fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt) string {
 	fn_name := g.fn_decl.name
 	line_nr := node.pos.line_nr
 	mut src := node.expr.str()
-	if node.extra != ast.empty_expr {
+	if node.extra !is ast.EmptyExpr {
 		src += ', ' + node.extra.str()
 	}
 	src = cestring(src)
@@ -131,7 +131,7 @@ fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt) string {
 		}
 		else {}
 	}
-	if node.extra == ast.empty_expr {
+	if node.extra is ast.EmptyExpr {
 		g.writeln('\t${metaname}.has_msg = false;')
 		g.writeln('\t${metaname}.message = _SLIT0;')
 	} else {

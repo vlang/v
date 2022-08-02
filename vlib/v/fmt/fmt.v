@@ -750,7 +750,7 @@ pub fn (mut f Fmt) assert_stmt(node ast.AssertStmt) {
 		expr = (expr as ast.ParExpr).expr
 	}
 	f.expr(expr)
-	if node.extra != ast.empty_expr {
+	if node.extra !is ast.EmptyExpr {
 		f.write(', ')
 		f.expr(node.extra)
 	}

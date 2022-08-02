@@ -1612,7 +1612,7 @@ fn (mut c Checker) assert_stmt(node ast.AssertStmt) {
 		c.error('assert can be used only with `bool` expressions, but found `$atype_name` instead',
 			node.pos)
 	}
-	if node.extra != ast.empty_expr {
+	if node.extra !is ast.EmptyExpr {
 		extra_type := c.expr(node.extra)
 		if extra_type != ast.string_type {
 			extra_type_name := c.table.sym(extra_type).name

@@ -949,7 +949,7 @@ fn (t Tree) assert_stmt(node ast.AssertStmt) &Node {
 	obj.add_terse('ast_type', t.string_node('AssertStmt'))
 	obj.add_terse('expr', t.expr(node.expr))
 	obj.add_terse('is_used', t.bool_node(node.is_used))
-	if node.extra != ast.empty_expr {
+	if node.extra !is ast.EmptyExpr {
 		obj.add_terse('extra', t.expr(node.extra))
 		obj.add('extra_pos', t.pos(node.extra_pos))
 	}

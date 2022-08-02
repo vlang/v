@@ -108,7 +108,7 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 			if node.is_used {
 				w.n_asserts++
 				w.expr(node.expr)
-				if node.extra != ast.empty_expr {
+				if node.extra !is ast.EmptyExpr {
 					w.expr(node.extra)
 				}
 			}
