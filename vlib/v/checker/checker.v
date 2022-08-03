@@ -1638,7 +1638,7 @@ fn (mut c Checker) block(node ast.Block) {
 		c.stmts(node.stmts)
 		c.inside_unsafe = prev_unsafe
 		if c.unsafe_ops == 0 {
-			c.warn('unnecessary `unsafe` block', node.pos)
+			c.note('unnecessary `unsafe` block', node.pos)
 		}
 	} else {
 		c.stmts(node.stmts)
@@ -3120,7 +3120,7 @@ pub fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) ast.Type {
 	t := c.expr(node.expr)
 	c.inside_unsafe = false
 	if c.unsafe_ops == 0 {
-		c.warn('unnecessary `unsafe` block', node.pos)
+		c.note('unnecessary `unsafe` block', node.pos)
 	}
 	return t
 }

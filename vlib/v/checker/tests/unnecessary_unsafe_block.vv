@@ -1,0 +1,4 @@
+fn main() {
+    x := unsafe { 1 }
+    assert x == 1
+}
