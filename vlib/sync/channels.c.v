@@ -124,7 +124,7 @@ pub fn (mut ch Channel) close() {
 	if !C.atomic_compare_exchange_strong_u16(&ch.closed, &open_val, 1) {
 		return
 	}
-	mut nulladr := unsafe { nil }
+	mut nulladr := unsafe { voidptr(nil) }
 	for !C.atomic_compare_exchange_weak_ptr(unsafe { &voidptr(&ch.adr_written) }, &nulladr,
 		voidptr(-1)) {
 		nulladr = unsafe { nil }

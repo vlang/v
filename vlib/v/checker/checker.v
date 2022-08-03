@@ -2357,6 +2357,12 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	// Given: `Outside( Inside(xyz) )`,
 	//        node.expr_type: `Inside`
 	//        node.typ: `Outside`
+	old_expected_type := c.expected_type
+	c.expected_type = node.typ
+	defer {
+		c.expected_type = old_expected_type
+	}
+
 	node.expr_type = c.expr(node.expr) // type to be casted
 
 	mut from_type := c.unwrap_generic(node.expr_type)
