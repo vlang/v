@@ -32,9 +32,9 @@ pub fn dial_tcp(address string) ?&TcpConn {
 		}
 		s.connect(addr) or {
 			// Connection failed
-			s.close() or { 
+			s.close() or {
 				wrapped_error = wrapped_error + err.msg() + '\n'
-				continue 
+				continue
 			}
 			continue
 		}
