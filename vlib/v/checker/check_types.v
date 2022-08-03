@@ -648,8 +648,7 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 			if node.args.len <= arg_i {
 				break
 			}
-			mut arg := node.args[arg_i]
-			arg.typ = c.unwrap_generic(arg.typ)
+			arg := node.args[arg_i]
 			param_type_sym := c.table.sym(param.typ)
 
 			if param.typ.has_flag(.generic) && param_type_sym.name == gt_name {
@@ -787,7 +786,7 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 			s := c.table.type_to_str(typ)
 			println('inferred `$func.name<$s>`')
 		}
-		inferred_types << typ
+		inferred_types << c.unwrap_generic(typ)
 		node.concrete_types << typ
 	}
 
