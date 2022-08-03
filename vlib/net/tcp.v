@@ -24,7 +24,7 @@ pub fn dial_tcp(address string) ?&TcpConn {
 		return error('$err.msg(); could not resolve address $address in dial_tcp')
 	}
 
-	wrapped_error := ''
+	mut wrapped_error := ''
 	// Very simple dialer
 	for addr in addrs {
 		mut s := new_tcp_socket(addr.family()) or {
