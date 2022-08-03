@@ -748,8 +748,6 @@ pub fn (mut g Gen) link_elf_file(obj_file string) {
 		'/lib64/ld-linux-x86-64.so.2',
 		'/usr/lib/crt1.o /usr/lib/crti.o',
 		'-lc',
-		'-lcrypto',
-		'-lssl',
 		'-lm',
 		'-lpthread',
 		'/usr/lib/crtn.o',
