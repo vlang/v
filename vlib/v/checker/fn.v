@@ -1033,7 +1033,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 	if func.generic_names.len != node.concrete_types.len {
 		// no type arguments given in call, attempt implicit instantiation
 		c.infer_fn_generic_types(func, mut node)
-		concrete_types = node.concrete_types
+		concrete_types = node.concrete_types.map(c.unwrap_generic(it))
 	}
 	if func.generic_names.len > 0 {
 		for i, mut call_arg in node.args {

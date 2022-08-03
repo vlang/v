@@ -1440,6 +1440,9 @@ pub fn (mut g Gen) write_multi_return_types() {
 		if sym.kind != .multi_return {
 			continue
 		}
+		if sym.cname.contains('<') {
+			continue
+		}
 		info := sym.mr_info()
 		if info.types.filter(it.has_flag(.generic)).len > 0 {
 			continue
