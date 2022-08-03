@@ -84,7 +84,7 @@ pub mut:
 	is_builtin_mod            bool // true inside the 'builtin', 'os' or 'strconv' modules; TODO: remove the need for special casing this
 	is_just_builtin_mod       bool // true only inside 'builtin'
 	is_generated              bool // true for `[generated] module xyz` .v files
-	unsafe_ops int // number of unsafe operations done within an `unsafe` block
+	unsafe_ops                int  // number of unsafe operations done within an `unsafe` block
 	inside_unsafe             bool // true inside `unsafe {}` blocks
 	inside_const              bool // true inside `const ( ... )` blocks
 	inside_anon_fn            bool // true inside `fn() { ... }()`
@@ -160,7 +160,7 @@ fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
 	c.is_builtin_mod = false
 	c.is_just_builtin_mod = false
 	c.unsafe_ops = 0
-	c.inside_unsafe =  false
+	c.inside_unsafe = false
 	c.inside_const = false
 	c.inside_anon_fn = false
 	c.inside_ref_lit = false
@@ -1634,11 +1634,11 @@ fn (mut c Checker) assert_stmt(node ast.AssertStmt) {
 fn (mut c Checker) block(node ast.Block) {
 	if node.is_unsafe {
 		prev_unsafe := c.inside_unsafe
-		c.inside_unsafe =  true
+		c.inside_unsafe = true
 		c.stmts(node.stmts)
 		c.inside_unsafe = prev_unsafe
 		if c.unsafe_ops == 0 {
-			c.warn("unnecesary `unsafe` block", node.pos)
+			c.warn('unnecesary `unsafe` block', node.pos)
 		}
 	} else {
 		c.stmts(node.stmts)
@@ -3120,7 +3120,7 @@ pub fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) ast.Type {
 	t := c.expr(node.expr)
 	c.inside_unsafe = false
 	if c.unsafe_ops == 0 {
-		c.warn("unnecesary `unsafe` block", node.pos)
+		c.warn('unnecesary `unsafe` block', node.pos)
 	}
 	return t
 }
@@ -3185,7 +3185,8 @@ pub fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 	if !c.inside_unsafe_block() && is_non_void_pointer && !node.expr.is_auto_deref_var() {
 		c.warn('pointer arithmetic is only allowed in `unsafe` blocks', node.pos)
 	}
-	if !(typ_sym.is_number() || ((c.inside_unsafe_block() || c.pref.translated) && is_non_void_pointer)) {
+	if !(typ_sym.is_number() || ((c.inside_unsafe_block() || c.pref.translated)
+		&& is_non_void_pointer)) {
 		typ_str := c.table.type_to_str(typ)
 		c.error('invalid operation: $node.op.str() (non-numeric type `$typ_str`)', node.pos)
 	} else {

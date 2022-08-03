@@ -158,8 +158,8 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				}
 			}
 			if mut left is ast.Ident && mut right is ast.Ident {
-				if !c.inside_unsafe_block() && left_type.is_ptr() && left.is_mut() && right_type.is_ptr()
-					&& !right.is_mut() {
+				if !c.inside_unsafe_block() && left_type.is_ptr() && left.is_mut()
+					&& right_type.is_ptr() && !right.is_mut() {
 					c.error('`$right.name` is immutable, cannot have a mutable reference to an immutable object',
 						right.pos)
 				}
@@ -357,9 +357,9 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				continue
 			}
 		}
-		if left_sym.kind == .array_fixed && !c.inside_unsafe_block() && node.op in [.assign, .decl_assign]
-			&& right_sym.kind == .array_fixed && left is ast.Ident && !left.is_blank_ident()
-			&& right is ast.Ident {
+		if left_sym.kind == .array_fixed && !c.inside_unsafe_block()
+			&& node.op in [.assign, .decl_assign] && right_sym.kind == .array_fixed
+			&& left is ast.Ident && !left.is_blank_ident() && right is ast.Ident {
 			if right_sym.info is ast.ArrayFixed {
 				if right_sym.info.elem_type.is_ptr() {
 					c.error('assignment from one fixed array to another with a pointer element type is prohibited outside of `unsafe`',
@@ -582,7 +582,8 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						v := right_node.right.obj
 						right_type0 = v.typ
 					}
-					if !c.inside_unsafe_block() && assigned_var.is_mut() && !right_node.right.is_mut() {
+					if !c.inside_unsafe_block() && assigned_var.is_mut()
+						&& !right_node.right.is_mut() {
 						c.error('`$right_node.right.name` is immutable, cannot have a mutable reference to it',
 							right_node.pos)
 					}
