@@ -2235,7 +2235,8 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 		ast.Nil {
 			if !c.inside_unsafe {
 				c.error('`nil` is only allowed in `unsafe` code', node.pos)
-			} else if c.expected_type != ast.void_type && !c.expected_type.is_any_kind_of_pointer() {
+			} else if !c.pref.backend.is_js() && c.expected_type != ast.void_type
+				&& !c.expected_type.is_any_kind_of_pointer() {
 				c.error('`nil` can only be used with pointers', node.pos)
 			}
 			return ast.nil_type
