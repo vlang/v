@@ -95,7 +95,7 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 					if sym.kind == .interface_
 						&& c.type_implements(default_expr_type, field.typ, field.pos) {
 						if !default_expr_type.is_ptr() && !default_expr_type.is_pointer()
-							&& !c.inside_unsafe {
+							&& !c.inside_unsafe_block() {
 							if c.table.sym(default_expr_type).kind != .interface_ {
 								c.mark_as_referenced(mut &node.fields[i].default_expr,
 									true)
@@ -109,7 +109,7 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				// Check for unnecessary inits like ` = 0` and ` = ''`
 				if field.typ.is_ptr() {
 					if field.default_expr is ast.IntegerLiteral {
-						if !c.inside_unsafe && !c.is_builtin_mod && field.default_expr.val == '0' {
+						if !c.inside_unsafe_block() && !c.is_builtin_mod && field.default_expr.val == '0' {
 							c.warn('default value of `0` for references can only be used inside `unsafe`',
 								field.default_expr.pos)
 						}
@@ -277,12 +277,12 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 	}
 	c.ensure_type_exists(node.typ, node.pos) or {}
 	type_sym := c.table.sym(node.typ)
-	if !c.inside_unsafe && type_sym.kind == .sum_type {
+	if !c.inside_unsafe_block() && type_sym.kind == .sum_type {
 		c.note('direct sum type init (`x := SumType{}`) will be removed soon', node.pos)
 	}
 	// Make sure the first letter is capital, do not allow e.g. `x := string{}`,
 	// but `x := T{}` is ok.
-	if !c.is_builtin_mod && !c.inside_unsafe && type_sym.language == .v
+	if !c.is_builtin_mod && !c.inside_unsafe_block() && type_sym.language == .v
 		&& c.table.cur_concrete_types.len == 0 {
 		pos := type_sym.name.last_index('.') or { -1 }
 		first_letter := type_sym.name[pos + 1]
@@ -414,7 +414,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				if field_type_sym.kind == .interface_ {
 					if c.type_implements(expr_type, field_info.typ, field.pos) {
 						if !expr_type.is_ptr() && !expr_type.is_pointer()
-							&& expr_type_sym.kind != .interface_ && !c.inside_unsafe {
+							&& expr_type_sym.kind != .interface_ && !c.inside_unsafe_block() {
 							c.mark_as_referenced(mut &field.expr, true)
 						}
 					}
@@ -459,7 +459,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 							if c.fn_scope != unsafe { nil } {
 								obj = c.fn_scope.find_var(obj.name) or { obj }
 							}
-							if obj.is_stack_obj && !c.inside_unsafe {
+							if obj.is_stack_obj && !c.inside_unsafe_block() {
 								sym := c.table.sym(obj.typ.set_nr_muls(0))
 								if !sym.is_heap() && !c.pref.translated && !c.file.is_translated {
 									suggestion := if sym.kind == .struct_ {

@@ -747,7 +747,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 	if !isnil(c.table.cur_fn) && !c.table.cur_fn.is_deprecated && func.is_deprecated {
 		c.deprecate('function', func.name, func.attrs, node.pos)
 	}
-	if func.is_unsafe && !c.inside_unsafe
+	if func.is_unsafe && !c.inside_unsafe_block()
 		&& (func.language != .c || (func.name[2] in [`m`, `s`] && func.mod == 'builtin')) {
 		// builtin C.m*, C.s* only - temp
 		c.warn('function `$func.name` must be called from an `unsafe` block', node.pos)
@@ -928,7 +928,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		// Handle expected interface
 		if final_param_sym.kind == .interface_ {
 			if c.type_implements(arg_typ, final_param_typ, call_arg.expr.pos()) {
-				if !arg_typ.is_ptr() && !arg_typ.is_pointer() && !c.inside_unsafe
+				if !arg_typ.is_ptr() && !arg_typ.is_pointer() && !c.inside_unsafe_block()
 					&& arg_typ_sym.kind != .interface_ {
 					c.mark_as_referenced(mut &call_arg.expr, true)
 				}
@@ -1023,7 +1023,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			c.error('$err.msg() in argument ${i + 1} to `$fn_name`', call_arg.pos)
 		}
 		// Warn about automatic (de)referencing, which will be removed soon.
-		if func.language != .c && !c.inside_unsafe && arg_typ.nr_muls() != param.typ.nr_muls()
+		if func.language != .c && !c.inside_unsafe_block() && arg_typ.nr_muls() != param.typ.nr_muls()
 			&& !(call_arg.is_mut && param.is_mut) && !(!call_arg.is_mut && !param.is_mut)
 			&& param.typ !in [ast.byteptr_type, ast.charptr_type, ast.voidptr_type] {
 			c.warn('automatic referencing/dereferencing is deprecated and will be removed soon (got: $arg_typ.nr_muls() references, expected: $param.typ.nr_muls() references)',
@@ -1053,7 +1053,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 					unwrap_sym := c.table.sym(unwrap_typ)
 					if unwrap_sym.kind == .interface_ {
 						if c.type_implements(utyp, unwrap_typ, call_arg.expr.pos()) {
-							if !utyp.is_ptr() && !utyp.is_pointer() && !c.inside_unsafe
+							if !utyp.is_ptr() && !utyp.is_pointer() && !c.inside_unsafe_block()
 								&& c.table.sym(utyp).kind != .interface_ {
 								c.mark_as_referenced(mut &call_arg.expr, true)
 							}
@@ -1466,7 +1466,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			// Handle expected interface
 			if final_arg_sym.kind == .interface_ {
 				if c.type_implements(got_arg_typ, final_arg_typ, arg.expr.pos()) {
-					if !got_arg_typ.is_ptr() && !got_arg_typ.is_pointer() && !c.inside_unsafe {
+					if !got_arg_typ.is_ptr() && !got_arg_typ.is_pointer() && !c.inside_unsafe_block() {
 						got_arg_typ_sym := c.table.sym(got_arg_typ)
 						if got_arg_typ_sym.kind != .interface_ {
 							c.mark_as_referenced(mut &arg.expr, true)
@@ -1502,7 +1502,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					arg.pos)
 			}
 		}
-		if method.is_unsafe && !c.inside_unsafe {
+		if method.is_unsafe && !c.inside_unsafe_block() {
 			c.warn('method `${left_sym.name}.$method_name` must be called from an `unsafe` block',
 				node.pos)
 		}

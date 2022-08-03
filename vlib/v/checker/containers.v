@@ -59,7 +59,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		}
 
 		// &int{} check
-		if node.elem_type.is_any_kind_of_pointer() && !c.inside_unsafe && node.has_len {
+		if node.elem_type.is_any_kind_of_pointer() && !c.inside_unsafe_block() && node.has_len {
 			c.warn('arrays of references need to be initialized right away, therefore `len:` cannot be used (unless inside `unsafe`)',
 				node.pos)
 		}
@@ -68,7 +68,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	if node.is_fixed {
 		c.ensure_sumtype_array_has_default_value(node)
 		c.ensure_type_exists(node.elem_type, node.elem_type_pos) or {}
-		if node.elem_type.is_any_kind_of_pointer() && !c.inside_unsafe && !c.is_builtin_mod {
+		if node.elem_type.is_any_kind_of_pointer() && !c.inside_unsafe_block() && !c.is_builtin_mod {
 			c.warn('fixed arrays of references need to be initialized right away (unless inside `unsafe`)',
 				node.pos)
 		}
@@ -133,7 +133,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 					c.expected_type = elem_type
 					c.type_implements(typ, elem_type, expr.pos())
 				}
-				if !typ.is_ptr() && !typ.is_pointer() && !c.inside_unsafe {
+				if !typ.is_ptr() && !typ.is_pointer() && !c.inside_unsafe_block() {
 					typ_sym := c.table.sym(typ)
 					if typ_sym.kind != .interface_ {
 						c.mark_as_referenced(mut &expr, true)

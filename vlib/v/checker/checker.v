@@ -84,6 +84,7 @@ pub mut:
 	is_builtin_mod            bool // true inside the 'builtin', 'os' or 'strconv' modules; TODO: remove the need for special casing this
 	is_just_builtin_mod       bool // true only inside 'builtin'
 	is_generated              bool // true for `[generated] module xyz` .v files
+	unsafe_ops int // number of unsafe operations done within an `unsafe` block
 	inside_unsafe             bool // true inside `unsafe {}` blocks
 	inside_const              bool // true inside `const ( ... )` blocks
 	inside_anon_fn            bool // true inside `fn() { ... }()`
@@ -143,6 +144,11 @@ pub fn new_checker(table &ast.Table, pref &pref.Preferences) &Checker {
 	}
 }
 
+fn (mut c Checker) inside_unsafe_block() bool {
+	c.unsafe_ops++
+	return c.inside_unsafe
+}
+
 fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
 	c.expected_type = ast.void_type
 	c.expected_or_type = ast.void_type
@@ -153,7 +159,8 @@ fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
 	c.mod = ''
 	c.is_builtin_mod = false
 	c.is_just_builtin_mod = false
-	c.inside_unsafe = false
+	c.unsafe_ops = 0
+	c.inside_unsafe =  false
 	c.inside_const = false
 	c.inside_anon_fn = false
 	c.inside_ref_lit = false
@@ -578,7 +585,7 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 		ast.Ident {
 			if mut expr.obj is ast.Var {
 				if !expr.obj.is_mut && !c.pref.translated && !c.file.is_translated
-					&& !c.inside_unsafe {
+					&& !c.inside_unsafe_block() {
 					c.error('`$expr.name` is immutable, declare it with `mut` to make it mutable',
 						expr.pos)
 				}
@@ -599,7 +606,7 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 					}
 				}
 			} else if expr.obj is ast.ConstField && expr.name in c.const_names {
-				if !c.inside_unsafe && !c.pref.translated {
+				if !c.inside_unsafe_block() && !c.pref.translated {
 					// TODO fix this in c2v, do not allow modification of all consts
 					// in translated code
 					c.error('cannot modify constant `$expr.name`', expr.pos)
@@ -718,7 +725,7 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 				.array, .string {
 					// should only happen in `builtin` and unsafe blocks
 					inside_builtin := c.file.mod.name == 'builtin'
-					if !inside_builtin && !c.inside_unsafe {
+					if !inside_builtin && !c.inside_unsafe_block() {
 						c.error('`$typ_sym.kind` can not be modified', expr.pos)
 						return '', expr.pos
 					}
@@ -1187,7 +1194,7 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 				unknown_field_msg = err.msg()
 			}
 		}
-		if !c.inside_unsafe {
+		if !c.inside_unsafe_block() {
 			if sym.info is ast.Struct {
 				if sym.info.is_union && node.next_token !in token.assign_tokens {
 					c.warn('reading a union field (or its address) requires `unsafe`',
@@ -1261,7 +1268,7 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		}
 		receiver := method.params[0].typ
 		if receiver.nr_muls() > 0 {
-			if !c.inside_unsafe {
+			if !c.inside_unsafe_block() {
 				rec_sym := c.table.sym(receiver.set_nr_muls(0))
 				if !rec_sym.is_heap() {
 					suggestion := if rec_sym.kind == .struct_ {
@@ -1627,9 +1634,12 @@ fn (mut c Checker) assert_stmt(node ast.AssertStmt) {
 fn (mut c Checker) block(node ast.Block) {
 	if node.is_unsafe {
 		prev_unsafe := c.inside_unsafe
-		c.inside_unsafe = true
+		c.inside_unsafe =  true
 		c.stmts(node.stmts)
 		c.inside_unsafe = prev_unsafe
+		if c.unsafe_ops == 0 {
+			c.warn("unnecesary `unsafe` block", node.pos)
+		}
 	} else {
 		c.stmts(node.stmts)
 	}
@@ -2233,7 +2243,7 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			return c.match_expr(mut node)
 		}
 		ast.Nil {
-			if !c.inside_unsafe {
+			if !c.inside_unsafe_block() {
 				c.error('`nil` is only allowed in `unsafe` code', node.pos)
 			}
 			return ast.nil_type
@@ -2426,7 +2436,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	} else if to_sym.kind == .interface_ {
 		if c.type_implements(from_type, to_type, node.pos) {
 			if !from_type.is_ptr() && !from_type.is_pointer() && from_sym.kind != .interface_
-				&& !c.inside_unsafe {
+				&& !c.inside_unsafe_block() {
 				c.mark_as_referenced(mut &node.expr, true)
 			}
 			if (to_sym.info as ast.Interface).is_generic {
@@ -2438,7 +2448,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 				}
 			}
 		}
-	} else if to_type == ast.bool_type && from_type != ast.bool_type && !c.inside_unsafe
+	} else if to_type == ast.bool_type && from_type != ast.bool_type && !c.inside_unsafe_block()
 		&& !c.pref.translated && !c.file.is_translated {
 		c.error('cannot cast to bool - use e.g. `some_int != 0` instead', node.pos)
 	} else if from_type == ast.none_type && !to_type.has_flag(.optional) {
@@ -2459,7 +2469,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		// variadic case can happen when arrays are converted into variadic
 		msg := if from_type.has_flag(.optional) { 'an optional' } else { 'a variadic' }
 		c.error('cannot type cast $msg', node.pos)
-	} else if !c.inside_unsafe && to_type.is_ptr() && from_type.is_ptr()
+	} else if !c.inside_unsafe_block() && to_type.is_ptr() && from_type.is_ptr()
 		&& to_type.deref() != ast.char_type && from_type.deref() != ast.char_type {
 		ft := c.table.type_to_str(from_type)
 		tt := c.table.type_to_str(to_type)
@@ -3109,6 +3119,9 @@ pub fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) ast.Type {
 	c.inside_unsafe = true
 	t := c.expr(node.expr)
 	c.inside_unsafe = false
+	if c.unsafe_ops == 0 {
+		c.warn("unnecesary `unsafe` block", node.pos)
+	}
 	return t
 }
 
@@ -3169,10 +3182,10 @@ pub fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) ast.Type {
 	typ := c.unwrap_generic(c.expr(node.expr))
 	typ_sym := c.table.sym(typ)
 	is_non_void_pointer := (typ.is_ptr() || typ.is_pointer()) && typ_sym.kind != .voidptr
-	if !c.inside_unsafe && is_non_void_pointer && !node.expr.is_auto_deref_var() {
+	if !c.inside_unsafe_block() && is_non_void_pointer && !node.expr.is_auto_deref_var() {
 		c.warn('pointer arithmetic is only allowed in `unsafe` blocks', node.pos)
 	}
-	if !(typ_sym.is_number() || ((c.inside_unsafe || c.pref.translated) && is_non_void_pointer)) {
+	if !(typ_sym.is_number() || ((c.inside_unsafe_block() || c.pref.translated) && is_non_void_pointer)) {
 		typ_str := c.table.type_to_str(typ)
 		c.error('invalid operation: $node.op.str() (non-numeric type `$typ_str`)', node.pos)
 	} else {
@@ -3286,7 +3299,7 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 			c.error('cannot take the address of $expr', node.pos)
 		}
 		if mut node.right is ast.Ident {
-			if node.right.kind == .constant && !c.inside_unsafe && c.pref.experimental {
+			if node.right.kind == .constant && !c.inside_unsafe_block() && c.pref.experimental {
 				c.warn('cannot take an address of const outside `unsafe`', node.right.pos)
 			}
 		}
@@ -3304,19 +3317,19 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 			if typ_sym.kind == .map {
 				c.error('cannot take the address of map values', node.right.pos)
 			}
-			if !c.inside_unsafe {
+			if !c.inside_unsafe_block() {
 				if typ_sym.kind == .array && is_mut {
 					c.error('cannot take the address of mutable array elements outside unsafe blocks',
 						node.right.pos)
 				}
 			}
 		}
-		if !c.inside_fn_arg && !c.inside_unsafe {
+		if !c.inside_fn_arg && !c.inside_unsafe_block() {
 			c.mark_as_referenced(mut &node.right, false)
 		}
 		return right_type.ref()
 	} else if node.op == .amp && node.right !is ast.CastExpr {
-		if !c.inside_fn_arg && !c.inside_unsafe {
+		if !c.inside_fn_arg && !c.inside_unsafe_block() {
 			c.mark_as_referenced(mut &node.right, false)
 		}
 		if node.right.is_auto_deref_var() {
@@ -3445,7 +3458,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 		if !is_ok && node.index is ast.RangeExpr {
 			s := c.table.type_to_str(typ)
 			c.error('type `$s` does not support slicing', node.pos)
-		} else if !c.inside_unsafe && !is_ok && !c.pref.translated && !c.file.is_translated {
+		} else if !c.inside_unsafe_block() && !is_ok && !c.pref.translated && !c.file.is_translated {
 			c.warn('pointer indexing is only allowed in `unsafe` blocks', node.pos)
 		}
 	}
@@ -3478,7 +3491,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			}
 			value_sym := c.table.sym(info.value_type)
 			if !node.is_setter && value_sym.kind == .sum_type && node.or_expr.kind == .absent
-				&& !c.inside_unsafe && !c.inside_if_guard {
+				&& !c.inside_unsafe_block() && !c.inside_if_guard {
 				c.warn('`or {}` block required when indexing a map with sum type value',
 					node.pos)
 			}
@@ -3913,7 +3926,7 @@ pub fn (mut c Checker) goto_stmt(node ast.GotoStmt) {
 	if c.inside_defer {
 		c.error('goto is not allowed in defer statements', node.pos)
 	}
-	if !c.inside_unsafe {
+	if !c.inside_unsafe_block() {
 		c.warn('`goto` requires `unsafe` (consider using labelled break/continue)', node.pos)
 	}
 	if !isnil(c.table.cur_fn) && node.name !in c.table.cur_fn.label_names {

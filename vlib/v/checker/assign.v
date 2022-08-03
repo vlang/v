@@ -158,7 +158,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				}
 			}
 			if mut left is ast.Ident && mut right is ast.Ident {
-				if !c.inside_unsafe && left_type.is_ptr() && left.is_mut() && right_type.is_ptr()
+				if !c.inside_unsafe_block() && left_type.is_ptr() && left.is_mut() && right_type.is_ptr()
 					&& !right.is_mut() {
 					c.error('`$right.name` is immutable, cannot have a mutable reference to an immutable object',
 						right.pos)
@@ -176,7 +176,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					if c.fn_scope != unsafe { nil } {
 						obj = c.fn_scope.find_var(right.obj.name) or { obj }
 					}
-					if obj.is_stack_obj && !c.inside_unsafe {
+					if obj.is_stack_obj && !c.inside_unsafe_block() {
 						type_sym := c.table.sym(obj.typ.set_nr_muls(0))
 						if !type_sym.is_heap() && !c.pref.translated && !c.file.is_translated {
 							suggestion := if type_sym.kind == .struct_ {
@@ -220,7 +220,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 							c.error('invalid use of reserved type `$left.name` as a variable name',
 								left.pos)
 						}
-						if right is ast.Nil && !c.inside_unsafe {
+						if right is ast.Nil && !c.inside_unsafe_block() {
 							// `x := unsafe { nil }` is allowed,
 							// as well as:
 							// `unsafe {
@@ -289,7 +289,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			ast.PrefixExpr {
 				// Do now allow `*x = y` outside `unsafe`
 				if left.op == .mul {
-					if !c.inside_unsafe && !c.pref.translated && !c.file.is_translated {
+					if !c.inside_unsafe_block() && !c.pref.translated && !c.file.is_translated {
 						c.error('modifying variables via dereferencing can only be done in `unsafe` blocks',
 							node.pos)
 					} else if mut left.right is ast.Ident {
@@ -338,7 +338,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		left_sym := c.table.sym(left_type_unwrapped)
 		right_sym := c.table.sym(right_type_unwrapped)
-		if left_sym.kind == .array && !c.inside_unsafe && node.op in [.assign, .decl_assign]
+		if left_sym.kind == .array && !c.inside_unsafe_block() && node.op in [.assign, .decl_assign]
 			&& right_sym.kind == .array && left is ast.Ident && !left.is_blank_ident()
 			&& right is ast.Ident {
 			// Do not allow `a = b`, only `a = b.clone()`
@@ -357,7 +357,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				continue
 			}
 		}
-		if left_sym.kind == .array_fixed && !c.inside_unsafe && node.op in [.assign, .decl_assign]
+		if left_sym.kind == .array_fixed && !c.inside_unsafe_block() && node.op in [.assign, .decl_assign]
 			&& right_sym.kind == .array_fixed && left is ast.Ident && !left.is_blank_ident()
 			&& right is ast.Ident {
 			if right_sym.info is ast.ArrayFixed {
@@ -376,7 +376,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		left_is_ptr := left_type.is_ptr() || left_sym.is_pointer()
 		if left_is_ptr && !left.is_auto_deref_var() {
-			if !c.inside_unsafe && node.op !in [.assign, .decl_assign] {
+			if !c.inside_unsafe_block() && node.op !in [.assign, .decl_assign] {
 				// ptr op=
 				c.warn('pointer arithmetic is only allowed in `unsafe` blocks', node.pos)
 			}
@@ -542,7 +542,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				// allow for ptr += 2
 				if left_type_unwrapped.is_ptr() && right_type_unwrapped.is_int()
 					&& node.op in [.plus_assign, .minus_assign] {
-					if !c.inside_unsafe {
+					if !c.inside_unsafe_block() {
 						c.warn('pointer arithmetic is only allowed in `unsafe` blocks',
 							node.pos)
 					}
@@ -554,7 +554,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		if left_sym.kind == .interface_ {
 			if c.type_implements(right_type, left_type, right.pos()) {
 				if !right_type.is_ptr() && !right_type.is_pointer() && right_sym.kind != .interface_
-					&& !c.inside_unsafe {
+					&& !c.inside_unsafe_block() {
 					c.mark_as_referenced(mut &node.right[i], true)
 				}
 			}
@@ -582,7 +582,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 						v := right_node.right.obj
 						right_type0 = v.typ
 					}
-					if !c.inside_unsafe && assigned_var.is_mut() && !right_node.right.is_mut() {
+					if !c.inside_unsafe_block() && assigned_var.is_mut() && !right_node.right.is_mut() {
 						c.error('`$right_node.right.name` is immutable, cannot have a mutable reference to it',
 							right_node.pos)
 					}

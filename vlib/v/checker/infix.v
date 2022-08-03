@@ -44,7 +44,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			right_name := c.table.type_to_str(right_type)
 			c.error('invalid operator `$node.op` to `$left_name` and `$right_name`', left_right_pos)
 		} else if node.op in [.plus, .minus] {
-			if !c.inside_unsafe && !node.left.is_auto_deref_var() && !node.right.is_auto_deref_var() {
+			if !c.inside_unsafe_block() && !node.left.is_auto_deref_var() && !node.right.is_auto_deref_var() {
 				c.warn('pointer arithmetic is only allowed in `unsafe` blocks', left_right_pos)
 			}
 			if left_type == ast.voidptr_type && !c.pref.translated {
@@ -394,7 +394,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					if right_final_sym.kind != .array {
 						// []Animal << Cat
 						if c.type_implements(right_type, left_value_type, right_pos) {
-							if !right_type.is_ptr() && !right_type.is_pointer() && !c.inside_unsafe
+							if !right_type.is_ptr() && !right_type.is_pointer() && !c.inside_unsafe_block()
 								&& right_sym.kind != .interface_ {
 								c.mark_as_referenced(mut &node.right, true)
 							}
@@ -614,7 +614,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				left_right_pos)
 		} else if left_type.is_ptr() {
 			for_ptr_op := c.table.type_is_for_pointer_arithmetic(left_type)
-			if left_sym.language == .v && !c.pref.translated && !c.inside_unsafe && !for_ptr_op
+			if left_sym.language == .v && !c.pref.translated && !c.inside_unsafe_block() && !for_ptr_op
 				&& right_type.is_int() {
 				sugg := ' (you can use it inside an `unsafe` block)'
 				c.error('infix expr: cannot use `$right_sym.name` (right expression) as `$left_sym.name` $sugg',
