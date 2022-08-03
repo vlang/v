@@ -8,7 +8,7 @@ import v.util
 import v.token
 
 fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
-	mut node := unsafe { node_ }
+	mut node := node_
 	if node.is_static {
 		g.write('static ')
 	}
