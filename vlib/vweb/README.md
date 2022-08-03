@@ -1,63 +1,82 @@
-# vweb - the V Web Server #
+# vweb - the V Web Server
 
 A simple yet powerful web server with built-in routing, parameter handling, templating, and other
 features.
 The [gitly](https://gitly.org/) site is based on vweb.
 
+**_Some features may not be complete, and have some bugs._**
 
-***Some features may not be complete, and have some bugs.***
-
-## Features ##
+## Features
 
 - **Very fast** performance of C on the web.
 - **Small binary** hello world website is <100 KB.
 - **Easy to deploy** just one binary file that also includes all templates. No need to install any
-dependencies.
+  dependencies.
 - **Templates are precompiled** all errors are visible at compilation time, not at runtime.
 
-### Examples ###
-There are some examples 
+### Examples
+
+There are some examples
 that can be explored [here](https://github.com/vlang/v/tree/master/examples/vweb).
 
 And others like:
+
 - [vweb_orm_jwt](https://github.com/vlang/v/tree/master/examples/vweb_orm_jwt) (back-end)
 - [vorum](https://github.com/vlang/vorum) (front-end)
 - [gitly](https://github.com/vlang/gitly) (full-stack)
 
-
-`vorum.v` contains all GET and POST actions.
+**Front-end getting start example**
+`src/main.v`
 
 ```v ignore
-pub fn (app mut App) index() {
-	posts := app.find_all_posts()
-	$vweb.html()
+module main
+
+import vweb
+import os
+
+struct App {
+	vweb.Context
 }
 
-// TODO ['/post/:id/:title']
-// TODO `fn (app App) post(id int)`
-pub fn (app App) post() {
-	id := app.get_post_id()
-	post := app.retrieve_post(id) or {
-		app.redirect('/')
-		return
-	}
-	comments := app.find_comments(id)
-	show_form := true
-	$vweb.html()
+struct Object {
+	title       string
+	description string
 }
-```
 
-`index.html` is an example of the V template language:
+fn main() {
+	vweb.run_at(new_app(), vweb.RunParams{
+		port: 8081
+	}) or { panic(err) }
+}
 
-```html
-@for post in posts
-	<div class=post>
-		<a class=topic href="@post.url">@post.title</a>
-		<img class=comment-img>
-		<span class=nr-comments>@post.nr_comments</span>
-		<span class=time>@post.time</span>
-	</div>
-@end
+fn new_app() &App {
+	mut app := &App{}
+	// makes all static files available.
+	app.mount_static_folder_at(os.resource_abs_path('.'), '/')
+	return app
+}
+
+['/']
+pub fn (mut app App) page_home() vweb.Result {
+	// all this constants can be accessed by src/templates/page/home.html file.
+	page_title := 'V is the new V'
+	v_url := 'https://github.com/vlang/v'
+
+	list_of_object := [
+		Object{
+			title: 'One good title'
+			description: 'this is the first'
+		},
+		Object{
+			title: 'Other good title'
+			description: 'more one'
+		},
+	]
+	// $vweb.html() in `<folder>_<name> vweb.Result ()` like this
+	// render the `<name>.html` in folder `./templates/<folder>`
+	return $vweb.html()
+}
+
 ```
 
 `$vweb.html()` compiles an HTML template into V during compilation, and embeds the resulting code
@@ -65,15 +84,57 @@ into the current action.
 
 That means that the template automatically has access to that action's entire environment.
 
-## Deploying vweb apps ##
+`src/templates/page/home.html`
+
+```html
+<html>
+  <header>
+    <title>${page_title}</title>
+    @css 'src/templates/page/home.css'
+  </header>
+  <body>
+    <h1 class="title">Hello, Vs.</h1>
+    @for var in list_of_object
+    <div>
+      <a href="${v_url}">${var.title}</a>
+      <span>${var.description}</span>
+    </div>
+    @end
+    <div>@include 'component.html'</div>
+  </body>
+</html>
+```
+
+`src/templates/page/component.html`
+
+```html
+<div>This is a component</div>
+```
+
+`src/templates/page/home.css`
+
+```css
+h1.title {
+  font-family: Arial, Helvetica, sans-serif;
+  color: #3b7bbf;
+}
+```
+
+V suport some [Template directives](/vlib/v/TEMPLATES.md) like
+`@css`, `@js` for static files in \<path\>
+`@if`, `@for` for conditional and loop
+and
+`@include` to include html components.
+
+## Deploying vweb apps
 
 Everything, including HTML templates, is in one binary file. That's all you need to deploy.
 
-## Getting Started ##
+## Getting Started
 
 To start with vweb, you have to import the module `vweb` and define a struct to hold vweb.Context
 (and any other variables your program will need).
-The web server can be started by calling `vweb.run(&App{}, port)` or `vweb.run(&App{}, RunParams)`.
+The web server can be started by calling `vweb.run(&App{}, port)` or `vweb.run(&App{}, RunParams)`
 
 **Example:**
 
@@ -95,7 +156,7 @@ fn main() {
 }
 ```
 
-### Defining endpoints ###
+### Defining endpoints
 
 To add endpoints to your web server, you have to extend the `App` struct.
 For routing you can either use auto-mapping of function names or specify the path as an attribute.
@@ -115,8 +176,10 @@ fn (mut app App) world() vweb.Result {
 	return app.text('World')
 }
 ```
-####- HTTP verbs ####
-To use any HTTP verbs (or methods, as they are properly called), 
+
+#### - HTTP verbs
+
+To use any HTTP verbs (or methods, as they are properly called),
 such as `[post]`, `[get]`, `[put]`, `[patch]` or `[delete]`
 you can simply add the attribute before the function definition.
 
@@ -133,10 +196,12 @@ fn (mut app App) create_product() vweb.Result {
 	return app.text('product')
 }
 ```
-####- Parameters
+
+#### - Parameters
+
 Parameters are passed direcly in endpoint route using colon sign `:` and received using the same
 name at function
-To pass a parameter to an endpoint, you simply define it inside an attribute, e. g. 
+To pass a parameter to an endpoint, you simply define it inside an attribute, e. g.
 `['/hello/:user]`.
 After it is defined in the attribute, you have to add it as a function parameter.
 
@@ -157,24 +222,30 @@ To read the request headers, you just call `app.req.header` and access the
 header you want, e.g. `app.req.header.get(.content_type)`. See `struct Header`
 for all available methods (`v doc net.http Header`).
 
-### Middleware ###
-V haven't a well defined middleware. 
+### Middleware
+
+V haven't a well defined middleware.
 For now, you can use `before_request()`. This method called before every request.
 Probably you can use it for check user session cookie or add header
 **Example:**
+
 ```v ignore
 pub fn (mut app App) before_request() {
     app.user_id = app.get_cookie('id') or { '0' }
 }
 ```
-### Redirect ###
+
+### Redirect
+
 Used when you want be redirected to an url
 **Examples:**
+
 ```v ignore
 pub fn (mut app App) before_request() {
     app.user_id = app.get_cookie('id') or { app.redirect('/') }
 }
 ```
+
 ```v ignore
 ['/articles'; get]
 pub fn (mut app App) articles() vweb.Result {
@@ -185,11 +256,13 @@ pub fn (mut app App) articles() vweb.Result {
 }
 ```
 
-### Responses ###
+### Responses
 
-####- set_status ####
+#### - set_status
+
 Sets the response status
 **Example:**
+
 ```v ignore
 ['/user/get_all'; get]
 pub fn (mut app App) controller_get_all_user() vweb.Result {
@@ -208,27 +281,33 @@ pub fn (mut app App) controller_get_all_user() vweb.Result {
 }
 ```
 
-####- html ####
+#### - html
+
 Response HTTP_OK with payload with content-type `text/html`
 **Example:**
+
 ```v ignore
 pub fn (mut app App) html_page() vweb.Result {
     return app.html('<h1>ok</h1>')
 }
 ```
 
-####- text ####
+#### - text
+
 Response HTTP_OK with payload with content-type `text/plain`
 **Example:**
+
 ```v ignore
 pub fn (mut app App) simple() vweb.Result {
     return app.text('A simple result')
 }
 ```
 
-####- json ####
+#### - json
+
 Response HTTP_OK with payload with content-type `application/json`
 **Examples:**
+
 ```v ignore
 ['/articles'; get]
 pub fn (mut app App) articles() vweb.Result {
@@ -237,6 +316,7 @@ pub fn (mut app App) articles() vweb.Result {
     return app.json(json_result)
 }
 ```
+
 ```v ignore
 ['/user/create'; post]
 pub fn (mut app App) controller_create_user() vweb.Result {
@@ -254,9 +334,11 @@ pub fn (mut app App) controller_create_user() vweb.Result {
 }
 ```
 
-####- json_pretty ####
+#### - json_pretty
+
 Response HTTP_OK with a pretty-printed JSON result
 **Example:**
+
 ```v ignore
 fn (mut app App) time_json_pretty() {
     app.json_pretty({
@@ -265,12 +347,15 @@ fn (mut app App) time_json_pretty() {
 }
 ```
 
-####- file ####
+#### - file
+
 Response HTTP_OK with file as payload
 
-####- ok ####
+#### - ok
+
 Response HTTP_OK with payload
 **Example:**
+
 ```v ignore
 ['/form_echo'; post]
 pub fn (mut app App) form_echo() vweb.Result {
@@ -279,18 +364,22 @@ pub fn (mut app App) form_echo() vweb.Result {
 }
 ```
 
-####- server_error ####
+#### - server_error
+
 Response a server error
 **Example:**
+
 ```v ignore
 fn (mut app App) sse() vweb.Result {
     return app.server_error(501)
 }
 ```
 
-####- not_found ####
+#### - not_found
+
 Response HTTP_NOT_FOUND with payload
 **Example:**
+
 ```v ignore
 ['/:user/:repo/settings']
 pub fn (mut app App) user_repo_settings(username string, repository string) vweb.Result {
@@ -301,11 +390,13 @@ pub fn (mut app App) user_repo_settings(username string, repository string) vweb
 }
 ```
 
-### Requests ###
+### Requests
 
-####- get_header
+#### - get_header
+
 Returns the header data from the key
 **Example:**
+
 ```v ignore
 ['/user/get_all'; get]
 pub fn (mut app App) controller_get_all_user() vweb.Result {
@@ -313,18 +404,23 @@ pub fn (mut app App) controller_get_all_user() vweb.Result {
     return app.text(token)
 }
 ```
-####- get_cookie
+
+#### - get_cookie
+
 Sets a cookie
 **Example:**
+
 ```v ignore
 pub fn (mut app App) before_request() {
     app.user_id = app.get_cookie('id') or { '0' }
 }
 ```
 
-####- add_header ####
+#### - add_header
+
 Adds an header to the response with key and val
 **Example:**
+
 ```v ignore
 ['/upload'; post]
 pub fn (mut app App) upload() vweb.Result {
@@ -349,9 +445,11 @@ pub fn (mut app App) upload() vweb.Result {
 }
 ```
 
-####- set_cookie ####
+#### - set_cookie
+
 Sets a cookie
 **Example:**
+
 ```v ignore
 pub fn (mut app App) cookie() vweb.Result {
     app.set_cookie(name: 'cookie', value: 'test')
@@ -359,9 +457,11 @@ pub fn (mut app App) cookie() vweb.Result {
 }
 ```
 
-####- set_cookie_with_expire_date ####
+#### - set_cookie_with_expire_date
+
 Sets a cookie with a `expire_data`
 **Example:**
+
 ```v ignore
 pub fn (mut app App) cookie() vweb.Result {
     key := 'cookie'
@@ -374,9 +474,11 @@ pub fn (mut app App) cookie() vweb.Result {
 }
 ```
 
-####- set_content_type ####
+#### - set_content_type
+
 Sets the response content type
 **Example:**
+
 ```v ignore
 ['/form_echo'; post]
 pub fn (mut app App) form_echo() vweb.Result {
@@ -385,15 +487,17 @@ pub fn (mut app App) form_echo() vweb.Result {
 }
 ```
 
-### Template ###
+### Template
 
-####-handle_static  ####
-handle_static is used to mark a folder (relative to the current working folder) as one that 
+#### -handle_static
+
+handle_static is used to mark a folder (relative to the current working folder) as one that
 contains only static resources (css files, images etc).
 
 If `root` is set the mount path for the dir will be in '/'
 
 **Example:**
+
 ```v ignore
 fn main() {
     mut app := &App{}
@@ -405,20 +509,22 @@ fn main() {
 }
 ```
 
-####-mount_static_folder_at  ####
+#### -mount_static_folder_at
+
 makes all static files in `directory_path` and inside it, available at http://server/mount_path.
 
 For example: suppose you have called .mount_static_folder_at('/var/share/myassets', '/assets'),
 and you have a file /var/share/myassets/main.css .
 => That file will be available at URL: http://server/assets/main.css .
 
+#### -serve_static
 
-####-serve_static  ####
 Serves a file static.
 `url` is the access path on the site, `file_path` is the real path to the file, `mime_type` is the
 file type
 
 **Example:**
+
 ```v ignore
 fn main() {
     mut app := &App{}
@@ -428,11 +534,14 @@ fn main() {
 }
 ```
 
-### Others ###
-####-ip  ####
+### Others
+
+#### -ip
+
 Returns the ip address from the current user
 
 **Example:**
+
 ```v ignore
 pub fn (mut app App) ip() vweb.Result {
     ip := app.ip()
@@ -440,10 +549,12 @@ pub fn (mut app App) ip() vweb.Result {
 }
 ```
 
-####-error  ####
+#### -error
+
 Set a string to the form error
 
 **Example:**
+
 ```v ignore
 pub fn (mut app App) error() vweb.Result {
     app.error('here as an error')
