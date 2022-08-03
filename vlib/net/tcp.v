@@ -24,6 +24,7 @@ pub fn dial_tcp(address string) ?&TcpConn {
 		return error('$err.msg(); could not resolve address $address in dial_tcp')
 	}
 
+	wrapped_error := ''
 	// Very simple dialer
 	for addr in addrs {
 		mut s := new_tcp_socket(addr.family()) or {
@@ -31,7 +32,10 @@ pub fn dial_tcp(address string) ?&TcpConn {
 		}
 		s.connect(addr) or {
 			// Connection failed
-			s.close() or { continue }
+			s.close() or { 
+				wrapped_error = wrapped_error + err.msg() + '\n'
+				continue 
+			}
 			continue
 		}
 
@@ -42,7 +46,7 @@ pub fn dial_tcp(address string) ?&TcpConn {
 		}
 	}
 	// failed
-	return error('dial_tcp failed for address $address')
+	return error('dial_tcp failed for address $address: \n $wrapped_error')
 }
 
 // bind local address and dail.
