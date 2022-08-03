@@ -57,7 +57,7 @@ jobs:
 
       - name: Install lld dependency
         if: ${{ startsWith(matrix.os, 'ubuntu')}}
-        run: /
+        run: |
           sudo apt-get install --quiet -y lld
 
       - name: Build V with make.bat
