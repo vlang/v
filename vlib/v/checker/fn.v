@@ -760,8 +760,17 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 	if func.generic_names.len > 0 && node.concrete_types.len == 0 && !has_generic
 		&& !isnil(c.table.cur_fn) && c.table.cur_fn.generic_names.len > 0
 		&& func.name != c.table.cur_fn.name {
-		c.error('generic fn call inside generic fn must specify the generic type names, e.g. foo<T>()',
-			node.pos)
+		mut arg_has_generic := false
+		for arg in node.args {
+			if arg.typ.has_flag(.generic) {
+				arg_has_generic = true
+				break
+			}
+		}
+		if arg_has_generic {
+			c.error('generic fn call inside generic fn must specify the generic type names, e.g. foo<T>()',
+				node.pos)
+		}
 	}
 	if node.concrete_types.len > 0 && func.generic_names.len > 0
 		&& node.concrete_types.len != func.generic_names.len {
