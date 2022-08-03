@@ -1114,7 +1114,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	left_type := c.expr(node.left)
 	if left_type == ast.void_type {
-		c.error("cannot call a method using an invalid expression", node.pos)
+		c.error('cannot call a method using an invalid expression', node.pos)
 		return ast.void_type
 	}
 	c.expected_type = left_type
