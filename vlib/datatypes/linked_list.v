@@ -3,12 +3,12 @@ module datatypes
 pub struct ListNode<T> {
 mut:
 	data T
-	next &ListNode<T> = unsafe { 0 }
+	next &ListNode<T> = unsafe { nil }
 }
 
 pub struct LinkedList<T> {
 mut:
-	head &ListNode<T> = unsafe { 0 }
+	head &ListNode<T> = unsafe { nil }
 	len  int
 }
 

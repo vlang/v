@@ -3,18 +3,18 @@ module datatypes
 struct DoublyListNode<T> {
 mut:
 	data T
-	next &DoublyListNode<T> = unsafe { 0 }
-	prev &DoublyListNode<T> = unsafe { 0 }
+	next &DoublyListNode<T> = unsafe { nil }
+	prev &DoublyListNode<T> = unsafe { nil }
 }
 
 pub struct DoublyLinkedList<T> {
 mut:
-	head &DoublyListNode<T> = unsafe { 0 }
-	tail &DoublyListNode<T> = unsafe { 0 }
+	head &DoublyListNode<T> = unsafe { nil }
+	tail &DoublyListNode<T> = unsafe { nil }
 	// Internal iter pointer for allowing safe modification
 	// of the list while iterating. TODO: use an option
 	// instead of a pointer to determine it is initialized.
-	iter &DoublyListIter<T> = unsafe { 0 }
+	iter &DoublyListIter<T> = unsafe { nil }
 	len  int
 }
 
@@ -280,5 +280,5 @@ pub fn (mut list DoublyLinkedList<T>) next() ?T {
 
 struct DoublyListIter<T> {
 mut:
-	node &DoublyListNode<T> = unsafe { 0 }
+	node &DoublyListNode<T> = unsafe { nil }
 }
