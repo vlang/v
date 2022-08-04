@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generic_interface_missing_type_names_err.vv:16:17: error: generic interface must specify type parameter, e.g. Foo<int>
+   14 |
+   15 | fn main() {
+   16 |   mut outs := []Output{}
+      |                 ~~~~~~
+   17 |   outs << Coil { name: 'outhole' }
+   18 |   outs << Light { name: 'shoot again' }
