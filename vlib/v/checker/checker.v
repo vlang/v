@@ -159,7 +159,6 @@ fn (mut c Checker) reset_checker_state_at_start_of_new_file() {
 	c.mod = ''
 	c.is_builtin_mod = false
 	c.is_just_builtin_mod = false
-	c.unsafe_ops = 0
 	c.inside_unsafe = false
 	c.inside_const = false
 	c.inside_anon_fn = false
@@ -1636,9 +1635,11 @@ fn (mut c Checker) block(node ast.Block) {
 		prev_unsafe := c.inside_unsafe
 		c.inside_unsafe = true
 		c.stmts(node.stmts)
-		c.inside_unsafe = prev_unsafe
-		if c.unsafe_ops == 0 {
+		c.inside_unsafe = false
+		if prev_unsafe || c.unsafe_ops == 0 {
 			c.note('unnecessary `unsafe` block', node.pos)
+		} else {
+			c.unsafe_ops = 0
 		}
 	} else {
 		c.stmts(node.stmts)
@@ -3116,11 +3117,14 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) ast.Type {
 }
 
 pub fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) ast.Type {
+	prev_unsafe := c.inside_unsafe
 	c.inside_unsafe = true
 	t := c.expr(node.expr)
 	c.inside_unsafe = false
-	if c.unsafe_ops == 0 {
+	if prev_unsafe || c.unsafe_ops == 0 {
 		c.note('unnecessary `unsafe` block', node.pos)
+	} else {
+		c.unsafe_ops = 0
 	}
 	return t
 }
