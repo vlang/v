@@ -112,8 +112,9 @@ pub type Node = CallArg
 
 pub struct TypeNode {
 pub:
-	typ Type
 	pos token.Pos
+pub mut:
+	typ Type
 }
 
 pub enum ComptimeTypeKind {
