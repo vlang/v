@@ -59,21 +59,22 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			mut comptime_field_name := ''
 			if mut branch.cond is ast.InfixExpr {
 				if branch.cond.op == .key_is {
-					if branch.cond.right !is ast.TypeNode && branch.cond.right !is ast.ComptimeType {
+					left := branch.cond.left
+					right := branch.cond.right
+					if right !in [ast.TypeNode, ast.ComptimeType] {
 						c.error('invalid `\$if` condition: expected a type', branch.cond.right.pos())
 						return 0
 					}
-					left := branch.cond.left
-					if branch.cond.right is ast.ComptimeType && left is ast.TypeNode {
+					if right is ast.ComptimeType && left is ast.TypeNode {
 						is_comptime_type_is_expr = true
 						checked_type := c.unwrap_generic(left.typ)
-						skip_state = if c.table.is_comptime_type(checked_type, branch.cond.right as ast.ComptimeType) {
+						skip_state = if c.table.is_comptime_type(checked_type, right as ast.ComptimeType) {
 							.eval
 						} else {
 							.skip
 						}
 					} else {
-						got_type := c.unwrap_generic((branch.cond.right as ast.TypeNode).typ)
+						got_type := c.unwrap_generic((right as ast.TypeNode).typ)
 						sym := c.table.sym(got_type)
 						if sym.kind == .placeholder || got_type.has_flag(.generic) {
 							c.error('unknown type `$sym.name`', branch.cond.right.pos())
@@ -83,7 +84,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							comptime_field_name = left.expr.str()
 							c.comptime_fields_type[comptime_field_name] = got_type
 							is_comptime_type_is_expr = true
-						} else if branch.cond.right is ast.TypeNode && left is ast.TypeNode
+						} else if right is ast.TypeNode && left is ast.TypeNode
 							&& sym.kind == .interface_ {
 							is_comptime_type_is_expr = true
 							// is interface
