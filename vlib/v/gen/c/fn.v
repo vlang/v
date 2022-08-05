@@ -689,6 +689,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if node.receiver_type == 0 {
 		g.checker_bug('CallExpr.receiver_type is 0 in method_call', node.pos)
 	}
+	left_type := g.unwrap_generic(node.left_type)
 	mut unwrapped_rec_type := node.receiver_type
 	if unsafe { g.cur_fn != 0 } && g.cur_fn.generic_names.len > 0 { // in generic fn
 		unwrapped_rec_type = g.unwrap_generic(node.receiver_type)
@@ -722,13 +723,13 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			eprintln('>>> interface typ_sym.name: $typ_sym.name | receiver_type_name: $receiver_type_name | pos: $node.pos')
 		}
 
-		left_is_shared := node.left_type.has_flag(.shared_f)
-		left_cc_type := g.cc_type(g.table.unaliased_type(node.left_type), false)
+		left_is_shared := left_type.has_flag(.shared_f)
+		left_cc_type := g.cc_type(g.table.unaliased_type(left_type), false)
 		left_type_name := util.no_dots(left_cc_type)
 		g.write('${c_name(left_type_name)}_name_table[')
-		if node.left.is_auto_deref_var() && node.left_type.nr_muls() > 1 {
+		if node.left.is_auto_deref_var() && left_type.nr_muls() > 1 {
 			g.write('(')
-			g.write('*'.repeat(node.left_type.nr_muls() - 1))
+			g.write('*'.repeat(left_type.nr_muls() - 1))
 			g.expr(node.left)
 			g.write(')')
 		} else {
@@ -736,16 +737,16 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 		dot := if left_is_shared {
 			'->val.'
-		} else if node.left_type.is_ptr() {
+		} else if left_type.is_ptr() {
 			'->'
 		} else {
 			'.'
 		}
 		mname := c_name(node.name)
 		g.write('${dot}_typ]._method_${mname}(')
-		if node.left.is_auto_deref_var() && node.left_type.nr_muls() > 1 {
+		if node.left.is_auto_deref_var() && left_type.nr_muls() > 1 {
 			g.write('(')
-			g.write('*'.repeat(node.left_type.nr_muls() - 1))
+			g.write('*'.repeat(left_type.nr_muls() - 1))
 			g.expr(node.left)
 			g.write(')')
 		} else {
@@ -759,8 +760,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.write(')')
 		return
 	}
-	left_sym := g.table.sym(node.left_type)
-	final_left_sym := g.table.final_sym(node.left_type)
+	left_sym := g.table.sym(left_type)
+	final_left_sym := g.table.final_sym(left_type)
 	if left_sym.kind == .array {
 		match node.name {
 			'filter' {
@@ -784,7 +785,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				return
 			}
 			'contains' {
-				g.gen_array_contains(node.left_type, node.left, node.args[0].expr)
+				g.gen_array_contains(left_type, node.left, node.args[0].expr)
 				return
 			}
 			'index' {
@@ -811,7 +812,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		left_info := left_sym.info as ast.Map
 		elem_type_str := g.typ(left_info.key_type)
 		g.write('map_delete(')
-		if node.left_type.is_ptr() {
+		if left_type.is_ptr() {
 			g.expr(node.left)
 		} else {
 			g.write('&')
@@ -823,7 +824,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		return
 	} else if left_sym.kind == .array && node.name == 'delete' {
 		g.write('array_delete(')
-		if node.left_type.is_ptr() {
+		if left_type.is_ptr() {
 			g.expr(node.left)
 		} else {
 			g.write('&')
@@ -968,7 +969,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	// if so, then instead of calling array_clone(&array_slice(...))
 	// call array_clone_static(array_slice(...))
 	mut is_range_slice := false
-	if node.receiver_type.is_ptr() && !node.left_type.is_ptr() {
+	if node.receiver_type.is_ptr() && !left_type.is_ptr() {
 		if node.left is ast.IndexExpr {
 			idx := node.left.index
 			if idx is ast.RangeExpr {
@@ -982,11 +983,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	name = g.generic_fn_name(node.concrete_types, name, false)
 	// TODO2
 	// g.generate_tmp_autofree_arg_vars(node, name)
-	if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name == 'str' {
+	if !node.receiver_type.is_ptr() && left_type.is_ptr() && node.name == 'str' {
 		g.write('ptr_str(')
-	} else if node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name == 'str'
+	} else if node.receiver_type.is_ptr() && left_type.is_ptr() && node.name == 'str'
 		&& !left_sym.has_method('str') {
-		g.gen_expr_to_string(node.left, node.left_type)
+		g.gen_expr_to_string(node.left, left_type)
 		return
 	} else {
 		if left_sym.kind == .array {
@@ -998,10 +999,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.write('${name}(')
 		}
 	}
-	if node.receiver_type.is_ptr()
-		&& (!node.left_type.is_ptr() || node.left_type.has_flag(.variadic)
+	if node.receiver_type.is_ptr() && (!left_type.is_ptr() || left_type.has_flag(.variadic)
 		|| node.from_embed_types.len != 0
-		|| (node.left_type.has_flag(.shared_f) && node.name != 'str')) {
+		|| (left_type.has_flag(.shared_f) && node.name != 'str')) {
 		// The receiver is a reference, but the caller provided a value
 		// Add `&` automatically.
 		// TODO same logic in call_args()
@@ -1013,13 +1013,13 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				g.write('&')
 			}
 		}
-	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str'
+	} else if !node.receiver_type.is_ptr() && left_type.is_ptr() && node.name != 'str'
 		&& node.from_embed_types.len == 0 {
-		if !node.left_type.has_flag(.shared_f) {
+		if !left_type.has_flag(.shared_f) {
 			g.write('/*rec*/*')
 		}
 	} else if !is_range_slice && node.from_embed_types.len == 0 && node.name != 'str' {
-		diff := node.left_type.nr_muls() - node.receiver_type.nr_muls()
+		diff := left_type.nr_muls() - node.receiver_type.nr_muls()
 		if diff < 0 {
 			// TODO
 			// g.write('&')
@@ -1050,7 +1050,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			embed_sym := g.table.sym(embed)
 			embed_name := embed_sym.embed_name()
 			is_left_ptr := if i == 0 {
-				node.left_type.is_ptr()
+				left_type.is_ptr()
 			} else {
 				node.from_embed_types[i - 1].is_ptr()
 			}
@@ -1061,7 +1061,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 			g.write(embed_name)
 		}
-		if node.left_type.has_flag(.shared_f) {
+		if left_type.has_flag(.shared_f) {
 			g.write('->val')
 		}
 	}
