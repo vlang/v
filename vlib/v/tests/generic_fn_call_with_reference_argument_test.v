@@ -6,7 +6,7 @@ struct ContainerType<T> {
 	typ &Type<T>
 }
 
-fn (instance &ContainerType<T>) contains(typ Type<T>) bool {
+fn (instance &ContainerType<T>) contains(typ &Type<T>) bool {
 	println(typ)
 	if instance.typ == typ {
 		return true

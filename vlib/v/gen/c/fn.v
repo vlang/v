@@ -1208,7 +1208,8 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				if g.comptime_for_field_type != 0 && g.inside_comptime_for_field {
 					name = g.generic_fn_name([g.comptime_for_field_type], name, false)
 				} else {
-					name = g.generic_fn_name(node.concrete_types, name, false)
+					concrete_types := node.concrete_types.map(g.unwrap_generic(it))
+					name = g.generic_fn_name(concrete_types, name, false)
 				}
 			}
 		}
@@ -1492,7 +1493,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 	} else {
 		node.args
 	}
-	mut expected_types := node.expected_arg_types
+	mut expected_types := node.expected_arg_types.map(g.unwrap_generic(it))
 	// unwrap generics fn/method arguments to concretes
 	if node.concrete_types.len > 0 && node.concrete_types.all(!it.has_flag(.generic)) {
 		if node.is_method {
@@ -1924,13 +1925,13 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 
 [inline]
 fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang ast.Language) {
+	arg_typ := g.unwrap_generic(arg.typ)
 	exp_is_ptr := expected_type.is_ptr() || expected_type.idx() in ast.pointer_type_idxs
-	arg_is_ptr := arg.typ.is_ptr() || arg.typ.idx() in ast.pointer_type_idxs
+	arg_is_ptr := arg_typ.is_ptr() || arg_typ.idx() in ast.pointer_type_idxs
 	if expected_type == 0 {
 		g.checker_bug('ref_or_deref_arg expected_type is 0', arg.pos)
 	}
 	exp_sym := g.table.sym(expected_type)
-	arg_typ := g.unwrap_generic(arg.typ)
 	mut needs_closing := false
 	if arg.is_mut && !exp_is_ptr {
 		g.write('&/*mut*/')

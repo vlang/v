@@ -1,0 +1,44 @@
+interface Average {
+	ave() f64
+}
+
+struct Score {
+	ave f64
+}
+
+pub fn (s &Score) ave() f64 {
+	return s.ave
+}
+
+fn next<T>(input T) f64 {
+	$if T is Average {
+		dump('${T.name} $input')
+		ret := next2<T>(input)
+		return ret
+	} $else {
+		dump('${T.name} $input')
+		ret := next2<T>(input)
+		return ret
+	}
+}
+
+fn next2<T>(input T) f64 {
+	dump('${T.name} $input')
+	$if T is Average {
+		return input.ave()
+	} $else $if T is f64 {
+		return 64.0
+	}
+	return 0.0
+}
+
+fn main() {
+	dump(next(1))
+	dump(next(1.0))
+	dump(next(11.1))
+	ave := Score {
+		ave: 23.4
+	}
+	dump(next(ave))
+	dump(next(&ave))
+}
