@@ -462,32 +462,25 @@ fn (mut s TcpSocket) connect(a Addr) ? {
 			// unsuccessfully (SO_ERROR is one of the usual error codes  listed  here,
 			// ex‐ plaining the reason for the failure).
 			write_result := s.@select(.write, net.connect_timeout)?
-			$if macos {
-				xerr := 0
-				xlen := sizeof(xerr)
-				xyz := C.getsockopt(s.handle, C.SOL_SOCKET, C.SO_ERROR, &xerr, &xlen)
-				if xyz == 0 {
-					// ok
-					return
-				}
+			err := 0
+			len := sizeof(err)
+			xyz := C.getsockopt(s.handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len)
+			if xyz == 0 && err == 0 {
+				return
 			}
 			if write_result {
-				err := 0
-				len := sizeof(err)
-				socket_error(C.getsockopt(s.handle, C.SOL_SOCKET, C.SO_ERROR, &err, &len))?
-
-				if err != 0 {
-					return wrap_error(err)
+				if xyz == 0 {
+					wrap_error(err)?
+					return
 				}
-				// Succeeded
 				return
 			}
 			return err_timed_out
 		}
-		socket_error(res)?
-
+		wrap_error(ecode)?
 		return
 	} $else {
-		socket_error(C.connect(s.handle, voidptr(&a), a.len()))?
+		x := C.connect(s.handle, voidptr(&a), a.len())
+		socket_error(x)?
 	}
 }
