@@ -451,8 +451,7 @@ fn (mut s TcpSocket) connect(a Addr) ? {
 
 		// On nix non-blocking sockets we expect einprogress
 		// On windows we expect res == -1 && error_code() == ewouldblock
-		if res == int(error_einprogress) || 
-			error_code() == int(error_ewouldblock) {
+		if res == int(error_einprogress) || error_code() == int(error_ewouldblock) {
 			// The  socket  is  nonblocking and the connection cannot be completed
 			// immediately.  (UNIX domain sockets failed with EAGAIN instead.)
 			// It is possible to select(2) or poll(2) for completion by selecting
