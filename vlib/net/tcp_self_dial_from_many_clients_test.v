@@ -74,9 +74,7 @@ fn test_tcp_self_dialing() {
 		if dt > max_dt {
 			eprintln('>>> exiting after $dt.milliseconds() ms ...')
 			dump(ctx)
-			if ctx.fail_client_dials > 2 {
-				assert false, 'failed $ctx.fail_client_dials client dials'
-			}
+			assert ctx.fail_client_dials < 2, 'allowed failed client dials, from $ctx.ok_server_accepts connections'
 			exit(0)
 		}
 		time.sleep(10 * time.millisecond)
