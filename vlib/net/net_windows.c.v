@@ -739,6 +739,7 @@ pub fn wsa_error(code int) WsaError {
 
 const (
 	error_ewouldblock = WsaError.wsaewouldblock
+	error_einprogress = WsaError.wsaeinprogress
 )
 
 // Link to Winsock library

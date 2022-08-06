@@ -23,4 +23,5 @@ pub const (
 
 const (
 	error_ewouldblock = C.EWOULDBLOCK
+	error_einprogress = C.EINPROGRESS
 )
