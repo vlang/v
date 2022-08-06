@@ -1,5 +1,7 @@
 module net
 
+const is_windows = true
+
 // WsaError is all of the socket errors that WSA provides from WSAGetLastError
 pub enum WsaError {
 	//
