@@ -448,11 +448,11 @@ fn (mut s TcpSocket) connect(a Addr) ? {
 		if res == 0 {
 			return
 		}
-
+		ecode := error_code()
 		// On nix non-blocking sockets we expect einprogress
 		// On windows we expect res == -1 && error_code() == ewouldblock
-		if (is_windows && error_code() == int(error_ewouldblock))
-			|| (!is_windows && res == -1 && error_code() == int(error_einprogress)) {
+		if (is_windows && ecode == int(error_ewouldblock))
+			|| (!is_windows && res == -1 && ecode == int(error_einprogress)) {
 			// The  socket  is  nonblocking and the connection cannot be completed
 			// immediately.  (UNIX domain sockets failed with EAGAIN instead.)
 			// It is possible to select(2) or poll(2) for completion by selecting
@@ -462,6 +462,15 @@ fn (mut s TcpSocket) connect(a Addr) ? {
 			// unsuccessfully (SO_ERROR is one of the usual error codes  listed  here,
 			// ex‐ plaining the reason for the failure).
 			write_result := s.@select(.write, net.connect_timeout)?
+			$if macos {
+				xerr := 0
+				xlen := sizeof(xerr)
+				xyz := C.getsockopt(s.handle, C.SOL_SOCKET, C.SO_ERROR, &xerr, &xlen)
+				if xyz == 0 {
+					// ok
+					return
+				}
+			}
 			if write_result {
 				err := 0
 				len := sizeof(err)
