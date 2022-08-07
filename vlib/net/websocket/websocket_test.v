@@ -26,9 +26,13 @@ fn test_ws_ipv6() {
 		return
 	}
 	port := 30000 + rand.intn(1024) or { 0 }
+	eprintln('> port ipv6: $port')
 	go start_server(.ip6, port)
-	time.sleep(500 * time.millisecond)
-	ws_test(.ip6, 'ws://localhost:$port') or { assert false }
+	time.sleep(1500 * time.millisecond)
+	ws_test(.ip6, 'ws://localhost:$port') or {
+		eprintln('> error while connecting .ip6, err: $err')
+		assert false
+	}
 }
 
 // tests with internal ws servers
@@ -37,9 +41,13 @@ fn test_ws_ipv4() {
 		return
 	}
 	port := 30000 + rand.intn(1024) or { 0 }
+	eprintln('> port ipv4: $port')
 	go start_server(.ip, port)
-	time.sleep(500 * time.millisecond)
-	ws_test(.ip, 'ws://localhost:$port') or { assert false }
+	time.sleep(1500 * time.millisecond)
+	ws_test(.ip, 'ws://localhost:$port') or {
+		eprintln('> error while connecting .ip, err: $err')
+		assert false
+	}
 }
 
 fn start_server(family net.AddrFamily, listen_port int) ? {
@@ -58,15 +66,15 @@ fn start_server(family net.AddrFamily, listen_port int) ? {
 	})?
 	s.on_message(fn (mut ws websocket.Client, msg &websocket.Message) ? {
 		match msg.opcode {
-			.pong { ws.write_string('pong') or { panic(err) } }
-			else { ws.write(msg.payload, msg.opcode) or { panic(err) } }
+			.pong { ws.write_string('pong')? }
+			else { ws.write(msg.payload, msg.opcode)? }
 		}
 	})
 
 	s.on_close(fn (mut ws websocket.Client, code int, reason string) ? {
 		// not used
 	})
-	s.listen() or { panic('websocket server could not listen') }
+	s.listen() or { panic('websocket server could not listen, err: $err') }
 }
 
 // ws_test tests connect to the websocket server from websocket client
@@ -104,11 +112,11 @@ fn ws_test(family net.AddrFamily, uri string) ? {
 			println('Binary message: $msg')
 		}
 	}, test_results)
-	ws.connect() or { panic('fail to connect') }
+	ws.connect() or { panic('fail to connect, err: $err') }
 	go ws.listen()
 	text := ['a'].repeat(2)
 	for msg in text {
-		ws.write(msg.bytes(), .text_frame) or { panic('fail to write to websocket') }
+		ws.write(msg.bytes(), .text_frame) or { panic('fail to write to websocket, err: $err') }
 		// sleep to give time to recieve response before send a new one
 		time.sleep(100 * time.millisecond)
 	}

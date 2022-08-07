@@ -21,7 +21,7 @@ struct Config {
 
 fn exit_after_timeout(timeout_in_ms int) {
 	time.sleep(timeout_in_ms * time.millisecond)
-	// eprintln('webserver is exiting ...')
+	println('>> webserver: pid: $os.getpid(), exiting ...')
 	exit(0)
 }
 
@@ -43,7 +43,7 @@ fn main() {
 		timeout: timeout
 		global_config: config
 	}
-	eprintln('>> webserver: started on http://localhost:$app.port/ , with maximum runtime of $app.timeout milliseconds.')
+	eprintln('>> webserver: pid: $os.getpid(), started on http://localhost:$app.port/ , with maximum runtime of $app.timeout milliseconds.')
 	vweb.run_at(app, host: 'localhost', port: http_port, family: .ip)?
 }
 
