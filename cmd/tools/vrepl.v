@@ -16,7 +16,7 @@ mut:
 	indent   int    // indentation level
 	in_func  bool   // are we inside a new custom user function
 	line     string // the current line entered by the user
-	is_pin   bool   // does the repl 'pin' entered source code 
+	is_pin   bool   // does the repl 'pin' entered source code
 	//
 	modules         []string // all the import modules
 	alias           map[string]string // all the alias used in the import
