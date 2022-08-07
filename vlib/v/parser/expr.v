@@ -607,6 +607,10 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 				right = right.expr
 			}
 		}
+		if mut right is ast.TypeNode {
+			right.typ = right.typ.ref()
+			return right
+		}
 	}
 	mut or_stmts := []ast.Stmt{}
 	mut or_kind := ast.OrKind.absent

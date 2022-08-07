@@ -1,0 +1,10 @@
+fn main() {
+	c := c'cstr'
+	proc(c)
+}
+
+fn proc<T>(input T) {
+	$if T is &u8 {
+		println('T is $T.name')
+	}
+}

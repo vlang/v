@@ -244,6 +244,7 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		all_fn_root_names << 'panic_debug'
 	}
 	all_fn_root_names << 'panic_optional_not_set'
+	all_fn_root_names << 'panic_result_not_set'
 	if pref.is_test {
 		all_fn_root_names << 'main.cb_assertion_ok'
 		all_fn_root_names << 'main.cb_assertion_failed'
