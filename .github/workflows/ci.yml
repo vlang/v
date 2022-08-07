@@ -30,7 +30,6 @@ jobs:
           wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
           sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
           sudo dpkg -i wkhtmltox_0.12.6-1.focal_amd64.deb
-          sudo apt-get install --quiet -y lld
       - name: Build v
         run: |
           echo $VFLAGS
@@ -112,7 +111,6 @@ jobs:
           wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
           sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
           sudo dpkg -i wkhtmltox_0.12.6-1.focal_amd64.deb
-          sudo apt-get install --quiet -y lld
       - name: Build v
         run: |
           echo $VFLAGS
@@ -256,7 +254,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
-          sudo apt-get install --quiet -y lld
       - name: Build V
         run: make -j4 && ./v -cc gcc -cg -cstrict -o v cmd/v
       - name: Valgrind v.c
@@ -360,7 +357,6 @@ jobs:
           sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
           sudo apt-get install --quiet -y libfreetype6-dev  libxi-dev libxcursor-dev libgl-dev
           sudo apt-get install --quiet -y clang
-          sudo apt-get install --quiet -y lld
       - name: Build V
         run: make -j4 && ./v -cc clang -cg -cstrict -o v cmd/v
       - name: Valgrind
