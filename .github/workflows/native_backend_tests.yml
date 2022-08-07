@@ -55,10 +55,10 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: Install lld dependency
+      - name: Install linker
         if: ${{ startsWith(matrix.os, 'ubuntu')}}
         run: |
-          sudo apt-get install --quiet -y lld-12
+          sudo apt-get install --quiet -y binutils
 
       - name: Build V with make.bat
         if: ${{ startsWith(matrix.os, 'windows') }}
