@@ -785,12 +785,14 @@ pub fn (mut g Gen) link_elf_file(obj_file string) {
 	slinker_args := linker_args.join(' ')
 
 	mut ldlld := 'ld'
+	/*
 	match g.pref.os {
 		.linux { ldlld = 'ld.lld' }
 		.windows { ldlld = 'lld-link' }
 		.macos { ldlld = 'ld64.lld' }
 		else {}
 	}
+	*/
 	custom_linker := os.getenv('VLINKER')
 	if custom_linker != '' {
 		ldlld = custom_linker
