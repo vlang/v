@@ -10,12 +10,12 @@ fn imin(a int, b int) int {
 	return if a < b { a } else { b }
 }
 
-fn (mut s StringReader) read(mut buf []u8) ?int {
+fn (mut s StringReader) read(mut buf []u8) !int {
 	$if debug {
 		eprintln('>>>> StringReader.read output buf.len: $buf.len')
 	}
 	if s.place > s.text.len + 1 {
-		return none
+		return IError(io.Eof{})
 	}
 	mut howmany := imin(buf.len, s.text.len - s.place)
 	xxx := s.text[s.place..s.place + howmany].bytes()

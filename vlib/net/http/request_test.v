@@ -8,9 +8,9 @@ mut:
 	place int
 }
 
-fn (mut s StringReader) read(mut buf []u8) ?int {
+fn (mut s StringReader) read(mut buf []u8) !int {
 	if s.place >= s.text.len {
-		return none
+		return IError(io.Eof{})
 	}
 	max_bytes := 100
 	end := if s.place + max_bytes >= s.text.len { s.text.len } else { s.place + max_bytes }

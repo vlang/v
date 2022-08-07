@@ -180,8 +180,8 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) ?int {
 	return res
 }
 
-pub fn (mut s SSLConn) read(mut buffer []u8) ?int {
-	res := s.socket_read_into_ptr(&u8(buffer.data), buffer.len)?
+pub fn (mut s SSLConn) read(mut buffer []u8) !int {
+	res := s.socket_read_into_ptr(&u8(buffer.data), buffer.len) or { return err }
 	return res
 }
 

@@ -130,11 +130,11 @@ fn test_read_eof_last_read_partial_buffer_fill() ? {
 	f = os.open_file(tfile, 'r')?
 	mut br := []u8{len: 100}
 	// Read first 100 bytes of 199 byte file, should fill buffer with no error.
-	n0 := f.read(mut br)?
+	n0 := f.read(mut br) or { return error('failed to read 100 bytes') }
 	assert n0 == 100
 	// Read remaining 99 bytes of 199 byte file, should fill buffer with no
 	// error, even though end-of-file was reached.
-	n1 := f.read(mut br)?
+	n1 := f.read(mut br) or { return error('failed to read 100 bytes') }
 	assert n1 == 99
 	// Read again, end-of-file was previously reached so should return none
 	// error.
@@ -143,8 +143,8 @@ fn test_read_eof_last_read_partial_buffer_fill() ? {
 		// not return a number of bytes read when end-of-file is reached.
 		assert false
 	} else {
-		// Expect none to have been returned when end-of-file.
-		assert err is none
+		// Expected an error when received end-of-file.
+		assert err !is none
 	}
 	f.close()
 }
@@ -162,11 +162,11 @@ fn test_read_eof_last_read_full_buffer_fill() ? {
 	f = os.open_file(tfile, 'r')?
 	mut br := []u8{len: 100}
 	// Read first 100 bytes of 200 byte file, should fill buffer with no error.
-	n0 := f.read(mut br)?
+	n0 := f.read(mut br) or { return error('failed to read 100 bytes') }
 	assert n0 == 100
 	// Read remaining 100 bytes of 200 byte file, should fill buffer with no
 	// error. The end-of-file isn't reached yet, but there is no more data.
-	n1 := f.read(mut br)?
+	n1 := f.read(mut br) or { return error('failed to read 100 bytes') }
 	assert n1 == 100
 	// Read again, end-of-file was previously reached so should return none
 	// error.
@@ -175,8 +175,8 @@ fn test_read_eof_last_read_full_buffer_fill() ? {
 		// not return a number of bytes read when end-of-file is reached.
 		assert false
 	} else {
-		// Expect none to have been returned when end-of-file.
-		assert err is none
+		// Expect an error at EOF.
+		assert err !is none
 	}
 	f.close()
 }

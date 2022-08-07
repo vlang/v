@@ -35,9 +35,9 @@ fn test_decode_a() ? {
 	}
 }
 
-fn (mut b TestReader) read(mut buf []u8) ?int {
+fn (mut b TestReader) read(mut buf []u8) !int {
 	if !(b.i < b.bytes.len) {
-		return none
+		return IError(io.Eof{})
 	}
 	n := copy(mut buf, b.bytes[b.i..])
 	b.i += n

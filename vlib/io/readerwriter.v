@@ -14,7 +14,7 @@ mut:
 	w Writer
 }
 
-pub fn (mut r ReaderWriterImpl) read(mut buf []u8) ?int {
+pub fn (mut r ReaderWriterImpl) read(mut buf []u8) !int {
 	return r.r.read(mut buf)
 }
 
