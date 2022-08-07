@@ -58,7 +58,7 @@ jobs:
       - name: Install lld dependency
         if: ${{ startsWith(matrix.os, 'ubuntu')}}
         run: |
-          sudo apt-get install --quiet -y lld
+          sudo apt-get install --quiet -y lld-12
 
       - name: Build V with make.bat
         if: ${{ startsWith(matrix.os, 'windows') }}
