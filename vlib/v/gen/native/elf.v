@@ -735,8 +735,18 @@ pub fn (mut g Gen) generate_elf_footer() {
 	g.create_executable()
 }
 
+pub fn (mut g Gen) prepend_vobjpath(paths []string) []string {
+	vopath := os.getenv('VOBJPATH')
+	if vopath == '' {
+		return paths
+	}
+	mut res := paths.clone()
+	res.insert(0, vopath)
+	return res
+}
+
 pub fn (mut g Gen) find_o_path(fname string) string {
-	opaths := ['/usr/lib', '/usr/lib/x86_64-linux-gnu']
+	opaths := g.prepend_vobjpath(['/usr/lib', '/usr/lib/x86_64-linux-gnu'])
 	for opath in opaths {
 		fpath := os.join_path_single(opath, fname)
 		if os.is_file(fpath) {
@@ -747,7 +757,8 @@ pub fn (mut g Gen) find_o_path(fname string) string {
 }
 
 pub fn (mut g Gen) get_lpaths() string {
-	lpaths := ['/usr/lib/x86_64-linux-gnu', '/usr/lib64', '/lib64', '/usr/lib', '/lib']
+	lpaths := g.prepend_vobjpath(['/usr/lib/x86_64-linux-gnu', '/usr/lib64', '/lib64', '/usr/lib',
+		'/lib'])
 	return lpaths.map('-L$it').join(' ')
 }
 
@@ -773,9 +784,19 @@ pub fn (mut g Gen) link_elf_file(obj_file string) {
 	]
 	slinker_args := linker_args.join(' ')
 
-	ldlld := 'ld'
-	linker_cmd := '${os.quoted_path(ldlld)} $slinker_args'
-
+	mut ldlld := 'ld'
+	match g.pref.os {
+		.linux { ldlld = 'ld.lld' }
+		.windows { ldlld = 'lld-link' }
+		.macos { ldlld = 'ld64.lld' }
+		else {}
+	}
+	custom_linker := os.getenv('VLINKER')
+	if custom_linker != '' {
+		ldlld = custom_linker
+	}
+	linker_path := os.real_path(ldlld)
+	linker_cmd := '${os.quoted_path(linker_path)} $slinker_args'
 	if g.pref.is_verbose {
 		println(linker_cmd)
 	}
