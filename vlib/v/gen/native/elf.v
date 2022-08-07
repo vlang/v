@@ -735,27 +735,46 @@ pub fn (mut g Gen) generate_elf_footer() {
 	g.create_executable()
 }
 
+pub fn (mut g Gen) find_o_path(fname string) string {
+	opaths := ['/usr/lib', '/usr/lib/x86_64-linux-gnu']
+	for opath in opaths {
+		fpath := os.join_path_single(opath, fname)
+		if os.is_file(fpath) {
+			return fpath
+		}
+	}
+	return '/dev/null'
+}
+
+pub fn (mut g Gen) get_lpaths() string {
+	lpaths := ['/usr/lib/x86_64-linux-gnu', '/usr/lib64', '/lib64', '/usr/lib', '/lib']
+	return lpaths.map('-L$it').join(' ')
+}
+
 pub fn (mut g Gen) link_elf_file(obj_file string) {
+	crt1 := g.find_o_path('crt1.o')
+	crti := g.find_o_path('crti.o')
+	crtn := g.find_o_path('crtn.o')
+	lpaths := g.get_lpaths()
 	linker_args := [
-		'-L/usr/lib64',
-		'-L/lib64',
-		'-L/usr/lib',
-		'-L/lib',
 		'-v',
-		'-o $g.out_name',
+		lpaths,
 		'-m elf_x86_64',
 		'-dynamic-linker',
 		'/lib64/ld-linux-x86-64.so.2',
-		'/usr/lib/crt1.o /usr/lib/crti.o',
+		crt1,
+		crti,
 		'-lc',
 		'-lm',
 		'-lpthread',
-		'/usr/lib/crtn.o',
+		crtn,
 		'$obj_file',
+		'-o $g.out_name',
 	]
+	slinker_args := linker_args.join(' ')
 
-	ldlld := 'ld.lld'
-	linker_cmd := '${os.quoted_path(ldlld)} ' + linker_args.join(' ')
+	ldlld := 'ld'
+	linker_cmd := '${os.quoted_path(ldlld)} $slinker_args'
 
 	if g.pref.is_verbose {
 		println(linker_cmd)
