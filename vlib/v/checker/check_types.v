@@ -667,10 +667,6 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 				if param.typ.nr_muls() > 0 && to_set.nr_muls() > 0 {
 					to_set = to_set.set_nr_muls(0)
 				}
-				// If the parent fn param is a generic too
-				if to_set.has_flag(.generic) {
-					to_set = c.unwrap_generic(to_set)
-				}
 			} else if param.typ.has_flag(.generic) {
 				arg_sym := c.table.sym(arg.typ)
 				if param.typ.has_flag(.variadic) {
@@ -759,21 +755,7 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 				}
 			}
 
-			if to_set != ast.void_type {
-				if typ != ast.void_type {
-					// try to promote
-					// only numbers so we don't promote pointers
-					if typ.is_number() && to_set.is_number() {
-						promoted := c.promote_num(typ, to_set)
-						if promoted != ast.void_type {
-							to_set = promoted
-						}
-					}
-					if !c.check_types(typ, to_set) {
-						c.error('inferred generic type `$gt_name` is ambiguous: got `${c.table.sym(to_set).name}`, expected `${c.table.sym(typ).name}`',
-							arg.pos)
-					}
-				}
+			if to_set != ast.void_type && typ == ast.void_type {
 				typ = to_set
 			}
 		}
