@@ -1009,7 +1009,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			if !node.left.is_lvalue() {
 				g.write('ADDR($rec_cc_type, ')
 				has_cast = true
-			} else {
+			} else if node.name !in ['first', 'last', 'repeat'] {
 				g.write('&')
 			}
 		}
