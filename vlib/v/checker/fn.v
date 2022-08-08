@@ -1113,6 +1113,10 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 
 pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	left_type := c.expr(node.left)
+	if left_type == ast.void_type {
+		c.error('cannot call a method using an invalid expression', node.pos)
+		return ast.void_type
+	}
 	c.expected_type = left_type
 	mut is_generic := left_type.has_flag(.generic)
 	node.left_type = left_type
