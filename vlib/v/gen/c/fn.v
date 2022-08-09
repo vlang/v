@@ -999,6 +999,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.write('${name}(')
 		}
 	}
+	is_node_name_in_first_last_repeat := node.name in ['first', 'last', 'repeat']
 	if node.receiver_type.is_ptr() && (!left_type.is_ptr() || left_type.has_flag(.variadic)
 		|| node.from_embed_types.len != 0
 		|| (left_type.has_flag(.shared_f) && node.name != 'str')) {
@@ -1009,7 +1010,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			if !node.left.is_lvalue() {
 				g.write('ADDR($rec_cc_type, ')
 				has_cast = true
-			} else if node.name !in ['first', 'last', 'repeat'] {
+			} else if !is_node_name_in_first_last_repeat && !(left_type.has_flag(.shared_f)
+				&& left_type == node.receiver_type) {
 				g.write('&')
 			}
 		}
@@ -1036,7 +1038,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.write('/*af receiver arg*/' + arg_name)
 	} else {
 		if left_sym.kind == .array && node.left.is_auto_deref_var()
-			&& node.name in ['first', 'last', 'repeat'] {
+			&& is_node_name_in_first_last_repeat {
 			g.write('*')
 		}
 		if node.left is ast.MapInit {
@@ -1061,7 +1063,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 			g.write(embed_name)
 		}
-		if left_type.has_flag(.shared_f) {
+		if left_type.has_flag(.shared_f)
+			&& (left_type != node.receiver_type || is_node_name_in_first_last_repeat) {
 			g.write('->val')
 		}
 	}
