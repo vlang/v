@@ -89,7 +89,7 @@ fn (mut app App) service_get_by_username(username string) ?User {
 	}
 
 	if results.len == 0 {
-		return error('Usuário não encontrado')
+		return error('User not found')
 	}
 
 	return results[0]
