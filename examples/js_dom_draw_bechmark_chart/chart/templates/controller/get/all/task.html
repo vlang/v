@@ -1,0 +1,51 @@
+<body class="main">
+  <style>
+    table,
+    th,
+    td {
+      border: 1px solid black;
+    }
+  </style>
+
+  <title>Drawing with mouse events</title>
+  <!-- <input type="button" id="clearButton" value="Clear canvas" /> -->
+  <div style="float: left; width: 100%">
+    <canvas
+      style="border: 1px solid black"
+      width="100"
+      height="480"
+      id="canvas_left_bar_id"
+    ></canvas>
+    <canvas
+      inserts_from_framework="@inserts_from_framework"
+      max_benchmark="@max_benchmark"
+      style="border: 1px solid black"
+      width="720"
+      height="480"
+      id="canvas_insert_id"
+    ></canvas>
+  </div>
+  <script type="text/javascript" src="draw.js"></script>
+
+  <h2>A basic HTML table</h2>
+
+  <table style="width: 1080px">
+    <tr>
+      <th>Benchmark name</th>
+      <th>max.</th>
+      <th>10% max.</th>
+      <th>min.</th>
+      <th>10% min.</th>
+    </tr>
+    @for idx, name in attribute_names
+    <tr style="font-family:arial; color: ${chart_colors[idx]};">
+      <td id="benchmark_name" +idx>@name</td>
+      <td>@{table[name]["max."]}</td>
+      <td>@{table[name]["10% max."]}</td>
+      <td>@{table[name]["min."]}</td>
+      <td>@{table[name]["10% min."]}</td>
+    </tr>
+    @end
+  </table>
+  <p>To undestand the example better, we have added borders to the table.</p>
+</body>
