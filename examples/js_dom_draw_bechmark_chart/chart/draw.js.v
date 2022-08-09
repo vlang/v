@@ -31,6 +31,13 @@ mut:
 	y       f64
 }
 
+struct FrameworkPlatform {
+mut:
+	v_sqlite_memory []int
+	// v_sqlite_file            []int
+	typescript_sqlite_memory []int
+}
+
 fn (mut state DrawState) draw_bench_chart(color string, time_array []int, max_time int) ? {
 	println(time_array.len)
 	max_height := f64(480)
@@ -58,7 +65,7 @@ fn (mut state DrawState) draw_bench_chart(color string, time_array []int, max_ti
 fn main() {
 	document := dom.document
 
-	clear_btn := document.getElementById('clearButton'.str)?
+	// clear_btn := document.getElementById('clearButton'.str)?
 
 	canvas_elem := document.getElementById('canvas_insert_id'.str)?
 
@@ -74,38 +81,48 @@ fn main() {
 	}
 	mut state := DrawState{context, false, 0, 0}
 
-	attribute_names := ['sqlite_memory_insert_times', 'sqlite_file_insert_times' /*
-	,
-		'postgres_insert_times', 'mysql_insert_times'
-	*/]
 	chart_colors := ['gray', 'black', 'red', 'orange', 'purple']
 
-	for idx, name in attribute_names {
-		// get values in JS.String values
-		mut attribute_js_values := canvas_elem.getAttribute(name.str) or {
-			println('Não pegou o attributo')
-			continue // if attribute not exist, jump.
-		}
-		if attribute_js_values.length < JS.Number(1) {
-			continue // if attribute value is empty, jump.
-		}
-
-		// convert []JS.String in v []string
-		mut attribute_string_values := tos(attribute_js_values).replace('[', '').replace(']',
-			'').split(',')
-
-		// convert []string in []int
-		mut attribute_int_values := []int{}
-		for variable in attribute_string_values {
-			attribute_int_values << variable.int()
-		}
-		// draw chart
-		state.draw_bench_chart(chart_colors[idx], attribute_int_values, 11204530) or {
-			println(err)
-		}
+	mut inserts_from_framework := canvas_elem.getAttribute('inserts_from_framework'.str) or {
+		println('Não pegou o attributo')
+		// continue // if attribute not exist, jump.
+		panic(err)
 	}
 
-	clear_btn.addEventListener('click'.str, fn [mut state, canvas] (_ JS.Event) {
-		state.context.clearRect(0, 0, canvas.width, canvas.height)
-	}, JS.EventListenerOptions{})
+	mut max_benchmark := canvas_elem.getAttribute('max_benchmark'.str) or {
+		println('Não pegou o attributo')
+		// continue // if attribute not exist, jump.
+		panic(err)
+	}
+
+	mut obj := FrameworkPlatform{}
+	obj = JS.JSON.parse(tos(inserts_from_framework))
+
+	// Waiting for v implement for loop getting key and value of object in v.js
+	mut attribute_int_values := []int{}
+	for variable in obj.v_sqlite_memory {
+		attribute_int_values << variable
+	}
+	state.draw_bench_chart('gray', attribute_int_values, tos(max_benchmark).int()) or {
+		println(err)
+	}
+	attribute_int_values = []
+
+	// for variable in obj.v_sqlite_file {
+	// 	attribute_int_values << variable
+	// }
+	// state.draw_bench_chart('black', attribute_int_values, 1204530) or { println(err) }
+	// attribute_int_values=[]
+
+	for variable in obj.typescript_sqlite_memory {
+		attribute_int_values << variable
+	}
+	state.draw_bench_chart('red', attribute_int_values, tos(max_benchmark).int()) or {
+		println(err)
+	}
+	attribute_int_values = []
+
+	// clear_btn.addEventListener('click'.str, fn [mut state, canvas] (_ JS.Event) {
+	// 	state.context.clearRect(0, 0, canvas.width, canvas.height)
+	// }, JS.EventListenerOptions{})
 }

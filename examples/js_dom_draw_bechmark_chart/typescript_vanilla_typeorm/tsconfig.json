@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+
+
+    /* Language and Environment */
+    "target": "es2022",     /* Set the JavaScript language version for emitted JavaScript and include compatible library declarations. */
+    "lib": ["es2022"],      /* Specify a set of bundled library declaration files that describe the target runtime environment. */
+
+    /* Modules */
+    //Specify what module code is generated.
+    "module": "commonjs",
+
+    /* Emit */
+    // Specify an output folder for all emitted files.
+    "outDir": "./dist",     
+    // Disable emitting comments.
+    "removeComments": true,     
+
+
+    /* Interop Constraints */
+    // Emit additional JavaScript to ease support for importing CommonJS modules. This enables 'allowSyntheticDefaultImports' for type compatibility.
+    "esModuleInterop": true,      
+    // Ensure that casing is correct in imports. 
+    "forceConsistentCasingInFileNames": true,     
+
+    /* Type Checking */
+    // Enable all strict type-checking options.
+    "strict": true,     
+
+
+    // Completeness
+    // Skip type checking all .d.ts files.
+    "skipLibCheck": true      },
+    "include": ["src/**/*"]
+
+}
