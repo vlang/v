@@ -61,7 +61,7 @@ pub fn (mut app App) delete() vweb.Result {
 	}
 
 	defer {
-		db.close()
+		db.close() or { panic(err) }
 	}
 
 	sql db {

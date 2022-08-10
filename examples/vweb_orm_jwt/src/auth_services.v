@@ -42,7 +42,7 @@ fn (mut app App) service_auth(username string, password string) ?string {
 		return error('user is not active')
 	}
 
-	db.close()
+	db.close()?
 
 	bcrypt.compare_hash_and_password(password.bytes(), user.password.bytes()) or {
 		return error('Failed to auth user, $err')
