@@ -3,6 +3,7 @@
 module checker
 
 import v.ast
+import v.util
 
 pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 	mut struct_sym, struct_typ_idx := c.table.find_sym_and_type_idx(node.name)
@@ -391,7 +392,8 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 						ast.StructField{}
 					}
 					if !exists {
-						c.error('unknown field `$field.name` in struct literal of type `$type_sym.name`',
+						existing_fields := c.table.struct_fields(type_sym).map(it.name)
+						c.error(util.new_suggestion(field.name, existing_fields).say('unknown field `$field.name` in struct literal of type `$type_sym.name`'),
 							field.pos)
 						continue
 					}
