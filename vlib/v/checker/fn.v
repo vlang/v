@@ -1526,12 +1526,12 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		if method.generic_names.len != node.concrete_types.len {
 			// no type arguments given in call, attempt implicit instantiation
 			c.infer_fn_generic_types(method, mut node)
-			concrete_types = node.concrete_types
-		} else {
-			if node.concrete_types.len > 0 && !node.concrete_types[0].has_flag(.generic) {
-				c.table.register_fn_concrete_types(method.fkey(), node.concrete_types)
-			}
+			concrete_types = node.concrete_types.map(c.unwrap_generic(it))
 		}
+		if concrete_types.len > 0 && !concrete_types[0].has_flag(.generic) {
+			c.table.register_fn_concrete_types(method.fkey(), concrete_types)
+		}
+
 		// resolve return generics struct to concrete type
 		if method.generic_names.len > 0 && method.return_type.has_flag(.generic)
 			&& !isnil(c.table.cur_fn) && c.table.cur_fn.generic_names.len == 0 {
