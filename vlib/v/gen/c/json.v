@@ -452,8 +452,7 @@ fn (mut g Gen) gen_struct_enc_dec(type_info ast.TypeInfo, styp string, mut enc s
 				gen_js_get_opt(dec_name, field_type, styp, tmp, name, mut dec, is_required)
 				dec.writeln('\tif (jsonroot_$tmp) {')
 				if field_sym.kind == .array_fixed {
-					fixed_array_info := field_sym.info as ast.ArrayFixed
-					dec.writeln('\t\tmemcpy(res.a,*($field_type*)${tmp}.data,$fixed_array_info.size);')
+					dec.writeln('\t\tvmemcpy(res.${c_name(field.name)},*($field_type*)${tmp}.data,sizeof($field_type));')
 				} else {
 					dec.writeln('\t\tres.${c_name(field.name)} = *($field_type*) ${tmp}.data;')
 				}
@@ -536,6 +535,13 @@ fn (mut g Gen) decode_array(value_type ast.Type, fixed_array_size int, fixed_arr
 	} else {
 		'', '', 'res = __new_array${noscan}(0, 0, sizeof($styp));', 'array_free(&res);'
 	}
+
+	fixed_array_idx,array_element_assign,fixed_array_idx_increment := if fixed_array_size > -1 {
+		// fixed array
+		'int fixed_array_idx = 0;','res[fixed_array_idx] = val;','fixed_array_idx++;'	
+	} else {
+		'','array_push${noscan}((array*)&res, &val);',''
+	} 
 
 	mut s := ''
 	if is_js_prim(styp) {
