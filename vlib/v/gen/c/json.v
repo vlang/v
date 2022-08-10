@@ -536,12 +536,12 @@ fn (mut g Gen) decode_array(value_type ast.Type, fixed_array_size int, fixed_arr
 		'', '', 'res = __new_array${noscan}(0, 0, sizeof($styp));', 'array_free(&res);'
 	}
 
-	fixed_array_idx,array_element_assign,fixed_array_idx_increment := if fixed_array_size > -1 {
+	fixed_array_idx, array_element_assign, fixed_array_idx_increment := if fixed_array_size > -1 {
 		// fixed array
-		'int fixed_array_idx = 0;','res[fixed_array_idx] = val;','fixed_array_idx++;'	
+		'int fixed_array_idx = 0;', 'res[fixed_array_idx] = val;', 'fixed_array_idx++;'
 	} else {
-		'','array_push${noscan}((array*)&res, &val);',''
-	} 
+		'', 'array_push${noscan}((array*)&res, &val);', ''
+	}
 
 	mut s := ''
 	if is_js_prim(styp) {
