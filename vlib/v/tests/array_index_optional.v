@@ -4,10 +4,13 @@ mut:
 }
 
 fn test_mut_array_index_optional() {
-	mut arr := Arrs{}
+	mut arr := Arrs{
+		x: [[1, 2]]
+	}
 	for mut sub_arr in arr.x {
-		x := sub_arr[0] or { 666 }
-		assert x == 666
+		x := sub_arr[0] or { 3 }
+		println(x)
+		assert x == 1
 	}
 }
 
