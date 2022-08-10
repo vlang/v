@@ -7,14 +7,28 @@
     }
   </style>
 
-  <title>V orm still fast?</title>
-  <div style="float: left; width: 100%">
-    <canvas
-      style="border: 1px solid black"
-      width="100"
-      height="480"
-      id="canvas_left_bar_id"
-    ></canvas>
+  <title>Is V orm still fast?</title>
+  <h2 style="font-family: Menlo, Monospace, 'Courier New'">
+    Is V orm still fast?
+  </h2>
+  <div style="display: flex; flex-direction: row; width: 100%">
+    <div
+      style="
+        display: flex;
+        flex-direction: column-reverse;
+        justify-content: space-between;
+        height: 480;
+        margin-right: 10px;
+        background-image: linear-gradient(red, yellow, green, #3b7bbf);
+      "
+    >
+      @for number in 0..11
+      <div style="font-family: Arial, Helvetica, sans-serif">
+        ${int(number*(f64(max_benchmark)/10))} ns
+      </div>
+      @end
+    </div>
+
     <canvas
       inserts_from_framework="@inserts_from_framework"
       max_benchmark="@max_benchmark"
@@ -26,9 +40,9 @@
   </div>
   <script type="text/javascript" src="draw.js"></script>
 
-  <h2>Insert test</h2>
+  <h2 style="font-family: Arial, Helvetica, sans-serif">Insert test</h2>
 
-  <table style="width: 1080px">
+  <table style="width: 900px">
     <tr>
       <th>Benchmark name</th>
       <th>max.</th>
@@ -46,5 +60,4 @@
     </tr>
     @end
   </table>
-  <p>V orm still fast?</p>
 </body>
