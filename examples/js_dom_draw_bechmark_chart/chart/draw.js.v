@@ -81,8 +81,6 @@ fn main() {
 	}
 	mut state := DrawState{context, false, 0, 0}
 
-	chart_colors := ['gray', 'black', 'red', 'orange', 'purple']
-
 	mut inserts_from_framework := canvas_elem.getAttribute('inserts_from_framework'.str) or {
 		println('Não pegou o attributo')
 		// continue // if attribute not exist, jump.
