@@ -112,8 +112,8 @@ $enc_fn_dec {
 			value_type := g.table.value_type(utyp)
 			// If we have `[]Profile`, have to register a Profile en(de)coder first
 			g.gen_json_for_type(value_type)
-			dec.writeln(g.decode_array(value_type, array_size))
-			enc.writeln(g.encode_array(value_type, array_size))
+			dec.writeln(g.decode_array(value_type, array_size, array_size))
+			enc.writeln(g.encode_array(value_type, array_size, array_size))
 		} else if sym.kind == .map {
 			// Handle maps
 			m := sym.info as ast.Map
@@ -452,7 +452,8 @@ fn (mut g Gen) gen_struct_enc_dec(type_info ast.TypeInfo, styp string, mut enc s
 				gen_js_get_opt(dec_name, field_type, styp, tmp, name, mut dec, is_required)
 				dec.writeln('\tif (jsonroot_$tmp) {')
 				if field_sym.kind == .array_fixed {
-					dec.writeln('\t\tvmemcpy(res.${c_name(field.name)},*($field_type*)${tmp}.data,sizeof($field_type));')
+					fixed_array_info := field_sym.info as ast.ArrayFixed
+					dec.writeln('\t\tmemcpy(res.a,*($field_type*)${tmp}.data,$fixed_array_info.size);')
 				} else {
 					dec.writeln('\t\tres.${c_name(field.name)} = *($field_type*) ${tmp}.data;')
 				}
@@ -524,7 +525,7 @@ fn is_js_prim(typ string) bool {
 		'u32', 'u64', 'byte']
 }
 
-fn (mut g Gen) decode_array(value_type ast.Type, fixed_array_size int) string {
+fn (mut g Gen) decode_array(value_type ast.Type, fixed_array_size int, fixed_array_size int) string {
 	styp := g.typ(value_type)
 	fn_name := js_dec_name(styp)
 	noscan := g.check_noscan(value_type)
@@ -534,13 +535,6 @@ fn (mut g Gen) decode_array(value_type ast.Type, fixed_array_size int) string {
 		'fixed_', '_$fixed_array_size', '', ''
 	} else {
 		'', '', 'res = __new_array${noscan}(0, 0, sizeof($styp));', 'array_free(&res);'
-	}
-
-	fixed_array_idx, array_element_assign, fixed_array_idx_increment := if fixed_array_size > -1 {
-		// fixed array
-		'int fixed_array_idx = 0;', 'res[fixed_array_idx] = val;', 'fixed_array_idx++;'
-	} else {
-		'', 'array_push${noscan}((array*)&res, &val);', ''
 	}
 
 	mut s := ''
@@ -559,7 +553,7 @@ fn (mut g Gen) decode_array(value_type ast.Type, fixed_array_size int) string {
 
 	return '
 	if(root && !cJSON_IsArray(root) && !cJSON_IsNull(root)) {
-		return (${option_name}_Array_$fixed_array_str$styp$fixed_array_size_str){.state = 2, .err = _v_error(string__plus(_SLIT("Json element is not an array: "), tos2((byteptr)cJSON_PrintUnformatted(root)))), .data = {0}};
+		return (${option_name}_Array_$fixed_array_str$fixed_array_str$styp$fixed_array_size_str$fixed_array_size_str){.state = 2, .err = _v_error(string__plus(_SLIT("Json element is not an array: "), tos2((byteptr)cJSON_PrintUnformatted(root)))), .data = {0}};
 	}
 	$res_str
 	const cJSON *jsval = NULL;
@@ -573,9 +567,17 @@ fn (mut g Gen) decode_array(value_type ast.Type, fixed_array_size int) string {
 '
 }
 
-fn (mut g Gen) encode_array(value_type ast.Type, fixed_array_size int) string {
+fn (mut g Gen) encode_array(value_type ast.Type, fixed_array_size int, fixed_array_size int) string {
 	styp := g.typ(value_type)
 	fn_name := js_enc_name(styp)
+
+	data_str, size_str := if fixed_array_size > -1 {
+		// fixed array
+		'', '$fixed_array_size'
+	} else {
+		'.data', 'val.len'
+	}
+
 
 	data_str, size_str := if fixed_array_size > -1 {
 		// fixed array
