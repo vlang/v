@@ -1,7 +1,5 @@
 module main
 
-import time
-
 [table: 'users']
 struct User {
 mut:
