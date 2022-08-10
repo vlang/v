@@ -18,7 +18,7 @@ A message like `[Vweb] Running app on http://localhost:3001/` should appear
 In `examples/js_dom_draw_bechmark_chart/v_vweb_orm/src/main.v` path
 Create a route returning a `Response` struct like:
 
-```v
+```v ignore
 ['/sqlite-memory/:count']
 pub fn (mut app App) sqlite_memory(count int) vweb.Result {
 	mut insert_stopwatchs := []int{}
@@ -64,7 +64,7 @@ pub fn (mut app App) sqlite_memory(count int) vweb.Result {
 In `examples/chart/services.v` path
 Create a service to request the benchmarks data by http
 Decode the info to `FrameworkBenchmarkResponse`
-```v
+```v ignore
 fn typescript_sqlite_memory() ?FrameworkBenchmarkResponse {
 	url := 'http://localhost:3000/sqlite-memory/$benchmark_loop_length'
 	res := http.get(url) or { panic(err) }
@@ -76,7 +76,7 @@ fn typescript_sqlite_memory() ?FrameworkBenchmarkResponse {
 In `examples/chart/main.v` path
 Create a service to request the benchmarks data by http
 Decode the info to `FrameworkBenchmarkResponse`
-```v
+```v ignore
 fn typescript_sqlite_memory() ?FrameworkBenchmarkResponse {
 	url := 'http://localhost:3000/sqlite-memory/$benchmark_loop_length'
 	res := http.get(url) or { panic(err) }
