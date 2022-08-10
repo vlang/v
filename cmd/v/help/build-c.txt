@@ -215,7 +215,7 @@ see also `v help build`.
    -live
       Build the executable with live capabilities (`[live]`).
 
-   -no-prelude
+   -no-preludes
       Prevents V from generating a prelude in generated .c files, useful for freestanding targets
       where eg. you replace C standard library with your own, or some definitions/headers break something.
 
