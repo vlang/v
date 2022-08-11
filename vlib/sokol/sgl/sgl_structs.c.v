@@ -39,7 +39,8 @@ pub type Desc = C.sgl_desc_t
 struct C.sgl_desc_t {
 	max_vertices       int // size for vertex buffer
 	max_commands       int // size of uniform- and command-buffers
-	pipeline_pool_size int // size of the internal pipeline pool, default is 64
+	context_pool_size  int // max number of contexts (including default context), default: 4
+	pipeline_pool_size int // size of internal pipeline pool, default: 64
 	color_format       gfx.PixelFormat // C.sg_pixel_format
 	depth_format       gfx.PixelFormat // C.sg_pixel_format
 	sample_count       int
