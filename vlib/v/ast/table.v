@@ -219,7 +219,7 @@ pub fn (t &Table) fn_type_signature(f &Fn) string {
 		} else {
 			sig += arg_type_sym.str().to_lower().replace_each(['.', '__', '&', '', '[', 'arr_',
 				'chan ', 'chan_', 'map[', 'map_of_', ']', '_to_', '<', '_T_', ',', '_', ' ', '',
-				'>', ''])
+				'>', '', '(', '_', ')', '_'])
 		}
 		if i < f.params.len - 1 {
 			sig += '_'
