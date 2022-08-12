@@ -104,6 +104,12 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 			c.error('cannot use `${c.table.type_to_str(got_typ)}` as type `${c.table.type_to_str(exp_type)}` in return argument',
 				pos)
 		}
+		if got_typ.has_flag(.result) && (!exp_type.has_flag(.result)
+			|| c.table.type_to_str(got_typ) != c.table.type_to_str(exp_type)) {
+			pos := node.exprs[expr_idxs[i]].pos()
+			c.error('cannot use `${c.table.type_to_str(got_typ)}` as type `${c.table.type_to_str(exp_type)}` in return argument',
+				pos)
+		}
 		if node.exprs[expr_idxs[i]] !is ast.ComptimeCall && !c.check_types(got_typ, exp_type) {
 			got_typ_sym := c.table.sym(got_typ)
 			mut exp_typ_sym := c.table.sym(exp_type)
