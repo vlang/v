@@ -346,13 +346,13 @@ pub fn (x Expr) str() string {
 			return '.$x.val'
 		}
 		FloatLiteral, IntegerLiteral {
-			return x.val
+			return x.val.clone()
 		}
 		GoExpr {
 			return 'go $x.call_expr'
 		}
 		Ident {
-			return x.name
+			return x.name.clone()
 		}
 		IfExpr {
 			mut parts := []string{}
