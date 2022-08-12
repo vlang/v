@@ -5359,7 +5359,8 @@ fn main() {
 
 If you want an `if` to be evaluated at compile time it must be prefixed with a `$` sign.
 Right now it can be used to detect an OS, compiler, platform or compilation options.
-`$if debug` is a special option like `$if windows` or `$if x32`.
+`$if debug` is a special option like `$if windows` or `$if x32`, it's enabled if the program
+is compiled with `v -g` or `v -cg`.
 If you're using a custom ifdef, then you do need `$if option ? {}` and compile with`v -d option`.
 Full list of builtin options:
 | OS                            | Compilers         | Platforms             | Other                     |
