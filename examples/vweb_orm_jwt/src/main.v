@@ -18,7 +18,7 @@ fn main() {
 		create table User
 	}
 
-	db.close()
+	db.close() or { panic(err) }
 
 	vweb.run(new_app(), http_port)
 }

@@ -61,12 +61,12 @@ pub fn (mut app App) delete() vweb.Result {
 	}
 
 	defer {
-		db.close()
+		db.close() or { panic(err) }
 	}
 
 	sql db {
 		drop table User
 	}
 
-	return app.text('Tabela deletada com sucesso')
+	return app.text('Successfully deleted table')
 }

@@ -15,11 +15,11 @@ struct JwtHeader {
 }
 
 struct JwtPayload {
-	sub         string    // (subject) = Entidade à quem o token pertence, normalmente o ID do usuário;
-	iss         string    // (issuer) = Emissor do token;
-	exp         string    // (expiration) = Timestamp de quando o token irá expirar;
-	iat         time.Time // (issued at) = Timestamp de quando o token foi criado;
-	aud         string    // (audience) = Destinatário do token, representa a aplicação que irá usá-lo.
+	sub         string    // (subject) = Entity to whom the token belongs, usually the user ID;
+	iss         string    // (issuer) = Token issuer;
+	exp         string    // (expiration) = Timestamp of when the token will expire;
+	iat         time.Time // (issued at) = Timestamp of when the token was created;
+	aud         string    // (audience) = Token recipient, represents the application that will use it.
 	name        string
 	roles       string
 	permissions string
@@ -42,7 +42,7 @@ fn (mut app App) service_auth(username string, password string) ?string {
 		return error('user is not active')
 	}
 
-	db.close()
+	db.close()?
 
 	bcrypt.compare_hash_and_password(password.bytes(), user.password.bytes()) or {
 		return error('Failed to auth user, $err')

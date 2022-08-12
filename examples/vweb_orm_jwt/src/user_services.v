@@ -2,7 +2,6 @@ module main
 
 import crypto.bcrypt
 import databases
-import time
 
 fn (mut app App) service_add_user(username string, password string) ?User {
 	mut db := databases.create_db_connection() or {
@@ -11,7 +10,7 @@ fn (mut app App) service_add_user(username string, password string) ?User {
 	}
 
 	defer {
-		db.close()
+		db.close() or { panic(err) }
 	}
 
 	hashed_password := bcrypt.generate_from_password(password.bytes(), bcrypt.min_cost) or {
@@ -21,11 +20,7 @@ fn (mut app App) service_add_user(username string, password string) ?User {
 
 	user_model := User{
 		username: username
-		name: password
 		password: hashed_password
-		created_at: time.now()
-		updated_at: time.now()
-		deleted_at: time.now()
 		active: true
 	}
 
@@ -47,7 +42,7 @@ fn (mut app App) service_get_user_by_id(user_id int) ?User {
 	}
 
 	defer {
-		db.close()
+		db.close() or { panic(err) }
 	}
 
 	results := sql db {
@@ -64,7 +59,7 @@ fn (mut app App) service_get_all_user() ?[]User {
 	}
 
 	defer {
-		db.close()
+		db.close() or { panic(err) }
 	}
 
 	results := sql db {
@@ -81,7 +76,7 @@ fn (mut app App) service_get_by_username(username string) ?User {
 	}
 
 	defer {
-		db.close()
+		db.close() or { panic(err) }
 	}
 
 	results := sql db {
@@ -89,7 +84,7 @@ fn (mut app App) service_get_by_username(username string) ?User {
 	}
 
 	if results.len == 0 {
-		return error('Usuário não encontrado')
+		return error('User not found')
 	}
 
 	return results[0]
