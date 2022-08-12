@@ -621,26 +621,39 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 		mut typ := ast.void_type
 		for i, param in func.params {
 			// resolve generic struct receiver
-			if node.is_method && param.typ.has_flag(.generic) {
-				sym := c.table.final_sym(node.receiver_type)
-				match sym.info {
-					ast.Struct, ast.Interface, ast.SumType {
-						if !isnil(c.table.cur_fn) && c.table.cur_fn.generic_names.len > 0 { // in generic fn
-							if gt_name in c.table.cur_fn.generic_names
-								&& c.table.cur_fn.generic_names.len == c.table.cur_concrete_types.len {
-								idx := c.table.cur_fn.generic_names.index(gt_name)
-								typ = c.table.cur_concrete_types[idx]
-							}
-						} else { // in non-generic fn
+			if node.is_method && i == 0 && param.typ.has_flag(.generic) {
+				sym := c.table.final_sym(node.left_type)
+				if node.left_type.has_flag(.generic) {
+					match sym.info {
+						ast.Struct, ast.Interface, ast.SumType {
 							receiver_generic_names := sym.info.generic_types.map(c.table.sym(it).name)
-							if gt_name in receiver_generic_names
-								&& sym.info.generic_types.len == sym.info.concrete_types.len {
+							if gt_name in receiver_generic_names {
 								idx := receiver_generic_names.index(gt_name)
-								typ = sym.info.concrete_types[idx]
+								typ = sym.info.generic_types[idx]
 							}
 						}
+						else {}
 					}
-					else {}
+				} else {
+					match sym.info {
+						ast.Struct, ast.Interface, ast.SumType {
+							if !isnil(c.table.cur_fn) && c.table.cur_fn.generic_names.len > 0 { // in generic fn
+								if gt_name in c.table.cur_fn.generic_names
+									&& c.table.cur_fn.generic_names.len == c.table.cur_concrete_types.len {
+									idx := c.table.cur_fn.generic_names.index(gt_name)
+									typ = c.table.cur_concrete_types[idx]
+								}
+							} else { // in non-generic fn
+								receiver_generic_names := sym.info.generic_types.map(c.table.sym(it).name)
+								if gt_name in receiver_generic_names
+									&& sym.info.generic_types.len == sym.info.concrete_types.len {
+									idx := receiver_generic_names.index(gt_name)
+									typ = sym.info.concrete_types[idx]
+								}
+							}
+						}
+						else {}
+					}
 				}
 			}
 			arg_i := if i != 0 && node.is_method { i - 1 } else { i }
