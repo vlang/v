@@ -63,6 +63,7 @@ $if dynamic_boehm ? {
 		#flag -DGC_NOT_DLL=1
 		#flag -DGC_WIN32_THREADS=1
 		$if tinyc {
+			#flag -DGC_BUILTIN_ATOMIC=1
 			#flag -I @VEXEROOT/thirdparty/libgc/include
 			#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a
 			#flag -luser32
@@ -74,6 +75,7 @@ $if dynamic_boehm ? {
 			#flag -I @VEXEROOT/thirdparty/libgc/include
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		} $else {
+			#flag -DGC_BUILTIN_ATOMIC=1
 			#flag -I @VEXEROOT/thirdparty/libgc/include
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}
