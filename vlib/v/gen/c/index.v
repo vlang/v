@@ -252,6 +252,9 @@ fn (mut g Gen) index_of_array(node ast.IndexExpr, sym ast.TypeSymbol) {
 		tmp_opt_ptr := if gen_or { g.new_tmp_var() } else { '' }
 		if gen_or {
 			g.write('$elem_type_str* $tmp_opt_ptr = ($elem_type_str*)/*ee elem_ptr_typ */(array_get_with_check(')
+			if left_is_ptr && !node.left_type.has_flag(.shared_f) {
+				g.write('*')
+			}
 		} else {
 			if needs_clone {
 				g.write('/*2*/string_clone(')
