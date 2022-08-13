@@ -1,0 +1,92 @@
+/*
+ * Copyright (c) 2003-2011 Hewlett-Packard Development Company, L.P.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+/* Inclusion of this file signifies that AO_t is in fact int.           */
+/* Hence any AO_... operation can also serve as AO_int_... operation.   */
+
+#if defined(AO_HAVE_load_XBAR) && !defined(AO_HAVE_int_load_XBAR)
+# define AO_int_load_XBAR(addr) \
+                (unsigned)AO_load_XBAR((const volatile AO_t *)(addr))
+# define AO_HAVE_int_load_XBAR
+#endif
+
+#if defined(AO_HAVE_store_XBAR) && !defined(AO_HAVE_int_store_XBAR)
+# define AO_int_store_XBAR(addr, val) \
+                AO_store_XBAR((volatile AO_t *)(addr), (AO_t)(val))
+# define AO_HAVE_int_store_XBAR
+#endif
+
+#if defined(AO_HAVE_fetch_and_add_XBAR) \
+    && !defined(AO_HAVE_int_fetch_and_add_XBAR)
+# define AO_int_fetch_and_add_XBAR(addr, incr) \
+                (unsigned)AO_fetch_and_add_XBAR((volatile AO_t *)(addr), \
+                                                (AO_t)(incr))
+# define AO_HAVE_int_fetch_and_add_XBAR
+#endif
+
+#if defined(AO_HAVE_fetch_and_add1_XBAR) \
+    && !defined(AO_HAVE_int_fetch_and_add1_XBAR)
+# define AO_int_fetch_and_add1_XBAR(addr) \
+                (unsigned)AO_fetch_and_add1_XBAR((volatile AO_t *)(addr))
+# define AO_HAVE_int_fetch_and_add1_XBAR
+#endif
+
+#if defined(AO_HAVE_fetch_and_sub1_XBAR) \
+    && !defined(AO_HAVE_int_fetch_and_sub1_XBAR)
+# define AO_int_fetch_and_sub1_XBAR(addr) \
+                (unsigned)AO_fetch_and_sub1_XBAR((volatile AO_t *)(addr))
+# define AO_HAVE_int_fetch_and_sub1_XBAR
+#endif
+
+#if defined(AO_HAVE_and_XBAR) && !defined(AO_HAVE_int_and_XBAR)
+# define AO_int_and_XBAR(addr, val) \
+                AO_and_XBAR((volatile AO_t *)(addr), (AO_t)(val))
+# define AO_HAVE_int_and_XBAR
+#endif
+
+#if defined(AO_HAVE_or_XBAR) && !defined(AO_HAVE_int_or_XBAR)
+# define AO_int_or_XBAR(addr, val) \
+                AO_or_XBAR((volatile AO_t *)(addr), (AO_t)(val))
+# define AO_HAVE_int_or_XBAR
+#endif
+
+#if defined(AO_HAVE_xor_XBAR) && !defined(AO_HAVE_int_xor_XBAR)
+# define AO_int_xor_XBAR(addr, val) \
+                AO_xor_XBAR((volatile AO_t *)(addr), (AO_t)(val))
+# define AO_HAVE_int_xor_XBAR
+#endif
+
+#if defined(AO_HAVE_fetch_compare_and_swap_XBAR) \
+    && !defined(AO_HAVE_int_fetch_compare_and_swap_XBAR)
+# define AO_int_fetch_compare_and_swap_XBAR(addr, old, new_val) \
+        (unsigned)AO_fetch_compare_and_swap_XBAR((volatile AO_t *)(addr), \
+                                                 (AO_t)(old), (AO_t)(new_val))
+# define AO_HAVE_int_fetch_compare_and_swap_XBAR
+#endif
+
+#if defined(AO_HAVE_compare_and_swap_XBAR) \
+    && !defined(AO_HAVE_int_compare_and_swap_XBAR)
+# define AO_int_compare_and_swap_XBAR(addr, old, new_val) \
+                AO_compare_and_swap_XBAR((volatile AO_t *)(addr), \
+                                         (AO_t)(old), (AO_t)(new_val))
+# define AO_HAVE_int_compare_and_swap_XBAR
+#endif
