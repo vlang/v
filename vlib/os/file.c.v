@@ -56,25 +56,36 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 	mut flags := 0
 	for m in mode {
 		match m {
-			`w` { flags |= o_create | o_trunc }
-			`a` { flags |= o_create | o_append }
-			`r` { flags |= o_rdonly }
-			`b` { flags |= o_binary }
-			`s` { flags |= o_sync }
-			`n` { flags |= o_nonblock }
-			`c` { flags |= o_noctty }
-			`+` { flags |= o_rdwr }
+			`w` {
+				flags |= o_create | o_trunc | o_wronly
+			}
+			`a` {
+				flags |= o_create | o_append | o_wronly
+			}
+			`r` {
+				flags |= o_rdonly
+			}
+			`b` {
+				flags |= o_binary
+			}
+			`s` {
+				flags |= o_sync
+			}
+			`n` {
+				flags |= o_nonblock
+			}
+			`c` {
+				flags |= o_noctty
+			}
+			`+` {
+				flags &= ~o_wronly
+				flags |= o_rdwr
+			}
 			else {}
 		}
 	}
 	if mode == 'r+' {
 		flags = o_rdwr
-	}
-	if mode == 'w' {
-		flags = o_wronly | o_create | o_trunc
-	}
-	if mode == 'a' {
-		flags = o_wronly | o_create | o_append
 	}
 	mut permission := 0o666
 	if options.len > 0 {
@@ -92,7 +103,8 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 	if fd == -1 {
 		return error(posix_get_error_msg(C.errno))
 	}
-	cfile := C.fdopen(fd, &char(mode.str))
+	fdopen_mode := mode.replace('b', '')
+	cfile := C.fdopen(fd, &char(fdopen_mode.str))
 	if isnil(cfile) {
 		return error('Failed to open or create file "$path"')
 	}
