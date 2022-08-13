@@ -980,7 +980,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 		}
 	}
-	name = g.generic_fn_name(node.concrete_types, name, false)
+	concrete_types := node.concrete_types.map(g.unwrap_generic(it))
+	name = g.generic_fn_name(concrete_types, name, false)
 	// TODO2
 	// g.generate_tmp_autofree_arg_vars(node, name)
 	if !node.receiver_type.is_ptr() && left_type.is_ptr() && node.name == 'str' {
