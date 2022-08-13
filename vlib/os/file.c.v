@@ -54,6 +54,7 @@ fn fix_windows_path(path string) string {
 // open_file can be used to open or create a file with custom flags and permissions and returns a `File` object.
 pub fn open_file(path string, mode string, options ...int) ?File {
 	mut flags := 0
+	mut seek_to_end := false
 	for m in mode {
 		match m {
 			`w` {
@@ -61,6 +62,7 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 			}
 			`a` {
 				flags |= o_create | o_append | o_wronly
+				seek_to_end = true
 			}
 			`r` {
 				flags |= o_rdonly
@@ -107,6 +109,14 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 	cfile := C.fdopen(fd, &char(fdopen_mode.str))
 	if isnil(cfile) {
 		return error('Failed to open or create file "$path"')
+	}
+	if seek_to_end {
+		// ensure appending will work, even on bsd/macos systems:
+		$if windows {
+			C._fseeki64(cfile, 0, C.SEEK_END)
+		} $else {
+			C.fseeko(cfile, 0, C.SEEK_END)
+		}
 	}
 	return File{
 		cfile: cfile
