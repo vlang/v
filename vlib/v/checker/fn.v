@@ -674,7 +674,15 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 					node.fn_var_type = typ
 				}
 				ast.Var {
-					typ = if obj.smartcasts.len != 0 { obj.smartcasts.last() } else { obj.typ }
+					if obj.smartcasts.len != 0 {
+						typ = obj.smartcasts.last()
+					} else {
+						if obj.typ == 0 {
+							typ = c.expr(obj.expr)
+						} else {
+							typ = obj.typ
+						}
+					}
 					node.is_fn_var = true
 					node.fn_var_type = typ
 				}
