@@ -388,7 +388,7 @@ fn test_reopen() ? {
 	f2.reopen(tfile1, 'r')?
 	assert !f2.eof()
 
-	z := f2.read(mut line_buffer)?
+	z := f2.read(mut line_buffer) or { panic(err) }
 	assert f2.eof()
 	assert z > 0
 	content := line_buffer#[..z].bytestr()
@@ -405,4 +405,17 @@ fn test_eof() ? {
 	assert !f.eof()
 	f.read_bytes(100)
 	assert f.eof()
+}
+
+fn test_open_file_wb_ab() ? {
+	os.rm(tfile) or {}
+	mut wfile := os.open_file('text.txt', 'wb', 0o666)?
+	wfile.write_string('hello')?
+	wfile.close()
+	assert os.read_file('text.txt')? == 'hello'
+	//
+	mut afile := os.open_file('text.txt', 'ab', 0o666)?
+	afile.write_string('hello')?
+	afile.close()
+	assert os.read_file('text.txt')? == 'hellohello'
 }
