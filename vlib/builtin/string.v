@@ -1935,12 +1935,12 @@ pub fn (s string) fields() []string {
 // Example:
 // ```v
 // st := 'Hello there,
-// |this is a string,
-// |    Everything before the first | is removed'.strip_margin()
+//        |  this is a string,
+//        |  Everything before the first | is removed'.strip_margin()
 //
 // assert st == 'Hello there,
-// this is a string,
-// Everything before the first | is removed'
+//   this is a string,
+//   Everything before the first | is removed'
 // ```
 pub fn (s string) strip_margin() string {
 	return s.strip_margin_custom(`|`)
