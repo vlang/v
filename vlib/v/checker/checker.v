@@ -1129,7 +1129,7 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	if typ == ast.void_type_idx {
 		// This means that the field has an undefined type.
 		// This error was handled before.
-		// c.error('`void` type has no fields', node.pos)
+		c.error('`$node.expr` does not return a value', node.pos)
 		node.expr_type = ast.void_type
 		return ast.void_type
 	}
