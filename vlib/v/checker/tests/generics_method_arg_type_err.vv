@@ -1,0 +1,19 @@
+module main
+
+pub struct Redis {}
+
+pub struct Reptile {
+	name string
+}
+
+fn main() {
+	mut r := Redis{}
+	mut g := Reptile{
+		name: 'Gecko'
+	}
+	r.node_create(mut g)
+}
+
+pub fn (mut r Redis) node_create<T>(t T) bool {
+	return true
+}

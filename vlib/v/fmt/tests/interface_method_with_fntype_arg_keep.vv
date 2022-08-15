@@ -1,0 +1,23 @@
+module main
+
+interface Test {
+	test(fn (Test))
+}
+
+struct Test1 {
+}
+
+fn (t Test1) test(f fn (Test)) {
+	f(Test(t))
+}
+
+fn main() {
+	t := Test1{}
+
+	t.test(fn [t] (t1 Test) {
+		println('$t, $t1')
+		t.test(fn [t] (t2 Test) {
+			println('$t, $t2')
+		})
+	})
+}

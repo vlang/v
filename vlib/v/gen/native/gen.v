@@ -31,7 +31,10 @@ mut:
 	sect_header_name_pos int
 	offset               i64
 	file_size_pos        i64
+	elf_text_header_addr i64
 	main_fn_addr         i64
+	main_fn_size         i64
+	start_symbol_addr    i64
 	code_start_pos       i64 // location of the start of the assembly instructions
 	fn_addr              map[string]i64
 	var_offset           map[string]int // local var stack offset
@@ -221,6 +224,7 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 	}
 	g.generate_builtins()
 	g.generate_footer()
+
 	return g.nlines, g.buf.len
 }
 
@@ -251,8 +255,21 @@ pub fn (mut g Gen) generate_header() {
 }
 
 pub fn (mut g Gen) create_executable() {
-	// Create the binary // should be .o ?
-	os.write_file_array(g.out_name, g.buf) or { panic(err) }
+	obj_name := match g.pref.os {
+		.linux { g.out_name + '.o' }
+		else { g.out_name }
+	}
+
+	os.write_file_array(obj_name, g.buf) or { panic(err) }
+
+	match g.pref.os {
+		// TEMPORARY
+		.linux { // TEMPORARY
+			g.link(obj_name)
+		} // TEMPORARY
+		else {} // TEMPORARY
+	} // TEMPORARY
+
 	os.chmod(g.out_name, 0o775) or { panic(err) } // make it executable
 	if g.pref.is_verbose {
 		eprintln('\n$g.out_name: native binary has been successfully generated')
@@ -277,6 +294,17 @@ pub fn (mut g Gen) generate_footer() {
 		else {
 			eprintln('Unsupported target file format')
 			exit(1)
+		}
+	}
+}
+
+pub fn (mut g Gen) link(obj_name string) {
+	match g.pref.os {
+		.linux {
+			g.link_elf_file(obj_name)
+		}
+		else {
+			g.n_error('native linking is not implemented for $g.pref.os')
 		}
 	}
 }
@@ -416,8 +444,11 @@ fn (mut g Gen) get_type_size(typ ast.Type) int {
 	if typ in ast.pointer_type_idxs {
 		return 8
 	}
+	if typ == ast.bool_type_idx {
+		return 1
+	}
 	// g.n_error('unknown type size')
-	return 8
+	return 0
 }
 
 fn (mut g Gen) get_sizeof_ident(ident ast.Ident) int {
@@ -853,28 +884,33 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// dump(node.types)
 			mut s := '?' //${node.exprs[0].val.str()}'
 			// TODO: void return
-			e0 := node.exprs[0]
-			match e0 {
-				ast.IntegerLiteral {
-					g.mov64(.rax, e0.val.int())
-				}
-				ast.InfixExpr {
-					g.infix_expr(e0)
-				}
-				ast.CastExpr {
-					g.mov64(.rax, e0.expr.str().int())
-					// do the job
-				}
-				ast.StringLiteral {
-					s = e0.val.str()
-					g.expr(node.exprs[0])
-					g.mov64(.rax, g.allocate_string(s, 2, .abs64))
-				}
-				ast.Ident {
-					g.expr(e0)
-				}
-				else {
-					g.n_error('unknown return type $e0.type_name()')
+			if e0 := node.exprs[0] {
+				match e0 {
+					ast.IntegerLiteral {
+						g.mov64(.rax, e0.val.int())
+					}
+					ast.InfixExpr {
+						g.infix_expr(e0)
+					}
+					ast.CastExpr {
+						g.mov64(.rax, e0.expr.str().int())
+						// do the job
+					}
+					ast.StringLiteral {
+						s = e0.val.str()
+						g.expr(node.exprs[0])
+						g.mov64(.rax, g.allocate_string(s, 2, .abs64))
+					}
+					ast.Ident {
+						g.expr(e0)
+					}
+					else {
+						size := g.get_type_size(node.types[0])
+						if size !in [1, 2, 4, 8] {
+							g.n_error('unknown return type $e0.type_name()')
+						}
+						g.expr(e0)
+					}
 				}
 			}
 
@@ -965,7 +1001,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.BoolLiteral {
 			g.mov64(.rax, if node.val { 1 } else { 0 })
-			eprintln('bool literal')
 		}
 		ast.CallExpr {
 			if node.name == 'C.syscall' {

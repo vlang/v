@@ -495,6 +495,75 @@ pub fn (s string) replace_each(vals []string) string {
 	}
 }
 
+// replace_char replaces all occurences of the character `rep` multiple occurences of the character passed in `with` with respect to `repeat`.
+// Example: assert '\tHello!'.replace_char(`\t`,` `,8) == '        Hello!'
+[direct_array_access]
+pub fn (s string) replace_char(rep u8, with u8, repeat int) string {
+	$if !no_bounds_checking ? {
+		if repeat <= 0 {
+			panic('string.replace_char(): tab length too short')
+		}
+	}
+	if s.len == 0 {
+		return s.clone()
+	}
+	// TODO Allocating ints is expensive. Should be a stack array
+	// - string.replace()
+	mut idxs := []int{cap: s.len}
+	defer {
+		unsafe { idxs.free() }
+	}
+	// No need to do a contains(), it already traverses the entire string
+	for i, ch in s {
+		if ch == rep { // Found char? Mark its location
+			idxs << i
+		}
+	}
+	if idxs.len == 0 {
+		return s.clone()
+	}
+	// Now we know the number of replacements we need to do and we can calc the len of the new string
+	new_len := s.len + idxs.len * (repeat - 1)
+	mut b := unsafe { malloc_noscan(new_len + 1) } // add space for the null byte at the end
+	// Fill the new string
+	mut b_i := 0
+	mut s_idx := 0
+	for rep_pos in idxs {
+		for i in s_idx .. rep_pos { // copy everything up to piece being replaced
+			unsafe {
+				b[b_i] = s[i]
+			}
+			b_i++
+		}
+		s_idx = rep_pos + 1 // move string index past replacement
+		for _ in 0 .. repeat { // copy replacement piece
+			unsafe {
+				b[b_i] = with
+			}
+			b_i++
+		}
+	}
+	if s_idx < s.len { // if any original after last replacement, copy it
+		for i in s_idx .. s.len {
+			unsafe {
+				b[b_i] = s[i]
+			}
+			b_i++
+		}
+	}
+	unsafe {
+		b[new_len] = 0
+		return tos(b, new_len)
+	}
+}
+
+// normalize_tabs replaces all tab characters with `tab_len` amount of spaces
+// Example: assert '\t\tpop rax\t; pop rax'.normalize_tabs(2) == '    pop rax  ; pop rax'
+[inline]
+pub fn (s string) normalize_tabs(tab_len int) string {
+	return s.replace_char(`\t`, ` `, tab_len)
+}
+
 // bool returns `true` if the string equals the word "true" it will return `false` otherwise.
 pub fn (s string) bool() bool {
 	return s == 'true' || s == 't' // TODO t for pg, remove
@@ -1710,6 +1779,18 @@ pub fn (s string) all_after_last(sub string) string {
 	return s[pos + sub.len..]
 }
 
+// all_after_first returns the contents after the first occurence of `sub` in the string.
+// If the substring is not found, it returns the full input string.
+// Example: assert '23:34:45.234'.all_after_first(':') == '34:45.234'
+// Example: assert 'abcd'.all_after_first('z') == 'abcd'
+pub fn (s string) all_after_first(sub string) string {
+	pos := s.index_int(sub)
+	if pos == -1 {
+		return s.clone()
+	}
+	return s[pos + sub.len..]
+}
+
 // after returns the contents after the last occurence of `sub` in the string.
 // If the substring is not found, it returns the full input string.
 // Example: assert '23:34:45.234'.after(':') == '45.234'
@@ -1897,12 +1978,12 @@ pub fn (s string) fields() []string {
 // Example:
 // ```v
 // st := 'Hello there,
-// |this is a string,
-// |    Everything before the first | is removed'.strip_margin()
+//        |  this is a string,
+//        |  Everything before the first | is removed'.strip_margin()
 //
 // assert st == 'Hello there,
-// this is a string,
-// Everything before the first | is removed'
+//   this is a string,
+//   Everything before the first | is removed'
 // ```
 pub fn (s string) strip_margin() string {
 	return s.strip_margin_custom(`|`)

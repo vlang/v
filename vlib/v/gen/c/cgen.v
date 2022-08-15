@@ -26,7 +26,7 @@ const (
 		'short', 'signed', 'sizeof', 'static', 'string', 'struct', 'switch', 'typedef', 'typename',
 		'union', 'unix', 'unsigned', 'void', 'volatile', 'while', 'template', 'true', 'small',
 		'stdout', 'stdin', 'stderr']
-	c_reserved_map = string_array_to_map(c_reserved)
+	c_reserved_chk = token.new_keywords_matcher_from_array_trie(c_reserved)
 	// same order as in token.Kind
 	cmp_str        = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
 	// when operands are switched
@@ -272,7 +272,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		module_built: module_built
 		timers_should_print: timers_should_print
 		timers: util.new_timers(should_print: timers_should_print, label: 'global_cgen')
-		inner_loop: &ast.EmptyStmt{}
+		inner_loop: &ast.empty_stmt
 		field_data_type: ast.Type(table.find_type_idx('FieldData'))
 		is_cc_msvc: pref.ccompiler == 'msvc'
 		use_segfault_handler: !('no_segfault_handler' in pref.compile_defines || pref.os == .wasm32)
@@ -411,14 +411,14 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	// to make sure type idx's are the same in cached mods
 	if g.pref.build_mode == .build_module {
 		for idx, sym in g.table.type_symbols {
-			if idx == 0 {
+			if idx in [0, 30] {
 				continue
 			}
 			g.definitions.writeln('int _v_type_idx_${sym.cname}();')
 		}
 	} else if g.pref.use_cache {
 		for idx, sym in g.table.type_symbols {
-			if idx == 0 {
+			if idx in [0, 30] {
 				continue
 			}
 			g.definitions.writeln('int _v_type_idx_${sym.cname}() { return $idx; };')
@@ -576,7 +576,7 @@ fn cgen_process_one_file_cb(p &pool.PoolProcessor, idx int, wid int) &Gen {
 			should_print: global_g.timers_should_print
 			label: 'cgen_process_one_file_cb idx: $idx, wid: $wid'
 		)
-		inner_loop: &ast.EmptyStmt{}
+		inner_loop: &ast.empty_stmt
 		field_data_type: ast.Type(global_g.table.find_type_idx('FieldData'))
 		array_sort_fn: global_g.array_sort_fn
 		waiter_fns: global_g.waiter_fns
@@ -987,7 +987,7 @@ fn (g Gen) optional_type_text(styp string, base string) string {
 	ret := 'struct $styp {
 	byte state;
 	IError err;
-	byte data[sizeof($size) > 0 ? sizeof($size) : 1];
+	byte data[sizeof($size) > 1 ? sizeof($size) : 1];
 }'
 	return ret
 }
@@ -1440,6 +1440,9 @@ pub fn (mut g Gen) write_multi_return_types() {
 		if sym.kind != .multi_return {
 			continue
 		}
+		if sym.cname.contains('<') {
+			continue
+		}
 		info := sym.mr_info()
 		if info.types.filter(it.has_flag(.generic)).len > 0 {
 			continue
@@ -1527,13 +1530,20 @@ fn is_noreturn_callexpr(expr ast.Expr) bool {
 	return false
 }
 
-// tmp_var is used in `if` expressions only
-fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
+// stmts_with_tmp_var is used in `if` or `match` branches.
+// It returns true, if the last statement was a `return`
+fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 	g.indent++
 	if g.inside_ternary > 0 {
 		g.write('(')
 	}
+	mut last_stmt_was_return := false
 	for i, stmt in stmts {
+		if i == stmts.len - 1 {
+			if stmt is ast.Return {
+				last_stmt_was_return = true
+			}
+		}
 		if i == stmts.len - 1 && tmp_var != '' {
 			// Handle if expressions, set the value of the last expression to the temp var.
 			if g.inside_if_optional || g.inside_match_optional {
@@ -1605,7 +1615,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 				// Do not autofree if the position is 0, since the correct scope won't be found.
 				// Report a bug, since position shouldn't be 0 for most nodes.
 				if stmt is ast.Module {
-					return
+					return last_stmt_was_return
 				}
 				if stmt is ast.ExprStmt {
 					// For some reason ExprStmt.pos is 0 when ExprStmt.expr is comp if expr
@@ -1616,12 +1626,13 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 					$if trace_autofree ? {
 						println('autofree: first stmt pos = 0. $stmt.type_name()')
 					}
-					return
+					return last_stmt_was_return
 				}
 			}
 			g.autofree_scope_vars(stmt_pos.pos - 1, stmt_pos.line_nr, false)
 		}
 	}
+	return last_stmt_was_return
 }
 
 [inline]
@@ -2236,8 +2247,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		deref_sym := g.table.sym(got_deref_type)
 		deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
 		got_is_opt := got_type.has_flag(.optional)
-		if deref_will_match || got_is_opt || expr.is_auto_deref_var()
-			|| expected_type.has_flag(.generic) {
+		if deref_will_match || got_is_opt || expr.is_auto_deref_var() {
 			g.write('*')
 		}
 	}
@@ -3704,7 +3714,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	mut is_push := []bool{cap: n_channels}
 	mut has_else := false
 	mut has_timeout := false
-	mut timeout_expr := ast.empty_expr()
+	mut timeout_expr := ast.empty_expr
 	mut exception_branch := -1
 	for j, branch in node.branches {
 		if branch.is_else {
@@ -3727,7 +3737,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 						elem_types << ''
 					} else {
 						// must be evaluated to tmp var before real `select` is performed
-						objs << ast.empty_expr()
+						objs << ast.empty_expr
 						tmp_obj := g.new_tmp_var()
 						tmp_objs << tmp_obj
 						el_stype := g.typ(ast.mktyp(expr.right_type))
@@ -4691,7 +4701,6 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 				mod: node.mod
 				def: '$fn_type_name = ${g.table.sym(field.typ).name}; // global2'
 				order: -1
-				// line: node.pos.line_nr
 			}
 			continue
 		}
@@ -4706,15 +4715,25 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 				mod: node.mod
 				def: def_builder.str()
 				order: -1
-				// line: node.pos.line_nr
 			}
 			continue
 		}
 		if field.has_expr || cinit {
+			// `__global x = unsafe { nil }` should still use the simple direct initialisation, `g_main_argv` needs it.
+			mut is_simple_unsafe_expr := false
+			if field.expr is ast.UnsafeExpr {
+				if field.expr.expr is ast.Nil {
+					is_simple_unsafe_expr = true
+				}
+				if field.expr.expr.is_literal() {
+					is_simple_unsafe_expr = true
+				}
+			}
 			if g.pref.translated {
 				def_builder.write_string(' = ${g.expr_string(field.expr)}')
 			} else if (field.expr.is_literal() && should_init) || cinit
-				|| (field.expr is ast.ArrayInit && (field.expr as ast.ArrayInit).is_fixed) {
+				|| (field.expr is ast.ArrayInit && (field.expr as ast.ArrayInit).is_fixed)
+				|| (is_simple_unsafe_expr && should_init) {
 				// Simple literals can be initialized right away in global scope in C.
 				// e.g. `int myglobal = 10;`
 				def_builder.write_string(' = ${g.expr_string(field.expr)}')
@@ -4739,7 +4758,6 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			def: def_builder.str()
 			init: init
 			dep_names: g.table.dependent_names_in_expr(field.expr)
-			// line: node.pos.line_nr
 		}
 	}
 }
@@ -5077,9 +5095,25 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 		mut field_deps := []string{}
 		match sym.info {
 			ast.ArrayFixed {
-				dep := g.table.final_sym(sym.info.elem_type).name
-				if dep in type_names {
-					field_deps << dep
+				mut skip := false
+				// allow: `struct Node{ children [4]&Node }`
+				// skip adding the struct as a dependency to the fixed array: [4]&Node -> Node
+				// the struct must depend on the fixed array for definition order: Node -> [4]&Node
+				// NOTE: Is there is a simpler way to do this?
+				elem_sym := g.table.final_sym(sym.info.elem_type)
+				if elem_sym.info is ast.Struct && sym.info.elem_type.is_ptr() {
+					for field in elem_sym.info.fields {
+						if sym.idx == field.typ.idx() {
+							skip = true
+							break
+						}
+					}
+				}
+				if !skip {
+					dep := g.table.final_sym(sym.info.elem_type).name
+					if dep in type_names {
+						field_deps << dep
+					}
 				}
 			}
 			ast.Struct {
@@ -5298,7 +5332,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 [inline]
 fn c_name(name_ string) string {
 	name := util.no_dots(name_)
-	if name in c.c_reserved_map {
+	if c.c_reserved_chk.matches(name) {
 		return '_v_$name'
 	}
 	return name
@@ -5783,7 +5817,7 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 						...params[0]
 						typ: st.set_nr_muls(1)
 					}
-					fargs, _, _ := g.fn_decl_params(params, voidptr(0), false)
+					fargs, _, _ := g.fn_decl_params(params, unsafe { nil }, false)
 					mut parameter_name := g.out.cut_last(g.out.len - params_start_pos)
 
 					if st.is_ptr() {

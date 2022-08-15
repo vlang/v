@@ -19,17 +19,22 @@ fn log_mutable_statements(mut log Log) {
 
 fn logger_mutable_statements(mut log Logger) {
 	println(@FN + ' start')
+	// the given logger instance could have a level to filter some levels used here
 	log.info('info')
 	log.warn('warn')
 	log.error('error')
 	log.debug('no output for debug')
-	// log.set_level(.debug) // not usable here because not part of Logger interface
+	log.set_level(.debug) // change logging level, now part of the Logger interface
+	log.debug('output for debug now')
+	log.info('output for info now')
 	println(@FN + ' end')
 }
 
 fn delay() {
 	time.sleep(1 * time.second)
 }
+
+// Note that Log and Logger methods requires a mutable instance
 
 // new_log create and return a new Log reference
 pub fn new_log() &Log {
@@ -54,22 +59,6 @@ fn test_log_mutable() {
 	println(@FN + ' end')
 }
 
-/*
-// TODO: with Logger methods requiring a mutable instance, now I get a compilation  error: `l` is immutable, declare it with `mut` to make it mutable ... check if it's good the same now and/or what to do ... wip
-fn test_log_not_mutable() {
-	println(@FN + ' start')
-	l := log.Log{}
-
-	l.info('info')
-	l.warn('warn')
-	l.error('error')
-	l.debug('no output for debug')
-
-	assert true
-	println(@FN + ' end')
-}
-*/
-
 fn test_log_mutable_reference() {
 	println(@FN + ' start')
 	mut log := new_log()
@@ -84,6 +73,7 @@ fn test_logger_mutable_reference() {
 	println(@FN + ' start')
 	// get log as Logger and use it
 	mut logger := new_log_as_logger()
+	logger.set_level(.warn)
 	assert typeof(logger).name == '&log.Logger'
 	go logger_mutable_statements(mut logger)
 	delay() // wait to finish

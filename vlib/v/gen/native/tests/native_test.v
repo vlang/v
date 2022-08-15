@@ -36,7 +36,8 @@ fn test_native() {
 		relative_test_path := full_test_path.replace(vroot + '/', '')
 		work_test_path := '$wrkdir/$test_file_name'
 		exe_test_path := '$wrkdir/${test_file_name}.exe'
-		cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(exe_test_path)} -b native ${os.quoted_path(full_test_path)}'
+		tmperrfile := '$dir/${test}.tmperr'
+		cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(exe_test_path)} -b native ${os.quoted_path(full_test_path)} 2> ${os.quoted_path(tmperrfile)}'
 		if is_verbose {
 			println(cmd)
 		}
@@ -44,9 +45,14 @@ fn test_native() {
 		if res_native.exit_code != 0 {
 			bench.fail()
 			eprintln(bench.step_message_fail(cmd))
+
+			if os.exists(tmperrfile) {
+				err := os.read_file(tmperrfile) or { panic(err) }
+				eprintln(err)
+			}
+
 			continue
 		}
-		tmperrfile := '$dir/${test}.tmperr'
 		res := os.execute('${os.quoted_path(exe_test_path)} 2> ${os.quoted_path(tmperrfile)}')
 		if res.exit_code != 0 {
 			bench.fail()

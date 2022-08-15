@@ -20,7 +20,7 @@ fn (mut m map) internal_set(key JS.Any, val JS.Any) {
 }
 
 fn (mut m map) internal_get(key JS.Any) JS.Any {
-	mut val := JS.Any(voidptr(0))
+	mut val := JS.Any(unsafe { nil })
 	//$if es5 {
 	#if (typeof key != "string" && '$toJS' in key) key = key.$toJS();
 	#val =  m.val.map[key]

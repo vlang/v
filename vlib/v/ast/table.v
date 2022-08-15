@@ -33,7 +33,7 @@ pub mut:
 	used_vweb_types    []Type // vweb context types, filled in by checker, when pref.skip_unused = true;
 	used_maps          int    // how many times maps were used, filled in by checker, when pref.skip_unused = true;
 	panic_handler      FnPanicHandler = default_table_panic_handler
-	panic_userdata     voidptr        = voidptr(0) // can be used to pass arbitrary data to panic_handler;
+	panic_userdata     voidptr        = unsafe { nil } // can be used to pass arbitrary data to panic_handler;
 	panic_npanics      int
 	cur_fn             &FnDecl = unsafe { 0 } // previously stored in Checker.cur_fn and Gen.cur_fn
 	cur_concrete_types []Type  // current concrete types, e.g. <int, string>
@@ -219,7 +219,7 @@ pub fn (t &Table) fn_type_signature(f &Fn) string {
 		} else {
 			sig += arg_type_sym.str().to_lower().replace_each(['.', '__', '&', '', '[', 'arr_',
 				'chan ', 'chan_', 'map[', 'map_of_', ']', '_to_', '<', '_T_', ',', '_', ' ', '',
-				'>', ''])
+				'>', '', '(', '_', ')', '_'])
 		}
 		if i < f.params.len - 1 {
 			sig += '_'
@@ -1432,7 +1432,7 @@ pub fn (mut t Table) bitsize_to_type(bit_size int) Type {
 			if bit_size % 8 != 0 { // there is no way to do `i2131(32)` so this should never be reached
 				t.panic('compiler bug: bitsizes must be multiples of 8')
 			}
-			return new_type(t.find_or_register_array_fixed(u8_type, bit_size / 8, empty_expr()))
+			return new_type(t.find_or_register_array_fixed(u8_type, bit_size / 8, empty_expr))
 		}
 	}
 }

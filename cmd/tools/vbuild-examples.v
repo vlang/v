@@ -7,6 +7,7 @@ const vroot = @VMODROOT
 
 const efolders = [
 	'examples/viewer',
+	'examples/vweb_orm_jwt',
 ]
 
 fn main() {

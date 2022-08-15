@@ -118,6 +118,102 @@ fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) ? {
 	}
 }
 
+fn (mut p Parser) check_undefined_variables_by_names(names []string, val ast.Expr) ? {
+	p.expr_level++
+	defer {
+		p.expr_level--
+	}
+	if p.expr_level > parser.max_expr_level {
+		return error('expr level > $parser.max_expr_level')
+	}
+	match val {
+		ast.Ident {
+			for name in names {
+				if name == val.name && val.kind != .blank_ident {
+					p.error_with_pos('undefined variable: `$val.name`', val.pos)
+					return error('undefined variable: `$val.name`')
+				}
+			}
+		}
+		ast.ArrayInit {
+			if val.has_cap {
+				p.check_undefined_variables_by_names(names, val.cap_expr)?
+			}
+			if val.has_len {
+				p.check_undefined_variables_by_names(names, val.len_expr)?
+			}
+			if val.has_default {
+				p.check_undefined_variables_by_names(names, val.default_expr)?
+			}
+			for expr in val.exprs {
+				p.check_undefined_variables_by_names(names, expr)?
+			}
+		}
+		ast.CallExpr {
+			p.check_undefined_variables_by_names(names, val.left)?
+			for arg in val.args {
+				p.check_undefined_variables_by_names(names, arg.expr)?
+			}
+		}
+		ast.InfixExpr {
+			p.check_undefined_variables_by_names(names, val.left)?
+			p.check_undefined_variables_by_names(names, val.right)?
+		}
+		ast.IfExpr {
+			p.check_undefined_variables_by_names(names, val.left)?
+			for branch in val.branches {
+				p.check_undefined_variables_by_names(names, branch.cond)?
+				for stmt in branch.stmts {
+					if stmt is ast.ExprStmt {
+						p.check_undefined_variables_by_names(names, stmt.expr)?
+					}
+				}
+			}
+		}
+		ast.MapInit {
+			for key in val.keys {
+				p.check_undefined_variables_by_names(names, key)?
+			}
+			for value in val.vals {
+				p.check_undefined_variables_by_names(names, value)?
+			}
+		}
+		ast.MatchExpr {
+			p.check_undefined_variables_by_names(names, val.cond)?
+			for branch in val.branches {
+				for expr in branch.exprs {
+					p.check_undefined_variables_by_names(names, expr)?
+				}
+				for stmt in branch.stmts {
+					if stmt is ast.ExprStmt {
+						p.check_undefined_variables_by_names(names, stmt.expr)?
+					}
+				}
+			}
+		}
+		ast.ParExpr {
+			p.check_undefined_variables_by_names(names, val.expr)?
+		}
+		ast.PostfixExpr {
+			p.check_undefined_variables_by_names(names, val.expr)?
+		}
+		ast.PrefixExpr {
+			p.check_undefined_variables_by_names(names, val.right)?
+		}
+		ast.StringInterLiteral {
+			for expr_ in val.exprs {
+				p.check_undefined_variables_by_names(names, expr_)?
+			}
+		}
+		ast.StructInit {
+			for field in val.fields {
+				p.check_undefined_variables_by_names(names, field.expr)?
+			}
+		}
+		else {}
+	}
+}
+
 fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
 	val_str := val.str()
 	match val {
@@ -210,7 +306,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 					}
 					mut v := ast.Var{
 						name: lx.name
-						expr: if left.len == right.len { right[i] } else { ast.empty_expr() }
+						expr: if left.len == right.len { right[i] } else { ast.empty_expr }
 						share: share
 						is_mut: lx.is_mut || p.inside_for
 						pos: lx.pos
@@ -261,8 +357,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 		for r in right {
 			has_cross_var = p.check_cross_variables(left, r)
 			if op !in [.assign, .decl_assign] {
-				return p.error_with_pos('unexpected $op.str(), expecting := or = or comma',
-					pos)
+				return p.unexpected_with_pos(pos, got: op.str(), expecting: ':= or = or comma')
 			}
 			if has_cross_var {
 				break

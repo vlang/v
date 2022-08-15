@@ -148,7 +148,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 					has_generic_types = true
 				}
 				c.ensure_type_exists(param.typ, param.pos) or { return }
-				if param.name in reserved_type_names {
+				if reserved_type_names_chk.matches(param.name) {
 					c.error('invalid use of reserved type `$param.name` as a parameter name',
 						param.pos)
 				}

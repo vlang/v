@@ -102,7 +102,7 @@ pub fn change_test_runner(x &TestRunner) {
 	if pobj != 0 {
 		test_runner.free()
 		unsafe {
-			(&C.main__TestRunner(&test_runner))._object = voidptr(0)
+			(&C.main__TestRunner(&test_runner))._object = nil
 		}
 	}
 	test_runner = *x

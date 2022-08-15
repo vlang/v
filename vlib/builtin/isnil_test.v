@@ -4,7 +4,7 @@ fn test_isnil_byteptr() {
 }
 
 fn test_isnil_voidptr() {
-	pv := voidptr(0)
+	pv := unsafe { nil }
 	assert isnil(pv)
 }
 

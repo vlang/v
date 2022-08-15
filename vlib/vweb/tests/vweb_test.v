@@ -269,6 +269,7 @@ fn simple_tcp_client(config SimpleTcpClientConfig) ?string {
 	mut tries := 0
 	for tries < config.retries {
 		tries++
+		eprintln('> client retries: $tries')
 		client = net.dial_tcp(localserver) or {
 			if tries > config.retries {
 				return err
@@ -277,6 +278,10 @@ fn simple_tcp_client(config SimpleTcpClientConfig) ?string {
 			continue
 		}
 		break
+	}
+	if client == unsafe { nil } {
+		eprintln('coult not create a tcp client connection to $localserver after $config.retries retries')
+		exit(1)
 	}
 	client.set_read_timeout(tcp_r_timeout)
 	client.set_write_timeout(tcp_w_timeout)

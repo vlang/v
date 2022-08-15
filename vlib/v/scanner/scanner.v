@@ -114,6 +114,7 @@ pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref &pref
 	mut s := &Scanner{
 		pref: pref
 		text: raw_text
+		all_tokens: []token.Token{cap: raw_text.len / 3}
 		is_print_line_on_error: true
 		is_print_colored_error: true
 		is_print_rel_paths_on_error: true
@@ -131,6 +132,7 @@ pub fn new_scanner(text string, comments_mode CommentsMode, pref &pref.Preferenc
 	mut s := &Scanner{
 		pref: pref
 		text: text
+		all_tokens: []token.Token{cap: text.len / 3}
 		is_print_line_on_error: true
 		is_print_colored_error: true
 		is_print_rel_paths_on_error: true
@@ -552,7 +554,7 @@ fn (mut s Scanner) end_of_file() token.Token {
 	return s.new_eof_token()
 }
 
-pub fn (mut s Scanner) scan_all_tokens_in_buffer() {
+fn (mut s Scanner) scan_all_tokens_in_buffer() {
 	mut timers := util.get_timers()
 	timers.measure_pause('PARSE')
 	util.timing_start('SCAN')
@@ -560,8 +562,6 @@ pub fn (mut s Scanner) scan_all_tokens_in_buffer() {
 		util.timing_measure_cumulative('SCAN')
 		timers.measure_resume('PARSE')
 	}
-	// preallocate space for tokens
-	s.all_tokens = []token.Token{cap: s.text.len / 3}
 	s.scan_remaining_text()
 	s.tidx = 0
 	$if debugscanner ? {
@@ -571,7 +571,7 @@ pub fn (mut s Scanner) scan_all_tokens_in_buffer() {
 	}
 }
 
-pub fn (mut s Scanner) scan_remaining_text() {
+fn (mut s Scanner) scan_remaining_text() {
 	for {
 		t := s.text_scan()
 		if s.comments_mode == .skip_comments && t.kind == .comment {
@@ -665,8 +665,9 @@ fn (mut s Scanner) text_scan() token.Token {
 			// tmp hack to detect . in ${}
 			// Check if not .eof to prevent panic
 			next_char := s.look_ahead(1)
-			kind := token.matcher.find(name)
-			if kind != -1 {
+			kind := token.scanner_matcher.find(name)
+			// '$type' '$struct'... will be recognized as ident (not keyword token)
+			if kind != -1 && !(s.is_inter_start && next_char == s.quote) {
 				return s.new_token(token.Kind(kind), name, name.len)
 			}
 			// 'asdf $b' => "b" is the last name in the string, dont start parsing string
@@ -939,7 +940,7 @@ fn (mut s Scanner) text_scan() token.Token {
 							typs.all(it.len > 0
 								&& ((it[0].is_capital() && it[1..].bytes().all(it.is_alnum()
 								|| it == `_`))
-								|| ast.builtin_type_names_matcher.find(it) > 0))
+								|| ast.builtin_type_names_matcher.matches(it)))
 						} else {
 							false
 						}
@@ -1411,6 +1412,10 @@ fn (mut s Scanner) ident_char() string {
 		if u.len != 1 {
 			if escaped_hex || escaped_unicode {
 				s.error('invalid character literal `$orig` => `$c` ($u) (escape sequence did not refer to a singular rune)')
+			} else if u.len == 0 {
+				s.add_error_detail_with_pos('use quotes for strings, backticks for characters',
+					lspos)
+				s.error('invalid empty character literal `$orig`')
 			} else {
 				s.add_error_detail_with_pos('use quotes for strings, backticks for characters',
 					lspos)

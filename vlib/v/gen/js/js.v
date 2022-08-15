@@ -1124,7 +1124,7 @@ fn (mut g JsGen) gen_ctemp_var(tvar ast.CTempVar) {
 
 fn (mut g JsGen) gen_assert_metainfo(node ast.AssertStmt) string {
 	mod_path := g.file.path
-	fn_name := if g.fn_decl == voidptr(0) || g.fn_decl.is_anon { 'anon' } else { g.fn_decl.name }
+	fn_name := if g.fn_decl == unsafe { nil } || g.fn_decl.is_anon { 'anon' } else { g.fn_decl.name }
 	line_nr := node.pos.line_nr
 	src := node.expr.str()
 	metaname := 'v_assert_meta_info_$g.new_tmp_var()'
@@ -1244,7 +1244,7 @@ fn (mut g JsGen) gen_assert_stmt(mut node ast.AssertStmt) {
 	}
 	g.writeln('} else {')
 	g.inc_indent()
-	fname := if g.fn_decl == voidptr(0) || g.fn_decl.is_anon { 'anon' } else { g.fn_decl.name }
+	fname := if g.fn_decl == unsafe { nil } || g.fn_decl.is_anon { 'anon' } else { g.fn_decl.name }
 	g.writeln('builtin__eprintln(new string("$mod_path:${node.pos.line_nr + 1}: FAIL: fn ${fname}(): assert $s_assertion"));')
 	g.writeln('builtin__exit(1);')
 	g.dec_indent()
@@ -2449,12 +2449,12 @@ fn (mut g JsGen) match_expr(node ast.MatchExpr) {
 	if is_expr && !need_tmp_var {
 		g.write('(')
 	}
-	typ := g.table.final_sym(node.cond_type)
+	cond_fsym := g.table.final_sym(node.cond_type)
 	if node.is_sum_type {
 		g.match_expr_sumtype(node, is_expr, cond_var, tmp_var)
-	} else if typ.kind == .enum_ && !g.inside_loop && node.branches.len > 5
+	} else if cond_fsym.kind == .enum_ && !g.inside_loop && node.branches.len > 5
 		&& unsafe { g.fn_decl != 0 } { // do not optimize while in top-level
-		g.match_expr_switch(node, is_expr, cond_var, tmp_var, typ)
+		g.match_expr_switch(node, is_expr, cond_var, tmp_var, cond_fsym)
 	} else {
 		g.match_expr_classic(node, is_expr, cond_var, tmp_var)
 	}

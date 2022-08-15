@@ -7,9 +7,9 @@ pub fn resolve_init(node StructInit, typ Type, t &Table) Expr {
 		mut has_len := false
 		mut has_cap := false
 		mut has_default := false
-		mut len_expr := empty_expr()
-		mut cap_expr := empty_expr()
-		mut default_expr := empty_expr()
+		mut len_expr := empty_expr
+		mut cap_expr := empty_expr
+		mut default_expr := empty_expr
 		mut exprs := []Expr{}
 		for field in node.fields {
 			match field.name {

@@ -33,7 +33,7 @@ pub fn getenv_opt(key string) ?string {
 			return string_from_wide(s)
 		} $else {
 			s := C.getenv(&char(key.str))
-			if s == voidptr(0) {
+			if s == nil {
 				return none
 			}
 			// Note: C.getenv *requires* that the result be copied.

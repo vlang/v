@@ -158,7 +158,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					ret_styp := g.typ(val.decl.return_type)
 					g.write('$ret_styp (*$ident.name) (')
 					def_pos := g.definitions.len
-					g.fn_decl_params(val.decl.params, voidptr(0), false)
+					g.fn_decl_params(val.decl.params, unsafe { nil }, false)
 					g.definitions.go_back(g.definitions.len - def_pos)
 					g.write(') = ')
 				} else {
@@ -344,7 +344,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 
 				g.write('$ret_styp ($msvc_call_conv*${g.get_ternary_name(ident.name)}) (')
 				def_pos := g.definitions.len
-				g.fn_decl_params(func.func.params, voidptr(0), false)
+				g.fn_decl_params(func.func.params, unsafe { nil }, false)
 				g.definitions.go_back(g.definitions.len - def_pos)
 				g.write(')$call_conv_attribute_suffix')
 			} else {

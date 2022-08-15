@@ -1,5 +1,21 @@
 import os
 
+const tfolder = os.join_path(os.temp_dir(), 'v', 'tests', 'os_file_test')
+
+const tfile = os.join_path_single(tfolder, 'test_file')
+
+fn testsuite_begin() ? {
+	os.rmdir_all(tfolder) or {}
+	assert !os.is_dir(tfolder)
+	os.mkdir_all(tfolder)?
+	os.chdir(tfolder)?
+	assert os.is_dir(tfolder)
+}
+
+fn testsuite_end() ? {
+	os.rmdir_all(tfolder) or {}
+}
+
 struct Point {
 	x f64
 	y f64
@@ -39,25 +55,6 @@ const (
 	another_color      = Color.red
 	another_permission = Permissions.read | .write
 )
-
-const (
-	tfolder = os.join_path_single(os.temp_dir(), 'os_file_test')
-	tfile   = os.join_path_single(tfolder, 'test_file')
-)
-
-fn testsuite_begin() ? {
-	os.rmdir_all(tfolder) or {}
-	assert !os.is_dir(tfolder)
-	os.mkdir_all(tfolder)?
-	os.chdir(tfolder)?
-	assert os.is_dir(tfolder)
-}
-
-fn testsuite_end() ? {
-	os.chdir(os.wd_at_startup)?
-	os.rmdir_all(tfolder)?
-	assert !os.is_dir(tfolder)
-}
 
 // test_read_bytes_into_newline_text tests reading text from a file with newlines.
 // This test simulates reading a larger text file step by step into a buffer and
@@ -133,11 +130,11 @@ fn test_read_eof_last_read_partial_buffer_fill() ? {
 	f = os.open_file(tfile, 'r')?
 	mut br := []u8{len: 100}
 	// Read first 100 bytes of 199 byte file, should fill buffer with no error.
-	n0 := f.read(mut br)?
+	n0 := f.read(mut br) or { return error('failed to read 100 bytes') }
 	assert n0 == 100
 	// Read remaining 99 bytes of 199 byte file, should fill buffer with no
 	// error, even though end-of-file was reached.
-	n1 := f.read(mut br)?
+	n1 := f.read(mut br) or { return error('failed to read 100 bytes') }
 	assert n1 == 99
 	// Read again, end-of-file was previously reached so should return none
 	// error.
@@ -146,8 +143,8 @@ fn test_read_eof_last_read_partial_buffer_fill() ? {
 		// not return a number of bytes read when end-of-file is reached.
 		assert false
 	} else {
-		// Expect none to have been returned when end-of-file.
-		assert err is none
+		// Expected an error when received end-of-file.
+		assert err !is none
 	}
 	f.close()
 }
@@ -165,11 +162,11 @@ fn test_read_eof_last_read_full_buffer_fill() ? {
 	f = os.open_file(tfile, 'r')?
 	mut br := []u8{len: 100}
 	// Read first 100 bytes of 200 byte file, should fill buffer with no error.
-	n0 := f.read(mut br)?
+	n0 := f.read(mut br) or { return error('failed to read 100 bytes') }
 	assert n0 == 100
 	// Read remaining 100 bytes of 200 byte file, should fill buffer with no
 	// error. The end-of-file isn't reached yet, but there is no more data.
-	n1 := f.read(mut br)?
+	n1 := f.read(mut br) or { return error('failed to read 100 bytes') }
 	assert n1 == 100
 	// Read again, end-of-file was previously reached so should return none
 	// error.
@@ -178,8 +175,8 @@ fn test_read_eof_last_read_full_buffer_fill() ? {
 		// not return a number of bytes read when end-of-file is reached.
 		assert false
 	} else {
-		// Expect none to have been returned when end-of-file.
-		assert err is none
+		// Expect an error at EOF.
+		assert err !is none
 	}
 	f.close()
 }
@@ -369,4 +366,56 @@ fn test_tell() ? {
 		// dump(pos)
 		assert pos == size - 5
 	}
+}
+
+fn test_reopen() ? {
+	tfile1 := os.join_path_single(tfolder, 'tfile1')
+	tfile2 := os.join_path_single(tfolder, 'tfile2')
+	os.write_file(tfile1, 'Hello World!\nGood\r morning.\nBye 1.')?
+	os.write_file(tfile2, 'Another file\nAnother line.\nBye 2.')?
+	assert os.file_size(tfile1) > 0
+	assert os.file_size(tfile2) > 0
+
+	mut line_buffer := []u8{len: 1024}
+
+	mut f2 := os.open(tfile2)?
+	x := f2.read_bytes_into_newline(mut line_buffer)?
+	assert !f2.eof()
+	assert x > 0
+	assert line_buffer#[..x].bytestr() == 'Another file\n'
+
+	// Note: after this call, f2 should be using the file `tfile1`:
+	f2.reopen(tfile1, 'r')?
+	assert !f2.eof()
+
+	z := f2.read(mut line_buffer) or { panic(err) }
+	assert f2.eof()
+	assert z > 0
+	content := line_buffer#[..z].bytestr()
+	// dump(content)
+	assert content.starts_with('Hello World')
+	assert content.ends_with('Bye 1.')
+}
+
+fn test_eof() ? {
+	os.write_file(tfile, 'Hello World!\n')?
+
+	mut f := os.open(tfile)?
+	f.read_bytes(10)
+	assert !f.eof()
+	f.read_bytes(100)
+	assert f.eof()
+}
+
+fn test_open_file_wb_ab() ? {
+	os.rm(tfile) or {}
+	mut wfile := os.open_file('text.txt', 'wb', 0o666)?
+	wfile.write_string('hello')?
+	wfile.close()
+	assert os.read_file('text.txt')? == 'hello'
+	//
+	mut afile := os.open_file('text.txt', 'ab', 0o666)?
+	afile.write_string('hello')?
+	afile.close()
+	assert os.read_file('text.txt')? == 'hellohello'
 }

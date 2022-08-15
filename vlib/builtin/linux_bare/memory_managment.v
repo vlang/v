@@ -43,11 +43,11 @@ fn system_alloc(_ voidptr, size usize) (voidptr, usize, u32) {
 	if e == .enoerror {
 		return a, size, 0
 	}
-	return voidptr(0), 0, 0
+	return unsafe { nil }, 0, 0
 }
 
 fn system_remap(_ voidptr, ptr voidptr, oldsize usize, newsize usize, can_move bool) voidptr {
-	return voidptr(0)
+	return unsafe { nil }
 }
 
 fn system_free_part(_ voidptr, ptr voidptr, oldsize usize, newsize usize) bool {
@@ -87,6 +87,6 @@ fn get_linux_allocator() dlmalloc.Allocator {
 		can_release_part: system_can_release_part
 		allocates_zeros: system_allocates_zeros
 		page_size: system_page_size
-		data: voidptr(0)
+		data: unsafe { nil }
 	}
 }

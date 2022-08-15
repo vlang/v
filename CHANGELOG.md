@@ -2,7 +2,7 @@
 *Not released yet*
 - Anonymous structs.
 - V can now find code in the `src/` directory. This allows making V repos much cleaner.
-- `os.mkdir()` now has an optional `mode` paramter.
+- `os.mkdir()` now has an optional `mode` parameter.
 - Full termux support via `$if termux {`.
 - Go backend fixes.
 - More type checks.
@@ -11,6 +11,7 @@
   is made via `vgret` and is compared to the expected result.
 - VLS performance improvements, especially on Windows.
 - Add `v ls` tool for installing, for updating, and for launching VLS (V Language Server)
+- Support `assert condition, extra_message`, where the `extra_message` will be evaluated and shown if the assertion fails.
 
 ## V 0.3
 *30 Jun 2022*

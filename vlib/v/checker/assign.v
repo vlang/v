@@ -173,7 +173,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			if mut right is ast.Ident {
 				if mut right.obj is ast.Var {
 					mut obj := unsafe { &right.obj }
-					if c.fn_scope != voidptr(0) {
+					if c.fn_scope != unsafe { nil } {
 						obj = c.fn_scope.find_var(right.obj.name) or { obj }
 					}
 					if obj.is_stack_obj && !c.inside_unsafe {
@@ -216,12 +216,19 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				} else {
 					if is_decl {
 						c.check_valid_snake_case(left.name, 'variable name', left.pos)
-						if left.name in reserved_type_names {
+						if reserved_type_names_chk.matches(left.name) {
 							c.error('invalid use of reserved type `$left.name` as a variable name',
 								left.pos)
 						}
-						if right is ast.Nil {
-							c.error('use of untyped nil in assignment', right.pos())
+						if right is ast.Nil && !c.inside_unsafe {
+							// `x := unsafe { nil }` is allowed,
+							// as well as:
+							// `unsafe {
+							//    x := nil
+							//    println(x)
+							// }`
+							c.error('use of untyped nil in assignment (use `unsafe` | $c.inside_unsafe)',
+								right.pos())
 						}
 					}
 					mut ident_var_info := left.info as ast.IdentVar

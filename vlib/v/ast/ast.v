@@ -112,8 +112,9 @@ pub type Node = CallArg
 
 pub struct TypeNode {
 pub:
-	typ Type
 	pos token.Pos
+pub mut:
+	typ Type
 }
 
 pub enum ComptimeTypeKind {
@@ -146,30 +147,23 @@ pub fn (cty ComptimeType) str() string {
 	}
 }
 
-pub struct EmptyExpr {
-	x int
-}
-
-pub fn empty_expr() Expr {
-	return EmptyExpr{}
-}
+pub type EmptyExpr = u8
 
 pub struct EmptyStmt {
 pub:
 	pos token.Pos
 }
 
-pub fn empty_stmt() Stmt {
-	return EmptyStmt{}
-}
-
 pub struct EmptyNode {
-	x int
+pub:
+	pos token.Pos
 }
 
-pub fn empty_node() Node {
-	return EmptyNode{}
-}
+pub const empty_expr = Expr(EmptyExpr(0))
+
+pub const empty_stmt = Stmt(EmptyStmt{})
+
+pub const empty_node = Node(EmptyNode{})
 
 // `{stmts}` or `unsafe {stmts}`
 pub struct Block {
@@ -1517,9 +1511,11 @@ pub const (
 [minify]
 pub struct AssertStmt {
 pub:
-	pos token.Pos
+	pos       token.Pos
+	extra_pos token.Pos
 pub mut:
 	expr    Expr
+	extra   Expr
 	is_used bool // asserts are used in _test.v files, as well as in non -prod builds of all files
 }
 
@@ -2273,7 +2269,7 @@ pub fn type_can_start_with_token(tok &token.Token) bool {
 	match tok.kind {
 		.name {
 			return (tok.lit.len > 0 && tok.lit[0].is_capital())
-				|| builtin_type_names_matcher.find(tok.lit) > 0
+				|| builtin_type_names_matcher.matches(tok.lit)
 		}
 		// Note: return type (T1, T2) should be handled elsewhere
 		.amp, .key_fn, .lsbr, .question {
@@ -2282,12 +2278,4 @@ pub fn type_can_start_with_token(tok &token.Token) bool {
 		else {}
 	}
 	return false
-}
-
-fn build_builtin_type_names_matcher() token.KeywordsMatcher {
-	mut m := map[string]int{}
-	for i, name in builtin_type_names {
-		m[name] = i
-	}
-	return token.new_keywords_matcher<int>(m)
 }

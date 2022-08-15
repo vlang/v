@@ -191,7 +191,7 @@ pub fn (mut b Builder) ensure_cap(n int) {
 	}
 
 	new_data := vcalloc(n * b.element_size)
-	if b.data != voidptr(0) {
+	if b.data != unsafe { nil } {
 		unsafe { vmemcpy(new_data, b.data, b.len * b.element_size) }
 		// TODO: the old data may be leaked when no GC is used (ref-counting?)
 		if b.flags.has(.noslices) {
@@ -212,7 +212,7 @@ pub fn (mut b Builder) free() {
 	if b.data != 0 {
 		unsafe { free(b.data) }
 		unsafe {
-			b.data = voidptr(0)
+			b.data = nil
 		}
 	}
 }

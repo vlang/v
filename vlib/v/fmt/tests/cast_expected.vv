@@ -10,4 +10,5 @@ fn test_cast() {
 	_ := f32(0)
 	_ := Type(0)
 	_ := ast.Expr(sum_expr())
+	_ := unsafe { nil }
 }

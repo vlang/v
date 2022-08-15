@@ -7,9 +7,9 @@ mut:
 	i int
 }
 
-fn (mut b Buf) read(mut buf []u8) ?int {
+fn (mut b Buf) read(mut buf []u8) !int {
 	if !(b.i < b.bytes.len) {
-		return none
+		return IError(Eof{})
 	}
 	n := copy(mut buf, b.bytes[b.i..])
 	b.i += n
@@ -44,9 +44,9 @@ mut:
 	place int
 }
 
-fn (mut s StringReader) read(mut buf []u8) ?int {
+fn (mut s StringReader) read(mut buf []u8) !int {
 	if s.place >= s.text.len {
-		return none
+		return IError(Eof{})
 	}
 	read := copy(mut buf, s.text[s.place..].bytes())
 	s.place += read

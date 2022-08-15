@@ -1,6 +1,26 @@
 module os
 
+/// Eof error means that we reach the end of the file.
+pub struct Eof {
+	Error
+}
+
+// NotExpected is a generic error that means that we receave a not expecte error.
+pub struct NotExpected {
+	cause string
+	code  int
+}
+
+fn (err NotExpected) msg() string {
+	return err.cause
+}
+
+fn (err NotExpected) code() int {
+	return err.code
+}
+
 pub struct File {
+mut:
 	cfile voidptr // Using void* instead of FILE*
 pub:
 	fd int
@@ -19,30 +39,55 @@ fn C._fseeki64(&C.FILE, u64, int) int
 
 fn C.getc(&C.FILE) int
 
+fn C.freopen(&char, &char, &C.FILE) &C.FILE
+
+fn C._wfreopen(&u16, &u16, &C.FILE) &C.FILE
+
+fn fix_windows_path(path string) string {
+	mut p := path
+	$if windows {
+		p = path.replace('/', '\\')
+	}
+	return p
+}
+
 // open_file can be used to open or create a file with custom flags and permissions and returns a `File` object.
 pub fn open_file(path string, mode string, options ...int) ?File {
 	mut flags := 0
+	mut seek_to_end := false
 	for m in mode {
 		match m {
-			`w` { flags |= o_create | o_trunc }
-			`a` { flags |= o_create | o_append }
-			`r` { flags |= o_rdonly }
-			`b` { flags |= o_binary }
-			`s` { flags |= o_sync }
-			`n` { flags |= o_nonblock }
-			`c` { flags |= o_noctty }
-			`+` { flags |= o_rdwr }
+			`w` {
+				flags |= o_create | o_trunc | o_wronly
+			}
+			`a` {
+				flags |= o_create | o_append | o_wronly
+				seek_to_end = true
+			}
+			`r` {
+				flags |= o_rdonly
+			}
+			`b` {
+				flags |= o_binary
+			}
+			`s` {
+				flags |= o_sync
+			}
+			`n` {
+				flags |= o_nonblock
+			}
+			`c` {
+				flags |= o_noctty
+			}
+			`+` {
+				flags &= ~o_wronly
+				flags |= o_rdwr
+			}
 			else {}
 		}
 	}
 	if mode == 'r+' {
 		flags = o_rdwr
-	}
-	if mode == 'w' {
-		flags = o_wronly | o_create | o_trunc
-	}
-	if mode == 'a' {
-		flags = o_wronly | o_create | o_append
 	}
 	mut permission := 0o666
 	if options.len > 0 {
@@ -55,17 +100,23 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 			permission = 0x0100 | 0x0080
 		}
 	}
-	mut p := path
-	$if windows {
-		p = path.replace('/', '\\')
-	}
+	p := fix_windows_path(path)
 	fd := C.open(&char(p.str), flags, permission)
 	if fd == -1 {
 		return error(posix_get_error_msg(C.errno))
 	}
-	cfile := C.fdopen(fd, &char(mode.str))
+	fdopen_mode := mode.replace('b', '')
+	cfile := C.fdopen(fd, &char(fdopen_mode.str))
 	if isnil(cfile) {
 		return error('Failed to open or create file "$path"')
+	}
+	if seek_to_end {
+		// ensure appending will work, even on bsd/macos systems:
+		$if windows {
+			C._fseeki64(cfile, 0, C.SEEK_END)
+		} $else {
+			C.fseeko(cfile, 0, C.SEEK_END)
+		}
 	}
 	return File{
 		cfile: cfile
@@ -133,7 +184,7 @@ pub fn create(path string) ?File {
 	}
 }
 
-// stdin - return an os.File for stdin, so that you can use .get_line on it too.
+// stdin - return an os.File for stdin
 pub fn stdin() File {
 	return File{
 		fd: 0
@@ -160,12 +211,38 @@ pub fn stderr() File {
 	}
 }
 
-// read implements the Reader interface.
-pub fn (f &File) read(mut buf []u8) ?int {
-	if buf.len == 0 {
-		return 0
+// eof returns true, when the end of file has been reached
+pub fn (f &File) eof() bool {
+	cfile := &C.FILE(f.cfile)
+	return C.feof(cfile) != 0
+}
+
+// reopen allows a `File` to be reused. It is mostly useful for reopening standard input and output.
+pub fn (mut f File) reopen(path string, mode string) ? {
+	p := fix_windows_path(path)
+	mut cfile := &C.FILE(0)
+	$if windows {
+		cfile = C._wfreopen(p.to_wide(), mode.to_wide(), f.cfile)
+	} $else {
+		cfile = C.freopen(&char(p.str), &char(mode.str), f.cfile)
 	}
-	nbytes := fread(buf.data, 1, buf.len, f.cfile)?
+	if isnil(cfile) {
+		return error('Failed to reopen file "$path"')
+	}
+	f.cfile = cfile
+}
+
+// read implements the Reader interface.
+pub fn (f &File) read(mut buf []u8) !int {
+	if buf.len == 0 {
+		return IError(Eof{})
+	}
+	nbytes := fread(buf.data, 1, buf.len, f.cfile) or {
+		return IError(NotExpected{
+			cause: 'unexpected error from fread'
+			code: -1
+		})
+	}
 	return nbytes
 }
 

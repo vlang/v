@@ -379,7 +379,7 @@ pub fn (mut p Parser) parse_type() ast.Type {
 		p.next()
 		is_result = true
 	}
-	if (is_optional || is_result) && p.tok.line_nr > line_nr {
+	if (is_optional || is_result) && (p.tok.line_nr > line_nr || p.tok.kind in [.comma, .rpar]) {
 		mut typ := ast.void_type
 		if is_optional {
 			typ = typ.set_flag(.optional)
@@ -529,7 +529,7 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 			if p.tok.kind == .lpar && !p.inside_sum_type {
 				// multiple return
 				if is_ptr {
-					p.error('parse_type: unexpected `&` before multiple returns')
+					p.unexpected(prepend_msg: 'parse_type:', got: '`&` before multiple returns')
 					return 0
 				}
 				return p.parse_multi_return_type()

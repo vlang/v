@@ -182,27 +182,42 @@ pub interface Connection {
 // num - Stmt uses nums at prepared statements (? or ?1)
 // qm - Character for prepared statment, qm because of quotation mark like in sqlite
 // start_pos - When num is true, it's the start position of the counter
-pub fn orm_stmt_gen(table string, q string, kind StmtKind, num bool, qm string, start_pos int, data QueryData, where QueryData) string {
+pub fn orm_stmt_gen(table string, q string, kind StmtKind, num bool, qm string, start_pos int, data QueryData, where QueryData) (string, QueryData) {
 	mut str := ''
-
 	mut c := start_pos
+	mut data_fields := []string{}
+	mut data_data := []Primitive{}
 
 	match kind {
 		.insert {
 			mut values := []string{}
+			mut select_fields := []string{}
 
-			for _ in 0 .. data.fields.len {
-				// loop over the length of data.field and generate ?0, ?1 or just ? based on the $num qmeter for value placeholders
-				if num {
-					values << '$qm$c'
-					c++
-				} else {
-					values << '$qm'
+			for i in 0 .. data.fields.len {
+				if data.data.len > 0 {
+					match data.data[i].type_name() {
+						'string' {
+							if (data.data[i] as string).len == 0 {
+								continue
+							}
+						}
+						'time.Time' {
+							if (data.data[i] as time.Time).unix == 0 {
+								continue
+							}
+						}
+						else {}
+					}
+					data_data << data.data[i]
 				}
+				select_fields << '$q${data.fields[i]}$q'
+				values << factory_insert_qm_value(num, qm, c)
+				data_fields << data.fields[i]
+				c++
 			}
 
 			str += 'INSERT INTO $q$table$q ('
-			str += data.fields.map('$q$it$q').join(', ')
+			str += select_fields.join(', ')
 			str += ') VALUES ('
 			str += values.join(', ')
 			str += ')'
@@ -262,7 +277,13 @@ pub fn orm_stmt_gen(table string, q string, kind StmtKind, num bool, qm string, 
 		}
 	}
 	str += ';'
-	return str
+	return str, QueryData{
+		fields: data_fields
+		data: data_data
+		types: data.types
+		kinds: data.kinds
+		is_and: data.is_and
+	}
 }
 
 // Generates an sql select stmt, from universal parameter
@@ -357,6 +378,7 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 		if field.is_arr {
 			continue
 		}
+		mut default_val := field.default_val
 		mut no_null := false
 		mut is_unique := false
 		mut is_skip := false
@@ -397,6 +419,14 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 					}
 					ctyp = attr.arg
 				}
+				'default' {
+					if attr.kind != .string {
+						return error("default attribute need be string. Try [default: '$attr.arg'] instead of [default: $attr.arg]")
+					}
+					if default_val == '' {
+						default_val = attr.arg
+					}
+				}
 				/*'fkey' {
 					if attr.arg != '' {
 						if attr.kind == .string {
@@ -416,8 +446,8 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 			return error('Unknown type ($field.typ) for field $field.name in struct $table')
 		}
 		stmt = '$q$field_name$q $ctyp'
-		if defaults && field.default_val != '' {
-			stmt += ' DEFAULT $field.default_val'
+		if defaults && default_val != '' {
+			stmt += ' DEFAULT $default_val'
 		}
 		if no_null {
 			stmt += ' NOT NULL'
@@ -542,4 +572,12 @@ pub fn time_to_primitive(b time.Time) Primitive {
 
 pub fn infix_to_primitive(b InfixType) Primitive {
 	return Primitive(b)
+}
+
+fn factory_insert_qm_value(num bool, qm string, c int) string {
+	if num {
+		return '$qm$c'
+	} else {
+		return '$qm'
+	}
 }

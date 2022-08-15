@@ -1,23 +1,24 @@
 module base58
 
-// alphabets is a map of common base58 alphabets
-pub const alphabets = init_alphabets()
+const impossible = 'this should never happen'
 
-// init_alphabet instantiates the preconfigured `Alphabet`s and returns them as `map[string]Alphabet`.
-// This is a temporary function. Setting const alphabets to the value returned in this function
-// causes a C error right now.
-fn init_alphabets() map[string]Alphabet {
-	return {
-		'btc':    new_alphabet('123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz') or {
-			panic(@MOD + '.' + @FN + ': this should never happen')
-		}
-		'flickr': new_alphabet('123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ') or {
-			panic(@MOD + '.' + @FN + ': this should never happen')
-		}
-		'ripple': new_alphabet('rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz') or {
-			panic(@MOD + '.' + @FN + ': this should never happen')
-		}
-	}
+pub const btc_alphabet = new_alphabet('123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz') or {
+	panic(impossible)
+}
+
+pub const flickr_alphabet = new_alphabet('123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ') or {
+	panic(impossible)
+}
+
+pub const ripple_alphabet = new_alphabet('rpshnaf39wBUDNEGHJKLM4PQRST7VWXYZ2bcdeCg65jkm8oFqi1tuvAxyz') or {
+	panic(impossible)
+}
+
+// alphabets is a map of common base58 alphabets:
+pub const alphabets = {
+	'btc':    btc_alphabet
+	'flickr': flickr_alphabet
+	'ripple': ripple_alphabet
 }
 
 // Alphabet is the series of characters that an input

@@ -110,14 +110,20 @@ fn subtract_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
 	shrink_tail_zeros(mut storage)
 }
 
-const karatsuba_multiplication_limit = 1_000_000
+const karatsuba_multiplication_limit = 240
 
-// set limit to choose algorithm
+const toom3_multiplication_limit = 10_000
 
 [inline]
 fn multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u32) {
-	if operand_a.len >= big.karatsuba_multiplication_limit
-		|| operand_b.len >= big.karatsuba_multiplication_limit {
+	max_len := if operand_a.len >= operand_b.len {
+		operand_a.len
+	} else {
+		operand_b.len
+	}
+	if max_len >= big.toom3_multiplication_limit {
+		toom3_multiply_digit_array(operand_a, operand_b, mut storage)
+	} else if max_len >= big.karatsuba_multiplication_limit {
 		karatsuba_multiply_digit_array(operand_a, operand_b, mut storage)
 	} else {
 		simple_multiply_digit_array(operand_a, operand_b, mut storage)

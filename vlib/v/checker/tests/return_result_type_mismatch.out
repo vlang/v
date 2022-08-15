@@ -1,0 +1,7 @@
+vlib/v/checker/tests/return_result_type_mismatch.vv:8:9: error: cannot use `!int` as type `?int` in return argument
+    6 | // Option
+    7 | fn bar(a int) ?int {
+    8 |     return foo(a)
+      |            ~~~~~~
+    9 | }
+   10 |

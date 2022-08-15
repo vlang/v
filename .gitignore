@@ -73,6 +73,7 @@ cachegrind.out.*
 .gdb_history
 *.dSYM
 *.def
+vgcore.*
 
 # ignore system files
 .DS_Store

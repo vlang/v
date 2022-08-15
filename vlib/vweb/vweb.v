@@ -622,7 +622,7 @@ fn (mut ctx Context) scan_static_directory(directory_path string, mount_path str
 				// Rudimentary guard against adding files not in mime_types.
 				// Use serve_static directly to add non-standard mime types.
 				if ext in vweb.mime_types {
-					ctx.serve_static(mount_path + '/' + file, full_path)
+					ctx.serve_static(mount_path.trim_right('/') + '/' + file, full_path)
 				}
 			}
 		}

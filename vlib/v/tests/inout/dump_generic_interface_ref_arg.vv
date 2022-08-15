@@ -1,0 +1,46 @@
+interface In {
+	in_() f64
+}
+
+interface Out {
+	out() f64
+}
+
+interface InOut {
+}
+
+struct MyImpl {
+	in_ f64
+	out f64
+}
+
+pub fn (mi &MyImpl) in_() f64 {
+	return mi.in_
+}
+
+pub fn (mi &MyImpl) out() f64 {
+	return mi.out
+}
+
+fn main() {
+	mi := MyImpl{
+		in_: 1.0
+		out: 2.0
+	}
+	dump(mi.in_())
+	dump(mi.out())
+	run(&mi)
+}
+
+fn run<T>(in_put T) {
+	dump(in_put.in_())
+	dump(in_put.out())
+	$if T is InOut {
+		dump(in_put.in_())
+		dump(in_put.out())
+	} $else $if T is In {
+		dump(in_put.in_())
+	} $else $if T is Out {
+		dump(in_put.out())
+	}
+}

@@ -12,11 +12,14 @@ RUN mkdir -p /opt/vlang && ln -s /opt/vlang/v /usr/bin/v
 
 ARG USE_LOCAL
 
+## libexecinfo is needed for the bundled tcc
 RUN apk --no-cache add \
   git make upx gcc bash \
-  musl-dev \
+  musl-dev libc-dev \
   openssl-dev sqlite-dev \
-  libx11-dev glfw-dev freetype-dev
+  libx11-dev glfw-dev freetype-dev \
+  libexecinfo-dev libexecinfo-static \
+  libc6-compat gcompat binutils
 
 ## RUN apk --no-cache add --virtual sdl2deps sdl2-dev sdl2_ttf-dev sdl2_mixer-dev sdl2_image-dev
 COPY . /vlang-local

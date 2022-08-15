@@ -1272,6 +1272,9 @@ val2 := arr[333]?
 println(val2)
 ```
 
+Maps are ordered by insertion, like dictionaries in Python. The order is a
+guaranteed language feature. This may change in the future.
+
 ## Module imports
 
 For information about creating a module, see [Modules](#modules).
@@ -3601,6 +3604,11 @@ fn p(a f64, b f64) { // ordinary function without return value
 fn main() {
 	go p(3, 4)
 	// p will be run in parallel thread
+	// It can also be written as follows
+	// go fn (a f64, b f64) {
+	//	c := math.sqrt(a * a + b * b)
+	//	println(c)
+	// }(3, 4)
 }
 ```
 
@@ -3986,6 +3994,20 @@ the program will abort. Asserts should only be used to detect programming errors
 assert fails it is reported to *stderr*, and the values on each side of a comparison operator
 (such as `<`, `==`) will be printed when possible. This is useful to easily find an
 unexpected value. Assert statements can be used in any function.
+
+### Asserts with an extra message
+
+This form of the `assert` statement, will print the extra message when it fails. Note, that
+you can use any string expression there - string literals, functions returning a string,
+strings that interpolate variables, etc.
+
+```v
+fn test_assertion_with_extra_message_failure() {
+	for i in 0 .. 100 {
+		assert i * 2 - 45 < 75 + 10, 'assertion failed for i: $i'
+	}
+}
+```
 
 ### Test files
 
@@ -5337,7 +5359,8 @@ fn main() {
 
 If you want an `if` to be evaluated at compile time it must be prefixed with a `$` sign.
 Right now it can be used to detect an OS, compiler, platform or compilation options.
-`$if debug` is a special option like `$if windows` or `$if x32`.
+`$if debug` is a special option like `$if windows` or `$if x32`, it's enabled if the program
+is compiled with `v -g` or `v -cg`.
 If you're using a custom ifdef, then you do need `$if option ? {}` and compile with`v -d option`.
 Full list of builtin options:
 | OS                            | Compilers         | Platforms             | Other                     |
@@ -5793,7 +5816,7 @@ or
 ```shell
 v -os linux .
 ```
-NB: Cross-compiling a windows binary on a linux machine requires the GNU C compiler for 
+NB: Cross-compiling a windows binary on a linux machine requires the GNU C compiler for
 MinGW-w64 (targeting Win64) to first be installed.
 
 ```shell

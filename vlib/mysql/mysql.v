@@ -158,7 +158,7 @@ pub fn (mut conn Connection) set_option(option_type int, val voidptr) {
 // get_option - return the value of an option, settable by `set_option`.
 // https://dev.mysql.com/doc/c-api/5.7/en/mysql-get-option.html
 pub fn (conn &Connection) get_option(option_type int) ?voidptr {
-	ret := voidptr(0)
+	ret := unsafe { nil }
 	if C.mysql_get_option(conn.conn, option_type, &ret) != 0 {
 		return error_with_code(get_error_msg(conn.conn), get_errno(conn.conn))
 	}

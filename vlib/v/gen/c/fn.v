@@ -473,8 +473,23 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 		ctx_struct := closure_ctx(node.decl)
 		builder.writeln('$ctx_struct {')
 		for var in node.inherited_vars {
-			styp := g.typ(var.typ)
-			builder.writeln('\t$styp $var.name;')
+			var_sym := g.table.sym(var.typ)
+			if var_sym.info is ast.FnType {
+				ret_styp := g.typ(var_sym.info.func.return_type)
+				builder.write_string('\t$ret_styp (*$var.name) (')
+				arg_len := var_sym.info.func.params.len
+				for j, arg in var_sym.info.func.params {
+					arg_styp := g.typ(arg.typ)
+					builder.write_string('$arg_styp $arg.name')
+					if j < arg_len - 1 {
+						builder.write_string(', ')
+					}
+				}
+				builder.writeln(');')
+			} else {
+				styp := g.typ(var.typ)
+				builder.writeln('\t$styp $var.name;')
+			}
 		}
 		builder.writeln('};\n')
 	}
@@ -527,14 +542,14 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 			func := info.func
 			g.write('${g.typ(func.return_type)} (*$caname)(')
 			g.definitions.write_string('${g.typ(func.return_type)} (*$caname)(')
-			g.fn_decl_params(func.params, voidptr(0), func.is_variadic)
+			g.fn_decl_params(func.params, unsafe { nil }, func.is_variadic)
 			g.write(')')
 			g.definitions.write_string(')')
 			fparams << caname
 			fparamtypes << param_type_name
 		} else {
 			mut heap_prom := false
-			if scope != voidptr(0) {
+			if scope != unsafe { nil } {
 				if param.name != '_' {
 					if v := scope.find_var(param.name) {
 						if !v.is_stack_obj && v.is_auto_heap {
@@ -689,6 +704,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if node.receiver_type == 0 {
 		g.checker_bug('CallExpr.receiver_type is 0 in method_call', node.pos)
 	}
+	left_type := g.unwrap_generic(node.left_type)
 	mut unwrapped_rec_type := node.receiver_type
 	if unsafe { g.cur_fn != 0 } && g.cur_fn.generic_names.len > 0 { // in generic fn
 		unwrapped_rec_type = g.unwrap_generic(node.receiver_type)
@@ -722,13 +738,13 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			eprintln('>>> interface typ_sym.name: $typ_sym.name | receiver_type_name: $receiver_type_name | pos: $node.pos')
 		}
 
-		left_is_shared := node.left_type.has_flag(.shared_f)
-		left_cc_type := g.cc_type(g.table.unaliased_type(node.left_type), false)
+		left_is_shared := left_type.has_flag(.shared_f)
+		left_cc_type := g.cc_type(g.table.unaliased_type(left_type), false)
 		left_type_name := util.no_dots(left_cc_type)
 		g.write('${c_name(left_type_name)}_name_table[')
-		if node.left.is_auto_deref_var() && node.left_type.nr_muls() > 1 {
+		if node.left.is_auto_deref_var() && left_type.nr_muls() > 1 {
 			g.write('(')
-			g.write('*'.repeat(node.left_type.nr_muls() - 1))
+			g.write('*'.repeat(left_type.nr_muls() - 1))
 			g.expr(node.left)
 			g.write(')')
 		} else {
@@ -736,16 +752,16 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 		dot := if left_is_shared {
 			'->val.'
-		} else if node.left_type.is_ptr() {
+		} else if left_type.is_ptr() {
 			'->'
 		} else {
 			'.'
 		}
 		mname := c_name(node.name)
 		g.write('${dot}_typ]._method_${mname}(')
-		if node.left.is_auto_deref_var() && node.left_type.nr_muls() > 1 {
+		if node.left.is_auto_deref_var() && left_type.nr_muls() > 1 {
 			g.write('(')
-			g.write('*'.repeat(node.left_type.nr_muls() - 1))
+			g.write('*'.repeat(left_type.nr_muls() - 1))
 			g.expr(node.left)
 			g.write(')')
 		} else {
@@ -759,8 +775,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.write(')')
 		return
 	}
-	left_sym := g.table.sym(node.left_type)
-	final_left_sym := g.table.final_sym(node.left_type)
+	left_sym := g.table.sym(left_type)
+	final_left_sym := g.table.final_sym(left_type)
 	if left_sym.kind == .array {
 		match node.name {
 			'filter' {
@@ -784,7 +800,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				return
 			}
 			'contains' {
-				g.gen_array_contains(node.left_type, node.left, node.args[0].expr)
+				g.gen_array_contains(left_type, node.left, node.args[0].expr)
 				return
 			}
 			'index' {
@@ -811,7 +827,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		left_info := left_sym.info as ast.Map
 		elem_type_str := g.typ(left_info.key_type)
 		g.write('map_delete(')
-		if node.left_type.is_ptr() {
+		if left_type.is_ptr() {
 			g.expr(node.left)
 		} else {
 			g.write('&')
@@ -823,7 +839,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		return
 	} else if left_sym.kind == .array && node.name == 'delete' {
 		g.write('array_delete(')
-		if node.left_type.is_ptr() {
+		if left_type.is_ptr() {
 			g.expr(node.left)
 		} else {
 			g.write('&')
@@ -968,7 +984,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	// if so, then instead of calling array_clone(&array_slice(...))
 	// call array_clone_static(array_slice(...))
 	mut is_range_slice := false
-	if node.receiver_type.is_ptr() && !node.left_type.is_ptr() {
+	if node.receiver_type.is_ptr() && !left_type.is_ptr() {
 		if node.left is ast.IndexExpr {
 			idx := node.left.index
 			if idx is ast.RangeExpr {
@@ -979,14 +995,15 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 		}
 	}
-	name = g.generic_fn_name(node.concrete_types, name, false)
+	concrete_types := node.concrete_types.map(g.unwrap_generic(it))
+	name = g.generic_fn_name(concrete_types, name, false)
 	// TODO2
 	// g.generate_tmp_autofree_arg_vars(node, name)
-	if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name == 'str' {
+	if !node.receiver_type.is_ptr() && left_type.is_ptr() && node.name == 'str' {
 		g.write('ptr_str(')
-	} else if node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name == 'str'
+	} else if node.receiver_type.is_ptr() && left_type.is_ptr() && node.name == 'str'
 		&& !left_sym.has_method('str') {
-		g.gen_expr_to_string(node.left, node.left_type)
+		g.gen_expr_to_string(node.left, left_type)
 		return
 	} else {
 		if left_sym.kind == .array {
@@ -998,10 +1015,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.write('${name}(')
 		}
 	}
-	if node.receiver_type.is_ptr()
-		&& (!node.left_type.is_ptr() || node.left_type.has_flag(.variadic)
+	is_node_name_in_first_last_repeat := node.name in ['first', 'last', 'repeat']
+	if node.receiver_type.is_ptr() && (!left_type.is_ptr() || left_type.has_flag(.variadic)
 		|| node.from_embed_types.len != 0
-		|| (node.left_type.has_flag(.shared_f) && node.name != 'str')) {
+		|| (left_type.has_flag(.shared_f) && node.name != 'str')) {
 		// The receiver is a reference, but the caller provided a value
 		// Add `&` automatically.
 		// TODO same logic in call_args()
@@ -1009,17 +1026,18 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			if !node.left.is_lvalue() {
 				g.write('ADDR($rec_cc_type, ')
 				has_cast = true
-			} else {
+			} else if !is_node_name_in_first_last_repeat && !(left_type.has_flag(.shared_f)
+				&& left_type == node.receiver_type) {
 				g.write('&')
 			}
 		}
-	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str'
+	} else if !node.receiver_type.is_ptr() && left_type.is_ptr() && node.name != 'str'
 		&& node.from_embed_types.len == 0 {
-		if !node.left_type.has_flag(.shared_f) {
+		if !left_type.has_flag(.shared_f) {
 			g.write('/*rec*/*')
 		}
 	} else if !is_range_slice && node.from_embed_types.len == 0 && node.name != 'str' {
-		diff := node.left_type.nr_muls() - node.receiver_type.nr_muls()
+		diff := left_type.nr_muls() - node.receiver_type.nr_muls()
 		if diff < 0 {
 			// TODO
 			// g.write('&')
@@ -1036,7 +1054,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.write('/*af receiver arg*/' + arg_name)
 	} else {
 		if left_sym.kind == .array && node.left.is_auto_deref_var()
-			&& node.name in ['first', 'last', 'repeat'] {
+			&& is_node_name_in_first_last_repeat {
 			g.write('*')
 		}
 		if node.left is ast.MapInit {
@@ -1050,7 +1068,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			embed_sym := g.table.sym(embed)
 			embed_name := embed_sym.embed_name()
 			is_left_ptr := if i == 0 {
-				node.left_type.is_ptr()
+				left_type.is_ptr()
 			} else {
 				node.from_embed_types[i - 1].is_ptr()
 			}
@@ -1061,7 +1079,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 			g.write(embed_name)
 		}
-		if node.left_type.has_flag(.shared_f) {
+		if left_type.has_flag(.shared_f)
+			&& (left_type != node.receiver_type || is_node_name_in_first_last_repeat) {
 			g.write('->val')
 		}
 	}
@@ -1208,7 +1227,8 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				if g.comptime_for_field_type != 0 && g.inside_comptime_for_field {
 					name = g.generic_fn_name([g.comptime_for_field_type], name, false)
 				} else {
-					name = g.generic_fn_name(node.concrete_types, name, false)
+					concrete_types := node.concrete_types.map(g.unwrap_generic(it))
+					name = g.generic_fn_name(concrete_types, name, false)
 				}
 			}
 		}
@@ -1316,6 +1336,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 								}
 								g.write(')')
 							}
+							is_fn_var = true
+						} else if obj.is_inherited {
+							g.write(c.closure_ctx + '->' + node.name)
 							is_fn_var = true
 						}
 					}
@@ -1492,7 +1515,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 	} else {
 		node.args
 	}
-	mut expected_types := node.expected_arg_types
+	mut expected_types := node.expected_arg_types.map(g.unwrap_generic(it))
 	// unwrap generics fn/method arguments to concretes
 	if node.concrete_types.len > 0 && node.concrete_types.all(!it.has_flag(.generic)) {
 		if node.is_method {
@@ -1924,13 +1947,13 @@ fn (mut g Gen) keep_alive_call_postgen(node ast.CallExpr, tmp_cnt_save int) {
 
 [inline]
 fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang ast.Language) {
+	arg_typ := g.unwrap_generic(arg.typ)
 	exp_is_ptr := expected_type.is_ptr() || expected_type.idx() in ast.pointer_type_idxs
-	arg_is_ptr := arg.typ.is_ptr() || arg.typ.idx() in ast.pointer_type_idxs
+	arg_is_ptr := arg_typ.is_ptr() || arg_typ.idx() in ast.pointer_type_idxs
 	if expected_type == 0 {
 		g.checker_bug('ref_or_deref_arg expected_type is 0', arg.pos)
 	}
 	exp_sym := g.table.sym(expected_type)
-	arg_typ := g.unwrap_generic(arg.typ)
 	mut needs_closing := false
 	if arg.is_mut && !exp_is_ptr {
 		g.write('&/*mut*/')

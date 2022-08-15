@@ -1,6 +1,4 @@
 fn main() {
-    unsafe {
-        value := nil
-        println(value)
-    }
+	value := nil
+	println(value)
 }
