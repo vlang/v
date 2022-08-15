@@ -473,8 +473,23 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 		ctx_struct := closure_ctx(node.decl)
 		builder.writeln('$ctx_struct {')
 		for var in node.inherited_vars {
-			styp := g.typ(var.typ)
-			builder.writeln('\t$styp $var.name;')
+			var_sym := g.table.sym(var.typ)
+			if var_sym.info is ast.FnType {
+				ret_styp := g.typ(var_sym.info.func.return_type)
+				builder.write_string('\t$ret_styp (*$var.name) (')
+				arg_len := var_sym.info.func.params.len
+				for j, arg in var_sym.info.func.params {
+					arg_styp := g.typ(arg.typ)
+					builder.write_string('$arg_styp $arg.name')
+					if j < arg_len - 1 {
+						builder.write_string(', ')
+					}
+				}
+				builder.writeln(');')
+			} else {
+				styp := g.typ(var.typ)
+				builder.writeln('\t$styp $var.name;')
+			}
 		}
 		builder.writeln('};\n')
 	}
@@ -1321,6 +1336,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 								}
 								g.write(')')
 							}
+							is_fn_var = true
+						} else if obj.is_inherited {
+							g.write(c.closure_ctx + '->' + node.name)
 							is_fn_var = true
 						}
 					}
