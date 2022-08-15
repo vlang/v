@@ -42,7 +42,7 @@ fn echo(address string) ? {
 	data := 'Hello from vlib/net!'
 	c.write_string(data)?
 	mut buf := []u8{len: 4096}
-	read := c.read(mut buf)?
+	read := c.read(mut buf) or { panic(err) }
 	assert read == data.len
 	for i := 0; i < read; i++ {
 		assert buf[i] == data[i]
