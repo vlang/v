@@ -34,6 +34,15 @@ fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
 							return true
 						}
 					}
+					if stmt.expr is ast.ConcatExpr {
+						for expr in stmt.expr.vals {
+							if expr is ast.CallExpr {
+								if expr.return_type.has_flag(.optional){
+									return true
+								}
+							}		
+						}
+					}
 				}
 			}
 		}
@@ -46,7 +55,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		g.comptime_if(node)
 		return
 	}
-	// For simpe if expressions we can use C's `?:`
+	// For simple if expressions we can use C's `?:`
 	// `if x > 0 { 1 } else { 2 }` => `(x > 0)? (1) : (2)`
 	// For if expressions with multiple statements or another if expression inside, it's much
 	// easier to use a temp var, than do C tricks with commas, introduce special vars etc
