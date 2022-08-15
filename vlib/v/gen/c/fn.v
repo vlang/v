@@ -473,12 +473,12 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 		ctx_struct := closure_ctx(node.decl)
 		builder.writeln('$ctx_struct {')
 		for var in node.inherited_vars {
-			if g.table.sym(var.typ).kind == .function {
-				func := g.table.sym(var.typ).info as ast.FnType
-				ret_styp := g.typ(func.func.return_type)
+			var_sym := g.table.sym(var.typ)
+			if var_sym.info is ast.FnType {
+				ret_styp := g.typ(var_sym.info.func.return_type)
 				builder.write_string('\t$ret_styp (*$var.name) (')
-				arg_len := func.func.params.len
-				for j, arg in func.func.params {
+				arg_len := var_sym.info.func.params.len
+				for j, arg in var_sym.info.func.params {
 					arg_styp := g.typ(arg.typ)
 					builder.write_string('$arg_styp $arg.name')
 					if j < arg_len - 1 {
