@@ -987,7 +987,7 @@ fn (g Gen) optional_type_text(styp string, base string) string {
 	ret := 'struct $styp {
 	byte state;
 	IError err;
-	byte data[sizeof($size) > 0 ? sizeof($size) : 1];
+	byte data[sizeof($size) > 1 ? sizeof($size) : 1];
 }'
 	return ret
 }
@@ -1454,7 +1454,7 @@ pub fn (mut g Gen) write_multi_return_types() {
 			type_name := g.typ(mr_typ)
 			if mr_typ.has_flag(.optional) {
 				// optional in multi_return
-				// Dont use g.typ() here becuase it will register
+				// Dont use g.typ() here because it will register
 				// optional and we dont want that
 				styp, base := g.optional_type_name(mr_typ)
 				lock g.done_optionals {
