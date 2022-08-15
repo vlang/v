@@ -987,7 +987,7 @@ fn (g Gen) optional_type_text(styp string, base string) string {
 	ret := 'struct $styp {
 	byte state;
 	IError err;
-	byte data[sizeof($size) > 1 ? sizeof($size) : 1];
+	byte data[sizeof($size) > 0 ? sizeof($size) : 1];
 }'
 	return ret
 }
@@ -1434,6 +1434,7 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
 }
 
 pub fn (mut g Gen) write_multi_return_types() {
+	start_pos := g.type_definitions.len
 	g.typedefs.writeln('\n// BEGIN_multi_return_typedefs')
 	g.type_definitions.writeln('\n// BEGIN_multi_return_structs')
 	for sym in g.table.type_symbols {
@@ -1451,6 +1452,22 @@ pub fn (mut g Gen) write_multi_return_types() {
 		g.type_definitions.writeln('struct $sym.cname {')
 		for i, mr_typ in info.types {
 			type_name := g.typ(mr_typ)
+			if mr_typ.has_flag(.optional) {
+				// optional in multi_return
+				// Dont use g.typ() here becuase it will register
+				// optional and we dont want that
+				styp, base := g.optional_type_name(mr_typ)
+				lock g.done_optionals {
+					if base !in g.done_optionals {
+						g.done_optionals << base
+						last_text := g.type_definitions.after(start_pos).clone()
+						g.type_definitions.go_back_to(start_pos)
+						g.typedefs.writeln('typedef struct $styp $styp;')
+						g.type_definitions.writeln('${g.optional_type_text(styp, base)};')
+						g.type_definitions.write_string(last_text)
+					}
+				}
+			}
 			g.type_definitions.writeln('\t$type_name arg$i;')
 		}
 		g.type_definitions.writeln('};\n')
@@ -2247,7 +2264,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		deref_sym := g.table.sym(got_deref_type)
 		deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
 		got_is_opt := got_type.has_flag(.optional)
-		if deref_will_match || got_is_opt || expr.is_auto_deref_var() {
+		if deref_will_match || got_is_opt || expr.is_auto_deref_var()
+			|| expected_type.has_flag(.generic) {
 			g.write('*')
 		}
 	}
