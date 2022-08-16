@@ -475,7 +475,8 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 		for var in node.inherited_vars {
 			var_sym := g.table.sym(var.typ)
 			if var_sym.info is ast.FnType {
-				sig := g.fn_var_signature(var_sym.info, var.name)
+				sig := g.fn_var_signature(var_sym.info.func.return_type, var_sym.info.func.params,
+					var.name)
 				builder.writeln('\t' + sig + ';')
 			} else {
 				styp := g.typ(var.typ)
