@@ -55,6 +55,9 @@ pub:
 
 // msg returns the message of MessageError
 pub fn (err MessageError) msg() string {
+	if err.code > 0 {
+		return '$err.msg; code: $err.code'
+	}
 	return err.msg
 }
 
