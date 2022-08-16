@@ -1004,7 +1004,7 @@ fn (g Gen) result_type_text(styp string, base string) string {
 	ret := 'struct $styp {
 	bool is_error;
 	IError err;
-	byte data[sizeof($size) > 0 ? sizeof($size) : 1];
+	byte data[sizeof($size) > 1 ? sizeof($size) : 1];
 }'
 	return ret
 }
