@@ -139,7 +139,7 @@ fn gen_footer_text(d &doc.Doc, include_timestamp bool) string {
 
 fn color_highlight(code string, tb &ast.Table) string {
 	builtin := ['bool', 'string', 'i8', 'i16', 'int', 'i64', 'i128', 'isize', 'byte', 'u8', 'u16', 'u32', 'u64', 'usize',
-		'u128', 'rune', 'f32', 'f64', 'int_literal', 'float_literal', 'byteptr', 'voidptr', 'any', 'Error']
+		'u128', 'rune', 'f32', 'f64', 'int_literal', 'float_literal', 'byteptr', 'voidptr', 'any']
 	highlight_code := fn (tok token.Token, typ HighlightTokenTyp) string {
 		mut lit := ''
 		match typ {
@@ -212,7 +212,7 @@ fn color_highlight(code string, tb &ast.Table) string {
 						tok_typ = .builtin
 					} else if
 						(next_tok.kind in [.lcbr, .rpar, .eof, .comma, .pipe, .name, .rcbr, .assign, .key_pub, .key_mut, .pipe, .comma, .comment] && next_tok.lit !in builtin)
-						&& (prev.kind in [.name, .amp, .rsbr, .key_type, .assign, .dot, .question, .rpar, .key_struct, .key_enum, .pipe, .key_interface, .comment] && prev.lit !in builtin)
+						&& (prev.kind in [.name, .amp, .lcbr, .rsbr, .key_type, .assign, .dot, .question, .rpar, .key_struct, .key_enum, .pipe, .key_interface, .comment] && prev.lit !in builtin)
 						&& ((tok.lit != '' && tok.lit[0].is_capital())
 						|| prev_prev.lit in ['C', 'JS']) {
 						tok_typ = .symbol
