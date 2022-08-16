@@ -61,3 +61,18 @@ fn (mut g Gen) unwrap(typ ast.Type) Type {
 		unaliased_sym: g.table.sym(no_generic_sym.parent_idx)
 	}
 }
+
+// generate function variable definition, e.g. `void (*var_name) (int, string)`
+fn (mut g Gen) fn_var_signature(info ast.FnType, var_name string) string {
+	ret_styp := g.typ(info.func.return_type)
+	mut sig := '$ret_styp (*$var_name) ('
+	for j, arg in info.func.params {
+		arg_styp := g.typ(arg.typ)
+		sig += '$arg_styp $arg.name'
+		if j < info.func.params.len - 1 {
+			sig += ', '
+		}
+	}
+	sig += ')'
+	return sig
+}
