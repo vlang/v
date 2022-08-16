@@ -4380,7 +4380,6 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				g.write('$ret_typ $tmpvar = ')
 			} else {
 				use_tmp_var = false
-				g.write_defer_stmts_when_needed()
 				if !g.is_builtin_mod {
 					g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 				}
