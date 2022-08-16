@@ -1,0 +1,8 @@
+struct Class {
+	class string
+}
+
+fn test() {
+	class := &Class{'string'}
+	class.free() 
+}
