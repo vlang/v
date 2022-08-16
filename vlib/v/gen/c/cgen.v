@@ -4368,8 +4368,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		}
 		// free := g.is_autofree && !g.is_builtin_mod // node.exprs[0] is ast.CallExpr
 		// Create a temporary variable for the return expression
-		use_tmp_var = use_tmp_var || !g.is_builtin_mod // node.exprs[0] is ast.CallExpr
-		if use_tmp_var {
+		if use_tmp_var || !g.is_builtin_mod {
 			// `return foo(a, b, c)`
 			// `tmp := foo(a, b, c); free(a); free(b); free(c); return tmp;`
 			// Save return value in a temp var so that all args (a,b,c) can be freed
@@ -4377,10 +4376,10 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			// Just in case of defer statements exists, that the return values cannot
 			// be modified.
 			if node.exprs[0] !is ast.Ident || use_tmp_var {
+				use_tmp_var = true
 				g.write('$ret_typ $tmpvar = ')
 			} else {
 				use_tmp_var = false
-				g.write_defer_stmts_when_needed()
 				if !g.is_builtin_mod {
 					g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 				}
