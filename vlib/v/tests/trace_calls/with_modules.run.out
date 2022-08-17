@@ -1,6 +1,5 @@
 > trace fn init_os_args(argc int, argv &&u8) []string
 > trace pub fn getwd() string
-> trace fn max_path_bufffer_size() int
 > trace fn main()
 > trace fn f1()
 > trace fn f2()

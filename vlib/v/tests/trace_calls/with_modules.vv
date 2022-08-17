@@ -16,5 +16,5 @@ fn f3() {
 
 fn main() {
 	f1()
-	println('end')
+	eprintln('end')
 }
