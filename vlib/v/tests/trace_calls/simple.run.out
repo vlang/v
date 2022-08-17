@@ -1,6 +1,6 @@
-fn main()
-fn foo()
-fn bar()
-fn baz()
-fn (b Boo) call_1()
+> trace fn main()
+> trace fn foo()
+> trace fn bar()
+> trace fn baz()
+> trace fn (b Boo) call_1()
 end

@@ -1058,7 +1058,7 @@ pub fn (mut t Transformer) fn_decl(mut node ast.FnDecl) {
 // gen_trace_print_expr_stmt generates an ast.CallExpr representation of a
 // `eprint(...)` V code statement.
 fn (t Transformer) gen_trace_print_call_expr(node ast.FnDecl) ast.CallExpr {
-	print_str := node.stringify(t.table, node.mod, map[string]string{})
+	print_str := '> trace ' + node.stringify(t.table, node.mod, map[string]string{})
 
 	call_arg := ast.CallArg{
 		expr: ast.StringLiteral{
