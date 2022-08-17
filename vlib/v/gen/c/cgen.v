@@ -52,6 +52,7 @@ struct Gen {
 mut:
 	out                       strings.Builder
 	cheaders                  strings.Builder
+	preincludes               strings.Builder // allows includes to go before `definitions`
 	includes                  strings.Builder // all C #includes required by V modules
 	typedefs                  strings.Builder
 	enum_typedefs             strings.Builder // enum types
@@ -244,6 +245,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 		out: strings.new_builder(512000)
 		cheaders: strings.new_builder(15000)
 		includes: strings.new_builder(100)
+		preincludes: strings.new_builder(100)
 		typedefs: strings.new_builder(100)
 		enum_typedefs: strings.new_builder(100)
 		type_definitions: strings.new_builder(100)
@@ -301,6 +303,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 			global_g.embedded_files << g.embedded_files
 			global_g.out.write(g.out) or { panic(err) }
 			global_g.cheaders.write(g.cheaders) or { panic(err) }
+			global_g.preincludes.write(g.preincludes) or { panic(err) }
 			global_g.includes.write(g.includes) or { panic(err) }
 			global_g.typedefs.write(g.typedefs) or { panic(err) }
 			global_g.type_definitions.write(g.type_definitions) or { panic(err) }
@@ -443,6 +446,8 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	b.write_string(g.comptime_definitions.str())
 	b.writeln('\n// V typedefs:')
 	b.write_string(g.typedefs.str())
+	b.writeln("\n // V preincludes:")
+	b.write_string(g.preincludes.str())
 	b.writeln('\n// V cheaders:')
 	b.write_string(g.cheaders.str())
 	if g.pcs_declarations.len > 0 {
@@ -668,6 +673,7 @@ pub fn (mut g Gen) init() {
 // tcc does not support has_include properly yet, turn it off completely
 #undef __has_include
 #endif'
+			g.preincludes.writeln(tcc_undef_has_include)
 			g.cheaders.writeln(tcc_undef_has_include)
 			g.includes.writeln(tcc_undef_has_include)
 			if g.pref.os == .freebsd {
@@ -1905,6 +1911,45 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					}
 					g.includes.writeln('\n')
 				}
+			} else if node.kind == 'preinclude' {
+				mut missing_message := 'Header file $node.main, needed for module `$node.mod` was not found.'
+				if node.msg != '' {
+					missing_message += ' ${node.msg}.'
+				} else {
+					missing_message += ' Please install the corresponding development headers.'
+				}
+				mut guarded_include := get_guarded_include_text(node.main, missing_message)
+				if node.main == '<errno.h>' {
+					// fails with musl-gcc and msvc; but an unguarded include works:
+					guarded_include = '#include $node.main'
+				}
+				if node.main.contains('.m') {
+					println("idk what im meant to do here")
+					g.definitions.writeln('\n')
+					if ct_condition.len > 0 {
+						g.definitions.writeln('#if $ct_condition')
+					}
+					// Objective C code import, include it after V types, so that e.g. `string` is
+					// available there
+					g.definitions.writeln('// added by module `$node.mod`, file: ${os.file_name(node.source_file)}:$line_nr:')
+					g.definitions.writeln(guarded_include)
+					if ct_condition.len > 0 {
+						g.definitions.writeln('#endif // \$if $ct_condition')
+					}
+					g.definitions.writeln('\n')
+				} else {
+					g.preincludes.writeln('\n')
+					if ct_condition.len > 0 {
+						g.preincludes.writeln('#if $ct_condition')
+					}
+					g.preincludes.writeln('// added by module `$node.mod`, file: ${os.file_name(node.source_file)}:$line_nr:')
+					g.preincludes.writeln(guarded_include)
+					if ct_condition.len > 0 {
+						g.preincludes.writeln('#endif // \$if $ct_condition')
+					}
+					g.preincludes.writeln('\n')
+				}
+
 			} else if node.kind == 'insert' {
 				if ct_condition.len > 0 {
 					g.includes.writeln('#if $ct_condition')
