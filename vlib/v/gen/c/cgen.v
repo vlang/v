@@ -446,7 +446,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	b.write_string(g.comptime_definitions.str())
 	b.writeln('\n// V typedefs:')
 	b.write_string(g.typedefs.str())
-	b.writeln("\n // V preincludes:")
+	b.writeln('\n // V preincludes:')
 	b.write_string(g.preincludes.str())
 	b.writeln('\n// V cheaders:')
 	b.write_string(g.cheaders.str())
@@ -1950,7 +1950,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					}
 					g.preincludes.writeln('\n')
 				}
-
 			} else if node.kind == 'insert' {
 				if ct_condition.len > 0 {
 					g.includes.writeln('#if $ct_condition')
