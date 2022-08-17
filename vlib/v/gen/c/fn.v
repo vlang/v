@@ -475,17 +475,9 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 		for var in node.inherited_vars {
 			var_sym := g.table.sym(var.typ)
 			if var_sym.info is ast.FnType {
-				ret_styp := g.typ(var_sym.info.func.return_type)
-				builder.write_string('\t$ret_styp (*$var.name) (')
-				arg_len := var_sym.info.func.params.len
-				for j, arg in var_sym.info.func.params {
-					arg_styp := g.typ(arg.typ)
-					builder.write_string('$arg_styp $arg.name')
-					if j < arg_len - 1 {
-						builder.write_string(', ')
-					}
-				}
-				builder.writeln(');')
+				sig := g.fn_var_signature(var_sym.info.func.return_type, var_sym.info.func.params,
+					var.name)
+				builder.writeln('\t' + sig + ';')
 			} else {
 				styp := g.typ(var.typ)
 				builder.writeln('\t$styp $var.name;')
@@ -827,11 +819,19 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		left_info := left_sym.info as ast.Map
 		elem_type_str := g.typ(left_info.key_type)
 		g.write('map_delete(')
-		if left_type.is_ptr() {
+		if left_type.has_flag(.shared_f) {
+			if left_type.is_ptr() {
+				g.write('&')
+			}
 			g.expr(node.left)
+			g.write('->val')
 		} else {
-			g.write('&')
-			g.expr(node.left)
+			if left_type.is_ptr() {
+				g.expr(node.left)
+			} else {
+				g.write('&')
+				g.expr(node.left)
+			}
 		}
 		g.write(', &($elem_type_str[]){')
 		g.expr(node.args[0].expr)
@@ -839,11 +839,19 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		return
 	} else if left_sym.kind == .array && node.name == 'delete' {
 		g.write('array_delete(')
-		if left_type.is_ptr() {
+		if left_type.has_flag(.shared_f) {
+			if left_type.is_ptr() {
+				g.write('&')
+			}
 			g.expr(node.left)
+			g.write('->val')
 		} else {
-			g.write('&')
-			g.expr(node.left)
+			if left_type.is_ptr() {
+				g.expr(node.left)
+			} else {
+				g.write('&')
+				g.expr(node.left)
+			}
 		}
 		g.write(', ')
 		g.expr(node.args[0].expr)
@@ -1818,8 +1826,15 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 			g.type_definitions.writeln('EMPTY_STRUCT_DECLARATION;')
 		} else {
 			for i, arg in expr.args {
-				styp := g.typ(arg.typ)
-				g.type_definitions.writeln('\t$styp arg${i + 1};')
+				arg_sym := g.table.sym(arg.typ)
+				if arg_sym.info is ast.FnType {
+					sig := g.fn_var_signature(arg_sym.info.func.return_type, arg_sym.info.func.params,
+						'arg${i + 1}')
+					g.type_definitions.writeln('\t' + sig + ';')
+				} else {
+					styp := g.typ(arg.typ)
+					g.type_definitions.writeln('\t$styp arg${i + 1};')
+				}
 			}
 		}
 		if need_return_ptr {

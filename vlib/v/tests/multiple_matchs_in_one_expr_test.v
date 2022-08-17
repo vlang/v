@@ -22,5 +22,5 @@ fn hex_to_bytes(s string) ?[]u8 {
 fn test_multiple_matchs_in_one_expr() {
 	ret := hex_to_bytes('FFFF') or { 'error'.bytes() }
 	println(ret)
-	assert '$ret' == '[U, U]'
+	assert '$ret' == '[85, 85]'
 }

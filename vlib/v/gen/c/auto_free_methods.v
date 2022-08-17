@@ -72,6 +72,7 @@ fn (mut g Gen) gen_free_for_struct(info ast.Struct, styp string, fn_name string)
 	}
 	fn_builder.writeln('void ${fn_name}($styp* it) {')
 	for field in info.fields {
+		field_name := c_name(field.name)
 		sym := g.table.sym(g.unwrap_generic(field.typ))
 
 		if sym.kind !in [.string, .array, .map, .struct_] {
@@ -88,9 +89,9 @@ fn (mut g Gen) gen_free_for_struct(info ast.Struct, styp string, fn_name string)
 			g.gen_free_method(field.typ)
 		}
 		if is_shared {
-			fn_builder.writeln('\t${field_styp_fn_name}(&(it->$field.name->val));')
+			fn_builder.writeln('\t${field_styp_fn_name}(&(it->$field_name->val));')
 		} else {
-			fn_builder.writeln('\t${field_styp_fn_name}(&(it->$field.name));')
+			fn_builder.writeln('\t${field_styp_fn_name}(&(it->$field_name));')
 		}
 	}
 	fn_builder.writeln('}')

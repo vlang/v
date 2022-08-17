@@ -166,6 +166,12 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 		if expr_required {
 			if branch.stmts.len > 0 && branch.stmts.last() is ast.ExprStmt {
 				mut last_expr := branch.stmts.last() as ast.ExprStmt
+				expr := last_expr.expr
+				if expr is ast.ConcatExpr {
+					for val in expr.vals {
+						c.check_expr_opt_call(val, c.expr(val))
+					}
+				}
 				c.expected_type = former_expected_type
 				if c.expected_type.has_flag(.optional) {
 					if node.typ == ast.void_type {

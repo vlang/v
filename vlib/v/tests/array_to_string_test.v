@@ -19,7 +19,7 @@ fn test_array_to_string_conversion() {
 	assert e.str() == '[1, 2, 3]'
 
 	f := [u8(66), 32, 126, 10, 13, 5, 18, 127, 255]
-	assert f.str() == '[B,  , ~, `\\n`, `\\r`, 0x05, 0x12, 0x7f, 0xff]'
+	assert f.str() == '[66, 32, 126, 10, 13, 5, 18, 127, 255]'
 
 	// https://github.com/vlang/v/issues/8036
 	g := array_array_array<int>(2, 2)

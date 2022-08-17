@@ -20,7 +20,7 @@ fn test_signal_opt_invalid_argument() {
 		assert false
 	}
 	os.signal_opt(.kill, default_handler) or {
-		assert err.msg() == 'Invalid argument'
+		assert err.msg() == 'Invalid argument; code: 22'
 		assert err.code() == 22
 	}
 }

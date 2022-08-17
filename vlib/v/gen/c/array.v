@@ -341,7 +341,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	i := g.new_tmp_var()
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.indent++
-	g.writeln('$inp_elem_type it = (($inp_elem_type*) ${tmp}_orig.data)[$i];')
+	g.write_prepared_it(inp_info, inp_elem_type, tmp, i)
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
 	mut expr := node.args[0].expr
@@ -536,7 +536,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	i := g.new_tmp_var()
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.indent++
-	g.writeln('$elem_type_str it = (($elem_type_str*) ${tmp}_orig.data)[$i];')
+	g.write_prepared_it(info, elem_type_str, tmp, i)
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
 	mut expr := node.args[0].expr
@@ -893,7 +893,7 @@ fn (mut g Gen) gen_array_any(node ast.CallExpr) {
 	i := g.new_tmp_var()
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.indent++
-	g.writeln('$elem_type_str it = (($elem_type_str*) ${tmp}_orig.data)[$i];')
+	g.write_prepared_it(info, elem_type_str, tmp, i)
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
 	mut expr := node.args[0].expr
@@ -967,7 +967,7 @@ fn (mut g Gen) gen_array_all(node ast.CallExpr) {
 	i := g.new_tmp_var()
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.indent++
-	g.writeln('$elem_type_str it = (($elem_type_str*) ${tmp}_orig.data)[$i];')
+	g.write_prepared_it(info, elem_type_str, tmp, i)
 	g.empty_line = true
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
@@ -1054,4 +1054,13 @@ fn (mut g Gen) write_prepared_tmp_value(tmp string, node &ast.CallExpr, tmp_styp
 	g.writeln(';')
 	g.writeln('int ${tmp}_len = ${tmp}_orig.len;')
 	return has_infix_left_var_name
+}
+
+fn (mut g Gen) write_prepared_it(inp_info ast.Array, inp_elem_type string, tmp string, i string) {
+	if g.table.sym(inp_info.elem_type).kind == .array_fixed {
+		g.writeln('$inp_elem_type it;')
+		g.writeln('memcpy(&it, (($inp_elem_type*) ${tmp}_orig.data)[$i], sizeof($inp_elem_type));')
+	} else {
+		g.writeln('$inp_elem_type it = (($inp_elem_type*) ${tmp}_orig.data)[$i];')
+	}
 }

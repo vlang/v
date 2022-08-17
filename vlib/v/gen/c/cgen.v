@@ -1004,7 +1004,7 @@ fn (g Gen) result_type_text(styp string, base string) string {
 	ret := 'struct $styp {
 	bool is_error;
 	IError err;
-	byte data[sizeof($size) > 0 ? sizeof($size) : 1];
+	byte data[sizeof($size) > 1 ? sizeof($size) : 1];
 }'
 	return ret
 }
@@ -1434,6 +1434,7 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym ast.TypeSymbol) {
 }
 
 pub fn (mut g Gen) write_multi_return_types() {
+	start_pos := g.type_definitions.len
 	g.typedefs.writeln('\n// BEGIN_multi_return_typedefs')
 	g.type_definitions.writeln('\n// BEGIN_multi_return_structs')
 	for sym in g.table.type_symbols {
@@ -1451,6 +1452,22 @@ pub fn (mut g Gen) write_multi_return_types() {
 		g.type_definitions.writeln('struct $sym.cname {')
 		for i, mr_typ in info.types {
 			type_name := g.typ(mr_typ)
+			if mr_typ.has_flag(.optional) {
+				// optional in multi_return
+				// Dont use g.typ() here because it will register
+				// optional and we dont want that
+				styp, base := g.optional_type_name(mr_typ)
+				lock g.done_optionals {
+					if base !in g.done_optionals {
+						g.done_optionals << base
+						last_text := g.type_definitions.after(start_pos).clone()
+						g.type_definitions.go_back_to(start_pos)
+						g.typedefs.writeln('typedef struct $styp $styp;')
+						g.type_definitions.writeln('${g.optional_type_text(styp, base)};')
+						g.type_definitions.write_string(last_text)
+					}
+				}
+			}
 			g.type_definitions.writeln('\t$type_name arg$i;')
 		}
 		g.type_definitions.writeln('};\n')
@@ -4351,8 +4368,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		}
 		// free := g.is_autofree && !g.is_builtin_mod // node.exprs[0] is ast.CallExpr
 		// Create a temporary variable for the return expression
-		use_tmp_var = use_tmp_var || !g.is_builtin_mod // node.exprs[0] is ast.CallExpr
-		if use_tmp_var {
+		if use_tmp_var || !g.is_builtin_mod {
 			// `return foo(a, b, c)`
 			// `tmp := foo(a, b, c); free(a); free(b); free(c); return tmp;`
 			// Save return value in a temp var so that all args (a,b,c) can be freed
@@ -4360,10 +4376,10 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			// Just in case of defer statements exists, that the return values cannot
 			// be modified.
 			if node.exprs[0] !is ast.Ident || use_tmp_var {
+				use_tmp_var = true
 				g.write('$ret_typ $tmpvar = ')
 			} else {
 				use_tmp_var = false
-				g.write_defer_stmts_when_needed()
 				if !g.is_builtin_mod {
 					g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 				}

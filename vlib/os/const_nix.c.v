@@ -1,5 +1,7 @@
 module os
 
+const max_path_buffer_size = max_path_len
+
 const (
 	o_binary   = 0 // input and output is not translated; the default on unix
 	o_rdonly   = C.O_RDONLY // open the file read-only.
