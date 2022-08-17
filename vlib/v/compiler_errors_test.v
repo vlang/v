@@ -115,16 +115,16 @@ fn test_all() {
 		skip_unused_tasks.add('', skip_unused_dir, '-d no_backtrace -skip-unused run',
 			'.skip_unused.run.out', skip_unused_dir_tests, false)
 		skip_unused_tasks.run()
+		//
+		mut trace_calls_tasks := Tasks{
+			vexe: vexe
+			parallel_jobs: 1
+			label: '-trace-calls tests'
+		}
+		trace_calls_tasks.add('', trace_calls_dir, '-trace-calls run', '.run.out', trace_calls_dir_tests,
+			false)
+		trace_calls_tasks.run()
 	}
-	//
-	mut trace_calls_tasks := Tasks{
-		vexe: vexe
-		parallel_jobs: 1
-		label: '-trace-calls tests'
-	}
-	trace_calls_tasks.add('', trace_calls_dir, '-trace-calls run', '.run.out', trace_calls_dir_tests,
-		false)
-	trace_calls_tasks.run()
 	//
 	if github_job == 'ubuntu-tcc' {
 		// This is done with tcc only, because the error output is compiler specific.

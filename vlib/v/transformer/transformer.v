@@ -1036,6 +1036,9 @@ pub fn (mut t Transformer) sql_expr(mut node ast.SqlExpr) ast.Expr {
 	return node
 }
 
+// fn_decl mutates `node`.
+// if `pref.trace_calls` is true ast Nodes for `eprintln(...)` is prepended to the `FnDecl`'s
+// stmts list to let the gen backend generate the target specific code for the print.
 pub fn (mut t Transformer) fn_decl(mut node ast.FnDecl) {
 	if t.pref.trace_calls {
 		// Skip `C.fn()` and all of builtin
@@ -1044,7 +1047,7 @@ pub fn (mut t Transformer) fn_decl(mut node ast.FnDecl) {
 		if node.no_body || node.is_builtin {
 			return
 		}
-		call_expr := t.gen_trace_print_expr_stmt(node)
+		call_expr := t.gen_trace_print_call_expr(node)
 		expr_stmt := ast.ExprStmt{
 			expr: call_expr
 		}
@@ -1054,7 +1057,7 @@ pub fn (mut t Transformer) fn_decl(mut node ast.FnDecl) {
 
 // gen_trace_print_expr_stmt generates an ast.CallExpr representation of a
 // `eprint(...)` V code statement.
-fn (t Transformer) gen_trace_print_expr_stmt(node ast.FnDecl) ast.CallExpr {
+fn (t Transformer) gen_trace_print_call_expr(node ast.FnDecl) ast.CallExpr {
 	print_str := node.stringify(t.table, node.mod, map[string]string{})
 
 	call_arg := ast.CallArg{
