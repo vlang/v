@@ -157,8 +157,8 @@ pub mut:
 	third_party_option string
 	building_v         bool
 	autofree           bool // `v -manualfree` => false, `v -autofree` => true; false by default for now.
-	trace_calls        bool // -trace-calls true = the transformer stage will generate and inject print calls for tracing function calls
 	// Disabling `free()` insertion results in better performance in some applications (e.g. compilers)
+	trace_calls        bool // -trace-calls true = the transformer stage will generate and inject print calls for tracing function calls
 	compress bool // when set, use `upx` to compress the generated executable
 	// generating_vh    bool
 	no_builtin       bool   // Skip adding the `builtin` module implicitly. The generated C code may not compile.
