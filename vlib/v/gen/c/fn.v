@@ -1828,7 +1828,8 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 			for i, arg in expr.args {
 				arg_sym := g.table.sym(arg.typ)
 				if arg_sym.info is ast.FnType {
-					sig := g.fn_var_signature(arg_sym.info.func.return_type, arg_sym.info.func.params, 'arg${i + 1}')
+					sig := g.fn_var_signature(arg_sym.info.func.return_type, arg_sym.info.func.params,
+						'arg${i + 1}')
 					g.type_definitions.writeln('\t' + sig + ';')
 				} else {
 					styp := g.typ(arg.typ)
