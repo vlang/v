@@ -341,7 +341,12 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	i := g.new_tmp_var()
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.indent++
-	g.writeln('$inp_elem_type it = (($inp_elem_type*) ${tmp}_orig.data)[$i];')
+	if g.table.sym(inp_info.elem_type).kind == .array_fixed {
+		g.writeln('$inp_elem_type it;')
+		g.writeln('memcpy(&it, (($inp_elem_type*) ${tmp}_orig.data)[$i], sizeof($inp_elem_type));')
+	} else {
+		g.writeln('$inp_elem_type it = (($inp_elem_type*) ${tmp}_orig.data)[$i];')
+	}
 	g.set_current_pos_as_last_stmt_pos()
 	mut is_embed_map_filter := false
 	mut expr := node.args[0].expr
