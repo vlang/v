@@ -958,8 +958,14 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				param_elem_type := c.table.unaliased_type(param_info.elem_type)
 				arg_info := arg_typ_sym.info as ast.Array
 				arg_elem_type := c.table.unaliased_type(arg_info.elem_type)
-				if param.typ.nr_muls() == arg_typ.nr_muls()
-					&& param_info.nr_dims == arg_info.nr_dims && param_elem_type == arg_elem_type {
+				param_nr_muls := param.typ.nr_muls()
+				arg_nr_muls := if call_arg.is_mut {
+					arg_typ.nr_muls() + 1
+				} else {
+					arg_typ.nr_muls()
+				}
+				if param_nr_muls == arg_nr_muls && param_info.nr_dims == arg_info.nr_dims
+					&& param_elem_type == arg_elem_type {
 					continue
 				}
 			}
