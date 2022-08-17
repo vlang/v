@@ -1826,8 +1826,14 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 			g.type_definitions.writeln('EMPTY_STRUCT_DECLARATION;')
 		} else {
 			for i, arg in expr.args {
-				styp := g.typ(arg.typ)
-				g.type_definitions.writeln('\t$styp arg${i + 1};')
+				arg_sym := g.table.sym(arg.typ)
+				if arg_sym.info is ast.FnType {
+					sig := g.fn_var_signature(arg_sym.info.func.return_type, arg_sym.info.func.params, 'arg${i + 1}')
+					g.type_definitions.writeln('\t' + sig + ';')
+				} else {
+					styp := g.typ(arg.typ)
+					g.type_definitions.writeln('\t$styp arg${i + 1};')
+				}
 			}
 		}
 		if need_return_ptr {
