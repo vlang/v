@@ -1,0 +1,9 @@
+fn init_os_args(argc int, argv &&u8) []string
+pub fn getwd() string
+fn max_path_bufffer_size() int
+fn main()
+fn f1()
+fn f2()
+fn f3()
+pub fn join_path(base string, dirs ...string) string
+end
