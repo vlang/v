@@ -1924,7 +1924,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					guarded_include = '#include $node.main'
 				}
 				if node.main.contains('.m') {
-					println("idk what im meant to do here")
+					// Might need to support '#preinclude' for .m files as well but for the moment
+					// this does the same as '#include' for them
 					g.definitions.writeln('\n')
 					if ct_condition.len > 0 {
 						g.definitions.writeln('#if $ct_condition')
