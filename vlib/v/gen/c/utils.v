@@ -69,12 +69,12 @@ fn (mut g Gen) fn_var_signature(return_type ast.Type, params []ast.Param, var_na
 	for j, arg in params {
 		arg_sym := g.table.sym(arg.typ)
 		if arg_sym.info is ast.FnType {
-			arg_sig := g.fn_var_signature(arg_sym.info.func.return_type, arg_sym.info.func.params,
-				'')
+			func := arg_sym.info.func
+			arg_sig := g.fn_var_signature(func.return_type, func.params, '')
 			sig += arg_sig
 		} else {
 			arg_styp := g.typ(arg.typ)
-			sig += '$arg_styp'
+			sig += arg_styp
 		}
 		if j < params.len - 1 {
 			sig += ', '
