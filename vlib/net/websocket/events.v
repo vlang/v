@@ -171,11 +171,13 @@ fn (mut ws Client) send_message_event(msg &Message) {
 	ws.debug_log('sending on_message event')
 	for ev_handler in ws.message_callbacks {
 		if !ev_handler.is_ref {
-			ev_handler.handler(mut ws, msg) or { ws.logger.error('send_message_event error: $err') }
+			go fn(mut ws &Client, msg &Message, ev_handler &MessageEventHandler) {
+				ev_handler.handler(ws, msg) or { ws.logger.error('send_message_event error: $err') }
+			}(mut &ws, &msg, &ev_handler)
 		} else {
-			ev_handler.handler2(mut ws, msg, ev_handler.ref) or {
-				ws.logger.error('send_message_event error: $err')
-			}
+			go fn(mut ws &Client, msg &Message, ev_handler &MessageEventHandler) {
+				ev_handler.handler2(ws, msg, ev_handler.ref) or { ws.logger.error('send_message_event error: $err') }
+			}(mut &ws, &msg, &ev_handler)
 		}
 	}
 }
