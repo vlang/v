@@ -158,7 +158,8 @@ pub mut:
 	building_v         bool
 	autofree           bool // `v -manualfree` => false, `v -autofree` => true; false by default for now.
 	// Disabling `free()` insertion results in better performance in some applications (e.g. compilers)
-	compress bool // when set, use `upx` to compress the generated executable
+	trace_calls bool // -trace-calls true = the transformer stage will generate and inject print calls for tracing function calls
+	compress    bool // when set, use `upx` to compress the generated executable
 	// generating_vh    bool
 	no_builtin       bool   // Skip adding the `builtin` module implicitly. The generated C code may not compile.
 	enable_globals   bool   // allow __global for low level code
@@ -428,6 +429,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-autofree' {
 				res.autofree = true
 				res.build_options << arg
+			}
+			'-trace-calls' {
+				res.trace_calls = true
 			}
 			'-manualfree' {
 				res.autofree = false
