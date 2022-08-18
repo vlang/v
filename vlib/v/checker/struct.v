@@ -563,11 +563,6 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 					node.update_expr.pos())
 			}
 		}
-		if !node.update_expr.is_lvalue() {
-			// cgen will repeat `update_expr` for each field
-			// so enforce an lvalue for efficiency
-			c.error('expression is not an lvalue', node.update_expr.pos())
-		}
 	}
 	return node.typ
 }

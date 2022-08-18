@@ -8,6 +8,20 @@ import v.ast
 const skip_struct_init = ['struct stat', 'struct addrinfo']
 
 fn (mut g Gen) struct_init(node ast.StructInit) {
+	mut is_update_tmp_var := false
+	mut tmp_update_var := ''
+	if node.has_update_expr && !node.update_expr.is_lvalue() {
+		tmp_update_var = g.new_tmp_var()
+		is_update_tmp_var = true
+		s := g.go_before_stmt(0)
+		styp := g.typ(node.update_expr_type)
+		g.empty_line = true
+		g.write('$styp $tmp_update_var = ')
+		g.expr(node.update_expr)
+		g.writeln(';')
+		g.empty_line = false
+		g.write(s)
+	}
 	styp := g.typ(node.typ)
 	mut shared_styp := '' // only needed for shared x := St{...
 	if styp in c.skip_struct_init {
@@ -167,8 +181,8 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 				// unions thould have exactly one explicit initializer
 				continue
 			}
+			field_name := c_name(field.name)
 			if field.typ.has_flag(.optional) {
-				field_name := c_name(field.name)
 				g.write('.$field_name = {EMPTY_STRUCT_INITIALIZATION},')
 				initialized = true
 				continue
@@ -177,7 +191,12 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 				continue
 			}
 			if node.has_update_expr {
-				g.expr(node.update_expr)
+				g.write('.$field_name = ')
+				if is_update_tmp_var {
+					g.write(tmp_update_var)
+				} else {
+					g.expr(node.update_expr)
+				}
 				if node.update_expr_type.is_ptr() {
 					g.write('->')
 				} else {
