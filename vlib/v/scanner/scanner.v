@@ -849,7 +849,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					return s.new_token(.and_assign, '', 2)
 				}
 				afternextc := s.look_ahead(2)
-				if nextc == `&` && afternextc.is_space() {
+				if nextc == `&` && (afternextc.is_space() || afternextc == `!`) {
 					s.pos++
 					return s.new_token(.and, '', 2)
 				}
