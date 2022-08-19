@@ -20,6 +20,11 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	if node.op == .key_is {
 		c.inside_x_is_type = false
 	}
+	if node.op == .amp && left_type.is_bool() && right_type.is_bool() && right_type.is_ptr() {
+		pos := node.pos.extend(node.right.pos())
+		c.error('the right expression should be separated from the `&&` by a space', pos)
+		return ast.bool_type
+	}
 	node.right_type = right_type
 	if left_type.is_number() && !left_type.is_ptr()
 		&& right_type in [ast.int_literal_type, ast.float_literal_type] {
