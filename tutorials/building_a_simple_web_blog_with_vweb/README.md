@@ -384,12 +384,11 @@ in V is very simple:
 ```v oksyntax
 // article.v
 import vweb
-import json
 
 ['/articles'; get]
 pub fn (mut app App) articles() vweb.Result {
 	articles := app.find_all_articles()
-	return app.json(json.encode(articles))
+	return app.json(articles)
 }
 ```
 
