@@ -390,8 +390,6 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	}
 
 	global_g.gen_jsons()
-	global_g.write_optionals()
-	global_g.write_results()
 	global_g.dump_expr_definitions() // this uses global_g.get_str_fn, so it has to go before the below for loop
 	for i := 0; i < global_g.str_types.len; i++ {
 		global_g.final_gen_str(global_g.str_types[i])
@@ -406,6 +404,8 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) string {
 	global_g.gen_array_index_methods()
 	global_g.gen_equality_fns()
 	global_g.gen_free_methods()
+	global_g.write_results()
+	global_g.write_optionals()
 	global_g.sort_globals_consts()
 	global_g.timers.show('cgen unification')
 
