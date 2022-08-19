@@ -24,6 +24,7 @@ on:
   pull_request:
     paths-ignore:
       - '!**'
+      - '**.md'
       - 'vlib/v/gen/native/'
       - 'cmd/tools/builders/**.v'
       - 'vlib/builtin/**.v'
