@@ -2055,16 +2055,21 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	f.expr(node.left)
 	is_one_val_array_init := node.op in [.key_in, .not_in] && node.right is ast.ArrayInit
 		&& (node.right as ast.ArrayInit).exprs.len == 1
+	is_and := node.op == .amp && f.node_str(node.right).starts_with('&')
 	if is_one_val_array_init {
 		// `var in [val]` => `var == val`
 		op := if node.op == .key_in { ' == ' } else { ' != ' }
 		f.write(op)
+	} else if is_and {
+		f.write(' && ')
 	} else {
 		f.write(' $node.op.str() ')
 	}
 	if is_one_val_array_init {
 		// `var in [val]` => `var == val`
 		f.expr((node.right as ast.ArrayInit).exprs[0])
+	} else if is_and {
+		f.write(f.node_str(node.right).trim_string_left('&'))
 	} else {
 		f.expr(node.right)
 	}
