@@ -26,23 +26,31 @@ fn elog(msg string) {
 	eprintln('$time.now().format_ss_micro() | $msg')
 }
 
-fn receive_data(mut con net.TcpConn, mut ctx Context) {
+fn receive_data(mut con net.TcpConn, shared ctx Context) {
 	mut buf := []u8{len: 5}
 	for {
 		bytes := con.read(mut buf) or { -1 }
 		if bytes < 0 {
 			break
 		}
-		ctx.received << buf[0]
+		if bytes > 0 {
+			lock ctx {
+				ctx.received << buf[0]
+			}
+		}
 	}
 	con.close() or {
-		ctx.fail_server_close++
+		lock ctx {
+			ctx.fail_server_close++
+		}
 		return
 	}
-	ctx.ok_server_close++
+	lock ctx {
+		ctx.ok_server_close++
+	}
 }
 
-fn start_server(schannel chan int, mut ctx Context) {
+fn start_server(schannel chan int, shared ctx Context) {
 	elog('server: start_server')
 	mut tcp_listener := net.listen_tcp(net.AddrFamily.ip, ':$xport') or {
 		elog('server: start server error $err')
@@ -54,46 +62,58 @@ fn start_server(schannel chan int, mut ctx Context) {
 	for {
 		mut tcp_con := tcp_listener.accept() or {
 			elog('server: accept error: $err')
-			ctx.fail_server_accepts++
+			lock ctx {
+				ctx.fail_server_accepts++
+			}
 			continue
 		}
-		go receive_data(mut tcp_con, mut ctx)
-		ctx.ok_server_accepts++
+		go receive_data(mut tcp_con, shared ctx)
+		lock ctx {
+			ctx.ok_server_accepts++
+		}
 		elog('server: new tcp connection con.sock.handle: $tcp_con.sock.handle')
 		continue
 	}
 }
 
-fn start_client(i int, mut ctx Context) {
+fn start_client(i int, shared ctx Context) {
 	elog('client [$i]: start')
 	mut tcp_con := net.dial_tcp('127.0.0.1:$xport') or {
 		elog('client [$i]: net.dial_tcp err $err')
-		ctx.fail_client_dials++
+		lock ctx {
+			ctx.fail_client_dials++
+		}
 		return
 	}
-	ctx.ok_client_dials++
+	lock ctx {
+		ctx.ok_client_dials++
+	}
 	elog('client [$i]: conn is connected, con.sock.handle: $tcp_con.sock.handle')
 	tcp_con.write([u8(i)]) or { elog('client [$i]: write failed, err: $err') }
 	time.sleep(1 * time.second)
 	elog('client [$i]: closing connection...')
 	tcp_con.close() or {
 		elog('client [$i]: close failed, err: $err')
-		ctx.fail_client_close++
+		lock ctx {
+			ctx.fail_client_close++
+		}
 		return
 	}
-	ctx.ok_client_close++
+	lock ctx {
+		ctx.ok_client_close++
+	}
 }
 
 fn test_tcp_self_dialing() {
 	elog('>>> start')
 	start_time := time.now()
-	mut ctx := &Context{}
+	shared ctx := &Context{}
 	mut server_channel := chan int{cap: 1}
-	go start_server(server_channel, mut ctx)
+	go start_server(server_channel, shared ctx)
 	svalue := <-server_channel
 	elog('>>> server was started: ${svalue}. Starting clients:')
 	for i := int(0); i < 20; i++ {
-		go start_client(i, mut ctx)
+		go start_client(i, shared ctx)
 		elog('>>> started client $i')
 		// time.sleep(2 * time.millisecond)
 	}
@@ -103,9 +123,13 @@ fn test_tcp_self_dialing() {
 		dt := t - start_time
 		if dt > max_dt {
 			elog('>>> exiting after $dt.milliseconds() ms ...')
-			dump(ctx)
-			assert ctx.fail_client_dials < 2, 'allowed failed client dials, from $ctx.ok_server_accepts connections'
-			assert ctx.received.len > ctx.ok_server_accepts / 2, 'at least half the clients sent some data, that was later received by the server'
+			lock ctx {
+				// TODO: fix `dump(ctx)`, when `shared ctx := Type{}`
+				final_value_for_ctx := ctx // make a value copy as a temporary workaround. TODO: remove when dump(ctx) works.
+				dump(final_value_for_ctx)
+				assert ctx.fail_client_dials < 2, 'allowed failed client dials, from $ctx.ok_server_accepts connections'
+				assert ctx.received.len > ctx.ok_server_accepts / 2, 'at least half the clients sent some data, that was later received by the server'
+			}
 			elog('>>> goodbye')
 			exit(0)
 		}
