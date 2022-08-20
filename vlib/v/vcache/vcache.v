@@ -107,6 +107,16 @@ pub fn (mut cm CacheManager) postfix_with_key2cpath(postfix string, key string) 
 	return res
 }
 
+fn normalise_mod(mod string) string {
+	return mod.replace('/', '.').replace('\\', '.').replace('vlib.', '').trim('.')
+}
+
+pub fn (mut cm CacheManager) mod_postfix_with_key2cpath(mod string, postfix string, key string) string {
+	prefix := cm.key2cpath(key)
+	res := '${prefix}.module.${normalise_mod(mod)}$postfix'
+	return res
+}
+
 pub fn (mut cm CacheManager) exists(postfix string, key string) ?string {
 	fpath := cm.postfix_with_key2cpath(postfix, key)
 	dlog(@FN, 'postfix: $postfix | key: $key | fpath: $fpath')
@@ -116,6 +126,17 @@ pub fn (mut cm CacheManager) exists(postfix string, key string) ?string {
 	return fpath
 }
 
+pub fn (mut cm CacheManager) mod_exists(mod string, postfix string, key string) ?string {
+	fpath := cm.mod_postfix_with_key2cpath(mod, postfix, key)
+	dlog(@FN, 'mod: $mod | postfix: $postfix | key: $key | fpath: $fpath')
+	if !os.exists(fpath) {
+		return error('does not exist yet')
+	}
+	return fpath
+}
+
+//
+
 pub fn (mut cm CacheManager) save(postfix string, key string, content string) ?string {
 	fpath := cm.postfix_with_key2cpath(postfix, key)
 	os.write_file(fpath, content)?
@@ -123,10 +144,26 @@ pub fn (mut cm CacheManager) save(postfix string, key string, content string) ?s
 	return fpath
 }
 
+pub fn (mut cm CacheManager) mod_save(mod string, postfix string, key string, content string) ?string {
+	fpath := cm.mod_postfix_with_key2cpath(mod, postfix, key)
+	os.write_file(fpath, content)?
+	dlog(@FN, 'mod: $mod | postfix: $postfix | key: $key | fpath: $fpath')
+	return fpath
+}
+
+//
+
 pub fn (mut cm CacheManager) load(postfix string, key string) ?string {
 	fpath := cm.exists(postfix, key)?
 	content := os.read_file(fpath)?
 	dlog(@FN, 'postfix: $postfix | key: $key | fpath: $fpath')
+	return content
+}
+
+pub fn (mut cm CacheManager) mod_load(mod string, postfix string, key string) ?string {
+	fpath := cm.mod_exists(mod, postfix, key)?
+	content := os.read_file(fpath)?
+	dlog(@FN, 'mod: $mod | postfix: $postfix | key: $key | fpath: $fpath')
 	return content
 }
 

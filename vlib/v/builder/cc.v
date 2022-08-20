@@ -456,11 +456,12 @@ fn (mut v Builder) setup_output_name() {
 		}
 	}
 	if v.pref.build_mode == .build_module {
-		v.pref.out_name = v.pref.cache_manager.postfix_with_key2cpath('.o', v.pref.path) // v.out_name
+		v.pref.out_name = v.pref.cache_manager.mod_postfix_with_key2cpath(v.pref.path,
+			'.o', v.pref.path) // v.out_name
 		if v.pref.is_verbose {
 			println('Building $v.pref.path to $v.pref.out_name ...')
 		}
-		v.pref.cache_manager.save('.description.txt', v.pref.path, '${v.pref.path:-30} @ $v.pref.cache_manager.vopts\n') or {
+		v.pref.cache_manager.mod_save(v.pref.path, '.description.txt', v.pref.path, '${v.pref.path:-30} @ $v.pref.cache_manager.vopts\n') or {
 			panic(err)
 		}
 		// println('v.ast.imports:')
@@ -889,19 +890,19 @@ fn (mut b Builder) build_thirdparty_obj_files() {
 			rest_of_module_flags := b.get_rest_of_module_cflags(flag)
 			$if windows {
 				if b.pref.ccompiler == 'msvc' {
-					b.build_thirdparty_obj_file_with_msvc(flag.value, rest_of_module_flags)
+					b.build_thirdparty_obj_file_with_msvc(flag.mod, flag.value, rest_of_module_flags)
 				}
 				continue
 			}
-			b.build_thirdparty_obj_file(flag.value, rest_of_module_flags)
+			b.build_thirdparty_obj_file(flag.mod, flag.value, rest_of_module_flags)
 		}
 	}
 }
 
-fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CFlag) {
+fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflags []cflag.CFlag) {
 	obj_path := os.real_path(path)
 	cfile := '${obj_path[..obj_path.len - 2]}.c'
-	opath := v.pref.cache_manager.postfix_with_key2cpath('.o', obj_path)
+	opath := v.pref.cache_manager.mod_postfix_with_key2cpath(mod, '.o', obj_path)
 	mut rebuild_reason_message := '$obj_path not found, building it in $opath ...'
 	if os.exists(opath) {
 		if os.exists(cfile) && os.file_last_mod_unix(opath) < os.file_last_mod_unix(cfile) {
@@ -943,7 +944,7 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 		verror(res.output)
 		return
 	}
-	v.pref.cache_manager.save('.description.txt', obj_path, '${obj_path:-30} @ $cmd\n') or {
+	v.pref.cache_manager.mod_save(mod, '.description.txt', obj_path, '${obj_path:-30} @ $cmd\n') or {
 		panic(err)
 	}
 	if res.output != '' {

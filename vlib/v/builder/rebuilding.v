@@ -193,12 +193,12 @@ fn (mut b Builder) v_build_module(vexe string, imp_path string) {
 }
 
 fn (mut b Builder) rebuild_cached_module(vexe string, imp_path string) string {
-	res := b.pref.cache_manager.exists('.o', imp_path) or {
+	res := b.pref.cache_manager.mod_exists(imp_path, '.o', imp_path) or {
 		if b.pref.is_verbose {
 			println('Cached $imp_path .o file not found... Building .o file for $imp_path')
 		}
 		b.v_build_module(vexe, imp_path)
-		rebuilded_o := b.pref.cache_manager.exists('.o', imp_path) or {
+		rebuilded_o := b.pref.cache_manager.mod_exists(imp_path, '.o', imp_path) or {
 			panic('could not rebuild cache module for $imp_path, error: $err.msg()')
 		}
 		return rebuilded_o
