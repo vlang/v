@@ -675,6 +675,9 @@ pub fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 			is_instance = true
 		}
 		gts := p.table.sym(gt)
+		if gts.kind == .multi_return {
+			p.error_with_pos('cannot use multi return as generic concrete type', type_pos)
+		}
 		if !is_instance && gts.name.len > 1 {
 			p.error_with_pos('generic struct parameter name needs to be exactly one char',
 				type_pos)
