@@ -68,6 +68,7 @@ It is easy, and it takes only a few seconds:
     * [Variable number of arguments](#variable-number-of-arguments)
     * [Anonymous & higher-order functions](#anonymous--higher-order-functions)
     * [Closures](#closures)
+    * [Parameter evaluation order](#parameter-evaluation-order)
 * [References](#references)
 * [Constants](#constants)
 * [Builtin functions](#builtin-functions)
@@ -2526,6 +2527,23 @@ struct Node<T> {
 ```
 
 To dereference a reference, use the `*` operator, just like in C.
+
+### Parameter evaluation order
+
+The evaluation order of the parameters of function calls is *NOT* guaranteed.
+Take for example the following program:
+```v
+fn f(a1 int, a2 int, a3 int) {
+	dump(a1 + a2 + a3)
+}
+
+fn main() {
+	f(dump(100), dump(200), dump(300))
+}
+```
+V currently does not guarantee, that it will print 100, 200, 300 in that order.
+The only guarantee is that 600 (from the body of `f`), will be printed after all of them.
+That *may* change in V 1.0 .
 
 ## Constants
 
