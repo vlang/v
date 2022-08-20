@@ -401,7 +401,9 @@ pub fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSym
 	return true
 }
 
-fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type ast.Type, right_type ast.Type) ast.Type {
+fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, right_type_ ast.Type) ast.Type {
+	left_type := c.unwrap_generic(left_type_)
+	right_type := c.unwrap_generic(right_type_)
 	if !left_type.is_int() {
 		left_sym := c.table.sym(left_type)
 		// maybe it's an int alias? TODO move this to is_int()?
