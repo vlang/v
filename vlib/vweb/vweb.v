@@ -442,7 +442,9 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T, routes map[string]Route) {
 
 	mut reader := io.new_buffered_reader(reader: conn)
 	defer {
-		reader.free()
+		unsafe {
+			reader.free()
+		}
 	}
 
 	page_gen_start := time.ticks()

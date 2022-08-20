@@ -470,7 +470,9 @@ fn frame(x voidptr) {
 
 fn cleanup(x voidptr) {
 	mut app := &App(x)
-	app.free()
+	unsafe {
+		app.free()
+	}
 }
 
 fn fail(error string) {

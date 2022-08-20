@@ -1164,6 +1164,10 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			return ast.int_type
 		}
 	}
+	if !c.is_builtin_mod && !c.inside_unsafe && method_name == 'free' {
+		c.warn('manual memory management with `free()` is only allowed in unsafe code',
+			node.pos)
+	}
 	if left_type == ast.void_type {
 		// No need to print this error, since this means that the variable is unknown,
 		// and there already was an error before.
