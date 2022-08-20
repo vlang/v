@@ -5283,9 +5283,9 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			mr_styp = 'voidptr'
 		}
 		if return_type.has_flag(.result) {
-			g.writeln('if (${cvar_name}.is_error) { /*or block*/ ')
+			g.writeln('if (${cvar_name}.is_error) {') // /*or block*/ ')
 		} else {
-			g.writeln('if (${cvar_name}.state != 0) { /*or block*/ ')
+			g.writeln('if (${cvar_name}.state != 0) {') // /*or block*/ ')
 		}
 	}
 	if or_block.kind == .block {
