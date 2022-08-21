@@ -21,11 +21,11 @@ const (
 	supported_vcs_systems     = ['git', 'hg']
 	supported_vcs_folders     = ['.git', '.hg']
 	supported_vcs_update_cmds = {
-		'git': 'git pull'
+		'git': 'git pull --depth=1 --recurse-submodules'
 		'hg':  'hg pull --update'
 	}
 	supported_vcs_install_cmds = {
-		'git': 'git clone --depth=1'
+		'git': 'git clone --depth=1 --recursive --shallow-submodules'
 		'hg':  'hg clone'
 	}
 	supported_vcs_outdated_steps = {
