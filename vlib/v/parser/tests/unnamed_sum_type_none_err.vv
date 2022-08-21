@@ -1,0 +1,3 @@
+fn number() int | none {
+	return none
+}

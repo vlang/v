@@ -312,6 +312,13 @@ pub fn (mut p Parser) parse_inline_sum_type() ast.Type {
 			p.warn_with_pos('an inline sum type expects a maximum of $parser.maximum_inline_sum_type_variants types ($variants.len were given)',
 				pos)
 		}
+		for variant in variants {
+			variant_sym := p.table.sym(variant.typ)
+			if variant_sym.kind == .none_ {
+				p.error_with_pos('sum type cannot have none as its variant', variant.pos)
+				return ast.Type(0)
+			}
+		}
 		mut variant_names := variants.map(p.table.sym(it.typ).name)
 		variant_names.sort()
 		// deterministic name

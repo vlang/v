@@ -1,0 +1,5 @@
+vlib/v/parser/tests/unnamed_sum_type_none_err.vv:1:19: error: sum type cannot have none as its variant
+    1 | fn number() int | none {
+      |                   ~~~~
+    2 |     return none
+    3 | }

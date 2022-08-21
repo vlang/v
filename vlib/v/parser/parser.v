@@ -3773,9 +3773,8 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	if sum_variants.len > 1 {
 		for variant in sum_variants {
 			variant_sym := p.table.sym(variant.typ)
-			// TODO: implement this check for error too
 			if variant_sym.kind == .none_ {
-				p.error_with_pos('named sum type cannot have none as its variant', variant.pos)
+				p.error_with_pos('sum type cannot have none as its variant', variant.pos)
 				return ast.AliasTypeDecl{}
 			}
 		}
