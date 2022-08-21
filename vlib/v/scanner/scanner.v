@@ -1306,21 +1306,19 @@ fn (mut s Scanner) decode_u_escapes(str string, start int, escapes_pos []int) st
 	for i, pos in escapes_pos {
 		idx := pos - start
 		end_idx := idx + 6 // "\uXXXX".len == 6
-		ss << utf32_to_str(u32(strconv.parse_uint(str[idx + 2..end_idx], 16, 32) or { 0 }))
+		escaped_code_point := strconv.parse_uint(str[idx + 2..end_idx], 16, 32) or { 0 }
+		// Check if Escaped Code Point is invalid or not
+		if rune(escaped_code_point).length_in_bytes() == -1 {
+			s.error('invalid unicode point `$str`')
+		}
+		ss << utf32_to_str(u32(escaped_code_point))
 		if i + 1 < escapes_pos.len {
 			ss << str[end_idx..escapes_pos[i + 1] - start]
 		} else {
 			ss << str[end_idx..]
 		}
 	}
-	str_from_utf := ss.join('')
-	// Check if string has valid Unicode Points
-	for st in str_from_utf.runes() {
-		if st.length_in_bytes() == -1 {
-			s.error('invalid unicode point `$str`')
-		}
-	}
-	return str_from_utf
+	return ss.join('')
 }
 
 fn trim_slash_line_break(s string) string {
