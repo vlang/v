@@ -388,7 +388,7 @@ pub fn (mut v Builder) cc_msvc() {
 	os.rm(out_name_obj) or {}
 }
 
-fn (mut v Builder) build_thirdparty_obj_file_with_msvc(path string, moduleflags []cflag.CFlag) {
+fn (mut v Builder) build_thirdparty_obj_file_with_msvc(mod string, path string, moduleflags []cflag.CFlag) {
 	msvc := v.cached_msvc
 	if msvc.valid == false {
 		verror('Cannot find MSVC on this OS')
