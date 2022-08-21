@@ -11,8 +11,10 @@
   <h2 style="font-family: Menlo, Monospace, 'Courier New'">
     Is V orm still fast?
   </h2>
-
-  <h2 style="font-family: Arial, Helvetica, sans-serif">Insert test</h2>
+  @for orm_stmt_kind in ["insert", "select", "update"]
+  <h2 style="font-family: Arial, Helvetica, sans-serif">
+    ${orm_stmt_kind} benchmark
+  </h2>
 
   <div style="display: flex; flex-direction: row; width: 100%">
     <div
@@ -33,16 +35,14 @@
     </div>
 
     <canvas
-      inserts_from_framework="@inserts_from_framework"
+      id="canvas_${orm_stmt_kind}_id"
+      inserts_from_framework="@{from_framework[orm_stmt_kind]}"
       max_benchmark="@max_benchmark"
       style="border: 1px solid black"
       width="720"
       height="480"
-      id="canvas_insert_id"
     ></canvas>
   </div>
-  <script type="text/javascript" src="draw.js"></script>
-
   <table style="width: 900px; margin-top: 20px">
     <tr>
       <th>Benchmark name</th>
@@ -61,4 +61,6 @@
     </tr>
     @end
   </table>
+  @end
+  <script type="text/javascript" src="draw.js"></script>
 </body>

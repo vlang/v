@@ -3,12 +3,14 @@ module main
 import js.dom
 
 fn get_canvas(elem JS.HTMLElement) JS.HTMLCanvasElement {
+	//  error: `JS.HTMLElement` doesn't implement method `getContext` of interface `JS.HTMLCanvasElement`
 	match elem {
 		JS.HTMLCanvasElement {
 			return elem
 		}
 		else {
-			panic('Not a canvas')
+			JS.console.log("Not canvas")
+			return JS.HTMLCanvasElement{}
 		}
 	}
 }
@@ -39,7 +41,6 @@ mut:
 }
 
 fn (mut state DrawState) draw_bench_chart(color string, time_array []int, max_time int) ? {
-	println(time_array.len)
 	max_height := f64(480)
 	max_width := f64(720)
 
@@ -65,62 +66,65 @@ fn (mut state DrawState) draw_bench_chart(color string, time_array []int, max_ti
 fn main() {
 	document := dom.document
 
-	// clear_btn := document.getElementById('clearButton'.str)?
+	mut canvas_elem := map[string]JS.HTMLElement{}
+	mut canvas := map[string]JS.HTMLCanvasElement{}
 
-	canvas_elem := document.getElementById('canvas_insert_id'.str)?
+	canvas_elem['insert'] = document.getElementById('canvas_insert_id'.str)?
+	JS.console.log("canvas_insert_id")
 
-	canvas := get_canvas(canvas_elem)
-	ctx := canvas.getContext('2d'.str, js_undefined())?
-	context := match ctx {
-		JS.CanvasRenderingContext2D {
-			ctx
+	canvas_elem["select"] = document.getElementById('canvas_select_id'.str)?
+	JS.console.log("canvas_select_id")
+
+	canvas_elem["update"] = document.getElementById('canvas_update_id'.str)?
+	JS.console.log("canvas_update_id")
+
+	// for orm_stmt_kind in ["insert", "select", "update"]{
+	for orm_stmt_kind in ['insert', 'select', 'update'] {
+		// type HTMLElement
+
+		canvas[orm_stmt_kind] = get_canvas(canvas_elem[orm_stmt_kind])
+
+		ctx := canvas[orm_stmt_kind].getContext('2d'.str, js_undefined())?
+
+		context := match ctx {
+			JS.CanvasRenderingContext2D {
+				ctx
+			}
+			else {
+				panic('can not get 2d context')
+			}
 		}
-		else {
-			panic('can not get 2d context')
+
+		mut state := DrawState{context, false, 0, 0}
+
+		mut inserts_from_framework := canvas_elem[orm_stmt_kind].getAttribute('inserts_from_framework'.str) ?
+
+		mut max_benchmark := canvas_elem[orm_stmt_kind].getAttribute('max_benchmark'.str)?
+
+		// -----------------------------------------------------------------------------------------------------------------------------------------------------------------
+		mut obj := FrameworkPlatform{}
+		obj = JS.JSON.parse(tos(inserts_from_framework))
+
+		// Waiting for v implement for loop getting key and value of object in v.js
+		mut attribute_int_values := []int{}
+
+
+		/** v framework */
+		for variable in obj.v_sqlite_memory {
+			attribute_int_values << variable
 		}
-	}
-	mut state := DrawState{context, false, 0, 0}
 
-	mut inserts_from_framework := canvas_elem.getAttribute('inserts_from_framework'.str) or {
-		println('Não pegou o attributo')
-		// continue // if attribute not exist, jump.
-		panic(err)
-	}
+		state.draw_bench_chart('gray', attribute_int_values, tos(max_benchmark).int())?
+		attribute_int_values = []
 
-	mut max_benchmark := canvas_elem.getAttribute('max_benchmark'.str) or {
-		println('Não pegou o attributo')
-		// continue // if attribute not exist, jump.
-		panic(err)
-	}
+		/** typescript framework */
 
-	mut obj := FrameworkPlatform{}
-	obj = JS.JSON.parse(tos(inserts_from_framework))
+		for variable in obj.typescript_sqlite_memory {
+			attribute_int_values << variable
+		}
 
-	// Waiting for v implement for loop getting key and value of object in v.js
-	mut attribute_int_values := []int{}
-	for variable in obj.v_sqlite_memory {
-		attribute_int_values << variable
-	}
-	state.draw_bench_chart('gray', attribute_int_values, tos(max_benchmark).int()) or {
-		println(err)
-	}
-	attribute_int_values = []
+		state.draw_bench_chart('red', attribute_int_values, tos(max_benchmark).int())?
 
-	// for variable in obj.v_sqlite_file {
-	// 	attribute_int_values << variable
-	// }
-	// state.draw_bench_chart('black', attribute_int_values, 1204530) or { println(err) }
-	// attribute_int_values=[]
-
-	for variable in obj.typescript_sqlite_memory {
-		attribute_int_values << variable
+		attribute_int_values = []
 	}
-	state.draw_bench_chart('red', attribute_int_values, tos(max_benchmark).int()) or {
-		println(err)
-	}
-	attribute_int_values = []
-
-	// clear_btn.addEventListener('click'.str, fn [mut state, canvas] (_ JS.Event) {
-	// 	state.context.clearRect(0, 0, canvas.width, canvas.height)
-	// }, JS.EventListenerOptions{})
 }

@@ -66,6 +66,24 @@ pub fn (mut app App) sqlite_memory(count int) vweb.Result {
 		insert_stopwatchs << int(sw.end - sw.start)
 	}
 
+	for i := 0; i < count; i++ {
+		sw.start()
+		result := sql db {
+			select from Task
+		}
+		sw.stop()
+		select_stopwatchs << int(sw.end - sw.start)
+	}
+
+	for i := 0; i < count; i++ {
+		sw.start()
+		sql db {
+			update Task set title = 'b', status = 'finish' where id == i
+		}
+		sw.stop()
+		update_stopwatchs << int(sw.end - sw.start)
+	}
+
 	sql db {
 		drop table Task
 	}
