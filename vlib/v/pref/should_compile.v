@@ -161,6 +161,10 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 	if prefs.backend != .native && file.ends_with('_native.v') {
 		return false
 	}
+	if prefs.building_v && prefs.output_cross_c && file.ends_with('_windows.v') {
+		// TODO temp hack to make msvc_windows.v work with -os cross
+		return true
+	}
 	if prefs.os == .windows && (file.ends_with('_nix.c.v') || file.ends_with('_nix.v')) {
 		return false
 	}
