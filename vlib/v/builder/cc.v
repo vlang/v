@@ -891,8 +891,8 @@ fn (mut b Builder) build_thirdparty_obj_files() {
 			$if windows {
 				if b.pref.ccompiler == 'msvc' {
 					b.build_thirdparty_obj_file_with_msvc(flag.mod, flag.value, rest_of_module_flags)
+					continue
 				}
-				continue
 			}
 			b.build_thirdparty_obj_file(flag.mod, flag.value, rest_of_module_flags)
 		}
