@@ -32,9 +32,11 @@ pub mut:
 	pref                &pref.Preferences
 	module_search_paths []string
 	parsed_files        []&ast.File
-	cached_msvc         MsvcResult
-	table               &ast.Table
-	ccoptions           CcompilerOptions
+	//$if windows {
+	cached_msvc MsvcResult
+	//}
+	table     &ast.Table
+	ccoptions CcompilerOptions
 	//
 	// Note: changes in mod `builtin` force invalidation of every other .v file
 	mod_invalidates_paths map[string][]string // changes in mod `os`, invalidate only .v files, that do `import os`
@@ -56,12 +58,15 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 		util.emanager.set_support_color(false)
 	}
 	table.pointer_size = if pref.m64 { 8 } else { 4 }
-	msvc := find_msvc(pref.m64) or {
-		if pref.ccompiler == 'msvc' {
-			// verror('Cannot find MSVC on this OS')
-		}
-		MsvcResult{
-			valid: false
+	mut msvc := MsvcResult{}
+	$if windows {
+		msvc = find_msvc(pref.m64) or {
+			if pref.ccompiler == 'msvc' {
+				// verror('Cannot find MSVC on this OS')
+			}
+			MsvcResult{
+				valid: false
+			}
 		}
 	}
 	util.timing_set_should_print(pref.show_timings || pref.is_verbose)

@@ -39,39 +39,6 @@ You can also use `v doctor`, to see what V knows about your current environment.
 You can also seek #help on Discord: https://discord.gg/vlang
 '
 
-pub fn (mut v Builder) find_win_cc() ? {
-	$if !windows {
-		return
-	}
-	ccompiler_version_res := os.execute('${os.quoted_path(v.pref.ccompiler)} -v')
-	if ccompiler_version_res.exit_code != 0 {
-		if v.pref.is_verbose {
-			println('$v.pref.ccompiler not found, looking for msvc...')
-		}
-		find_msvc(v.pref.m64) or {
-			if v.pref.is_verbose {
-				println('msvc not found, looking for thirdparty/tcc...')
-			}
-			vpath := os.dir(pref.vexe_path())
-			thirdparty_tcc := os.join_path(vpath, 'thirdparty', 'tcc', 'tcc.exe')
-			tcc_version_res := os.execute('${os.quoted_path(thirdparty_tcc)} -v')
-			if tcc_version_res.exit_code != 0 {
-				if v.pref.is_verbose {
-					println('tcc not found')
-				}
-				return error('tcc not found')
-			}
-			v.pref.ccompiler = thirdparty_tcc
-			v.pref.ccompiler_type = .tinyc
-			return
-		}
-		v.pref.ccompiler = 'msvc'
-		v.pref.ccompiler_type = .msvc
-		return
-	}
-	v.pref.ccompiler_type = pref.cc_from_string(v.pref.ccompiler)
-}
-
 fn (mut v Builder) show_c_compiler_output(res os.Result) {
 	println('======== C Compiler output ========')
 	println(res.output)
@@ -593,9 +560,11 @@ pub fn (mut v Builder) cc() {
 			v.ccoptions.pre_args << '-c'
 		}
 		v.handle_usecache(vexe)
-		if ccompiler == 'msvc' {
-			v.cc_msvc()
-			return
+		$if windows {
+			if ccompiler == 'msvc' {
+				v.cc_msvc()
+				return
+			}
 		}
 		//
 		all_args := v.all_args(v.ccoptions)
@@ -918,11 +887,13 @@ fn (mut b Builder) build_thirdparty_obj_files() {
 	for flag in b.get_os_cflags() {
 		if flag.value.ends_with('.o') {
 			rest_of_module_flags := b.get_rest_of_module_cflags(flag)
-			if b.pref.ccompiler == 'msvc' {
-				b.build_thirdparty_obj_file_with_msvc(flag.value, rest_of_module_flags)
-			} else {
-				b.build_thirdparty_obj_file(flag.value, rest_of_module_flags)
+			$if windows {
+				if b.pref.ccompiler == 'msvc' {
+					b.build_thirdparty_obj_file_with_msvc(flag.value, rest_of_module_flags)
+				}
+				continue
 			}
+			b.build_thirdparty_obj_file(flag.value, rest_of_module_flags)
 		}
 	}
 }

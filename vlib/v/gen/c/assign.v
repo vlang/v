@@ -270,7 +270,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				} else {
 					// str += str2 => `str = string__plus(str, str2)`
 					g.expr(left)
-					g.write(' = /*f*/string__plus(')
+					g.write(' = string__plus(')
 				}
 				g.is_assign_lhs = false
 				str_add = true
