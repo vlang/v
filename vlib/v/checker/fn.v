@@ -307,7 +307,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 
 		if node.return_type != ast.void_type_idx
-			&& node.return_type.clear_flag(.optional) != ast.void_type_idx {
+			&& node.return_type.clear_flag(.optional) != ast.void_type_idx
+			&& node.return_type.clear_flag(.result) != ast.void_type_idx {
 			c.error('test functions should either return nothing at all, or be marked to return `?`',
 				node.pos)
 		}
@@ -1318,6 +1319,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 		node.is_noreturn = method.is_noreturn
 		node.is_ctor_new = method.is_ctor_new
+		node.return_type = method.return_type
 		if !method.is_pub && !c.pref.is_test && method.mod != c.mod {
 			// If a private method is called outside of the module
 			// its receiver type is defined in, show an error.
@@ -1550,21 +1552,16 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			c.table.register_fn_concrete_types(method.fkey(), concrete_types)
 		}
 
-		// resolve return generics struct to concrete type
-		if method.generic_names.len > 0 && method.return_type.has_flag(.generic)
-			&& !isnil(c.table.cur_fn) && c.table.cur_fn.generic_names.len == 0 {
-			node.return_type = c.table.unwrap_generic_type(method.return_type, method.generic_names,
-				concrete_types)
-		} else {
-			node.return_type = method.return_type
-		}
-		if node.concrete_types.len > 0 && method.return_type != 0 && !isnil(c.table.cur_fn)
-			&& c.table.cur_fn.generic_names.len == 0 {
+		if node.concrete_types.len > 0 && node.concrete_types.all(!it.has_flag(.generic))
+			&& method.return_type.has_flag(.generic) && method.generic_names.len > 0
+			&& method.generic_names.len == node.concrete_types.len {
 			if typ := c.table.resolve_generic_to_concrete(method.return_type, method.generic_names,
 				concrete_types)
 			{
 				node.return_type = typ
-				return typ
+			} else {
+				node.return_type = c.table.unwrap_generic_type(method.return_type, method.generic_names,
+					concrete_types)
 			}
 		}
 		if node.concrete_types.len > 0 && method.generic_names.len == 0 {
@@ -1578,9 +1575,8 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 					}
 				}
 			}
-			return node.return_type
 		}
-		return method.return_type
+		return node.return_type
 	}
 	// TODO: str methods
 	if method_name == 'str' {
