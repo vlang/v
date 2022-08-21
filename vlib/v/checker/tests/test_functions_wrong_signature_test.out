@@ -1,12 +1,12 @@
-vlib/v/checker/tests/test_functions_wrong_signature_test.vv:9:1: error: test functions should either return nothing at all, or be marked to return `?`
-    7 | 
+vlib/v/checker/tests/test_functions_wrong_signature_test.vv:9:1: error: test functions should either return nothing at all, or be marked to return `?` or `!`
+    7 |
     8 | // should be disallowed:
     9 | fn test_returning_int() int {
       | ~~~~~~~~~~~~~~~~~~~~~~~~~~~
    10 | }
    11 |
 vlib/v/checker/tests/test_functions_wrong_signature_test.vv:19:1: error: test functions should take 0 parameters
-   17 | 
+   17 |
    18 | // should be disallowed:
    19 | fn test_take_parameters(v int) {
       | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
