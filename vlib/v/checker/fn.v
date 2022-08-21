@@ -309,7 +309,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		if node.return_type != ast.void_type_idx
 			&& node.return_type.clear_flag(.optional) != ast.void_type_idx
 			&& node.return_type.clear_flag(.result) != ast.void_type_idx {
-			c.error('test functions should either return nothing at all, or be marked to return `?`',
+			c.error('test functions should either return nothing at all, or be marked to return `?` or `!`',
 				node.pos)
 		}
 	}
