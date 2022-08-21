@@ -6,22 +6,22 @@ mut:
 }
 
 // checks the element is exists.
-fn (set Set<T>) exists(element T) bool {
+pub fn (set Set<T>) exists(element T) bool {
 	return element in set.elements
 }
 
 // adds the element to set, if it is not present already.
-fn (mut set Set<T>) add(element T) {
+pub fn (mut set Set<T>) add(element T) {
 	set.elements[element] = 1
 }
 
 // removes the element from set.
-fn (mut set Set<T>) remove(element T) {
+pub fn (mut set Set<T>) remove(element T) {
 	set.elements.delete(element)
 }
 
 // pick returns an arbitrary element of set, if set is not empty.
-fn (mut set Set<T>) pick() ?T {
+pub fn (mut set Set<T>) pick() ?T {
 	for k, _ in set.elements {
 		return k
 	}
@@ -29,25 +29,25 @@ fn (mut set Set<T>) pick() ?T {
 }
 
 // rest returns the set consisting of all elements except for the arbitrary element.
-fn (mut set Set<T>) rest() ?[]T {
+pub fn (mut set Set<T>) rest() ?[]T {
 	element := set.pick()?
 	return set.elements.keys().filter(it != element)
 }
 
 // pop returns an arbitrary element and deleting it from set.
-fn (mut set Set<T>) pop() ?T {
+pub fn (mut set Set<T>) pop() ?T {
 	element := set.pick()?
 	set.elements.delete(element)
 	return element
 }
 
 // delete all elements of set.
-fn (mut set Set<T>) clear() {
+pub fn (mut set Set<T>) clear() {
 	set.elements = map[T]u8{}
 }
 
 // checks whether the two given sets are equal (i.e. contain all and only the same elements).
-fn (mut l Set<T>) equal(r Set<T>) bool {
+pub fn (mut l Set<T>) equal(r Set<T>) bool {
 	if l.elements.len != r.elements.len {
 		return false
 	}
@@ -60,31 +60,31 @@ fn (mut l Set<T>) equal(r Set<T>) bool {
 }
 
 // checks whether the set is empty.
-fn (mut set Set<T>) is_empty() bool {
+pub fn (mut set Set<T>) is_empty() bool {
 	return set.size() == 0
 }
 
 // size returns the number of elements in the set.
-fn (mut set Set<T>) size() int {
+pub fn (mut set Set<T>) size() int {
 	return set.elements.len
 }
 
 // copy returns a copy of all the elements in the set.
-fn (mut set Set<T>) copy() Set<T> {
+pub fn (mut set Set<T>) copy() Set<T> {
 	return Set<T>{
 		elements: set.elements.clone()
 	}
 }
 
 // add_all adds the whole `elements` array to the set
-fn (mut set Set<T>) add_all(elements []T) {
+pub fn (mut set Set<T>) add_all(elements []T) {
 	for element in elements {
 		set.add(element)
 	}
 }
 
 // @union returns the union of the two sets.
-fn (mut l Set<T>) @union(r Set<T>) Set<T> {
+pub fn (mut l Set<T>) @union(r Set<T>) Set<T> {
 	mut set := l
 	for e, _ in r.elements {
 		set.add(e)
@@ -93,7 +93,7 @@ fn (mut l Set<T>) @union(r Set<T>) Set<T> {
 }
 
 // intersection returns the intersection of sets.
-fn (mut l Set<T>) intersection(r Set<T>) Set<T> {
+pub fn (mut l Set<T>) intersection(r Set<T>) Set<T> {
 	mut set := l
 	for e, _ in l.elements {
 		if !r.exists(e) {
@@ -109,7 +109,7 @@ fn (mut l Set<T>) intersection(r Set<T>) Set<T> {
 }
 
 // difference returns the difference of sets.
-fn (mut l Set<T>) difference(r Set<T>) Set<T> {
+pub fn (mut l Set<T>) difference(r Set<T>) Set<T> {
 	mut set := l
 	for e, _ in l.elements {
 		if r.exists(e) {
@@ -120,7 +120,7 @@ fn (mut l Set<T>) difference(r Set<T>) Set<T> {
 }
 
 // subset returns true if the set `r` is a subset of the set `l`.
-fn (mut l Set<T>) subset(r Set<T>) bool {
+pub fn (mut l Set<T>) subset(r Set<T>) bool {
 	for e, _ in r.elements {
 		if e !in l.elements {
 			return false
