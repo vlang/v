@@ -21,7 +21,7 @@ const (
 	supported_vcs_systems     = ['git', 'hg']
 	supported_vcs_folders     = ['.git', '.hg']
 	supported_vcs_update_cmds = {
-		'git': 'git pull --depth=1 --recurse-submodules'
+		'git': 'git pull --recurse-submodules' // pulling with `--depth=1` leads to conflicts, when the upstream is more than 1 commit newer
 		'hg':  'hg pull --update'
 	}
 	supported_vcs_install_cmds = {
