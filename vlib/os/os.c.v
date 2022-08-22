@@ -738,6 +738,41 @@ pub fn is_link(path string) bool {
 	}
 }
 
+struct PathKind {
+mut:
+	is_dir  bool
+	is_link bool
+}
+
+fn kind_of_existing_path(path string) PathKind {
+	mut res := PathKind{}
+	$if windows {
+		attr := C.GetFileAttributesW(path.to_wide())
+		if attr != u32(C.INVALID_FILE_ATTRIBUTES) {
+			if (int(attr) & C.FILE_ATTRIBUTE_DIRECTORY) != 0 {
+				res.is_dir = true
+			}
+			if (int(attr) & 0x400) != 0 {
+				res.is_link = true
+			}
+		}
+	} $else {
+		statbuf := C.stat{}
+		// ref: https://code.woboq.org/gcc/include/sys/stat.h.html
+		res_stat := unsafe { C.lstat(&char(path.str), &statbuf) }
+		if res_stat == 0 {
+			kind := (int(statbuf.st_mode) & s_ifmt)
+			if kind == s_ifdir {
+				res.is_dir = true
+			}
+			if kind == s_iflnk {
+				res.is_link = true
+			}
+		}
+	}
+	return res
+}
+
 // chdir changes the current working directory to the new directory in `path`.
 pub fn chdir(path string) ? {
 	ret := $if windows { C._wchdir(path.to_wide()) } $else { C.chdir(&char(path.str)) }
