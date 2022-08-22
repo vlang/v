@@ -619,7 +619,11 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 	} else if left_sym.kind == .sum_type {
 		g.write('_typ $cmp_op ')
 	}
-	g.expr(node.right)
+	if node.right is ast.None {
+		g.write('$ast.none_type.idx() /* none */')
+	} else {
+		g.expr(node.right)
+	}
 }
 
 fn (mut g Gen) gen_interface_is_op(node ast.InfixExpr) {
