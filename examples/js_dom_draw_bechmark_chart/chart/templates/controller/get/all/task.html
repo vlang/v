@@ -7,23 +7,28 @@
     }
   </style>
 
-  <title>Is V orm still fast?</title>
-  <h2
-    style="
-      font-family: Menlo, Monospace, 'Courier New';
-      margin-left: 30px;
-      margin-top: 30px;
-    "
-  >
-    Is V orm still fast?
-  </h2>
+  <title>Is V orm still fast? ${v_version}</title>
+  <div style="display: flex; align-items: center">
+    <h2
+      style="
+        font-family: Menlo, Monospace, 'Courier New';
+        margin-left: 30px;
+        margin-top: 30px;
+      "
+    >
+      Is V orm still fast?
+    </h2>
+
+    <img src="./../../../../favicon.ico" height="35px" />
+    <h5 style="font-family: Menlo, Monospace, 'Courier New'; color: #3b7bbf">
+      ${v_version}
+    </h5>
+  </div>
   <div style="display: flex; flex-direction: row; flex-wrap: wrap">
     @for orm_stmt_kind in orm_stmt_kinds
-
     <!-- <div style="display: flex; flex-direction: column; "> -->
     <div
       style="
-        border: 1px solid grey;
         border-radius: 15px;
         padding: 15px;
         margin: 15px;

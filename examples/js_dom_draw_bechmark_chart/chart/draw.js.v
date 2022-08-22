@@ -9,7 +9,7 @@ fn get_canvas(elem JS.HTMLElement) JS.HTMLCanvasElement {
 			return elem
 		}
 		else {
-			JS.console.log("Not canvas")
+			JS.console.log('Not canvas')
 			return JS.HTMLCanvasElement{}
 		}
 	}
@@ -70,13 +70,13 @@ fn main() {
 	mut canvas := map[string]JS.HTMLCanvasElement{}
 
 	canvas_elem['insert'] = document.getElementById('canvas_insert_id'.str)?
-	JS.console.log("canvas_insert_id")
+	JS.console.log('canvas_insert_id')
 
-	canvas_elem["select"] = document.getElementById('canvas_select_id'.str)?
-	JS.console.log("canvas_select_id")
+	canvas_elem['select'] = document.getElementById('canvas_select_id'.str)?
+	JS.console.log('canvas_select_id')
 
-	canvas_elem["update"] = document.getElementById('canvas_update_id'.str)?
-	JS.console.log("canvas_update_id")
+	canvas_elem['update'] = document.getElementById('canvas_update_id'.str)?
+	JS.console.log('canvas_update_id')
 
 	// for orm_stmt_kind in ["insert", "select", "update"]{
 	for orm_stmt_kind in ['insert', 'select', 'update'] {
@@ -97,7 +97,7 @@ fn main() {
 
 		mut state := DrawState{context, false, 0, 0}
 
-		mut inserts_from_framework := canvas_elem[orm_stmt_kind].getAttribute('inserts_from_framework'.str) ?
+		mut inserts_from_framework := canvas_elem[orm_stmt_kind].getAttribute('inserts_from_framework'.str)?
 
 		mut max_benchmark := canvas_elem[orm_stmt_kind].getAttribute('max_benchmark'.str)?
 
@@ -108,8 +108,7 @@ fn main() {
 		// Waiting for v implement for loop getting key and value of object in v.js
 		mut attribute_int_values := []int{}
 
-
-		/** v framework */
+		//* v framework
 		for variable in obj.v_sqlite_memory {
 			attribute_int_values << variable
 		}
@@ -117,7 +116,7 @@ fn main() {
 		state.draw_bench_chart('gray', attribute_int_values, tos(max_benchmark).int())?
 		attribute_int_values = []
 
-		/** typescript framework */
+		//* typescript framework
 
 		for variable in obj.typescript_sqlite_memory {
 			attribute_int_values << variable
