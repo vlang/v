@@ -57,6 +57,7 @@ pub fn (mut app App) sqlite_memory(count int) vweb.Result {
 		status: 'done'
 	}
 
+	// inserts
 	for i := 0; i < count; i++ {
 		sw.start()
 		sql db {
@@ -66,6 +67,7 @@ pub fn (mut app App) sqlite_memory(count int) vweb.Result {
 		insert_stopwatchs << int(sw.end - sw.start)
 	}
 
+	// selects
 	for i := 0; i < count; i++ {
 		sw.start()
 		result := sql db {
@@ -75,6 +77,7 @@ pub fn (mut app App) sqlite_memory(count int) vweb.Result {
 		select_stopwatchs << int(sw.end - sw.start)
 	}
 
+	// updates
 	for i := 0; i < count; i++ {
 		sw.start()
 		sql db {
