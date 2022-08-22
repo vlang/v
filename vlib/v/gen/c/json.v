@@ -436,7 +436,7 @@ fn (mut g Gen) gen_struct_enc_dec(type_info ast.TypeInfo, styp string, mut enc s
 					}
 					dec.writeln('\t}')
 				} else {
-					g.gen_json_for_type(field.typ)
+					g.gen_json_for_type(alias.parent_type)
 					tmp := g.new_tmp_var()
 					gen_js_get_opt(dec_name, field_type, styp, tmp, name, mut dec, is_required)
 					dec.writeln('\tif (jsonroot_$tmp) {')
