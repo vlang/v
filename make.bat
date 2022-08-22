@@ -130,8 +130,7 @@ if %ERRORLEVEL% NEQ 0 goto :compile_error
 echo  ^> Compiling .\v.exe with itself
 v.exe -keepc -g -showcc -cc "!tcc_exe!" -cflags -Bthirdparty/tcc -o v2.exe cmd/v
 if %ERRORLEVEL% NEQ 0 goto :clang_strap
-del v.exe
-move v2.exe v.exe
+call :move_v2_to_v
 goto :success
 
 :clang_strap
@@ -153,8 +152,7 @@ if %ERRORLEVEL% NEQ 0 (
 echo  ^> Compiling .\v.exe with itself
 v.exe -keepc -g -showcc -cc clang -o v2.exe cmd/v
 if %ERRORLEVEL% NEQ 0 goto :compile_error
-del v.exe
-move v2.exe v.exe
+call :move_v2_to_v
 goto :success
 
 :gcc_strap
@@ -176,8 +174,7 @@ if %ERRORLEVEL% NEQ 0 (
 echo  ^> Compiling .\v.exe with itself
 v.exe -keepc -g -showcc -cc gcc -o v2.exe cmd/v
 if %ERRORLEVEL% NEQ 0 goto :compile_error
-del v.exe
-move v2.exe v.exe
+call :move_v2_to_v
 goto :success
 
 :msvc_strap
@@ -219,8 +216,7 @@ echo  ^> Compiling .\v.exe with itself
 v.exe -keepc -g -showcc -cc msvc -o v2.exe cmd/v
 del %ObjFile%
 if %ERRORLEVEL% NEQ 0 goto :compile_error
-del v.exe
-move v2.exe v.exe
+call :move_v2_to_v
 goto :success
 
 :download_tcc
@@ -332,4 +328,11 @@ exit /b 0
 :eof
 popd
 endlocal
+exit /b 0
+
+:move_v2_to_v
+del v.exe
+REM sleep for at most 100ms
+ping 192.0.2.1 -n 1 -w 100 >nul
+move v2.exe v.exe
 exit /b 0
