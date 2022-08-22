@@ -6,6 +6,7 @@ import json
 import arrays
 import net.http
 import math
+import v.util.version
 
 [table: 'benchmark']
 struct Task {
@@ -69,50 +70,41 @@ fn new_app() &App {
 
 ['/'; get]
 pub fn (mut app App) controller_get_all_task() ?vweb.Result {
-	orm_stmt_kinds := [ "insert", "select", "update"]
+	v_version := version.full_v_version(true)
+	orm_stmt_kinds := ['insert', 'select', 'update']
+
 	mut attribute_names := map[string][]string{}
 	// Used to garante the chart proposionalite
 	mut max_benchmark := map[string]int{}
-	chart_colors := ['gray', 'red', 'orange', 'purple', 'red', 'orange', 'purple']
-
-	mut framework_platform := map[string]map[string][]int
-	framework_platform["insert"] = insert_framework_benchmark_times().to_map()
-	framework_platform["select"] = select_framework_benchmark_times().to_map()
-	framework_platform["update"] = update_framework_benchmark_times().to_map()
-
 	mut from_framework := map[string]string{}
+	mut maxs := map[string][]int{}
+	mut framework_platform := map[string]map[string][]int{}
+	mut table := map[string]map[string]map[string]string{}
 
+	chart_colors := ['gray', 'red', 'orange', 'purple', 'red', 'orange', 'purple']
+	for orm_stmt_kind in orm_stmt_kinds {
+		match orm_stmt_kind {
+			'insert' {
+				framework_platform[orm_stmt_kind] = insert_framework_benchmark_times().to_map()
+			}
+			'select' {
+				framework_platform[orm_stmt_kind] = select_framework_benchmark_times().to_map()
+			}
+			'update' {
+				framework_platform[orm_stmt_kind] = update_framework_benchmark_times().to_map()
+			}
+			else {}
+		}
 
-	mut maxs := map[string][]int{} //mut maxs := map[string][]int{}
-	for key, values in framework_platform["insert"] {
-		attribute_names["insert"] << key
-		maxs["insert"] << arrays.max(values)?
+		for key, values in framework_platform[orm_stmt_kind] {
+			attribute_names[orm_stmt_kind] << key
+			maxs[orm_stmt_kind] << arrays.max(values)?
+		}
+
+		max_benchmark[orm_stmt_kind] = arrays.max(maxs[orm_stmt_kind])?
+		from_framework[orm_stmt_kind] = json.encode(framework_platform[orm_stmt_kind])
+		table[orm_stmt_kind] = gen_table_info(attribute_names[orm_stmt_kind], framework_platform[orm_stmt_kind])
 	}
-	for key, values in framework_platform["select"] {
-		attribute_names["select"] << key
-		maxs["select"] << arrays.max(values)?
-	}
-	for key, values in framework_platform["update"] {
-		attribute_names["update"] << key
-		maxs["update"] << arrays.max(values)?
-	}
-
-	max_benchmark["insert"] = arrays.max(maxs["insert"])?
-	max_benchmark["select"] = arrays.max(maxs["select"])?
-	max_benchmark["update"] = arrays.max(maxs["update"])?
-
-	// inserts_from_framework := json.encode(framework_platform) // string// json encoded
-	// for orm_stmt_kind in orm_stmt_kinds {
-		
-	// from_framework[orm_stmt_kind] = json.encode(insert_framework_benchmark_times().to_map()) // string// json encoded
-	// }
-	from_framework["insert"] = json.encode(framework_platform["insert"])
-	from_framework["select"] = json.encode(framework_platform["select"]) // string// json encoded
-	from_framework["update"] = json.encode(framework_platform["update"]) // string// json encoded
-	mut table :=map[string]map[string]map[string]string 
-	table["insert"]=gen_table_info(attribute_names["insert"], framework_platform["insert"])
-	table["select"]=gen_table_info(attribute_names["select"], framework_platform["select"])
-	table["update"]=gen_table_info(attribute_names["update"], framework_platform["update"])
 
 	return $vweb.html()
 }
@@ -243,17 +235,15 @@ fn gen_table_info(attribute_names []string, framework_platform map[string][]int)
 		ten_perc_max_fast[name] = int(ten_perc_max / f64(ten_perc_max_times[name]))
 		min_fast[name] = int(min / f64(min_times[name]))
 		ten_perc_min_fast[name] = int(ten_perc_min / f64(ten_perc_min_times[name]))
-		// max_fast[name] = int(100 - (f64(max_times[name] * 100) / max))
-		// ten_perc_max_fast[name] = int(100 - (f64(ten_perc_max_times[name] * 100) / ten_perc_max))
-		// min_fast[name] = int(100 - (f64(min_times[name] * 100) / min))
-		// ten_perc_min_fast[name] = int(100 - (f64(ten_perc_min_times[name] * 100) / ten_perc_min))
 	}
 
 	for name in attribute_names {
-		table[name]['max.'] = '${math.round_sig(f64(max_times[name])/1000000,2)} ms (${max_fast[name]}x faster)'
-		table[name]['10% max.'] = '${math.round_sig(f64(ten_perc_max_times[name])/1000000,2)} ms (${ten_perc_max_fast[name]}x faster)'
-		table[name]['min.'] = '${math.round_sig(f64(min_times[name])/1000000,2)} ms (${min_fast[name]}x faster)'
-		table[name]['10% min.'] = '${math.round_sig(f64(ten_perc_min_times[name])/1000000,2)} ms (${ten_perc_min_fast[name]}x faster)'
+		table[name]['max.'] = '${math.round_sig(f64(max_times[name]) / 1000000, 2)} ms (${max_fast[name]}x faster)'
+		table[name]['10% max.'] = '${math.round_sig(f64(ten_perc_max_times[name]) / 1000000,
+			2)} ms (${ten_perc_max_fast[name]}x faster)'
+		table[name]['min.'] = '${math.round_sig(f64(min_times[name]) / 1000000, 2)} ms (${min_fast[name]}x faster)'
+		table[name]['10% min.'] = '${math.round_sig(f64(ten_perc_min_times[name]) / 1000000,
+			2)} ms (${ten_perc_min_fast[name]}x faster)'
 	}
 	return table
 }
