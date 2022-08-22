@@ -126,7 +126,7 @@ fn new_array_from_c_array_no_alloc(len int, cap int, elm_size int, c_array voidp
 	return arr
 }
 
-// carray_to_varray converts a C byte array into a V `u8` array.
+// carray_to_varray copies a C byte array into a V `u8` array.
 // See also: `cstring_to_vstring`
 [unsafe]
 pub fn carray_to_varray(c_array voidptr, c_array_len int) []u8 {
