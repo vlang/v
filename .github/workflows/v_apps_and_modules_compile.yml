@@ -39,6 +39,8 @@ jobs:
           v -prod /tmp/vls/cmd/vls
           echo "Build VLS with -gc boehm -skip-unused"
           v -gc boehm -skip-unused /tmp/vls/cmd/vls
+          echo "Test VLS with gcc"
+          v -cc gcc test /tmp/vls
 
       - name: Build V Coreutils
         run: |
