@@ -10,7 +10,7 @@ type Response = {
 @Entity("benchmark")
 export class Task {
   @PrimaryGeneratedColumn()
-  id?: Number;
+  id?: number;
 
   @Column("text")
   title!: string;
@@ -37,6 +37,7 @@ export async function sqlite_memory(count: Number): Promise<Response> {
 
   const taskRepository = appDataSource.getRepository(Task);
 
+  // inserts
   for (let index = 0; index < count; index++) {
     const task_model = new Task();
     task_model.title = "a";
@@ -46,9 +47,30 @@ export async function sqlite_memory(count: Number): Promise<Response> {
     await taskRepository.save(task_model).then((value) => {
       const insert_stopwatch = (sw.now() - start) * 1000000;
       insert_stopwatchs.push(Math.floor(insert_stopwatch)); //nanoseconds
-    }); //não quebra
+    });
+  }
 
-    // console.log(`insert_stopwatchs: ${insert_stopwatchs}`);
+  // selects
+  for (let index = 0; index < count; index++) {
+    const start = sw.now();
+    await taskRepository.find().then((value) => {
+      const select_stopwatch = (sw.now() - start) * 1000000;
+      select_stopwatchs.push(Math.floor(select_stopwatch)); //nanoseconds
+    });
+  }
+
+  // updates
+  for (let index = 0; index < count; index++) {
+    const taskToUpdate = await taskRepository.findOneBy({ id: 1 });
+
+    taskToUpdate!.title = "b";
+    taskToUpdate!.status = "finish";
+
+    const start = sw.now();
+    await taskRepository.save(taskToUpdate!).then((value) => {
+      const update_stopwatch = (sw.now() - start) * 1000000;
+      update_stopwatchs.push(Math.floor(update_stopwatch)); //nanoseconds
+    });
   }
 
   // taskRepository.find().then((value) => {

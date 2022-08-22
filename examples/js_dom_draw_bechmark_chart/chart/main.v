@@ -5,6 +5,7 @@ import os
 import json
 import arrays
 import net.http
+import math
 
 [table: 'benchmark']
 struct Task {
@@ -38,7 +39,7 @@ fn (framework_platform FrameworkPlatform) to_map() map[string][]int {
 
 const (
 	http_port             = 3001
-	benchmark_loop_length = 100
+	benchmark_loop_length = 20
 )
 
 struct App {
@@ -69,27 +70,49 @@ fn new_app() &App {
 ['/'; get]
 pub fn (mut app App) controller_get_all_task() ?vweb.Result {
 	orm_stmt_kinds := [ "insert", "select", "update"]
-	mut attribute_names := []string{}
+	mut attribute_names := map[string][]string{}
 	// Used to garante the chart proposionalite
-	mut max_benchmark := 0
-	chart_colors := ['gray', 'red', 'orange', 'purple']
+	mut max_benchmark := map[string]int{}
+	chart_colors := ['gray', 'red', 'orange', 'purple', 'red', 'orange', 'purple']
 
-	framework_platform := insert_framework_benchmark_times().to_map()//{'v_sqlite_memory': [18488, 8861, 13650, 7522, 8374, 8230, 7243, 7326, 8504, 7225, 7062, 8522, 7236, 7367, 7972, 7487, 7288, 9353, 7189, 7139, 9351, 7127, 7164, 7880, 7053, 8089, 8378, 8018, 7234, 7716, 7208, 7048, 7598, 7107, 7126, 8662, 7699, 7094, 7807, 7945, 7066, 7991, 7121, 7369, 9332, 7413, 7195, 7962, 7070, 7085, 8041, 7061, 7741, 308755, 11733, 6447, 6518, 7282, 17696, 6676, 6176, 6875, 5989, 6910, 6536, 9915, 10418, 9896, 10721, 14180, 13619, 10579, 11926, 12727, 10833, 11386, 11355, 9163, 10555, 10265, 8982, 8759, 9568, 8522, 10593, 10605, 12032, 14101, 9772, 11868, 9913, 10284, 9643, 10048, 12076, 9108, 7736, 6995, 6483, 5942], 'typescript_sqlite_memory': [565320, 229547, 200475, 150701, 149066, 143816, 142433, 141018, 142310, 141260, 156255, 154454, 372381, 139682, 136137, 145062, 140527, 146196, 158410, 147935, 206780, 216237, 275554, 207284, 152195, 385703, 168595, 187742, 192827, 169224, 192226, 185396, 158938, 152301, 152012, 154898, 152670, 150480, 335871, 200471, 279429, 231102, 203049, 169223, 151597, 151794, 158856, 161908, 151193, 160302, 206533, 413112, 154068, 152136, 158000, 183887, 200871, 161406, 151375, 182077, 187616, 268446, 169719, 164540, 195728, 423302, 176532, 167253, 154343, 170239, 205769, 182234, 157041, 155303, 168761, 160008, 167993, 158045, 160103, 155013, 306164, 158089, 152934, 279396, 248253, 173022, 166740, 205300, 165810, 151906, 147041, 162239, 206070, 327950, 210147, 179608, 172642, 164889, 158637, 157771]}"
+	mut framework_platform := map[string]map[string][]int
+	framework_platform["insert"] = insert_framework_benchmark_times().to_map()
+	framework_platform["select"] = select_framework_benchmark_times().to_map()
+	framework_platform["update"] = update_framework_benchmark_times().to_map()
 
-	mut maxs := []int{} //mut maxs := map[string][]int{}
-	for key, values in framework_platform {
-		attribute_names << key
-		maxs << arrays.max(values)?
+	mut from_framework := map[string]string{}
+
+
+	mut maxs := map[string][]int{} //mut maxs := map[string][]int{}
+	for key, values in framework_platform["insert"] {
+		attribute_names["insert"] << key
+		maxs["insert"] << arrays.max(values)?
+	}
+	for key, values in framework_platform["select"] {
+		attribute_names["select"] << key
+		maxs["select"] << arrays.max(values)?
+	}
+	for key, values in framework_platform["update"] {
+		attribute_names["update"] << key
+		maxs["update"] << arrays.max(values)?
 	}
 
-	max_benchmark = arrays.max(maxs)?
+	max_benchmark["insert"] = arrays.max(maxs["insert"])?
+	max_benchmark["select"] = arrays.max(maxs["select"])?
+	max_benchmark["update"] = arrays.max(maxs["update"])?
 
 	// inserts_from_framework := json.encode(framework_platform) // string// json encoded
-	mut from_framework := map[string]string{}
-	from_framework["insert"] = json.encode(insert_framework_benchmark_times().to_map()) // string// json encoded
-	from_framework["select"] = json.encode(select_framework_benchmark_times().to_map()) // string// json encoded
-	from_framework["update"] = json.encode(update_framework_benchmark_times().to_map()) // string// json encoded
-	mut table := gen_table_info(attribute_names, framework_platform)
+	// for orm_stmt_kind in orm_stmt_kinds {
+		
+	// from_framework[orm_stmt_kind] = json.encode(insert_framework_benchmark_times().to_map()) // string// json encoded
+	// }
+	from_framework["insert"] = json.encode(framework_platform["insert"])
+	from_framework["select"] = json.encode(framework_platform["select"]) // string// json encoded
+	from_framework["update"] = json.encode(framework_platform["update"]) // string// json encoded
+	mut table :=map[string]map[string]map[string]string 
+	table["insert"]=gen_table_info(attribute_names["insert"], framework_platform["insert"])
+	table["select"]=gen_table_info(attribute_names["select"], framework_platform["select"])
+	table["update"]=gen_table_info(attribute_names["update"], framework_platform["update"])
 
 	return $vweb.html()
 }
@@ -227,10 +250,10 @@ fn gen_table_info(attribute_names []string, framework_platform map[string][]int)
 	}
 
 	for name in attribute_names {
-		table[name]['max.'] = '${max_times[name]} ns (${max_fast[name]}x faster)'
-		table[name]['10% max.'] = '${ten_perc_max_times[name]} ns (${ten_perc_max_fast[name]}x faster)'
-		table[name]['min.'] = '${min_times[name]} ns (${min_fast[name]}x faster)'
-		table[name]['10% min.'] = '${ten_perc_min_times[name]} ns (${ten_perc_min_fast[name]}x faster)'
+		table[name]['max.'] = '${math.round_sig(f64(max_times[name])/1000000,2)} ms (${max_fast[name]}x faster)'
+		table[name]['10% max.'] = '${math.round_sig(f64(ten_perc_max_times[name])/1000000,2)} ms (${ten_perc_max_fast[name]}x faster)'
+		table[name]['min.'] = '${math.round_sig(f64(min_times[name])/1000000,2)} ms (${min_fast[name]}x faster)'
+		table[name]['10% min.'] = '${math.round_sig(f64(ten_perc_min_times[name])/1000000,2)} ms (${ten_perc_min_fast[name]}x faster)'
 	}
 	return table
 }
