@@ -126,6 +126,15 @@ fn new_array_from_c_array_no_alloc(len int, cap int, elm_size int, c_array voidp
 	return arr
 }
 
+// carray_to_varray converts a C byte array into a V `u8` array.
+// See also: `cstring_to_vstring`
+[unsafe]
+pub fn carray_to_varray(c_array voidptr, c_array_len int) []u8 {
+	mut v_array := []u8{len: c_array_len}
+	unsafe { vmemcpy(v_array.data, c_array, c_array_len * int(sizeof(u8))) }
+	return v_array
+}
+
 // Private function. Increases the `cap` of an array to the
 // required value by copying the data to a new memory location
 // (creating a clone) unless `a.cap` is already large enough.
