@@ -189,19 +189,6 @@ pub fn ls(path string) ?[]string {
 	return dir_files
 }
 
-/*
-pub fn is_dir(path string) bool {
-	_path := path.replace('/', '\\')
-	attr := C.GetFileAttributesW(_path.to_wide())
-	if int(attr) == int(C.INVALID_FILE_ATTRIBUTES) {
-		return false
-	}
-	if (int(attr) & C.FILE_ATTRIBUTE_DIRECTORY) != 0 {
-		return true
-	}
-	return false
-}
-*/
 // mkdir creates a new directory with the specified path.
 pub fn mkdir(path string, params MkdirParams) ?bool {
 	if path == '.' {
