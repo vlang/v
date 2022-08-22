@@ -1237,7 +1237,7 @@ fn (mut s Scanner) ident_string() string {
 	if start <= s.pos {
 		mut string_so_far := s.text[start..end]
 		if !s.is_fmt && u_escapes_pos.len > 0 {
-			string_so_far = decode_u_escapes(string_so_far, start, u_escapes_pos)
+			string_so_far = s.decode_u_escapes(string_so_far, start, u_escapes_pos)
 		}
 		if !s.is_fmt && h_escapes_pos.len > 0 {
 			string_so_far = decode_h_escapes(string_so_far, start, h_escapes_pos)
@@ -1297,20 +1297,25 @@ fn decode_o_escapes(s string, start int, escapes_pos []int) string {
 }
 
 // decode the flagged unicode escape sequences into their utf-8 bytes
-fn decode_u_escapes(s string, start int, escapes_pos []int) string {
+fn (mut s Scanner) decode_u_escapes(str string, start int, escapes_pos []int) string {
 	if escapes_pos.len == 0 {
-		return s
+		return str
 	}
 	mut ss := []string{cap: escapes_pos.len * 2 + 1}
-	ss << s[..escapes_pos.first() - start]
+	ss << str[..escapes_pos.first() - start]
 	for i, pos in escapes_pos {
 		idx := pos - start
 		end_idx := idx + 6 // "\uXXXX".len == 6
-		ss << utf32_to_str(u32(strconv.parse_uint(s[idx + 2..end_idx], 16, 32) or { 0 }))
+		escaped_code_point := strconv.parse_uint(str[idx + 2..end_idx], 16, 32) or { 0 }
+		// Check if Escaped Code Point is invalid or not
+		if rune(escaped_code_point).length_in_bytes() == -1 {
+			s.error('invalid unicode point `$str`')
+		}
+		ss << utf32_to_str(u32(escaped_code_point))
 		if i + 1 < escapes_pos.len {
-			ss << s[end_idx..escapes_pos[i + 1] - start]
+			ss << str[end_idx..escapes_pos[i + 1] - start]
 		} else {
-			ss << s[end_idx..]
+			ss << str[end_idx..]
 		}
 	}
 	return ss.join('')
@@ -1391,7 +1396,7 @@ fn (mut s Scanner) ident_char() string {
 		if (c.len % 2 == 0) && (escaped_hex || escaped_unicode || escaped_octal) {
 			if escaped_unicode {
 				// there can only be one, so attempt to decode it now
-				c = decode_u_escapes(c, 0, [0])
+				c = s.decode_u_escapes(c, 0, [0])
 			} else {
 				// find escape sequence start positions
 				mut escapes_pos := []int{}
