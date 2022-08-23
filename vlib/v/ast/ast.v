@@ -1875,26 +1875,6 @@ pub fn (e &Expr) is_lockable() bool {
 	}
 }
 
-// check if stmt can be an expression in C
-pub fn (stmt Stmt) check_c_expr() ? {
-	match stmt {
-		AssignStmt {
-			return
-		}
-		ForCStmt, ForInStmt, ForStmt {
-			return
-		}
-		ExprStmt {
-			if stmt.expr.is_expr() {
-				return
-			}
-			return error('unsupported statement (`$stmt.expr.type_name()`)')
-		}
-		else {}
-	}
-	return error('unsupported statement (`$stmt.type_name()`)')
-}
-
 // CTempVar is used in cgen only, to hold nodes for temporary variables
 pub struct CTempVar {
 pub:
