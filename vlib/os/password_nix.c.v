@@ -15,6 +15,8 @@ fn C.tcgetattr(fd int, ptr &C.termios) int
 
 fn C.tcsetattr(fd int, action int, const_ptr &C.termios)
 
+// input_password prompts the user for a password-like secret. It disables
+// the terminal echo during user input and resets it back to normal when done.
 pub fn input_password(prompt string) !string {
 	if is_atty(1) <= 0 || getenv('TERM') == 'dumb' {
 		return error('Could not obtain password discretely.')
