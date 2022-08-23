@@ -3827,6 +3827,13 @@ fn (mut c Checker) ensure_type_exists(typ ast.Type, pos token.Pos) ? {
 				return
 			}
 		}
+		.function {
+			fn_info := sym.info as ast.FnType
+			c.ensure_type_exists(fn_info.func.return_type, fn_info.func.return_type_pos)?
+			for param in fn_info.func.params {
+				c.ensure_type_exists(param.typ, param.type_pos)?
+			}
+		}
 		.array {
 			c.ensure_type_exists((sym.info as ast.Array).elem_type, pos)?
 		}
