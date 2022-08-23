@@ -238,10 +238,6 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				c.error('`$if_kind` expression requires an expression as the last statement of every branch',
 					branch.pos)
 			}
-			for st in branch.stmts {
-				// must not contain C statements
-				st.check_c_expr() or { c.error('`if` expression branch has $err.msg()', st.pos) }
-			}
 		}
 		if mut branch.cond is ast.IfGuardExpr {
 			sym := c.table.sym(branch.cond.expr_type)
