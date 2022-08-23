@@ -1,9 +1,0 @@
-# Binaries for programs and plugins
-main
-password
-*.exe
-*.exe~
-*.so
-*.dylib
-*.dll
-vls.log
