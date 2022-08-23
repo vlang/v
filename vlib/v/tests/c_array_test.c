@@ -7,9 +7,9 @@ void* gen_c_array(int size) {
 }
 
 void* gen_c_int_array(int size) {
-    int *c_array = malloc(size);
+    int *c_array = malloc(size * sizeof(int));
     for(int i = 0; i < size; i++) {
-        c_array[i] = i & 0xFF;
+        c_array[i] = i;
     }
     return c_array;
 }
