@@ -216,8 +216,10 @@ fn (mut c Client) send_mailfrom(from string) ? {
 }
 
 fn (mut c Client) send_mailto(to string) ? {
-	c.send_str('RCPT TO: <$to>\r\n')?
-	c.expect_reply(.action_ok)?
+	for rcpt in to.split(';') {
+		c.send_str('RCPT TO: <$rcpt>\r\n')?
+		c.expect_reply(.action_ok)?
+	}
 }
 
 fn (mut c Client) send_data() ? {
@@ -231,9 +233,9 @@ fn (mut c Client) send_body(cfg Mail) ? {
 	nonascii_subject := cfg.subject.bytes().any(it < u8(` `) || it > u8(`~`))
 	mut sb := strings.new_builder(200)
 	sb.write_string('From: $cfg.from\r\n')
-	sb.write_string('To: <$cfg.to>\r\n')
-	sb.write_string('Cc: <$cfg.cc>\r\n')
-	sb.write_string('Bcc: <$cfg.bcc>\r\n')
+	sb.write_string('To: <${cfg.to.split(';').join('>; <')}>\r\n')
+	sb.write_string('Cc: <${cfg.cc.split(';').join('>; <')}>\r\n')
+	sb.write_string('Bcc: <${cfg.bcc.split(';').join('>; <')}>\r\n')
 	sb.write_string('Date: $date\r\n')
 	if nonascii_subject {
 		// handle UTF-8 subjects according RFC 1342

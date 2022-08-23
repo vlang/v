@@ -123,3 +123,11 @@ fn test_smtp_implicit_ssl() {
 
 	assert client.is_open && client.encrypted
 }
+
+fn test_smtp_multiple_recipients() ? {
+	$if !network ? {
+		return
+	}
+
+	assert true
+}
