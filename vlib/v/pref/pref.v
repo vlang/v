@@ -118,6 +118,7 @@ pub mut:
 	is_debug          bool // turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
 	is_vlines         bool // turned on by -g (it slows down .tmp.c generation slightly).
 	is_stats          bool // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
+	show_timings      bool // show how much time each compiler stage took
 	is_fmt            bool
 	is_vet            bool
 	is_vweb           bool // skip _ var warning in templates
@@ -201,7 +202,6 @@ pub mut:
 	check_only        bool // same as only_check_syntax, but also runs the checker
 	experimental      bool // enable experimental features
 	skip_unused       bool // skip generating C code for functions, that are not used
-	show_timings      bool // show how much time each compiler stage took
 	//
 	use_color           ColorOutput // whether the warnings/errors should use ANSI color escapes.
 	cleanup_files       []string    // list of temporary *.tmp.c and *.tmp.c.rsp files. Cleaned up on successfull builds.

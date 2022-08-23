@@ -750,7 +750,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 	}
 	if !func.is_pub && func.language == .v && func.name.len > 0 && func.mod.len > 0
-		&& func.mod != c.mod {
+		&& func.mod != c.mod && !c.pref.is_test {
 		c.error('function `$func.name` is private', node.pos)
 	}
 	if !isnil(c.table.cur_fn) && !c.table.cur_fn.is_deprecated && func.is_deprecated {

@@ -3,7 +3,6 @@ module executable
 import os
 import time
 import dl
-import strconv
 import v.live
 
 pub const (
@@ -84,7 +83,7 @@ fn compile_lib(mut r live.LiveReloadInfo) ?string {
 }
 
 fn current_shared_library_path(mut r live.LiveReloadInfo) (string, string) {
-	lib_path := strconv.v_sprintf(r.so_name_template.replace('\\', '\\\\'), r.reloads)
+	lib_path := r.so_name_template.replace('\\', '\\\\').replace('%d', r.reloads.str())
 	lib_path_with_extension := lib_path + r.so_extension
 	return lib_path, lib_path_with_extension
 }
