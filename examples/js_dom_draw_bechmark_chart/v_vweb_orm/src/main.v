@@ -74,6 +74,7 @@ pub fn (mut app App) sqlite_memory(count int) vweb.Result {
 			select from Task
 		}
 		sw.stop()
+		eprintln(result)
 		select_stopwatchs << int(sw.end - sw.start)
 	}
 
