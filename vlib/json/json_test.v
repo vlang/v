@@ -490,20 +490,20 @@ fn test_byte_array() {
 }
 
 struct Aa {
-	sub SumType
+	sub AliasType
 }
 
 struct Bb {
 	a int
 }
 
-type SumType = Bb
+type AliasType = Bb
 
 fn test_encode_alias_field() {
 	s := json.encode(Aa{
-		sub: SumType(Bb{
+		sub: Bb{
 			a: 1
-		})
+		}
 	})
 	println(s)
 	assert s == '{"sub":{"a":1}}'
