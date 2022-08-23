@@ -14,7 +14,6 @@ fn test_carray_to_varray() {
 	assert v_u8_array.len == size
 	for i, elem in v_u8_array {
 		assert elem == i
-		assert typeof(elem).name == 'u8'
 	}
 
 	c_int_array := C.gen_c_int_array(size)
@@ -23,6 +22,5 @@ fn test_carray_to_varray() {
 	assert v_int_array.len == size
 	for i, elem in v_int_array {
 		assert elem == i
-		assert typeof(elem).name == 'int'
 	}
 }
