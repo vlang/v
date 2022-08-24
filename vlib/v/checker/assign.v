@@ -338,11 +338,13 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		left_sym := c.table.sym(left_type_unwrapped)
 		right_sym := c.table.sym(right_type_unwrapped)
-		if left_sym.kind == .array && !c.inside_unsafe && node.op in [.assign, .decl_assign]
-			&& right_sym.kind == .array && left is ast.Ident && !left.is_blank_ident()
-			&& right is ast.Ident {
+		if left_sym.kind == .array && !c.inside_unsafe && right_sym.kind == .array
+			&& left is ast.Ident && !left.is_blank_ident() && right in [ast.Ident, ast.SelectorExpr]
+			&& ((node.op == .decl_assign && (left as ast.Ident).is_mut)
+			|| node.op == .assign) {
 			// Do not allow `a = b`, only `a = b.clone()`
-			c.error('use `array2 $node.op.str() array1.clone()` instead of `array2 $node.op.str() array1` (or use `unsafe`)',
+			mut_str := if node.op == .decl_assign { 'mut ' } else { '' }
+			c.error('use `${mut_str}array2 $node.op.str() array1.clone()` instead of `${mut_str}array2 $node.op.str() array1` (or use `unsafe`)',
 				node.pos)
 		}
 		if left_sym.kind == .array && right_sym.kind == .array {

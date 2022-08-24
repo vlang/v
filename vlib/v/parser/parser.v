@@ -327,9 +327,9 @@ pub fn (mut p Parser) parse() &ast.File {
 	}
 	p.scope.end_pos = p.tok.pos
 
-	mut errors := p.errors
-	mut warnings := p.warnings
-	mut notices := p.notices
+	mut errors := p.errors.clone()
+	mut warnings := p.warnings.clone()
+	mut notices := p.notices.clone()
 
 	if p.pref.check_only {
 		errors << p.scanner.errors
@@ -2007,7 +2007,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	tok := p.tok
 	mut pos := tok.pos()
 
-	mut defer_vars := p.defer_vars
+	mut defer_vars := p.defer_vars.clone()
 	p.defer_vars = []ast.Ident{}
 
 	left, left_comments := p.expr_list()
@@ -3380,7 +3380,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	p.top_level_statement_start()
 	mut attrs := []ast.Attr{}
 	if p.attrs.len > 0 {
-		attrs = p.attrs
+		attrs = p.attrs.clone()
 		p.attrs = []
 	}
 	mut is_markused := false
@@ -3497,7 +3497,7 @@ fn (mut p Parser) return_stmt() ast.Return {
 fn (mut p Parser) global_decl() ast.GlobalDecl {
 	mut attrs := []ast.Attr{}
 	if p.attrs.len > 0 {
-		attrs = p.attrs
+		attrs = p.attrs.clone()
 		p.attrs = []
 	}
 

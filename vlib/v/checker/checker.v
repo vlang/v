@@ -542,7 +542,7 @@ pub fn (mut c Checker) expand_iface_embeds(idecl &ast.InterfaceDecl, level int, 
 	mut ares := []ast.InterfaceEmbedding{}
 	for ie in iface_embeds {
 		if iface_decl := c.table.interfaces[ie.typ] {
-			mut list := iface_decl.embeds
+			mut list := iface_decl.embeds.clone()
 			if !iface_decl.are_embeds_expanded {
 				list = c.expand_iface_embeds(idecl, level + 1, iface_decl.embeds)
 				c.table.interfaces[ie.typ].embeds = list

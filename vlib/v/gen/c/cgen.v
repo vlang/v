@@ -1030,7 +1030,7 @@ fn (mut g Gen) register_result(t ast.Type) string {
 fn (mut g Gen) write_optionals() {
 	mut done := []string{}
 	rlock g.done_optionals {
-		done = g.done_optionals
+		done = g.done_optionals.clone()
 	}
 	for base, styp in g.optionals {
 		if base in done {
@@ -5815,7 +5815,7 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 					}
 				}
 			}
-			mut methods := st_sym.methods
+			mut methods := st_sym.methods.clone()
 			method_names := methods.map(it.name)
 			match st_sym.info {
 				ast.Struct, ast.Interface, ast.SumType {
