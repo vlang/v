@@ -21,7 +21,7 @@ pub fn (mut set Set<T>) remove(element T) {
 }
 
 // pick returns an arbitrary element of set, if set is not empty.
-pub fn (mut set Set<T>) pick() ?T {
+pub fn (set Set<T>) pick() ?T {
 	for k, _ in set.elements {
 		return k
 	}
@@ -47,7 +47,7 @@ pub fn (mut set Set<T>) clear() {
 }
 
 // checks whether the two given sets are equal (i.e. contain all and only the same elements).
-pub fn (mut l Set<T>) equal(r Set<T>) bool {
+pub fn (l Set<T>) == (r Set<T>) bool {
 	if l.elements.len != r.elements.len {
 		return false
 	}
@@ -60,17 +60,17 @@ pub fn (mut l Set<T>) equal(r Set<T>) bool {
 }
 
 // checks whether the set is empty.
-pub fn (mut set Set<T>) is_empty() bool {
+pub fn (set Set<T>) is_empty() bool {
 	return set.size() == 0
 }
 
 // size returns the number of elements in the set.
-pub fn (mut set Set<T>) size() int {
+pub fn (set Set<T>) size() int {
 	return set.elements.len
 }
 
 // copy returns a copy of all the elements in the set.
-pub fn (mut set Set<T>) copy() Set<T> {
+pub fn (set Set<T>) copy() Set<T> {
 	return Set<T>{
 		elements: set.elements.clone()
 	}
@@ -84,7 +84,7 @@ pub fn (mut set Set<T>) add_all(elements []T) {
 }
 
 // @union returns the union of the two sets.
-pub fn (mut l Set<T>) @union(r Set<T>) Set<T> {
+pub fn (l Set<T>) @union(r Set<T>) Set<T> {
 	mut set := l
 	for e, _ in r.elements {
 		set.add(e)
@@ -93,7 +93,7 @@ pub fn (mut l Set<T>) @union(r Set<T>) Set<T> {
 }
 
 // intersection returns the intersection of sets.
-pub fn (mut l Set<T>) intersection(r Set<T>) Set<T> {
+pub fn (l Set<T>) intersection(r Set<T>) Set<T> {
 	mut set := l
 	for e, _ in l.elements {
 		if !r.exists(e) {
@@ -109,7 +109,7 @@ pub fn (mut l Set<T>) intersection(r Set<T>) Set<T> {
 }
 
 // difference returns the difference of sets.
-pub fn (mut l Set<T>) difference(r Set<T>) Set<T> {
+pub fn (l Set<T>) - (r Set<T>) Set<T> {
 	mut set := l
 	for e, _ in l.elements {
 		if r.exists(e) {
@@ -120,7 +120,7 @@ pub fn (mut l Set<T>) difference(r Set<T>) Set<T> {
 }
 
 // subset returns true if the set `r` is a subset of the set `l`.
-pub fn (mut l Set<T>) subset(r Set<T>) bool {
+pub fn (l Set<T>) subset(r Set<T>) bool {
 	for e, _ in r.elements {
 		if e !in l.elements {
 			return false
