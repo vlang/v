@@ -3742,11 +3742,12 @@ fn (mut c Checker) warn_or_error(message string, pos token.Pos, warn bool) {
 	}
 	if !warn {
 		if c.pref.fatal_errors {
-			ferror := util.formatted_error('error:', message, c.file.path, pos)
-			eprintln(ferror)
-			if details.len > 0 {
-				eprintln('Details: $details')
-			}
+			util.show_compiler_message('error:', errors.CompilerMessage{
+				pos: pos
+				file_path: c.file.path
+				message: message
+				details: details
+			})
 			exit(1)
 		}
 		c.nr_errors++

@@ -1870,8 +1870,7 @@ pub fn (mut p Parser) note(s string) {
 pub fn (mut p Parser) error_with_pos(s string, pos token.Pos) ast.NodeError {
 	mut kind := 'error:'
 	if p.pref.fatal_errors {
-		ferror := util.formatted_error(kind, s, p.file_name, pos)
-		eprintln(ferror)
+		util.show_compiler_message(kind, pos: pos, file_path: p.file_name, message: s)
 		exit(1)
 	}
 	if p.pref.output_mode == .stdout && !p.pref.check_only {
@@ -1879,8 +1878,7 @@ pub fn (mut p Parser) error_with_pos(s string, pos token.Pos) ast.NodeError {
 			print_backtrace()
 			kind = 'parser error:'
 		}
-		ferror := util.formatted_error(kind, s, p.file_name, pos)
-		eprintln(ferror)
+		util.show_compiler_message(kind, pos: pos, file_path: p.file_name, message: s)
 		exit(1)
 	} else {
 		p.errors << errors.Error{
@@ -1912,8 +1910,7 @@ pub fn (mut p Parser) error_with_pos(s string, pos token.Pos) ast.NodeError {
 pub fn (mut p Parser) error_with_error(error errors.Error) {
 	mut kind := 'error:'
 	if p.pref.fatal_errors {
-		ferror := util.formatted_error(kind, error.message, error.file_path, error.pos)
-		eprintln(ferror)
+		util.show_compiler_message(kind, error.CompilerMessage)
 		exit(1)
 	}
 	if p.pref.output_mode == .stdout && !p.pref.check_only {
@@ -1921,8 +1918,7 @@ pub fn (mut p Parser) error_with_error(error errors.Error) {
 			print_backtrace()
 			kind = 'parser error:'
 		}
-		ferror := util.formatted_error(kind, error.message, error.file_path, error.pos)
-		eprintln(ferror)
+		util.show_compiler_message(kind, error.CompilerMessage)
 		exit(1)
 	} else {
 		if p.pref.message_limit >= 0 && p.errors.len >= p.pref.message_limit {
@@ -1949,8 +1945,7 @@ pub fn (mut p Parser) warn_with_pos(s string, pos token.Pos) {
 		return
 	}
 	if p.pref.output_mode == .stdout && !p.pref.check_only {
-		ferror := util.formatted_error('warning:', s, p.file_name, pos)
-		eprintln(ferror)
+		util.show_compiler_message('warning:', pos: pos, file_path: p.file_name, message: s)
 	} else {
 		if p.pref.message_limit >= 0 && p.warnings.len >= p.pref.message_limit {
 			p.should_abort = true
@@ -1973,8 +1968,7 @@ pub fn (mut p Parser) note_with_pos(s string, pos token.Pos) {
 		return
 	}
 	if p.pref.output_mode == .stdout && !p.pref.check_only {
-		ferror := util.formatted_error('notice:', s, p.file_name, pos)
-		eprintln(ferror)
+		util.show_compiler_message('notice:', pos: pos, file_path: p.file_name, message: s)
 	} else {
 		p.notices << errors.Notice{
 			file_path: p.file_name

@@ -366,8 +366,7 @@ fn (t Tree) errors(errors []errors.Error) &Node {
 		obj.add_terse('message', t.string_node(e.message))
 		obj.add_terse('file_path', t.string_node(e.file_path))
 		obj.add('pos', t.pos(e.pos))
-		obj.add_terse('backtrace', t.string_node(e.backtrace))
-		obj.add_terse('reporter', t.enum_node(e.reporter))
+		obj.add('reporter', t.enum_node(e.reporter))
 		errs.add_item(obj)
 	}
 	return errs
@@ -377,8 +376,8 @@ fn (t Tree) warnings(warnings []errors.Warning) &Node {
 	mut warns := new_array()
 	for w in warnings {
 		mut obj := new_object()
-		obj.add('message', t.string_node(w.message))
-		obj.add('file_path', t.string_node(w.file_path))
+		obj.add_terse('message', t.string_node(w.message))
+		obj.add_terse('file_path', t.string_node(w.file_path))
 		obj.add('pos', t.pos(w.pos))
 		obj.add('reporter', t.enum_node(w.reporter))
 		warns.add_item(obj)
@@ -390,8 +389,8 @@ fn (t Tree) notices(notices []errors.Notice) &Node {
 	mut notice_array := new_array()
 	for n in notices {
 		mut obj := new_object()
-		obj.add('message', t.string_node(n.message))
-		obj.add('file_path', t.string_node(n.file_path))
+		obj.add_terse('message', t.string_node(n.message))
+		obj.add_terse('file_path', t.string_node(n.file_path))
 		obj.add('pos', t.pos(n.pos))
 		obj.add('reporter', t.enum_node(n.reporter))
 		notice_array.add_item(obj)

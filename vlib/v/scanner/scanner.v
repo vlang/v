@@ -1480,7 +1480,7 @@ pub fn (mut s Scanner) note(msg string) {
 		pos: s.pos
 	}
 	if s.pref.output_mode == .stdout && !s.pref.check_only {
-		eprintln(util.formatted_error('notice:', msg, s.file_path, pos))
+		util.show_compiler_message('notice:', pos: pos, file_path: s.file_path, message: msg)
 	} else {
 		s.notices << errors.Notice{
 			file_path: s.file_path
@@ -1497,14 +1497,13 @@ pub fn (mut s Scanner) add_error_detail(msg string) {
 }
 
 pub fn (mut s Scanner) add_error_detail_with_pos(msg string, pos token.Pos) {
-	details := util.formatted_error('details:', msg, s.file_path, pos)
-	s.add_error_detail(details)
+	s.add_error_detail(util.formatted_error('details:', msg, s.file_path, pos))
 }
 
 fn (mut s Scanner) eat_details() string {
 	mut details := ''
 	if s.error_details.len > 0 {
-		details = s.error_details.join('\n')
+		details = '\n' + s.error_details.join('\n')
 		s.error_details = []
 	}
 	return details
@@ -1522,10 +1521,12 @@ pub fn (mut s Scanner) warn(msg string) {
 	}
 	details := s.eat_details()
 	if s.pref.output_mode == .stdout && !s.pref.check_only {
-		eprintln(util.formatted_error('warning:', msg, s.file_path, pos))
-		if details.len > 0 {
-			eprintln(details)
-		}
+		util.show_compiler_message('warning:',
+			pos: pos
+			file_path: s.file_path
+			message: msg
+			details: details
+		)
 	} else {
 		if s.pref.message_limit >= 0 && s.warnings.len >= s.pref.message_limit {
 			s.should_abort = true
@@ -1549,17 +1550,21 @@ pub fn (mut s Scanner) error(msg string) {
 	}
 	details := s.eat_details()
 	if s.pref.output_mode == .stdout && !s.pref.check_only {
-		eprintln(util.formatted_error('error:', msg, s.file_path, pos))
-		if details.len > 0 {
-			eprintln(details)
-		}
+		util.show_compiler_message('error:',
+			pos: pos
+			file_path: s.file_path
+			message: msg
+			details: details
+		)
 		exit(1)
 	} else {
 		if s.pref.fatal_errors {
-			eprintln(util.formatted_error('error:', msg, s.file_path, pos))
-			if details.len > 0 {
-				eprintln(details)
-			}
+			util.show_compiler_message('error:',
+				pos: pos
+				file_path: s.file_path
+				message: msg
+				details: details
+			)
 			exit(1)
 		}
 		if s.pref.message_limit >= 0 && s.errors.len >= s.pref.message_limit {

@@ -4,6 +4,7 @@ vlib/v/scanner/tests/empty_character_literal_err.vv:2:8: error: invalid empty ch
       |           ^
     3 |     println(a)
     4 | }
+Details: 
 vlib/v/scanner/tests/empty_character_literal_err.vv:2:7: details: use quotes for strings, backticks for characters
     1 | fn main() {
     2 |     a := ``

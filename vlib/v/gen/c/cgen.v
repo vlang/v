@@ -4860,8 +4860,7 @@ fn verror(s string) {
 
 [noreturn]
 fn (g &Gen) error(s string, pos token.Pos) {
-	ferror := util.formatted_error('cgen error:', s, g.file.path, pos)
-	eprintln(ferror)
+	util.show_compiler_message('cgen error:', pos: pos, file_path: g.file.path, message: s)
 	exit(1)
 }
 

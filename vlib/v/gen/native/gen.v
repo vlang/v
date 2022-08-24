@@ -1080,8 +1080,7 @@ pub fn (mut g Gen) n_error(s string) {
 
 pub fn (mut g Gen) warning(s string, pos token.Pos) {
 	if g.pref.output_mode == .stdout {
-		werror := util.formatted_error('warning', s, g.pref.path, pos)
-		eprintln(werror)
+		util.show_compiler_message('warning:', pos: pos, file_path: g.pref.path, message: s)
 	} else {
 		g.warnings << errors.Warning{
 			file_path: g.pref.path
@@ -1098,8 +1097,7 @@ pub fn (mut g Gen) v_error(s string, pos token.Pos) {
 	// of guessed from the pref.path ...
 	mut kind := 'error:'
 	if g.pref.output_mode == .stdout {
-		ferror := util.formatted_error(kind, s, g.pref.path, pos)
-		eprintln(ferror)
+		util.show_compiler_message(kind, pos: pos, file_path: g.pref.path, message: s)
 		exit(1)
 	} else {
 		g.errors << errors.Error{
