@@ -63,8 +63,15 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			}
 		}
 		if need_generic_names {
-			c.error('generic function declaration must specify generic type names, e.g. foo<T>',
-				node.pos)
+			if node.is_method {
+				c.add_error_detail('use `fn (r SomeType<T>) foo<T>() {`, not just `fn (r SomeType<T>) foo() {`')
+				c.error('generic method declaration must specify generic type names',
+					node.pos)
+			} else {
+				c.add_error_detail('use `fn foo<T>(x T) {`, not just `fn foo(x T) {`')
+				c.error('generic function declaration must specify generic type names',
+					node.pos)
+			}
 		}
 	}
 	if node.language == .v && !c.is_builtin_mod && !node.is_anon {
