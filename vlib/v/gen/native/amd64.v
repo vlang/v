@@ -1778,7 +1778,8 @@ fn (mut g Gen) cset_op(op token.Kind) {
 }
 
 fn (mut g Gen) infix_expr(node ast.InfixExpr) {
-/*	if node.left is ast.Ident && node.right is ast.Ident {
+	/*
+	if node.left is ast.Ident && node.right is ast.Ident {
 		left := node.left as ast.Ident
 		right := node.right as ast.Ident
 		g.mov_var_to_reg(.eax, left)
