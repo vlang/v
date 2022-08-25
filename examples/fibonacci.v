@@ -6,7 +6,7 @@
 //
 
 // Get is a function which returns the Fibonacci
-// secuence
+// sequence
 fn get(number f64) {
 	// All variables must be f64 to not get any calculation error
 	mut first := f64(0)
