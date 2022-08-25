@@ -305,7 +305,7 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 		}
 		concrete_types := (left.sym.info as ast.Struct).concrete_types
 		mut method_name := left.sym.cname + '__lt'
-		method_name = g.generic_fn_name(concrete_types, method_name, true)
+		method_name = g.generic_fn_name(concrete_types, method_name)
 		g.write(method_name)
 		if node.op in [.lt, .ge] {
 			g.write('(')
@@ -660,7 +660,7 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 	if left.sym.kind == .struct_ && (left.sym.info as ast.Struct).generic_types.len > 0 {
 		concrete_types := (left.sym.info as ast.Struct).concrete_types
 		mut method_name := left.sym.cname + '_' + util.replace_op(node.op.str())
-		method_name = g.generic_fn_name(concrete_types, method_name, true)
+		method_name = g.generic_fn_name(concrete_types, method_name)
 		g.write(method_name)
 		g.write('(')
 		g.expr(node.left)

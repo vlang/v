@@ -77,7 +77,7 @@ fn (mut g Gen) get_str_fn(typ ast.Type) string {
 		}
 	}
 	if sym.has_method_with_generic_parent('str') && mut sym.info is ast.Struct {
-		str_fn_name = g.generic_fn_name(sym.info.concrete_types, str_fn_name, false)
+		str_fn_name = g.generic_fn_name(sym.info.concrete_types, str_fn_name)
 	}
 	g.str_types << StrType{
 		typ: unwrapped
@@ -895,8 +895,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 		field_styp_fn_name := if sym_has_str_method {
 			mut field_fn_name := '${field_styp}_str'
 			if sym.info is ast.Struct {
-				field_fn_name = g.generic_fn_name(sym.info.concrete_types, field_fn_name,
-					false)
+				field_fn_name = g.generic_fn_name(sym.info.concrete_types, field_fn_name)
 			}
 			field_fn_name
 		} else {
