@@ -888,7 +888,7 @@ fn (mut g Gen) sar_reg(a Register, b Register) {
 	g.write8(if int(a) > 7 { 0x49 } else { 0x48 })
 	g.write8(0xd3)
 	g.write8(0xf8 + int(a) % 8)
-	g.println('shl $a, $b')
+	g.println('sar $a, $b')
 }
 
 fn (mut g Gen) shr_reg(a Register, b Register) {
@@ -898,7 +898,7 @@ fn (mut g Gen) shr_reg(a Register, b Register) {
 	g.write8(if int(a) > 7 { 0x49 } else { 0x48 })
 	g.write8(0xd3)
 	g.write8(0xe8 + int(a) % 8)
-	g.println('shl $a, $b')
+	g.println('shr $a, $b')
 }
 
 fn (mut g Gen) leave() {
@@ -1383,39 +1383,25 @@ fn (mut g Gen) mod_reg(a Register, b Register) {
 }
 
 fn (mut g Gen) sub_reg(a Register, b Register) {
-	if a == .rax && b == .rbx {
-		g.write8(0x48)
+	if int(a) <= int(Register.r15) && int(b) <= int(Register.r15) {
+		g.write8(0x48 + if int(a) >= int(Register.r8) { 1 } else { 0 } +
+			if int(b) >= int(Register.r8) { 4 } else { 0 })
 		g.write8(0x29)
-		g.write8(0xd8)
-	} else if a == .rdx && b == .rax {
-		g.write8(0x48)
-		g.write8(0x29)
-		g.write8(0xc2)
-	} else if a == .rdi && b == .rax {
-		g.write8(0x48)
-		g.write8(0x29)
-		g.write8(0xc7)
+		g.write8(0xc0 + int(a) % 8 + int(b) % 8 * 8)
 	} else {
-		panic('unhandled add $a, $b')
+		g.n_error('unhandled sub $a, $b')
 	}
 	g.println('sub $a, $b')
 }
 
 fn (mut g Gen) add_reg(a Register, b Register) {
-	if a == .rax && b == .rbx {
-		g.write8(0x48)
+	if int(a) <= int(Register.r15) && int(b) <= int(Register.r15) {
+		g.write8(0x48 + if int(a) >= int(Register.r8) { 1 } else { 0 } +
+			if int(b) >= int(Register.r8) { 4 } else { 0 })
 		g.write8(0x01)
-		g.write8(0xd8)
-	} else if a == .rax && b == .rdi {
-		g.write8(0x48)
-		g.write8(0x01)
-		g.write8(0xf8)
-	} else if a == .rax && b == .rax {
-		g.write8(0x48)
-		g.write8(0x01)
-		g.write8(0xc0)
+		g.write8(0xc0 + int(a) % 8 + int(b) % 8 * 8)
 	} else {
-		panic('unhandled add $a, $b')
+		g.n_error('unhandled add $a, $b')
 	}
 	g.println('add $a, $b')
 }
@@ -1792,7 +1778,7 @@ fn (mut g Gen) cset_op(op token.Kind) {
 }
 
 fn (mut g Gen) infix_expr(node ast.InfixExpr) {
-	if node.left is ast.Ident && node.right is ast.Ident {
+/*	if node.left is ast.Ident && node.right is ast.Ident {
 		left := node.left as ast.Ident
 		right := node.right as ast.Ident
 		g.mov_var_to_reg(.eax, left)
@@ -1807,7 +1793,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			}
 			return
 		}
-	}
+	}*/
 	if node.op in [.logical_or, .and] {
 		g.expr(node.left)
 		label := g.labels.new_label()
@@ -1825,7 +1811,10 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		// optimize for ast.Ident
 		match node.left {
 			ast.Ident {
-				g.mov_reg(.rdx, .rax)
+				g.mov_reg(match node.op {
+					.left_shift, .right_shift, .unsigned_right_shift, .div, .mod { .rcx }
+					else { .rdx }
+				}, .rax)
 				g.mov_var_to_reg(.rax, node.left as ast.Ident)
 			}
 			else {
