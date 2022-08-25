@@ -445,14 +445,19 @@ fn closure_ctx(node ast.FnDecl) string {
 
 fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 	g.gen_anon_fn_decl(mut node)
+	mut fn_name := node.decl.name
+	if node.decl.generic_names.len > 0 {
+		fn_name = g.generic_fn_name(g.cur_concrete_types, fn_name, true)
+	}
+
 	if !node.decl.scope.has_inherited_vars() {
-		g.write(node.decl.name)
+		g.write(fn_name)
 		return
 	}
 	ctx_struct := closure_ctx(node.decl)
 	// it may be possible to optimize `memdup` out if the closure never leaves current scope
 	// TODO in case of an assignment, this should only call "__closure_set_data" and "__closure_set_function" (and free the former data)
-	g.write('__closure_create($node.decl.name, ($ctx_struct*) memdup_uncollectable(&($ctx_struct){')
+	g.write('__closure_create($fn_name, ($ctx_struct*) memdup_uncollectable(&($ctx_struct){')
 	g.indent++
 	for var in node.inherited_vars {
 		g.writeln('.$var.name = $var.name,')
