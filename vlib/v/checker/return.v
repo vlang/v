@@ -122,6 +122,11 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 				}
 				continue
 			}
+			if got_typ_sym.kind == .function && exp_typ_sym.kind == .function {
+				if (got_typ_sym.info as ast.FnType).is_anon {
+					continue
+				}
+			}
 			pos := node.exprs[expr_idxs[i]].pos()
 			c.error('cannot use `$got_typ_sym.name` as type `${c.table.type_to_str(exp_type)}` in return argument',
 				pos)
