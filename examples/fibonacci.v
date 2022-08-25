@@ -1,36 +1,30 @@
-// This program displays the fibonacci sequence
-import os
+//
+//Get Fibonacci numbers with V
+//Author:Zach721
+//You can this code for free to your
+//own projects and purposes
+//
 
-fn main() {
-	// Check for user input
-	if os.args.len != 2 {
-		println('usage: fibonacci [rank]')
+//Get is a function which returns the Fibonacci
+//secuence
+ fn get(number f64){
 
-		return
+	//All variables must be f64 to not get any calculation error
+    mut first := f64(0)
+    mut second := f64(1)
+    println('Fibbonacci secuence:')
+    for  i:= 0; i<number-1;i++{
+        if first==0{
+            println(first)
+        }
+    mut third := f64(first+second)
+    println(first+second)
+    first = f64(second)
+     second = f64(third)
+    }}
+
+	fn main(){
+    //Let's print the first 100 numbers of the Fibonacci secuence
+		get(100)
+	
 	}
-
-	// Parse first argument and cast it to int
-
-	stop := os.args[1].int()
-	// Can only calculate correctly until rank 92
-	if stop > 92 {
-		println('rank must be 92 or less')
-		return
-	}
-
-	// Three consecutive terms of the sequence
-	mut a := i64(0)
-	mut b := i64(0)
-	mut c := i64(1)
-	println(a + b + c)
-	for _ in 0 .. stop {
-		// Set a and b to the next term
-		a = b
-		b = c
-		// Compute the new term
-		c = a + b
-
-		// Print the new term
-		println(c)
-	}
-}
