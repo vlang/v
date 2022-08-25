@@ -66,7 +66,7 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 	stmt.bind_res(fields, dataptr, lens, num_fields)
 
 	mut row := 0
-	mut types := config.types
+	mut types := config.types.clone()
 	mut field_types := []FieldType{}
 	if config.is_count {
 		types = [orm.type_idx['u64']]

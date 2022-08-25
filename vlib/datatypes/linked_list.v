@@ -83,7 +83,7 @@ pub fn (mut list LinkedList<T>) pop() ?T {
 		return error('Linked list is empty')
 	}
 	mut node := list.head
-	mut to_return := node.data
+	mut to_return := unsafe { node.data }
 	if unsafe { node.next == 0 } {
 		// first node case
 		// set to null
@@ -92,7 +92,7 @@ pub fn (mut list LinkedList<T>) pop() ?T {
 		for unsafe { node.next.next != 0 } {
 			node = node.next
 		}
-		to_return = node.next.data
+		to_return = unsafe { node.next.data }
 		// set to null
 		node.next = unsafe { nil }
 	}
