@@ -500,7 +500,27 @@ fn (mut g Gen) gen_match_expr(expr ast.MatchExpr) {
 		} else {
 			for cond in branch.exprs {
 				match cond {
-					ast.RangeExpr {}
+					ast.RangeExpr {
+						g.pop(.rdx)
+						g.expr(cond.low)
+						g.cmp_reg(.rax, .rdx)
+						g.write([u8(0x0f), 0x9e, 0xc3])
+						g.println('setle bl')
+						g.expr(cond.high)
+						g.cmp_reg(.rax, .rdx)
+						g.write([u8(0x0f), 0x9d, 0xc1])
+						g.println('setge cl')
+						g.write([u8(0x20), 0xcb])
+						g.println('and bl, cl')
+						g.write([u8(0x84), 0xdb])
+						g.println('test bl, bl')
+						then_addr := g.cjmp(.jne)
+						g.labels.patches << LabelPatch{
+							id: branch_labels[i]
+							pos: then_addr
+						}
+						g.push(.rdx)
+					}
 					else {
 						g.expr(cond)
 						g.pop(.rdx)
