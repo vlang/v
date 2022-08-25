@@ -69,3 +69,10 @@ fn test_pop() ? {
 	queue.pop() or { return }
 	assert false
 }
+
+fn test_array() ? {
+	mut queue := Queue<int>{}
+	queue.push(1)
+	queue.push(2)
+	assert queue.array() == [1, 2]
+}

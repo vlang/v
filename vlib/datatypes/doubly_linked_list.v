@@ -249,13 +249,18 @@ pub fn (mut list DoublyLinkedList<T>) delete(idx int) {
 
 // str returns a string representation of the linked list
 pub fn (list DoublyLinkedList<T>) str() string {
+	return list.array().str()
+}
+
+// array returns a array representation of the linked list
+pub fn (list DoublyLinkedList<T>) array() []T {
 	mut result_array := []T{}
 	mut node := list.head
 	for unsafe { node != 0 } {
 		result_array << node.data
 		node = node.next
 	}
-	return result_array.str()
+	return result_array
 }
 
 // next implements the iter interface to use DoublyLinkedList with
