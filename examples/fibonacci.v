@@ -24,7 +24,7 @@ fn get(number f64) {
 }
 
 fn main() {
-	// Let's print the first 100 numbers of the Fibonacci secuence
+	// Let's print the first 100 numbers of the Fibonacci sequence
 	get(100)
 }
 
