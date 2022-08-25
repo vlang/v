@@ -246,6 +246,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.indent++
 		g.writeln('$elem_typ* pelem = ($elem_typ*)${tmp}.data;')
 		g.writeln('for(int it=0; it<${tmp}.len; it++, pelem++) {')
+		g.set_current_pos_as_last_stmt_pos()
 		g.indent++
 		g.write('*pelem = ')
 		g.expr(node.default_expr)
@@ -254,6 +255,7 @@ fn (mut g Gen) array_init_with_fields(node ast.ArrayInit, elem_type Type, is_amp
 		g.writeln('}')
 		g.indent--
 		g.writeln('}')
+		g.set_current_pos_as_last_stmt_pos()
 		if var_name.len == 0 {
 			if s_ends_with_ln {
 				g.writeln(s)
