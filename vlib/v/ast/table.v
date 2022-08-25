@@ -47,6 +47,8 @@ pub mut:
 	// cache for type_to_str_using_aliases
 	cached_type_to_str map[u64]string
 	anon_struct_names  map[string]int // anon struct name -> struct sym idx
+	// counter for anon struct, avoid name conflicts.
+	anon_struct_counter int
 }
 
 // used by vls to avoid leaks

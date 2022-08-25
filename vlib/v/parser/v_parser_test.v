@@ -261,3 +261,7 @@ fn test_fn_is_html_open_tag() {
 	b = is_html_open_tag('style', s)
 	assert b == false
 }
+
+// For issue #15516
+fn test_anon_struct() {
+}
