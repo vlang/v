@@ -482,6 +482,59 @@ fn (mut g Gen) call_fn(node ast.CallExpr) {
 	}
 }
 
+fn (mut g Gen) gen_match_expr(expr ast.MatchExpr) {
+	branch_labels := []int{len: expr.branches.len, init: g.labels.new_label()+it*0} // call new_label for all elements in the array
+	end_label := g.labels.new_label()
+
+	if expr.is_sum_type {
+		// TODO
+	} else {
+		g.expr(expr.cond)
+	}
+	g.push(.rax)
+
+	mut else_label := 0
+	for i, branch in expr.branches {
+		if branch.is_else {
+			else_label = branch_labels[i]
+		} else {
+			for cond in branch.exprs {
+				match cond {
+					ast.RangeExpr {}
+					else {
+						g.expr(cond)
+						g.pop(.rdx)
+						g.cmp_reg(.rax, .rdx)
+						then_addr := g.cjmp(.je)
+						g.labels.patches << LabelPatch{
+							id: branch_labels[i]
+							pos: then_addr
+						}
+						g.push(.rdx)
+					}
+				}
+			}
+		}
+	}
+	g.pop(.rdx)
+	else_addr := g.jmp(0)
+	g.labels.patches << LabelPatch{
+		id: else_label
+		pos: else_addr
+	}
+	for i, branch in expr.branches {
+		g.labels.addrs[branch_labels[i]] = g.pos()
+		for stmt in branch.stmts {
+			g.stmt(stmt)
+		}
+		g.labels.patches << LabelPatch{
+			id: end_label
+			pos: g.jmp(0)
+		}
+	}
+	g.labels.addrs[end_label] = g.pos()
+}
+
 fn (mut g Gen) gen_var_to_string(reg Register, var Var, config VarConfig) {
 	typ := g.get_type_from_var(var)
 	if typ.is_int() {
@@ -601,7 +654,6 @@ g.expr
 		ast.InfixExpr {}
 		ast.IsRefType {}
 		ast.MapInit {}
-		ast.MatchExpr {}
 		ast.OrExpr {}
 		ast.ParExpr {}
 		ast.RangeExpr {}
@@ -609,6 +661,9 @@ g.expr
 		ast.SqlExpr {}
 		ast.TypeNode {}
 		*/
+		ast.MatchExpr {
+			g.gen_match_expr(expr)
+		}
 		ast.TypeOf {
 			g.gen_typeof_expr(expr, newline)
 		}
@@ -1044,6 +1099,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.StructInit {}
 		ast.GoExpr {
 			g.v_error('native backend doesnt support threads yet', node.pos)
+		}
+		ast.MatchExpr {
+			g.gen_match_expr(node)
 		}
 		else {
 			g.n_error('expr: unhandled node type: $node.type_name()')
