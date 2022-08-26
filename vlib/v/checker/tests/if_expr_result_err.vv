@@ -1,4 +1,4 @@
-fn get_bool() ?bool {
+fn get_bool() !bool {
 	return true
 }
 
