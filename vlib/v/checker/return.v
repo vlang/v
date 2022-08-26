@@ -30,7 +30,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 	exp_is_result := expected_type.has_flag(.result)
 	mut expected_types := [expected_type]
 	if expected_type_sym.info is ast.MultiReturn {
-		expected_types = expected_type_sym.info.types
+		expected_types = expected_type_sym.info.types.clone()
 		if c.table.cur_concrete_types.len > 0 {
 			expected_types = expected_types.map(c.unwrap_generic(it))
 		}
@@ -121,6 +121,11 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 					}
 				}
 				continue
+			}
+			if got_typ_sym.kind == .function && exp_typ_sym.kind == .function {
+				if (got_typ_sym.info as ast.FnType).is_anon {
+					continue
+				}
 			}
 			pos := node.exprs[expr_idxs[i]].pos()
 			c.error('cannot use `$got_typ_sym.name` as type `${c.table.type_to_str(exp_type)}` in return argument',

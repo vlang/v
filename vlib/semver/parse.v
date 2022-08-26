@@ -62,7 +62,7 @@ fn (raw_ver RawVersion) coerce() ?Version {
 }
 
 fn (raw_ver RawVersion) complete() RawVersion {
-	mut raw_ints := raw_ver.raw_ints
+	mut raw_ints := raw_ver.raw_ints.clone()
 	for raw_ints.len < 3 {
 		raw_ints << '0'
 	}

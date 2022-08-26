@@ -50,3 +50,10 @@ fn test_pop() ? {
 	stack.pop() or { return }
 	assert false
 }
+
+fn test_array() ? {
+	mut stack := dt.Stack<int>{}
+	stack.push(1)
+	stack.push(2)
+	assert stack.array() == [1, 2]
+}
