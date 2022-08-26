@@ -14,6 +14,8 @@ fn C.CreateHardLinkW(&u16, &u16, C.SECURITY_ATTRIBUTES) int
 
 fn C._getpid() int
 
+fn C._wchdir(&u16) int
+
 const executable_suffixes = ['.exe', '.bat', '.cmd', '']
 
 pub const (
