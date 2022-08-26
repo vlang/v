@@ -920,7 +920,7 @@ fn (mut g Gen) base_type(_t ast.Type) string {
 	return styp
 }
 
-fn (mut g Gen) generic_fn_name(types []ast.Type, before string, is_decl bool) string {
+fn (mut g Gen) generic_fn_name(types []ast.Type, before string) string {
 	if types.len == 0 {
 		return before
 	}
@@ -2202,7 +2202,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			exp_styp := exp_sym.cname
 			mut fname := 'I_${got_styp}_to_Interface_$exp_styp'
 			if exp_sym.info.is_generic {
-				fname = g.generic_fn_name(exp_sym.info.concrete_types, fname, false)
+				fname = g.generic_fn_name(exp_sym.info.concrete_types, fname)
 			}
 			g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, exp_styp, true,
 				got_styp)
@@ -2222,7 +2222,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			}
 			fname = '/*$exp_sym*/$fname'
 			if exp_sym.info.is_generic {
-				fname = g.generic_fn_name(exp_sym.info.concrete_types, fname, false)
+				fname = g.generic_fn_name(exp_sym.info.concrete_types, fname)
 			}
 			g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, exp_styp, got_is_ptr,
 				got_styp)
@@ -5844,8 +5844,7 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 					parent_sym := g.table.sym(inter_info.parent_type)
 					match parent_sym.info {
 						ast.Struct, ast.Interface, ast.SumType {
-							name = g.generic_fn_name(parent_sym.info.concrete_types, method.name,
-								false)
+							name = g.generic_fn_name(parent_sym.info.concrete_types, method.name)
 						}
 						else {}
 					}
@@ -5858,8 +5857,7 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 				// .speak = Cat_speak
 				if st_sym.info is ast.Struct {
 					if method.generic_names.len > 0 && st_sym.info.parent_type.has_flag(.generic) {
-						name = g.generic_fn_name(st_sym.info.concrete_types, method.name,
-							false)
+						name = g.generic_fn_name(st_sym.info.concrete_types, method.name)
 					}
 				}
 				styp := g.cc_type(method.params[0].typ, true)

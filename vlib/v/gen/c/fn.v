@@ -420,7 +420,7 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) ?string {
 	}
 
 	if node.generic_names.len > 0 {
-		name = g.generic_fn_name(g.cur_concrete_types, name, true)
+		name = g.generic_fn_name(g.cur_concrete_types, name)
 	}
 
 	if g.pref.translated || g.file.is_translated {
@@ -447,7 +447,7 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 	g.gen_anon_fn_decl(mut node)
 	mut fn_name := node.decl.name
 	if node.decl.generic_names.len > 0 {
-		fn_name = g.generic_fn_name(g.cur_concrete_types, fn_name, true)
+		fn_name = g.generic_fn_name(g.cur_concrete_types, fn_name)
 	}
 
 	if !node.decl.scope.has_inherited_vars() {
@@ -1009,7 +1009,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 	}
 	concrete_types := node.concrete_types.map(g.unwrap_generic(it))
-	name = g.generic_fn_name(concrete_types, name, false)
+	name = g.generic_fn_name(concrete_types, name)
 	// TODO2
 	// g.generate_tmp_autofree_arg_vars(node, name)
 	if !node.receiver_type.is_ptr() && left_type.is_ptr() && node.name == 'str' {
@@ -1238,10 +1238,10 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		if func := g.table.find_fn(node.name) {
 			if func.generic_names.len > 0 {
 				if g.comptime_for_field_type != 0 && g.inside_comptime_for_field {
-					name = g.generic_fn_name([g.comptime_for_field_type], name, false)
+					name = g.generic_fn_name([g.comptime_for_field_type], name)
 				} else {
 					concrete_types := node.concrete_types.map(g.unwrap_generic(it))
-					name = g.generic_fn_name(concrete_types, name, false)
+					name = g.generic_fn_name(concrete_types, name)
 				}
 			}
 		}

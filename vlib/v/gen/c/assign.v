@@ -291,7 +291,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				if left_sym.kind == .struct_ && (left_sym.info as ast.Struct).generic_types.len > 0 {
 					concrete_types := (left_sym.info as ast.Struct).concrete_types
 					mut method_name := left_sym.cname + '_' + util.replace_op(extracted_op)
-					method_name = g.generic_fn_name(concrete_types, method_name, true)
+					method_name = g.generic_fn_name(concrete_types, method_name)
 					g.write(' = ${method_name}(')
 					g.expr(left)
 					g.write(', ')
