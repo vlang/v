@@ -41,8 +41,8 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		return ast.StructDecl{}
 	}
 	mut name := if is_anon {
-		p.anon_struct_counter++
-		'_VAnonStruct$p.anon_struct_counter'
+		p.table.anon_struct_counter++
+		'_VAnonStruct$p.table.anon_struct_counter'
 	} else {
 		p.check_name()
 	}
