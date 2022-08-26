@@ -482,7 +482,7 @@ pub fn is_writable_folder(folder string) ?bool {
 		return error('`$folder` does not exist')
 	}
 	if !is_dir(folder) {
-		return error('`folder` is not a folder')
+		return error('`$folder` is not a folder')
 	}
 	tmp_perm_check := join_path_single(folder, 'XXXXXX')
 	defer {
