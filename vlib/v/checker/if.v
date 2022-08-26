@@ -198,7 +198,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					&& !c.skip_flags {
 					// cannot return void type and use it as expr in any circumstances
 					// (e.g. argument expression, variable declaration / assignment)
-					c.error('unable to have an expression with void type to be used later in last statement',
+					c.error('the final expression in `if` or `match`, must have a value of a non-void type',
 						last_expr.pos)
 					continue
 				}
