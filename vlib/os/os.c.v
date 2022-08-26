@@ -775,9 +775,14 @@ fn kind_of_existing_path(path string) PathKind {
 
 // chdir changes the current working directory to the new directory in `path`.
 pub fn chdir(path string) ? {
-	ret := $if windows { int(C._wchdir(path.to_wide())) } $else { C.chdir(&char(path.str)) }
-	if ret == -1 {
-		return error_with_code(posix_get_error_msg(C.errno), C.errno)
+	$if windows {
+		if C._wchdir(path.to_wide()) == -1 {
+			return error_with_code(posix_get_error_msg(C.errno), C.errno)
+		}
+	} $else {
+		if C.chdir(&char(path.str)) == -1 {
+			return error_with_code(posix_get_error_msg(C.errno), C.errno)
+		}
 	}
 }
 
