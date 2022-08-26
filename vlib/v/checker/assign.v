@@ -361,7 +361,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					node.pos)
 			}
 		}
-		if left_sym.kind == .array && right_sym.kind == .array {
+		if left_sym.kind == .array && right_sym.kind == .array && node.op == .assign {
 			// `mut arr := [u8(1),2,3]`
 			// `arr = [byte(4),5,6]`
 			left_info := left_sym.info as ast.Array
