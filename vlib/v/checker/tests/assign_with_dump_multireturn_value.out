@@ -1,0 +1,6 @@
+vlib/v/checker/tests/assign_with_dump_multireturn_value.vv:5:3: error: assignment mismatch: 1 variable(s) 2 value(s)
+    3 | }
+    4 | 
+    5 | x := dump(two_returns())
+      |   ~~
+    6 | println(x)
