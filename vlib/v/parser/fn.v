@@ -1042,6 +1042,7 @@ fn (mut p Parser) closure_vars() []ast.Param {
 			...(*var)
 			pos: var_pos
 			is_inherited: true
+			has_inherited: var.is_inherited
 			is_used: false
 			is_changed: false
 			is_mut: is_mut
