@@ -484,9 +484,9 @@ fn (mut g Gen) call_fn(node ast.CallExpr) {
 
 fn (mut g Gen) gen_match_expr(expr ast.MatchExpr) {
 	if g.pref.arch == .arm64 {
-		//		g.gen_match_expr_arm64(node)
+		//		g.gen_match_expr_arm64(expr)
 	} else {
-		g.gen_match_expr_amd64(node)
+		g.gen_match_expr_amd64(expr)
 	}
 }
 
