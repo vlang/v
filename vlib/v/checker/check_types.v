@@ -389,7 +389,12 @@ pub fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSym
 		if exp_arg_is_ptr != got_arg_is_ptr {
 			exp_arg_pointedness := if exp_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
 			got_arg_pointedness := if got_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
-			c.add_error_detail('`$exp_fn.name`\'s expected fn argument: `$exp_arg.name` is $exp_arg_pointedness, but the passed fn argument: `$got_arg.name` is $got_arg_pointedness')
+			if exp_fn.name.len == 0 {
+				c.add_error_detail('expected fn argument ${i + 1} is $exp_arg_pointedness, but the passed fn argument ${
+					i + 1} is $got_arg_pointedness')
+			} else {
+				c.add_error_detail('`$exp_fn.name`\'s expected fn argument: `$exp_arg.name` is $exp_arg_pointedness, but the passed fn argument: `$got_arg.name` is $got_arg_pointedness')
+			}
 			return false
 		} else if exp_arg_is_ptr && got_arg_is_ptr {
 			continue
