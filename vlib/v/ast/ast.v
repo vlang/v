@@ -644,6 +644,7 @@ pub:
 	is_arg          bool // fn args should not be autofreed
 	is_auto_deref   bool
 	is_inherited    bool
+	has_inherited   bool
 pub mut:
 	expr       Expr
 	typ        Type

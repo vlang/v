@@ -460,7 +460,18 @@ fn (mut g Gen) gen_anon_fn(mut node ast.AnonFn) {
 	g.write('__closure_create($fn_name, ($ctx_struct*) memdup_uncollectable(&($ctx_struct){')
 	g.indent++
 	for var in node.inherited_vars {
-		g.writeln('.$var.name = $var.name,')
+		mut has_inherited := false
+		if obj := node.decl.scope.find(var.name) {
+			if obj is ast.Var {
+				if obj.has_inherited {
+					has_inherited = true
+					g.writeln('.$var.name = $c.closure_ctx->$var.name,')
+				}
+			}
+		}
+		if !has_inherited {
+			g.writeln('.$var.name = $var.name,')
+		}
 	}
 	g.indent--
 	g.write('}, sizeof($ctx_struct)))')
