@@ -675,7 +675,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 			g.push_pub_var(name)
 		}
 	}
-	mut args := it.params
+	args := it.params
 
 	g.fn_args(args, it.is_variadic)
 	g.writeln(') {')
@@ -808,7 +808,7 @@ fn (mut g JsGen) gen_anon_fn(mut fun ast.AnonFn) {
 
 	g.write('return function (')
 
-	mut args := it.params
+	args := it.params
 
 	g.fn_args(args, it.is_variadic)
 	g.writeln(') {')

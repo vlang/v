@@ -55,8 +55,8 @@ fn newton_divide_array_by_array(operand_a []u32, operand_b []u32, mut quotient [
 		q.inc()
 		r -= b
 	}
-	quotient = q.digits
-	remainder = r.digits
+	quotient = q.digits.clone()
+	remainder = r.digits.clone()
 
 	shrink_tail_zeros(mut remainder)
 }
@@ -241,7 +241,7 @@ fn toom3_multiply_digit_array(operand_a []u32, operand_b []u32, mut storage []u3
 
 	result := (((pinf.lshift(s) + t2).lshift(s) + t1).lshift(s) + tm1).lshift(s) + p0
 
-	storage = result.digits
+	storage = result.digits.clone()
 }
 
 [inline]

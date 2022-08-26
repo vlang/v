@@ -321,7 +321,7 @@ fn take_screenshots(opt Options, app AppConfig) ![]string {
 					os.setenv('$k', rv, true)
 				}
 
-				mut flags := app.capture.flags.join(' ')
+				flags := app.capture.flags.join(' ')
 				result := opt.verbose_execute('${os.quoted_path(v_exe)} $flags -d gg_record run ${os.quoted_path(app.abs_path)}')
 				if result.exit_code != 0 {
 					return error('Failed taking screenshot of `$app.abs_path`:\n$result.output')
@@ -336,7 +336,7 @@ fn take_screenshots(opt Options, app AppConfig) ![]string {
 
 				existing_screenshots := get_app_screenshots(out_path, app)!
 
-				mut flags := app.capture.flags
+				flags := app.capture.flags
 
 				mut p_app := os.new_process(app.abs_path)
 				p_app.set_args(flags)

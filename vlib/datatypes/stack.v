@@ -34,3 +34,8 @@ pub fn (mut stack Stack<T>) pop() ?T {
 pub fn (stack Stack<T>) str() string {
 	return stack.elements.str()
 }
+
+// array returns a array representation of the stack
+pub fn (stack Stack<T>) array() []T {
+	return stack.elements
+}

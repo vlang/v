@@ -1,0 +1,7 @@
+vlib/v/checker/tests/array_assign_err.vv:8:8: notice: use `mut array2 := array1.clone()` instead of `mut array2 := array1` (or use `unsafe`)
+    6 | fn main() {
+    7 |     a := Dumb{[1, 2, 3]}
+    8 |     mut b := a.v // I expect a compiler error
+      |           ~~
+    9 |     for _ in 0 .. 100 {
+   10 |         b << [4, 5, 6]

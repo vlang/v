@@ -756,8 +756,8 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 					mut concrete_types := []ast.Type{}
 					match arg_sym.info {
 						ast.Struct, ast.Interface, ast.SumType {
-							generic_types = arg_sym.info.generic_types
-							concrete_types = arg_sym.info.concrete_types
+							generic_types = arg_sym.info.generic_types.clone()
+							concrete_types = arg_sym.info.concrete_types.clone()
 						}
 						else {}
 					}

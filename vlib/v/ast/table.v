@@ -399,7 +399,7 @@ pub fn (t &Table) get_embeds(sym &TypeSymbol, options GetEmbedsOptions) [][]Type
 	if unalias_sym.info is Struct {
 		for embed in unalias_sym.info.embeds {
 			embed_sym := t.sym(embed)
-			mut preceding := options.preceding
+			mut preceding := options.preceding.clone()
 			preceding << embed
 			embeds << t.get_embeds(embed_sym, preceding: preceding)
 		}
@@ -1932,7 +1932,7 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 					}
 				}
 			}
-			mut all_methods := ts.methods
+			mut all_methods := unsafe { ts.methods }
 			for imethod in imethods {
 				for mut method in all_methods {
 					if imethod.name == method.name {
@@ -2097,7 +2097,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 							}
 							sym.register_method(method)
 						}
-						mut all_methods := parent.methods
+						mut all_methods := unsafe { parent.methods }
 						for imethod in imethods {
 							for mut method in all_methods {
 								if imethod.name == method.name {

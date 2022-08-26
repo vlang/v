@@ -1077,12 +1077,12 @@ pub fn (mut f Gen) interface_decl(node ast.InterfaceDecl) {
 	immut_fields := if node.mut_pos < 0 { node.fields } else { node.fields[..node.mut_pos] }
 	mut_fields := if node.mut_pos < 0 { []ast.StructField{} } else { node.fields[node.mut_pos..] }
 
-	mut immut_methods := node.methods
+	mut immut_methods := node.methods.clone()
 	mut mut_methods := []ast.FnDecl{}
 	for i, method in node.methods {
 		if method.params[0].is_mut {
-			immut_methods = node.methods[..i]
-			mut_methods = node.methods[i..]
+			immut_methods = node.methods[..i].clone()
+			mut_methods = node.methods[i..].clone()
 			break
 		}
 	}
