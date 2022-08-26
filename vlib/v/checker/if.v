@@ -203,7 +203,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				}
 				if !c.check_types(last_expr.typ, node.typ) {
 					if node.typ == ast.void_type {
-						// first branch of if expression=
+						// first branch of if expression
 						node.is_expr = true
 						node.typ = last_expr.typ
 						continue
