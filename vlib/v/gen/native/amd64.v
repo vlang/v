@@ -2572,3 +2572,76 @@ fn (mut g Gen) reverse_string(reg Register) {
 	g.write8(0xf1)
 	g.println('jmp 0xf')
 }
+
+fn (mut g Gen) gen_match_expr_amd64(expr ast.MatchExpr) {
+	branch_labels := []int{len: expr.branches.len, init: g.labels.new_label() + it * 0} // call new_label for all elements in the array
+	end_label := g.labels.new_label()
+
+	if expr.is_sum_type {
+		// TODO
+	} else {
+		g.expr(expr.cond)
+	}
+	g.push(.rax)
+
+	mut else_label := 0
+	for i, branch in expr.branches {
+		if branch.is_else {
+			else_label = branch_labels[i]
+		} else {
+			for cond in branch.exprs {
+				match cond {
+					ast.RangeExpr {
+						g.pop(.rdx)
+						g.expr(cond.low)
+						g.cmp_reg(.rax, .rdx)
+						g.write([u8(0x0f), 0x9e, 0xc3])
+						g.println('setle bl')
+						g.expr(cond.high)
+						g.cmp_reg(.rax, .rdx)
+						g.write([u8(0x0f), 0x9d, 0xc1])
+						g.println('setge cl')
+						g.write([u8(0x20), 0xcb])
+						g.println('and bl, cl')
+						g.write([u8(0x84), 0xdb])
+						g.println('test bl, bl')
+						then_addr := g.cjmp(.jne)
+						g.labels.patches << LabelPatch{
+							id: branch_labels[i]
+							pos: then_addr
+						}
+						g.push(.rdx)
+					}
+					else {
+						g.expr(cond)
+						g.pop(.rdx)
+						g.cmp_reg(.rax, .rdx)
+						then_addr := g.cjmp(.je)
+						g.labels.patches << LabelPatch{
+							id: branch_labels[i]
+							pos: then_addr
+						}
+						g.push(.rdx)
+					}
+				}
+			}
+		}
+	}
+	g.pop(.rdx)
+	else_addr := g.jmp(0)
+	g.labels.patches << LabelPatch{
+		id: else_label
+		pos: else_addr
+	}
+	for i, branch in expr.branches {
+		g.labels.addrs[branch_labels[i]] = g.pos()
+		for stmt in branch.stmts {
+			g.stmt(stmt)
+		}
+		g.labels.patches << LabelPatch{
+			id: end_label
+			pos: g.jmp(0)
+		}
+	}
+	g.labels.addrs[end_label] = g.pos()
+}

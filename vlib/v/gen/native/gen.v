@@ -482,6 +482,14 @@ fn (mut g Gen) call_fn(node ast.CallExpr) {
 	}
 }
 
+fn (mut g Gen) gen_match_expr(expr ast.MatchExpr) {
+	if g.pref.arch == .arm64 {
+		//		g.gen_match_expr_arm64(expr)
+	} else {
+		g.gen_match_expr_amd64(expr)
+	}
+}
+
 fn (mut g Gen) gen_var_to_string(reg Register, var Var, config VarConfig) {
 	typ := g.get_type_from_var(var)
 	if typ.is_int() {
@@ -601,7 +609,6 @@ g.expr
 		ast.InfixExpr {}
 		ast.IsRefType {}
 		ast.MapInit {}
-		ast.MatchExpr {}
 		ast.OrExpr {}
 		ast.ParExpr {}
 		ast.RangeExpr {}
@@ -609,6 +616,9 @@ g.expr
 		ast.SqlExpr {}
 		ast.TypeNode {}
 		*/
+		ast.MatchExpr {
+			g.gen_match_expr(expr)
+		}
 		ast.TypeOf {
 			g.gen_typeof_expr(expr, newline)
 		}
@@ -1044,6 +1054,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.StructInit {}
 		ast.GoExpr {
 			g.v_error('native backend doesnt support threads yet', node.pos)
+		}
+		ast.MatchExpr {
+			g.gen_match_expr(node)
 		}
 		else {
 			g.n_error('expr: unhandled node type: $node.type_name()')
