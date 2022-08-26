@@ -4,9 +4,11 @@ on:
   push:
     paths-ignore:
       - "**.md"
+      - "**.yml"
   pull_request:
     paths-ignore:
       - "**.md"
+      - "**.yml"
 
 concurrency:
   group: build-containers-${{ github.event.pull_request.number || github.sha }}

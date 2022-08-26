@@ -4,9 +4,15 @@ on:
   push:
     paths-ignore:
       - "**.md"
+      - "**.yml"
   pull_request:
     paths-ignore:
       - "**.md"
+      - "**.yml"
+
+concurrency:
+  group: sdl-ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
 
 jobs:
   v-compiles-sdl-examples:

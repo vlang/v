@@ -1,8 +1,16 @@
 name: Docs CI
 
-### Run on *EVERY* commit. The documentation *SHOULD* stay valid, and
-### the developers should receive early warning if they break it.
-on: [push, pull_request]
+### Run on *EVERY* .v or .md related commit.
+### The documentation *SHOULD* stay valid, and the developers should receive
+### early warning, if they break it.
+
+on:
+  push:
+    paths-ignore:
+      - "**.yml"
+  pull_request:
+    paths-ignore:
+      - "**.yml"
 
 jobs:
   check-markdown:
@@ -31,7 +39,7 @@ jobs:
         uses: actions/checkout@v2
         with:
           repository: vlang/v
-          ref: master # important
+          ref: master   # important
           path: pv
 
       - name: Check against parent commit
