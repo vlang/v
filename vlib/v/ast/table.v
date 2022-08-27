@@ -1308,7 +1308,7 @@ pub fn (t &Table) sumtype_has_variant(parent Type, variant Type, is_as bool) boo
 
 fn (t &Table) sumtype_check_function_variant(parent_info SumType, variant Type, is_as bool) bool {
 	for v in parent_info.variants {
-		if v.idx.str() == variant.idx.str() && (!is_as || v.nr_muls() == variant.nr_muls()) {
+		if '$v.idx' == '$variant.idx' && (!is_as || v.nr_muls() == variant.nr_muls()) {
 			return true
 		}
 	}
