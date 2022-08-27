@@ -1195,7 +1195,7 @@ pub fn (mut t Table) find_or_register_fn_type(f Fn, is_anon bool, has_decl bool)
 	cname := if f.name.len == 0 {
 		'anon_fn_${t.fn_type_signature(f)}'
 	} else {
-		util.no_dots(f.name.clone())
+		util.no_dots(f.name.clone()).replace_each([' ', '', '(', '_', ')', ''])
 	}
 	anon := f.name.len == 0 || is_anon
 	existing_idx := t.type_idxs[name]
@@ -1295,9 +1295,21 @@ pub fn (t &Table) sumtype_has_variant(parent Type, variant Type, is_as bool) boo
 			.alias {
 				return t.sumtype_check_alias_variant(parent, variant, is_as)
 			}
+			.function {
+				return t.sumtype_check_function_variant(parent_info, variant, is_as)
+			}
 			else {
 				return t.sumtype_check_variant_in_type(parent_info, variant, is_as)
 			}
+		}
+	}
+	return false
+}
+
+fn (t &Table) sumtype_check_function_variant(parent_info SumType, variant Type, is_as bool) bool {
+	for v in parent_info.variants {
+		if v.idx.str() == variant.idx.str() && (!is_as || v.nr_muls() == variant.nr_muls()) {
+			return true
 		}
 	}
 	return false

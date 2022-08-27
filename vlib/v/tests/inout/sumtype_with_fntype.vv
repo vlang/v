@@ -1,0 +1,8 @@
+type Fns = bool | fn (int) int
+
+fn main() {
+	f := Fns(fn (a int) int {
+		return a
+	})
+	println(typeof(f).name)
+}
