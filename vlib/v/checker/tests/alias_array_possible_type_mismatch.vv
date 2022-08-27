@@ -1,0 +1,13 @@
+type Vector = []f64
+type Another = []f64
+
+fn new_vector(x f64, y f64, z f64, w f64) Vector {
+	return Vector([x, y, z, w])
+}
+
+fn test_alias_array_plus_overload() {
+	mut a := new_vector(12, 4.5, 6.7, 6)
+	dump(a)
+	x := a == []f64{}
+	dump(x)
+}

@@ -519,6 +519,13 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, righ
 	return left_type
 }
 
+pub fn (mut c Checker) promote_keeping_aliases(left_type ast.Type, right_type ast.Type, left_kind ast.Kind, right_kind ast.Kind) ast.Type {
+	if left_type == right_type && left_kind == .alias && right_kind == .alias {
+		return left_type
+	}
+	return c.promote(left_type, right_type)
+}
+
 pub fn (mut c Checker) promote(left_type ast.Type, right_type ast.Type) ast.Type {
 	if left_type.is_any_kind_of_pointer() {
 		if right_type.is_int() || c.pref.translated {
