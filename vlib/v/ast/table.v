@@ -1206,6 +1206,7 @@ pub fn (mut t Table) find_or_register_fn_type(f Fn, is_anon bool, has_decl bool)
 		kind: .function
 		name: name
 		cname: cname
+		mod: f.mod
 		info: FnType{
 			is_anon: anon
 			has_decl: has_decl
