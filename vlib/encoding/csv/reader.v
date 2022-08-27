@@ -42,19 +42,18 @@ struct Reader {
 	// not used yet
 	// has_header        bool
 	// headings          []string
-	data              string
-	delimiter         u8
-	comment           u8
-	is_mac_pre_osx_le bool
+	data      string
+	delimiter u8
+	comment   u8
 mut:
-	row_pos int
+	is_mac_pre_osx_le bool
+	row_pos           int
 }
 
 [params]
 pub struct ReaderConfig {
-	delimiter         u8   = `,`
-	comment           u8   = `#`
-	is_mac_pre_osx_le bool = false
+	delimiter u8 = `,`
+	comment   u8 = `#`
 }
 
 // new_reader initializes a Reader with string data to parse and,
@@ -64,7 +63,6 @@ pub fn new_reader(data string, config ReaderConfig) &Reader {
 		data: data
 		delimiter: config.delimiter
 		comment: config.comment
-		is_mac_pre_osx_le: config.is_mac_pre_osx_le
 	}
 }
 
