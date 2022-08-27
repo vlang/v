@@ -19,14 +19,21 @@ vlib/v/checker/tests/if_match_result.vv:7:3: error: `if` expression requires an 
     8 | }
     9 |
 vlib/v/checker/tests/if_match_result.vv:11:3: error: assignment mismatch: 1 variable(s) 0 value(s)
-    9 |
+    9 | 
    10 | // void results
    11 | _ = match 4 {
       |   ^
-   12 |     1 {println('')}
-   13 |     else {exit(0)}
+   12 |     1 { println('') }
+   13 |     else { exit(0) }
+vlib/v/checker/tests/if_match_result.vv:16:2: error: the final expression in `if` or `match`, must have a value of a non-void type
+   14 | }
+   15 | _ = if true {
+   16 |     println('')
+      |     ~~~~~~~~~~~
+   17 | } else {
+   18 |     exit(0)
 vlib/v/checker/tests/if_match_result.vv:15:3: error: assignment mismatch: 1 variable(s) 0 value(s)
-   13 |     else {exit(0)}
+   13 |     else { exit(0) }
    14 | }
    15 | _ = if true {
       |   ^

@@ -194,6 +194,14 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						node.typ = c.expected_type
 					}
 				}
+				if last_expr.typ == ast.void_type && !is_noreturn_callexpr(last_expr.expr)
+					&& !c.skip_flags {
+					// cannot return void type and use it as expr in any circumstances
+					// (e.g. argument expression, variable declaration / assignment)
+					c.error('the final expression in `if` or `match`, must have a value of a non-void type',
+						last_expr.pos)
+					continue
+				}
 				if !c.check_types(last_expr.typ, node.typ) {
 					if node.typ == ast.void_type {
 						// first branch of if expression
