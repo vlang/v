@@ -1190,7 +1190,7 @@ pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
 	return t.register_sym(mr_type)
 }
 
-pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon bool, has_decl bool) int {
+pub fn (mut t Table) find_or_register_fn_type(f Fn, is_anon bool, has_decl bool) int {
 	name := if f.name.len == 0 { 'fn ${t.fn_type_source_signature(f)}' } else { f.name.clone() }
 	cname := if f.name.len == 0 {
 		'anon_fn_${t.fn_type_signature(f)}'
@@ -1206,7 +1206,6 @@ pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon bool, ha
 		kind: .function
 		name: name
 		cname: cname
-		mod: mod
 		info: FnType{
 			is_anon: anon
 			has_decl: has_decl
@@ -1609,7 +1608,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 				}
 			}
 			func.name = ''
-			idx := t.find_or_register_fn_type('', func, true, false)
+			idx := t.find_or_register_fn_type(func, true, false)
 			if has_generic {
 				return new_type(idx).derive_add_muls(generic_type).set_flag(.generic)
 			} else {

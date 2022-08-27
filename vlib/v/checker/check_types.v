@@ -676,7 +676,7 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 				if sym.info is ast.FnType {
 					mut func_ := sym.info.func
 					func_.name = ''
-					idx := c.table.find_or_register_fn_type(c.mod, func_, true, false)
+					idx := c.table.find_or_register_fn_type(func_, true, false)
 					typ = ast.new_type(idx).derive(arg.typ)
 				}
 				if arg.expr.is_auto_deref_var() {
