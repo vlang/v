@@ -931,6 +931,9 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast
 		} else if expr.or_block.kind == .propagate_option {
 			c.error('unexpected `?`, the function `$expr.name` does not return an optional',
 				expr.or_block.pos)
+		} else if expr.or_block.kind == .propagate_result {
+			c.error('unexpected `!`, the function `$expr.name` does not return an optional',
+				expr.or_block.pos)
 		}
 	} else if expr is ast.IndexExpr {
 		if expr.or_expr.kind != .absent {
@@ -2119,6 +2122,9 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 						node.or_block.pos)
 				} else if node.or_block.kind == .propagate_option {
 					c.error('unexpected `?`, the function `$node.name` does neither return an optional nor a result',
+						node.or_block.pos)
+				} else if node.or_block.kind == .propagate_result {
+					c.error('unexpected `!`, the function `$node.name` does neither return an optional nor a result',
 						node.or_block.pos)
 				}
 			}
