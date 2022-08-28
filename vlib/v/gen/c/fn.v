@@ -1221,6 +1221,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		name = ''
 		json_obj = tmp2
 	}
+	if name == '__addr' {
+		name = '&'
+	}
 	if node.language == .c {
 		// Skip "C."
 		name = util.no_dots(name[2..])
@@ -1376,7 +1379,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				g.write(')')
 			}
 			mut tmp_cnt_save := -1
-			g.write('(')
+			if name != '&' {
+				g.write('(')
+			}
 			if is_json_fn {
 				g.write(json_obj)
 			} else {
@@ -1395,7 +1400,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 					g.call_args(node)
 				}
 			}
-			g.write(')')
+			if name != '&' {
+				g.write(')')
+			}
 			if tmp_cnt_save >= 0 {
 				g.writeln(';')
 				g.keep_alive_call_postgen(node, tmp_cnt_save)

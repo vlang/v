@@ -571,6 +571,15 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		ret_type := typ.typ.set_flag(.optional)
 		node.return_type = ret_type
 		return ret_type
+	} else if fn_name == '__addr' {
+		if node.args.len != 1 {
+			c.error('`__addr` requires 1 argument', node.pos)
+			return ast.void_type
+		}
+		typ := c.expr(node.args[0].expr)
+		node.args[0].typ = typ
+		node.return_type = typ.ref()
+		return node.return_type
 	}
 	// look for function in format `mod.fn` or `fn` (builtin)
 	mut func := ast.Fn{}

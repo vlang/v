@@ -1,0 +1,5 @@
+fn main() {
+	b := 4
+	a := __addr(b)
+	assert *a == 4
+}
