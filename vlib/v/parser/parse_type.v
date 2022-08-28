@@ -526,7 +526,7 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 			return p.parse_array_type(p.tok.kind)
 		}
 		else {
-			if p.tok.kind == .lpar && !p.inside_sum_type {
+			if p.tok.kind == .lpar {
 				// multiple return
 				if is_ptr {
 					p.unexpected(prepend_msg: 'parse_type:', got: '`&` before multiple returns')

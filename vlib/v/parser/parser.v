@@ -3742,27 +3742,8 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	p.check(.assign)
 	mut type_pos := p.tok.pos()
 	mut comments := []ast.Comment{}
-	if p.tok.kind == .key_fn {
-		// function type: `type mycallback = fn(string, int)`
-		fn_name := p.prepend_mod(name)
-		fn_type := p.parse_fn_type(fn_name)
-		p.table.sym(fn_type).is_pub = is_pub
-		type_pos = type_pos.extend(p.tok.pos())
-		comments = p.eat_comments(same_line: true)
-		attrs := p.attrs
-		p.attrs = []
-		return ast.FnTypeDecl{
-			name: fn_name
-			is_pub: is_pub
-			typ: fn_type
-			pos: decl_pos
-			type_pos: type_pos
-			comments: comments
-			attrs: attrs
-		}
-	}
 	sum_variants << p.parse_sum_type_variants()
-	// type SumType = A | B | c
+	// type SumType = Aaa | Bbb | Ccc
 	if sum_variants.len > 1 {
 		for variant in sum_variants {
 			variant_sym := p.table.sym(variant.typ)
@@ -3812,6 +3793,29 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	// sum_variants will have only one element
 	parent_type := sum_variants[0].typ
 	parent_sym := p.table.sym(parent_type)
+	if parent_sym.info is ast.FnType {
+		// function type: `type mycallback = fn(string, int)`
+		fn_name := p.prepend_mod(name)
+		mut func := parent_sym.info.func
+		func.name = fn_name
+		idx := p.table.find_or_register_fn_type(func, false, false)
+		fn_type := ast.new_type(idx)
+		mut fn_sym := p.table.sym(fn_type)
+		fn_sym.is_pub = is_pub
+		type_pos = type_pos.extend(p.tok.pos())
+		comments = p.eat_comments(same_line: true)
+		attrs := p.attrs
+		p.attrs = []
+		return ast.FnTypeDecl{
+			name: fn_name
+			is_pub: is_pub
+			typ: fn_type
+			pos: decl_pos
+			type_pos: type_pos
+			comments: comments
+			attrs: attrs
+		}
+	}
 	pidx := parent_type.idx()
 	p.check_for_impure_v(parent_sym.language, decl_pos)
 	prepend_mod_name := p.prepend_mod(name)

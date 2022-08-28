@@ -1,8 +1,13 @@
-type Fns = bool | fn (int) int
+type Fn = fn () int | fn (int) int | string
 
 fn main() {
-	f := Fns(fn (a int) int {
+	f1 := Fn(fn (a int) int {
 		return a
 	})
-	println(typeof(f).name)
+	println(typeof(f1).name)
+
+	f2 := Fn(fn () int {
+		return 22
+	})
+	println(typeof(f2).name)
 }
