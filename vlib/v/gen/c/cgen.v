@@ -2102,7 +2102,12 @@ fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 	got, exp := fun.got, fun.exp
 	got_sym, exp_sym := g.table.sym(got), g.table.sym(exp)
-	got_cname, exp_cname := got_sym.cname, exp_sym.cname
+	mut got_cname, exp_cname := got_sym.cname, exp_sym.cname
+	if got_sym.info is ast.FnType {
+		if got_sym.info.is_anon {
+			got_cname = 'anon_fn_${g.table.fn_type_signature(got_sym.info.func)}'
+		}
+	}
 	mut sb := strings.new_builder(128)
 	sb.writeln('static inline $exp_cname ${fun.fn_name}($got_cname* x) {')
 	sb.writeln('\t$got_cname* ptr = memdup(x, sizeof($got_cname));')
@@ -2231,7 +2236,12 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	}
 	// cast to sum type
 	exp_styp := g.typ(expected_type)
-	got_styp := g.typ(got_type)
+	mut got_styp := g.typ(got_type)
+	if got_sym.info is ast.FnType {
+		if got_sym.info.is_anon {
+			got_styp = 'anon_fn_${g.table.fn_type_signature(got_sym.info.func)}'
+		}
+	}
 	if expected_type != ast.void_type {
 		unwrapped_expected_type := g.unwrap_generic(expected_type)
 		unwrapped_exp_sym := g.table.sym(unwrapped_expected_type)
