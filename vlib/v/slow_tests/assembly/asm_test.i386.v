@@ -118,7 +118,7 @@ mut:
 fn (m Manu) str() string {
 	return unsafe {
 		string{
-			str: &u8(&m)
+			str: __addr(m)
 			len: 24
 			is_lit: 1
 		}

@@ -454,7 +454,7 @@ pub fn is_executable(path string) bool {
 	$if solaris {
 		statbuf := C.stat{}
 		unsafe {
-			if C.stat(&char(path.str), &statbuf) != 0 {
+			if C.stat(&char(path.str), __addr(statbuf)) != 0 {
 				return false
 			}
 		}
@@ -755,7 +755,7 @@ pub fn is_dir(path string) bool {
 		return false
 	} $else {
 		statbuf := C.stat{}
-		if unsafe { C.stat(&char(path.str), &statbuf) } != 0 {
+		if unsafe { C.stat(&char(path.str), __addr(statbuf)) } != 0 {
 			return false
 		}
 		// ref: https://code.woboq.org/gcc/include/sys/stat.h.html
@@ -774,7 +774,7 @@ pub fn is_link(path string) bool {
 		return int(attr) != int(C.INVALID_FILE_ATTRIBUTES) && (attr & 0x400) != 0
 	} $else {
 		statbuf := C.stat{}
-		if C.lstat(&char(path.str), &statbuf) != 0 {
+		if C.lstat(&char(path.str), __addr(statbuf)) != 0 {
 			return false
 		}
 		return int(statbuf.st_mode) & s_ifmt == s_iflnk

@@ -280,7 +280,7 @@ pub fn ls(path string) ![]string {
 			break
 		}
 		unsafe {
-			bptr := &u8(&ent.d_name[0])
+			bptr := &u8(__addr(ent.d_name[0]))
 			if bptr[0] == 0 || (bptr[0] == `.` && bptr[1] == 0)
 				|| (bptr[0] == `.` && bptr[1] == `.` && bptr[2] == 0) {
 				continue

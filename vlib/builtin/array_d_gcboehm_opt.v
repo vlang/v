@@ -233,7 +233,7 @@ fn (a &array) clone_to_depth_noscan(depth int) array {
 	if depth > 0 {
 		for i in 0 .. a.len {
 			ar := array{}
-			unsafe { vmemcpy(&ar, a.get_unsafe(i), int(sizeof(array))) }
+			unsafe { vmemcpy(__addr(ar), a.get_unsafe(i), int(sizeof(array))) }
 			ar_clone := unsafe { ar.clone_to_depth_noscan(depth - 1) }
 			unsafe { arr.set_unsafe(i, &ar_clone) }
 		}

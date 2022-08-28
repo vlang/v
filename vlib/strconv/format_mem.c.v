@@ -120,7 +120,7 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 		if d_i < 20 {
 			i++
 		}
-		unsafe { res.write_ptr(&buf[i], n_char) }
+		unsafe { res.write_ptr(__addr(buf[i]), n_char) }
 	} else {
 		// we have a zero no need of more code!
 		res.write_u8(`0`)
@@ -360,7 +360,7 @@ pub fn format_fl(f f64, p BF_param) string {
 		}
 
 		// copy the float
-		vmemcpy(&buf[buf_i], fs.str, fs.len)
+		vmemcpy(__addr(buf[buf_i]), fs.str, fs.len)
 		buf_i += fs.len
 
 		// make the padding if needed
@@ -371,7 +371,7 @@ pub fn format_fl(f f64, p BF_param) string {
 				out_i++
 			}
 		}
-		vmemcpy(&out[out_i], &buf[0], buf_i)
+		vmemcpy(__addr(out[out_i]), __addr(buf[0]), buf_i)
 		out_i += buf_i
 		if p.allign == .left {
 			for i1 := 0; i1 < dif; i1++ {
@@ -383,7 +383,7 @@ pub fn format_fl(f f64, p BF_param) string {
 
 		// return and free
 		tmp := fs
-		fs = tos_clone(&out[0])
+		fs = tos_clone(__addr(out[0]))
 		tmp.free()
 		return fs
 	}
@@ -431,7 +431,7 @@ pub fn format_es(f f64, p BF_param) string {
 		}
 
 		// copy the float
-		vmemcpy(&buf[buf_i], fs.str, fs.len)
+		vmemcpy(__addr(buf[buf_i]), fs.str, fs.len)
 		buf_i += fs.len
 
 		// make the padding if needed
@@ -442,7 +442,7 @@ pub fn format_es(f f64, p BF_param) string {
 				out_i++
 			}
 		}
-		vmemcpy(&out[out_i], &buf[0], buf_i)
+		vmemcpy(__addr(out[out_i]), __addr(buf[0]), buf_i)
 		out_i += buf_i
 		if p.allign == .left {
 			for i1 := 0; i1 < dif; i1++ {
@@ -454,7 +454,7 @@ pub fn format_es(f f64, p BF_param) string {
 
 		// return and free
 		tmp := fs
-		fs = tos_clone(&out[0])
+		fs = tos_clone(__addr(out[0]))
 		tmp.free()
 		return fs
 	}

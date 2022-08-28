@@ -111,7 +111,6 @@ fn internal_string_from_set(mut rng PRNG, charset string, len int) string {
 
 fn deinit() {
 	unsafe {
-		default_rng.free() // free the implementation
 		free(default_rng) // free the interface wrapper itself
 	}
 }

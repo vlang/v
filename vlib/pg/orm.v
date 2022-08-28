@@ -249,22 +249,22 @@ fn str_to_primitive(str string, typ int) !orm.Primitive {
 		// u8
 		orm.type_idx['u8'] {
 			data := str.i8()
-			return orm.Primitive(*unsafe { &u8(&data) })
+			return orm.Primitive(*unsafe { __addr(data) })
 		}
 		// u16
 		orm.type_idx['u16'] {
 			data := str.i16()
-			return orm.Primitive(*unsafe { &u16(&data) })
+			return orm.Primitive(*unsafe { __addr(data) })
 		}
 		// u32
 		orm.type_idx['u32'] {
 			data := str.int()
-			return orm.Primitive(*unsafe { &u32(&data) })
+			return orm.Primitive(*unsafe { __addr(data) })
 		}
 		// u64
 		orm.type_idx['u64'] {
 			data := str.i64()
-			return orm.Primitive(*unsafe { &u64(&data) })
+			return orm.Primitive(*unsafe { __addr(data) })
 		}
 		// f32
 		orm.type_idx['f32'] {

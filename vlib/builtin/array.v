@@ -642,7 +642,7 @@ pub fn (a &array) clone_to_depth(depth int) array {
 	if depth > 0 && a.element_size == sizeof(array) && a.len >= 0 && a.cap >= a.len {
 		for i in 0 .. a.len {
 			ar := array{}
-			unsafe { vmemcpy(&ar, a.get_unsafe(i), int(sizeof(array))) }
+			unsafe { vmemcpy(__addr(ar), a.get_unsafe(i), int(sizeof(array))) }
 			ar_clone := unsafe { ar.clone_to_depth(depth - 1) }
 			unsafe { arr.set_unsafe(i, &ar_clone) }
 		}

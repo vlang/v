@@ -175,7 +175,7 @@ fn read_wav_file_samples(fpath string) ![]f32 {
 			}
 			// eprintln('`fmt ` chunk: $rf\n`data` chunk: $ch')
 			mut doffset := 0
-			mut dp := unsafe { &u8(&ch.chunk_data) }
+			mut dp := unsafe { __addr(ch.chunk_data) }
 			for doffset < ch.chunk_size {
 				for c := 0; c < rf.nchannels; c++ {
 					mut x := f32(0.0)
