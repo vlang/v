@@ -3,7 +3,7 @@ mut:
 	a int
 }
 
-fn main() {
+fn test_addr() {
 	mut a := 4
 	b := __addr(a)
 	a = 3
