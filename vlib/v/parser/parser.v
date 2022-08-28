@@ -3799,7 +3799,8 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		mut func := parent_sym.info.func
 		p.table.unregister_fn_type(func)
 		func.name = fn_name
-		idx := p.table.find_or_register_fn_type(func, false, false)
+		has_decl := p.builtin_mod && fn_name.starts_with('Map') && fn_name.ends_with('Fn')
+		idx := p.table.find_or_register_fn_type(func, false, has_decl)
 		fn_type := ast.new_type(idx)
 		mut fn_sym := p.table.sym(fn_type)
 		fn_sym.is_pub = is_pub
