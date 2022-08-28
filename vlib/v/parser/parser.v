@@ -3797,6 +3797,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		// function type: `type mycallback = fn(string, int)`
 		fn_name := p.prepend_mod(name)
 		mut func := parent_sym.info.func
+		p.table.unregister_fn_type(func)
 		func.name = fn_name
 		idx := p.table.find_or_register_fn_type(func, false, false)
 		fn_type := ast.new_type(idx)
