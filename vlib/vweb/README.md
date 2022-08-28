@@ -228,7 +228,7 @@ To handle the query context, you just need use the  `query` field
 
 **Example:**
 
-```v ignore
+```v
 module main
 
 import vweb
