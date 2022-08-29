@@ -1507,8 +1507,9 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 		n = 'main.$n'
 	}
 	addr := g.fn_addr[n]
-	// not aligned now XOR pushed args will be odd 
-	is_16bit_aligned := if mut g.code_gen is Amd64 { g.code_gen.is_16bit_aligned } else { true } != (node.args.len > 6 && node.args.len % 2 == 1)
+	// not aligned now XOR pushed args will be odd
+	is_16bit_aligned := if mut g.code_gen is Amd64 { g.code_gen.is_16bit_aligned } else { true } != (
+		node.args.len > 6 && node.args.len % 2 == 1)
 	if !is_16bit_aligned {
 		// dummy data
 		g.push(.rbp)
@@ -1520,7 +1521,7 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 	}
 	num_on_register := if node.args.len > 6 { 6 } else { node.args.len }
 	for i in 0 .. num_on_register {
-		g.pop(fn_arg_registers[i])
+		g.pop(native.fn_arg_registers[i])
 	}
 	if addr == 0 {
 		g.delay_fn_call(name)
@@ -1533,7 +1534,7 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 		// dummy data
 		g.pop(.rdi)
 	}
-	for _ in 0..node.args.len-6 {
+	for _ in 0 .. node.args.len - 6 {
 		// args
 		g.pop(.rdi)
 	}
