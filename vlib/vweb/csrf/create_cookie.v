@@ -2,17 +2,17 @@ module csrf
 
 import rand
 
-// creating the value of the csrf-token
 const chars = 'QWERTZUIOPASDFGHJKLYXCVBNMqwertzuiopasdfghjklyxcvbnm1234567890_-'
 
 const cookie_key = '__Host-Csrf-Token'
 
-// Public function that generates the token and sets the cookie
+// Function that generates the token and sets the cookie
 pub fn (mut app App) set_csrf_cookie() App {
 	app.set_cookie(create_cookie().Cookie)
 	return app
 }
 
+//generates the CSRF-Token
 fn generate() string {
 	mut out := ''
 	for _ in 0 .. 42 {
@@ -24,7 +24,7 @@ fn generate() string {
 	return out
 }
 
-// create the cookie
+// creates the cookie
 fn create_cookie() CsrfCookie {
 	return CsrfCookie{
 		name: csrf.cookie_key
