@@ -1,0 +1,11 @@
+struct LL<T> {
+	mut:
+		value T
+		next &LL = unsafe { 0 }
+}
+
+fn main() {
+	mut l := LL<int>{}
+	l.value = 5
+	println(l.value)
+}
