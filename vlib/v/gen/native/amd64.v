@@ -452,7 +452,7 @@ fn (mut g Gen) mov64(reg Register, val i64) {
 			g.write8(0x48)
 			g.write8(0xc7)
 			g.write8(0xc2)
-			g.write32(int(int(val)))
+			g.write32(int(val))
 			g.println('mov32 $reg, $val')
 			return
 		}
