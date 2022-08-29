@@ -2,7 +2,7 @@ module csrf
 
 import net.http
 
-//protects a handler-function against CSRF. Must be set at the beginning of the handler-function (as seen in the vweb_test_server_csrf.v in the test-folder)
+// protects a handler-function against CSRF. Must be set at the beginning of the handler-function (as seen in the vweb_test_server_csrf.v in the test-folder)
 pub fn (mut app App) csrf_protect() CheckedApp {
 	req_cookies := app.req.cookies.clone()
 	app_csrf_cookie_str := app.get_cookie(cookie_key) or {
@@ -24,7 +24,7 @@ pub fn (mut app App) csrf_protect() CheckedApp {
 	}
 }
 
-//checks if there is a Csrf-Token exists and it was added to the headers of the request
+// checks if there is a Csrf-Token exists and it was added to the headers of the request
 fn (app App) check_headers(app_csrf_cookie_str string) bool {
 	token := app.req.header.get_custom('Csrf-Token', http.HeaderQueryConfig{true}) or {
 		return false

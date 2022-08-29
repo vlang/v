@@ -12,7 +12,7 @@ pub fn (mut app App) set_csrf_cookie() App {
 	return app
 }
 
-//generates the CSRF-Token
+// generates the CSRF-Token
 fn generate() string {
 	mut out := ''
 	for _ in 0 .. 42 {
