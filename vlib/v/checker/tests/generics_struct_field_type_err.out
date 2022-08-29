@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generics_struct_field_type_err.vv:4:9: error: field `next` type is generic struct, must specify the generic type names, e.g. Foo<T>, Foo<int>
+    2 |     mut:
+    3 |         value T
+    4 |         next &LL = unsafe { 0 }
+      |               ~~
+    5 | }
+    6 |
