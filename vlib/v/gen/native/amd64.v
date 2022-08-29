@@ -211,9 +211,14 @@ fn (mut g Gen) cmp_var_reg(var Var, reg Register, config VarConfig) {
 			// TODO: size
 			g.write8(0x48) // 83 for 1 byte?
 			g.write8(0x39)
-			g.write8(0x45)
 			offset := var.offset - config.offset
-			g.write8(0xff - offset + 1)
+			is_far_var := offset > 0x80 || offset < -0x7f
+			g.write8(if is_far_var { 0x85 } else { 0x45 })
+			if is_far_var {
+				g.write32(int((0xffffffff - i64(offset) + 1) % 0x100000000))
+			} else {
+				g.write8((0xff - offset + 1) % 0x100)
+			}
 			g.println('cmp var `$var.name`, $reg')
 		}
 		GlobalVar {
@@ -242,9 +247,14 @@ fn (mut g Gen) cmp_var(var Var, val int, config VarConfig) {
 		LocalVar {
 			// TODO: size
 			g.write8(0x81) // 83 for 1 byte?
-			g.write8(0x7d)
 			offset := var.offset - config.offset
-			g.write8(0xff - offset + 1)
+			is_far_var := offset > 0x80 || offset < -0x7f
+			g.write8(if is_far_var { 0xbd } else { 0x7d })
+			if is_far_var {
+				g.write32(int((0xffffffff - i64(offset) + 1) % 0x100000000))
+			} else {
+				g.write8((0xff - offset + 1) % 0x100)
+			}
 			g.write32(val)
 			g.println('cmp var `$var.name` $val')
 		}
@@ -274,9 +284,15 @@ fn (mut g Gen) dec_var(var Var, config VarConfig) {
 		}
 		LocalVar {
 			// TODO: size
-			g.write16(0x6d81) // 83 for 1 byte
+			g.write8(0x81) // 83 for 1 byte
 			offset := var.offset - config.offset
-			g.write8(0xff - offset + 1)
+			is_far_var := offset > 0x80 || offset < -0x7f
+			g.write8(if is_far_var { 0xad } else { 0x6d })
+			if is_far_var {
+				g.write32(int((0xffffffff - i64(offset) + 1) % 0x100000000))
+			} else {
+				g.write8((0xff - offset + 1) % 0x100)
+			}
 			g.write32(1)
 			g.println('dec_var `$var.name`')
 		}
@@ -306,9 +322,15 @@ fn (mut g Gen) inc_var(var Var, config VarConfig) {
 		}
 		LocalVar {
 			// TODO: size
-			g.write16(0x4581) // 83 for 1 byte
+			g.write8(0x81) // 83 for 1 byte
 			offset := var.offset - config.offset
-			g.write8(0xff - offset + 1)
+			is_far_var := offset > 0x80 || offset < -0x7f
+			g.write8(if is_far_var { 0x85 } else { 0x45 })
+			if is_far_var {
+				g.write32(int((0xffffffff - i64(offset) + 1) % 0x100000000))
+			} else {
+				g.write8((0xff - offset + 1) % 0x100)
+			}
 			g.write32(1)
 			g.println('inc_var `$var.name`')
 		}
@@ -430,7 +452,7 @@ fn (mut g Gen) mov64(reg Register, val i64) {
 			g.write8(0x48)
 			g.write8(0xc7)
 			g.write8(0xc2)
-			g.write32(i32(int(val)))
+			g.write32(int(int(val)))
 			g.println('mov32 $reg, $val')
 			return
 		}
@@ -500,6 +522,7 @@ fn (mut g Gen) mov_reg_to_var(var Var, reg Register, config VarConfig) {
 		}
 		LocalVar {
 			offset := var.offset - config.offset
+			is_far_var := offset > 0x80 || offset < -0x7f
 			typ := if config.typ == 0 { var.typ } else { config.typ }
 
 			mut size := 'UNKNOWN'
@@ -537,15 +560,20 @@ fn (mut g Gen) mov_reg_to_var(var Var, reg Register, config VarConfig) {
 					'UNKNOWN'
 				}
 			}
+			far_var_offset := if is_far_var { 0x40 } else { 0 }
 			match reg {
-				.eax, .rax, .r8 { g.write8(0x45) }
-				.edi, .rdi { g.write8(0x7d) }
-				.rsi { g.write8(0x75) }
-				.rdx { g.write8(0x55) }
-				.rcx, .r9 { g.write8(0x4d) }
+				.eax, .rax, .r8 { g.write8(0x45 + far_var_offset) }
+				.edi, .rdi { g.write8(0x7d + far_var_offset) }
+				.rsi { g.write8(0x75 + far_var_offset) }
+				.rdx { g.write8(0x55 + far_var_offset) }
+				.rcx, .r9 { g.write8(0x4d + far_var_offset) }
 				else { g.n_error('mov_from_reg $reg') }
 			}
-			g.write8(0xff - offset + 1)
+			if is_far_var {
+				g.write32(int((0xffffffff - i64(offset) + 1) % 0x100000000))
+			} else {
+				g.write8((0xff - offset + 1) % 0x100)
+			}
 			g.println('mov $size PTR [rbp-$offset.hex2()],$reg')
 		}
 		GlobalVar {
@@ -573,13 +601,17 @@ fn (mut g Gen) mov_int_to_var(var Var, integer int, config VarConfig) {
 		LocalVar {
 			offset := var.offset - config.offset
 			typ := if config.typ == 0 { var.typ } else { config.typ }
-			var_addr := 0xff - offset + 1
+			is_far_var := offset > 0x80 || offset < -0x7f
 
 			match typ {
 				ast.i8_type_idx, ast.u8_type_idx, ast.char_type_idx {
 					g.write8(0xc6)
-					g.write8(0x45)
-					g.write8(var_addr)
+					g.write8(if is_far_var { 0x85 } else { 0x45 })
+					if is_far_var {
+						g.write32(int((0xffffffff - i64(offset) + 1) % 0x100000000))
+					} else {
+						g.write8((0xff - offset + 1) % 0x100)
+					}
 					g.write8(u8(integer))
 					g.println('mov BYTE PTR[rbp-$offset.hex2()], $integer')
 				}
@@ -587,8 +619,12 @@ fn (mut g Gen) mov_int_to_var(var Var, integer int, config VarConfig) {
 				ast.int_literal_type_idx {
 					g.write8(0x48)
 					g.write8(0xc7)
-					g.write8(0x45)
-					g.write8(var_addr)
+					g.write8(if is_far_var { 0x85 } else { 0x45 })
+					if is_far_var {
+						g.write32(int((0xffffffff - i64(offset) + 1) % 0x100000000))
+					} else {
+						g.write8((0xff - offset + 1) % 0x100)
+					}
 					g.write32(integer)
 					g.println('mov QWORD PTR[rbp-$offset.hex2()], $integer')
 				}
@@ -604,6 +640,7 @@ fn (mut g Gen) mov_int_to_var(var Var, integer int, config VarConfig) {
 }
 
 fn (mut g Gen) lea_var_to_reg(reg Register, var_offset int) {
+	is_far_var := var_offset > 0x80 || var_offset < -0x7f
 	match reg {
 		.rax, .rbx, .rsi, .rdi {
 			g.write8(0x48)
@@ -611,16 +648,21 @@ fn (mut g Gen) lea_var_to_reg(reg Register, var_offset int) {
 		else {}
 	}
 	g.write8(0x8d)
+	far_var_offset := if is_far_var { 0x40 } else { 0 }
 	match reg {
-		.eax, .rax { g.write8(0x45) }
-		.edi, .rdi { g.write8(0x7d) }
-		.rsi { g.write8(0x75) }
-		.rdx { g.write8(0x55) }
-		.rbx { g.write8(0x5d) }
-		.rcx { g.write8(0x4d) }
+		.eax, .rax { g.write8(0x45 + far_var_offset) }
+		.edi, .rdi { g.write8(0x7d + far_var_offset) }
+		.rsi { g.write8(0x75 + far_var_offset) }
+		.rdx { g.write8(0x55 + far_var_offset) }
+		.rbx { g.write8(0x5d + far_var_offset) }
+		.rcx { g.write8(0x4d + far_var_offset) }
 		else { g.n_error('lea_var_to_reg $reg') }
 	}
-	g.write8(0xff - var_offset + 1)
+	if is_far_var {
+		g.write32(int((0xffffffff - i64(var_offset) + 1) % 0x100000000))
+	} else {
+		g.write8((0xff - var_offset + 1) % 0x100)
+	}
 	g.println('lea $reg, [rbp-$var_offset.hex2()]')
 }
 
@@ -642,6 +684,7 @@ fn (mut g Gen) mov_var_to_reg(reg Register, var Var, config VarConfig) {
 		}
 		LocalVar {
 			offset := var.offset - config.offset
+			is_far_var := offset > 0x80 || offset < -0x7f
 			typ := if config.typ == 0 { var.typ } else { config.typ }
 
 			instruction, size := match typ {
@@ -686,16 +729,21 @@ fn (mut g Gen) mov_var_to_reg(reg Register, var Var, config VarConfig) {
 					'mov', 'UNKNOWN'
 				}
 			}
+			far_var_offset := if is_far_var { 0x40 } else { 0 }
 			match reg {
-				.eax, .rax { g.write8(0x45) }
-				.edi, .rdi { g.write8(0x7d) }
-				.rsi { g.write8(0x75) }
-				.rdx { g.write8(0x55) }
-				.rbx { g.write8(0x5d) }
-				.rcx { g.write8(0x4d) }
+				.eax, .rax { g.write8(0x45 + far_var_offset) }
+				.edi, .rdi { g.write8(0x7d + far_var_offset) }
+				.rsi { g.write8(0x75 + far_var_offset) }
+				.rdx { g.write8(0x55 + far_var_offset) }
+				.rbx { g.write8(0x5d + far_var_offset) }
+				.rcx { g.write8(0x4d + far_var_offset) }
 				else { g.n_error('mov_var_to_reg $reg') }
 			}
-			g.write8(0xff - offset + 1)
+			if is_far_var {
+				g.write32(int((0xffffffff - i64(offset) + 1) % 0x100000000))
+			} else {
+				g.write8((0xff - offset + 1) % 0x100)
+			}
 			g.println('$instruction $reg, $size PTR [rbp-$offset.hex2()]')
 		}
 		GlobalVar {
@@ -2325,7 +2373,7 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 			g.mov_reg_to_var(LocalVar{offset, ast.int_type_idx, name}, native.fn_arg_registers[i])
 		} else {
 			// &var = rbp + 16, 24, 32, ...
-			g.var_offset[name] = 0x100 + (4 - i) * 8
+			g.var_offset[name] = (4 - i) * 8
 			g.var_alloc_size[name] = 4
 		}
 	}
@@ -2389,32 +2437,38 @@ pub fn (mut g Gen) allocate_var(name string, size int, initial_val int) int {
 		// TODO
 		return 0
 	}
+	padding := (size - g.stack_var_pos % size) % size
+	n := g.stack_var_pos + size + padding
+	is_far_var := n > 0x80 || n < -0x7f
+	far_var_offset := if is_far_var { 0x40 } else { 0 }
 	// `a := 3`  => `mov DWORD [rbp-0x4],0x3`
 	match size {
 		1 {
 			// BYTE
 			g.write8(0xc6)
-			g.write8(0x45)
+			g.write8(0x45 + far_var_offset)
 		}
 		4 {
 			// DWORD
 			g.write8(0xc7)
-			g.write8(0x45)
+			g.write8(0x45 + far_var_offset)
 		}
 		8 {
 			// QWORD
 			g.write8(0x48)
 			g.write8(0xc7)
-			g.write8(0x45)
+			g.write8(0x45 + far_var_offset)
 		}
 		else {
 			g.n_error('allocate_var: bad size $size')
 		}
 	}
 	// Generate N in `[rbp-N]`
-	padding := (size - g.stack_var_pos % size) % size
-	n := g.stack_var_pos + size + padding
-	g.write8(0xff - n + 1)
+	if is_far_var {
+		g.write32(int((0xffffffff - i64(n) + 1) % 0x100000000))
+	} else {
+		g.write8((0xff - n + 1) % 0x100)
+	}
 	g.stack_var_pos += size + padding
 	g.var_offset[name] = g.stack_var_pos
 	g.var_alloc_size[name] = size
