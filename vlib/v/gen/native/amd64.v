@@ -502,23 +502,35 @@ fn (mut g Gen) mov_reg_to_var(var Var, reg Register, config VarConfig) {
 			offset := var.offset - config.offset
 			typ := if config.typ == 0 { var.typ } else { config.typ }
 
-			size := match typ {
+			mut size := 'UNKNOWN'
+			is_extended_register := int(reg) >= int(Register.r8) && int(reg) <= int(Register.r15)
+			match typ {
 				ast.i64_type_idx, ast.u64_type_idx, ast.isize_type_idx, ast.usize_type_idx,
 				ast.int_literal_type_idx {
-					g.write16(0x8948)
-					'QWORD'
+					g.write16(0x8948 + if is_extended_register { 4 } else { 0 })
+					size = 'QWORD'
 				}
 				ast.int_type_idx, ast.u32_type_idx, ast.rune_type_idx {
+					if is_extended_register {
+						g.write8(0x44)
+					}
 					g.write8(0x89)
-					'DWORD'
+					size = 'DWORD'
 				}
 				ast.i16_type_idx, ast.u16_type_idx {
-					g.write16(0x8966)
-					'WORD'
+					g.write8(0x66)
+					if is_extended_register {
+						g.write8(0x44)
+					}
+					g.write8(0x89)
+					size = 'WORD'
 				}
 				ast.i8_type_idx, ast.u8_type_idx, ast.char_type_idx, ast.bool_type_idx {
+					if is_extended_register {
+						g.write8(0x44)
+					}
 					g.write8(0x88)
-					'BYTE'
+					size = 'BYTE'
 				}
 				else {
 					g.n_error('unsupported type for mov_reg_to_var')
@@ -526,11 +538,11 @@ fn (mut g Gen) mov_reg_to_var(var Var, reg Register, config VarConfig) {
 				}
 			}
 			match reg {
-				.eax, .rax { g.write8(0x45) }
+				.eax, .rax, .r8 { g.write8(0x45) }
 				.edi, .rdi { g.write8(0x7d) }
 				.rsi { g.write8(0x75) }
 				.rdx { g.write8(0x55) }
-				.rcx { g.write8(0x4d) }
+				.rcx, .r9 { g.write8(0x4d) }
 				else { g.n_error('mov_from_reg $reg') }
 			}
 			g.write8(0xff - offset + 1)
@@ -750,21 +762,17 @@ pub fn (mut g Gen) push(reg Register) {
 	if mut g.code_gen is Amd64 {
 		g.code_gen.is_16bit_aligned = !g.code_gen.is_16bit_aligned
 	}
-	/*
-	match reg {
-		.rbp { g.write8(0x55) }
-		else {}
-	}
-	*/
 	g.println('push $reg')
 }
 
 pub fn (mut g Gen) pop(reg Register) {
-	g.write8(0x58 + int(reg))
+	if int(reg) >= int(Register.r8) && int(reg) <= int(Register.r15) {
+		g.write8(0x41)
+	}
+	g.write8(0x58 + int(reg) % 8)
 	if mut g.code_gen is Amd64 {
 		g.code_gen.is_16bit_aligned = !g.code_gen.is_16bit_aligned
 	}
-	// TODO r8...
 	g.println('pop $reg')
 }
 
@@ -1451,36 +1459,20 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 		n = 'main.$n'
 	}
 	addr := g.fn_addr[n]
-	is_16bit_aligned := if mut g.code_gen is Amd64 { g.code_gen.is_16bit_aligned } else { true }
+	// not aligned now XOR pushed args will be odd 
+	is_16bit_aligned := if mut g.code_gen is Amd64 { g.code_gen.is_16bit_aligned } else { true } != (node.args.len > 6 && node.args.len % 2 == 1)
 	if !is_16bit_aligned {
 		// dummy data
+		g.push(.rbp)
+	}
+	for i_ in 0 .. node.args.len {
+		i := node.args.len - i_ - 1
+		g.expr(node.args[i].expr)
 		g.push(.rax)
 	}
-	// Copy values to registers (calling convention)
-	// g.mov(.eax, 0)
-	for i in 0 .. node.args.len {
-		expr := node.args[i].expr
-		match expr {
-			ast.IntegerLiteral {
-				// `foo(2)` => `mov edi,0x2`
-				g.mov(native.fn_arg_registers[i], expr.val.int())
-			}
-			ast.Ident {
-				// `foo(x)` => `mov edi,DWORD PTR [rbp-0x8]`
-				var_offset := g.get_var_offset(expr.name)
-				if g.pref.is_verbose {
-					println('i=$i fn name= $name offset=$var_offset')
-					println(int(native.fn_arg_registers[i]))
-				}
-				g.mov_var_to_reg(native.fn_arg_registers[i], expr as ast.Ident)
-			}
-			else {
-				g.v_error('unhandled call_fn (name=$name) node: $expr.type_name()', node.pos)
-			}
-		}
-	}
-	if node.args.len > 6 {
-		g.v_error('more than 6 args not allowed for now', node.pos)
+	num_on_register := if node.args.len > 6 { 6 } else { node.args.len }
+	for i in 0 .. num_on_register {
+		g.pop(fn_arg_registers[i])
 	}
 	if addr == 0 {
 		g.delay_fn_call(name)
@@ -1491,6 +1483,10 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 	g.println('call `${name}()`')
 	if !is_16bit_aligned {
 		// dummy data
+		g.pop(.rdi)
+	}
+	for _ in 0..node.args.len-6 {
+		// args
 		g.pop(.rdi)
 	}
 }
@@ -2325,7 +2321,13 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 		// `mov DWORD PTR [rbp-0x4],edi`
 		offset += 4
 		// TODO size
-		g.mov_reg_to_var(LocalVar{offset, ast.int_type_idx, name}, native.fn_arg_registers[i])
+		if i < 6 {
+			g.mov_reg_to_var(LocalVar{offset, ast.int_type_idx, name}, native.fn_arg_registers[i])
+		} else {
+			// &var = rbp + 16, 24, 32, ...
+			g.var_offset[name] = 0x100 + (4 - i) * 8
+			g.var_alloc_size[name] = 4
+		}
 	}
 	// define defer vars
 	for i in 0 .. node.defer_stmts.len {
