@@ -7,6 +7,7 @@ pub struct Amd64 {
 mut:
 	g &Gen
 	// arm64 specific stuff for code generation
+	is_16bit_aligned bool
 }
 
 // The registers are ordered for faster generation
@@ -746,6 +747,9 @@ pub fn (mut g Gen) push(reg Register) {
 		g.write8(0x41)
 		g.write8(0x50 + int(reg) - 8)
 	}
+	if mut g.code_gen is Amd64 {
+		g.code_gen.is_16bit_aligned = !g.code_gen.is_16bit_aligned
+	}
 	/*
 	match reg {
 		.rbp { g.write8(0x55) }
@@ -757,6 +761,9 @@ pub fn (mut g Gen) push(reg Register) {
 
 pub fn (mut g Gen) pop(reg Register) {
 	g.write8(0x58 + int(reg))
+	if mut g.code_gen is Amd64 {
+		g.code_gen.is_16bit_aligned = !g.code_gen.is_16bit_aligned
+	}
 	// TODO r8...
 	g.println('pop $reg')
 }
@@ -1444,6 +1451,11 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 		n = 'main.$n'
 	}
 	addr := g.fn_addr[n]
+	is_16bit_aligned := if mut g.code_gen is Amd64 { g.code_gen.is_16bit_aligned } else { true }
+	if !is_16bit_aligned {
+		// dummy data
+		g.push(.rax)
+	}
 	// Copy values to registers (calling convention)
 	// g.mov(.eax, 0)
 	for i in 0 .. node.args.len {
@@ -1477,6 +1489,10 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 		g.call(int(addr))
 	}
 	g.println('call `${name}()`')
+	if !is_16bit_aligned {
+		// dummy data
+		g.pop(.rdi)
+	}
 }
 
 fn (mut g Gen) call_builtin_amd64(name string) i64 {
@@ -2318,6 +2334,10 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 	}
 	//
 	g.stmts(node.stmts)
+	// 16 bytes align
+	g.stack_var_pos += 23
+	g.stack_var_pos /= 16
+	g.stack_var_pos *= 16
 	g.println('; stack frame size: $g.stack_var_pos')
 	g.write32_at(local_alloc_pos + 3, g.stack_var_pos)
 	is_main := node.name == 'main.main'
@@ -2339,6 +2359,10 @@ pub fn (mut g Gen) builtin_decl_amd64(builtin BuiltinFn) {
 	g.sub(.rsp, 0)
 
 	builtin.body(builtin, mut g)
+	// 16 bytes align
+	g.stack_var_pos += 7
+	g.stack_var_pos /= 16
+	g.stack_var_pos *= 16
 	g.println('; stack frame size: $g.stack_var_pos')
 	g.write32_at(local_alloc_pos + 3, g.stack_var_pos)
 
@@ -2386,9 +2410,10 @@ pub fn (mut g Gen) allocate_var(name string, size int, initial_val int) int {
 		}
 	}
 	// Generate N in `[rbp-N]`
-	n := g.stack_var_pos + size
+	padding := (size - g.stack_var_pos % size) % size
+	n := g.stack_var_pos + size + padding
 	g.write8(0xff - n + 1)
-	g.stack_var_pos += size
+	g.stack_var_pos += size + padding
 	g.var_offset[name] = g.stack_var_pos
 	g.var_alloc_size[name] = size
 
