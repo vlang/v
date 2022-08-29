@@ -78,7 +78,7 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 	if i_n_digit == 0 {
 		unsafe {
 			buf[i] = 0
-			return tos(&u8(&buf[0]), i)
+			return tos(&buf[0], i)
 		}
 	}
 
@@ -128,7 +128,7 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 	buf[i] = 0
 
 	return unsafe {
-		tos(&u8(&buf[0]), i)
+		tos(&buf[0], i)
 	}
 }
 
@@ -169,7 +169,7 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 	accept_bounds := even
 
 	// Step 2: Determine the interval of valid decimal representations.
-	mv := u64(4 * m2)
+	mv := 4 * m2
 	mm_shift := bool_to_u64(mant != 0 || exp <= 1)
 
 	// Step 3: Convert to a decimal power base uing 128-bit arithmetic.

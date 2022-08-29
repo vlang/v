@@ -323,7 +323,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 							d1 = u64(*(&u64(pt[p_index])))
 						}
 						*/
-						d1 = u64(unsafe { *(&u64(pt[p_index])) })
+						d1 = unsafe { *(&u64(pt[p_index])) }
 					}
 					// default int
 					else {
@@ -414,7 +414,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 					x := unsafe { *(&f64(pt[p_index])) }
 					positive := x >= f64(0.0)
 					len1 = if len1 >= 0 { len1 } else { def_len1 }
-					s := format_fl_old(f64(x),
+					s := format_fl_old(x,
 						pad_ch: pad_ch
 						len0: len0
 						len1: len1
@@ -441,7 +441,7 @@ pub fn v_sprintf(str string, pt ...voidptr) string {
 					x := unsafe { *(&f64(pt[p_index])) }
 					positive := x >= f64(0.0)
 					len1 = if len1 >= 0 { len1 } else { def_len1 }
-					s := format_es_old(f64(x),
+					s := format_es_old(x,
 						pad_ch: pad_ch
 						len0: len0
 						len1: len1

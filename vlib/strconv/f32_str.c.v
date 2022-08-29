@@ -64,7 +64,7 @@ pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string 
 		fw_zeros = pad_digit - out_len
 	}
 
-	mut buf := []u8{len: int(out_len + 5 + 1 + 1)} // sign + mant_len + . +  e + e_sign + exp_len(2) + \0}
+	mut buf := []u8{len: out_len + 5 + 1 + 1} // sign + mant_len + . +  e + e_sign + exp_len(2) + \0}
 	mut i := 0
 
 	if neg {
@@ -102,7 +102,7 @@ pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string 
 	if i_n_digit == 0 {
 		unsafe {
 			buf[i] = 0
-			return tos(&u8(&buf[0]), i)
+			return tos(&buf[0], i)
 		}
 	}
 
@@ -146,7 +146,7 @@ pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string 
 	buf[i] = 0
 
 	return unsafe {
-		tos(&u8(&buf[0]), i)
+		tos(&buf[0], i)
 	}
 }
 
@@ -186,10 +186,10 @@ fn f32_to_decimal(mant u32, exp u32) Dec32 {
 	accept_bounds := even
 
 	// Step 2: Determine the interval of valid decimal representations.
-	mv := u32(4 * m2)
-	mp := u32(4 * m2 + 2)
+	mv := 4 * m2
+	mp := 4 * m2 + 2
 	mm_shift := bool_to_u32(mant != 0 || exp <= 1)
-	mm := u32(4 * m2 - 1 - mm_shift)
+	mm := 4 * m2 - 1 - mm_shift
 
 	mut vr := u32(0)
 	mut vp := u32(0)
