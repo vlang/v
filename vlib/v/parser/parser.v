@@ -486,6 +486,33 @@ fn (p &Parser) peek_token_after_var_list() token.Token {
 	return tok
 }
 
+// peek token `type Fn = fn () int`
+fn (p &Parser) is_fn_type_decl() bool {
+	mut n := 1
+	mut tok := p.tok
+	mut prev_tok := p.tok
+	cur_ln := p.tok.line_nr
+	for {
+		tok = p.scanner.peek_token(n)
+		if tok.kind in [.lpar, .rpar] {
+			n++
+			prev_tok = tok
+			continue
+		}
+		if tok.kind == .pipe {
+			if tok.pos - prev_tok.pos > prev_tok.len {
+				return false
+			}
+		}
+		if tok.line_nr > cur_ln {
+			break
+		}
+		prev_tok = tok
+		n++
+	}
+	return true
+}
+
 fn (p &Parser) is_array_type() bool {
 	mut i := 1
 	mut tok := p.tok
@@ -3742,6 +3769,25 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	p.check(.assign)
 	mut type_pos := p.tok.pos()
 	mut comments := []ast.Comment{}
+	if p.tok.kind == .key_fn && p.is_fn_type_decl() {
+		// function type: `type mycallback = fn(string, int)`
+		fn_name := p.prepend_mod(name)
+		fn_type := p.parse_fn_type(fn_name)
+		p.table.sym(fn_type).is_pub = is_pub
+		type_pos = type_pos.extend(p.tok.pos())
+		comments = p.eat_comments(same_line: true)
+		attrs := p.attrs
+		p.attrs = []
+		return ast.FnTypeDecl{
+			name: fn_name
+			is_pub: is_pub
+			typ: fn_type
+			pos: decl_pos
+			type_pos: type_pos
+			comments: comments
+			attrs: attrs
+		}
+	}
 	sum_variants << p.parse_sum_type_variants()
 	// type SumType = Aaa | Bbb | Ccc
 	if sum_variants.len > 1 {
@@ -3793,31 +3839,6 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	// sum_variants will have only one element
 	parent_type := sum_variants[0].typ
 	parent_sym := p.table.sym(parent_type)
-	if parent_sym.info is ast.FnType {
-		// function type: `type mycallback = fn(string, int)`
-		fn_name := p.prepend_mod(name)
-		mut func := parent_sym.info.func
-		p.table.unregister_fn_type(func)
-		func.name = fn_name
-		has_decl := p.builtin_mod && fn_name.starts_with('Map') && fn_name.ends_with('Fn')
-		idx := p.table.find_or_register_fn_type(func, false, has_decl)
-		fn_type := ast.new_type(idx)
-		mut fn_sym := p.table.sym(fn_type)
-		fn_sym.is_pub = is_pub
-		type_pos = type_pos.extend(p.tok.pos())
-		comments = p.eat_comments(same_line: true)
-		attrs := p.attrs
-		p.attrs = []
-		return ast.FnTypeDecl{
-			name: fn_name
-			is_pub: is_pub
-			typ: fn_type
-			pos: decl_pos
-			type_pos: type_pos
-			comments: comments
-			attrs: attrs
-		}
-	}
 	pidx := parent_type.idx()
 	p.check_for_impure_v(parent_sym.language, decl_pos)
 	prepend_mod_name := p.prepend_mod(name)

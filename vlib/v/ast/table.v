@@ -1215,11 +1215,6 @@ pub fn (mut t Table) find_or_register_fn_type(f Fn, is_anon bool, has_decl bool)
 	)
 }
 
-pub fn (mut t Table) unregister_fn_type(f Fn) {
-	name := if f.name.len == 0 { 'fn ${t.fn_type_source_signature(f)}' } else { f.name.clone() }
-	t.type_idxs.delete(name)
-}
-
 pub fn (mut t Table) add_placeholder_type(name string, language Language) int {
 	mut modname := ''
 	if name.contains('.') {
