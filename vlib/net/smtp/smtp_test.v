@@ -131,3 +131,11 @@ fn test_smtp_multiple_recipients() ? {
 
 	assert true
 }
+
+fn test_smtp_body_base64encode() ? {
+	$if !network ? {
+		return
+	}
+
+	assert true
+}
