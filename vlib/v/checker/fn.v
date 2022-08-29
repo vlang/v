@@ -572,6 +572,9 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		node.return_type = ret_type
 		return ret_type
 	} else if fn_name == '__addr' {
+		if !c.inside_unsafe {
+			c.error('`__addr` must be called from an unsafe block', node.pos)
+		}
 		if node.args.len != 1 {
 			c.error('`__addr` requires 1 argument', node.pos)
 			return ast.void_type
