@@ -63,7 +63,7 @@ pub fn (mut km KeywordsMatcherTrie) add_word(word string, value int) {
 // new_keywords_matcher_trie creates a new KeywordsMatcherTrie instance from a given map
 // with string keys, and integer or enum values.
 pub fn new_keywords_matcher_trie[T](kw_map map[string]T) KeywordsMatcherTrie {
-	mut km := KeywordsMatcherTrie{
+	mut km := &KeywordsMatcherTrie{
 		nodes: []&TrieNode{cap: 20}
 	}
 	for _ in 0 .. 20 {
@@ -80,7 +80,7 @@ pub fn new_keywords_matcher_trie[T](kw_map map[string]T) KeywordsMatcherTrie {
 
 // new_keywords_matcher_from_array_trie creates a new KeywordsMatcherTrie instance from a given array
 // of strings. The values for the strings, that `find` will return, will be the indexes in that array.
-pub fn new_keywords_matcher_from_array_trie(names []string) KeywordsMatcherTrie {
+pub fn new_keywords_matcher_from_array_trie(names []string) &KeywordsMatcherTrie {
 	mut m := map[string]int{}
 	for i, name in names {
 		m[name] = i

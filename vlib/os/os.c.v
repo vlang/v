@@ -774,7 +774,7 @@ pub fn is_link(path string) bool {
 		return int(attr) != int(C.INVALID_FILE_ATTRIBUTES) && (attr & 0x400) != 0
 	} $else {
 		statbuf := C.stat{}
-		if C.lstat(&char(path.str), __addr(statbuf)) != 0 {
+		if C.lstat(&char(path.str), unsafe { __addr(statbuf) }) != 0 {
 			return false
 		}
 		return int(statbuf.st_mode) & s_ifmt == s_iflnk
