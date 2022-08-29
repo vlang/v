@@ -560,8 +560,7 @@ pub fn (b []u8) bytestr() string {
 // it will produce an error if there are more than
 // four bytes in the array.
 pub fn (b []u8) byterune() ?rune {
-	r := b.utf8_to_utf32()?
-	return rune(r)
+	return b.utf8_to_utf32()
 }
 
 // repeat returns a new string with `count` number of copies of the byte it was called on.

@@ -37,7 +37,7 @@ pub fn utf32_to_str_no_malloc(code u32, buf &u8) string {
 pub fn utf32_decode_to_buffer(code u32, buf &u8) int {
 	unsafe {
 		icode := int(code) // Prevents doing casts everywhere
-		mut buffer := &u8(buf)
+		mut buffer := buf
 		if icode <= 127 {
 			// 0x7F
 			buffer[0] = u8(icode)
@@ -117,7 +117,7 @@ pub fn (_bytes []u8) utf8_to_utf32() ?rune {
 	mut shift := 6 - _bytes.len
 	for i := 1; i < _bytes.len; i++ {
 		c := rune(_bytes[i])
-		res = rune(res) << shift
+		res = res << shift
 		res |= c & 63 // 0x3f
 		shift = 6
 	}
