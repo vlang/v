@@ -658,6 +658,30 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 					g.write(', ')
 					g.expr(left.index)
 					g.writeln(');')
+				} else if sym.kind == .array_fixed {
+					info := sym.info as ast.ArrayFixed
+					elem_typ := g.table.sym(info.elem_type)
+					if elem_typ.kind == .function {
+						left_typ := node.left_types[i]
+						left_sym := g.table.sym(left_typ)
+						g.write_fn_ptr_decl(left_sym.info as ast.FnType, '_var_$left.pos.pos')
+						g.write(' = *(voidptr*)')
+					} else {
+						styp := g.typ(info.elem_type)
+						g.write('$styp _var_$left.pos.pos = ')
+					}
+					if left.left_type.is_ptr() {
+						g.write('*')
+					}
+					needs_clone := info.elem_type == ast.string_type && g.is_autofree
+					if needs_clone {
+						g.write('/*1*/string_clone(')
+					}
+					g.expr(left)
+					if needs_clone {
+						g.write(')')
+					}
+					g.writeln(';')
 				} else if sym.kind == .map {
 					info := sym.info as ast.Map
 					skeytyp := g.typ(info.key_type)
