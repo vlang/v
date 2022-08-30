@@ -1,0 +1,7 @@
+vlib/v/checker/tests/unnecesary_cast.vv:3:10: error: unnecessary cast
+    1 | fn main() {
+    2 |     a := 1
+    3 |     println(int(a))
+      |             ~~~~~~
+    4 | }
+Details: `a` is already of type `int`
