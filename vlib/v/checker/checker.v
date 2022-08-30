@@ -2373,8 +2373,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 
 	if from_type == to_type {
 		styp := c.table.type_to_str(to_type)
-		c.add_error_detail('`$node.expr` is already of type `$styp`')
-		c.error('unnecessary cast', node.pos)
+		c.warn('unnecessary cast, expression is already of type `$styp`', node.pos)
 		return from_type
 	} else if to_type.has_flag(.optional) {
 		c.error('casting to optional type is forbidden', node.pos)
