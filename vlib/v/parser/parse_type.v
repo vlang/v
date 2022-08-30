@@ -305,6 +305,8 @@ pub fn (mut p Parser) parse_language() ast.Language {
 // parse_inline_sum_type parses the type and registers it in case the type is an anonymous sum type.
 // It also takes care of inline sum types where parse_type only parses a standalone type.
 pub fn (mut p Parser) parse_inline_sum_type() ast.Type {
+	p.warn('inline sum types have been deprecated and will be removed on January 1, 2023 due ' +
+		'to complicating the language and the compiler too much; define named sum types with `type Foo = Bar | Baz` instead')
 	variants := p.parse_sum_type_variants()
 	if variants.len > 1 {
 		if variants.len > parser.maximum_inline_sum_type_variants {

@@ -1,3 +1,8 @@
+vlib/v/parser/tests/option_sum_type_return_err.vv:1:22: warning: inline sum types have been deprecated and will be removed on January 1, 2023 due to complicating the language and the compiler too much; define named sum types with `type Foo = Bar | Baz` instead
+    1 | fn option_sumtype() ?string | int {
+      |                      ~~~~~~
+    2 |     return 0
+    3 | }
 vlib/v/parser/tests/option_sum_type_return_err.vv:1:21: error: an inline sum type cannot be optional
     1 | fn option_sumtype() ?string | int {
       |                     ~~~~~~~~~~~~~
