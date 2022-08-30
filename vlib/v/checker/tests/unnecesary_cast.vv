@@ -1,4 +1,4 @@
 fn main() {
-    a := 1
-    println(int(a))
+	a := 1
+	println(int(a))
 }
