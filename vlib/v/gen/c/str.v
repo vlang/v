@@ -86,6 +86,9 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		if expr !is ast.EnumVal {
 			str_fn_name := g.get_str_fn(typ)
 			g.write('${str_fn_name}(')
+			if typ.is_ptr() {
+				g.write('*')
+			}
 			g.enum_expr(expr)
 			g.write(')')
 		} else {
