@@ -1,17 +1,32 @@
-type Fn = fn () int | fn (int) int | string
+type Fn = fn () int | fn (int) int
 
-fn abc(is_string bool) Fn {
-	if is_string {
-		return 'abc'
-	}
-	return fn () int {
-		return 123
+fn abc(n int) Fn {
+	if n == 1 {
+		return fn () int {
+			return 123
+		}
+	} else {
+		return fn (x int) int {
+			return x
+		}
 	}
 }
 
 fn main() {
-	println(abc(true))
-	x := abc(false)
-	y := x as fn () int
-	println(y())
+	println(abc(1))
+	println(abc(2))
+
+	x1 := abc(1)
+	y1 := x1 as fn () int
+	println(y1())
+	if x1 is fn () int {
+		println(x1())
+	}
+
+	x2 := abc(2)
+	y2 := x2 as fn (int) int
+	println(y2(321))
+	if x2 is fn (int) int {
+		println(y2(321))
+	}
 }
