@@ -2430,6 +2430,19 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			ft := c.table.type_to_str(from_type)
 			c.error('cannot cast `$ft` to struct', node.pos)
 		}
+	} else if to_sym.kind == .struct_ && to_type.is_ptr() {
+		if from_sym.kind == .alias {
+			from_type = (from_sym.info as ast.Alias).parent_type
+		}
+		mut is_int_lit := false
+		if node.expr is ast.IntegerLiteral {
+			is_int_lit = true
+		}
+		if !is_int_lit && !from_type.is_pointer() && !from_type.is_ptr() {
+			ft := c.table.type_to_str(from_type)
+			tt := c.table.type_to_str(to_type)
+			c.error('cannot cast `$ft` to `$tt`', node.pos)
+		}
 	} else if to_sym.kind == .interface_ {
 		if c.type_implements(from_type, to_type, node.pos) {
 			if !from_type.is_ptr() && !from_type.is_pointer() && from_sym.kind != .interface_
