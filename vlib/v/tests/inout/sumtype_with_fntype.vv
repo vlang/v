@@ -1,13 +1,17 @@
-type Fn = fn () int | fn (int) int
+type Fn = fn () int | fn (int) int | string
+
+fn abc(is_string bool) Fn {
+	if is_string {
+		return 'abc'
+	}
+	return fn () int {
+		return 123
+	}
+}
 
 fn main() {
-	f1 := Fn(fn (a int) int {
-		return a
-	})
-	println(typeof(f1).name)
-
-	f2 := Fn(fn () int {
-		return 22
-	})
-	println(typeof(f2).name)
+	println(abc(true))
+	x := abc(false)
+	y := x as fn () int
+	println(y())
 }
