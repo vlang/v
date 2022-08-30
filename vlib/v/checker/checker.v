@@ -2432,7 +2432,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		}
 	} else if to_sym.kind == .struct_ && to_type.is_ptr() {
 		if from_sym.kind == .alias {
-			from_type = (from_sym.info as ast.Alias).parent_type.derive(from_type)
+			from_type = (from_sym.info as ast.Alias).parent_type.derive_add_muls(from_type)
 		}
 		if !from_type.is_int() && final_from_sym.kind != .enum_ && !from_type.is_pointer()
 			&& !from_type.is_ptr() {
