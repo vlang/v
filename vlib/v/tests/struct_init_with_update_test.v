@@ -31,13 +31,15 @@ fn test_struct_init_with_update_expr() {
 	assert o.age == 21
 }
 
-struct Foo{
+struct Foo {
 	s string
 	n int
 }
 
-fn test_struct_init_with_update_expr2(){
-	f := &Foo{s:'AA'}
+fn test_struct_init_with_update_expr2() {
+	f := &Foo{
+		s: 'AA'
+	}
 	b := Foo{
 		...*f
 		n: 3
