@@ -486,6 +486,33 @@ fn (p &Parser) peek_token_after_var_list() token.Token {
 	return tok
 }
 
+// peek token `type Fn = fn () int`
+fn (p &Parser) is_fn_type_decl() bool {
+	mut n := 1
+	mut tok := p.tok
+	mut prev_tok := p.tok
+	cur_ln := p.tok.line_nr
+	for {
+		tok = p.scanner.peek_token(n)
+		if tok.kind in [.lpar, .rpar] {
+			n++
+			prev_tok = tok
+			continue
+		}
+		if tok.kind == .pipe {
+			if tok.pos - prev_tok.pos > prev_tok.len {
+				return false
+			}
+		}
+		if tok.line_nr > cur_ln {
+			break
+		}
+		prev_tok = tok
+		n++
+	}
+	return true
+}
+
 fn (p &Parser) is_array_type() bool {
 	mut i := 1
 	mut tok := p.tok
@@ -3742,7 +3769,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	p.check(.assign)
 	mut type_pos := p.tok.pos()
 	mut comments := []ast.Comment{}
-	if p.tok.kind == .key_fn {
+	if p.tok.kind == .key_fn && p.is_fn_type_decl() {
 		// function type: `type mycallback = fn(string, int)`
 		fn_name := p.prepend_mod(name)
 		fn_type := p.parse_fn_type(fn_name)
@@ -3762,7 +3789,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		}
 	}
 	sum_variants << p.parse_sum_type_variants()
-	// type SumType = A | B | c
+	// type SumType = Aaa | Bbb | Ccc
 	if sum_variants.len > 1 {
 		for variant in sum_variants {
 			variant_sym := p.table.sym(variant.typ)
