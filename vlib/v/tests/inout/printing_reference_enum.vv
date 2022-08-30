@@ -1,0 +1,23 @@
+module main
+
+enum State {
+	undef
+	off
+	on
+}
+
+struct Foo {
+	i &State
+}
+
+fn main() {
+	mut i := State.on
+
+	mut r := &i
+	println(r)
+
+	mut f := Foo{
+		i: &i
+	}
+	println(f)
+}
