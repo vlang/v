@@ -2434,7 +2434,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		if from_sym.kind == .alias {
 			from_type = (from_sym.info as ast.Alias).parent_type
 		}
-		if !from_type.is_int() && !from_type.is_pointer() && !from_type.is_ptr() {
+		if !from_type.is_int() && final_from_sym.kind != .enum_ && !from_type.is_pointer()
+			&& !from_type.is_ptr() {
 			ft := c.table.type_to_str(from_type)
 			tt := c.table.type_to_str(to_type)
 			c.error('cannot cast `$ft` to `$tt`', node.pos)
