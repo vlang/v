@@ -1,4 +1,4 @@
-type Fn = fn () int | fn (int) int | string
+type Fn = fn () int | fn (int) int
 
 fn main() {
 	f1 := Fn(fn (a int) int {
