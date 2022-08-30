@@ -1,0 +1,7 @@
+vlib/v/checker/tests/addr.vv:3:7: error: `__addr` must be called from an unsafe block
+    1 | fn main() {
+    2 |     a := 4
+    3 |     b := __addr(a)
+      |          ~~~~~~~~~
+    4 |     assert *b == 4
+    5 | }
