@@ -27,6 +27,6 @@ fn main() {
 	y2 := x2 as fn (int) int
 	println(y2(321))
 	if x2 is fn (int) int {
-		println(y2(321))
+		println(x2(321))
 	}
 }
