@@ -195,7 +195,9 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 				if is_update_tmp_var {
 					g.write(tmp_update_var)
 				} else {
+					g.write('(')
 					g.expr(node.update_expr)
+					g.write(')')
 				}
 				if node.update_expr_type.is_ptr() {
 					g.write('->')
