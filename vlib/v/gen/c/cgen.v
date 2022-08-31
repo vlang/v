@@ -1671,6 +1671,7 @@ fn (mut g Gen) write_v_source_line_info(pos token.Pos) {
 }
 
 fn (mut g Gen) stmt(node ast.Stmt) {
+	g.inside_call = false
 	if !g.skip_stmt_pos {
 		g.set_current_pos_as_last_stmt_pos()
 	}

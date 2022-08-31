@@ -1,0 +1,7 @@
+vlib/v/checker/tests/orm_no_default_value.vv:11:4: error: Or block needs to return a default value
+    9 |     _ := sql db {
+   10 |         select from Person
+   11 |     } or {
+      |       ~~~~
+   12 |     }
+   13 | }

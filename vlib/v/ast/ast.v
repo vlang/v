@@ -1711,6 +1711,7 @@ pub struct SqlStmt {
 pub:
 	pos     token.Pos
 	db_expr Expr // `db` in `sql db {`
+	or_expr OrExpr
 pub mut:
 	lines []SqlStmtLine
 }
@@ -1731,7 +1732,6 @@ pub mut:
 
 pub struct SqlExpr {
 pub:
-	typ        Type
 	is_count   bool
 	has_where  bool
 	has_order  bool
@@ -1739,8 +1739,10 @@ pub:
 	has_offset bool
 	has_desc   bool
 	is_array   bool
+	or_expr    OrExpr
 	pos        token.Pos
 pub mut:
+	typ         Type
 	db_expr     Expr // `db` in `sql db {`
 	where_expr  Expr
 	order_expr  Expr

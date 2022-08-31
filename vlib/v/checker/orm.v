@@ -103,6 +103,18 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) ast.Type {
 		c.expr(node.order_expr)
 	}
 	c.expr(node.db_expr)
+
+	if node.or_expr.kind == .block {
+		if node.or_expr.stmts.len == 0 {
+			c.error('Or block needs to return a default value', node.or_expr.pos)
+		}
+		if node.or_expr.stmts.len > 0 && node.or_expr.stmts.last() is ast.ExprStmt {
+			c.expected_or_type = node.typ
+		}
+		c.stmts_ending_with_expression(node.or_expr.stmts)
+		c.check_expr_opt_call(node, node.typ)
+		c.expected_or_type = ast.void_type
+	}
 	return node.typ
 }
 
@@ -113,6 +125,11 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) ast.Type {
 		a := c.sql_stmt_line(mut line)
 		if a != ast.void_type {
 			typ = a
+		}
+	}
+	if node.or_expr.kind == .block {
+		for s in node.or_expr.stmts {
+			c.stmt(s)
 		}
 	}
 	return typ

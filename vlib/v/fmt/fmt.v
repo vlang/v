@@ -1256,8 +1256,9 @@ pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 	for line in node.lines {
 		f.sql_stmt_line(line)
 	}
-
-	f.writeln('}')
+	f.write('}')
+	f.or_expr(node.or_expr)
+	f.writeln('')
 }
 
 pub fn (mut f Fmt) sql_stmt_line(node ast.SqlStmtLine) {
@@ -2562,6 +2563,7 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 	}
 	f.writeln('')
 	f.write('}')
+	f.or_expr(node.or_expr)
 }
 
 pub fn (mut f Fmt) char_literal(node ast.CharLiteral) {
