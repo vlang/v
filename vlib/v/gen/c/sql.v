@@ -629,7 +629,12 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 	if node.has_where {
 		g.sql_gen_where_data(node.where_expr)
 	} else {
-		g.write('(orm__QueryData) {}')
+		g.write('(orm__QueryData) {')
+		g.write('.types = __new_array_with_default_noscan(0, 0, sizeof(int), 0),')
+		g.write('.kinds = __new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
+		g.write('.is_and = __new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
+		g.write('.data = __new_array_with_default_noscan(0, 0, sizeof(orm__Primitive), 0)')
+		g.write('}')
 	}
 	g.writeln(');')
 
