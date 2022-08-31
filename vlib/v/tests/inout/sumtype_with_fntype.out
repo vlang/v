@@ -1,2 +1,6 @@
-Fn
-Fn
+Fn(fn () int)
+Fn(fn (int) int)
+123
+123
+321
+321

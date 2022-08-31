@@ -2104,9 +2104,12 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 	got, exp := fun.got, fun.exp
 	got_sym, exp_sym := g.table.sym(got), g.table.sym(exp)
 	mut got_cname, exp_cname := got_sym.cname, exp_sym.cname
+	mut type_idx := g.type_sidx(got)
 	if got_sym.info is ast.FnType {
 		if got_sym.info.is_anon {
+			got_name := 'fn ${g.table.fn_type_source_signature(got_sym.info.func)}'
 			got_cname = 'anon_fn_${g.table.fn_type_signature(got_sym.info.func)}'
+			type_idx = g.table.type_idxs[got_name].str()
 		}
 	}
 	mut sb := strings.new_builder(128)
@@ -2129,7 +2132,7 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 		// if the variable is not used, the C compiler will optimize it away
 		sb.writeln('\t$embed_cname* ${embed_name}_ptr = memdup($accessor, sizeof($embed_cname));')
 	}
-	sb.write_string('\treturn ($exp_cname){ ._$got_cname = ptr, ._typ = ${g.type_sidx(got)}')
+	sb.write_string('\treturn ($exp_cname){ ._$got_cname = ptr, ._typ = $type_idx')
 	for field in (exp_sym.info as ast.SumType).fields {
 		mut ptr := 'ptr'
 		mut type_cname := got_cname
