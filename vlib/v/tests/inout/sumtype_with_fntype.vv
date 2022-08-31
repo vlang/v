@@ -23,10 +23,24 @@ fn main() {
 		println(x1())
 	}
 
+	match x1 {
+		fn () int {
+			println(x1())
+		}
+		else {}
+	}
+
 	x2 := abc(2)
 	y2 := x2 as fn (int) int
 	println(y2(321))
 	if x2 is fn (int) int {
 		println(x2(321))
+	}
+
+	match x2 {
+		fn (int) int {
+			println(x2(321))
+		}
+		else {}
 	}
 }

@@ -237,7 +237,8 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		} else if (p.tok.kind == .name && !(p.tok.lit == 'C' && p.peek_tok.kind == .dot)
 			&& (((ast.builtin_type_names_matcher.matches(p.tok.lit) || p.tok.lit[0].is_capital())
 			&& p.peek_tok.kind != .lpar) || (p.peek_tok.kind == .dot && p.peek_token(2).lit.len > 0
-			&& p.peek_token(2).lit[0].is_capital()))) || p.is_only_array_type() {
+			&& p.peek_token(2).lit[0].is_capital()))) || p.is_only_array_type()
+			|| p.tok.lit == 'fn' {
 			mut types := []ast.Type{}
 			for {
 				// Sum type match
