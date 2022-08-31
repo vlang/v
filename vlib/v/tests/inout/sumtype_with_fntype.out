@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 Fn(fn () int)
 Fn(fn (int) int)
 123
@@ -6,3 +7,7 @@ Fn(fn (int) int)
 321
 321
 321
+=======
+Fn
+Fn
+>>>>>>> improved docs and making it possible to customize csrf-cookie's http-only-status. Default will be true.

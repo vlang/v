@@ -20,6 +20,7 @@
 - Support `assert condition, extra_message`, where the `extra_message` will be evaluated and shown if the assertion fails.
 - Anonymous sumtypes have been removed (deprecated for now) due to complicating the language and the compiler too much.
 <<<<<<< HEAD
+=======
 - `encoding.csv` is now generic, supports bools, accepts a custom delimiter, and is compatible with io.Reader/io.Writer.
 - Operator overloading now works with aliases and generics.
 - `datatypes` module now uses operator overloading.
@@ -45,8 +46,7 @@
 - V interpreter improvements.
 - `net.websocket` timeout is now configurable.
 
-=======
->>>>>>> improved docs and making it possible to customize csrf-cookie's http-only-status. Default will be true.
+>>>>>>> f2f6ea596966ca405bd1be34b3bf3539b0c18fb7
 
 ## V 0.3
 *30 Jun 2022*
