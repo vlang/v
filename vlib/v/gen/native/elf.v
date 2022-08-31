@@ -746,7 +746,7 @@ pub fn (mut g Gen) prepend_vobjpath(paths []string) []string {
 }
 
 pub fn (mut g Gen) find_o_path(fname string) string {
-	opaths := g.prepend_vobjpath(['/usr/lib', '/usr/lib/x86_64-linux-gnu'])
+	opaths := g.prepend_vobjpath(['/usr/lib/x86_64-linux-gnu', '/usr/lib64', '/usr/lib'])
 	for opath in opaths {
 		fpath := os.join_path_single(opath, fname)
 		if os.is_file(fpath) {
