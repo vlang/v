@@ -99,7 +99,11 @@ fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt) string {
 	mod_path := cestring(g.file.path)
 	fn_name := g.fn_decl.name
 	line_nr := node.pos.line_nr
-	src := cestring(node.expr.str())
+	mut src := node.expr.str()
+	if node.extra !is ast.EmptyExpr {
+		src += ', ' + node.extra.str()
+	}
+	src = cestring(src)
 	metaname := 'v_assert_meta_info_$g.new_tmp_var()'
 	g.writeln('\tVAssertMetaInfo $metaname = {0};')
 	g.writeln('\t${metaname}.fpath = ${ctoslit(mod_path)};')
@@ -126,6 +130,15 @@ fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt) string {
 			g.writeln('\t${metaname}.op = _SLIT("call");')
 		}
 		else {}
+	}
+	if node.extra is ast.EmptyExpr {
+		g.writeln('\t${metaname}.has_msg = false;')
+		g.writeln('\t${metaname}.message = _SLIT0;')
+	} else {
+		g.writeln('\t${metaname}.has_msg = true;')
+		g.write('\t${metaname}.message = ')
+		g.gen_assert_single_expr(node.extra, ast.string_type)
+		g.writeln(';')
 	}
 	return metaname
 }

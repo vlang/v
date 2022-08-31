@@ -2,7 +2,7 @@ struct Abc {
 	prev &Abc
 }
 
-const a = [Abc{voidptr(0)}, Abc{unsafe { &a[0] }}, Abc{unsafe { &a[1] }}]!
+const a = [Abc{unsafe { nil }}, Abc{unsafe { &a[0] }}, Abc{unsafe { &a[1] }}]!
 
 fn test_fixed_array() {
 	eprintln(a)

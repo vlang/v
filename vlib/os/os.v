@@ -199,7 +199,7 @@ pub fn dir(opath string) string {
 	if opath == '' {
 		return '.'
 	}
-	path := opath.replace_each(['/', path_separator, r'\', path_separator])
+	path := opath.replace_each(['/', path_separator, '\\', path_separator])
 	pos := path.last_index(path_separator) or { return '.' }
 	if pos == 0 && path_separator == '/' {
 		return '/'
@@ -215,7 +215,7 @@ pub fn base(opath string) string {
 	if opath == '' {
 		return '.'
 	}
-	path := opath.replace_each(['/', path_separator, r'\', path_separator])
+	path := opath.replace_each(['/', path_separator, '\\', path_separator])
 	if path == path_separator {
 		return path_separator
 	}
@@ -231,7 +231,7 @@ pub fn base(opath string) string {
 // file_name will return all characters found after the last occurence of `path_separator`.
 // file extension is included.
 pub fn file_name(opath string) string {
-	path := opath.replace_each(['/', path_separator, r'\', path_separator])
+	path := opath.replace_each(['/', path_separator, '\\', path_separator])
 	return path.all_after_last(path_separator)
 }
 
@@ -431,7 +431,7 @@ fn executable_fallback() string {
 		}
 	}
 	if !is_abs_path(exepath) {
-		rexepath := exepath.replace_each(['/', path_separator, r'\', path_separator])
+		rexepath := exepath.replace_each(['/', path_separator, '\\', path_separator])
 		if rexepath.contains(path_separator) {
 			exepath = join_path_single(os.wd_at_startup, exepath)
 		} else {
@@ -569,8 +569,9 @@ fn impl_walk_ext(path string, ext string, mut out []string) {
 }
 
 // walk traverses the given directory `path`.
-// When a file is encountred it will call the
-// callback function `f` with current file as argument.
+// When a file is encountred, it will call the callback `f` with current file as argument.
+// Note: walk can be called even for deeply nested folders,
+// since it does not recurse, but processes them iteratively.
 pub fn walk(path string, f fn (string)) {
 	if path.len == 0 {
 		return
@@ -578,29 +579,36 @@ pub fn walk(path string, f fn (string)) {
 	if !is_dir(path) {
 		return
 	}
-	mut files := ls(path) or { return }
-	mut local_path_separator := path_separator
-	if path.ends_with(path_separator) {
-		local_path_separator = ''
+	mut remaining := []string{cap: 1000}
+	clean_path := path.trim_right(path_separator)
+	$if windows {
+		remaining << clean_path.replace('/', '\\')
+	} $else {
+		remaining << clean_path
 	}
-	for file in files {
-		p := path + local_path_separator + file
-		if is_dir(p) && !is_link(p) {
-			walk(p, f)
-		} else if exists(p) {
-			f(p)
+	for remaining.len > 0 {
+		cpath := remaining.pop()
+		pkind := kind_of_existing_path(cpath)
+		if pkind.is_link || !pkind.is_dir {
+			f(cpath)
+			continue
+		}
+		mut files := ls(cpath) or { continue }
+		for idx := files.len - 1; idx >= 0; idx-- {
+			remaining << cpath + path_separator + files[idx]
 		}
 	}
-	return
 }
 
 // FnWalkContextCB is used to define the callback functions, passed to os.walk_context
 pub type FnWalkContextCB = fn (voidptr, string)
 
 // walk_with_context traverses the given directory `path`.
-// For each encountred file and directory, it will call your `fcb` callback,
+// For each encountred file *and* directory, it will call your `fcb` callback,
 // passing it the arbitrary `context` in its first parameter,
 // and the path to the file in its second parameter.
+// Note: walk_with_context can be called even for deeply nested folders,
+// since it does not recurse, but processes them iteratively.
 pub fn walk_with_context(path string, context voidptr, fcb FnWalkContextCB) {
 	if path.len == 0 {
 		return
@@ -608,19 +616,30 @@ pub fn walk_with_context(path string, context voidptr, fcb FnWalkContextCB) {
 	if !is_dir(path) {
 		return
 	}
-	mut files := ls(path) or { return }
-	mut local_path_separator := path_separator
-	if path.ends_with(path_separator) {
-		local_path_separator = ''
+	mut remaining := []string{cap: 1000}
+	clean_path := path.trim_right(path_separator)
+	$if windows {
+		remaining << clean_path.replace('/', '\\')
+	} $else {
+		remaining << clean_path
 	}
-	for file in files {
-		p := path + local_path_separator + file
-		fcb(context, p)
-		if is_dir(p) && !is_link(p) {
-			walk_with_context(p, context, fcb)
+	mut loops := 0
+	for remaining.len > 0 {
+		loops++
+		cpath := remaining.pop()
+		// call `fcb` for everything, but the initial folder:
+		if loops > 1 {
+			fcb(context, cpath)
+		}
+		pkind := kind_of_existing_path(cpath)
+		if pkind.is_link || !pkind.is_dir {
+			continue
+		}
+		mut files := ls(cpath) or { continue }
+		for idx := files.len - 1; idx >= 0; idx-- {
+			remaining << cpath + path_separator + files[idx]
 		}
 	}
-	return
 }
 
 // log will print "os.log: "+`s` ...

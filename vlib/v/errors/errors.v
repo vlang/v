@@ -10,31 +10,23 @@ pub enum Reporter {
 	gen
 }
 
-[minify]
-pub struct Error {
+pub struct CompilerMessage {
 pub:
 	message   string
 	details   string
 	file_path string
 	pos       token.Pos
-	backtrace string
 	reporter  Reporter
+}
+
+pub struct Error {
+	CompilerMessage
 }
 
 pub struct Warning {
-pub:
-	message   string
-	details   string
-	file_path string
-	pos       token.Pos
-	reporter  Reporter
+	CompilerMessage
 }
 
 pub struct Notice {
-pub:
-	message   string
-	details   string
-	file_path string
-	pos       token.Pos
-	reporter  Reporter
+	CompilerMessage
 }

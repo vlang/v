@@ -93,6 +93,9 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		for val in vals {
 		}
 		*/
+		if g.inside_call && m.return_type == ast.void_type {
+			g.error('method `${m.name}()` (no value) used as value', node.pos)
+		}
 		expand_strs := if node.args.len > 0 && m.params.len - 1 >= node.args.len {
 			arg := node.args[node.args.len - 1]
 			param := m.params[node.args.len]
@@ -147,12 +150,13 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 			} else {
 				// last argument; try to expand if it's []string
 				idx := i - node.args.len
+				last_arg := g.expr_string(node.args.last().expr)
 				if m.params[i].typ.is_int() || m.params[i].typ.idx() == ast.bool_type_idx {
 					// Gets the type name and cast the string to the type with the string_<type> function
 					type_name := g.table.type_symbols[int(m.params[i].typ)].str()
-					g.write('string_${type_name}(((string*)${node.args[node.args.len - 1]}.data) [$idx])')
+					g.write('string_${type_name}(((string*)${last_arg}.data) [$idx])')
 				} else {
-					g.write('((string*)${node.args[node.args.len - 1]}.data) [$idx] ')
+					g.write('((string*)${last_arg}.data) [$idx] ')
 				}
 				if i < m.params.len - 1 {
 					g.write(', ')
@@ -234,6 +238,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 			}
 		}
 	}
+	tmp_var := g.new_tmp_var()
 	line := if node.is_expr {
 		stmt_str := g.go_before_stmt(0)
 		g.write(util.tabs(g.indent))
@@ -265,21 +270,23 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 			len := branch.stmts.len
 			if len > 0 {
 				last := branch.stmts.last() as ast.ExprStmt
+				styp := g.typ(node.typ)
 				if len > 1 {
-					tmp := g.new_tmp_var()
-					styp := g.typ(last.typ)
 					g.indent++
-					g.writeln('$styp $tmp;')
+					g.writeln('$styp $tmp_var;')
 					g.writeln('{')
 					g.stmts(branch.stmts[..len - 1])
-					g.write('\t$tmp = ')
+					g.write('\t$tmp_var = ')
 					g.stmt(last)
+					g.writeln(';')
 					g.writeln('}')
 					g.indent--
-					g.writeln('$line $tmp;')
 				} else {
-					g.write('$line ')
+					g.indent++
+					g.write('$styp $tmp_var = ')
 					g.stmt(last)
+					g.writeln(';')
+					g.indent--
 				}
 			}
 		} else {
@@ -298,6 +305,9 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 		g.defer_ifdef = ''
 	}
 	g.writeln('#endif')
+	if node.is_expr {
+		g.write('$line $tmp_var')
+	}
 }
 
 // returns the value of the bool comptime expression

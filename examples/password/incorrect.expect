@@ -1,0 +1,8 @@
+#!/usr/bin/expect
+spawn ./password
+expect "Enter your password : "
+send "Sample123\r"
+expect "Confirm password : "
+send "Sample234\r"
+expect "Passwords do not match ."
+expect eof

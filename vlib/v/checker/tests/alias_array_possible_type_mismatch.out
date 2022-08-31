@@ -1,0 +1,8 @@
+vlib/v/checker/tests/alias_array_possible_type_mismatch.vv:11:7: error: possible type mismatch of compared values of `==` operation
+    9 |     mut a := new_vector(12, 4.5, 6.7, 6)
+   10 |     dump(a)
+   11 |     x := a == []f64{}
+      |          ~~~~~~~~~~~
+   12 |     dump(x)
+   13 | }
+Details: left type: `main.Vector` vs right type: `[]f64`

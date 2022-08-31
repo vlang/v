@@ -264,7 +264,7 @@ pub fn vfopen(path string, mode string) ?&C.FILE {
 	if path.len == 0 {
 		return error('vfopen called with ""')
 	}
-	mut fp := voidptr(0)
+	mut fp := unsafe { nil }
 	$if windows {
 		fp = C._wfopen(path.to_wide(), mode.to_wide())
 	} $else {
@@ -395,6 +395,8 @@ pub fn exists(path string) bool {
 }
 
 // is_executable returns `true` if `path` is executable.
+// Warning: `is_executable()` is known to cause a TOCTOU vulnerability when used incorrectly
+// (for more information: https://github.com/vlang/v/blob/master/vlib/os/README.md)
 pub fn is_executable(path string) bool {
 	$if windows {
 		// Note: https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/access-waccess?view=vs-2019
@@ -419,6 +421,8 @@ pub fn is_executable(path string) bool {
 }
 
 // is_writable returns `true` if `path` is writable.
+// Warning: `is_writable()` is known to cause a TOCTOU vulnerability when used incorrectly
+// (for more information: https://github.com/vlang/v/blob/master/vlib/os/README.md)
 [manualfree]
 pub fn is_writable(path string) bool {
 	$if windows {
@@ -434,6 +438,8 @@ pub fn is_writable(path string) bool {
 }
 
 // is_readable returns `true` if `path` is readable.
+// Warning: `is_readable()` is known to cause a TOCTOU vulnerability when used incorrectly
+// (for more information: https://github.com/vlang/v/blob/master/vlib/os/README.md)
 [manualfree]
 pub fn is_readable(path string) bool {
 	$if windows {
@@ -510,7 +516,7 @@ pub fn get_raw_line() string {
 				if !res || bytes_read == 0 {
 					break
 				}
-				if *pos == `\n` || *pos == `\r` {
+				if *pos == `\n` {
 					offset++
 					break
 				}
@@ -603,13 +609,9 @@ pub fn read_file_array<T>(path string) []T {
 // process.
 [manualfree]
 pub fn executable() string {
-	size := max_path_bufffer_size()
-	mut result := unsafe { vcalloc_noscan(size) }
-	defer {
-		unsafe { free(result) }
-	}
+	mut result := [max_path_buffer_size]u8{}
 	$if windows {
-		pu16_result := unsafe { &u16(result) }
+		pu16_result := unsafe { &u16(&result[0]) }
 		len := C.GetModuleFileName(0, pu16_result, 512)
 		// determine if the file is a windows symlink
 		attrs := C.GetFileAttributesW(pu16_result)
@@ -621,15 +623,12 @@ pub fn executable() string {
 				defer {
 					C.CloseHandle(file)
 				}
-				final_path := unsafe { vcalloc_noscan(size) }
-				defer {
-					unsafe { free(final_path) }
-				}
+				final_path := [max_path_buffer_size]u8{}
 				// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
-				final_len := C.GetFinalPathNameByHandleW(file, unsafe { &u16(final_path) },
-					size, 0)
-				if final_len < size {
-					sret := unsafe { string_from_wide2(&u16(final_path), final_len) }
+				final_len := C.GetFinalPathNameByHandleW(file, unsafe { &u16(&final_path[0]) },
+					max_path_buffer_size, 0)
+				if final_len < max_path_buffer_size {
+					sret := unsafe { string_from_wide2(&u16(&final_path[0]), final_len) }
 					defer {
 						unsafe { sret.free() }
 					}
@@ -647,46 +646,46 @@ pub fn executable() string {
 	}
 	$if macos {
 		pid := C.getpid()
-		ret := proc_pidpath(pid, result, max_path_len)
+		ret := proc_pidpath(pid, &result[0], max_path_len)
 		if ret <= 0 {
 			eprintln('os.executable() failed at calling proc_pidpath with pid: $pid . proc_pidpath returned $ret ')
 			return executable_fallback()
 		}
-		res := unsafe { tos_clone(result) }
+		res := unsafe { tos_clone(&result[0]) }
 		return res
 	}
 	$if freebsd {
-		bufsize := usize(size)
+		bufsize := usize(max_path_buffer_size)
 		mib := [1 /* CTL_KERN */, 14 /* KERN_PROC */, 12 /* KERN_PROC_PATHNAME */, -1]
-		unsafe { C.sysctl(mib.data, mib.len, result, &bufsize, 0, 0) }
-		res := unsafe { tos_clone(result) }
+		unsafe { C.sysctl(mib.data, mib.len, &result[0], &bufsize, 0, 0) }
+		res := unsafe { tos_clone(&result[0]) }
 		return res
 	}
 	$if netbsd {
-		count := C.readlink(c'/proc/curproc/exe', &char(result), max_path_len)
+		count := C.readlink(c'/proc/curproc/exe', &char(&result[0]), max_path_len)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/curproc/exe to get exe path')
 			return executable_fallback()
 		}
-		res := unsafe { tos_clone(result) }
+		res := unsafe { tos_clone(&result[0]) }
 		return res
 	}
 	$if dragonfly {
-		count := C.readlink(c'/proc/curproc/file', &char(result), max_path_len)
+		count := C.readlink(c'/proc/curproc/file', &char(&result[0]), max_path_len)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/curproc/file to get exe path')
 			return executable_fallback()
 		}
-		res := unsafe { tos_clone(result) }
+		res := unsafe { tos_clone(&result[0]) }
 		return res
 	}
 	$if linux {
-		count := C.readlink(c'/proc/self/exe', &char(result), max_path_len)
+		count := C.readlink(c'/proc/self/exe', &char(&result[0]), max_path_len)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
 			return executable_fallback()
 		}
-		res := unsafe { tos_clone(result) }
+		res := unsafe { tos_clone(&result[0]) }
 		return res
 	}
 	// "Sadly there is no way to get the full path of the executed file in OpenBSD."
@@ -723,6 +722,8 @@ pub fn is_dir(path string) bool {
 }
 
 // is_link returns a boolean indicating whether `path` is a link.
+// Warning: `is_link()` is known to cause a TOCTOU vulnerability when used incorrectly
+// (for more information: https://github.com/vlang/v/blob/master/vlib/os/README.md)
 pub fn is_link(path string) bool {
 	$if windows {
 		path_ := path.replace('/', '\\')
@@ -737,6 +738,41 @@ pub fn is_link(path string) bool {
 	}
 }
 
+struct PathKind {
+mut:
+	is_dir  bool
+	is_link bool
+}
+
+fn kind_of_existing_path(path string) PathKind {
+	mut res := PathKind{}
+	$if windows {
+		attr := C.GetFileAttributesW(path.to_wide())
+		if attr != u32(C.INVALID_FILE_ATTRIBUTES) {
+			if (int(attr) & C.FILE_ATTRIBUTE_DIRECTORY) != 0 {
+				res.is_dir = true
+			}
+			if (int(attr) & 0x400) != 0 {
+				res.is_link = true
+			}
+		}
+	} $else {
+		statbuf := C.stat{}
+		// ref: https://code.woboq.org/gcc/include/sys/stat.h.html
+		res_stat := unsafe { C.lstat(&char(path.str), &statbuf) }
+		if res_stat == 0 {
+			kind := (int(statbuf.st_mode) & s_ifmt)
+			if kind == s_ifdir {
+				res.is_dir = true
+			}
+			if kind == s_iflnk {
+				res.is_link = true
+			}
+		}
+	}
+	return res
+}
+
 // chdir changes the current working directory to the new directory in `path`.
 pub fn chdir(path string) ? {
 	ret := $if windows { C._wchdir(path.to_wide()) } $else { C.chdir(&char(path.str)) }
@@ -745,33 +781,22 @@ pub fn chdir(path string) ? {
 	}
 }
 
-fn max_path_bufffer_size() int {
-	mut size := max_path_len
-	$if windows {
-		size *= 2
-	}
-	return size
-}
-
 // getwd returns the absolute path of the current directory.
 [manualfree]
 pub fn getwd() string {
 	unsafe {
-		buf := vcalloc_noscan(max_path_bufffer_size())
-		defer {
-			free(buf)
-		}
+		buf := [max_path_buffer_size]u8{}
 		$if windows {
-			if C._wgetcwd(&u16(buf), max_path_len) == 0 {
+			if C._wgetcwd(&u16(&buf[0]), max_path_len) == 0 {
 				return ''
 			}
-			res := string_from_wide(&u16(buf))
+			res := string_from_wide(&u16(&buf[0]))
 			return res
 		} $else {
-			if C.getcwd(&char(buf), max_path_len) == 0 {
+			if C.getcwd(&char(&buf[0]), max_path_len) == 0 {
 				return ''
 			}
-			res := tos_clone(buf)
+			res := tos_clone(&buf[0])
 			return res
 		}
 	}
@@ -784,14 +809,10 @@ pub fn getwd() string {
 // Note: this particular rabbit hole is *deep* ...
 [manualfree]
 pub fn real_path(fpath string) string {
-	size := max_path_bufffer_size()
-	mut fullpath := unsafe { vcalloc_noscan(size) }
-	defer {
-		unsafe { free(fullpath) }
-	}
+	mut fullpath := [max_path_buffer_size]u8{}
 	mut res := ''
 	$if windows {
-		pu16_fullpath := unsafe { &u16(fullpath) }
+		pu16_fullpath := unsafe { &u16(&fullpath[0]) }
 		// gets handle with GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0
 		// use C.CreateFile(fpath.to_wide(), 0x80000000, 1, 0, 3, 0x80, 0) instead of  get_file_handle
 		// try to open the file to get symbolic link path
@@ -805,8 +826,9 @@ pub fn real_path(fpath string) string {
 				C.CloseHandle(file)
 			}
 			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
-			final_len := C.GetFinalPathNameByHandleW(file, pu16_fullpath, size, 0)
-			if final_len < size {
+			final_len := C.GetFinalPathNameByHandleW(file, pu16_fullpath, max_path_buffer_size,
+				0)
+			if final_len < max_path_buffer_size {
 				rt := unsafe { string_from_wide2(pu16_fullpath, final_len) }
 				srt := rt[4..]
 				unsafe { res.free() }
@@ -828,7 +850,7 @@ pub fn real_path(fpath string) string {
 			res = unsafe { string_from_wide(pu16_fullpath) }
 		}
 	} $else {
-		ret := &char(C.realpath(&char(fpath.str), &char(fullpath)))
+		ret := &char(C.realpath(&char(fpath.str), &char(&fullpath[0])))
 		if ret == 0 {
 			unsafe { res.free() }
 			return fpath.clone()
@@ -838,7 +860,7 @@ pub fn real_path(fpath string) string {
 		// resulting string from that buffer, to a shorter one, and then free the
 		// 4KB fullpath buffer.
 		unsafe { res.free() }
-		res = unsafe { tos_clone(fullpath) }
+		res = unsafe { tos_clone(&fullpath[0]) }
 	}
 	unsafe { normalize_drive_letter(res) }
 	return res

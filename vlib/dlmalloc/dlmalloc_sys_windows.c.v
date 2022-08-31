@@ -1,11 +1,11 @@
 module dlmalloc
 
 fn system_alloc(_ voidptr, size usize) (voidptr, usize, u32) {
-	return voidptr(0), 0, 0
+	return unsafe { nil }, 0, 0
 }
 
 fn system_remap(_ voidptr, ptr voidptr, oldsize usize, newsize usize, can_move bool) voidptr {
-	return voidptr(0)
+	return unsafe { nil }
 }
 
 fn system_free_part(_ voidptr, ptr voidptr, oldsize usize, newsize usize) bool {
@@ -37,6 +37,6 @@ pub fn get_system_allocator() Allocator {
 		can_release_part: system_can_release_part
 		allocates_zeros: system_allocates_zeros
 		page_size: system_page_size
-		data: voidptr(0)
+		data: unsafe { nil }
 	}
 }

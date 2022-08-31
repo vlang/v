@@ -38,7 +38,7 @@ pub struct NewNodeConfig {
 	node_name        string
 	should_highlight bool
 	tooltip          string
-	ctx              voidptr = voidptr(0)
+	ctx              voidptr = unsafe { nil }
 	name2node_fn     FnLabel2NodeName = node_name
 }
 
@@ -58,7 +58,7 @@ pub fn (mut d DotGraph) new_node(nlabel string, cfg NewNodeConfig) {
 
 pub struct NewEdgeConfig {
 	should_highlight bool
-	ctx              voidptr = voidptr(0)
+	ctx              voidptr = unsafe { nil }
 	name2node_fn     FnLabel2NodeName = node_name
 }
 

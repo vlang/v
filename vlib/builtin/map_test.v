@@ -210,8 +210,8 @@ fn test_various_map_value() {
 	// m13['test'] = rune(0)
 	// assert m13['test'] == rune(0)
 	mut m14 := map[string]voidptr{}
-	m14['test'] = voidptr(0)
-	assert m14['test'] == voidptr(0)
+	m14['test'] = unsafe { nil }
+	assert m14['test'] == unsafe { nil }
 	mut m15 := map[string]&u8{}
 	m15['test'] = &u8(0)
 	assert m15['test'] == &u8(0)

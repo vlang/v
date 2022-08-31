@@ -133,12 +133,7 @@ fn test_bin() {
 	x5 := u8(0b11111111)
 	assert x5 == 255
 	x6 := char(0b11111111)
-	// C.char is unsigned on arm64, but signed on amd64, by default
-	$if arm64 {
-		assert int(x6) == 255
-	} $else {
-		assert int(x6) == -1
-	}
+	assert u8(x6) == 255
 	x7 := 0b0
 	assert x7 == 0
 	x8 := -0b0
@@ -255,7 +250,7 @@ fn test_repeat() {
 }
 
 fn test_byte_vs_u8() {
-	b := byte(1)
-	u := u8(1)
-	assert b == u
+	bb := byte(1)
+	uu := u8(1)
+	assert bb == uu
 }

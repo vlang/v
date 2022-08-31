@@ -4,7 +4,7 @@ LDFLAGS ?=
 TMPDIR ?= /tmp
 VROOT  ?= .
 VC     ?= ./vc
-V      ?= ./v
+VEXE   ?= ./v
 VCREPO ?= https://github.com/vlang/vc
 TCCREPO ?= https://github.com/vlang/tccbin
 
@@ -22,7 +22,7 @@ _SYS := $(patsubst MINGW%,MinGW,$(_SYS))
 
 ifneq ($(filter $(_SYS),MSYS MinGW),)
 WIN32 := 1
-V:=./v.exe
+VEXE := ./v.exe
 endif
 
 ifeq ($(_SYS),Linux)
@@ -89,18 +89,18 @@ all: latest_vc latest_tcc
 ifdef WIN32
 	$(CC) $(CFLAGS) -std=c99 -municode -w -o v1.exe $(VC)/$(VCFILE) $(LDFLAGS)
 	v1.exe -no-parallel -o v2.exe $(VFLAGS) cmd/v
-	v2.exe -o $(V) $(VFLAGS) cmd/v
+	v2.exe -o $(VEXE) $(VFLAGS) cmd/v
 	del v1.exe
 	del v2.exe
 else
 	$(CC) $(CFLAGS) -std=gnu99 -w -o v1.exe $(VC)/$(VCFILE) -lm -lpthread $(LDFLAGS)
 	./v1.exe -no-parallel -o v2.exe $(VFLAGS) cmd/v
-	./v2.exe -o $(V) $(VFLAGS) cmd/v
+	./v2.exe -o $(VEXE) $(VFLAGS) cmd/v
 	rm -rf v1.exe v2.exe
 endif
-	@$(V) run cmd/tools/detect_tcc.v
+	@$(VEXE) run cmd/tools/detect_tcc.v
 	@echo "V has been successfully built"
-	@$(V) -version
+	@$(VEXE) -version
 
 clean:
 	rm -rf $(TMPTCC)
@@ -158,14 +158,14 @@ asan:
 	$(MAKE) all CFLAGS='-fsanitize=address,undefined'
 
 selfcompile:
-	$(V) -cg -o v cmd/v
+	$(VEXE) -cg -o v cmd/v
 
 selfcompile-static:
-	$(V) -cg -cflags '--static' -o v-static cmd/v
+	$(VEXE) -cg -cflags '--static' -o v-static cmd/v
 
 ### NB: Please keep this Makefile and make.bat simple.
 install:
 	@echo 'Please use `sudo ./v symlink` instead.'
 
 check:
-	$(V) test-all
+	$(VEXE) test-all

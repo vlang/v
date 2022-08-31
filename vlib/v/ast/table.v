@@ -33,7 +33,7 @@ pub mut:
 	used_vweb_types    []Type // vweb context types, filled in by checker, when pref.skip_unused = true;
 	used_maps          int    // how many times maps were used, filled in by checker, when pref.skip_unused = true;
 	panic_handler      FnPanicHandler = default_table_panic_handler
-	panic_userdata     voidptr        = voidptr(0) // can be used to pass arbitrary data to panic_handler;
+	panic_userdata     voidptr        = unsafe { nil } // can be used to pass arbitrary data to panic_handler;
 	panic_npanics      int
 	cur_fn             &FnDecl = unsafe { 0 } // previously stored in Checker.cur_fn and Gen.cur_fn
 	cur_concrete_types []Type  // current concrete types, e.g. <int, string>
@@ -47,6 +47,8 @@ pub mut:
 	// cache for type_to_str_using_aliases
 	cached_type_to_str map[u64]string
 	anon_struct_names  map[string]int // anon struct name -> struct sym idx
+	// counter for anon struct, avoid name conflicts.
+	anon_struct_counter int
 }
 
 // used by vls to avoid leaks
@@ -219,7 +221,7 @@ pub fn (t &Table) fn_type_signature(f &Fn) string {
 		} else {
 			sig += arg_type_sym.str().to_lower().replace_each(['.', '__', '&', '', '[', 'arr_',
 				'chan ', 'chan_', 'map[', 'map_of_', ']', '_to_', '<', '_T_', ',', '_', ' ', '',
-				'>', ''])
+				'>', '', '(', '_', ')', '_'])
 		}
 		if i < f.params.len - 1 {
 			sig += '_'
@@ -399,7 +401,7 @@ pub fn (t &Table) get_embeds(sym &TypeSymbol, options GetEmbedsOptions) [][]Type
 	if unalias_sym.info is Struct {
 		for embed in unalias_sym.info.embeds {
 			embed_sym := t.sym(embed)
-			mut preceding := options.preceding
+			mut preceding := options.preceding.clone()
 			preceding << embed
 			embeds << t.get_embeds(embed_sym, preceding: preceding)
 		}
@@ -1188,12 +1190,12 @@ pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
 	return t.register_sym(mr_type)
 }
 
-pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon bool, has_decl bool) int {
+pub fn (mut t Table) find_or_register_fn_type(f Fn, is_anon bool, has_decl bool) int {
 	name := if f.name.len == 0 { 'fn ${t.fn_type_source_signature(f)}' } else { f.name.clone() }
 	cname := if f.name.len == 0 {
 		'anon_fn_${t.fn_type_signature(f)}'
 	} else {
-		util.no_dots(f.name.clone())
+		util.no_dots(f.name.clone()).replace_each([' ', '', '(', '_', ')', ''])
 	}
 	anon := f.name.len == 0 || is_anon
 	existing_idx := t.type_idxs[name]
@@ -1204,7 +1206,7 @@ pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon bool, ha
 		kind: .function
 		name: name
 		cname: cname
-		mod: mod
+		mod: f.mod
 		info: FnType{
 			is_anon: anon
 			has_decl: has_decl
@@ -1293,9 +1295,21 @@ pub fn (t &Table) sumtype_has_variant(parent Type, variant Type, is_as bool) boo
 			.alias {
 				return t.sumtype_check_alias_variant(parent, variant, is_as)
 			}
+			.function {
+				return t.sumtype_check_function_variant(parent_info, variant, is_as)
+			}
 			else {
 				return t.sumtype_check_variant_in_type(parent_info, variant, is_as)
 			}
+		}
+	}
+	return false
+}
+
+fn (t &Table) sumtype_check_function_variant(parent_info SumType, variant Type, is_as bool) bool {
+	for v in parent_info.variants {
+		if '$v.idx' == '$variant.idx' && (!is_as || v.nr_muls() == variant.nr_muls()) {
+			return true
 		}
 	}
 	return false
@@ -1432,7 +1446,7 @@ pub fn (mut t Table) bitsize_to_type(bit_size int) Type {
 			if bit_size % 8 != 0 { // there is no way to do `i2131(32)` so this should never be reached
 				t.panic('compiler bug: bitsizes must be multiples of 8')
 			}
-			return new_type(t.find_or_register_array_fixed(u8_type, bit_size / 8, empty_expr()))
+			return new_type(t.find_or_register_array_fixed(u8_type, bit_size / 8, empty_expr))
 		}
 	}
 }
@@ -1607,7 +1621,7 @@ pub fn (mut t Table) resolve_generic_to_concrete(generic_type Type, generic_name
 				}
 			}
 			func.name = ''
-			idx := t.find_or_register_fn_type('', func, true, false)
+			idx := t.find_or_register_fn_type(func, true, false)
 			if has_generic {
 				return new_type(idx).derive_add_muls(generic_type).set_flag(.generic)
 			} else {
@@ -1932,7 +1946,7 @@ pub fn (mut t Table) unwrap_generic_type(typ Type, generic_names []string, concr
 					}
 				}
 			}
-			mut all_methods := ts.methods
+			mut all_methods := unsafe { ts.methods }
 			for imethod in imethods {
 				for mut method in all_methods {
 					if imethod.name == method.name {
@@ -2097,7 +2111,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 							}
 							sym.register_method(method)
 						}
-						mut all_methods := parent.methods
+						mut all_methods := unsafe { parent.methods }
 						for imethod in imethods {
 							for mut method in all_methods {
 								if imethod.name == method.name {

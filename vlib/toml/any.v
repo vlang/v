@@ -330,96 +330,107 @@ fn (a Any) value_(value Any, key []string) Any {
 pub fn (a Any) reflect<T>() T {
 	mut reflected := T{}
 	$for field in T.fields {
+		mut toml_field_name := field.name
+		// Remapping of field names, for example:
+		// TOML: 'assert = "ok"'
+		// V:    User { asrt string [toml: 'assert'] }
+		// User.asrt == 'ok'
+		for attr in field.attrs {
+			if attr.starts_with('toml:') {
+				toml_field_name = attr.all_after(':').trim_space()
+			}
+		}
+
 		$if field.typ is string {
-			reflected.$(field.name) = a.value(field.name).default_to('').string()
+			reflected.$(field.name) = a.value(toml_field_name).default_to('').string()
 		} $else $if field.typ is bool {
-			reflected.$(field.name) = a.value(field.name).default_to(false).bool()
+			reflected.$(field.name) = a.value(toml_field_name).default_to(false).bool()
 		} $else $if field.typ is int {
-			reflected.$(field.name) = a.value(field.name).default_to(0).int()
+			reflected.$(field.name) = a.value(toml_field_name).default_to(0).int()
 		} $else $if field.typ is f32 {
-			reflected.$(field.name) = a.value(field.name).default_to(0.0).f32()
+			reflected.$(field.name) = a.value(toml_field_name).default_to(0.0).f32()
 		} $else $if field.typ is f64 {
-			reflected.$(field.name) = a.value(field.name).default_to(0.0).f64()
+			reflected.$(field.name) = a.value(toml_field_name).default_to(0.0).f64()
 		} $else $if field.typ is i64 {
-			reflected.$(field.name) = a.value(field.name).default_to(0).i64()
+			reflected.$(field.name) = a.value(toml_field_name).default_to(0).i64()
 		} $else $if field.typ is u64 {
-			reflected.$(field.name) = a.value(field.name).default_to(0).u64()
+			reflected.$(field.name) = a.value(toml_field_name).default_to(0).u64()
 		} $else $if field.typ is Any {
-			reflected.$(field.name) = a.value(field.name)
+			reflected.$(field.name) = a.value(toml_field_name)
 		} $else $if field.typ is DateTime {
 			dt := DateTime{'0000-00-00T00:00:00.000'}
-			reflected.$(field.name) = a.value(field.name).default_to(dt).datetime()
+			reflected.$(field.name) = a.value(toml_field_name).default_to(dt).datetime()
 		} $else $if field.typ is Date {
 			da := Date{'0000-00-00'}
-			reflected.$(field.name) = a.value(field.name).default_to(da).date()
+			reflected.$(field.name) = a.value(toml_field_name).default_to(da).date()
 		} $else $if field.typ is Time {
 			t := Time{'00:00:00.000'}
-			reflected.$(field.name) = a.value(field.name).default_to(t).time()
+			reflected.$(field.name) = a.value(toml_field_name).default_to(t).time()
 		}
 		// Arrays of primitive types
 		$else $if field.typ is []string {
-			any_array := a.value(field.name).array()
+			any_array := a.value(toml_field_name).array()
 			reflected.$(field.name) = any_array.as_strings()
 		} $else $if field.typ is []bool {
-			any_array := a.value(field.name).array()
+			any_array := a.value(toml_field_name).array()
 			mut arr := []bool{cap: any_array.len}
 			for any_value in any_array {
 				arr << any_value.bool()
 			}
 			reflected.$(field.name) = arr
 		} $else $if field.typ is []int {
-			any_array := a.value(field.name).array()
+			any_array := a.value(toml_field_name).array()
 			mut arr := []int{cap: any_array.len}
 			for any_value in any_array {
 				arr << any_value.int()
 			}
 			reflected.$(field.name) = arr
 		} $else $if field.typ is []f32 {
-			any_array := a.value(field.name).array()
+			any_array := a.value(toml_field_name).array()
 			mut arr := []f32{cap: any_array.len}
 			for any_value in any_array {
 				arr << any_value.f32()
 			}
 			reflected.$(field.name) = arr
 		} $else $if field.typ is []f64 {
-			any_array := a.value(field.name).array()
+			any_array := a.value(toml_field_name).array()
 			mut arr := []f64{cap: any_array.len}
 			for any_value in any_array {
 				arr << any_value.f64()
 			}
 			reflected.$(field.name) = arr
 		} $else $if field.typ is []i64 {
-			any_array := a.value(field.name).array()
+			any_array := a.value(toml_field_name).array()
 			mut arr := []i64{cap: any_array.len}
 			for any_value in any_array {
 				arr << any_value.i64()
 			}
 			reflected.$(field.name) = arr
 		} $else $if field.typ is []u64 {
-			any_array := a.value(field.name).array()
+			any_array := a.value(toml_field_name).array()
 			mut arr := []u64{cap: any_array.len}
 			for any_value in any_array {
 				arr << any_value.u64()
 			}
 			reflected.$(field.name) = arr
 		} $else $if field.typ is []Any {
-			reflected.$(field.name) = a.value(field.name).array()
+			reflected.$(field.name) = a.value(toml_field_name).array()
 		} $else $if field.typ is []DateTime {
-			any_array := a.value(field.name).array()
+			any_array := a.value(toml_field_name).array()
 			mut arr := []DateTime{cap: any_array.len}
 			for any_value in any_array {
 				arr << any_value.datetime()
 			}
 			reflected.$(field.name) = arr
 		} $else $if field.typ is []Date {
-			any_array := a.value(field.name).array()
+			any_array := a.value(toml_field_name).array()
 			mut arr := []Date{cap: any_array.len}
 			for any_value in any_array {
 				arr << any_value.date()
 			}
 			reflected.$(field.name) = arr
 		} $else $if field.typ is []Time {
-			any_array := a.value(field.name).array()
+			any_array := a.value(toml_field_name).array()
 			mut arr := []Time{cap: any_array.len}
 			for any_value in any_array {
 				arr << any_value.time()
@@ -428,68 +439,68 @@ pub fn (a Any) reflect<T>() T {
 		}
 		// String key maps of primitive types
 		$else $if field.typ is map[string]string {
-			any_map := a.value(field.name).as_map()
+			any_map := a.value(toml_field_name).as_map()
 			reflected.$(field.name) = any_map.as_strings()
 		} $else $if field.typ is map[string]bool {
-			any_map := a.value(field.name).as_map()
+			any_map := a.value(toml_field_name).as_map()
 			mut type_map := map[string]bool{}
 			for k, any_value in any_map {
 				type_map[k] = any_value.bool()
 			}
 			reflected.$(field.name) = type_map.clone()
 		} $else $if field.typ is map[string]int {
-			any_map := a.value(field.name).as_map()
+			any_map := a.value(toml_field_name).as_map()
 			mut type_map := map[string]int{}
 			for k, any_value in any_map {
 				type_map[k] = any_value.int()
 			}
 			reflected.$(field.name) = type_map.clone()
 		} $else $if field.typ is map[string]f32 {
-			any_map := a.value(field.name).as_map()
+			any_map := a.value(toml_field_name).as_map()
 			mut type_map := map[string]f32{}
 			for k, any_value in any_map {
 				type_map[k] = any_value.f32()
 			}
 			reflected.$(field.name) = type_map.clone()
 		} $else $if field.typ is map[string]f64 {
-			any_map := a.value(field.name).as_map()
+			any_map := a.value(toml_field_name).as_map()
 			mut type_map := map[string]f64{}
 			for k, any_value in any_map {
 				type_map[k] = any_value.f64()
 			}
 			reflected.$(field.name) = type_map.clone()
 		} $else $if field.typ is map[string]i64 {
-			any_map := a.value(field.name).as_map()
+			any_map := a.value(toml_field_name).as_map()
 			mut type_map := map[string]i64{}
 			for k, any_value in any_map {
 				type_map[k] = any_value.i64()
 			}
 			reflected.$(field.name) = type_map.clone()
 		} $else $if field.typ is map[string]u64 {
-			any_map := a.value(field.name).as_map()
+			any_map := a.value(toml_field_name).as_map()
 			mut type_map := map[string]u64{}
 			for k, any_value in any_map {
 				type_map[k] = any_value.u64()
 			}
 			reflected.$(field.name) = type_map.clone()
 		} $else $if field.typ is map[string]Any {
-			reflected.$(field.name) = a.value(field.name).as_map()
+			reflected.$(field.name) = a.value(toml_field_name).as_map()
 		} $else $if field.typ is map[string]DateTime {
-			any_map := a.value(field.name).as_map()
+			any_map := a.value(toml_field_name).as_map()
 			mut type_map := map[string]DateTime{}
 			for k, any_value in any_map {
 				type_map[k] = any_value.datetime()
 			}
 			reflected.$(field.name) = type_map.clone()
 		} $else $if field.typ is map[string]Date {
-			any_map := a.value(field.name).as_map()
+			any_map := a.value(toml_field_name).as_map()
 			mut type_map := map[string]Date{}
 			for k, any_value in any_map {
 				type_map[k] = any_value.date()
 			}
 			reflected.$(field.name) = type_map.clone()
 		} $else $if field.typ is map[string]Time {
-			any_map := a.value(field.name).as_map()
+			any_map := a.value(toml_field_name).as_map()
 			mut type_map := map[string]Time{}
 			for k, any_value in any_map {
 				type_map[k] = any_value.time()

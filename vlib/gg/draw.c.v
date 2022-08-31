@@ -521,6 +521,13 @@ pub fn (ctx &Context) draw_circle_empty(x f32, y f32, radius f32, c gx.Color) {
 // `radius` defines the radius of the circle.
 // `c` is the fill color.
 pub fn (ctx &Context) draw_circle_filled(x f32, y f32, radius f32, c gx.Color) {
+	$if macos {
+		if ctx.native_rendering {
+			C.darwin_draw_circle(x - radius + 1, ctx.height - (y + radius + 3), radius,
+				c)
+			return
+		}
+	}
 	ctx.draw_polygon_filled(x, y, radius, radius_to_segments(radius), 0, c)
 }
 

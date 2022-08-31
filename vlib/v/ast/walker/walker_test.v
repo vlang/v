@@ -46,7 +46,7 @@ fn test_inspect() {
 module main
 	'
 	file := parse_text(source)
-	walker.inspect(file, voidptr(0), fn (node &ast.Node, data voidptr) bool {
+	walker.inspect(file, unsafe { nil }, fn (node &ast.Node, data voidptr) bool {
 		// Second visit must be ast.Stmt
 		if node is ast.Stmt {
 			if node !is ast.Module {

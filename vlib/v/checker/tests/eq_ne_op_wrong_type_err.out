@@ -33,6 +33,7 @@ vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:17:10: error: possible type mism
       |             ~~~~~~~~~~~~~~~~~
    18 |     println(AAaa{0} == Aaa{0})
    19 |     println(AAaa{1} != Aaa{1})
+Details: left type: `main.Aaa` vs right type: `main.AAaa`
 vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:18:10: error: possible type mismatch of compared values of `==` operation
    16 | 
    17 |     println(Aaa{0} == AAaa{0})
@@ -40,6 +41,7 @@ vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:18:10: error: possible type mism
       |             ~~~~~~~~~~~~~~~~~
    19 |     println(AAaa{1} != Aaa{1})
    20 |     println(Aaa{1} != AAaa{1})
+Details: left type: `main.AAaa` vs right type: `main.Aaa`
 vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:19:10: error: possible type mismatch of compared values of `!=` operation
    17 |     println(Aaa{0} == AAaa{0})
    18 |     println(AAaa{0} == Aaa{0})
@@ -47,6 +49,7 @@ vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:19:10: error: possible type mism
       |             ~~~~~~~~~~~~~~~~~
    20 |     println(Aaa{1} != AAaa{1})
    21 |
+Details: left type: `main.AAaa` vs right type: `main.Aaa`
 vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:20:10: error: possible type mismatch of compared values of `!=` operation
    18 |     println(AAaa{0} == Aaa{0})
    19 |     println(AAaa{1} != Aaa{1})
@@ -54,6 +57,7 @@ vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:20:10: error: possible type mism
       |             ~~~~~~~~~~~~~~~~~
    21 | 
    22 |     arr := Arr([0])
+Details: left type: `main.Aaa` vs right type: `main.AAaa`
 vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:23:10: error: possible type mismatch of compared values of `==` operation
    21 | 
    22 |     arr := Arr([0])
@@ -61,6 +65,7 @@ vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:23:10: error: possible type mism
       |             ~~~~~~~~~~
    24 |     println([1] == arr)
    25 |     println(arr != [0])
+Details: left type: `main.Arr` vs right type: `[]int`
 vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:24:10: error: possible type mismatch of compared values of `==` operation
    22 |     arr := Arr([0])
    23 |     println(arr == [0])
@@ -68,6 +73,7 @@ vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:24:10: error: possible type mism
       |             ~~~~~~~~~~
    25 |     println(arr != [0])
    26 |     println([1] != arr)
+Details: left type: `[]int` vs right type: `main.Arr`
 vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:25:10: error: possible type mismatch of compared values of `!=` operation
    23 |     println(arr == [0])
    24 |     println([1] == arr)
@@ -75,6 +81,7 @@ vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:25:10: error: possible type mism
       |             ~~~~~~~~~~
    26 |     println([1] != arr)
    27 |
+Details: left type: `main.Arr` vs right type: `[]int`
 vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:26:10: error: possible type mismatch of compared values of `!=` operation
    24 |     println([1] == arr)
    25 |     println(arr != [0])
@@ -82,6 +89,7 @@ vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:26:10: error: possible type mism
       |             ~~~~~~~~~~
    27 | 
    28 |     arr_aaa := ArrAaa(arr)
+Details: left type: `[]int` vs right type: `main.Arr`
 vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:29:10: error: possible type mismatch of compared values of `==` operation
    27 | 
    28 |     arr_aaa := ArrAaa(arr)
@@ -89,6 +97,7 @@ vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:29:10: error: possible type mism
       |             ~~~~~~~~~~~~~~
    30 |     println(arr == arr_aaa)
    31 |     println(arr_aaa != arr)
+Details: left type: `main.ArrAaa` vs right type: `main.Arr`
 vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:30:10: error: possible type mismatch of compared values of `==` operation
    28 |     arr_aaa := ArrAaa(arr)
    29 |     println(arr_aaa == arr)
@@ -96,6 +105,7 @@ vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:30:10: error: possible type mism
       |             ~~~~~~~~~~~~~~
    31 |     println(arr_aaa != arr)
    32 |     println(arr != arr_aaa)
+Details: left type: `main.Arr` vs right type: `main.ArrAaa`
 vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:31:10: error: possible type mismatch of compared values of `!=` operation
    29 |     println(arr_aaa == arr)
    30 |     println(arr == arr_aaa)
@@ -103,6 +113,7 @@ vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:31:10: error: possible type mism
       |             ~~~~~~~~~~~~~~
    32 |     println(arr != arr_aaa)
    33 |
+Details: left type: `main.ArrAaa` vs right type: `main.Arr`
 vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:32:10: error: possible type mismatch of compared values of `!=` operation
    30 |     println(arr == arr_aaa)
    31 |     println(arr_aaa != arr)
@@ -110,6 +121,7 @@ vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:32:10: error: possible type mism
       |             ~~~~~~~~~~~~~~
    33 | 
    34 |     println(arr_aaa == [0])
+Details: left type: `main.Arr` vs right type: `main.ArrAaa`
 vlib/v/checker/tests/eq_ne_op_wrong_type_err.vv:34:10: error: infix expr: cannot use `[]int` (right expression) as `ArrAaa`
    32 |     println(arr != arr_aaa)
    33 | 

@@ -83,18 +83,18 @@ pub fn (mut list LinkedList<T>) pop() ?T {
 		return error('Linked list is empty')
 	}
 	mut node := list.head
-	mut to_return := node.data
+	mut to_return := unsafe { node.data }
 	if unsafe { node.next == 0 } {
 		// first node case
 		// set to null
-		list.head = voidptr(0)
+		list.head = unsafe { nil }
 	} else {
 		for unsafe { node.next.next != 0 } {
 			node = node.next
 		}
-		to_return = node.next.data
+		to_return = unsafe { node.next.data }
 		// set to null
-		node.next = voidptr(0)
+		node.next = unsafe { nil }
 	}
 	list.len -= 1
 	return to_return
@@ -147,11 +147,16 @@ pub fn (mut list LinkedList<T>) prepend(item T) {
 
 // str returns a string representation of the linked list
 pub fn (list LinkedList<T>) str() string {
+	return list.array().str()
+}
+
+// array returns a array representation of the linked list
+pub fn (list LinkedList<T>) array() []T {
 	mut result_array := []T{}
 	mut node := list.head
 	for unsafe { node != 0 } {
 		result_array << node.data
 		node = node.next
 	}
-	return result_array.str()
+	return result_array
 }

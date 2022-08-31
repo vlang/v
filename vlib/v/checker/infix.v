@@ -20,6 +20,11 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	if node.op == .key_is {
 		c.inside_x_is_type = false
 	}
+	if node.op == .amp && left_type.is_bool() && right_type.is_bool() && right_type.is_ptr() {
+		pos := node.pos.extend(node.right.pos())
+		c.error('the right expression should be separated from the `&&` by a space', pos)
+		return ast.bool_type
+	}
 	node.right_type = right_type
 	if left_type.is_number() && !left_type.is_ptr()
 		&& right_type in [ast.int_literal_type, ast.float_literal_type] {
@@ -40,9 +45,15 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		&& node.op in [.plus, .minus, .mul, .div, .mod, .xor, .amp, .pipe] {
 		if !c.pref.translated && ((right_type.is_any_kind_of_pointer() && node.op != .minus)
 			|| (!right_type.is_any_kind_of_pointer() && node.op !in [.plus, .minus])) {
-			left_name := c.table.type_to_str(left_type)
-			right_name := c.table.type_to_str(right_type)
-			c.error('invalid operator `$node.op` to `$left_name` and `$right_name`', left_right_pos)
+			if _ := left_sym.find_method(node.op.str()) {
+				if left_sym.kind == .alias && right_sym.kind == .alias {
+					// allow an explicit operator override `fn (x &AliasType) OP (y &AliasType) &AliasType {`
+				} else {
+					c.invalid_operator_error(node.op, left_type, right_type, left_right_pos)
+				}
+			} else {
+				c.invalid_operator_error(node.op, left_type, right_type, left_right_pos)
+			}
 		} else if node.op in [.plus, .minus] {
 			if !c.inside_unsafe && !node.left.is_auto_deref_var() && !node.right.is_auto_deref_var() {
 				c.warn('pointer arithmetic is only allowed in `unsafe` blocks', left_right_pos)
@@ -84,6 +95,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				(left_sym.kind == .alias && right_sym.kind in [.struct_, .array, .sum_type])
 				|| (right_sym.kind == .alias && left_sym.kind in [.struct_, .array, .sum_type])
 			if is_mismatch {
+				c.add_error_detail('left type: `${c.table.type_to_str(left_type)}` vs right type: `${c.table.type_to_str(right_type)}`')
 				c.error('possible type mismatch of compared values of `$node.op` operation',
 					left_right_pos)
 			} else if left_type in ast.integer_type_idxs && right_type in ast.integer_type_idxs {
@@ -269,7 +281,8 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			} else {
 				unaliased_left_type := c.table.unalias_num_type(left_type)
 				unalias_right_type := c.table.unalias_num_type(right_type)
-				mut promoted_type := c.promote(unaliased_left_type, unalias_right_type)
+				mut promoted_type := c.promote_keeping_aliases(unaliased_left_type, unalias_right_type,
+					left_sym.kind, right_sym.kind)
 				// substract pointers is allowed in unsafe block
 				is_allowed_pointer_arithmetic := left_type.is_any_kind_of_pointer()
 					&& right_type.is_any_kind_of_pointer() && node.op == .minus
@@ -651,4 +664,10 @@ fn (mut c Checker) check_div_mod_by_zero(expr ast.Expr, op_kind token.Kind) {
 		}
 		else {}
 	}
+}
+
+pub fn (mut c Checker) invalid_operator_error(op token.Kind, left_type ast.Type, right_type ast.Type, pos token.Pos) {
+	left_name := c.table.type_to_str(left_type)
+	right_name := c.table.type_to_str(right_type)
+	c.error('invalid operator `$op` to `$left_name` and `$right_name`', pos)
 }

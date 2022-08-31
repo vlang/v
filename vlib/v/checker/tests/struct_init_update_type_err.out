@@ -19,13 +19,6 @@ vlib/v/checker/tests/struct_init_update_type_err.vv:20:6: error: struct `Foo2` i
       |            ~~
    21 |     }
    22 |     _ = Foo{
-vlib/v/checker/tests/struct_init_update_type_err.vv:23:6: error: expression is not an lvalue
-   21 |     }
-   22 |     _ = Foo{
-   23 |         ...Foo{}
-      |            ~~~~~
-   24 |     }
-   25 | }
 vlib/v/checker/tests/struct_init_update_type_err.vv:32:6: error: struct `Empty` is not compatible with struct `Foo`
    30 |     e := Empty{}
    31 |     _ = Foo{

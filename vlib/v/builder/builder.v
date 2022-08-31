@@ -32,9 +32,11 @@ pub mut:
 	pref                &pref.Preferences
 	module_search_paths []string
 	parsed_files        []&ast.File
-	cached_msvc         MsvcResult
-	table               &ast.Table
-	ccoptions           CcompilerOptions
+	//$if windows {
+	cached_msvc MsvcResult
+	//}
+	table     &ast.Table
+	ccoptions CcompilerOptions
 	//
 	// Note: changes in mod `builtin` force invalidation of every other .v file
 	mod_invalidates_paths map[string][]string // changes in mod `os`, invalidate only .v files, that do `import os`
@@ -56,12 +58,15 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 		util.emanager.set_support_color(false)
 	}
 	table.pointer_size = if pref.m64 { 8 } else { 4 }
-	msvc := find_msvc(pref.m64) or {
-		if pref.ccompiler == 'msvc' {
-			// verror('Cannot find MSVC on this OS')
-		}
-		MsvcResult{
-			valid: false
+	mut msvc := MsvcResult{}
+	$if windows {
+		msvc = find_msvc(pref.m64) or {
+			if pref.ccompiler == 'msvc' {
+				// verror('Cannot find MSVC on this OS')
+			}
+			MsvcResult{
+				valid: false
+			}
 		}
 	}
 	util.timing_set_should_print(pref.show_timings || pref.is_verbose)
@@ -456,11 +461,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 					} else {
 						'notice:'
 					}
-					ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
-					eprintln(ferror)
-					if err.details.len > 0 {
-						eprintln('Details: $err.details')
-					}
+					util.show_compiler_message(kind, err.CompilerMessage)
 				}
 			}
 		}
@@ -472,11 +473,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 				} else {
 					'error:'
 				}
-				ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
-				eprintln(ferror)
-				if err.details.len > 0 {
-					eprintln('Details: $err.details')
-				}
+				util.show_compiler_message(kind, err.CompilerMessage)
 			}
 		}
 
@@ -488,11 +485,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 					} else {
 						'warning:'
 					}
-					ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
-					eprintln(ferror)
-					if err.details.len > 0 {
-						eprintln('Details: $err.details')
-					}
+					util.show_compiler_message(kind, err.CompilerMessage)
 				}
 			}
 		}
@@ -517,11 +510,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 			} else {
 				'notice:'
 			}
-			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
-			eprintln(ferror)
-			if err.details.len > 0 {
-				eprintln('Details: $err.details')
-			}
+			util.show_compiler_message(kind, err.CompilerMessage)
 		}
 	}
 	if b.checker.nr_warnings > 0 && !b.pref.skip_warnings {
@@ -531,11 +520,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 			} else {
 				'warning:'
 			}
-			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
-			eprintln(ferror)
-			if err.details.len > 0 {
-				eprintln('Details: $err.details')
-			}
+			util.show_compiler_message(kind, err.CompilerMessage)
 		}
 	}
 	//
@@ -549,11 +534,7 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 			} else {
 				'error:'
 			}
-			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
-			eprintln(ferror)
-			if err.details.len > 0 {
-				eprintln('Details: $err.details')
-			}
+			util.show_compiler_message(kind, err.CompilerMessage)
 		}
 		b.show_total_warns_and_errors_stats()
 		exit(1)
@@ -581,12 +562,15 @@ pub fn (mut b Builder) print_warnings_and_errors() {
 				}
 			}
 			if redefines.len > 0 {
-				ferror := util.formatted_error('builder error:', 'redefinition of function `$fn_name`',
-					'', token.Pos{})
-				eprintln(ferror)
+				util.show_compiler_message('builder error:',
+					message: 'redefinition of function `$fn_name`'
+				)
 				for redefine in redefines {
-					eprintln(util.formatted_error('conflicting declaration:', redefine.fheader,
-						redefine.fpath, redefine.f.pos))
+					util.show_compiler_message('conflicting declaration:',
+						message: redefine.fheader
+						file_path: redefine.fpath
+						pos: redefine.f.pos
+					)
 				}
 				total_conflicts++
 			}
@@ -607,8 +591,7 @@ struct FunctionRedefinition {
 
 pub fn (b &Builder) error_with_pos(s string, fpath string, pos token.Pos) errors.Error {
 	if !b.pref.check_only {
-		ferror := util.formatted_error('builder error:', s, fpath, pos)
-		eprintln(ferror)
+		util.show_compiler_message('builder error:', pos: pos, file_path: fpath, message: s)
 		exit(1)
 	}
 

@@ -7,6 +7,7 @@ module util
 import os
 import strings
 import term
+import v.errors
 import v.token
 import v.mathutil as mu
 
@@ -65,6 +66,9 @@ fn color(kind string, msg string) string {
 	}
 	if kind.contains('notice') {
 		return term.yellow(msg)
+	}
+	if kind.contains('details') {
+		return term.bright_blue(msg)
 	}
 	return term.magenta(msg)
 }
@@ -188,4 +192,12 @@ pub fn vlines_escape_path(path string, ccompiler string) string {
 		return '../../../../../..' + cescaped_path(os.real_path(path))
 	}
 	return cescaped_path(os.real_path(path))
+}
+
+pub fn show_compiler_message(kind string, err errors.CompilerMessage) {
+	ferror := formatted_error(kind, err.message, err.file_path, err.pos)
+	eprintln(ferror)
+	if err.details.len > 0 {
+		eprintln(bold('Details: ') + color('details', err.details))
+	}
 }

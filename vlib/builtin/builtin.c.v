@@ -653,4 +653,4 @@ pub fn print_backtrace() {
 __global g_main_argc = int(0)
 
 [markused]
-__global g_main_argv = voidptr(0)
+__global g_main_argv = unsafe { nil }

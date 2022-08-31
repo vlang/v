@@ -488,3 +488,23 @@ struct StByteArray {
 fn test_byte_array() {
 	assert json.encode(StByteArray{ ba: [byte(1), 2, 3, 4, 5] }) == '{"ba":[1,2,3,4,5]}'
 }
+
+struct Aa {
+	sub AliasType
+}
+
+struct Bb {
+	a int
+}
+
+type AliasType = Bb
+
+fn test_encode_alias_field() {
+	s := json.encode(Aa{
+		sub: Bb{
+			a: 1
+		}
+	})
+	println(s)
+	assert s == '{"sub":{"a":1}}'
+}

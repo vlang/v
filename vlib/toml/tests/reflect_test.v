@@ -24,10 +24,19 @@ int_map = {"a" = 0, "b" = 1, "c" = 2, "d" = 3}
 text = "Tom has done many great things"
 years_of_service = 5
 
+[field_remap]
+txt = "I am remapped"
+uint64 = 100
+
 [config]
 data = [ 1, 2, 3 ]
 levels = { "info" = 1, "warn" = 2, "critical" = 3 }
 '
+
+struct FieldRemap {
+	text string [toml: 'txt']
+	num  u64    [toml: 'uint64']
+}
 
 struct Bio {
 	text             string
@@ -46,7 +55,8 @@ struct User {
 
 	config toml.Any
 mut:
-	bio Bio
+	bio   Bio
+	remap FieldRemap
 }
 
 fn test_reflect() {
@@ -54,6 +64,7 @@ fn test_reflect() {
 
 	mut user := toml_doc.reflect<User>()
 	user.bio = toml_doc.value('bio').reflect<Bio>()
+	user.remap = toml_doc.value('field_remap').reflect<FieldRemap>()
 
 	assert user.name == 'Tom'
 	assert user.age == 45
@@ -70,6 +81,9 @@ fn test_reflect() {
 	}
 	assert user.bio.text == 'Tom has done many great things'
 	assert user.bio.years_of_service == 5
+
+	assert user.remap.text == 'I am remapped'
+	assert user.remap.num == 100
 
 	assert user.config.value('data[0]').int() == 1
 	assert user.config.value('levels.warn').int() == 2

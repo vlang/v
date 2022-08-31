@@ -1,5 +1,7 @@
 module os
 
+const max_path_buffer_size = 2 * max_path_len
+
 // Ref - winnt.h
 const (
 	success                   = 0x0000 // ERROR_SUCCESS

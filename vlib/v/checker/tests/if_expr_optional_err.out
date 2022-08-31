@@ -1,7 +1,7 @@
-vlib/v/checker/tests/if_expr_optional_err.vv:7:5: error: non-bool type `?bool` used as if condition
+vlib/v/checker/tests/if_expr_optional_err.vv:6:5: error: non-bool type `?bool` used as if condition
+    4 |
     5 | fn main() {
-    6 | 
-    7 |     if get_bool() {
+    6 |     if get_bool() {
       |        ~~~~~~~~~~
-    8 |         println("Using plain lists")
-    9 |     }
+    7 |         println("Using plain lists")
+    8 |     }

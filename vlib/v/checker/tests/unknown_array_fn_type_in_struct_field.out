@@ -1,0 +1,7 @@
+vlib/v/checker/tests/unknown_array_fn_type_in_struct_field.vv:2:22: error: unknown type `UnknownThing`.
+Did you mean `[2]fn (u32) UnknownThing`?
+    1 | struct Virt {
+    2 |     fns [2]fn (num u32) UnknownThing
+      |                         ~~~~~~~~~~~~
+    3 | }
+    4 |

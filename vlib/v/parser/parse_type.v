@@ -271,7 +271,7 @@ pub fn (mut p Parser) parse_fn_type(name string) ast.Type {
 	// MapFooFn typedefs are manually added in cheaders.v
 	// because typedefs get generated after the map struct is generated
 	has_decl := p.builtin_mod && name.starts_with('Map') && name.ends_with('Fn')
-	idx := p.table.find_or_register_fn_type(p.mod, func, false, has_decl)
+	idx := p.table.find_or_register_fn_type(func, false, has_decl)
 	if has_generic {
 		return ast.new_type(idx).set_flag(.generic)
 	}
@@ -305,6 +305,8 @@ pub fn (mut p Parser) parse_language() ast.Language {
 // parse_inline_sum_type parses the type and registers it in case the type is an anonymous sum type.
 // It also takes care of inline sum types where parse_type only parses a standalone type.
 pub fn (mut p Parser) parse_inline_sum_type() ast.Type {
+	p.warn('inline sum types have been deprecated and will be removed on January 1, 2023 due ' +
+		'to complicating the language and the compiler too much; define named sum types with `type Foo = Bar | Baz` instead')
 	variants := p.parse_sum_type_variants()
 	if variants.len > 1 {
 		if variants.len > parser.maximum_inline_sum_type_variants {
@@ -379,7 +381,7 @@ pub fn (mut p Parser) parse_type() ast.Type {
 		p.next()
 		is_result = true
 	}
-	if (is_optional || is_result) && p.tok.line_nr > line_nr {
+	if (is_optional || is_result) && (p.tok.line_nr > line_nr || p.tok.kind in [.comma, .rpar]) {
 		mut typ := ast.void_type
 		if is_optional {
 			typ = typ.set_flag(.optional)
@@ -526,10 +528,10 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 			return p.parse_array_type(p.tok.kind)
 		}
 		else {
-			if p.tok.kind == .lpar && !p.inside_sum_type {
+			if p.tok.kind == .lpar {
 				// multiple return
 				if is_ptr {
-					p.error('parse_type: unexpected `&` before multiple returns')
+					p.unexpected(prepend_msg: 'parse_type:', got: '`&` before multiple returns')
 					return 0
 				}
 				return p.parse_multi_return_type()
@@ -675,6 +677,9 @@ pub fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 			is_instance = true
 		}
 		gts := p.table.sym(gt)
+		if gts.kind == .multi_return {
+			p.error_with_pos('cannot use multi return as generic concrete type', type_pos)
+		}
 		if !is_instance && gts.name.len > 1 {
 			p.error_with_pos('generic struct parameter name needs to be exactly one char',
 				type_pos)

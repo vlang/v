@@ -1,0 +1,14 @@
+// Result
+fn foo(a int) !int {
+	return a + 1
+}
+
+// Option
+fn bar(a int) ?int {
+	return foo(a)
+}
+
+fn main() {
+	x := bar(1)?
+	println('$x')
+}

@@ -3,6 +3,7 @@
 module checker
 
 import v.ast
+import v.util
 
 pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 	mut struct_sym, struct_typ_idx := c.table.find_sym_and_type_idx(node.name)
@@ -67,37 +68,35 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 							field.type_pos)
 					}
 				}
-				field_sym := c.table.sym(field.typ)
-				if field_sym.kind == .function {
-					fn_info := field_sym.info as ast.FnType
-					c.ensure_type_exists(fn_info.func.return_type, fn_info.func.return_type_pos) or {
-						return
-					}
-					for param in fn_info.func.params {
-						c.ensure_type_exists(param.typ, param.type_pos) or { return }
-					}
-				}
 			}
 			if sym.kind == .struct_ {
 				info := sym.info as ast.Struct
 				if info.is_heap && !field.typ.is_ptr() {
 					struct_sym.info.is_heap = true
 				}
+				if info.generic_types.len > 0 && !field.typ.has_flag(.generic)
+					&& info.concrete_types.len == 0 {
+					c.error('field `$field.name` type is generic struct, must specify the generic type names, e.g. Foo<T>, Foo<int>',
+						field.type_pos)
+				}
 			}
+			if sym.kind == .multi_return {
+				c.error('cannot use multi return as field type', field.type_pos)
+			}
+
 			if field.has_default_expr {
 				c.expected_type = field.typ
-				mut field_expr_type := c.expr(field.default_expr)
+				default_expr_type := c.expr(field.default_expr)
 				if !field.typ.has_flag(.optional) {
-					c.check_expr_opt_call(field.default_expr, field_expr_type)
+					c.check_expr_opt_call(field.default_expr, default_expr_type)
 				}
-				struct_sym.info.fields[i].default_expr_typ = field_expr_type
-				c.check_expected(field_expr_type, field.typ) or {
+				struct_sym.info.fields[i].default_expr_typ = default_expr_type
+				c.check_expected(default_expr_type, field.typ) or {
 					if sym.kind == .interface_
-						&& c.type_implements(field_expr_type, field.typ, field.pos) {
-						if !field_expr_type.is_ptr() && !field_expr_type.is_pointer()
+						&& c.type_implements(default_expr_type, field.typ, field.pos) {
+						if !default_expr_type.is_ptr() && !default_expr_type.is_pointer()
 							&& !c.inside_unsafe {
-							field_expr_type_sym := c.table.sym(field_expr_type)
-							if field_expr_type_sym.kind != .interface_ {
+							if c.table.sym(default_expr_type).kind != .interface_ {
 								c.mark_as_referenced(mut &node.fields[i].default_expr,
 									true)
 							}
@@ -320,7 +319,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 	}
 	if type_sym.name.len == 1 && !isnil(c.table.cur_fn) && c.table.cur_fn.generic_names.len == 0 {
 		c.error('unknown struct `$type_sym.name`', node.pos)
-		return 0
+		return ast.void_type
 	}
 	match type_sym.kind {
 		.placeholder {
@@ -388,7 +387,8 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 						ast.StructField{}
 					}
 					if !exists {
-						c.error('unknown field `$field.name` in struct literal of type `$type_sym.name`',
+						existing_fields := c.table.struct_fields(type_sym).map(it.name)
+						c.error(util.new_suggestion(field.name, existing_fields).say('unknown field `$field.name` in struct literal of type `$type_sym.name`'),
 							field.pos)
 						continue
 					}
@@ -457,7 +457,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 					if mut field.expr is ast.Ident {
 						if mut field.expr.obj is ast.Var {
 							mut obj := unsafe { &field.expr.obj }
-							if c.fn_scope != voidptr(0) {
+							if c.fn_scope != unsafe { nil } {
 								obj = c.fn_scope.find_var(obj.name) or { obj }
 							}
 							if obj.is_stack_obj && !c.inside_unsafe {
@@ -557,11 +557,6 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				c.error('struct `$from_sym.name` is not compatible with struct `$to_sym.name`',
 					node.update_expr.pos())
 			}
-		}
-		if !node.update_expr.is_lvalue() {
-			// cgen will repeat `update_expr` for each field
-			// so enforce an lvalue for efficiency
-			c.error('expression is not an lvalue', node.update_expr.pos())
 		}
 	}
 	return node.typ

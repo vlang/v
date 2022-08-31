@@ -1,0 +1,19 @@
+module main
+
+fn test1() {
+	println('test1')
+}
+
+fn test2() {
+	println('test2')
+}
+
+fn main() {
+	t1 := test1
+	t2 := test2
+	anon := fn [t1, t2] () {
+		t1()
+		t2()
+	}
+	anon()
+}

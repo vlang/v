@@ -1,0 +1,7 @@
+vlib/v/checker/tests/result_missing_propagate_err.vv:6:7: error: result() returns a result, so it should have either an `or {}` block, or `!` at the end
+    4 |
+    5 | fn main() {
+    6 |     a := result()
+      |          ~~~~~~~~
+    7 |     println(a)
+    8 | }

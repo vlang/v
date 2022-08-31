@@ -47,8 +47,8 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				// check condition type is boolean
 				c.expected_type = ast.bool_type
 				cond_typ := c.unwrap_generic(c.expr(branch.cond))
-				if (cond_typ.idx() != ast.bool_type_idx || cond_typ.has_flag(.optional))
-					&& !c.pref.translated && !c.file.is_translated {
+				if (cond_typ.idx() != ast.bool_type_idx || cond_typ.has_flag(.optional)
+					|| cond_typ.has_flag(.result)) && !c.pref.translated && !c.file.is_translated {
 					c.error('non-bool type `${c.table.type_to_str(cond_typ)}` used as if condition',
 						branch.cond.pos())
 				}
@@ -59,21 +59,22 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			mut comptime_field_name := ''
 			if mut branch.cond is ast.InfixExpr {
 				if branch.cond.op == .key_is {
-					if branch.cond.right !is ast.TypeNode && branch.cond.right !is ast.ComptimeType {
+					left := branch.cond.left
+					right := branch.cond.right
+					if right !in [ast.TypeNode, ast.ComptimeType] {
 						c.error('invalid `\$if` condition: expected a type', branch.cond.right.pos())
 						return 0
 					}
-					left := branch.cond.left
-					if branch.cond.right is ast.ComptimeType && left is ast.TypeNode {
+					if right is ast.ComptimeType && left is ast.TypeNode {
 						is_comptime_type_is_expr = true
 						checked_type := c.unwrap_generic(left.typ)
-						skip_state = if c.table.is_comptime_type(checked_type, branch.cond.right as ast.ComptimeType) {
+						skip_state = if c.table.is_comptime_type(checked_type, right as ast.ComptimeType) {
 							.eval
 						} else {
 							.skip
 						}
 					} else {
-						got_type := c.unwrap_generic((branch.cond.right as ast.TypeNode).typ)
+						got_type := c.unwrap_generic((right as ast.TypeNode).typ)
 						sym := c.table.sym(got_type)
 						if sym.kind == .placeholder || got_type.has_flag(.generic) {
 							c.error('unknown type `$sym.name`', branch.cond.right.pos())
@@ -83,7 +84,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 							comptime_field_name = left.expr.str()
 							c.comptime_fields_type[comptime_field_name] = got_type
 							is_comptime_type_is_expr = true
-						} else if branch.cond.right is ast.TypeNode && left is ast.TypeNode
+						} else if right is ast.TypeNode && left is ast.TypeNode
 							&& sym.kind == .interface_ {
 							is_comptime_type_is_expr = true
 							// is interface
@@ -165,6 +166,12 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 		if expr_required {
 			if branch.stmts.len > 0 && branch.stmts.last() is ast.ExprStmt {
 				mut last_expr := branch.stmts.last() as ast.ExprStmt
+				expr := last_expr.expr
+				if expr is ast.ConcatExpr {
+					for val in expr.vals {
+						c.check_expr_opt_call(val, c.expr(val))
+					}
+				}
 				c.expected_type = former_expected_type
 				if c.expected_type.has_flag(.optional) {
 					if node.typ == ast.void_type {
@@ -186,6 +193,14 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 						node.is_expr = true
 						node.typ = c.expected_type
 					}
+				}
+				if last_expr.typ == ast.void_type && !is_noreturn_callexpr(last_expr.expr)
+					&& !c.skip_flags {
+					// cannot return void type and use it as expr in any circumstances
+					// (e.g. argument expression, variable declaration / assignment)
+					c.error('the final expression in `if` or `match`, must have a value of a non-void type',
+						last_expr.pos)
+					continue
 				}
 				if !c.check_types(last_expr.typ, node.typ) {
 					if node.typ == ast.void_type {
@@ -227,13 +242,9 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(last_expr.typ)}`',
 						node.pos)
 				}
-			} else {
+			} else if !node.is_comptime {
 				c.error('`$if_kind` expression requires an expression as the last statement of every branch',
 					branch.pos)
-			}
-			for st in branch.stmts {
-				// must not contain C statements
-				st.check_c_expr() or { c.error('`if` expression branch has $err.msg()', st.pos) }
 			}
 		}
 		if mut branch.cond is ast.IfGuardExpr {

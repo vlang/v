@@ -1,0 +1,13 @@
+type Fn = fn () int | fn (int) int
+
+fn main() {
+	f1 := Fn(fn (a int) int {
+		return a
+	})
+	println(typeof(f1).name)
+
+	f2 := Fn(fn () int {
+		return 22
+	})
+	println(typeof(f2).name)
+}

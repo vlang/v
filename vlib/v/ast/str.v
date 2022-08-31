@@ -164,12 +164,42 @@ fn stringify_fn_after_name(node &FnDecl, mut f strings.Builder, t &Table, cur_mo
 	}
 	f.write_string(')')
 	if node.return_type != void_type {
-		mut rs := util.no_cur_mod(t.type_to_str(node.return_type), cur_mod)
-		for mod, alias in m2a {
-			rs = rs.replace(mod, alias)
-		}
-		f.write_string(' ' + rs)
+		sreturn_type := util.no_cur_mod(t.type_to_str(node.return_type), cur_mod)
+		short_sreturn_type := shorten_full_name_based_on_aliases(sreturn_type, m2a)
+		f.write_string(' ' + short_sreturn_type)
 	}
+}
+
+struct StringifyModReplacement {
+	mod    string
+	alias  string
+	weight int
+}
+
+fn shorten_full_name_based_on_aliases(input string, m2a map[string]string) string {
+	// Shorten the full names to their aliases, but replace the longer mods first, so that:
+	//   `import user.project`
+	//   `import user.project.routes`
+	// will lead to replacing `user.project.routes` first to `routes`, NOT `user.project.routes` to `project.routes`.
+	// Also take into account the nesting level, so `a.e.c.d` will be shortened before `a.xyz.b`, even though they are the same length.
+	mut replacements := []StringifyModReplacement{cap: m2a.len}
+	for mod, alias in m2a {
+		if input.contains(mod) {
+			replacements << StringifyModReplacement{
+				mod: mod
+				alias: alias
+				weight: mod.count('.') * 100 + mod.len
+			}
+		}
+	}
+	mut res := input.clone()
+	if replacements.len > 0 {
+		replacements.sort(a.weight > b.weight)
+		for r in replacements {
+			res = res.replace(r.mod, r.alias)
+		}
+	}
+	return res
 }
 
 // Expressions in string interpolations may have to be put in braces if they
@@ -210,7 +240,7 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 				}
 				CallExpr {
 					if sub_expr.args.len != 0 || sub_expr.concrete_types.len != 0
-						|| sub_expr.or_block.kind == .propagate_option
+						|| sub_expr.or_block.kind in [.propagate_option, .propagate_result]
 						|| sub_expr.or_block.stmts.len > 0 {
 						needs_braces = true
 					} else if sub_expr.left is CallExpr {
@@ -346,13 +376,13 @@ pub fn (x Expr) str() string {
 			return '.$x.val'
 		}
 		FloatLiteral, IntegerLiteral {
-			return x.val
+			return x.val.clone()
 		}
 		GoExpr {
 			return 'go $x.call_expr'
 		}
 		Ident {
-			return x.name
+			return x.name.clone()
 		}
 		IfExpr {
 			mut parts := []string{}
@@ -589,6 +619,12 @@ pub fn (node Stmt) str() string {
 		EnumDecl {
 			return 'enum $node.name { $node.fields.len fields }'
 		}
+		ForStmt {
+			if node.is_inf {
+				return 'for {'
+			}
+			return 'for $node.cond {'
+		}
 		Module {
 			return 'module $node.name'
 		}
@@ -596,6 +632,16 @@ pub fn (node Stmt) str() string {
 			mut out := 'import $node.mod'
 			if node.alias.len > 0 {
 				out += ' as $node.alias'
+			}
+			return out
+		}
+		Return {
+			mut out := 'return'
+			for i, val in node.exprs {
+				out += ' $val'
+				if i < node.exprs.len - 1 {
+					out += ','
+				}
 			}
 			return out
 		}

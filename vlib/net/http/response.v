@@ -31,7 +31,7 @@ pub fn (resp Response) bytes() []u8 {
 pub fn (resp Response) bytestr() string {
 	return 'HTTP/$resp.http_version $resp.status_code $resp.status_msg\r\n' + '${resp.header.render(
 		version: resp.version()
-	)}\r\n' + '$resp.body'
+	)}\r\n' + resp.body
 }
 
 // Parse a raw HTTP response into a Response object

@@ -4,6 +4,10 @@ fn print_number(n int) {
 	}
 }
 
+fn get_bool() bool {
+	return true
+}
+
 fn test_add() {
 	n := 3
 	print_number(0)
@@ -11,14 +15,12 @@ fn test_add() {
 	if n > 1 {
 		println('var(3) > 1')
 	}
-	/*
 	if 1 < n {
 		println('1 < var(3)')
 	}
 	if 1 > n {
 		println('1 > 3 ERROR')
 	}
-	*/
 	if 1 < 3 {
 		println('1 < 3')
 	}
@@ -38,6 +40,14 @@ fn test_add() {
 		println('1 > 3 ERROR')
 		// TODO assert here
 	}
+	if get_bool() {
+		println('bool is true')
+	}
+}
+
+fn do_not_call() bool {
+	println('must not be called ERROR')
+	return false
 }
 
 fn test_elses() {
@@ -55,9 +65,45 @@ fn test_elses() {
 	println('end else')
 }
 
+fn test_logic_op() {
+	a := true
+	b := false
+	if a && a {
+		println('true && true')
+	}
+	if a && b {
+		println('true && false ERROR')
+	}
+	if b && a {
+		println('false && true ERROR')
+	}
+	if b && b {
+		println('false && false ERROR')
+	}
+	if a || a {
+		println('true || true')
+	}
+	if a || b {
+		println('true || false')
+	}
+	if b || a {
+		println('false || true')
+	}
+	if b || b {
+		println('false || false ERROR')
+	}
+	if b && do_not_call() {
+		println('call ERROR')
+	}
+	if a || do_not_call() {
+		println('short circuit evaluation')
+	}
+}
+
 fn main() {
 	println('start')
 	test_add()
 	test_elses()
+	test_logic_op()
 	println('end')
 }

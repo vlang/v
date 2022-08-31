@@ -1,7 +1,14 @@
-vlib/v/checker/tests/wrong_propagate_ret_type.vv:6:17: error: to propagate the optional call, `opt_call` must return an optional
-    4 |
-    5 | fn opt_call() int {
-    6 |     a := ret_none()?
+vlib/v/checker/tests/wrong_propagate_ret_type.vv:10:17: error: to propagate the optional call, `opt_call` must return an optional
+    8 |
+    9 | fn opt_call() int {
+   10 |     a := ret_none()?
       |                    ^
-    7 |     return a
-    8 | }
+   11 |     return a
+   12 | }
+vlib/v/checker/tests/wrong_propagate_ret_type.vv:15:17: error: unexpected `!`, the function `ret_bool` does neither return an optional nor a result
+   13 |
+   14 | fn res_call() bool {
+   15 |     a := ret_bool()!
+      |                    ^
+   16 |     return a
+   17 | }

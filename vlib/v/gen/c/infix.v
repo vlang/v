@@ -305,7 +305,7 @@ fn (mut g Gen) infix_expr_cmp_op(node ast.InfixExpr) {
 		}
 		concrete_types := (left.sym.info as ast.Struct).concrete_types
 		mut method_name := left.sym.cname + '__lt'
-		method_name = g.generic_fn_name(concrete_types, method_name, true)
+		method_name = g.generic_fn_name(concrete_types, method_name)
 		g.write(method_name)
 		if node.op in [.lt, .ge] {
 			g.write('(')
@@ -419,7 +419,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 				if elem_sym.kind == .sum_type && left.sym.kind != .sum_type {
 					if node.left_type in elem_sym.sumtype_info().variants {
 						new_node_left := ast.CastExpr{
-							arg: ast.EmptyExpr{}
+							arg: ast.empty_expr
 							typ: elem_type
 							expr: node.left
 							expr_type: node.left_type
@@ -439,7 +439,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 			if elem_type_.sym.kind == .sum_type {
 				if node.left_type in elem_type_.sym.sumtype_info().variants {
 					new_node_left := ast.CastExpr{
-						arg: ast.EmptyExpr{}
+						arg: ast.empty_expr
 						typ: elem_type
 						expr: node.left
 						expr_type: node.left_type
@@ -509,7 +509,7 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 			if elem_type_.sym.kind == .sum_type {
 				if node.left_type in elem_type_.sym.sumtype_info().variants {
 					new_node_left := ast.CastExpr{
-						arg: ast.EmptyExpr{}
+						arg: ast.empty_expr
 						typ: elem_type
 						expr: node.left
 						expr_type: node.left_type
@@ -619,7 +619,11 @@ fn (mut g Gen) infix_expr_is_op(node ast.InfixExpr) {
 	} else if left_sym.kind == .sum_type {
 		g.write('_typ $cmp_op ')
 	}
-	g.expr(node.right)
+	if node.right is ast.None {
+		g.write('$ast.none_type.idx() /* none */')
+	} else {
+		g.expr(node.right)
+	}
 }
 
 fn (mut g Gen) gen_interface_is_op(node ast.InfixExpr) {
@@ -656,7 +660,7 @@ fn (mut g Gen) infix_expr_arithmetic_op(node ast.InfixExpr) {
 	if left.sym.kind == .struct_ && (left.sym.info as ast.Struct).generic_types.len > 0 {
 		concrete_types := (left.sym.info as ast.Struct).concrete_types
 		mut method_name := left.sym.cname + '_' + util.replace_op(node.op.str())
-		method_name = g.generic_fn_name(concrete_types, method_name, true)
+		method_name = g.generic_fn_name(concrete_types, method_name)
 		g.write(method_name)
 		g.write('(')
 		g.expr(node.left)

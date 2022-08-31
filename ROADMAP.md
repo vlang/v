@@ -6,11 +6,12 @@
 - [ ] Parallel C compilation
 - [ ] `recover()` from panics
 - [ ] vfmt: add missing imports (like goimports)
-- [ ] merge v.c and v_win.c
 - [ ] Recursive structs via optionals: `struct Node { next ?Node }`
+- [ ] Optional function struct fields
 - [ ] Handle function pointers safely, remove `if function == 0 {`
 - [ ] Bundle OpenSSL like GC
 - [x] Anonymous structs
 - [ ] -usecache on by default
 - [ ] -skip-unused on by default
 - [ ] `any` type
+- [ ] `copy()` builtin function (e.g. for easier conversion from `[]Foo` to `[4]Foo`)

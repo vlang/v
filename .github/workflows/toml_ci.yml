@@ -10,7 +10,7 @@ on:
 
 jobs:
   toml-module-pass-external-test-suites:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-latest
     if: github.event_name != 'push' || github.event.ref == 'refs/heads/master' || github.event.repository.full_name != 'vlang/v'
     timeout-minutes: 30
     env:

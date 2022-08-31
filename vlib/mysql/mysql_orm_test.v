@@ -1,5 +1,7 @@
 import orm
 import mysql
+import time
+import v.ast
 
 struct TestCustomSqlType {
 	id      int    [primary; sql: serial]
@@ -19,20 +21,37 @@ struct TestCustomWrongSqlType {
 	custom3 string [sql_type: 'xml']
 }
 
+struct TestTimeType {
+mut:
+	id         int       [primary; sql: serial]
+	username   string
+	created_at time.Time [sql_type: 'DATETIME']
+	updated_at string    [sql_type: 'DATETIME']
+	deleted_at time.Time
+}
+
+struct TestDefaultAtribute {
+	id         string [primary; sql: serial]
+	name       string
+	created_at string [default: 'CURRENT_TIMESTAMP'; sql_type: 'TIMESTAMP']
+}
+
 fn test_mysql_orm() {
-	mut mdb := mysql.Connection{
+	mut db := mysql.Connection{
 		host: 'localhost'
 		port: 3306
 		username: 'root'
 		password: ''
 		dbname: 'mysql'
 	}
-	mdb.connect() or { panic(err) }
-	db := orm.Connection(mdb)
+	db.connect() or { panic(err) }
+	defer {
+		db.close()
+	}
 	db.create('Test', [
 		orm.TableField{
 			name: 'id'
-			typ: 7
+			typ: ast.int_type_idx
 			attrs: [
 				StructAttribute{
 					name: 'primary'
@@ -47,12 +66,12 @@ fn test_mysql_orm() {
 		},
 		orm.TableField{
 			name: 'name'
-			typ: 20
+			typ: ast.string_type_idx
 			attrs: []
 		},
 		orm.TableField{
 			name: 'age'
-			typ: 7
+			typ: ast.int_type_idx
 		},
 	]) or { panic(err) }
 
@@ -65,11 +84,11 @@ fn test_mysql_orm() {
 		table: 'Test'
 		has_where: true
 		fields: ['id', 'name', 'age']
-		types: [7, 20, 8]
+		types: [ast.int_type_idx, ast.string_type_idx, ast.i64_type_idx]
 	}, orm.QueryData{}, orm.QueryData{
 		fields: ['name', 'age']
 		data: [orm.Primitive('Louis'), i64(101)]
-		types: [20, 8]
+		types: [ast.string_type_idx, ast.i64_type_idx]
 		is_and: [true, true]
 		kinds: [.eq, .eq]
 	}) or { panic(err) }
@@ -92,22 +111,10 @@ fn test_mysql_orm() {
 	if age is i64 {
 		assert age == 101
 	}
-}
 
-fn test_orm() {
-	mut db := mysql.Connection{
-		host: 'localhost'
-		port: 3306
-		username: 'root'
-		password: ''
-		dbname: 'mysql'
-	}
-
-	db.connect() or {
-		println(err)
-		panic(err)
-	}
-
+	/** test orm sql type
+	* - verify if all type create by attribute sql_type has created
+	*/
 	sql db {
 		create table TestCustomSqlType
 	}
@@ -153,9 +160,77 @@ fn test_orm() {
 		},
 	]
 
-	assert result_custom_sql.maps() == information_schema_custom_sql
-
 	sql db {
 		drop table TestCustomSqlType
 	}
+
+	assert result_custom_sql.maps() == information_schema_custom_sql
+
+	/** test_orm_time_type
+	* - test time.Time v type with sql_type: 'TIMESTAMP'
+	* - test string v type with sql_type: 'TIMESTAMP'
+	* - test time.Time v type without
+	*/
+	today := time.parse('2022-07-16 15:13:27') or {
+		println(err)
+		panic(err)
+	}
+
+	model := TestTimeType{
+		username: 'hitalo'
+		created_at: today
+		updated_at: today.str()
+		deleted_at: today
+	}
+
+	sql db {
+		create table TestTimeType
+	}
+
+	sql db {
+		insert model into TestTimeType
+	}
+
+	results := sql db {
+		select from TestTimeType where username == 'hitalo'
+	}
+
+	sql db {
+		drop table TestTimeType
+	}
+
+	assert results[0].username == model.username
+	assert results[0].created_at == model.created_at
+	assert results[0].updated_at == model.updated_at
+	assert results[0].deleted_at == model.deleted_at
+
+	/** test default attribute
+	*/
+	sql db {
+		create table TestDefaultAtribute
+	}
+
+	mut result_defaults := db.query("
+		SELECT COLUMN_DEFAULT
+		FROM INFORMATION_SCHEMA.COLUMNS
+		WHERE TABLE_NAME = 'TestDefaultAtribute'
+		ORDER BY ORDINAL_POSITION
+	") or {
+		println(err)
+		panic(err)
+	}
+	mut information_schema_defaults_results := []string{}
+
+	sql db {
+		drop table TestDefaultAtribute
+	}
+
+	information_schema_column_default_sql := [{
+		'COLUMN_DEFAULT': ''
+	}, {
+		'COLUMN_DEFAULT': ''
+	}, {
+		'COLUMN_DEFAULT': 'CURRENT_TIMESTAMP'
+	}]
+	assert information_schema_column_default_sql == result_defaults.maps()
 }

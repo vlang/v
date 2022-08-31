@@ -1,0 +1,6 @@
+vlib/v/checker/tests/struct_multi_return_field_err.vv:2:16: error: cannot use multi return as field type
+    1 | struct Tuple{
+    2 |     data (int, int)
+      |                   ^
+    3 | }
+    4 |

@@ -102,13 +102,18 @@ $dec_fn_dec {
 		enc.writeln('
 $enc_fn_dec {
 \tcJSON *o;')
-		if sym.kind == .array {
+		if sym.kind == .array || sym.kind == .array_fixed {
+			array_size := if sym.kind == .array_fixed {
+				(sym.info as ast.ArrayFixed).size
+			} else {
+				-1
+			}
 			// Handle arrays
 			value_type := g.table.value_type(utyp)
 			// If we have `[]Profile`, have to register a Profile en(de)coder first
 			g.gen_json_for_type(value_type)
-			dec.writeln(g.decode_array(value_type))
-			enc.writeln(g.encode_array(value_type))
+			dec.writeln(g.decode_array(value_type, array_size))
+			enc.writeln(g.encode_array(value_type, array_size))
 		} else if sym.kind == .map {
 			// Handle maps
 			m := sym.info as ast.Map
@@ -431,7 +436,7 @@ fn (mut g Gen) gen_struct_enc_dec(type_info ast.TypeInfo, styp string, mut enc s
 					}
 					dec.writeln('\t}')
 				} else {
-					g.gen_json_for_type(field.typ)
+					g.gen_json_for_type(alias.parent_type)
 					tmp := g.new_tmp_var()
 					gen_js_get_opt(dec_name, field_type, styp, tmp, name, mut dec, is_required)
 					dec.writeln('\tif (jsonroot_$tmp) {')
@@ -446,7 +451,11 @@ fn (mut g Gen) gen_struct_enc_dec(type_info ast.TypeInfo, styp string, mut enc s
 				tmp := g.new_tmp_var()
 				gen_js_get_opt(dec_name, field_type, styp, tmp, name, mut dec, is_required)
 				dec.writeln('\tif (jsonroot_$tmp) {')
-				dec.writeln('\t\tres.${c_name(field.name)} = *($field_type*) ${tmp}.data;')
+				if field_sym.kind == .array_fixed {
+					dec.writeln('\t\tvmemcpy(res.${c_name(field.name)},*($field_type*)${tmp}.data,sizeof($field_type));')
+				} else {
+					dec.writeln('\t\tres.${c_name(field.name)} = *($field_type*) ${tmp}.data;')
+				}
 				if field.has_default_expr {
 					dec.writeln('\t} else {')
 					dec.writeln('\t\tres.${c_name(field.name)} = ${g.expr_string(field.default_expr)};')
@@ -515,9 +524,25 @@ fn is_js_prim(typ string) bool {
 		'u32', 'u64', 'byte']
 }
 
-fn (mut g Gen) decode_array(value_type ast.Type) string {
+fn (mut g Gen) decode_array(value_type ast.Type, fixed_array_size int) string {
 	styp := g.typ(value_type)
 	fn_name := js_dec_name(styp)
+	noscan := g.check_noscan(value_type)
+
+	fixed_array_str, fixed_array_size_str, res_str, array_free_str := if fixed_array_size > -1 {
+		// fixed array
+		'fixed_', '_$fixed_array_size', '', ''
+	} else {
+		'', '', 'res = __new_array${noscan}(0, 0, sizeof($styp));', 'array_free(&res);'
+	}
+
+	fixed_array_idx, array_element_assign, fixed_array_idx_increment := if fixed_array_size > -1 {
+		// fixed array
+		'int fixed_array_idx = 0;', 'res[fixed_array_idx] = val;', 'fixed_array_idx++;'
+	} else {
+		'', 'array_push${noscan}((array*)&res, &val);', ''
+	}
+
 	mut s := ''
 	if is_js_prim(styp) {
 		s = '$styp val = ${fn_name}((cJSON *)jsval); '
@@ -525,34 +550,44 @@ fn (mut g Gen) decode_array(value_type ast.Type) string {
 		s = '
 		${option_name}_$styp val2 = $fn_name ((cJSON *)jsval);
 		if(val2.state != 0) {
-			array_free(&res);
-			return *(${option_name}_Array_$styp*)&val2;
+			$array_free_str
+			return *(${option_name}_Array_$fixed_array_str$styp$fixed_array_size_str*)&val2;
 		}
 		$styp val = *($styp*)val2.data;
 '
 	}
-	noscan := g.check_noscan(value_type)
+
 	return '
 	if(root && !cJSON_IsArray(root) && !cJSON_IsNull(root)) {
-		return (${option_name}_Array_$styp){.state = 2, .err = _v_error(string__plus(_SLIT("Json element is not an array: "), tos2((byteptr)cJSON_PrintUnformatted(root)))), .data = {0}};
+		return (${option_name}_Array_$fixed_array_str$styp$fixed_array_size_str){.state = 2, .err = _v_error(string__plus(_SLIT("Json element is not an array: "), tos2((byteptr)cJSON_PrintUnformatted(root)))), .data = {0}};
 	}
-	res = __new_array${noscan}(0, 0, sizeof($styp));
+	$res_str
 	const cJSON *jsval = NULL;
+	$fixed_array_idx
 	cJSON_ArrayForEach(jsval, root)
 	{
-	$s
-		array_push${noscan}((array*)&res, &val);
+	    $s
+		$array_element_assign
+		$fixed_array_idx_increment
 	}
 '
 }
 
-fn (mut g Gen) encode_array(value_type ast.Type) string {
+fn (mut g Gen) encode_array(value_type ast.Type, fixed_array_size int) string {
 	styp := g.typ(value_type)
 	fn_name := js_enc_name(styp)
+
+	data_str, size_str := if fixed_array_size > -1 {
+		// fixed array
+		'', '$fixed_array_size'
+	} else {
+		'.data', 'val.len'
+	}
+
 	return '
 	o = cJSON_CreateArray();
-	for (int i = 0; i < val.len; i++){
-		cJSON_AddItemToArray(o, $fn_name (  (($styp*)val.data)[i]  ));
+	for (int i = 0; i < $size_str; i++){
+		cJSON_AddItemToArray(o, $fn_name (  (($styp*)val$data_str)[i]  ));
 	}
 '
 }

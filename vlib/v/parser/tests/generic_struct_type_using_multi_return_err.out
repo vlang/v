@@ -1,0 +1,7 @@
+vlib/v/parser/tests/generic_struct_type_using_multi_return_err.vv:6:18: error: cannot use multi return as generic concrete type
+    4 |
+    5 | fn main() {
+    6 |     sample := Tuple<(int, int)>{}
+      |                     ~~~~~~~~~~
+    7 |     println(sample)
+    8 | }

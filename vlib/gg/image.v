@@ -10,7 +10,7 @@ pub struct DrawImageConfig {
 pub:
 	flip_x    bool
 	flip_y    bool
-	img       &Image = voidptr(0)
+	img       &Image = unsafe { nil }
 	img_id    int
 	img_rect  Rect // defines the size and position on image when rendering to the screen
 	part_rect Rect // defines the size and position of part of the image to use when rendering
