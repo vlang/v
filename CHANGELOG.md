@@ -4,7 +4,7 @@
 - Lots of bug fixes: 90% of all bugs ever submitted are closed.
 - Major improvements to the fast native backend including linking support on Linux. The goal is to be able to self host V soon.
 - Parallelized cc step. Speeds up -prod and clang/gcc compilation by 300-500% (depending on
-  the number of cores). Experimental and hidden behind a -paralell-cc flag, soon to be the default.
+  the number of cores). Experimental and hidden behind a -parallel-cc flag, soon to be the default.
 - New keyword/type: `nil`. Only to be used inside `unsafe`. Replaces `voidptr(0)`.
 - V can now find code in the `src/` directory. This allows making V repos much cleaner.
 - Intel C compiler support.
