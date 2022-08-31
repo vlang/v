@@ -41,8 +41,8 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		return ast.StructDecl{}
 	}
 	mut name := if is_anon {
-		p.anon_struct_counter++
-		'_VAnonStruct$p.anon_struct_counter'
+		p.table.anon_struct_counter++
+		'_VAnonStruct$p.table.anon_struct_counter'
 	} else {
 		p.check_name()
 	}
@@ -267,7 +267,7 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 					}
 				}
 			}
-			mut default_expr := ast.empty_expr()
+			mut default_expr := ast.empty_expr
 			mut has_default_expr := false
 			if !is_embed {
 				if p.tok.kind == .assign {
@@ -350,6 +350,9 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 		return ast.StructDecl{}
 	}
 	mut ret := p.table.register_sym(sym)
+	if is_anon {
+		p.table.register_anon_struct(name, ret)
+	}
 	// allow duplicate c struct declarations
 	if ret == -1 && language != .c {
 		if _ := p.table.find_fn('main.main') {
@@ -385,12 +388,12 @@ run them via `v file.v` instead',
 	}
 }
 
-fn (mut p Parser) struct_init(typ_str string, short_syntax bool) ast.StructInit {
-	first_pos := (if short_syntax && p.prev_tok.kind == .lcbr { p.prev_tok } else { p.tok }).pos()
+fn (mut p Parser) struct_init(typ_str string, kind ast.StructInitKind) ast.StructInit {
+	first_pos := (if kind == .short_syntax && p.prev_tok.kind == .lcbr { p.prev_tok } else { p.tok }).pos()
 	p.struct_init_generic_types = []ast.Type{}
-	typ := if short_syntax { ast.void_type } else { p.parse_type() }
+	typ := if kind == .short_syntax { ast.void_type } else { p.parse_type() }
 	p.expr_mod = ''
-	if !short_syntax {
+	if kind != .short_syntax {
 		p.check(.lcbr)
 	}
 	pre_comments := p.eat_comments()
@@ -399,12 +402,12 @@ fn (mut p Parser) struct_init(typ_str string, short_syntax bool) ast.StructInit 
 	no_keys := p.peek_tok.kind != .colon && p.tok.kind != .rcbr && p.tok.kind != .ellipsis // `Vec{a,b,c}
 	saved_is_amp := p.is_amp
 	p.is_amp = false
-	mut update_expr := ast.empty_expr()
+	mut update_expr := ast.empty_expr
 	mut update_expr_comments := []ast.Comment{}
 	mut has_update_expr := false
 	for p.tok.kind !in [.rcbr, .rpar, .eof] {
 		mut field_name := ''
-		mut expr := ast.empty_expr()
+		mut expr := ast.empty_expr
 		mut field_pos := token.Pos{}
 		mut first_field_pos := token.Pos{}
 		mut comments := []ast.Comment{}
@@ -459,7 +462,7 @@ fn (mut p Parser) struct_init(typ_str string, short_syntax bool) ast.StructInit 
 			}
 		}
 	}
-	if !short_syntax {
+	if kind != .short_syntax {
 		p.check(.rcbr)
 	}
 	p.is_amp = saved_is_amp
@@ -472,9 +475,10 @@ fn (mut p Parser) struct_init(typ_str string, short_syntax bool) ast.StructInit 
 		update_expr_comments: update_expr_comments
 		has_update_expr: has_update_expr
 		name_pos: first_pos
-		pos: first_pos.extend(if short_syntax { p.tok.pos() } else { p.prev_tok.pos() })
-		is_short: no_keys
-		is_short_syntax: short_syntax
+		pos: first_pos.extend(if kind == .short_syntax { p.tok.pos() } else { p.prev_tok.pos() })
+		no_keys: no_keys
+		is_short_syntax: kind == .short_syntax
+		is_anon: kind == .anon
 		pre_comments: pre_comments
 		generic_types: p.struct_init_generic_types
 	}
@@ -617,6 +621,11 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			p.check(.colon)
 			is_mut = true
 			mut_pos = fields.len
+		}
+		if p.peek_tok.kind == .lt {
+			p.error_with_pos("no need to add generic type names in generic interface's method",
+				p.peek_tok.pos())
+			return ast.InterfaceDecl{}
 		}
 		if p.peek_tok.kind == .lpar {
 			method_start_pos := p.tok.pos()

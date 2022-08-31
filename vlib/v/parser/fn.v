@@ -49,21 +49,8 @@ pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr 
 	mut or_pos := p.tok.pos()
 	if p.tok.kind == .key_orelse {
 		// `foo() or {}``
-		was_inside_or_expr := p.inside_or_expr
-		p.inside_or_expr = true
-		p.next()
-		p.open_scope()
-		p.scope.register(ast.Var{
-			name: 'err'
-			typ: ast.error_type
-			pos: p.tok.pos()
-			is_used: true
-		})
 		or_kind = .block
-		or_stmts = p.parse_block_no_scope(false)
-		or_pos = or_pos.extend(p.prev_tok.pos())
-		p.close_scope()
-		p.inside_or_expr = was_inside_or_expr
+		or_stmts, or_pos = p.or_block(.with_err_var)
 	}
 	if p.tok.kind in [.question, .not] {
 		is_not := p.tok.kind == .not
@@ -120,10 +107,10 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 			p.next()
 			array_decompose = true
 		}
-		mut expr := ast.empty_expr()
+		mut expr := ast.empty_expr
 		if p.tok.kind == .name && p.peek_tok.kind == .colon {
 			// `foo(key:val, key2:val2)`
-			expr = p.struct_init('void_type', true) // short_syntax:true
+			expr = p.struct_init('void_type', .short_syntax)
 		} else {
 			expr = p.expr(0)
 		}
@@ -690,7 +677,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	}
 	p.scope.detached_from_parent = true
 	inherited_vars := if p.tok.kind == .lsbr { p.closure_vars() } else { []ast.Param{} }
-	// TODO generics
+	_, generic_names := p.parse_generic_types()
 	args, _, is_variadic := p.fn_args()
 	for arg in args {
 		if arg.name.len == 0 && p.table.sym(arg.typ).kind != .placeholder {
@@ -725,8 +712,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	no_body := p.tok.kind != .lcbr
 	same_line = p.tok.line_nr == p.prev_tok.line_nr
 	if no_body && same_line {
-		p.error_with_pos('unexpected $p.tok after anonymous function signature, expecting `{`',
-			p.tok.pos())
+		p.unexpected(got: '$p.tok after anonymous function signature', expecting: '`{`')
 	}
 	mut label_names := []string{}
 	mut func := ast.Fn{
@@ -742,12 +728,12 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		tmp := p.label_names
 		p.label_names = []
 		stmts = p.parse_block_no_scope(false)
-		label_names = p.label_names
+		label_names = p.label_names.clone()
 		p.label_names = tmp
 	}
 	p.cur_fn_name = keep_fn_name
 	func.name = name
-	idx := p.table.find_or_register_fn_type(p.mod, func, true, false)
+	idx := p.table.find_or_register_fn_type(func, true, false)
 	typ := ast.new_type(idx)
 	p.inside_defer = old_inside_defer
 	// name := p.table.get_type_name(typ)
@@ -773,6 +759,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			params: args
 			is_variadic: is_variadic
 			is_method: false
+			generic_names: generic_names
 			is_anon: true
 			no_body: no_body
 			pos: pos.extend(p.prev_tok.pos())
@@ -800,7 +787,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 
 	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn, .lsbr]
 		|| (p.peek_tok.kind == .comma && (p.table.known_type(argname) || is_generic_type))
-		|| p.peek_tok.kind == .dot || p.peek_tok.kind == .rpar
+		|| p.peek_tok.kind == .dot || p.peek_tok.kind == .rpar || p.fn_language == .c
 		|| (p.tok.kind == .key_mut && (p.peek_token(2).kind == .comma
 		|| p.peek_token(2).kind == .rpar || (p.peek_tok.kind == .name
 		&& p.peek_token(2).kind == .dot)))
@@ -815,7 +802,13 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 			is_shared := p.tok.kind == .key_shared
 			is_atomic := p.tok.kind == .key_atomic
 			is_mut := p.tok.kind == .key_mut || is_shared || is_atomic
+			mut name := ''
 			if is_mut {
+				p.next()
+			}
+			if p.fn_language == .c && p.tok.kind == .name
+				&& p.peek_tok.kind !in [.comma, .rpar, .dot] {
+				name = p.tok.lit
 				p.next()
 			}
 			if p.tok.kind == .ellipsis {
@@ -824,6 +817,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 			}
 			pos := p.tok.pos()
 			mut arg_type := p.parse_type()
+			type_pos := pos.extend(p.prev_tok.pos())
 			if arg_type == 0 {
 				// error is added in parse_type
 				return []ast.Param{}, false, false
@@ -875,10 +869,10 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 			}
 			args << ast.Param{
 				pos: pos
-				name: ''
+				name: name
 				is_mut: is_mut
 				typ: arg_type
-				type_pos: pos
+				type_pos: type_pos
 			}
 			arg_no++
 			if arg_no > 1024 {
@@ -934,6 +928,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 			}
 			pos := p.tok.pos()
 			mut typ := p.parse_type()
+			type_pos[0] = pos.extend(p.prev_tok.pos())
 			if typ == 0 {
 				// error is added in parse_type
 				return []ast.Param{}, false, false
@@ -1031,6 +1026,11 @@ fn (mut p Parser) closure_vars() []ast.Param {
 		p.check(.name)
 		var_name := p.prev_tok.lit
 		mut var := p.scope.parent.find_var(var_name) or {
+			if p.table.global_scope.known_global(var_name) {
+				p.error_with_pos('no need to capture global variable `$var_name` in closure',
+					p.prev_tok.pos())
+				continue
+			}
 			p.error_with_pos('undefined ident: `$var_name`', p.prev_tok.pos())
 			continue
 		}
@@ -1042,6 +1042,7 @@ fn (mut p Parser) closure_vars() []ast.Param {
 			...(*var)
 			pos: var_pos
 			is_inherited: true
+			has_inherited: var.is_inherited
 			is_used: false
 			is_changed: false
 			is_mut: is_mut

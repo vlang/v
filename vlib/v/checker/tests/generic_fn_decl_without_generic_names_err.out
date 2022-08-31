@@ -1,15 +1,24 @@
-vlib/v/checker/tests/generic_fn_decl_without_generic_names_err.vv:26:1: error: generic function declaration must specify generic type names, e.g. foo<T>
+vlib/v/checker/tests/generic_fn_decl_without_generic_names_err.vv:26:1: error: generic function declaration must specify generic type names
    24 | }
-   25 |
+   25 | 
    26 | fn g_worker(g Generic<T>) {
       | ~~~~~~~~~~~~~~~~~~~~~~~~~
    27 |     t := <-g.ch
    28 |     handle(t)
-vlib/v/checker/tests/generic_fn_decl_without_generic_names_err.vv:32:1: error: generic function declaration must specify generic type names, e.g. foo<T>
+Details: use `fn foo<T>(x T) {`, not just `fn foo(x T) {`
+vlib/v/checker/tests/generic_fn_decl_without_generic_names_err.vv:32:1: error: generic function declaration must specify generic type names
    30 | }
-   31 |
+   31 | 
    32 | fn handle(t T) {
       | ~~~~~~~~~~~~~~
-   33 |     println("hi")
+   33 |     println('hi')
    34 | }
-
+Details: use `fn foo<T>(x T) {`, not just `fn foo(x T) {`
+vlib/v/checker/tests/generic_fn_decl_without_generic_names_err.vv:40:1: error: generic method declaration must specify generic type names
+   38 | type MayBe<T> = None | T
+   39 | 
+   40 | fn (m MayBe<T>) is_some() bool {
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   41 |     return m is T
+   42 | }
+Details: use `fn (r SomeType<T>) foo<T>() {`, not just `fn (r SomeType<T>) foo() {`

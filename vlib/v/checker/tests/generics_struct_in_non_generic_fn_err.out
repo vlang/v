@@ -1,4 +1,4 @@
-vlib/v/checker/tests/generics_struct_in_non_generic_fn_err.vv:5:7: error: generic struct cannot use in non-generic function
+vlib/v/checker/tests/generics_struct_in_non_generic_fn_err.vv:5:7: error: generic struct cannot be used in non-generic function
     3 |
     4 | fn main() {
     5 |     _ := []Example<T>{}

@@ -44,7 +44,7 @@ pub mut:
 	in_lambda_depth    int
 	inside_const       bool
 	is_mbranch_expr    bool // match a { x...y { } }
-	fn_scope           &ast.Scope = voidptr(0)
+	fn_scope           &ast.Scope = unsafe { nil }
 	wsinfix_depth      int
 	nlines             int
 }
@@ -390,7 +390,7 @@ pub fn (mut f Gen) node_str(node ast.Node) string {
 //=== General Stmt-related methods and helpers ===//
 
 pub fn (mut f Gen) stmts(stmts []ast.Stmt) {
-	mut prev_stmt := if stmts.len > 0 { stmts[0] } else { ast.empty_stmt() }
+	mut prev_stmt := if stmts.len > 0 { stmts[0] } else { ast.empty_stmt }
 	f.indent++
 	for stmt in stmts {
 		if !f.pref.building_v && f.should_insert_newline_before_node(stmt, prev_stmt) {
@@ -679,7 +679,7 @@ fn expr_is_single_line(expr ast.Expr) bool {
 			}
 		}
 		ast.StructInit {
-			if !expr.is_short && (expr.fields.len > 0 || expr.pre_comments.len > 0) {
+			if !expr.no_keys && (expr.fields.len > 0 || expr.pre_comments.len > 0) {
 				return false
 			}
 		}
@@ -1077,12 +1077,12 @@ pub fn (mut f Gen) interface_decl(node ast.InterfaceDecl) {
 	immut_fields := if node.mut_pos < 0 { node.fields } else { node.fields[..node.mut_pos] }
 	mut_fields := if node.mut_pos < 0 { []ast.StructField{} } else { node.fields[node.mut_pos..] }
 
-	mut immut_methods := node.methods
+	mut immut_methods := node.methods.clone()
 	mut mut_methods := []ast.FnDecl{}
 	for i, method in node.methods {
 		if method.params[0].is_mut {
-			immut_methods = node.methods[..i]
-			mut_methods = node.methods[i..]
+			immut_methods = node.methods[..i].clone()
+			mut_methods = node.methods[i..].clone()
 			break
 		}
 	}

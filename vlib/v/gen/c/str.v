@@ -86,6 +86,9 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		if expr !is ast.EnumVal {
 			str_fn_name := g.get_str_fn(typ)
 			g.write('${str_fn_name}(')
+			if typ.is_ptr() {
+				g.write('*')
+			}
 			g.enum_expr(expr)
 			g.write(')')
 		} else {
@@ -106,7 +109,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		g.write('${str_fn_name}(')
 		if str_method_expects_ptr && !is_ptr {
 			g.write('&')
-		} else if (!str_method_expects_ptr && is_ptr && !is_shared) || is_var_mut {
+		} else if !str_method_expects_ptr && !is_shared && (is_ptr || is_var_mut) {
 			g.write('*')
 		}
 		if expr is ast.ArrayInit {
@@ -126,9 +129,13 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			g.write('}}}))')
 		}
 	} else {
+		is_ptr := typ.is_ptr()
+		is_var_mut := expr.is_auto_deref_var()
 		str_fn_name := g.get_str_fn(typ)
 		g.write('${str_fn_name}(')
-		if expr.is_auto_deref_var() {
+		if str_method_expects_ptr && !is_ptr {
+			g.write('&')
+		} else if (!str_method_expects_ptr && is_ptr && !is_shared) || is_var_mut {
 			g.write('*')
 		}
 		if sym.kind != .function {

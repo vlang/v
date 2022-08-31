@@ -38,52 +38,44 @@ fn test_count_10_times_1_cycle_should_not_be_10_cycles_without_sync() {
 
 fn test_atomic_count_plus_one_u64() {
 	mut c := u64(0)
-	stdatomic.add_u64(&c, 1)
-	assert stdatomic.load_u64(&c) == 1
+	assert stdatomic.add_u64(&c, 1) == 1
 }
 
 fn test_atomic_count_plus_one_i64() {
 	mut c := i64(0)
-	stdatomic.add_i64(&c, 1)
-	assert stdatomic.load_i64(&c) == 1
+	assert stdatomic.add_i64(&c, 1) == 1
 }
 
 fn test_atomic_count_plus_greater_than_one_u64() {
 	mut c := u64(0)
-	stdatomic.add_u64(&c, 10)
-	assert stdatomic.load_u64(&c) == 10
+	assert stdatomic.add_u64(&c, 10) == 10
 }
 
 fn test_atomic_count_plus_greater_than_one_i64() {
 	mut c := i64(0)
-	stdatomic.add_i64(&c, 10)
-	assert stdatomic.load_i64(&c) == 10
+	assert stdatomic.add_i64(&c, 10) == 10
 }
 
 fn test_atomic_count_minus_one_u64() {
 	mut c := u64(1)
-	stdatomic.sub_u64(&c, 1)
-	assert stdatomic.load_u64(&c) == 0
+	assert stdatomic.sub_u64(&c, 1) == 0
 }
 
 fn test_atomic_count_minus_one_i64() {
 	mut c := i64(0)
-	stdatomic.sub_i64(&c, 1)
-	assert stdatomic.load_i64(&c) == -1
+	assert stdatomic.sub_i64(&c, 1) == -1
 }
 
 fn test_atomic_count_minus_greater_than_one_u64() {
 	mut c := u64(0)
 	stdatomic.store_u64(&c, 10)
-	stdatomic.sub_u64(&c, 10)
-	assert stdatomic.load_u64(&c) == 0
+	assert stdatomic.sub_u64(&c, 10) == 0
 }
 
 fn test_atomic_count_minus_greater_than_one_i64() {
 	mut c := i64(0)
 	stdatomic.store_i64(&c, 10)
-	stdatomic.sub_i64(&c, 20)
-	assert stdatomic.load_i64(&c) == -10
+	assert stdatomic.sub_i64(&c, 20) == -10
 }
 
 // count_one_cycle counts the common counter iterations_per_cycle times in thread-safe way

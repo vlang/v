@@ -19,7 +19,7 @@ vlib/v/checker/tests/fn_args.vv:11:6: error: cannot use `fn (&int)` as `fn (int)
       |         ~~~~~~~~~~~~~~
    12 |     fun(fn (ii ...int) {})
    13 | }
-Details: ``'s expected fn argument: `` is NOT a pointer, but the passed fn argument: `i` is a pointer
+Details: expected argument 1 to be NOT a pointer, but the passed argument 1 is a pointer
 vlib/v/checker/tests/fn_args.vv:12:6: error: cannot use `fn (...int)` as `fn (int)` in argument 1 to `fun`
    10 |     arr([5]!)
    11 |     fun(fn (i &int) {})

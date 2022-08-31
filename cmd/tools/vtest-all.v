@@ -85,6 +85,16 @@ fn get_all_commands() []Command {
 		okmsg: 'V can output a .c file, without compiling further.'
 		rmfile: 'hhww.c'
 	}
+	res << Command{
+		line: '$vexe -skip-unused examples/hello_world.v'
+		okmsg: 'V can compile hello world with -skip-unused.'
+		rmfile: 'examples/hello_world'
+	}
+	res << Command{
+		line: '$vexe -skip-unused -profile - examples/hello_world.v'
+		okmsg: 'V can compile hello world with both -skip-unused and -profile .'
+		rmfile: 'examples/hello_world'
+	}
 	$if linux || macos {
 		res << Command{
 			line: '$vexe run examples/hello_world.v'

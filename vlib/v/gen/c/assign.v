@@ -155,12 +155,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				}
 				// if it's a decl assign (`:=`) or a blank assignment `_ =`/`_ :=` then generate `void (*ident) (args) =`
 				if (is_decl || blank_assign) && left is ast.Ident {
-					ret_styp := g.typ(val.decl.return_type)
-					g.write('$ret_styp (*$ident.name) (')
-					def_pos := g.definitions.len
-					g.fn_decl_params(val.decl.params, voidptr(0), false)
-					g.definitions.go_back(g.definitions.len - def_pos)
-					g.write(') = ')
+					sig := g.fn_var_signature(val.decl.return_type, val.decl.params, ident.name)
+					g.write(sig + ' = ')
 				} else {
 					g.is_assign_lhs = true
 					g.assign_op = node.op
@@ -274,7 +270,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				} else {
 					// str += str2 => `str = string__plus(str, str2)`
 					g.expr(left)
-					g.write(' = /*f*/string__plus(')
+					g.write(' = string__plus(')
 				}
 				g.is_assign_lhs = false
 				str_add = true
@@ -295,7 +291,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				if left_sym.kind == .struct_ && (left_sym.info as ast.Struct).generic_types.len > 0 {
 					concrete_types := (left_sym.info as ast.Struct).concrete_types
 					mut method_name := left_sym.cname + '_' + util.replace_op(extracted_op)
-					method_name = g.generic_fn_name(concrete_types, method_name, true)
+					method_name = g.generic_fn_name(concrete_types, method_name)
 					g.write(' = ${method_name}(')
 					g.expr(left)
 					g.write(', ')
@@ -344,7 +340,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 
 				g.write('$ret_styp ($msvc_call_conv*${g.get_ternary_name(ident.name)}) (')
 				def_pos := g.definitions.len
-				g.fn_decl_params(func.func.params, voidptr(0), false)
+				g.fn_decl_params(func.func.params, unsafe { nil }, false)
 				g.definitions.go_back(g.definitions.len - def_pos)
 				g.write(')$call_conv_attribute_suffix')
 			} else {
@@ -662,6 +658,30 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 					g.write(', ')
 					g.expr(left.index)
 					g.writeln(');')
+				} else if sym.kind == .array_fixed {
+					info := sym.info as ast.ArrayFixed
+					elem_typ := g.table.sym(info.elem_type)
+					if elem_typ.kind == .function {
+						left_typ := node.left_types[i]
+						left_sym := g.table.sym(left_typ)
+						g.write_fn_ptr_decl(left_sym.info as ast.FnType, '_var_$left.pos.pos')
+						g.write(' = *(voidptr*)')
+					} else {
+						styp := g.typ(info.elem_type)
+						g.write('$styp _var_$left.pos.pos = ')
+					}
+					if left.left_type.is_ptr() {
+						g.write('*')
+					}
+					needs_clone := info.elem_type == ast.string_type && g.is_autofree
+					if needs_clone {
+						g.write('/*1*/string_clone(')
+					}
+					g.expr(left)
+					if needs_clone {
+						g.write(')')
+					}
+					g.writeln(';')
 				} else if sym.kind == .map {
 					info := sym.info as ast.Map
 					skeytyp := g.typ(info.key_type)

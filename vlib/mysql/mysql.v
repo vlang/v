@@ -58,6 +58,18 @@ pub fn (conn Connection) query(q string) ?Result {
 	return Result{res}
 }
 
+// use_result - reads the result of a query
+// used after invoking mysql_real_query() or mysql_query(),
+// for every statement that successfully produces a result set
+// (SELECT, SHOW, DESCRIBE, EXPLAIN, CHECK TABLE, and so forth).
+// This reads the result of a query directly from the server
+// without storing it in a temporary table or local buffer,
+// mysql_use_result is faster and uses much less memory than C.mysql_store_result().
+// You must mysql_free_result() after you are done with the result set.
+pub fn (conn Connection) use_result() {
+	C.mysql_use_result(conn.conn)
+}
+
 // real_query - make an SQL query and receive the results.
 // `real_query()` can be used for statements containing binary data.
 // (Binary data may contain the `\0` character, which `query()`
@@ -146,7 +158,7 @@ pub fn (mut conn Connection) set_option(option_type int, val voidptr) {
 // get_option - return the value of an option, settable by `set_option`.
 // https://dev.mysql.com/doc/c-api/5.7/en/mysql-get-option.html
 pub fn (conn &Connection) get_option(option_type int) ?voidptr {
-	ret := voidptr(0)
+	ret := unsafe { nil }
 	if C.mysql_get_option(conn.conn, option_type, &ret) != 0 {
 		return error_with_code(get_error_msg(conn.conn), get_errno(conn.conn))
 	}

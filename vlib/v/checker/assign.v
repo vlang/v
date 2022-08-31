@@ -17,7 +17,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 	mut right_len := node.right.len
 	mut right_type0 := ast.void_type
 	for i, mut right in node.right {
-		if right in [ast.CallExpr, ast.IfExpr, ast.LockExpr, ast.MatchExpr] {
+		if right in [ast.CallExpr, ast.IfExpr, ast.LockExpr, ast.MatchExpr, ast.DumpExpr] {
 			if right in [ast.IfExpr, ast.MatchExpr] && node.left.len == node.right.len && !is_decl
 				&& node.left[i] in [ast.Ident, ast.SelectorExpr] && !node.left[i].is_blank_ident() {
 				c.expected_type = c.expr(node.left[i])
@@ -173,7 +173,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 			if mut right is ast.Ident {
 				if mut right.obj is ast.Var {
 					mut obj := unsafe { &right.obj }
-					if c.fn_scope != voidptr(0) {
+					if c.fn_scope != unsafe { nil } {
 						obj = c.fn_scope.find_var(right.obj.name) or { obj }
 					}
 					if obj.is_stack_obj && !c.inside_unsafe {
@@ -216,9 +216,19 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				} else {
 					if is_decl {
 						c.check_valid_snake_case(left.name, 'variable name', left.pos)
-						if left.name in reserved_type_names {
+						if reserved_type_names_chk.matches(left.name) {
 							c.error('invalid use of reserved type `$left.name` as a variable name',
 								left.pos)
+						}
+						if right is ast.Nil && !c.inside_unsafe {
+							// `x := unsafe { nil }` is allowed,
+							// as well as:
+							// `unsafe {
+							//    x := nil
+							//    println(x)
+							// }`
+							c.error('use of untyped nil in assignment (use `unsafe` | $c.inside_unsafe)',
+								right.pos())
 						}
 					}
 					mut ident_var_info := left.info as ast.IdentVar
@@ -328,14 +338,30 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 		}
 		left_sym := c.table.sym(left_type_unwrapped)
 		right_sym := c.table.sym(right_type_unwrapped)
-		if left_sym.kind == .array && !c.inside_unsafe && node.op in [.assign, .decl_assign]
-			&& right_sym.kind == .array && left is ast.Ident && !left.is_blank_ident()
-			&& right is ast.Ident {
+
+		old_assign_error_condition := left_sym.kind == .array && !c.inside_unsafe
+			&& node.op in [.assign, .decl_assign] && right_sym.kind == .array && left is ast.Ident
+			&& !left.is_blank_ident() && right is ast.Ident
+		if old_assign_error_condition {
 			// Do not allow `a = b`, only `a = b.clone()`
 			c.error('use `array2 $node.op.str() array1.clone()` instead of `array2 $node.op.str() array1` (or use `unsafe`)',
 				node.pos)
 		}
-		if left_sym.kind == .array && right_sym.kind == .array {
+		// Do not allow `a = val.array_field`, only `a = val.array_field.clone()`
+		// TODO: turn this warning into an error after 2022/09/24
+		// TODO: and remove the less strict check from above.
+		if left_sym.kind == .array && !c.inside_unsafe && right_sym.kind == .array
+			&& left is ast.Ident && !left.is_blank_ident() && right in [ast.Ident, ast.SelectorExpr]
+			&& ((node.op == .decl_assign && (left as ast.Ident).is_mut)
+			|| node.op == .assign) {
+			// no point to show the notice, if the old error was already shown:
+			if !old_assign_error_condition {
+				mut_str := if node.op == .decl_assign { 'mut ' } else { '' }
+				c.note('use `${mut_str}array2 $node.op.str() array1.clone()` instead of `${mut_str}array2 $node.op.str() array1` (or use `unsafe`)',
+					node.pos)
+			}
+		}
+		if left_sym.kind == .array && right_sym.kind == .array && node.op == .assign {
 			// `mut arr := [u8(1),2,3]`
 			// `arr = [byte(4),5,6]`
 			left_info := left_sym.info as ast.Array

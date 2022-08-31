@@ -27,7 +27,7 @@ fn testsuite_begin() {
 fn testsuite_end() {
 	os.chdir(os.wd_at_startup) or {}
 	os.rmdir_all(tfolder) or {}
-	assert !os.is_dir(tfolder)
+	// assert !os.is_dir(tfolder)
 	// eprintln('testsuite_end  , tfolder = $tfolder removed.')
 }
 

@@ -7,6 +7,7 @@ on:
 jobs:
   network-tests-ubuntu:
     runs-on: ubuntu-20.04
+    if: github.event.ref == 'refs/heads/master' && github.event.repository.full_name == 'vlang/v'
     timeout-minutes: 30
     env:
       V_CI_PERIODIC: 1
@@ -24,6 +25,7 @@ jobs:
 
   network-tests-macos:
     runs-on: macOS-latest
+    if: github.event.ref == 'refs/heads/master' && github.event.repository.full_name == 'vlang/v'
     timeout-minutes: 30
     env:
       V_CI_PERIODIC: 1
@@ -42,6 +44,7 @@ jobs:
 
   network-windows-msvc:
     runs-on: windows-2019
+    if: github.event.ref == 'refs/heads/master' && github.event.repository.full_name == 'vlang/v'
     timeout-minutes: 30
     env:
       V_CI_PERIODIC: 1

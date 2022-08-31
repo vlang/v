@@ -332,7 +332,7 @@ fn (mut g JsGen) method_call(node ast.CallExpr) {
 	} else {
 		mut name := util.no_dots('${receiver_type_name}_$node.name')
 
-		name = g.generic_fn_name(node.concrete_types, name, false)
+		name = g.generic_fn_name(node.concrete_types, name)
 		g.write('${name}(')
 		g.expr(it.left)
 		g.gen_deref_ptr(it.left_type)
@@ -434,7 +434,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 		g.write(')')
 		return
 	}
-	name = g.generic_fn_name(node.concrete_types, name, false)
+	name = g.generic_fn_name(node.concrete_types, name)
 	g.expr(it.left)
 
 	g.write('${name}(')
@@ -574,7 +574,7 @@ fn fn_has_go(node ast.FnDecl) bool {
 	return has_go
 }
 
-fn (mut g JsGen) generic_fn_name(types []ast.Type, before string, is_decl bool) string {
+fn (mut g JsGen) generic_fn_name(types []ast.Type, before string) string {
 	if types.len == 0 {
 		return before
 	}
@@ -623,7 +623,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 	}
 	name = g.js_name(name)
 
-	name = g.generic_fn_name(g.cur_concrete_types, name, true)
+	name = g.generic_fn_name(g.cur_concrete_types, name)
 	if name in js.builtin_functions {
 		name = 'builtin__$name'
 	}
@@ -675,7 +675,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl, typ FnGenType) {
 			g.push_pub_var(name)
 		}
 	}
-	mut args := it.params
+	args := it.params
 
 	g.fn_args(args, it.is_variadic)
 	g.writeln(') {')
@@ -797,7 +797,7 @@ fn (mut g JsGen) gen_anon_fn(mut fun ast.AnonFn) {
 
 	name = g.js_name(name)
 
-	name = g.generic_fn_name(g.table.cur_concrete_types, name, true)
+	name = g.generic_fn_name(g.table.cur_concrete_types, name)
 	if name in js.builtin_functions {
 		name = 'builtin__$name'
 	}
@@ -808,7 +808,7 @@ fn (mut g JsGen) gen_anon_fn(mut fun ast.AnonFn) {
 
 	g.write('return function (')
 
-	mut args := it.params
+	args := it.params
 
 	g.fn_args(args, it.is_variadic)
 	g.writeln(') {')

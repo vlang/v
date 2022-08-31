@@ -189,19 +189,6 @@ pub fn ls(path string) ?[]string {
 	return dir_files
 }
 
-/*
-pub fn is_dir(path string) bool {
-	_path := path.replace('/', '\\')
-	attr := C.GetFileAttributesW(_path.to_wide())
-	if int(attr) == int(C.INVALID_FILE_ATTRIBUTES) {
-		return false
-	}
-	if (int(attr) & C.FILE_ATTRIBUTE_DIRECTORY) != 0 {
-		return true
-	}
-	return false
-}
-*/
 // mkdir creates a new directory with the specified path.
 pub fn mkdir(path string, params MkdirParams) ?bool {
 	if path == '.' {
@@ -271,7 +258,7 @@ const (
 // ptr_win_get_error_msg return string (voidptr)
 // representation of error, only for windows.
 fn ptr_win_get_error_msg(code u32) voidptr {
-	mut buf := voidptr(0)
+	mut buf := unsafe { nil }
 	// Check for code overflow
 	if code > u32(os.max_error_code) {
 		return buf

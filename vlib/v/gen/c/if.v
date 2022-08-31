@@ -17,23 +17,45 @@ fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
 			if branch.stmts.len == 1 {
 				if branch.stmts[0] is ast.ExprStmt {
 					stmt := branch.stmts[0] as ast.ExprStmt
-					if is_noreturn_callexpr(stmt.expr) {
+					if g.need_tmp_var_in_expr(stmt.expr) {
 						return true
 					}
-					if stmt.expr is ast.MatchExpr {
-						return true
-					}
-					if stmt.expr is ast.CallExpr {
-						if stmt.expr.is_method {
-							left_sym := g.table.sym(stmt.expr.receiver_type)
-							if left_sym.kind in [.array, .array_fixed, .map] {
-								return true
-							}
-						}
-						if stmt.expr.or_block.kind != .absent {
-							return true
-						}
-					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
+	if is_noreturn_callexpr(expr) {
+		return true
+	}
+	if expr is ast.MatchExpr {
+		return true
+	}
+	if expr is ast.CallExpr {
+		if expr.is_method {
+			left_sym := g.table.sym(expr.receiver_type)
+			if left_sym.kind in [.array, .array_fixed, .map] {
+				return true
+			}
+		}
+		if expr.or_block.kind != .absent {
+			return true
+		}
+	}
+	if expr is ast.CastExpr {
+		return g.need_tmp_var_in_expr(expr.expr)
+	}
+	if expr is ast.ParExpr {
+		return g.need_tmp_var_in_expr(expr.expr)
+	}
+	if expr is ast.ConcatExpr {
+		for val in expr.vals {
+			if val is ast.CallExpr {
+				if val.return_type.has_flag(.optional) {
+					return true
 				}
 			}
 		}
@@ -46,7 +68,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		g.comptime_if(node)
 		return
 	}
-	// For simpe if expressions we can use C's `?:`
+	// For simple if expressions we can use C's `?:`
 	// `if x > 0 { 1 } else { 2 }` => `(x > 0)? (1) : (2)`
 	// For if expressions with multiple statements or another if expression inside, it's much
 	// easier to use a temp var, than do C tricks with commas, introduce special vars etc

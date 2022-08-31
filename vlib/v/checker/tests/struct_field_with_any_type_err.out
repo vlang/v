@@ -1,4 +1,4 @@
-vlib/v/checker/tests/struct_field_with_any_type_err.vv:2:6: error: struct field cannot be the `any` type, use generics instead
+vlib/v/checker/tests/struct_field_with_any_type_err.vv:2:6: error: cannot use `any` type here, `any` will be implemented in V 0.4
     1 | struct My_type {
     2 |     fld any
       |         ~~~

@@ -55,22 +55,22 @@ fn system_alloc(_ voidptr, size usize) (voidptr, usize, u32) {
 		unsafe {
 			mem_prot := MemProt(int(MemProt.prot_read) | int(MemProt.prot_write))
 			map_flags := MapFlags(int(MapFlags.map_private) | int(MapFlags.map_anonymous))
-			addr := C.mmap(voidptr(0), size, int(mem_prot), int(map_flags), -1, 0)
+			addr := C.mmap(nil, size, int(mem_prot), int(map_flags), -1, 0)
 
 			if addr == voidptr(-1) {
-				return voidptr(0), 0, 0
+				return nil, 0, 0
 			} else {
 				return addr, size, 0
 			}
 		}
 	} $else {
-		return voidptr(0), 0, 0
+		return unsafe { nil }, 0, 0
 	}
-	return voidptr(0), 0, 0
+	return unsafe { nil }, 0, 0
 }
 
 fn system_remap(_ voidptr, ptr voidptr, oldsize usize, newsize usize, can_move bool) voidptr {
-	return voidptr(0)
+	return unsafe { nil }
 }
 
 fn system_free_part(_ voidptr, ptr voidptr, oldsize usize, newsize usize) bool {
@@ -121,6 +121,6 @@ pub fn get_system_allocator() Allocator {
 		can_release_part: system_can_release_part
 		allocates_zeros: system_allocates_zeros
 		page_size: system_page_size
-		data: voidptr(0)
+		data: unsafe { nil }
 	}
 }

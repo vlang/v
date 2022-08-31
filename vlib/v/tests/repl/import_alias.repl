@@ -1,4 +1,4 @@
 import compress.zlib as z
 z.compress('hello world'.bytes())?
 ===output===
-[x, 0x01, 0x01, `/v`, `/0`, 0xf4, 0xff, h, e, l, l, o,  , w, o, r, l, d, 0x1a, `/v`, 0x04, ]]
+[120, 1, 1, 11, 0, 244, 255, 104, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100, 26, 11, 4, 93]

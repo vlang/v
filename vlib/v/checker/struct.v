@@ -3,6 +3,7 @@
 module checker
 
 import v.ast
+import v.util
 
 pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 	mut struct_sym, struct_typ_idx := c.table.find_sym_and_type_idx(node.name)
@@ -24,6 +25,18 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 					struct_sym.info.is_heap = true
 				}
 			}
+			// Ensure each generic type of the embed was declared in the struct's definition
+			if node.generic_types.len > 0 && embed.typ.has_flag(.generic) {
+				embed_generic_names := c.table.generic_type_names(embed.typ)
+				node_generic_names := node.generic_types.map(c.table.type_to_str(it))
+				for name in embed_generic_names {
+					if name !in node_generic_names {
+						struct_generic_names := node_generic_names.join(', ')
+						c.error('generic type name `$name` is not mentioned in struct `$node.name<$struct_generic_names>`',
+							embed.pos)
+					}
+				}
+			}
 		}
 		if struct_sym.info.is_minify {
 			node.fields.sort_with_compare(minify_sort_fn)
@@ -35,10 +48,6 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			}
 		}
 		for i, field in node.fields {
-			if field.typ == ast.any_type {
-				c.error('struct field cannot be the `any` type, use generics instead',
-					field.type_pos)
-			}
 			c.ensure_type_exists(field.typ, field.type_pos) or { return }
 			if field.typ.has_flag(.generic) {
 				has_generic_types = true
@@ -59,37 +68,35 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 							field.type_pos)
 					}
 				}
-				field_sym := c.table.sym(field.typ)
-				if field_sym.kind == .function {
-					fn_info := field_sym.info as ast.FnType
-					c.ensure_type_exists(fn_info.func.return_type, fn_info.func.return_type_pos) or {
-						return
-					}
-					for param in fn_info.func.params {
-						c.ensure_type_exists(param.typ, param.type_pos) or { return }
-					}
-				}
 			}
 			if sym.kind == .struct_ {
 				info := sym.info as ast.Struct
 				if info.is_heap && !field.typ.is_ptr() {
 					struct_sym.info.is_heap = true
 				}
+				if info.generic_types.len > 0 && !field.typ.has_flag(.generic)
+					&& info.concrete_types.len == 0 {
+					c.error('field `$field.name` type is generic struct, must specify the generic type names, e.g. Foo<T>, Foo<int>',
+						field.type_pos)
+				}
 			}
+			if sym.kind == .multi_return {
+				c.error('cannot use multi return as field type', field.type_pos)
+			}
+
 			if field.has_default_expr {
 				c.expected_type = field.typ
-				mut field_expr_type := c.expr(field.default_expr)
+				default_expr_type := c.expr(field.default_expr)
 				if !field.typ.has_flag(.optional) {
-					c.check_expr_opt_call(field.default_expr, field_expr_type)
+					c.check_expr_opt_call(field.default_expr, default_expr_type)
 				}
-				struct_sym.info.fields[i].default_expr_typ = field_expr_type
-				c.check_expected(field_expr_type, field.typ) or {
+				struct_sym.info.fields[i].default_expr_typ = default_expr_type
+				c.check_expected(default_expr_type, field.typ) or {
 					if sym.kind == .interface_
-						&& c.type_implements(field_expr_type, field.typ, field.pos) {
-						if !field_expr_type.is_ptr() && !field_expr_type.is_pointer()
+						&& c.type_implements(default_expr_type, field.typ, field.pos) {
+						if !default_expr_type.is_ptr() && !default_expr_type.is_pointer()
 							&& !c.inside_unsafe {
-							field_expr_type_sym := c.table.sym(field_expr_type)
-							if field_expr_type_sym.kind != .interface_ {
+							if c.table.sym(default_expr_type).kind != .interface_ {
 								c.mark_as_referenced(mut &node.fields[i].default_expr,
 									true)
 							}
@@ -123,6 +130,18 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 					if field.default_expr.val == false {
 						c.warn('unnecessary default value `false`: struct fields are zeroed by default',
 							field.default_expr.pos)
+					}
+				}
+			}
+			// Ensure each generic type of the field was declared in the struct's definition
+			if node.generic_types.len > 0 && field.typ.has_flag(.generic) {
+				field_generic_names := c.table.generic_type_names(field.typ)
+				node_generic_names := node.generic_types.map(c.table.type_to_str(it))
+				for name in field_generic_names {
+					if name !in node_generic_names {
+						struct_generic_names := node_generic_names.join(', ')
+						c.error('generic type name `$name` is not mentioned in struct `$node.name<$struct_generic_names>`',
+							field.type_pos)
 					}
 				}
 			}
@@ -267,7 +286,8 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 		&& c.table.cur_concrete_types.len == 0 {
 		pos := type_sym.name.last_index('.') or { -1 }
 		first_letter := type_sym.name[pos + 1]
-		if !first_letter.is_capital() && type_sym.kind != .placeholder {
+		if !first_letter.is_capital() && type_sym.kind != .placeholder
+			&& !type_sym.name.starts_with('main._VAnonStruct') {
 			c.error('cannot initialize builtin type `$type_sym.name`', node.pos)
 		}
 	}
@@ -299,12 +319,19 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 	}
 	if type_sym.name.len == 1 && !isnil(c.table.cur_fn) && c.table.cur_fn.generic_names.len == 0 {
 		c.error('unknown struct `$type_sym.name`', node.pos)
-		return 0
+		return ast.void_type
 	}
 	match type_sym.kind {
 		.placeholder {
 			c.error('unknown struct: $type_sym.name', node.pos)
 			return ast.void_type
+		}
+		.any {
+			// `T{ foo: 22 }`
+			for mut field in node.fields {
+				field.typ = c.expr(field.expr)
+				field.expected_type = field.typ
+			}
 		}
 		// string & array are also structs but .kind of string/array
 		.struct_, .string, .array, .alias {
@@ -324,7 +351,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 			} else {
 				info = type_sym.info as ast.Struct
 			}
-			if node.is_short {
+			if node.no_keys {
 				exp_len := info.fields.len
 				got_len := node.fields.len
 				if exp_len != got_len && !c.pref.translated {
@@ -335,7 +362,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				}
 			}
 			mut info_fields_sorted := []ast.StructField{}
-			if node.is_short {
+			if node.no_keys {
 				info_fields_sorted = info.fields.clone()
 				info_fields_sorted.sort(a.i < b.i)
 			}
@@ -343,7 +370,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 			for i, mut field in node.fields {
 				mut field_info := ast.StructField{}
 				mut field_name := ''
-				if node.is_short {
+				if node.no_keys {
 					if i >= info.fields.len {
 						// It doesn't make sense to check for fields that don't exist.
 						// We should just stop here.
@@ -360,7 +387,8 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 						ast.StructField{}
 					}
 					if !exists {
-						c.error('unknown field `$field.name` in struct literal of type `$type_sym.name`',
+						existing_fields := c.table.struct_fields(type_sym).map(it.name)
+						c.error(util.new_suggestion(field.name, existing_fields).say('unknown field `$field.name` in struct literal of type `$type_sym.name`'),
 							field.pos)
 						continue
 					}
@@ -429,7 +457,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 					if mut field.expr is ast.Ident {
 						if mut field.expr.obj is ast.Var {
 							mut obj := unsafe { &field.expr.obj }
-							if c.fn_scope != voidptr(0) {
+							if c.fn_scope != unsafe { nil } {
 								obj = c.fn_scope.find_var(obj.name) or { obj }
 							}
 							if obj.is_stack_obj && !c.inside_unsafe {
@@ -496,7 +524,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				}
 				*/
 				// Check for `[required]` struct attr
-				if field.attrs.contains('required') && !node.is_short && !node.has_update_expr {
+				if field.attrs.contains('required') && !node.no_keys && !node.has_update_expr {
 					mut found := false
 					for init_field in node.fields {
 						if field.name == init_field.name {
@@ -529,11 +557,6 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				c.error('struct `$from_sym.name` is not compatible with struct `$to_sym.name`',
 					node.update_expr.pos())
 			}
-		}
-		if !node.update_expr.is_lvalue() {
-			// cgen will repeat `update_expr` for each field
-			// so enforce an lvalue for efficiency
-			c.error('expression is not an lvalue', node.update_expr.pos())
 		}
 	}
 	return node.typ

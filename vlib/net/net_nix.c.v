@@ -10,6 +10,8 @@ module net
 
 #flag solaris -lsocket
 
+const is_windows = false
+
 fn error_code() int {
 	return C.errno
 }
@@ -23,4 +25,5 @@ pub const (
 
 const (
 	error_ewouldblock = C.EWOULDBLOCK
+	error_einprogress = C.EINPROGRESS
 )

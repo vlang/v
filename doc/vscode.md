@@ -7,10 +7,10 @@
 
 ## V language support
 
-The [V VS Code Extention](https://marketplace.visualstudio.com/items?itemName=vlanguage.vscode-vlang)
+The [V VS Code Extension](https://marketplace.visualstudio.com/items?itemName=vlanguage.vscode-vlang)
 provides V language support for Visual Studio Code.
 
-![Screenshot Code with activated extention](https://github.com/vlang/vscode-vlang/raw/HEAD/images/demo.png)
+![Screenshot Code with activated extension](https://github.com/vlang/vscode-vlang/raw/HEAD/images/demo.png)
 
 **Features:**
 * Syntax Highlighting.

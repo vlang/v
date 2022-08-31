@@ -216,6 +216,9 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 	if name == 'void' {
 		name = ''
 	}
+	if node.is_anon {
+		f.write('struct ')
+	}
 	if node.fields.len == 0 && !node.has_update_expr {
 		// `Foo{}` on one line if there are no fields or comments
 		if node.pre_comments.len == 0 {
@@ -226,8 +229,8 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 			f.write('}')
 		}
 		f.mark_import_as_used(name)
-	} else if node.is_short {
-		// `Foo{1,2,3}` (short syntax )
+	} else if node.no_keys {
+		// `Foo{1,2,3}` (short syntax, no keys)
 		f.write('$name{')
 		f.mark_import_as_used(name)
 		if node.has_update_expr {

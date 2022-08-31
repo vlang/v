@@ -10,15 +10,15 @@ import v.token
 pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	return p.check_expr(precedence) or {
 		if token.is_decl(p.tok.kind) && p.disallow_declarations_in_script_mode() {
-			return ast.empty_expr()
+			return ast.empty_expr
 		}
-		p.error_with_pos('invalid expression: unexpected $p.tok', p.tok.pos())
+		p.unexpected(prepend_msg: 'invalid expression:')
 	}
 }
 
 pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 	p.trace_parser('expr($precedence)')
-	mut node := ast.empty_expr()
+	mut node := ast.empty_expr
 	is_stmt_ident := p.is_stmt_ident
 	p.is_stmt_ident = false
 	if !p.pref.is_fmt {
@@ -91,7 +91,9 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 					return p.if_expr(true)
 				}
 				else {
-					return p.error_with_pos('unexpected `$`', p.peek_tok.pos())
+					return p.unexpected_with_pos(p.peek_tok.pos(),
+						got: '`$`'
+					)
 				}
 			}
 		}
@@ -294,8 +296,7 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 			st := p.parse_type()
 			p.check(.comma)
 			if p.tok.kind != .name {
-				return p.error_with_pos('unexpected `$p.tok.lit`, expecting struct field',
-					p.tok.pos())
+				return p.unexpected(got: '`$p.tok.lit`', additional_msg: 'expecting struct field')
 			}
 			field := p.tok.lit
 			p.next()
@@ -357,10 +358,15 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 			}
 		}
 		else {
+			if p.tok.kind == .key_struct && p.peek_tok.kind == .lcbr {
+				// Anonymous struct
+				p.next()
+				return p.struct_init('', .anon)
+			}
 			if p.tok.kind != .eof && !(p.tok.kind == .rsbr && p.inside_asm) {
 				// eof should be handled where it happens
 				return none
-				// return p.error_with_pos('invalid expression: unexpected $p.tok', p.tok.pos())
+				// return p.unexpected(prepend_msg: 'invalid expression: ')
 			}
 		}
 	}
@@ -504,7 +510,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	if p.inside_if_cond {
 		p.if_cond_comments << p.eat_comments()
 	}
-	mut right := ast.empty_expr()
+	mut right := ast.empty_expr
 	prev_expecting_type := p.expecting_type
 	if op in [.key_is, .not_is] {
 		p.expecting_type = true
@@ -530,22 +536,8 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	// allow `x := <-ch or {...}` to handle closed channel
 	if op == .arrow {
 		if p.tok.kind == .key_orelse {
-			was_inside_or_expr := p.inside_or_expr
-			p.inside_or_expr = true
-			p.next()
-			p.open_scope()
-			p.scope.register(ast.Var{
-				name: 'err'
-				typ: ast.error_type
-				pos: p.tok.pos()
-				is_used: true
-				is_stack_obj: true
-			})
 			or_kind = .block
-			or_stmts = p.parse_block_no_scope(false)
-			or_pos = or_pos.extend(p.prev_tok.pos())
-			p.close_scope()
-			p.inside_or_expr = was_inside_or_expr
+			or_stmts, or_pos = p.or_block(.with_err_var)
 		}
 		if p.tok.kind == .question {
 			p.next()
@@ -615,6 +607,10 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 				right = right.expr
 			}
 		}
+		if mut right is ast.TypeNode {
+			right.typ = right.typ.ref()
+			return right
+		}
 	}
 	mut or_stmts := []ast.Stmt{}
 	mut or_kind := ast.OrKind.absent
@@ -622,22 +618,8 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 	// allow `x := <-ch or {...}` to handle closed channel
 	if op == .arrow {
 		if p.tok.kind == .key_orelse {
-			was_inside_or_expr := p.inside_or_expr
-			p.inside_or_expr = true
-			p.next()
-			p.open_scope()
-			p.scope.register(ast.Var{
-				name: 'err'
-				typ: ast.error_type
-				pos: p.tok.pos()
-				is_used: true
-				is_stack_obj: true
-			})
 			or_kind = .block
-			or_stmts = p.parse_block_no_scope(false)
-			or_pos = or_pos.extend(p.prev_tok.pos())
-			p.close_scope()
-			p.inside_or_expr = was_inside_or_expr
+			or_stmts, or_pos = p.or_block(.with_err_var)
 		}
 		if p.tok.kind == .question {
 			p.next()

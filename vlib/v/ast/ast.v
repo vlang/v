@@ -112,8 +112,9 @@ pub type Node = CallArg
 
 pub struct TypeNode {
 pub:
-	typ Type
 	pos token.Pos
+pub mut:
+	typ Type
 }
 
 pub enum ComptimeTypeKind {
@@ -146,30 +147,23 @@ pub fn (cty ComptimeType) str() string {
 	}
 }
 
-pub struct EmptyExpr {
-	x int
-}
-
-pub fn empty_expr() Expr {
-	return EmptyExpr{}
-}
+pub type EmptyExpr = u8
 
 pub struct EmptyStmt {
 pub:
 	pos token.Pos
 }
 
-pub fn empty_stmt() Stmt {
-	return EmptyStmt{}
-}
-
 pub struct EmptyNode {
-	x int
+pub:
+	pos token.Pos
 }
 
-pub fn empty_node() Node {
-	return EmptyNode{}
-}
+pub const empty_expr = Expr(EmptyExpr(0))
+
+pub const empty_stmt = Stmt(EmptyStmt{})
+
+pub const empty_node = Node(EmptyNode{})
 
 // `{stmts}` or `unsafe {stmts}`
 pub struct Block {
@@ -452,8 +446,9 @@ pub struct StructInit {
 pub:
 	pos             token.Pos
 	name_pos        token.Pos
-	is_short        bool // Foo{val1, val2}
-	is_short_syntax bool // foo(field1: val1, field2: val2)
+	no_keys         bool // `Foo{val1, val2}`
+	is_short_syntax bool // `foo(field1: val1, field2: val2)`
+	is_anon         bool //  `x: struct{ foo: bar }`
 pub mut:
 	unresolved           bool
 	pre_comments         []Comment
@@ -467,6 +462,12 @@ pub mut:
 	fields               []StructInitField
 	embeds               []StructInitEmbed
 	generic_types        []Type
+}
+
+pub enum StructInitKind {
+	normal
+	short_syntax
+	anon
 }
 
 // import statement
@@ -643,6 +644,7 @@ pub:
 	is_arg          bool // fn args should not be autofreed
 	is_auto_deref   bool
 	is_inherited    bool
+	has_inherited   bool
 pub mut:
 	expr       Expr
 	typ        Type
@@ -1510,9 +1512,11 @@ pub const (
 [minify]
 pub struct AssertStmt {
 pub:
-	pos token.Pos
+	pos       token.Pos
+	extra_pos token.Pos
 pub mut:
 	expr    Expr
+	extra   Expr
 	is_used bool // asserts are used in _test.v files, as well as in non -prod builds of all files
 }
 
@@ -1870,26 +1874,6 @@ pub fn (e &Expr) is_lockable() bool {
 			return false
 		}
 	}
-}
-
-// check if stmt can be an expression in C
-pub fn (stmt Stmt) check_c_expr() ? {
-	match stmt {
-		AssignStmt {
-			return
-		}
-		ForCStmt, ForInStmt, ForStmt {
-			return
-		}
-		ExprStmt {
-			if stmt.expr.is_expr() {
-				return
-			}
-			return error('unsupported statement (`$stmt.expr.type_name()`)')
-		}
-		else {}
-	}
-	return error('unsupported statement (`$stmt.type_name()`)')
 }
 
 // CTempVar is used in cgen only, to hold nodes for temporary variables
@@ -2266,7 +2250,7 @@ pub fn type_can_start_with_token(tok &token.Token) bool {
 	match tok.kind {
 		.name {
 			return (tok.lit.len > 0 && tok.lit[0].is_capital())
-				|| builtin_type_names_matcher.find(tok.lit) > 0
+				|| builtin_type_names_matcher.matches(tok.lit)
 		}
 		// Note: return type (T1, T2) should be handled elsewhere
 		.amp, .key_fn, .lsbr, .question {
@@ -2275,12 +2259,4 @@ pub fn type_can_start_with_token(tok &token.Token) bool {
 		else {}
 	}
 	return false
-}
-
-fn build_builtin_type_names_matcher() token.KeywordsMatcher {
-	mut m := map[string]int{}
-	for i, name in builtin_type_names {
-		m[name] = i
-	}
-	return token.new_keywords_matcher<int>(m)
 }

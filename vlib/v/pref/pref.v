@@ -118,6 +118,7 @@ pub mut:
 	is_debug          bool // turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
 	is_vlines         bool // turned on by -g (it slows down .tmp.c generation slightly).
 	is_stats          bool // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
+	show_timings      bool // show how much time each compiler stage took
 	is_fmt            bool
 	is_vet            bool
 	is_vweb           bool // skip _ var warning in templates
@@ -158,7 +159,8 @@ pub mut:
 	building_v         bool
 	autofree           bool // `v -manualfree` => false, `v -autofree` => true; false by default for now.
 	// Disabling `free()` insertion results in better performance in some applications (e.g. compilers)
-	compress bool // when set, use `upx` to compress the generated executable
+	trace_calls bool // -trace-calls true = the transformer stage will generate and inject print calls for tracing function calls
+	compress    bool // when set, use `upx` to compress the generated executable
 	// generating_vh    bool
 	no_builtin       bool   // Skip adding the `builtin` module implicitly. The generated C code may not compile.
 	enable_globals   bool   // allow __global for low level code
@@ -200,7 +202,6 @@ pub mut:
 	check_only        bool // same as only_check_syntax, but also runs the checker
 	experimental      bool // enable experimental features
 	skip_unused       bool // skip generating C code for functions, that are not used
-	show_timings      bool // show how much time each compiler stage took
 	//
 	use_color           ColorOutput // whether the warnings/errors should use ANSI color escapes.
 	cleanup_files       []string    // list of temporary *.tmp.c and *.tmp.c.rsp files. Cleaned up on successfull builds.
@@ -428,6 +429,9 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-autofree' {
 				res.autofree = true
 				res.build_options << arg
+			}
+			'-trace-calls' {
+				res.trace_calls = true
 			}
 			'-manualfree' {
 				res.autofree = false

@@ -48,7 +48,7 @@ fn tag_to_file(l Level) string {
 	}
 }
 
-// level_from_tag returns the log level from the given string if matches.
+// level_from_tag returns the log level from the given string if it matches.
 pub fn level_from_tag(tag string) ?Level {
 	return match tag {
 		'DISABLED' { Level.disabled }
@@ -61,6 +61,16 @@ pub fn level_from_tag(tag string) ?Level {
 	}
 }
 
+// target_from_label returns the log target from the given string if it matches.
+pub fn target_from_label(label string) ?LogTarget {
+	return match label {
+		'console' { LogTarget.console }
+		'file' { LogTarget.file }
+		'both' { LogTarget.both }
+		else { none }
+	}
+}
+
 // Logger is an interface that describes a generic Logger
 pub interface Logger {
 mut:
@@ -69,6 +79,7 @@ mut:
 	warn(s string)
 	info(s string)
 	debug(s string)
+	set_level(level Level)
 }
 
 // Log represents a logging object

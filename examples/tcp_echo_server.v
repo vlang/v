@@ -26,7 +26,9 @@ fn handle_client(mut socket net.TcpConn) {
 	eprintln('> new client: $client_addr')
 	mut reader := io.new_buffered_reader(reader: socket)
 	defer {
-		reader.free()
+		unsafe {
+			reader.free()
+		}
 	}
 	socket.write_string('server: hello\n') or { return }
 	for {

@@ -393,8 +393,11 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 				}
 			} else if e.table.sym(expr.typ).kind in [.interface_, .sum_type] {
 				if e.pref.is_verbose {
-					eprintln(util.formatted_error('warning:', 'sumtype or interface casts return void currently',
-						e.cur_file, expr.pos))
+					util.show_compiler_message('warning:',
+						pos: expr.pos
+						file_path: e.cur_file
+						message: 'sumtype or interface casts return void currently'
+					)
 				}
 			} else {
 				e.error('unknown cast: ${e.table.sym(expr.expr_type).str()} to ${e.table.sym(expr.typ).str()}')

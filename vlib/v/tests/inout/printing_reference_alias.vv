@@ -1,0 +1,23 @@
+struct Quad {
+mut:
+	x f64
+	y f64
+	z f64
+	w f64
+}
+
+type Point = Quad
+type Vector = Quad
+
+fn new_point(x f64, y f64, z f64) &Point {
+	return &Point{x, y, z, 1}
+}
+
+fn new_vector(x f64, y f64, z f64) &Vector {
+	return &Vector{x, y, z, 0}
+}
+
+fn main() {
+	n := new_point(1, 2, 3)
+	println(n)
+}

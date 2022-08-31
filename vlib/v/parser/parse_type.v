@@ -8,9 +8,7 @@ import v.ast
 import v.util
 import v.token
 
-const (
-	maximum_inline_sum_type_variants = 3
-)
+const maximum_inline_sum_type_variants = 3
 
 pub fn (mut p Parser) parse_array_type(expecting token.Kind) ast.Type {
 	p.check(expecting)
@@ -74,7 +72,6 @@ pub fn (mut p Parser) parse_array_type(expecting token.Kind) ast.Type {
 		if fixed_size <= 0 {
 			p.error_with_pos('fixed size cannot be zero or negative', size_expr.pos())
 		}
-		// sym := p.table.sym(elem_type)
 		idx := p.table.find_or_register_array_fixed(elem_type, fixed_size, size_expr)
 		if elem_type.has_flag(.generic) {
 			return ast.new_type(idx).set_flag(.generic)
@@ -225,7 +222,6 @@ pub fn (mut p Parser) parse_multi_return_type() ast.Type {
 
 // given anon name based off signature when `name` is blank
 pub fn (mut p Parser) parse_fn_type(name string) ast.Type {
-	// p.warn('parse fn')
 	p.check(.key_fn)
 
 	for attr in p.attrs {
@@ -275,7 +271,7 @@ pub fn (mut p Parser) parse_fn_type(name string) ast.Type {
 	// MapFooFn typedefs are manually added in cheaders.v
 	// because typedefs get generated after the map struct is generated
 	has_decl := p.builtin_mod && name.starts_with('Map') && name.ends_with('Fn')
-	idx := p.table.find_or_register_fn_type(p.mod, func, false, has_decl)
+	idx := p.table.find_or_register_fn_type(func, false, has_decl)
 	if has_generic {
 		return ast.new_type(idx).set_flag(.generic)
 	}
@@ -309,6 +305,8 @@ pub fn (mut p Parser) parse_language() ast.Language {
 // parse_inline_sum_type parses the type and registers it in case the type is an anonymous sum type.
 // It also takes care of inline sum types where parse_type only parses a standalone type.
 pub fn (mut p Parser) parse_inline_sum_type() ast.Type {
+	p.warn('inline sum types have been deprecated and will be removed on January 1, 2023 due ' +
+		'to complicating the language and the compiler too much; define named sum types with `type Foo = Bar | Baz` instead')
 	variants := p.parse_sum_type_variants()
 	if variants.len > 1 {
 		if variants.len > parser.maximum_inline_sum_type_variants {
@@ -371,7 +369,7 @@ pub fn (mut p Parser) parse_sum_type_variants() []ast.TypeNode {
 }
 
 pub fn (mut p Parser) parse_type() ast.Type {
-	// optional
+	// optional or result
 	mut is_optional := false
 	mut is_result := false
 	line_nr := p.tok.line_nr
@@ -383,7 +381,7 @@ pub fn (mut p Parser) parse_type() ast.Type {
 		p.next()
 		is_result = true
 	}
-	if (is_optional || is_result) && p.tok.line_nr > line_nr {
+	if (is_optional || is_result) && (p.tok.line_nr > line_nr || p.tok.kind in [.comma, .rpar]) {
 		mut typ := ast.void_type
 		if is_optional {
 			typ = typ.set_flag(.optional)
@@ -405,7 +403,7 @@ pub fn (mut p Parser) parse_type() ast.Type {
 			p.error_with_pos('cannot use `mut` on struct field type', p.tok.pos())
 		}
 	}
-	if p.tok.kind == .key_mut || is_shared { // || is_atomic {
+	if p.tok.kind == .key_mut || is_shared {
 		nr_muls++
 		p.next()
 	}
@@ -511,7 +509,8 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 			p.error('imported types must start with a capital letter')
 			return 0
 		}
-	} else if p.expr_mod != '' && !p.inside_generic_params { // p.expr_mod is from the struct and not from the generic parameter
+	} else if p.expr_mod != '' && !p.inside_generic_params {
+		// p.expr_mod is from the struct and not from the generic parameter
 		name = p.expr_mod + '.' + name
 	} else if name in p.imported_symbols {
 		name = p.imported_symbols[name]
@@ -529,10 +528,10 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 			return p.parse_array_type(p.tok.kind)
 		}
 		else {
-			if p.tok.kind == .lpar && !p.inside_sum_type {
+			if p.tok.kind == .lpar {
 				// multiple return
 				if is_ptr {
-					p.error('parse_type: unexpected `&` before multiple returns')
+					p.unexpected(prepend_msg: 'parse_type:', got: '`&` before multiple returns')
 					return 0
 				}
 				return p.parse_multi_return_type()
@@ -610,6 +609,12 @@ pub fn (mut p Parser) parse_any_type(language ast.Language, is_ptr bool, check_d
 					'int_literal' {
 						ret = ast.int_literal_type
 					}
+					'any' {
+						if p.file_backend_mode != .js && p.mod != 'builtin' {
+							p.error('cannot use `any` type here, `any` will be implemented in V 0.4')
+						}
+						ret = ast.any_type
+					}
 					else {
 						p.next()
 						if name.len == 1 && name[0].is_capital() {
@@ -636,7 +641,6 @@ pub fn (mut p Parser) find_type_or_add_placeholder(name string, language ast.Lan
 	}
 	// not found - add placeholder
 	idx = p.table.add_placeholder_type(name, language)
-	// println('NOT FOUND: $name - adding placeholder - $idx')
 	return ast.new_type(idx)
 }
 
@@ -673,6 +677,9 @@ pub fn (mut p Parser) parse_generic_inst_type(name string) ast.Type {
 			is_instance = true
 		}
 		gts := p.table.sym(gt)
+		if gts.kind == .multi_return {
+			p.error_with_pos('cannot use multi return as generic concrete type', type_pos)
+		}
 		if !is_instance && gts.name.len > 1 {
 			p.error_with_pos('generic struct parameter name needs to be exactly one char',
 				type_pos)

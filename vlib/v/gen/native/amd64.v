@@ -7,6 +7,7 @@ pub struct Amd64 {
 mut:
 	g &Gen
 	// arm64 specific stuff for code generation
+	is_16bit_aligned bool
 }
 
 // The registers are ordered for faster generation
@@ -21,9 +22,6 @@ enum Register {
 	rbp
 	rsi
 	rdi
-	eax
-	edi
-	edx
 	r8
 	r9
 	r10
@@ -32,6 +30,9 @@ enum Register {
 	r13
 	r14
 	r15
+	eax
+	edi
+	edx
 }
 
 const (
@@ -120,8 +121,21 @@ fn (mut g Gen) cmp_reg(reg Register, reg2 Register) {
 	match reg {
 		.rax {
 			match reg2 {
+				.rdx {
+					g.write([u8(0x48), 0x39, 0xd0])
+				}
 				.rbx {
 					g.write([u8(0x48), 0x39, 0xd8])
+				}
+				else {
+					g.n_error('Cannot compare $reg and $reg2')
+				}
+			}
+		}
+		.rdx {
+			match reg2 {
+				.rax {
+					g.write([u8(0x48), 0x39, 0xc2])
 				}
 				else {
 					g.n_error('Cannot compare $reg and $reg2')
@@ -176,40 +190,154 @@ fn (mut g Gen) cmp_zero(reg Register) {
 	g.println('cmp $reg, 0')
 }
 
-fn (mut g Gen) cmp_var_reg(var_name string, reg Register) {
-	g.write8(0x48) // 83 for 1 byte?
-	g.write8(0x39)
-	g.write8(0x45)
-	offset := g.get_var_offset(var_name)
-	g.write8(0xff - offset + 1)
-	g.println('cmp var `$var_name`, $reg')
+fn (mut g Gen) cmp_var_reg(var Var, reg Register, config VarConfig) {
+	match var {
+		ast.Ident {
+			var_object := g.get_var_from_ident(var)
+			match var_object {
+				LocalVar {
+					g.cmp_var_reg(var_object as LocalVar, reg, config)
+				}
+				GlobalVar {
+					g.cmp_var_reg(var_object as GlobalVar, reg, config)
+				}
+				Register {
+					// TODO
+					// g.cmp()
+				}
+			}
+		}
+		LocalVar {
+			// TODO: size
+			g.write8(0x48) // 83 for 1 byte?
+			g.write8(0x39)
+			offset := var.offset - config.offset
+			is_far_var := offset > 0x80 || offset < -0x7f
+			g.write8(if is_far_var { 0x85 } else { 0x45 })
+			if is_far_var {
+				g.write32(int((0xffffffff - i64(offset) + 1) % 0x100000000))
+			} else {
+				g.write8((0xff - offset + 1) % 0x100)
+			}
+			g.println('cmp var `$var.name`, $reg')
+		}
+		GlobalVar {
+			// TODO
+		}
+	}
 }
 
-fn (mut g Gen) cmp_var(var_name string, val int) {
-	g.write8(0x81) // 83 for 1 byte?
-	g.write8(0x7d)
-	offset := g.get_var_offset(var_name)
-	g.write8(0xff - offset + 1)
-	g.write32(val)
-	g.println('cmp var `$var_name` $val')
+fn (mut g Gen) cmp_var(var Var, val int, config VarConfig) {
+	match var {
+		ast.Ident {
+			var_object := g.get_var_from_ident(var)
+			match var_object {
+				LocalVar {
+					g.cmp_var(var_object as LocalVar, val, config)
+				}
+				GlobalVar {
+					g.cmp_var(var_object as GlobalVar, val, config)
+				}
+				Register {
+					// TODO
+					// g.cmp()
+				}
+			}
+		}
+		LocalVar {
+			// TODO: size
+			g.write8(0x81) // 83 for 1 byte?
+			offset := var.offset - config.offset
+			is_far_var := offset > 0x80 || offset < -0x7f
+			g.write8(if is_far_var { 0xbd } else { 0x7d })
+			if is_far_var {
+				g.write32(int((0xffffffff - i64(offset) + 1) % 0x100000000))
+			} else {
+				g.write8((0xff - offset + 1) % 0x100)
+			}
+			g.write32(val)
+			g.println('cmp var `$var.name` $val')
+		}
+		GlobalVar {
+			// TODO
+		}
+	}
 }
 
 // `sub DWORD [rbp-0x4], 1`
-fn (mut g Gen) dec_var(var_name string) {
-	g.write16(0x6d81) // 83 for 1 byte
-	offset := g.get_var_offset(var_name)
-	g.write8(0xff - offset + 1)
-	g.write32(1)
-	g.println('dec_var `$var_name`')
+fn (mut g Gen) dec_var(var Var, config VarConfig) {
+	match var {
+		ast.Ident {
+			var_object := g.get_var_from_ident(var)
+			match var_object {
+				LocalVar {
+					g.dec_var(var_object as LocalVar, config)
+				}
+				GlobalVar {
+					g.dec_var(var_object as GlobalVar, config)
+				}
+				Register {
+					// TODO
+					// g.dec()
+				}
+			}
+		}
+		LocalVar {
+			// TODO: size
+			g.write8(0x81) // 83 for 1 byte
+			offset := var.offset - config.offset
+			is_far_var := offset > 0x80 || offset < -0x7f
+			g.write8(if is_far_var { 0xad } else { 0x6d })
+			if is_far_var {
+				g.write32(int((0xffffffff - i64(offset) + 1) % 0x100000000))
+			} else {
+				g.write8((0xff - offset + 1) % 0x100)
+			}
+			g.write32(1)
+			g.println('dec_var `$var.name`')
+		}
+		GlobalVar {
+			// TODO
+		}
+	}
 }
 
 // `add DWORD [rbp-0x4], 1`
-fn (mut g Gen) inc_var(var_name string) {
-	g.write16(0x4581) // 83 for 1 byte
-	offset := g.get_var_offset(var_name)
-	g.write8(0xff - offset + 1)
-	g.write32(1)
-	g.println('inc_var `$var_name`')
+fn (mut g Gen) inc_var(var Var, config VarConfig) {
+	match var {
+		ast.Ident {
+			var_object := g.get_var_from_ident(var)
+			match var_object {
+				LocalVar {
+					g.inc_var(var_object as LocalVar, config)
+				}
+				GlobalVar {
+					g.inc_var(var_object as GlobalVar, config)
+				}
+				Register {
+					// TODO
+					// g.inc()
+				}
+			}
+		}
+		LocalVar {
+			// TODO: size
+			g.write8(0x81) // 83 for 1 byte
+			offset := var.offset - config.offset
+			is_far_var := offset > 0x80 || offset < -0x7f
+			g.write8(if is_far_var { 0x85 } else { 0x45 })
+			if is_far_var {
+				g.write32(int((0xffffffff - i64(offset) + 1) % 0x100000000))
+			} else {
+				g.write8((0xff - offset + 1) % 0x100)
+			}
+			g.write32(1)
+			g.println('inc_var `$var.name`')
+		}
+		GlobalVar {
+			// TODO
+		}
+	}
 }
 
 enum JumpOp {
@@ -217,7 +345,7 @@ enum JumpOp {
 	jne = 0x850f
 	jg = 0x8f0f
 	jge = 0x8d0f
-	lt = 0x8c0f
+	jl = 0x8c0f
 	jle = 0x8e0f
 }
 
@@ -236,6 +364,22 @@ fn (mut g Gen) jmp(addr int) int {
 	g.println('jmp')
 	// return the position of jump address for placeholder
 	return int(pos)
+}
+
+enum SetOp {
+	e = 0x940f
+	ne = 0x950f
+	g = 0x9f0f
+	ge = 0x9d0f
+	l = 0x9c0f
+	le = 0x9e0f
+}
+
+// SETcc al
+fn (mut g Gen) cset(op SetOp) {
+	g.write16(u16(op))
+	g.write8(0xc0)
+	g.println('set$op al')
 }
 
 fn abs(a i64) i64 {
@@ -308,7 +452,7 @@ fn (mut g Gen) mov64(reg Register, val i64) {
 			g.write8(0x48)
 			g.write8(0xc7)
 			g.write8(0xc2)
-			g.write32(i32(int(val)))
+			g.write32(int(val))
 			g.println('mov32 $reg, $val')
 			return
 		}
@@ -351,48 +495,152 @@ fn (mut g Gen) movabs(reg Register, val i64) {
 	g.println('movabs $reg, $val')
 }
 
-fn (mut g Gen) mov_reg_to_var(var_offset int, reg Register) {
+fn (mut g Gen) mov_deref(reg Register, regptr Register) {
+	g.write8(0x48 + int(reg) / 8 * 4 + int(regptr) / 8)
+	g.write8(0x8b)
+	g.write8(int(reg) % 8 * 8 + int(regptr) % 8)
+}
+
+fn (mut g Gen) mov_reg_to_var(var Var, reg Register, config VarConfig) {
 	if g.pref.arch != .amd64 {
 		panic('invalid arch for mov_reg_to_var')
 	}
-	// 89 7d fc     mov DWORD PTR [rbp-0x4],edi
-	match reg {
-		.rax {
-			g.write8(0x48)
+	match var {
+		ast.Ident {
+			var_object := g.get_var_from_ident(var)
+			match var_object {
+				LocalVar {
+					g.mov_reg_to_var(var_object as LocalVar, reg, config)
+				}
+				GlobalVar {
+					g.mov_reg_to_var(var_object as GlobalVar, reg, config)
+				}
+				Register {
+					// TODO
+				}
+			}
 		}
-		else {}
+		LocalVar {
+			offset := var.offset - config.offset
+			is_far_var := offset > 0x80 || offset < -0x7f
+			typ := if config.typ == 0 { var.typ } else { config.typ }
+
+			mut size := 'UNKNOWN'
+			is_extended_register := int(reg) >= int(Register.r8) && int(reg) <= int(Register.r15)
+			match typ {
+				ast.i64_type_idx, ast.u64_type_idx, ast.isize_type_idx, ast.usize_type_idx,
+				ast.int_literal_type_idx {
+					g.write16(0x8948 + if is_extended_register { 4 } else { 0 })
+					size = 'QWORD'
+				}
+				ast.int_type_idx, ast.u32_type_idx, ast.rune_type_idx {
+					if is_extended_register {
+						g.write8(0x44)
+					}
+					g.write8(0x89)
+					size = 'DWORD'
+				}
+				ast.i16_type_idx, ast.u16_type_idx {
+					g.write8(0x66)
+					if is_extended_register {
+						g.write8(0x44)
+					}
+					g.write8(0x89)
+					size = 'WORD'
+				}
+				ast.i8_type_idx, ast.u8_type_idx, ast.char_type_idx, ast.bool_type_idx {
+					if is_extended_register {
+						g.write8(0x44)
+					}
+					g.write8(0x88)
+					size = 'BYTE'
+				}
+				else {
+					g.n_error('unsupported type for mov_reg_to_var')
+					'UNKNOWN'
+				}
+			}
+			far_var_offset := if is_far_var { 0x40 } else { 0 }
+			match reg {
+				.eax, .rax, .r8 { g.write8(0x45 + far_var_offset) }
+				.edi, .rdi { g.write8(0x7d + far_var_offset) }
+				.rsi { g.write8(0x75 + far_var_offset) }
+				.rdx { g.write8(0x55 + far_var_offset) }
+				.rcx, .r9 { g.write8(0x4d + far_var_offset) }
+				else { g.n_error('mov_from_reg $reg') }
+			}
+			if is_far_var {
+				g.write32(int((0xffffffff - i64(offset) + 1) % 0x100000000))
+			} else {
+				g.write8((0xff - offset + 1) % 0x100)
+			}
+			g.println('mov $size PTR [rbp-$offset.hex2()],$reg')
+		}
+		GlobalVar {
+			// TODO
+		}
 	}
-	g.write8(0x89)
-	match reg {
-		.eax, .rax { g.write8(0x45) }
-		.edi, .rdi { g.write8(0x7d) }
-		.rsi { g.write8(0x75) }
-		.rdx { g.write8(0x55) }
-		.rcx { g.write8(0x4d) }
-		else { g.n_error('mov_from_reg $reg') }
-	}
-	g.write8(0xff - var_offset + 1)
-	g.println('mov DWORD PTR[rbp-$var_offset.hex2()],$reg')
 }
 
-fn (mut g Gen) mov_int_to_var(var_offset int, size Size, integer int) {
-	var_addr := 0xff - var_offset + 1
-
-	match size {
-		._8 {
-			g.write8(0xc6)
-			g.write8(0x45)
-			g.write8(var_addr)
-			g.write8(u8(integer))
-			g.println('mov BYTE PTR[rbp-$var_offset.hex2()], $integer')
+fn (mut g Gen) mov_int_to_var(var Var, integer int, config VarConfig) {
+	match var {
+		ast.Ident {
+			var_object := g.get_var_from_ident(var)
+			match var_object {
+				LocalVar {
+					g.mov_int_to_var(var_object as LocalVar, integer, config)
+				}
+				GlobalVar {
+					g.mov_int_to_var(var_object as GlobalVar, integer, config)
+				}
+				Register {
+					// TODO
+				}
+			}
 		}
-		else {
-			g.n_error('unhandled mov int')
+		LocalVar {
+			offset := var.offset - config.offset
+			typ := if config.typ == 0 { var.typ } else { config.typ }
+			is_far_var := offset > 0x80 || offset < -0x7f
+
+			match typ {
+				ast.i8_type_idx, ast.u8_type_idx, ast.char_type_idx {
+					g.write8(0xc6)
+					g.write8(if is_far_var { 0x85 } else { 0x45 })
+					if is_far_var {
+						g.write32(int((0xffffffff - i64(offset) + 1) % 0x100000000))
+					} else {
+						g.write8((0xff - offset + 1) % 0x100)
+					}
+					g.write8(u8(integer))
+					g.println('mov BYTE PTR[rbp-$offset.hex2()], $integer')
+				}
+				ast.i64_type_idx, ast.u64_type_idx, ast.isize_type_idx, ast.usize_type_idx,
+				ast.int_literal_type_idx {
+					g.write8(0x48)
+					g.write8(0xc7)
+					g.write8(if is_far_var { 0x85 } else { 0x45 })
+					if is_far_var {
+						g.write32(int((0xffffffff - i64(offset) + 1) % 0x100000000))
+					} else {
+						g.write8((0xff - offset + 1) % 0x100)
+					}
+					g.write32(integer)
+					g.println('mov QWORD PTR[rbp-$offset.hex2()], $integer')
+				}
+				else {
+					g.n_error('unhandled mov int type: $typ')
+				}
+			}
+		}
+		GlobalVar {
+			// TODO
 		}
 	}
 }
 
 fn (mut g Gen) lea_var_to_reg(reg Register, var_offset int) {
+	is_far_var := var_offset > 0x80 || var_offset < -0x7f
 	match reg {
 		.rax, .rbx, .rsi, .rdi {
 			g.write8(0x48)
@@ -400,55 +648,133 @@ fn (mut g Gen) lea_var_to_reg(reg Register, var_offset int) {
 		else {}
 	}
 	g.write8(0x8d)
+	far_var_offset := if is_far_var { 0x40 } else { 0 }
 	match reg {
-		.eax, .rax { g.write8(0x45) }
-		.edi, .rdi { g.write8(0x7d) }
-		.rsi { g.write8(0x75) }
-		.rdx { g.write8(0x55) }
-		.rbx { g.write8(0x5d) }
-		.rcx { g.write8(0x4d) }
+		.eax, .rax { g.write8(0x45 + far_var_offset) }
+		.edi, .rdi { g.write8(0x7d + far_var_offset) }
+		.rsi { g.write8(0x75 + far_var_offset) }
+		.rdx { g.write8(0x55 + far_var_offset) }
+		.rbx { g.write8(0x5d + far_var_offset) }
+		.rcx { g.write8(0x4d + far_var_offset) }
 		else { g.n_error('lea_var_to_reg $reg') }
 	}
-	g.write8(0xff - var_offset + 1)
+	if is_far_var {
+		g.write32(int((0xffffffff - i64(var_offset) + 1) % 0x100000000))
+	} else {
+		g.write8((0xff - var_offset + 1) % 0x100)
+	}
 	g.println('lea $reg, [rbp-$var_offset.hex2()]')
 }
 
-fn (mut g Gen) mov_var_to_reg(reg Register, var_offset int) {
-	// 8b 7d f8    mov edi,DWORD PTR [rbp-0x8]
-	match reg {
-		.rax, .rbx, .rsi {
-			g.write8(0x48)
+fn (mut g Gen) mov_var_to_reg(reg Register, var Var, config VarConfig) {
+	match var {
+		ast.Ident {
+			var_object := g.get_var_from_ident(var)
+			match var_object {
+				LocalVar {
+					g.mov_var_to_reg(reg, var_object as LocalVar, config)
+				}
+				GlobalVar {
+					g.mov_var_to_reg(reg, var_object as GlobalVar, config)
+				}
+				Register {
+					// TODO
+				}
+			}
 		}
-		else {}
+		LocalVar {
+			offset := var.offset - config.offset
+			is_far_var := offset > 0x80 || offset < -0x7f
+			typ := if config.typ == 0 { var.typ } else { config.typ }
+
+			instruction, size := match typ {
+				ast.i64_type_idx, ast.u64_type_idx, ast.isize_type_idx, ast.usize_type_idx,
+				ast.int_literal_type_idx {
+					// mov rax, QWORD PTR [rbp-0x8]
+					g.write16(0x8b48)
+					'mov', 'QWORD'
+				}
+				ast.int_type_idx {
+					// movsxd rax, DWORD PTR [rbp-0x8]
+					g.write16(0x6348)
+					'movsxd', 'DWORD'
+				}
+				ast.u32_type_idx, ast.rune_type_idx {
+					// mov eax, DWORD PTR [rbp-0x8]
+					g.write8(0x8b)
+					'mov', 'DWORD'
+				}
+				ast.i16_type_idx {
+					// movsx rax, WORD PTR [rbp-0x8]
+					g.write([u8(0x48), 0x0f, 0xbf])
+					'movsx', 'WORD'
+				}
+				ast.u16_type_idx {
+					// movzx rax, WORD PTR [rbp-0x8]
+					g.write([u8(0x48), 0x0f, 0xb7])
+					'movzx', 'WORD'
+				}
+				ast.i8_type_idx {
+					// movsx rax, BYTE PTR [rbp-0x8]
+					g.write([u8(0x48), 0x0f, 0xbe])
+					'movsx', 'BYTE'
+				}
+				ast.u8_type_idx, ast.char_type_idx, ast.bool_type_idx {
+					// movzx rax, BYTE PTR [rbp-0x8]
+					g.write([u8(0x48), 0x0f, 0xb6])
+					'movzx', 'BYTE'
+				}
+				else {
+					g.n_error('unhandled mov var to reg')
+					'mov', 'UNKNOWN'
+				}
+			}
+			far_var_offset := if is_far_var { 0x40 } else { 0 }
+			match reg {
+				.eax, .rax { g.write8(0x45 + far_var_offset) }
+				.edi, .rdi { g.write8(0x7d + far_var_offset) }
+				.rsi { g.write8(0x75 + far_var_offset) }
+				.rdx { g.write8(0x55 + far_var_offset) }
+				.rbx { g.write8(0x5d + far_var_offset) }
+				.rcx { g.write8(0x4d + far_var_offset) }
+				else { g.n_error('mov_var_to_reg $reg') }
+			}
+			if is_far_var {
+				g.write32(int((0xffffffff - i64(offset) + 1) % 0x100000000))
+			} else {
+				g.write8((0xff - offset + 1) % 0x100)
+			}
+			g.println('$instruction $reg, $size PTR [rbp-$offset.hex2()]')
+		}
+		GlobalVar {
+			// TODO
+		}
 	}
-	g.write8(0x8b)
-	match reg {
-		.eax, .rax { g.write8(0x45) }
-		.edi, .rdi { g.write8(0x7d) }
-		.rsi { g.write8(0x75) }
-		.rdx { g.write8(0x55) }
-		.rbx { g.write8(0x5d) }
-		.rcx { g.write8(0x4d) }
-		else { g.n_error('mov_var_to_reg $reg') }
-	}
-	g.write8(0xff - var_offset + 1)
-	g.println('mov $reg,DWORD PTR[rbp-$var_offset.hex2()]')
 }
 
-fn (mut g Gen) call(addr int) {
-	if g.pref.arch == .arm64 {
-		g.bl()
-		return
-	}
+fn (mut g Gen) call_addr_at(addr int, at i64) i64 {
 	// Need to calculate the difference between current position (position after the e8 call)
 	// and the function to call.
 	// +5 is to get the posistion "e8 xx xx xx xx"
 	// Not sure about the -1.
-	rel := 0xffffffff - (g.buf.len + 5 - addr - 1)
+	return 0xffffffff - (at + 5 - addr - 1)
+}
+
+fn (mut g Gen) call(addr int) i64 {
+	if g.pref.arch == .arm64 {
+		g.bl()
+		return 0
+	}
+
+	rel := g.call_addr_at(addr, g.pos())
+	c_addr := g.pos()
 	// println('call addr=$addr.hex2() rel_addr=$rel.hex2() pos=$g.buf.len')
 	g.write8(0xe8)
-	g.write32(rel)
+
+	g.write32(int(rel))
 	g.println('call $addr')
+
+	return c_addr
 }
 
 fn (mut g Gen) syscall() {
@@ -481,27 +807,21 @@ pub fn (mut g Gen) push(reg Register) {
 		g.write8(0x41)
 		g.write8(0x50 + int(reg) - 8)
 	}
-	/*
-	match reg {
-		.rbp { g.write8(0x55) }
-		else {}
+	if mut g.code_gen is Amd64 {
+		g.code_gen.is_16bit_aligned = !g.code_gen.is_16bit_aligned
 	}
-	*/
 	g.println('push $reg')
 }
 
 pub fn (mut g Gen) pop(reg Register) {
-	g.write8(0x58 + int(reg))
-	// TODO r8...
+	if int(reg) >= int(Register.r8) && int(reg) <= int(Register.r15) {
+		g.write8(0x41)
+	}
+	g.write8(0x58 + int(reg) % 8)
+	if mut g.code_gen is Amd64 {
+		g.code_gen.is_16bit_aligned = !g.code_gen.is_16bit_aligned
+	}
 	g.println('pop $reg')
-}
-
-pub fn (mut g Gen) sub32(reg Register, val int) {
-	g.write8(0x48)
-	g.write8(0x81)
-	g.write8(0xe8 + int(reg)) // TODO rax is different?
-	g.write32(val)
-	g.println('sub32 $reg,$val.hex2()')
 }
 
 pub fn (mut g Gen) sub8(reg Register, val int) {
@@ -514,18 +834,24 @@ pub fn (mut g Gen) sub8(reg Register, val int) {
 
 pub fn (mut g Gen) sub(reg Register, val int) {
 	g.write8(0x48)
-	g.write8(0x81)
-	g.write8(0xe8 + int(reg)) // TODO rax is different?
+	if reg == .rax {
+		g.write8(0x2d)
+	} else {
+		g.write8(0x81)
+		g.write8(0xe8 + int(reg))
+	}
 	g.write32(val)
-	g.println('add $reg,$val.hex2()')
+	g.println('sub $reg,$val.hex2()')
 }
 
 pub fn (mut g Gen) add(reg Register, val int) {
-	if reg != .rax {
-		panic('add only works with .rax')
-	}
 	g.write8(0x48)
-	g.write8(0x05)
+	if reg == .rax {
+		g.write8(0x05)
+	} else {
+		g.write8(0x81)
+		g.write8(0xc0 + int(reg))
+	}
 	g.write32(val)
 	g.println('add $reg,$val.hex2()')
 }
@@ -538,6 +864,8 @@ pub fn (mut g Gen) add8(reg Register, val int) {
 	g.println('add8 $reg,$val.hex2()')
 }
 
+[deprecated: 'use add_reg']
+[deprecated_after: '2999-01-01']
 fn (mut g Gen) add8_var(reg Register, var_offset int) {
 	g.write8(0x03)
 	match reg {
@@ -548,6 +876,8 @@ fn (mut g Gen) add8_var(reg Register, var_offset int) {
 	g.println('add8 $reg,DWORD PTR[rbp-$var_offset.hex2()]')
 }
 
+[deprecated: 'use sub_reg']
+[deprecated_after: '2999-01-01']
 fn (mut g Gen) sub8_var(reg Register, var_offset int) {
 	g.write8(0x2b)
 	match reg {
@@ -558,16 +888,20 @@ fn (mut g Gen) sub8_var(reg Register, var_offset int) {
 	g.println('sub8 $reg,DWORD PTR[rbp-$var_offset.hex2()]')
 }
 
+[deprecated: 'use div_reg']
+[deprecated_after: '2999-01-01']
 fn (mut g Gen) div8_var(reg Register, var_offset int) {
 	if reg == .rax || reg == .eax {
-		g.mov_var_to_reg(.rbx, var_offset)
+		g.mov_var_to_reg(.rbx, LocalVar{var_offset, ast.i64_type_idx, ''})
 		g.div_reg(.rax, .rbx)
-		g.mov_reg_to_var(var_offset, .rax)
+		g.mov_reg_to_var(LocalVar{var_offset, ast.i64_type_idx, ''}, .rax)
 	} else {
 		panic('div8_var invalid source register')
 	}
 }
 
+[deprecated: 'use mul_reg']
+[deprecated_after: '2999-01-01']
 fn (mut g Gen) mul8_var(reg Register, var_offset int) {
 	g.write8(0x0f)
 	g.write8(0xaf)
@@ -579,9 +913,81 @@ fn (mut g Gen) mul8_var(reg Register, var_offset int) {
 	g.println('mul8 $reg,DWORD PTR[rbp-$var_offset.hex2()]')
 }
 
+fn (mut g Gen) bitand_reg(a Register, b Register) {
+	g.write8(0x48 + if int(a) >= int(Register.r8) { 1 } else { 0 } +
+		if int(b) >= int(Register.r8) { 4 } else { 0 })
+	g.write8(0x21)
+	g.write8(0xc0 + int(a) % 8 + int(b) % 8 * 8)
+}
+
+fn (mut g Gen) bitor_reg(a Register, b Register) {
+	g.write8(0x48 + if int(a) >= int(Register.r8) { 1 } else { 0 } +
+		if int(b) >= int(Register.r8) { 4 } else { 0 })
+	g.write8(0x09)
+	g.write8(0xc0 + int(a) % 8 + int(b) % 8 * 8)
+}
+
+fn (mut g Gen) bitxor_reg(a Register, b Register) {
+	g.write8(0x48 + if int(a) >= int(Register.r8) { 1 } else { 0 } +
+		if int(b) >= int(Register.r8) { 4 } else { 0 })
+	g.write8(0x31)
+	g.write8(0xc0 + int(a) % 8 + int(b) % 8 * 8)
+}
+
+fn (mut g Gen) shl_reg(a Register, b Register) {
+	if b != .rcx {
+		g.mov_reg(.rcx, b)
+	}
+	g.write8(if int(a) >= int(Register.r8) { 0x49 } else { 0x48 })
+	g.write8(0xd3)
+	g.write8(0xe0 + int(a) % 8)
+	g.println('shl $a, $b')
+}
+
+fn (mut g Gen) sar_reg(a Register, b Register) {
+	if b != .rcx {
+		g.mov_reg(.rcx, b)
+	}
+	g.write8(if int(a) > 7 { 0x49 } else { 0x48 })
+	g.write8(0xd3)
+	g.write8(0xf8 + int(a) % 8)
+	g.println('sar $a, $b')
+}
+
+fn (mut g Gen) shr_reg(a Register, b Register) {
+	if b != .rcx {
+		g.mov_reg(.rcx, b)
+	}
+	g.write8(if int(a) > 7 { 0x49 } else { 0x48 })
+	g.write8(0xd3)
+	g.write8(0xe8 + int(a) % 8)
+	g.println('shr $a, $b')
+}
+
 fn (mut g Gen) leave() {
-	g.write8(0xc9)
-	g.println('leave')
+	g.println('; label 0: return')
+	if g.defer_stmts.len != 0 {
+		// save return value
+		g.push(.rax)
+		for defer_stmt in g.defer_stmts.reverse() {
+			name := '_defer$defer_stmt.idx_in_fn'
+			defer_var := g.get_var_offset(name)
+			g.mov_var_to_reg(.rax, LocalVar{defer_var, ast.i64_type_idx, name})
+			g.cmp_zero(.rax)
+			label := g.labels.new_label()
+			jump_addr := g.cjmp(.je)
+			g.labels.patches << LabelPatch{
+				id: label
+				pos: jump_addr
+			}
+			g.stmts(defer_stmt.stmts)
+			g.labels.addrs[label] = g.pos()
+		}
+		g.pop(.rax)
+	}
+	g.mov_reg(.rsp, .rbp)
+	g.pop(.rbp)
+	g.ret()
 }
 
 // returns label's relative address
@@ -603,6 +1009,7 @@ pub fn (mut g Gen) allocate_string(s string, opsize int, typ RelocType) int {
 	return str_pos
 }
 
+// not used?
 pub fn (mut g Gen) var_zero(vo int, size int) {
 	g.mov32(.rcx, size)
 	g.lea_var_to_reg(.rdi, vo)
@@ -789,8 +1196,7 @@ pub fn (mut g Gen) gen_amd64_exit(expr ast.Expr) {
 			g.n_error('native exit builtin: Unsupported call $right')
 		}
 		ast.Ident {
-			var_offset := g.get_var_offset(expr.name)
-			g.mov_var_to_reg(.edi, var_offset)
+			g.mov_var_to_reg(.edi, expr as ast.Ident)
 		}
 		ast.IntegerLiteral {
 			g.mov(.edi, expr.val.int())
@@ -1040,97 +1446,35 @@ fn (mut g Gen) mod_reg(a Register, b Register) {
 }
 
 fn (mut g Gen) sub_reg(a Register, b Register) {
-	if a == .rax && b == .rbx {
-		g.write8(0x48)
+	if int(a) <= int(Register.r15) && int(b) <= int(Register.r15) {
+		g.write8(0x48 + if int(a) >= int(Register.r8) { 1 } else { 0 } +
+			if int(b) >= int(Register.r8) { 4 } else { 0 })
 		g.write8(0x29)
-		g.write8(0xd8)
-	} else if a == .rdx && b == .rax {
-		g.write8(0x48)
-		g.write8(0x29)
-		g.write8(0xc2)
-	} else if a == .rdi && b == .rax {
-		g.write8(0x48)
-		g.write8(0x29)
-		g.write8(0xc7)
+		g.write8(0xc0 + int(a) % 8 + int(b) % 8 * 8)
 	} else {
-		panic('unhandled add $a, $b')
+		g.n_error('unhandled sub $a, $b')
 	}
 	g.println('sub $a, $b')
 }
 
 fn (mut g Gen) add_reg(a Register, b Register) {
-	if a == .rax && b == .rbx {
-		g.write8(0x48)
+	if int(a) <= int(Register.r15) && int(b) <= int(Register.r15) {
+		g.write8(0x48 + if int(a) >= int(Register.r8) { 1 } else { 0 } +
+			if int(b) >= int(Register.r8) { 4 } else { 0 })
 		g.write8(0x01)
-		g.write8(0xd8)
-	} else if a == .rax && b == .rdi {
-		g.write8(0x48)
-		g.write8(0x01)
-		g.write8(0xf8)
-	} else if a == .rax && b == .rax {
-		g.write8(0x48)
-		g.write8(0x01)
-		g.write8(0xc0)
+		g.write8(0xc0 + int(a) % 8 + int(b) % 8 * 8)
 	} else {
-		panic('unhandled add $a, $b')
+		g.n_error('unhandled add $a, $b')
 	}
 	g.println('add $a, $b')
 }
 
 fn (mut g Gen) mov_reg(a Register, b Register) {
-	if a == .rax && b == .rsi {
-		g.write([u8(0x48), 0x89, 0xf0])
-	} else if a == .rbp && b == .rsp {
-		g.write8(0x48)
+	if int(a) <= int(Register.r15) && int(b) <= int(Register.r15) {
+		g.write8(0x48 + if int(a) >= int(Register.r8) { 1 } else { 0 } +
+			if int(b) >= int(Register.r8) { 4 } else { 0 })
 		g.write8(0x89)
-	} else if a == .rdx && b == .rax {
-		g.write8(0x48)
-		g.write8(0x89)
-		g.write8(0xc2)
-	} else if a == .rax && b == .rcx {
-		g.write8(0x48)
-		g.write8(0x89)
-		g.write8(0xc8)
-	} else if a == .rax && b == .rdi {
-		g.write8(0x48)
-		g.write8(0x89)
-		g.write8(0xf8)
-	} else if a == .rcx && b == .rdi {
-		g.write8(0x48)
-		g.write8(0x89)
-		g.write8(0xf9)
-	} else if a == .rcx && b == .rax {
-		g.write8(0x48)
-		g.write8(0x89)
-		g.write8(0xc1)
-	} else if a == .rdi && b == .rsi {
-		g.write8(0x48)
-		g.write8(0x89)
-		g.write8(0xf7)
-	} else if a == .rsi && b == .rax {
-		g.write8(0x48)
-		g.write8(0x89)
-		g.write8(0xc6)
-	} else if a == .rdi && b == .rdx {
-		g.write8(0x48)
-		g.write8(0x89)
-		g.write8(0xd7)
-	} else if a == .rdi && b == .rax {
-		g.write8(0x48)
-		g.write8(0x89)
-		g.write8(0xc7)
-	} else if a == .r12 && b == .rdi {
-		g.write8(0x49)
-		g.write8(0x89)
-		g.write8(0xfc)
-	} else if a == .rdi && b == .r12 {
-		g.write8(0x4c)
-		g.write8(0x89)
-		g.write8(0xe7)
-	} else if a == .rsi && b == .rdi {
-		g.write8(0x48)
-		g.write8(0x89)
-		g.write8(0xfe)
+		g.write8(0xc0 + int(a) % 8 + int(b) % 8 * 8)
 	} else {
 		g.n_error('unhandled mov_reg combination for $a $b')
 	}
@@ -1156,50 +1500,28 @@ fn (mut g Gen) sar8(r Register, val u8) {
 	g.println('sar $r, $val')
 }
 
-// generates `mov rbp, rsp`
-fn (mut g Gen) mov_rbp_rsp() {
-	g.write8(0x48)
-	g.write8(0x89)
-	g.write8(0xe5)
-	g.println('mov rbp, rsp')
-}
-
-pub fn (mut g Gen) call_fn(node ast.CallExpr) {
-	if g.pref.arch == .arm64 {
-		g.call_fn_arm64(node)
-		return
-	}
+pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 	name := node.name
 	mut n := name
 	if !n.contains('.') {
 		n = 'main.$n'
 	}
 	addr := g.fn_addr[n]
-	// Copy values to registers (calling convention)
-	// g.mov(.eax, 0)
-	for i in 0 .. node.args.len {
-		expr := node.args[i].expr
-		match expr {
-			ast.IntegerLiteral {
-				// `foo(2)` => `mov edi,0x2`
-				g.mov(native.fn_arg_registers[i], expr.val.int())
-			}
-			ast.Ident {
-				// `foo(x)` => `mov edi,DWORD PTR [rbp-0x8]`
-				var_offset := g.get_var_offset(expr.name)
-				if g.pref.is_verbose {
-					println('i=$i fn name= $name offset=$var_offset')
-					println(int(native.fn_arg_registers[i]))
-				}
-				g.mov_var_to_reg(native.fn_arg_registers[i], var_offset)
-			}
-			else {
-				g.v_error('unhandled call_fn (name=$name) node: $expr.type_name()', node.pos)
-			}
-		}
+	// not aligned now XOR pushed args will be odd
+	is_16bit_aligned := if mut g.code_gen is Amd64 { g.code_gen.is_16bit_aligned } else { true } != (
+		node.args.len > 6 && node.args.len % 2 == 1)
+	if !is_16bit_aligned {
+		// dummy data
+		g.push(.rbp)
 	}
-	if node.args.len > 6 {
-		g.v_error('more than 6 args not allowed for now', node.pos)
+	for i_ in 0 .. node.args.len {
+		i := node.args.len - i_ - 1
+		g.expr(node.args[i].expr)
+		g.push(.rax)
+	}
+	num_on_register := if node.args.len > 6 { 6 } else { node.args.len }
+	for i in 0 .. num_on_register {
+		g.pop(native.fn_arg_registers[i])
 	}
 	if addr == 0 {
 		g.delay_fn_call(name)
@@ -1208,6 +1530,20 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 		g.call(int(addr))
 	}
 	g.println('call `${name}()`')
+	if !is_16bit_aligned {
+		// dummy data
+		g.pop(.rdi)
+	}
+	for _ in 0 .. node.args.len - 6 {
+		// args
+		g.pop(.rdi)
+	}
+}
+
+fn (mut g Gen) call_builtin_amd64(name string) i64 {
+	call_addr := g.call(0)
+	g.println('call builtin `$name`')
+	return call_addr
 }
 
 fn (mut g Gen) patch_calls() {
@@ -1255,37 +1591,32 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 		right := node.right[i]
 		name := left.str()
 		// if left is ast.Ident {
-		// ident := left as ast.Ident
+		ident := left as ast.Ident
 		match right {
 			ast.IntegerLiteral {
 				// g.allocate_var(name, 4, right.val.int())
 				match node.op {
 					.plus_assign {
-						dest := g.get_var_offset(name)
-						g.mov_var_to_reg(.rax, dest)
+						g.mov_var_to_reg(.rax, ident)
 						g.add(.rax, right.val.int())
-						g.mov_reg_to_var(dest, .rax)
+						g.mov_reg_to_var(ident, .rax)
 					}
 					.minus_assign {
-						dest := g.get_var_offset(name)
-						g.mov_var_to_reg(.rax, dest)
-						g.mov_var_to_reg(.rbx, g.get_var_offset(name))
-						g.sub_reg(.rax, .rbx)
-						g.mov_reg_to_var(dest, .rax)
+						g.mov_var_to_reg(.rax, ident)
+						g.sub(.rax, right.val.int())
+						g.mov_reg_to_var(ident, .rax)
 					}
 					.mult_assign {
-						dest := g.get_var_offset(name)
-						g.mov_var_to_reg(.rax, dest)
-						g.mov_var_to_reg(.rbx, g.get_var_offset(name))
-						g.mul_reg(.rax, .rbx)
-						g.mov_reg_to_var(dest, .rax)
+						g.mov_var_to_reg(.rax, ident)
+						g.mov64(.rdx, right.val.int())
+						g.mul_reg(.rax, .rdx)
+						g.mov_reg_to_var(ident, .rax)
 					}
 					.div_assign {
-						dest := g.get_var_offset(name)
-						g.mov_var_to_reg(.rax, dest)
-						g.mov_var_to_reg(.rbx, g.get_var_offset(name))
-						g.div_reg(.rax, .rbx)
-						g.mov_reg_to_var(dest, .rax)
+						g.mov_var_to_reg(.rax, ident)
+						g.mov64(.rdx, right.val.int())
+						g.div_reg(.rax, .rdx)
+						g.mov_reg_to_var(ident, .rax)
 					}
 					.decl_assign {
 						g.allocate_var(name, 8, right.val.int())
@@ -1297,40 +1628,8 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 								// lname := '${node.left[i]}'
 								// g.expr(node.right[i])
 								g.mov(.rax, right.val.int())
-								offset := g.get_var_offset('i') // node.left[i])
-								g.mov_reg_to_var(offset, .rax)
+								g.mov_reg_to_var(ident, .rax)
 							}
-							ast.InfixExpr {
-								// eprintln('assign')
-								// dump(node.left[i])
-								offset := g.get_var_offset('i') // node.left[i])
-								g.mov_reg_to_var(offset, native.fn_arg_registers[i])
-							}
-							/*
-							ast.int_type_idx {
-								g.expr(node.left[i])
-								match node.left[i] {
-								ast.IndexExpr {
-									ie := node.left[i] as ast.IndexExpr
-									bracket := name.index('[') or {
-										g.v_error('bracket expected', node.pos)
-										exit(1)
-									}
-									var_name := name[0 .. bracket]
-									mut dest := g.get_var_offset(var_name)
-									index := ie.index as ast.IntegerLiteral
-									dest += index.val.int() * 8
-									// TODO check if out of bounds access
-									g.mov(.rax, right.val.int())
-									g.mov_reg_to_var(dest, .rax)
-									// eprintln('${var_name}[$index] = ${right.val.int()}')
-								} else {
-									dump(node)
-									g.v_error('oops', node.pos)
-								}
-								}
-							}
-							*/
 							else {
 								tn := node.left[i].type_name()
 								dump(node.left_types)
@@ -1347,45 +1646,43 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 			ast.InfixExpr {
 				// eprintln('infix') dump(node) dump(right)
 				g.infix_expr(right)
-				offset := g.allocate_var(name, 8, 0)
+				offset := g.allocate_var(name, g.get_sizeof_ident(ident), 0)
 				// `mov DWORD PTR [rbp-0x8],eax`
 				if g.pref.is_verbose {
 					println('infix assignment $name offset=$offset.hex2()')
 				}
-				g.mov_reg_to_var(offset, .rax)
+				g.mov_reg_to_var(ident, .rax)
 			}
 			ast.Ident {
 				// eprintln('identr') dump(node) dump(right)
 				match node.op {
 					.plus_assign {
-						dest := g.get_var_offset(name)
-						g.mov_var_to_reg(.rax, dest)
-						g.add8_var(.rax, g.get_var_offset(right.name))
-						g.mov_reg_to_var(dest, .rax)
+						g.mov_var_to_reg(.rax, ident)
+						g.mov_var_to_reg(.rbx, right as ast.Ident)
+						g.add_reg(.rax, .rbx)
+						g.mov_reg_to_var(ident, .rax)
 					}
 					.minus_assign {
-						dest := g.get_var_offset(name)
-						g.mov_var_to_reg(.rax, dest)
-						g.mov_var_to_reg(.rbx, g.get_var_offset(right.name))
+						g.mov_var_to_reg(.rax, ident)
+						g.mov_var_to_reg(.rbx, right as ast.Ident)
 						g.sub_reg(.rax, .rbx)
-						g.mov_reg_to_var(dest, .rax)
+						g.mov_reg_to_var(ident, .rax)
 					}
 					.div_assign {
 						// this should be called when `a /= b` but it's not :?
-						dest := g.get_var_offset(name)
-						g.mov_var_to_reg(.rax, dest)
-						g.mov_var_to_reg(.rbx, g.get_var_offset(right.name))
+						g.mov_var_to_reg(.rax, ident)
+						g.mov_var_to_reg(.rbx, right as ast.Ident)
 						g.div_reg(.rax, .rbx)
-						g.mov_reg_to_var(dest, .rax)
+						g.mov_reg_to_var(ident, .rax)
 					}
 					.decl_assign {
-						dest := g.allocate_var(name, 8, 0)
-						g.mov_var_to_reg(.rax, g.get_var_offset(right.name))
-						g.mov_reg_to_var(dest, .rax)
+						g.allocate_var(name, g.get_sizeof_ident(ident), 0)
+						g.mov_var_to_reg(.rbx, right as ast.Ident)
+						g.mov_reg_to_var(ident, .rax)
 					}
 					.assign {
-						g.mov_var_to_reg(.rax, g.get_var_offset(right.name))
-						g.mov_reg_to_var(g.get_var_offset(name), .rax)
+						g.mov_var_to_reg(.rbx, right as ast.Ident)
+						g.mov_reg_to_var(ident, .rax)
 					}
 					else {
 						eprintln('TODO: unhandled assign ident case')
@@ -1411,13 +1708,13 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 					match e {
 						ast.IntegerLiteral {
 							g.mov(.rax, e.val.int())
-							g.mov_reg_to_var(pos, .rax)
+							g.mov_reg_to_var(LocalVar{pos, ast.i64_type_idx, ''}, .rax)
 							pos += 8
 						}
 						ast.StringLiteral {
 							// TODO: use learel
 							g.mov64(.rsi, g.allocate_string('$e.val', 2, .abs64)) // for rsi its 2
-							g.mov_reg_to_var(pos, .rsi)
+							g.mov_reg_to_var(LocalVar{pos, ast.u64_type_idx, ''}, .rsi)
 							pos += 8
 						}
 						else {
@@ -1429,40 +1726,40 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 			}
 			ast.IndexExpr {
 				// a := arr[0]
-				offset := g.allocate_var(name, 8, 0)
+				offset := g.allocate_var(name, g.get_sizeof_ident(ident), 0)
 				if g.pref.is_verbose {
 					println('infix assignment $name offset=$offset.hex2()')
 				}
 				ie := node.right[i] as ast.IndexExpr
-				var_name := ie.left.str()
-				mut dest := g.get_var_offset(var_name)
+				var := ie.left as ast.Ident
+				dest := g.get_var_offset(var.name)
 				if ie.index is ast.IntegerLiteral {
 					index := ie.index
-					dest += index.val.int() * 8
-					g.mov_var_to_reg(.rax, dest)
+					ie_offset := index.val.int() * 8
+					g.mov_var_to_reg(.rax, var, typ: ast.i64_type_idx, offset: ie_offset)
 				} else if ie.index is ast.Ident {
-					ident := ie.index
-					var_offset := g.get_var_offset(ident.name)
-					g.mov_var_to_reg(.edi, var_offset)
-					g.mov_var_to_reg(.rax, dest)
+					ie_ident := ie.index
+					g.lea_var_to_reg(.rax, dest)
+					g.mov_var_to_reg(.rdi, ie_ident)
 					g.add_reg(.rax, .rdi)
+					g.mov_deref(.rax, .rax)
 				} else {
 					g.n_error('only integers and idents can be used as indexes')
 				}
 				// TODO check if out of bounds access
-				g.mov_reg_to_var(offset, .eax)
+				g.mov_reg_to_var(ident, .eax)
 			}
 			ast.StringLiteral {
-				dest := g.allocate_var(name, 4, 0)
+				dest := g.allocate_var(name, 8, 0)
 				ie := node.right[i] as ast.StringLiteral
 				g.learel(.rsi, g.allocate_string(ie.val.str(), 3, .rel32))
-				g.mov_reg_to_var(dest, .rsi)
+				g.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, .rsi)
 			}
 			ast.CallExpr {
-				dest := g.allocate_var(name, 4, 0)
+				g.allocate_var(name, g.get_sizeof_ident(ident), 0)
 				g.call_fn(right)
-				g.mov_reg_to_var(dest, .rax)
-				g.mov_var_to_reg(.rsi, dest)
+				g.mov_reg_to_var(ident, .rax)
+				g.mov_var_to_reg(.rsi, ident)
 			}
 			ast.SelectorExpr {
 				g.v_error('unhandled selectors', node.pos)
@@ -1494,32 +1791,173 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 			}
 			else {
 				// dump(node)
-				g.v_error('unhandled assign_stmt expression: $right.type_name()', right.pos())
+				size := g.get_type_size(node.left_types[i])
+				if size !in [1, 2, 4, 8] || node.op !in [.assign, .decl_assign] {
+					g.v_error('unhandled assign_stmt expression: $right.type_name()',
+						right.pos())
+				}
+				if node.op == .decl_assign {
+					g.allocate_var(name, size, 0)
+				}
+				g.expr(right)
+				var := g.get_var_from_ident(ident)
+				match var {
+					LocalVar { g.mov_reg_to_var(var as LocalVar, .rax) }
+					GlobalVar { g.mov_reg_to_var(var as GlobalVar, .rax) }
+					Register { g.mov_reg(var as Register, .rax) }
+				}
 			}
 		}
 		// }
 	}
 }
 
-fn (mut g Gen) infix_expr(node ast.InfixExpr) {
-	// TODO
-	if node.left is ast.InfixExpr {
-		g.n_error('only simple expressions are supported right now (not more than 2 operands)')
-	}
-	match node.left {
-		ast.Ident {
-			g.mov_var_to_reg(.eax, g.get_var_offset(node.left.name))
+fn (mut g Gen) cset_op(op token.Kind) {
+	match op {
+		.gt {
+			g.cset(.g)
 		}
-		else {}
+		.lt {
+			g.cset(.l)
+		}
+		.ne {
+			g.cset(.ne)
+		}
+		.eq {
+			g.cset(.e)
+		}
+		.ge {
+			g.cset(.ge)
+		}
+		.le {
+			g.cset(.le)
+		}
+		else {
+			g.cset(.ne)
+		}
 	}
-	if node.right is ast.Ident {
-		var_offset := g.get_var_offset(node.right.name)
+}
+
+fn (mut g Gen) infix_expr(node ast.InfixExpr) {
+	/*
+	if node.left is ast.Ident && node.right is ast.Ident {
+		left := node.left as ast.Ident
+		right := node.right as ast.Ident
+		g.mov_var_to_reg(.eax, left)
+		var_offset := g.get_var_offset(right.name)
+		for {
+			match node.op {
+				.plus { g.add8_var(.eax, var_offset) }
+				.mul { g.mul8_var(.eax, var_offset) }
+				.div { g.div8_var(.eax, var_offset) }
+				.minus { g.sub8_var(.eax, var_offset) }
+				else { break }
+			}
+			return
+		}
+	}*/
+	if node.op in [.logical_or, .and] {
+		g.expr(node.left)
+		label := g.labels.new_label()
+		g.cmp_zero(.rax)
+		jump_addr := g.cjmp(if node.op == .logical_or { .jne } else { .je })
+		g.labels.patches << LabelPatch{
+			id: label
+			pos: jump_addr
+		}
+		g.expr(node.right)
+		g.labels.addrs[label] = g.pos()
+		return
+	} else {
+		g.expr(node.right)
+		// optimize for ast.Ident
+		match node.left {
+			ast.Ident {
+				g.mov_reg(match node.op {
+					.left_shift, .right_shift, .unsigned_right_shift, .div, .mod { .rcx }
+					else { .rdx }
+				}, .rax)
+				g.mov_var_to_reg(.rax, node.left as ast.Ident)
+			}
+			else {
+				g.push(.rax)
+				g.expr(node.left)
+				g.pop(match node.op {
+					.left_shift, .right_shift, .unsigned_right_shift, .div, .mod { .rcx }
+					else { .rdx }
+				})
+			}
+		}
+		if node.left_type !in ast.integer_type_idxs && node.left_type != ast.bool_type_idx {
+			g.n_error('unsupported type for `$node.op`: $node.left_type')
+		}
+		// left: rax, right: rdx
 		match node.op {
-			.plus { g.add8_var(.eax, var_offset) }
-			.mul { g.mul8_var(.eax, var_offset) }
-			.div { g.div8_var(.eax, var_offset) }
-			.minus { g.sub8_var(.eax, var_offset) }
-			else {}
+			.eq, .ne, .gt, .lt, .ge, .le {
+				g.cmp_reg(.rax, .rdx)
+				g.mov64(.rax, 0)
+				g.cset_op(node.op)
+			}
+			.plus {
+				g.add_reg(.rax, .rdx)
+			}
+			.minus {
+				g.sub_reg(.rax, .rdx)
+			}
+			.mul {
+				g.write32(0xc2af0f48)
+				g.println('imul rax, rdx')
+			}
+			.div {
+				if node.left_type in ast.unsigned_integer_type_idxs {
+					g.write8(0xba)
+					g.write32(0)
+					g.println('mov edx, 0')
+					g.write([u8(0x48), 0xf7, 0xf1])
+					g.println('div rcx')
+				} else {
+					g.write16(0x9948)
+					g.println('cqo')
+					g.write([u8(0x48), 0xf7, 0xf9])
+					g.println('idiv rcx')
+				}
+			}
+			.mod {
+				if node.left_type in ast.unsigned_integer_type_idxs {
+					g.write8(0xba)
+					g.write32(0)
+					g.println('mov edx, 0')
+					g.write([u8(0x48), 0xf7, 0xf1])
+					g.println('div rcx')
+				} else {
+					g.write16(0x9948)
+					g.println('cqo')
+					g.write([u8(0x48), 0xf7, 0xf9])
+					g.println('idiv rcx')
+				}
+				g.mov_reg(.rax, .rdx)
+			}
+			.amp {
+				g.bitand_reg(.rax, .rdx)
+			}
+			.pipe {
+				g.bitor_reg(.rax, .rdx)
+			}
+			.xor {
+				g.bitxor_reg(.rax, .rdx)
+			}
+			.left_shift {
+				g.shl_reg(.rax, .rcx)
+			}
+			.right_shift {
+				g.sar_reg(.rax, .rcx)
+			}
+			.unsigned_right_shift {
+				g.shr_reg(.rax, .rcx)
+			}
+			else {
+				g.n_error('`$node.op` expression is not supported right now')
+			}
 		}
 	}
 }
@@ -1700,7 +2138,7 @@ fn (mut g Gen) cjmp_op(op token.Kind) int {
 			g.cjmp(.jg)
 		}
 		.lt {
-			g.cjmp(.lt)
+			g.cjmp(.jl)
 		}
 		.ne {
 			g.cjmp(.jne)
@@ -1714,7 +2152,13 @@ fn (mut g Gen) cjmp_op(op token.Kind) int {
 	}
 }
 
-fn (mut g Gen) condition(infix_expr ast.InfixExpr, neg bool) int {
+fn (mut g Gen) condition(expr ast.Expr, neg bool) int {
+	// if infix_expr.op !in [.eq, .ne, .gt, .lt, .ge, .le] {
+	g.expr(expr)
+	g.cmp_zero(.rax)
+	return g.cjmp(if neg { .jne } else { .je })
+	//}
+	/*
 	match infix_expr.left {
 		ast.IntegerLiteral {
 			match infix_expr.right {
@@ -1731,7 +2175,7 @@ fn (mut g Gen) condition(infix_expr ast.InfixExpr, neg bool) int {
 				ast.Ident {
 					// 3 < var
 					// lit := infix_expr.right as ast.IntegerLiteral
-					// g.cmp_var(infix_expr.left.name, lit.val.int())
+					// g.cmp_var(infix_expr.left, lit.val.int())
 					// +not
 					g.n_error('unsupported if construction')
 				}
@@ -1745,7 +2189,7 @@ fn (mut g Gen) condition(infix_expr ast.InfixExpr, neg bool) int {
 				ast.IntegerLiteral {
 					// var < 4
 					lit := infix_expr.right as ast.IntegerLiteral
-					g.cmp_var(infix_expr.left.name, lit.val.int())
+					g.cmp_var(infix_expr.left as ast.Ident, lit.val.int())
 				}
 				ast.Ident {
 					// var < var2
@@ -1763,7 +2207,7 @@ fn (mut g Gen) condition(infix_expr ast.InfixExpr, neg bool) int {
 	}
 
 	// mut cjmp_addr := 0 // location of `jne *00 00 00 00*`
-	return if neg { g.cjmp_op(infix_expr.op) } else { g.cjmp_notop(infix_expr.op) }
+	return if neg { g.cjmp_op(infix_expr.op) } else { g.cjmp_notop(infix_expr.op) }*/
 }
 
 fn (mut g Gen) if_expr(node ast.IfExpr) {
@@ -1789,9 +2233,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				}
 				continue
 			}
-			infix_expr := branch.cond as ast.InfixExpr
+			expr := branch.cond
 			label := g.labels.new_label()
-			cjmp_addr := g.condition(infix_expr, false)
+			cjmp_addr := g.condition(expr, false)
 			g.labels.patches << LabelPatch{
 				id: label
 				pos: cjmp_addr
@@ -1862,13 +2306,12 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 		ast.Ident {
 			match infix_expr.right {
 				ast.Ident {
-					var_offset := g.get_var_offset(infix_expr.right.name)
-					g.mov_var_to_reg(.rax, var_offset)
-					g.cmp_var_reg(infix_expr.left.name, .rax)
+					g.mov_var_to_reg(.rax, infix_expr.right as ast.Ident)
+					g.cmp_var_reg(infix_expr.left as ast.Ident, .rax)
 				}
 				ast.IntegerLiteral {
 					lit := infix_expr.right as ast.IntegerLiteral
-					g.cmp_var(infix_expr.left.name, lit.val.int())
+					g.cmp_var(infix_expr.left as ast.Ident, lit.val.int())
 				}
 				else {
 					g.n_error('unhandled expression type')
@@ -1914,10 +2357,9 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 
 fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 	g.push(.rbp)
-	g.mov_rbp_rsp()
-	locals_count := node.scope.objects.len + node.params.len + node.defer_stmts.len
-	g.stackframe_size = (locals_count * 8) + 0x10
-	g.sub8(.rsp, g.stackframe_size)
+	g.mov_reg(.rbp, .rsp)
+	local_alloc_pos := g.pos()
+	g.sub(.rsp, 0)
 
 	// Copy values from registers to local vars (calling convention)
 	mut offset := 0
@@ -1927,7 +2369,14 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 		g.allocate_var(name, 4, 0)
 		// `mov DWORD PTR [rbp-0x4],edi`
 		offset += 4
-		g.mov_reg_to_var(offset, native.fn_arg_registers[i])
+		// TODO size
+		if i < 6 {
+			g.mov_reg_to_var(LocalVar{offset, ast.int_type_idx, name}, native.fn_arg_registers[i])
+		} else {
+			// &var = rbp + 16, 24, 32, ...
+			g.var_offset[name] = (4 - i) * 8
+			g.var_alloc_size[name] = 4
+		}
 	}
 	// define defer vars
 	for i in 0 .. node.defer_stmts.len {
@@ -1936,38 +2385,40 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 	}
 	//
 	g.stmts(node.stmts)
+	// 16 bytes align
+	g.stack_var_pos += 23
+	g.stack_var_pos /= 16
+	g.stack_var_pos *= 16
+	g.println('; stack frame size: $g.stack_var_pos')
+	g.write32_at(local_alloc_pos + 3, g.stack_var_pos)
 	is_main := node.name == 'main.main'
-	if is_main {
+	if is_main && g.pref.os != .linux {
 		// println('end of main: gen exit')
 		zero := ast.IntegerLiteral{}
 		g.gen_exit(zero)
 		g.ret()
 		return
 	}
-	// g.leave()
 	g.labels.addrs[0] = g.pos()
-	g.println('; label 0: return')
-	if g.defer_stmts.len != 0 {
-		// save return value
-		g.push(.rax)
-		for defer_stmt in g.defer_stmts.reverse() {
-			defer_var := g.get_var_offset('_defer$defer_stmt.idx_in_fn')
-			g.mov_var_to_reg(.rax, defer_var)
-			g.cmp_zero(.rax)
-			label := g.labels.new_label()
-			jump_addr := g.cjmp(.je)
-			g.labels.patches << LabelPatch{
-				id: label
-				pos: jump_addr
-			}
-			g.stmts(defer_stmt.stmts)
-			g.labels.addrs[label] = g.pos()
-		}
-		g.pop(.rax)
-	}
-	g.add8(.rsp, g.stackframe_size)
-	g.pop(.rbp)
-	g.ret()
+	g.leave()
+}
+
+pub fn (mut g Gen) builtin_decl_amd64(builtin BuiltinFn) {
+	g.push(.rbp)
+	g.mov_reg(.rbp, .rsp)
+	local_alloc_pos := g.pos()
+	g.sub(.rsp, 0)
+
+	builtin.body(builtin, mut g)
+	// 16 bytes align
+	g.stack_var_pos += 7
+	g.stack_var_pos /= 16
+	g.stack_var_pos *= 16
+	g.println('; stack frame size: $g.stack_var_pos')
+	g.write32_at(local_alloc_pos + 3, g.stack_var_pos)
+
+	g.labels.addrs[0] = g.pos()
+	g.leave()
 }
 
 /*
@@ -1987,33 +2438,41 @@ pub fn (mut g Gen) allocate_var(name string, size int, initial_val int) int {
 		// TODO
 		return 0
 	}
+	padding := (size - g.stack_var_pos % size) % size
+	n := g.stack_var_pos + size + padding
+	is_far_var := n > 0x80 || n < -0x7f
+	far_var_offset := if is_far_var { 0x40 } else { 0 }
 	// `a := 3`  => `mov DWORD [rbp-0x4],0x3`
 	match size {
 		1 {
 			// BYTE
 			g.write8(0xc6)
-			g.write8(0x45)
+			g.write8(0x45 + far_var_offset)
 		}
 		4 {
 			// DWORD
 			g.write8(0xc7)
-			g.write8(0x45)
+			g.write8(0x45 + far_var_offset)
 		}
 		8 {
 			// QWORD
 			g.write8(0x48)
 			g.write8(0xc7)
-			g.write8(0x45)
+			g.write8(0x45 + far_var_offset)
 		}
 		else {
 			g.n_error('allocate_var: bad size $size')
 		}
 	}
 	// Generate N in `[rbp-N]`
-	n := g.stack_var_pos + size
-	g.write8(0xff - n + 1)
-	g.stack_var_pos += size
+	if is_far_var {
+		g.write32(int((0xffffffff - i64(n) + 1) % 0x100000000))
+	} else {
+		g.write8((0xff - n + 1) % 0x100)
+	}
+	g.stack_var_pos += size + padding
 	g.var_offset[name] = g.stack_var_pos
+	g.var_alloc_size[name] = size
 
 	// Generate the value assigned to the variable
 	match size {
@@ -2036,9 +2495,13 @@ pub fn (mut g Gen) allocate_var(name string, size int, initial_val int) int {
 	return g.stack_var_pos
 }
 
-fn (mut g Gen) convert_int_to_string(r Register, buffer int) {
-	if r != .rax {
-		g.mov_reg(.rax, r)
+fn (mut g Gen) convert_int_to_string(r1 Register, r2 Register) {
+	if r1 != .rax {
+		g.mov_reg(.rax, r1)
+	}
+
+	if r2 != .rdi {
+		g.mov_reg(.rdi, r2)
 	}
 
 	// check if value in rax is zero
@@ -2052,7 +2515,13 @@ fn (mut g Gen) convert_int_to_string(r Register, buffer int) {
 	g.println('; jump to label $skip_zero_label')
 
 	// handle zeros seperately
-	g.mov_int_to_var(buffer, ._8, '0'[0])
+	// g.mov_int_to_var(LocalVar{buffer, ast.u8_type_idx, ''}, '0'[0])
+
+	g.write8(0xc6)
+	g.write8(0x07)
+	g.write8(0x30)
+	g.println("mov BYTE PTR [rdi], '0'")
+
 	end_label := g.labels.new_label()
 	end_jmp_addr := g.jmp(0)
 	g.labels.patches << LabelPatch{
@@ -2065,7 +2534,7 @@ fn (mut g Gen) convert_int_to_string(r Register, buffer int) {
 	g.println('; label $skip_zero_label')
 
 	// load a pointer to the string to rdi
-	g.lea_var_to_reg(.rdi, buffer)
+	// g.lea_var_to_reg(.rdi, buffer)
 
 	// detect if value in rax is negative
 	g.cmp_zero(.rax)
@@ -2078,13 +2547,17 @@ fn (mut g Gen) convert_int_to_string(r Register, buffer int) {
 	g.println('; jump to label $skip_minus_label')
 
 	// add a `-` sign as the first character
-	g.mov_int_to_var(buffer, ._8, '-'[0])
+	g.write8(0xc6)
+	g.write8(0x07)
+	g.write8(0x2d)
+	g.println("mov BYTE PTR [rdi], '-'")
+
 	g.neg(.rax) // negate our integer to make it positive
 	g.inc(.rdi) // increment rdi to skip the `-` character
 	g.labels.addrs[skip_minus_label] = g.pos()
 	g.println('; label $skip_minus_label')
 
-	g.mov_reg(.r12, .rdi) // copy the buffer position to rcx
+	g.mov_reg(.r12, .rdi) // copy the buffer position to r12
 
 	loop_label := g.labels.new_label()
 	loop_start := g.pos()
@@ -2125,7 +2598,9 @@ fn (mut g Gen) convert_int_to_string(r Register, buffer int) {
 	g.labels.addrs[loop_label] = loop_start
 
 	// after all was converted, reverse the string
-	g.reverse_string(.r12)
+	reg := g.get_builtin_arg_reg('reverse_string', 0)
+	g.mov_reg(reg, .r12)
+	g.call_builtin('reverse_string')
 
 	g.labels.addrs[end_label] = g.pos()
 	g.println('; label $end_label')
@@ -2178,4 +2653,77 @@ fn (mut g Gen) reverse_string(reg Register) {
 	g.write8(0xeb)
 	g.write8(0xf1)
 	g.println('jmp 0xf')
+}
+
+fn (mut g Gen) gen_match_expr_amd64(expr ast.MatchExpr) {
+	branch_labels := []int{len: expr.branches.len, init: g.labels.new_label() + it * 0} // call new_label for all elements in the array
+	end_label := g.labels.new_label()
+
+	if expr.is_sum_type {
+		// TODO
+	} else {
+		g.expr(expr.cond)
+	}
+	g.push(.rax)
+
+	mut else_label := 0
+	for i, branch in expr.branches {
+		if branch.is_else {
+			else_label = branch_labels[i]
+		} else {
+			for cond in branch.exprs {
+				match cond {
+					ast.RangeExpr {
+						g.pop(.rdx)
+						g.expr(cond.low)
+						g.cmp_reg(.rax, .rdx)
+						g.write([u8(0x0f), 0x9e, 0xc3])
+						g.println('setle bl')
+						g.expr(cond.high)
+						g.cmp_reg(.rax, .rdx)
+						g.write([u8(0x0f), 0x9d, 0xc1])
+						g.println('setge cl')
+						g.write([u8(0x20), 0xcb])
+						g.println('and bl, cl')
+						g.write([u8(0x84), 0xdb])
+						g.println('test bl, bl')
+						then_addr := g.cjmp(.jne)
+						g.labels.patches << LabelPatch{
+							id: branch_labels[i]
+							pos: then_addr
+						}
+						g.push(.rdx)
+					}
+					else {
+						g.expr(cond)
+						g.pop(.rdx)
+						g.cmp_reg(.rax, .rdx)
+						then_addr := g.cjmp(.je)
+						g.labels.patches << LabelPatch{
+							id: branch_labels[i]
+							pos: then_addr
+						}
+						g.push(.rdx)
+					}
+				}
+			}
+		}
+	}
+	g.pop(.rdx)
+	else_addr := g.jmp(0)
+	g.labels.patches << LabelPatch{
+		id: else_label
+		pos: else_addr
+	}
+	for i, branch in expr.branches {
+		g.labels.addrs[branch_labels[i]] = g.pos()
+		for stmt in branch.stmts {
+			g.stmt(stmt)
+		}
+		g.labels.patches << LabelPatch{
+			id: end_label
+			pos: g.jmp(0)
+		}
+	}
+	g.labels.addrs[end_label] = g.pos()
 }

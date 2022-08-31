@@ -1,0 +1,20 @@
+import os
+
+struct Dummy {}
+
+fn (d Dummy) sample2(file_name string) int {
+	println(file_name)
+	return 22
+}
+
+fn (d Dummy) sample1(file_name string) {
+	println(file_name)
+}
+
+fn main() {
+	$for method in Dummy.methods {
+		if os.args.len >= 1 {
+			println(Dummy{}.$method(os.args[0]))
+		}
+	}
+}

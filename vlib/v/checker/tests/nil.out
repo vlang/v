@@ -1,0 +1,6 @@
+vlib/v/checker/tests/nil.vv:2:11: error: `nil` is only allowed in `unsafe` code
+    1 | fn main() {
+    2 |     value := nil
+      |              ~~~
+    3 |     println(value)
+    4 | }

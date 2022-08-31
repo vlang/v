@@ -30,7 +30,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 	exp_is_result := expected_type.has_flag(.result)
 	mut expected_types := [expected_type]
 	if expected_type_sym.info is ast.MultiReturn {
-		expected_types = expected_type_sym.info.types
+		expected_types = expected_type_sym.info.types.clone()
 		if c.table.cur_concrete_types.len > 0 {
 			expected_types = expected_types.map(c.unwrap_generic(it))
 		}
@@ -104,7 +104,13 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 			c.error('cannot use `${c.table.type_to_str(got_typ)}` as type `${c.table.type_to_str(exp_type)}` in return argument',
 				pos)
 		}
-		if !c.check_types(got_typ, exp_type) {
+		if got_typ.has_flag(.result) && (!exp_type.has_flag(.result)
+			|| c.table.type_to_str(got_typ) != c.table.type_to_str(exp_type)) {
+			pos := node.exprs[expr_idxs[i]].pos()
+			c.error('cannot use `${c.table.type_to_str(got_typ)}` as type `${c.table.type_to_str(exp_type)}` in return argument',
+				pos)
+		}
+		if node.exprs[expr_idxs[i]] !is ast.ComptimeCall && !c.check_types(got_typ, exp_type) {
 			got_typ_sym := c.table.sym(got_typ)
 			mut exp_typ_sym := c.table.sym(exp_type)
 			if exp_typ_sym.kind == .interface_ {
@@ -115,6 +121,11 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 					}
 				}
 				continue
+			}
+			if got_typ_sym.kind == .function && exp_typ_sym.kind == .function {
+				if (got_typ_sym.info as ast.FnType).is_anon {
+					continue
+				}
 			}
 			pos := node.exprs[expr_idxs[i]].pos()
 			c.error('cannot use `$got_typ_sym.name` as type `${c.table.type_to_str(exp_type)}` in return argument',
@@ -144,7 +155,7 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 			if mut r_expr is ast.Ident {
 				if mut r_expr.obj is ast.Var {
 					mut obj := unsafe { &r_expr.obj }
-					if c.fn_scope != voidptr(0) {
+					if c.fn_scope != unsafe { nil } {
 						obj = c.fn_scope.find_var(r_expr.obj.name) or { obj }
 					}
 					if obj.is_stack_obj && !c.inside_unsafe {

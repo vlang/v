@@ -7,7 +7,8 @@ import v.token
 
 pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	mut elem_type := ast.void_type
-	// []string - was set in parser
+	// `x := []string{}` (the type was set in the parser)
+	// TODO type is not set for fixed arrays
 	if node.typ != ast.void_type {
 		if node.elem_type != 0 {
 			elem_sym := c.table.sym(node.elem_type)
@@ -20,6 +21,30 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 							node.elem_type_pos)
 					} else {
 						c.error('generic struct must specify type parameter, e.g. Foo<T>',
+							node.elem_type_pos)
+					}
+				}
+			} else if elem_sym.kind == .interface_ {
+				elem_info := elem_sym.info as ast.Interface
+				if elem_info.generic_types.len > 0 && elem_info.concrete_types.len == 0
+					&& !node.elem_type.has_flag(.generic) {
+					if c.table.cur_concrete_types.len == 0 {
+						c.error('generic interface must specify type parameter, e.g. Foo<int>',
+							node.elem_type_pos)
+					} else {
+						c.error('generic interface must specify type parameter, e.g. Foo<T>',
+							node.elem_type_pos)
+					}
+				}
+			} else if elem_sym.kind == .sum_type {
+				elem_info := elem_sym.info as ast.SumType
+				if elem_info.generic_types.len > 0 && elem_info.concrete_types.len == 0
+					&& !node.elem_type.has_flag(.generic) {
+					if c.table.cur_concrete_types.len == 0 {
+						c.error('generic sumtype must specify type parameter, e.g. Foo<int>',
+							node.elem_type_pos)
+					} else {
+						c.error('generic sumtype must specify type parameter, e.g. Foo<T>',
 							node.elem_type_pos)
 					}
 				}
@@ -54,7 +79,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 		c.ensure_type_exists(node.elem_type, node.elem_type_pos) or {}
 		if node.typ.has_flag(.generic) && !isnil(c.table.cur_fn)
 			&& c.table.cur_fn.generic_names.len == 0 {
-			c.error('generic struct cannot use in non-generic function', node.pos)
+			c.error('generic struct cannot be used in non-generic function', node.pos)
 		}
 
 		// &int{} check
@@ -67,6 +92,10 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 	if node.is_fixed {
 		c.ensure_sumtype_array_has_default_value(node)
 		c.ensure_type_exists(node.elem_type, node.elem_type_pos) or {}
+		if node.elem_type.is_any_kind_of_pointer() && !c.inside_unsafe && !c.is_builtin_mod {
+			c.warn('fixed arrays of references need to be initialized right away (unless inside `unsafe`)',
+				node.pos)
+		}
 	}
 	// a = []
 	if node.exprs.len == 0 {
@@ -172,7 +201,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			}
 		}
 		if node.is_fixed {
-			idx := c.table.find_or_register_array_fixed(elem_type, node.exprs.len, ast.empty_expr())
+			idx := c.table.find_or_register_array_fixed(elem_type, node.exprs.len, ast.empty_expr)
 			if elem_type.has_flag(.generic) {
 				node.typ = ast.new_type(idx).set_flag(.generic)
 			} else {

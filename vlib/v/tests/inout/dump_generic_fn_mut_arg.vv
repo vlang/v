@@ -1,0 +1,12 @@
+module main
+
+pub struct Reptile {}
+
+fn main() {
+	mut r := Reptile{}
+	do(mut r)
+}
+
+pub fn do<T>(mut t T) {
+	dump(t)
+}

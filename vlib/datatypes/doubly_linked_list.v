@@ -89,12 +89,12 @@ pub fn (mut list DoublyLinkedList<T>) pop_back() ?T {
 	if list.len == 1 {
 		// head == tail
 		value := list.tail.data
-		list.head = voidptr(0)
-		list.tail = voidptr(0)
+		list.head = unsafe { nil }
+		list.tail = unsafe { nil }
 		return value
 	}
 	value := list.tail.data
-	list.tail.prev.next = voidptr(0) // unlink tail
+	list.tail.prev.next = unsafe { nil } // unlink tail
 	list.tail = list.tail.prev
 	return value
 }
@@ -110,12 +110,12 @@ pub fn (mut list DoublyLinkedList<T>) pop_front() ?T {
 	if list.len == 1 {
 		// head == tail
 		value := list.head.data
-		list.head = voidptr(0)
-		list.tail = voidptr(0)
+		list.head = unsafe { nil }
+		list.tail = unsafe { nil }
 		return value
 	}
 	value := list.head.data
-	list.head.next.prev = voidptr(0) // unlink head
+	list.head.next.prev = unsafe { nil } // unlink head
 	list.head = list.head.next
 	return value
 }
@@ -249,27 +249,32 @@ pub fn (mut list DoublyLinkedList<T>) delete(idx int) {
 
 // str returns a string representation of the linked list
 pub fn (list DoublyLinkedList<T>) str() string {
+	return list.array().str()
+}
+
+// array returns a array representation of the linked list
+pub fn (list DoublyLinkedList<T>) array() []T {
 	mut result_array := []T{}
 	mut node := list.head
 	for unsafe { node != 0 } {
 		result_array << node.data
 		node = node.next
 	}
-	return result_array.str()
+	return result_array
 }
 
 // next implements the iter interface to use DoublyLinkedList with
 // V's for loop syntax.
 pub fn (mut list DoublyLinkedList<T>) next() ?T {
-	if list.iter == voidptr(0) {
+	if list.iter == unsafe { nil } {
 		// initialize new iter object
 		list.iter = &DoublyListIter<T>{
 			node: list.head
 		}
 		return list.next()
 	}
-	if list.iter.node == voidptr(0) {
-		list.iter = voidptr(0)
+	if list.iter.node == unsafe { nil } {
+		list.iter = unsafe { nil }
 		return none
 	}
 	defer {

@@ -79,7 +79,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			return ast.IfExpr{}
 		}
 		comments << p.eat_comments()
-		mut cond := ast.empty_expr()
+		mut cond := ast.empty_expr
 		mut is_guard := false
 
 		// if guard `if x,y := opt() {`
@@ -87,6 +87,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			p.open_scope()
 			is_guard = true
 			mut vars := []ast.IfGuardVar{}
+			mut var_names := []string{}
 			for {
 				mut var := ast.IfGuardVar{}
 				mut is_mut := false
@@ -97,6 +98,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 				var.is_mut = is_mut
 				var.pos = p.tok.pos()
 				var.name = p.check_name()
+				var_names << var.name
 
 				if p.scope.known_var(var.name) {
 					p.error_with_pos('redefinition of `$var.name`', var.pos)
@@ -115,7 +117,10 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 				p.error_with_pos('if guard condition expression is illegal, it should return optional',
 					expr.pos())
 			}
-
+			p.check_undefined_variables_by_names(var_names, expr) or {
+				p.error_with_pos(err.msg(), pos)
+				break
+			}
 			cond = ast.IfGuardExpr{
 				vars: vars
 				expr: expr
@@ -230,7 +235,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			is_else = true
 			p.next()
 		} else if (p.tok.kind == .name && !(p.tok.lit == 'C' && p.peek_tok.kind == .dot)
-			&& (((ast.builtin_type_names_matcher.find(p.tok.lit) > 0 || p.tok.lit[0].is_capital())
+			&& (((ast.builtin_type_names_matcher.matches(p.tok.lit) || p.tok.lit[0].is_capital())
 			&& p.peek_tok.kind != .lpar) || (p.peek_tok.kind == .dot && p.peek_token(2).lit.len > 0
 			&& p.peek_token(2).lit[0].is_capital()))) || p.is_only_array_type() {
 			mut types := []ast.Type{}
@@ -361,7 +366,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 		// final else
 		mut is_else := false
 		mut is_timeout := false
-		mut stmt := ast.empty_stmt()
+		mut stmt := ast.empty_stmt
 		if p.tok.kind == .key_else {
 			if has_timeout {
 				p.error_with_pos('timeout `> t` and `else` are mutually exclusive `select` keys',

@@ -77,7 +77,7 @@ fn (mut g Gen) get_str_fn(typ ast.Type) string {
 		}
 	}
 	if sym.has_method_with_generic_parent('str') && mut sym.info is ast.Struct {
-		str_fn_name = g.generic_fn_name(sym.info.concrete_types, str_fn_name, false)
+		str_fn_name = g.generic_fn_name(sym.info.concrete_types, str_fn_name)
 	}
 	g.str_types << StrType{
 		typ: unwrapped
@@ -151,7 +151,9 @@ fn (mut g Gen) final_gen_str(typ StrType) {
 			g.gen_str_for_thread(sym.info, styp, str_fn_name)
 		}
 		else {
-			verror('could not generate string method `$str_fn_name` for type `$styp`')
+			if sym.name != 'nil' {
+				verror('could not generate string method `$str_fn_name` for type `$styp`')
+			}
 		}
 	}
 }
@@ -539,10 +541,7 @@ fn (mut g Gen) gen_str_for_array(info ast.Array, styp string, str_fn_name string
 	field_styp := g.typ(typ)
 	is_elem_ptr := typ.is_ptr()
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
-	mut elem_str_fn_name := g.get_str_fn(typ)
-	if sym.kind == .u8 {
-		elem_str_fn_name = elem_str_fn_name + '_escaped'
-	}
+	elem_str_fn_name := g.get_str_fn(typ)
 
 	g.definitions.writeln('static string ${str_fn_name}($styp a); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp a) { return indent_${str_fn_name}(a, 0);}')
@@ -841,9 +840,23 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 		fn_builder.writeln('\treturn res;')
 		fn_builder.writeln('}')
 	}
-	fn_body.writeln('\tstring res = str_intp( ${info.fields.len * 4 + 3}, _MOV((StrIntpData[]){')
-	fn_body.writeln('\t\t{_SLIT("$clean_struct_v_type_name{\\n"), 0, {.d_c=0}},')
+	// find `[str: skip]` fields
+	mut field_skips := []int{}
 	for i, field in info.fields {
+		if attr := field.attrs.find_first('str') {
+			if attr.arg == 'skip' {
+				field_skips << i
+			}
+		}
+	}
+	fn_body.writeln('\tstring res = str_intp( ${(info.fields.len - field_skips.len) * 4 + 3}, _MOV((StrIntpData[]){')
+	fn_body.writeln('\t\t{_SLIT("$clean_struct_v_type_name{\\n"), 0, {.d_c=0}},')
+	mut is_first := true
+	for i, field in info.fields {
+		// Skip `str:skip` fields
+		if i in field_skips {
+			continue
+		}
 		ftyp_noshared := if field.typ.has_flag(.shared_f) {
 			field.typ.deref().clear_flag(.shared_f)
 		} else {
@@ -867,9 +880,10 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 			prefix = 'C'
 		}
 
-		// first fields doesn't need \n
-		if i == 0 {
+		if is_first {
+			// first field doesn't need \n
 			fn_body.write_string('\t\t{_SLIT0, $c.si_s_code, {.d_s=indents}}, {_SLIT("    $field.name: $ptr_amp$prefix"), 0, {.d_c=0}}, ')
+			is_first = false
 		} else {
 			fn_body.write_string('\t\t{_SLIT("\\n"), $c.si_s_code, {.d_s=indents}}, {_SLIT("    $field.name: $ptr_amp$prefix"), 0, {.d_c=0}}, ')
 		}
@@ -881,8 +895,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 		field_styp_fn_name := if sym_has_str_method {
 			mut field_fn_name := '${field_styp}_str'
 			if sym.info is ast.Struct {
-				field_fn_name = g.generic_fn_name(sym.info.concrete_types, field_fn_name,
-					false)
+				field_fn_name = g.generic_fn_name(sym.info.concrete_types, field_fn_name)
 			}
 			field_fn_name
 		} else {
@@ -908,7 +921,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 			funcprefix += 'isnil(it.${c_name(field.name)})'
 			funcprefix += ' ? _SLIT("nil") : '
 			// struct, floats and ints have a special case through the _str function
-			if sym.kind !in [.struct_, .alias] && !field.typ.is_int_valptr()
+			if sym.kind !in [.struct_, .alias, .enum_] && !field.typ.is_int_valptr()
 				&& !field.typ.is_float_valptr() {
 				funcprefix += '*'
 			}
@@ -950,7 +963,7 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, _field_type ast.Type, fn_name strin
 	sufix := if field_type.has_flag(.shared_f) { '->val' } else { '' }
 	deref, _ := deref_kind(expects_ptr, field_type.is_ptr(), field_type)
 	if sym.kind == .enum_ {
-		return '${fn_name}(${deref}it.${c_name(field_name)})', true
+		return '${fn_name}(${deref}(it.${c_name(field_name)}))', true
 	} else if should_use_indent_func(sym.kind) {
 		obj := '${deref}it.${c_name(field_name)}$sufix'
 		if has_custom_str {

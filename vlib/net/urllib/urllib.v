@@ -598,12 +598,11 @@ fn parse_host(host string) ?string {
 			host3 := unescape(host[i..], .encode_host) or { return err.msg() }
 			return host1 + host2 + host3
 		}
-		if idx := host.last_index(':') {
-			colon_port = host[idx..i]
-			if !valid_optional_port(colon_port) {
-				return error(error_msg('parse_host: invalid port $colon_port after host ',
-					''))
-			}
+	} else if i := host.last_index(':') {
+		colon_port := host[i..]
+		if !valid_optional_port(colon_port) {
+			return error(error_msg('parse_host: invalid port $colon_port after host ',
+				''))
 		}
 	}
 	h := unescape(host, .encode_host) or { return err.msg() }

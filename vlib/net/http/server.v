@@ -88,7 +88,9 @@ fn (mut s Server) parse_and_respond(mut conn net.TcpConn) {
 
 	mut reader := io.new_buffered_reader(reader: conn)
 	defer {
-		reader.free()
+		unsafe {
+			reader.free()
+		}
 	}
 	req := parse_request(mut reader) or {
 		$if debug {

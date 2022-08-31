@@ -16,6 +16,7 @@ mut:
 	indent   int    // indentation level
 	in_func  bool   // are we inside a new custom user function
 	line     string // the current line entered by the user
+	is_pin   bool   // does the repl 'pin' entered source code
 	//
 	modules         []string // all the import modules
 	alias           map[string]string // all the alias used in the import
@@ -68,6 +69,7 @@ fn repl_help() {
 	|reset                  Clears the accumulated program, so you can start a fresh.
 	|Ctrl-C, Ctrl-D, exit   Exits the REPL.
 	|clear                  Clears the screen.
+	|pin                    Pins the entered program to the top.
 '.strip_margin())
 }
 
@@ -152,7 +154,7 @@ fn (r &Repl) current_source_code(should_add_temp_lines bool, not_add_print bool)
 		if !not_add_print {
 			lines = r.vstartup_lines.filter(!it.starts_with('print'))
 		} else {
-			lines = r.vstartup_lines
+			lines = r.vstartup_lines.clone()
 		}
 		all_lines << lines
 	}
@@ -206,6 +208,18 @@ fn (mut r Repl) parse_import(line string) {
 			r.alias[mod] = alias
 		}
 	}
+}
+
+// clear the screen, then list source code
+fn (mut r Repl) pin() {
+	term.erase_clear()
+	r.list_source()
+}
+
+// print source code
+fn (mut r Repl) list_source() {
+	source_code := r.current_source_code(true, true)
+	println('\n${source_code.replace('\n\n', '\n')}')
 }
 
 fn highlight_console_command(command string) string {
@@ -349,8 +363,15 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			continue
 		}
 		if r.line == 'list' {
-			source_code := r.current_source_code(true, true)
-			println('\n${source_code.replace('\n\n', '\n')}')
+			r.list_source()
+			continue
+		}
+		if r.line == 'pin' {
+			r.is_pin = !r.is_pin
+			if r.is_pin {
+				r.pin()
+				println('')
+			}
 			continue
 		}
 		// Save the source only if the user is printing something,
@@ -451,6 +472,10 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 				for r.temp_lines.len > 0 {
 					r.temp_lines.delete(0)
 				}
+			}
+			if r.is_pin && !temp_flag {
+				r.pin()
+				println('')
 			}
 			print_output(s)
 		}

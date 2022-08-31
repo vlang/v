@@ -46,8 +46,9 @@ pub mut:
 	it_name            string // the name to replace `it` with
 	in_lambda_depth    int
 	inside_const       bool
+	inside_unsafe      bool
 	is_mbranch_expr    bool // match a { x...y { } }
-	fn_scope           &ast.Scope = voidptr(0)
+	fn_scope           &ast.Scope = unsafe { nil }
 	wsinfix_depth      int
 }
 
@@ -410,7 +411,7 @@ pub fn (mut f Fmt) node_str(node ast.Node) string {
 //=== General Stmt-related methods and helpers ===//
 
 pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
-	mut prev_stmt := if stmts.len > 0 { stmts[0] } else { ast.empty_stmt() }
+	mut prev_stmt := if stmts.len > 0 { stmts[0] } else { ast.empty_stmt }
 	f.indent++
 	for stmt in stmts {
 		if !f.pref.building_v && f.should_insert_newline_before_node(stmt, prev_stmt) {
@@ -438,7 +439,13 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.assign_stmt(node)
 		}
 		ast.Block {
-			f.block(node)
+			if node.is_unsafe {
+				f.inside_unsafe = true
+				f.block(node)
+				f.inside_unsafe = false
+			} else {
+				f.block(node)
+			}
 		}
 		ast.BranchStmt {
 			f.branch_stmt(node)
@@ -675,7 +682,9 @@ pub fn (mut f Fmt) expr(node_ ast.Expr) {
 			f.type_of(node)
 		}
 		ast.UnsafeExpr {
+			f.inside_unsafe = true
 			f.unsafe_expr(node)
+			f.inside_unsafe = false
 		}
 		ast.ComptimeType {
 			match node.kind {
@@ -703,7 +712,7 @@ fn expr_is_single_line(expr ast.Expr) bool {
 			}
 		}
 		ast.StructInit {
-			if !expr.is_short && (expr.fields.len > 0 || expr.pre_comments.len > 0) {
+			if !expr.no_keys && (expr.fields.len > 0 || expr.pre_comments.len > 0) {
 				return false
 			}
 		}
@@ -741,6 +750,10 @@ pub fn (mut f Fmt) assert_stmt(node ast.AssertStmt) {
 		expr = (expr as ast.ParExpr).expr
 	}
 	f.expr(expr)
+	if node.extra !is ast.EmptyExpr {
+		f.write(', ')
+		f.expr(node.extra)
+	}
 	f.writeln('')
 }
 
@@ -1147,12 +1160,12 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 	immut_fields := if node.mut_pos < 0 { node.fields } else { node.fields[..node.mut_pos] }
 	mut_fields := if node.mut_pos < 0 { []ast.StructField{} } else { node.fields[node.mut_pos..] }
 
-	mut immut_methods := node.methods
+	mut immut_methods := node.methods.clone()
 	mut mut_methods := []ast.FnDecl{}
 	for i, method in node.methods {
 		if method.params[0].is_mut {
-			immut_methods = node.methods[..i]
-			mut_methods = node.methods[i..]
+			immut_methods = node.methods[..i].clone()
+			mut_methods = node.methods[i..].clone()
 			break
 		}
 	}
@@ -1193,7 +1206,7 @@ pub fn (mut f Fmt) interface_field(field ast.StructField) {
 
 pub fn (mut f Fmt) interface_method(method ast.FnDecl) {
 	f.write('\t')
-	f.write(method.stringify(f.table, f.cur_mod, f.mod2alias).after('fn '))
+	f.write(method.stringify(f.table, f.cur_mod, f.mod2alias).all_after_first('fn '))
 	f.comments(method.comments, inline: true, has_nl: false, level: .indent)
 	f.writeln('')
 	f.comments(method.next_comments, inline: false, has_nl: true, level: .indent)
@@ -1756,7 +1769,21 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 }
 
 pub fn (mut f Fmt) cast_expr(node ast.CastExpr) {
-	f.write(f.table.type_to_str_using_aliases(node.typ, f.mod2alias) + '(')
+	typ := f.table.type_to_str_using_aliases(node.typ, f.mod2alias)
+	if typ == 'voidptr' {
+		// `voidptr(0)` => `nil`
+		if node.expr is ast.IntegerLiteral {
+			if node.expr.val == '0' {
+				if f.inside_unsafe {
+					f.write('nil')
+				} else {
+					f.write('unsafe { nil }')
+				}
+				return
+			}
+		}
+	}
+	f.write('${typ}(')
 	f.mark_types_import_as_used(node.typ)
 	f.expr(node.expr)
 	if node.has_arg {
@@ -1819,13 +1846,15 @@ pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
 			} else {
 				'${node.method_name}($inner_args)'
 			}
-			f.write('${node.left}.$$method_expr')
+			f.expr(node.left)
+			f.write('.$$method_expr')
 		}
 	}
 }
 
 pub fn (mut f Fmt) comptime_selector(node ast.ComptimeSelector) {
-	f.write('${node.left}.\$($node.field_expr)')
+	f.expr(node.left)
+	f.write('.\$($node.field_expr)')
 }
 
 pub fn (mut f Fmt) concat_expr(node ast.ConcatExpr) {
@@ -2027,16 +2056,21 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	f.expr(node.left)
 	is_one_val_array_init := node.op in [.key_in, .not_in] && node.right is ast.ArrayInit
 		&& (node.right as ast.ArrayInit).exprs.len == 1
+	is_and := node.op == .amp && f.node_str(node.right).starts_with('&')
 	if is_one_val_array_init {
 		// `var in [val]` => `var == val`
 		op := if node.op == .key_in { ' == ' } else { ' != ' }
 		f.write(op)
+	} else if is_and {
+		f.write(' && ')
 	} else {
 		f.write(' $node.op.str() ')
 	}
 	if is_one_val_array_init {
 		// `var in [val]` => `var == val`
 		f.expr((node.right as ast.ArrayInit).exprs[0])
+	} else if is_and {
+		f.write(f.node_str(node.right).trim_string_left('&'))
 	} else {
 		f.expr(node.right)
 	}

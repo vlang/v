@@ -25,13 +25,13 @@ pub mut:
 	reload_time_ms    int            // how much time the last reload took (compilation + loading)
 	last_mod_ts       i64            // a timestamp for when the original was last changed
 	recheck_period_ms int = 100 // how often do you want to check for changes
-	cb_recheck        FNLiveReloadCB = voidptr(0) // executed periodically
-	cb_compile_failed FNLiveReloadCB = voidptr(0) // executed when a reload compilation failed
-	cb_before         FNLiveReloadCB = voidptr(0) // executed before a reload try happens
-	cb_after          FNLiveReloadCB = voidptr(0) // executed after a reload try happened, even if failed
-	cb_locked_before  FNLiveReloadCB = voidptr(0) // executed before lib reload, in the mutex section
-	cb_locked_after   FNLiveReloadCB = voidptr(0) // executed after lib reload, in the mutex section
-	user_ptr          voidptr        = voidptr(0) // you can set it to anything, then retrieve it in the cb_ fns
+	cb_recheck        FNLiveReloadCB = unsafe { nil } // executed periodically
+	cb_compile_failed FNLiveReloadCB = unsafe { nil } // executed when a reload compilation failed
+	cb_before         FNLiveReloadCB = unsafe { nil } // executed before a reload try happens
+	cb_after          FNLiveReloadCB = unsafe { nil } // executed after a reload try happened, even if failed
+	cb_locked_before  FNLiveReloadCB = unsafe { nil } // executed before lib reload, in the mutex section
+	cb_locked_after   FNLiveReloadCB = unsafe { nil } // executed after lib reload, in the mutex section
+	user_ptr          voidptr        = unsafe { nil } // you can set it to anything, then retrieve it in the cb_ fns
 }
 
 // LiveReloadInfo.live_linkfn should be called by the reloader

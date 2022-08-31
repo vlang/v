@@ -1,18 +1,19 @@
-fn opt_err_with_code() ?string {
-	return error_with_code('hi', 137)
+// TODO: remove this after the deprecation period for `?Type` representing both Result and Option passes.
+fn opt_err_with_code(code int) ?string {
+	return error_with_code('hi', code)
 }
 
 fn test_err_with_code() {
-	if w := opt_err_with_code() {
+	if w := opt_err_with_code(137) {
 		assert false
 		_ := w
 	} else {
-		assert err.msg() == 'hi'
+		assert err.msg() == 'hi; code: 137'
 		assert err.code() == 137
 	}
-	v := opt_err_with_code() or {
-		assert err.msg() == 'hi'
-		assert err.code() == 137
+	v := opt_err_with_code(56) or {
+		assert err.msg() == 'hi; code: 56'
+		assert err.code() == 56
 		return
 	}
 	assert false

@@ -148,7 +148,7 @@ fn bare_backtrace() string {
 fn __exit(code int) {
 	unsafe {
 		// the only way to abort process execution in WASM
-		mut x := &int(voidptr(0))
+		mut x := &int(nil)
 		*x = code
 	}
 	for {}

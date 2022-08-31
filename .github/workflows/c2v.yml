@@ -4,12 +4,14 @@ on:
   push:
     paths-ignore:
       - "**.md"
+      - "**.yml"
       - "doc/**"
       - "examples/**"
       - "tutorials/**"
   pull_request:
     paths-ignore:
       - "**.md"
+      - "**.yml"
       - "doc/**"
       - "examples/**"
       - "tutorials/**"

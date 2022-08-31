@@ -21,7 +21,7 @@
 
 ## Key Features of V
 
-- Simplicity: the language can be learned in over a weekend
+- Simplicity: the language can be learned in a weekend
 - Fast compilation: ≈110k loc/s with a Clang backend,
     ≈1 million loc/s with native and tcc backends *(Intel i5-7500, SSD, no optimization)* ([demo video](https://www.youtube.com/watch?v=pvP6wmcl_Sc))
 - Easy to develop: V compiles itself in less than a second
@@ -174,7 +174,7 @@ v self
 
 ```bash
 $ v
-V 0.2.x
+V 0.3.x
 Use Ctrl-C or `exit` to exit
 
 >>> println('hello world')
@@ -286,7 +286,8 @@ Vinix is an OS/kernel that already runs bash, GCC, V, and nano.
 
 https://github.com/vlang/vinix
 
-<img src="https://github.com/vlang/vinix/raw/main/screenshot.png?raw=true">
+<img src="https://github.com/vlang/vinix/blob/main/screenshot0.png?raw=true">
+<img src="https://github.com/vlang/vinix/blob/main/screenshot1.png?raw=true">
 
 ## Acknowledgement
 

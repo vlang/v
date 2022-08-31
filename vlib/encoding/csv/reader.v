@@ -38,14 +38,14 @@ fn (err InvalidLineEndingError) msg() string {
 	return 'encoding.csv: could not find any valid line endings'
 }
 
-pub struct Reader {
+struct Reader {
 	// not used yet
 	// has_header        bool
 	// headings          []string
-	data string
-pub mut:
-	delimiter         u8
-	comment           u8
+	data      string
+	delimiter u8
+	comment   u8
+mut:
 	is_mac_pre_osx_le bool
 	row_pos           int
 }

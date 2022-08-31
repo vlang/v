@@ -34,9 +34,9 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		if p.tok.kind == .key_mut {
 			return p.error('`mut` is not needed in `for ;;` loops: use `for i := 0; i < n; i ++ {`')
 		}
-		mut init := ast.empty_stmt()
+		mut init := ast.empty_stmt
 		mut cond := p.new_true_expr()
-		mut inc := ast.empty_stmt()
+		mut inc := ast.empty_stmt
 		mut has_init := false
 		mut has_cond := false
 		mut has_inc := false
@@ -137,7 +137,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		// 0 .. 10
 		// start := p.tok.lit.int()
 		// TODO use RangeExpr
-		mut high_expr := ast.empty_expr()
+		mut high_expr := ast.empty_expr
 		mut is_range := false
 		if p.tok.kind == .dotdot {
 			is_range = true

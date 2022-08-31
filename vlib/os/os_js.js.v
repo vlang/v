@@ -29,6 +29,24 @@ pub fn is_link(path string) bool {
 	return res
 }
 
+struct PathKind {
+	is_dir  bool
+	is_link bool
+}
+
+fn kind_of_existing_path(path string) PathKind {
+	is_link := false
+	is_dir := false
+	$if js_node {
+		#is_link.val = $fs.existsSync(path.str) && $fs.lstatSync(path.str).isSymbolicLink()
+		#is_dir.val = $fs.existsSync(path,str) && $fs.lstatSync(path.str).isDirectory()
+	}
+	return PathKind{
+		is_dir: is_dir
+		is_link: is_link
+	}
+}
+
 pub fn exists(path string) bool {
 	res := false
 	$if js_node {

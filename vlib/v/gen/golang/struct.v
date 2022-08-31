@@ -132,7 +132,7 @@ pub fn (mut f Gen) struct_init(node ast.StructInit) {
 			f.write('}')
 		}
 		f.mark_import_as_used(name)
-	} else if node.is_short {
+	} else if node.no_keys {
 		// `Foo{1,2,3}` (short syntax )
 		f.write('$name{')
 		f.mark_import_as_used(name)

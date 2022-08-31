@@ -17,55 +17,11 @@ The language promotes writing simple and clear code with minimal abstraction.
 Despite being simple, V gives the developer a lot of power.
 Anything you can do in other languages, you can do in V.
 
-## Install from source
-The major way to get the latest and greatest V, is to __install it from source__.
-It is __easy__, and it usually takes __only a few seconds__.
+## Installing V from source
+The best way to get the latest and greatest V, is to install it from source.
+It is easy, and it takes only a few seconds:
 
-### Linux, macOS, FreeBSD, etc:
-You need `git`, and a C compiler like `tcc`, `gcc`, `icc` or `clang`, and `make`:
-```bash
-git clone https://github.com/vlang/v
-cd v
-make
-```
-See [here](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Linux-and-macOS)
-for how to install the development tools.
-
-### Windows:
-You need `git`, and a C compiler like `tcc`, `gcc`, `clang` or `msvc`:
-```bash
-git clone https://github.com/vlang/v
-cd v
-make.bat -tcc
-```
-NB: You can also pass one of `-gcc`, `-msvc`, `-clang`, to `make.bat` instead,
-if you do prefer to use a different C compiler, but -tcc is small, fast, and
-easy to install (V will download a prebuilt binary automatically).
-
-For C compiler downloads and more info, see
-[here](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows).
-
-It is recommended to add this folder to the PATH of your environment variables.
-This can be done with the command `v.exe symlink`.
-
-NB: Some antivirus programs (like Symantec) are paranoid about executables with
-1 letter names (like `v.exe`). One possible workaround in that situation is
-copying `v.exe` to `vlang.exe` (so that the copy is newer), or whitelisting the
-V folder in your antivirus program.
-
-### Android
-Running V graphical apps on Android is also possible via [vab](https://github.com/vlang/vab).
-
-V Android dependencies: **V**, **Java JDK** >= 8, Android **SDK + NDK**.
-
-  1. Install dependencies (see [vab](https://github.com/vlang/vab))
-  2. Connect your Android device
-  3. Run:
-  ```bash
-  git clone https://github.com/vlang/vab && cd vab && v vab.v
-  ./vab --device auto run /path/to/v/examples/sokol/particles
-  ```
-For more details and troubleshooting, please visit the [vab GitHub repository](https://github.com/vlang/vab).
+[https://github.com/vlang/v#installing-v](https://github.com/vlang/v#installing-v---from-source-preferred-method)
 
 ## Table of Contents
 
@@ -112,6 +68,7 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
     * [Variable number of arguments](#variable-number-of-arguments)
     * [Anonymous & higher-order functions](#anonymous--higher-order-functions)
     * [Closures](#closures)
+    * [Parameter evaluation order](#parameter-evaluation-order)
 * [References](#references)
 * [Constants](#constants)
 * [Builtin functions](#builtin-functions)
@@ -1316,6 +1273,9 @@ val2 := arr[333]?
 println(val2)
 ```
 
+Maps are ordered by insertion, like dictionaries in Python. The order is a
+guaranteed language feature. This may change in the future.
+
 ## Module imports
 
 For information about creating a module, see [Modules](#modules).
@@ -2130,6 +2090,31 @@ Private fields are available only inside the same [module](#modules), any attemp
 to directly access them from another module will cause an error during compilation.
 Public immutable fields are readonly everywhere.
 
+### Anonymous structs
+
+V supports anonymous structs: structs that don't have to be declared separately
+with a struct name.
+
+```v
+struct Book {
+	author struct  {
+		name string
+		age  int
+	}
+
+	title string
+}
+
+book := Book{
+	author: struct {
+		name: 'Samantha Black'
+		age: 24
+	}
+}
+assert book.author.name == 'Samantha Black'
+assert book.author.age == 24
+```
+
 ### Methods
 
 ```v
@@ -2542,6 +2527,23 @@ struct Node<T> {
 ```
 
 To dereference a reference, use the `*` operator, just like in C.
+
+### Parameter evaluation order
+
+The evaluation order of the parameters of function calls is *NOT* guaranteed.
+Take for example the following program:
+```v
+fn f(a1 int, a2 int, a3 int) {
+	dump(a1 + a2 + a3)
+}
+
+fn main() {
+	f(dump(100), dump(200), dump(300))
+}
+```
+V currently does not guarantee, that it will print 100, 200, 300 in that order.
+The only guarantee is that 600 (from the body of `f`), will be printed after all of them.
+That *may* change in V 1.0 .
 
 ## Constants
 
@@ -3435,7 +3437,7 @@ import net.http
 
 fn f(url string) ?string {
 	resp := http.get(url)?
-	return resp.text
+	return resp.body
 }
 ```
 
@@ -3450,7 +3452,7 @@ The body of `f` is essentially a condensed version of:
 
 ```v ignore
     resp := http.get(url) or { return err }
-    return resp.text
+    return resp.body
 ```
 
 ---
@@ -3494,7 +3496,7 @@ The fourth method is to use `if` unwrapping:
 import net.http
 
 if resp := http.get('https://google.com') {
-	println(resp.text) // resp is a http.Response, not an optional
+	println(resp.body) // resp is a http.Response, not an optional
 } else {
 	println(err)
 }
@@ -3620,6 +3622,11 @@ fn p(a f64, b f64) { // ordinary function without return value
 fn main() {
 	go p(3, 4)
 	// p will be run in parallel thread
+	// It can also be written as follows
+	// go fn (a f64, b f64) {
+	//	c := math.sqrt(a * a + b * b)
+	//	println(c)
+	// }(3, 4)
 }
 ```
 
@@ -4005,6 +4012,20 @@ the program will abort. Asserts should only be used to detect programming errors
 assert fails it is reported to *stderr*, and the values on each side of a comparison operator
 (such as `<`, `==`) will be printed when possible. This is useful to easily find an
 unexpected value. Assert statements can be used in any function.
+
+### Asserts with an extra message
+
+This form of the `assert` statement, will print the extra message when it fails. Note, that
+you can use any string expression there - string literals, functions returning a string,
+strings that interpolate variables, etc.
+
+```v
+fn test_assertion_with_extra_message_failure() {
+	for i in 0 .. 100 {
+		assert i * 2 - 45 < 75 + 10, 'assertion failed for i: $i'
+	}
+}
+```
 
 ### Test files
 
@@ -5356,7 +5377,8 @@ fn main() {
 
 If you want an `if` to be evaluated at compile time it must be prefixed with a `$` sign.
 Right now it can be used to detect an OS, compiler, platform or compilation options.
-`$if debug` is a special option like `$if windows` or `$if x32`.
+`$if debug` is a special option like `$if windows` or `$if x32`, it's enabled if the program
+is compiled with `v -g` or `v -cg`.
 If you're using a custom ifdef, then you do need `$if option ? {}` and compile with`v -d option`.
 Full list of builtin options:
 | OS                            | Compilers         | Platforms             | Other                     |
@@ -5812,7 +5834,7 @@ or
 ```shell
 v -os linux .
 ```
-NB: Cross-compiling a windows binary on a linux machine requires the GNU C compiler for 
+NB: Cross-compiling a windows binary on a linux machine requires the GNU C compiler for
 MinGW-w64 (targeting Win64) to first be installed.
 
 ```shell

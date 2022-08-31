@@ -348,7 +348,7 @@ fn test_shuffle() {
 	}
 	for digit in 0 .. 10 {
 		for idx in 0 .. 10 {
-			assert digits[digit][idx] > 10
+			assert digits[digit][idx] >= 10
 		}
 		// eprintln('digits[$digit]: ${digits[digit]}')
 	}

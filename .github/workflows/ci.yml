@@ -4,9 +4,11 @@ on:
   push:
     paths-ignore:
       - "**.md"
+      - "**.yml"
   pull_request:
     paths-ignore:
       - "**.md"
+      - "**.yml"
 
 concurrency:
   group: build-ci-${{ github.event.pull_request.number || github.sha }}
@@ -29,6 +31,7 @@ jobs:
           ## The following is needed for examples/wkhtmltopdf.v
           wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
           sudo apt-get install --quiet -y xfonts-75dpi xfonts-base
+          sudo apt-get install --quiet -y expect
           sudo dpkg -i wkhtmltox_0.12.6-1.focal_amd64.deb
       - name: Build v
         run: |
@@ -92,6 +95,11 @@ jobs:
           ./v2 -o v3 -usecache cmd/v
           ./v3 version
           ./v3 -o tetris  -usecache examples/tetris/tetris.v
+      - name: Test password input
+        run: |
+          ./v examples/password
+          ./v examples/password/password_ci.vsh
+
 
   ubuntu-tcc-boehm-gc:
     runs-on: ubuntu-20.04
@@ -239,6 +247,10 @@ jobs:
           ./v2 -o v3 -usecache cmd/v
           ./v3 version
           ./v3 -o tetris  -usecache examples/tetris/tetris.v
+      - name: Test password input
+        run: |
+          ./v examples/password
+          ./v examples/password/password_ci.vsh
 
   ubuntu:
     runs-on: ubuntu-20.04

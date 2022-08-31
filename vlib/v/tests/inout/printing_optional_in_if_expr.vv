@@ -1,0 +1,11 @@
+fn optional() ?int {
+	return 1
+}
+
+fn main() {
+	println(if true {
+		i32(optional() or { 2 })
+	} else {
+		i32(8)
+	})
+}

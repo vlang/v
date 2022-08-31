@@ -1,0 +1,26 @@
+module main
+
+type Fkt = fn (mut Alarm)
+
+struct Alarm {
+	x int
+}
+
+struct Clock {
+mut:
+	arr       []Alarm
+	alarm_fkt Fkt
+}
+
+fn fkt(mut a Alarm) {
+	println(a.x)
+}
+
+fn main() {
+	mut c := Clock{
+		alarm_fkt: fkt
+	}
+	c.arr << Alarm{}
+	mut last := c.arr.last()
+	c.alarm_fkt(last)
+}

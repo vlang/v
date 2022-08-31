@@ -1,6 +1,8 @@
 [translated]
 module main
 
-import math
-
-fn test_NotSnakeCaseFunction() {}
+fn test_NotSnakeCaseFunction() {
+	assert true
+	assert 8 == 2 * 4
+	assert 2 * 3 == 6
+}

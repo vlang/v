@@ -366,8 +366,7 @@ fn (t Tree) errors(errors []errors.Error) &Node {
 		obj.add_terse('message', t.string_node(e.message))
 		obj.add_terse('file_path', t.string_node(e.file_path))
 		obj.add('pos', t.pos(e.pos))
-		obj.add_terse('backtrace', t.string_node(e.backtrace))
-		obj.add_terse('reporter', t.enum_node(e.reporter))
+		obj.add('reporter', t.enum_node(e.reporter))
 		errs.add_item(obj)
 	}
 	return errs
@@ -377,8 +376,8 @@ fn (t Tree) warnings(warnings []errors.Warning) &Node {
 	mut warns := new_array()
 	for w in warnings {
 		mut obj := new_object()
-		obj.add('message', t.string_node(w.message))
-		obj.add('file_path', t.string_node(w.file_path))
+		obj.add_terse('message', t.string_node(w.message))
+		obj.add_terse('file_path', t.string_node(w.file_path))
 		obj.add('pos', t.pos(w.pos))
 		obj.add('reporter', t.enum_node(w.reporter))
 		warns.add_item(obj)
@@ -390,8 +389,8 @@ fn (t Tree) notices(notices []errors.Notice) &Node {
 	mut notice_array := new_array()
 	for n in notices {
 		mut obj := new_object()
-		obj.add('message', t.string_node(n.message))
-		obj.add('file_path', t.string_node(n.file_path))
+		obj.add_terse('message', t.string_node(n.message))
+		obj.add_terse('file_path', t.string_node(n.file_path))
 		obj.add('pos', t.pos(n.pos))
 		obj.add('reporter', t.enum_node(n.reporter))
 		notice_array.add_item(obj)
@@ -949,6 +948,10 @@ fn (t Tree) assert_stmt(node ast.AssertStmt) &Node {
 	obj.add_terse('ast_type', t.string_node('AssertStmt'))
 	obj.add_terse('expr', t.expr(node.expr))
 	obj.add_terse('is_used', t.bool_node(node.is_used))
+	if node.extra !is ast.EmptyExpr {
+		obj.add_terse('extra', t.expr(node.extra))
+		obj.add('extra_pos', t.pos(node.extra_pos))
+	}
 	obj.add('pos', t.pos(node.pos))
 	return obj
 }
@@ -1516,7 +1519,9 @@ fn (t Tree) struct_init(node ast.StructInit) &Node {
 	mut obj := new_object()
 	obj.add_terse('ast_type', t.string_node('StructInit'))
 	obj.add_terse('typ', t.type_node(node.typ))
-	obj.add_terse('is_short', t.bool_node(node.is_short))
+	obj.add_terse('no_keys', t.bool_node(node.no_keys))
+	obj.add_terse('is_short_syntax', t.bool_node(node.is_short_syntax))
+	obj.add_terse('is_anon', t.bool_node(node.is_anon))
 	obj.add_terse('unresolved', t.bool_node(node.unresolved))
 	obj.add_terse('has_update_expr', t.bool_node(node.has_update_expr))
 	obj.add_terse('update_expr', t.expr(node.update_expr))

@@ -16,6 +16,7 @@ const (
 		'/usr/share/pkgconfig',
 		'/opt/homebrew/lib/pkgconfig', // Brew on macOS
 		'/usr/local/libdata/pkgconfig', // FreeBSD
+		'/usr/lib/i386-linux-gnu/pkgconfig', // Debian 32bit
 	]
 	version       = '0.3.2'
 )

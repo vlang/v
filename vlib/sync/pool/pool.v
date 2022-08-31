@@ -7,7 +7,7 @@ import runtime
 fn C.atomic_fetch_add_u32(voidptr, u32) u32
 
 pub const (
-	no_result = voidptr(0)
+	no_result = unsafe { nil }
 )
 
 pub struct PoolProcessor {
@@ -48,7 +48,7 @@ pub fn new_pool_processor(context PoolProcessorConfig) &PoolProcessor {
 	mut pool := PoolProcessor{
 		items: []
 		results: []
-		shared_context: voidptr(0)
+		shared_context: unsafe { nil }
 		thread_contexts: []
 		njobs: context.maxjobs
 		ntask: 0

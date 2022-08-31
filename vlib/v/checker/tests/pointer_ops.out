@@ -1,56 +1,98 @@
-vlib/v/checker/tests/pointer_ops.vv:5:7: error: `+` cannot be used with `voidptr`
-    3 |     unsafe {
-    4 |         mut p := voidptr(0)
-    5 |         _ = p + 1
+vlib/v/checker/tests/pointer_ops.vv:7:7: error: `+` cannot be used with `voidptr`
+    5 |     unsafe {
+    6 |         mut p := voidptr(u64(0))
+    7 |         _ = p + 1
       |             ^
-    6 |         p++
-    7 |         p += 3
-vlib/v/checker/tests/pointer_ops.vv:6:4: error: invalid operation: ++ (non-numeric type `voidptr`)
-    4 |         mut p := voidptr(0)
-    5 |         _ = p + 1
-    6 |         p++
+    8 |         p++
+    9 |         p += 3
+vlib/v/checker/tests/pointer_ops.vv:8:4: error: invalid operation: ++ (non-numeric type `voidptr`)
+    6 |         mut p := voidptr(u64(0))
+    7 |         _ = p + 1
+    8 |         p++
       |          ~~
-    7 |         p += 3
-    8 |         _ = p - 1
-vlib/v/checker/tests/pointer_ops.vv:7:3: error: operator `+=` not defined on left operand type `voidptr`
-    5 |         _ = p + 1
-    6 |         p++
-    7 |         p += 3
+    9 |         p += 3
+   10 |         _ = p - 1
+vlib/v/checker/tests/pointer_ops.vv:9:3: error: operator `+=` not defined on left operand type `voidptr`
+    7 |         _ = p + 1
+    8 |         p++
+    9 |         p += 3
       |         ^
-    8 |         _ = p - 1
-    9 |         p--
-vlib/v/checker/tests/pointer_ops.vv:8:7: error: `-` cannot be used with `voidptr`
-    6 |         p++
-    7 |         p += 3
-    8 |         _ = p - 1
+   10 |         _ = p - 1
+   11 |         p--
+vlib/v/checker/tests/pointer_ops.vv:10:7: error: `-` cannot be used with `voidptr`
+    8 |         p++
+    9 |         p += 3
+   10 |         _ = p - 1
       |             ^
-    9 |         p--
-   10 |         p -= 3
-vlib/v/checker/tests/pointer_ops.vv:9:4: error: invalid operation: -- (non-numeric type `voidptr`)
-    7 |         p += 3
-    8 |         _ = p - 1
-    9 |         p--
+   11 |         p--
+   12 |         p -= 3
+vlib/v/checker/tests/pointer_ops.vv:11:4: error: invalid operation: -- (non-numeric type `voidptr`)
+    9 |         p += 3
+   10 |         _ = p - 1
+   11 |         p--
       |          ~~
-   10 |         p -= 3
-   11 |         _ = p[3]
-vlib/v/checker/tests/pointer_ops.vv:10:3: error: operator `-=` not defined on left operand type `voidptr`
-    8 |         _ = p - 1
-    9 |         p--
-   10 |         p -= 3
+   12 |         p -= 3
+   13 |         _ = p[3]
+vlib/v/checker/tests/pointer_ops.vv:12:3: error: operator `-=` not defined on left operand type `voidptr`
+   10 |         _ = p - 1
+   11 |         p--
+   12 |         p -= 3
       |         ^
-   11 |         _ = p[3]
-   12 |         mut foo := &Foo{}
-vlib/v/checker/tests/pointer_ops.vv:11:8: error: type `voidptr` does not support indexing
-    9 |         p--
-   10 |         p -= 3
-   11 |         _ = p[3]
+   13 |         _ = p[3]
+   14 |         mut foo := &Foo{}
+vlib/v/checker/tests/pointer_ops.vv:13:8: error: type `voidptr` does not support indexing
+   11 |         p--
+   12 |         p -= 3
+   13 |         _ = p[3]
       |              ~~~
-   12 |         mut foo := &Foo{}
-   13 |         foo % 3
-vlib/v/checker/tests/pointer_ops.vv:13:3: error: invalid operator `%` to `&Foo` and `int literal`
-   11 |         _ = p[3]
-   12 |         mut foo := &Foo{}
-   13 |         foo % 3
+   14 |         mut foo := &Foo{}
+   15 |         foo % 3
+vlib/v/checker/tests/pointer_ops.vv:15:3: error: invalid operator `%` to `&Foo` and `int literal`
+   13 |         _ = p[3]
+   14 |         mut foo := &Foo{}
+   15 |         foo % 3
       |         ~~~~~~~
-   14 |     }
-   15 | }
+   16 |     }
+   17 | }
+vlib/v/checker/tests/pointer_ops.vv:23:4: error: invalid operation: ++ (non-numeric type `voidptr`)
+   21 |         mut p := nil
+   22 |         _ = p + 1
+   23 |         p++
+      |          ~~
+   24 |         p += 3
+   25 |         _ = p - 1
+vlib/v/checker/tests/pointer_ops.vv:24:3: error: operator `+=` not defined on left operand type `nil`
+   22 |         _ = p + 1
+   23 |         p++
+   24 |         p += 3
+      |         ^
+   25 |         _ = p - 1
+   26 |         p--
+vlib/v/checker/tests/pointer_ops.vv:26:4: error: invalid operation: -- (non-numeric type `voidptr`)
+   24 |         p += 3
+   25 |         _ = p - 1
+   26 |         p--
+      |          ~~
+   27 |         p -= 3
+   28 |         _ = p[3]
+vlib/v/checker/tests/pointer_ops.vv:27:3: error: operator `-=` not defined on left operand type `nil`
+   25 |         _ = p - 1
+   26 |         p--
+   27 |         p -= 3
+      |         ^
+   28 |         _ = p[3]
+   29 |         mut foo := &Foo{}
+vlib/v/checker/tests/pointer_ops.vv:28:8: error: type `nil` does not support indexing
+   26 |         p--
+   27 |         p -= 3
+   28 |         _ = p[3]
+      |              ~~~
+   29 |         mut foo := &Foo{}
+   30 |         foo % 3
+vlib/v/checker/tests/pointer_ops.vv:30:3: error: invalid operator `%` to `&Foo` and `int literal`
+   28 |         _ = p[3]
+   29 |         mut foo := &Foo{}
+   30 |         foo % 3
+      |         ~~~~~~~
+   31 |     }
+   32 | }
