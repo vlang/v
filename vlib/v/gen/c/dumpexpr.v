@@ -14,7 +14,13 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 	}
 	dump_fn_name := '_v_dump_expr_$node.cname' + (if node.expr_type.is_ptr() { '_ptr' } else { '' })
 	g.write(' ${dump_fn_name}(${ctoslit(fpath)}, $line, $sexpr, ')
-	g.expr(node.expr)
+	if node.expr_type.has_flag(.shared_f) {
+		g.write('&')
+		g.expr(node.expr)
+		g.write('->val')
+	} else {
+		g.expr(node.expr)
+	}
 	g.write(' )')
 }
 
@@ -27,7 +33,7 @@ fn (mut g Gen) dump_expr_definitions() {
 		_, str_method_expects_ptr, _ := dump_sym.str_method_info()
 		is_ptr := ast.Type(dump_type).is_ptr()
 		deref, _ := deref_kind(str_method_expects_ptr, is_ptr, dump_type)
-		to_string_fn_name := g.get_str_fn(dump_type)
+		to_string_fn_name := g.get_str_fn(ast.Type(dump_type).clear_flag(.shared_f))
 		ptr_asterisk := if is_ptr { '*' } else { '' }
 		mut str_dumparg_type := '$cname$ptr_asterisk'
 		if dump_sym.kind == .function {
