@@ -14,4 +14,5 @@ freebsd_task:
     echo 'Build cmd/tools/fast'
     cd cmd/tools/fast && ../../../v fast.v && ./fast -clang
     echo 'Run test-self'
+    cd /tmp/cirrus-ci-build/v
     VTEST_JUST_ESSENTIAL=1 ./v test-self
