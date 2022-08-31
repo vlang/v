@@ -65,8 +65,6 @@ jobs:
         run: ./v test-self
       # - name: Self tests (-cstrict)
       #   run: V_CI_CSTRICT=1 ./v -cstrict test-self
-      - name: Test vlib
-        run: ./v test vlib/v/tests
       - name: Test time functions in a timezone UTC-12
         run: TZ=Etc/GMT+12 ./v test vlib/time/
       - name: Test time functions in a timezone UTC-3

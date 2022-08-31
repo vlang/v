@@ -11,7 +11,7 @@ freebsd_task:
     make
     ##.github/workflows/freebsd_build_tcc.sh
     ##tcc -v -v
-    echo 'Run vlib tests'
-    ./v test vlib/v/tests
     echo 'Build cmd/tools/fast'
     cd cmd/tools/fast && ../../../v fast.v && ./fast -clang
+    echo 'Run test-self'
+    VTEST_JUST_ESSENTIAL=1 ./v test-self
