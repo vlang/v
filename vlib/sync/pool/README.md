@@ -12,7 +12,7 @@ for each input item. Example:
 ```v
 import sync.pool
 
-struct SResult {
+pub struct SResult {
 	s string
 }
 
