@@ -2367,7 +2367,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	from_sym := c.table.sym(from_type)
 	final_from_sym := c.table.final_sym(from_type)
 
-	mut to_type := node.typ
+	mut to_type := c.unwrap_generic(node.typ)
 	mut to_sym := c.table.sym(to_type) // type to be used as cast
 	mut final_to_sym := c.table.final_sym(to_type)
 
@@ -2597,8 +2597,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			}
 		}
 	}
-	node.typname = c.table.sym(to_type).name
-	return to_type
+	node.typname = c.table.sym(node.typ).name
+	return node.typ
 }
 
 fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {

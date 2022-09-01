@@ -43,7 +43,7 @@ fn string_array_to_map(a []string) map[string]bool {
 	return res
 }
 
-struct Gen {
+pub struct Gen {
 	pref                &pref.Preferences
 	field_data_type     ast.Type // cache her to avoid map lookups
 	module_built        string
