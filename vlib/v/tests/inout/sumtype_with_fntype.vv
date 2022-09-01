@@ -1,5 +1,4 @@
 type Fn = fn () int | fn (int) int
-<<<<<<< HEAD
 
 fn abc(n int) Fn {
 	if n == 1 {
@@ -44,17 +43,4 @@ fn main() {
 		}
 		else {}
 	}
-=======
-
-fn main() {
-	f1 := Fn(fn (a int) int {
-		return a
-	})
-	println(typeof(f1).name)
-
-	f2 := Fn(fn () int {
-		return 22
-	})
-	println(typeof(f2).name)
->>>>>>> improved docs and making it possible to customize csrf-cookie's http-only-status. Default will be true.
 }
