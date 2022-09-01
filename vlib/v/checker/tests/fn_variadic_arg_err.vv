@@ -1,0 +1,10 @@
+module main
+
+fn main() {
+	a := [u8(1), 2, 3, 4]
+	varg_fn_a(a)
+}
+
+fn varg_fn_a(b ...u8) {
+	println(b)
+}
