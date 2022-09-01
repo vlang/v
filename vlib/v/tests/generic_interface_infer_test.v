@@ -14,7 +14,7 @@ interface Interface<T> {
 fn test_infer_generic_interface() {
 	s := Struct<u32>{7, 5}
 	println(s)
-	i := Interface(s)
+	i := Interface<u32>(s)
 	println(i)
 	assert i.method() == 10
 }

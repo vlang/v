@@ -140,7 +140,7 @@ fn worker_for_string_content(p &pool.PoolProcessor, idx int, worker_id int) &Sig
 	return sr
 }
 
-struct SignResult {
+pub struct SignResult {
 mut:
 	item   string
 	result bool
