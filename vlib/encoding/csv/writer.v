@@ -14,8 +14,8 @@ mut:
 
 [params]
 pub struct WriterConfig {
-	use_crlf  bool = false
-	delimiter u8   = `,`
+	use_crlf  bool
+	delimiter u8 = `,`
 }
 
 // new_writer returns a reference to a Writer
