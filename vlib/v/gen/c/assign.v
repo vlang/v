@@ -339,7 +339,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					''
 				}
 
-				g.write('$ret_styp ($msvc_call_conv*${c_name(g.get_ternary_name(ident.name))}) (')
+				fn_name := c_name(g.get_ternary_name(ident.name))
+				g.write('$ret_styp ($msvc_call_conv*$fn_name) (')
 				def_pos := g.definitions.len
 				g.fn_decl_params(func.func.params, unsafe { nil }, false)
 				g.definitions.go_back(g.definitions.len - def_pos)
