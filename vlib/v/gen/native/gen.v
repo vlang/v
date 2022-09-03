@@ -51,6 +51,7 @@ mut:
 	labels               &LabelTable
 	defer_stmts          []ast.DeferStmt
 	builtins             map[string]BuiltinFn
+	structs              []Struct
 	// macho specific
 	macho_ncmds   int
 	macho_cmdsize int
@@ -98,6 +99,11 @@ fn (mut l LabelTable) new_label() int {
 	l.label_id++
 	l.addrs << 0
 	return l.label_id
+}
+
+struct Struct {
+mut:
+	offsets []int
 }
 
 enum Size {
@@ -209,10 +215,12 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 			exit(1)
 		}
 		labels: 0
+		structs: []Struct{len: table.type_symbols.len}
 	}
 	g.code_gen.g = g
 	g.generate_header()
 	g.init_builtins()
+	g.calculate_all_size_align()
 	for file in files {
 		/*
 		if file.warnings.len > 0 {
@@ -308,6 +316,16 @@ pub fn (mut g Gen) link(obj_name string) {
 		else {
 			g.n_error('native linking is not implemented for $g.pref.os')
 		}
+	}
+}
+
+pub fn (mut g Gen) calculate_all_size_align() {
+	for mut ts in g.table.type_symbols {
+		if ts.idx == 0 {
+			continue
+		}
+		ts.size = g.get_type_size(ast.new_type(ts.idx))
+		ts.align = g.get_type_align(ast.new_type(ts.idx))
 	}
 }
 
@@ -421,7 +439,12 @@ fn (mut g Gen) get_var_offset(var_name string) int {
 	return r
 }
 
+// get type size, and calculate size and align and store them to the cache when the type is struct 
 fn (mut g Gen) get_type_size(typ ast.Type) int {
+	// TODO type flags
+	if typ.is_real_pointer() {
+		return 8
+	}
 	if typ in ast.number_type_idxs {
 		return match typ {
 			ast.i8_type_idx { 1 }
@@ -443,13 +466,50 @@ fn (mut g Gen) get_type_size(typ ast.Type) int {
 			else { 8 }
 		}
 	}
-	if typ in ast.pointer_type_idxs {
-		return 8
-	}
-	if typ == ast.bool_type_idx {
+	if typ.is_bool() {
 		return 1
 	}
+	ts := g.table.sym(typ)
+	if ts.size != -1 {
+		return ts.size
+	}
+	mut size := 0
+	mut align := 1
+	mut strc := Struct{}
+	match ts.info {
+		ast.Struct {
+			for f in ts.info.fields {
+				f_size := g.get_type_size(f.typ)
+				f_align := g.get_type_align(f.typ)
+				padding := (f_align - size % f_align) % f_align
+				strc.offsets << size + padding
+				size += f_size + padding
+				if f_align > align {
+					align = f_align
+				}
+			}
+		}
+		else {}
+	}
+	mut ts_ := g.table.sym(typ)
+	ts_.size = size
+	ts_.align = align
+	g.structs[typ.idx()] = strc
 	// g.n_error('unknown type size')
+	return 0
+}
+
+fn (mut g Gen) get_type_align(typ ast.Type) int {
+	// also calculate align of a struct
+	size := g.get_type_size(typ)
+	if typ in ast.number_type_idxs || typ.is_real_pointer() || typ.is_bool() {
+		return size
+	}
+	ts := g.table.sym(typ)
+	if ts.align != -1 {
+		return ts.align
+	}
+	// g.n_error('unknown type align')
 	return 0
 }
 
