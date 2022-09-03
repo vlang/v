@@ -832,8 +832,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 	}
 
-	if left_sym.kind == .map && node.name == 'delete' {
-		left_info := left_sym.info as ast.Map
+	if final_left_sym.kind == .map && node.name == 'delete' {
+		left_info := final_left_sym.info as ast.Map
 		elem_type_str := g.typ(left_info.key_type)
 		g.write('map_delete(')
 		if left_type.has_flag(.shared_f) {

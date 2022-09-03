@@ -980,3 +980,16 @@ fn test_map_set_fixed_array_variable() {
 	println(m2)
 	assert '$m2' == "{'A': [1.1, 2.2]}"
 }
+
+type Map = map[int]int
+
+fn test_alias_of_map_delete() {
+	mut m := Map(map[int]int{})
+	m[11] = 111
+	m[22] = 222
+	println(m)
+	m.delete(11)
+	println(m)
+	assert m.len == 1
+	assert m[22] == 222
+}
