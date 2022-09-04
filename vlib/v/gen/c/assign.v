@@ -155,7 +155,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				}
 				// if it's a decl assign (`:=`) or a blank assignment `_ =`/`_ :=` then generate `void (*ident) (args) =`
 				if (is_decl || blank_assign) && left is ast.Ident {
-					sig := g.fn_var_signature(val.decl.return_type, val.decl.params, ident.name)
+					sig := g.fn_var_signature(val.decl.return_type, val.decl.params.map(it.typ),
+						ident.name)
 					g.write(sig + ' = ')
 				} else {
 					g.is_assign_lhs = true
