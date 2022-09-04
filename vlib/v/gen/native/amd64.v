@@ -495,10 +495,16 @@ fn (mut g Gen) movabs(reg Register, val i64) {
 	g.println('movabs $reg, $val')
 }
 
-fn (mut g Gen) mov_deref(reg Register, regptr Register) {
-	g.write8(0x48 + int(reg) / 8 * 4 + int(regptr) / 8)
-	g.write8(0x8b)
+fn (mut g Gen) mov_deref(reg Register, regptr Register, size Size) {
+	if size == ._16 {
+		g.write8(0x66)
+	}
+	if size == ._64 {
+		g.write8(0x48 + int(reg) / 8 * 4 + int(regptr) / 8)
+	}
+	g.write8(if size == ._8 { 0x8a } else { 0x8b })
 	g.write8(int(reg) % 8 * 8 + int(regptr) % 8)
+	g.println('mov $reg, [$reg]')
 }
 
 fn (mut g Gen) mov_reg_to_var(var Var, reg Register, config VarConfig) {
@@ -1743,7 +1749,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 					g.lea_var_to_reg(.rax, dest)
 					g.mov_var_to_reg(.rdi, ie_ident)
 					g.add_reg(.rax, .rdi)
-					g.mov_deref(.rax, .rax)
+					g.mov_deref(.rax, .rax, ._64)
 				} else {
 					g.n_error('only integers and idents can be used as indexes')
 				}
@@ -1761,9 +1767,6 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 				g.call_fn(right)
 				g.mov_reg_to_var(ident, .rax)
 				g.mov_var_to_reg(.rsi, ident)
-			}
-			ast.SelectorExpr {
-				g.v_error('unhandled selectors', node.pos)
 			}
 			ast.GoExpr {
 				g.v_error('threads not implemented for the native backend', node.pos)
@@ -2559,8 +2562,12 @@ fn (mut g Gen) init_struct(var Var, init ast.StructInit) {
 				g.mov_int_to_var(var, 0, offset: size - left, typ: ast.i8_type_idx)
 			}
 
+			ts := g.table.sym(var.typ)
 			for f in init.fields {
-				offset := g.get_field_offset(var.typ, f.name)
+				field := ts.find_field(f.name) or {
+					g.n_error('Could not find field `$f.name` on init')
+				}
+				offset := g.structs[var.typ.idx()].offsets[field.i]
 
 				g.expr(f.expr)
 				// TODO expr not on rax

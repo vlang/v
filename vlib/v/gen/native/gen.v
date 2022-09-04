@@ -439,12 +439,12 @@ fn (mut g Gen) get_var_offset(var_name string) int {
 	return r
 }
 
-fn (mut g Gen) get_field_offset(typ ast.Type, name string) {
+fn (mut g Gen) get_field_offset(typ ast.Type, name string) int {
 	ts := g.table.sym(typ)
 	field := ts.find_field(name) or {
-		g.n_error('Could not find field `$f.name` on init')
+		g.n_error('Could not find field `$name` on init')
 	}
-	offset := g.structs[typ.idx()].offsets[field.i]
+	return g.structs[typ.idx()].offsets[field.i]
 }
 
 // get type size, and calculate size and align and store them to the cache when the type is struct 
@@ -1096,8 +1096,28 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.FloatLiteral {}
 		ast.Ident {
+			var := g.get_var_from_ident(node)
 			// XXX this is intel specific
-			g.mov_var_to_reg(.rax, node as ast.Ident)
+			match var {
+				LocalVar {
+					if var.typ.is_number() || var.typ.is_real_pointer() || var.typ.is_bool() {
+						g.mov_var_to_reg(.rax, node as ast.Ident)
+					} else {
+						ts := g.table.sym(var.typ)
+						match ts.info {
+							ast.Struct {
+								g.lea_var_to_reg(.rax, g.get_var_offset(node.name))
+							}
+							else {
+								g.n_error('Unsupported variable type')
+							}
+						}
+					}
+				}
+				else {
+					g.n_error('Unsupported variable kind')
+				}
+			}
 		}
 		ast.IfExpr {
 			if node.is_comptime {
@@ -1121,12 +1141,28 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.StringLiteral {
 			g.allocate_string(node.val, 3, .rel32)
 		}
-		ast.StructInit {}
+		ast.StructInit {
+			pos := g.allocate_struct('_anonstruct', node)
+			g.lea_var_to_reg(.rax, pos)
+		}
 		ast.GoExpr {
 			g.v_error('native backend doesnt support threads yet', node.pos)
 		}
 		ast.MatchExpr {
 			g.gen_match_expr(node)
+		}
+		ast.SelectorExpr {
+			g.expr(node.expr)
+			offset := g.get_field_offset(node.expr_type, node.field_name)
+			g.add(.rax, offset)
+			size := match g.get_type_size(node.typ) {
+				1 { Size._8 }
+				2 { Size._16 }
+				4 { Size._32 }
+				8 { Size._64 }
+				else { Size._64 }
+			}
+			g.mov_deref(.rax, .rax, size)
 		}
 		else {
 			g.n_error('expr: unhandled node type: $node.type_name()')
