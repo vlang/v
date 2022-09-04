@@ -1682,13 +1682,120 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 						g.mov_reg_to_var(ident, .rax)
 					}
 					.decl_assign {
-						g.allocate_var(name, g.get_sizeof_ident(ident), 0)
-						g.mov_var_to_reg(.rbx, right as ast.Ident)
-						g.mov_reg_to_var(ident, .rax)
+						typ := node.left_types[i]
+						if typ.is_number() || typ.is_real_pointer() || typ.is_bool() {
+							g.allocate_var(name, g.get_type_size(typ), 0)
+						} else {
+							ts := g.table.sym(typ)
+							match ts.info {
+								ast.Struct {
+									g.allocate_struct(name, typ)
+								}
+								else {}
+							}
+						}
+						var_ := g.get_var_from_ident(ident)
+						// TODO global var
+						right_var := g.get_var_from_ident(right) as LocalVar
+						match var_ {
+							LocalVar {
+								var := var_ as LocalVar
+								if var.typ.is_number() || var.typ.is_real_pointer() || var.typ.is_bool() {
+									g.mov_var_to_reg(.rax, right as ast.Ident)
+									g.mov_reg_to_var(ident, .rax)
+								} else {
+									ts := g.table.sym(var.typ)
+									match ts.info {
+										ast.Struct {
+											size := g.get_type_size(var.typ)
+											if size >= 8 {
+												for offset in 0..size/8 {
+													g.mov_var_to_reg(.rax, right_var, offset: offset*8, typ: ast.i64_type_idx)
+													g.mov_reg_to_var(var, .rax, offset: offset*8, typ: ast.i64_type_idx)
+												}
+												if size % 8 != 0 {
+													g.mov_var_to_reg(.rax, right_var, offset: size - 8, typ: ast.i64_type_idx)
+													g.mov_reg_to_var(var, .rax, offset: size - 8, typ: ast.i64_type_idx)
+												}
+											} else {
+												mut left_size := if size >= 4 {
+													g.mov_var_to_reg(.rax, right_var, typ: ast.int_type_idx)
+													g.mov_reg_to_var(var, .rax, typ: ast.int_type_idx)
+													size - 4
+												} else { size }
+												if left_size >= 2 {
+													g.mov_var_to_reg(.rax, right_var, offset: size - left_size, typ: ast.i16_type_idx)
+													g.mov_reg_to_var(var, .rax, offset: size - left_size, typ: ast.i16_type_idx)
+													left_size -= 2
+												}
+												if left_size == 1 {
+													g.mov_var_to_reg(.rax, right_var, offset: size - left_size, typ: ast.i8_type_idx)
+													g.mov_reg_to_var(var, .rax, offset: size - left_size, typ: ast.i8_type_idx)
+												}
+											}
+										}
+										else {
+											g.n_error('Unsupported variable type')
+										}
+									}
+								}
+							}
+							else {
+								g.n_error('Unsupported variable kind')
+							}
+						}
 					}
 					.assign {
-						g.mov_var_to_reg(.rbx, right as ast.Ident)
-						g.mov_reg_to_var(ident, .rax)
+						var_ := g.get_var_from_ident(ident)
+						// TODO global var
+						right_var := g.get_var_from_ident(right) as LocalVar
+						match var_ {
+							LocalVar {
+								var := var_ as LocalVar
+								if var.typ.is_number() || var.typ.is_real_pointer() || var.typ.is_bool() {
+									g.mov_var_to_reg(.rax, right as ast.Ident)
+									g.mov_reg_to_var(ident, .rax)
+								} else {
+									ts := g.table.sym(var.typ)
+									match ts.info {
+										ast.Struct {
+											size := g.get_type_size(var.typ)
+											if size >= 8 {
+												for offset in 0..size/8 {
+													g.mov_var_to_reg(.rax, right_var, offset: offset*8, typ: ast.i64_type_idx)
+													g.mov_reg_to_var(var, .rax, offset: offset*8, typ: ast.i64_type_idx)
+												}
+												if size % 8 != 0 {
+													g.mov_var_to_reg(.rax, right_var, offset: size - 8, typ: ast.i64_type_idx)
+													g.mov_reg_to_var(var, .rax, offset: size - 8, typ: ast.i64_type_idx)
+												}
+											} else {
+												mut left_size := if size >= 4 {
+													g.mov_var_to_reg(.rax, right_var, typ: ast.int_type_idx)
+													g.mov_reg_to_var(var, .rax, typ: ast.int_type_idx)
+													size - 4
+												} else { size }
+												if left_size >= 2 {
+													g.mov_var_to_reg(.rax, right_var, offset: size - left_size, typ: ast.i16_type_idx)
+													g.mov_reg_to_var(var, .rax, offset: size - left_size, typ: ast.i16_type_idx)
+													left_size -= 2
+												}
+												if left_size == 1 {
+													g.mov_var_to_reg(.rax, right_var, offset: size - left_size, typ: ast.i8_type_idx)
+													g.mov_reg_to_var(var, .rax, offset: size - left_size, typ: ast.i8_type_idx)
+												}
+											}
+										}
+										else {
+											g.n_error('Unsupported variable type')
+										}
+									}
+								}
+							}
+							else {
+								g.n_error('Unsupported variable kind')
+							}
+						}
 					}
 					else {
 						eprintln('TODO: unhandled assign ident case')
@@ -1700,7 +1807,8 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 			ast.StructInit {
 				match node.op {
 					.decl_assign {
-						g.allocate_struct(name, right as ast.StructInit)
+						g.allocate_struct(name, right.typ)
+						g.init_struct(ident, right)
 					}
 					else {
 						g.n_error('Unexpected operator `$node.op`')
@@ -2499,20 +2607,17 @@ pub fn (mut g Gen) allocate_var(name string, size int, initial_val int) int {
 	return g.stack_var_pos
 }
 
-fn (mut g Gen) allocate_struct(name string, init ast.StructInit) int {
+fn (mut g Gen) allocate_struct(name string, typ ast.Type) int {
 	if g.pref.arch == .arm64 {
 		// TODO
 		return 0
 	}
-	size := g.get_type_size(init.typ)
-	align := g.get_type_align(init.typ)
+	size := g.get_type_size(typ)
+	align := g.get_type_align(typ)
 	padding := (align - g.stack_var_pos % align) % align
 	g.stack_var_pos += size + padding
 	g.var_offset[name] = g.stack_var_pos
 	g.var_alloc_size[name] = size
-
-
-	g.init_struct(LocalVar{offset: g.stack_var_pos, typ: init.typ, name: name}, init)
 
 	return g.stack_var_pos
 }
@@ -2563,6 +2668,19 @@ fn (mut g Gen) init_struct(var Var, init ast.StructInit) {
 			}
 
 			ts := g.table.sym(var.typ)
+			match ts.info {
+				ast.Struct {
+					for i, f in ts.info.fields {
+						if f.has_default_expr && !init.fields.map(it.name).contains(f.name) {
+							offset := g.structs[var.typ.idx()].offsets[i]
+							g.expr(f.default_expr)
+							// TODO expr not on rax
+							g.mov_reg_to_var(var, .rax, offset: offset, typ: f.typ)
+						}
+					}
+				}
+				else {}
+			}
 			for f in init.fields {
 				field := ts.find_field(f.name) or {
 					g.n_error('Could not find field `$f.name` on init')

@@ -1142,7 +1142,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.allocate_string(node.val, 3, .rel32)
 		}
 		ast.StructInit {
-			pos := g.allocate_struct('_anonstruct', node)
+			pos := g.allocate_struct('_anonstruct', node.typ)
+			g.init_struct(LocalVar{offset: pos, typ: node.typ}, node)
 			g.lea_var_to_reg(.rax, pos)
 		}
 		ast.GoExpr {
