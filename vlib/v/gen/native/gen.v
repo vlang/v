@@ -494,6 +494,7 @@ fn (mut g Gen) get_type_size(typ ast.Type) int {
 					align = f_align
 				}
 			}
+			size = (size + align - 1) / align * align
 		}
 		else {}
 	}

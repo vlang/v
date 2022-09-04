@@ -1739,6 +1739,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 												}
 												if left_size >= 2 {
 													g.mov_var_to_reg(.rax, right_var,
+														
 														offset: size - left_size
 														typ: ast.i16_type_idx
 													)
@@ -1750,6 +1751,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 												}
 												if left_size == 1 {
 													g.mov_var_to_reg(.rax, right_var,
+														
 														offset: size - left_size
 														typ: ast.i8_type_idx
 													)
@@ -1817,6 +1819,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 												}
 												if left_size >= 2 {
 													g.mov_var_to_reg(.rax, right_var,
+														
 														offset: size - left_size
 														typ: ast.i16_type_idx
 													)
@@ -1828,6 +1831,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 												}
 												if left_size == 1 {
 													g.mov_var_to_reg(.rax, right_var,
+														
 														offset: size - left_size
 														typ: ast.i8_type_idx
 													)
