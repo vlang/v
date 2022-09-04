@@ -1692,12 +1692,13 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 				// a += b
 			}
 			ast.StructInit {
-				sym := g.table.sym(right.typ)
-				info := sym.info as ast.Struct
-				for field in info.fields {
-					field_name := name + '.' + field.name
-					println(field_name)
-					g.allocate_var(field_name, 4, 0)
+				match node.op {
+					.decl_assign {
+						g.allocate_struct(name, right as ast.StructInit)
+					}
+					else {
+						g.n_error('Unexpected operator `$node.op`')
+					}
 				}
 			}
 			ast.ArrayInit {
@@ -2493,6 +2494,83 @@ pub fn (mut g Gen) allocate_var(name string, size int, initial_val int) int {
 	// println('allocate_var(size=$size, initial_val=$initial_val)')
 	g.println('mov [rbp-$n.hex2()], $initial_val ; Allocate var `$name`')
 	return g.stack_var_pos
+}
+
+fn (mut g Gen) allocate_struct(name string, init ast.StructInit) int {
+	if g.pref.arch == .arm64 {
+		// TODO
+		return 0
+	}
+	size := g.get_type_size(init.typ)
+	align := g.get_type_align(init.typ)
+	padding := (align - g.stack_var_pos % align) % align
+	g.stack_var_pos += size + padding
+	g.var_offset[name] = g.stack_var_pos
+	g.var_alloc_size[name] = size
+
+
+	g.init_struct(LocalVar{offset: g.stack_var_pos, typ: init.typ, name: name}, init)
+
+	return g.stack_var_pos
+}
+
+fn (mut g Gen) init_struct(var Var, init ast.StructInit) {
+	match var {
+		ast.Ident {
+			var_object := g.get_var_from_ident(var)
+			match var_object {
+				LocalVar {
+					g.init_struct(var_object as LocalVar, init)
+				}
+				GlobalVar {
+					g.init_struct(var_object as GlobalVar, init)
+				}
+				Register {
+					// TODO
+					// g.cmp()
+				}
+			}
+		}
+		LocalVar {
+			size := g.get_type_size(var.typ)
+
+			// zero fill
+			mut left := if size >= 16 {
+				g.mov(.rax, 0)
+				g.mov(.rcx, size / 8)
+				g.lea_var_to_reg(.rdi, var.offset)
+				g.write([u8(0xf3), 0x48, 0xab])
+				g.println('; rep stosq')
+				size % 8
+			} else { size }
+			if left >= 8 {
+				g.mov_int_to_var(var, 0, offset: size - left, typ: ast.i64_type_idx)
+				left -= 8
+			}
+			if left >= 4 {
+				g.mov_int_to_var(var, 0, offset: size - left, typ: ast.int_type_idx)
+				left -= 4
+			}
+			if left >= 2 {
+				g.mov_int_to_var(var, 0, offset: size - left, typ: ast.i16_type_idx)
+				left -= 2
+			}
+			if left == 1 {
+				g.mov_int_to_var(var, 0, offset: size - left, typ: ast.i8_type_idx)
+			}
+
+			for f in init.fields {
+				offset := g.get_field_offset(var.typ, f.name)
+
+				g.expr(f.expr)
+				// TODO expr not on rax
+				g.mov_reg_to_var(var, .rax, offset: offset, typ: field.typ)
+			}
+		}
+		GlobalVar {
+			// TODO
+		}
+	}
 }
 
 fn (mut g Gen) convert_int_to_string(r1 Register, r2 Register) {

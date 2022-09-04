@@ -439,6 +439,14 @@ fn (mut g Gen) get_var_offset(var_name string) int {
 	return r
 }
 
+fn (mut g Gen) get_field_offset(typ ast.Type, name string) {
+	ts := g.table.sym(typ)
+	field := ts.find_field(name) or {
+		g.n_error('Could not find field `$f.name` on init')
+	}
+	offset := g.structs[typ.idx()].offsets[field.i]
+}
+
 // get type size, and calculate size and align and store them to the cache when the type is struct 
 fn (mut g Gen) get_type_size(typ ast.Type) int {
 	// TODO type flags
@@ -496,7 +504,7 @@ fn (mut g Gen) get_type_size(typ ast.Type) int {
 	ts_.align = align
 	g.structs[typ.idx()] = strc
 	// g.n_error('unknown type size')
-	return 0
+	return size
 }
 
 fn (mut g Gen) get_type_align(typ ast.Type) int {
