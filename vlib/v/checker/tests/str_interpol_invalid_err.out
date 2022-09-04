@@ -1,0 +1,55 @@
+vlib/v/checker/tests/str_interpol_invalid_err.vv:8:13: error: illegal format specifier `x` for type `[]int`
+    6 |
+    7 | fn main() {
+    8 |     _ = '${[1]:x}'
+      |                ^
+    9 |     _ = '${[1]!:x}'
+   10 |     _ = '${Foo{}:x}'
+vlib/v/checker/tests/str_interpol_invalid_err.vv:9:14: error: illegal format specifier `x` for type `[1]int`
+    7 | fn main() {
+    8 |     _ = '${[1]:x}'
+    9 |     _ = '${[1]!:x}'
+      |                 ^
+   10 |     _ = '${Foo{}:x}'
+   11 |     _ = '${[1]:f}'
+vlib/v/checker/tests/str_interpol_invalid_err.vv:10:15: error: illegal format specifier `x` for type `Foo`
+    8 |     _ = '${[1]:x}'
+    9 |     _ = '${[1]!:x}'
+   10 |     _ = '${Foo{}:x}'
+      |                  ^
+   11 |     _ = '${[1]:f}'
+   12 |     _ := '${none:F}'
+vlib/v/checker/tests/str_interpol_invalid_err.vv:11:13: error: illegal format specifier `f` for type `[]int`
+    9 |     _ = '${[1]!:x}'
+   10 |     _ = '${Foo{}:x}'
+   11 |     _ = '${[1]:f}'
+      |                ^
+   12 |     _ := '${none:F}'
+   13 |     _ = '${{"a": "b"}:x}'
+vlib/v/checker/tests/str_interpol_invalid_err.vv:12:15: error: illegal format specifier `F` for type `none`
+   10 |     _ = '${Foo{}:x}'
+   11 |     _ = '${[1]:f}'
+   12 |     _ := '${none:F}'
+      |                  ^
+   13 |     _ = '${{"a": "b"}:x}'
+   14 |     _ = '${Alias(Foo{}):x}'
+vlib/v/checker/tests/str_interpol_invalid_err.vv:13:20: error: illegal format specifier `x` for type `map[string]string`
+   11 |     _ = '${[1]:f}'
+   12 |     _ := '${none:F}'
+   13 |     _ = '${{"a": "b"}:x}'
+      |                       ^
+   14 |     _ = '${Alias(Foo{}):x}'
+   15 |     _ = '${SumType(int(5)):o}'
+vlib/v/checker/tests/str_interpol_invalid_err.vv:14:22: error: illegal format specifier `x` for type `Alias`
+   12 |     _ := '${none:F}'
+   13 |     _ = '${{"a": "b"}:x}'
+   14 |     _ = '${Alias(Foo{}):x}'
+      |                         ^
+   15 |     _ = '${SumType(int(5)):o}'
+   16 | }
+vlib/v/checker/tests/str_interpol_invalid_err.vv:15:25: error: illegal format specifier `o` for type `SumType`
+   13 |     _ = '${{"a": "b"}:x}'
+   14 |     _ = '${Alias(Foo{}):x}'
+   15 |     _ = '${SumType(int(5)):o}'
+      |                            ^
+   16 | }

@@ -94,6 +94,13 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Typ
 				c.error('illegal format specifier `${fmt:c}` for type `${c.table.get_type_name(ftyp)}`',
 					node.fmt_poss[i])
 			}
+			// v fmt doesn't format this correctly
+			if
+				c.table.final_sym(typ).kind in [.array, .array_fixed, .struct_, .interface_, .none_, .map, .sum_type]
+				&& fmt in [`E`, `F`, `G`, `e`, `f`, `g`, `d`, `u`, `x`, `X`, `o`, `c`, `p`, `b`] {
+				c.error('illegal format specifier `${fmt:c}` for type `${c.table.get_type_name(ftyp)}`',
+					node.fmt_poss[i])
+			}
 			node.need_fmts[i] = fmt != c.get_default_fmt(ftyp, typ)
 		}
 		// check recursive str
