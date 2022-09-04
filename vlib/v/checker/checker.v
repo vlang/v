@@ -2643,6 +2643,9 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) ast.Type {
 		.line_nr {
 			node.val = (node.pos.line_nr + 1).str()
 		}
+		.file_path_line_nr {
+			node.val = os.file_name(c.file.path) + ':' + (node.pos.line_nr + 1).str()
+		}
 		.column_nr {
 			node.val = (node.pos.col + 1).str()
 		}

@@ -5580,8 +5580,9 @@ that are substituted at compile time:
 - `@METHOD` => replaced with ReceiverType.MethodName
 - `@MOD` => replaced with the name of the current V module
 - `@STRUCT` => replaced with the name of the current V struct
-- `@FILE` => replaced with the path of the V source file
+- `@FILE` => replaced with the absolute path of the V source file
 - `@LINE` => replaced with the V line number where it appears (as a string).
+- `@FILE_LINE` => like `@FILE:@LINE`, but the file part is a relative path
 - `@COLUMN` => replaced with the column where it appears (as a string).
 - `@VEXE` => replaced with the path to the V compiler
 - `@VEXEROOT`  => will be substituted with the *folder*,
