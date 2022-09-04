@@ -931,6 +931,7 @@ fn (mut g Gen) bitor_reg(a Register, b Register) {
 		if int(b) >= int(Register.r8) { 4 } else { 0 })
 	g.write8(0x09)
 	g.write8(0xc0 + int(a) % 8 + int(b) % 8 * 8)
+	g.println('or $a, $b')
 }
 
 fn (mut g Gen) bitxor_reg(a Register, b Register) {
@@ -1513,20 +1514,73 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 		n = 'main.$n'
 	}
 	addr := g.fn_addr[n]
+	mut reg_args := []int{}
+	mut stack_args := []int{}
+	args_size := node.args.map(g.get_type_size(it.typ))
+	mut reg_left := 6
+	for i, size in args_size {
+		if reg_left > 0 {
+			if size <= 8 {
+				reg_args << i
+				reg_left--
+				continue
+			} else if size <= 16 && reg_left > 1 {
+				reg_args << i
+				reg_left -= 2
+				continue
+			}
+		}
+		stack_args << i
+	}
+	reg_size := reg_args.map(args_size[it]/8).reduce(fn(a int, b int)int{return a+b}, 0)
+	stack_size := stack_args.map(args_size[it]/8).reduce(fn(a int,b int)int{return a+b}, 0)
+
 	// not aligned now XOR pushed args will be odd
 	is_16bit_aligned := if mut g.code_gen is Amd64 { g.code_gen.is_16bit_aligned } else { true } != (
-		node.args.len > 6 && node.args.len % 2 == 1)
+		stack_size % 2 == 1)
 	if !is_16bit_aligned {
 		// dummy data
 		g.push(.rbp)
 	}
-	for i_ in 0 .. node.args.len {
-		i := node.args.len - i_ - 1
+	reg_args << stack_args
+	for i in reg_args.reverse() {
 		g.expr(node.args[i].expr)
-		g.push(.rax)
+		if g.table.sym(node.args[i].typ).kind == .struct_ {
+			match args_size[i] {
+				1...8 {
+					g.mov_deref(.rax, .rax, ._64)
+					/*if args_size[i] != 8 {
+						g.mov8(.rdx, 1 << (args_size[i] * 8) - 1)
+						g.bitor_reg(.rax, .rdx)
+					}*/
+				}
+				9...16 {
+					g.add(.rax, 8)
+					g.mov_deref(.rdx, .rax, ._64)
+					g.sub(.rax, 8)
+					g.mov_deref(.rax, .rax, ._64)
+					/*if args_size[i] != 8 {
+						g.mov8(.rbx, 1 << (args_size[i] * 8) - 1)
+						g.bitor_reg(.rax, .rbx)
+					}*/
+				}
+				else {
+				}
+			}
+		}
+		match args_size[i] {
+			1...8 {
+				g.push(.rax)
+			}
+			9...16 {
+				g.push(.rdx)
+				g.push(.rax)
+			}
+			else {
+			}
+		}
 	}
-	num_on_register := if node.args.len > 6 { 6 } else { node.args.len }
-	for i in 0 .. num_on_register {
+	for i in 0 .. reg_size {
 		g.pop(native.fn_arg_registers[i])
 	}
 	if addr == 0 {
@@ -1540,7 +1594,7 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 		// dummy data
 		g.pop(.rdi)
 	}
-	for _ in 0 .. node.args.len - 6 {
+	for _ in 0 .. stack_size {
 		// args
 		g.pop(.rdi)
 	}
