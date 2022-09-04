@@ -2025,13 +2025,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			if node.is_union {
 				g.typedefs.writeln('typedef union $name $name;')
 			} else {
-				/*
-				attrs := if node.attrs.contains('packed') {
-					'__attribute__((__packed__))'
-				} else {
-					''
-				}
-				*/
 				g.typedefs.writeln('typedef struct $name $name;')
 			}
 		}

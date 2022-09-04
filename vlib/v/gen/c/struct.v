@@ -313,6 +313,10 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 				pre_pragma += '#pragma pack(push, $attr.arg)\n'
 				post_pragma += '#pragma pack(pop)'
 			}
+			'packed' {
+				pre_pragma += '#pragma pack(push, 1)\n'
+				post_pragma += '#pragma pack(pop)'
+			}
 			else {}
 		}
 	}
