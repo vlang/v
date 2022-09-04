@@ -491,7 +491,7 @@ fn (mut g Gen) gen_anon_fn_decl(mut node ast.AnonFn) {
 		for var in node.inherited_vars {
 			var_sym := g.table.sym(var.typ)
 			if var_sym.info is ast.FnType {
-				sig := g.fn_var_signature(var_sym.info.func.return_type, var_sym.info.func.params,
+				sig := g.fn_var_signature(var_sym.info.func.return_type, var_sym.info.func.params.map(it.typ),
 					var.name)
 				builder.writeln('\t' + sig + ';')
 			} else {
@@ -1693,8 +1693,10 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 	mut handle := ''
 	tmp := g.new_tmp_var()
 	mut expr := node.call_expr
-	mut name := expr.name // util.no_dots(expr.name)
-	// TODO: fn call is duplicated. merge with fn_call().
+	mut name := expr.name
+	mut use_tmp_fn_var := false
+	tmp_fn := g.new_tmp_var()
+
 	for i, concrete_type in expr.concrete_types {
 		if concrete_type != ast.void_type && concrete_type != 0 {
 			// Using _T_ to differentiate between get<string> and get_string
@@ -1709,10 +1711,17 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		receiver_sym := g.table.sym(expr.receiver_type)
 		name = receiver_sym.name + '_' + name
 	} else if mut expr.left is ast.AnonFn {
-		g.gen_anon_fn_decl(mut expr.left)
-		name = expr.left.decl.name
-	} else if expr.is_fn_var {
-		name = g.table.sym(expr.fn_var_type).name
+		if expr.left.inherited_vars.len > 0 {
+			fn_var := g.fn_var_signature(expr.left.decl.return_type, expr.left.decl.params.map(it.typ),
+				tmp_fn)
+			g.write('\t$fn_var = ')
+			g.gen_anon_fn(mut expr.left)
+			g.writeln(';')
+			use_tmp_fn_var = true
+		} else {
+			g.gen_anon_fn_decl(mut expr.left)
+			name = expr.left.decl.name
+		}
 	}
 	name = util.no_dots(name)
 	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') {
@@ -1732,6 +1741,10 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 	wrapper_fn_name := name + '_thread_wrapper'
 	arg_tmp_var := 'arg_' + tmp
 	g.writeln('$wrapper_struct_name *$arg_tmp_var = malloc(sizeof(thread_arg_$name));')
+	fn_name := if use_tmp_fn_var { tmp_fn } else { name }
+	if !(expr.is_method && g.table.sym(expr.receiver_type).kind == .interface_) {
+		g.writeln('$arg_tmp_var->fn = $fn_name;')
+	}
 	if expr.is_method {
 		g.write('$arg_tmp_var->arg0 = ')
 		g.expr(expr.left)
@@ -1841,24 +1854,54 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 	}
 	if should_register {
 		g.type_definitions.writeln('\ntypedef struct $wrapper_struct_name {')
+		mut fn_var := ''
+		if node.call_expr.is_fn_var {
+			fn_sym := g.table.sym(node.call_expr.fn_var_type)
+			info := fn_sym.info as ast.FnType
+			fn_var = g.fn_var_signature(info.func.return_type, info.func.params.map(it.typ),
+				'fn')
+		} else if node.call_expr.left is ast.AnonFn {
+			f := node.call_expr.left.decl
+			fn_var = g.fn_var_signature(f.return_type, f.params.map(it.typ), 'fn')
+		} else {
+			if node.call_expr.is_method {
+				rec_sym := g.table.sym(node.call_expr.receiver_type)
+				if f := g.table.find_method(rec_sym, node.call_expr.name) {
+					mut muttable := unsafe { &ast.Table(g.table) }
+					return_type := muttable.resolve_generic_to_concrete(f.return_type,
+						f.generic_names, node.call_expr.concrete_types) or { f.return_type }
+					mut arg_types := f.params.map(it.typ)
+					arg_types = arg_types.map(muttable.resolve_generic_to_concrete(it,
+						f.generic_names, node.call_expr.concrete_types) or { it })
+					fn_var = g.fn_var_signature(return_type, arg_types, 'fn')
+				}
+			} else {
+				if f := g.table.find_fn(node.call_expr.name) {
+					mut muttable := unsafe { &ast.Table(g.table) }
+					return_type := muttable.resolve_generic_to_concrete(f.return_type,
+						f.generic_names, node.call_expr.concrete_types) or { f.return_type }
+					mut arg_types := f.params.map(it.typ)
+					arg_types = arg_types.map(muttable.resolve_generic_to_concrete(it,
+						f.generic_names, node.call_expr.concrete_types) or { it })
+					fn_var = g.fn_var_signature(return_type, arg_types, 'fn')
+				}
+			}
+		}
+		g.type_definitions.writeln('\t$fn_var;')
 		if expr.is_method {
 			styp := g.typ(expr.receiver_type)
 			g.type_definitions.writeln('\t$styp arg0;')
 		}
 		need_return_ptr := g.pref.os == .windows && node.call_expr.return_type != ast.void_type
-		if expr.args.len == 0 && !need_return_ptr {
-			g.type_definitions.writeln('EMPTY_STRUCT_DECLARATION;')
-		} else {
-			for i, arg in expr.args {
-				arg_sym := g.table.sym(arg.typ)
-				if arg_sym.info is ast.FnType {
-					sig := g.fn_var_signature(arg_sym.info.func.return_type, arg_sym.info.func.params,
-						'arg${i + 1}')
-					g.type_definitions.writeln('\t' + sig + ';')
-				} else {
-					styp := g.typ(arg.typ)
-					g.type_definitions.writeln('\t$styp arg${i + 1};')
-				}
+		for i, arg in expr.args {
+			arg_sym := g.table.sym(arg.typ)
+			if arg_sym.info is ast.FnType {
+				sig := g.fn_var_signature(arg_sym.info.func.return_type, arg_sym.info.func.params.map(it.typ),
+					'arg${i + 1}')
+				g.type_definitions.writeln('\t' + sig + ';')
+			} else {
+				styp := g.typ(arg.typ)
+				g.type_definitions.writeln('\t$styp arg${i + 1};')
 			}
 		}
 		if need_return_ptr {
@@ -1893,14 +1936,14 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 				g.gowrappers.write_string('arg->arg0')
 				g.gowrappers.write_string('${dot}_object')
 			} else {
-				g.gowrappers.write_string('${name}(')
+				g.gowrappers.write_string('arg->fn(')
 				g.gowrappers.write_string('arg->arg0')
 			}
 			if expr.args.len > 0 {
 				g.gowrappers.write_string(', ')
 			}
 		} else {
-			g.gowrappers.write_string('${name}(')
+			g.gowrappers.write_string('arg->fn(')
 		}
 		if expr.args.len > 0 {
 			mut has_cast := false

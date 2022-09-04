@@ -344,7 +344,8 @@ fn (mut g Gen) gen_map_equality_fn(left_type ast.Type) string {
 	kind := g.table.type_kind(value.typ)
 	if kind == .function {
 		info := value.sym.info as ast.FnType
-		sig := g.fn_var_signature(info.func.return_type, info.func.params, 'v')
+		sig := g.fn_var_signature(info.func.return_type, info.func.params.map(it.typ),
+			'v')
 		fn_builder.writeln('\t\t$sig = *(voidptr*)map_get(&a, k, &(voidptr[]){ 0 });')
 	} else {
 		fn_builder.writeln('\t\t$ptr_value_styp v = *($ptr_value_styp*)map_get(&a, k, &($ptr_value_styp[]){ 0 });')
