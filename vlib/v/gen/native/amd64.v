@@ -1700,7 +1700,8 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 						match var_ {
 							LocalVar {
 								var := var_ as LocalVar
-								if var.typ.is_number() || var.typ.is_real_pointer() || var.typ.is_bool() {
+								if var.typ.is_number() || var.typ.is_real_pointer()
+									|| var.typ.is_bool() {
 									g.mov_var_to_reg(.rax, right as ast.Ident)
 									g.mov_reg_to_var(ident, .rax)
 								} else {
@@ -1709,28 +1710,53 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 										ast.Struct {
 											size := g.get_type_size(var.typ)
 											if size >= 8 {
-												for offset in 0..size/8 {
-													g.mov_var_to_reg(.rax, right_var, offset: offset*8, typ: ast.i64_type_idx)
-													g.mov_reg_to_var(var, .rax, offset: offset*8, typ: ast.i64_type_idx)
+												for offset in 0 .. size / 8 {
+													g.mov_var_to_reg(.rax, right_var,
+														offset: offset * 8, typ: ast.i64_type_idx)
+													g.mov_reg_to_var(var, .rax,
+														offset: offset * 8
+														typ: ast.i64_type_idx
+													)
 												}
 												if size % 8 != 0 {
-													g.mov_var_to_reg(.rax, right_var, offset: size - 8, typ: ast.i64_type_idx)
-													g.mov_reg_to_var(var, .rax, offset: size - 8, typ: ast.i64_type_idx)
+													g.mov_var_to_reg(.rax, right_var,
+														offset: size - 8, typ: ast.i64_type_idx)
+													g.mov_reg_to_var(var, .rax,
+														offset: size - 8
+														typ: ast.i64_type_idx
+													)
 												}
 											} else {
 												mut left_size := if size >= 4 {
-													g.mov_var_to_reg(.rax, right_var, typ: ast.int_type_idx)
-													g.mov_reg_to_var(var, .rax, typ: ast.int_type_idx)
+													g.mov_var_to_reg(.rax, right_var,
+														typ: ast.int_type_idx)
+													g.mov_reg_to_var(var, .rax,
+														typ: ast.int_type_idx
+													)
 													size - 4
-												} else { size }
+												} else {
+													size
+												}
 												if left_size >= 2 {
-													g.mov_var_to_reg(.rax, right_var, offset: size - left_size, typ: ast.i16_type_idx)
-													g.mov_reg_to_var(var, .rax, offset: size - left_size, typ: ast.i16_type_idx)
+													g.mov_var_to_reg(.rax, right_var,
+														offset: size - left_size
+														typ: ast.i16_type_idx
+													)
+													g.mov_reg_to_var(var, .rax,
+														offset: size - left_size
+														typ: ast.i16_type_idx
+													)
 													left_size -= 2
 												}
 												if left_size == 1 {
-													g.mov_var_to_reg(.rax, right_var, offset: size - left_size, typ: ast.i8_type_idx)
-													g.mov_reg_to_var(var, .rax, offset: size - left_size, typ: ast.i8_type_idx)
+													g.mov_var_to_reg(.rax, right_var,
+														offset: size - left_size
+														typ: ast.i8_type_idx
+													)
+													g.mov_reg_to_var(var, .rax,
+														offset: size - left_size
+														typ: ast.i8_type_idx
+													)
 												}
 											}
 										}
@@ -1752,7 +1778,8 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 						match var_ {
 							LocalVar {
 								var := var_ as LocalVar
-								if var.typ.is_number() || var.typ.is_real_pointer() || var.typ.is_bool() {
+								if var.typ.is_number() || var.typ.is_real_pointer()
+									|| var.typ.is_bool() {
 									g.mov_var_to_reg(.rax, right as ast.Ident)
 									g.mov_reg_to_var(ident, .rax)
 								} else {
@@ -1761,28 +1788,53 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 										ast.Struct {
 											size := g.get_type_size(var.typ)
 											if size >= 8 {
-												for offset in 0..size/8 {
-													g.mov_var_to_reg(.rax, right_var, offset: offset*8, typ: ast.i64_type_idx)
-													g.mov_reg_to_var(var, .rax, offset: offset*8, typ: ast.i64_type_idx)
+												for offset in 0 .. size / 8 {
+													g.mov_var_to_reg(.rax, right_var,
+														offset: offset * 8, typ: ast.i64_type_idx)
+													g.mov_reg_to_var(var, .rax,
+														offset: offset * 8
+														typ: ast.i64_type_idx
+													)
 												}
 												if size % 8 != 0 {
-													g.mov_var_to_reg(.rax, right_var, offset: size - 8, typ: ast.i64_type_idx)
-													g.mov_reg_to_var(var, .rax, offset: size - 8, typ: ast.i64_type_idx)
+													g.mov_var_to_reg(.rax, right_var,
+														offset: size - 8, typ: ast.i64_type_idx)
+													g.mov_reg_to_var(var, .rax,
+														offset: size - 8
+														typ: ast.i64_type_idx
+													)
 												}
 											} else {
 												mut left_size := if size >= 4 {
-													g.mov_var_to_reg(.rax, right_var, typ: ast.int_type_idx)
-													g.mov_reg_to_var(var, .rax, typ: ast.int_type_idx)
+													g.mov_var_to_reg(.rax, right_var,
+														typ: ast.int_type_idx)
+													g.mov_reg_to_var(var, .rax,
+														typ: ast.int_type_idx
+													)
 													size - 4
-												} else { size }
+												} else {
+													size
+												}
 												if left_size >= 2 {
-													g.mov_var_to_reg(.rax, right_var, offset: size - left_size, typ: ast.i16_type_idx)
-													g.mov_reg_to_var(var, .rax, offset: size - left_size, typ: ast.i16_type_idx)
+													g.mov_var_to_reg(.rax, right_var,
+														offset: size - left_size
+														typ: ast.i16_type_idx
+													)
+													g.mov_reg_to_var(var, .rax,
+														offset: size - left_size
+														typ: ast.i16_type_idx
+													)
 													left_size -= 2
 												}
 												if left_size == 1 {
-													g.mov_var_to_reg(.rax, right_var, offset: size - left_size, typ: ast.i8_type_idx)
-													g.mov_reg_to_var(var, .rax, offset: size - left_size, typ: ast.i8_type_idx)
+													g.mov_var_to_reg(.rax, right_var,
+														offset: size - left_size
+														typ: ast.i8_type_idx
+													)
+													g.mov_reg_to_var(var, .rax,
+														offset: size - left_size
+														typ: ast.i8_type_idx
+													)
 												}
 											}
 										}
@@ -2650,7 +2702,9 @@ fn (mut g Gen) init_struct(var Var, init ast.StructInit) {
 				g.write([u8(0xf3), 0x48, 0xab])
 				g.println('; rep stosq')
 				size % 8
-			} else { size }
+			} else {
+				size
+			}
 			if left >= 8 {
 				g.mov_int_to_var(var, 0, offset: size - left, typ: ast.i64_type_idx)
 				left -= 8

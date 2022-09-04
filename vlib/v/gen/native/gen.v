@@ -441,13 +441,11 @@ fn (mut g Gen) get_var_offset(var_name string) int {
 
 fn (mut g Gen) get_field_offset(typ ast.Type, name string) int {
 	ts := g.table.sym(typ)
-	field := ts.find_field(name) or {
-		g.n_error('Could not find field `$name` on init')
-	}
+	field := ts.find_field(name) or { g.n_error('Could not find field `$name` on init') }
 	return g.structs[typ.idx()].offsets[field.i]
 }
 
-// get type size, and calculate size and align and store them to the cache when the type is struct 
+// get type size, and calculate size and align and store them to the cache when the type is struct
 fn (mut g Gen) get_type_size(typ ast.Type) int {
 	// TODO type flags
 	if typ.is_real_pointer() {
@@ -1143,7 +1141,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.StructInit {
 			pos := g.allocate_struct('_anonstruct', node.typ)
-			g.init_struct(LocalVar{offset: pos, typ: node.typ}, node)
+			g.init_struct(LocalVar{ offset: pos, typ: node.typ }, node)
 			g.lea_var_to_reg(.rax, pos)
 		}
 		ast.GoExpr {
