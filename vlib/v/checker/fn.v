@@ -617,6 +617,8 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			if elem_sym.info is ast.FnType {
 				func = elem_sym.info.func
 				found = true
+				node.is_fn_var = true
+				node.fn_var_type = sym.info.elem_type
 			} else {
 				c.error('cannot call the element of the array, it is not a function',
 					node.pos)
@@ -626,6 +628,8 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			if value_sym.info is ast.FnType {
 				func = value_sym.info.func
 				found = true
+				node.is_fn_var = true
+				node.fn_var_type = sym.info.value_type
 			} else {
 				c.error('cannot call the value of the map, it is not a function', node.pos)
 			}
@@ -634,6 +638,8 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			if elem_sym.info is ast.FnType {
 				func = elem_sym.info.func
 				found = true
+				node.is_fn_var = true
+				node.fn_var_type = sym.info.elem_type
 			} else {
 				c.error('cannot call the element of the array, it is not a function',
 					node.pos)
