@@ -1722,6 +1722,17 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 			g.gen_anon_fn_decl(mut expr.left)
 			name = expr.left.decl.name
 		}
+	} else if expr.left is ast.IndexExpr {
+		if expr.is_fn_var {
+			fn_sym := g.table.sym(expr.fn_var_type)
+			func := (fn_sym.info as ast.FnType).func
+			fn_var := g.fn_var_signature(func.return_type, func.params.map(it.typ), tmp_fn)
+			g.write('\t$fn_var = ')
+			g.expr(expr.left)
+			g.writeln(';')
+			name = fn_sym.cname
+			use_tmp_fn_var = true
+		}
 	}
 	name = util.no_dots(name)
 	if g.pref.obfuscate && g.cur_mod.name == 'main' && name.starts_with('main__') {
