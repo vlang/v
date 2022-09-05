@@ -60,6 +60,14 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 			}
 		}
 	}
+	if expr is ast.IndexExpr {
+		if expr.or_expr.kind != .absent {
+			return true
+		}
+		if g.need_tmp_var_in_expr(expr.index) {
+			return true
+		}
+	}
 	return false
 }
 
