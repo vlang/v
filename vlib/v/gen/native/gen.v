@@ -955,22 +955,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.Module {}
 		ast.Return {
-			// dump(node.exprs[0])
-			// if in main
-			// zero := ast.IntegerLiteral{}
-			// g.gen_exit(zero)
-			// dump(node)
-			// dump(node.types)
 			mut s := '?' //${node.exprs[0].val.str()}'
-			// TODO: void return
 			if e0 := node.exprs[0] {
 				match e0 {
-					ast.IntegerLiteral {
-						g.mov64(.rax, e0.val.int())
-					}
-					ast.InfixExpr {
-						g.infix_expr(e0)
-					}
 					ast.CastExpr {
 						g.mov64(.rax, e0.expr.str().int())
 						// do the job
@@ -980,17 +967,40 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 						g.expr(node.exprs[0])
 						g.mov64(.rax, g.allocate_string(s, 2, .abs64))
 					}
-					ast.Ident {
-						g.expr(e0)
-					}
 					else {
-						size := g.get_type_size(node.types[0])
-						if size !in [1, 2, 4, 8] {
-							g.n_error('unknown return type $e0.type_name()')
-						}
 						g.expr(e0)
 					}
 				}
+				// store the struct value
+				typ := node.types[0]
+				if !typ.is_real_pointer() && !typ.is_number() && !typ.is_bool() {
+					ts := g.table.sym(typ)
+					size := g.get_type_size(typ)
+					if g.pref.arch == .arm64 {
+						match ts.kind {
+							.struct_ {
+								if size <= 8 {
+									g.mov_deref(.rax, .rax, _.64)
+									if args_size[i] != 8 {
+										g.mov64(.rdx, 1 << (args_size[i] * 8) - 1)
+										g.bitor_reg(.rax, .rdx)
+									}
+								} else if size <= 16 {
+									g.add(.rax, 8)
+									g.mov_deref(.rdx, .rax, ._64)
+									g.sub(.rax, 8)
+									g.mov_deref(.rax, .rax, ._64)
+									if args_size[i] != 8 {
+										g.mov64(.rbx, 1 << (args_size[i] * 8) - 1)
+										g.bitor_reg(.rax, .rbx)
+									}
+								} else {
+								}
+							}
+						}
+					}
+				}
+
 			}
 
 			// jump to return label

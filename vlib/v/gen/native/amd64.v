@@ -1563,22 +1563,20 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 			match args_size[i] {
 				1...8 {
 					g.mov_deref(.rax, .rax, ._64)
-					/*
 					if args_size[i] != 8 {
-						g.mov8(.rdx, 1 << (args_size[i] * 8) - 1)
+						g.mov64(.rdx, 1 << (args_size[i] * 8) - 1)
 						g.bitor_reg(.rax, .rdx)
-					}*/
+					}
 				}
 				9...16 {
 					g.add(.rax, 8)
 					g.mov_deref(.rdx, .rax, ._64)
 					g.sub(.rax, 8)
 					g.mov_deref(.rax, .rax, ._64)
-					/*
 					if args_size[i] != 8 {
-						g.mov8(.rbx, 1 << (args_size[i] * 8) - 1)
+						g.mov64(.rbx, 1 << (args_size[i] * 8) - 1)
 						g.bitor_reg(.rax, .rbx)
-					}*/
+					}
 				}
 				else {}
 			}
