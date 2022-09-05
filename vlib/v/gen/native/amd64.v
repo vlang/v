@@ -621,6 +621,17 @@ fn (mut g Gen) mov_int_to_var(var Var, integer int, config VarConfig) {
 					g.write8(u8(integer))
 					g.println('mov BYTE PTR[rbp-$offset.hex2()], $integer')
 				}
+				ast.int_type_idx, ast.u32_type_idx, ast.rune_type_idx {
+					g.write8(0xc7)
+					g.write8(if is_far_var { 0x85 } else { 0x45 })
+					if is_far_var {
+						g.write32(int((0xffffffff - i64(offset) + 1) % 0x100000000))
+					} else {
+						g.write8((0xff - offset + 1) % 0x100)
+					}
+					g.write32(integer)
+					g.println('mov DWORD PTR[rbp-$offset.hex2()], $integer')
+				}
 				ast.i64_type_idx, ast.u64_type_idx, ast.isize_type_idx, ast.usize_type_idx,
 				ast.int_literal_type_idx {
 					g.write8(0x48)
@@ -1532,8 +1543,8 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 		}
 		stack_args << i
 	}
-	reg_size := reg_args.map(args_size[it]/8).reduce(fn(a int, b int)int{return a+b}, 0)
-	stack_size := stack_args.map(args_size[it]/8).reduce(fn(a int,b int)int{return a+b}, 0)
+	reg_size := reg_args.map((args_size[it])/8).reduce(fn(a int, b int)int{return a+b}, 0)
+	stack_size := stack_args.map((args_size[it])/8).reduce(fn(a int,b int)int{return a+b}, 0)
 
 	// not aligned now XOR pushed args will be odd
 	is_16bit_aligned := if mut g.code_gen is Amd64 { g.code_gen.is_16bit_aligned } else { true } != (
@@ -2584,28 +2595,55 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 	g.sub(.rsp, 0)
 
 	// Copy values from registers to local vars (calling convention)
-	mut offset := 0
-	for i in 0 .. node.params.len {
-		name := node.params[i].name
-		// TODO optimize. Right now 2 mov's are used instead of 1.
-		g.allocate_var(name, 4, 0)
-		// `mov DWORD PTR [rbp-0x4],edi`
-		offset += 4
-		// TODO size
-		if i < 6 {
-			g.mov_reg_to_var(LocalVar{offset, ast.int_type_idx, name}, native.fn_arg_registers[i])
-		} else {
-			// &var = rbp + 16, 24, 32, ...
-			g.var_offset[name] = (4 - i) * 8
-			g.var_alloc_size[name] = 4
+	mut reg_args := []int{}
+	mut stack_args := []int{}
+	args_size := node.params.map(g.get_type_size(it.typ))
+	mut reg_left := 6
+	for i, size in args_size {
+		if reg_left > 0 {
+			if size <= 8 {
+				reg_args << i
+				reg_left--
+				continue
+			} else if size <= 16 && reg_left > 1 {
+				reg_args << i
+				reg_left -= 2
+				continue
+			}
 		}
+		stack_args << i
+	}
+	reg_size := reg_args.map((args_size[it]+7)/8).reduce(fn(a int, b int)int{return a+b}, 0)
+	stack_size := stack_args.map((args_size[it]+7)/8).reduce(fn(a int,b int)int{return a+b}, 0)
+
+	// define and copy args on register
+	mut reg_idx := 0
+	for i in reg_args {
+		name := node.params[i].name
+		g.stack_var_pos += args_size[i] % 8
+		offset := g.allocate_struct(name, node.params[i].typ)
+		// copy
+		g.mov_reg_to_var(LocalVar{offset:offset, typ:ast.i64_type_idx, name:name}, fn_arg_registers[reg_idx])
+		reg_idx++
+		if args_size[i] > 8 {
+			g.mov_reg_to_var(LocalVar{offset:offset, typ:ast.i64_type_idx, name:name}, fn_arg_registers[reg_idx], offset: 8)
+			reg_idx++
+		}
+	}
+	// define args on stack
+	mut offset := -2
+	for i in stack_args {
+		name := node.params[i].name
+		g.var_offset[name] = offset * 8
+		g.var_alloc_size[name] = args_size[i]
+		offset -= (args_size[i]+7)/8
 	}
 	// define defer vars
 	for i in 0 .. node.defer_stmts.len {
 		name := '_defer$i'
 		g.allocate_var(name, 8, 0)
 	}
-	//
+	// body
 	g.stmts(node.stmts)
 	// 16 bytes align
 	g.stack_var_pos += 23
