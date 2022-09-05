@@ -1656,6 +1656,9 @@ fn (mut c Checker) global_decl(mut node ast.GlobalDecl) {
 		if field.name in c.global_names {
 			c.error('duplicate global `$field.name`', field.pos)
 		}
+		if '${c.mod}.$field.name' in c.const_names {
+			c.error('duplicate global and const `$field.name`', field.pos)
+		}
 		sym := c.table.sym(field.typ)
 		if sym.kind == .placeholder {
 			c.error('unknown type `$sym.name`', field.typ_pos)
