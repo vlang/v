@@ -164,7 +164,7 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 					if attr.kind == .string {
 						f_key = attr.arg
 					} else {
-						verror("fkey attribute need be string. Try [fkey: '$attr.arg'] instead of [default: $attr.arg]")
+						verror("fkey attribute need be string. Try [fkey: '$attr.arg'] instead of [fkey: $attr.arg]")
 					}
 				}
 			}
@@ -704,7 +704,7 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string) {
 						if attr.kind == .string {
 							fkey = attr.arg
 						} else {
-							verror("fkey attribute need be string. Try [fkey: '$attr.arg'] instead of [default: $attr.arg]")
+							verror("fkey attribute need be string. Try [fkey: '$attr.arg'] instead of [fkey: $attr.arg]")
 						}
 					}
 				}
