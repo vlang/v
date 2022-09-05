@@ -17,7 +17,7 @@
 - `[sql: 'name']` sets a custom column name for the field
 - `[sql_type: 'SQL TYPE']` sets the sql type which is used in sql
 - `[default: 'sql defaults']` sets the default value or function when create a new table
-- `[fkey: 'parent_id']` sets foreign key
+- `[fkey: 'parent_id']` sets foreign key for an field which holds an array
 
 ## Usage
 
