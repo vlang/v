@@ -71,6 +71,12 @@ fn test_at_file() {
 	assert f == 'comptime_at_test.v'
 }
 
+fn test_at_file_len() {
+	// Test @FILE_LINE
+	line1, line2 := '${@LINE}', '${@FILE_LINE}'
+	assert os.file_name(@FILE) + ':' + line1.str() == line2
+}
+
 fn test_at_fn() {
 	// Test @FN
 	assert @FN == 'test_at_fn'
