@@ -3,7 +3,7 @@ import sqlite
 struct Parent {
 	id       int     [primary; sql: serial]
 	name     string
-	children []Child [fkey: parent_id]
+	children []Child [fkey: 'parent_id']
 }
 
 struct Child {
