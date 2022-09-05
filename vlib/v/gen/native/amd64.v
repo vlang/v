@@ -1543,12 +1543,15 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 		}
 		stack_args << i
 	}
-	reg_size := reg_args.map((args_size[it])/8).reduce(fn(a int, b int)int{return a+b}, 0)
-	stack_size := stack_args.map((args_size[it])/8).reduce(fn(a int,b int)int{return a+b}, 0)
+	reg_size := reg_args.map((args_size[it]) / 8).reduce(fn (a int, b int) int {
+		return a + b
+	}, 0)
+	stack_size := stack_args.map((args_size[it]) / 8).reduce(fn (a int, b int) int {
+		return a + b
+	}, 0)
 
 	// not aligned now XOR pushed args will be odd
-	is_16bit_aligned := if mut g.code_gen is Amd64 { g.code_gen.is_16bit_aligned } else { true } != (
-		stack_size % 2 == 1)
+	is_16bit_aligned := if mut g.code_gen is Amd64 { g.code_gen.is_16bit_aligned } else { true } != (stack_size % 2 == 1)
 	if !is_16bit_aligned {
 		// dummy data
 		g.push(.rbp)
@@ -1560,7 +1563,8 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 			match args_size[i] {
 				1...8 {
 					g.mov_deref(.rax, .rax, ._64)
-					/*if args_size[i] != 8 {
+					/*
+					if args_size[i] != 8 {
 						g.mov8(.rdx, 1 << (args_size[i] * 8) - 1)
 						g.bitor_reg(.rax, .rdx)
 					}*/
@@ -1570,13 +1574,13 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 					g.mov_deref(.rdx, .rax, ._64)
 					g.sub(.rax, 8)
 					g.mov_deref(.rax, .rax, ._64)
-					/*if args_size[i] != 8 {
+					/*
+					if args_size[i] != 8 {
 						g.mov8(.rbx, 1 << (args_size[i] * 8) - 1)
 						g.bitor_reg(.rax, .rbx)
 					}*/
 				}
-				else {
-				}
+				else {}
 			}
 		}
 		match args_size[i] {
@@ -1588,8 +1592,8 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 				g.push(.rax)
 			}
 			else {
-				g.add(.rax, args_size[i] - ((args_size[i]+7)%8+1))
-				for _ in 0..(args_size[i]+7)/8 {
+				g.add(.rax, args_size[i] - ((args_size[i] + 7) % 8 + 1))
+				for _ in 0 .. (args_size[i] + 7) / 8 {
 					g.mov_deref(.rdx, .rax, ._64)
 					g.push(.rdx)
 					g.sub(.rax, 8)
@@ -2619,8 +2623,12 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 		}
 		stack_args << i
 	}
-	reg_size := reg_args.map((args_size[it]+7)/8).reduce(fn(a int, b int)int{return a+b}, 0)
-	stack_size := stack_args.map((args_size[it]+7)/8).reduce(fn(a int,b int)int{return a+b}, 0)
+	reg_size := reg_args.map((args_size[it] + 7) / 8).reduce(fn (a int, b int) int {
+		return a + b
+	}, 0)
+	stack_size := stack_args.map((args_size[it] + 7) / 8).reduce(fn (a int, b int) int {
+		return a + b
+	}, 0)
 
 	// define and copy args on register
 	mut reg_idx := 0
@@ -2629,10 +2637,14 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 		g.stack_var_pos += args_size[i] % 8
 		offset := g.allocate_struct(name, node.params[i].typ)
 		// copy
-		g.mov_reg_to_var(LocalVar{offset:offset, typ:ast.i64_type_idx, name:name}, fn_arg_registers[reg_idx])
+		g.mov_reg_to_var(LocalVar{ offset: offset, typ: ast.i64_type_idx, name: name },
+			native.fn_arg_registers[reg_idx])
 		reg_idx++
 		if args_size[i] > 8 {
-			g.mov_reg_to_var(LocalVar{offset:offset, typ:ast.i64_type_idx, name:name}, fn_arg_registers[reg_idx], offset: 8)
+			g.mov_reg_to_var(LocalVar{ offset: offset, typ: ast.i64_type_idx, name: name },
+				native.fn_arg_registers[reg_idx],
+				offset: 8
+			)
 			reg_idx++
 		}
 	}
@@ -2642,7 +2654,7 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 		name := node.params[i].name
 		g.var_offset[name] = offset * 8
 		g.var_alloc_size[name] = args_size[i]
-		offset -= (args_size[i]+7)/8
+		offset -= (args_size[i] + 7) / 8
 	}
 	// define defer vars
 	for i in 0 .. node.defer_stmts.len {
