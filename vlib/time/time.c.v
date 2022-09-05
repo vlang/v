@@ -31,14 +31,14 @@ pub fn now() Time {
 	$if solaris {
 		return solaris_now()
 	}
-	$if linux || android {
-		return linux_now()
-	}
+	return linux_now()
+	/*
 	// defaults to most common feature, the microsecond precision is not available
 	// in this API call
 	t := C.time(0)
 	now := C.localtime(&t)
 	return convert_ctime(*now, 0)
+	*/
 }
 
 // utc returns the current UTC time.
@@ -52,14 +52,14 @@ pub fn utc() Time {
 	$if solaris {
 		return solaris_utc()
 	}
-	$if linux || android {
-		return linux_utc()
-	}
+	return linux_utc()
+	/*
 	// defaults to most common feature, the microsecond precision is not available
 	// in this API call
 	t := C.time(0)
 	_ = C.time(&t)
 	return unix2(i64(t), 0)
+	*/
 }
 
 // new_time returns a time struct with calculated Unix time.

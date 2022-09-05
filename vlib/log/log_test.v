@@ -80,3 +80,33 @@ fn test_logger_mutable_reference() {
 	assert true
 	println(@FN + ' end')
 }
+
+fn test_level_from_tag() ? {
+	assert level_from_tag('INFO')? == .info
+	assert level_from_tag('FATAL')? == .fatal
+	assert level_from_tag('WARN')? == .warn
+	assert level_from_tag('ERROR')? == .error
+	assert level_from_tag('DEBUG')? == .debug
+
+	invalid := ['', 'FOO', 'nope']
+
+	for value in invalid {
+		mut passed := false
+		level_from_tag(value) or { passed = true }
+		assert passed
+	}
+}
+
+fn test_target_from_label() ? {
+	assert target_from_label('console')? == .console
+	assert target_from_label('file')? == .file
+	assert target_from_label('both')? == .both
+
+	invalid := ['', 'FOO', 'nope']
+
+	for value in invalid {
+		mut passed := false
+		target_from_label(value) or { passed = true }
+		assert passed
+	}
+}

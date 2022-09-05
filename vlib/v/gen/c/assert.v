@@ -147,8 +147,15 @@ fn (mut g Gen) gen_assert_single_expr(expr ast.Expr, typ ast.Type) {
 	// eprintln('> gen_assert_single_expr typ: $typ | expr: $expr | typeof(expr): ${typeof(expr)}')
 	unknown_value := '*unknown value*'
 	match expr {
-		ast.CastExpr, ast.IfExpr, ast.IndexExpr, ast.MatchExpr {
+		ast.CastExpr, ast.IfExpr, ast.MatchExpr {
 			g.write(ctoslit(unknown_value))
+		}
+		ast.IndexExpr {
+			if expr.index is ast.RangeExpr {
+				g.write(ctoslit(unknown_value))
+			} else {
+				g.gen_expr_to_string(expr, typ)
+			}
 		}
 		ast.PrefixExpr {
 			if expr.right is ast.CastExpr {

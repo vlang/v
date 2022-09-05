@@ -1,0 +1,5 @@
+vlib/v/parser/tests/anon_sum_type_interface.vv:2:6: warning: inline sum types have been deprecated and will be removed on January 1, 2023 due to complicating the language and the compiler too much; define named sum types with `type Foo = Bar | Baz` instead
+    1 | interface Foo {
+    2 |     bar string | int
+      |         ~~~~~~
+    3 | }

@@ -39,8 +39,9 @@ import toml
 
 const (
 	tool_name        = 'vgret'
-	tool_version     = '0.0.1'
-	tool_description = '\n  Dump and/or compare rendered frames of `gg` based apps
+	tool_version     = '0.0.2'
+	tool_description = '\n  Dump and/or compare rendered frames of graphical apps
+  both external and `gg` based apps is supported.
 
 Examples:
   Generate screenshots to `/tmp/test`
@@ -82,11 +83,24 @@ mut:
 	flags  []string
 }
 
+struct CaptureRegion {
+mut:
+	x      int
+	y      int
+	width  int
+	height int
+}
+
+fn (cr CaptureRegion) is_empty() bool {
+	return cr.width == 0 && cr.height == 0
+}
+
 struct CaptureOptions {
 mut:
 	method  string = 'gg_record'
 	wait_ms int // used by "generic_screenshot" to wait X milliseconds *after* execution of the app
 	flags   []string
+	regions []CaptureRegion
 	env     map[string]string
 }
 
@@ -143,10 +157,6 @@ fn main() {
 	fp.skip_executable()
 
 	show_help := fp.bool('help', `h`, false, 'Show this help text.')
-	if show_help {
-		println(fp.usage())
-		exit(0)
-	}
 
 	// Collect tool options
 	mut opt := Options{
@@ -157,6 +167,11 @@ fn main() {
 
 	toml_conf := fp.string('toml-config', `t`, default_toml, 'Path or string with TOML configuration')
 	arg_paths := fp.finalize()?
+	if show_help {
+		println(fp.usage())
+		exit(0)
+	}
+
 	if arg_paths.len == 0 {
 		println(fp.usage())
 		println('\nError missing arguments')
@@ -321,7 +336,7 @@ fn take_screenshots(opt Options, app AppConfig) ![]string {
 					os.setenv('$k', rv, true)
 				}
 
-				mut flags := app.capture.flags.join(' ')
+				flags := app.capture.flags.join(' ')
 				result := opt.verbose_execute('${os.quoted_path(v_exe)} $flags -d gg_record run ${os.quoted_path(app.abs_path)}')
 				if result.exit_code != 0 {
 					return error('Failed taking screenshot of `$app.abs_path`:\n$result.output')
@@ -336,8 +351,12 @@ fn take_screenshots(opt Options, app AppConfig) ![]string {
 
 				existing_screenshots := get_app_screenshots(out_path, app)!
 
-				mut flags := app.capture.flags
+				flags := app.capture.flags
 
+				if !os.exists(app.abs_path) {
+					return error('Failed starting app `$app.abs_path`, the path does not exist')
+				}
+				opt.verbose_eprintln('Running $app.abs_path $flags')
 				mut p_app := os.new_process(app.abs_path)
 				p_app.set_args(flags)
 				p_app.run()
@@ -347,7 +366,12 @@ fn take_screenshots(opt Options, app AppConfig) ![]string {
 					return error('Failed starting app `$app.abs_path` (before screenshot):\n$output')
 				}
 				if app.capture.wait_ms > 0 {
+					opt.verbose_eprintln('Waiting $app.capture.wait_ms before capturing')
 					time.sleep(app.capture.wait_ms * time.millisecond)
+				}
+				if !p_app.is_alive() {
+					output := p_app.stdout_slurp() + '\n' + p_app.stderr_slurp()
+					return error('App `$app.abs_path` exited ($p_app.code) before a screenshot could be captured:\n$output')
 				}
 				// Use ImageMagick's `import` tool to take the screenshot
 				out_file := os.join_path(out_path, os.file_name(app.path) +
@@ -356,6 +380,34 @@ fn take_screenshots(opt Options, app AppConfig) ![]string {
 				if result.exit_code != 0 {
 					p_app.signal_kill()
 					return error('Failed taking screenshot of `$app.abs_path` to "$out_file":\n$result.output')
+				}
+
+				// When using regions the capture is split up into regions.len
+				// And name the output based on each region's properties
+				if app.capture.regions.len > 0 {
+					for region in app.capture.regions {
+						region_id := 'x${region.x}y${region.y}w${region.width}h$region.height'
+						region_out_file := os.join_path(out_path, os.file_name(app.path) +
+							'_screenshot_${existing_screenshots.len:02}_region_${region_id}.png')
+						// If the region is empty (w, h == 0, 0) infer a full screenshot,
+						// This allows for capturing both regions *and* the complete screen
+						if region.is_empty() {
+							os.cp(out_file, region_out_file) or {
+								return error('Failed copying original screenshot "$out_file" to region file "$region_out_file"')
+							}
+							continue
+						}
+						extract_result := opt.verbose_execute('convert -extract ${region.width}x$region.height+$region.x+$region.y "$out_file" "$region_out_file"')
+						if extract_result.exit_code != 0 {
+							p_app.signal_kill()
+							return error('Failed extracting region $region_id from screenshot of `$app.abs_path` to "$region_out_file":\n$result.output')
+						}
+					}
+					// When done, remove the original file that was split into regions.
+					opt.verbose_eprintln('Removing "$out_file" (region mode)')
+					os.rm(out_file) or {
+						return error('Failed removing original screenshot "$out_file"')
+					}
 				}
 				p_app.signal_kill()
 			}
@@ -395,6 +447,17 @@ fn new_config(root_path string, toml_config string) !Config {
 	}
 	capture_method := doc.value('capture.method').default_to('gg_record').string()
 	capture_flags := doc.value('capture.flags').default_to(empty_toml_array).array().as_strings()
+	capture_regions_any := doc.value('capture.regions').default_to(empty_toml_array).array()
+	mut capture_regions := []CaptureRegion{}
+	for capture_region_any in capture_regions_any {
+		region := CaptureRegion{
+			x: capture_region_any.value('x').default_to(0).int()
+			y: capture_region_any.value('y').default_to(0).int()
+			width: capture_region_any.value('width').default_to(0).int()
+			height: capture_region_any.value('height').default_to(0).int()
+		}
+		capture_regions << region
+	}
 	capture_wait_ms := doc.value('capture.wait_ms').default_to(0).int()
 	capture_env := doc.value('capture.env').default_to(empty_toml_map).as_map()
 	mut env_map := map[string]string{}
@@ -405,6 +468,7 @@ fn new_config(root_path string, toml_config string) !Config {
 		method: capture_method
 		wait_ms: capture_wait_ms
 		flags: capture_flags
+		regions: capture_regions
 		env: env_map
 	}
 
@@ -425,7 +489,6 @@ fn new_config(root_path string, toml_config string) !Config {
 
 		mut merged_capture := CaptureOptions{}
 		merged_capture.method = app_any.value('capture.method').default_to(default_capture.method).string()
-		merged_capture.wait_ms = app_any.value('capture.wait_ms').default_to(default_capture.wait_ms).int()
 		merged_capture_flags := app_any.value('capture.flags').default_to(empty_toml_array).array().as_strings()
 		if merged_capture_flags.len > 0 {
 			merged_capture.flags = merged_capture_flags
@@ -433,6 +496,31 @@ fn new_config(root_path string, toml_config string) !Config {
 			merged_capture.flags = default_capture.flags
 		}
 
+		app_capture_regions_any := app_any.value('capture.regions').default_to(empty_toml_array).array()
+		mut app_capture_regions := []CaptureRegion{}
+		for capture_region_any in app_capture_regions_any {
+			region := CaptureRegion{
+				x: capture_region_any.value('x').default_to(0).int()
+				y: capture_region_any.value('y').default_to(0).int()
+				width: capture_region_any.value('width').default_to(0).int()
+				height: capture_region_any.value('height').default_to(0).int()
+			}
+			app_capture_regions << region
+		}
+		mut merged_capture_regions := []CaptureRegion{}
+		for default_capture_region in default_capture.regions {
+			if default_capture_region !in app_capture_regions {
+				merged_capture_regions << default_capture_region
+			}
+		}
+		for app_capture_region in app_capture_regions {
+			if app_capture_region !in default_capture.regions {
+				merged_capture_regions << app_capture_region
+			}
+		}
+		merged_capture.regions = merged_capture_regions
+
+		merged_capture.wait_ms = app_any.value('capture.wait_ms').default_to(default_capture.wait_ms).int()
 		merge_capture_env := app_any.value('capture.env').default_to(empty_toml_map).as_map()
 		mut merge_env_map := default_capture.env.clone()
 		for k, v in merge_capture_env {

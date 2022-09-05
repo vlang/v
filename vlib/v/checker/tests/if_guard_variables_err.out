@@ -1,14 +1,21 @@
-vlib/v/checker/tests/if_guard_variables_err.vv:6:2: error: if guard expects 3 variables, but got 1
-    4 |
-    5 | fn main() {
-    6 |     if r1 := create() {
+vlib/v/checker/tests/if_guard_variables_err.vv:10:2: error: if guard expects 3 variables, but got 1
+    8 |
+    9 | fn main() {
+   10 |     if r1 := create() {
       |     ~~~~~~~~~~~~~~~~~
-    7 |         println(r1)
-    8 |     }
-vlib/v/checker/tests/if_guard_variables_err.vv:10:2: error: if guard expects 3 variables, but got 4
-    8 |     }
-    9 |
-   10 |     if r1, r2, r3, r4 := create() {
-      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
    11 |         println(r1)
-   12 |         println(r2)
+   12 |     }
+vlib/v/checker/tests/if_guard_variables_err.vv:14:2: error: if guard expects 3 variables, but got 4
+   12 |     }
+   13 |
+   14 |     if r1, r2, r3, r4 := create() {
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   15 |         println(r1)
+   16 |         println(r2)
+vlib/v/checker/tests/if_guard_variables_err.vv:21:2: error: if guard expects 2 variables, but got 1
+   19 |     }
+   20 |
+   21 |     if x := maybe() {
+      |     ~~~~~~~~~~~~~~~
+   22 |         println('$x')
+   23 |     }

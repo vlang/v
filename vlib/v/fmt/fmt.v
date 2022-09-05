@@ -1160,12 +1160,12 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 	immut_fields := if node.mut_pos < 0 { node.fields } else { node.fields[..node.mut_pos] }
 	mut_fields := if node.mut_pos < 0 { []ast.StructField{} } else { node.fields[node.mut_pos..] }
 
-	mut immut_methods := node.methods
+	mut immut_methods := node.methods.clone()
 	mut mut_methods := []ast.FnDecl{}
 	for i, method in node.methods {
 		if method.params[0].is_mut {
-			immut_methods = node.methods[..i]
-			mut_methods = node.methods[i..]
+			immut_methods = node.methods[..i].clone()
+			mut_methods = node.methods[i..].clone()
 			break
 		}
 	}
@@ -1256,12 +1256,18 @@ pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
 	for line in node.lines {
 		f.sql_stmt_line(line)
 	}
-
-	f.writeln('}')
+	f.write('}')
+	f.or_expr(node.or_expr)
+	f.writeln('')
 }
 
 pub fn (mut f Fmt) sql_stmt_line(node ast.SqlStmtLine) {
-	table_name := util.strip_mod_name(f.table.sym(node.table_expr.typ).name)
+	sym := f.table.sym(node.table_expr.typ)
+	mut table_name := sym.name
+	if !table_name.starts_with('C.') && !table_name.starts_with('JS.') {
+		table_name = f.no_cur_mod(f.short_module(sym.name)) // TODO f.type_to_str?
+	}
+
 	f.mark_types_import_as_used(node.table_expr.typ)
 	f.write('\t')
 	match node.kind {
@@ -2529,7 +2535,11 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 	f.expr(node.db_expr)
 	f.writeln(' {')
 	f.write('\tselect ')
-	table_name := util.strip_mod_name(f.table.sym(node.table_expr.typ).name)
+	sym := f.table.sym(node.table_expr.typ)
+	mut table_name := sym.name
+	if !table_name.starts_with('C.') && !table_name.starts_with('JS.') {
+		table_name = f.no_cur_mod(f.short_module(sym.name)) // TODO f.type_to_str?
+	}
 	if node.is_count {
 		f.write('count ')
 	} else {
@@ -2562,6 +2572,7 @@ pub fn (mut f Fmt) sql_expr(node ast.SqlExpr) {
 	}
 	f.writeln('')
 	f.write('}')
+	f.or_expr(node.or_expr)
 }
 
 pub fn (mut f Fmt) char_literal(node ast.CharLiteral) {

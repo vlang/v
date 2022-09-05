@@ -74,6 +74,11 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 				if info.is_heap && !field.typ.is_ptr() {
 					struct_sym.info.is_heap = true
 				}
+				if info.generic_types.len > 0 && !field.typ.has_flag(.generic)
+					&& info.concrete_types.len == 0 {
+					c.error('field `$field.name` type is generic struct, must specify the generic type names, e.g. Foo<T>, Foo<int>',
+						field.type_pos)
+				}
 			}
 			if sym.kind == .multi_return {
 				c.error('cannot use multi return as field type', field.type_pos)

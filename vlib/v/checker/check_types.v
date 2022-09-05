@@ -389,7 +389,12 @@ pub fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSym
 		if exp_arg_is_ptr != got_arg_is_ptr {
 			exp_arg_pointedness := if exp_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
 			got_arg_pointedness := if got_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
-			c.add_error_detail('`$exp_fn.name`\'s expected fn argument: `$exp_arg.name` is $exp_arg_pointedness, but the passed fn argument: `$got_arg.name` is $got_arg_pointedness')
+			if exp_fn.name.len == 0 {
+				c.add_error_detail('expected argument ${i + 1} to be $exp_arg_pointedness, but the passed argument ${
+					i + 1} is $got_arg_pointedness')
+			} else {
+				c.add_error_detail('`$exp_fn.name`\'s expected argument `$exp_arg.name` to be $exp_arg_pointedness, but the passed argument `$got_arg.name` is $got_arg_pointedness')
+			}
 			return false
 		} else if exp_arg_is_ptr && got_arg_is_ptr {
 			continue
@@ -512,6 +517,13 @@ fn (mut c Checker) check_shift(mut node ast.InfixExpr, left_type_ ast.Type, righ
 		}
 	}
 	return left_type
+}
+
+pub fn (mut c Checker) promote_keeping_aliases(left_type ast.Type, right_type ast.Type, left_kind ast.Kind, right_kind ast.Kind) ast.Type {
+	if left_type == right_type && left_kind == .alias && right_kind == .alias {
+		return left_type
+	}
+	return c.promote(left_type, right_type)
 }
 
 pub fn (mut c Checker) promote(left_type ast.Type, right_type ast.Type) ast.Type {
@@ -671,7 +683,7 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 				if sym.info is ast.FnType {
 					mut func_ := sym.info.func
 					func_.name = ''
-					idx := c.table.find_or_register_fn_type(c.mod, func_, true, false)
+					idx := c.table.find_or_register_fn_type(func_, true, false)
 					typ = ast.new_type(idx).derive(arg.typ)
 				}
 				if arg.expr.is_auto_deref_var() {
@@ -756,8 +768,8 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 					mut concrete_types := []ast.Type{}
 					match arg_sym.info {
 						ast.Struct, ast.Interface, ast.SumType {
-							generic_types = arg_sym.info.generic_types
-							concrete_types = arg_sym.info.concrete_types
+							generic_types = arg_sym.info.generic_types.clone()
+							concrete_types = arg_sym.info.concrete_types.clone()
 						}
 						else {}
 					}

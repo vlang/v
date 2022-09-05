@@ -30,3 +30,21 @@ fn test_struct_init_with_update_expr() {
 	assert o.height == 175
 	assert o.age == 21
 }
+
+struct Foo {
+	s string
+	n int
+}
+
+fn test_struct_init_with_update_expr2() {
+	f := &Foo{
+		s: 'AA'
+	}
+	b := Foo{
+		...*f
+		n: 3
+	}
+	println(b)
+	assert b.s == 'AA'
+	assert b.n == 3
+}

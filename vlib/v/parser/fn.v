@@ -677,7 +677,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	}
 	p.scope.detached_from_parent = true
 	inherited_vars := if p.tok.kind == .lsbr { p.closure_vars() } else { []ast.Param{} }
-	// TODO generics
+	_, generic_names := p.parse_generic_types()
 	args, _, is_variadic := p.fn_args()
 	for arg in args {
 		if arg.name.len == 0 && p.table.sym(arg.typ).kind != .placeholder {
@@ -728,12 +728,12 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		tmp := p.label_names
 		p.label_names = []
 		stmts = p.parse_block_no_scope(false)
-		label_names = p.label_names
+		label_names = p.label_names.clone()
 		p.label_names = tmp
 	}
 	p.cur_fn_name = keep_fn_name
 	func.name = name
-	idx := p.table.find_or_register_fn_type(p.mod, func, true, false)
+	idx := p.table.find_or_register_fn_type(func, true, false)
 	typ := ast.new_type(idx)
 	p.inside_defer = old_inside_defer
 	// name := p.table.get_type_name(typ)
@@ -759,6 +759,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			params: args
 			is_variadic: is_variadic
 			is_method: false
+			generic_names: generic_names
 			is_anon: true
 			no_body: no_body
 			pos: pos.extend(p.prev_tok.pos())
@@ -1041,6 +1042,7 @@ fn (mut p Parser) closure_vars() []ast.Param {
 			...(*var)
 			pos: var_pos
 			is_inherited: true
+			has_inherited: var.is_inherited
 			is_used: false
 			is_changed: false
 			is_mut: is_mut

@@ -77,7 +77,7 @@ fn (mut g Gen) get_str_fn(typ ast.Type) string {
 		}
 	}
 	if sym.has_method_with_generic_parent('str') && mut sym.info is ast.Struct {
-		str_fn_name = g.generic_fn_name(sym.info.concrete_types, str_fn_name, false)
+		str_fn_name = g.generic_fn_name(sym.info.concrete_types, str_fn_name)
 	}
 	g.str_types << StrType{
 		typ: unwrapped
@@ -895,8 +895,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 		field_styp_fn_name := if sym_has_str_method {
 			mut field_fn_name := '${field_styp}_str'
 			if sym.info is ast.Struct {
-				field_fn_name = g.generic_fn_name(sym.info.concrete_types, field_fn_name,
-					false)
+				field_fn_name = g.generic_fn_name(sym.info.concrete_types, field_fn_name)
 			}
 			field_fn_name
 		} else {
@@ -922,7 +921,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 			funcprefix += 'isnil(it.${c_name(field.name)})'
 			funcprefix += ' ? _SLIT("nil") : '
 			// struct, floats and ints have a special case through the _str function
-			if sym.kind !in [.struct_, .alias] && !field.typ.is_int_valptr()
+			if sym.kind !in [.struct_, .alias, .enum_] && !field.typ.is_int_valptr()
 				&& !field.typ.is_float_valptr() {
 				funcprefix += '*'
 			}
@@ -964,7 +963,7 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, _field_type ast.Type, fn_name strin
 	sufix := if field_type.has_flag(.shared_f) { '->val' } else { '' }
 	deref, _ := deref_kind(expects_ptr, field_type.is_ptr(), field_type)
 	if sym.kind == .enum_ {
-		return '${fn_name}(${deref}it.${c_name(field_name)})', true
+		return '${fn_name}(${deref}(it.${c_name(field_name)}))', true
 	} else if should_use_indent_func(sym.kind) {
 		obj := '${deref}it.${c_name(field_name)}$sufix'
 		if has_custom_str {

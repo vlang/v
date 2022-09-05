@@ -49,9 +49,9 @@ fn test_equal() {
 	mut first_set := Set<string>{}
 	mut second_set := Set<string>{}
 	first_set.add('foo')
-	assert second_set.equal(first_set) == false
+	assert second_set != first_set
 	second_set.add('foo')
-	assert second_set.equal(first_set)
+	assert second_set == first_set
 }
 
 fn test_is_empty() {
@@ -91,7 +91,7 @@ fn test_difference() {
 	mut second_set := Set<string>{}
 	first_set.add_all(['foo', 'bar', 'baz'])
 	second_set.add_all(['bar', 'baz', 'boo'])
-	mut third_set := first_set.difference(second_set)
+	mut third_set := first_set - second_set
 	assert third_set.exists('foo')
 	assert third_set.exists('bar') == false
 	assert third_set.exists('baz') == false
@@ -101,7 +101,7 @@ fn test_difference() {
 	third_set.clear()
 	first_set.add_all(['bar', 'baz', 'boo'])
 	second_set.add_all(['foo', 'bar', 'baz'])
-	third_set = first_set.difference(second_set)
+	third_set = first_set - second_set
 	assert third_set.exists('foo') == false
 	assert third_set.exists('bar') == false
 	assert third_set.exists('baz') == false

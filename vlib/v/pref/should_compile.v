@@ -30,6 +30,9 @@ pub fn (prefs &Preferences) should_compile_filtered_files(dir string, files_ []s
 		if file.starts_with('.#') {
 			continue
 		}
+		if !prefs.prealloc && !prefs.output_cross_c && file.ends_with('prealloc.c.v') {
+			continue
+		}
 		if prefs.nofloat && file.ends_with('float.c.v') {
 			continue
 		}

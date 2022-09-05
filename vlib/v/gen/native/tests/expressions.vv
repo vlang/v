@@ -44,17 +44,39 @@ fn test_add() {
 	y := 3
 	sum := x + y
 	product := x * y
-	// diff := y - x
+	diff := y - x
+	div := y / x
+	mod := y % x
+	bitand := x & y
+	bitor := x | y
+	bitxor := x ^ y
+	lshift := x << x
+	rshift := 12 >> x
 	print_number(x)
 	print_number(y)
 	print_number(sum)
 	print_number(product)
-	// XXX fails on linux-amd64 but works on macos-amd64
-	// print_number(diff)
+	print_number(diff)
+	print_number(div)
+	print_number(mod)
+	print_number(bitand)
+	print_number(bitor)
+	print_number(bitxor)
+	print_number(lshift)
+	print_number(rshift)
+}
+
+fn test_multiple() {
+	a := 3
+	b := 5
+	c := 2
+	result := (a * ((a & b) + c) << (b ^ a)) | a - b % (b / c)
+	println(result)
 }
 
 fn main() {
 	println('start')
 	test_add()
+	test_multiple()
 	println('end')
 }

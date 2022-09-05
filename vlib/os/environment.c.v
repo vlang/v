@@ -79,11 +79,6 @@ pub fn unsetenv(name string) int {
 // See: https://docs.microsoft.com/bg-bg/windows/win32/api/processenv/nf-processenv-getenvironmentstrings
 // os.environ returns a map of all the current environment variables
 
-fn unix_environ() &&char {
-	// TODO: remove this helper function, when `&&char(C.environ)` works properly
-	return voidptr(C.environ)
-}
-
 pub fn environ() map[string]string {
 	mut res := map[string]string{}
 	$if windows {
@@ -101,7 +96,7 @@ pub fn environ() map[string]string {
 		}
 		C.FreeEnvironmentStringsW(estrings)
 	} $else {
-		start := unix_environ()
+		start := &&char(C.environ)
 		mut i := 0
 		for {
 			x := unsafe { start[i] }

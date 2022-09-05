@@ -245,12 +245,13 @@ fn (mut c Client) send_body(cfg Mail) ? {
 	}
 
 	if is_html {
-		sb.write_string('Content-Type: text/html; charset=UTF-8')
+		sb.write_string('Content-Type: text/html; charset=UTF-8\r\n')
 	} else {
-		sb.write_string('Content-Type: text/plain; charset=UTF-8')
+		sb.write_string('Content-Type: text/plain; charset=UTF-8\r\n')
 	}
+	sb.write_string('Content-Transfer-Encoding: base64')
 	sb.write_string('\r\n\r\n')
-	sb.write_string(cfg.body)
+	sb.write_string(base64.encode_str(cfg.body))
 	sb.write_string('\r\n.\r\n')
 	c.send_str(sb.str())?
 	c.expect_reply(.action_ok)?

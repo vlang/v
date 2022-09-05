@@ -62,7 +62,7 @@ fn (mut fdr Finder) search_for_matches() {
 	mut paths_to_search := []string{}
 	if fdr.dirs.len == 0 && fdr.modul == '' {
 		paths_to_search << [current_dir, vmod_dir]
-		if vlib_dir !in paths_to_search {
+		if vlib_dir !in paths_to_search && paths_to_search.all(!vlib_dir.starts_with(it)) {
 			paths_to_search << vlib_dir
 		}
 		paths_to_search << vmod_paths

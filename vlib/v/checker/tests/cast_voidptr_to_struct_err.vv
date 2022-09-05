@@ -1,0 +1,19 @@
+struct Foo {
+	x int
+}
+
+fn unwrap_concrete(ptr voidptr) Foo {
+	return Foo(ptr)
+}
+
+fn unwrap_generic<T>(ptr voidptr) T {
+	return T(ptr)
+}
+
+pub fn main() {
+	foo1 := unwrap_concrete(voidptr(0))
+	foo2 := unwrap_generic<Foo>(voidptr(0))
+
+	println(foo1)
+	println(foo2)
+}

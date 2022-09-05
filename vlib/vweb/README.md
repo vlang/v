@@ -219,9 +219,34 @@ You have access to the raw request data such as headers
 or the request body by accessing `app` (which is `vweb.Context`).
 If you want to read the request body, you can do that by calling `app.req.data`.
 To read the request headers, you just call `app.req.header` and access the
-header you want, e.g. `app.req.header.get(.content_type)`. See `struct Header`
+header you want example. `app.req.header.get(.content_type)`. See `struct Header`
 for all available methods (`v doc net.http Header`).
+It has, too, fields for the `query`, `form`, `files`.
 
+#### - Query
+To handle the query context, you just need use the  `query` field
+
+**Example:**
+
+```v
+module main
+
+import vweb
+
+struct App {
+	vweb.Context
+}
+
+fn main() {
+	vweb.run(&App{}, 8081)
+}
+
+['/user'; get]
+pub fn (mut app App) controller_get_user_by_id() vweb.Result {
+	// http://localhost:3000/user?q=vpm&order_by=desc => { 'q': 'vpm', 'order_by': 'desc' }
+	return app.text(app.query.str())
+}
+```
 ### Middleware
 
 V haven't a well defined middleware.

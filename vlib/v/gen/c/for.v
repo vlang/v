@@ -346,8 +346,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		receiver_sym := g.table.sym(receiver_typ)
 		if receiver_sym.info is ast.Struct {
 			if receiver_sym.info.concrete_types.len > 0 {
-				fn_name = g.generic_fn_name(receiver_sym.info.concrete_types, fn_name,
-					false)
+				fn_name = g.generic_fn_name(receiver_sym.info.concrete_types, fn_name)
 			}
 		}
 		g.write('\t${g.typ(ret_typ)} $t_var = ${fn_name}(')

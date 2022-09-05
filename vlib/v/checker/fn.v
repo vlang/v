@@ -571,6 +571,18 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		ret_type := typ.typ.set_flag(.optional)
 		node.return_type = ret_type
 		return ret_type
+	} else if fn_name == '__addr' {
+		if !c.inside_unsafe {
+			c.error('`__addr` must be called from an unsafe block', node.pos)
+		}
+		if node.args.len != 1 {
+			c.error('`__addr` requires 1 argument', node.pos)
+			return ast.void_type
+		}
+		typ := c.expr(node.args[0].expr)
+		node.args[0].typ = typ
+		node.return_type = typ.ref()
+		return node.return_type
 	}
 	// look for function in format `mod.fn` or `fn` (builtin)
 	mut func := ast.Fn{}
@@ -859,6 +871,15 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			if param_sym.kind == .array {
 				info := param_sym.array_info()
 				c.expected_type = info.elem_type
+			}
+			typ := c.expr(call_arg.expr)
+			if i == node.args.len - 1 && c.table.sym(typ).kind == .array
+				&& call_arg.expr !is ast.ArrayDecompose && !param.typ.has_flag(.generic)
+				&& c.expected_type != typ {
+				styp := c.table.type_to_str(typ)
+				elem_styp := c.table.type_to_str(c.expected_type)
+				c.error('to pass `$call_arg.expr` ($styp) to `$func.name` (which accepts type `...$elem_styp`), use `...$call_arg.expr`',
+					node.pos)
 			}
 		} else {
 			c.expected_type = param.typ

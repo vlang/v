@@ -112,3 +112,11 @@ fn test_str() ? {
 	list.push(3)
 	assert list.str() == '[1, 2, 3]'
 }
+
+fn test_array() ? {
+	mut list := LinkedList<int>{}
+	list.push(1)
+	list.push(2)
+	list.push(3)
+	assert list.array() == [1, 2, 3]
+}

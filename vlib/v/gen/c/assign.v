@@ -155,7 +155,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				}
 				// if it's a decl assign (`:=`) or a blank assignment `_ =`/`_ :=` then generate `void (*ident) (args) =`
 				if (is_decl || blank_assign) && left is ast.Ident {
-					sig := g.fn_var_signature(val.decl.return_type, val.decl.params, ident.name)
+					sig := g.fn_var_signature(val.decl.return_type, val.decl.params.map(it.typ),
+						ident.name)
 					g.write(sig + ' = ')
 				} else {
 					g.is_assign_lhs = true
@@ -291,7 +292,7 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 				if left_sym.kind == .struct_ && (left_sym.info as ast.Struct).generic_types.len > 0 {
 					concrete_types := (left_sym.info as ast.Struct).concrete_types
 					mut method_name := left_sym.cname + '_' + util.replace_op(extracted_op)
-					method_name = g.generic_fn_name(concrete_types, method_name, true)
+					method_name = g.generic_fn_name(concrete_types, method_name)
 					g.write(' = ${method_name}(')
 					g.expr(left)
 					g.write(', ')
@@ -338,7 +339,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 					''
 				}
 
-				g.write('$ret_styp ($msvc_call_conv*${g.get_ternary_name(ident.name)}) (')
+				fn_name := c_name(g.get_ternary_name(ident.name))
+				g.write('$ret_styp ($msvc_call_conv*$fn_name) (')
 				def_pos := g.definitions.len
 				g.fn_decl_params(func.func.params, unsafe { nil }, false)
 				g.definitions.go_back(g.definitions.len - def_pos)
@@ -658,6 +660,30 @@ fn (mut g Gen) gen_cross_var_assign(node &ast.AssignStmt) {
 					g.write(', ')
 					g.expr(left.index)
 					g.writeln(');')
+				} else if sym.kind == .array_fixed {
+					info := sym.info as ast.ArrayFixed
+					elem_typ := g.table.sym(info.elem_type)
+					if elem_typ.kind == .function {
+						left_typ := node.left_types[i]
+						left_sym := g.table.sym(left_typ)
+						g.write_fn_ptr_decl(left_sym.info as ast.FnType, '_var_$left.pos.pos')
+						g.write(' = *(voidptr*)')
+					} else {
+						styp := g.typ(info.elem_type)
+						g.write('$styp _var_$left.pos.pos = ')
+					}
+					if left.left_type.is_ptr() {
+						g.write('*')
+					}
+					needs_clone := info.elem_type == ast.string_type && g.is_autofree
+					if needs_clone {
+						g.write('/*1*/string_clone(')
+					}
+					g.expr(left)
+					if needs_clone {
+						g.write(')')
+					}
+					g.writeln(';')
 				} else if sym.kind == .map {
 					info := sym.info as ast.Map
 					skeytyp := g.typ(info.key_type)

@@ -6,6 +6,8 @@ module parser
 import v.ast
 
 fn (mut p Parser) sql_expr() ast.Expr {
+	tmp_inside_match := p.inside_match
+	p.inside_match = true
 	// `sql db {`
 	pos := p.tok.pos()
 	p.check_name()
@@ -91,9 +93,13 @@ fn (mut p Parser) sql_expr() ast.Expr {
 		typ = table_type
 	}
 	p.check(.rcbr)
+	p.inside_match = false
+	or_expr := p.parse_sql_or_block()
+	p.inside_match = tmp_inside_match
 	return ast.SqlExpr{
 		is_count: is_count
 		typ: typ
+		or_expr: or_expr
 		db_expr: db_expr
 		where_expr: where_expr
 		has_where: has_where
@@ -136,11 +142,45 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	}
 
 	p.next()
+
+	mut or_expr := p.parse_sql_or_block()
+
 	pos.last_line = p.prev_tok.line_nr
 	return ast.SqlStmt{
 		pos: pos.extend(p.prev_tok.pos())
 		db_expr: db_expr
 		lines: lines
+		or_expr: or_expr
+	}
+}
+
+fn (mut p Parser) parse_sql_or_block() ast.OrExpr {
+	mut stmts := []ast.Stmt{}
+	mut kind := ast.OrKind.absent
+	mut pos := p.tok.pos()
+
+	if p.tok.kind == .key_orelse {
+		was_inside_or_expr := p.inside_or_expr
+		p.inside_or_expr = true
+		p.next()
+		p.open_scope()
+		p.scope.register(ast.Var{
+			name: 'err'
+			typ: ast.error_type
+			pos: p.tok.pos()
+			is_used: true
+		})
+		kind = .block
+		stmts = p.parse_block_no_scope(false)
+		pos = pos.extend(p.prev_tok.pos())
+		p.close_scope()
+		p.inside_or_expr = was_inside_or_expr
+	}
+
+	return ast.OrExpr{
+		stmts: stmts
+		kind: kind
+		pos: pos
 	}
 }
 

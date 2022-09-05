@@ -91,7 +91,6 @@ mut:
 	if_cond_comments          []ast.Comment
 	script_mode               bool
 	script_mode_start_token   token.Token
-	anon_struct_counter       int
 pub mut:
 	scanner    &scanner.Scanner
 	errors     []errors.Error
@@ -327,9 +326,9 @@ pub fn (mut p Parser) parse() &ast.File {
 	}
 	p.scope.end_pos = p.tok.pos
 
-	mut errors := p.errors
-	mut warnings := p.warnings
-	mut notices := p.notices
+	mut errors := p.errors.clone()
+	mut warnings := p.warnings.clone()
+	mut notices := p.notices.clone()
 
 	if p.pref.check_only {
 		errors << p.scanner.errors
@@ -485,6 +484,33 @@ fn (p &Parser) peek_token_after_var_list() token.Token {
 		}
 	}
 	return tok
+}
+
+// peek token `type Fn = fn () int`
+fn (p &Parser) is_fn_type_decl() bool {
+	mut n := 1
+	mut tok := p.tok
+	mut prev_tok := p.tok
+	cur_ln := p.tok.line_nr
+	for {
+		tok = p.scanner.peek_token(n)
+		if tok.kind in [.lpar, .rpar] {
+			n++
+			prev_tok = tok
+			continue
+		}
+		if tok.kind == .pipe {
+			if tok.pos - prev_tok.pos > prev_tok.len {
+				return false
+			}
+		}
+		if tok.line_nr > cur_ln {
+			break
+		}
+		prev_tok = tok
+		n++
+	}
+	return true
 }
 
 fn (p &Parser) is_array_type() bool {
@@ -2001,7 +2027,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	tok := p.tok
 	mut pos := tok.pos()
 
-	mut defer_vars := p.defer_vars
+	mut defer_vars := p.defer_vars.clone()
 	p.defer_vars = []ast.Ident{}
 
 	left, left_comments := p.expr_list()
@@ -3374,7 +3400,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	p.top_level_statement_start()
 	mut attrs := []ast.Attr{}
 	if p.attrs.len > 0 {
-		attrs = p.attrs
+		attrs = p.attrs.clone()
 		p.attrs = []
 	}
 	mut is_markused := false
@@ -3491,7 +3517,7 @@ fn (mut p Parser) return_stmt() ast.Return {
 fn (mut p Parser) global_decl() ast.GlobalDecl {
 	mut attrs := []ast.Attr{}
 	if p.attrs.len > 0 {
-		attrs = p.attrs
+		attrs = p.attrs.clone()
 		p.attrs = []
 	}
 
@@ -3743,7 +3769,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	p.check(.assign)
 	mut type_pos := p.tok.pos()
 	mut comments := []ast.Comment{}
-	if p.tok.kind == .key_fn {
+	if p.tok.kind == .key_fn && p.is_fn_type_decl() {
 		// function type: `type mycallback = fn(string, int)`
 		fn_name := p.prepend_mod(name)
 		fn_type := p.parse_fn_type(fn_name)
@@ -3763,7 +3789,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		}
 	}
 	sum_variants << p.parse_sum_type_variants()
-	// type SumType = A | B | c
+	// type SumType = Aaa | Bbb | Ccc
 	if sum_variants.len > 1 {
 		for variant in sum_variants {
 			variant_sym := p.table.sym(variant.typ)

@@ -6,18 +6,24 @@ module csv
 import strings
 
 struct Writer {
-mut:
-	sb strings.Builder
-pub mut:
 	use_crlf  bool
 	delimiter u8
+mut:
+	sb strings.Builder
+}
+
+[params]
+pub struct WriterConfig {
+	use_crlf  bool
+	delimiter u8 = `,`
 }
 
 // new_writer returns a reference to a Writer
-pub fn new_writer() &Writer {
+pub fn new_writer(config WriterConfig) &Writer {
 	return &Writer{
-		delimiter: `,`
 		sb: strings.new_builder(200)
+		use_crlf: config.use_crlf
+		delimiter: config.delimiter
 	}
 }
 

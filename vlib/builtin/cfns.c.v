@@ -321,7 +321,7 @@ fn C.WriteConsole() voidptr
 
 fn C.WriteFile() voidptr
 
-fn C._wchdir(dirname &u16)
+fn C._wchdir(dirname &u16) int
 
 fn C._wgetcwd(buffer &u16, maxlen int) int
 

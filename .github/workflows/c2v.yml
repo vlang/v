@@ -4,12 +4,14 @@ on:
   push:
     paths-ignore:
       - "**.md"
+      - "**.yml"
       - "doc/**"
       - "examples/**"
       - "tutorials/**"
   pull_request:
     paths-ignore:
       - "**.md"
+      - "**.yml"
       - "doc/**"
       - "examples/**"
       - "tutorials/**"
@@ -81,7 +83,7 @@ jobs:
           # openimageio-tools        : idiff
           # libgl1-mesa-dri          : For headless rendering / software DRI driver (LIBGL_ALWAYS_SOFTWARE=true)
           # freeglut3-dev            : Fixes graphic apps compilation with tcc
-          sudo apt-get install imagemagick openimageio-tools freeglut3-dev libgl1-mesa-dri xvfb
+          sudo apt-get install imagemagick openimageio-tools freeglut3-dev libgl1-mesa-dri xvfb xsel xclip
 
           # Fetch the free ~4MB DOOM1.WAD from the link at https://doomwiki.org/wiki/DOOM1.WAD
           wget https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad -O ~/doom1.wad
@@ -127,4 +129,4 @@ jobs:
         run: |
           ./imgur.sh /tmp/fail.png
           ./imgur.sh /tmp/diff.png
-          exit 1
+          exit 0

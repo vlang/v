@@ -12,7 +12,7 @@ vlib/v/checker/tests/array_sort_with_compare_err.vv:4:26: error: cannot use `fn 
       |                             ~~~~~~~~~~~~~~~~~
     5 |     println(names)
     6 |
-Details: ``'s expected fn argument: `` is a pointer, but the passed fn argument: `a` is NOT a pointer
+Details: expected argument 1 to be a pointer, but the passed argument 1 is NOT a pointer
 vlib/v/checker/tests/array_sort_with_compare_err.vv:7:26: error: cannot use `int literal` as `fn (voidptr, voidptr) int` in argument 1 to `[]string.sort_with_compare`
     5 |     println(names)
     6 |

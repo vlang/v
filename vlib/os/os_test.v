@@ -455,28 +455,6 @@ fn test_realpath_absolutepath_symlink() ? {
 	os.rm(file_name) or {}
 }
 
-fn test_tmpdir() {
-	t := os.temp_dir()
-	assert t.len > 0
-	assert os.is_dir(t)
-	tfile := t + os.path_separator + 'tmpfile.txt'
-	os.rm(tfile) or {} // just in case
-	tfile_content := 'this is a temporary file'
-	os.write_file(tfile, tfile_content) or { panic(err) }
-	tfile_content_read := os.read_file(tfile) or { panic(err) }
-	assert tfile_content_read == tfile_content
-	os.rm(tfile) or { panic(err) }
-}
-
-fn test_is_writable_folder() {
-	tmp := os.temp_dir()
-	f := os.is_writable_folder(tmp) or {
-		eprintln('err: $err')
-		false
-	}
-	assert f
-}
-
 fn test_make_symlink_check_is_link_and_remove_symlink() {
 	folder := 'tfolder'
 	symlink := 'tsymlink'
@@ -678,9 +656,7 @@ fn test_uname() {
 }
 
 // tests for write_file_array and read_file_array<T>:
-const (
-	maxn = 3
-)
+const maxn = 3
 
 struct IntPoint {
 	x int
@@ -842,14 +818,6 @@ fn test_utime() {
 	assert os.file_last_mod_unix(filename) == mtime
 }
 
-fn test_expand_tilde_to_home() {
-	home_test := os.join_path(os.home_dir(), 'test', 'tilde', 'expansion')
-	home_expansion_test := os.expand_tilde_to_home(os.join_path('~', 'test', 'tilde',
-		'expansion'))
-	assert home_test == home_expansion_test
-	assert os.expand_tilde_to_home('~') == os.home_dir()
-}
-
 fn test_execute() ? {
 	print0script := os.join_path_single(tfolder, 'print0.v')
 	// The output of the next command contains a 0 byte in the middle.
@@ -901,11 +869,4 @@ fn test_command() {
 	cmd_to_fail.close() or { panic(err) }
 	// dump( cmd_to_fail )
 	assert cmd_to_fail.exit_code != 0 // 2 on linux, 1 on macos
-}
-
-fn test_config_dir() {
-	cdir := os.config_dir() or { panic(err) }
-	adir := '$cdir/test-v-config'
-	os.mkdir_all(adir) or { panic(err) }
-	os.rmdir(adir) or { panic(err) }
 }

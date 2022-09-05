@@ -1,17 +1,49 @@
 ## V 0.3.1
-*Not released yet*
+*31 Aug 2022*
 - Anonymous structs.
+- Lots of bug fixes: 90% of all bugs ever submitted are closed.
+- Major improvements to the fast native backend including linking support on Linux. The goal is to be able to self host V soon.
+- Parallelized cc step. Speeds up -prod and clang/gcc compilation by 300-500% (depending on
+  the number of cores). Experimental and hidden behind a -parallel-cc flag, soon to be the default.
+- New keyword/type: `nil`. Only to be used inside `unsafe`. Replaces `voidptr(0)`.
 - V can now find code in the `src/` directory. This allows making V repos much cleaner.
+- Intel C compiler support.
+- Older macOS support (<10.12).
 - `os.mkdir()` now has an optional `mode` parameter.
-- Full termux support via `$if termux {`.
+- Full termux support via `$if termux {`, more predictable logging on Android.
 - Go backend fixes.
 - More type checks.
-- New keyword/type: `nil`. Only to be used inside `unsafe`. Replaces `voidptr(0)`.
 - DOOM is now translated/compiled and launched on CI servers. A screenshot of the running game
   is made via `vgret` and is compared to the expected result.
 - VLS performance improvements, especially on Windows.
-- Add `v ls` tool for installing, for updating, and for launching VLS (V Language Server)
+- `v ls` tool for installing, for updating, and for launching VLS (V Language Server).
 - Support `assert condition, extra_message`, where the `extra_message` will be evaluated and shown if the assertion fails.
+- Anonymous sumtypes have been removed (deprecated for now) due to complicating the language and the compiler too much.
+- `encoding.csv` is now generic, supports bools, accepts a custom delimiter, and is compatible with io.Reader/io.Writer.
+- Operator overloading now works with aliases and generics.
+- `datatypes` module now uses operator overloading.
+- All `datatypes` types can be converted to V arrays.
+- `smtp` improvements including multiple recipients and base64/utf8 support.
+- `v doc` now has syntax highlighting.
+- `arrays.carray_to_varray<T>()` for converting C arrays to V arrays.
+- `strconv.v_sprintf()` has been deprecated in favor of string interpolation.
+- TOML module now supports `[toml:...]` attributes, just like the JSON module.
+- `os.walk()` is no longer recursive (still works the same).
+- Windows code has been removed from `v.c` distributed on non-Windows systems. (`v_windows.c` is used on Windows.)
+- ORM functions now return `Result`, so the errors can be handled.
+- `#preinclude` for low level C interop.
+- `net.urllib` ipv6 support.
+- Lots of fixes in `shared` types.
+- `io` has been migrated to `Result`.
+- Third party window control in Sokol.
+- Scanner optimizations.
+- `string.replace_char()`, `math.round_sig()`.
+- Improved multiplication performance in `math.big`.
+- `net.Http.Response.text` renamed to `body`.
+- Using C's #define is no longer allowed in normal V code, only in `.c.v` files.
+- V interpreter improvements.
+- `net.websocket` timeout is now configurable.
+
 
 ## V 0.3
 *30 Jun 2022*

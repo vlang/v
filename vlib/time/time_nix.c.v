@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module time
 
+#flag darwin -I@VEXEROOT/thirdparty/legacy/include/LegacySupport
 #include <time.h>
 #include <errno.h>
 

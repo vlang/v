@@ -195,7 +195,9 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 				if is_update_tmp_var {
 					g.write(tmp_update_var)
 				} else {
+					g.write('(')
 					g.expr(node.update_expr)
+					g.write(')')
 				}
 				if node.update_expr_type.is_ptr() {
 					g.write('->')
@@ -309,6 +311,10 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 		match attr.name {
 			'_pack' {
 				pre_pragma += '#pragma pack(push, $attr.arg)\n'
+				post_pragma += '#pragma pack(pop)'
+			}
+			'packed' {
+				pre_pragma += '#pragma pack(push, 1)\n'
 				post_pragma += '#pragma pack(pop)'
 			}
 			else {}
