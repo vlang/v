@@ -1588,6 +1588,12 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 				g.push(.rax)
 			}
 			else {
+				g.add(.rax, args_size[i] - ((args_size[i]+7)%8+1))
+				for _ in 0..(args_size[i]+7)/8 {
+					g.mov_deref(.rdx, .rax, ._64)
+					g.push(.rdx)
+					g.sub(.rax, 8)
+				}
 			}
 		}
 	}
