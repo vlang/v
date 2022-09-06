@@ -481,8 +481,8 @@ fn (mut g Gen) mov64(reg Register, val i64) {
 }
 
 fn (mut g Gen) movabs(reg Register, val i64) {
-	g.write8(0x48 + int(reg)/8)
-	g.write8(0xb8 + int(reg)%8)
+	g.write8(0x48 + int(reg) / 8)
+	g.write8(0xb8 + int(reg) % 8)
 	g.write64(val)
 	g.println('movabs $reg, $val')
 }
@@ -1626,26 +1626,39 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 	if ts.kind == .struct_ {
 		match return_size {
 			1...7 {
-				g.mov_var_to_reg(.rdx, LocalVar{offset: return_pos, typ: ast.i64_type_idx})
+				g.mov_var_to_reg(.rdx, LocalVar{ offset: return_pos, typ: ast.i64_type_idx })
 				g.movabs(.rcx, 0xffffffffffffffff - (i64(1) << (return_size * 8)) + 1)
 				g.bitand_reg(.rdx, .rcx)
 				g.bitor_reg(.rdx, .rax)
-				g.mov_reg_to_var(LocalVar{offset: return_pos, typ: ast.i64_type_idx}, .rdx)
+				g.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
+					.rdx)
 			}
 			8 {
-				g.mov_reg_to_var(LocalVar{offset: return_pos, typ: ast.i64_type_idx}, .rax)
+				g.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
+					.rax)
 			}
 			9...15 {
-				g.mov_reg_to_var(LocalVar{offset: return_pos, typ: ast.i64_type_idx}, .rax)
-				g.mov_var_to_reg(.rax, LocalVar{offset: return_pos, typ: ast.i64_type_idx}, offset: 8)
+				g.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
+					.rax)
+				g.mov_var_to_reg(.rax, LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
+					
+					offset: 8
+				)
 				g.movabs(.rcx, 0xffffffffffffffff - (i64(1) << (return_size * 8)) + 1)
 				g.bitand_reg(.rax, .rcx)
 				g.bitor_reg(.rax, .rdx)
-				g.mov_reg_to_var(LocalVar{offset: return_pos, typ: ast.i64_type_idx}, .rax, offset: 8)
+				g.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
+					.rax,
+					offset: 8
+				)
 			}
 			16 {
-				g.mov_reg_to_var(LocalVar{offset: return_pos, typ: ast.i64_type_idx}, .rax)
-				g.mov_reg_to_var(LocalVar{offset: return_pos, typ: ast.i64_type_idx}, .rdx, offset: 8)
+				g.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
+					.rax)
+				g.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
+					.rdx,
+					offset: 8
+				)
 			}
 			else {}
 		}
@@ -2689,7 +2702,11 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 	for i in reg_args {
 		name := if i == struct_arg_idx { '_return_val_addr' } else { node.params[i].name }
 		g.stack_var_pos += args_size[i] % 8
-		offset := if i == struct_arg_idx { return_val_offset } else { g.allocate_struct(name, node.params[i].typ) }
+		offset := if i == struct_arg_idx {
+			return_val_offset
+		} else {
+			g.allocate_struct(name, node.params[i].typ)
+		}
 		// copy
 		g.mov_reg_to_var(LocalVar{ offset: offset, typ: ast.i64_type_idx, name: name },
 			native.fn_arg_registers[reg_idx])

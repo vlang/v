@@ -996,12 +996,15 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 									}
 								} else {
 									offset := g.get_var_offset('_return_val_addr')
-									g.mov_var_to_reg(.rdx, LocalVar{offset: offset, typ: ast.i64_type_idx})
-									for i in 0..size/8 {
+									g.mov_var_to_reg(.rdx, LocalVar{
+										offset: offset
+										typ: ast.i64_type_idx
+									})
+									for i in 0 .. size / 8 {
 										g.mov_deref(.rcx, .rax, ._64)
 										g.write([u8(0x48), 0x89, 0x0a])
 										g.println('mov QWORD PTR [rdx], rcx')
-										if i != size/8-1 {
+										if i != size / 8 - 1 {
 											g.add(.rax, 8)
 											g.add(.rdx, 8)
 										}
@@ -1013,14 +1016,16 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 										g.write([u8(0x48), 0x89, 0x0a])
 										g.println('mov QWORD PTR [rdx], rcx')
 									}
-									g.mov_var_to_reg(.rax, LocalVar{offset: offset, typ: ast.i64_type_idx})
+									g.mov_var_to_reg(.rax, LocalVar{
+										offset: offset
+										typ: ast.i64_type_idx
+									})
 								}
 							}
 							else {}
 						}
 					}
 				}
-
 			}
 
 			// jump to return label
