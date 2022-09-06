@@ -5623,7 +5623,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 	if mut expr_type_sym.info is ast.SumType {
 		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
 		if sym.info is ast.FnType {
-			g.write('/* as */ (${styp})__as_cast(')
+			g.write('/* as */ ($styp)__as_cast(')
 		} else {
 			g.write('/* as */ *($styp*)__as_cast(')
 		}
