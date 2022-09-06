@@ -1002,8 +1002,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 									})
 									for i in 0 .. size / 8 {
 										g.mov_deref(.rcx, .rax, ._64)
-										g.write([u8(0x48), 0x89, 0x0a])
-										g.println('mov QWORD PTR [rdx], rcx')
+										g.mov_store(.rdx, .rcx, ._64)
 										if i != size / 8 - 1 {
 											g.add(.rax, 8)
 											g.add(.rdx, 8)
@@ -1013,8 +1012,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 										g.add(.rax, size % 8)
 										g.add(.rdx, size % 8)
 										g.mov_deref(.rcx, .rax, ._64)
-										g.write([u8(0x48), 0x89, 0x0a])
-										g.println('mov QWORD PTR [rdx], rcx')
+										g.mov_store(.rdx, .rcx, ._64)
 									}
 									g.mov_var_to_reg(.rax, LocalVar{
 										offset: offset

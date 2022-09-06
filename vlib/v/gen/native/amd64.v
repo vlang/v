@@ -496,7 +496,19 @@ fn (mut g Gen) mov_deref(reg Register, regptr Register, size Size) {
 	}
 	g.write8(if size == ._8 { 0x8a } else { 0x8b })
 	g.write8(int(reg) % 8 * 8 + int(regptr) % 8)
-	g.println('mov $reg, [$reg]')
+	g.println('mov $reg, [$regptr]')
+}
+
+fn (mut g Gen) mov_store(regptr Register, reg Register, size Size) {
+	if size == ._16 {
+		g.write8(0x66)
+	}
+	if size == ._64 {
+		g.write8(0x48 + int(reg) / 8 * 4 + int(regptr) / 8)
+	}
+	g.write8(if size == ._8 { 0x88 } else { 0x89 })
+	g.write8(int(reg) % 8 * 8 + int(regptr) % 8)
+	g.println('mov [$regptr], $reg')
 }
 
 fn (mut g Gen) mov_reg_to_var(var Var, reg Register, config VarConfig) {
@@ -612,6 +624,17 @@ fn (mut g Gen) mov_int_to_var(var Var, integer int, config VarConfig) {
 					}
 					g.write8(u8(integer))
 					g.println('mov BYTE PTR[rbp-$offset.hex2()], $integer')
+				}
+				ast.i16_type_idx, ast.u16_type_idx {
+					g.write16(0xc766)
+					g.write8(if is_far_var { 0x85 } else { 0x45 })
+					if is_far_var {
+						g.write32(int((0xffffffff - i64(offset) + 1) % 0x100000000))
+					} else {
+						g.write8((0xff - offset + 1) % 0x100)
+					}
+					g.write16(u16(integer))
+					g.println('mov WORD PTR[rbp-$offset.hex2()], $integer')
 				}
 				ast.int_type_idx, ast.u32_type_idx, ast.rune_type_idx {
 					g.write8(0xc7)
