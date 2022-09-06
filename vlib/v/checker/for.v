@@ -37,12 +37,12 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 	typ := c.expr(node.cond)
 	match mut node.cond {
 		ast.PrefixExpr {
-			node.vals_is_ref = node.cond.op == .amp
+			node.val_is_ref = node.cond.op == .amp
 		}
 		ast.Ident {
 			match mut node.cond.info {
 				ast.IdentVar {
-					node.vals_is_ref = node.cond.info.typ.is_ptr()
+					node.val_is_ref = node.cond.info.typ.is_ptr()
 				}
 				else {}
 			}
@@ -162,7 +162,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 					}
 					else {}
 				}
-			} else if node.vals_is_ref {
+			} else if node.val_is_ref {
 				value_type = value_type.ref()
 			}
 			node.cond_type = typ
