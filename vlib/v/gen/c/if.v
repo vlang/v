@@ -112,6 +112,9 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 				}
 			}
 		}
+		ast.SelectorExpr {
+			return g.need_tmp_var_in_expr(expr.expr)
+		}
 		else {}
 	}
 	return false
