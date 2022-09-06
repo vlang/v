@@ -481,16 +481,8 @@ fn (mut g Gen) mov64(reg Register, val i64) {
 }
 
 fn (mut g Gen) movabs(reg Register, val i64) {
-	match reg {
-		.rsi {
-			g.write8(0x48)
-			g.write8(0xbe)
-		}
-		else {
-			panic('unhandled movabs $reg, $val')
-		}
-	}
-
+	g.write8(0x48 + int(reg)/8)
+	g.write8(0xb8 + int(reg)%8)
 	g.write64(val)
 	g.println('movabs $reg, $val')
 }
@@ -935,6 +927,7 @@ fn (mut g Gen) bitand_reg(a Register, b Register) {
 		if int(b) >= int(Register.r8) { 4 } else { 0 })
 	g.write8(0x21)
 	g.write8(0xc0 + int(a) % 8 + int(b) % 8 * 8)
+	g.println('and $a, $b')
 }
 
 fn (mut g Gen) bitor_reg(a Register, b Register) {
@@ -950,6 +943,7 @@ fn (mut g Gen) bitxor_reg(a Register, b Register) {
 		if int(b) >= int(Register.r8) { 4 } else { 0 })
 	g.write8(0x31)
 	g.write8(0xc0 + int(a) % 8 + int(b) % 8 * 8)
+	g.println('xor $a, $b')
 }
 
 fn (mut g Gen) shl_reg(a Register, b Register) {
@@ -1525,10 +1519,24 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 		n = 'main.$n'
 	}
 	addr := g.fn_addr[n]
+
 	mut reg_args := []int{}
 	mut stack_args := []int{}
-	args_size := node.args.map(g.get_type_size(it.typ))
-	mut reg_left := 6
+	mut args_size := node.args.map(g.get_type_size(it.typ))
+
+	ts := g.table.sym(node.return_type)
+	return_size := g.get_type_size(node.return_type)
+	mut return_pos := -1
+	struct_arg_idx := node.args.len
+	if ts.kind == .struct_ {
+		return_pos = g.allocate_struct('', node.return_type)
+		if return_size > 16 {
+			reg_args << struct_arg_idx
+			args_size << 8
+		}
+	}
+
+	mut reg_left := 6 - reg_args.len
 	for i, size in args_size {
 		if reg_left > 0 {
 			if size <= 8 {
@@ -1558,14 +1566,19 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 	}
 	reg_args << stack_args
 	for i in reg_args.reverse() {
+		if i == struct_arg_idx {
+			g.lea_var_to_reg(.rax, return_pos)
+			g.push(.rax)
+			continue
+		}
 		g.expr(node.args[i].expr)
 		if g.table.sym(node.args[i].typ).kind == .struct_ {
 			match args_size[i] {
 				1...8 {
 					g.mov_deref(.rax, .rax, ._64)
 					if args_size[i] != 8 {
-						g.mov64(.rdx, 1 << (args_size[i] * 8) - 1)
-						g.bitor_reg(.rax, .rdx)
+						g.movabs(.rdx, (1 << (args_size[i] * 8)) - 1)
+						g.bitand_reg(.rax, .rdx)
 					}
 				}
 				9...16 {
@@ -1574,8 +1587,8 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 					g.sub(.rax, 8)
 					g.mov_deref(.rax, .rax, ._64)
 					if args_size[i] != 8 {
-						g.mov64(.rbx, 1 << (args_size[i] * 8) - 1)
-						g.bitor_reg(.rax, .rbx)
+						g.movabs(.rbx, (1 << ((args_size[i] - 8) * 8)) - 1)
+						g.bitand_reg(.rax, .rbx)
 					}
 				}
 				else {}
@@ -1609,6 +1622,36 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 		g.call(int(addr))
 	}
 	g.println('call `${name}()`')
+
+	if ts.kind == .struct_ {
+		match return_size {
+			1...7 {
+				g.mov_var_to_reg(.rdx, LocalVar{offset: return_pos, typ: ast.i64_type_idx})
+				g.movabs(.rcx, 0xffffffffffffffff - (1 << (return_size * 8)) + 1)
+				g.bitand_reg(.rdx, .rcx)
+				g.bitor_reg(.rdx, .rax)
+				g.mov_reg_to_var(LocalVar{offset: return_pos, typ: ast.i64_type_idx}, .rdx)
+			}
+			8 {
+				g.mov_reg_to_var(LocalVar{offset: return_pos, typ: ast.i64_type_idx}, .rax)
+			}
+			9...15 {
+				g.mov_reg_to_var(LocalVar{offset: return_pos, typ: ast.i64_type_idx}, .rax)
+				g.mov_var_to_reg(.rax, LocalVar{offset: return_pos, typ: ast.i64_type_idx}, offset: 8)
+				g.movabs(.rcx, 0xffffffffffffffff - (1 << (return_size * 8)) + 1)
+				g.bitand_reg(.rax, .rcx)
+				g.bitor_reg(.rax, .rdx)
+				g.mov_reg_to_var(LocalVar{offset: return_pos, typ: ast.i64_type_idx}, .rax, offset: 8)
+			}
+			16 {
+				g.mov_reg_to_var(LocalVar{offset: return_pos, typ: ast.i64_type_idx}, .rax)
+				g.mov_reg_to_var(LocalVar{offset: return_pos, typ: ast.i64_type_idx}, .rdx, offset: 8)
+			}
+			else {}
+		}
+		g.lea_var_to_reg(.rax, return_pos)
+	}
+
 	if !is_16bit_aligned {
 		// dummy data
 		g.pop(.rdi)

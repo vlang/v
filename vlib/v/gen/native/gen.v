@@ -976,27 +976,28 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				if !typ.is_real_pointer() && !typ.is_number() && !typ.is_bool() {
 					ts := g.table.sym(typ)
 					size := g.get_type_size(typ)
-					if g.pref.arch == .arm64 {
+					if g.pref.arch == .amd64 {
 						match ts.kind {
 							.struct_ {
 								if size <= 8 {
-									g.mov_deref(.rax, .rax, _.64)
-									if args_size[i] != 8 {
-										g.mov64(.rdx, 1 << (args_size[i] * 8) - 1)
-										g.bitor_reg(.rax, .rdx)
+									g.mov_deref(.rax, .rax, ._64)
+									if size != 8 {
+										g.movabs(.rbx, (1 << (size * 8)) - 1)
+										g.bitand_reg(.rax, .rbx)
 									}
 								} else if size <= 16 {
 									g.add(.rax, 8)
 									g.mov_deref(.rdx, .rax, ._64)
 									g.sub(.rax, 8)
 									g.mov_deref(.rax, .rax, ._64)
-									if args_size[i] != 8 {
-										g.mov64(.rbx, 1 << (args_size[i] * 8) - 1)
-										g.bitor_reg(.rax, .rbx)
+									if size != 8 {
+										g.movabs(.rbx, (1 << ((size - 8) * 8)) - 1)
+										g.bitand_reg(.rax, .rbx)
 									}
 								} else {
 								}
 							}
+							else {}
 						}
 					}
 				}
