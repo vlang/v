@@ -1,12 +1,12 @@
 import sqlite
 
 struct Parent {
-	id      int      [primary; sql: serial]
-	name    string
-	chields []Chield [fkey: 'parent_id']
+	id       int     [primary; sql: serial]
+	name     string
+	children []Child [fkey: 'parent_id']
 }
 
-struct Chield {
+struct Child {
 	id        int    [primary; sql: serial]
 	parent_id int
 	name      string
@@ -20,11 +20,11 @@ fn test_orm_array() {
 
 	par := Parent{
 		name: 'test'
-		chields: [
-			Chield{
+		children: [
+			Child{
 				name: 'abc'
 			},
-			Chield{
+			Child{
 				name: 'def'
 			},
 		]
@@ -43,7 +43,7 @@ fn test_orm_array() {
 	}
 
 	assert parent.name == par.name
-	assert parent.chields.len == par.chields.len
-	assert parent.chields[0].name == 'abc'
-	assert parent.chields[1].name == 'def'
+	assert parent.children.len == par.children.len
+	assert parent.children[0].name == 'abc'
+	assert parent.children[1].name == 'def'
 }

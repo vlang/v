@@ -383,7 +383,6 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 		mut is_unique := false
 		mut is_skip := false
 		mut unique_len := 0
-		// mut fkey := ''
 		mut field_name := sql_field_name(field)
 		mut ctyp := sql_from_v(sql_field_type(field)) or {
 			field_name = '${field_name}_id'
@@ -427,14 +426,6 @@ pub fn orm_table_gen(table string, q string, defaults bool, def_unique_len int, 
 						default_val = attr.arg
 					}
 				}
-				/*'fkey' {
-					if attr.arg != '' {
-						if attr.kind == .string {
-							fkey = attr.arg
-							continue
-						}
-					}
-				}*/
 				else {}
 			}
 		}

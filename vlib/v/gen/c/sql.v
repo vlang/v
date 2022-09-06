@@ -157,8 +157,12 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 		} else if sym.kind == .array {
 			mut f_key := ''
 			for attr in f.attrs {
-				if attr.name == 'fkey' && attr.has_arg && attr.kind == .string {
-					f_key = attr.arg
+				if attr.name == 'fkey' && attr.has_arg {
+					if attr.kind == .string {
+						f_key = attr.arg
+					} else {
+						verror("fkey attribute need be string. Try [fkey: '$attr.arg'] instead of [fkey: $attr.arg]")
+					}
 				}
 			}
 			if f_key == '' {
@@ -714,8 +718,12 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 			} else if sym.kind == .array {
 				mut fkey := ''
 				for attr in field.attrs {
-					if attr.name == 'fkey' && attr.has_arg && attr.kind == .string {
-						fkey = attr.arg
+					if attr.name == 'fkey' && attr.has_arg {
+						if attr.kind == .string {
+							fkey = attr.arg
+						} else {
+							verror("fkey attribute need be string. Try [fkey: '$attr.arg'] instead of [fkey: $attr.arg]")
+						}
 					}
 				}
 				if fkey == '' {
