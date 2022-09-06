@@ -1,15 +1,4 @@
 # To run app
-## From root
-- run typescript project
-`npm i --prefix examples/js_dom_draw_bechmark_chart/typescript_vanilla_typeorm`
-`npm run start:dev --prefix examples/js_dom_draw_bechmark_chart/typescript_vanilla_typeorm`
-
-- run v project
-`v run examples/js_dom_draw_bechmark_chart/v_vweb_orm `
-
-- running v chart
-`cd examples/js_dom_draw_bechmark_chart/chart && v run .`
-
 Dockerfile
 [docker build]=> Docker image
 [docker run]=> Docker container
