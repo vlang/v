@@ -1551,10 +1551,10 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 		}
 		stack_args << i
 	}
-	reg_size := reg_args.map((args_size[it]) / 8).reduce(fn (a int, b int) int {
+	reg_size := reg_args.map((args_size[it] + 7) / 8).reduce(fn (a int, b int) int {
 		return a + b
 	}, 0)
-	stack_size := stack_args.map((args_size[it]) / 8).reduce(fn (a int, b int) int {
+	stack_size := stack_args.map((args_size[it] + 7) / 8).reduce(fn (a int, b int) int {
 		return a + b
 	}, 0)
 
@@ -1577,7 +1577,7 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 				1...8 {
 					g.mov_deref(.rax, .rax, ._64)
 					if args_size[i] != 8 {
-						g.movabs(.rdx, (1 << (args_size[i] * 8)) - 1)
+						g.movabs(.rdx, (i64(1) << (args_size[i] * 8)) - 1)
 						g.bitand_reg(.rax, .rdx)
 					}
 				}
@@ -1586,9 +1586,9 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 					g.mov_deref(.rdx, .rax, ._64)
 					g.sub(.rax, 8)
 					g.mov_deref(.rax, .rax, ._64)
-					if args_size[i] != 8 {
-						g.movabs(.rbx, (1 << ((args_size[i] - 8) * 8)) - 1)
-						g.bitand_reg(.rax, .rbx)
+					if args_size[i] != 16 {
+						g.movabs(.rbx, (i64(1) << ((args_size[i] - 8) * 8)) - 1)
+						g.bitand_reg(.rdx, .rbx)
 					}
 				}
 				else {}
@@ -1627,7 +1627,7 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 		match return_size {
 			1...7 {
 				g.mov_var_to_reg(.rdx, LocalVar{offset: return_pos, typ: ast.i64_type_idx})
-				g.movabs(.rcx, 0xffffffffffffffff - (1 << (return_size * 8)) + 1)
+				g.movabs(.rcx, 0xffffffffffffffff - (i64(1) << (return_size * 8)) + 1)
 				g.bitand_reg(.rdx, .rcx)
 				g.bitor_reg(.rdx, .rax)
 				g.mov_reg_to_var(LocalVar{offset: return_pos, typ: ast.i64_type_idx}, .rdx)
@@ -1638,7 +1638,7 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 			9...15 {
 				g.mov_reg_to_var(LocalVar{offset: return_pos, typ: ast.i64_type_idx}, .rax)
 				g.mov_var_to_reg(.rax, LocalVar{offset: return_pos, typ: ast.i64_type_idx}, offset: 8)
-				g.movabs(.rcx, 0xffffffffffffffff - (1 << (return_size * 8)) + 1)
+				g.movabs(.rcx, 0xffffffffffffffff - (i64(1) << (return_size * 8)) + 1)
 				g.bitand_reg(.rax, .rcx)
 				g.bitor_reg(.rax, .rdx)
 				g.mov_reg_to_var(LocalVar{offset: return_pos, typ: ast.i64_type_idx}, .rax, offset: 8)

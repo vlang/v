@@ -982,7 +982,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 								if size <= 8 {
 									g.mov_deref(.rax, .rax, ._64)
 									if size != 8 {
-										g.movabs(.rbx, (1 << (size * 8)) - 1)
+										g.movabs(.rbx, (i64(1) << (size * 8)) - 1)
 										g.bitand_reg(.rax, .rbx)
 									}
 								} else if size <= 16 {
@@ -990,9 +990,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 									g.mov_deref(.rdx, .rax, ._64)
 									g.sub(.rax, 8)
 									g.mov_deref(.rax, .rax, ._64)
-									if size != 8 {
-										g.movabs(.rbx, (1 << ((size - 8) * 8)) - 1)
-										g.bitand_reg(.rax, .rbx)
+									if size != 16 {
+										g.movabs(.rbx, (i64(1) << ((size - 8) * 8)) - 1)
+										g.bitand_reg(.rdx, .rbx)
 									}
 								} else {
 								}
