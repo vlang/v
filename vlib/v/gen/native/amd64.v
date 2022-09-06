@@ -2648,7 +2648,20 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 	// Copy values from registers to local vars (calling convention)
 	mut reg_args := []int{}
 	mut stack_args := []int{}
-	args_size := node.params.map(g.get_type_size(it.typ))
+	mut args_size := node.params.map(g.get_type_size(it.typ))
+
+	ts := g.table.sym(node.return_type)
+	return_size := g.get_type_size(node.return_type)
+	struct_arg_idx := node.params.len
+	mut return_val_offset := -1
+	if ts.kind == .struct_ {
+		if return_size > 16 {
+			return_val_offset = g.allocate_var('_return_val_addr', 8, 0)
+			reg_args << struct_arg_idx
+			args_size << 8
+		}
+	}
+
 	mut reg_left := 6
 	for i, size in args_size {
 		if reg_left > 0 {
@@ -2674,9 +2687,9 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 	// define and copy args on register
 	mut reg_idx := 0
 	for i in reg_args {
-		name := node.params[i].name
+		name := if i == struct_arg_idx { '_return_val_addr' } else { node.params[i].name }
 		g.stack_var_pos += args_size[i] % 8
-		offset := g.allocate_struct(name, node.params[i].typ)
+		offset := if i == struct_arg_idx { return_val_offset } else { g.allocate_struct(name, node.params[i].typ) }
 		// copy
 		g.mov_reg_to_var(LocalVar{ offset: offset, typ: ast.i64_type_idx, name: name },
 			native.fn_arg_registers[reg_idx])
