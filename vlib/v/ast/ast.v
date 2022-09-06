@@ -1047,6 +1047,7 @@ pub:
 	pos        token.Pos
 	val_is_mut bool // `for mut val in vals {` means that modifying `val` will modify the array
 	// and the array cannot be indexed inside the loop
+	vals_is_ref bool // `for val in &arr {` means that value of `val` will be the reference of the value in `arr`
 pub mut:
 	cond      Expr
 	key_type  Type

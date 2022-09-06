@@ -148,6 +148,8 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 					}
 					else {}
 				}
+			} else if node.vals_is_ref {
+				value_type = value_type.ref()
 			}
 			node.cond_type = typ
 			node.kind = sym.kind
