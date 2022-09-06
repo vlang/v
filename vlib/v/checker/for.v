@@ -35,6 +35,20 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 	c.in_for_count++
 	prev_loop_label := c.loop_label
 	typ := c.expr(node.cond)
+	match mut node.cond {
+		ast.PrefixExpr {
+			node.vals_is_ref = node.cond.op == .amp
+		}
+		ast.Ident {
+			match mut node.cond.info {
+				ast.IdentVar {
+					node.vals_is_ref = node.cond.info.typ.is_ptr()
+				}
+				else {}
+			}
+		}
+		else {}
+	}
 	typ_idx := typ.idx()
 	if node.key_var.len > 0 && node.key_var != '_' {
 		c.check_valid_snake_case(node.key_var, 'variable name', node.pos)

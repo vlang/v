@@ -172,14 +172,6 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		stmts := p.parse_block_no_scope(false)
 		pos.update_last_line(p.prev_tok.line_nr)
 
-		vals_is_ref := match cond {
-			ast.PrefixExpr {
-				if cond.op == .amp { true } else { false }
-			}
-			else {
-				false
-			}
-		}
 		for_in_stmt := ast.ForInStmt{
 			stmts: stmts
 			cond: cond
@@ -189,7 +181,6 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			is_range: is_range
 			pos: pos
 			val_is_mut: val_is_mut
-			vals_is_ref: vals_is_ref
 			scope: p.scope
 		}
 		p.close_scope()
