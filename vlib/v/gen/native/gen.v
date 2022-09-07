@@ -619,17 +619,9 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, name string) {
 			styp := g.typ(expr.struct_type)
 			field_name := expr.field
 			if styp.kind == .struct_ {
-				s := styp.info as ast.Struct
-				ptrsz := 4 // should be 8, but for locals is used 8 and C backend shows that too
-				mut off := 0
-				for f in s.fields {
-					if f.name == field_name {
-						g.learel(.rax, g.allocate_string('$off\n', 3, .rel32))
-						g.gen_print_reg(.rax, 3, fd)
-						break
-					}
-					off += ptrsz
-				}
+				off := g.get_field_offset(expr.struct_type, field_name)
+				g.learel(.rax, g.allocate_string('$off\n', 3, .rel32))
+				g.gen_print_reg(.rax, 3, fd)
 			} else {
 				g.v_error('_offsetof expects a struct Type as first argument', expr.pos)
 			}
