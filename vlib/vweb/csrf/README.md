@@ -1,4 +1,5 @@
-# vweb.csrf - Provides protection against Cross-site request forgery (CSRF) for web apps written with vweb
+# vweb.csrf - Provides protection against Cross-site request forgery (CSRF) 
+# for web apps written with vweb
 
 ## Usage
 
@@ -43,14 +44,16 @@ fn (mut app App) index() vweb.Result {
 }
 ```
 
-If you want to set the HttpOnly-status of the cookie to false in order to make it accessible to scripts on your site, you can do it like this:
+If you want to set the cookies's HttpOnly-status to false in order to make it  
+ accessible to scripts on your site, you can do it like this:
 `app.set_csrf_cookie(csrf.HttpOnly{false})`
 If no argument is passed the value will be setted to true by default.
 
 
 ### Protect against CSRF
 
-If you want to protect a route or a site against CSRF just add `app.csrf_protect()` at the beginning of the handler-function.
+If you want to protect a route or a site against CSRF just add  
+`app.csrf_protect()` at the beginning of the handler-function.
 
 ```
 fn (mut app App) foo() vweb.Result {
