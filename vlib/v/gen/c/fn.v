@@ -1021,7 +1021,14 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 	}
 	concrete_types := node.concrete_types.map(g.unwrap_generic(it))
-	name = g.generic_fn_name(concrete_types, name)
+	// name = g.generic_fn_name(concrete_types, name)
+	// TODO: check comment in checker/fn.v:1425. why is this needed? concrete_types should be set
+	// correctly fom the inferred type even in the case of `g.inside_comptime_for_field == true`
+	if concrete_types.len > 0 && g.comptime_for_field_type != 0 && g.inside_comptime_for_field {
+		name = g.generic_fn_name([g.comptime_for_field_type], name)
+	} else {
+		name = g.generic_fn_name(concrete_types, name)
+	}
 	// TODO2
 	// g.generate_tmp_autofree_arg_vars(node, name)
 	if !node.receiver_type.is_ptr() && left_type.is_ptr() && node.name == 'str' {

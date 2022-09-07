@@ -902,6 +902,8 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 
 		arg_typ := c.check_expr_opt_call(call_arg.expr, c.expr(call_arg.expr))
 		node.args[i].typ = arg_typ
+		// NOTE: This should be set automatically, I'm not sure why this is needed
+		// it's the same situation in method_call, and I have added a comment there.
 		if c.inside_comptime_for_field {
 			if mut call_arg.expr is ast.Ident {
 				if mut call_arg.expr.obj is ast.Var {
@@ -1406,6 +1408,11 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		}
 
 		for i, mut arg in node.args {
+			param_idx := if method.is_variadic && i >= method.params.len - 1 {
+				method.params.len - 1
+			} else {
+				i + 1
+			}
 			if i > 0 || exp_arg_typ == ast.Type(0) {
 				exp_arg_typ = if method.is_variadic && i >= method.params.len - 1 {
 					method.params.last().typ
@@ -1420,6 +1427,19 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 
 			mut got_arg_typ := c.check_expr_opt_call(arg.expr, c.expr(arg.expr))
 			node.args[i].typ = got_arg_typ
+			if c.inside_comptime_for_field && method.params[param_idx].typ.has_flag(.generic) {
+				// these should  be set automatically... since the arg type is known
+				// infer type should use that known type and then set concrete_types.
+				// and then register_fn_concrete_types should be called automatically.
+				// I'm not sure why that isn't happening, shouldnt need to do this manually.
+				// also this should duplicated in fn_call, however since this shouldnt
+				// be needed and will get removed I havent added it. need proper fix.
+				concrete_types = [got_arg_typ]
+				node.concrete_types = concrete_types
+				c.table.register_fn_concrete_types(method.fkey(), [
+					c.comptime_fields_default_type,
+				])
+			}
 			if no_type_promotion {
 				if got_arg_typ != exp_arg_typ {
 					c.error('cannot use `${c.table.sym(got_arg_typ).name}` as argument for `$method.name` (`$exp_arg_sym.name` expected)',

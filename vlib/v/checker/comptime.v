@@ -134,6 +134,8 @@ fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 			sym_info := sym.info as ast.Struct
 			c.inside_comptime_for_field = true
 			for field in sym_info.fields {
+				// TODO: is this a typo? should `c.comptime_fields_type[node.val_var]` be set to field.typ?
+				// c.comptime_fields_type[node.val_var] = field.typ.derive(node.typ).clear_flag(.generic)
 				c.comptime_fields_type[node.val_var] = node.typ
 				c.comptime_fields_default_type = field.typ
 				c.stmts(node.stmts)

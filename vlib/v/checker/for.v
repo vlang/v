@@ -34,7 +34,11 @@ fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
 fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 	c.in_for_count++
 	prev_loop_label := c.loop_label
-	typ := c.expr(node.cond)
+	// NOTE: if we unwrap_generic in all places we return a type, for example
+	// ident & fn/method call, then won't we be able to get rid of all these
+	// calls to unwrap_generic when fetching a type? That would clean things
+	// up a bit, then we wouldn't need to call it everywhere. would this work?
+	typ := c.unwrap_generic(c.expr(node.cond))
 	typ_idx := typ.idx()
 	if node.key_var.len > 0 && node.key_var != '_' {
 		c.check_valid_snake_case(node.key_var, 'variable name', node.pos)
