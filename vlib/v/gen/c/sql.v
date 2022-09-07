@@ -380,11 +380,12 @@ fn (mut g Gen) sql_write_orm_primitive(t ast.Type, expr ast.Expr) {
 	g.write('),')
 }
 
-fn (mut g Gen) sql_where_data(expr ast.Expr, mut fields []string, mut kinds []string, mut data []ast.Expr, mut is_and []bool) {
+fn (mut g Gen) sql_where_data(expr ast.Expr, mut fields []string, mut pars [][]int, mut kinds []string, mut data []ast.Expr, mut is_and []bool) {
 	match expr {
 		ast.InfixExpr {
 			g.sql_side = .left
-			g.sql_where_data(expr.left, mut fields, mut kinds, mut data, mut is_and)
+			g.sql_where_data(expr.left, mut fields, mut pars, mut kinds, mut data, mut
+				is_and)
 			mut kind := match expr.op {
 				.ne {
 					'orm__OperationKind__neq'
@@ -421,11 +422,15 @@ fn (mut g Gen) sql_where_data(expr ast.Expr, mut fields []string, mut kinds []st
 				kinds << kind
 			}
 			g.sql_side = .right
-			g.sql_where_data(expr.right, mut fields, mut kinds, mut data, mut is_and)
+			g.sql_where_data(expr.right, mut fields, mut pars, mut kinds, mut data, mut
+				is_and)
 		}
 		ast.ParExpr {
-			eprintln(expr.expr)
-			g.sql_where_data(expr.expr, mut fields, mut kinds, mut data, mut is_and)
+			mut par := [fields.len]
+			g.sql_where_data(expr.expr, mut fields, mut pars, mut kinds, mut data, mut
+				is_and)
+			par << fields.len - 1
+			pars << par
 		}
 		ast.Ident {
 			if g.sql_side == .left {
@@ -454,9 +459,10 @@ fn (mut g Gen) sql_gen_where_data(where_expr ast.Expr) {
 	g.write('(orm__QueryData){')
 	mut fields := []string{}
 	mut kinds := []string{}
+	mut pars := [][]int{}
 	mut data := []ast.Expr{}
 	mut is_and := []bool{}
-	g.sql_where_data(where_expr, mut fields, mut kinds, mut data, mut is_and)
+	g.sql_where_data(where_expr, mut fields, mut pars, mut kinds, mut data, mut is_and)
 	eprintln(fields)
 	eprintln(kinds)
 	eprintln(data)
@@ -479,6 +485,20 @@ fn (mut g Gen) sql_gen_where_data(where_expr ast.Expr) {
 		g.write(' _MOV((orm__Primitive[$data.len]){')
 		for e in data {
 			g.sql_expr_to_orm_primitive(e)
+		}
+		g.write('})')
+	}
+	g.write('),')
+
+	g.write('.pars = new_array_from_c_array($pars.len, $pars.len, sizeof(Array_int),')
+	if data.len > 0 {
+		g.write(' _MOV((Array_int[$pars.len]){')
+		for par in pars {
+			g.write('new_array_from_c_array($par.len, $par.len, sizeof(int), _MOV((int[$par.len]){')
+			for val in par {
+				g.write('$val,')
+			}
+			g.write('})),')
 		}
 		g.write('})')
 	}
