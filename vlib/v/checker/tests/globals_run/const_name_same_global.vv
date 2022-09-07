@@ -1,0 +1,9 @@
+import time
+
+__global (
+	start_time time.Time
+)
+
+fn main() {
+	println(start_time)
+}
