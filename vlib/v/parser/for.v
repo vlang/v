@@ -171,7 +171,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		p.inside_for = false
 		stmts := p.parse_block_no_scope(false)
 		pos.update_last_line(p.prev_tok.line_nr)
-
+		// println('nr stmts=$stmts.len')
 		for_in_stmt := ast.ForInStmt{
 			stmts: stmts
 			cond: cond
