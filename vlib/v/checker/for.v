@@ -34,11 +34,7 @@ fn (mut c Checker) for_c_stmt(node ast.ForCStmt) {
 fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 	c.in_for_count++
 	prev_loop_label := c.loop_label
-	// NOTE: if we unwrap_generic in all places we return a type, for example
-	// ident & fn/method call, then won't we be able to get rid of all these
-	// calls to unwrap_generic when fetching a type? That would clean things
-	// up a bit, then we wouldn't need to call it everywhere. would this work?
-	typ := c.unwrap_generic(c.expr(node.cond))
+	typ := c.expr(node.cond)
 	typ_idx := typ.idx()
 	if node.key_var.len > 0 && node.key_var != '_' {
 		c.check_valid_snake_case(node.key_var, 'variable name', node.pos)
@@ -73,7 +69,8 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		node.high_type = high_type
 		node.scope.update_var_type(node.val_var, node.val_type)
 	} else {
-		sym := c.table.final_sym(typ)
+		unwrapped_type := c.unwrap_generic(typ)
+		sym := c.table.final_sym(unwrapped_type)
 		if sym.kind == .struct_ {
 			// iterators
 			next_fn := sym.find_method_with_generic_parent('next') or {
@@ -115,7 +112,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				node.key_type = key_type
 				node.scope.update_var_type(node.key_var, key_type)
 			}
-			mut value_type := c.table.value_type(typ)
+			mut value_type := c.table.value_type(unwrapped_type)
 			if sym.kind == .string {
 				value_type = ast.u8_type
 			}

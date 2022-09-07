@@ -2893,6 +2893,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			pos: pos
 			is_method: true
 			concrete_types: concrete_types
+			raw_concrete_types: concrete_types
 			concrete_list_pos: concrete_list_pos
 			or_block: ast.OrExpr{
 				stmts: or_stmts

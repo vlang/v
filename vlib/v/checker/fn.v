@@ -418,6 +418,9 @@ pub fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	old_inside_fn_arg := c.inside_fn_arg
 	c.inside_fn_arg = true
 	mut continue_check := true
+	if c.inside_comptime_for_field {
+		node.concrete_types = node.raw_concrete_types
+	}
 	// Now call `method_call` or `fn_call` for specific checks.
 	typ := if node.is_method {
 		c.method_call(mut node)
@@ -471,7 +474,6 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 	}
 	mut has_generic := false // foo<T>() instead of foo<int>()
 	mut concrete_types := []ast.Type{}
-	node.concrete_types = node.raw_concrete_types
 	for concrete_type in node.concrete_types {
 		if concrete_type.has_flag(.generic) {
 			has_generic = true
@@ -1428,14 +1430,6 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			mut got_arg_typ := c.check_expr_opt_call(arg.expr, c.expr(arg.expr))
 			node.args[i].typ = got_arg_typ
 			if c.inside_comptime_for_field && method.params[param_idx].typ.has_flag(.generic) {
-				// these should  be set automatically... since the arg type is known
-				// infer type should use that known type and then set concrete_types.
-				// and then register_fn_concrete_types should be called automatically.
-				// I'm not sure why that isn't happening, shouldnt need to do this manually.
-				// also this should duplicated in fn_call, however since this shouldnt
-				// be needed and will get removed I havent added it. need proper fix.
-				concrete_types = [got_arg_typ]
-				node.concrete_types = concrete_types
 				c.table.register_fn_concrete_types(method.fkey(), [
 					c.comptime_fields_default_type,
 				])
