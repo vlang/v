@@ -35,20 +35,6 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 	c.in_for_count++
 	prev_loop_label := c.loop_label
 	typ := c.expr(node.cond)
-	match mut node.cond {
-		ast.PrefixExpr {
-			node.val_is_ref = node.cond.op == .amp
-		}
-		ast.Ident {
-			match mut node.cond.info {
-				ast.IdentVar {
-					node.val_is_ref = node.cond.info.typ.is_ptr()
-				}
-				else {}
-			}
-		}
-		else {}
-	}
 	typ_idx := typ.idx()
 	if node.key_var.len > 0 && node.key_var != '_' {
 		c.check_valid_snake_case(node.key_var, 'variable name', node.pos)
@@ -84,6 +70,22 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		node.scope.update_var_type(node.val_var, node.val_type)
 	} else {
 		sym := c.table.final_sym(typ)
+		if sym.kind != .string {
+			match mut node.cond {
+				ast.PrefixExpr {
+					node.val_is_ref = node.cond.op == .amp
+				}
+				ast.Ident {
+					match mut node.cond.info {
+						ast.IdentVar {
+							node.val_is_ref = !node.cond.is_mut() && node.cond.info.typ.is_ptr()
+						}
+						else {}
+					}
+				}
+				else {}
+			}
+		}
 		if sym.kind == .struct_ {
 			// iterators
 			next_fn := sym.find_method_with_generic_parent('next') or {
