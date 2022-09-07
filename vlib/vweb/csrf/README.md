@@ -4,7 +4,7 @@
 
 When building a csrf-protected service, first of all create a `struct`that implements `csrf.App`
 
-```
+```v ignore
 module main
 
 import vweb
@@ -18,7 +18,7 @@ struct App {
 
 Start a server e.g. in the main function.
 
-```
+```v ignore
 fn main() {
 	vweb.run_at(&App{}, vweb.RunParams{
         port: 8080
@@ -30,7 +30,7 @@ fn main() {
 
 Then add a handler-function to define on which route or on which site the CSRF-Token shall be set.
 
-```
+```v ignore
 fn (mut app App) index() vweb.Result {
 
     // Set a Csrf-Cookie (Token will be generated automatically)
@@ -52,7 +52,7 @@ If no argument is passed the value will be setted to true by default.
 
 If you want to protect a route or a site against CSRF just add `app.csrf_protect()` at the beginning of the handler-function.
 
-```
+```v ignore
 fn (mut app App) foo() vweb.Result {
     // Protect this handler-function against CSRF
 	app.csrf_protect()
