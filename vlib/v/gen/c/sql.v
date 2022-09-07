@@ -417,11 +417,15 @@ fn (mut g Gen) sql_where_data(expr ast.Expr, mut fields []string, mut kinds []st
 					kind = 'orm__OperationKind__eq'
 				}
 			}
-			if expr.left !is ast.InfixExpr && expr.right !is ast.InfixExpr {
+			if expr.left !is ast.InfixExpr && expr.right !is ast.InfixExpr && kind != '' {
 				kinds << kind
 			}
 			g.sql_side = .right
 			g.sql_where_data(expr.right, mut fields, mut kinds, mut data, mut is_and)
+		}
+		ast.ParExpr {
+			eprintln(expr.expr)
+			g.sql_where_data(expr.expr, mut fields, mut kinds, mut data, mut is_and)
 		}
 		ast.Ident {
 			if g.sql_side == .left {
@@ -453,6 +457,10 @@ fn (mut g Gen) sql_gen_where_data(where_expr ast.Expr) {
 	mut data := []ast.Expr{}
 	mut is_and := []bool{}
 	g.sql_where_data(where_expr, mut fields, mut kinds, mut data, mut is_and)
+	eprintln(fields)
+	eprintln(kinds)
+	eprintln(data)
+	eprintln(is_and)
 	g.write('.types = __new_array_with_default_noscan(0, 0, sizeof(int), 0),')
 	if fields.len > 0 {
 		g.write('.fields = new_array_from_c_array($fields.len, $fields.len, sizeof(string),')
