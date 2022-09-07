@@ -2739,12 +2739,14 @@ pub fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 		if mut obj := node.scope.find(node.name) {
 			match mut obj {
 				ast.GlobalField {
-					node.kind = .global
-					node.info = ast.IdentVar{
-						typ: obj.typ
+					if node.mod == '' {
+						node.kind = .global
+						node.info = ast.IdentVar{
+							typ: obj.typ
+						}
+						node.obj = obj
+						return obj.typ
 					}
-					node.obj = obj
-					return obj.typ
 				}
 				ast.Var {
 					// inside vweb tmpl ident positions are meaningless, use the position of the comptime call.
