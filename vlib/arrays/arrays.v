@@ -310,7 +310,6 @@ pub fn group_by<K, V>(list []V, grouping_op fn (v V) K) map[K][]V {
 // Example: arrays.concat([1, 2, 3], 4, 5, 6) == [1, 2, 3, 4, 5, 6] // => true
 // Example: arrays.concat([1, 2, 3], ...[4, 5, 6]) == [1, 2, 3, 4, 5, 6] // => true
 // Example: arr << [4, 5, 6] // does what you need if arr is mutable
-[deprecated]
 pub fn concat<T>(a []T, b ...T) []T {
 	mut m := []T{cap: a.len + b.len}
 

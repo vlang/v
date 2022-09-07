@@ -1,0 +1,14 @@
+vlib/v/checker/tests/generics_non_generic_struct_used_like_a_generic_one.vv:6:9: error: a non generic struct `Toy` used like a generic struct
+    4 |
+    5 | fn get_toy1(toy Toy) Toy{
+    6 |     return Toy<T>{toy.toy_name}
+      |            ~~~
+    7 | }
+    8 |
+vlib/v/checker/tests/generics_non_generic_struct_used_like_a_generic_one.vv:10:9: error: a non generic struct `Toy` used like a generic struct
+    8 |
+    9 | fn get_toy2(toy Toy) Toy{
+   10 |     return Toy<T,U>{toy.toy_name}
+      |            ~~~
+   11 | }
+   12 |

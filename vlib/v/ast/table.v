@@ -1308,7 +1308,14 @@ pub fn (t &Table) sumtype_has_variant(parent Type, variant Type, is_as bool) boo
 
 fn (t &Table) sumtype_check_function_variant(parent_info SumType, variant Type, is_as bool) bool {
 	for v in parent_info.variants {
-		if '$v.idx' == '$variant.idx' && (!is_as || v.nr_muls() == variant.nr_muls()) {
+		v_sym := t.sym(v)
+		if v_sym.kind != .function {
+			continue
+		}
+		v_fn := (v_sym.info as FnType).func
+		variant_fn := (t.sym(variant).info as FnType).func
+		if t.fn_type_source_signature(v_fn) == t.fn_type_source_signature(variant_fn)
+			&& (!is_as || v.nr_muls() == variant.nr_muls()) {
 			return true
 		}
 	}
