@@ -1835,7 +1835,7 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast
 		ast.AnonFn {
 			if arg_expr.decl.return_type.has_flag(.optional) {
 				c.error('optional needs to be unwrapped before using it in map/filter',
-					arg_expr.decl.pos)
+					node.args[0].pos)
 			}
 			if arg_expr.decl.params.len > 1 {
 				c.error('function needs exactly 1 argument', arg_expr.decl.pos)
@@ -1876,7 +1876,7 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast
 						// copied from above
 						if expr.decl.return_type.has_flag(.optional) {
 							c.error('optional needs to be unwrapped before using it in map/filter',
-								expr.decl.pos)
+								arg_expr.pos)
 						}
 						if expr.decl.params.len > 1 {
 							c.error('function needs exactly 1 argument', expr.decl.pos)
