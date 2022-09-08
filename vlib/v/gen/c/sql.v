@@ -494,6 +494,9 @@ fn (mut g Gen) sql_gen_where_data(where_expr ast.Expr) {
 			for val in par {
 				g.write('$val,')
 			}
+			if par.len == 0 {
+				g.write('EMPTY_STRUCT_INITIALIZATION')
+			}
 			g.write('})),')
 		}
 		g.write('})')
