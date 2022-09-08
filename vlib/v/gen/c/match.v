@@ -12,7 +12,7 @@ fn (mut g Gen) need_tmp_var_in_match(node ast.MatchExpr) bool {
 		if g.table.type_kind(node.return_type) == .sum_type {
 			return true
 		}
-		if node.return_type.has_flag(.optional) {
+		if node.return_type.has_flag(.optional) || node.return_type.has_flag(.result) {
 			return true
 		}
 		if sym.kind == .multi_return {
@@ -52,12 +52,20 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	if is_expr && !need_tmp_var {
 		g.inside_ternary++
 	}
-	if is_expr && node.return_type.has_flag(.optional) {
-		old := g.inside_match_optional
-		defer {
-			g.inside_match_optional = old
+	if is_expr {
+		if node.return_type.has_flag(.optional) {
+			old := g.inside_match_optional
+			defer {
+				g.inside_match_optional = old
+			}
+			g.inside_match_optional = true
+		} else if node.return_type.has_flag(.result) {
+			old := g.inside_match_result
+			defer {
+				g.inside_match_result = old
+			}
+			g.inside_match_result = true
 		}
-		g.inside_match_optional = true
 	}
 	if node.cond in [ast.Ident, ast.SelectorExpr, ast.IntegerLiteral, ast.StringLiteral, ast.FloatLiteral] {
 		cond_var = g.expr_string(node.cond)
