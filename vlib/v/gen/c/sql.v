@@ -486,22 +486,25 @@ fn (mut g Gen) sql_gen_where_data(where_expr ast.Expr) {
 	}
 	g.write('),')
 
-	g.write('.pars = new_array_from_c_array($pars.len, $pars.len, sizeof(Array_int),')
+	g.write('.pars = ')
 	if data.len > 0 {
-		g.write(' _MOV((Array_int[$pars.len]){')
+		g.write('new_array_from_c_array($pars.len, $pars.len, sizeof(Array_int), _MOV((Array_int[$pars.len]){')
 		for par in pars {
-			g.write('new_array_from_c_array($par.len, $par.len, sizeof(int), _MOV((int[$par.len]){')
-			for val in par {
-				g.write('$val,')
+			if par.len > 0 {
+				g.write('new_array_from_c_array($par.len, $par.len, sizeof(int), _MOV((int[$par.len]){')
+				for val in par {
+					g.write('$val,')
+				}
+				g.write('})),')
+			} else {
+				g.write('__new_array_with_default_noscan(0, 0, sizeof(int), 0),')
 			}
-			if par.len == 0 {
-				g.write('EMPTY_STRUCT_INITIALIZATION')
-			}
-			g.write('})),')
 		}
-		g.write('})')
+		g.write('}))')
+	} else {
+		g.write('__new_array_with_default_noscan(0, 0, sizeof(Array_int), 0)')
 	}
-	g.write('),')
+	g.write(',')
 
 	if kinds.len > 0 {
 		g.write('.kinds = new_array_from_c_array($kinds.len, $kinds.len, sizeof(orm__OperationKind),')
