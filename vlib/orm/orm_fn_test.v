@@ -108,7 +108,7 @@ fn test_orm_select_gen_with_pars() {
 	}, "'", true, '?', 0, orm.QueryData{
 		fields: ['abc', 'test', 'test2']
 		kinds: [.eq, .gt, .eq]
-		pars: [[0, 1]]
+		parentheses: [[0, 1]]
 		is_and: [true, false]
 	})
 
