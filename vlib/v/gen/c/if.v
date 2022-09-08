@@ -50,6 +50,11 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 			if expr.or_block.kind != .absent {
 				return true
 			}
+			for arg in expr.args {
+				if g.need_tmp_var_in_expr(arg.expr) {
+					return true
+				}
+			}
 		}
 		ast.CastExpr {
 			return g.need_tmp_var_in_expr(expr.expr)
