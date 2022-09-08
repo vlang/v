@@ -380,11 +380,11 @@ fn (mut g Gen) sql_write_orm_primitive(t ast.Type, expr ast.Expr) {
 	g.write('),')
 }
 
-fn (mut g Gen) sql_where_data(expr ast.Expr, mut fields []string, mut pars [][]int, mut kinds []string, mut data []ast.Expr, mut is_and []bool) {
+fn (mut g Gen) sql_where_data(expr ast.Expr, mut fields []string, mut parentheses [][]int, mut kinds []string, mut data []ast.Expr, mut is_and []bool) {
 	match expr {
 		ast.InfixExpr {
 			g.sql_side = .left
-			g.sql_where_data(expr.left, mut fields, mut pars, mut kinds, mut data, mut
+			g.sql_where_data(expr.left, mut fields, mut parentheses, mut kinds, mut data, mut
 				is_and)
 			mut kind := match expr.op {
 				.ne {
@@ -422,15 +422,15 @@ fn (mut g Gen) sql_where_data(expr ast.Expr, mut fields []string, mut pars [][]i
 				kinds << kind
 			}
 			g.sql_side = .right
-			g.sql_where_data(expr.right, mut fields, mut pars, mut kinds, mut data, mut
+			g.sql_where_data(expr.right, mut fields, mut parentheses, mut kinds, mut data, mut
 				is_and)
 		}
 		ast.ParExpr {
 			mut par := [fields.len]
-			g.sql_where_data(expr.expr, mut fields, mut pars, mut kinds, mut data, mut
+			g.sql_where_data(expr.expr, mut fields, mut parentheses, mut kinds, mut data, mut
 				is_and)
 			par << fields.len - 1
-			pars << par
+			parentheses << par
 		}
 		ast.Ident {
 			if g.sql_side == .left {
@@ -459,10 +459,11 @@ fn (mut g Gen) sql_gen_where_data(where_expr ast.Expr) {
 	g.write('(orm__QueryData){')
 	mut fields := []string{}
 	mut kinds := []string{}
-	mut pars := [][]int{}
+	mut parentheses := [][]int{}
 	mut data := []ast.Expr{}
 	mut is_and := []bool{}
-	g.sql_where_data(where_expr, mut fields, mut pars, mut kinds, mut data, mut is_and)
+	g.sql_where_data(where_expr, mut fields, mut parentheses, mut kinds, mut data, mut
+		is_and)
 	g.write('.types = __new_array_with_default_noscan(0, 0, sizeof(int), 0),')
 	if fields.len > 0 {
 		g.write('.fields = new_array_from_c_array($fields.len, $fields.len, sizeof(string),')
@@ -486,10 +487,10 @@ fn (mut g Gen) sql_gen_where_data(where_expr ast.Expr) {
 	}
 	g.write('),')
 
-	g.write('.pars = ')
+	g.write('.parentheses = ')
 	if data.len > 0 {
-		g.write('new_array_from_c_array($pars.len, $pars.len, sizeof(Array_int), _MOV((Array_int[$pars.len]){')
-		for par in pars {
+		g.write('new_array_from_c_array($parentheses.len, $parentheses.len, sizeof(Array_int), _MOV((Array_int[$parentheses.len]){')
+		for par in parentheses {
 			if par.len > 0 {
 				g.write('new_array_from_c_array($par.len, $par.len, sizeof(int), _MOV((int[$par.len]){')
 				for val in par {
