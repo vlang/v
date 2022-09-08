@@ -107,15 +107,15 @@ fn (kind OrderType) to_str() string {
 // => fields[abc, b]; data[3, 'test']; types[index of int, index of string]; kinds[.eq, .eq]; is_and[true];
 // Every field, data, type & kind of operation in the expr share the same index in the arrays
 // is_and defines how they're addicted to each other either and or or
-// par defines which fields will be inside ()
+// parentheses defines which fields will be inside ()
 pub struct QueryData {
 pub:
-	fields []string
-	data   []Primitive
-	types  []int
-	pars   [][]int
-	kinds  []OperationKind
-	is_and []bool
+	fields      []string
+	data        []Primitive
+	types       []int
+	parentheses [][]int
+	kinds       []OperationKind
+	is_and      []bool
 }
 
 pub struct InfixType {
@@ -270,7 +270,7 @@ pub fn orm_stmt_gen(table string, q string, kind StmtKind, num bool, qm string, 
 		for i, field in where.fields {
 			mut pre_par := false
 			mut post_par := false
-			for par in where.pars {
+			for par in where.parentheses {
 				if i in par {
 					pre_par = par[0] == i
 					post_par = par[1] == i
@@ -329,7 +329,7 @@ pub fn orm_select_gen(orm SelectConfig, q string, num bool, qm string, start_pos
 		for i, field in where.fields {
 			mut pre_par := false
 			mut post_par := false
-			for par in where.pars {
+			for par in where.parentheses {
 				if i in par {
 					pre_par = par[0] == i
 					post_par = par[1] == i
