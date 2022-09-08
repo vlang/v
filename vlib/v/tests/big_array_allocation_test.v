@@ -1,9 +1,16 @@
+import os
+
 [direct_array_access]
 fn test_big_int_array() {
 	dump(sizeof(isize))
 	mut maxn := 500_000_000 // try allocating ~2GB worth of integers on 32bit platforms
 	if sizeof(isize) > 4 {
 		maxn = 1_000_000_000 // 1 billion integers, when each is 4 bytes => require ~4GB
+	}
+	// NB: this test requires RAM that many people do not have, so only run it in full, when VTEST_BIGMEM is 1
+	vtest_bigmem := os.getenv('VTEST_BIGMEM').int()
+	if vtest_bigmem == 0 {
+		maxn = 10_000_000
 	}
 	dump(maxn)
 	mut data := []int{len: maxn}

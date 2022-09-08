@@ -41,7 +41,7 @@ pub fn format_int(n i64, radix int) string {
 
 // format_uint returns the string representation of the number n in base `radix`
 // for digit values > 10, this function uses the small latin leters a-z.
-[manualfree]
+[direct_array_access; manualfree]
 pub fn format_uint(n u64, radix int) string {
 	unsafe {
 		if radix < 2 || radix > 36 {
