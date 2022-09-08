@@ -1296,7 +1296,7 @@ static inline void __${sym.cname}_pushval($sym.cname ch, $el_stype val) {
 		}
 	}
 	for sym in g.table.type_symbols {
-		if sym.kind == .alias && sym.name !in c.builtins {
+		if sym.kind == .alias && sym.name !in c.builtins && sym.name !in ['byte', 'i32'] {
 			g.write_alias_typesymbol_declaration(sym)
 		}
 	}
@@ -4561,6 +4561,20 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 					// "Simple" expressions are not going to need multiple statements,
 					// only the ones which are inited later, so it's safe to use expr_string
 					g.const_decl_simple_define(field.mod, field.name, g.expr_string(field_expr))
+				} else if field.expr is ast.CastExpr {
+					if field.expr.expr is ast.ArrayInit {
+						if field.expr.expr.is_fixed {
+							styp := g.typ(field.expr.typ)
+							val := g.expr_string(field.expr.expr)
+							g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
+								mod: field.mod
+								def: '$styp $const_name = $val; // fixed array const'
+								dep_names: g.table.dependent_names_in_expr(field_expr)
+							}
+							continue
+						}
+					}
+					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false)
 				} else {
 					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false)
 				}
