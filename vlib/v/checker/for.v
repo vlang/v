@@ -70,6 +70,22 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		node.scope.update_var_type(node.val_var, node.val_type)
 	} else {
 		sym := c.table.final_sym(typ)
+		if sym.kind != .string {
+			match mut node.cond {
+				ast.PrefixExpr {
+					node.val_is_ref = node.cond.op == .amp
+				}
+				ast.Ident {
+					match mut node.cond.info {
+						ast.IdentVar {
+							node.val_is_ref = !node.cond.is_mut() && node.cond.info.typ.is_ptr()
+						}
+						else {}
+					}
+				}
+				else {}
+			}
+		}
 		if sym.kind == .struct_ {
 			// iterators
 			next_fn := sym.find_method_with_generic_parent('next') or {
@@ -148,6 +164,8 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 					}
 					else {}
 				}
+			} else if node.val_is_ref {
+				value_type = value_type.ref()
 			}
 			node.cond_type = typ
 			node.kind = sym.kind

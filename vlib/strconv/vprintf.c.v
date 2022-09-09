@@ -36,7 +36,7 @@ pub fn v_printf(str string, pt ...voidptr) {
 // assert strconv.v_sprintf('aaa %G', x) == 'aaa 3.141516'
 // ```
 [deprecated: 'use string interpolation instead']
-[manualfree]
+[direct_array_access; manualfree]
 pub fn v_sprintf(str string, pt ...voidptr) string {
 	mut res := strings.new_builder(pt.len * 16)
 	defer {
@@ -560,7 +560,7 @@ fn fabs(x f64) f64 {
 }
 
 // strings.Builder version of format_fl
-[manualfree]
+[direct_array_access; manualfree]
 pub fn format_fl_old(f f64, p BF_param) string {
 	unsafe {
 		mut s := ''

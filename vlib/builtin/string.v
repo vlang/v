@@ -1818,6 +1818,7 @@ pub fn (s []string) join_lines() string {
 
 // reverse returns a reversed string.
 // Example: assert 'Hello V'.reverse() == 'V olleH'
+[direct_array_access]
 pub fn (s string) reverse() string {
 	if s.len == 0 || s.len == 1 {
 		return s.clone()
@@ -1870,6 +1871,7 @@ pub fn (s string) bytes() []u8 {
 }
 
 // repeat returns a new string with `count` number of copies of the string it was called on.
+[direct_array_access]
 pub fn (s string) repeat(count int) string {
 	if count < 0 {
 		panic('string.repeat: count is negative: $count')

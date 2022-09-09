@@ -99,22 +99,6 @@ fn test_orm_select_gen_with_offset() {
 	assert query == "SELECT 'id', 'test', 'abc' FROM 'test_table' OFFSET ?0;"
 }
 
-fn test_orm_select_gen_with_pars() {
-	query := orm.orm_select_gen(orm.SelectConfig{
-		table: 'test_table'
-		fields: get_select_fields()
-		has_offset: true
-		has_where: true
-	}, "'", true, '?', 0, orm.QueryData{
-		fields: ['abc', 'test', 'test2']
-		kinds: [.eq, .gt, .eq]
-		pars: [[0, 1]]
-		is_and: [true, false]
-	})
-
-	assert query == "SELECT 'id', 'test', 'abc' FROM 'test_table' WHERE ('abc' = ?0 AND 'test' > ?1) OR 'test2' = ?2 OFFSET ?3;"
-}
-
 fn test_orm_select_gen_with_all() {
 	query := orm.orm_select_gen(orm.SelectConfig{
 		table: 'test_table'

@@ -63,7 +63,7 @@ pub fn dial_tcp(address string) ?&TcpConn {
 	return error(err_builder.str())
 }
 
-// bind local address and dail.
+// bind local address and dial.
 pub fn dial_tcp_with_bind(saddr string, laddr string) ?&TcpConn {
 	addrs := resolve_addrs_fuzzy(saddr, .tcp) or {
 		return error('$err.msg(); could not resolve address $saddr in dial_tcp_with_bind')

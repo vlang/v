@@ -1048,14 +1048,15 @@ pub:
 	val_is_mut bool // `for mut val in vals {` means that modifying `val` will modify the array
 	// and the array cannot be indexed inside the loop
 pub mut:
-	cond      Expr
-	key_type  Type
-	val_type  Type
-	cond_type Type
-	high_type Type
-	kind      Kind   // array/map/string
-	label     string // `label: for {`
-	scope     &Scope
+	val_is_ref bool // `for val in &arr {` means that value of `val` will be the reference of the value in `arr`
+	cond       Expr
+	key_type   Type
+	val_type   Type
+	cond_type  Type
+	high_type  Type
+	kind       Kind   // array/map/string
+	label      string // `label: for {`
+	scope      &Scope
 }
 
 pub struct ForCStmt {

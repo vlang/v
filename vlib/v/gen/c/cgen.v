@@ -116,7 +116,9 @@ mut:
 	inside_map_index          bool
 	inside_opt_data           bool
 	inside_if_optional        bool
+	inside_if_result          bool
 	inside_match_optional     bool
+	inside_match_result       bool
 	inside_vweb_tmpl          bool
 	inside_return             bool
 	inside_struct_init        bool
@@ -1296,7 +1298,7 @@ static inline void __${sym.cname}_pushval($sym.cname ch, $el_stype val) {
 		}
 	}
 	for sym in g.table.type_symbols {
-		if sym.kind == .alias && sym.name !in c.builtins {
+		if sym.kind == .alias && sym.name !in c.builtins && sym.name !in ['byte', 'i32'] {
 			g.write_alias_typesymbol_declaration(sym)
 		}
 	}
@@ -1592,6 +1594,29 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 						g.writeln(' }, ($c.option_name*)(&$tmp_var), sizeof($styp));')
 					}
 				}
+			} else if g.inside_if_result || g.inside_match_result {
+				g.set_current_pos_as_last_stmt_pos()
+				g.skip_stmt_pos = true
+				if stmt is ast.ExprStmt {
+					if stmt.typ == ast.error_type_idx {
+						g.writeln('${tmp_var}.is_error = true;')
+						g.write('${tmp_var}.err = ')
+						g.expr(stmt.expr)
+						g.writeln(';')
+					} else {
+						mut styp := g.base_type(stmt.typ)
+						$if tinyc && x32 && windows {
+							if stmt.typ == ast.int_literal_type {
+								styp = 'int'
+							} else if stmt.typ == ast.float_literal_type {
+								styp = 'f64'
+							}
+						}
+						g.write('opt_ok2(&($styp[]) { ')
+						g.stmt(stmt)
+						g.writeln(' }, ($c.result_name*)(&$tmp_var), sizeof($styp));')
+					}
+				}
 			} else {
 				g.set_current_pos_as_last_stmt_pos()
 				g.skip_stmt_pos = true
@@ -1609,7 +1634,8 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 			}
 		} else {
 			g.stmt(stmt)
-			if (g.inside_if_optional || g.inside_match_optional) && stmt is ast.ExprStmt {
+			if (g.inside_if_optional || g.inside_if_result || g.inside_match_optional
+				|| g.inside_match_result) && stmt is ast.ExprStmt {
 				g.writeln(';')
 			}
 		}
@@ -1796,7 +1822,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// g.autofree_call_postgen()
 			// }
 			if g.inside_ternary == 0 && !g.inside_if_optional && !g.inside_match_optional
-				&& !node.is_expr && node.expr !is ast.IfExpr {
+				&& !g.inside_if_result && !g.inside_match_result && !node.is_expr
+				&& node.expr !is ast.IfExpr {
 				if node.expr is ast.MatchExpr {
 					g.writeln('')
 				} else {
@@ -4561,6 +4588,20 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 					// "Simple" expressions are not going to need multiple statements,
 					// only the ones which are inited later, so it's safe to use expr_string
 					g.const_decl_simple_define(field.mod, field.name, g.expr_string(field_expr))
+				} else if field.expr is ast.CastExpr {
+					if field.expr.expr is ast.ArrayInit {
+						if field.expr.expr.is_fixed {
+							styp := g.typ(field.expr.typ)
+							val := g.expr_string(field.expr.expr)
+							g.global_const_defs[util.no_dots(field.name)] = GlobalConstDef{
+								mod: field.mod
+								def: '$styp $const_name = $val; // fixed array const'
+								dep_names: g.table.dependent_names_in_expr(field_expr)
+							}
+							continue
+						}
+					}
+					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false)
 				} else {
 					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false)
 				}

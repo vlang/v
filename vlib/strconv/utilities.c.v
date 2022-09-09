@@ -75,7 +75,7 @@ pub fn f64_to_str_l_no_dot(f f64) string {
 // floating-point `string` in scientific notation.
 //
 // Example: assert strconv.fxx_to_str_l_parse('34.22e+00') == '34.22'
-[manualfree]
+[direct_array_access; manualfree]
 pub fn fxx_to_str_l_parse(s string) string {
 	// check for +inf -inf Nan
 	if s.len > 2 && (s[0] == `n` || s[1] == `i`) {
@@ -202,7 +202,7 @@ pub fn fxx_to_str_l_parse(s string) string {
 // The decimal digits after the dot can be omitted.
 //
 // Example: assert strconv.fxx_to_str_l_parse_no_dot ('34.e+01') == '340'
-[manualfree]
+[direct_array_access; manualfree]
 pub fn fxx_to_str_l_parse_no_dot(s string) string {
 	// check for +inf -inf Nan
 	if s.len > 2 && (s[0] == `n` || s[1] == `i`) {
