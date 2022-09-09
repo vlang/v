@@ -2170,7 +2170,7 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 		.amd64, .i386 {
 			for bit_size, array in ast.x86_no_number_register_list {
 				for name in array {
-					res[name] = AsmRegister{
+					res[name] = &AsmRegister{
 						name: name
 						typ: t.bitsize_to_type(bit_size)
 						size: bit_size
@@ -2184,7 +2184,7 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 							panic('all_registers: no hashtag found')
 						}
 						assembled_name := '${name[..hash_index]}${i}${name[hash_index + 1..]}'
-						res[assembled_name] = AsmRegister{
+						res[assembled_name] = &AsmRegister{
 							name: assembled_name
 							typ: t.bitsize_to_type(bit_size)
 							size: bit_size
@@ -2197,28 +2197,28 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 			arm32 := gen_all_registers(mut t, ast.arm_no_number_register_list, ast.arm_with_number_register_list,
 				32)
 			for k, v in arm32 {
-				res[k] = v
+				res[k] = unsafe { v } // todo: remove
 			}
 		}
 		.arm64 {
 			arm64 := gen_all_registers(mut t, ast.arm_no_number_register_list, ast.arm_with_number_register_list,
 				64)
 			for k, v in arm64 {
-				res[k] = v
+				res[k] = unsafe { v } // todo: remove
 			}
 		}
 		.rv32 {
 			rv32 := gen_all_registers(mut t, ast.riscv_no_number_register_list, ast.riscv_with_number_register_list,
 				32)
 			for k, v in rv32 {
-				res[k] = v
+				res[k] = unsafe { v } // todo: remove
 			}
 		}
 		.rv64 {
 			rv64 := gen_all_registers(mut t, ast.riscv_no_number_register_list, ast.riscv_with_number_register_list,
 				64)
 			for k, v in rv64 {
-				res[k] = v
+				res[k] = unsafe { v } // todo: remove
 			}
 		}
 		else { // TODO
@@ -2233,7 +2233,7 @@ pub fn all_registers(mut t Table, arch pref.Arch) map[string]ScopeObject {
 fn gen_all_registers(mut t Table, without_numbers []string, with_numbers map[string]int, bit_size int) map[string]ScopeObject {
 	mut res := map[string]ScopeObject{}
 	for name in without_numbers {
-		res[name] = AsmRegister{
+		res[name] = &AsmRegister{
 			name: name
 			typ: t.bitsize_to_type(bit_size)
 			size: bit_size
@@ -2243,7 +2243,7 @@ fn gen_all_registers(mut t Table, without_numbers []string, with_numbers map[str
 		for i in 0 .. max_num {
 			hash_index := name.index('#') or { panic('all_registers: no hashtag found') }
 			assembled_name := '${name[..hash_index]}${i}${name[hash_index + 1..]}'
-			res[assembled_name] = AsmRegister{
+			res[assembled_name] = &AsmRegister{
 				name: assembled_name
 				typ: t.bitsize_to_type(bit_size)
 				size: bit_size

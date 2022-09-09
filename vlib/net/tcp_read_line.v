@@ -62,7 +62,7 @@ pub fn (mut con TcpConn) read_line_max(max_line_len int) string {
 	defer {
 		unsafe { res.free() }
 	}
-	bstart := unsafe { &buf[0] }
+	bstart := unsafe { __addr(buf[0]) }
 	for {
 		n := C.recv(con.sock.handle, bstart, net.max_read - 1, net.msg_peek | msg_nosignal)
 		if n <= 0 {

@@ -355,9 +355,9 @@ pub fn raw_execute(cmd string) Result {
 	for {
 		mut result := false
 		unsafe {
-			result = C.ReadFile(child_stdout_read, &buf[0], 1000, voidptr(&bytes_read),
+			result = C.ReadFile(child_stdout_read, __addr(buf[0]), 1000, voidptr(&bytes_read),
 				0)
-			read_data.write_ptr(&buf[0], int(bytes_read))
+			read_data.write_ptr(__addr(buf[0]), int(bytes_read))
 		}
 		if result == false || int(bytes_read) == 0 {
 			break

@@ -71,7 +71,9 @@ pub fn new_mutex() &Mutex {
 }
 
 pub fn (mut m Mutex) init() {
-	C.pthread_mutex_init(&m.mutex, C.NULL)
+	unsafe {
+		C.pthread_mutex_init(__addr(m.mutex), C.NULL)
+	}
 }
 
 pub fn new_rwmutex() &RwMutex {
@@ -82,39 +84,53 @@ pub fn new_rwmutex() &RwMutex {
 
 pub fn (mut m RwMutex) init() {
 	a := RwMutexAttr{}
-	C.pthread_rwlockattr_init(&a.attr)
-	// Give writer priority over readers
-	C.pthread_rwlockattr_setkind_np(&a.attr, C.PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP)
-	C.pthread_rwlockattr_setpshared(&a.attr, C.PTHREAD_PROCESS_PRIVATE)
-	C.pthread_rwlock_init(&m.mutex, &a.attr)
+	unsafe {
+		C.pthread_rwlockattr_init(__addr(a.attr))
+		// Give writer priority over readers
+		C.pthread_rwlockattr_setkind_np(__addr(a.attr), C.PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP)
+		C.pthread_rwlockattr_setpshared(__addr(a.attr), C.PTHREAD_PROCESS_PRIVATE)
+		C.pthread_rwlock_init(__addr(m.mutex), __addr(a.attr))
+	}
 }
 
 // @lock(), for *manual* mutex handling, since `lock` is a keyword
 pub fn (mut m Mutex) @lock() {
-	C.pthread_mutex_lock(&m.mutex)
+	unsafe {
+		C.pthread_mutex_lock(__addr(m.mutex))
+	}
 }
 
 pub fn (mut m Mutex) unlock() {
-	C.pthread_mutex_unlock(&m.mutex)
+	unsafe {
+		C.pthread_mutex_unlock(__addr(m.mutex))
+	}
 }
 
 // RwMutex has separate read- and write locks
 pub fn (mut m RwMutex) @rlock() {
-	C.pthread_rwlock_rdlock(&m.mutex)
+	unsafe {
+		C.pthread_rwlock_rdlock(__addr(m.mutex))
+	}
 }
 
 pub fn (mut m RwMutex) @lock() {
-	C.pthread_rwlock_wrlock(&m.mutex)
+	unsafe {
+		C.pthread_rwlock_wrlock(__addr(m.mutex))
+	}
 }
 
 // Windows SRWLocks have different function to unlock
 // So provide two functions here, too, to have a common interface
 pub fn (mut m RwMutex) runlock() {
-	C.pthread_rwlock_unlock(&m.mutex)
+	unsafe {
+		C.pthread_rwlock_unlock(__addr(m.mutex))
+	}
 }
 
 pub fn (mut m RwMutex) unlock() {
-	C.pthread_rwlock_unlock(&m.mutex)
+	unsafe {
+		C.pthread_rwlock_unlock(__addr(m.mutex))
+	}
 }
 
 [inline]
@@ -129,16 +145,20 @@ pub fn new_semaphore_init(n u32) &Semaphore {
 }
 
 pub fn (mut sem Semaphore) init(n u32) {
-	C.sem_init(&sem.sem, 0, n)
+	unsafe {
+		C.sem_init(__addr(sem.sem), 0, n)
+	}
 }
 
 pub fn (mut sem Semaphore) post() {
-	C.sem_post(&sem.sem)
+	unsafe {
+		C.sem_post(__addr(sem.sem))
+	}
 }
 
 pub fn (mut sem Semaphore) wait() {
 	for {
-		if C.sem_wait(&sem.sem) == 0 {
+		if unsafe { C.sem_wait(__addr(sem.sem)) } == 0 {
 			return
 		}
 		e := C.errno
@@ -157,9 +177,9 @@ pub fn (mut sem Semaphore) wait() {
 // done when debugging
 pub fn (mut sem Semaphore) try_wait() bool {
 	$if !debug {
-		return C.sem_trywait(&sem.sem) == 0
+		return unsafe { C.sem_trywait(__addr(sem.sem)) } == 0
 	} $else {
-		if C.sem_trywait(&sem.sem) != 0 {
+		if unsafe { C.sem_trywait(__addr(sem.sem)) } != 0 {
 			e := C.errno
 			match e {
 				C.EAGAIN {
@@ -182,7 +202,7 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 	t_spec := timeout.timespec()
 	for {
 		$if !macos {
-			if C.sem_timedwait(&sem.sem, &t_spec) == 0 {
+			if unsafe { C.sem_timedwait(__addr(sem.sem), __addr(t_spec)) } == 0 {
 				return true
 			}
 		}
@@ -203,7 +223,7 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 }
 
 pub fn (sem &Semaphore) destroy() {
-	res := C.sem_destroy(&sem.sem)
+	res := unsafe { C.sem_destroy(__addr(sem.sem)) }
 	if res == 0 {
 		return
 	}

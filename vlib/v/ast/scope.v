@@ -71,7 +71,11 @@ pub fn (s &Scope) find_struct_field(name string, struct_type Type, field_name st
 pub fn (s &Scope) find_var(name string) ?&Var {
 	if obj := s.find(name) {
 		match obj {
-			Var { return &obj }
+			Var {
+				unsafe {
+					return __addr(obj)
+				}
+			}
 			else {}
 		}
 	}
@@ -81,7 +85,7 @@ pub fn (s &Scope) find_var(name string) ?&Var {
 pub fn (s &Scope) find_global(name string) ?&GlobalField {
 	if obj := s.find(name) {
 		match obj {
-			GlobalField { return &obj }
+			GlobalField { return unsafe { __addr(obj) } }
 			else {}
 		}
 	}

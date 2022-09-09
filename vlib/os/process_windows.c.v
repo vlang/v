@@ -201,7 +201,7 @@ fn (mut p Process) win_read_string(idx int, maxbytes int) (string, int) {
 	mut bytes_read := int(0)
 	buf := []u8{len: bytes_avail + 300}
 	unsafe {
-		C.ReadFile(rhandle, &buf[0], buf.cap, voidptr(&bytes_read), 0)
+		C.ReadFile(rhandle, __addr(buf[0]), buf.cap, voidptr(&bytes_read), 0)
 	}
 	return buf[..bytes_read].bytestr(), bytes_read
 }
@@ -227,8 +227,8 @@ fn (mut p Process) win_slurp(idx int) string {
 	for {
 		mut result := false
 		unsafe {
-			result = C.ReadFile(rhandle, &buf[0], 1000, voidptr(&bytes_read), 0)
-			read_data.write_ptr(&buf[0], int(bytes_read))
+			result = C.ReadFile(rhandle, __addr(buf[0]), 1000, voidptr(&bytes_read), 0)
+			read_data.write_ptr(__addr(buf[0]), int(bytes_read))
 		}
 		if result == false || int(bytes_read) == 0 {
 			break

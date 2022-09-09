@@ -276,11 +276,11 @@ pub fn cp(src string, dst string) ! {
 		mut buf := [1024]u8{}
 		mut count := 0
 		for {
-			count = C.read(fp_from, &buf[0], sizeof(buf))
+			count = C.read(fp_from, unsafe { __addr(buf[0]) }, sizeof(buf))
 			if count == 0 {
 				break
 			}
-			if C.write(fp_to, &buf[0], count) < 0 {
+			if C.write(fp_to, unsafe { __addr(buf[0]) }, count) < 0 {
 				C.close(fp_to)
 				C.close(fp_from)
 				return error_with_code('cp: failed to write to ${dst}', int(-1))
@@ -288,7 +288,7 @@ pub fn cp(src string, dst string) ! {
 		}
 		from_attr := C.stat{}
 		unsafe {
-			C.stat(&char(src.str), &from_attr)
+			C.stat(&char(src.str), __addr(from_attr))
 		}
 		if C.chmod(&char(dst.str), from_attr.st_mode) < 0 {
 			C.close(fp_to)
@@ -654,7 +654,7 @@ pub fn read_file_array[T](path string) []T {
 pub fn executable() string {
 	mut result := [max_path_buffer_size]u8{}
 	$if windows {
-		pu16_result := unsafe { &u16(&result[0]) }
+		pu16_result := unsafe { &u16(__addr(result[0])) }
 		len := C.GetModuleFileName(0, pu16_result, 512)
 		// determine if the file is a windows symlink
 		attrs := C.GetFileAttributesW(pu16_result)
@@ -689,46 +689,48 @@ pub fn executable() string {
 	}
 	$if macos {
 		pid := C.getpid()
-		ret := proc_pidpath(pid, &result[0], max_path_len)
+		ret := proc_pidpath(pid, unsafe { __addr(result[0]) }, max_path_len)
 		if ret <= 0 {
 			eprintln('os.executable() failed at calling proc_pidpath with pid: ${pid} . proc_pidpath returned ${ret} ')
 			return executable_fallback()
 		}
-		res := unsafe { tos_clone(&result[0]) }
+		res := unsafe { tos_clone(__addr(result[0])) }
 		return res
 	}
 	$if freebsd {
 		bufsize := usize(max_path_buffer_size)
 		mib := [1 /* CTL_KERN */, 14 /* KERN_PROC */, 12 /* KERN_PROC_PATHNAME */, -1]
-		unsafe { C.sysctl(mib.data, mib.len, &result[0], &bufsize, 0, 0) }
-		res := unsafe { tos_clone(&result[0]) }
+		unsafe { C.sysctl(mib.data, mib.len, __addr(result[0]), &bufsize, 0, 0) }
+		res := unsafe { tos_clone(__addr(result[0])) }
 		return res
 	}
 	$if netbsd {
-		count := C.readlink(c'/proc/curproc/exe', &char(&result[0]), max_path_len)
+		count := C.readlink(c'/proc/curproc/exe', &char(unsafe { __addr(result[0]) }),
+			max_path_len)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/curproc/exe to get exe path')
 			return executable_fallback()
 		}
-		res := unsafe { tos_clone(&result[0]) }
+		res := unsafe { tos_clone(__addr(result[0])) }
 		return res
 	}
 	$if dragonfly {
-		count := C.readlink(c'/proc/curproc/file', &char(&result[0]), max_path_len)
+		count := C.readlink(c'/proc/curproc/file', &char(unsafe { __addr(result[0]) }),
+			max_path_len)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/curproc/file to get exe path')
 			return executable_fallback()
 		}
-		res := unsafe { tos_clone(&result[0]) }
+		res := unsafe { tos_clone(__addr(result[0])) }
 		return res
 	}
 	$if linux {
-		count := C.readlink(c'/proc/self/exe', &char(&result[0]), max_path_len)
+		count := C.readlink(c'/proc/self/exe', &char(unsafe { __addr(result[0]) }), max_path_len)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
 			return executable_fallback()
 		}
-		res := unsafe { tos_clone(&result[0]) }
+		res := unsafe { tos_clone(__addr(result[0])) }
 		return res
 	}
 	// "Sadly there is no way to get the full path of the executed file in OpenBSD."
@@ -830,16 +832,16 @@ pub fn getwd() string {
 	unsafe {
 		buf := [max_path_buffer_size]u8{}
 		$if windows {
-			if C._wgetcwd(&u16(&buf[0]), max_path_len) == 0 {
+			if C._wgetcwd(&u16(__addr(buf[0])), max_path_len) == 0 {
 				return ''
 			}
-			res := string_from_wide(&u16(&buf[0]))
+			res := string_from_wide(&u16(__addr(buf[0])))
 			return res
 		} $else {
-			if C.getcwd(&char(&buf[0]), max_path_len) == 0 {
+			if C.getcwd(&char(__addr(buf[0])), max_path_len) == 0 {
 				return ''
 			}
-			res := tos_clone(&buf[0])
+			res := tos_clone(__addr(buf[0]))
 			return res
 		}
 	}
@@ -855,7 +857,7 @@ pub fn real_path(fpath string) string {
 	mut fullpath := [max_path_buffer_size]u8{}
 	mut res := ''
 	$if windows {
-		pu16_fullpath := unsafe { &u16(&fullpath[0]) }
+		pu16_fullpath := unsafe { &u16(__addr(fullpath[0])) }
 		// gets handle with GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0
 		// use C.CreateFile(fpath.to_wide(), 0x80000000, 1, 0, 3, 0x80, 0) instead of  get_file_handle
 		// try to open the file to get symbolic link path
@@ -893,7 +895,7 @@ pub fn real_path(fpath string) string {
 			res = unsafe { string_from_wide(pu16_fullpath) }
 		}
 	} $else {
-		ret := &char(C.realpath(&char(fpath.str), &char(&fullpath[0])))
+		ret := &char(C.realpath(&char(fpath.str), &char(unsafe { __addr(fullpath[0]) })))
 		if ret == 0 {
 			unsafe { res.free() }
 			return fpath.clone()
@@ -903,7 +905,7 @@ pub fn real_path(fpath string) string {
 		// resulting string from that buffer, to a shorter one, and then free the
 		// 4KB fullpath buffer.
 		unsafe { res.free() }
-		res = unsafe { tos_clone(&fullpath[0]) }
+		res = unsafe { tos_clone(__addr(fullpath[0])) }
 	}
 	unsafe { normalize_drive_letter(res) }
 	return res
@@ -958,7 +960,7 @@ pub fn wait() int {
 pub fn file_last_mod_unix(path string) i64 {
 	attr := C.stat{}
 	// # struct stat attr;
-	unsafe { C.stat(&char(path.str), &attr) }
+	unsafe { C.stat(&char(path.str), __addr(attr)) }
 	// # stat(path.str, &attr);
 	return i64(attr.st_mtime)
 	// # return attr.st_mtime ;

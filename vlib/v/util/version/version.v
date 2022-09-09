@@ -9,7 +9,7 @@ pub fn vhash() string {
 	mut buf := [50]u8{}
 	buf[0] = 0
 	unsafe {
-		bp := &buf[0]
+		bp := __addr(buf[0])
 		C.snprintf(&char(bp), 50, c'%s', C.V_COMMIT_HASH)
 		return tos_clone(bp)
 	}
@@ -78,7 +78,7 @@ pub fn githash(should_get_from_filesystem bool) string {
 	mut buf := [50]u8{}
 	buf[0] = 0
 	unsafe {
-		bp := &buf[0]
+		bp := __addr(buf[0])
 		C.snprintf(&char(bp), 50, c'%s', C.V_CURRENT_COMMIT_HASH)
 		return tos_clone(bp)
 	}

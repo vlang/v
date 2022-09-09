@@ -280,7 +280,7 @@ fn u64_to_hex(nn u64, len u8) string {
 		buf[i] = if d < 10 { d + `0` } else { d + 87 }
 		n = n >> 4
 	}
-	return unsafe { tos(memdup(&buf[0], len + 1), len) }
+	return unsafe { tos(memdup(__addr(buf[0]), len + 1), len) }
 }
 
 // u64_to_hex_no_leading_zeros converts the number `nn` to hexadecimal `string`.
@@ -299,7 +299,7 @@ fn u64_to_hex_no_leading_zeros(nn u64, len u8) string {
 		}
 	}
 	res_len := len - i
-	return unsafe { tos(memdup(&buf[i], res_len + 1), res_len) }
+	return unsafe { tos(memdup(__addr(buf[i]), res_len + 1), res_len) }
 }
 
 // hex returns the value of the `byte` as a hexadecimal `string`.

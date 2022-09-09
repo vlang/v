@@ -72,13 +72,13 @@ const (
 pub fn (a Ip) str() string {
 	buf := [net.max_ip_len]char{}
 
-	res := &char(C.inet_ntop(.ip, &a.addr, &buf[0], buf.len))
+	res := &char(C.inet_ntop(.ip, &a.addr, unsafe { __addr(buf[0]) }, buf.len))
 
 	if res == 0 {
 		return '<Unknown>'
 	}
 
-	saddr := unsafe { cstring_to_vstring(&buf[0]) }
+	saddr := unsafe { cstring_to_vstring(__addr(buf[0])) }
 	port := C.ntohs(a.port)
 
 	return '${saddr}:${port}'
@@ -88,13 +88,13 @@ pub fn (a Ip) str() string {
 pub fn (a Ip6) str() string {
 	buf := [net.max_ip6_len]char{}
 
-	res := &char(C.inet_ntop(.ip6, &a.addr, &buf[0], buf.len))
+	res := &char(C.inet_ntop(.ip6, &a.addr, unsafe { __addr(buf[0]) }, buf.len))
 
 	if res == 0 {
 		return '<Unknown>'
 	}
 
-	saddr := unsafe { cstring_to_vstring(&buf[0]) }
+	saddr := unsafe { cstring_to_vstring(__addr(buf[0])) }
 	port := C.ntohs(a.port)
 
 	return '[${saddr}]:${port}'

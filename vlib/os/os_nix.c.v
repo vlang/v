@@ -328,7 +328,7 @@ pub fn execute(cmd string) Result {
 	}
 	buf := [4096]u8{}
 	unsafe {
-		pbuf := &buf[0]
+		pbuf := __addr(buf[0])
 		for {
 			len := C.read(fd, pbuf, 4096)
 			if len == 0 {
@@ -374,7 +374,7 @@ pub fn (mut c Command) read_line() string {
 		unsafe { res.free() }
 	}
 	unsafe {
-		bufbp := &buf[0]
+		bufbp := __addr(buf[0])
 		for C.fgets(&char(bufbp), 4096, c.f) != 0 {
 			len := vstrlen(bufbp)
 			for i in 0 .. len {

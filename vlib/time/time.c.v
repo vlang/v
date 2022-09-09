@@ -131,6 +131,6 @@ pub fn (t Time) strftime(fmt string) string {
 	}
 	mut buf := [1024]C.char{}
 	fmt_c := unsafe { &C.char(fmt.str) }
-	C.strftime(&buf[0], C.size_t(sizeof(buf)), fmt_c, tm)
-	return unsafe { cstring_to_vstring(&char(&buf[0])) }
+	C.strftime(unsafe { __addr(buf[0]) }, C.size_t(sizeof(buf)), fmt_c, tm)
+	return unsafe { cstring_to_vstring(&char(__addr(buf[0]))) }
 }

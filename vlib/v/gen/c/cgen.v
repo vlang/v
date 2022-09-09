@@ -2227,7 +2227,8 @@ fn (mut g Gen) call_cfn_for_casting_expr(fname string, expr ast.Expr, exp_is_ptr
 			g.write('${promotion_macro_name}(${got_styp}, (')
 			rparen_n += 2
 		} else {
-			g.write('&')
+			g.write('HEAP($got_styp, ')
+			rparen_n++
 		}
 	}
 	if got_styp == 'none' && !g.cur_fn.return_type.has_flag(.option) {
