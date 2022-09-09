@@ -277,6 +277,7 @@ fn (mut g Gen) sql_update(node ast.SqlStmtLine, expr string, table_name string) 
 	g.write('.kinds = __new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
 	g.write('.is_and = __new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
 	g.write('.types = __new_array_with_default_noscan(0, 0, sizeof(int), 0),')
+	g.write('.parentheses = __new_array_with_default_noscan(0, 0, sizeof(Array_int), 0),')
 	if node.updated_columns.len > 0 {
 		g.write('.fields = new_array_from_c_array($node.updated_columns.len, $node.updated_columns.len, sizeof(string),')
 		g.write(' _MOV((string[$node.updated_columns.len]){')
@@ -649,6 +650,7 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 	g.write('.types = __new_array_with_default_noscan(0, 0, sizeof(int), 0),')
 	g.write('.kinds = __new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
 	g.write('.is_and = __new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
+	g.write('.parentheses = __new_array_with_default_noscan(0, 0, sizeof(Array_int), 0),')
 	if exprs.len > 0 {
 		g.write('.data = new_array_from_c_array($exprs.len, $exprs.len, sizeof(orm__Primitive),')
 		g.write(' _MOV((orm__Primitive[$exprs.len]){')
@@ -668,7 +670,7 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 		g.write('.types = __new_array_with_default_noscan(0, 0, sizeof(int), 0),')
 		g.write('.kinds = __new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
 		g.write('.is_and = __new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
-		g.write('.parentheses = __new_array_with_default_noscan(0, 0, sizeof(Array_int), 0)')
+		g.write('.parentheses = __new_array_with_default_noscan(0, 0, sizeof(Array_int), 0),')
 		g.write('.data = __new_array_with_default_noscan(0, 0, sizeof(orm__Primitive), 0)')
 		g.write('}')
 	}
