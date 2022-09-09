@@ -253,7 +253,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 		if node.pos.line_nr < node.pos.last_line || node.pre_comments.len > 0 {
 			single_line_fields = false
 		}
-		if !use_short_args {
+		if !use_short_args || node.is_anon {
 			f.write('$name{')
 			f.mark_import_as_used(name)
 			if single_line_fields {
@@ -315,7 +315,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 		if !single_line_fields {
 			f.indent--
 		}
-		if !use_short_args {
+		if !use_short_args || node.is_anon {
 			if single_line_fields {
 				f.write(' ')
 			}
