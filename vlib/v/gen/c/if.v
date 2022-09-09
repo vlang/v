@@ -7,7 +7,7 @@ import v.ast
 
 fn (mut g Gen) need_tmp_var_in_if(node ast.IfExpr) bool {
 	if node.is_expr && g.inside_ternary == 0 {
-		if g.is_autofree || node.typ.has_flag(.optional) {
+		if g.is_autofree || node.typ.has_flag(.optional) || node.typ.has_flag(.result) {
 			return true
 		}
 		for branch in node.branches {
@@ -142,6 +142,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	if needs_tmp_var {
 		if node.typ.has_flag(.optional) {
 			g.inside_if_optional = true
+		} else if node.typ.has_flag(.result) {
+			g.inside_if_result = true
 		}
 		styp := g.typ(node.typ)
 		cur_line = g.go_before_stmt(0)
@@ -325,5 +327,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	}
 	if node.typ.has_flag(.optional) {
 		g.inside_if_optional = false
+	} else if node.typ.has_flag(.result) {
+		g.inside_if_result = false
 	}
 }
