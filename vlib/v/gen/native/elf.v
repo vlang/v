@@ -661,34 +661,6 @@ fn (mut g Gen) gen_section_data(sections []Section) {
 	}
 }
 
-/*
-draft for formatting the ELF header in the future
-
-struct HeaderData {
-mut:
-	ident     i16  // File identification.
-	typ       i16 // File type.
-	machine   i16 // Machine architecture.
-	version   int // ELF format version.
-	entry     i64 // Entry point.
-	phoff     i64 // Program header file offset.
-	shoff     i64 // Section header file offset.
-	flags     int // Architecture-specific flags.
-	ehsize    i16 // Size of ELF header in bytes.
-	phentsize i16 // Size of program header entry.
-	phnum     i16 // Number of program header entries.
-	shentsize i16 // Size of section header entry.
-	shnum     i16 // Number of section header entries.
-	shstrndx  i16 // Section name strings section.
-}
-
-struct ElfHeader {
-mut:
-	data: HeaderData,
-	shdrs: map[string]Section
-}
-*/
-
 pub fn (mut g Gen) generate_elf_header() {
 	elf_type := native.elf_type_rel // PIE (use _exec for non-relocatable executables)
 
