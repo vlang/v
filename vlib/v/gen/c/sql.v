@@ -488,7 +488,7 @@ fn (mut g Gen) sql_gen_where_data(where_expr ast.Expr) {
 	g.write('),')
 
 	g.write('.parentheses = ')
-	if data.len > 0 {
+	if parentheses.len > 0 {
 		g.write('new_array_from_c_array($parentheses.len, $parentheses.len, sizeof(Array_int), _MOV((Array_int[$parentheses.len]){')
 		for par in parentheses {
 			if par.len > 0 {
@@ -668,6 +668,7 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 		g.write('.types = __new_array_with_default_noscan(0, 0, sizeof(int), 0),')
 		g.write('.kinds = __new_array_with_default_noscan(0, 0, sizeof(orm__OperationKind), 0),')
 		g.write('.is_and = __new_array_with_default_noscan(0, 0, sizeof(bool), 0),')
+		g.write('.parentheses = __new_array_with_default_noscan(0, 0, sizeof(Array_int), 0)')
 		g.write('.data = __new_array_with_default_noscan(0, 0, sizeof(orm__Primitive), 0)')
 		g.write('}')
 	}
