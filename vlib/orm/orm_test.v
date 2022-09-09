@@ -360,6 +360,12 @@ fn test_orm() {
 	// has them zeroed, because the db field resolution is seconds.
 	assert updated_time_mod.created.format_ss() == t.format_ss()
 
+	para_select := sql db {
+		select from User where (name == 'Sam' && is_customer == true) || id == 1
+	}
+
+	assert para_select[0] == first
+
 	sql db {
 		drop table Module
 		drop table TestTime
