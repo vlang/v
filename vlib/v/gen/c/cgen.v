@@ -2278,7 +2278,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			fname = g.generic_fn_name(exp_sym.info.concrete_types, fname)
 		}
 		g.call_cfn_for_casting_expr(fname, expr, expected_is_ptr, exp_styp, got_is_ptr,
-			got_styp)
+			false, got_styp)
 		return
 	}
 	// cast to sum type
