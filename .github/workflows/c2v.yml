@@ -120,7 +120,7 @@ jobs:
         id: compare
         continue-on-error: true
         run: |
-          Xvfb $DISPLAY -screen 0 640x480x24 &
+          Xvfb $DISPLAY -screen 0 800x600x24 &
           sleep 1 # give xvfb time to start
           v gret -r ~/code/doom -t ./doom-regression-images/vgret.doom.toml -v ./doom-sample_images ./doom-regression-images
 
@@ -129,4 +129,4 @@ jobs:
         run: |
           ./imgur.sh /tmp/fail.png
           ./imgur.sh /tmp/diff.png
-          exit 0
+          exit 1
