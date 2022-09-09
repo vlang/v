@@ -8,14 +8,16 @@ import time
 pub fn (db DB) @select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ?[][]orm.Primitive {
 	// 1. Create query and bind necessary data
 	query := orm.orm_select_gen(config, '`', true, '?', 1, where)
+	$if trace_sqlite ? {
+		eprintln('> @select query: "$query"')
+	}
 	stmt := db.new_init_stmt(query)?
-	mut c := 1
-	sqlite_stmt_binder(stmt, where, query, mut c)?
-	sqlite_stmt_binder(stmt, data, query, mut c)?
-
 	defer {
 		stmt.finalize()
 	}
+	mut c := 1
+	sqlite_stmt_binder(stmt, where, query, mut c)?
+	sqlite_stmt_binder(stmt, data, query, mut c)?
 
 	mut ret := [][]orm.Primitive{}
 
@@ -89,12 +91,17 @@ pub fn (db DB) drop(table string) ? {
 
 // Executes query and bind prepared statement data directly
 fn sqlite_stmt_worker(db DB, query string, data orm.QueryData, where orm.QueryData) ? {
+	$if trace_sqlite ? {
+		eprintln('> sqlite_stmt_worker query: "$query"')
+	}
 	stmt := db.new_init_stmt(query)?
+	defer {
+		stmt.finalize()
+	}
 	mut c := 1
 	sqlite_stmt_binder(stmt, data, query, mut c)?
 	sqlite_stmt_binder(stmt, where, query, mut c)?
 	stmt.orm_step(query)?
-	stmt.finalize()
 }
 
 // Binds all values of d in the prepared statement
