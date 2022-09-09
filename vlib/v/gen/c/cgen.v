@@ -1589,9 +1589,16 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 								styp = 'f64'
 							}
 						}
-						g.write('opt_ok2(&($styp[]) { ')
-						g.stmt(stmt)
-						g.writeln(' }, ($c.option_name*)(&$tmp_var), sizeof($styp));')
+						if stmt.typ.has_flag(.optional) {
+							g.writeln('')
+							g.write('$tmp_var = ')
+							g.expr(stmt.expr)
+							g.writeln(';')
+						} else {
+							g.write('opt_ok2(&($styp[]) { ')
+							g.expr(stmt.expr)
+							g.writeln(' }, ($c.option_name*)(&$tmp_var), sizeof($styp));')
+						}
 					}
 				}
 			} else if g.inside_if_result || g.inside_match_result {
@@ -1612,9 +1619,16 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 								styp = 'f64'
 							}
 						}
-						g.write('opt_ok2(&($styp[]) { ')
-						g.stmt(stmt)
-						g.writeln(' }, ($c.result_name*)(&$tmp_var), sizeof($styp));')
+						if stmt.typ.has_flag(.result) {
+							g.writeln('')
+							g.write('$tmp_var = ')
+							g.expr(stmt.expr)
+							g.writeln(';')
+						} else {
+							g.write('opt_ok2(&($styp[]) { ')
+							g.expr(stmt.expr)
+							g.writeln(' }, ($c.result_name*)(&$tmp_var), sizeof($styp));')
+						}
 					}
 				}
 			} else {
