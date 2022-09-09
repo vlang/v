@@ -129,25 +129,24 @@ const (
 
 struct ElfHeader {
 mut:
-	ident_mag        []u8 // Magic bytes, 0x7F,E,L,F.
-	ident_class      i8   // 64 or 32-bit format.
-	ident_data       i8   // Endianness.
-	ident_version    i8   // ELF version.
-	ident_osabi      i8   // Target operating system.
-	ident_abiversion i8   // Further specification of the ABI version.
-	typ              i16  // Object file type.
-	machine          i16  // Target instruction set architecture.
-	version          int  // ELF version.
-	entry            i64  // Memory address of the entry point.
-	phoff            i64  // Pointer to the start of the program header table.
-	shoff            i64  // Pointer to the start of the section header table.
-	flags            int  // Flags.
-	ehsize           i16  // Header size.
-	phentsize        i16  // Size of program headers.
-	phnum            i16  // Number of program headers.
-	shentsize        i16  // Size of section headers.
-	shnum            i16  // Number of section headers.
-	shstrndx         i16  // Section index to string table containing section names.
+	ident_class      i8  // 64 or 32-bit format.
+	ident_data       i8  // Endianness.
+	ident_version    i8  // ELF version.
+	ident_osabi      i8  // Target operating system.
+	ident_abiversion i8  // Further specification of the ABI version.
+	typ              i16 // Object file type.
+	machine          i16 // Target instruction set architecture.
+	version          int // ELF version.
+	entry            i64 // Memory address of the entry point.
+	phoff            i64 // Pointer to the start of the program header table.
+	shoff            i64 // Pointer to the start of the section header table.
+	flags            int // Flags.
+	ehsize           i16 // Header size.
+	phentsize        i16 // Size of program headers.
+	phnum            i16 // Number of program headers.
+	shentsize        i16 // Size of section headers.
+	shnum            i16 // Number of section headers.
+	shstrndx         i16 // Section index to string table containing section names.
 }
 
 fn (mut g Gen) default_elf_header() ElfHeader {
@@ -158,7 +157,6 @@ fn (mut g Gen) default_elf_header() ElfHeader {
 	}
 
 	return ElfHeader{
-		ident_mag: '\x7fELF'.bytes()
 		ident_class: native.elf_class64
 		ident_data: native.elf_data_le
 		ident_version: native.elf_version
@@ -175,7 +173,7 @@ fn (mut g Gen) default_elf_header() ElfHeader {
 }
 
 fn (mut g Gen) gen_elf_header(h ElfHeader) {
-	g.buf << h.ident_mag
+	g.write('\x7fELF'.bytes())
 	g.println('; \\x7fELF')
 	g.write8(h.ident_class)
 	g.write8(h.ident_data)
