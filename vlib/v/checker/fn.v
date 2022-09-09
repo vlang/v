@@ -1833,6 +1833,10 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast
 	arg_expr := node.args[0].expr
 	match arg_expr {
 		ast.AnonFn {
+			if arg_expr.decl.return_type.has_flag(.optional) {
+				c.error('optional needs to be unwrapped before using it in map/filter',
+					node.args[0].pos)
+			}
 			if arg_expr.decl.params.len > 1 {
 				c.error('function needs exactly 1 argument', arg_expr.decl.pos)
 			} else if is_map && (arg_expr.decl.return_type == ast.void_type
@@ -1850,6 +1854,10 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast
 					c.error('$arg_expr.name does not exist', arg_expr.pos)
 					return
 				}
+				if func.return_type.has_flag(.optional) {
+					c.error('optional needs to be unwrapped before using it in map/filter',
+						node.pos)
+				}
 				if func.params.len > 1 {
 					c.error('function needs exactly 1 argument', node.pos)
 				} else if is_map
@@ -1866,6 +1874,10 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast
 					expr := arg_expr.obj.expr
 					if expr is ast.AnonFn {
 						// copied from above
+						if expr.decl.return_type.has_flag(.optional) {
+							c.error('optional needs to be unwrapped before using it in map/filter',
+								arg_expr.pos)
+						}
 						if expr.decl.params.len > 1 {
 							c.error('function needs exactly 1 argument', expr.decl.pos)
 						} else if is_map && (expr.decl.return_type == ast.void_type

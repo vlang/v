@@ -1,0 +1,21 @@
+vlib/v/checker/tests/array_filter_map_optional_function_err.vv:14:25: error: optional needs to be unwrapped before using it in map/filter
+   12 |     }
+   13 |
+   14 |     arr_struct2 := arr.map(optional_mapping_struct)
+      |                            ~~~~~~~~~~~~~~~~~~~~~~~
+   15 |     println(arr_struct2)
+   16 |
+vlib/v/checker/tests/array_filter_map_optional_function_err.vv:17:18: error: optional needs to be unwrapped before using it in map/filter
+   15 |     println(arr_struct2)
+   16 |
+   17 |     arr_int2 := arr.map(optional_mapping_int)
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~
+   18 |     println(arr_int2)
+   19 |
+vlib/v/checker/tests/array_filter_map_optional_function_err.vv:20:20: error: optional needs to be unwrapped before using it in map/filter
+   18 |     println(arr_int2)
+   19 |
+   20 |     arr_filter := arr.filter(optional_mapping_int)
+      |                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   21 |     println(arr_filter)
+   22 | }
