@@ -1709,7 +1709,7 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 	}
 	if expr.is_method {
 		receiver_sym := g.table.sym(expr.receiver_type)
-		name = receiver_sym.name + '_' + name
+		name = receiver_sym.cname + '_' + name
 	} else if mut expr.left is ast.AnonFn {
 		if expr.left.inherited_vars.len > 0 {
 			fn_var := g.fn_var_signature(expr.left.decl.return_type, expr.left.decl.params.map(it.typ),
