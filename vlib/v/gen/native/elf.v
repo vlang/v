@@ -127,6 +127,96 @@ const (
 	placeholder   = 0
 )
 
+struct ElfHeader {
+mut:
+	ident_class      i8  // 64 or 32-bit format.
+	ident_data       i8  // Endianness.
+	ident_version    i8  // ELF version.
+	ident_osabi      i8  // Target operating system.
+	ident_abiversion i8  // Further specification of the ABI version.
+	typ              i16 // Object file type.
+	machine          i16 // Target instruction set architecture.
+	version          int // ELF version.
+	entry            i64 // Memory address of the entry point.
+	phoff            i64 // Pointer to the start of the program header table.
+	shoff            i64 // Pointer to the start of the section header table.
+	flags            int // Flags.
+	ehsize           i16 // Header size.
+	phentsize        i16 // Size of program headers.
+	phnum            i16 // Number of program headers.
+	shentsize        i16 // Size of section headers.
+	shnum            i16 // Number of section headers.
+	shstrndx         i16 // Section index to string table containing section names.
+}
+
+fn (mut g Gen) default_elf_header() ElfHeader {
+	machine := if g.pref.arch == .arm64 {
+		native.elf_arm64
+	} else {
+		native.elf_amd64
+	}
+
+	return ElfHeader{
+		ident_class: native.elf_class64
+		ident_data: native.elf_data_le
+		ident_version: native.elf_version
+		ident_osabi: native.elf_osabi_none
+		ident_abiversion: native.elf_abiversion
+		typ: native.elf_type_none
+		machine: i16(machine)
+		version: native.elf_version
+		phoff: native.elf_header_size
+		ehsize: native.elf_header_size
+		phentsize: native.elf_phentry_size
+		shentsize: native.elf_shentry_size
+	}
+}
+
+fn (mut g Gen) gen_elf_header(h ElfHeader) {
+	g.write('\x7fELF'.bytes())
+	g.println('; \\x7fELF')
+	g.write8(h.ident_class)
+	g.write8(h.ident_data)
+	g.write8(h.ident_version)
+	g.write8(h.ident_osabi)
+	g.write8(h.ident_abiversion)
+
+	// padding
+	for _ in 0 .. 7 {
+		g.write8(0)
+	}
+	g.println('; e_ident')
+
+	g.write16(h.typ)
+	g.println('; e_type')
+	g.write16(h.machine)
+	g.println('; e_machine')
+	g.write32(h.version)
+	g.println('; e_version')
+	g.write64(h.entry)
+	g.println('; e_entry')
+	g.write64(h.phoff)
+	g.println('; e_phoff')
+	g.write64(h.shoff)
+	g.println('; e_shoff')
+	g.write32(h.flags)
+	g.println('; e_flags')
+	g.write16(h.ehsize)
+	g.println('; e_ehsize')
+	g.write16(h.phentsize)
+	g.println('; e_phentsize')
+	g.write16(h.phnum)
+	g.println('; e_phnum')
+	g.write16(h.shentsize)
+	g.println('; e_shentsize')
+	g.write16(h.shnum)
+	g.println('; e_shnum')
+	g.write16(h.shstrndx)
+	g.println('; e_shstrndx')
+
+	g.println('^^^ ELF header (64)')
+}
+
 struct ProgramHeader {
 mut:
 	typ    int // Program header type.
@@ -569,34 +659,6 @@ fn (mut g Gen) gen_section_data(sections []Section) {
 	}
 }
 
-/*
-draft for formatting the ELF header in the future
-
-struct HeaderData {
-mut:
-	ident     i16  // File identification.
-	typ       i16 // File type.
-	machine   i16 // Machine architecture.
-	version   int // ELF format version.
-	entry     i64 // Entry point.
-	phoff     i64 // Program header file offset.
-	shoff     i64 // Section header file offset.
-	flags     int // Architecture-specific flags.
-	ehsize    i16 // Size of ELF header in bytes.
-	phentsize i16 // Size of program header entry.
-	phnum     i16 // Number of program header entries.
-	shentsize i16 // Size of section header entry.
-	shnum     i16 // Number of section header entries.
-	shstrndx  i16 // Section name strings section.
-}
-
-struct ElfHeader {
-mut:
-	data: HeaderData,
-	shdrs: map[string]Section
-}
-*/
-
 pub fn (mut g Gen) generate_elf_header() {
 	elf_type := native.elf_type_rel // PIE (use _exec for non-relocatable executables)
 
@@ -624,34 +686,15 @@ pub fn (mut g Gen) generate_elf_header() {
 	g.create_symtab(mut sections, mut symbols) // create the .symtab section
 	g.create_shstrtab(mut sections) // create the .shstrtab section (this must be the last section!)
 
-	// write elf header
-	g.buf << '\x7fELF'.bytes()
-	g.println('; \\x7fELF')
-	g.buf << native.elf_class64
-	g.buf << native.elf_data_le
-	g.buf << native.elf_version
-	g.buf << native.elf_osabi_none
-	g.write64(0) // abiversion(1)+pad(6)+nident(1)
-	g.write16(elf_type)
+	mut elf_header := g.default_elf_header()
 
-	if g.pref.arch == .arm64 {
-		g.write16(native.elf_arm64)
-	} else {
-		g.write16(native.elf_amd64)
-	}
+	elf_header.typ = i16(elf_type)
+	elf_header.shoff = native.elf_header_size + native.elf_phentry_size * program_headers.len
+	elf_header.phnum = i16(program_headers.len)
+	elf_header.shnum = i16(sections.len)
+	elf_header.shstrndx = i16(g.find_section_header('.shstrtab', sections))
 
-	g.write32(native.elf_version)
-	g.write64(0) // e_entry (temp value)
-	g.write64(native.elf_header_size) // e_phoff
-	g.write64(native.elf_header_size + native.elf_phentry_size * program_headers.len) // e_shoff
-	g.write32(0) // e_flags
-	g.write16(native.elf_header_size)
-	g.write16(native.elf_phentry_size)
-	g.write16(program_headers.len) // e_phnum
-	g.write16(native.elf_shentry_size) // e_shentsize
-	// e_shnum := g.buf.len
-	g.write16(sections.len) // e_shnum (number of sections)
-	g.write16(g.find_section_header('.shstrtab', sections)) // e_shstrndx
+	g.gen_elf_header(elf_header)
 
 	// write program headers
 	for header in program_headers {
