@@ -49,8 +49,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		}
 	}
 	if is_anon {
-		// No name needed for anon structs, C figures it out on its own.
-		g.writeln('{')
+		g.writeln('($styp){')
 	} else if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
 		mut shared_typ := node.typ.set_flag(.shared_f)
 		shared_styp = g.typ(shared_typ)
