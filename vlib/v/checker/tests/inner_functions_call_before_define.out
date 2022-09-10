@@ -1,0 +1,13 @@
+vlib/v/checker/tests/inner_functions_call_before_define.vv:2:7: error: unknown function: f
+    1 | fn main() {
+    2 |     _ := f()
+      |          ~~~
+    3 |     go f()
+    4 |
+vlib/v/checker/tests/inner_functions_call_before_define.vv:3:5: error: unknown function: f
+    1 | fn main() {
+    2 |     _ := f()
+    3 |     go f()
+      |        ~~~
+    4 | 
+    5 |     f := fn () string { return "hello" }
