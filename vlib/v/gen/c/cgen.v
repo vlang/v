@@ -1826,7 +1826,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// }
 			old_is_void_expr_stmt := g.is_void_expr_stmt
 			g.is_void_expr_stmt = !node.is_expr
-			if node.typ != ast.void_type && g.expected_cast_type != 0 && node.expr !is ast.MatchExpr {
+			if node.typ != ast.void_type && g.expected_cast_type != 0
+				&& node.expr !in [ast.IfExpr, ast.MatchExpr] {
 				g.expr_with_cast(node.expr, node.typ, g.expected_cast_type)
 			} else {
 				g.expr(node.expr)

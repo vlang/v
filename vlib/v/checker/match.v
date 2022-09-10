@@ -59,6 +59,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					c.expected_type = node.expected_type
 				}
 				expr_type := c.expr(stmt.expr)
+				stmt.typ = expr_type
 				if first_iteration {
 					if node.is_expr && (node.expected_type.has_flag(.optional)
 						|| node.expected_type.has_flag(.result)
@@ -67,7 +68,6 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					} else {
 						ret_type = expr_type
 					}
-					stmt.typ = expr_type
 				} else if node.is_expr && ret_type.idx() != expr_type.idx() {
 					if !c.check_types(ret_type, expr_type) && !c.check_types(expr_type, ret_type) {
 						ret_sym := c.table.sym(ret_type)
