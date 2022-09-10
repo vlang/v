@@ -1,7 +1,7 @@
 module strings
 
 // format_f32 - Formats an f32-number as a string by adding thousands-separators and a custom-set radix. The first argument represents the number you want to format, the second represents the thousands-separator as a string and the third represents the radix also as a string.
-// Example: `assert strings.format_int(1000.48, ",", ".") == "1,000.48"`
+// Example: `assert strings.format_f32(1000.48, ",", ".") == "1,000.48"`
 pub fn format_f32(n f32, separator string, radix string) string {
     s:=n.str()
     mut s1:=if s.before('.') != s {
@@ -22,7 +22,7 @@ pub fn format_f32(n f32, separator string, radix string) string {
 }
 
 // format_f64 - Formats an f64-number as a string by adding thousands-separators and a custom-set radix. The first argument represents the number you want to format, the second represents the thousands-separator as a string and the third represents the radix also as a string.
-// Example: `assert strings.format_int(10000.4567657657, ",", ".") == "10,000.4567657657"`
+// Example: `assert strings.format_f64(10000.4567657657, ",", ".") == "10,000.4567657657"`
 pub fn format_f64(n f64, separator string, radix string) string {
     s:=n.str()
     mut s1:=if s.before('.') != s {
