@@ -678,7 +678,10 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		if f := c.table.find_fn(os_name) {
 			if f.generic_names.len == node.concrete_types.len {
 				node_alias_name := node.fkey()
-				c.table.fn_generic_types[os_name] = c.table.fn_generic_types[node_alias_name]
+				mut existing := c.table.fn_generic_types[os_name] or { [] }
+				existing << c.table.fn_generic_types[node_alias_name]
+				existing << node.concrete_types
+				c.table.fn_generic_types[os_name] = existing
 			}
 			node.name = os_name
 			found = true

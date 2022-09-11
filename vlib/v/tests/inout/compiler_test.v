@@ -22,7 +22,7 @@ fn test_all() {
 	diff_cmd := diff.find_working_diff_command() or { '' }
 	dir := 'vlib/v/tests/inout'
 	files := os.ls(dir) or { panic(err) }
-	tests := files.filter(it.ends_with('.vv'))
+	tests := files.filter(it.ends_with('.vv') || it.ends_with('.vsh'))
 	if tests.len == 0 {
 		println('no compiler tests found')
 		assert false
@@ -62,7 +62,9 @@ fn test_all() {
 		// println(res.output)
 		// println('============')
 		mut found := res.output.trim_right('\r\n').replace('\r\n', '\n')
-		mut expected := os.read_file(program.replace('.vv', '') + '.out') or { panic(err) }
+		mut expected := os.read_file(program.replace('.vv', '').replace('.vsh', '') + '.out') or {
+			panic(err)
+		}
 		expected = expected.trim_right('\r\n').replace('\r\n', '\n')
 		if expected.contains('================ V panic ================') {
 			// panic include backtraces and absolute file paths, so can't do char by char comparison
