@@ -413,6 +413,12 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 }
 
 pub fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
+	// Check whether the inner function definition is before the call
+	if var := node.scope.find_var(node.name) {
+		if var.expr is ast.AnonFn && var.pos.pos > node.pos.pos {
+			c.error('unknown function: $node.name', node.pos)
+		}
+	}
 	// TODO merge logic from method_call and fn_call
 	// First check everything that applies to both fns and methods
 	old_inside_fn_arg := c.inside_fn_arg
