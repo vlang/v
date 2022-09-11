@@ -124,7 +124,7 @@ fn delete(tree Tree, x f64) Tree {
 	}
 }
 
-fn main() {
+fn test_match_with_complex_sumtype_exprs() {
 	mut tree := Tree(Empty{})
 	input := [0.3, 0.2, 0.5, 0.0, 0.6, 0.8, 0.9, 1.0, 0.1, 0.4, 0.7]
 	for i in input {
