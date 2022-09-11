@@ -19,6 +19,8 @@
 
 </div>
 
+[![Packaging status](https://repology.org/badge/vertical-allrepos/vlang.svg)](https://repology.org/project/vlang/versions)
+
 ## Key Features of V
 
 - Simplicity: the language can be learned in a weekend
