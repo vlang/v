@@ -1,5 +1,7 @@
 module strconv
 
+// written by flopetautschnig (c) 2022 (floscodes)
+
 // f32_format - Formats an f32-number as a string by adding thousands-separators and a custom-set radix. The first argument represents the number you want to format, the second represents the thousands-separator as a string and the third represents the radix also as a string.
 // Example: `assert strings.f32_format(1000.48, ",", ".") == "1,000.48"`
 pub fn f32_format(n f32, separator string, radix string) string {
