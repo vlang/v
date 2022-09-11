@@ -1,0 +1,101 @@
+struct Size7 {
+	a i8
+	b u8
+	c i8
+	d i8
+	e u8
+	f i8
+	g u8
+}
+
+struct Size8 {
+	a int
+	b i16
+	c i8
+}
+
+struct Size12 {
+	a int
+	b int
+	c int
+}
+
+struct Size16 {
+	a int
+	b i8
+	c i64
+}
+
+struct Size28 {
+	a int
+	b i16
+	c int
+	d u32
+	e i8
+	f int
+	g int
+}
+
+struct StructWithDefault {
+	a int = 8
+	b int
+	c int = 5
+}
+
+fn get_7(s Size7) Size7 {
+	return s
+}
+
+fn get_8(s Size8) Size8 {
+	return s
+}
+
+fn get_12(s Size12) Size12 {
+	return s
+}
+
+fn get_16(s Size16) Size16 {
+	return s
+}
+
+fn get_28(s Size28) Size28 {
+	return s
+}
+
+fn struct_fn_test() {
+	a := Size7{b: 2}
+	assert get_7(a).b == 2
+	assert get_7(Size7{c: 3}).c == 3
+	b := Size8{b: 2}
+	assert get_8(b).b == 2
+	assert get_8(Size8{c: 3}).c == 3
+	c := Size12{b: 2}
+	assert get_12(c).b == 2
+	assert get_12(Size12{c: 3}).c == 3
+	d := Size16{b: 2}
+	assert get_16(d).b == 2
+	assert get_16(Size16{c: 3}).c == 3
+	e := Size28{b: 2}
+	assert get_28(e).b == 2
+	assert get_28(Size28{c: 3}).c == 3
+}
+
+fn struct_test() {
+	a := Size7{1, 2, 3, 4, 5, 6, 7}
+	b := a
+	assert a.c == 3
+	assert b.f == 6
+	c := Size28{d:1, f:2, a:3, c: 4}
+	assert c.a == 3
+	assert c.f == 2
+	assert c.e == 0
+	d := StructWithDefault{b: 2, c: 3}
+	assert d.a == 8
+	assert d.b == 2
+	assert d.c == 3
+}
+
+fn main() {
+	struct_test()
+	struct_fn_test()
+}

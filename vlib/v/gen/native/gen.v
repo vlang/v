@@ -51,6 +51,7 @@ mut:
 	labels               &LabelTable
 	defer_stmts          []ast.DeferStmt
 	builtins             map[string]BuiltinFn
+	structs              []Struct
 	// macho specific
 	macho_ncmds   int
 	macho_cmdsize int
@@ -98,6 +99,11 @@ fn (mut l LabelTable) new_label() int {
 	l.label_id++
 	l.addrs << 0
 	return l.label_id
+}
+
+struct Struct {
+mut:
+	offsets []int
 }
 
 enum Size {
@@ -209,10 +215,12 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 			exit(1)
 		}
 		labels: 0
+		structs: []Struct{len: table.type_symbols.len}
 	}
 	g.code_gen.g = g
 	g.generate_header()
 	g.init_builtins()
+	g.calculate_all_size_align()
 	for file in files {
 		/*
 		if file.warnings.len > 0 {
@@ -308,6 +316,16 @@ pub fn (mut g Gen) link(obj_name string) {
 		else {
 			g.n_error('native linking is not implemented for $g.pref.os')
 		}
+	}
+}
+
+pub fn (mut g Gen) calculate_all_size_align() {
+	for mut ts in g.table.type_symbols {
+		if ts.idx == 0 {
+			continue
+		}
+		ts.size = g.get_type_size(ast.new_type(ts.idx))
+		ts.align = g.get_type_align(ast.new_type(ts.idx))
 	}
 }
 
@@ -421,7 +439,18 @@ fn (mut g Gen) get_var_offset(var_name string) int {
 	return r
 }
 
+fn (mut g Gen) get_field_offset(typ ast.Type, name string) int {
+	ts := g.table.sym(typ)
+	field := ts.find_field(name) or { g.n_error('Could not find field `$name` on init') }
+	return g.structs[typ.idx()].offsets[field.i]
+}
+
+// get type size, and calculate size and align and store them to the cache when the type is struct
 fn (mut g Gen) get_type_size(typ ast.Type) int {
+	// TODO type flags
+	if typ.is_real_pointer() {
+		return 8
+	}
 	if typ in ast.number_type_idxs {
 		return match typ {
 			ast.i8_type_idx { 1 }
@@ -443,13 +472,51 @@ fn (mut g Gen) get_type_size(typ ast.Type) int {
 			else { 8 }
 		}
 	}
-	if typ in ast.pointer_type_idxs {
-		return 8
-	}
-	if typ == ast.bool_type_idx {
+	if typ.is_bool() {
 		return 1
 	}
+	ts := g.table.sym(typ)
+	if ts.size != -1 {
+		return ts.size
+	}
+	mut size := 0
+	mut align := 1
+	mut strc := Struct{}
+	match ts.info {
+		ast.Struct {
+			for f in ts.info.fields {
+				f_size := g.get_type_size(f.typ)
+				f_align := g.get_type_align(f.typ)
+				padding := (f_align - size % f_align) % f_align
+				strc.offsets << size + padding
+				size += f_size + padding
+				if f_align > align {
+					align = f_align
+				}
+			}
+			size = (size + align - 1) / align * align
+		}
+		else {}
+	}
+	mut ts_ := g.table.sym(typ)
+	ts_.size = size
+	ts_.align = align
+	g.structs[typ.idx()] = strc
 	// g.n_error('unknown type size')
+	return size
+}
+
+fn (mut g Gen) get_type_align(typ ast.Type) int {
+	// also calculate align of a struct
+	size := g.get_type_size(typ)
+	if typ in ast.number_type_idxs || typ.is_real_pointer() || typ.is_bool() {
+		return size
+	}
+	ts := g.table.sym(typ)
+	if ts.align != -1 {
+		return ts.align
+	}
+	// g.n_error('unknown type align')
 	return 0
 }
 
@@ -552,17 +619,9 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, name string) {
 			styp := g.typ(expr.struct_type)
 			field_name := expr.field
 			if styp.kind == .struct_ {
-				s := styp.info as ast.Struct
-				ptrsz := 4 // should be 8, but for locals is used 8 and C backend shows that too
-				mut off := 0
-				for f in s.fields {
-					if f.name == field_name {
-						g.learel(.rax, g.allocate_string('$off\n', 3, .rel32))
-						g.gen_print_reg(.rax, 3, fd)
-						break
-					}
-					off += ptrsz
-				}
+				off := g.get_field_offset(expr.struct_type, field_name)
+				g.learel(.rax, g.allocate_string('$off\n', 3, .rel32))
+				g.gen_print_reg(.rax, 3, fd)
 			} else {
 				g.v_error('_offsetof expects a struct Type as first argument', expr.pos)
 			}
@@ -888,22 +947,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.Module {}
 		ast.Return {
-			// dump(node.exprs[0])
-			// if in main
-			// zero := ast.IntegerLiteral{}
-			// g.gen_exit(zero)
-			// dump(node)
-			// dump(node.types)
 			mut s := '?' //${node.exprs[0].val.str()}'
-			// TODO: void return
 			if e0 := node.exprs[0] {
 				match e0 {
-					ast.IntegerLiteral {
-						g.mov64(.rax, e0.val.int())
-					}
-					ast.InfixExpr {
-						g.infix_expr(e0)
-					}
 					ast.CastExpr {
 						g.mov64(.rax, e0.expr.str().int())
 						// do the job
@@ -913,15 +959,61 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 						g.expr(node.exprs[0])
 						g.mov64(.rax, g.allocate_string(s, 2, .abs64))
 					}
-					ast.Ident {
+					else {
 						g.expr(e0)
 					}
-					else {
-						size := g.get_type_size(node.types[0])
-						if size !in [1, 2, 4, 8] {
-							g.n_error('unknown return type $e0.type_name()')
+				}
+				// store the struct value
+				typ := node.types[0]
+				if !typ.is_real_pointer() && !typ.is_number() && !typ.is_bool() {
+					ts := g.table.sym(typ)
+					size := g.get_type_size(typ)
+					if g.pref.arch == .amd64 {
+						match ts.kind {
+							.struct_ {
+								if size <= 8 {
+									g.mov_deref(.rax, .rax, ast.i64_type_idx)
+									if size != 8 {
+										g.movabs(.rbx, (i64(1) << (size * 8)) - 1)
+										g.bitand_reg(.rax, .rbx)
+									}
+								} else if size <= 16 {
+									g.add(.rax, 8)
+									g.mov_deref(.rdx, .rax, ast.i64_type_idx)
+									g.sub(.rax, 8)
+									g.mov_deref(.rax, .rax, ast.i64_type_idx)
+									if size != 16 {
+										g.movabs(.rbx, (i64(1) << ((size - 8) * 8)) - 1)
+										g.bitand_reg(.rdx, .rbx)
+									}
+								} else {
+									offset := g.get_var_offset('_return_val_addr')
+									g.mov_var_to_reg(.rdx, LocalVar{
+										offset: offset
+										typ: ast.i64_type_idx
+									})
+									for i in 0 .. size / 8 {
+										g.mov_deref(.rcx, .rax, ast.i64_type_idx)
+										g.mov_store(.rdx, .rcx, ._64)
+										if i != size / 8 - 1 {
+											g.add(.rax, 8)
+											g.add(.rdx, 8)
+										}
+									}
+									if size % 8 != 0 {
+										g.add(.rax, size % 8)
+										g.add(.rdx, size % 8)
+										g.mov_deref(.rcx, .rax, ast.i64_type_idx)
+										g.mov_store(.rdx, .rcx, ._64)
+									}
+									g.mov_var_to_reg(.rax, LocalVar{
+										offset: offset
+										typ: ast.i64_type_idx
+									})
+								}
+							}
+							else {}
 						}
-						g.expr(e0)
 					}
 				}
 			}
@@ -1028,8 +1120,28 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.FloatLiteral {}
 		ast.Ident {
+			var := g.get_var_from_ident(node)
 			// XXX this is intel specific
-			g.mov_var_to_reg(.rax, node as ast.Ident)
+			match var {
+				LocalVar {
+					if var.typ.is_number() || var.typ.is_real_pointer() || var.typ.is_bool() {
+						g.mov_var_to_reg(.rax, node as ast.Ident)
+					} else {
+						ts := g.table.sym(var.typ)
+						match ts.info {
+							ast.Struct {
+								g.lea_var_to_reg(.rax, g.get_var_offset(node.name))
+							}
+							else {
+								g.n_error('Unsupported variable type')
+							}
+						}
+					}
+				}
+				else {
+					g.n_error('Unsupported variable kind')
+				}
+			}
 		}
 		ast.IfExpr {
 			if node.is_comptime {
@@ -1053,12 +1165,22 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.StringLiteral {
 			g.allocate_string(node.val, 3, .rel32)
 		}
-		ast.StructInit {}
+		ast.StructInit {
+			pos := g.allocate_struct('_anonstruct', node.typ)
+			g.init_struct(LocalVar{ offset: pos, typ: node.typ }, node)
+			g.lea_var_to_reg(.rax, pos)
+		}
 		ast.GoExpr {
 			g.v_error('native backend doesnt support threads yet', node.pos)
 		}
 		ast.MatchExpr {
 			g.gen_match_expr(node)
+		}
+		ast.SelectorExpr {
+			g.expr(node.expr)
+			offset := g.get_field_offset(node.expr_type, node.field_name)
+			g.add(.rax, offset)
+			g.mov_deref(.rax, .rax, node.typ)
 		}
 		else {
 			g.n_error('expr: unhandled node type: $node.type_name()')
