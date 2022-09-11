@@ -489,7 +489,7 @@ fn (mut g Gen) movabs(reg Register, val i64) {
 
 fn (mut g Gen) mov_deref(reg Register, regptr Register, typ ast.Type) {
 	size := g.get_type_size(typ)
-	if size !in [1,2,4,8] {
+	if size !in [1, 2, 4, 8] {
 		g.n_error('Invalid size on dereferencing')
 	}
 	is_signed := !typ.is_real_pointer() && typ.is_signed()
