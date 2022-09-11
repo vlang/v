@@ -519,6 +519,16 @@ pub fn (mut c Checker) sum_type_decl(node ast.SumTypeDecl) {
 					}
 				}
 			}
+		} else if sym.info is ast.FnType {
+			func := (sym.info as ast.FnType).func
+			if c.table.sym(func.return_type).name.ends_with('.$node.name') {
+				c.error('sum type `$node.name` cannot be defined recursively', variant.pos)
+			}
+			for param in func.params {
+				if c.table.sym(param.typ).name.ends_with('.$node.name') {
+					c.error('sum type `$node.name` cannot be defined recursively', variant.pos)
+				}
+			}
 		}
 
 		if sym.name.trim_string_left(sym.mod + '.') == node.name {
