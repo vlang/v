@@ -487,14 +487,32 @@ fn (mut g Gen) movabs(reg Register, val i64) {
 	g.println('movabs $reg, $val')
 }
 
-fn (mut g Gen) mov_deref(reg Register, regptr Register, size Size) {
-	if size == ._16 {
-		g.write8(0x66)
+fn (mut g Gen) mov_deref(reg Register, regptr Register, typ ast.Type) {
+	size := g.get_type_size(typ)
+	if size !in [1,2,4,8] {
+		g.n_error('Invalid size on dereferencing')
 	}
-	if size == ._64 {
+	is_signed := !typ.is_real_pointer() && typ.is_signed()
+	rex := int(reg) / 8 * 4 + int(regptr) / 8
+	if size == 4 && !is_signed {
+		if rex > 0 {
+			g.write8(0x40 + rex)
+		}
+		g.write8(0x8b)
+	} else {
 		g.write8(0x48 + int(reg) / 8 * 4 + int(regptr) / 8)
+		if size <= 2 {
+			g.write8(0x0f)
+		}
+		g.write8(match true {
+			size == 1 && is_signed { 0xbe }
+			size == 1 && !is_signed { 0xb6 }
+			size == 2 && is_signed { 0xbf }
+			size == 2 && !is_signed { 0xb7 }
+			size == 4 && is_signed { 0x63 }
+			else { 0x8b }
+		})
 	}
-	g.write8(if size == ._8 { 0x8a } else { 0x8b })
 	g.write8(int(reg) % 8 * 8 + int(regptr) % 8)
 	g.println('mov $reg, [$regptr]')
 }
@@ -1598,7 +1616,7 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 		if g.table.sym(node.args[i].typ).kind == .struct_ {
 			match args_size[i] {
 				1...8 {
-					g.mov_deref(.rax, .rax, ._64)
+					g.mov_deref(.rax, .rax, ast.i64_type_idx)
 					if args_size[i] != 8 {
 						g.movabs(.rdx, (i64(1) << (args_size[i] * 8)) - 1)
 						g.bitand_reg(.rax, .rdx)
@@ -1606,9 +1624,9 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 				}
 				9...16 {
 					g.add(.rax, 8)
-					g.mov_deref(.rdx, .rax, ._64)
+					g.mov_deref(.rdx, .rax, ast.i64_type_idx)
 					g.sub(.rax, 8)
-					g.mov_deref(.rax, .rax, ._64)
+					g.mov_deref(.rax, .rax, ast.i64_type_idx)
 					if args_size[i] != 16 {
 						g.movabs(.rbx, (i64(1) << ((args_size[i] - 8) * 8)) - 1)
 						g.bitand_reg(.rdx, .rbx)
@@ -1628,7 +1646,7 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 			else {
 				g.add(.rax, args_size[i] - ((args_size[i] + 7) % 8 + 1))
 				for _ in 0 .. (args_size[i] + 7) / 8 {
-					g.mov_deref(.rdx, .rax, ._64)
+					g.mov_deref(.rdx, .rax, ast.i64_type_idx)
 					g.push(.rdx)
 					g.sub(.rax, 8)
 				}
@@ -2065,7 +2083,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 					g.lea_var_to_reg(.rax, dest)
 					g.mov_var_to_reg(.rdi, ie_ident)
 					g.add_reg(.rax, .rdi)
-					g.mov_deref(.rax, .rax, ._64)
+					g.mov_deref(.rax, .rax, ast.i64_type_idx)
 				} else {
 					g.n_error('only integers and idents can be used as indexes')
 				}

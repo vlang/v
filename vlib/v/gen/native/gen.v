@@ -972,16 +972,16 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 						match ts.kind {
 							.struct_ {
 								if size <= 8 {
-									g.mov_deref(.rax, .rax, ._64)
+									g.mov_deref(.rax, .rax, ast.i64_type_idx)
 									if size != 8 {
 										g.movabs(.rbx, (i64(1) << (size * 8)) - 1)
 										g.bitand_reg(.rax, .rbx)
 									}
 								} else if size <= 16 {
 									g.add(.rax, 8)
-									g.mov_deref(.rdx, .rax, ._64)
+									g.mov_deref(.rdx, .rax, ast.i64_type_idx)
 									g.sub(.rax, 8)
-									g.mov_deref(.rax, .rax, ._64)
+									g.mov_deref(.rax, .rax, ast.i64_type_idx)
 									if size != 16 {
 										g.movabs(.rbx, (i64(1) << ((size - 8) * 8)) - 1)
 										g.bitand_reg(.rdx, .rbx)
@@ -993,7 +993,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 										typ: ast.i64_type_idx
 									})
 									for i in 0 .. size / 8 {
-										g.mov_deref(.rcx, .rax, ._64)
+										g.mov_deref(.rcx, .rax, ast.i64_type_idx)
 										g.mov_store(.rdx, .rcx, ._64)
 										if i != size / 8 - 1 {
 											g.add(.rax, 8)
@@ -1003,7 +1003,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 									if size % 8 != 0 {
 										g.add(.rax, size % 8)
 										g.add(.rdx, size % 8)
-										g.mov_deref(.rcx, .rax, ._64)
+										g.mov_deref(.rcx, .rax, ast.i64_type_idx)
 										g.mov_store(.rdx, .rcx, ._64)
 									}
 									g.mov_var_to_reg(.rax, LocalVar{
@@ -1180,14 +1180,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.expr(node.expr)
 			offset := g.get_field_offset(node.expr_type, node.field_name)
 			g.add(.rax, offset)
-			size := match g.get_type_size(node.typ) {
-				1 { Size._8 }
-				2 { Size._16 }
-				4 { Size._32 }
-				8 { Size._64 }
-				else { Size._64 }
-			}
-			g.mov_deref(.rax, .rax, size)
+			g.mov_deref(.rax, .rax, node.typ)
 		}
 		else {
 			g.n_error('expr: unhandled node type: $node.type_name()')
