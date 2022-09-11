@@ -2492,6 +2492,10 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		tt := c.table.type_to_str(to_type)
 		c.error('cannot cast string to `$tt`, use `${snexpr}.${final_to_sym.name}()` instead.',
 			node.pos)
+	} else if final_from_sym.kind == .string && to_type.is_ptr() && to_sym.kind != .string {
+		snexpr := node.expr.str()
+		tt := c.table.type_to_str(to_type)
+		c.error('cannot cast string to `$tt`, use `${snexpr}.str` instead.', node.pos)
 	}
 
 	if to_sym.kind == .rune && from_sym.is_string() {
