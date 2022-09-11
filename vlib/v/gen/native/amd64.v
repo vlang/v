@@ -2731,12 +2731,12 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 		}
 		stack_args << i
 	}
-	reg_size := reg_args.map((args_size[it] + 7) / 8).reduce(fn (a int, b int) int {
+/*	reg_size := reg_args.map((args_size[it] + 7) / 8).reduce(fn (a int, b int) int {
 		return a + b
 	}, 0)
 	stack_size := stack_args.map((args_size[it] + 7) / 8).reduce(fn (a int, b int) int {
 		return a + b
-	}, 0)
+	}, 0)*/
 
 	// define and copy args on register
 	mut reg_idx := 0
