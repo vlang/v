@@ -1167,6 +1167,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.PostfixExpr {
 			g.postfix_expr(node)
 		}
+		ast.PrefixExpr {
+			g.prefix_expr(node)
+		}
 		ast.StringLiteral {
 			g.allocate_string(node.val, 3, .rel32)
 		}

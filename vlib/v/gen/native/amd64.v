@@ -553,20 +553,20 @@ fn (mut g Gen) mov_reg_to_var(var Var, reg Register, config VarConfig) {
 			is_far_var := offset > 0x80 || offset < -0x7f
 			typ := if config.typ == 0 { var.typ } else { config.typ }
 
-			mut size := 'UNKNOWN'
+			mut size_str := 'UNKNOWN'
 			is_extended_register := int(reg) >= int(Register.r8) && int(reg) <= int(Register.r15)
 			match typ {
 				ast.i64_type_idx, ast.u64_type_idx, ast.isize_type_idx, ast.usize_type_idx,
 				ast.int_literal_type_idx {
 					g.write16(0x8948 + if is_extended_register { 4 } else { 0 })
-					size = 'QWORD'
+					size_str = 'QWORD'
 				}
 				ast.int_type_idx, ast.u32_type_idx, ast.rune_type_idx {
 					if is_extended_register {
 						g.write8(0x44)
 					}
 					g.write8(0x89)
-					size = 'DWORD'
+					size_str = 'DWORD'
 				}
 				ast.i16_type_idx, ast.u16_type_idx {
 					g.write8(0x66)
@@ -574,18 +574,17 @@ fn (mut g Gen) mov_reg_to_var(var Var, reg Register, config VarConfig) {
 						g.write8(0x44)
 					}
 					g.write8(0x89)
-					size = 'WORD'
+					size_str = 'WORD'
 				}
 				ast.i8_type_idx, ast.u8_type_idx, ast.char_type_idx, ast.bool_type_idx {
 					if is_extended_register {
 						g.write8(0x44)
 					}
 					g.write8(0x88)
-					size = 'BYTE'
+					size_str = 'BYTE'
 				}
 				else {
 					g.n_error('unsupported type for mov_reg_to_var')
-					'UNKNOWN'
 				}
 			}
 			far_var_offset := if is_far_var { 0x40 } else { 0 }
@@ -602,7 +601,7 @@ fn (mut g Gen) mov_reg_to_var(var Var, reg Register, config VarConfig) {
 			} else {
 				g.write8((0xff - offset + 1) % 0x100)
 			}
-			g.println('mov $size PTR [rbp-$offset.hex2()],$reg')
+			g.println('mov $size_str PTR [rbp-$offset.hex2()],$reg')
 		}
 		GlobalVar {
 			// TODO
@@ -736,47 +735,44 @@ fn (mut g Gen) mov_var_to_reg(reg Register, var Var, config VarConfig) {
 			offset := var.offset - config.offset
 			is_far_var := offset > 0x80 || offset < -0x7f
 			typ := if config.typ == 0 { var.typ } else { config.typ }
+			size := g.get_type_size(typ)
+			is_signed := !typ.is_real_pointer() && typ.is_signed()
 
-			instruction, size := match typ {
-				ast.i64_type_idx, ast.u64_type_idx, ast.isize_type_idx, ast.usize_type_idx,
-				ast.int_literal_type_idx {
-					// mov rax, QWORD PTR [rbp-0x8]
-					g.write16(0x8b48)
-					'mov', 'QWORD'
-				}
-				ast.int_type_idx {
+			instruction, size_str := match true {
+				size == 4 && is_signed {
 					// movsxd rax, DWORD PTR [rbp-0x8]
 					g.write16(0x6348)
 					'movsxd', 'DWORD'
 				}
-				ast.u32_type_idx, ast.rune_type_idx {
+				size == 4 && !is_signed {
 					// mov eax, DWORD PTR [rbp-0x8]
 					g.write8(0x8b)
 					'mov', 'DWORD'
 				}
-				ast.i16_type_idx {
+				size == 2 && is_signed {
 					// movsx rax, WORD PTR [rbp-0x8]
 					g.write([u8(0x48), 0x0f, 0xbf])
 					'movsx', 'WORD'
 				}
-				ast.u16_type_idx {
+				size == 2 && !is_signed {
 					// movzx rax, WORD PTR [rbp-0x8]
 					g.write([u8(0x48), 0x0f, 0xb7])
 					'movzx', 'WORD'
 				}
-				ast.i8_type_idx {
+				size == 1 && is_signed {
 					// movsx rax, BYTE PTR [rbp-0x8]
 					g.write([u8(0x48), 0x0f, 0xbe])
 					'movsx', 'BYTE'
 				}
-				ast.u8_type_idx, ast.char_type_idx, ast.bool_type_idx {
+				size == 1 && !is_signed {
 					// movzx rax, BYTE PTR [rbp-0x8]
 					g.write([u8(0x48), 0x0f, 0xb6])
 					'movzx', 'BYTE'
 				}
 				else {
-					g.n_error('unhandled mov var to reg')
-					'mov', 'UNKNOWN'
+					// mov rax, QWORD PTR [rbp-0x8]
+					g.write16(0x8b48)
+					'mov', 'QWORD'
 				}
 			}
 			far_var_offset := if is_far_var { 0x40 } else { 0 }
@@ -794,7 +790,7 @@ fn (mut g Gen) mov_var_to_reg(reg Register, var Var, config VarConfig) {
 			} else {
 				g.write8((0xff - offset + 1) % 0x100)
 			}
-			g.println('$instruction $reg, $size PTR [rbp-$offset.hex2()]')
+			g.println('$instruction $reg, $size_str PTR [rbp-$offset.hex2()]')
 		}
 		GlobalVar {
 			// TODO
@@ -1583,8 +1579,16 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 	}
 
 	if node.is_method {
+		expr := if !node.left_type.is_ptr() && node.receiver_type.is_ptr() {
+			ast.Expr(ast.PrefixExpr{
+				op: .amp
+				right: node.left
+			})
+		} else {
+			node.left
+		}
 		args << ast.CallArg{
-			expr: node.left
+			expr: expr
 			typ: node.receiver_type
 		}
 	}
@@ -1628,7 +1632,7 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 			continue
 		}
 		g.expr(args[i].expr)
-		if g.table.sym(args[i].typ).kind == .struct_ {
+		if g.table.sym(args[i].typ).kind == .struct_ && !args[i].typ.is_ptr() {
 			match args_size[i] {
 				1...8 {
 					g.mov_deref(.rax, .rax, ast.i64_type_idx)
@@ -1697,7 +1701,6 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 				g.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
 					.rax)
 				g.mov_var_to_reg(.rax, LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
-					
 					offset: 8
 				)
 				g.movabs(.rcx, 0xffffffffffffffff - (i64(1) << (return_size * 8)) + 1)
@@ -2188,6 +2191,24 @@ fn (mut g Gen) cset_op(op token.Kind) {
 		else {
 			g.cset(.ne)
 		}
+	}
+}
+
+fn (mut g Gen) gen_left_value(node ast.Expr) {
+	match node {
+		ast.Ident {
+			offset := g.get_var_offset(node.name)
+			g.lea_var_to_reg(.rax, offset)
+		}
+		else {
+			g.n_error('Unsupported left value')
+		}
+	}
+}
+
+fn (mut g Gen) prefix_expr(node ast.PrefixExpr) {
+	if node.op == .amp {
+		g.gen_left_value(node.right)
 	}
 }
 
