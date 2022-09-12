@@ -230,11 +230,9 @@ pub fn (t &Table) fn_type_signature(f &Fn) string {
 	if f.return_type != 0 && f.return_type != void_type {
 		sym := t.sym(f.return_type)
 		opt := if f.return_type.has_flag(.optional) { 'option_' } else { '' }
-		if sym.kind == .alias {
-			sig += '__$opt$sym.cname'
-		} else {
-			sig += '__$opt$sym.kind'
-		}
+		res := if f.return_type.has_flag(.result) { 'result_' } else { '' }
+
+		sig += '__$opt$res$sym.cname'
 	}
 	return sig
 }
