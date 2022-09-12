@@ -95,7 +95,35 @@ fn struct_test() {
 	assert d.c == 3
 }
 
+fn (s Size7) get_c() i8 {
+	return s.c
+}
+
+fn (s &Size7) get_c_ref() i8 {
+	return s.c
+}
+
+fn (mut s Size7) modify_c(a i8) i8 {
+	// s.c = a
+	return s.c
+}
+
+fn struct_receiver_test() {
+	mut a := Size7{1,2,3,4,5,6,7}
+	assert a.get_c() == 3
+	assert a.get_c_ref() == 3
+	// should be 7 after implementing field assign
+	assert a.modify_c(7) == 3
+	b := Size28{c: 6}
+	assert b.get_c() == 6
+}
+
+fn (s Size28) get_c() int {
+	return s.c
+}
+
 fn main() {
 	struct_test()
 	struct_fn_test()
+	struct_receiver_test()
 }

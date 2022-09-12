@@ -2777,7 +2777,7 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 	mut reg_idx := 0
 	for i in reg_args {
 		name := params[i].name
-		g.stack_var_pos += args_size[i] % 8
+		g.stack_var_pos += (8 - args_size[i] % 8) % 8
 		offset := g.allocate_struct(name, params[i].typ)
 		// copy
 		g.mov_reg_to_var(LocalVar{ offset: offset, typ: ast.i64_type_idx, name: name },
