@@ -561,7 +561,9 @@ pub fn (mut p Parser) root_table() ? {
 
 				if p.tok.kind == .lsbr {
 					// Parse `[[table]]`
-					p.array_of_tables(mut &p.root_map)?
+					unsafe {
+						p.array_of_tables(mut &p.root_map)?
+					}
 					p.skip_next = true // skip calling p.next() in coming iteration
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'leaving double bracket at "$p.tok.kind" "$p.tok.lit". NEXT is "$p.peek_tok.kind "$p.peek_tok.lit"')
 				} else if peek_tok.kind == .period {
