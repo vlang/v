@@ -1701,6 +1701,7 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 				g.mov_reg_to_var(LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
 					.rax)
 				g.mov_var_to_reg(.rax, LocalVar{ offset: return_pos, typ: ast.i64_type_idx },
+					
 					offset: 8
 				)
 				g.movabs(.rcx, 0xffffffffffffffff - (i64(1) << (return_size * 8)) + 1)
@@ -2745,7 +2746,10 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 	return_size := g.get_type_size(node.return_type)
 	if ts.kind == .struct_ {
 		if return_size > 16 {
-			params << ast.Param{name: '_return_val_addr', typ: ast.voidptr_type_idx}
+			params << ast.Param{
+				name: '_return_val_addr'
+				typ: ast.voidptr_type_idx
+			}
 		}
 	}
 
