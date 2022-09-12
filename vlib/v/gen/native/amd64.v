@@ -1559,23 +1559,38 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 	if !n.contains('.') {
 		n = 'main.$n'
 	}
+	if node.is_method {
+		n = '${g.table.get_type_name(node.receiver_type)}.$node.name'
+	}
 	addr := g.fn_addr[n]
 
 	mut reg_args := []int{}
 	mut stack_args := []int{}
-	mut args_size := node.args.map(g.get_type_size(it.typ))
+	mut args := []ast.CallArg{cap: node.args.len + 2}
 
 	ts := g.table.sym(node.return_type)
 	return_size := g.get_type_size(node.return_type)
 	mut return_pos := -1
-	struct_arg_idx := node.args.len
+	mut is_struct_return := false
 	if ts.kind == .struct_ {
 		return_pos = g.allocate_struct('', node.return_type)
 		if return_size > 16 {
-			reg_args << struct_arg_idx
-			args_size << 8
+			is_struct_return = true
+			args << ast.CallArg{
+				typ: ast.voidptr_type_idx
+			}
 		}
 	}
+
+	if node.is_method {
+		args << ast.CallArg{
+			expr: node.left
+			typ: node.receiver_type
+		}
+	}
+
+	args << node.args
+	args_size := args.map(g.get_type_size(it.typ))
 
 	mut reg_left := 6 - reg_args.len
 	for i, size in args_size {
@@ -1607,13 +1622,13 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 	}
 	reg_args << stack_args
 	for i in reg_args.reverse() {
-		if i == struct_arg_idx {
+		if i == 0 && is_struct_return {
 			g.lea_var_to_reg(.rax, return_pos)
 			g.push(.rax)
 			continue
 		}
-		g.expr(node.args[i].expr)
-		if g.table.sym(node.args[i].typ).kind == .struct_ {
+		g.expr(args[i].expr)
+		if g.table.sym(args[i].typ).kind == .struct_ {
 			match args_size[i] {
 				1...8 {
 					g.mov_deref(.rax, .rax, ast.i64_type_idx)
@@ -1657,12 +1672,12 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 		g.pop(native.fn_arg_registers[i])
 	}
 	if addr == 0 {
-		g.delay_fn_call(name)
+		g.delay_fn_call(n)
 		g.call(int(0))
 	} else {
 		g.call(int(addr))
 	}
-	g.println('call `${name}()`')
+	g.println('call `${n}()`')
 
 	if ts.kind == .struct_ {
 		match return_size {
@@ -2702,19 +2717,20 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 	// Copy values from registers to local vars (calling convention)
 	mut reg_args := []int{}
 	mut stack_args := []int{}
-	mut args_size := node.params.map(g.get_type_size(it.typ))
+	mut params := []ast.Param{cap: node.params.len + 2}
 
+	// The first parameter is an address of returned struct if size > 16
 	ts := g.table.sym(node.return_type)
 	return_size := g.get_type_size(node.return_type)
-	struct_arg_idx := node.params.len
-	mut return_val_offset := -1
 	if ts.kind == .struct_ {
 		if return_size > 16 {
-			return_val_offset = g.allocate_var('_return_val_addr', 8, 0)
-			reg_args << struct_arg_idx
-			args_size << 8
+			params << ast.Param{name: '_return_val_addr', typ: ast.voidptr_type_idx}
 		}
 	}
+
+	params << node.params
+
+	args_size := params.map(g.get_type_size(it.typ))
 
 	mut reg_left := 6
 	for i, size in args_size {
@@ -2731,24 +2747,13 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 		}
 		stack_args << i
 	}
-	/*
-	reg_size := reg_args.map((args_size[it] + 7) / 8).reduce(fn (a int, b int) int {
-		return a + b
-	}, 0)
-	stack_size := stack_args.map((args_size[it] + 7) / 8).reduce(fn (a int, b int) int {
-		return a + b
-	}, 0)*/
 
 	// define and copy args on register
 	mut reg_idx := 0
 	for i in reg_args {
-		name := if i == struct_arg_idx { '_return_val_addr' } else { node.params[i].name }
+		name := params[i].name
 		g.stack_var_pos += args_size[i] % 8
-		offset := if i == struct_arg_idx {
-			return_val_offset
-		} else {
-			g.allocate_struct(name, node.params[i].typ)
-		}
+		offset := g.allocate_struct(name, params[i].typ)
 		// copy
 		g.mov_reg_to_var(LocalVar{ offset: offset, typ: ast.i64_type_idx, name: name },
 			native.fn_arg_registers[reg_idx])
@@ -2764,7 +2769,7 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 	// define args on stack
 	mut offset := -2
 	for i in stack_args {
-		name := node.params[i].name
+		name := params[i].name
 		g.var_offset[name] = offset * 8
 		g.var_alloc_size[name] = args_size[i]
 		offset -= (args_size[i] + 7) / 8
