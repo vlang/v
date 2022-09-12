@@ -188,8 +188,8 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					}
 				}
 				c.expected_type = former_expected_type
-				exp_sym := c.table.sym(c.expected_type)
-				if exp_sym.kind == .sum_type {
+				if c.table.type_kind(c.expected_type) == .sum_type
+					&& c.table.is_sumtype_or_in_variant(c.expected_type, node.typ) {
 					node.is_expr = true
 					node.typ = c.expected_type
 				}

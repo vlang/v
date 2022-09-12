@@ -215,12 +215,11 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 					return e.local_vars[expr.name].val
 				}
 				.constant {
-					mod := if expr.name.contains('.') {
+					return if expr.name.contains('.') {
 						e.mods[expr.name.all_before_last('.')]
 					} else {
 						e.mods[e.cur_mod]
-					}
-					return mod[expr.name.all_after_last('.')] or { ast.EmptyStmt{} } as Object
+					}[expr.name.all_after_last('.')] or { ast.EmptyStmt{} } as Object
 				}
 				else {
 					e.error('unknown ident kind for `$expr.name`: $expr.kind')
