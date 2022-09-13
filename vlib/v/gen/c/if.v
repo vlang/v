@@ -139,10 +139,19 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	needs_tmp_var := g.need_tmp_var_in_if(node)
 	tmp := if needs_tmp_var { g.new_tmp_var() } else { '' }
 	mut cur_line := ''
+	mut raw_state := false
 	if needs_tmp_var {
 		if node.typ.has_flag(.optional) {
+			raw_state = g.inside_if_optional
+			defer {
+				g.inside_if_optional = raw_state
+			}
 			g.inside_if_optional = true
 		} else if node.typ.has_flag(.result) {
+			raw_state = g.inside_if_result
+			defer {
+				g.inside_if_result = raw_state
+			}
 			g.inside_if_result = true
 		}
 		styp := g.typ(node.typ)
@@ -324,10 +333,5 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		}
 		g.empty_line = false
 		g.write('$cur_line $tmp')
-	}
-	if node.typ.has_flag(.optional) {
-		g.inside_if_optional = false
-	} else if node.typ.has_flag(.result) {
-		g.inside_if_result = false
 	}
 }
