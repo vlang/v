@@ -1342,7 +1342,16 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			if obj := node.scope.find(node.name) {
 				match obj {
 					ast.Var {
-						if obj.smartcasts.len > 0 {
+						// Temp fix generate call fn error when the struct type of sumtype
+						// has the fn field and is same to the struct name.
+						mut is_need_cast := true
+						if node.left_type != 0 {
+							left_sym := g.table.sym(node.left_type)
+							if left_sym.kind == .struct_ && node.name == obj.name {
+								is_need_cast = false
+							}
+						}
+						if obj.smartcasts.len > 0 && is_need_cast {
 							for _ in obj.smartcasts {
 								g.write('(*')
 							}
