@@ -130,36 +130,71 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 
 fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 	g.loop_depth++
+	unwrapped_cond_type := g.unwrap_generic(node.cond_type)
+	if unwrapped_cond_type == 0 {
+		println('ZERO TYP: $node.cond_type - $unwrapped_cond_type')
+	}
+	sym := g.table.final_sym(unwrapped_cond_type)
+	mut kind := node.kind
+	mut value_type := node.val_type
+	if !node.is_range {
+		kind = sym.kind
+		if sym.kind == .struct_ {
+			// iterators
+			next_fn := sym.find_method_with_generic_parent('next') or {
+				g.error('a struct must have a `next()` method to be an iterator', node.cond.pos())
+				return
+			}
+			value_type = next_fn.return_type.clear_flag(.optional)
+			// if node.val_is_mut {
+			// 	value_type = val_type.ref()
+			// }
+		} else {
+			value_type = g.table.value_type(unwrapped_cond_type)
+			if sym.kind == .string {
+				value_type = ast.u8_type
+			}
+		}
+		if node.val_is_mut {
+			value_type = value_type.ref()
+		}
+	}
+	if value_type == ast.void_type {
+		sym1 := g.table.sym(node.cond_type)
+		println('VOID TYP : $sym1.name ($node.is_range): value type: $node.cond_type - $unwrapped_cond_type')
+	}
+	mut scope := unsafe { node.scope }
+	scope.update_var_type(node.val_var, value_type)
 	if node.label.len > 0 {
 		g.writeln('\t$node.label: {}')
 	}
 	if node.is_range {
 		// `for x in 1..10 {`
 		i := if node.val_var == '_' { g.new_tmp_var() } else { c_name(node.val_var) }
-		val_typ := ast.mktyp(node.val_type)
+		val_typ := ast.mktyp(value_type)
 		g.write('for (${g.typ(val_typ)} $i = ')
 		g.expr(node.cond)
 		g.write('; $i < ')
 		g.expr(node.high)
 		g.writeln('; ++$i) {')
-	} else if node.kind == .array {
+	} else if kind == .array {
 		// `for num in nums {`
 		// g.writeln('// FOR IN array')
-		styp := g.typ(node.val_type)
-		val_sym := g.table.sym(node.val_type)
+		styp := g.typ(value_type)
+		val_sym := g.table.sym(value_type)
 		mut cond_var := ''
 		if node.cond is ast.Ident || node.cond is ast.SelectorExpr {
 			cond_var = g.expr_string(node.cond)
 		} else {
 			cond_var = g.new_tmp_var()
-			g.write(g.typ(node.cond_type))
+			g.write(g.typ(unwrapped_cond_type))
 			g.write(' $cond_var = ')
 			g.expr(node.cond)
 			g.writeln(';')
 		}
 		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
-		field_accessor := if node.cond_type.is_ptr() { '->' } else { '.' }
-		share_accessor := if node.cond_type.share() == .shared_t { 'val.' } else { '' }
+		field_accessor := if unwrapped_cond_type.is_ptr() { '->' } else { '.' }
+		share_accessor := if unwrapped_cond_type.share() == .shared_t { 'val.' } else { '' }
 		op_field := field_accessor + share_accessor
 		g.empty_line = true
 		g.writeln('for (int $i = 0; $i < $cond_var${op_field}len; ++$i) {')
@@ -186,19 +221,19 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 				g.writeln('\t$styp ${c_name(node.val_var)} = $right;')
 			}
 		}
-	} else if node.kind == .array_fixed {
+	} else if kind == .array_fixed {
 		mut cond_var := ''
-		cond_type_is_ptr := node.cond_type.is_ptr()
+		cond_type_is_ptr := unwrapped_cond_type.is_ptr()
 		cond_is_literal := node.cond is ast.ArrayInit
 		if cond_is_literal {
 			cond_var = g.new_tmp_var()
-			g.write(g.typ(node.cond_type))
+			g.write(g.typ(unwrapped_cond_type))
 			g.write(' $cond_var = ')
 			g.expr(node.cond)
 			g.writeln(';')
 		} else if cond_type_is_ptr {
 			cond_var = g.new_tmp_var()
-			cond_var_type := g.typ(node.cond_type).trim('*')
+			cond_var_type := g.typ(unwrapped_cond_type).trim('*')
 			if !node.cond.is_lvalue() {
 				g.write('$cond_var_type *$cond_var = (($cond_var_type)')
 			} else {
@@ -210,21 +245,21 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 			cond_var = g.expr_string(node.cond)
 		}
 		idx := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
-		cond_sym := g.table.sym(node.cond_type)
+		cond_sym := g.table.sym(unwrapped_cond_type)
 		info := cond_sym.info as ast.ArrayFixed
 		g.writeln('for (int $idx = 0; $idx != $info.size; ++$idx) {')
 		if node.val_var != '_' {
-			val_sym := g.table.sym(node.val_type)
+			val_sym := g.table.sym(value_type)
 			is_fixed_array := val_sym.kind == .array_fixed && !node.val_is_mut
 			if val_sym.kind == .function {
 				g.write('\t')
 				g.write_fn_ptr_decl(val_sym.info as ast.FnType, c_name(node.val_var))
 			} else if is_fixed_array {
-				styp := g.typ(node.val_type)
+				styp := g.typ(value_type)
 				g.writeln('\t$styp ${c_name(node.val_var)};')
 				g.writeln('\tmemcpy(*($styp*)${c_name(node.val_var)}, (byte*)$cond_var[$idx], sizeof($styp));')
 			} else {
-				styp := g.typ(node.val_type)
+				styp := g.typ(value_type)
 				g.write('\t$styp ${c_name(node.val_var)}')
 			}
 			if !is_fixed_array {
@@ -240,7 +275,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 				}
 			}
 		}
-	} else if node.kind == .map {
+	} else if kind == .map {
 		// `for key, val in map {
 		// g.writeln('// FOR IN map')
 		mut cond_var := ''
@@ -248,13 +283,13 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 			cond_var = g.expr_string(node.cond)
 		} else {
 			cond_var = g.new_tmp_var()
-			g.write(g.typ(node.cond_type))
+			g.write(g.typ(unwrapped_cond_type))
 			g.write(' $cond_var = ')
 			g.expr(node.cond)
 			g.writeln(';')
 		}
-		mut arw_or_pt := if node.cond_type.is_ptr() { '->' } else { '.' }
-		if node.cond_type.has_flag(.shared_f) {
+		mut arw_or_pt := if unwrapped_cond_type.is_ptr() { '->' } else { '.' }
+		if unwrapped_cond_type.has_flag(.shared_f) {
 			arw_or_pt = '->val.'
 		}
 		idx := g.new_tmp_var()
@@ -283,18 +318,18 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 			}
 		}
 		if node.val_var != '_' {
-			val_sym := g.table.sym(node.val_type)
+			val_sym := g.table.sym(value_type)
 			if val_sym.kind == .function {
 				g.write_fn_ptr_decl(val_sym.info as ast.FnType, c_name(node.val_var))
 				g.write(' = (*(voidptr*)')
 				g.writeln('DenseArray_value(&$cond_var${arw_or_pt}key_values, $idx));')
 			} else if val_sym.kind == .array_fixed && !node.val_is_mut {
-				val_styp := g.typ(node.val_type)
+				val_styp := g.typ(value_type)
 				g.writeln('$val_styp ${c_name(node.val_var)};')
 				g.writeln('memcpy(*($val_styp*)${c_name(node.val_var)}, (byte*)DenseArray_value(&$cond_var${arw_or_pt}key_values, $idx), sizeof($val_styp));')
 			} else {
-				val_styp := g.typ(node.val_type)
-				if node.val_type.is_ptr() {
+				val_styp := g.typ(value_type)
+				if value_type.is_ptr() {
 					if node.val_is_mut {
 						g.write('$val_styp ${c_name(node.val_var)} = &(*($val_styp)')
 					} else {
@@ -307,13 +342,13 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 			}
 		}
 		g.indent--
-	} else if node.kind == .string {
+	} else if kind == .string {
 		cond := if node.cond is ast.StringLiteral || node.cond is ast.StringInterLiteral {
 			ast.Expr(g.new_ctemp_var_then_gen(node.cond, ast.string_type))
 		} else {
 			node.cond
 		}
-		field_accessor := if node.cond_type.is_ptr() { '->' } else { '.' }
+		field_accessor := if unwrapped_cond_type.is_ptr() { '->' } else { '.' }
 		i := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
 		g.write('for (int $i = 0; $i < ')
 		g.expr(cond)
@@ -323,15 +358,15 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 			g.expr(cond)
 			g.writeln('${field_accessor}str[$i];')
 		}
-	} else if node.kind == .struct_ {
-		cond_type_sym := g.table.sym(node.cond_type)
+	} else if kind == .struct_ {
+		cond_type_sym := g.table.sym(unwrapped_cond_type)
 		next_fn := cond_type_sym.find_method_with_generic_parent('next') or {
 			verror('`next` method not found')
 			return
 		}
 		ret_typ := next_fn.return_type
 		t_expr := g.new_tmp_var()
-		g.write('${g.typ(node.cond_type)} $t_expr = ')
+		g.write('${g.typ(unwrapped_cond_type)} $t_expr = ')
 		g.expr(node.cond)
 		g.writeln(';')
 		if node.key_var in ['', '_'] {
@@ -350,20 +385,20 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 			}
 		}
 		g.write('\t${g.typ(ret_typ)} $t_var = ${fn_name}(')
-		if !node.cond_type.is_ptr() && receiver_typ.is_ptr() {
+		if !unwrapped_cond_type.is_ptr() && receiver_typ.is_ptr() {
 			g.write('&')
 		}
 		g.writeln('$t_expr);')
 		g.writeln('\tif (${t_var}.state != 0) break;')
 		val := if node.val_var in ['', '_'] { g.new_tmp_var() } else { node.val_var }
-		val_styp := g.typ(node.val_type)
+		val_styp := g.typ(value_type)
 		if node.val_is_mut {
 			g.writeln('\t$val_styp $val = ($val_styp)${t_var}.data;')
 		} else {
 			g.writeln('\t$val_styp $val = *($val_styp*)${t_var}.data;')
 		}
 	} else {
-		typ_str := g.table.type_to_str(node.cond_type)
+		typ_str := g.table.type_to_str(unwrapped_cond_type)
 		g.error('for in: unhandled symbol `$node.cond` of type `$typ_str`', node.pos)
 	}
 	g.stmts(node.stmts)
@@ -371,7 +406,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		g.writeln('\t${node.label}__continue: {}')
 	}
 
-	if node.kind == .map {
+	if kind == .map {
 		// diff := g.new_tmp_var()
 		// g.writeln('int $diff = $cond_var${arw_or_pt}key_values.len - $map_len;')
 		// g.writeln('if ($diff < 0) {')

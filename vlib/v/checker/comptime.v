@@ -139,6 +139,9 @@ fn (mut c Checker) comptime_for(node ast.ComptimeFor) {
 				c.comptime_fields_type[node.val_var] = node.typ
 				c.comptime_fields_default_type = field.typ
 				c.stmts(node.stmts)
+				// stmts := node.stmts.clone()
+				// c.stmts(stmts)
+				// node.field_stmts[sym.name+'_'+field.name] = stmts
 			}
 			c.inside_comptime_for_field = false
 		}

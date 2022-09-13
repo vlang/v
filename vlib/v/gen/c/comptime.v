@@ -561,6 +561,8 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				g.writeln('\t${node.val_var}.is_shared = ${field.typ.has_flag(.shared_f)};')
 				g.comptime_var_type_map['${node.val_var}.typ'] = styp
 				g.stmts(node.stmts)
+				// stmts := node.field_stmts[sym.name+'_'+field.name]
+				// g.stmts(stmts)
 				i++
 				g.writeln('}')
 				g.comptime_for_field_type = 0

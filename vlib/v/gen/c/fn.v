@@ -1020,7 +1020,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 		}
 	}
-	concrete_types := node.concrete_types.map(g.unwrap_generic(it))
+	mut concrete_types := node.concrete_types.map(g.unwrap_generic(it))
+	// if concrete_types.len == 0 {
+	// 	if node.name == 'encode' && node.args[0].typ.has_flag(.generic) {
+	// 		concrete_types << g.unwrap_generic(node.args[0].typ)
+	// 	}
+	// }
 	// name = g.generic_fn_name(concrete_types, name)
 	// TODO: check comment in checker/fn.v:1425. why is this needed? concrete_types should be set
 	// correctly fom the inferred type even in the case of `g.inside_comptime_for_field == true`

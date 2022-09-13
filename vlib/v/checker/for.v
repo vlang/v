@@ -35,6 +35,8 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 	c.in_for_count++
 	prev_loop_label := c.loop_label
 	typ := c.expr(node.cond)
+	node.cond_type = typ
+	unwrapped_typ := c.unwrap_generic(typ)
 	typ_idx := typ.idx()
 	if node.key_var.len > 0 && node.key_var != '_' {
 		c.check_valid_snake_case(node.key_var, 'variable name', node.pos)
@@ -69,8 +71,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		node.high_type = high_type
 		node.scope.update_var_type(node.val_var, node.val_type)
 	} else {
-		unwrapped_type := c.unwrap_generic(typ)
-		sym := c.table.final_sym(unwrapped_type)
+		sym := c.table.final_sym(typ)
 		if sym.kind == .struct_ {
 			// iterators
 			next_fn := sym.find_method_with_generic_parent('next') or {
@@ -92,6 +93,9 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			if node.val_is_mut {
 				val_type = val_type.ref()
 			}
+			if typ == 0 {
+				println('WTF 1')
+			}
 			node.cond_type = typ
 			node.kind = sym.kind
 			node.val_type = val_type
@@ -112,17 +116,18 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				node.key_type = key_type
 				node.scope.update_var_type(node.key_var, key_type)
 			}
-			mut value_type := c.table.value_type(unwrapped_type)
+			mut value_type := c.table.value_type(typ)
+			mut value_type_unwrapped := c.table.value_type(unwrapped_typ)
 			if sym.kind == .string {
 				value_type = ast.u8_type
 			}
-			if value_type == ast.void_type || typ.has_flag(.optional) {
+			if value_type_unwrapped == ast.void_type || typ.has_flag(.optional) {
 				if typ != ast.void_type {
 					c.error('for in: cannot index `${c.table.type_to_str(typ)}`', node.cond.pos())
 				}
 			}
 			if node.val_is_mut {
-				value_type = value_type.ref()
+				value_type_unwrapped = value_type.ref()
 				match mut node.cond {
 					ast.Ident {
 						if mut node.cond.obj is ast.Var {
@@ -150,10 +155,13 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 					else {}
 				}
 			}
+			if typ == 0 {
+				println('WTF 2')
+			}
 			node.cond_type = typ
 			node.kind = sym.kind
 			node.val_type = value_type
-			node.scope.update_var_type(node.val_var, value_type)
+			node.scope.update_var_type(node.val_var, value_type_unwrapped)
 		}
 	}
 	c.check_loop_label(node.label, node.pos)

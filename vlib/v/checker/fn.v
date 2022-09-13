@@ -418,9 +418,9 @@ pub fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	old_inside_fn_arg := c.inside_fn_arg
 	c.inside_fn_arg = true
 	mut continue_check := true
-	if c.inside_comptime_for_field {
-		node.concrete_types = node.raw_concrete_types
-	}
+	// if c.inside_comptime_for_field {
+	// 	node.concrete_types = node.raw_concrete_types
+	// }
 	// Now call `method_call` or `fn_call` for specific checks.
 	typ := if node.is_method {
 		c.method_call(mut node)
@@ -1409,6 +1409,9 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			}
 		}
 
+		// if concrete_types.len > 0 && !concrete_types[0].has_flag(.generic) {
+		// 	c.table.register_fn_concrete_types(method.fkey(), concrete_types)
+		// }
 		for i, mut arg in node.args {
 			param_idx := if method.is_variadic && i >= method.params.len - 1 {
 				method.params.len - 1
@@ -1428,12 +1431,22 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			c.expected_type = exp_arg_typ
 
 			mut got_arg_typ := c.check_expr_opt_call(arg.expr, c.expr(arg.expr))
-			node.args[i].typ = got_arg_typ
-			if c.inside_comptime_for_field && method.params[param_idx].typ.has_flag(.generic) {
+			if (c.inside_comptime_for_field || c.inside_comptime_if) && method.params[param_idx].typ.has_flag(.generic) {
+				// got_arg_typ = c.unwrap_generic(got_arg_typ)
+				// got_arg_typ = c.comptime_fields_default_type
+				got_typ_sym := c.table.sym(got_arg_typ)
+				cf_sym := c.table.sym(c.comptime_fields_default_type)
+				// println(node.concrete_types)
+				if c.inside_comptime_if {
+					println('## $node.name - got: $got_typ_sym.name, exp: $exp_arg_sym.name, cf: $cf_sym.name')
+				}
+				// concrete_types = [got_arg_typ]
+				// node.concrete_types = concrete_types
 				c.table.register_fn_concrete_types(method.fkey(), [
 					c.comptime_fields_default_type,
 				])
 			}
+			node.args[i].typ = got_arg_typ
 			if no_type_promotion {
 				if got_arg_typ != exp_arg_typ {
 					c.error('cannot use `${c.table.sym(got_arg_typ).name}` as argument for `$method.name` (`$exp_arg_sym.name` expected)',
