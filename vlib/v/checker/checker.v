@@ -3328,6 +3328,12 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 				c.warn('cannot take an address of const outside `unsafe`', node.right.pos)
 			}
 		}
+		if node.right is ast.SelectorExpr {
+			typ_sym := c.table.sym(right_type)
+			if typ_sym.kind == .map && !c.inside_unsafe {
+				c.error('cannot take the address of map values outside `unsafe`', node.pos)
+			}
+		}
 		if mut node.right is ast.IndexExpr {
 			typ_sym := c.table.sym(node.right.left_type)
 			mut is_mut := false
