@@ -2506,6 +2506,10 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		snexpr := node.expr.str()
 		tt := c.table.type_to_str(to_type)
 		c.error('cannot cast string to `$tt`, use `${snexpr}.str` instead.', node.pos)
+	} else if final_from_sym.kind == .array && !from_type.is_ptr() && to_type != ast.string_type {
+		ft := c.table.type_to_str(from_type)
+		tt := c.table.type_to_str(to_type)
+		c.error('cannot cast array `$ft` to `$tt`', node.pos)
 	}
 
 	if to_sym.kind == .rune && from_sym.is_string() {
