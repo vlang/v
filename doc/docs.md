@@ -24,7 +24,7 @@ It is easy, and it takes only a few seconds:
 [https://github.com/vlang/v#installing-v](https://github.com/vlang/v#installing-v---from-source-preferred-method)
 
 ## Upgrading V to latest version
-If V is already installed on a machine, it can be upgrade to latest version
+If V is already installed on a machine, it can be upgraded to its latest version
 by using the V's built-in self-updater.
 To upgrade the version run the command ` v up`
 
