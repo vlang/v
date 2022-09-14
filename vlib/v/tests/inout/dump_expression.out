@@ -1,19 +1,32 @@
-[vlib/v/tests/inout/dump_expression.vv:4] 1: 1
-[vlib/v/tests/inout/dump_expression.vv:9] 'a': a
-[vlib/v/tests/inout/dump_expression.vv:25] p: Point{
+[vlib/v/tests/inout/dump_expression.vv:5] 1: 1
+[vlib/v/tests/inout/dump_expression.vv:10] 'a': a
+[vlib/v/tests/inout/dump_expression.vv:32] a: Aa{
+    log: &log.Logger(log.Log{
+        level: disabled
+        output_label: ''
+        ofile: os.File{
+            cfile: 0
+            fd: 0
+            is_opened: false
+        }
+        output_target: console
+        output_file_name: ''
+    })
+}
+[vlib/v/tests/inout/dump_expression.vv:33] p: Point{
     x: 1
     y: 2
     z: 3
 }
-[vlib/v/tests/inout/dump_expression.vv:26] p_mut: Point{
+[vlib/v/tests/inout/dump_expression.vv:34] p_mut: Point{
     x: 1
     y: 2
     z: 3
 }
-[vlib/v/tests/inout/dump_expression.vv:27] p_ptr: &Point{
+[vlib/v/tests/inout/dump_expression.vv:35] p_ptr: &Point{
     x: 1
     y: 2
     z: 3
 }
-[vlib/v/tests/inout/dump_expression.vv:38] os.file_name(vfile): dump_expression.vv
-[vlib/v/tests/inout/dump_expression.vv:41] f.read(mut buf): 10
+[vlib/v/tests/inout/dump_expression.vv:46] os.file_name(vfile): dump_expression.vv
+[vlib/v/tests/inout/dump_expression.vv:49] f.read(mut buf): 10
