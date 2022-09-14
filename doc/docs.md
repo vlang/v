@@ -24,7 +24,7 @@ It is easy, and it takes only a few seconds:
 [https://github.com/vlang/v#installing-v](https://github.com/vlang/v#installing-v---from-source-preferred-method)
 
 ## Upgrading V to latest version
-If V is already installed on a machine, it can be upgrade to latest version 
+If V is already installed on a machine, it can be upgrade to latest version
 by using the V's built-in self-updater.
 To upgrade the version run the command ` v up`
 
@@ -1276,6 +1276,20 @@ println(val)
 // you can also do this, if you want to *propagate* the access error:
 val2 := arr[333]?
 println(val2)
+```
+
+V also supports nested maps
+
+```v
+mut m := map[string]map[string]int{}
+m['greet'] = {
+	'Hello': 1
+}
+m['place'] = {
+	'world': 2
+}
+m['code']['orange'] = 123
+print(m)
 ```
 
 Maps are ordered by insertion, like dictionaries in Python. The order is a
