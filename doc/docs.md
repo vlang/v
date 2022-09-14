@@ -26,7 +26,7 @@ It is easy, and it takes only a few seconds:
 ## Upgrading V to latest version
 If V is already installed on a machine, it can be upgraded to its latest version
 by using the V's built-in self-updater.
-To upgrade the version run the command ` v up`
+To do so, run the command `v up`.
 
 ## Table of Contents
 
