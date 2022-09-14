@@ -38,7 +38,7 @@ pub fn new_scope(parent &Scope, start_pos int) &Scope {
 */
 
 fn (s &Scope) dont_lookup_parent() bool {
-	return isnil(s.parent) || s.detached_from_parent
+	return s.parent == unsafe { nil } || s.detached_from_parent
 }
 
 pub fn (s &Scope) find(name string) ?ScopeObject {

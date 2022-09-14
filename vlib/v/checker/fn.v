@@ -460,7 +460,7 @@ pub fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	c.expected_or_type = node.return_type.clear_flag(.optional)
 	c.stmts_ending_with_expression(node.or_block.stmts)
 	c.expected_or_type = ast.void_type
-	if node.or_block.kind == .propagate_option && !isnil(c.table.cur_fn)
+	if node.or_block.kind == .propagate_option && c.table.cur_fn != unsafe { nil }
 		&& !c.table.cur_fn.return_type.has_flag(.optional) && !c.inside_const {
 		if !c.table.cur_fn.is_main {
 			c.error('to propagate the optional call, `$c.table.cur_fn.name` must return an optional',
@@ -486,7 +486,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			concrete_types << concrete_type
 		}
 	}
-	if !isnil(c.table.cur_fn) && c.table.cur_concrete_types.len == 0 && has_generic {
+	if c.table.cur_fn != unsafe { nil } && c.table.cur_concrete_types.len == 0 && has_generic {
 		c.error('generic fn using generic types cannot be called outside of generic fn',
 			node.pos)
 	}
@@ -521,7 +521,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			c.error('JS.await: first argument must be a promise, got `$tsym.name`', node.pos)
 			return ast.void_type
 		}
-		if !isnil(c.table.cur_fn) {
+		if c.table.cur_fn != unsafe { nil } {
 			c.table.cur_fn.has_await = true
 		}
 		match tsym.info {
@@ -787,7 +787,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		&& func.mod != c.mod && !c.pref.is_test {
 		c.error('function `$func.name` is private', node.pos)
 	}
-	if !isnil(c.table.cur_fn) && !c.table.cur_fn.is_deprecated && func.is_deprecated {
+	if c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.is_deprecated && func.is_deprecated {
 		c.deprecate('function', func.name, func.attrs, node.pos)
 	}
 	if func.is_unsafe && !c.inside_unsafe
@@ -1129,14 +1129,14 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 	}
 	// resolve return generics struct to concrete type
-	if func.generic_names.len > 0 && func.return_type.has_flag(.generic) && !isnil(c.table.cur_fn)
-		&& c.table.cur_fn.generic_names.len == 0 {
+	if func.generic_names.len > 0 && func.return_type.has_flag(.generic)
+		&& c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len == 0 {
 		node.return_type = c.table.unwrap_generic_type(func.return_type, func.generic_names,
 			concrete_types)
 	} else {
 		node.return_type = func.return_type
 	}
-	if node.concrete_types.len > 0 && func.return_type != 0 && !isnil(c.table.cur_fn)
+	if node.concrete_types.len > 0 && func.return_type != 0 && c.table.cur_fn != unsafe { nil }
 		&& c.table.cur_fn.generic_names.len == 0 {
 		if typ := c.table.resolve_generic_to_concrete(func.return_type, func.generic_names,
 			concrete_types)
@@ -1183,7 +1183,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	node.return_type = left_type
 	node.receiver_type = left_type
 
-	if !isnil(c.table.cur_fn) && c.table.cur_fn.generic_names.len > 0 {
+	if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len > 0 {
 		c.table.unwrap_generic_type(left_type, c.table.cur_fn.generic_names, c.table.cur_concrete_types)
 	}
 	unwrapped_left_type := c.unwrap_generic(left_type)
@@ -1262,7 +1262,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 		if node.args.len > 0 {
 			c.error('wait() does not have any arguments', node.args[0].pos)
 		}
-		if !isnil(c.table.cur_fn) {
+		if c.table.cur_fn != unsafe { nil } {
 			c.table.cur_fn.has_await = true
 		}
 		node.return_type = info.concrete_types[0]
@@ -1569,7 +1569,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			c.warn('method `${left_sym.name}.$method_name` must be called from an `unsafe` block',
 				node.pos)
 		}
-		if !isnil(c.table.cur_fn) && !c.table.cur_fn.is_deprecated && method.is_deprecated {
+		if c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.is_deprecated && method.is_deprecated {
 			c.deprecate('method', '${left_sym.name}.$method.name', method.attrs, node.pos)
 		}
 		c.set_node_expected_arg_types(mut node, method)
@@ -1593,7 +1593,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 
 		// resolve return generics struct to concrete type
 		if method.generic_names.len > 0 && method.return_type.has_flag(.generic)
-			&& !isnil(c.table.cur_fn) && c.table.cur_fn.generic_names.len == 0 {
+			&& c.table.cur_fn != unsafe { nil } && c.table.cur_fn.generic_names.len == 0 {
 			node.return_type = c.table.unwrap_generic_type(method.return_type, method.generic_names,
 				concrete_types)
 		} else {

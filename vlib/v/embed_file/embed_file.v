@@ -59,10 +59,10 @@ pub fn (original &EmbedFileData) to_bytes() []u8 {
 }
 
 pub fn (mut ed EmbedFileData) data() &u8 {
-	if !isnil(ed.uncompressed) {
+	if ed.uncompressed != unsafe { nil } {
 		return ed.uncompressed
 	}
-	if isnil(ed.uncompressed) && !isnil(ed.compressed) {
+	if ed.uncompressed == unsafe { nil } && ed.compressed != unsafe { nil } {
 		decoder := g_embed_file_decoders.decoders[ed.compression_type] or {
 			panic('EmbedFileData error: unknown compression of "$ed.path": "$ed.compression_type"')
 		}

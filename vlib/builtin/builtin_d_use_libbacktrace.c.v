@@ -38,8 +38,12 @@ struct BacktraceOptions {
 }
 
 fn bt_print_callback(data &BacktraceOptions, pc voidptr, filename_ptr &char, line int, fn_name_ptr &char) int {
-	filename := if isnil(filename_ptr) { '???' } else { unsafe { filename_ptr.vstring() } }
-	fn_name := if isnil(fn_name_ptr) {
+	filename := if filename_ptr == unsafe { nil } {
+		'???'
+	} else {
+		unsafe { filename_ptr.vstring() }
+	}
+	fn_name := if fn_name_ptr == unsafe { nil } {
 		'???'
 	} else {
 		(unsafe { fn_name_ptr.vstring() }).replace('__', '.')
@@ -56,7 +60,7 @@ fn bt_print_callback(data &BacktraceOptions, pc voidptr, filename_ptr &char, lin
 }
 
 fn bt_error_callback(data voidptr, msg_ptr &char, errnum int) {
-	// if !isnil(data) && !isnil(data.state) && !isnil(data.state.filename) {
+	// if data != unsafe { nil } && data.state != unsafe { nil } && data.state.filename != unsafe { nil } {
 	// 	filename := unsafe{ data.state.filename.vstring() }
 	// 	eprint('$filename: ')
 	// }

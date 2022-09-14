@@ -1903,7 +1903,7 @@ pub fn (mut f Fmt) ident(node ast.Ident) {
 		f.write('_')
 	} else {
 		mut is_local := false
-		if !isnil(f.fn_scope) {
+		if f.fn_scope != unsafe { nil } {
 			if _ := f.fn_scope.find_var(node.name) {
 				is_local = true
 			}

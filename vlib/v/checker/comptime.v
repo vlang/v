@@ -365,7 +365,7 @@ fn (mut c Checker) verify_all_vweb_routes() {
 				is_ok, nroute_attributes, nargs := c.verify_vweb_params_for_method(m)
 				if !is_ok {
 					f := &ast.FnDecl(m.source_fn)
-					if isnil(f) {
+					if f == unsafe { nil } {
 						continue
 					}
 					if f.return_type == typ_vweb_result && f.receiver.typ == m.params[0].typ

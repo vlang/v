@@ -42,7 +42,7 @@ pub struct PoolProcessorConfig {
 //      3) task_id - the index of the worker thread in which the callback
 //            function is running.
 pub fn new_pool_processor(context PoolProcessorConfig) &PoolProcessor {
-	if isnil(context.callback) {
+	if context.callback == unsafe { nil } {
 		panic('You need to pass a valid callback to new_pool_processor.')
 	}
 	mut pool := PoolProcessor{
