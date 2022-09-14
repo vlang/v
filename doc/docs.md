@@ -1278,8 +1278,7 @@ val2 := arr[333]?
 println(val2)
 ```
 
-V also supports nested maps
-
+V also supports nested maps:
 ```v
 mut m := map[string]map[string]int{}
 m['greet'] = {
