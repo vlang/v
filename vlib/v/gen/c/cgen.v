@@ -44,11 +44,11 @@ fn string_array_to_map(a []string) map[string]bool {
 }
 
 pub struct Gen {
-	pref                &pref.Preferences
+	pref                &pref.Preferences = unsafe { nil }
 	field_data_type     ast.Type // cache her to avoid map lookups
 	module_built        string
 	timers_should_print bool
-	table               &ast.Table
+	table               &ast.Table = unsafe { nil }
 mut:
 	out                       strings.Builder
 	cheaders                  strings.Builder
@@ -78,11 +78,11 @@ mut:
 	sql_buf                   strings.Builder // for writing exprs to args via `sqlite3_bind_int()` etc
 	global_const_defs         map[string]GlobalConstDef
 	sorted_global_const_names []string
-	file                      &ast.File
+	file                      &ast.File = unsafe { nil }
 	unique_file_path_hash     u64 // a hash of file.path, used for making auxilary fn generation unique (like `compare_xyz`)
-	fn_decl                   &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
+	fn_decl                   &ast.FnDecl = unsafe { nil } // pointer to the FnDecl we are currently inside otherwise 0
 	last_fn_c_name            string
-	tmp_count                 int  // counter for unique tmp vars (_tmp1, _tmp2 etc); resets at the start of each fn.
+	tmp_count                 int         // counter for unique tmp vars (_tmp1, _tmp2 etc); resets at the start of each fn.
 	tmp_count_af              int  // a separate tmp var counter for autofree fn calls
 	tmp_count_declarations    int  // counter for unique tmp names (_d1, _d2 etc); does NOT reset, used for C declarations
 	global_tmp_count          int  // like tmp_count but global and not resetted in each function
@@ -108,7 +108,7 @@ mut:
 	chan_push_optionals       map[string]string // types for `ch <- x or {...}`
 	mtxs                      string // array of mutexes if the `lock` has multiple variables
 	labeled_loops             map[string]&ast.Stmt
-	inner_loop                &ast.Stmt
+	inner_loop                &ast.Stmt = unsafe { nil }
 	shareds                   map[int]string // types with hidden mutex for which decl has been emitted
 	inside_ternary            int  // ?: comma separated statements on a single line
 	inside_map_postfix        bool // inside map++/-- postfix expr
@@ -208,7 +208,7 @@ mut:
 	// main_fn_decl_node  ast.FnDecl
 	cur_mod                ast.Module
 	cur_concrete_types     []ast.Type  // do not use table.cur_concrete_types because table is global, so should not be accessed by different threads
-	cur_fn                 &ast.FnDecl = unsafe { 0 } // same here
+	cur_fn                 &ast.FnDecl = unsafe { nil } // same here
 	cur_lock               ast.LockExpr
 	autofree_methods       map[int]bool
 	generated_free_methods map[int]bool

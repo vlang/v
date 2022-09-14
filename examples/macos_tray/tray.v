@@ -35,7 +35,7 @@ struct TrayInfo {
 [heap]
 struct MyApp {
 mut:
-	tray_info &TrayInfo
+	tray_info &TrayInfo = unsafe { nil }
 }
 
 fn (app &MyApp) on_menu_item_click(item TrayMenuItem) {

@@ -8,7 +8,7 @@ import time
 
 struct Game {
 mut:
-	gg      &gg.Context
+	gg      &gg.Context = unsafe { nil }
 	x       int
 	y       int
 	dy      int

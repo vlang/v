@@ -36,7 +36,7 @@ const (
 
 struct App {
 mut:
-	gg          &gg.Context
+	gg          &gg.Context = unsafe { nil }
 	pip_3d      sgl.Pipeline
 	texture     gfx.Image
 	init_flag   bool

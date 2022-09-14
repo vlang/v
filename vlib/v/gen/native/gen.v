@@ -23,10 +23,10 @@ mut:
 [heap; minify]
 pub struct Gen {
 	out_name string
-	pref     &pref.Preferences // Preferences shared from V struct
+	pref     &pref.Preferences = unsafe { nil } // Preferences shared from V struct
 mut:
 	code_gen             CodeGen
-	table                &ast.Table
+	table                &ast.Table = unsafe { nil }
 	buf                  []u8
 	sect_header_name_pos int
 	offset               i64
@@ -48,7 +48,7 @@ mut:
 	nlines               int
 	callpatches          []CallPatch
 	strs                 []String
-	labels               &LabelTable
+	labels               &LabelTable = unsafe { nil }
 	defer_stmts          []ast.DeferStmt
 	builtins             map[string]BuiltinFn
 	structs              []Struct

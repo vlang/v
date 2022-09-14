@@ -60,7 +60,7 @@ enum Viewer_state {
 
 struct App {
 mut:
-	gg          &gg.Context
+	gg          &gg.Context = unsafe { nil }
 	pip_viewer  sgl.Pipeline
 	texture     gfx.Image
 	init_flag   bool
@@ -88,13 +88,13 @@ mut:
 	img_h     int
 	img_ratio f32 = 1.0
 	// item list
-	item_list &Item_list
+	item_list &Item_list = unsafe { nil }
 	// Text info and help
 	show_info_flag bool = true
 	show_help_flag bool
 	// zip container
-	zip       &szip.Zip // pointer to the szip structure
-	zip_index int = -1 // index of the zip contaire item
+	zip       &szip.Zip = unsafe { nil } // pointer to the szip structure
+	zip_index int       = -1 // index of the zip contaire item
 	// memory buffer
 	mem_buf      voidptr // buffer used to load items from files/containers
 	mem_buf_size int     // size of the buffer

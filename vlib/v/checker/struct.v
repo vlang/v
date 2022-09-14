@@ -541,6 +541,13 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 							node.pos)
 					}
 				}
+				// Check for struct type
+				if sym.kind == .struct_ && !(sym.info as ast.Struct).is_typedef {
+					mut checked_structs := []ast.Type{}
+					checked_structs << field.typ
+					c.check_ref_fields_initialized(sym.info as ast.Struct, mut checked_structs,
+						'${node.typ_str}.$field.name', node)
+				}
 			}
 		}
 		else {}
@@ -564,4 +571,28 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 		}
 	}
 	return node.typ
+}
+
+// Recursively check whether the struct type field is initialized
+fn (mut c Checker) check_ref_fields_initialized(struct_ &ast.Struct, mut checked_structs []ast.Type, linked_name string, node &ast.StructInit) {
+	if c.pref.translated || c.file.is_translated {
+		return
+	}
+	for field in struct_.fields {
+		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !field.has_default_expr {
+			c.warn('reference field `${linked_name}.$field.name` must be initialized',
+				node.pos)
+			continue
+		}
+		sym := c.table.sym(field.typ)
+		if sym.kind == .struct_ {
+			info := sym.info as ast.Struct
+			if info.is_typedef || field.typ in checked_structs {
+				continue
+			}
+			checked_structs << field.typ
+			c.check_ref_fields_initialized(info, mut checked_structs, '${linked_name}.$field.name',
+				node)
+		}
+	}
 }

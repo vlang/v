@@ -56,10 +56,10 @@ fn all_valid_comptime_idents() []string {
 
 [heap; minify]
 pub struct Checker {
-	pref &pref.Preferences // Preferences shared from V struct
+	pref &pref.Preferences = unsafe { nil } // Preferences shared from V struct
 pub mut:
-	table                     &ast.Table
-	file                      &ast.File = unsafe { 0 }
+	table                     &ast.Table = unsafe { nil }
+	file                      &ast.File  = unsafe { nil }
 	nr_errors                 int
 	nr_warnings               int
 	nr_notices                int

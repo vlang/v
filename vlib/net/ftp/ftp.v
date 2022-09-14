@@ -36,7 +36,7 @@ const (
 
 struct DTP {
 mut:
-	conn   &net.TcpConn
+	conn   &net.TcpConn = unsafe { nil }
 	reader io.BufferedReader
 	ip     string
 	port   int
@@ -61,7 +61,7 @@ fn (mut dtp DTP) close() {
 
 struct FTP {
 mut:
-	conn        &net.TcpConn
+	conn        &net.TcpConn = unsafe { nil }
 	reader      io.BufferedReader
 	buffer_size int
 }

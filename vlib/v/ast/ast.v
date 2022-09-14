@@ -261,7 +261,7 @@ pub mut:
 	typ                 Type // type of the entire thing (`Foo.bar`)
 	name_type           Type // T in `T.name` or typeof in `typeof(expr).name`
 	gkind_field         GenericKindField // `T.name` => ast.GenericKindField.name, `T.typ` => ast.GenericKindField.typ, or .unknown
-	scope               &Scope
+	scope               &Scope = unsafe { nil }
 	from_embed_types    []Type // holds the type of the embed that the method is called from
 	has_hidden_receiver bool
 }
@@ -554,8 +554,8 @@ pub mut:
 	end_comments  []Comment // comments *after* header declarations. E.g.: `fn C.C_func(x int) int // Comment`
 	next_comments []Comment // comments that are one line after the decl; used for InterfaceDecl
 	//
-	source_file &File = unsafe { 0 }
-	scope       &Scope
+	source_file &File  = unsafe { nil }
+	scope       &Scope = unsafe { nil }
 	label_names []string
 	pos         token.Pos // function declaration position
 }
@@ -598,7 +598,7 @@ pub mut:
 	concrete_list_pos  token.Pos
 	raw_concrete_types []Type
 	free_receiver      bool // true if the receiver expression needs to be freed
-	scope              &Scope
+	scope              &Scope = unsafe { nil }
 	from_embed_types   []Type // holds the type of the embed that the method is called from
 	comments           []Comment
 }
@@ -730,7 +730,7 @@ pub:
 	nr_lines      int    // number of source code lines in the file (including newlines and comments)
 	nr_bytes      int    // number of processed source code bytes
 	mod           Module // the module of the source file (from `module xyz` at the top)
-	global_scope  &Scope
+	global_scope  &Scope = unsafe { nil }
 	is_test       bool // true for _test.v files
 	is_generated  bool // true for `[generated] module xyz` files; turn off notices
 	is_translated bool // true for `[translated] module xyz` files; turn off some checks
@@ -738,7 +738,7 @@ pub mut:
 	idx              int    // index in an external container; can be used to refer to the file in a more efficient way, just by its integer index
 	path             string // absolute path of the source file - '/projects/v/file.v'
 	path_base        string // file name - 'file.v' (useful for tracing)
-	scope            &Scope
+	scope            &Scope = unsafe { nil }
 	stmts            []Stmt            // all the statements in the source file
 	imports          []Import          // all the imports
 	auto_imports     []string          // imports that were implicitely added
@@ -808,7 +808,7 @@ pub:
 	mut_pos  token.Pos
 	comptime bool
 pub mut:
-	scope  &Scope
+	scope  &Scope = unsafe { nil }
 	obj    ScopeObject
 	mod    string
 	name   string
@@ -932,7 +932,7 @@ pub mut:
 	cond      Expr
 	pkg_exist bool
 	stmts     []Stmt
-	scope     &Scope
+	scope     &Scope = unsafe { nil }
 }
 
 pub struct UnsafeExpr {
@@ -952,7 +952,7 @@ pub mut:
 	comments []Comment
 	is_expr  bool
 	typ      Type
-	scope    &Scope
+	scope    &Scope = unsafe { nil }
 }
 
 [minify]
@@ -981,7 +981,7 @@ pub:
 pub mut:
 	stmts []Stmt // right side
 	exprs []Expr // left side
-	scope &Scope
+	scope &Scope = unsafe { nil }
 }
 
 pub struct SelectExpr {
@@ -1033,7 +1033,7 @@ pub mut:
 	cond  Expr
 	stmts []Stmt
 	label string // `label: for {`
-	scope &Scope
+	scope &Scope = unsafe { nil }
 }
 
 [minify]
@@ -1056,7 +1056,7 @@ pub mut:
 	high_type  Type
 	kind       Kind   // array/map/string
 	label      string // `label: for {`
-	scope      &Scope
+	scope      &Scope = unsafe { nil }
 }
 
 pub struct ForCStmt {
@@ -1072,7 +1072,7 @@ pub mut:
 	inc   Stmt // i++; i += 2
 	stmts []Stmt
 	label string // `label: for {`
-	scope &Scope
+	scope &Scope = unsafe { nil }
 }
 
 // #include, #define etc
@@ -1338,7 +1338,7 @@ pub:
 	pos         token.Pos
 pub mut:
 	templates     []AsmTemplate
-	scope         &Scope
+	scope         &Scope = unsafe { nil }
 	output        []AsmIO
 	input         []AsmIO
 	global_labels []string // labels defined in assembly block, exported with `.globl`
@@ -1573,7 +1573,7 @@ pub:
 pub mut:
 	exprs []Expr
 	typ   Type
-	scope &Scope
+	scope &Scope = unsafe { nil }
 }
 
 pub struct SizeOf {
@@ -1674,7 +1674,7 @@ pub:
 	has_parens  bool // if $() is used, for vfmt
 	method_name string
 	method_pos  token.Pos
-	scope       &Scope
+	scope       &Scope = unsafe { nil }
 	left        Expr
 	args_var    string
 	//

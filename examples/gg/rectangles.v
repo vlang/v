@@ -11,7 +11,7 @@ const (
 
 struct App {
 mut:
-	gg    &gg.Context
+	gg    &gg.Context = unsafe { nil }
 	image gg.Image
 }
 

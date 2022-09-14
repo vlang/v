@@ -12,8 +12,8 @@ pub struct EmbedFileData {
 	apath            string
 	compression_type string
 mut:
-	compressed        &u8
-	uncompressed      &u8
+	compressed        &u8 = unsafe { nil }
+	uncompressed      &u8 = unsafe { nil }
 	free_compressed   bool
 	free_uncompressed bool
 pub:
@@ -100,7 +100,7 @@ pub struct EmbedFileIndexEntry {
 	id   int
 	path string
 	algo string
-	data &u8
+	data &u8 = unsafe { nil }
 }
 
 // find_index_entry_by_path is used internally by the V compiler:

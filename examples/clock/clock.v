@@ -42,7 +42,7 @@ struct App {
 	minute_hand []f32 = [f32(334.25), 40.25, 350, 24.5, 365.75, 40.25, 365.75, 427, 334.25, 427]
 	second_hand []f32 = [f32(345.8), 38.5, 350, 34.3, 354.2000, 38.5, 358.75, 427, 341.25, 427]
 mut:
-	gg        &gg.Context = unsafe { 0 }
+	gg        &gg.Context = unsafe { nil }
 	draw_flag bool        = true
 	dpi_scale f32 = 1.0
 }

@@ -9,7 +9,7 @@ pub mut:
 	// mut:
 	objects              map[string]ScopeObject
 	struct_fields        map[string]ScopeStructField
-	parent               &Scope
+	parent               &Scope = unsafe { nil }
 	detached_from_parent bool
 	children             []&Scope
 	start_pos            int

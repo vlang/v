@@ -48,13 +48,13 @@ pub struct WProcess {
 pub mut:
 	proc_info    ProcessInformation
 	command_line [65536]u8
-	child_stdin  &u32
+	child_stdin  &u32 = unsafe { nil }
 	//
-	child_stdout_read  &u32
-	child_stdout_write &u32
+	child_stdout_read  &u32 = unsafe { nil }
+	child_stdout_write &u32 = unsafe { nil }
 	//
-	child_stderr_read  &u32
-	child_stderr_write &u32
+	child_stderr_read  &u32 = unsafe { nil }
+	child_stderr_write &u32 = unsafe { nil }
 }
 
 fn (mut p Process) win_spawn_process() int {

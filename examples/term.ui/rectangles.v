@@ -12,7 +12,7 @@ mut:
 
 struct App {
 mut:
-	tui      &tui.Context = unsafe { 0 }
+	tui      &tui.Context = unsafe { nil }
 	rects    []Rect
 	cur_rect Rect
 	is_drag  bool

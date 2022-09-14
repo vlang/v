@@ -2,7 +2,7 @@ import term.ui as tui
 
 struct App {
 mut:
-	tui &tui.Context = unsafe { 0 }
+	tui &tui.Context = unsafe { nil }
 }
 
 fn event(e &tui.Event, x voidptr) {

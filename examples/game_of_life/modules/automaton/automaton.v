@@ -48,8 +48,8 @@ pub fn (a &A2D) clear() {
 // ///////////////////////////////////////////////////////////
 pub struct Automaton {
 pub mut:
-	field     &A2D
-	new_field &A2D
+	field     &A2D = unsafe { nil }
+	new_field &A2D = unsafe { nil }
 }
 
 fn new_automaton(ftext string) Automaton {

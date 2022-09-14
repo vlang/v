@@ -71,7 +71,7 @@ mut:
 // snake representation
 struct Snake {
 mut:
-	app       &App
+	app       &App = unsafe { nil }
 	direction Orientation
 	body      []BodyPart
 	velocity  Vec = Vec{
@@ -247,7 +247,7 @@ mut:
 	}
 	captured bool
 	color    termui.Color = grey
-	app      &App
+	app      &App = unsafe { nil }
 }
 
 // randomize spawn the rat in a new spot within the playable field
@@ -259,7 +259,7 @@ fn (mut r Rat) randomize() {
 [heap]
 struct App {
 mut:
-	termui &termui.Context = unsafe { 0 }
+	termui &termui.Context = unsafe { nil }
 	snake  Snake
 	rat    Rat
 	width  int

@@ -20,7 +20,7 @@ pub mut:
 	dumps              map[int]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
 	imports            []string       // List of all imports
 	modules            []string       // Topologically sorted list of all modules registered by the application
-	global_scope       &Scope
+	global_scope       &Scope = unsafe { nil }
 	cflags             []cflag.CFlag
 	redefined_fns      []string
 	fn_generic_types   map[string][][]Type // for generic functions
@@ -35,7 +35,7 @@ pub mut:
 	panic_handler      FnPanicHandler = default_table_panic_handler
 	panic_userdata     voidptr        = unsafe { nil } // can be used to pass arbitrary data to panic_handler;
 	panic_npanics      int
-	cur_fn             &FnDecl = unsafe { 0 } // previously stored in Checker.cur_fn and Gen.cur_fn
+	cur_fn             &FnDecl = unsafe { nil } // previously stored in Checker.cur_fn and Gen.cur_fn
 	cur_concrete_types []Type  // current concrete types, e.g. <int, string>
 	gostmts            int     // how many `go` statements there were in the parsed files.
 	// When table.gostmts > 0, __VTHREADS__ is defined, which can be checked with `$if threads {`

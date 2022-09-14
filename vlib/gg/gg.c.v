@@ -123,7 +123,7 @@ pub mut:
 	timage_pip  sgl.Pipeline
 	config      Config
 	user_data   voidptr
-	ft          &FT
+	ft          &FT = unsafe { nil }
 	font_inited bool
 	ui_mode     bool // do not redraw everything 60 times/second, but only when the user requests
 	frame       u64  // the current frame counted from the start of the application; always increasing

@@ -5,7 +5,7 @@ import strings
 
 pub struct Main {
 pub mut:
-	opt         &MainOptions
+	opt         &MainOptions = unsafe { nil }
 	res         string
 	has_actions bool
 }
