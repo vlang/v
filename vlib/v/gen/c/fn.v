@@ -1594,6 +1594,21 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		if is_variadic && i == expected_types.len - 1 {
 			break
 		}
+		if arg.expr is ast.Ident {
+			if arg.expr.obj is ast.Var {
+				if arg.expr.obj.smartcasts.len > 0 {
+					exp_sym := g.table.sym(expected_types[i])
+					if exp_sym.kind != .sum_type || (exp_sym.kind == .sum_type
+						&& expected_types[i] != arg.expr.obj.orig_type) {
+						expected_types[i] = g.unwrap_generic(arg.expr.obj.smartcasts.last())
+						cast_sym := g.table.sym(expected_types[i])
+						if cast_sym.info is ast.Aggregate {
+							expected_types[i] = cast_sym.info.types[g.aggregate_type_idx]
+						}
+					}
+				}
+			}
+		}
 		use_tmp_var_autofree := g.is_autofree && arg.typ == ast.string_type && arg.is_tmp_autofree
 			&& !g.inside_const && !g.is_builtin_mod
 		// g.write('/* af=$arg.is_tmp_autofree */')
