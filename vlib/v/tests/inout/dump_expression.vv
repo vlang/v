@@ -1,4 +1,5 @@
 import os
+import log
 
 fn dump_of_int() {
 	x := dump(1) + 1
@@ -17,11 +18,18 @@ mut:
 	z int
 }
 
+struct Aa{
+	log &log.Logger
+}
+
 fn dump_of_struct() {
 	p := Point{1, 2, 3}
 	mut p_mut := Point{1, 2, 3}
 	p_ptr := &Point{1, 2, 3}
+	l := &log.Log{}
+	a := Aa{log:l}
 
+	dump(a)
 	mut x1 := dump(p)
 	mut x2 := dump(p_mut)
 	mut x3 := dump(p_ptr)
