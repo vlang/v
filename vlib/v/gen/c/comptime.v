@@ -70,7 +70,8 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		fn_name := g.fn_decl.name.replace('.', '__') + node.pos.pos.str()
 		if is_html {
 			// return vweb html template
-			g.writeln('vweb__Context_html(&app->Context, _tmpl_res_$fn_name); strings__Builder_free(&sb_$fn_name); string_free(&_tmpl_res_$fn_name);')
+			app_name := g.fn_decl.params[0].name
+			g.writeln('vweb__Context_html(&$app_name->Context, _tmpl_res_$fn_name); strings__Builder_free(&sb_$fn_name); string_free(&_tmpl_res_$fn_name);')
 		} else {
 			// return $tmpl string
 			g.write(cur_line)
