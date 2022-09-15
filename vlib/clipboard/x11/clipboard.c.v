@@ -155,7 +155,7 @@ struct Property {
 	actual_type   Atom
 	actual_format int
 	nitems        u64
-	data          &u8
+	data          &u8 = unsafe { nil }
 }
 
 // new_clipboard returns a new `Clipboard` instance allocated on the heap.

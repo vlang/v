@@ -37,7 +37,7 @@ const (
 
 struct App {
 mut:
-	gg          &gg.Context
+	gg          &gg.Context = unsafe { nil }
 	texture     gfx.Image
 	init_flag   bool
 	frame_count int

@@ -20,7 +20,7 @@ const (
 // UI
 struct App_data {
 pub mut:
-	gg              &gg.Context
+	gg              &gg.Context = unsafe { nil }
 	sg_img          gfx.Image
 	init_flag       bool
 	frame_c         int

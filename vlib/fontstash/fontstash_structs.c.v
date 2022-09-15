@@ -38,7 +38,7 @@ pub struct C.FONStextIter {
 	codepoint      u32
 	isize          i16
 	iblur          i16
-	font           &C.FONSfont
+	font           &C.FONSfont = unsafe { nil }
 	prevGlyphIndex int
 	str            &u8
 	next           &u8

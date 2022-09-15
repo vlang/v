@@ -13,8 +13,8 @@ const (
 
 struct App {
 mut:
-	gg                &gg.Context
-	dropped_file_list []string = []string{}
+	gg                &gg.Context = unsafe { nil }
+	dropped_file_list []string    = []string{}
 }
 
 fn main() {

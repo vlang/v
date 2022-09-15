@@ -11,7 +11,7 @@ import os.font
 
 struct FT {
 pub:
-	fons        &fontstash.Context
+	fons        &fontstash.Context = unsafe { nil }
 	font_normal int
 	font_bold   int
 	font_mono   int

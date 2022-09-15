@@ -35,7 +35,7 @@ mut:
 	// parser context in the worker processes:
 	table      ast.Table
 	scope      ast.Scope
-	pref       &pref.Preferences
+	pref       &pref.Preferences = unsafe { nil }
 	period_ms  int  // print periodic progress
 	stop_print bool // stop printing the periodic progress
 }

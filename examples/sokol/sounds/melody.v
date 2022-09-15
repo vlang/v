@@ -9,7 +9,7 @@ mut:
 	gframe  int         // the current graphical frame
 	frame_0 int         // offset of the current audio frames, relative to the start of the music
 	frames  [2048]f32   // a copy of the last rendered audio frames
-	gg      &gg.Context // used for drawing
+	gg      &gg.Context = unsafe { nil } // used for drawing
 }
 
 fn my_audio_stream_callback(buffer &f32, num_frames int, num_channels int, mut acontext AppState) {

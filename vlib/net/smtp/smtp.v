@@ -32,7 +32,7 @@ pub enum BodyType {
 pub struct Client {
 mut:
 	conn     net.TcpConn
-	ssl_conn &openssl.SSLConn = unsafe { 0 }
+	ssl_conn &openssl.SSLConn = unsafe { nil }
 	reader   io.BufferedReader
 pub:
 	server   string

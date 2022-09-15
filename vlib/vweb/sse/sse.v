@@ -24,7 +24,7 @@ import strings
 pub struct SSEConnection {
 pub mut:
 	headers       map[string]string
-	conn          &net.TcpConn
+	conn          &net.TcpConn  = unsafe { nil }
 	write_timeout time.Duration = 600 * time.second
 }
 

@@ -20,8 +20,8 @@ pub:
 	compiled_dir string // contains os.real_path() of the dir of the final file being compiled, or the dir itself when doing `v .`
 	module_path  string
 pub mut:
-	checker             &checker.Checker
-	transformer         &transformer.Transformer
+	checker             &checker.Checker = unsafe { nil }
+	transformer         &transformer.Transformer = unsafe { nil }
 	out_name_c          string
 	out_name_js         string
 	stats_lines         int // size of backend generated source code in lines
@@ -29,13 +29,13 @@ pub mut:
 	nr_errors           int // accumulated error count of scanner, parser, checker, and builder
 	nr_warnings         int // accumulated warning count of scanner, parser, checker, and builder
 	nr_notices          int // accumulated notice count of scanner, parser, checker, and builder
-	pref                &pref.Preferences
+	pref                &pref.Preferences = unsafe { nil }
 	module_search_paths []string
 	parsed_files        []&ast.File
 	//$if windows {
 	cached_msvc MsvcResult
 	//}
-	table     &ast.Table
+	table     &ast.Table = unsafe { nil }
 	ccoptions CcompilerOptions
 	//
 	// Note: changes in mod `builtin` force invalidation of every other .v file

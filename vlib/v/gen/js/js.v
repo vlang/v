@@ -46,13 +46,13 @@ mut:
 struct JsGen {
 	pref &pref.Preferences
 mut:
-	table                  &ast.Table
+	table                  &ast.Table = unsafe { nil }
 	definitions            strings.Builder
-	ns                     &Namespace
+	ns                     &Namespace = unsafe { nil }
 	namespaces             map[string]&Namespace
-	doc                    &JsDoc
+	doc                    &JsDoc = unsafe { nil }
 	enable_doc             bool
-	file                   &ast.File
+	file                   &ast.File = unsafe { nil }
 	tmp_count              int
 	inside_ternary         bool
 	inside_or              bool
@@ -65,9 +65,9 @@ mut:
 	is_test                bool
 	stmt_start_pos         int
 	defer_stmts            []ast.DeferStmt
-	fn_decl                &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
+	fn_decl                &ast.FnDecl = unsafe { nil } // pointer to the FnDecl we are currently inside otherwise 0
 	generated_str_fns      []StrType
-	str_types              []StrType // types that need automatic str() generation
+	str_types              []StrType   // types that need automatic str() generation
 	copy_types             []StrType // types that need to be deep copied
 	generated_copy_fns     []StrType
 	array_fn_definitions   []string // array equality functions that have been defined
@@ -84,7 +84,7 @@ mut:
 	cast_stack             []ast.Type
 	call_stack             []ast.CallExpr
 	is_vlines_enabled      bool // is it safe to generate #line directives when -g is passed
-	sourcemap              &sourcemap.SourceMap // maps lines in generated javascrip file to original source files and line
+	sourcemap              &sourcemap.SourceMap = unsafe { nil } // maps lines in generated javascrip file to original source files and line
 	comptime_var_type_map  map[string]ast.Type
 	defer_ifdef            string
 	cur_concrete_types     []ast.Type

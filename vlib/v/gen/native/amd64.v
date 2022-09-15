@@ -5,7 +5,7 @@ import v.token
 
 pub struct Amd64 {
 mut:
-	g &Gen
+	g &Gen = unsafe { nil }
 	// arm64 specific stuff for code generation
 	is_16bit_aligned bool
 }

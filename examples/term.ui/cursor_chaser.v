@@ -18,7 +18,7 @@ struct Point {
 
 struct App {
 mut:
-	tui       &tui.Context = unsafe { 0 }
+	tui       &tui.Context = unsafe { nil }
 	points    []Point
 	color     tui.Color = colors[0]
 	color_idx int

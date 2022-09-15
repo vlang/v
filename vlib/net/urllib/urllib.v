@@ -324,7 +324,7 @@ pub struct URL {
 pub mut:
 	scheme      string
 	opaque      string    // encoded opaque data
-	user        &Userinfo // username and password information
+	user        &Userinfo = unsafe { nil } // username and password information
 	host        string    // host or host:port
 	path        string    // path (relative paths may omit leading slash)
 	raw_path    string    // encoded path hint (see escaped_path method)
@@ -529,7 +529,7 @@ fn parse_url(rawurl string, via_request bool) ?URL {
 }
 
 struct ParseAuthorityRes {
-	user &Userinfo
+	user &Userinfo = unsafe { nil }
 	host string
 }
 

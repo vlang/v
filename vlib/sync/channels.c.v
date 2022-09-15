@@ -21,9 +21,9 @@ enum BufferElemStat {
 
 struct Subscription {
 mut:
-	sem  &Semaphore
-	prev &&Subscription
-	nxt  &Subscription
+	sem  &Semaphore     = unsafe { nil }
+	prev &&Subscription = unsafe { nil }
+	nxt  &Subscription  = unsafe { nil }
 }
 
 enum Direction {
@@ -32,8 +32,8 @@ enum Direction {
 }
 
 pub struct Channel {
-	ringbuf   &u8 // queue for buffered channels
-	statusbuf &u8 // flags to synchronize write/read in ringbuf
+	ringbuf   &u8 = unsafe { nil } // queue for buffered channels
+	statusbuf &u8 = unsafe { nil } // flags to synchronize write/read in ringbuf
 	objsize   u32
 mut: // atomic
 	writesem           Semaphore // to wake thread that wanted to write, but buffer was full
@@ -49,8 +49,8 @@ mut: // atomic
 	buf_elem_write_idx u32
 	buf_elem_read_idx  u32
 	// for select
-	write_subscriber &Subscription
-	read_subscriber  &Subscription
+	write_subscriber &Subscription = unsafe { nil }
+	read_subscriber  &Subscription = unsafe { nil }
 	write_sub_mtx    u16
 	read_sub_mtx     u16
 	closed           u16

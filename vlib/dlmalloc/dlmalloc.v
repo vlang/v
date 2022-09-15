@@ -265,8 +265,8 @@ struct Chunk {
 mut:
 	prev_foot usize
 	head      usize
-	prev      &Chunk
-	next      &Chunk
+	prev      &Chunk = unsafe { nil }
+	next      &Chunk = unsafe { nil }
 }
 
 [heap]
@@ -274,7 +274,7 @@ struct Segment {
 mut:
 	base  voidptr
 	size  usize
-	next  &Segment
+	next  &Segment = unsafe { nil }
 	flags u32
 }
 

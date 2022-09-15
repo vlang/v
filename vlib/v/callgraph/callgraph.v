@@ -25,11 +25,11 @@ pub fn show(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.File) 
 struct Mapper {
 	pos int
 mut:
-	pref            &pref.Preferences
-	table           &ast.Table
-	file            &ast.File   = unsafe { 0 }
-	node            &ast.Node   = unsafe { 0 }
-	fn_decl         &ast.FnDecl = unsafe { 0 }
+	pref            &pref.Preferences = unsafe { nil }
+	table           &ast.Table        = unsafe { nil }
+	file            &ast.File   = unsafe { nil }
+	node            &ast.Node   = unsafe { nil }
+	fn_decl         &ast.FnDecl = unsafe { nil }
 	caller_name     string
 	dot_caller_name string
 	is_caller_used  bool

@@ -43,8 +43,8 @@ struct C.sqlite3_stmt {
 
 [heap]
 struct Stmt {
-	stmt &C.sqlite3_stmt
-	db   &DB
+	stmt &C.sqlite3_stmt = unsafe { nil }
+	db   &DB = unsafe { nil }
 }
 
 struct SQLError {
@@ -57,7 +57,7 @@ pub struct DB {
 pub mut:
 	is_open bool
 mut:
-	conn &C.sqlite3
+	conn &C.sqlite3 = unsafe { nil }
 }
 
 pub fn (db &DB) str() string {

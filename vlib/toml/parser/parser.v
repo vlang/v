@@ -51,7 +51,7 @@ pub struct Parser {
 pub:
 	config Config
 mut:
-	scanner   &scanner.Scanner
+	scanner   &scanner.Scanner = unsafe { nil }
 	prev_tok  token.Token
 	tok       token.Token
 	peek_tok  token.Token
@@ -75,7 +75,7 @@ mut:
 // `decode_values` is used to en- or disable decoding of values with the `decoder.Decoder`.
 pub struct Config {
 pub:
-	scanner       &scanner.Scanner
+	scanner       &scanner.Scanner = unsafe { nil }
 	run_checks    bool = true
 	decode_values bool = true
 }

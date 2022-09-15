@@ -36,7 +36,7 @@ enum Direction {
 
 struct App {
 mut:
-	gg         &gg.Context
+	gg         &gg.Context = unsafe { nil }
 	score      int
 	snake      []Pos
 	dir        Direction

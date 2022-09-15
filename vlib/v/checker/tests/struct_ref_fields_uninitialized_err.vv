@@ -1,0 +1,13 @@
+struct ContainsRef {
+	a &int = unsafe { nil }
+	b &int
+}
+
+struct Outer {
+	c ContainsRef
+}
+
+fn main() {
+	o := Outer{}
+	dump(o)
+}

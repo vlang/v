@@ -37,7 +37,7 @@ mut:
 
 struct App {
 mut:
-	gg        &gg.Context
+	gg        &gg.Context = unsafe { nil }
 	image     gg.Image
 	stars     []Star
 	v_letters []VLetter

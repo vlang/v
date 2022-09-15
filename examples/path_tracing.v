@@ -84,7 +84,7 @@ fn (v Vec) norm() Vec {
 struct Image {
 	width  int
 	height int
-	data   &Vec
+	data   &Vec = unsafe { nil }
 }
 
 fn new_image(w int, h int) Image {

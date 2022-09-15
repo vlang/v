@@ -153,7 +153,7 @@ pub mut:
 	page_gen_start i64
 	// TCP connection to client.
 	// But beware, do not store it for further use, after request processing vweb will close connection.
-	conn              &net.TcpConn
+	conn              &net.TcpConn = unsafe { nil }
 	static_files      map[string]string
 	static_mime_types map[string]string
 	// Map containing query params for the route.

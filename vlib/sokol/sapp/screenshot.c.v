@@ -6,7 +6,7 @@ pub struct Screenshot {
 	height int
 	size   int
 mut:
-	pixels &u8
+	pixels &u8 = unsafe { nil }
 }
 
 [manualfree]

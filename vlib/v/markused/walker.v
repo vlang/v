@@ -9,12 +9,12 @@ import v.pref
 
 pub struct Walker {
 pub mut:
-	table        &ast.Table
+	table        &ast.Table = unsafe { nil }
 	used_fns     map[string]bool // used_fns['println'] == true
 	used_consts  map[string]bool // used_consts['os.args'] == true
 	used_globals map[string]bool
 	n_asserts    int
-	pref         &pref.Preferences
+	pref         &pref.Preferences = unsafe { nil }
 mut:
 	files       []&ast.File
 	all_fns     map[string]ast.FnDecl

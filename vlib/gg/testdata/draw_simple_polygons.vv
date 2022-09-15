@@ -5,7 +5,7 @@ import gx
 
 struct App {
 mut:
-	gg       &gg.Context = unsafe { 0 }
+	gg       &gg.Context = unsafe { nil }
 	rotation f32 = f32(0)
 	edge     int = 3
 }

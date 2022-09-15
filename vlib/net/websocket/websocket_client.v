@@ -19,7 +19,7 @@ const (
 pub struct Client {
 	is_server bool
 mut:
-	ssl_conn          &openssl.SSLConn // secure connection used when wss is used
+	ssl_conn          &openssl.SSLConn = unsafe { nil } // secure connection used when wss is used
 	flags             []Flag     // flags used in handshake
 	fragments         []Fragment // current fragments
 	message_callbacks []MessageEventHandler // all callbacks on_message
@@ -34,11 +34,11 @@ pub:
 	write_timeout i64
 pub mut:
 	header            http.Header  // headers that will be passed when connecting
-	conn              &net.TcpConn // underlying TCP socket connection
+	conn              &net.TcpConn = unsafe { nil } // underlying TCP socket connection
 	nonce_size        int = 16 // size of nounce used for masking
 	panic_on_callback bool        // set to true of callbacks can panic
 	state             State       // current state of connection
-	logger            &log.Logger // logger used to log messages
+	logger            &log.Logger = unsafe { nil } // logger used to log messages
 	resource_name     string      // name of current resource
 	last_pong_ut      i64 // last time in unix time we got a pong message
 }

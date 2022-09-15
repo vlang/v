@@ -18,8 +18,8 @@ const (
 pub struct Fmt {
 pub mut:
 	file               ast.File
-	table              &ast.Table
-	pref               &pref.Preferences
+	table              &ast.Table        = unsafe { nil }
+	pref               &pref.Preferences = unsafe { nil }
 	is_debug           bool
 	out                strings.Builder
 	out_imports        strings.Builder

@@ -31,7 +31,7 @@ fn (v &ViewRect) height() f64 {
 
 struct AppState {
 mut:
-	gg      &gg.Context = unsafe { 0 }
+	gg      &gg.Context = unsafe { nil }
 	iidx    int
 	pixels  &u32     = unsafe { vcalloc(pwidth * pheight * sizeof(u32)) }
 	npixels &u32     = unsafe { vcalloc(pwidth * pheight * sizeof(u32)) } // all drawing happens here, results are swapped at the end

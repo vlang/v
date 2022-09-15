@@ -6,8 +6,8 @@ import time
 // SSLConn is the current connection
 pub struct SSLConn {
 mut:
-	sslctx   &C.SSL_CTX
-	ssl      &C.SSL
+	sslctx   &C.SSL_CTX = unsafe { nil }
+	ssl      &C.SSL     = unsafe { nil }
 	handle   int
 	duration time.Duration
 }
