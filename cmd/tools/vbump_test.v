@@ -1,5 +1,17 @@
 import os
 
+const vexe = @VEXE
+
+const tfolder = os.join_path(os.temp_dir(), 'v', 'vbump')
+
+fn testsuite_begin() {
+	os.mkdir_all(tfolder) or {}
+}
+
+fn testsuite_end() {
+	os.rmdir_all(tfolder) or {}
+}
+
 struct BumpTestCase {
 	file_name      string
 	contents       string
@@ -62,10 +74,7 @@ fn main() {
 ]
 
 fn run_individual_test(case BumpTestCase) ? {
-	vexe := @VEXE
-
-	temp_dir := os.temp_dir()
-	test_file := os.join_path_single(temp_dir, case.file_name)
+	test_file := os.join_path_single(tfolder, case.file_name)
 
 	os.rm(test_file) or {}
 	os.write_file(test_file, case.contents)?

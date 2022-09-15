@@ -1,31 +1,31 @@
 import vweb.assets
 import os
 
+const base_cache_dir = os.join_path(os.temp_dir(), 'v', 'assets_test_cache')
+
+fn testsuite_begin() {
+	os.mkdir_all(base_cache_dir) or {}
+}
+
+fn testsuite_end() {
+	os.rmdir_all(base_cache_dir) or {}
+}
+
 // clean_cache_dir used before and after tests that write to a cache directory.
 // Because of parallel compilation and therefore test running,
 // unique cache dirs are needed per test function.
 fn clean_cache_dir(dir string) {
-	if os.is_dir(dir) {
-		os.rmdir_all(dir) or { panic(err) }
-	}
-}
-
-fn base_cache_dir() string {
-	return os.join_path(os.temp_dir(), 'assets_test_cache')
+	os.rmdir_all(dir) or {}
 }
 
 fn cache_dir(test_name string) string {
-	return os.join_path(base_cache_dir(), test_name)
+	return os.join_path(base_cache_dir, test_name)
 }
 
 fn get_test_file_path(file string) string {
-	path := os.join_path(base_cache_dir(), file)
-	if !os.is_dir(base_cache_dir()) {
-		os.mkdir_all(base_cache_dir()) or { panic(err) }
-	}
-	if !os.exists(path) {
-		os.write_file(path, get_test_file_contents(file)) or { panic(err) }
-	}
+	path := os.join_path(base_cache_dir, file)
+	os.rm(path) or {}
+	os.write_file(path, get_test_file_contents(file)) or { panic(err) }
 	return path
 }
 

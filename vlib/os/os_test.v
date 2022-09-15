@@ -106,7 +106,7 @@ fn test_create_file() ? {
 
 fn test_is_file() {
 	// Setup
-	work_dir := os.join_path_single(os.getwd(), 'is_file_test')
+	work_dir := os.join_path_single(tfolder, 'is_file_test')
 	os.mkdir_all(work_dir) or { panic(err) }
 	tfile := os.join_path_single(work_dir, 'tmp_file')
 	// Test things that shouldn't be a file
@@ -309,7 +309,7 @@ fn test_cp() {
 }
 
 fn test_mv() {
-	work_dir := os.join_path_single(os.getwd(), 'mv_test')
+	work_dir := os.join_path_single(tfolder, 'mv_test')
 	os.mkdir_all(work_dir) or { panic(err) }
 	// Setup test files
 	tfile1 := os.join_path_single(work_dir, 'file')
@@ -404,7 +404,7 @@ fn test_realpath_non_existing() {
 
 fn test_realpath_existing() {
 	existing_file_name := 'existing_file.txt'
-	existing_file := os.join_path_single(os.temp_dir(), existing_file_name)
+	existing_file := os.join_path_single(tfolder, existing_file_name)
 	os.rm(existing_file) or {}
 	os.write_file(existing_file, 'abc') or {}
 	assert os.exists(existing_file)
