@@ -6,7 +6,8 @@ import v.util
 
 fn main() {
 	wipe_path(vcache.new_cache_manager([]).basepath, 'V cache')
-	wipe_path(util.get_vtmp_folder(), 'V tmp')
+	wipe_path(util.get_vtmp_folder(), 'V tmp.c')
+	wipe_path(os.join_path(os.temp_dir(), 'v'), 'V tests')
 }
 
 fn wipe_path(cpath string, label string) {
