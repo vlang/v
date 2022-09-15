@@ -2737,7 +2737,7 @@ fn (mut g Gen) trace_autofree(line string) {
 
 // fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, end_pos int) {
 fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int, line_nr int, free_parent_scopes bool, stop_pos int) {
-	if isnil(scope) {
+	if scope == unsafe { nil } {
 		return
 	}
 	for _, obj in scope.objects {
@@ -2793,8 +2793,8 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 	// return
 	// }
 	// ```
-	// if !isnil(scope.parent) && line_nr > 0 {
-	if free_parent_scopes && !isnil(scope.parent) && !scope.detached_from_parent
+	// if scope.parent != unsafe { nil } && line_nr > 0 {
+	if free_parent_scopes && scope.parent != unsafe { nil } && !scope.detached_from_parent
 		&& (stop_pos == -1 || scope.parent.start_pos >= stop_pos) {
 		g.trace_autofree('// af parent scope:')
 		g.autofree_scope_vars2(scope.parent, start_pos, end_pos, line_nr, true, stop_pos)
@@ -4239,7 +4239,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		ftyp := g.typ(node.types[0])
 		mut is_regular_option := ftyp == '_option'
 		if optional_none || is_regular_option || node.types[0] == ast.error_type_idx {
-			if !isnil(g.fn_decl) && g.fn_decl.is_test {
+			if g.fn_decl != unsafe { nil } && g.fn_decl.is_test {
 				test_error_var := g.new_tmp_var()
 				g.write('$ret_typ $test_error_var = ')
 				g.gen_optional_error(g.fn_decl.return_type, node.exprs[0])
@@ -4267,7 +4267,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		ftyp := g.typ(node.types[0])
 		mut is_regular_result := ftyp == c.result_name
 		if is_regular_result || node.types[0] == ast.error_type_idx {
-			if !isnil(g.fn_decl) && g.fn_decl.is_test {
+			if g.fn_decl != unsafe { nil } && g.fn_decl.is_test {
 				test_error_var := g.new_tmp_var()
 				g.write('$ret_typ $test_error_var = ')
 				g.gen_result_error(g.fn_decl.return_type, node.exprs[0])
@@ -5404,7 +5404,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 		g.or_expr_return_type = ast.void_type
 	} else if or_block.kind == .propagate_result
 		|| (or_block.kind == .propagate_option && return_type.has_flag(.result)) {
-		if g.file.mod.name == 'main' && (isnil(g.fn_decl) || g.fn_decl.is_main) {
+		if g.file.mod.name == 'main' && (g.fn_decl == unsafe { nil } || g.fn_decl.is_main) {
 			// In main(), an `opt()!` call is sugar for `opt() or { panic(err) }`
 			err_msg := 'IError_name_table[${cvar_name}.err._typ]._method_msg(${cvar_name}.err._object)'
 			if g.pref.is_debug {
@@ -5413,7 +5413,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			} else {
 				g.writeln('\tpanic_result_not_set($err_msg);')
 			}
-		} else if !isnil(g.fn_decl) && g.fn_decl.is_test {
+		} else if g.fn_decl != unsafe { nil } && g.fn_decl.is_test {
 			g.gen_failing_error_propagation_for_test_fn(or_block, cvar_name)
 		} else {
 			// In ordinary functions, `opt()!` call is sugar for:
@@ -5433,7 +5433,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			}
 		}
 	} else if or_block.kind == .propagate_option {
-		if g.file.mod.name == 'main' && (isnil(g.fn_decl) || g.fn_decl.is_main) {
+		if g.file.mod.name == 'main' && (g.fn_decl == unsafe { nil } || g.fn_decl.is_main) {
 			// In main(), an `opt()?` call is sugar for `opt() or { panic(err) }`
 			err_msg := 'IError_name_table[${cvar_name}.err._typ]._method_msg(${cvar_name}.err._object)'
 			if g.pref.is_debug {
@@ -5442,7 +5442,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			} else {
 				g.writeln('\tpanic_optional_not_set( $err_msg );')
 			}
-		} else if !isnil(g.fn_decl) && g.fn_decl.is_test {
+		} else if g.fn_decl != unsafe { nil } && g.fn_decl.is_test {
 			g.gen_failing_error_propagation_for_test_fn(or_block, cvar_name)
 		} else {
 			// In ordinary functions, `opt()?` call is sugar for:
@@ -6078,7 +6078,7 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 
 fn (mut g Gen) panic_debug_info(pos token.Pos) (int, string, string, string) {
 	paline := pos.line_nr + 1
-	if isnil(g.fn_decl) {
+	if g.fn_decl == unsafe { nil } {
 		return paline, '', 'main', 'C._vinit'
 	}
 	pafile := g.fn_decl.file.replace('\\', '/')

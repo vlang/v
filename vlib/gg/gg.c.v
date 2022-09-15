@@ -421,7 +421,7 @@ pub fn new_context(cfg Config) &Context {
 		ui_mode: cfg.ui_mode
 		native_rendering: cfg.native_rendering
 	}
-	if isnil(cfg.user_data) {
+	if cfg.user_data == unsafe { nil } {
 		ctx.user_data = ctx
 	}
 	ctx.set_bg_color(cfg.bg_color)

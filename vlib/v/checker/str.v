@@ -104,8 +104,8 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Typ
 			node.need_fmts[i] = fmt != c.get_default_fmt(ftyp, typ)
 		}
 		// check recursive str
-		if !isnil(c.table.cur_fn) && c.table.cur_fn.is_method && c.table.cur_fn.name == 'str'
-			&& c.table.cur_fn.receiver.name == expr.str() {
+		if c.table.cur_fn != unsafe { nil } && c.table.cur_fn.is_method
+			&& c.table.cur_fn.name == 'str' && c.table.cur_fn.receiver.name == expr.str() {
 			c.error('cannot call `str()` method recursively', expr.pos())
 		}
 	}

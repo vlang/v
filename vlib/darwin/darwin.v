@@ -38,7 +38,7 @@ fn C.CFRelease(url &u8)
 pub fn resource_path() string {
 	main_bundle := C.CFBundleGetMainBundle()
 	resource_dir_url := C.CFBundleCopyResourcesDirectoryURL(main_bundle)
-	if isnil(resource_dir_url) {
+	if resource_dir_url == unsafe { nil } {
 		panic('CFBundleCopyResourcesDirectoryURL failed')
 	}
 	buffer_size := 4096

@@ -295,7 +295,7 @@ mut:
 [unsafe]
 pub fn cached_read_source_file(path string) ?string {
 	mut static cache := &SourceCache(0)
-	if isnil(cache) {
+	if cache == unsafe { nil } {
 		cache = &SourceCache{}
 	}
 

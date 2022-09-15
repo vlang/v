@@ -7,7 +7,7 @@ import v.pref
 
 // TODO: non deferred
 pub fn (mut c Checker) return_stmt(mut node ast.Return) {
-	if isnil(c.table.cur_fn) {
+	if c.table.cur_fn == unsafe { nil } {
 		return
 	}
 	c.expected_type = c.table.cur_fn.return_type
