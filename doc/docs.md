@@ -181,6 +181,11 @@ This means that a "hello world" program in V is as simple as
 println('hello world')
 ```
 
+Note: if you do not use explicitly `fn main() {}`, you need to make sure, that all your
+declarations, come before any variable assignment statements, or top level function calls,
+since V will consider everything after the first assignment/function call as part of your
+implicit main function.
+
 ## Running a project folder with several files
 
 Suppose you have a folder with several .v files in it, where one of them
@@ -5871,27 +5876,35 @@ libraries and include files for Windows and Linux. V will provide you with a lin
 
 V can be used as an alternative to Bash to write deployment scripts, build scripts, etc.
 
-The advantage of using V for this is the simplicity and predictability of the language, and
-cross-platform support. "V scripts" run on Unix-like systems as well as on Windows.
+The advantage of using V for this, is the simplicity and predictability of the language, and
+cross-platform support. "V scripts" run on Unix-like systems, as well as on Windows.
 
-Use the `.vsh` file extension. It will make all functions in the `os`
-module global (so that you can use `mkdir()` instead of `os.mkdir()`, for example).
+To use V's script mode, save your source file with the `.vsh` file extension.
+It will make all functions in the `os` module global (so that you can use `mkdir()` instead
+of `os.mkdir()`, for example).
+
+V also knows to compile & run `.vsh` files immediately, so you do not need a separate
+step to compile them. V will also recompile an executable, produced by a `.vsh` file,
+*only when it is older than the .vsh source file*, i.e. runs after the first one, will
+be faster, since there is no need for a re-compilation of a script, that has not been changed.
 
 An example `deploy.vsh`:
-```v wip
-#!/usr/bin/env -S v run
-// The shebang above associates the file to V on Unix-like systems,
-// so it can be run just by specifying the path to the file
-// once it's made executable using `chmod +x`.
+```v oksyntax
+#!/usr/bin/env -S v
+
+// Note: the shebang line above, associates the .vsh file to V on Unix-like systems,
+// so it can be run just by specifying the path to the .vsh file, once it's made
+// executable, using `chmod +x deploy.vsh`, i.e. after that chmod command, you can
+// run the .vsh script, by just typing its name/path like this: `./deploy.vsh`
 
 // print command then execute it
-fn sh(cmd string){
-  println("❯ $cmd")
-  print(execute_or_exit(cmd).output)
+fn sh(cmd string) {
+	println('❯ $cmd')
+	print(execute_or_exit(cmd).output)
 }
 
 // Remove if build/ exits, ignore any errors if it doesn't
-rmdir_all('build') or { }
+rmdir_all('build') or {}
 
 // Create build/, never fails as build/ does not exist
 mkdir('build')?
@@ -5974,7 +5987,8 @@ module abc
 pub struct Xyz {
 pub mut:
 	a int
-	d int [deprecated: 'use Xyz.a instead'; deprecated_after: '2999-03-01'] // produce a notice, the deprecation date is in the far future
+	d int [deprecated: 'use Xyz.a instead'; deprecated_after: '2999-03-01']
+	// the tags above, will produce a notice, since the deprecation date is in the far future
 }
 ```
 
