@@ -3,7 +3,7 @@ a
 ===output===
 .vrepl.v:7:9: error: undefined ident: `a`
     5 | import math
-    6 |
+    6 | 
     7 | println(a)
       |         ^
 33
