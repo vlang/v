@@ -1,5 +1,6 @@
-// Written by flopetautschnig (floscodes) (c) 2022
 module ringbuffer
+
+// Written by flopetautschnig (floscodes) (c) 2022
 
 pub struct RingBuffer<T> {
 	size u64
