@@ -2306,7 +2306,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 			scope := g.file.scope.innermost(expr.pos().pos)
 			if expr is ast.Ident {
 				if v := scope.find_var(expr.name) {
-					if v.smartcasts.len > 0 {
+					if v.smartcasts.len > 0 && unwrapped_expected_type == v.orig_type {
 						is_already_sum_type = true
 					}
 				}
