@@ -454,7 +454,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			}
 			os.write_file(temp_file, temp_source_code) or { panic(err) }
 			s := repl_run_vfile(temp_file) or { return 1 }
-			if !func_call && s.exit_code == 0 && !temp_flag {
+			if s.exit_code == 0 && !temp_flag {
 				for r.temp_lines.len > 0 {
 					if !r.temp_lines[0].starts_with('print') {
 						r.lines << r.temp_lines[0]
