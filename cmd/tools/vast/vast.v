@@ -878,7 +878,6 @@ fn (t Tree) var(node ast.Var) &Node {
 	obj.add('is_auto_deref', t.bool_node(node.is_auto_deref))
 	obj.add('is_inherited', t.bool_node(node.is_inherited))
 	obj.add('has_inherited', t.bool_node(node.has_inherited))
-	obj.add('is_stack_obj', t.bool_node(node.is_stack_obj))
 	obj.add_terse('share', t.enum_node(node.share))
 	obj.add('pos', t.pos(node.pos))
 	obj.add_terse('smartcasts', t.array_node_type(node.smartcasts))

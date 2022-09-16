@@ -227,11 +227,6 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 						share: share
 						is_mut: lx.is_mut || p.inside_for
 						pos: lx.pos
-						is_stack_obj: if r0 is ast.PrefixExpr {
-							r0.op != .amp
-						} else {
-							true
-						}
 					}
 					if p.pref.autofree {
 						if r0 is ast.CallExpr {

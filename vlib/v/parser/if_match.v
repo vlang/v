@@ -54,7 +54,6 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 						typ: ast.error_type
 						pos: p.tok.pos()
 						is_used: true
-						is_stack_obj: true
 					})
 				}
 				branches << ast.IfBranch{

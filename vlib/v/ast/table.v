@@ -44,6 +44,7 @@ pub mut:
 	module_attrs      map[string][]Attr // module attributes
 	builtin_pub_fns   map[string]bool
 	pointer_size      int
+	reference_id      int
 	// cache for type_to_str_using_aliases
 	cached_type_to_str map[u64]string
 	anon_struct_names  map[string]int // anon struct name -> struct sym idx

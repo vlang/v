@@ -2758,7 +2758,6 @@ fn (mut p Parser) or_block(err_var_mode OrBlockErrVarMode) ([]ast.Stmt, token.Po
 			typ: ast.error_type
 			pos: p.tok.pos()
 			is_used: true
-			is_stack_obj: true
 		})
 	}
 

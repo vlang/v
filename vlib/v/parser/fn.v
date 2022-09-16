@@ -384,7 +384,6 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				typ: param.typ
 				is_mut: param.is_mut
 				is_auto_deref: param.is_mut || param.is_auto_rec
-				is_stack_obj: !param.typ.has_flag(.shared_f)
 				pos: param.pos
 				is_used: true
 				is_arg: true
@@ -732,7 +731,6 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			pos: arg.pos
 			is_used: true
 			is_arg: true
-			is_stack_obj: !arg.typ.has_flag(.shared_f)
 		})
 	}
 	mut same_line := p.tok.line_nr == p.prev_tok.line_nr

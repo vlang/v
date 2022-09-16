@@ -672,9 +672,9 @@ pub mut:
 	is_comptime_field bool // comptime field var `a := t.$(field.name)`
 	//
 	// (for setting the position after the or block for autofree)
-	is_or        bool // `x := foo() or { ... }`
-	is_tmp       bool // for tmp for loop vars, so that autofree can skip them
-	is_stack_obj bool // may be pointer to stack value (`mut` or `&` arg and not [heap] struct) or simply a value on the stack
+	is_or  bool // `x := foo() or { ... }`
+	is_tmp bool // for tmp for loop vars, so that autofree can skip them
+	ref_id int  // todo: mut todo: structs todo: containers
 }
 
 // used for smartcasting only
