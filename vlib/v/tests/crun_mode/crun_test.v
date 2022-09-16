@@ -1,7 +1,7 @@
 import os
 import time
 
-const crun_folder = os.join_path(os.temp_dir(), 'crun_folder')
+const crun_folder = os.join_path(os.temp_dir(), 'v', 'crun_folder')
 
 const vprogram_file = os.join_path(crun_folder, 'vprogram.vv')
 

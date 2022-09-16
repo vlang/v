@@ -21,7 +21,7 @@ fn mm(s string) string {
 fn test_out_files() ? {
 	println(term.colorize(term.green, '> testing whether .out files match:'))
 	os.chdir(vroot) or {}
-	output_path := os.join_path(os.temp_dir(), 'coutput', 'out')
+	output_path := os.join_path(os.temp_dir(), 'v', 'coutput', 'out')
 	os.mkdir_all(output_path)?
 	defer {
 		os.rmdir_all(output_path) or {}
@@ -92,7 +92,7 @@ fn test_out_files() ? {
 fn test_c_must_have_files() ? {
 	println(term.colorize(term.green, '> testing whether `.c.must_have` files match:'))
 	os.chdir(vroot) or {}
-	output_path := os.join_path(os.temp_dir(), 'coutput', 'c_must_have')
+	output_path := os.join_path(os.temp_dir(), 'v', 'coutput', 'c_must_have')
 	os.mkdir_all(output_path)?
 	defer {
 		os.rmdir_all(output_path) or {}

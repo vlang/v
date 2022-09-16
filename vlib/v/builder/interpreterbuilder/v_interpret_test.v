@@ -9,7 +9,7 @@ fn interpreter_wrap(a string) string {
 }
 
 fn interp_test(expression string, expected string) ? {
-	tmpdir := os.join_path(os.temp_dir(), 'v_interpret_test_$rand.ulid()')
+	tmpdir := os.join_path(os.temp_dir(), 'v', 'interpret_test_$rand.ulid()')
 	os.mkdir_all(tmpdir) or {}
 	defer {
 		os.rmdir_all(tmpdir) or {}

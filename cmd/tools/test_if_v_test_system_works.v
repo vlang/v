@@ -26,13 +26,11 @@ fn get_vexe_path() string {
 }
 
 fn new_tdir() string {
-	tdir_ := os.join_path(os.temp_dir(), rand.ulid())
-	if os.exists(tdir_) {
-		os.rmdir(tdir_) or { panic(err) }
-	}
-	os.mkdir(tdir_) or { panic(err) }
+	dir := os.join_path(os.temp_dir(), 'v', rand.ulid())
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
 	C.atexit(cleanup_tdir)
-	return tdir_
+	return dir
 }
 
 fn cleanup_tdir() {

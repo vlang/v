@@ -162,7 +162,7 @@ fn test_closure_return_${styp}_${i}() ? {
 
 	code := v_code.str()
 	println('Compiling V code (${code.count('\n')} lines) ...')
-	wrkdir := os.join_path(os.temp_dir(), 'vtests', 'closures')
+	wrkdir := os.join_path(os.temp_dir(), 'v', 'tests', 'closures')
 	os.mkdir_all(wrkdir)?
 	os.chdir(wrkdir)?
 	os.write_file('closure_return_test.v', code)?

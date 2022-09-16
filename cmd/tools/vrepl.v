@@ -17,6 +17,7 @@ mut:
 	in_func  bool   // are we inside a new custom user function
 	line     string // the current line entered by the user
 	is_pin   bool   // does the repl 'pin' entered source code
+	folder   string // the folder in which the repl will write its temporary source files
 	//
 	modules         []string // all the import modules
 	alias           map[string]string // all the alias used in the import
@@ -35,22 +36,26 @@ const vexe = os.getenv('VEXE')
 
 const vstartup = os.getenv('VSTARTUP')
 
+const repl_folder = os.join_path(os.temp_dir(), 'v', 'repl')
+
 enum FnType {
 	@none
 	void
 	fn_type
 }
 
-fn new_repl() Repl {
+fn new_repl(folder string) Repl {
+	vstartup_source := os.read_file(vstartup) or { '' }.trim_right('\n\r').split_into_lines()
+	os.mkdir_all(folder) or {}
 	return Repl{
 		readline: readline.Readline{
 			skip_empty: true
 		}
+		folder: folder
 		modules: ['os', 'time', 'math']
-		vstartup_lines: os.read_file(vstartup) or { '' }.trim_right('\n\r').split_into_lines()
-		// Test file used to check if a function as a void return or a
-		// value return.
-		eval_func_lines: os.read_file(vstartup) or { '' }.trim_right('\n\r').split_into_lines()
+		vstartup_lines: vstartup_source
+		// Test file used to check if a function as a void return or a value return.
+		eval_func_lines: vstartup_source
 	}
 }
 
@@ -173,7 +178,7 @@ fn (r &Repl) current_source_code(should_add_temp_lines bool, not_add_print bool)
 // This function checks which one we have:
 fn (r &Repl) check_fn_type_kind(new_line string) FnType {
 	source_code := r.current_source_code(true, false) + '\nprintln($new_line)'
-	check_file := os.join_path(os.temp_dir(), '${rand.ulid()}.vrepl.check.v')
+	check_file := os.join_path(r.folder, '${rand.ulid()}.vrepl.check.v')
 	os.write_file(check_file, source_code) or { panic(err) }
 	defer {
 		os.rm(check_file) or {}
@@ -296,7 +301,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 		}
 		cleanup_files([file, temp_file])
 	}
-	mut r := new_repl()
+	mut r := new_repl(workdir)
 	for {
 		if r.indent == 0 {
 			prompt = '>>> '
@@ -359,7 +364,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			continue
 		}
 		if r.line == 'reset' {
-			r = new_repl()
+			r = new_repl(workdir)
 			continue
 		}
 		if r.line == 'list' {
@@ -517,7 +522,7 @@ fn main() {
 	// so that the repl can be launched in parallel by several different
 	// threads by the REPL test runner.
 	args := cmdline.options_after(os.args, ['repl'])
-	replfolder := os.real_path(cmdline.option(args, '-replfolder', os.temp_dir()))
+	replfolder := os.real_path(cmdline.option(args, '-replfolder', repl_folder))
 	replprefix := cmdline.option(args, '-replprefix', 'noprefix.${rand.ulid()}.')
 	if !os.exists(os.getenv('VEXE')) {
 		println('Usage:')

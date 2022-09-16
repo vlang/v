@@ -6,7 +6,17 @@ struct User {
 	name string [unique]
 }
 
-const db_path = os.join_path(os.temp_dir(), 'sql_statement_or_blocks.db')
+const db_folder = os.join_path(os.temp_dir(), 'v', 'orm_sql')
+
+const db_path = os.join_path(db_folder, 'sql_statement_or_blocks.db')
+
+fn testsuite_begin() {
+	os.mkdir_all(db_folder) or {}
+}
+
+fn testsuite_end() {
+	os.rmdir_all(db_folder) or {}
+}
 
 fn test_ensure_db_exists_and_user_table_is_ok() ? {
 	mut db := sqlite.connect(db_path)?

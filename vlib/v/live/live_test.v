@@ -33,16 +33,15 @@ TODO: Cleanup this when/if v has better process control/communication primitives
 */
 const (
 	vexe                = os.getenv('VEXE')
-	tmp_file            = os.join_path(os.temp_dir(), 'generated_live_program.tmp.v')
-	source_file         = os.join_path(os.temp_dir(), 'generated_live_program.v')
-	genexe_file         = os.join_path(os.temp_dir(), 'generated_live_program')
-	output_file         = os.join_path(os.temp_dir(), 'generated_live_program.output.txt')
-	res_original_file   = os.join_path(os.temp_dir(), 'ORIGINAL.txt')
-	res_changed_file    = os.join_path(os.temp_dir(), 'CHANGED.txt')
-	res_another_file    = os.join_path(os.temp_dir(), 'ANOTHER.txt')
-	res_stop_file       = os.join_path(os.temp_dir(), 'STOP.txt')
-	cleanup_files       = [tmp_file, source_file, genexe_file, output_file, res_original_file,
-		res_changed_file, res_another_file, res_stop_file]
+	vtmp_folder         = os.join_path(os.temp_dir(), 'v', 'tests', 'live')
+	tmp_file            = os.join_path(vtmp_folder, 'generated_live_program.tmp.v')
+	source_file         = os.join_path(vtmp_folder, 'generated_live_program.v')
+	genexe_file         = os.join_path(vtmp_folder, 'generated_live_program')
+	output_file         = os.join_path(vtmp_folder, 'generated_live_program.output.txt')
+	res_original_file   = os.join_path(vtmp_folder, 'ORIGINAL.txt')
+	res_changed_file    = os.join_path(vtmp_folder, 'CHANGED.txt')
+	res_another_file    = os.join_path(vtmp_folder, 'ANOTHER.txt')
+	res_stop_file       = os.join_path(vtmp_folder, 'STOP.txt')
 	live_program_source = get_source_template()
 )
 
@@ -69,15 +68,13 @@ fn atomic_write_source(source string) {
 
 //
 fn testsuite_begin() {
+	os.rmdir_all(vtmp_folder) or {}
+	os.mkdir_all(vtmp_folder) or {}
 	if os.user_os() !in ['linux', 'solaris'] && os.getenv('FORCE_LIVE_TEST').len == 0 {
 		eprintln('Testing the runtime behaviour of -live mode,')
 		eprintln('is reliable only on Linux/macOS for now.')
 		eprintln('You can still do it by setting FORCE_LIVE_TEST=1 .')
 		exit(0)
-	}
-	for f in [tmp_file, source_file, output_file, res_original_file, res_changed_file,
-		res_another_file, res_stop_file] {
-		os.rm(f) or {}
 	}
 	atomic_write_source(live_program_source)
 }
@@ -106,9 +103,7 @@ fn testsuite_end() {
 	assert histogram['ORIGINAL'] > 0
 	assert histogram['CHANGED'] + histogram['ANOTHER'] > 0
 	// assert histogram['END'] > 0
-	for tfile in cleanup_files {
-		os.rm(tfile) or {}
-	}
+	os.rmdir_all(vtmp_folder) or {}
 }
 
 fn change_source(new string) {
@@ -120,7 +115,7 @@ fn change_source(new string) {
 
 fn wait_for_file(new string) {
 	time.sleep(100 * time.millisecond)
-	expected_file := os.join_path(os.temp_dir(), new + '.txt')
+	expected_file := os.join_path(vtmp_folder, new + '.txt')
 	eprintln('waiting for $expected_file ...')
 	max_wait_cycles := edefault('WAIT_CYCLES', '1').int()
 	for i := 0; i <= max_wait_cycles; i++ {

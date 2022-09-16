@@ -22,7 +22,7 @@ const (
 	show_progress                  = os.getenv('GITHUB_JOB') == '' && '-silent' !in os.args
 	non_option_args                = cmdline.only_non_options(os.args[2..])
 	is_verbose                     = os.getenv('VERBOSE') != ''
-	vcheckfolder                   = os.join_path_single(os.temp_dir(), 'vcheck_$os.getuid()')
+	vcheckfolder                   = os.join_path(os.temp_dir(), 'v', 'vcheck_$os.getuid()')
 )
 
 struct CheckResult {
