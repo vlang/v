@@ -709,17 +709,22 @@ g.expr
 }
 
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
+	name := if node.is_method {
+		'${g.table.get_type_name(node.receiver.typ)}.$node.name'
+	} else {
+		node.name
+	}
 	if g.pref.is_verbose {
-		println(term.green('\n$node.name:'))
+		println(term.green('\n$name:'))
 	}
 	if node.is_deprecated {
-		g.warning('fn_decl: $node.name is deprecated', node.pos)
+		g.warning('fn_decl: $name is deprecated', node.pos)
 	}
 	if node.is_builtin {
-		g.warning('fn_decl: $node.name is builtin', node.pos)
+		g.warning('fn_decl: $name is builtin', node.pos)
 	}
 	g.stack_var_pos = 0
-	g.register_function_address(node.name)
+	g.register_function_address(name)
 	g.labels = &LabelTable{}
 	g.defer_stmts.clear()
 	if g.pref.arch == .arm64 {
@@ -1161,6 +1166,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.PostfixExpr {
 			g.postfix_expr(node)
+		}
+		ast.PrefixExpr {
+			g.prefix_expr(node)
 		}
 		ast.StringLiteral {
 			g.allocate_string(node.val, 3, .rel32)

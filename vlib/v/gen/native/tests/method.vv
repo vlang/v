@@ -1,0 +1,50 @@
+struct Size7 {
+	a i8
+	b u8
+	c i8
+	d i8
+	e u8
+	f i8
+	g u8
+}
+
+struct Size28 {
+	a int
+	b i16
+	c int
+	d u32
+	e i8
+	f int
+	g int
+}
+
+fn (s Size7) get_c() i8 {
+	return s.c
+}
+
+fn (s &Size7) get_c_ref() i8 {
+	return s.c
+}
+
+fn (mut s Size7) modify_c(a i8) i8 {
+	// s.c = a
+	return s.c
+}
+
+fn struct_receiver_test() {
+	mut a := Size7{1,2,3,4,5,6,7}
+	assert a.get_c() == 3
+	assert a.get_c_ref() == 3
+	// should be 7 after implementing field assign
+	assert a.modify_c(7) == 3
+	b := Size28{c: 6}
+	assert b.get_c() == 6
+}
+
+fn (s Size28) get_c() int {
+	return s.c
+}
+
+fn main() {
+	struct_receiver_test()
+}
