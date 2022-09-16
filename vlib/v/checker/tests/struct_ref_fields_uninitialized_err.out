@@ -1,7 +1,13 @@
-vlib/v/checker/tests/struct_ref_fields_uninitialized_err.vv:11:7: warning: reference field `Outer.c.b` must be initialized
-    9 | 
-   10 | fn main() {
-   11 |     o := Outer{}
+vlib/v/checker/tests/struct_ref_fields_uninitialized_err.vv:22:7: warning: reference field `Outer.c.b` must be initialized
+   20 | 
+   21 | fn main() {
+   22 |     _ := Outer{}
       |          ~~~~~~~
-   12 |     dump(o)
-   13 | }
+   23 |     _ := Struct{}
+   24 | }
+vlib/v/checker/tests/struct_ref_fields_uninitialized_err.vv:23:7: warning: reference field `Struct.ref2` must be initialized
+   21 | fn main() {
+   22 |     _ := Outer{}
+   23 |     _ := Struct{}
+      |          ~~~~~~~~
+   24 | }
