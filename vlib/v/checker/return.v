@@ -110,26 +110,41 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 			c.error('cannot use `${c.table.type_to_str(got_typ)}` as type `${c.table.type_to_str(exp_type)}` in return argument',
 				pos)
 		}
-		if node.exprs[expr_idxs[i]] !is ast.ComptimeCall && !c.check_types(got_typ, exp_type) {
+		if node.exprs[expr_idxs[i]] !is ast.ComptimeCall {
 			got_typ_sym := c.table.sym(got_typ)
-			mut exp_typ_sym := c.table.sym(exp_type)
-			if exp_typ_sym.kind == .interface_ {
-				if c.type_implements(got_typ, exp_type, node.pos) {
-					if !got_typ.is_ptr() && !got_typ.is_pointer() && got_typ_sym.kind != .interface_
-						&& !c.inside_unsafe {
-						c.mark_as_referenced(mut &node.exprs[expr_idxs[i]], true)
+			exp_typ_sym := c.table.sym(exp_type)
+			pos := node.exprs[expr_idxs[i]].pos()
+			if c.check_types(got_typ, exp_type) {
+				if exp_type.is_unsigned() && got_typ.is_int_literal() {
+					if node.exprs[expr_idxs[i]] is ast.IntegerLiteral {
+						var := (node.exprs[expr_idxs[i]] as ast.IntegerLiteral).val
+						if var[0] == `-` {
+							c.note('cannot use a negative value as value of type `${c.table.type_to_str(exp_type)}` in return argument',
+								pos)
+						}
+					} else {
+						c.note('use signed type `${c.table.type_to_str(got_typ)}` as unsigned type `${c.table.type_to_str(exp_type)}` in return argument may cause unexpected',
+							pos)
 					}
 				}
-				continue
-			}
-			if got_typ_sym.kind == .function && exp_typ_sym.kind == .function {
-				if (got_typ_sym.info as ast.FnType).is_anon {
+			} else {
+				if exp_typ_sym.kind == .interface_ {
+					if c.type_implements(got_typ, exp_type, node.pos) {
+						if !got_typ.is_ptr() && !got_typ.is_pointer()
+							&& got_typ_sym.kind != .interface_ && !c.inside_unsafe {
+							c.mark_as_referenced(mut &node.exprs[expr_idxs[i]], true)
+						}
+					}
 					continue
 				}
+				if got_typ_sym.kind == .function && exp_typ_sym.kind == .function {
+					if (got_typ_sym.info as ast.FnType).is_anon {
+						continue
+					}
+				}
+				c.error('cannot use `$got_typ_sym.name` as type `${c.table.type_to_str(exp_type)}` in return argument',
+					pos)
 			}
-			pos := node.exprs[expr_idxs[i]].pos()
-			c.error('cannot use `$got_typ_sym.name` as type `${c.table.type_to_str(exp_type)}` in return argument',
-				pos)
 		}
 		if (got_typ.is_ptr() || got_typ.is_pointer())
 			&& (!exp_type.is_ptr() && !exp_type.is_pointer()) {
