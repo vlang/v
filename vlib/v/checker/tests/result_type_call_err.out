@@ -1,0 +1,6 @@
+vlib/v/checker/tests/result_type_call_err.vv:12:2: error: result type cannot be called directly
+   10 |
+   11 | fn main() {
+   12 |     new_foo().foo()
+      |     ~~~~~~~~~
+   13 | }
