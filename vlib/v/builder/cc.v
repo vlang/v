@@ -324,6 +324,10 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	if ccompiler != 'msvc' && v.pref.os != .freebsd {
 		ccoptions.wargs << '-Werror=implicit-function-declaration'
 	}
+	if ccoptions.is_cc_tcc {
+		// tcc 806b3f98 needs this flag too:
+		ccoptions.wargs << '-Wno-write-strings'
+	}
 	if v.pref.is_liveshared || v.pref.is_livemain {
 		if (v.pref.os == .linux || os.user_os() == 'linux') && v.pref.build_mode != .build_module {
 			ccoptions.linker_flags << '-rdynamic'
@@ -332,6 +336,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 			ccoptions.args << '-flat_namespace'
 		}
 	}
+
 	// macOS code can include objective C  TODO remove once objective C is replaced with C
 	if v.pref.os == .macos || v.pref.os == .ios {
 		if !ccoptions.is_cc_tcc && !user_darwin_ppc {
