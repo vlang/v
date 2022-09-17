@@ -1,0 +1,13 @@
+vlib/v/checker/tests/fn_return_unsign_type_mismatch.vv:2:9: notice: use signed type `int literal` as unsigned type `u64` in return argument may cause unexpected
+    1 | fn foo() u64 {
+    2 |     return -(3 - 1)
+      |            ^
+    3 | }
+    4 |
+vlib/v/checker/tests/fn_return_unsign_type_mismatch.vv:6:9: notice: cannot use a negative value as value of type `u64` in return argument
+    4 | 
+    5 | fn bar() u64 {
+    6 |     return -1
+      |            ~~
+    7 | }
+    8 |
