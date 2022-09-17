@@ -123,8 +123,10 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 								pos)
 						}
 					} else {
-						c.note('use signed type `${c.table.type_to_str(got_typ)}` as unsigned type `${c.table.type_to_str(exp_type)}` in return argument may cause unexpected',
-							pos)
+						if node.exprs[expr_idxs[i]] !is ast.Ident {
+							c.note('use signed type `${c.table.type_to_str(got_typ)}` as unsigned type `${c.table.type_to_str(exp_type)}` in return argument may cause unexpected',
+								pos)
+						}
 					}
 				}
 			} else {
