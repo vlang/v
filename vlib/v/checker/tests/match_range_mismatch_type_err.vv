@@ -9,3 +9,11 @@ fn main() {
 		}
 	}
 }
+
+fn abc() {
+	x := 1
+	match x {
+		0...`9` {}
+		else {}
+	}
+}
