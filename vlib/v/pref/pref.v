@@ -209,7 +209,7 @@ pub mut:
 	cache_manager       vcache.CacheManager
 	gc_mode             GarbageCollectionMode = .unknown // .no_gc, .boehm, .boehm_leak, ...
 	assert_failure_mode AssertFailureMode     // whether to call abort() or print_backtrace() after an assertion failure
-	message_limit       int = 100 // the maximum amount of warnings/errors/notices that will be accumulated
+	message_limit       int = 150 // the maximum amount of warnings/errors/notices that will be accumulated
 	nofloat             bool // for low level code, like kernels: replaces f32 with u32 and f64 with u64
 	// checker settings:
 	checker_match_exhaustive_cutoff_limit int = 12
