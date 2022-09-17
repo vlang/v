@@ -1,4 +1,4 @@
-vlib/v/checker/tests/match_range_mismatch_type_err.vv:4:3: error: mismatched range types - trying to match `x`, which has type `string`, to a range of `rune`
+vlib/v/checker/tests/match_range_mismatch_type_err.vv:4:3: error: mismatched range types - trying to match `x`, which has type `string`, against a range of `rune`
     2 |     x := '1'
     3 |     match x {
     4 |         `0`...`9` {
