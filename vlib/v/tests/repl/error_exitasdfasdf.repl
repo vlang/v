@@ -1,7 +1,7 @@
 exitasdfasdf
 ===output===
-.vrepl.v:7:9: error: undefined ident: `exitasdfasdf`
+error: undefined ident: `exitasdfasdf`
     5 | import math
-    6 | 
+    6 |
     7 | println(exitasdfasdf)
       |         ~~~~~~~~~~~~

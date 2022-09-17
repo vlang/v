@@ -388,8 +388,8 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 		}
 		if r.line.starts_with('print') {
 			source_code := r.current_source_code(false, false) + '\n$r.line\n'
-			os.write_file(file, source_code) or { panic(err) }
-			s := repl_run_vfile(file) or { return 1 }
+			os.write_file(temp_file, source_code) or { panic(err) }
+			s := repl_run_vfile(temp_file) or { return 1 }
 			print_output(s.output)
 		} else {
 			mut temp_line := r.line
@@ -439,8 +439,8 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			if !is_statement && (!func_call || fntype == FnType.fn_type) && r.line != '' {
 				temp_line = 'println($r.line)'
 				source_code := r.current_source_code(false, false) + '\n$temp_line\n'
-				os.write_file(file, source_code) or { panic(err) }
-				s := repl_run_vfile(file) or { return 1 }
+				os.write_file(temp_file, source_code) or { panic(err) }
+				s := repl_run_vfile(temp_file) or { return 1 }
 				print_output(s.output)
 				continue
 			}
