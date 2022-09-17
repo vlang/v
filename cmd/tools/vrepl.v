@@ -12,12 +12,13 @@ import v.util.version
 
 struct Repl {
 mut:
-	readline readline.Readline
-	indent   int    // indentation level
-	in_func  bool   // are we inside a new custom user function
-	line     string // the current line entered by the user
-	is_pin   bool   // does the repl 'pin' entered source code
-	folder   string // the folder in which the repl will write its temporary source files
+	readline    readline.Readline
+	indent      int    // indentation level
+	in_func     bool   // are we inside a new custom user function
+	line        string // the current line entered by the user
+	is_pin      bool   // does the repl 'pin' entered source code
+	folder      string // the folder in which the repl will write its temporary source files
+	last_output string // the last repl output
 	//
 	modules         []string // all the import modules
 	alias           map[string]string // all the alias used in the import
@@ -186,7 +187,7 @@ fn (r &Repl) check_fn_type_kind(new_line string) FnType {
 	// -w suppresses the unused import warnings
 	// -check just does syntax and checker analysis without generating/running code
 	os_response := os.execute('${os.quoted_path(vexe)} -w -check ${os.quoted_path(check_file)}')
-	str_response := convert_output(os_response)
+	str_response := convert_output(os_response.output)
 	if os_response.exit_code != 0 && str_response.contains('can not print void expressions') {
 		return FnType.void
 	}
@@ -290,7 +291,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			}
 		}
 		print('\n')
-		print_output(result)
+		print_output(result.output)
 	}
 	file := os.join_path(workdir, '.${vrepl_prefix}vrepl.v')
 	temp_file := os.join_path(workdir, '.${vrepl_prefix}vrepl_temp.v')
@@ -387,12 +388,11 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 		}
 		if r.line.starts_with('print') {
 			source_code := r.current_source_code(false, false) + '\n$r.line\n'
-			os.write_file(file, source_code) or { panic(err) }
-			s := repl_run_vfile(file) or { return 1 }
-			print_output(s)
+			os.write_file(temp_file, source_code) or { panic(err) }
+			s := repl_run_vfile(temp_file) or { return 1 }
+			print_output(s.output)
 		} else {
 			mut temp_line := r.line
-			mut temp_flag := false
 			func_call, fntype := r.function_call(r.line)
 			filter_line := r.line.replace(r.line.find_between("'", "'"), '').replace(r.line.find_between('"',
 				'"'), '')
@@ -438,7 +438,11 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			}
 			if !is_statement && (!func_call || fntype == FnType.fn_type) && r.line != '' {
 				temp_line = 'println($r.line)'
-				temp_flag = true
+				source_code := r.current_source_code(false, false) + '\n$temp_line\n'
+				os.write_file(temp_file, source_code) or { panic(err) }
+				s := repl_run_vfile(temp_file) or { return 1 }
+				print_output(s.output)
+				continue
 			}
 			mut temp_source_code := ''
 			if temp_line.starts_with('import ') {
@@ -459,7 +463,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			}
 			os.write_file(temp_file, temp_source_code) or { panic(err) }
 			s := repl_run_vfile(temp_file) or { return 1 }
-			if !func_call && s.exit_code == 0 && !temp_flag {
+			if s.exit_code == 0 {
 				for r.temp_lines.len > 0 {
 					if !r.temp_lines[0].starts_with('print') {
 						r.lines << r.temp_lines[0]
@@ -478,18 +482,23 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 					r.temp_lines.delete(0)
 				}
 			}
-			if r.is_pin && !temp_flag {
+			if r.is_pin {
 				r.pin()
 				println('')
 			}
-			print_output(s)
+			if s.output.len > r.last_output.len {
+				len := r.last_output.len
+				r.last_output = s.output.clone()
+				cur_line_output := s.output[len..]
+				print_output(cur_line_output)
+			}
 		}
 	}
 	return 0
 }
 
-fn convert_output(os_result os.Result) string {
-	lines := os_result.output.trim_right('\n\r').split_into_lines()
+fn convert_output(os_result string) string {
+	lines := os_result.trim_right('\n\r').split_into_lines()
 	mut content := ''
 	for line in lines {
 		if line.contains('.vrepl_temp.v:') {
@@ -512,7 +521,7 @@ fn convert_output(os_result os.Result) string {
 	return content
 }
 
-fn print_output(os_result os.Result) {
+fn print_output(os_result string) {
 	content := convert_output(os_result)
 	print(content)
 }

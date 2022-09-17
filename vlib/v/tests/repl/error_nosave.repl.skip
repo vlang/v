@@ -1,5 +1,9 @@
 a
 33
 ===output===
-undefined: `a`
+error: undefined ident: `a`
+    5 | import math
+    6 | 
+    7 | println(a)
+      |         ^
 33
