@@ -14,9 +14,12 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	attrs := p.attrs
 	p.attrs = []
 	start_pos := p.tok.pos()
-	is_pub := p.tok.kind == .key_pub
+	mut is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
+	}
+	if is_anon {
+		is_pub = true
 	}
 	is_union := p.tok.kind == .key_union
 	if p.tok.kind == .key_struct {

@@ -8,7 +8,7 @@ import v.ast
 
 pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 	f.attrs(node.attrs)
-	if node.is_pub {
+	if node.is_pub && !is_anon {
 		f.write('pub ')
 	}
 	if node.is_union {
