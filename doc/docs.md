@@ -5759,6 +5759,7 @@ For more examples, see [github.com/vlang/v/tree/master/vlib/v/tests/assembly/asm
 
 V can translate your C code to human readable V code and generate V wrappers on top of C libraries.
 
+C2V uses Clang's AST to generate V, so to translate a file from C to V, you have to have Clang installed on your machine.
 
 Let's create a simple program `test.c` first:
 
