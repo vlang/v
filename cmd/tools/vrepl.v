@@ -494,7 +494,9 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			}
 			if s.output.len > r.last_output.len {
 				len := r.last_output.len
-				r.last_output = s.output.clone()
+				if s.exit_code == 0 {
+					r.last_output = s.output.clone()
+				}
 				cur_line_output := s.output[len..]
 				print_output(cur_line_output)
 			}
