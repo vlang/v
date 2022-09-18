@@ -605,10 +605,11 @@ fn (mut g Gen) gen_array_insert(node ast.CallExpr) {
 	arg2_sym := g.table.sym(node.args[1].typ)
 	is_arg2_array := arg2_sym.kind == .array && node.args[1].typ == node.left_type
 	noscan := g.check_noscan(left_info.elem_type)
+	addr := if node.left_type.is_ptr() { '' } else { '&' }
 	if is_arg2_array {
-		g.write('array_insert_many${noscan}(&')
+		g.write('array_insert_many${noscan}($addr')
 	} else {
-		g.write('array_insert${noscan}(&')
+		g.write('array_insert${noscan}($addr')
 	}
 	g.expr(node.left)
 	g.write(', ')
@@ -640,10 +641,11 @@ fn (mut g Gen) gen_array_prepend(node ast.CallExpr) {
 	arg_sym := g.table.sym(node.args[0].typ)
 	is_arg_array := arg_sym.kind == .array && node.args[0].typ == node.left_type
 	noscan := g.check_noscan(left_info.elem_type)
+	addr := if node.left_type.is_ptr() { '' } else { '&' }
 	if is_arg_array {
-		g.write('array_prepend_many${noscan}(&')
+		g.write('array_prepend_many${noscan}($addr')
 	} else {
-		g.write('array_prepend${noscan}(&')
+		g.write('array_prepend${noscan}($addr')
 	}
 	g.expr(node.left)
 	if is_arg_array {
