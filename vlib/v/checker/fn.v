@@ -1928,6 +1928,12 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast
 				c.error('type mismatch, should use e.g. `${node.name}(it > 2)`', arg_expr.pos)
 			}
 		}
+		ast.InfixExpr {
+			if arg_expr.op == .left_shift && arg_expr.is_stmt
+				&& c.table.final_sym(arg_expr.left_type).kind == .array {
+				c.error('array append cannot be used in an expression', arg_expr.pos)
+			}
+		}
 		else {}
 	}
 }
