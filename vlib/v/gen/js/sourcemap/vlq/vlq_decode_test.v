@@ -16,7 +16,7 @@ struct TestData {
 
 type TestDataList = []TestData
 
-fn test_decode_a() ? {
+fn test_decode_a() {
 	decode_values := [
 		TestData{'A', 0},
 		TestData{'C', 1},

@@ -6,7 +6,7 @@ fn path_by_extension(ext string) string {
 	return os.join_path(os.dir(@VEXE), 'vlib/toml/tests/testdata/key_test.$ext')
 }
 
-fn test_keys() ? {
+fn test_keys() {
 	toml_doc := toml.parse_file(path_by_extension('toml'))?
 
 	mut value := toml_doc.value('34-11')
@@ -35,7 +35,7 @@ fn test_keys() ? {
 	}
 }
 
-fn test_parse_dotted_key() ? {
+fn test_parse_dotted_key() {
 	assert toml.parse_dotted_key('')? == []
 	assert toml.parse_dotted_key('abc')? == ['abc']
 	assert toml.parse_dotted_key('tube.test."test.test".h."i.j."."k"')? == ['tube', 'test',

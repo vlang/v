@@ -96,7 +96,7 @@ fn create_and_write_to_file(fpath string, content string) ? {
 	f.close()
 }
 
-fn test_create_file() ? {
+fn test_create_file() {
 	filename := './test1.txt'
 	hello := 'hello world!'
 	create_and_write_to_file(filename, hello)?
@@ -226,7 +226,7 @@ fn normalise_paths(paths []string) []string {
 	return res
 }
 
-fn test_walk_ext() ? {
+fn test_walk_ext() {
 	create_tree()?
 	defer {
 		remove_tree()
@@ -442,7 +442,7 @@ fn test_realpath_does_not_absolutize_non_existing_relative_paths() {
 	}
 }
 
-fn test_realpath_absolutepath_symlink() ? {
+fn test_realpath_absolutepath_symlink() {
 	file_name := 'tolink_file.txt'
 	symlink_name := 'symlink.txt'
 	create_file(file_name)?
@@ -482,7 +482,7 @@ fn test_make_symlink_check_is_link_and_remove_symlink() {
 	assert symlink_exists == false
 }
 
-fn test_make_symlink_check_is_link_and_remove_symlink_with_file() ? {
+fn test_make_symlink_check_is_link_and_remove_symlink_with_file() {
 	file := 'tfile'
 	symlink := 'tsymlink'
 	os.rm(symlink) or {}
@@ -496,7 +496,7 @@ fn test_make_symlink_check_is_link_and_remove_symlink_with_file() ? {
 	assert symlink_exists == false
 }
 
-fn test_make_hardlink_check_is_link_and_remove_hardlink_with_file() ? {
+fn test_make_hardlink_check_is_link_and_remove_hardlink_with_file() {
 	file := 'tfile'
 	symlink := 'tsymlink'
 	os.rm(symlink) or {}
@@ -544,7 +544,7 @@ fn test_symlink() {
 	}
 }
 
-fn test_is_executable_writable_readable() ? {
+fn test_is_executable_writable_readable() {
 	file_name := 'rwxfile.exe'
 	create_file(file_name)?
 	$if !windows {
@@ -704,7 +704,7 @@ cmd.close()
 	*/
 }
 
-fn test_posix_set_bit() ? {
+fn test_posix_set_bit() {
 	$if windows {
 		assert true
 	} $else {
@@ -764,7 +764,7 @@ fn test_exists_in_system_path() {
 	assert os.exists_in_system_path('ls')
 }
 
-fn test_truncate() ? {
+fn test_truncate() {
 	filename := './test_trunc.txt'
 	hello := 'hello world!'
 	mut f := os.create(filename)?
@@ -781,7 +781,7 @@ fn test_hostname() {
 	assert os.hostname().len > 2
 }
 
-fn test_glob() ? {
+fn test_glob() {
 	os.mkdir('test_dir') or { panic(err) }
 	for i in 0 .. 4 {
 		if i == 3 {
@@ -818,7 +818,7 @@ fn test_utime() {
 	assert os.file_last_mod_unix(filename) == mtime
 }
 
-fn test_execute() ? {
+fn test_execute() {
 	print0script := os.join_path_single(tfolder, 'print0.v')
 	// The output of the next command contains a 0 byte in the middle.
 	// Nevertheless, the execute function *should* return a string that

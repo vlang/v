@@ -61,7 +61,7 @@ const return_types = [
 
 // test_closures_with_n_args generates a new V file containing closures of `i`
 // and parameters of type `typ`, to makes sure that all combinations work correctly
-fn test_closures_with_n_args() ? {
+fn test_closures_with_n_args() {
 	mut v_code := strings.new_builder(1024)
 	// Note: the type or value of the captured arg doesn't matter for this test,
 	// as the entire closure context is always passed as one pointer anyways

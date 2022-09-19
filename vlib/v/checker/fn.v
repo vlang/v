@@ -467,7 +467,8 @@ pub fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	c.stmts_ending_with_expression(node.or_block.stmts)
 	c.expected_or_type = ast.void_type
 
-	if !c.inside_const && c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.is_main {
+	if !c.inside_const && c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.is_main
+		&& !c.table.cur_fn.is_test {
 		// TODO: use just `if node.or_block.kind == .propagate_result && !c.table.cur_fn.return_type.has_flag(.result) {` after the deprecation for ?!Type
 		if node.or_block.kind == .propagate_result && !c.table.cur_fn.return_type.has_flag(.result)
 			&& !c.table.cur_fn.return_type.has_flag(.optional) {

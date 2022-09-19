@@ -128,7 +128,7 @@ fn test_propagation() {
 	println(6)
 }
 
-fn test_q() ? {
+fn test_q() {
 	assert foo_ok()? == 777
 }
 

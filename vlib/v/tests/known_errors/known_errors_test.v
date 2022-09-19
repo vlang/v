@@ -6,12 +6,12 @@ const vroot = os.dir(vexe)
 
 const testdata_folder = 'vlib/v/tests/known_errors/testdata'
 
-fn test_known_errors_testdata_folder_exists() ? {
+fn test_known_errors_testdata_folder_exists() {
 	os.chdir(vroot)?
 	assert os.is_dir(testdata_folder)
 }
 
-fn test_known_failures_are_still_failures() ? {
+fn test_known_failures_are_still_failures() {
 	mut oks := []string{}
 	mut files := os.walk_ext(testdata_folder, '.v')
 	files << os.walk_ext(testdata_folder, '.vv')

@@ -4,7 +4,7 @@ const vexe = os.getenv('VEXE')
 
 const vroot = os.dir(vexe)
 
-fn test_pkgconfig_can_be_compiled() ? {
+fn test_pkgconfig_can_be_compiled() {
 	tmp_exe := os.join_path(os.temp_dir(), '${os.getpid()}_pkgconfig.exe')
 	pkgconfig_v_file := os.real_path(os.join_path(vroot, 'vlib/v/pkgconfig/bin/pkgconfig.v'))
 	assert !os.exists(tmp_exe)

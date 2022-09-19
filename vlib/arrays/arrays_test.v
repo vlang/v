@@ -1,6 +1,6 @@
 module arrays
 
-fn test_min() ? {
+fn test_min() {
 	a := [8, 2, 6, 4]
 	mut ri := min(a)?
 	assert ri == 2
@@ -18,7 +18,7 @@ fn test_min() ? {
 	assert rb == u8(3)
 }
 
-fn test_max() ? {
+fn test_max() {
 	a := [8, 2, 6, 4]
 	mut ri := max(a)?
 	assert ri == 8
@@ -36,7 +36,7 @@ fn test_max() ? {
 	assert rb == u8(3)
 }
 
-fn test_idx_min() ? {
+fn test_idx_min() {
 	a := [8, 2, 6, 4]
 	ri := idx_min(a)?
 	assert ri == 1
@@ -48,7 +48,7 @@ fn test_idx_min() ? {
 	assert rb == 3
 }
 
-fn test_idx_max() ? {
+fn test_idx_max() {
 	a := [8, 2, 6, 4]
 	ri := idx_max(a)?
 	assert ri == 0
@@ -195,13 +195,13 @@ fn test_concat_string() {
 	assert concat(a, ...b) == ['1', '2', '3', '3', '2', '1']
 }
 
-fn test_binary_search() ? {
+fn test_binary_search() {
 	a := [1, 3, 3, 4, 5, 6, 7, 8, 10]
 	assert binary_search(a, 3)? == 1
 	assert (binary_search(a, 0) or { -1 }) == -1
 }
 
-fn test_lower_bound() ? {
+fn test_lower_bound() {
 	a := [1, 3, 3, 4, 5, 6, 7, 8, 10]
 	b := []int{}
 	c := [1, 2, 3]
@@ -210,7 +210,7 @@ fn test_lower_bound() ? {
 	assert lower_bound(c, 3)? == 3
 }
 
-fn test_upper_bound() ? {
+fn test_upper_bound() {
 	a := [1, 3, 3, 4, 5, 6, 7, 8, 10]
 	b := []int{}
 	c := [1, 2, 3]

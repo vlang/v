@@ -28,7 +28,7 @@ struct Engine {
 	parser Parser
 }
 
-fn test_cast_optional_to_interface() ? {
+fn test_cast_optional_to_interface() {
 	parser := new_parser()?
 	assert parser.main.str == 'test'
 	eprintln(voidptr(parser.main))

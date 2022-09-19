@@ -4,7 +4,7 @@ const quote = '\x22'
 
 const apos = '\x27'
 
-fn test_ok() ? {
+fn test_ok() {
 	ok_source := "Module {
 	name: 'V'
 	description: 'The V programming language.'
@@ -34,7 +34,7 @@ fn test_ok() ? {
 	assert e.unknown == {}
 }
 
-fn test_invalid_start() ? {
+fn test_invalid_start() {
 	vmod.decode('\n\nXYZ') or {
 		assert err.msg() == 'vmod: v.mod files should start with Module, at line 3'
 		return
@@ -42,7 +42,7 @@ fn test_invalid_start() ? {
 	assert false
 }
 
-fn test_invalid_end() ? {
+fn test_invalid_end() {
 	vmod.decode('\nModule{\n \nname: ${quote}zzzz}') or {
 		assert err.msg() == 'vmod: invalid token ${quote}eof$quote, at line 4'
 		return

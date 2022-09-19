@@ -218,7 +218,7 @@ fn return_optional() ?int {
 	return 1
 }
 
-fn test_if_expr_with_optional() ? {
+fn test_if_expr_with_optional() {
 	m := map[string]int{}
 	v := if a := m['a'] {
 		println('$a')

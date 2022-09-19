@@ -10,7 +10,7 @@ pub mut:
 	bytes []u8
 }
 
-fn test_encode_a() ? {
+fn test_encode_a() {
 	decode_values := [
 		TestData{'A', 0},
 		TestData{'C', 1},

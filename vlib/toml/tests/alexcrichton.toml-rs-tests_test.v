@@ -63,7 +63,7 @@ fn run(args []string) ?string {
 }
 
 // test_alexcrichton_toml_rs run though 'testdata/alexcrichton/toml-test/test-suite/tests/*' if found.
-fn test_alexcrichton_toml_rs() ? {
+fn test_alexcrichton_toml_rs() {
 	this_file := @FILE
 	test_root := os.join_path(os.dir(this_file), 'testdata', 'alexcrichton', 'toml-test')
 	if os.is_dir(test_root) {
