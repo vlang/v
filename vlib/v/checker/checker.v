@@ -3485,8 +3485,12 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 			node.is_farray = true
 		}
 		.any {
-			typ = c.unwrap_generic(typ)
-			typ_sym = c.table.final_sym(typ)
+			unwrapped_typ := c.unwrap_generic(typ)
+			unwrapped_sym := c.table.final_sym(unwrapped_typ)
+			if unwrapped_sym.kind in [.map, .array, .array_fixed] {
+				typ = unwrapped_typ
+				typ_sym = unwrapped_sym
+			}
 		}
 		else {}
 	}
