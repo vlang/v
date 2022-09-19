@@ -4103,7 +4103,7 @@ If a test function has an error return type, any propagated errors will fail the
 ```v
 import strconv
 
-fn test_atoi() {
+fn test_atoi() ? {
 	assert strconv.atoi('1')? == 1
 	assert strconv.atoi('one')? == 1 // test will fail
 }
