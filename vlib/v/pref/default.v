@@ -102,6 +102,10 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	if p.is_debug {
 		p.parse_define('debug')
 	}
+	if p.os == .wasm32_emscripten {
+		// TODO: remove after `$if wasm32_emscripten {` works
+		p.parse_define('emscripten')
+	}
 	if p.os == ._auto {
 		// No OS specifed? Use current system
 		p.os = get_host_os()
