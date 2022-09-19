@@ -169,6 +169,11 @@ fn get_all_commands() []Command {
 			okmsg: 'V compiles hello_world.v on the JS backend, with -skip-unused'
 			rmfile: 'hw_skip_unused.js'
 		}
+		res << Command{
+			line: '$vexe -skip-unused examples/2048'
+			okmsg: 'V can compile 2048 with -skip-unused.'
+			rmfile: 'examples/2048/2048'
+		}
 	}
 	res << Command{
 		line: '$vexe -o vtmp cmd/v'
