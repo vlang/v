@@ -934,7 +934,7 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast
 			} else {
 				c.check_or_expr(expr.or_block, ret_type, expr.return_type)
 			}
-			return ret_type.clear_flag(.optional)
+			return ret_type.clear_flag(.optional).clear_flag(.result)
 		} else if expr.or_block.kind == .block {
 			c.error('unexpected `or` block, the function `$expr.name` does neither return an optional nor a result',
 				expr.or_block.pos)
@@ -942,7 +942,7 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast
 			c.error('unexpected `?`, the function `$expr.name` does not return an optional',
 				expr.or_block.pos)
 		} else if expr.or_block.kind == .propagate_result {
-			c.error('unexpected `!`, the function `$expr.name` does not return an optional',
+			c.error('unexpected `!`, the function `$expr.name` does not return a result',
 				expr.or_block.pos)
 		}
 	} else if expr is ast.IndexExpr {
@@ -1003,7 +1003,7 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 		match stmt {
 			ast.ExprStmt {
 				c.expected_type = ret_type
-				c.expected_or_type = ret_type.clear_flag(.optional)
+				c.expected_or_type = ret_type.clear_flag(.optional).clear_flag(.result)
 				last_stmt_typ := c.expr(stmt.expr)
 				c.expected_or_type = ast.void_type
 				type_fits := c.check_types(last_stmt_typ, ret_type)
@@ -1024,12 +1024,12 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 						}
 						return
 					}
-					expected_type_name := c.table.type_to_str(ret_type.clear_flag(.optional))
+					expected_type_name := c.table.type_to_str(ret_type.clear_flag(.optional).clear_flag(.result))
 					c.error('`or` block must provide a default value of type `$expected_type_name`, or return/continue/break or call a [noreturn] function like panic(err) or exit(1)',
 						stmt.expr.pos())
 				} else {
 					type_name := c.table.type_to_str(last_stmt_typ)
-					expected_type_name := c.table.type_to_str(ret_type.clear_flag(.optional))
+					expected_type_name := c.table.type_to_str(ret_type.clear_flag(.optional).clear_flag(.result))
 					c.error('wrong return type `$type_name` in the `or {}` block, expected `$expected_type_name`',
 						stmt.expr.pos())
 				}
@@ -1043,7 +1043,7 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 			}
 			ast.Return {}
 			else {
-				expected_type_name := c.table.type_to_str(ret_type.clear_flag(.optional))
+				expected_type_name := c.table.type_to_str(ret_type.clear_flag(.optional).clear_flag(.result))
 				c.error('last statement in the `or {}` block should be an expression of type `$expected_type_name` or exit parent scope',
 					stmt.pos)
 			}
@@ -1149,10 +1149,14 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 		return ast.void_type
 	}
 	node.expr_type = typ
-	if node.expr_type.has_flag(.optional) && !(node.expr is ast.Ident
-		&& (node.expr as ast.Ident).kind == .constant) {
-		c.error('cannot access fields of an optional, handle the error with `or {...}` or propagate it with `?`',
-			node.pos)
+	if !(node.expr is ast.Ident && (node.expr as ast.Ident).kind == .constant) {
+		if node.expr_type.has_flag(.optional) {
+			c.error('cannot access fields of an optional, handle the error with `or {...}` or propagate it with `?`',
+				node.pos)
+		} else if node.expr_type.has_flag(.result) {
+			c.error('cannot access fields of a result, handle the error with `or {...}` or propagate it with `!`',
+				node.pos)
+		}
 	}
 	field_name := node.field_name
 	sym := c.table.sym(typ)
@@ -2388,6 +2392,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 
 	if to_type.has_flag(.optional) {
 		c.error('casting to optional type is forbidden', node.pos)
+	} else if to_type.has_flag(.result) {
+		c.error('casting to result type is forbidden', node.pos)
 	}
 
 	if (to_sym.is_number() && from_sym.name == 'JS.Number')
@@ -2417,7 +2423,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 			node.expr_type = c.promote_num(node.expr_type, xx)
 			from_type = node.expr_type
 		}
-		if !c.table.sumtype_has_variant(to_type, from_type, false) && !to_type.has_flag(.optional) {
+		if !c.table.sumtype_has_variant(to_type, from_type, false) && !to_type.has_flag(.optional)
+			&& !to_type.has_flag(.result) {
 			ft := c.table.type_to_str(from_type)
 			tt := c.table.type_to_str(to_type)
 			c.error('cannot cast `$ft` to `$tt`', node.pos)
@@ -2473,7 +2480,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	} else if to_type == ast.bool_type && from_type != ast.bool_type && !c.inside_unsafe
 		&& !c.pref.translated && !c.file.is_translated {
 		c.error('cannot cast to bool - use e.g. `some_int != 0` instead', node.pos)
-	} else if from_type == ast.none_type && !to_type.has_flag(.optional) {
+	} else if from_type == ast.none_type && !to_type.has_flag(.optional)
+		&& !to_type.has_flag(.result) {
 		type_name := c.table.type_to_str(to_type)
 		c.error('cannot cast `none` to `$type_name`', node.pos)
 	} else if from_sym.kind == .struct_ && !from_type.is_ptr() {
@@ -2487,9 +2495,16 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		ft := c.table.type_to_str(from_type)
 		tt := c.table.type_to_str(to_type)
 		c.error('cannot cast type `$ft` to `$tt`', node.pos)
-	} else if from_type.has_flag(.optional) || from_type.has_flag(.variadic) {
+	} else if from_type.has_flag(.optional) || from_type.has_flag(.result)
+		|| from_type.has_flag(.variadic) {
 		// variadic case can happen when arrays are converted into variadic
-		msg := if from_type.has_flag(.optional) { 'an optional' } else { 'a variadic' }
+		msg := if from_type.has_flag(.optional) {
+			'an optional'
+		} else if from_type.has_flag(.result) {
+			'a result'
+		} else {
+			'a variadic'
+		}
 		c.error('cannot type cast $msg', node.pos)
 	} else if !c.inside_unsafe && to_type.is_ptr() && from_type.is_ptr()
 		&& to_type.deref() != ast.char_type && from_type.deref() != ast.char_type {
@@ -2820,7 +2835,7 @@ pub fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 							typ = c.expr(obj.expr)
 						}
 					}
-					is_optional := typ.has_flag(.optional)
+					is_optional := typ.has_flag(.optional) || typ.has_flag(.result)
 					node.kind = .variable
 					node.info = ast.IdentVar{
 						typ: typ
@@ -2832,7 +2847,7 @@ pub fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 					node.obj = obj
 					// unwrap optional (`println(x)`)
 					if is_optional {
-						return typ.clear_flag(.optional)
+						return typ.clear_flag(.optional).clear_flag(.result)
 					}
 					return typ
 				}
@@ -2873,7 +2888,7 @@ pub fn (mut c Checker) ident(mut node ast.Ident) ast.Type {
 
 						if mut obj.expr is ast.CallExpr {
 							if obj.expr.or_block.kind != .absent {
-								typ = typ.clear_flag(.optional)
+								typ = typ.clear_flag(.optional).clear_flag(.result)
 							}
 						}
 					}
@@ -3440,13 +3455,13 @@ fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_ty
 				}
 			}
 		}
-		if index_type.has_flag(.optional) {
+		if index_type.has_flag(.optional) || index_type.has_flag(.result) {
 			type_str := if typ_sym.kind == .string {
 				'(type `$typ_sym.name`)'
 			} else {
 				'(array type `$typ_sym.name`)'
 			}
-			c.error('cannot use optional as index $type_str', pos)
+			c.error('cannot use optional or result as index $type_str', pos)
 		}
 	}
 }
@@ -3481,6 +3496,8 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 	}
 	if typ.has_flag(.optional) {
 		c.error('type `?$typ_sym.name` is optional, it does not support indexing', node.left.pos())
+	} else if typ.has_flag(.result) {
+		c.error('type `!$typ_sym.name` is result, it does not support indexing', node.left.pos())
 	}
 	if typ_sym.kind == .string && !typ.is_ptr() && node.is_setter {
 		c.error('cannot assign to s[i] since V strings are immutable\n' +
