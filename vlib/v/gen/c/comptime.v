@@ -657,6 +657,9 @@ fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_optional bool) ?str
 		'js' {
 			return '_VJS'
 		}
+		'wasm32_emscripten' {
+			return '__EMSCRIPTEN__'
+		}
 		// compilers:
 		'gcc' {
 			return '__V_GCC__'

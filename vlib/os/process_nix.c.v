@@ -75,7 +75,10 @@ fn (mut p Process) unix_kill_pgroup() {
 
 fn (mut p Process) unix_wait() {
 	cstatus := 0
-	ret := C.waitpid(p.pid, &cstatus, 0)
+	mut ret := -1
+	$if !emscripten ? {
+		ret = C.waitpid(p.pid, &cstatus, 0)
+	}
 	if ret == -1 {
 		p.err = posix_get_error_msg(C.errno)
 		return
@@ -92,7 +95,10 @@ fn (mut p Process) unix_wait() {
 
 fn (mut p Process) unix_is_alive() bool {
 	cstatus := 0
-	ret := C.waitpid(p.pid, &cstatus, C.WNOHANG)
+	mut ret := -1
+	$if !emscripten ? {
+		ret = C.waitpid(p.pid, &cstatus, C.WNOHANG)
+	}
 	if ret == -1 {
 		p.err = posix_get_error_msg(C.errno)
 		return false

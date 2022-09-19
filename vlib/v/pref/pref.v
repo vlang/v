@@ -82,12 +82,13 @@ pub enum Arch {
 	js_node
 	js_browser
 	js_freestanding
+	wasm32
 	_max
 }
 
 const (
-	list_of_flags_with_param = ['o', 'd', 'define', 'b', 'backend', 'cc', 'os', 'target-os', 'cf',
-		'cflags', 'path', 'arch']
+	list_of_flags_with_param = ['o', 'd', 'define', 'b', 'backend', 'cc', 'os', 'cf', 'cflags',
+		'path', 'arch']
 )
 
 [heap; minify]
@@ -606,6 +607,12 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				if target_os_kind == .wasm32 {
 					res.is_bare = true
 				}
+				if target_os_kind in [.wasm32, .wasm32_emscripten, .wasm32_wasi] {
+					res.arch = .wasm32
+				}
+				if target_os_kind == .wasm32_emscripten {
+					res.gc_mode = .no_gc // TODO: enable gc (turn off threads etc, in builtin_d_gcboehm.c.v, once `$if wasm32_emscripten {` works)
+				}
 				res.os = target_os_kind
 				res.build_options << '$arg $target_os'
 			}
@@ -870,36 +877,39 @@ pub fn arch_from_string(arch_str string) ?Arch {
 	match arch_str {
 		'amd64', 'x86_64', 'x64', 'x86' { // amd64 recommended
 
-			return Arch.amd64
+			return .amd64
 		}
 		'aarch64', 'arm64' { // arm64 recommended
 
-			return Arch.arm64
+			return .arm64
 		}
 		'aarch32', 'arm32', 'arm' { // arm32 recommended
 
-			return Arch.arm32
+			return .arm32
 		}
 		'rv64', 'riscv64', 'risc-v64', 'riscv', 'risc-v' { // rv64 recommended
 
-			return Arch.rv64
+			return .rv64
 		}
 		'rv32', 'riscv32' { // rv32 recommended
 
-			return Arch.rv32
+			return .rv32
 		}
 		'x86_32', 'x32', 'i386', 'IA-32', 'ia-32', 'ia32' { // i386 recommended
 
-			return Arch.i386
+			return .i386
 		}
 		'js', 'js_node' {
-			return Arch.js_node
+			return .js_node
 		}
 		'js_browser' {
-			return Arch.js_browser
+			return .js_browser
 		}
 		'js_freestanding' {
-			return Arch.js_freestanding
+			return .js_freestanding
+		}
+		'wasm32' {
+			return .wasm32
 		}
 		'' {
 			return ._auto
