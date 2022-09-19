@@ -75,8 +75,8 @@ mut:
 	struct_fn_definitions  []string // struct equality functions that have been defined
 	sumtype_fn_definitions []string // sumtype equality functions that have been defined
 	alias_fn_definitions   []string // alias equality functions that have been defined
-	auto_fn_definitions    []string // auto generated functions defination list
-	anon_fn_definitions    []string // anon generated functions defination list
+	auto_fn_definitions    []string // auto generated functions definition list
+	anon_fn_definitions    []string // anon generated functions definition list
 	copy_fn_definitions    []string
 	method_fn_decls        map[string][]ast.FnDecl
 	builtin_fns            []string // Functions defined in `builtin`
