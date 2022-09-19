@@ -957,8 +957,9 @@ pub fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_re
 	if node.kind == .propagate_option {
 		if c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.return_type.has_flag(.optional)
 			&& c.table.cur_fn.name != 'main.main' && !c.inside_const {
+			c.add_instruction_for_optional_type()
 			c.error('to propagate the call, `$c.table.cur_fn.name` must return an optional type',
-				c.table.cur_fn.return_type_pos)
+				node.pos)
 		}
 		if !expr_return_type.has_flag(.optional) {
 			if expr_return_type.has_flag(.result) {
@@ -974,8 +975,9 @@ pub fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_re
 	if node.kind == .propagate_result {
 		if c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.return_type.has_flag(.result)
 			&& c.table.cur_fn.name != 'main.main' && !c.inside_const {
-			c.error('to propagate the call, `$c.table.cur_fn.name` must return an result type',
-				c.table.cur_fn.return_type_pos)
+			c.add_instruction_for_result_type()
+			c.error('to propagate the call, `$c.table.cur_fn.name` must return a result type',
+				node.pos)
 		}
 		if !expr_return_type.has_flag(.result) {
 			c.error('to propagate a result, the call must also return a result type',
@@ -3684,6 +3686,20 @@ pub fn (mut c Checker) check_dup_keys(node &ast.MapInit, i int) {
 // call this *before* calling error or warn
 pub fn (mut c Checker) add_error_detail(s string) {
 	c.error_details << s
+}
+
+pub fn (mut c Checker) add_error_detail_with_pos(msg string, pos token.Pos) {
+	c.add_error_detail(util.formatted_error('details:', msg, c.file.path, pos))
+}
+
+pub fn (mut c Checker) add_instruction_for_optional_type() {
+	c.add_error_detail_with_pos('prepend ? before the declaration of the return type of `$c.table.cur_fn.name`',
+		c.table.cur_fn.return_type_pos)
+}
+
+pub fn (mut c Checker) add_instruction_for_result_type() {
+	c.add_error_detail_with_pos('prepend ! before the declaration of the return type of `$c.table.cur_fn.name`',
+		c.table.cur_fn.return_type_pos)
 }
 
 pub fn (mut c Checker) warn(s string, pos token.Pos) {

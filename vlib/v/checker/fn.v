@@ -466,11 +466,19 @@ pub fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	c.expected_or_type = node.return_type.clear_flag(.optional)
 	c.stmts_ending_with_expression(node.or_block.stmts)
 	c.expected_or_type = ast.void_type
-	if node.or_block.kind == .propagate_option && c.table.cur_fn != unsafe { nil }
-		&& !c.table.cur_fn.return_type.has_flag(.optional) && !c.inside_const {
+	if c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.return_type.has_flag(.optional)
+		&& !c.inside_const {
 		if !c.table.cur_fn.is_main {
-			c.error('to propagate the optional call, `$c.table.cur_fn.name` must return an optional',
-				node.or_block.pos)
+			if node.or_block.kind == .propagate_option {
+				c.add_instruction_for_optional_type()
+				c.error('to propagate the optional call, `$c.table.cur_fn.name` must return an optional',
+					node.or_block.pos)
+			}
+			if node.or_block.kind == .propagate_result {
+				c.add_instruction_for_result_type()
+				c.error('to propagate the result call, `$c.table.cur_fn.name` must return a result',
+					node.or_block.pos)
+			}
 		}
 	}
 	return typ
