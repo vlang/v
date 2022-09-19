@@ -24,7 +24,7 @@ pub fn (mut rb RingBuffer<T>) push(element T) {
 		eprintln('Buffer overflow')
 	} else {
 		rb.content[rb.writer] = element
-		rb.writer = rb.writer + 1
+		rb.writer++
 		if rb.writer > rb.content.len - 1 {
 			rb.writer = 0
 		}
