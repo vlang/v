@@ -85,13 +85,19 @@ pub fn (mut app App) controller_get_all_task() ?vweb.Result {
 	for orm_stmt_kind in orm_stmt_kinds {
 		match orm_stmt_kind {
 			'insert' {
-				framework_platform[orm_stmt_kind] = insert_framework_benchmark_times().to_map()
+				framework_platform[orm_stmt_kind] = insert_framework_benchmark_times() or {
+					return error('')
+				}.to_map()
 			}
 			'select' {
-				framework_platform[orm_stmt_kind] = select_framework_benchmark_times().to_map()
+				framework_platform[orm_stmt_kind] = select_framework_benchmark_times() or {
+					return error('')
+				}.to_map()
 			}
 			'update' {
-				framework_platform[orm_stmt_kind] = update_framework_benchmark_times().to_map()
+				framework_platform[orm_stmt_kind] = update_framework_benchmark_times() or {
+					return error('')
+				}.to_map()
 			}
 			else {}
 		}
@@ -109,7 +115,7 @@ pub fn (mut app App) controller_get_all_task() ?vweb.Result {
 	return $vweb.html()
 }
 
-fn insert_framework_benchmark_times() FrameworkPlatform {
+fn insert_framework_benchmark_times() !FrameworkPlatform {
 	numbers := FrameworkPlatform{
 		v_sqlite_memory: v_sqlite_memory()!.insert
 		// v_sqlite_file: v_sqlite_file()!.insert
@@ -119,7 +125,7 @@ fn insert_framework_benchmark_times() FrameworkPlatform {
 	return numbers
 }
 
-fn select_framework_benchmark_times() FrameworkPlatform {
+fn select_framework_benchmark_times() !FrameworkPlatform {
 	numbers := FrameworkPlatform{
 		v_sqlite_memory: v_sqlite_memory()!.@select
 		// v_sqlite_file: v_sqlite_file()!.@select
@@ -129,7 +135,7 @@ fn select_framework_benchmark_times() FrameworkPlatform {
 	return numbers
 }
 
-fn update_framework_benchmark_times() FrameworkPlatform {
+fn update_framework_benchmark_times() !FrameworkPlatform {
 	numbers := FrameworkPlatform{
 		v_sqlite_memory: v_sqlite_memory()!.update
 		// v_sqlite_file: v_sqlite_file()!.@select
