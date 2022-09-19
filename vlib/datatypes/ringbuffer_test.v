@@ -6,13 +6,13 @@ fn test_push_and_pop() {
 	r.push(3)
 	r.push(4)
 
-	mut oldest_value := r.pop()
+	mut oldest_value := r.pop() or { 0 }
 
 	assert oldest_value == 3
 
 	r.push(5)
 
-	oldest_value = r.pop()
+	oldest_value = r.pop() or { 0 }
 
 	assert oldest_value == 4
 }
@@ -22,7 +22,7 @@ fn test_clear_and_empty() {
 	r.push(3)
 	r.push(4)
 
-	oldest_value := r.pop()
+	oldest_value := r.pop() or { 0 }
 	assert oldest_value == 3
 
 	r.clear()

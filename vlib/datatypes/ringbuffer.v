@@ -32,12 +32,12 @@ pub fn (mut rb RingBuffer<T>) push(element T) {
 }
 
 // pop - returns the oldest element of the buffer
-pub fn (mut rb RingBuffer<T>) pop() T {
+pub fn (mut rb RingBuffer<T>) pop() ?T {
 	mut v := rb.content[rb.reader]
 	if rb.is_empty() {
-		eprintln('Buffer is empty')
+		none
 	} else {
-		rb.reader = rb.reader + 1
+		rb.reader++
 		if rb.reader > rb.content.len - 1 {
 			rb.reader = 0
 		}
@@ -72,9 +72,5 @@ pub fn (rb RingBuffer<T>) capacity() int {
 
 // clear - emptys the ringbuffer
 pub fn (mut rb RingBuffer<T>) clear() {
-	rb = RingBuffer<T>{
-		reader: 0
-		writer: 0
-		content: []T{len: rb.content.len, cap: rb.content.cap}
-	}
+	rb.reader, rb.writer = 0, 0
 }
