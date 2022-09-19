@@ -5107,19 +5107,19 @@ fn (mut g Gen) write_types(symbols []&ast.TypeSymbol) {
 				// ast.Alias { TODO
 			}
 			ast.Thread {
-				if g.pref.os == .windows {
-					if name == '__v_thread' {
-						g.thread_definitions.writeln('typedef HANDLE $name;')
+				if !g.pref.is_bare && !g.pref.no_builtin {
+					if g.pref.os == .windows {
+						if name == '__v_thread' {
+							g.thread_definitions.writeln('typedef HANDLE $name;')
+						} else {
+							// Windows can only return `u32` (no void*) from a thread, so the
+							// V gohandle must maintain a pointer to the return value
+							g.thread_definitions.writeln('typedef struct {')
+							g.thread_definitions.writeln('\tvoid* ret_ptr;')
+							g.thread_definitions.writeln('\tHANDLE handle;')
+							g.thread_definitions.writeln('} $name;')
+						}
 					} else {
-						// Windows can only return `u32` (no void*) from a thread, so the
-						// V gohandle must maintain a pointer to the return value
-						g.thread_definitions.writeln('typedef struct {')
-						g.thread_definitions.writeln('\tvoid* ret_ptr;')
-						g.thread_definitions.writeln('\tHANDLE handle;')
-						g.thread_definitions.writeln('} $name;')
-					}
-				} else {
-					if !g.pref.is_bare && !g.pref.no_builtin {
 						g.thread_definitions.writeln('typedef pthread_t $name;')
 					}
 				}
