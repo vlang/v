@@ -958,7 +958,7 @@ pub fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_re
 		if c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.return_type.has_flag(.optional)
 			&& c.table.cur_fn.name != 'main.main' && !c.inside_const {
 			c.error('to propagate the call, `$c.table.cur_fn.name` must return an optional type',
-				node.pos)
+				c.table.cur_fn.return_type_pos)
 		}
 		if !expr_return_type.has_flag(.optional) {
 			if expr_return_type.has_flag(.result) {
@@ -975,7 +975,7 @@ pub fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_re
 		if c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.return_type.has_flag(.result)
 			&& c.table.cur_fn.name != 'main.main' && !c.inside_const {
 			c.error('to propagate the call, `$c.table.cur_fn.name` must return an result type',
-				node.pos)
+				c.table.cur_fn.return_type_pos)
 		}
 		if !expr_return_type.has_flag(.result) {
 			c.error('to propagate a result, the call must also return a result type',
