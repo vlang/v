@@ -103,7 +103,7 @@ vlib/v/checker/tests/optional_fn_err.vv:58:8: error: bar() returns an option, so
       |           ~~~~~~
    59 |     _ := [1]int{init: bar(0)}
    60 |     // index
-vlib/v/checker/tests/optional_fn_err.vv:61:13: error: cannot use optional as index (array type `[]int`)
+vlib/v/checker/tests/optional_fn_err.vv:61:13: error: cannot use optional or result as index (array type `[]int`)
    59 |     _ := [1]int{init: bar(0)}
    60 |     // index
    61 |     println(arr[bar(0)])
