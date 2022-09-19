@@ -901,7 +901,9 @@ pub fn fork() int {
 pub fn wait() int {
 	mut pid := -1
 	$if !windows {
-		pid = C.wait(0)
+		$if !emscripten ? {
+			pid = C.wait(0)
+		}
 	}
 	$if windows {
 		panic('os.wait not supported in windows') // TODO

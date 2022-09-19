@@ -99,6 +99,9 @@ pub fn get_host_os() OS {
 	$if android {
 		return .android
 	}
+	$if emscripten ? {
+		return .wasm32_emscripten
+	}
 	$if linux {
 		return .linux
 	}

@@ -276,6 +276,9 @@ pub fn (p &Preferences) vcross_compiler_name() string {
 	if p.os == .linux {
 		return 'clang'
 	}
+	if p.os == .wasm32_emscripten {
+		return 'emcc'
+	}
 	if p.backend == .c && !p.out_name.ends_with('.c') {
 		eprintln('Note: V can only cross compile to windows and linux for now by default.')
 		eprintln('It will use `cc` as a cross compiler for now, although that will probably fail.')

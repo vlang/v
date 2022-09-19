@@ -909,6 +909,10 @@ fn (mut app App) showfps() {
 	}
 }
 
+$if emscripten ? {
+	#flag --embed-file ./examples/assets/fonts/RobotoMono-Regular.ttf@/assets/fonts/RobotoMono-Regular.ttf
+}
+
 fn main() {
 	mut app := &App{}
 	app.new_game()
