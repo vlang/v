@@ -101,37 +101,38 @@ pub mut:
 	// verbosity           VerboseLevel
 	is_verbose bool
 	// nofmt            bool   // disable vfmt
-	is_glibc          bool // if GLIBC will be linked
-	is_musl           bool // if MUSL will be linked
-	is_test           bool // `v test string_test.v`
-	is_script         bool // single file mode (`v program.v`), main function can be skipped
-	is_vsh            bool // v script (`file.vsh`) file, the `os` module should be made global
-	is_livemain       bool // main program that contains live/hot code
-	is_liveshared     bool // a shared library, that will be used in a -live main program
-	is_shared         bool // an ordinary shared library, -shared, no matter if it is live or not
-	is_o              bool // building an .o file
-	is_prof           bool // benchmark every function
-	is_prod           bool // use "-O2"
-	is_repl           bool
-	is_run            bool // compile and run a v program, passing arguments to it, and deleting the executable afterwards
-	is_crun           bool // similar to run, but does not recompile the executable, if there were no changes to the sources
-	is_debug          bool // turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
-	is_vlines         bool // turned on by -g (it slows down .tmp.c generation slightly).
-	is_stats          bool // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
-	show_timings      bool // show how much time each compiler stage took
-	is_fmt            bool
-	is_vet            bool
-	is_vweb           bool // skip _ var warning in templates
-	is_ios_simulator  bool
-	is_apk            bool     // build as Android .apk format
-	is_help           bool     // -h, -help or --help was passed
-	is_cstrict        bool     // turn on more C warnings; slightly slower
-	test_runner       string   // can be 'simple' (fastest, but much less detailed), 'tap', 'normal'
-	profile_file      string   // the profile results will be stored inside profile_file
-	profile_no_inline bool     // when true, [inline] functions would not be profiled
-	profile_fns       []string // when set, profiling will be off by default, but inside these functions (and what they call) it will be on.
-	translated        bool     // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
-	obfuscate         bool     // `v -obf program.v`, renames functions to "f_XXX"
+	is_glibc           bool   // if GLIBC will be linked
+	is_musl            bool   // if MUSL will be linked
+	is_test            bool   // `v test string_test.v`
+	is_script          bool   // single file mode (`v program.v`), main function can be skipped
+	is_vsh             bool   // v script (`file.vsh`) file, the `os` module should be made global
+	raw_vsh_tmp_prefix string // The prefix for raw_vsh executables.
+	is_livemain        bool   // main program that contains live/hot code
+	is_liveshared      bool   // a shared library, that will be used in a -live main program
+	is_shared          bool   // an ordinary shared library, -shared, no matter if it is live or not
+	is_o               bool   // building an .o file
+	is_prof            bool   // benchmark every function
+	is_prod            bool   // use "-O2"
+	is_repl            bool
+	is_run             bool // compile and run a v program, passing arguments to it, and deleting the executable afterwards
+	is_crun            bool // similar to run, but does not recompile the executable, if there were no changes to the sources
+	is_debug           bool // turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
+	is_vlines          bool // turned on by -g (it slows down .tmp.c generation slightly).
+	is_stats           bool // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
+	show_timings       bool // show how much time each compiler stage took
+	is_fmt             bool
+	is_vet             bool
+	is_vweb            bool // skip _ var warning in templates
+	is_ios_simulator   bool
+	is_apk             bool     // build as Android .apk format
+	is_help            bool     // -h, -help or --help was passed
+	is_cstrict         bool     // turn on more C warnings; slightly slower
+	test_runner        string   // can be 'simple' (fastest, but much less detailed), 'tap', 'normal'
+	profile_file       string   // the profile results will be stored inside profile_file
+	profile_no_inline  bool     // when true, [inline] functions would not be profiled
+	profile_fns        []string // when set, profiling will be off by default, but inside these functions (and what they call) it will be on.
+	translated         bool     // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
+	obfuscate          bool     // `v -obf program.v`, renames functions to "f_XXX"
 	// Note: passing -cg instead of -g will set is_vlines to false and is_debug to true, thus making v generate cleaner C files,
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
 	sanitize               bool   // use Clang's new "-fsanitize" option
@@ -698,6 +699,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.custom_prelude = prelude
 				i++
 			}
+			'-raw-vsh-tmp-prefix' {
+				res.raw_vsh_tmp_prefix = cmdline.option(current_args, arg, '')
+				i++
+			}
 			'-cmain' {
 				res.cmain = cmdline.option(current_args, '-cmain', '')
 				i++
@@ -807,7 +812,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	if !res.is_bare && res.bare_builtin_dir != '' {
 		eprintln_cond(show_output, '`-bare-builtin-dir` must be used with `-freestanding`')
 	}
-	if command.ends_with('.vsh') {
+	if command.ends_with('.vsh') || (res.raw_vsh_tmp_prefix != '' && !res.is_run) {
 		// `v build.vsh gcc` is the same as `v run build.vsh gcc`,
 		// i.e. compiling, then running the script, passing the args
 		// after it to the script:

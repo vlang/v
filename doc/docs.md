@@ -127,6 +127,7 @@ To upgrade the version run the command ` v up`
     * [Hot code reloading](#hot-code-reloading)
     * [Cross compilation](#cross-compilation)
     * [Cross-platform shell scripts in V](#cross-platform-shell-scripts-in-v)
+	* [Vsh scripts with no extension](#vsh-scripts-with-no-extension)
     * [Attributes](#attributes)
     * [Goto](#goto)
 * [Appendices](#appendices)
@@ -5919,6 +5920,18 @@ Or just run it more like a traditional Bash script:
 
 On Unix-like platforms, the file can be run directly after making it executable using `chmod +x`:
 `./deploy.vsh`
+
+## Vsh scripts with no extension
+
+Whilst V does normally not allow vsh scripts without the designated file extension, there is a way
+to circumvent this rule and have a file with a fully custom name and shebang. Whilst this feature
+exists it is only recommended for specific usecases like scripts that will be put in the path and
+should **not** be used for things like build or deploy scripts. To access this feature start the
+file with `#!/usr/bin/env -S v -raw-vsh-tmp-prefix <prefix>` where `<prefix>` is the prefix for
+the built executable. This will run in crun mode so it will only rebuild if changes to the script
+were made and keep the binary as `<prefix>.<scriptfilename>`. **Caution**: if this filename already
+exists the file will be overriden. If you want to rebuild each time and not keep this binary instead
+use `#!/usr/bin/env -S v -raw-vsh-tmp-prefix <prefix> run`.
 
 ## Attributes
 
