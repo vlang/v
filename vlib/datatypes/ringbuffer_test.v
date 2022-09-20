@@ -3,14 +3,14 @@ import datatypes
 fn test_push_and_pop() {
 	mut r := datatypes.new_ringbuffer<int>(2)
 
-	r.push(3)
-	r.push(4)
+	r.push(3) or { panic(err) }
+	r.push(4) or { panic(err) }
 
 	mut oldest_value := r.pop() or { 0 }
 
 	assert oldest_value == 3
 
-	r.push(5)
+	r.push(5) or { panic(err) }
 
 	oldest_value = r.pop() or { 0 }
 
@@ -19,8 +19,8 @@ fn test_push_and_pop() {
 
 fn test_clear_and_empty() {
 	mut r := datatypes.new_ringbuffer<int>(4)
-	r.push(3)
-	r.push(4)
+	r.push(3) or { panic(err) }
+	r.push(4) or { panic(err) }
 
 	oldest_value := r.pop() or { 0 }
 	assert oldest_value == 3
@@ -35,10 +35,10 @@ fn test_capacity_and_is_full() {
 
 	assert r.capacity() == 4
 
-	r.push(3)
-	r.push(4)
-	r.push(5)
-	r.push(6)
+	r.push(3) or { panic(err) }
+	r.push(4) or { panic(err) }
+	r.push(5) or { panic(err) }
+	r.push(6) or { panic(err) }
 
 	assert r.is_full() == true
 }
