@@ -19,6 +19,11 @@ const skip_on_cstrict = [
 const skip_on_ubuntu_musl = [
 	'vlib/v/checker/tests/vweb_tmpl_used_var.vv',
 	'vlib/v/checker/tests/vweb_routing_checks.vv',
+	'vlib/v/tests/skip_unused/gg_code.vv',
+]
+
+const skip_on_ci_musl = [
+	'vlib/v/tests/skip_unused/gg_code.vv',
 ]
 
 const vexe = os.getenv('VEXE')
@@ -36,6 +41,8 @@ const should_autofix = os.getenv('VAUTOFIX') != ''
 const github_job = os.getenv('GITHUB_JOB')
 
 const v_ci_ubuntu_musl = os.getenv('V_CI_UBUNTU_MUSL').len > 0
+
+const v_ci_musl = os.getenv('V_CI_MUSL').len > 0
 
 const v_ci_cstrict = os.getenv('V_CI_CSTRICT').len > 0
 
@@ -216,6 +223,9 @@ fn (mut tasks Tasks) run() {
 	mut m_skip_files := skip_files.clone()
 	if v_ci_ubuntu_musl {
 		m_skip_files << skip_on_ubuntu_musl
+	}
+	if v_ci_musl {
+		m_skip_files << skip_on_ci_musl
 	}
 	if v_ci_cstrict {
 		m_skip_files << skip_on_cstrict
