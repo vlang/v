@@ -1,0 +1,14 @@
+struct S1 {}
+
+struct S2 {}
+
+type T1 = S1 | S2
+
+struct SumTypePtr {
+	ptr &T1 = unsafe { nil }
+}
+
+fn main() {
+	ptr := SumTypePtr{}
+	println(ptr)
+}
