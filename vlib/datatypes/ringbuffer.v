@@ -23,10 +23,7 @@ pub fn (mut rb RingBuffer<T>) push(element T) ? {
 		return error('Buffer overflow')
 	} else {
 		rb.content[rb.writer] = element
-		rb.writer++
-		if rb.writer > rb.content.len - 1 {
-			rb.writer = 0
-		}
+		rb.move_writer()
 	}
 }
 
@@ -36,12 +33,25 @@ pub fn (mut rb RingBuffer<T>) pop() ?T {
 	if rb.is_empty() {
 		return error('Buffer is empty')
 	} else {
-		rb.reader++
-		if rb.reader > rb.content.len - 1 {
-			rb.reader = 0
-		}
+		rb.move_reader()
 	}
 	return v
+}
+
+// push_many - pushes an array to the buffer
+pub fn (mut rb RingBuffer<T>) push_many(elements []T) ? {
+	for v in elements {
+		rb.push(v) or { return err }
+	}
+}
+
+// pop_many - returns a given number(n) of elements of the buffer starting with the oldest one
+pub fn (mut rb RingBuffer<T>) pop_many(n u64) ?[]T {
+	mut elements := []T{}
+	for _ in 0 .. n {
+		elements << rb.pop() or { return err }
+	}
+	return elements
 }
 
 // is_empty - checks if the ringbuffer is empty
@@ -69,5 +79,46 @@ pub fn (rb RingBuffer<T>) capacity() int {
 pub fn (mut rb RingBuffer<T>) clear() {
 	rb = RingBuffer<T>{
 		content: []T{len: rb.content.len, cap: rb.content.cap}
+	}
+}
+
+// occupied - returns occupied capacity of the buffer.
+pub fn (rb RingBuffer<T>) occupied() int {
+	mut reader := rb.reader
+	mut v := 0
+	if rb.is_empty() {
+		return v
+	}
+	for {
+		reader++
+		if reader > rb.content.len - 1 {
+			reader = 0
+		}
+		v++
+		if reader == rb.writer {
+			break
+		}
+	}
+	return v
+}
+
+// remaining - returns remaining capacity of the buffer
+pub fn (rb RingBuffer<T>) remaining() int {
+	return rb.capacity() - rb.occupied()
+}
+
+// head an tail-pointer move methods
+// these methods are not public, they are just an eneasement for handling the pointer-movement process.
+fn (mut rb RingBuffer<T>) move_reader() {
+	rb.reader++
+	if rb.reader > rb.content.len - 1 {
+		rb.reader = 0
+	}
+}
+
+fn (mut rb RingBuffer<T>) move_writer() {
+	rb.writer++
+	if rb.writer > rb.content.len - 1 {
+		rb.writer = 0
 	}
 }
