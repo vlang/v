@@ -1248,14 +1248,14 @@ fn (mut s Scanner) ident_string() string {
 				segment_idx = pos - start
 
 				if pos in u_escapes_pos {
-					str_segments << s.decode_u_escape_single(string_so_far, segment_idx)
-
-					segment_idx += 6
+					end_idx, segment := s.decode_u_escape_single(string_so_far, segment_idx)
+					str_segments << segment
+					segment_idx = end_idx
 				}
 				if pos in h_escapes_pos {
-					str_segments << decode_h_escape_single(string_so_far, segment_idx)
-
-					segment_idx += 4
+					end_idx, segment := decode_h_escape_single(string_so_far, segment_idx)
+					str_segments << segment
+					segment_idx = end_idx
 				}
 			}
 			if segment_idx < string_so_far.len {
@@ -1277,13 +1277,11 @@ fn (mut s Scanner) ident_string() string {
 	return lit
 }
 
-// TODO use multiple return values for `end_idx`
-// TODO add 4, 6 constants
-fn decode_h_escape_single(str string, idx int) string {
+fn decode_h_escape_single(str string, idx int) (int, string) {
 	end_idx := idx + 4 // "\xXX".len == 4
 
 	// notice this function doesn't do any decoding... it just replaces '\xc0' with the byte 0xc0
-	return [u8(strconv.parse_uint(str[idx + 2..end_idx], 16, 8) or { 0 })].bytestr()
+	return end_idx, [u8(strconv.parse_uint(str[idx + 2..end_idx], 16, 8) or { 0 })].bytestr()
 }
 
 // only handle single-byte inline escapes like '\xc0'
@@ -1295,8 +1293,8 @@ fn decode_h_escapes(s string, start int, escapes_pos []int) string {
 	ss << s[..escapes_pos.first() - start]
 	for i, pos in escapes_pos {
 		idx := pos - start
-		end_idx := idx + 4
-		ss << decode_h_escape_single(s, idx)
+		end_idx, segment := decode_h_escape_single(s, idx)
+		ss << segment
 
 		if i + 1 < escapes_pos.len {
 			ss << s[end_idx..escapes_pos[i + 1] - start]
@@ -1328,7 +1326,7 @@ fn decode_o_escapes(s string, start int, escapes_pos []int) string {
 	return ss.join('')
 }
 
-fn (mut s Scanner) decode_u_escape_single(str string, idx int) string {
+fn (mut s Scanner) decode_u_escape_single(str string, idx int) (int, string) {
 	end_idx := idx + 6 // "\uXXXX".len == 6
 	escaped_code_point := strconv.parse_uint(str[idx + 2..end_idx], 16, 32) or { 0 }
 	// Check if Escaped Code Point is invalid or not
@@ -1336,7 +1334,7 @@ fn (mut s Scanner) decode_u_escape_single(str string, idx int) string {
 		s.error('invalid unicode point `$str`')
 	}
 
-	return utf32_to_str(u32(escaped_code_point))
+	return end_idx, utf32_to_str(u32(escaped_code_point))
 }
 
 // decode the flagged unicode escape sequences into their utf-8 bytes
@@ -1348,8 +1346,8 @@ fn (mut s Scanner) decode_u_escapes(str string, start int, escapes_pos []int) st
 	ss << str[..escapes_pos.first() - start]
 	for i, pos in escapes_pos {
 		idx := pos - start
-		end_idx := idx + 6 // "\uXXXX".len == 6
-		ss << s.decode_u_escape_single(str, idx)
+		end_idx, segment := s.decode_u_escape_single(str, idx)
+		ss << segment
 		if i + 1 < escapes_pos.len {
 			ss << str[end_idx..escapes_pos[i + 1] - start]
 		} else {

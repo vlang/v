@@ -234,6 +234,9 @@ fn test_escape_string() {
 	result = scan_tokens(r"'\u2605'")
 	assert result[0].kind == .string
 	assert result[0].lit == r'★'
+	result = scan_tokens(r"'H\u2605H'")
+	assert result[0].kind == .string
+	assert result[0].lit == r'H★H'
 
 	// STRING ESCAPED ASCII
 	result = scan_tokens(r"'\x61'")
