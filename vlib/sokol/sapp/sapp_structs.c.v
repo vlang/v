@@ -112,6 +112,7 @@ pub:
 	identifier u64
 	pos_x      f32
 	pos_y      f32
+	tool_type  TouchToolType
 	changed    bool
 }
 

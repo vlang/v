@@ -183,3 +183,12 @@ pub enum KeyCode {
 	right_super = 347
 	menu = 348
 }
+
+pub enum TouchToolType {
+	unknown
+	finger
+	stylus
+	mouse
+	eraser
+	palm
+}
