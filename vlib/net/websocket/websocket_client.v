@@ -38,7 +38,8 @@ pub mut:
 	nonce_size        int = 16 // size of nounce used for masking
 	panic_on_callback bool        // set to true of callbacks can panic
 	state             State       // current state of connection
-	logger            &log.Logger = unsafe { nil } // logger used to log messages
+	// logger            &log.Logger = unsafe { nil } // logger used to log messages
+	logger            &log.Logger = &log.Logger(&log.Log{level: .info}) // logger used to log messages
 	resource_name     string      // name of current resource
 	last_pong_ut      i64 // last time in unix time we got a pong message
 }

@@ -9,7 +9,8 @@ import rand
 // Server represents a websocket server connection
 pub struct Server {
 mut:
-	logger                  &log.Logger      = unsafe { nil } // logger used to log
+	// logger                  &log.Logger      = unsafe { nil } // logger used to log
+	logger                  &log.Logger = &log.Logger(&log.Log{level: .info})
 	ls                      &net.TcpListener = unsafe { nil } // listener used to get incoming connection to socket
 	accept_client_callbacks []AcceptClientFn      // accept client callback functions
 	message_callbacks       []MessageEventHandler // new message callback functions
