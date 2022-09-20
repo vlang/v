@@ -5927,11 +5927,11 @@ Whilst V does normally not allow vsh scripts without the designated file extensi
 to circumvent this rule and have a file with a fully custom name and shebang. Whilst this feature
 exists it is only recommended for specific usecases like scripts that will be put in the path and
 should **not** be used for things like build or deploy scripts. To access this feature start the
-file with `#!/usr/bin/env -S v -raw-vsh-tmp-prefix <prefix>` where `<prefix>` is the prefix for
+file with `#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp` where `tmp` is the prefix for
 the built executable. This will run in crun mode so it will only rebuild if changes to the script
-were made and keep the binary as `<prefix>.<scriptfilename>`. **Caution**: if this filename already
+were made and keep the binary as `tmp.<scriptfilename>`. **Caution**: if this filename already
 exists the file will be overriden. If you want to rebuild each time and not keep this binary instead
-use `#!/usr/bin/env -S v -raw-vsh-tmp-prefix <prefix> run`.
+use `#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp run`.
 
 ## Attributes
 
