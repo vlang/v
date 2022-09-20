@@ -106,7 +106,7 @@ pub mut:
 	is_test            bool   // `v test string_test.v`
 	is_script          bool   // single file mode (`v program.v`), main function can be skipped
 	is_vsh             bool   // v script (`file.vsh`) file, the `os` module should be made global
-	raw_vsh_tmp_prefix string // The prefix for raw_vsh executables.
+	raw_vsh_tmp_prefix string // The prefix used for executables, when a script lacks the .vsh extension
 	is_livemain        bool   // main program that contains live/hot code
 	is_liveshared      bool   // a shared library, that will be used in a -live main program
 	is_shared          bool   // an ordinary shared library, -shared, no matter if it is live or not
