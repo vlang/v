@@ -50,7 +50,11 @@ pub fn (mut p Preferences) fill_with_defaults() {
 			base = filename
 		}
 		target_dir := if os.is_dir(rpath) { rpath } else { os.dir(rpath) }
-		p.out_name = os.join_path(target_dir, base)
+		if p.raw_vsh_tmp_prefix != '' {
+			p.out_name = os.join_path(target_dir, p.raw_vsh_tmp_prefix + '.' + base)
+		} else {
+			p.out_name = os.join_path(target_dir, base)
+		}
 		// Do *NOT* be tempted to generate binaries in the current work folder,
 		// when -o is not given by default, like Go, Clang, GCC etc do.
 		//
@@ -119,7 +123,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	p.ccompiler_type = cc_from_string(p.ccompiler)
 	p.is_test = p.path.ends_with('_test.v') || p.path.ends_with('_test.vv')
 		|| p.path.all_before_last('.v').all_before_last('.').ends_with('_test')
-	p.is_vsh = p.path.ends_with('.vsh')
+	p.is_vsh = p.path.ends_with('.vsh') || p.raw_vsh_tmp_prefix != ''
 	p.is_script = p.is_vsh || p.path.ends_with('.v') || p.path.ends_with('.vv')
 	if p.third_party_option == '' {
 		p.third_party_option = p.cflags

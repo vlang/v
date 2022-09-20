@@ -263,6 +263,22 @@ fn get_all_commands() []Command {
 			rmfile: 'v.c'
 		}
 	}
+	$if !windows {
+		res << Command{
+			line: '$vexe -raw-vsh-tmp-prefix tmp vlib/v/tests/script_with_no_extension'
+			okmsg: 'V can crun a script, that lacks a .vsh extension'
+			runcmd: .execute
+			expect: 'Test\n'
+			rmfile: 'vlib/v/tests/tmp.script_with_no_extension'
+		}
+
+		res << Command{
+			line: '$vexe -raw-vsh-tmp-prefix tmp run vlib/v/tests/script_with_no_extension'
+			okmsg: 'V can run a script, that lacks a .vsh extension'
+			runcmd: .execute
+			expect: 'Test\n'
+		}
+	}
 	return res
 }
 
