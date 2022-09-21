@@ -1,0 +1,18 @@
+struct Access {}
+
+fn (access &Access) acc() bool {
+	return true
+}
+
+struct Field {
+	Access
+}
+
+fn main() {
+	mut fields := []&Field{}
+	fields << &Field{}
+
+	for mut field in fields {
+		println(field.acc())
+	}
+}
