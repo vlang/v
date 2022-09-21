@@ -36,11 +36,14 @@ pub mut:
 	header            http.Header  // headers that will be passed when connecting
 	conn              &net.TcpConn = unsafe { nil } // underlying TCP socket connection
 	nonce_size        int = 16 // size of nounce used for masking
-	panic_on_callback bool        // set to true of callbacks can panic
-	state             State       // current state of connection
-	logger            &log.Logger = &log.Logger(&log.Log{level: .info}) // logger used to log messages
-	resource_name     string      // name of current resource
-	last_pong_ut      i64 // last time in unix time we got a pong message
+	panic_on_callback bool  // set to true of callbacks can panic
+	state             State // current state of connection
+	// logger used to log messages
+	logger            &log.Logger = &log.Logger(&log.Log{
+	level: .info
+})
+	resource_name string // name of current resource
+	last_pong_ut  i64    // last time in unix time we got a pong message
 }
 
 // Flag represents different types of headers in websocket handshake
