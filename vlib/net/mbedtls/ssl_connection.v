@@ -114,13 +114,13 @@ fn (mut s SSLConn) init() ? {
 		}
 	} else {
 		if s.config.verify != '' {
-			ret = C.mbedtls_x509_crt_parse_file(&s.certs.cacert, s.config.verify.str)
+			ret = C.mbedtls_x509_crt_parse_file(&s.certs.cacert, &char(s.config.verify.str))
 		}
 		if s.config.cert != '' {
-			ret = C.mbedtls_x509_crt_parse_file(&s.certs.client_cert, s.config.cert.str)
+			ret = C.mbedtls_x509_crt_parse_file(&s.certs.client_cert, &char(s.config.cert.str))
 		}
 		if s.config.cert_key != '' {
-			ret = C.mbedtls_pk_parse_keyfile(&s.certs.client_key, s.config.cert_key.str,
+			ret = C.mbedtls_pk_parse_keyfile(&s.certs.client_key, &char(s.config.cert_key.str),
 				0, C.mbedtls_ctr_drbg_random, &mbedtls.ctr_drbg)
 		}
 	}
@@ -153,7 +153,7 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ? {
 	s.handle = tcp_conn.sock.handle
 	s.duration = 30 * time.second
 
-	mut ret := C.mbedtls_ssl_set_hostname(&s.ssl, hostname.str)
+	mut ret := C.mbedtls_ssl_set_hostname(&s.ssl, &char(hostname.str))
 	if ret != 0 {
 		return error_with_code('Failed to set hostname', ret)
 	}
@@ -178,13 +178,14 @@ pub fn (mut s SSLConn) dial(hostname string, port int) ? {
 	}
 	s.duration = 30 * time.second
 
-	mut ret := C.mbedtls_ssl_set_hostname(&s.ssl, hostname.str)
+	mut ret := C.mbedtls_ssl_set_hostname(&s.ssl, &char(hostname.str))
 	if ret != 0 {
 		return error_with_code('Failed to set hostname', ret)
 	}
 
 	port_str := port.str()
-	ret = C.mbedtls_net_connect(&s.server_fd, hostname.str, port_str.str, C.MBEDTLS_NET_PROTO_TCP)
+	ret = C.mbedtls_net_connect(&s.server_fd, &char(hostname.str), &char(port_str.str),
+		C.MBEDTLS_NET_PROTO_TCP)
 	if ret != 0 {
 		return error_with_code('Failed to connect to host', ret)
 	}
