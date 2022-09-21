@@ -15,7 +15,7 @@ fn make_pipe() ?(int, int) {
 	return -1, -1
 }
 
-fn test_level_trigger() ? {
+fn test_level_trigger() {
 	// currently only linux is supported
 	$if linux {
 		mut notifier := notify.new()?
@@ -36,7 +36,7 @@ fn test_level_trigger() ? {
 	}
 }
 
-fn test_edge_trigger() ? {
+fn test_edge_trigger() {
 	// currently only linux is supported
 	$if linux {
 		mut notifier := notify.new()?
@@ -64,7 +64,7 @@ fn test_edge_trigger() ? {
 	}
 }
 
-fn test_one_shot() ? {
+fn test_one_shot() {
 	$if linux {
 		mut notifier := notify.new()?
 		reader, writer := make_pipe()?
@@ -89,7 +89,7 @@ fn test_one_shot() ? {
 	}
 }
 
-fn test_hangup() ? {
+fn test_hangup() {
 	$if linux {
 		mut notifier := notify.new()?
 		reader, writer := make_pipe()?
@@ -111,7 +111,7 @@ fn test_hangup() ? {
 	}
 }
 
-fn test_write() ? {
+fn test_write() {
 	$if linux {
 		mut notifier := notify.new()?
 		reader, writer := make_pipe()?
@@ -132,7 +132,7 @@ fn test_write() ? {
 	}
 }
 
-fn test_remove() ? {
+fn test_remove() {
 	$if linux {
 		mut notifier := notify.new()?
 		reader, writer := make_pipe()?

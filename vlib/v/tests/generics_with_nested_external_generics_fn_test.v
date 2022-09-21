@@ -9,7 +9,7 @@ pub fn sample<T>(arr []T, k int) ?[]T {
 	return result[0..k]
 }
 
-fn test_generics_with_nested_external_generics_fn() ? {
+fn test_generics_with_nested_external_generics_fn() {
 	mut arr := [11, 32, 24, 45, 57, 32, 37, 52, 37, 24]
 	println(arr)
 

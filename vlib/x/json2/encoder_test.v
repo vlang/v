@@ -36,7 +36,7 @@ fn test_json_string_non_ascii() {
 	assert text.json_str() == r'"\u3072\u3089\u304c\u306a"'
 }
 
-fn test_utf8_strings_are_not_modified() ? {
+fn test_utf8_strings_are_not_modified() {
 	original := '{"s":"Schilddrüsenerkrankungen"}'
 	// dump(original)
 	deresult := json2.raw_decode(original)?
@@ -44,7 +44,7 @@ fn test_utf8_strings_are_not_modified() ? {
 	assert deresult.str() == original
 }
 
-fn test_encoder_unescaped_utf32() ? {
+fn test_encoder_unescaped_utf32() {
 	jap_text := json2.Any('ひらがな')
 	enc := json2.Encoder{
 		escape_unicode: false
@@ -61,7 +61,7 @@ fn test_encoder_unescaped_utf32() ? {
 	assert sb.str() == '"$emoji_text"'
 }
 
-fn test_encoder_prettify() ? {
+fn test_encoder_prettify() {
 	obj := {
 		'hello': json2.Any('world')
 		'arr':   [json2.Any('im a string'), [json2.Any('3rd level')]]

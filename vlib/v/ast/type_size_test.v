@@ -27,7 +27,7 @@ struct T08 {
 	x string
 }
 
-fn test_type_size() ? {
+fn test_type_size() {
 	mut pref := pref.new_preferences()
 	$if x64 {
 		pref.m64 = true

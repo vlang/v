@@ -65,25 +65,25 @@ fn prepare_test_path() ? {
 	os.chdir(test_path)?
 }
 
-fn test_v_init() ? {
+fn test_v_init() {
 	prepare_test_path()?
 	init_and_check()?
 }
 
-fn test_v_init_in_git_dir() ? {
+fn test_v_init_in_git_dir() {
 	prepare_test_path()?
 	os.execute_or_exit('git init .')
 	init_and_check()?
 }
 
-fn test_v_init_no_overwrite_gitignore() ? {
+fn test_v_init_no_overwrite_gitignore() {
 	prepare_test_path()?
 	os.write_file('.gitignore', 'blah')?
 	os.execute_or_exit('${os.quoted_path(@VEXE)} init')
 	assert os.read_file('.gitignore')? == 'blah'
 }
 
-fn test_v_init_no_overwrite_gitattributes_and_editorconfig() ? {
+fn test_v_init_no_overwrite_gitattributes_and_editorconfig() {
 	git_attributes_content := '*.v linguist-language=V text=auto eol=lf'
 	editor_config_content := '[*]
 charset = utf-8

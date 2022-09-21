@@ -20,12 +20,12 @@ fn testsuite_end() {
 	assert !os.is_dir(crun_folder)
 }
 
-fn test_saving_simple_v_program() ? {
+fn test_saving_simple_v_program() {
 	os.write_file(vprogram_file, 'print("hello")')?
 	assert true
 }
 
-fn test_crun_simple_v_program_several_times() ? {
+fn test_crun_simple_v_program_several_times() {
 	mut sw := time.new_stopwatch()
 	mut times := []i64{}
 	for i in 0 .. 10 {

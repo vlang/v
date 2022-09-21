@@ -14,7 +14,7 @@ fn find_diff_cmd() string {
 	return diff.find_working_diff_command() or { '' }
 }
 
-fn test_vet() ? {
+fn test_vet() {
 	os.setenv('VCOLORS', 'never', true)
 	os.chdir(vroot)?
 	test_dir := 'cmd/tools/vdoc/tests/testdata'

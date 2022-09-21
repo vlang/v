@@ -14,7 +14,7 @@ fn testsuite_end() {
 	os.rmdir_all(test_path) or {}
 }
 
-fn test_conditional_executable_removal() ? {
+fn test_conditional_executable_removal() {
 	os.chdir(test_path)?
 	os.execute_or_exit('${os.quoted_path(vexe)} init')
 

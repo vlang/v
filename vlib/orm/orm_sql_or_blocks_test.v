@@ -18,7 +18,7 @@ fn testsuite_end() {
 	os.rmdir_all(db_folder) or {}
 }
 
-fn test_ensure_db_exists_and_user_table_is_ok() ? {
+fn test_ensure_db_exists_and_user_table_is_ok() {
 	mut db := sqlite.connect(db_path)?
 	assert true
 
@@ -33,7 +33,7 @@ fn test_ensure_db_exists_and_user_table_is_ok() ? {
 	db.close()?
 }
 
-fn test_sql_or_block_for_insert() ? {
+fn test_sql_or_block_for_insert() {
 	mut db := sqlite.connect(db_path)?
 	user := User{1, 'bilbo'}
 
@@ -56,7 +56,7 @@ fn test_sql_or_block_for_insert() ? {
 	db.close()?
 }
 
-fn test_sql_or_block_for_select() ? {
+fn test_sql_or_block_for_select() {
 	mut db := sqlite.connect(db_path)?
 
 	eprintln('> selecting user with id 1...')
@@ -96,7 +96,7 @@ fn test_sql_or_block_for_select() ? {
 	db.close()?
 }
 
-fn test_finish() ? {
+fn test_finish() {
 	eprintln('done')
 	assert true
 }

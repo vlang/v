@@ -101,7 +101,7 @@ fn testsuite_end() {
 	eprintln('\ndone')
 }
 
-fn test_bind() ? {
+fn test_bind() {
 	$if !network ? {
 		return
 	}

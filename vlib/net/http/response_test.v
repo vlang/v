@@ -1,6 +1,6 @@
 module http
 
-fn test_response_bytestr() ? {
+fn test_response_bytestr() {
 	{
 		resp := new_response(
 			status: .ok

@@ -50,6 +50,6 @@ fn program<T>(factory TypeFactory<T>) ? {
 	assert root2.type_name == .expression
 }
 
-fn test_generic_interface_with_non_generic_method() ? {
+fn test_generic_interface_with_non_generic_method() {
 	program<NodeType>(&EnumTypeFactory{})?
 }

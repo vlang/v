@@ -956,7 +956,7 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast
 pub fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_return_type ast.Type) {
 	if node.kind == .propagate_option {
 		if c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.return_type.has_flag(.optional)
-			&& c.table.cur_fn.name != 'main.main' && !c.inside_const {
+			&& !c.table.cur_fn.is_main && !c.table.cur_fn.is_test && !c.inside_const {
 			c.add_instruction_for_optional_type()
 			c.error('to propagate the call, `$c.table.cur_fn.name` must return an optional type',
 				node.pos)
@@ -974,7 +974,7 @@ pub fn (mut c Checker) check_or_expr(node ast.OrExpr, ret_type ast.Type, expr_re
 	}
 	if node.kind == .propagate_result {
 		if c.table.cur_fn != unsafe { nil } && !c.table.cur_fn.return_type.has_flag(.result)
-			&& c.table.cur_fn.name != 'main.main' && !c.inside_const {
+			&& !c.table.cur_fn.is_main && !c.table.cur_fn.is_test && !c.inside_const {
 			c.add_instruction_for_result_type()
 			c.error('to propagate the call, `$c.table.cur_fn.name` must return a result type',
 				node.pos)

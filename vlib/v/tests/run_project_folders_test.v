@@ -11,7 +11,7 @@ fn test_vexe_exists() {
 	assert os.is_file(vexe)
 }
 
-fn test_v_profile_works() ? {
+fn test_v_profile_works() {
 	os.chdir(vroot) or {}
 	folders_root := os.join_path(vroot, 'vlib/v/tests/run_project_folders')
 	folder_names := os.ls(folders_root)?

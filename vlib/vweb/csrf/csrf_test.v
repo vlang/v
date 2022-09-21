@@ -18,7 +18,7 @@ fn (mut app App) index() vweb.Result {
 	return app.text("Csrf-Token set! It's value is: $token")
 }
 
-fn test_send_a_request_to_homepage_expecting_a_csrf_cookie() ? {
+fn test_send_a_request_to_homepage_expecting_a_csrf_cookie() {
 	go vweb.run_at(&App{}, vweb.RunParams{ port: sport })
 	time.sleep(500 * time.millisecond)
 	res := http.get('http://localhost:$sport/')?

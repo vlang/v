@@ -41,7 +41,7 @@ struct InterpTest {
 	output string
 }
 
-fn test_interpreter() ? {
+fn test_interpreter() {
 	mut tests := []InterpTest{}
 	tests << InterpTest{'println(3+3)', '6'}
 	tests << InterpTest{'println(3)', '3'}

@@ -185,14 +185,14 @@ fn test_parse_rfc3339() {
 	}
 }
 
-fn test_ad_second_to_parse_result_in_2001() ? {
+fn test_ad_second_to_parse_result_in_2001() {
 	now_tm := time.parse('2001-01-01 04:00:00')?
 	future_tm := now_tm.add_seconds(60)
 	assert future_tm.str() == '2001-01-01 04:01:00'
 	assert now_tm.unix < future_tm.unix
 }
 
-fn test_ad_second_to_parse_result_pre_2001() ? {
+fn test_ad_second_to_parse_result_pre_2001() {
 	now_tm := time.parse('2000-01-01 04:00:00')?
 	future_tm := now_tm.add_seconds(60)
 	assert future_tm.str() == '2000-01-01 04:01:00'

@@ -14,7 +14,7 @@ struct App {
 	t bool
 }
 
-fn test_init_multiple_branches() ? {
+fn test_init_multiple_branches() {
 	mut m := map[string]json2.Any{}
 	app := App{
 		t: m['t'] or { 0 }.bool()
