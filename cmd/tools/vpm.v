@@ -89,6 +89,9 @@ fn main() {
 				module_names = manifest.dependencies.clone()
 			}
 			mut source := Source.vpm
+			if module_names.all(it.starts_with('https://')) {
+				source = Source.git
+			}
 			if '--once' in options {
 				module_names = vpm_once_filter(module_names)
 				if module_names.len == 0 {
