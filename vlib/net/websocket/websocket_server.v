@@ -1,7 +1,7 @@
 module websocket
 
 import net
-import net.openssl
+import net.ssl
 import log
 import time
 import rand
@@ -167,7 +167,7 @@ fn (mut s Server) accept_new_client() ?&Client {
 	c := &Client{
 		is_server: true
 		conn: new_conn
-		ssl_conn: openssl.new_ssl_conn()
+		ssl_conn: ssl.new_ssl_conn()?
 		logger: s.logger
 		state: .open
 		last_pong_ut: time.now().unix

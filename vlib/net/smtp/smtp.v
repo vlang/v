@@ -6,7 +6,7 @@ module smtp
 * Created by: nedimf (07/2020)
 */
 import net
-import net.openssl
+import net.ssl
 import encoding.base64
 import strings
 import time
@@ -32,7 +32,7 @@ pub enum BodyType {
 pub struct Client {
 mut:
 	conn     net.TcpConn
-	ssl_conn &openssl.SSLConn = unsafe { nil }
+	ssl_conn &ssl.SSLConn = unsafe { nil }
 	reader   io.BufferedReader
 pub:
 	server   string
@@ -126,7 +126,7 @@ pub fn (mut c Client) quit() ? {
 }
 
 fn (mut c Client) connect_ssl() ? {
-	c.ssl_conn = openssl.new_ssl_conn()
+	c.ssl_conn = ssl.new_ssl_conn()?
 	c.ssl_conn.connect(mut c.conn, c.server) or {
 		return error('Connecting to server using OpenSSL failed: $err')
 	}

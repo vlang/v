@@ -5,7 +5,7 @@ module websocket
 
 import net
 import net.http
-import net.openssl
+import net.ssl
 import net.urllib
 import time
 import log
@@ -19,9 +19,9 @@ const (
 pub struct Client {
 	is_server bool
 mut:
-	ssl_conn          &openssl.SSLConn = unsafe { nil } // secure connection used when wss is used
-	flags             []Flag     // flags used in handshake
-	fragments         []Fragment // current fragments
+	ssl_conn          &ssl.SSLConn = unsafe { nil } // secure connection used when wss is used
+	flags             []Flag       // flags used in handshake
+	fragments         []Fragment   // current fragments
 	message_callbacks []MessageEventHandler // all callbacks on_message
 	error_callbacks   []ErrorEventHandler   // all callbacks on_error
 	open_callbacks    []OpenEventHandler    // all callbacks on_open
@@ -90,7 +90,7 @@ pub fn new_client(address string, opt ClientOpt) ?&Client {
 	return &Client{
 		conn: 0
 		is_server: false
-		ssl_conn: openssl.new_ssl_conn()
+		ssl_conn: ssl.new_ssl_conn()?
 		is_ssl: address.starts_with('wss')
 		logger: opt.logger
 		uri: uri
@@ -333,7 +333,7 @@ pub fn (mut ws Client) close(code int, message string) ? {
 	}
 	defer {
 		ws.shutdown_socket() or {}
-		ws.reset_state()
+		ws.reset_state() or {}
 	}
 	ws.set_state(.closing)
 	// mut code32 := 0
@@ -459,10 +459,10 @@ fn (ws Client) assert_not_connected() ? {
 }
 
 // reset_state resets the websocket and initialize default settings
-fn (mut ws Client) reset_state() {
+fn (mut ws Client) reset_state() ? {
 	lock  {
 		ws.state = .closed
-		ws.ssl_conn = openssl.new_ssl_conn()
+		ws.ssl_conn = ssl.new_ssl_conn()?
 		ws.flags = []
 		ws.fragments = []
 	}
