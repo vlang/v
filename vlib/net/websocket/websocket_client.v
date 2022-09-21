@@ -39,7 +39,7 @@ pub mut:
 	panic_on_callback bool  // set to true of callbacks can panic
 	state             State // current state of connection
 	// logger used to log messages
-	logger            &log.Logger = &log.Logger(&log.Log{
+	logger &log.Logger = &log.Logger(&log.Log{
 	level: .info
 })
 	resource_name string // name of current resource
