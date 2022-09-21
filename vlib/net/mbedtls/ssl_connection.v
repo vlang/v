@@ -49,7 +49,7 @@ pub struct SSLConnectConfig {
 	in_memory_verification bool // if true, verify, cert, and cert_key are read from memory, not from a file
 }
 
-// new_ssl_conn instance an new SSLCon struct
+// new_ssl_conn returns a new SSLConn with the given config.
 pub fn new_ssl_conn(config SSLConnectConfig) ?&SSLConn {
 	mut conn := &SSLConn{
 		config: config
@@ -145,6 +145,7 @@ fn (mut s SSLConn) init() ? {
 	}
 }
 
+// connect sets up an ssl connection on an existing TCP connection
 pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ? {
 	if s.opened {
 		return error('ssl connection already open')
@@ -170,6 +171,7 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ? {
 	s.opened = true
 }
 
+// dial opens an ssl connection on hostname:port
 pub fn (mut s SSLConn) dial(hostname string, port int) ? {
 	if s.opened {
 		return error('ssl connection already open')
@@ -200,6 +202,7 @@ pub fn (mut s SSLConn) dial(hostname string, port int) ? {
 	s.opened = true
 }
 
+// socket_read_into_ptr reads `len` bytes into `buf`
 pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) ?int {
 	mut res := 0
 	for {
@@ -234,11 +237,13 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) ?int {
 	return res
 }
 
+// read reads data from the ssl connection into `buffer`
 pub fn (mut s SSLConn) read(mut buffer []u8) !int {
 	res := s.socket_read_into_ptr(&u8(buffer.data), buffer.len) or { return err }
 	return res
 }
 
+// write_ptr writes `len` bytes from `bytes` to the ssl connection
 pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) ?int {
 	unsafe {
 		mut ptr_base := bytes
@@ -278,10 +283,12 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) ?int {
 	}
 }
 
+// write writes data from `bytes` to the ssl connection
 pub fn (mut s SSLConn) write(bytes []u8) ?int {
 	return s.write_ptr(&u8(bytes.data), bytes.len)
 }
 
+// write_string writes a string to the ssl connection
 pub fn (mut s SSLConn) write_string(str string) ?int {
 	return s.write_ptr(str.str, str.len)
 }

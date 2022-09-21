@@ -190,6 +190,7 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ? {
 	s.complete_connect() or { return err }
 }
 
+// dial opens an ssl connection on hostname:port
 pub fn (mut s SSLConn) dial(hostname string, port int) ? {
 	s.owns_socket = true
 	mut tcp_conn := net.dial_tcp('$hostname:$port') or { return err }
@@ -300,7 +301,7 @@ pub fn (mut s SSLConn) read(mut buffer []u8) !int {
 	return res
 }
 
-// write number of bytes to SSL connection
+// write_ptr writes `len` bytes from `bytes` to the ssl connection
 pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) ?int {
 	unsafe {
 		mut ptr_base := bytes
@@ -337,10 +338,12 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) ?int {
 	}
 }
 
+// write writes data from `bytes` to the ssl connection
 pub fn (mut s SSLConn) write(bytes []u8) ?int {
 	return s.write_ptr(&u8(bytes.data), bytes.len)
 }
 
+// write_string writes a string to the ssl connection
 pub fn (mut s SSLConn) write_string(str string) ?int {
 	return s.write_ptr(str.str, str.len)
 }
