@@ -166,7 +166,6 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		'-Wnull-dereference',
 		'-Wpacked',
 		'-Wpointer-arith',
-		'-Wswitch-enum',
 	]
 	if v.pref.os == .ios {
 		ccoptions.args << '-fobjc-arc'
