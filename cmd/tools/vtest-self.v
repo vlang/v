@@ -135,9 +135,11 @@ const (
 		'vlib/net/websocket/websocket_test.v',
 		'vlib/crypto/rand/crypto_rand_read_test.v',
 		'vlib/net/smtp/smtp_test.v',
+		'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 	]
 	skip_with_fsanitize_address   = [
 		'vlib/net/websocket/websocket_test.v',
+		'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 	]
 	skip_with_fsanitize_undefined = [
 		'do_not_remove',
@@ -184,6 +186,7 @@ const (
 		'vlib/net/http/response_test.v',
 		'vlib/builtin/js/array_test.js.v',
 		'vlib/net/smtp/smtp_test.v',
+		'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 	]
 	skip_on_linux                 = [
 		'do_not_remove',
@@ -214,6 +217,7 @@ const (
 		'vlib/sync/many_times_test.v',
 		'vlib/sync/once_test.v',
 		'vlib/net/smtp/smtp_test.v',
+		'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 	]
 	skip_on_non_windows           = [
 		'do_not_remove',
