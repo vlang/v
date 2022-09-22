@@ -4962,7 +4962,9 @@ fn main() {
 
 ## Calling V from C
 
-Use `v your_file.v -o file.c` to generate a C file corresponding to the V code.
+Since V can compile to C, calling V code from C is very easy, once you know how.
+
+Use `v -o file.c your_file.v` to generate a C file, corresponding to the V code.
 
 More details in [call_v_from_c example](../examples/call_v_from_c).
 
