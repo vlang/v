@@ -257,6 +257,14 @@ fn test_escape_string() {
 	assert result[0].kind == .string
 	assert result[0].lit == r'★a'
 
+	// MIX STRING ESCAPES with offset
+	result = scan_tokens(r"'x  \x61\u2605\x61'")
+	assert result[0].kind == .string
+	assert result[0].lit == r'x  a★a'
+	result = scan_tokens(r"'x  \u2605\x61\u2605'")
+	assert result[0].kind == .string
+	assert result[0].lit == r'x  ★a★'
+
 	// SHOULD RESULT IN ERRORS
 	// result = scan_tokens(r'`\x61\x61`') // should always result in an error
 	// result = scan_tokens(r"'\x'") // should always result in an error

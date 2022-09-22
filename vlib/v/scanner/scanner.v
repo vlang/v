@@ -1236,32 +1236,35 @@ fn (mut s Scanner) ident_string() string {
 	}
 	if start <= s.pos {
 		mut string_so_far := s.text[start..end]
-		mut str_segments := []string{}
-		mut all_pos := u_escapes_pos.clone()
-		all_pos << h_escapes_pos
-		all_pos.sort()
-
 		if !s.is_fmt {
 			mut segment_idx := 0
-			for pos in all_pos {
-				str_segments << string_so_far[segment_idx..(pos - start)]
-				segment_idx = pos - start
-
-				if pos in u_escapes_pos {
-					end_idx, segment := s.decode_u_escape_single(string_so_far, segment_idx)
-					str_segments << segment
-					segment_idx = end_idx
+			mut str_segments := []string{}
+			if u_escapes_pos.len + h_escapes_pos.len > 0 {
+				mut all_pos := []int{}
+				all_pos << u_escapes_pos
+				all_pos << h_escapes_pos
+				if u_escapes_pos.len != 0 && h_escapes_pos.len != 0 {
+					all_pos.sort()
 				}
-				if pos in h_escapes_pos {
-					end_idx, segment := decode_h_escape_single(string_so_far, segment_idx)
-					str_segments << segment
-					segment_idx = end_idx
+				for pos in all_pos {
+					str_segments << string_so_far[segment_idx..(pos - start)]
+					segment_idx = pos - start
+
+					if pos in u_escapes_pos {
+						end_idx, segment := s.decode_u_escape_single(string_so_far, segment_idx)
+						str_segments << segment
+						segment_idx = end_idx
+					}
+					if pos in h_escapes_pos {
+						end_idx, segment := decode_h_escape_single(string_so_far, segment_idx)
+						str_segments << segment
+						segment_idx = end_idx
+					}
 				}
 			}
 			if segment_idx < string_so_far.len {
 				str_segments << string_so_far[segment_idx..]
 			}
-
 			string_so_far = str_segments.join('')
 		}
 
