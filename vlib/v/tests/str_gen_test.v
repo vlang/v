@@ -452,12 +452,14 @@ struct CTypeDefStruct {
 }
 
 fn test_c_struct_typedef() {
-	c := CTypeDefStruct{
-		mutex: sync.new_mutex()
-	}
-	assert c.str() == r'CTypeDefStruct{
+	$if macos || linux {
+		c := CTypeDefStruct{
+			mutex: sync.new_mutex()
+		}
+		assert c.str() == r'CTypeDefStruct{
     mutex: &sync.Mutex{
         mutex: pthread_mutex_t{}
     }
 }'
+	}
 }
