@@ -1236,12 +1236,38 @@ fn (mut s Scanner) ident_string() string {
 	}
 	if start <= s.pos {
 		mut string_so_far := s.text[start..end]
-		if !s.is_fmt && u_escapes_pos.len > 0 {
-			string_so_far = s.decode_u_escapes(string_so_far, start, u_escapes_pos)
+		if !s.is_fmt {
+			mut segment_idx := 0
+			mut str_segments := []string{}
+			if u_escapes_pos.len + h_escapes_pos.len > 0 {
+				mut all_pos := []int{}
+				all_pos << u_escapes_pos
+				all_pos << h_escapes_pos
+				if u_escapes_pos.len != 0 && h_escapes_pos.len != 0 {
+					all_pos.sort()
+				}
+				for pos in all_pos {
+					str_segments << string_so_far[segment_idx..(pos - start)]
+					segment_idx = pos - start
+
+					if pos in u_escapes_pos {
+						end_idx, segment := s.decode_u_escape_single(string_so_far, segment_idx)
+						str_segments << segment
+						segment_idx = end_idx
+					}
+					if pos in h_escapes_pos {
+						end_idx, segment := decode_h_escape_single(string_so_far, segment_idx)
+						str_segments << segment
+						segment_idx = end_idx
+					}
+				}
+			}
+			if segment_idx < string_so_far.len {
+				str_segments << string_so_far[segment_idx..]
+			}
+			string_so_far = str_segments.join('')
 		}
-		if !s.is_fmt && h_escapes_pos.len > 0 {
-			string_so_far = decode_h_escapes(string_so_far, start, h_escapes_pos)
-		}
+
 		if n_cr_chars > 0 {
 			string_so_far = string_so_far.replace('\r', '')
 		}
@@ -1254,6 +1280,13 @@ fn (mut s Scanner) ident_string() string {
 	return lit
 }
 
+fn decode_h_escape_single(str string, idx int) (int, string) {
+	end_idx := idx + 4 // "\xXX".len == 4
+
+	// notice this function doesn't do any decoding... it just replaces '\xc0' with the byte 0xc0
+	return end_idx, [u8(strconv.parse_uint(str[idx + 2..end_idx], 16, 8) or { 0 })].bytestr()
+}
+
 // only handle single-byte inline escapes like '\xc0'
 fn decode_h_escapes(s string, start int, escapes_pos []int) string {
 	if escapes_pos.len == 0 {
@@ -1263,9 +1296,9 @@ fn decode_h_escapes(s string, start int, escapes_pos []int) string {
 	ss << s[..escapes_pos.first() - start]
 	for i, pos in escapes_pos {
 		idx := pos - start
-		end_idx := idx + 4 // "\xXX".len == 4
-		// notice this function doesn't do any decoding... it just replaces '\xc0' with the byte 0xc0
-		ss << [u8(strconv.parse_uint(s[idx + 2..end_idx], 16, 8) or { 0 })].bytestr()
+		end_idx, segment := decode_h_escape_single(s, idx)
+		ss << segment
+
 		if i + 1 < escapes_pos.len {
 			ss << s[end_idx..escapes_pos[i + 1] - start]
 		} else {
@@ -1296,6 +1329,17 @@ fn decode_o_escapes(s string, start int, escapes_pos []int) string {
 	return ss.join('')
 }
 
+fn (mut s Scanner) decode_u_escape_single(str string, idx int) (int, string) {
+	end_idx := idx + 6 // "\uXXXX".len == 6
+	escaped_code_point := strconv.parse_uint(str[idx + 2..end_idx], 16, 32) or { 0 }
+	// Check if Escaped Code Point is invalid or not
+	if rune(escaped_code_point).length_in_bytes() == -1 {
+		s.error('invalid unicode point `$str`')
+	}
+
+	return end_idx, utf32_to_str(u32(escaped_code_point))
+}
+
 // decode the flagged unicode escape sequences into their utf-8 bytes
 fn (mut s Scanner) decode_u_escapes(str string, start int, escapes_pos []int) string {
 	if escapes_pos.len == 0 {
@@ -1305,13 +1349,8 @@ fn (mut s Scanner) decode_u_escapes(str string, start int, escapes_pos []int) st
 	ss << str[..escapes_pos.first() - start]
 	for i, pos in escapes_pos {
 		idx := pos - start
-		end_idx := idx + 6 // "\uXXXX".len == 6
-		escaped_code_point := strconv.parse_uint(str[idx + 2..end_idx], 16, 32) or { 0 }
-		// Check if Escaped Code Point is invalid or not
-		if rune(escaped_code_point).length_in_bytes() == -1 {
-			s.error('invalid unicode point `$str`')
-		}
-		ss << utf32_to_str(u32(escaped_code_point))
+		end_idx, segment := s.decode_u_escape_single(str, idx)
+		ss << segment
 		if i + 1 < escapes_pos.len {
 			ss << str[end_idx..escapes_pos[i + 1] - start]
 		} else {
