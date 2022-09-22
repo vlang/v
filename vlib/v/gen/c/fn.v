@@ -1086,6 +1086,16 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.write('(map[]){')
 			g.expr(node.left)
 			g.write('}[0]')
+		} else if node.from_embed_types.len > 0 {
+			n_ptr := node.left_type.nr_muls() - 1
+			if n_ptr > 0 {
+				g.write('(')
+				g.write('*'.repeat(n_ptr))
+				g.expr(node.left)
+				g.write(')')
+			} else {
+				g.expr(node.left)
+			}
 		} else {
 			g.expr(node.left)
 		}
