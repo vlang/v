@@ -83,7 +83,7 @@ fn sync_cache() {
 		repofolder := os.join_path(cache_oldv_folder, reponame)
 		if !os.exists(repofolder) {
 			scripting.verbose_trace(@FN, 'cloning to $repofolder')
-			scripting.exec('git clone --quiet https://github.com/vlang/$reponame $repofolder') or {
+			scripting.exec('git clone --depth 1 --quiet https://github.com/vlang/$reponame $repofolder') or {
 				scripting.verbose_trace(@FN, '## error during clone: $err')
 				exit(1)
 			}

@@ -154,7 +154,7 @@ popular forks, and its goal is to be as close to the original as possible
 
 
 ```bash
-git clone https://github.com/vlang/doom
+git clone --depth 1 https://github.com/vlang/doom
 ```
 
 The main difference in this fork is using SDL for cross platform rendering, so we'll need

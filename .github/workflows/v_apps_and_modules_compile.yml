@@ -63,7 +63,7 @@ jobs:
           echo "Install markdown"
           v install markdown
           echo "Clone Gitly"
-          git clone https://github.com/vlang/gitly /tmp/gitly
+          git clone --depth 1 https://github.com/vlang/gitly /tmp/gitly
           echo "Build Gitly"
           v /tmp/gitly
           echo "Build Gitly with -autofree"
@@ -95,7 +95,7 @@ jobs:
       - name: Build go2v
         run: |
           echo "Clone Go2V"
-          git clone --depth=1 https://github.com/vlang/go2v /tmp/go2v/
+          git clone --depth 1 https://github.com/vlang/go2v /tmp/go2v/
           echo "Build Go2V"
           v /tmp/go2v/
           echo "Run Go2V tests"

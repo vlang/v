@@ -93,7 +93,7 @@ jobs:
           chmod +x ./imgur.sh
 
           # Get regression images to test against
-          git clone https://github.com/Larpon/doom-regression-images
+          git clone --depth 1 https://github.com/Larpon/doom-regression-images
 
       - name: Build C2V
         run: |

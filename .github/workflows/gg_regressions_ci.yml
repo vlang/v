@@ -35,7 +35,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install imagemagick openimageio-tools libgl1-mesa-dri xvfb libxcursor-dev libxi-dev freeglut3-dev xsel xclip
           wget https://raw.githubusercontent.com/tremby/imgur.sh/c98345d/imgur.sh
-          git clone https://github.com/Larpon/gg-regression-images gg-regression-images
+          git clone --depth 1 https://github.com/Larpon/gg-regression-images gg-regression-images
           chmod +x ./imgur.sh
 
       - name: Sample and compare

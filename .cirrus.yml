@@ -6,7 +6,7 @@ freebsd_task:
   install_script: pkg install -y git
   script: |
     echo 'Building V'
-    git clone https://github.com/vlang/v
+    git clone --depth 1 https://github.com/vlang/v
     cd v
     make
     ##.github/workflows/freebsd_build_tcc.sh

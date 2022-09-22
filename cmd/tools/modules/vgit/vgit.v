@@ -82,7 +82,7 @@ pub fn clone_or_pull(remote_git_url string, local_worktree_path string) {
 		scripting.run('git -C "$local_worktree_path"  pull     --quiet ')
 	} else {
 		// Clone a fresh
-		scripting.run('git clone --quiet "$remote_git_url"  "$local_worktree_path" ')
+		scripting.run('git clone --depth 1 --quiet "$remote_git_url"  "$local_worktree_path" ')
 	}
 }
 

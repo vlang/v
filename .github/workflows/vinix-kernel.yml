@@ -28,7 +28,7 @@ jobs:
         run: make
 
       - name: Clone current Vinix
-        run: git clone https://github.com/vlang/vinix.git
+        run: git clone --depth 1 https://github.com/vlang/vinix.git
 
       - name: Attempt to build the Vinix kernel (debug)
         run: cd vinix/kernel && make PROD=false CFLAGS="-D__vinix__ -O2 -g -pipe" V="../../v" && make clean

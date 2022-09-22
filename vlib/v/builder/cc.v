@@ -695,7 +695,7 @@ fn (mut b Builder) ensure_linuxroot_exists(sysroot string) {
 	}
 	if !os.is_dir(sysroot) {
 		println('Downloading files for Linux cross compilation (~22MB) ...')
-		os.system('git clone $crossrepo_url $sysroot')
+		os.system('git clone --depth 1 $crossrepo_url $sysroot')
 		if !os.exists(sysroot_git_config_path) {
 			verror('Failed to clone `$crossrepo_url` to `$sysroot`')
 		}

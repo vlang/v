@@ -10,7 +10,7 @@ fn main() {
 	println(time.now())
 	if !os.exists('website') {
 		println('cloning the website repo...')
-		os.system('git clone git@github.com:/vlang/website.git')
+		os.system('git clone --depth 1 git@github.com:/vlang/website.git')
 	}
 	if !os.exists('fast') {
 		println('"fast" binary (built with `v fast.v`) was not found')

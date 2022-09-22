@@ -18,7 +18,7 @@ jobs:
       uses: actions/checkout@v2
     - name: Install google benchmark
       run: |
-          git clone https://github.com/google/benchmark.git
+          git clone --depth 1 https://github.com/google/benchmark.git
           cd benchmark
           cmake -E make_directory "build"
           cmake -E chdir "build" cmake -DBENCHMARK_DOWNLOAD_DEPENDENCIES=on -DCMAKE_BUILD_TYPE=Release ../
@@ -27,7 +27,7 @@ jobs:
       run: |
         make
         sudo ./v symlink
-        git clone https://github.com/vincenzopalazzo/benchmarks.git
+        git clone --depth 1 https://github.com/vincenzopalazzo/benchmarks.git
         cd benchmarks
         make vdep && make v
     - uses: actions/upload-artifact@v3

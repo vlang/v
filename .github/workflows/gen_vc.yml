@@ -26,7 +26,7 @@ jobs:
           COMMIT_MSG=$(git log -1 --oneline --pretty='%s' HEAD)
 
           rm -rf vc
-          git clone --depth=1 \
+          git clone --depth 1 \
             https://vlang-bot:${{ secrets.VLANG_BOT_SECRET }}@$VREPO
 
           rm -rf vc/v.c vc/v_win.c
