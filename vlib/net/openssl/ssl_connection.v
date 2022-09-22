@@ -1,5 +1,6 @@
 module openssl
 
+import io
 import net
 import time
 import os
@@ -267,8 +268,10 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) ?int {
 	mut res := 0
 	for {
 		res = C.SSL_read(voidptr(s.ssl), buf_ptr, len)
-		if res >= 0 {
+		if res > 0 {
 			return res
+		} else if res == 0 {
+			return IError(io.Eof{})
 		} else {
 			err_res := ssl_error(res, s.ssl)?
 			match err_res {
