@@ -115,6 +115,7 @@ To do so, run the command `v up`.
     * [sizeof and __offsetof](#sizeof-and-__offsetof)
     * [Calling C from V](#calling-c-from-v)
     * [Calling V from C](#calling-v-from-c)
+    * [Export to shared library](#export-to-shared-library)
 	* [Atomics](#atomics)
 	* [Global Variables](#global-variables)
     * [Debugging](#debugging)
@@ -4961,7 +4962,11 @@ fn main() {
 
 ## Calling V from C
 
-Since V can compile to C, calling V code from C is very easy.
+Use `v your_file.v -o file.c` to generate a C file corresponding to the V code.
+
+More details in [call_v_from_c example](../examples/call_v_from_c).
+
+## Export to shared library
 
 By default all V functions have the following naming scheme in C: `[module name]__[fn_name]`.
 
