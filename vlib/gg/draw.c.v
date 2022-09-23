@@ -160,14 +160,13 @@ pub fn (ctx &Context) draw_convex_poly(points []f32, c gx.Color) {
 	sgl.begin_triangle_strip()
 	x0 := points[0] * ctx.scale
 	y0 := points[1] * ctx.scale
-	for i in 1 .. (len / 2 + 1) {
-		sgl.v2f(x0, y0)
-		sgl.v2f(points[i * 4 - 2] * ctx.scale, points[i * 4 - 1] * ctx.scale)
-		sgl.v2f(points[i * 4] * ctx.scale, points[i * 4 + 1] * ctx.scale)
-	}
-
-	if len % 2 == 0 {
-		sgl.v2f(points[2 * len - 2] * ctx.scale, points[2 * len - 1] * ctx.scale)
+	for i in 1 .. len {
+		x := points[i * 2] * ctx.scale
+		y := points[i * 2 + 1] * ctx.scale
+		sgl.v2f(x, y)
+		if i & 0 == 0 {
+			sgl.v2f(x0, y0)
+		}
 	}
 	sgl.end()
 }
@@ -485,7 +484,7 @@ fn radius_to_segments(r f32) int {
 		}
 		return ir
 	}
-	return int(math.ceil(2 * math.pi * r / 8))
+	return int(math.ceil(math.tau * r / 8))
 }
 
 // draw_circle_empty draws the outline of a circle.
@@ -602,181 +601,219 @@ pub fn (ctx &Context) draw_circle_line(x f32, y f32, radius int, segments int, c
 }
 
 // draw_slice_empty draws the outline of a circle slice/pie
-pub fn (ctx &Context) draw_slice_empty(x f32, y f32, outer_radius f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
-	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
+pub fn (ctx &Context) draw_slice_empty(x f32, y f32, radius f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+	if radius <= 0 {
+		return
+	} else {
+		if c.a != 255 {
+			sgl.load_pipeline(ctx.timage_pip)
+		}
+		sgl.c4b(c.r, c.g, c.b, c.a)
+		nx := x * ctx.scale
+		ny := y * ctx.scale
+		theta := f32(end_angle - start_angle) / f32(segments)
+		tan_factor := math.tanf(theta)
+		rad_factor := math.cosf(theta)
+		mut xx := radius * ctx.scale * math.sinf(start_angle)
+		mut yy := radius * ctx.scale * math.cosf(start_angle)
+		sgl.begin_line_strip()
+		sgl.v2f(nx, ny)
+		for i := 0; i < segments + 1; i++ {
+			sgl.v2f(xx + nx, yy + ny)
+			xx, yy = xx + yy * tan_factor, yy - xx * tan_factor
+			xx *= rad_factor
+			yy *= rad_factor
+		}
+		sgl.v2f(nx, ny)
+		sgl.end()
 	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
-	theta := f32(end_angle / f32(segments))
-	tan_factor := math.tanf(theta)
-	rad_factor := math.cosf(theta)
-	nx := x * ctx.scale
-	ny := y * ctx.scale
-	mut xx := outer_radius * math.cosf(start_angle)
-	mut yy := outer_radius * math.sinf(start_angle)
-	sgl.begin_line_strip()
-	sgl.v2f(nx, ny)
-	for i := 0; i < segments + 1; i++ {
-		sgl.v2f(xx + nx, yy + ny)
-		tx := -yy
-		ty := xx
-		xx += tx * tan_factor
-		yy += ty * tan_factor
-		xx *= rad_factor
-		yy *= rad_factor
-	}
-	sgl.v2f(nx, ny)
-	sgl.end()
 }
 
 // draw_slice_filled draws a filled circle slice/pie
 // `x`,`y` defines the end point of the slice (center of the circle that the slice is part of).
 // `radius` defines the radius ("length") of the slice.
-// `start_angle` is the radians at which the slice starts.
-// `end_angle` is the radians at which the slice ends.
+// `start_angle` is the angle in radians at which the slice starts.
+// `end_angle` is the angle in radians at which the slice ends.
 // `segments` affects how smooth/round the slice is.
 // `c` is the fill color.
 pub fn (ctx &Context) draw_slice_filled(x f32, y f32, radius f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
-	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
-	}
-	sgl.c4b(c.r, c.g, c.b, c.a)
-	nx := x * ctx.scale
-	ny := y * ctx.scale
-	theta := f32(end_angle / f32(segments))
-	tan_factor := math.tanf(theta)
-	rad_factor := math.cosf(theta)
-	mut xx := radius * math.cosf(start_angle)
-	mut yy := radius * math.sinf(start_angle)
-	sgl.begin_triangle_strip()
-	for i := 0; i < segments + 1; i++ {
+	if radius < 0 {
+		return
+	} else if start_angle == end_angle {
+		ctx.draw_slice_empty(x, y, radius, start_angle, end_angle, 1, c)
+	} else {
+		if c.a != 255 {
+			sgl.load_pipeline(ctx.timage_pip)
+		}
+		sgl.c4b(c.r, c.g, c.b, c.a)
+		nx := x * ctx.scale
+		ny := y * ctx.scale
+		theta := f32(end_angle - start_angle) / f32(segments)
+		tan_factor := math.tanf(theta)
+		rad_factor := math.cosf(theta)
+		mut xx := radius * ctx.scale * math.sinf(start_angle)
+		mut yy := radius * ctx.scale * math.cosf(start_angle)
+		sgl.begin_triangle_strip()
 		sgl.v2f(xx + nx, yy + ny)
-		sgl.v2f(nx, ny)
-		tx := -yy
-		ty := xx
-		xx += tx * tan_factor
-		yy += ty * tan_factor
-		xx *= rad_factor
-		yy *= rad_factor
+		for i := 0; i < segments; i++ {
+			xx, yy = xx + yy * tan_factor, yy - xx * tan_factor
+			xx *= rad_factor
+			yy *= rad_factor
+			sgl.v2f(xx + nx, yy + ny)
+			if i & 1 == 0 {
+				sgl.v2f(nx, ny)
+			}
+		}
+		sgl.end()
 	}
-	sgl.end()
+}
+
+// draw_arc_line draws a line arc.
+// `x`,`y` defines the end point of the arc (center of the circle that the arc is part of).
+// `radius` defines the radius of the arc (length from the center point where the arc is drawn).
+// `start_angle` is the angle in radians at which the arc starts.
+// `end_angle` is the angle in radians at which the arc ends.
+// `segments` affects how smooth/round the arc is.
+// `c` is the color of the arc/outline.
+pub fn (ctx Context) draw_arc_line(x f32, y f32, radius f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
+	if radius < 0 {
+		return
+	} else if radius == 0.0 {
+		ctx.draw_pixel(x, y, c)
+	} else if start_angle == end_angle {
+		xx := x + radius * math.sinf(start_angle)
+		yy := y + radius * math.cosf(start_angle)
+		ctx.draw_pixel(xx, yy, c)
+	} else {
+		if c.a != 255 {
+			sgl.load_pipeline(ctx.timage_pip)
+		}
+		sgl.c4b(c.r, c.g, c.b, c.a)
+		nx := x * ctx.scale
+		ny := y * ctx.scale
+		theta := f32(end_angle - start_angle) / f32(segments)
+		tan_factor := math.tanf(theta)
+		rad_factor := math.cosf(theta)
+		mut xx := radius * ctx.scale * math.sinf(start_angle)
+		mut yy := radius * ctx.scale * math.cosf(start_angle)
+		sgl.begin_line_strip()
+		sgl.v2f(nx + xx, ny + yy)
+		for i := 0; i < segments; i++ {
+			xx, yy = xx + yy * tan_factor, yy - xx * tan_factor
+			xx *= rad_factor
+			yy *= rad_factor
+			sgl.v2f(nx + xx, ny + yy)
+		}
+		sgl.end()
+	}
 }
 
 // draw_arc_empty draws the outline of an arc.
 // `x`,`y` defines the end point of the arc (center of the circle that the arc is part of).
 // `inner_radius` defines the radius of the arc (length from the center point where the arc is drawn).
 // `thickness` defines how wide the arc is drawn.
-// `start_angle` is the radians at which the arc starts.
-// `end_angle` is the radians at which the arc ends.
+// `start_angle` is the angle in radians at which the arc starts.
+// `end_angle` is the angle in radians at which the arc ends.
 // `segments` affects how smooth/round the arc is.
-// `c` is the color of the arc/outline.
+// `c` is the color of the arc outline.
 pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_radius f32, thickness f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
-	if start_angle == end_angle || inner_radius <= 0.0 {
-		return
-	}
-
-	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
-	}
-
-	mut a1 := start_angle
-	mut a2 := end_angle
-
-	if a2 < a1 {
-		a1, a2 = a2, a1
-	}
-
-	if inner_radius <= 0.0 {
-		ctx.draw_slice_empty(x, y, int(thickness), a1, a2, segments, c)
-		return
-	}
-
 	outer_radius := inner_radius + thickness
-	mut step_length := (a2 - a1) / f32(segments)
-	mut angle := a1
+	if outer_radius < 0.0 {
+		return
+	} else if inner_radius <= 0 {
+		ctx.draw_slice_empty(x, y, outer_radius, start_angle, end_angle, segments, c)
+	} else if inner_radius == outer_radius {
+		ctx.draw_arc_line(x, y, outer_radius, start_angle, end_angle, segments, c)
+	} else {
+		if c.a != 255 {
+			sgl.load_pipeline(ctx.timage_pip)
+		}
+		sgl.c4b(c.r, c.g, c.b, c.a)
+		nx := x * ctx.scale
+		ny := y * ctx.scale
+		theta := f32(end_angle - start_angle) / f32(segments)
+		tan_factor := math.tanf(theta)
+		rad_factor := math.cosf(theta)
+		sgl.begin_line_strip()
 
-	sgl.begin_line_strip()
-	sgl.c4b(c.r, c.g, c.b, c.a)
+		// outer
+		mut xx := outer_radius * ctx.scale * math.sinf(start_angle)
+		mut yy := outer_radius * ctx.scale * math.cosf(start_angle)
+		sxx, syy := xx, yy
+		sgl.v2f(nx + xx, ny + yy)
+		for i := 0; i < segments; i++ {
+			xx, yy = xx + yy * tan_factor, yy - xx * tan_factor
+			xx *= rad_factor
+			yy *= rad_factor
+			sgl.v2f(nx + xx, ny + yy)
+		}
 
-	// Outer circle
-	for _ in 0 .. segments {
-		msa := f32(math.sin(angle))
-		mca := f32(math.cos(angle))
-		ms := f32(math.sin(angle + step_length))
-		mc := f32(math.cos(angle + step_length))
-		sgl.v2f(x + msa * outer_radius, y + mca * outer_radius)
-		sgl.v2f(x + ms * outer_radius, y + mc * outer_radius)
-		angle += step_length
+		// inner
+		xx = inner_radius * ctx.scale * math.sinf(end_angle)
+		yy = inner_radius * ctx.scale * math.cosf(end_angle)
+		sgl.v2f(nx + xx, ny + yy)
+		for i := 0; i < segments; i++ {
+			xx, yy = xx - yy * tan_factor, yy + xx * tan_factor
+			xx *= rad_factor
+			yy *= rad_factor
+			sgl.v2f(nx + xx, ny + yy)
+		}
+
+		sgl.v2f(nx + sxx, ny + syy)
+		sgl.end()
 	}
-
-	// Inner circle
-	for _ in 0 .. segments {
-		msa := f32(math.sin(angle))
-		mca := f32(math.cos(angle))
-		msb := f32(math.sin(angle - step_length))
-		mcb := f32(math.cos(angle - step_length))
-		sgl.v2f(x + msa * inner_radius, y + mca * inner_radius)
-		sgl.v2f(x + msb * inner_radius, y + mcb * inner_radius)
-
-		angle -= step_length
-	}
-
-	// Closing end
-	msa := f32(math.sin(angle))
-	mca := f32(math.cos(angle))
-	sgl.v2f(x + msa * inner_radius, y + mca * inner_radius)
-	sgl.v2f(x + msa * outer_radius, y + mca * outer_radius)
-	sgl.end()
 }
 
 // draw_arc_filled draws a filled arc.
 // `x`,`y` defines the central point of the arc (center of the circle that the arc is part of).
 // `inner_radius` defines the radius of the arc (length from the center point where the arc is drawn).
 // `thickness` defines how wide the arc is drawn.
-// `start_angle` is the radians at which the arc starts.
-// `end_angle` is the radians at which the arc ends.
+// `start_angle` is the angle in radians at which the arc starts.
+// `end_angle` is the angle in radians at which the arc ends.
 // `segments` affects how smooth/round the arc is.
 // `c` is the fill color of the arc.
 pub fn (ctx &Context) draw_arc_filled(x f32, y f32, inner_radius f32, thickness f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
-	if start_angle == end_angle || inner_radius <= 0.0 {
-		return
-	}
-
-	if c.a != 255 {
-		sgl.load_pipeline(ctx.timage_pip)
-	}
-
-	mut a1 := start_angle
-	mut a2 := end_angle
-
-	if a2 < a1 {
-		a1, a2 = a2, a1
-	}
-
-	if inner_radius <= 0.0 {
-		ctx.draw_slice_filled(x, y, int(thickness), a1, a2, segments, c)
-	}
-
 	outer_radius := inner_radius + thickness
-	mut step_length := (a2 - a1) / f32(segments)
-	mut angle := a1
+	if outer_radius < 0.0 {
+		return
+	} else if inner_radius <= 0 {
+		ctx.draw_slice_filled(x, y, outer_radius, start_angle, end_angle, segments, c)
+	} else if inner_radius == outer_radius {
+		ctx.draw_arc_line(x, y, outer_radius, start_angle, end_angle, segments, c)
+	} else if start_angle == end_angle {
+		ctx.draw_arc_empty(x, y, inner_radius, thickness, start_angle, end_angle, 1, c)
+	} else {
+		if c.a != 255 {
+			sgl.load_pipeline(ctx.timage_pip)
+		}
+		sgl.c4b(c.r, c.g, c.b, c.a)
+		nx := x * ctx.scale
+		ny := y * ctx.scale
+		theta := f32(end_angle - start_angle) / f32(segments)
+		tan_factor := math.tanf(theta)
+		rad_factor := math.cosf(theta)
 
-	sgl.begin_quads()
-	sgl.c4b(c.r, c.g, c.b, c.a)
-	for _ in 0 .. segments {
-		msa := f32(math.sin(angle))
-		mca := f32(math.cos(angle))
-		sgl.v2f(x + msa * inner_radius, y + mca * inner_radius)
-		sgl.v2f(x + msa * outer_radius, y + mca * outer_radius)
-
-		ms := f32(math.sin(angle + step_length))
-		mc := f32(math.cos(angle + step_length))
-		sgl.v2f(x + ms * outer_radius, y + mc * outer_radius)
-		sgl.v2f(x + ms * inner_radius, y + mc * inner_radius)
-
-		angle += step_length
+		mut ix := ctx.scale * math.sinf(start_angle)
+		mut iy := ctx.scale * math.cosf(start_angle)
+		mut ox := outer_radius * ix
+		mut oy := outer_radius * iy
+		ix *= inner_radius
+		iy *= inner_radius
+		sgl.begin_triangle_strip()
+		sgl.v2f(nx + ix, ny + iy)
+		sgl.v2f(nx + ox, ny + oy)
+		for i := 0; i < segments; i++ {
+			ix, iy = ix + iy * tan_factor, iy - ix * tan_factor
+			ix *= rad_factor
+			iy *= rad_factor
+			sgl.v2f(nx + ix, ny + iy)
+			ox, oy = ox + oy * tan_factor, oy - ox * tan_factor
+			ox *= rad_factor
+			oy *= rad_factor
+			sgl.v2f(nx + ox, ny + oy)
+		}
+		sgl.end()
 	}
-	sgl.end()
 }
 
 // draw_ellipse_empty draws the outline of an ellipse.
