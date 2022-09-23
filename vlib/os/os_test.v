@@ -47,6 +47,29 @@ fn test_open_file() {
 	os.rm(filename) or { panic(err) }
 }
 
+fn test_readfile_from_virtual_filesystem() {
+	$if linux {
+		mounts := os.read_file('/proc/mounts')?
+
+		// it is not empty, contains some mounting such as root filesystem: /dev/x / ext4 rw 0 0
+		assert mounts.len > 20
+		assert mounts.contains('/')
+		assert mounts.contains(' ')
+	}
+}
+
+fn test_read_binary_from_virtual_filesystem() {
+	$if linux {
+		mounts_raw := os.read_bytes('/proc/mounts')?
+		mounts := mounts_raw.bytestr()
+
+		// it is not empty, contains some mounting such as root filesystem: /dev/x / ext4 rw 0 0
+		assert mounts.len > 20
+		assert mounts.contains('/')
+		assert mounts.contains(' ')
+	}
+}
+
 fn test_open_file_binary() {
 	filename := './test1.dat'
 	hello := 'hello \n world!'
