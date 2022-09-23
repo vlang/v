@@ -1140,7 +1140,7 @@ const white_space_table = RangeTable{
 		Range16{0x2000, 0x200a, 1},
 		Range16{0x2028, 0x2029, 1},
 		Range16{0x202f, 0x205f, 48},
-		Range16{0x3000, 0x3000, 1}
+		Range16{0x3000, 0x3000, 1},
 	]
 	r32: []
 	latin_offset: 2
