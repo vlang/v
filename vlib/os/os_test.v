@@ -47,7 +47,7 @@ fn test_open_file() {
 	os.rm(filename) or { panic(err) }
 }
 
-fn test_readfile_from_virtual_filesystem() {
+fn test_read_file_from_virtual_filesystem() {
 	$if linux {
 		mounts := os.read_file('/proc/mounts')?
 
