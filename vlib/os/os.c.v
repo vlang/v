@@ -48,10 +48,13 @@ pub fn read_bytes(path string) ?[]u8 {
 	if cseek != 0 {
 		return error('fseek failed')
 	}
-	fsize := C.ftell(fp)
-	if fsize < 0 {
+	raw_fsize := C.ftell(fp)
+	if raw_fsize < 0 {
 		return error('ftell failed')
 	}
+
+	fsize := if raw_fsize == 0 { 4096 } else { raw_fsize } // virtual filesystem such as /proc returs zero size for files
+
 	len := int(fsize)
 	// On some systems C.ftell can return values in the 64-bit range
 	// that, when cast to `int`, can result in values below 0.
@@ -60,11 +63,11 @@ pub fn read_bytes(path string) ?[]u8 {
 	}
 	C.rewind(fp)
 	mut res := []u8{len: len}
-	nr_read_elements := int(C.fread(res.data, len, 1, fp))
+	nr_read_elements := int(C.fread(res.data, 1, len, fp))
 	if nr_read_elements == 0 && fsize > 0 {
 		return error('fread failed')
 	}
-	res.trim(nr_read_elements * len)
+	res.trim(nr_read_elements)
 	return res
 }
 
@@ -79,12 +82,15 @@ pub fn read_file(path string) ?string {
 	if cseek != 0 {
 		return error('fseek failed')
 	}
-	fsize := C.ftell(fp)
-	if fsize < 0 {
+	raw_fsize := C.ftell(fp)
+	if raw_fsize < 0 {
 		return error('ftell failed')
 	}
 	// C.fseek(fp, 0, SEEK_SET)  // same as `C.rewind(fp)` below
 	C.rewind(fp)
+
+	fsize := if raw_fsize == 0 { 4096 } else { raw_fsize } // virtual filesystem such as /proc returs zero size for files
+
 	allocate := int(fsize)
 	// On some systems C.ftell can return values in the 64-bit range
 	// that, when cast to `int`, can result in values below 0.
