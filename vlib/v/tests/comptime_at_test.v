@@ -126,3 +126,11 @@ fn test_vmod_file() {
 fn test_comptime_at() {
 	assert @VEXE == pref.vexe_path()
 }
+
+// Reasons for assertions that are not literal:
+// to prevent assertion invalidation due to "line" changes in subsequent code changes
+fn test_line_number_last_token() {
+	line1, line2, line3 := @LINE, @LINE, @LINE
+	assert line1 == line2
+	assert line1 == line3
+}
