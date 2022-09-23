@@ -1132,6 +1132,20 @@ const letter_table = RangeTable{
 	latin_offset: 6
 }
 
+const white_space_table = RangeTable{
+	r16: [
+		Range16{0x0009, 0x000d, 1},
+		Range16{0x0020, 0x0085, 101},
+		Range16{0x00a0, 0x1680, 5600},
+		Range16{0x2000, 0x200a, 1},
+		Range16{0x2028, 0x2029, 1},
+		Range16{0x202f, 0x205f, 48},
+		Range16{0x3000, 0x3000, 1},
+	]
+	r32: []
+	latin_offset: 2
+}
+
 struct RangeTable {
 pub:
 	r16          []Range16
