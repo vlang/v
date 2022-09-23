@@ -160,6 +160,10 @@ pub fn is_letter(r rune) bool {
 	return is_excluding_latin(letter_table, r)
 }
 
+// is_space returns true if the rune is character in unicode category Z with property white space or the following character set:
+// ```
+// `\t`, `\n`, `\v`, `\f`, `\r`, ` `, 0x85 (NEL), 0xA0 (NBSP)
+// ```
 pub fn is_space(r rune) bool {
 	if r <= max_latin_1 {
 		match r {
