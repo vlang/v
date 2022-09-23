@@ -7,6 +7,7 @@ mut:
 	prev &DoublyListNode<T> = unsafe { 0 }
 }
 
+// DoublyLinkedList<T> represents a generic doubly linked list of elements, each of type T.
 pub struct DoublyLinkedList<T> {
 mut:
 	head &DoublyListNode<T> = unsafe { 0 }
@@ -254,7 +255,7 @@ pub fn (list DoublyLinkedList<T>) str() string {
 
 // array returns a array representation of the linked list
 pub fn (list DoublyLinkedList<T>) array() []T {
-	mut result_array := []T{}
+	mut result_array := []T{cap: list.len}
 	mut node := list.head
 	for unsafe { node != 0 } {
 		result_array << node.data
@@ -264,7 +265,7 @@ pub fn (list DoublyLinkedList<T>) array() []T {
 }
 
 // next implements the iter interface to use DoublyLinkedList with
-// V's for loop syntax.
+// V's `for x in list {` loop syntax.
 pub fn (mut list DoublyLinkedList<T>) next() ?T {
 	if list.iter == unsafe { nil } {
 		// initialize new iter object
@@ -283,7 +284,58 @@ pub fn (mut list DoublyLinkedList<T>) next() ?T {
 	return list.iter.node.data
 }
 
-struct DoublyListIter<T> {
+// iterator returns a new iterator instance for the `list`.
+pub fn (mut list DoublyLinkedList<T>) iterator() DoublyListIter<T> {
+	return DoublyListIter<T>{
+		node: list.head
+	}
+}
+
+// back_iterator returns a new backwards iterator instance for the `list`.
+pub fn (mut list DoublyLinkedList<T>) back_iterator() DoublyListIterBack<T> {
+	return DoublyListIterBack<T>{
+		node: list.tail
+	}
+}
+
+// DoublyListIter<T> is an iterator for DoublyLinkedList.
+// It starts from *the start* and moves forwards to *the end* of the list.
+// It can be used with V's `for x in iter {` construct.
+// One list can have multiple independent iterators, pointing to different positions/places in the list.
+// A DoublyListIter iterator instance always traverses the list from *start to finish*.
+pub struct DoublyListIter<T> {
 mut:
 	node &DoublyListNode<T> = unsafe { 0 }
+}
+
+// next returns *the next* element of the list, or `none` when the end of the list is reached.
+// It is called by V's `for x in iter{` on each iteration.
+pub fn (mut iter DoublyListIter<T>) next() ?T {
+	if iter.node == unsafe { nil } {
+		return none
+	}
+	res := iter.node.data
+	iter.node = iter.node.next
+	return res
+}
+
+// DoublyListIterBack<T> is an iterator for DoublyLinkedList.
+// It starts from *the end* and moves backwards to *the start* of the list.
+// It can be used with V's `for x in iter {` construct.
+// One list can have multiple independent iterators, pointing to different positions/places in the list.
+// A DoublyListIterBack iterator instance always traverses the list from *finish to start*.
+pub struct DoublyListIterBack<T> {
+mut:
+	node &DoublyListNode<T> = unsafe { 0 }
+}
+
+// next returns *the previous* element of the list, or `none` when the start of the list is reached.
+// It is called by V's `for x in iter{` on each iteration.
+pub fn (mut iter DoublyListIterBack<T>) next() ?T {
+	if iter.node == unsafe { nil } {
+		return none
+	}
+	res := iter.node.data
+	iter.node = iter.node.prev
+	return res
 }

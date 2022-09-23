@@ -166,3 +166,49 @@ fn test_array() ? {
 	list.push_back(3)
 	assert list.array() == [1, 2, 3]
 }
+
+fn test_string_array() ? {
+	mut list := DoublyLinkedList<[]string>{}
+	list.push_back(['a'])
+	list.push_back(['b'])
+	list.push_back(['c'])
+	assert list.array() == [['a'], ['b'], ['c']]
+}
+
+fn test_iteration_with_for() ? {
+	mut list := DoublyLinkedList<int>{}
+	list.push_back(1)
+	list.push_back(2)
+	list.push_back(3)
+	mut res := []int{}
+	for x in list {
+		res << x
+	}
+	assert res == [1, 2, 3]
+}
+
+fn test_iterator() ? {
+	mut list := DoublyLinkedList<int>{}
+	list.push_back(1)
+	list.push_back(2)
+	list.push_back(3)
+	mut iter := list.iterator()
+	mut res := []int{}
+	for x in iter {
+		res << x
+	}
+	assert res == [1, 2, 3]
+}
+
+fn test_back_iterator() ? {
+	mut list := DoublyLinkedList<int>{}
+	list.push_back(1)
+	list.push_back(2)
+	list.push_back(3)
+	mut iter := list.back_iterator()
+	mut res := []int{}
+	for x in iter {
+		res << x
+	}
+	assert res == [3, 2, 1]
+}
