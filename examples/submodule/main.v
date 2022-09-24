@@ -1,5 +1,5 @@
-import mymodules { add_xy }
-import mymodules.submodule { sub_xy }
+import mymodule { add_xy }
+import mymodule.submodule { sub_xy }
 
 fn main() {
 	println(add_xy(2, 3)) // expected: 5

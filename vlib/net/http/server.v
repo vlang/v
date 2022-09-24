@@ -56,7 +56,7 @@ pub fn (mut s Server) listen_and_serve() ? {
 		conn.set_read_timeout(s.read_timeout)
 		conn.set_write_timeout(s.write_timeout)
 		// TODO: make concurrent
-		s.parse_and_respond(mut conn)
+		go s.parse_and_respond(mut conn)
 	}
 	if s.state == .stopped {
 		s.close()
