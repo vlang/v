@@ -128,7 +128,7 @@ mut:
 	inside_comptime_for_field bool
 	inside_cast_in_heap       int // inside cast to interface type in heap (resolve recursive calls)
 	inside_const              bool
-	inside_const_optional     bool
+	inside_const_opt_or_res   bool
 	inside_lambda             bool
 	loop_depth                int
 	ternary_names             map[string]string
@@ -4324,32 +4324,26 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		for i, expr in node.exprs {
 			// Check if we are dealing with a multi return and handle it seperately
 			if g.expr_is_multi_return_call(expr) {
-				c := expr as ast.CallExpr
-				expr_sym := g.table.sym(c.return_type)
-				// Create a tmp for this call
+				call_expr := expr as ast.CallExpr
+				expr_sym := g.table.sym(call_expr.return_type)
 				mut tmp := g.new_tmp_var()
-				if !c.return_type.has_flag(.optional) {
-					s := g.go_before_stmt(0)
-					expr_styp := g.typ(c.return_type)
+				if !call_expr.return_type.has_flag(.optional)
+					&& !call_expr.return_type.has_flag(.result) {
+					line := g.go_before_stmt(0)
+					expr_styp := g.typ(call_expr.return_type)
 					g.write('$expr_styp $tmp=')
 					g.expr(expr)
 					g.writeln(';')
 					multi_unpack += g.go_before_stmt(0)
-					g.write(s)
+					g.write(line)
 				} else {
-					s := g.go_before_stmt(0)
-					// TODO
-					// I (emily) am sorry for doing this
-					// I cant find another way to do this so right now
-					// this will have to do.
+					line := g.go_before_stmt(0)
 					g.tmp_count--
 					g.expr(expr)
 					multi_unpack += g.go_before_stmt(0)
-					g.write(s)
-					// modify tmp so that it is the opt deref
-					// TODO copy-paste from cgen.v:2397
-					expr_styp := g.base_type(c.return_type)
-					tmp = ('/*opt*/(*($expr_styp*)${tmp}.data)')
+					g.write(line)
+					expr_styp := g.base_type(call_expr.return_type)
+					tmp = ('(*($expr_styp*)${tmp}.data)')
 				}
 				expr_types := expr_sym.mr_info().types
 				for j, _ in expr_types {
@@ -4570,14 +4564,15 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				}
 			}
 			ast.CallExpr {
-				if field.expr.return_type.has_flag(.optional) {
-					g.inside_const_optional = true
-					unwrap_option := field.expr.or_block.kind != .absent
-					g.const_decl_init_later(field.mod, name, field.expr, field.typ, unwrap_option)
+				if field.expr.return_type.has_flag(.optional)
+					|| field.expr.return_type.has_flag(.result) {
+					g.inside_const_opt_or_res = true
+					unwrap_opt_res := field.expr.or_block.kind != .absent
+					g.const_decl_init_later(field.mod, name, field.expr, field.typ, unwrap_opt_res)
 				} else {
 					g.const_decl_init_later(field.mod, name, field.expr, field.typ, false)
 				}
-				g.inside_const_optional = false
+				g.inside_const_opt_or_res = false
 			}
 			else {
 				// Note: -usecache uses prebuilt modules, each compiled with:

@@ -91,3 +91,17 @@ fn test_is_letter() {
 	assert utf8.is_letter(`ȶ`) == true
 	assert utf8.is_letter(`ȹ`) == true
 }
+
+fn test_is_space() {
+	for ra in `a` .. `z` {
+		assert utf8.is_space(ra) == false
+	}
+
+	for ra in `A` .. `Z` {
+		assert utf8.is_space(ra) == false
+	}
+
+	assert utf8.is_space(`\u202f`) == true
+	assert utf8.is_space(`\u2009`) == true
+	assert utf8.is_space(`\u00A0`) == true
+}

@@ -1,13 +1,13 @@
 const (
 	aaa = iopt()?
-	bbb = sopt()?
+	bbb = sopt()!
 )
 
 fn iopt() ?int {
 	return 1234
 }
 
-fn sopt() ?string {
+fn sopt() !string {
 	return 'xyz'
 }
 

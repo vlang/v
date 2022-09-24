@@ -329,12 +329,13 @@ fn (mut p Parser) at() ast.AtExpr {
 		'@VROOT' { token.AtKind.vroot_path } // deprecated, use @VEXEROOT or @VMODROOT
 		else { token.AtKind.unknown }
 	}
-	p.next()
-	return ast.AtExpr{
+	expr := ast.AtExpr{
 		name: name
 		pos: p.tok.pos()
 		kind: kind
 	}
+	p.next()
+	return expr
 }
 
 fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {

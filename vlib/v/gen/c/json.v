@@ -482,7 +482,14 @@ fn (mut g Gen) gen_struct_enc_dec(type_info ast.TypeInfo, styp string, mut enc s
 				// it has to be encoded as a unix timestamp number
 				enc.writeln('\tcJSON_AddItemToObject(o, "$name", json__encode_u64(val.${c_name(field.name)}._v_unix));')
 			} else {
-				enc.writeln('\tcJSON_AddItemToObject(o, "$name", ${enc_name}(val.${c_name(field.name)}));\n')
+				if !field.typ.is_real_pointer() {
+					enc.writeln('\tcJSON_AddItemToObject(o, "$name", ${enc_name}(val.${c_name(field.name)}));\n')
+				} else {
+					sptr_value := 'val.${c_name(field.name)}'
+					enc.writeln('\tif ($sptr_value != 0) {')
+					enc.writeln('\t\tcJSON_AddItemToObject(o, "$name", ${enc_name}(*$sptr_value));')
+					enc.writeln('\t}\n')
+				}
 			}
 		}
 	}
@@ -499,7 +506,8 @@ fn gen_js_get(styp string, tmp string, name string, mut dec strings.Builder, is_
 
 fn gen_js_get_opt(dec_name string, field_type string, styp string, tmp string, name string, mut dec strings.Builder, is_required bool) {
 	gen_js_get(styp, tmp, name, mut dec, is_required)
-	dec.writeln('\t${option_name}_$field_type $tmp;')
+	value_field_type := field_type.trim_right('*')
+	dec.writeln('\t${option_name}_$value_field_type $tmp;')
 	dec.writeln('\tif (jsonroot_$tmp) {')
 	dec.writeln('\t\t$tmp = ${dec_name}(jsonroot_$tmp);')
 	dec.writeln('\t\tif (${tmp}.state != 0) {')
@@ -509,13 +517,14 @@ fn gen_js_get_opt(dec_name string, field_type string, styp string, tmp string, n
 }
 
 fn js_enc_name(typ string) string {
-	suffix := if typ.ends_with('*') { typ.replace('*', '') } else { typ }
+	suffix := if typ.ends_with('*') { typ.trim_right('*') } else { typ }
 	name := 'json__encode_$suffix'
 	return util.no_dots(name)
 }
 
 fn js_dec_name(typ string) string {
-	name := 'json__decode_$typ'
+	suffix := if typ.ends_with('*') { typ.trim_right('*') } else { typ }
+	name := 'json__decode_$suffix'
 	return util.no_dots(name)
 }
 
