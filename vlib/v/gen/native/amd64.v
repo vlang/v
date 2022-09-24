@@ -3009,6 +3009,34 @@ fn (mut g Gen) init_struct(var Var, init ast.StructInit) {
 	}
 }
 
+fn (mut g Gen) convert_bool_to_string(reg Register) {
+	g.cmp_zero(reg)
+	false_label := g.labels.new_label()
+	false_cjmp_addr := g.cjmp(.je)
+	g.labels.patches << LabelPatch{
+		id: false_label
+		pos: false_cjmp_addr
+	}
+	g.println('; jump to label $false_label')
+
+	g.learel(reg, g.allocate_string('true', 3, .rel32))
+
+	end_label := g.labels.new_label()
+	end_jmp_addr := g.jmp(0)
+	g.labels.patches << LabelPatch{
+		id: end_label
+		pos: end_jmp_addr
+	}
+	g.println('; jump to label $end_label')
+
+	g.labels.addrs[false_label] = g.pos()
+	g.println('; label $false_label')
+	g.learel(reg, g.allocate_string('false', 3, .rel32))
+
+	g.labels.addrs[end_label] = g.pos()
+	g.println('; label $end_label')
+}
+
 fn (mut g Gen) convert_int_to_string(r1 Register, r2 Register) {
 	if r1 != .rax {
 		g.mov_reg(.rax, r1)

@@ -24,6 +24,12 @@ pub fn (mut g Gen) init_builtins() {
 			}
 			arg_regs: [.rcx, .rdi]
 		}
+		'bool_to_string': BuiltinFn{
+			body: fn (builtin BuiltinFn, mut g Gen) {
+				g.convert_bool_to_string(builtin.arg_regs[0])
+			}
+			arg_regs: [.rax]
+		}
 		'reverse_string': BuiltinFn{
 			body: fn (builtin BuiltinFn, mut g Gen) {
 				g.reverse_string(builtin.arg_regs[0])
