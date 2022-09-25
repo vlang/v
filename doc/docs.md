@@ -2166,7 +2166,7 @@ pub fn new_information(data string) !Information {
 }
 ```
 
-Note that `new_information` is a _factory_ function. Now when we want to make use of this struct
+Note that `new_information` is a _factory_ function. Now when we want to use this struct
 outside the module:
 
 ```v oksyntax
