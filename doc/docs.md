@@ -139,7 +139,7 @@ To do so, run the command `v up`.
 
 <!--
 NB: there are several special keywords, which you can put after the code fences for v:
-compile, cgen, live, ignore, failcompile, oksyntax, badsyntax, wip, nofmt
+compile, cgen, live, ignore, failcompile, okfmt, oksyntax, badsyntax, wip, nofmt
 For more details, do: `v check-md`
 -->
 
@@ -2147,7 +2147,7 @@ through _factory functions_.
 
 For an example, consider the following source in a directory `sample`:
 
-```v ignore
+```v oksyntax
 module sample
 
 [noinit]
@@ -2169,7 +2169,7 @@ pub fn new_information(data string) !Information {
 Note that `new_information` is a _factory_ function. Now when we want to use this struct
 outside the module:
 
-```v oksyntax
+```v okfmt
 import sample
 
 fn main() {
