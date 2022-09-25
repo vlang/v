@@ -18,3 +18,15 @@ struct Baz {
 	Foo // Another comment for Foo
 	Test
 }
+
+struct Size {
+	width int
+}
+
+struct Button {
+	// embedds
+	Size [json: size]
+	// fields
+	a  int [json: a]
+	bb int [json: b]
+}

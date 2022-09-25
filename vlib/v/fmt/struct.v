@@ -63,12 +63,17 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 
 		pre_comments := embed.comments.filter(it.pos.pos < embed.pos.pos)
 		comments := embed.comments[pre_comments.len..]
-
 		f.comments_before_field(pre_comments)
+		f.write('\t$styp')
+
+		has_attrs := embed.attrs.len > 0
+		if has_attrs {
+			f.single_line_attrs(embed.attrs, inline: true)
+		}
+
 		if comments.len == 0 {
-			f.writeln('\t$styp')
+			f.writeln('')
 		} else {
-			f.write('\t$styp')
 			f.comments(comments, level: .indent)
 		}
 	}

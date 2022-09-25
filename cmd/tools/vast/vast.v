@@ -630,6 +630,7 @@ fn (t Tree) embed(node ast.Embed) &Node {
 	obj.add_terse('typ', t.type_node(node.typ))
 	obj.add('pos', t.pos(node.pos))
 	obj.add('comments', t.array_node_comment(node.comments))
+	obj.add('attr', t.array_node_attr(node.attrs))
 	return obj
 }
 

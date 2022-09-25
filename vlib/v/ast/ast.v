@@ -379,6 +379,8 @@ pub:
 	typ      Type
 	pos      token.Pos
 	comments []Comment
+pub mut:
+	attrs []Attr
 }
 
 pub struct InterfaceEmbedding {

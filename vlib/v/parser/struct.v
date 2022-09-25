@@ -302,6 +302,8 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 					is_deprecated: is_field_deprecated
 					anon_struct_decl: anon_struct_decl
 				}
+			} else {
+				embeds[embeds.len - 1].attrs = p.attrs
 			}
 			// save embeds as table fields too, it will be used in generation phase
 			fields << ast.StructField{
