@@ -63,6 +63,9 @@ fn test_idents() {
 	unicode := '😀😆😎💻🌎'
 	println(unicode)
 
+	cjk := 'こんにちは'
+	println(cjk)
+
 	// raw string
 	println(r'hello\tworld\n')
 }
