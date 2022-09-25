@@ -567,6 +567,11 @@ fn (mut g Gen) gen_var_to_string(reg Register, var Var, config VarConfig) {
 		g.lea_var_to_reg(g.get_builtin_arg_reg('int_to_string', 1), buffer)
 		g.call_builtin('int_to_string')
 		g.lea_var_to_reg(reg, buffer)
+	} else if typ.is_bool() {
+		g.mov_var_to_reg(g.get_builtin_arg_reg('bool_to_string', 0), var, config)
+		g.call_builtin('bool_to_string')
+	} else if typ.is_string() {
+		g.mov_var_to_reg(.rax, var, config)
 	} else {
 		g.n_error('int-to-string conversion not implemented for type $typ')
 	}
@@ -708,6 +713,13 @@ g.expr
 	}
 }
 
+fn (mut g Gen) extern_fn_decl(node ast.FnDecl) {
+	// declarations like: fn C.malloc()
+	// TODO: implement extern function calls here
+	// Must store an address where the function label is located in the RelA elf section
+	panic('C. functions are not implemented yet')
+}
+
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	name := if node.is_method {
 		'${g.table.get_type_name(node.receiver.typ)}.$node.name'
@@ -723,6 +735,11 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	if node.is_builtin {
 		g.warning('fn_decl: $name is builtin', node.pos)
 	}
+	if node.no_body {
+		g.extern_fn_decl(node)
+		return
+	}
+
 	g.stack_var_pos = 0
 	g.register_function_address(name)
 	g.labels = &LabelTable{}
