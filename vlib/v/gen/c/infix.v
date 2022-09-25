@@ -722,7 +722,11 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 			if node.left_type.has_flag(.shared_f) {
 				g.write('->val')
 			}
-			g.write(', (')
+			if left.typ.is_ptr() && right.typ.is_ptr() {
+				g.write(', *(')
+			} else {
+				g.write(', (')
+			}
 			g.expr_with_cast(node.right, node.right_type, left.unaliased.clear_flag(.shared_f))
 			styp := g.typ(expected_push_many_atype)
 			g.write('), $tmp_var, $styp)')
