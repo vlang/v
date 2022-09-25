@@ -145,20 +145,16 @@ pub fn sigint_to_signal_name(si int) string {
 
 // rmdir_all recursively removes the specified directory.
 pub fn rmdir_all(path string) ? {
-	mut ret_err := ''
 	items := ls(path)?
 	for item in items {
 		fullpath := join_path_single(path, item)
 		if is_dir(fullpath) && !is_link(fullpath) {
-			rmdir_all(fullpath) or { ret_err = err.msg() }
+			rmdir_all(fullpath)?
 		} else {
-			rm(fullpath) or { ret_err = err.msg() }
+			rm(fullpath)?
 		}
 	}
-	rmdir(path) or { ret_err = err.msg() }
-	if ret_err.len > 0 {
-		return error(ret_err)
-	}
+	rmdir(path)?
 }
 
 // is_dir_empty will return a `bool` whether or not `path` is empty.
