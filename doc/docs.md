@@ -139,7 +139,7 @@ To do so, run the command `v up`.
 
 <!--
 NB: there are several special keywords, which you can put after the code fences for v:
-compile, cgen, live, ignore, failcompile, oksyntax, badsyntax, wip, nofmt
+compile, cgen, live, ignore, failcompile, okfmt, oksyntax, badsyntax, wip, nofmt
 For more details, do: `v check-md`
 -->
 
@@ -2137,6 +2137,52 @@ book := Book{
 }
 assert book.author.name == 'Samantha Black'
 assert book.author.age == 24
+```
+
+### `[noinit]` structs
+
+V supports `[noinit]` structs, which are structs that cannot be initialised outside the module
+they are defined in. They are either meant to be used internally or they can be used externally
+through _factory functions_.
+
+For an example, consider the following source in a directory `sample`:
+
+```v oksyntax
+module sample
+
+[noinit]
+pub struct Information {
+pub:
+	data string
+}
+
+pub fn new_information(data string) !Information {
+	if data.len == 0 || data.len > 100 {
+		return error('data must be between 1 and 100 characters')
+	}
+	return Information{
+		data: data
+	}
+}
+```
+
+Note that `new_information` is a _factory_ function. Now when we want to use this struct
+outside the module:
+
+```v okfmt
+import sample
+
+fn main() {
+	// This doesn't work when the [noinit] attribute is present:
+	// info := sample.Information{
+	// 	data: 'Sample information.'
+	// }
+
+	// Use this instead:
+	info := sample.new_information('Sample information.')!
+
+	println(info)
+}
 ```
 
 ### Methods
