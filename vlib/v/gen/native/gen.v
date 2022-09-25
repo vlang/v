@@ -12,6 +12,7 @@ import v.token
 import v.errors
 import v.pref
 import term
+import strconv
 
 interface CodeGen {
 mut:
@@ -559,6 +560,85 @@ fn (mut g Gen) gen_match_expr(expr ast.MatchExpr) {
 	}
 }
 
+fn (mut g Gen) eval_escape_codes(str_lit ast.StringLiteral) string {
+	if str_lit.is_raw {
+		return str_lit.val
+	}
+
+	str := str_lit.val
+	mut buffer := []u8{}
+
+	mut i := 0
+	for i < str.len {
+		if str[i] != `\\` {
+			buffer << str[i]
+			i++
+			continue
+		}
+
+		// skip \
+		i++
+		match str[i] {
+			`\\` {
+				buffer << `\\`
+				i++
+			}
+			`a` | `b` | `f` {
+				buffer << str[i] - u8(90)
+				i++
+			}
+			`n` {
+				buffer << `\n`
+				i++
+			}
+			`r` {
+				buffer << `\r`
+				i++
+			}
+			`t` {
+				buffer << `\t`
+				i++
+			}
+			`u` {
+				i++
+				utf8 := strconv.parse_int(str[i..i + 4], 16, 16) or {
+					g.n_error('invalid \\u escape code (${str[i..i + 4]})')
+					0
+				}
+				i += 4
+				buffer << u8(utf8)
+				buffer << u8(utf8 >> 8)
+			}
+			`v` {
+				buffer << `\v`
+				i++
+			}
+			`x` {
+				i++
+				c := strconv.parse_int(str[i..i + 2], 16, 8) or {
+					g.n_error('invalid \\x escape code (${str[i..i + 2]})')
+					0
+				}
+				i += 2
+				buffer << u8(c)
+			}
+			`0`...`7` {
+				c := strconv.parse_int(str[i..i + 3], 8, 8) or {
+					g.n_error('invalid escape code \\${str[i..i + 3]}')
+					0
+				}
+				i += 3
+				buffer << u8(c)
+			}
+			else {
+				g.n_error('invalid escape code \\${str[i]}')
+			}
+		}
+	}
+
+	return buffer.bytestr()
+}
+
 fn (mut g Gen) gen_var_to_string(reg Register, var Var, config VarConfig) {
 	typ := g.get_type_from_var(var)
 	if typ.is_int() {
@@ -582,10 +662,11 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, name string) {
 	fd := if name in ['eprint', 'eprintln'] { 2 } else { 1 }
 	match expr {
 		ast.StringLiteral {
+			str := g.eval_escape_codes(expr)
 			if newline {
-				g.gen_print(expr.val + '\n', fd)
+				g.gen_print(str + '\n', fd)
 			} else {
-				g.gen_print(expr.val, fd)
+				g.gen_print(str, fd)
 			}
 		}
 		ast.CallExpr {
@@ -977,7 +1058,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 						// do the job
 					}
 					ast.StringLiteral {
-						s = e0.val.str()
+						s = g.eval_escape_codes(e0)
 						g.expr(node.exprs[0])
 						g.mov64(.rax, g.allocate_string(s, 2, .abs64))
 					}
@@ -1086,7 +1167,7 @@ fn (mut g Gen) gen_syscall(node ast.CallExpr) {
 				if expr.field_name == 'str' {
 					match expr.expr {
 						ast.StringLiteral {
-							s := expr.expr.val.replace('\\n', '\n')
+							s := g.eval_escape_codes(expr.expr)
 							g.allocate_string(s, 2, .abs64)
 							g.mov64(ra[i], 1)
 							done = true
@@ -1103,7 +1184,7 @@ fn (mut g Gen) gen_syscall(node ast.CallExpr) {
 					g.warning('C.syscall expects c"string" or "string".str, C backend will crash',
 						node.pos)
 				}
-				s := expr.val.replace('\\n', '\n')
+				s := g.eval_escape_codes(expr)
 				g.allocate_string(s, 2, .abs64)
 				g.mov64(ra[i], 1)
 			}
@@ -1188,7 +1269,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.prefix_expr(node)
 		}
 		ast.StringLiteral {
-			g.allocate_string(node.val, 3, .rel32)
+			str := g.eval_escape_codes(node)
+			g.allocate_string(str, 3, .rel32)
 		}
 		ast.StructInit {
 			pos := g.allocate_struct('_anonstruct', node.typ)
