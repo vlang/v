@@ -1,5 +1,7 @@
 module os
 
+import strings
+
 #include <sys/stat.h> // #include <signal.h>
 #include <errno.h>
 
@@ -46,6 +48,10 @@ pub fn read_bytes(path string) ?[]u8 {
 	raw_fsize := C.ftell(fp)
 	fsize := analyze_cseek_and_raw_fsize(cseek, raw_fsize)?
 	C.rewind(fp)
+	if cseek == 0 && raw_fsize == 0 {
+		mut sb := slurp_file_in_builder(fp)?
+		return unsafe { sb.reuse_as_plain_u8_array() }
+	}
 	mut res := []u8{len: fsize}
 	nr_read_elements := int(C.fread(res.data, 1, fsize, fp))
 	if nr_read_elements == 0 && fsize > 0 {
@@ -62,16 +68,39 @@ fn analyze_cseek_and_raw_fsize(cseek int, raw_fsize isize) ?int {
 	if cseek != 0 && raw_fsize < 0 {
 		return error('ftell failed')
 	}
-	fsize := if raw_fsize == 0 { 4096 } else { raw_fsize } // virtual filesystem such as /proc returs zero size for files
-	len := int(fsize)
+	len := int(raw_fsize)
 	// For files > 2GB, C.ftell can return values that, when cast to `int`, can result in values below 0.
-	if i64(len) < fsize {
-		return error('$fsize cast to int results in ${int(fsize)})')
+	if i64(len) < raw_fsize {
+		return error('int($raw_fsize) cast results in $len')
 	}
 	return len
 }
 
+const buf_size = 4096
+
+// slurp_file_in_builder reads an entire file into a strings.Builder chunk by chunk, without relying on its file size.
+// It is intended for reading 0 sized files, or a dynamic files in a virtual filesystem like /proc/cpuinfo.
+// For these, we can not allocate all memory in advance (since we do not know the final size), and so we have no choice
+// but to read the file in `buf_size` chunks.
+[manualfree]
+fn slurp_file_in_builder(fp &C.FILE) ?strings.Builder {
+	buf := [os.buf_size]u8{}
+	mut sb := strings.new_builder(os.buf_size)
+	for {
+		mut read_bytes := fread(&buf[0], 1, os.buf_size, fp) or {
+			if err is none {
+				break
+			}
+			unsafe { sb.free() }
+			return err
+		}
+		unsafe { sb.write_ptr(&buf[0], read_bytes) }
+	}
+	return sb
+}
+
 // read_file reads the file in `path` and returns the contents.
+[manualfree]
 pub fn read_file(path string) ?string {
 	mode := 'rb'
 	mut fp := vfopen(path, mode)?
@@ -82,7 +111,12 @@ pub fn read_file(path string) ?string {
 	raw_fsize := C.ftell(fp)
 	C.rewind(fp)
 	allocate := analyze_cseek_and_raw_fsize(cseek, raw_fsize)?
-	// C.fseek(fp, 0, SEEK_SET)  // same as `C.rewind(fp)` below
+	if cseek == 0 && raw_fsize == 0 {
+		mut sb := slurp_file_in_builder(fp)?
+		res := sb.str()
+		unsafe { sb.free() }
+		return res
+	}
 	unsafe {
 		mut str := malloc_noscan(allocate + 1)
 		nelements := int(C.fread(str, 1, allocate, fp))

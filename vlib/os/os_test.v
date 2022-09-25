@@ -893,3 +893,36 @@ fn test_command() {
 	// dump( cmd_to_fail )
 	assert cmd_to_fail.exit_code != 0 // 2 on linux, 1 on macos
 }
+
+fn test_reading_from_proc_cpuinfo() {
+	// This test is only for plain linux systems (they have a /proc virtual filesystem).
+	$if android {
+		assert true
+		return
+	}
+	$if !linux {
+		assert true
+		return
+	}
+	info := os.read_file('/proc/cpuinfo')?
+	assert info.len > 0
+	assert info.contains('processor')
+	assert info.ends_with('\n\n')
+
+	info_bytes := os.read_bytes('/proc/cpuinfo')?
+	assert info_bytes.len > 0
+	assert info.len == info_bytes.len
+}
+
+fn test_reading_from_empty_file() {
+	empty_file := os.join_path_single(tfolder, 'empty_file.txt')
+	os.rm(empty_file) or {}
+	assert !os.exists(empty_file)
+	os.write_file(empty_file, '')?
+	assert os.exists(empty_file)
+	content := os.read_file(empty_file)?
+	assert content.len == 0
+	content_bytes := os.read_bytes(empty_file)?
+	assert content_bytes.len == 0
+	os.rm(empty_file)?
+}
