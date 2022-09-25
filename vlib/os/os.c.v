@@ -44,11 +44,8 @@ pub fn read_bytes(path string) ?[]u8 {
 	defer {
 		C.fclose(fp)
 	}
-	cseek := C.fseek(fp, 0, C.SEEK_END)
-	raw_fsize := C.ftell(fp)
-	fsize := analyze_cseek_and_raw_fsize(cseek, raw_fsize)?
-	C.rewind(fp)
-	if cseek == 0 && raw_fsize == 0 {
+	fsize := find_cfile_size(fp)?
+	if fsize == 0 {
 		mut sb := slurp_file_in_builder(fp)?
 		return unsafe { sb.reuse_as_plain_u8_array() }
 	}
@@ -61,7 +58,10 @@ pub fn read_bytes(path string) ?[]u8 {
 	return res
 }
 
-fn analyze_cseek_and_raw_fsize(cseek int, raw_fsize isize) ?int {
+fn find_cfile_size(fp &C.FILE) ?int {
+	// NB: Musl's fseek returns -1 for virtual files, while Glibc's fseek returns 0
+	cseek := C.fseek(fp, 0, C.SEEK_END)
+	raw_fsize := C.ftell(fp)
 	if raw_fsize != 0 && cseek != 0 {
 		return error('fseek failed')
 	}
@@ -73,6 +73,7 @@ fn analyze_cseek_and_raw_fsize(cseek int, raw_fsize isize) ?int {
 	if i64(len) < raw_fsize {
 		return error('int($raw_fsize) cast results in $len')
 	}
+	C.rewind(fp)
 	return len
 }
 
@@ -107,11 +108,8 @@ pub fn read_file(path string) ?string {
 	defer {
 		C.fclose(fp)
 	}
-	cseek := C.fseek(fp, 0, C.SEEK_END)
-	raw_fsize := C.ftell(fp)
-	C.rewind(fp)
-	allocate := analyze_cseek_and_raw_fsize(cseek, raw_fsize)?
-	if cseek == 0 && raw_fsize == 0 {
+	allocate := find_cfile_size(fp)?
+	if allocate == 0 {
 		mut sb := slurp_file_in_builder(fp)?
 		res := sb.str()
 		unsafe { sb.free() }
