@@ -2147,7 +2147,7 @@ through _factory functions_.
 
 For an example, consider the following source in a directory `sample`:
 
-```v oksyntax
+```v ignore
 module sample
 
 [noinit]
