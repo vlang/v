@@ -122,7 +122,7 @@ fn C.chdir(path &char) int
 
 fn C.rewind(stream &C.FILE) int
 
-fn C.ftell(&C.FILE) int
+fn C.ftell(&C.FILE) isize
 
 fn C.stat(&char, voidptr) int
 
