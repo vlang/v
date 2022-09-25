@@ -571,7 +571,8 @@ fn (mut g Gen) eval_escape_codes(str_lit ast.StringLiteral) string {
 	mut i := 0
 	for i < str.len {
 		if str[i] != `\\` {
-			buffer << str[i++]
+			buffer << str[i]
+			i++
 			continue
 		}
 
@@ -579,10 +580,12 @@ fn (mut g Gen) eval_escape_codes(str_lit ast.StringLiteral) string {
 		i++
 		match str[i] {
 			`\\` {
-				buffer << str[i++]
+				buffer << '\\'
+				i++
 			}
 			`a` | `b` | `f` {
-				buffer << str[i++] - u8(90)
+				buffer << str[i] - u8(90)
+				i++
 			}
 			`n` {
 				buffer << `\n`
