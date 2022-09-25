@@ -580,7 +580,7 @@ fn (mut g Gen) eval_escape_codes(str_lit ast.StringLiteral) string {
 		i++
 		match str[i] {
 			`\\` {
-				buffer << '\\'
+				buffer << `\\`
 				i++
 			}
 			`a` | `b` | `f` {
