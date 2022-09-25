@@ -2170,7 +2170,7 @@ Note that `new_information` is a _factory_ function. Now when we want to make us
 outside the module:
 
 ```v oksyntax
-// ... Imports and stuff ...
+import sample
 
 fn main() {
 	// This doesn't work when the [noinit] attribute is present:
