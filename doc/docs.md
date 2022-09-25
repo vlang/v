@@ -641,6 +641,8 @@ age := 12
 println('age = $age')
 ```
 
+See all members of [string](https://modules.vlang.io/index.html#string)
+
 ### Runes
 
 A `rune` represents a single Unicode character and is an alias for `u32`. To denote them, use `
@@ -1024,6 +1026,8 @@ There are further built-in methods for arrays:
 * `a.join(joiner)` concatenates an array of strings into one string
   using `joiner` string as a separator
 
+See all members of [array](https://modules.vlang.io/index.html#array)
+
 See also [vlib/arrays](https://modules.vlang.io/arrays.html).
 
 ##### Sorting Arrays
@@ -1299,6 +1303,8 @@ print(m)
 
 Maps are ordered by insertion, like dictionaries in Python. The order is a
 guaranteed language feature. This may change in the future.
+
+See all members of [map](https://modules.vlang.io/index.html#map)
 
 ## Module imports
 
