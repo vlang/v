@@ -2073,7 +2073,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 						}
 						ast.StringLiteral {
 							// TODO: use learel
-							str := g.eval_escape_codes('$e.val')
+							str := g.eval_escape_codes(e)
 							g.mov64(.rsi, g.allocate_string(str, 2, .abs64)) // for rsi its 2
 							g.mov_reg_to_var(LocalVar{pos, ast.u64_type_idx, ''}, .rsi)
 							pos += 8
@@ -2113,7 +2113,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 			ast.StringLiteral {
 				dest := g.allocate_var(name, 8, 0)
 				ie := node.right[i] as ast.StringLiteral
-				str := g.eval_escape_codes(ie.val.str())
+				str := g.eval_escape_codes(ie)
 				g.learel(.rsi, g.allocate_string(str, 3, .rel32))
 				g.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, .rsi)
 			}

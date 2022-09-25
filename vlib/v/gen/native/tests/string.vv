@@ -16,7 +16,13 @@ fn test_escape_codes() {
 	println(tab_newln)
 }
 
+fn test_raw_string() {
+	raw := r'hello\tworld\n'
+	println(raw)
+}
+
 fn main() {
 	test_unicode_characters()
 	test_escape_codes()
+	test_raw_string()
 }

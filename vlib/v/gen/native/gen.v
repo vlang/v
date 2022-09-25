@@ -560,7 +560,12 @@ fn (mut g Gen) gen_match_expr(expr ast.MatchExpr) {
 	}
 }
 
-fn (mut g Gen) eval_escape_codes(str string) string {
+fn (mut g Gen) eval_escape_codes(str_lit ast.StringLiteral) string {
+	if str_lit.is_raw {
+		return str_lit.val
+	}
+
+	str := str_lit.val
 	mut buffer := []u8{}
 
 	mut i := 0
@@ -654,7 +659,7 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, name string) {
 	fd := if name in ['eprint', 'eprintln'] { 2 } else { 1 }
 	match expr {
 		ast.StringLiteral {
-			str := g.eval_escape_codes(expr.val)
+			str := g.eval_escape_codes(expr)
 			if newline {
 				g.gen_print(str + '\n', fd)
 			} else {
@@ -1050,7 +1055,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 						// do the job
 					}
 					ast.StringLiteral {
-						s = g.eval_escape_codes(e0.val.str())
+						s = g.eval_escape_codes(e0)
 						g.expr(node.exprs[0])
 						g.mov64(.rax, g.allocate_string(s, 2, .abs64))
 					}
@@ -1159,7 +1164,7 @@ fn (mut g Gen) gen_syscall(node ast.CallExpr) {
 				if expr.field_name == 'str' {
 					match expr.expr {
 						ast.StringLiteral {
-							s := g.eval_escape_codes(expr.expr.val)
+							s := g.eval_escape_codes(expr.expr)
 							g.allocate_string(s, 2, .abs64)
 							g.mov64(ra[i], 1)
 							done = true
@@ -1176,7 +1181,7 @@ fn (mut g Gen) gen_syscall(node ast.CallExpr) {
 					g.warning('C.syscall expects c"string" or "string".str, C backend will crash',
 						node.pos)
 				}
-				s := g.eval_escape_codes(expr.val)
+				s := g.eval_escape_codes(expr)
 				g.allocate_string(s, 2, .abs64)
 				g.mov64(ra[i], 1)
 			}
@@ -1261,7 +1266,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.prefix_expr(node)
 		}
 		ast.StringLiteral {
-			str := g.eval_escape_codes(node.val)
+			str := g.eval_escape_codes(node)
 			g.allocate_string(str, 3, .rel32)
 		}
 		ast.StructInit {

@@ -62,6 +62,9 @@ fn test_idents() {
 
 	unicode := '😀😆😎💻🌎'
 	println(unicode)
+
+	// raw string
+	println(r'hello\tworld\n')
 }
 
 fn main() {
