@@ -32,11 +32,11 @@ fn cleanup() {
 	os.rm(test_dir_zip) or {}
 }
 
-fn testsuite_begin() ? {
+fn testsuite_begin() {
 	cleanup()
 }
 
-fn testsuite_end() ? {
+fn testsuite_end() {
 	cleanup()
 }
 

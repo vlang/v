@@ -11,7 +11,7 @@ const (
 	test_os_process_source = os.join_path(vroot, 'cmd/tools/test_os_process.v')
 )
 
-fn testsuite_begin() ? {
+fn testsuite_begin() {
 	os.rmdir_all(tfolder) or {}
 	os.mkdir_all(tfolder)?
 	if os.getenv('WINE_TEST_OS_PROCESS_EXE') != '' {
@@ -26,7 +26,7 @@ fn testsuite_begin() ? {
 	assert os.exists(test_os_process)
 }
 
-fn testsuite_end() ? {
+fn testsuite_end() {
 	os.rmdir_all(tfolder) or {}
 }
 
