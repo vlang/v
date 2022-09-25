@@ -31,7 +31,9 @@ pub fn (ctx &Context) draw_pixel(x f32, y f32, c gx.Color) {
 // functions like `draw_rect_empty` or `draw_triangle_empty` etc.
 [direct_array_access; inline]
 pub fn (ctx &Context) draw_pixels(points []f32, c gx.Color) {
-	assert points.len % 2 == 0
+	if points.len % 2 != 0 {
+		return
+	}
 	len := points.len / 2
 
 	if c.a != 255 {
@@ -129,9 +131,10 @@ pub fn (ctx &Context) draw_line_with_config(x f32, y f32, x2 f32, y2 f32, config
 // draw_poly_empty draws the outline of a polygon, given an array of points, and a color.
 // NOTE that the points must be given in clockwise winding order.
 pub fn (ctx &Context) draw_poly_empty(points []f32, c gx.Color) {
-	assert points.len % 2 == 0
 	len := points.len / 2
-	assert len >= 3
+	if points.len % 2 != 0 || len < 3 {
+		return
+	}
 
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
@@ -150,9 +153,10 @@ pub fn (ctx &Context) draw_poly_empty(points []f32, c gx.Color) {
 // NOTE that the points must be given in clockwise winding order.
 // The contents of the `points` array should be `x` and `y` coordinate pairs.
 pub fn (ctx &Context) draw_convex_poly(points []f32, c gx.Color) {
-	assert points.len % 2 == 0
 	len := points.len / 2
-	assert len >= 3
+	if points.len % 2 != 0 || len < 3 {
+		return
+	}
 
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
@@ -545,7 +549,9 @@ pub fn (ctx &Context) draw_circle_filled(x f32, y f32, radius f32, c gx.Color) {
 // `rotation` defines rotation of the polygon.
 // `c` is the fill color.
 pub fn (ctx &Context) draw_polygon_filled(x f32, y f32, size f32, edges int, rotation f32, c gx.Color) {
-	assert edges > 0
+	if edges <= 0 {
+		return
+	}
 
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
@@ -585,7 +591,9 @@ pub fn (ctx &Context) draw_circle_with_segments(x f32, y f32, radius f32, segmen
 // `segments` affects how smooth/round the circle is.
 // `c` is the color of the outline.
 pub fn (ctx &Context) draw_circle_line(x f32, y f32, radius int, segments int, c gx.Color) {
-	assert segments > 0
+	if segments <= 0 {
+		return
+	}
 
 	$if macos {
 		if ctx.native_rendering {
@@ -619,12 +627,9 @@ pub fn (ctx &Context) draw_circle_line(x f32, y f32, radius int, segments int, c
 
 // draw_slice_empty draws the outline of a circle slice/pie
 pub fn (ctx &Context) draw_slice_empty(x f32, y f32, radius f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
-	assert segments > 0
-
-	if radius <= 0 {
+	if segments <= 0 || radius <= 0 {
 		return
 	}
-
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -658,9 +663,7 @@ pub fn (ctx &Context) draw_slice_empty(x f32, y f32, radius f32, start_angle f32
 // `segments` affects how smooth/round the slice is.
 // `c` is the fill color.
 pub fn (ctx &Context) draw_slice_filled(x f32, y f32, radius f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
-	assert segments > 0
-
-	if radius < 0 {
+	if segments <= 0 || radius < 0 {
 		return
 	}
 	if start_angle == end_angle {
@@ -703,9 +706,7 @@ pub fn (ctx &Context) draw_slice_filled(x f32, y f32, radius f32, start_angle f3
 // `segments` affects how smooth/round the arc is.
 // `c` is the color of the arc/outline.
 pub fn (ctx Context) draw_arc_line(x f32, y f32, radius f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
-	assert segments > 0
-
-	if radius < 0 {
+	if segments <= 0 || radius < 0 {
 		return
 	}
 	if radius == 0 {
@@ -752,12 +753,11 @@ pub fn (ctx Context) draw_arc_line(x f32, y f32, radius f32, start_angle f32, en
 // `segments` affects how smooth/round the arc is.
 // `c` is the color of the arc outline.
 pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_radius f32, thickness f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
-	assert segments > 0
-
 	outer_radius := inner_radius + thickness
-	if outer_radius < 0 {
+	if segments <= 0 || outer_radius < 0 {
 		return
 	}
+
 	if inner_radius <= 0 {
 		ctx.draw_slice_empty(x, y, outer_radius, start_angle, end_angle, segments, c)
 		return
@@ -816,12 +816,11 @@ pub fn (ctx &Context) draw_arc_empty(x f32, y f32, inner_radius f32, thickness f
 // `segments` affects how smooth/round the arc is.
 // `c` is the fill color of the arc.
 pub fn (ctx &Context) draw_arc_filled(x f32, y f32, inner_radius f32, thickness f32, start_angle f32, end_angle f32, segments int, c gx.Color) {
-	assert segments > 0
-
 	outer_radius := inner_radius + thickness
-	if outer_radius < 0 {
+	if segments <= 0 || outer_radius < 0 {
 		return
 	}
+
 	if inner_radius <= 0 {
 		ctx.draw_slice_filled(x, y, outer_radius, start_angle, end_angle, segments, c)
 		return
@@ -923,9 +922,9 @@ pub fn (ctx &Context) draw_cubic_bezier(points []f32, c gx.Color) {
 // The four points is provided as one `points` array which contains a stream of point pairs (x and y coordinates).
 // Thus a cubic Bézier could be declared as: `points := [x1, y1, control_x1, control_y1, control_x2, control_y2, x2, y2]`.
 pub fn (ctx &Context) draw_cubic_bezier_in_steps(points []f32, steps u32, c gx.Color) {
-	assert steps > 0
-	assert points.len == 8
-
+	if steps <= 0 || points.len != 8 {
+		return
+	}
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
