@@ -15,13 +15,13 @@ mut:
 	u64 u64
 }
 
-struct Epoll{
+struct Epoll {
 	ev C.epoll_event
 }
 
-fn test_dump_c_struct(){
+fn test_dump_c_struct() {
 	ev := C.epoll_event{}
-	unsafe{ C.memset(&ev, 0, sizeof(ev))}
+	unsafe { C.memset(&ev, 0, sizeof(ev)) }
 	dump(ev)
 	println(ev)
 
