@@ -224,6 +224,9 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 					p.error_with_pos('duplicate field `$field_name`', type_pos)
 					return ast.StructDecl{}
 				}
+				if p.tok.kind == .lsbr { 
+					p.error('cannot use attributes on embedded structs')
+				}
 				embed_field_names << field_name
 				embed_types << typ
 				embeds << ast.Embed{
