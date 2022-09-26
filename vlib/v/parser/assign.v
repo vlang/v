@@ -200,6 +200,9 @@ fn (mut p Parser) check_undefined_variables_by_names(names []string, val ast.Exp
 		ast.PrefixExpr {
 			p.check_undefined_variables_by_names(names, val.right)?
 		}
+		ast.SelectorExpr {
+			p.check_undefined_variables_by_names(names, val.expr)?
+		}
 		ast.StringInterLiteral {
 			for expr_ in val.exprs {
 				p.check_undefined_variables_by_names(names, expr_)?
