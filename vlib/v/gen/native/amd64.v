@@ -2275,8 +2275,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			}
 		}
 		if node.left_type !in ast.integer_type_idxs && node.left_type != ast.bool_type_idx
-		&& g.table.sym(node.left_type).info !is ast.Enum
-		{
+			&& g.table.sym(node.left_type).info !is ast.Enum {
 			g.n_error('unsupported type for `$node.op`: $node.left_type')
 		}
 		// left: rax, right: rdx
