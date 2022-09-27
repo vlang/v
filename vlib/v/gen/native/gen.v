@@ -11,6 +11,7 @@ import v.mathutil as mu
 import v.token
 import v.errors
 import v.pref
+import v.eval
 import term
 import strconv
 
@@ -53,6 +54,8 @@ mut:
 	defer_stmts          []ast.DeferStmt
 	builtins             map[string]BuiltinFn
 	structs              []Struct
+	eval                 eval.Eval
+	enum_vals            map[string]Enum
 	// macho specific
 	macho_ncmds   int
 	macho_cmdsize int
@@ -105,6 +108,11 @@ fn (mut l LabelTable) new_label() int {
 struct Struct {
 mut:
 	offsets []int
+}
+
+struct Enum {
+mut:
+	fields map[string]int
 }
 
 enum Size {
@@ -217,11 +225,13 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 		}
 		labels: 0
 		structs: []Struct{len: table.type_symbols.len}
+		eval: eval.new_eval(table, pref)
 	}
 	g.code_gen.g = g
 	g.generate_header()
 	g.init_builtins()
 	g.calculate_all_size_align()
+	g.calculate_enum_fields()
 	for file in files {
 		/*
 		if file.warnings.len > 0 {
@@ -327,6 +337,25 @@ pub fn (mut g Gen) calculate_all_size_align() {
 		}
 		ts.size = g.get_type_size(ast.new_type(ts.idx))
 		ts.align = g.get_type_align(ast.new_type(ts.idx))
+	}
+}
+
+pub fn (mut g Gen) calculate_enum_fields() {
+	for name, decl in g.table.enum_decls {
+		mut enum_vals := Enum{}
+		mut value := if decl.is_flag { 1 } else { 0 }
+		for field in decl.fields {
+			if field.has_expr {
+				value = int(g.eval.expr(field.expr, ast.int_type_idx).int_val())
+			}
+			enum_vals.fields[field.name] = value
+			if decl.is_flag {
+				value <<= 1
+			} else {
+				value++
+			}
+		}
+		g.enum_vals[name] = enum_vals
 	}
 }
 
@@ -496,13 +525,17 @@ fn (mut g Gen) get_type_size(typ ast.Type) int {
 				}
 			}
 			size = (size + align - 1) / align * align
+			g.structs[typ.idx()] = strc
+		}
+		ast.Enum {
+			size = 4
+			align = 4
 		}
 		else {}
 	}
 	mut ts_ := g.table.sym(typ)
 	ts_.size = size
 	ts_.align = align
-	g.structs[typ.idx()] = strc
 	// g.n_error('unknown type size')
 	return size
 }
@@ -1138,6 +1171,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.Import {} // do nothing here
 		ast.StructDecl {}
+		ast.EnumDecl {}
 		else {
 			eprintln('native.stmt(): bad node: ' + node.type_name())
 		}
@@ -1235,6 +1269,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 							ast.Struct {
 								g.lea_var_to_reg(.rax, g.get_var_offset(node.name))
 							}
+							ast.Enum {
+								g.mov_var_to_reg(.rax, node as ast.Ident, typ: ast.int_type_idx)
+							}
 							else {
 								g.n_error('Unsupported variable type')
 							}
@@ -1288,6 +1325,10 @@ fn (mut g Gen) expr(node ast.Expr) {
 			offset := g.get_field_offset(node.expr_type, node.field_name)
 			g.add(.rax, offset)
 			g.mov_deref(.rax, .rax, node.typ)
+		}
+		ast.EnumVal {
+			type_name := g.table.get_type_name(node.typ)
+			g.mov(.rax, g.enum_vals[type_name].fields[node.val])
 		}
 		else {
 			g.n_error('expr: unhandled node type: $node.type_name()')
