@@ -343,13 +343,17 @@ pub fn (mut g Gen) calculate_all_size_align() {
 pub fn (mut g Gen) calculate_enum_fields() {
 	for name, decl in g.table.enum_decls {
 		mut enum_vals := Enum{}
-		mut value := 0
+		mut value := if decl.is_flag { 1 } else { 0 }
 		for field in decl.fields {
 			if field.has_expr {
 				value = int(g.eval.expr(field.expr, ast.int_type_idx).int_val())
 			}
 			enum_vals.fields[field.name] = value
-			value++
+			if decl.is_flag {
+				value <<= 1
+			} else {
+				value++
+			}
 		}
 		g.enum_vals[name] = enum_vals
 	}
