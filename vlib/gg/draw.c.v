@@ -515,7 +515,7 @@ pub fn (ctx &Context) draw_circle_empty(x f32, y f32, radius f32, c gx.Color) {
 	mut theta := f32(0)
 	mut xx := f32(0)
 	mut yy := f32(0)
-	segments := radius_to_segments(radius)
+	segments := radius_to_segments(radius * ctx.scale)
 
 	sgl.begin_line_strip()
 	for i := 0; i < segments + 1; i++ {
@@ -539,7 +539,7 @@ pub fn (ctx &Context) draw_circle_filled(x f32, y f32, radius f32, c gx.Color) {
 			return
 		}
 	}
-	ctx.draw_polygon_filled(x, y, radius, radius_to_segments(radius), 0, c)
+	ctx.draw_polygon_filled(x, y, radius, radius_to_segments(radius * ctx.scale), 0, c)
 }
 
 // draw_polygon_filled draws a filled polygon.
