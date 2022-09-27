@@ -584,7 +584,16 @@ fn (mut g Gen) mov_reg_to_var(var Var, reg Register, config VarConfig) {
 					size_str = 'BYTE'
 				}
 				else {
-					g.n_error('unsupported type for mov_reg_to_var')
+					ts := g.table.sym(typ.idx())
+					if ts.info is ast.Enum {
+						if is_extended_register {
+							g.write8(0x44)
+						}
+						g.write8(0x89)
+						size_str = 'DWORD'
+					} else {
+						g.n_error('unsupported type for mov_reg_to_var')
+					}
 				}
 			}
 			far_var_offset := if is_far_var { 0x40 } else { 0 }
