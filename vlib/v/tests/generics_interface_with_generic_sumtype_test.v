@@ -74,7 +74,7 @@ fn test_generics_interface_with_generic_sumtype() {
 	mut iter1 := EmptyIter<u32>{}
 	println(iter1)
 	assert iter1.next().is_none()
-	
+
 	mut iter2 := Iterator<u32>(iter1)
 	println(iter2)
 	assert iter2.count() == 0
