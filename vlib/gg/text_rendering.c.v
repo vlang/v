@@ -149,7 +149,7 @@ pub fn (ctx &Context) set_text_cfg(cfg gx.TextCfg) {
 
 [deprecated: 'use set_text_cfg() instead']
 pub fn (ctx &Context) set_cfg(cfg gx.TextCfg) {
-    ctx.set_text_cfg(cfg)
+	ctx.set_text_cfg(cfg)
 }
 
 // draw_text draws the string in `text_` starting at top-left position `x`,`y`.
