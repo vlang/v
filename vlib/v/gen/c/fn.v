@@ -715,7 +715,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	left_type := g.unwrap_generic(node.left_type)
 	mut unwrapped_rec_type := node.receiver_type
-	if unsafe { g.cur_fn != 0 } && g.cur_fn.generic_names.len > 0 { // in generic fn
+	if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 { // in generic fn
 		unwrapped_rec_type = g.unwrap_generic(node.receiver_type)
 	} else { // in non-generic fn
 		sym := g.table.sym(node.receiver_type)
