@@ -584,7 +584,16 @@ fn (mut g Gen) mov_reg_to_var(var Var, reg Register, config VarConfig) {
 					size_str = 'BYTE'
 				}
 				else {
-					g.n_error('unsupported type for mov_reg_to_var')
+					ts := g.table.sym(typ.idx())
+					if ts.info is ast.Enum {
+						if is_extended_register {
+							g.write8(0x44)
+						}
+						g.write8(0x89)
+						size_str = 'DWORD'
+					} else {
+						g.n_error('unsupported type for mov_reg_to_var')
+					}
 				}
 			}
 			far_var_offset := if is_far_var { 0x40 } else { 0 }
@@ -2073,7 +2082,8 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 						}
 						ast.StringLiteral {
 							// TODO: use learel
-							g.mov64(.rsi, g.allocate_string('$e.val', 2, .abs64)) // for rsi its 2
+							str := g.eval_escape_codes(e)
+							g.mov64(.rsi, g.allocate_string(str, 2, .abs64)) // for rsi its 2
 							g.mov_reg_to_var(LocalVar{pos, ast.u64_type_idx, ''}, .rsi)
 							pos += 8
 						}
@@ -2112,7 +2122,8 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 			ast.StringLiteral {
 				dest := g.allocate_var(name, 8, 0)
 				ie := node.right[i] as ast.StringLiteral
-				g.learel(.rsi, g.allocate_string(ie.val.str(), 3, .rel32))
+				str := g.eval_escape_codes(ie)
+				g.learel(.rsi, g.allocate_string(str, 3, .rel32))
 				g.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, .rsi)
 			}
 			ast.CallExpr {
@@ -2263,7 +2274,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 				})
 			}
 		}
-		if node.left_type !in ast.integer_type_idxs && node.left_type != ast.bool_type_idx {
+		if node.left_type !in ast.integer_type_idxs && node.left_type != ast.bool_type_idx
+			&& g.table.sym(node.left_type).info !is ast.Enum {
 			g.n_error('unsupported type for `$node.op`: $node.left_type')
 		}
 		// left: rax, right: rdx
@@ -2465,17 +2477,9 @@ fn (mut g Gen) gen_asm_stmt_amd64(asm_node ast.AsmStmt) {
 
 fn (mut g Gen) gen_assert(assert_node ast.AssertStmt) {
 	mut cjmp_addr := 0
-	mut ine := ast.InfixExpr{}
 	ane := assert_node.expr
-	if ane is ast.ParExpr { // assert(1==1)
-		ine = ane.expr as ast.InfixExpr
-	} else if ane is ast.InfixExpr { // assert 1==1
-		ine = ane
-	} else {
-		g.n_error('Unsupported expression in assert')
-	}
 	label := g.labels.new_label()
-	cjmp_addr = g.condition(ine, true)
+	cjmp_addr = g.condition(ane, true)
 	g.labels.patches << LabelPatch{
 		id: label
 		pos: cjmp_addr
@@ -3007,6 +3011,34 @@ fn (mut g Gen) init_struct(var Var, init ast.StructInit) {
 			// TODO
 		}
 	}
+}
+
+fn (mut g Gen) convert_bool_to_string(reg Register) {
+	g.cmp_zero(reg)
+	false_label := g.labels.new_label()
+	false_cjmp_addr := g.cjmp(.je)
+	g.labels.patches << LabelPatch{
+		id: false_label
+		pos: false_cjmp_addr
+	}
+	g.println('; jump to label $false_label')
+
+	g.learel(reg, g.allocate_string('true', 3, .rel32))
+
+	end_label := g.labels.new_label()
+	end_jmp_addr := g.jmp(0)
+	g.labels.patches << LabelPatch{
+		id: end_label
+		pos: end_jmp_addr
+	}
+	g.println('; jump to label $end_label')
+
+	g.labels.addrs[false_label] = g.pos()
+	g.println('; label $false_label')
+	g.learel(reg, g.allocate_string('false', 3, .rel32))
+
+	g.labels.addrs[end_label] = g.pos()
+	g.println('; label $end_label')
 }
 
 fn (mut g Gen) convert_int_to_string(r1 Register, r2 Register) {

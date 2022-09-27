@@ -1,3 +1,6 @@
+## V 0.3.2
+*Not yet released*
+
 ## V 0.3.1
 *31 Aug 2022*
 - Anonymous structs.

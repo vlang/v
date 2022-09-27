@@ -142,6 +142,12 @@ pub fn (mut ts TestSession) print_messages() {
 
 pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 	mut skip_files := []string{}
+
+	// Skip the call_v_from_c files. They need special instructions for compilation.
+	// Check the README.md for detailed information.
+	skip_files << 'examples/call_v_from_c/v_test_print.v'
+	skip_files << 'examples/call_v_from_c/v_test_math.v'
+
 	if will_compile {
 		$if msvc {
 			skip_files << 'vlib/v/tests/const_comptime_eval_before_vinit_test.v' // _constructor used

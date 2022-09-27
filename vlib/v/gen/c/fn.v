@@ -671,7 +671,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		if unwrapped_typ == ast.void_type {
 			g.write('\n $cur_line')
 		} else {
-			if !g.inside_const_optional {
+			if !g.inside_const_opt_or_res {
 				g.write('\n $cur_line (*($unwrapped_styp*)${tmp_opt}.data)')
 			} else {
 				g.write('\n $cur_line $tmp_opt')

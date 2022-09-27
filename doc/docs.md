@@ -115,6 +115,7 @@ To do so, run the command `v up`.
     * [sizeof and __offsetof](#sizeof-and-__offsetof)
     * [Calling C from V](#calling-c-from-v)
     * [Calling V from C](#calling-v-from-c)
+    * [Export to shared library](#export-to-shared-library)
 	* [Atomics](#atomics)
 	* [Global Variables](#global-variables)
     * [Debugging](#debugging)
@@ -139,7 +140,7 @@ To do so, run the command `v up`.
 
 <!--
 NB: there are several special keywords, which you can put after the code fences for v:
-compile, cgen, live, ignore, failcompile, oksyntax, badsyntax, wip, nofmt
+compile, cgen, live, ignore, failcompile, okfmt, oksyntax, badsyntax, wip, nofmt
 For more details, do: `v check-md`
 -->
 
@@ -641,6 +642,8 @@ age := 12
 println('age = $age')
 ```
 
+See all methods of [string](https://modules.vlang.io/index.html#string)
+
 ### Runes
 
 A `rune` represents a single Unicode character and is an alias for `u32`. To denote them, use `
@@ -1024,6 +1027,8 @@ There are further built-in methods for arrays:
 * `a.join(joiner)` concatenates an array of strings into one string
   using `joiner` string as a separator
 
+See all methods of [array](https://modules.vlang.io/index.html#array)
+
 See also [vlib/arrays](https://modules.vlang.io/arrays.html).
 
 ##### Sorting Arrays
@@ -1299,6 +1304,8 @@ print(m)
 
 Maps are ordered by insertion, like dictionaries in Python. The order is a
 guaranteed language feature. This may change in the future.
+
+See all methods of [map](https://modules.vlang.io/index.html#map)
 
 ## Module imports
 
@@ -2137,6 +2144,52 @@ book := Book{
 }
 assert book.author.name == 'Samantha Black'
 assert book.author.age == 24
+```
+
+### `[noinit]` structs
+
+V supports `[noinit]` structs, which are structs that cannot be initialised outside the module
+they are defined in. They are either meant to be used internally or they can be used externally
+through _factory functions_.
+
+For an example, consider the following source in a directory `sample`:
+
+```v oksyntax
+module sample
+
+[noinit]
+pub struct Information {
+pub:
+	data string
+}
+
+pub fn new_information(data string) !Information {
+	if data.len == 0 || data.len > 100 {
+		return error('data must be between 1 and 100 characters')
+	}
+	return Information{
+		data: data
+	}
+}
+```
+
+Note that `new_information` is a _factory_ function. Now when we want to use this struct
+outside the module:
+
+```v okfmt
+import sample
+
+fn main() {
+	// This doesn't work when the [noinit] attribute is present:
+	// info := sample.Information{
+	// 	data: 'Sample information.'
+	// }
+
+	// Use this instead:
+	info := sample.new_information('Sample information.')!
+
+	println(info)
+}
 ```
 
 ### Methods
@@ -4961,7 +5014,13 @@ fn main() {
 
 ## Calling V from C
 
-Since V can compile to C, calling V code from C is very easy.
+Since V can compile to C, calling V code from C is very easy, once you know how.
+
+Use `v -o file.c your_file.v` to generate a C file, corresponding to the V code.
+
+More details in [call_v_from_c example](../examples/call_v_from_c).
+
+## Export to shared library
 
 By default all V functions have the following naming scheme in C: `[module name]__[fn_name]`.
 

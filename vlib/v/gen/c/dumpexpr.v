@@ -12,7 +12,11 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 		g.expr(node.expr)
 		return
 	}
-	dump_fn_name := '_v_dump_expr_$node.cname' + (if node.expr_type.is_ptr() { '_ptr' } else { '' })
+	mut name := node.cname
+	if g.table.sym(node.expr_type).language == .c {
+		name = name[3..]
+	}
+	dump_fn_name := '_v_dump_expr_$name' + (if node.expr_type.is_ptr() { '_ptr' } else { '' })
 	g.write(' ${dump_fn_name}(${ctoslit(fpath)}, $line, $sexpr, ')
 	if node.expr_type.has_flag(.shared_f) {
 		g.write('&')
@@ -21,7 +25,7 @@ fn (mut g Gen) dump_expr(node ast.DumpExpr) {
 	} else {
 		g.expr(node.expr)
 	}
-	g.write(' )')
+	g.write(')')
 }
 
 fn (mut g Gen) dump_expr_definitions() {
@@ -30,22 +34,26 @@ fn (mut g Gen) dump_expr_definitions() {
 	mut dump_fn_defs := strings.new_builder(100)
 	for dump_type, cname in g.table.dumps {
 		dump_sym := g.table.sym(dump_type)
+		mut name := cname
+		if dump_sym.language == .c {
+			name = name[3..]
+		}
 		_, str_method_expects_ptr, _ := dump_sym.str_method_info()
 		is_ptr := ast.Type(dump_type).is_ptr()
 		deref, _ := deref_kind(str_method_expects_ptr, is_ptr, dump_type)
 		to_string_fn_name := g.get_str_fn(ast.Type(dump_type).clear_flag(.shared_f))
 		ptr_asterisk := if is_ptr { '*' } else { '' }
-		mut str_dumparg_type := '$cname$ptr_asterisk'
+		mut str_dumparg_type := g.cc_type(dump_type, true) + ptr_asterisk
 		if dump_sym.kind == .function {
 			fninfo := dump_sym.info as ast.FnType
-			str_dumparg_type = 'DumpFNType_$cname'
+			str_dumparg_type = 'DumpFNType_$name'
 			tdef_pos := g.out.len
 			g.write_fn_ptr_decl(&fninfo, str_dumparg_type)
 			str_tdef := g.out.after(tdef_pos)
 			g.out.go_back(str_tdef.len)
 			dump_typedefs['typedef $str_tdef;'] = true
 		}
-		dump_fn_name := '_v_dump_expr_$cname' + (if is_ptr { '_ptr' } else { '' })
+		dump_fn_name := '_v_dump_expr_$name' + (if is_ptr { '_ptr' } else { '' })
 		dump_fn_defs.writeln('$str_dumparg_type ${dump_fn_name}(string fpath, int line, string sexpr, $str_dumparg_type dump_arg);')
 		if g.writeln_fn_header('$str_dumparg_type ${dump_fn_name}(string fpath, int line, string sexpr, $str_dumparg_type dump_arg)', mut
 			dump_fns)

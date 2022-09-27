@@ -2179,6 +2179,7 @@ pub fn (mut c Checker) expr(node_ ast.Expr) ast.Type {
 			return c.concat_expr(mut node)
 		}
 		ast.DumpExpr {
+			c.expected_type = ast.string_type
 			node.expr_type = c.expr(node.expr)
 			c.check_expr_opt_call(node.expr, node.expr_type)
 			etidx := node.expr_type.idx()

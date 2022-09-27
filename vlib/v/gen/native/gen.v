@@ -11,7 +11,9 @@ import v.mathutil as mu
 import v.token
 import v.errors
 import v.pref
+import v.eval
 import term
+import strconv
 
 interface CodeGen {
 mut:
@@ -52,6 +54,8 @@ mut:
 	defer_stmts          []ast.DeferStmt
 	builtins             map[string]BuiltinFn
 	structs              []Struct
+	eval                 eval.Eval
+	enum_vals            map[string]Enum
 	// macho specific
 	macho_ncmds   int
 	macho_cmdsize int
@@ -104,6 +108,11 @@ fn (mut l LabelTable) new_label() int {
 struct Struct {
 mut:
 	offsets []int
+}
+
+struct Enum {
+mut:
+	fields map[string]int
 }
 
 enum Size {
@@ -216,11 +225,13 @@ pub fn gen(files []&ast.File, table &ast.Table, out_name string, pref &pref.Pref
 		}
 		labels: 0
 		structs: []Struct{len: table.type_symbols.len}
+		eval: eval.new_eval(table, pref)
 	}
 	g.code_gen.g = g
 	g.generate_header()
 	g.init_builtins()
 	g.calculate_all_size_align()
+	g.calculate_enum_fields()
 	for file in files {
 		/*
 		if file.warnings.len > 0 {
@@ -326,6 +337,25 @@ pub fn (mut g Gen) calculate_all_size_align() {
 		}
 		ts.size = g.get_type_size(ast.new_type(ts.idx))
 		ts.align = g.get_type_align(ast.new_type(ts.idx))
+	}
+}
+
+pub fn (mut g Gen) calculate_enum_fields() {
+	for name, decl in g.table.enum_decls {
+		mut enum_vals := Enum{}
+		mut value := if decl.is_flag { 1 } else { 0 }
+		for field in decl.fields {
+			if field.has_expr {
+				value = int(g.eval.expr(field.expr, ast.int_type_idx).int_val())
+			}
+			enum_vals.fields[field.name] = value
+			if decl.is_flag {
+				value <<= 1
+			} else {
+				value++
+			}
+		}
+		g.enum_vals[name] = enum_vals
 	}
 }
 
@@ -495,13 +525,17 @@ fn (mut g Gen) get_type_size(typ ast.Type) int {
 				}
 			}
 			size = (size + align - 1) / align * align
+			g.structs[typ.idx()] = strc
+		}
+		ast.Enum {
+			size = 4
+			align = 4
 		}
 		else {}
 	}
 	mut ts_ := g.table.sym(typ)
 	ts_.size = size
 	ts_.align = align
-	g.structs[typ.idx()] = strc
 	// g.n_error('unknown type size')
 	return size
 }
@@ -559,6 +593,85 @@ fn (mut g Gen) gen_match_expr(expr ast.MatchExpr) {
 	}
 }
 
+fn (mut g Gen) eval_escape_codes(str_lit ast.StringLiteral) string {
+	if str_lit.is_raw {
+		return str_lit.val
+	}
+
+	str := str_lit.val
+	mut buffer := []u8{}
+
+	mut i := 0
+	for i < str.len {
+		if str[i] != `\\` {
+			buffer << str[i]
+			i++
+			continue
+		}
+
+		// skip \
+		i++
+		match str[i] {
+			`\\` {
+				buffer << `\\`
+				i++
+			}
+			`a` | `b` | `f` {
+				buffer << str[i] - u8(90)
+				i++
+			}
+			`n` {
+				buffer << `\n`
+				i++
+			}
+			`r` {
+				buffer << `\r`
+				i++
+			}
+			`t` {
+				buffer << `\t`
+				i++
+			}
+			`u` {
+				i++
+				utf8 := strconv.parse_int(str[i..i + 4], 16, 16) or {
+					g.n_error('invalid \\u escape code (${str[i..i + 4]})')
+					0
+				}
+				i += 4
+				buffer << u8(utf8)
+				buffer << u8(utf8 >> 8)
+			}
+			`v` {
+				buffer << `\v`
+				i++
+			}
+			`x` {
+				i++
+				c := strconv.parse_int(str[i..i + 2], 16, 8) or {
+					g.n_error('invalid \\x escape code (${str[i..i + 2]})')
+					0
+				}
+				i += 2
+				buffer << u8(c)
+			}
+			`0`...`7` {
+				c := strconv.parse_int(str[i..i + 3], 8, 8) or {
+					g.n_error('invalid escape code \\${str[i..i + 3]}')
+					0
+				}
+				i += 3
+				buffer << u8(c)
+			}
+			else {
+				g.n_error('invalid escape code \\${str[i]}')
+			}
+		}
+	}
+
+	return buffer.bytestr()
+}
+
 fn (mut g Gen) gen_var_to_string(reg Register, var Var, config VarConfig) {
 	typ := g.get_type_from_var(var)
 	if typ.is_int() {
@@ -567,6 +680,11 @@ fn (mut g Gen) gen_var_to_string(reg Register, var Var, config VarConfig) {
 		g.lea_var_to_reg(g.get_builtin_arg_reg('int_to_string', 1), buffer)
 		g.call_builtin('int_to_string')
 		g.lea_var_to_reg(reg, buffer)
+	} else if typ.is_bool() {
+		g.mov_var_to_reg(g.get_builtin_arg_reg('bool_to_string', 0), var, config)
+		g.call_builtin('bool_to_string')
+	} else if typ.is_string() {
+		g.mov_var_to_reg(.rax, var, config)
 	} else {
 		g.n_error('int-to-string conversion not implemented for type $typ')
 	}
@@ -577,10 +695,11 @@ pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, name string) {
 	fd := if name in ['eprint', 'eprintln'] { 2 } else { 1 }
 	match expr {
 		ast.StringLiteral {
+			str := g.eval_escape_codes(expr)
 			if newline {
-				g.gen_print(expr.val + '\n', fd)
+				g.gen_print(str + '\n', fd)
 			} else {
-				g.gen_print(expr.val, fd)
+				g.gen_print(str, fd)
 			}
 		}
 		ast.CallExpr {
@@ -708,6 +827,13 @@ g.expr
 	}
 }
 
+fn (mut g Gen) extern_fn_decl(node ast.FnDecl) {
+	// declarations like: fn C.malloc()
+	// TODO: implement extern function calls here
+	// Must store an address where the function label is located in the RelA elf section
+	panic('C. functions are not implemented yet')
+}
+
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	name := if node.is_method {
 		'${g.table.get_type_name(node.receiver.typ)}.$node.name'
@@ -723,6 +849,11 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	if node.is_builtin {
 		g.warning('fn_decl: $name is builtin', node.pos)
 	}
+	if node.no_body {
+		g.extern_fn_decl(node)
+		return
+	}
+
 	g.stack_var_pos = 0
 	g.register_function_address(name)
 	g.labels = &LabelTable{}
@@ -960,7 +1091,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 						// do the job
 					}
 					ast.StringLiteral {
-						s = e0.val.str()
+						s = g.eval_escape_codes(e0)
 						g.expr(node.exprs[0])
 						g.mov64(.rax, g.allocate_string(s, 2, .abs64))
 					}
@@ -1040,6 +1171,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.Import {} // do nothing here
 		ast.StructDecl {}
+		ast.EnumDecl {}
 		else {
 			eprintln('native.stmt(): bad node: ' + node.type_name())
 		}
@@ -1069,7 +1201,7 @@ fn (mut g Gen) gen_syscall(node ast.CallExpr) {
 				if expr.field_name == 'str' {
 					match expr.expr {
 						ast.StringLiteral {
-							s := expr.expr.val.replace('\\n', '\n')
+							s := g.eval_escape_codes(expr.expr)
 							g.allocate_string(s, 2, .abs64)
 							g.mov64(ra[i], 1)
 							done = true
@@ -1086,7 +1218,7 @@ fn (mut g Gen) gen_syscall(node ast.CallExpr) {
 					g.warning('C.syscall expects c"string" or "string".str, C backend will crash',
 						node.pos)
 				}
-				s := expr.val.replace('\\n', '\n')
+				s := g.eval_escape_codes(expr)
 				g.allocate_string(s, 2, .abs64)
 				g.mov64(ra[i], 1)
 			}
@@ -1137,6 +1269,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 							ast.Struct {
 								g.lea_var_to_reg(.rax, g.get_var_offset(node.name))
 							}
+							ast.Enum {
+								g.mov_var_to_reg(.rax, node as ast.Ident, typ: ast.int_type_idx)
+							}
 							else {
 								g.n_error('Unsupported variable type')
 							}
@@ -1171,7 +1306,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.prefix_expr(node)
 		}
 		ast.StringLiteral {
-			g.allocate_string(node.val, 3, .rel32)
+			str := g.eval_escape_codes(node)
+			g.allocate_string(str, 3, .rel32)
 		}
 		ast.StructInit {
 			pos := g.allocate_struct('_anonstruct', node.typ)
@@ -1189,6 +1325,10 @@ fn (mut g Gen) expr(node ast.Expr) {
 			offset := g.get_field_offset(node.expr_type, node.field_name)
 			g.add(.rax, offset)
 			g.mov_deref(.rax, .rax, node.typ)
+		}
+		ast.EnumVal {
+			type_name := g.table.get_type_name(node.typ)
+			g.mov(.rax, g.enum_vals[type_name].fields[node.val])
 		}
 		else {
 			g.n_error('expr: unhandled node type: $node.type_name()')

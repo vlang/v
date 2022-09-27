@@ -117,9 +117,42 @@ fn multiple_test() { // from match_test.v
 	}
 }
 
+enum Foo {
+	a
+	b
+	c = 4 + 8
+}
+
+fn get() Foo {
+	return .a
+}
+
+fn foo(f Foo) {
+	match f {
+		.a {
+			println('a')
+		}
+		.b {
+			println('b')
+		}
+		.c {
+			println('c')
+		}
+	}
+}
+
+fn enum_test() {
+	foo(match get() {
+		.a { .b }
+		.b { .c }
+		.c { .a }
+	})
+}
+
 fn main() {
 	match_for_test()
 	ifexpr_match_test()
 	integer_match_test()
 	multiple_test()
+	enum_test()
 }

@@ -4,7 +4,7 @@ const tfolder = os.join_path(os.temp_dir(), 'v', 'tests', 'os_file_test')
 
 const tfile = os.join_path_single(tfolder, 'test_file')
 
-fn testsuite_begin() ? {
+fn testsuite_begin() {
 	os.rmdir_all(tfolder) or {}
 	assert !os.is_dir(tfolder)
 	os.mkdir_all(tfolder)?
@@ -12,7 +12,7 @@ fn testsuite_begin() ? {
 	assert os.is_dir(tfolder)
 }
 
-fn testsuite_end() ? {
+fn testsuite_end() {
 	os.rmdir_all(tfolder) or {}
 }
 
@@ -144,7 +144,7 @@ fn test_read_eof_last_read_partial_buffer_fill() {
 		assert false
 	} else {
 		// Expected an error when received end-of-file.
-		assert err !is none
+		assert err == IError(os.Eof{})
 	}
 	f.close()
 }
@@ -176,7 +176,7 @@ fn test_read_eof_last_read_full_buffer_fill() {
 		assert false
 	} else {
 		// Expect an error at EOF.
-		assert err !is none
+		assert err == IError(os.Eof{})
 	}
 	f.close()
 }

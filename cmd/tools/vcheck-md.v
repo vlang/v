@@ -541,6 +541,16 @@ fn (mut f MDFile) check_examples() CheckResult {
 					}
 					oks++
 				}
+				'okfmt' {
+					if fmt_res != 0 {
+						eprintln(eline(f.path, e.sline, 0, 'okfmt example is not formatted'))
+						eprintln(vcontent)
+						should_cleanup_vfile = false
+						errors++
+						continue
+					}
+					oks++
+				}
 				'badsyntax' {
 					res := silent_cmdexecute('${os.quoted_path(vexe)} -w -Wfatal-errors -check-syntax ${os.quoted_path(vfile)}')
 					if res == 0 {
@@ -554,7 +564,7 @@ fn (mut f MDFile) check_examples() CheckResult {
 				}
 				'nofmt' {}
 				else {
-					eprintln(eline(f.path, e.sline, 0, 'unrecognized command: "$command", use one of: wip/ignore/compile/cgen/failcompile/oksyntax/badsyntax/nofmt'))
+					eprintln(eline(f.path, e.sline, 0, 'unrecognized command: "$command", use one of: wip/ignore/compile/cgen/failcompile/okfmt/oksyntax/badsyntax/nofmt'))
 					should_cleanup_vfile = false
 					errors++
 				}
