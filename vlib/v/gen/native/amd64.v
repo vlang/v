@@ -2274,7 +2274,9 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 				})
 			}
 		}
-		if node.left_type !in ast.integer_type_idxs && node.left_type != ast.bool_type_idx {
+		if node.left_type !in ast.integer_type_idxs && node.left_type != ast.bool_type_idx
+		&& g.table.sym(node.left_type).info !is ast.Enum
+		{
 			g.n_error('unsupported type for `$node.op`: $node.left_type')
 		}
 		// left: rax, right: rdx
@@ -2476,17 +2478,9 @@ fn (mut g Gen) gen_asm_stmt_amd64(asm_node ast.AsmStmt) {
 
 fn (mut g Gen) gen_assert(assert_node ast.AssertStmt) {
 	mut cjmp_addr := 0
-	mut ine := ast.InfixExpr{}
 	ane := assert_node.expr
-	if ane is ast.ParExpr { // assert(1==1)
-		ine = ane.expr as ast.InfixExpr
-	} else if ane is ast.InfixExpr { // assert 1==1
-		ine = ane
-	} else {
-		g.n_error('Unsupported expression in assert')
-	}
 	label := g.labels.new_label()
-	cjmp_addr = g.condition(ine, true)
+	cjmp_addr = g.condition(ane, true)
 	g.labels.patches << LabelPatch{
 		id: label
 		pos: cjmp_addr
