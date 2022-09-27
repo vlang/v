@@ -83,6 +83,12 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					if right is ast.ComptimeType && left is ast.TypeNode {
 						is_comptime_type_is_expr = true
 						checked_type := c.unwrap_generic(left.typ)
+						c.inside_comptime_if = true
+						mut value_type := checked_type
+						if right.kind in [.array, .map_] {
+							value_type = c.table.value_type(checked_type)
+						}
+						c.comptime_fields_default_type = value_type
 						skip_state = if c.table.is_comptime_type(checked_type, right as ast.ComptimeType) {
 							.eval
 						} else {
@@ -163,6 +169,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			if comptime_field_name.len > 0 {
 				c.comptime_fields_type[comptime_field_name] = c.comptime_fields_default_type
 			}
+			c.inside_comptime_if = false
 			c.skip_flags = cur_skip_flags
 			if c.fn_level == 0 && c.pref.output_cross_c && c.ct_cond_stack.len > 0 {
 				c.ct_cond_stack.delete_last()

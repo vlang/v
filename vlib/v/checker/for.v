@@ -38,6 +38,7 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 	node.cond_type = typ
 	unwrapped_typ := c.unwrap_generic(typ)
 	typ_idx := typ.idx()
+	mut value_type_orig := ast.void_type
 	if node.key_var.len > 0 && node.key_var != '_' {
 		c.check_valid_snake_case(node.key_var, 'variable name', node.pos)
 		if reserved_type_names_chk.matches(node.key_var) {
@@ -71,7 +72,9 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		node.high_type = high_type
 		node.scope.update_var_type(node.val_var, node.val_type)
 	} else {
+		sym2 := c.table.sym(typ)
 		sym := c.table.final_sym(typ)
+		sym_unwrapped := c.table.final_sym(unwrapped_typ)
 		if sym.kind == .struct_ {
 			// iterators
 			next_fn := sym.find_method_with_generic_parent('next') or {
@@ -109,15 +112,24 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 					'use `_` if you do not need the variable', node.pos)
 			}
 			if node.key_var.len > 0 {
-				key_type := match sym.kind {
-					.map { sym.map_info().key_type }
+				key_type := match sym_unwrapped.kind {
+					.map { sym_unwrapped.map_info().key_type }
 					else { ast.int_type }
+				}
+				if c.file.path.contains('encode') {
+					key_sym := c.table.sym(key_type)
+					// println('### FOR KEY ($sym2.name - $sym2.kind | $sym.name - $sym.kind | $sym_unwrapped.name - $sym_unwrapped.kind) - $c.file.path:$node.pos.line_nr: $key_sym.name')
 				}
 				node.key_type = key_type
 				node.scope.update_var_type(node.key_var, key_type)
 			}
 			mut value_type := c.table.value_type(typ)
 			mut value_type_unwrapped := c.table.value_type(unwrapped_typ)
+			if c.file.path.contains('encode') && node.pos.line_nr == 59 {
+				value_type_sym := c.table.sym(value_type)
+				value_type_unwrapped_sym := c.table.sym(value_type_unwrapped)
+				// println('VALUE TYPE: $value_type_sym.name / $value_type_unwrapped_sym.name')
+			}
 			if sym.kind == .string {
 				value_type = ast.u8_type
 			}
@@ -127,7 +139,8 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				}
 			}
 			if node.val_is_mut {
-				value_type_unwrapped = value_type.ref()
+				value_type = value_type.ref()
+				value_type_unwrapped = value_type_unwrapped.ref()
 				match mut node.cond {
 					ast.Ident {
 						if mut node.cond.obj is ast.Var {
@@ -161,11 +174,17 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			node.cond_type = typ
 			node.kind = sym.kind
 			node.val_type = value_type
+			// node.scope.update_var_type(node.val_var, value_type)
+			// TODO: fix so this isnt needed, and same with key_var above (need to use generic type not unwrapped type)
 			node.scope.update_var_type(node.val_var, value_type_unwrapped)
+			value_type_orig = value_type
 		}
 	}
 	c.check_loop_label(node.label, node.pos)
 	c.stmts(node.stmts)
+	if value_type_orig != ast.void_type {
+		node.scope.update_var_type(node.val_var, value_type_orig)
+	}
 	c.loop_label = prev_loop_label
 	c.in_for_count--
 }

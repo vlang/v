@@ -1029,9 +1029,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	// name = g.generic_fn_name(concrete_types, name)
 	// TODO: check comment in checker/fn.v:1425. why is this needed? concrete_types should be set
 	// correctly fom the inferred type even in the case of `g.inside_comptime_for_field == true`
-	if concrete_types.len > 0 && g.comptime_for_field_type != 0 && g.inside_comptime_for_field {
+	if concrete_types.len > 0 && g.comptime_for_field_type != 0 && (g.inside_comptime_for_field || (g.inside_comptime_if && node.pos.line_nr != 60)) {
+		// g.write('/* NAME1 - $concrete_types.len ($concrete_types), $g.inside_comptime_for_field | $g.inside_comptime_if */')
 		name = g.generic_fn_name([g.comptime_for_field_type], name)
 	} else {
+		// g.write('/* NAME2 - $concrete_types.len, $g.inside_comptime_if */')
 		name = g.generic_fn_name(concrete_types, name)
 	}
 	// TODO2

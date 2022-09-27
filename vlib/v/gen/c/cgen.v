@@ -124,6 +124,7 @@ mut:
 	inside_call               bool
 	inside_for_c_stmt         bool
 	inside_comptime_for_field bool
+	inside_comptime_if        bool
 	inside_cast_in_heap       int // inside cast to interface type in heap (resolve recursive calls)
 	inside_const              bool
 	inside_const_optional     bool
@@ -3377,7 +3378,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if node.expr_type == 0 {
 		g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
 	}
-	sym := g.table.sym(g.unwrap_generic(node.expr_type))
+	sym := g.table.final_sym(g.unwrap_generic(node.expr_type))
 	// if node expr is a root ident and an optional
 	mut is_optional := node.expr is ast.Ident && node.expr_type.has_flag(.optional)
 	if is_optional {

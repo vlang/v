@@ -93,6 +93,7 @@ pub mut:
 	inside_ct_attr            bool // true inside `[if expr]`
 	inside_x_is_type          bool // true inside the Type expression of `if x is Type {`
 	inside_comptime_for_field bool
+	inside_comptime_if		  bool
 	skip_flags                bool      // should `#flag` and `#include` be skipped
 	fn_level                  int       // 0 for the top level, 1 for `fn abc() {}`, 2 for a nested fn, etc
 	smartcast_mut_pos         token.Pos // match mut foo, if mut foo is Foo
@@ -1284,7 +1285,7 @@ pub fn (mut c Checker) selector_expr(mut node ast.SelectorExpr) ast.Type {
 	}
 	if sym.kind !in [.struct_, .aggregate, .interface_, .sum_type] {
 		if sym.kind != .placeholder {
-			unwrapped_sym := c.table.sym(c.unwrap_generic(typ))
+			unwrapped_sym := c.table.final_sym(c.unwrap_generic(typ))
 
 			if unwrapped_sym.kind == .array_fixed && node.field_name == 'len' {
 				node.typ = ast.int_type

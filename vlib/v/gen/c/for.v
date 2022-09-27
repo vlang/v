@@ -136,24 +136,12 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 	}
 	sym := g.table.final_sym(unwrapped_cond_type)
 	mut kind := node.kind
+	mut key_type := node.key_type
 	mut value_type := node.val_type
 	if !node.is_range {
 		kind = sym.kind
-		if sym.kind == .struct_ {
-			// iterators
-			next_fn := sym.find_method_with_generic_parent('next') or {
-				g.error('a struct must have a `next()` method to be an iterator', node.cond.pos())
-				return
-			}
-			value_type = next_fn.return_type.clear_flag(.optional)
-			// if node.val_is_mut {
-			// 	value_type = val_type.ref()
-			// }
-		} else {
+		if sym.kind !in [.struct_, .string] {
 			value_type = g.table.value_type(unwrapped_cond_type)
-			if sym.kind == .string {
-				value_type = ast.u8_type
-			}
 		}
 		if node.val_is_mut {
 			value_type = value_type.ref()
@@ -165,6 +153,18 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 	}
 	mut scope := unsafe { node.scope }
 	scope.update_var_type(node.val_var, value_type)
+	if node.key_var.len > 0 {
+		key_type = match sym.kind {
+			.map { sym.map_info().key_type }
+			else { ast.int_type }
+		}
+		// node.key_type = key_type
+		key_sym := g.table.sym(key_type)
+		// println('updating: $node.key_var to $key_sym.name')
+		scope.update_var_type(node.key_var, key_type)
+	}
+	sym2 := g.table.sym(value_type)
+	g.write('/* ## $sym.name | $sym2.name ## */')
 	if node.label.len > 0 {
 		g.writeln('\t$node.label: {}')
 	}
@@ -245,7 +245,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 			cond_var = g.expr_string(node.cond)
 		}
 		idx := if node.key_var in ['', '_'] { g.new_tmp_var() } else { node.key_var }
-		cond_sym := g.table.sym(unwrapped_cond_type)
+		cond_sym := g.table.final_sym(unwrapped_cond_type)
 		info := cond_sym.info as ast.ArrayFixed
 		g.writeln('for (int $idx = 0; $idx != $info.size; ++$idx) {')
 		if node.val_var != '_' {
@@ -309,11 +309,11 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 		g.writeln('}')
 		g.writeln('if (!DenseArray_has_index(&$cond_var${arw_or_pt}key_values, $idx)) {continue;}')
 		if node.key_var != '_' {
-			key_styp := g.typ(node.key_type)
+			key_styp := g.typ(key_type)
 			key := c_name(node.key_var)
 			g.writeln('$key_styp $key = /*key*/ *($key_styp*)DenseArray_key(&$cond_var${arw_or_pt}key_values, $idx);')
 			// TODO: analyze whether node.key_type has a .clone() method and call .clone() for all types:
-			if node.key_type == ast.string_type {
+			if key_type == ast.string_type {
 				g.writeln('$key = string_clone($key);')
 			}
 		}

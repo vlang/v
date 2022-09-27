@@ -290,6 +290,22 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 				}
 			}
 		} else {
+			if branch.cond is ast.InfixExpr {
+				if branch.cond.op == .key_is {
+					left := branch.cond.left
+					right := branch.cond.right
+					if right is ast.ComptimeType && left is ast.TypeNode {
+						checked_type := g.unwrap_generic(left.typ)
+						g.inside_comptime_if = true
+						mut value_type := checked_type
+						if right.kind in [.array, .map_] {
+							value_type = g.table.value_type(checked_type)
+						}
+						// TODO: generalise name
+						g.comptime_for_field_type = value_type
+					}
+				}
+			}
 			// Only wrap the contents in {} if we're inside a function, not on the top level scope
 			should_create_scope := unsafe { g.fn_decl != 0 }
 			if should_create_scope {
@@ -301,6 +317,7 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 			if should_create_scope {
 				g.writeln('}')
 			}
+			g.inside_comptime_if = false
 		}
 		g.defer_ifdef = ''
 	}

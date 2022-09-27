@@ -1430,18 +1430,37 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			exp_arg_sym := c.table.sym(exp_arg_typ)
 			c.expected_type = exp_arg_typ
 
-			mut got_arg_typ := c.check_expr_opt_call(arg.expr, c.expr(arg.expr))
+			got_a := c.expr(arg.expr)
+			mut got_arg_typ := c.check_expr_opt_call(arg.expr, got_a)
+			if c.inside_comptime_for_field {
+				if arg.expr is ast.SelectorExpr {
+					key := arg.expr.str()
+					if field_type := c.comptime_fields_type[key] {
+						// println('##### REGISTERING FIELD TYPE: $field_type')
+						c.table.register_fn_concrete_types(method.fkey(), [
+							field_type,
+						])
+					}
+				}
+			}
+			// mut got_arg_typ := c.check_expr_opt_call(arg.expr, c.expr(arg.expr))
 			if (c.inside_comptime_for_field || c.inside_comptime_if) && method.params[param_idx].typ.has_flag(.generic) {
 				// got_arg_typ = c.unwrap_generic(got_arg_typ)
 				// got_arg_typ = c.comptime_fields_default_type
 				got_typ_sym := c.table.sym(got_arg_typ)
 				cf_sym := c.table.sym(c.comptime_fields_default_type)
-				// println(node.concrete_types)
-				if c.inside_comptime_if {
-					println('## $node.name - got: $got_typ_sym.name, exp: $exp_arg_sym.name, cf: $cf_sym.name')
-				}
-				// concrete_types = [got_arg_typ]
-				// node.concrete_types = concrete_types
+				// if c.inside_comptime_if {
+					// got_arg_typ = c.comptime_fields_default_type
+					// if got_typ_sym.name.contains('Digest') && cf_sym.name.contains('MultisigSubsig') {
+						// got_arg_typ = c.comptime_fields_default_type
+						// println('## $node.name - got: $got_typ_sym.name, exp: $exp_arg_sym.name, cf: $cf_sym.name ($got_a/$got_arg_typ)')
+						// if node.name == 'encode' {
+						// 	unwrapped_got_sym := c.table.sym(c.unwrap_generic(got_arg_typ))
+
+						// 	println('## $node.name - got: $got_typ_sym.name/$unwrapped_got_sym.name, exp: $exp_arg_sym.name, cf: $cf_sym.name - $c.file.path:$node.pos.line_nr')
+						// }
+					// }
+				// }
 				c.table.register_fn_concrete_types(method.fkey(), [
 					c.comptime_fields_default_type,
 				])

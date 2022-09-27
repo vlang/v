@@ -2194,7 +2194,7 @@ pub fn (mut t Table) generic_insts_to_concrete() {
 }
 
 pub fn (t &Table) is_comptime_type(x Type, y ComptimeType) bool {
-	x_kind := t.type_kind(x)
+	x_kind := t.type_kind(t.unaliased_type(x))
 	match y.kind {
 		.map_ {
 			return x_kind == .map
