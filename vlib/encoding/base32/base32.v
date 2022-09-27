@@ -10,18 +10,18 @@
 
 module base32
 
-pub const(
-	std_padding   = `=` // Standard padding character
-	no_padding    = u8(-1)  // No padding
-	std_alphabet  = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'.bytes()
-	hex_alphabet  = '0123456789ABCDEFGHIJKLMNOPQRSTUV'.bytes()
+pub const (
+	std_padding  = `=` // Standard padding character
+	no_padding   = u8(-1) // No padding
+	std_alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'.bytes()
+	hex_alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUV'.bytes()
 )
 
 struct Encoding {
 	padding_char u8
-	alphabet 	 []u8
+	alphabet     []u8
 mut:
-	decode_map   [256]u8
+	decode_map [256]u8
 }
 
 pub fn decode_string_to_string(src string) ?string {
@@ -34,7 +34,7 @@ pub fn decode_to_string(src []u8) ?string {
 }
 
 pub fn decode(src []u8) ?[]u8 {
-	mut e := new_encoding(std_alphabet)
+	mut e := new_encoding(base32.std_alphabet)
 	return e.decode(src)
 }
 
@@ -47,8 +47,8 @@ pub fn encode_to_string(src []u8) string {
 }
 
 pub fn encode(src []u8) []u8 {
-	e := new_encoding(std_alphabet)
-    return e.encode(src)
+	e := new_encoding(base32.std_alphabet)
+	return e.encode(src)
 }
 
 pub fn (enc &Encoding) encode_to_string(src []u8) string {
@@ -60,15 +60,15 @@ pub fn (enc &Encoding) encode_string_to_string(src string) string {
 }
 
 pub fn new_std_encoding() Encoding {
-	return new_encoding_with_padding(std_alphabet, std_padding)
+	return new_encoding_with_padding(base32.std_alphabet, base32.std_padding)
 }
 
 pub fn new_std_encoding_with_padding(padding u8) Encoding {
-	return new_encoding_with_padding(std_alphabet, padding)
+	return new_encoding_with_padding(base32.std_alphabet, padding)
 }
 
 pub fn new_encoding(alphabet []u8) Encoding {
-	return new_encoding_with_padding(alphabet, std_padding)
+	return new_encoding_with_padding(alphabet, base32.std_padding)
 }
 
 pub fn new_encoding_with_padding(alphabet []u8, padding_char u8) Encoding {
@@ -83,7 +83,7 @@ pub fn new_encoding_with_padding(alphabet []u8, padding_char u8) Encoding {
 	}
 
 	mut decode_map := [256]u8{}
-	for i in 0..alphabet.len {
+	for i in 0 .. alphabet.len {
 		decode_map[alphabet[i]] = u8(i)
 	}
 
@@ -95,8 +95,8 @@ pub fn new_encoding_with_padding(alphabet []u8, padding_char u8) Encoding {
 }
 
 fn (enc &Encoding) encode(src []u8) []u8 {
-    mut buf := []u8{len: enc.encoded_len(src.len)}
-    mut dst := unsafe { buf }
+	mut buf := []u8{len: enc.encoded_len(src.len)}
+	mut dst := unsafe { buf }
 	enc.encode_(src, mut dst)
 	return buf
 }
@@ -140,23 +140,23 @@ fn (enc &Encoding) encode_(src_ []u8, mut dst []u8) {
 		// Encode 5-bit blocks using the base32 alphabet
 		if dst.len >= 8 {
 			// Common case, unrolled for extra performance
-			dst[0] = enc.alphabet[b[0]&31]
-			dst[1] = enc.alphabet[b[1]&31]
-			dst[2] = enc.alphabet[b[2]&31]
-			dst[3] = enc.alphabet[b[3]&31]
-			dst[4] = enc.alphabet[b[4]&31]
-			dst[5] = enc.alphabet[b[5]&31]
-			dst[6] = enc.alphabet[b[6]&31]
-			dst[7] = enc.alphabet[b[7]&31]
+			dst[0] = enc.alphabet[b[0] & 31]
+			dst[1] = enc.alphabet[b[1] & 31]
+			dst[2] = enc.alphabet[b[2] & 31]
+			dst[3] = enc.alphabet[b[3] & 31]
+			dst[4] = enc.alphabet[b[4] & 31]
+			dst[5] = enc.alphabet[b[5] & 31]
+			dst[6] = enc.alphabet[b[6] & 31]
+			dst[7] = enc.alphabet[b[7] & 31]
 		} else {
 			for i := 0; i < dst.len; i++ {
-				dst[i] = enc.alphabet[b[i]&31]
+				dst[i] = enc.alphabet[b[i] & 31]
 			}
 		}
 
 		// Pad the final quantum
 		if src.len < 5 {
-			if enc.padding_char == no_padding {
+			if enc.padding_char == base32.no_padding {
 				break
 			}
 
@@ -180,14 +180,14 @@ fn (enc &Encoding) encode_(src_ []u8, mut dst []u8) {
 	}
 }
 
-fn (enc &Encoding)  encoded_len(n int) int {
-	if enc.padding_char == no_padding {
-		return (n*8 + 4) / 5
+fn (enc &Encoding) encoded_len(n int) int {
+	if enc.padding_char == base32.no_padding {
+		return (n * 8 + 4) / 5
 	}
 	return (n + 4) / 5 * 8
 }
 
-pub fn (enc &Encoding) decode_string(src string) ?[]u8  {
+pub fn (enc &Encoding) decode_string(src string) ?[]u8 {
 	return enc.decode(src.bytes())
 	// mut buf := strip_newlines(src.bytes())
 	// mut dst := unsafe { buf }
@@ -196,20 +196,18 @@ pub fn (enc &Encoding) decode_string(src string) ?[]u8  {
 	// return buf[..n]
 }
 
-pub fn (enc &Encoding) decode_string_to_string(src string) ?string  {
+pub fn (enc &Encoding) decode_string_to_string(src string) ?string {
 	decoded := enc.decode_string(src)?
 	return decoded.bytestr()
 }
 
-pub fn (enc &Encoding) decode(src []u8) ?[]u8  {
+pub fn (enc &Encoding) decode(src []u8) ?[]u8 {
 	mut buf := []u8{len: src.len}
-    // mut dst := unsafe { buf }
+	// mut dst := unsafe { buf }
 	// l := strip_newlines(mut dst, src)
 	// n, _ := enc.decode_(src[..l], mut dst) or {
 	// src := strip_newlines(src_)
-	n, _ := enc.decode_(src, mut buf) or {
-		return err
-	}
+	n, _ := enc.decode_(src, mut buf) or { return err }
 	return buf[..n]
 }
 
@@ -233,9 +231,8 @@ fn (enc &Encoding) decode_(src_ []u8, mut dst []u8) ?(int, bool) {
 		mut dlen := 8
 
 		for j := 0; j < 8; {
-
 			if src.len == 0 {
-				if enc.padding_char != no_padding {
+				if enc.padding_char != base32.no_padding {
 					// We have reached the end and are missing padding
 					// return n, false, corrupt_input_error(olen - src.len - j)
 					return error(corrupt_input_error_msg(olen - src.len - j))
@@ -248,12 +245,12 @@ fn (enc &Encoding) decode_(src_ []u8, mut dst []u8) ?(int, bool) {
 			src = src[1..]
 			if in0 == enc.padding_char && j >= 2 && src.len < 8 {
 				// We`ve reached the end and there`s padding
-				if src.len+j < 8-1 {
+				if src.len + j < 8 - 1 {
 					// not enough padding
 					// return n, false, corrupt_input_error(olen)
 					return error(corrupt_input_error_msg(olen))
 				}
-				for k := 0; k < 8-1-j; k++ {
+				for k := 0; k < 8 - 1 - j; k++ {
 					if src.len > k && src[k] != enc.padding_char {
 						// incorrect padding
 						// return n, false, corrupt_input_error(olen - src.len + k - 1)
@@ -272,7 +269,7 @@ fn (enc &Encoding) decode_(src_ []u8, mut dst []u8) ?(int, bool) {
 				}
 				break
 			}
-			
+
 			dbuf[j] = enc.decode_map[in0]
 			if dbuf[j] == 0xFF {
 				// return n, false, corrupt_input_error(olen - src.len - 1)
@@ -284,23 +281,23 @@ fn (enc &Encoding) decode_(src_ []u8, mut dst []u8) ?(int, bool) {
 		// Pack 8x 5-bit source blocks into 5 u8 destination
 		// quantum
 		if dlen == 8 {
-			dst[dsti+4] = dbuf[6]<<5 | dbuf[7]
+			dst[dsti + 4] = dbuf[6] << 5 | dbuf[7]
 			n++
 		}
 		if dlen >= 7 {
-			dst[dsti+3] = dbuf[4]<<7 | dbuf[5]<<2 | dbuf[6]>>3
+			dst[dsti + 3] = dbuf[4] << 7 | dbuf[5] << 2 | dbuf[6] >> 3
 			n++
 		}
 		if dlen >= 5 {
-			dst[dsti+2] = dbuf[3]<<4 | dbuf[4]>>1
+			dst[dsti + 2] = dbuf[3] << 4 | dbuf[4] >> 1
 			n++
 		}
 		if dlen >= 4 {
-			dst[dsti+1] = dbuf[1]<<6 | dbuf[2]<<1 | dbuf[3]>>4
+			dst[dsti + 1] = dbuf[1] << 6 | dbuf[2] << 1 | dbuf[3] >> 4
 			n++
 		}
 		if dlen >= 2 {
-			dst[dsti+0] = dbuf[0]<<3 | dbuf[1]>>2
+			dst[dsti + 0] = dbuf[0] << 3 | dbuf[1] >> 2
 			n++
 		}
 		dsti += 5
@@ -331,7 +328,6 @@ fn strip_newlines(src []u8) []u8 {
 	}
 	return dst
 }
-
 
 fn corrupt_input_error_msg(e int) string {
 	// return error('illegal base32 data at input byte ' + strconv.FormatInt(int64(e), 10)
