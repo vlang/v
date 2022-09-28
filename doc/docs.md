@@ -6175,9 +6175,11 @@ fn C.DefWindowProc(hwnd int, msg int, lparam int, wparam int)
 type FastFn = fn (int) bool
 
 // Windows only:
-// If a default graphics library is imported (ex. gg, ui), then the graphical window takes
-// priority and no console window is created, effectively disabling println() statements.
-// Use to explicitly create console window. Valid before main() only.
+// Without this attribute all graphical apps will have the following behavior on Windows:
+// If run from a console or terminal; keep the terminal open so all (e)println statements can be viewed.
+// If run from e.g. Explorer, by double-click; app is opened, but no terminal is opened, and no (e)println output can be seen.
+// Use it to force-open a terminal to view output in, even if the app is started from Explorer.
+// Valid before main() only.
 [console]
 fn main() {
 }

@@ -2165,9 +2165,6 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type ast.Type, lang as
 
 fn (mut g Gen) is_gui_app() bool {
 	if g.pref.os == .windows {
-		if g.force_main_console {
-			return false
-		}
 		for cf in g.table.cflags {
 			if cf.value.to_lower() == 'gdi32' {
 				return true

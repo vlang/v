@@ -403,8 +403,6 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 * Main
 *
 ******************************************************************************/
-// is needed for easier diagnostics on windows
-[console]
 fn main() {
 	// App init
 	mut app := &App{
