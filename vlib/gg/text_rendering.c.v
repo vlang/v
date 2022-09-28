@@ -147,6 +147,7 @@ pub fn (ctx &Context) set_text_cfg(cfg gx.TextCfg) {
 	ctx.ft.fons.vert_metrics(&ascender, &descender, &lh)
 }
 
+// set_cfg sets the current text configuration
 [deprecated: 'use set_text_cfg() instead']
 pub fn (ctx &Context) set_cfg(cfg gx.TextCfg) {
 	ctx.set_text_cfg(cfg)
