@@ -1141,6 +1141,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	// will be `0` for `foo()`
 	mut is_interface_call := false
 	mut is_selector_call := false
+	mut has_comptime_field := false
 	if node.left_type != 0 {
 		left_sym := g.table.sym(node.left_type)
 		if left_sym.kind == .interface_ {
@@ -1171,7 +1172,12 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			if mut call_arg.expr is ast.Ident {
 				if mut call_arg.expr.obj is ast.Var {
 					node_.args[i].typ = call_arg.expr.obj.typ
+					if call_arg.expr.obj.is_comptime_field {
+						has_comptime_field = true
+					}
 				}
+			} else if mut call_arg.expr is ast.ComptimeSelector {
+				has_comptime_field = true
 			}
 		}
 	}
@@ -1262,7 +1268,8 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	if !is_selector_call {
 		if func := g.table.find_fn(node.name) {
 			if func.generic_names.len > 0 {
-				if g.comptime_for_field_type != 0 && g.inside_comptime_for_field {
+				if g.comptime_for_field_type != 0 && g.inside_comptime_for_field
+					&& has_comptime_field {
 					name = g.generic_fn_name([g.comptime_for_field_type], name)
 				} else {
 					concrete_types := node.concrete_types.map(g.unwrap_generic(it))

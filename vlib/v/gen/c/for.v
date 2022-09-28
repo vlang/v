@@ -128,7 +128,16 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	g.loop_depth--
 }
 
-fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
+fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
+	mut node := unsafe { node_ }
+	if node.kind == .any {
+		unwrapped_typ := g.unwrap_generic(node.cond_type)
+		unwrapped_sym := g.table.sym(unwrapped_typ)
+		node.kind = unwrapped_sym.kind
+		node.cond_type = unwrapped_typ
+		node.val_type = g.table.value_type(unwrapped_typ)
+		node.scope.update_var_type(node.val_var, node.val_type)
+	}
 	g.loop_depth++
 	if node.label.len > 0 {
 		g.writeln('\t$node.label: {}')

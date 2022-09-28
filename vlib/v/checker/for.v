@@ -113,6 +113,25 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			node.scope.update_var_type(node.val_var, val_type)
 		} else if sym.kind == .string && node.val_is_mut {
 			c.error('string type is immutable, it cannot be changed', node.pos)
+		} else if sym.kind == .any {
+			node.cond_type = typ
+			node.kind = sym.kind
+			node.val_type = ast.void_type
+
+			unwrapped_typ := c.unwrap_generic(typ)
+			unwrapped_sym := c.table.sym(unwrapped_typ)
+
+			if node.key_var.len > 0 {
+				key_type := match unwrapped_sym.kind {
+					.map { unwrapped_sym.map_info().key_type }
+					else { ast.int_type }
+				}
+				node.key_type = key_type
+				node.scope.update_var_type(node.key_var, key_type)
+			}
+
+			value_type := c.table.value_type(unwrapped_typ)
+			node.scope.update_var_type(node.val_var, value_type)
 		} else {
 			if sym.kind == .map && !(node.key_var.len > 0 && node.val_var.len > 0) {
 				c.error(
