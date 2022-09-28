@@ -91,7 +91,6 @@ static char __CLOSURE_GET_DATA_BYTES[] = {
 	0x66, 0x4C, 0x0F, 0x7E, 0xF8,  // movq rax, xmm15
 	0xC3                           // ret
 };
-#define __CLOSURE_DATA_OFFSET 0x400C
 #elif defined(__V_x86)
 static char __closure_thunk[] = {
 	0xe8, 0x00, 0x00, 0x00, 0x00,        // call here
@@ -107,7 +106,6 @@ static char __CLOSURE_GET_DATA_BYTES[] = {
 	0xc3                                 // ret
 };
 
-#define __CLOSURE_DATA_OFFSET 0x4012
 #elif defined(__V_arm64)
 static char __closure_thunk[] = {
 	0x11, 0x00, 0xFE, 0x58,  // ldr x17, userdata
@@ -132,7 +130,26 @@ static char __CLOSURE_GET_DATA_BYTES[] = {
 	0x04, 0x00, 0x10, 0xE5,
 	0x1E, 0xFF, 0x2F, 0xE1
 };
-#define __CLOSURE_DATA_OFFSET 0xFFC
+#elif defined (__V_rv64)
+static char __closure_thunk[] = {
+	0x97, 0xCF, 0xFF, 0xFF,  // auipc t6, 0xffffc
+	0x03, 0xBF, 0x8F, 0x00,  // ld    t5, 8(t6)
+	0x67, 0x00, 0x0F, 0x00   // jr    t5
+};
+static char __CLOSURE_GET_DATA_BYTES[] = {
+	0x03, 0xb5, 0x0f, 0x00,  // ld    a0, 0(t6)
+	0x67, 0x80, 0x00, 0x00   // ret
+};
+#elif defined (__V_rv32)
+static char __closure_thunk[] = {
+	0x97, 0xCF, 0xFF, 0xFF,  // auipc t6, 0xffffc
+	0x03, 0xAF, 0x4F, 0x00,  // lw    t5, 4(t6)
+	0x67, 0x00, 0x0F, 0x00   // jr    t5
+};
+static char __CLOSURE_GET_DATA_BYTES[] = {
+	0x03, 0xA5, 0x0F, 0x00,  // lw    a0, 0(t6)
+	0x67, 0x80, 0x00, 0x00   // ret
+};
 #endif
 
 static void*(*__CLOSURE_GET_DATA)(void) = 0;
@@ -262,6 +279,18 @@ const c_common_macros = '
 	#define __V_arm32  1
 	#undef __V_architecture
 	#define __V_architecture 3
+#endif
+
+#if defined(__riscv) && __riscv_xlen == 64
+	#define __V_rv64  1
+	#undef __V_architecture
+	#define __V_architecture 4
+#endif
+
+#if defined(__riscv) && __riscv_xlen == 32
+	#define __V_rv32  1
+	#undef __V_architecture
+	#define __V_architecture 5
 #endif
 
 #if defined(__i386__) || defined(_M_IX86)
