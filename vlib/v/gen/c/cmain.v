@@ -70,7 +70,6 @@ fn (mut g Gen) gen_c_main_function_only_header() {
 			g.writeln('\tint ___argc;')
 			g.writeln('\twchar_t** ___argv = CommandLineToArgvW(full_cmd_line, &___argc);')
 
-
 			g.writeln('BOOL con_valid = FALSE;')
 			if g.force_main_console {
 				g.writeln('con_valid = AllocConsole();')
