@@ -1,0 +1,7 @@
+vlib/v/parser/tests/embeded_struct_attribute_err.vv:8:7: error: cannot use attributes on embedded structs
+    6 |
+    7 | struct Button {
+    8 |     Size [json: size] // fmt removes [json: size]
+      |          ^
+    9 | }
+   10 |
