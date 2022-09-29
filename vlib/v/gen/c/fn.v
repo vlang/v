@@ -715,6 +715,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	left_type := g.unwrap_generic(node.left_type)
 	mut unwrapped_rec_type := node.receiver_type
+	mut has_comptime_field := false
 	if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 { // in generic fn
 		unwrapped_rec_type = g.unwrap_generic(node.receiver_type)
 	} else { // in non-generic fn
@@ -733,6 +734,22 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			else {}
 		}
 	}
+	if g.inside_comptime_for_field {
+		mut node_ := unsafe { node }
+		for i, mut call_arg in node_.args {
+			if mut call_arg.expr is ast.Ident {
+				if mut call_arg.expr.obj is ast.Var {
+					node_.args[i].typ = call_arg.expr.obj.typ
+					if call_arg.expr.obj.is_comptime_field {
+						has_comptime_field = true
+					}
+				}
+			} else if mut call_arg.expr is ast.ComptimeSelector {
+				has_comptime_field = true
+			}
+		}
+	}
+
 	mut typ_sym := g.table.sym(unwrapped_rec_type)
 	// alias type that undefined this method (not include `str`) need to use parent type
 	if typ_sym.kind == .alias && node.name != 'str' && !typ_sym.has_method(node.name) {
@@ -1020,8 +1037,14 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 		}
 	}
-	concrete_types := node.concrete_types.map(g.unwrap_generic(it))
-	name = g.generic_fn_name(concrete_types, name)
+
+	if g.comptime_for_field_type != 0 && g.inside_comptime_for_field && has_comptime_field {
+		name = g.generic_fn_name([g.comptime_for_field_type], name)
+	} else {
+		concrete_types := node.concrete_types.map(g.unwrap_generic(it))
+		name = g.generic_fn_name(concrete_types, name)
+	}
+
 	// TODO2
 	// g.generate_tmp_autofree_arg_vars(node, name)
 	if !node.receiver_type.is_ptr() && left_type.is_ptr() && node.name == 'str' {
