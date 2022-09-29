@@ -130,6 +130,7 @@ mut:
 	inside_const              bool
 	inside_const_opt_or_res   bool
 	inside_lambda             bool
+	inside_for_in_any_cond    bool
 	loop_depth                int
 	ternary_names             map[string]string
 	ternary_level_names       map[string][]string

@@ -716,6 +716,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	left_type := g.unwrap_generic(node.left_type)
 	mut unwrapped_rec_type := node.receiver_type
 	mut has_comptime_field := false
+	mut for_in_any_var_type := ast.void_type
 	if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 { // in generic fn
 		unwrapped_rec_type = g.unwrap_generic(node.receiver_type)
 	} else { // in non-generic fn
@@ -746,6 +747,15 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				}
 			} else if mut call_arg.expr is ast.ComptimeSelector {
 				has_comptime_field = true
+			}
+		}
+	}
+	if g.inside_for_in_any_cond {
+		for call_arg in node.args {
+			if call_arg.expr is ast.Ident {
+				if call_arg.expr.obj is ast.Var {
+					for_in_any_var_type = call_arg.expr.obj.typ
+				}
 			}
 		}
 	}
@@ -1040,6 +1050,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 
 	if g.comptime_for_field_type != 0 && g.inside_comptime_for_field && has_comptime_field {
 		name = g.generic_fn_name([g.comptime_for_field_type], name)
+	} else if g.inside_for_in_any_cond && for_in_any_var_type != ast.void_type {
+		name = g.generic_fn_name([for_in_any_var_type], name)
 	} else {
 		concrete_types := node.concrete_types.map(g.unwrap_generic(it))
 		name = g.generic_fn_name(concrete_types, name)

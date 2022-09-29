@@ -116,7 +116,6 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 		} else if sym.kind == .any {
 			node.cond_type = typ
 			node.kind = sym.kind
-			node.val_type = ast.void_type
 
 			unwrapped_typ := c.unwrap_generic(typ)
 			unwrapped_sym := c.table.sym(unwrapped_typ)
