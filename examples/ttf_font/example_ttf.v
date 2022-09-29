@@ -116,7 +116,6 @@ fn my_event_manager(mut ev gg.Event, mut app App_data) {
 	}
 }
 
-[console]
 fn main() {
 	mut app := &App_data{
 		gg: 0

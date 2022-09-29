@@ -3,7 +3,6 @@ module main
 import gg
 import sokol.gfx
 
-[console]
 fn main() {
 	mut context := gg.new_context(
 		frame_fn: frame

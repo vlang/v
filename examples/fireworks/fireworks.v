@@ -93,8 +93,6 @@ fn (mut app App) resize() {
 	app.ui.height = size.height
 }
 
-// is needed for easier diagnostics on windows
-[console]
 fn main() {
 	mut font_path := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))
 	$if android {

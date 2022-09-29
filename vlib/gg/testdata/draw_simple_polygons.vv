@@ -10,7 +10,6 @@ mut:
 	edge     int = 3
 }
 
-[console]
 fn main() {
 	println('rotation: left arrow key, right arrow key')
 	println('center polygon edge: up arrow key, down arrow key')

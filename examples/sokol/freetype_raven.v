@@ -61,7 +61,6 @@ mut:
 	inited      bool
 }
 
-[console]
 fn main() {
 	mut color_action := gfx.ColorAttachmentAction{
 		action: .clear
