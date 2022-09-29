@@ -87,3 +87,8 @@ fn between_if_branches() {
 	else {
 	}
 }
+
+for // comments
+{
+	break
+}
