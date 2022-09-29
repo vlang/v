@@ -1,5 +1,6 @@
 ## V 0.3.2
 *Not yet released*
+- Remove the need for the `[console]` attribute in Windows GUI apps.
 
 ## V 0.3.1
 *31 Aug 2022*
