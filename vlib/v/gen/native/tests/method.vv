@@ -1,4 +1,5 @@
 struct Size7 {
+mut:
 	a i8
 	b u8
 	c i8
@@ -27,7 +28,7 @@ fn (s &Size7) get_c_ref() i8 {
 }
 
 fn (mut s Size7) modify_c(a i8) i8 {
-	// s.c = a
+	s.c = a
 	return s.c
 }
 
@@ -35,8 +36,7 @@ fn struct_receiver_test() {
 	mut a := Size7{1,2,3,4,5,6,7}
 	assert a.get_c() == 3
 	assert a.get_c_ref() == 3
-	// should be 7 after implementing field assign
-	assert a.modify_c(7) == 3
+	assert a.modify_c(7) == 7
 	b := Size28{c: 6}
 	assert b.get_c() == 6
 }
