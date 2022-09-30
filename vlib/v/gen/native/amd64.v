@@ -1800,8 +1800,82 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 	// `a := 1` | `a,b := 1,2`
 	for i, left in node.left {
 		right := node.right[i]
+		if left !is ast.Ident {
+			g.gen_left_value(left)
+			g.push(.rax)
+			g.expr(right)
+			g.pop(.rdx)
+			typ := node.left_types[i]
+			if typ.is_number() || typ.is_real_pointer() || typ.is_bool() {
+				match node.op {
+					.assign {
+						g.mov_store(.rdx, .rax, match g.get_type_size(typ) {
+							1 { ._8 }
+							2 { ._16 }
+							3 { ._32 }
+							else { ._64 }
+						})
+					}
+					else {
+						g.n_error('Unsupported assign instruction')
+					}
+				}
+			} else {
+				if node.op != .assign {
+					g.n_error('Unsupported assign instruction')
+				}
+				ts := g.table.sym(typ)
+				match ts.kind {
+					.struct_ {
+						size := g.get_type_size(typ)
+						if size >= 8 {
+							for j in 0 .. size / 8 {
+								g.mov_deref(.rcx, .rdx, ast.u64_type_idx)
+								g.mov_store(.rax, .rcx, ._64)
+								offset := if j == size / 8 - 1 && size % 8 != 0 { size % 8 } else { 8 }
+								g.add(.rax, offset)
+								g.add(.rdx, offset)
+							}
+							if size % 8 != 0 {
+								g.mov_deref(.rcx, .rdx, ast.u64_type_idx)
+								g.mov_store(.rax, .rcx, ._64)
+							}
+						} else {
+							mut left_size := if size >= 4 {
+								g.mov_deref(.rcx, .rdx, ast.u32_type_idx)
+								g.mov_store(.rax, .rcx, ._32)
+								if size > 4 {
+									g.add(.rax, 4)
+									g.add(.rdx, 4)
+								}
+								size - 4
+							} else {
+								size
+							}
+							if left_size >= 2 {
+								g.mov_deref(.rcx, .rdx, ast.u16_type_idx)
+								g.mov_store(.rax, .rcx, ._16)
+								if left_size > 2 {
+									g.add(.rax, 2)
+									g.add(.rdx, 2)
+								}
+								left_size -= 2
+							}
+							if left_size == 1 {
+								g.mov_deref(.rcx, .rdx, ast.u8_type_idx)
+								g.mov_store(.rax, .rcx, ._8)
+							}
+						}
+					}
+					.enum_ {
+						g.mov_store(.rdx, .rax, ._32)
+					}
+					else {}
+				}
+			}
+			continue
+		}
 		name := left.str()
-		// if left is ast.Ident {
 		ident := left as ast.Ident
 		match right {
 			ast.IntegerLiteral {
@@ -2222,7 +2296,9 @@ fn (mut g Gen) gen_left_value(node ast.Expr) {
 		ast.SelectorExpr {
 			g.expr(node.expr)
 			offset := g.get_field_offset(node.expr_type, node.field_name)
-			g.add(.rax, offset)
+			if offset != 0 {
+				g.add(.rax, offset)
+			}
 		}
 		ast.IndexExpr {} // TODO
 		ast.PrefixExpr {
@@ -3003,7 +3079,7 @@ fn (mut g Gen) init_struct(var Var, init ast.StructInit) {
 				g.mov(.rcx, size / 8)
 				g.lea_var_to_reg(.rdi, var.offset)
 				g.write([u8(0xf3), 0x48, 0xab])
-				g.println('; rep stosq')
+				g.println('rep stosq')
 				size % 8
 			} else {
 				size
