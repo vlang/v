@@ -2055,6 +2055,19 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 				}
 				call_args_str = call_args_str.replace_each(rep_group)
 				g.gowrappers.write_string(call_args_str)
+			} else if expr.name in ['print', 'println', 'eprint', 'eprintln', 'panic']
+				&& expr.args[0].typ != ast.string_type {
+				pos := g.out.len
+				g.gen_expr_to_string(expr.args[0].expr, expr.args[0].typ)
+				mut call_args_str := g.out.after(pos)
+				g.out.go_back(call_args_str.len)
+				mut rep_group := []string{cap: 2 * expr.args.len}
+				for i in 0 .. expr.args.len {
+					rep_group << g.expr_string(expr.args[i].expr)
+					rep_group << 'arg->arg${i + 1}'
+				}
+				call_args_str = call_args_str.replace_each(rep_group)
+				g.gowrappers.write_string(call_args_str)
 			} else {
 				for i in 0 .. expr.args.len {
 					expected_nr_muls := expr.expected_arg_types[i].nr_muls()
