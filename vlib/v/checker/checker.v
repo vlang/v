@@ -2543,7 +2543,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	}
 
 	if to_sym.kind == .enum_ && from_sym.is_int() && !c.inside_unsafe {
-		c.warn('cannot cast int to enum outside `unsafe` blocks', node.pos)
+		c.error('cannot cast int to enum outside `unsafe` blocks', node.pos)
 	}
 
 	if to_type == ast.string_type {

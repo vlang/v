@@ -514,7 +514,11 @@ pub fn generate(input_path string, pub_only bool, with_comments bool, platform P
 	doc.pub_only = pub_only
 	doc.with_comments = with_comments
 	doc.filter_symbol_names = filter_symbol_names.filter(it.len != 0)
-	doc.prefs.os = if platform == .auto { pref.get_host_os() } else { pref.OS(int(platform)) }
+	doc.prefs.os = if platform == .auto {
+		pref.get_host_os()
+	} else {
+		unsafe { pref.OS(int(platform)) }
+	}
 	doc.generate()?
 	return doc
 }

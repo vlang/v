@@ -994,7 +994,7 @@ pub fn get_host_arch() Arch {
 	if C.__V_architecture <= int(Arch._auto) || C.__V_architecture >= int(Arch._max) {
 		return Arch.amd64
 	}
-	return Arch(C.__V_architecture)
+	return unsafe { Arch(C.__V_architecture) }
 }
 
 fn (mut prefs Preferences) parse_define(define string) {

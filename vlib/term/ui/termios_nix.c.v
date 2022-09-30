@@ -289,7 +289,7 @@ fn single_char(buf string) &Event {
 	mut event := &Event{
 		typ: .key_down
 		ascii: ch
-		code: KeyCode(ch)
+		code: unsafe { KeyCode(ch) }
 		utf8: ch.ascii_str()
 	}
 
@@ -305,7 +305,7 @@ fn single_char(buf string) &Event {
 				typ: event.typ
 				ascii: event.ascii
 				utf8: event.utf8
-				code: KeyCode(96 | ch)
+				code: unsafe { KeyCode(96 | ch) }
 				modifiers: .ctrl
 			}
 		}
@@ -314,7 +314,7 @@ fn single_char(buf string) &Event {
 				typ: event.typ
 				ascii: event.ascii
 				utf8: event.utf8
-				code: KeyCode(32 | ch)
+				code: unsafe { KeyCode(32 | ch) }
 				modifiers: .shift
 			}
 		}
@@ -330,7 +330,7 @@ fn multi_char(buf string) (&Event, int) {
 	mut event := &Event{
 		typ: .key_down
 		ascii: ch
-		code: KeyCode(ch)
+		code: unsafe { KeyCode(ch) }
 		utf8: buf
 	}
 
@@ -346,7 +346,7 @@ fn multi_char(buf string) (&Event, int) {
 				typ: event.typ
 				ascii: event.ascii
 				utf8: event.utf8
-				code: KeyCode(96 | ch)
+				code: unsafe { KeyCode(96 | ch) }
 				modifiers: .ctrl
 			}
 		}
@@ -355,7 +355,7 @@ fn multi_char(buf string) (&Event, int) {
 				typ: event.typ
 				ascii: event.ascii
 				utf8: event.utf8
-				code: KeyCode(32 | ch)
+				code: unsafe { KeyCode(32 | ch) }
 				modifiers: .shift
 			}
 		}

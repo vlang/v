@@ -197,7 +197,7 @@ fn build_keys() map[string]Kind {
 	mut res := map[string]Kind{}
 	for t in int(Kind.keyword_beg) + 1 .. int(Kind.keyword_end) {
 		key := token.token_str[t]
-		res[key] = Kind(t)
+		res[key] = unsafe { Kind(t) }
 	}
 	return res
 }

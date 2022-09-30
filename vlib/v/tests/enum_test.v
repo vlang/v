@@ -82,10 +82,10 @@ enum Foo {
 
 fn test_nums() {
 	foo := Foo.a
-	assert foo == Foo(1)
-	assert Foo.c == Foo(3)
+	assert foo == unsafe { Foo(1) }
+	assert Foo.c == unsafe { Foo(3) }
 	d := Foo.d
-	assert d == Foo(-10)
+	assert d == unsafe { Foo(-10) }
 }
 
 /*
