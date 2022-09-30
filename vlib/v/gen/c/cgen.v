@@ -2093,6 +2093,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 }
 
 fn (mut g Gen) write_defer_stmts() {
+	g.indent++
 	for i := g.defer_stmts.len - 1; i >= 0; i-- {
 		defer_stmt := g.defer_stmts[i]
 		g.writeln('// Defer begin')
@@ -2112,6 +2113,7 @@ fn (mut g Gen) write_defer_stmts() {
 		g.writeln('}')
 		g.writeln('// Defer end')
 	}
+	g.indent--
 }
 
 struct SumtypeCastingFn {
