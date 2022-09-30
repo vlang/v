@@ -992,6 +992,13 @@ fn (mut g Gen) bitxor_reg(a Register, b Register) {
 	g.println('xor $a, $b')
 }
 
+fn (mut g Gen) bitnot_reg(a Register) {
+	g.write8(0x48 + if int(a) >= int(Register.r8) { 1 } else { 0 })
+	g.write8(0xf7)
+	g.write8(0xd0 + int(a) % 8)
+	g.println('not $a')
+}
+
 fn (mut g Gen) shl_reg(a Register, b Register) {
 	if b != .rcx {
 		g.mov_reg(.rcx, b)
@@ -2219,8 +2226,30 @@ fn (mut g Gen) gen_left_value(node ast.Expr) {
 }
 
 fn (mut g Gen) prefix_expr(node ast.PrefixExpr) {
-	if node.op == .amp {
-		g.gen_left_value(node.right)
+	match node.op {
+		.minus {
+			g.expr(node.right)
+			g.neg(.rax)
+		}
+		.amp {
+			g.gen_left_value(node.right)
+		}
+		.mul {
+			g.expr(node.right)
+			g.mov_deref(.rax, .rax, node.right_type.deref())
+		}
+		.not {
+			g.expr(node.right)
+			g.cmp_zero(.rax)
+			// TODO mov_extend_reg
+			g.mov64(.rax, 0)
+			g.cset(.e)
+		}
+		.bit_not {
+			g.expr(node.right)
+			g.bitnot_reg(.rax)
+		}
+		else {}
 	}
 }
 
@@ -2282,6 +2311,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		match node.op {
 			.eq, .ne, .gt, .lt, .ge, .le {
 				g.cmp_reg(.rax, .rdx)
+				// TODO mov_extend_reg
 				g.mov64(.rax, 0)
 				g.cset_op(node.op)
 			}
