@@ -266,7 +266,12 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 			g.writeln('')
 		}
 		expr_str := g.out.last_n(g.out.len - start_pos).trim_space()
-		g.defer_ifdef = expr_str
+		if expr_str != '' {
+			if g.defer_ifdef != '' {
+				g.defer_ifdef += '\r\n' + '\t'.repeat(g.indent + 1)
+			}
+			g.defer_ifdef += expr_str
+		}
 		if node.is_expr {
 			len := branch.stmts.len
 			if len > 0 {
@@ -303,8 +308,8 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 				g.writeln('}')
 			}
 		}
-		g.defer_ifdef = ''
 	}
+	g.defer_ifdef = ''
 	g.writeln('#endif')
 	if node.is_expr {
 		g.write('$line $tmp_var')

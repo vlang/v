@@ -269,6 +269,9 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 										}
 									}
 								}
+								if right is ast.ComptimeSelector {
+									left.obj.is_comptime_field = true
+								}
 							}
 							ast.GlobalField {
 								left.obj.typ = left_type

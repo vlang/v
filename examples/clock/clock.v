@@ -147,8 +147,6 @@ fn on_init(mut app App) {
 	app.resize()
 }
 
-// is needed for easier diagnostics on windows
-[console]
 fn main() {
 	println("Press 'q' to quit.")
 	mut font_path := os.resource_abs_path(os.join_path('..', 'assets', 'fonts', 'RobotoMono-Regular.ttf'))

@@ -69,6 +69,20 @@ fn (mut g Gen) gen_c_main_function_only_header() {
 			g.writeln('\tcmd_line_to_argv CommandLineToArgvW = (cmd_line_to_argv)GetProcAddress(shell32_module, "CommandLineToArgvW");')
 			g.writeln('\tint ___argc;')
 			g.writeln('\twchar_t** ___argv = CommandLineToArgvW(full_cmd_line, &___argc);')
+
+			g.writeln('BOOL con_valid = FALSE;')
+			if g.force_main_console {
+				g.writeln('con_valid = AllocConsole();')
+			} else {
+				g.writeln('con_valid = AttachConsole(ATTACH_PARENT_PROCESS);')
+			}
+			g.writeln('if (con_valid) {')
+			g.writeln('\tFILE* res_fp = 0;')
+			g.writeln('\terrno_t err;')
+			g.writeln('\terr = freopen_s(&res_fp, "CON", "w", stdout);')
+			g.writeln('\terr = freopen_s(&res_fp, "CON", "w", stderr);')
+			g.writeln('\t(void)err;')
+			g.writeln('}')
 			return
 		}
 		// Console application

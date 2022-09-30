@@ -3,7 +3,7 @@ module notify
 import time
 import os
 
-#include <sys/epoll.h>
+#insert "@VEXEROOT/vlib/os/notify/epoll.h"
 
 struct C.epoll_event {
 	events u32

@@ -1062,10 +1062,15 @@ pub fn (mut f Fmt) for_stmt(node ast.ForStmt) {
 	if node.label.len > 0 {
 		f.write('$node.label: ')
 	}
+	if node.cond is ast.Comment {
+		f.comments([node.cond])
+	}
 	f.write('for ')
-	f.expr(node.cond)
-	if !node.is_inf {
-		f.write(' ')
+	if node.cond !is ast.Comment {
+		f.expr(node.cond)
+		if !node.is_inf {
+			f.write(' ')
+		}
 	}
 	f.write('{')
 	if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
