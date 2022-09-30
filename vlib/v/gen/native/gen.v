@@ -1053,10 +1053,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			mut s := '?' //${node.exprs[0].val.str()}'
 			if e0 := node.exprs[0] {
 				match e0 {
-					ast.CastExpr {
-						g.mov64(.rax, e0.expr.str().int())
-						// do the job
-					}
 					ast.StringLiteral {
 						s = g.eval_escape_codes(e0)
 						g.expr(node.exprs[0])
@@ -1288,6 +1284,10 @@ fn (mut g Gen) expr(node ast.Expr) {
 			offset := g.get_field_offset(node.expr_type, node.field_name)
 			g.add(.rax, offset)
 			g.mov_deref(.rax, .rax, node.typ)
+		}
+		ast.CastExpr {
+			g.expr(node.expr)
+			g.mov_extend_reg(.rax, .rax, node.typ)
 		}
 		else {
 			g.n_error('expr: unhandled node type: $node.type_name()')
