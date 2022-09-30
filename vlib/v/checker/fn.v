@@ -855,6 +855,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		c.fail_if_unreadable(arg.expr, arg.typ, 'argument to print')
 		c.inside_println_arg = false
 		node.return_type = ast.void_type
+		c.set_node_expected_arg_types(mut node, func)
 		/*
 		// TODO: optimize `struct T{} fn (t &T) str() string {return 'abc'} mut a := []&T{} a << &T{} println(a[0])`
 		// It currently generates:
