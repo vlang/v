@@ -296,6 +296,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 			g.writeln('${fargtypes[i]}* ${fargs[i]} = HEAP(${fargtypes[i]}, _v_toheap_${fargs[i]});')
 		}
 	}
+	g.indent++
 	for defer_stmt in node.defer_stmts {
 		g.writeln('bool ${g.defer_flag_var(defer_stmt)} = false;')
 		for var in defer_stmt.defer_vars {
@@ -319,6 +320,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 			}
 		}
 	}
+	g.indent--
 	if is_live_wrap {
 		// The live function just calls its implementation dual, while ensuring
 		// that the call is wrapped by the mutex lock & unlock calls.
@@ -715,7 +717,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	left_type := g.unwrap_generic(node.left_type)
 	mut unwrapped_rec_type := node.receiver_type
-	if unsafe { g.cur_fn != 0 } && g.cur_fn.generic_names.len > 0 { // in generic fn
+	mut has_comptime_field := false
+	mut for_in_any_var_type := ast.void_type
+	if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 { // in generic fn
 		unwrapped_rec_type = g.unwrap_generic(node.receiver_type)
 	} else { // in non-generic fn
 		sym := g.table.sym(node.receiver_type)
@@ -733,6 +737,31 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			else {}
 		}
 	}
+	if g.inside_comptime_for_field {
+		mut node_ := unsafe { node }
+		for i, mut call_arg in node_.args {
+			if mut call_arg.expr is ast.Ident {
+				if mut call_arg.expr.obj is ast.Var {
+					node_.args[i].typ = call_arg.expr.obj.typ
+					if call_arg.expr.obj.is_comptime_field {
+						has_comptime_field = true
+					}
+				}
+			} else if mut call_arg.expr is ast.ComptimeSelector {
+				has_comptime_field = true
+			}
+		}
+	}
+	if g.inside_for_in_any_cond {
+		for call_arg in node.args {
+			if call_arg.expr is ast.Ident {
+				if call_arg.expr.obj is ast.Var {
+					for_in_any_var_type = call_arg.expr.obj.typ
+				}
+			}
+		}
+	}
+
 	mut typ_sym := g.table.sym(unwrapped_rec_type)
 	// alias type that undefined this method (not include `str`) need to use parent type
 	if typ_sym.kind == .alias && node.name != 'str' && !typ_sym.has_method(node.name) {
@@ -1020,8 +1049,16 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 		}
 	}
-	concrete_types := node.concrete_types.map(g.unwrap_generic(it))
-	name = g.generic_fn_name(concrete_types, name)
+
+	if g.comptime_for_field_type != 0 && g.inside_comptime_for_field && has_comptime_field {
+		name = g.generic_fn_name([g.comptime_for_field_type], name)
+	} else if g.inside_for_in_any_cond && for_in_any_var_type != ast.void_type {
+		name = g.generic_fn_name([for_in_any_var_type], name)
+	} else {
+		concrete_types := node.concrete_types.map(g.unwrap_generic(it))
+		name = g.generic_fn_name(concrete_types, name)
+	}
+
 	// TODO2
 	// g.generate_tmp_autofree_arg_vars(node, name)
 	if !node.receiver_type.is_ptr() && left_type.is_ptr() && node.name == 'str' {
@@ -1141,6 +1178,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	// will be `0` for `foo()`
 	mut is_interface_call := false
 	mut is_selector_call := false
+	mut has_comptime_field := false
 	if node.left_type != 0 {
 		left_sym := g.table.sym(node.left_type)
 		if left_sym.kind == .interface_ {
@@ -1171,7 +1209,12 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			if mut call_arg.expr is ast.Ident {
 				if mut call_arg.expr.obj is ast.Var {
 					node_.args[i].typ = call_arg.expr.obj.typ
+					if call_arg.expr.obj.is_comptime_field {
+						has_comptime_field = true
+					}
 				}
+			} else if mut call_arg.expr is ast.ComptimeSelector {
+				has_comptime_field = true
 			}
 		}
 	}
@@ -1262,7 +1305,8 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	if !is_selector_call {
 		if func := g.table.find_fn(node.name) {
 			if func.generic_names.len > 0 {
-				if g.comptime_for_field_type != 0 && g.inside_comptime_for_field {
+				if g.comptime_for_field_type != 0 && g.inside_comptime_for_field
+					&& has_comptime_field {
 					name = g.generic_fn_name([g.comptime_for_field_type], name)
 				} else {
 					concrete_types := node.concrete_types.map(g.unwrap_generic(it))
@@ -2004,6 +2048,19 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 			if has_cast {
 				pos := g.out.len
 				g.call_args(expr)
+				mut call_args_str := g.out.after(pos)
+				g.out.go_back(call_args_str.len)
+				mut rep_group := []string{cap: 2 * expr.args.len}
+				for i in 0 .. expr.args.len {
+					rep_group << g.expr_string(expr.args[i].expr)
+					rep_group << 'arg->arg${i + 1}'
+				}
+				call_args_str = call_args_str.replace_each(rep_group)
+				g.gowrappers.write_string(call_args_str)
+			} else if expr.name in ['print', 'println', 'eprint', 'eprintln', 'panic']
+				&& expr.args[0].typ != ast.string_type {
+				pos := g.out.len
+				g.gen_expr_to_string(expr.args[0].expr, expr.args[0].typ)
 				mut call_args_str := g.out.after(pos)
 				g.out.go_back(call_args_str.len)
 				mut rep_group := []string{cap: 2 * expr.args.len}

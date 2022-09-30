@@ -654,9 +654,10 @@ pub mut:
 	// 10 <- original type (orig_type)
 	//   [11, 12, 13] <- cast order (smartcasts)
 	//        12 <- the current casted type (typ)
-	pos        token.Pos
-	is_used    bool // whether the local variable was used in other expressions
-	is_changed bool // to detect mutable vars that are never changed
+	pos               token.Pos
+	is_used           bool // whether the local variable was used in other expressions
+	is_changed        bool // to detect mutable vars that are never changed
+	is_comptime_field bool // comptime field var `a := t.$(field.name)`
 	//
 	// (for setting the position after the or block for autofree)
 	is_or        bool // `x := foo() or { ... }`

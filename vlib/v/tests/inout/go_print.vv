@@ -1,0 +1,4 @@
+fn main(){
+	g := go print([1, 2, 3])
+	g.wait()
+}

@@ -539,7 +539,7 @@ pub fn (ctx &Context) show_fps() {
 	sgl.defaults()
 	sgl.matrix_mode_projection()
 	sgl.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
-	ctx.set_cfg(ctx.fps.text_config)
+	ctx.set_text_cfg(ctx.fps.text_config)
 	if ctx.fps.width == 0 {
 		mut fps := unsafe { &ctx.fps }
 		fps.width, fps.height = ctx.text_size('00') // maximum size; prevents blinking on variable width fonts

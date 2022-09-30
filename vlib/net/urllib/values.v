@@ -9,7 +9,7 @@ pub mut:
 	value string
 }
 
-struct Values {
+pub struct Values {
 pub mut:
 	data []QueryValue
 	len  int

@@ -807,6 +807,35 @@ fn (mut g Gen) mov_var_to_reg(reg Register, var Var, config VarConfig) {
 	}
 }
 
+fn (mut g Gen) mov_extend_reg(a Register, b Register, typ ast.Type) {
+	size := g.get_type_size(typ)
+	is_signed := !typ.is_real_pointer() && typ.is_signed()
+
+	if size in [1, 2, 4] {
+		if size == 4 && !is_signed {
+			g.write8(0x40 + if int(a) >= int(Register.r8) { 1 } else { 0 } +
+				if int(b) >= int(Register.r8) { 4 } else { 0 })
+			g.write8(0x89)
+		} else {
+			g.write8(0x48 + if int(a) >= int(Register.r8) { 1 } else { 0 } +
+				if int(b) >= int(Register.r8) { 4 } else { 0 })
+			if size in [1, 2] {
+				g.write8(0x0f)
+			}
+			g.write8(match true {
+				size == 1 && is_signed { 0xbe }
+				size == 1 && !is_signed { 0xb6 }
+				size == 2 && is_signed { 0xbf }
+				size == 2 && !is_signed { 0xb7 }
+				else { 0x63 }
+			})
+		}
+		g.write8(0xc0 + int(a) % 8 * 8 + int(b) % 8)
+		instruction := if is_signed { 's' } else { 'z' }
+		g.println('mov${instruction}x $a, $b')
+	}
+}
+
 fn (mut g Gen) call_addr_at(addr int, at i64) i64 {
 	// Need to calculate the difference between current position (position after the e8 call)
 	// and the function to call.
@@ -2134,20 +2163,6 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 			}
 			ast.GoExpr {
 				g.v_error('threads not implemented for the native backend', node.pos)
-			}
-			ast.CastExpr {
-				g.warning('cast expressions are work in progress', right.pos)
-				match right.typname {
-					'u64' {
-						g.allocate_var(name, 8, right.expr.str().int())
-					}
-					'int' {
-						g.allocate_var(name, 4, right.expr.str().int())
-					}
-					else {
-						g.v_error('unsupported cast type $right.typ', node.pos)
-					}
-				}
 			}
 			ast.FloatLiteral {
 				g.v_error('floating point arithmetic not yet implemented for the native backend',

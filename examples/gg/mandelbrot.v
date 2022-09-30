@@ -222,7 +222,6 @@ fn graphics_keydown(code gg.KeyCode, mod gg.Modifier, mut state AppState) {
 	}
 }
 
-[console]
 fn main() {
 	mut state := &AppState{}
 	state.gg = gg.new_context(

@@ -971,7 +971,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 					type_pos: type_pos[i]
 				}
 				// if typ.typ.kind == .variadic && p.tok.kind == .comma {
-				if is_variadic && p.tok.kind == .comma {
+				if is_variadic && p.tok.kind == .comma && p.peek_tok.kind != .rpar {
 					p.error_with_pos('cannot use ...(variadic) with non-final parameter $arg_name',
 						arg_pos[i])
 					return []ast.Param{}, false, false

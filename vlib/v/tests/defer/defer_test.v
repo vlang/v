@@ -175,3 +175,17 @@ fn test_defer_with_reserved_words() {
 	eprintln('Done')
 	assert true
 }
+
+fn test_defer_inside_comptime_if_else() {
+	$if false {
+	} $else {
+		defer {
+		}
+	}
+	$if true {
+		defer {
+		}
+	} $else {
+	}
+	assert true
+}

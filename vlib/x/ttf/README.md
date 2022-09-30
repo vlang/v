@@ -57,7 +57,6 @@ Let's start with a simple snippet of code:
 import os
 import x.ttf
 
-[console]
 fn main() {
 	mut ttf_font := ttf.TTF_File{}
 	ttf_font.buf = os.read_bytes('arial.ttf') or { panic(err) }
@@ -75,7 +74,6 @@ At this point we can render a simple text:
 import os
 import x.ttf
 
-[console]
 fn main() {
 	mut ttf_font := ttf.TTF_File{}
 	ttf_font.buf = os.read_bytes('arial.ttf') or { panic(err) }
@@ -139,7 +137,6 @@ Draw text block draw a justified and indented block of multiline text in the bit
 import os
 import x.ttf
 
-[console]
 fn main() {
 	mut ttf_font := ttf.TTF_File{}
 	ttf_font.buf = os.read_bytes('arial.ttf') or { panic(err) }
@@ -268,7 +265,6 @@ fn draw_frame(mut app App_data) {
 	app.gg.end()
 }
 
-[console]
 fn main() {
 	mut app := &App_data{
 		gg: 0

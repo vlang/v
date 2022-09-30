@@ -303,13 +303,9 @@ fn escape(s string, mode EncodingMode) string {
 }
 
 // A URL represents a parsed URL (technically, a URI reference).
-//
 // The general form represented is:
-//
 // [scheme:][//[userinfo@]host][/]path[?query][#fragment]
-//
 // URLs that do not start with a slash after the scheme are interpreted as:
-//
 // scheme:opaque[?query][#fragment]
 //
 // Note that the path field is stored in decoded form: /%47%6f%2f becomes /Go/.
@@ -331,6 +327,11 @@ pub mut:
 	force_query bool      // append a query ('?') even if raw_query is empty
 	raw_query   string    // encoded query values, without '?'
 	fragment    string    // fragment for references, without '#'
+}
+
+// debug returns a string representation of *ALL* the fields of the given URL
+pub fn (url &URL) debug() string {
+	return 'URL{\n  scheme: $url.scheme\n  opaque: $url.opaque\n  user: $url.user\n  host: $url.host\n  path: $url.path\n  raw_path: $url.raw_path\n  force_query: $url.force_query\n  raw_query: $url.raw_query\n  fragment: $url.fragment\n}'
 }
 
 // user returns a Userinfo containing the provided username
