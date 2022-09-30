@@ -2219,6 +2219,18 @@ fn (mut g Gen) gen_left_value(node ast.Expr) {
 			offset := g.get_var_offset(node.name)
 			g.lea_var_to_reg(.rax, offset)
 		}
+		ast.SelectorExpr {
+			g.expr(node.expr)
+			offset := g.get_field_offset(node.expr_type, node.field_name)
+			g.add(.rax, offset)
+		}
+		ast.IndexExpr {} // TODO
+		ast.PrefixExpr {
+			if node.op != .mul {
+				g.n_error('Unsupported left value')
+			}
+			g.expr(node.right)
+		}
 		else {
 			g.n_error('Unsupported left value')
 		}
