@@ -811,7 +811,7 @@ fn (mut g Gen) mov_extend_reg(a Register, b Register, typ ast.Type) {
 	size := g.get_type_size(typ)
 	is_signed := !typ.is_real_pointer() && typ.is_signed()
 
-	if size in [1,2,4] {
+	if size in [1, 2, 4] {
 		if size == 4 && !is_signed {
 			g.write8(0x40 + if int(a) >= int(Register.r8) { 1 } else { 0 } +
 				if int(b) >= int(Register.r8) { 4 } else { 0 })
@@ -819,7 +819,7 @@ fn (mut g Gen) mov_extend_reg(a Register, b Register, typ ast.Type) {
 		} else {
 			g.write8(0x48 + if int(a) >= int(Register.r8) { 1 } else { 0 } +
 				if int(b) >= int(Register.r8) { 4 } else { 0 })
-			if size in [1,2] {
+			if size in [1, 2] {
 				g.write8(0x0f)
 			}
 			g.write8(match true {
