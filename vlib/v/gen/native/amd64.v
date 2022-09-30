@@ -815,7 +815,7 @@ fn (mut g Gen) mov_extend_reg(a Register, b Register, typ ast.Type) {
 		if size == 4 && !is_signed {
 			g.write8(0x40 + if int(a) >= int(Register.r8) { 1 } else { 0 } +
 				if int(b) >= int(Register.r8) { 4 } else { 0 })
-			g.write(0x89)
+			g.write8(0x89)
 		} else {
 			g.write8(0x48 + if int(a) >= int(Register.r8) { 1 } else { 0 } +
 				if int(b) >= int(Register.r8) { 4 } else { 0 })
@@ -830,7 +830,7 @@ fn (mut g Gen) mov_extend_reg(a Register, b Register, typ ast.Type) {
 				else { 0x63 }
 			})
 		}
-		g.write8(int(a) % 8 * 8 + int(b) % 8)
+		g.write8(0xc0 + int(a) % 8 * 8 + int(b) % 8)
 		instruction := if is_signed { 's' } else { 'z' }
 		g.println('mov${instruction}x $a, $b')
 	}
@@ -2163,20 +2163,6 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 			}
 			ast.GoExpr {
 				g.v_error('threads not implemented for the native backend', node.pos)
-			}
-			ast.CastExpr {
-				g.warning('cast expressions are work in progress', right.pos)
-				match right.typname {
-					'u64' {
-						g.allocate_var(name, 8, right.expr.str().int())
-					}
-					'int' {
-						g.allocate_var(name, 4, right.expr.str().int())
-					}
-					else {
-						g.v_error('unsupported cast type $right.typ', node.pos)
-					}
-				}
 			}
 			ast.FloatLiteral {
 				g.v_error('floating point arithmetic not yet implemented for the native backend',
