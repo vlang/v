@@ -47,7 +47,7 @@ pub fn to_map<K, V, X, Y>(m map[K]V, f fn (K, V) (X, Y)) map[X]Y {
 	return mp
 }
 
-// to_map maps map entries by swapping key to value and vice versa
+// invert returns a new map, created by swapping key to value and vice versa for each entry.
 pub fn invert<K, V>(m map[K]V) map[V]K {
 	mut mp := map[V]K{}
 
