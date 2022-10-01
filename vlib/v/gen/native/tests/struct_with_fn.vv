@@ -57,21 +57,31 @@ fn get_28(s Size28) Size28 {
 }
 
 fn struct_fn_test() {
-	a := Size7{b: 2}
+	a := Size7{
+		b: 2
+	}
 	assert get_7(a).b == 2
-	assert get_7(Size7{c: 3}).c == 3
-	b := Size8{b: 2}
+	assert get_7(Size7{ c: 3 }).c == 3
+	b := Size8{
+		b: 2
+	}
 	assert get_8(b).b == 2
-	assert get_8(Size8{c: 3}).c == 3
-	c := Size12{b: 2}
+	assert get_8(Size8{ c: 3 }).c == 3
+	c := Size12{
+		b: 2
+	}
 	assert get_12(c).b == 2
-	assert get_12(Size12{c: 3}).c == 3
-	d := Size16{b: 2}
+	assert get_12(Size12{ c: 3 }).c == 3
+	d := Size16{
+		b: 2
+	}
 	assert get_16(d).b == 2
-	assert get_16(Size16{c: 3}).c == 3
-	e := Size28{b: 2}
+	assert get_16(Size16{ c: 3 }).c == 3
+	e := Size28{
+		b: 2
+	}
 	assert get_28(e).b == 2
-	assert get_28(Size28{c: 3}).c == 3
+	assert get_28(Size28{ c: 3 }).c == 3
 }
 
 fn main() {

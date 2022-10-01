@@ -34,11 +34,19 @@ fn struct_test() {
 	b := a
 	assert a.c == 3
 	assert b.f == 6
-	c := Size28{d:1, f:2, a:3, c: 4}
+	c := Size28{
+		d: 1
+		f: 2
+		a: 3
+		c: 4
+	}
 	assert c.a == 3
 	assert c.f == 2
 	assert c.e == 0
-	d := StructWithDefault{b: 2, c: 3}
+	d := StructWithDefault{
+		b: 2
+		c: 3
+	}
 	assert d.a == 8
 	assert d.b == 2
 	assert d.c == 3
