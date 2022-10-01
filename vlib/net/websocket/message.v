@@ -228,7 +228,7 @@ pub fn (mut ws Client) parse_frame_header() ?Frame {
 			frame.rsv1 = (buffer[0] & 0x40) == 0x40
 			frame.rsv2 = (buffer[0] & 0x20) == 0x20
 			frame.rsv3 = (buffer[0] & 0x10) == 0x10
-			frame.opcode = OPCode(int(buffer[0] & 0x7F))
+			frame.opcode = unsafe { OPCode(int(buffer[0] & 0x7F)) }
 			frame.has_mask = (buffer[1] & 0x80) == 0x80
 			frame.payload_len = buffer[1] & 0x7F
 			// if has mask set the byte postition where mask ends
