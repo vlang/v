@@ -105,6 +105,8 @@ fn take_variadic_string_ptr(strings ...&string) {
 
 fn take_array_string_ptr(strings []&string) {
 	assert strings.len == 2
+	assert *strings[0] == 'a'
+	assert *strings[1] == 'b'
 }
 
 fn test_varg_pointer() {
