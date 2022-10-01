@@ -1078,10 +1078,20 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				}
 				param_typ_sym_ := c.table.sym(c.table.unaliased_type(param.typ))
 				arg_typ_sym_ := c.table.sym(c.table.unaliased_type(arg_typ))
+				// in case if variadic make sure to use array elem type for ptr check in cond below
+				// some of these checks could have been constructed to fix the incorrect varg type to
+				// begin with, since before `...&type` was set to `&[]&type` instead of `[]&type`
+				// so maybe some of this stuff needs to be removed or changed.
+				// TODO: clean this up
+				param_type := if param.typ.has_flag(.variadic) {
+					param_typ_sym_.array_info().elem_type
+				} else {
+					param.typ
+				}
 				// Allow `[32]i8` as `&i8` etc
 				if ((arg_typ_sym_.kind == .array_fixed || arg_typ_sym_.kind == .array)
 					&& (param_is_number
-					|| c.table.unaliased_type(param.typ).is_any_kind_of_pointer()))
+					|| c.table.unaliased_type(param_type).is_any_kind_of_pointer()))
 					|| ((param_typ_sym_.kind == .array_fixed || param_typ_sym_.kind == .array)
 					&& (typ_is_number || c.table.unaliased_type(arg_typ).is_any_kind_of_pointer())) {
 					continue
