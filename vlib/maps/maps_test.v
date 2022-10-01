@@ -25,24 +25,24 @@ fn test_filter() {
 	}
 }
 
-fn test_maps() {
+fn test_to_array() {
 	m1 := {
 		`a`: 'bc'
 		`d`: 'ef'
 		`g`: 'hi'
 	}
-	assert maps(m1, fn (k rune, v string) string {
+	assert to_array(m1, fn (k rune, v string) string {
 		return '$k$v'
 	}) == ['abc', 'def', 'ghi']
 }
 
-fn test_flat_map() {
+fn test_to_array_and_flatten() {
 	m1 := {
 		1: [2, 3]
 		4: [5, 6]
 		7: [8, 9]
 	}
-	assert flat_map<int, []int, int>(m1, fn (k int, v []int) []int {
+	assert to_array_and_flatten<int, []int, int>(m1, fn (k int, v []int) []int {
 		mut a := [k]
 		a << v
 		return a

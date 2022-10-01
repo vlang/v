@@ -13,8 +13,8 @@ pub fn filter<K, V>(m map[K]V, f fn (K, V) bool) map[K]V {
 	return mp
 }
 
-// flat_map maps map entries into arrays and flattens into a one-dimensional array
-pub fn flat_map<K, V, I>(m map[K]V, f fn (K, V) []I) []I {
+// to_array maps map entries into one-dimensional array
+pub fn to_array<K, V, I>(m map[K]V, f fn (K, V) I) []I {
 	mut a := []I{cap: m.len}
 
 	for k, v in m {
@@ -24,8 +24,8 @@ pub fn flat_map<K, V, I>(m map[K]V, f fn (K, V) []I) []I {
 	return a
 }
 
-// maps maps map entries into one-dimensional array
-pub fn maps<K, V, I>(m map[K]V, f fn (K, V) I) []I {
+// to_array_and_flatten maps map entries into arrays and flattens into a one-dimensional array
+pub fn to_array_and_flatten<K, V, I>(m map[K]V, f fn (K, V) []I) []I {
 	mut a := []I{cap: m.len}
 
 	for k, v in m {
