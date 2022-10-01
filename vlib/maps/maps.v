@@ -24,8 +24,8 @@ pub fn to_array<K, V, I>(m map[K]V, f fn (K, V) I) []I {
 	return a
 }
 
-// to_array_and_flatten maps map entries into arrays and flattens into a one-dimensional array
-pub fn to_array_and_flatten<K, V, I>(m map[K]V, f fn (K, V) []I) []I {
+// flatten maps map entries into arrays and flattens into a one-dimensional array
+pub fn flatten<K, V, I>(m map[K]V, f fn (K, V) []I) []I {
 	mut a := []I{cap: m.len}
 
 	for k, v in m {
