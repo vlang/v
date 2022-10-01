@@ -52,10 +52,7 @@ fn parallel_cc(mut b builder.Builder, header string, res string, out_str string,
 	}
 	//
 	sw := time.new_stopwatch()
-	mut o_postfixes := []string{}
-	for i in ['0', 'x'] {
-		o_postfixes << i
-	}
+	mut o_postfixes := ['0', 'x']
 	for i in 0 .. c_files {
 		o_postfixes << (i + 1).str()
 	}
@@ -64,7 +61,6 @@ fn parallel_cc(mut b builder.Builder, header string, res string, out_str string,
 	pp.set_max_jobs(nthreads)
 	pp.work_on_items(o_postfixes)
 	eprintln('> C compilation on $nthreads threads, working on $o_postfixes.len files took: $sw.elapsed().milliseconds() ms')
-	dump(b.pref.out_name)
 	link_cmd := '${os.quoted_path(cbuilder.cc_compiler)} -o ${os.quoted_path(b.pref.out_name)} out_0.o ${fnames.map(it.replace('.c',
 		'.o')).join(' ')} out_x.o -lpthread $cbuilder.cc_ldflags'
 	sw_link := time.new_stopwatch()
