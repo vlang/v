@@ -34,3 +34,15 @@ pub fn to_array_and_flatten<K, V, I>(m map[K]V, f fn (K, V) []I) []I {
 
 	return a
 }
+
+// to_map maps map entries into new entries and constructs a new map
+pub fn to_map<K, V, X, Y>(m map[K]V, f fn (K, V) (X, Y)) map[X]Y {
+	mut mp := map[X]Y{}
+
+	for k, v in m {
+		x, y := f(k, v)
+		mp[x] = y
+	}
+
+	return mp
+}

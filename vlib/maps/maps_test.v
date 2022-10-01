@@ -48,3 +48,24 @@ fn test_to_array_and_flatten() {
 		return a
 	}) == [1, 2, 3, 4, 5, 6, 7, 8, 9]
 }
+
+fn test_to_map() {
+	m1 := {
+		0: '0'
+		1: '1'
+		2: '2'
+		3: '3'
+		4: '4'
+		5: '5'
+	}
+	assert to_map<int, string, string, int>(m1, fn (k int, v string) (string, int) {
+		return v, k
+	}) == {
+		'0': 0
+		'1': 1
+		'2': 2
+		'3': 3
+		'4': 4
+		'5': 5
+	}
+}
