@@ -1331,7 +1331,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.mov(.rax, g.enum_vals[type_name].fields[node.val])
 		}
 		ast.UnsafeExpr {
-			g.expr(expr)
+			g.expr(node.expr)
 		}
 		else {
 			g.n_error('expr: unhandled node type: $node.type_name()')
