@@ -42,6 +42,11 @@ struct StructWithDefault {
 	c int = 5
 }
 
+struct Mutable {
+mut:
+	a int
+}
+
 fn get_7(s Size7) Size7 {
 	return s
 }
@@ -93,6 +98,12 @@ fn struct_test() {
 	assert d.a == 8
 	assert d.b == 2
 	assert d.c == 3
+	mut a := Hoge{1}
+	a.a = 2
+	assert a.a == 2
+	mut b := &a
+	b.a = 3
+	assert a.a == 3
 }
 
 fn main() {
