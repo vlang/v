@@ -97,3 +97,18 @@ fn test_fn_variadic_method_no_args() {
 	a := VaTestStruct{}
 	a.variadic_method_no_args('marko')
 }
+
+// test vargs with pointer type
+fn take_variadic_string_ptr(strings ...&string) {
+	take_array_string_ptr(strings)
+}
+
+fn take_array_string_ptr(strings []&string) {
+	assert strings.len == 2
+}
+
+fn test_varg_pointer() {
+	a := 'a'
+	b := 'b'
+	take_variadic_string_ptr(&a, &b)
+}
