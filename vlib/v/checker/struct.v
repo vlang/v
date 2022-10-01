@@ -522,6 +522,12 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				if sym.kind == .struct_ && !(sym.info as ast.Struct).is_typedef {
 					c.check_ref_fields_initialized(sym, mut checked_structs, '${type_sym.name}.$field.name',
 						node)
+				} else if sym.kind == .alias {
+					parent_sym := c.table.sym((sym.info as ast.Alias).parent_type)
+					if parent_sym.kind == .struct_ {
+						c.check_ref_fields_initialized(parent_sym, mut checked_structs,
+							'${type_sym.name}.$field.name', node)
+					}
 				}
 				// Do not allow empty uninitialized interfaces
 				mut has_noinit := false
@@ -608,6 +614,13 @@ fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut 
 			checked_structs << field.typ
 			c.check_ref_fields_initialized(sym, mut checked_structs, '${linked_name}.$field.name',
 				node)
+		} else if sym.kind == .alias {
+			parent_sym := c.table.sym((sym.info as ast.Alias).parent_type)
+			if parent_sym.kind == .struct_ {
+				checked_structs << field.typ
+				c.check_ref_fields_initialized(parent_sym, mut checked_structs, '${linked_name}.$field.name',
+					node)
+			}
 		}
 	}
 }
