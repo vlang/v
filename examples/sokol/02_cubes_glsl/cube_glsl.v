@@ -458,7 +458,7 @@ fn frame(mut app App) {
 
 	// clear
 	mut color_action := gfx.ColorAttachmentAction{
-		action: gfx.Action(C.SG_ACTION_DONTCARE) // C.SG_ACTION_CLEAR)
+		action: unsafe { gfx.Action(C.SG_ACTION_DONTCARE) } // C.SG_ACTION_CLEAR)
 		value: gfx.Color{
 			r: 1.0
 			g: 1.0
