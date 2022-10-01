@@ -24,3 +24,18 @@ fn test_filter() {
 		2: 'cd'
 	}
 }
+
+fn test_maps() {
+	m1 := {
+		`a`: 'bc'
+		`d`: 'ef'
+		`g`: 'hi'
+	}
+	assert maps<rune, string, rune, string>(m1, fn (k rune, v string) (rune, string) {
+		return k, '$k$v'
+	}) == {
+		`a`: 'abc'
+		`d`: 'def'
+		`g`: 'ghi'
+	}
+}
