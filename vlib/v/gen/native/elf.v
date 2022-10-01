@@ -44,6 +44,9 @@ const (
 	elf_pt_phdr              = 6
 	elf_pt_tls               = 7
 
+	// offset of e_entry field in the elf header
+	elf_e_entry_offset       = 24
+
 	// alignment of program headers
 	elf_p_align              = 0x1000
 
@@ -659,13 +662,12 @@ fn (mut g Gen) gen_section_data(sections []Section) {
 	}
 }
 
-pub fn (mut g Gen) generate_elf_header() {
+pub fn (mut g Gen) generate_linkable_elf_header() {
 	elf_type := native.elf_type_rel // PIE (use _exec for non-relocatable executables)
 
 	// generate program headers
 	mut program_headers := []ProgramHeader{}
 	program_headers << g.create_program_header(native.elf_pt_load, 5, native.elf_p_align)
-
 	// generate sections
 	mut sections := [
 		Section{}, // null section as first section
@@ -735,6 +737,56 @@ pub fn (mut g Gen) generate_elf_header() {
 	g.debug_pos = g.buf.len
 }
 
+pub fn (mut g Gen) generate_simple_elf_header() {
+	elf_type := native.elf_type_exec
+
+	mut phdr := g.create_program_header(native.elf_pt_load, 5, native.elf_p_align)
+	phdr.vaddr = native.segment_start
+	phdr.paddr = native.segment_start
+
+	mut elf_header := g.default_elf_header()
+	elf_header.typ = i16(elf_type)
+	elf_header.phnum = i16(1)
+	elf_header.shoff = i64(0)
+	elf_header.shentsize = i16(0)
+	elf_header.shnum = i16(0)
+	elf_header.shstrndx = i16(0)
+	elf_header.entry = native.segment_start + native.elf_header_size + native.elf_phentry_size
+
+	g.gen_elf_header(elf_header)
+
+	// write program header
+	g.gen_program_header(phdr)
+
+	// user code starts here
+	if g.pref.is_verbose {
+		eprintln('code_start_pos = $g.buf.len.hex()')
+	}
+
+	g.code_start_pos = g.pos()
+	g.debug_pos = int(g.pos())
+
+	g.call(native.placeholder)
+	g.println('; call main.main')
+
+	// generate exit syscall
+	match g.pref.arch {
+		.arm64 {
+			g.mov_arm(.x16, 0)
+			g.mov_arm(.x0, 0)
+			g.svc()
+		}
+		.amd64 {
+			g.mov(.edi, 0)
+			g.mov(.eax, g.nsyscall_exit())
+			g.syscall()
+		}
+		else {
+			g.n_error('unsupported platform $g.pref.arch')
+		}
+	}
+}
+
 fn (mut g Gen) elf_string_table() {
 	for _, s in g.strs {
 		match s.typ {
@@ -773,7 +825,9 @@ pub fn (mut g Gen) generate_elf_footer() {
 	}
 
 	// write size of text section into section header
-	g.write64_at(g.elf_text_header_addr + 32, g.pos() - g.code_start_pos)
+	if g.elf_text_header_addr != -1 {
+		g.write64_at(g.elf_text_header_addr + 32, g.pos() - g.code_start_pos)
+	}
 
 	g.create_executable()
 }
@@ -789,7 +843,19 @@ pub fn (mut g Gen) prepend_vobjpath(paths []string) []string {
 }
 
 pub fn (mut g Gen) find_o_path(fname string) string {
-	opaths := g.prepend_vobjpath(['/usr/lib/x86_64-linux-gnu', '/usr/lib64', '/usr/lib'])
+	opaths := match g.pref.arch {
+		.amd64 {
+			g.prepend_vobjpath(['/usr/lib/x86_64-linux-gnu', '/usr/lib64', '/usr/lib'])
+		}
+		.arm64 {
+			g.prepend_vobjpath(['/usr/lib/aarch64-linux-gnu', '/usr/lib'])
+		}
+		else {
+			g.n_error('unknown architecture $g.pref.arch')
+			['/dev/null']
+		}
+	}
+
 	for opath in opaths {
 		fpath := os.join_path_single(opath, fname)
 		if os.is_file(fpath) {
@@ -800,8 +866,19 @@ pub fn (mut g Gen) find_o_path(fname string) string {
 }
 
 pub fn (mut g Gen) get_lpaths() string {
-	lpaths := g.prepend_vobjpath(['/usr/lib/x86_64-linux-gnu', '/usr/lib64', '/lib64', '/usr/lib',
-		'/lib'])
+	lpaths := match g.pref.arch {
+		.amd64 {
+			g.prepend_vobjpath(['/usr/lib/x86_64-linux-gnu', '/usr/lib64', '/lib64', '/usr/lib',
+				'/lib'])
+		}
+		.arm64 {
+			g.prepend_vobjpath(['/usr/lib/aarch64-linux-gnu', '/usr/lib', '/lib'])
+		}
+		else {
+			g.n_error('unknown architecture $g.pref.arch')
+			['/dev/null']
+		}
+	}
 	return lpaths.map('-L$it').join(' ')
 }
 
@@ -810,12 +887,32 @@ pub fn (mut g Gen) link_elf_file(obj_file string) {
 	crti := g.find_o_path('crti.o')
 	crtn := g.find_o_path('crtn.o')
 	lpaths := g.get_lpaths()
+
+	arch := match g.pref.arch {
+		.amd64 {
+			'elf_x86_64'
+		}
+		.arm64 {
+			'aarch64elf'
+		}
+		else {
+			g.n_error('unknown architecture $g.pref.arch')
+			'elf_x86_64' // default to x86_64
+		}
+	}
+
+	dynamic_linker := match g.pref.arch {
+		.amd64 { '/lib64/ld-linux-x86-64.so.2' }
+		.arm64 { '/lib/ld-linux-aarch64.so.1' }
+		else { '/dev/null' }
+	}
+
 	linker_args := [
 		'-v',
 		lpaths,
-		'-m elf_x86_64',
+		'-m $arch',
 		'-dynamic-linker',
-		'/lib64/ld-linux-x86-64.so.2',
+		dynamic_linker,
 		crt1,
 		crti,
 		'-lc',
@@ -827,20 +924,13 @@ pub fn (mut g Gen) link_elf_file(obj_file string) {
 	]
 	slinker_args := linker_args.join(' ')
 
-	mut ldlld := 'ld'
-	/*
-	match g.pref.os {
-		.linux { ldlld = 'ld.lld' }
-		.windows { ldlld = 'lld-link' }
-		.macos { ldlld = 'ld64.lld' }
-		else {}
-	}
-	*/
+	mut ld := 'ld'
+
 	custom_linker := os.getenv('VLINKER')
 	if custom_linker != '' {
-		ldlld = custom_linker
+		ld = custom_linker
 	}
-	linker_path := os.real_path(ldlld)
+	linker_path := os.real_path(ld)
 	linker_cmd := '${os.quoted_path(linker_path)} $slinker_args'
 	if g.pref.is_verbose {
 		println(linker_cmd)
@@ -848,11 +938,11 @@ pub fn (mut g Gen) link_elf_file(obj_file string) {
 
 	res := os.execute(linker_cmd)
 	if res.exit_code != 0 {
-		g.n_error('ELF linking failed ($ldlld):\n$res.output')
+		g.n_error('ELF linking failed ($ld):\n$res.output')
 		return
 	}
 
 	if g.pref.is_verbose {
-		println('linking with $ldlld finished successfully:\n$res.output')
+		println('linking with $ld finished successfully:\n$res.output')
 	}
 }
