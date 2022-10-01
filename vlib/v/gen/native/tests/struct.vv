@@ -98,12 +98,12 @@ fn struct_test() {
 	assert d.a == 8
 	assert d.b == 2
 	assert d.c == 3
-	mut a := Hoge{1}
-	a.a = 2
-	assert a.a == 2
-	mut b := &a
-	b.a = 3
-	assert a.a == 3
+	mut e := Mutable{1}
+	e.a = 2
+	assert e.a == 2
+	mut f := &e
+	f.a = 3
+	assert e.a == 3
 }
 
 fn main() {
