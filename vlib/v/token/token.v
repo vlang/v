@@ -326,7 +326,7 @@ fn build_token_str() []string {
 	$if debug_build_token_str ? {
 		for k, v in s {
 			if v == '' {
-				eprintln('>>> ${@MOD}.${@METHOD} missing k: $k | .${kind_to_string(Kind(k))}')
+				eprintln('>>> ${@MOD}.${@METHOD} missing k: $k | .${kind_to_string(unsafe { Kind(k) })}')
 			}
 		}
 	}
