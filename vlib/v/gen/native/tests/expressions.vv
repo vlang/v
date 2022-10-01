@@ -74,6 +74,16 @@ fn test_multiple() {
 	println(result)
 }
 
+fn test_prefix() {
+	a := 3
+	assert -a == -3
+	b := true
+	assert !b == false
+	assert !!b == true
+	c := u8(73)
+	assert ~c == 182
+}
+
 fn main() {
 	println('start')
 	test_add()
