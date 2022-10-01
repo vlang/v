@@ -538,6 +538,7 @@ const (
 	max_latin_1 = rune(0x00ff) // '\u00FF' // `ÿ`
 )
 
+// Represents all unicode in unicode category L.
 const letter_table = RangeTable{
 	r16: [
 		Range16{0x0041, 0x005a, 1},
@@ -1132,6 +1133,7 @@ const letter_table = RangeTable{
 	latin_offset: 6
 }
 
+// Represents all unicodes in unicode category Z with property white space.
 const white_space_table = RangeTable{
 	r16: [
 		Range16{0x0009, 0x000d, 1},
@@ -1146,6 +1148,7 @@ const white_space_table = RangeTable{
 	latin_offset: 2
 }
 
+// Represents all unicodes in unicode category N.
 const number_table = RangeTable{
 	r16: [
 		Range16{0x0030, 0x0039, 1},
@@ -1306,6 +1309,7 @@ pub:
 	stride u32
 }
 
+// tests if rune is in the given range table.
 fn is_excluding_latin(table &RangeTable, r rune) bool {
 	r16 := &table.r16
 	off := table.latin_offset
