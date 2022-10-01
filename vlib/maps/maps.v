@@ -1,5 +1,6 @@
 module maps
 
+// filter filters map entries by the given predicate function
 pub fn filter<K, V>(m map[K]V, f fn (K, V) bool) map[K]V {
 	mut mp := map[K]V{}
 
@@ -12,6 +13,7 @@ pub fn filter<K, V>(m map[K]V, f fn (K, V) bool) map[K]V {
 	return mp
 }
 
+// flat_map maps map entries into arrays and flattens into a one-dimensional array
 pub fn flat_map<K, V, I>(m map[K]V, f fn (K, V) []I) []I {
 	mut a := []I{cap: m.len}
 
@@ -22,6 +24,7 @@ pub fn flat_map<K, V, I>(m map[K]V, f fn (K, V) []I) []I {
 	return a
 }
 
+// maps maps map entries into one dimension array
 pub fn maps<K, V, I>(m map[K]V, f fn (K, V) I) []I {
 	mut a := []I{cap: m.len}
 
