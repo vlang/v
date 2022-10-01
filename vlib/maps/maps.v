@@ -57,3 +57,14 @@ pub fn invert<K, V>(m map[K]V) map[V]K {
 
 	return mp
 }
+
+// from_array maps array into map with index to element per entry
+pub fn from_array<T>(a []T) map[int]T {
+	mut mp := map[int]T{}
+
+	for i, e in a {
+		mp[i] = e
+	}
+
+	return mp
+}

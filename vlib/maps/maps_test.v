@@ -88,3 +88,22 @@ fn test_invert() {
 		'5': 5
 	}
 }
+
+fn test_from_array() {
+	a1 := [
+		'a',
+		'b',
+		'c',
+		'd',
+		'e',
+		'f',
+	]
+	assert from_array(a1) == {
+		0: 'a'
+		1: 'b'
+		2: 'c'
+		3: 'd'
+		4: 'e'
+		5: 'f'
+	}
+}
