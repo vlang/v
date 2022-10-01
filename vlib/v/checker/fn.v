@@ -901,24 +901,27 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 		if func.is_variadic && i >= func.params.len - 1 {
 			param_sym := c.table.sym(param.typ)
+			mut expected_type := param.typ
 			if param_sym.kind == .array {
 				info := param_sym.array_info()
-				c.expected_type = info.elem_type
+				expected_type = info.elem_type
+				c.expected_type = expected_type
 			}
 			typ := c.expr(call_arg.expr)
 			if i == node.args.len - 1 {
 				if c.table.sym(typ).kind == .array && call_arg.expr !is ast.ArrayDecompose
-					&& !param.typ.has_flag(.generic) && c.expected_type != typ {
+					&& !param.typ.has_flag(.generic) && expected_type != typ {
 					styp := c.table.type_to_str(typ)
-					elem_styp := c.table.type_to_str(c.expected_type)
+					elem_styp := c.table.type_to_str(expected_type)
 					c.error('to pass `$call_arg.expr` ($styp) to `$func.name` (which accepts type `...$elem_styp`), use `...$call_arg.expr`',
 						node.pos)
 				} else if call_arg.expr is ast.ArrayDecompose
-					&& c.table.sym(c.expected_type).kind == .sum_type && c.expected_type != typ {
-					expected_type := c.table.type_to_str(c.expected_type)
-					got_type := c.table.type_to_str(typ)
-					c.error('cannot use `...$got_type` as `...$expected_type` in argument ${i + 1} to `$fn_name`',
-						call_arg.pos)
+					&& c.table.sym(expected_type).kind == .sum_type
+					&& expected_type.idx() != typ.idx() {
+					expected_type_str := c.table.type_to_str(expected_type)
+					got_type_str := c.table.type_to_str(typ)
+					c.error('cannot use `...$got_type_str` as `...$expected_type_str` in argument ${
+						i + 1} to `$fn_name`', call_arg.pos)
 				}
 			}
 		} else {
