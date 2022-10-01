@@ -178,6 +178,14 @@ pub fn is_space(r rune) bool {
 	return is_excluding_latin(white_space_table, r)
 }
 
+// is_number returns true if the rune is unicode number or in unicode category N
+pub fn is_number(r rune) bool {
+	if r <= max_latin_1 {
+		return props[u8(r)] & p_n != 0
+	}
+	return is_excluding_latin(number_table, r)
+}
+
 // is_uchar_punct return true if the input unicode is a western unicode punctuation
 pub fn is_uchar_punct(uchar int) bool {
 	return find_punct_in_table(uchar, utf8.unicode_punct_western) != 0

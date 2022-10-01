@@ -235,12 +235,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			g.expr(left)
 
 			if g.is_arraymap_set && g.arraymap_set_pos > 0 {
-				g.out.go_back_to(g.arraymap_set_pos)
+				g.go_back_to(g.arraymap_set_pos)
 				g.write(', &$v_var)')
 				g.is_arraymap_set = false
 				g.arraymap_set_pos = 0
 			} else {
-				g.out.go_back_to(pos)
+				g.go_back_to(pos)
 				is_var_mut := !is_decl && left.is_auto_deref_var()
 				addr_left := if is_var_mut { '' } else { '&' }
 				g.writeln('')

@@ -26,7 +26,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	mut shared_styp := '' // only needed for shared x := St{...
 	if styp in c.skip_struct_init {
 		// needed for c++ compilers
-		g.out.go_back(3)
+		g.go_back(3)
 		return
 	}
 	mut sym := g.table.final_sym(g.unwrap_generic(node.typ))
@@ -34,7 +34,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	is_multiline := node.fields.len > 5
 	g.is_amp = false // reset the flag immediately so that other struct inits in this expr are handled correctly
 	if is_amp {
-		g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
+		g.go_back(1) // delete the `&` already generated in `prefix_expr()
 	}
 	mut is_anon := false
 	if sym.kind == .struct_ {

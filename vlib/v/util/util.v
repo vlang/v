@@ -8,6 +8,7 @@ import time
 import v.pref
 import v.vmod
 import v.util.recompilation
+import runtime
 
 // math.bits is needed by strconv.ftoa
 pub const (
@@ -36,6 +37,8 @@ const (
 		'\t\t\t\t\t\t\t\t\t\t',
 	]
 )
+
+pub const nr_jobs = runtime.nr_jobs()
 
 pub fn module_is_builtin(mod string) bool {
 	return mod in util.builtin_module_parts

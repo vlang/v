@@ -65,12 +65,12 @@ fn (mut g Gen) gen_free_method(typ ast.Type) string {
 }
 
 fn (mut g Gen) gen_free_for_struct(info ast.Struct, styp string, fn_name string) {
-	g.definitions.writeln('void ${fn_name}($styp* it); // auto')
+	g.definitions.writeln('$g.static_modifier void ${fn_name}($styp* it); // auto')
 	mut fn_builder := strings.new_builder(128)
 	defer {
 		g.auto_fn_definitions << fn_builder.str()
 	}
-	fn_builder.writeln('void ${fn_name}($styp* it) {')
+	fn_builder.writeln('$g.static_modifier void ${fn_name}($styp* it) {')
 	for field in info.fields {
 		field_name := c_name(field.name)
 		sym := g.table.sym(g.unwrap_generic(field.typ))
@@ -98,12 +98,12 @@ fn (mut g Gen) gen_free_for_struct(info ast.Struct, styp string, fn_name string)
 }
 
 fn (mut g Gen) gen_free_for_array(info ast.Array, styp string, fn_name string) {
-	g.definitions.writeln('void ${fn_name}($styp* it); // auto')
+	g.definitions.writeln('$g.static_modifier void ${fn_name}($styp* it); // auto')
 	mut fn_builder := strings.new_builder(128)
 	defer {
 		g.auto_fn_definitions << fn_builder.str()
 	}
-	fn_builder.writeln('void ${fn_name}($styp* it) {')
+	fn_builder.writeln('$g.static_modifier void ${fn_name}($styp* it) {')
 
 	sym := g.table.sym(g.unwrap_generic(info.elem_type))
 	if sym.kind in [.string, .array, .map, .struct_] {
@@ -123,12 +123,12 @@ fn (mut g Gen) gen_free_for_array(info ast.Array, styp string, fn_name string) {
 }
 
 fn (mut g Gen) gen_free_for_map(info ast.Map, styp string, fn_name string) {
-	g.definitions.writeln('void ${fn_name}($styp* it); // auto')
+	g.definitions.writeln('$g.static_modifier void ${fn_name}($styp* it); // auto')
 	mut fn_builder := strings.new_builder(128)
 	defer {
 		g.auto_fn_definitions << fn_builder.str()
 	}
-	fn_builder.writeln('void ${fn_name}($styp* it) {')
+	fn_builder.writeln('$g.static_modifier void ${fn_name}($styp* it) {')
 
 	fn_builder.writeln('\tmap_free(it);')
 	fn_builder.writeln('}')
