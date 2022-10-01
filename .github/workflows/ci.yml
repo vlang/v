@@ -247,6 +247,8 @@ jobs:
           ./v2 -o v3 -usecache cmd/v
           ./v3 version
           ./v3 -o tetris  -usecache examples/tetris/tetris.v
+      - name: V self compilation with -parallel-cc
+          ./v -o v2 -parallel-cc cmd/v
       - name: Test password input
         run: |
           ./v examples/password
@@ -317,6 +319,8 @@ jobs:
         run: ./v -autofree -experimental -o tetris examples/tetris/tetris.v
       - name: Build option_test.v with -autofree
         run: ./v -autofree vlib/v/tests/option_test.v
+      - name: V self compilation with -parallel-cc
+          ./v -o v2 -parallel-cc cmd/v
       - name: Build modules
         run: |
           ./v build-module vlib/os

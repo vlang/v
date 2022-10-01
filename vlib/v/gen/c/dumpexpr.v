@@ -50,7 +50,7 @@ fn (mut g Gen) dump_expr_definitions() {
 			tdef_pos := g.out.len
 			g.write_fn_ptr_decl(&fninfo, str_dumparg_type)
 			str_tdef := g.out.after(tdef_pos)
-			g.out.go_back(str_tdef.len)
+			g.go_back(str_tdef.len)
 			dump_typedefs['typedef $str_tdef;'] = true
 		}
 		dump_fn_name := '_v_dump_expr_$name' + (if is_ptr { '_ptr' } else { '' })

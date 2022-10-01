@@ -200,6 +200,7 @@ pub mut:
 	no_std           bool     // when true, do not pass -std=gnu99(linux)/-std=c99 to the C backend
 	//
 	no_parallel       bool // do not use threads when compiling; slower, but more portable and sometimes less buggy
+	parallel_cc       bool // whether to split the resulting .c file into many .c files + a common .h file, that are then compiled in parallel, then linked together.
 	only_check_syntax bool // when true, just parse the files, then stop, before running checker
 	check_only        bool // same as only_check_syntax, but also runs the checker
 	experimental      bool // enable experimental features
@@ -564,6 +565,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			}
 			'-no-parallel' {
 				res.no_parallel = true
+			}
+			'-parallel-cc' {
+				res.parallel_cc = true
+				res.no_parallel = true // TODO: see how to make both work
 			}
 			'-native' {
 				res.backend = .native
