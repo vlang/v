@@ -1866,7 +1866,11 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 							for j in 0 .. size / 8 {
 								g.mov_deref(.rcx, .rdx, ast.u64_type_idx)
 								g.mov_store(.rax, .rcx, ._64)
-								offset := if j == size / 8 - 1 && size % 8 != 0 { size % 8 } else { 8 }
+								offset := if j == size / 8 - 1 && size % 8 != 0 {
+									size % 8
+								} else {
+									8
+								}
 								g.add(.rax, offset)
 								g.add(.rdx, offset)
 							}
