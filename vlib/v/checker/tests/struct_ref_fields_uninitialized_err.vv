@@ -3,8 +3,11 @@ struct ContainsRef {
 	b &int
 }
 
+type TypeForContainsRef = ContainsRef
+
 struct Outer {
-	c ContainsRef
+	c1 ContainsRef
+	c2 TypeForContainsRef
 }
 
 struct Ref {}
