@@ -12,13 +12,22 @@ pub fn filter<K, V>(m map[K]V, f fn (K, V) bool) map[K]V {
 	return mp
 }
 
-pub fn maps<K, V, R, S>(m map[K]V, f fn (K, V) (R, S)) map[R]S {
-	mut mp := map[R]S{}
+pub fn flat_map<K, V, I>(m map[K]V, f fn (K, V) []I) []I {
+	mut a := []I{cap: m.len}
 
 	for k, v in m {
-		r, s := f(k, v)
-		mp[r] = s
+		a << f(k, v)
 	}
 
-	return mp
+	return a
+}
+
+pub fn maps<K, V, I>(m map[K]V, f fn (K, V) I) []I {
+	mut a := []I{cap: m.len}
+
+	for k, v in m {
+		a << f(k, v)
+	}
+
+	return a
 }

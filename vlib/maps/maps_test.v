@@ -31,11 +31,20 @@ fn test_maps() {
 		`d`: 'ef'
 		`g`: 'hi'
 	}
-	assert maps<rune, string, rune, string>(m1, fn (k rune, v string) (rune, string) {
-		return k, '$k$v'
-	}) == {
-		`a`: 'abc'
-		`d`: 'def'
-		`g`: 'ghi'
+	assert maps(m1, fn (k rune, v string) string {
+		return '$k$v'
+	}) == ['abc', 'def', 'ghi']
+}
+
+fn test_flat_map() {
+	m1 := {
+		1: [2, 3]
+		4: [5, 6]
+		7: [8, 9]
 	}
+	assert flat_map<int, []int, int>(m1, fn (k int, v []int) []int {
+		mut a := [k]
+		a << v
+		return a
+	}) == [1, 2, 3, 4, 5, 6, 7, 8, 9]
 }
