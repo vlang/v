@@ -92,6 +92,29 @@ fn test_fixed_array_assignment() {
 	}
 }
 
+fn test_array_flat_map() {
+	a := ['Hello V', 'Hello World', 'V Lang']
+	assert flat_map<string, string>(a, fn (e string) []string {
+		return e.split(' ')
+	}) == ['Hello', 'V', 'Hello', 'World', 'V', 'Lang']
+}
+
+fn test_array_flat_map_indexed() {
+	a := ['AB', 'CD', 'EF']
+	assert flat_map_indexed<string, string>(a, fn (i int, e string) []string {
+		mut arr := [i.str()]
+		arr << e.split('')
+		return arr
+	}) == ['0', 'A', 'B', '1', 'C', 'D', '2', 'E', 'F']
+}
+
+fn test_map_indexed() {
+	a := [1, 2, 3]
+	assert map_indexed<int, int>(a, fn (i int, e int) int {
+		return i + e * e
+	}) == [1, 5, 11]
+}
+
 fn test_group() {
 	x := [4, 5, 6]
 	y := [2, 1, 3]

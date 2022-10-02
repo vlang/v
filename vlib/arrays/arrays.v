@@ -261,7 +261,7 @@ pub fn fold<T, R>(list []T, init R, fold_op fn (r R, t T) R) R {
 	return value
 }
 
-// flattens n + 1 dimensional array into n dimensional array
+// flatten flattens n + 1 dimensional array into n dimensional array
 // Example: arrays.flatten<int>([[1, 2, 3], [4, 5]]) // => [1, 2, 3, 4, 5]
 pub fn flatten<T>(list [][]T) []T {
 	// calculate required capacity
@@ -280,6 +280,42 @@ pub fn flatten<T>(list [][]T) []T {
 		for e2 in e1 {
 			result << e2
 		}
+	}
+
+	return result
+}
+
+// flat_map creates a new array populated with the flattened result of calling transform function
+// being invoked on each element of original collection.
+pub fn flat_map<T, R>(list []T, transform fn (T) []R) []R {
+	mut result := [][]R{cap: list.len}
+
+	for v in list {
+		result << transform(v)
+	}
+
+	return flatten(result)
+}
+
+// flat_map creates a new array populated with the flattened result of calling transform function
+// being invoked on each element with its index in the original collection.
+pub fn flat_map_indexed<T, R>(list []T, transform fn (int, T) []R) []R {
+	mut result := [][]R{cap: list.len}
+
+	for i, v in list {
+		result << transform(i, v)
+	}
+
+	return flatten(result)
+}
+
+// map creates a new array populated with the result of calling transform function
+// being invoked on each element with its index in the original collection.
+pub fn map_indexed<T, R>(list []T, transform fn (int, T) R) []R {
+	mut result := []R{cap: list.len}
+
+	for i, v in list {
+		result << transform(i, v)
 	}
 
 	return result
