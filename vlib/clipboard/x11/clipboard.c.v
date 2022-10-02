@@ -140,12 +140,12 @@ enum AtomType {
 
 [heap]
 pub struct Clipboard {
-	display &C.Display
+	display &C.Display = unsafe { nil }
 mut:
 	selection Atom // the selection atom
 	window    Window
 	atoms     []Atom
-	mutex     &sync.Mutex
+	mutex     &sync.Mutex = unsafe { nil }
 	text      string // text data sent or received
 	got_text  bool   // used to confirm that we have got the text
 	is_owner  bool   // to save selection owner state
