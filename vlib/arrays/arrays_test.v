@@ -169,6 +169,13 @@ fn test_reduce() {
 	}) or { -1 } == -1
 }
 
+fn test_reduce_indexed() {
+	x := [1, 2, 3, 4, 5]
+	assert reduce_indexed<int>(x, fn (idx int, t1 int, t2 int) int {
+		return idx + t1 + t2
+	}) or { 0 } == 25
+}
+
 fn test_fold() {
 	x := [1, 2, 3, 4, 5]
 
@@ -181,6 +188,14 @@ fn test_fold() {
 	assert fold<int, int>([]int{}, -1, fn (t1 int, t2 int) int {
 		return 0
 	}) == -1
+}
+
+fn test_fold_indexed() {
+	x := [1, 2, 3, 4, 5]
+
+	assert fold_indexed<int, int>(x, 5, fn (idx int, r int, t int) int {
+		return idx + r + t
+	}) == 30
 }
 
 fn test_flatten() {

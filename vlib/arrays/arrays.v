@@ -241,6 +241,28 @@ pub fn reduce<T>(list []T, reduce_op fn (t1 T, t2 T) T) ?T {
 	}
 }
 
+// reduce sets `acc = list[0]`, then successively calls `acc = reduce_op(idx, acc, elem)` for each remaining element in `list`.
+// returns the accumulated value in `acc`.
+// returns an error if the array is empty.
+// See also: [fold_indexed](#fold_indexed).
+pub fn reduce_indexed<T>(list []T, reduce_op fn (int, T, T) T) ?T {
+	if list.len == 0 {
+		return error('Cannot reduce array of nothing.')
+	} else {
+		mut value := list[0]
+
+		for i, e in list {
+			if i == 0 {
+				continue
+			} else {
+				value = reduce_op(i, value, e)
+			}
+		}
+
+		return value
+	}
+}
+
 // fold sets `acc = init`, then successively calls `acc = fold_op(acc, elem)` for each element in `list`.
 // returns `acc`.
 // Example:
@@ -256,6 +278,18 @@ pub fn fold<T, R>(list []T, init R, fold_op fn (r R, t T) R) R {
 
 	for e in list {
 		value = fold_op(value, e)
+	}
+
+	return value
+}
+
+// fold sets `acc = init`, then successively calls `acc = fold_op(idx, acc, elem)` for each element in `list`.
+// returns `acc`.
+pub fn fold_indexed<T, R>(list []T, init R, fold_op fn (int, R, T) R) R {
+	mut value := init
+
+	for i, e in list {
+		value = fold_op(i, value, e)
 	}
 
 	return value
