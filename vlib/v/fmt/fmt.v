@@ -1103,6 +1103,9 @@ pub fn (mut f Fmt) global_decl(node ast.GlobalDecl) {
 	}
 	for field in node.fields {
 		f.comments(field.comments, inline: true)
+		if field.is_volatile {
+			f.write('volatile ')
+		}
 		f.write('$field.name ')
 		f.write(strings.repeat(` `, max - field.name.len))
 		if field.has_expr {
