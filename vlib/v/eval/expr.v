@@ -561,7 +561,7 @@ fn (e Eval) type_to_size(typ ast.Type) u64 {
 		}
 		else {
 			e.error('type_to_size(): unknown type: ${e.table.sym(typ).str()}')
-			return -1
+			return u64(-1)
 		}
 	}
 }
