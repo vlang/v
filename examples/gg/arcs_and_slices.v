@@ -134,10 +134,10 @@ fn on_event(e &gg.Event, mut app App) {
 					app.gg.quit()
 				}
 				.up {
-					app.sel = Selection(math.max(0, int(app.sel) - 1))
+					app.sel = unsafe { Selection(math.max(0, int(app.sel) - 1)) }
 				}
 				.down {
-					app.sel = Selection(math.min(int(Selection.len) - 1, int(app.sel) + 1))
+					app.sel = unsafe { Selection(math.min(int(Selection.len) - 1, int(app.sel) + 1)) }
 				}
 				.left {
 					match app.sel {

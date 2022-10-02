@@ -20,12 +20,12 @@ pub fn shutdown() {
 
 [inline]
 pub fn error() SglError {
-	return SglError(int(C.sgl_error()))
+	return unsafe { SglError(int(C.sgl_error())) }
 }
 
 [inline]
 pub fn context_error(ctx Context) SglError {
-	return SglError(int(C.sgl_context_error(ctx)))
+	return unsafe { SglError(int(C.sgl_context_error(ctx))) }
 }
 
 [inline]

@@ -39,7 +39,7 @@ fn (mut e Employee) from_json(any json2.Any) {
 	e.name = mp['name'] or { json2.Any('') }.str()
 	e.age = mp['age'] or { json2.Any(0) }.int()
 	e.salary = mp['salary'] or { json2.Any(0) }.f32()
-	e.title = JobTitle(mp['title'] or { json2.Any(0) }.int())
+	e.title = unsafe { JobTitle(mp['title'] or { json2.Any(0) }.int()) }
 }
 
 fn test_simple() {

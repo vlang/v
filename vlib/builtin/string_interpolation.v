@@ -151,7 +151,7 @@ pub fn get_str_intp_u32_format(fmt_type StrIntpType, in_width int, in_precision 
 [manualfree]
 fn (data &StrIntpData) process_str_intp_data(mut sb strings.Builder) {
 	x := data.fmt
-	typ := StrIntpType(x & 0x1F)
+	typ := unsafe { StrIntpType(x & 0x1F) }
 	allign := int((x >> 5) & 0x01)
 	upper_case := ((x >> 7) & 0x01) > 0
 	sign := int((x >> 8) & 0x01)

@@ -61,11 +61,11 @@ fn value_test() {
 	assert int(Value.c) == 15
 	assert int(Value.d) == 16
 	assert int(Value.e) == 3
-	assert Value.a == Value(0)
-	assert Value.b == Value(1)
-	assert Value.c == Value(15)
-	assert Value.d == Value(16)
-	assert Value.e == Value(3)
+	assert Value.a == unsafe { Value(0) }
+	assert Value.b == unsafe { Value(1) }
+	assert Value.c == unsafe { Value(15) }
+	assert Value.d == unsafe { Value(16) }
+	assert Value.e == unsafe { Value(3) }
 }
 
 fn main() {

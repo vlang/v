@@ -31,7 +31,7 @@ fn (mut e Employee) from_toml(any toml.Any) {
 	e.age = mp['age'] or { toml.Any(0) }.int()
 	e.salary = mp['salary'] or { toml.Any(0) }.f32()
 	e.is_human = mp['is_human'] or { toml.Any(false) }.bool()
-	e.title = JobTitle(mp['title'] or { toml.Any(0) }.int())
+	e.title = unsafe { JobTitle(mp['title'] or { toml.Any(0) }.int()) }
 }
 
 fn test_encode_and_decode() {

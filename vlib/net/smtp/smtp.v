@@ -158,7 +158,7 @@ fn (mut c Client) expect_reply(expected ReplyCode) ? {
 
 	if str.len >= 3 {
 		status := str[..3].int()
-		if ReplyCode(status) != expected {
+		if unsafe { ReplyCode(status) } != expected {
 			return error('Received unexpected status code $status, expecting $expected')
 		}
 	} else {

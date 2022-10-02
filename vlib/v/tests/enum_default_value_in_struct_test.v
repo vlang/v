@@ -10,7 +10,7 @@ mut:
 }
 
 fn test_enum_first_value() {
-	assert MyEnum.first == MyEnum(20)
+	assert MyEnum.first == unsafe { MyEnum(20) }
 }
 
 fn test_enum_default_value() {

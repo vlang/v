@@ -668,7 +668,7 @@ fn (mut s Scanner) text_scan() token.Token {
 			kind := token.scanner_matcher.find(name)
 			// '$type' '$struct'... will be recognized as ident (not keyword token)
 			if kind != -1 && !(s.is_inter_start && next_char == s.quote) {
-				return s.new_token(token.Kind(kind), name, name.len)
+				return s.new_token(unsafe { token.Kind(kind) }, name, name.len)
 			}
 			// 'asdf $b' => "b" is the last name in the string, dont start parsing string
 			// at the next ', skip it

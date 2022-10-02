@@ -290,12 +290,12 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 	if e.typ == .mouse_down {
 		bitplace := int(e.mouse_button)
 		ctx.mbtn_mask |= u8(1 << bitplace)
-		ctx.mouse_buttons = MouseButtons(ctx.mbtn_mask)
+		ctx.mouse_buttons = unsafe { MouseButtons(ctx.mbtn_mask) }
 	}
 	if e.typ == .mouse_up {
 		bitplace := int(e.mouse_button)
 		ctx.mbtn_mask &= ~(u8(1 << bitplace))
-		ctx.mouse_buttons = MouseButtons(ctx.mbtn_mask)
+		ctx.mouse_buttons = unsafe { MouseButtons(ctx.mbtn_mask) }
 	}
 	if e.typ == .mouse_move && e.mouse_button == .invalid {
 		if ctx.mbtn_mask & 0x01 > 0 {
@@ -314,7 +314,7 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 	ctx.mouse_dy = int(e.mouse_dy / ctx.scale)
 	ctx.scroll_x = int(e.scroll_x / ctx.scale)
 	ctx.scroll_y = int(e.scroll_y / ctx.scale)
-	ctx.key_modifiers = Modifier(e.modifiers)
+	ctx.key_modifiers = unsafe { Modifier(e.modifiers) }
 	ctx.key_repeat = e.key_repeat
 	if e.typ in [.key_down, .key_up] {
 		key_idx := int(e.key_code) % key_code_max
@@ -361,12 +361,12 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 		}
 		.key_down {
 			if ctx.config.keydown_fn != unsafe { nil } {
-				ctx.config.keydown_fn(e.key_code, Modifier(e.modifiers), ctx.config.user_data)
+				ctx.config.keydown_fn(e.key_code, unsafe { Modifier(e.modifiers) }, ctx.config.user_data)
 			}
 		}
 		.key_up {
 			if ctx.config.keyup_fn != unsafe { nil } {
-				ctx.config.keyup_fn(e.key_code, Modifier(e.modifiers), ctx.config.user_data)
+				ctx.config.keyup_fn(e.key_code, unsafe { Modifier(e.modifiers) }, ctx.config.user_data)
 			}
 		}
 		.char {

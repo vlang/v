@@ -143,7 +143,7 @@ pub fn (t Type) atomic_typename() string {
 }
 
 pub fn sharetype_from_flags(is_shared bool, is_atomic bool) ShareType {
-	return ShareType(int(u32(is_atomic) << 1) | int(is_shared))
+	return unsafe { ShareType(int(u32(is_atomic) << 1) | int(is_shared)) }
 }
 
 pub fn (t Type) share() ShareType {

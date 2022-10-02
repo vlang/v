@@ -57,7 +57,7 @@ fn temp_unix() ?Addr {
 }
 
 pub fn (a Addr) family() AddrFamily {
-	return AddrFamily(a.f)
+	return unsafe { AddrFamily(a.f) }
 }
 
 const (
@@ -206,7 +206,7 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
 	mut addresses := []Addr{}
 
 	for result := unsafe { results }; !isnil(result); result = result.ai_next {
-		match AddrFamily(result.ai_family) {
+		match unsafe { AddrFamily(result.ai_family) } {
 			.ip {
 				new_addr := Addr{
 					addr: AddrData{
@@ -239,7 +239,7 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
 }
 
 fn (a Addr) str() string {
-	match AddrFamily(a.f) {
+	match unsafe { AddrFamily(a.f) } {
 		.ip {
 			unsafe {
 				return a.addr.Ip.str()
