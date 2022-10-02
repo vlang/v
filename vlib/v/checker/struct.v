@@ -488,7 +488,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 			// If the return value data composition form in `c.table.struct_fields()` is modified,
 			// need to modify here accordingly.
 			fields := c.table.struct_fields(type_sym)
-			mut checked_structs := []ast.Type{}
+			mut checked_types := []ast.Type{}
 			for i, field in fields {
 				if field.name in inited_fields {
 					continue
@@ -519,13 +519,13 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 						node.pos)
 					continue
 				}
-				if sym.kind == .struct_ && !(sym.info as ast.Struct).is_typedef {
-					c.check_ref_fields_initialized(sym, mut checked_structs, '${type_sym.name}.$field.name',
+				if sym.kind == .struct_ {
+					c.check_ref_fields_initialized(sym, mut checked_types, '${type_sym.name}.$field.name',
 						node)
 				} else if sym.kind == .alias {
 					parent_sym := c.table.sym((sym.info as ast.Alias).parent_type)
 					if parent_sym.kind == .struct_ {
-						c.check_ref_fields_initialized(parent_sym, mut checked_structs,
+						c.check_ref_fields_initialized(parent_sym, mut checked_types,
 							'${type_sym.name}.$field.name', node)
 					}
 				}
@@ -565,6 +565,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 					}
 				}
 			}
+			// println('>> checked_types.len: $checked_types.len | checked_types: $checked_types | type_sym: $type_sym.name ')
 		}
 		else {}
 	}
@@ -590,8 +591,12 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 }
 
 // Recursively check whether the struct type field is initialized
-fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut checked_structs []ast.Type, linked_name string, node &ast.StructInit) {
+fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut checked_types []ast.Type, linked_name string, node &ast.StructInit) {
 	if c.pref.translated || c.file.is_translated {
+		return
+	}
+	if struct_sym.kind == .struct_ && struct_sym.language == .c
+		&& (struct_sym.info as ast.Struct).is_typedef {
 		return
 	}
 	fields := c.table.struct_fields(struct_sym)
@@ -599,6 +604,7 @@ fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut 
 		sym := c.table.sym(field.typ)
 		if field.name.len > 0 && field.name[0].is_capital() && sym.info is ast.Struct
 			&& sym.language == .v {
+			// an embedded struct field
 			continue
 		}
 		if field.typ.is_ptr() && !field.typ.has_flag(.shared_f) && !field.has_default_expr {
@@ -607,18 +613,20 @@ fn (mut c Checker) check_ref_fields_initialized(struct_sym &ast.TypeSymbol, mut 
 			continue
 		}
 		if sym.kind == .struct_ {
-			info := sym.info as ast.Struct
-			if info.is_typedef || field.typ in checked_structs {
+			if sym.language == .c && (sym.info as ast.Struct).is_typedef {
 				continue
 			}
-			checked_structs << field.typ
-			c.check_ref_fields_initialized(sym, mut checked_structs, '${linked_name}.$field.name',
+			if field.typ in checked_types {
+				continue
+			}
+			checked_types << field.typ
+			c.check_ref_fields_initialized(sym, mut checked_types, '${linked_name}.$field.name',
 				node)
 		} else if sym.kind == .alias {
-			parent_sym := c.table.sym((sym.info as ast.Alias).parent_type)
-			if parent_sym.kind == .struct_ {
-				checked_structs << field.typ
-				c.check_ref_fields_initialized(parent_sym, mut checked_structs, '${linked_name}.$field.name',
+			psym := c.table.sym((sym.info as ast.Alias).parent_type)
+			if psym.kind == .struct_ {
+				checked_types << field.typ
+				c.check_ref_fields_initialized(psym, mut checked_types, '${linked_name}.$field.name',
 					node)
 			}
 		}
