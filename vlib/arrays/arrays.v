@@ -263,6 +263,20 @@ pub fn reduce_indexed<T>(list []T, reduce_op fn (int, T, T) T) ?T {
 	}
 }
 
+// filter_indexed filters elements based on predicate function
+// being invoked on each element with its index in the original array.
+pub fn filter_indexed<T>(list []T, predicate fn (idx int, e T) bool) []T {
+	mut result := []T{cap: list.len}
+
+	for i, e in list {
+		if predicate(i, e) {
+			result << e
+		}
+	}
+
+	return result
+}
+
 // fold sets `acc = init`, then successively calls `acc = fold_op(acc, elem)` for each element in `list`.
 // returns `acc`.
 // Example:
@@ -285,7 +299,7 @@ pub fn fold<T, R>(list []T, init R, fold_op fn (r R, t T) R) R {
 
 // fold sets `acc = init`, then successively calls `acc = fold_op(idx, acc, elem)` for each element in `list`.
 // returns `acc`.
-pub fn fold_indexed<T, R>(list []T, init R, fold_op fn (int, R, T) R) R {
+pub fn fold_indexed<T, R>(list []T, init R, fold_op fn (idx int, r R, t T) R) R {
 	mut value := init
 
 	for i, e in list {
@@ -332,7 +346,7 @@ pub fn flat_map<T, R>(list []T, transform fn (T) []R) []R {
 }
 
 // flat_map creates a new array populated with the flattened result of calling transform function
-// being invoked on each element with its index in the original collection.
+// being invoked on each element with its index in the original array.
 pub fn flat_map_indexed<T, R>(list []T, transform fn (int, T) []R) []R {
 	mut result := [][]R{cap: list.len}
 
@@ -344,7 +358,7 @@ pub fn flat_map_indexed<T, R>(list []T, transform fn (int, T) []R) []R {
 }
 
 // map creates a new array populated with the result of calling transform function
-// being invoked on each element with its index in the original collection.
+// being invoked on each element with its index in the original array.
 pub fn map_indexed<T, R>(list []T, transform fn (int, T) R) []R {
 	mut result := []R{cap: list.len}
 

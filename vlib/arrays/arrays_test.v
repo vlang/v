@@ -176,6 +176,14 @@ fn test_reduce_indexed() {
 	}) or { 0 } == 25
 }
 
+fn test_filter_indexed() {
+	x := [0, 1, 2, 3, 4, 5]
+
+	assert filter_indexed<int>(x, fn (idx int, e int) bool {
+		return idx % 2 == 0
+	}) == [0, 2, 4]
+}
+
 fn test_fold() {
 	x := [1, 2, 3, 4, 5]
 
