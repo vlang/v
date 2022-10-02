@@ -6,6 +6,7 @@ module parser
 import v.ast
 import v.token
 import v.util
+import os
 
 pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	first_pos := p.tok.pos()
@@ -399,6 +400,16 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	is_test := (!is_method && params.len == 0) && p.inside_test_file
 		&& (short_fn_name.starts_with('test_') || short_fn_name.starts_with('testsuite_'))
 	file_mode := p.file_backend_mode
+	if is_main {
+		if _ := p.table.find_fn('main.main') {
+			if '.' in os.args {
+				p.error_with_pos('multiple `main` functions detected, and you ran `v .`
+perhaps there are multiple V programs in this directory, and you need to
+run them via `v file.v` instead',
+					name_pos)
+			}
+		}
+	}
 	// Register
 	if is_method {
 		mut type_sym := p.table.sym(rec.typ)
