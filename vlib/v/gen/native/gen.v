@@ -811,13 +811,19 @@ g.expr
 			g.v_error('struct.field selector not yet implemented for this backend', expr.pos)
 		}
 		ast.NodeError {}
+		ast.AtExpr {
+			if newline {
+				g.gen_print(g.comptime_at(expr) + '\n', fd)
+			} else {
+				g.gen_print(g.comptime_at(expr), fd)
+			}
+		}
 		/*
 		ast.AnonFn {}
 		ast.ArrayDecompose {}
 		ast.ArrayInit {}
 		ast.AsCast {}
 		ast.Assoc {}
-		ast.AtExpr {}
 		ast.CTempVar {}
 		ast.CastExpr {}
 		ast.ChanInit {}
@@ -1326,7 +1332,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.IfExpr {
 			if node.is_comptime {
-				eprintln('Warning: ignored compile time conditional not yet supported for the native backend.')
+				g.comptime_conditional(node)
 			} else {
 				g.if_expr(node)
 			}

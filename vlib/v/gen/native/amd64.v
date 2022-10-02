@@ -2262,6 +2262,11 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 				g.gen_typeof_expr(node.right[i] as ast.TypeOf, true)
 				g.mov_reg(.rsi, .rax)
 			}
+			ast.AtExpr {
+				dest := g.allocate_var(name, 8, 0)
+				g.learel(.rsi, g.allocate_string(g.comptime_at(right), 3, .rel32))
+				g.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, .rsi)
+			}
 			else {
 				// dump(node)
 				size := g.get_type_size(node.left_types[i])
@@ -2733,7 +2738,8 @@ fn (mut g Gen) condition(expr ast.Expr, neg bool) int {
 
 fn (mut g Gen) if_expr(node ast.IfExpr) {
 	if node.is_comptime {
-		g.n_error('ignored comptime')
+		g.comptime_conditional(node)
+		return
 	}
 	if node.branches.len == 0 {
 		return
