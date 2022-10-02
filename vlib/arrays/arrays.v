@@ -241,7 +241,7 @@ pub fn reduce<T>(list []T, reduce_op fn (t1 T, t2 T) T) ?T {
 	}
 }
 
-// reduce sets `acc = list[0]`, then successively calls `acc = reduce_op(idx, acc, elem)` for each remaining element in `list`.
+// reduce_indexed sets `acc = list[0]`, then successively calls `acc = reduce_op(idx, acc, elem)` for each remaining element in `list`.
 // returns the accumulated value in `acc`.
 // returns an error if the array is empty.
 // See also: [fold_indexed](#fold_indexed).
@@ -297,7 +297,7 @@ pub fn fold<T, R>(list []T, init R, fold_op fn (r R, t T) R) R {
 	return value
 }
 
-// fold sets `acc = init`, then successively calls `acc = fold_op(idx, acc, elem)` for each element in `list`.
+// fold_indexed sets `acc = init`, then successively calls `acc = fold_op(idx, acc, elem)` for each element in `list`.
 // returns `acc`.
 pub fn fold_indexed<T, R>(list []T, init R, fold_op fn (idx int, r R, t T) R) R {
 	mut value := init
@@ -334,7 +334,7 @@ pub fn flatten<T>(list [][]T) []T {
 }
 
 // flat_map creates a new array populated with the flattened result of calling transform function
-// being invoked on each element of original collection.
+// being invoked on each element of `list`.
 pub fn flat_map<T, R>(list []T, transform fn (T) []R) []R {
 	mut result := [][]R{cap: list.len}
 
@@ -345,7 +345,7 @@ pub fn flat_map<T, R>(list []T, transform fn (T) []R) []R {
 	return flatten(result)
 }
 
-// flat_map creates a new array populated with the flattened result of calling transform function
+// flat_map_indexed creates a new array populated with the flattened result of calling the `transform` function
 // being invoked on each element with its index in the original array.
 pub fn flat_map_indexed<T, R>(list []T, transform fn (int, T) []R) []R {
 	mut result := [][]R{cap: list.len}
@@ -357,7 +357,7 @@ pub fn flat_map_indexed<T, R>(list []T, transform fn (int, T) []R) []R {
 	return flatten(result)
 }
 
-// map creates a new array populated with the result of calling transform function
+// map_indexed creates a new array populated with the result of calling the `transform` function
 // being invoked on each element with its index in the original array.
 pub fn map_indexed<T, R>(list []T, transform fn (int, T) R) []R {
 	mut result := []R{cap: list.len}
