@@ -2542,8 +2542,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		c.error('cannot cast `$ft` to rune, use `${snexpr}.runes()` instead.', node.pos)
 	}
 
-	if to_sym.kind == .enum_ && from_sym.is_int() && !c.inside_unsafe {
-		c.error('cannot cast int to enum outside `unsafe` blocks', node.pos)
+	if to_sym.kind == .enum_ && !(c.inside_unsafe || c.file.is_translated) && from_sym.is_int() {
+		c.error('casting numbers to enums, should be done inside `unsafe{}` blocks', node.pos)
 	}
 
 	if to_type == ast.string_type {
