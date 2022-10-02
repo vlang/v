@@ -81,7 +81,7 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 				mysql_bind.buffer_length = FieldType.type_blob.get_len()
 			}
 			orm.time {
-				match FieldType(f.@type) {
+				match unsafe { FieldType(f.@type) } {
 					.type_long {
 						mysql_bind.buffer_type = C.MYSQL_TYPE_LONG
 					}
