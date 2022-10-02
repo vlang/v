@@ -1,0 +1,13 @@
+fn abc() {
+	// a comment
+	a := @LINE
+	b := @FILE_LINE
+	c := @FN
+	println(a)
+	println(b)
+	println(c)
+}
+
+fn main() {
+	abc()
+}
