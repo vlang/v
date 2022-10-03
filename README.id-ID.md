@@ -141,7 +141,7 @@ folder repo V ke tempat lain.
 
 ### Docker
 
-<details><summary>Expand Docker instructions</summary>
+<details><summary>Perluas instruksi Docker</summary>
 
 ```bash
 git clone https://github.com/vlang/v
