@@ -866,6 +866,20 @@ fn (mut g Gen) call(addr int) i64 {
 	return c_addr
 }
 
+fn (mut g Gen) extern_call(addr int) {
+	match g.pref.os {
+		.linux {
+			g.write8(0xff)
+			g.write8(0x15)
+			g.write32(0)
+			g.println('call *@GOTPCREL(%rip)')
+		}
+		else {
+			g.n_error('extern calls are not implemented for $g.pref.os')
+		}
+	}
+}
+
 fn (mut g Gen) syscall() {
 	// g.write(0x050f)
 	g.write8(0x0f)
@@ -1725,7 +1739,10 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 	for i in 0 .. reg_size {
 		g.pop(native.fn_arg_registers[i])
 	}
-	if addr == 0 {
+	if node.name in g.extern_symbols {
+		g.extern_fn_calls[g.pos()] = node.name
+		g.extern_call(int(addr))
+	} else if addr == 0 {
 		g.delay_fn_call(n)
 		g.call(int(0))
 	} else {
