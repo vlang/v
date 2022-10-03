@@ -3,7 +3,7 @@ module openssl
 // ssl_error returns non error ssl code or error if unrecoverable and we should panic
 fn ssl_error(ret int, ssl voidptr) ?SSLError {
 	res := C.SSL_get_error(ssl, ret)
-	match SSLError(res) {
+	match unsafe { SSLError(res) } {
 		.ssl_error_syscall {
 			return error_with_code('unrecoverable syscall ($res)', res)
 		}
@@ -11,7 +11,7 @@ fn ssl_error(ret int, ssl voidptr) ?SSLError {
 			return error_with_code('unrecoverable ssl protocol error ($res)', res)
 		}
 		else {
-			return SSLError(res)
+			return unsafe { SSLError(res) }
 		}
 	}
 }
