@@ -7,6 +7,7 @@ import v.util.recompilation
 
 const is_debug = os.args.contains('-debug')
 
+//Main function
 fn main() {
 	// support a renamed `v` executable too:
 	vexe := pref.vexe_path()
@@ -34,6 +35,8 @@ fn main() {
 	println('V built successfully as executable "$vexe_name".')
 }
 
+//compile() complies the v file and displays the error if any error has occured with the corresponding error message
+//else it compiles and displays the output
 fn compile(vroot string, cmd string) {
 	result := os.execute_or_exit(cmd)
 	if result.exit_code != 0 {
@@ -44,6 +47,9 @@ fn compile(vroot string, cmd string) {
 		println(result.output.trim_space())
 	}
 }
+
+//list_folder() prints the file location of the string, which parsed as a string short_v_name to the function using dir command
+//for windows OS and ls command for linux OS. It also prints the string bmessage if parsed to the function.
 
 fn list_folder(short_v_name string, bmessage string, message string) {
 	if !is_debug {
@@ -60,6 +66,9 @@ fn list_folder(short_v_name string, bmessage string, message string) {
 	println(message)
 }
 
+//this function takes the input string(file name) short_v_name and tries to backup the old file and renames it into a new file
+//the old file gets deleted and returns true
+//if any error occurs at any part, the error message is displayed and returns false
 fn backup_old_version_and_rename_newer(short_v_name string) ?bool {
 	mut errors := []string{}
 	short_v_file := if os.user_os() == 'windows' { '${short_v_name}.exe' } else { '$short_v_name' }
