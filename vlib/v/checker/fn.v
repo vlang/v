@@ -236,10 +236,10 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					}
 				}
 			}
-			if (c.pref.translated || c.file.is_translated) && node.is_variadic && param.typ.is_ptr() {
-				// TODO c2v hack to fix `(const char *s, ...)`
-				param.typ = ast.int_type.ref()
-			}
+			// if (c.pref.translated || c.file.is_translated) && node.is_variadic && param.typ.is_ptr() {
+			// 	// TODO c2v hack to fix `(const char *s, ...)`
+			// 	param.typ = ast.int_type.ref()
+			// }
 		}
 	}
 	if node.language == .v && node.name.after_char(`.`) == 'init' && !node.is_method
