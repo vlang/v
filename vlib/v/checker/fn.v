@@ -1045,17 +1045,17 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				// TODO duplicated logic in check_types() (check_types.v)
 				// Allow enums to be used as ints and vice versa in translated code
 
-				// in case if variadic make sure to use array elem type for checks before
-				// check_call_args already sets expected to elem_type before doing checks.
+				// in case of variadic make sure to use array elem type for checks
+				// check_expected_call_arg already does this before checks also.
 				param_type := if param.typ.has_flag(.variadic) {
 					c.table.sym(param.typ).array_info().elem_type
 				} else {
 					param.typ
 				}
-				if param_type == ast.int_type && arg_typ_sym.kind == .enum_ {
+				if param_type.idx() in ast.integer_type_idxs && arg_typ_sym.kind == .enum_ {
 					continue
 				}
-				if arg_typ == ast.int_type && param_typ_sym.kind == .enum_ {
+				if arg_typ.idx() in ast.integer_type_idxs && param_typ_sym.kind == .enum_ {
 					continue
 				}
 
