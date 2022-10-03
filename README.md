@@ -33,7 +33,7 @@
 - [Cross-platform UI library](https://github.com/vlang/ui)
 - Built-in graphics library
 - Easy cross-compilation
-- REPL
+- [REPL](https://nodejs.org/api/repl.html)
 - [Built-in ORM](https://github.com/vlang/v/blob/master/doc/docs.md#orm)
 - [Built-in web framework](https://github.com/vlang/v/blob/master/vlib/vweb/README.md)
 - C and JavaScript backends
