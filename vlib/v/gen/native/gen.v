@@ -36,10 +36,14 @@ mut:
 	offset               i64
 	file_size_pos        i64
 	elf_text_header_addr i64 = -1
+	elf_rela_section     Section
 	main_fn_addr         i64
 	main_fn_size         i64
 	start_symbol_addr    i64
 	code_start_pos       i64 // location of the start of the assembly instructions
+	symbol_table         []SymbolTableSection
+	extern_symbols       []string
+	extern_fn_calls      map[i64]string
 	fn_addr              map[string]i64
 	var_offset           map[string]int // local var stack offset
 	var_alloc_size       map[string]int // local var allocation size
@@ -259,27 +263,25 @@ pub fn (mut g Gen) typ(a int) &ast.TypeSymbol {
 }
 
 pub fn (mut g Gen) ast_has_external_functions() bool {
-	mut has_external_fn := false
-
 	for file in g.files {
-		walker.inspect(file, unsafe { &mut has_external_fn }, fn (node &ast.Node, data voidptr) bool {
+		walker.inspect(file, unsafe { &mut g }, fn (node &ast.Node, data voidptr) bool {
 			if node is ast.Expr && (node as ast.Expr) is ast.CallExpr
 				&& ((node as ast.Expr) as ast.CallExpr).language != .v {
+				call := node as ast.CallExpr
 				unsafe {
-					*&bool(data) = true // an external function was found
+					mut g := &Gen(data)
+					if call.name !in g.extern_symbols {
+						g.extern_symbols << call.name
+					}
 				}
-				return false
+				return true
 			}
 
 			return true
 		})
-
-		if has_external_fn {
-			break
-		}
 	}
 
-	return has_external_fn
+	return g.extern_symbols.len != 0
 }
 
 pub fn (mut g Gen) generate_header() {
@@ -878,18 +880,14 @@ g.expr
 	}
 }
 
-fn (mut g Gen) extern_fn_decl(node ast.FnDecl) {
-	// declarations like: fn C.malloc()
-	// TODO: implement extern function calls here
-	// Must store an address where the function label is located in the RelA elf section
-	panic('C. functions are not implemented yet')
-}
-
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	name := if node.is_method {
 		'${g.table.get_type_name(node.receiver.typ)}.$node.name'
 	} else {
 		node.name
+	}
+	if node.no_body {
+		return
 	}
 	if g.pref.is_verbose {
 		println(term.green('\n$name:'))
@@ -899,10 +897,6 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	}
 	if node.is_builtin {
 		g.warning('fn_decl: $name is builtin', node.pos)
-	}
-	if node.no_body {
-		g.extern_fn_decl(node)
-		return
 	}
 
 	g.stack_var_pos = 0
