@@ -4,7 +4,7 @@
 </p>
 <h1>Bahasa Pemrograman V</h1>
 
-[vlang.io](https://vlang.io) | [Docs](https://github.com/vlang/v/blob/master/doc/docs.md) | [Changelog](https://github.com/vlang/v/blob/master/CHANGELOG.md) | [Speed](https://fast.vlang.io/) | [Contributing & compiler design](https://github.com/vlang/v/blob/master/CONTRIBUTING.md)
+[vlang.io](https://vlang.io) | [Docs](https://github.com/vlang/v/blob/master/doc/docs.md) | [Changelog](https://github.com/vlang/v/blob/master/CHANGELOG.md) | [Kecepatan](https://fast.vlang.io/) | [Kontribusi & desain kompiler](https://github.com/vlang/v/blob/master/CONTRIBUTING.md)
 
 </div>
 <div align="center">
@@ -291,7 +291,7 @@ V berterima kasih kepada Fabrice Bellard atas karya aslinya di [TCC - Tiny C Com
 
 ## Penyelesaian masalah
 
-Silakan lihat [Pemecahan Masalah](https://github.com/vlang/v/wiki/Troubleshooting) bagian di [halaman wiki] kami(https://github.com/vlang/v/wiki)
+Silakan lihat [Pemecahan Masalah](https://github.com/vlang/v/wiki/Troubleshooting) bagian di [halaman wiki](https://github.com/vlang/v/wiki) kami.
 
 [WorkflowBadge]: https://github.com/vlang/v/workflows/CI/badge.svg
 [DiscordBadge]: https://img.shields.io/discord/592103645835821068?label=Discord&logo=discord&logoColor=white
