@@ -130,7 +130,7 @@ pub fn group<T>(arrays ...[]T) [][]T {
 			mut grouped := []T{cap: arrays.len}
 			// combine each list item for the ndx position into one array
 			for arr_ndx in 0 .. arrays.len {
-				grouped << arrays[list_ndx][ndx]
+				grouped << arrays[arr_ndx][ndx]
 			}
 			arr << grouped
 		}
