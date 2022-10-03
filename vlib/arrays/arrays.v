@@ -241,6 +241,42 @@ pub fn reduce<T>(list []T, reduce_op fn (t1 T, t2 T) T) ?T {
 	}
 }
 
+// reduce_indexed sets `acc = list[0]`, then successively calls `acc = reduce_op(idx, acc, elem)` for each remaining element in `list`.
+// returns the accumulated value in `acc`.
+// returns an error if the array is empty.
+// See also: [fold_indexed](#fold_indexed).
+pub fn reduce_indexed<T>(list []T, reduce_op fn (int, T, T) T) ?T {
+	if list.len == 0 {
+		return error('Cannot reduce array of nothing.')
+	} else {
+		mut value := list[0]
+
+		for i, e in list {
+			if i == 0 {
+				continue
+			} else {
+				value = reduce_op(i, value, e)
+			}
+		}
+
+		return value
+	}
+}
+
+// filter_indexed filters elements based on predicate function
+// being invoked on each element with its index in the original array.
+pub fn filter_indexed<T>(list []T, predicate fn (idx int, e T) bool) []T {
+	mut result := []T{cap: list.len}
+
+	for i, e in list {
+		if predicate(i, e) {
+			result << e
+		}
+	}
+
+	return result
+}
+
 // fold sets `acc = init`, then successively calls `acc = fold_op(acc, elem)` for each element in `list`.
 // returns `acc`.
 // Example:
@@ -261,7 +297,19 @@ pub fn fold<T, R>(list []T, init R, fold_op fn (r R, t T) R) R {
 	return value
 }
 
-// flattens n + 1 dimensional array into n dimensional array
+// fold_indexed sets `acc = init`, then successively calls `acc = fold_op(idx, acc, elem)` for each element in `list`.
+// returns `acc`.
+pub fn fold_indexed<T, R>(list []T, init R, fold_op fn (idx int, r R, t T) R) R {
+	mut value := init
+
+	for i, e in list {
+		value = fold_op(i, value, e)
+	}
+
+	return value
+}
+
+// flatten flattens n + 1 dimensional array into n dimensional array
 // Example: arrays.flatten<int>([[1, 2, 3], [4, 5]]) // => [1, 2, 3, 4, 5]
 pub fn flatten<T>(list [][]T) []T {
 	// calculate required capacity
@@ -280,6 +328,42 @@ pub fn flatten<T>(list [][]T) []T {
 		for e2 in e1 {
 			result << e2
 		}
+	}
+
+	return result
+}
+
+// flat_map creates a new array populated with the flattened result of calling transform function
+// being invoked on each element of `list`.
+pub fn flat_map<T, R>(list []T, transform fn (T) []R) []R {
+	mut result := [][]R{cap: list.len}
+
+	for v in list {
+		result << transform(v)
+	}
+
+	return flatten(result)
+}
+
+// flat_map_indexed creates a new array populated with the flattened result of calling the `transform` function
+// being invoked on each element with its index in the original array.
+pub fn flat_map_indexed<T, R>(list []T, transform fn (int, T) []R) []R {
+	mut result := [][]R{cap: list.len}
+
+	for i, v in list {
+		result << transform(i, v)
+	}
+
+	return flatten(result)
+}
+
+// map_indexed creates a new array populated with the result of calling the `transform` function
+// being invoked on each element with its index in the original array.
+pub fn map_indexed<T, R>(list []T, transform fn (int, T) R) []R {
+	mut result := []R{cap: list.len}
+
+	for i, v in list {
+		result << transform(i, v)
 	}
 
 	return result

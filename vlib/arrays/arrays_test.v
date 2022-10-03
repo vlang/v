@@ -92,6 +92,29 @@ fn test_fixed_array_assignment() {
 	}
 }
 
+fn test_array_flat_map() {
+	a := ['Hello V', 'Hello World', 'V Lang']
+	assert flat_map<string, string>(a, fn (e string) []string {
+		return e.split(' ')
+	}) == ['Hello', 'V', 'Hello', 'World', 'V', 'Lang']
+}
+
+fn test_array_flat_map_indexed() {
+	a := ['AB', 'CD', 'EF']
+	assert flat_map_indexed<string, string>(a, fn (i int, e string) []string {
+		mut arr := [i.str()]
+		arr << e.split('')
+		return arr
+	}) == ['0', 'A', 'B', '1', 'C', 'D', '2', 'E', 'F']
+}
+
+fn test_map_indexed() {
+	a := [1, 2, 3]
+	assert map_indexed<int, int>(a, fn (i int, e int) int {
+		return i + e * e
+	}) == [1, 5, 11]
+}
+
 fn test_group() {
 	x := [4, 5, 6]
 	y := [2, 1, 3]
@@ -146,6 +169,21 @@ fn test_reduce() {
 	}) or { -1 } == -1
 }
 
+fn test_reduce_indexed() {
+	x := [1, 2, 3, 4, 5]
+	assert reduce_indexed<int>(x, fn (idx int, t1 int, t2 int) int {
+		return idx + t1 + t2
+	}) or { 0 } == 25
+}
+
+fn test_filter_indexed() {
+	x := [0, 1, 2, 3, 4, 5]
+
+	assert filter_indexed<int>(x, fn (idx int, e int) bool {
+		return idx % 2 == 0
+	}) == [0, 2, 4]
+}
+
 fn test_fold() {
 	x := [1, 2, 3, 4, 5]
 
@@ -158,6 +196,14 @@ fn test_fold() {
 	assert fold<int, int>([]int{}, -1, fn (t1 int, t2 int) int {
 		return 0
 	}) == -1
+}
+
+fn test_fold_indexed() {
+	x := [1, 2, 3, 4, 5]
+
+	assert fold_indexed<int, int>(x, 5, fn (idx int, r int, t int) int {
+		return idx + r + t
+	}) == 30
 }
 
 fn test_flatten() {

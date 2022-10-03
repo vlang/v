@@ -36,13 +36,13 @@ fn test_to_array() {
 	}) == ['abc', 'def', 'ghi']
 }
 
-fn test_flatten() {
+fn test_flat_map() {
 	m1 := {
 		1: [2, 3]
 		4: [5, 6]
 		7: [8, 9]
 	}
-	assert flatten<int, []int, int>(m1, fn (k int, v []int) []int {
+	assert flat_map<int, []int, int>(m1, fn (k int, v []int) []int {
 		mut a := [k]
 		a << v
 		return a
