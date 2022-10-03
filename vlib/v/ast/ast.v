@@ -1028,8 +1028,9 @@ pub mut:
 
 pub struct ForStmt {
 pub:
-	is_inf bool // `for {}`
-	pos    token.Pos
+	is_inf   bool // `for {}`
+	pos      token.Pos
+	comments []Comment
 pub mut:
 	cond  Expr
 	stmts []Stmt
@@ -1046,6 +1047,7 @@ pub:
 	high       Expr // `10` in `for i in 0..10 {`
 	stmts      []Stmt
 	pos        token.Pos
+	comments   []Comment
 	val_is_mut bool // `for mut val in vals {` means that modifying `val` will modify the array
 	// and the array cannot be indexed inside the loop
 pub mut:
@@ -1067,6 +1069,7 @@ pub:
 	has_inc  bool
 	is_multi bool // for a,b := 0,1; a < 10; a,b = a+b, a {...}
 	pos      token.Pos
+	comments []Comment
 pub mut:
 	init  Stmt // i := 0;
 	cond  Expr // i < 10;

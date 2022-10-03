@@ -1008,6 +1008,9 @@ pub fn (mut f Fmt) for_c_stmt(node ast.ForCStmt) {
 	if node.label.len > 0 {
 		f.write('$node.label: ')
 	}
+	if node.comments.len > 0 {
+		f.comments(node.comments)
+	}
 	f.write('for ')
 	if node.has_init {
 		f.single_line_if = true // to keep all for ;; exprs on the same line
@@ -1030,6 +1033,9 @@ pub fn (mut f Fmt) for_c_stmt(node ast.ForCStmt) {
 pub fn (mut f Fmt) for_in_stmt(node ast.ForInStmt) {
 	if node.label.len > 0 {
 		f.write('$node.label: ')
+	}
+	if node.comments.len > 0 {
+		f.comments(node.comments)
 	}
 	f.write('for ')
 	if node.key_var != '' {
@@ -1062,15 +1068,13 @@ pub fn (mut f Fmt) for_stmt(node ast.ForStmt) {
 	if node.label.len > 0 {
 		f.write('$node.label: ')
 	}
-	if node.cond is ast.Comment {
-		f.comments([node.cond])
+	if node.comments.len > 0 {
+		f.comments(node.comments)
 	}
 	f.write('for ')
-	if node.cond !is ast.Comment {
-		f.expr(node.cond)
-		if !node.is_inf {
-			f.write(' ')
-		}
+	f.expr(node.cond)
+	if !node.is_inf {
+		f.write(' ')
 	}
 	f.write('{')
 	if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
