@@ -487,6 +487,38 @@ pub fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	return typ
 }
 
+pub fn (mut c Checker) builtin_args(mut node ast.CallExpr, fn_name string, func ast.Fn) {
+	c.inside_println_arg = true
+	c.expected_type = ast.string_type
+	node.args[0].typ = c.expr(node.args[0].expr)
+	arg := node.args[0]
+	c.check_expr_opt_call(arg.expr, arg.typ)
+	if arg.typ.is_void() {
+		c.error('`$fn_name` can not print void expressions', node.pos)
+	} else if arg.typ == ast.char_type && arg.typ.nr_muls() == 0 {
+		c.error('`$fn_name` cannot print type `char` directly, print its address or cast it to an integer instead',
+			node.pos)
+	}
+	c.fail_if_unreadable(arg.expr, arg.typ, 'argument to print')
+	c.inside_println_arg = false
+	node.return_type = ast.void_type
+	c.set_node_expected_arg_types(mut node, func)
+
+	/*
+	// TODO: optimize `struct T{} fn (t &T) str() string {return 'abc'} mut a := []&T{} a << &T{} println(a[0])`
+	// It currently generates:
+	// `println(T_str_no_ptr(*(*(T**)array_get(a, 0))));`
+	// ... which works, but could be just:
+	// `println(T_str(*(T**)array_get(a, 0)));`
+	prexpr := node.args[0].expr
+	prtyp := node.args[0].typ
+	prtyp_sym := c.table.sym(prtyp)
+	prtyp_is_ptr := prtyp.is_ptr()
+	prhas_str, prexpects_ptr, prnr_args := prtyp_sym.str_method_info()
+	eprintln('>>> println hack typ: ${prtyp} | sym.name: ${prtyp_sym.name} | is_ptr: $prtyp_is_ptr | has_str: $prhas_str | expects_ptr: $prexpects_ptr | nr_args: $prnr_args | expr: ${prexpr.str()} ')
+	*/
+}
+
 pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) ast.Type {
 	fn_name := node.name
 	if fn_name == 'main' {
@@ -713,6 +745,10 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		}
 	}
 	if is_native_builtin {
+		if node.args.len > 0 && fn_name in ['println', 'print', 'eprintln', 'eprint', 'panic'] {
+			c.builtin_args(mut node, fn_name, func)
+			return func.return_type
+		}
 		return ast.void_type
 	}
 	// check for arg (var) of fn type
@@ -841,34 +877,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 	}
 	// println / eprintln / panic can print anything
 	if node.args.len > 0 && fn_name in ['println', 'print', 'eprintln', 'eprint', 'panic'] {
-		c.inside_println_arg = true
-		c.expected_type = ast.string_type
-		node.args[0].typ = c.expr(node.args[0].expr)
-		arg := node.args[0]
-		c.check_expr_opt_call(arg.expr, arg.typ)
-		if arg.typ.is_void() {
-			c.error('`$fn_name` can not print void expressions', node.pos)
-		} else if arg.typ == ast.char_type && arg.typ.nr_muls() == 0 {
-			c.error('`$fn_name` cannot print type `char` directly, print its address or cast it to an integer instead',
-				node.pos)
-		}
-		c.fail_if_unreadable(arg.expr, arg.typ, 'argument to print')
-		c.inside_println_arg = false
-		node.return_type = ast.void_type
-		c.set_node_expected_arg_types(mut node, func)
-		/*
-		// TODO: optimize `struct T{} fn (t &T) str() string {return 'abc'} mut a := []&T{} a << &T{} println(a[0])`
-		// It currently generates:
-		// `println(T_str_no_ptr(*(*(T**)array_get(a, 0))));`
-		// ... which works, but could be just:
-		// `println(T_str(*(T**)array_get(a, 0)));`
-		prexpr := node.args[0].expr
-		prtyp := node.args[0].typ
-		prtyp_sym := c.table.sym(prtyp)
-		prtyp_is_ptr := prtyp.is_ptr()
-		prhas_str, prexpects_ptr, prnr_args := prtyp_sym.str_method_info()
-		eprintln('>>> println hack typ: ${prtyp} | sym.name: ${prtyp_sym.name} | is_ptr: $prtyp_is_ptr | has_str: $prhas_str | expects_ptr: $prexpects_ptr | nr_args: $prnr_args | expr: ${prexpr.str()} ')
-		*/
+		c.builtin_args(mut node, fn_name, func)
 		return func.return_type
 	}
 	// `return error(err)` -> `return err`
