@@ -26,7 +26,8 @@
      500rb loc/s dengan backend asli dan tcc *(Intel i5-7500, SSD, tanpa pengoptimalan)* ([video demo](https://www.youtube.com/watch?v=pvP6wmcl_Sc))
 - Mudah dikembangkan: V mengkompilasi dirinya sendiri dalam waktu kurang dari satu detik
 - Kinerja: secepat C (backend utama V dikompilasi ke C yang dapat dibaca manusia)
-- Keamanan: tidak ada nol, tidak ada global, tidak ada perilaku yang tidak ditentukan, kekekalan secara default
+- Keamanan: tidak ada nol, tidak ada global, tidak ada perilaku yang tidak ditentukan, kekekalan
+     secara default
 - Terjemahan C ke V ([Menerjemahkan video demo DOOM](https://www.youtube.com/watch?v=6oXrz3oRoEg))
 - Memuat ulang kode panas
 - [Manajemen memori yang inovatif](https://vlang.io/#memory) ([video demo](https://www.youtube.com/watch?v=gmB8ea8uLsM))
@@ -62,11 +63,12 @@ yang kecil dan sederhana, sangat mirip dengan yang ada sekarang.
 Biasanya menginstal V cukup sederhana jika Anda memiliki lingkungan yang sudah 
 memiliki instalasi `git` fungsional.
 
-* *(* ***HARAP DICATAT:*** *Jika Anda mengalami masalah atau Anda memiliki sistem operasi yang berbeda atau 
-distribusi Linux yang tidak segera diinstal atau berfungsi, silakan lihat 
+* *(* ***HARAP DICATAT:*** *Jika Anda mengalami masalah atau Anda memiliki sistem operasi
+yang berbeda atau distribusi Linux yang tidak segera diinstal atau berfungsi, silakan lihat
 [Masalah Instalasi](https:// github.com/vlang/v/discussions/categories/installation-issues)
-dan cari OS dan masalah Anda. Jika Anda tidak dapat menemukan masalah Anda, tambahkan ke diskusi yang ada
-jika ada untuk OS Anda, atau buat yang baru jika diskusi utama belum ada untuk OS Anda.)*
+dan cari OS dan masalah Anda. Jika Anda tidak dapat menemukan masalah Anda, tambahkan ke 
+diskusi yang ada jika ada untuk OS Anda, atau buat yang baru jika diskusi utama belum ada 
+untuk OS Anda.)*
 
 
 Untuk memulai, cukup coba jalankan yang berikut di terminal/Shell Anda:
