@@ -64,3 +64,17 @@ fn (mut app App) time_json_pretty() {
 		'time': time.now().format()
 	})
 }
+
+struct ApiSuccessResponse<T> {
+	success bool
+	result  T
+}
+
+fn (mut app App) json_success<T>(result T) vweb.Result {
+	response := ApiSuccessResponse<T>{
+		success: true
+		result: result
+	}
+
+	return app.json(response)
+}
