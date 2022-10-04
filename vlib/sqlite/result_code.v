@@ -1,7 +1,7 @@
 module sqlite
 
-// https://www.sqlite.org/rescode.html
-
+// Result represents Sqlite Result and Error Codes
+// see https://www.sqlite.org/rescode.html
 pub enum Result {
 	ok = 0
 	error = 1
@@ -107,6 +107,12 @@ pub enum Result {
 	ioerr_data = 8202
 }
 
+// is_error checks if it is an error code.
 pub fn (r Result) is_error() bool {
 	return r !in [.ok, .row, .done]
+}
+
+// is_error checks if `code` is an error code.
+pub fn is_error(code int) bool {
+	return unsafe { Result(code).is_error() }
 }
