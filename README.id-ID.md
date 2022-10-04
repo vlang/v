@@ -80,7 +80,8 @@ make
 Itu seharusnya dan Anda harus menemukan V Anda dapat dieksekusi di `[jalan ke V repo]/v`.
 `[jalan ke V repo]` bisa dimana saja.
 
-(Seperti pada petunjuk di atas, pada Windows `make` berarti menjalankan `make.bat`, jadi pastikan Anda menggunakan terminal `cmd.exe`.)
+(Seperti pada petunjuk di atas, pada Windows `make` berarti menjalankan `make.bat`, 
+jadi pastikan Anda menggunakan terminal `cmd.exe`.)
 
 Sekarang Anda bisa mencoba `./v run examples/hello_world.v` (`v.exe` pada Windows).
 
@@ -214,7 +215,8 @@ sudo dnf install openssl-devel
 
 ## Sinkronisasi V
 Modul `sync` V dan implementasi saluran menggunakan libatomic.
-Kemungkinan besar sudah diinstal pada sistem Anda, tetapi jika tidak, Anda dapat menginstalnya, dengan melakukan hal berikut:
+Kemungkinan besar sudah diinstal pada sistem Anda, tetapi jika tidak, Anda dapat menginstalnya, 
+dengan melakukan hal berikut:
 ```bash
 MacOS: already installed
 
@@ -275,7 +277,7 @@ https://github.com/vlang/gitly
 
 <img src="https://user-images.githubusercontent.com/687996/85933714-b195fe80-b8da-11ea-9ddd-09cadc2103e4.png">
 
-##Vinix, sebuah OS/kernel yang ditulis dalam V
+## Vinix, sebuah OS/kernel yang ditulis dalam V
 
 V sangat bagus untuk menulis perangkat lunak tingkat rendah seperti driver dan kernel.
 Vinix adalah OS/kernel yang sudah menjalankan bash, GCC, V, dan nano.
@@ -287,7 +289,9 @@ https://github.com/vlang/vinix
 
 ## Pengakuan
 
-V berterima kasih kepada Fabrice Bellard atas karya aslinya di [TCC - Tiny C Compiler](https://bellard.org/tcc/). Perhatikan situs web TCC sudah tua; repositori TCC saat ini dapat ditemukan [di sini](https://repo.or.cz/w/tinycc.git).  V menggunakan binari TCC pra-bangun yang terletak di [https://github.com/vlang/tccbin/](https://github.com/vlang/tccbin/).
+V berterima kasih kepada Fabrice Bellard atas karya aslinya di [TCC - Tiny C Compiler](https://bellard.org/tcc/). 
+Perhatikan situs web TCC sudah tua; repositori TCC saat ini dapat ditemukan [di sini](https://repo.or.cz/w/tinycc.git). 
+V menggunakan binari TCC pra-bangun yang terletak di [https://github.com/vlang/tccbin/](https://github.com/vlang/tccbin/).
 
 ## Penyelesaian masalah
 
