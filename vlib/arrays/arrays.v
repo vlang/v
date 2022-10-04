@@ -11,12 +11,12 @@ module arrays
 
 // min returns the minimum value in the array
 // Example: arrays.min([1,2,3,0,9]) // => 0
-pub fn min<T>(a []T) ?T {
-	if a.len == 0 {
+pub fn min<T>(array []T) !T {
+	if array.len == 0 {
 		return error('.min called on an empty array')
 	}
-	mut val := a[0]
-	for e in a {
+	mut val := array[0]
+	for e in array {
 		if e < val {
 			val = e
 		}
@@ -26,12 +26,12 @@ pub fn min<T>(a []T) ?T {
 
 // max returns the maximum value in the array
 // Example: arrays.max([1,2,3,0,9]) // => 9
-pub fn max<T>(a []T) ?T {
-	if a.len == 0 {
+pub fn max<T>(array []T) !T {
+	if array.len == 0 {
 		return error('.max called on an empty array')
 	}
-	mut val := a[0]
-	for e in a {
+	mut val := array[0]
+	for e in array {
 		if e > val {
 			val = e
 		}
@@ -41,13 +41,13 @@ pub fn max<T>(a []T) ?T {
 
 // idx_min returns the index of the minimum value in the array
 // Example: arrays.idx_min([1,2,3,0,9]) // => 3
-pub fn idx_min<T>(a []T) ?int {
-	if a.len == 0 {
+pub fn idx_min<T>(array []T) !int {
+	if array.len == 0 {
 		return error('.idx_min called on an empty array')
 	}
 	mut idx := 0
-	mut val := a[0]
-	for i, e in a {
+	mut val := array[0]
+	for i, e in array {
 		if e < val {
 			val = e
 			idx = i
@@ -58,13 +58,13 @@ pub fn idx_min<T>(a []T) ?int {
 
 // idx_max returns the index of the maximum value in the array
 // Example: arrays.idx_max([1,2,3,0,9]) // => 4
-pub fn idx_max<T>(a []T) ?int {
-	if a.len == 0 {
+pub fn idx_max<T>(array []T) !int {
+	if array.len == 0 {
 		return error('.idx_max called on an empty array')
 	}
 	mut idx := 0
-	mut val := a[0]
-	for i, e in a {
+	mut val := array[0]
+	for i, e in array {
 		if e > val {
 			val = e
 			idx = i
@@ -114,12 +114,12 @@ pub fn merge<T>(a []T, b []T) []T {
 //
 // NOTE: An error will be generated if the type annotation is omitted.
 // Example: arrays.group<int>([1,2,3],[4,5,6]) // => [[1, 4], [2, 5], [3, 6]]
-pub fn group<T>(lists ...[]T) [][]T {
-	mut length := if lists.len > 0 { lists[0].len } else { 0 }
+pub fn group<T>(arrays ...[]T) [][]T {
+	mut length := if arrays.len > 0 { arrays[0].len } else { 0 }
 	// calculate length of output by finding shortest input array
-	for ndx in 1 .. lists.len {
-		if lists[ndx].len < length {
-			length = lists[ndx].len
+	for ndx in 1 .. arrays.len {
+		if arrays[ndx].len < length {
+			length = arrays[ndx].len
 		}
 	}
 
@@ -127,10 +127,10 @@ pub fn group<T>(lists ...[]T) [][]T {
 		mut arr := [][]T{cap: length}
 		// append all combined arrays into the resultant array
 		for ndx in 0 .. length {
-			mut grouped := []T{cap: lists.len}
+			mut grouped := []T{cap: arrays.len}
 			// combine each list item for the ndx position into one array
-			for list_ndx in 0 .. lists.len {
-				grouped << lists[list_ndx][ndx]
+			for arr_ndx in 0 .. arrays.len {
+				grouped << arrays[arr_ndx][ndx]
 			}
 			arr << grouped
 		}
@@ -142,24 +142,24 @@ pub fn group<T>(lists ...[]T) [][]T {
 
 // chunk array into a single array of arrays where each element is the next `size` elements of the original
 // Example: arrays.chunk([1, 2, 3, 4, 5, 6, 7, 8, 9], 2)) // => [[1, 2], [3, 4], [5, 6], [7, 8], [9]]
-pub fn chunk<T>(list []T, size int) [][]T {
+pub fn chunk<T>(array []T, size int) [][]T {
 	// allocate chunk array
-	mut chunks := [][]T{cap: list.len / size + if list.len % size == 0 { 0 } else { 1 }}
+	mut chunks := [][]T{cap: array.len / size + if array.len % size == 0 { 0 } else { 1 }}
 
 	for i := 0; true; {
 		// check chunk size is greater than remaining element size
-		if list.len < i + size {
+		if array.len < i + size {
 			// check if there's no more element to chunk
-			if list.len <= i {
+			if array.len <= i {
 				break
 			}
 
-			chunks << list[i..]
+			chunks << array[i..]
 
 			break
 		}
 
-		chunks << list[i..i + size]
+		chunks << array[i..i + size]
 		i += size
 	}
 
@@ -177,17 +177,17 @@ pub struct WindowAttribute {
 //
 // Example: arrays.window([1, 2, 3, 4], size: 2) // => [[1, 2], [2, 3], [3, 4]]
 // Example: arrays.window([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], size: 3, step: 2) // => [[1, 2, 3], [3, 4, 5], [5, 6, 7], [7, 8, 9]]
-pub fn window<T>(list []T, attr WindowAttribute) [][]T {
+pub fn window<T>(array []T, attr WindowAttribute) [][]T {
 	// allocate snapshot array
-	mut windows := [][]T{cap: list.len - attr.size + 1}
+	mut windows := [][]T{cap: array.len - attr.size + 1}
 
 	for i := 0; true; {
 		// check remaining elements size is less than snapshot size
-		if list.len < i + attr.size {
+		if array.len < i + attr.size {
 			break
 		}
 
-		windows << list[i..i + attr.size]
+		windows << array[i..i + attr.size]
 		i += attr.step
 	}
 
@@ -200,13 +200,13 @@ pub fn window<T>(list []T, attr WindowAttribute) [][]T {
 // which means you can only pass array of numbers for now.
 // TODO: Fix generic operator overloading detection issue.
 // Example: arrays.sum<int>([1, 2, 3, 4, 5])? // => 15
-pub fn sum<T>(list []T) ?T {
-	if list.len == 0 {
+pub fn sum<T>(array []T) ?T {
+	if array.len == 0 {
 		return error('Cannot sum up array of nothing.')
 	} else {
-		mut head := list[0]
+		mut head := array[0]
 
-		for i, e in list {
+		for i, e in array {
 			if i == 0 {
 				continue
 			} else {
@@ -218,18 +218,18 @@ pub fn sum<T>(list []T) ?T {
 	}
 }
 
-// reduce sets `acc = list[0]`, then successively calls `acc = reduce_op(acc, elem)` for each remaining element in `list`.
+// reduce sets `acc = array[0]`, then successively calls `acc = reduce_op(acc, elem)` for each remaining element in `array`.
 // returns the accumulated value in `acc`.
 // returns an error if the array is empty.
 // See also: [fold](#fold).
 // Example: arrays.reduce([1, 2, 3, 4, 5], fn (t1 int, t2 int) int { return t1 * t2 })? // => 120
-pub fn reduce<T>(list []T, reduce_op fn (t1 T, t2 T) T) ?T {
-	if list.len == 0 {
+pub fn reduce<T>(array []T, reduce_op fn (acc T, elem T) T) ?T {
+	if array.len == 0 {
 		return error('Cannot reduce array of nothing.')
 	} else {
-		mut value := list[0]
+		mut value := array[0]
 
-		for i, e in list {
+		for i, e in array {
 			if i == 0 {
 				continue
 			} else {
@@ -241,17 +241,17 @@ pub fn reduce<T>(list []T, reduce_op fn (t1 T, t2 T) T) ?T {
 	}
 }
 
-// reduce_indexed sets `acc = list[0]`, then successively calls `acc = reduce_op(idx, acc, elem)` for each remaining element in `list`.
+// reduce_indexed sets `acc = array[0]`, then successively calls `acc = reduce_op(idx, acc, elem)` for each remaining element in `array`.
 // returns the accumulated value in `acc`.
 // returns an error if the array is empty.
 // See also: [fold_indexed](#fold_indexed).
-pub fn reduce_indexed<T>(list []T, reduce_op fn (int, T, T) T) ?T {
-	if list.len == 0 {
+pub fn reduce_indexed<T>(array []T, reduce_op fn (idx int, acc T, elem T) T) ?T {
+	if array.len == 0 {
 		return error('Cannot reduce array of nothing.')
 	} else {
-		mut value := list[0]
+		mut value := array[0]
 
-		for i, e in list {
+		for i, e in array {
 			if i == 0 {
 				continue
 			} else {
@@ -263,12 +263,12 @@ pub fn reduce_indexed<T>(list []T, reduce_op fn (int, T, T) T) ?T {
 	}
 }
 
-// filter_indexed filters elements based on predicate function
+// filter_indexed filters elements based on `predicate` function
 // being invoked on each element with its index in the original array.
-pub fn filter_indexed<T>(list []T, predicate fn (idx int, e T) bool) []T {
-	mut result := []T{cap: list.len}
+pub fn filter_indexed<T>(array []T, predicate fn (idx int, elem T) bool) []T {
+	mut result := []T{cap: array.len}
 
-	for i, e in list {
+	for i, e in array {
 		if predicate(i, e) {
 			result << e
 		}
@@ -277,7 +277,7 @@ pub fn filter_indexed<T>(list []T, predicate fn (idx int, e T) bool) []T {
 	return result
 }
 
-// fold sets `acc = init`, then successively calls `acc = fold_op(acc, elem)` for each element in `list`.
+// fold sets `acc = init`, then successively calls `acc = fold_op(acc, elem)` for each element in `array`.
 // returns `acc`.
 // Example:
 // ```v
@@ -287,22 +287,22 @@ pub fn filter_indexed<T>(list []T, predicate fn (idx int, e T) bool) []T {
 // 	fn (r int, t string) int { return r + t.len })
 // assert r == 5
 // ```
-pub fn fold<T, R>(list []T, init R, fold_op fn (r R, t T) R) R {
+pub fn fold<T, R>(array []T, init R, fold_op fn (acc R, elem T) R) R {
 	mut value := init
 
-	for e in list {
+	for e in array {
 		value = fold_op(value, e)
 	}
 
 	return value
 }
 
-// fold_indexed sets `acc = init`, then successively calls `acc = fold_op(idx, acc, elem)` for each element in `list`.
+// fold_indexed sets `acc = init`, then successively calls `acc = fold_op(idx, acc, elem)` for each element in `array`.
 // returns `acc`.
-pub fn fold_indexed<T, R>(list []T, init R, fold_op fn (idx int, r R, t T) R) R {
+pub fn fold_indexed<T, R>(array []T, init R, fold_op fn (idx int, acc R, elem T) R) R {
 	mut value := init
 
-	for i, e in list {
+	for i, e in array {
 		value = fold_op(i, value, e)
 	}
 
@@ -311,11 +311,11 @@ pub fn fold_indexed<T, R>(list []T, init R, fold_op fn (idx int, r R, t T) R) R 
 
 // flatten flattens n + 1 dimensional array into n dimensional array
 // Example: arrays.flatten<int>([[1, 2, 3], [4, 5]]) // => [1, 2, 3, 4, 5]
-pub fn flatten<T>(list [][]T) []T {
+pub fn flatten<T>(array [][]T) []T {
 	// calculate required capacity
 	mut required_size := 0
 
-	for e1 in list {
+	for e1 in array {
 		for _ in e1 {
 			required_size += 1
 		}
@@ -324,7 +324,7 @@ pub fn flatten<T>(list [][]T) []T {
 	// allocate flattened array
 	mut result := []T{cap: required_size}
 
-	for e1 in list {
+	for e1 in array {
 		for e2 in e1 {
 			result << e2
 		}
@@ -335,10 +335,10 @@ pub fn flatten<T>(list [][]T) []T {
 
 // flat_map creates a new array populated with the flattened result of calling transform function
 // being invoked on each element of `list`.
-pub fn flat_map<T, R>(list []T, transform fn (T) []R) []R {
-	mut result := [][]R{cap: list.len}
+pub fn flat_map<T, R>(array []T, transform fn (elem T) []R) []R {
+	mut result := [][]R{cap: array.len}
 
-	for v in list {
+	for v in array {
 		result << transform(v)
 	}
 
@@ -347,10 +347,10 @@ pub fn flat_map<T, R>(list []T, transform fn (T) []R) []R {
 
 // flat_map_indexed creates a new array populated with the flattened result of calling the `transform` function
 // being invoked on each element with its index in the original array.
-pub fn flat_map_indexed<T, R>(list []T, transform fn (int, T) []R) []R {
-	mut result := [][]R{cap: list.len}
+pub fn flat_map_indexed<T, R>(array []T, transform fn (idx int, elem T) []R) []R {
+	mut result := [][]R{cap: array.len}
 
-	for i, v in list {
+	for i, v in array {
 		result << transform(i, v)
 	}
 
@@ -359,10 +359,10 @@ pub fn flat_map_indexed<T, R>(list []T, transform fn (int, T) []R) []R {
 
 // map_indexed creates a new array populated with the result of calling the `transform` function
 // being invoked on each element with its index in the original array.
-pub fn map_indexed<T, R>(list []T, transform fn (int, T) R) []R {
-	mut result := []R{cap: list.len}
+pub fn map_indexed<T, R>(array []T, transform fn (idx int, elem T) R) []R {
+	mut result := []R{cap: array.len}
 
-	for i, v in list {
+	for i, v in array {
 		result << transform(i, v)
 	}
 
@@ -371,10 +371,10 @@ pub fn map_indexed<T, R>(list []T, transform fn (int, T) R) []R {
 
 // group_by groups together elements, for which the `grouping_op` callback produced the same result.
 // Example: arrays.group_by<int, string>(['H', 'el', 'lo'], fn (v string) int { return v.len }) // => {1: ['H'], 2: ['el', 'lo']}
-pub fn group_by<K, V>(list []V, grouping_op fn (v V) K) map[K][]V {
+pub fn group_by<K, V>(array []V, grouping_op fn (val V) K) map[K][]V {
 	mut result := map[K][]V{}
 
-	for v in list {
+	for v in array {
 		key := grouping_op(v)
 
 		// check if key exists, if not, then create a new array with matched value, otherwise append.
@@ -403,39 +403,39 @@ pub fn concat<T>(a []T, b ...T) []T {
 	return m
 }
 
-// returns the smallest element >= val, requires `arr` to be sorted
+// returns the smallest element >= val, requires `array` to be sorted
 // Example: arrays.lower_bound([2, 4, 6, 8], 3)? // => 4
-pub fn lower_bound<T>(arr []T, val T) ?T {
-	if arr.len == 0 {
+pub fn lower_bound<T>(array []T, val T) !T {
+	if array.len == 0 {
 		return error('.lower_bound called on an empty array')
 	}
-	mut left, mut right := 0, arr.len - 1
+	mut left, mut right := 0, array.len - 1
 	for ; left <= right; {
 		idx := (left + right) / 2
-		elem := arr[idx]
+		elem := array[idx]
 		if elem < val {
 			left = idx + 1
 		} else {
 			right = idx - 1
 		}
 	}
-	if left >= arr.len {
+	if left >= array.len {
 		return error('')
 	} else {
-		return arr[left]
+		return array[left]
 	}
 }
 
-// returns the largest element <= val, requires `arr` to be sorted
+// returns the largest element <= val, requires `array` to be sorted
 // Example: arrays.upper_bound([2, 4, 6, 8], 3)? // => 2
-pub fn upper_bound<T>(arr []T, val T) ?T {
-	if arr.len == 0 {
+pub fn upper_bound<T>(array []T, val T) ?T {
+	if array.len == 0 {
 		return error('.upper_bound called on an empty array')
 	}
-	mut left, mut right := 0, arr.len - 1
+	mut left, mut right := 0, array.len - 1
 	for ; left <= right; {
 		idx := (left + right) / 2
-		elem := arr[idx]
+		elem := array[idx]
 		if elem > val {
 			right = idx - 1
 		} else {
@@ -445,20 +445,20 @@ pub fn upper_bound<T>(arr []T, val T) ?T {
 	if right < 0 {
 		return error('')
 	} else {
-		return arr[right]
+		return array[right]
 	}
 }
 
-// binary search, requires `arr` to be sorted, returns index of found item or error.
+// binary search, requires `array` to be sorted, returns index of found item or error.
 // Binary searches on sorted lists can be faster than other array searches because at maximum
 // the algorithm only has to traverse log N elements
 // Example: arrays.binary_search([1, 2, 3, 4], 4)? // => 3
-pub fn binary_search<T>(arr []T, target T) ?int {
+pub fn binary_search<T>(array []T, target T) !int {
 	mut left := 0
-	mut right := arr.len - 1
+	mut right := array.len - 1
 	for ; left <= right; {
 		idx := (left + right) / 2
-		elem := arr[idx]
+		elem := array[idx]
 		if elem == target {
 			return idx
 		}
@@ -472,7 +472,7 @@ pub fn binary_search<T>(arr []T, target T) ?int {
 }
 
 // rotate_left rotates the array in-place such that the first `mid` elements of the array move to the end
-// while the last `arr.len - mid` elements move to the front. After calling `rotate_left`, the element
+// while the last `array.len - mid` elements move to the front. After calling `rotate_left`, the element
 // previously at index `mid` will become the first element in the array.
 // Example:
 // ```v
@@ -480,17 +480,17 @@ pub fn binary_search<T>(arr []T, target T) ?int {
 // arrays.rotate_left(mut x, 2)
 // println(x) // [3, 4, 5, 6, 1, 2]
 // ```
-pub fn rotate_left<T>(mut arr []T, mid int) {
-	assert mid <= arr.len && mid >= 0
-	k := arr.len - mid
-	p := &T(arr.data)
+pub fn rotate_left<T>(mut array []T, mid int) {
+	assert mid <= array.len && mid >= 0
+	k := array.len - mid
+	p := &T(array.data)
 	unsafe {
 		ptr_rotate<T>(mid, &T(usize(voidptr(p)) + usize(sizeof(T)) * usize(mid)), k)
 	}
 }
 
-// rotate_right rotates the array in-place such that the first `arr.len - k` elements of the array move to the end
-// while the last `k` elements move to the front. After calling `rotate_right`, the element previously at index `arr.len - k`
+// rotate_right rotates the array in-place such that the first `array.len - k` elements of the array move to the end
+// while the last `k` elements move to the front. After calling `rotate_right`, the element previously at index `array.len - k`
 // will become the first element in the array.
 // Example:
 // ```v
@@ -498,10 +498,10 @@ pub fn rotate_left<T>(mut arr []T, mid int) {
 // arrays.rotate_right(mut x, 2)
 // println(x) // [5, 6, 1, 2, 3, 4]
 // ```
-pub fn rotate_right<T>(mut arr []T, k int) {
-	assert k <= arr.len && k >= 0
-	mid := arr.len - k
-	p := &T(arr.data)
+pub fn rotate_right<T>(mut array []T, k int) {
+	assert k <= array.len && k >= 0
+	mid := array.len - k
+	p := &T(array.data)
 	unsafe {
 		ptr_rotate<T>(mid, &T(usize(voidptr(p)) + usize(sizeof(T)) * usize(mid)), k)
 	}
