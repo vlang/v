@@ -467,12 +467,18 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 		if methods.len > 0 {
 			g.writeln('FunctionData $node.val_var = {0};')
 		}
-		for method in methods { // sym.methods {
-			/*
-			if method.return_type != vweb_result_type { // ast.void_type {
-				continue
+		for method in methods {
+			// filter vweb route methods (non-generic method)
+			if method.receiver_type != 0 {
+				rec_sym := g.table.sym(method.receiver_type)
+				if rec_sym.kind == .struct_ {
+					if _ := g.table.find_field_with_embeds(rec_sym, 'Context') {
+						if method.generic_names.len > 0 {
+							continue
+						}
+					}
+				}
 			}
-			*/
 			g.comptime_for_method = method.name
 			g.writeln('/* method $i */ {')
 			g.writeln('\t${node.val_var}.name = _SLIT("$method.name");')
