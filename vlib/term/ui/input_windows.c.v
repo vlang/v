@@ -165,11 +165,11 @@ fn (mut ctx Context) parse_events() {
 					C.VK_DOWN { KeyCode.down }
 					C.VK_INSERT { KeyCode.insert }
 					C.VK_DELETE { KeyCode.delete }
-					65...90 { KeyCode(ch + 32) } // letters
+					65...90 { unsafe { KeyCode(ch + 32) } } // letters
 					91...93 { KeyCode.null } // special keys
-					96...105 { KeyCode(ch - 48) } // numpad numbers
-					112...135 { KeyCode(ch + 178) } // f1 - f24
-					else { KeyCode(ascii) }
+					96...105 { unsafe { KeyCode(ch - 48) } } // numpad numbers
+					112...135 { unsafe { KeyCode(ch + 178) } } // f1 - f24
+					else { unsafe { KeyCode(ascii) } }
 				}
 
 				mut modifiers := Modifiers{}
