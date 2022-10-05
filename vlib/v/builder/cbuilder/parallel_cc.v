@@ -56,7 +56,7 @@ fn parallel_cc(mut b builder.Builder, header string, res string, out_str string,
 	for i in 0 .. c_files {
 		o_postfixes << (i + 1).str()
 	}
-	mut pp := pool.new_pool_processor(callback: build_o_cb)
+	mut pp := pool.new_pool_processor(callback: build_parallel_o_cb)
 	nthreads := c_files + 2
 	pp.set_max_jobs(nthreads)
 	pp.work_on_items(o_postfixes)
@@ -68,7 +68,7 @@ fn parallel_cc(mut b builder.Builder, header string, res string, out_str string,
 	eprint_time('link_cmd', link_cmd, link_res, sw_link)
 }
 
-fn build_o_cb(p &pool.PoolProcessor, idx int, wid int) voidptr {
+fn build_parallel_o_cb(p &pool.PoolProcessor, idx int, wid int) voidptr {
 	postfix := p.get_item<string>(idx)
 	sw := time.new_stopwatch()
 	cmd := '${os.quoted_path(cbuilder.cc_compiler)} $cbuilder.cc_cflags -c -w -o out_${postfix}.o out_${postfix}.c'
