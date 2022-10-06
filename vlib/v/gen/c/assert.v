@@ -83,18 +83,16 @@ fn (mut g Gen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) 
 
 fn (mut g Gen) gen_assert_postfailure_mode(node ast.AssertStmt) {
 	g.write_v_source_line_info(node.pos)
-	match g.pref.assert_failure_mode {
-		.default {}
-		.aborts {
-			g.writeln('\tabort();')
-		}
-		.backtraces {
-			g.writeln('\tprint_backtrace();')
-		}
-		.continues {
-			g.writeln('\t/*continue after assert*/')
-			return
-		}
+	if g.pref.assert_failure_mode == .continues
+		|| g.fn_decl.attrs.any(it.name == 'assert_continues') {
+		return
+	}
+	if g.pref.assert_failure_mode == .aborts || g.fn_decl.attrs.any(it.name == 'assert_aborts') {
+		g.writeln('\tabort();')
+	}
+	if g.pref.assert_failure_mode == .backtraces
+		|| g.fn_decl.attrs.any(it.name == 'assert_backtraces') {
+		g.writeln('\tprint_backtrace();')
 	}
 	if g.pref.is_test {
 		g.writeln('\tlongjmp(g_jump_buffer, 1);')
