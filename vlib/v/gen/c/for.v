@@ -358,7 +358,7 @@ fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
 			g.writeln('for (size_t $node.key_var = 0;; ++$node.key_var) {')
 		}
 		t_var := g.new_tmp_var()
-		receiver_typ := next_fn.params[0].typ
+		receiver_typ := g.unwrap_generic(next_fn.params[0].typ)
 		receiver_styp := g.typ(receiver_typ)
 		mut fn_name := receiver_styp.replace_each(['*', '', '.', '__']) + '_next'
 		receiver_sym := g.table.sym(receiver_typ)
