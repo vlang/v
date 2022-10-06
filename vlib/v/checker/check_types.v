@@ -714,6 +714,9 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 						} else {
 							if param_elem_sym.name == gt_name {
 								typ = arg_elem_info.elem_type
+								if param_elem_info.elem_type.nr_muls() > 0 && typ.nr_muls() > 0 {
+									typ = typ.set_nr_muls(0)
+								}
 							}
 							break
 						}
@@ -734,6 +737,9 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 						} else {
 							if param_elem_sym.name == gt_name {
 								typ = arg_elem_info.elem_type
+								if param_elem_info.elem_type.nr_muls() > 0 && typ.nr_muls() > 0 {
+									typ = typ.set_nr_muls(0)
+								}
 							}
 							break
 						}
@@ -744,10 +750,16 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 					if param_map_info.key_type.has_flag(.generic)
 						&& c.table.sym(param_map_info.key_type).name == gt_name {
 						typ = arg_map_info.key_type
+						if param_map_info.key_type.nr_muls() > 0 && typ.nr_muls() > 0 {
+							typ = typ.set_nr_muls(0)
+						}
 					}
 					if param_map_info.value_type.has_flag(.generic)
 						&& c.table.sym(param_map_info.value_type).name == gt_name {
 						typ = arg_map_info.value_type
+						if param_map_info.value_type.nr_muls() > 0 && typ.nr_muls() > 0 {
+							typ = typ.set_nr_muls(0)
+						}
 					}
 				} else if arg_sym.kind == .function && param_type_sym.kind == .function {
 					arg_type_func := (arg_sym.info as ast.FnType).func
@@ -757,11 +769,17 @@ pub fn (mut c Checker) infer_fn_generic_types(func ast.Fn, mut node ast.CallExpr
 							if fn_param.typ.has_flag(.generic)
 								&& c.table.sym(fn_param.typ).name == gt_name {
 								typ = arg_type_func.params[n].typ
+								if fn_param.typ.nr_muls() > 0 && typ.nr_muls() > 0 {
+									typ = typ.set_nr_muls(0)
+								}
 							}
 						}
 						if param_type_func.return_type.has_flag(.generic)
 							&& c.table.sym(param_type_func.return_type).name == gt_name {
 							typ = arg_type_func.return_type
+							if param_type_func.return_type.nr_muls() > 0 && typ.nr_muls() > 0 {
+								typ = typ.set_nr_muls(0)
+							}
 						}
 					}
 				} else if arg_sym.kind in [.struct_, .interface_, .sum_type] {
