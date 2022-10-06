@@ -1097,9 +1097,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 	}
 	is_node_name_in_first_last_repeat := node.name in ['first', 'last', 'repeat']
-	if node.receiver_type.is_ptr() && (!left_type.is_ptr() || left_type.has_flag(.variadic)
-		|| node.from_embed_types.len != 0
-		|| (left_type.has_flag(.shared_f) && node.name != 'str')) {
+	if node.receiver_type.is_ptr() && (!left_type.is_ptr()
+		|| node.from_embed_types.len != 0 || (left_type.has_flag(.shared_f) && node.name != 'str')) {
 		// The receiver is a reference, but the caller provided a value
 		// Add `&` automatically.
 		// TODO same logic in call_args()
