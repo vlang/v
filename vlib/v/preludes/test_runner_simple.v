@@ -44,6 +44,9 @@ fn (mut runner SimpleTestRunner) exit_code() int {
 	if runner.fn_fails > 0 {
 		return 1
 	}
+	if runner.total_assert_fails > 0 {
+		return 2
+	}
 	return 0
 }
 
