@@ -561,7 +561,7 @@ fn (mut g Gen) fn_decl_params(params []ast.Param, scope &ast.Scope, is_variadic 
 		}
 		mut typ := g.unwrap_generic(param.typ)
 		if g.pref.translated && g.file.is_translated && param.typ.has_flag(.variadic) {
-			typ = g.table.sym(g.unwrap_generic(param.typ)).array_info().elem_type.set_flag(.variadic)
+			typ = g.table.sym(typ).array_info().elem_type.set_flag(.variadic)
 		}
 		param_type_sym := g.table.sym(typ)
 		mut param_type_name := g.typ(typ) // util.no_dots(param_type_sym.name)

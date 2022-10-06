@@ -1050,7 +1050,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				// in case of variadic make sure to use array elem type for checks
 				// check_expected_call_arg already does this before checks also.
 				param_type := if param.typ.has_flag(.variadic) {
-					c.table.sym(param.typ).array_info().elem_type
+					param_typ_sym.array_info().elem_type
 				} else {
 					param.typ
 				}
