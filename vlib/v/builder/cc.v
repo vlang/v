@@ -425,8 +425,8 @@ fn (v &Builder) all_args(ccoptions CcompilerOptions) []string {
 	// building an (.o) object file, that will be linked later.
 	if v.pref.build_mode != .build_module {
 		all << ccoptions.linker_flags
+		all << ccoptions.env_ldflags
 	}
-	all << ccoptions.env_ldflags
 	return all
 }
 
@@ -435,7 +435,9 @@ fn (v &Builder) thirdparty_object_args(ccoptions CcompilerOptions, middle []stri
 	all << ccoptions.env_cflags
 	all << ccoptions.args
 	all << middle
-	all << ccoptions.env_ldflags
+	// NOTE do not append linker flags in .o build process,
+	// compilers are inconsistent about how they handle:
+	// all << ccoptions.env_ldflags
 	return all
 }
 
