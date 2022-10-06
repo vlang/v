@@ -1027,7 +1027,7 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 						return
 					}
 					expected_type_name := c.table.type_to_str(ret_type.clear_flag(.optional).clear_flag(.result))
-					c.error('`or` block must provide a default value of type `$expected_type_name`, or return/continue/break or call a [noreturn] function like panic(err) or exit(1)',
+					c.error('`or` block must provide a value of type `$expected_type_name`, or return/continue/break or call a [noreturn] function like panic(err) or exit(1)',
 						stmt.expr.pos())
 				} else {
 					type_name := c.table.type_to_str(last_stmt_typ)

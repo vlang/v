@@ -5953,7 +5953,7 @@ be faster, since there is no need for a re-compilation of a script, that has not
 
 An example `deploy.vsh`:
 ```v oksyntax
-#!/usr/bin/env -S v
+#!/usr/bin/env -S v run
 
 // Note: the shebang line above, associates the .vsh file to V on Unix-like systems,
 // so it can be run just by specifying the path to the .vsh file, once it's made
@@ -6011,6 +6011,9 @@ On Unix-like platforms, the file can be run directly after making it executable 
 
 ## Vsh scripts with no extension
 
+TODO: this doesn't work with latest compiler
+
+<del>
 Whilst V does normally not allow vsh scripts without the designated file extension, there is a way
 to circumvent this rule and have a file with a fully custom name and shebang. Whilst this feature
 exists it is only recommended for specific usecases like scripts that will be put in the path and
@@ -6020,6 +6023,7 @@ the built executable. This will run in crun mode so it will only rebuild if chan
 were made and keep the binary as `tmp.<scriptfilename>`. **Caution**: if this filename already
 exists the file will be overriden. If you want to rebuild each time and not keep this binary instead
 use `#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp run`.
+</del>
 
 ## Attributes
 
