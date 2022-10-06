@@ -96,6 +96,11 @@ To do so, run the command `v up`.
 	* [Decoding JSON](#decoding-json)
 	* [Encoding JSON](#encoding-json)
 * [Testing](#testing)
+    * [Asserts](#asserts)
+    * [Asserts with an extra message](#asserts-with-an-extra-message)
+    * [Asserts that do not abort your program](#asserts-that-do-not-abort-your-program)
+    * [Test files](#test-files)
+    * [Running tests](#running-tests)
 * [Memory management](#memory-management)
     * [Stack and Heap](#stack-and-heap)
 * [ORM](#orm)
@@ -4085,10 +4090,13 @@ foo(mut v)
 assert v[0] < 4
 ```
 An `assert` statement checks that its expression evaluates to `true`. If an assert fails,
-the program will abort. Asserts should only be used to detect programming errors. When an
+the program will usually abort. Asserts should only be used to detect programming errors. When an
 assert fails it is reported to *stderr*, and the values on each side of a comparison operator
 (such as `<`, `==`) will be printed when possible. This is useful to easily find an
-unexpected value. Assert statements can be used in any function.
+unexpected value. Assert statements can be used in any function, not just test ones,
+which is handy when developing new functionality, to keep your invariants in check.
+
+Note: all `assert` statements are *removed*, when you compile your program with the `-prod` flag.
 
 ### Asserts with an extra message
 
@@ -4103,6 +4111,37 @@ fn test_assertion_with_extra_message_failure() {
 	}
 }
 ```
+
+### Asserts that do not abort your program
+When initially prototyping functionality and tests, it is sometimes desirable to
+have asserts, that do not stop the program, but just print their failures. That can
+be achieved by tagging your assert containing functions with an `[assert_continues]`
+tag, for example running this program:
+```v
+[assert_continues]
+fn abc(ii int) {
+	assert ii == 2
+}
+
+for i in 0 .. 4 {
+	abc(i)
+}
+```
+... will produce this output:
+```
+assert_continues_example.v:3: FAIL: fn main.abc: assert ii == 2
+   left value: ii = 0
+   right value: 2
+assert_continues_example.v:3: FAIL: fn main.abc: assert ii == 2
+   left value: ii = 1
+  right value: 2
+assert_continues_example.v:3: FAIL: fn main.abc: assert ii == 2
+   left value: ii = 3
+  right value: 2
+```			   
+
+Note: V also supports a command line flag `-assert continues`, which will change the
+behaviour of all asserts globally, as if you had tagged every function with `[assert_continues]`.
 
 ### Test files
 

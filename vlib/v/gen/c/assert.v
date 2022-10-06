@@ -32,9 +32,6 @@ fn (mut g Gen) assert_stmt(original_assert_statement ast.AssertStmt) {
 		metaname_fail := g.gen_assert_metainfo(node)
 		g.writeln('\tmain__TestRunner_name_table[test_runner._typ]._method_assert_fail(test_runner._object, &$metaname_fail);')
 		g.gen_assert_postfailure_mode(node)
-		g.writeln('\tlongjmp(g_jump_buffer, 1);')
-		g.writeln('\t// TODO')
-		g.writeln('\t// Maybe print all vars in a test function if it fails?')
 		g.writeln('}')
 	} else {
 		g.write('if (!(')
@@ -45,7 +42,6 @@ fn (mut g Gen) assert_stmt(original_assert_statement ast.AssertStmt) {
 		metaname_panic := g.gen_assert_metainfo(node)
 		g.writeln('\t__print_assert_failure(&$metaname_panic);')
 		g.gen_assert_postfailure_mode(node)
-		g.writeln('\t_v_panic(_SLIT("Assertion failed..."));')
 		g.writeln('}')
 	}
 }
@@ -84,14 +80,24 @@ fn (mut g Gen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) 
 
 fn (mut g Gen) gen_assert_postfailure_mode(node ast.AssertStmt) {
 	g.write_v_source_line_info(node.pos)
-	match g.pref.assert_failure_mode {
-		.default {}
-		.aborts {
-			g.writeln('\tabort();')
-		}
-		.backtraces {
-			g.writeln('\tprint_backtrace();')
-		}
+	if g.pref.assert_failure_mode == .continues
+		|| g.fn_decl.attrs.any(it.name == 'assert_continues') {
+		return
+	}
+	if g.pref.assert_failure_mode == .aborts || g.fn_decl.attrs.any(it.name == 'assert_aborts') {
+		g.writeln('\tabort();')
+	}
+	if g.pref.assert_failure_mode == .backtraces
+		|| g.fn_decl.attrs.any(it.name == 'assert_backtraces') {
+		g.writeln('\tprint_backtrace();')
+	}
+	if g.pref.is_test {
+		g.writeln('\tlongjmp(g_jump_buffer, 1);')
+	}
+	g.writeln('\t// TODO')
+	g.writeln('\t// Maybe print all vars in a test function if it fails?')
+	if g.pref.assert_failure_mode != .continues {
+		g.writeln('\t_v_panic(_SLIT("Assertion failed..."));')
 	}
 }
 

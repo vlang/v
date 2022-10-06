@@ -291,6 +291,10 @@ see also `v help build`.
       backtraces are not implemented yet on all combinations of
       platform/compiler.
 
+   -assert continues
+      Just prints the failed assertion then continues. Useful if you want to see
+      the failures of many assertions that are all in the same test_ function.
+
    -thread-stack-size 4194304
       Set the thread stack size to 4MB. Use multiples of 4096.
       The default is 8MB, which is enough for compiling V programs, with deeply
