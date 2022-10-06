@@ -967,7 +967,8 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 				}
 			}
 			if is_variadic {
-				typ = ast.new_type(p.table.find_or_register_array(typ)).derive(typ).set_flag(.variadic)
+				// derive flags, however nr_muls only needs to be set on the array elem type, so clear it on the arg type
+				typ = ast.new_type(p.table.find_or_register_array(typ)).derive(typ).set_nr_muls(0).set_flag(.variadic)
 			}
 			for i, arg_name in arg_names {
 				alanguage := p.table.sym(typ).language

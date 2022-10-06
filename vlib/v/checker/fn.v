@@ -236,10 +236,6 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 					}
 				}
 			}
-			if (c.pref.translated || c.file.is_translated) && node.is_variadic && param.typ.is_ptr() {
-				// TODO c2v hack to fix `(const char *s, ...)`
-				param.typ = ast.int_type.ref()
-			}
 		}
 	}
 	if node.language == .v && node.name.after_char(`.`) == 'init' && !node.is_method
@@ -1051,25 +1047,32 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 				}
 			}
 			if c.pref.translated || c.file.is_translated {
+				// in case of variadic make sure to use array elem type for checks
+				// check_expected_call_arg already does this before checks also.
+				param_type := if param.typ.has_flag(.variadic) {
+					c.table.sym(param.typ).array_info().elem_type
+				} else {
+					param.typ
+				}
 				// TODO duplicated logic in check_types() (check_types.v)
 				// Allow enums to be used as ints and vice versa in translated code
-				if param.typ == ast.int_type && arg_typ_sym.kind == .enum_ {
+				if param_type.idx() in ast.integer_type_idxs && arg_typ_sym.kind == .enum_ {
 					continue
 				}
-				if arg_typ == ast.int_type && param_typ_sym.kind == .enum_ {
+				if arg_typ.idx() in ast.integer_type_idxs && param_typ_sym.kind == .enum_ {
 					continue
 				}
 
-				if (arg_typ == ast.bool_type && param.typ.is_int())
-					|| (arg_typ.is_int() && param.typ == ast.bool_type) {
+				if (arg_typ == ast.bool_type && param_type.is_int())
+					|| (arg_typ.is_int() && param_type == ast.bool_type) {
 					continue
 				}
 
 				// In C unsafe number casts are used all the time (e.g. `char*` where
 				// `int*` is expected etc), so just allow them all.
-				mut param_is_number := c.table.unaliased_type(param.typ).is_number()
-				if param.typ.is_ptr() {
-					param_is_number = param.typ.deref().is_number()
+				mut param_is_number := c.table.unaliased_type(param_type).is_number()
+				if param_type.is_ptr() {
+					param_is_number = param_type.deref().is_number()
 				}
 				mut typ_is_number := c.table.unaliased_type(arg_typ).is_number()
 				if arg_typ.is_ptr() {
@@ -1079,18 +1082,18 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 					continue
 				}
 				// Allow voidptrs for everything
-				if param.typ == ast.voidptr_type_idx || arg_typ == ast.voidptr_type_idx {
+				if param_type == ast.voidptr_type_idx || arg_typ == ast.voidptr_type_idx {
 					continue
 				}
-				if param.typ.is_any_kind_of_pointer() && arg_typ.is_any_kind_of_pointer() {
+				if param_type.is_any_kind_of_pointer() && arg_typ.is_any_kind_of_pointer() {
 					continue
 				}
-				param_typ_sym_ := c.table.sym(c.table.unaliased_type(param.typ))
+				param_typ_sym_ := c.table.sym(c.table.unaliased_type(param_type))
 				arg_typ_sym_ := c.table.sym(c.table.unaliased_type(arg_typ))
 				// Allow `[32]i8` as `&i8` etc
 				if ((arg_typ_sym_.kind == .array_fixed || arg_typ_sym_.kind == .array)
 					&& (param_is_number
-					|| c.table.unaliased_type(param.typ).is_any_kind_of_pointer()))
+					|| c.table.unaliased_type(param_type).is_any_kind_of_pointer()))
 					|| ((param_typ_sym_.kind == .array_fixed || param_typ_sym_.kind == .array)
 					&& (typ_is_number || c.table.unaliased_type(arg_typ).is_any_kind_of_pointer())) {
 					continue
@@ -1107,7 +1110,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 					}
 				}
 				// Allow `int` as `&i8`
-				if param.typ.is_any_kind_of_pointer() && typ_is_number {
+				if param_type.is_any_kind_of_pointer() && typ_is_number {
 					continue
 				}
 				// Allow `&i8` as `int`
