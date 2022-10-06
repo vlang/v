@@ -5953,7 +5953,7 @@ be faster, since there is no need for a re-compilation of a script, that has not
 
 An example `deploy.vsh`:
 ```v oksyntax
-#!/usr/bin/env -S v run
+#!/usr/bin/env -S v -o /tmp/unique-filename-for-cached-executable crun
 
 // Note: the shebang line above, associates the .vsh file to V on Unix-like systems,
 // so it can be run just by specifying the path to the .vsh file, once it's made
