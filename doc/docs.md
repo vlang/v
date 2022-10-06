@@ -99,6 +99,8 @@ To do so, run the command `v up`.
     * [Asserts](#asserts)
     * [Asserts with an extra message](#asserts-with-an-extra-message)
     * [Asserts that do not abort your program](#asserts-that-do-not-abort-your-program)
+    * [Test files](#test-files)
+    * [Running tests](#running-tests)
 * [Memory management](#memory-management)
     * [Stack and Heap](#stack-and-heap)
 * [ORM](#orm)
