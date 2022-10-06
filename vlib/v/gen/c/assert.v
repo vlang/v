@@ -42,9 +42,6 @@ fn (mut g Gen) assert_stmt(original_assert_statement ast.AssertStmt) {
 		metaname_panic := g.gen_assert_metainfo(node)
 		g.writeln('\t__print_assert_failure(&$metaname_panic);')
 		g.gen_assert_postfailure_mode(node)
-		if g.pref.assert_failure_mode != .continues {
-			g.writeln('\t_v_panic(_SLIT("Assertion failed..."));')
-		}
 		g.writeln('}')
 	}
 }
@@ -99,6 +96,9 @@ fn (mut g Gen) gen_assert_postfailure_mode(node ast.AssertStmt) {
 	}
 	g.writeln('\t// TODO')
 	g.writeln('\t// Maybe print all vars in a test function if it fails?')
+	if g.pref.assert_failure_mode != .continues {
+		g.writeln('\t_v_panic(_SLIT("Assertion failed..."));')
+	}
 }
 
 fn (mut g Gen) gen_assert_metainfo(node ast.AssertStmt) string {
