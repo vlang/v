@@ -192,6 +192,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 
 // parse tokens between braces
 fn (mut p Parser) map_init() ast.MapInit {
+	p.inside_map_init = true
 	first_pos := p.prev_tok.pos()
 	mut keys := []ast.Expr{}
 	mut vals := []ast.Expr{}
@@ -208,6 +209,7 @@ fn (mut p Parser) map_init() ast.MapInit {
 		}
 		comments << p.eat_comments()
 	}
+	p.inside_map_init = false
 	return ast.MapInit{
 		keys: keys
 		vals: vals
