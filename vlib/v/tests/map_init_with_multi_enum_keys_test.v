@@ -5,8 +5,8 @@ enum Foo {
 
 fn test_map_init_with_multi_enum_keys() {
 	mp := {
-		Foo.a: 'A' // Foo.a: 'A', Works if comma is there.
-		.b:    'B',
+		Foo.a: 'A'
+		.b:    'B'
 	}
 	println(mp)
 	assert mp[.a] == 'A'
