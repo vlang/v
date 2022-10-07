@@ -227,8 +227,9 @@ pub fn (mut ctx Context) create_image_from_memory(buf &u8, bufsize int) Image {
 		ok: stb_img.ok
 		data: stb_img.data
 		ext: stb_img.ext
-		id: ctx.image_cache.len
 	}
+	img.init_sokol_image()
+	img.id = ctx.image_cache.len
 	ctx.image_cache << img
 	return img
 }
