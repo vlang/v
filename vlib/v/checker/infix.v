@@ -164,19 +164,24 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 		}
 		.plus, .minus, .mul, .div, .mod, .xor, .amp, .pipe {
 			// binary operators that expect matching types
+			unwrapped_left_type := c.unwrap_generic(left_type)
+			left_sym = c.table.sym(unwrapped_left_type)
+			unwrapped_right_type := c.unwrap_generic(right_type)
+			right_sym = c.table.sym(unwrapped_right_type)
 			if right_sym.info is ast.Alias && (right_sym.info as ast.Alias).language != .c
-				&& c.mod == c.table.type_to_str(right_type).split('.')[0]
+				&& c.mod == c.table.type_to_str(unwrapped_right_type).split('.')[0]
 				&& c.table.sym((right_sym.info as ast.Alias).parent_type).is_primitive() {
 				right_sym = c.table.sym((right_sym.info as ast.Alias).parent_type)
 			}
 			if left_sym.info is ast.Alias && (left_sym.info as ast.Alias).language != .c
-				&& c.mod == c.table.type_to_str(left_type).split('.')[0]
+				&& c.mod == c.table.type_to_str(unwrapped_left_type).split('.')[0]
 				&& c.table.sym((left_sym.info as ast.Alias).parent_type).is_primitive() {
 				left_sym = c.table.sym((left_sym.info as ast.Alias).parent_type)
 			}
 
 			if c.pref.translated && node.op in [.plus, .minus, .mul]
-				&& left_type.is_any_kind_of_pointer() && right_type.is_any_kind_of_pointer() {
+				&& unwrapped_left_type.is_any_kind_of_pointer()
+				&& unwrapped_right_type.is_any_kind_of_pointer() {
 				return_type = left_type
 			} else if !c.pref.translated && left_sym.kind == .alias && left_sym.info is ast.Alias
 				&& !(c.table.sym((left_sym.info as ast.Alias).parent_type).is_primitive()) {
@@ -193,8 +198,8 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						return_type = left_type
 					}
 				} else {
-					left_name := c.table.type_to_str(left_type)
-					right_name := c.table.type_to_str(right_type)
+					left_name := c.table.type_to_str(unwrapped_left_type)
+					right_name := c.table.type_to_str(unwrapped_right_type)
 					if left_name == right_name {
 						c.error('undefined operation `$left_name` $node.op.str() `$right_name`',
 							left_right_pos)
@@ -217,8 +222,8 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						return_type = right_type
 					}
 				} else {
-					left_name := c.table.type_to_str(left_type)
-					right_name := c.table.type_to_str(right_type)
+					left_name := c.table.type_to_str(unwrapped_left_type)
+					right_name := c.table.type_to_str(unwrapped_right_type)
 					if left_name == right_name {
 						c.error('undefined operation `$left_name` $node.op.str() `$right_name`',
 							left_right_pos)
@@ -236,8 +241,8 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						return_type = left_type
 					}
 				} else {
-					left_name := c.table.type_to_str(left_type)
-					right_name := c.table.type_to_str(right_type)
+					left_name := c.table.type_to_str(unwrapped_left_type)
+					right_name := c.table.type_to_str(unwrapped_right_type)
 					if left_name == right_name {
 						c.error('undefined operation `$left_name` $node.op.str() `$right_name`',
 							left_right_pos)
@@ -253,8 +258,8 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						return_type = right_type
 					}
 				} else {
-					left_name := c.table.type_to_str(left_type)
-					right_name := c.table.type_to_str(right_type)
+					left_name := c.table.type_to_str(unwrapped_left_type)
+					right_name := c.table.type_to_str(unwrapped_right_type)
 					if left_name == right_name {
 						c.error('undefined operation `$left_name` $node.op.str() `$right_name`',
 							left_right_pos)
@@ -264,14 +269,14 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 				}
 			} else if node.left.is_auto_deref_var() || node.right.is_auto_deref_var() {
 				deref_left_type := if node.left.is_auto_deref_var() {
-					left_type.deref()
+					unwrapped_left_type.deref()
 				} else {
-					left_type
+					unwrapped_left_type
 				}
 				deref_right_type := if node.right.is_auto_deref_var() {
-					right_type.deref()
+					unwrapped_right_type.deref()
 				} else {
-					right_type
+					unwrapped_right_type
 				}
 				left_name := c.table.type_to_str(ast.mktyp(deref_left_type))
 				right_name := c.table.type_to_str(ast.mktyp(deref_right_type))
@@ -279,8 +284,8 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
 				}
 			} else {
-				unaliased_left_type := c.table.unalias_num_type(left_type)
-				unalias_right_type := c.table.unalias_num_type(right_type)
+				unaliased_left_type := c.table.unalias_num_type(unwrapped_left_type)
+				unalias_right_type := c.table.unalias_num_type(unwrapped_right_type)
 				mut promoted_type := c.promote_keeping_aliases(unaliased_left_type, unalias_right_type,
 					left_sym.kind, right_sym.kind)
 				// substract pointers is allowed in unsafe block
@@ -290,17 +295,21 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					promoted_type = ast.int_type
 				}
 				if promoted_type.idx() == ast.void_type_idx {
-					left_name := c.table.type_to_str(left_type)
-					right_name := c.table.type_to_str(right_type)
+					left_name := c.table.type_to_str(unwrapped_left_type)
+					right_name := c.table.type_to_str(unwrapped_right_type)
 					c.error('mismatched types `$left_name` and `$right_name`', left_right_pos)
 				} else if promoted_type.has_flag(.optional) {
 					s := c.table.type_to_str(promoted_type)
 					c.error('`$node.op` cannot be used with `$s`', node.pos)
 				} else if promoted_type.is_float() {
 					if node.op in [.mod, .xor, .amp, .pipe] {
-						side := if left_type == promoted_type { 'left' } else { 'right' }
-						pos := if left_type == promoted_type { left_pos } else { right_pos }
-						name := if left_type == promoted_type {
+						side := if unwrapped_left_type == promoted_type { 'left' } else { 'right' }
+						pos := if unwrapped_left_type == promoted_type {
+							left_pos
+						} else {
+							right_pos
+						}
+						name := if unwrapped_left_type == promoted_type {
 							left_sym.name
 						} else {
 							right_sym.name

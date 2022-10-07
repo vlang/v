@@ -1,0 +1,11 @@
+fn sum<T>(a T, b T) T {
+	return a + b
+}
+
+fn main() {
+	sum({
+		'id': 1
+	}, {
+		'id': 1
+	})
+}
