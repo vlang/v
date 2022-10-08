@@ -45,9 +45,9 @@ pub fn (val ComptTimeConstValue) int() ?int {
 
 pub fn (val ComptTimeConstValue) voidptr() ?voidptr {
 	match val {
-		i8, i16, int, i64 { return voidptr(val) }
-		u8, u16, u32, u64 { return voidptr(val) }
-		rune { return voidptr(val) }
+		i8, i16, int, i64 { return voidptr(i64(val)) }
+		u8, u16, u32, u64 { return voidptr(u64(val)) }
+		rune { return voidptr(u64(val)) }
 		voidptr { return val }
 		string, EmptyExpr, f32, f64 {}
 	}
