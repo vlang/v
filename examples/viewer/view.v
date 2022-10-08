@@ -228,7 +228,7 @@ pub fn read_bytes_from_file(file_path string) []u8 {
 fn (mut app App) load_texture_from_buffer(buf voidptr, buf_len int) (gfx.Image, int, int) {
 	// load image
 	stbi.set_flip_vertically_on_load(true)
-	img := stbi.load_from_memory(buf, buf_len) or {
+	img := stbi.load_from_memory_with_channels(buf, buf_len, 4) or {
 		eprintln('ERROR: Can not load image from buffer, file: [${app.item_list.lst[app.item_list.item_index]}].')
 		return app.logo_texture, app.logo_w, app.logo_h
 		// exit(1)
