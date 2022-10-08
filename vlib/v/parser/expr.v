@@ -387,13 +387,11 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 	}
 	// Infix
 	for precedence < p.tok.precedence() {
-		if p.tok.kind == .dot { //&& (p.tok.line_nr == p.prev_tok.line_nr
-			// TODO fix a bug with prev_tok.last_line
-			//|| p.prev_tok.pos().last_line == p.tok.line_nr) {
-			// if p.fileis('vcache.v') {
-			// p.warn('tok.line_nr = $p.tok.line_nr; prev_tok.line_nr=$p.prev_tok.line_nr;
-			// prev_tok.last_line=$p.prev_tok.pos().last_line')
-			//}
+		if p.tok.kind == .dot {
+			// no spaces or line break before dot in map_init
+			if p.inside_map_init && p.tok.pos - p.prev_tok.pos > p.prev_tok.len {
+				return node
+			}
 			node = p.dot_expr(node)
 			if p.name_error {
 				return node
