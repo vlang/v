@@ -4,6 +4,8 @@ pub const version = 1
 
 pub const dl_ext = get_shared_library_extension()
 
+pub const rtld_next = voidptr(-1)
+
 // get_shared_library_extension returns the platform dependent shared library extension
 // i.e. .dll on windows, .so on most unixes, .dylib on macos.
 [inline]
