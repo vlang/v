@@ -301,7 +301,10 @@ fn vpm_install_from_vcs(module_names []string, vcs_key string) {
 		vmod_path := os.join_path(final_module_path, 'v.mod')
 		if os.exists(vmod_path) {
 			data := os.read_file(vmod_path) or { return }
-			vmod := parse_vmod(data)
+			vmod := parse_vmod(data) or {
+				eprintln(err)
+				return
+			}
 			minfo := mod_name_info(vmod.name)
 			println('Relocating module from "$name" to "$vmod.name" ( "$minfo.final_module_path" ) ...')
 			if os.exists(minfo.final_module_path) {
@@ -641,7 +644,10 @@ fn resolve_dependencies(name string, module_path string, module_names []string) 
 		return
 	}
 	data := os.read_file(vmod_path) or { return }
-	vmod := parse_vmod(data)
+	vmod := parse_vmod(data) or {
+		eprintln(err)
+		return
+	}
 	mut deps := []string{}
 	// filter out dependencies that were already specified by the user
 	for d in vmod.deps {
@@ -656,8 +662,8 @@ fn resolve_dependencies(name string, module_path string, module_names []string) 
 	}
 }
 
-fn parse_vmod(data string) Vmod {
-	manifest := vmod.decode(data) or { vmod.Manifest{} }
+fn parse_vmod(data string) !Vmod {
+	manifest := vmod.decode(data) or { return error('Parsing v.mod file failed, $err') }
 	mut vmod := Vmod{}
 	vmod.name = manifest.name
 	vmod.version = manifest.version
