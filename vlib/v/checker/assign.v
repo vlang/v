@@ -324,7 +324,7 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 					c.error('non-name `$left` on left side of `:=`', left.pos())
 				}
 
-				if node.op == .assign && (left.is_literal() || left == ast.StructInit) {
+				if node.op == .assign && (left.is_literal() || left is ast.StructInit) {
 					c.error('non-name literal value `$left` on left side of `=`', left.pos())
 				}
 			}
