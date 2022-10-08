@@ -403,7 +403,7 @@ pub fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSym
 				continue
 			}
 		}
-		if c.table.unaliased_type(got_arg_typ) != c.table.unaliased_type(exp_arg_typ) {
+		if c.table.unaliased_type(got_arg_typ).idx() != c.table.unaliased_type(exp_arg_typ).idx() {
 			return false
 		}
 	}
