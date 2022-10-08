@@ -900,7 +900,7 @@ pub fn copy(mut dst []u8, src []u8) int {
 // NOTE: It exists as a method on `[]int` types only.
 // See also `arrays.reduce` for same name or `arrays.fold` for same functionality.
 [deprecated: 'use arrays.fold instead, this function has less flexibility than arrays.fold']
-[deprecated_after: '2022-10-9']
+[deprecated_after: '2022-10-11']
 pub fn (a []int) reduce(iter fn (int, int) int, accum_start int) int {
 	mut accum_ := accum_start
 	for i in a {
