@@ -763,7 +763,7 @@ fn (mut g JsGen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name st
 		} else {
 			// manage C charptr
 			if field.typ in ast.charptr_types {
-				fn_builder.write_string('tos2((byteptr)$func)')
+				fn_builder.write_string('tos4((byteptr)$func)')
 			} else {
 				if field.typ.is_ptr() && sym.kind == .struct_ {
 					fn_builder.write_string('(indent_count > 25)? new string("<probably circular>") : ')
