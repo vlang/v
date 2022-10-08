@@ -22,7 +22,6 @@ pub enum EventType {
 	unfocused
 	suspended
 	resumed
-	update_cursor
 	quit_requested
 	clipboard_pasted
 	files_droped
