@@ -38,5 +38,9 @@ pub fn sym(handle voidptr, symbol string) voidptr {
 // that occurred from a call to one of the `dl` functions, since the last
 // call to dlerror()
 pub fn dlerror() string {
-	return unsafe { cstring_to_vstring(C.dlerror()) }
+	sptr := C.dlerror()
+	if sptr == unsafe { nil } {
+		return ''
+	}
+	return unsafe { cstring_to_vstring(sptr) }
 }
