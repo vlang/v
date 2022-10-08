@@ -2227,7 +2227,7 @@ fn gen_all_registers(mut t Table, without_numbers []string, with_numbers map[str
 // is `expr` a literal, i.e. it does not depend on any other declarations (C compile time constant)
 pub fn (expr Expr) is_literal() bool {
 	match expr {
-		BoolLiteral, CharLiteral, FloatLiteral, IntegerLiteral {
+		BoolLiteral, CharLiteral, FloatLiteral, IntegerLiteral, StringLiteral, StringInterLiteral {
 			return true
 		}
 		PrefixExpr {

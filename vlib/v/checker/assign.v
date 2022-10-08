@@ -323,6 +323,10 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				if is_decl {
 					c.error('non-name `$left` on left side of `:=`', left.pos())
 				}
+
+				if node.op == .assign && (left.is_literal() || left is ast.StructInit) {
+					c.error('non-name literal value `$left` on left side of `=`', left.pos())
+				}
 			}
 		}
 		left_type_unwrapped := c.unwrap_generic(ast.mktyp(left_type))

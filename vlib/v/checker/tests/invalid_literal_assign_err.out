@@ -1,0 +1,62 @@
+vlib/v/checker/tests/invalid_literal_assign_err.vv:4:2: error: non-name literal value `1` on left side of `=`
+    2 | 
+    3 | fn main() {
+    4 |     1 = 2
+      |     ^
+    5 |     u8(1) = u8(2)
+    6 |     1.0 = 2.0
+vlib/v/checker/tests/invalid_literal_assign_err.vv:5:2: error: non-name literal value `u8(1)` on left side of `=`
+    3 | fn main() {
+    4 |     1 = 2
+    5 |     u8(1) = u8(2)
+      |     ~~~~~
+    6 |     1.0 = 2.0
+    7 |     'str' = 'string'
+vlib/v/checker/tests/invalid_literal_assign_err.vv:6:2: error: non-name literal value `1.0` on left side of `=`
+    4 |     1 = 2
+    5 |     u8(1) = u8(2)
+    6 |     1.0 = 2.0
+      |     ~~~
+    7 |     'str' = 'string'
+    8 |     `a` = `b`
+vlib/v/checker/tests/invalid_literal_assign_err.vv:7:2: error: non-name literal value `'str'` on left side of `=`
+    5 |     u8(1) = u8(2)
+    6 |     1.0 = 2.0
+    7 |     'str' = 'string'
+      |     ~~~~~
+    8 |     `a` = `b`
+    9 |     Foo{} = Foo{}
+vlib/v/checker/tests/invalid_literal_assign_err.vv:8:2: error: non-name literal value ``a`` on left side of `=`
+    6 |     1.0 = 2.0
+    7 |     'str' = 'string'
+    8 |     `a` = `b`
+      |     ~~~
+    9 |     Foo{} = Foo{}
+   10 |     true = false
+vlib/v/checker/tests/invalid_literal_assign_err.vv:9:2: error: non-name literal value `Foo{....}` on left side of `=`
+    7 |     'str' = 'string'
+    8 |     `a` = `b`
+    9 |     Foo{} = Foo{}
+      |     ~~~~~
+   10 |     true = false
+   11 |     3 + 5 = 3 & 4
+vlib/v/checker/tests/invalid_literal_assign_err.vv:10:2: error: non-name literal value `true` on left side of `=`
+    8 |     `a` = `b`
+    9 |     Foo{} = Foo{}
+   10 |     true = false
+      |     ~~~~
+   11 |     3 + 5 = 3 & 4
+   12 |     (3 + 3.5) = 4 + 6.4
+vlib/v/checker/tests/invalid_literal_assign_err.vv:11:2: error: non-name literal value `3 + 5` on left side of `=`
+    9 |     Foo{} = Foo{}
+   10 |     true = false
+   11 |     3 + 5 = 3 & 4
+      |     ~~~~~
+   12 |     (3 + 3.5) = 4 + 6.4
+   13 | }
+vlib/v/checker/tests/invalid_literal_assign_err.vv:12:2: error: non-name literal value `(3 + 3.5)` on left side of `=`
+   10 |     true = false
+   11 |     3 + 5 = 3 & 4
+   12 |     (3 + 3.5) = 4 + 6.4
+      |     ~~~~~~~~~
+   13 | }
