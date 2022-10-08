@@ -152,7 +152,8 @@ pub struct RemoveNewLineConfig {
 	imports_buffer bool // Work on f.out_imports instead of f.out
 }
 
-pub fn (mut f Fmt) remove_new_line(cfg RemoveNewLineConfig) {
+// When the removal action actually occurs, the string of the last line after the removal is returned
+pub fn (mut f Fmt) remove_new_line(cfg RemoveNewLineConfig) string {
 	mut buffer := if cfg.imports_buffer { unsafe { &f.out_imports } } else { unsafe { &f.out } }
 	mut i := 0
 	for i = buffer.len - 1; i >= 0; i-- {
@@ -160,8 +161,23 @@ pub fn (mut f Fmt) remove_new_line(cfg RemoveNewLineConfig) {
 			break
 		}
 	}
+	if i == buffer.len - 1 {
+		return ''
+	}
 	buffer.go_back(buffer.len - i - 1)
 	f.empty_line = false
+	mut line_len := 0
+	mut last_line_str := []u8{}
+	for i = buffer.len - 1; i >= 0; i-- {
+		ch := buffer.byte_at(i)
+		if ch == `\n` {
+			break
+		}
+		line_len += if ch == `\t` { 4 } else { 1 }
+		last_line_str << ch
+	}
+	f.line_len = line_len
+	return last_line_str.reverse().bytestr()
 }
 
 //=== Specialized write methods ===//
@@ -2181,10 +2197,17 @@ fn (mut f Fmt) write_splitted_infix(conditions []string, penalties []int, ignore
 				f.write_splitted_infix(conds, pens, true, is_cond)
 				continue
 			}
+			mut is_wrap_needed := true
 			if i == 0 {
-				f.remove_new_line()
+				last_line_str := f.remove_new_line().trim_space()
+				if last_line_str in ['if', 'for'] {
+					f.write(' ')
+					is_wrap_needed = false
+				}
 			}
-			f.writeln('')
+			if is_wrap_needed {
+				f.writeln('')
+			}
 			f.indent++
 			f.write(c)
 			f.indent--
