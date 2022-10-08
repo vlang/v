@@ -384,8 +384,10 @@ pub fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSym
 	}
 	for i, got_arg in got_fn.params {
 		exp_arg := exp_fn.params[i]
-		exp_arg_is_ptr := exp_arg.typ.is_ptr() || exp_arg.typ.is_pointer()
-		got_arg_is_ptr := got_arg.typ.is_ptr() || got_arg.typ.is_pointer()
+		exp_arg_typ := c.unwrap_generic(exp_arg.typ)
+		got_arg_typ := c.unwrap_generic(got_arg.typ)
+		exp_arg_is_ptr := exp_arg_typ.is_ptr() || exp_arg_typ.is_pointer()
+		got_arg_is_ptr := got_arg_typ.is_ptr() || got_arg_typ.is_pointer()
 		if exp_arg_is_ptr != got_arg_is_ptr {
 			exp_arg_pointedness := if exp_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
 			got_arg_pointedness := if got_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
@@ -397,9 +399,11 @@ pub fn (mut c Checker) check_matching_function_symbols(got_type_sym &ast.TypeSym
 			}
 			return false
 		} else if exp_arg_is_ptr && got_arg_is_ptr {
-			continue
+			if exp_arg_typ.is_pointer() || got_arg_typ.is_pointer() {
+				continue
+			}
 		}
-		if got_arg.typ != exp_arg.typ {
+		if c.table.unaliased_type(got_arg_typ).idx() != c.table.unaliased_type(exp_arg_typ).idx() {
 			return false
 		}
 	}
