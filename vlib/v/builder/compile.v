@@ -112,7 +112,7 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	// so ^C doesn't prevent v from deleting the compiled file.
 	// See also https://git.musl-libc.org/cgit/musl/tree/src/process/system.c
 	prev_int_handler := os.signal_opt(.int, eshcb) or { serror('set .int', err) }
-	mut prev_quit_handler := os.SignalHandler(eshcb)
+	mut prev_quit_handler := unsafe { os.SignalHandler(eshcb) }
 	$if !windows { // There's no sigquit on windows
 		prev_quit_handler = os.signal_opt(.quit, eshcb) or { serror('set .quit', err) }
 	}
