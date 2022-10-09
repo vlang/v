@@ -1676,10 +1676,10 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 		}
 		stack_args << i
 	}
-	reg_size := arrays.reduce(reg_args.map((args_size[it] + 7) / 8), 0, fn (acc int, elem int) int {
+	reg_size := arrays.fold(reg_args.map((args_size[it] + 7) / 8), 0, fn (acc int, elem int) int {
 		return acc + elem
 	})
-	stack_size := arrays.reduce(stack_args.map((args_size[it] + 7) / 8), 0, fn (acc int, elem int) int {
+	stack_size := arrays.fold(stack_args.map((args_size[it] + 7) / 8), 0, fn (acc int, elem int) int {
 		return acc + elem
 	})
 
