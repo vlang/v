@@ -463,3 +463,14 @@ fn test_c_struct_typedef() {
 }'
 	}
 }
+
+struct CharptrToStr {
+	cp charptr = charptr(0)
+}
+
+fn test_charptr_nil_to_str() {
+	c := CharptrToStr{}
+	assert c.str() == r'CharptrToStr{
+    cp: C""
+}'
+}
