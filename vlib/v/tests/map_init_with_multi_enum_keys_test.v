@@ -14,7 +14,7 @@ enum NestedFoo {
 fn test_map_init_with_multi_enum_keys() {
 	mp := {
 		Foo.a: 'A'
-		.b:    'B',
+		.b:    'B'
 	}
 	println(mp)
 	assert mp[.a] == 'A'
@@ -26,10 +26,10 @@ fn test_nested_map_init_with_multi_enum_keys() {
 		NestedFoo.a: NestedAbc({
 			'A': 'AA'
 		})
-		.b:          'B',
+		.b:          'B'
 		.c:          {
 			'c': 'C'
-		},
+		}
 	}
 	println(mp)
 	assert mp[.a]? == NestedAbc({
