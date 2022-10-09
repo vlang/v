@@ -132,6 +132,7 @@ pub fn hex(color int) Color {
 	}
 }
 
+// helper function to build Color instance from given r, g, b values
 pub fn rgb(r u8, g u8, b u8) Color {
 	return Color{
 		r: r
@@ -140,6 +141,7 @@ pub fn rgb(r u8, g u8, b u8) Color {
 	}
 }
 
+// helper function to build Color instance from given r, g, b, a values
 pub fn rgba(r u8, g u8, b u8, a u8) Color {
 	return Color{
 		r: r
@@ -201,6 +203,7 @@ pub fn (a Color) - (b Color) Color {
 	}
 }
 
+// * multiplies Color `c` and `c2` keeping channel values in [0, 255] range
 pub fn (c Color) * (c2 Color) Color {
 	return Color{
 		r: c.r * c2.r
@@ -210,6 +213,7 @@ pub fn (c Color) * (c2 Color) Color {
 	}
 }
 
+// / divides `c` by `c2` and converts each channel's value to u8(int)
 pub fn (c Color) / (c2 Color) Color {
 	return Color{
 		r: c.r / c2.r
@@ -237,10 +241,12 @@ pub fn (a Color) over(b Color) Color {
 	}
 }
 
+// checks if color `c` and `c2` are equal in every channel
 pub fn (c Color) eq(c2 Color) bool {
 	return c.r == c2.r && c.g == c2.g && c.b == c2.b && c.a == c2.a
 }
 
+// return string representation of Color `c`
 pub fn (c Color) str() string {
 	return 'Color{$c.r, $c.g, $c.b, $c.a}'
 }
@@ -266,6 +272,7 @@ pub fn (c Color) abgr8() int {
 	return int(u32(c.a) << 24 | u32(c.b) << 16 | u32(c.g) << 8 | u32(c.r))
 }
 
+// string to Color lookup map
 const (
 	string_colors = {
 		'blue':        blue
@@ -291,10 +298,13 @@ const (
 	}
 )
 
+// returns Color corresponding to given string
+// or black Color if string is not found in lookup table
 pub fn color_from_string(s string) Color {
 	return gx.string_colors[s]
 }
 
+// converts Color `c` to CSS compatible string e.g. rgba(10,11,12,13)
 pub fn (c Color) to_css_string() string {
 	return 'rgba($c.r,$c.g,$c.b,$c.a)'
 }
