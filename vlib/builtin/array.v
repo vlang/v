@@ -898,7 +898,9 @@ pub fn copy(mut dst []u8, src []u8) int {
 // reduce executes a given reducer function on each element of the array,
 // resulting in a single output value.
 // NOTE: It exists as a method on `[]int` types only.
-// See also `arrays.fold`.
+// See also `arrays.reduce` for same name or `arrays.fold` for same functionality.
+[deprecated: 'use arrays.fold instead, this function has less flexibility than arrays.fold']
+[deprecated_after: '2022-10-11']
 pub fn (a []int) reduce(iter fn (int, int) int, accum_start int) int {
 	mut accum_ := accum_start
 	for i in a {

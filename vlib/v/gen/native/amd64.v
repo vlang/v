@@ -1,5 +1,6 @@
 module native
 
+import arrays
 import v.ast
 import v.token
 
@@ -1675,12 +1676,12 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 		}
 		stack_args << i
 	}
-	reg_size := reg_args.map((args_size[it] + 7) / 8).reduce(fn (a int, b int) int {
-		return a + b
-	}, 0)
-	stack_size := stack_args.map((args_size[it] + 7) / 8).reduce(fn (a int, b int) int {
-		return a + b
-	}, 0)
+	reg_size := arrays.fold(reg_args.map((args_size[it] + 7) / 8), 0, fn (acc int, elem int) int {
+		return acc + elem
+	})
+	stack_size := arrays.fold(stack_args.map((args_size[it] + 7) / 8), 0, fn (acc int, elem int) int {
+		return acc + elem
+	})
 
 	// not aligned now XOR pushed args will be odd
 	is_16bit_aligned := if mut g.code_gen is Amd64 { g.code_gen.is_16bit_aligned } else { true } != (stack_size % 2 == 1)
