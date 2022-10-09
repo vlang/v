@@ -11,6 +11,18 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			eprintln('>>> post processing node.name: ${node.name:-30} | $node.generic_names <=> $c.table.cur_concrete_types')
 		}
 	}
+	// notice vweb route methods (non-generic method)
+	if node.generic_names.len > 0 {
+		typ_vweb_result := c.table.find_type_idx('vweb.Result')
+		if node.return_type == typ_vweb_result {
+			rec_sym := c.table.sym(node.receiver.typ)
+			if rec_sym.kind == .struct_ {
+				if _ := c.table.find_field_with_embeds(rec_sym, 'Context') {
+					c.note('generic method routes of vweb will be skipped', node.pos)
+				}
+			}
+		}
+	}
 	if node.generic_names.len > 0 && c.table.cur_concrete_types.len == 0 {
 		// Just remember the generic function for now.
 		// It will be processed later in c.post_process_generic_fns,
