@@ -22,6 +22,6 @@ explicit_init_with_value := {
 }
 
 headers := http.new_header_from_map({
-	.content_type:  'application/json',
-	.authorization: 'Bearer abcdef',
+	.content_type:  'application/json'
+	.authorization: 'Bearer abcdef'
 })
