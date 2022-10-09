@@ -12,8 +12,8 @@ fn foo(n int, m ...map[Foo]int) {
 
 fn test_vargs_with_enum_value() {
 	foo(1, {
-		.a: 1,
+		.a: 1
 	}, {
-		.b: 2,
+		.b: 2
 	})
 }
