@@ -5297,6 +5297,43 @@ fn (mut g Gen) sort_structs(typesa []&ast.TypeSymbol) []&ast.TypeSymbol {
 					}
 				}
 			}
+			ast.SumType {
+				for variant in sym.info.variants {
+					vsym := g.table.sym(variant)
+					if vsym.info !is ast.Struct {
+						continue
+					}
+					fields := g.table.struct_fields(vsym)
+					for field in fields {
+						if field.typ.is_ptr() {
+							continue
+						}
+						fsym := g.table.sym(field.typ)
+						if fsym.info is ast.Alias {
+							xsym := g.table.sym(fsym.info.parent_type)
+							if xsym.info !is ast.ArrayFixed {
+								continue
+							}
+							xdep := xsym.name
+							// skip if not in types list or already in deps
+							if xdep !in type_names || xdep in field_deps {
+								continue
+							}
+							field_deps << xdep
+							continue
+						}
+						if fsym.info !is ast.ArrayFixed {
+							continue
+						}
+						dep := fsym.name
+						// skip if not in types list or already in deps
+						if dep !in type_names || dep in field_deps {
+							continue
+						}
+						field_deps << dep
+					}
+				}
+			}
 			// ast.Interface {}
 			else {}
 		}
