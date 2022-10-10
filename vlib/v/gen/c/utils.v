@@ -83,3 +83,15 @@ fn (mut g Gen) fn_var_signature(return_type ast.Type, arg_types []ast.Type, var_
 	sig += ')'
 	return sig
 }
+
+// escape quotes for string
+fn escape_quotes(val string) string {
+	bs := '\\'
+	unescaped_val := val.replace('$bs$bs', '\x01').replace_each([
+		"$bs'",
+		"'",
+		'$bs"',
+		'"',
+	])
+	return unescaped_val.replace_each(['\x01', '$bs$bs', "'", "$bs'", '"', '$bs"'])
+}
