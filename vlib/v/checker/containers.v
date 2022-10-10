@@ -121,7 +121,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			c.expected_type.clear_flag(.shared_f).deref()
 		} else {
 			c.expected_type
-		}.clear_flag(.optional)
+		}.clear_flag(.optional).clear_flag(.result)
 	}
 	// [1,2,3]
 	if node.exprs.len > 0 && node.elem_type == ast.void_type {
