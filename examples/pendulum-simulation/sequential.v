@@ -24,7 +24,10 @@ fn main() {
 		return writer.handle_pixel(pixel)
 	}
 
-	sim.run(args.params, grid: args.grid, on_request: sim.SimRequestHandler(handle_request))
+	sim.run(args.params,
+		grid: args.grid
+		on_request: unsafe { sim.SimRequestHandler(handle_request) }
+	)
 
 	writer.write()?
 }
