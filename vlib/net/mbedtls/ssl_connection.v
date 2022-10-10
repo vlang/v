@@ -37,6 +37,8 @@ mut:
 	handle    int
 	duration  time.Duration
 	opened    bool
+
+	owns_socket bool
 }
 
 [params]
@@ -77,6 +79,15 @@ pub fn (mut s SSLConn) shutdown() ? {
 	}
 	C.mbedtls_ssl_free(&s.ssl)
 	C.mbedtls_ssl_config_free(&s.conf)
+	if s.owns_socket {
+		$if windows {
+			C.shutdown(s.handle, C.SD_BOTH)
+			net.socket_error(C.closesocket(s.handle))?
+		} $else {
+			C.shutdown(s.handle, C.SHUT_RDWR)
+			net.socket_error(C.close(s.handle))?
+		}
+	}
 }
 
 // connect to server using mbedtls
@@ -173,6 +184,7 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ? {
 
 // dial opens an ssl connection on hostname:port
 pub fn (mut s SSLConn) dial(hostname string, port int) ? {
+	s.owns_socket = true
 	if s.opened {
 		return error('ssl connection already open')
 	}
