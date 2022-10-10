@@ -33,5 +33,5 @@ fn main() {
 
 	go app.gg.run()
 
-	unsafe { sim.run(args.params, grid: args.grid, on_request: sim.SimRequestHandler(handle_request)) }
+	sim.run(args.params, grid: args.grid, on_request: sim.SimRequestHandler(handle_request))
 }

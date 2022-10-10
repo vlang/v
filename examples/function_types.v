@@ -17,7 +17,7 @@ fn uppercase(s string) string {
 fn main() {
 	// A function can be assigned to a matching type:
 
-	my_filter := unsafe { Filter(uppercase) }
+	my_filter := Filter(uppercase)
 
 	// You don't strictly need the `Filter` cast - it's only used
 	// here to illustrate how these types are compatible.

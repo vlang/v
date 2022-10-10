@@ -54,7 +54,7 @@ pub fn with_cancel(mut parent Context) (Context, CancelFn) {
 	cancel_fn := fn [mut c] () {
 		c.cancel(true, canceled)
 	}
-	return Context(c), unsafe { CancelFn(cancel_fn) }
+	return Context(c), CancelFn(cancel_fn)
 }
 
 // new_cancel_context returns an initialized CancelContext.

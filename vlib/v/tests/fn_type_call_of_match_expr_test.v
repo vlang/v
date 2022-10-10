@@ -13,7 +13,7 @@ fn fnz_o(one int) string {
 }
 
 fn test_fn_type_call_of_match_expr() {
-	mut arr := unsafe { [FnQ(FnZ(fnz_z)), FnQ(FnO(fnz_o))] }
+	mut arr := [FnQ(FnZ(fnz_z)), FnQ(FnO(fnz_o))]
 	for item in arr {
 		match item {
 			FnZ {

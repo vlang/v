@@ -2547,8 +2547,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 	}
 
 	if final_to_sym.kind == .function && final_from_sym.kind == .function && !(c.inside_unsafe
-		|| c.file.is_translated) {
-		c.error('casting from function into another function, should be done inside `unsafe{}` blocks',
+		|| c.file.is_translated) && !c.check_matching_function_symbols(final_from_sym, final_to_sym) {
+		c.error('casting a function value from one function signature, to another function signature, should be done inside `unsafe{}` blocks',
 			node.pos)
 	}
 

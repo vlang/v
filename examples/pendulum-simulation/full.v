@@ -51,6 +51,6 @@ fn main() {
 
 	sim.run(app.args.params,
 		grid: app.args.grid
-		on_request: unsafe { sim.SimRequestHandler(handle_request) }
+		on_request: sim.SimRequestHandler(handle_request)
 	)
 }
