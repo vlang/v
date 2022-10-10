@@ -4,6 +4,15 @@
 
 module stbi
 
+$if gcboehm ? {
+	#define STBI_malloc(x,u) ((void)(u),GC_malloc(x))
+	#define STBI_free(x,u) ((void)(u),GC_free(x))
+}
+$if gcboehm ? {
+	#define STBIW_malloc(x,u) ((void)(u),GC_malloc(x))
+	#define STBIW_free(x,u) ((void)(u),GC_free(x))
+}
+
 #flag -I @VEXEROOT/thirdparty/stb_image
 #include "stb_image.h"
 #include "stb_image_write.h"
