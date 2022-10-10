@@ -7,8 +7,7 @@ module stbi
 $if gcboehm ? {
 	#define STBI_malloc(x,u) ((void)(u),GC_malloc(x))
 	#define STBI_free(x,u) ((void)(u),GC_free(x))
-}
-$if gcboehm ? {
+
 	#define STBIW_malloc(x,u) ((void)(u),GC_malloc(x))
 	#define STBIW_free(x,u) ((void)(u),GC_free(x))
 }
