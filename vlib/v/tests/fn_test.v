@@ -146,7 +146,7 @@ struct MySt {
 
 fn test_fn_type_call() {
 	mut arr := []MyFn{}
-	arr << MyFn(test)
+	arr << unsafe { MyFn(test) }
 	// TODO: `arr[0](10)`
 	// assert arr[0](10) == 1010
 	x1 := arr[0]
