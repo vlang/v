@@ -248,6 +248,7 @@ jobs:
           ./v3 version
           ./v3 -o tetris  -usecache examples/tetris/tetris.v
       - name: V self compilation with -parallel-cc
+        run: |
           ./v -o v2 -parallel-cc cmd/v
       - name: Test password input
         run: |
