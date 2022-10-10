@@ -838,11 +838,12 @@ pub fn (mut g Gen) write_typeof_functions() {
 	g.writeln('// >> typeof() support for sum types / interfaces')
 	for ityp, sym in g.table.type_symbols {
 		if sym.kind == .sum_type {
+			static_prefix := if g.pref.build_mode == .build_module { 'static ' } else { '' }
 			sum_info := sym.info as ast.SumType
 			if sum_info.is_generic {
 				continue
 			}
-			g.writeln('char * v_typeof_sumtype_${sym.cname}(int sidx) { /* $sym.name */ ')
+			g.writeln('${static_prefix}char * v_typeof_sumtype_${sym.cname}(int sidx) { /* $sym.name */ ')
 			// g.writeln('static char * v_typeof_sumtype_${sym.cname}(int sidx) { /* $sym.name */ ')
 			if g.pref.build_mode == .build_module {
 				g.writeln('\t\tif( sidx == _v_type_idx_${sym.cname}() ) return "${util.strip_main_name(sym.name)}";')
@@ -865,7 +866,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 			g.writeln('}')
 			g.writeln('')
 			// g.writeln('static int v_typeof_sumtype_idx_${sym.cname}(int sidx) { /* $sym.name */ ')
-			g.writeln('int v_typeof_sumtype_idx_${sym.cname}(int sidx) { /* $sym.name */ ')
+			g.writeln('${static_prefix}int v_typeof_sumtype_idx_${sym.cname}(int sidx) { /* $sym.name */ ')
 			if g.pref.build_mode == .build_module {
 				g.writeln('\t\tif( sidx == _v_type_idx_${sym.cname}() ) return ${int(ityp)};')
 				for v in sum_info.variants {
