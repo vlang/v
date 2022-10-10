@@ -321,6 +321,7 @@ jobs:
       - name: Build option_test.v with -autofree
         run: ./v -autofree vlib/v/tests/option_test.v
       - name: V self compilation with -parallel-cc
+        run: |
           ./v -o v2 -parallel-cc cmd/v
       - name: Build modules
         run: |
