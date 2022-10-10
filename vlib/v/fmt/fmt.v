@@ -2621,18 +2621,14 @@ pub fn (mut f Fmt) char_literal(node ast.CharLiteral) {
 }
 
 pub fn (mut f Fmt) string_literal(node ast.StringLiteral) {
-	use_double_quote := node.val.contains("'") && !node.val.contains('"')
+	quote := if node.val.contains("'") && !node.val.contains('"') { '"' } else { "'" }
 	if node.is_raw {
 		f.write('r')
 	} else if node.language == ast.Language.c {
 		f.write('c')
 	}
 	if node.is_raw {
-		if use_double_quote {
-			f.write('"$node.val"')
-		} else {
-			f.write("'$node.val'")
-		}
+		f.write('$quote$node.val$quote')
 	} else {
 		unescaped_val := node.val.replace('$fmt.bs$fmt.bs', '\x01').replace_each([
 			"$fmt.bs'",
@@ -2640,13 +2636,8 @@ pub fn (mut f Fmt) string_literal(node ast.StringLiteral) {
 			'$fmt.bs"',
 			'"',
 		])
-		if use_double_quote {
-			s := unescaped_val.replace_each(['\x01', '$fmt.bs$fmt.bs', '"', '$fmt.bs"'])
-			f.write('"$s"')
-		} else {
-			s := unescaped_val.replace_each(['\x01', '$fmt.bs$fmt.bs', "'", "$fmt.bs'"])
-			f.write("'$s'")
-		}
+		s := unescaped_val.replace_each(['\x01', '$fmt.bs$fmt.bs', quote, '$fmt.bs$quote'])
+		f.write('$quote$s$quote')
 	}
 }
 
@@ -2673,7 +2664,14 @@ pub fn (mut f Fmt) string_inter_literal(node ast.StringInterLiteral) {
 	//	work too different for the various exprs that are interpolated
 	f.write(quote)
 	for i, val in node.vals {
-		f.write(val)
+		unescaped_val := val.replace('$fmt.bs$fmt.bs', '\x01').replace_each([
+			"$fmt.bs'",
+			"'",
+			'$fmt.bs"',
+			'"',
+		])
+		s := unescaped_val.replace_each(['\x01', '$fmt.bs$fmt.bs', quote, '$fmt.bs$quote'])
+		f.write('$s')
 		if i >= node.exprs.len {
 			break
 		}
