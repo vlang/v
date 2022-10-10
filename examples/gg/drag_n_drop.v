@@ -24,8 +24,8 @@ fn main() {
 	}
 	app.gg = gg.new_context(
 		bg_color: gx.rgb(174, 198, 255)
-		width: 640
-		height: 480
+		width: 600
+		height: 400
 		window_title: 'Drag and drop'
 		frame_fn: frame
 		font_path: font_path
