@@ -443,7 +443,7 @@ struct Section {
 	name string
 mut:
 	header SectionHeader
-	data   SectionData
+	data   SectionData = DynSymSection{}
 }
 
 fn (mut g Gen) create_section(name string, typ int, link int, info int, addralign i64, entsize i64, data SectionData) Section {
