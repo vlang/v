@@ -47,7 +47,7 @@ pub fn with_deadline(mut parent Context, d time.Time) (Context, CancelFn) {
 		cancel_fn := fn [mut ctx] () {
 			ctx.cancel(true, canceled)
 		}
-		return Context(ctx), (cancel_fn)
+		return Context(ctx), cancel_fn
 	}
 
 	if ctx.err() is none {
