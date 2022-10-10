@@ -5,11 +5,11 @@
 module stbi
 
 $if gcboehm ? {
-	#define STBI_malloc(x,u) ((void)(u),GC_malloc(x))
-	#define STBI_free(x,u) ((void)(u),GC_free(x))
+	#define STBI_MALLOC(x,u) ((void)(u),GC_malloc(x))
+	#define STBI_FREE(x,u) ((void)(u),GC_free(x))
 
-	#define STBIW_malloc(x,u) ((void)(u),GC_malloc(x))
-	#define STBIW_free(x,u) ((void)(u),GC_free(x))
+	#define STBIW_MALLOC(x,u) ((void)(u),GC_malloc(x))
+	#define STBIW_FREE(x,u) ((void)(u),GC_free(x))
 }
 
 #flag -I @VEXEROOT/thirdparty/stb_image
