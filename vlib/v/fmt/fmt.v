@@ -2299,7 +2299,7 @@ pub fn (mut f Fmt) map_init(node ast.MapInit) {
 			max_field_len = skey.len
 		}
 	}
-	for i, key in node.keys {
+	for i, _ in node.keys {
 		skey := skeys[i]
 		f.write(skey)
 		f.write(': ')
