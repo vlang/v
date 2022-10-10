@@ -37,6 +37,8 @@ mut:
 	handle    int
 	duration  time.Duration
 	opened    bool
+
+	owns_socket bool
 }
 
 [params]
@@ -182,6 +184,7 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ? {
 
 // dial opens an ssl connection on hostname:port
 pub fn (mut s SSLConn) dial(hostname string, port int) ? {
+	s.owns_socket = true
 	if s.opened {
 		return error('ssl connection already open')
 	}
