@@ -4,21 +4,28 @@
 
 module stbi
 
+[if trace_stbi_allocations ?]
+fn trace_allocation(message string) {
+	eprintln(message)
+}
+
 [export: 'stbi__callback_malloc']
 fn cb_malloc(s usize) voidptr {
-	// eprintln('> stbi_callback_malloc: $s')
-	return unsafe { malloc(isize(s)) }
+	res := unsafe { malloc(isize(s)) }
+	trace_allocation('> stbi__callback_malloc: $s => ${ptr_str(res)}')
+	return res
 }
 
 [export: 'stbi__callback_realloc']
 fn cb_realloc(p voidptr, s usize) voidptr {
-	// eprintln('> stbi_callback_realloc: ${ptr_str(p)} , $s')
-	return unsafe { v_realloc(p, isize(s)) }
+	res := unsafe { v_realloc(p, isize(s)) }
+	trace_allocation('> stbi__callback_realloc: ${ptr_str(p)} , $s => ${ptr_str(res)}')
+	return res
 }
 
 [export: 'stbi__callback_free']
 fn cb_free(p voidptr) {
-	// eprintln('> stbi_callback_free: ${ptr_str(p)}')
+	trace_allocation('> stbi__callback_free: ${ptr_str(p)}')
 	unsafe { free(p) }
 }
 
