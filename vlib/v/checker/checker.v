@@ -2546,6 +2546,12 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) ast.Type {
 		c.error('casting numbers to enums, should be done inside `unsafe{}` blocks', node.pos)
 	}
 
+	if final_to_sym.kind == .function && final_from_sym.kind == .function && !(c.inside_unsafe
+		|| c.file.is_translated) && !c.check_matching_function_symbols(final_from_sym, final_to_sym) {
+		c.error('casting a function value from one function signature, to another function signature, should be done inside `unsafe{}` blocks',
+			node.pos)
+	}
+
 	if to_type == ast.string_type {
 		if from_type in [ast.u8_type, ast.bool_type] {
 			snexpr := node.expr.str()
