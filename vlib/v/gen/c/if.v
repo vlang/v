@@ -65,7 +65,7 @@ fn (mut g Gen) need_tmp_var_in_expr(expr ast.Expr) bool {
 		ast.ConcatExpr {
 			for val in expr.vals {
 				if val is ast.CallExpr {
-					if val.return_type.has_flag(.optional) {
+					if val.return_type.has_flag(.optional) || val.return_type.has_flag(.result) {
 						return true
 					}
 				}

@@ -565,7 +565,7 @@ pub mut:
 
 // returns TypeSymbol kind only if there are no type modifiers
 pub fn (t &Table) type_kind(typ Type) Kind {
-	if typ.nr_muls() > 0 || typ.has_flag(.optional) {
+	if typ.nr_muls() > 0 || typ.has_flag(.optional) || typ.has_flag(.result) {
 		return Kind.placeholder
 	}
 	return t.sym(typ).kind
@@ -862,7 +862,7 @@ pub fn (t &TypeSymbol) is_builtin() bool {
 
 // type_size returns the size and alignment (in bytes) of `typ`, similarly to  C's `sizeof()` and `alignof()`.
 pub fn (t &Table) type_size(typ Type) (int, int) {
-	if typ.has_flag(.optional) {
+	if typ.has_flag(.optional) || typ.has_flag(.result) {
 		return t.type_size(ast.error_type_idx)
 	}
 	if typ.nr_muls() > 0 {

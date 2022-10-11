@@ -181,7 +181,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 				continue
 			}
 			field_name := c_name(field.name)
-			if field.typ.has_flag(.optional) {
+			if field.typ.has_flag(.optional) || field.typ.has_flag(.result) {
 				g.write('.$field_name = {EMPTY_STRUCT_INITIALIZATION},')
 				initialized = true
 				continue

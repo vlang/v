@@ -282,7 +282,7 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		sym := c.table.sym(c.expected_type)
 		if sym.kind == .map {
 			info := sym.map_info()
-			node.typ = c.expected_type.clear_flag(.optional)
+			node.typ = c.expected_type.clear_flag(.optional).clear_flag(.result)
 			node.key_type = info.key_type
 			node.value_type = info.value_type
 			return node.typ
