@@ -4,17 +4,20 @@
 
 module stbi
 
-pub fn callback_malloc(s usize) voidptr {
+[export: 'stbi__callback_malloc']
+fn cb_malloc(s usize) voidptr {
 	// eprintln('> stbi_callback_malloc: $s')
 	return unsafe { malloc(isize(s)) }
 }
 
-pub fn callback_realloc(p voidptr, s usize) voidptr {
+[export: 'stbi__callback_realloc']
+fn cb_realloc(p voidptr, s usize) voidptr {
 	// eprintln('> stbi_callback_realloc: ${ptr_str(p)} , $s')
 	return unsafe { v_realloc(p, isize(s)) }
 }
 
-pub fn callback_free(p voidptr) {
+[export: 'stbi__callback_free']
+fn cb_free(p voidptr) {
 	// eprintln('> stbi_callback_free: ${ptr_str(p)}')
 	unsafe { free(p) }
 }
