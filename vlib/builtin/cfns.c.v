@@ -184,6 +184,9 @@ fn C.strchr(s &char, c int) &char
 [trusted]
 fn C.getchar() int
 
+[trusted]
+fn C.putchar(int) int
+
 fn C.strdup(s &char) &char
 
 fn C.strncasecmp(s &char, s2 &char, n int) int
