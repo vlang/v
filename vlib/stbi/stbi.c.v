@@ -4,12 +4,19 @@
 
 module stbi
 
-$if gcboehm ? {
-	#define STBI_MALLOC(x,u) ((void)(u),GC_malloc(x))
-	#define STBI_FREE(x,u) ((void)(u),GC_free(x))
+pub fn callback_malloc(s usize) voidptr {
+	// eprintln('> stbi_callback_malloc: $s')
+	return unsafe { malloc(isize(s)) }
+}
 
-	#define STBIW_MALLOC(x,u) ((void)(u),GC_malloc(x))
-	#define STBIW_FREE(x,u) ((void)(u),GC_free(x))
+pub fn callback_realloc(p voidptr, s usize) voidptr {
+	// eprintln('> stbi_callback_realloc: ${ptr_str(p)} , $s')
+	return unsafe { v_realloc(p, isize(s)) }
+}
+
+pub fn callback_free(p voidptr) {
+	// eprintln('> stbi_callback_free: ${ptr_str(p)}')
+	unsafe { free(p) }
 }
 
 #flag -I @VEXEROOT/thirdparty/stb_image
