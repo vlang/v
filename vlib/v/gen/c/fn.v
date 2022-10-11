@@ -1358,7 +1358,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				g.writeln('));')
 				return
 			}
-			if g.is_autofree && !typ.has_flag(.optional) {
+			if g.is_autofree && !typ.has_flag(.optional) && !typ.has_flag(.result) {
 				// Create a temporary variable so that the value can be freed
 				tmp := g.new_tmp_var()
 				g.write('string $tmp = ')
@@ -1499,7 +1499,8 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 	// Create a temporary var before fn call for each argument in order to free it (only if it's a complex expression,
 	// like `foo(get_string())` or `foo(a + b)`
 	mut free_tmp_arg_vars := g.is_autofree && !g.is_builtin_mod && node.args.len > 0
-		&& !node.args[0].typ.has_flag(.optional) // TODO copy pasta checker.v
+		&& !node.args[0].typ.has_flag(.optional)
+		&& !node.args[0].typ.has_flag(.result) // TODO copy pasta checker.v
 	if !free_tmp_arg_vars {
 		return
 	}
@@ -1598,6 +1599,11 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 				is_optional := obj.typ.has_flag(.optional)
 				if is_optional {
 					// TODO: free optionals
+					continue
+				}
+				is_result := obj.typ.has_flag(.result)
+				if is_result {
+					// TODO: free results
 					continue
 				}
 				if !obj.is_autofree_tmp {

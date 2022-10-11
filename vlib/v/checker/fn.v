@@ -120,6 +120,9 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				} else if multi_type.has_flag(.optional) {
 					c.error('option cannot be used in multi-return, return an option instead',
 						node.return_type_pos)
+				} else if multi_type.has_flag(.result) {
+					c.error('result cannot be used in multi-return, return a result instead',
+						node.return_type_pos)
 				} else if multi_sym.kind == .array_fixed {
 					c.error('fixed array cannot be used in multi-return', node.return_type_pos)
 				}
@@ -208,8 +211,9 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.error('invalid use of reserved type `$param.name` as a parameter name',
 					param.pos)
 			}
-			if param.typ.has_flag(.optional) {
-				c.error('optional type argument is not supported currently', param.type_pos)
+			if param.typ.has_flag(.optional) || param.typ.has_flag(.result) {
+				c.error('optional or result type argument is not supported currently',
+					param.type_pos)
 			}
 			if !param.typ.is_ptr() { // value parameter, i.e. on stack - check for `[heap]`
 				arg_typ_sym := c.table.sym(param.typ)
@@ -450,7 +454,7 @@ pub fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 	c.inside_fn_arg = old_inside_fn_arg
 	// autofree: mark args that have to be freed (after saving them in tmp exprs)
 	free_tmp_arg_vars := c.pref.autofree && !c.is_builtin_mod && node.args.len > 0
-		&& !node.args[0].typ.has_flag(.optional)
+		&& !node.args[0].typ.has_flag(.optional) && !node.args[0].typ.has_flag(.result)
 	if free_tmp_arg_vars && !c.inside_const {
 		for i, arg in node.args {
 			if arg.typ != ast.string_type {
@@ -471,7 +475,7 @@ pub fn (mut c Checker) call_expr(mut node ast.CallExpr) ast.Type {
 			node.free_receiver = true
 		}
 	}
-	c.expected_or_type = node.return_type.clear_flag(.optional)
+	c.expected_or_type = node.return_type.clear_flag(.optional).clear_flag(.result)
 	c.stmts_ending_with_expression(node.or_block.stmts)
 	c.expected_or_type = ast.void_type
 
@@ -1982,8 +1986,9 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ ast.Type, node ast
 			if is_map && arg_expr.return_type in [ast.void_type, 0] {
 				c.error('type mismatch, `$arg_expr.name` does not return anything', arg_expr.pos)
 			} else if !is_map && arg_expr.return_type != ast.bool_type {
-				if arg_expr.or_block.kind != .absent && arg_expr.return_type.has_flag(.optional)
-					&& arg_expr.return_type.clear_flag(.optional) == ast.bool_type {
+				if arg_expr.or_block.kind != .absent && (arg_expr.return_type.has_flag(.optional)
+					|| arg_expr.return_type.has_flag(.result))
+					&& arg_expr.return_type.clear_flag(.optional).clear_flag(.result) == ast.bool_type {
 					return
 				}
 				c.error('type mismatch, `$arg_expr.name` must return a bool', arg_expr.pos)
@@ -2115,6 +2120,9 @@ fn (mut c Checker) array_builtin_method_call(mut node ast.CallExpr, left_type as
 			thread_ret_type := elem_sym.thread_info().return_type
 			if thread_ret_type.has_flag(.optional) {
 				c.error('`.wait()` cannot be called for an array when thread functions return optionals. Iterate over the arrays elements instead and handle each returned optional with `or`.',
+					node.pos)
+			} else if thread_ret_type.has_flag(.result) {
+				c.error('`.wait()` cannot be called for an array when thread functions return results. Iterate over the arrays elements instead and handle each returned result with `or`.',
 					node.pos)
 			}
 			node.return_type = c.table.find_or_register_array(thread_ret_type)

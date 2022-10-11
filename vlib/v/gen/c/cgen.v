@@ -3017,7 +3017,7 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			ret_type := if node.or_block.kind == .absent {
 				node.return_type
 			} else {
-				node.return_type.clear_flag(.optional)
+				node.return_type.clear_flag(.optional).clear_flag(.result)
 			}
 			mut shared_styp := ''
 			if g.is_shared && !ret_type.has_flag(.shared_f) && !g.inside_or_block {
@@ -4429,7 +4429,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 				}
 			}
 			for i, expr in node.exprs {
-				g.expr_with_cast(expr, node.types[i], g.fn_decl.return_type.clear_flag(.optional))
+				g.expr_with_cast(expr, node.types[i], g.fn_decl.return_type.clear_flag(.optional).clear_flag(.result))
 				if i < node.exprs.len - 1 {
 					g.write(', ')
 				}
@@ -5389,7 +5389,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 		}
 	}
 	if or_block.kind == .block {
-		g.or_expr_return_type = return_type.clear_flag(.optional)
+		g.or_expr_return_type = return_type.clear_flag(.optional).clear_flag(.result)
 		if g.inside_or_block {
 			g.writeln('\terr = ${cvar_name}.err;')
 		} else {
@@ -5410,7 +5410,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 					g.write('*($mr_styp*) ${cvar_name}.data = ')
 					old_inside_opt_data := g.inside_opt_data
 					g.inside_opt_data = true
-					g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_flag(.optional))
+					g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_flag(.optional).clear_flag(.result))
 					g.inside_opt_data = old_inside_opt_data
 					g.writeln(';')
 					g.stmt_path_pos.delete_last()
