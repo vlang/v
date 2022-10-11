@@ -211,6 +211,7 @@ mut:
 	cur_concrete_types     []ast.Type  // do not use table.cur_concrete_types because table is global, so should not be accessed by different threads
 	cur_fn                 &ast.FnDecl = unsafe { nil } // same here
 	cur_lock               ast.LockExpr
+	cur_struct_init_typ    ast.Type
 	autofree_methods       map[int]bool
 	generated_free_methods map[int]bool
 	autofree_scope_stmts   []string
@@ -3300,7 +3301,9 @@ fn (mut g Gen) expr(node_ ast.Expr) {
 			} else {
 				// `user := User{name: 'Bob'}`
 				g.inside_struct_init = true
+				g.cur_struct_init_typ = node.typ
 				g.struct_init(node)
+				g.cur_struct_init_typ = 0
 				g.inside_struct_init = false
 			}
 		}
@@ -4102,9 +4105,10 @@ fn (mut g Gen) ident(node ast.Ident) {
 }
 
 fn (mut g Gen) cast_expr(node ast.CastExpr) {
-	sym := g.table.sym(node.typ)
+	node_typ := g.unwrap_generic(node.typ)
+	sym := g.table.sym(node_typ)
 	if sym.kind in [.sum_type, .interface_] {
-		g.expr_with_cast(node.expr, node.expr_type, node.typ)
+		g.expr_with_cast(node.expr, node.expr_type, node_typ)
 	} else if sym.kind == .struct_ && !node.typ.is_ptr() && !(sym.info as ast.Struct).is_typedef {
 		// deprecated, replaced by Struct{...exr}
 		styp := g.typ(node.typ)
@@ -4117,7 +4121,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		}
 		g.expr(node.expr)
 	} else if node.expr_type == ast.bool_type && node.typ.is_int() {
-		styp := g.typ(node.typ)
+		styp := g.typ(node_typ)
 		g.write('($styp[]){(')
 		g.expr(node.expr)
 		g.write(')?1:0}[0]')
@@ -4150,7 +4154,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 			}
 			g.expr(node.expr)
 			if node.expr is ast.IntegerLiteral {
-				if node.typ in [ast.u64_type, ast.u32_type, ast.u16_type] {
+				if node_typ in [ast.u64_type, ast.u32_type, ast.u16_type] {
 					if !node.expr.val.starts_with('-') {
 						g.write('U')
 					}
