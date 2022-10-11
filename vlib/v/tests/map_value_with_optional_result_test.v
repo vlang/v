@@ -5,7 +5,7 @@ struct AdbDevice {
 }
 
 fn test_map_value_with_optional_result() {
-	// void warnings
+	// avoid warnings
 	_ := os.max_path_len
 	assert true
 }
