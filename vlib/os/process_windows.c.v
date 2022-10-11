@@ -37,7 +37,7 @@ type PU32 = &u32
 fn close_valid_handle(p voidptr) {
 	h := &PU32(p)
 	if *h != &u32(0) {
-		C.CloseHandle(*h)
+		C.CloseHandle(voidptr(*h))
 		unsafe {
 			*h = &u32(0)
 		}

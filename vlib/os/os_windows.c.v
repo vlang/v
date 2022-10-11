@@ -349,8 +349,8 @@ pub fn raw_execute(cmd string) Result {
 			output: 'exec failed (CreateProcess) with code $error_num: $error_msg cmd: $cmd'
 		}
 	}
-	C.CloseHandle(child_stdin)
-	C.CloseHandle(child_stdout_write)
+	C.CloseHandle(voidptr(child_stdin))
+	C.CloseHandle(voidptr(child_stdout_write))
 	buf := [4096]u8{}
 	mut bytes_read := u32(0)
 	mut read_data := strings.new_builder(1024)
