@@ -4,6 +4,31 @@
 
 module stbi
 
+[if trace_stbi_allocations ?]
+fn trace_allocation(message string) {
+	eprintln(message)
+}
+
+[export: 'stbi__callback_malloc']
+fn cb_malloc(s usize) voidptr {
+	res := unsafe { malloc(isize(s)) }
+	trace_allocation('> stbi__callback_malloc: $s => ${ptr_str(res)}')
+	return res
+}
+
+[export: 'stbi__callback_realloc']
+fn cb_realloc(p voidptr, s usize) voidptr {
+	res := unsafe { v_realloc(p, isize(s)) }
+	trace_allocation('> stbi__callback_realloc: ${ptr_str(p)} , $s => ${ptr_str(res)}')
+	return res
+}
+
+[export: 'stbi__callback_free']
+fn cb_free(p voidptr) {
+	trace_allocation('> stbi__callback_free: ${ptr_str(p)}')
+	unsafe { free(p) }
+}
+
 #flag -I @VEXEROOT/thirdparty/stb_image
 #include "stb_image.h"
 #include "stb_image_write.h"

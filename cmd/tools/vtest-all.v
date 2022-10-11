@@ -263,6 +263,15 @@ fn get_all_commands() []Command {
 			rmfile: 'v.c'
 		}
 	}
+	$if linux {
+		res << Command{
+			line: '$vexe vlib/v/tests/bench/bench_stbi_load.v && prlimit -v10485760 vlib/v/tests/bench/bench_stbi_load'
+			okmsg: 'STBI load does not leak with GC on, when loading images multiple times (use < 10MB)'
+			runcmd: .execute
+			contains: 'logo.png 1000 times.'
+			rmfile: 'vlib/v/tests/bench/bench_stbi_load'
+		}
+	}
 	$if !windows {
 		res << Command{
 			line: '$vexe -raw-vsh-tmp-prefix tmp vlib/v/tests/script_with_no_extension'
