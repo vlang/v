@@ -202,6 +202,9 @@ fn cgen_attrs(attrs []ast.Attr) []string {
 		if attr.arg.len > 0 {
 			s += ': $attr.arg'
 		}
+		if attr.kind == .string {
+			s = escape_quotes(s)
+		}
 		res << '_SLIT("$s")'
 	}
 	return res
