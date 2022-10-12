@@ -4166,11 +4166,11 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 }
 
 fn (mut g Gen) concat_expr(node ast.ConcatExpr) {
-	mut styp := g.typ(node.return_type)
+	mut styp := g.typ(node.return_type.clear_flag(.optional).clear_flag(.result))
 	if g.inside_return {
-		styp = g.typ(g.fn_decl.return_type)
+		styp = g.typ(g.fn_decl.return_type.clear_flag(.optional).clear_flag(.result))
 	} else if g.inside_or_block {
-		styp = g.typ(g.or_expr_return_type)
+		styp = g.typ(g.or_expr_return_type.clear_flag(.optional).clear_flag(.result))
 	}
 	sym := g.table.sym(node.return_type)
 	is_multi := sym.kind == .multi_return
