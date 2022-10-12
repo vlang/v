@@ -715,11 +715,13 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 	}
 	if !found && mut node.left is ast.CallExpr {
 		c.expr(node.left)
-		sym := c.table.sym(node.left.return_type)
-		if sym.info is ast.FnType {
-			node.return_type = sym.info.func.return_type
-			found = true
-			func = sym.info.func
+		if node.left.return_type != 0 {
+			sym := c.table.sym(node.left.return_type)
+			if sym.info is ast.FnType {
+				node.return_type = sym.info.func.return_type
+				found = true
+				func = sym.info.func
+			}
 		}
 	}
 	// already prefixed (mod.fn) or C/builtin/main
