@@ -1,0 +1,6 @@
+vlib/v/checker/tests/fn_call_with_extra_parenthesis.vv:5:7: error: expected 1 arguments, but got 0
+    3 |
+    4 | fn main() {
+    5 |     main.doit()(1)
+      |          ~~~~~~
+    6 | }
