@@ -9,4 +9,6 @@ fn foo() ?&Bar {
 fn main() {
 	x := foo() or { Bar{} }
 	println(x)
+
+	foo() or { Bar{} }
 }
