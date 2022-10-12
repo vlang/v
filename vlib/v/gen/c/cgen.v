@@ -1609,7 +1609,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 							g.expr(stmt.expr)
 							g.writeln(';')
 						} else {
-							g.write('opt_ok2(&($styp[]) { ')
+							g.write('_option_ok(&($styp[]) { ')
 							g.expr(stmt.expr)
 							g.writeln(' }, ($c.option_name*)(&$tmp_var), sizeof($styp));')
 						}
@@ -1639,7 +1639,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 							g.expr(stmt.expr)
 							g.writeln(';')
 						} else {
-							g.write('opt_ok2(&($styp[]) { ')
+							g.write('_result_ok(&($styp[]) { ')
 							g.expr(stmt.expr)
 							g.writeln(' }, ($c.result_name*)(&$tmp_var), sizeof($styp));')
 						}
@@ -4324,10 +4324,14 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		typ_sym := g.table.sym(g.fn_decl.return_type)
 		mr_info := typ_sym.info as ast.MultiReturn
 		mut styp := ''
-		if fn_return_is_optional || fn_return_is_result {
+		if fn_return_is_optional {
 			g.writeln('$ret_typ $tmpvar;')
 			styp = g.base_type(g.fn_decl.return_type)
-			g.write('opt_ok2(&($styp/*X*/[]) { ')
+			g.write('_option_ok(&($styp[]) { ')
+		} else if fn_return_is_result {
+			g.writeln('$ret_typ $tmpvar;')
+			styp = g.base_type(g.fn_decl.return_type)
+			g.write('_result_ok(&($styp[]) { ')
 		} else {
 			if use_tmp_var {
 				g.write('$ret_typ $tmpvar = ')
@@ -4426,7 +4430,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		if fn_return_is_optional && !expr_type_is_opt && return_sym.name != c.option_name {
 			styp := g.base_type(g.fn_decl.return_type)
 			g.writeln('$ret_typ $tmpvar;')
-			g.write('opt_ok2(&($styp[]) { ')
+			g.write('_option_ok(&($styp[]) { ')
 			if !g.fn_decl.return_type.is_ptr() && node.types[0].is_ptr() {
 				if !(node.exprs[0] is ast.Ident && !g.is_amp) {
 					g.write('*')
@@ -4455,7 +4459,7 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 		if fn_return_is_result && !expr_type_is_result && return_sym.name != c.result_name {
 			styp := g.base_type(g.fn_decl.return_type)
 			g.writeln('$ret_typ $tmpvar;')
-			g.write('${c.result_name}_ok(&($styp[]) { ')
+			g.write('_result_ok(&($styp[]) { ')
 			if !g.fn_decl.return_type.is_ptr() && node.types[0].is_ptr() {
 				if !(node.exprs[0] is ast.Ident && !g.is_amp) {
 					g.write('*')

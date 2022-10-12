@@ -154,7 +154,7 @@ $enc_fn_dec {
 		}
 		// cJSON_delete
 		dec.writeln('\t${option_name}_$styp ret;')
-		dec.writeln('\topt_ok2(&res, ($option_name*)&ret, sizeof(res));')
+		dec.writeln('\t_option_ok(&res, ($option_name*)&ret, sizeof(res));')
 		dec.writeln('\treturn ret;\n}')
 		enc.writeln('\treturn o;\n}')
 		g.gowrappers.writeln(dec.str())
