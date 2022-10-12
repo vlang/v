@@ -37,7 +37,6 @@ pub fn mark_used(mut table ast.Table, pref &pref.Preferences, ast_files []&ast.F
 		'tos2',
 		'tos3',
 		'isnil',
-		'opt_ok2',
 		'_option_ok',
 		'_result_ok',
 		'error',
