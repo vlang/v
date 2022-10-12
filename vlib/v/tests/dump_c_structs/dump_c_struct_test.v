@@ -1,4 +1,5 @@
 #include "@VMODROOT/epoll.h"
+#include "@VMODROOT/netdb.h"
 
 pub struct C.epoll_event {
 mut:
@@ -19,6 +20,14 @@ struct Epoll {
 	ev C.epoll_event
 }
 
+struct C.hostent {
+	h_name      &char
+	h_aliases   &&char
+	h_addrtype  int
+	h_length    int
+	h_addr_list &&char
+}
+
 fn test_dump_c_struct() {
 	ev := C.epoll_event{}
 	unsafe { C.memset(&ev, 0, sizeof(ev)) }
@@ -30,5 +39,12 @@ fn test_dump_c_struct() {
 	}
 	dump(e)
 	println(e)
+	//
+	mut hostent := &C.hostent{
+		h_addr_list: unsafe { nil }
+		h_aliases: unsafe { nil }
+		h_name: unsafe { nil }
+	}
+	dump(hostent)
 	assert true
 }
