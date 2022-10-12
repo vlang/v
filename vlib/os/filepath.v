@@ -220,6 +220,24 @@ fn clean_path(path string) string {
 	return res
 }
 
+// to_slash returns the result of replacing each separator character
+// in path with a slash (`/`).
+pub fn to_slash(path string) string {
+	if path_separator == '/' {
+		return path
+	}
+	return path.replace(path_separator, '/')
+}
+
+// from_slash returns the result of replacing each slash (`/`) character
+// is path with a separator character.
+pub fn from_slash(path string) string {
+	if path_separator == '/' {
+		return path
+	}
+	return path.replace('/', path_separator)
+}
+
 // win_volume_len returns the length of the
 // Windows volume/drive from the given `path`.
 fn win_volume_len(path string) int {
