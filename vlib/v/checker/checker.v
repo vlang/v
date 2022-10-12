@@ -1070,7 +1070,9 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 					return
 				}
 				if c.check_types(stmt.typ, expr_return_type) {
-					return
+					if stmt.typ.is_ptr() == expr_return_type.is_ptr() {
+						return
+					}
 				}
 				// opt_returning_string() or { ... 123 }
 				type_name := c.table.type_to_str(stmt.typ)
