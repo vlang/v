@@ -380,3 +380,13 @@ fn test_return_or() {
 	x := foo2() or { return }
 	assert x == 0
 }
+
+// For issue #16058: cgen error: exists spaces in the name of the ?&C.struct
+fn bar() ?&C.stat {
+	return none
+}
+
+fn test_optional_ref_c_struct_gen() {
+	_ := bar() or { &C.stat{} }
+	assert true
+}
