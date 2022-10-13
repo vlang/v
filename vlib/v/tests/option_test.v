@@ -395,17 +395,21 @@ struct Bar {}
 
 fn get_bar(should_return_value bool) ?&Bar {
 	if should_return_value {
-		return &Bar{}
+		return unsafe { nil }
 	}
 	return none
 }
 
 fn test_() {
+	a := get_bar(true)?
+	assert a == unsafe { nil }
+	//
 	x := get_bar(false) or {
 		assert true
 		unsafe { nil }
 	}
 	assert x == unsafe { nil }
+	//
 	get_bar(false) or { unsafe { nil } }
 	assert true
 }
