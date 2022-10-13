@@ -380,3 +380,16 @@ fn test_return_or() {
 	x := foo2() or { return }
 	assert x == 0
 }
+
+// For issue #16062: checker disallow the return of voidptr(nil) in or block
+struct Bar {}
+
+fn bar() ?&Bar {
+	return unsafe { nil }
+}
+
+fn test_() {
+	_ := bar() or { unsafe { nil } }
+	bar() or { unsafe { nil } }
+	assert true
+}
