@@ -253,7 +253,7 @@ fn (d Decoder) decode_date_time(mut dt ast.DateTime) ? {
 		if ms.len > 1 {
 			return
 		}
-		ms = ms + '0'.repeat(4 - ms.len) + z
+		ms = ms + '0'.repeat(6 - ms.len) + z
 		dt.text = yymmddhhmmss + '.' + ms + offset
 	}
 }
