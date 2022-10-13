@@ -411,3 +411,12 @@ fn test_sample() {
 		assert element in a
 	}
 }
+
+fn test_element() {
+	a := ['one', 'two', 'four', 'five', 'six', 'seven']
+	for _ in 0 .. 30 {
+		e := rand.element(a)?
+		assert e in a
+		assert 'three' != e
+	}
+}
