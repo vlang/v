@@ -1,7 +1,6 @@
 module main
 
 import vweb
-import databases
 
 const (
 	http_port = 8081
@@ -12,7 +11,7 @@ struct App {
 }
 
 fn main() {
-	mut db := databases.create_db_connection() or { panic(err) }
+	mut db := create_db_connection() or { panic(err) }
 
 	sql db {
 		create table User

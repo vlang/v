@@ -2,7 +2,6 @@ module main
 
 import vweb
 import json
-import databases
 
 ['/user/:id/get'; get]
 pub fn (mut app App) controller_get_user_by_id(id int) vweb.Result {
@@ -55,7 +54,7 @@ pub fn (mut app App) controller_get_by_username(username string) vweb.Result {
 
 ['/user/drop'; delete]
 pub fn (mut app App) delete() vweb.Result {
-	mut db := databases.create_db_connection() or {
+	mut db := create_db_connection() or {
 		app.set_status(400, '')
 		return app.text('$err')
 	}
