@@ -139,8 +139,7 @@ fn gen_footer_text(d &doc.Doc, include_timestamp bool) string {
 
 fn color_highlight(code string, tb &ast.Table) string {
 	builtin := ['bool', 'string', 'i8', 'i16', 'int', 'i64', 'i128', 'isize', 'byte', 'u8', 'u16',
-		'u32', 'u64', 'usize', 'u128', 'rune', 'f32', 'f64', 'int_literal', 'float_literal',
-		'byteptr', 'voidptr', 'any']
+		'u32', 'u64', 'usize', 'u128', 'rune', 'f32', 'f64', 'byteptr', 'voidptr', 'any']
 	highlight_code := fn (tok token.Token, typ HighlightTokenTyp) string {
 		mut lit := ''
 		match typ {
