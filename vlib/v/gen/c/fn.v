@@ -635,7 +635,17 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	// NOTE: everything could be done this way
 	// see my comment in parser near anon_fn
 	if node.left is ast.AnonFn {
-		g.expr(node.left)
+		if node.left.inherited_vars.len > 0 {
+			tmp_var := g.new_tmp_var()
+			fn_type := g.fn_var_signature(node.left.decl.return_type, node.left.decl.params.map(it.typ),
+				tmp_var)
+			g.write('$fn_type = ')
+			g.expr(node.left)
+			g.writeln(';')
+			g.write(tmp_var)
+		} else {
+			g.expr(node.left)
+		}
 	} else if node.left is ast.IndexExpr && node.name == '' {
 		g.is_fn_index_call = true
 		g.expr(node.left)

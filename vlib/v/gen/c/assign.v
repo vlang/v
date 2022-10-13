@@ -529,9 +529,6 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 		styp := if ident.name in g.defer_vars { '' } else { g.typ(node.left_types[i]) }
 		if node.op == .decl_assign {
 			g.write('$styp ')
-			if is_auto_heap {
-				g.write('*')
-			}
 		}
 		if lx.is_auto_deref_var() {
 			g.write('*')
