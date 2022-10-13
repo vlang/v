@@ -398,7 +398,7 @@ fn get_bar() ?&Bar {
 }
 
 fn test_() {
-	_ := bar() or { unsafe { nil } }
-	bar() or { unsafe { nil } }
+	_ := get_bar() or { unsafe { nil } }
+	get_bar() or { unsafe { nil } }
 	assert true
 }
