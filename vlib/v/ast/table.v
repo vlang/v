@@ -975,6 +975,8 @@ pub fn (t &Table) thread_name(return_type Type) string {
 	if return_type.idx() == void_type_idx {
 		if return_type.has_flag(.optional) {
 			return 'thread ?'
+		} else if return_type.has_flag(.result) {
+			return 'thread !'
 		} else {
 			return 'thread'
 		}
@@ -991,6 +993,8 @@ pub fn (t &Table) thread_cname(return_type Type) string {
 	if return_type == void_type {
 		if return_type.has_flag(.optional) {
 			return '__v_thread_Option_void'
+		} else if return_type.has_flag(.result) {
+			return '__v_thread_Result_void'
 		} else {
 			return '__v_thread'
 		}
