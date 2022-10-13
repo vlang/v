@@ -20,8 +20,11 @@ fn test_native() {
 	dir := os.join_path(vroot, 'vlib/v/gen/native/tests')
 	files := os.ls(dir) or { panic(err) }
 	//
-	wrkdir := os.join_path(os.temp_dir(), 'vtests', 'native')
+	wrkdir := os.join_path(os.temp_dir(), 'v', 'tests', 'native')
 	os.mkdir_all(wrkdir) or { panic(err) }
+	defer {
+		os.rmdir_all(wrkdir) or {}
+	}
 	os.chdir(wrkdir) or {}
 	tests := files.filter(it.ends_with('.vv'))
 	if tests.len == 0 {
@@ -37,7 +40,7 @@ fn test_native() {
 		work_test_path := '$wrkdir/$test_file_name'
 		exe_test_path := '$wrkdir/${test_file_name}.exe'
 		tmperrfile := '$dir/${test}.tmperr'
-		cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(exe_test_path)} -b native ${os.quoted_path(full_test_path)} 2> ${os.quoted_path(tmperrfile)}'
+		cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(exe_test_path)} -b native ${os.quoted_path(full_test_path)} -d custom_define 2> ${os.quoted_path(tmperrfile)}'
 		if is_verbose {
 			println(cmd)
 		}

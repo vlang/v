@@ -6,6 +6,7 @@ module parser
 import v.ast
 import v.token
 import v.util
+import os
 
 pub fn (mut p Parser) call_expr(language ast.Language, mod string) ast.CallExpr {
 	first_pos := p.tok.pos()
@@ -399,6 +400,16 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	is_test := (!is_method && params.len == 0) && p.inside_test_file
 		&& (short_fn_name.starts_with('test_') || short_fn_name.starts_with('testsuite_'))
 	file_mode := p.file_backend_mode
+	if is_main {
+		if _ := p.table.find_fn('main.main') {
+			if '.' in os.args {
+				p.error_with_pos('multiple `main` functions detected, and you ran `v .`
+perhaps there are multiple V programs in this directory, and you need to
+run them via `v file.v` instead',
+					name_pos)
+			}
+		}
+	}
 	// Register
 	if is_method {
 		mut type_sym := p.table.sym(rec.typ)
@@ -956,7 +967,8 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 				}
 			}
 			if is_variadic {
-				typ = ast.new_type(p.table.find_or_register_array(typ)).derive(typ).set_flag(.variadic)
+				// derive flags, however nr_muls only needs to be set on the array elem type, so clear it on the arg type
+				typ = ast.new_type(p.table.find_or_register_array(typ)).derive(typ).set_nr_muls(0).set_flag(.variadic)
 			}
 			for i, arg_name in arg_names {
 				alanguage := p.table.sym(typ).language
@@ -971,7 +983,7 @@ fn (mut p Parser) fn_args() ([]ast.Param, bool, bool) {
 					type_pos: type_pos[i]
 				}
 				// if typ.typ.kind == .variadic && p.tok.kind == .comma {
-				if is_variadic && p.tok.kind == .comma {
+				if is_variadic && p.tok.kind == .comma && p.peek_tok.kind != .rpar {
 					p.error_with_pos('cannot use ...(variadic) with non-final parameter $arg_name',
 						arg_pos[i])
 					return []ast.Param{}, false, false

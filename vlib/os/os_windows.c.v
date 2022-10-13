@@ -63,9 +63,9 @@ mut:
 struct StartupInfo {
 mut:
 	cb                 u32
-	lp_reserved        &u16
-	lp_desktop         &u16
-	lp_title           &u16
+	lp_reserved        &u16 = unsafe { nil }
+	lp_desktop         &u16 = unsafe { nil }
+	lp_title           &u16 = unsafe { nil }
 	dw_x               u32
 	dw_y               u32
 	dw_x_size          u32
@@ -76,7 +76,7 @@ mut:
 	dw_flags           u32
 	w_show_window      u16
 	cb_reserved2       u16
-	lp_reserved2       &u8
+	lp_reserved2       &u8 = unsafe { nil }
 	h_std_input        voidptr
 	h_std_output       voidptr
 	h_std_error        voidptr
@@ -428,7 +428,7 @@ pub:
 	// status_ constants
 	code        u32
 	flags       u32
-	record      &ExceptionRecord
+	record      &ExceptionRecord = unsafe { nil }
 	address     voidptr
 	param_count u32
 	// params []voidptr
@@ -440,8 +440,8 @@ pub struct ContextRecord {
 
 pub struct ExceptionPointers {
 pub:
-	exception_record &ExceptionRecord
-	context_record   &ContextRecord
+	exception_record &ExceptionRecord = unsafe { nil }
+	context_record   &ContextRecord   = unsafe { nil }
 }
 
 pub type VectoredExceptionHandler = fn (&ExceptionPointers) u32

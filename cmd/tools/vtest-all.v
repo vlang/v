@@ -169,6 +169,11 @@ fn get_all_commands() []Command {
 			okmsg: 'V compiles hello_world.v on the JS backend, with -skip-unused'
 			rmfile: 'hw_skip_unused.js'
 		}
+		res << Command{
+			line: '$vexe -skip-unused examples/2048'
+			okmsg: 'V can compile 2048 with -skip-unused.'
+			rmfile: 'examples/2048/2048'
+		}
 	}
 	res << Command{
 		line: '$vexe -o vtmp cmd/v'
@@ -256,6 +261,31 @@ fn get_all_commands() []Command {
 			label: 'v.c should be buildable with no warnings...'
 			okmsg: 'v.c can be compiled without warnings. This is good :)'
 			rmfile: 'v.c'
+		}
+	}
+	$if linux {
+		res << Command{
+			line: '$vexe vlib/v/tests/bench/bench_stbi_load.v && prlimit -v10485760 vlib/v/tests/bench/bench_stbi_load'
+			okmsg: 'STBI load does not leak with GC on, when loading images multiple times (use < 10MB)'
+			runcmd: .execute
+			contains: 'logo.png 1000 times.'
+			rmfile: 'vlib/v/tests/bench/bench_stbi_load'
+		}
+	}
+	$if !windows {
+		res << Command{
+			line: '$vexe -raw-vsh-tmp-prefix tmp vlib/v/tests/script_with_no_extension'
+			okmsg: 'V can crun a script, that lacks a .vsh extension'
+			runcmd: .execute
+			expect: 'Test\n'
+			rmfile: 'vlib/v/tests/tmp.script_with_no_extension'
+		}
+
+		res << Command{
+			line: '$vexe -raw-vsh-tmp-prefix tmp run vlib/v/tests/script_with_no_extension'
+			okmsg: 'V can run a script, that lacks a .vsh extension'
+			runcmd: .execute
+			expect: 'Test\n'
 		}
 	}
 	return res

@@ -25,6 +25,15 @@ $if ios {
 	#flag -DSOKOL_METAL
 	#flag -framework Foundation -framework Metal -framework MetalKit -framework UIKit
 }
+
+$if emscripten ? {
+	#flag -DSOKOL_GLES2
+	#flag -DSOKOL_NO_ENTRY
+	#flag -s ERROR_ON_UNDEFINED_SYMBOLS=0
+	#flag -s ASSERTIONS=1
+	#flag -s MODULARIZE
+}
+
 // OPENGL
 #flag linux -DSOKOL_GLCORE33
 #flag freebsd -DSOKOL_GLCORE33

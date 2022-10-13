@@ -4,7 +4,7 @@ import v.ast
 
 struct JsDoc {
 mut:
-	gen &JsGen
+	gen &JsGen = unsafe { nil }
 }
 
 fn new_jsdoc(gen &JsGen) &JsDoc {

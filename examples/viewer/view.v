@@ -60,7 +60,7 @@ enum Viewer_state {
 
 struct App {
 mut:
-	gg          &gg.Context
+	gg          &gg.Context = unsafe { nil }
 	pip_viewer  sgl.Pipeline
 	texture     gfx.Image
 	init_flag   bool
@@ -88,13 +88,13 @@ mut:
 	img_h     int
 	img_ratio f32 = 1.0
 	// item list
-	item_list &Item_list
+	item_list &Item_list = unsafe { nil }
 	// Text info and help
 	show_info_flag bool = true
 	show_help_flag bool
 	// zip container
-	zip       &szip.Zip // pointer to the szip structure
-	zip_index int = -1 // index of the zip contaire item
+	zip       &szip.Zip = unsafe { nil } // pointer to the szip structure
+	zip_index int       = -1 // index of the zip contaire item
 	// memory buffer
 	mem_buf      voidptr // buffer used to load items from files/containers
 	mem_buf_size int     // size of the buffer
@@ -444,7 +444,7 @@ fn frame(mut app App) {
 	if app.show_info_flag == true && app.scale > 1 {
 		mut bw := f32(0.25)
 		mut bh := f32(0.25 / app.img_ratio)
-		
+
 		// manage the rotations
 		if rotation & 1 == 1 {
 			bw,bh = bh,bw
@@ -454,11 +454,11 @@ fn frame(mut app App) {
 		if rotation & 1 == 1 {
 			bx,by = by,bx
 		}
-		
+
 		bh_old1 := bh
 		bh *= ratio
 		by += (bh_old1 - bh)
-		
+
 		// draw the zoom icon
 		sgl.begin_quads()
 		r := int(u32(rotation) << 1)
@@ -467,17 +467,17 @@ fn frame(mut app App) {
 		sgl.v2f_t2f_c3b(bx + bw, by + bh, uv[(4 + r) & 7] , uv[(5 + r) & 7], c[0], c[1], c[2])
 		sgl.v2f_t2f_c3b(bx     , by + bh, uv[(6 + r) & 7] , uv[(7 + r) & 7], c[0], c[1], c[2])
 		sgl.end()
-		
+
 		// draw the zoom rectangle
 		sgl.disable_texture()
-		
+
 		bw_old := bw
 		bh_old := bh
 		bw /=  app.scale
 		bh /=  app.scale
 		bx += (bw_old - bw) / 2 - (tr_x / 8) / app.scale
 		by += (bh_old - bh) / 2 - ((tr_y / 8) / app.scale) * ratio
-		
+
 		c = [u8(255),255,0]! // yellow
 		sgl.begin_line_strip()
 		sgl.v2f_c3b(bx     , by     , c[0], c[1], c[2])
@@ -517,7 +517,7 @@ fn frame(mut app App) {
 			scale_str := "${app.scale:.2}"
 			text := "${num}/${of_num} [${app.img_w},${app.img_h}]=>[${x_screen},${y_screen}] ${app.item_list.lst[app.item_list.item_index].name} scale: ${scale_str} rotation: ${rotation_angle}"
 			//text := "${num}/${of_num}"
-			draw_text(mut app, text, 10, 10, 20)		
+			draw_text(mut app, text, 10, 10, 20)
 			unsafe{
 				text.free()
 			}
@@ -761,8 +761,6 @@ fn load_and_show(file_list []string, mut app App) {
 * Main
 *
 ******************************************************************************/
-// is needed for easier diagnostics on windows
-[console]
 fn main() {
 	// mut font_path := os.resource_abs_path(os.join_path('../assets/fonts/', 'RobotoMono-Regular.ttf'))
 	font_name := 'RobotoMono-Regular.ttf'

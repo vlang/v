@@ -14,7 +14,7 @@ fn (alarms Alarms) add(alarm time.Time) {
 	}
 }
 
-fn test_sorting_shared_arrays() ? {
+fn test_sorting_shared_arrays() {
 	alarms := Alarms{}
 	utc := time.utc()
 	alarms.add(utc)

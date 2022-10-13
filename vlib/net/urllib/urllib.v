@@ -303,13 +303,9 @@ fn escape(s string, mode EncodingMode) string {
 }
 
 // A URL represents a parsed URL (technically, a URI reference).
-//
 // The general form represented is:
-//
 // [scheme:][//[userinfo@]host][/]path[?query][#fragment]
-//
 // URLs that do not start with a slash after the scheme are interpreted as:
-//
 // scheme:opaque[?query][#fragment]
 //
 // Note that the path field is stored in decoded form: /%47%6f%2f becomes /Go/.
@@ -324,13 +320,18 @@ pub struct URL {
 pub mut:
 	scheme      string
 	opaque      string    // encoded opaque data
-	user        &Userinfo // username and password information
+	user        &Userinfo = unsafe { nil } // username and password information
 	host        string    // host or host:port
 	path        string    // path (relative paths may omit leading slash)
 	raw_path    string    // encoded path hint (see escaped_path method)
 	force_query bool      // append a query ('?') even if raw_query is empty
 	raw_query   string    // encoded query values, without '?'
 	fragment    string    // fragment for references, without '#'
+}
+
+// debug returns a string representation of *ALL* the fields of the given URL
+pub fn (url &URL) debug() string {
+	return 'URL{\n  scheme: $url.scheme\n  opaque: $url.opaque\n  user: $url.user\n  host: $url.host\n  path: $url.path\n  raw_path: $url.raw_path\n  force_query: $url.force_query\n  raw_query: $url.raw_query\n  fragment: $url.fragment\n}'
 }
 
 // user returns a Userinfo containing the provided username
@@ -529,7 +530,7 @@ fn parse_url(rawurl string, via_request bool) ?URL {
 }
 
 struct ParseAuthorityRes {
-	user &Userinfo
+	user &Userinfo = unsafe { nil }
 	host string
 }
 

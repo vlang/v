@@ -227,7 +227,7 @@ fn (mut a array) push_noscan(val voidptr) {
 // `val` is array.data and user facing usage is `a << [1,2,3]`
 [unsafe]
 fn (mut a3 array) push_many_noscan(val voidptr, size int) {
-	if size <= 0 || isnil(val) {
+	if size <= 0 || val == unsafe { nil } {
 		return
 	}
 	if a3.data == val && a3.data != 0 {

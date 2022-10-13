@@ -12,8 +12,9 @@ const (
 	max_u64  = u64(18446744073709551615) // as u64 // use this until we add support
 )
 
+[inline]
 pub fn byte_to_lower(c u8) u8 {
-	return c | (`x` - `X`)
+	return c | 32
 }
 
 // common_parse_uint is called by parse_uint and allows the parsing
@@ -34,14 +35,14 @@ pub fn common_parse_uint(s string, _base int, _bit_size int, error_on_non_digit 
 
 // the first returned value contains the parsed value,
 // the second returned value contains the error code (0 = OK, >1 = index of first non-parseable character + 1, -1 = wrong base, -2 = wrong bit size, -3 = overflow)
+[direct_array_access]
 pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
-	mut bit_size := _bit_size
-	mut base := _base
 	if s.len < 1 || !underscore_ok(s) {
 		// return error('parse_uint: syntax error $s')
 		return u64(0), 1
 	}
-	base0 := base == 0
+	mut bit_size := _bit_size
+	mut base := _base
 	mut start_index := 0
 	if 2 <= base && base <= 36 {
 		// valid base; nothing to do
@@ -49,13 +50,13 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 		// Look for octal, hex prefix.
 		base = 10
 		if s[0] == `0` {
-			if s.len >= 3 && byte_to_lower(s[1]) == `b` {
+			if s.len >= 3 && s[1] | 32 == `b` {
 				base = 2
 				start_index += 2
-			} else if s.len >= 3 && byte_to_lower(s[1]) == `o` {
+			} else if s.len >= 3 && s[1] | 32 == `o` {
 				base = 8
 				start_index += 2
-			} else if s.len >= 3 && byte_to_lower(s[1]) == `x` {
+			} else if s.len >= 3 && s[1] | 32 == `x` {
 				base = 16
 				start_index += 2
 			}
@@ -85,10 +86,10 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 	mut n := u64(0)
 	for i in start_index .. s.len {
 		c := s[i]
-		cl := byte_to_lower(c)
+		cl := c | 32
 
 		mut d := u8(0)
-		if c == `_` && base0 {
+		if c == `_` && _base == 0 {
 			// underscore_ok already called
 			continue
 		} else if `0` <= c && c <= `9` {
@@ -125,13 +126,17 @@ pub fn parse_uint(s string, _base int, _bit_size int) ?u64 {
 
 // common_parse_int is called by parse int and allows the parsing
 // to stop on non or invalid digit characters and return with an error
+[direct_array_access]
 pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit bool, error_on_high_digit bool) ?i64 {
-	mut s := _s
-	mut bit_size := _bit_size
-	if s.len < 1 {
+	if _s.len < 1 {
 		// return error('parse_int: syntax error $s')
 		return i64(0)
 	}
+	mut bit_size := _bit_size
+	if bit_size == 0 {
+		bit_size = strconv.int_size
+	}
+	mut s := _s
 	// Pick off leading sign.
 	mut neg := false
 	if s[0] == `+` {
@@ -147,9 +152,6 @@ pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit b
 	un := common_parse_uint(s, base, bit_size, error_on_non_digit, error_on_high_digit)?
 	if un == 0 {
 		return i64(0)
-	}
-	if bit_size == 0 {
-		bit_size = strconv.int_size
 	}
 	// TODO: check should u64(bit_size-1) be size of int (32)?
 	cutoff := u64(1) << u64(bit_size - 1)
@@ -181,9 +183,10 @@ pub fn parse_int(_s string, base int, _bit_size int) ?i64 {
 }
 
 // atoi is equivalent to parse_int(s, 10, 0), converted to type int.
+[direct_array_access]
 pub fn atoi(s string) ?int {
 	if s == '' {
-		return error('strconv.atoi: parsing "$s": invalid syntax ')
+		return error('strconv.atoi: parsing "": invalid syntax')
 	}
 	if (strconv.int_size == 32 && (0 < s.len && s.len < 10))
 		|| (strconv.int_size == 64 && (0 < s.len && s.len < 19)) {
@@ -193,7 +196,7 @@ pub fn atoi(s string) ?int {
 			start_idx++
 			if s.len - start_idx < 1 {
 				// return 0, &NumError{fnAtoi, s0, ErrSyntax}
-				return error('strconv.atoi: parsing "$s": invalid syntax ')
+				return error('strconv.atoi: parsing "$s": invalid syntax')
 			}
 		}
 		mut n := 0
@@ -201,7 +204,7 @@ pub fn atoi(s string) ?int {
 			ch := s[i] - `0`
 			if ch > 9 {
 				// return 0, &NumError{fnAtoi, s0, ErrSyntax}
-				return error('strconv.atoi: parsing "$s": invalid syntax ')
+				return error('strconv.atoi: parsing "$s": invalid syntax')
 			}
 			n = n * 10 + int(ch)
 		}
@@ -215,6 +218,7 @@ pub fn atoi(s string) ?int {
 // underscore_ok reports whether the underscores in s are allowed.
 // Checking them in this one function lets all the parsers skip over them simply.
 // Underscore must appear only between digits or between a base prefix and a digit.
+[direct_array_access]
 fn underscore_ok(s string) bool {
 	// saw tracks the last character (class) we saw:
 	// ^ for beginning of number,
@@ -229,17 +233,16 @@ fn underscore_ok(s string) bool {
 	}
 	// Optional base prefix.
 	mut hex := false
-	if s.len - i >= 2 && s[i] == `0` && (byte_to_lower(s[i + 1]) == `b`
-		|| byte_to_lower(s[i + 1]) == `o` || byte_to_lower(s[i + 1]) == `x`) {
+	if (s.len - i >= 2) && (s[i] == `0`) && (((s[i + 1] | 32) == `b`)
+		|| ((s[i + 1] | 32) == `o`) || ((s[i + 1] | 32) == `x`)) {
 		saw = `0` // base prefix counts as a digit for "underscore as digit separator"
-		hex = byte_to_lower(s[i + 1]) == `x`
+		hex = (s[i + 1] | 32) == `x`
 		i += 2
 	}
 	// Number proper.
 	for ; i < s.len; i++ {
 		// Digits are always okay.
-		if (`0` <= s[i] && s[i] <= `9`) || (hex && `a` <= byte_to_lower(s[i])
-			&& byte_to_lower(s[i]) <= `f`) {
+		if (`0` <= s[i] && s[i] <= `9`) || ((hex && `a` <= (s[i] | 32)) && ((s[i] | 32) <= `f`)) {
 			saw = `0`
 			continue
 		}

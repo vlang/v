@@ -59,34 +59,18 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 					c.expected_type = node.expected_type
 				}
 				expr_type := c.expr(stmt.expr)
+				stmt.typ = expr_type
 				if first_iteration {
 					if node.is_expr && (node.expected_type.has_flag(.optional)
+						|| node.expected_type.has_flag(.result)
 						|| c.table.type_kind(node.expected_type) in [.sum_type, .multi_return]) {
+						c.check_match_branch_last_stmt(stmt, node.expected_type, expr_type)
 						ret_type = node.expected_type
 					} else {
 						ret_type = expr_type
 					}
-					stmt.typ = expr_type
 				} else if node.is_expr && ret_type.idx() != expr_type.idx() {
-					if !c.check_types(ret_type, expr_type) && !c.check_types(expr_type, ret_type) {
-						ret_sym := c.table.sym(ret_type)
-						is_noreturn := is_noreturn_callexpr(stmt.expr)
-						if !(node.is_expr && ret_sym.kind == .sum_type
-							&& (ret_type.has_flag(.generic)
-							|| c.table.is_sumtype_or_in_variant(ret_type, expr_type)))
-							&& !is_noreturn {
-							expr_sym := c.table.sym(expr_type)
-							if expr_sym.kind == .multi_return && ret_sym.kind == .multi_return {
-								ret_types := ret_sym.mr_info().types
-								expr_types := expr_sym.mr_info().types.map(ast.mktyp(it))
-								if expr_types == ret_types {
-									continue
-								}
-							}
-							c.error('return type mismatch, it should be `$ret_sym.name`',
-								stmt.expr.pos())
-						}
-					}
+					c.check_match_branch_last_stmt(stmt, ret_type, expr_type)
 				}
 			} else {
 				if node.is_expr && ret_type != ast.void_type {
@@ -136,6 +120,25 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	return ret_type
 }
 
+fn (mut c Checker) check_match_branch_last_stmt(last_stmt ast.ExprStmt, ret_type ast.Type, expr_type ast.Type) {
+	if !c.check_types(ret_type, expr_type) && !c.check_types(expr_type, ret_type) {
+		ret_sym := c.table.sym(ret_type)
+		is_noreturn := is_noreturn_callexpr(last_stmt.expr)
+		if !(ret_sym.kind == .sum_type && (ret_type.has_flag(.generic)
+			|| c.table.is_sumtype_or_in_variant(ret_type, expr_type))) && !is_noreturn {
+			expr_sym := c.table.sym(expr_type)
+			if expr_sym.kind == .multi_return && ret_sym.kind == .multi_return {
+				ret_types := ret_sym.mr_info().types
+				expr_types := expr_sym.mr_info().types.map(ast.mktyp(it))
+				if expr_types == ret_types {
+					return
+				}
+			}
+			c.error('return type mismatch, it should be `$ret_sym.name`', last_stmt.pos)
+		}
+	}
+}
+
 fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSymbol) {
 	// branch_exprs is a histogram of how many times
 	// an expr was used in the match
@@ -161,7 +164,8 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 							c.error('start value is higher than end value', branch.pos)
 						}
 					} else {
-						c.error('mismatched range types', low_expr.pos)
+						c.error('mismatched range types - $expr.low is an integer, but $expr.high is not',
+							low_expr.pos)
 					}
 				} else if low_expr is ast.CharLiteral {
 					if high_expr is ast.CharLiteral && final_cond_sym.kind in [.u8, .char, .rune] {
@@ -171,7 +175,9 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 							c.error('start value is higher than end value', branch.pos)
 						}
 					} else {
-						c.error('mismatched range types', low_expr.pos)
+						typ := c.table.type_to_str(c.expr(node.cond))
+						c.error('mismatched range types - trying to match `$node.cond`, which has type `$typ`, against a range of `rune`',
+							low_expr.pos)
 					}
 				} else {
 					typ := c.table.type_to_str(c.expr(expr.low))

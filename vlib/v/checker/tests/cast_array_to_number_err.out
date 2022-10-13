@@ -1,0 +1,7 @@
+vlib/v/checker/tests/cast_array_to_number_err.vv:5:8: error: cannot cast array `[]u8` to `i16`
+    3 | fn main() {
+    4 |     bytes := '010000150107120508d37445a0d7e5c5071980710c64310d9e12043000777369ff0424ab78b91a05164b00e50034003300'
+    5 |     yr := i16(hx.decode(bytes.substr(6,8))?)
+      |           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    6 |     println(bytes)
+    7 |     println('yr: $yr')

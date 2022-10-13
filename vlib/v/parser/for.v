@@ -15,6 +15,8 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 	}
 	// defer { p.close_scope() }
 	// Infinite loop
+	mut comments := []ast.Comment{}
+	comments << p.eat_comments()
 	if p.tok.kind == .lcbr {
 		p.inside_for = false
 		stmts := p.parse_block_no_scope(false)
@@ -22,6 +24,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		for_stmt := ast.ForStmt{
 			stmts: stmts
 			pos: pos
+			comments: comments
 			is_inf: true
 			scope: p.scope
 		}
@@ -46,6 +49,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			init = p.assign_stmt()
 			has_init = true
 		}
+		comments << p.eat_comments()
 		// Allow `for ;; i++ {`
 		// Allow `for i = 0; i < ...`
 		p.check(.semicolon)
@@ -54,17 +58,21 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			if p.tok.kind == .name && p.peek_tok.kind in [.inc, .dec] {
 				return p.error('cannot use $p.tok.lit$p.peek_tok.kind as value')
 			}
+			comments << p.eat_comments()
 			cond = p.expr(0)
 			has_cond = true
 		}
+		comments << p.eat_comments()
 		p.check(.semicolon)
 		if !is_multi {
 			is_multi = p.peek_tok.kind == .comma
 		}
+		comments << p.eat_comments()
 		if p.tok.kind != .lcbr {
 			inc = p.stmt(false)
 			has_inc = true
 		}
+		comments << p.eat_comments()
 		p.inside_for = false
 		stmts := p.parse_block_no_scope(false)
 		pos.update_last_line(p.prev_tok.line_nr)
@@ -78,6 +86,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			cond: cond
 			inc: inc
 			pos: pos
+			comments: comments
 			scope: p.scope
 		}
 		p.close_scope()
@@ -128,10 +137,12 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			return p.error_with_pos('redefinition of value iteration variable `$val_var_name`, use `for ($val_var_name in array) {` if you want to check for a condition instead',
 				val_var_pos)
 		}
+		comments << p.eat_comments()
 		p.check(.key_in)
 		if p.tok.kind == .name && p.tok.lit in [key_var_name, val_var_name] {
 			return p.error('in a `for x in array` loop, the key or value iteration variable `$p.tok.lit` can not be the same as the array variable')
 		}
+		comments << p.eat_comments()
 		// arr_expr
 		cond := p.expr(0)
 		// 0 .. 10
@@ -168,6 +179,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 				is_stack_obj: true
 			})
 		}
+		comments << p.eat_comments()
 		p.inside_for = false
 		stmts := p.parse_block_no_scope(false)
 		pos.update_last_line(p.prev_tok.line_nr)
@@ -180,6 +192,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			high: high_expr
 			is_range: is_range
 			pos: pos
+			comments: comments
 			val_is_mut: val_is_mut
 			scope: p.scope
 		}

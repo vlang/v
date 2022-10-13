@@ -12,8 +12,8 @@ pub struct EmbedFileData {
 	apath            string
 	compression_type string
 mut:
-	compressed        &u8
-	uncompressed      &u8
+	compressed        &u8 = unsafe { nil }
+	uncompressed      &u8 = unsafe { nil }
 	free_compressed   bool
 	free_uncompressed bool
 pub:
@@ -59,10 +59,10 @@ pub fn (original &EmbedFileData) to_bytes() []u8 {
 }
 
 pub fn (mut ed EmbedFileData) data() &u8 {
-	if !isnil(ed.uncompressed) {
+	if ed.uncompressed != unsafe { nil } {
 		return ed.uncompressed
 	}
-	if isnil(ed.uncompressed) && !isnil(ed.compressed) {
+	if ed.uncompressed == unsafe { nil } && ed.compressed != unsafe { nil } {
 		decoder := g_embed_file_decoders.decoders[ed.compression_type] or {
 			panic('EmbedFileData error: unknown compression of "$ed.path": "$ed.compression_type"')
 		}
@@ -100,7 +100,7 @@ pub struct EmbedFileIndexEntry {
 	id   int
 	path string
 	algo string
-	data &u8
+	data &u8 = unsafe { nil }
 }
 
 // find_index_entry_by_path is used internally by the V compiler:

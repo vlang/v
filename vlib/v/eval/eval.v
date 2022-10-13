@@ -19,9 +19,9 @@ pub fn new_eval(table &ast.Table, pref &pref.Preferences) Eval {
 type Symbol = Object | ast.EmptyStmt | ast.FnDecl
 
 pub struct Eval {
-	pref &pref.Preferences
+	pref &pref.Preferences = unsafe { nil }
 pub mut:
-	table                  &ast.Table
+	table                  &ast.Table = unsafe { nil }
 	mods                   map[string]map[string]Symbol
 	future_register_consts map[string]map[string]map[string]ast.ConstField // mod:file:name:field
 	local_vars             map[string]Var

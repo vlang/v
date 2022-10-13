@@ -6,7 +6,7 @@ fn func2() ?(int, int) {
 	return func1()?, 1
 }
 
-fn test_return_optional() ? {
+fn test_return_optional() {
 	a, b := func2()?
 	println('$a, $b')
 	assert a == 0

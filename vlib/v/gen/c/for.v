@@ -60,7 +60,7 @@ fn (mut g Gen) for_c_stmt(node ast.ForCStmt) {
 			g.stmt(node.init)
 			// Remove excess return and add space
 			if g.out.last_n(1) == '\n' {
-				g.out.go_back(1)
+				g.go_back(1)
 				g.empty_line = false
 				g.write(' ')
 			}
@@ -128,7 +128,25 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	g.loop_depth--
 }
 
-fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
+fn (mut g Gen) for_in_stmt(node_ ast.ForInStmt) {
+	mut node := unsafe { node_ }
+	if node.kind == .any {
+		g.inside_for_in_any_cond = true
+		unwrapped_typ := g.unwrap_generic(node.cond_type)
+		unwrapped_sym := g.table.sym(unwrapped_typ)
+		node.kind = unwrapped_sym.kind
+		node.cond_type = unwrapped_typ
+		if node.key_var.len > 0 {
+			key_type := match unwrapped_sym.kind {
+				.map { unwrapped_sym.map_info().key_type }
+				else { ast.int_type }
+			}
+			node.key_type = key_type
+			node.scope.update_var_type(node.key_var, key_type)
+		}
+		node.val_type = g.table.value_type(unwrapped_typ)
+		node.scope.update_var_type(node.val_var, node.val_type)
+	}
 	g.loop_depth++
 	if node.label.len > 0 {
 		g.writeln('\t$node.label: {}')
@@ -178,7 +196,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 				// instead of
 				// `int* val = ((int**)arr.data)[i];`
 				// right := if node.val_is_mut { styp } else { styp + '*' }
-				right := if node.val_is_mut {
+				right := if node.val_is_mut || node.val_is_ref {
 					'(($styp)$cond_var${op_field}data) + $i'
 				} else {
 					'(($styp*)$cond_var${op_field}data)[$i]'
@@ -295,7 +313,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 			} else {
 				val_styp := g.typ(node.val_type)
 				if node.val_type.is_ptr() {
-					if node.val_is_mut {
+					if node.val_is_mut || node.val_is_ref {
 						g.write('$val_styp ${c_name(node.val_var)} = &(*($val_styp)')
 					} else {
 						g.write('$val_styp ${c_name(node.val_var)} = (*($val_styp*)')
@@ -340,7 +358,7 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 			g.writeln('for (size_t $node.key_var = 0;; ++$node.key_var) {')
 		}
 		t_var := g.new_tmp_var()
-		receiver_typ := next_fn.params[0].typ
+		receiver_typ := g.unwrap_generic(next_fn.params[0].typ)
 		receiver_styp := g.typ(receiver_typ)
 		mut fn_name := receiver_styp.replace_each(['*', '', '.', '__']) + '_next'
 		receiver_sym := g.table.sym(receiver_typ)
@@ -384,5 +402,6 @@ fn (mut g Gen) for_in_stmt(node ast.ForInStmt) {
 	if node.label.len > 0 {
 		g.writeln('\t${node.label}__break: {}')
 	}
+	g.inside_for_in_any_cond = false
 	g.loop_depth--
 }

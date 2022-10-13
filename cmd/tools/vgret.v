@@ -359,6 +359,7 @@ fn take_screenshots(opt Options, app AppConfig) ![]string {
 				opt.verbose_eprintln('Running $app.abs_path $flags')
 				mut p_app := os.new_process(app.abs_path)
 				p_app.set_args(flags)
+				p_app.set_redirect_stdio()
 				p_app.run()
 
 				if !p_app.is_alive() {

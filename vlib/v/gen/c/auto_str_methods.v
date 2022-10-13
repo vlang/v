@@ -773,6 +773,10 @@ fn (g &Gen) type_to_fmt(typ ast.Type) StrIntpType {
 		// return '%C\\000' // a C string
 		return .si_s
 	}
+	typ_nr_muls := typ.nr_muls()
+	if typ_nr_muls > 1 {
+		return .si_p
+	}
 	sym := g.table.sym(typ)
 	if typ.is_ptr() && (typ.is_int_valptr() || typ.is_float_valptr()) {
 		return .si_s
@@ -902,7 +906,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 			g.get_str_fn(ftyp_noshared)
 		}
 
-		// manage the fact hat with float we use always the g representation
+		// with floats we use always the g representation:
 		if sym.kind !in [.f32, .f64] {
 			fn_body.write_string('{_SLIT("$quote_str"), ${int(base_fmt)}, {.${data_str(base_fmt)}=')
 		} else {
@@ -913,7 +917,8 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 		mut funcprefix := ''
 		mut func, mut caller_should_free := struct_auto_str_func(sym, field.typ, field_styp_fn_name,
 			field.name, sym_has_str_method, str_method_expects_ptr)
-		if field.typ in ast.cptr_types {
+		ftyp_nr_muls := field.typ.nr_muls()
+		if ftyp_nr_muls > 1 || field.typ in ast.cptr_types {
 			func = '(voidptr) it.$field.name'
 			caller_should_free = false
 		} else if ftyp_noshared.is_ptr() {
@@ -921,8 +926,8 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 			funcprefix += 'isnil(it.${c_name(field.name)})'
 			funcprefix += ' ? _SLIT("nil") : '
 			// struct, floats and ints have a special case through the _str function
-			if sym.kind !in [.struct_, .alias, .enum_] && !field.typ.is_int_valptr()
-				&& !field.typ.is_float_valptr() {
+			if sym.kind !in [.struct_, .alias, .enum_, .sum_type, .map, .interface_]
+				&& !field.typ.is_int_valptr() && !field.typ.is_float_valptr() {
 				funcprefix += '*'
 			}
 		}
@@ -932,7 +937,7 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, styp string, str_fn_name stri
 		} else {
 			// manage C charptr
 			if field.typ in ast.charptr_types {
-				fn_body.write_string('tos2((byteptr)$func)')
+				fn_body.write_string('tos4((byteptr)$func)')
 			} else {
 				if field.typ.is_ptr() && sym.kind == .struct_ {
 					funcprefix += '(indent_count > 25)? _SLIT("<probably circular>") : '

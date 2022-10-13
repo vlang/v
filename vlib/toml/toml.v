@@ -66,7 +66,7 @@ pub:
 // A document can be constructed from a `string` buffer or from a file path
 pub struct Doc {
 pub:
-	ast &ast.Root
+	ast &ast.Root = unsafe { nil }
 }
 
 // parse_file parses the TOML file in `path`.

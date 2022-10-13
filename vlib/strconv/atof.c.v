@@ -101,7 +101,7 @@ fn sub96(s2 u32, s1 u32, s0 u32, d2 u32, d1 u32, d0 u32) (u32, u32, u32) {
 
 // Utility functions
 fn is_digit(x u8) bool {
-	return (x >= strconv.c_zero && x <= strconv.c_nine) == true
+	return x >= strconv.c_zero && x <= strconv.c_nine
 }
 
 fn is_space(x u8) bool {
@@ -109,7 +109,7 @@ fn is_space(x u8) bool {
 }
 
 fn is_exp(x u8) bool {
-	return (x == `E` || x == `e`) == true
+	return x == `E` || x == `e`
 }
 
 // Possible parser return values.
@@ -124,6 +124,7 @@ enum ParserState {
 
 // parser tries to parse the given string into a number
 // NOTE: #TOFIX need one char after the last char of the number
+[direct_array_access]
 fn parser(s string) (ParserState, PrepNumber) {
 	mut digx := 0
 	mut result := ParserState.ok

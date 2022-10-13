@@ -1,0 +1,34 @@
+fn main() {
+	arr := [1, 2, 3, 4, 5]
+
+	optional_mapping_struct := fn (n int) ?MyStruct {
+		if n < 0 {
+			return none
+		} else {
+			return MyStruct{
+				my_field: n
+			}
+		}
+	}
+
+	arr_struct2 := arr.map(optional_mapping_struct)
+	println(arr_struct2)
+
+	arr_int2 := arr.map(optional_mapping_int)
+	println(arr_int2)
+
+	arr_filter := arr.filter(optional_mapping_int)
+	println(arr_filter)
+}
+
+struct MyStruct {
+	my_field int
+}
+
+fn optional_mapping_int(n int) ?int {
+	if n < 0 {
+		return none
+	} else {
+		return n
+	}
+}

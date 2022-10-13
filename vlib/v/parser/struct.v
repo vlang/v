@@ -6,7 +6,6 @@ module parser
 import v.ast
 import v.token
 import v.util
-import os
 
 fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	p.top_level_statement_start()
@@ -14,9 +13,12 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	attrs := p.attrs
 	p.attrs = []
 	start_pos := p.tok.pos()
-	is_pub := p.tok.kind == .key_pub
+	mut is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
+	}
+	if is_anon {
+		is_pub = true
 	}
 	is_union := p.tok.kind == .key_union
 	if p.tok.kind == .key_struct {
@@ -221,6 +223,9 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 					p.error_with_pos('duplicate field `$field_name`', type_pos)
 					return ast.StructDecl{}
 				}
+				if p.tok.kind == .lsbr {
+					p.error('cannot use attributes on embedded structs')
+				}
 				embed_field_names << field_name
 				embed_types << typ
 				embeds << ast.Embed{
@@ -355,15 +360,6 @@ fn (mut p Parser) struct_decl(is_anon bool) ast.StructDecl {
 	}
 	// allow duplicate c struct declarations
 	if ret == -1 && language != .c {
-		if _ := p.table.find_fn('main.main') {
-			if '.' in os.args {
-				p.error_with_pos('multiple `main` functions detected, and you ran `v .`
-perhaps there are multiple V programs in this directory, and you need to
-run them via `v file.v` instead',
-					name_pos)
-				return ast.StructDecl{}
-			}
-		}
 		p.error_with_pos('cannot register struct `$name`, another type with this name exists',
 			name_pos)
 		return ast.StructDecl{}

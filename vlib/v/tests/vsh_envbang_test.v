@@ -1,7 +1,7 @@
 import os
 import rand
 
-fn test_envbang_script_runs() ? {
+fn test_envbang_script_runs() {
 	env_location := '/usr/bin/env'
 	$if windows {
 		skip_test('windows does not support envbang lines')

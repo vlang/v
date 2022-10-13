@@ -84,7 +84,7 @@ mut:
 	vfiles          []VFileStat
 	opts            []string
 	rerun_channel   chan RerunCommand
-	child_process   &os.Process
+	child_process   &os.Process = unsafe { nil }
 	is_exiting      bool     // set by SIGINT/Ctrl-C
 	v_cycles        int      // how many times the worker has restarted the V compiler
 	scan_cycles     int      // how many times the worker has scanned for source file changes

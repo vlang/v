@@ -378,7 +378,11 @@ fn (mut g Gen) index_of_map(node ast.IndexExpr, sym ast.TypeSymbol) {
 	elem_type_str := if elem_sym.kind == .function {
 		'voidptr'
 	} else {
-		g.typ(elem_type)
+		if g.inside_return {
+			g.typ(elem_type)
+		} else {
+			g.typ(elem_type.clear_flag(.optional).clear_flag(.result))
+		}
 	}
 	get_and_set_types := elem_sym.kind in [.struct_, .map]
 	if g.is_assign_lhs && !g.is_arraymap_set && !get_and_set_types {

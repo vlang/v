@@ -20,7 +20,7 @@ const (
 // UI
 struct App_data {
 pub mut:
-	gg              &gg.Context
+	gg              &gg.Context = unsafe { nil }
 	sg_img          gfx.Image
 	init_flag       bool
 	frame_c         int
@@ -116,7 +116,6 @@ fn my_event_manager(mut ev gg.Event, mut app App_data) {
 	}
 }
 
-[console]
 fn main() {
 	mut app := &App_data{
 		gg: 0

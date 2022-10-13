@@ -50,7 +50,7 @@ fn (mut h HighScore) load() {
 
 struct App {
 mut:
-	gg         &gg.Context
+	gg         &gg.Context = unsafe { nil }
 	score      int
 	best       HighScore
 	snake      []Pos

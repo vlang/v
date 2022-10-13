@@ -69,7 +69,7 @@ fn run(args []string) ?string {
 }
 
 // test_iarna_toml_spec_tests run though 'testdata/iarna/toml-test/*' if found.
-fn test_iarna_toml_spec_tests() ? {
+fn test_iarna_toml_spec_tests() {
 	this_file := @FILE
 	test_root := os.join_path(os.dir(this_file), 'testdata', 'iarna', 'toml-test')
 	if os.is_dir(test_root) {

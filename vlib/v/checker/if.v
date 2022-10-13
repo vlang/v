@@ -179,83 +179,92 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			c.smartcast_cond_pos = token.Pos{}
 		}
 		if expr_required {
-			if branch.stmts.len > 0 && branch.stmts.last() is ast.ExprStmt {
-				mut last_expr := branch.stmts.last() as ast.ExprStmt
-				expr := last_expr.expr
-				if expr is ast.ConcatExpr {
-					for val in expr.vals {
-						c.check_expr_opt_call(val, c.expr(val))
+			if branch.stmts.len > 0 {
+				mut stmt := branch.stmts.last()
+				if mut stmt is ast.ExprStmt {
+					if mut stmt.expr is ast.ConcatExpr {
+						for val in stmt.expr.vals {
+							c.check_expr_opt_call(val, c.expr(val))
+						}
 					}
-				}
-				c.expected_type = former_expected_type
-				if c.expected_type.has_flag(.optional) {
-					if node.typ == ast.void_type {
+					c.expected_type = former_expected_type
+					if c.table.type_kind(c.expected_type) == .sum_type
+						&& c.table.is_sumtype_or_in_variant(c.expected_type, node.typ) {
 						node.is_expr = true
 						node.typ = c.expected_type
 					}
-				}
-				if c.expected_type.has_flag(.generic) {
-					if node.typ == ast.void_type {
-						node.is_expr = true
-						node.typ = c.unwrap_generic(c.expected_type)
-					}
-					continue
-				}
-				last_expr.typ = c.expr(last_expr.expr)
-				if c.table.type_kind(c.expected_type) == .multi_return
-					&& c.table.type_kind(last_expr.typ) == .multi_return {
-					if node.typ == ast.void_type {
-						node.is_expr = true
-						node.typ = c.expected_type
-					}
-				}
-				if last_expr.typ == ast.void_type && !is_noreturn_callexpr(last_expr.expr)
-					&& !c.skip_flags {
-					// cannot return void type and use it as expr in any circumstances
-					// (e.g. argument expression, variable declaration / assignment)
-					c.error('the final expression in `if` or `match`, must have a value of a non-void type',
-						last_expr.pos)
-					continue
-				}
-				if !c.check_types(last_expr.typ, node.typ) {
-					if node.typ == ast.void_type {
-						// first branch of if expression
-						node.is_expr = true
-						node.typ = last_expr.typ
-						continue
-					} else if node.typ in [ast.float_literal_type, ast.int_literal_type] {
-						if node.typ == ast.int_literal_type {
-							if last_expr.typ.is_int() || last_expr.typ.is_float() {
-								node.typ = last_expr.typ
-								continue
-							}
-						} else { // node.typ == float_literal
-							if last_expr.typ.is_float() {
-								node.typ = last_expr.typ
-								continue
-							}
+					if c.expected_type.has_flag(.optional) || c.expected_type.has_flag(.result) {
+						if node.typ == ast.void_type {
+							node.is_expr = true
+							node.typ = c.expected_type
 						}
 					}
-					if last_expr.typ in [ast.float_literal_type, ast.int_literal_type] {
-						if last_expr.typ == ast.int_literal_type {
-							if node.typ.is_int() || node.typ.is_float() {
-								continue
-							}
-						} else { // expr_type == float_literal
-							if node.typ.is_float() {
-								continue
-							}
+					if c.expected_type.has_flag(.generic) {
+						if node.typ == ast.void_type {
+							node.is_expr = true
+							node.typ = c.unwrap_generic(c.expected_type)
+						}
+						continue
+					}
+					stmt.typ = c.expr(stmt.expr)
+					if c.table.type_kind(c.expected_type) == .multi_return
+						&& c.table.type_kind(stmt.typ) == .multi_return {
+						if node.typ == ast.void_type {
+							node.is_expr = true
+							node.typ = c.expected_type
 						}
 					}
-					if node.is_expr && c.table.sym(former_expected_type).kind == .sum_type {
-						node.typ = former_expected_type
+					if stmt.typ == ast.void_type && !is_noreturn_callexpr(stmt.expr)
+						&& !c.skip_flags {
+						// cannot return void type and use it as expr in any circumstances
+						// (e.g. argument expression, variable declaration / assignment)
+						c.error('the final expression in `if` or `match`, must have a value of a non-void type',
+							stmt.pos)
 						continue
 					}
-					if is_noreturn_callexpr(last_expr.expr) {
-						continue
+					if !c.check_types(stmt.typ, node.typ) {
+						if node.typ == ast.void_type {
+							// first branch of if expression
+							node.is_expr = true
+							node.typ = stmt.typ
+							continue
+						} else if node.typ in [ast.float_literal_type, ast.int_literal_type] {
+							if node.typ == ast.int_literal_type {
+								if stmt.typ.is_int() || stmt.typ.is_float() {
+									node.typ = stmt.typ
+									continue
+								}
+							} else { // node.typ == float_literal
+								if stmt.typ.is_float() {
+									node.typ = stmt.typ
+									continue
+								}
+							}
+						}
+						if stmt.typ in [ast.float_literal_type, ast.int_literal_type] {
+							if stmt.typ == ast.int_literal_type {
+								if node.typ.is_int() || node.typ.is_float() {
+									continue
+								}
+							} else { // expr_type == float_literal
+								if node.typ.is_float() {
+									continue
+								}
+							}
+						}
+						if node.is_expr && c.table.sym(former_expected_type).kind == .sum_type {
+							node.typ = former_expected_type
+							continue
+						}
+						if is_noreturn_callexpr(stmt.expr) {
+							continue
+						}
+						c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(stmt.typ)}`',
+							node.pos)
 					}
-					c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(last_expr.typ)}`',
-						node.pos)
+				} else if !node.is_comptime {
+					c.error('`$if_kind` expression requires an expression as the last statement of every branch',
+						branch.pos)
 				}
 			} else if !node.is_comptime {
 				c.error('`$if_kind` expression requires an expression as the last statement of every branch',

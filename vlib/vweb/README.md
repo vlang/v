@@ -120,7 +120,7 @@ h1.title {
 }
 ```
 
-V suport some [Template directives](/vlib/v/TEMPLATES.md) like
+V supports [Template directives](/vlib/v/TEMPLATES.md) like
 `@css`, `@js` for static files in \<path\>
 `@if`, `@for` for conditional and loop
 and

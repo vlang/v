@@ -38,7 +38,7 @@ enum Arm64Register {
 
 pub struct Arm64 {
 mut:
-	g &Gen
+	g &Gen = unsafe { nil }
 	// arm64 specific stuff for code generation
 }
 

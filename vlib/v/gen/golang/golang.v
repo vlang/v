@@ -17,8 +17,8 @@ const (
 
 pub struct Gen {
 pub mut:
-	table &ast.Table
-	pref  &pref.Preferences
+	table &ast.Table        = unsafe { nil }
+	pref  &pref.Preferences = unsafe { nil }
 	// is_debug           bool
 	out                strings.Builder
 	out_imports        strings.Builder

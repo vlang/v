@@ -4,7 +4,7 @@ fn has_optional() ?int {
 	return 51
 }
 
-fn test_optionals_multi_line() ? {
+fn test_optionals_multi_line() {
 	var11, var12, var13, var14, var15 := if true {
 		println('dd')
 		if true {

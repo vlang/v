@@ -23,7 +23,7 @@ pub fn (mut x Abc) diagnostics() ?Res {
 	return got.params
 }
 
-fn test_generic_method_returning_optional() ? {
+fn test_generic_method_returning_optional() {
 	mut a := Abc{}
 	a.diagnostics()?
 	assert true

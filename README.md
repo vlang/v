@@ -1,6 +1,6 @@
 <div align="center">
 <p>
-    <img width="80" src="https://raw.githubusercontent.com/vlang/v-logo/master/dist/v-logo.svg?sanitize=true">
+    <a href="https://vlang.io/" target="_blank"><img width="80" src="https://raw.githubusercontent.com/vlang/v-logo/master/dist/v-logo.svg?sanitize=true"></a>
 </p>
 <h1>The V Programming Language</h1>
 
@@ -23,7 +23,7 @@
 
 - Simplicity: the language can be learned in a weekend
 - Fast compilation: ≈110k loc/s with a Clang backend,
-    ≈1 million loc/s with native and tcc backends *(Intel i5-7500, SSD, no optimization)* ([demo video](https://www.youtube.com/watch?v=pvP6wmcl_Sc))
+    ≈500k loc/s with native and tcc backends *(Intel i5-7500, SSD, no optimization)* ([demo video](https://www.youtube.com/watch?v=pvP6wmcl_Sc))
 - Easy to develop: V compiles itself in less than a second
 - Performance: as fast as C (V's main backend compiles to human-readable C)
 - Safety: no null, no globals, no undefined behavior, immutability by default

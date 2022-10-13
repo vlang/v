@@ -32,7 +32,7 @@ const (
 
 struct App {
 mut:
-	gg            &gg.Context
+	gg            &gg.Context = unsafe { nil }
 	texture       gfx.Image
 	init_flag     bool
 	frame_count   int
@@ -475,7 +475,6 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 /******************************************************************************
 * Main
 ******************************************************************************/
-[console] // is needed for easier diagnostics on windows
 fn main(){
 	// App init
 	mut app := &App{

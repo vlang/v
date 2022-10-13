@@ -173,6 +173,7 @@ pub enum AtKind {
 	vmodroot_path
 	vroot_path // obsolete
 	vexeroot_path
+	file_path_line_nr
 }
 
 pub const (
@@ -181,7 +182,7 @@ pub const (
 		.unsigned_right_shift_assign]
 
 	valid_at_tokens = ['@VROOT', '@VMODROOT', '@VEXEROOT', '@FN', '@METHOD', '@MOD', '@STRUCT',
-		'@VEXE', '@FILE', '@LINE', '@COLUMN', '@VHASH', '@VMOD_FILE']
+		'@VEXE', '@FILE', '@LINE', '@COLUMN', '@VHASH', '@VMOD_FILE', '@FILE_LINE']
 
 	token_str       = build_token_str()
 
@@ -196,7 +197,7 @@ fn build_keys() map[string]Kind {
 	mut res := map[string]Kind{}
 	for t in int(Kind.keyword_beg) + 1 .. int(Kind.keyword_end) {
 		key := token.token_str[t]
-		res[key] = Kind(t)
+		res[key] = unsafe { Kind(t) }
 	}
 	return res
 }
@@ -325,7 +326,7 @@ fn build_token_str() []string {
 	$if debug_build_token_str ? {
 		for k, v in s {
 			if v == '' {
-				eprintln('>>> ${@MOD}.${@METHOD} missing k: $k | .${kind_to_string(Kind(k))}')
+				eprintln('>>> ${@MOD}.${@METHOD} missing k: $k | .${kind_to_string(unsafe { Kind(k) })}')
 			}
 		}
 	}

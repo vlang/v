@@ -9,12 +9,13 @@ import v.pref
 
 pub struct Walker {
 pub mut:
-	table        &ast.Table
+	table        &ast.Table = unsafe { nil }
 	used_fns     map[string]bool // used_fns['println'] == true
 	used_consts  map[string]bool // used_consts['os.args'] == true
 	used_globals map[string]bool
+	used_structs map[string]bool
 	n_asserts    int
-	pref         &pref.Preferences
+	pref         &pref.Preferences = unsafe { nil }
 mut:
 	files       []&ast.File
 	all_fns     map[string]ast.FnDecl
@@ -402,17 +403,7 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			sym := w.table.sym(node.typ)
 			if sym.kind == .struct_ {
 				info := sym.info as ast.Struct
-				for ifield in info.fields {
-					if ifield.has_default_expr {
-						w.expr(ifield.default_expr)
-					}
-					if ifield.typ != 0 {
-						fsym := w.table.sym(ifield.typ)
-						if fsym.kind == .map {
-							w.table.used_maps++
-						}
-					}
-				}
+				w.a_struct_info(sym.name, info)
 			}
 			if node.has_update_expr {
 				w.expr(node.update_expr)
@@ -460,6 +451,27 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 			w.expr(node.expr)
 		}
 		ast.NodeError {}
+	}
+}
+
+pub fn (mut w Walker) a_struct_info(sname string, info ast.Struct) {
+	if sname in w.used_structs {
+		return
+	}
+	w.used_structs[sname] = true
+	for ifield in info.fields {
+		if ifield.has_default_expr {
+			w.expr(ifield.default_expr)
+		}
+		if ifield.typ != 0 {
+			fsym := w.table.sym(ifield.typ)
+			if fsym.kind == .map {
+				w.table.used_maps++
+			}
+			if fsym.kind == .struct_ {
+				w.a_struct_info(fsym.name, fsym.struct_info())
+			}
+		}
 	}
 }
 

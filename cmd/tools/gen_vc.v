@@ -82,7 +82,7 @@ struct GenVC {
 	// flag options
 	options FlagOptions
 mut:
-	logger &log.Log
+	logger &log.Log = unsafe { nil }
 	// true if error was experienced running generate
 	gen_error bool
 }
@@ -91,7 +91,7 @@ mut:
 struct WebhookServer {
 	vweb.Context
 mut:
-	gen_vc &GenVC = unsafe { 0 } // initialized in init_server
+	gen_vc &GenVC = unsafe { nil } // initialized in init_server
 }
 
 // storage for flag options

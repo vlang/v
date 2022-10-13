@@ -269,6 +269,9 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 										}
 									}
 								}
+								if right is ast.ComptimeSelector {
+									left.obj.is_comptime_field = true
+								}
 							}
 							ast.GlobalField {
 								left.obj.typ = left_type
@@ -319,6 +322,10 @@ pub fn (mut c Checker) assign_stmt(mut node ast.AssignStmt) {
 				}
 				if is_decl {
 					c.error('non-name `$left` on left side of `:=`', left.pos())
+				}
+
+				if node.op == .assign && (left.is_literal() || left is ast.StructInit) {
+					c.error('non-name literal value `$left` on left side of `=`', left.pos())
 				}
 			}
 		}

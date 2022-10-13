@@ -15,6 +15,7 @@ const vet_known_failing_windows = [
 	'vlib/v/gen/js/tests/testdata/compare_ints.v',
 	'vlib/v/gen/js/tests/testdata/hw.v',
 	'vlib/v/gen/js/tests/testdata/string_methods.v',
+	'vlib/v/tests/inout/vscript_using_generics_in_os.vsh',
 	'vlib/v/tests/project_with_modules_having_submodules/bin/main.vsh',
 	'vlib/v/tests/valgrind/simple_interpolation_script_mode.v',
 	'vlib/v/tests/valgrind/simple_interpolation_script_mode_more_scopes.v',

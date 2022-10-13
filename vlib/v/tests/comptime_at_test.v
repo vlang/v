@@ -71,6 +71,12 @@ fn test_at_file() {
 	assert f == 'comptime_at_test.v'
 }
 
+fn test_at_file_len() {
+	// Test @FILE_LINE
+	line1, line2 := '${@LINE}', '${@FILE_LINE}'
+	assert os.file_name(@FILE) + ':' + line1.str() == line2
+}
+
 fn test_at_fn() {
 	// Test @FN
 	assert @FN == 'test_at_fn'
@@ -119,4 +125,12 @@ fn test_vmod_file() {
 
 fn test_comptime_at() {
 	assert @VEXE == pref.vexe_path()
+}
+
+// Reasons for assertions that are not literal:
+// to prevent assertion invalidation due to "line" changes in subsequent code changes
+fn test_line_number_last_token() {
+	line1, line2, line3 := @LINE, @LINE, @LINE
+	assert line1 == line2
+	assert line1 == line3
 }

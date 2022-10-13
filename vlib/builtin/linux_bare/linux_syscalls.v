@@ -225,7 +225,7 @@ enum WiSiCode {
 fn split_int_errno(rc_in u64) (i64, Errno) {
 	rc := i64(rc_in)
 	if rc < 0 {
-		return i64(-1), Errno(-rc)
+		return i64(-1), unsafe { Errno(-rc) }
 	}
 	return rc, Errno.enoerror
 }
@@ -247,7 +247,7 @@ fn sys_open(filename &byte, flags i64, mode int) (i64, Errno) {
 
 // 3 sys_close
 fn sys_close(fd i64) Errno {
-	return Errno(-i64(sys_call1(3, u64(fd))))
+	return unsafe { Errno(-i64(sys_call1(3, u64(fd)))) }
 }
 
 // 9 sys_mmap
@@ -259,7 +259,7 @@ fn sys_mmap(addr &byte, len u64, prot MemProt, flags MapFlags, fildes u64, off u
 
 // 11 sys_munmap
 fn sys_munmap(addr voidptr, len u64) Errno {
-	return Errno(-sys_call2(11, u64(addr), len))
+	return unsafe { Errno(-sys_call2(11, u64(addr), len)) }
 }
 
 // 25 sys_mremap
@@ -271,17 +271,17 @@ fn sys_mremap(old_addr voidptr, old_len u64, new_len u64, flags u64) (&byte, Err
 
 // 22  sys_pipe
 fn sys_pipe(filedes &int) Errno {
-	return Errno(sys_call1(22, u64(filedes)))
+	return unsafe { Errno(sys_call1(22, u64(filedes))) }
 }
 
 // 24 sys_sched_yield
 fn sys_sched_yield() Errno {
-	return Errno(sys_call0(24))
+	return unsafe { Errno(sys_call0(24)) }
 }
 
 // 28 sys_madvise
 fn sys_madvise(addr voidptr, len u64, advice int) Errno {
-	return Errno(sys_call3(28, u64(addr), len, u64(advice)))
+	return unsafe { Errno(sys_call3(28, u64(addr), len, u64(advice))) }
 }
 
 // 39 sys_getpid
@@ -323,7 +323,9 @@ fn sys_getuid() int {
 
 // 247 sys_waitid
 fn sys_waitid(which WiWhich, pid int, infop &int, options int, ru voidptr) Errno {
-	return Errno(sys_call5(247, u64(which), u64(pid), u64(infop), u64(options), u64(ru)))
+	return unsafe {
+		Errno(sys_call5(247, u64(which), u64(pid), u64(infop), u64(options), u64(ru)))
+	}
 }
 
 fn sys_call0(scn u64) u64 {

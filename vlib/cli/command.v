@@ -27,7 +27,7 @@ pub mut:
 	disable_flags   bool
 	sort_flags      bool
 	sort_commands   bool
-	parent          &Command = unsafe { 0 }
+	parent          &Command = unsafe { nil }
 	commands        []Command
 	flags           []Flag
 	required_args   int

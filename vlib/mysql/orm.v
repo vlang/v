@@ -28,7 +28,7 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 
 	for i in 0 .. num_fields {
 		f := unsafe { fields[i] }
-		match FieldType(f.@type) {
+		match unsafe { FieldType(f.@type) } {
 			.type_tiny {
 				dataptr << unsafe { malloc(1) }
 			}
@@ -57,7 +57,7 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 				dataptr << unsafe { malloc(2) }
 			}
 			else {
-				return error('\'${FieldType(f.@type)}\' is not yet implemented. Please create a new issue at https://github.com/vlang/v/issues/new')
+				return error('\'${unsafe { FieldType(f.@type) }}\' is not yet implemented. Please create a new issue at https://github.com/vlang/v/issues/new')
 			}
 		}
 	}
@@ -74,14 +74,14 @@ pub fn (db Connection) @select(config orm.SelectConfig, data orm.QueryData, wher
 
 	for i, mut mysql_bind in stmt.res {
 		f := unsafe { fields[i] }
-		field_types << FieldType(f.@type)
+		field_types << unsafe { FieldType(f.@type) }
 		match types[i] {
 			orm.string {
 				mysql_bind.buffer_type = C.MYSQL_TYPE_BLOB
 				mysql_bind.buffer_length = FieldType.type_blob.get_len()
 			}
 			orm.time {
-				match FieldType(f.@type) {
+				match unsafe { FieldType(f.@type) } {
 					.type_long {
 						mysql_bind.buffer_type = C.MYSQL_TYPE_LONG
 					}

@@ -32,15 +32,15 @@ fn cleanup() {
 	os.rm(test_dir_zip) or {}
 }
 
-fn testsuite_begin() ? {
+fn testsuite_begin() {
 	cleanup()
 }
 
-fn testsuite_end() ? {
+fn testsuite_end() {
 	cleanup()
 }
 
-fn test_szip_create_temp_files() ? {
+fn test_szip_create_temp_files() {
 	os.mkdir(test_path)?
 	os.mkdir(test_path2)?
 	os.write_file(fpath1, 'file one')?
@@ -51,7 +51,7 @@ fn test_szip_create_temp_files() ? {
 	assert os.exists(fpath3)
 }
 
-fn test_zipping_files() ? {
+fn test_zipping_files() {
 	mut files := (os.ls(test_path)?).map(os.join_path(test_path, it))
 	files << (os.ls(test_path2)?).map(os.join_path(test_path2, it))
 	szip.zip_files(files, test_out_zip)?
@@ -61,7 +61,7 @@ fn test_zipping_files() ? {
 	os.rm(fpath3)?
 }
 
-fn test_extract_zipped_files() ? {
+fn test_extract_zipped_files() {
 	szip.extract_zip_to_dir(test_out_zip, test_path)?
 	szip.extract_zip_to_dir(test_out_zip, test_path2)?
 	assert os.exists(fpath1)
@@ -123,7 +123,7 @@ fn test_reading_zipping_files() ? {
 	zp.close()
 }
 
-fn test_zip_folder() ? {
+fn test_zip_folder() {
 	cleanup()
 	os.mkdir_all(test_path3_1)?
 	os.mkdir_all(test_path3_2)?
@@ -148,7 +148,7 @@ fn test_zip_folder() ? {
 	assert (os.read_file(fpath6)?) == '6'
 }
 
-fn test_zip_folder_omit_empty_directories() ? {
+fn test_zip_folder_omit_empty_directories() {
 	cleanup()
 	os.mkdir_all(test_path3_1)?
 	os.mkdir_all(test_path3_2)?

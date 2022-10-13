@@ -1,5 +1,5 @@
-vlib/v/checker/tests/reference_field_must_be_initialized.vv:8:7: error: reference field `Node.next` must be initialized
-    6 |
+vlib/v/checker/tests/reference_field_must_be_initialized.vv:8:7: warning: reference field `Node.next` must be initialized
+    6 | 
     7 | fn main(){
     8 |     n := Node{ data: 123 }
       |          ~~~~~~~~~~~~~~~~~

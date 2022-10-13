@@ -5,7 +5,7 @@ module websocket
 
 import net
 import net.http
-import net.openssl
+import net.ssl
 import net.urllib
 import time
 import log
@@ -19,9 +19,9 @@ const (
 pub struct Client {
 	is_server bool
 mut:
-	ssl_conn          &openssl.SSLConn // secure connection used when wss is used
-	flags             []Flag     // flags used in handshake
-	fragments         []Fragment // current fragments
+	ssl_conn          &ssl.SSLConn = unsafe { nil } // secure connection used when wss is used
+	flags             []Flag       // flags used in handshake
+	fragments         []Fragment   // current fragments
 	message_callbacks []MessageEventHandler // all callbacks on_message
 	error_callbacks   []ErrorEventHandler   // all callbacks on_error
 	open_callbacks    []OpenEventHandler    // all callbacks on_open
@@ -34,13 +34,16 @@ pub:
 	write_timeout i64
 pub mut:
 	header            http.Header  // headers that will be passed when connecting
-	conn              &net.TcpConn // underlying TCP socket connection
+	conn              &net.TcpConn = unsafe { nil } // underlying TCP socket connection
 	nonce_size        int = 16 // size of nounce used for masking
-	panic_on_callback bool        // set to true of callbacks can panic
-	state             State       // current state of connection
-	logger            &log.Logger // logger used to log messages
-	resource_name     string      // name of current resource
-	last_pong_ut      i64 // last time in unix time we got a pong message
+	panic_on_callback bool  // set to true of callbacks can panic
+	state             State // current state of connection
+	// logger used to log messages
+	logger &log.Logger = &log.Logger(&log.Log{
+	level: .info
+})
+	resource_name string // name of current resource
+	last_pong_ut  i64    // last time in unix time we got a pong message
 }
 
 // Flag represents different types of headers in websocket handshake
@@ -90,7 +93,7 @@ pub fn new_client(address string, opt ClientOpt) ?&Client {
 	return &Client{
 		conn: 0
 		is_server: false
-		ssl_conn: openssl.new_ssl_conn()
+		ssl_conn: ssl.new_ssl_conn()?
 		is_ssl: address.starts_with('wss')
 		logger: opt.logger
 		uri: uri
@@ -333,7 +336,7 @@ pub fn (mut ws Client) close(code int, message string) ? {
 	}
 	defer {
 		ws.shutdown_socket() or {}
-		ws.reset_state()
+		ws.reset_state() or {}
 	}
 	ws.set_state(.closing)
 	// mut code32 := 0
@@ -459,10 +462,10 @@ fn (ws Client) assert_not_connected() ? {
 }
 
 // reset_state resets the websocket and initialize default settings
-fn (mut ws Client) reset_state() {
+fn (mut ws Client) reset_state() ? {
 	lock  {
 		ws.state = .closed
-		ws.ssl_conn = openssl.new_ssl_conn()
+		ws.ssl_conn = ssl.new_ssl_conn()?
 		ws.flags = []
 		ws.fragments = []
 	}

@@ -15,15 +15,26 @@ fn (mut g Gen) unwrap_generic(typ ast.Type) ast.Type {
 		// This should have already happened in the checker, since it also calls
 		// `resolve_generic_to_concrete`. `g.table` is made non-mut to make sure
 		// no one else can accidentally mutates the table.
-		unsafe {
-			mut mut_table := &ast.Table(g.table)
-			if t_typ := mut_table.resolve_generic_to_concrete(typ, if g.cur_fn != nil {
-				g.cur_fn.generic_names
-			} else {
-				[]string{}
-			}, g.cur_concrete_types)
+		mut mut_table := unsafe { &ast.Table(g.table) }
+		if g.cur_fn != unsafe { nil } && g.cur_fn.generic_names.len > 0 {
+			if t_typ := mut_table.resolve_generic_to_concrete(typ, g.cur_fn.generic_names,
+				g.cur_concrete_types)
 			{
 				return t_typ
+			}
+		} else if g.inside_struct_init {
+			if g.cur_struct_init_typ != 0 {
+				sym := g.table.sym(g.cur_struct_init_typ)
+				if sym.info is ast.Struct {
+					if sym.info.generic_types.len > 0 {
+						generic_names := sym.info.generic_types.map(g.table.sym(it).name)
+						if t_typ := mut_table.resolve_generic_to_concrete(typ, generic_names,
+							sym.info.concrete_types)
+						{
+							return t_typ
+						}
+					}
+				}
 			}
 		}
 	}
@@ -82,4 +93,16 @@ fn (mut g Gen) fn_var_signature(return_type ast.Type, arg_types []ast.Type, var_
 	}
 	sig += ')'
 	return sig
+}
+
+// escape quotes for string
+fn escape_quotes(val string) string {
+	bs := '\\'
+	unescaped_val := val.replace('$bs$bs', '\x01').replace_each([
+		"$bs'",
+		"'",
+		'$bs"',
+		'"',
+	])
+	return unescaped_val.replace_each(['\x01', '$bs$bs', "'", "$bs'", '"', '$bs"'])
 }

@@ -77,7 +77,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			c.ensure_sumtype_array_has_default_value(node)
 		}
 		c.ensure_type_exists(node.elem_type, node.elem_type_pos) or {}
-		if node.typ.has_flag(.generic) && !isnil(c.table.cur_fn)
+		if node.typ.has_flag(.generic) && c.table.cur_fn != unsafe { nil }
 			&& c.table.cur_fn.generic_names.len == 0 {
 			c.error('generic struct cannot be used in non-generic function', node.pos)
 		}
@@ -121,7 +121,7 @@ pub fn (mut c Checker) array_init(mut node ast.ArrayInit) ast.Type {
 			c.expected_type.clear_flag(.shared_f).deref()
 		} else {
 			c.expected_type
-		}.clear_flag(.optional)
+		}.clear_flag(.optional).clear_flag(.result)
 	}
 	// [1,2,3]
 	if node.exprs.len > 0 && node.elem_type == ast.void_type {
@@ -282,7 +282,7 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) ast.Type {
 		sym := c.table.sym(c.expected_type)
 		if sym.kind == .map {
 			info := sym.map_info()
-			node.typ = c.expected_type.clear_flag(.optional)
+			node.typ = c.expected_type.clear_flag(.optional).clear_flag(.result)
 			node.key_type = info.key_type
 			node.value_type = info.value_type
 			return node.typ

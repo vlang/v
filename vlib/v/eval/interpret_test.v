@@ -4,7 +4,7 @@ import term
 
 const is_verbose = os.getenv('VTEST_SHOW_CMD') != ''
 
-fn test_interpret() ? {
+fn test_interpret() {
 	mut bench := benchmark.new_benchmark()
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)

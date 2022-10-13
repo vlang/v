@@ -120,3 +120,51 @@ fn test_array() ? {
 	list.push(3)
 	assert list.array() == [1, 2, 3]
 }
+
+fn test_linked_list_iterating_with_for() ? {
+	mut list := LinkedList<int>{}
+	list.push(1)
+	list.push(2)
+	list.push(3)
+	mut res := []int{}
+	for x in list {
+		res << x
+	}
+	assert res == [1, 2, 3]
+}
+
+fn test_linked_list_separate_iterators() ? {
+	mut list := LinkedList<int>{}
+	list.push(1)
+	list.push(2)
+	list.push(3)
+	mut it1 := list.iterator()
+	mut it2 := list.iterator()
+	mut it3 := list.iterator()
+	assert it1.next()? == 1
+	assert it1.next()? == 2
+	assert it1.next()? == 3
+	assert it2.next()? == 1
+	if _ := it1.next() {
+		assert false
+	} else {
+		assert true
+	}
+	if _ := it1.next() {
+		assert false
+	} else {
+		assert true
+	}
+	assert it2.next()? == 2
+	assert it2.next()? == 3
+	if _ := it2.next() {
+		assert false
+	} else {
+		assert true
+	}
+	mut res := []int{}
+	for x in it3 {
+		res << x
+	}
+	assert res == [1, 2, 3]
+}

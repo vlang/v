@@ -35,7 +35,7 @@ fn test_escape_unescape() {
 	assert unescaped == original
 }
 
-fn test_parse_query() ? {
+fn test_parse_query() {
 	q1 := urllib.parse_query('format=%22%25l%3A+%25c+%25t%22')?
 	q2 := urllib.parse_query('format="%l:+%c+%t"')?
 	// dump(q1)
@@ -44,13 +44,13 @@ fn test_parse_query() ? {
 	assert q2.get('format') == '"%l: %c %t"'
 }
 
-fn test_parse_query_orders() ? {
+fn test_parse_query_orders() {
 	query_one := urllib.parse_query('https://someapi.com/endpoint?gamma=zalibaba&tau=1&alpha=alibaba&signature=alibaba123')?
 	qvalues := query_one.values()
 	assert qvalues == ['zalibaba', '1', 'alibaba', 'alibaba123']
 }
 
-fn test_parse_missing_host() ? {
+fn test_parse_missing_host() {
 	// issue #10311
 	url := urllib.parse('http:///')?
 	assert url.str() == 'http://///'
@@ -58,7 +58,7 @@ fn test_parse_missing_host() ? {
 
 // testing the case where the key as a null value
 // e.g ?key=
-fn test_parse_none_value() ? {
+fn test_parse_none_value() {
 	query_one := urllib.parse_query('gamma=zalibaba&tau=1&alpha=alibaba&signature=')?
 	qvalues := query_one.values()
 	qvalues_map := query_one.to_map()
@@ -73,7 +73,7 @@ fn test_parse_none_value() ? {
 
 // testing the case where the query as empity value
 // e.g https://www.vlang.dev?alibaba
-fn test_parse_empty_query_one() ? {
+fn test_parse_empty_query_one() {
 	query_str := 'alibaba'
 	query_one := urllib.parse_query(query_str)?
 	qvalues := query_one.values()
@@ -88,7 +88,7 @@ fn test_parse_empty_query_one() ? {
 
 // testing the case where the query as empity value
 // e.g https://www.vlang.dev?
-fn test_parse_empty_query_two() ? {
+fn test_parse_empty_query_two() {
 	query_str := ''
 	query_one := urllib.parse_query(query_str)?
 	qvalues := query_one.values()
@@ -99,7 +99,7 @@ fn test_parse_empty_query_two() ? {
 	assert query_str == query_encode
 }
 
-fn test_parse() ? {
+fn test_parse() {
 	urls := [
 		'jdbc:mysql://test_user:ouupppssss@localhost:3306/sakila?profileSQL=true',
 		'ftp://ftp.is.co.za/rfc/rfc1808.txt',

@@ -1,0 +1,22 @@
+module main
+
+import gg
+import gx
+
+fn main() {
+	x := gg.new_context(
+		bg_color: gx.rgb(174, 198, 255)
+		window_title: 'GG Hello'
+		frame_fn: fn (mut ctx gg.Context) {
+			ctx.begin()
+			ctx.draw_text_def(10, 25, 'Hello')
+			ctx.end()
+			if ctx.frame > 10 {
+				println('OK')
+				exit(0)
+			}
+		}
+	)
+	_ := x.user_data
+	println('OK')
+}

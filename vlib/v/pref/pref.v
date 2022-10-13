@@ -21,6 +21,7 @@ pub enum AssertFailureMode {
 	default
 	aborts
 	backtraces
+	continues
 }
 
 pub enum GarbageCollectionMode {
@@ -82,12 +83,13 @@ pub enum Arch {
 	js_node
 	js_browser
 	js_freestanding
+	wasm32
 	_max
 }
 
 const (
-	list_of_flags_with_param = ['o', 'd', 'define', 'b', 'backend', 'cc', 'os', 'target-os', 'cf',
-		'cflags', 'path', 'arch']
+	list_of_flags_with_param = ['o', 'd', 'define', 'b', 'backend', 'cc', 'os', 'cf', 'cflags',
+		'path', 'arch']
 )
 
 [heap; minify]
@@ -101,37 +103,38 @@ pub mut:
 	// verbosity           VerboseLevel
 	is_verbose bool
 	// nofmt            bool   // disable vfmt
-	is_glibc          bool // if GLIBC will be linked
-	is_musl           bool // if MUSL will be linked
-	is_test           bool // `v test string_test.v`
-	is_script         bool // single file mode (`v program.v`), main function can be skipped
-	is_vsh            bool // v script (`file.vsh`) file, the `os` module should be made global
-	is_livemain       bool // main program that contains live/hot code
-	is_liveshared     bool // a shared library, that will be used in a -live main program
-	is_shared         bool // an ordinary shared library, -shared, no matter if it is live or not
-	is_o              bool // building an .o file
-	is_prof           bool // benchmark every function
-	is_prod           bool // use "-O2"
-	is_repl           bool
-	is_run            bool // compile and run a v program, passing arguments to it, and deleting the executable afterwards
-	is_crun           bool // similar to run, but does not recompile the executable, if there were no changes to the sources
-	is_debug          bool // turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
-	is_vlines         bool // turned on by -g (it slows down .tmp.c generation slightly).
-	is_stats          bool // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
-	show_timings      bool // show how much time each compiler stage took
-	is_fmt            bool
-	is_vet            bool
-	is_vweb           bool // skip _ var warning in templates
-	is_ios_simulator  bool
-	is_apk            bool     // build as Android .apk format
-	is_help           bool     // -h, -help or --help was passed
-	is_cstrict        bool     // turn on more C warnings; slightly slower
-	test_runner       string   // can be 'simple' (fastest, but much less detailed), 'tap', 'normal'
-	profile_file      string   // the profile results will be stored inside profile_file
-	profile_no_inline bool     // when true, [inline] functions would not be profiled
-	profile_fns       []string // when set, profiling will be off by default, but inside these functions (and what they call) it will be on.
-	translated        bool     // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
-	obfuscate         bool     // `v -obf program.v`, renames functions to "f_XXX"
+	is_glibc           bool   // if GLIBC will be linked
+	is_musl            bool   // if MUSL will be linked
+	is_test            bool   // `v test string_test.v`
+	is_script          bool   // single file mode (`v program.v`), main function can be skipped
+	is_vsh             bool   // v script (`file.vsh`) file, the `os` module should be made global
+	raw_vsh_tmp_prefix string // The prefix used for executables, when a script lacks the .vsh extension
+	is_livemain        bool   // main program that contains live/hot code
+	is_liveshared      bool   // a shared library, that will be used in a -live main program
+	is_shared          bool   // an ordinary shared library, -shared, no matter if it is live or not
+	is_o               bool   // building an .o file
+	is_prof            bool   // benchmark every function
+	is_prod            bool   // use "-O2"
+	is_repl            bool
+	is_run             bool // compile and run a v program, passing arguments to it, and deleting the executable afterwards
+	is_crun            bool // similar to run, but does not recompile the executable, if there were no changes to the sources
+	is_debug           bool // turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
+	is_vlines          bool // turned on by -g (it slows down .tmp.c generation slightly).
+	is_stats           bool // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
+	show_timings       bool // show how much time each compiler stage took
+	is_fmt             bool
+	is_vet             bool
+	is_vweb            bool // skip _ var warning in templates
+	is_ios_simulator   bool
+	is_apk             bool     // build as Android .apk format
+	is_help            bool     // -h, -help or --help was passed
+	is_cstrict         bool     // turn on more C warnings; slightly slower
+	test_runner        string   // can be 'simple' (fastest, but much less detailed), 'tap', 'normal'
+	profile_file       string   // the profile results will be stored inside profile_file
+	profile_no_inline  bool     // when true, [inline] functions would not be profiled
+	profile_fns        []string // when set, profiling will be off by default, but inside these functions (and what they call) it will be on.
+	translated         bool     // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
+	obfuscate          bool     // `v -obf program.v`, renames functions to "f_XXX"
 	// Note: passing -cg instead of -g will set is_vlines to false and is_debug to true, thus making v generate cleaner C files,
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
 	sanitize               bool   // use Clang's new "-fsanitize" option
@@ -198,6 +201,7 @@ pub mut:
 	no_std           bool     // when true, do not pass -std=gnu99(linux)/-std=c99 to the C backend
 	//
 	no_parallel       bool // do not use threads when compiling; slower, but more portable and sometimes less buggy
+	parallel_cc       bool // whether to split the resulting .c file into many .c files + a common .h file, that are then compiled in parallel, then linked together.
 	only_check_syntax bool // when true, just parse the files, then stop, before running checker
 	check_only        bool // same as only_check_syntax, but also runs the checker
 	experimental      bool // enable experimental features
@@ -209,7 +213,7 @@ pub mut:
 	cache_manager       vcache.CacheManager
 	gc_mode             GarbageCollectionMode = .unknown // .no_gc, .boehm, .boehm_leak, ...
 	assert_failure_mode AssertFailureMode     // whether to call abort() or print_backtrace() after an assertion failure
-	message_limit       int = 100 // the maximum amount of warnings/errors/notices that will be accumulated
+	message_limit       int = 150 // the maximum amount of warnings/errors/notices that will be accumulated
 	nofloat             bool // for low level code, like kernels: replaces f32 with u32 and f64 with u64
 	// checker settings:
 	checker_match_exhaustive_cutoff_limit int = 12
@@ -273,10 +277,14 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					'backtraces' {
 						res.assert_failure_mode = .backtraces
 					}
+					'continues' {
+						res.assert_failure_mode = .continues
+					}
 					else {
 						eprintln('unknown assert mode `-gc $assert_mode`, supported modes are:`')
 						eprintln('  `-assert aborts`     .... calls abort() after assertion failure')
 						eprintln('  `-assert backtraces` .... calls print_backtrace() after assertion failure')
+						eprintln('  `-assert continues`  .... does not call anything, just continue after an assertion failure')
 						exit(1)
 					}
 				}
@@ -563,6 +571,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-no-parallel' {
 				res.no_parallel = true
 			}
+			'-parallel-cc' {
+				res.parallel_cc = true
+				res.no_parallel = true // TODO: see how to make both work
+			}
 			'-native' {
 				res.backend = .native
 				res.build_options << arg
@@ -605,6 +617,12 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				}
 				if target_os_kind == .wasm32 {
 					res.is_bare = true
+				}
+				if target_os_kind in [.wasm32, .wasm32_emscripten, .wasm32_wasi] {
+					res.arch = .wasm32
+				}
+				if target_os_kind == .wasm32_emscripten {
+					res.gc_mode = .no_gc // TODO: enable gc (turn off threads etc, in builtin_d_gcboehm.c.v, once `$if wasm32_emscripten {` works)
 				}
 				res.os = target_os_kind
 				res.build_options << '$arg $target_os'
@@ -696,6 +714,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					exit(1)
 				}
 				res.custom_prelude = prelude
+				i++
+			}
+			'-raw-vsh-tmp-prefix' {
+				res.raw_vsh_tmp_prefix = cmdline.option(current_args, arg, '')
 				i++
 			}
 			'-cmain' {
@@ -807,7 +829,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 	if !res.is_bare && res.bare_builtin_dir != '' {
 		eprintln_cond(show_output, '`-bare-builtin-dir` must be used with `-freestanding`')
 	}
-	if command.ends_with('.vsh') {
+	if command.ends_with('.vsh') || (res.raw_vsh_tmp_prefix != '' && !res.is_run) {
 		// `v build.vsh gcc` is the same as `v run build.vsh gcc`,
 		// i.e. compiling, then running the script, passing the args
 		// after it to the script:
@@ -870,36 +892,39 @@ pub fn arch_from_string(arch_str string) ?Arch {
 	match arch_str {
 		'amd64', 'x86_64', 'x64', 'x86' { // amd64 recommended
 
-			return Arch.amd64
+			return .amd64
 		}
 		'aarch64', 'arm64' { // arm64 recommended
 
-			return Arch.arm64
+			return .arm64
 		}
 		'aarch32', 'arm32', 'arm' { // arm32 recommended
 
-			return Arch.arm32
+			return .arm32
 		}
 		'rv64', 'riscv64', 'risc-v64', 'riscv', 'risc-v' { // rv64 recommended
 
-			return Arch.rv64
+			return .rv64
 		}
 		'rv32', 'riscv32' { // rv32 recommended
 
-			return Arch.rv32
+			return .rv32
 		}
 		'x86_32', 'x32', 'i386', 'IA-32', 'ia-32', 'ia32' { // i386 recommended
 
-			return Arch.i386
+			return .i386
 		}
 		'js', 'js_node' {
-			return Arch.js_node
+			return .js_node
 		}
 		'js_browser' {
-			return Arch.js_browser
+			return .js_browser
 		}
 		'js_freestanding' {
-			return Arch.js_freestanding
+			return .js_freestanding
+		}
+		'wasm32' {
+			return .wasm32
 		}
 		'' {
 			return ._auto
@@ -974,7 +999,7 @@ pub fn get_host_arch() Arch {
 	if C.__V_architecture <= int(Arch._auto) || C.__V_architecture >= int(Arch._max) {
 		return Arch.amd64
 	}
-	return Arch(C.__V_architecture)
+	return unsafe { Arch(C.__V_architecture) }
 }
 
 fn (mut prefs Preferences) parse_define(define string) {

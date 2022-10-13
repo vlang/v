@@ -127,6 +127,7 @@ const (
 		'vlib/v/tests/orm_joined_tables_select_test.v',
 		'vlib/v/tests/sql_statement_inside_fn_call_test.v',
 		'vlib/vweb/tests/vweb_test.v',
+		'vlib/vweb/csrf/csrf_test.v',
 		'vlib/vweb/request_test.v',
 		'vlib/net/http/request_test.v',
 		'vlib/net/http/response_test.v',
@@ -134,9 +135,11 @@ const (
 		'vlib/net/websocket/websocket_test.v',
 		'vlib/crypto/rand/crypto_rand_read_test.v',
 		'vlib/net/smtp/smtp_test.v',
+		'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 	]
 	skip_with_fsanitize_address   = [
 		'vlib/net/websocket/websocket_test.v',
+		'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 	]
 	skip_with_fsanitize_undefined = [
 		'do_not_remove',
@@ -154,6 +157,7 @@ const (
 	skip_on_musl                  = [
 		'vlib/v/tests/profile/profile_test.v',
 		'vlib/gg/draw_fns_api_test.v',
+		'vlib/v/tests/skip_unused/gg_code.vv',
 	]
 	skip_on_ubuntu_musl           = [
 		//'vlib/v/gen/js/jsgen_test.v',
@@ -172,6 +176,7 @@ const (
 		'vlib/clipboard/clipboard_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/vweb/request_test.v',
+		'vlib/vweb/csrf/csrf_test.v',
 		'vlib/net/http/request_test.v',
 		'vlib/vweb/route_test.v',
 		'vlib/net/websocket/websocket_test.v',
@@ -181,6 +186,7 @@ const (
 		'vlib/net/http/response_test.v',
 		'vlib/builtin/js/array_test.js.v',
 		'vlib/net/smtp/smtp_test.v',
+		'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 	]
 	skip_on_linux                 = [
 		'do_not_remove',
@@ -191,6 +197,7 @@ const (
 	skip_on_windows_msvc          = [
 		'do_not_remove',
 		'vlib/v/tests/const_fixed_array_containing_references_to_itself_test.v', // error C2099: initializer is not a constant
+		'vlib/v/tests/const_and_global_with_same_name_test.v', // error C2099: initializer is not a constant
 	]
 	skip_on_windows               = [
 		'vlib/context/cancel_test.v',
@@ -211,6 +218,7 @@ const (
 		'vlib/sync/many_times_test.v',
 		'vlib/sync/once_test.v',
 		'vlib/net/smtp/smtp_test.v',
+		'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 	]
 	skip_on_non_windows           = [
 		'do_not_remove',

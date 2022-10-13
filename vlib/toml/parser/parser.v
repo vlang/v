@@ -51,7 +51,7 @@ pub struct Parser {
 pub:
 	config Config
 mut:
-	scanner   &scanner.Scanner
+	scanner   &scanner.Scanner = unsafe { nil }
 	prev_tok  token.Token
 	tok       token.Token
 	peek_tok  token.Token
@@ -75,7 +75,7 @@ mut:
 // `decode_values` is used to en- or disable decoding of values with the `decoder.Decoder`.
 pub struct Config {
 pub:
-	scanner       &scanner.Scanner
+	scanner       &scanner.Scanner = unsafe { nil }
 	run_checks    bool = true
 	decode_values bool = true
 }
@@ -561,7 +561,9 @@ pub fn (mut p Parser) root_table() ? {
 
 				if p.tok.kind == .lsbr {
 					// Parse `[[table]]`
-					p.array_of_tables(mut &p.root_map)?
+					unsafe {
+						p.array_of_tables(mut &p.root_map)?
+					}
 					p.skip_next = true // skip calling p.next() in coming iteration
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'leaving double bracket at "$p.tok.kind" "$p.tok.lit". NEXT is "$p.peek_tok.kind "$p.peek_tok.lit"')
 				} else if peek_tok.kind == .period {

@@ -103,3 +103,48 @@ fn between_if_branches() {
 	else {
 	}
 }
+
+// comments
+for {
+	break
+}
+
+// comments
+for {
+	break
+}
+
+// comments
+for i := 0; i < 1; i++ {
+	break
+}
+
+// comments
+for i := 0; i < 1; i++ {
+	break
+}
+
+// comments1
+// comments2
+// comments3
+// comments4
+for i := 0; i < 1; i++ {
+	break
+}
+
+// comments
+for _ in [1, 2] {
+	break
+}
+
+// comments
+for _ in [1, 2] {
+	break
+}
+
+// comments1
+// comments2
+// comments3
+for _ in [1, 2] {
+	break
+}

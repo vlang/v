@@ -30,7 +30,7 @@ fn redeep_glob() ? {
 	}
 }
 
-fn test_glob_can_find_v_files_3_levels_deep() ? {
+fn test_glob_can_find_v_files_3_levels_deep() {
 	$if !windows {
 		deep_glob()?
 		redeep_glob()?
@@ -38,7 +38,7 @@ fn test_glob_can_find_v_files_3_levels_deep() ? {
 	assert true
 }
 
-fn test_glob_can_find_files_in_current_folder() ? {
+fn test_glob_can_find_files_in_current_folder() {
 	os.chdir(@VMODROOT)?
 	matches := os.glob('*')?
 	assert '.gitignore' in matches
@@ -52,7 +52,7 @@ fn test_glob_can_find_files_in_current_folder() ? {
 	assert 'thirdparty/' in matches
 }
 
-fn test_glob_can_be_used_with_multiple_patterns() ? {
+fn test_glob_can_be_used_with_multiple_patterns() {
 	os.chdir(@VMODROOT)?
 	matches := os.glob('*', 'cmd/tools/*')?
 	assert 'README.md' in matches
@@ -65,14 +65,14 @@ fn test_glob_can_be_used_with_multiple_patterns() ? {
 	}
 }
 
-fn test_glob_star() ? {
+fn test_glob_star() {
 	os.chdir(@VMODROOT)?
 	matches := os.glob('*ake*')?
 	assert 'Makefile' in matches
 	assert 'make.bat' in matches
 }
 
-fn test_glob_not_found() ? {
+fn test_glob_not_found() {
 	os.glob('an_unknown_folder/*.v') or {
 		assert true
 		return

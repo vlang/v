@@ -16,7 +16,7 @@ import hash.fnv1a
 
 [minify]
 pub struct Parser {
-	pref &pref.Preferences
+	pref &pref.Preferences = unsafe { nil }
 mut:
 	file_base         string       // "hello.v"
 	file_name         string       // "/home/user/hello.v"
@@ -28,7 +28,7 @@ mut:
 	tok                       token.Token
 	prev_tok                  token.Token
 	peek_tok                  token.Token
-	table                     &ast.Table
+	table                     &ast.Table = unsafe { nil }
 	language                  ast.Language
 	fn_language               ast.Language // .c for `fn C.abcd()` declarations
 	expr_level                int  // prevent too deep recursions for pathological programs
@@ -59,6 +59,7 @@ mut:
 	inside_generic_params     bool // indicates if parsing between `<` and `>` of a method/function
 	inside_receiver_param     bool // indicates if parsing the receiver parameter inside the first `(` and `)` of a method
 	inside_struct_field_decl  bool
+	inside_map_init           bool
 	or_is_handled             bool       // ignore `or` in this expression
 	builtin_mod               bool       // are we in the `builtin` module?
 	mod                       string     // current module name
@@ -68,7 +69,7 @@ mut:
 	is_translated             bool       // `[translated] module abc` - mark a file as translated, to relax some compiler checks for translated code.
 	attrs                     []ast.Attr // attributes before next decl stmt
 	expr_mod                  string     // for constructing full type names in parse_type()
-	scope                     &ast.Scope
+	scope                     &ast.Scope = unsafe { nil }
 	imports                   map[string]string // alias => mod_name
 	ast_imports               []ast.Import      // mod_names
 	used_imports              []string // alias
@@ -92,7 +93,7 @@ mut:
 	script_mode               bool
 	script_mode_start_token   token.Token
 pub mut:
-	scanner    &scanner.Scanner
+	scanner    &scanner.Scanner = unsafe { nil }
 	errors     []errors.Error
 	warnings   []errors.Warning
 	notices    []errors.Notice
@@ -371,10 +372,10 @@ mut:
 	mu               &sync.Mutex
 	mu2              &sync.Mutex
 	paths            []string
-	table            &ast.Table
+	table            &ast.Table = unsafe { nil }
 	parsed_ast_files []&ast.File
-	pref             &pref.Preferences
-	global_scope     &ast.Scope
+	pref             &pref.Preferences = unsafe { nil }
+	global_scope     &ast.Scope = unsafe { nil }
 }
 
 fn (mut q Queue) run() {

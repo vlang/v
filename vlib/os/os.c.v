@@ -1,5 +1,7 @@
 module os
 
+import strings
+
 #include <sys/stat.h> // #include <signal.h>
 #include <errno.h>
 
@@ -12,8 +14,6 @@ fn C.readdir(voidptr) &C.dirent
 fn C.readlink(pathname &char, buf &char, bufsiz usize) int
 
 fn C.getline(voidptr, voidptr, voidptr) int
-
-fn C.ftell(fp voidptr) i64
 
 fn C.sigaction(int, voidptr, int) int
 
@@ -44,52 +44,76 @@ pub fn read_bytes(path string) ?[]u8 {
 	defer {
 		C.fclose(fp)
 	}
-	cseek := C.fseek(fp, 0, C.SEEK_END)
-	if cseek != 0 {
-		return error('fseek failed')
+	fsize := find_cfile_size(fp)?
+	if fsize == 0 {
+		mut sb := slurp_file_in_builder(fp)?
+		return unsafe { sb.reuse_as_plain_u8_array() }
 	}
-	fsize := C.ftell(fp)
-	if fsize < 0 {
-		return error('ftell failed')
-	}
-	len := int(fsize)
-	// On some systems C.ftell can return values in the 64-bit range
-	// that, when cast to `int`, can result in values below 0.
-	if i64(len) < fsize {
-		return error('$fsize cast to int results in ${int(fsize)})')
-	}
-	C.rewind(fp)
-	mut res := []u8{len: len}
-	nr_read_elements := int(C.fread(res.data, len, 1, fp))
+	mut res := []u8{len: fsize}
+	nr_read_elements := int(C.fread(res.data, 1, fsize, fp))
 	if nr_read_elements == 0 && fsize > 0 {
 		return error('fread failed')
 	}
-	res.trim(nr_read_elements * len)
+	res.trim(nr_read_elements)
 	return res
 }
 
+fn find_cfile_size(fp &C.FILE) ?int {
+	// NB: Musl's fseek returns -1 for virtual files, while Glibc's fseek returns 0
+	cseek := C.fseek(fp, 0, C.SEEK_END)
+	raw_fsize := C.ftell(fp)
+	if raw_fsize != 0 && cseek != 0 {
+		return error('fseek failed')
+	}
+	if cseek != 0 && raw_fsize < 0 {
+		return error('ftell failed')
+	}
+	len := int(raw_fsize)
+	// For files > 2GB, C.ftell can return values that, when cast to `int`, can result in values below 0.
+	if i64(len) < raw_fsize {
+		return error('int($raw_fsize) cast results in $len')
+	}
+	C.rewind(fp)
+	return len
+}
+
+const buf_size = 4096
+
+// slurp_file_in_builder reads an entire file into a strings.Builder chunk by chunk, without relying on its file size.
+// It is intended for reading 0 sized files, or a dynamic files in a virtual filesystem like /proc/cpuinfo.
+// For these, we can not allocate all memory in advance (since we do not know the final size), and so we have no choice
+// but to read the file in `buf_size` chunks.
+[manualfree]
+fn slurp_file_in_builder(fp &C.FILE) ?strings.Builder {
+	buf := [os.buf_size]u8{}
+	mut sb := strings.new_builder(os.buf_size)
+	for {
+		mut read_bytes := fread(&buf[0], 1, os.buf_size, fp) or {
+			if err is none {
+				break
+			}
+			unsafe { sb.free() }
+			return err
+		}
+		unsafe { sb.write_ptr(&buf[0], read_bytes) }
+	}
+	return sb
+}
+
 // read_file reads the file in `path` and returns the contents.
+[manualfree]
 pub fn read_file(path string) ?string {
 	mode := 'rb'
 	mut fp := vfopen(path, mode)?
 	defer {
 		C.fclose(fp)
 	}
-	cseek := C.fseek(fp, 0, C.SEEK_END)
-	if cseek != 0 {
-		return error('fseek failed')
-	}
-	fsize := C.ftell(fp)
-	if fsize < 0 {
-		return error('ftell failed')
-	}
-	// C.fseek(fp, 0, SEEK_SET)  // same as `C.rewind(fp)` below
-	C.rewind(fp)
-	allocate := int(fsize)
-	// On some systems C.ftell can return values in the 64-bit range
-	// that, when cast to `int`, can result in values below 0.
-	if i64(allocate) < fsize {
-		return error('$fsize cast to int results in ${int(fsize)})')
+	allocate := find_cfile_size(fp)?
+	if allocate == 0 {
+		mut sb := slurp_file_in_builder(fp)?
+		res := sb.str()
+		unsafe { sb.free() }
+		return res
 	}
 	unsafe {
 		mut str := malloc_noscan(allocate + 1)
@@ -901,7 +925,9 @@ pub fn fork() int {
 pub fn wait() int {
 	mut pid := -1
 	$if !windows {
-		pid = C.wait(0)
+		$if !emscripten ? {
+			pid = C.wait(0)
+		}
 	}
 	$if windows {
 		panic('os.wait not supported in windows') // TODO

@@ -56,12 +56,11 @@ Let my heart be still a moment and this mystery explore;—
 struct AppState {
 mut:
 	pass_action gfx.PassAction
-	fons        &fontstash.Context
+	fons        &fontstash.Context = unsafe { nil }
 	font_normal int
 	inited      bool
 }
 
-[console]
 fn main() {
 	mut color_action := gfx.ColorAttachmentAction{
 		action: .clear

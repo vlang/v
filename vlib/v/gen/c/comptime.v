@@ -70,7 +70,8 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		fn_name := g.fn_decl.name.replace('.', '__') + node.pos.pos.str()
 		if is_html {
 			// return vweb html template
-			g.writeln('vweb__Context_html(&app->Context, _tmpl_res_$fn_name); strings__Builder_free(&sb_$fn_name); string_free(&_tmpl_res_$fn_name);')
+			app_name := g.fn_decl.params[0].name
+			g.writeln('vweb__Context_html(&$app_name->Context, _tmpl_res_$fn_name); strings__Builder_free(&sb_$fn_name); string_free(&_tmpl_res_$fn_name);')
 		} else {
 			// return $tmpl string
 			g.write(cur_line)
@@ -201,6 +202,9 @@ fn cgen_attrs(attrs []ast.Attr) []string {
 		if attr.arg.len > 0 {
 			s += ': $attr.arg'
 		}
+		if attr.kind == .string {
+			s = escape_quotes(s)
+		}
 		res << '_SLIT("$s")'
 	}
 	return res
@@ -265,7 +269,12 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 			g.writeln('')
 		}
 		expr_str := g.out.last_n(g.out.len - start_pos).trim_space()
-		g.defer_ifdef = expr_str
+		if expr_str != '' {
+			if g.defer_ifdef != '' {
+				g.defer_ifdef += '\r\n' + '\t'.repeat(g.indent + 1)
+			}
+			g.defer_ifdef += expr_str
+		}
 		if node.is_expr {
 			len := branch.stmts.len
 			if len > 0 {
@@ -302,8 +311,8 @@ fn (mut g Gen) comptime_if(node ast.IfExpr) {
 				g.writeln('}')
 			}
 		}
-		g.defer_ifdef = ''
 	}
+	g.defer_ifdef = ''
 	g.writeln('#endif')
 	if node.is_expr {
 		g.write('$line $tmp_var')
@@ -461,12 +470,19 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 		if methods.len > 0 {
 			g.writeln('FunctionData $node.val_var = {0};')
 		}
-		for method in methods { // sym.methods {
-			/*
-			if method.return_type != vweb_result_type { // ast.void_type {
-				continue
+		typ_vweb_result := g.table.find_type_idx('vweb.Result')
+		for method in methods {
+			// filter vweb route methods (non-generic method)
+			if method.receiver_type != 0 && method.return_type == typ_vweb_result {
+				rec_sym := g.table.sym(method.receiver_type)
+				if rec_sym.kind == .struct_ {
+					if _ := g.table.find_field_with_embeds(rec_sym, 'Context') {
+						if method.generic_names.len > 0 {
+							continue
+						}
+					}
+				}
 			}
-			*/
 			g.comptime_for_method = method.name
 			g.writeln('/* method $i */ {')
 			g.writeln('\t${node.val_var}.name = _SLIT("$method.name");')
@@ -655,6 +671,9 @@ fn (mut g Gen) comptime_if_to_ifdef(name string, is_comptime_optional bool) ?str
 		//
 		'js' {
 			return '_VJS'
+		}
+		'wasm32_emscripten' {
+			return '__EMSCRIPTEN__'
 		}
 		// compilers:
 		'gcc' {

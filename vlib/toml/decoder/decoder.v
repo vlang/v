@@ -16,7 +16,7 @@ const (
 
 // Decoder decode special sequences in a tree of TOML `ast.Value`'s.
 pub struct Decoder {
-	scanner &scanner.Scanner
+	scanner &scanner.Scanner = unsafe { nil }
 }
 
 // decode decodes certain `ast.Value`'s and all it's children.

@@ -53,7 +53,7 @@ fn run(args []string) ?string {
 }
 
 // test_burnt_sushi_tomltest run though 'testdata/burntsushi/toml-test/*' if found.
-fn test_burnt_sushi_tomltest() ? {
+fn test_burnt_sushi_tomltest() {
 	this_file := @FILE
 	test_root := os.join_path(os.dir(this_file), 'testdata', 'burntsushi', 'toml-test',
 		'tests')

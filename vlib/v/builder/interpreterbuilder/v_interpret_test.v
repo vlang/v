@@ -9,7 +9,7 @@ fn interpreter_wrap(a string) string {
 }
 
 fn interp_test(expression string, expected string) ? {
-	tmpdir := os.join_path(os.temp_dir(), 'v_interpret_test_$rand.ulid()')
+	tmpdir := os.join_path(os.temp_dir(), 'v', 'interpret_test_$rand.ulid()')
 	os.mkdir_all(tmpdir) or {}
 	defer {
 		os.rmdir_all(tmpdir) or {}
@@ -41,7 +41,7 @@ struct InterpTest {
 	output string
 }
 
-fn test_interpreter() ? {
+fn test_interpreter() {
 	mut tests := []InterpTest{}
 	tests << InterpTest{'println(3+3)', '6'}
 	tests << InterpTest{'println(3)', '3'}

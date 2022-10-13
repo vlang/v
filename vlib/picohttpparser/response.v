@@ -3,10 +3,10 @@ module picohttpparser
 pub struct Response {
 	fd int
 pub:
-	date      &u8 = unsafe { 0 }
-	buf_start &u8 = unsafe { 0 }
+	date      &u8 = unsafe { nil }
+	buf_start &u8 = unsafe { nil }
 pub mut:
-	buf &u8 = unsafe { 0 }
+	buf &u8 = unsafe { nil }
 }
 
 [inline]

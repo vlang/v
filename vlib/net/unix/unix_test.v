@@ -1,7 +1,17 @@
 import os
 import net.unix
 
-const test_port = os.join_path(os.temp_dir(), 'unix_domain_socket')
+const tfolder = os.join_path(os.temp_dir(), 'v', 'unix_test')
+
+const test_port = os.join_path(tfolder, 'unix_domain_socket')
+
+fn testsuite_begin() {
+	os.mkdir_all(tfolder) or {}
+}
+
+fn testsuite_end() {
+	os.rmdir_all(tfolder) or {}
+}
 
 fn handle_conn(mut c unix.StreamConn) {
 	for {

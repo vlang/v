@@ -1,3 +1,5 @@
+import sync
+
 fn test_array_of_floats() {
 	// f64 array
 	aa := [1.2, 3.4, 5.67]
@@ -443,4 +445,32 @@ fn test_fixed_array_of_function() {
 	a := [println, println]!
 	println(a)
 	assert '$a' == '[fn (string), fn (string)]'
+}
+
+struct CTypeDefStruct {
+	mutex &sync.Mutex
+}
+
+fn test_c_struct_typedef() {
+	$if macos || linux {
+		c := CTypeDefStruct{
+			mutex: sync.new_mutex()
+		}
+		assert c.str() == r'CTypeDefStruct{
+    mutex: &sync.Mutex{
+        mutex: pthread_mutex_t{}
+    }
+}'
+	}
+}
+
+struct CharptrToStr {
+	cp charptr = charptr(0)
+}
+
+fn test_charptr_nil_to_str() {
+	c := CharptrToStr{}
+	assert c.str() == r'CharptrToStr{
+    cp: C""
+}'
 }

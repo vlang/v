@@ -437,12 +437,12 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 			elem_type := right.sym.info.elem_type
 			elem_type_ := g.unwrap(elem_type)
 			if elem_type_.sym.kind == .sum_type {
-				if node.left_type in elem_type_.sym.sumtype_info().variants {
+				if ast.mktyp(node.left_type) in elem_type_.sym.sumtype_info().variants {
 					new_node_left := ast.CastExpr{
 						arg: ast.empty_expr
 						typ: elem_type
 						expr: node.left
-						expr_type: node.left_type
+						expr_type: ast.mktyp(node.left_type)
 					}
 					g.gen_array_contains(node.right_type, node.right, new_node_left)
 					return
@@ -507,12 +507,12 @@ fn (mut g Gen) infix_expr_in_op(node ast.InfixExpr) {
 			elem_type := right.sym.info.elem_type
 			elem_type_ := g.unwrap(elem_type)
 			if elem_type_.sym.kind == .sum_type {
-				if node.left_type in elem_type_.sym.sumtype_info().variants {
+				if ast.mktyp(node.left_type) in elem_type_.sym.sumtype_info().variants {
 					new_node_left := ast.CastExpr{
 						arg: ast.empty_expr
 						typ: elem_type
 						expr: node.left
-						expr_type: node.left_type
+						expr_type: ast.mktyp(node.left_type)
 					}
 					g.gen_array_contains(node.right_type, node.right, new_node_left)
 					return
@@ -722,7 +722,11 @@ fn (mut g Gen) infix_expr_left_shift_op(node ast.InfixExpr) {
 			if node.left_type.has_flag(.shared_f) {
 				g.write('->val')
 			}
-			g.write(', (')
+			if left.typ.is_ptr() && right.typ.is_ptr() {
+				g.write(', *(')
+			} else {
+				g.write(', (')
+			}
 			g.expr_with_cast(node.right, node.right_type, left.unaliased.clear_flag(.shared_f))
 			styp := g.typ(expected_push_many_atype)
 			g.write('), $tmp_var, $styp)')

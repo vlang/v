@@ -90,7 +90,7 @@ const (
 
 struct App {
 mut:
-	ui                  &ui.Context = unsafe { 0 }
+	ui                  &ui.Context = unsafe { nil }
 	header_text         []string
 	mouse_pos           Point
 	msg                 string

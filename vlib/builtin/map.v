@@ -85,9 +85,9 @@ mut:
 	deletes u32 // count
 	// array allocated (with `cap` bytes) on first deletion
 	// has non-zero element when key deleted
-	all_deleted &u8
-	keys        &u8
-	values      &u8
+	all_deleted &u8 = unsafe { nil }
+	keys        &u8 = unsafe { nil }
+	values      &u8 = unsafe { nil }
 }
 
 [inline]

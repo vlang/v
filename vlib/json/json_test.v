@@ -508,3 +508,22 @@ fn test_encode_alias_field() {
 	println(s)
 	assert s == '{"sub":{"a":1}}'
 }
+
+//
+
+struct APrice {}
+
+struct Association {
+	association &Association = unsafe { nil }
+	price       APrice
+}
+
+fn test_encoding_struct_with_pointers() {
+	value := Association{
+		association: &Association{
+			price: APrice{}
+		}
+		price: APrice{}
+	}
+	assert json.encode(value) == '{"association":{"price":{}},"price":{}}'
+}

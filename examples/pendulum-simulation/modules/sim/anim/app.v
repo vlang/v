@@ -19,7 +19,7 @@ pub:
 	request_chan chan &sim.SimRequest
 	result_chan  chan &sim.SimResult
 pub mut:
-	gg     &gg.Context = unsafe { 0 }
+	gg     &gg.Context = unsafe { nil }
 	iidx   int
 	pixels []u32
 }

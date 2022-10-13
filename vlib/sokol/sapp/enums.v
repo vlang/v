@@ -22,7 +22,6 @@ pub enum EventType {
 	unfocused
 	suspended
 	resumed
-	update_cursor
 	quit_requested
 	clipboard_pasted
 	files_droped
@@ -182,4 +181,13 @@ pub enum KeyCode {
 	right_alt = 346
 	right_super = 347
 	menu = 348
+}
+
+pub enum TouchToolType {
+	unknown
+	finger
+	stylus
+	mouse
+	eraser
+	palm
 }

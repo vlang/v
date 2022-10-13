@@ -27,7 +27,7 @@ fn test_header_adds_multiple() {
 	assert h.values(.accept) == ['one', 'two']
 }
 
-fn test_header_get() ? {
+fn test_header_get() {
 	mut h := new_header(key: .dnt, value: 'one')
 	h.add_custom('dnt', 'two')?
 	dnt := h.get_custom('dnt') or { '' }
@@ -36,7 +36,7 @@ fn test_header_get() ? {
 	assert exact == 'two'
 }
 
-fn test_header_set() ? {
+fn test_header_set() {
 	mut h := new_header(HeaderConfig{ key: .dnt, value: 'one' },
 		key: .dnt
 		value: 'two'
@@ -65,7 +65,7 @@ fn test_header_delete_not_existing() {
 	assert h.keys.len == 0
 }
 
-fn test_custom_header() ? {
+fn test_custom_header() {
 	mut h := new_header()
 	h.add_custom('AbC', 'dEf')?
 	h.add_custom('aBc', 'GhI')?
@@ -89,7 +89,7 @@ fn test_custom_header() ? {
 	assert h.keys() == ['accEPT']
 }
 
-fn test_contains_custom() ? {
+fn test_contains_custom() {
 	mut h := new_header()
 	h.add_custom('Hello', 'world')?
 	assert h.contains_custom('hello')
@@ -99,7 +99,7 @@ fn test_contains_custom() ? {
 	assert h.contains_custom('HELLO', exact: true) == false
 }
 
-fn test_get_custom() ? {
+fn test_get_custom() {
 	mut h := new_header()
 	h.add_custom('Hello', 'world')?
 	assert h.get_custom('hello')? == 'world'
@@ -115,7 +115,7 @@ fn test_get_custom() ? {
 	}
 }
 
-fn test_starting_with() ? {
+fn test_starting_with() {
 	mut h := new_header()
 	h.add_custom('Hello-1', 'world')?
 	h.add_custom('Hello-21', 'world')?
@@ -123,7 +123,7 @@ fn test_starting_with() ? {
 	assert h.starting_with('Hello-2')? == 'Hello-21'
 }
 
-fn test_custom_values() ? {
+fn test_custom_values() {
 	mut h := new_header()
 	h.add_custom('Hello', 'world')?
 	assert h.custom_values('hello') == ['world']
@@ -133,7 +133,7 @@ fn test_custom_values() ? {
 	assert h.custom_values('HELLO', exact: true) == []
 }
 
-fn test_coerce() ? {
+fn test_coerce() {
 	mut h := new_header()
 	h.add_custom('accept', 'foo')?
 	h.add(.accept, 'bar')
@@ -145,7 +145,7 @@ fn test_coerce() ? {
 	assert h.keys() == ['accept'] // takes the first occurrence
 }
 
-fn test_coerce_canonicalize() ? {
+fn test_coerce_canonicalize() {
 	mut h := new_header()
 	h.add_custom('accept', 'foo')?
 	h.add(.accept, 'bar')
@@ -157,7 +157,7 @@ fn test_coerce_canonicalize() ? {
 	assert h.keys() == ['Accept'] // canonicalize header
 }
 
-fn test_coerce_custom() ? {
+fn test_coerce_custom() {
 	mut h := new_header()
 	h.add_custom('Hello', 'foo')?
 	h.add_custom('hello', 'bar')?
@@ -170,7 +170,7 @@ fn test_coerce_custom() ? {
 	assert h.keys() == ['Hello'] // takes the first occurrence
 }
 
-fn test_coerce_canonicalize_custom() ? {
+fn test_coerce_canonicalize_custom() {
 	mut h := new_header()
 	h.add_custom('foo-BAR', 'foo')?
 	h.add_custom('FOO-bar', 'bar')?
@@ -182,7 +182,7 @@ fn test_coerce_canonicalize_custom() ? {
 	assert h.keys() == ['Foo-Bar'] // capitalizes the header
 }
 
-fn test_render_version() ? {
+fn test_render_version() {
 	mut h := new_header()
 	h.add_custom('accept', 'foo')?
 	h.add_custom('Accept', 'bar')?
@@ -204,7 +204,7 @@ fn test_render_version() ? {
 	assert s2_0.contains('accept: baz\r\n')
 }
 
-fn test_render_coerce() ? {
+fn test_render_coerce() {
 	mut h := new_header()
 	h.add_custom('accept', 'foo')?
 	h.add_custom('Accept', 'bar')?
@@ -230,7 +230,7 @@ fn test_render_coerce() ? {
 	assert s2_0.contains('host: host\r\n')
 }
 
-fn test_render_canonicalize() ? {
+fn test_render_canonicalize() {
 	mut h := new_header()
 	h.add_custom('accept', 'foo')?
 	h.add_custom('Accept', 'bar')?
@@ -256,7 +256,7 @@ fn test_render_canonicalize() ? {
 	assert s2_0.contains('host: host\r\n')
 }
 
-fn test_render_coerce_canonicalize() ? {
+fn test_render_coerce_canonicalize() {
 	mut h := new_header()
 	h.add_custom('accept', 'foo')?
 	h.add_custom('Accept', 'bar')?
@@ -282,7 +282,7 @@ fn test_render_coerce_canonicalize() ? {
 	assert s2_0.contains('host: host\r\n')
 }
 
-fn test_str() ? {
+fn test_str() {
 	mut h := new_header()
 	h.add(.accept, 'text/html')
 	h.add_custom('Accept', 'image/jpeg')?
@@ -293,7 +293,7 @@ fn test_str() ? {
 		|| h.str() == 'X-custom: Hello\r\nAccept:text/html\r\nAccept: image/jpeg\r\n'
 }
 
-fn test_header_from_map() ? {
+fn test_header_from_map() {
 	h := new_header_from_map({
 		CommonHeader.accept:  'nothing'
 		CommonHeader.expires: 'yesterday'
@@ -304,7 +304,7 @@ fn test_header_from_map() ? {
 	assert h.get(.expires) or { '' } == 'yesterday'
 }
 
-fn test_custom_header_from_map() ? {
+fn test_custom_header_from_map() {
 	h := new_custom_header_from_map({
 		'Server': 'VWeb'
 		'foo':    'bar'
@@ -315,7 +315,7 @@ fn test_custom_header_from_map() ? {
 	assert h.get_custom('foo') or { '' } == 'bar'
 }
 
-fn test_header_join() ? {
+fn test_header_join() {
 	h1 := new_header_from_map({
 		CommonHeader.accept:  'nothing'
 		CommonHeader.expires: 'yesterday'

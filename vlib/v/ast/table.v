@@ -20,7 +20,7 @@ pub mut:
 	dumps              map[int]string // needed for efficiently generating all _v_dump_expr_TNAME() functions
 	imports            []string       // List of all imports
 	modules            []string       // Topologically sorted list of all modules registered by the application
-	global_scope       &Scope
+	global_scope       &Scope = unsafe { nil }
 	cflags             []cflag.CFlag
 	redefined_fns      []string
 	fn_generic_types   map[string][][]Type // for generic functions
@@ -35,7 +35,7 @@ pub mut:
 	panic_handler      FnPanicHandler = default_table_panic_handler
 	panic_userdata     voidptr        = unsafe { nil } // can be used to pass arbitrary data to panic_handler;
 	panic_npanics      int
-	cur_fn             &FnDecl = unsafe { 0 } // previously stored in Checker.cur_fn and Gen.cur_fn
+	cur_fn             &FnDecl = unsafe { nil } // previously stored in Checker.cur_fn and Gen.cur_fn
 	cur_concrete_types []Type  // current concrete types, e.g. <int, string>
 	gostmts            int     // how many `go` statements there were in the parsed files.
 	// When table.gostmts > 0, __VTHREADS__ is defined, which can be checked with `$if threads {`
@@ -230,11 +230,9 @@ pub fn (t &Table) fn_type_signature(f &Fn) string {
 	if f.return_type != 0 && f.return_type != void_type {
 		sym := t.sym(f.return_type)
 		opt := if f.return_type.has_flag(.optional) { 'option_' } else { '' }
-		if sym.kind == .alias {
-			sig += '__$opt$sym.cname'
-		} else {
-			sig += '__$opt$sym.kind'
-		}
+		res := if f.return_type.has_flag(.result) { 'result_' } else { '' }
+
+		sig += '__$opt$res$sym.cname'
 	}
 	return sig
 }
@@ -984,7 +982,8 @@ pub fn (t &Table) thread_name(return_type Type) string {
 	return_type_sym := t.sym(return_type)
 	ptr := if return_type.is_ptr() { '&' } else { '' }
 	opt := if return_type.has_flag(.optional) { '?' } else { '' }
-	return 'thread $opt$ptr$return_type_sym.name'
+	res := if return_type.has_flag(.result) { '!' } else { '' }
+	return 'thread $opt$res$ptr$return_type_sym.name'
 }
 
 [inline]
@@ -998,8 +997,9 @@ pub fn (t &Table) thread_cname(return_type Type) string {
 	}
 	return_type_sym := t.sym(return_type)
 	suffix := if return_type.is_ptr() { '_ptr' } else { '' }
-	prefix := if return_type.has_flag(.optional) { '_option_' } else { '' }
-	return '__v_thread_$prefix$return_type_sym.cname$suffix'
+	opt := if return_type.has_flag(.optional) { '_option_' } else { '' }
+	res := if return_type.has_flag(.result) { '_result_' } else { '' }
+	return '__v_thread_$opt$res$return_type_sym.cname$suffix'
 }
 
 // map_source_name generates the original name for the v source.
@@ -1009,7 +1009,9 @@ pub fn (t &Table) map_name(key_type Type, value_type Type) string {
 	key_type_sym := t.sym(key_type)
 	value_type_sym := t.sym(value_type)
 	ptr := if value_type.is_ptr() { '&' } else { '' }
-	return 'map[$key_type_sym.name]$ptr$value_type_sym.name'
+	opt := if value_type.has_flag(.optional) { '?' } else { '' }
+	res := if value_type.has_flag(.result) { '!' } else { '' }
+	return 'map[$key_type_sym.name]$opt$res$ptr$value_type_sym.name'
 }
 
 [inline]
@@ -1017,7 +1019,9 @@ pub fn (t &Table) map_cname(key_type Type, value_type Type) string {
 	key_type_sym := t.sym(key_type)
 	value_type_sym := t.sym(value_type)
 	suffix := if value_type.is_ptr() { '_ptr' } else { '' }
-	return 'Map_${key_type_sym.cname}_$value_type_sym.cname' + suffix
+	opt := if value_type.has_flag(.optional) { '_option_' } else { '' }
+	res := if value_type.has_flag(.result) { '_result_' } else { '' }
+	return 'Map_${key_type_sym.cname}_$opt$res$value_type_sym.cname$suffix'
 }
 
 pub fn (mut t Table) find_or_register_chan(elem_type Type, is_mut bool) int {
@@ -1307,9 +1311,16 @@ pub fn (t &Table) sumtype_has_variant(parent Type, variant Type, is_as bool) boo
 }
 
 fn (t &Table) sumtype_check_function_variant(parent_info SumType, variant Type, is_as bool) bool {
+	variant_fn := (t.sym(variant).info as FnType).func
+	variant_fn_sig := t.fn_type_source_signature(variant_fn)
+
 	for v in parent_info.variants {
-		if '$v.idx' == '$variant.idx' && (!is_as || v.nr_muls() == variant.nr_muls()) {
-			return true
+		v_sym := t.sym(v)
+		if v_sym.info is FnType {
+			if t.fn_type_source_signature(v_sym.info.func) == variant_fn_sig
+				&& (!is_as || v.nr_muls() == variant.nr_muls()) {
+				return true
+			}
 		}
 	}
 	return false

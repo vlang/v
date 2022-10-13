@@ -36,7 +36,7 @@ const (
 
 struct App {
 mut:
-	gg          &gg.Context
+	gg          &gg.Context = unsafe { nil }
 	pip_3d      sgl.Pipeline
 	texture     gfx.Image
 	init_flag   bool
@@ -458,7 +458,7 @@ fn frame(mut app App) {
 
 	// clear
 	mut color_action := gfx.ColorAttachmentAction{
-		action: gfx.Action(C.SG_ACTION_DONTCARE) // C.SG_ACTION_CLEAR)
+		action: unsafe { gfx.Action(C.SG_ACTION_DONTCARE) } // C.SG_ACTION_CLEAR)
 		value: gfx.Color{
 			r: 1.0
 			g: 1.0
@@ -577,7 +577,6 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 * Main
 *
 ******************************************************************************/
-[console] // is needed for easier diagnostics on windows
 fn main() {
 	// App init
 	mut app := &App{

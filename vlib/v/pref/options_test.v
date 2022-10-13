@@ -5,6 +5,16 @@ import time
 
 const vexe = @VEXE
 
+const tfolder = os.join_path(os.temp_dir(), 'v', 'custom_compile')
+
+fn testsuite_begin() {
+	os.mkdir_all(tfolder) or {}
+}
+
+fn testsuite_end() {
+	os.rmdir_all(tfolder) or {}
+}
+
 fn test_cflags() ? {
 	os.chdir(os.real_path(@VMODROOT)) or {}
 	mut debug_arg := '-g3 -O0'
@@ -39,10 +49,10 @@ fn test_cflags() ? {
 
 fn custom_compile(fname string, cflags_options string) Results {
 	mut res := Results{}
-	res.exe = os.join_path(os.temp_dir(), fname)
+	res.exe = os.join_path(tfolder, fname)
 	res.sw = time.new_stopwatch()
 	res.compilation = os.execute('${os.quoted_path(vexe)} -cflags "$cflags_options" -o ${os.quoted_path(res.exe)} examples/hello_world.v')
-	res.delta = res.sw.elapsed().microseconds()
+	res.delta = res.sw.elapsed().milliseconds()
 	res.file_size = os.file_size(res.exe)
 	println('> $fname build took: $res.delta ms with "$cflags_options", file size: $res.file_size')
 	return res

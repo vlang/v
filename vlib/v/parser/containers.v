@@ -192,6 +192,11 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 
 // parse tokens between braces
 fn (mut p Parser) map_init() ast.MapInit {
+	old_inside_map_init := p.inside_map_init
+	p.inside_map_init = true
+	defer {
+		p.inside_map_init = old_inside_map_init
+	}
 	first_pos := p.prev_tok.pos()
 	mut keys := []ast.Expr{}
 	mut vals := []ast.Expr{}

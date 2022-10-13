@@ -319,6 +319,7 @@ fn (mut p Parser) at() ast.AtExpr {
 		'@STRUCT' { token.AtKind.struct_name }
 		'@FILE' { token.AtKind.file_path }
 		'@LINE' { token.AtKind.line_nr }
+		'@FILE_LINE' { token.AtKind.file_path_line_nr }
 		'@COLUMN' { token.AtKind.column_nr }
 		'@VHASH' { token.AtKind.vhash }
 		'@VMOD_FILE' { token.AtKind.vmod_file }
@@ -328,12 +329,13 @@ fn (mut p Parser) at() ast.AtExpr {
 		'@VROOT' { token.AtKind.vroot_path } // deprecated, use @VEXEROOT or @VMODROOT
 		else { token.AtKind.unknown }
 	}
-	p.next()
-	return ast.AtExpr{
+	expr := ast.AtExpr{
 		name: name
 		pos: p.tok.pos()
 		kind: kind
 	}
+	p.next()
+	return expr
 }
 
 fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {

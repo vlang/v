@@ -42,6 +42,7 @@ pub enum Language {
 	arm32 // 32-bit arm
 	rv64 // 64-bit risc-v
 	rv32 // 32-bit risc-v
+	wasm32
 }
 
 pub fn pref_arch_to_table_language(pref_arch pref.Arch) Language {
@@ -66,6 +67,9 @@ pub fn pref_arch_to_table_language(pref_arch pref.Arch) Language {
 		}
 		.js_node, .js_browser, .js_freestanding {
 			.js
+		}
+		.wasm32 {
+			.wasm32
 		}
 		._auto, ._max {
 			.v
@@ -139,7 +143,7 @@ pub fn (t Type) atomic_typename() string {
 }
 
 pub fn sharetype_from_flags(is_shared bool, is_atomic bool) ShareType {
-	return ShareType(int(u32(is_atomic) << 1) | int(is_shared))
+	return unsafe { ShareType(int(u32(is_atomic) << 1) | int(is_shared)) }
 }
 
 pub fn (t Type) share() ShareType {
@@ -561,7 +565,7 @@ pub mut:
 
 // returns TypeSymbol kind only if there are no type modifiers
 pub fn (t &Table) type_kind(typ Type) Kind {
-	if typ.nr_muls() > 0 || typ.has_flag(.optional) {
+	if typ.nr_muls() > 0 || typ.has_flag(.optional) || typ.has_flag(.result) {
 		return Kind.placeholder
 	}
 	return t.sym(typ).kind
@@ -858,7 +862,7 @@ pub fn (t &TypeSymbol) is_builtin() bool {
 
 // type_size returns the size and alignment (in bytes) of `typ`, similarly to  C's `sizeof()` and `alignof()`.
 pub fn (t &Table) type_size(typ Type) (int, int) {
-	if typ.has_flag(.optional) {
+	if typ.has_flag(.optional) || typ.has_flag(.result) {
 		return t.type_size(ast.error_type_idx)
 	}
 	if typ.nr_muls() > 0 {

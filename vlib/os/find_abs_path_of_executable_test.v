@@ -1,6 +1,6 @@
 module os
 
-fn test_find_abs_path_of_executable() ? {
+fn test_find_abs_path_of_executable() {
 	tfolder := join_path(temp_dir(), 'v', 'tests', 'filepath_test')
 	rmdir_all(tfolder) or {}
 	assert !is_dir(tfolder)

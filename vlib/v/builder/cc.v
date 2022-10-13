@@ -60,14 +60,6 @@ fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 		}
 		return
 	}
-	if res.exit_code != 0 && v.pref.gc_mode != .no_gc && res.output.contains('libgc.a')
-		&& !v.pref.is_o {
-		$if windows {
-			verror(r'Your V installation may be out-of-date. Try removing `thirdparty\tcc\` and running `.\make.bat`')
-		} $else {
-			verror('Your V installation may be out-of-date. Try removing `thirdparty/tcc/` and running `make`')
-		}
-	}
 	for emsg_marker in [builder.c_verror_message_marker, 'error: include file '] {
 		if res.output.contains(emsg_marker) {
 			emessage := res.output.all_after(emsg_marker).all_before('\n').all_before('\r').trim_right('\r\n')
@@ -174,7 +166,6 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		'-Wnull-dereference',
 		'-Wpacked',
 		'-Wpointer-arith',
-		'-Wswitch-enum',
 	]
 	if v.pref.os == .ios {
 		ccoptions.args << '-fobjc-arc'
@@ -324,6 +315,10 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	if ccompiler != 'msvc' && v.pref.os != .freebsd {
 		ccoptions.wargs << '-Werror=implicit-function-declaration'
 	}
+	if ccoptions.is_cc_tcc {
+		// tcc 806b3f98 needs this flag too:
+		ccoptions.wargs << '-Wno-write-strings'
+	}
 	if v.pref.is_liveshared || v.pref.is_livemain {
 		if (v.pref.os == .linux || os.user_os() == 'linux') && v.pref.build_mode != .build_module {
 			ccoptions.linker_flags << '-rdynamic'
@@ -332,6 +327,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 			ccoptions.args << '-flat_namespace'
 		}
 	}
+
 	// macOS code can include objective C  TODO remove once objective C is replaced with C
 	if v.pref.os == .macos || v.pref.os == .ios {
 		if !ccoptions.is_cc_tcc && !user_darwin_ppc {
@@ -429,8 +425,8 @@ fn (v &Builder) all_args(ccoptions CcompilerOptions) []string {
 	// building an (.o) object file, that will be linked later.
 	if v.pref.build_mode != .build_module {
 		all << ccoptions.linker_flags
+		all << ccoptions.env_ldflags
 	}
-	all << ccoptions.env_ldflags
 	return all
 }
 
@@ -439,7 +435,9 @@ fn (v &Builder) thirdparty_object_args(ccoptions CcompilerOptions, middle []stri
 	all << ccoptions.env_cflags
 	all << ccoptions.args
 	all << middle
-	all << ccoptions.env_ldflags
+	// NOTE do not append linker flags in .o build process,
+	// compilers are inconsistent about how they handle:
+	// all << ccoptions.env_ldflags
 	return all
 }
 

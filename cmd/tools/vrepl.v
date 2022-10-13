@@ -12,11 +12,13 @@ import v.util.version
 
 struct Repl {
 mut:
-	readline readline.Readline
-	indent   int    // indentation level
-	in_func  bool   // are we inside a new custom user function
-	line     string // the current line entered by the user
-	is_pin   bool   // does the repl 'pin' entered source code
+	readline    readline.Readline
+	indent      int    // indentation level
+	in_func     bool   // are we inside a new custom user function
+	line        string // the current line entered by the user
+	is_pin      bool   // does the repl 'pin' entered source code
+	folder      string // the folder in which the repl will write its temporary source files
+	last_output string // the last repl output
 	//
 	modules         []string // all the import modules
 	alias           map[string]string // all the alias used in the import
@@ -29,11 +31,12 @@ mut:
 	eval_func_lines []string // same line of the `VSTARTUP` file, but used to test fn type
 }
 
-const is_stdin_a_pipe = (os.is_atty(0) == 0)
-
-const vexe = os.getenv('VEXE')
-
-const vstartup = os.getenv('VSTARTUP')
+const (
+	is_stdin_a_pipe = os.is_atty(0) == 0
+	vexe            = os.getenv('VEXE')
+	vstartup        = os.getenv('VSTARTUP')
+	repl_folder     = os.join_path(os.temp_dir(), 'v', 'repl')
+)
 
 enum FnType {
 	@none
@@ -41,16 +44,18 @@ enum FnType {
 	fn_type
 }
 
-fn new_repl() Repl {
+fn new_repl(folder string) Repl {
+	vstartup_source := os.read_file(vstartup) or { '' }.trim_right('\n\r').split_into_lines()
+	os.mkdir_all(folder) or {}
 	return Repl{
 		readline: readline.Readline{
 			skip_empty: true
 		}
+		folder: folder
 		modules: ['os', 'time', 'math']
-		vstartup_lines: os.read_file(vstartup) or { '' }.trim_right('\n\r').split_into_lines()
-		// Test file used to check if a function as a void return or a
-		// value return.
-		eval_func_lines: os.read_file(vstartup) or { '' }.trim_right('\n\r').split_into_lines()
+		vstartup_lines: vstartup_source
+		// Test file used to check if a function as a void return or a value return.
+		eval_func_lines: vstartup_source
 	}
 }
 
@@ -173,7 +178,7 @@ fn (r &Repl) current_source_code(should_add_temp_lines bool, not_add_print bool)
 // This function checks which one we have:
 fn (r &Repl) check_fn_type_kind(new_line string) FnType {
 	source_code := r.current_source_code(true, false) + '\nprintln($new_line)'
-	check_file := os.join_path(os.temp_dir(), '${rand.ulid()}.vrepl.check.v')
+	check_file := os.join_path(r.folder, '${rand.ulid()}.vrepl.check.v')
 	os.write_file(check_file, source_code) or { panic(err) }
 	defer {
 		os.rm(check_file) or {}
@@ -181,7 +186,7 @@ fn (r &Repl) check_fn_type_kind(new_line string) FnType {
 	// -w suppresses the unused import warnings
 	// -check just does syntax and checker analysis without generating/running code
 	os_response := os.execute('${os.quoted_path(vexe)} -w -check ${os.quoted_path(check_file)}')
-	str_response := convert_output(os_response)
+	str_response := convert_output(os_response.output)
 	if os_response.exit_code != 0 && str_response.contains('can not print void expressions') {
 		return FnType.void
 	}
@@ -285,18 +290,17 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			}
 		}
 		print('\n')
-		print_output(result)
+		print_output(result.output)
 	}
-	file := os.join_path(workdir, '.${vrepl_prefix}vrepl.v')
 	temp_file := os.join_path(workdir, '.${vrepl_prefix}vrepl_temp.v')
 	mut prompt := '>>> '
 	defer {
 		if !is_stdin_a_pipe {
 			println('')
 		}
-		cleanup_files([file, temp_file])
+		cleanup_files(temp_file)
 	}
-	mut r := new_repl()
+	mut r := new_repl(workdir)
 	for {
 		if r.indent == 0 {
 			prompt = '>>> '
@@ -359,7 +363,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			continue
 		}
 		if r.line == 'reset' {
-			r = new_repl()
+			r = new_repl(workdir)
 			continue
 		}
 		if r.line == 'list' {
@@ -382,12 +386,14 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 		}
 		if r.line.starts_with('print') {
 			source_code := r.current_source_code(false, false) + '\n$r.line\n'
-			os.write_file(file, source_code) or { panic(err) }
-			s := repl_run_vfile(file) or { return 1 }
-			print_output(s)
+			os.write_file(temp_file, source_code) or { panic(err) }
+			s := repl_run_vfile(temp_file) or { return 1 }
+			if s.output.len > r.last_output.len {
+				cur_line_output := s.output[r.last_output.len..]
+				print_output(cur_line_output)
+			}
 		} else {
 			mut temp_line := r.line
-			mut temp_flag := false
 			func_call, fntype := r.function_call(r.line)
 			filter_line := r.line.replace(r.line.find_between("'", "'"), '').replace(r.line.find_between('"',
 				'"'), '')
@@ -433,7 +439,14 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			}
 			if !is_statement && (!func_call || fntype == FnType.fn_type) && r.line != '' {
 				temp_line = 'println($r.line)'
-				temp_flag = true
+				source_code := r.current_source_code(false, false) + '\n$temp_line\n'
+				os.write_file(temp_file, source_code) or { panic(err) }
+				s := repl_run_vfile(temp_file) or { return 1 }
+				if s.output.len > r.last_output.len {
+					cur_line_output := s.output[r.last_output.len..]
+					print_output(cur_line_output)
+				}
+				continue
 			}
 			mut temp_source_code := ''
 			if temp_line.starts_with('import ') {
@@ -454,7 +467,7 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 			}
 			os.write_file(temp_file, temp_source_code) or { panic(err) }
 			s := repl_run_vfile(temp_file) or { return 1 }
-			if !func_call && s.exit_code == 0 && !temp_flag {
+			if s.exit_code == 0 {
 				for r.temp_lines.len > 0 {
 					if !r.temp_lines[0].starts_with('print') {
 						r.lines << r.temp_lines[0]
@@ -473,18 +486,25 @@ fn run_repl(workdir string, vrepl_prefix string) int {
 					r.temp_lines.delete(0)
 				}
 			}
-			if r.is_pin && !temp_flag {
+			if r.is_pin {
 				r.pin()
 				println('')
 			}
-			print_output(s)
+			if s.output.len > r.last_output.len {
+				len := r.last_output.len
+				if s.exit_code == 0 {
+					r.last_output = s.output.clone()
+				}
+				cur_line_output := s.output[len..]
+				print_output(cur_line_output)
+			}
 		}
 	}
 	return 0
 }
 
-fn convert_output(os_result os.Result) string {
-	lines := os_result.output.trim_right('\n\r').split_into_lines()
+fn convert_output(os_result string) string {
+	lines := os_result.trim_right('\n\r').split_into_lines()
 	mut content := ''
 	for line in lines {
 		if line.contains('.vrepl_temp.v:') {
@@ -495,11 +515,6 @@ fn convert_output(os_result os.Result) string {
 				return content
 			}
 			content += endline_if_missed(sline[idx + 1..])
-		} else if line.contains('.vrepl.v:') {
-			// Ensure that .vrepl.v: is at the start, ignore the path
-			// This is needed to have stable .repl tests.
-			idx := line.index('.vrepl.v:') or { panic(err) }
-			content += endline_if_missed(line[idx..])
 		} else {
 			content += endline_if_missed(line)
 		}
@@ -507,7 +522,7 @@ fn convert_output(os_result os.Result) string {
 	return content
 }
 
-fn print_output(os_result os.Result) {
+fn print_output(os_result string) {
 	content := convert_output(os_result)
 	print(content)
 }
@@ -517,7 +532,7 @@ fn main() {
 	// so that the repl can be launched in parallel by several different
 	// threads by the REPL test runner.
 	args := cmdline.options_after(os.args, ['repl'])
-	replfolder := os.real_path(cmdline.option(args, '-replfolder', os.temp_dir()))
+	replfolder := os.real_path(cmdline.option(args, '-replfolder', repl_folder))
 	replprefix := cmdline.option(args, '-replprefix', 'noprefix.${rand.ulid()}.')
 	if !os.exists(os.getenv('VEXE')) {
 		println('Usage:')
@@ -548,18 +563,16 @@ fn (mut r Repl) get_one_line(prompt string) ?string {
 	return rline
 }
 
-fn cleanup_files(files []string) {
-	for file in files {
-		os.rm(file) or {}
-		$if windows {
-			os.rm(file[..file.len - 2] + '.exe') or {}
-			$if msvc {
-				os.rm(file[..file.len - 2] + '.ilk') or {}
-				os.rm(file[..file.len - 2] + '.pdb') or {}
-			}
-		} $else {
-			os.rm(file[..file.len - 2]) or {}
+fn cleanup_files(file string) {
+	os.rm(file) or {}
+	$if windows {
+		os.rm(file[..file.len - 2] + '.exe') or {}
+		$if msvc {
+			os.rm(file[..file.len - 2] + '.ilk') or {}
+			os.rm(file[..file.len - 2] + '.pdb') or {}
 		}
+	} $else {
+		os.rm(file[..file.len - 2]) or {}
 	}
 }
 

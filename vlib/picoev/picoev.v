@@ -63,17 +63,17 @@ pub:
 }
 
 struct Picoev {
-	loop         &C.picoev_loop
+	loop         &C.picoev_loop = unsafe { nil }
 	cb           fn (voidptr, picohttpparser.Request, mut picohttpparser.Response)
 	err_cb       fn (voidptr, picohttpparser.Request, mut picohttpparser.Response, IError)
 	user_data    voidptr
 	timeout_secs int
 	max_headers  int
 mut:
-	date &u8
-	buf  &u8
+	date &u8 = unsafe { nil }
+	buf  &u8 = unsafe { nil }
 	idx  [1024]int
-	out  &u8
+	out  &u8 = unsafe { nil }
 }
 
 [inline]

@@ -15,6 +15,8 @@ on:
   push:
     paths:
       - '!**'
+      - '!**.md'
+      - '!**.yml'
       - 'cmd/tools/vtest*'
       - 'cmd/tools/builders/**.v'
       - 'vlib/builtin/**.v'
@@ -39,9 +41,6 @@ on:
       - 'vlib/v/markused/**.v'
       - 'vlib/v/preludes/**.v'
       - 'vlib/v/embed_file/**.v'
-    paths-ignore:
-      - "**.md"
-      - "**.yml"
   pull_request:
     paths:
       - '!**'
@@ -69,9 +68,6 @@ on:
       - 'vlib/v/markused/**.v'
       - 'vlib/v/preludes/**.v'
       - 'vlib/v/embed_file/**.v'
-    paths-ignore:
-      - "**.md"
-      - "**.yml"
 
 concurrency:
   group: build-sanitized-${{ github.event.pull_request.number || github.sha }}

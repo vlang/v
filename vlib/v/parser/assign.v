@@ -200,6 +200,9 @@ fn (mut p Parser) check_undefined_variables_by_names(names []string, val ast.Exp
 		ast.PrefixExpr {
 			p.check_undefined_variables_by_names(names, val.right)?
 		}
+		ast.SelectorExpr {
+			p.check_undefined_variables_by_names(names, val.expr)?
+		}
 		ast.StringInterLiteral {
 			for expr_ in val.exprs {
 				p.check_undefined_variables_by_names(names, expr_)?
@@ -289,7 +292,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 					if p.scope.known_var(lx.name) {
 						return p.error_with_pos('redefinition of `$lx.name`', lx.pos)
 					}
-					mut share := ast.ShareType(0)
+					mut share := unsafe { ast.ShareType(0) }
 					if mut lx.info is ast.IdentVar {
 						share = lx.info.share
 						if lx.info.is_static {

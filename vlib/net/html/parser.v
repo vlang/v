@@ -5,7 +5,7 @@ import strings
 
 struct LexicalAttributes {
 mut:
-	current_tag      &Tag
+	current_tag      &Tag = unsafe { nil }
 	open_tag         bool
 	open_code        bool
 	open_string      int

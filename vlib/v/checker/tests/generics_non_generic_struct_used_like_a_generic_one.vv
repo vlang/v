@@ -1,0 +1,16 @@
+struct Toy{
+	toy_name string
+}
+
+fn get_toy1(toy Toy) Toy{
+	return Toy<T>{toy.toy_name}
+}
+
+fn get_toy2(toy Toy) Toy{
+	return Toy<T,U>{toy.toy_name}
+}
+
+fn main() {
+	println(get_toy1(Toy{'Fire Truck'}))
+	println(get_toy2(Toy{'Police Car'}))
+}

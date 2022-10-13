@@ -18,7 +18,7 @@ import io
 
 pub struct DB {
 mut:
-	conn &C.PGconn
+	conn &C.PGconn = unsafe { nil }
 }
 
 pub struct Row {

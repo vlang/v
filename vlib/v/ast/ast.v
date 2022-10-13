@@ -261,7 +261,7 @@ pub mut:
 	typ                 Type // type of the entire thing (`Foo.bar`)
 	name_type           Type // T in `T.name` or typeof in `typeof(expr).name`
 	gkind_field         GenericKindField // `T.name` => ast.GenericKindField.name, `T.typ` => ast.GenericKindField.typ, or .unknown
-	scope               &Scope
+	scope               &Scope = unsafe { nil }
 	from_embed_types    []Type // holds the type of the embed that the method is called from
 	has_hidden_receiver bool
 }
@@ -554,8 +554,8 @@ pub mut:
 	end_comments  []Comment // comments *after* header declarations. E.g.: `fn C.C_func(x int) int // Comment`
 	next_comments []Comment // comments that are one line after the decl; used for InterfaceDecl
 	//
-	source_file &File = unsafe { 0 }
-	scope       &Scope
+	source_file &File  = unsafe { nil }
+	scope       &Scope = unsafe { nil }
 	label_names []string
 	pos         token.Pos // function declaration position
 }
@@ -598,7 +598,7 @@ pub mut:
 	concrete_list_pos  token.Pos
 	raw_concrete_types []Type
 	free_receiver      bool // true if the receiver expression needs to be freed
-	scope              &Scope
+	scope              &Scope = unsafe { nil }
 	from_embed_types   []Type // holds the type of the embed that the method is called from
 	comments           []Comment
 }
@@ -654,9 +654,10 @@ pub mut:
 	// 10 <- original type (orig_type)
 	//   [11, 12, 13] <- cast order (smartcasts)
 	//        12 <- the current casted type (typ)
-	pos        token.Pos
-	is_used    bool // whether the local variable was used in other expressions
-	is_changed bool // to detect mutable vars that are never changed
+	pos               token.Pos
+	is_used           bool // whether the local variable was used in other expressions
+	is_changed        bool // to detect mutable vars that are never changed
+	is_comptime_field bool // comptime field var `a := t.$(field.name)`
 	//
 	// (for setting the position after the or block for autofree)
 	is_or        bool // `x := foo() or { ... }`
@@ -730,7 +731,7 @@ pub:
 	nr_lines      int    // number of source code lines in the file (including newlines and comments)
 	nr_bytes      int    // number of processed source code bytes
 	mod           Module // the module of the source file (from `module xyz` at the top)
-	global_scope  &Scope
+	global_scope  &Scope = unsafe { nil }
 	is_test       bool // true for _test.v files
 	is_generated  bool // true for `[generated] module xyz` files; turn off notices
 	is_translated bool // true for `[translated] module xyz` files; turn off some checks
@@ -738,7 +739,7 @@ pub mut:
 	idx              int    // index in an external container; can be used to refer to the file in a more efficient way, just by its integer index
 	path             string // absolute path of the source file - '/projects/v/file.v'
 	path_base        string // file name - 'file.v' (useful for tracing)
-	scope            &Scope
+	scope            &Scope = unsafe { nil }
 	stmts            []Stmt            // all the statements in the source file
 	imports          []Import          // all the imports
 	auto_imports     []string          // imports that were implicitely added
@@ -808,7 +809,7 @@ pub:
 	mut_pos  token.Pos
 	comptime bool
 pub mut:
-	scope  &Scope
+	scope  &Scope = unsafe { nil }
 	obj    ScopeObject
 	mod    string
 	name   string
@@ -932,7 +933,7 @@ pub mut:
 	cond      Expr
 	pkg_exist bool
 	stmts     []Stmt
-	scope     &Scope
+	scope     &Scope = unsafe { nil }
 }
 
 pub struct UnsafeExpr {
@@ -952,7 +953,7 @@ pub mut:
 	comments []Comment
 	is_expr  bool
 	typ      Type
-	scope    &Scope
+	scope    &Scope = unsafe { nil }
 }
 
 [minify]
@@ -981,7 +982,7 @@ pub:
 pub mut:
 	stmts []Stmt // right side
 	exprs []Expr // left side
-	scope &Scope
+	scope &Scope = unsafe { nil }
 }
 
 pub struct SelectExpr {
@@ -1027,13 +1028,14 @@ pub mut:
 
 pub struct ForStmt {
 pub:
-	is_inf bool // `for {}`
-	pos    token.Pos
+	is_inf   bool // `for {}`
+	pos      token.Pos
+	comments []Comment
 pub mut:
 	cond  Expr
 	stmts []Stmt
 	label string // `label: for {`
-	scope &Scope
+	scope &Scope = unsafe { nil }
 }
 
 [minify]
@@ -1045,17 +1047,19 @@ pub:
 	high       Expr // `10` in `for i in 0..10 {`
 	stmts      []Stmt
 	pos        token.Pos
+	comments   []Comment
 	val_is_mut bool // `for mut val in vals {` means that modifying `val` will modify the array
 	// and the array cannot be indexed inside the loop
 pub mut:
-	cond      Expr
-	key_type  Type
-	val_type  Type
-	cond_type Type
-	high_type Type
-	kind      Kind   // array/map/string
-	label     string // `label: for {`
-	scope     &Scope
+	val_is_ref bool // `for val in &arr {` means that value of `val` will be the reference of the value in `arr`
+	cond       Expr
+	key_type   Type
+	val_type   Type
+	cond_type  Type
+	high_type  Type
+	kind       Kind   // array/map/string
+	label      string // `label: for {`
+	scope      &Scope = unsafe { nil }
 }
 
 pub struct ForCStmt {
@@ -1065,13 +1069,14 @@ pub:
 	has_inc  bool
 	is_multi bool // for a,b := 0,1; a < 10; a,b = a+b, a {...}
 	pos      token.Pos
+	comments []Comment
 pub mut:
 	init  Stmt // i := 0;
 	cond  Expr // i < 10;
 	inc   Stmt // i++; i += 2
 	stmts []Stmt
 	label string // `label: for {`
-	scope &Scope
+	scope &Scope = unsafe { nil }
 }
 
 // #include, #define etc
@@ -1337,7 +1342,7 @@ pub:
 	pos         token.Pos
 pub mut:
 	templates     []AsmTemplate
-	scope         &Scope
+	scope         &Scope = unsafe { nil }
 	output        []AsmIO
 	input         []AsmIO
 	global_labels []string // labels defined in assembly block, exported with `.globl`
@@ -1572,7 +1577,7 @@ pub:
 pub mut:
 	exprs []Expr
 	typ   Type
-	scope &Scope
+	scope &Scope = unsafe { nil }
 }
 
 pub struct SizeOf {
@@ -1673,7 +1678,7 @@ pub:
 	has_parens  bool // if $() is used, for vfmt
 	method_name string
 	method_pos  token.Pos
-	scope       &Scope
+	scope       &Scope = unsafe { nil }
 	left        Expr
 	args_var    string
 	//
@@ -2222,7 +2227,7 @@ fn gen_all_registers(mut t Table, without_numbers []string, with_numbers map[str
 // is `expr` a literal, i.e. it does not depend on any other declarations (C compile time constant)
 pub fn (expr Expr) is_literal() bool {
 	match expr {
-		BoolLiteral, CharLiteral, FloatLiteral, IntegerLiteral {
+		BoolLiteral, CharLiteral, FloatLiteral, IntegerLiteral, StringLiteral, StringInterLiteral {
 			return true
 		}
 		PrefixExpr {

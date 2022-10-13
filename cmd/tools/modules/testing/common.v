@@ -4,6 +4,7 @@ import os
 import time
 import term
 import benchmark
+import sync
 import sync.pool
 import v.pref
 import v.util.vtest
@@ -141,6 +142,12 @@ pub fn (mut ts TestSession) print_messages() {
 
 pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 	mut skip_files := []string{}
+
+	// Skip the call_v_from_c files. They need special instructions for compilation.
+	// Check the README.md for detailed information.
+	skip_files << 'examples/call_v_from_c/v_test_print.v'
+	skip_files << 'examples/call_v_from_c/v_test_math.v'
+
 	if will_compile {
 		$if msvc {
 			skip_files << 'vlib/v/tests/const_comptime_eval_before_vinit_test.v' // _constructor used
@@ -163,6 +170,8 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'examples/websocket/ping.v' // requires OpenSSL
 			skip_files << 'examples/websocket/client-server/client.v' // requires OpenSSL
 			skip_files << 'examples/websocket/client-server/server.v' // requires OpenSSL
+			skip_files << 'vlib/v/tests/websocket_logger_interface_should_compile_test.v' // requires OpenSSL
+
 			$if tinyc {
 				skip_files << 'examples/database/orm.v' // try fix it
 			}
@@ -279,13 +288,17 @@ pub fn (mut ts TestSession) test() {
 	ts.append_message(.sentinel, '') // send the sentinel
 	_ := <-ts.nprint_ended // wait for the stop of the printing thread
 	eprintln(term.h_divider('-'))
+	ts.show_list_of_failed_tests()
 	// cleanup generated .tmp.c files after successful tests:
 	if ts.benchmark.nfail == 0 {
 		if ts.rm_binaries {
 			os.rmdir_all(ts.vtmp_dir) or {}
 		}
 	}
-	ts.show_list_of_failed_tests()
+	// remove empty session folders:
+	if os.ls(ts.vtmp_dir) or { [] }.len == 0 {
+		os.rmdir_all(ts.vtmp_dir) or {}
+	}
 }
 
 fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
@@ -341,10 +354,8 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	generated_binary_fpath := os.join_path_single(tmpd, generated_binary_fname)
 	if produces_file_output {
-		if os.exists(generated_binary_fpath) {
-			if ts.rm_binaries {
-				os.rm(generated_binary_fpath) or {}
-			}
+		if ts.rm_binaries {
+			os.rm(generated_binary_fpath) or {}
 		}
 
 		cmd_options << ' -o ${os.quoted_path(generated_binary_fpath)}'
@@ -437,7 +448,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			}
 		}
 	}
-	if produces_file_output && os.exists(generated_binary_fpath) && ts.rm_binaries {
+	if produces_file_output && ts.rm_binaries {
 		os.rm(generated_binary_fpath) or {}
 	}
 	return pool.no_result
@@ -569,7 +580,7 @@ pub fn header(msg string) {
 
 pub fn setup_new_vtmp_folder() string {
 	now := time.sys_mono_now()
-	new_vtmp_dir := os.join_path(os.temp_dir(), 'v', 'test_session_$now')
+	new_vtmp_dir := os.join_path(os.temp_dir(), 'v', 'tsession_${sync.thread_id().hex()}_$now')
 	os.mkdir_all(new_vtmp_dir) or { panic(err) }
 	os.setenv('VTMP', new_vtmp_dir, true)
 	return new_vtmp_dir

@@ -11,7 +11,7 @@ fn find_diff_cmd() string {
 	return res
 }
 
-fn test_vet() ? {
+fn test_vet() {
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
 	os.chdir(vroot)?

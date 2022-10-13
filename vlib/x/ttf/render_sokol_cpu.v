@@ -19,7 +19,7 @@ import sokol.gfx
 
 pub struct TTF_render_Sokol {
 pub mut:
-	bmp &BitMap // Base bitmap render
+	bmp &BitMap = unsafe { nil } // Base bitmap render
 	// rendering fields
 	sg_img       gfx.Image // sokol image
 	scale_reduct f32 = 2.0 // scale of the cpu texture for filtering

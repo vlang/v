@@ -26,7 +26,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	mut shared_styp := '' // only needed for shared x := St{...
 	if styp in c.skip_struct_init {
 		// needed for c++ compilers
-		g.out.go_back(3)
+		g.go_back(3)
 		return
 	}
 	mut sym := g.table.final_sym(g.unwrap_generic(node.typ))
@@ -34,7 +34,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	is_multiline := node.fields.len > 5
 	g.is_amp = false // reset the flag immediately so that other struct inits in this expr are handled correctly
 	if is_amp {
-		g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
+		g.go_back(1) // delete the `&` already generated in `prefix_expr()
 	}
 	mut is_anon := false
 	if sym.kind == .struct_ {
@@ -49,8 +49,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		}
 	}
 	if is_anon {
-		// No name needed for anon structs, C figures it out on its own.
-		g.writeln('{')
+		g.writeln('($styp){')
 	} else if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
 		mut shared_typ := node.typ.set_flag(.shared_f)
 		shared_styp = g.typ(shared_typ)
@@ -182,7 +181,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 				continue
 			}
 			field_name := c_name(field.name)
-			if field.typ.has_flag(.optional) {
+			if field.typ.has_flag(.optional) || field.typ.has_flag(.result) {
 				g.write('.$field_name = {EMPTY_STRUCT_INITIALIZATION},')
 				initialized = true
 				continue

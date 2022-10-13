@@ -235,12 +235,12 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 			g.expr(left)
 
 			if g.is_arraymap_set && g.arraymap_set_pos > 0 {
-				g.out.go_back_to(g.arraymap_set_pos)
+				g.go_back_to(g.arraymap_set_pos)
 				g.write(', &$v_var)')
 				g.is_arraymap_set = false
 				g.arraymap_set_pos = 0
 			} else {
-				g.out.go_back_to(pos)
+				g.go_back_to(pos)
 				is_var_mut := !is_decl && left.is_auto_deref_var()
 				addr_left := if is_var_mut { '' } else { '&' }
 				g.writeln('')
@@ -529,9 +529,6 @@ fn (mut g Gen) gen_multi_return_assign(node &ast.AssignStmt, return_type ast.Typ
 		styp := if ident.name in g.defer_vars { '' } else { g.typ(node.left_types[i]) }
 		if node.op == .decl_assign {
 			g.write('$styp ')
-			if is_auto_heap {
-				g.write('*')
-			}
 		}
 		if lx.is_auto_deref_var() {
 			g.write('*')

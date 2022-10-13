@@ -109,3 +109,6 @@ vls.log
 
 # ignore v2go tmperror files
 *.tmperr
+
+*/**/tmp.*
+

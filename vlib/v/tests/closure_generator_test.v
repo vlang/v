@@ -61,7 +61,7 @@ const return_types = [
 
 // test_closures_with_n_args generates a new V file containing closures of `i`
 // and parameters of type `typ`, to makes sure that all combinations work correctly
-fn test_closures_with_n_args() ? {
+fn test_closures_with_n_args() {
 	mut v_code := strings.new_builder(1024)
 	// Note: the type or value of the captured arg doesn't matter for this test,
 	// as the entire closure context is always passed as one pointer anyways
@@ -162,7 +162,7 @@ fn test_closure_return_${styp}_${i}() ? {
 
 	code := v_code.str()
 	println('Compiling V code (${code.count('\n')} lines) ...')
-	wrkdir := os.join_path(os.temp_dir(), 'vtests', 'closures')
+	wrkdir := os.join_path(os.temp_dir(), 'v', 'tests', 'closures')
 	os.mkdir_all(wrkdir)?
 	os.chdir(wrkdir)?
 	os.write_file('closure_return_test.v', code)?

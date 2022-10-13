@@ -2,7 +2,7 @@ import os
 
 const (
 	test_dir     = os.join_path('vlib', 'v', 'gen', 'js', 'tests')
-	output_dir   = os.join_path(os.temp_dir(), '_js_tests/')
+	output_dir   = os.join_path(os.temp_dir(), 'v', '_js_tests/')
 	v_options    = '-b js -w'
 	node_options = ''
 )

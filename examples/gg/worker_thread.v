@@ -18,7 +18,7 @@ const (
 
 struct App {
 mut:
-	gg      &gg.Context
+	gg      &gg.Context = unsafe { nil }
 	ch      chan i64
 	counter i64
 }

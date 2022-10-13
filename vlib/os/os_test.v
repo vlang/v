@@ -47,6 +47,29 @@ fn test_open_file() {
 	os.rm(filename) or { panic(err) }
 }
 
+fn test_read_file_from_virtual_filesystem() {
+	$if linux {
+		mounts := os.read_file('/proc/mounts')?
+
+		// it is not empty, contains some mounting such as root filesystem: /dev/x / ext4 rw 0 0
+		assert mounts.len > 20
+		assert mounts.contains('/')
+		assert mounts.contains(' ')
+	}
+}
+
+fn test_read_binary_from_virtual_filesystem() {
+	$if linux {
+		mounts_raw := os.read_bytes('/proc/mounts')?
+		mounts := mounts_raw.bytestr()
+
+		// it is not empty, contains some mounting such as root filesystem: /dev/x / ext4 rw 0 0
+		assert mounts.len > 20
+		assert mounts.contains('/')
+		assert mounts.contains(' ')
+	}
+}
+
 fn test_open_file_binary() {
 	filename := './test1.dat'
 	hello := 'hello \n world!'
@@ -96,7 +119,7 @@ fn create_and_write_to_file(fpath string, content string) ? {
 	f.close()
 }
 
-fn test_create_file() ? {
+fn test_create_file() {
 	filename := './test1.txt'
 	hello := 'hello world!'
 	create_and_write_to_file(filename, hello)?
@@ -106,7 +129,7 @@ fn test_create_file() ? {
 
 fn test_is_file() {
 	// Setup
-	work_dir := os.join_path_single(os.getwd(), 'is_file_test')
+	work_dir := os.join_path_single(tfolder, 'is_file_test')
 	os.mkdir_all(work_dir) or { panic(err) }
 	tfile := os.join_path_single(work_dir, 'tmp_file')
 	// Test things that shouldn't be a file
@@ -226,7 +249,7 @@ fn normalise_paths(paths []string) []string {
 	return res
 }
 
-fn test_walk_ext() ? {
+fn test_walk_ext() {
 	create_tree()?
 	defer {
 		remove_tree()
@@ -309,7 +332,7 @@ fn test_cp() {
 }
 
 fn test_mv() {
-	work_dir := os.join_path_single(os.getwd(), 'mv_test')
+	work_dir := os.join_path_single(tfolder, 'mv_test')
 	os.mkdir_all(work_dir) or { panic(err) }
 	// Setup test files
 	tfile1 := os.join_path_single(work_dir, 'file')
@@ -404,7 +427,7 @@ fn test_realpath_non_existing() {
 
 fn test_realpath_existing() {
 	existing_file_name := 'existing_file.txt'
-	existing_file := os.join_path_single(os.temp_dir(), existing_file_name)
+	existing_file := os.join_path_single(tfolder, existing_file_name)
 	os.rm(existing_file) or {}
 	os.write_file(existing_file, 'abc') or {}
 	assert os.exists(existing_file)
@@ -442,7 +465,7 @@ fn test_realpath_does_not_absolutize_non_existing_relative_paths() {
 	}
 }
 
-fn test_realpath_absolutepath_symlink() ? {
+fn test_realpath_absolutepath_symlink() {
 	file_name := 'tolink_file.txt'
 	symlink_name := 'symlink.txt'
 	create_file(file_name)?
@@ -482,7 +505,7 @@ fn test_make_symlink_check_is_link_and_remove_symlink() {
 	assert symlink_exists == false
 }
 
-fn test_make_symlink_check_is_link_and_remove_symlink_with_file() ? {
+fn test_make_symlink_check_is_link_and_remove_symlink_with_file() {
 	file := 'tfile'
 	symlink := 'tsymlink'
 	os.rm(symlink) or {}
@@ -496,7 +519,7 @@ fn test_make_symlink_check_is_link_and_remove_symlink_with_file() ? {
 	assert symlink_exists == false
 }
 
-fn test_make_hardlink_check_is_link_and_remove_hardlink_with_file() ? {
+fn test_make_hardlink_check_is_link_and_remove_hardlink_with_file() {
 	file := 'tfile'
 	symlink := 'tsymlink'
 	os.rm(symlink) or {}
@@ -544,7 +567,7 @@ fn test_symlink() {
 	}
 }
 
-fn test_is_executable_writable_readable() ? {
+fn test_is_executable_writable_readable() {
 	file_name := 'rwxfile.exe'
 	create_file(file_name)?
 	$if !windows {
@@ -704,7 +727,7 @@ cmd.close()
 	*/
 }
 
-fn test_posix_set_bit() ? {
+fn test_posix_set_bit() {
 	$if windows {
 		assert true
 	} $else {
@@ -764,7 +787,7 @@ fn test_exists_in_system_path() {
 	assert os.exists_in_system_path('ls')
 }
 
-fn test_truncate() ? {
+fn test_truncate() {
 	filename := './test_trunc.txt'
 	hello := 'hello world!'
 	mut f := os.create(filename)?
@@ -781,7 +804,7 @@ fn test_hostname() {
 	assert os.hostname().len > 2
 }
 
-fn test_glob() ? {
+fn test_glob() {
 	os.mkdir('test_dir') or { panic(err) }
 	for i in 0 .. 4 {
 		if i == 3 {
@@ -818,7 +841,7 @@ fn test_utime() {
 	assert os.file_last_mod_unix(filename) == mtime
 }
 
-fn test_execute() ? {
+fn test_execute() {
 	print0script := os.join_path_single(tfolder, 'print0.v')
 	// The output of the next command contains a 0 byte in the middle.
 	// Nevertheless, the execute function *should* return a string that
@@ -869,4 +892,37 @@ fn test_command() {
 	cmd_to_fail.close() or { panic(err) }
 	// dump( cmd_to_fail )
 	assert cmd_to_fail.exit_code != 0 // 2 on linux, 1 on macos
+}
+
+fn test_reading_from_proc_cpuinfo() {
+	// This test is only for plain linux systems (they have a /proc virtual filesystem).
+	$if android {
+		assert true
+		return
+	}
+	$if !linux {
+		assert true
+		return
+	}
+	info := os.read_file('/proc/cpuinfo')?
+	assert info.len > 0
+	assert info.contains('processor')
+	assert info.ends_with('\n\n')
+
+	info_bytes := os.read_bytes('/proc/cpuinfo')?
+	assert info_bytes.len > 0
+	assert info.len == info_bytes.len
+}
+
+fn test_reading_from_empty_file() {
+	empty_file := os.join_path_single(tfolder, 'empty_file.txt')
+	os.rm(empty_file) or {}
+	assert !os.exists(empty_file)
+	os.write_file(empty_file, '')?
+	assert os.exists(empty_file)
+	content := os.read_file(empty_file)?
+	assert content.len == 0
+	content_bytes := os.read_bytes(empty_file)?
+	assert content_bytes.len == 0
+	os.rm(empty_file)?
 }

@@ -25,7 +25,7 @@ const (
 
 struct App {
 mut:
-	gg          &gg.Context
+	gg          &gg.Context = unsafe { nil }
 	pip_3d      sgl.Pipeline
 	texture     gfx.Image
 	init_flag   bool
@@ -403,8 +403,6 @@ fn my_event_manager(mut ev gg.Event, mut app App) {
 * Main
 *
 ******************************************************************************/
-// is needed for easier diagnostics on windows
-[console]
 fn main() {
 	// App init
 	mut app := &App{

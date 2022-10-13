@@ -11,7 +11,7 @@ import os.font
 
 struct FT {
 pub:
-	fons        &fontstash.Context
+	fons        &fontstash.Context = unsafe { nil }
 	font_normal int
 	font_bold   int
 	font_mono   int
@@ -118,8 +118,8 @@ fn new_ft(c FTConfig) ?&FT {
 	}
 }
 
-// set_cfg sets the current text configuration
-pub fn (ctx &Context) set_cfg(cfg gx.TextCfg) {
+// set_text_cfg sets the current text configuration
+pub fn (ctx &Context) set_text_cfg(cfg gx.TextCfg) {
 	if !ctx.font_inited {
 		return
 	}
@@ -147,6 +147,12 @@ pub fn (ctx &Context) set_cfg(cfg gx.TextCfg) {
 	ctx.ft.fons.vert_metrics(&ascender, &descender, &lh)
 }
 
+// set_cfg sets the current text configuration
+[deprecated: 'use set_text_cfg() instead']
+pub fn (ctx &Context) set_cfg(cfg gx.TextCfg) {
+	ctx.set_text_cfg(cfg)
+}
+
 // draw_text draws the string in `text_` starting at top-left position `x`,`y`.
 // Text settings can be provided with `cfg`.
 pub fn (ctx &Context) draw_text(x int, y int, text_ string, cfg gx.TextCfg) {
@@ -170,7 +176,7 @@ pub fn (ctx &Context) draw_text(x int, y int, text_ string, cfg gx.TextCfg) {
 	// if text.contains('\t') {
 	// text = text.replace('\t', '    ')
 	// }
-	ctx.set_cfg(cfg)
+	ctx.set_text_cfg(cfg)
 	scale := if ctx.ft.scale == 0 { f32(1) } else { ctx.ft.scale }
 	ctx.ft.fons.draw_text(x * scale, y * scale, text_) // TODO: check offsets/alignment
 }
@@ -193,7 +199,7 @@ pub fn (ctx &Context) text_width(s string) int {
 			return C.darwin_text_width(s)
 		}
 	}
-	// ctx.set_cfg(cfg) TODO
+	// ctx.set_text_cfg(cfg) TODO
 	if !ctx.font_inited {
 		return 0
 	}
@@ -215,7 +221,7 @@ pub fn (ctx &Context) text_width(s string) int {
 
 // text_height returns the height of the `string` `s` in pixels.
 pub fn (ctx &Context) text_height(s string) int {
-	// ctx.set_cfg(cfg) TODO
+	// ctx.set_text_cfg(cfg) TODO
 	if !ctx.font_inited {
 		return 0
 	}
@@ -226,7 +232,7 @@ pub fn (ctx &Context) text_height(s string) int {
 
 // text_size returns the width and height of the `string` `s` in pixels.
 pub fn (ctx &Context) text_size(s string) (int, int) {
-	// ctx.set_cfg(cfg) TODO
+	// ctx.set_text_cfg(cfg) TODO
 	if !ctx.font_inited {
 		return 0, 0
 	}

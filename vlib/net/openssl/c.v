@@ -32,19 +32,7 @@ $if $pkgconfig('openssl') {
 #include <openssl/err.h>
 
 [typedef]
-pub struct C.SSL {
-}
-
-pub struct SSL_CTX {
-}
-
-pub struct SSL {
-}
-
-pub struct SSL_METHOD {
-}
-
-pub struct OPENSSL_INIT_SETTINGS {
+struct C.SSL {
 }
 
 fn C.BIO_new_ssl_connect(ctx &C.SSL_CTX) &C.BIO
@@ -85,6 +73,8 @@ fn C.SSL_new(&C.SSL_CTX) &C.SSL
 fn C.SSL_set_fd(ssl &C.SSL, fd int) int
 
 fn C.SSL_connect(&C.SSL) int
+
+fn C.SSL_do_handshake(&C.SSL) int
 
 fn C.SSL_set_cipher_list(ctx &SSL, str &char) int
 

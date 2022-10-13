@@ -124,7 +124,7 @@ fn test_smtp_implicit_ssl() {
 	assert client.is_open && client.encrypted
 }
 
-fn test_smtp_multiple_recipients() ? {
+fn test_smtp_multiple_recipients() {
 	$if !network ? {
 		return
 	}
@@ -132,7 +132,7 @@ fn test_smtp_multiple_recipients() ? {
 	assert true
 }
 
-fn test_smtp_body_base64encode() ? {
+fn test_smtp_body_base64encode() {
 	$if !network ? {
 		return
 	}

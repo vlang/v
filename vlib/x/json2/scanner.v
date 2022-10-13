@@ -298,7 +298,7 @@ fn (mut s Scanner) scan() Token {
 		return s.invalid_token()
 	} else if s.text[s.pos] in json2.char_list {
 		chr := s.text[s.pos]
-		tok := s.tokenize([]u8{}, TokenKind(int(chr)))
+		tok := s.tokenize([]u8{}, unsafe { TokenKind(int(chr)) })
 		s.move()
 		return tok
 	} else if s.text[s.pos] == `"` {

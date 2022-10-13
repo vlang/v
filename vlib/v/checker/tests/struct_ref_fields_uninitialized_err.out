@@ -1,0 +1,20 @@
+vlib/v/checker/tests/struct_ref_fields_uninitialized_err.vv:25:7: warning: reference field `Outer.c1.b` must be initialized (part of struct `ContainsRef`)
+   23 | 
+   24 | fn main() {
+   25 |     _ := Outer{}
+      |          ~~~~~~~
+   26 |     _ := Struct{}
+   27 | }
+vlib/v/checker/tests/struct_ref_fields_uninitialized_err.vv:25:7: warning: reference field `Outer.c2.b` must be initialized (part of struct `ContainsRef`)
+   23 | 
+   24 | fn main() {
+   25 |     _ := Outer{}
+      |          ~~~~~~~
+   26 |     _ := Struct{}
+   27 | }
+vlib/v/checker/tests/struct_ref_fields_uninitialized_err.vv:26:7: warning: reference field `Struct.ref2` must be initialized
+   24 | fn main() {
+   25 |     _ := Outer{}
+   26 |     _ := Struct{}
+      |          ~~~~~~~~
+   27 | }

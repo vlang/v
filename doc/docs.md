@@ -23,6 +23,11 @@ It is easy, and it takes only a few seconds:
 
 [https://github.com/vlang/v#installing-v](https://github.com/vlang/v#installing-v---from-source-preferred-method)
 
+## Upgrading V to latest version
+If V is already installed on a machine, it can be upgraded to its latest version
+by using the V's built-in self-updater.
+To do so, run the command `v up`.
+
 ## Table of Contents
 
 <table>
@@ -91,6 +96,11 @@ It is easy, and it takes only a few seconds:
 	* [Decoding JSON](#decoding-json)
 	* [Encoding JSON](#encoding-json)
 * [Testing](#testing)
+    * [Asserts](#asserts)
+    * [Asserts with an extra message](#asserts-with-an-extra-message)
+    * [Asserts that do not abort your program](#asserts-that-do-not-abort-your-program)
+    * [Test files](#test-files)
+    * [Running tests](#running-tests)
 * [Memory management](#memory-management)
     * [Stack and Heap](#stack-and-heap)
 * [ORM](#orm)
@@ -110,6 +120,7 @@ It is easy, and it takes only a few seconds:
     * [sizeof and __offsetof](#sizeof-and-__offsetof)
     * [Calling C from V](#calling-c-from-v)
     * [Calling V from C](#calling-v-from-c)
+    * [Export to shared library](#export-to-shared-library)
 	* [Atomics](#atomics)
 	* [Global Variables](#global-variables)
     * [Debugging](#debugging)
@@ -122,6 +133,7 @@ It is easy, and it takes only a few seconds:
     * [Hot code reloading](#hot-code-reloading)
     * [Cross compilation](#cross-compilation)
     * [Cross-platform shell scripts in V](#cross-platform-shell-scripts-in-v)
+	* [Vsh scripts with no extension](#vsh-scripts-with-no-extension)
     * [Attributes](#attributes)
     * [Goto](#goto)
 * [Appendices](#appendices)
@@ -133,7 +145,7 @@ It is easy, and it takes only a few seconds:
 
 <!--
 NB: there are several special keywords, which you can put after the code fences for v:
-compile, cgen, live, ignore, failcompile, oksyntax, badsyntax, wip, nofmt
+compile, cgen, live, ignore, failcompile, okfmt, oksyntax, badsyntax, wip, nofmt
 For more details, do: `v check-md`
 -->
 
@@ -175,6 +187,11 @@ This means that a "hello world" program in V is as simple as
 ```v
 println('hello world')
 ```
+
+Note: if you do not use explicitly `fn main() {}`, you need to make sure, that all your
+declarations, come before any variable assignment statements, or top level function calls,
+since V will consider everything after the first assignment/function call as part of your
+implicit main function.
 
 ## Running a project folder with several files
 
@@ -630,6 +647,8 @@ age := 12
 println('age = $age')
 ```
 
+See all methods of [string](https://modules.vlang.io/index.html#string)
+
 ### Runes
 
 A `rune` represents a single Unicode character and is an alias for `u32`. To denote them, use `
@@ -1013,6 +1032,8 @@ There are further built-in methods for arrays:
 * `a.join(joiner)` concatenates an array of strings into one string
   using `joiner` string as a separator
 
+See all methods of [array](https://modules.vlang.io/index.html#array)
+
 See also [vlib/arrays](https://modules.vlang.io/arrays.html).
 
 ##### Sorting Arrays
@@ -1273,8 +1294,23 @@ val2 := arr[333]?
 println(val2)
 ```
 
+V also supports nested maps:
+```v
+mut m := map[string]map[string]int{}
+m['greet'] = {
+	'Hello': 1
+}
+m['place'] = {
+	'world': 2
+}
+m['code']['orange'] = 123
+print(m)
+```
+
 Maps are ordered by insertion, like dictionaries in Python. The order is a
 guaranteed language feature. This may change in the future.
+
+See all methods of [map](https://modules.vlang.io/index.html#map)
 
 ## Module imports
 
@@ -2113,6 +2149,52 @@ book := Book{
 }
 assert book.author.name == 'Samantha Black'
 assert book.author.age == 24
+```
+
+### `[noinit]` structs
+
+V supports `[noinit]` structs, which are structs that cannot be initialised outside the module
+they are defined in. They are either meant to be used internally or they can be used externally
+through _factory functions_.
+
+For an example, consider the following source in a directory `sample`:
+
+```v oksyntax
+module sample
+
+[noinit]
+pub struct Information {
+pub:
+	data string
+}
+
+pub fn new_information(data string) !Information {
+	if data.len == 0 || data.len > 100 {
+		return error('data must be between 1 and 100 characters')
+	}
+	return Information{
+		data: data
+	}
+}
+```
+
+Note that `new_information` is a _factory_ function. Now when we want to use this struct
+outside the module:
+
+```v okfmt
+import sample
+
+fn main() {
+	// This doesn't work when the [noinit] attribute is present:
+	// info := sample.Information{
+	// 	data: 'Sample information.'
+	// }
+
+	// Use this instead:
+	info := sample.new_information('Sample information.')!
+
+	println(info)
+}
 ```
 
 ### Methods
@@ -4008,10 +4090,13 @@ foo(mut v)
 assert v[0] < 4
 ```
 An `assert` statement checks that its expression evaluates to `true`. If an assert fails,
-the program will abort. Asserts should only be used to detect programming errors. When an
+the program will usually abort. Asserts should only be used to detect programming errors. When an
 assert fails it is reported to *stderr*, and the values on each side of a comparison operator
 (such as `<`, `==`) will be printed when possible. This is useful to easily find an
-unexpected value. Assert statements can be used in any function.
+unexpected value. Assert statements can be used in any function, not just test ones,
+which is handy when developing new functionality, to keep your invariants in check.
+
+Note: all `assert` statements are *removed*, when you compile your program with the `-prod` flag.
 
 ### Asserts with an extra message
 
@@ -4026,6 +4111,37 @@ fn test_assertion_with_extra_message_failure() {
 	}
 }
 ```
+
+### Asserts that do not abort your program
+When initially prototyping functionality and tests, it is sometimes desirable to
+have asserts, that do not stop the program, but just print their failures. That can
+be achieved by tagging your assert containing functions with an `[assert_continues]`
+tag, for example running this program:
+```v
+[assert_continues]
+fn abc(ii int) {
+	assert ii == 2
+}
+
+for i in 0 .. 4 {
+	abc(i)
+}
+```
+... will produce this output:
+```
+assert_continues_example.v:3: FAIL: fn main.abc: assert ii == 2
+   left value: ii = 0
+   right value: 2
+assert_continues_example.v:3: FAIL: fn main.abc: assert ii == 2
+   left value: ii = 1
+  right value: 2
+assert_continues_example.v:3: FAIL: fn main.abc: assert ii == 2
+   left value: ii = 3
+  right value: 2
+```			   
+
+Note: V also supports a command line flag `-assert continues`, which will change the
+behaviour of all asserts globally, as if you had tagged every function with `[assert_continues]`.
 
 ### Test files
 
@@ -4937,7 +5053,13 @@ fn main() {
 
 ## Calling V from C
 
-Since V can compile to C, calling V code from C is very easy.
+Since V can compile to C, calling V code from C is very easy, once you know how.
+
+Use `v -o file.c your_file.v` to generate a C file, corresponding to the V code.
+
+More details in [call_v_from_c example](../examples/call_v_from_c).
+
+## Export to shared library
 
 By default all V functions have the following naming scheme in C: `[module name]__[fn_name]`.
 
@@ -5580,8 +5702,9 @@ that are substituted at compile time:
 - `@METHOD` => replaced with ReceiverType.MethodName
 - `@MOD` => replaced with the name of the current V module
 - `@STRUCT` => replaced with the name of the current V struct
-- `@FILE` => replaced with the path of the V source file
+- `@FILE` => replaced with the absolute path of the V source file
 - `@LINE` => replaced with the V line number where it appears (as a string).
+- `@FILE_LINE` => like `@FILE:@LINE`, but the file part is a relative path
 - `@COLUMN` => replaced with the column where it appears (as a string).
 - `@VEXE` => replaced with the path to the V compiler
 - `@VEXEROOT`  => will be substituted with the *folder*,
@@ -5733,8 +5856,11 @@ For more examples, see [github.com/vlang/v/tree/master/vlib/v/tests/assembly/asm
 
 ## Translating C to V
 
-V can translate your C code to human readable V code and generate V wrappers on top of C libraries.
+V can translate your C code to human readable V code, and generating V wrappers
+on top of C libraries.
 
+C2V currently uses Clang's AST to generate V, so to translate a C file to V
+you need to have Clang installed on your machine.
 
 Let's create a simple program `test.c` first:
 
@@ -5852,27 +5978,35 @@ libraries and include files for Windows and Linux. V will provide you with a lin
 
 V can be used as an alternative to Bash to write deployment scripts, build scripts, etc.
 
-The advantage of using V for this is the simplicity and predictability of the language, and
-cross-platform support. "V scripts" run on Unix-like systems as well as on Windows.
+The advantage of using V for this, is the simplicity and predictability of the language, and
+cross-platform support. "V scripts" run on Unix-like systems, as well as on Windows.
 
-Use the `.vsh` file extension. It will make all functions in the `os`
-module global (so that you can use `mkdir()` instead of `os.mkdir()`, for example).
+To use V's script mode, save your source file with the `.vsh` file extension.
+It will make all functions in the `os` module global (so that you can use `mkdir()` instead
+of `os.mkdir()`, for example).
+
+V also knows to compile & run `.vsh` files immediately, so you do not need a separate
+step to compile them. V will also recompile an executable, produced by a `.vsh` file,
+*only when it is older than the .vsh source file*, i.e. runs after the first one, will
+be faster, since there is no need for a re-compilation of a script, that has not been changed.
 
 An example `deploy.vsh`:
-```v wip
-#!/usr/bin/env -S v run
-// The shebang above associates the file to V on Unix-like systems,
-// so it can be run just by specifying the path to the file
-// once it's made executable using `chmod +x`.
+```v oksyntax
+#!/usr/bin/env -S v
+
+// Note: the shebang line above, associates the .vsh file to V on Unix-like systems,
+// so it can be run just by specifying the path to the .vsh file, once it's made
+// executable, using `chmod +x deploy.vsh`, i.e. after that chmod command, you can
+// run the .vsh script, by just typing its name/path like this: `./deploy.vsh`
 
 // print command then execute it
-fn sh(cmd string){
-  println("❯ $cmd")
-  print(execute_or_exit(cmd).output)
+fn sh(cmd string) {
+	println('❯ $cmd')
+	print(execute_or_exit(cmd).output)
 }
 
 // Remove if build/ exits, ignore any errors if it doesn't
-rmdir_all('build') or { }
+rmdir_all('build') or {}
 
 // Create build/, never fails as build/ does not exist
 mkdir('build')?
@@ -5913,6 +6047,18 @@ Or just run it more like a traditional Bash script:
 
 On Unix-like platforms, the file can be run directly after making it executable using `chmod +x`:
 `./deploy.vsh`
+
+## Vsh scripts with no extension
+
+Whilst V does normally not allow vsh scripts without the designated file extension, there is a way
+to circumvent this rule and have a file with a fully custom name and shebang. Whilst this feature
+exists it is only recommended for specific usecases like scripts that will be put in the path and
+should **not** be used for things like build or deploy scripts. To access this feature start the
+file with `#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp` where `tmp` is the prefix for
+the built executable. This will run in crun mode so it will only rebuild if changes to the script
+were made and keep the binary as `tmp.<scriptfilename>`. **Caution**: if this filename already
+exists the file will be overriden. If you want to rebuild each time and not keep this binary instead
+use `#!/usr/bin/env -S v -raw-vsh-tmp-prefix tmp run`.
 
 ## Attributes
 
@@ -5955,7 +6101,8 @@ module abc
 pub struct Xyz {
 pub mut:
 	a int
-	d int [deprecated: 'use Xyz.a instead'; deprecated_after: '2999-03-01'] // produce a notice, the deprecation date is in the far future
+	d int [deprecated: 'use Xyz.a instead'; deprecated_after: '2999-03-01']
+	// the tags above, will produce a notice, since the deprecation date is in the far future
 }
 ```
 
@@ -6067,9 +6214,11 @@ fn C.DefWindowProc(hwnd int, msg int, lparam int, wparam int)
 type FastFn = fn (int) bool
 
 // Windows only:
-// If a default graphics library is imported (ex. gg, ui), then the graphical window takes
-// priority and no console window is created, effectively disabling println() statements.
-// Use to explicitly create console window. Valid before main() only.
+// Without this attribute all graphical apps will have the following behavior on Windows:
+// If run from a console or terminal; keep the terminal open so all (e)println statements can be viewed.
+// If run from e.g. Explorer, by double-click; app is opened, but no terminal is opened, and no (e)println output can be seen.
+// Use it to force-open a terminal to view output in, even if the app is started from Explorer.
+// Valid before main() only.
 [console]
 fn main() {
 }

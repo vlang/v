@@ -31,7 +31,9 @@ pub fn compile_c(mut b builder.Builder) {
 		out_name_c = b.get_vtmp_filename(b.pref.out_name, '.tmp.so.c')
 	}
 	build_c(mut b, files, out_name_c)
-	b.cc()
+	if !b.pref.parallel_cc {
+		b.cc()
+	}
 }
 
 pub fn gen_c(mut b builder.Builder, v_files []string) string {
@@ -43,8 +45,15 @@ pub fn gen_c(mut b builder.Builder, v_files []string) string {
 	}
 
 	util.timing_start('C GEN')
-	res := c.gen(b.parsed_files, b.table, b.pref)
+	header, res, out_str, out_fn_start_pos := c.gen(b.parsed_files, b.table, b.pref)
 	util.timing_measure('C GEN')
+
+	if b.pref.parallel_cc {
+		util.timing_start('Parallel C compilation')
+		parallel_cc(mut b, header, res, out_str, out_fn_start_pos)
+		util.timing_measure('Parallel C compilation')
+	}
+
 	return res
 }
 

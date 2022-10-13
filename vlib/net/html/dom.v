@@ -9,7 +9,7 @@ import os
 // https://www.w3.org/TR/WD-DOM/introduction.html
 pub struct DocumentObjectModel {
 mut:
-	root           &Tag
+	root           &Tag = unsafe { nil }
 	constructed    bool
 	btree          BTree
 	all_tags       []&Tag

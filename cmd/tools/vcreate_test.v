@@ -1,6 +1,6 @@
 import os
 
-const test_path = 'vcreate_test'
+const test_path = os.join_path(os.temp_dir(), 'v', 'vcreate_test')
 
 fn init_and_check() ? {
 	os.execute_or_exit('${os.quoted_path(@VEXE)} init')
@@ -59,46 +59,31 @@ fn init_and_check() ? {
 	].join_lines()
 }
 
-fn test_v_init() ? {
-	dir := os.join_path(os.temp_dir(), test_path)
-	os.rmdir_all(dir) or {}
-	os.mkdir(dir) or {}
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	os.chdir(dir)?
+fn prepare_test_path() ? {
+	os.rmdir_all(test_path) or {}
+	os.mkdir_all(test_path) or {}
+	os.chdir(test_path)?
+}
 
+fn test_v_init() {
+	prepare_test_path()?
 	init_and_check()?
 }
 
-fn test_v_init_in_git_dir() ? {
-	dir := os.join_path(os.temp_dir(), test_path)
-	os.rmdir_all(dir) or {}
-	os.mkdir(dir) or {}
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	os.chdir(dir)?
+fn test_v_init_in_git_dir() {
+	prepare_test_path()?
 	os.execute_or_exit('git init .')
 	init_and_check()?
 }
 
-fn test_v_init_no_overwrite_gitignore() ? {
-	dir := os.join_path(os.temp_dir(), test_path)
-	os.rmdir_all(dir) or {}
-	os.mkdir(dir) or {}
-	os.write_file('$dir/.gitignore', 'blah')?
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	os.chdir(dir)?
-
+fn test_v_init_no_overwrite_gitignore() {
+	prepare_test_path()?
+	os.write_file('.gitignore', 'blah')?
 	os.execute_or_exit('${os.quoted_path(@VEXE)} init')
-
 	assert os.read_file('.gitignore')? == 'blah'
 }
 
-fn test_v_init_no_overwrite_gitattributes_and_editorconfig() ? {
+fn test_v_init_no_overwrite_gitattributes_and_editorconfig() {
 	git_attributes_content := '*.v linguist-language=V text=auto eol=lf'
 	editor_config_content := '[*]
 charset = utf-8
@@ -110,19 +95,15 @@ trim_trailing_whitespace = true
 indent_style = tab
 indent_size = 4
 '
-
-	dir := os.join_path(os.temp_dir(), test_path)
-	os.rmdir_all(dir) or {}
-	os.mkdir(dir) or {}
-	os.write_file('$dir/.gitattributes', git_attributes_content)?
-	os.write_file('$dir/.editorconfig', editor_config_content)?
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	os.chdir(dir)?
-
+	prepare_test_path()?
+	os.write_file('.gitattributes', git_attributes_content)?
+	os.write_file('.editorconfig', editor_config_content)?
 	os.execute_or_exit('${os.quoted_path(@VEXE)} init')
 
 	assert os.read_file('.gitattributes')? == git_attributes_content
 	assert os.read_file('.editorconfig')? == editor_config_content
+}
+
+fn testsuite_end() {
+	os.rmdir_all(test_path) or {}
 }

@@ -98,8 +98,8 @@ pub mut:
 // shader data for the rendering
 pub struct Shader_data {
 pub mut:
-	vs_data &Tmp_vs_param
+	vs_data &Tmp_vs_param = unsafe { nil }
 	vs_len  int
-	fs_data &Tmp_fs_param
+	fs_data &Tmp_fs_param = unsafe { nil }
 	fs_len  int
 }

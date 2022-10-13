@@ -57,8 +57,8 @@ pub:
 
 struct App {
 mut:
-	tui           &tui.Context = unsafe { 0 }
-	ed            &Buffer      = unsafe { 0 }
+	tui           &tui.Context = unsafe { nil }
+	ed            &Buffer      = unsafe { nil }
 	current_file  int
 	files         []string
 	status        string

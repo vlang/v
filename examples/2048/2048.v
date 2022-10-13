@@ -7,7 +7,7 @@ import time
 
 struct App {
 mut:
-	gg          &gg.Context = unsafe { 0 }
+	gg          &gg.Context = unsafe { nil }
 	touch       TouchInfo
 	ui          Ui
 	theme       &Theme = themes[0]
@@ -18,7 +18,7 @@ mut:
 	state       GameState  = .play
 	tile_format TileFormat = .normal
 	moves       int
-	perf        &Perf = unsafe { 0 }
+	perf        &Perf = unsafe { nil }
 	is_ai_mode  bool
 }
 
@@ -768,7 +768,7 @@ fn (mut app App) next_theme() {
 
 [inline]
 fn (mut app App) next_tile_format() {
-	app.tile_format = TileFormat(int(app.tile_format) + 1)
+	app.tile_format = unsafe { TileFormat(int(app.tile_format) + 1) }
 	if app.tile_format == .end_ {
 		app.tile_format = .normal
 	}
@@ -907,6 +907,10 @@ fn (mut app App) showfps() {
 		app.perf.second_sw.restart()
 		app.perf.frame_old = f
 	}
+}
+
+$if emscripten ? {
+	#flag --embed-file ./examples/assets/fonts/RobotoMono-Regular.ttf@/assets/fonts/RobotoMono-Regular.ttf
 }
 
 fn main() {

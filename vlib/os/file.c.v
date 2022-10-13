@@ -237,11 +237,19 @@ pub fn (f &File) read(mut buf []u8) !int {
 	if buf.len == 0 {
 		return IError(Eof{})
 	}
-	nbytes := fread(buf.data, 1, buf.len, f.cfile) or {
-		return IError(NotExpected{
-			cause: 'unexpected error from fread'
-			code: -1
-		})
+	// the following is needed, because on FreeBSD, C.feof is a macro:
+	nbytes := int(C.fread(buf.data, 1, buf.len, &C.FILE(f.cfile)))
+	// if no bytes were read, check for errors and end-of-file.
+	if nbytes <= 0 {
+		if C.feof(&C.FILE(f.cfile)) != 0 {
+			return IError(Eof{})
+		}
+		if C.ferror(&C.FILE(f.cfile)) != 0 {
+			return IError(NotExpected{
+				cause: 'unexpected error from fread'
+				code: -1
+			})
+		}
 	}
 	return nbytes
 }
