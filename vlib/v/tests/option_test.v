@@ -382,11 +382,34 @@ fn test_return_or() {
 }
 
 // For issue #16058: cgen error: exists spaces in the name of the ?&C.struct
-fn bar() ?&C.stat {
+fn get_opt_pointer_to_c_struct() ?&C.stat {
 	return none
 }
 
 fn test_optional_ref_c_struct_gen() {
-	_ := bar() or { &C.stat{} }
+	_ := get_opt_pointer_to_c_struct() or { &C.stat{} }
+}
+
+// For issue #16062: checker disallow the return of voidptr(nil) in or block
+struct Bar {}
+
+fn get_bar(should_return_value bool) ?&Bar {
+	if should_return_value {
+		return unsafe { nil }
+	}
+	return none
+}
+
+fn test_() {
+	a := get_bar(true)?
+	assert a == unsafe { nil }
+	//
+	x := get_bar(false) or {
+		assert true
+		unsafe { nil }
+	}
+	assert x == unsafe { nil }
+	//
+	get_bar(false) or { unsafe { nil } }
 	assert true
 }
