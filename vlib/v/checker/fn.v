@@ -415,6 +415,7 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 	}
 	c.table.cur_fn = unsafe { &node.decl }
 	c.inside_anon_fn = true
+	mut has_generic := false
 	for mut var in node.inherited_vars {
 		parent_var := node.decl.scope.parent.find_var(var.name) or {
 			panic('unexpected checker error: cannot find parent of inherited variable `$var.name`')
@@ -424,9 +425,16 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 				var.pos)
 		}
 		var.typ = parent_var.typ
+		if var.typ.has_flag(.generic) {
+			has_generic = true
+		}
 	}
 	c.stmts(node.decl.stmts)
 	c.fn_decl(mut node.decl)
+	if has_generic && node.decl.generic_names.len == 0 {
+		c.error('generic closure fn must specify type parameter, e.g. fn [foo] <T>()',
+			node.decl.pos)
+	}
 	return node.typ
 }
 
