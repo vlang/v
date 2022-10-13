@@ -116,6 +116,12 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 					}
 					continue
 				}
+				if field.default_expr is ast.UnsafeExpr {
+					if field.default_expr.expr is ast.Nil && !field.typ.is_ptr()
+						&& c.table.sym(field.typ).kind != .function && !field.typ.is_pointer() {
+						c.error('cannot assign `nil` to a non-pointer field', field.type_pos)
+					}
+				}
 				if field.default_expr is ast.IntegerLiteral {
 					if field.default_expr.val == '0' {
 						c.warn('unnecessary default value of `0`: struct fields are zeroed by default',
