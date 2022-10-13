@@ -1001,7 +1001,13 @@ fn (mut g Gen) expr_string_surround(prepend string, expr ast.Expr, append string
 // if one location changes
 fn (mut g Gen) optional_type_name(t ast.Type) (string, string) {
 	base := g.base_type(t)
-	mut styp := '_option_$base'
+	mut styp := ''
+	sym := g.table.sym(t)
+	if sym.language == .c && sym.kind == .struct_ {
+		styp = '${c.option_name}_${base.replace(' ', '_')}'
+	} else {
+		styp = '${c.option_name}_$base'
+	}
 	if t.is_ptr() {
 		styp = styp.replace('*', '_ptr')
 	}
@@ -1010,7 +1016,13 @@ fn (mut g Gen) optional_type_name(t ast.Type) (string, string) {
 
 fn (mut g Gen) result_type_name(t ast.Type) (string, string) {
 	base := g.base_type(t)
-	mut styp := '${c.result_name}_$base'
+	mut styp := ''
+	sym := g.table.sym(t)
+	if sym.language == .c && sym.kind == .struct_ {
+		styp = '${c.result_name}_${base.replace(' ', '_')}'
+	} else {
+		styp = '${c.result_name}_$base'
+	}
 	if t.is_ptr() {
 		styp = styp.replace('*', '_ptr')
 	}
