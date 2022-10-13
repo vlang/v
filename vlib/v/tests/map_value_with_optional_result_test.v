@@ -13,3 +13,17 @@ fn test_map_value_with_optional_result() {
 fn foo(arg map[string]?string) ?string {
 	return arg['akey']
 }
+
+struct Foo {
+	map1 map[string]!string
+	map2 map[string]?string
+}
+
+fn bar() {
+	map1 := map[string]?string{}
+	map2 := map[string]!string{}
+}
+
+fn baz(arg map[string]?string) ?string {
+	return arg['akey']
+}
