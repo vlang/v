@@ -164,7 +164,7 @@ fn (mut ws Client) check_handshake_response(handshake_response string, seckey st
 			}
 			'Sec-WebSocket-Accept', 'sec-websocket-accept' {
 				ws.debug_log('seckey: $seckey')
-				challenge := create_key_challenge_response(seckey)?
+				challenge := create_key_challenge_response(seckey)!
 				ws.debug_log('challenge: $challenge, response: ${keys[1]}')
 				if keys[1].trim_space() != challenge {
 					return error_with_code('handshake_handler: Sec-WebSocket-Accept header does not match computed sha1/base64 response.',
@@ -179,7 +179,7 @@ fn (mut ws Client) check_handshake_response(handshake_response string, seckey st
 	}
 	unsafe { lines.free() }
 	if ws.flags.len < 3 {
-		ws.close(1002, 'invalid websocket HTTP headers')?
+		ws.close(1002, 'invalid websocket HTTP headers')!
 		return error_with_code('invalid websocket HTTP headers', 8)
 	}
 }

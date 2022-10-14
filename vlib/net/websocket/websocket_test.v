@@ -63,7 +63,7 @@ fn start_server(family net.AddrFamily, listen_port int) ! {
 			return false
 		}
 		return true
-	})?
+	})!
 	s.on_message(fn (mut ws websocket.Client, msg &websocket.Message) ! {
 		match msg.opcode {
 			.pong { ws.write_string('pong')! }
