@@ -40,7 +40,7 @@ fn server() ! {
 		}
 		println('Client has connected...')
 		return true
-	})?
+	})!
 
 	s.on_message(fn (mut ws ws.Client, msg &RawMessage) ! {
 		mut transport := WsTransport{}

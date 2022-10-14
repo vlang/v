@@ -98,7 +98,7 @@ pub fn listen_stream(sock string) !&StreamListener {
 	unsafe { C.strncpy(&addr.sun_path[0], &char(sock.str), max_sun_path) }
 	size := C.SUN_LEN(&addr)
 	if os.exists(sock) {
-		os.rm(sock)?
+		os.rm(sock)!
 	}
 	net.socket_error(C.bind(s.handle, voidptr(&addr), size))!
 	os.chmod(sock, 0o777)!
@@ -218,7 +218,7 @@ pub fn (mut c StreamConn) read_ptr(buf_ptr &u8, len int) !int {
 	}
 	code := error_code()
 	if code == int(error_ewouldblock) {
-		c.wait_for_read()?
+		c.wait_for_read()!
 		res = wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0))!
 		$if trace_unix ? {
 			eprintln('<<< StreamConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')

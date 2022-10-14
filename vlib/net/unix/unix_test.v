@@ -40,7 +40,7 @@ fn echo() ! {
 		c.close() or {}
 	}
 	data := 'Hello from vlib/net!'
-	c.write_string(data)?
+	c.write_string(data)!
 	mut buf := []u8{len: 4096}
 	read := c.read(mut buf)!
 	assert read == data.len
