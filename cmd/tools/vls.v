@@ -154,7 +154,7 @@ fn (upd VlsUpdater) download_prebuilt() ! {
 	}
 
 	latest_release := releases_json[0].as_map()
-	assets := latest_release['assets']!.arr()
+	assets := latest_release['assets']?.arr()
 
 	mut checksum_asset_idx := -1
 	mut exec_asset_idx := -1
@@ -164,7 +164,7 @@ fn (upd VlsUpdater) download_prebuilt() ! {
 
 	for asset_idx, raw_asset in assets {
 		asset := raw_asset.as_map()
-		match asset['name']!.str() {
+		match asset['name']?.str() {
 			exp_asset_name {
 				exec_asset_idx = asset_idx
 
@@ -197,11 +197,11 @@ fn (upd VlsUpdater) download_prebuilt() ! {
 
 	upd.log('Executable found for this system. Downloading...')
 	upd.init_download_prebuilt()!
-	http.download_file(exec_asset['browser_download_url']!.str(), exec_asset_file_path)!
+	http.download_file(exec_asset['browser_download_url']?.str(), exec_asset_file_path)!
 
 	checksum_file_path := os.join_path(vls_cache_folder, 'checksums.txt')
 	checksum_file_asset := assets[checksum_asset_idx].as_map()
-	http.download_file(checksum_file_asset['browser_download_url']!.str(), checksum_file_path)!
+	http.download_file(checksum_file_asset['browser_download_url']?.str(), checksum_file_path)!
 	checksums := os.read_file(checksum_file_path)!.split_into_lines()
 
 	upd.log('Verifying checksum...')
@@ -283,8 +283,8 @@ fn (upd VlsUpdater) compile_from_source() ! {
 fn (upd VlsUpdater) find_ls_path() !string {
 	manifest := upd.manifest_config()!
 	if 'server_path' in manifest {
-		server_path := manifest['server_path']!
-		if server_path is string {
+		server_path := manifest['server_path']
+		!if server_path is string {
 			if server_path.len == 0 {
 				return none
 			}
