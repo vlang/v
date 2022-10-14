@@ -155,7 +155,7 @@ fn (mut s Server) setup_callbacks(mut sc ServerClient) {
 		}
 	}
 	// set standard close so we can remove client if closed
-	sc.client.on_close_ref(fn (mut c Client, code int, reason string, mut sc ServerClient) ? {
+	sc.client.on_close_ref(fn (mut c Client, code int, reason string, mut sc ServerClient) ! {
 		c.logger.debug('server-> Delete client')
 		lock  {
 			sc.server.clients.delete(sc.client.id)

@@ -217,7 +217,7 @@ pub fn (mut ws Client) listen() ! {
 			.continuation {
 				ws.logger.error('unexpected opcode continuation, nothing to continue')
 				ws.send_error_event('unexpected opcode continuation, nothing to continue')
-				ws.close(1002, 'nothing to continue')?
+				ws.close(1002, 'nothing to continue')!
 				return error('unexpected opcode continuation, nothing to continue')
 			}
 		}
@@ -290,7 +290,7 @@ pub fn (mut ws Client) write_ptr(bytes &u8, payload_len int, code OPCode) !int {
 			header[12] = masking_key[2]
 			header[13] = masking_key[3]
 		} else {
-			ws.close(1009, 'frame too large')?
+			ws.close(1009, 'frame too large')!
 			return error('frame too large')
 		}
 	}
