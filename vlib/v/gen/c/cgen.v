@@ -1036,7 +1036,7 @@ fn (g Gen) optional_type_text(styp string, base string) string {
 	} else if base.starts_with('anon_fn') {
 		'void*'
 	} else {
-		base
+		if base.starts_with('struct ') && !base.ends_with('*') { '$base*' } else { base }
 	}
 	ret := 'struct $styp {
 	byte state;
@@ -1053,7 +1053,7 @@ fn (g Gen) result_type_text(styp string, base string) string {
 	} else if base.starts_with('anon_fn') {
 		'void*'
 	} else {
-		base
+		if base.starts_with('struct ') && !base.ends_with('*') { '$base*' } else { base }
 	}
 	ret := 'struct $styp {
 	bool is_error;

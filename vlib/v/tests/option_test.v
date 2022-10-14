@@ -390,6 +390,15 @@ fn test_optional_ref_c_struct_gen() {
 	_ := get_opt_pointer_to_c_struct() or { &C.stat{} }
 }
 
+// For issue #16070: cgen error: missing * of optional non-ref structs
+fn get_opt_to_c_struct() ?C.stat {
+	return none
+}
+
+fn test_optional_c_struct_gen() {
+	_ := get_opt_to_c_struct() or { C.stat{} }
+}
+
 // For issue #16062: checker disallow the return of voidptr(nil) in or block
 struct Bar {}
 
