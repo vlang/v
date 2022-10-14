@@ -166,7 +166,7 @@ fn main() {
 	}
 
 	toml_conf := fp.string('toml-config', `t`, default_toml, 'Path or string with TOML configuration')
-	arg_paths := fp.finalize()?
+	arg_paths := fp.finalize()!
 	if show_help {
 		println(fp.usage())
 		exit(0)
