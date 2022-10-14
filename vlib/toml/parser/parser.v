@@ -163,7 +163,7 @@ fn (mut p Parser) peek(n int) !token.Token {
 			mut count := n - p.tokens.len
 			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'buffering $count tokens...')
 			for token.kind != .eof && count != 0 {
-				token = p.scanner.scan()?
+				token = p.scanner.scan()!
 				p.tokens << token
 				count--
 			}
@@ -232,7 +232,7 @@ fn (mut p Parser) ignore_while_peek(tokens []token.Kind) {
 // peek_over peeks ahead from token starting at `i` skipping over
 // any `token.Kind`s found in `tokens`. `peek_over` returns the next token *not*
 // found in `tokens`.
-fn (mut p Parser) peek_over(i int, tokens []token.Kind) ?(token.Token, int) {
+fn (mut p Parser) peek_over(i int, tokens []token.Kind) !(token.Token, int) {
 	mut peek_tok := p.peek_tok
 
 	// Peek ahead as far as we can from token at `i` while the peeked
@@ -769,7 +769,7 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ! {
 			.comma {
 				p.ignore_while_peek(parser.space_formatting)
 				if p.peek_tok.kind in [.comma, .rcbr] {
-					p.next()? // Forward to the peek_tok
+					p.next()! // Forward to the peek_tok
 					return error(@MOD + '.' + @STRUCT + '.' + @FN +
 						' unexpected "$p.tok.kind" "$p.tok.lit" at this (excerpt): "...${p.excerpt()}..."')
 				}
@@ -941,7 +941,7 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 				table[first.str()] = ast.Value(nm)
 
 				t_arr = &(nm[last.str()] as []ast.Value)
-				t_arr << p.array_of_tables_contents()?
+				t_arr << p.array_of_tables_contents()!
 				return
 			} else {
 				return error(@MOD + '.' + @STRUCT + '.' + @FN +
@@ -1080,13 +1080,13 @@ pub fn (mut p Parser) array() ![]ast.Value {
 	p.expect(.lsbr)! // '[' bracket
 	mut previous_token_was_value := false
 	for p.tok.kind != .eof {
-		p.next()?
+		p.next()!
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "$p.tok.kind" "$p.tok.lit"')
 
 		if previous_token_was_value {
 			p.ignore_while(parser.all_formatting)
 			if p.tok.kind != .rsbr && p.tok.kind != .hash {
-				p.expect(.comma)?
+				p.expect(.comma)!
 			}
 			previous_token_was_value = false
 		}
