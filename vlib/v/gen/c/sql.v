@@ -15,6 +15,7 @@ enum SqlType {
 	mysql
 	psql
 	mssql
+	connection
 	unknown
 }
 
@@ -22,7 +23,7 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	conn := g.new_tmp_var()
 	g.writeln('')
 	g.writeln('// orm')
-	g.write('orm__Connection $conn = (orm__Connection){._')
+	g.write('orm__Connection $conn = ')
 	mut fn_prefix := ''
 	typ := g.parse_db_type(node.db_expr)
 	match typ {
@@ -35,13 +36,21 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 		.psql {
 			fn_prefix = 'pg__DB'
 		}
+		.connection {
+			fn_prefix = ''
+		}
 		else {
 			verror('This database type `$typ` is not implemented yet in orm') // TODO add better error
 		}
 	}
-	g.write('$fn_prefix = &')
-	g.expr(node.db_expr)
-	g.writeln(', ._typ = _orm__Connection_${fn_prefix}_index};')
+	if fn_prefix != '' {
+		g.write('(orm__Connection){._$fn_prefix = &')
+		g.expr(node.db_expr)
+		g.writeln(', ._typ = _orm__Connection_${fn_prefix}_index};')
+	} else {
+		g.expr(node.db_expr)
+		g.writeln(';')
+	}
 	for line in node.lines {
 		g.sql_stmt_line(line, conn, node.or_expr)
 	}
@@ -538,7 +547,7 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	conn := g.new_tmp_var()
 	g.writeln('')
 	g.writeln('// orm')
-	g.write('orm__Connection $conn = (orm__Connection){._')
+	g.write('orm__Connection $conn = ')
 	mut fn_prefix := ''
 	typ := g.parse_db_type(node.db_expr)
 	match typ {
@@ -551,14 +560,22 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 		.psql {
 			fn_prefix = 'pg__DB'
 		}
+		.connection {
+			fn_prefix = ''
+		}
 		else {
 			verror('This database type `$typ` is not implemented yet in orm') // TODO add better error
 		}
 	}
 
-	g.write('$fn_prefix = &')
-	g.expr(node.db_expr)
-	g.writeln(', ._typ = _orm__Connection_${fn_prefix}_index};')
+	if fn_prefix != '' {
+		g.write('(orm__Connection){._$fn_prefix = &')
+		g.expr(node.db_expr)
+		g.writeln(', ._typ = _orm__Connection_${fn_prefix}_index};')
+	} else {
+		g.expr(node.db_expr)
+		g.writeln(';')
+	}
 	g.sql_select(node, conn, left, node.or_expr)
 }
 
@@ -861,6 +878,9 @@ fn (mut g Gen) parse_db_from_type_string(name string) SqlType {
 		}
 		'mssql.Connection' {
 			return .mssql
+		}
+		'orm.Connection' {
+			return .connection
 		}
 		else {
 			return .unknown
