@@ -194,7 +194,7 @@ fn main() {
 	fp.description(tool_description)
 	fp.arguments_description('COMMIT_BEFORE [COMMIT_AFTER]')
 	fp.skip_executable()
-	fp.limit_free_args(1, 2)?
+	fp.limit_free_args(1, 2)!
 	context.vflags = fp.string('vflags', 0, '', 'Additional options to pass to the v commands, for example "-cc tcc"')
 	context.hyperfineopts = fp.string('hyperfine_options', 0, '', 'Additional options passed to hyperfine.
 ${flag.space}For example on linux, you may want to pass:
