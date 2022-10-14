@@ -190,11 +190,11 @@ fn test_signed_cast() {
 		mut u := strconv.Float64u{
 			u: strconv.double_plus_zero
 		}
-		assert '${u.f:g}' == '0'
-		assert '${u.f:G}' == '0'
+		assert '${u.f:g}' == '0.0'
+		assert '${u.f:G}' == '0.0'
 		u.u = strconv.double_minus_zero
-		assert '${u.f:g}' == '0'
-		assert '${u.f:G}' == '0'
+		assert '${u.f:g}' == '0.0'
+		assert '${u.f:G}' == '0.0'
 		u.u = strconv.double_plus_infinity
 		assert '${u.f:g}' == '+inf'
 		assert '${u.f:G}' == '+INF'
@@ -206,11 +206,11 @@ fn test_signed_cast() {
 		mut u := strconv.Float32u{
 			u: strconv.single_plus_zero
 		}
-		assert '${u.f:g}' == '0'
-		assert '${u.f:G}' == '0'
+		assert '${u.f:g}' == '0.0'
+		assert '${u.f:G}' == '0.0'
 		u.u = strconv.single_minus_zero
-		assert '${u.f:g}' == '0'
-		assert '${u.f:G}' == '0'
+		assert '${u.f:g}' == '0.0'
+		assert '${u.f:G}' == '0.0'
 		u.u = strconv.single_plus_infinity
 		assert '${u.f:g}' == '+inf'
 		assert '${u.f:G}' == '+INF'

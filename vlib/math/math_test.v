@@ -425,7 +425,7 @@ fn test_abs_zero() {
 
 	ret2 := abs(0.0)
 	println(ret2)
-	assert '$ret2' == '0'
+	assert '$ret2' == '0.0'
 }
 
 fn test_floor() {

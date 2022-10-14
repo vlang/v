@@ -13,15 +13,15 @@ fn test_variadic_array_decompose() {
 	a << Foo{}
 
 	input := [0.0, 1.0]
-	assert a[0].method(...input) == '[0, 1]'
-	assert a[0].method(...[0.0, 1.0]) == '[0, 1]'
+	assert a[0].method(...input) == '[0.0, 1.0]'
+	assert a[0].method(...[0.0, 1.0]) == '[0.0, 1.0]'
 }
 
 fn test_variadic_multiple_args() {
 	mut a := []Element{}
 	a << Foo{}
 
-	assert a[0].method(0.0, 1.0) == '[0, 1]'
+	assert a[0].method(0.0, 1.0) == '[0.0, 1.0]'
 }
 
 interface Animal {}
