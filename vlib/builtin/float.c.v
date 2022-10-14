@@ -41,7 +41,7 @@ pub fn (x f64) strg() string {
 	}
 	abs_x := f64_abs(x)
 	if abs_x >= 0.0001 && abs_x < 1.0e6 {
-		return strconv.f64_to_str_l_no_dot(x)
+		return strconv.f64_to_str_l_with_dot(x)
 	} else {
 		return strconv.ftoa_64(x)
 	}
@@ -107,7 +107,7 @@ pub fn (x f32) strg() string {
 	}
 	abs_x := f32_abs(x)
 	if abs_x >= 0.0001 && abs_x < 1.0e6 {
-		return strconv.f32_to_str_l_no_dot(x)
+		return strconv.f32_to_str_l_with_dot(x)
 	} else {
 		return strconv.ftoa_32(x)
 	}
