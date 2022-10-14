@@ -145,7 +145,7 @@ fn maybe_color(term_color fn (string) string, str string) string {
 	}
 }
 
-fn collect_v_files(path string, recursive bool) ?[]string {
+fn collect_v_files(path string, recursive bool) ![]string {
 	if path.len == 0 {
 		return error('path cannot be empty')
 	}
@@ -153,7 +153,7 @@ fn collect_v_files(path string, recursive bool) ?[]string {
 		return error('path does not exist or is not a directory')
 	}
 	mut all_files := []string{}
-	mut entries := os.ls(path)?
+	mut entries := os.ls(path)!
 	mut local_path_separator := os.path_separator
 	if path.ends_with(os.path_separator) {
 		local_path_separator = ''
@@ -161,7 +161,7 @@ fn collect_v_files(path string, recursive bool) ?[]string {
 	for entry in entries {
 		file := path + local_path_separator + entry
 		if os.is_dir(file) && !os.is_link(file) && recursive {
-			all_files << collect_v_files(file, recursive)?
+			all_files << collect_v_files(file, recursive)!
 		} else if os.exists(file) && (file.ends_with('.v') || file.ends_with('.vsh')) {
 			all_files << file
 		}
@@ -169,7 +169,7 @@ fn collect_v_files(path string, recursive bool) ?[]string {
 	return all_files
 }
 
-fn resolve_module(path string) ?string {
+fn resolve_module(path string) !string {
 	if os.is_dir(path) {
 		return path
 	} else if os.is_dir(os.join_path(vmod_dir, path)) {

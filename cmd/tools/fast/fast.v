@@ -48,7 +48,7 @@ fn main() {
 
 	// build an optimized V
 	println('  Building vprod...')
-	os.chdir(vdir)?
+	os.chdir(vdir)!
 	if os.args.contains('-noprod') {
 		exec('./v -o vprod cmd/v') // for faster debugging
 	} else {

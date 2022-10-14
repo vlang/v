@@ -73,7 +73,7 @@ fn (context Context) file2v(bname string, fbytes []u8, bn_max int) string {
 	return sb.str()
 }
 
-fn (context Context) bname_and_bytes(file string) ?(string, []u8) {
+fn (context Context) bname_and_bytes(file string) !(string, []u8) {
 	fname := os.file_name(file)
 	fname_escaped := fname.replace_each(['.', '_', '-', '_'])
 	byte_name := '$context.prefix$fname_escaped'.to_lower()
@@ -130,12 +130,12 @@ fn main() {
 	}
 	max_bname := context.max_bname_len(file_byte_map.keys())
 	if context.write_file.len > 0 {
-		mut out_file := os.create(context.write_file)?
-		out_file.write_string(context.header())?
+		mut out_file := os.create(context.write_file)!
+		out_file.write_string(context.header())!
 		for bname, fbytes in file_byte_map {
-			out_file.write_string(context.file2v(bname, fbytes, max_bname))?
+			out_file.write_string(context.file2v(bname, fbytes, max_bname))!
 		}
-		out_file.write_string(context.footer())?
+		out_file.write_string(context.footer())!
 	} else {
 		print(context.header())
 		for bname, fbytes in file_byte_map {

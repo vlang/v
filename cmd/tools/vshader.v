@@ -122,7 +122,7 @@ fn shader_program_name(shader_file string) string {
 }
 
 // validate_shader_file returns an error if `shader_file` isn't valid.
-fn validate_shader_file(shader_file string) ? {
+fn validate_shader_file(shader_file string) ! {
 	shader_program := os.read_lines(shader_file) or {
 		return error('shader program at "$shader_file" could not be opened for reading')
 	}
@@ -140,7 +140,7 @@ fn validate_shader_file(shader_file string) ? {
 
 // compile_shaders compiles all `*.glsl` files found in `input_path`
 // to their C header file representatives.
-fn compile_shaders(opt Options, input_path string) ? {
+fn compile_shaders(opt Options, input_path string) ! {
 	mut path := os.real_path(input_path)
 	path = path.trim_right('/')
 	if os.is_file(path) {
@@ -172,12 +172,12 @@ fn compile_shaders(opt Options, input_path string) ? {
 		// Currently sokol-shdc allows for multiple --input flags
 		// - but it's only the last entry that's actually compiled/used
 		// Given this fact - we can only compile one '.glsl' file to one C '.h' header
-		compile_shader(co, shader_file)?
+		compile_shader(co, shader_file)!
 	}
 }
 
 // compile_shader compiles `shader_file` to a C header file.
-fn compile_shader(opt CompileOptions, shader_file string) ? {
+fn compile_shader(opt CompileOptions, shader_file string) ! {
 	path := opt.invoke_path
 	// The output convetion, for now, is to use the name of the .glsl file
 	mut out_file := os.file_name(shader_file).all_before_last('.') + '.h'
@@ -231,12 +231,12 @@ fn collect(path string, mut list []string) {
 
 // ensure_external_tools returns nothing if the external
 // tools can be setup or is already in place.
-fn ensure_external_tools(opt Options) ? {
+fn ensure_external_tools(opt Options) ! {
 	if !os.exists(cache_dir) {
-		os.mkdir_all(cache_dir)?
+		os.mkdir_all(cache_dir)!
 	}
 	if opt.force_update {
-		download_shdc(opt)?
+		download_shdc(opt)!
 		return
 	}
 
@@ -250,7 +250,7 @@ fn ensure_external_tools(opt Options) ? {
 		return
 	}
 
-	download_shdc(opt)?
+	download_shdc(opt)!
 }
 
 // shdc_exe returns an absolute path to the `sokol-shdc` tool.

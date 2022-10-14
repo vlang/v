@@ -113,14 +113,14 @@ fn main() {
 		os.chdir(os.wd_at_startup) or {}
 	}
 	println('> vroot: $vroot | vexe: $vexe | tdir: $tdir')
-	ok_fpath := create_test('a_single_ok_test.v', 'fn test_ok(){ assert true }')?
+	ok_fpath := create_test('a_single_ok_test.v', 'fn test_ok(){ assert true }')!
 	if check_ok('$vexe $ok_fpath') != '' {
 		exit(1)
 	}
 	check_ok('$vexe test $ok_fpath').matches('*OK*a_single_ok_test.v*')
 	check_ok('$vexe test "$tdir"').matches('*OK*a_single_ok_test.v*')
 	//
-	fail_fpath := create_test('a_single_failing_test.v', 'fn test_fail(){ assert 1 == 2 }')?
+	fail_fpath := create_test('a_single_failing_test.v', 'fn test_fail(){ assert 1 == 2 }')!
 	check_fail('$vexe $fail_fpath').has('> assert 1 == 2').has('a_single_failing_test.v:1: fn test_fail')
 	check_fail('$vexe test $fail_fpath').has('> assert 1 == 2').has('a_single_failing_test.v:1: fn test_fail')
 	check_fail('$vexe test "$tdir"').has('> assert 1 == 2')
