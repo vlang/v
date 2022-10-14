@@ -60,15 +60,15 @@ fn (result MyResult) matches(gpattern string) MyResult {
 	return result
 }
 
-fn create_test(tname string, tcontent string) ?string {
+fn create_test(tname string, tcontent string) !string {
 	tpath := os.join_path(tdir, tname)
-	os.write_file(tpath, tcontent)?
+	os.write_file(tpath, tcontent)!
 	eprintln('>>>>>>>> tpath: $tpath | tcontent: $tcontent')
 	return os.quoted_path(tpath)
 }
 
-fn check_assert_continues_works() ? {
-	os.chdir(tdir)?
+fn check_assert_continues_works() ! {
+	os.chdir(tdir)!
 	create_test('assert_continues_option_works_test.v', 'fn test_fail1() { assert 2==4\nassert 2==1\nassert 2==0 }\nfn test_ok(){ assert true }\nfn test_fail2() { assert false }')?
 	result := check_fail('$vexe -assert continues assert_continues_option_works_test.v')
 	result.has('assert_continues_option_works_test.v:1: fn test_fail1')
@@ -125,11 +125,11 @@ fn main() {
 	check_fail('$vexe test $fail_fpath').has('> assert 1 == 2').has('a_single_failing_test.v:1: fn test_fail')
 	check_fail('$vexe test "$tdir"').has('> assert 1 == 2')
 	rel_dir := os.join_path(tdir, rand.ulid())
-	os.mkdir(rel_dir)?
-	os.chdir(rel_dir)?
+	os.mkdir(rel_dir)!
+	os.chdir(rel_dir)!
 	relative_path := '..' + os.path_separator + 'a_single_ok_test.v'
 	check_ok('$vexe test ${os.quoted_path(relative_path)}').has('OK').has('a_single_ok_test.v')
 	//
-	check_assert_continues_works()?
+	check_assert_continues_works()!
 	println('> all done')
 }

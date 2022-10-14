@@ -156,7 +156,7 @@ fn glob_match(dir string, pattern string, next_pattern string, mut matches []str
 	return subdirs
 }
 
-fn native_glob_pattern(pattern string, mut matches []string) ? {
+fn native_glob_pattern(pattern string, mut matches []string) ! {
 	steps := pattern.split(os.path_separator)
 	mut cwd := if pattern.starts_with(os.path_separator) { os.path_separator } else { '.' }
 	mut subdirs := [cwd]
@@ -199,7 +199,7 @@ fn native_glob_pattern(pattern string, mut matches []string) ? {
 	}
 }
 
-pub fn utime(path string, actime int, modtime int) ? {
+pub fn utime(path string, actime int, modtime int) ! {
 	mut u := C.utimbuf{actime, modtime}
 	if C.utime(&char(path.str), voidptr(&u)) != 0 {
 		return error_with_code(posix_get_error_msg(C.errno), C.errno)
@@ -252,7 +252,7 @@ fn init_os_args(argc int, argv &&u8) []string {
 	return args_
 }
 
-pub fn ls(path string) ?[]string {
+pub fn ls(path string) ![]string {
 	if path.len == 0 {
 		return error('ls() expects a folder, not an empty string')
 	}
@@ -296,7 +296,7 @@ pub fn is_dir(path string) bool {
 */
 
 // mkdir creates a new directory with the specified path.
-pub fn mkdir(path string, params MkdirParams) ?bool {
+pub fn mkdir(path string, params MkdirParams) !bool {
 	if path == '.' {
 		return true
 	}
@@ -379,7 +379,7 @@ pub fn raw_execute(cmd string) Result {
 }
 
 [manualfree]
-pub fn (mut c Command) start() ? {
+pub fn (mut c Command) start() ! {
 	pcmd := c.path + ' 2>&1'
 	defer {
 		unsafe { pcmd.free() }
@@ -416,14 +416,14 @@ pub fn (mut c Command) read_line() string {
 	return final
 }
 
-pub fn (mut c Command) close() ? {
+pub fn (mut c Command) close() ! {
 	c.exit_code = vpclose(c.f)
 	if c.exit_code == 127 {
 		return error_with_code('error', 127)
 	}
 }
 
-pub fn symlink(origin string, target string) ?bool {
+pub fn symlink(origin string, target string) !bool {
 	res := C.symlink(&char(origin.str), &char(target.str))
 	if res == 0 {
 		return true
@@ -431,7 +431,7 @@ pub fn symlink(origin string, target string) ?bool {
 	return error(posix_get_error_msg(C.errno))
 }
 
-pub fn link(origin string, target string) ?bool {
+pub fn link(origin string, target string) !bool {
 	res := C.link(&char(origin.str), &char(target.str))
 	if res == 0 {
 		return true
@@ -477,7 +477,7 @@ fn C.mkstemp(stemplate &u8) int
 
 // `is_writable_folder` - `folder` exists and is writable to the process
 [manualfree]
-pub fn is_writable_folder(folder string) ?bool {
+pub fn is_writable_folder(folder string) !bool {
 	if !exists(folder) {
 		return error('`$folder` does not exist')
 	}
@@ -495,7 +495,7 @@ pub fn is_writable_folder(folder string) ?bool {
 		}
 		C.close(x)
 	}
-	rm(tmp_perm_check)?
+	rm(tmp_perm_check)!
 	return true
 }
 

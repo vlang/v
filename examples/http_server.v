@@ -34,5 +34,5 @@ fn main() {
 	mut server := Server{
 		handler: ExampleHandler{}
 	}
-	server.listen_and_serve()?
+	server.listen_and_serve()
 }

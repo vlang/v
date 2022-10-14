@@ -261,7 +261,7 @@ fn shdc_exe() string {
 }
 
 // download_shdc downloads the `sokol-shdc` tool to an OS specific cache directory.
-fn download_shdc(opt Options) ? {
+fn download_shdc(opt Options) ! {
 	// We want to use the same, runtime, OS type as this tool is invoked on.
 	download_url := shdc_urls[runtime_os] or { '' }
 	if download_url == '' {
@@ -277,26 +277,26 @@ fn download_shdc(opt Options) ? {
 		}
 	}
 	if os.exists(file) {
-		os.rm(file)?
+		os.rm(file)!
 	}
 
-	mut dtmp_file, dtmp_path := util.temp_file(util.TempFileOptions{ path: os.dir(file) })?
+	mut dtmp_file, dtmp_path := util.temp_file(util.TempFileOptions{ path: os.dir(file) })!
 	dtmp_file.close()
 	if opt.verbose {
 		eprintln('$tool_name downloading sokol-shdc from $download_url')
 	}
 	http.download_file(download_url, dtmp_path) or {
-		os.rm(dtmp_path)?
+		os.rm(dtmp_path)!
 		return error('$tool_name failed to download sokol-shdc needed for shader compiling: $err')
 	}
 	// Make it executable
-	os.chmod(dtmp_path, 0o775)?
+	os.chmod(dtmp_path, 0o775)!
 	// Move downloaded file in place
-	os.mv(dtmp_path, file)?
+	os.mv(dtmp_path, file)!
 	if runtime_os in ['linux', 'macos'] {
 		// Use the .exe file ending to minimize platform friction.
-		os.mv(file, shdc)?
+		os.mv(file, shdc)!
 	}
 	// Update internal version file
-	os.write_file(shdc_version_file, update_to_shdc_version)?
+	os.write_file(shdc_version_file, update_to_shdc_version)!
 }

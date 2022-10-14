@@ -19,7 +19,7 @@ fn (mut s StringReader) read(mut buf []u8) !int {
 	return n
 }
 
-fn reader(s string) &io.BufferedReader {
+fn reader(s string) !io.BufferedReader {
 	return io.new_buffered_reader(
 		reader: &StringReader{
 			text: s

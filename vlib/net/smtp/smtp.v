@@ -59,7 +59,7 @@ pub struct Mail {
 }
 
 // new_client returns a new SMTP client and connects to it
-pub fn new_client(config Client) ?&Client {
+pub fn new_client(config Client) !&Client {
 	if config.ssl && config.starttls {
 		return error('Can not use both implicit SSL and STARTTLS')
 	}
@@ -67,12 +67,12 @@ pub fn new_client(config Client) ?&Client {
 	mut c := &Client{
 		...config
 	}
-	c.reconnect()?
+	c.reconnect()!
 	return c
 }
 
 // reconnect reconnects to the SMTP server if the connection was closed
-pub fn (mut c Client) reconnect() ? {
+pub fn (mut c Client) reconnect() ! {
 	if c.is_open {
 		return error('Already connected to server')
 	}
@@ -81,7 +81,7 @@ pub fn (mut c Client) reconnect() ? {
 	c.conn = conn
 
 	if c.ssl {
-		c.connect_ssl()?
+		c.connect_ssl()!
 	} else {
 		c.reader = io.new_buffered_reader(reader: c.conn)
 	}
@@ -98,7 +98,7 @@ pub fn (mut c Client) reconnect() ? {
 }
 
 // send sends an email
-pub fn (mut c Client) send(config Mail) ? {
+pub fn (mut c Client) send(config Mail) ! {
 	if !c.is_open {
 		return error('Disconnected from server')
 	}
@@ -113,20 +113,20 @@ pub fn (mut c Client) send(config Mail) ? {
 }
 
 // quit closes the connection to the server
-pub fn (mut c Client) quit() ? {
-	c.send_str('QUIT\r\n')?
-	c.expect_reply(.close)?
+pub fn (mut c Client) quit() ! {
+	c.send_str('QUIT\r\n')!
+	c.expect_reply(.close)!
 	if c.encrypted {
-		c.ssl_conn.shutdown()?
+		c.ssl_conn.shutdown()!
 	} else {
-		c.conn.close()?
+		c.conn.close()!
 	}
 	c.is_open = false
 	c.encrypted = false
 }
 
-fn (mut c Client) connect_ssl() ? {
-	c.ssl_conn = ssl.new_ssl_conn()?
+fn (mut c Client) connect_ssl() ! {
+	c.ssl_conn = ssl.new_ssl_conn()!
 	c.ssl_conn.connect(mut c.conn, c.server) or {
 		return error('Connecting to server using OpenSSL failed: $err')
 	}
@@ -136,10 +136,10 @@ fn (mut c Client) connect_ssl() ? {
 }
 
 // expect_reply checks if the SMTP server replied with the expected reply code
-fn (mut c Client) expect_reply(expected ReplyCode) ? {
+fn (mut c Client) expect_reply(expected ReplyCode) ! {
 	mut str := ''
 	for {
-		str = c.reader.read_line()?
+		str = c.reader.read_line()!
 		if str.len < 4 {
 			return error('Invalid SMTP response: $str')
 		}
@@ -167,7 +167,7 @@ fn (mut c Client) expect_reply(expected ReplyCode) ? {
 }
 
 [inline]
-fn (mut c Client) send_str(s string) ? {
+fn (mut c Client) send_str(s string) ! {
 	$if smtp_debug ? {
 		eprintln('\n\n[SEND START]')
 		eprint(s.trim_space())
@@ -175,27 +175,27 @@ fn (mut c Client) send_str(s string) ? {
 	}
 
 	if c.encrypted {
-		c.ssl_conn.write(s.bytes())?
+		c.ssl_conn.write(s.bytes())!
 	} else {
-		c.conn.write(s.bytes())?
+		c.conn.write(s.bytes())!
 	}
 }
 
 [inline]
-fn (mut c Client) send_ehlo() ? {
-	c.send_str('EHLO $c.server\r\n')?
-	c.expect_reply(.action_ok)?
+fn (mut c Client) send_ehlo() ! {
+	c.send_str('EHLO $c.server\r\n')!
+	c.expect_reply(.action_ok)!
 }
 
 [inline]
-fn (mut c Client) send_starttls() ? {
-	c.send_str('STARTTLS\r\n')?
-	c.expect_reply(.ready)?
-	c.connect_ssl()?
+fn (mut c Client) send_starttls() ! {
+	c.send_str('STARTTLS\r\n')!
+	c.expect_reply(.ready)!
+	c.connect_ssl()!
 }
 
 [inline]
-fn (mut c Client) send_auth() ? {
+fn (mut c Client) send_auth() ! {
 	if c.username.len == 0 {
 		return
 	}
@@ -206,28 +206,28 @@ fn (mut c Client) send_auth() ? {
 	sb.write_string(c.password)
 	a := sb.str()
 	auth := 'AUTH PLAIN ${base64.encode_str(a)}\r\n'
-	c.send_str(auth)?
-	c.expect_reply(.auth_ok)?
+	c.send_str(auth)!
+	c.expect_reply(.auth_ok)!
 }
 
-fn (mut c Client) send_mailfrom(from string) ? {
-	c.send_str('MAIL FROM: <$from>\r\n')?
-	c.expect_reply(.action_ok)?
+fn (mut c Client) send_mailfrom(from string) ! {
+	c.send_str('MAIL FROM: <$from>\r\n')!
+	c.expect_reply(.action_ok)!
 }
 
-fn (mut c Client) send_mailto(to string) ? {
+fn (mut c Client) send_mailto(to string) ! {
 	for rcpt in to.split(';') {
-		c.send_str('RCPT TO: <$rcpt>\r\n')?
-		c.expect_reply(.action_ok)?
+		c.send_str('RCPT TO: <$rcpt>\r\n')!
+		c.expect_reply(.action_ok)!
 	}
 }
 
-fn (mut c Client) send_data() ? {
-	c.send_str('DATA\r\n')?
-	c.expect_reply(.mail_start)?
+fn (mut c Client) send_data() ! {
+	c.send_str('DATA\r\n')!
+	c.expect_reply(.mail_start)!
 }
 
-fn (mut c Client) send_body(cfg Mail) ? {
+fn (mut c Client) send_body(cfg Mail) ! {
 	is_html := cfg.body_type == .html
 	date := cfg.date.custom_format('ddd, D MMM YYYY HH:mm ZZ')
 	nonascii_subject := cfg.subject.bytes().any(it < u8(` `) || it > u8(`~`))
@@ -253,6 +253,6 @@ fn (mut c Client) send_body(cfg Mail) ? {
 	sb.write_string('\r\n\r\n')
 	sb.write_string(base64.encode_str(cfg.body))
 	sb.write_string('\r\n.\r\n')
-	c.send_str(sb.str())?
-	c.expect_reply(.action_ok)?
+	c.send_str(sb.str())!
+	c.expect_reply(.action_ok)!
 }

@@ -25,7 +25,7 @@ fn test_find_abs_path_of_executable() {
 	//
 	chdir(tfolder)?
 	write_file(myclang_file, 'echo hello')?
-	chmod(myclang_file, 0o0777)?
+	chmod(myclang_file, 0o0777)!
 	dump(real_path(myclang_file))
 	dump(is_executable(myclang_file))
 	defer {
@@ -39,7 +39,7 @@ fn test_find_abs_path_of_executable() {
 	dump(fpath)
 	//
 	setenv('PATH', original_path, true)
-	chdir(home_dir())? // change to a *completely* different folder, to avoid the original PATH containing `.`
+	chdir(home_dir())! // change to a *completely* different folder, to avoid the original PATH containing `.`
 	if x := find_abs_path_of_executable('myclang') {
 		eprintln('> find_abs_path_of_executable should have failed, but instead it found: $x')
 		assert false

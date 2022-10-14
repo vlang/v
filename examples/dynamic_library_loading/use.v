@@ -10,9 +10,9 @@ type FNAdder = fn (int, int) int
 
 fn main() {
 	library_file_path := os.join_path(os.dir(@FILE), dl.get_libname('library'))
-	handle := dl.open_opt(library_file_path, dl.rtld_lazy)?
+	handle := dl.open_opt(library_file_path, dl.rtld_lazy)!
 	eprintln('handle: ${ptr_str(handle)}')
-	f := FNAdder(dl.sym_opt(handle, 'add_1')?)
+	f := FNAdder(dl.sym_opt(handle, 'add_1')!)
 	eprintln('f: ${ptr_str(f)}')
 	res := f(1, 2)
 	eprintln('res: $res')

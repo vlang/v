@@ -68,7 +68,7 @@ pub fn getpid() int {
 
 // chmod change file access attributes of `path` to `mode`.
 // Octals like `0o600` can be used.
-pub fn chmod(path string, mode int) ? {
+pub fn chmod(path string, mode int) ! {
 	$if js_node {
 		#try {
 		#$fs.chmodSync(''+path,mode.valueOf())
@@ -82,7 +82,7 @@ pub fn chmod(path string, mode int) ? {
 
 // chown changes the owner and group attributes of `path` to `owner` and `group`.
 // Octals like `0o600` can be used.
-pub fn chown(path string, owner int, group int) ? {
+pub fn chown(path string, owner int, group int) ! {
 	$if js_node {
 		#try {
 		#$fs.chownSync(''+path,owner.valueOf(),group.valueOf())
@@ -156,18 +156,18 @@ pub fn is_atty(fd int) int {
 	return res
 }
 
-pub fn glob(patterns ...string) ?[]string {
+pub fn glob(patterns ...string) ![]string {
 	panic('not yet implemented')
-	return none
+	return error('not yet implemented')
 }
 
-pub fn write_file_array(path string, buffer array) ? {
-	mut f := create(path)?
-	f.write_array(buffer)?
+pub fn write_file_array(path string, buffer array) ! {
+	mut f := create(path)!
+	f.write_array(buffer)!
 	f.close()
 }
 
-pub fn chdir(s string) ? {
+pub fn chdir(s string) ! {
 	#try { $process.chdir(s.str); } catch (e) { return error(new string('' + s)) }
 }
 

@@ -5,7 +5,7 @@ module os
 fn C.signal(signal int, handlercb SignalHandler) voidptr
 
 // signal will assign `handler` callback to be called when `signum` signal is received.
-pub fn signal_opt(signum Signal, handler SignalHandler) ?SignalHandler {
+pub fn signal_opt(signum Signal, handler SignalHandler) !SignalHandler {
 	C.errno = 0
 	prev_handler := C.signal(int(signum), handler)
 	if prev_handler == C.SIG_ERR {

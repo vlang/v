@@ -78,9 +78,9 @@ fn test_v_init_in_git_dir() {
 
 fn test_v_init_no_overwrite_gitignore() {
 	prepare_test_path()?
-	os.write_file('.gitignore', 'blah')?
+	os.write_file('.gitignore', 'blah')!
 	os.execute_or_exit('${os.quoted_path(@VEXE)} init')
-	assert os.read_file('.gitignore')? == 'blah'
+	assert os.read_file('.gitignore')! == 'blah'
 }
 
 fn test_v_init_no_overwrite_gitattributes_and_editorconfig() {
@@ -96,12 +96,12 @@ indent_style = tab
 indent_size = 4
 '
 	prepare_test_path()?
-	os.write_file('.gitattributes', git_attributes_content)?
-	os.write_file('.editorconfig', editor_config_content)?
+	os.write_file('.gitattributes', git_attributes_content)!
+	os.write_file('.editorconfig', editor_config_content)!
 	os.execute_or_exit('${os.quoted_path(@VEXE)} init')
 
-	assert os.read_file('.gitattributes')? == git_attributes_content
-	assert os.read_file('.editorconfig')? == editor_config_content
+	assert os.read_file('.gitattributes')! == git_attributes_content
+	assert os.read_file('.editorconfig')! == editor_config_content
 }
 
 fn testsuite_end() {

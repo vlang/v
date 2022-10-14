@@ -21,11 +21,11 @@ pub const (
 	err_connection_refused  = error_with_code('net: connection refused', errors_base + 10)
 )
 
-pub fn socket_error_message(potential_code int, s string) ?int {
+pub fn socket_error_message(potential_code int, s string) !int {
 	return socket_error(potential_code) or { return error('$err.msg(); $s') }
 }
 
-pub fn socket_error(potential_code int) ?int {
+pub fn socket_error(potential_code int) !int {
 	$if windows {
 		if potential_code < 0 {
 			last_error_int := C.WSAGetLastError()
@@ -43,7 +43,7 @@ pub fn socket_error(potential_code int) ?int {
 	return potential_code
 }
 
-pub fn wrap_error(error_code int) ? {
+pub fn wrap_error(error_code int) ! {
 	if error_code == 0 {
 		return
 	}
@@ -59,17 +59,17 @@ pub fn wrap_error(error_code int) ? {
 // connection termination and returns none
 // e.g. res := wrap_read_result(C.recv(c.sock.handle, voidptr(buf_ptr), len, 0))?
 [inline]
-fn wrap_read_result(result int) ?int {
+fn wrap_read_result(result int) !int {
 	if result == 0 {
-		return none
+		return error('none')
 	}
 	return result
 }
 
 [inline]
-fn wrap_write_result(result int) ?int {
+fn wrap_write_result(result int) !int {
 	if result == 0 {
-		return none
+		return error('none')
 	}
 	return result
 }
