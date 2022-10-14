@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generic_closure_fn_decl_err.vv:5:2: error: generic closure fn must specify type parameter, e.g. fn [foo] <T>()
+    3 |
+    4 | pub fn (mut app App) register<T>(service T) {
+    5 |     fn [service] () {
+      |     ~~~~~~~~~~~~~~~~~
+    6 |         println(service)
+    7 |     }()
