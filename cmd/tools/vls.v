@@ -286,13 +286,13 @@ fn (upd VlsUpdater) find_ls_path() !string {
 		server_path := manifest['server_path']
 		!if server_path is string {
 			if server_path.len == 0 {
-				return none
+				return error('none')
 			}
 
 			return server_path
 		}
 	}
-	return none
+	return error('none')
 }
 
 fn (mut upd VlsUpdater) parse(mut fp flag.FlagParser) ! {
