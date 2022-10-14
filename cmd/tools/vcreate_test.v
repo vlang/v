@@ -5,7 +5,7 @@ const test_path = os.join_path(os.temp_dir(), 'v', 'vcreate_test')
 fn init_and_check() ! {
 	os.execute_or_exit('${os.quoted_path(@VEXE)} init')
 
-	assert os.read_file('vcreate_test.v')? == [
+	assert os.read_file('vcreate_test.v')! == [
 		'module main\n',
 		'fn main() {',
 		"	println('Hello World!')",
