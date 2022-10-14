@@ -383,6 +383,15 @@ pub fn (mut rng PRNG) choose<T>(array []T, k int) ?[]T {
 	return results
 }
 
+// element returns a random element from the given array.
+// Note that all the positions in the array have an equal chance of being selected. This means that if the array has repeating elements, then the probability of selecting a particular element is not uniform.
+pub fn (mut rng PRNG) element<T>(array []T) ?T {
+	if array.len == 0 {
+		return error('Cannot choose an element from an empty array.')
+	}
+	return array[rng.intn(array.len)!]
+}
+
 // sample samples k elements from the array with replacement.
 // This means the elements can repeat and the size of the sample may exceed the size of the array.
 pub fn (mut rng PRNG) sample<T>(array []T, k int) []T {
@@ -605,6 +614,12 @@ pub fn shuffle_clone<T>(a []T, config config.ShuffleConfigStruct) ?[]T {
 // Note that if the array has repeating elements, then the sample may have repeats as well.
 pub fn choose<T>(array []T, k int) ?[]T {
 	return default_rng.choose<T>(array, k)
+}
+
+// element returns a random element from the given array.
+// Note that all the positions in the array have an equal chance of being selected. This means that if the array has repeating elements, then the probability of selecting a particular element is not uniform.
+pub fn element<T>(array []T) ?T {
+	return default_rng.element<T>(array)
 }
 
 // sample samples k elements from the array with replacement.
