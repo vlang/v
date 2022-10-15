@@ -36,6 +36,25 @@ enum Register {
 	edx
 }
 
+enum SSERegister {
+	xmm0
+	xmm1
+	xmm2
+	xmm3
+	xmm4
+	xmm5
+	xmm6
+	xmm7
+	xmm8
+	xmm9
+	xmm10
+	xmm11
+	xmm12
+	xmm13
+	xmm14
+	xmm15
+}
+
 const (
 	fn_arg_registers = [Register.rdi, .rsi, .rdx, .rcx, .r8, .r9]
 	amd64_cpuregs    = ['eax', 'ecx', 'edx', 'ebx', 'esp', 'ebp', 'esi', 'edi']
@@ -1853,6 +1872,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 	for i, left in node.left {
 		right := node.right[i]
 		if left !is ast.Ident {
+			// TODO float
 			g.gen_left_value(left)
 			g.push(.rax)
 			g.expr(right)
@@ -1936,6 +1956,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 		match right {
 			ast.IntegerLiteral {
 				// g.allocate_var(name, 4, right.val.int())
+				// TODO float
 				match node.op {
 					.plus_assign {
 						g.mov_var_to_reg(.rax, ident)
@@ -1996,6 +2017,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 			}
 			ast.Ident {
 				// eprintln('identr') dump(node) dump(right)
+				// TODO float
 				match node.op {
 					.plus_assign {
 						g.mov_var_to_reg(.rax, ident)
@@ -2297,10 +2319,19 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 				}
 				g.expr(right)
 				var := g.get_var_from_ident(ident)
-				match var {
-					LocalVar { g.mov_reg_to_var(var as LocalVar, .rax) }
-					GlobalVar { g.mov_reg_to_var(var as GlobalVar, .rax) }
-					Register { g.mov_reg(var as Register, .rax) }
+				if node.left_types[i].is_pure_float() {
+					match var {
+						LocalVar { g.mov_ssereg_to_var(var as LocalVar, .xmm0) }
+						GlobalVar { g.mov_ssereg_to_var(var as GlobalVar, .xmm0) }
+						// Register { g.mov_ssereg(var as Register, .xmm0) }
+						else {}
+					}
+				} else {
+					match var {
+						LocalVar { g.mov_reg_to_var(var as LocalVar, .rax) }
+						GlobalVar { g.mov_reg_to_var(var as GlobalVar, .rax) }
+						Register { g.mov_reg(var as Register, .rax) }
+					}
 				}
 			}
 		}
@@ -3440,7 +3471,100 @@ fn (mut g Gen) gen_match_expr_amd64(expr ast.MatchExpr) {
 	g.labels.addrs[end_label] = g.pos()
 }
 
-fn (mut g Gen) gen_cast_expr_amd64(expr CastExpr) {
+fn (mut g Gen) mov_ssereg_to_var(var Var, reg SSERegister, config VarConfig) {
+	match var {
+		ast.Ident {
+			var_object := g.get_var_from_ident(var)
+			match var_object {
+				LocalVar {
+					g.mov_ssereg_to_var(var_object as LocalVar, reg, config)
+				}
+				GlobalVar {
+					g.mov_ssereg_to_var(var_object as GlobalVar, reg, config)
+				}
+				Register {
+				}
+			}
+		}
+		LocalVar {
+			offset := var.offset - config.offset
+			is_far_var := offset > 0x80 || offset < -0x7f
+			typ := if config.typ == 0 { var.typ } else { config.typ }
+
+			far_var_offset := if is_far_var { 0x40 } else { 0 }
+			g.write8(if typ == ast.f32_type_idx { 0xf3 } else { 0xf2 })
+			if int(reg) >= int(SSERegister.xmm8) {
+				g.write8(0x44)
+			}
+			g.write16(0x110f)
+			g.write8(0x45 + int(reg) % 8 * 8 + far_var_offset)
+			if is_far_var {
+				g.write32(int((0xffffffff - i64(offset) + 1) % 0x100000000))
+			} else {
+				g.write8((0xff - offset + 1) % 0x100)
+			}
+			inst := if typ == ast.f32_type_idx { 'movss' } else { 'movsd' }
+			g.println('$inst [rbp-$offset.hex2()], $reg')
+		}
+		GlobalVar {
+			// TODO
+		}
+	}
+}
+
+fn (mut g Gen) mov_var_to_ssereg(reg SSERegister, var Var, config VarConfig) {
+	match var {
+		ast.Ident {
+			var_object := g.get_var_from_ident(var)
+			match var_object {
+				LocalVar {
+					g.mov_var_to_ssereg(reg, var_object as LocalVar, config)
+				}
+				GlobalVar {
+					g.mov_var_to_ssereg(reg, var_object as GlobalVar, config)
+				}
+				Register {
+				}
+			}
+		}
+		LocalVar {
+			offset := var.offset - config.offset
+			is_far_var := offset > 0x80 || offset < -0x7f
+			typ := if config.typ == 0 { var.typ } else { config.typ }
+
+			far_var_offset := if is_far_var { 0x40 } else { 0 }
+			g.write8(if typ == ast.f32_type_idx { 0xf3 } else { 0xf2 })
+			if int(reg) >= int(SSERegister.xmm8) {
+				g.write8(0x44)
+			}
+			g.write16(0x100f)
+			g.write8(0x45 + int(reg) % 8 * 8 + far_var_offset)
+			if is_far_var {
+				g.write32(int((0xffffffff - i64(offset) + 1) % 0x100000000))
+			} else {
+				g.write8((0xff - offset + 1) % 0x100)
+			}
+			inst := if typ == ast.f32_type_idx { 'movss' } else { 'movsd' }
+			g.println('$inst $reg, [rbp-$offset.hex2()]')
+		}
+		GlobalVar {
+			// TODO
+		}
+	}
+}
+
+fn (mut g Gen) mov_ssereg(a SSERegister, b SSERegister) {
+	g.write8(0xf2)
+	if int(a) >= int(SSERegister.xmm8) || int(b) >= int(SSERegister.xmm8) {
+		g.write8(0x40 + int(a) / 8 * 4 + int(b) / 8)
+	}
+	g.write16(0x100f)
+	g.write8(0xc0 + int(a) % 8 * 8 + int(b) % 8)
+	g.println('movsd $a, $b')
+}
+
+fn (mut g Gen) gen_cast_expr_amd64(expr ast.CastExpr) {
+	g.expr(expr.expr)
 	if expr.typ != expr.expr_type {
 		if expr.typ.is_pure_float() && expr.expr_type.is_pure_float() {
 			from_size := g.get_type_size(expr.expr_type)
@@ -3480,7 +3604,6 @@ fn (mut g Gen) gen_cast_expr_amd64(expr CastExpr) {
 				else {}
 			}
 		} else {
-			g.expr(expr.expr)
 			g.mov_extend_reg(.rax, .rax, expr.typ)
 		}
 	}

@@ -1302,8 +1302,10 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// XXX this is intel specific
 			match var {
 				LocalVar {
-					if var.typ.is_number() || var.typ.is_real_pointer() || var.typ.is_bool() {
+					if var.typ.is_pure_int() || var.typ.is_real_pointer() || var.typ.is_bool() {
 						g.mov_var_to_reg(.rax, node as ast.Ident)
+					} else if var.typ.is_pure_float() {
+						g.mov_var_to_ssereg(.xmm0, node as ast.Ident)
 					} else {
 						ts := g.table.sym(var.typ)
 						match ts.info {
@@ -1369,9 +1371,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.CastExpr {
 			if g.pref.arch == .arm64 {
-				//		g.gen_match_expr_arm64(expr)
+				//		g.gen_match_expr_arm64(node)
 			} else {
-				g.gen_cast_expr_amd64(expr)
+				g.gen_cast_expr_amd64(node)
 			}
 		}
 		ast.EnumVal {
