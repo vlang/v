@@ -117,7 +117,7 @@ fn parse_parallel_args(extra_workers int) !ParallelArgs {
 
 	fp.finalize() or {
 		println(fp.usage())
-		return none
+		return error('none')
 	}
 
 	params := sim.sim_params(

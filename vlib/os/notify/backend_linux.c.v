@@ -69,7 +69,7 @@ const (
 )
 
 // ctl is a helper method for add, modify, and remove
-fn (mut en EpollNotifier) ctl(fd int, op int, mask u32) ? {
+fn (mut en EpollNotifier) ctl(fd int, op int, mask u32) ! {
 	event := C.epoll_event{
 		events: mask
 		data: C.epoll_data_t{
