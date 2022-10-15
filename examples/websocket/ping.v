@@ -22,7 +22,7 @@ fn start_server() ! {
 			return false
 		}
 		return true
-	})?
+	})!
 	s.on_message(fn (mut ws websocket.Client, msg &websocket.Message) ! {
 		ws.write(msg.payload, msg.opcode) or { panic(err) }
 	})

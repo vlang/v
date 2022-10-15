@@ -64,7 +64,7 @@ fn parse_sequential_args() !SequentialArgs {
 
 	fp.finalize() or {
 		println(fp.usage())
-		return none
+		return error('none')
 	}
 
 	params := sim.sim_params(

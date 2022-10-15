@@ -18,7 +18,7 @@ fn (mut il Item_list) scan_zip(path string, in_index int) ! {
 	// println(n_entries)
 	for index in 0 .. n_entries {
 		zp.open_entry_by_index(index)!
-		is_dir := zp.is_dir()?
+		is_dir := zp.is_dir()!
 		name := zp.name()
 		size := zp.size()
 		// println("$index ${name} ${size:10} $is_dir")

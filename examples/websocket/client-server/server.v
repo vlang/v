@@ -6,7 +6,7 @@ import term
 // this server accepts client connections and broadcast all messages to other connected clients
 fn main() {
 	println('press ctrl-c to quit...')
-	start_server()?
+	start_server()!
 }
 
 fn start_server() ! {
