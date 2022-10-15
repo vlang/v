@@ -3439,3 +3439,49 @@ fn (mut g Gen) gen_match_expr_amd64(expr ast.MatchExpr) {
 	}
 	g.labels.addrs[end_label] = g.pos()
 }
+
+fn (mut g Gen) gen_cast_expr_amd64(expr CastExpr) {
+	if expr.typ != expr.expr_type {
+		if expr.typ.is_pure_float() && expr.expr_type.is_pure_float() {
+			from_size := g.get_type_size(expr.expr_type)
+			to_size := g.get_type_size(expr.typ)
+			if from_size == 4 && to_size == 8 {
+				g.write32(0xc05a0ff3)
+				g.println('cvtss2sd xmm0, xmm0')
+			}
+			if from_size == 8 && to_size == 4 {
+				g.write32(0xc05a0ff2)
+				g.println('cvtsd2ss xmm0, xmm0')
+			}
+		} else if expr.typ.is_pure_float() {
+			// TODO u64
+			match g.get_type_size(expr.typ) {
+				4 {
+					g.write([u8(0xf3), 0x48, 0x0f, 0x2a, 0xc0])
+					g.println('cvtsi2ss xmm0, rax')
+				}
+				8 {
+					g.write([u8(0xf2), 0x48, 0x0f, 0x2a, 0xc0])
+					g.println('cvtsi2sd xmm0, rax')
+				}
+				else {}
+			}
+		} else if expr.expr_type.is_pure_float() {
+			// TODO u64
+			match g.get_type_size(expr.expr_type) {
+				4 {
+					g.write([u8(0xf3), 0x48, 0x0f, 0x2d, 0xc0])
+					g.println('cvtss2si rax, xmm0')
+				}
+				8 {
+					g.write([u8(0xf2), 0x48, 0x0f, 0x2d, 0xc0])
+					g.println('cvtsd2si rax, xmm0')
+				}
+				else {}
+			}
+		} else {
+			g.expr(expr.expr)
+			g.mov_extend_reg(.rax, .rax, expr.typ)
+		}
+	}
+}

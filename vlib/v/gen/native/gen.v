@@ -1368,8 +1368,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.mov_deref(.rax, .rax, node.typ)
 		}
 		ast.CastExpr {
-			g.expr(node.expr)
-			g.mov_extend_reg(.rax, .rax, node.typ)
+			if g.pref.arch == .arm64 {
+				//		g.gen_match_expr_arm64(expr)
+			} else {
+				g.gen_cast_expr_amd64(expr)
+			}
 		}
 		ast.EnumVal {
 			type_name := g.table.get_type_name(node.typ)
