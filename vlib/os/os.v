@@ -40,6 +40,36 @@ pub fn (mut result Result) free() {
 	unsafe { result.output.free() }
 }
 
+// executable_fallback is used when there is not a more platform specific and accurate implementation.
+// It relies on path manipulation of os.args[0] and os.wd_at_startup, so it may not work properly in
+// all cases, but it should be better, than just using os.args[0] directly.
+fn executable_fallback() string {
+	if args.len == 0 {
+		// we are early in the bootstrap, os.args has not been initialized yet :-|
+		return ''
+	}
+	mut exepath := args[0]
+	$if windows {
+		if !exepath.contains('.exe') {
+			exepath += '.exe'
+		}
+	}
+	if !is_abs_path(exepath) {
+		rexepath := exepath.replace_each(['/', path_separator, '\\', path_separator])
+		if rexepath.contains(path_separator) {
+			exepath = join_path_single(os.wd_at_startup, exepath)
+		} else {
+			// no choice but to try to walk the PATH folders :-| ...
+			foundpath := find_abs_path_of_executable(exepath) or { '' }
+			if foundpath.len > 0 {
+				exepath = foundpath
+			}
+		}
+	}
+	exepath = real_path(exepath)
+	return exepath
+}
+
 // cp_all will recursively copy `src` to `dst`,
 // optionally overwriting files or dirs in `dst`.
 pub fn cp_all(src string, dst string, overwrite bool) ! {
@@ -414,36 +444,6 @@ pub fn write_file(path string, text string) ! {
 	mut f := create(path)!
 	unsafe { f.write_full_buffer(text.str, usize(text.len))! }
 	f.close()
-}
-
-// executable_fallback is used when there is not a more platform specific and accurate implementation.
-// It relies on path manipulation of os.args[0] and os.wd_at_startup, so it may not work properly in
-// all cases, but it should be better, than just using os.args[0] directly.
-fn executable_fallback() string {
-	if args.len == 0 {
-		// we are early in the bootstrap, os.args has not been initialized yet :-|
-		return ''
-	}
-	mut exepath := args[0]
-	$if windows {
-		if !exepath.contains('.exe') {
-			exepath += '.exe'
-		}
-	}
-	if !is_abs_path(exepath) {
-		rexepath := exepath.replace_each(['/', path_separator, '\\', path_separator])
-		if rexepath.contains(path_separator) {
-			exepath = join_path_single(os.wd_at_startup, exepath)
-		} else {
-			// no choice but to try to walk the PATH folders :-| ...
-			foundpath := find_abs_path_of_executable(exepath) or { '' }
-			if foundpath.len > 0 {
-				exepath = foundpath
-			}
-		}
-	}
-	exepath = real_path(exepath)
-	return exepath
 }
 
 pub struct ExecutableNotFoundError {
