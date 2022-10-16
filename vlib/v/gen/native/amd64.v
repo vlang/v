@@ -56,9 +56,9 @@ enum SSERegister {
 }
 
 const (
-	fn_arg_registers = [Register.rdi, .rsi, .rdx, .rcx, .r8, .r9]
+	fn_arg_registers     = [Register.rdi, .rsi, .rdx, .rcx, .r8, .r9]
 	fn_arg_sse_registers = [SSERegister.xmm0, .xmm1, .xmm2, .xmm3, .xmm4, .xmm5, .xmm6, .xmm7]
-	amd64_cpuregs    = ['eax', 'ecx', 'edx', 'ebx', 'esp', 'ebp', 'esi', 'edi']
+	amd64_cpuregs        = ['eax', 'ecx', 'edx', 'ebx', 'esp', 'ebp', 'esi', 'edi']
 )
 
 fn (mut g Gen) dec(reg Register) {
@@ -1780,7 +1780,7 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 		g.pop(native.fn_arg_registers[i])
 	}
 	for i in 0 .. ssereg_args.len {
-		g.pop_sse(fn_arg_sse_registers[i])
+		g.pop_sse(native.fn_arg_sse_registers[i])
 	}
 	g.mov(.rax, ssereg_args.len)
 	if node.name in g.extern_symbols {
@@ -2999,7 +2999,7 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 		name := params[i].name
 		offset := g.allocate_struct(name, params[i].typ)
 		// copy
-		g.mov_ssereg_to_var(LocalVar{ offset: offset, typ: params[i].typ }, fn_arg_sse_registers[idx])
+		g.mov_ssereg_to_var(LocalVar{ offset: offset, typ: params[i].typ }, native.fn_arg_sse_registers[idx])
 	}
 	// define args on stack
 	mut offset := -2
@@ -3491,8 +3491,7 @@ fn (mut g Gen) mov_ssereg_to_var(var Var, reg SSERegister, config VarConfig) {
 				GlobalVar {
 					g.mov_ssereg_to_var(var_object as GlobalVar, reg, config)
 				}
-				Register {
-				}
+				Register {}
 			}
 		}
 		LocalVar {
@@ -3532,8 +3531,7 @@ fn (mut g Gen) mov_var_to_ssereg(reg SSERegister, var Var, config VarConfig) {
 				GlobalVar {
 					g.mov_var_to_ssereg(reg, var_object as GlobalVar, config)
 				}
-				Register {
-				}
+				Register {}
 			}
 		}
 		LocalVar {
@@ -3662,7 +3660,6 @@ pub fn (mut g Gen) pop_sse(reg SSERegister) {
 	}
 	g.println('; pop $reg')
 }
-
 
 fn (mut g Gen) gen_cast_expr_amd64(expr ast.CastExpr) {
 	g.expr(expr.expr)

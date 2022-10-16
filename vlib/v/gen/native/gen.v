@@ -1302,7 +1302,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 			}
 		}
 		ast.FloatLiteral {
-			val := unsafe{ F64I64{f: g.eval.expr(node, ast.float_literal_type_idx).float_val()}.i }
+			val := unsafe { F64I64{
+				f: g.eval.expr(node, ast.float_literal_type_idx).float_val()
+			}.i }
 			if g.pref.arch == .arm64 {
 			} else {
 				g.movabs(.rax, val)
