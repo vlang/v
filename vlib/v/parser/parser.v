@@ -471,6 +471,9 @@ fn (p &Parser) peek_token_after_var_list() token.Token {
 	mut n := 0
 	mut tok := p.tok
 	for {
+		if tok.kind == .eof {
+			break
+		}
 		if tok.kind == .key_mut {
 			n += 2
 		} else {
@@ -495,6 +498,9 @@ fn (p &Parser) is_fn_type_decl() bool {
 	cur_ln := p.tok.line_nr
 	for {
 		tok = p.scanner.peek_token(n)
+		if tok.kind == .eof {
+			break
+		}
 		if tok.kind in [.lpar, .rpar] {
 			n++
 			prev_tok = tok
