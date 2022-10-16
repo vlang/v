@@ -3415,40 +3415,46 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 			return right_type.ref()
 		}
 	}
+	right_sym := c.table.final_sym(c.unwrap_generic(right_type))
 	if node.op == .mul {
 		if right_type.is_ptr() {
 			return right_type.deref()
 		}
 		if !right_type.is_pointer() && !c.pref.translated && !c.file.is_translated {
 			s := c.table.type_to_str(right_type)
-			c.error('invalid indirect of `$s`', node.pos)
+			c.error('invalid indirect of `$s`, the type `$right_sym.name` is not a pointer',
+				node.pos)
 		}
 		if right_type.is_voidptr() {
 			c.error('cannot dereference to void', node.pos)
 		}
 	}
 	if node.op == .bit_not && !right_type.is_int() && !c.pref.translated && !c.file.is_translated {
-		c.error('operator ~ only defined on int types', node.pos)
+		c.type_error_for_operator('~', 'integer', right_sym.name, node.pos)
 	}
 	if node.op == .not && right_type != ast.bool_type_idx && !c.pref.translated
 		&& !c.file.is_translated {
-		c.error('! operator can only be used with bool types', node.pos)
+		c.type_error_for_operator('!', 'bool', right_sym.name, node.pos)
 	}
 	// FIXME
 	// there are currently other issues to investigate if right_type
 	// is unwraped directly as initialization, so do it here
-	right_sym := c.table.final_sym(c.unwrap_generic(right_type))
 	if node.op == .minus && !right_sym.is_number() {
-		c.error('- operator can only be used with numeric types', node.pos)
+		c.type_error_for_operator('-', 'numeric', right_sym.name, node.pos)
 	}
 	if node.op == .arrow {
 		if right_sym.kind == .chan {
 			c.stmts_ending_with_expression(node.or_block.stmts)
 			return right_sym.chan_info().elem_type
 		}
-		c.error('<- operator can only be used with `chan` types', node.pos)
+		c.type_error_for_operator('<-', '`chan`', right_sym.name, node.pos)
 	}
 	return right_type
+}
+
+fn (mut c Checker) type_error_for_operator(op_label string, types_label string, found_type_label string, pos token.Pos) {
+	c.error('operator `$op_label` can only be used with $types_label types, but the value after `$op_label` is of type `$found_type_label` instead',
+		pos)
 }
 
 fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_type ast.Type, pos token.Pos, range_index bool, is_gated bool) {
