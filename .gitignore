@@ -31,6 +31,10 @@ a.out
 /v.c.out
 /v_old
 /v_old.exe
+/vold
+/vold.exe
+/vnew
+/vnew.exe
 .vrepl_temp.v
 fns.txt
 .noprefix.vrepl_temp.v
