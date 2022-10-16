@@ -866,8 +866,8 @@ pub fn (mut t Transformer) infix_expr(mut node ast.InfixExpr) ast.Expr {
 			ast.FloatLiteral {
 				match mut node.right {
 					ast.FloatLiteral {
-						left_val := node.left.val.f32()
-						right_val := node.right.val.f32()
+						left_val := node.left.val.f64()
+						right_val := node.right.val.f64()
 						match node.op {
 							.eq {
 								return ast.BoolLiteral{
