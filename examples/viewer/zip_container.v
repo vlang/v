@@ -11,14 +11,14 @@
 import sokol.gfx
 import szip
 
-fn (mut il Item_list) scan_zip(path string, in_index int) ? {
+fn (mut il Item_list) scan_zip(path string, in_index int) ! {
 	println('Scanning ZIP [$path]')
-	mut zp := szip.open(path, szip.CompressionLevel.no_compression, szip.OpenMode.read_only)?
-	n_entries := zp.total()?
+	mut zp := szip.open(path, szip.CompressionLevel.no_compression, szip.OpenMode.read_only)!
+	n_entries := zp.total()!
 	// println(n_entries)
 	for index in 0 .. n_entries {
-		zp.open_entry_by_index(index)?
-		is_dir := zp.is_dir()?
+		zp.open_entry_by_index(index)!
+		is_dir := zp.is_dir()!
 		name := zp.name()
 		size := zp.size()
 		// println("$index ${name} ${size:10} $is_dir")
@@ -47,7 +47,7 @@ fn (mut il Item_list) scan_zip(path string, in_index int) ? {
 	zp.close()
 }
 
-fn (mut app App) load_texture_from_zip() ?(gfx.Image, int, int) {
+fn (mut app App) load_texture_from_zip() !(gfx.Image, int, int) {
 	item := app.item_list.lst[app.item_list.item_index]
 	// println("Load from zip [${item.path}]")
 
@@ -58,15 +58,15 @@ fn (mut app App) load_texture_from_zip() ?(gfx.Image, int, int) {
 		}
 		app.zip_index = item.container_index
 		// println("Opening the zip [${item.path}]")
-		app.zip = szip.open(item.path, szip.CompressionLevel.no_compression, szip.OpenMode.read_only)?
+		app.zip = szip.open(item.path, szip.CompressionLevel.no_compression, szip.OpenMode.read_only)!
 	}
 	// println("Now get the image")
-	app.zip.open_entry_by_index(item.container_item_index)?
+	app.zip.open_entry_by_index(item.container_item_index)!
 	zip_entry_size := int(item.size)
 
 	app.resize_buf_if_needed(zip_entry_size)
 
-	app.zip.read_entry_buf(app.mem_buf, app.mem_buf_size)?
+	app.zip.read_entry_buf(app.mem_buf, app.mem_buf_size)!
 	app.zip.close_entry()
 	return app.load_texture_from_buffer(app.mem_buf, zip_entry_size)
 }

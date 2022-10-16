@@ -15,7 +15,7 @@ pub fn (mut l FileLock) unlink() {
 	C.DeleteFileW(t_wide)
 }
 
-pub fn (mut l FileLock) acquire() ?bool {
+pub fn (mut l FileLock) acquire() !bool {
 	if l.fd != -1 {
 		// lock already acquired by this instance
 		return false
@@ -39,7 +39,7 @@ pub fn (mut l FileLock) release() bool {
 	return false
 }
 
-pub fn (mut l FileLock) wait_acquire(s int) ?bool {
+pub fn (mut l FileLock) wait_acquire(s int) !bool {
 	fin := time.now().add(s)
 	for time.now() < fin {
 		if l.try_acquire() {

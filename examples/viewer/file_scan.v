@@ -150,10 +150,10 @@ fn (item_list Item_list) get_file_path() string {
 * Scan functions
 *
 ******************************************************************************/
-fn (mut item_list Item_list) scan_folder(path string, in_index int) ? {
+fn (mut item_list Item_list) scan_folder(path string, in_index int) ! {
 	println('Scanning [$path]')
 	mut folder_list := []string{}
-	lst := os.ls(path)?
+	lst := os.ls(path)!
 
 	// manage the single files
 	for c, x in lst {
@@ -171,7 +171,7 @@ fn (mut item_list Item_list) scan_folder(path string, in_index int) ? {
 			if ext == .zip {
 				item.i_type = .zip
 				item_list.lst << item
-				item_list.scan_zip(pt, item_list.lst.len - 1)?
+				item_list.scan_zip(pt, item_list.lst.len - 1)!
 				continue
 			}
 			if is_image(ext) == true {
@@ -194,7 +194,7 @@ fn (mut item_list Item_list) scan_folder(path string, in_index int) ? {
 			i_type: .folder
 		}
 		item_list.lst << item
-		item_list.scan_folder(pt, item_list.lst.len - 1)?
+		item_list.scan_folder(pt, item_list.lst.len - 1)!
 	}
 	// println(item_list.lst.len)
 	// println("==================================")

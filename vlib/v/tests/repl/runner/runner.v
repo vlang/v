@@ -39,7 +39,7 @@ fn diff_files(file_result string, file_expected string) string {
 	return diff.color_compare_files(diffcmd, file_result, file_expected)
 }
 
-pub fn run_repl_file(wd string, vexec string, file string) ?string {
+pub fn run_repl_file(wd string, vexec string, file string) !string {
 	vexec_folder := os.dir(vexec) + os.path_separator
 	fcontent := os.read_file(file) or { return error('Could not read repl file $file') }
 	content := fcontent.replace('\r', '')
@@ -52,7 +52,7 @@ pub fn run_repl_file(wd string, vexec string, file string) ?string {
 	rcmd := '${os.quoted_path(vexec)} repl -replfolder ${os.quoted_path(wd)} -replprefix "${fname}." < ${os.quoted_path(input_temporary_filename)}'
 	r := os.execute(rcmd)
 	if r.exit_code != 0 {
-		os.rm(input_temporary_filename)?
+		os.rm(input_temporary_filename)!
 		return error('Could not execute: $rcmd')
 	}
 	result := r.output.replace('\r', '').replace('>>> ', '').replace('>>>', '').replace('... ',
@@ -63,7 +63,7 @@ pub fn run_repl_file(wd string, vexec string, file string) ?string {
 		dump(r.output)
 		dump(result)
 	}
-	os.rm(input_temporary_filename)?
+	os.rm(input_temporary_filename)!
 	if result != output {
 		file_result := '${file}.result.txt'
 		file_expected := '${file}.expected.txt'
@@ -83,7 +83,7 @@ $diff
 	}
 }
 
-pub fn run_prod_file(wd string, vexec string, file string) ?string {
+pub fn run_prod_file(wd string, vexec string, file string) !string {
 	file_expected := '${file}.expected.txt'
 	f_expected_content := os.read_file(file_expected) or {
 		return error('Could not read expected prod file $file_expected')

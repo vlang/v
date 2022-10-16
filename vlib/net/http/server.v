@@ -34,11 +34,14 @@ pub mut:
 	accept_timeout time.Duration = 30 * time.second
 }
 
-pub fn (mut s Server) listen_and_serve() ? {
+pub fn (mut s Server) listen_and_serve() {
 	if s.handler is DebugHandler {
 		eprintln('Server handler not set, using debug handler')
 	}
-	s.listener = net.listen_tcp(.ip6, ':$s.port')?
+	s.listener = net.listen_tcp(.ip6, ':$s.port') or {
+		eprintln('Listening on :$s.port failed')
+		return
+	}
 	s.listener.set_accept_timeout(s.accept_timeout)
 	eprintln('Listening on :$s.port')
 	s.state = .running

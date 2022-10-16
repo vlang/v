@@ -133,7 +133,7 @@ fn (r &Repl) function_call(line string) (bool, FnType) {
 // TODO(vincenzopalazzo) Remove this fancy check and add a regex
 fn (r &Repl) is_function_call(line string) bool {
 	return !line.starts_with('[') && line.contains('.') && line.contains('(')
-		&& (line.ends_with(')') || line.ends_with('?'))
+		&& (line.ends_with(')') || line.ends_with('?') || line.ends_with('!'))
 }
 
 // Convert the list of modules that we parsed already,

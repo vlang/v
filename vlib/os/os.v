@@ -42,7 +42,7 @@ pub fn (mut result Result) free() {
 
 // cp_all will recursively copy `src` to `dst`,
 // optionally overwriting files or dirs in `dst`.
-pub fn cp_all(src string, dst string, overwrite bool) ? {
+pub fn cp_all(src string, dst string, overwrite bool) ! {
 	source_path := real_path(src)
 	dest_path := real_path(dst)
 	if !exists(source_path) {
@@ -58,27 +58,27 @@ pub fn cp_all(src string, dst string, overwrite bool) ? {
 		}
 		if exists(adjusted_path) {
 			if overwrite {
-				rm(adjusted_path)?
+				rm(adjusted_path)!
 			} else {
 				return error('Destination file path already exist')
 			}
 		}
-		cp(source_path, adjusted_path)?
+		cp(source_path, adjusted_path)!
 		return
 	}
 	if !exists(dest_path) {
-		mkdir(dest_path)?
+		mkdir(dest_path)!
 	}
 	if !is_dir(dest_path) {
 		return error('Destination path is not a valid directory')
 	}
-	files := ls(source_path)?
+	files := ls(source_path)!
 	for file in files {
 		sp := join_path_single(source_path, file)
 		dp := join_path_single(dest_path, file)
 		if is_dir(sp) {
 			if !exists(dp) {
-				mkdir(dp)?
+				mkdir(dp)!
 			}
 		}
 		cp_all(sp, dp, overwrite) or {
@@ -90,15 +90,15 @@ pub fn cp_all(src string, dst string, overwrite bool) ? {
 
 // mv_by_cp first copies the source file, and if it is copied successfully, deletes the source file.
 // may be used when you are not sure that the source and target are on the same mount/partition.
-pub fn mv_by_cp(source string, target string) ? {
-	cp(source, target)?
-	rm(source)?
+pub fn mv_by_cp(source string, target string) ! {
+	cp(source, target)!
+	rm(source)!
 }
 
 // read_lines reads the file in `path` into an array of lines.
 [manualfree]
-pub fn read_lines(path string) ?[]string {
-	buf := read_file(path)?
+pub fn read_lines(path string) ![]string {
+	buf := read_file(path)!
 	res := buf.split_into_lines()
 	unsafe { buf.free() }
 	return res
@@ -144,9 +144,9 @@ pub fn sigint_to_signal_name(si int) string {
 }
 
 // rmdir_all recursively removes the specified directory.
-pub fn rmdir_all(path string) ? {
+pub fn rmdir_all(path string) ! {
 	mut ret_err := ''
-	items := ls(path)?
+	items := ls(path)!
 	for item in items {
 		fullpath := join_path_single(path, item)
 		if is_dir(fullpath) && !is_link(fullpath) {
@@ -362,7 +362,7 @@ pub fn user_os() string {
 }
 
 // user_names returns an array of the name of every user on the system.
-pub fn user_names() ?[]string {
+pub fn user_names() ![]string {
 	$if windows {
 		result := execute('wmic useraccount get name')
 		if result.exit_code != 0 {
@@ -373,7 +373,7 @@ pub fn user_names() ?[]string {
 		users.delete(users.len - 1)
 		return users
 	} $else {
-		lines := read_lines('/etc/passwd')?
+		lines := read_lines('/etc/passwd')!
 		mut users := []string{cap: lines.len}
 		for line in lines {
 			end_name := line.index(':') or { line.len }
@@ -410,9 +410,9 @@ pub fn expand_tilde_to_home(path string) string {
 
 // write_file writes `text` data to the file in `path`.
 // If `path` exists, the contents of `path` will be overwritten with the contents of `text`.
-pub fn write_file(path string, text string) ? {
-	mut f := create(path)?
-	unsafe { f.write_full_buffer(text.str, usize(text.len))? }
+pub fn write_file(path string, text string) ! {
+	mut f := create(path)!
+	unsafe { f.write_full_buffer(text.str, usize(text.len))! }
 	f.close()
 }
 
@@ -460,7 +460,7 @@ fn error_failed_to_find_executable() IError {
 
 // find_abs_path_of_executable walks the environment PATH, just like most shell do, it returns
 // the absolute path of the executable if found
-pub fn find_abs_path_of_executable(exepath string) ?string {
+pub fn find_abs_path_of_executable(exepath string) !string {
 	if exepath == '' {
 		return error('expected non empty `exepath`')
 	}
@@ -653,7 +653,7 @@ pub struct MkdirParams {
 }
 
 // mkdir_all will create a valid full path of all directories given in `path`.
-pub fn mkdir_all(opath string, params MkdirParams) ? {
+pub fn mkdir_all(opath string, params MkdirParams) ! {
 	path := opath.replace('/', path_separator)
 	mut p := if path.starts_with(path_separator) { path_separator } else { '' }
 	path_parts := path.trim_left(path_separator).split(path_separator)
@@ -833,7 +833,7 @@ pub fn quoted_path(path string) string {
 // On the rest, that is `$XDG_CONFIG_HOME`, or if that is not available, `~/.config`.
 // If the path cannot be determined, it returns an error.
 // (for example, when $HOME on linux, or %AppData% on windows is not defined)
-pub fn config_dir() ?string {
+pub fn config_dir() !string {
 	$if windows {
 		app_data := getenv('AppData')
 		if app_data != '' {

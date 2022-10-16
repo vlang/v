@@ -21,9 +21,9 @@ fn (mut b Buf) read(mut buf []u8) !int {
 	return n
 }
 
-fn (mut w Writ) write(buf []u8) ?int {
+fn (mut w Writ) write(buf []u8) !int {
 	if buf.len <= 0 {
-		return none
+		return error('none')
 	}
 	w.bytes << buf
 	return buf.len

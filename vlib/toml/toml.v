@@ -13,8 +13,8 @@ pub struct Null {
 }
 
 // decode decodes a TOML `string` into the target type `T`.
-pub fn decode<T>(toml_txt string) ?T {
-	doc := parse_text(toml_txt)?
+pub fn decode<T>(toml_txt string) !T {
+	doc := parse_text(toml_txt)!
 	mut typ := T{}
 	typ.from_toml(doc.to_any())
 	return typ
@@ -70,7 +70,7 @@ pub:
 }
 
 // parse_file parses the TOML file in `path`.
-pub fn parse_file(path string) ?Doc {
+pub fn parse_file(path string) !Doc {
 	input_config := input.Config{
 		file_path: path
 	}
@@ -78,17 +78,17 @@ pub fn parse_file(path string) ?Doc {
 		input: input_config
 	}
 	parser_config := parser.Config{
-		scanner: scanner.new_scanner(scanner_config)?
+		scanner: scanner.new_scanner(scanner_config)!
 	}
 	mut p := parser.new_parser(parser_config)
-	ast := p.parse()?
+	ast := p.parse()!
 	return Doc{
 		ast: ast
 	}
 }
 
 // parse_text parses the TOML document provided in `text`.
-pub fn parse_text(text string) ?Doc {
+pub fn parse_text(text string) !Doc {
 	input_config := input.Config{
 		text: text
 	}
@@ -96,10 +96,10 @@ pub fn parse_text(text string) ?Doc {
 		input: input_config
 	}
 	parser_config := parser.Config{
-		scanner: scanner.new_scanner(scanner_config)?
+		scanner: scanner.new_scanner(scanner_config)!
 	}
 	mut p := parser.new_parser(parser_config)
-	ast := p.parse()?
+	ast := p.parse()!
 	return Doc{
 		ast: ast
 	}
@@ -110,16 +110,16 @@ pub fn parse_text(text string) ?Doc {
 // For explicit parsing of input types see `parse_file` or `parse_text`.
 [deprecated: 'use parse_file or parse_text instead']
 [deprecated_after: '2022-06-18']
-pub fn parse(toml string) ?Doc {
-	mut input_config := input.auto_config(toml)?
+pub fn parse(toml string) !Doc {
+	mut input_config := input.auto_config(toml)!
 	scanner_config := scanner.Config{
 		input: input_config
 	}
 	parser_config := parser.Config{
-		scanner: scanner.new_scanner(scanner_config)?
+		scanner: scanner.new_scanner(scanner_config)!
 	}
 	mut p := parser.new_parser(parser_config)
-	ast := p.parse()?
+	ast := p.parse()!
 	return Doc{
 		ast: ast
 	}
@@ -127,7 +127,7 @@ pub fn parse(toml string) ?Doc {
 
 // parse_dotted_key converts `key` string to an array of strings.
 // parse_dotted_key preserves strings delimited by both `"` and `'`.
-pub fn parse_dotted_key(key string) ?[]string {
+pub fn parse_dotted_key(key string) ![]string {
 	mut out := []string{}
 	mut buf := ''
 	mut in_string := false
@@ -207,7 +207,7 @@ pub fn (d Doc) value(key string) Any {
 
 pub const null = Any(Null{})
 
-pub fn (d Doc) value_opt(key string) ?Any {
+pub fn (d Doc) value_opt(key string) !Any {
 	key_split := parse_dotted_key(key) or { return error('invalid dotted key') }
 	x := d.value_(d.ast.table, key_split)
 	if x is Null {

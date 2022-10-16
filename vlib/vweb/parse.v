@@ -4,7 +4,7 @@ import net.urllib
 import net.http
 
 // Parsing function attributes for methods and path.
-fn parse_attrs(name string, attrs []string) ?([]http.Method, string) {
+fn parse_attrs(name string, attrs []string) !([]http.Method, string) {
 	if attrs.len == 0 {
 		return [http.Method.get], '/$name'
 	}
@@ -55,7 +55,7 @@ fn parse_query_from_url(url urllib.URL) map[string]string {
 	return query
 }
 
-fn parse_form_from_request(request http.Request) ?(map[string]string, map[string][]http.FileData) {
+fn parse_form_from_request(request http.Request) !(map[string]string, map[string][]http.FileData) {
 	mut form := map[string]string{}
 	mut files := map[string][]http.FileData{}
 	if request.method in methods_with_form {

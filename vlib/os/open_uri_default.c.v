@@ -1,6 +1,6 @@
 module os
 
-pub fn open_uri(uri string) ? {
+pub fn open_uri(uri string) ! {
 	mut vopen_uri_cmd := getenv('VOPEN_URI_CMD')
 	if vopen_uri_cmd == '' {
 		$if macos {

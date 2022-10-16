@@ -15,7 +15,7 @@ fn main() {
 	short_v_name := vexe_name.all_before('.')
 	//
 	recompilation.must_be_enabled(vroot, 'Please install V from source, to use `$vexe_name self` .')
-	os.chdir(vroot)?
+	os.chdir(vroot)!
 	os.setenv('VCOLORS', 'always', true)
 	args := os.args[1..].filter(it != 'self')
 	jargs := args.join(' ')
@@ -60,7 +60,7 @@ fn list_folder(short_v_name string, bmessage string, message string) {
 	println(message)
 }
 
-fn backup_old_version_and_rename_newer(short_v_name string) ?bool {
+fn backup_old_version_and_rename_newer(short_v_name string) !bool {
 	mut errors := []string{}
 	short_v_file := if os.user_os() == 'windows' { '${short_v_name}.exe' } else { '$short_v_name' }
 	short_v2_file := if os.user_os() == 'windows' { 'v2.exe' } else { 'v2' }

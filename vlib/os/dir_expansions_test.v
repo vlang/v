@@ -33,11 +33,11 @@ fn test_expand_tilde_to_home() {
 	assert os.expand_tilde_to_home('~') == os.home_dir()
 }
 
-fn test_config_dir() ? {
-	cdir := os.config_dir()?
+fn test_config_dir() {
+	cdir := os.config_dir()!
 	assert cdir.len > 0
 	adir := '$cdir/test-v-config'
-	os.mkdir_all(adir)?
-	os.rmdir(adir)?
+	os.mkdir_all(adir)!
+	os.rmdir(adir)!
 	assert os.is_dir(cdir)
 }

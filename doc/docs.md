@@ -1901,8 +1901,8 @@ enum State {
 }
 
 // write log file and return number of bytes written
-fn write_log(s State) ?int {
-	mut f := os.create('log.txt')?
+fn write_log(s State) !int {
+	mut f := os.create('log.txt')!
 	defer {
 		f.close()
 	}

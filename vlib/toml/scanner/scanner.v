@@ -47,25 +47,25 @@ pub:
 
 // new_scanner returns a new *heap* allocated `Scanner` instance, based on the file in config.input.file_path,
 // or based on the text in config.input.text .
-pub fn new_scanner(config Config) ?&Scanner {
+pub fn new_scanner(config Config) !&Scanner {
 	mut s := &Scanner{
 		config: config
-		text: config.input.read_input()?
+		text: config.input.read_input()!
 	}
 	return s
 }
 
 // new_simple returns a new *stack* allocated `Scanner` instance.
-pub fn new_simple(config Config) ?Scanner {
+pub fn new_simple(config Config) !Scanner {
 	return Scanner{
 		config: config
-		text: config.input.read_input()?
+		text: config.input.read_input()!
 	}
 }
 
 // new_simple_text returns a new *stack* allocated `Scanner` instance
 // ready for parsing TOML in `text`.
-pub fn new_simple_text(text string) ?Scanner {
+pub fn new_simple_text(text string) !Scanner {
 	in_config := input.Config{
 		text: text
 	}
@@ -74,13 +74,13 @@ pub fn new_simple_text(text string) ?Scanner {
 	}
 	return Scanner{
 		config: config
-		text: config.input.read_input()?
+		text: config.input.read_input()!
 	}
 }
 
 // new_simple_file returns a new *stack* allocated `Scanner` instance
 // ready for parsing TOML in file read from `path`.
-pub fn new_simple_file(path string) ?Scanner {
+pub fn new_simple_file(path string) !Scanner {
 	in_config := input.Config{
 		file_path: path
 	}
@@ -89,14 +89,14 @@ pub fn new_simple_file(path string) ?Scanner {
 	}
 	return Scanner{
 		config: config
-		text: config.input.read_input()?
+		text: config.input.read_input()!
 	}
 }
 
 // scan returns the next token from the input.
 [direct_array_access]
-pub fn (mut s Scanner) scan() ?token.Token {
-	s.validate_and_skip_headers()?
+pub fn (mut s Scanner) scan() !token.Token {
+	s.validate_and_skip_headers()!
 
 	for {
 		c := s.next()
@@ -127,7 +127,7 @@ pub fn (mut s Scanner) scan() ?token.Token {
 		is_signed_inf := !is_signed_nan && is_sign && s.at() == `i` && peek_1 == `n`
 			&& peek_2 == `f`
 		if !s.is_left_of_assign && (is_nan || is_inf || is_signed_nan || is_signed_inf) {
-			num := s.extract_nan_or_inf_number()?
+			num := s.extract_nan_or_inf_number()!
 			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified a special number "$num" ($num.len)')
 			return s.new_token(.number, num, num.len)
 		}
@@ -135,7 +135,7 @@ pub fn (mut s Scanner) scan() ?token.Token {
 		is_signed_number := is_sign && u8(s.at()).is_digit() && !u8(s.peek(-1)).is_digit()
 		is_digit := byte_c.is_digit()
 		if is_digit || is_signed_number {
-			num := s.extract_number()?
+			num := s.extract_number()!
 			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified a number "$num" ($num.len)')
 			return s.new_token(.number, num, num.len)
 		}
@@ -197,12 +197,12 @@ pub fn (mut s Scanner) scan() ?token.Token {
 				return s.new_token(.assign, ascii, ascii.len)
 			}
 			`"`, `'` { // ... some string "/'
-				ident_string := s.extract_string()?
+				ident_string := s.extract_string()!
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified quoted string `$ident_string`')
 				return s.new_token(.quoted, ident_string, ident_string.len)
 			}
 			`#` {
-				hash := s.ignore_line()?
+				hash := s.ignore_line()!
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'identified comment hash "$hash" ($hash.len)')
 				return s.new_token(.hash, hash, hash.len + 1)
 			}
@@ -354,7 +354,7 @@ fn (mut s Scanner) new_token(kind token.Kind, lit string, len int) token.Token {
 
 // ignore_line forwards the scanner to the end of the current line.
 [direct_array_access; inline]
-fn (mut s Scanner) ignore_line() ?string {
+fn (mut s Scanner) ignore_line() !string {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, ' ignoring until EOL...')
 	start := s.pos
 	for c := s.at(); c != scanner.end_of_text && c != `\n`; c = s.at() {
@@ -398,7 +398,7 @@ fn (mut s Scanner) extract_key() string {
 // any bytes recognized as a TOML string.
 // TOML strings are everything found between two double or single quotation marks (`"`/`'`).
 [direct_array_access; inline]
-fn (mut s Scanner) extract_string() ?string {
+fn (mut s Scanner) extract_string() !string {
 	// extract_string is called when the scanner has already reached
 	// a byte that is the start of a string so we rewind it to start at the correct
 	s.pos--
@@ -410,7 +410,7 @@ fn (mut s Scanner) extract_string() ?string {
 	is_multiline := s.text[s.pos + 1] == quote && s.text[s.pos + 2] == quote
 	// Check for escaped multiline quote
 	if is_multiline {
-		mls := s.extract_multiline_string()?
+		mls := s.extract_multiline_string()!
 		return mls
 	}
 
@@ -463,7 +463,7 @@ fn (mut s Scanner) extract_string() ?string {
 // any bytes recognized as a TOML string.
 // TOML strings are everything found between two double or single quotation marks (`"`/`'`).
 [direct_array_access; inline]
-fn (mut s Scanner) extract_multiline_string() ?string {
+fn (mut s Scanner) extract_multiline_string() !string {
 	// extract_multiline_string is called from extract_string so we know the 3 first
 	// characters is the quotes
 	quote := u8(s.at())
@@ -573,7 +573,7 @@ fn (mut s Scanner) handle_escapes(quote u8, is_multiline bool) (string, int) {
 // any bytes recognized as a TOML number except for "(+/-)nan" and "(+/-)inf".
 // TOML numbers can include digits 0-9 and `_`.
 [direct_array_access; inline]
-fn (mut s Scanner) extract_number() ?string {
+fn (mut s Scanner) extract_number() !string {
 	// extract_number is called when the scanner has already reached
 	// a byte that is a number or +/- - so we rewind it to start at the correct
 	// position to get the complete number. Even if it's only one digit
@@ -611,7 +611,7 @@ fn (mut s Scanner) extract_number() ?string {
 // extract_nan_or_inf_number collects and returns a string containing
 // any bytes recognized as infinity or not-a-number TOML numbers.
 [direct_array_access; inline]
-fn (mut s Scanner) extract_nan_or_inf_number() ?string {
+fn (mut s Scanner) extract_nan_or_inf_number() !string {
 	// extract_nan_or_inf_number is called when the scanner has already identified that
 	// +/- or 'nan'/'inf' bytes is up but we rewind it to start at the correct position
 	s.pos--
@@ -656,9 +656,9 @@ pub fn (s Scanner) state() State {
 	}
 }
 
-fn (mut s Scanner) validate_and_skip_headers() ? {
+fn (mut s Scanner) validate_and_skip_headers() ! {
 	// UTF-16 / UTF-32 headers (BE/LE)
-	s.check_utf16_or_32_bom()?
+	s.check_utf16_or_32_bom()!
 
 	// NICE-TO-HAVE-TODO Check other types of (UTF-?) headers and yield an error. TOML is UTF-8 only.
 
@@ -670,10 +670,10 @@ fn (mut s Scanner) validate_and_skip_headers() ? {
 	}
 
 	// Check after we've skipped UTF-8 BOM
-	s.check_utf16_or_32_bom()?
+	s.check_utf16_or_32_bom()!
 }
 
-fn (mut s Scanner) check_utf16_or_32_bom() ? {
+fn (mut s Scanner) check_utf16_or_32_bom() ! {
 	if (s.at() == 0xFF && s.peek(1) == 0xFE && s.peek(2) == 0x00 && s.peek(3) == 0x00)
 		|| (s.at() == 0x00 && s.peek(1) == 0x00 && s.peek(2) == 0xFE && s.peek(3) == 0xFF) {
 		s.header_len = 4

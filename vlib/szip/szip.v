@@ -94,7 +94,7 @@ fn (om OpenMode) to_u8() u8 {
 // name: the name of the zip file to open.
 // level: can be any value of the CompressionLevel enum.
 // mode: can be any value of the OpenMode enum.
-pub fn open(name string, level CompressionLevel, mode OpenMode) ?&Zip {
+pub fn open(name string, level CompressionLevel, mode OpenMode) !&Zip {
 	if name.len == 0 {
 		return error('szip: name of file empty')
 	}
@@ -115,7 +115,7 @@ pub fn (mut z Zip) close() {
 // For zip archive opened in 'w' or 'a' mode the function will append
 // a new entry. In readonly mode the function tries to locate the entry
 // in global dictionary.
-pub fn (mut zentry Zip) open_entry(name string) ? {
+pub fn (mut zentry Zip) open_entry(name string) ! {
 	res := C.zip_entry_open(zentry, &char(name.str))
 	if res == -1 {
 		return error('szip: cannot open archive entry')
@@ -123,7 +123,7 @@ pub fn (mut zentry Zip) open_entry(name string) ? {
 }
 
 // open_entry_by_index opens an entry by index in the archive.
-pub fn (mut z Zip) open_entry_by_index(index int) ? {
+pub fn (mut z Zip) open_entry_by_index(index int) ! {
 	res := C.zip_entry_openbyindex(z, index)
 	if res == -1 {
 		return error('szip: cannot open archive entry at index $index')
@@ -152,7 +152,7 @@ pub fn (mut zentry Zip) name() string {
 }
 
 // index returns an index of the current zip entry.
-pub fn (mut zentry Zip) index() ?int {
+pub fn (mut zentry Zip) index() !int {
 	index := int(C.zip_entry_index(zentry))
 	if index == -1 {
 		return error('szip: cannot get current index of zip entry')
@@ -161,7 +161,7 @@ pub fn (mut zentry Zip) index() ?int {
 }
 
 // is_dir determines if the current zip entry is a directory entry.
-pub fn (mut zentry Zip) is_dir() ?bool {
+pub fn (mut zentry Zip) is_dir() !bool {
 	isdir := C.zip_entry_isdir(zentry)
 	if isdir < 0 {
 		return error('szip: cannot check entry type')
@@ -182,7 +182,7 @@ pub fn (mut zentry Zip) crc32() u32 {
 }
 
 // write_entry compresses an input buffer for the current zip entry.
-pub fn (mut zentry Zip) write_entry(data []u8) ? {
+pub fn (mut zentry Zip) write_entry(data []u8) ! {
 	if int(data[0] & 0xff) == -1 {
 		return error('szip: cannot write entry')
 	}
@@ -193,7 +193,7 @@ pub fn (mut zentry Zip) write_entry(data []u8) ? {
 }
 
 // create_entry compresses a file for the current zip entry.
-pub fn (mut zentry Zip) create_entry(name string) ? {
+pub fn (mut zentry Zip) create_entry(name string) ! {
 	res := C.zip_entry_fwrite(zentry, &char(name.str))
 	if res != 0 {
 		return error('szip: failed to create entry')
@@ -204,7 +204,7 @@ pub fn (mut zentry Zip) create_entry(name string) ? {
 // The function allocates sufficient memory for an output buffer.
 // NOTE: remember to release the memory allocated for an output buffer.
 // for large entries, please take a look at zip_entry_extract function.
-pub fn (mut zentry Zip) read_entry() ?voidptr {
+pub fn (mut zentry Zip) read_entry() !voidptr {
 	mut buf := &u8(0)
 	mut bsize := usize(0)
 	res := C.zip_entry_read(zentry, unsafe { &voidptr(&buf) }, &bsize)
@@ -215,7 +215,7 @@ pub fn (mut zentry Zip) read_entry() ?voidptr {
 }
 
 // read_entry_buf extracts the current zip entry into user specified buffer
-pub fn (mut zentry Zip) read_entry_buf(buf voidptr, in_bsize int) ?int {
+pub fn (mut zentry Zip) read_entry_buf(buf voidptr, in_bsize int) !int {
 	bsize := usize(in_bsize)
 	res := C.zip_entry_noallocread(zentry, buf, bsize)
 	if res == -1 {
@@ -225,7 +225,7 @@ pub fn (mut zentry Zip) read_entry_buf(buf voidptr, in_bsize int) ?int {
 }
 
 // extract_entry extracts the current zip entry into output file.
-pub fn (mut zentry Zip) extract_entry(path string) ? {
+pub fn (mut zentry Zip) extract_entry(path string) ! {
 	res := C.zip_entry_fread(zentry, &char(path.str))
 	if res != 0 {
 		return error('szip: failed to extract entry')
@@ -233,7 +233,7 @@ pub fn (mut zentry Zip) extract_entry(path string) ? {
 }
 
 // extract zip file to directory
-pub fn extract_zip_to_dir(file string, dir string) ?bool {
+pub fn extract_zip_to_dir(file string, dir string) !bool {
 	if C.access(&char(dir.str), 0) == -1 {
 		return error('szip: cannot open directory for extracting, directory not exists')
 	}
@@ -242,7 +242,7 @@ pub fn extract_zip_to_dir(file string, dir string) ?bool {
 }
 
 // zip files (full path) to zip file
-pub fn zip_files(path_to_file []string, path_to_export_zip string) ? {
+pub fn zip_files(path_to_file []string, path_to_export_zip string) ! {
 	// open or create new zip
 	mut zip := open(path_to_export_zip, .no_compression, .write) or { panic(err) }
 
@@ -264,7 +264,7 @@ pub fn zip_files(path_to_file []string, path_to_export_zip string) ? {
 
 // zip_folder zips all entries in `folder` *recursively* to the zip file at `zip_file`.
 // Empty folders will be included, unless specified otherwise in `opt`.
-pub fn zip_folder(folder string, zip_file string, opt ZipFolderOptions) ? {
+pub fn zip_folder(folder string, zip_file string, opt ZipFolderOptions) ! {
 	// get list of files from directory
 	path := folder.trim_right(os.path_separator)
 	mut files := []string{}
@@ -273,7 +273,7 @@ pub fn zip_folder(folder string, zip_file string, opt ZipFolderOptions) ? {
 	})
 
 	// open or create new zip
-	mut zip := open(zip_file, .no_compression, .write)?
+	mut zip := open(zip_file, .no_compression, .write)!
 	// close zip
 	defer {
 		zip.close()
@@ -296,17 +296,17 @@ pub fn zip_folder(folder string, zip_file string, opt ZipFolderOptions) ? {
 			zip_file_entry += '/' // Tells the implementation that the entry is a directory
 		}
 		// add file or directory (ends with "/") to zip
-		zip.open_entry(zip_file_entry)?
+		zip.open_entry(zip_file_entry)!
 		if !is_dir {
-			file_as_byte := os.read_bytes(file)?
-			zip.write_entry(file_as_byte)?
+			file_as_byte := os.read_bytes(file)!
+			zip.write_entry(file_as_byte)!
 		}
 		zip.close_entry()
 	}
 }
 
 // total returns the number of all entries (files and directories) in the zip archive.
-pub fn (mut zentry Zip) total() ?int {
+pub fn (mut zentry Zip) total() !int {
 	tentry := int(C.zip_entries_total(zentry))
 	if tentry == -1 {
 		return error('szip: cannot count total entries')

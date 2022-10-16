@@ -25,30 +25,30 @@ fn (wst WsTransport) wait() {
 	println('wait is called')
 }
 
-pub fn new_ws_client(transport Transport) ?WsClient {
+pub fn new_ws_client(transport Transport) !WsClient {
 	return WsClient{
 		transport: transport
 	}
 }
 
-fn server() ? {
+fn server() ! {
 	mut s := ws.new_server(.ip6, 8081, '/')
 
-	s.on_connect(fn (mut s ws.ServerClient) ?bool {
+	s.on_connect(fn (mut s ws.ServerClient) !bool {
 		if s.resource_name != '/' {
 			return false
 		}
 		println('Client has connected...')
 		return true
-	})?
+	})!
 
-	s.on_message(fn (mut ws ws.Client, msg &RawMessage) ? {
+	s.on_message(fn (mut ws ws.Client, msg &RawMessage) ! {
 		mut transport := WsTransport{}
-		mut ws_client := new_ws_client(transport)?
+		mut ws_client := new_ws_client(transport)!
 		_ := ws_client
 	})
 
-	s.on_close(fn (mut ws ws.Client, code int, reason string) ? {
+	s.on_close(fn (mut ws ws.Client, code int, reason string) ! {
 		println('client ($ws.id) closed connection')
 	})
 
@@ -59,8 +59,8 @@ fn server() ? {
 	}
 }
 
-fn abc() ? {
-	server()?
+fn abc() ! {
+	server()!
 }
 
 fn test_compilation_of_the_example_code_in_issue_15839() {

@@ -31,21 +31,21 @@ pub:
 
 pub type SimArgs = ParallelArgs | SequentialArgs
 
-pub fn parse_args(config ParserSettings) ?SimArgs {
+pub fn parse_args(config ParserSettings) !SimArgs {
 	if config.sequential {
-		args := parse_sequential_args()?
+		args := parse_sequential_args()!
 		return SimArgs(args)
 	} else {
-		args := parse_parallel_args(config.extra_workers)?
+		args := parse_parallel_args(config.extra_workers)!
 		return SimArgs(args)
 	}
 }
 
-fn parse_sequential_args() ?SequentialArgs {
+fn parse_sequential_args() !SequentialArgs {
 	mut fp := flag.new_flag_parser(os.args)
 	fp.application('vps')
 	fp.version('v0.1.0')
-	fp.limit_free_args(0, 0)?
+	fp.limit_free_args(0, 0)!
 	fp.description('This is a pendulum simulation written in pure V')
 	fp.skip_executable()
 
@@ -64,7 +64,7 @@ fn parse_sequential_args() ?SequentialArgs {
 
 	fp.finalize() or {
 		println(fp.usage())
-		return none
+		return error('none')
 	}
 
 	params := sim.sim_params(
@@ -92,11 +92,11 @@ fn parse_sequential_args() ?SequentialArgs {
 	return args
 }
 
-fn parse_parallel_args(extra_workers int) ?ParallelArgs {
+fn parse_parallel_args(extra_workers int) !ParallelArgs {
 	mut fp := flag.new_flag_parser(os.args)
 	fp.application('vps')
 	fp.version('v0.1.0')
-	fp.limit_free_args(0, 0)?
+	fp.limit_free_args(0, 0)!
 	fp.description('This is a pendulum simulation written in pure V')
 	fp.skip_executable()
 
@@ -117,7 +117,7 @@ fn parse_parallel_args(extra_workers int) ?ParallelArgs {
 
 	fp.finalize() or {
 		println(fp.usage())
-		return none
+		return error('none')
 	}
 
 	params := sim.sim_params(

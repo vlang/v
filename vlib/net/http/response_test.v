@@ -26,7 +26,7 @@ fn test_response_bytestr() {
 // check_headers is a helper function for asserting all expected headers
 // are found because rendered header order is not guaranteed. The check
 // is O(n^2) which is fine for small lists.
-fn check_headers(expected []string, found []string) ? {
+fn check_headers(expected []string, found []string) ! {
 	assert expected.len == found.len
 	for header in expected {
 		if !found.contains(header) {
