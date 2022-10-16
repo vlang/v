@@ -1273,6 +1273,11 @@ fn (mut g Gen) gen_syscall(node ast.CallExpr) {
 	g.syscall()
 }
 
+union F64I64 {
+	f f64
+	i i64
+}
+
 fn (mut g Gen) expr(node ast.Expr) {
 	match node {
 		ast.ParExpr {
@@ -1296,7 +1301,15 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.call_fn(node)
 			}
 		}
-		ast.FloatLiteral {}
+		ast.FloatLiteral {
+			val := unsafe{ F64I64{f: g.eval.expr(node, ast.float_literal_type_idx).float_val()}.i }
+			if g.pref.arch == .arm64 {
+			} else {
+				g.movabs(.rax, val)
+				g.push(.rax)
+				g.pop_sse(.xmm0)
+			}
+		}
 		ast.Ident {
 			var := g.get_var_from_ident(node)
 			// XXX this is intel specific
