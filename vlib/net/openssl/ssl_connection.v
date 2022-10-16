@@ -58,7 +58,7 @@ pub fn (mut s SSLConn) shutdown() ! {
 				}
 				if err_res == .ssl_error_want_read {
 					for {
-						ready := @select(s.handle, .read, s.duration)?
+						ready := @select(s.handle, .read, s.duration)!
 						if ready {
 							break
 						}
@@ -66,7 +66,7 @@ pub fn (mut s SSLConn) shutdown() ! {
 					continue
 				} else if err_res == .ssl_error_want_write {
 					for {
-						ready := @select(s.handle, .write, s.duration)?
+						ready := @select(s.handle, .write, s.duration)!
 						if ready {
 							break
 						}
