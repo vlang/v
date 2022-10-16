@@ -393,6 +393,12 @@ enum SetOp {
 	ge = 0x9d0f
 	l = 0x9c0f
 	le = 0x9e0f
+	a = 0x970f
+	ae = 0x930f
+	b = 0x920f
+	be = 0x960f
+	p = 0x9a0f
+	np = 0x9b0f
 }
 
 // SETcc al
@@ -2005,16 +2011,6 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 					}
 				}
 			}
-			ast.InfixExpr {
-				// eprintln('infix') dump(node) dump(right)
-				g.infix_expr(right)
-				offset := g.allocate_var(name, g.get_sizeof_ident(ident), 0)
-				// `mov DWORD PTR [rbp-0x8],eax`
-				if g.pref.is_verbose {
-					println('infix assignment $name offset=$offset.hex2()')
-				}
-				g.mov_reg_to_var(ident, .rax)
-			}
 			ast.Ident {
 				// eprintln('identr') dump(node) dump(right)
 				// TODO float
@@ -2285,12 +2281,6 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 				g.learel(.rsi, g.allocate_string(str, 3, .rel32))
 				g.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, .rsi)
 			}
-			ast.CallExpr {
-				g.allocate_var(name, g.get_sizeof_ident(ident), 0)
-				g.call_fn(right)
-				g.mov_reg_to_var(ident, .rax)
-				g.mov_var_to_reg(.rsi, ident)
-			}
 			ast.GoExpr {
 				g.v_error('threads not implemented for the native backend', node.pos)
 			}
@@ -2420,23 +2410,6 @@ fn (mut g Gen) prefix_expr(node ast.PrefixExpr) {
 }
 
 fn (mut g Gen) infix_expr(node ast.InfixExpr) {
-	/*
-	if node.left is ast.Ident && node.right is ast.Ident {
-		left := node.left as ast.Ident
-		right := node.right as ast.Ident
-		g.mov_var_to_reg(.eax, left)
-		var_offset := g.get_var_offset(right.name)
-		for {
-			match node.op {
-				.plus { g.add8_var(.eax, var_offset) }
-				.mul { g.mul8_var(.eax, var_offset) }
-				.div { g.div8_var(.eax, var_offset) }
-				.minus { g.sub8_var(.eax, var_offset) }
-				else { break }
-			}
-			return
-		}
-	}*/
 	if node.op in [.logical_or, .and] {
 		g.expr(node.left)
 		label := g.labels.new_label()
@@ -2451,6 +2424,61 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		return
 	} else {
 		g.expr(node.right)
+		if node.left_type.is_pure_float() {
+			typ := node.left_type
+			// optimize for ast.Ident
+			match node.left {
+				ast.Ident {
+					g.mov_ssereg(.xmm1, .xmm0)
+					g.mov_var_to_ssereg(.xmm0, node.left as ast.Ident)
+				}
+				else {
+					g.push_sse(.xmm0)
+					g.expr(node.left)
+					g.pop_sse(.xmm1)
+				}
+			}
+			// left: xmm0, right: xmm1
+			match node.op {
+				.eq, .ne {
+					g.write32(0xc1c20ff3)
+					g.write8(if node.op == .eq { 0x00 } else { 0x04 })
+					inst := if node.op == .eq { 'cmpeqss' } else { 'cmpneqss' }
+					g.println('$inst xmm0, xmm1')
+					g.write32(0xc07e0f66)
+					g.println('movd eax, xmm0')
+					g.write([u8(0x83), 0xe0, 0x01])
+					g.println('and eax, 0x1')
+				}
+				.gt, .lt, .ge, .le {
+					g.cmp_sse(.xmm0, .xmm1, typ)
+					// TODO mov_extend_reg
+					g.mov64(.rax, 0)
+					g.cset(match node.op {
+						.gt { .a }
+						.lt { .b }
+						.ge { .ae }
+						else { .be }
+					})
+				}
+				.plus {
+					g.add_sse(.xmm0, .xmm1, typ)
+				}
+				.minus {
+					g.sub_sse(.xmm0, .xmm1, typ)
+				}
+				.mul {
+					g.mul_sse(.xmm0, .xmm1, typ)
+				}
+				.div {
+					g.div_sse(.xmm0, .xmm1, typ)
+				}
+				else {
+					g.n_error('`$node.op` expression is not supported right now')
+				}
+			}
+			return
+		}
 		// optimize for ast.Ident
 		match node.left {
 			ast.Ident {
@@ -2728,61 +2756,9 @@ fn (mut g Gen) cjmp_op(op token.Kind) int {
 }
 
 fn (mut g Gen) condition(expr ast.Expr, neg bool) int {
-	// if infix_expr.op !in [.eq, .ne, .gt, .lt, .ge, .le] {
 	g.expr(expr)
 	g.cmp_zero(.rax)
 	return g.cjmp(if neg { .jne } else { .je })
-	//}
-	/*
-	match infix_expr.left {
-		ast.IntegerLiteral {
-			match infix_expr.right {
-				ast.IntegerLiteral {
-					// 3 < 4
-					a0 := infix_expr.left.val.int()
-					// a0 := (infix_expr.left as ast.IntegerLiteral).val.int()
-					// XXX this will not compile
-					a1 := (infix_expr.right as ast.IntegerLiteral).val.int()
-					// TODO. compute at compile time
-					g.mov(.eax, a0)
-					g.cmp(.eax, ._32, a1)
-				}
-				ast.Ident {
-					// 3 < var
-					// lit := infix_expr.right as ast.IntegerLiteral
-					// g.cmp_var(infix_expr.left, lit.val.int())
-					// +not
-					g.n_error('unsupported if construction')
-				}
-				else {
-					g.n_error('unsupported if construction')
-				}
-			}
-		}
-		ast.Ident {
-			match infix_expr.right {
-				ast.IntegerLiteral {
-					// var < 4
-					lit := infix_expr.right as ast.IntegerLiteral
-					g.cmp_var(infix_expr.left as ast.Ident, lit.val.int())
-				}
-				ast.Ident {
-					// var < var2
-					g.n_error('unsupported if construction')
-				}
-				else {
-					g.n_error('unsupported if construction')
-				}
-			}
-		}
-		else {
-			// dump(infix_expr)
-			g.n_error('unhandled $infix_expr.left')
-		}
-	}
-
-	// mut cjmp_addr := 0 // location of `jne *00 00 00 00*`
-	return if neg { g.cjmp_op(infix_expr.op) } else { g.cjmp_notop(infix_expr.op) }*/
 }
 
 fn (mut g Gen) if_expr(node ast.IfExpr) {
@@ -3562,6 +3538,98 @@ fn (mut g Gen) mov_ssereg(a SSERegister, b SSERegister) {
 	g.write8(0xc0 + int(a) % 8 * 8 + int(b) % 8)
 	g.println('movsd $a, $b')
 }
+
+fn (mut g Gen) add_sse(a SSERegister, b SSERegister, typ ast.Type) {
+	g.write8(if typ == ast.f32_type_idx { 0xf3 } else { 0xf2 })
+	if int(a) >= int(SSERegister.xmm8) || int(b) >= int(SSERegister.xmm8) {
+		g.write8(0x40 + int(a) / 8 * 4 + int(b) / 8)
+	}
+	g.write16(0x580f)
+	g.write8(0xc0 + int(a) % 8 * 8 + int(b) % 8)
+	inst := if typ == ast.f32_type_idx { 'addss' } else { 'addsd' }
+	g.println('$inst $a, $b')
+}
+
+fn (mut g Gen) sub_sse(a SSERegister, b SSERegister, typ ast.Type) {
+	g.write8(if typ == ast.f32_type_idx { 0xf3 } else { 0xf2 })
+	if int(a) >= int(SSERegister.xmm8) || int(b) >= int(SSERegister.xmm8) {
+		g.write8(0x40 + int(a) / 8 * 4 + int(b) / 8)
+	}
+	g.write16(0x5c0f)
+	g.write8(0xc0 + int(a) % 8 * 8 + int(b) % 8)
+	inst := if typ == ast.f32_type_idx { 'subss' } else { 'subsd' }
+	g.println('$inst $a, $b')
+}
+
+fn (mut g Gen) mul_sse(a SSERegister, b SSERegister, typ ast.Type) {
+	g.write8(if typ == ast.f32_type_idx { 0xf3 } else { 0xf2 })
+	if int(a) >= int(SSERegister.xmm8) || int(b) >= int(SSERegister.xmm8) {
+		g.write8(0x40 + int(a) / 8 * 4 + int(b) / 8)
+	}
+	g.write16(0x590f)
+	g.write8(0xc0 + int(a) % 8 * 8 + int(b) % 8)
+	inst := if typ == ast.f32_type_idx { 'mulss' } else { 'mulsd' }
+	g.println('$inst $a, $b')
+}
+
+fn (mut g Gen) div_sse(a SSERegister, b SSERegister, typ ast.Type) {
+	g.write8(if typ == ast.f32_type_idx { 0xf3 } else { 0xf2 })
+	if int(a) >= int(SSERegister.xmm8) || int(b) >= int(SSERegister.xmm8) {
+		g.write8(0x40 + int(a) / 8 * 4 + int(b) / 8)
+	}
+	g.write16(0x5e0f)
+	g.write8(0xc0 + int(a) % 8 * 8 + int(b) % 8)
+	inst := if typ == ast.f32_type_idx { 'divss' } else { 'divsd' }
+	g.println('$inst $a, $b')
+}
+
+fn (mut g Gen) cmp_sse(a SSERegister, b SSERegister, typ ast.Type) {
+	if typ != ast.f32_type_idx {
+		g.write8(0x66)
+	}
+	if int(a) >= int(SSERegister.xmm8) || int(b) >= int(SSERegister.xmm8) {
+		g.write8(0x40 + int(a) / 8 * 4 + int(b) / 8)
+	}
+	g.write16(0x2e0f)
+	g.write8(0xc0 + int(a) % 8 * 8 + int(b) % 8)
+	inst := if typ == ast.f32_type_idx { 'ucomiss' } else { 'ucomisd' }
+	g.println('$inst $a, $b')
+}
+
+pub fn (mut g Gen) push_sse(reg SSERegister) {
+	g.write32(0x08ec8348)
+	g.println('sub rsp, 0x8')
+	g.write8(0xf2)
+	if int(reg) >= int(SSERegister.xmm8) {
+		g.write8(0x44)
+	}
+	g.write16(0x110f)
+	g.write8(0x04 + int(reg) % 8 * 8)
+	g.write8(0x24)
+	g.println('movsd [rsp], $reg')
+	if mut g.code_gen is Amd64 {
+		g.code_gen.is_16bit_aligned = !g.code_gen.is_16bit_aligned
+	}
+	g.println('; push $reg')
+}
+
+pub fn (mut g Gen) pop_sse(reg SSERegister) {
+	g.write8(0xf2)
+	if int(reg) >= int(SSERegister.xmm8) {
+		g.write8(0x44)
+	}
+	g.write16(0x100f)
+	g.write8(0x04 + int(reg) % 8 * 8)
+	g.write8(0x24)
+	g.println('movsd $reg, [rsp]')
+	g.write32(0x08c48348)
+	g.println('add rsp, 0x8')
+	if mut g.code_gen is Amd64 {
+		g.code_gen.is_16bit_aligned = !g.code_gen.is_16bit_aligned
+	}
+	g.println('; pop $reg')
+}
+
 
 fn (mut g Gen) gen_cast_expr_amd64(expr ast.CastExpr) {
 	g.expr(expr.expr)
