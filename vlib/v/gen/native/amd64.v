@@ -57,6 +57,7 @@ enum SSERegister {
 
 const (
 	fn_arg_registers = [Register.rdi, .rsi, .rdx, .rcx, .r8, .r9]
+	fn_arg_sse_registers = [SSERegister.xmm0, .xmm1, .xmm2, .xmm3, .xmm4, .xmm5, .xmm6, .xmm7]
 	amd64_cpuregs    = ['eax', 'ecx', 'edx', 'ebx', 'esp', 'ebp', 'esi', 'edi']
 )
 
@@ -1651,6 +1652,7 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 	addr := g.fn_addr[n]
 
 	mut reg_args := []int{}
+	mut ssereg_args := []int{}
 	mut stack_args := []int{}
 	mut args := []ast.CallArg{cap: node.args.len + 2}
 
@@ -1685,9 +1687,16 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 
 	args << node.args
 	args_size := args.map(g.get_type_size(it.typ))
+	is_floats := args.map(it.typ.is_pure_float())
 
 	mut reg_left := 6 - reg_args.len
+	mut ssereg_left := 8
 	for i, size in args_size {
+		if is_floats[i] && ssereg_left > 0 {
+			ssereg_args << i
+			ssereg_left--
+			continue
+		}
 		if reg_left > 0 {
 			if size <= 8 {
 				reg_args << i
@@ -1714,6 +1723,7 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 		// dummy data
 		g.push(.rbp)
 	}
+	reg_args << ssereg_args
 	reg_args << stack_args
 	for i in reg_args.reverse() {
 		if i == 0 && is_struct_return {
@@ -1744,20 +1754,24 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 				else {}
 			}
 		}
-		match args_size[i] {
-			1...8 {
-				g.push(.rax)
-			}
-			9...16 {
-				g.push(.rdx)
-				g.push(.rax)
-			}
-			else {
-				g.add(.rax, args_size[i] - ((args_size[i] + 7) % 8 + 1))
-				for _ in 0 .. (args_size[i] + 7) / 8 {
-					g.mov_deref(.rdx, .rax, ast.i64_type_idx)
+		if is_floats[i] {
+			g.push_sse(.xmm0)
+		} else {
+			match args_size[i] {
+				1...8 {
+					g.push(.rax)
+				}
+				9...16 {
 					g.push(.rdx)
-					g.sub(.rax, 8)
+					g.push(.rax)
+				}
+				else {
+					g.add(.rax, args_size[i] - ((args_size[i] + 7) % 8 + 1))
+					for _ in 0 .. (args_size[i] + 7) / 8 {
+						g.mov_deref(.rdx, .rax, ast.i64_type_idx)
+						g.push(.rdx)
+						g.sub(.rax, 8)
+					}
 				}
 			}
 		}
@@ -1765,6 +1779,10 @@ pub fn (mut g Gen) call_fn_amd64(node ast.CallExpr) {
 	for i in 0 .. reg_size {
 		g.pop(native.fn_arg_registers[i])
 	}
+	for i in 0 .. ssereg_args.len {
+		g.pop_sse(fn_arg_sse_registers[i])
+	}
+	g.mov(.rax, ssereg_args.len)
 	if node.name in g.extern_symbols {
 		g.extern_fn_calls[g.pos()] = node.name
 		g.extern_call(int(addr))
@@ -2915,6 +2933,7 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 
 	// Copy values from registers to local vars (calling convention)
 	mut reg_args := []int{}
+	mut ssereg_args := []int{}
 	mut stack_args := []int{}
 	mut params := []ast.Param{cap: node.params.len + 2}
 
@@ -2933,9 +2952,16 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 	params << node.params
 
 	args_size := params.map(g.get_type_size(it.typ))
+	is_floats := params.map(it.typ.is_pure_float())
 
 	mut reg_left := 6
+	mut ssereg_left := 8
 	for i, size in args_size {
+		if is_floats[i] && ssereg_left > 0 {
+			ssereg_args << i
+			ssereg_left--
+			continue
+		}
 		if reg_left > 0 {
 			if size <= 8 {
 				reg_args << i
@@ -2967,6 +2993,13 @@ fn (mut g Gen) fn_decl_amd64(node ast.FnDecl) {
 			)
 			reg_idx++
 		}
+	}
+	// define and copy args on sse register
+	for idx, i in ssereg_args {
+		name := params[i].name
+		offset := g.allocate_struct(name, params[i].typ)
+		// copy
+		g.mov_ssereg_to_var(LocalVar{ offset: offset, typ: params[i].typ }, fn_arg_sse_registers[idx])
 	}
 	// define args on stack
 	mut offset := -2
