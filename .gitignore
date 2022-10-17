@@ -61,6 +61,7 @@ fns.txt
 .project
 .classpath
 .c9
+.vs
 *.launch
 .settings/
 *.sublime-workspace
