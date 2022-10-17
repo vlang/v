@@ -496,8 +496,8 @@ pub fn rm(path string) ! {
 pub fn rmdir(path string) ! {
 	$if windows {
 		rc := C.RemoveDirectory(path.to_wide())
-		if rc == 0 {
-			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-removedirectorya - 0 is failure
+		if !rc {
+			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-removedirectorya - 0 == false, is failure
 			return error('Failed to remove "$path": ' + posix_get_error_msg(C.errno))
 		}
 	} $else {
@@ -651,8 +651,8 @@ pub fn executable() string {
 				// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
 				final_len := C.GetFinalPathNameByHandleW(file, unsafe { &u16(&final_path[0]) },
 					max_path_buffer_size, 0)
-				if final_len < max_path_buffer_size {
-					sret := unsafe { string_from_wide2(&u16(&final_path[0]), final_len) }
+				if final_len < u32(max_path_buffer_size) {
+					sret := unsafe { string_from_wide2(&u16(&final_path[0]), int(final_len)) }
 					defer {
 						unsafe { sret.free() }
 					}
@@ -665,7 +665,7 @@ pub fn executable() string {
 				}
 			}
 		}
-		res := unsafe { string_from_wide2(pu16_result, len) }
+		res := unsafe { string_from_wide2(pu16_result, int(len)) }
 		return res
 	}
 	$if macos {
@@ -852,8 +852,8 @@ pub fn real_path(fpath string) string {
 			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
 			final_len := C.GetFinalPathNameByHandleW(file, pu16_fullpath, max_path_buffer_size,
 				0)
-			if final_len < max_path_buffer_size {
-				rt := unsafe { string_from_wide2(pu16_fullpath, final_len) }
+			if final_len < u32(max_path_buffer_size) {
+				rt := unsafe { string_from_wide2(pu16_fullpath, int(final_len)) }
 				srt := rt[4..]
 				unsafe { res.free() }
 				res = srt.clone()
