@@ -177,7 +177,7 @@ pub fn (nn i64) str() string {
 		mut d := i64(0)
 		if n == 0 {
 			return '0'
-		} else if n == i64(-9223372036854775808) {
+		} else if n == i64(-9223372036854775807 - 1) {
 			// math.min_i64
 			return '-9223372036854775808'
 		}
