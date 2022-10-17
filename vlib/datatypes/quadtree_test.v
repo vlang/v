@@ -7,14 +7,6 @@ fn test_create() {
 	assert test == test_clone
 }
 
-fn test_get_nodes() {
-	mut qt := Quadtree{}
-	mut test := qt.create(0, 0, 1340, 640, 8, 4, 0)
-	test.split()
-	t := test.get_nodes()
-	assert t.len == 4
-}
-
 fn test_insert() {
 	mut qt := Quadtree{}
 	mut test := qt.create(0, 0, 1340, 640, 8, 4, 0)
@@ -58,6 +50,14 @@ fn test_clear() {
 	assert test != test_clone
 	test.clear()
 	assert test == test_clone
+}
+
+fn test_get_nodes() {
+	mut qt := Quadtree{}
+	mut test := qt.create(0, 0, 1340, 640, 8, 4, 0)
+	test.split()
+	t := test.get_nodes()
+	assert t.len == 4
 }
 
 fn test_split() {

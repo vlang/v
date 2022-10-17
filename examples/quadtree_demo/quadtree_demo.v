@@ -71,7 +71,7 @@ fn (mut app App) start() {
 	app.players << datatypes.AABB{1200 * rand.f64(), 500 * rand.f64(), 20, 20}
 	app.insert_particles()
 	for mut particle in app.particles {
-		particle.speed = 8 * rand.f64()
+		particle.speed = 10 * rand.f64()
 		particle.angle = 200 * rand.f64()
 	}
 	app.nodes << app.qt.get_nodes()
