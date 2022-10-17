@@ -238,9 +238,15 @@ fn to_burntsushi(value ast.Value) string {
 			}
 			if !value.text.starts_with('0x')
 				&& (value.text.contains('.') || value.text.to_lower().contains('e')) {
-				mut val := '$value.f64()'.replace('.e+', '.0e') // json notation
-				if !val.contains('.') && val != '0' { // json notation
+				mut val := '$value.f64()'.replace('.e+', '.0e') // JSON notation
+				if !val.contains('.') && val != '0' { // JSON notation
 					val += '.0'
+				}
+				// Since https://github.com/vlang/v/pull/16079 V's string conversion of a zero (0) will
+				// output "0.0" for float types - the JSON test suite data, however, expects "0" for floats
+				// The following is a correction for that inconsistency
+				if val == '0.0' {
+					val = '0'
 				}
 				return '{ "type": "float", "value": "$val" }'
 			}
