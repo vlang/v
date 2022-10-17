@@ -53,11 +53,8 @@ pub fn (mut l FileLock) wait_acquire(s int) !bool {
 fn open(f string) voidptr {
 	f_wide := f.to_wide()
 	// locking it
-	mut fd := C.CreateFileW(f_wide, C.GENERIC_READ | C.GENERIC_WRITE, 0, 0, C.OPEN_ALWAYS,
+	fd := C.CreateFileW(f_wide, C.GENERIC_READ | C.GENERIC_WRITE, 0, 0, C.OPEN_ALWAYS,
 		C.FILE_ATTRIBUTE_NORMAL, 0)
-	if fd == C.INVALID_HANDLE_VALUE {
-		fd = unsafe { nil }
-	}
 	return fd
 }
 
