@@ -1,5 +1,3 @@
-import math
-
 const (
 	a = 3
 	u = u64(1)
@@ -255,11 +253,4 @@ fn test_byte_vs_u8() {
 	bb := byte(1)
 	uu := u8(1)
 	assert bb == uu
-}
-
-fn test_min_int_str() {
-	assert math.min_i64.str() == '-9223372036854775808'
-	assert math.min_i32.str() == '-2147483648'
-	assert math.min_i16.str() == '-32768'
-	assert math.min_i8.str() == '-128'
 }
