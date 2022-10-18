@@ -2674,10 +2674,10 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 					is_gated: is_gated
 				}
 			}
-			// `a[start..end] ?`
-			if p.tok.kind == .question {
+			// `a[start..end]!`
+			if p.tok.kind == .not {
 				or_pos_high = p.tok.pos()
-				or_kind_high = .propagate_option
+				or_kind_high = .propagate_result
 				p.next()
 			}
 		}
@@ -2740,10 +2740,10 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 					is_gated: is_gated
 				}
 			}
-			// `a[start..end] ?`
-			if p.tok.kind == .question {
+			// `a[start..end]!`
+			if p.tok.kind == .not {
 				or_pos_low = p.tok.pos()
-				or_kind_low = .propagate_option
+				or_kind_low = .propagate_result
 				p.next()
 			}
 		}
@@ -2789,10 +2789,10 @@ fn (mut p Parser) index_expr(left ast.Expr, is_gated bool) ast.IndexExpr {
 				is_gated: is_gated
 			}
 		}
-		// `a[i] ?`
-		if p.tok.kind == .question {
+		// `a[i]!`
+		if p.tok.kind == .not {
 			or_pos = p.tok.pos()
-			or_kind = .propagate_option
+			or_kind = .propagate_result
 			p.next()
 		}
 	}

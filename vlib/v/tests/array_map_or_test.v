@@ -51,26 +51,26 @@ fn test_map_or() {
 	assert good == 5
 }
 
-fn get_map_el(key string) ?int {
+fn get_map_el(key string) !int {
 	m := {
 		'as': 3
 		'qw': 4
 		'kl': 5
 	}
-	r := m[key]?
+	r := m[key]!
 	return r
 }
 
-fn get_arr_el(i int) ?int {
+fn get_arr_el(i int) !int {
 	m := [3, 4, 5]
-	r := m[i]?
+	r := m[i]!
 	return r
 }
 
 [direct_array_access]
-fn get_arr_el_direct(i int) ?int {
+fn get_arr_el_direct(i int) !int {
 	m := [3, 4, 5]
-	r := m[i]?
+	r := m[i]!
 	return r
 }
 
@@ -105,10 +105,10 @@ fn test_propagation() {
 	assert n == 3
 }
 
-fn get_arr_el_nested(i int) ?int {
+fn get_arr_el_nested(i int) !int {
 	ind := [2, 1, 0, 5]
 	m := [3, 4, 5]
-	r := m[ind[i]]?
+	r := m[ind[i]]!
 	return r
 }
 
