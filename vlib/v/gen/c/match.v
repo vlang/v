@@ -145,7 +145,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 		// iterates through all types in sumtype branches
 		for {
 			g.aggregate_type_idx = sumtype_index
-			is_last := j == node.branches.len - 1
+			is_last := j == node.branches.len - 1 && sumtype_index == branch.exprs.len - 1
 			sym := g.table.sym(node.cond_type)
 			if branch.is_else || (use_ternary && is_last) {
 				if use_ternary {
