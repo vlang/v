@@ -27,4 +27,5 @@ println(stack)
 - [x] Queue (FIFO)
 - [x] Min heap (priority queue)
 - [x] Set
+- [x] Quadtree
 - [ ] ...
