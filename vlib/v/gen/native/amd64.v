@@ -368,6 +368,8 @@ enum JumpOp {
 	jge = 0x8d0f
 	jl = 0x8c0f
 	jle = 0x8e0f
+	js = 0x880f
+	jnb = 0x830f
 }
 
 fn (mut g Gen) cjmp(op JumpOp) int {
@@ -1202,17 +1204,11 @@ pub fn (mut g Gen) xor(r Register, v int) {
 }
 
 pub fn (mut g Gen) test_reg(r Register) {
-	match r {
-		.rdi {
-			g.write8(0x48)
-			g.write8(0x85)
-			g.write8(0xff)
-			g.println('test rdi, rdi')
-		}
-		else {
-			panic('unhandled test $r, $r')
-		}
-	}
+	g.write8(0x48 + if int(r) >= int(Register.r8) { 1 } else { 0 } +
+		if int(r) >= int(Register.r8) { 4 } else { 0 })
+	g.write8(0x85)
+	g.write8(0xc0 + int(r) % 8 + int(r) % 8 * 8)
+	g.println('test $r, $r')
 }
 
 // return length in .rax of string pointed by given register
@@ -3676,30 +3672,134 @@ fn (mut g Gen) gen_cast_expr_amd64(expr ast.CastExpr) {
 				g.println('cvtsd2ss xmm0, xmm0')
 			}
 		} else if expr.typ.is_pure_float() {
-			// TODO u64
-			match g.get_type_size(expr.typ) {
-				4 {
-					g.write([u8(0xf3), 0x48, 0x0f, 0x2a, 0xc0])
-					g.println('cvtsi2ss xmm0, rax')
+			if g.get_type_size(expr.expr_type) == 8 && !expr.expr_type.is_signed() {
+				label1 := g.labels.new_label()
+				label2 := g.labels.new_label()
+				g.test_reg(.rax)
+				addr1 := g.cjmp(.js)
+				g.labels.patches << LabelPatch{
+					id: label1
+					pos: addr1
 				}
-				8 {
-					g.write([u8(0xf2), 0x48, 0x0f, 0x2a, 0xc0])
-					g.println('cvtsi2sd xmm0, rax')
+				// if castee is in the range of i64
+				match g.get_type_size(expr.typ) {
+					4 {
+						g.write([u8(0xf3), 0x48, 0x0f, 0x2a, 0xc0])
+						g.println('cvtsi2ss xmm0, rax')
+					}
+					8 {
+						g.write([u8(0xf2), 0x48, 0x0f, 0x2a, 0xc0])
+						g.println('cvtsi2sd xmm0, rax')
+					}
+					else {}
 				}
-				else {}
+				addr2 := g.jmp(0)
+				g.labels.patches << LabelPatch{
+					id: label2
+					pos: addr2
+				}
+				g.labels.addrs[label1] = g.pos()
+				// if castee has the leftmost bit
+				g.mov_reg(.rdx, .rax)
+				g.write([u8(0x48), 0xd1, 0xe8])
+				g.println('shr rax')
+				g.write([u8(0x83), 0xe2, 0x01])
+				g.println('and edx, 0x1')
+				g.bitor_reg(.rax, .rdx)
+				match g.get_type_size(expr.typ) {
+					4 {
+						g.write([u8(0xf3), 0x48, 0x0f, 0x2a, 0xc0])
+						g.println('cvtsi2ss xmm0, rax')
+					}
+					8 {
+						g.write([u8(0xf2), 0x48, 0x0f, 0x2a, 0xc0])
+						g.println('cvtsi2sd xmm0, rax')
+					}
+					else {}
+				}
+				g.add_sse(.xmm0, .xmm0, expr.typ)
+				g.labels.addrs[label2] = g.pos()
+			} else {
+				match g.get_type_size(expr.typ) {
+					4 {
+						g.write([u8(0xf3), 0x48, 0x0f, 0x2a, 0xc0])
+						g.println('cvtsi2ss xmm0, rax')
+					}
+					8 {
+						g.write([u8(0xf2), 0x48, 0x0f, 0x2a, 0xc0])
+						g.println('cvtsi2sd xmm0, rax')
+					}
+					else {}
+				}
 			}
 		} else if expr.expr_type.is_pure_float() {
-			// TODO u64
-			match g.get_type_size(expr.expr_type) {
-				4 {
-					g.write([u8(0xf3), 0x48, 0x0f, 0x2d, 0xc0])
-					g.println('cvtss2si rax, xmm0')
+			if g.get_type_size(expr.typ) == 8 && !expr.typ.is_signed() {
+				label1 := g.labels.new_label()
+				label2 := g.labels.new_label()
+				// TODO constant
+				g.movabs(.rdx, i64(u64(0x4000000000000000)))
+				match g.get_type_size(expr.expr_type) {
+					4 {
+						g.write([u8(0xf3), 0x48, 0x0f, 0x2a, 0xca])
+						g.println('cvtsi2ss xmm1, rdx')
+					}
+					8 {
+						g.write([u8(0xf2), 0x48, 0x0f, 0x2a, 0xca])
+						g.println('cvtsi2sd xmm1, rdx')
+					}
+					else {}
 				}
-				8 {
-					g.write([u8(0xf2), 0x48, 0x0f, 0x2d, 0xc0])
-					g.println('cvtsd2si rax, xmm0')
+				g.add_sse(.xmm1, .xmm1, expr.expr_type)
+				g.add_reg(.rdx, .rdx)
+				g.cmp_sse(.xmm0, .xmm1, expr.expr_type)
+				addr1 := g.cjmp(.jnb)
+				g.labels.patches << LabelPatch{
+					id: label1
+					pos: addr1
 				}
-				else {}
+				match g.get_type_size(expr.expr_type) {
+					4 {
+						g.write([u8(0xf3), 0x48, 0x0f, 0x2d, 0xc0])
+						g.println('cvtss2si rax, xmm0')
+					}
+					8 {
+						g.write([u8(0xf2), 0x48, 0x0f, 0x2d, 0xc0])
+						g.println('cvtsd2si rax, xmm0')
+					}
+					else {}
+				}
+				addr2 := g.jmp(0)
+				g.labels.patches << LabelPatch{
+					id: label2
+					pos: addr2
+				}
+				g.labels.addrs[label1] = g.pos()
+				g.sub_sse(.xmm0, .xmm1, expr.expr_type)
+				match g.get_type_size(expr.expr_type) {
+					4 {
+						g.write([u8(0xf3), 0x48, 0x0f, 0x2d, 0xc0])
+						g.println('cvtss2si rax, xmm0')
+					}
+					8 {
+						g.write([u8(0xf2), 0x48, 0x0f, 0x2d, 0xc0])
+						g.println('cvtsd2si rax, xmm0')
+					}
+					else {}
+				}
+				g.add_reg(.rax, .rdx)
+				g.labels.addrs[label2] = g.pos()
+			} else {
+				match g.get_type_size(expr.expr_type) {
+					4 {
+						g.write([u8(0xf3), 0x48, 0x0f, 0x2d, 0xc0])
+						g.println('cvtss2si rax, xmm0')
+					}
+					8 {
+						g.write([u8(0xf2), 0x48, 0x0f, 0x2d, 0xc0])
+						g.println('cvtsd2si rax, xmm0')
+					}
+					else {}
+				}
 			}
 		} else {
 			g.mov_extend_reg(.rax, .rax, expr.typ)
