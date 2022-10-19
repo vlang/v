@@ -1,15 +1,15 @@
 module os
 
-pub fn mkdir(path string, params MkdirParams) !bool {
+pub fn mkdir(path string, params MkdirParams) ! {
 	$if js_node {
 		if path == '.' {
-			return true
+			return
 		}
 		#$fs.mkdirSync(path.valueOf())
 
-		return true
+		return
 	} $else {
-		return false
+		return error('could not create folder')
 	}
 }
 

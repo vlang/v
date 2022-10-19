@@ -856,3 +856,9 @@ pub fn config_dir() !string {
 	}
 	return error('Cannot find config directory')
 }
+
+[deprecated: 'use os.ensure_folder_is_writable instead']
+pub fn is_writable_folder(folder string) !bool {
+	ensure_folder_is_writable(folder)!
+	return true
+}
