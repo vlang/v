@@ -124,29 +124,6 @@ pub fn (_bytes []u8) utf8_to_utf32() ?rune {
 	return res
 }
 
-// Calculate length to read from the first byte
-fn utf8_len(c u8) int {
-	mut b := 0
-	mut x := c
-	if (x & 240) != 0 {
-		// 0xF0
-		x >>= 4
-	} else {
-		b += 4
-	}
-	if (x & 12) != 0 {
-		// 0x0C
-		x >>= 2
-	} else {
-		b += 2
-	}
-	if (x & 2) == 0 {
-		// 0x02
-		b++
-	}
-	return b
-}
-
 // Calculate string length for formatting, i.e. number of "characters"
 // This is simplified implementation. if you need specification compliant width,
 // use utf8.east_asian.display_width.

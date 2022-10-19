@@ -122,8 +122,8 @@ pub fn (mut r Readline) disable_raw_mode() {
 }
 
 // read_char reads a single character.
-pub fn (r Readline) read_char() ?int {
-	return utf8_getchar()
+pub fn (r Readline) read_char() !int {
+	return int(term.utf8_getchar() or { return err })
 }
 
 // read_line_utf8 blocks execution in a loop and awaits user input
