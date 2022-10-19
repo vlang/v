@@ -2237,7 +2237,10 @@ pub fn (mut f Fmt) lock_expr(node ast.LockExpr) {
 		}
 	}
 	if num_locked > 0 || num_rlocked == 0 {
-		f.write('lock ')
+		f.write('lock')
+		if num_locked > 0 {
+			f.write(' ')
+		}
 		mut n := 0
 		for i, v in node.lockeds {
 			if !node.is_rlock[i] {
