@@ -90,7 +90,7 @@ fn (upd VlsUpdater) exec_asset_file_name() string {
 
 fn (upd VlsUpdater) update_manifest(new_path string, from_source bool, timestamp time.Time) ! {
 	upd.log('Updating permissions...')
-	os.chmod(new_path, 755)!
+	os.chmod(new_path, 0o755)!
 
 	upd.log('Updating vls.config.json...')
 	mut manifest := upd.manifest_config() or {
