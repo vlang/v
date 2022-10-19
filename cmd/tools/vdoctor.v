@@ -257,8 +257,8 @@ fn (mut a App) report_info() {
 }
 
 fn is_writable_dir(path string) bool {
-	res := os.is_writable_folder(path) or { false }
-	return res
+	os.ensure_folder_is_writable(path) or { return false }
+	return true
 }
 
 fn main() {
