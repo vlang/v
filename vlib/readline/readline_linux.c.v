@@ -122,7 +122,7 @@ pub fn (mut r Readline) disable_raw_mode() {
 }
 
 // read_char reads a single character.
-pub fn (r Readline) read_char() int {
+pub fn (r Readline) read_char() ?int {
 	return utf8_getchar()
 }
 
@@ -151,7 +151,7 @@ pub fn (mut r Readline) read_line_utf8(prompt string) ?[]rune {
 	print(r.prompt)
 	for {
 		unsafe { C.fflush(C.stdout) }
-		c := r.read_char()
+		c := r.read_char()?
 		a := r.analyse(c)
 		if r.execute(a, c) {
 			break
@@ -239,10 +239,10 @@ fn (r Readline) analyse(c int) Action {
 
 // analyse_control returns an `Action` based on the type of input read by `read_char`.
 fn (r Readline) analyse_control() Action {
-	c := r.read_char()
+	c := r.read_char() or { panic('Control sequence incomplete') }
 	match u8(c) {
 		`[` {
-			sequence := r.read_char()
+			sequence := r.read_char() or { panic('Control sequence incomplete') }
 			match u8(sequence) {
 				`C` { return .move_cursor_right }
 				`D` { return .move_cursor_left }
@@ -261,7 +261,7 @@ fn (r Readline) analyse_control() Action {
 	//TODO
 match c {
 	case `[`:
-	sequence := r.read_char()
+	sequence := r.read_char()?
 	match sequence {
 	case `C`: return .move_cursor_right
 	case `D`: return .move_cursor_left
@@ -284,11 +284,11 @@ match c {
 // analyse_extended_control returns an `Action` based on the type of input read by `read_char`.
 // analyse_extended_control specialises in cursor control.
 fn (r Readline) analyse_extended_control() Action {
-	r.read_char() // Removes ;
-	c := r.read_char()
+	r.read_char() or { panic('Control sequence incomplete') } // Removes ;
+	c := r.read_char() or { panic('Control sequence incomplete') }
 	match u8(c) {
 		`5` {
-			direction := r.read_char()
+			direction := r.read_char() or { panic('Control sequence incomplete') }
 			match u8(direction) {
 				`C` { return .move_cursor_word_right }
 				`D` { return .move_cursor_word_left }
@@ -303,7 +303,7 @@ fn (r Readline) analyse_extended_control() Action {
 // analyse_extended_control_no_eat returns an `Action` based on the type of input byte given in `c`.
 // analyse_extended_control_no_eat specialises in detection of delete and insert keys.
 fn (r Readline) analyse_extended_control_no_eat(last_c u8) Action {
-	c := r.read_char()
+	c := r.read_char() or { panic('Control sequence incomplete') }
 	match u8(c) {
 		`~` {
 			match last_c {
