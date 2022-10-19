@@ -1906,7 +1906,7 @@ pub fn (mut p Parser) error_with_pos(s string, pos token.Pos) ast.NodeError {
 		util.show_compiler_message(kind, pos: pos, file_path: p.file_name, message: s)
 		exit(1)
 	}
-	if p.pref.output_mode == .stdout {
+	if p.pref.output_mode == .stdout && !p.pref.check_only {
 		if p.pref.is_verbose {
 			print_backtrace()
 			kind = 'parser error:'
