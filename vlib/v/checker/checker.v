@@ -582,10 +582,10 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 	match mut expr {
 		ast.CastExpr {
 			// TODO
-			return '', pos
+			return '', expr.pos
 		}
 		ast.ComptimeSelector {
-			return '', pos
+			return '', expr.pos
 		}
 		ast.Ident {
 			if mut expr.obj is ast.Var {
@@ -619,6 +619,9 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 			}
 		}
 		ast.IndexExpr {
+			if expr.left_type == 0 {
+				return to_lock, pos
+			}
 			left_sym := c.table.sym(expr.left_type)
 			mut elem_type := ast.Type(0)
 			mut kind := ''
@@ -651,10 +654,10 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 		}
 		ast.SelectorExpr {
 			if expr.expr_type == 0 {
-				return '', pos
+				return '', expr.pos
 			}
 			// retrieve ast.Field
-			c.ensure_type_exists(expr.expr_type, expr.pos) or { return '', pos }
+			c.ensure_type_exists(expr.expr_type, expr.pos) or { return '', expr.pos }
 			mut typ_sym := c.table.final_sym(c.unwrap_generic(expr.expr_type))
 			match typ_sym.kind {
 				.struct_ {
@@ -666,7 +669,7 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 					if !has_field {
 						type_str := c.table.type_to_str(expr.expr_type)
 						c.error('unknown field `${type_str}.$expr.field_name`', expr.pos)
-						return '', pos
+						return '', expr.pos
 					}
 					if field_info.typ.has_flag(.shared_f) {
 						expr_name := '${expr.expr}.$expr.field_name'
@@ -702,7 +705,7 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 					mut field_info := interface_info.find_field(expr.field_name) or {
 						type_str := c.table.type_to_str(expr.expr_type)
 						c.error('unknown field `${type_str}.$expr.field_name`', expr.pos)
-						return '', pos
+						return '', expr.pos
 					}
 					if !field_info.is_mut {
 						type_str := c.table.type_to_str(expr.expr_type)
@@ -717,7 +720,7 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 					mut field_info := sumtype_info.find_field(expr.field_name) or {
 						type_str := c.table.type_to_str(expr.expr_type)
 						c.error('unknown field `${type_str}.$expr.field_name`', expr.pos)
-						return '', pos
+						return '', expr.pos
 					}
 					if !field_info.is_mut {
 						type_str := c.table.type_to_str(expr.expr_type)
@@ -756,18 +759,18 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 		}
 		ast.ArrayInit {
 			c.error('array literal can not be modified', expr.pos)
-			return '', pos
+			return '', expr.pos
 		}
 		ast.StructInit {
-			return '', pos
+			return '', expr.pos
 		}
 		ast.InfixExpr {
-			return '', pos
+			return '', expr.pos
 		}
 		else {
 			if !expr.is_pure_literal() {
 				c.error('unexpected expression `$expr.type_name()`', expr.pos())
-				return '', pos
+				return '', expr.pos()
 			}
 		}
 	}
@@ -3495,6 +3498,10 @@ fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_ty
 
 pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 	mut typ := c.expr(node.left)
+	if typ == 0 {
+		c.error('unknown type for expression `$node.left`', node.pos)
+		return typ
+	}
 	mut typ_sym := c.table.final_sym(typ)
 	node.left_type = typ
 	match typ_sym.kind {

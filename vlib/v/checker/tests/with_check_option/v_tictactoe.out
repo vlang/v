@@ -1,0 +1,7 @@
+vlib/v/checker/tests/with_check_option/v_tictactoe.vv:4:31: error: expected `init:`, not `len`
+    2 | 
+    3 | fn new_board() [][]string {
+    4 |     mut board := [3][]string{ len: 3, init: []string{ len: 3, init: '' } }
+      |                               ~~~
+    5 |     for i in 0..9 {
+    6 |         board[i / 3][i % 3] = (i + 1).str()

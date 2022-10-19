@@ -102,7 +102,7 @@ pub fn (mut b Builder) front_stages(v_files []string) ? {
 	timers.show('PARSE')
 	timers.show_if_exists('PARSE stmt')
 	if b.pref.only_check_syntax {
-		return error_with_code('stop_after_parser', 9999)
+		return error_with_code('stop_after_parser', 7001)
 	}
 }
 
@@ -120,7 +120,7 @@ pub fn (mut b Builder) middle_stages() ? {
 		return error('too many errors/warnings/notices')
 	}
 	if b.pref.check_only {
-		return error_with_code('stop_after_checker', 9999)
+		return error_with_code('stop_after_checker', 8001)
 	}
 	util.timing_start('TRANSFORM')
 	b.transformer.transform_files(b.parsed_files)

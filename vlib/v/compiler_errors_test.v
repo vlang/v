@@ -77,6 +77,7 @@ fn test_all() {
 	vroot := os.dir(vexe)
 	os.chdir(vroot) or {}
 	checker_dir := 'vlib/v/checker/tests'
+	checker_with_check_option_dir := 'vlib/v/checker/tests/with_check_option'
 	parser_dir := 'vlib/v/parser/tests'
 	scanner_dir := 'vlib/v/scanner/tests'
 	module_dir := '$checker_dir/modules'
@@ -86,7 +87,7 @@ fn test_all() {
 	skip_unused_dir := 'vlib/v/tests/skip_unused'
 	trace_calls_dir := 'vlib/v/tests/trace_calls'
 	//
-	checker_tests := get_tests_in_dir(checker_dir, false)
+	checker_tests := get_tests_in_dir(checker_dir, false).filter(!it.contains('with_check_option'))
 	parser_tests := get_tests_in_dir(parser_dir, false)
 	scanner_tests := get_tests_in_dir(scanner_dir, false)
 	global_tests := get_tests_in_dir(global_dir, false)
@@ -95,6 +96,8 @@ fn test_all() {
 	run_tests := get_tests_in_dir(run_dir, false)
 	skip_unused_dir_tests := get_tests_in_dir(skip_unused_dir, false)
 	trace_calls_dir_tests := get_tests_in_dir(trace_calls_dir, false)
+	checker_with_check_option_tests := get_tests_in_dir(checker_with_check_option_dir,
+		false)
 	mut tasks := Tasks{
 		vexe: vexe
 		label: 'all tests'
@@ -109,6 +112,8 @@ fn test_all() {
 	tasks.add('', global_dir, '-enable-globals', '.out', global_tests, false)
 	tasks.add('', module_dir, '-prod run', '.out', module_tests, true)
 	tasks.add('', run_dir, 'run', '.run.out', run_tests, false)
+	tasks.add('', checker_with_check_option_dir, '-check', '.out', checker_with_check_option_tests,
+		false)
 	tasks.run()
 	//
 	if os.user_os() == 'linux' {
