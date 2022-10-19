@@ -1533,6 +1533,41 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			} else {
 				method.params[i + 1]
 			}
+
+			if method.is_variadic && arg.expr is ast.ArrayDecompose {
+				if i > method.params.len - 2 {
+					c.error('too many arguments in call to `$method.name`', node.pos)
+				}
+			}
+			if method.is_variadic && i >= method.params.len - 2 {
+				param_sym := c.table.sym(param.typ)
+				mut expected_type := param.typ
+				if param_sym.kind == .array {
+					info := param_sym.array_info()
+					expected_type = info.elem_type
+					c.expected_type = expected_type
+				}
+				typ := c.expr(arg.expr)
+				if i == node.args.len - 1 {
+					if c.table.sym(typ).kind == .array && arg.expr !is ast.ArrayDecompose
+						&& !param.typ.has_flag(.generic) && expected_type != typ {
+						styp := c.table.type_to_str(typ)
+						elem_styp := c.table.type_to_str(expected_type)
+						c.error('to pass `$arg.expr` ($styp) to `$method.name` (which accepts type `...$elem_styp`), use `...$arg.expr`',
+							node.pos)
+					} else if arg.expr is ast.ArrayDecompose
+						&& c.table.sym(expected_type).kind == .sum_type
+						&& expected_type.idx() != typ.idx() {
+						expected_type_str := c.table.type_to_str(expected_type)
+						got_type_str := c.table.type_to_str(typ)
+						c.error('cannot use `...$got_type_str` as `...$expected_type_str` in argument ${
+							i + 1} to `$method_name`', arg.pos)
+					}
+				}
+			} else {
+				c.expected_type = param.typ
+			}
+
 			param_is_mut = param_is_mut || param.is_mut
 			param_share := param.typ.share()
 			if param_share == .shared_t && (c.locked_names.len > 0 || c.rlocked_names.len > 0) {
