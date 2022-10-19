@@ -446,7 +446,7 @@ fn parse_uri(url string) !&Uri {
 
 // set_state sets current state of the websocket connection
 fn (mut ws Client) set_state(state State) {
-	lock  {
+	lock {
 		ws.state = state
 	}
 }
@@ -463,7 +463,7 @@ fn (ws Client) assert_not_connected() ! {
 
 // reset_state resets the websocket and initialize default settings
 fn (mut ws Client) reset_state() ! {
-	lock  {
+	lock {
 		ws.state = .closed
 		ws.ssl_conn = ssl.new_ssl_conn()!
 		ws.flags = []
