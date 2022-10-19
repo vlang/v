@@ -419,7 +419,7 @@ isize, usize // platform-dependent, the size is how many bytes it takes to refer
 
 voidptr // this one is mostly used for C interoperability
 
-any // similar to C's void* and Go's interface{}
+any // COMING IN VERSION 0.4, similar to C's void* and Go's interface{}
 ```
 
 Please note that unlike C and Go, `int` is always a 32 bit integer.
