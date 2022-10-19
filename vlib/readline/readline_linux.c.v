@@ -248,6 +248,8 @@ fn (r Readline) analyse_control() Action {
 				`D` { return .move_cursor_left }
 				`B` { return .history_next }
 				`A` { return .history_previous }
+				`H` { return .move_cursor_begining }
+				`F` { return .move_cursor_end }
 				`1` { return r.analyse_extended_control() }
 				`2`, `3` { return r.analyse_extended_control_no_eat(u8(sequence)) }
 				else {}
