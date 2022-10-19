@@ -31,7 +31,7 @@ fn check_if_output_folder_is_writable(pref &pref.Preferences) {
 	if odir.len == pref.out_name.len {
 		output_folder = os.getwd()
 	}
-	os.is_writable_folder(output_folder) or {
+	os.ensure_folder_is_writable(output_folder) or {
 		// An early error here, is better than an unclear C error later:
 		verror(err.msg())
 	}
