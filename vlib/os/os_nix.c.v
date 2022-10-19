@@ -291,7 +291,6 @@ pub fn mkdir(path string, params MkdirParams) ! {
 	if r == -1 {
 		return error(posix_get_error_msg(C.errno))
 	}
-	return
 }
 
 // execute starts the specified command, waits for it to complete, and returns its output.
