@@ -16,7 +16,7 @@ rand.seed([u32(3110), 50714])
 ...
 
 // Use the top-level functions
-rand.u32n(100)?
+rand.u32n(100)!
 rand.int() // among others ...
 ```
 
@@ -41,7 +41,7 @@ rng.seed(seed.time_seed_array(pcg32.seed_len))
 ...
 
 // Use functions of your choice
-rng.u32n(100)?
+rng.u32n(100)!
 rng.int() // among others ...
 ```
 

@@ -149,7 +149,7 @@ fn new384() &Digest {
 }
 
 // write writes the contents of `p_` to the internal hash representation.
-pub fn (mut d Digest) write(p_ []u8) ?int {
+pub fn (mut d Digest) write(p_ []u8) !int {
 	unsafe {
 		mut p := p_
 		nn := p.len

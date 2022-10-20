@@ -154,17 +154,17 @@ pub fn integer_from_bytes(input []u8, config IntegerConfig) Integer {
 
 // integer_from_string creates a new `big.Integer` from the decimal digits specified in the given string.
 // For other bases, use `big.integer_from_radix` instead.
-pub fn integer_from_string(characters string) ?Integer {
+pub fn integer_from_string(characters string) !Integer {
 	return integer_from_radix(characters, 10)
 }
 
 // integer_from_radix creates a new `big.Integer` from the given string and radix.
-pub fn integer_from_radix(all_characters string, radix u32) ?Integer {
+pub fn integer_from_radix(all_characters string, radix u32) !Integer {
 	if radix < 2 || radix > 36 {
 		return error('Radix must be between 2 and 36 (inclusive)')
 	}
 	characters := all_characters.to_lower()
-	validate_string(characters, radix)?
+	validate_string(characters, radix)!
 	return match radix {
 		2 {
 			integer_from_special_string(characters, 1)
@@ -179,7 +179,7 @@ pub fn integer_from_radix(all_characters string, radix u32) ?Integer {
 }
 
 [direct_array_access]
-fn validate_string(characters string, radix u32) ? {
+fn validate_string(characters string, radix u32) ! {
 	sign_present := characters[0] == `+` || characters[0] == `-`
 
 	start_index := if sign_present { 1 } else { 0 }

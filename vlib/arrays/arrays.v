@@ -200,7 +200,7 @@ pub fn window<T>(array []T, attr WindowAttribute) [][]T {
 // which means you can only pass array of numbers for now.
 // TODO: Fix generic operator overloading detection issue.
 // Example: arrays.sum<int>([1, 2, 3, 4, 5])? // => 15
-pub fn sum<T>(array []T) ?T {
+pub fn sum<T>(array []T) !T {
 	if array.len == 0 {
 		return error('Cannot sum up array of nothing.')
 	} else {
@@ -222,8 +222,8 @@ pub fn sum<T>(array []T) ?T {
 // returns the accumulated value in `acc`.
 // returns an error if the array is empty.
 // See also: [fold](#fold).
-// Example: arrays.reduce([1, 2, 3, 4, 5], fn (t1 int, t2 int) int { return t1 * t2 })? // => 120
-pub fn reduce<T>(array []T, reduce_op fn (acc T, elem T) T) ?T {
+// Example: arrays.reduce([1, 2, 3, 4, 5], fn (t1 int, t2 int) int { return t1 * t2 })! // => 120
+pub fn reduce<T>(array []T, reduce_op fn (acc T, elem T) T) !T {
 	if array.len == 0 {
 		return error('Cannot reduce array of nothing.')
 	} else {
@@ -245,7 +245,7 @@ pub fn reduce<T>(array []T, reduce_op fn (acc T, elem T) T) ?T {
 // returns the accumulated value in `acc`.
 // returns an error if the array is empty.
 // See also: [fold_indexed](#fold_indexed).
-pub fn reduce_indexed<T>(array []T, reduce_op fn (idx int, acc T, elem T) T) ?T {
+pub fn reduce_indexed<T>(array []T, reduce_op fn (idx int, acc T, elem T) T) !T {
 	if array.len == 0 {
 		return error('Cannot reduce array of nothing.')
 	} else {
@@ -427,8 +427,8 @@ pub fn lower_bound<T>(array []T, val T) !T {
 }
 
 // returns the largest element <= val, requires `array` to be sorted
-// Example: arrays.upper_bound([2, 4, 6, 8], 3)? // => 2
-pub fn upper_bound<T>(array []T, val T) ?T {
+// Example: arrays.upper_bound([2, 4, 6, 8], 3)! // => 2
+pub fn upper_bound<T>(array []T, val T) !T {
 	if array.len == 0 {
 		return error('.upper_bound called on an empty array')
 	}

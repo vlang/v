@@ -11,8 +11,8 @@ import compress.deflate
 
 fn main() {
 	uncompressed := 'Hello world!'
-	compressed := deflate.compress(uncompressed.bytes())?
-	decompressed := deflate.decompress(compressed)?
+	compressed := deflate.compress(uncompressed.bytes())!
+	decompressed := deflate.decompress(compressed)!
 	assert decompressed == uncompressed.bytes()
 }
 ```

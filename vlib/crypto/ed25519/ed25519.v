@@ -50,7 +50,7 @@ pub fn (priv PrivateKey) equal(x []u8) bool {
 }
 
 // sign signs the given message with priv.
-pub fn (priv PrivateKey) sign(message []u8) ?[]u8 {
+pub fn (priv PrivateKey) sign(message []u8) ![]u8 {
 	/*
 	if opts.HashFunc() != crypto.Hash(0) {
 		return nil, errors.New("ed25519: cannot sign hashed message")
@@ -60,13 +60,13 @@ pub fn (priv PrivateKey) sign(message []u8) ?[]u8 {
 }
 
 // sign`signs the message with privatekey and returns a signature
-pub fn sign(privatekey PrivateKey, message []u8) ?[]u8 {
+pub fn sign(privatekey PrivateKey, message []u8) ![]u8 {
 	mut signature := []u8{len: ed25519.signature_size}
-	sign_generic(mut signature, privatekey, message)?
+	sign_generic(mut signature, privatekey, message)!
 	return signature
 }
 
-fn sign_generic(mut signature []u8, privatekey []u8, message []u8) ? {
+fn sign_generic(mut signature []u8, privatekey []u8, message []u8) ! {
 	if privatekey.len != ed25519.private_key_size {
 		panic('ed25519: bad private key length: $privatekey.len')
 	}
@@ -74,31 +74,31 @@ fn sign_generic(mut signature []u8, privatekey []u8, message []u8) ? {
 
 	mut h := sha512.sum512(seed)
 	mut s := edwards25519.new_scalar()
-	s.set_bytes_with_clamping(h[..32])?
+	s.set_bytes_with_clamping(h[..32])!
 	mut prefix := h[32..]
 
 	mut mh := sha512.new()
-	mh.write(prefix)?
-	mh.write(message)?
+	mh.write(prefix)!
+	mh.write(message)!
 
 	mut msg_digest := []u8{cap: sha512.size}
 	msg_digest = mh.sum(msg_digest)
 
 	mut r := edwards25519.new_scalar()
-	r.set_uniform_bytes(msg_digest)?
+	r.set_uniform_bytes(msg_digest)!
 
 	mut rr := edwards25519.Point{}
 	rr.scalar_base_mult(mut r)
 
 	mut kh := sha512.new()
-	kh.write(rr.bytes())?
-	kh.write(publickey)?
-	kh.write(message)?
+	kh.write(rr.bytes())!
+	kh.write(publickey)!
+	kh.write(message)!
 
 	mut hram_digest := []u8{cap: sha512.size}
 	hram_digest = kh.sum(hram_digest)
 	mut k := edwards25519.new_scalar()
-	k.set_uniform_bytes(hram_digest)?
+	k.set_uniform_bytes(hram_digest)!
 
 	mut ss := edwards25519.new_scalar()
 	ss.multiply_add(k, s, r)
@@ -108,7 +108,7 @@ fn sign_generic(mut signature []u8, privatekey []u8, message []u8) ? {
 }
 
 // verify reports whether sig is a valid signature of message by publickey.
-pub fn verify(publickey PublicKey, message []u8, sig []u8) ?bool {
+pub fn verify(publickey PublicKey, message []u8, sig []u8) !bool {
 	if publickey.len != ed25519.public_key_size {
 		return error('ed25519: bad public key length: $publickey.len')
 	}
@@ -118,21 +118,21 @@ pub fn verify(publickey PublicKey, message []u8, sig []u8) ?bool {
 	}
 
 	mut aa := edwards25519.Point{}
-	aa.set_bytes(publickey)?
+	aa.set_bytes(publickey)!
 
 	mut kh := sha512.new()
-	kh.write(sig[..32])?
-	kh.write(publickey)?
-	kh.write(message)?
+	kh.write(sig[..32])!
+	kh.write(publickey)!
+	kh.write(message)!
 
 	mut hram_digest := []u8{cap: sha512.size}
 	hram_digest = kh.sum(hram_digest)
 
 	mut k := edwards25519.new_scalar()
-	k.set_uniform_bytes(hram_digest)?
+	k.set_uniform_bytes(hram_digest)!
 
 	mut ss := edwards25519.new_scalar()
-	ss.set_canonical_bytes(sig[32..])?
+	ss.set_canonical_bytes(sig[32..])!
 
 	// [S]B = R + [k]A --> [k](-A) + [S]B = R
 	mut minus_a := edwards25519.Point{}
@@ -144,8 +144,8 @@ pub fn verify(publickey PublicKey, message []u8, sig []u8) ?bool {
 }
 
 // generate_key generates a public/private key pair entropy using `crypto.rand`.
-pub fn generate_key() ?(PublicKey, PrivateKey) {
-	mut seed := rand.bytes(ed25519.seed_size)?
+pub fn generate_key() !(PublicKey, PrivateKey) {
+	mut seed := rand.bytes(ed25519.seed_size)!
 
 	privatekey := new_key_from_seed(seed)
 	mut publickey := []u8{len: ed25519.public_key_size}

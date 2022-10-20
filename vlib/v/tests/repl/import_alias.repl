@@ -1,4 +1,4 @@
 import compress.zlib as z
-z.compress('hello world'.bytes())?
+z.compress('hello world'.bytes())!
 ===output===
 [120, 1, 1, 11, 0, 244, 255, 104, 101, 108, 108, 111, 32, 119, 111, 114, 108, 100, 26, 11, 4, 93]

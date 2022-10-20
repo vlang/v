@@ -28,7 +28,7 @@ pub fn new_writer(config WriterConfig) &Writer {
 }
 
 // write writes a single record
-pub fn (mut w Writer) write(record []string) ?bool {
+pub fn (mut w Writer) write(record []string) !bool {
 	if !valid_delim(w.delimiter) {
 		return IError(&InvalidDelimiterError{})
 	}

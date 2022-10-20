@@ -42,7 +42,7 @@ pub fn (alphabet Alphabet) str() string {
 
 // new_alphabet instantiates an Alphabet object based on
 // the provided characters
-pub fn new_alphabet(str string) ?Alphabet {
+pub fn new_alphabet(str string) !Alphabet {
 	if str.len != 58 {
 		return error(@MOD + '.' + @FN + ': string must be 58 characters in length')
 	}
