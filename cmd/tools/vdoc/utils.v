@@ -70,7 +70,7 @@ fn set_output_type_from_str(format string) OutputType {
 	return output_type
 }
 
-fn get_ignore_paths(path string) ?[]string {
+fn get_ignore_paths(path string) ![]string {
 	ignore_file_path := os.join_path(path, '.vdocignore')
 	ignore_content := os.read_file(ignore_file_path) or {
 		return error_with_code('ignore file not found.', 1)

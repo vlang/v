@@ -8,7 +8,7 @@ import math.bits
 import encoding.binary
 
 // int_u64 returns a random unsigned 64-bit integer `u64` read from a real OS source of entropy.
-pub fn int_u64(max u64) ?u64 {
+pub fn int_u64(max u64) !u64 {
 	bitlen := bits.len_64(max)
 	if bitlen == 0 {
 		return u64(0)
@@ -20,7 +20,7 @@ pub fn int_u64(max u64) ?u64 {
 	}
 	mut n := u64(0)
 	for {
-		mut bytes := read(k)?
+		mut bytes := read(k)!
 		bytes[0] &= u8(int(u64(1) << b) - 1)
 		x := bytes_to_u64(bytes)
 		n = x[0]
