@@ -941,8 +941,8 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			typ := c.expr(call_arg.expr)
 			if i == node.args.len - 1 {
 				if c.table.sym(typ).kind == .array && call_arg.expr !is ast.ArrayDecompose
-					&& c.table.sym(expected_type).kind != .array && !param.typ.has_flag(.generic)
-					&& expected_type != typ {
+					&& c.table.sym(expected_type).kind !in [.sum_type, .interface_]
+					&& !param.typ.has_flag(.generic) && expected_type != typ {
 					styp := c.table.type_to_str(typ)
 					elem_styp := c.table.type_to_str(expected_type)
 					c.error('to pass `$call_arg.expr` ($styp) to `$func.name` (which accepts type `...$elem_styp`), use `...$call_arg.expr`',
@@ -1551,7 +1551,7 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 				typ := c.expr(arg.expr)
 				if i == node.args.len - 1 {
 					if c.table.sym(typ).kind == .array && arg.expr !is ast.ArrayDecompose
-						&& c.table.sym(expected_type).kind != .array
+						&& c.table.sym(expected_type).kind !in [.sum_type, .interface_]
 						&& !param.typ.has_flag(.generic) && expected_type != typ {
 						styp := c.table.type_to_str(typ)
 						elem_styp := c.table.type_to_str(expected_type)
