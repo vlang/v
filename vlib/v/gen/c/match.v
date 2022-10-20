@@ -185,8 +185,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					}
 				} else if cond_sym.kind == .interface_ {
 					if cur_expr is ast.TypeNode {
-						type_node := cur_expr as ast.TypeNode
-						branch_sym := g.table.sym(g.unwrap_generic(type_node.typ))
+						branch_sym := g.table.sym(g.unwrap_generic(cur_expr.typ))
 						g.write('${dot_or_ptr}_typ == _${cond_sym.cname}_${branch_sym.cname}_index')
 					} else if cur_expr is ast.None && cond_sym.idx == ast.error_type_idx {
 						g.write('${dot_or_ptr}_typ == _IError_None___index')
