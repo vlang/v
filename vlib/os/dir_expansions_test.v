@@ -13,13 +13,12 @@ fn test_tmpdir() {
 	os.rm(tfile) or { panic(err) }
 }
 
-fn test_is_writable_folder() {
+fn test_ensure_folder_is_writable() {
 	tmp := os.temp_dir()
-	f := os.is_writable_folder(tmp) or {
+	os.ensure_folder_is_writable(tmp) or {
 		eprintln('err: $err')
-		false
+		assert false
 	}
-	assert f
 }
 
 fn test_expand_tilde_to_home() {
