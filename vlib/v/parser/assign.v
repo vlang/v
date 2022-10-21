@@ -59,6 +59,10 @@ fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) ? {
 				p.check_undefined_variables(exprs, arg.expr)?
 			}
 		}
+		ast.IndexExpr {
+			p.check_undefined_variables(exprs, val.left)?
+			p.check_undefined_variables(exprs, val.index)?
+		}
 		ast.InfixExpr {
 			p.check_undefined_variables(exprs, val.left)?
 			p.check_undefined_variables(exprs, val.right)?
@@ -154,6 +158,10 @@ fn (mut p Parser) check_undefined_variables_by_names(names []string, val ast.Exp
 			for arg in val.args {
 				p.check_undefined_variables_by_names(names, arg.expr)?
 			}
+		}
+		ast.IndexExpr {
+			p.check_undefined_variables_by_names(names, val.left)?
+			p.check_undefined_variables_by_names(names, val.index)?
 		}
 		ast.InfixExpr {
 			p.check_undefined_variables_by_names(names, val.left)?
