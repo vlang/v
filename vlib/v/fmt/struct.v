@@ -12,13 +12,14 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 		f.write('pub ')
 	}
 	if node.is_union {
-		f.write('union ')
+		f.write('union')
 	} else {
-		f.write('struct ')
+		f.write('struct')
 	}
-	f.write_language_prefix(node.language)
 	name := node.name.after('.') // strip prepended module
 	if !is_anon {
+		f.write(' ')
+		f.write_language_prefix(node.language)
 		f.write(name)
 	}
 	f.write_generic_types(node.generic_types)

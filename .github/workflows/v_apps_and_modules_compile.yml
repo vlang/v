@@ -81,16 +81,16 @@ jobs:
           echo "Test libsodium"
           VJOBS=1 v test ~/.vmodules/libsodium
 
-##      - name: Build VEX
-##        run: |
-##          echo "Install Vex"
-##          v install nedpals.vex
-##          echo "Compile all of the Vex examples"
-##          v should-compile-all ~/.vmodules/nedpals/vex/examples
-##          echo "Compile the simple Vex example with -gc boehm -skip-unused"
-##          v -gc boehm -skip-unused ~/.vmodules/nedpals/vex/examples/simple_example.v
-##          echo "Run Vex Tests"
-##          v test ~/.vmodules/nedpals/vex
+      - name: Build VEX
+        run: |
+          echo "Install Vex"
+          v install nedpals.vex
+          echo "Compile all of the Vex examples"
+          v should-compile-all ~/.vmodules/nedpals/vex/examples
+          echo "Compile the simple Vex example with -skip-unused"
+          v -skip-unused ~/.vmodules/nedpals/vex/examples/simple_example.v
+          echo "Run Vex Tests"
+          v test ~/.vmodules/nedpals/vex
 
       - name: Build go2v
         run: |
