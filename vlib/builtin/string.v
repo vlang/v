@@ -624,7 +624,7 @@ pub fn (s string) u64() u64 {
 // This method directly exposes the `parse_int` function from `strconv`
 // as a method on `string`. For more advanced features,
 // consider calling `strconv.common_parse_int` directly.
-pub fn (s string) parse_uint(_base int, _bit_size int) ?u64 {
+pub fn (s string) parse_uint(_base int, _bit_size int) !u64 {
 	return strconv.parse_uint(s, _base, _bit_size)
 }
 
@@ -644,7 +644,7 @@ pub fn (s string) parse_uint(_base int, _bit_size int) ?u64 {
 // This method directly exposes the `parse_uint` function from `strconv`
 // as a method on `string`. For more advanced features,
 // consider calling `strconv.common_parse_uint` directly.
-pub fn (s string) parse_int(_base int, _bit_size int) ?i64 {
+pub fn (s string) parse_int(_base int, _bit_size int) !i64 {
 	return strconv.parse_int(s, _base, _bit_size)
 }
 

@@ -38,8 +38,8 @@ fn test_if_guard_good() {
 	assert res == '1'
 }
 
-fn get_propagate(s string, i int) ?string {
-	c := s[i]?
+fn get_propagate(s string, i int) !string {
+	c := s[i]!
 	return 'got `${c:c}`'
 }
 

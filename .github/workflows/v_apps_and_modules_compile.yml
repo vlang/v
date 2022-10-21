@@ -87,8 +87,8 @@ jobs:
           v install nedpals.vex
           echo "Compile all of the Vex examples"
           v should-compile-all ~/.vmodules/nedpals/vex/examples
-          echo "Compile the simple Vex example with -gc boehm -skip-unused"
-          v -gc boehm -skip-unused ~/.vmodules/nedpals/vex/examples/simple_example.v
+          echo "Compile the simple Vex example with -skip-unused"
+          v -skip-unused ~/.vmodules/nedpals/vex/examples/simple_example.v
           echo "Run Vex Tests"
           v test ~/.vmodules/nedpals/vex
 

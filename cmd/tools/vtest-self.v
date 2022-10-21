@@ -211,13 +211,16 @@ const (
 		'vlib/net/unix/unix_test.v',
 		'vlib/net/unix/use_net_and_net_unix_together_test.v',
 		'vlib/net/websocket/websocket_test.v',
+		'vlib/net/openssl/openssl_compiles_test.v',
+		'vlib/net/http/request_test.v',
+		'vlib/net/smtp/smtp_test.v',
+		'vlib/net/ssl/ssl_compiles_test.v',
+		'vlib/net/mbedtls/mbedtls_compiles_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/vweb/request_test.v',
-		'vlib/net/http/request_test.v',
 		'vlib/vweb/route_test.v',
 		'vlib/sync/many_times_test.v',
 		'vlib/sync/once_test.v',
-		'vlib/net/smtp/smtp_test.v',
 		'vlib/v/tests/websocket_logger_interface_should_compile_test.v',
 	]
 	skip_on_non_windows           = [

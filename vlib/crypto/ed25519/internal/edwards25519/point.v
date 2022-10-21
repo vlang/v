@@ -18,30 +18,30 @@ const (
 	gen_point = generator() or { panic(err) }
 )
 
-fn d_const_generate() ?Element {
+fn d_const_generate() !Element {
 	mut v := Element{}
-	v.set_bytes(edwards25519.d_bytes)?
+	v.set_bytes(edwards25519.d_bytes)!
 	return v
 }
 
-fn d2_const_generate() ?Element {
+fn d2_const_generate() !Element {
 	mut v := Element{}
 	v.add(edwards25519.d_const, edwards25519.d_const)
 	return v
 }
 
 // id_point_generate is the point at infinity.
-fn id_point_generate() ?Point {
+fn id_point_generate() !Point {
 	mut p := Point{}
-	p.set_bytes(edwards25519.id_bytes)?
+	p.set_bytes(edwards25519.id_bytes)!
 	return p
 }
 
 // generator is the canonical curve basepoint. See TestGenerator for the
 // correspondence of this encoding with the values in RFC 8032.
-fn generator() ?Point {
+fn generator() !Point {
 	mut p := Point{}
-	p.set_bytes(edwards25519.gen_bytes)?
+	p.set_bytes(edwards25519.gen_bytes)!
 	return p
 }
 
@@ -117,7 +117,7 @@ fn (mut v ProjectiveP2) zero() ProjectiveP2 {
 // Note that set_bytes accepts all non-canonical encodings of valid points.
 // That is, it follows decoding rules that match most implementations in
 // the ecosystem rather than RFC 8032.
-pub fn (mut v Point) set_bytes(x []u8) ?Point {
+pub fn (mut v Point) set_bytes(x []u8) !Point {
 	// Specifically, the non-canonical encodings that are accepted are
 	//   1) the ones where the edwards25519 element is not reduced (see the
 	//      (*edwards25519.Element).set_bytes docs) and

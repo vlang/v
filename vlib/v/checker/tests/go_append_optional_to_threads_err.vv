@@ -1,0 +1,7 @@
+fn foo() ! {}
+
+fn main() {
+	mut ths := []thread{}
+	ths << go foo()
+	ths.wait()
+}

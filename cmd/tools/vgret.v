@@ -166,7 +166,7 @@ fn main() {
 	}
 
 	toml_conf := fp.string('toml-config', `t`, default_toml, 'Path or string with TOML configuration')
-	arg_paths := fp.finalize()?
+	arg_paths := fp.finalize()!
 	if show_help {
 		println(fp.usage())
 		exit(0)
@@ -179,7 +179,7 @@ fn main() {
 	}
 
 	if !os.exists(tmp_dir) {
-		os.mkdir_all(tmp_dir)?
+		os.mkdir_all(tmp_dir)!
 	}
 
 	opt.config = new_config(opt.root_path, toml_conf) or { panic(err) }
@@ -202,7 +202,7 @@ fn main() {
 			eprintln('Compare paths can not be the same directory `$path`/`$target_path`/`$gen_in_path`')
 			exit(1)
 		}
-		compare_screenshots(opt, gen_in_path, target_path)?
+		compare_screenshots(opt, gen_in_path, target_path)!
 	}
 }
 
@@ -254,7 +254,7 @@ fn generate_screenshots(mut opt Options, output_path string) ! {
 	}
 }
 
-fn compare_screenshots(opt Options, output_path string, target_path string) ? {
+fn compare_screenshots(opt Options, output_path string, target_path string) ! {
 	mut fails := map[string]string{}
 	mut warns := map[string]string{}
 	for app_config in opt.config.apps {
@@ -306,14 +306,14 @@ fn compare_screenshots(opt Options, output_path string, target_path string) ? {
 		}
 		first := fails.keys()[0]
 		fail_copy := os.join_path(os.temp_dir(), 'fail.' + first.all_after_last('.'))
-		os.cp(first, fail_copy)?
+		os.cp(first, fail_copy)!
 		eprintln('First failed file `$first` is copied to `$fail_copy`')
 
 		diff_file := os.join_path(os.temp_dir(), os.file_name(first).all_before_last('.') +
 			'.diff.tif')
 		diff_copy := os.join_path(os.temp_dir(), 'diff.tif')
 		if os.is_file(diff_file) {
-			os.cp(diff_file, diff_copy)?
+			os.cp(diff_file, diff_copy)!
 			eprintln('First failed diff file `$diff_file` is copied to `$diff_copy`')
 			eprintln('Removing alpha channel from $diff_copy ...')
 			final_fail_result_file := os.join_path(os.temp_dir(), 'diff.png')

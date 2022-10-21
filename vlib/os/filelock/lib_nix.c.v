@@ -17,21 +17,19 @@ pub fn (mut l FileLock) unlink() {
 	C.unlink(&char(l.name.str))
 }
 
-pub fn (mut l FileLock) acquire() ?bool {
+pub fn (mut l FileLock) acquire() ! {
 	if l.fd != -1 {
-		// lock already acquired by this instance
-		return false
+		return error_with_code('lock already acquired by this instance', 1)
 	}
 	fd := open_lockfile(l.name)
 	if fd == -1 {
-		return error('cannot create lock file $l.name')
+		return error_with_code('cannot create lock file $l.name', -1)
 	}
 	if C.flock(fd, C.LOCK_EX) == -1 {
 		C.close(fd)
-		return error('cannot lock')
+		return error_with_code('cannot lock', -2)
 	}
 	l.fd = fd
-	return true
 }
 
 pub fn (mut l FileLock) release() bool {
@@ -44,7 +42,7 @@ pub fn (mut l FileLock) release() bool {
 	return false
 }
 
-pub fn (mut l FileLock) wait_acquire(s int) ?bool {
+pub fn (mut l FileLock) wait_acquire(s int) bool {
 	fin := time.now().add(s)
 	for time.now() < fin {
 		if l.try_acquire() {

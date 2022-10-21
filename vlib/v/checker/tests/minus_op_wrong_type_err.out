@@ -40,21 +40,21 @@ vlib/v/checker/tests/minus_op_wrong_type_err.vv:16:10: error: mismatched types `
       |             ~~~~~~
    17 |     println(-Aaa{})
    18 |     println(-a)
-vlib/v/checker/tests/minus_op_wrong_type_err.vv:17:10: error: - operator can only be used with numeric types
+vlib/v/checker/tests/minus_op_wrong_type_err.vv:17:10: error: operator `-` can only be used with numeric types, but the value after `-` is of type `Aaa` instead
    15 |     println(a - 10)
    16 |     println(10 - a)
    17 |     println(-Aaa{})
       |             ^
    18 |     println(-a)
    19 |     println(-Color.red)
-vlib/v/checker/tests/minus_op_wrong_type_err.vv:18:10: error: - operator can only be used with numeric types
+vlib/v/checker/tests/minus_op_wrong_type_err.vv:18:10: error: operator `-` can only be used with numeric types, but the value after `-` is of type `map[string]int` instead
    16 |     println(10 - a)
    17 |     println(-Aaa{})
    18 |     println(-a)
       |             ^
    19 |     println(-Color.red)
    20 | }
-vlib/v/checker/tests/minus_op_wrong_type_err.vv:19:10: error: - operator can only be used with numeric types
+vlib/v/checker/tests/minus_op_wrong_type_err.vv:19:10: error: operator `-` can only be used with numeric types, but the value after `-` is of type `Color` instead
    17 |     println(-Aaa{})
    18 |     println(-a)
    19 |     println(-Color.red)

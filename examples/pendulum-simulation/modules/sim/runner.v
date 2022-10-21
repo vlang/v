@@ -3,11 +3,11 @@ module sim
 import benchmark
 import term
 
-pub type SimRequestHandler = fn (request &SimRequest) ?
+pub type SimRequestHandler = fn (request &SimRequest) !
 
-pub type SimStartHandler = fn () ?
+pub type SimStartHandler = fn () !
 
-pub type SimFinishHandler = fn () ?
+pub type SimFinishHandler = fn () !
 
 pub const (
 	default_width  = 600

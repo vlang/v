@@ -10,7 +10,7 @@ fn main() {
 	for _ in 0 .. repeats {
 		mut sb := strings.new_builder(blocksize)
 		for {
-			x := rand.read(blocksize)?
+			x := rand.read(blocksize)!
 			for c in x {
 				if c >= `0` && c <= `~` {
 					sb.write_u8(c)

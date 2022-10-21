@@ -21,7 +21,7 @@ fn man_cmd() Command {
 
 // print_manpage_for_command prints the manpage for the
 // command or subcommand in `man_cmd` to stdout
-pub fn print_manpage_for_command(man_cmd Command) ? {
+pub fn print_manpage_for_command(man_cmd Command) ! {
 	if man_cmd.args.len > 0 {
 		mut cmd := man_cmd.parent
 		for arg in man_cmd.args {

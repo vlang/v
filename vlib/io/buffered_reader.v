@@ -107,9 +107,9 @@ pub fn (r BufferedReader) end_of_stream() bool {
 // read_line attempts to read a line from the buffered reader
 // it will read until it finds a new line character (\n) or
 // the end of stream
-pub fn (mut r BufferedReader) read_line() ?string {
+pub fn (mut r BufferedReader) read_line() !string {
 	if r.end_of_stream {
-		return none
+		return error('none')
 	}
 	mut line := []u8{}
 	for {
@@ -119,7 +119,7 @@ pub fn (mut r BufferedReader) read_line() ?string {
 				// We are at the end of the stream
 				if line.len == 0 {
 					// we had nothing so return nothing
-					return none
+					return error('none')
 				}
 				return line.bytestr()
 			}
@@ -144,5 +144,5 @@ pub fn (mut r BufferedReader) read_line() ?string {
 		line << r.buf[r.offset..i]
 		r.offset = i
 	}
-	return none
+	return error('none')
 }

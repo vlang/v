@@ -22,7 +22,7 @@ const (
 )
 
 // Given a root key look for one of the subkeys in 'versions' and get the path
-fn find_windows_kit_internal(key RegKey, versions []string) ?string {
+fn find_windows_kit_internal(key RegKey, versions []string) !string {
 	$if windows {
 		unsafe {
 			for version in versions {
@@ -66,7 +66,7 @@ struct WindowsKit {
 }
 
 // Try and find the root key for installed windows kits
-fn find_windows_kit_root(target_arch string) ?WindowsKit {
+fn find_windows_kit_root(target_arch string) !WindowsKit {
 	$if windows {
 		wkroot := find_windows_kit_root_by_reg(target_arch) or {
 			if wkroot := find_windows_kit_root_by_env(target_arch) {
@@ -82,7 +82,7 @@ fn find_windows_kit_root(target_arch string) ?WindowsKit {
 }
 
 // Try to find the root key for installed windows kits from registry
-fn find_windows_kit_root_by_reg(target_arch string) ?WindowsKit {
+fn find_windows_kit_root_by_reg(target_arch string) !WindowsKit {
 	$if windows {
 		root_key := RegKey(0)
 		path := 'SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots'
@@ -104,9 +104,9 @@ fn find_windows_kit_root_by_reg(target_arch string) ?WindowsKit {
 	}
 }
 
-fn new_windows_kit(kit_root string, target_arch string) ?WindowsKit {
+fn new_windows_kit(kit_root string, target_arch string) !WindowsKit {
 	kit_lib := kit_root + 'Lib'
-	files := os.ls(kit_lib)?
+	files := os.ls(kit_lib)!
 	mut highest_path := ''
 	mut highest_int := 0
 	for f in files {
@@ -128,7 +128,7 @@ fn new_windows_kit(kit_root string, target_arch string) ?WindowsKit {
 	}
 }
 
-fn find_windows_kit_root_by_env(target_arch string) ?WindowsKit {
+fn find_windows_kit_root_by_env(target_arch string) !WindowsKit {
 	kit_root := os.getenv('WindowsSdkDir')
 	if kit_root == '' {
 		return error('empty WindowsSdkDir')
@@ -142,7 +142,7 @@ struct VsInstallation {
 	exe_path     string
 }
 
-fn find_vs(vswhere_dir string, host_arch string, target_arch string) ?VsInstallation {
+fn find_vs(vswhere_dir string, host_arch string, target_arch string) !VsInstallation {
 	$if windows {
 		vsinst := find_vs_by_reg(vswhere_dir, host_arch, target_arch) or {
 			if vsinst := find_vs_by_env(host_arch, target_arch) {
@@ -156,7 +156,7 @@ fn find_vs(vswhere_dir string, host_arch string, target_arch string) ?VsInstalla
 	}
 }
 
-fn find_vs_by_reg(vswhere_dir string, host_arch string, target_arch string) ?VsInstallation {
+fn find_vs_by_reg(vswhere_dir string, host_arch string, target_arch string) !VsInstallation {
 	$if windows {
 		// Emily:
 		// VSWhere is guaranteed to be installed at this location now
@@ -192,7 +192,7 @@ fn find_vs_by_reg(vswhere_dir string, host_arch string, target_arch string) ?VsI
 	}
 }
 
-fn find_vs_by_env(host_arch string, target_arch string) ?VsInstallation {
+fn find_vs_by_env(host_arch string, target_arch string) !VsInstallation {
 	vs_dir := os.getenv('VSINSTALLDIR')
 	if vs_dir == '' {
 		return error('empty VSINSTALLDIR')
@@ -214,7 +214,7 @@ fn find_vs_by_env(host_arch string, target_arch string) ?VsInstallation {
 	}
 }
 
-fn find_msvc(m64_target bool) ?MsvcResult {
+fn find_msvc(m64_target bool) !MsvcResult {
 	$if windows {
 		processor_architecture := os.getenv('PROCESSOR_ARCHITECTURE')
 		vswhere_dir := if processor_architecture == 'x86' {

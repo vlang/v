@@ -582,10 +582,10 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 	match mut expr {
 		ast.CastExpr {
 			// TODO
-			return '', pos
+			return '', expr.pos
 		}
 		ast.ComptimeSelector {
-			return '', pos
+			return '', expr.pos
 		}
 		ast.Ident {
 			if mut expr.obj is ast.Var {
@@ -619,6 +619,9 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 			}
 		}
 		ast.IndexExpr {
+			if expr.left_type == 0 {
+				return to_lock, pos
+			}
 			left_sym := c.table.sym(expr.left_type)
 			mut elem_type := ast.Type(0)
 			mut kind := ''
@@ -651,10 +654,10 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 		}
 		ast.SelectorExpr {
 			if expr.expr_type == 0 {
-				return '', pos
+				return '', expr.pos
 			}
 			// retrieve ast.Field
-			c.ensure_type_exists(expr.expr_type, expr.pos) or { return '', pos }
+			c.ensure_type_exists(expr.expr_type, expr.pos) or { return '', expr.pos }
 			mut typ_sym := c.table.final_sym(c.unwrap_generic(expr.expr_type))
 			match typ_sym.kind {
 				.struct_ {
@@ -666,7 +669,7 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 					if !has_field {
 						type_str := c.table.type_to_str(expr.expr_type)
 						c.error('unknown field `${type_str}.$expr.field_name`', expr.pos)
-						return '', pos
+						return '', expr.pos
 					}
 					if field_info.typ.has_flag(.shared_f) {
 						expr_name := '${expr.expr}.$expr.field_name'
@@ -702,7 +705,7 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 					mut field_info := interface_info.find_field(expr.field_name) or {
 						type_str := c.table.type_to_str(expr.expr_type)
 						c.error('unknown field `${type_str}.$expr.field_name`', expr.pos)
-						return '', pos
+						return '', expr.pos
 					}
 					if !field_info.is_mut {
 						type_str := c.table.type_to_str(expr.expr_type)
@@ -717,7 +720,7 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 					mut field_info := sumtype_info.find_field(expr.field_name) or {
 						type_str := c.table.type_to_str(expr.expr_type)
 						c.error('unknown field `${type_str}.$expr.field_name`', expr.pos)
-						return '', pos
+						return '', expr.pos
 					}
 					if !field_info.is_mut {
 						type_str := c.table.type_to_str(expr.expr_type)
@@ -756,18 +759,18 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 		}
 		ast.ArrayInit {
 			c.error('array literal can not be modified', expr.pos)
-			return '', pos
+			return '', expr.pos
 		}
 		ast.StructInit {
-			return '', pos
+			return '', expr.pos
 		}
 		ast.InfixExpr {
-			return '', pos
+			return '', expr.pos
 		}
 		else {
 			if !expr.is_pure_literal() {
 				c.error('unexpected expression `$expr.type_name()`', expr.pos())
-				return '', pos
+				return '', expr.pos()
 			}
 		}
 	}
@@ -949,7 +952,7 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast
 		}
 	} else if expr is ast.IndexExpr {
 		if expr.or_expr.kind != .absent {
-			c.check_or_expr(expr.or_expr, ret_type, ret_type.set_flag(.optional))
+			c.check_or_expr(expr.or_expr, ret_type, ret_type.set_flag(.result))
 		}
 	}
 	return ret_type
@@ -1030,6 +1033,10 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 					c.error('`or` block must provide a default value of type `$expected_type_name`, or return/continue/break or call a [noreturn] function like panic(err) or exit(1)',
 						stmt.expr.pos())
 				} else {
+					if ret_type.is_ptr() && last_stmt_typ.is_pointer()
+						&& c.table.sym(last_stmt_typ).kind == .voidptr {
+						return
+					}
 					type_name := c.table.type_to_str(last_stmt_typ)
 					expected_type_name := c.table.type_to_str(ret_type.clear_flag(.optional).clear_flag(.result))
 					c.error('wrong return type `$type_name` in the `or {}` block, expected `$expected_type_name`',
@@ -1070,7 +1077,9 @@ fn (mut c Checker) check_or_last_stmt(stmt ast.Stmt, ret_type ast.Type, expr_ret
 					return
 				}
 				if c.check_types(stmt.typ, expr_return_type) {
-					if stmt.typ.is_ptr() == expr_return_type.is_ptr() {
+					if stmt.typ.is_ptr() == expr_return_type.is_ptr()
+						|| (expr_return_type.is_ptr() && stmt.typ.is_pointer()
+						&& c.table.sym(stmt.typ).kind == .voidptr) {
 						return
 					}
 				}
@@ -3409,40 +3418,46 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) ast.Type {
 			return right_type.ref()
 		}
 	}
+	right_sym := c.table.final_sym(c.unwrap_generic(right_type))
 	if node.op == .mul {
 		if right_type.is_ptr() {
 			return right_type.deref()
 		}
 		if !right_type.is_pointer() && !c.pref.translated && !c.file.is_translated {
 			s := c.table.type_to_str(right_type)
-			c.error('invalid indirect of `$s`', node.pos)
+			c.error('invalid indirect of `$s`, the type `$right_sym.name` is not a pointer',
+				node.pos)
 		}
 		if right_type.is_voidptr() {
 			c.error('cannot dereference to void', node.pos)
 		}
 	}
 	if node.op == .bit_not && !right_type.is_int() && !c.pref.translated && !c.file.is_translated {
-		c.error('operator ~ only defined on int types', node.pos)
+		c.type_error_for_operator('~', 'integer', right_sym.name, node.pos)
 	}
 	if node.op == .not && right_type != ast.bool_type_idx && !c.pref.translated
 		&& !c.file.is_translated {
-		c.error('! operator can only be used with bool types', node.pos)
+		c.type_error_for_operator('!', 'bool', right_sym.name, node.pos)
 	}
 	// FIXME
 	// there are currently other issues to investigate if right_type
 	// is unwraped directly as initialization, so do it here
-	right_sym := c.table.final_sym(c.unwrap_generic(right_type))
 	if node.op == .minus && !right_sym.is_number() {
-		c.error('- operator can only be used with numeric types', node.pos)
+		c.type_error_for_operator('-', 'numeric', right_sym.name, node.pos)
 	}
 	if node.op == .arrow {
 		if right_sym.kind == .chan {
 			c.stmts_ending_with_expression(node.or_block.stmts)
 			return right_sym.chan_info().elem_type
 		}
-		c.error('<- operator can only be used with `chan` types', node.pos)
+		c.type_error_for_operator('<-', '`chan`', right_sym.name, node.pos)
 	}
 	return right_type
+}
+
+fn (mut c Checker) type_error_for_operator(op_label string, types_label string, found_type_label string, pos token.Pos) {
+	c.error('operator `$op_label` can only be used with $types_label types, but the value after `$op_label` is of type `$found_type_label` instead',
+		pos)
 }
 
 fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_type ast.Type, pos token.Pos, range_index bool, is_gated bool) {
@@ -3483,6 +3498,10 @@ fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_ty
 
 pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 	mut typ := c.expr(node.left)
+	if typ == 0 {
+		c.error('unknown type for expression `$node.left`', node.pos)
+		return typ
+	}
 	mut typ_sym := c.table.final_sym(typ)
 	node.left_type = typ
 	match typ_sym.kind {

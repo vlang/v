@@ -175,7 +175,7 @@ that's done by the `$vweb.html()` line.
 
 Now let's display some articles!
 
-We'll be using V's builtin ORM and a SQLite database.
+We'll be using V's built-in ORM and a SQLite database.
 (V ORM will also support MySQL, Postgre, and SQL Server soon.)
 
 Add a SQLite handle to `App`:

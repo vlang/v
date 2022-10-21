@@ -81,11 +81,10 @@ fn test_temp_dir() {
 		return
 	}
 	assert os.is_dir(path)
-	mut writable := os.is_writable_folder(path) or {
+	os.ensure_folder_is_writable(path) or {
 		assert false
 		return
 	}
-	assert writable
 	mut prev_path := path
 	// Test pattern
 	path = util.temp_dir(
@@ -114,11 +113,10 @@ fn test_temp_dir() {
 	}
 	assert path != prev_path
 	assert os.is_dir(path)
-	writable = os.is_writable_folder(path) or {
+	os.ensure_folder_is_writable(path) or {
 		assert false
 		return
 	}
-	assert writable
 	assert path.contains(tfolder)
 	filename = os.file_name(path)
 	for c in filename {

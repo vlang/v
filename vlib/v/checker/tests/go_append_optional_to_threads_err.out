@@ -1,0 +1,7 @@
+vlib/v/checker/tests/go_append_optional_to_threads_err.vv:5:12: error: cannot append `thread !` to `[]thread`
+    3 | fn main() {
+    4 |     mut ths := []thread{}
+    5 |     ths << go foo()
+      |               ~~~~~
+    6 |     ths.wait()
+    7 | }

@@ -44,15 +44,15 @@ fn new_ip(port u16, addr [4]u8) Addr {
 	return a
 }
 
-fn temp_unix() ?Addr {
+fn temp_unix() !Addr {
 	// create a temp file to get a filename
 	// close it
 	// remove it
 	// then reuse the filename
-	mut file, filename := util.temp_file()?
+	mut file, filename := util.temp_file()!
 	file.close()
-	os.rm(filename)?
-	addrs := resolve_addrs(filename, .unix, .udp)?
+	os.rm(filename)!
+	addrs := resolve_addrs(filename, .unix, .udp)!
 	return addrs[0]
 }
 
@@ -114,7 +114,7 @@ fn (a Addr) len() u32 {
 	}
 }
 
-pub fn resolve_addrs(addr string, family AddrFamily, @type SocketType) ?[]Addr {
+pub fn resolve_addrs(addr string, family AddrFamily, @type SocketType) ![]Addr {
 	match family {
 		.ip, .ip6, .unspec {
 			return resolve_ipaddrs(addr, family, @type)
@@ -143,9 +143,9 @@ pub fn resolve_addrs(addr string, family AddrFamily, @type SocketType) ?[]Addr {
 	}
 }
 
-pub fn resolve_addrs_fuzzy(addr string, @type SocketType) ?[]Addr {
+pub fn resolve_addrs_fuzzy(addr string, @type SocketType) ![]Addr {
 	if addr.len == 0 {
-		return none
+		return error('none')
 	}
 
 	// Use a small heuristic to figure out what address family this is
@@ -160,8 +160,8 @@ pub fn resolve_addrs_fuzzy(addr string, @type SocketType) ?[]Addr {
 	return resolve_addrs(addr, .unix, @type)
 }
 
-pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
-	address, port := split_address(addr)?
+pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ![]Addr {
+	address, port := split_address(addr)!
 
 	if addr[0] == `:` {
 		match family {
@@ -191,10 +191,10 @@ pub fn resolve_ipaddrs(addr string, family AddrFamily, typ SocketType) ?[]Addr {
 
 	// This might look silly but is recommended by MSDN
 	$if windows {
-		socket_error(0 - C.getaddrinfo(&char(address.str), &char(sport.str), &hints, &results))?
+		socket_error(0 - C.getaddrinfo(&char(address.str), &char(sport.str), &hints, &results))!
 	} $else {
 		x := C.getaddrinfo(&char(address.str), &char(sport.str), &hints, &results)
-		wrap_error(x)?
+		wrap_error(x)!
 	}
 
 	defer {

@@ -140,6 +140,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					c.stmts_ending_with_expression(branch.stmts)
 				} else {
 					c.stmts(branch.stmts)
+					c.check_non_expr_branch_last_stmt(branch.stmts)
 				}
 			} else if c.pref.output_cross_c {
 				mut is_freestanding_block := false
@@ -156,6 +157,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 					c.stmts_ending_with_expression(branch.stmts)
 				} else {
 					c.stmts(branch.stmts)
+					c.check_non_expr_branch_last_stmt(branch.stmts)
 				}
 			} else if !is_comptime_type_is_expr {
 				node.branches[i].stmts = []
@@ -174,6 +176,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 				c.stmts_ending_with_expression(branch.stmts)
 			} else {
 				c.stmts(branch.stmts)
+				c.check_non_expr_branch_last_stmt(branch.stmts)
 			}
 			c.smartcast_mut_pos = token.Pos{}
 			c.smartcast_cond_pos = token.Pos{}
@@ -359,5 +362,18 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 		}
 	} else if node is ast.Likely {
 		c.smartcast_if_conds(node.expr, mut scope)
+	}
+}
+
+fn (mut c Checker) check_non_expr_branch_last_stmt(stmts []ast.Stmt) {
+	if stmts.len > 0 {
+		last_stmt := stmts.last()
+		if last_stmt is ast.ExprStmt {
+			if last_stmt.expr is ast.InfixExpr {
+				if last_stmt.expr.op !in [.left_shift, .right_shift, .unsigned_right_shift, .arrow] {
+					c.error('expression evaluated but not used', last_stmt.pos)
+				}
+			}
+		}
 	}
 }

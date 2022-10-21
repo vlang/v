@@ -1,6 +1,6 @@
-[vlib/v/tests/inout/dump_generic_interface_ref_arg.vv:30] mi.in_(): 1.
-[vlib/v/tests/inout/dump_generic_interface_ref_arg.vv:31] mi.out(): 2.
-[vlib/v/tests/inout/dump_generic_interface_ref_arg.vv:36] in_put.in_(): 1.
-[vlib/v/tests/inout/dump_generic_interface_ref_arg.vv:37] in_put.out(): 2.
-[vlib/v/tests/inout/dump_generic_interface_ref_arg.vv:39] in_put.in_(): 1.
-[vlib/v/tests/inout/dump_generic_interface_ref_arg.vv:40] in_put.out(): 2.
+[vlib/v/tests/inout/dump_generic_interface_ref_arg.vv:30] mi.in_(): 1.0
+[vlib/v/tests/inout/dump_generic_interface_ref_arg.vv:31] mi.out(): 2.0
+[vlib/v/tests/inout/dump_generic_interface_ref_arg.vv:36] in_put.in_(): 1.0
+[vlib/v/tests/inout/dump_generic_interface_ref_arg.vv:37] in_put.out(): 2.0
+[vlib/v/tests/inout/dump_generic_interface_ref_arg.vv:39] in_put.in_(): 1.0
+[vlib/v/tests/inout/dump_generic_interface_ref_arg.vv:40] in_put.out(): 2.0

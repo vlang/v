@@ -13,13 +13,12 @@ fn test_tmpdir() {
 	os.rm(tfile) or { panic(err) }
 }
 
-fn test_is_writable_folder() {
+fn test_ensure_folder_is_writable() {
 	tmp := os.temp_dir()
-	f := os.is_writable_folder(tmp) or {
+	os.ensure_folder_is_writable(tmp) or {
 		eprintln('err: $err')
-		false
+		assert false
 	}
-	assert f
 }
 
 fn test_expand_tilde_to_home() {
@@ -33,11 +32,11 @@ fn test_expand_tilde_to_home() {
 	assert os.expand_tilde_to_home('~') == os.home_dir()
 }
 
-fn test_config_dir() ? {
-	cdir := os.config_dir()?
+fn test_config_dir() {
+	cdir := os.config_dir()!
 	assert cdir.len > 0
 	adir := '$cdir/test-v-config'
-	os.mkdir_all(adir)?
-	os.rmdir(adir)?
+	os.mkdir_all(adir)!
+	os.rmdir(adir)!
 	assert os.is_dir(cdir)
 }

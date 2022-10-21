@@ -1,0 +1,16 @@
+pub struct App {
+}
+
+pub fn (mut app App) register<T>(service T) {
+	fn [service] () {
+		println(service)
+	}()
+}
+
+pub struct Service {
+}
+
+fn main() {
+	mut app := App{}
+	app.register(Service{})
+}

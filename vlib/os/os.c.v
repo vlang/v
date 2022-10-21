@@ -39,14 +39,14 @@ fn C._chsize_s(voidptr, u64) int
 
 // read_bytes returns all bytes read from file in `path`.
 [manualfree]
-pub fn read_bytes(path string) ?[]u8 {
-	mut fp := vfopen(path, 'rb')?
+pub fn read_bytes(path string) ![]u8 {
+	mut fp := vfopen(path, 'rb')!
 	defer {
 		C.fclose(fp)
 	}
-	fsize := find_cfile_size(fp)?
+	fsize := find_cfile_size(fp)!
 	if fsize == 0 {
-		mut sb := slurp_file_in_builder(fp)?
+		mut sb := slurp_file_in_builder(fp)!
 		return unsafe { sb.reuse_as_plain_u8_array() }
 	}
 	mut res := []u8{len: fsize}
@@ -58,7 +58,7 @@ pub fn read_bytes(path string) ?[]u8 {
 	return res
 }
 
-fn find_cfile_size(fp &C.FILE) ?int {
+fn find_cfile_size(fp &C.FILE) !int {
 	// NB: Musl's fseek returns -1 for virtual files, while Glibc's fseek returns 0
 	cseek := C.fseek(fp, 0, C.SEEK_END)
 	raw_fsize := C.ftell(fp)
@@ -84,12 +84,12 @@ const buf_size = 4096
 // For these, we can not allocate all memory in advance (since we do not know the final size), and so we have no choice
 // but to read the file in `buf_size` chunks.
 [manualfree]
-fn slurp_file_in_builder(fp &C.FILE) ?strings.Builder {
+fn slurp_file_in_builder(fp &C.FILE) !strings.Builder {
 	buf := [os.buf_size]u8{}
 	mut sb := strings.new_builder(os.buf_size)
 	for {
 		mut read_bytes := fread(&buf[0], 1, os.buf_size, fp) or {
-			if err is none {
+			if err == IError(Eof{}) {
 				break
 			}
 			unsafe { sb.free() }
@@ -102,15 +102,15 @@ fn slurp_file_in_builder(fp &C.FILE) ?strings.Builder {
 
 // read_file reads the file in `path` and returns the contents.
 [manualfree]
-pub fn read_file(path string) ?string {
+pub fn read_file(path string) !string {
 	mode := 'rb'
-	mut fp := vfopen(path, mode)?
+	mut fp := vfopen(path, mode)!
 	defer {
 		C.fclose(fp)
 	}
-	allocate := find_cfile_size(fp)?
+	allocate := find_cfile_size(fp)!
 	if allocate == 0 {
-		mut sb := slurp_file_in_builder(fp)?
+		mut sb := slurp_file_in_builder(fp)!
 		res := sb.str()
 		unsafe { sb.free() }
 		return res
@@ -144,7 +144,7 @@ pub fn read_file(path string) ?string {
 //
 // truncate changes the size of the file located in `path` to `len`.
 // Note that changing symbolic links on Windows only works as admin.
-pub fn truncate(path string, len u64) ? {
+pub fn truncate(path string, len u64) ! {
 	fp := C.open(&char(path.str), o_wronly | o_trunc, 0)
 	defer {
 		C.close(fp)
@@ -212,7 +212,7 @@ pub fn file_size(path string) u64 {
 }
 
 // mv moves files or folders from `src` to `dst`.
-pub fn mv(src string, dst string) ? {
+pub fn mv(src string, dst string) ! {
 	mut rdst := dst
 	if is_dir(rdst) {
 		rdst = join_path_single(rdst.trim_right(path_separator), file_name(src.trim_right(path_separator)))
@@ -233,7 +233,7 @@ pub fn mv(src string, dst string) ? {
 }
 
 // cp copies files or folders from `src` to `dst`.
-pub fn cp(src string, dst string) ? {
+pub fn cp(src string, dst string) ! {
 	$if windows {
 		w_src := src.replace('/', '\\')
 		w_dst := dst.replace('/', '\\')
@@ -284,7 +284,7 @@ pub fn cp(src string, dst string) ? {
 // vfopen returns an opened C file, given its path and open mode.
 // Note: os.vfopen is useful for compatibility with C libraries, that expect `FILE *`.
 // If you write pure V code, os.create or os.open are more convenient.
-pub fn vfopen(path string, mode string) ?&C.FILE {
+pub fn vfopen(path string, mode string) !&C.FILE {
 	if path.len == 0 {
 		return error('vfopen called with ""')
 	}
@@ -479,7 +479,7 @@ pub fn is_readable(path string) bool {
 }
 
 // rm removes file in `path`.
-pub fn rm(path string) ? {
+pub fn rm(path string) ! {
 	mut rc := 0
 	$if windows {
 		rc = C._wremove(path.to_wide())
@@ -493,11 +493,11 @@ pub fn rm(path string) ? {
 }
 
 // rmdir removes a specified directory.
-pub fn rmdir(path string) ? {
+pub fn rmdir(path string) ! {
 	$if windows {
 		rc := C.RemoveDirectory(path.to_wide())
-		if rc == 0 {
-			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-removedirectorya - 0 is failure
+		if !rc {
+			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-removedirectorya - 0 == false, is failure
 			return error('Failed to remove "$path": ' + posix_get_error_msg(C.errno))
 		}
 	} $else {
@@ -651,8 +651,8 @@ pub fn executable() string {
 				// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
 				final_len := C.GetFinalPathNameByHandleW(file, unsafe { &u16(&final_path[0]) },
 					max_path_buffer_size, 0)
-				if final_len < max_path_buffer_size {
-					sret := unsafe { string_from_wide2(&u16(&final_path[0]), final_len) }
+				if final_len < u32(max_path_buffer_size) {
+					sret := unsafe { string_from_wide2(&u16(&final_path[0]), int(final_len)) }
 					defer {
 						unsafe { sret.free() }
 					}
@@ -665,7 +665,7 @@ pub fn executable() string {
 				}
 			}
 		}
-		res := unsafe { string_from_wide2(pu16_result, len) }
+		res := unsafe { string_from_wide2(pu16_result, int(len)) }
 		return res
 	}
 	$if macos {
@@ -798,7 +798,7 @@ fn kind_of_existing_path(path string) PathKind {
 }
 
 // chdir changes the current working directory to the new directory in `path`.
-pub fn chdir(path string) ? {
+pub fn chdir(path string) ! {
 	ret := $if windows { C._wchdir(path.to_wide()) } $else { C.chdir(&char(path.str)) }
 	if ret == -1 {
 		return error_with_code(posix_get_error_msg(C.errno), C.errno)
@@ -852,8 +852,8 @@ pub fn real_path(fpath string) string {
 			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
 			final_len := C.GetFinalPathNameByHandleW(file, pu16_fullpath, max_path_buffer_size,
 				0)
-			if final_len < max_path_buffer_size {
-				rt := unsafe { string_from_wide2(pu16_fullpath, final_len) }
+			if final_len < u32(max_path_buffer_size) {
+				rt := unsafe { string_from_wide2(pu16_fullpath, int(final_len)) }
 				srt := rt[4..]
 				unsafe { res.free() }
 				res = srt.clone()
@@ -952,14 +952,14 @@ pub fn flush() {
 
 // chmod change file access attributes of `path` to `mode`.
 // Octals like `0o600` can be used.
-pub fn chmod(path string, mode int) ? {
+pub fn chmod(path string, mode int) ! {
 	if C.chmod(&char(path.str), mode) != 0 {
 		return error_with_code('chmod failed: ' + posix_get_error_msg(C.errno), C.errno)
 	}
 }
 
 // chown changes the owner and group attributes of `path` to `owner` and `group`.
-pub fn chown(path string, owner int, group int) ? {
+pub fn chown(path string, owner int, group int) ! {
 	$if windows {
 		return error('os.chown() not implemented for Windows')
 	} $else {
@@ -970,7 +970,7 @@ pub fn chown(path string, owner int, group int) ? {
 }
 
 // open_append opens `path` file for appending.
-pub fn open_append(path string) ?File {
+pub fn open_append(path string) !File {
 	mut file := File{}
 	$if windows {
 		wpath := path.replace('/', '\\').to_wide()
@@ -996,7 +996,7 @@ pub fn open_append(path string) ?File {
 // The arguments, that will be passed to it are in `args`.
 // Note: this function will NOT return when successfull, since
 // the child process will take control over execution.
-pub fn execvp(cmdpath string, cmdargs []string) ? {
+pub fn execvp(cmdpath string, cmdargs []string) ! {
 	mut cargs := []&char{}
 	cargs << &char(cmdpath.str)
 	for i in 0 .. cmdargs.len {
@@ -1023,7 +1023,7 @@ pub fn execvp(cmdpath string, cmdargs []string) ? {
 // You can pass environment variables to through `envs`.
 // Note: this function will NOT return when successfull, since
 // the child process will take control over execution.
-pub fn execve(cmdpath string, cmdargs []string, envs []string) ? {
+pub fn execve(cmdpath string, cmdargs []string, envs []string) ! {
 	mut cargv := []&char{}
 	mut cenvs := []&char{}
 	cargv << &char(cmdpath.str)
@@ -1061,16 +1061,16 @@ pub fn is_atty(fd int) int {
 }
 
 // write_file_array writes the data in `buffer` to a file in `path`.
-pub fn write_file_array(path string, buffer array) ? {
-	mut f := create(path)?
-	unsafe { f.write_full_buffer(buffer.data, usize(buffer.len * buffer.element_size))? }
+pub fn write_file_array(path string, buffer array) ! {
+	mut f := create(path)!
+	unsafe { f.write_full_buffer(buffer.data, usize(buffer.len * buffer.element_size))! }
 	f.close()
 }
 
-pub fn glob(patterns ...string) ?[]string {
+pub fn glob(patterns ...string) ![]string {
 	mut matches := []string{}
 	for pattern in patterns {
-		native_glob_pattern(pattern, mut matches)?
+		native_glob_pattern(pattern, mut matches)!
 	}
 	matches.sort()
 	return matches

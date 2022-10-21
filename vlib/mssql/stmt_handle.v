@@ -68,8 +68,8 @@ fn (mut h HStmt) prepare_read() ? {
 	column_count := h.retrieve_column_count()?
 	h.column_count = column_count // remember the count because read will need it
 
-	h.buffers = [][]char{len: h.column_count, cap: h.column_count}
-	h.indicators = []C.SQLLEN{len: h.column_count, cap: h.column_count}
+	h.buffers = [][]char{len: h.column_count}
+	h.indicators = []C.SQLLEN{len: h.column_count}
 
 	for i := 0; i < h.column_count; i++ {
 		i_col := C.SQLUSMALLINT(i + 1) // col number starts with 1
@@ -82,7 +82,7 @@ fn (mut h HStmt) prepare_read() ? {
 		// buffer allocation is the size + 1 to include termination char, since SQL_DESC_LENGTH does not include it.
 		allocate_size := size_ret + C.SQLLEN(1)
 		allocate_size_int := int(allocate_size)
-		buff := []char{len: allocate_size_int, cap: allocate_size_int}
+		buff := []char{len: allocate_size_int}
 
 		// bind the buffer
 		retcode = C.SQLBindCol(h.hstmt, C.SQLUSMALLINT(i_col), C.SQLSMALLINT(C.SQL_C_CHAR),
@@ -112,7 +112,7 @@ fn (h HStmt) read_rows() ?[][]string {
 		if retcode == C.SQLRETURN(C.SQL_SUCCESS) || retcode == C.SQLRETURN(C.SQL_SUCCESS_WITH_INFO) {
 			// copy buffered result to res
 			for content in h.buffers {
-				row << string(content)
+				row << unsafe { cstring_to_vstring(content.data) }
 			}
 		} else {
 			if retcode != C.SQLRETURN(C.SQL_NO_DATA) {

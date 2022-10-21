@@ -14,12 +14,12 @@ pub struct TempFileOptions {
 }
 
 // temp_file returns an uniquely named, open, writable, `os.File` and it's path
-pub fn temp_file(tfo TempFileOptions) ?(os.File, string) {
+pub fn temp_file(tfo TempFileOptions) !(os.File, string) {
 	mut d := tfo.path
 	if d == '' {
 		d = os.temp_dir()
 	}
-	os.is_writable_folder(d) or {
+	os.ensure_folder_is_writable(d) or {
 		return error(@FN +
 			' could not create temporary file in "$d". Please ensure write permissions.')
 	}
@@ -46,31 +46,28 @@ pub struct TempDirOptions {
 	pattern string
 }
 
+fn error_for_temporary_folder(fn_name string, d string) !string {
+	return error('$fn_name could not create temporary directory "$d". Please ensure you have write permissions for it.')
+}
+
 // temp_dir returns an uniquely named, writable, directory path
-pub fn temp_dir(tdo TempFileOptions) ?string {
+pub fn temp_dir(tdo TempFileOptions) !string {
 	mut d := tdo.path
 	if d == '' {
 		d = os.temp_dir()
 	}
-	os.is_writable_folder(d) or {
-		return error(@FN +
-			' could not create temporary directory "$d". Please ensure write permissions.')
-	}
+	os.ensure_folder_is_writable(d) or { return error_for_temporary_folder(@FN, d) }
 	d = d.trim_right(os.path_separator)
 	prefix, suffix := prefix_and_suffix(tdo.pattern) or { return error(@FN + ' $err.msg()') }
 	for retry := 0; retry < util.retries; retry++ {
 		path := os.join_path(d, prefix + random_number() + suffix)
 		os.mkdir_all(path) or { continue }
 		if os.is_dir(path) && os.exists(path) {
-			os.is_writable_folder(path) or {
-				return error(@FN +
-					' could not create temporary directory "$d". Please ensure write permissions.')
-			}
+			os.ensure_folder_is_writable(path) or { return error_for_temporary_folder(@FN, d) }
 			return path
 		}
 	}
-	return error(@FN +
-		' could not create temporary directory "$d". Retry limit ($util.retries) exhausted. Please ensure write permissions.')
+	return error('${@FN} could not create temporary directory "$d". Retry limit ($util.retries) exhausted.')
 }
 
 // * Utility functions

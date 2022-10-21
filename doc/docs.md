@@ -1290,7 +1290,7 @@ large_index := 999
 val := arr[large_index] or { panic('out of bounds') }
 println(val)
 // you can also do this, if you want to *propagate* the access error:
-val2 := arr[333]?
+val2 := arr[333]!
 println(val2)
 ```
 
@@ -1901,8 +1901,8 @@ enum State {
 }
 
 // write log file and return number of bytes written
-fn write_log(s State) ?int {
-	mut f := os.create('log.txt')?
+fn write_log(s State) !int {
+	mut f := os.create('log.txt')!
 	defer {
 		f.close()
 	}
@@ -2133,7 +2133,7 @@ with a struct name.
 
 ```v
 struct Book {
-	author struct  {
+	author struct {
 		name string
 		age  int
 	}

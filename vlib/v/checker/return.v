@@ -39,8 +39,12 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 	mut expr_idxs := []int{}
 	for i, expr in node.exprs {
 		mut typ := c.expr(expr)
+		if typ == 0 {
+			return
+		}
 		if typ == ast.void_type {
 			c.error('`$expr` used as value', node.pos)
+			return
 		}
 		// Unpack multi return types
 		sym := c.table.sym(typ)

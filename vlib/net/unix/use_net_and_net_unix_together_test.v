@@ -17,31 +17,31 @@ fn testsuite_end() {
 	os.rmdir_all(tfolder) or {}
 }
 
-fn test_that_net_and_net_unix_can_be_imported_together_without_conflicts() ? {
+fn test_that_net_and_net_unix_can_be_imported_together_without_conflicts() {
 	mut l := unix.listen_stream(test_port) or { panic(err) }
 	go echo_server(mut l)
 	defer {
 		l.close() or {}
 	}
 	//
-	mut c := unix.connect_stream(test_port)?
+	mut c := unix.connect_stream(test_port)!
 	defer {
 		c.close() or {}
 	}
 	//
 	data := 'Hello from vlib/net!'
-	c.write_string(data)?
+	c.write_string(data)!
 	mut buf := []u8{len: 100}
-	assert c.read(mut buf)? == data.len
+	assert c.read(mut buf)! == data.len
 	eprintln('< client read back buf: |${buf[0..data.len].bytestr()}|')
 	assert buf[0..data.len] == data.bytes()
 }
 
-fn perror(s string) ? {
+fn perror(s string) ! {
 	println(s)
 }
 
-fn handle_conn(mut c unix.StreamConn) ? {
+fn handle_conn(mut c unix.StreamConn) ! {
 	for {
 		mut buf := []u8{len: 100, init: 0}
 		read := c.read(mut buf) or { return perror('Server: connection dropped') }
@@ -50,7 +50,7 @@ fn handle_conn(mut c unix.StreamConn) ? {
 	}
 }
 
-fn echo_server(mut l unix.StreamListener) ? {
+fn echo_server(mut l unix.StreamListener) ! {
 	for {
 		mut new_conn := l.accept() or { continue }
 		handle_conn(mut new_conn) or {}

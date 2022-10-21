@@ -122,8 +122,8 @@ pub fn (mut r Readline) disable_raw_mode() {
 }
 
 // read_char reads a single character.
-pub fn (r Readline) read_char() int {
-	return utf8_getchar()
+pub fn (r Readline) read_char() !int {
+	return int(term.utf8_getchar() or { return err })
 }
 
 // read_line_utf8 blocks execution in a loop and awaits user input
@@ -133,7 +133,7 @@ pub fn (r Readline) read_char() int {
 // an error if the line is empty.
 // The `prompt` `string` is output as a prefix text for the input capturing.
 // read_line_utf8 is the main method of the `readline` module and `Readline` struct.
-pub fn (mut r Readline) read_line_utf8(prompt string) ?[]rune {
+pub fn (mut r Readline) read_line_utf8(prompt string) ![]rune {
 	r.current = []rune{}
 	r.cursor = 0
 	r.prompt = prompt
@@ -151,7 +151,7 @@ pub fn (mut r Readline) read_line_utf8(prompt string) ?[]rune {
 	print(r.prompt)
 	for {
 		unsafe { C.fflush(C.stdout) }
-		c := r.read_char()
+		c := r.read_char() or { return err }
 		a := r.analyse(c)
 		if r.execute(a, c) {
 			break
@@ -168,8 +168,8 @@ pub fn (mut r Readline) read_line_utf8(prompt string) ?[]rune {
 
 // read_line does the same as `read_line_utf8` but returns user input as a `string`.
 // (As opposed to `[]rune` returned by `read_line_utf8`).
-pub fn (mut r Readline) read_line(prompt string) ?string {
-	s := r.read_line_utf8(prompt)?
+pub fn (mut r Readline) read_line(prompt string) !string {
+	s := r.read_line_utf8(prompt)!
 	return s.string()
 }
 
@@ -182,9 +182,9 @@ pub fn (mut r Readline) read_line(prompt string) ?string {
 // read_line_utf8 is the main method of the `readline` module and `Readline` struct.
 // NOTE that this version of `read_line_utf8` is a standalone function without
 // persistent functionalities (e.g. history).
-pub fn read_line_utf8(prompt string) ?[]rune {
+pub fn read_line_utf8(prompt string) ![]rune {
 	mut r := Readline{}
-	s := r.read_line_utf8(prompt)?
+	s := r.read_line_utf8(prompt)!
 	return s
 }
 
@@ -192,9 +192,9 @@ pub fn read_line_utf8(prompt string) ?[]rune {
 // (As opposed to `[]rune` as returned by `read_line_utf8`).
 // NOTE that this version of `read_line` is a standalone function without
 // persistent functionalities (e.g. history).
-pub fn read_line(prompt string) ?string {
+pub fn read_line(prompt string) !string {
 	mut r := Readline{}
-	s := r.read_line(prompt)?
+	s := r.read_line(prompt)!
 	return s
 }
 
@@ -239,15 +239,17 @@ fn (r Readline) analyse(c int) Action {
 
 // analyse_control returns an `Action` based on the type of input read by `read_char`.
 fn (r Readline) analyse_control() Action {
-	c := r.read_char()
+	c := r.read_char() or { panic('Control sequence incomplete') }
 	match u8(c) {
 		`[` {
-			sequence := r.read_char()
+			sequence := r.read_char() or { panic('Control sequence incomplete') }
 			match u8(sequence) {
 				`C` { return .move_cursor_right }
 				`D` { return .move_cursor_left }
 				`B` { return .history_next }
 				`A` { return .history_previous }
+				`H` { return .move_cursor_begining }
+				`F` { return .move_cursor_end }
 				`1` { return r.analyse_extended_control() }
 				`2`, `3` { return r.analyse_extended_control_no_eat(u8(sequence)) }
 				else {}
@@ -259,7 +261,7 @@ fn (r Readline) analyse_control() Action {
 	//TODO
 match c {
 	case `[`:
-	sequence := r.read_char()
+	sequence := r.read_char()?
 	match sequence {
 	case `C`: return .move_cursor_right
 	case `D`: return .move_cursor_left
@@ -282,11 +284,11 @@ match c {
 // analyse_extended_control returns an `Action` based on the type of input read by `read_char`.
 // analyse_extended_control specialises in cursor control.
 fn (r Readline) analyse_extended_control() Action {
-	r.read_char() // Removes ;
-	c := r.read_char()
+	r.read_char() or { panic('Control sequence incomplete') } // Removes ;
+	c := r.read_char() or { panic('Control sequence incomplete') }
 	match u8(c) {
 		`5` {
-			direction := r.read_char()
+			direction := r.read_char() or { panic('Control sequence incomplete') }
 			match u8(direction) {
 				`C` { return .move_cursor_word_right }
 				`D` { return .move_cursor_word_left }
@@ -301,7 +303,7 @@ fn (r Readline) analyse_extended_control() Action {
 // analyse_extended_control_no_eat returns an `Action` based on the type of input byte given in `c`.
 // analyse_extended_control_no_eat specialises in detection of delete and insert keys.
 fn (r Readline) analyse_extended_control_no_eat(last_c u8) Action {
-	c := r.read_char()
+	c := r.read_char() or { panic('Control sequence incomplete') }
 	match u8(c) {
 		`~` {
 			match last_c {

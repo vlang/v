@@ -7,14 +7,14 @@ fn main() {
 	files := os.args#[1..]
 	if files.len > 0 && files[0].starts_with('@') {
 		lst_path := files[0].all_after('@')
-		listed_files := os.read_file(lst_path)?.split('\n')
-		process_files(listed_files)?
+		listed_files := os.read_file(lst_path)!.split('\n')
+		process_files(listed_files)!
 		return
 	}
-	process_files(files)?
+	process_files(files)!
 }
 
-fn process_files(files []string) ? {
+fn process_files(files []string) ! {
 	mut pref := pref.new_preferences()
 	pref.is_fmt = true
 	pref.skip_warnings = true
@@ -31,7 +31,7 @@ fn process_files(files []string) ? {
 			continue
 		}
 		sw.restart()
-		s := scanner.new_scanner_file(f, .skip_comments, pref)?
+		s := scanner.new_scanner_file(f, .skip_comments, pref)!
 		f_us := sw.elapsed().microseconds()
 		total_us += f_us
 		total_bytes += s.text.len

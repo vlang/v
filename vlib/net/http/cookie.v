@@ -294,7 +294,7 @@ pub fn is_cookie_domain_name(_s string) bool {
 	return ok
 }
 
-fn parse_cookie_value(_raw string, allow_double_quote bool) ?string {
+fn parse_cookie_value(_raw string, allow_double_quote bool) !string {
 	mut raw := _raw
 	// Strip the quotes, if present
 	if allow_double_quote && raw.len > 1 && raw[0] == `"` && raw[raw.len - 1] == `"` {
@@ -320,7 +320,7 @@ fn is_cookie_name_valid(name string) bool {
 	return true
 }
 
-fn parse_cookie(line string) ?Cookie {
+fn parse_cookie(line string) !Cookie {
 	mut parts := line.trim_space().split(';')
 	if parts.len == 1 && parts[0] == '' {
 		return error('malformed cookie')

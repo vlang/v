@@ -117,7 +117,7 @@ pub fn (mut cm CacheManager) mod_postfix_with_key2cpath(mod string, postfix stri
 	return res
 }
 
-pub fn (mut cm CacheManager) exists(postfix string, key string) ?string {
+pub fn (mut cm CacheManager) exists(postfix string, key string) !string {
 	fpath := cm.postfix_with_key2cpath(postfix, key)
 	dlog(@FN, 'postfix: $postfix | key: $key | fpath: $fpath')
 	if !os.exists(fpath) {
@@ -126,7 +126,7 @@ pub fn (mut cm CacheManager) exists(postfix string, key string) ?string {
 	return fpath
 }
 
-pub fn (mut cm CacheManager) mod_exists(mod string, postfix string, key string) ?string {
+pub fn (mut cm CacheManager) mod_exists(mod string, postfix string, key string) !string {
 	fpath := cm.mod_postfix_with_key2cpath(mod, postfix, key)
 	dlog(@FN, 'mod: $mod | postfix: $postfix | key: $key | fpath: $fpath')
 	if !os.exists(fpath) {
@@ -137,32 +137,32 @@ pub fn (mut cm CacheManager) mod_exists(mod string, postfix string, key string) 
 
 //
 
-pub fn (mut cm CacheManager) save(postfix string, key string, content string) ?string {
+pub fn (mut cm CacheManager) save(postfix string, key string, content string) !string {
 	fpath := cm.postfix_with_key2cpath(postfix, key)
-	os.write_file(fpath, content)?
+	os.write_file(fpath, content)!
 	dlog(@FN, 'postfix: $postfix | key: $key | fpath: $fpath')
 	return fpath
 }
 
-pub fn (mut cm CacheManager) mod_save(mod string, postfix string, key string, content string) ?string {
+pub fn (mut cm CacheManager) mod_save(mod string, postfix string, key string, content string) !string {
 	fpath := cm.mod_postfix_with_key2cpath(mod, postfix, key)
-	os.write_file(fpath, content)?
+	os.write_file(fpath, content)!
 	dlog(@FN, 'mod: $mod | postfix: $postfix | key: $key | fpath: $fpath')
 	return fpath
 }
 
 //
 
-pub fn (mut cm CacheManager) load(postfix string, key string) ?string {
-	fpath := cm.exists(postfix, key)?
-	content := os.read_file(fpath)?
+pub fn (mut cm CacheManager) load(postfix string, key string) !string {
+	fpath := cm.exists(postfix, key)!
+	content := os.read_file(fpath)!
 	dlog(@FN, 'postfix: $postfix | key: $key | fpath: $fpath')
 	return content
 }
 
-pub fn (mut cm CacheManager) mod_load(mod string, postfix string, key string) ?string {
-	fpath := cm.mod_exists(mod, postfix, key)?
-	content := os.read_file(fpath)?
+pub fn (mut cm CacheManager) mod_load(mod string, postfix string, key string) !string {
+	fpath := cm.mod_exists(mod, postfix, key)!
+	content := os.read_file(fpath)!
 	dlog(@FN, 'mod: $mod | postfix: $postfix | key: $key | fpath: $fpath')
 	return content
 }

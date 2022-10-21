@@ -415,6 +415,7 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 	}
 	c.table.cur_fn = unsafe { &node.decl }
 	c.inside_anon_fn = true
+	mut has_generic := false
 	for mut var in node.inherited_vars {
 		parent_var := node.decl.scope.parent.find_var(var.name) or {
 			panic('unexpected checker error: cannot find parent of inherited variable `$var.name`')
@@ -424,9 +425,16 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 				var.pos)
 		}
 		var.typ = parent_var.typ
+		if var.typ.has_flag(.generic) {
+			has_generic = true
+		}
 	}
 	c.stmts(node.decl.stmts)
 	c.fn_decl(mut node.decl)
+	if has_generic && node.decl.generic_names.len == 0 {
+		c.error('generic closure fn must specify type parameter, e.g. fn [foo] <T>()',
+			node.decl.pos)
+	}
 	return node.typ
 }
 
@@ -933,6 +941,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			typ := c.expr(call_arg.expr)
 			if i == node.args.len - 1 {
 				if c.table.sym(typ).kind == .array && call_arg.expr !is ast.ArrayDecompose
+					&& c.table.sym(expected_type).kind !in [.sum_type, .interface_]
 					&& !param.typ.has_flag(.generic) && expected_type != typ {
 					styp := c.table.type_to_str(typ)
 					elem_styp := c.table.type_to_str(expected_type)
@@ -1282,10 +1291,10 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	} else if (left_sym.kind == .map || final_left_sym.kind == .map)
 		&& method_name in ['clone', 'keys', 'values', 'move', 'delete'] {
 		if left_sym.kind == .map {
-			return c.map_builtin_method_call(mut node, left_type, left_sym)
+			return c.map_builtin_method_call(mut node, left_type, c.table.sym(left_type))
 		} else {
 			parent_type := (left_sym.info as ast.Alias).parent_type
-			return c.map_builtin_method_call(mut node, parent_type, final_left_sym)
+			return c.map_builtin_method_call(mut node, parent_type, c.table.final_sym(left_type))
 		}
 	} else if left_sym.kind == .array && method_name in ['insert', 'prepend'] {
 		if method_name == 'insert' {
@@ -1525,6 +1534,42 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 			} else {
 				method.params[i + 1]
 			}
+
+			if method.is_variadic && arg.expr is ast.ArrayDecompose {
+				if i > method.params.len - 2 {
+					c.error('too many arguments in call to `$method.name`', node.pos)
+				}
+			}
+			if method.is_variadic && i >= method.params.len - 2 {
+				param_sym := c.table.sym(param.typ)
+				mut expected_type := param.typ
+				if param_sym.kind == .array {
+					info := param_sym.array_info()
+					expected_type = info.elem_type
+					c.expected_type = expected_type
+				}
+				typ := c.expr(arg.expr)
+				if i == node.args.len - 1 {
+					if c.table.sym(typ).kind == .array && arg.expr !is ast.ArrayDecompose
+						&& c.table.sym(expected_type).kind !in [.sum_type, .interface_]
+						&& !param.typ.has_flag(.generic) && expected_type != typ {
+						styp := c.table.type_to_str(typ)
+						elem_styp := c.table.type_to_str(expected_type)
+						c.error('to pass `$arg.expr` ($styp) to `$method.name` (which accepts type `...$elem_styp`), use `...$arg.expr`',
+							node.pos)
+					} else if arg.expr is ast.ArrayDecompose
+						&& c.table.sym(expected_type).kind == .sum_type
+						&& expected_type.idx() != typ.idx() {
+						expected_type_str := c.table.type_to_str(expected_type)
+						got_type_str := c.table.type_to_str(typ)
+						c.error('cannot use `...$got_type_str` as `...$expected_type_str` in argument ${
+							i + 1} to `$method_name`', arg.pos)
+					}
+				}
+			} else {
+				c.expected_type = param.typ
+			}
+
 			param_is_mut = param_is_mut || param.is_mut
 			param_share := param.typ.share()
 			if param_share == .shared_t && (c.locked_names.len > 0 || c.rlocked_names.len > 0) {
@@ -2040,6 +2085,12 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type ast.
 				c.table.find_or_register_array(info.value_type)
 			}
 			ret_type = ast.Type(typ)
+			if method_name == 'keys' && info.key_type.has_flag(.generic) {
+				ret_type = ret_type.set_flag(.generic)
+			}
+			if method_name == 'values' && info.value_type.has_flag(.generic) {
+				ret_type = ret_type.set_flag(.generic)
+			}
 		}
 		'delete' {
 			c.fail_if_immutable(node.left)

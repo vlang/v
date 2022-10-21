@@ -75,7 +75,7 @@ pub fn (mut b Builder) write_byte(data byte) {
 }
 
 // write implements the Writer interface
-pub fn (mut b Builder) write(data []u8) ?int {
+pub fn (mut b Builder) write(data []u8) !int {
 	if data.len == 0 {
 		return 0
 	}

@@ -7,7 +7,7 @@ fn path_by_extension(ext string) string {
 }
 
 fn test_keys() {
-	toml_doc := toml.parse_file(path_by_extension('toml'))?
+	toml_doc := toml.parse_file(path_by_extension('toml'))!
 
 	mut value := toml_doc.value('34-11')
 	assert value.int() == 23
@@ -19,7 +19,7 @@ fn test_keys() {
 	assert value.int() == 42
 
 	toml_json := to.json(toml_doc)
-	out_file_json := os.read_file(path_by_extension('out'))?
+	out_file_json := os.read_file(path_by_extension('out'))!
 	println(toml_json)
 	assert toml_json == out_file_json
 	//
@@ -36,9 +36,9 @@ fn test_keys() {
 }
 
 fn test_parse_dotted_key() {
-	assert toml.parse_dotted_key('')? == []
-	assert toml.parse_dotted_key('abc')? == ['abc']
-	assert toml.parse_dotted_key('tube.test."test.test".h."i.j."."k"')? == ['tube', 'test',
+	assert toml.parse_dotted_key('')! == []
+	assert toml.parse_dotted_key('abc')! == ['abc']
+	assert toml.parse_dotted_key('tube.test."test.test".h."i.j."."k"')! == ['tube', 'test',
 		'test.test', 'h', 'i.j.', 'k']
 	if x := toml.parse_dotted_key("'some unclosed string") {
 		assert false

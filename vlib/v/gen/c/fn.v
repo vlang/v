@@ -635,7 +635,17 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	// NOTE: everything could be done this way
 	// see my comment in parser near anon_fn
 	if node.left is ast.AnonFn {
-		g.expr(node.left)
+		if node.left.inherited_vars.len > 0 {
+			tmp_var := g.new_tmp_var()
+			fn_type := g.fn_var_signature(node.left.decl.return_type, node.left.decl.params.map(it.typ),
+				tmp_var)
+			g.write('$fn_type = ')
+			g.expr(node.left)
+			g.writeln(';')
+			g.write(tmp_var)
+		} else {
+			g.expr(node.left)
+		}
 	} else if node.left is ast.IndexExpr && node.name == '' {
 		g.is_fn_index_call = true
 		g.expr(node.left)
@@ -1875,12 +1885,20 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		g.writeln('$arg_tmp_var->ret_ptr = malloc(sizeof($s_ret_typ));')
 	}
 	is_opt := node.call_expr.return_type.has_flag(.optional)
+	is_res := node.call_expr.return_type.has_flag(.result)
 	mut gohandle_name := ''
 	if node.call_expr.return_type == ast.void_type {
-		gohandle_name = if is_opt { '__v_thread_Option_void' } else { '__v_thread' }
+		if is_opt {
+			gohandle_name = '__v_thread_Option_void'
+		} else if is_res {
+			gohandle_name = '__v_thread_Result_void'
+		} else {
+			gohandle_name = '__v_thread'
+		}
 	} else {
 		opt := if is_opt { '${option_name}_' } else { '' }
-		gohandle_name = '__v_thread_$opt${g.table.sym(g.unwrap_generic(node.call_expr.return_type)).cname}'
+		res := if is_res { '${result_name}_' } else { '' }
+		gohandle_name = '__v_thread_$opt$res${g.table.sym(g.unwrap_generic(node.call_expr.return_type)).cname}'
 	}
 	if g.pref.os == .windows {
 		simple_handle := if node.is_expr && node.call_expr.return_type != ast.void_type {

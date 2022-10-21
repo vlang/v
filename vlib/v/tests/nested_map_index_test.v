@@ -18,7 +18,7 @@ fn test_nested_map_index() {
 			}
 		}
 	}
-	ret := f.foo[11]?.bar[22]?
+	ret := f.foo[11]!.bar[22]!
 	println(ret)
 	assert ret == 'hello'
 }

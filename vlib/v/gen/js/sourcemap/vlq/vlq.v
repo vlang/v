@@ -50,7 +50,7 @@ fn decode64(input u8) u8 {
 //
 // Note that `i64::MIN = -(2^63)` cannot be represented in that form, and this
 // NOT IMPLEMENTED: function will return `Error::Overflowed` when attempting to decode it.
-pub fn decode(mut input io.Reader) ?i64 {
+pub fn decode(mut input io.Reader) !i64 {
 	mut buf := []u8{len: 1}
 
 	mut accum := u64(0)
@@ -90,7 +90,7 @@ fn encode64(input u8) u8 {
 }
 
 // Encode a value as Base64 VLQ, sending it to the writer
-pub fn encode(value i64, mut output io.Writer) ? {
+pub fn encode(value i64, mut output io.Writer) ! {
 	signed := value < 0
 	mut value_u64 := abs64(value) << 1
 	if signed {
