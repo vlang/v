@@ -2298,10 +2298,6 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 			ast.GoExpr {
 				g.v_error('threads not implemented for the native backend', node.pos)
 			}
-			ast.FloatLiteral {
-				g.v_error('floating point arithmetic not yet implemented for the native backend',
-					node.pos)
-			}
 			ast.TypeOf {
 				g.gen_typeof_expr(node.right[i] as ast.TypeOf, true)
 				g.mov_reg(.rsi, .rax)
@@ -2453,6 +2449,14 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 				}
 			}
 			// left: xmm0, right: xmm1
+			if node.left is ast.FloatLiteral && node.right_type == ast.f32_type_idx {
+				g.write32(0xc05a0ff2)
+				g.println('cvtsd2ss xmm0, xmm0')
+			}
+			if node.left_type == ast.f32_type_idx && node.right is ast.FloatLiteral {
+				g.write32(0xc95a0ff2)
+				g.println('cvtsd2ss xmm1, xmm1')
+			}
 			match node.op {
 				.eq, .ne {
 					g.write32(0xc1c20ff3)
