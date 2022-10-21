@@ -1291,10 +1291,10 @@ pub fn (mut c Checker) method_call(mut node ast.CallExpr) ast.Type {
 	} else if (left_sym.kind == .map || final_left_sym.kind == .map)
 		&& method_name in ['clone', 'keys', 'values', 'move', 'delete'] {
 		if left_sym.kind == .map {
-			return c.map_builtin_method_call(mut node, left_type, left_sym)
+			return c.map_builtin_method_call(mut node, left_type, c.table.sym(left_type))
 		} else {
 			parent_type := (left_sym.info as ast.Alias).parent_type
-			return c.map_builtin_method_call(mut node, parent_type, final_left_sym)
+			return c.map_builtin_method_call(mut node, parent_type, c.table.final_sym(left_type))
 		}
 	} else if left_sym.kind == .array && method_name in ['insert', 'prepend'] {
 		if method_name == 'insert' {
@@ -2085,6 +2085,12 @@ fn (mut c Checker) map_builtin_method_call(mut node ast.CallExpr, left_type ast.
 				c.table.find_or_register_array(info.value_type)
 			}
 			ret_type = ast.Type(typ)
+			if method_name == 'keys' && info.key_type.has_flag(.generic) {
+				ret_type = ret_type.set_flag(.generic)
+			}
+			if method_name == 'values' && info.value_type.has_flag(.generic) {
+				ret_type = ret_type.set_flag(.generic)
+			}
 		}
 		'delete' {
 			c.fail_if_immutable(node.left)
