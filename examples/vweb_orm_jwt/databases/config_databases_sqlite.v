@@ -1,4 +1,4 @@
-module main
+module databases
 
 import sqlite
 

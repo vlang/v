@@ -5,6 +5,7 @@ import crypto.sha256
 import crypto.bcrypt
 import encoding.base64
 import json
+import databases
 import time
 import os
 
@@ -25,7 +26,7 @@ struct JwtPayload {
 }
 
 fn (mut app App) service_auth(username string, password string) ?string {
-	mut db := create_db_connection() or {
+	mut db := databases.create_db_connection() or {
 		eprintln(err)
 		panic(err)
 	}
@@ -73,6 +74,9 @@ fn make_token(user User) string {
 }
 
 fn auth_verify(token string) bool {
+	if token == '' {
+		return false
+	}
 	secret := os.getenv('SECRET_KEY')
 	token_split := token.split('.')
 
