@@ -2133,7 +2133,7 @@ with a struct name.
 
 ```v
 struct Book {
-	author struct  {
+	author struct {
 		name string
 		age  int
 	}
