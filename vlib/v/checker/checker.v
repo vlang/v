@@ -129,7 +129,7 @@ mut:
 	inside_decl_rhs                  bool
 	inside_if_guard                  bool // true inside the guard condition of `if x := opt() {}`
 	comptime_call_pos                int  // needed for correctly checking use before decl for templates
-	goto_labels                      map[string]int // to check for unused goto labels
+	goto_labels                      map[string]ast.GotoLabel // to check for unused goto labels
 }
 
 pub fn new_checker(table &ast.Table, pref &pref.Preferences) &Checker {
@@ -4035,8 +4035,9 @@ pub fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what stri
 
 fn (mut c Checker) goto_label(node ast.GotoLabel) {
 	// Register a goto label
-	if c.goto_labels[node.name] == 0 {
-		c.goto_labels[node.name] = 0
+	if node.name !in c.goto_labels {
+		c.goto_labels[node.name] = node
+		c.goto_labels[node.name].is_used = false
 	}
 }
 
@@ -4050,16 +4051,16 @@ pub fn (mut c Checker) goto_stmt(node ast.GotoStmt) {
 	if c.table.cur_fn != unsafe { nil } && node.name !in c.table.cur_fn.label_names {
 		c.error('unknown label `$node.name`', node.pos)
 	}
-	c.goto_labels[node.name]++ // Register a label use
+	c.goto_labels[node.name].is_used = true // Register a label use
 	// TODO: check label doesn't bypass variable declarations
 }
 
 fn (mut c Checker) check_unused_labels() {
-	for label, nr_uses in c.goto_labels {
-		if nr_uses == 0 {
+	for name, label in c.goto_labels {
+		if !label.is_used {
 			// TODO show label's location
-			c.warn('label `$label` defined and not used', token.Pos{})
-			c.goto_labels[label]++ // so that this warning is not shown again
+			c.warn('label `$name` defined and not used', label.pos)
+			c.goto_labels[name].is_used = true // so that this warning is not shown again
 		}
 	}
 }
