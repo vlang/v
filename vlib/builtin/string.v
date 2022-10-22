@@ -1413,11 +1413,21 @@ pub fn (s string) trim_space() string {
 
 // trim strips any of the characters given in `cutset` from the start and end of the string.
 // Example: assert ' ffHello V ffff'.trim(' f') == 'Hello V'
-[direct_array_access]
 pub fn (s string) trim(cutset string) string {
 	if s.len < 1 || cutset.len < 1 {
 		return s.clone()
 	}
+	left, right := s.trim_indexes(cutset)
+	if right - left == 0 {
+		return ''
+	}
+	return s.substr(left, right)
+}
+
+// trim_indices gets the new start and end indicies of a string when any of the characters given in `cutset` were stripped from the start and end of the string. Should be used as an input to `substr()`. If the string contains only the characters in `cutset`, both values returned are zero.
+// Example: left, right := '-hi-'.trim_indexes('-')
+[direct_array_access]
+pub fn (s string) trim_indexes(cutset string) (int, int) {
 	mut pos_left := 0
 	mut pos_right := s.len - 1
 	mut cs_match := true
@@ -1438,10 +1448,10 @@ pub fn (s string) trim(cutset string) string {
 			}
 		}
 		if pos_left > pos_right {
-			return ''
+			return 0, 0
 		}
 	}
-	return s.substr(pos_left, pos_right + 1)
+	return pos_left, pos_right + 1
 }
 
 // trim_left strips any of the characters given in `cutset` from the left of the string.
