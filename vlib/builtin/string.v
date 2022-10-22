@@ -1418,9 +1418,6 @@ pub fn (s string) trim(cutset string) string {
 		return s.clone()
 	}
 	left, right := s.trim_indexes(cutset)
-	if right - left == 0 {
-		return ''
-	}
 	return s.substr(left, right)
 }
 
