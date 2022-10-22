@@ -1848,6 +1848,402 @@ fn (mut g Gen) delay_fn_call(name string) {
 	// do nothing for now
 }
 
+fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, name string, ident ast.Ident) {
+	match right {
+		ast.IntegerLiteral {
+			// g.allocate_var(name, 4, right.val.int())
+			match node.op {
+				.plus_assign {
+					g.mov_var_to_reg(.rax, ident)
+					g.add(.rax, right.val.int())
+					g.mov_reg_to_var(ident, .rax)
+				}
+				.minus_assign {
+					g.mov_var_to_reg(.rax, ident)
+					g.sub(.rax, right.val.int())
+					g.mov_reg_to_var(ident, .rax)
+				}
+				.mult_assign {
+					g.mov_var_to_reg(.rax, ident)
+					g.mov64(.rdx, right.val.int())
+					g.mul_reg(.rax, .rdx)
+					g.mov_reg_to_var(ident, .rax)
+				}
+				.div_assign {
+					g.mov_var_to_reg(.rax, ident)
+					g.mov64(.rdx, right.val.int())
+					g.div_reg(.rax, .rdx)
+					g.mov_reg_to_var(ident, .rax)
+				}
+				.decl_assign {
+					g.allocate_var(name, 8, right.val.int())
+				}
+				.assign {
+					// dump(g.typ(node.left_types[i]))
+					match node.left[i] {
+						ast.Ident {
+							// lname := '${node.left[i]}'
+							// g.expr(node.right[i])
+							g.mov(.rax, right.val.int())
+							g.mov_reg_to_var(ident, .rax)
+						}
+						else {
+							tn := node.left[i].type_name()
+							dump(node.left_types)
+							g.n_error('unhandled assign type: $tn')
+						}
+					}
+				}
+				else {
+					eprintln('ERROR 2')
+					dump(node)
+				}
+			}
+		}
+		ast.InfixExpr {
+			// eprintln('infix') dump(node) dump(right)
+			g.infix_expr(right)
+			offset := g.allocate_var(name, g.get_sizeof_ident(ident), 0)
+			// `mov DWORD PTR [rbp-0x8],eax`
+			if g.pref.is_verbose {
+				println('infix assignment $name offset=$offset.hex2()')
+			}
+			g.mov_reg_to_var(ident, .rax)
+		}
+		ast.Ident {
+			// eprintln('identr') dump(node) dump(right)
+			match node.op {
+				.plus_assign {
+					g.mov_var_to_reg(.rax, ident)
+					g.mov_var_to_reg(.rbx, right as ast.Ident)
+					g.add_reg(.rax, .rbx)
+					g.mov_reg_to_var(ident, .rax)
+				}
+				.minus_assign {
+					g.mov_var_to_reg(.rax, ident)
+					g.mov_var_to_reg(.rbx, right as ast.Ident)
+					g.sub_reg(.rax, .rbx)
+					g.mov_reg_to_var(ident, .rax)
+				}
+				.div_assign {
+					// this should be called when `a /= b` but it's not :?
+					g.mov_var_to_reg(.rax, ident)
+					g.mov_var_to_reg(.rbx, right as ast.Ident)
+					g.div_reg(.rax, .rbx)
+					g.mov_reg_to_var(ident, .rax)
+				}
+				.decl_assign {
+					typ := node.left_types[i]
+					if typ.is_number() || typ.is_real_pointer() || typ.is_bool() {
+						g.allocate_var(name, g.get_type_size(typ), 0)
+					} else {
+						ts := g.table.sym(typ)
+						match ts.info {
+							ast.Struct {
+								g.allocate_struct(name, typ)
+							}
+							else {}
+						}
+					}
+					var_ := g.get_var_from_ident(ident)
+					// TODO global var
+					right_var := g.get_var_from_ident(right) as LocalVar
+					match var_ {
+						LocalVar {
+							var := var_ as LocalVar
+							if var.typ.is_number() || var.typ.is_real_pointer() || var.typ.is_bool() {
+								g.mov_var_to_reg(.rax, right as ast.Ident)
+								g.mov_reg_to_var(ident, .rax)
+							} else {
+								ts := g.table.sym(var.typ)
+								match ts.info {
+									ast.Struct {
+										size := g.get_type_size(var.typ)
+										if size >= 8 {
+											for offset in 0 .. size / 8 {
+												g.mov_var_to_reg(.rax, right_var,
+													offset: offset * 8
+													typ: ast.i64_type_idx
+												)
+												g.mov_reg_to_var(var, .rax,
+													offset: offset * 8
+													typ: ast.i64_type_idx
+												)
+											}
+											if size % 8 != 0 {
+												g.mov_var_to_reg(.rax, right_var,
+													offset: size - 8
+													typ: ast.i64_type_idx
+												)
+												g.mov_reg_to_var(var, .rax,
+													offset: size - 8
+													typ: ast.i64_type_idx
+												)
+											}
+										} else {
+											mut left_size := if size >= 4 {
+												g.mov_var_to_reg(.rax, right_var,
+													typ: ast.int_type_idx
+												)
+												g.mov_reg_to_var(var, .rax,
+													typ: ast.int_type_idx
+												)
+												size - 4
+											} else {
+												size
+											}
+											if left_size >= 2 {
+												g.mov_var_to_reg(.rax, right_var,
+													offset: size - left_size
+													typ: ast.i16_type_idx
+												)
+												g.mov_reg_to_var(var, .rax,
+													offset: size - left_size
+													typ: ast.i16_type_idx
+												)
+												left_size -= 2
+											}
+											if left_size == 1 {
+												g.mov_var_to_reg(.rax, right_var,
+													offset: size - left_size
+													typ: ast.i8_type_idx
+												)
+												g.mov_reg_to_var(var, .rax,
+													offset: size - left_size
+													typ: ast.i8_type_idx
+												)
+											}
+										}
+									}
+									else {
+										g.n_error('Unsupported variable type')
+									}
+								}
+							}
+						}
+						else {
+							g.n_error('Unsupported variable kind')
+						}
+					}
+				}
+				.assign {
+					var_ := g.get_var_from_ident(ident)
+					// TODO global var
+					right_var := g.get_var_from_ident(right) as LocalVar
+					match var_ {
+						LocalVar {
+							var := var_ as LocalVar
+							if var.typ.is_number() || var.typ.is_real_pointer() || var.typ.is_bool() {
+								g.mov_var_to_reg(.rax, right as ast.Ident)
+								g.mov_reg_to_var(ident, .rax)
+							} else {
+								ts := g.table.sym(var.typ)
+								match ts.info {
+									ast.Struct {
+										size := g.get_type_size(var.typ)
+										if size >= 8 {
+											for offset in 0 .. size / 8 {
+												g.mov_var_to_reg(.rax, right_var,
+													offset: offset * 8
+													typ: ast.i64_type_idx
+												)
+												g.mov_reg_to_var(var, .rax,
+													offset: offset * 8
+													typ: ast.i64_type_idx
+												)
+											}
+											if size % 8 != 0 {
+												g.mov_var_to_reg(.rax, right_var,
+													offset: size - 8
+													typ: ast.i64_type_idx
+												)
+												g.mov_reg_to_var(var, .rax,
+													offset: size - 8
+													typ: ast.i64_type_idx
+												)
+											}
+										} else {
+											mut left_size := if size >= 4 {
+												g.mov_var_to_reg(.rax, right_var,
+													typ: ast.int_type_idx
+												)
+												g.mov_reg_to_var(var, .rax,
+													typ: ast.int_type_idx
+												)
+												size - 4
+											} else {
+												size
+											}
+											if left_size >= 2 {
+												g.mov_var_to_reg(.rax, right_var,
+													offset: size - left_size
+													typ: ast.i16_type_idx
+												)
+												g.mov_reg_to_var(var, .rax,
+													offset: size - left_size
+													typ: ast.i16_type_idx
+												)
+												left_size -= 2
+											}
+											if left_size == 1 {
+												g.mov_var_to_reg(.rax, right_var,
+													offset: size - left_size
+													typ: ast.i8_type_idx
+												)
+												g.mov_reg_to_var(var, .rax,
+													offset: size - left_size
+													typ: ast.i8_type_idx
+												)
+											}
+										}
+									}
+									else {
+										g.n_error('Unsupported variable type')
+									}
+								}
+							}
+						}
+						else {
+							g.n_error('Unsupported variable kind')
+						}
+					}
+				}
+				else {
+					eprintln('TODO: unhandled assign ident case')
+					dump(node)
+				}
+			}
+			// a += b
+		}
+		ast.StructInit {
+			match node.op {
+				.decl_assign {
+					g.allocate_struct(name, right.typ)
+					g.init_struct(ident, right)
+				}
+				else {
+					g.n_error('Unexpected operator `$node.op`')
+				}
+			}
+		}
+		ast.ArrayInit {
+			// check if array is empty
+			mut pos := g.allocate_array(name, 8, right.exprs.len)
+			// allocate array of right.exprs.len vars
+			for e in right.exprs {
+				match e {
+					ast.IntegerLiteral {
+						g.mov(.rax, e.val.int())
+						g.mov_reg_to_var(LocalVar{pos, ast.i64_type_idx, ''}, .rax)
+						pos += 8
+					}
+					ast.StringLiteral {
+						// TODO: use learel
+						str := g.eval_escape_codes(e)
+						g.mov64(.rsi, g.allocate_string(str, 2, .abs64)) // for rsi its 2
+						g.mov_reg_to_var(LocalVar{pos, ast.u64_type_idx, ''}, .rsi)
+						pos += 8
+					}
+					else {
+						dump(e)
+						g.n_error('unhandled array init type')
+					}
+				}
+			}
+		}
+		ast.IndexExpr {
+			// a := arr[0]
+			offset := g.allocate_var(name, g.get_sizeof_ident(ident), 0)
+			if g.pref.is_verbose {
+				println('infix assignment $name offset=$offset.hex2()')
+			}
+			ie := right as ast.IndexExpr
+			var := ie.left as ast.Ident
+			dest := g.get_var_offset(var.name)
+			if ie.index is ast.IntegerLiteral {
+				index := ie.index
+				ie_offset := index.val.int() * 8
+				g.mov_var_to_reg(.rax, var, typ: ast.i64_type_idx, offset: ie_offset)
+			} else if ie.index is ast.Ident {
+				ie_ident := ie.index
+				g.lea_var_to_reg(.rax, dest)
+				g.mov_var_to_reg(.rdi, ie_ident)
+				g.add_reg(.rax, .rdi)
+				g.mov_deref(.rax, .rax, ast.i64_type_idx)
+			} else {
+				g.n_error('only integers and idents can be used as indexes')
+			}
+			// TODO check if out of bounds access
+			g.mov_reg_to_var(ident, .eax)
+		}
+		ast.StringLiteral {
+			dest := g.allocate_var(name, 8, 0)
+			ie := right as ast.StringLiteral
+			str := g.eval_escape_codes(ie)
+			g.learel(.rsi, g.allocate_string(str, 3, .rel32))
+			g.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, .rsi)
+		}
+		ast.CallExpr {
+			g.allocate_var(name, g.get_sizeof_ident(ident), 0)
+			g.call_fn(right)
+			g.mov_reg_to_var(ident, .rax)
+			g.mov_var_to_reg(.rsi, ident)
+		}
+		ast.GoExpr {
+			g.v_error('threads not implemented for the native backend', node.pos)
+		}
+		ast.FloatLiteral {
+			g.v_error('floating point arithmetic not yet implemented for the native backend',
+				node.pos)
+		}
+		ast.TypeOf {
+			g.gen_typeof_expr(right as ast.TypeOf, true)
+			g.mov_reg(.rsi, .rax)
+		}
+		ast.AtExpr {
+			dest := g.allocate_var(name, 8, 0)
+			g.learel(.rsi, g.allocate_string(g.comptime_at(right), 3, .rel32))
+			g.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, .rsi)
+		}
+		else {
+			if right is ast.IfExpr && (right as ast.IfExpr).is_comptime {
+				if stmts := g.comptime_conditional(right) {
+					for j, stmt in stmts {
+						if j + 1 == stmts.len {
+							if stmt is ast.ExprStmt {
+								g.assign_right_expr(node, i, stmt.expr, name, ident)
+							} else {
+								g.n_error('last stmt must be expr')
+							}
+						} else {
+							g.stmt(stmt)
+						}
+					}
+				} else {
+					g.n_error('missing value for assignment')
+				}
+				return
+			}
+
+			// dump(node)
+			size := g.get_type_size(node.left_types[i])
+			if size !in [1, 2, 4, 8] || node.op !in [.assign, .decl_assign] {
+				g.v_error('unhandled assign_stmt expression: $right.type_name()', right.pos())
+			}
+			if node.op == .decl_assign {
+				g.allocate_var(name, size, 0)
+			}
+			g.expr(right)
+			var := g.get_var_from_ident(ident)
+			match var {
+				LocalVar { g.mov_reg_to_var(var as LocalVar, .rax) }
+				GlobalVar { g.mov_reg_to_var(var as GlobalVar, .rax) }
+				Register { g.mov_reg(var as Register, .rax) }
+			}
+		}
+	}
+}
+
 fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 	// `a := 1` | `a,b := 1,2`
 	for i, left in node.left {
@@ -1931,380 +2327,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 			}
 			continue
 		}
-		name := left.str()
-		ident := left as ast.Ident
-		match right {
-			ast.IntegerLiteral {
-				// g.allocate_var(name, 4, right.val.int())
-				match node.op {
-					.plus_assign {
-						g.mov_var_to_reg(.rax, ident)
-						g.add(.rax, right.val.int())
-						g.mov_reg_to_var(ident, .rax)
-					}
-					.minus_assign {
-						g.mov_var_to_reg(.rax, ident)
-						g.sub(.rax, right.val.int())
-						g.mov_reg_to_var(ident, .rax)
-					}
-					.mult_assign {
-						g.mov_var_to_reg(.rax, ident)
-						g.mov64(.rdx, right.val.int())
-						g.mul_reg(.rax, .rdx)
-						g.mov_reg_to_var(ident, .rax)
-					}
-					.div_assign {
-						g.mov_var_to_reg(.rax, ident)
-						g.mov64(.rdx, right.val.int())
-						g.div_reg(.rax, .rdx)
-						g.mov_reg_to_var(ident, .rax)
-					}
-					.decl_assign {
-						g.allocate_var(name, 8, right.val.int())
-					}
-					.assign {
-						// dump(g.typ(node.left_types[i]))
-						match node.left[i] {
-							ast.Ident {
-								// lname := '${node.left[i]}'
-								// g.expr(node.right[i])
-								g.mov(.rax, right.val.int())
-								g.mov_reg_to_var(ident, .rax)
-							}
-							else {
-								tn := node.left[i].type_name()
-								dump(node.left_types)
-								g.n_error('unhandled assign type: $tn')
-							}
-						}
-					}
-					else {
-						eprintln('ERROR 2')
-						dump(node)
-					}
-				}
-			}
-			ast.InfixExpr {
-				// eprintln('infix') dump(node) dump(right)
-				g.infix_expr(right)
-				offset := g.allocate_var(name, g.get_sizeof_ident(ident), 0)
-				// `mov DWORD PTR [rbp-0x8],eax`
-				if g.pref.is_verbose {
-					println('infix assignment $name offset=$offset.hex2()')
-				}
-				g.mov_reg_to_var(ident, .rax)
-			}
-			ast.Ident {
-				// eprintln('identr') dump(node) dump(right)
-				match node.op {
-					.plus_assign {
-						g.mov_var_to_reg(.rax, ident)
-						g.mov_var_to_reg(.rbx, right as ast.Ident)
-						g.add_reg(.rax, .rbx)
-						g.mov_reg_to_var(ident, .rax)
-					}
-					.minus_assign {
-						g.mov_var_to_reg(.rax, ident)
-						g.mov_var_to_reg(.rbx, right as ast.Ident)
-						g.sub_reg(.rax, .rbx)
-						g.mov_reg_to_var(ident, .rax)
-					}
-					.div_assign {
-						// this should be called when `a /= b` but it's not :?
-						g.mov_var_to_reg(.rax, ident)
-						g.mov_var_to_reg(.rbx, right as ast.Ident)
-						g.div_reg(.rax, .rbx)
-						g.mov_reg_to_var(ident, .rax)
-					}
-					.decl_assign {
-						typ := node.left_types[i]
-						if typ.is_number() || typ.is_real_pointer() || typ.is_bool() {
-							g.allocate_var(name, g.get_type_size(typ), 0)
-						} else {
-							ts := g.table.sym(typ)
-							match ts.info {
-								ast.Struct {
-									g.allocate_struct(name, typ)
-								}
-								else {}
-							}
-						}
-						var_ := g.get_var_from_ident(ident)
-						// TODO global var
-						right_var := g.get_var_from_ident(right) as LocalVar
-						match var_ {
-							LocalVar {
-								var := var_ as LocalVar
-								if var.typ.is_number() || var.typ.is_real_pointer()
-									|| var.typ.is_bool() {
-									g.mov_var_to_reg(.rax, right as ast.Ident)
-									g.mov_reg_to_var(ident, .rax)
-								} else {
-									ts := g.table.sym(var.typ)
-									match ts.info {
-										ast.Struct {
-											size := g.get_type_size(var.typ)
-											if size >= 8 {
-												for offset in 0 .. size / 8 {
-													g.mov_var_to_reg(.rax, right_var,
-														offset: offset * 8, typ: ast.i64_type_idx)
-													g.mov_reg_to_var(var, .rax,
-														offset: offset * 8
-														typ: ast.i64_type_idx
-													)
-												}
-												if size % 8 != 0 {
-													g.mov_var_to_reg(.rax, right_var,
-														offset: size - 8, typ: ast.i64_type_idx)
-													g.mov_reg_to_var(var, .rax,
-														offset: size - 8
-														typ: ast.i64_type_idx
-													)
-												}
-											} else {
-												mut left_size := if size >= 4 {
-													g.mov_var_to_reg(.rax, right_var,
-														typ: ast.int_type_idx)
-													g.mov_reg_to_var(var, .rax,
-														typ: ast.int_type_idx
-													)
-													size - 4
-												} else {
-													size
-												}
-												if left_size >= 2 {
-													g.mov_var_to_reg(.rax, right_var,
-														
-														offset: size - left_size
-														typ: ast.i16_type_idx
-													)
-													g.mov_reg_to_var(var, .rax,
-														offset: size - left_size
-														typ: ast.i16_type_idx
-													)
-													left_size -= 2
-												}
-												if left_size == 1 {
-													g.mov_var_to_reg(.rax, right_var,
-														
-														offset: size - left_size
-														typ: ast.i8_type_idx
-													)
-													g.mov_reg_to_var(var, .rax,
-														offset: size - left_size
-														typ: ast.i8_type_idx
-													)
-												}
-											}
-										}
-										else {
-											g.n_error('Unsupported variable type')
-										}
-									}
-								}
-							}
-							else {
-								g.n_error('Unsupported variable kind')
-							}
-						}
-					}
-					.assign {
-						var_ := g.get_var_from_ident(ident)
-						// TODO global var
-						right_var := g.get_var_from_ident(right) as LocalVar
-						match var_ {
-							LocalVar {
-								var := var_ as LocalVar
-								if var.typ.is_number() || var.typ.is_real_pointer()
-									|| var.typ.is_bool() {
-									g.mov_var_to_reg(.rax, right as ast.Ident)
-									g.mov_reg_to_var(ident, .rax)
-								} else {
-									ts := g.table.sym(var.typ)
-									match ts.info {
-										ast.Struct {
-											size := g.get_type_size(var.typ)
-											if size >= 8 {
-												for offset in 0 .. size / 8 {
-													g.mov_var_to_reg(.rax, right_var,
-														offset: offset * 8, typ: ast.i64_type_idx)
-													g.mov_reg_to_var(var, .rax,
-														offset: offset * 8
-														typ: ast.i64_type_idx
-													)
-												}
-												if size % 8 != 0 {
-													g.mov_var_to_reg(.rax, right_var,
-														offset: size - 8, typ: ast.i64_type_idx)
-													g.mov_reg_to_var(var, .rax,
-														offset: size - 8
-														typ: ast.i64_type_idx
-													)
-												}
-											} else {
-												mut left_size := if size >= 4 {
-													g.mov_var_to_reg(.rax, right_var,
-														typ: ast.int_type_idx)
-													g.mov_reg_to_var(var, .rax,
-														typ: ast.int_type_idx
-													)
-													size - 4
-												} else {
-													size
-												}
-												if left_size >= 2 {
-													g.mov_var_to_reg(.rax, right_var,
-														
-														offset: size - left_size
-														typ: ast.i16_type_idx
-													)
-													g.mov_reg_to_var(var, .rax,
-														offset: size - left_size
-														typ: ast.i16_type_idx
-													)
-													left_size -= 2
-												}
-												if left_size == 1 {
-													g.mov_var_to_reg(.rax, right_var,
-														
-														offset: size - left_size
-														typ: ast.i8_type_idx
-													)
-													g.mov_reg_to_var(var, .rax,
-														offset: size - left_size
-														typ: ast.i8_type_idx
-													)
-												}
-											}
-										}
-										else {
-											g.n_error('Unsupported variable type')
-										}
-									}
-								}
-							}
-							else {
-								g.n_error('Unsupported variable kind')
-							}
-						}
-					}
-					else {
-						eprintln('TODO: unhandled assign ident case')
-						dump(node)
-					}
-				}
-				// a += b
-			}
-			ast.StructInit {
-				match node.op {
-					.decl_assign {
-						g.allocate_struct(name, right.typ)
-						g.init_struct(ident, right)
-					}
-					else {
-						g.n_error('Unexpected operator `$node.op`')
-					}
-				}
-			}
-			ast.ArrayInit {
-				// check if array is empty
-				mut pos := g.allocate_array(name, 8, right.exprs.len)
-				// allocate array of right.exprs.len vars
-				for e in right.exprs {
-					match e {
-						ast.IntegerLiteral {
-							g.mov(.rax, e.val.int())
-							g.mov_reg_to_var(LocalVar{pos, ast.i64_type_idx, ''}, .rax)
-							pos += 8
-						}
-						ast.StringLiteral {
-							// TODO: use learel
-							str := g.eval_escape_codes(e)
-							g.mov64(.rsi, g.allocate_string(str, 2, .abs64)) // for rsi its 2
-							g.mov_reg_to_var(LocalVar{pos, ast.u64_type_idx, ''}, .rsi)
-							pos += 8
-						}
-						else {
-							dump(e)
-							g.n_error('unhandled array init type')
-						}
-					}
-				}
-			}
-			ast.IndexExpr {
-				// a := arr[0]
-				offset := g.allocate_var(name, g.get_sizeof_ident(ident), 0)
-				if g.pref.is_verbose {
-					println('infix assignment $name offset=$offset.hex2()')
-				}
-				ie := node.right[i] as ast.IndexExpr
-				var := ie.left as ast.Ident
-				dest := g.get_var_offset(var.name)
-				if ie.index is ast.IntegerLiteral {
-					index := ie.index
-					ie_offset := index.val.int() * 8
-					g.mov_var_to_reg(.rax, var, typ: ast.i64_type_idx, offset: ie_offset)
-				} else if ie.index is ast.Ident {
-					ie_ident := ie.index
-					g.lea_var_to_reg(.rax, dest)
-					g.mov_var_to_reg(.rdi, ie_ident)
-					g.add_reg(.rax, .rdi)
-					g.mov_deref(.rax, .rax, ast.i64_type_idx)
-				} else {
-					g.n_error('only integers and idents can be used as indexes')
-				}
-				// TODO check if out of bounds access
-				g.mov_reg_to_var(ident, .eax)
-			}
-			ast.StringLiteral {
-				dest := g.allocate_var(name, 8, 0)
-				ie := node.right[i] as ast.StringLiteral
-				str := g.eval_escape_codes(ie)
-				g.learel(.rsi, g.allocate_string(str, 3, .rel32))
-				g.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, .rsi)
-			}
-			ast.CallExpr {
-				g.allocate_var(name, g.get_sizeof_ident(ident), 0)
-				g.call_fn(right)
-				g.mov_reg_to_var(ident, .rax)
-				g.mov_var_to_reg(.rsi, ident)
-			}
-			ast.GoExpr {
-				g.v_error('threads not implemented for the native backend', node.pos)
-			}
-			ast.FloatLiteral {
-				g.v_error('floating point arithmetic not yet implemented for the native backend',
-					node.pos)
-			}
-			ast.TypeOf {
-				g.gen_typeof_expr(node.right[i] as ast.TypeOf, true)
-				g.mov_reg(.rsi, .rax)
-			}
-			ast.AtExpr {
-				dest := g.allocate_var(name, 8, 0)
-				g.learel(.rsi, g.allocate_string(g.comptime_at(right), 3, .rel32))
-				g.mov_reg_to_var(LocalVar{dest, ast.u64_type_idx, name}, .rsi)
-			}
-			else {
-				// dump(node)
-				size := g.get_type_size(node.left_types[i])
-				if size !in [1, 2, 4, 8] || node.op !in [.assign, .decl_assign] {
-					g.v_error('unhandled assign_stmt expression: $right.type_name()',
-						right.pos())
-				}
-				if node.op == .decl_assign {
-					g.allocate_var(name, size, 0)
-				}
-				g.expr(right)
-				var := g.get_var_from_ident(ident)
-				match var {
-					LocalVar { g.mov_reg_to_var(var as LocalVar, .rax) }
-					GlobalVar { g.mov_reg_to_var(var as GlobalVar, .rax) }
-					Register { g.mov_reg(var as Register, .rax) }
-				}
-			}
-		}
-		// }
+		g.assign_right_expr(node, i, right, left.str(), left as ast.Ident)
 	}
 }
 
@@ -2756,7 +2779,9 @@ fn (mut g Gen) condition(expr ast.Expr, neg bool) int {
 
 fn (mut g Gen) if_expr(node ast.IfExpr) {
 	if node.is_comptime {
-		g.comptime_conditional(node)
+		if stmts := g.comptime_conditional(node) {
+			g.stmts(stmts)
+		}
 		return
 	}
 	if node.branches.len == 0 {
