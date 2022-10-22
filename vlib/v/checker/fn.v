@@ -428,6 +428,7 @@ fn (mut c Checker) anon_fn(mut node ast.AnonFn) ast.Type {
 		if var.typ.has_flag(.generic) {
 			has_generic = true
 		}
+		node.decl.scope.update_var_type(var.name, var.typ)
 	}
 	c.stmts(node.decl.stmts)
 	c.fn_decl(mut node.decl)
