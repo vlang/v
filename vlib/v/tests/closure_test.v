@@ -210,3 +210,16 @@ fn test_closure_in_for_in_loop() {
 		// dump(res)
 	}
 }
+
+fn ret_two() (int, int) {
+	return 2, 5
+}
+
+fn test_closure_over_variable_that_is_returned_from_a_multi_value_function() {
+	one, two := ret_two()
+	a := fn [one] () {
+		println(one)
+	}
+	a()
+	println(two)
+}
