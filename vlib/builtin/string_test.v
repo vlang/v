@@ -538,6 +538,16 @@ fn test_trim() {
 	assert 'aaabccc'.trim('ac') == 'b'
 }
 
+fn test_trim_indexes() {
+	mut left, mut right := 0, 0
+	left, right = '- -- - '.trim_indexes(' -')
+	assert left == 0 && right == 0
+	left, right = '- hello-world!\t'.trim_indexes(' -\t')
+	assert left == 2 && right == 14
+	left, right = 'abc'.trim_indexes('ac')
+	assert left == 1 && right == 2
+}
+
 fn test_trim_left() {
 	mut s := 'module main'
 	assert s.trim_left(' ') == 'module main'
