@@ -74,6 +74,9 @@ fn make_token(user User) string {
 }
 
 fn auth_verify(token string) bool {
+	if token == '' {
+		return false
+	}
 	secret := os.getenv('SECRET_KEY')
 	token_split := token.split('.')
 
