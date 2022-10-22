@@ -117,7 +117,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 				p.error_with_pos('if guard condition expression is illegal, it should return optional',
 					expr.pos())
 			}
-			p.check_undefined_variables_by_names(var_names, expr) or {
+			p.check_undefined_variables(var_names, expr) or {
 				p.error_with_pos(err.msg(), pos)
 				break
 			}
