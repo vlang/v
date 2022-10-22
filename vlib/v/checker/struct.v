@@ -87,7 +87,7 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 			if field.has_default_expr {
 				c.expected_type = field.typ
 				default_expr_type := c.expr(field.default_expr)
-				if !field.typ.has_flag(.optional) {
+				if !field.typ.has_flag(.optional) && !field.typ.has_flag(.result) {
 					c.check_expr_opt_call(field.default_expr, default_expr_type)
 				}
 				struct_sym.info.fields[i].default_expr_typ = default_expr_type
@@ -420,7 +420,7 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 				if expr_type == ast.void_type {
 					c.error('`$field.expr` (no value) used as value', field.pos)
 				}
-				if !field_info.typ.has_flag(.optional) {
+				if !field_info.typ.has_flag(.optional) && !field.typ.has_flag(.result) {
 					expr_type = c.check_expr_opt_call(field.expr, expr_type)
 				}
 				expr_type_sym := c.table.sym(expr_type)
@@ -463,6 +463,10 @@ pub fn (mut c Checker) struct_init(mut node ast.StructInit) ast.Type {
 
 				if field_info.typ.has_flag(.optional) {
 					c.error('field `$field_info.name` is optional, but initialization of optional fields currently unsupported',
+						field.pos)
+				}
+				if field_info.typ.has_flag(.result) {
+					c.error('field `$field_info.name` is result, but initialization of result fields currently unsupported',
 						field.pos)
 				}
 				if expr_type.is_ptr() && expected_type.is_ptr() {
