@@ -159,9 +159,9 @@ mut:
 	array_sort_fn             shared []string
 	array_contains_types      []ast.Type
 	array_index_types         []ast.Type
-	auto_fn_definitions       []string // auto generated functions defination list
+	auto_fn_definitions       []string // auto generated functions definition list
 	sumtype_casting_fns       []SumtypeCastingFn
-	anon_fn_definitions       []string     // anon generated functions defination list
+	anon_fn_definitions       []string     // anon generated functions definition list
 	sumtype_definitions       map[int]bool // `_TypeA_to_sumtype_TypeB()` fns that have been generated
 	json_types                []ast.Type   // to avoid json gen duplicates
 	pcs                       []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
@@ -5529,7 +5529,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			// In ordinary functions, `opt()!` call is sugar for:
 			// `opt() or { return err }`
 			// Since we *do* return, first we have to ensure that
-			// the defered statements are generated.
+			// the deferred statements are generated.
 			g.write_defer_stmts()
 			// Now that option types are distinct we need a cast here
 			if g.fn_decl.return_type == ast.void_type {
@@ -5558,7 +5558,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			// In ordinary functions, `opt()?` call is sugar for:
 			// `opt() or { return err }`
 			// Since we *do* return, first we have to ensure that
-			// the defered statements are generated.
+			// the deferred statements are generated.
 			g.write_defer_stmts()
 			// Now that option types are distinct we need a cast here
 			if g.fn_decl.return_type == ast.void_type {
