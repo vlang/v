@@ -398,6 +398,7 @@ fn tcp_socket_from_handle(sockfd int) !TcpSocket {
 	return s
 }
 
+// tcp_socket_from_handle_raw is similar to tcp_socket_from_handle, but it does not modify any socket options
 pub fn tcp_socket_from_handle_raw(sockfd int) TcpSocket {
 	mut s := TcpSocket{
 		handle: sockfd
