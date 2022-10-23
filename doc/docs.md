@@ -3496,7 +3496,7 @@ fn main() {
 }
 ```
 
-V combines `Option` and `Result` into one type, so you don't need to decide which one to use.
+~~V combines `Option` and `Result` into one type, so you don't need to decide which one to use.~~
 
 The amount of work required to "upgrade" a function to an optional function is minimal;
 you have to add a `?` to the return type and return an error when something goes wrong.
