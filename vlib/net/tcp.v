@@ -398,7 +398,7 @@ fn tcp_socket_from_handle(sockfd int) !TcpSocket {
 	return s
 }
 
-fn tcp_socket_from_handle_raw(sockfd int) TcpSocket {
+pub fn tcp_socket_from_handle_raw(sockfd int) TcpSocket {
 	mut s := TcpSocket{
 		handle: sockfd
 	}
