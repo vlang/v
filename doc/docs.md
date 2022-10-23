@@ -112,8 +112,9 @@ To do so, run the command `v up`.
     * [v fmt](#v-fmt)
     * [v shader](#v-shader)
     * [Profiling](#profiling)
-* [Package Management](#package-management)
-	* [Publish package](#publish-package)
+* [Module management](#module-management)
+	* [module options](#module-options)
+	* [Publish module](#publish-module)
 * [Advanced Topics](#advanced-topics)
     * [Memory-unsafe code](#memory-unsafe-code)
     * [Structs with reference fields](#structs-with-reference-fields)
@@ -4730,13 +4731,13 @@ fn main() {
 }
 ```
 
-## Package management
+## Module management
 
 ```powershell
 v [module option] [param]
 ```
 
-###### module options:
+### module options
 
 ```
    install           Install a module from VPM.
@@ -4820,7 +4821,7 @@ v outdated
 Modules are up to date.
 ```
 
-### Publish package
+### Publish module
 
 1. Put a `v.mod` file inside the toplevel folder of your module (if you
 	created your module with the command `v new mymodule` or `v init` you already have a v.mod file).
