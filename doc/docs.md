@@ -123,6 +123,11 @@ To do so, run the command `v up`.
     * [Export to shared library](#export-to-shared-library)
 	* [Atomics](#atomics)
 	* [Global Variables](#global-variables)
+	* [Passing C compilation flags](#passing-c-compilation-flags)
+	* [#pkgconfig](#pkgconfig)
+	* [Including C code](#including-c-code)
+	* [C types](#c-types)
+	* [C Declarations](#c-declarations)
     * [Debugging](#debugging)
     * [Conditional compilation](#conditional-compilation)
     * [Compile time pseudo variables](#compile-time-pseudo-variables)
@@ -5206,7 +5211,7 @@ to race conditions. There are several approaches to deal with these:
   correlated, which is acceptable considering the performance penalty that using
   synchonization primitives would represent.
 
-### Passing C compilation flags
+## Passing C compilation flags
 
 Add `#flag` directives to the top of your V files to provide C compilation flags like:
 
@@ -5236,7 +5241,7 @@ In the console build command, you can use:
 You can define a `VFLAGS` environment variable in your terminal to store your `-cc`
 and `-cflags` settings, rather than including them in the build command each time.
 
-### #pkgconfig
+## #pkgconfig
 
 Add `#pkgconfig` directive is used to tell the compiler which modules should be used for compiling
 and linking using the pkg-config files provided by the respective dependencies.
@@ -5267,7 +5272,7 @@ $if $pkgconfig('mysqlclient') {
 }
 ```
 
-### Including C code
+## Including C code
 
 You can also include C code directly in your V module.
 For example, let's say that your C code is located in a folder named 'c' inside your module folder.
@@ -5310,7 +5315,7 @@ You can see a complete minimal example for using C code in a V wrapper module he
 Another example, demonstrating passing structs from C to V and back again:
 [interoperate between C to V to C](https://github.com/vlang/v/tree/master/vlib/v/tests/project_with_c_code_2).
 
-### C types
+## C types
 
 Ordinary zero terminated C strings can be converted to V strings with
 `unsafe { &char(cstring).vstring() }` or if you know their length already with
@@ -5337,7 +5342,7 @@ To cast a `voidptr` to a V reference, use `user := &User(user_void_ptr)`.
 
 [an example of a module that calls C code from V](https://github.com/vlang/v/blob/master/vlib/v/tests/project_with_c_code/mod1/wrapper.v)
 
-### C Declarations
+## C Declarations
 
 C identifiers are accessed with the `C` prefix similarly to how module-specific
 identifiers are accessed. Functions must be redeclared in V before they can be used.
