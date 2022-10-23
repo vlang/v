@@ -628,7 +628,7 @@ pub fn kind_to_string(k Kind) string {
 	}
 }
 
-pub fn kind_from_string(s string) ?Kind {
+pub fn kind_from_string(s string) !Kind {
 	return match s {
 		'unknown' { .unknown }
 		'eof' { .eof }

@@ -83,7 +83,7 @@ fn (mut m Mapper) dot_fn_name(fname string, recv_type ast.Type, is_method bool) 
 	return 'Node_fn_' + m.dot_normalise_node_name(fname)
 }
 
-fn (mut m Mapper) visit(node &ast.Node) ? {
+fn (mut m Mapper) visit(node &ast.Node) ! {
 	m.node = unsafe { node }
 	match node {
 		ast.File {

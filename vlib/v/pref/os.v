@@ -32,7 +32,7 @@ pub enum OS {
 }
 
 // Helper function to convert string names to OS enum
-pub fn os_from_string(os_str string) ?OS {
+pub fn os_from_string(os_str string) !OS {
 	match os_str {
 		'' {
 			return ._auto

@@ -16,7 +16,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	}
 }
 
-pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
+pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 	p.trace_parser('expr($precedence)')
 	mut node := ast.empty_expr
 	is_stmt_ident := p.is_stmt_ident
@@ -363,7 +363,7 @@ pub fn (mut p Parser) check_expr(precedence int) ?ast.Expr {
 			}
 			if p.tok.kind != .eof && !(p.tok.kind == .rsbr && p.inside_asm) {
 				// eof should be handled where it happens
-				return none
+				return error('none')
 				// return p.unexpected(prepend_msg: 'invalid expression: ')
 			}
 		}
