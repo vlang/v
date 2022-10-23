@@ -1,0 +1,7 @@
+vlib/v/checker/tests/unwrapped_result_infix_err.vv:11:10: error: unwrapped result cannot be used in an infix expression
+    9 |     for k, _ in m {
+   10 |         assert f(k)! == true
+   11 |         assert f(k) == true
+      |                ~~~~
+   12 |     }
+   13 | }

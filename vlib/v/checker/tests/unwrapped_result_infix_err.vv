@@ -1,0 +1,17 @@
+fn f(k string) !bool {
+	return true
+}
+
+fn g() ! {
+	m := {
+		'1': true
+	}
+	for k, _ in m {
+		assert f(k)! == true
+		assert f(k) == true
+	}
+}
+
+fn main() {
+	g()!
+}
