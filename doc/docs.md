@@ -30,6 +30,8 @@ To do so, run the command `v up`.
 
 ## Table of Contents
 
+### Basics
+
 <table>
     <tr><td width=33% valign=top>
 
@@ -57,6 +59,9 @@ To do so, run the command `v up`.
     * [For loop](#for-loop)
     * [Match](#match)
     * [Defer](#defer)
+
+</td><td width=33% valign=top>
+
 * [Structs](#structs)
     * [Default field values](#default-field-values)
     * [Short struct literal syntax](#short-struct-literal-syntax)
@@ -64,9 +69,6 @@ To do so, run the command `v up`.
     * [Methods](#methods)
     * [Embedded structs](#embedded-structs)
 * [Unions](#unions)
-
-</td><td width=33% valign=top>
-
 * [Functions 2](#functions-2)
     * [Immutable function args by default](#immutable-function-args-by-default)
     * [Mutable arguments](#mutable-arguments)
@@ -86,6 +88,9 @@ To do so, run the command `v up`.
     * [Sum types](#sum-types)
     * [Type aliases](#type-aliases)
     * [Option/Result types & error handling](#optionresult-types-and-error-handling)
+
+</td><td valign=top>
+
 * [Custom error types](#custom-error-types)
 * [Generics](#generics)
 * [Concurrency](#concurrency)
@@ -103,42 +108,53 @@ To do so, run the command `v up`.
     * [Running tests](#running-tests)
 * [Memory management](#memory-management)
     * [Stack and Heap](#stack-and-heap)
-* [ORM](#orm)
-
-</td><td valign=top>
-
-* [Writing documentation](#writing-documentation)
+* [ORM](#orm)* [Writing documentation](#writing-documentation)
 * [Tools](#tools)
     * [v fmt](#v-fmt)
     * [v shader](#v-shader)
     * [Profiling](#profiling)
 * [Package Management](#package-management)
 	* [Publish package](#publish-package)
-* [Advanced Topics](#advanced-topics)
-    * [Memory-unsafe code](#memory-unsafe-code)
-    * [Structs with reference fields](#structs-with-reference-fields)
-    * [sizeof and __offsetof](#sizeof-and-__offsetof)
-    * [Calling C from V](#calling-c-from-v)
-    * [Calling V from C](#calling-v-from-c)
-    * [Export to shared library](#export-to-shared-library)
-	* [Atomics](#atomics)
-	* [Global Variables](#global-variables)
-    * [Debugging](#debugging)
-    * [Conditional compilation](#conditional-compilation)
-    * [Compile time pseudo variables](#compile-time-pseudo-variables)
-    * [Compile-time reflection](#compile-time-reflection)
-    * [Limited operator overloading](#limited-operator-overloading)
-    * [Inline assembly](#inline-assembly)
-    * [Translating C to V](#translating-c-to-v)
-    * [Hot code reloading](#hot-code-reloading)
-    * [Cross compilation](#cross-compilation)
-    * [Cross-platform shell scripts in V](#cross-platform-shell-scripts-in-v)
-	* [Vsh scripts with no extension](#vsh-scripts-with-no-extension)
-    * [Attributes](#attributes)
-    * [Goto](#goto)
+
+
+</td></tr>
+</table>
+
+### Advanced Topics
+
+<table>
+<tr><td width=33% valign=top>
+
+* [Memory-unsafe code](#memory-unsafe-code)
+* [Structs with reference fields](#structs-with-reference-fields)
+* [sizeof and __offsetof](#sizeof-and-__offsetof)
+* [Calling C from V](#calling-c-from-v)
+* [Calling V from C](#calling-v-from-c)
+* [Export to shared library](#export-to-shared-library)
+* [Atomics](#atomics)
+* [Global Variables](#global-variables)
+* [Debugging](#debugging)
+* [Conditional compilation](#conditional-compilation)
+* [Compile time pseudo variables](#compile-time-pseudo-variables)
+* [Compile-time reflection](#compile-time-reflection)
+* [Limited operator overloading](#limited-operator-overloading)
+* [Inline assembly](#inline-assembly)
+* [Translating C to V](#translating-c-to-v)
+* [Hot code reloading](#hot-code-reloading)
+* [Cross compilation](#cross-compilation)
+* [Cross-platform shell scripts in V](#cross-platform-shell-scripts-in-v)
+* [Vsh scripts with no extension](#vsh-scripts-with-no-extension)
+* [Attributes](#attributes)
+* [Goto](#goto)
+
+</td><td width=33% valign=top>
+
 * [Appendices](#appendices)
     * [Keywords](#appendix-i-keywords)
     * [Operators](#appendix-ii-operators)
+  
+</td><td valign=top>
+
 
 </td></tr>
 </table>
@@ -5591,6 +5607,9 @@ numbers: [1, 2, 3]
 2
 3
 ```
+
+See more [details](https://github.com/vlang/v/blob/master/doc/docs.md)
+
 
 #### `$env`
 
