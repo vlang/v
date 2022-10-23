@@ -37,12 +37,13 @@ To do so, run the command `v up`.
 * [Running a project folder](#running-a-project-folder-with-several-files)
 * [Comments](#comments)
 * [Functions](#functions)
-    * [Returning multiple values](#returning-multiple-values)
     * [Hoistings](#hoistings)
+    * [Returning multiple values](#returning-multiple-values)
 * [Symbol visibility](#symbol-visibility)
 * [Variables](#variables)
 * [V types](#v-types)
     * [Strings](#strings)
+    * [Runes](#runes)
     * [Numbers](#numbers)
     * [Arrays](#arrays)
         * [Multidimensional arrays](#multidimensional-arrays)
@@ -61,12 +62,10 @@ To do so, run the command `v up`.
     * [Default field values](#default-field-values)
     * [Short struct literal syntax](#short-struct-literal-syntax)
     * [Access modifiers](#access-modifiers)
+    * [Anonymous structs](#anonymous-structs)
     * [Methods](#methods)
     * [Embedded structs](#embedded-structs)
 * [Unions](#unions)
-
-</td><td width=33% valign=top>
-
 * [Functions 2](#functions-2)
     * [Immutable function args by default](#immutable-function-args-by-default)
     * [Mutable arguments](#mutable-arguments)
@@ -74,6 +73,9 @@ To do so, run the command `v up`.
     * [Anonymous & higher-order functions](#anonymous--higher-order-functions)
     * [Closures](#closures)
     * [Parameter evaluation order](#parameter-evaluation-order)
+
+</td><td width=33% valign=top>
+
 * [References](#references)
 * [Constants](#constants)
 * [Builtin functions](#builtin-functions)
@@ -82,12 +84,13 @@ To do so, run the command `v up`.
 * [Modules](#modules)
 * [Type Declarations](#type-declarations)
     * [Interfaces](#interfaces)
+    * [Function Types](#function-types)
     * [Enums](#enums)
     * [Sum types](#sum-types)
     * [Type aliases](#type-aliases)
     * [Option/Result types & error handling](#optionresult-types-and-error-handling)
-* [Custom error types](#custom-error-types)
-* [Generics](#generics)
+    * [Custom error types](#custom-error-types)
+    * [Generics](#generics)
 * [Concurrency](#concurrency)
     * [Spawning Concurrent Tasks](#spawning-concurrent-tasks)
     * [Channels](#channels)
@@ -102,16 +105,17 @@ To do so, run the command `v up`.
     * [Test files](#test-files)
     * [Running tests](#running-tests)
 * [Memory management](#memory-management)
+    * [Control](#control)
     * [Stack and Heap](#stack-and-heap)
 * [ORM](#orm)
-
-</td><td valign=top>
-
 * [Writing documentation](#writing-documentation)
 * [Tools](#tools)
     * [v fmt](#v-fmt)
     * [v shader](#v-shader)
     * [Profiling](#profiling)
+
+</td><td valign=top>
+
 * [Package Management](#package-management)
 	* [Publish package](#publish-package)
 * [Advanced Topics](#advanced-topics)
@@ -3592,7 +3596,7 @@ Above, `http.get` returns a `?http.Response`. `resp` is only in scope for the fi
 `if` branch. `err` is only in scope for the `else` branch.
 
 
-## Custom error types
+### Custom error types
 
 V gives you the ability to define custom error types through the `IError` interface.
 The interface requires two methods: `msg() string` and `code() int`. Every type that
@@ -3624,7 +3628,7 @@ fn main() {
 }
 ```
 
-## Generics
+### Generics
 
 ```v wip
 
@@ -4207,7 +4211,7 @@ fn test_atoi() ? {
 }
 ```
 
-#### Running tests
+### Running tests
 
 To run test functions in an individual test file, use `v foo_test.v`.
 
@@ -4275,7 +4279,7 @@ Note 2: Autofree is still WIP. Until it stabilises and becomes the default, plea
 avoid using it. Right now allocations are handled by a minimal and well performing GC
 until V's autofree engine is production ready.
 
-### Examples
+**Examples**
 
 ```v
 import strings
