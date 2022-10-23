@@ -4989,8 +4989,7 @@ assert __offsetof(Foo, b) == 4
 
 ## Calling C from V
 
-### Example
-
+**Example**
 ```v
 #flag -lsqlite3
 #include "sqlite3.h"
