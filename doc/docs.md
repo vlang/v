@@ -41,7 +41,11 @@ To do so, run the command `v up`.
     * [Returning multiple values](#returning-multiple-values)
 * [Symbol visibility](#symbol-visibility)
 * [Variables](#variables)
+    * [Mutable variables](#mutable-variables)
+    * [Initialization vs assignment](#initialization-vs-assignment)
+    * [Declaration errors](#declaration-errors)
 * [V types](#v-types)
+    * [Primitive types](#primitive-types)
     * [Strings](#strings)
     * [Runes](#runes)
     * [Numbers](#numbers)
@@ -52,6 +56,8 @@ To do so, run the command `v up`.
     * [Fixed size arrays](#fixed-size-arrays)
     * [Maps](#maps)
 * [Module imports](#module-imports)
+    * [Selective imports](#selective-imports)
+    * [Module import aliasing](#module-import-aliasing)
 * [Statements & expressions](#statements--expressions)
     * [If](#if)
     * [In operator](#in-operator)
@@ -59,29 +65,35 @@ To do so, run the command `v up`.
     * [Match](#match)
     * [Defer](#defer)
 * [Structs](#structs)
+    * [Heap structs](#heap-structs)
     * [Default field values](#default-field-values)
+    * [Required fields](#required-fields)
     * [Short struct literal syntax](#short-struct-literal-syntax)
     * [Access modifiers](#access-modifiers)
     * [Anonymous structs](#anonymous-structs)
+    * [[noinit] structs](#noinit-structs)
     * [Methods](#methods)
     * [Embedded structs](#embedded-structs)
 * [Unions](#unions)
+
+</td><td width=33% valign=top>
+
 * [Functions 2](#functions-2)
     * [Immutable function args by default](#immutable-function-args-by-default)
     * [Mutable arguments](#mutable-arguments)
     * [Variable number of arguments](#variable-number-of-arguments)
     * [Anonymous & higher-order functions](#anonymous--higher-order-functions)
     * [Closures](#closures)
-    * [Parameter evaluation order](#parameter-evaluation-order)
-
-</td><td width=33% valign=top>
-
 * [References](#references)
+    * [Parameter evaluation order](#parameter-evaluation-order)
 * [Constants](#constants)
+    * [Required module prefix](#required-module-prefix)
 * [Builtin functions](#builtin-functions)
     * [println](#println)
+    * [Printing custom types](#printing-custom-types)
     * [Dumping expressions at runtime](#dumping-expressions-at-runtime)
 * [Modules](#modules)
+    * [init functions](#init-functions)
 * [Type Declarations](#type-declarations)
     * [Interfaces](#interfaces)
     * [Function Types](#function-types)
@@ -107,17 +119,19 @@ To do so, run the command `v up`.
 * [Memory management](#memory-management)
     * [Control](#control)
     * [Stack and Heap](#stack-and-heap)
+
+</td><td valign=top>
+
 * [ORM](#orm)
 * [Writing documentation](#writing-documentation)
+    * [Newlines in Documentation Comments](#newlines-in-documentation-comments)
 * [Tools](#tools)
     * [v fmt](#v-fmt)
     * [v shader](#v-shader)
     * [Profiling](#profiling)
-
-</td><td valign=top>
-
 * [Package Management](#package-management)
-	* [Publish package](#publish-package)
+    * [module options](#module-options)
+    * [Publish package](#publish-package)
 * [Advanced Topics](#advanced-topics)
     * [Memory-unsafe code](#memory-unsafe-code)
     * [Structs with reference fields](#structs-with-reference-fields)
@@ -135,6 +149,7 @@ To do so, run the command `v up`.
     * [Debugging](#debugging)
     * [Conditional compilation](#conditional-compilation)
     * [Compile time pseudo variables](#compile-time-pseudo-variables)
+    * [Performance tuning](#performance-tuning)
     * [Compile-time reflection](#compile-time-reflection)
     * [Limited operator overloading](#limited-operator-overloading)
     * [Inline assembly](#inline-assembly)
@@ -554,7 +569,7 @@ assert '-0b1111_0000_1010'.int() == -3850
 For more advanced `string` processing and conversions, refer to the
 [vlib/strconv](https://modules.vlang.io/strconv.html) module.
 
-### String interpolation
+#### String interpolation
 
 Basic interpolation syntax is pretty simple - use `$` before a variable name. The variable will be
 converted to a string and embedded into the literal:
@@ -621,7 +636,7 @@ println('[${10.0000:.2}]') // remove insignificant 0s at the end => [10]
 println('[${10.0000:.2f}]') // do show the 0s at the end, even though they do not change the number => [10.00]
 ```
 
-### String operators
+#### String operators
 
 ```v
 name := 'Bob'
@@ -3518,7 +3533,7 @@ user := repo.find_user_by_id(7) or {
 }
 ```
 
-### Handling optionals
+#### Handling optionals
 
 There are four ways of handling an optional. The first method is to
 propagate the error:
@@ -4745,7 +4760,7 @@ fn main() {
 v [module option] [param]
 ```
 
-###### module options:
+### module options
 
 ```
    install           Install a module from VPM.
