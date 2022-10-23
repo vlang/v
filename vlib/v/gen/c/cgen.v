@@ -5477,13 +5477,29 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 				if i == stmts.len - 1 {
 					expr_stmt := stmt as ast.ExprStmt
 					g.set_current_pos_as_last_stmt_pos()
-					g.write('*($mr_styp*) ${cvar_name}.data = ')
-					old_inside_opt_data := g.inside_opt_data
-					g.inside_opt_data = true
-					g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_flag(.optional).clear_flag(.result))
-					g.inside_opt_data = old_inside_opt_data
-					g.writeln(';')
-					g.stmt_path_pos.delete_last()
+					if g.inside_return && (expr_stmt.typ.idx() == ast.error_type_idx
+						|| expr_stmt.typ in [ast.none_type, ast.error_type]) {
+						// `return foo() or { error('failed') }`
+						if g.cur_fn != unsafe { nil } {
+							if g.cur_fn.return_type.has_flag(.result) {
+								g.write('return ')
+								g.gen_result_error(g.cur_fn.return_type, expr_stmt.expr)
+								g.writeln(';')
+							} else if g.cur_fn.return_type.has_flag(.optional) {
+								g.write('return ')
+								g.gen_optional_error(g.cur_fn.return_type, expr_stmt.expr)
+								g.writeln(';')
+							}
+						}
+					} else {
+						g.write('*($mr_styp*) ${cvar_name}.data = ')
+						old_inside_opt_data := g.inside_opt_data
+						g.inside_opt_data = true
+						g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_flag(.optional).clear_flag(.result))
+						g.inside_opt_data = old_inside_opt_data
+						g.writeln(';')
+						g.stmt_path_pos.delete_last()
+					}
 				} else {
 					g.stmt(stmt)
 				}
