@@ -92,3 +92,17 @@ fn (mut app App) some_helper<T>(result T) ApiSuccessResponse<T> {
 fn (mut app App) ok() vweb.Result {
 	return app.json(app.some_helper(123))
 }
+
+struct ExampleStruct {
+	example int
+}
+
+fn (mut app App) request_raw_2() vweb.Result {
+	stuff := []ExampleStruct{}
+	return app.request_raw(stuff)
+}
+
+// should compile, this is a helper method, not exposed as a route
+fn (mut app App) request_raw(foo []ExampleStruct) vweb.Result {
+	return app.text('Hello world')
+}
