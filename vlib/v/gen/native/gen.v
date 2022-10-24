@@ -184,7 +184,7 @@ fn (mut g Gen) get_type_from_var(var Var) ast.Type {
 	}
 }
 
-fn get_backend(arch pref.Arch) ?CodeGen {
+fn get_backend(arch pref.Arch) !CodeGen {
 	match arch {
 		.arm64 {
 			return Arm64{

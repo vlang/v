@@ -417,7 +417,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	}
 }
 
-fn (mut g Gen) c_fn_name(node &ast.FnDecl) ?string {
+fn (mut g Gen) c_fn_name(node &ast.FnDecl) !string {
 	mut name := node.name
 	if name in ['+', '-', '*', '/', '%', '<', '=='] {
 		name = util.replace_op(name)
@@ -425,7 +425,7 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) ?string {
 	if node.is_method {
 		unwrapped_rec_sym := g.table.sym(g.unwrap_generic(node.receiver.typ))
 		if unwrapped_rec_sym.kind == .placeholder {
-			return none
+			return error('none')
 		}
 		name = g.cc_type(node.receiver.typ, false) + '_' + name
 	}

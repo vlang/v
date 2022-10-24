@@ -599,7 +599,7 @@ fn (c &Checker) promote_num(left_type ast.Type, right_type ast.Type) ast.Type {
 	}
 }
 
-pub fn (mut c Checker) check_expected(got ast.Type, expected ast.Type) ? {
+pub fn (mut c Checker) check_expected(got ast.Type, expected ast.Type) ! {
 	if !c.check_types(got, expected) {
 		return error(c.expected_msg(got, expected))
 	}

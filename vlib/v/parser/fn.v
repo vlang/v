@@ -584,7 +584,7 @@ run them via `v file.v` instead',
 	return fn_decl
 }
 
-fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInfo) ? {
+fn (mut p Parser) fn_receiver(mut params []ast.Param, mut rec ReceiverParsingInfo) ! {
 	p.inside_receiver_param = true
 	defer {
 		p.inside_receiver_param = false

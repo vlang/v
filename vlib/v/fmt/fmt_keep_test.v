@@ -97,10 +97,10 @@ fn prepare_bin2v_file(mut fmt_bench benchmark.Benchmark) {
 	eprintln(fmt_bench.step_message_ok('Prepared bin2v_keep.vv'))
 }
 
-fn write_bin2v_keep_content() ? {
+fn write_bin2v_keep_content() ! {
 	img0 := os.join_path('vlib', 'v', 'embed_file', 'tests', 'v.png')
 	img1 := os.join_path('tutorials', 'building_a_simple_web_blog_with_vweb', 'img', 'time.png')
-	os.rm(b2v_keep_path)?
+	os.rm(b2v_keep_path)!
 	res := os.execute('${os.quoted_path(vexe)} bin2v -w ${os.quoted_path(b2v_keep_path)} ${os.quoted_path(img0)} ${os.quoted_path(img1)}')
 	if res.exit_code != 0 {
 		restore_bin2v_placeholder() or {}
@@ -108,8 +108,8 @@ fn write_bin2v_keep_content() ? {
 	}
 }
 
-fn restore_bin2v_placeholder() ? {
+fn restore_bin2v_placeholder() ! {
 	text := '// This is a placeholder file which will be filled with bin2v output before the test.
 // HINT: do NOT delete, move or rename this file!\n'
-	os.write_file(b2v_keep_path, text)?
+	os.write_file(b2v_keep_path, text)!
 }

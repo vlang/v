@@ -888,7 +888,7 @@ pub fn (pref &Preferences) should_output_to_stdout() bool {
 	return pref.out_name.ends_with('/-') || pref.out_name.ends_with(r'\-')
 }
 
-pub fn arch_from_string(arch_str string) ?Arch {
+pub fn arch_from_string(arch_str string) !Arch {
 	match arch_str {
 		'amd64', 'x86_64', 'x64', 'x86' { // amd64 recommended
 
@@ -947,7 +947,7 @@ fn is_source_file(path string) bool {
 	return path.ends_with('.v') || os.exists(path)
 }
 
-pub fn backend_from_string(s string) ?Backend {
+pub fn backend_from_string(s string) !Backend {
 	match s {
 		'c' { return .c }
 		'js' { return .js_node }

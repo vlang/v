@@ -3199,16 +3199,16 @@ pub fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) ast.Type {
 	return t
 }
 
-fn (mut c Checker) find_definition(ident ast.Ident) ?ast.Expr {
+fn (mut c Checker) find_definition(ident ast.Ident) !ast.Expr {
 	match ident.kind {
-		.unresolved, .blank_ident { return none }
+		.unresolved, .blank_ident { return error('none') }
 		.variable, .constant { return c.find_obj_definition(ident.obj) }
 		.global { return error('$ident.name is a global variable') }
 		.function { return error('$ident.name is a function') }
 	}
 }
 
-fn (mut c Checker) find_obj_definition(obj ast.ScopeObject) ?ast.Expr {
+fn (mut c Checker) find_obj_definition(obj ast.ScopeObject) !ast.Expr {
 	// TODO: remove once we have better type inference
 	mut name := ''
 	match obj {

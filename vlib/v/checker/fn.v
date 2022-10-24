@@ -1914,7 +1914,7 @@ fn (mut c Checker) post_process_generic_fns() {
 	}
 }
 
-pub fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ? {
+pub fn (mut c Checker) check_expected_arg_count(mut node ast.CallExpr, f &ast.Fn) ! {
 	nr_args := node.args.len
 	nr_params := if node.is_method && f.params.len > 0 { f.params.len - 1 } else { f.params.len }
 	mut min_required_params := f.params.len
