@@ -102,6 +102,7 @@ To do so, run the command `v up`.
     * [Sum types](#sum-types)
     * [Type aliases](#type-aliases)
     * [Option/Result types & error handling](#optionresult-types-and-error-handling)
+        * [Handling optionals/results](#handling-optionalsresults)
     * [Custom error types](#custom-error-types)
     * [Generics](#generics)
 * [Concurrency](#concurrency)
@@ -3502,7 +3503,8 @@ This is a special case of a [sum type](#sum-types) declaration.
 
 ### Option/Result types and error handling
 
-Optional types are for types which may represent `none`. Result types may represent an error returned from a function.
+Optional types are for types which may represent `none`. Result types may
+represent an error returned from a function.
 
 `Option` types are declared by prepending `?` to the type name: `?Type`.
 `Result` types use `!`: `!Type`.
@@ -3920,7 +3922,7 @@ A channel can be closed to indicate that no further objects can be pushed. Any a
 to do so will then result in a runtime panic (with the exception of `select` and
 `try_push()` - see below). Attempts to pop will return immediately if the
 associated channel has been closed and the buffer is empty. This situation can be
-handled using an or branch (see [Handling Optionals](#handling-optionals)).
+handled using an `or {}` block (see [Handling optionals/results](#handling-optionalsresults)).
 
 ```v wip
 ch := chan int{}
