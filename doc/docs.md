@@ -157,7 +157,6 @@ To do so, run the command `v up`.
     * [Hot code reloading](#hot-code-reloading)
     * [Cross compilation](#cross-compilation)
     * [Cross-platform shell scripts in V](#cross-platform-shell-scripts-in-v)
-	* [Vsh scripts with no extension](#vsh-scripts-with-no-extension)
     * [Attributes](#attributes)
     * [Goto](#goto)
 * [Appendices](#appendices)
@@ -6073,7 +6072,7 @@ Or just run it more like a traditional Bash script:
 On Unix-like platforms, the file can be run directly after making it executable using `chmod +x`:
 `./deploy.vsh`
 
-## Vsh scripts with no extension
+### Vsh scripts with no extension
 
 Whilst V does normally not allow vsh scripts without the designated file extension, there is a way
 to circumvent this rule and have a file with a fully custom name and shebang. Whilst this feature
