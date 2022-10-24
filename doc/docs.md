@@ -3548,7 +3548,7 @@ fn main() {
 	}
 	println(user.id) // "10"
 	println(user.name) // "Charles"
-	
+
 	user2 := repo.find_user_by_id2(10) or { return }
 }
 ```
@@ -3572,21 +3572,21 @@ user := repo.find_user_by_id(7) or {
 }
 ```
 
-#### Handling optionals
+#### Handling optionals/results
 
-There are four ways of handling an optional. The first method is to
+There are four ways of handling an optional/result. The first method is to
 propagate the error:
 
 ```v
 import net.http
 
-fn f(url string) ?string {
-	resp := http.get(url)?
+fn f(url string) !string {
+	resp := http.get(url)!
 	return resp.body
 }
 ```
 
-`http.get` returns `?http.Response`. Because `?` follows the call, the
+`http.get` returns `!http.Response`. Because `!` follows the call, the
 error will be propagated to the caller of `f`. When using `?` after a
 function call producing an optional, the enclosing function must return
 an optional as well. If error propagation is used in the `main()`
@@ -3621,11 +3621,11 @@ In case of an error, that value would be assigned instead,
 so it must have the same type as the content of the `Option` being handled.
 
 ```v
-fn do_something(s string) ?string {
+fn do_something(s string) !string {
 	if s == 'foo' {
 		return 'foo'
 	}
-	return error('invalid string') // Could be `return none` as well
+	return error('invalid string')
 }
 
 a := do_something('foo') or { 'default' } // a will be 'foo'
@@ -3646,7 +3646,7 @@ if resp := http.get('https://google.com') {
 	println(err)
 }
 ```
-Above, `http.get` returns a `?http.Response`. `resp` is only in scope for the first
+Above, `http.get` returns a `!http.Response`. `resp` is only in scope for the first
 `if` branch. `err` is only in scope for the `else` branch.
 
 
@@ -4201,7 +4201,7 @@ assert_continues_example.v:3: FAIL: fn main.abc: assert ii == 2
 assert_continues_example.v:3: FAIL: fn main.abc: assert ii == 2
    left value: ii = 3
   right value: 2
-```			   
+```
 
 Note: V also supports a command line flag `-assert continues`, which will change the
 behaviour of all asserts globally, as if you had tagged every function with `[assert_continues]`.
