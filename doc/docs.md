@@ -92,7 +92,7 @@ To do so, run the command `v up`.
     * [println](#println)
     * [Printing custom types](#printing-custom-types)
     * [Dumping expressions at runtime](#dumping-expressions-at-runtime)
-* [Modules](#modules)
+* [Create modules](#create-modules)
     * [init functions](#init-functions)
 * [Type Declarations](#type-declarations)
     * [Interfaces](#interfaces)
@@ -318,7 +318,7 @@ To allow other modules to use them, prepend `pub`. The same applies
 to constants and types.
 
 Note: `pub` can only be used from a named module.
-For information about creating a module, see [Modules](#modules).
+For information about creating a module, see [Create modules](#create-modules).
 
 ## Variables
 
@@ -1338,7 +1338,7 @@ See all methods of [map](https://modules.vlang.io/index.html#map)
 
 ## Module imports
 
-For information about creating a module, see [Modules](#modules).
+For information about creating a module, see [Create modules](#create-modules).
 
 Modules can be imported using the `import` keyword:
 
@@ -2146,7 +2146,7 @@ __global:
 	f int // public and mutable both inside and outside parent module
 }
 ```
-Private fields are available only inside the same [module](#modules), any attempt
+Private fields are available only inside the same [Create modules](#create-modules), any attempt
 to directly access them from another module will cause an error during compilation.
 Public immutable fields are readonly everywhere.
 
@@ -2847,7 +2847,7 @@ You will get:
 Note that `dump(expr)` will trace both the source location,
 the expression itself, and the expression value.
 
-## Modules
+## Create modules
 
 Every file in the root of a folder is part of the same module.
 Simple programs don't need to specify module name, in which case it defaults to 'main'.
