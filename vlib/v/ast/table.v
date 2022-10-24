@@ -387,7 +387,7 @@ pub fn (t &Table) find_method(s &TypeSymbol, name string) !Fn {
 		}
 		ts = t.type_symbols[ts.parent_idx]
 	}
-	return error('')
+	return error('unknown method `$name`')
 }
 
 [params]
@@ -414,7 +414,7 @@ pub fn (t &Table) get_embeds(sym &TypeSymbol, options GetEmbedsOptions) [][]Type
 	return embeds
 }
 
-pub fn (t &Table) find_method_from_embeds(sym &TypeSymbol, method_name string) ?(Fn, []Type) {
+pub fn (t &Table) find_method_from_embeds(sym &TypeSymbol, method_name string) !(Fn, []Type) {
 	if sym.info is Struct {
 		mut found_methods := []Fn{}
 		mut embed_of_found_methods := []Type{}
@@ -464,16 +464,16 @@ pub fn (t &Table) find_method_from_embeds(sym &TypeSymbol, method_name string) ?
 			}
 		}
 	}
-	return none
+	return error('')
 }
 
 // find_method_with_embeds searches for a given method, also looking through embedded fields
-pub fn (t &Table) find_method_with_embeds(sym &TypeSymbol, method_name string) ?Fn {
+pub fn (t &Table) find_method_with_embeds(sym &TypeSymbol, method_name string) !Fn {
 	if func := t.find_method(sym, method_name) {
 		return func
 	} else {
 		// look for embedded field
-		func, _ := t.find_method_from_embeds(sym, method_name) or { return none }
+		func, _ := t.find_method_from_embeds(sym, method_name) or { return err }
 		return func
 	}
 }
