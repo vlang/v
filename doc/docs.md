@@ -94,6 +94,7 @@ To do so, run the command `v up`.
     * [Printing custom types](#printing-custom-types)
     * [Dumping expressions at runtime](#dumping-expressions-at-runtime)
 * [Modules](#modules)
+    * [Create modules](#create-modules)
     * [init functions](#init-functions)
 * [Type Declarations](#type-declarations)
     * [Interfaces](#interfaces)
@@ -2876,6 +2877,8 @@ the expression itself, and the expression value.
 
 Every file in the root of a folder is part of the same module.
 Simple programs don't need to specify module name, in which case it defaults to 'main'.
+
+### Create modules
 
 V is a very modular language. Creating reusable modules is encouraged and is
 quite easy to do.
