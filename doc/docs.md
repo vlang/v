@@ -3497,6 +3497,10 @@ fn main() {
 ```
 
 ~~V combines `Option` and `Result` into one type, so you don't need to decide which one to use.~~
+Note: As of 2022/10/24, this specification is obsolete and `?` is used only 
+for Optional types, and `!` represents the Result type. The compiler 
+currently accepts the above code, but it will be obsolete in the near future.
+see [this](https://github.com/vlang/rfcs/blob/master/error_handling.md).
 
 The amount of work required to "upgrade" a function to an optional function is minimal;
 you have to add a `?` to the return type and return an error when something goes wrong.
