@@ -613,18 +613,14 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	// TODO move this to symmetric_check? Right now it would break `return 0` for `fn()?int `
 	left_is_optional := left_type.has_flag(.optional)
 	right_is_optional := right_type.has_flag(.optional)
-	if left_is_optional && right_is_optional {
-		c.error('unwrapped optionals cannot be used in an infix expression', left_right_pos)
-	} else if left_is_optional || right_is_optional {
+	if left_is_optional || right_is_optional {
 		opt_infix_pos := if left_is_optional { left_pos } else { right_pos }
 		c.error('unwrapped optional cannot be used in an infix expression', opt_infix_pos)
 	}
 
 	left_is_result := left_type.has_flag(.result)
 	right_is_result := right_type.has_flag(.result)
-	if left_is_result && right_is_result {
-		c.error('unwrapped result cannot be used in an infix expression', left_right_pos)
-	} else if left_is_result || right_is_result {
+	if left_is_result || right_is_result {
 		opt_infix_pos := if left_is_result { left_pos } else { right_pos }
 		c.error('unwrapped result cannot be used in an infix expression', opt_infix_pos)
 	}
