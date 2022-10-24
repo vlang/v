@@ -800,7 +800,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		typ := g.table.unaliased_type((typ_sym.info as ast.Array).elem_type)
 		typ_idx := g.table.find_type_idx(g.table.array_name(typ))
 		if typ_idx > 0 {
-			unwrapped_rec_type = ast.Type(g.table.find_type_idx(g.table.array_name(typ)))
+			unwrapped_rec_type = ast.Type(typ_idx)
 			typ_sym = g.table.sym(unwrapped_rec_type)
 		}
 	}
