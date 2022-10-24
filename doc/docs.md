@@ -130,7 +130,7 @@ To do so, run the command `v up`.
     * [v shader](#v-shader)
     * [Profiling](#profiling)
 * [Package Management](#package-management)
-    * [module options](#module-options)
+    * [Package options](#package-options)
     * [Publish package](#publish-package)
 * [Advanced Topics](#advanced-topics)
     * [Memory-unsafe code](#memory-unsafe-code)
@@ -4756,32 +4756,34 @@ fn main() {
 
 ## Package management
 
+Module consists of single folder. Package consists of multiple modules.
+
 ```powershell
-v [module option] [param]
+v [package option] [param]
 ```
 
-### module options
+### Package options
 
 ```
-   install           Install a module from VPM.
-   remove            Remove a module that was installed from VPM.
-   search            Search for a module from VPM.
-   update            Update an installed module from VPM.
-   upgrade           Upgrade all the outdated modules.
-   list              List all installed modules.
-   outdated          Show installed modules that need updates.
+   install           Install a package from VPM.
+   remove            Remove a package that was installed from VPM.
+   search            Search for a package from VPM.
+   update            Update an installed package from VPM.
+   upgrade           Upgrade all the outdated packages.
+   list              List all installed packages.
+   outdated          Show installed packages that need updates.
 ```
 
-You can install modules already created by someone else with [VPM](https://vpm.vlang.io/):
+You can install packages already created by someone else with [VPM](https://vpm.vlang.io/):
 ```powershell
-v install [module]
+v install [package]
 ```
 **Example:**
 ```powershell
 v install ui
 ```
 
-Modules can be installed directly from git or mercurial repositories.
+Packages can be installed directly from git or mercurial repositories.
 ```powershell
 v install [--once] [--git|--hg] [url]
 ```
@@ -4793,35 +4795,35 @@ v install --git https://github.com/vlang/markdown
 Sometimes you may want to install the dependencies **ONLY** if those are not installed:
 
 ```
-v install --once [module]
+v install --once [package]
 ```
 
-Removing a module with v:
+Removing a package with v:
 
 ```powershell
-v remove [module]
+v remove [package]
 ```
 **Example:**
 ```powershell
 v remove ui
 ```
 
-Updating an installed module from [VPM](https://vpm.vlang.io/):
+Updating an installed package from [VPM](https://vpm.vlang.io/):
 
 ```powershell
-v update [module]
+v update [package]
 ```
 **Example:**
 ```powershell
 v update ui
 ```
 
-Or you can update all your modules:
+Or you can update all your packages:
 ```powershell
 v update
 ```
 
-To see all the modules you have installed, you can use:
+To see all the packages you have installed, you can use:
 
 ```powershell
 v list
@@ -4829,29 +4831,29 @@ v list
 **Example:**
 ```powershell
 > v list
-Installed modules:
+Installed packages:
   markdown
   ui
 ```
 
-To see all the modules that need updates:
+To see all the packages that need updates:
 ```powershell
 v outdated
 ```
 **Example:**
 ```powershell
 > v outdated
-Modules are up to date.
+Package are up to date.
 ```
 
 ### Publish package
 
-1. Put a `v.mod` file inside the toplevel folder of your module (if you
-	created your module with the command `v new mymodule` or `v init` you already have a v.mod file).
+1. Put a `v.mod` file inside the toplevel folder of your package (if you
+	created your package with the command `v new mypackage` or `v init` you already have a v.mod file).
 
 	```sh
-	v new mymodule
-	Input your project description: My nice module.
+	v new mypackage
+	Input your project description: My nice package.
 	Input your project version: (0.0.0) 0.0.1
 	Input your project license: (MIT)
 	Initialising ...
@@ -4861,8 +4863,8 @@ Modules are up to date.
 	Example `v.mod`:
 	```v ignore
 	Module {
-		name: 'mymodule'
-		description: 'My nice module.'
+		name: 'mypackage'
+		description: 'My nice package.'
 		version: '0.0.1'
 		license: 'MIT'
 		dependencies: []
@@ -4872,13 +4874,13 @@ Modules are up to date.
 	Minimal file structure:
 	```
 	v.mod
-	mymodule.v
+	mypackage.v
 	```
 
-	The name of your module should be used with the `module` directive
-	at the top of all files in your module. For `mymodule.v`:
+	The name of your package should be used with the `module` directive
+	at the top of all files in your package. For `mypackage.v`:
 	```v
-	module mymodule
+	module mypackage
 
 	pub fn hello_world() {
 		println('Hello World!')
@@ -4895,16 +4897,16 @@ Modules are up to date.
 
 3. Create a public repository on github.com.
 4. Connect your local repository to the remote repository and push the changes.
-5. Add your module to the public V module registry VPM:
+5. Add your package to the public V package registry VPM:
 	https://vpm.vlang.io/new
 
-	You will have to login with your Github account to register the module.
+	You will have to login with your Github account to register the package.
 	**Warning:** _Currently it is not possible to edit your entry after submitting.
-	Check your module name and github url twice as this cannot be changed by you later._
-6. The final module name is a combination of your github account and
-	the module name you provided e.g. `mygithubname.mymodule`.
+	Check your package name and github url twice as this cannot be changed by you later._
+6. The final package name is a combination of your github account and
+	the package name you provided e.g. `mygithubname.mypackage`.
 
-**Optional:** tag your V module with `vlang` and `vlang-module` on github.com
+**Optional:** tag your V package with `vlang` and `vlang-package` on github.com
 to allow for a better search experience.
 
 # Advanced Topics
