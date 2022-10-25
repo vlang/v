@@ -417,7 +417,7 @@ fn (mut g Gen) gen_fn_decl(node &ast.FnDecl, skip bool) {
 	}
 }
 
-fn (mut g Gen) c_fn_name(node &ast.FnDecl) ?string {
+fn (mut g Gen) c_fn_name(node &ast.FnDecl) !string {
 	mut name := node.name
 	if name in ['+', '-', '*', '/', '%', '<', '=='] {
 		name = util.replace_op(name)
@@ -425,7 +425,7 @@ fn (mut g Gen) c_fn_name(node &ast.FnDecl) ?string {
 	if node.is_method {
 		unwrapped_rec_sym := g.table.sym(g.unwrap_generic(node.receiver.typ))
 		if unwrapped_rec_sym.kind == .placeholder {
-			return none
+			return error('none')
 		}
 		name = g.cc_type(node.receiver.typ, false) + '_' + name
 	}
@@ -796,6 +796,13 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if typ_sym.kind == .alias && node.name != 'str' && !typ_sym.has_method(node.name) {
 		unwrapped_rec_type = (typ_sym.info as ast.Alias).parent_type
 		typ_sym = g.table.sym(unwrapped_rec_type)
+	} else if typ_sym.kind == .array && !typ_sym.has_method(node.name) {
+		typ := g.table.unaliased_type((typ_sym.info as ast.Array).elem_type)
+		typ_idx := g.table.find_type_idx(g.table.array_name(typ))
+		if typ_idx > 0 {
+			unwrapped_rec_type = ast.Type(typ_idx)
+			typ_sym = g.table.sym(unwrapped_rec_type)
+		}
 	}
 	rec_cc_type := g.cc_type(unwrapped_rec_type, false)
 	mut receiver_type_name := util.no_dots(rec_cc_type)
@@ -1885,12 +1892,20 @@ fn (mut g Gen) go_expr(node ast.GoExpr) {
 		g.writeln('$arg_tmp_var->ret_ptr = malloc(sizeof($s_ret_typ));')
 	}
 	is_opt := node.call_expr.return_type.has_flag(.optional)
+	is_res := node.call_expr.return_type.has_flag(.result)
 	mut gohandle_name := ''
 	if node.call_expr.return_type == ast.void_type {
-		gohandle_name = if is_opt { '__v_thread_Option_void' } else { '__v_thread' }
+		if is_opt {
+			gohandle_name = '__v_thread_Option_void'
+		} else if is_res {
+			gohandle_name = '__v_thread_Result_void'
+		} else {
+			gohandle_name = '__v_thread'
+		}
 	} else {
 		opt := if is_opt { '${option_name}_' } else { '' }
-		gohandle_name = '__v_thread_$opt${g.table.sym(g.unwrap_generic(node.call_expr.return_type)).cname}'
+		res := if is_res { '${result_name}_' } else { '' }
+		gohandle_name = '__v_thread_$opt$res${g.table.sym(g.unwrap_generic(node.call_expr.return_type)).cname}'
 	}
 	if g.pref.os == .windows {
 		simple_handle := if node.is_expr && node.call_expr.return_type != ast.void_type {

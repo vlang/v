@@ -44,12 +44,12 @@ fn test_bytes_montgomery() {
        }
 }*/
 
-fn test_bytes_montgomery_sodium() ? {
+fn test_bytes_montgomery_sodium() {
 	// Generated with libsodium.js 1.0.18
 	// crypto_sign_keypair().pubkey
 	pubkey := '3bf918ffc2c955dc895bf145f566fb96623c1cadbe040091175764b5fde322c0'
 	mut p := Point{}
-	p.set_bytes(hex.decode(pubkey)?)?
+	p.set_bytes(hex.decode(pubkey)!)!
 
 	// crypto_sign_ed25519_pk_to_curve25519(pubkey)
 	want := 'efc6c9d0738e9ea18d738ad4a2653631558931b0f1fde4dd58c436d19686dc28'
@@ -113,9 +113,9 @@ fn fn_cofactor(mut data []u8) bool {
 	return p8.equal(pp) == 1
 }
 
-fn test_mult_by_cofactor() ? {
+fn test_mult_by_cofactor() {
 	mut loworder := Point{}
-	mut data := rand.bytes(64)?
+	mut data := rand.bytes(64)!
 
 	assert fn_cofactor(mut data) == true
 }

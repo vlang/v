@@ -37,12 +37,17 @@ To do so, run the command `v up`.
 * [Running a project folder](#running-a-project-folder-with-several-files)
 * [Comments](#comments)
 * [Functions](#functions)
-    * [Returning multiple values](#returning-multiple-values)
     * [Hoistings](#hoistings)
+    * [Returning multiple values](#returning-multiple-values)
 * [Symbol visibility](#symbol-visibility)
 * [Variables](#variables)
+    * [Mutable variables](#mutable-variables)
+    * [Initialization vs assignment](#initialization-vs-assignment)
+    * [Declaration errors](#declaration-errors)
 * [V types](#v-types)
+    * [Primitive types](#primitive-types)
     * [Strings](#strings)
+    * [Runes](#runes)
     * [Numbers](#numbers)
     * [Arrays](#arrays)
         * [Multidimensional arrays](#multidimensional-arrays)
@@ -51,16 +56,23 @@ To do so, run the command `v up`.
     * [Fixed size arrays](#fixed-size-arrays)
     * [Maps](#maps)
 * [Module imports](#module-imports)
+    * [Selective imports](#selective-imports)
+    * [Module import aliasing](#module-import-aliasing)
 * [Statements & expressions](#statements--expressions)
     * [If](#if)
     * [In operator](#in-operator)
     * [For loop](#for-loop)
     * [Match](#match)
     * [Defer](#defer)
+    * [Goto](#goto)
 * [Structs](#structs)
+    * [Heap structs](#heap-structs)
     * [Default field values](#default-field-values)
+    * [Required fields](#required-fields)
     * [Short struct literal syntax](#short-struct-literal-syntax)
     * [Access modifiers](#access-modifiers)
+    * [Anonymous structs](#anonymous-structs)
+    * [[noinit] structs](#noinit-structs)
     * [Methods](#methods)
     * [Embedded structs](#embedded-structs)
 * [Unions](#unions)
@@ -73,21 +85,27 @@ To do so, run the command `v up`.
     * [Variable number of arguments](#variable-number-of-arguments)
     * [Anonymous & higher-order functions](#anonymous--higher-order-functions)
     * [Closures](#closures)
-    * [Parameter evaluation order](#parameter-evaluation-order)
 * [References](#references)
+    * [Parameter evaluation order](#parameter-evaluation-order)
 * [Constants](#constants)
+    * [Required module prefix](#required-module-prefix)
 * [Builtin functions](#builtin-functions)
     * [println](#println)
+    * [Printing custom types](#printing-custom-types)
     * [Dumping expressions at runtime](#dumping-expressions-at-runtime)
 * [Modules](#modules)
+    * [Create modules](#create-modules)
+    * [init functions](#init-functions)
 * [Type Declarations](#type-declarations)
     * [Interfaces](#interfaces)
+    * [Function Types](#function-types)
     * [Enums](#enums)
     * [Sum types](#sum-types)
     * [Type aliases](#type-aliases)
     * [Option/Result types & error handling](#optionresult-types-and-error-handling)
-* [Custom error types](#custom-error-types)
-* [Generics](#generics)
+        * [Handling optionals/results](#handling-optionalsresults)
+    * [Custom error types](#custom-error-types)
+    * [Generics](#generics)
 * [Concurrency](#concurrency)
     * [Spawning Concurrent Tasks](#spawning-concurrent-tasks)
     * [Channels](#channels)
@@ -102,18 +120,21 @@ To do so, run the command `v up`.
     * [Test files](#test-files)
     * [Running tests](#running-tests)
 * [Memory management](#memory-management)
+    * [Control](#control)
     * [Stack and Heap](#stack-and-heap)
-* [ORM](#orm)
 
 </td><td valign=top>
 
+* [ORM](#orm)
 * [Writing documentation](#writing-documentation)
+    * [Newlines in Documentation Comments](#newlines-in-documentation-comments)
 * [Tools](#tools)
     * [v fmt](#v-fmt)
     * [v shader](#v-shader)
     * [Profiling](#profiling)
 * [Package Management](#package-management)
-	* [Publish package](#publish-package)
+    * [Package options](#package-options)
+    * [Publish package](#publish-package)
 * [Advanced Topics](#advanced-topics)
     * [Memory-unsafe code](#memory-unsafe-code)
     * [Structs with reference fields](#structs-with-reference-fields)
@@ -123,9 +144,15 @@ To do so, run the command `v up`.
     * [Export to shared library](#export-to-shared-library)
 	* [Atomics](#atomics)
 	* [Global Variables](#global-variables)
+	* [Passing C compilation flags](#passing-c-compilation-flags)
+	* [#pkgconfig](#pkgconfig)
+	* [Including C code](#including-c-code)
+	* [C types](#c-types)
+	* [C Declarations](#c-declarations)
     * [Debugging](#debugging)
     * [Conditional compilation](#conditional-compilation)
     * [Compile time pseudo variables](#compile-time-pseudo-variables)
+    * [Performance tuning](#performance-tuning)
     * [Compile-time reflection](#compile-time-reflection)
     * [Limited operator overloading](#limited-operator-overloading)
     * [Inline assembly](#inline-assembly)
@@ -135,7 +162,6 @@ To do so, run the command `v up`.
     * [Cross-platform shell scripts in V](#cross-platform-shell-scripts-in-v)
 	* [Vsh scripts with no extension](#vsh-scripts-with-no-extension)
     * [Attributes](#attributes)
-    * [Goto](#goto)
 * [Appendices](#appendices)
     * [Keywords](#appendix-i-keywords)
     * [Operators](#appendix-ii-operators)
@@ -545,7 +571,7 @@ assert '-0b1111_0000_1010'.int() == -3850
 For more advanced `string` processing and conversions, refer to the
 [vlib/strconv](https://modules.vlang.io/strconv.html) module.
 
-### String interpolation
+#### String interpolation
 
 Basic interpolation syntax is pretty simple - use `$` before a variable name. The variable will be
 converted to a string and embedded into the literal:
@@ -612,7 +638,7 @@ println('[${10.0000:.2}]') // remove insignificant 0s at the end => [10]
 println('[${10.0000:.2f}]') // do show the 0s at the end, even though they do not change the number => [10.00]
 ```
 
-### String operators
+#### String operators
 
 ```v
 name := 'Bob'
@@ -1290,7 +1316,7 @@ large_index := 999
 val := arr[large_index] or { panic('out of bounds') }
 println(val)
 // you can also do this, if you want to *propagate* the access error:
-val2 := arr[333]?
+val2 := arr[333]!
 println(val2)
 ```
 
@@ -1901,8 +1927,8 @@ enum State {
 }
 
 // write log file and return number of bytes written
-fn write_log(s State) ?int {
-	mut f := os.create('log.txt')?
+fn write_log(s State) !int {
+	mut f := os.create('log.txt')!
 	defer {
 		f.close()
 	}
@@ -1929,6 +1955,30 @@ fn main() {
 	println('$n bytes written')
 }
 ```
+
+### Goto
+
+V allows unconditionally jumping to a label with `goto`. The label name must be contained
+within the same function as the `goto` statement. A program may `goto` a label outside
+or deeper than the current scope. `goto` allows jumping past variable initialization or
+jumping back to code that accesses memory that has already been freed, so it requires
+`unsafe`.
+
+```v ignore
+if x {
+	// ...
+	if y {
+		unsafe {
+			goto my_label
+		}
+	}
+	// ...
+}
+my_label:
+```
+`goto` should be avoided, particularly when `for` can be used instead.
+[Labelled break/continue](#labelled-break--continue) can be used to break out of
+a nested loop, and those do not risk violating memory-safety.
 
 ## Structs
 
@@ -2133,7 +2183,7 @@ with a struct name.
 
 ```v
 struct Book {
-	author struct  {
+	author struct {
 		name string
 		age  int
 	}
@@ -2828,6 +2878,8 @@ the expression itself, and the expression value.
 Every file in the root of a folder is part of the same module.
 Simple programs don't need to specify module name, in which case it defaults to 'main'.
 
+### Create modules
+
 V is a very modular language. Creating reusable modules is encouraged and is
 quite easy to do.
 To create a new module, create a directory with your module's name containing
@@ -3454,7 +3506,13 @@ This is a special case of a [sum type](#sum-types) declaration.
 
 ### Option/Result types and error handling
 
-Option types are declared with `?Type`:
+Optional types are for types which may represent `none`. Result types may
+represent an error returned from a function.
+
+`Option` types are declared by prepending `?` to the type name: `?Type`.
+`Result` types use `!`: `!Type`.
+
+
 ```v
 struct User {
 	id   int
@@ -3465,42 +3523,52 @@ struct Repo {
 	users []User
 }
 
-fn (r Repo) find_user_by_id(id int) ?User {
+fn (r Repo) find_user_by_id(id int) !User {
 	for user in r.users {
 		if user.id == id {
-			// V automatically wraps this into an option type
+			// V automatically wraps this into a result or option type
 			return user
 		}
 	}
 	return error('User $id not found')
 }
 
+// A version of the function using an optional
+fn (r Repo) find_user_by_id2(id int) ?User {
+	for user in r.users {
+		if user.id == id {
+			return user
+		}
+	}
+	return none
+}
+
 fn main() {
 	repo := Repo{
 		users: [User{1, 'Andrew'}, User{2, 'Bob'}, User{10, 'Charles'}]
 	}
-	user := repo.find_user_by_id(10) or { // Option types must be handled by `or` blocks
+	user := repo.find_user_by_id(10) or { // Option/Result types must be handled by `or` blocks
+		println(err)
 		return
 	}
 	println(user.id) // "10"
 	println(user.name) // "Charles"
+
+	user2 := repo.find_user_by_id2(10) or { return }
 }
 ```
 
-V combines `Option` and `Result` into one type, so you don't need to decide which one to use.
+V used to combine `Option` and `Result` into one type, now they are separate.
 
-The amount of work required to "upgrade" a function to an optional function is minimal;
-you have to add a `?` to the return type and return an error when something goes wrong.
-
-If you don't need to return an error message, you can simply `return none`
-(this is a more efficient equivalent of `return error("")`).
+The amount of work required to "upgrade" a function to an optional/result function is minimal;
+you have to add a `?` or `!` to the return type and return an error when something goes wrong.
 
 This is the primary mechanism for error handling in V. They are still values, like in Go,
 but the advantage is that errors can't be unhandled, and handling them is a lot less verbose.
 Unlike other languages, V does not handle exceptions with `throw/try/catch` blocks.
 
 `err` is defined inside an `or` block and is set to the string message passed
-to the `error()` function. `err` is empty if `none` was returned.
+to the `error()` function.
 
 ```v oksyntax
 user := repo.find_user_by_id(7) or {
@@ -3509,21 +3577,21 @@ user := repo.find_user_by_id(7) or {
 }
 ```
 
-### Handling optionals
+#### Handling optionals/results
 
-There are four ways of handling an optional. The first method is to
+There are four ways of handling an optional/result. The first method is to
 propagate the error:
 
 ```v
 import net.http
 
-fn f(url string) ?string {
-	resp := http.get(url)?
+fn f(url string) !string {
+	resp := http.get(url)!
 	return resp.body
 }
 ```
 
-`http.get` returns `?http.Response`. Because `?` follows the call, the
+`http.get` returns `!http.Response`. Because `!` follows the call, the
 error will be propagated to the caller of `f`. When using `?` after a
 function call producing an optional, the enclosing function must return
 an optional as well. If error propagation is used in the `main()`
@@ -3558,11 +3626,11 @@ In case of an error, that value would be assigned instead,
 so it must have the same type as the content of the `Option` being handled.
 
 ```v
-fn do_something(s string) ?string {
+fn do_something(s string) !string {
 	if s == 'foo' {
 		return 'foo'
 	}
-	return error('invalid string') // Could be `return none` as well
+	return error('invalid string')
 }
 
 a := do_something('foo') or { 'default' } // a will be 'foo'
@@ -3583,11 +3651,11 @@ if resp := http.get('https://google.com') {
 	println(err)
 }
 ```
-Above, `http.get` returns a `?http.Response`. `resp` is only in scope for the first
+Above, `http.get` returns a `!http.Response`. `resp` is only in scope for the first
 `if` branch. `err` is only in scope for the `else` branch.
 
 
-## Custom error types
+### Custom error types
 
 V gives you the ability to define custom error types through the `IError` interface.
 The interface requires two methods: `msg() string` and `code() int`. Every type that
@@ -3619,7 +3687,7 @@ fn main() {
 }
 ```
 
-## Generics
+### Generics
 
 ```v wip
 
@@ -3857,7 +3925,7 @@ A channel can be closed to indicate that no further objects can be pushed. Any a
 to do so will then result in a runtime panic (with the exception of `select` and
 `try_push()` - see below). Attempts to pop will return immediately if the
 associated channel has been closed and the buffer is empty. This situation can be
-handled using an or branch (see [Handling Optionals](#handling-optionals)).
+handled using an `or {}` block (see [Handling optionals/results](#handling-optionalsresults)).
 
 ```v wip
 ch := chan int{}
@@ -4138,7 +4206,7 @@ assert_continues_example.v:3: FAIL: fn main.abc: assert ii == 2
 assert_continues_example.v:3: FAIL: fn main.abc: assert ii == 2
    left value: ii = 3
   right value: 2
-```			   
+```
 
 Note: V also supports a command line flag `-assert continues`, which will change the
 behaviour of all asserts globally, as if you had tagged every function with `[assert_continues]`.
@@ -4202,7 +4270,7 @@ fn test_atoi() ? {
 }
 ```
 
-#### Running tests
+### Running tests
 
 To run test functions in an individual test file, use `v foo_test.v`.
 
@@ -4270,7 +4338,7 @@ Note 2: Autofree is still WIP. Until it stabilises and becomes the default, plea
 avoid using it. Right now allocations are handled by a minimal and well performing GC
 until V's autofree engine is production ready.
 
-### Examples
+**Examples**
 
 ```v
 import strings
@@ -4732,32 +4800,34 @@ fn main() {
 
 ## Package management
 
+Module consists of single folder. Package consists of multiple modules.
+
 ```powershell
-v [module option] [param]
+v [package option] [param]
 ```
 
-###### module options:
+### Package options
 
 ```
-   install           Install a module from VPM.
-   remove            Remove a module that was installed from VPM.
-   search            Search for a module from VPM.
-   update            Update an installed module from VPM.
-   upgrade           Upgrade all the outdated modules.
-   list              List all installed modules.
-   outdated          Show installed modules that need updates.
+   install           Install a package from VPM.
+   remove            Remove a package that was installed from VPM.
+   search            Search for a package from VPM.
+   update            Update an installed package from VPM.
+   upgrade           Upgrade all the outdated packages.
+   list              List all installed packages.
+   outdated          Show installed packages that need updates.
 ```
 
-You can install modules already created by someone else with [VPM](https://vpm.vlang.io/):
+You can install packages already created by someone else with [VPM](https://vpm.vlang.io/):
 ```powershell
-v install [module]
+v install [package]
 ```
 **Example:**
 ```powershell
 v install ui
 ```
 
-Modules can be installed directly from git or mercurial repositories.
+Packages can be installed directly from git or mercurial repositories.
 ```powershell
 v install [--once] [--git|--hg] [url]
 ```
@@ -4769,35 +4839,35 @@ v install --git https://github.com/vlang/markdown
 Sometimes you may want to install the dependencies **ONLY** if those are not installed:
 
 ```
-v install --once [module]
+v install --once [package]
 ```
 
-Removing a module with v:
+Removing a package with v:
 
 ```powershell
-v remove [module]
+v remove [package]
 ```
 **Example:**
 ```powershell
 v remove ui
 ```
 
-Updating an installed module from [VPM](https://vpm.vlang.io/):
+Updating an installed package from [VPM](https://vpm.vlang.io/):
 
 ```powershell
-v update [module]
+v update [package]
 ```
 **Example:**
 ```powershell
 v update ui
 ```
 
-Or you can update all your modules:
+Or you can update all your packages:
 ```powershell
 v update
 ```
 
-To see all the modules you have installed, you can use:
+To see all the packages you have installed, you can use:
 
 ```powershell
 v list
@@ -4805,29 +4875,29 @@ v list
 **Example:**
 ```powershell
 > v list
-Installed modules:
+Installed packages:
   markdown
   ui
 ```
 
-To see all the modules that need updates:
+To see all the packages that need updates:
 ```powershell
 v outdated
 ```
 **Example:**
 ```powershell
 > v outdated
-Modules are up to date.
+Package are up to date.
 ```
 
 ### Publish package
 
-1. Put a `v.mod` file inside the toplevel folder of your module (if you
-	created your module with the command `v new mymodule` or `v init` you already have a v.mod file).
+1. Put a `v.mod` file inside the toplevel folder of your package (if you
+	created your package with the command `v new mypackage` or `v init` you already have a v.mod file).
 
 	```sh
-	v new mymodule
-	Input your project description: My nice module.
+	v new mypackage
+	Input your project description: My nice package.
 	Input your project version: (0.0.0) 0.0.1
 	Input your project license: (MIT)
 	Initialising ...
@@ -4837,8 +4907,8 @@ Modules are up to date.
 	Example `v.mod`:
 	```v ignore
 	Module {
-		name: 'mymodule'
-		description: 'My nice module.'
+		name: 'mypackage'
+		description: 'My nice package.'
 		version: '0.0.1'
 		license: 'MIT'
 		dependencies: []
@@ -4848,13 +4918,13 @@ Modules are up to date.
 	Minimal file structure:
 	```
 	v.mod
-	mymodule.v
+	mypackage.v
 	```
 
-	The name of your module should be used with the `module` directive
-	at the top of all files in your module. For `mymodule.v`:
+	The name of your package should be used with the `module` directive
+	at the top of all files in your package. For `mypackage.v`:
 	```v
-	module mymodule
+	module mypackage
 
 	pub fn hello_world() {
 		println('Hello World!')
@@ -4871,16 +4941,16 @@ Modules are up to date.
 
 3. Create a public repository on github.com.
 4. Connect your local repository to the remote repository and push the changes.
-5. Add your module to the public V module registry VPM:
+5. Add your package to the public V package registry VPM:
 	https://vpm.vlang.io/new
 
-	You will have to login with your Github account to register the module.
+	You will have to login with your Github account to register the package.
 	**Warning:** _Currently it is not possible to edit your entry after submitting.
-	Check your module name and github url twice as this cannot be changed by you later._
-6. The final module name is a combination of your github account and
-	the module name you provided e.g. `mygithubname.mymodule`.
+	Check your package name and github url twice as this cannot be changed by you later._
+6. The final package name is a combination of your github account and
+	the package name you provided e.g. `mygithubname.mypackage`.
 
-**Optional:** tag your V module with `vlang` and `vlang-module` on github.com
+**Optional:** tag your V package with `vlang` and `vlang-package` on github.com
 to allow for a better search experience.
 
 # Advanced Topics
@@ -4984,8 +5054,7 @@ assert __offsetof(Foo, b) == 4
 
 ## Calling C from V
 
-### Example
-
+**Example**
 ```v
 #flag -lsqlite3
 #include "sqlite3.h"
@@ -5206,7 +5275,7 @@ to race conditions. There are several approaches to deal with these:
   correlated, which is acceptable considering the performance penalty that using
   synchonization primitives would represent.
 
-### Passing C compilation flags
+## Passing C compilation flags
 
 Add `#flag` directives to the top of your V files to provide C compilation flags like:
 
@@ -5236,7 +5305,7 @@ In the console build command, you can use:
 You can define a `VFLAGS` environment variable in your terminal to store your `-cc`
 and `-cflags` settings, rather than including them in the build command each time.
 
-### #pkgconfig
+## #pkgconfig
 
 Add `#pkgconfig` directive is used to tell the compiler which modules should be used for compiling
 and linking using the pkg-config files provided by the respective dependencies.
@@ -5267,7 +5336,7 @@ $if $pkgconfig('mysqlclient') {
 }
 ```
 
-### Including C code
+## Including C code
 
 You can also include C code directly in your V module.
 For example, let's say that your C code is located in a folder named 'c' inside your module folder.
@@ -5310,7 +5379,7 @@ You can see a complete minimal example for using C code in a V wrapper module he
 Another example, demonstrating passing structs from C to V and back again:
 [interoperate between C to V to C](https://github.com/vlang/v/tree/master/vlib/v/tests/project_with_c_code_2).
 
-### C types
+## C types
 
 Ordinary zero terminated C strings can be converted to V strings with
 `unsafe { &char(cstring).vstring() }` or if you know their length already with
@@ -5337,7 +5406,7 @@ To cast a `voidptr` to a V reference, use `user := &User(user_void_ptr)`.
 
 [an example of a module that calls C code from V](https://github.com/vlang/v/blob/master/vlib/v/tests/project_with_c_code/mod1/wrapper.v)
 
-### C Declarations
+## C Declarations
 
 C identifiers are accessed with the `C` prefix similarly to how module-specific
 identifiers are accessed. Functions must be redeclared in V before they can be used.
@@ -5591,6 +5660,8 @@ numbers: [1, 2, 3]
 2
 3
 ```
+
+See more [details](https://github.com/vlang/v/blob/master/vlib/v/TEMPLATES.md)
 
 #### `$env`
 
@@ -6223,30 +6294,6 @@ type FastFn = fn (int) bool
 fn main() {
 }
 ```
-
-## Goto
-
-V allows unconditionally jumping to a label with `goto`. The label name must be contained
-within the same function as the `goto` statement. A program may `goto` a label outside
-or deeper than the current scope. `goto` allows jumping past variable initialization or
-jumping back to code that accesses memory that has already been freed, so it requires
-`unsafe`.
-
-```v ignore
-if x {
-	// ...
-	if y {
-		unsafe {
-			goto my_label
-		}
-	}
-	// ...
-}
-my_label:
-```
-`goto` should be avoided, particularly when `for` can be used instead.
-[Labelled break/continue](#labelled-break--continue) can be used to break out of
-a nested loop, and those do not risk violating memory-safety.
 
 # Appendices
 

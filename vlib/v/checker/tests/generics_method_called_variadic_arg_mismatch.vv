@@ -1,0 +1,14 @@
+struct Client {}
+
+fn (cl Client) req<T>(data ...string) {}
+
+struct Product {}
+
+fn (c Client) products_list(options ...string) {
+	c.req<Product>(options) // (...options) works
+}
+
+fn main() {
+	mut sc := Client{}
+	sc.products_list()
+}

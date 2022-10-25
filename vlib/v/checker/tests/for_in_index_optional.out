@@ -1,4 +1,4 @@
-vlib/v/checker/tests/for_in_index_optional.vv:3:18: error: for in: cannot index `?[]string`
+vlib/v/checker/tests/for_in_index_optional.vv:3:18: error: for in: cannot index `![]string`
     1 | import os
     2 | fn main() {
     3 |   for file in os.ls('.') {

@@ -17,18 +17,18 @@ pub const no_timeout = time.Duration(0)
 pub const infinite_timeout = time.infinite
 
 // Shutdown shutsdown a socket and closes it
-fn shutdown(handle int) ? {
+fn shutdown(handle int) ! {
 	$if windows {
 		C.shutdown(handle, C.SD_BOTH)
-		socket_error(C.closesocket(handle))?
+		socket_error(C.closesocket(handle))!
 	} $else {
 		C.shutdown(handle, C.SHUT_RDWR)
-		socket_error(C.close(handle))?
+		socket_error(C.close(handle))!
 	}
 }
 
 // Select waits for an io operation (specified by parameter `test`) to be available
-fn @select(handle int, test Select, timeout time.Duration) ?bool {
+fn @select(handle int, test Select, timeout time.Duration) !bool {
 	set := C.fd_set{}
 
 	C.FD_ZERO(&set)
@@ -52,13 +52,13 @@ fn @select(handle int, test Select, timeout time.Duration) ?bool {
 
 	match test {
 		.read {
-			socket_error(C.@select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout))?
+			socket_error(C.@select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout))!
 		}
 		.write {
-			socket_error(C.@select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout))?
+			socket_error(C.@select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout))!
 		}
 		.except {
-			socket_error(C.@select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout))?
+			socket_error(C.@select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout))!
 		}
 	}
 
@@ -66,7 +66,7 @@ fn @select(handle int, test Select, timeout time.Duration) ?bool {
 }
 
 [inline]
-fn select_deadline(handle int, test Select, deadline time.Time) ?bool {
+fn select_deadline(handle int, test Select, deadline time.Time) !bool {
 	// if we have a 0 deadline here then the timeout that was passed was infinite...
 	infinite := deadline.unix_time() == 0
 	for infinite || time.now() <= deadline {
@@ -89,7 +89,7 @@ fn select_deadline(handle int, test Select, deadline time.Time) ?bool {
 }
 
 // wait_for_common wraps the common wait code
-fn wait_for_common(handle int, deadline time.Time, timeout time.Duration, test Select) ? {
+fn wait_for_common(handle int, deadline time.Time, timeout time.Duration, test Select) ! {
 	// Convert timeouts to deadlines
 	real_deadline := if timeout == net.infinite_timeout {
 		time.unix(0)
@@ -104,7 +104,7 @@ fn wait_for_common(handle int, deadline time.Time, timeout time.Duration, test S
 		time.now().add(timeout)
 	}
 
-	ready := select_deadline(handle, test, real_deadline)?
+	ready := select_deadline(handle, test, real_deadline)!
 
 	if ready {
 		return
@@ -114,11 +114,11 @@ fn wait_for_common(handle int, deadline time.Time, timeout time.Duration, test S
 }
 
 // wait_for_write waits for a write io operation to be available
-fn wait_for_write(handle int, deadline time.Time, timeout time.Duration) ? {
+fn wait_for_write(handle int, deadline time.Time, timeout time.Duration) ! {
 	return wait_for_common(handle, deadline, timeout, .write)
 }
 
 // wait_for_read waits for a read io operation to be available
-fn wait_for_read(handle int, deadline time.Time, timeout time.Duration) ? {
+fn wait_for_read(handle int, deadline time.Time, timeout time.Duration) ! {
 	return wait_for_common(handle, deadline, timeout, .read)
 }

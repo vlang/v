@@ -54,7 +54,7 @@ pub fn (mut sm SourceMap) add_mapping(source_name string, source_position Source
 }
 
 // Add multiple mappings from the same source
-pub fn (mut sm SourceMap) add_mapping_list(source_name string, mapping_list []MappingInput) ? {
+pub fn (mut sm SourceMap) add_mapping_list(source_name string, mapping_list []MappingInput) ! {
 	if source_name.len == 0 {
 		panic('add_mapping_list, source_name should not be ""')
 	}
@@ -129,7 +129,7 @@ pub fn (mut sm SourceMap) to_json() SourceMapJson {
 	return source_map_json
 }
 
-fn (mut w StringWriter) write(buf []u8) ?int {
+fn (mut w StringWriter) write(buf []u8) !int {
 	w.bytes << buf
 	return buf.len
 }

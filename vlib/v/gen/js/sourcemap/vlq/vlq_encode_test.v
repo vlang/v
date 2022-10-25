@@ -23,13 +23,13 @@ fn test_encode_a() {
 	for _, test_data in decode_values {
 		mut output := TestWriter{}
 
-		encode(test_data.data_val, mut &output)?
+		encode(test_data.data_val, mut &output)!
 		// dump(output.bytes)
 		assert output.bytes == test_data.expected.bytes()
 	}
 }
 
-fn (mut w TestWriter) write(buf []u8) ?int {
+fn (mut w TestWriter) write(buf []u8) !int {
 	w.bytes << buf
 	return buf.len
 }

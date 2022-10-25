@@ -5,12 +5,12 @@ module base58
 import math
 
 // encode_int encodes any integer type to base58 string with Bitcoin alphabet
-pub fn encode_int(input int) ?string {
+pub fn encode_int(input int) !string {
 	return encode_int_walpha(input, btc_alphabet)
 }
 
 // encode_int_walpha any integer type to base58 string with custom alphabet
-pub fn encode_int_walpha(input int, alphabet Alphabet) ?string {
+pub fn encode_int_walpha(input int, alphabet Alphabet) !string {
 	if input <= 0 {
 		return error(@MOD + '.' + @FN + ': input must be greater than zero')
 	}
@@ -97,12 +97,12 @@ pub fn encode_walpha_bytes(input []u8, alphabet Alphabet) []u8 {
 }
 
 // decode_int decodes base58 string to an integer with Bitcoin alphabet
-pub fn decode_int(input string) ?int {
+pub fn decode_int(input string) !int {
 	return decode_int_walpha(input, btc_alphabet)
 }
 
 // decode_int_walpha decodes base58 string to an integer with custom alphabet
-pub fn decode_int_walpha(input string, alphabet Alphabet) ?int {
+pub fn decode_int_walpha(input string, alphabet Alphabet) !int {
 	mut total := 0 // to hold the results
 	b58 := input.reverse()
 	for i, ch in b58 {
@@ -121,27 +121,27 @@ pub fn decode_int_walpha(input string, alphabet Alphabet) ?int {
 }
 
 // decode decodes the base58 input string, using the Bitcoin alphabet
-pub fn decode(str string) ?string {
+pub fn decode(str string) !string {
 	return decode_walpha(str, btc_alphabet)
 }
 
 // decode_bytes decodes the base58 encoded input array, using the Bitcoin alphabet
-pub fn decode_bytes(input []u8) ?[]u8 {
+pub fn decode_bytes(input []u8) ![]u8 {
 	return decode_walpha_bytes(input, btc_alphabet)
 }
 
 // decode_walpha decodes the base58 encoded input string, using custom alphabet
-pub fn decode_walpha(input string, alphabet Alphabet) ?string {
+pub fn decode_walpha(input string, alphabet Alphabet) !string {
 	if input.len == 0 {
 		return ''
 	}
 	bin := input.bytes()
-	res := decode_walpha_bytes(bin, alphabet)?
+	res := decode_walpha_bytes(bin, alphabet)!
 	return res.bytestr()
 }
 
 // decode_walpha_bytes decodes the base58 encoded input array using a custom alphabet
-pub fn decode_walpha_bytes(input []u8, alphabet Alphabet) ?[]u8 {
+pub fn decode_walpha_bytes(input []u8, alphabet Alphabet) ![]u8 {
 	if input.len == 0 {
 		return []
 	}

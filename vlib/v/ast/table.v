@@ -337,7 +337,7 @@ pub fn (mut t TypeSymbol) register_method(new_fn Fn) int {
 	return t.methods.len - 1
 }
 
-pub fn (t &Table) register_aggregate_method(mut sym TypeSymbol, name string) ?Fn {
+pub fn (t &Table) register_aggregate_method(mut sym TypeSymbol, name string) !Fn {
 	if sym.kind != .aggregate {
 		t.panic('Unexpected type symbol: $sym.kind')
 	}
@@ -369,21 +369,25 @@ pub fn (t &Table) has_method(s &TypeSymbol, name string) bool {
 }
 
 // find_method searches from current type up through each parent looking for method
-pub fn (t &Table) find_method(s &TypeSymbol, name string) ?Fn {
+pub fn (t &Table) find_method(s &TypeSymbol, name string) !Fn {
 	mut ts := unsafe { s }
 	for {
 		if method := ts.find_method(name) {
 			return method
 		}
 		if ts.kind == .aggregate {
-			return t.register_aggregate_method(mut ts, name)
+			if method := t.register_aggregate_method(mut ts, name) {
+				return method
+			} else {
+				return err
+			}
 		}
 		if ts.parent_idx == 0 {
 			break
 		}
 		ts = t.type_symbols[ts.parent_idx]
 	}
-	return none
+	return error('unknown method `$name`')
 }
 
 [params]
@@ -410,7 +414,7 @@ pub fn (t &Table) get_embeds(sym &TypeSymbol, options GetEmbedsOptions) [][]Type
 	return embeds
 }
 
-pub fn (t &Table) find_method_from_embeds(sym &TypeSymbol, method_name string) ?(Fn, []Type) {
+pub fn (t &Table) find_method_from_embeds(sym &TypeSymbol, method_name string) !(Fn, []Type) {
 	if sym.info is Struct {
 		mut found_methods := []Fn{}
 		mut embed_of_found_methods := []Type{}
@@ -460,17 +464,16 @@ pub fn (t &Table) find_method_from_embeds(sym &TypeSymbol, method_name string) ?
 			}
 		}
 	}
-	return none
+	return error('')
 }
 
 // find_method_with_embeds searches for a given method, also looking through embedded fields
-pub fn (t &Table) find_method_with_embeds(sym &TypeSymbol, method_name string) ?Fn {
+pub fn (t &Table) find_method_with_embeds(sym &TypeSymbol, method_name string) !Fn {
 	if func := t.find_method(sym, method_name) {
 		return func
 	} else {
 		// look for embedded field
-		first_err := err
-		func, _ := t.find_method_from_embeds(sym, method_name) or { return first_err }
+		func, _ := t.find_method_from_embeds(sym, method_name) or { return err }
 		return func
 	}
 }
@@ -487,7 +490,7 @@ pub fn (t &Table) get_embed_methods(sym &TypeSymbol) []Fn {
 	return methods
 }
 
-fn (t &Table) register_aggregate_field(mut sym TypeSymbol, name string) ?StructField {
+fn (t &Table) register_aggregate_field(mut sym TypeSymbol, name string) !StructField {
 	if sym.kind != .aggregate {
 		t.panic('Unexpected type symbol: $sym.kind')
 	}
@@ -537,7 +540,7 @@ pub fn (t &Table) struct_fields(sym &TypeSymbol) []StructField {
 }
 
 // search from current type up through each parent looking for field
-pub fn (t &Table) find_field(s &TypeSymbol, name string) ?StructField {
+pub fn (t &Table) find_field(s &TypeSymbol, name string) !StructField {
 	mut ts := unsafe { s }
 	for {
 		match mut ts.info {
@@ -574,11 +577,11 @@ pub fn (t &Table) find_field(s &TypeSymbol, name string) ?StructField {
 		}
 		ts = t.type_symbols[ts.parent_idx]
 	}
-	return none
+	return error('')
 }
 
 // find_field_from_embeds tries to find a field in the nested embeds
-pub fn (t &Table) find_field_from_embeds(sym &TypeSymbol, field_name string) ?(StructField, []Type) {
+pub fn (t &Table) find_field_from_embeds(sym &TypeSymbol, field_name string) !(StructField, []Type) {
 	if sym.info is Struct {
 		mut found_fields := []StructField{}
 		mut embeds_of_found_fields := []Type{}
@@ -611,11 +614,11 @@ pub fn (t &Table) find_field_from_embeds(sym &TypeSymbol, field_name string) ?(S
 		unalias_sym := t.sym(sym.info.parent_type)
 		return t.find_field_from_embeds(unalias_sym, field_name)
 	}
-	return none
+	return error('')
 }
 
 // find_field_with_embeds searches for a given field, also looking through embedded fields
-pub fn (t &Table) find_field_with_embeds(sym &TypeSymbol, field_name string) ?StructField {
+pub fn (t &Table) find_field_with_embeds(sym &TypeSymbol, field_name string) !StructField {
 	if field := t.find_field(sym, field_name) {
 		return field
 	} else {
@@ -884,21 +887,22 @@ pub fn (t &Table) known_type_idx(typ Type) bool {
 pub fn (t &Table) array_name(elem_type Type) string {
 	elem_type_sym := t.sym(elem_type)
 	ptr := if elem_type.is_ptr() { '&'.repeat(elem_type.nr_muls()) } else { '' }
-	return '[]$ptr$elem_type_sym.name'
+	opt := if elem_type.has_flag(.optional) { '?' } else { '' }
+	res := if elem_type.has_flag(.result) { '!' } else { '' }
+	return '[]$opt$res$ptr$elem_type_sym.name'
 }
 
 [inline]
 pub fn (t &Table) array_cname(elem_type Type) string {
 	elem_type_sym := t.sym(elem_type)
-	mut res := ''
-	if elem_type.is_ptr() {
-		res = '_ptr'.repeat(elem_type.nr_muls())
-	}
+	suffix := if elem_type.is_ptr() { '_ptr'.repeat(elem_type.nr_muls()) } else { '' }
+	opt := if elem_type.has_flag(.optional) { '_option_' } else { '' }
+	res := if elem_type.has_flag(.result) { '_result_' } else { '' }
 	if elem_type_sym.cname.contains('<') {
 		type_name := elem_type_sym.cname.replace_each(['<', '_T_', ', ', '_', '>', ''])
-		return 'Array_$type_name' + res
+		return 'Array_$opt$res$type_name$suffix'
 	} else {
-		return 'Array_$elem_type_sym.cname' + res
+		return 'Array_$opt$res$elem_type_sym.cname$suffix'
 	}
 }
 
@@ -908,22 +912,28 @@ pub fn (t &Table) array_cname(elem_type Type) string {
 pub fn (t &Table) array_fixed_name(elem_type Type, size int, size_expr Expr) string {
 	elem_type_sym := t.sym(elem_type)
 	ptr := if elem_type.is_ptr() { '&'.repeat(elem_type.nr_muls()) } else { '' }
+	opt := if elem_type.has_flag(.optional) { '?' } else { '' }
+	res := if elem_type.has_flag(.result) { '!' } else { '' }
 	size_str := if size_expr is EmptyExpr || size != 987654321 {
 		size.str()
 	} else {
 		size_expr.str()
 	}
-	return '[$size_str]$ptr$elem_type_sym.name'
+	return '[$size_str]$opt$res$ptr$elem_type_sym.name'
 }
 
 [inline]
 pub fn (t &Table) array_fixed_cname(elem_type Type, size int) string {
 	elem_type_sym := t.sym(elem_type)
-	mut res := ''
-	if elem_type.is_ptr() {
-		res = '_ptr$elem_type.nr_muls()'
+	suffix := if elem_type.is_ptr() { '_ptr$elem_type.nr_muls()' } else { '' }
+	opt := if elem_type.has_flag(.optional) { '_option_' } else { '' }
+	res := if elem_type.has_flag(.result) { '_result_' } else { '' }
+	if elem_type_sym.cname.contains('<') {
+		type_name := elem_type_sym.cname.replace_each(['<', '_T_', ', ', '_', '>', ''])
+		return 'Array_fixed_$opt$res$type_name${suffix}_$size'
+	} else {
+		return 'Array_fixed_$opt$res$elem_type_sym.cname${suffix}_$size'
 	}
-	return 'Array_fixed_$elem_type_sym.cname${res}_$size'
 }
 
 [inline]
@@ -1012,7 +1022,7 @@ pub fn (t &Table) thread_cname(return_type Type) string {
 pub fn (t &Table) map_name(key_type Type, value_type Type) string {
 	key_type_sym := t.sym(key_type)
 	value_type_sym := t.sym(value_type)
-	ptr := if value_type.is_ptr() { '&' } else { '' }
+	ptr := if value_type.is_ptr() { '&'.repeat(value_type.nr_muls()) } else { '' }
 	opt := if value_type.has_flag(.optional) { '?' } else { '' }
 	res := if value_type.has_flag(.result) { '!' } else { '' }
 	return 'map[$key_type_sym.name]$opt$res$ptr$value_type_sym.name'
@@ -1022,10 +1032,15 @@ pub fn (t &Table) map_name(key_type Type, value_type Type) string {
 pub fn (t &Table) map_cname(key_type Type, value_type Type) string {
 	key_type_sym := t.sym(key_type)
 	value_type_sym := t.sym(value_type)
-	suffix := if value_type.is_ptr() { '_ptr' } else { '' }
+	suffix := if value_type.is_ptr() { '_ptr'.repeat(value_type.nr_muls()) } else { '' }
 	opt := if value_type.has_flag(.optional) { '_option_' } else { '' }
 	res := if value_type.has_flag(.result) { '_result_' } else { '' }
-	return 'Map_${key_type_sym.cname}_$opt$res$value_type_sym.cname$suffix'
+	if value_type_sym.cname.contains('<') {
+		type_name := value_type_sym.cname.replace_each(['<', '_T_', ', ', '_', '>', ''])
+		return 'Map_${key_type_sym.cname}_$opt$res$type_name$suffix'
+	} else {
+		return 'Map_${key_type_sym.cname}_$opt$res$value_type_sym.cname$suffix'
+	}
 }
 
 pub fn (mut t Table) find_or_register_chan(elem_type Type, is_mut bool) int {

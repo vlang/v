@@ -1601,3 +1601,9 @@ fn test_2d_array_init_with_it() {
 	a := [][]int{len: 6, init: f(it, 2 * it)}
 	assert a == [[0, 0], [1, 2], [2, 4], [3, 6], [4, 8], [5, 10]]
 }
+
+fn test_using_array_name_variable() {
+	array := []int{len: 4, init: it}
+	println(array)
+	assert array == [0, 1, 2, 3]
+}

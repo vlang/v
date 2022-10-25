@@ -88,7 +88,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 	}
 }
 
-pub fn (mut b Builder) front_stages(v_files []string) ? {
+pub fn (mut b Builder) front_stages(v_files []string) ! {
 	mut timers := util.get_timers()
 	util.timing_start('PARSE')
 
@@ -102,11 +102,11 @@ pub fn (mut b Builder) front_stages(v_files []string) ? {
 	timers.show('PARSE')
 	timers.show_if_exists('PARSE stmt')
 	if b.pref.only_check_syntax {
-		return error_with_code('stop_after_parser', 9999)
+		return error_with_code('stop_after_parser', 7001)
 	}
 }
 
-pub fn (mut b Builder) middle_stages() ? {
+pub fn (mut b Builder) middle_stages() ! {
 	util.timing_start('CHECK')
 
 	util.timing_start('Checker.generic_insts_to_concrete')
@@ -120,7 +120,7 @@ pub fn (mut b Builder) middle_stages() ? {
 		return error('too many errors/warnings/notices')
 	}
 	if b.pref.check_only {
-		return error_with_code('stop_after_checker', 9999)
+		return error_with_code('stop_after_checker', 8001)
 	}
 	util.timing_start('TRANSFORM')
 	b.transformer.transform_files(b.parsed_files)
@@ -135,9 +135,9 @@ pub fn (mut b Builder) middle_stages() ? {
 	}
 }
 
-pub fn (mut b Builder) front_and_middle_stages(v_files []string) ? {
-	b.front_stages(v_files)?
-	b.middle_stages()?
+pub fn (mut b Builder) front_and_middle_stages(v_files []string) ! {
+	b.front_stages(v_files)!
+	b.middle_stages()!
 }
 
 // parse all deps from already parsed files

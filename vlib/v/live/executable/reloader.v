@@ -54,7 +54,7 @@ fn elog(r &live.LiveReloadInfo, s string) {
 	}
 }
 
-fn compile_and_reload_shared_lib(mut r live.LiveReloadInfo) ?bool {
+fn compile_and_reload_shared_lib(mut r live.LiveReloadInfo) !bool {
 	sw := time.new_stopwatch()
 	new_lib_path := compile_lib(mut r) or { return error('errors while compiling $r.original') }
 	elog(r, '> compile_and_reload_shared_lib compiled: $new_lib_path')

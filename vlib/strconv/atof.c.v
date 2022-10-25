@@ -393,7 +393,7 @@ fn converter(mut pn PrepNumber) u64 {
 }
 
 // atof64 parses the string `s`, and if possible, converts it into a f64 number
-pub fn atof64(s string) ?f64 {
+pub fn atof64(s string) !f64 {
 	if s.len == 0 {
 		return error('expected a number found an empty string')
 	}

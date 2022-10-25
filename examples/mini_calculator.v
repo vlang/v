@@ -5,7 +5,7 @@ import os
 const numeric_char = [`0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`, `.`, `e`, `E`]
 
 // Convert expression to Reverse Polish Notation.
-fn expr_to_rev_pol(expr string) ?[]string {
+fn expr_to_rev_pol(expr string) ![]string {
 	if expr == '' {
 		return error('err: empty expression')
 	}
@@ -63,7 +63,7 @@ fn expr_to_rev_pol(expr string) ?[]string {
 }
 
 // Evaluate the result of Reverse Polish Notation.
-fn eval_rev_pol(rev_pol []string) ?f64 {
+fn eval_rev_pol(rev_pol []string) !f64 {
 	mut stack := []f64{}
 	for item in rev_pol {
 		if is_num_string(item) {

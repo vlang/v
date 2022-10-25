@@ -6,14 +6,14 @@ module http
 import net.ssl
 import strings
 
-fn (req &Request) ssl_do(port int, method Method, host_name string, path string) ?Response {
+fn (req &Request) ssl_do(port int, method Method, host_name string, path string) !Response {
 	mut ssl_conn := ssl.new_ssl_conn(
 		verify: req.verify
 		cert: req.cert
 		cert_key: req.cert_key
 		validate: req.validate
 		in_memory_verification: req.in_memory_verification
-	)?
+	)!
 	ssl_conn.dial(host_name, port) or { return err }
 
 	req_headers := req.build_request_headers(method, host_name, path)
@@ -38,7 +38,7 @@ fn (req &Request) ssl_do(port int, method Method, host_name string, path string)
 		}
 		unsafe { content.write_ptr(bp, len) }
 	}
-	ssl_conn.shutdown()?
+	ssl_conn.shutdown()!
 	response_text := content.str()
 	$if trace_http_response ? {
 		eprintln('< $response_text')

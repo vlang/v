@@ -11,17 +11,17 @@ fn test_ftp_cleint() {
 	ftp_client_test_inside() or { panic(err) }
 }
 
-fn ftp_client_test_inside() ? {
+fn ftp_client_test_inside() ! {
 	mut zftp := ftp.new()
 	// eprintln(zftp)
 	defer {
 		zftp.close() or { panic(err) }
 	}
-	connect_result := zftp.connect('ftp.redhat.com')?
+	connect_result := zftp.connect('ftp.redhat.com')!
 	assert connect_result
-	login_result := zftp.login('ftp', 'ftp')?
+	login_result := zftp.login('ftp', 'ftp')!
 	assert login_result
-	pwd := zftp.pwd()?
+	pwd := zftp.pwd()!
 	assert pwd.len > 0
 	zftp.cd('/') or {
 		assert false

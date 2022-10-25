@@ -624,7 +624,7 @@ pub fn (s string) u64() u64 {
 // This method directly exposes the `parse_int` function from `strconv`
 // as a method on `string`. For more advanced features,
 // consider calling `strconv.common_parse_int` directly.
-pub fn (s string) parse_uint(_base int, _bit_size int) ?u64 {
+pub fn (s string) parse_uint(_base int, _bit_size int) !u64 {
 	return strconv.parse_uint(s, _base, _bit_size)
 }
 
@@ -644,7 +644,7 @@ pub fn (s string) parse_uint(_base int, _bit_size int) ?u64 {
 // This method directly exposes the `parse_uint` function from `strconv`
 // as a method on `string`. For more advanced features,
 // consider calling `strconv.common_parse_uint` directly.
-pub fn (s string) parse_int(_base int, _bit_size int) ?i64 {
+pub fn (s string) parse_int(_base int, _bit_size int) !i64 {
 	return strconv.parse_int(s, _base, _bit_size)
 }
 
@@ -1413,11 +1413,18 @@ pub fn (s string) trim_space() string {
 
 // trim strips any of the characters given in `cutset` from the start and end of the string.
 // Example: assert ' ffHello V ffff'.trim(' f') == 'Hello V'
-[direct_array_access]
 pub fn (s string) trim(cutset string) string {
 	if s.len < 1 || cutset.len < 1 {
 		return s.clone()
 	}
+	left, right := s.trim_indexes(cutset)
+	return s.substr(left, right)
+}
+
+// trim_indexes gets the new start and end indicies of a string when any of the characters given in `cutset` were stripped from the start and end of the string. Should be used as an input to `substr()`. If the string contains only the characters in `cutset`, both values returned are zero.
+// Example: left, right := '-hi-'.trim_indexes('-')
+[direct_array_access]
+pub fn (s string) trim_indexes(cutset string) (int, int) {
 	mut pos_left := 0
 	mut pos_right := s.len - 1
 	mut cs_match := true
@@ -1438,10 +1445,10 @@ pub fn (s string) trim(cutset string) string {
 			}
 		}
 		if pos_left > pos_right {
-			return ''
+			return 0, 0
 		}
 	}
-	return s.substr(pos_left, pos_right + 1)
+	return pos_left, pos_right + 1
 }
 
 // trim_left strips any of the characters given in `cutset` from the left of the string.

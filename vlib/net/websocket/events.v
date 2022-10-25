@@ -32,26 +32,26 @@ struct CloseEventHandler {
 	ref      voidptr // referenced object
 }
 
-pub type AcceptClientFn = fn (mut c ServerClient) ?bool
+pub type AcceptClientFn = fn (mut c ServerClient) !bool
 
-pub type SocketMessageFn = fn (mut c Client, msg &Message) ?
+pub type SocketMessageFn = fn (mut c Client, msg &Message) !
 
-pub type SocketMessageFn2 = fn (mut c Client, msg &Message, v voidptr) ?
+pub type SocketMessageFn2 = fn (mut c Client, msg &Message, v voidptr) !
 
-pub type SocketErrorFn = fn (mut c Client, err string) ?
+pub type SocketErrorFn = fn (mut c Client, err string) !
 
-pub type SocketErrorFn2 = fn (mut c Client, err string, v voidptr) ?
+pub type SocketErrorFn2 = fn (mut c Client, err string, v voidptr) !
 
-pub type SocketOpenFn = fn (mut c Client) ?
+pub type SocketOpenFn = fn (mut c Client) !
 
-pub type SocketOpenFn2 = fn (mut c Client, v voidptr) ?
+pub type SocketOpenFn2 = fn (mut c Client, v voidptr) !
 
-pub type SocketCloseFn = fn (mut c Client, code int, reason string) ?
+pub type SocketCloseFn = fn (mut c Client, code int, reason string) !
 
-pub type SocketCloseFn2 = fn (mut c Client, code int, reason string, v voidptr) ?
+pub type SocketCloseFn2 = fn (mut c Client, code int, reason string, v voidptr) !
 
 // on_connect registers a callback when client connects to the server
-pub fn (mut s Server) on_connect(fun AcceptClientFn) ? {
+pub fn (mut s Server) on_connect(fun AcceptClientFn) ! {
 	if s.accept_client_callbacks.len > 0 {
 		return error('only one callback can be registered for accept client')
 	}
@@ -156,13 +156,13 @@ pub fn (mut ws Client) on_close_ref(fun SocketCloseFn2, ref voidptr) {
 }
 
 // send_connect_event invokes the on_connect callback
-fn (mut s Server) send_connect_event(mut c ServerClient) ?bool {
+fn (mut s Server) send_connect_event(mut c ServerClient) !bool {
 	if s.accept_client_callbacks.len == 0 {
 		// If no callback all client will be accepted
 		return true
 	}
 	fun := s.accept_client_callbacks[0]
-	res := fun(mut c)?
+	res := fun(mut c)!
 	return res
 }
 

@@ -43,7 +43,7 @@ fn main() {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
 	util.set_vroot_folder(vroot)
-	os.chdir(vroot)?
+	os.chdir(vroot)!
 	cmd := diff.find_working_diff_command() or { '' }
 	mut app := App{
 		diff_cmd: cmd

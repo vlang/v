@@ -29,7 +29,7 @@ pub fn new_image_writer(mut writer PPMWriter, settings ImageSettings) &ImageWrit
 	}
 }
 
-pub fn (mut iw ImageWritter) handle(result sim.SimResult) ?int {
+pub fn (mut iw ImageWritter) handle(result sim.SimResult) !int {
 	total_pixels := iw.settings.width * iw.settings.height
 
 	// find the closest magnet
@@ -46,7 +46,7 @@ pub fn (mut iw ImageWritter) handle(result sim.SimResult) ?int {
 
 	if iw.current_index == total_pixels {
 		iw.writer.write() or { panic('Could not write image') }
-		return none
+		return error('none')
 	}
 
 	return iw.current_index

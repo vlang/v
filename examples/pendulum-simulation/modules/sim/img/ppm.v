@@ -39,34 +39,34 @@ mut:
 	cache_size int
 }
 
-pub fn ppm_writer_for_fname(fname string, settings ImageSettings) ?&PPMWriter {
+pub fn ppm_writer_for_fname(fname string, settings ImageSettings) !&PPMWriter {
 	mut writer := &PPMWriter{
 		cache_size: settings.cache_size
 		cache: []u8{cap: settings.cache_size}
 	}
-	writer.start_for_file(fname, settings)?
+	writer.start_for_file(fname, settings)!
 	return writer
 }
 
-pub fn (mut writer PPMWriter) start_for_file(fname string, settings ImageSettings) ? {
-	writer.file = os.create(fname)?
-	writer.file.writeln('P6 $settings.width $settings.height 255')?
+pub fn (mut writer PPMWriter) start_for_file(fname string, settings ImageSettings) ! {
+	writer.file = os.create(fname)!
+	writer.file.writeln('P6 $settings.width $settings.height 255')!
 }
 
-pub fn (mut writer PPMWriter) handle_pixel(p gx.Color) ? {
+pub fn (mut writer PPMWriter) handle_pixel(p gx.Color) ! {
 	if writer.cache.len >= writer.cache_size {
-		writer.write()?
-		writer.flush()?
+		writer.write()!
+		writer.flush()!
 	}
 	writer.cache << [p.r, p.g, p.b]
 }
 
-pub fn (mut writer PPMWriter) flush() ? {
+pub fn (mut writer PPMWriter) flush() ! {
 	writer.cache.clear()
 }
 
-pub fn (mut writer PPMWriter) write() ? {
-	writer.file.write(writer.cache)?
+pub fn (mut writer PPMWriter) write() ! {
+	writer.file.write(writer.cache)!
 }
 
 pub fn (mut writer PPMWriter) close() {

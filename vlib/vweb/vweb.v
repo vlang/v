@@ -331,7 +331,7 @@ pub fn (mut ctx Context) set_cookie_with_expire_date(key string, val string, exp
 }
 
 // Gets a cookie by a key
-pub fn (ctx &Context) get_cookie(key string) ?string { // TODO refactor
+pub fn (ctx &Context) get_cookie(key string) !string { // TODO refactor
 	mut cookie_header := ctx.get_header('cookie')
 	if cookie_header == '' {
 		cookie_header = ctx.get_header('Cookie')
@@ -391,7 +391,7 @@ pub struct RunParams {
 // run_at - start a new VWeb server, listening only on a specific address `host`, at the specified `port`
 // Example: vweb.run_at(new_app(), vweb.RunParams{ host: 'localhost' port: 8099 family: .ip }) or { panic(err) }
 [manualfree]
-pub fn run_at<T>(global_app &T, params RunParams) ? {
+pub fn run_at<T>(global_app &T, params RunParams) ! {
 	if params.port <= 0 || params.port > 65535 {
 		return error('invalid port number `$params.port`, it should be between 1 and 65535')
 	}
@@ -714,11 +714,11 @@ pub fn not_found() Result {
 	return Result{}
 }
 
-fn send_string(mut conn net.TcpConn, s string) ? {
+fn send_string(mut conn net.TcpConn, s string) ! {
 	$if trace_response ? {
 		eprintln('> send_string:\n$s\n')
 	}
-	conn.write(s.bytes())?
+	conn.write(s.bytes())!
 }
 
 // Do not delete.

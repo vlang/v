@@ -14,5 +14,5 @@ fn test_assign_map_value_of_fixed_array() {
 
 	arr = m['C']
 	println(arr)
-	assert '$arr' == '[0, 0]'
+	assert '$arr' == '[0.0, 0.0]'
 }

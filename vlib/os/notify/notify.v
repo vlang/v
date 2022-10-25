@@ -5,11 +5,11 @@ import time
 // Backends should provide a `new()?FdNotifier` function
 pub interface FdNotifier {
 mut:
-	add(fd int, events FdEventType, conf ...FdConfigFlags) ?
-	modify(fd int, events FdEventType, conf ...FdConfigFlags) ?
-	remove(fd int) ?
+	add(fd int, events FdEventType, conf ...FdConfigFlags) !
+	modify(fd int, events FdEventType, conf ...FdConfigFlags) !
+	remove(fd int) !
 	wait(timeout time.Duration) []FdEvent
-	close() ?
+	close() !
 }
 
 pub interface FdEvent {

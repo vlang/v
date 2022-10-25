@@ -47,12 +47,12 @@ pub fn new_request(method Method, url_ string, data string) ?Request {
 }
 
 // get sends a GET HTTP request to the URL
-pub fn get(url string) ?Response {
+pub fn get(url string) !Response {
 	return fetch(method: .get, url: url)
 }
 
 // post sends a POST HTTP request to the URL with a string data
-pub fn post(url string, data string) ?Response {
+pub fn post(url string, data string) !Response {
 	return fetch(
 		method: .post
 		url: url
@@ -62,7 +62,7 @@ pub fn post(url string, data string) ?Response {
 }
 
 // post_json sends a POST HTTP request to the URL with a JSON data
-pub fn post_json(url string, data string) ?Response {
+pub fn post_json(url string, data string) !Response {
 	return fetch(
 		method: .post
 		url: url
@@ -72,7 +72,7 @@ pub fn post_json(url string, data string) ?Response {
 }
 
 // post_form sends a POST HTTP request to the URL with X-WWW-FORM-URLENCODED data
-pub fn post_form(url string, data map[string]string) ?Response {
+pub fn post_form(url string, data map[string]string) !Response {
 	return fetch(
 		method: .post
 		url: url
@@ -90,7 +90,7 @@ pub mut:
 }
 
 // post_multipart_form sends a POST HTTP request to the URL with multipart form data
-pub fn post_multipart_form(url string, conf PostMultipartFormConfig) ?Response {
+pub fn post_multipart_form(url string, conf PostMultipartFormConfig) !Response {
 	body, boundary := multipart_form_body(conf.form, conf.files)
 	mut header := conf.header
 	header.set(.content_type, 'multipart/form-data; boundary="$boundary"')
@@ -103,7 +103,7 @@ pub fn post_multipart_form(url string, conf PostMultipartFormConfig) ?Response {
 }
 
 // put sends a PUT HTTP request to the URL with a string data
-pub fn put(url string, data string) ?Response {
+pub fn put(url string, data string) !Response {
 	return fetch(
 		method: .put
 		url: url
@@ -113,7 +113,7 @@ pub fn put(url string, data string) ?Response {
 }
 
 // patch sends a PATCH HTTP request to the URL with a string data
-pub fn patch(url string, data string) ?Response {
+pub fn patch(url string, data string) !Response {
 	return fetch(
 		method: .patch
 		url: url
@@ -123,17 +123,17 @@ pub fn patch(url string, data string) ?Response {
 }
 
 // head sends a HEAD HTTP request to the URL
-pub fn head(url string) ?Response {
+pub fn head(url string) !Response {
 	return fetch(method: .head, url: url)
 }
 
 // delete sends a DELETE HTTP request to the URL
-pub fn delete(url string) ?Response {
+pub fn delete(url string) !Response {
 	return fetch(method: .delete, url: url)
 }
 
 // fetch sends an HTTP request to the URL with the given method and configurations
-pub fn fetch(config FetchConfig) ?Response {
+pub fn fetch(config FetchConfig) !Response {
 	if config.url == '' {
 		return error('http.fetch: empty url')
 	}
@@ -154,7 +154,7 @@ pub fn fetch(config FetchConfig) ?Response {
 		in_memory_verification: config.in_memory_verification
 		allow_redirect: config.allow_redirect
 	}
-	res := req.do()?
+	res := req.do()!
 	return res
 }
 
@@ -176,14 +176,14 @@ pub fn url_encode_form_data(data map[string]string) string {
 }
 
 [deprecated: 'use fetch()']
-fn fetch_with_method(method Method, _config FetchConfig) ?Response {
+fn fetch_with_method(method Method, _config FetchConfig) !Response {
 	mut config := _config
 	config.method = method
 	return fetch(config)
 }
 
-fn build_url_from_fetch(config FetchConfig) ?string {
-	mut url := urllib.parse(config.url)?
+fn build_url_from_fetch(config FetchConfig) !string {
+	mut url := urllib.parse(config.url)!
 	if config.params.len == 0 {
 		return url.str()
 	}

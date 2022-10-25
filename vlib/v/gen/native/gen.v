@@ -184,7 +184,7 @@ fn (mut g Gen) get_type_from_var(var Var) ast.Type {
 	}
 }
 
-fn get_backend(arch pref.Arch) ?CodeGen {
+fn get_backend(arch pref.Arch) !CodeGen {
 	match arch {
 		.arm64 {
 			return Arm64{
@@ -871,6 +871,23 @@ g.expr
 		ast.StringInterLiteral {
 			g.n_error('Interlaced string literals are not yet supported in the native backend.') // , expr.pos)
 		}
+		ast.IfExpr {
+			if expr.is_comptime {
+				if stmts := g.comptime_conditional(expr) {
+					for i, stmt in stmts {
+						if i + 1 == stmts.len && stmt is ast.ExprStmt {
+							g.gen_print_from_expr(stmt.expr, name)
+						} else {
+							g.stmt(stmt)
+						}
+					}
+				} else {
+					g.n_error('nothing to print')
+				}
+			} else {
+				g.n_error('non-comptime if exprs not yet implemented')
+			}
+		}
 		else {
 			dump(typeof(expr).name)
 			dump(expr)
@@ -1346,7 +1363,10 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.IfExpr {
 			if node.is_comptime {
-				g.comptime_conditional(node)
+				if stmts := g.comptime_conditional(node) {
+					g.stmts(stmts)
+				} else {
+				}
 			} else {
 				g.if_expr(node)
 			}

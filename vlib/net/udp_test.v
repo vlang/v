@@ -24,7 +24,7 @@ fn echo_server(mut c net.UdpConn) {
 
 const server_addr = '127.0.0.1:40003'
 
-fn echo() ? {
+fn echo() ! {
 	mut c := net.dial_udp(server_addr) or { panic('could not net.dial_udp: $err') }
 	defer {
 		c.close() or {}
@@ -48,7 +48,7 @@ fn echo() ? {
 
 	println('Got "$buf.bytestr()"')
 
-	c.close()?
+	c.close()!
 }
 
 fn test_udp() {

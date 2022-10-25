@@ -72,7 +72,9 @@ mut:
 	embedded_data             strings.Builder // data to embed in the executable/binary
 	shared_types              strings.Builder // shared/lock types
 	shared_functions          strings.Builder // shared constructors
-	options                   strings.Builder // `option_xxxx` types
+	out_options_forward       strings.Builder // forward `option_xxxx` types
+	out_options               strings.Builder // `option_xxxx` types
+	out_results_forward       strings.Builder // forward`result_xxxx` types
 	out_results               strings.Builder // `result_xxxx` types
 	json_forward_decls        strings.Builder // json type forward decls
 	sql_buf                   strings.Builder // for writing exprs to args via `sqlite3_bind_int()` etc
@@ -99,9 +101,12 @@ mut:
 	is_json_fn                bool // inside json.encode()
 	is_js_call                bool // for handling a special type arg #1 `json.decode(User, ...)`
 	is_fn_index_call          bool
-	is_cc_msvc                bool   // g.pref.ccompiler == 'msvc'
-	vlines_path               string // set to the proper path for generating #line directives
+	is_cc_msvc                bool     // g.pref.ccompiler == 'msvc'
+	vlines_path               string   // set to the proper path for generating #line directives
+	optionals_pos_forward     int      // insertion point to forward
+	options_forward           []string // to forward
 	optionals                 map[string]string // to avoid duplicates
+	results_forward           []string // to forward
 	results                   map[string]string // to avoid duplicates
 	done_optionals            shared []string   // to avoid duplicates
 	chan_pop_optionals        map[string]string // types for `x := <-ch or {...}`
@@ -154,9 +159,9 @@ mut:
 	array_sort_fn             shared []string
 	array_contains_types      []ast.Type
 	array_index_types         []ast.Type
-	auto_fn_definitions       []string // auto generated functions defination list
+	auto_fn_definitions       []string // auto generated functions definition list
 	sumtype_casting_fns       []SumtypeCastingFn
-	anon_fn_definitions       []string     // anon generated functions defination list
+	anon_fn_definitions       []string     // anon generated functions definition list
 	sumtype_definitions       map[int]bool // `_TypeA_to_sumtype_TypeB()` fns that have been generated
 	json_types                []ast.Type   // to avoid json gen duplicates
 	pcs                       []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
@@ -270,7 +275,9 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 		dump_funcs: strings.new_builder(100)
 		pcs_declarations: strings.new_builder(100)
 		embedded_data: strings.new_builder(1000)
-		options: strings.new_builder(100)
+		out_options_forward: strings.new_builder(100)
+		out_options: strings.new_builder(100)
+		out_results_forward: strings.new_builder(100)
 		out_results: strings.new_builder(100)
 		shared_types: strings.new_builder(100)
 		shared_functions: strings.new_builder(100)
@@ -456,6 +463,22 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 		g.write_init_function()
 	}
 
+	// insert for optionals forward
+	if g.out_options_forward.len > 0 || g.out_results_forward.len > 0 {
+		tail := g.type_definitions.cut_to(g.optionals_pos_forward)
+		if g.out_options_forward.len > 0 {
+			g.type_definitions.writeln('// #start V forward option_xxx definitions:')
+			g.type_definitions.writeln(g.out_options_forward.str())
+			g.type_definitions.writeln('// #end V forward option_xxx definitions\n')
+		}
+		if g.out_results_forward.len > 0 {
+			g.type_definitions.writeln('// #start V forward result_xxx definitions:')
+			g.type_definitions.writeln(g.out_results_forward.str())
+			g.type_definitions.writeln('// #end V forward result_xxx definitions\n')
+		}
+		g.type_definitions.writeln(tail)
+	}
+
 	g.finish()
 
 	mut b := strings.new_builder(640000)
@@ -488,7 +511,7 @@ pub fn gen(files []&ast.File, table &ast.Table, pref &pref.Preferences) (string,
 	b.writeln('\n// V shared types:')
 	b.write_string(g.shared_types.str())
 	b.writeln('\n// V Option_xxx definitions:')
-	b.write_string(g.options.str())
+	b.write_string(g.out_options.str())
 	b.writeln('\n// V result_xxx definitions:')
 	b.write_string(g.out_results.str())
 	b.writeln('\n// V json forward decls:')
@@ -591,7 +614,9 @@ fn cgen_process_one_file_cb(p &pool.PoolProcessor, idx int, wid int) &Gen {
 		pcs_declarations: strings.new_builder(100)
 		hotcode_definitions: strings.new_builder(100)
 		embedded_data: strings.new_builder(1000)
-		options: strings.new_builder(100)
+		out_options_forward: strings.new_builder(100)
+		out_options: strings.new_builder(100)
+		out_results_forward: strings.new_builder(100)
 		out_results: strings.new_builder(100)
 		shared_types: strings.new_builder(100)
 		shared_functions: strings.new_builder(100)
@@ -615,6 +640,8 @@ fn cgen_process_one_file_cb(p &pool.PoolProcessor, idx int, wid int) &Gen {
 		array_sort_fn: global_g.array_sort_fn
 		waiter_fns: global_g.waiter_fns
 		threaded_fns: global_g.threaded_fns
+		options_forward: global_g.options_forward
+		results_forward: global_g.results_forward
 		done_optionals: global_g.done_optionals
 		is_autofree: global_g.pref.autofree
 		referenced_fns: global_g.referenced_fns
@@ -650,7 +677,9 @@ pub fn (mut g Gen) free_builders() {
 		g.shared_functions.free()
 		g.channel_definitions.free()
 		g.thread_definitions.free()
-		g.options.free()
+		g.out_options_forward.free()
+		g.out_options.free()
+		g.out_results_forward.free()
 		g.out_results.free()
 		g.json_forward_decls.free()
 		g.enum_typedefs.free()
@@ -734,6 +763,7 @@ pub fn (mut g Gen) init() {
 		g.cheaders.writeln('#include <spawn.h>')
 	}
 	g.write_builtin_types()
+	g.optionals_pos_forward = g.type_definitions.len
 	g.write_typedef_types()
 	g.write_typeof_functions()
 	g.write_sorted_types()
@@ -1036,7 +1066,7 @@ fn (g Gen) optional_type_text(styp string, base string) string {
 	} else if base.starts_with('anon_fn') {
 		'void*'
 	} else {
-		base
+		if base.starts_with('struct ') && !base.ends_with('*') { '$base*' } else { base }
 	}
 	ret := 'struct $styp {
 	byte state;
@@ -1053,7 +1083,7 @@ fn (g Gen) result_type_text(styp string, base string) string {
 	} else if base.starts_with('anon_fn') {
 		'void*'
 	} else {
-		base
+		if base.starts_with('struct ') && !base.ends_with('*') { '$base*' } else { base }
 	}
 	ret := 'struct $styp {
 	bool is_error;
@@ -1086,7 +1116,11 @@ fn (mut g Gen) write_optionals() {
 		}
 		done << base
 		g.typedefs.writeln('typedef struct $styp $styp;')
-		g.options.write_string(g.optional_type_text(styp, base) + ';\n\n')
+		if base in g.options_forward {
+			g.out_options_forward.write_string(g.optional_type_text(styp, base) + ';\n\n')
+		} else {
+			g.out_options.write_string(g.optional_type_text(styp, base) + ';\n\n')
+		}
 	}
 }
 
@@ -1098,7 +1132,11 @@ fn (mut g Gen) write_results() {
 		}
 		done << base
 		g.typedefs.writeln('typedef struct $styp $styp;')
-		g.out_results.write_string(g.result_type_text(styp, base) + ';\n\n')
+		if base in g.results_forward {
+			g.out_results_forward.write_string(g.result_type_text(styp, base) + ';\n\n')
+		} else {
+			g.out_results.write_string(g.result_type_text(styp, base) + ';\n\n')
+		}
 	}
 	for k, _ in g.table.anon_struct_names {
 		ck := c_name(k)
@@ -1314,6 +1352,12 @@ pub fn (mut g Gen) write_typedef_types() {
 						g.type_definitions.writeln(def_str)
 					} else {
 						g.type_definitions.writeln('typedef $fixed $styp [$len];')
+						base := g.typ(info.elem_type.clear_flag(.optional).clear_flag(.result))
+						if info.elem_type.has_flag(.optional) && base !in g.options_forward {
+							g.options_forward << base
+						} else if info.elem_type.has_flag(.result) && base !in g.results_forward {
+							g.results_forward << base
+						}
 					}
 				}
 			}
@@ -2272,7 +2316,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		return
 	}
 	if got_sym.info !is ast.Interface && exp_sym.info is ast.Interface
-		&& got_type.idx() != expected_type.idx() && !expected_type.has_flag(.optional) {
+		&& got_type.idx() != expected_type.idx() && !expected_type.has_flag(.optional)
+		&& !expected_type.has_flag(.result) {
 		if expr is ast.StructInit && !got_type.is_ptr() {
 			g.inside_cast_in_heap++
 			got_styp := g.cc_type(got_type.ref(), true)
@@ -2362,7 +2407,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	// Generic dereferencing logic
 	neither_void := ast.voidptr_type !in [got_type, expected_type]
 	if expected_type.has_flag(.shared_f) && !got_type_raw.has_flag(.shared_f)
-		&& !expected_type.has_flag(.optional) {
+		&& !expected_type.has_flag(.optional) && !expected_type.has_flag(.result) {
 		shared_styp := exp_styp[0..exp_styp.len - 1] // `shared` implies ptr, so eat one `*`
 		if got_type_raw.is_ptr() {
 			g.error('cannot convert reference to `shared`', expr.pos())
@@ -2393,8 +2438,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 		got_deref_type := got_type.deref()
 		deref_sym := g.table.sym(got_deref_type)
 		deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
-		got_is_opt := got_type.has_flag(.optional)
-		if deref_will_match || got_is_opt || expr.is_auto_deref_var() {
+		got_is_opt_or_res := got_type.has_flag(.optional) || got_type.has_flag(.result)
+		if deref_will_match || got_is_opt_or_res || expr.is_auto_deref_var() {
 			g.write('*')
 		}
 	}
@@ -3452,8 +3497,9 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	}
 	sym := g.table.sym(g.unwrap_generic(node.expr_type))
 	// if node expr is a root ident and an optional
-	mut is_optional := node.expr is ast.Ident && node.expr_type.has_flag(.optional)
-	if is_optional {
+	mut is_opt_or_res := node.expr is ast.Ident
+		&& (node.expr_type.has_flag(.optional) || node.expr_type.has_flag(.result))
+	if is_opt_or_res {
 		opt_base_typ := g.base_type(node.expr_type)
 		g.writeln('(*($opt_base_typ*)')
 	}
@@ -3584,7 +3630,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	} else {
 		g.expr(node.expr)
 	}
-	if is_optional {
+	if is_opt_or_res {
 		g.write('.data)')
 	}
 	// struct embedding
@@ -4405,8 +4451,12 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 			}
 		}
 		g.write('}')
-		if fn_return_is_optional || fn_return_is_result {
+		if fn_return_is_optional {
 			g.writeln(' }, ($c.option_name*)(&$tmpvar), sizeof($styp));')
+			g.write_defer_stmts_when_needed()
+			g.write('return $tmpvar')
+		} else if fn_return_is_result {
+			g.writeln(' }, ($c.result_name*)(&$tmpvar), sizeof($styp));')
 			g.write_defer_stmts_when_needed()
 			g.write('return $tmpvar')
 		}
@@ -4990,6 +5040,9 @@ fn (mut g Gen) write_init_function() {
 
 	// ___argv is declared as voidptr here, because that unifies the windows/unix logic
 	g.writeln('void _vinit(int ___argc, voidptr ___argv) {')
+	if g.pref.trace_calls {
+		g.writeln('\tv__trace_calls__on_call(_SLIT("_vinit"));')
+	}
 
 	if g.use_segfault_handler {
 		// 11 is SIGSEGV. It is hardcoded here, to avoid FreeBSD compilation errors for trivial examples.
@@ -5045,6 +5098,9 @@ fn (mut g Gen) write_init_function() {
 	//
 	fn_vcleanup_start_pos := g.out.len
 	g.writeln('void _vcleanup(void) {')
+	if g.pref.trace_calls {
+		g.writeln('\tv__trace_calls__on_call(_SLIT("_vcleanup"));')
+	}
 	if g.is_autofree {
 		// g.writeln('puts("cleaning up...");')
 		reversed_table_modules := g.table.modules.reverse()
@@ -5427,13 +5483,29 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 				if i == stmts.len - 1 {
 					expr_stmt := stmt as ast.ExprStmt
 					g.set_current_pos_as_last_stmt_pos()
-					g.write('*($mr_styp*) ${cvar_name}.data = ')
-					old_inside_opt_data := g.inside_opt_data
-					g.inside_opt_data = true
-					g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_flag(.optional).clear_flag(.result))
-					g.inside_opt_data = old_inside_opt_data
-					g.writeln(';')
-					g.stmt_path_pos.delete_last()
+					if g.inside_return && (expr_stmt.typ.idx() == ast.error_type_idx
+						|| expr_stmt.typ in [ast.none_type, ast.error_type]) {
+						// `return foo() or { error('failed') }`
+						if g.cur_fn != unsafe { nil } {
+							if g.cur_fn.return_type.has_flag(.result) {
+								g.write('return ')
+								g.gen_result_error(g.cur_fn.return_type, expr_stmt.expr)
+								g.writeln(';')
+							} else if g.cur_fn.return_type.has_flag(.optional) {
+								g.write('return ')
+								g.gen_optional_error(g.cur_fn.return_type, expr_stmt.expr)
+								g.writeln(';')
+							}
+						}
+					} else {
+						g.write('*($mr_styp*) ${cvar_name}.data = ')
+						old_inside_opt_data := g.inside_opt_data
+						g.inside_opt_data = true
+						g.expr_with_cast(expr_stmt.expr, expr_stmt.typ, return_type.clear_flag(.optional).clear_flag(.result))
+						g.inside_opt_data = old_inside_opt_data
+						g.writeln(';')
+						g.stmt_path_pos.delete_last()
+					}
 				} else {
 					g.stmt(stmt)
 				}
@@ -5463,7 +5535,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			// In ordinary functions, `opt()!` call is sugar for:
 			// `opt() or { return err }`
 			// Since we *do* return, first we have to ensure that
-			// the defered statements are generated.
+			// the deferred statements are generated.
 			g.write_defer_stmts()
 			// Now that option types are distinct we need a cast here
 			if g.fn_decl.return_type == ast.void_type {
@@ -5492,7 +5564,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type ast.Ty
 			// In ordinary functions, `opt()?` call is sugar for:
 			// `opt() or { return err }`
 			// Since we *do* return, first we have to ensure that
-			// the defered statements are generated.
+			// the deferred statements are generated.
 			g.write_defer_stmts()
 			// Now that option types are distinct we need a cast here
 			if g.fn_decl.return_type == ast.void_type {

@@ -60,9 +60,9 @@ pub fn (mut s Server) set_ping_interval(seconds int) {
 }
 
 // listen start listen and process to incoming connections from websocket clients
-pub fn (mut s Server) listen() ? {
+pub fn (mut s Server) listen() ! {
 	s.logger.info('websocket server: start listen on port $s.port')
-	s.ls = net.listen_tcp(s.family, ':$s.port')?
+	s.ls = net.listen_tcp(s.family, ':$s.port')!
 	s.set_state(.open)
 	go s.handle_ping()
 	for {
@@ -101,7 +101,7 @@ fn (mut s Server) handle_ping() {
 		}
 		// TODO: replace for with s.clients.delete_all(clients_to_remove) if (https://github.com/vlang/v/pull/6020) merges
 		for client in clients_to_remove {
-			lock  {
+			lock {
 				s.clients.delete(client)
 			}
 		}
@@ -110,21 +110,21 @@ fn (mut s Server) handle_ping() {
 }
 
 // serve_client accepts incoming connection and sets up the callbacks
-fn (mut s Server) serve_client(mut c Client) ? {
+fn (mut s Server) serve_client(mut c Client) ! {
 	c.logger.debug('server-> Start serve client ($c.id)')
 	defer {
 		c.logger.debug('server-> End serve client ($c.id)')
 	}
-	mut handshake_response, mut server_client := s.handle_server_handshake(mut c)?
-	accept := s.send_connect_event(mut server_client)?
+	mut handshake_response, mut server_client := s.handle_server_handshake(mut c)!
+	accept := s.send_connect_event(mut server_client)!
 	if !accept {
 		s.logger.debug('server-> client not accepted')
-		c.shutdown_socket()?
+		c.shutdown_socket()!
 		return
 	}
 	// the client is accepted
-	c.socket_write(handshake_response.bytes())?
-	lock  {
+	c.socket_write(handshake_response.bytes())!
+	lock {
 		s.clients[server_client.client.id] = server_client
 	}
 	s.setup_callbacks(mut server_client)
@@ -155,21 +155,21 @@ fn (mut s Server) setup_callbacks(mut sc ServerClient) {
 		}
 	}
 	// set standard close so we can remove client if closed
-	sc.client.on_close_ref(fn (mut c Client, code int, reason string, mut sc ServerClient) ? {
+	sc.client.on_close_ref(fn (mut c Client, code int, reason string, mut sc ServerClient) ! {
 		c.logger.debug('server-> Delete client')
-		lock  {
+		lock {
 			sc.server.clients.delete(sc.client.id)
 		}
 	}, sc)
 }
 
 // accept_new_client creates a new client instance for client that connects to the socket
-fn (mut s Server) accept_new_client() ?&Client {
-	mut new_conn := s.ls.accept()?
+fn (mut s Server) accept_new_client() !&Client {
+	mut new_conn := s.ls.accept()!
 	c := &Client{
 		is_server: true
 		conn: new_conn
-		ssl_conn: ssl.new_ssl_conn()?
+		ssl_conn: ssl.new_ssl_conn()!
 		logger: s.logger
 		state: .open
 		last_pong_ut: time.now().unix
@@ -180,7 +180,7 @@ fn (mut s Server) accept_new_client() ?&Client {
 
 // set_state sets current state in a thread safe way
 fn (mut s Server) set_state(state State) {
-	lock  {
+	lock {
 		s.state = state
 	}
 }

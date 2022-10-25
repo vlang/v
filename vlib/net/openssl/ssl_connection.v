@@ -28,7 +28,7 @@ pub struct SSLConnectConfig {
 }
 
 // new_ssl_conn instance an new SSLCon struct
-pub fn new_ssl_conn(config SSLConnectConfig) ?&SSLConn {
+pub fn new_ssl_conn(config SSLConnectConfig) !&SSLConn {
 	mut conn := &SSLConn{
 		config: config
 		sslctx: 0
@@ -47,7 +47,7 @@ enum Select {
 }
 
 // shutdown closes the ssl connection and does cleanup
-pub fn (mut s SSLConn) shutdown() ? {
+pub fn (mut s SSLConn) shutdown() ! {
 	if s.ssl != 0 {
 		mut res := 0
 		for {
@@ -58,7 +58,7 @@ pub fn (mut s SSLConn) shutdown() ? {
 				}
 				if err_res == .ssl_error_want_read {
 					for {
-						ready := @select(s.handle, .read, s.duration)?
+						ready := @select(s.handle, .read, s.duration)!
 						if ready {
 							break
 						}
@@ -66,7 +66,7 @@ pub fn (mut s SSLConn) shutdown() ? {
 					continue
 				} else if err_res == .ssl_error_want_write {
 					for {
-						ready := @select(s.handle, .write, s.duration)?
+						ready := @select(s.handle, .write, s.duration)!
 						if ready {
 							break
 						}
@@ -100,15 +100,15 @@ pub fn (mut s SSLConn) shutdown() ? {
 	if s.owns_socket {
 		$if windows {
 			C.shutdown(s.handle, C.SD_BOTH)
-			net.socket_error(C.closesocket(s.handle))?
+			net.socket_error(C.closesocket(s.handle))!
 		} $else {
 			C.shutdown(s.handle, C.SHUT_RDWR)
-			net.socket_error(C.close(s.handle))?
+			net.socket_error(C.close(s.handle))!
 		}
 	}
 }
 
-fn (mut s SSLConn) init() ? {
+fn (mut s SSLConn) init() ! {
 	s.sslctx = unsafe { C.SSL_CTX_new(C.SSLv23_client_method()) }
 	if s.sslctx == 0 {
 		return error("Couldn't get ssl context")
@@ -136,13 +136,13 @@ fn (mut s SSLConn) init() ? {
 			cert = os.temp_dir() + '/v_cert' + now
 			cert_key = os.temp_dir() + '/v_cert_key' + now
 			if s.config.verify != '' {
-				os.write_file(verify, s.config.verify)?
+				os.write_file(verify, s.config.verify)!
 			}
 			if s.config.cert != '' {
-				os.write_file(cert, s.config.cert)?
+				os.write_file(cert, s.config.cert)!
 			}
 			if s.config.cert_key != '' {
-				os.write_file(cert_key, s.config.cert_key)?
+				os.write_file(cert_key, s.config.cert_key)!
 			}
 		}
 		if s.config.verify != '' {
@@ -175,7 +175,7 @@ fn (mut s SSLConn) init() ? {
 }
 
 // connect to server using OpenSSL
-pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ? {
+pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 	s.handle = tcp_conn.sock.handle
 	s.duration = tcp_conn.read_timeout()
 
@@ -192,7 +192,7 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ? {
 }
 
 // dial opens an ssl connection on hostname:port
-pub fn (mut s SSLConn) dial(hostname string, port int) ? {
+pub fn (mut s SSLConn) dial(hostname string, port int) ! {
 	s.owns_socket = true
 	mut tcp_conn := net.dial_tcp('$hostname:$port') or { return err }
 	$if macos {
@@ -201,14 +201,14 @@ pub fn (mut s SSLConn) dial(hostname string, port int) ? {
 	s.connect(mut tcp_conn, hostname) or { return err }
 }
 
-fn (mut s SSLConn) complete_connect() ? {
+fn (mut s SSLConn) complete_connect() ! {
 	for {
 		mut res := C.SSL_connect(voidptr(s.ssl))
 		if res != 1 {
-			err_res := ssl_error(res, s.ssl)?
+			err_res := ssl_error(res, s.ssl)!
 			if err_res == .ssl_error_want_read {
 				for {
-					ready := @select(s.handle, .read, s.duration)?
+					ready := @select(s.handle, .read, s.duration)!
 					if ready {
 						break
 					}
@@ -216,7 +216,7 @@ fn (mut s SSLConn) complete_connect() ? {
 				continue
 			} else if err_res == .ssl_error_want_write {
 				for {
-					ready := @select(s.handle, .write, s.duration)?
+					ready := @select(s.handle, .write, s.duration)!
 					if ready {
 						break
 					}
@@ -232,10 +232,10 @@ fn (mut s SSLConn) complete_connect() ? {
 		for {
 			mut res := C.SSL_do_handshake(voidptr(s.ssl))
 			if res != 1 {
-				err_res := ssl_error(res, s.ssl)?
+				err_res := ssl_error(res, s.ssl)!
 				if err_res == .ssl_error_want_read {
 					for {
-						ready := @select(s.handle, .read, s.duration)?
+						ready := @select(s.handle, .read, s.duration)!
 						if ready {
 							break
 						}
@@ -243,7 +243,7 @@ fn (mut s SSLConn) complete_connect() ? {
 					continue
 				} else if err_res == .ssl_error_want_write {
 					for {
-						ready := @select(s.handle, .write, s.duration)?
+						ready := @select(s.handle, .write, s.duration)!
 						if ready {
 							break
 						}
@@ -267,7 +267,7 @@ fn (mut s SSLConn) complete_connect() ? {
 	}
 }
 
-pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) ?int {
+pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 	mut res := 0
 	for {
 		res = C.SSL_read(voidptr(s.ssl), buf_ptr, len)
@@ -276,16 +276,16 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) ?int {
 		} else if res == 0 {
 			return IError(io.Eof{})
 		} else {
-			err_res := ssl_error(res, s.ssl)?
+			err_res := ssl_error(res, s.ssl)!
 			match err_res {
 				.ssl_error_want_read {
-					ready := @select(s.handle, .read, s.duration)?
+					ready := @select(s.handle, .read, s.duration)!
 					if !ready {
 						return net.err_timed_out
 					}
 				}
 				.ssl_error_want_write {
-					ready := @select(s.handle, .write, s.duration)?
+					ready := @select(s.handle, .write, s.duration)!
 					if !ready {
 						return net.err_timed_out
 					}
@@ -308,7 +308,7 @@ pub fn (mut s SSLConn) read(mut buffer []u8) !int {
 }
 
 // write_ptr writes `len` bytes from `bytes` to the ssl connection
-pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) ?int {
+pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 	unsafe {
 		mut ptr_base := bytes
 		mut total_sent := 0
@@ -317,17 +317,17 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) ?int {
 			remaining := len - total_sent
 			mut sent := C.SSL_write(voidptr(s.ssl), ptr, remaining)
 			if sent <= 0 {
-				err_res := ssl_error(sent, s.ssl)?
+				err_res := ssl_error(sent, s.ssl)!
 				if err_res == .ssl_error_want_read {
 					for {
-						ready := @select(s.handle, .read, s.duration)?
+						ready := @select(s.handle, .read, s.duration)!
 						if ready {
 							break
 						}
 					}
 				} else if err_res == .ssl_error_want_write {
 					for {
-						ready := @select(s.handle, .write, s.duration)?
+						ready := @select(s.handle, .write, s.duration)!
 						if ready {
 							break
 						}
@@ -345,12 +345,12 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) ?int {
 }
 
 // write writes data from `bytes` to the ssl connection
-pub fn (mut s SSLConn) write(bytes []u8) ?int {
+pub fn (mut s SSLConn) write(bytes []u8) !int {
 	return s.write_ptr(&u8(bytes.data), bytes.len)
 }
 
 // write_string writes a string to the ssl connection
-pub fn (mut s SSLConn) write_string(str string) ?int {
+pub fn (mut s SSLConn) write_string(str string) !int {
 	return s.write_ptr(str.str, str.len)
 }
 
@@ -364,7 +364,7 @@ This is basically a copy of Emily socket implementation of select.
 // }
 
 // Select waits for an io operation (specified by parameter `test`) to be available
-fn @select(handle int, test Select, timeout time.Duration) ?bool {
+fn @select(handle int, test Select, timeout time.Duration) !bool {
 	set := C.fd_set{}
 
 	C.FD_ZERO(&set)
@@ -387,13 +387,13 @@ fn @select(handle int, test Select, timeout time.Duration) ?bool {
 
 	match test {
 		.read {
-			net.socket_error(C.@select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout))?
+			net.socket_error(C.@select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout))!
 		}
 		.write {
-			net.socket_error(C.@select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout))?
+			net.socket_error(C.@select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout))!
 		}
 		.except {
-			net.socket_error(C.@select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout))?
+			net.socket_error(C.@select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout))!
 		}
 	}
 

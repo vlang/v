@@ -16,9 +16,9 @@ fn main() {
 	}
 	// Git clone c2v
 	if !os.exists(c2v_dir) {
-		os.mkdir_all(vmodules)?
+		os.mkdir_all(vmodules)!
 		println('C2V is not installed. Cloning C2V to $c2v_dir ...')
-		os.chdir(vmodules)?
+		os.chdir(vmodules)!
 		res := os.execute('git clone https://github.com/vlang/c2v')
 		if res.exit_code != 0 {
 			eprintln('Failed to download C2V.')
@@ -27,7 +27,7 @@ fn main() {
 	}
 	// Compile c2v
 	if !os.exists(c2v_bin) {
-		os.chdir(c2v_dir)?
+		os.chdir(c2v_dir)!
 		println('Compiling c2v ...')
 		res2 := os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(c2v_bin)} -keepc -g -experimental .')
 		if res2.exit_code != 0 {
@@ -42,7 +42,7 @@ fn main() {
 	}
 	passed_args := util.args_quote_paths(os.args[2..])
 	// println(passed_args)
-	os.chdir(os.wd_at_startup)?
+	os.chdir(os.wd_at_startup)!
 	c2v_cmd := '${os.quoted_path(c2v_bin)} $passed_args'
 	res := os.system(c2v_cmd)
 	if res != 0 {

@@ -45,17 +45,17 @@ pub fn init(cfg Config) &Context {
 		panic('could not get stdin handle')
 	}
 	// save the current input mode, to be restored on exit
-	if C.GetConsoleMode(stdin_handle, &ui.stdin_at_startup) == 0 {
+	if !C.GetConsoleMode(stdin_handle, &ui.stdin_at_startup) {
 		panic('could not get stdin console mode')
 	}
 
 	// enable extended input flags (see https://stackoverflow.com/a/46802726)
 	// 0x80 == C.ENABLE_EXTENDED_FLAGS
-	if C.SetConsoleMode(stdin_handle, 0x80) == 0 {
+	if !C.SetConsoleMode(stdin_handle, 0x80) {
 		panic('could not set raw input mode')
 	}
 	// enable window and mouse input events.
-	if C.SetConsoleMode(stdin_handle, C.ENABLE_WINDOW_INPUT | C.ENABLE_MOUSE_INPUT) == 0 {
+	if !C.SetConsoleMode(stdin_handle, C.ENABLE_WINDOW_INPUT | C.ENABLE_MOUSE_INPUT) {
 		panic('could not set raw input mode')
 	}
 	// store the current title, so restore_terminal_state can get it back

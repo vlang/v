@@ -50,12 +50,12 @@ fn test_ws_ipv4() {
 	}
 }
 
-fn start_server(family net.AddrFamily, listen_port int) ? {
+fn start_server(family net.AddrFamily, listen_port int) ! {
 	mut s := websocket.new_server(family, listen_port, '')
 	// make that in execution test time give time to execute at least one time
 	s.ping_interval = 1
 
-	s.on_connect(fn (mut s websocket.ServerClient) ?bool {
+	s.on_connect(fn (mut s websocket.ServerClient) !bool {
 		// here you can look att the client info and accept or not accept
 		// just returning a true/false
 		if s.resource_name != '/' {
@@ -63,37 +63,37 @@ fn start_server(family net.AddrFamily, listen_port int) ? {
 			return false
 		}
 		return true
-	})?
-	s.on_message(fn (mut ws websocket.Client, msg &websocket.Message) ? {
+	})!
+	s.on_message(fn (mut ws websocket.Client, msg &websocket.Message) ! {
 		match msg.opcode {
-			.pong { ws.write_string('pong')? }
-			else { ws.write(msg.payload, msg.opcode)? }
+			.pong { ws.write_string('pong')! }
+			else { ws.write(msg.payload, msg.opcode)! }
 		}
 	})
 
-	s.on_close(fn (mut ws websocket.Client, code int, reason string) ? {
+	s.on_close(fn (mut ws websocket.Client, code int, reason string) ! {
 		// not used
 	})
 	s.listen() or { panic('websocket server could not listen, err: $err') }
 }
 
 // ws_test tests connect to the websocket server from websocket client
-fn ws_test(family net.AddrFamily, uri string) ? {
+fn ws_test(family net.AddrFamily, uri string) ! {
 	eprintln('connecting to $uri ...')
 
 	mut test_results := WebsocketTestResults{}
-	mut ws := websocket.new_client(uri)?
-	ws.on_open(fn (mut ws websocket.Client) ? {
-		ws.pong()?
+	mut ws := websocket.new_client(uri)!
+	ws.on_open(fn (mut ws websocket.Client) ! {
+		ws.pong()!
 		assert true
 	})
-	ws.on_error(fn (mut ws websocket.Client, err string) ? {
+	ws.on_error(fn (mut ws websocket.Client, err string) ! {
 		println('error: $err')
 		// this can be thrown by internet connection problems
 		assert false
 	})
 
-	ws.on_message_ref(fn (mut ws websocket.Client, msg &websocket.Message, mut res WebsocketTestResults) ? {
+	ws.on_message_ref(fn (mut ws websocket.Client, msg &websocket.Message, mut res WebsocketTestResults) ! {
 		println('client got type: $msg.opcode payload:\n$msg.payload')
 		if msg.opcode == .text_frame {
 			smessage := msg.payload.bytestr()

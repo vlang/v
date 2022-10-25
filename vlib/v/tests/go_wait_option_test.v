@@ -80,3 +80,29 @@ fn test_array_val_interate() {
 	assert res[1] == 0.0
 	assert res[2] == 1.5
 }
+
+// For issue 16065
+fn get_only_a_option_return(return_none bool) ? {
+	if return_none {
+		return
+	}
+	return error('msg')
+}
+
+fn get_only_a_result_return() ! {
+	return error('msg')
+}
+
+fn test_only_a_option_return() {
+	t1 := go get_only_a_option_return(true)
+	t1.wait() or { assert false }
+	t2 := go get_only_a_option_return(false)
+	t2.wait() or { assert true }
+	assert true
+}
+
+fn test_only_a_result_return() {
+	t := go get_only_a_result_return()
+	t.wait() or { assert true }
+	assert true
+}

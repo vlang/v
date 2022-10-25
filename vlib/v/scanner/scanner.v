@@ -106,7 +106,7 @@ pub enum CommentsMode {
 }
 
 // new scanner from file.
-pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref &pref.Preferences) ?&Scanner {
+pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref &pref.Preferences) !&Scanner {
 	if !os.is_file(file_path) {
 		return error('$file_path is not a .v file')
 	}

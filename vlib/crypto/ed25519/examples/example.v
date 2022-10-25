@@ -8,11 +8,11 @@ import crypto.ed25519
 fn main() {
 	msg := 'Hello Girl'
 
-	publ, priv := ed25519.generate_key()?
+	publ, priv := ed25519.generate_key()!
 
 	m := msg.bytes()
 
-	sig := ed25519.sign(priv, m)?
+	sig := ed25519.sign(priv, m)!
 
 	println('=== Message ===')
 	println('Msg: $msg \nHash: $m')
@@ -31,7 +31,7 @@ fn main() {
 	println('signature: R=${sig[0..32].hex()} s=${sig[32..64].hex()}')
 	println('   signature (Base64)=${base64.encode(sig)}')
 
-	rtn := ed25519.verify(publ, m, sig)?
+	rtn := ed25519.verify(publ, m, sig)!
 
 	if rtn {
 		println('Signature verified :$rtn')

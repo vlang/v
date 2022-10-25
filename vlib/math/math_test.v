@@ -425,7 +425,7 @@ fn test_abs_zero() {
 
 	ret2 := abs(0.0)
 	println(ret2)
-	assert '$ret2' == '0'
+	assert '$ret2' == '0.0'
 }
 
 fn test_floor() {
@@ -1047,4 +1047,15 @@ fn test_count_digits() {
 	assert count_digits(12345) == 5
 	assert count_digits(123456789012345) == 15
 	assert count_digits(-67345) == 5
+}
+
+fn test_min_max_int_str() {
+	assert min_i64.str() == '-9223372036854775808'
+	assert max_i64.str() == '9223372036854775807'
+	assert min_i32.str() == '-2147483648'
+	assert max_i32.str() == '2147483647'
+	assert min_i16.str() == '-32768'
+	assert max_i16.str() == '32767'
+	assert min_i8.str() == '-128'
+	assert max_i8.str() == '127'
 }

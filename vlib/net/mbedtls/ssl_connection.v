@@ -52,7 +52,7 @@ pub struct SSLConnectConfig {
 }
 
 // new_ssl_conn returns a new SSLConn with the given config.
-pub fn new_ssl_conn(config SSLConnectConfig) ?&SSLConn {
+pub fn new_ssl_conn(config SSLConnectConfig) !&SSLConn {
 	mut conn := &SSLConn{
 		config: config
 	}
@@ -68,7 +68,7 @@ enum Select {
 }
 
 // shutdown terminates the ssl connection and does cleanup
-pub fn (mut s SSLConn) shutdown() ? {
+pub fn (mut s SSLConn) shutdown() ! {
 	if !s.opened {
 		return error('ssl connection not open')
 	}
@@ -82,16 +82,16 @@ pub fn (mut s SSLConn) shutdown() ? {
 	if s.owns_socket {
 		$if windows {
 			C.shutdown(s.handle, C.SD_BOTH)
-			net.socket_error(C.closesocket(s.handle))?
+			net.socket_error(C.closesocket(s.handle))!
 		} $else {
 			C.shutdown(s.handle, C.SHUT_RDWR)
-			net.socket_error(C.close(s.handle))?
+			net.socket_error(C.close(s.handle))!
 		}
 	}
 }
 
 // connect to server using mbedtls
-fn (mut s SSLConn) init() ? {
+fn (mut s SSLConn) init() ! {
 	C.mbedtls_net_init(&s.server_fd)
 	C.mbedtls_ssl_init(&s.ssl)
 	C.mbedtls_ssl_config_init(&s.conf)
@@ -157,7 +157,7 @@ fn (mut s SSLConn) init() ? {
 }
 
 // connect sets up an ssl connection on an existing TCP connection
-pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ? {
+pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 	if s.opened {
 		return error('ssl connection already open')
 	}
@@ -183,7 +183,7 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ? {
 }
 
 // dial opens an ssl connection on hostname:port
-pub fn (mut s SSLConn) dial(hostname string, port int) ? {
+pub fn (mut s SSLConn) dial(hostname string, port int) ! {
 	s.owns_socket = true
 	if s.opened {
 		return error('ssl connection already open')
@@ -216,7 +216,7 @@ pub fn (mut s SSLConn) dial(hostname string, port int) ? {
 }
 
 // socket_read_into_ptr reads `len` bytes into `buf`
-pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) ?int {
+pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) !int {
 	mut res := 0
 	for {
 		res = C.mbedtls_ssl_read(&s.ssl, buf_ptr, len)
@@ -227,13 +227,13 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr &u8, len int) ?int {
 		} else {
 			match res {
 				C.MBEDTLS_ERR_SSL_WANT_READ {
-					ready := @select(s.handle, .read, s.duration)?
+					ready := @select(s.handle, .read, s.duration)!
 					if !ready {
 						return net.err_timed_out
 					}
 				}
 				C.MBEDTLS_ERR_SSL_WANT_WRITE {
-					ready := @select(s.handle, .write, s.duration)?
+					ready := @select(s.handle, .write, s.duration)!
 					if !ready {
 						return net.err_timed_out
 					}
@@ -257,7 +257,7 @@ pub fn (mut s SSLConn) read(mut buffer []u8) !int {
 }
 
 // write_ptr writes `len` bytes from `bytes` to the ssl connection
-pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) ?int {
+pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) !int {
 	unsafe {
 		mut ptr_base := bytes
 		mut total_sent := 0
@@ -269,7 +269,7 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) ?int {
 				match sent {
 					C.MBEDTLS_ERR_SSL_WANT_READ {
 						for {
-							ready := @select(s.handle, .read, s.duration)?
+							ready := @select(s.handle, .read, s.duration)!
 							if ready {
 								break
 							}
@@ -278,7 +278,7 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) ?int {
 					}
 					C.MBEDTLS_ERR_SSL_WANT_WRITE {
 						for {
-							ready := @select(s.handle, .write, s.duration)?
+							ready := @select(s.handle, .write, s.duration)!
 							if ready {
 								break
 							}
@@ -297,12 +297,12 @@ pub fn (mut s SSLConn) write_ptr(bytes &u8, len int) ?int {
 }
 
 // write writes data from `bytes` to the ssl connection
-pub fn (mut s SSLConn) write(bytes []u8) ?int {
+pub fn (mut s SSLConn) write(bytes []u8) !int {
 	return s.write_ptr(&u8(bytes.data), bytes.len)
 }
 
 // write_string writes a string to the ssl connection
-pub fn (mut s SSLConn) write_string(str string) ?int {
+pub fn (mut s SSLConn) write_string(str string) !int {
 	return s.write_ptr(str.str, str.len)
 }
 
@@ -313,7 +313,7 @@ This is basically a copy of Emily socket implementation of select.
 */
 
 // Select waits for an io operation (specified by parameter `test`) to be available
-fn @select(handle int, test Select, timeout time.Duration) ?bool {
+fn @select(handle int, test Select, timeout time.Duration) !bool {
 	set := C.fd_set{}
 
 	C.FD_ZERO(&set)
@@ -336,13 +336,13 @@ fn @select(handle int, test Select, timeout time.Duration) ?bool {
 
 	match test {
 		.read {
-			net.socket_error(C.@select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout))?
+			net.socket_error(C.@select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout))!
 		}
 		.write {
-			net.socket_error(C.@select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout))?
+			net.socket_error(C.@select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout))!
 		}
 		.except {
-			net.socket_error(C.@select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout))?
+			net.socket_error(C.@select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout))!
 		}
 	}
 

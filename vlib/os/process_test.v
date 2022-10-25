@@ -13,13 +13,13 @@ const (
 
 fn testsuite_begin() {
 	os.rmdir_all(tfolder) or {}
-	os.mkdir_all(tfolder)?
+	os.mkdir_all(tfolder)!
 	if os.getenv('WINE_TEST_OS_PROCESS_EXE') != '' {
 		// Make it easier to run the test under wine emulation, by just
 		// prebuilding the executable with:
 		//   v -os windows -o x.exe cmd/tools/test_os_process.v
 		//   WINE_TEST_OS_PROCESS_EXE=x.exe ./v -os windows vlib/os/process_test.v
-		os.cp(os.getenv('WINE_TEST_OS_PROCESS_EXE'), test_os_process)?
+		os.cp(os.getenv('WINE_TEST_OS_PROCESS_EXE'), test_os_process)!
 	} else {
 		os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(test_os_process)} ${os.quoted_path(test_os_process_source)}')
 	}

@@ -12,13 +12,13 @@ mut:
 fn main() {
 	if os.args.len < 2 {
 		eprintln('Usage: play_wav file1.wav file2.wav ...')
-		play_sounds([os.resource_abs_path('uhoh.wav')])?
+		play_sounds([os.resource_abs_path('uhoh.wav')])!
 		exit(1)
 	}
-	play_sounds(os.args[1..])?
+	play_sounds(os.args[1..])!
 }
 
-fn play_sounds(files []string) ? {
+fn play_sounds(files []string) ! {
 	mut player := Player{}
 	player.init()
 	for f in files {
@@ -31,7 +31,7 @@ fn play_sounds(files []string) ? {
 			eprintln('skipping "$f" (not a .wav file)')
 			continue
 		}
-		player.play_wav_file(f)?
+		player.play_wav_file(f)!
 	}
 	player.stop()
 }
@@ -65,9 +65,9 @@ fn (mut p Player) stop() {
 	p.free()
 }
 
-fn (mut p Player) play_wav_file(fpath string) ? {
+fn (mut p Player) play_wav_file(fpath string) ! {
 	println('> play_wav_file: $fpath')
-	samples := read_wav_file_samples(fpath)?
+	samples := read_wav_file_samples(fpath)!
 	p.finished = true
 	p.samples << samples
 	p.finished = false
@@ -116,10 +116,10 @@ struct RIFFFormat {
 	sub_format            [16]u8 // GUID
 }
 
-fn read_wav_file_samples(fpath string) ?[]f32 {
+fn read_wav_file_samples(fpath string) ![]f32 {
 	mut res := []f32{}
 	// eprintln('> read_wav_file_samples: $fpath -------------------------------------------------')
-	mut bytes := os.read_bytes(fpath)?
+	mut bytes := os.read_bytes(fpath)!
 	mut pbytes := &u8(bytes.data)
 	mut offset := u32(0)
 	rh := unsafe { &RIFFHeader(pbytes) }

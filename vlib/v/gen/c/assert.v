@@ -52,7 +52,7 @@ struct UnsupportedAssertCtempTransform {
 
 const unsupported_ctemp_assert_transform = IError(UnsupportedAssertCtempTransform{})
 
-fn (mut g Gen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) ?ast.Expr {
+fn (mut g Gen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) !ast.Expr {
 	match expr {
 		ast.CallExpr {
 			return g.new_ctemp_var_then_gen(expr, expr_type)

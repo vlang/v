@@ -27,22 +27,22 @@ fn (z ZeroReader) read(mut buf []u8) ?int {
 }
 */
 
-fn test_sign_verify() ? {
+fn test_sign_verify() {
 	// mut zero := ZeroReader{}
-	public, private := ed25519.generate_key()?
+	public, private := ed25519.generate_key()!
 
 	message := 'test message'.bytes()
-	sig := ed25519.sign(private, message)?
+	sig := ed25519.sign(private, message)!
 	res := ed25519.verify(public, message, sig) or { false }
 	assert res == true
 
 	wrongmessage := 'wrong message'.bytes()
-	res2 := ed25519.verify(public, wrongmessage, sig)?
+	res2 := ed25519.verify(public, wrongmessage, sig)!
 	assert res2 == false
 }
 
-fn test_equal() ? {
-	public, private := ed25519.generate_key()?
+fn test_equal() {
+	public, private := ed25519.generate_key()!
 
 	assert public.equal(public) == true
 
@@ -53,13 +53,13 @@ fn test_equal() ? {
 	}*/
 	assert private.equal(private) == true
 
-	otherpub, otherpriv := ed25519.generate_key()?
+	otherpub, otherpriv := ed25519.generate_key()!
 	assert public.equal(otherpub) == false
 
 	assert private.equal(otherpriv) == false
 }
 
-fn test_malleability() ? {
+fn test_malleability() {
 	// https://tools.ietf.org/html/rfc8032#section-5.1.7 adds an additional test
 	// that s be in [0, order). This prevents someone from adding a multiple of
 	// order to s and obtaining a second valid signature for the same message.
@@ -149,7 +149,7 @@ mut:
 // This test read a lot of entries in `testdata/sign.input`
 // so, maybe need a long time to finish.
 // be quiet and patient
-fn test_input_from_djb_ed25519_crypto_sign_input_with_syncpool() ? {
+fn test_input_from_djb_ed25519_crypto_sign_input_with_syncpool() {
 	// contents := os.read_lines('testdata/sign.input') or { panic(err) } //[]string
 	mut pool_s := pool.new_pool_processor(
 		callback: worker_for_string_content
@@ -174,10 +174,10 @@ fn test_input_from_djb_ed25519_crypto_sign_input_without_syncpool() ? {
 			lg.fatal('not contains len 5')
 		}*/
 		assert parts.len == 5
-		privbytes := hex.decode(parts[0])?
-		pubkey := hex.decode(parts[1])?
-		msg := hex.decode(parts[2])?
-		mut sig := hex.decode(parts[3])?
+		privbytes := hex.decode(parts[0])!
+		pubkey := hex.decode(parts[1])!
+		msg := hex.decode(parts[2])!
+		mut sig := hex.decode(parts[3])!
 		assert pubkey.len == public_key_size
 
 		sig = sig[..signature_size]
@@ -185,10 +185,10 @@ fn test_input_from_djb_ed25519_crypto_sign_input_without_syncpool() ? {
 		copy(mut priv[..], privbytes)
 		copy(mut priv[32..], pubkey)
 
-		sig2 := ed25519.sign(priv[..], msg)?
+		sig2 := ed25519.sign(priv[..], msg)!
 		assert sig == sig2[..]
 
-		res := ed25519.verify(pubkey, msg, sig2)?
+		res := ed25519.verify(pubkey, msg, sig2)!
 		assert res == true
 
 		priv2 := new_key_from_seed(priv[..32])

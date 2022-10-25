@@ -89,58 +89,58 @@ pub fn new_parser(config Config) Parser {
 }
 
 // init initializes the parser.
-pub fn (mut p Parser) init() ? {
+pub fn (mut p Parser) init() ! {
 	p.root_map = map[string]ast.Value{}
-	p.tokens << p.scanner.scan()?
-	p.next()?
+	p.tokens << p.scanner.scan()!
+	p.next()!
 }
 
 // run_checker validates the parsed `ast.Value` nodes in the
 // the generated AST.
-fn (mut p Parser) run_checker() ? {
+fn (mut p Parser) run_checker() ! {
 	if p.config.run_checks {
 		chckr := checker.Checker{
 			scanner: p.scanner
 		}
-		chckr.check(p.root_map)?
+		chckr.check(p.root_map)!
 		for comment in p.ast_root.comments {
-			chckr.check_comment(comment)?
+			chckr.check_comment(comment)!
 		}
 	}
 }
 
 // run_decoder decodes values in the parsed `ast.Value` nodes in the
 // the generated AST.
-fn (mut p Parser) run_decoder() ? {
+fn (mut p Parser) run_decoder() ! {
 	if p.config.decode_values {
 		dcoder := decoder.Decoder{
 			scanner: p.scanner
 		}
-		dcoder.decode(mut p.root_map)?
+		dcoder.decode(mut p.root_map)!
 	}
 }
 
 // parse starts parsing the input and returns the root
 // of the generated AST.
-pub fn (mut p Parser) parse() ?&ast.Root {
-	p.init()?
-	p.root_table()?
-	p.run_checker()?
-	p.run_decoder()?
+pub fn (mut p Parser) parse() !&ast.Root {
+	p.init()!
+	p.root_table()!
+	p.run_checker()!
+	p.run_decoder()!
 	p.ast_root.table = p.root_map
 	return p.ast_root
 }
 
 // next forwards the parser to the next token.
-fn (mut p Parser) next() ? {
+fn (mut p Parser) next() ! {
 	p.prev_tok = p.tok
 	p.tok = p.peek_tok
 	if p.tokens.len > 0 {
 		p.peek_tok = p.tokens.first()
 		p.tokens.delete(0)
-		p.peek(1)?
+		p.peek(1)!
 	} else {
-		p.peek(1)?
+		p.peek(1)!
 		p.peek_tok = p.tokens.first()
 		p.tokens.delete(0)
 	}
@@ -148,7 +148,7 @@ fn (mut p Parser) next() ? {
 
 // peek peeks forward `n` tokens.
 // peek returns `.unknown` if it can not peek ahead long enough.
-fn (mut p Parser) peek(n int) ?token.Token {
+fn (mut p Parser) peek(n int) !token.Token {
 	if n < 0 {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN + ' peeking backwards is not supported.')
 	}
@@ -163,7 +163,7 @@ fn (mut p Parser) peek(n int) ?token.Token {
 			mut count := n - p.tokens.len
 			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'buffering $count tokens...')
 			for token.kind != .eof && count != 0 {
-				token = p.scanner.scan()?
+				token = p.scanner.scan()!
 				p.tokens << token
 				count--
 			}
@@ -174,9 +174,9 @@ fn (mut p Parser) peek(n int) ?token.Token {
 
 // check forwards the parser to the next token if the current
 // token's `Kind` is equal that of `check_token`.
-fn (mut p Parser) check(check_token token.Kind) ? {
+fn (mut p Parser) check(check_token token.Kind) ! {
 	if p.tok.kind == check_token {
-		p.next()?
+		p.next()!
 	} else {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' expected token "$check_token" but found "$p.tok.kind" in this (excerpt): "...${p.excerpt()}..."')
@@ -185,11 +185,11 @@ fn (mut p Parser) check(check_token token.Kind) ? {
 
 // peek_for_correct_line_ending_or_fail peeks past any formatting tokens
 // and return an error if the next token is not one of [.cr, .nl, .hash, .eof].
-fn (mut p Parser) peek_for_correct_line_ending_or_fail() ? {
+fn (mut p Parser) peek_for_correct_line_ending_or_fail() ! {
 	// Disallow anything else than [.cr, .nl, .hash, .eof] after any space formatting.
-	peek_tok, _ := p.peek_over(1, parser.space_formatting)?
+	peek_tok, _ := p.peek_over(1, parser.space_formatting)!
 	if peek_tok.kind !in [.cr, .nl, .hash, .eof] {
-		p.next()? // Forward to the peek_tok
+		p.next()! // Forward to the peek_tok
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' unexpected EOL "$p.tok.kind" "$p.tok.lit" expected one of [.cr, .nl, .hash, .eof] at this (excerpt): "...${p.excerpt()}..."')
 	}
@@ -197,9 +197,9 @@ fn (mut p Parser) peek_for_correct_line_ending_or_fail() ? {
 
 // check_one_of forwards the parser to the next token if the current
 // token's `Kind` can be found in `tokens`. Otherwise it returns an error.
-fn (mut p Parser) check_one_of(tokens []token.Kind) ? {
+fn (mut p Parser) check_one_of(tokens []token.Kind) ! {
 	if p.tok.kind in tokens {
-		p.next()?
+		p.next()!
 	} else {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' expected one of $tokens but found "$p.tok.kind" in this (excerpt): "...${p.excerpt()}..."')
@@ -232,14 +232,14 @@ fn (mut p Parser) ignore_while_peek(tokens []token.Kind) {
 // peek_over peeks ahead from token starting at `i` skipping over
 // any `token.Kind`s found in `tokens`. `peek_over` returns the next token *not*
 // found in `tokens`.
-fn (mut p Parser) peek_over(i int, tokens []token.Kind) ?(token.Token, int) {
+fn (mut p Parser) peek_over(i int, tokens []token.Kind) !(token.Token, int) {
 	mut peek_tok := p.peek_tok
 
 	// Peek ahead as far as we can from token at `i` while the peeked
 	// token is found in `tokens`.
 	mut peek_i := i
 	for peek_tok.kind in tokens {
-		peek_tok = p.peek(peek_i)?
+		peek_tok = p.peek(peek_i)!
 		peek_i++
 	}
 	return peek_tok, peek_i
@@ -251,7 +251,7 @@ fn (mut p Parser) is_at(expected_token token.Kind) bool {
 }
 
 // expect will error if the token kind is not equal to `expected_token`.
-fn (mut p Parser) expect(expected_token token.Kind) ? {
+fn (mut p Parser) expect(expected_token token.Kind) ! {
 	if p.tok.kind == expected_token {
 		return
 	} else {
@@ -278,7 +278,7 @@ fn todo_msvc_astring2dkey(s []string) DottedKey {
 }
 
 // check_explicitly_declared returns an error if `key` has been explicitly declared.
-fn (p Parser) check_explicitly_declared(key DottedKey) ? {
+fn (p Parser) check_explicitly_declared(key DottedKey) ! {
 	if p.explicit_declared.len > 0 && p.explicit_declared.has(key) {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' key `$key.str()` is already explicitly declared. Unexpected redeclaration at "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
@@ -287,7 +287,7 @@ fn (p Parser) check_explicitly_declared(key DottedKey) ? {
 
 // check_explicitly_declared_array_of_tables returns an error if `key` has been
 // explicitly declared as an array of tables.
-fn (p Parser) check_explicitly_declared_array_of_tables(key DottedKey) ? {
+fn (p Parser) check_explicitly_declared_array_of_tables(key DottedKey) ! {
 	if p.explicit_declared_array_of_tables.len > 0 && p.explicit_declared_array_of_tables.has(key) {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' key `$key.str()` is already an explicitly declared array of tables. Unexpected redeclaration at "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
@@ -295,7 +295,7 @@ fn (p Parser) check_explicitly_declared_array_of_tables(key DottedKey) ? {
 }
 
 // check_implicitly_declared returns an error if `key` has been implicitly declared.
-fn (p Parser) check_implicitly_declared(key DottedKey) ? {
+fn (p Parser) check_implicitly_declared(key DottedKey) ! {
 	if p.implicit_declared.len > 0 && p.implicit_declared.has(key) {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' key `$key.str()` is already implicitly declared. Unexpected redeclaration at "$p.tok.kind" "$p.tok.lit" in this (excerpt): "...${p.excerpt()}..."')
@@ -307,7 +307,7 @@ fn (p Parser) check_implicitly_declared(key DottedKey) ? {
 // allocate a new map for each segment. This behavior is needed because you can
 // reference maps by multiple keys "dotted" (separated by "." periods) in TOML documents.
 // See also `find_in_table`.
-pub fn (mut p Parser) find_table() ?&map[string]ast.Value {
+pub fn (mut p Parser) find_table() !&map[string]ast.Value {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'locating "$p.root_map_key" in map ${ptr_str(p.root_map)}')
 	mut t := unsafe { &p.root_map }
 	if p.root_map_key.len == 0 {
@@ -318,13 +318,13 @@ pub fn (mut p Parser) find_table() ?&map[string]ast.Value {
 }
 
 // allocate_table allocates all tables in "dotted" `key` (`a.b.c`) in the *root* table.
-pub fn (mut p Parser) allocate_table(key DottedKey) ? {
+pub fn (mut p Parser) allocate_table(key DottedKey) ! {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'allocating "$key" in map ${ptr_str(p.root_map)}')
 	mut t := unsafe { &p.root_map }
 	if key.len == 0 {
 		return
 	}
-	p.allocate_in_table(mut t, key)?
+	p.allocate_in_table(mut t, key)!
 }
 
 // sub_table_key returns the logic parts of a dotted key (`a.b.c`) for
@@ -340,7 +340,7 @@ pub fn (mut p Parser) sub_table_key(key DottedKey) (DottedKey, DottedKey) {
 // allocate a new map for the segment. This behavior is needed because you can
 // reference maps by multiple keys "dotted" (separated by "." periods) in TOML documents.
 // See also `find_in_table`.
-pub fn (mut p Parser) find_sub_table(key DottedKey) ?&map[string]ast.Value {
+pub fn (mut p Parser) find_sub_table(key DottedKey) !&map[string]ast.Value {
 	mut ky := DottedKey([]string{})
 	ky << p.root_map_key
 	ky << key
@@ -360,7 +360,7 @@ pub fn (mut p Parser) find_sub_table(key DottedKey) ?&map[string]ast.Value {
 // If some segments of the key does not exist in the input map find_in_table will
 // allocate a new map for the segment. This behavior is needed because you can
 // reference maps by multiple keys "dotted" (separated by "." periods) in TOML documents.
-pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key DottedKey) ?&map[string]ast.Value {
+pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key DottedKey) !&map[string]ast.Value {
 	// NOTE This code is the result of much trial and error.
 	// I'm still not quite sure *exactly* why it works. All I can leave here is a hope
 	// that this kind of minefield someday will be easier in V :)
@@ -391,7 +391,7 @@ pub fn (mut p Parser) find_in_table(mut table map[string]ast.Value, key DottedKe
 // find_array_of_tables returns an array if found in the root table based on the parser's
 // last encountered "Array Of Tables" key.
 // If the state key does not exist find_array_in_table will return an error.
-pub fn (mut p Parser) find_array_of_tables() ?[]ast.Value {
+pub fn (mut p Parser) find_array_of_tables() ![]ast.Value {
 	mut t := unsafe { &p.root_map }
 	mut key := p.last_aot
 	if key.len > 1 {
@@ -411,7 +411,7 @@ pub fn (mut p Parser) find_array_of_tables() ?[]ast.Value {
 }
 
 // allocate_in_table allocates all tables in "dotted" `key` (`a.b.c`) in `table`.
-pub fn (mut p Parser) allocate_in_table(mut table map[string]ast.Value, key DottedKey) ? {
+pub fn (mut p Parser) allocate_in_table(mut table map[string]ast.Value, key DottedKey) ! {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'allocating "$key" in map ${ptr_str(table)}')
 	mut t := unsafe { &table }
 	unsafe {
@@ -436,33 +436,33 @@ pub fn (mut p Parser) allocate_in_table(mut table map[string]ast.Value, key Dott
 
 // dotted_key returns a string of the next tokens parsed as
 // sub/nested/path keys (e.g. `a.b.c`). In TOML, this form of key is referred to as a "dotted" key.
-pub fn (mut p Parser) dotted_key() ?DottedKey {
+pub fn (mut p Parser) dotted_key() !DottedKey {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing dotted key...')
 	mut dotted_key := DottedKey([]string{})
-	key := p.key()?
+	key := p.key()!
 	p.ignore_while_peek(parser.space_formatting)
 	dotted_key << key.str()
 	for p.peek_tok.kind == .period {
-		p.next()? // .
-		p.check(.period)?
+		p.next()! // .
+		p.check(.period)!
 		p.ignore_while(parser.space_formatting)
-		next_key := p.key()?
+		next_key := p.key()!
 		dotted_key << next_key.text
 		p.ignore_while_peek(parser.space_formatting)
 	}
-	p.next()?
+	p.next()!
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed dotted key `$dotted_key` now at "$p.tok.kind" "$p.tok.lit"')
 	return dotted_key
 }
 
 // root_table parses next tokens into the root map of `ast.Value`s.
 // The V `map` type is corresponding to a "table" in TOML.
-pub fn (mut p Parser) root_table() ? {
+pub fn (mut p Parser) root_table() ! {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing root table...')
 
 	for p.tok.kind != .eof {
 		if !p.skip_next {
-			p.next()?
+			p.next()!
 		} else {
 			p.skip_next = false
 		}
@@ -480,10 +480,10 @@ pub fn (mut p Parser) root_table() ? {
 			}
 			.bare, .quoted, .number, .minus, .underscore {
 				// Peek forward as far as we can skipping over space formatting tokens.
-				peek_tok, _ := p.peek_over(1, parser.keys_and_space_formatting)?
+				peek_tok, _ := p.peek_over(1, parser.keys_and_space_formatting)!
 
 				if peek_tok.kind == .period {
-					dotted_key, val := p.dotted_key_value()?
+					dotted_key, val := p.dotted_key_value()!
 
 					sub_table, key := p.sub_table_key(dotted_key)
 
@@ -518,16 +518,16 @@ pub fn (mut p Parser) root_table() ? {
 						p.implicit_declared << abs_dotted_key
 					}
 
-					t := p.find_sub_table(sub_table)?
+					t := p.find_sub_table(sub_table)!
 					unsafe {
 						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting "$key" = $val in table ${ptr_str(t)}')
 						t[key.str()] = val
 					}
 				} else {
 					p.ignore_while(parser.space_formatting)
-					key, val := p.key_value()?
+					key, val := p.key_value()!
 
-					t := p.find_table()?
+					t := p.find_table()!
 					unsafe {
 						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting "$key.str()" = $val in table ${ptr_str(t)}')
 						key_str := key.str()
@@ -538,15 +538,15 @@ pub fn (mut p Parser) root_table() ? {
 						t[key_str] = val
 					}
 				}
-				p.peek_for_correct_line_ending_or_fail()?
+				p.peek_for_correct_line_ending_or_fail()!
 			}
 			.lsbr {
-				p.check(.lsbr)? // '[' bracket
+				p.check(.lsbr)! // '[' bracket
 				mut peek_tok := p.peek_tok
 
 				// Disallow `[ [table]]`
 				if p.tok.kind in parser.space_formatting {
-					peek_tok, _ = p.peek_over(1, parser.space_formatting)?
+					peek_tok, _ = p.peek_over(1, parser.space_formatting)!
 					if peek_tok.kind == .lsbr {
 						return error(@MOD + '.' + @STRUCT + '.' + @FN +
 							' unexpected "$p.tok.kind" "$p.tok.lit" at this (excerpt): "...${p.excerpt()}..."')
@@ -557,18 +557,18 @@ pub fn (mut p Parser) root_table() ? {
 				p.ignore_while(parser.space_formatting)
 
 				// Peek forward as far as we can skipping over space formatting tokens.
-				peek_tok, _ = p.peek_over(1, parser.keys_and_space_formatting)?
+				peek_tok, _ = p.peek_over(1, parser.keys_and_space_formatting)!
 
 				if p.tok.kind == .lsbr {
 					// Parse `[[table]]`
 					unsafe {
-						p.array_of_tables(mut &p.root_map)?
+						p.array_of_tables(mut &p.root_map)!
 					}
 					p.skip_next = true // skip calling p.next() in coming iteration
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'leaving double bracket at "$p.tok.kind" "$p.tok.lit". NEXT is "$p.peek_tok.kind "$p.peek_tok.lit"')
 				} else if peek_tok.kind == .period {
 					// Parse `[d.e.f]`
-					dotted_key := p.dotted_key()?
+					dotted_key := p.dotted_key()!
 
 					// So apparently TOML is a *very* key context sensitive language...
 					// [[table]]   <- parsed previously
@@ -581,14 +581,14 @@ pub fn (mut p Parser) root_table() ? {
 					if p.last_aot.len == 1 && dotted_key.len > 1
 						&& dotted_key[0] == p.last_aot.str() {
 						// Disallow re-declaring the key
-						p.check_explicitly_declared_array_of_tables(dotted_key)?
-						p.check(.rsbr)?
+						p.check_explicitly_declared_array_of_tables(dotted_key)!
+						p.check(.rsbr)!
 						p.ignore_while(parser.space_formatting)
-						arr := p.find_array_of_tables()?
+						arr := p.find_array_of_tables()!
 						if val := arr[p.last_aot_index] {
 							if val is map[string]ast.Value {
 								mut m := map[string]ast.Value{}
-								p.table_contents(mut m)?
+								p.table_contents(mut m)!
 								unsafe {
 									mut mut_val := &val
 									if dotted_key.len == 2 {
@@ -600,7 +600,7 @@ pub fn (mut p Parser) root_table() ? {
 										dotted_key_copy.delete(0)
 										new_key := todo_msvc_astring2dkey(dotted_key_copy)
 										sub_table, key := p.sub_table_key(new_key)
-										t := p.find_in_table(mut mut_val, sub_table)?
+										t := p.find_in_table(mut mut_val, sub_table)!
 										util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN,
 											'setting "$key" = $val in table ${ptr_str(t)}')
 										t[new_key.last().str()] = m
@@ -615,25 +615,25 @@ pub fn (mut p Parser) root_table() ? {
 					}
 
 					// Disallow re-declaring the key
-					p.check_explicitly_declared(dotted_key)?
+					p.check_explicitly_declared(dotted_key)!
 					p.explicit_declared << dotted_key
 					// ... also check implicitly declared keys
-					p.check_implicitly_declared(dotted_key)?
+					p.check_implicitly_declared(dotted_key)!
 
 					p.ignore_while(parser.space_formatting)
 
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting root map key to `$dotted_key` at "$p.tok.kind" "$p.tok.lit"')
 					p.root_map_key = dotted_key
-					p.allocate_table(p.root_map_key)?
-					p.expect(.rsbr)?
-					p.peek_for_correct_line_ending_or_fail()?
+					p.allocate_table(p.root_map_key)!
+					p.expect(.rsbr)!
+					p.peek_for_correct_line_ending_or_fail()!
 				} else {
 					// Parse `[key]`
-					key := p.key()?
+					key := p.key()!
 					dotted_key := DottedKey([key.str()])
 
 					// Disallow re-declaring the key
-					p.check_explicitly_declared(dotted_key)?
+					p.check_explicitly_declared(dotted_key)!
 					p.explicit_declared << dotted_key
 
 					// Check for footgun redeclaration in this odd way:
@@ -649,10 +649,10 @@ pub fn (mut p Parser) root_table() ? {
 
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting root map key to `$dotted_key` at "$p.tok.kind" "$p.tok.lit"')
 					p.root_map_key = dotted_key
-					p.allocate_table(p.root_map_key)?
-					p.next()?
-					p.expect(.rsbr)?
-					p.peek_for_correct_line_ending_or_fail()?
+					p.allocate_table(p.root_map_key)!
+					p.next()!
+					p.expect(.rsbr)!
+					p.peek_for_correct_line_ending_or_fail()!
 				}
 			}
 			.eof {
@@ -673,7 +673,7 @@ fn (p Parser) excerpt() string {
 
 // table_contents parses next tokens into a map of `ast.Value`s.
 // The V `map` type is corresponding to a "table" in TOML.
-pub fn (mut p Parser) table_contents(mut tbl map[string]ast.Value) ? {
+pub fn (mut p Parser) table_contents(mut tbl map[string]ast.Value) ! {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing table contents...')
 
 	for p.tok.kind != .eof {
@@ -681,7 +681,7 @@ pub fn (mut p Parser) table_contents(mut tbl map[string]ast.Value) ? {
 			return
 		}
 		if !p.skip_next {
-			p.next()?
+			p.next()!
 		} else {
 			p.skip_next = false
 		}
@@ -699,21 +699,21 @@ pub fn (mut p Parser) table_contents(mut tbl map[string]ast.Value) ? {
 			}
 			.bare, .quoted, .number, .minus, .underscore {
 				// Peek forward as far as we can skipping over space formatting tokens.
-				peek_tok, _ := p.peek_over(1, parser.keys_and_space_formatting)?
+				peek_tok, _ := p.peek_over(1, parser.keys_and_space_formatting)!
 
 				if peek_tok.kind == .period {
-					dotted_key, val := p.dotted_key_value()?
+					dotted_key, val := p.dotted_key_value()!
 
 					sub_table, key := p.sub_table_key(dotted_key)
 
-					t := p.find_in_table(mut tbl, sub_table)?
+					t := p.find_in_table(mut tbl, sub_table)!
 					unsafe {
 						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting "$key" = $val in table ${ptr_str(t)}')
 						t[key.str()] = val
 					}
 				} else {
 					p.ignore_while(parser.space_formatting)
-					key, val := p.key_value()?
+					key, val := p.key_value()!
 
 					unsafe {
 						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'setting "$key.str()" = $val in table ${ptr_str(tbl)}')
@@ -725,7 +725,7 @@ pub fn (mut p Parser) table_contents(mut tbl map[string]ast.Value) ? {
 						tbl[key_str] = val
 					}
 				}
-				p.peek_for_correct_line_ending_or_fail()?
+				p.peek_for_correct_line_ending_or_fail()!
 			}
 			.eof {
 				break
@@ -740,18 +740,18 @@ pub fn (mut p Parser) table_contents(mut tbl map[string]ast.Value) ? {
 
 // inline_table parses next tokens into a map of `ast.Value`s.
 // The V map type is corresponding to a "table" in TOML.
-pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ? {
+pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ! {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing inline table into ${ptr_str(tbl)}...')
 
 	mut previous_token_was_value := false
 	for p.tok.kind != .eof {
-		p.next()?
+		p.next()!
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "$p.tok.kind"')
 
 		if previous_token_was_value {
 			p.ignore_while(parser.space_formatting)
 			if p.tok.kind != .rcbr {
-				p.expect(.comma)?
+				p.expect(.comma)!
 			}
 			previous_token_was_value = false
 		}
@@ -769,7 +769,7 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ? {
 			.comma {
 				p.ignore_while_peek(parser.space_formatting)
 				if p.peek_tok.kind in [.comma, .rcbr] {
-					p.next()? // Forward to the peek_tok
+					p.next()! // Forward to the peek_tok
 					return error(@MOD + '.' + @STRUCT + '.' + @FN +
 						' unexpected "$p.tok.kind" "$p.tok.lit" at this (excerpt): "...${p.excerpt()}..."')
 				}
@@ -782,21 +782,21 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ? {
 			}
 			.bare, .quoted, .number, .minus, .underscore {
 				// Peek forward as far as we can skipping over space formatting tokens.
-				peek_tok, _ := p.peek_over(1, parser.space_formatting)?
+				peek_tok, _ := p.peek_over(1, parser.space_formatting)!
 
 				if peek_tok.kind == .period {
-					dotted_key, val := p.dotted_key_value()?
+					dotted_key, val := p.dotted_key_value()!
 
 					sub_table, key := p.sub_table_key(dotted_key)
 
-					mut t := p.find_in_table(mut tbl, sub_table)?
+					mut t := p.find_in_table(mut tbl, sub_table)!
 					unsafe {
 						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @6 "$key" = $val into ${ptr_str(t)}')
 						t[key.str()] = val
 					}
 				} else {
 					p.ignore_while(parser.space_formatting)
-					key, val := p.key_value()?
+					key, val := p.key_value()!
 					key_str := key.str()
 					if _ := tbl[key_str] {
 						return error(@MOD + '.' + @STRUCT + '.' + @FN +
@@ -819,31 +819,31 @@ pub fn (mut p Parser) inline_table(mut tbl map[string]ast.Value) ? {
 }
 
 // array_of_tables parses next tokens into an array of `ast.Value`s.
-pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ? {
+pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ! {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing array of tables "$p.tok.kind" "$p.tok.lit"')
 	// NOTE this is starting to get ugly. TOML isn't simple at this point
-	p.check(.lsbr)? // '[' bracket
+	p.check(.lsbr)! // '[' bracket
 
 	// Allow [[ key]]
 	p.ignore_while(parser.space_formatting)
-	peek_tok, _ := p.peek_over(1, parser.space_formatting)?
+	peek_tok, _ := p.peek_over(1, parser.space_formatting)!
 	p.ignore_while(parser.space_formatting)
 
 	// [[key.key]] horror
 	if peek_tok.kind == .period {
-		p.double_array_of_tables(mut table)?
+		p.double_array_of_tables(mut table)!
 		return
 	}
 
-	key := p.key()?
-	p.next()?
+	key := p.key()!
+	p.next()!
 
 	// Allow [[key ]]
 	p.ignore_while(parser.space_formatting)
 
-	p.check(.rsbr)?
-	p.peek_for_correct_line_ending_or_fail()?
-	p.expect(.rsbr)?
+	p.check(.rsbr)!
+	p.peek_for_correct_line_ending_or_fail()!
+	p.expect(.rsbr)!
 
 	p.ignore_while(parser.all_formatting)
 
@@ -851,20 +851,20 @@ pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ? {
 	dotted_key_str := dotted_key.str()
 
 	// Disallow re-declaring the key
-	p.check_explicitly_declared(dotted_key)?
+	p.check_explicitly_declared(dotted_key)!
 
 	unsafe {
 		if val := table[dotted_key_str] {
 			if val is []ast.Value {
 				arr := &(table[dotted_key_str] as []ast.Value)
-				arr << p.array_of_tables_contents()?
+				arr << p.array_of_tables_contents()!
 				table[dotted_key_str] = arr
 			} else {
 				return error(@MOD + '.' + @STRUCT + '.' + @FN +
 					' table[$dotted_key_str] is not an array. (excerpt): "...${p.excerpt()}..."')
 			}
 		} else {
-			table[dotted_key_str] = p.array_of_tables_contents()?
+			table[dotted_key_str] = p.array_of_tables_contents()!
 		}
 	}
 	p.last_aot = dotted_key
@@ -876,11 +876,11 @@ pub fn (mut p Parser) array_of_tables(mut table map[string]ast.Value) ? {
 }
 
 // array_of_tables_contents parses next tokens into an array of `ast.Value`s.
-pub fn (mut p Parser) array_of_tables_contents() ?[]ast.Value {
+pub fn (mut p Parser) array_of_tables_contents() ![]ast.Value {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing contents from "$p.tok.kind" "$p.tok.lit"')
 	mut tbl := map[string]ast.Value{}
 
-	p.table_contents(mut tbl)?
+	p.table_contents(mut tbl)!
 
 	mut arr := []ast.Value{}
 	arr << tbl
@@ -889,14 +889,14 @@ pub fn (mut p Parser) array_of_tables_contents() ?[]ast.Value {
 }
 
 // double_array_of_tables parses next tokens into an array of tables of arrays of `ast.Value`s...
-pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
+pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ! {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing nested array of tables "$p.tok.kind" "$p.tok.lit"')
 
-	dotted_key := p.dotted_key()?
+	dotted_key := p.dotted_key()!
 	p.ignore_while(parser.space_formatting)
 
-	p.check(.rsbr)?
-	p.expect(.rsbr)?
+	p.check(.rsbr)!
+	p.expect(.rsbr)!
 
 	p.ignore_while(parser.all_formatting)
 
@@ -905,7 +905,7 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 			' nested array of tables does not support more than 2 levels. (excerpt): "...${p.excerpt()}..."')
 	}
 
-	p.check_explicitly_declared(dotted_key)?
+	p.check_explicitly_declared(dotted_key)!
 
 	if !p.explicit_declared_array_of_tables.has(dotted_key) {
 		p.explicit_declared_array_of_tables << dotted_key
@@ -941,7 +941,7 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 				table[first.str()] = ast.Value(nm)
 
 				t_arr = &(nm[last.str()] as []ast.Value)
-				t_arr << p.array_of_tables_contents()?
+				t_arr << p.array_of_tables_contents()!
 				return
 			} else {
 				return error(@MOD + '.' + @STRUCT + '.' + @FN +
@@ -960,14 +960,14 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 		if val := t[last.str()] {
 			if val is []ast.Value {
 				arr := &(val as []ast.Value)
-				arr << p.double_array_of_tables_contents(dotted_key)?
+				arr << p.double_array_of_tables_contents(dotted_key)!
 				t[last.str()] = arr
 			} else {
 				return error(@MOD + '.' + @STRUCT + '.' + @FN +
 					' t[$last.str()] is not an array. (excerpt): "...${p.excerpt()}..."')
 			}
 		} else {
-			t[last.str()] = p.double_array_of_tables_contents(dotted_key)?
+			t[last.str()] = p.double_array_of_tables_contents(dotted_key)!
 		}
 		if t_arr.len == 0 {
 			t_arr << t
@@ -977,7 +977,7 @@ pub fn (mut p Parser) double_array_of_tables(mut table map[string]ast.Value) ? {
 }
 
 // double_array_of_tables_contents parses next tokens into an array of `ast.Value`s.
-pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ?[]ast.Value {
+pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ![]ast.Value {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing contents from "$p.tok.kind" "$p.tok.lit"')
 	mut tbl := map[string]ast.Value{}
 
@@ -986,15 +986,15 @@ pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ?[]a
 	mut peek_tok := p.peek_tok
 
 	for p.tok.kind != .eof {
-		p.next()?
+		p.next()!
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "$p.tok.kind"')
 		p.ignore_while(parser.all_formatting)
 
 		// Peek forward as far as we can skipping over space formatting tokens.
-		peek_tok, peeked_over = p.peek_over(1, parser.space_formatting)?
+		peek_tok, peeked_over = p.peek_over(1, parser.space_formatting)!
 		// Peek for occurrence of `[[`
 		if peek_tok.kind == .lsbr {
-			peek_tok, peeked_over = p.peek_over(peeked_over + 1, parser.space_formatting)?
+			peek_tok, peeked_over = p.peek_over(peeked_over + 1, parser.space_formatting)!
 			if peek_tok.kind == .lsbr {
 				mut arr := []ast.Value{}
 				arr << tbl
@@ -1005,27 +1005,27 @@ pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ?[]a
 		match p.tok.kind {
 			.bare, .quoted, .number, .minus, .underscore {
 				// Peek forward as far as we can skipping over space formatting tokens.
-				peek_tok, _ = p.peek_over(1, parser.space_formatting)?
+				peek_tok, _ = p.peek_over(1, parser.space_formatting)!
 
 				if peek_tok.kind == .period {
-					mut dotted_key, val := p.dotted_key_value()?
+					mut dotted_key, val := p.dotted_key_value()!
 
 					if implicit_allocation_key.len > 0 {
 						dotted_key.insert(0, implicit_allocation_key)
 					}
 					sub_table, key := p.sub_table_key(dotted_key)
 
-					mut t := p.find_in_table(mut tbl, sub_table)?
+					mut t := p.find_in_table(mut tbl, sub_table)!
 					unsafe {
 						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @6 "$key" = $val into ${ptr_str(t)}')
 						t[key.str()] = val
 					}
 				} else {
-					key, val := p.key_value()?
+					key, val := p.key_value()!
 
 					mut t := unsafe { &tbl }
 					if implicit_allocation_key.len > 0 {
-						t = p.find_in_table(mut tbl, implicit_allocation_key)?
+						t = p.find_in_table(mut tbl, implicit_allocation_key)!
 					}
 					unsafe {
 						util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'inserting @7 "$key" = $val into ${ptr_str(t)}')
@@ -1034,27 +1034,27 @@ pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ?[]a
 				}
 			}
 			.lsbr {
-				p.check(.lsbr)? // '[' bracket
+				p.check(.lsbr)! // '[' bracket
 				peek_tok = p.peek_tok
 
 				// Allow `[ d.e.f]`
 				p.ignore_while(parser.space_formatting)
 
 				// Peek forward as far as we can skipping over space formatting tokens.
-				peek_tok, _ = p.peek_over(1, parser.space_formatting)?
+				peek_tok, _ = p.peek_over(1, parser.space_formatting)!
 
 				if peek_tok.kind == .period {
 					// Parse `[d.e.f]`
 					p.ignore_while(parser.space_formatting)
-					dotted_key := p.dotted_key()?
+					dotted_key := p.dotted_key()!
 					implicit_allocation_key = dotted_key
 					if dotted_key.len > 2 {
 						implicit_allocation_key = dotted_key[2..]
 					}
 					p.ignore_while(parser.space_formatting)
 					util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'keys are: dotted `$dotted_key`, target `$target_key`, implicit `$implicit_allocation_key` at "$p.tok.kind" "$p.tok.lit"')
-					p.expect(.rsbr)?
-					p.peek_for_correct_line_ending_or_fail()?
+					p.expect(.rsbr)!
+					p.peek_for_correct_line_ending_or_fail()!
 					p.explicit_declared << dotted_key
 					continue
 				} else {
@@ -1074,26 +1074,26 @@ pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ?[]a
 }
 
 // array parses next tokens into an array of `ast.Value`s.
-pub fn (mut p Parser) array() ?[]ast.Value {
+pub fn (mut p Parser) array() ![]ast.Value {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing array...')
 	mut arr := []ast.Value{}
-	p.expect(.lsbr)? // '[' bracket
+	p.expect(.lsbr)! // '[' bracket
 	mut previous_token_was_value := false
 	for p.tok.kind != .eof {
-		p.next()?
+		p.next()!
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing token "$p.tok.kind" "$p.tok.lit"')
 
 		if previous_token_was_value {
 			p.ignore_while(parser.all_formatting)
 			if p.tok.kind != .rsbr && p.tok.kind != .hash {
-				p.expect(.comma)?
+				p.expect(.comma)!
 			}
 			previous_token_was_value = false
 		}
 
 		match p.tok.kind {
 			.boolean {
-				arr << ast.Value(p.boolean()?)
+				arr << ast.Value(p.boolean()!)
 				previous_token_was_value = true
 			}
 			.comma {
@@ -1103,7 +1103,7 @@ pub fn (mut p Parser) array() ?[]ast.Value {
 
 				// Check for known errors:
 				if p.peek_tok.kind in [.comma, .bare] {
-					p.next()? // Forward to the peek_tok
+					p.next()! // Forward to the peek_tok
 					return error(@MOD + '.' + @STRUCT + '.' + @FN +
 						' unexpected "$p.tok.kind" "$p.tok.lit" at this (excerpt): "...${p.excerpt()}..."')
 				}
@@ -1122,12 +1122,12 @@ pub fn (mut p Parser) array() ?[]ast.Value {
 			.lcbr {
 				p.ignore_while(parser.space_formatting)
 				mut t := map[string]ast.Value{}
-				p.inline_table(mut t)?
+				p.inline_table(mut t)!
 				arr << ast.Value(t)
 				previous_token_was_value = true
 			}
 			.number {
-				val := p.number_or_date()?
+				val := p.number_or_date()!
 				arr << val
 				previous_token_was_value = true
 			}
@@ -1137,7 +1137,7 @@ pub fn (mut p Parser) array() ?[]ast.Value {
 			}
 			.lsbr {
 				util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing array in array "$p.tok.kind" "$p.tok.lit"')
-				arr << ast.Value(p.array()?)
+				arr << ast.Value(p.array()!)
 				previous_token_was_value = true
 			}
 			.rsbr {
@@ -1149,7 +1149,7 @@ pub fn (mut p Parser) array() ?[]ast.Value {
 			}
 		}
 	}
-	p.expect(.rsbr)? // ']' bracket
+	p.expect(.rsbr)! // ']' bracket
 	$if debug {
 		flat := arr.str().replace('\n', r'\n')
 		util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed array: $flat . Currently @ token "$p.tok.kind"')
@@ -1168,7 +1168,7 @@ pub fn (mut p Parser) comment() ast.Comment {
 
 // key parse and returns an `ast.Key` type.
 // Keys are the token(s) appearing before an assignment operator (=).
-pub fn (mut p Parser) key() ?ast.Key {
+pub fn (mut p Parser) key() !ast.Key {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing key from "$p.tok.lit" ...')
 
 	mut key := ast.Key(ast.Null{})
@@ -1177,7 +1177,7 @@ pub fn (mut p Parser) key() ?ast.Key {
 			mut lits := p.tok.lit
 			pos := p.tok.pos()
 			for p.peek_tok.kind != .assign && p.peek_tok.kind != .period && p.peek_tok.kind != .rsbr {
-				p.next()?
+				p.next()!
 				if p.tok.kind !in parser.space_formatting {
 					lits += p.tok.lit
 				}
@@ -1191,10 +1191,10 @@ pub fn (mut p Parser) key() ?ast.Key {
 	} else {
 		key = match p.tok.kind {
 			.bare, .underscore, .minus {
-				ast.Key(p.bare()?)
+				ast.Key(p.bare()!)
 			}
 			.boolean {
-				ast.Key(p.boolean()?)
+				ast.Key(p.boolean()!)
 			}
 			.quoted {
 				ast.Key(p.quoted())
@@ -1228,11 +1228,11 @@ pub fn (mut p Parser) key() ?ast.Key {
 			chckr := checker.Checker{
 				scanner: p.scanner
 			}
-			chckr.check_quoted(quoted)?
+			chckr.check_quoted(quoted)!
 		}
 		if p.config.decode_values {
 			mut quoted := key as ast.Quoted
-			decoder.decode_quoted_escapes(mut quoted)?
+			decoder.decode_quoted_escapes(mut quoted)!
 			key = ast.Key(quoted)
 		}
 	}
@@ -1242,14 +1242,14 @@ pub fn (mut p Parser) key() ?ast.Key {
 
 // key_value parse and returns a pair `ast.Key` and `ast.Value` type.
 // see also `key()` and `value()`
-pub fn (mut p Parser) key_value() ?(ast.Key, ast.Value) {
+pub fn (mut p Parser) key_value() !(ast.Key, ast.Value) {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing key value pair...')
-	key := p.key()?
-	p.next()?
+	key := p.key()!
+	p.next()!
 	p.ignore_while(parser.space_formatting)
-	p.check(.assign)? // Assignment operator
+	p.check(.assign)! // Assignment operator
 	p.ignore_while(parser.space_formatting)
-	value := p.value()?
+	value := p.value()!
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed key value pair. `$key = $value`')
 
 	p.explicit_declared << p.build_abs_dotted_key(DottedKey([
@@ -1261,14 +1261,14 @@ pub fn (mut p Parser) key_value() ?(ast.Key, ast.Value) {
 
 // dotted_key_value parse and returns a pair `DottedKey` and `ast.Value` type.
 // see also `key()` and `value()`
-pub fn (mut p Parser) dotted_key_value() ?(DottedKey, ast.Value) {
+pub fn (mut p Parser) dotted_key_value() !(DottedKey, ast.Value) {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing dotted key value pair...')
 	p.ignore_while(parser.space_formatting)
-	dotted_key := p.dotted_key()?
+	dotted_key := p.dotted_key()!
 	p.ignore_while(parser.space_formatting)
-	p.check(.assign)?
+	p.check(.assign)!
 	p.ignore_while(parser.space_formatting)
-	value := p.value()?
+	value := p.value()!
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed dotted key value pair `$dotted_key = $value`...')
 
 	p.explicit_declared << p.build_abs_dotted_key(dotted_key)
@@ -1278,12 +1278,12 @@ pub fn (mut p Parser) dotted_key_value() ?(DottedKey, ast.Value) {
 
 // value parse and returns an `ast.Value` type.
 // values are the token(s) appearing after an assignment operator (=).
-pub fn (mut p Parser) value() ?ast.Value {
+pub fn (mut p Parser) value() !ast.Value {
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsing value from token "$p.tok.kind" "$p.tok.lit"...')
 	mut value := ast.Value(ast.Null{})
 
 	if p.tok.kind == .number {
-		number_or_date := p.number_or_date()?
+		number_or_date := p.number_or_date()!
 		value = number_or_date
 	} else {
 		value = match p.tok.kind {
@@ -1291,15 +1291,15 @@ pub fn (mut p Parser) value() ?ast.Value {
 				ast.Value(p.quoted())
 			}
 			.boolean {
-				ast.Value(p.boolean()?)
+				ast.Value(p.boolean()!)
 			}
 			.lsbr {
-				ast.Value(p.array()?)
+				ast.Value(p.array()!)
 			}
 			.lcbr {
 				p.ignore_while(parser.space_formatting)
 				mut t := map[string]ast.Value{}
-				p.inline_table(mut t)?
+				p.inline_table(mut t)!
 				ast.Value(t)
 			}
 			else {
@@ -1317,10 +1317,10 @@ pub fn (mut p Parser) value() ?ast.Value {
 
 // number_or_date parse and returns an `ast.Value` type as
 // one of [`ast.Date`, `ast.Time`, `ast.DateTime`, `ast.Number`]
-pub fn (mut p Parser) number_or_date() ?ast.Value {
+pub fn (mut p Parser) number_or_date() !ast.Value {
 	// Handle Date/Time
 	if p.peek_tok.kind == .minus || p.peek_tok.kind == .colon {
-		date_time_type := p.date_time()?
+		date_time_type := p.date_time()!
 		match date_time_type {
 			ast.Date {
 				return ast.Value(date_time_type as ast.Date)
@@ -1337,12 +1337,12 @@ pub fn (mut p Parser) number_or_date() ?ast.Value {
 }
 
 // bare parse and returns an `ast.Bare` type.
-pub fn (mut p Parser) bare() ?ast.Bare {
+pub fn (mut p Parser) bare() !ast.Bare {
 	mut lits := p.tok.lit
 	pos := p.tok.pos()
 	for p.peek_tok.kind != .assign && p.peek_tok.kind != .period && p.peek_tok.kind != .rsbr
 		&& p.peek_tok.kind !in parser.space_formatting {
-		p.next()?
+		p.next()!
 		if p.tok.kind == .bare || p.tok.kind == .minus || p.tok.kind == .underscore {
 			lits += p.tok.lit
 			continue
@@ -1382,7 +1382,7 @@ pub fn (mut p Parser) quoted() ast.Quoted {
 }
 
 // boolean parse and returns an `ast.Bool` type.
-pub fn (mut p Parser) boolean() ?ast.Bool {
+pub fn (mut p Parser) boolean() !ast.Bool {
 	if p.tok.lit !in ['true', 'false'] {
 		return error(@MOD + '.' + @STRUCT + '.' + @FN +
 			' expected literal to be either `true` or `false` got "$p.tok.kind"')
@@ -1403,7 +1403,7 @@ pub fn (mut p Parser) number() ast.Number {
 
 // date_time parses dates and time in RFC 3339 format.
 // https://datatracker.ietf.org/doc/html/rfc3339
-pub fn (mut p Parser) date_time() ?ast.DateTimeType {
+pub fn (mut p Parser) date_time() !ast.DateTimeType {
 	// Date and/or Time
 	mut lit := ''
 	pos := p.tok.pos()
@@ -1411,19 +1411,19 @@ pub fn (mut p Parser) date_time() ?ast.DateTimeType {
 	mut time := ast.Time{}
 
 	if p.peek_tok.kind == .minus {
-		date = p.date()?
+		date = p.date()!
 		lit += date.text
 		// Look for any THH:MM:SS or <space>HH:MM:SS
 		if (p.peek_tok.kind == .bare && (p.peek_tok.lit.starts_with('T')
 			|| p.peek_tok.lit.starts_with('t'))) || p.peek_tok.kind == .whitespace {
-			p.next()? // Advance to token with Txx or whitespace special case
+			p.next()! // Advance to token with Txx or whitespace special case
 			if p.tok.lit.starts_with('T') || p.tok.lit.starts_with('t') {
 				lit += p.tok.lit[0].ascii_str() //'T' or 't'
 			} else {
 				lit += p.tok.lit
-				p.next()?
+				p.next()!
 			}
-			time = p.time()?
+			time = p.time()!
 			lit += time.text
 
 			util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed date-time: "$lit"')
@@ -1435,7 +1435,7 @@ pub fn (mut p Parser) date_time() ?ast.DateTimeType {
 			}
 		}
 	} else if p.peek_tok.kind == .colon {
-		time = p.time()?
+		time = p.time()!
 		return time
 	}
 
@@ -1446,20 +1446,20 @@ pub fn (mut p Parser) date_time() ?ast.DateTimeType {
 }
 
 // date parse and returns an `ast.Date` type.
-pub fn (mut p Parser) date() ?ast.Date {
+pub fn (mut p Parser) date() !ast.Date {
 	// Date
 	mut lit := p.tok.lit
 	pos := p.tok.pos()
 
-	p.check(.number)?
+	p.check(.number)!
 	lit += p.tok.lit
-	p.check(.minus)?
+	p.check(.minus)!
 	lit += p.tok.lit
-	p.check(.number)?
+	p.check(.number)!
 	lit += p.tok.lit
-	p.check(.minus)?
+	p.check(.minus)!
 	lit += p.tok.lit
-	p.expect(.number)?
+	p.expect(.number)!
 
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed date: "$lit"')
 	return ast.Date{
@@ -1469,7 +1469,7 @@ pub fn (mut p Parser) date() ?ast.Date {
 }
 
 // time parse and returns an `ast.Time` type.
-pub fn (mut p Parser) time() ?ast.Time {
+pub fn (mut p Parser) time() !ast.Time {
 	// Time
 	mut lit := p.tok.lit
 	pos := p.tok.pos()
@@ -1480,46 +1480,46 @@ pub fn (mut p Parser) time() ?ast.Time {
 		} else if p.tok.lit.starts_with('t') {
 			lit = lit.all_after('t')
 		}
-		p.next()?
+		p.next()!
 	} else {
-		p.check(.number)?
+		p.check(.number)!
 	}
 	lit += p.tok.lit
-	p.check(.colon)?
+	p.check(.colon)!
 	lit += p.tok.lit
-	p.check(.number)?
+	p.check(.number)!
 	lit += p.tok.lit
 	// TODO does TOML even have optional seconds?
 	// if p.peek_tok.kind == .colon {
-	p.check(.colon)?
+	p.check(.colon)!
 	lit += p.tok.lit
-	p.expect(.number)?
+	p.expect(.number)!
 	//}
 
 	// Optional milliseconds
 	if p.peek_tok.kind == .period {
-		p.next()?
+		p.next()!
 		lit += p.tok.lit // lit += '.'
-		p.check(.period)?
+		p.check(.period)!
 		lit += p.tok.lit
-		p.expect(.number)?
+		p.expect(.number)!
 	}
 
 	// Parse offset
 	if p.peek_tok.kind == .minus || p.peek_tok.kind == .plus {
-		p.next()?
+		p.next()!
 		lit += p.tok.lit // lit += '-'
-		p.check_one_of([.minus, .plus])?
+		p.check_one_of([.minus, .plus])!
 		lit += p.tok.lit
-		p.check(.number)?
+		p.check(.number)!
 		lit += p.tok.lit
-		p.check(.colon)?
+		p.check(.colon)!
 		lit += p.tok.lit
-		p.expect(.number)?
+		p.expect(.number)!
 	} else if p.peek_tok.kind == .bare && (p.peek_tok.lit == 'Z' || p.peek_tok.lit == 'z') {
-		p.next()?
+		p.next()!
 		lit += p.tok.lit
-		p.expect(.bare)?
+		p.expect(.bare)!
 	}
 
 	util.printdbg(@MOD + '.' + @STRUCT + '.' + @FN, 'parsed time: "$lit"')

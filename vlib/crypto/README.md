@@ -22,7 +22,7 @@ import crypto.rand
 
 fn main() {
 	// remember to save this key somewhere if you ever want to decrypt your data
-	key := rand.bytes(32)?
+	key := rand.bytes(32)!
 	println('KEY: $key')
 
 	// this data is one block (16 bytes) big

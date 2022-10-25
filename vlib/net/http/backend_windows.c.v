@@ -13,7 +13,7 @@ $if gcboehm ? {
 
 fn C.new_tls_context() C.TlsContext
 
-fn (req &Request) ssl_do(port int, method Method, host_name string, path string) ?Response {
+fn (req &Request) ssl_do(port int, method Method, host_name string, path string) !Response {
 	mut ctx := C.new_tls_context()
 	C.vschannel_init(&ctx)
 	mut buff := unsafe { malloc_noscan(C.vsc_init_resp_buff_size) }

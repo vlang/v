@@ -156,7 +156,7 @@ fn glob_match(dir string, pattern string, next_pattern string, mut matches []str
 	return subdirs
 }
 
-fn native_glob_pattern(pattern string, mut matches []string) ? {
+fn native_glob_pattern(pattern string, mut matches []string) ! {
 	steps := pattern.split(os.path_separator)
 	mut cwd := if pattern.starts_with(os.path_separator) { os.path_separator } else { '.' }
 	mut subdirs := [cwd]
@@ -199,7 +199,7 @@ fn native_glob_pattern(pattern string, mut matches []string) ? {
 	}
 }
 
-pub fn utime(path string, actime int, modtime int) ? {
+pub fn utime(path string, actime int, modtime int) ! {
 	mut u := C.utimbuf{actime, modtime}
 	if C.utime(&char(path.str), voidptr(&u)) != 0 {
 		return error_with_code(posix_get_error_msg(C.errno), C.errno)
@@ -252,7 +252,7 @@ fn init_os_args(argc int, argv &&u8) []string {
 	return args_
 }
 
-pub fn ls(path string) ?[]string {
+pub fn ls(path string) ![]string {
 	if path.len == 0 {
 		return error('ls() expects a folder, not an empty string')
 	}
@@ -281,51 +281,16 @@ pub fn ls(path string) ?[]string {
 	return res
 }
 
-/*
-pub fn is_dir(path string) bool {
-	//$if linux {
-		//C.syscall(4, path.str) // sys_newstat
-	//}
-	dir := C.opendir(path.str)
-	res := !isnil(dir)
-	if res {
-		C.closedir(dir)
-	}
-	return res
-}
-*/
-
 // mkdir creates a new directory with the specified path.
-pub fn mkdir(path string, params MkdirParams) ?bool {
+pub fn mkdir(path string, params MkdirParams) ! {
 	if path == '.' {
-		return true
+		return
 	}
-	/*
-	mut k := 0
-	defer {
-		k = 1
-	}
-	*/
 	apath := real_path(path)
-	// defer {
-	// apath.free()
-	//}
-	/*
-	$if linux {
-		$if !android {
-			ret := C.syscall(sys_mkdir, apath.str, params.mode)
-			if ret == -1 {
-				return error(posix_get_error_msg(C.errno))
-			}
-			return true
-		}
-	}
-	*/
 	r := unsafe { C.mkdir(&char(apath.str), params.mode) }
 	if r == -1 {
 		return error(posix_get_error_msg(C.errno))
 	}
-	return true
 }
 
 // execute starts the specified command, waits for it to complete, and returns its output.
@@ -379,7 +344,7 @@ pub fn raw_execute(cmd string) Result {
 }
 
 [manualfree]
-pub fn (mut c Command) start() ? {
+pub fn (mut c Command) start() ! {
 	pcmd := c.path + ' 2>&1'
 	defer {
 		unsafe { pcmd.free() }
@@ -416,25 +381,25 @@ pub fn (mut c Command) read_line() string {
 	return final
 }
 
-pub fn (mut c Command) close() ? {
+pub fn (mut c Command) close() ! {
 	c.exit_code = vpclose(c.f)
 	if c.exit_code == 127 {
 		return error_with_code('error', 127)
 	}
 }
 
-pub fn symlink(origin string, target string) ?bool {
+pub fn symlink(origin string, target string) ! {
 	res := C.symlink(&char(origin.str), &char(target.str))
 	if res == 0 {
-		return true
+		return
 	}
 	return error(posix_get_error_msg(C.errno))
 }
 
-pub fn link(origin string, target string) ?bool {
+pub fn link(origin string, target string) ! {
 	res := C.link(&char(origin.str), &char(target.str))
 	if res == 0 {
-		return true
+		return
 	}
 	return error(posix_get_error_msg(C.errno))
 }
@@ -449,14 +414,6 @@ pub fn (mut f File) close() {
 		return
 	}
 	f.is_opened = false
-	/*
-	$if linux {
-		$if !android {
-			C.syscall(sys_close, f.fd)
-			return
-		}
-	}
-	*/
 	C.fflush(f.cfile)
 	C.fclose(f.cfile)
 }
@@ -475,14 +432,15 @@ pub fn debugger_present() bool {
 
 fn C.mkstemp(stemplate &u8) int
 
-// `is_writable_folder` - `folder` exists and is writable to the process
+// ensure_folder_is_writable checks that `folder` exists, and is writable to the process
+// by creating an empty file in it, then deleting it.
 [manualfree]
-pub fn is_writable_folder(folder string) ?bool {
+pub fn ensure_folder_is_writable(folder string) ! {
 	if !exists(folder) {
-		return error('`$folder` does not exist')
+		return error_with_code('`$folder` does not exist', 1)
 	}
 	if !is_dir(folder) {
-		return error('`$folder` is not a folder')
+		return error_with_code('`$folder` is not a folder', 2)
 	}
 	tmp_perm_check := join_path_single(folder, 'XXXXXX')
 	defer {
@@ -491,12 +449,11 @@ pub fn is_writable_folder(folder string) ?bool {
 	unsafe {
 		x := C.mkstemp(&char(tmp_perm_check.str))
 		if -1 == x {
-			return error('folder `$folder` is not writable')
+			return error_with_code('folder `$folder` is not writable', 3)
 		}
 		C.close(x)
 	}
-	rm(tmp_perm_check)?
-	return true
+	rm(tmp_perm_check)!
 }
 
 [inline]

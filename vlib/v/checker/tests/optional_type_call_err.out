@@ -1,4 +1,4 @@
-vlib/v/checker/tests/optional_type_call_err.vv:4:5: error: optional type cannot be called directly
+vlib/v/checker/tests/optional_type_call_err.vv:4:5: error: result type cannot be called directly
     2 |
     3 | fn main() {
     4 |     os.ls('.').filter(it.ends_with('.v')) or { return }

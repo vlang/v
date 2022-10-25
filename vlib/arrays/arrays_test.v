@@ -14,7 +14,7 @@ fn test_min() {
 	c := [u8(4), 9, 3, 1]
 	mut rb := min(c)!
 	assert rb == u8(1)
-	rb = min(c[..3])?
+	rb = min(c[..3])!
 	assert rb == u8(3)
 }
 
@@ -243,7 +243,7 @@ fn test_concat_string() {
 
 fn test_binary_search() {
 	a := [1, 3, 3, 4, 5, 6, 7, 8, 10]
-	assert binary_search(a, 3)? == 1
+	assert binary_search(a, 3)! == 1
 	assert (binary_search(a, 0) or { -1 }) == -1
 }
 
@@ -251,18 +251,18 @@ fn test_lower_bound() {
 	a := [1, 3, 3, 4, 5, 6, 7, 8, 10]
 	b := []int{}
 	c := [1, 2, 3]
-	assert lower_bound(a, 2)? == 3
+	assert lower_bound(a, 2)! == 3
 	assert (lower_bound(b, 4) or { -1 }) == -1
-	assert lower_bound(c, 3)? == 3
+	assert lower_bound(c, 3)! == 3
 }
 
 fn test_upper_bound() {
 	a := [1, 3, 3, 4, 5, 6, 7, 8, 10]
 	b := []int{}
 	c := [1, 2, 3]
-	assert upper_bound(a, 9)? == 8
+	assert upper_bound(a, 9)! == 8
 	assert (upper_bound(b, 4) or { -1 }) == -1
-	assert upper_bound(c, 2)? == 2
+	assert upper_bound(c, 2)! == 2
 }
 
 fn test_rotate_right() {

@@ -8,8 +8,8 @@ import hash.crc32
 
 // compresses an array of bytes using gzip and returns the compressed bytes in a new array
 // Example: compressed := gzip.compress(b)?
-pub fn compress(data []u8) ?[]u8 {
-	compressed := compress.compress(data, 0)?
+pub fn compress(data []u8) ![]u8 {
+	compressed := compress.compress(data, 0)!
 	// header
 	mut result := [
 		u8(0x1f), // magic numbers (1F 8B)
@@ -49,7 +49,7 @@ pub struct DecompressParams {
 
 // decompresses an array of bytes using zlib and returns the decompressed bytes in a new array
 // Example: decompressed := gzip.decompress(b)?
-pub fn decompress(data []u8, params DecompressParams) ?[]u8 {
+pub fn decompress(data []u8, params DecompressParams) ![]u8 {
 	if data.len < 18 {
 		return error('data is too short, not gzip compressed?')
 	} else if data[0] != 0x1f || data[1] != 0x8b {
@@ -107,7 +107,7 @@ pub fn decompress(data []u8, params DecompressParams) ?[]u8 {
 		return error('data too short')
 	}
 
-	decompressed := compress.decompress(data[header_length..data.len - 8], 0)?
+	decompressed := compress.decompress(data[header_length..data.len - 8], 0)!
 	length_expected := (u32(data[data.len - 4]) << 24) | (u32(data[data.len - 3]) << 16) | (u32(data[data.len - 2]) << 8) | data[data.len - 1]
 	if params.verify_length && decompressed.len != length_expected {
 		return error('length verification failed, got $decompressed.len, expected $length_expected')

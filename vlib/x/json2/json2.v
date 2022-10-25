@@ -13,20 +13,20 @@ pub interface Serializable {
 }
 
 // Decodes a JSON string into an `Any` type. Returns an option.
-pub fn raw_decode(src string) ?Any {
+pub fn raw_decode(src string) !Any {
 	mut p := new_parser(src, true)
 	return p.decode()
 }
 
 // Same with `raw_decode`, but skips the type conversion for certain types when decoding a certain value.
-pub fn fast_raw_decode(src string) ?Any {
+pub fn fast_raw_decode(src string) !Any {
 	mut p := new_parser(src, false)
 	return p.decode()
 }
 
 // decode is a generic function that decodes a JSON string into the target type.
-pub fn decode<T>(src string) ?T {
-	res := raw_decode(src)?
+pub fn decode<T>(src string) !T {
+	res := raw_decode(src)!
 	mut typ := T{}
 	typ.from_json(res)
 	return typ

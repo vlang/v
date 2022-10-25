@@ -56,7 +56,7 @@ pub fn new() &Digest {
 
 // write writes the contents of `p_` to the internal hash representation.
 [manualfree]
-pub fn (mut d Digest) write(p_ []u8) ?int {
+pub fn (mut d Digest) write(p_ []u8) !int {
 	nn := p_.len
 	unsafe {
 		mut p := p_

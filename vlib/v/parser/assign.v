@@ -20,105 +20,7 @@ fn (mut p Parser) assign_stmt() ast.Stmt {
 
 const max_expr_level = 100
 
-fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) ? {
-	p.expr_level++
-	defer {
-		p.expr_level--
-	}
-	if p.expr_level > parser.max_expr_level {
-		return error('expr level > $parser.max_expr_level')
-	}
-	match val {
-		ast.Ident {
-			for expr in exprs {
-				if expr is ast.Ident {
-					if expr.name == val.name && expr.kind != .blank_ident {
-						p.error_with_pos('undefined variable: `$val.name`', val.pos)
-						return error('undefined variable: `$val.name`')
-					}
-				}
-			}
-		}
-		ast.ArrayInit {
-			if val.has_cap {
-				p.check_undefined_variables(exprs, val.cap_expr)?
-			}
-			if val.has_len {
-				p.check_undefined_variables(exprs, val.len_expr)?
-			}
-			if val.has_default {
-				p.check_undefined_variables(exprs, val.default_expr)?
-			}
-			for expr in val.exprs {
-				p.check_undefined_variables(exprs, expr)?
-			}
-		}
-		ast.CallExpr {
-			p.check_undefined_variables(exprs, val.left)?
-			for arg in val.args {
-				p.check_undefined_variables(exprs, arg.expr)?
-			}
-		}
-		ast.InfixExpr {
-			p.check_undefined_variables(exprs, val.left)?
-			p.check_undefined_variables(exprs, val.right)?
-		}
-		ast.IfExpr {
-			p.check_undefined_variables(exprs, val.left)?
-			for branch in val.branches {
-				p.check_undefined_variables(exprs, branch.cond)?
-				for stmt in branch.stmts {
-					if stmt is ast.ExprStmt {
-						p.check_undefined_variables(exprs, stmt.expr)?
-					}
-				}
-			}
-		}
-		ast.MapInit {
-			for key in val.keys {
-				p.check_undefined_variables(exprs, key)?
-			}
-			for value in val.vals {
-				p.check_undefined_variables(exprs, value)?
-			}
-		}
-		ast.MatchExpr {
-			p.check_undefined_variables(exprs, val.cond)?
-			for branch in val.branches {
-				for expr in branch.exprs {
-					p.check_undefined_variables(exprs, expr)?
-				}
-				for stmt in branch.stmts {
-					if stmt is ast.ExprStmt {
-						p.check_undefined_variables(exprs, stmt.expr)?
-					}
-				}
-			}
-		}
-		ast.ParExpr {
-			p.check_undefined_variables(exprs, val.expr)?
-		}
-		ast.PostfixExpr {
-			p.check_undefined_variables(exprs, val.expr)?
-		}
-		ast.PrefixExpr {
-			p.check_undefined_variables(exprs, val.right)?
-		}
-		ast.StringInterLiteral {
-			for expr_ in val.exprs {
-				p.check_undefined_variables(exprs, expr_)?
-			}
-		}
-		ast.StructInit {
-			for field in val.fields {
-				p.check_undefined_variables(exprs, field.expr)?
-			}
-		}
-		else {}
-	}
-}
-
-fn (mut p Parser) check_undefined_variables_by_names(names []string, val ast.Expr) ? {
+fn (mut p Parser) check_undefined_variables(names []string, val ast.Expr) ! {
 	p.expr_level++
 	defer {
 		p.expr_level--
@@ -137,81 +39,92 @@ fn (mut p Parser) check_undefined_variables_by_names(names []string, val ast.Exp
 		}
 		ast.ArrayInit {
 			if val.has_cap {
-				p.check_undefined_variables_by_names(names, val.cap_expr)?
+				p.check_undefined_variables(names, val.cap_expr)!
 			}
 			if val.has_len {
-				p.check_undefined_variables_by_names(names, val.len_expr)?
+				p.check_undefined_variables(names, val.len_expr)!
 			}
 			if val.has_default {
-				p.check_undefined_variables_by_names(names, val.default_expr)?
+				p.check_undefined_variables(names, val.default_expr)!
 			}
 			for expr in val.exprs {
-				p.check_undefined_variables_by_names(names, expr)?
+				p.check_undefined_variables(names, expr)!
 			}
 		}
 		ast.CallExpr {
-			p.check_undefined_variables_by_names(names, val.left)?
+			p.check_undefined_variables(names, val.left)!
 			for arg in val.args {
-				p.check_undefined_variables_by_names(names, arg.expr)?
+				p.check_undefined_variables(names, arg.expr)!
 			}
 		}
+		ast.CastExpr {
+			p.check_undefined_variables(names, val.expr)!
+			p.check_undefined_variables(names, val.arg)!
+		}
+		ast.IndexExpr {
+			p.check_undefined_variables(names, val.left)!
+			p.check_undefined_variables(names, val.index)!
+		}
 		ast.InfixExpr {
-			p.check_undefined_variables_by_names(names, val.left)?
-			p.check_undefined_variables_by_names(names, val.right)?
+			p.check_undefined_variables(names, val.left)!
+			p.check_undefined_variables(names, val.right)!
 		}
 		ast.IfExpr {
-			p.check_undefined_variables_by_names(names, val.left)?
+			p.check_undefined_variables(names, val.left)!
 			for branch in val.branches {
-				p.check_undefined_variables_by_names(names, branch.cond)?
+				p.check_undefined_variables(names, branch.cond)!
 				for stmt in branch.stmts {
 					if stmt is ast.ExprStmt {
-						p.check_undefined_variables_by_names(names, stmt.expr)?
+						p.check_undefined_variables(names, stmt.expr)!
 					}
 				}
 			}
 		}
 		ast.MapInit {
 			for key in val.keys {
-				p.check_undefined_variables_by_names(names, key)?
+				p.check_undefined_variables(names, key)!
 			}
 			for value in val.vals {
-				p.check_undefined_variables_by_names(names, value)?
+				p.check_undefined_variables(names, value)!
 			}
 		}
 		ast.MatchExpr {
-			p.check_undefined_variables_by_names(names, val.cond)?
+			p.check_undefined_variables(names, val.cond)!
 			for branch in val.branches {
 				for expr in branch.exprs {
-					p.check_undefined_variables_by_names(names, expr)?
+					p.check_undefined_variables(names, expr)!
 				}
 				for stmt in branch.stmts {
 					if stmt is ast.ExprStmt {
-						p.check_undefined_variables_by_names(names, stmt.expr)?
+						p.check_undefined_variables(names, stmt.expr)!
 					}
 				}
 			}
 		}
 		ast.ParExpr {
-			p.check_undefined_variables_by_names(names, val.expr)?
+			p.check_undefined_variables(names, val.expr)!
 		}
 		ast.PostfixExpr {
-			p.check_undefined_variables_by_names(names, val.expr)?
+			p.check_undefined_variables(names, val.expr)!
 		}
 		ast.PrefixExpr {
-			p.check_undefined_variables_by_names(names, val.right)?
+			p.check_undefined_variables(names, val.right)!
 		}
 		ast.SelectorExpr {
-			p.check_undefined_variables_by_names(names, val.expr)?
+			p.check_undefined_variables(names, val.expr)!
 		}
 		ast.StringInterLiteral {
 			for expr_ in val.exprs {
-				p.check_undefined_variables_by_names(names, expr_)?
+				p.check_undefined_variables(names, expr_)!
 			}
 		}
 		ast.StructInit {
 			for field in val.fields {
-				p.check_undefined_variables_by_names(names, field.expr)?
+				p.check_undefined_variables(names, field.expr)!
 			}
+		}
+		ast.UnsafeExpr {
+			p.check_undefined_variables(names, val.expr)!
 		}
 		else {}
 	}
@@ -353,7 +266,9 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 	if op == .decl_assign {
 		// a, b := a + 1, b
 		for r in right {
-			p.check_undefined_variables(left, r) or { return p.error_with_pos(err.msg(), pos) }
+			p.check_undefined_variables(left.map(it.str()), r) or {
+				return p.error_with_pos(err.msg(), pos)
+			}
 		}
 	} else if left.len > 1 {
 		// a, b = b, a

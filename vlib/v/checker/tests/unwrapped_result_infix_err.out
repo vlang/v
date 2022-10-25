@@ -1,0 +1,8 @@
+vlib/v/checker/tests/unwrapped_result_infix_err.vv:7:9: error: unwrapped result cannot be used in an infix expression
+    5 | fn g() ! {
+    6 |     assert f('1')! == true
+    7 |     assert f('1') == true
+      |            ~~~~~~
+    8 | }
+    9 |
+
