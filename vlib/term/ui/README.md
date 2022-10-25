@@ -39,7 +39,7 @@ fn main() {
 		frame_fn: frame
 		hide_cursor: true
 	)
-	app.tui.run()?
+	app.tui.run()!
 }
 ```
 
