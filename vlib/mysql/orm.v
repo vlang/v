@@ -287,7 +287,7 @@ fn buffer_to_primitive(data_list []&u8, types []int, field_types []FieldType) ![
 					}
 					.type_datetime {
 						string_time := unsafe { cstring_to_vstring(&char(data)) }
-						primitive = time.parse(string_time)?
+						primitive = time.parse(string_time)!
 					}
 					else {}
 				}
