@@ -654,10 +654,6 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-cc' {
 				res.ccompiler = cmdline.option(current_args, '-cc', 'cc')
 				res.build_options << '$arg "$res.ccompiler"'
-				if res.ccompiler == 'musl-gcc' {
-					res.is_musl = true
-					res.is_glibc = false
-				}
 				i++
 			}
 			'-checker-match-exhaustive-cutoff-limit' {
@@ -859,6 +855,15 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			exit(1)
 		}
 		res.path = args[command_pos + 1]
+	}
+	if res.ccompiler == 'musl-gcc' {
+		res.is_musl = true
+		res.is_glibc = false
+	}
+	if res.is_musl {
+		// make `$if musl? {` work:
+		res.compile_defines << 'musl'
+		res.compile_defines_all << 'musl'
 	}
 	// keep only the unique res.build_options:
 	mut m := map[string]string{}

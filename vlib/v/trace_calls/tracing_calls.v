@@ -8,7 +8,7 @@ __global g_start_time = u64(0)
 pub const is_used = 1
 
 // unix:
-struct C.timespec {
+pub struct C.timespec {
 mut:
 	tv_sec  i64
 	tv_nsec i64
@@ -23,20 +23,20 @@ fn C.QueryPerformanceCounter(&u64) C.BOOL
 
 [markused]
 pub fn on_call(fname string) {
+	ns := current_time() - g_start_time
 	mut volatile pfbase := unsafe { &u8(0) }
 	mut ssize := u64(0)
 	mut tid := u32(0)
 	unsafe {
-		fbase := u8(0)
-		pfbase = &fbase
-		ssize = u64(g_stack_base) - u64(pfbase)
 		$if windows {
 			tid = C.GetCurrentThreadId()
 		} $else {
 			tid = C.gettid()
 		}
+		volatile fbase := u8(0)
+		pfbase = &fbase
+		ssize = u64(g_stack_base) - u64(pfbase)
 	}
-	ns := current_time() - g_start_time
 	C.fprintf(C.stderr, c'> trace %8d %8ld %8d %s\n', tid, ns, ssize, fname.str)
 	C.fflush(C.stderr)
 }

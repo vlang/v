@@ -1049,6 +1049,13 @@ pub fn (mut t Transformer) fn_decl(mut node ast.FnDecl) {
 			// do not instrument the tracing functions, to avoid infinite regress
 			return
 		}
+		fname := if node.is_method {
+			receiver_name := global_table.type_to_str(node.receiver.typ)
+			'$node.mod ${receiver_name}.$node.name/$node.params.len'
+		} else {
+			'$node.mod $node.name/$node.params.len'
+		}
+
 		expr_stmt := ast.ExprStmt{
 			expr: ast.CallExpr{
 				mod: node.mod
@@ -1059,7 +1066,7 @@ pub fn (mut t Transformer) fn_decl(mut node ast.FnDecl) {
 				args: [
 					ast.CallArg{
 						expr: ast.StringLiteral{
-							val: node.stringify(t.table, node.mod, {})
+							val: fname
 						}
 						typ: ast.string_type_idx
 					},
