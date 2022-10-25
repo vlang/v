@@ -16,6 +16,7 @@ mut:
 
 fn C.gettid() u32
 fn C.clock_gettime(int, &C.timespec)
+fn C.pthread_self() u64
 
 // windows:
 fn C.GetCurrentThreadId() u32
@@ -23,17 +24,19 @@ fn C.QueryPerformanceCounter(&u64) C.BOOL
 
 [markused]
 pub fn on_call(fname string) {
-	ns := current_time() - g_start_time
 	mut volatile pfbase := unsafe { &u8(0) }
+	volatile fbase := u8(0)
+	ns := current_time() - g_start_time
 	mut ssize := u64(0)
 	mut tid := u32(0)
 	unsafe {
 		$if windows {
 			tid = C.GetCurrentThreadId()
-		} $else {
+		} $else $if linux {
 			tid = C.gettid()
+		} $else {
+			tid = u32(C.pthread_self())
 		}
-		volatile fbase := u8(0)
 		pfbase = &fbase
 		ssize = u64(g_stack_base) - u64(pfbase)
 	}
