@@ -9,8 +9,8 @@ struct MimeType {
 }
 
 fn main() {
-	mt_json := http.get('https://raw.githubusercontent.com/jshttp/mime-db/master/db.json')?
-	mt_map := json.decode(map[string]MimeType, mt_json.text)?
+	mt_json := http.get('https://raw.githubusercontent.com/jshttp/mime-db/master/db.json')!
+	mt_map := json.decode(map[string]MimeType, mt_json.text)!
 
 	mut ext_to_mt_str := map[string]string{}
 	for mt_str, mt in mt_map {
@@ -28,6 +28,6 @@ fn main() {
 		db = $mt_map
 		ext_to_mt_str = $ext_to_mt_str
 	)
-	')?
+	')!
 	execute('${@VEXE} fmt -w db.v')
 }
