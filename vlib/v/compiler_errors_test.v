@@ -85,7 +85,6 @@ fn test_all() {
 	global_run_dir := '$checker_dir/globals_run'
 	run_dir := '$checker_dir/run'
 	skip_unused_dir := 'vlib/v/tests/skip_unused'
-	trace_calls_dir := 'vlib/v/tests/trace_calls'
 	//
 	checker_tests := get_tests_in_dir(checker_dir, false).filter(!it.contains('with_check_option'))
 	parser_tests := get_tests_in_dir(parser_dir, false)
@@ -95,7 +94,6 @@ fn test_all() {
 	module_tests := get_tests_in_dir(module_dir, true)
 	run_tests := get_tests_in_dir(run_dir, false)
 	skip_unused_dir_tests := get_tests_in_dir(skip_unused_dir, false)
-	trace_calls_dir_tests := get_tests_in_dir(trace_calls_dir, false)
 	checker_with_check_option_tests := get_tests_in_dir(checker_with_check_option_dir,
 		false)
 	mut tasks := Tasks{
@@ -127,15 +125,6 @@ fn test_all() {
 		skip_unused_tasks.add('', skip_unused_dir, '-d no_backtrace -skip-unused run',
 			'.skip_unused.run.out', skip_unused_dir_tests, false)
 		skip_unused_tasks.run()
-		//
-		mut trace_calls_tasks := Tasks{
-			vexe: vexe
-			parallel_jobs: 1
-			label: '-trace-calls tests'
-		}
-		trace_calls_tasks.add('', trace_calls_dir, '-trace-calls run', '.run.out', trace_calls_dir_tests,
-			false)
-		trace_calls_tasks.run()
 	}
 	//
 	if github_job == 'ubuntu-tcc' {

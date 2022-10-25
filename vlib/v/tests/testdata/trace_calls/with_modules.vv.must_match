@@ -1,0 +1,9 @@
+*> trace * C.main*
+*> trace * _vinit*
+*> trace * os os.init_os_args*
+*> trace * main main.main/0*
+*> trace * main main.f1/0*
+*> trace * main main.f2/0*
+*> trace * main main.f3/0*
+*> trace * os os.join_path/2*
+*> trace *_vcleanup*
