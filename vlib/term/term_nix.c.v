@@ -30,7 +30,7 @@ pub fn get_terminal_size() (int, int) {
 }
 
 // get_cursor_position returns a Coord containing the current cursor position
-pub fn get_cursor_position() ?Coord {
+pub fn get_cursor_position() !Coord {
 	if os.is_atty(1) <= 0 || os.getenv('TERM') == 'dumb' {
 		return Coord{0, 0}
 	}

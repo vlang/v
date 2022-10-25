@@ -76,7 +76,7 @@ fn C.PQfinish(voidptr)
 // connect makes a new connection to the database server using
 // the parameters from the `Config` structure, returning
 // a connection error when something goes wrong
-pub fn connect(config Config) ?DB {
+pub fn connect(config Config) !DB {
 	conninfo := 'host=$config.host port=$config.port user=$config.user dbname=$config.dbname password=$config.password'
 	conn := C.PQconnectdb(conninfo.str)
 	if conn == 0 {
@@ -125,8 +125,8 @@ pub fn (db DB) close() {
 // returns an the first field in the first tuple
 // converted to an int. If no row is found or on
 // command failure, an error is returned
-pub fn (db DB) q_int(query string) ?int {
-	rows := db.exec(query)?
+pub fn (db DB) q_int(query string) !int {
+	rows := db.exec(query)!
 	if rows.len == 0 {
 		return error('q_int "$query" not found')
 	}
@@ -142,8 +142,8 @@ pub fn (db DB) q_int(query string) ?int {
 // returns an the first field in the first tuple
 // as a string. If no row is found or on
 // command failure, an error is returned
-pub fn (db DB) q_string(query string) ?string {
-	rows := db.exec(query)?
+pub fn (db DB) q_string(query string) !string {
+	rows := db.exec(query)!
 	if rows.len == 0 {
 		return error('q_string "$query" not found')
 	}
@@ -157,37 +157,37 @@ pub fn (db DB) q_string(query string) ?string {
 
 // q_strings submit a command to the database server and
 // returns the resulting row set. Alias of `exec`
-pub fn (db DB) q_strings(query string) ?[]Row {
+pub fn (db DB) q_strings(query string) ![]Row {
 	return db.exec(query)
 }
 
 // exec submit a command to the database server and wait
 // for the result, returning an error on failure and a
 // row set on success
-pub fn (db DB) exec(query string) ?[]Row {
+pub fn (db DB) exec(query string) ![]Row {
 	res := C.PQexec(db.conn, query.str)
 	return db.handle_error_or_result(res, 'exec')
 }
 
-fn rows_first_or_empty(rows []Row) ?Row {
+fn rows_first_or_empty(rows []Row) !Row {
 	if rows.len == 0 {
 		return error('no row')
 	}
 	return rows[0]
 }
 
-pub fn (db DB) exec_one(query string) ?Row {
+pub fn (db DB) exec_one(query string) !Row {
 	res := C.PQexec(db.conn, query.str)
 	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
 	if e != '' {
 		return error('pg exec error: "$e"')
 	}
-	row := rows_first_or_empty(res_to_rows(res))?
+	row := rows_first_or_empty(res_to_rows(res))!
 	return row
 }
 
 // exec_param_many executes a query with the provided parameters
-pub fn (db DB) exec_param_many(query string, params []string) ?[]Row {
+pub fn (db DB) exec_param_many(query string, params []string) ![]Row {
 	unsafe {
 		mut param_vals := []&char{len: params.len}
 		for i in 0 .. params.len {
@@ -200,15 +200,15 @@ pub fn (db DB) exec_param_many(query string, params []string) ?[]Row {
 	}
 }
 
-pub fn (db DB) exec_param2(query string, param string, param2 string) ?[]Row {
+pub fn (db DB) exec_param2(query string, param string, param2 string) ![]Row {
 	return db.exec_param_many(query, [param, param2])
 }
 
-pub fn (db DB) exec_param(query string, param string) ?[]Row {
+pub fn (db DB) exec_param(query string, param string) ![]Row {
 	return db.exec_param_many(query, [param])
 }
 
-fn (db DB) handle_error_or_result(res voidptr, elabel string) ?[]Row {
+fn (db DB) handle_error_or_result(res voidptr, elabel string) ![]Row {
 	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
 	if e != '' {
 		C.PQclear(res)
@@ -219,7 +219,7 @@ fn (db DB) handle_error_or_result(res voidptr, elabel string) ?[]Row {
 
 // copy_expert execute COPY commands
 // https://www.postgresql.org/docs/9.5/libpq-copy.html
-pub fn (db DB) copy_expert(query string, mut file io.ReaderWriter) ?int {
+pub fn (db DB) copy_expert(query string, mut file io.ReaderWriter) !int {
 	res := C.PQexec(db.conn, query.str)
 	status := C.PQresultStatus(res)
 
