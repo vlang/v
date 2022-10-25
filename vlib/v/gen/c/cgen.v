@@ -5040,6 +5040,9 @@ fn (mut g Gen) write_init_function() {
 
 	// ___argv is declared as voidptr here, because that unifies the windows/unix logic
 	g.writeln('void _vinit(int ___argc, voidptr ___argv) {')
+	if g.pref.trace_calls {
+		g.writeln('\tv__trace_calls__on_call(_SLIT("_vinit"));')
+	}
 
 	if g.use_segfault_handler {
 		// 11 is SIGSEGV. It is hardcoded here, to avoid FreeBSD compilation errors for trivial examples.
@@ -5095,6 +5098,9 @@ fn (mut g Gen) write_init_function() {
 	//
 	fn_vcleanup_start_pos := g.out.len
 	g.writeln('void _vcleanup(void) {')
+	if g.pref.trace_calls {
+		g.writeln('\tv__trace_calls__on_call(_SLIT("_vcleanup"));')
+	}
 	if g.is_autofree {
 		// g.writeln('puts("cleaning up...");')
 		reversed_table_modules := g.table.modules.reverse()

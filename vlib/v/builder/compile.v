@@ -236,6 +236,9 @@ pub fn (v &Builder) get_user_files() []string {
 	if v.pref.backend == .js_node {
 		preludes_path = os.join_path(vroot, 'vlib', 'v', 'preludes_js')
 	}
+	if v.pref.trace_calls {
+		user_files << os.join_path(preludes_path, 'trace_calls.v')
+	}
 	if v.pref.is_livemain || v.pref.is_liveshared {
 		user_files << os.join_path(preludes_path, 'live.v')
 	}
