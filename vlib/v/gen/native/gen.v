@@ -1310,6 +1310,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			if g.pref.arch == .arm64 {
 			} else {
 				g.movabs(.rax, val)
+				g.println('; $node.val')
 				g.push(.rax)
 				g.pop_sse(.xmm0)
 			}
@@ -1356,7 +1357,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// save the result in rax
 		}
 		ast.IntegerLiteral {
-			g.mov64(.rax, node.val.int())
+			g.movabs(.rax, i64(node.val.u64()))
 			// g.gen_print_reg(.rax, 3, fd)
 		}
 		ast.PostfixExpr {
