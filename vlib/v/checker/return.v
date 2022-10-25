@@ -138,6 +138,17 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 					}
 					continue
 				}
+				if got_typ_sym.kind == .struct_
+					&& c.type_implements(got_typ, ast.error_type, node.pos) {
+					node.exprs[expr_idxs[i]] = ast.CastExpr{
+						expr: node.exprs[expr_idxs[i]]
+						typname: 'IError'
+						typ: ast.error_type
+						expr_type: got_typ
+					}
+					node.types[expr_idxs[i]] = ast.error_type
+					continue
+				}
 				got_typ_name := if got_typ_sym.kind == .function {
 					'${c.table.type_to_str(got_typ)}'
 				} else {
