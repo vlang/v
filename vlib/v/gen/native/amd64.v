@@ -1891,7 +1891,7 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 	match right {
 		ast.IntegerLiteral {
 			// g.allocate_var(name, 4, right.val.int())
-      // TODO float
+			// TODO float
 			match node.op {
 				.plus_assign {
 					g.mov_var_to_reg(.rax, ident)
@@ -1942,7 +1942,7 @@ fn (mut g Gen) assign_right_expr(node ast.AssignStmt, i int, right ast.Expr, nam
 		}
 		ast.Ident {
 			// eprintln('identr') dump(node) dump(right)
-      // TODO float
+			// TODO float
 			match node.op {
 				.plus_assign {
 					g.mov_var_to_reg(.rax, ident)
