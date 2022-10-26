@@ -21,7 +21,7 @@ fn test_tmpl_with_single_quotes() {
 	s := SomeThing{sm}
 	result := s.template()
 	println(result)
-	assert result.trim_space() == "someval: monkey
+	assert result.trim_space() == 'someval: monkey
 
-someotherval: parrot"
+someotherval: parrot'
 }
