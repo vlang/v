@@ -644,7 +644,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 			c.error('json.decode: second argument needs to be a string', node.pos)
 		}
 		typ := expr as ast.TypeNode
-		ret_type := typ.typ.set_flag(.optional)
+		ret_type := typ.typ.set_flag(.result)
 		node.return_type = ret_type
 		return ret_type
 	} else if fn_name == '__addr' {

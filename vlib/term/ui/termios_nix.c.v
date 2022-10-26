@@ -51,7 +51,7 @@ fn restore_terminal_state() {
 	os.flush()
 }
 
-fn (mut ctx Context) termios_setup() ? {
+fn (mut ctx Context) termios_setup() ! {
 	// store the current title, so restore_terminal_state can get it back
 	save_title()
 

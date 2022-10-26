@@ -47,7 +47,7 @@ pub fn (mut ctx Context) run() ? {
 		ctx.fail('error: x11 backend not implemented yet')
 		exit(1)
 	} else {
-		ctx.termios_setup()?
+		ctx.termios_setup() or { panic(err) }
 		ctx.termios_loop()
 	}
 }

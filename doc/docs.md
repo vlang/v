@@ -4112,7 +4112,7 @@ println(user.last_name)
 println(user.age)
 // You can also decode JSON arrays:
 sfoos := '[{"x":123},{"x":456}]'
-foos := json.decode([]Foo, sfoos)?
+foos := json.decode([]Foo, sfoos)!
 println(foos[0].x)
 println(foos[1].x)
 ```

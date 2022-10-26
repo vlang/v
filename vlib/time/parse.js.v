@@ -19,6 +19,6 @@ pub fn parse(s string) Time {
 	return res
 }
 
-pub fn parse_iso8601(s string) ?Time {
+pub fn parse_iso8601(s string) !Time {
 	return parse(s)
 }

@@ -12,8 +12,8 @@ fn test_json_decode_with_optional_arg() {
 	assert true
 }
 
-fn print_info() ?string {
-	dbconf := json.decode(DbConfig, os.read_file('dbconf.json')?)?
+fn print_info() !string {
+	dbconf := json.decode(DbConfig, os.read_file('dbconf.json')!)!
 	println(dbconf)
 	return '$dbconf'
 }
