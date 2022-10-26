@@ -1530,7 +1530,7 @@ pub fn (t Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 		}
 		// verify fields
 		for ifield in inter_sym.info.fields {
-			if ifield.typ == voidptr_type {
+			if ifield.typ == voidptr_type || ifield.typ == nil_type {
 				// Allow `voidptr` fields in interfaces for now. (for example
 				// to enable .db check in vweb)
 				if t.struct_has_field(sym, ifield.name) {
@@ -1549,7 +1549,9 @@ pub fn (t Table) does_type_implement_interface(typ Type, inter_typ Type) bool {
 			}
 			return false
 		}
-		inter_sym.info.types << typ
+		if typ != voidptr_type && typ != nil_type && !inter_sym.info.types.contains(typ) {
+			inter_sym.info.types << typ
+		}
 		if !inter_sym.info.types.contains(voidptr_type) {
 			inter_sym.info.types << voidptr_type
 		}

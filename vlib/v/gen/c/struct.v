@@ -436,7 +436,7 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 			}
 			g.write('}')
 		} else {
-			if sfield.typ != ast.nil_type
+			if sfield.typ != ast.voidptr_type && sfield.typ != ast.nil_type
 				&& (sfield.expected_type.is_ptr() && !sfield.expected_type.has_flag(.shared_f))
 				&& !(sfield.typ.is_ptr() || sfield.typ.is_pointer()) && !sfield.typ.is_number() {
 				g.write('/* autoref */&')

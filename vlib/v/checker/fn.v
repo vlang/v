@@ -1031,8 +1031,9 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		// it can lead to codegen errors (except for 'magic' functions like `json.encode` that,
 		// the compiler has special codegen support for), so it should be opt in, that is it
 		// shoould require an explicit voidptr(x) cast (and probably unsafe{} ?) .
-		if call_arg.typ != param.typ
-			&& (param.typ == ast.voidptr_type || final_param_sym.idx == ast.voidptr_type_idx)
+		if call_arg.typ != param.typ && (param.typ == ast.voidptr_type
+			|| final_param_sym.idx == ast.voidptr_type_idx
+			|| param.typ == ast.nil_type || final_param_sym.idx == ast.nil_type_idx)
 			&& !call_arg.typ.is_any_kind_of_pointer() && func.language == .v
 			&& !call_arg.expr.is_lvalue() && func.name != 'json.encode' && !c.pref.translated
 			&& !c.file.is_translated {
@@ -1110,7 +1111,8 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 					continue
 				}
 				// Allow voidptrs for everything
-				if param_type == ast.voidptr_type_idx || arg_typ == ast.voidptr_type_idx {
+				if param_type == ast.voidptr_type_idx || param_type == ast.nil_type_idx
+					|| arg_typ == ast.voidptr_type_idx || arg_typ == ast.nil_type_idx {
 					continue
 				}
 				if param_type.is_any_kind_of_pointer() && arg_typ.is_any_kind_of_pointer() {
@@ -1151,7 +1153,7 @@ pub fn (mut c Checker) fn_call(mut node ast.CallExpr, mut continue_check &bool) 
 		// Warn about automatic (de)referencing, which will be removed soon.
 		if func.language != .c && !c.inside_unsafe && arg_typ.nr_muls() != param.typ.nr_muls()
 			&& !(call_arg.is_mut && param.is_mut) && !(!call_arg.is_mut && !param.is_mut)
-			&& param.typ !in [ast.byteptr_type, ast.charptr_type, ast.voidptr_type] {
+			&& param.typ !in [ast.byteptr_type, ast.charptr_type, ast.voidptr_type, ast.nil_type] {
 			c.warn('automatic referencing/dereferencing is deprecated and will be removed soon (got: $arg_typ.nr_muls() references, expected: $param.typ.nr_muls() references)',
 				call_arg.pos)
 		}

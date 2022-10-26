@@ -766,7 +766,7 @@ fn (g &Gen) type_to_fmt(typ ast.Type) StrIntpType {
 	if typ == ast.char_type_idx {
 		return .si_c
 	}
-	if typ in ast.voidptr_types || typ in ast.byteptr_types {
+	if typ in ast.voidptr_types || typ == ast.nil_type || typ in ast.byteptr_types {
 		return .si_p
 	}
 	if typ in ast.charptr_types {

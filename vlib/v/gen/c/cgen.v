@@ -2406,6 +2406,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw ast.Type, expected_typ
 	}
 	// Generic dereferencing logic
 	neither_void := ast.voidptr_type !in [got_type, expected_type]
+		&& ast.nil_type !in [got_type, expected_type]
 	if expected_type.has_flag(.shared_f) && !got_type_raw.has_flag(.shared_f)
 		&& !expected_type.has_flag(.optional) && !expected_type.has_flag(.result) {
 		shared_styp := exp_styp[0..exp_styp.len - 1] // `shared` implies ptr, so eat one `*`
@@ -5956,7 +5957,7 @@ fn (mut g Gen) interface_table() string {
 					} else {
 						// the field is embedded in another struct
 						cast_struct.write_string('\t\t.$cname = ($field_styp*)((char*)x')
-						if st == ast.voidptr_type {
+						if st == ast.voidptr_type || st == ast.nil_type {
 							cast_struct.write_string('/*.... ast.voidptr_type */')
 						} else {
 							if st_sym.kind == .struct_ {
@@ -6004,7 +6005,7 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 			if g.pref.build_mode != .build_module {
 				methods_struct.writeln('\t{')
 			}
-			if st == ast.voidptr_type {
+			if st == ast.voidptr_type || st == ast.nil_type {
 				for mname, _ in methodidx {
 					if g.pref.build_mode != .build_module {
 						methods_struct.writeln('\t\t._method_${c_name(mname)} = (void*) 0,')
@@ -6116,7 +6117,8 @@ static inline __shared__$interface_name ${shared_fn_name}(__shared__$cctype* x) 
 					// .speak = Cat_speak_Interface_Animal_method_wrapper
 					method_call += iwpostfix
 				}
-				if g.pref.build_mode != .build_module && st != ast.voidptr_type {
+				if g.pref.build_mode != .build_module && st != ast.voidptr_type
+					&& st != ast.nil_type {
 					methods_struct.writeln('\t\t._method_${c_name(method.name)} = (void*) $method_call,')
 				}
 			}
