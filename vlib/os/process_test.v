@@ -32,7 +32,7 @@ fn testsuite_end() {
 
 fn test_getpid() {
 	pid := os.getpid()
-	eprintln('current pid: $pid')
+	eprintln('current pid: ${pid}')
 	assert pid != 0
 }
 
@@ -49,7 +49,7 @@ fn test_run() {
 			break
 		}
 		$if trace_process_output ? {
-			os.system('ps -opid= -oppid= -ouser= -onice= -of= -ovsz= -orss= -otime= -oargs= -p $p.pid')
+			os.system('ps -opid= -oppid= -ouser= -onice= -of= -ovsz= -orss= -otime= -oargs= -p ${p.pid}')
 		}
 		time.sleep(50 * time.millisecond)
 		i++
@@ -58,7 +58,7 @@ fn test_run() {
 	assert p.code == 0
 	assert p.status == .exited
 	//
-	eprintln('polling iterations: $i')
+	eprintln('polling iterations: ${i}')
 	assert i < 50
 	p.close()
 }
@@ -86,8 +86,8 @@ fn test_slurping_output() {
 	p.close()
 	$if trace_process_output ? {
 		eprintln('---------------------------')
-		eprintln('p output: "$output"')
-		eprintln('p errors: "$errors"')
+		eprintln('p output: "${output}"')
+		eprintln('p errors: "${errors}"')
 		eprintln('---------------------------')
 	}
 	// dump(output)
