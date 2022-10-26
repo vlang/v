@@ -244,7 +244,7 @@ fn my_init(mut app App_data) {
 }
 
 fn draw_frame(mut app App_data) {
-	cframe_txt := 'Current Frame: $app.frame_c'
+	cframe_txt := 'Current Frame: ${app.frame_c}'
 
 	app.gg.begin()
 
@@ -285,7 +285,7 @@ fn main() {
 	for font_path in font_paths {
 		mut tf := ttf.TTF_File{}
 		tf.buf = os.read_bytes(font_path) or { panic(err) }
-		println('TrueTypeFont file [$font_path] len: $tf.buf.len')
+		println('TrueTypeFont file [${font_path}] len: ${tf.buf.len}')
 		tf.init()
 		println(tf.get_info_string())
 		app.tf << tf

@@ -209,7 +209,7 @@ mut x := 0
 sc8 := '[%20g][%20G]|'
 for x < 12 {
 	temp_s := strconv.v_sprintf(sc8, ft, ft)
-	println('$temp_s\n')
+	println('${temp_s}\n')
 	ft = ft * 10.0
 	x++
 }

@@ -73,7 +73,7 @@ fn main() {
 	ch := gen(mut ctx2)
 	for i in 0 .. 5 {
 		v := <-ch
-		println('> received value: $v')
+		println('> received value: ${v}')
 		assert i == v
 	}
 	println('> main is finished here')
