@@ -58,7 +58,7 @@ pub fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 			if !c.inside_unsafe && !node.left.is_auto_deref_var() && !node.right.is_auto_deref_var() {
 				c.warn('pointer arithmetic is only allowed in `unsafe` blocks', left_right_pos)
 			}
-			if left_type == ast.voidptr_type && !c.pref.translated {
+			if (left_type == ast.voidptr_type || left_type == ast.nil_type) && !c.pref.translated {
 				c.error('`$node.op` cannot be used with `voidptr`', left_pos)
 			}
 		}

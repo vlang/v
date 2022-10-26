@@ -850,7 +850,7 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 		inter_sym.methods
 	}
 	// voidptr is an escape hatch, it should be allowed to be passed
-	if utyp != ast.voidptr_type {
+	if utyp != ast.voidptr_type && utyp != ast.nil_type {
 		// Verify methods
 		for imethod in imethods {
 			method := c.table.find_method_with_embeds(typ_sym, imethod.name) or {
@@ -900,7 +900,7 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 				continue
 			}
 			// voidptr is an escape hatch, it should be allowed to be passed
-			if utyp != ast.voidptr_type {
+			if utyp != ast.voidptr_type && utyp != ast.nil_type {
 				// >> Hack to allow old style custom error implementations
 				// TODO: remove once deprecation period for `IError` methods has ended
 				if inter_sym.idx == ast.error_type_idx
@@ -913,7 +913,12 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 				}
 			}
 		}
-		inter_sym.info.types << utyp
+		if utyp != ast.voidptr_type && utyp != ast.nil_type && !inter_sym.info.types.contains(utyp) {
+			inter_sym.info.types << utyp
+		}
+		if !inter_sym.info.types.contains(ast.voidptr_type) {
+			inter_sym.info.types << ast.voidptr_type
+		}
 	}
 	return true
 }
