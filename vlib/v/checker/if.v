@@ -42,7 +42,11 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 		if !node.has_else || i < node.branches.len - 1 {
 			if node.is_comptime {
 				skip_state = c.comptime_if_branch(branch.cond, branch.pos)
-				node.branches[i].pkg_exist = if skip_state == .eval { true } else { false }
+				evalue := skip_state == .eval
+				node.branches[i].pkg_exist = evalue
+				if evalue {
+					node.comptime_branch_idx = i
+				}
 			} else {
 				// check condition type is boolean
 				c.expected_type = ast.bool_type

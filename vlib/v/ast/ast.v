@@ -918,6 +918,8 @@ pub:
 pub mut:
 	left     Expr       // `a` in `a := if ...`
 	branches []IfBranch // includes all `else if` branches
+	// contains the index of the branch that returned the condition true or is `else`
+	comptime_branch_idx int = -1
 	is_expr  bool
 	typ      Type
 	has_else bool
