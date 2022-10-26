@@ -225,6 +225,7 @@ fn shorten_full_name_based_on_aliases(input string, m2a map[string]string) strin
 // This method creates the format specifier (including the colon) or an empty
 // string if none is needed and also returns (as bool) if the expression
 // must be enclosed in braces.
+// TODO: simplify this when $name -> ${name} is over, to return just string .
 pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 	mut res := []string{}
 	needs_fspec := lit.need_fmts[i] || lit.pluss[i]
