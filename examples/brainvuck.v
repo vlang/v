@@ -64,6 +64,6 @@ fn main() {
 	}
 
 	// print the state of the interpreter at the end
-	println('Pointer: ${pointer}')
+	println('Address: ${address}')
 	println('Memory: ${memory}')
 }
