@@ -19,5 +19,5 @@ fn test_option_expr_with_array_value() {
 		[]Empty{}
 	}
 	println(test_error)
-	assert '$test_error' == '[]'
+	assert '${test_error}' == '[]'
 }

@@ -45,7 +45,7 @@ fn print_sol(dist []int) {
 	n_vertex := dist.len
 	print('\n Vertex   Distance from Source')
 	for i in 0 .. n_vertex {
-		print('\n   $i   -->   ${dist[i]}')
+		print('\n   ${i}   -->   ${dist[i]}')
 	}
 }
 
@@ -154,7 +154,7 @@ fn main() {
 		graph = g_value.clone() // graphs_sample[g].clone() // choice your SAMPLE
 		// allways starting by node 0
 		start_node := 0
-		println('\n\n Graph ${index + 1} using Bellman-Ford algorithm (source node: $start_node)')
+		println('\n\n Graph ${index + 1} using Bellman-Ford algorithm (source node: ${start_node})')
 		bellman_ford(graph, start_node)
 	}
 	println('\n BYE -- OK')

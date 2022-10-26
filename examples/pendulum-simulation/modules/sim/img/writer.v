@@ -38,7 +38,7 @@ pub fn (mut iw ImageWritter) handle(result sim.SimResult) !int {
 
 	for iw.current_index < total_pixels && iw.buffer[iw.current_index].valid {
 		iw.writer.handle_pixel(iw.buffer[iw.current_index].Color) or {
-			sim.log(@MOD + '.' + @FN + ': pixel handler failed. Error $err')
+			sim.log(@MOD + '.' + @FN + ': pixel handler failed. Error ${err}')
 			break
 		}
 		iw.current_index++

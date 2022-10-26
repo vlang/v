@@ -4,7 +4,8 @@ import flag
 pub fn read_file(file string) ?[]string {
 	if os.is_file(file) {
 		text := os.read_lines(file) or {
-			return error(@MOD + '.' + @STRUCT + '.' + @FN + ' Could not read "$file": "$err.msg()"')
+			return error(@MOD + '.' + @STRUCT + '.' + @FN +
+				' Could not read "${file}": "${err.msg()}"')
 		}
 		return text
 	}

@@ -44,7 +44,7 @@ fn test_invalid_start() {
 
 fn test_invalid_end() {
 	vmod.decode('\nModule{\n \nname: ${quote}zzzz}') or {
-		assert err.msg() == 'vmod: invalid token ${quote}eof$quote, at line 4'
+		assert err.msg() == 'vmod: invalid token ${quote}eof${quote}, at line 4'
 		return
 	}
 	assert false

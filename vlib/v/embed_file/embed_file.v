@@ -22,7 +22,7 @@ pub:
 }
 
 pub fn (ed EmbedFileData) str() string {
-	return 'embed_file.EmbedFileData{ len: $ed.len, path: "$ed.path", apath: "$ed.apath", uncompressed: ${ptr_str(ed.uncompressed)} }'
+	return 'embed_file.EmbedFileData{ len: ${ed.len}, path: "${ed.path}", apath: "${ed.apath}", uncompressed: ${ptr_str(ed.uncompressed)} }'
 }
 
 [unsafe]
@@ -64,11 +64,11 @@ pub fn (mut ed EmbedFileData) data() &u8 {
 	}
 	if ed.uncompressed == unsafe { nil } && ed.compressed != unsafe { nil } {
 		decoder := g_embed_file_decoders.decoders[ed.compression_type] or {
-			panic('EmbedFileData error: unknown compression of "$ed.path": "$ed.compression_type"')
+			panic('EmbedFileData error: unknown compression of "${ed.path}": "${ed.compression_type}"')
 		}
 		compressed := unsafe { ed.compressed.vbytes(ed.len) }
 		decompressed := decoder.decompress(compressed) or {
-			panic('EmbedFileData error: decompression of "$ed.path" failed: $err')
+			panic('EmbedFileData error: decompression of "${ed.path}" failed: ${err}')
 		}
 		unsafe {
 			ed.uncompressed = &u8(memdup(decompressed.data, ed.len))
@@ -78,11 +78,11 @@ pub fn (mut ed EmbedFileData) data() &u8 {
 		if !os.is_file(path) {
 			path = ed.apath
 			if !os.is_file(path) {
-				panic('EmbedFileData error: files "$ed.path" and "$ed.apath" do not exist')
+				panic('EmbedFileData error: files "${ed.path}" and "${ed.apath}" do not exist')
 			}
 		}
 		bytes := os.read_bytes(path) or {
-			panic('EmbedFileData error: "$path" could not be read: $err')
+			panic('EmbedFileData error: "${path}" could not be read: ${err}')
 		}
 		ed.uncompressed = bytes.data
 		ed.free_uncompressed = true
@@ -112,7 +112,7 @@ pub fn find_index_entry_by_path(start voidptr, path string, algo string) &EmbedF
 		}
 	}
 	$if trace_embed_file ? {
-		eprintln('>> v.embed_file find_index_entry_by_path ${ptr_str(start)}, id: $x.id, path: "$path", algo: "$algo" => ${ptr_str(x)}')
+		eprintln('>> v.embed_file find_index_entry_by_path ${ptr_str(start)}, id: ${x.id}, path: "${path}", algo: "${algo}" => ${ptr_str(x)}')
 	}
 	return x
 }

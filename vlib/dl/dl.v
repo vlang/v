@@ -23,7 +23,7 @@ pub fn get_shared_library_extension() string {
 // shared libraries.
 [inline]
 pub fn get_libname(libname string) string {
-	return '$libname$dl.dl_ext'
+	return '${libname}${dl.dl_ext}'
 }
 
 // open_opt - loads the dynamic shared object.

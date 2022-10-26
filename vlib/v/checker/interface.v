@@ -36,7 +36,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 					has_generic_types = true
 				}
 				if isym.kind != .interface_ {
-					c.error('interface `$node.name` tries to embed `$isym.name`, but `$isym.name` is not an interface, but `$isym.kind`',
+					c.error('interface `${node.name}` tries to embed `${isym.name}`, but `${isym.name}` is not an interface, but `${isym.kind}`',
 						embed.pos)
 					continue
 				}
@@ -47,7 +47,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 					for name in embed_generic_names {
 						if name !in node_generic_names {
 							interface_generic_names := node_generic_names.join(', ')
-							c.error('generic type name `$name` is not mentioned in interface `$node.name<$interface_generic_names>`',
+							c.error('generic type name `${name}` is not mentioned in interface `${node.name}<${interface_generic_names}>`',
 								embed.pos)
 						}
 					}
@@ -80,7 +80,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 								if ifield.typ != field.typ {
 									exp := c.table.type_to_str(ifield.typ)
 									got := c.table.type_to_str(field.typ)
-									c.error('embedded interface `$embed_decl.name` conflicts existing field: `$ifield.name`, expecting type: `$exp`, got type: `$got`',
+									c.error('embedded interface `${embed_decl.name}` conflicts existing field: `${ifield.name}`, expecting type: `${exp}`, got type: `${got}`',
 										ifield.pos)
 								}
 							}
@@ -99,7 +99,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 									if msg.len > 0 {
 										em_sig := c.table.fn_signature(em_fn, skip_receiver: true)
 										m_sig := c.table.fn_signature(m_fn, skip_receiver: true)
-										c.error('embedded interface `$embed_decl.name` causes conflict: $msg, for interface method `$em_sig` vs `$m_sig`',
+										c.error('embedded interface `${embed_decl.name}` causes conflict: ${msg}, for interface method `${em_sig}` vs `${m_sig}`',
 											imethod.pos)
 									}
 								}
@@ -122,7 +122,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 			if is_js {
 				mtyp := c.table.sym(method.return_type)
 				if !mtyp.is_js_compatible() {
-					c.error('method $method.name returns non JS type', method.pos)
+					c.error('method ${method.name} returns non JS type', method.pos)
 				}
 			}
 			if method.return_type.has_flag(.generic) {
@@ -134,7 +134,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 					for name in method_generic_names {
 						if name !in node_generic_names {
 							interface_generic_names := node_generic_names.join(', ')
-							c.error('generic type name `$name` is not mentioned in interface `$node.name<$interface_generic_names>`',
+							c.error('generic type name `${name}` is not mentioned in interface `${node.name}<${interface_generic_names}>`',
 								method.return_type_pos)
 						}
 					}
@@ -149,7 +149,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 				}
 				c.ensure_type_exists(param.typ, param.pos) or { return }
 				if reserved_type_names_chk.matches(param.name) {
-					c.error('invalid use of reserved type `$param.name` as a parameter name',
+					c.error('invalid use of reserved type `${param.name}` as a parameter name',
 						param.pos)
 				}
 				// Ensure each generic type of the method was declared in the interface's definition
@@ -159,7 +159,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 					for name in method_generic_names {
 						if name !in node_generic_names {
 							interface_generic_names := node_generic_names.join(', ')
-							c.error('generic type name `$name` is not mentioned in interface `$node.name<$interface_generic_names>`',
+							c.error('generic type name `${name}` is not mentioned in interface `${node.name}<${interface_generic_names}>`',
 								param.type_pos)
 						}
 					}
@@ -168,7 +168,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 					ptyp := c.table.sym(param.typ)
 					if !ptyp.is_js_compatible() && !(j == method.params.len - 1
 						&& method.is_variadic) {
-						c.error('method `$method.name` accepts non JS type as parameter',
+						c.error('method `${method.name}` accepts non JS type as parameter',
 							method.pos)
 					}
 				}
@@ -176,13 +176,13 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 			for field in node.fields {
 				field_sym := c.table.sym(field.typ)
 				if field.name == method.name && field_sym.kind == .function {
-					c.error('type `$decl_sym.name` has both field and method named `$method.name`',
+					c.error('type `${decl_sym.name}` has both field and method named `${method.name}`',
 						method.pos)
 				}
 			}
 			for j in 0 .. i {
 				if method.name == node.methods[j].name {
-					c.error('duplicate method name `$method.name`', method.pos)
+					c.error('duplicate method name `${method.name}`', method.pos)
 				}
 			}
 		}
@@ -197,7 +197,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 			if is_js {
 				tsym := c.table.sym(field.typ)
 				if !tsym.is_js_compatible() {
-					c.error('field `$field.name` uses non JS type', field.pos)
+					c.error('field `${field.name}` uses non JS type', field.pos)
 				}
 			}
 			if field.typ == node.typ && node.language != .js {
@@ -206,7 +206,7 @@ pub fn (mut c Checker) interface_decl(mut node ast.InterfaceDecl) {
 			}
 			for j in 0 .. i {
 				if field.name == node.fields[j].name {
-					c.error('field name `$field.name` duplicate', field.pos)
+					c.error('field name `${field.name}` duplicate', field.pos)
 				}
 			}
 		}
@@ -239,7 +239,7 @@ fn (mut c Checker) resolve_generic_interface(typ ast.Type, interface_type ast.Ty
 				for imethod in inter_sym.info.methods {
 					method := typ_sym.find_method(imethod.name) or {
 						typ_sym.find_method_with_generic_parent(imethod.name) or {
-							c.error('can not find method `$imethod.name` on `$typ_sym.name`, needed for interface: `$inter_sym.name`',
+							c.error('can not find method `${imethod.name}` on `${typ_sym.name}`, needed for interface: `${inter_sym.name}`',
 								pos)
 							return 0
 						}
@@ -249,13 +249,13 @@ fn (mut c Checker) resolve_generic_interface(typ ast.Type, interface_type ast.Ty
 						mret_sym := c.table.sym(method.return_type)
 						if method.return_type == ast.void_type
 							&& imethod.return_type != method.return_type {
-							c.error('interface method `$imethod.name` returns `$imret_sym.name`, but implementation method `$method.name` returns no value',
+							c.error('interface method `${imethod.name}` returns `${imret_sym.name}`, but implementation method `${method.name}` returns no value',
 								pos)
 							return 0
 						}
 						if imethod.return_type == ast.void_type
 							&& imethod.return_type != method.return_type {
-							c.error('interface method `$imethod.name` returns no value, but implementation method `$method.name` returns `$mret_sym.name`',
+							c.error('interface method `${imethod.name}` returns no value, but implementation method `${method.name}` returns `${mret_sym.name}`',
 								pos)
 							return 0
 						}
@@ -306,7 +306,7 @@ fn (mut c Checker) resolve_generic_interface(typ ast.Type, interface_type ast.Ty
 					}
 				}
 				if inferred_type == ast.void_type {
-					c.error('could not infer generic type `$gt_name` in interface `$inter_sym.name`',
+					c.error('could not infer generic type `${gt_name}` in interface `${inter_sym.name}`',
 						pos)
 					return interface_type
 				}

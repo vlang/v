@@ -8,7 +8,7 @@ import databases
 pub fn (mut app App) controller_get_user_by_id(id int) vweb.Result {
 	response := app.service_get_user_by_id(id) or {
 		app.set_status(400, '')
-		return app.text('$err')
+		return app.text('${err}')
 	}
 	return app.json(response)
 }
@@ -17,12 +17,12 @@ pub fn (mut app App) controller_get_user_by_id(id int) vweb.Result {
 pub fn (mut app App) controller_create_user() vweb.Result {
 	body := json.decode(User, app.req.data) or {
 		app.set_status(400, '')
-		return app.text('Failed to decode json, error: $err')
+		return app.text('Failed to decode json, error: ${err}')
 	}
 
 	response := app.service_add_user(body.username, body.password) or {
 		app.set_status(400, '')
-		return app.text('error: $err')
+		return app.text('error: ${err}')
 	}
 
 	return app.json(response)
@@ -39,7 +39,7 @@ pub fn (mut app App) controller_get_all_user() vweb.Result {
 
 	response := app.service_get_all_user() or {
 		app.set_status(400, '')
-		return app.text('$err')
+		return app.text('${err}')
 	}
 	return app.json(response)
 }
@@ -48,7 +48,7 @@ pub fn (mut app App) controller_get_all_user() vweb.Result {
 pub fn (mut app App) controller_get_by_username(username string) vweb.Result {
 	response := app.service_get_by_username(username) or {
 		app.set_status(400, '')
-		return app.text('$err')
+		return app.text('${err}')
 	}
 	return app.json(response)
 }
@@ -57,7 +57,7 @@ pub fn (mut app App) controller_get_by_username(username string) vweb.Result {
 pub fn (mut app App) delete() vweb.Result {
 	mut db := databases.create_db_connection() or {
 		app.set_status(400, '')
-		return app.text('$err')
+		return app.text('${err}')
 	}
 
 	defer {

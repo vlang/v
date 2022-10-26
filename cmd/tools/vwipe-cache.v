@@ -15,5 +15,5 @@ fn wipe_path(cpath string, label string) {
 		os.rmdir_all(cpath) or {}
 	}
 	os.mkdir_all(cpath) or {}
-	println('$label folder $cpath was wiped.')
+	println('${label} folder ${cpath} was wiped.')
 }

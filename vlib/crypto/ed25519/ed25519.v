@@ -68,7 +68,7 @@ pub fn sign(privatekey PrivateKey, message []u8) ![]u8 {
 
 fn sign_generic(mut signature []u8, privatekey []u8, message []u8) ! {
 	if privatekey.len != ed25519.private_key_size {
-		panic('ed25519: bad private key length: $privatekey.len')
+		panic('ed25519: bad private key length: ${privatekey.len}')
 	}
 	seed, publickey := privatekey[..ed25519.seed_size], privatekey[ed25519.seed_size..]
 
@@ -110,7 +110,7 @@ fn sign_generic(mut signature []u8, privatekey []u8, message []u8) ! {
 // verify reports whether sig is a valid signature of message by publickey.
 pub fn verify(publickey PublicKey, message []u8, sig []u8) !bool {
 	if publickey.len != ed25519.public_key_size {
-		return error('ed25519: bad public key length: $publickey.len')
+		return error('ed25519: bad public key length: ${publickey.len}')
 	}
 
 	if sig.len != ed25519.signature_size || sig[63] & 224 != 0 {
@@ -165,7 +165,7 @@ pub fn new_key_from_seed(seed []u8) PrivateKey {
 
 fn new_key_from_seed_generic(mut privatekey []u8, seed []u8) {
 	if seed.len != ed25519.seed_size {
-		panic('ed25519: bad seed length: $seed.len')
+		panic('ed25519: bad seed length: ${seed.len}')
 	}
 
 	mut h := sha512.sum512(seed)

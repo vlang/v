@@ -189,10 +189,10 @@ fn validate_string(characters string, radix u32) ! {
 		value := big.digit_array.index(digit)
 
 		if value == -1 {
-			return error('Invalid character $digit')
+			return error('Invalid character ${digit}')
 		}
 		if value >= radix {
-			return error('Invalid character $digit for base $radix')
+			return error('Invalid character ${digit} for base ${radix}')
 		}
 	}
 }

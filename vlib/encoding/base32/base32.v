@@ -331,5 +331,5 @@ fn strip_newlines(src []u8) []u8 {
 
 fn corrupt_input_error_msg(e int) string {
 	// return error('illegal base32 data at input byte ' + strconv.FormatInt(int64(e), 10)
-	return 'illegal base32 data at input byte $e'
+	return 'illegal base32 data at input byte ${e}'
 }

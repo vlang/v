@@ -21,21 +21,21 @@ pub fn (node &FnDecl) modname() string {
 // it is used in table.used_fns and v.markused.
 pub fn (node &FnDecl) fkey() string {
 	if node.is_method {
-		return '${int(node.receiver.typ)}.$node.name'
+		return '${int(node.receiver.typ)}.${node.name}'
 	}
 	return node.name
 }
 
 pub fn (node &Fn) fkey() string {
 	if node.is_method {
-		return '${int(node.receiver_type)}.$node.name'
+		return '${int(node.receiver_type)}.${node.name}'
 	}
 	return node.name
 }
 
 pub fn (node &CallExpr) fkey() string {
 	if node.is_method {
-		return '${int(node.receiver_type)}.$node.name'
+		return '${int(node.receiver_type)}.${node.name}'
 	}
 	return node.name
 }
@@ -142,9 +142,9 @@ fn stringify_fn_after_name(node &FnDecl, mut f strings.Builder, t &Table, cur_mo
 			f.write_string(' struct {')
 			struct_ := arg_sym.info as Struct
 			for field in struct_.fields {
-				f.write_string(' $field.name ${t.type_to_str(field.typ)}')
+				f.write_string(' ${field.name} ${t.type_to_str(field.typ)}')
 				if field.has_default_expr {
-					f.write_string(' = $field.default_expr')
+					f.write_string(' = ${field.default_expr}')
 				}
 			}
 			if struct_.fields.len > 0 {
@@ -313,18 +313,18 @@ pub fn (x Expr) str() string {
 			return x.str()
 		}
 		DumpExpr {
-			return 'dump($x.expr.str())'
+			return 'dump(${x.expr.str()})'
 		}
 		ArrayInit {
 			mut fields := []string{}
 			if x.has_len {
-				fields << 'len: $x.len_expr.str()'
+				fields << 'len: ${x.len_expr.str()}'
 			}
 			if x.has_cap {
-				fields << 'cap: $x.cap_expr.str()'
+				fields << 'cap: ${x.cap_expr.str()}'
 			}
 			if x.has_default {
-				fields << 'init: $x.default_expr.str()'
+				fields << 'init: ${x.default_expr.str()}'
 			}
 			if fields.len > 0 {
 				return '[]T{${fields.join(', ')}}'
@@ -333,10 +333,10 @@ pub fn (x Expr) str() string {
 			}
 		}
 		AsCast {
-			return '$x.expr.str() as ${global_table.type_to_str(x.typ)}'
+			return '${x.expr.str()} as ${global_table.type_to_str(x.typ)}'
 		}
 		AtExpr {
-			return '$x.val'
+			return '${x.val}'
 		}
 		CTempVar {
 			return x.orig.str()
@@ -345,7 +345,7 @@ pub fn (x Expr) str() string {
 			return x.val.str()
 		}
 		CastExpr {
-			return '${x.typname}($x.expr.str())'
+			return '${x.typname}(${x.expr.str()})'
 		}
 		CallExpr {
 			sargs := args2str(x.args)
@@ -357,45 +357,45 @@ pub fn (x Expr) str() string {
 				''
 			}
 			if x.is_method {
-				return '${x.left.str()}.${x.name}($sargs)$propagate_suffix'
+				return '${x.left.str()}.${x.name}(${sargs})${propagate_suffix}'
 			}
 			if x.name.starts_with('${x.mod}.') {
-				return util.strip_main_name('${x.name}($sargs)$propagate_suffix')
+				return util.strip_main_name('${x.name}(${sargs})${propagate_suffix}')
 			}
 			if x.mod == '' && x.name == '' {
-				return x.left.str() + '($sargs)$propagate_suffix'
+				return x.left.str() + '(${sargs})${propagate_suffix}'
 			}
 			if x.name.contains('.') {
-				return '${x.name}($sargs)$propagate_suffix'
+				return '${x.name}(${sargs})${propagate_suffix}'
 			}
-			return '${x.mod}.${x.name}($sargs)$propagate_suffix'
+			return '${x.mod}.${x.name}(${sargs})${propagate_suffix}'
 		}
 		CharLiteral {
-			return '`$x.val`'
+			return '`${x.val}`'
 		}
 		Comment {
 			if x.is_multi {
 				lines := x.text.split_into_lines()
-				return '/* $lines.len lines comment */'
+				return '/* ${lines.len} lines comment */'
 			} else {
 				text := x.text.trim('\x01').trim_space()
-				return '´// $text´'
+				return '´// ${text}´'
 			}
 		}
 		ComptimeSelector {
-			return '${x.left}.$$x.field_expr'
+			return '${x.left}.$${x.field_expr}'
 		}
 		ConcatExpr {
 			return x.vals.map(it.str()).join(',')
 		}
 		EnumVal {
-			return '.$x.val'
+			return '.${x.val}'
 		}
 		FloatLiteral, IntegerLiteral {
 			return x.val.clone()
 		}
 		GoExpr {
-			return 'go $x.call_expr'
+			return 'go ${x.call_expr}'
 		}
 		Ident {
 			return x.name.clone()
@@ -420,16 +420,16 @@ pub fn (x Expr) str() string {
 			return parts.join('')
 		}
 		IndexExpr {
-			return '$x.left.str()[$x.index.str()]'
+			return '${x.left.str()}[${x.index.str()}]'
 		}
 		InfixExpr {
-			return '$x.left.str() $x.op.str() $x.right.str()'
+			return '${x.left.str()} ${x.op.str()} ${x.right.str()}'
 		}
 		MapInit {
 			mut pairs := []string{}
 			for ik, kv in x.keys {
 				mv := x.vals[ik].str()
-				pairs << '$kv: $mv'
+				pairs << '${kv}: ${mv}'
 			}
 			return 'map{ ${pairs.join(' ')} }'
 		}
@@ -437,13 +437,13 @@ pub fn (x Expr) str() string {
 			return 'nil'
 		}
 		ParExpr {
-			return '($x.expr)'
+			return '(${x.expr})'
 		}
 		PostfixExpr {
 			if x.op == .question {
-				return '$x.expr ?'
+				return '${x.expr} ?'
 			}
-			return '$x.expr$x.op'
+			return '${x.expr}${x.op}'
 		}
 		PrefixExpr {
 			return x.op.str() + x.right.str()
@@ -451,10 +451,10 @@ pub fn (x Expr) str() string {
 		RangeExpr {
 			mut s := '..'
 			if x.has_low {
-				s = '$x.low ' + s
+				s = '${x.low} ' + s
 			}
 			if x.has_high {
-				s = s + ' $x.high'
+				s = s + ' ${x.high}'
 			}
 			return s
 		}
@@ -462,16 +462,16 @@ pub fn (x Expr) str() string {
 			return 'ast.SelectExpr'
 		}
 		SelectorExpr {
-			return '${x.expr.str()}.$x.field_name'
+			return '${x.expr.str()}.${x.field_name}'
 		}
 		SizeOf {
 			if x.is_type {
 				return 'sizeof(${global_table.type_to_str(x.typ)})'
 			}
-			return 'sizeof($x.expr)'
+			return 'sizeof(${x.expr})'
 		}
 		OffsetOf {
-			return '__offsetof(${global_table.type_to_str(x.struct_type)}, $x.field)'
+			return '__offsetof(${global_table.type_to_str(x.struct_type)}, ${x.field})'
 		}
 		StringInterLiteral {
 			mut res := strings.new_builder(50)
@@ -496,19 +496,19 @@ pub fn (x Expr) str() string {
 			return res.str()
 		}
 		StringLiteral {
-			return "'$x.val'"
+			return "'${x.val}'"
 		}
 		TypeNode {
-			return 'TypeNode($x.typ)'
+			return 'TypeNode(${x.typ})'
 		}
 		TypeOf {
-			return 'typeof($x.expr.str())'
+			return 'typeof(${x.expr.str()})'
 		}
 		Likely {
-			return '_likely_($x.expr.str())'
+			return '_likely_(${x.expr.str()})'
 		}
 		UnsafeExpr {
-			return 'unsafe { $x.expr }'
+			return 'unsafe { ${x.expr} }'
 		}
 		None {
 			return 'none'
@@ -532,7 +532,7 @@ pub fn (x Expr) str() string {
 		}
 		StructInit {
 			sname := global_table.sym(x.typ).name
-			return '$sname{....}'
+			return '${sname}{....}'
 		}
 		ArrayDecompose {
 			return 'ast.ArrayDecompose'
@@ -565,14 +565,14 @@ pub fn (x Expr) str() string {
 			return 'ast.SqlExpr'
 		}
 	}
-	return '[unhandled expr type $x.type_name()]'
+	return '[unhandled expr type ${x.type_name()}]'
 }
 
 pub fn (a CallArg) str() string {
 	if a.is_mut {
-		return 'mut $a.expr.str()'
+		return 'mut ${a.expr.str()}'
 	}
-	return '$a.expr.str()'
+	return '${a.expr.str()}'
 }
 
 pub fn args2str(args []CallArg) string {
@@ -584,9 +584,9 @@ pub fn args2str(args []CallArg) string {
 }
 
 pub fn (node &BranchStmt) str() string {
-	mut s := '$node.kind'
+	mut s := '${node.kind}'
 	if node.label.len > 0 {
-		s += ' $node.label'
+		s += ' ${node.label}'
 	}
 	return s
 }
@@ -594,7 +594,7 @@ pub fn (node &BranchStmt) str() string {
 pub fn (node Stmt) str() string {
 	match node {
 		AssertStmt {
-			return 'assert $node.expr'
+			return 'assert ${node.expr}'
 		}
 		AssignStmt {
 			mut out := ''
@@ -610,7 +610,7 @@ pub fn (node Stmt) str() string {
 					out += ','
 				}
 			}
-			out += ' $node.op.str() '
+			out += ' ${node.op.str()} '
 			for i, val in node.right {
 				out += val.str()
 				if i < node.right.len - 1 {
@@ -630,31 +630,31 @@ pub fn (node Stmt) str() string {
 			return node.expr.str()
 		}
 		FnDecl {
-			return 'fn ${node.name}( $node.params.len params ) { $node.stmts.len stmts }'
+			return 'fn ${node.name}( ${node.params.len} params ) { ${node.stmts.len} stmts }'
 		}
 		EnumDecl {
-			return 'enum $node.name { $node.fields.len fields }'
+			return 'enum ${node.name} { ${node.fields.len} fields }'
 		}
 		ForStmt {
 			if node.is_inf {
 				return 'for {'
 			}
-			return 'for $node.cond {'
+			return 'for ${node.cond} {'
 		}
 		Module {
-			return 'module $node.name'
+			return 'module ${node.name}'
 		}
 		Import {
-			mut out := 'import $node.mod'
+			mut out := 'import ${node.mod}'
 			if node.alias.len > 0 {
-				out += ' as $node.alias'
+				out += ' as ${node.alias}'
 			}
 			return out
 		}
 		Return {
 			mut out := 'return'
 			for i, val in node.exprs {
-				out += ' $val'
+				out += ' ${val}'
 				if i < node.exprs.len - 1 {
 					out += ','
 				}
@@ -662,17 +662,17 @@ pub fn (node Stmt) str() string {
 			return out
 		}
 		StructDecl {
-			return 'struct $node.name { $node.fields.len fields }'
+			return 'struct ${node.name} { ${node.fields.len} fields }'
 		}
 		else {
-			return '[unhandled stmt str type: $node.type_name() ]'
+			return '[unhandled stmt str type: ${node.type_name()} ]'
 		}
 	}
 }
 
 fn field_to_string(f ConstField) string {
 	x := f.name.trim_string_left(f.mod + '.')
-	return '$x = $f.expr'
+	return '${x} = ${f.expr}'
 }
 
 pub fn (e ComptimeForKind) str() string {

@@ -17,7 +17,7 @@ fn exec(cmd string) (string, int) {
 	p.set_redirect_stdio()
 	p.run()
 
-	p.stdin_write('$cmd2 && echo **OK**')
+	p.stdin_write('${cmd2} && echo **OK**')
 	os.fd_close(p.stdio_fd[0]) // important: close stdin so cmd can end by itself
 
 	for p.is_alive() {

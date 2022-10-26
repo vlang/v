@@ -58,9 +58,9 @@ fn main() {
 	}
 	elapsed := stopwatch.elapsed()
 	rate := f64(nobj) / elapsed * time.microsecond
-	println('$nobj objects in ${f64(elapsed) / time.second} s (${rate:.2f} objs/µs)')
+	println('${nobj} objects in ${f64(elapsed) / time.second} s (${rate:.2f} objs/µs)')
 	// use sum formula by Gauß to calculate the expected result
 	expected_sum := i64(nobj) * (nobj - 1) / 2
-	println('got: $sum, expected: $expected_sum')
+	println('got: ${sum}, expected: ${expected_sum}')
 	assert sum == expected_sum
 }

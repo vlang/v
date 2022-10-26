@@ -57,6 +57,6 @@ fn char2nibble(b u8) !u8 {
 		`0`...`9` { return b - u8(`0`) }
 		`A`...`F` { return b - u8(`A`) + 10 }
 		`a`...`f` { return b - u8(`a`) + 10 }
-		else { return error('invalid hex char $b.ascii_str()') }
+		else { return error('invalid hex char ${b.ascii_str()}') }
 	}
 }

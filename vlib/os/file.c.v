@@ -108,7 +108,7 @@ pub fn open_file(path string, mode string, options ...int) !File {
 	fdopen_mode := mode.replace('b', '')
 	cfile := C.fdopen(fd, &char(fdopen_mode.str))
 	if isnil(cfile) {
-		return error('Failed to open or create file "$path"')
+		return error('Failed to open or create file "${path}"')
 	}
 	if seek_to_end {
 		// ensure appending will work, even on bsd/macos systems:
@@ -227,7 +227,7 @@ pub fn (mut f File) reopen(path string, mode string) ! {
 		cfile = C.freopen(&char(p.str), &char(mode.str), f.cfile)
 	}
 	if isnil(cfile) {
-		return error('Failed to reopen file "$path"')
+		return error('Failed to reopen file "${path}"')
 	}
 	f.cfile = cfile
 }

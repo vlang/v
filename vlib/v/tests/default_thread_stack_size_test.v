@@ -1,5 +1,5 @@
 fn f(x u8) u8 {
-	eprintln('> f: $x')
+	eprintln('> f: ${x}')
 	if x == 0 {
 		return 0
 	}

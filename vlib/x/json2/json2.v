@@ -44,7 +44,7 @@ pub fn (f Any) as_map() map[string]Any {
 	} else if f is []Any {
 		mut mp := map[string]Any{}
 		for i, fi in f {
-			mp['$i'] = fi
+			mp['${i}'] = fi
 		}
 		return mp
 	}

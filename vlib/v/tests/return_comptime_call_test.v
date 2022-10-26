@@ -15,7 +15,7 @@ fn reflect_call(method_name string) string {
 			return a.$method()
 		}
 	}
-	panic('Method not supported: $method_name')
+	panic('Method not supported: ${method_name}')
 }
 
 fn test_reflect_call_returning_a_comptime_method() {

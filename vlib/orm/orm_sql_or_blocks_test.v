@@ -41,7 +41,7 @@ fn test_sql_or_block_for_insert() {
 	sql db {
 		insert user into User
 	} or {
-		println('user should have been inserted, but could not, err: $err')
+		println('user should have been inserted, but could not, err: ${err}')
 		assert false
 	}
 
@@ -50,7 +50,7 @@ fn test_sql_or_block_for_insert() {
 		insert user into User
 	} or {
 		assert true
-		println('user could not be inserted, err: $err')
+		println('user could not be inserted, err: ${err}')
 	}
 	eprintln('LINE: ${@LINE}')
 	db.close()!
@@ -63,7 +63,7 @@ fn test_sql_or_block_for_select() {
 	single := sql db {
 		select from User where id == 1
 	} or {
-		eprintln('could not select user, err: $err')
+		eprintln('could not select user, err: ${err}')
 		User{0, ''}
 	}
 	eprintln('LINE: ${@LINE}')
@@ -73,7 +73,7 @@ fn test_sql_or_block_for_select() {
 	failed := sql db {
 		select from User where id == 0
 	} or {
-		eprintln('could not select user, err: $err')
+		eprintln('could not select user, err: ${err}')
 		User{0, ''}
 	}
 	eprintln('LINE: ${@LINE}')
@@ -86,7 +86,7 @@ fn test_sql_or_block_for_select() {
 	multiple := sql db {
 		select from User
 	} or {
-		eprintln('could not users, err: $err')
+		eprintln('could not users, err: ${err}')
 		[]User{}
 	}
 	eprintln('LINE: ${@LINE}')

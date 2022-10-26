@@ -99,11 +99,11 @@ mut:
 
 [if debug_vwatch ?]
 fn (mut context Context) elog(msg string) {
-	eprintln('> vwatch $context.pid, $msg')
+	eprintln('> vwatch ${context.pid}, ${msg}')
 }
 
 fn (context &Context) str() string {
-	return 'Context{ pid: $context.pid, is_worker: $context.is_worker, check_period_ms: $context.check_period_ms, vexe: $context.vexe, opts: $context.opts, is_exiting: $context.is_exiting, vfiles: $context.vfiles'
+	return 'Context{ pid: ${context.pid}, is_worker: ${context.is_worker}, check_period_ms: ${context.check_period_ms}, vexe: ${context.vexe}, opts: ${context.opts}, is_exiting: ${context.is_exiting}, vfiles: ${context.vfiles}'
 }
 
 fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
@@ -112,7 +112,7 @@ fn (mut context Context) get_stats_for_affected_vfiles() []VFileStat {
 		// The next command will make V parse the program, and print all .v files,
 		// needed for its compilation, without actually compiling it.
 		copts := context.opts.join(' ')
-		cmd := '"$context.vexe" -silent -print-v-files $copts'
+		cmd := '"${context.vexe}" -silent -print-v-files ${copts}'
 		// context.elog('> cmd: $cmd')
 		mut paths := []string{}
 		if context.add_files.len > 0 && context.add_files[0] != '' {
@@ -168,7 +168,7 @@ fn (mut context Context) get_changed_vfiles() int {
 			if existing_vfs.path == vfs.path {
 				found = true
 				if existing_vfs.mtime != vfs.mtime {
-					context.elog('> new updates for file: $vfs')
+					context.elog('> new updates for file: ${vfs}')
 					changed++
 				}
 				break
@@ -181,7 +181,7 @@ fn (mut context Context) get_changed_vfiles() int {
 	}
 	context.vfiles = newfiles
 	if changed > 0 {
-		context.elog('> get_changed_vfiles: $changed')
+		context.elog('> get_changed_vfiles: ${changed}')
 	}
 	return changed
 }
@@ -219,23 +219,23 @@ fn (mut context Context) kill_pgroup() {
 
 fn (mut context Context) run_before_cmd() {
 	if context.cmd_before_run != '' {
-		context.elog('> run_before_cmd: "$context.cmd_before_run"')
+		context.elog('> run_before_cmd: "${context.cmd_before_run}"')
 		os.system(context.cmd_before_run)
 	}
 }
 
 fn (mut context Context) run_after_cmd() {
 	if context.cmd_after_run != '' {
-		context.elog('> run_after_cmd: "$context.cmd_after_run"')
+		context.elog('> run_after_cmd: "${context.cmd_after_run}"')
 		os.system(context.cmd_after_run)
 	}
 }
 
 fn (mut context Context) compilation_runner_loop() {
-	cmd := '"$context.vexe" ${context.opts.join(' ')}'
+	cmd := '"${context.vexe}" ${context.opts.join(' ')}'
 	_ := <-context.rerun_channel
 	for {
-		context.elog('>> loop: v_cycles: $context.v_cycles')
+		context.elog('>> loop: v_cycles: ${context.v_cycles}')
 		if context.clear_terminal {
 			term.clear()
 		}
@@ -246,7 +246,7 @@ fn (mut context Context) compilation_runner_loop() {
 		context.child_process.set_args(context.opts)
 		context.child_process.run()
 		if !context.silent {
-			eprintln('$timestamp: $cmd | pid: ${context.child_process.pid:7d} | reload cycle: ${context.v_cycles:5d}')
+			eprintln('${timestamp}: ${cmd} | pid: ${context.child_process.pid:7d} | reload cycle: ${context.v_cycles:5d}')
 		}
 		for {
 			mut notalive_count := 0
@@ -286,7 +286,7 @@ fn (mut context Context) compilation_runner_loop() {
 				}
 			}
 			if !context.child_process.is_alive() {
-				context.elog('> child_process is no longer alive | notalive_count: $notalive_count')
+				context.elog('> child_process is no longer alive | notalive_count: ${notalive_count}')
 				context.child_process.wait()
 				context.child_process.close()
 				if notalive_count == 0 {
@@ -333,17 +333,17 @@ fn main() {
 		exit(0)
 	}
 	remaining_options := fp.finalize() or {
-		eprintln('Error: $err')
+		eprintln('Error: ${err}')
 		exit(1)
 	}
 	context.opts = remaining_options
-	context.elog('>>> context.pid: $context.pid')
-	context.elog('>>> context.vexe: $context.vexe')
-	context.elog('>>> context.opts: $context.opts')
-	context.elog('>>> context.is_worker: $context.is_worker')
-	context.elog('>>> context.clear_terminal: $context.clear_terminal')
-	context.elog('>>> context.add_files: $context.add_files')
-	context.elog('>>> context.ignore_exts: $context.ignore_exts')
+	context.elog('>>> context.pid: ${context.pid}')
+	context.elog('>>> context.vexe: ${context.vexe}')
+	context.elog('>>> context.opts: ${context.opts}')
+	context.elog('>>> context.is_worker: ${context.is_worker}')
+	context.elog('>>> context.clear_terminal: ${context.clear_terminal}')
+	context.elog('>>> context.add_files: ${context.add_files}')
+	context.elog('>>> context.ignore_exts: ${context.ignore_exts}')
 	if context.is_worker {
 		context.worker_main()
 	} else {

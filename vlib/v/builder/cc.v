@@ -53,7 +53,7 @@ fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 		for tmpfile in v.pref.cleanup_files {
 			if os.is_file(tmpfile) {
 				if v.pref.is_verbose {
-					eprintln('>> remove tmp file: $tmpfile')
+					eprintln('>> remove tmp file: ${tmpfile}')
 				}
 				os.rm(tmpfile) or {}
 			}
@@ -89,9 +89,9 @@ fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 
 fn (mut v Builder) show_cc(cmd string, response_file string, response_file_content string) {
 	if v.pref.is_verbose || v.pref.show_cc {
-		println('> C compiler cmd: $cmd')
+		println('> C compiler cmd: ${cmd}')
 		if v.pref.show_cc && !v.pref.no_rsp {
-			println('> C compiler response file "$response_file":')
+			println('> C compiler response file "${response_file}":')
 			println(response_file_content)
 		}
 	}
@@ -335,7 +335,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		}
 	}
 	// The C file we are compiling
-	ccoptions.source_args << '"$v.out_name_c"'
+	ccoptions.source_args << '"${v.out_name_c}"'
 	if v.pref.os == .macos {
 		ccoptions.source_args << '-x none'
 	}
@@ -385,8 +385,8 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	ccoptions.env_cflags = os.getenv('CFLAGS')
 	ccoptions.env_ldflags = os.getenv('LDFLAGS')
 	$if trace_ccoptions ? {
-		println('>>> setup_ccompiler_options ccompiler: $ccompiler')
-		println('>>> setup_ccompiler_options ccoptions: $ccoptions')
+		println('>>> setup_ccompiler_options ccompiler: ${ccompiler}')
+		println('>>> setup_ccompiler_options ccoptions: ${ccoptions}')
 	}
 	v.ccoptions = ccoptions
 	// setup the cache too, so that different compilers/options do not interfere:
@@ -447,7 +447,7 @@ fn (mut v Builder) setup_output_name() {
 		v.pref.out_name += '.exe'
 	}
 	// Output executable name
-	v.log('cc() isprod=$v.pref.is_prod outname=$v.pref.out_name')
+	v.log('cc() isprod=${v.pref.is_prod} outname=${v.pref.out_name}')
 	if v.pref.is_shared {
 		if !v.pref.out_name.ends_with(v.ccoptions.shared_postfix) {
 			v.pref.out_name += v.ccoptions.shared_postfix
@@ -457,18 +457,18 @@ fn (mut v Builder) setup_output_name() {
 		v.pref.out_name = v.pref.cache_manager.mod_postfix_with_key2cpath(v.pref.path,
 			'.o', v.pref.path) // v.out_name
 		if v.pref.is_verbose {
-			println('Building $v.pref.path to $v.pref.out_name ...')
+			println('Building ${v.pref.path} to ${v.pref.out_name} ...')
 		}
-		v.pref.cache_manager.mod_save(v.pref.path, '.description.txt', v.pref.path, '${v.pref.path:-30} @ $v.pref.cache_manager.vopts\n') or {
+		v.pref.cache_manager.mod_save(v.pref.path, '.description.txt', v.pref.path, '${v.pref.path:-30} @ ${v.pref.cache_manager.vopts}\n') or {
 			panic(err)
 		}
 		// println('v.ast.imports:')
 		// println(v.ast.imports)
 	}
 	if os.is_dir(v.pref.out_name) {
-		verror("'$v.pref.out_name' is a directory")
+		verror("'${v.pref.out_name}' is a directory")
 	}
-	v.ccoptions.o_args << '-o "$v.pref.out_name"'
+	v.ccoptions.o_args << '-o "${v.pref.out_name}"'
 }
 
 pub fn (mut v Builder) cc() {
@@ -476,7 +476,7 @@ pub fn (mut v Builder) cc() {
 		return
 	}
 	if v.pref.is_verbose {
-		println('builder.cc() pref.out_name="$v.pref.out_name"')
+		println('builder.cc() pref.out_name="${v.pref.out_name}"')
 	}
 	if v.pref.only_check_syntax {
 		if v.pref.is_verbose {
@@ -502,7 +502,7 @@ pub fn (mut v Builder) cc() {
 	ends_with_js := v.pref.out_name.ends_with('.js')
 	if ends_with_c || ends_with_js {
 		v.pref.skip_running = true
-		msg_mv := 'os.mv_by_cp $v.out_name_c => $v.pref.out_name'
+		msg_mv := 'os.mv_by_cp ${v.out_name_c} => ${v.pref.out_name}'
 		util.timing_start(msg_mv)
 		// v.out_name_c may be on a different partition than v.out_name
 		os.mv_by_cp(v.out_name_c, v.pref.out_name) or { panic(err) }
@@ -546,7 +546,7 @@ pub fn (mut v Builder) cc() {
 				for file in v.parsed_files {
 					if file.imports.any(it.mod.contains('sync')) {
 						$if trace_stdatomic_gen ? {
-							eprintln('> creating $cpp_atomic_h_path ...')
+							eprintln('> creating ${cpp_atomic_h_path} ...')
 						}
 						cppgenv := '${@VEXEROOT}/thirdparty/stdatomic/nix/cpp/gen.v'
 						os.execute('${os.quoted_path(vexe)} run ${os.quoted_path(cppgenv)} ${os.quoted_path(ccompiler)}')
@@ -569,16 +569,16 @@ pub fn (mut v Builder) cc() {
 		all_args := v.all_args(v.ccoptions)
 		v.dump_c_options(all_args)
 		str_args := all_args.join(' ')
-		mut cmd := '${os.quoted_path(ccompiler)} $str_args'
+		mut cmd := '${os.quoted_path(ccompiler)} ${str_args}'
 		mut response_file := ''
 		mut response_file_content := str_args
 		if !v.pref.no_rsp {
 			response_file = '${v.out_name_c}.rsp'
 			response_file_content = str_args.replace('\\', '\\\\')
-			rspexpr := '@$response_file'
+			rspexpr := '@${response_file}'
 			cmd = '${os.quoted_path(ccompiler)} ${os.quoted_path(rspexpr)}'
 			os.write_file(response_file, response_file_content) or {
-				verror('Unable to write to C response file "$response_file"')
+				verror('Unable to write to C response file "${response_file}"')
 			}
 		}
 		if !v.ccoptions.debug_mode {
@@ -606,16 +606,16 @@ pub fn (mut v Builder) cc() {
 			v.show_c_compiler_output(res)
 		}
 		os.chdir(original_pwd) or {}
-		vcache.dlog('| Builder.' + @FN, '>       v.pref.use_cache: $v.pref.use_cache | v.pref.retry_compilation: $v.pref.retry_compilation')
-		vcache.dlog('| Builder.' + @FN, '>      cmd res.exit_code: $res.exit_code | cmd: $cmd')
-		vcache.dlog('| Builder.' + @FN, '>  response_file_content:\n$response_file_content')
+		vcache.dlog('| Builder.' + @FN, '>       v.pref.use_cache: ${v.pref.use_cache} | v.pref.retry_compilation: ${v.pref.retry_compilation}')
+		vcache.dlog('| Builder.' + @FN, '>      cmd res.exit_code: ${res.exit_code} | cmd: ${cmd}')
+		vcache.dlog('| Builder.' + @FN, '>  response_file_content:\n${response_file_content}')
 		if res.exit_code != 0 {
 			if ccompiler.contains('tcc.exe') {
 				// a TCC problem? Retry with the system cc:
 				if tried_compilation_commands.len > 1 {
-					eprintln('Recompilation loop detected (ccompiler: $ccompiler):')
+					eprintln('Recompilation loop detected (ccompiler: ${ccompiler}):')
 					for recompile_command in tried_compilation_commands {
-						eprintln('   $recompile_command')
+						eprintln('   ${recompile_command}')
 					}
 					exit(101)
 				}
@@ -623,14 +623,14 @@ pub fn (mut v Builder) cc() {
 					tcc_output = res
 					v.pref.default_c_compiler()
 					if v.pref.is_verbose {
-						eprintln('Compilation with tcc failed. Retrying with $v.pref.ccompiler ...')
+						eprintln('Compilation with tcc failed. Retrying with ${v.pref.ccompiler} ...')
 					}
 					continue
 				}
 			}
 			if res.exit_code == 127 {
 				verror('C compiler error, while attempting to run: \n' +
-					'-----------------------------------------------------------\n' + '$cmd\n' +
+					'-----------------------------------------------------------\n' + '${cmd}\n' +
 					'-----------------------------------------------------------\n' +
 					'Probably your C compiler is missing. \n' +
 					'Please reinstall it, or make it available in your PATH.\n\n' +
@@ -649,22 +649,22 @@ pub fn (mut v Builder) cc() {
 		}
 		// Print the C command
 		if v.pref.is_verbose {
-			println('$ccompiler')
+			println('${ccompiler}')
 			println('=========\n')
 		}
 		break
 	}
 	if v.pref.compress {
-		ret := os.system('strip $v.pref.out_name')
+		ret := os.system('strip ${v.pref.out_name}')
 		if ret != 0 {
 			println('strip failed')
 			return
 		}
 		// Note: upx --lzma can sometimes fail with NotCompressibleException
 		// See https://github.com/vlang/v/pull/3528
-		mut ret2 := os.system('upx --lzma -qqq $v.pref.out_name')
+		mut ret2 := os.system('upx --lzma -qqq ${v.pref.out_name}')
 		if ret2 != 0 {
-			ret2 = os.system('upx -qqq $v.pref.out_name')
+			ret2 = os.system('upx -qqq ${v.pref.out_name}')
 		}
 		if ret2 != 0 {
 			println('upx failed')
@@ -696,9 +696,9 @@ fn (mut b Builder) ensure_linuxroot_exists(sysroot string) {
 	}
 	if !os.is_dir(sysroot) {
 		println('Downloading files for Linux cross compilation (~22MB) ...')
-		os.system('git clone $crossrepo_url $sysroot')
+		os.system('git clone ${crossrepo_url} ${sysroot}')
 		if !os.exists(sysroot_git_config_path) {
-			verror('Failed to clone `$crossrepo_url` to `$sysroot`')
+			verror('Failed to clone `${crossrepo_url}` to `${sysroot}`')
 		}
 		os.chmod(os.join_path(sysroot, 'ld.lld'), 0o755) or { panic(err) }
 	}
@@ -723,10 +723,10 @@ fn (mut b Builder) cc_linux_cross() {
 	cc_args << '-c'
 	cc_args << '-target x86_64-linux-gnu'
 	cc_args << defines
-	cc_args << '-I $sysroot/include '
+	cc_args << '-I ${sysroot}/include '
 	cc_args << others
-	cc_args << '-o "$obj_file"'
-	cc_args << '-c "$b.out_name_c"'
+	cc_args << '-o "${obj_file}"'
+	cc_args << '-c "${b.out_name_c}"'
 	cc_args << libs
 	b.dump_c_options(cc_args)
 	mut cc_name := 'cc'
@@ -745,15 +745,15 @@ fn (mut b Builder) cc_linux_cross() {
 		verror(cc_res.output)
 		return
 	}
-	mut linker_args := ['-L$sysroot/usr/lib/x86_64-linux-gnu/', '-L$sysroot/lib/x86_64-linux-gnu',
-		'--sysroot=$sysroot', '-v', '-o $out_name', '-m elf_x86_64',
-		'-dynamic-linker /lib/x86_64-linux-gnu/ld-linux-x86-64.so.2',
-		'$sysroot/crt1.o $sysroot/crti.o $obj_file', '-lc', '-lcrypto', '-lssl', '-lpthread',
-		'$sysroot/crtn.o', '-lm']
+	mut linker_args := ['-L${sysroot}/usr/lib/x86_64-linux-gnu/',
+		'-L${sysroot}/lib/x86_64-linux-gnu', '--sysroot=${sysroot}', '-v', '-o ${out_name}',
+		'-m elf_x86_64', '-dynamic-linker /lib/x86_64-linux-gnu/ld-linux-x86-64.so.2',
+		'${sysroot}/crt1.o ${sysroot}/crti.o ${obj_file}', '-lc', '-lcrypto', '-lssl', '-lpthread',
+		'${sysroot}/crtn.o', '-lm']
 	linker_args << cflags.c_options_only_object_files()
 	// -ldl
 	b.dump_c_options(linker_args)
-	mut ldlld := '$sysroot/ld.lld'
+	mut ldlld := '${sysroot}/ld.lld'
 	$if windows {
 		ldlld = 'ld.lld.exe'
 	}
@@ -782,8 +782,8 @@ fn (mut c Builder) cc_windows_cross() {
 	}
 	c.pref.out_name = os.quoted_path(c.pref.out_name)
 	mut args := []string{}
-	args << '$c.pref.cflags'
-	args << '-o $c.pref.out_name'
+	args << '${c.pref.cflags}'
+	args << '-o ${c.pref.out_name}'
 	args << '-w -L.'
 	//
 	cflags := c.get_os_cflags()
@@ -807,13 +807,13 @@ fn (mut c Builder) cc_windows_cross() {
 	}
 	mut libs := []string{}
 	if false && c.pref.build_mode == .default_mode {
-		builtin_o := '"$pref.default_module_path/vlib/builtin.o"'
+		builtin_o := '"${pref.default_module_path}/vlib/builtin.o"'
 		libs << builtin_o
 		if !os.exists(builtin_o) {
-			verror('$builtin_o not found')
+			verror('${builtin_o} not found')
 		}
 		for imp in c.table.imports {
-			libs << '"$pref.default_module_path/vlib/${imp}.o"'
+			libs << '"${pref.default_module_path}/vlib/${imp}.o"'
 		}
 	}
 	// add the thirdparty .o files, produced by all the #flag directives:
@@ -882,7 +882,7 @@ fn (mut c Builder) cc_windows_cross() {
 }
 
 fn (mut b Builder) build_thirdparty_obj_files() {
-	b.log('build_thirdparty_obj_files: v.ast.cflags: $b.table.cflags')
+	b.log('build_thirdparty_obj_files: v.ast.cflags: ${b.table.cflags}')
 	for flag in b.get_os_cflags() {
 		if flag.value.ends_with('.o') {
 			rest_of_module_flags := b.get_rest_of_module_cflags(flag)
@@ -901,10 +901,10 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	obj_path := os.real_path(path)
 	cfile := '${obj_path[..obj_path.len - 2]}.c'
 	opath := v.pref.cache_manager.mod_postfix_with_key2cpath(mod, '.o', obj_path)
-	mut rebuild_reason_message := '$obj_path not found, building it in $opath ...'
+	mut rebuild_reason_message := '${obj_path} not found, building it in ${opath} ...'
 	if os.exists(opath) {
 		if os.exists(cfile) && os.file_last_mod_unix(opath) < os.file_last_mod_unix(cfile) {
-			rebuild_reason_message = '$opath is older than $cfile, rebuilding ...'
+			rebuild_reason_message = '${opath} is older than ${cfile}, rebuilding ...'
 		} else {
 			return
 		}
@@ -931,18 +931,18 @@ fn (mut v Builder) build_thirdparty_obj_file(mod string, path string, moduleflag
 	all_options << '-c ${os.quoted_path(cfile)}'
 	cc_options := v.thirdparty_object_args(v.ccoptions, all_options).join(' ')
 
-	cmd := '${os.quoted_path(v.pref.ccompiler)} $cc_options'
+	cmd := '${os.quoted_path(v.pref.ccompiler)} ${cc_options}'
 	$if trace_thirdparty_obj_files ? {
-		println('>>> build_thirdparty_obj_files cmd: $cmd')
+		println('>>> build_thirdparty_obj_files cmd: ${cmd}')
 	}
 	res := os.execute(cmd)
 	os.chdir(current_folder) or {}
 	if res.exit_code != 0 {
-		eprintln('failed thirdparty object build cmd:\n$cmd')
+		eprintln('failed thirdparty object build cmd:\n${cmd}')
 		verror(res.output)
 		return
 	}
-	v.pref.cache_manager.mod_save(mod, '.description.txt', obj_path, '${obj_path:-30} @ $cmd\n') or {
+	v.pref.cache_manager.mod_save(mod, '.description.txt', obj_path, '${obj_path:-30} @ ${cmd}\n') or {
 		panic(err)
 	}
 	if res.output != '' {

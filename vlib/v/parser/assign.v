@@ -26,14 +26,14 @@ fn (mut p Parser) check_undefined_variables(names []string, val ast.Expr) ! {
 		p.expr_level--
 	}
 	if p.expr_level > parser.max_expr_level {
-		return error('expr level > $parser.max_expr_level')
+		return error('expr level > ${parser.max_expr_level}')
 	}
 	match val {
 		ast.Ident {
 			for name in names {
 				if name == val.name && val.kind != .blank_ident {
-					p.error_with_pos('undefined variable: `$val.name`', val.pos)
-					return error('undefined variable: `$val.name`')
+					p.error_with_pos('undefined variable: `${val.name}`', val.pos)
+					return error('undefined variable: `${val.name}`')
 				}
 			}
 		}
@@ -203,7 +203,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 			ast.Ident {
 				if op == .decl_assign {
 					if p.scope.known_var(lx.name) {
-						return p.error_with_pos('redefinition of `$lx.name`', lx.pos)
+						return p.error_with_pos('redefinition of `${lx.name}`', lx.pos)
 					}
 					mut share := unsafe { ast.ShareType(0) }
 					if mut lx.info is ast.IdentVar {
@@ -247,7 +247,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 			}
 			ast.IndexExpr {
 				if op == .decl_assign {
-					return p.error_with_pos('non-name `$lx.left[$lx.index]` on left side of `:=`',
+					return p.error_with_pos('non-name `${lx.left}[${lx.index}]` on left side of `:=`',
 						lx.pos)
 				}
 				lx.is_setter = true

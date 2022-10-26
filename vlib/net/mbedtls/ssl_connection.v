@@ -16,7 +16,7 @@ fn init() {
 		0, 0)
 	if ret != 0 {
 		C.mbedtls_ctr_drbg_free(&mbedtls.ctr_drbg)
-		panic('Failed to seed ssl context: $ret')
+		panic('Failed to seed ssl context: ${ret}')
 	}
 }
 

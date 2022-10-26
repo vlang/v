@@ -1,6 +1,6 @@
 fn xyz() {
 	for i in 0 .. 5 {
-		println('${@FN} - i: $i')
+		println('${@FN} - i: ${i}')
 	}
 }
 

@@ -32,7 +32,7 @@ pub fn (mut s StateMachine) set_state(name string) ? {
 	if name in s.states {
 		s.current_state = name
 	}
-	return error('unknown state: $name')
+	return error('unknown state: ${name}')
 }
 
 pub fn (mut s StateMachine) get_state() string {

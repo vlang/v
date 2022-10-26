@@ -27,7 +27,7 @@ mut:
 
 fn (mut p Person) show<T>(name string, data T) string {
 	p.name = name
-	return 'name: $p.name, data: $data'
+	return 'name: ${p.name}, data: ${data}'
 }
 
 fn test_generic_method_with_fixed_arg_type() {

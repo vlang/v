@@ -277,7 +277,7 @@ pub fn (mut rng PRNG) ascii(len int) string {
 // bernoulli returns true with a probability p. Note that 0 <= p <= 1.
 pub fn (mut rng PRNG) bernoulli(p f64) !bool {
 	if p < 0 || p > 1 {
-		return error('$p is not a valid probability value.')
+		return error('${p} is not a valid probability value.')
 	}
 	return rng.f64() <= p
 }
@@ -317,7 +317,7 @@ pub fn (mut rng PRNG) normal_pair(conf config.NormalConfigStruct) !(f64, f64) {
 // probability of success for each trial is p.
 pub fn (mut rng PRNG) binomial(n int, p f64) !int {
 	if p < 0 || p > 1 {
-		return error('$p is not a valid probability value.')
+		return error('${p} is not a valid probability value.')
 	}
 	mut count := 0
 	for _ in 0 .. n {
@@ -372,7 +372,7 @@ pub fn (mut rng PRNG) shuffle_clone<T>(a []T, config config.ShuffleConfigStruct)
 pub fn (mut rng PRNG) choose<T>(array []T, k int) ![]T {
 	n := array.len
 	if k > n {
-		return error('Cannot choose $k elements without replacement from a $n-element array.')
+		return error('Cannot choose ${k} elements without replacement from a ${n}-element array.')
 	}
 	mut results := []T{len: k}
 	mut indices := []int{len: n, init: it}

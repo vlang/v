@@ -23,18 +23,18 @@ fn convert_html_rgb(in_col string) u32 {
 	// NOTE: if you want use escaped code you must use the r"" (raw) strings,
 	//       *** please remember that V interpoaltion doesn't work on raw strings. ***
 
-	query := '#([a-fA-F0-9]{$n_digit})([a-fA-F0-9]{$n_digit})([a-fA-F0-9]{$n_digit})'
+	query := '#([a-fA-F0-9]{${n_digit}})([a-fA-F0-9]{${n_digit}})([a-fA-F0-9]{${n_digit}})'
 
 	mut re := regex.regex_opt(query) or { panic(err) }
 	start, end := re.match_string(in_col)
-	println('start: $start, end: $end')
+	println('start: ${start}, end: ${end}')
 	mut res := u32(0)
 	if start >= 0 {
 		group_list := re.get_group_list()
 		r := ('0x' + in_col[group_list[0].start..group_list[0].end]).int() << col_mul
 		g := ('0x' + in_col[group_list[1].start..group_list[1].end]).int() << col_mul
 		b := ('0x' + in_col[group_list[2].start..group_list[2].end]).int() << col_mul
-		println('r: $r g: $g b: $b')
+		println('r: ${r} g: ${g} b: ${b}')
 		res = u32(r) << 16 | u32(g) << 8 | u32(b)
 	}
 	return res
@@ -47,11 +47,11 @@ fn convert_html_rgb_n(in_col string) u32 {
 	mut n_digit := if in_col.len == 4 { 1 } else { 2 }
 	mut col_mul := if in_col.len == 4 { 4 } else { 0 }
 
-	query := '#(?P<red>[a-fA-F0-9]{$n_digit})(?P<green>[a-fA-F0-9]{$n_digit})(?P<blue>[a-fA-F0-9]{$n_digit})'
+	query := '#(?P<red>[a-fA-F0-9]{${n_digit}})(?P<green>[a-fA-F0-9]{${n_digit}})(?P<blue>[a-fA-F0-9]{${n_digit}})'
 
 	mut re := regex.regex_opt(query) or { panic(err) }
 	start, end := re.match_string(in_col)
-	println('start: $start, end: $end')
+	println('start: ${start}, end: ${end}')
 	mut res := u32(0)
 	if start >= 0 {
 		red_s, red_e := re.get_group_bounds_by_name('red')
@@ -63,7 +63,7 @@ fn convert_html_rgb_n(in_col string) u32 {
 		blue_s, blue_e := re.get_group_bounds_by_name('blue')
 		b := ('0x' + in_col[blue_s..blue_e]).int() << col_mul
 
-		println('r: $r g: $g b: $b')
+		println('r: ${r} g: ${g} b: ${b}')
 		res = u32(r) << 16 | u32(g) << 8 | u32(b)
 	}
 	return res

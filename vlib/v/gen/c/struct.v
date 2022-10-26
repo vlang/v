@@ -16,7 +16,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		s := g.go_before_stmt(0)
 		styp := g.typ(node.update_expr_type)
 		g.empty_line = true
-		g.write('$styp $tmp_update_var = ')
+		g.write('${styp} ${tmp_update_var} = ')
 		g.expr(node.update_expr)
 		g.writeln(';')
 		g.empty_line = false
@@ -49,25 +49,25 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 		}
 	}
 	if is_anon {
-		g.writeln('($styp){')
+		g.writeln('(${styp}){')
 	} else if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
 		mut shared_typ := node.typ.set_flag(.shared_f)
 		shared_styp = g.typ(shared_typ)
-		g.writeln('($shared_styp*)__dup${shared_styp}(&($shared_styp){.mtx = {0}, .val =($styp){')
+		g.writeln('(${shared_styp}*)__dup${shared_styp}(&(${shared_styp}){.mtx = {0}, .val =(${styp}){')
 	} else if is_amp || g.inside_cast_in_heap > 0 {
-		g.write('($styp*)memdup(&($styp){')
+		g.write('(${styp}*)memdup(&(${styp}){')
 	} else if node.typ.is_ptr() {
 		basetyp := g.typ(node.typ.set_nr_muls(0))
 		if is_multiline {
-			g.writeln('&($basetyp){')
+			g.writeln('&(${basetyp}){')
 		} else {
-			g.write('&($basetyp){')
+			g.write('&(${basetyp}){')
 		}
 	} else {
 		if is_multiline {
-			g.writeln('($styp){')
+			g.writeln('(${styp}){')
 		} else {
-			g.write('($styp){')
+			g.write('(${styp}){')
 		}
 	}
 	mut inited_fields := map[string]int{}
@@ -132,7 +132,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 					inside_cast_in_heap := g.inside_cast_in_heap
 					g.inside_cast_in_heap = 0 // prevent use of pointers in child structs
 
-					g.write('.$embed_name = ')
+					g.write('.${embed_name} = ')
 					g.struct_init(default_init)
 
 					g.inside_cast_in_heap = inside_cast_in_heap // restore value for further struct inits
@@ -182,7 +182,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 			}
 			field_name := c_name(field.name)
 			if field.typ.has_flag(.optional) || field.typ.has_flag(.result) {
-				g.write('.$field_name = {EMPTY_STRUCT_INITIALIZATION},')
+				g.write('.${field_name} = {EMPTY_STRUCT_INITIALIZATION},')
 				initialized = true
 				continue
 			}
@@ -190,7 +190,7 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 				continue
 			}
 			if node.has_update_expr {
-				g.write('.$field_name = ')
+				g.write('.${field_name} = ')
 				if is_update_tmp_var {
 					g.write(tmp_update_var)
 				} else {
@@ -250,9 +250,9 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 
 	g.write('}')
 	if g.is_shared && !g.inside_opt_data && !g.is_arraymap_set {
-		g.write('}, sizeof($shared_styp))')
+		g.write('}, sizeof(${shared_styp}))')
 	} else if is_amp || g.inside_cast_in_heap > 0 {
-		g.write(', sizeof($styp))')
+		g.write(', sizeof(${styp}))')
 	}
 }
 
@@ -265,7 +265,7 @@ fn (mut g Gen) zero_struct_field(field ast.StructField) bool {
 		}
 	}
 	field_name := if sym.language == .v { c_name(field.name) } else { field.name }
-	g.write('.$field_name = ')
+	g.write('.${field_name} = ')
 	if field.has_default_expr {
 		if sym.kind in [.sum_type, .interface_] {
 			g.expr_with_cast(field.default_expr, field.default_expr_typ, field.typ)
@@ -298,7 +298,7 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 		return
 	}
 	if name.contains('_T_') {
-		g.typedefs.writeln('typedef struct $name $name;')
+		g.typedefs.writeln('typedef struct ${name} ${name};')
 	}
 	// TODO avoid buffer manip
 	start_pos := g.type_definitions.len
@@ -309,7 +309,7 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 	for attr in s.attrs {
 		match attr.name {
 			'_pack' {
-				pre_pragma += '#pragma pack(push, $attr.arg)\n'
+				pre_pragma += '#pragma pack(push, ${attr.arg})\n'
 				post_pragma += '#pragma pack(pop)'
 			}
 			'packed' {
@@ -324,12 +324,12 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 	g.type_definitions.writeln(pre_pragma)
 
 	if is_anon {
-		g.type_definitions.write_string('\t$name ')
+		g.type_definitions.write_string('\t${name} ')
 		return
 	} else if s.is_union {
-		g.type_definitions.writeln('union $name {')
+		g.type_definitions.writeln('union ${name} {')
 	} else {
-		g.type_definitions.writeln('struct $name {')
+		g.type_definitions.writeln('struct ${name} {')
 	}
 	if s.fields.len > 0 || s.embeds.len > 0 {
 		for field in s.fields {
@@ -348,7 +348,7 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 						g.done_optionals << base
 						last_text := g.type_definitions.after(start_pos).clone()
 						g.type_definitions.go_back_to(start_pos)
-						g.typedefs.writeln('typedef struct $styp $styp;')
+						g.typedefs.writeln('typedef struct ${styp} ${styp};')
 						g.type_definitions.writeln('${g.optional_type_text(styp, base)};')
 						g.type_definitions.write_string(last_text)
 					}
@@ -371,7 +371,7 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 								bits_needed++
 								l >>= 1
 							}
-							size_suffix = ' : $bits_needed'
+							size_suffix = ' : ${bits_needed}'
 						}
 					}
 				}
@@ -384,11 +384,11 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 					// Recursively generate code for this anon struct (this is the field's type)
 					g.struct_decl(field_sym.info, field_sym.cname, true)
 					// Now the field's name
-					g.type_definitions.writeln(' $field_name$size_suffix;')
+					g.type_definitions.writeln(' ${field_name}${size_suffix};')
 				}
 			}
 			if !field_is_anon {
-				g.type_definitions.writeln('\t$volatile_prefix$type_name $field_name$size_suffix;')
+				g.type_definitions.writeln('\t${volatile_prefix}${type_name} ${field_name}${size_suffix};')
 			}
 		}
 	} else {
@@ -401,7 +401,7 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 	} else {
 		''
 	}
-	g.type_definitions.write_string('}$ti_attrs')
+	g.type_definitions.write_string('}${ti_attrs}')
 	if !is_anon {
 		g.type_definitions.write_string(';')
 	}
@@ -411,7 +411,7 @@ fn (mut g Gen) struct_decl(s ast.Struct, name string, is_anon bool) {
 
 fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Language) {
 	field_name := if language == .v { c_name(sfield.name) } else { sfield.name }
-	g.write('.$field_name = ')
+	g.write('.${field_name} = ')
 	field_type_sym := g.table.sym(sfield.typ)
 	mut cloned := false
 	if g.is_autofree && !sfield.typ.is_ptr() && field_type_sym.kind in [.array, .string] {
@@ -429,7 +429,7 @@ fn (mut g Gen) struct_init_field(sfield ast.StructInitField, language ast.Langua
 			g.write('{')
 			for i in 0 .. fixed_array_info.size {
 				g.expr(sfield.expr)
-				g.write('[$i]')
+				g.write('[${i}]')
 				if i != fixed_array_info.size - 1 {
 					g.write(', ')
 				}

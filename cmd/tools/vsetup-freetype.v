@@ -15,7 +15,7 @@ fn main() {
 		if os.is_dir(freetype_folder) {
 			println('Thirdparty "freetype" is already installed.')
 		} else {
-			s := os.execute('git clone --depth=1 $freetype_repo_url $freetype_folder')
+			s := os.execute('git clone --depth=1 ${freetype_repo_url} ${freetype_folder}')
 			if s.exit_code != 0 {
 				panic(s.output)
 			}

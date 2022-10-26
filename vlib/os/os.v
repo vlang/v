@@ -396,7 +396,7 @@ pub fn user_names() ![]string {
 	$if windows {
 		result := execute('wmic useraccount get name')
 		if result.exit_code != 0 {
-			return error('Failed to get user names. Exited with code $result.exit_code: $result.output')
+			return error('Failed to get user names. Exited with code ${result.exit_code}: ${result.output}')
 		}
 		mut users := result.output.split_into_lines()
 		// windows command prints an empty line at the end of output
@@ -662,7 +662,7 @@ pub fn mkdir_all(opath string, params MkdirParams) ! {
 		if exists(p) && is_dir(p) {
 			continue
 		}
-		mkdir(p, params) or { return error('folder: $p, error: $err') }
+		mkdir(p, params) or { return error('folder: ${p}, error: ${err}') }
 	}
 }
 
@@ -800,8 +800,8 @@ pub mut:
 pub fn execute_or_panic(cmd string) Result {
 	res := execute(cmd)
 	if res.exit_code != 0 {
-		eprintln('failed    cmd: $cmd')
-		eprintln('failed   code: $res.exit_code')
+		eprintln('failed    cmd: ${cmd}')
+		eprintln('failed   code: ${res.exit_code}')
 		panic(res.output)
 	}
 	return res
@@ -810,8 +810,8 @@ pub fn execute_or_panic(cmd string) Result {
 pub fn execute_or_exit(cmd string) Result {
 	res := execute(cmd)
 	if res.exit_code != 0 {
-		eprintln('failed    cmd: $cmd')
-		eprintln('failed   code: $res.exit_code')
+		eprintln('failed    cmd: ${cmd}')
+		eprintln('failed   code: ${res.exit_code}')
 		eprintln(res.output)
 		exit(1)
 	}
@@ -821,9 +821,13 @@ pub fn execute_or_exit(cmd string) Result {
 // quoted path - return a quoted version of the path, depending on the platform.
 pub fn quoted_path(path string) string {
 	$if windows {
-		return if path.ends_with(path_separator) { '"${path + path_separator}"' } else { '"$path"' }
+		return if path.ends_with(path_separator) {
+			'"${path + path_separator}"'
+		} else {
+			'"${path}"'
+		}
 	} $else {
-		return "'$path'"
+		return "'${path}'"
 	}
 }
 

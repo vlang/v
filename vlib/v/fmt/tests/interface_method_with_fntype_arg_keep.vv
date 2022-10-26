@@ -15,9 +15,9 @@ fn main() {
 	t := Test1{}
 
 	t.test(fn [t] (t1 Test) {
-		println('$t, $t1')
+		println('${t}, ${t1}')
 		t.test(fn [t] (t2 Test) {
-			println('$t, $t2')
+			println('${t}, ${t2}')
 		})
 	})
 }

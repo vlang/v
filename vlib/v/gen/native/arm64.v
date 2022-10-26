@@ -43,7 +43,7 @@ mut:
 }
 
 fn (mut x Arm64) allocate_var(name string, size int, initial_val int) {
-	eprintln('TODO: allocating var on arm64 ($name) = $size = $initial_val')
+	eprintln('TODO: allocating var on arm64 (${name}) = ${size} = ${initial_val}')
 }
 
 fn (mut g Gen) mov_arm(reg Arm64Register, val u64) {
@@ -56,7 +56,7 @@ fn (mut g Gen) mov_arm(reg Arm64Register, val u64) {
 	r := int(reg)
 	if r >= 0 && r <= 16 {
 		g.write32(int(u32(0xd2800000 + u32(r) + (u32(val) << 5))))
-		g.println('mov x$r, $val')
+		g.println('mov x${r}, ${val}')
 	} else {
 		g.n_error('mov_arm unsupported values')
 	}
@@ -81,9 +81,9 @@ fn (mut g Gen) neg_arm(r Arm64Register) {
 fn (mut g Gen) neg_regs_arm(a Arm64Register, b Arm64Register) {
 	if u32(a) < 0x0f && u32(b) < 0x0f {
 		g.write32(int(0xe2600000 | (u32(a) << 16) | u32(b) << 12))
-		g.println('neg $a, $b')
+		g.println('neg ${a}, ${b}')
 	} else {
-		g.n_error('unhandled neg $a, $b')
+		g.n_error('unhandled neg ${a}, ${b}')
 	}
 }
 
@@ -186,7 +186,7 @@ pub fn (mut g Gen) call_fn_arm64(node ast.CallExpr) {
 	// println('call fn $name')
 	addr := g.fn_addr[name]
 	if addr == 0 {
-		g.n_error('fn addr of `$name` = 0')
+		g.n_error('fn addr of `${name}` = 0')
 	}
 	// Copy values to registers (calling convention)
 	// g.mov_arm(.eax, 0)
@@ -209,7 +209,7 @@ pub fn (mut g Gen) call_fn_arm64(node ast.CallExpr) {
 			}
 			*/
 			else {
-				g.n_error('unhandled call_fn (name=$name) node: ' + expr.type_name())
+				g.n_error('unhandled call_fn (name=${name}) node: ' + expr.type_name())
 			}
 		}
 	}
@@ -248,7 +248,7 @@ fn (mut g Gen) gen_arm64_helloworld() {
 
 fn (mut g Gen) adr(r Arm64Register, delta int) {
 	g.write32(int(0x10000000 | int(r) | int(u32(delta) << 4)))
-	g.println('adr $r, $delta')
+	g.println('adr ${r}, ${delta}')
 }
 
 fn (mut g Gen) bl() {
@@ -288,7 +288,7 @@ pub fn (mut c Arm64) gen_exit(mut g Gen, expr ast.Expr) {
 			c.g.mov_arm(.x0, 0)
 		}
 		else {
-			g.n_error('unsupported os $c.g.pref.os')
+			g.n_error('unsupported os ${c.g.pref.os}')
 		}
 	}
 	g.svc()

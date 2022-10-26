@@ -67,9 +67,9 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 
 		f.comments_before_field(pre_comments)
 		if comments.len == 0 {
-			f.writeln('\t$styp')
+			f.writeln('\t${styp}')
 		} else {
-			f.write('\t$styp')
+			f.write('\t${styp}')
 			f.comments(comments, level: .indent)
 		}
 	}
@@ -120,7 +120,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl, is_anon bool) {
 		// Handle comments before the field
 		f.comments_before_field(before_comments)
 		volatile_prefix := if field.is_volatile { 'volatile ' } else { '' }
-		f.write('\t$volatile_prefix$field.name ')
+		f.write('\t${volatile_prefix}${field.name} ')
 		// Handle comments between field name and type
 		before_len := f.line_len
 		f.comments(between_comments, iembed: true, has_nl: false)
@@ -223,16 +223,16 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 	if node.fields.len == 0 && !node.has_update_expr {
 		// `Foo{}` on one line if there are no fields or comments
 		if node.pre_comments.len == 0 {
-			f.write('$name{}')
+			f.write('${name}{}')
 		} else {
-			f.writeln('$name{')
+			f.writeln('${name}{')
 			f.comments(node.pre_comments, inline: true, has_nl: true, level: .indent)
 			f.write('}')
 		}
 		f.mark_import_as_used(name)
 	} else if node.no_keys {
 		// `Foo{1,2,3}` (short syntax, no keys)
-		f.write('$name{')
+		f.write('${name}{')
 		f.mark_import_as_used(name)
 		if node.has_update_expr {
 			f.write('...')
@@ -255,7 +255,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 			single_line_fields = false
 		}
 		if !use_short_args || node.is_anon {
-			f.write('$name{')
+			f.write('${name}{')
 			f.mark_import_as_used(name)
 			if single_line_fields {
 				f.write(' ')
@@ -289,7 +289,7 @@ pub fn (mut f Fmt) struct_init(node ast.StructInit) {
 				f.comments(node.update_expr_comments, inline: true, has_nl: true, level: .keep)
 			}
 			for i, field in node.fields {
-				f.write('$field.name: ')
+				f.write('${field.name}: ')
 				f.expr(field.expr)
 				f.comments(field.comments, inline: true, has_nl: false, level: .indent)
 				if single_line_fields {

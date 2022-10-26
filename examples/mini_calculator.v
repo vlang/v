@@ -48,7 +48,7 @@ fn expr_to_rev_pol(expr string) ![]string {
 					stack.delete(stack.len - 1)
 				}
 				else {
-					return error('err: invalid character `$op`')
+					return error('err: invalid character `${op}`')
 				}
 			}
 			pos++
@@ -115,7 +115,7 @@ fn main() {
 	mut expr_count := 0
 	for {
 		expr_count++
-		expr := os.input_opt('[$expr_count] ') or {
+		expr := os.input_opt('[${expr_count}] ') or {
 			println('')
 			break
 		}.trim_space()

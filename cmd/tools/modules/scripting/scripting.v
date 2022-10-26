@@ -50,19 +50,19 @@ pub fn cprintln_strong(omessage string) {
 
 pub fn verbose_trace(label string, message string) {
 	if os.getenv('VERBOSE').len > 0 {
-		slabel := '$time.now().format_ss_milli() $label'
-		cprintln('# ${slabel:-43s} : $message')
+		slabel := '${time.now().format_ss_milli()} ${label}'
+		cprintln('# ${slabel:-43s} : ${message}')
 	}
 }
 
 pub fn verbose_trace_strong(label string, omessage string) {
 	if os.getenv('VERBOSE').len > 0 {
-		slabel := '$time.now().format_ss_milli() $label'
+		slabel := '${time.now().format_ss_milli()} ${label}'
 		mut message := omessage
 		if scripting.term_colors {
 			message = term.bright_green(message)
 		}
-		cprintln('# ${slabel:-43s} : $message')
+		cprintln('# ${slabel:-43s} : ${message}')
 	}
 }
 
@@ -76,7 +76,7 @@ pub fn verbose_trace_exec_result(x os.Result) {
 			if scripting.term_colors {
 				line = term.bright_green(line)
 			}
-			cprintln('# ${lnum:3d}: $line')
+			cprintln('# ${lnum:3d}: ${line}')
 			lnum++
 		}
 		cprintln('# ----------------------------------------------------------------------')
@@ -84,11 +84,11 @@ pub fn verbose_trace_exec_result(x os.Result) {
 }
 
 fn modfn(mname string, fname string) string {
-	return '${mname}.$fname'
+	return '${mname}.${fname}'
 }
 
 pub fn chdir(path string) {
-	verbose_trace_strong(modfn(@MOD, @FN), 'cd $path')
+	verbose_trace_strong(modfn(@MOD, @FN), 'cd ${path}')
 	os.chdir(path) or {
 		verbose_trace(modfn(@MOD, @FN), '## failed.')
 		return
@@ -96,7 +96,7 @@ pub fn chdir(path string) {
 }
 
 pub fn mkdir(path string) ? {
-	verbose_trace_strong(modfn(@MOD, @FN), 'mkdir $path')
+	verbose_trace_strong(modfn(@MOD, @FN), 'mkdir ${path}')
 	os.mkdir(path) or {
 		verbose_trace(modfn(@MOD, @FN), '## failed.')
 		return err
@@ -104,7 +104,7 @@ pub fn mkdir(path string) ? {
 }
 
 pub fn mkdir_all(path string) ? {
-	verbose_trace_strong(modfn(@MOD, @FN), 'mkdir -p $path')
+	verbose_trace_strong(modfn(@MOD, @FN), 'mkdir -p ${path}')
 	os.mkdir_all(path) or {
 		verbose_trace(modfn(@MOD, @FN), '## failed.')
 		return err
@@ -112,7 +112,7 @@ pub fn mkdir_all(path string) ? {
 }
 
 pub fn rmrf(path string) {
-	verbose_trace_strong(modfn(@MOD, @FN), 'rm -rf $path')
+	verbose_trace_strong(modfn(@MOD, @FN), 'rm -rf ${path}')
 	if os.exists(path) {
 		if os.is_dir(path) {
 			os.rmdir_all(path) or { panic(err) }
@@ -165,10 +165,10 @@ pub fn exit_0_status(cmd string) bool {
 
 pub fn tool_must_exist(toolcmd string) {
 	verbose_trace(modfn(@MOD, @FN), toolcmd)
-	if exit_0_status('type $toolcmd') {
+	if exit_0_status('type ${toolcmd}') {
 		return
 	}
-	eprintln('Missing tool: $toolcmd')
+	eprintln('Missing tool: ${toolcmd}')
 	eprintln('Please try again after you install it.')
 	exit(1)
 }
@@ -182,6 +182,6 @@ pub fn used_tools_must_exist(tools []string) {
 pub fn show_sizes_of_files(files []string) {
 	for f in files {
 		size := os.file_size(f)
-		println('$size $f') // println('${size:10d} $f')
+		println('${size} ${f}') // println('${size:10d} $f')
 	}
 }

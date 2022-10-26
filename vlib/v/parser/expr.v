@@ -17,7 +17,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 }
 
 pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
-	p.trace_parser('expr($precedence)')
+	p.trace_parser('expr(${precedence})')
 	mut node := ast.empty_expr
 	is_stmt_ident := p.is_stmt_ident
 	p.is_stmt_ident = false
@@ -294,7 +294,7 @@ pub fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			st := p.parse_type()
 			p.check(.comma)
 			if p.tok.kind != .name {
-				return p.unexpected(got: '`$p.tok.lit`', additional_msg: 'expecting struct field')
+				return p.unexpected(got: '`${p.tok.lit}`', additional_msg: 'expecting struct field')
 			}
 			field := p.tok.lit
 			p.next()
@@ -464,12 +464,12 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 			// detect `f(x++)`, `a[x++]`
 			if p.peek_tok.kind in [.rpar, .rsbr] {
 				if !p.inside_ct_if_expr {
-					p.warn_with_pos('`$p.tok.kind` operator can only be used as a statement',
+					p.warn_with_pos('`${p.tok.kind}` operator can only be used as a statement',
 						p.tok.pos())
 				}
 			}
 			if p.tok.kind in [.inc, .dec] && p.prev_tok.line_nr != p.tok.line_nr {
-				p.error_with_pos('$p.tok must be on the same line as the previous token',
+				p.error_with_pos('${p.tok} must be on the same line as the previous token',
 					p.tok.pos())
 			}
 			if mut node is ast.IndexExpr {
@@ -598,7 +598,7 @@ fn (mut p Parser) prefix_expr() ast.Expr {
 		}
 		if mut right is ast.ParExpr {
 			if right.expr is ast.StructInit {
-				p.note_with_pos('unnecessary `()`, use `&$right.expr` instead of `&($right.expr)`',
+				p.note_with_pos('unnecessary `()`, use `&${right.expr}` instead of `&(${right.expr})`',
 					right.pos)
 				right = right.expr
 			}

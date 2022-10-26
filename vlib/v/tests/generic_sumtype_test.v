@@ -34,7 +34,7 @@ fn test_generic_sumtype_unwrapping() {
 fn test_generic_sumtype_auto_str() {
 	x := MyOption<string>('hi')
 	y := MyOption<bool>(None{})
-	assert '$x, $y' == "MyOption<string>('hi'), MyOption<bool>(None{})"
+	assert '${x}, ${y}' == "MyOption<string>('hi'), MyOption<bool>(None{})"
 }
 
 struct Foo<T> {

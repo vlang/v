@@ -10,7 +10,7 @@ fn get() Foo {
 
 fn foo(f Foo) string {
 	println(f)
-	return '$f'
+	return '${f}'
 }
 
 fn test_match_expr_with_enum() {

@@ -41,7 +41,7 @@ fn test_find_abs_path_of_executable() {
 	setenv('PATH', original_path, true)
 	chdir(home_dir())! // change to a *completely* different folder, to avoid the original PATH containing `.`
 	if x := find_abs_path_of_executable('myclang') {
-		eprintln('> find_abs_path_of_executable should have failed, but instead it found: $x')
+		eprintln('> find_abs_path_of_executable should have failed, but instead it found: ${x}')
 		assert false
 	}
 }

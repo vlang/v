@@ -57,7 +57,7 @@ pub fn (o &OrderedDepMap) get(name string) []string {
 
 pub fn (mut o OrderedDepMap) delete(name string) {
 	if name !in o.data {
-		panic('delete: no such key: $name')
+		panic('delete: no such key: ${name}')
 	}
 	for i, _ in o.keys {
 		if o.keys[i] == name {
@@ -155,7 +155,7 @@ pub fn (graph &DepGraph) display() string {
 	mut out := []string{}
 	for node in graph.nodes {
 		for dep in node.deps {
-			out << ' * $node.name -> $dep'
+			out << ' * ${node.name} -> ${dep}'
 		}
 	}
 	return out.join('\n')
@@ -219,7 +219,7 @@ fn (mut nn NodeNames) is_part_of_cycle(name string, already_seen []string) (bool
 }
 
 pub fn show(graph &DepGraph, path string) {
-	mut dg := dotgraph.new('ModGraph', 'ModGraph for $path', 'blue')
+	mut dg := dotgraph.new('ModGraph', 'ModGraph for ${path}', 'blue')
 	mbuiltin := 'builtin'
 	for node in graph.nodes {
 		is_main := node.name == 'main'

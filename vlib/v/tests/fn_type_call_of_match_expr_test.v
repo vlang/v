@@ -9,7 +9,7 @@ fn fnz_z() string {
 }
 
 fn fnz_o(one int) string {
-	return 'Got one $one'
+	return 'Got one ${one}'
 }
 
 fn test_fn_type_call_of_match_expr() {

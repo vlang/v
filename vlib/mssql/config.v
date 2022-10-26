@@ -12,9 +12,9 @@ pub:
 }
 
 pub fn (cfg Config) get_conn_str() string {
-	mut str := 'Driver=$cfg.driver;Server=$cfg.server;UID=$cfg.uid;PWD=$cfg.pwd'
+	mut str := 'Driver=${cfg.driver};Server=${cfg.server};UID=${cfg.uid};PWD=${cfg.pwd}'
 	if cfg.dbname != '' {
-		str += ';Database=$cfg.dbname'
+		str += ';Database=${cfg.dbname}'
 	}
 	return str
 }

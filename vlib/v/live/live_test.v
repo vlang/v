@@ -85,18 +85,18 @@ fn vprintln(s string) {
 }
 
 fn testsuite_end() {
-	vprintln('source: $source_file')
-	vprintln('output: $output_file')
+	vprintln('source: ${source_file}')
+	vprintln('output: ${output_file}')
 	vprintln('---------------------------------------------------------------------------')
 	output_lines := os.read_lines(output_file) or {
-		panic('could not read $output_file, error: $err')
+		panic('could not read ${output_file}, error: ${err}')
 	}
 	mut histogram := map[string]int{}
 	for line in output_lines {
 		histogram[line] = histogram[line] + 1
 	}
 	for k, v in histogram {
-		eprintln('> found ${v:5d} times: $k')
+		eprintln('> found ${v:5d} times: ${k}')
 	}
 	vprintln('---------------------------------------------------------------------------')
 	assert histogram['START'] > 0
@@ -108,7 +108,7 @@ fn testsuite_end() {
 
 fn change_source(new string) {
 	time.sleep(100 * time.millisecond)
-	vprintln('> change ORIGINAL to: $new')
+	vprintln('> change ORIGINAL to: ${new}')
 	atomic_write_source(live_program_source.replace('ORIGINAL', new))
 	wait_for_file(new)
 }
@@ -116,11 +116,11 @@ fn change_source(new string) {
 fn wait_for_file(new string) {
 	time.sleep(100 * time.millisecond)
 	expected_file := os.join_path(vtmp_folder, new + '.txt')
-	eprintln('waiting for $expected_file ...')
+	eprintln('waiting for ${expected_file} ...')
 	max_wait_cycles := edefault('WAIT_CYCLES', '1').int()
 	for i := 0; i <= max_wait_cycles; i++ {
 		if i % 25 == 0 {
-			vprintln('   checking ${i:-10d} for $expected_file ...')
+			vprintln('   checking ${i:-10d} for ${expected_file} ...')
 		}
 		if os.exists(expected_file) {
 			assert true
@@ -139,8 +139,8 @@ fn setup_cycles_environment() {
 		//		max_live_cycles *= 5
 		//		max_wait_cycles *= 5
 	}
-	os.setenv('LIVE_CYCLES', '$max_live_cycles', true)
-	os.setenv('WAIT_CYCLES', '$max_wait_cycles', true)
+	os.setenv('LIVE_CYCLES', '${max_live_cycles}', true)
+	os.setenv('WAIT_CYCLES', '${max_wait_cycles}', true)
 }
 
 //
@@ -150,7 +150,7 @@ fn test_live_program_can_be_compiled() {
 	os.system('${os.quoted_path(vexe)} -nocolor -live -o ${os.quoted_path(genexe_file)} ${os.quoted_path(source_file)}')
 	//
 	cmd := '${os.quoted_path(genexe_file)} > /dev/null &'
-	eprintln('Running with: $cmd')
+	eprintln('Running with: ${cmd}')
 	res := os.system(cmd)
 	assert res == 0
 	eprintln('... running in the background')

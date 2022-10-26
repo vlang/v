@@ -3,7 +3,7 @@ import time
 fn test_parse() {
 	s := '2018-01-27 12:48:34'
 	t := time.parse(s) or {
-		eprintln('> failing format: $s | err: $err')
+		eprintln('> failing format: ${s} | err: ${err}')
 		assert false
 		return
 	}
@@ -24,7 +24,7 @@ fn test_parse_invalid() {
 fn test_parse_rfc2822() {
 	s1 := 'Thu, 12 Dec 2019 06:07:45 GMT'
 	t1 := time.parse_rfc2822(s1) or {
-		eprintln('> failing format: $s1 | err: $err')
+		eprintln('> failing format: ${s1} | err: ${err}')
 		assert false
 		return
 	}
@@ -33,7 +33,7 @@ fn test_parse_rfc2822() {
 	assert t1.unix == 1576130865
 	s2 := 'Thu 12 Dec 2019 06:07:45 +0800'
 	t2 := time.parse_rfc2822(s2) or {
-		eprintln('> failing format: $s2 | err: $err')
+		eprintln('> failing format: ${s2} | err: ${err}')
 		assert false
 		return
 	}
@@ -70,7 +70,7 @@ fn test_parse_iso8601() {
 	]
 	for i, format in formats {
 		t := time.parse_iso8601(format) or {
-			eprintln('>>> failing format: $format | err: $err')
+			eprintln('>>> failing format: ${format} | err: ${err}')
 			assert false
 			continue
 		}
@@ -94,7 +94,7 @@ fn test_parse_iso8601() {
 fn test_parse_iso8601_local() {
 	format := '2020-06-05T15:38:06.015959'
 	t := time.parse_iso8601(format) or {
-		eprintln('> failing format: $format | err: $err')
+		eprintln('> failing format: ${format} | err: ${err}')
 		assert false
 		return
 	}
@@ -132,7 +132,7 @@ fn test_parse_iso8601_invalid() {
 fn test_parse_iso8601_date_only() {
 	format := '2020-06-05'
 	t := time.parse_iso8601(format) or {
-		eprintln('> failing format: $format | err: $err')
+		eprintln('> failing format: ${format} | err: ${err}')
 		assert false
 		return
 	}
@@ -147,7 +147,7 @@ fn test_parse_iso8601_date_only() {
 
 fn check_invalid_date(s string) {
 	if date := time.parse(s) {
-		eprintln('invalid date: "$s" => "$date"')
+		eprintln('invalid date: "${s}" => "${date}"')
 		assert false
 	}
 	assert true
@@ -176,7 +176,7 @@ fn test_parse_rfc3339() {
 	for pair in pairs {
 		input, expected := pair[0], pair[1]
 		res := time.parse_rfc3339(input) or {
-			eprintln('>>> failing input: $input | err: $err')
+			eprintln('>>> failing input: ${input} | err: ${err}')
 			assert false
 			return
 		}

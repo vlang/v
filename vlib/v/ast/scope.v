@@ -190,16 +190,16 @@ pub fn (sc Scope) show(depth int, max_depth int) string {
 	for _ in 0 .. depth * 4 {
 		indent += ' '
 	}
-	out += '$indent# $sc.start_pos - $sc.end_pos\n'
+	out += '${indent}# ${sc.start_pos} - ${sc.end_pos}\n'
 	for _, obj in sc.objects {
 		match obj {
-			ConstField { out += '$indent  * const: $obj.name - $obj.typ\n' }
-			Var { out += '$indent  * var: $obj.name - $obj.typ\n' }
+			ConstField { out += '${indent}  * const: ${obj.name} - ${obj.typ}\n' }
+			Var { out += '${indent}  * var: ${obj.name} - ${obj.typ}\n' }
 			else {}
 		}
 	}
 	for _, field in sc.struct_fields {
-		out += '$indent  * struct_field: $field.struct_type $field.name - $field.typ\n'
+		out += '${indent}  * struct_field: ${field.struct_type} ${field.name} - ${field.typ}\n'
 	}
 	if max_depth == 0 || depth < max_depth - 1 {
 		for i, _ in sc.children {

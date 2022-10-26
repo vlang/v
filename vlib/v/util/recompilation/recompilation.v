@@ -19,7 +19,7 @@ pub fn must_be_enabled(vroot string, error_message string) {
 	file := disabling_file(vroot)
 	is_recompilation_disabled := os.exists(file)
 	if is_recompilation_disabled {
-		eprintln('Recompilation is disabled, since there is a "$file" file present.')
+		eprintln('Recompilation is disabled, since there is a "${file}" file present.')
 		eprintln(error_message)
 		exit(1)
 	}

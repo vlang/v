@@ -10,9 +10,9 @@ fn main() {
 		'E': ['B', 'F']
 		'F': ['C', 'E']
 	}
-	println('Graph: $graph')
+	println('Graph: ${graph}')
 	path := breadth_first_search_path(graph, 'A', 'F')
-	println('\n The shortest path from node A to node F is: $path.reverse()')
+	println('\n The shortest path from node A to node F is: ${path.reverse()}')
 }
 
 // Breadth-First Search (BFS) allows you to find the shortest distance between two nodes in the graph.
@@ -35,7 +35,7 @@ fn breadth_first_search_path(graph map[string][]string, start string, target str
 				return path
 			}
 			// Expansion of node removed from  queue
-			print('\n Expansion of node $node (true/false): ${graph[node]}')
+			print('\n Expansion of node ${node} (true/false): ${graph[node]}')
 			// take  all nodes from the node
 			for vertex in graph[node] { // println("\n ...${vertex}")	
 				// not explored yet
@@ -43,7 +43,7 @@ fn breadth_first_search_path(graph map[string][]string, start string, target str
 					queue << vertex
 				}
 			}
-			print('\n QUEUE: $queue (only not visited) \n Visited: $visited')
+			print('\n QUEUE: ${queue} (only not visited) \n Visited: ${visited}')
 		}
 	}
 	path = ['Path not found, problem in the Graph, start or end nodes! ']
@@ -70,7 +70,7 @@ fn visited_init(a_graph map[string][]string) map[string]bool {
 
 // Based in the current node that is final, search for its parent, already visited, up to the root or start node
 fn build_path_reverse(graph map[string][]string, start string, final string, visited map[string]bool) []string {
-	print('\n\n Nodes visited (true) or no (false): $visited')
+	print('\n\n Nodes visited (true) or no (false): ${visited}')
 	array_of_nodes := graph.keys()
 	mut current := final
 	mut path := []string{}

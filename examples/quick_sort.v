@@ -10,7 +10,7 @@ fn main() {
 	for _ in 0 .. gen_len {
 		arr << rand.intn(gen_max) or { 0 }
 	}
-	println('length of random array is $arr.len')
+	println('length of random array is ${arr.len}')
 	println('before quick sort whether array is sorted: ${is_sorted<int>(arr)}')
 	quick_sort<int>(mut arr, 0, arr.len - 1)
 	println('after quick sort whether array is sorted: ${is_sorted<int>(arr)}')

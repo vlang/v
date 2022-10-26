@@ -18,7 +18,7 @@ fn test_fixed_array_const_size() {
 fn test_fixed_array_const_u64_size() {
 	a := [2 * u64_size]f64{}
 	println(a)
-	assert '$a' == '[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]'
+	assert '${a}' == '[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]'
 }
 
 const n = u64(5_000)

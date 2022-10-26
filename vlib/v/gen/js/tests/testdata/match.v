@@ -14,10 +14,10 @@ type Vec = Vec2d | Vec3d
 fn match_vec(v Vec) {
 	match v {
 		Vec2d {
-			println('Vec2d($v.x,$v.y)')
+			println('Vec2d(${v.x},${v.y})')
 		}
 		Vec3d {
-			println('Vec2d($v.x,$v.y,$v.z)')
+			println('Vec2d(${v.x},${v.y},${v.z})')
 		}
 	}
 }

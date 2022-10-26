@@ -116,7 +116,7 @@ fn new_channel_st_noscan(n u32, st u32) &Channel {
 }
 
 pub fn (ch &Channel) auto_str(typename string) string {
-	return 'chan $typename{cap: $ch.cap, closed: $ch.closed}'
+	return 'chan ${typename}{cap: ${ch.cap}, closed: ${ch.closed}}'
 }
 
 pub fn (mut ch Channel) close() {

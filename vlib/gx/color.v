@@ -248,7 +248,7 @@ pub fn (c Color) eq(c2 Color) bool {
 
 // str returns a string representation of the Color `c`
 pub fn (c Color) str() string {
-	return 'Color{$c.r, $c.g, $c.b, $c.a}'
+	return 'Color{${c.r}, ${c.g}, ${c.b}, ${c.a}}'
 }
 
 // rgba8 - convert a color value to an int in the RGBA8 order.
@@ -305,5 +305,5 @@ pub fn color_from_string(s string) Color {
 
 // to_css_string returns a CSS compatible string e.g. `rgba(10,11,12,13)` of the color `c`.
 pub fn (c Color) to_css_string() string {
-	return 'rgba($c.r,$c.g,$c.b,$c.a)'
+	return 'rgba(${c.r},${c.g},${c.b},${c.a})'
 }

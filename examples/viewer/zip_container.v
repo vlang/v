@@ -12,7 +12,7 @@ import sokol.gfx
 import szip
 
 fn (mut il Item_list) scan_zip(path string, in_index int) ! {
-	println('Scanning ZIP [$path]')
+	println('Scanning ZIP [${path}]')
 	mut zp := szip.open(path, szip.CompressionLevel.no_compression, szip.OpenMode.read_only)!
 	n_entries := zp.total()!
 	// println(n_entries)

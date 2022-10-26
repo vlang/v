@@ -28,7 +28,7 @@ fn test_using_a_map_of_speaker_interfaces() {
 	room.add('she', Human{ name: 'Maria' })
 	mut text := ''
 	for name, subject in room.talkers {
-		line := '${name:12s}: $subject.say()'
+		line := '${name:12s}: ${subject.say()}'
 		println(line)
 		text += line
 	}
@@ -42,7 +42,7 @@ struct Cat {
 }
 
 fn (c &Cat) say() string {
-	return '$c.name meows "MEOW!"'
+	return '${c.name} meows "MEOW!"'
 }
 
 struct Dog {
@@ -50,7 +50,7 @@ struct Dog {
 }
 
 fn (d &Dog) say() string {
-	return '$d.name barks "Bau Bau!"'
+	return '${d.name} barks "Bau Bau!"'
 }
 
 struct Human {
@@ -58,5 +58,5 @@ struct Human {
 }
 
 fn (h &Human) say() string {
-	return '$h.name says "Hello"'
+	return '${h.name} says "Hello"'
 }

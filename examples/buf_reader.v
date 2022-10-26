@@ -12,7 +12,7 @@ fn main() {
 	mut r := io.new_buffered_reader(reader: conn)
 	for {
 		l := r.read_line() or { break }
-		println('$l')
+		println('${l}')
 		// Make it nice and obvious that we are doing this line by line
 		time.sleep(100 * time.millisecond)
 	}

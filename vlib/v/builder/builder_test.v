@@ -33,7 +33,7 @@ fn test_conditional_executable_removal() {
 	assert executable !in after_run_file_list
 
 	assert os.execute('${os.quoted_path(vexe)} .').exit_code == 0
-	assert os.execute('./$executable').output.trim_space() == 'Hello World!'
+	assert os.execute('./${executable}').output.trim_space() == 'Hello World!'
 	after_compilation__ := os.ls(test_path)?
 	dump(after_compilation__)
 	assert executable in after_compilation__

@@ -14,16 +14,16 @@ fn main() {
 		return
 	}
 	for user in users {
-		println('$user.name: $user.age')
+		println('${user.name}: ${user.age}')
 	}
 	println('')
 	for i, user in users {
-		println('$i) $user.name')
+		println('${i}) ${user.name}')
 		if !user.can_register() {
-			println('Cannot register $user.name, they are too young')
+			println('Cannot register ${user.name}, they are too young')
 		} else {
 			users[i].register()
-			println('$user.name is registered')
+			println('${user.name} is registered')
 		}
 	}
 	// Let's encode users again just for fun

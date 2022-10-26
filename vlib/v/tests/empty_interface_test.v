@@ -3,7 +3,7 @@ interface Any {}
 fn print_out(x Any) string {
 	if x is string {
 		println(x)
-		return '$x'
+		return '${x}'
 	}
 	return ''
 }

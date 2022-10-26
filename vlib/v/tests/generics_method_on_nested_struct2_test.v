@@ -11,7 +11,7 @@ fn (mut i Inner<T>) next<S>(input S) f64 {
 	$if S is f32 {
 		return 32
 	} $else {
-		panic('"$S.name" is not supported')
+		panic('"${S.name}" is not supported')
 		return 0
 	}
 }
@@ -20,7 +20,7 @@ fn (mut o Outer<T>) next<S>(input S) f64 {
 	$if S is f32 {
 		return o.inner.next(input)
 	} $else {
-		panic('"$S.name" is not supported')
+		panic('"${S.name}" is not supported')
 		return 0
 	}
 }

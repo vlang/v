@@ -167,11 +167,11 @@ pub fn ls(path string) ![]string {
 	// }
 	// C.FindClose(h_find_dir)
 	if !is_dir(path) {
-		return error('ls() couldnt open dir "$path": directory does not exist')
+		return error('ls() couldnt open dir "${path}": directory does not exist')
 	}
 	// NOTE: Should eventually have path struct & os dependant path seperator (eg os.PATH_SEPERATOR)
 	// we need to add files to path eg. c:\windows\*.dll or :\windows\*
-	path_files := '$path\\*'
+	path_files := '${path}\\*'
 	// NOTE:TODO: once we have a way to convert utf16 wide character to utf8
 	// we should use FindFirstFileW and FindNextFileW
 	h_find_files := C.FindFirstFile(path_files.to_wide(), voidptr(&find_file_data))
@@ -196,7 +196,7 @@ pub fn mkdir(path string, params MkdirParams) ! {
 	}
 	apath := real_path(path)
 	if !C.CreateDirectory(apath.to_wide(), 0) {
-		return error('mkdir failed for "$apath", because CreateDirectory returned: ' +
+		return error('mkdir failed for "${apath}", because CreateDirectory returned: ' +
 			get_error_msg(int(C.GetLastError())))
 	}
 }
@@ -311,7 +311,7 @@ pub fn raw_execute(cmd string) Result {
 		error_msg := get_error_msg(error_num)
 		return Result{
 			exit_code: error_num
-			output: 'exec failed (CreatePipe): $error_msg'
+			output: 'exec failed (CreatePipe): ${error_msg}'
 		}
 	}
 	set_handle_info_ok := C.SetHandleInformation(child_stdout_read, C.HANDLE_FLAG_INHERIT,
@@ -321,7 +321,7 @@ pub fn raw_execute(cmd string) Result {
 		error_msg := get_error_msg(error_num)
 		return Result{
 			exit_code: error_num
-			output: 'exec failed (SetHandleInformation): $error_msg'
+			output: 'exec failed (SetHandleInformation): ${error_msg}'
 		}
 	}
 	proc_info := ProcessInformation{}
@@ -345,7 +345,7 @@ pub fn raw_execute(cmd string) Result {
 		error_msg := get_error_msg(error_num)
 		return Result{
 			exit_code: error_num
-			output: 'exec failed (CreateProcess) with code $error_num: $error_msg cmd: $cmd'
+			output: 'exec failed (CreateProcess) with code ${error_num}: ${error_msg} cmd: ${cmd}'
 		}
 	}
 	C.CloseHandle(child_stdin)
@@ -496,7 +496,7 @@ pub fn loginname() string {
 // by creating an empty file in it, then deleting it.
 pub fn ensure_folder_is_writable(folder string) ! {
 	if !exists(folder) {
-		return error_with_code('`$folder` does not exist', 1)
+		return error_with_code('`${folder}` does not exist', 1)
 	}
 	if !is_dir(folder) {
 		return error_with_code('`folder` is not a folder', 2)
@@ -504,7 +504,7 @@ pub fn ensure_folder_is_writable(folder string) ! {
 	tmp_folder_name := 'tmp_perm_check_pid_' + getpid().str()
 	tmp_perm_check := join_path_single(folder, tmp_folder_name)
 	write_file(tmp_perm_check, 'test') or {
-		return error_with_code('cannot write to folder "$folder": $err', 3)
+		return error_with_code('cannot write to folder "${folder}": ${err}', 3)
 	}
 	rm(tmp_perm_check)!
 }

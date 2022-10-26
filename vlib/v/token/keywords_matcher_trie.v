@@ -104,7 +104,7 @@ pub fn (node &TrieNode) show(level int) {
 		}
 	}
 	children := non_nil_children.map(u8(it).ascii_str())
-	eprintln('> level: ${level:2} | value: ${node.value:12} | non_nil_children: ${non_nil_children.len:2} | $children')
+	eprintln('> level: ${level:2} | value: ${node.value:12} | non_nil_children: ${non_nil_children.len:2} | ${children}')
 	for x in node.children {
 		if x != unsafe { nil } {
 			x.show(level + 1)

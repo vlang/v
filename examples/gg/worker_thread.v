@@ -77,7 +77,7 @@ fn frame(mut app App) {
 		app.counter += i64(f64(count) / time.second)
 	}
 
-	label := '$app.counter'
+	label := '${app.counter}'
 	label_width := (f64(label.len * text_cfg.size) / 4.0)
 	label_height := (f64(1 * text_cfg.size) / 2.0)
 	mut x := f32(size.width) * 0.5 - label_width

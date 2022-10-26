@@ -15,19 +15,19 @@ fn test_decode() {
 
 fn test_decode_fails() ! {
 	if x := decode('foo') {
-		return error('expected decode to fail, got $x')
+		return error('expected decode to fail, got ${x}')
 	}
 	if x := decode('g') {
-		return error('expected decode to fail, got $x')
+		return error('expected decode to fail, got ${x}')
 	}
 	if x := decode('000000000g') {
-		return error('expected decode to fail, got $x')
+		return error('expected decode to fail, got ${x}')
 	}
 	if x := decode('_') {
-		return error('expected decode to fail, got $x')
+		return error('expected decode to fail, got ${x}')
 	}
 	if x := decode('!') {
-		return error('expected decode to fail, got $x')
+		return error('expected decode to fail, got ${x}')
 	}
 }
 

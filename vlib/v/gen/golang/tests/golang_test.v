@@ -36,8 +36,8 @@ fn test_golang() {
 		full_test_path := os.real_path(os.join_path(dir, test))
 		test_file_name := os.file_name(test)
 		relative_test_path := full_test_path.replace(vroot + '/', '')
-		work_test_path := '$wrkdir/$test_file_name'
-		go_out_test_path := '$wrkdir/${test_file_name}.go'
+		work_test_path := '${wrkdir}/${test_file_name}'
+		go_out_test_path := '${wrkdir}/${test_file_name}.go'
 		cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(go_out_test_path)} -b go ${os.quoted_path(full_test_path)}'
 		if is_verbose {
 			println(cmd)
@@ -48,28 +48,28 @@ fn test_golang() {
 			eprintln(bench.step_message_fail(cmd))
 			continue
 		}
-		tmperrfile := '$dir/${test}.tmperr'
+		tmperrfile := '${dir}/${test}.tmperr'
 		go_basename := $if windows { 'go.exe' } $else { 'go' }
-		res := os.execute('$go_basename run ${os.quoted_path(go_out_test_path)} 2> ${os.quoted_path(tmperrfile)}')
+		res := os.execute('${go_basename} run ${os.quoted_path(go_out_test_path)} 2> ${os.quoted_path(tmperrfile)}')
 		if res.exit_code != 0 {
 			bench.fail()
-			eprintln(bench.step_message_fail('$full_test_path failed to run'))
+			eprintln(bench.step_message_fail('${full_test_path} failed to run'))
 			eprintln(res.output)
 			continue
 		}
-		mut expected := os.read_file('$dir/${test}.out') or { panic(err) }
-		errfile := '$dir/${test}.err'
+		mut expected := os.read_file('${dir}/${test}.out') or { panic(err) }
+		errfile := '${dir}/${test}.err'
 		if os.exists(errfile) {
-			mut err_expected := os.read_file('$dir/${test}.err') or { panic(err) }
+			mut err_expected := os.read_file('${dir}/${test}.err') or { panic(err) }
 			err_expected = err_expected.trim_right('\r\n').replace('\r\n', '\n')
 			errstr := os.read_file(tmperrfile) or { panic(err) }
 			mut err_found := errstr.trim_right('\r\n').replace('\r\n', '\n')
 			if err_expected != err_found {
 				println(term.red('FAIL'))
 				println('============')
-				println('stderr expected: "$err_expected" len=$err_expected.len')
+				println('stderr expected: "${err_expected}" len=${err_expected.len}')
 				println('============')
-				println('stderr found:"$err_found" len=$err_found.len')
+				println('stderr found:"${err_found}" len=${err_found.len}')
 				println('============\n')
 				bench.fail()
 				continue
@@ -82,9 +82,9 @@ fn test_golang() {
 		if expected != found {
 			println(term.red('FAIL'))
 			println('============')
-			println('expected: "$expected" len=$expected.len')
+			println('expected: "${expected}" len=${expected.len}')
 			println('============')
-			println('found:"$found" len=$found.len')
+			println('found:"${found}" len=${found.len}')
 			println('============\n')
 			bench.fail()
 			continue

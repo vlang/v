@@ -120,7 +120,7 @@ pub fn os_from_string(os_str string) !OS {
 				}
 				else {}
 			}
-			return error('bad OS $os_str')
+			return error('bad OS ${os_str}')
 		}
 	}
 }

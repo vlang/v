@@ -12,12 +12,12 @@ fn test_if_expr_with_sumtype() {
 	mut arr := []Token{}
 	ret1 := next(mut arr)
 	println(ret1)
-	assert '$ret1' == 'Token(A_str{})'
+	assert '${ret1}' == 'Token(A_str{})'
 
 	arr << A_str{}
 	arr << B_str{}
 
 	ret2 := next(mut arr)
 	println(ret2)
-	assert '$ret2' == 'Token(B_str{})'
+	assert '${ret2}' == 'Token(B_str{})'
 }

@@ -27,7 +27,7 @@ const (
 fn main() {
 	fp := os.join_path(@VROOT, prime.toml_path)
 	if !prime_file_exists(fp) {
-		panic('expected file |$fp| - not found.')
+		panic('expected file |${fp}| - not found.')
 	}
 
 	mut clocks := Clocks(map[string]benchmark.Benchmark{})
@@ -87,10 +87,10 @@ fn main() {
 		['biggest', 'crazy', 'giga'],
 	].map(PrimeCfg{it[0], it[1], it[2]})
 
-	println('\n$cfgs.len x Tests')
+	println('\n${cfgs.len} x Tests')
 
 	for i, prime_cfg in cfgs {
-		println('\n#-${i + 1}(Stack) "$prime_cfg"')
+		println('\n#-${i + 1}(Stack) "${prime_cfg}"')
 		bench_euclid_vs_binary(prime_cfg, false, predicate_fn, mut clocks)
 
 		// just-to-be-sure, but makes no difference in this test.
@@ -114,7 +114,7 @@ fn main() {
 		'\n',
 		'This test covers multiplied primes up-to a length of 300-char-digits in ',
 		'a decimal-string. This equals (188-byte) == 47 x u32-values.',
-		'edit/change primes in $prime.toml_path',
+		'edit/change primes in ${prime.toml_path}',
 		'Improvements & critique are welcome : \n',
 		'https://lemire.me/blog/2013/12/26/fastest-way-to-compute-the-greatest-common-divisor/',
 	].join('\n')
@@ -162,11 +162,11 @@ fn run_benchmark(data []DataI, heap bool, mut clocks Clocks) bool {
 	ratio := (buffer_space * 4) / (testdata.len * 3)
 
 	msg := [
-		'avg-$ratio-byte/Prime, $min_byte-byte < Prime < $max_byte-byte \n',
+		'avg-${ratio}-byte/Prime, ${min_byte}-byte < Prime < ${max_byte}-byte \n',
 		'~${buffer_space * 4 / 1024}-Kb-',
 		if heap { 'Heap' } else { 'Stack' },
-		'-space for $testdata.len-items x ',
-		'$rounds-rounds',
+		'-space for ${testdata.len}-items x ',
+		'${rounds}-rounds',
 	].join('')
 	println(msg)
 
@@ -179,20 +179,20 @@ fn run_benchmark(data []DataI, heap bool, mut clocks Clocks) bool {
 				match algo {
 					'euclid' {
 						if set.r != set.aa.gcd(set.bb) {
-							eprintln('$algo failed ?')
+							eprintln('${algo} failed ?')
 							clock.fail()
 							break
 						}
 					}
 					'gcd_binary' {
 						if set.r != set.aa.gcd_binary(set.bb) {
-							eprintln('$algo failed ?')
+							eprintln('${algo} failed ?')
 							clock.fail()
 							break
 						}
 					}
 					else {
-						eprintln('unknown algo was "$algo"')
+						eprintln('unknown algo was "${algo}"')
 						continue
 					}
 				}
@@ -252,7 +252,7 @@ fn prepare_and_test_gcd(primeset PrimeSet, test fn (ps PrimeSet) bool) GCDSet {
 	bb := cast_bi(primeset.b) * r
 	gcd := aa.gcd(bb)
 
-	return GCDSet{'$gcd', '$aa', '$bb'}
+	return GCDSet{'${gcd}', '${aa}', '${bb}'}
 }
 
 fn prime_file_exists(path string) bool {
@@ -266,7 +266,7 @@ pub fn bi_from_decimal_string(s string) big.Integer {
 	return big.integer_from_radix(s, u32(10)) or {
 		msg := [
 			'Cannot convert prime from decimal-string.',
-			'prime was : "$s"\n',
+			'prime was : "${s}"\n',
 		].join('\n')
 		panic(msg)
 	}
@@ -305,9 +305,9 @@ pub mut:
 
 pub fn (hd HeapData) to_primeset() PrimeSet {
 	return PrimeSet{
-		r: '$hd.r'
-		a: '$hd.aa'
-		b: '$hd.bb'
+		r: '${hd.r}'
+		a: '${hd.aa}'
+		b: '${hd.bb}'
 	}
 }
 
@@ -328,9 +328,9 @@ pub mut:
 
 pub fn (sd StackData) to_primeset() PrimeSet {
 	return PrimeSet{
-		r: '$sd.r'
-		a: '$sd.aa'
-		b: '$sd.bb'
+		r: '${sd.r}'
+		a: '${sd.aa}'
+		b: '${sd.bb}'
 	}
 }
 
