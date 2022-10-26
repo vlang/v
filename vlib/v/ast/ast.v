@@ -934,6 +934,7 @@ pub:
 pub mut:
 	cond      Expr
 	pkg_exist bool
+	is_else   bool
 	stmts     []Stmt
 	scope     &Scope = unsafe { nil }
 }

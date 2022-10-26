@@ -63,6 +63,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 					body_pos: body_pos.extend(p.tok.pos())
 					comments: comments
 					scope: p.scope
+					is_else: true
 				}
 				p.close_scope()
 				comments = []

@@ -39,6 +39,9 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) ast.Type {
 			c.error('unnecessary `()` in `$if_kind` condition, use `$if_kind expr {` instead of `$if_kind (expr) {`.',
 				branch.pos)
 		}
+		if branch.is_else && node.comptime_branch_idx == -1 {
+			node.comptime_branch_idx = i
+		}
 		if !node.has_else || i < node.branches.len - 1 {
 			if node.is_comptime {
 				skip_state = c.comptime_if_branch(branch.cond, branch.pos)
