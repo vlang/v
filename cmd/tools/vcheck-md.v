@@ -645,6 +645,7 @@ fn (mut f MDFile) autofix_example(e VCodeExample, vfile string) ! {
 	new_lines << f.lines#[e.eline..]
 	f.update_examples(new_lines)!
 	os.rm(vfile) or {}
+	f.examples = f.examples.filter(it.sline >= e.sline)
 	return ExampleWasRewritten{}
 }
 
