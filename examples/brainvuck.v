@@ -1,8 +1,5 @@
 import os
 
-// skip some array bounds checking
-// we can do this because we will never overshoot array size
-[direct_array_access]
 fn main() {
 	if os.args.len < 2 {
 		eprintln('you need to supply a brainfuck program as a string argument')
@@ -60,7 +57,7 @@ fn main() {
 		}
 		// increment the program counter to go to the next instruction
 		program_counter++
-		// back to line 26!
+		// back to line 20!
 	}
 
 	// print the state of the interpreter at the end
