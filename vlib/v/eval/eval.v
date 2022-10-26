@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 module eval
 
-import os
 import v.ast
 import v.pref
 import v.util
@@ -242,7 +241,7 @@ fn (e Eval) print_backtrace() {
 	for i := e.back_trace.len - 1; i >= 0; i-- {
 		t := e.back_trace[i]
 		file_path := if path := e.trace_file_paths[t.file_idx] {
-			os.real_path(path)
+			util.rel_or_abs_path(path)
 		} else {
 			t.file_idx.str()
 		}
