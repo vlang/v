@@ -91,9 +91,10 @@ pub fn (mut c Checker) struct_decl(mut node ast.StructDecl) {
 					c.check_expr_opt_call(field.default_expr, default_expr_type)
 				}
 				struct_sym.info.fields[i].default_expr_typ = default_expr_type
+				interface_implemented := sym.kind == .interface_
+					&& c.type_implements(default_expr_type, field.typ, field.pos)
 				c.check_expected(default_expr_type, field.typ) or {
-					if sym.kind == .interface_
-						&& c.type_implements(default_expr_type, field.typ, field.pos) {
+					if sym.kind == .interface_ && interface_implemented {
 						if !default_expr_type.is_ptr() && !default_expr_type.is_pointer()
 							&& !c.inside_unsafe {
 							if c.table.sym(default_expr_type).kind != .interface_ {
