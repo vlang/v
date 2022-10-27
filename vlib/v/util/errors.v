@@ -96,8 +96,7 @@ pub fn get_relative_or_real_filepath(path_ string) string {
 // formatted_error - `kind` may be 'error' or 'warn'
 pub fn formatted_error(kind string, omsg string, filepath string, pos token.Pos) string {
 	emsg := omsg.replace('main.', '')
-	path := rel_or_abs_path(filepath)
-
+	path := get_relative_or_real_filepath(filepath)
 	position := if filepath.len > 0 {
 		'$path:${pos.line_nr + 1}:${mu.max(1, pos.col + 1)}:'
 	} else {
