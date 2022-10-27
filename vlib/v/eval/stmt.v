@@ -104,6 +104,20 @@ pub fn (mut e Eval) stmt(stmt ast.Stmt) {
 		ast.Block {
 			e.stmts(stmt.stmts)
 		}
+		ast.AssertStmt {
+			cond := e.expr(stmt.expr, ast.bool_type_idx)
+			if !(cond as bool) {
+				t := e.back_trace.last()
+				file_path := if path := e.trace_file_paths[t.file_idx] {
+					path
+				} else {
+					t.file_idx.str()
+				}
+				fn_name := e.trace_function_names[t.fn_idx] or { t.fn_idx.str() }
+				eprintln('$file_path:${stmt.pos.line_nr + 1}: FAIL: fn $fn_name: assert $stmt.expr')
+				e.panic('Assertion failed...')
+			}
+		}
 		else {
 			e.error('unhandled statement $stmt.type_name()')
 		}

@@ -1,0 +1,21 @@
+fn is_greater_than(a int, b int) bool {
+    return a > b
+}
+
+fn is_less_than(a int, b int) bool {
+    return a < b
+}
+
+a := is_greater_than(5, 2) && is_less_than(8, 10)
+if a {
+    println('a: true')
+} else {
+    println('a: false')
+}
+
+b := is_greater_than(100, 20) || is_less_than(31, 18)
+if b {
+    println('b: true')
+} else {
+    println('b: false')
+}
