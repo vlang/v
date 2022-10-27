@@ -170,6 +170,14 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 		ast.InfixExpr {
 			left := e.expr(expr.left, expr.left_type)
 			right := e.expr(expr.right, expr.right_type)
+			if expecting == ast.bool_type_idx && expr.op in [.logical_or, .and] {
+				left_b := left as bool
+				right_b := right as bool
+				if expr.op == .logical_or {
+					return left_b || right_b
+				}
+				return left_b && right_b
+			}
 			return e.infix_expr(left, right, expr.op, expecting)
 		}
 		ast.IntegerLiteral {
