@@ -1,0 +1,6 @@
+println(@FN)
+println(@MOD)
+println(@LINE)
+println(@COLUMN)
+println(@VHASH)
+println(@FILE_LINE)

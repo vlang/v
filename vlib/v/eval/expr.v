@@ -524,7 +524,10 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 			eprintln('[$e.trace_file_paths.last():$expr.pos.line_nr] $expr.expr: $value')
 			return empty
 		}
-		ast.AnonFn, ast.ArrayDecompose, ast.AsCast, ast.Assoc, ast.AtExpr, ast.CTempVar,
+		ast.AtExpr {
+			return expr.val
+		}
+		ast.AnonFn, ast.ArrayDecompose, ast.AsCast, ast.Assoc, ast.CTempVar,
 		ast.ChanInit, ast.Comment, ast.ComptimeCall, ast.ComptimeSelector, ast.ComptimeType,
 		ast.ConcatExpr, ast.EmptyExpr, ast.EnumVal, ast.GoExpr, ast.IfGuardExpr, ast.IndexExpr,
 		ast.IsRefType, ast.Likely, ast.LockExpr, ast.MapInit, ast.MatchExpr, ast.NodeError,
