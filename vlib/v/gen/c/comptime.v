@@ -75,7 +75,7 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 		} else {
 			// return $tmpl string
 			g.write(cur_line)
-			if g.inside_return {
+			if g.inside_return_tmpl {
 				g.write('return ')
 			}
 			g.write('_tmpl_res_$fn_name')

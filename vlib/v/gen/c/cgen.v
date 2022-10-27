@@ -126,6 +126,7 @@ mut:
 	inside_match_result       bool
 	inside_vweb_tmpl          bool
 	inside_return             bool
+	inside_return_tmpl        bool
 	inside_struct_init        bool
 	inside_or_block           bool
 	inside_call               bool
@@ -4282,7 +4283,9 @@ fn (mut g Gen) return_stmt(node ast.Return) {
 	if node.exprs.len > 0 {
 		// skip `return $vweb.html()`
 		if node.exprs[0] is ast.ComptimeCall && (node.exprs[0] as ast.ComptimeCall).is_vweb {
+			g.inside_return_tmpl = true
 			g.expr(node.exprs[0])
+			g.inside_return_tmpl = false
 			g.writeln(';')
 			return
 		}
