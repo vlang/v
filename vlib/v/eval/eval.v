@@ -67,53 +67,62 @@ pub fn (mut e Eval) run_func(func ast.FnDecl, _args ...Object) {
 		e.error('mismatched parameter length for $func.name: got `$args.len`, expected `$func.params.len`')
 	}
 
-	if func.name in ['print', 'println', 'eprint', 'eprintln', 'panic'] {
-		s := args[0].string() // stringify because println accepts anything as argument
-		match func.name {
-			'print' {
-				print(s)
-			}
-			'println' {
-				println(s)
-			}
-			'eprint' {
-				eprint(s)
-			}
-			'eprintln' {
-				eprintln(s)
-			}
-			'panic' {
-				e.panic(s)
-			}
-			else {}
+	match func.name {
+		'print_backtrace' {
+			e.print_backtrace()
 		}
-	} else {
-		e.local_vars_stack << e.local_vars
-		e.local_vars = {}
-		old_scope := e.scope_idx
-		e.scope_idx = 0
-		e.open_scope()
-		// have to do this because of cgen error
-		args__ := if func.is_method { args[1..] } else { args }
-		for i, arg in args__ {
-			e.local_vars[(func.params[i]).name] = Var{
-				val: arg
-				scope_idx: e.scope_idx
+		'print', 'println', 'eprint', 'eprintln', 'panic' {
+			s := args[0].string() // stringify because println accepts anything as argument
+			match func.name {
+				'print' {
+					print(s)
+				}
+				'println' {
+					println(s)
+				}
+				'eprint' {
+					eprint(s)
+				}
+				'eprintln' {
+					eprintln(s)
+				}
+				'panic' {
+					e.panic(s)
+				}
+				else {}
 			}
 		}
-		if func.is_method {
-			print(e.back_trace)
-			println(func.receiver.typ.set_nr_muls(0))
-			e.local_vars[func.receiver.name] = Var{
-				val: args[0]
-				scope_idx: e.scope_idx
-			}
+		'exit' {
+			exit(int(args[0].int_val()))
 		}
-		e.stmts(func.stmts)
-		e.returning = false
-		e.close_scope()
-		e.scope_idx = old_scope
-		e.local_vars = e.local_vars_stack.pop()
+		else {
+			e.local_vars_stack << e.local_vars
+			e.local_vars = {}
+			old_scope := e.scope_idx
+			e.scope_idx = 0
+			e.open_scope()
+			// have to do this because of cgen error
+			args__ := if func.is_method { args[1..] } else { args }
+			for i, arg in args__ {
+				e.local_vars[(func.params[i]).name] = Var{
+					val: arg
+					scope_idx: e.scope_idx
+				}
+			}
+			if func.is_method {
+				print(e.back_trace)
+				println(func.receiver.typ.set_nr_muls(0))
+				e.local_vars[func.receiver.name] = Var{
+					val: args[0]
+					scope_idx: e.scope_idx
+				}
+			}
+			e.stmts(func.stmts)
+			e.returning = false
+			e.close_scope()
+			e.scope_idx = old_scope
+			e.local_vars = e.local_vars_stack.pop()
+		}
 	}
 }
 
