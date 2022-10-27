@@ -1,14 +1,14 @@
 Usage:
-  v install [MODULE...]
-    Installs each MODULE.
+  v install [PACKAGE...]
+    Installs each PACKAGE.
 
-    If no MODULEs, the modules listed in the `v.mod` file are installed instead.
+    If no PACKAGEs, the packages listed in the `v.mod` file are installed instead.
 
 Options:
   --vpm         - [Default] Install from vpm
   --git         - Install from git repository url
   --hg          - Install from mercurial repository url
-  --once        - Only install the module if it was not previously installed
+  --once        - Only install the package if it was not previously installed
   -help         - Show usage info.
   -v            - Print more details about the performed operation.
   -server-url   - When doing network operations, use this vpm server. Can be given multiple times.

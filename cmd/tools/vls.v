@@ -90,7 +90,7 @@ fn (upd VlsUpdater) exec_asset_file_name() string {
 
 fn (upd VlsUpdater) update_manifest(new_path string, from_source bool, timestamp time.Time) ! {
 	upd.log('Updating permissions...')
-	os.chmod(new_path, 755)!
+	os.chmod(new_path, 0o755)!
 
 	upd.log('Updating vls.config.json...')
 	mut manifest := upd.manifest_config() or {
@@ -154,8 +154,7 @@ fn (upd VlsUpdater) download_prebuilt() ! {
 	}
 
 	latest_release := releases_json[0].as_map()
-	latest_assets := latest_release['assets'] or { return }
-	assets := latest_assets.arr()
+	assets := latest_release['assets']!.arr()
 
 	mut checksum_asset_idx := -1
 	mut exec_asset_idx := -1
@@ -199,13 +198,11 @@ fn (upd VlsUpdater) download_prebuilt() ! {
 
 	upd.log('Executable found for this system. Downloading...')
 	upd.init_download_prebuilt()!
-	t_asset := exec_asset['browser_download_url'] or { return }
-	http.download_file(t_asset.str(), exec_asset_file_path)!
+	http.download_file(exec_asset['browser_download_url']!.str(), exec_asset_file_path)!
 
 	checksum_file_path := os.join_path(vls_cache_folder, 'checksums.txt')
 	checksum_file_asset := assets[checksum_asset_idx].as_map()
-	t_checksum_asset := checksum_file_asset['browser_download_url'] or { return }
-	http.download_file(t_checksum_asset.str(), checksum_file_path)!
+	http.download_file(checksum_file_asset['browser_download_url']!.str(), checksum_file_path)!
 	checksums := os.read_file(checksum_file_path)!.split_into_lines()
 
 	upd.log('Verifying checksum...')

@@ -1,0 +1,6 @@
+vlib/v/parser/tests/index_expr_optional_err.vv:3:14: error: `?` for propagating errors from index expressions is no longer supported, use `!` instead of `?`
+    1 | fn main() {
+    2 |     a := [1, 2]
+    3 |     println(a[0]?)
+      |                 ^
+    4 | }

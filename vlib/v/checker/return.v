@@ -39,8 +39,12 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 	mut expr_idxs := []int{}
 	for i, expr in node.exprs {
 		mut typ := c.expr(expr)
+		if typ == 0 {
+			return
+		}
 		if typ == ast.void_type {
 			c.error('`$expr` used as value', node.pos)
+			return
 		}
 		// Unpack multi return types
 		sym := c.table.sym(typ)
@@ -132,6 +136,17 @@ pub fn (mut c Checker) return_stmt(mut node ast.Return) {
 							c.mark_as_referenced(mut &node.exprs[expr_idxs[i]], true)
 						}
 					}
+					continue
+				}
+				if got_typ_sym.kind == .struct_
+					&& c.type_implements(got_typ, ast.error_type, node.pos) {
+					node.exprs[expr_idxs[i]] = ast.CastExpr{
+						expr: node.exprs[expr_idxs[i]]
+						typname: 'IError'
+						typ: ast.error_type
+						expr_type: got_typ
+					}
+					node.types[expr_idxs[i]] = ast.error_type
 					continue
 				}
 				got_typ_name := if got_typ_sym.kind == .function {

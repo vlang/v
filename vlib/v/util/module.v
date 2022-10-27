@@ -96,7 +96,7 @@ pub fn qualify_module(pref &pref.Preferences, mod string, file_path string) stri
 // 2022-01-30 just on windows, because while `vlib\v\checker\tests\modules\deprecated_module` works,
 // 2022-01-30 it leads to path differences, and the / version on windows triggers a module lookip bug,
 // 2022-01-30 leading to completely different errors)
-fn mod_path_to_full_name(pref &pref.Preferences, mod string, path string) ?string {
+fn mod_path_to_full_name(pref &pref.Preferences, mod string, path string) !string {
 	// TODO: explore using `pref.lookup_path` & `os.vmodules_paths()`
 	// absolute paths instead of 'vlib' & '.vmodules'
 	mut vmod_folders := ['vlib', '.vmodules', 'modules']

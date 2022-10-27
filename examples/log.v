@@ -19,6 +19,4 @@ fn main() {
 	l.set_level(log.level_from_tag('') or { log.Level.disabled }) // set level from string, sample
 	l.error('no output anymore')
 	l.fatal('fatal') // panic, next statements won't be executed
-	l.set_level(.info)
-	l.warn('warn')
 }

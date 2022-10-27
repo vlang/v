@@ -41,7 +41,7 @@ fn main() {
 	cmd.parse(os.args)
 }
 
-fn greet_func(cmd Command) ? {
+fn greet_func(cmd Command) ! {
 	language := cmd.flags.get_string('language') or { panic('Failed to get `language` flag: $err') }
 	times := cmd.flags.get_int('times') or { panic('Failed to get `times` flag: $err') }
 	name := cmd.args[0]
@@ -69,10 +69,10 @@ fn greet_func(cmd Command) ? {
 	}
 }
 
-fn greet_pre_func(cmd Command) ? {
+fn greet_pre_func(cmd Command) ! {
 	println('This is a function running before the main function.\n')
 }
 
-fn greet_post_func(cmd Command) ? {
+fn greet_post_func(cmd Command) ! {
 	println('\nThis is a function running after the main function.')
 }

@@ -350,7 +350,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 							e.error('unknown cast: ${e.table.sym(expr.expr_type).str()} to ${e.table.sym(expr.typ).str()}')
 						}
 					}
-				} else if expr.typ == ast.voidptr_type_idx {
+				} else if expr.typ == ast.voidptr_type_idx || expr.typ == ast.nil_type_idx {
 					match y {
 						char, Int {
 							unsafe {
@@ -536,7 +536,7 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 
 fn (e Eval) type_to_size(typ ast.Type) u64 {
 	match typ {
-		ast.voidptr_type_idx, ast.byteptr_type_idx, ast.charptr_type_idx {
+		ast.voidptr_type_idx, ast.nil_type_idx, ast.byteptr_type_idx, ast.charptr_type_idx {
 			return u64(if e.pref.m64 {
 				64
 			} else {

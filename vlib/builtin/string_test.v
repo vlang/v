@@ -144,16 +144,16 @@ fn test_ranges() {
 	assert s6 == 'first'
 }
 
-fn ranges_propagate_first(s string) ?string {
-	return s[10..]?
+fn ranges_propagate_first(s string) !string {
+	return s[10..]!
 }
 
-fn ranges_propagate_last(s string) ?string {
-	return s[..20]?
+fn ranges_propagate_last(s string) !string {
+	return s[..20]!
 }
 
-fn ranges_propagate_both(s string) ?string {
-	return s[1..20]?
+fn ranges_propagate_both(s string) !string {
+	return s[1..20]!
 }
 
 fn test_split_nth() {
@@ -538,6 +538,16 @@ fn test_trim() {
 	assert 'aaabccc'.trim('ac') == 'b'
 }
 
+fn test_trim_indexes() {
+	mut left, mut right := 0, 0
+	left, right = '- -- - '.trim_indexes(' -')
+	assert left == 0 && right == 0
+	left, right = '- hello-world!\t'.trim_indexes(' -\t')
+	assert left == 2 && right == 14
+	left, right = 'abc'.trim_indexes('ac')
+	assert left == 1 && right == 2
+}
+
 fn test_trim_left() {
 	mut s := 'module main'
 	assert s.trim_left(' ') == 'module main'
@@ -837,6 +847,11 @@ fn test_raw_inter() {
 	s := r'hello\n$world'
 	assert s == r'hello\n$world'
 	assert s.contains('$')
+}
+
+fn test_new_inter() {
+	// world := 'world'
+	// assert 'hello {world}' == 'hello world'
 }
 
 fn test_c_r() {

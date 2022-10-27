@@ -91,11 +91,11 @@ fn test_scalar_mult_distributes_over_add() {
 	assert check.equal(r) == 1
 }
 
-fn test_scalarmult_non_identity_point() ? {
+fn test_scalarmult_non_identity_point() {
 	// Check whether p.ScalarMult and q.ScalaBaseMult give the same,
 	// when p and q are originally set to the base point.
 
-	mut x := generate_scalar(5000)?
+	mut x := generate_scalar(5000)!
 
 	mut p := Point{}
 	mut q := Point{}

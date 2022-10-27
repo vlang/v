@@ -75,11 +75,11 @@ fn (mut g Gen) sql_stmt_line(nd ast.SqlStmtLine, expr string, or_expr ast.OrExpr
 		unsafe { fields.free() }
 	}
 	if node.kind == .create {
-		g.write('${option_name}_void $res = orm__Connection_name_table[${expr}._typ]._method_')
+		g.write('${result_name}_void $res = orm__Connection_name_table[${expr}._typ]._method_')
 		g.sql_create_table(node, expr, table_name)
 		subs = true
 	} else if node.kind == .drop {
-		g.write('${option_name}_void $res = orm__Connection_name_table[${expr}._typ]._method_')
+		g.write('${result_name}_void $res = orm__Connection_name_table[${expr}._typ]._method_')
 		g.writeln('drop(${expr}._object, _SLIT("$table_name"));')
 		subs = true
 	} else if node.kind == .insert {
@@ -87,14 +87,14 @@ fn (mut g Gen) sql_stmt_line(nd ast.SqlStmtLine, expr string, or_expr ast.OrExpr
 		g.writeln('Array_orm__Primitive $arr = __new_array_with_default_noscan(0, 0, sizeof(orm__Primitive), 0);')
 		g.sql_insert(node, expr, table_name, arr, res, '', false, '', or_expr)
 	} else if node.kind == .update {
-		g.write('${option_name}_void $res = orm__Connection_name_table[${expr}._typ]._method_')
+		g.write('${result_name}_void $res = orm__Connection_name_table[${expr}._typ]._method_')
 		g.sql_update(node, expr, table_name)
 	} else if node.kind == .delete {
-		g.write('${option_name}_void $res = orm__Connection_name_table[${expr}._typ]._method_')
+		g.write('${result_name}_void $res = orm__Connection_name_table[${expr}._typ]._method_')
 		g.sql_delete(node, expr, table_name)
 	}
 	if or_expr.kind == .block {
-		g.or_block(res, or_expr, ast.int_type)
+		g.or_block(res, or_expr, ast.int_type.set_flag(.result))
 	}
 	if subs {
 		for _, sub in node.sub_structs {
@@ -183,10 +183,10 @@ fn (mut g Gen) sql_insert(node ast.SqlStmtLine, expr string, table_name string, 
 
 	for sub in subs {
 		g.sql_stmt_line(sub, expr, or_expr)
-		g.writeln('array_push(&$last_ids_arr, _MOV((orm__Primitive[]){orm__Connection_name_table[${expr}._typ]._method_last_id(${expr}._object)}));')
+		g.writeln('array_push(&$last_ids_arr, _MOV((orm__Primitive[]){ orm__Connection_name_table[${expr}._typ]._method_last_id(${expr}._object)}));')
 	}
 
-	g.write('${option_name}_void $res = orm__Connection_name_table[${expr}._typ]._method_')
+	g.write('${result_name}_void $res = orm__Connection_name_table[${expr}._typ]._method_')
 	g.write('insert(${expr}._object, _SLIT("$table_name"), (orm__QueryData){')
 
 	g.write('.fields = new_array_from_c_array($fields.len, $fields.len, sizeof(string),')
@@ -583,7 +583,7 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 	res := g.new_tmp_var()
 	table_name := g.get_table_name(node.table_expr)
 	g.sql_table_name = g.table.sym(node.table_expr.typ).name
-	g.write('${option_name}_Array_Array_orm__Primitive _o$res = orm__Connection_name_table[${expr}._typ]._method_select(${expr}._object, ')
+	g.write('${result_name}_Array_Array_orm__Primitive _o$res = orm__Connection_name_table[${expr}._typ]._method_select(${expr}._object, ')
 	g.write('(orm__SelectConfig){')
 	g.write('.table = _SLIT("$table_name"),')
 	g.write('.is_count = $node.is_count,')
@@ -677,12 +677,12 @@ fn (mut g Gen) sql_select(node ast.SqlExpr, expr string, left string, or_expr as
 	g.writeln(');')
 
 	mut tmp_left := g.new_tmp_var()
-	g.writeln('${g.typ(node.typ.set_flag(.optional))} $tmp_left;')
+	g.writeln('${g.typ(node.typ.set_flag(.result))} $tmp_left;')
 
 	if node.or_expr.kind == .block {
-		g.writeln('${tmp_left}.state = _o${res}.state;')
+		g.writeln('${tmp_left}.is_error = _o${res}.is_error;')
 		g.writeln('${tmp_left}.err = _o${res}.err;')
-		g.or_block(tmp_left, node.or_expr, node.typ)
+		g.or_block(tmp_left, node.or_expr, node.typ.set_flag(.result))
 		g.writeln('else {')
 		g.indent++
 	}

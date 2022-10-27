@@ -29,7 +29,7 @@ fn help_cmd() Command {
 }
 
 // print_help_for_command outputs the help message of `help_cmd`.
-pub fn print_help_for_command(help_cmd Command) ? {
+pub fn print_help_for_command(help_cmd Command) ! {
 	if help_cmd.args.len > 0 {
 		mut cmd := help_cmd.parent
 		for arg in help_cmd.args {

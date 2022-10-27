@@ -398,6 +398,17 @@ fn tcp_socket_from_handle(sockfd int) !TcpSocket {
 	return s
 }
 
+// tcp_socket_from_handle_raw is similar to tcp_socket_from_handle, but it does not modify any socket options
+pub fn tcp_socket_from_handle_raw(sockfd int) TcpSocket {
+	mut s := TcpSocket{
+		handle: sockfd
+	}
+	$if trace_tcp ? {
+		eprintln('    tcp_socket_from_handle_raw | s.handle: ${s.handle:6}')
+	}
+	return s
+}
+
 pub fn (mut s TcpSocket) set_option_bool(opt SocketOption, value bool) ! {
 	// TODO reenable when this `in` operation works again
 	// if opt !in opts_can_set {

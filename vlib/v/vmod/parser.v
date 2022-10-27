@@ -52,7 +52,7 @@ struct Token {
 	line int
 }
 
-pub fn from_file(vmod_path string) ?Manifest {
+pub fn from_file(vmod_path string) !Manifest {
 	if !os.exists(vmod_path) {
 		return error('v.mod: v.mod file not found.')
 	}
@@ -60,7 +60,7 @@ pub fn from_file(vmod_path string) ?Manifest {
 	return decode(contents)
 }
 
-pub fn decode(contents string) ?Manifest {
+pub fn decode(contents string) !Manifest {
 	mut parser := Parser{
 		scanner: Scanner{
 			pos: 0
@@ -158,7 +158,7 @@ fn (mut s Scanner) scan_all() {
 	s.tokenize(.eof, 'eof')
 }
 
-fn get_array_content(tokens []Token, st_idx int) ?([]string, int) {
+fn get_array_content(tokens []Token, st_idx int) !([]string, int) {
 	mut vals := []string{}
 	mut idx := st_idx
 	if tokens[idx].typ != .labr {
@@ -187,7 +187,7 @@ fn get_array_content(tokens []Token, st_idx int) ?([]string, int) {
 	return vals, idx
 }
 
-fn (mut p Parser) parse() ?Manifest {
+fn (mut p Parser) parse() !Manifest {
 	if p.scanner.text.len == 0 {
 		return error('$vmod.err_label no content.')
 	}
@@ -237,14 +237,14 @@ fn (mut p Parser) parse() ?Manifest {
 						mn.author = field_value
 					}
 					'dependencies' {
-						deps, idx := get_array_content(tokens, i + 1)?
+						deps, idx := get_array_content(tokens, i + 1)!
 						mn.dependencies = deps
 						i = idx
 						continue
 					}
 					else {
 						if tokens[i + 1].typ == .labr {
-							vals, idx := get_array_content(tokens, i + 1)?
+							vals, idx := get_array_content(tokens, i + 1)!
 							mn.unknown[field_name] = vals
 							i = idx
 							continue

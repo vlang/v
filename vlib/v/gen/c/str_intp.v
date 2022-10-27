@@ -215,9 +215,9 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		escaped_val := util.smart_quote(val, false)
 
 		if escaped_val.len > 0 {
-			g.write('{_SLIT("$escaped_val"), ')
+			g.write('{ _SLIT("$escaped_val"), ')
 		} else {
-			g.write('{_SLIT0, ')
+			g.write('{ _SLIT0, ')
 		}
 
 		if i >= node.exprs.len {

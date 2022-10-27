@@ -32,11 +32,11 @@ fn test_nested_map_init_with_multi_enum_keys() {
 		}
 	}
 	println(mp)
-	assert mp[.a]? == NestedAbc({
+	assert mp[.a]! == NestedAbc({
 		'A': 'AA'
 	})
-	assert mp[.b]? == NestedAbc('B')
-	assert mp[.c]? == NestedAbc({
+	assert mp[.b]! == NestedAbc('B')
+	assert mp[.c]! == NestedAbc({
 		'c': 'C'
 	})
 }

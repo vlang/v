@@ -190,16 +190,15 @@ pub fn ls(path string) ![]string {
 }
 
 // mkdir creates a new directory with the specified path.
-pub fn mkdir(path string, params MkdirParams) !bool {
+pub fn mkdir(path string, params MkdirParams) ! {
 	if path == '.' {
-		return true
+		return
 	}
 	apath := real_path(path)
 	if !C.CreateDirectory(apath.to_wide(), 0) {
 		return error('mkdir failed for "$apath", because CreateDirectory returned: ' +
 			get_error_msg(int(C.GetLastError())))
 	}
-	return true
 }
 
 // Ref - https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/get-osfhandle?view=vs-2019
@@ -378,7 +377,7 @@ pub fn raw_execute(cmd string) Result {
 	}
 }
 
-pub fn symlink(origin string, target string) !bool {
+pub fn symlink(origin string, target string) ! {
 	// this is a temporary fix for TCC32 due to runtime error
 	// TODO: find the cause why TCC32 for Windows does not work without the compiletime option
 	$if x64 || x32 {
@@ -397,12 +396,12 @@ pub fn symlink(origin string, target string) !bool {
 		if !exists(target) {
 			return error('C.CreateSymbolicLinkW reported success, but symlink still does not exist')
 		}
-		return true
+		return
 	}
-	return false
+	return error('could not symlink')
 }
 
-pub fn link(origin string, target string) !bool {
+pub fn link(origin string, target string) ! {
 	res := C.CreateHardLinkW(target.to_wide(), origin.to_wide(), C.NULL)
 	// 1 = success, != 1 failure => https://stackoverflow.com/questions/33010440/createsymboliclink-on-windows-10
 	if res != 1 {
@@ -411,7 +410,6 @@ pub fn link(origin string, target string) !bool {
 	if !exists(target) {
 		return error('C.CreateHardLinkW reported success, but link still does not exist')
 	}
-	return true
 }
 
 pub fn (mut f File) close() {
@@ -494,19 +492,21 @@ pub fn loginname() string {
 	return unsafe { string_from_wide(&loginname[0]) }
 }
 
-// `is_writable_folder` - `folder` exists and is writable to the process
-pub fn is_writable_folder(folder string) !bool {
+// ensure_folder_is_writable checks that `folder` exists, and is writable to the process
+// by creating an empty file in it, then deleting it.
+pub fn ensure_folder_is_writable(folder string) ! {
 	if !exists(folder) {
-		return error('`$folder` does not exist')
+		return error_with_code('`$folder` does not exist', 1)
 	}
 	if !is_dir(folder) {
-		return error('`folder` is not a folder')
+		return error_with_code('`folder` is not a folder', 2)
 	}
 	tmp_folder_name := 'tmp_perm_check_pid_' + getpid().str()
 	tmp_perm_check := join_path_single(folder, tmp_folder_name)
-	write_file(tmp_perm_check, 'test') or { return error('cannot write to folder "$folder": $err') }
+	write_file(tmp_perm_check, 'test') or {
+		return error_with_code('cannot write to folder "$folder": $err', 3)
+	}
 	rm(tmp_perm_check)!
-	return true
 }
 
 [inline]

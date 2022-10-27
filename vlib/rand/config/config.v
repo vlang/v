@@ -36,7 +36,7 @@ pub:
 }
 
 // validate_for is a helper function for validating the configuration struct for the given array.
-pub fn (config ShuffleConfigStruct) validate_for<T>(a []T) ? {
+pub fn (config ShuffleConfigStruct) validate_for<T>(a []T) ! {
 	if config.start < 0 || config.start >= a.len {
 		return error("argument 'config.start' must be in range [0, a.len)")
 	}

@@ -72,7 +72,7 @@ fn (mut a App) collect_info() {
 			os_details += ' (WSL)'
 		}
 		// From https://unix.stackexchange.com/a/14346
-		awk_cmd := '[ "$(awk \'\$5=="/" {print \$1}\' </proc/1/mountinfo)" != "$(awk \'\$5=="/" {print \$1}\' </proc/$$/mountinfo)" ] ; echo \$?'
+		awk_cmd := '[ "$(awk \'\$5=="/" { print \$1 }\' </proc/1/mountinfo)" != "$(awk \'\$5=="/" { print \$1 }\' </proc/$$/mountinfo)" ] ; echo \$?'
 		if a.cmd(command: awk_cmd) == '0' {
 			os_details += ' (chroot)'
 		}
@@ -257,8 +257,8 @@ fn (mut a App) report_info() {
 }
 
 fn is_writable_dir(path string) bool {
-	res := os.is_writable_folder(path) or { false }
-	return res
+	os.ensure_folder_is_writable(path) or { return false }
+	return true
 }
 
 fn main() {

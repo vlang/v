@@ -18,6 +18,6 @@ fn test_crlf_is_parsable_just_like_lf() {
 	for content in all {
 		res := toml.parse_text(content)?
 		assert res.value('title') == toml.Any('TOML Example')
-		assert (res.value('database') as map[string]toml.Any)['server']? == toml.Any('192.168.1.1')
+		assert (res.value('database') as map[string]toml.Any)['server']! == toml.Any('192.168.1.1')
 	}
 }

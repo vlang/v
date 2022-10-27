@@ -1663,7 +1663,7 @@ pub fn (mut f Fmt) array_init(node ast.ArrayInit) {
 		}
 		f.write(f.table.type_to_str_using_aliases(node.elem_type, f.mod2alias))
 		if node.has_default {
-			f.write('{init: ')
+			f.write('\{init: ')
 			f.expr(node.default_expr)
 			f.write('}')
 		} else {
@@ -2237,7 +2237,10 @@ pub fn (mut f Fmt) lock_expr(node ast.LockExpr) {
 		}
 	}
 	if num_locked > 0 || num_rlocked == 0 {
-		f.write('lock ')
+		f.write('lock')
+		if num_locked > 0 {
+			f.write(' ')
+		}
 		mut n := 0
 		for i, v in node.lockeds {
 			if !node.is_rlock[i] {

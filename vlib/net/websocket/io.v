@@ -4,7 +4,7 @@ import net
 
 // socket_read reads from socket into the provided buffer
 fn (mut ws Client) socket_read(mut buffer []u8) !int {
-	lock  {
+	lock {
 		if ws.state in [.closed, .closing] || ws.conn.sock.handle <= 1 {
 			return error('socket_read: trying to read a closed socket')
 		}
@@ -21,7 +21,7 @@ fn (mut ws Client) socket_read(mut buffer []u8) !int {
 
 // socket_read reads from socket into the provided byte pointer and length
 fn (mut ws Client) socket_read_ptr(buf_ptr &u8, len int) !int {
-	lock  {
+	lock {
 		if ws.state in [.closed, .closing] || ws.conn.sock.handle <= 1 {
 			return error('socket_read_ptr: trying to read a closed socket')
 		}
@@ -38,7 +38,7 @@ fn (mut ws Client) socket_read_ptr(buf_ptr &u8, len int) !int {
 
 // socket_write writes the provided byte array to the socket
 fn (mut ws Client) socket_write(bytes []u8) !int {
-	lock  {
+	lock {
 		if ws.state == .closed || ws.conn.sock.handle <= 1 {
 			ws.debug_log('socket_write: Socket allready closed')
 			return error('socket_write: trying to write on a closed socket')

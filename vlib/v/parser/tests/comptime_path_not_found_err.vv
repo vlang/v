@@ -1,0 +1,4 @@
+fn main() {
+	tmp := $tmpl('tempate.txt')
+	a := tmp
+}

@@ -18,6 +18,6 @@ pub fn (err ReadError) msg() string {
 // See also rand.bytes(), if you do not need really random bytes,
 // but instead pseudo random ones, from a pseudo random generator
 // that can be seeded, and that is usually faster.
-pub fn bytes(bytes_needed int) ?[]u8 {
+pub fn bytes(bytes_needed int) ![]u8 {
 	return read(bytes_needed)
 }

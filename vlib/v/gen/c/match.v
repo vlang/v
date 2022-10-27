@@ -140,13 +140,13 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var string, tmp_var string) {
 	dot_or_ptr := if node.cond_type.is_ptr() { '->' } else { '.' }
 	use_ternary := is_expr && tmp_var.len == 0
+	cond_sym := g.table.sym(node.cond_type)
 	for j, branch in node.branches {
 		mut sumtype_index := 0
 		// iterates through all types in sumtype branches
 		for {
 			g.aggregate_type_idx = sumtype_index
-			is_last := j == node.branches.len - 1
-			sym := g.table.sym(node.cond_type)
+			is_last := j == node.branches.len - 1 && sumtype_index == branch.exprs.len - 1
 			if branch.is_else || (use_ternary && is_last) {
 				if use_ternary {
 					// TODO too many branches. maybe separate ?: matches
@@ -175,20 +175,19 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					g.write('if (')
 				}
 				g.write(cond_var)
-				be := unsafe { &branch.exprs[sumtype_index] }
-				if sym.kind == .sum_type {
+				cur_expr := unsafe { &branch.exprs[sumtype_index] }
+				if cond_sym.kind == .sum_type {
 					g.write('${dot_or_ptr}_typ == ')
-					if be is ast.None {
+					if cur_expr is ast.None {
 						g.write('$ast.none_type.idx() /* none */')
 					} else {
-						g.expr(be)
+						g.expr(cur_expr)
 					}
-				} else if sym.kind == .interface_ {
-					if be is ast.TypeNode {
-						typ := be as ast.TypeNode
-						branch_sym := g.table.sym(g.unwrap_generic(typ.typ))
-						g.write('${dot_or_ptr}_typ == _${sym.cname}_${branch_sym.cname}_index')
-					} else if be is ast.None && sym.idx == ast.error_type_idx {
+				} else if cond_sym.kind == .interface_ {
+					if cur_expr is ast.TypeNode {
+						branch_sym := g.table.sym(g.unwrap_generic(cur_expr.typ))
+						g.write('${dot_or_ptr}_typ == _${cond_sym.cname}_${branch_sym.cname}_index')
+					} else if cur_expr is ast.None && cond_sym.idx == ast.error_type_idx {
 						g.write('${dot_or_ptr}_typ == _IError_None___index')
 					}
 				}

@@ -80,7 +80,12 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 					pos := p.tok.pos()
 					n := p.check_name()
 					if n != 'init' {
-						p.error_with_pos('expected `init:`, not `$n`', pos)
+						if is_fixed {
+							p.error_with_pos('`len` and `cap` are invalid attributes for fixed array dimension',
+								pos)
+						} else {
+							p.error_with_pos('expected `init:`, not `$n`', pos)
+						}
 						return ast.ArrayInit{}
 					}
 					p.check(.colon)

@@ -106,6 +106,7 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 	is_html := method_name == 'html'
 	// $env('ENV_VAR_NAME')
 	p.check(.lpar)
+	arg_pos := p.tok.pos()
 	if method_name in ['env', 'pkgconfig', 'compile_error', 'compile_warn'] {
 		s := p.tok.lit
 		p.check(.string)
@@ -213,9 +214,9 @@ fn (mut p Parser) comptime_call() ast.ComptimeCall {
 				}
 			}
 			if is_html {
-				p.error('vweb HTML template "$path" not found')
+				p.error_with_pos('vweb HTML template "$tmpl_path" not found', arg_pos)
 			} else {
-				p.error('template file "$path" not found')
+				p.error_with_pos('template file "$tmpl_path" not found', arg_pos)
 			}
 			return err_node
 		}

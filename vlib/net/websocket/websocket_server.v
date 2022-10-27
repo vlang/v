@@ -101,7 +101,7 @@ fn (mut s Server) handle_ping() {
 		}
 		// TODO: replace for with s.clients.delete_all(clients_to_remove) if (https://github.com/vlang/v/pull/6020) merges
 		for client in clients_to_remove {
-			lock  {
+			lock {
 				s.clients.delete(client)
 			}
 		}
@@ -124,7 +124,7 @@ fn (mut s Server) serve_client(mut c Client) ! {
 	}
 	// the client is accepted
 	c.socket_write(handshake_response.bytes())!
-	lock  {
+	lock {
 		s.clients[server_client.client.id] = server_client
 	}
 	s.setup_callbacks(mut server_client)
@@ -157,7 +157,7 @@ fn (mut s Server) setup_callbacks(mut sc ServerClient) {
 	// set standard close so we can remove client if closed
 	sc.client.on_close_ref(fn (mut c Client, code int, reason string, mut sc ServerClient) ! {
 		c.logger.debug('server-> Delete client')
-		lock  {
+		lock {
 			sc.server.clients.delete(sc.client.id)
 		}
 	}, sc)
@@ -180,7 +180,7 @@ fn (mut s Server) accept_new_client() !&Client {
 
 // set_state sets current state in a thread safe way
 fn (mut s Server) set_state(state State) {
-	lock  {
+	lock {
 		s.state = state
 	}
 }

@@ -469,7 +469,7 @@ fn test_realpath_absolutepath_symlink() {
 	file_name := 'tolink_file.txt'
 	symlink_name := 'symlink.txt'
 	create_file(file_name)!
-	assert os.symlink(file_name, symlink_name)!
+	os.symlink(file_name, symlink_name)!
 	rpath := os.real_path(symlink_name)
 	println(rpath)
 	assert os.is_abs_path(rpath)

@@ -416,7 +416,7 @@ fn test_struct_update() {
 // Test anon structs
 struct Book {
 	x      Foo
-	author struct  {
+	author struct {
 		name string
 		age  int
 	}

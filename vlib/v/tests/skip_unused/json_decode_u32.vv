@@ -12,6 +12,6 @@ struct LinksData {
 }
 
 fn main() {
-	links_data := json.decode(LinksData, '{}')?
+	links_data := json.decode(LinksData, '{}')!
 	println(links_data.messages)
 }
