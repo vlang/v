@@ -459,6 +459,21 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 				return rune(expr.val[0])
 			}
 		}
+		ast.Nil {
+			return Ptr{
+				val: unsafe { nil }
+			}
+		}
+		ast.StringInterLiteral {
+			mut res := expr.vals[0]
+
+			for i, exp in expr.exprs {
+				res += e.expr(exp, expr.expr_types[i]).string()
+				res += expr.vals[i + 1]
+			}
+
+			return res
+		}
 		ast.StructInit {
 			// eprintln('unhandled struct init at line $expr.pos.line_nr')
 			return 'helo'
@@ -501,23 +516,8 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 				}
 			}
 		}
-		ast.StringInterLiteral {
-			mut res := expr.vals[0]
-
-			for i, exp in expr.exprs {
-				res += e.expr(exp, expr.expr_types[i]).string()
-				res += expr.vals[i + 1]
-			}
-
-			return res
-		}
 		ast.UnsafeExpr {
 			return e.expr(expr.expr, expecting)
-		}
-		ast.Nil {
-			return Ptr{
-				val: unsafe { nil }
-			}
 		}
 		ast.DumpExpr {
 			value := e.expr(expr.expr, expr.expr_type).string()
