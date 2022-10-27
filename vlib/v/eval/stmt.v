@@ -20,9 +20,6 @@ pub fn (mut e Eval) stmt(stmt ast.Stmt) {
 			e.expr(stmt.expr, stmt.typ)
 		}
 		ast.AssignStmt {
-			// if stmt.left.len != 1 {
-			// 	e.error('multiple values assignments are not supported')
-			// }
 			mut rights := []Object{}
 			for i, right in stmt.right {
 				rights << e.expr(right, stmt.right_types[i])

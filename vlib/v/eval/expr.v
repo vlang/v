@@ -23,9 +23,6 @@ fn (o Object) as_i64() !i64 {
 pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 	match expr {
 		ast.CallExpr {
-			// println(expr.is_method)
-			// is_method := expr.left.type_name() != 'unknown v.ast.Expr'
-			// println(is_method)
 			if expr.name == 'int' {
 				e.error('methods not supported')
 			}
