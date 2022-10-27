@@ -1243,7 +1243,7 @@ fn (mut s Scanner) ident_string() string {
 				if s.text[i] in [`=`, `:`, `\n`, s.inter_quote] {
 					// We reached the end of the line or string without reaching "}".
 					// Also if there's "=", there's no way it's a valid interpolation expression:
-					// e.g. `println("{a.b = 42}")`
+					// e.g. `println("{a.b = 42}")` `println('{foo:bar}')`
 					is_valid_inter = false
 					break
 				}
