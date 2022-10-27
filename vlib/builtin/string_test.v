@@ -849,6 +849,11 @@ fn test_raw_inter() {
 	assert s.contains('$')
 }
 
+fn test_new_inter() {
+	// world := 'world'
+	// assert 'hello {world}' == 'hello world'
+}
+
 fn test_c_r() {
 	// This used to break because of r'' and c''
 	c := 42
