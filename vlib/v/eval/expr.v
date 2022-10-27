@@ -496,12 +496,6 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 						val: &x
 					}
 				}
-				.bit_not {
-					x := e.expr(expr.right, expr.right_type)
-					return Ptr{
-						val: &x
-					}
-				}
 				else {
 					e.error('unhandled prefix expression $expr.op')
 				}
