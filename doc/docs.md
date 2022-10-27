@@ -343,10 +343,11 @@ the expression `T(v)` converts the value `v` to the
 type `T`.
 
 Unlike most other languages, V only allows defining variables in functions.
-Global (module level) variables are not allowed. There's no global state in V.
+By default V does not allow **global variables**. See more [details](#global-variables).
 
 For consistency across different code bases, all variable and function names
 must use the `snake_case` style, as opposed to type names, which must use `PascalCase`.
+
 
 ### Mutable variables
 
