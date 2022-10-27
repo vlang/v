@@ -1,0 +1,10 @@
+[vlib/v/eval/testdata/for_c_stmt.vv:1] i: 0
+[vlib/v/eval/testdata/for_c_stmt.vv:1] i: 1
+[vlib/v/eval/testdata/for_c_stmt.vv:1] i: 2
+[vlib/v/eval/testdata/for_c_stmt.vv:1] i: 3
+[vlib/v/eval/testdata/for_c_stmt.vv:1] i: 4
+[vlib/v/eval/testdata/for_c_stmt.vv:1] i: 5
+[vlib/v/eval/testdata/for_c_stmt.vv:1] i: 6
+[vlib/v/eval/testdata/for_c_stmt.vv:1] i: 7
+[vlib/v/eval/testdata/for_c_stmt.vv:1] i: 8
+[vlib/v/eval/testdata/for_c_stmt.vv:1] i: 9
