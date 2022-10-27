@@ -75,7 +75,9 @@ fn color(kind string, msg string) string {
 
 const normalised_workdir = os.wd_at_startup.replace('\\', '/') + '/'
 
-pub fn rel_or_abs_path(path_ string) string {
+// get_relative_or_real_filepath returns the modified file path according
+// to the user's preference (`VERROR_PATHS` env-var)
+pub fn get_relative_or_real_filepath(path_ string) string {
 	mut path := path_
 	verror_paths_override := os.getenv('VERROR_PATHS')
 	if verror_paths_override == 'absolute' {
