@@ -52,3 +52,9 @@ fn test_comptime_call_method() {
 	assert t.two_args_called
 	assert t.three_args_called
 }
+
+fn test_compile_error_and_args() {
+	$if !linux {
+		$compile_error('Only Lin\"ux is currently supported')
+	}
+}
