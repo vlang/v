@@ -15,7 +15,7 @@ fn testsuite_end() {
 	os.rmdir_all(tfolder) or {}
 }
 
-fn test_cflags() ? {
+fn test_cflags() {
 	os.chdir(os.real_path(@VMODROOT)) or {}
 	mut debug_arg := '-g3 -O0'
 	mut optimised_arg := '-O1'

@@ -19,7 +19,7 @@ fn testsuite_end() {
 }
 
 fn test_ensure_db_exists_and_user_table_is_ok() {
-	mut db := sqlite.connect(db_path)?
+	mut db := sqlite.connect(db_path)!
 	assert true
 
 	eprintln('> drop pre-existing User table...')
@@ -30,11 +30,11 @@ fn test_ensure_db_exists_and_user_table_is_ok() {
 		create table User
 	} or { panic(err) }
 	assert true
-	db.close()?
+	db.close()!
 }
 
 fn test_sql_or_block_for_insert() {
-	mut db := sqlite.connect(db_path)?
+	mut db := sqlite.connect(db_path)!
 	user := User{1, 'bilbo'}
 
 	eprintln('> inserting user 1 (first try)...')
@@ -53,11 +53,11 @@ fn test_sql_or_block_for_insert() {
 		println('user could not be inserted, err: $err')
 	}
 	eprintln('LINE: ${@LINE}')
-	db.close()?
+	db.close()!
 }
 
 fn test_sql_or_block_for_select() {
-	mut db := sqlite.connect(db_path)?
+	mut db := sqlite.connect(db_path)!
 
 	eprintln('> selecting user with id 1...')
 	single := sql db {
@@ -93,7 +93,7 @@ fn test_sql_or_block_for_select() {
 
 	assert multiple.len == 1
 	eprintln('LINE: ${@LINE}')
-	db.close()?
+	db.close()!
 }
 
 fn test_finish() {

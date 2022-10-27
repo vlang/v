@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generics_method_called_variadic_arg_mismatch.vv:8:4: error: to pass `options` (string) to `req` (which accepts type `...string`), use `...options`
+    6 |
+    7 | fn (c Client) products_list(options ...string) {
+    8 |     c.req<Product>(options) // (...options) works
+      |       ~~~~~~~~~~~~~~~~~~~~~
+    9 | }
+   10 |

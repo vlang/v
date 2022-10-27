@@ -179,6 +179,7 @@ pub fn (mut l Log) send_output(s &string, level Level) {
 
 // fatal logs line `s` via `send_output` if `Log.level` is greater than or equal to the `Level.fatal` category.
 // Note that this method performs a panic at the end, even if log level is not enabled.
+[noreturn]
 pub fn (mut l Log) fatal(s string) {
 	if int(l.level) >= int(Level.fatal) {
 		l.send_output(s, .fatal)

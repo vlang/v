@@ -177,3 +177,10 @@ pub fn file_last_mod_unix(path string) int {
 
 	return mtime
 }
+
+pub fn ensure_folder_is_writable(path string) ! {
+	fpath := join_path(path, 'some_newfile')
+	#try { $fs.writeFileSync(fpath); $fs.unlinkSync(fpath) } catch(e) { return error(new string('could not write to ' + path)) }
+
+	_ := fpath
+}

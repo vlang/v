@@ -477,7 +477,8 @@ fn (mut g Gen) comptime_for(node ast.ComptimeFor) {
 				rec_sym := g.table.sym(method.receiver_type)
 				if rec_sym.kind == .struct_ {
 					if _ := g.table.find_field_with_embeds(rec_sym, 'Context') {
-						if method.generic_names.len > 0 {
+						if method.generic_names.len > 0
+							|| (method.params.len > 1 && method.attrs.len == 0) {
 							continue
 						}
 					}

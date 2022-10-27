@@ -8,8 +8,8 @@ fn main() {
 		password: ''
 		dbname: 'mysql'
 	}
-	conn.connect()?
-	res := conn.query('show tables')?
+	conn.connect()!
+	res := conn.query('show tables')!
 	for row in res.rows() {
 		println(row.vals.join(', '))
 	}

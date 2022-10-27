@@ -1241,6 +1241,8 @@ pub struct GotoLabel {
 pub:
 	name string
 	pos  token.Pos
+pub mut:
+	is_used bool
 }
 
 pub struct GotoStmt {

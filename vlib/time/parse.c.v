@@ -6,7 +6,7 @@ module time
 // parse_rfc3339 returns time from a date string in RFC 3339 datetime format.
 // See also https://ijmacd.github.io/rfc3339-iso8601/ for a visual reference of
 // the differences between ISO-8601 and RFC 3339.
-pub fn parse_rfc3339(s string) ?Time {
+pub fn parse_rfc3339(s string) !Time {
 	if s == '' {
 		return error_invalid_time(0)
 	}
@@ -23,7 +23,7 @@ pub fn parse_rfc3339(s string) ?Time {
 
 	// Check if sn is date only
 	if !parts[0].contains_any(' Z') && parts[0].contains('-') {
-		year, month, day := parse_iso8601_date(sn)?
+		year, month, day := parse_iso8601_date(sn)!
 		t = new_time(Time{
 			year: year
 			month: month
@@ -34,7 +34,7 @@ pub fn parse_rfc3339(s string) ?Time {
 	// Check if sn is time only
 	if !parts[0].contains('-') && parts[0].contains(':') {
 		mut hour_, mut minute_, mut second_, mut microsecond_, mut unix_offset, mut is_local_time := 0, 0, 0, 0, i64(0), true
-		hour_, minute_, second_, microsecond_, unix_offset, is_local_time = parse_iso8601_time(parts[0])?
+		hour_, minute_, second_, microsecond_, unix_offset, is_local_time = parse_iso8601_time(parts[0])!
 		t = new_time(Time{
 			hour: hour_
 			minute: minute_
@@ -58,7 +58,7 @@ pub fn parse_rfc3339(s string) ?Time {
 }
 
 // parse returns time from a date string in "YYYY-MM-DD HH:mm:ss" format.
-pub fn parse(s string) ?Time {
+pub fn parse(s string) !Time {
 	if s == '' {
 		return error_invalid_time(0)
 	}
@@ -115,7 +115,7 @@ pub fn parse(s string) ?Time {
 // from UTC time and can be both +/- HH:mm
 // remarks: not all iso8601 is supported
 // also checks and support for leapseconds should be added in future PR
-pub fn parse_iso8601(s string) ?Time {
+pub fn parse_iso8601(s string) !Time {
 	if s == '' {
 		return error_invalid_time(0)
 	}
@@ -124,10 +124,10 @@ pub fn parse_iso8601(s string) ?Time {
 	if !(parts.len == 1 || parts.len == 2) {
 		return error_invalid_time(12)
 	}
-	year, month, day := parse_iso8601_date(parts[0])?
+	year, month, day := parse_iso8601_date(parts[0])!
 	mut hour_, mut minute_, mut second_, mut microsecond_, mut unix_offset, mut is_local_time := 0, 0, 0, 0, i64(0), true
 	if parts.len == 2 {
-		hour_, minute_, second_, microsecond_, unix_offset, is_local_time = parse_iso8601_time(parts[1])?
+		hour_, minute_, second_, microsecond_, unix_offset, is_local_time = parse_iso8601_time(parts[1])!
 	}
 	mut t := new_time(
 		year: year
@@ -152,7 +152,7 @@ pub fn parse_iso8601(s string) ?Time {
 }
 
 // parse_rfc2822 returns time from a date string in RFC 2822 datetime format.
-pub fn parse_rfc2822(s string) ?Time {
+pub fn parse_rfc2822(s string) !Time {
 	if s == '' {
 		return error_invalid_time(0)
 	}
@@ -171,7 +171,7 @@ pub fn parse_rfc2822(s string) ?Time {
 }
 
 // ----- iso8601 -----
-fn parse_iso8601_date(s string) ?(int, int, int) {
+fn parse_iso8601_date(s string) !(int, int, int) {
 	year, month, day, dummy := 0, 0, 0, u8(0)
 	count := unsafe { C.sscanf(&char(s.str), c'%4d-%2d-%2d%c', &year, &month, &day, &dummy) }
 	if count != 3 {
@@ -189,7 +189,7 @@ fn parse_iso8601_date(s string) ?(int, int, int) {
 	return year, month, day
 }
 
-fn parse_iso8601_time(s string) ?(int, int, int, int, i64, bool) {
+fn parse_iso8601_time(s string) !(int, int, int, int, i64, bool) {
 	hour_ := 0
 	minute_ := 0
 	second_ := 0

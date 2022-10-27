@@ -129,7 +129,7 @@ mut:
 	inside_decl_rhs                  bool
 	inside_if_guard                  bool // true inside the guard condition of `if x := opt() {}`
 	comptime_call_pos                int  // needed for correctly checking use before decl for templates
-	goto_labels                      map[string]int // to check for unused goto labels
+	goto_labels                      map[string]ast.GotoLabel // to check for unused goto labels
 }
 
 pub fn new_checker(table &ast.Table, pref &pref.Preferences) &Checker {
@@ -582,10 +582,10 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 	match mut expr {
 		ast.CastExpr {
 			// TODO
-			return '', pos
+			return '', expr.pos
 		}
 		ast.ComptimeSelector {
-			return '', pos
+			return '', expr.pos
 		}
 		ast.Ident {
 			if mut expr.obj is ast.Var {
@@ -619,6 +619,9 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 			}
 		}
 		ast.IndexExpr {
+			if expr.left_type == 0 {
+				return to_lock, pos
+			}
 			left_sym := c.table.sym(expr.left_type)
 			mut elem_type := ast.Type(0)
 			mut kind := ''
@@ -651,10 +654,10 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 		}
 		ast.SelectorExpr {
 			if expr.expr_type == 0 {
-				return '', pos
+				return '', expr.pos
 			}
 			// retrieve ast.Field
-			c.ensure_type_exists(expr.expr_type, expr.pos) or { return '', pos }
+			c.ensure_type_exists(expr.expr_type, expr.pos) or { return '', expr.pos }
 			mut typ_sym := c.table.final_sym(c.unwrap_generic(expr.expr_type))
 			match typ_sym.kind {
 				.struct_ {
@@ -666,7 +669,7 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 					if !has_field {
 						type_str := c.table.type_to_str(expr.expr_type)
 						c.error('unknown field `${type_str}.$expr.field_name`', expr.pos)
-						return '', pos
+						return '', expr.pos
 					}
 					if field_info.typ.has_flag(.shared_f) {
 						expr_name := '${expr.expr}.$expr.field_name'
@@ -702,7 +705,7 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 					mut field_info := interface_info.find_field(expr.field_name) or {
 						type_str := c.table.type_to_str(expr.expr_type)
 						c.error('unknown field `${type_str}.$expr.field_name`', expr.pos)
-						return '', pos
+						return '', expr.pos
 					}
 					if !field_info.is_mut {
 						type_str := c.table.type_to_str(expr.expr_type)
@@ -717,7 +720,7 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 					mut field_info := sumtype_info.find_field(expr.field_name) or {
 						type_str := c.table.type_to_str(expr.expr_type)
 						c.error('unknown field `${type_str}.$expr.field_name`', expr.pos)
-						return '', pos
+						return '', expr.pos
 					}
 					if !field_info.is_mut {
 						type_str := c.table.type_to_str(expr.expr_type)
@@ -756,18 +759,18 @@ fn (mut c Checker) fail_if_immutable(expr_ ast.Expr) (string, token.Pos) {
 		}
 		ast.ArrayInit {
 			c.error('array literal can not be modified', expr.pos)
-			return '', pos
+			return '', expr.pos
 		}
 		ast.StructInit {
-			return '', pos
+			return '', expr.pos
 		}
 		ast.InfixExpr {
-			return '', pos
+			return '', expr.pos
 		}
 		else {
 			if !expr.is_pure_literal() {
 				c.error('unexpected expression `$expr.type_name()`', expr.pos())
-				return '', pos
+				return '', expr.pos()
 			}
 		}
 	}
@@ -847,7 +850,7 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 		inter_sym.methods
 	}
 	// voidptr is an escape hatch, it should be allowed to be passed
-	if utyp != ast.voidptr_type {
+	if utyp != ast.voidptr_type && utyp != ast.nil_type {
 		// Verify methods
 		for imethod in imethods {
 			method := c.table.find_method_with_embeds(typ_sym, imethod.name) or {
@@ -855,9 +858,9 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 				// TODO: remove once deprecation period for `IError` methods has ended
 				if inter_sym.idx == ast.error_type_idx
 					&& (imethod.name == 'msg' || imethod.name == 'code') {
-					c.note("`$styp` doesn't implement method `$imethod.name` of interface `$inter_sym.name`. The usage of fields is being deprecated in favor of methods.",
-						pos)
-					continue
+					// c.note("`$styp` doesn't implement method `$imethod.name` of interface `$inter_sym.name`. The usage of fields is being deprecated in favor of methods.",
+					// 	pos)
+					return false
 				}
 				// <<
 
@@ -897,7 +900,7 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 				continue
 			}
 			// voidptr is an escape hatch, it should be allowed to be passed
-			if utyp != ast.voidptr_type {
+			if utyp != ast.voidptr_type && utyp != ast.nil_type {
 				// >> Hack to allow old style custom error implementations
 				// TODO: remove once deprecation period for `IError` methods has ended
 				if inter_sym.idx == ast.error_type_idx
@@ -910,7 +913,12 @@ fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos to
 				}
 			}
 		}
-		inter_sym.info.types << utyp
+		if utyp != ast.voidptr_type && utyp != ast.nil_type && !inter_sym.info.types.contains(utyp) {
+			inter_sym.info.types << utyp
+		}
+		if !inter_sym.info.types.contains(ast.voidptr_type) {
+			inter_sym.info.types << ast.voidptr_type
+		}
 	}
 	return true
 }
@@ -949,7 +957,7 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type ast.Type) ast
 		}
 	} else if expr is ast.IndexExpr {
 		if expr.or_expr.kind != .absent {
-			c.check_or_expr(expr.or_expr, ret_type, ret_type.set_flag(.optional))
+			c.check_or_expr(expr.or_expr, ret_type, ret_type.set_flag(.result))
 		}
 	}
 	return ret_type
@@ -3196,16 +3204,16 @@ pub fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) ast.Type {
 	return t
 }
 
-fn (mut c Checker) find_definition(ident ast.Ident) ?ast.Expr {
+fn (mut c Checker) find_definition(ident ast.Ident) !ast.Expr {
 	match ident.kind {
-		.unresolved, .blank_ident { return none }
+		.unresolved, .blank_ident { return error('none') }
 		.variable, .constant { return c.find_obj_definition(ident.obj) }
 		.global { return error('$ident.name is a global variable') }
 		.function { return error('$ident.name is a function') }
 	}
 }
 
-fn (mut c Checker) find_obj_definition(obj ast.ScopeObject) ?ast.Expr {
+fn (mut c Checker) find_obj_definition(obj ast.ScopeObject) !ast.Expr {
 	// TODO: remove once we have better type inference
 	mut name := ''
 	match obj {
@@ -3495,6 +3503,10 @@ fn (mut c Checker) check_index(typ_sym &ast.TypeSymbol, index ast.Expr, index_ty
 
 pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) ast.Type {
 	mut typ := c.expr(node.left)
+	if typ == 0 {
+		c.error('unknown type for expression `$node.left`', node.pos)
+		return typ
+	}
 	mut typ_sym := c.table.final_sym(typ)
 	node.left_type = typ
 	match typ_sym.kind {
@@ -4028,8 +4040,9 @@ pub fn (mut c Checker) fail_if_unreadable(expr ast.Expr, typ ast.Type, what stri
 
 fn (mut c Checker) goto_label(node ast.GotoLabel) {
 	// Register a goto label
-	if c.goto_labels[node.name] == 0 {
-		c.goto_labels[node.name] = 0
+	if node.name !in c.goto_labels {
+		c.goto_labels[node.name] = node
+		c.goto_labels[node.name].is_used = false
 	}
 }
 
@@ -4043,16 +4056,16 @@ pub fn (mut c Checker) goto_stmt(node ast.GotoStmt) {
 	if c.table.cur_fn != unsafe { nil } && node.name !in c.table.cur_fn.label_names {
 		c.error('unknown label `$node.name`', node.pos)
 	}
-	c.goto_labels[node.name]++ // Register a label use
+	c.goto_labels[node.name].is_used = true // Register a label use
 	// TODO: check label doesn't bypass variable declarations
 }
 
 fn (mut c Checker) check_unused_labels() {
-	for label, nr_uses in c.goto_labels {
-		if nr_uses == 0 {
+	for name, label in c.goto_labels {
+		if !label.is_used {
 			// TODO show label's location
-			c.warn('label `$label` defined and not used', token.Pos{})
-			c.goto_labels[label]++ // so that this warning is not shown again
+			c.warn('label `$name` defined and not used', label.pos)
+			c.goto_labels[name].is_used = true // so that this warning is not shown again
 		}
 	}
 }

@@ -214,6 +214,8 @@ const (
 		'vlib/net/openssl/openssl_compiles_test.v',
 		'vlib/net/http/request_test.v',
 		'vlib/net/smtp/smtp_test.v',
+		'vlib/net/ssl/ssl_compiles_test.v',
+		'vlib/net/mbedtls/mbedtls_compiles_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/vweb/request_test.v',
 		'vlib/vweb/route_test.v',

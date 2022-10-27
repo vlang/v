@@ -168,7 +168,7 @@ fn (mut g JsGen) comptime_if_cond(cond ast.Expr, pkg_exist bool) bool {
 	}
 }
 
-fn (mut g JsGen) comptime_if_to_ifdef(name string, is_comptime_optional bool) ?string {
+fn (mut g JsGen) comptime_if_to_ifdef(name string, is_comptime_optional bool) !string {
 	match name {
 		// platforms/os-es:
 		'windows' {
@@ -313,5 +313,5 @@ fn (mut g JsGen) comptime_if_to_ifdef(name string, is_comptime_optional bool) ?s
 			return error('bad os ifdef name "$name"') // should never happen, caught in the checker
 		}
 	}
-	return none
+	return error('none')
 }

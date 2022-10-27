@@ -171,7 +171,6 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'examples/database/mysql.v'
 			skip_files << 'examples/database/orm.v'
 			skip_files << 'examples/database/psql/customer.v'
-			skip_files << 'examples/vweb_orm_jwt' // requires mysql
 		}
 		$if windows {
 			skip_files << 'examples/database/mysql.v'
@@ -181,7 +180,6 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 			skip_files << 'examples/websocket/client-server/client.v' // requires OpenSSL
 			skip_files << 'examples/websocket/client-server/server.v' // requires OpenSSL
 			skip_files << 'vlib/v/tests/websocket_logger_interface_should_compile_test.v' // requires OpenSSL
-			skip_files << 'examples/vweb_orm_jwt' // requires mysql
 			$if tinyc {
 				skip_files << 'examples/database/orm.v' // try fix it
 			}

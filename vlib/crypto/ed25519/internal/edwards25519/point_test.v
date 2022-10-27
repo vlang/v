@@ -4,7 +4,7 @@ import encoding.hex
 
 const zero_point = Point{fe_zero, fe_zero, fe_zero, fe_zero}
 
-fn test_invalid_encodings() ? {
+fn test_invalid_encodings() {
 	// An invalid point, that also happens to have y > p.
 	invalid := 'efffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f'
 	inv_bytes := hex.decode(invalid) or { panic(err) }
@@ -17,7 +17,7 @@ fn test_invalid_encodings() ? {
 	assert check_on_curve(p) == true
 }
 
-fn test_add_sub_neg_on_basepoint() ? {
+fn test_add_sub_neg_on_basepoint() {
 	bgp := new_generator_point()
 	mut idp := new_identity_point()
 	mut checklhs := Point{}
@@ -52,7 +52,7 @@ struct NonCanonicalTest {
 	canonical string
 }
 
-fn test_non_canonical_points() ? {
+fn test_non_canonical_points() {
 	tests := [
 		// Points with x = 0 and the sign bit set. With x = 0 the curve equation
 		// gives y² = 1, so y = ±1. 1 has two valid encodings.
@@ -96,11 +96,11 @@ fn test_non_canonical_points() ? {
 		// t.Run(tt.name, func(t *testing.T) {
 		// p1, err := new(Point).SetBytes(decodeHex(tt.encoding))
 		mut p1 := Point{}
-		p1.set_bytes(hex.decode(tt.encoding)?)?
+		p1.set_bytes(hex.decode(tt.encoding)!)!
 
 		// p2, err := new(Point).SetBytes(decodeHex(tt.canonical))
 		mut p2 := Point{}
-		p2.set_bytes(hex.decode(tt.canonical)?)?
+		p2.set_bytes(hex.decode(tt.canonical)!)!
 
 		assert p1.equal(p2) == 1
 		assert p1.bytes() == p2.bytes()

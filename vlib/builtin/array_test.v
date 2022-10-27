@@ -516,7 +516,7 @@ fn test_struct_print() {
 	}
 	a.b << b
 	a.b << b
-	assert a.str() == '{Test [{1 2}, {1 2}]}'
+	assert a.str() == '\{Test [{1 2}, {1 2}]}'
 	assert b.str() == '{1 2}'
 	assert a.b.str() == '[{1 2}, {1 2}]'
 }
@@ -1600,4 +1600,10 @@ fn f(x int, y int) []int {
 fn test_2d_array_init_with_it() {
 	a := [][]int{len: 6, init: f(it, 2 * it)}
 	assert a == [[0, 0], [1, 2], [2, 4], [3, 6], [4, 8], [5, 10]]
+}
+
+fn test_using_array_name_variable() {
+	array := []int{len: 4, init: it}
+	println(array)
+	assert array == [0, 1, 2, 3]
 }

@@ -19,7 +19,7 @@ enum Selection {
 struct App {
 mut:
 	gg    &gg.Context = unsafe { nil }
-	mouse struct  {
+	mouse struct {
 	mut:
 		x f32
 		y f32

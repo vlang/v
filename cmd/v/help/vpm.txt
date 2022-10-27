@@ -1,8 +1,8 @@
 Usage:
-  a) v install [MODULE...]
-  b) v update [MODULE...]
-  c) v remove [MODULE...]
+  a) v install [PACKAGE...]
+  b) v update [PACKAGE...]
+  c) v remove [PACKAGE...]
   d) v search KEYWORD[...]
-  e) v show [MODULE...]
+  e) v show [PACKAGE...]
 
   You can also pass -h or --help after each vpm command from the above, to see more details about it.

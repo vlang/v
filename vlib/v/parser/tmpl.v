@@ -80,7 +80,10 @@ fn insert_template_code(fn_name string, tmpl_str_start string, line string) stri
 	round1 := ['\\', '\\\\', r"'", "\\'", r'@', r'$']
 	round2 := [r'$$', r'\@', r'.$', r'.@']
 	mut rline := line.replace_each(round1).replace_each(round2)
-
+	comptime_call_str := rline.find_between('\${', '}')
+	if comptime_call_str.contains("\\'") {
+		rline = rline.replace(comptime_call_str, comptime_call_str.replace("\\'", r"'"))
+	}
 	if rline.ends_with('\\') {
 		rline = rline[0..rline.len - 2] + trailing_bs
 	}

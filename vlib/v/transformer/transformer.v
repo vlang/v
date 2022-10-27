@@ -1041,45 +1041,38 @@ pub fn (mut t Transformer) sql_expr(mut node ast.SqlExpr) ast.Expr {
 // stmts list to let the gen backend generate the target specific code for the print.
 pub fn (mut t Transformer) fn_decl(mut node ast.FnDecl) {
 	if t.pref.trace_calls {
-		// Skip `C.fn()` and all of builtin
-		// builtin could probably be traced also but would need
-		// special cases for, at least, println/eprintln
-		if node.no_body || node.is_builtin {
+		if node.no_body {
+			// Skip `C.fn()` calls
 			return
 		}
-		call_expr := t.gen_trace_print_call_expr(node)
+		if node.name.starts_with('v.trace_calls.') {
+			// do not instrument the tracing functions, to avoid infinite regress
+			return
+		}
+		fname := if node.is_method {
+			receiver_name := global_table.type_to_str(node.receiver.typ)
+			'$node.mod ${receiver_name}.$node.name/$node.params.len'
+		} else {
+			'$node.mod $node.name/$node.params.len'
+		}
+
 		expr_stmt := ast.ExprStmt{
-			expr: call_expr
+			expr: ast.CallExpr{
+				mod: node.mod
+				pos: node.pos
+				language: .v
+				scope: node.scope
+				name: 'v.trace_calls.on_call'
+				args: [
+					ast.CallArg{
+						expr: ast.StringLiteral{
+							val: fname
+						}
+						typ: ast.string_type_idx
+					},
+				]
+			}
 		}
 		node.stmts.prepend(expr_stmt)
 	}
-}
-
-// gen_trace_print_expr_stmt generates an ast.CallExpr representation of a
-// `eprint(...)` V code statement.
-fn (t Transformer) gen_trace_print_call_expr(node ast.FnDecl) ast.CallExpr {
-	print_str := '> trace ' + node.stringify(t.table, node.mod, map[string]string{})
-
-	call_arg := ast.CallArg{
-		expr: ast.StringLiteral{
-			val: print_str
-		}
-		typ: ast.string_type_idx
-	}
-	args := [call_arg]
-
-	fn_name := 'eprintln'
-	call_expr := ast.CallExpr{
-		name: fn_name
-		args: args
-		mod: node.mod
-		pos: node.pos
-		language: node.language
-		scope: node.scope
-		comments: [ast.Comment{
-			text: 'fn $node.short_name trace call'
-		}]
-	}
-
-	return call_expr
 }
