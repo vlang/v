@@ -519,12 +519,17 @@ pub fn (mut e Eval) expr(expr ast.Expr, expecting ast.Type) Object {
 				val: unsafe { nil }
 			}
 		}
+		ast.DumpExpr {
+			value := e.expr(expr.expr, expr.expr_type).string()
+			eprintln('[$e.trace_file_paths.last():$expr.pos.line_nr] $expr.expr: $value')
+			return empty
+		}
 		ast.AnonFn, ast.ArrayDecompose, ast.AsCast, ast.Assoc, ast.AtExpr, ast.CTempVar,
 		ast.ChanInit, ast.Comment, ast.ComptimeCall, ast.ComptimeSelector, ast.ComptimeType,
-		ast.ConcatExpr, ast.DumpExpr, ast.EmptyExpr, ast.EnumVal, ast.GoExpr, ast.IfGuardExpr,
-		ast.IndexExpr, ast.IsRefType, ast.Likely, ast.LockExpr, ast.MapInit, ast.MatchExpr,
-		ast.NodeError, ast.None, ast.OffsetOf, ast.OrExpr, ast.RangeExpr, ast.SelectExpr,
-		ast.SqlExpr, ast.TypeNode, ast.TypeOf {
+		ast.ConcatExpr, ast.EmptyExpr, ast.EnumVal, ast.GoExpr, ast.IfGuardExpr, ast.IndexExpr,
+		ast.IsRefType, ast.Likely, ast.LockExpr, ast.MapInit, ast.MatchExpr, ast.NodeError,
+		ast.None, ast.OffsetOf, ast.OrExpr, ast.RangeExpr, ast.SelectExpr, ast.SqlExpr,
+		ast.TypeNode, ast.TypeOf {
 			e.error('unhandled expression ${typeof(expr).name}')
 		}
 	}
