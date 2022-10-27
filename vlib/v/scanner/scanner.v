@@ -1240,7 +1240,7 @@ fn (mut s Scanner) ident_string() string {
 					// No } in this string, so it's not a valid `{x}` interpolation
 					break
 				}
-				if s.text[i] in [`=`, `\n`, s.inter_quote] {
+				if s.text[i] in [`=`, `:`, `\n`, s.inter_quote] {
 					// We reached the end of the line or string without reaching "}".
 					// Also if there's "=", there's no way it's a valid interpolation expression:
 					// e.g. `println("{a.b = 42}")`
