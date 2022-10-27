@@ -53,11 +53,20 @@ pub fn (mut e Eval) stmt(stmt ast.Stmt) {
 				}
 			}
 		}
-		ast.Return {
-			e.returning = true
-			e.return_values = []
-			for i, expr in stmt.exprs {
-				e.return_values << e.expr(expr, stmt.types[i])
+		ast.ForCStmt {
+			if stmt.has_init {
+				e.stmt(stmt.init)
+			}
+			for {
+				if stmt.has_cond {
+					if !(e.expr(stmt.cond, ast.bool_type_idx) as bool) {
+						break
+					}
+				}
+				e.stmts(stmt.stmts)
+				if stmt.has_inc {
+					e.stmt(stmt.inc)
+				}
 			}
 		}
 		ast.ForInStmt {
@@ -113,6 +122,13 @@ pub fn (mut e Eval) stmt(stmt ast.Stmt) {
 				fn_name := e.trace_function_names[t.fn_idx] or { t.fn_idx.str() }
 				eprintln('$file_path:${stmt.pos.line_nr + 1}: FAIL: fn $fn_name: assert $stmt.expr')
 				e.panic('Assertion failed...')
+			}
+		}
+		ast.Return {
+			e.returning = true
+			e.return_values = []
+			for i, expr in stmt.exprs {
+				e.return_values << e.expr(expr, stmt.types[i])
 			}
 		}
 		else {
