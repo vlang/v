@@ -115,6 +115,20 @@ pub fn (o Object) float_val() f64 {
 	}
 }
 
+fn (o Object) as_i64() !i64 {
+	match o {
+		i64 {
+			return o
+		}
+		Int {
+			return o.val
+		}
+		else {
+			return error('cannot cast object to i64')
+		}
+	}
+}
+
 struct Void {}
 
 pub struct Int {
