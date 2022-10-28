@@ -3237,7 +3237,7 @@ You can see the complete
 ### Enums
 
 ```v
-enum Color {
+enum Color as u8 {
 	red
 	green
 	blue
@@ -3253,6 +3253,8 @@ match color {
 	.blue { println('the color was blue') }
 }
 ```
+
+The enum type can be any integer type, but can be ommited, if it is `int`: `enum Color {`.
 
 Enum match must be exhaustive or have an `else` branch.
 This ensures that if a new enum field is added, it's handled everywhere in the code.
