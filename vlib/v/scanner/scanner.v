@@ -803,11 +803,13 @@ fn (mut s Scanner) text_scan() token.Token {
 			}
 			`{` {
 				if s.is_inside_string {
+					prev_char := s.text[s.pos - 1]
+					next_char := s.text[s.pos + 1]
 					// Handle new `hello {name}` string interpolation
-					if !s.text[s.pos + 1].is_space() && s.text[s.pos - 1] != `$` {
+					if !next_char.is_space() && next_char != `}` && prev_char !in [`$`, `{`] {
 						return s.new_token(.str_dollar, '', 1)
 					}
-					if s.text[s.pos - 1] == `$` {
+					if prev_char == `$` {
 						// Skip { in `${` in strings
 						continue
 					} else {
