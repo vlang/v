@@ -3677,6 +3677,29 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 	enum_name := util.no_dots(node.name)
 	is_flag := node.is_flag
+	if g.pref.ccompiler == 'msvc' {
+		mut last_value := '0'
+		enum_typ_name := g.table.get_type_name(node.typ)
+		g.enum_typedefs.writeln('typedef $enum_typ_name $enum_name;')
+		for i, field in node.fields {
+			g.enum_typedefs.write_string('\t#define ${enum_name}__$field.name ')
+			g.enum_typedefs.write_string('(')
+			if is_flag {
+				g.enum_typedefs.write_string((u64(1) << i).str())
+				g.enum_typedefs.write_string('ULL')
+			} else if field.has_expr {
+				expr_str := g.expr_string(field.expr)
+				g.enum_typedefs.write_string(expr_str)
+				last_value = expr_str
+			} else {
+				last_value += '+1'
+				g.enum_typedefs.write_string(last_value)
+			}
+			g.enum_typedefs.writeln(')')
+		}
+		return
+	}
+	g.enum_typedefs.writeln('#pragma pack(push, 1)')
 	g.enum_typedefs.writeln('typedef enum {')
 	mut cur_enum_expr := ''
 	mut cur_enum_offset := 0
@@ -3704,6 +3727,7 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 		cur_enum_offset++
 	}
 	g.enum_typedefs.writeln('} __attribute__((packed)) $enum_name;\n')
+	g.enum_typedefs.writeln('#pragma pack(pop)')
 }
 
 fn (mut g Gen) enum_expr(node ast.Expr) {

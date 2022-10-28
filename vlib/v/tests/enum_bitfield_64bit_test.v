@@ -70,6 +70,7 @@ enum PawnsBoard as u64 {
 
 fn test_flag_enum_with_64_value_bits() {
 	last_value := PawnsBoard.h1
+	dump(u64(last_value))
 	assert u64(last_value) == 0x8000_0000_0000_0000
 
 	wb := PawnsBoard.a2 | .b2 | .c2 | .d2 | .e2 | .f2 | .g2 | .h2
