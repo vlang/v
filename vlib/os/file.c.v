@@ -235,20 +235,20 @@ pub fn (mut f File) reopen(path string, mode string) ! {
 // read implements the Reader interface.
 pub fn (f &File) read(mut buf []u8) !int {
 	if buf.len == 0 {
-		return IError(Eof{})
+		return Eof{}
 	}
 	// the following is needed, because on FreeBSD, C.feof is a macro:
 	nbytes := int(C.fread(buf.data, 1, buf.len, &C.FILE(f.cfile)))
 	// if no bytes were read, check for errors and end-of-file.
 	if nbytes <= 0 {
 		if C.feof(&C.FILE(f.cfile)) != 0 {
-			return IError(Eof{})
+			return Eof{}
 		}
 		if C.ferror(&C.FILE(f.cfile)) != 0 {
-			return IError(NotExpected{
+			return NotExpected{
 				cause: 'unexpected error from fread'
 				code: -1
-			})
+			}
 		}
 	}
 	return nbytes
@@ -421,7 +421,7 @@ fn fread(ptr voidptr, item_size int, items int, stream &C.FILE) !int {
 		// read. The caller will get none on their next call because there will be
 		// no data available and the end-of-file will be encountered again.
 		if C.feof(stream) != 0 {
-			return IError(Eof{})
+			return Eof{}
 		}
 		// If fread encountered an error, return it. Note that fread and ferror do
 		// not tell us what the error was, so we can't return anything more specific
@@ -580,11 +580,11 @@ pub fn (err SizeOfTypeIs0Error) msg() string {
 }
 
 fn error_file_not_opened() IError {
-	return IError(&FileNotOpenedError{})
+	return &FileNotOpenedError{}
 }
 
 fn error_size_of_type_0() IError {
-	return IError(&SizeOfTypeIs0Error{})
+	return &SizeOfTypeIs0Error{}
 }
 
 // read_struct reads a single struct of type `T`

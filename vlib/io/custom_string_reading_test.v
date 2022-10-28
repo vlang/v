@@ -15,7 +15,7 @@ fn (mut s StringReader) read(mut buf []u8) !int {
 		eprintln('>>>> StringReader.read output buf.len: $buf.len')
 	}
 	if s.place > s.text.len + 1 {
-		return IError(io.Eof{})
+		return io.Eof{}
 	}
 	mut howmany := imin(buf.len, s.text.len - s.place)
 	xxx := s.text[s.place..s.place + howmany].bytes()

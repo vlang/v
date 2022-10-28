@@ -15,7 +15,7 @@ pub fn read(bytes_needed int) ![]u8 {
 	mut buffer := []u8{len: bytes_needed}
 	status := C.SecRandomCopyBytes(C.SecRandomRef(0), bytes_needed, buffer.data)
 	if status != 0 {
-		return IError(&ReadError{})
+		return &ReadError{}
 	}
 	return buffer
 }

@@ -645,19 +645,19 @@ pub fn (err HeaderKeyError) code() int {
 fn is_valid(header string) ! {
 	for _, c in header {
 		if int(c) >= 128 || !is_token(c) {
-			return IError(HeaderKeyError{
+			return HeaderKeyError{
 				code: 1
 				header: header
 				invalid_char: c
-			})
+			}
 		}
 	}
 	if header.len == 0 {
-		return IError(HeaderKeyError{
+		return HeaderKeyError{
 			code: 2
 			header: header
 			invalid_char: 0
-		})
+		}
 	}
 }
 

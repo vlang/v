@@ -24,7 +24,7 @@ fn parse_attrs(name string, attrs []string) !([]http.Method, string) {
 		}
 		if attr.starts_with('/') {
 			if path != '' {
-				return IError(http.MultiplePathAttributesError{})
+				return http.MultiplePathAttributesError{}
 			}
 			path = attr
 			x.delete(i)
@@ -33,9 +33,9 @@ fn parse_attrs(name string, attrs []string) !([]http.Method, string) {
 		i++
 	}
 	if x.len > 0 {
-		return IError(http.UnexpectedExtraAttributeError{
+		return http.UnexpectedExtraAttributeError{
 			attributes: x
-		})
+		}
 	}
 	if methods.len == 0 {
 		methods = [http.Method.get]

@@ -28,10 +28,10 @@ fn (e MyError) code() int {
 
 // An example function that returns a custom error.
 fn foo() ?string {
-	return IError(MyError{
+	return MyError{
 		msg: 'foo'
 		blah: 'world'
-	})
+	}
 }
 
 fn test_interface_embedding_smartcast() {

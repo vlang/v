@@ -455,7 +455,7 @@ pub fn (err ExecutableNotFoundError) msg() string {
 }
 
 fn error_failed_to_find_executable() IError {
-	return IError(&ExecutableNotFoundError{})
+	return &ExecutableNotFoundError{}
 }
 
 // find_abs_path_of_executable walks the environment PATH, just like most shell do, it returns

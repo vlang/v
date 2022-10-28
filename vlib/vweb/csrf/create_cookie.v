@@ -49,8 +49,8 @@ pub fn (mut app App) get_csrf_token() ?string {
 	if app.csrf_cookie_value != '' {
 		return app.csrf_cookie_value
 	} else {
-		return IError(CsrfError{
+		return CsrfError{
 			m: 'The CSRF-Token-Value is empty. Please check if you have setted a cookie!'
-		})
+		}
 	}
 }

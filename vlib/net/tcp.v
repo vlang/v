@@ -135,10 +135,10 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 
 pub fn (c TcpConn) read(mut buf []u8) !int {
 	return c.read_ptr(buf.data, buf.len) or {
-		return IError(io.NotExpected{
+		return io.NotExpected{
 			cause: 'unexpected error in `read_ptr` function'
 			code: -1
-		})
+		}
 	}
 }
 
