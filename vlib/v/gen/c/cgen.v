@@ -3701,7 +3701,9 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 		}
 		return
 	}
-	g.enum_typedefs.writeln('#pragma pack(push, 1)')
+	if node.typ != ast.int_type {
+		g.enum_typedefs.writeln('#pragma pack(push, 1)')
+	}
 	g.enum_typedefs.writeln('typedef enum {')
 	mut cur_enum_expr := ''
 	mut cur_enum_offset := 0
@@ -3728,8 +3730,11 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 		g.enum_typedefs.writeln(', // $cur_value')
 		cur_enum_offset++
 	}
-	g.enum_typedefs.writeln('} __attribute__((packed)) $enum_name;')
-	g.enum_typedefs.writeln('#pragma pack(pop)\n')
+	packed_attribute := if node.typ != ast.int_type { '__attribute__((packed))' } else { '' }
+	g.enum_typedefs.writeln('} $packed_attribute $enum_name;')
+	if node.typ != ast.int_type {
+		g.enum_typedefs.writeln('#pragma pack(pop)\n')
+	}
 }
 
 fn (mut g Gen) enum_expr(node ast.Expr) {
