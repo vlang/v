@@ -1422,7 +1422,7 @@ pub fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 		ast.i8_type { signed, enum_imin, enum_imax = true, -128, 0x7F }
 		ast.i16_type { signed, enum_imin, enum_imax = true, -32_768, 0x7FFF }
 		ast.int_type { signed, enum_imin, enum_imax = true, -2_147_483_648, 0x7FFF_FFFF }
-		ast.i64_type { signed, enum_imin, enum_imax = true, -9_223_372_036_854_775_808, i64(0x7FFF_FFFF_FFFF_FFFF) }
+		ast.i64_type { signed, enum_imin, enum_imax = true, i64(-9223372036854775807 - 1), i64(0x7FFF_FFFF_FFFF_FFFF) }
 		//
 		ast.u8_type { signed, enum_umin, enum_umax = false, 0, 0xFF }
 		ast.u16_type { signed, enum_umin, enum_umax = false, 0, 0xFFFF }
