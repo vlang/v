@@ -9,12 +9,9 @@ fn test_string_interpolation_inner_cbr() {
 	println(s1)
 	assert s1 == '22'
 
-	/*
-	XTODO
 	s2 := '${St{}}'
 	println(s2)
 	assert s2 == 'St{}'
-	*/
 
 	s3 := '${{
 		'a': 1
