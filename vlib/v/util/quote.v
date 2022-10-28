@@ -76,6 +76,7 @@ pub fn smart_quote(str string, raw bool) string {
 			}
 			if next == util.backslash {
 				// escaped backslash - keep as is
+				current = 0
 				skip_next = true
 				result.write_string(util.double_escape)
 				continue
@@ -87,6 +88,7 @@ pub fn smart_quote(str string, raw bool) string {
 					continue
 				}
 				if next in util.invalid_escapes {
+					current = 0
 					skip_next = true
 					result.write_u8(next)
 					continue
@@ -95,6 +97,7 @@ pub fn smart_quote(str string, raw bool) string {
 				skip_next = true
 				result.write_u8(current)
 				result.write_u8(next)
+				current = 0
 				continue
 			}
 		}
@@ -119,13 +122,6 @@ pub fn smart_quote(str string, raw bool) string {
 					result.write_u8(current)
 					continue
 				}
-			}
-			if current == util.backslash_r && next == util.backslash_n {
-				// Windows style new line \r\n
-				skip_next = true
-				result.write_u8(util.backslash)
-				result.write_u8(`n`)
-				continue
 			}
 		}
 		result.write_u8(current)
