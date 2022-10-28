@@ -269,7 +269,7 @@ fn build_token_str() []string {
 	s[Kind.nl] = 'NLL'
 	s[Kind.dollar] = '$'
 	s[Kind.at] = '@'
-	s[Kind.str_dollar] = '$2'
+	s[Kind.str_dollar] = 'string interpolation'
 	s[Kind.key_assert] = 'assert'
 	s[Kind.key_struct] = 'struct'
 	s[Kind.key_if] = 'if'

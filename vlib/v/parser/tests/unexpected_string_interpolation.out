@@ -1,0 +1,6 @@
+vlib/v/parser/tests/unexpected_string_interpolation.vv:5:26: error: unexpected string interpolation, expecting `{`
+    3 |     a := 123
+    4 |     println('Foo = ${a}')
+    5 |     println('Foo = ${unsafe {a}}')
+      |                             ^
+    6 | }

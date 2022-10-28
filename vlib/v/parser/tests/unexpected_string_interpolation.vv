@@ -1,0 +1,6 @@
+
+fn main() {
+	a := 123
+	println('Foo = ${a}')
+	println('Foo = ${unsafe {a}}')
+}
