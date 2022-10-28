@@ -12,7 +12,7 @@ fn (err MyError) code() int {
 }
 
 fn foo() int|none|IError {
-	return MyError{}
+	return IError(MyError{})
 }
 
 fn test_string_optional_none() {
