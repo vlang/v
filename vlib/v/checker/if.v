@@ -358,7 +358,7 @@ fn (mut c Checker) smartcast_if_conds(node ast.Expr, mut scope ast.Scope) {
 							&& (left_sym.kind == .interface_ && right_sym.kind != .interface_) {
 							v := scope.find_var(node.left.name) or { &ast.Var{} }
 							if v.is_mut && !node.left.is_mut {
-								c.error('smart casting to a mutable interface requires `if mut $node.left.name is ...`',
+								c.error('smart casting a mutable interface value requires `if mut $node.left.name is ...`',
 									node.left.pos)
 							}
 						}
