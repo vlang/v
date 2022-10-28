@@ -3690,8 +3690,9 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 			cur_enum_offset = 0
 		} else if is_flag {
 			g.enum_typedefs.write_string(' = ')
-			cur_enum_expr = '1 << $i'
-			g.enum_typedefs.write_string((1 << i).str())
+			cur_enum_expr = 'u64(1) << $i'
+			g.enum_typedefs.write_string((u64(1) << i).str())
+			g.enum_typedefs.write_string('U')
 			cur_enum_offset = 0
 		}
 		cur_value := if cur_enum_offset > 0 {
@@ -3702,7 +3703,7 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 		g.enum_typedefs.writeln(', // $cur_value')
 		cur_enum_offset++
 	}
-	g.enum_typedefs.writeln('} $enum_name;\n')
+	g.enum_typedefs.writeln('} __attribute__((packed)) $enum_name;\n')
 }
 
 fn (mut g Gen) enum_expr(node ast.Expr) {

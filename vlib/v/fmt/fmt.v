@@ -938,7 +938,11 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 	if node.is_pub {
 		f.write('pub ')
 	}
-	name := node.name.after('.')
+	mut name := node.name.after('.')
+	if node.typ != ast.int_type {
+		senum_type := f.table.type_to_str_using_aliases(node.typ, f.mod2alias)
+		name += ' as $senum_type'
+	}
 	if node.fields.len == 0 && node.pos.line_nr == node.pos.last_line {
 		f.writeln('enum $name {}\n')
 		return
