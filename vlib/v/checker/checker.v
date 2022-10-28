@@ -1419,16 +1419,35 @@ pub fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 	mut signed := true
 	senum_type := c.table.type_to_str(node.typ)
 	match node.typ {
-		ast.i8_type { signed, enum_imin, enum_imax = true, -128, 0x7F }
-		ast.i16_type { signed, enum_imin, enum_imax = true, -32_768, 0x7FFF }
-		ast.int_type { signed, enum_imin, enum_imax = true, -2_147_483_648, 0x7FFF_FFFF }
-		ast.i64_type { signed, enum_imin, enum_imax = true, i64(-9223372036854775807 - 1), i64(0x7FFF_FFFF_FFFF_FFFF) }
+		ast.i8_type {
+			signed, enum_imin, enum_imax = true, -128, 0x7F
+		}
+		ast.i16_type {
+			signed, enum_imin, enum_imax = true, -32_768, 0x7FFF
+		}
+		ast.int_type {
+			signed, enum_imin, enum_imax = true, -2_147_483_648, 0x7FFF_FFFF
+		}
+		ast.i64_type {
+			signed, enum_imin, enum_imax = true, i64(-9223372036854775807 - 1), i64(0x7FFF_FFFF_FFFF_FFFF)
+		}
 		//
-		ast.u8_type { signed, enum_umin, enum_umax = false, 0, 0xFF }
-		ast.u16_type { signed, enum_umin, enum_umax = false, 0, 0xFFFF }
-		ast.u32_type { signed, enum_umin, enum_umax = false, 0, 0xFFFF_FFFF }
-		ast.u64_type { signed, enum_umin, enum_umax = false, 0, 0xFFFF_FFFF_FFFF_FFFF }
-		else {}
+		ast.u8_type {
+			signed, enum_umin, enum_umax = false, 0, 0xFF
+		}
+		ast.u16_type {
+			signed, enum_umin, enum_umax = false, 0, 0xFFFF
+		}
+		ast.u32_type {
+			signed, enum_umin, enum_umax = false, 0, 0xFFFF_FFFF
+		}
+		ast.u64_type {
+			signed, enum_umin, enum_umax = false, 0, 0xFFFF_FFFF_FFFF_FFFF
+		}
+		else {
+			c.error('`$senum_type` is not one of `i8`,`i16`,`int`,`i64`,`u8`,`u16`,`u32`,`u64`',
+				node.pos)
+		}
 	}
 	// eprintln('>>> enum node.name: $node.name | node.typ: $node.typ | senum_type: $senum_type | enum_umin: $enum_umin | enum_umax: $enum_umax | signed: $signed | enum_imin: $enum_imin | enum_imax: $enum_imax')
 	for i, mut field in node.fields {
