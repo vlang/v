@@ -75,9 +75,9 @@ fn color(kind string, msg string) string {
 
 const normalised_workdir = os.wd_at_startup.replace('\\', '/') + '/'
 
-// path_style_for_error_messages returns the modified file path according
+// path_styled_for_error_messages returns the modified file path according
 // to the user's preference (`VERROR_PATHS` env-var)
-pub fn path_style_for_error_messages(path_ string) string {
+pub fn path_styled_for_error_messages(path_ string) string {
 	mut path := path_
 	verror_paths_override := os.getenv('VERROR_PATHS')
 	if verror_paths_override == 'absolute' {
@@ -96,7 +96,7 @@ pub fn path_style_for_error_messages(path_ string) string {
 // formatted_error - `kind` may be 'error' or 'warn'
 pub fn formatted_error(kind string, omsg string, filepath string, pos token.Pos) string {
 	emsg := omsg.replace('main.', '')
-	path := get_relative_or_real_filepath(filepath)
+	path := path_styled_for_error_messages(filepath)
 	position := if filepath.len > 0 {
 		'$path:${pos.line_nr + 1}:${mu.max(1, pos.col + 1)}:'
 	} else {

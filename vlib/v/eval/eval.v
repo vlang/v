@@ -241,7 +241,7 @@ fn (e Eval) print_backtrace() {
 	for i := e.back_trace.len - 1; i >= 0; i-- {
 		t := e.back_trace[i]
 		file_path := if path := e.trace_file_paths[t.file_idx] {
-			util.path_style_for_error_messages(path)
+			util.path_styled_for_error_messages(path)
 		} else {
 			t.file_idx.str()
 		}
