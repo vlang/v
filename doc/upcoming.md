@@ -134,7 +134,7 @@ f(a)
 mut b := St{...}
 f(b)
 go g(mut b)
-// `b` should not be accessed here any more
+// `b` should not be accessed here anymore
 
 shared c := St{...}
 h(shared c)
@@ -181,7 +181,7 @@ y := b['apple'] // not necesarily `3`
 
 // iteration over elements
 for k, v in b {
-    // concurrently changed k/v pairs may or my not be included
+    // concurrently changed k/v pairs may or may not be included
 }
 ```
 
