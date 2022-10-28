@@ -43,6 +43,7 @@ fn test_small_enum() {
 }
 
 fn test_big_enum() {
+	assert sizeof(BigIEnum) == 8
 	assert BigEnum.a.str() == 'a'
 	assert BigEnum.b.str() == 'b'
 	assert BigEnum.c.str() == 'c'
@@ -62,6 +63,7 @@ fn test_big_enum() {
 }
 
 fn test_big_ienum() {
+	assert sizeof(BigIEnum) == 8
 	assert BigIEnum.a.str() == 'a'
 	assert BigIEnum.b.str() == 'b'
 	assert BigIEnum.c.str() == 'c'
