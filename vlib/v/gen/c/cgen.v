@@ -3692,7 +3692,9 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 				g.enum_typedefs.write_string(expr_str)
 				last_value = expr_str
 			} else {
-				last_value += '+1'
+				if i != 0 {
+					last_value += '+1'
+				}
 				g.enum_typedefs.write_string(last_value)
 			}
 			g.enum_typedefs.writeln(')')
@@ -3726,8 +3728,8 @@ fn (mut g Gen) enum_decl(node ast.EnumDecl) {
 		g.enum_typedefs.writeln(', // $cur_value')
 		cur_enum_offset++
 	}
-	g.enum_typedefs.writeln('} __attribute__((packed)) $enum_name;\n')
-	g.enum_typedefs.writeln('#pragma pack(pop)')
+	g.enum_typedefs.writeln('} __attribute__((packed)) $enum_name;')
+	g.enum_typedefs.writeln('#pragma pack(pop)\n')
 }
 
 fn (mut g Gen) enum_expr(node ast.Expr) {

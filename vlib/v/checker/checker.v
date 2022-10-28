@@ -1449,7 +1449,10 @@ pub fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 				node.pos)
 		}
 	}
-	// eprintln('>>> enum node.name: $node.name | node.typ: $node.typ | senum_type: $senum_type | enum_umin: $enum_umin | enum_umax: $enum_umax | signed: $signed | enum_imin: $enum_imin | enum_imax: $enum_imax')
+	if enum_imin > 0 {
+		// ensure that the minimum value is negative, even with msvc, which has a bug that makes -2147483648 positive ...
+		enum_imin *= -1
+	}
 	for i, mut field in node.fields {
 		if !c.pref.experimental && util.contains_capital(field.name) {
 			// TODO C2V uses hundreds of enums with capitals, remove -experimental check once it's handled
@@ -1494,7 +1497,6 @@ pub fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 					} else {
 						useen << uval
 					}
-					// eprintln('>>> field.expr.val: `$field.expr.val` | overflows: $overflows')
 				}
 				ast.PrefixExpr {
 					dump(field.expr)
@@ -1534,7 +1536,6 @@ pub fn (mut c Checker) enum_decl(mut node ast.EnumDecl) {
 		} else {
 			if signed {
 				if iseen.len > 0 {
-					// eprintln('>> enum name: ${node.name:-20} | field.name: ${field.name:-20} | iseen: $iseen')
 					ilast := iseen[iseen.len - 1]
 					if ilast == enum_imax {
 						c.error('enum value overflows type `$senum_type`, which has a maximum value of $enum_imax',
